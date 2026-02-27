@@ -42,6 +42,8 @@ import com.cubrid.plcsql.compiler.ParseTreeConverter;
 import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.ast.*;
+import com.cubrid.plcsql.compiler.ast.ExprFloat;
+import com.cubrid.plcsql.compiler.ast.ExprUint;
 import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.error.SemanticError;
 import com.cubrid.plcsql.compiler.serverapi.ServerAPI;

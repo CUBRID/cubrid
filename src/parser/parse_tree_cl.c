@@ -6714,12 +6714,7 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->data_type)
 	{
 	  /* only show non-default parameter */
-#if 1				// used in phase-2
-	  if (p->data_type->info.data_type.precision != DB_DEFAULT_NUMERIC_PRECISION
-	      || p->data_type->info.data_type.dec_precision != DB_DEFAULT_NUMERIC_SCALE)
-#else
 	  if (p->data_type->info.data_type.precision != DB_DEFAULT_NUMERIC_PRECISION)
-#endif
 	    {
 	      sprintf (s, "(%d,%d)", p->data_type->info.data_type.precision,
 		       p->data_type->info.data_type.dec_precision);
@@ -8664,12 +8659,7 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 
     case PT_TYPE_NUMERIC:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
-#if 1				// used in phase-2
-      if (p->info.data_type.precision != DB_DEFAULT_NUMERIC_PRECISION
-	  || p->info.data_type.dec_precision != DB_DEFAULT_NUMERIC_SCALE)
-#else // used in phase-3
       if (p->info.data_type.precision != DB_DEFAULT_NUMERIC_PRECISION)
-#endif
 	{
 	  sprintf (buf, "(%d,%d)", p->info.data_type.precision, p->info.data_type.dec_precision);
 	  q = pt_append_nulstring (parser, q, buf);

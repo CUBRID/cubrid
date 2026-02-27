@@ -1258,7 +1258,7 @@ db_string_chr (DB_VALUE * res, DB_VALUE * dbval1, DB_VALUE * dbval2)
       dtmp = db_get_double (dbval1);
       break;
     case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double (db_locate_numeric (dbval1), DB_VALUE_SCALE (dbval1), &dtmp);
+      numeric_coerce_num_to_double (db_locate_numeric (dbval1), db_get_numeric_scale (dbval1, NULL), &dtmp);
       break;
     case DB_TYPE_MONETARY:
       dtmp = (db_get_monetary (dbval1))->amount;
@@ -11231,7 +11231,7 @@ db_round_dbvalue_to_int (const DB_VALUE * src, int *result)
     case DB_TYPE_NUMERIC:
       {
 	double x = 0;
-	numeric_coerce_num_to_double (db_locate_numeric ((DB_VALUE *) src), DB_VALUE_SCALE (src), &x);
+	numeric_coerce_num_to_double (db_locate_numeric ((DB_VALUE *) src), db_get_numeric_scale (src, NULL), &x);
 	*result = (int) ((x) > 0 ? ((x) + .5) : ((x) - .5));
 	return NO_ERROR;
       }
@@ -11734,8 +11734,8 @@ db_timestamp (const DB_VALUE * src_datetime1, const DB_VALUE * src_time2, DB_VAL
       break;
 
     case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double ((DB_C_NUMERIC) db_locate_numeric (src_time2), DB_VALUE_SCALE (src_time2),
-				    &amount_d);
+      numeric_coerce_num_to_double ((DB_C_NUMERIC) db_locate_numeric (src_time2),
+				    db_get_numeric_scale (src_time2, NULL), &amount_d);
       break;
 
     default:
@@ -15820,7 +15820,7 @@ adjust_precision (char *data, int precision, int scale)
   else
     {
       if (before_dec_point + after_dec_point > DB_MAX_FIXED_NUMERIC_PRECISION ||
-	  after_dec_point > DB_DEFAULT_NUMERIC_PRECISION || before_dec_point > precision - scale)
+	  after_dec_point > DB_DEFAULT_NUMERIC_SCALE_FOR_TO_NUMBER || before_dec_point > precision - scale)
 	{
 	  return DOMAIN_OVERFLOW;
 	}
@@ -16031,7 +16031,7 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VA
 	{
 	  /* scientific notation */
 	  precision = DB_MAX_FIXED_NUMERIC_PRECISION;
-	  scale = DB_DEFAULT_NUMERIC_PRECISION;
+	  scale = DB_DEFAULT_NUMERIC_SCALE_FOR_TO_NUMBER;
 	  break;
 	}
     }
@@ -16133,11 +16133,20 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VA
 
   if (precision > DB_MAX_NUMERIC_PRECISION)
     {
-      scale = DB_MAX_NUMERIC_PRECISION - precision;
+      scale -= (precision - DB_MAX_NUMERIC_PRECISION);
       precision = DB_MAX_NUMERIC_PRECISION;
     }
-  result_num->domain.numeric_info.precision = precision;
-  result_num->domain.numeric_info.scale = scale;
+
+  if (result_num->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      result_num->data.num.header.precision = precision;
+      result_num->data.num.header.scale = scale;
+    }
+  else
+    {
+      result_num->domain.numeric_info.precision = precision;
+      result_num->domain.numeric_info.scale = scale;
+    }
 
   if (do_free_buf_str)
     {

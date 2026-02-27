@@ -1154,6 +1154,19 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
       goto error_exit;
     }
 
+  if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+    {
+      FLOAT_TO_FIXED_NUMERIC (pval);
+      if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	{
+	  PT_ERRORmf (parser, node_new_val, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+		      node_new_val->info.value.data_value.str->bytes);
+	  error_code = ER_IT_DATA_OVERFLOW;
+	  db_make_null (pval);
+	  goto error_exit;
+	}
+    }
+
   error_code = numeric_db_value_coerce_to_num (pval, &new_val, &data_status);
   if (error_code != NO_ERROR)
     {
@@ -1480,17 +1493,11 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* get all values as string */
   numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
-#if 0				// used in phase-3
   FLOAT_TO_FIXED_NUMERIC (&zero);
-#endif
   numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &e38);
-#if 0				// used in phase-3
   FLOAT_TO_FIXED_NUMERIC (&e38);
-#endif
   numeric_coerce_string_to_num (DB_SERIAL_MIN, strlen (DB_SERIAL_MIN), INTL_CODESET_ISO88591, &negative_e38);
-#if 0				// used in phase-3
   FLOAT_TO_FIXED_NUMERIC (&negative_e38);
-#endif
   db_make_int (&cmp_result, 0);
 
   start_val_node = PT_NODE_SR_START_VAL (statement);
@@ -1508,6 +1515,19 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
+	}
+
+      if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+	{
+	  FLOAT_TO_FIXED_NUMERIC (pval);
+	  if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      PT_ERRORmf (parser, inc_val_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+			  inc_val_node->info.value.data_value.str->bytes);
+	      error = ER_IT_DATA_OVERFLOW;
+	      db_make_null (pval);
+	      goto end;
+	    }
 	}
 
       error = numeric_db_value_coerce_to_num (pval, &inc_val, &data_stat);
@@ -1557,6 +1577,20 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = er_errid ();
 	  goto end;
 	}
+
+      if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+	{
+	  FLOAT_TO_FIXED_NUMERIC (pval);
+	  if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      PT_ERRORmf (parser, start_val_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+			  start_val_node->info.value.data_value.str->bytes);
+	      error = ER_IT_DATA_OVERFLOW;
+	      db_make_null (pval);
+	      goto end;
+	    }
+	}
+
       error = numeric_db_value_coerce_to_num (pval, &start_val, &data_stat);
       if (error != NO_ERROR)
 	{
@@ -1590,6 +1624,19 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
+	}
+
+      if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+	{
+	  FLOAT_TO_FIXED_NUMERIC (pval);
+	  if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      PT_ERRORmf (parser, min_val_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+			  min_val_node->info.value.data_value.str->bytes);
+	      error = ER_IT_DATA_OVERFLOW;
+	      db_make_null (pval);
+	      goto end;
+	    }
 	}
 
       error = numeric_db_value_coerce_to_num (pval, &min_val, &data_stat);
@@ -1638,6 +1685,19 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
+	}
+
+      if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+	{
+	  FLOAT_TO_FIXED_NUMERIC (pval);
+	  if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      PT_ERRORmf (parser, max_val_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+			  max_val_node->info.value.data_value.str->bytes);
+	      error = ER_IT_DATA_OVERFLOW;
+	      db_make_null (pval);
+	      goto end;
+	    }
 	}
 
       error = numeric_db_value_coerce_to_num (pval, &max_val, &data_stat);
@@ -1767,11 +1827,9 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       // max - min might be flooded. Regard the range is big enough.
       numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &range_val);
-#if 0				// used in phase-3
-      FLOAT_TO_FIXED_NUMERIC (&range_val);
-#endif
       er_clear ();
     }
+  FLOAT_TO_FIXED_NUMERIC (&range_val);
 
   db_abs_dbval (&abs_inc_val, &inc_val);
   initialize_serial_invariant (&invariants[ninvars++], abs_inc_val, range_val, PT_LE, inc_val_msgid,
@@ -1802,6 +1860,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto end;
 	}
+      FLOAT_TO_FIXED_NUMERIC (&tmp_val);
 
       error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
       if (error != NO_ERROR)
@@ -1909,13 +1968,9 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   db_make_null (&min_val);
 
   numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
-#if 0				// used in phase-3
   FLOAT_TO_FIXED_NUMERIC (&zero);
-#endif
   numeric_coerce_string_to_num (DB_SERIAL_MAX, DB_MAX_FIXED_NUMERIC_PRECISION, INTL_CODESET_ISO88591, &e38);
-#if 0				// used in phase-3
   FLOAT_TO_FIXED_NUMERIC (&e38);
-#endif
 
   assert_release (att->info.attr_def.auto_increment != NULL);
   auto_increment_node = att->info.attr_def.auto_increment;
@@ -1982,6 +2037,19 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
 	  goto end;
 	}
 
+      if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+	{
+	  FLOAT_TO_FIXED_NUMERIC (pval);
+	  if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      PT_ERRORmf (parser, inc_val_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+			  inc_val_node->info.value.data_value.str->bytes);
+	      error = ER_IT_DATA_OVERFLOW;
+	      db_make_null (pval);
+	      goto end;
+	    }
+	}
+
       error = numeric_db_value_coerce_to_num (pval, &inc_val, &data_stat);
       if (error != NO_ERROR)
 	{
@@ -2025,6 +2093,20 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
 	  error = ER_INVALID_SERIAL_VALUE;
 	  goto end;
 	}
+
+      if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+	{
+	  FLOAT_TO_FIXED_NUMERIC (pval);
+	  if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      PT_ERRORmf (parser, start_val_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+			  start_val_node->info.value.data_value.str->bytes);
+	      error = ER_IT_DATA_OVERFLOW;
+	      db_make_null (pval);
+	      goto end;
+	    }
+	}
+
       error = numeric_db_value_coerce_to_num (pval, &start_val, &data_stat);
       if (error != NO_ERROR)
 	{
@@ -2071,9 +2153,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
       *p = '\0';
 
       (void) numeric_coerce_string_to_num (num, dtyp->info.data_type.precision, INTL_CODESET_ISO88591, &value);
-#if 0				// used in phase-3
       FLOAT_TO_FIXED_NUMERIC (&value);
-#endif
       break;
     default:
       /* max numeric */
@@ -2170,9 +2250,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
   OID_SET_NULL (&serial_obj_id);
 
   numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &e38);
-#if 0				// used in phase-3
   FLOAT_TO_FIXED_NUMERIC (&e38);
-#endif
 
   assert (serial_object != NULL);
 
@@ -2260,9 +2338,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
       *p = '\0';
 
       (void) numeric_coerce_string_to_num (num, dtyp->info.data_type.precision, INTL_CODESET_ISO88591, &value);
-#if 0				// used in phase-3
       FLOAT_TO_FIXED_NUMERIC (&value);
-#endif
       break;
     default:
       /* max numeric */
@@ -2515,17 +2591,11 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* Now, get new values from node */
 
   numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
-#if 0				// used in phase-3
   FLOAT_TO_FIXED_NUMERIC (&zero);
-#endif
   numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &e38);
-#if 0				// used in phase-3
   FLOAT_TO_FIXED_NUMERIC (&e38);
-#endif
   numeric_coerce_string_to_num (DB_SERIAL_MIN, strlen (DB_SERIAL_MIN), INTL_CODESET_ISO88591, &negative_e38);
-#if 0				// used in phase-3
   FLOAT_TO_FIXED_NUMERIC (&negative_e38);
-#endif
   db_make_int (&cmp_result, 0);
 
   db_value_domain_init (&new_inc_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
@@ -2539,6 +2609,18 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
+	}
+      if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+	{
+	  FLOAT_TO_FIXED_NUMERIC (pval);
+	  if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      PT_ERRORmf (parser, inc_val_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+			  inc_val_node->info.value.data_value.str->bytes);
+	      error = ER_IT_DATA_OVERFLOW;
+	      db_make_null (pval);
+	      goto end;
+	    }
 	}
       error = numeric_db_value_coerce_to_num (pval, &new_inc_val, &data_stat);
       if (error != NO_ERROR)
@@ -2589,6 +2671,18 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = er_errid ();
 	  goto end;
 	}
+      if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+	{
+	  FLOAT_TO_FIXED_NUMERIC (pval);
+	  if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      PT_ERRORmf (parser, start_val_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+			  start_val_node->info.value.data_value.str->bytes);
+	      error = ER_IT_DATA_OVERFLOW;
+	      db_make_null (pval);
+	      goto end;
+	    }
+	}
       error = numeric_db_value_coerce_to_num (pval, &start_val, &data_stat);
       if (error != NO_ERROR)
 	{
@@ -2614,6 +2708,18 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
+	}
+      if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+	{
+	  FLOAT_TO_FIXED_NUMERIC (pval);
+	  if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      PT_ERRORmf (parser, max_val_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+			  max_val_node->info.value.data_value.str->bytes);
+	      error = ER_IT_DATA_OVERFLOW;
+	      db_make_null (pval);
+	      goto end;
+	    }
 	}
       error = numeric_db_value_coerce_to_num (pval, &new_max_val, &data_stat);
       if (error != NO_ERROR)
@@ -2663,6 +2769,18 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
+	}
+      if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+	{
+	  FLOAT_TO_FIXED_NUMERIC (pval);
+	  if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      PT_ERRORmf (parser, min_val_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+			  min_val_node->info.value.data_value.str->bytes);
+	      error = ER_IT_DATA_OVERFLOW;
+	      db_make_null (pval);
+	      goto end;
+	    }
 	}
       error = numeric_db_value_coerce_to_num (pval, &new_min_val, &data_stat);
       if (error != NO_ERROR)
@@ -2754,11 +2872,9 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       // max - min might be flooded. Regard the range is big enough.
       numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &range_val);
-#if 0				// used in phase-3
-      FLOAT_TO_FIXED_NUMERIC (&range_val);
-#endif
       er_clear ();
     }
+  FLOAT_TO_FIXED_NUMERIC (&range_val);
 
   db_abs_dbval (&abs_inc_val, &new_inc_val);
   initialize_serial_invariant (&invariants[ninvars++], abs_inc_val, range_val, PT_LE,
@@ -2792,6 +2908,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto end;
 	}
+      FLOAT_TO_FIXED_NUMERIC (&tmp_val);
 
       error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
       if (error != NO_ERROR)
@@ -20983,6 +21100,19 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
+  if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+    {
+      FLOAT_TO_FIXED_NUMERIC (pval);
+      if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	{
+	  PT_ERRORmf (parser, create_server->port, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+		      create_server->port->info.value.data_value.str->bytes);
+	  error = ER_IT_DATA_OVERFLOW;
+	  db_make_null (pval);
+	  goto end;
+	}
+    }
+
   error = numeric_db_value_coerce_to_num (pval, &port_no, &data_stat);
   if (error != NO_ERROR)
     {
@@ -21257,6 +21387,19 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
+	}
+
+      if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+	{
+	  FLOAT_TO_FIXED_NUMERIC (pval);
+	  if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      PT_ERRORmf (parser, alter->port, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+			  alter->port->info.value.data_value.str->bytes);
+	      error = ER_IT_DATA_OVERFLOW;
+	      db_make_null (pval);
+	      goto end;
+	    }
 	}
 
       error = numeric_db_value_coerce_to_num (pval, &value, &data_stat);

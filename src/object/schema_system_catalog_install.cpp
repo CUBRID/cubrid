@@ -61,9 +61,6 @@ make_numeric_value_fn (const char *str)
 {
   return [str] (DB_VALUE *val)
   {
-#if 1 // used in phase-2
-    return numeric_coerce_string_to_num (str, strlen (str), LANG_SYS_CODESET, val);
-#else // used in phase-3
     int error_code = NO_ERROR;
     error_code = numeric_coerce_string_to_num (str, strlen (str), LANG_SYS_CODESET, val);
     if (error_code != NO_ERROR)
@@ -73,7 +70,6 @@ make_numeric_value_fn (const char *str)
 
     FLOAT_TO_FIXED_NUMERIC (val);
     return error_code;
-#endif
   };
 }
 

@@ -40,16 +40,6 @@ typedef enum
   DATA_STATUS_NOT_CONSUMED = 1005	/* Operation not consumed all input */
 } DB_DATA_STATUS;
 
-#if 1				// used in phase-1, phase-2
-typedef enum fp_value_type
-{
-  FP_VALUE_TYPE_NUMBER,
-  FP_VALUE_TYPE_INFINITE,
-  FP_VALUE_TYPE_NAN,
-  FP_VALUE_TYPE_ZERO
-} FP_VALUE_TYPE;
-#endif
-
 /*
  * NUMERIC_MAX_STRING_SIZE:
  * Defines the maximum internal working buffer size for NUMERIC values.
@@ -64,7 +54,7 @@ typedef enum fp_value_type
  * for a detailed explanation.
  *
  * Maximum string size for NUMERIC output: 256 * 2 = 512
- *   = (max digits (43 + 211) + 2 extra digits) * 2
+ *   = (max digits (40 + 214) + 2 extra digits) * 2
  */
 #define NUMERIC_MAX_STRING_SIZE (((DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + 2) * 2)
 
@@ -95,11 +85,11 @@ typedef enum fp_value_type
 /*
  * Lookup table for converting precision value to byte count
  *
- * Precision range: Pre-calculated for 1 to 43 digits
+ * Precision range: Pre-calculated for 1 to 40 digits
  * Conversion formula: bytes = ceil(precision / log10(256))
  * Note: log10(256) = 2.40824
  */
-extern const int _gv_float_numeric_precision_bytes_lookup[DB_MAX_NUMERIC_PRECISION];
+extern const int _gv_numeric_precision_to_bytes_lookup[DB_MAX_NUMERIC_PRECISION + 1];
 
 #if defined(SERVER_MODE)
 extern void numeric_init_power_value_string (void);
@@ -145,16 +135,13 @@ extern int numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * d
 extern char *numeric_db_value_print (const DB_VALUE * val, char *buf);
 
 /* Floating-Point NUMERIC */
-extern int float_numeric_precision_to_bytes (int prec);
-extern int float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
-				       FP_VALUE_TYPE * num_op_type);
-extern int float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
-				       FP_VALUE_TYPE * num_op_type);
-extern int float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
-				       FP_VALUE_TYPE * num_op_type);
-extern int float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
-				       FP_VALUE_TYPE * num_op_type);
+extern int float_numeric_get_precision_digits (uint8_t * calc_buf, int calc_bytes);
+extern int float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
+extern int float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
+extern int float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
+extern int float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB_VALUE * result);
+extern void float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int precision, int scale);
 
 /* Testing Routines */
 extern bool numeric_db_value_is_zero (const DB_VALUE * arg);

@@ -3999,9 +3999,7 @@ emit_domain_def (extract_context & ctxt, print_output & output_ctx, DB_DOMAIN * 
 	      }
 
 	    case DB_TYPE_NUMERIC:
-#if 0				// used in phase-3
 	      if (db_domain_precision (domain) != DB_DEFAULT_NUMERIC_PRECISION)
-#endif
 		{
 		  output_ctx ("(%d,%d)", db_domain_precision (domain), db_domain_scale (domain));
 		}

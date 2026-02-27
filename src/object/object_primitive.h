@@ -402,11 +402,12 @@ STATIC_INLINE int
 pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain)
 {
   /*
-   * variable types except VARCHAR and VARBIT
+   * variable types except VARCHAR, VARBIT, and NUMERIC
    * cannot be a member of midxkey
    */
-  assert (!(domain->type->variable_p
-	    && !(TP_DOMAIN_TYPE (domain) == DB_TYPE_VARCHAR || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARBIT)));
+  assert (!domain->type->variable_p
+	  || (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARCHAR || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARBIT
+	      || TP_DOMAIN_TYPE (domain) == DB_TYPE_NUMERIC));
 
   return domain->type->get_index_size_of_mem (mem, domain);
 }

@@ -48,6 +48,7 @@
 #include "chartype.h"
 #include "misc_string.h"
 #include "error_manager.h"
+#include "numeric_opfunc.h"
 #include "memory_alloc.h"
 #include "message_catalog.h"
 #include "environment_variable.h"
@@ -598,7 +599,32 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  hash = (unsigned int) db_get_double (val);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  hash = mht_1str_pseudo_key (db_get_numeric (val), -1);
+	  {
+	    bool is_float_numeric = false;
+	    int precision = 0, scale = 0;
+	    db_get_numeric_precision_and_scale (val, &precision, &scale, &is_float_numeric);
+
+	    /*
+	     * calculate hash without normalization if:
+	     *   - fixed numeric (is_float_numeric == false), or
+	     *   - float numeric (is_float_numeric == true) with:
+	     *     * scale is 0, or
+	     *     * precision is DB_MAX_NUMERIC_PRECISION(40) and scale is negative
+	     *   for float numeric with positive scale, trailing zero check is required
+	     *   even when precision is DB_MAX_NUMERIC_PRECISION(40), so normalization is needed.
+	     */
+	    if (!is_float_numeric || scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
+	      {
+		hash = mht_1str_pseudo_key (db_get_numeric (val), -1);
+	      }
+	    else
+	      {
+		uint8_t calc_buf[DB_NUMERIC_BUF_SIZE];
+		(void) float_numeric_normalize_for_hash ((DB_C_NUMERIC) val->data.num.d.buf, calc_buf, precision,
+							 scale);
+		hash = mht_1str_pseudo_key (calc_buf, -1);
+	      }
+	  }
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
@@ -2417,8 +2443,39 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	  break;
 	case DB_TYPE_NUMERIC:
 	  {
-	    unsigned int *buf = (unsigned int *) val->data.num.d.buf;
-	    hashcode = mht_get_shiftmult32 (buf[0] ^ buf[1] ^ buf[2] ^ buf[3], ht_size);
+	    bool is_float_numeric = false;
+	    unsigned int tmp = 0;
+	    unsigned int *buf;
+	    int precision = 0, scale = 0;
+	    db_get_numeric_precision_and_scale (val, &precision, &scale, &is_float_numeric);
+
+	    /*
+	     * calculate hash without normalization if:
+	     *   - fixed numeric (is_float_numeric == false), or
+	     *   - float numeric (is_float_numeric == true) with:
+	     *     * scale is 0, or
+	     *     * precision is DB_MAX_NUMERIC_PRECISION(40) and scale is negative
+	     *   for float numeric with positive scale, trailing zero check is required
+	     *   even when precision is DB_MAX_NUMERIC_PRECISION(40), so normalization is needed.
+	     */
+	    if (!is_float_numeric || scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
+	      {
+		buf = (unsigned int *) db_locate_numeric (val);
+		memcpy (&tmp, db_locate_numeric (val) + 16, 1);
+
+		hashcode = mht_get_shiftmult32 (buf[0] ^ buf[1] ^ buf[2] ^ buf[3] ^ tmp, ht_size);
+	      }
+	    else
+	      {
+		uint8_t calc_buf[DB_NUMERIC_BUF_SIZE];
+		(void) float_numeric_normalize_for_hash ((DB_C_NUMERIC) val->data.num.d.buf, calc_buf, precision,
+							 scale);
+
+		buf = (unsigned int *) calc_buf;
+		memcpy (&tmp, (char *) calc_buf + 16, 1);
+
+		hashcode = mht_get_shiftmult32 (buf[0] ^ buf[1] ^ buf[2] ^ buf[3] ^ tmp, ht_size);
+	      }
 	  }
 	  break;
 	case DB_TYPE_DATE:

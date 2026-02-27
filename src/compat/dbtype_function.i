@@ -64,6 +64,12 @@ STATIC_INLINE DB_TYPE db_value_type (const DB_VALUE * value) __attribute__ ((ALW
 STATIC_INLINE int db_value_precision (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_value_scale (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE JSON_DOC *db_get_json_document (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_get_numeric_precision (const DB_VALUE * value, bool * is_float_numeric)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_get_numeric_scale (const DB_VALUE * value, bool * is_float_numeric)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void db_get_numeric_precision_and_scale (const DB_VALUE * value, int *precision_ptr, int *scale_ptr,
+						       bool * is_float_numeric_ptr) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, DB_CONST_C_CHAR str,
 				   const int size) __attribute__ ((ALWAYS_INLINE));
@@ -90,10 +96,8 @@ STATIC_INLINE int db_make_method_error (DB_VALUE * value, const int errcode, con
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_short (DB_VALUE * value, const DB_C_SHORT num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_bigint (DB_VALUE * value, const DB_BIGINT num) __attribute__ ((ALWAYS_INLINE));
-static void db_make_float_numeric_internal (DB_VALUE * value, const DB_C_NUMERIC num);
-static void db_make_fixed_numeric_internal (DB_VALUE * value, const DB_C_NUMERIC num, const int byte_size);
 STATIC_INLINE int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale,
-				   const int byte_size, const bool is_floating_point) __attribute__ ((ALWAYS_INLINE));
+				   const int byte_size, const bool is_float_numeric) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_bit (DB_VALUE * value, const int bit_length, DB_CONST_C_BIT bit_str,
 			       const int bit_str_bit_size) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_varbit (DB_VALUE * value, const int max_bit_length, DB_CONST_C_BIT bit_str,
@@ -964,6 +968,129 @@ db_get_json_document (const DB_VALUE * value)
   return value->data.json.document;
 }
 
+/*
+ * db_get_numeric_precision() - get the precision of a NUMERIC type DB_VALUE.
+ *
+ * return                  : precision value
+ * value(in)               : pointer to a NUMERIC type DB_VALUE
+ * is_float_numeric(out)  : true if floating point numeric, false otherwise
+ *
+ * Note: use this function to get the precision from a DB_VALUE,
+ *       or to compare precision values between DB_VALUE.
+ *       when comparing with TP_DOMAIN, use db_value_precision() instead.
+ */
+int
+db_get_numeric_precision (const DB_VALUE * value, bool * is_float_numeric)
+{
+#if defined (API_ACTIVE_CHECKS)
+  CHECK_1ARG_ZERO (value);
+#endif
+  int precision = 0;
+
+  assert (value->domain.general_info.type == DB_TYPE_NUMERIC);
+
+  if (value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      precision = value->data.num.header.precision;
+      if (is_float_numeric != NULL)
+	{
+	  *is_float_numeric = true;
+	}
+    }
+  else
+    {
+      precision = value->domain.numeric_info.precision;
+      if (is_float_numeric != NULL)
+	{
+	  *is_float_numeric = false;
+	}
+    }
+
+  return precision;
+}
+
+/*
+ * db_get_numeric_scale() - get the scale of a NUMERIC type DB_VALUE.
+ *
+ * return                  : scale value
+ * value(in)               : pointer to a NUMERIC type DB_VALUE
+ * is_float_numeric(out)  : true if floating point numeric, false otherwise
+ *
+ * Note: use this function to get the scale from a DB_VALUE,
+ *       or to compare scale values between DB_VALUE.
+ *       when comparing with TP_DOMAIN, use db_value_scale() instead.
+ */
+int
+db_get_numeric_scale (const DB_VALUE * value, bool * is_float_numeric)
+{
+#if defined (API_ACTIVE_CHECKS)
+  CHECK_1ARG_ZERO (value);
+#endif
+  int scale = 0;
+
+  assert (value->domain.general_info.type == DB_TYPE_NUMERIC);
+
+  if (value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      scale = value->data.num.header.scale;
+      if (is_float_numeric != NULL)
+	{
+	  *is_float_numeric = true;
+	}
+    }
+  else
+    {
+      scale = value->domain.numeric_info.scale;
+      if (is_float_numeric != NULL)
+	{
+	  *is_float_numeric = false;
+	}
+    }
+
+  return scale;
+}
+
+/*
+ * db_get_numeric_precision_and_scale() - get both precision and scale of a NUMERIC type DB_VALUE.
+ *
+ * return                     : void
+ * value(in)                  : pointer to a NUMERIC type DB_VALUE
+ * precision_ptr(out)         : pointer to store the precision value
+ * scale_ptr(out)             : pointer to store the scale value
+ * is_float_numeric_ptr(out) : pointer to store the flag indicating whether the numeric is floating point
+ *
+ * Note: use this function to get precision and scale from a DB_VALUE at once,
+ *       or to compare precision and scale values between DB_VALUE.
+ *       when comparing with TP_DOMAIN, use db_value_precision() and db_value_scale() instead.
+ */
+void
+db_get_numeric_precision_and_scale (const DB_VALUE * value, int *precision_ptr, int *scale_ptr,
+				    bool * is_float_numeric_ptr)
+{
+  assert (value && value->domain.general_info.type == DB_TYPE_NUMERIC);
+  assert (precision_ptr);
+  assert (scale_ptr);
+
+  if (value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      *precision_ptr = value->data.num.header.precision;
+      *scale_ptr = value->data.num.header.scale;
+      if (is_float_numeric_ptr != NULL)
+	{
+	  *is_float_numeric_ptr = true;
+	}
+    }
+  else
+    {
+      *precision_ptr = value->domain.numeric_info.precision;
+      *scale_ptr = value->domain.numeric_info.scale;
+      if (is_float_numeric_ptr != NULL)
+	{
+	  *is_float_numeric_ptr = false;
+	}
+    }
+}
+
 /***********************************************************/
 /* db_make family of functions. */
 
@@ -1504,36 +1631,6 @@ db_make_bigint (DB_VALUE * value, const DB_BIGINT num)
 }
 
 /*
- * db_make_float_numeric_internal() -
- * return :
- * value(out) :
- * num(in):
- */
-static void
-db_make_float_numeric_internal (DB_VALUE * value, const DB_C_NUMERIC num)
-{
-  value->data.num.header.precision = DB_VALUE_PRECISION (value);
-  value->data.num.header.scale = DB_VALUE_SCALE (value);
-  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
-  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
-
-  memcpy (value->data.num.d.buf, num, DB_NUMERIC_BUF_SIZE);
-}
-
-/*
- * db_make_fixed_numeric_internal() -
- * return :
- * value(out) :
- * num(in):
- * byte_size(in):
- */
-static void
-db_make_fixed_numeric_internal (DB_VALUE * value, const DB_C_NUMERIC num, const int byte_size)
-{
-  memcpy (value->data.num.d.buf + (DB_NUMERIC_BUF_SIZE - byte_size), num, byte_size);
-}
-
-/*
  * db_make_numeric() -
  * return :
  * value(out) :
@@ -1541,11 +1638,11 @@ db_make_fixed_numeric_internal (DB_VALUE * value, const DB_C_NUMERIC num, const 
  * precision(in):
  * scale(in):
  * byte_size(in):
- * is_floating_point(in):
+ * is_float_numeric(in):
  */
 int
 db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale, const int byte_size,
-		 const bool is_floating_point)
+		 const bool is_float_numeric)
 {
   int error = NO_ERROR;
 
@@ -1562,14 +1659,14 @@ db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, 
   if (num)
     {
       value->domain.general_info.is_null = 0;
-      if (is_floating_point)
+      if (is_float_numeric)
 	{
-	  db_make_float_numeric_internal (value, num);
+	  value->data.num.header.precision = DB_VALUE_PRECISION (value);
+	  value->data.num.header.scale = DB_VALUE_SCALE (value);
+	  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
 	}
-      else
-	{
-	  db_make_fixed_numeric_internal (value, num, byte_size);
-	}
+      memcpy (value->data.num.d.buf + (DB_NUMERIC_BUF_SIZE - byte_size), num, byte_size);
     }
   else
     {
