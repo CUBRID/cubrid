@@ -28449,7 +28449,7 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
 	}
       else
 	{
-	  is_desc = index_entry->constraints->asc_desc[seg_idx - 1];
+	  is_desc = index_entry->constraints->asc_desc[i];
 	}
 
       if (is_desc_index)
@@ -28464,6 +28464,10 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
 	  && pt_check_path_eq (parser, attr, node) == 0)
 	{
 	  covered_count++;
+	}
+      else
+	{
+	  return covered_count;
 	}
 
       sort_list = sort_list->next;
