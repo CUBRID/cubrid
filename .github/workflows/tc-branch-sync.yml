@@ -77,9 +77,6 @@ jobs:
           - cubrid-testcases
           - cubrid-testcases-private-ex
       fail-fast: false
-    outputs:
-      tc_draft_pr_url_${{ matrix.tc-repo }}: ${{ steps.create-draft-pr.outputs.tc_draft_pr_url }}
-      tc_draft_pr_number_${{ matrix.tc-repo }}: ${{ steps.create-draft-pr.outputs.tc_draft_pr_number }}
     steps:
       - name: Generate GitHub App Token
         id: app-token
