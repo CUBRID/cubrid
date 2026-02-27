@@ -141,6 +141,11 @@ namespace cubhnsw
       std::size_t m_connectivity;
       std::size_t m_expansion;
 
+      std::default_random_engine m_level_generator;
+
+      std::size_t m_debug_group_start {0};
+      std::size_t m_debug_cnt {0};
+
       // precomputed
       double m_inverse_log_connectivity;
   };
@@ -183,6 +188,7 @@ namespace cubhnsw
     context.m_thread_p = thread_p;
     context.m_is_perf_tracking = perfmon_is_perf_tracking ();
     context.m_is_debugging = prm_get_integer_value (PRM_ID_VECTOR_INDEX_DEBUG) != 0;
+
     context.clear_candidates();
 
     std::size_t connectivity_max = m_connectivity * 2 + 1;
@@ -213,12 +219,21 @@ namespace cubhnsw
     root_type root_node = root_type (root_block->data);
     {
       curr_max_level = root_node.get_level(); // get max_level from root page
-      new_target_level = choose_random_level_ (context.m_level_generator, m_inverse_log_connectivity);
+      new_target_level = choose_random_level_ (m_level_generator, m_inverse_log_connectivity);
       entry_slot = root_node.get_entry();
       if (new_target_level > MAX_LEVELS)
 	{
 	  // TODO: for optimzation, if new_target_level is greater than max_level, we can just use max_level
 	  new_target_level = MAX_LEVELS;
+	}
+
+      if (context.m_is_debugging)
+	{
+	  if (new_target_level > curr_max_level)
+	    {
+	      m_debug_group_start = m_debug_cnt;
+	    }
+	  context.open_debug_file (m_debug_group_start, m_debug_cnt, std::max (curr_max_level, new_target_level));
 	}
 
       if (m_metric == vector_distance_metric_t::COSINE)
@@ -263,12 +278,16 @@ namespace cubhnsw
 
       if (context.m_is_debugging)
 	{
-	  for (const auto &node : context.m_accessed_nodes)
+	  fprintf (context.m_debug_fp, "===== node num: %zu, slot: %s =====\n", m_debug_cnt++, dump_oid (new_slot).c_str());
+	  if (!context.m_accessed_nodes.empty ())
 	    {
-	      fprintf (stdout, "%s ->", node.data());
+	      for (const auto &node : context.m_accessed_nodes)
+		{
+		  fprintf (context.m_debug_fp, "(%s) -> ", node.data());
+		}
+	      fprintf (context.m_debug_fp, "END \n");
+	      context.m_accessed_nodes.clear();
 	    }
-	  fprintf (stdout, "\n");
-	  context.m_accessed_nodes.clear();
 	}
 
       level_t level = (std::min) (new_target_level, curr_max_level);
@@ -277,7 +296,7 @@ namespace cubhnsw
 
       if (context.m_is_debugging)
 	{
-	  fprintf (stdout, "target level: %d\n", level);
+	  fprintf (context.m_debug_fp, "target level: %d\n", level);
 	}
 
       while (true)
@@ -296,13 +315,16 @@ namespace cubhnsw
 
 	  if (context.m_is_debugging)
 	    {
-	      fprintf (stdout, "level: %d\n", level);
-	      for (const auto &node : context.m_accessed_nodes)
+	      fprintf (context.m_debug_fp, "level: %d\n", level);
+	      if (!context.m_accessed_nodes.empty ())
 		{
-		  fprintf (stdout, "%s ->", node.data ());
+		  for (const auto &node : context.m_accessed_nodes)
+		    {
+		      fprintf (context.m_debug_fp, "(%s) -> ", node.data ());
+		    }
+		  fprintf (context.m_debug_fp, "END \n");
+		  context.m_accessed_nodes.clear();
 		}
-	      fprintf (stdout, "\n");
-	      context.m_accessed_nodes.clear();
 	    }
 
 	  if (level == 0)
@@ -320,6 +342,11 @@ namespace cubhnsw
 		      context.m_computed_distances_in_refines);
     perfmon_add_stat (context.m_thread_p, PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REVERSE_REFINES,
 		      context.m_computed_distances_in_reverse_refines);
+
+    if (context.m_is_debugging)
+      {
+	context.close_debug_file();
+      }
 
     if (new_target_level > curr_max_level)
       {

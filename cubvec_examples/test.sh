@@ -30,9 +30,15 @@ valgrind --leak-check=full --track-origins=yes --trace-children=yes --log-file=v
 # ann benchmarks locally test
 wget http://ann-benchmarks.com/nytimes-256-angular.hdf5
 cubrid loaddb -h nytimes-256-angular.hdf5 -C -u dba demodb
-echo "CREATE VECTOR INDEX vidx_nytimes_train ON nytimes_256_angular_train (vec COSINE) WITH (M = 16, ef_construction = 200);" >> nytimes_256_angular_schema
 cubrid loaddb -s nytimes_256_angular_schema -d nytimes_256_angular_object -C -u dba demodb -v --no-statistics --no-user-specified-name
-;set print_object_as_oid=yes
+
+# test with debugging parameter
+csql -u dba demodb -c "
+  SET SYSTEM PARAMETERS 'hnsw_debug=1'; \
+  CREATE VECTOR INDEX vidx_nytimes_train ON nytimes_256_angular_train (vec COSINE) WITH (M = 64, ef_construction = 200);
+  "
+
+";set print_object_as_oid=yes
 prepare q1 from '
     SELECT tr, tr.id, tr.vec <c> ?:0 as dist
     FROM nytimes_256_angular_train tr
