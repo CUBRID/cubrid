@@ -461,6 +461,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_ASCII:
     case T_SPACE:
     case T_MD5:
+    case T_UUID_FORMAT:
+    case T_UUID:
     case T_SHA_ONE:
     case T_TO_BASE64:
     case T_FROM_BASE64:
@@ -3516,6 +3518,42 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
       if (db_uuidv4 (thread_p, arithptr->value) != NO_ERROR)
 	{
+	  goto error;
+	}
+      break;
+
+    case T_UUID:
+      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
+      assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
+      int version;
+      if (DB_IS_NULL (peek_right))
+	{
+	  version = 4;
+	}
+      else
+	{
+	  version = db_get_int (peek_right);
+	}
+
+      if (version == 0 || version == 4)
+	{
+	  if (db_uuid_bin (thread_p, UUID_V4, 0, arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      else if (version == 7)
+	{
+	  if (db_uuid_bin
+	      (thread_p, UUID_V7, ((uint64_t) vd->sys_epochtime * 1000ULL) + (uint64_t) vd->sys_epochtime_ms,
+	       arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      else
+	{
+	  db_uuid_bin (thread_p, UUID_UNSUPPORTED, 0, arithptr->value);
 	  goto error;
 	}
       break;

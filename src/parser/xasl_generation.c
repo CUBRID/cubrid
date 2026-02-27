@@ -7873,6 +7873,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_DECRYPT || node->info.expr.op == PT_BIN
 		       || node->info.expr.op == PT_MD5 || node->info.expr.op == PT_SHA_ONE
 		       || node->info.expr.op == PT_SPACE || node->info.expr.op == PT_PRIOR
+		       || node->info.expr.op == PT_UUID_FORMAT || node->info.expr.op == PT_UUID
 		       || node->info.expr.op == PT_CONNECT_BY_ROOT || node->info.expr.op == PT_QPRIOR
 		       || node->info.expr.op == PT_BIT_NOT || node->info.expr.op == PT_REVERSE
 		       || node->info.expr.op == PT_BIT_COUNT || node->info.expr.op == PT_ISNULL
@@ -8080,7 +8081,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_UTC_TIME || node->info.expr.op == PT_UTC_DATE
 		       || node->info.expr.op == PT_PI || node->info.expr.op == PT_LOCAL_TRANSACTION_ID
 		       || node->info.expr.op == PT_ROW_COUNT || node->info.expr.op == PT_LIST_DBS
-		       || node->info.expr.op == PT_SYS_GUID || node->info.expr.op == PT_UUID
+		       || node->info.expr.op == PT_SYS_GUID
 		       || node->info.expr.op == PT_LAST_INSERT_ID
 		       || node->info.expr.op == PT_DBTIMEZONE || node->info.expr.op == PT_SESSIONTIMEZONE
 		       || node->info.expr.op == PT_UTC_TIMESTAMP)
@@ -9295,37 +9296,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  break;
 
 		case PT_UUID:
-		  {
-		    /* PT_UUID takes 0 or 1 argument (defaults to 4 if no argument) */
-		    int uuid_version = 4;
-		    PT_NODE *arg1 = node->info.expr.arg1;
-		    if (arg1 != NULL && arg1->node_type == PT_VALUE && arg1->type_enum == PT_TYPE_INTEGER)
-		      {
-			uuid_version = arg1->info.value.data_value.i;
-		      }
-		    switch (uuid_version)
-		      {
-		      case 1:
-		      case 2:
-		      case 3:
-		      case 5:
-		      case 6:
-		      case 8:
-			{
-			  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-				      MSGCAT_SEMANTIC_NOT_SUPPORT_UUID_VERSION, uuid_version);
-			}
-			break;
-		      case 7:
-			regu = pt_make_regu_arith (NULL, NULL, NULL, T_UUID7, domain);
-			break;
-		      case 4:
-		      default:
-			regu = pt_make_regu_arith (NULL, NULL, NULL, T_UUID4, domain);
-
-			break;
-		      }
-		  }
+			regu = pt_make_regu_arith (r1,r2,NULL,T_UUID,domain);
 		  break;
 
 		case PT_BIT_TO_BLOB:

@@ -157,14 +157,15 @@ typedef enum
 
 typedef enum
 {
-  UUID_V1,			/* not supported */
-  UUID_V2,			/* not supported */
-  UUID_V3,			/* not supported */
-  UUID_V4,
-  UUID_V5,			/* not supported */
-  UUID_V6,			/* not supported */
-  UUID_V7,
-  UUID_V8,			/* not supported */
+  UUID_UNSUPPORTED = 0,
+  UUID_V1 = UUID_UNSUPPORTED,	/* not supported */
+  UUID_V2 = UUID_UNSUPPORTED,	/* not supported */
+  UUID_V3 = UUID_UNSUPPORTED,	/* not supported */
+  UUID_V4 = 4,
+  UUID_V5 = UUID_UNSUPPORTED,	/* not supported */
+  UUID_V6 = UUID_UNSUPPORTED,	/* not supported */
+  UUID_V7 = 7,
+  UUID_V8 = UUID_UNSUPPORTED,	/* not supported */
 } UUID_VERSION;
 
 #define GUID_STANDARD_BYTES_LENGTH 16
