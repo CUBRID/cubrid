@@ -32,6 +32,7 @@
 #include "hnsw_storage.hpp" // storage_t
 #include "vector_distance.hpp"
 #include "perf_monitor.h"
+#include "system_parameter.h"
 
 #define HNSW_ALGO_DEBUG 0
 #define HNSW_ALGO_PRINT(fmt, ...) do { if (HNSW_ALGO_DEBUG) { fprintf (stdout, fmt, ##__VA_ARGS__); fflush (stdout); } } while (0)
@@ -264,7 +265,7 @@ namespace cubhnsw
 	{
 	  for (const auto &node : context.m_accessed_nodes)
 	    {
-	      fprintf (stdout, "%s ->", node.c_str());
+	      fprintf (stdout, "%s ->", node.data());
 	    }
 	  fprintf (stdout, "\n");
 	  context.m_accessed_nodes.clear();
@@ -298,7 +299,7 @@ namespace cubhnsw
 	      fprintf (stdout, "level: %d\n", level);
 	      for (const auto &node : context.m_accessed_nodes)
 		{
-		  fprintf (stdout, "%s ->", node.c_str());
+		  fprintf (stdout, "%s ->", node.data ());
 		}
 	      fprintf (stdout, "\n");
 	      context.m_accessed_nodes.clear();
