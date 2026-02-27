@@ -17,11 +17,11 @@
  */
 
 /*
- * parser.hpp - parser module for fs (proc, sys...)
+ * filesys_parser.hpp - parser module for fs (proc, sys...)
  */
 
-#ifndef _BASE_PARSER_HPP_
-#define _BASE_PARSER_HPP_
+#ifndef _FILESYS_PARSER_HPP_
+#define _FILESYS_PARSER_HPP_
 
 #include <filesystem>
 #include <string>

@@ -129,7 +129,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/tz_compile.c
   ${BASE_DIR}/tz_support.c
   ${BASE_DIR}/ddl_log.c
-  ${BASE_DIR}/parser.cpp
+  ${BASE_DIR}/filesys_parser.cpp
   ${BASE_DIR}/cgroup.cpp
   ${BASE_DIR}/resources.cpp
   )
@@ -168,7 +168,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/fixed_size_allocator.hpp
-  ${BASE_DIR}/parser.hpp
+  ${BASE_DIR}/filesys_parser.hpp
   ${BASE_DIR}/cgroup.hpp
   ${BASE_DIR}/resources.hpp
 )

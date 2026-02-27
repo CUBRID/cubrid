@@ -23,8 +23,8 @@
 #include <fstream>
 #include <limits>
 
+#include "filesys_parser.hpp"
 #include "cgroup.hpp"
-#include "parser.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"

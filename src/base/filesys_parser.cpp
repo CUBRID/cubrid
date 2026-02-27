@@ -17,10 +17,10 @@
  */
 
 /*
- * parser.cpp - parser module for fs (proc, sys...)
+ * filesys_parser.cpp - parser module for fs (proc, sys...)
  */
 
-#include "parser.hpp"
+#include "filesys_parser.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"

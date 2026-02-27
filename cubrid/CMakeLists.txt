@@ -137,7 +137,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/hardware_topology.cpp
   ${BASE_DIR}/nonblocking.cpp
   ${BASE_DIR}/epoll.cpp
-  ${BASE_DIR}/parser.cpp
+  ${BASE_DIR}/filesys_parser.cpp
   ${BASE_DIR}/cgroup.cpp
   ${BASE_DIR}/resources.cpp
   )
@@ -189,7 +189,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/DMRBMemoryPool.hpp
   ${BASE_DIR}/nonblocking.hpp
   ${BASE_DIR}/epoll.hpp
-  ${BASE_DIR}/parser.hpp
+  ${BASE_DIR}/filesys_parser.hpp
   ${BASE_DIR}/cgroup.hpp
   ${BASE_DIR}/resources.hpp
   )
