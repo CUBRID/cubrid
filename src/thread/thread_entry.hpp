@@ -319,6 +319,8 @@ namespace cubthread
 
       void return_lock_free_transaction_entries (void);
 
+      void release_packet (void *buffer);
+
       void lock (void);
       void unlock (void);
 
