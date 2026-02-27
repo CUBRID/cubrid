@@ -298,21 +298,9 @@ namespace parallel_heap_scan
   template <RESULT_TYPE result_type>
   int task<result_type>::finalize (cubthread::entry &thread_ref)
   {
-    THREAD_ENTRY *main_thread_p = m_parent_thread_p;
+    THREAD_ENTRY *main_thread_p = thread_get_main_thread (m_parent_thread_p);
     xasl_node *xptr;
-
     db_private_free (&thread_ref, m_scan_func_ptr);
-
-    while (main_thread_p->m_px_orig_thread_entry != nullptr)
-      {
-	if (main_thread_p->m_px_orig_thread_entry == main_thread_p)
-	  {
-	    break;
-	  }
-	main_thread_p = main_thread_p->m_px_orig_thread_entry;
-	assert (main_thread_p != m_parent_thread_p);
-      }
-
 
     if (thread_ref.on_trace)
       {
@@ -438,15 +426,7 @@ namespace parallel_heap_scan
     int err_code = NO_ERROR;
     int i;
 
-    while (main_thread_p->m_px_orig_thread_entry != nullptr)
-      {
-	if (main_thread_p->m_px_orig_thread_entry == main_thread_p)
-	  {
-	    break;
-	  }
-	main_thread_p = main_thread_p->m_px_orig_thread_entry;
-	assert (main_thread_p != m_parent_thread_p);
-      }
+    main_thread_p = thread_get_main_thread (m_parent_thread_p);
 
     if (m_uses_xasl_clone)
       {
