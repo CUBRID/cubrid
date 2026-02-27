@@ -2828,9 +2828,7 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
   query_save_state = xasl->query_in_progress;
 
   xasl->query_in_progress = true;
-  status = xasl->status;
   qexec_clear_xasl_head (thread_p, xasl);
-  xasl->status = status;
 
 #if defined (ENABLE_COMPOSITE_LOCK)
   /* free alloced memory for composite locking */
@@ -8532,21 +8530,11 @@ qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, VAL_DESCR * 
       lock = IX_LOCK;
     }
 #if defined(SERVER_MODE)
-  THREAD_ENTRY *target_thread_p = NULL;
+  THREAD_ENTRY *main_thread_p = NULL;
   if (thread_p->m_px_orig_thread_entry != NULL)
     {
-      target_thread_p = thread_p;
-      while (target_thread_p->m_px_orig_thread_entry != NULL)
-	{
-	  if (target_thread_p->m_px_orig_thread_entry == target_thread_p)
-	    {
-	      break;
-	    }
-	  target_thread_p = target_thread_p->m_px_orig_thread_entry;
-	  assert (target_thread_p != thread_p);
-	}
-      assert (target_thread_p != NULL);
-      pthread_mutex_lock (&target_thread_p->m_px_lock_mutex);
+      main_thread_p = thread_get_main_thread (thread_p);
+      pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
     }
 #endif
   for (partition_spec = spec->parts; partition_spec != NULL; partition_spec = partition_spec->next)
@@ -8556,18 +8544,18 @@ qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, VAL_DESCR * 
 	{
 	  ASSERT_ERROR_AND_SET (error);
 #if defined(SERVER_MODE)
-	  if (target_thread_p != NULL)
+	  if (main_thread_p != NULL)
 	    {
-	      pthread_mutex_unlock (&target_thread_p->m_px_lock_mutex);
+	      pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
 	    }
 #endif
 	  return error;
 	}
     }
 #if defined(SERVER_MODE)
-  if (target_thread_p != NULL)
+  if (main_thread_p != NULL)
     {
-      pthread_mutex_unlock (&target_thread_p->m_px_lock_mutex);
+      pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
     }
 #endif
   return NO_ERROR;
@@ -16200,7 +16188,9 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
   qlist_enter_count = thread_p->m_qlist_count.load ();
   if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
     {
-      er_print_callstack (ARG_FILE_LINE, "starting query execution with qlist_count = %d\n", qlist_enter_count);
+      er_print_callstack (ARG_FILE_LINE,
+			  "[thread %d with tran index %d] starting query execution with qlist_count = %d\n",
+			  thread_p->index, thread_p->tran_index, qlist_enter_count);
     }
 #endif // SERVER_MODE
 
@@ -16357,8 +16347,9 @@ end:
 #if defined (SERVER_MODE)
   if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
     {
-      er_print_callstack (ARG_FILE_LINE, "ending query execution with qlist_count = %d\n",
-			  thread_p->m_qlist_count.load ());
+      er_print_callstack (ARG_FILE_LINE,
+			  "[thread %d with tran index %d] ending query execution with qlist_count = %d\n",
+			  thread_p->index, thread_p->tran_index, thread_p->m_qlist_count.load ());
     }
   if (list_id && list_id->type_list.type_cnt != 0)
     {
