@@ -295,9 +295,9 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 		}
 
 
-	      is_new_pass = (pass == NULL);
 	      if (pass == NULL)
 		{
+		  is_new_pass = true;
 		  pclass = sm_find_class (AU_PASSWORD_CLASS_NAME);
 		  if (pclass != NULL)
 		    {
