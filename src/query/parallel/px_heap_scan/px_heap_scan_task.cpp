@@ -357,7 +357,7 @@ namespace parallel_heap_scan
       }
 
     db_private_free (&thread_ref, m_vd->dbval_ptr);
-    db_private_free (&thread_ref, m_vd);
+    db_private_free (&thread_ref, m_xasl_state);
     qexec_clear_xasl (&thread_ref, m_xasl, true, false);
 
     pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
@@ -467,7 +467,16 @@ namespace parallel_heap_scan
       }
 
     m_scan_id = &m_xasl->spec_list->s_id;
-    m_vd = (val_descr *) db_private_alloc (&thread_ref, sizeof (val_descr));
+
+    m_xasl_state = (xasl_state *) db_private_alloc (&thread_ref, sizeof (xasl_state));
+    if (m_xasl_state == nullptr)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	return ER_FAILED;
+      }
+    m_xasl_state->qp_xasl_line = m_orig_vd->xasl_state->qp_xasl_line;
+    m_xasl_state->query_id = m_orig_vd->xasl_state->query_id;
+    m_vd = &m_xasl_state->vd;
     memcpy (m_vd, m_orig_vd, sizeof (val_descr));
     if (m_orig_vd->dbval_cnt > 0)
       {
@@ -589,7 +598,7 @@ namespace parallel_heap_scan
 		      {
 			m_xasl->scan_ptr->memoize_storage->set_key_changed ();
 		      }
-		    while ((xs_scan = qexec_execute_scan_ptr (&thread_ref, m_xasl->scan_ptr, NULL, m_scan_func_ptr)) == S_SUCCESS)
+		    while ((xs_scan = qexec_execute_scan_ptr (&thread_ref, m_xasl->scan_ptr, m_xasl_state, m_scan_func_ptr)) == S_SUCCESS)
 		      {
 			if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
 			  {

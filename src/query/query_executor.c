@@ -94,15 +94,6 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-// XASL_STATE
-typedef struct xasl_state XASL_STATE;
-struct xasl_state
-{
-  VAL_DESCR vd;			/* Value Descriptor */
-  QUERY_ID query_id;		/* Query associated with XASL */
-  int qp_xasl_line;		/* Error line */
-};
-
 #define GOTO_EXIT_ON_ERROR \
   do \
     { \
