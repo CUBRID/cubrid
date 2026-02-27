@@ -112,6 +112,9 @@ int net_client_ping_server_with_handshake (int client_type, bool check_capabilit
 void net_client_shutdown_server (void);
 #endif
 int net_client_init (const char *dbname, const char *hostname);
+#if defined(MULTI_CONN_TO_A_SERVER)
+int net_client_sub_init ();
+#endif
 int net_client_final (bool server_error);
 
 void net_cleanup_client_queues (void);

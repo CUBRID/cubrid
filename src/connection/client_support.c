@@ -58,7 +58,6 @@ client_support::client_support ()
 {
   m_css_Client_anchor = NULL;
   m_css_errno = 0;
-  m_multiple_count = 1;
 }
 
 client_support::~client_support ()
@@ -127,40 +126,58 @@ client_support::css_client_init (int sockid, const char *server_name, const char
   m_service_port_id = sockid;
   css_set_pipe_signal ();
 
-  // TODO: multi-connection support
-#if defined(MULTI_CONN_TO_A_SERVER)
-  for (int i = 0; i < m_multiple_count; i++)
-    {
-      conn = css_connect_to_cubrid_server ((char *) host_name, (char *) server_name);
-      if (conn != NULL)
-	{
-	  if (m_conn_less.css_queue_connection (conn, (char *) host_name, &m_css_Client_anchor) == NULL)
-	    {
-	      error = ER_FAILED;
-	    }
-	}
-      else
-	{
-	  /* At here, er_errid () can be NO_ERROR */
-	  return er_errid ();
-	  break;
-	}
-    }
-#else
   conn = css_connect_to_cubrid_server ((char *) host_name, (char *) server_name);
   if (conn != NULL)
     {
+#if defined(MULTI_CONN_TO_A_SERVER)
+      CSS_MAP_ENTRY *map = m_conn_less.css_queue_connection (conn, (char *) host_name, &m_css_Client_anchor);
+      map->owner_tid = pthread_self ();
+#else
+      // TODO: check error with NULL returned
       m_conn_less.css_queue_connection (conn, (char *) host_name, &m_css_Client_anchor);
+#endif
     }
   else
     {
       /* At here, er_errid () can be NO_ERROR */
       error = er_errid ();
     }
-#endif
 
   return error;
 }
+
+#if defined(MULTI_CONN_TO_A_SERVER)
+int
+client_support::css_client_sub_init (const char *server_name, const char *host_name)
+{
+  CSS_CONN_ENTRY *conn;
+  CSS_MAP_ENTRY *map;
+  int error = NO_ERROR;
+
+  // TODO: multi-connection support
+  conn = css_connect_to_cubrid_server ((char *) host_name, (char *) server_name);
+  if (conn != NULL)
+    {
+      map = m_conn_less.css_queue_connection (conn, (char *) host_name, &m_css_Client_anchor);
+      if (map == NULL)
+	{
+	  error = ER_FAILED;
+	}
+      else
+	{
+	  map->owner_tid = pthread_self ();
+	}
+    }
+  else
+    {
+      /* At here, er_errid () can be NO_ERROR */
+      return er_errid ();
+    }
+
+  return error;
+}
+#endif
+
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*

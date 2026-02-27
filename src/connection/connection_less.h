@@ -33,11 +33,6 @@ class connection_less
 private:
   unsigned short m_entry_id;
 
-public:
-#if defined(MULTI_CONN_TO_A_SERVER)
-  int m_work_seqno;
-#endif
-
 private:
   unsigned short css_make_entry_id (CSS_MAP_ENTRY * anchor);
   CSS_MAP_ENTRY *css_get_queued_entry (char *host, CSS_MAP_ENTRY * anchor);

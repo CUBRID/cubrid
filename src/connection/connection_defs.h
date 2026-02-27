@@ -506,7 +506,7 @@ struct css_mapping_entry
 {
   char *key;			/* host name (or some such) */
 #if defined(MULTI_CONN_TO_A_SERVER)
-  int64 owner_tid;
+  pthread_t owner_tid;
 #endif
   CSS_CONN_ENTRY *conn;		/* the connection */
   CSS_MAP_ENTRY *next;

@@ -88,7 +88,9 @@
 
 #if defined(CS_MODE)
 #if !defined(MULTI_CONN_TO_A_SERVER)
-unsigned short method_request_id;	// TODO: dive into class connection_cl
+unsigned short method_request_id;	// TODO: dive into class connection_cl // ctshim
+#else
+unsigned short method_request_id;
 #endif
 #endif /* CS_MODE */
 
@@ -3661,6 +3663,14 @@ end:
 
   return error;
 }
+
+#if defined(MULTI_CONN_TO_A_SERVER)
+int
+net_client_sub_init ()
+{
+  return __gv_cvar.css_client_sub_init (net_Server_name, net_Server_host);
+}
+#endif
 
 /*
  * net_cleanup_client_queues -

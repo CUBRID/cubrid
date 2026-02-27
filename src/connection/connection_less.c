@@ -36,9 +36,6 @@
 connection_less::connection_less ()
 {
   m_entry_id = 0;
-#if defined(MULTI_CONN_TO_A_SERVER)
-  m_work_seqno = -1;
-#endif
 }
 
 connection_less::~connection_less ()
@@ -177,16 +174,15 @@ CSS_MAP_ENTRY *
 connection_less::css_get_queued_entry (char *host, CSS_MAP_ENTRY * anchor)
 {
   CSS_MAP_ENTRY *map_entry_p;
-#if defined(MULTI_CONN_TO_A_SERVER)
-  int seqno = 0;
-#endif
+
+  pthread_t tid = pthread_self ();
 
   for (map_entry_p = anchor; map_entry_p; map_entry_p = map_entry_p->next)
     {
       if (strcmp (host, map_entry_p->key) == 0)
 	{
 #if defined(MULTI_CONN_TO_A_SERVER)
-	  if (m_work_seqno == -1 || (++seqno == m_work_seqno))
+	  if (map_entry_p->owner_tid == tid)
 	    {
 	      return (map_entry_p);
 	    }
