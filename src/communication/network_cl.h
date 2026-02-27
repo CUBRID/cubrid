@@ -114,6 +114,7 @@ void net_client_shutdown_server (void);
 int net_client_init (const char *dbname, const char *hostname);
 #if defined(MULTI_CONN_TO_A_SERVER)
 int net_client_sub_init ();
+void net_client_sub_final ();
 #endif
 int net_client_final (bool server_error);
 

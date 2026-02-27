@@ -176,7 +176,21 @@ client_support::css_client_sub_init (const char *server_name, const char *host_n
 
   return error;
 }
-#endif
+
+void
+client_support::css_client_sub_terminate (const char *host_name)
+{
+  CSS_MAP_ENTRY *entry;
+  unsigned short rid;
+
+  entry = m_conn_less.css_return_open_entry ((char *) host_name, &m_css_Client_anchor);
+  if (entry != NULL)
+    {
+      css_send_close_request (m_css_Client_anchor->conn);
+      m_conn_less.css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
+    }
+}
+#endif // defined(MULTI_CONN_TO_A_SERVER)
 
 
 #if defined(ENABLE_UNUSED_FUNCTION)
