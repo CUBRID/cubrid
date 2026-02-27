@@ -32,8 +32,8 @@ Centralized performance-statistics collection and export. Provides statistic pri
 
 ## Build Integration
 
-- **Core files** (`monitor_collect`, `monitor_registration`, `monitor_statistic`, `monitor_transaction`): compiled into Server, CS, and SA builds
-- **`monitor_vacuum_ovfp_threshold.*`**: server-only (guarded with `#if defined(SERVER_MODE)`)
+- **Core files** (`monitor_collect`, `monitor_registration`, `monitor_statistic`, `monitor_transaction`): compiled into Server and SA builds (not part of the CS build; `cs/CMakeLists.txt` does not list these sources)
+- **`monitor_vacuum_ovfp_threshold.*`**: server-only component, included only in the Server build (guarded with `#if defined(SERVER_MODE)`)
 
 ## Conventions
 
