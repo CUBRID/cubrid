@@ -26033,8 +26033,7 @@ db_uuidv4 (THREAD_ENTRY * thread_p, DB_VALUE * result)
   int i = 0, error_code = NO_ERROR;
   const char hex_digit[] = "0123456789ABCDEF";
   unsigned char guid_bytes[GUID_STANDARD_BYTES_LENGTH];
-  // char *guid_bytes_alloc = NULL;
-  // unsigned char *guid_bytes = NULL;
+
   char *guid_hex = NULL;
 
   if (result == NULL)
