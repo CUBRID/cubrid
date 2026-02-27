@@ -2,8 +2,8 @@
 # TC Branch Sync — Create or revert TC branches for engine PRs
 #
 # Trigger: pull_request_target (opened, reopened, synchronize)
-# - Normal PR: creates tc/pr-<N> from develop in both TC repos
-# - Revert PR (body contains "Reverts #N"): reverts original TC merge commit
+# - Normal PR: creates tc/pr-<N> from develop in both TC repos, creates draft PRs
+# - Revert PR (title contains "Revert", case insensitive): reverts original TC merge commit
 #
 # Security: pull_request_target runs from base branch — secrets available
 #           but PR code is NEVER checked out or executed.
@@ -47,20 +47,21 @@ jobs:
           PR_HEADER=$(echo "${PR_TITLE}" | grep -oE '^\[[A-Z]+-[0-9]+\]' || echo "")
           echo "pr_header=${PR_HEADER}" >> "${GITHUB_OUTPUT}"
 
-          # Detect "Reverts #N" pattern in body
-          ORIGINAL_PR=$(echo "${PR_BODY}" | grep -oE 'Reverts #[0-9]+' | head -1 | grep -oE '[0-9]+' || echo "")
-          if [ -n "${ORIGINAL_PR}" ]; then
+          # Detect Revert PR by checking title for "Revert" (case insensitive)
+          if echo "${PR_TITLE}" | grep -qi 'Revert'; then
+            # Extract original PR number from body if "Reverts #N" pattern exists
+            ORIGINAL_PR=$(echo "${PR_BODY}" | grep -oE 'Reverts #[0-9]+' | head -1 | grep -oE '[0-9]+' || echo "")
             echo "is_revert=true" >> "${GITHUB_OUTPUT}"
             echo "original_pr_number=${ORIGINAL_PR}" >> "${GITHUB_OUTPUT}"
-            echo "::notice::Revert PR detected — reverting TC changes from PR #${ORIGINAL_PR}"
+            echo "::notice::Revert PR detected — reverting TC changes"
           else
             echo "is_revert=false" >> "${GITHUB_OUTPUT}"
             echo "original_pr_number=" >> "${GITHUB_OUTPUT}"
-            echo "::notice::Normal PR — will create TC branch"
+            echo "::notice::Normal PR — will create TC branch and draft PR"
           fi
 
   # ──────────────────────────────────────────────
-  # Job 2: Normal PR → create tc/pr-<N> from develop
+  # Job 2: Normal PR → create tc/pr-<N> from develop and draft PR
   # ──────────────────────────────────────────────
   sync-tc-branch:
     name: Create TC Branch (${{ matrix.tc-repo }})
@@ -69,13 +70,16 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
-      pull-requests: write # For failure comments
+      pull-requests: write # For failure comments and draft PR creation
     strategy:
       matrix:
         tc-repo:
           - cubrid-testcases
           - cubrid-testcases-private-ex
       fail-fast: false
+    outputs:
+      tc_draft_pr_url_${{ matrix.tc-repo }}: ${{ steps.create-draft-pr.outputs.tc_draft_pr_url }}
+      tc_draft_pr_number_${{ matrix.tc-repo }}: ${{ steps.create-draft-pr.outputs.tc_draft_pr_number }}
     steps:
       - name: Generate GitHub App Token
         id: app-token
@@ -119,6 +123,48 @@ jobs:
 
           echo "::notice::Created '${BRANCH_NAME}' in ${TC_REPO} from develop (${DEVELOP_SHA:0:12})"
 
+      - name: Create draft PR in TC repo
+        id: create-draft-pr
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          TC_REPO: ${{ matrix.tc-repo }}
+          ENGINE_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRANCH_NAME="tc/pr-${PR_NUMBER}"
+          
+          # Extract [CBRD-XXXX] header from engine PR title
+          PR_HEADER=$(echo "${PR_TITLE}" | grep -oE '^\[[A-Z]+-[0-9]+\]' || echo "")
+          
+          # Build TC draft PR title
+          if [ -n "${PR_HEADER}" ]; then
+            DRAFT_TITLE="${PR_HEADER} Draft: TC branch for PR #${PR_NUMBER}"
+          else
+            DRAFT_TITLE="Draft: TC branch for PR #${PR_NUMBER}"
+          fi
+          
+          # Create draft PR from tc/pr-N to develop
+          PR_URL=$(gh pr create \
+            --repo "CUBRID/${TC_REPO}" \
+            --head "${BRANCH_NAME}" \
+            --base develop \
+            --title "${DRAFT_TITLE}" \
+            --body "This is a draft PR for testing TC changes.
+
+            Related Engine PR: ${ENGINE_REPO}#${PR_NUMBER}
+            TC Branch: ${BRANCH_NAME}
+            
+            This PR will be tested by CircleCI.
+            Please review and merge manually when ready." \
+            --draft)
+          
+          echo "::notice::Created draft PR: ${PR_URL}"
+          echo "tc_draft_pr_url=${PR_URL}" >> "${GITHUB_OUTPUT}"
+          echo "tc_draft_pr_number=$(echo ${PR_URL} | grep -oE '[0-9]+$')" >> "${GITHUB_OUTPUT}"
+
       - name: Comment on failure
         if: failure()
         env:
@@ -133,7 +179,7 @@ jobs:
             --repo "${ENGINE_REPO}" \
             --body "⚠️ **TC Branch Sync Failed** for \`${TC_REPO}\`
 
-          Failed to create \`tc/pr-${PR_NUMBER}\` branch.
+          Failed to create \`tc/pr-${PR_NUMBER}\` branch or draft PR.
           Please check the [workflow run](${RUN_URL}) for details."
 
   # ──────────────────────────────────────────────
@@ -262,3 +308,47 @@ jobs:
           3. Push the branch
 
           See [workflow run](${RUN_URL}) for details."
+
+  # ──────────────────────────────────────────────
+  # Job 4: Comment on engine PR with TC info (uses matrix outputs)
+  # ──────────────────────────────────────────────
+  comment-on-engine-pr:
+    name: Comment on Engine PR
+    needs: [detect-pr-type, sync-tc-branch]
+    if: needs.detect-pr-type.outputs.is_revert == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Comment TC branch info on engine PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ENGINE_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRANCH_NAME="tc/pr-${PR_NUMBER}"
+          
+          # Build comment body
+          COMMENT_BODY="## 🧪 TC Test Environment Ready
+
+          **TC Branch:** \`${BRANCH_NAME}\`
+          
+          **TC Repositories:**
+          - [cubrid-testcases](https://github.com/CUBRID/cubrid-testcases/tree/${BRANCH_NAME})
+          - [cubrid-testcases-private-ex](https://github.com/CUBRID/cubrid-testcases-private-ex/tree/${BRANCH_NAME})"
+          
+          COMMENT_BODY="${COMMENT_BODY}
+          
+          **CircleCI Testing:**
+          - CircleCI will automatically test using TC branch \`${BRANCH_NAME}\`
+          
+          **Next Steps:**
+          1. Wait for CircleCI tests to complete
+          2. When ready to merge this PR, the TC branch will be processed automatically"
+          
+          gh pr comment "${PR_NUMBER}" \
+            --repo "${ENGINE_REPO}" \
+            --body "${COMMENT_BODY}"

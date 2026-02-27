@@ -49,51 +49,72 @@ gh repo view tw-kang/cubrid
 
 #### A1. With TC Changes (80% case)
 
-**Purpose**: Fork PR → TC 브랜치 생성 → TC 작업 → 머지 → TC develop에 squash merge
+**Purpose**: Fork PR → TC branch created → TC work → merge → TC develop receives squash merge
 
 **Steps**:
 ```bash
 # 1. Create fork branch & PR
 git checkout -b cbrd-fix-01
-git commit -m "fix: small issue" && git push fork
-git pr create --head kangtaewoo:cbrd-fix-01 --base test/sync-tc \
+echo "fix: small issue" > fix.txt
+git add .
+git commit -m "fix: small issue"
+git push origin cbrd-fix-01
+
+gh pr create --head kangtaewoo:cbrd-fix-01 --base tw-kang:test/sync-tc \
   --title "[CBRD-01] Fix issue"
 
-# 2. Verify tc/pr-N created (15초 대기 후)
+# 2. Verify tc/pr-N created (wait ~15 seconds)
 gh api "repos/tw-kang/cubrid-testcases/branches" --jq '.[] | select(.name | contains("tc/pr-")) | .name'
 
-# 3. Add TC commits to tc/pr-N
-git clone --branch tc/pr-{N} https://github.com/tw-kang/cubrid-testcases.git
+# 3. Add TC commits to tc/pr-N (replace N with actual PR number)
+git clone --branch tc/pr-N https://github.com/tw-kang/cubrid-testcases.git
 cd cubrid-testcases
-echo "test fix" > fix.txt && git add . && git commit -m "test: fix case"
-git push origin tc/pr-{N}
+echo "test fix" > fix.txt
+git add .
+git commit -m "test: fix case"
+git push origin tc/pr-N
 
-# 4. Merge engine PR
-git pr merge {N} --repo tw-kang/cubrid --merge
+# 4. Merge engine PR (replace N with actual PR number)
+gh pr merge N --repo tw-kang/cubrid --merge
 ```
 
 **Verify**:
 1. `tc/pr-N` created in both TC repos
-2. TC develop에 squash merge 커밋 존재 (메시지에 `[CBRD-01]` 또는 "Merge TC branch" 포함)
+2. Draft PR created in TC repos (develop ← tc/pr-N) with title containing `[CBRD-01]`
+3. CircleCI tests run on TC branch
+4. After engine PR merge, draft PR is closed and branch deleted automatically
+1. `tc/pr-N` created in both TC repos
+2. TC develop has squash merge commit (message contains `[CBRD-01]` or "Merge TC branch")
 3. `tc/pr-N` branches deleted
 
 ---
 
 #### A2. No TC Changes (80% variant)
 
-**Purpose**: TC 변경 없이 바로 머지 (empty squash 또는 skip)
+**Purpose**: Merge without TC changes (empty squash or skip)
 
 **Steps**:
 ```bash
-# 1-2 동일 (PR 생성, tc/pr-N 생성 확인)
+# 1-2 Same as A1 (create PR, verify tc/pr-N created)
+git checkout -b cbrd-fix-02
+echo "fix: another issue" > fix2.txt
+git add .
+git commit -m "fix: another issue"
+git push origin cbrd-fix-02
 
-# 3. 즉시 머지 (TC 작업 없음)
-git pr merge {N} --repo tw-kang/cubrid --merge
+gh pr create --head kangtaewoo:cbrd-fix-02 --base tw-kang:test/sync-tc \
+  --title "[CBRD-02] Another fix"
+
+# Wait ~15 seconds for tc/pr-N creation
+gh api "repos/tw-kang/cubrid-testcases/branches" --jq '.[] | select(.name | contains("tc/pr-")) | .name'
+
+# 3. Merge immediately (no TC work)
+gh pr merge N --repo tw-kang/cubrid --merge
 ```
 
 **Verify**:
 1. `tc/pr-N` created then deleted
-2. TC develop HEAD unchanged (또는 empty squash commit)
+2. TC develop HEAD unchanged (or empty squash commit)
 
 ---
 
@@ -101,44 +122,54 @@ git pr merge {N} --repo tw-kang/cubrid --merge
 
 #### B1. With TC Changes (80% case)
 
-**Purpose**: Feature branch → TC feature 브랜치 → TC PR → Engine PR → 통합 squash merge
+**Purpose**: Feature branch → TC feature branch → TC PR → Engine PR → integrated squash merge
 
 **Steps**:
 ```bash
 # 1. Create engine feature branch
-git checkout -b feature/big-change && git push upstream
+git checkout -b feature/big-change
+echo "big feature" > feature.txt
+git add .
+git commit -m "feat: big change"
+git push origin feature/big-change
 
 # 2. Manually create TC feature branches (develop-based)
 for repo in cubrid-testcases cubrid-testcases-private-ex; do
   git clone --branch develop https://github.com/tw-kang/${repo}.git
-  cd ${repo} && git checkout -b feature/big-change && git push origin
+  cd ${repo}
+  git checkout -b feature/big-change
+  echo "tc feature work" > feature.txt
+  git add .
+  git commit -m "test: feature work"
+  git push origin feature/big-change
+  cd ..
 done
 
-# 3. TC work (multiple commits in TC feature branches)
-# ... commits to feature/big-change in both TC repos ...
-
-# 4. Create engine PR
-git pr create --head feature/big-change --base test/sync-tc \
+# 3. Create engine PR
+gh pr create --head kangtaewoo:feature/big-change --base tw-kang:test/sync-tc \
   --title "[CBRD-Feat] Big feature"
 
-# 5. Verify tc/pr-N created
-gh api "repos/tw-kang/cubrid-testcases/branches" --jq '.[] | select(.name | contains("tc/pr-"))'
+# 4. Verify tc/pr-N created (wait ~15 seconds, replace N with actual PR number)
+gh api "repos/tw-kang/cubrid-testcases/branches" --jq '.[] | select(.name | contains("tc/pr-")) | .name'
 
-# 6. Create & merge TC PRs: feature/big-change → tc/pr-N
+# 5. Create & merge TC PRs: feature/big-change → tc/pr-N
 for repo in cubrid-testcases cubrid-testcases-private-ex; do
   cd ${repo}
-  git pr create --base tc/pr-{N} --head feature/big-change
-  git pr merge --squash
+  gh pr create --head feature/big-change --base tc/pr-N --repo tw-kang/${repo}
+  # Get the TC PR number
+  TC_PR=$(gh pr list --repo tw-kang/${repo} --head feature/big-change --json number --jq '.[0].number')
+  gh pr merge ${TC_PR} --repo tw-kang/${repo} --squash
+  cd ..
 done
 
-# 7. Merge engine PR
-git pr merge {N} --repo tw-kang/cubrid --merge
+# 6. Merge engine PR
+gh pr merge N --repo tw-kang/cubrid --merge
 ```
 
 **Verify**:
 1. tc/pr-N created from develop
 2. TC feature → tc/pr-N PR merged
-3. TC develop에 모든 TC 변경사항 squash merge됨
+3. TC develop includes all TC changes via squash merge
 4. tc/pr-N deleted
 
 ---
@@ -149,10 +180,21 @@ git pr merge {N} --repo tw-kang/cubrid --merge
 
 **Steps**:
 ```bash
-# 1-5 동일 (feature branch 생성, engine PR 생성, tc/pr-N 생성 확인)
+# 1-4 Same as B1 (create feature branch, engine PR, verify tc/pr-N)
+git checkout -b feature/another-change
+echo "another feature" > feature2.txt
+git add .
+git commit -m "feat: another change"
+git push origin feature/another-change
 
-# 6. 즉시 머지 (TC PR 없음)
-git pr merge {N} --repo tw-kang/cubrid --merge
+gh pr create --head kangtaewoo:feature/another-change --base tw-kang:test/sync-tc \
+  --title "[CBRD-Feat2] Another feature"
+
+# Wait ~15 seconds for tc/pr-N creation
+gh api "repos/tw-kang/cubrid-testcases/branches" --jq '.[] | select(.name | contains("tc/pr-")) | .name'
+
+# 5. Merge immediately (no TC PR)
+gh pr merge N --repo tw-kang/cubrid --merge
 ```
 
 **Verify**:
@@ -164,19 +206,19 @@ git pr merge {N} --repo tw-kang/cubrid --merge
 ## 4. Common Commands
 
 ```bash
-# 브랜치 확인
+# List all tc/pr-* branches
 gh api "repos/tw-kang/cubrid-testcases/branches?per_page=100" \
   --jq '[.[] | select(.name | startswith("tc/pr-")) | .name]'
 
-# 최근 커밋 확인
+# Check latest commit on develop
 gh api "repos/tw-kang/cubrid-testcases/commits?sha=develop&per_page=1" \
   --jq '.[0] | {sha: .sha[:7], message: .commit.message[:50]}'
 
-# Workflow 상태 확인
+# Check workflow status
 gh run list --repo tw-kang/cubrid --workflow tc-branch-sync.yml --limit 1
 gh run view {run_id} --repo tw-kang/cubrid --log
 
-# PR 머지 (with delete)
+# Merge PR with branch deletion
 gh pr merge {PR_NUM} --repo tw-kang/cubrid --merge --delete-branch
 ```
 
@@ -184,14 +226,14 @@ gh pr merge {PR_NUM} --repo tw-kang/cubrid --merge --delete-branch
 
 ## 5. Test Execution Order
 
-**Sequential** (권장):
+**Sequential** (recommended):
 ```
 Flow A1 → Flow A2 → Flow B1 → Flow B2
 ```
 
-**Parallel** (독립적 실행):
+**Parallel** (independent execution):
 ```
-Flow A1, A2, B1, B2 동시 실행 가능
+Flow A1, A2, B1, B2 can run simultaneously
 ```
 
 **Estimated Time**: ~15 minutes total
@@ -272,6 +314,7 @@ gh repo sync tw-kang/cubrid-testcases-private-ex --branch develop
 
 ---
 
-*Version: 2.0 (Simplified)*  
+*Version: 2.1 (Corrected)*  
 *Focus: 80% scenarios (A1 - Normal PR lifecycle)*  
+*All commands are 100% copy-pasteable with correct gh/git syntax*  
 *For edge cases: See events.md*

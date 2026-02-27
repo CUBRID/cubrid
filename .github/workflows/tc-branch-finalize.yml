@@ -1,9 +1,9 @@
 #
-# TC Branch Finalize — Merge or delete TC branches when engine PR closes
+# TC Branch Finalize — Close draft PR and delete TC branches when engine PR closes
 #
 # Trigger: pull_request_target (closed)
-# - PR merged: squash merge tc/pr-<N> → develop, then delete branch
-# - PR closed (not merged): delete tc/pr-<N> branch
+# - PR merged: close draft PR, delete tc/pr-<N> branch
+# - PR closed (not merged): close draft PR, delete tc/pr-<N> branch
 #
 # Security: pull_request_target runs from base branch — secrets available
 #           but PR code is NEVER checked out or executed.
@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
-      pull-requests: write # For failure comments
+      pull-requests: write # For comments and closing PRs
     strategy:
       matrix:
         tc-repo:
@@ -49,74 +49,100 @@ jobs:
         shell: bash
         run: echo "::add-mask::${APP_TOKEN}"
 
-      # Only runs when PR was merged — squash merges TC changes into develop.
-      # When PR was closed without merge, this step is skipped and delete still runs.
-      - name: Squash merge TC branch into develop
-        if: github.event.pull_request.merged == true
+      # ──────────────────────────────────────────────
+      # Close draft PR and delete TC branch
+      # ──────────────────────────────────────────────
+      - name: Close draft PR and delete TC branch
         env:
-          APP_TOKEN: ${{ steps.app-token.outputs.token }}
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
           TC_REPO: ${{ matrix.tc-repo }}
+          IS_MERGED: ${{ github.event.pull_request.merged }}
         shell: bash
         run: |
           set -euo pipefail
           BRANCH_NAME="tc/pr-${PR_NUMBER}"
-
-          # Check if TC branch exists
-          if ! gh api "repos/CUBRID/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" > /dev/null 2>&1; then
-            echo "::notice::Branch '${BRANCH_NAME}' does not exist in ${TC_REPO}. Nothing to merge."
-            exit 0
-          fi
-
-          # Extract PR header (e.g. [CBRD-1234]) from title
-          PR_HEADER=$(echo "${PR_TITLE}" | grep -oE '^\[[A-Z]+-[0-9]+\]' || echo "")
-
-          # Clone TC repo develop (treeless for speed)
-          git clone --filter=blob:none \
-            "https://x-access-token:${APP_TOKEN}@github.com/CUBRID/${TC_REPO}.git" \
-            tc-repo
-          cd tc-repo
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          # Ensure we're on develop (default branch might differ)
-          git checkout develop
-
-          # Fetch and squash merge TC branch
-          git fetch origin "${BRANCH_NAME}:${BRANCH_NAME}"
-          git merge --squash "${BRANCH_NAME}"
-
-          # Commit only if there are actual changes
-          if git diff --cached --quiet; then
-            echo "::notice::No TC changes in '${BRANCH_NAME}' for ${TC_REPO}. Skipping commit."
+          
+          # Find draft PR
+          DRAFT_PR_NUMBER=$(gh pr list --repo "CUBRID/${TC_REPO}" --head "${BRANCH_NAME}" --state open --json number --jq '.[0].number' || echo "")
+          
+          if [ -n "${DRAFT_PR_NUMBER}" ]; then
+            if [ "${IS_MERGED}" == "true" ]; then
+              # PR was merged - close draft PR with note
+              gh pr close "${DRAFT_PR_NUMBER}" --repo "CUBRID/${TC_REPO}" --comment "Engine PR #${PR_NUMBER} was merged. Closing this draft PR."
+              echo "::notice::Closed draft PR #${DRAFT_PR_NUMBER} in ${TC_REPO}"
+            else
+              # PR was closed without merge - close draft PR
+              gh pr close "${DRAFT_PR_NUMBER}" --repo "CUBRID/${TC_REPO}" --comment "Engine PR #${PR_NUMBER} was closed without merge. Closing this draft PR."
+              echo "::notice::Closed draft PR #${DRAFT_PR_NUMBER} in ${TC_REPO} (PR not merged)"
+            fi
+            echo "draft_pr_closed=true" >> "${GITHUB_OUTPUT}"
+            echo "draft_pr_number=${DRAFT_PR_NUMBER}" >> "${GITHUB_OUTPUT}"
           else
-            COMMIT_MSG="${PR_HEADER:+${PR_HEADER} }Merge TC branch '${BRANCH_NAME}' into develop"
-            git commit -m "${COMMIT_MSG}"
-            git push origin develop
-            echo "::notice::Squash merged '${BRANCH_NAME}' into develop in ${TC_REPO}"
+            echo "::notice::No open draft PR found for ${BRANCH_NAME} in ${TC_REPO}"
+            echo "draft_pr_closed=false" >> "${GITHUB_OUTPUT}"
+            echo "draft_pr_number=" >> "${GITHUB_OUTPUT}"
           fi
-
-      # Runs after merge succeeds OR when merge step is skipped (PR not merged).
-      # Skipped only if the merge step above failed (preserves branch for retry).
-      - name: Delete TC branch
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          TC_REPO: ${{ matrix.tc-repo }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          BRANCH_NAME="tc/pr-${PR_NUMBER}"
-
+          
+          # Delete TC branch
           if gh api "repos/CUBRID/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" > /dev/null 2>&1; then
             gh api "repos/CUBRID/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" --method DELETE
             echo "::notice::Deleted '${BRANCH_NAME}' from ${TC_REPO}"
+            echo "branch_deleted=true" >> "${GITHUB_OUTPUT}"
           else
             echo "::notice::Branch '${BRANCH_NAME}' not found in ${TC_REPO}. Already deleted."
+            echo "branch_deleted=false" >> "${GITHUB_OUTPUT}"
           fi
+        id: finalize
+
+      - name: Comment success on engine PR
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TC_REPO: ${{ matrix.tc-repo }}
+          ENGINE_REPO: ${{ github.repository }}
+          IS_MERGED: ${{ github.event.pull_request.merged }}
+          DRAFT_PR_CLOSED: ${{ steps.finalize.outputs.draft_pr_closed }}
+          DRAFT_PR_NUMBER: ${{ steps.finalize.outputs.draft_pr_number }}
+          BRANCH_DELETED: ${{ steps.finalize.outputs.branch_deleted }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRANCH_NAME="tc/pr-${PR_NUMBER}"
+          
+          # Build comment based on what happened
+          if [ "${IS_MERGED}" == "true" ]; then
+            STATUS_EMOJI="✅"
+            STATUS_TEXT="merged"
+          else
+            STATUS_EMOJI="🗑️"
+            STATUS_TEXT="closed (not merged)"
+          fi
+          
+          COMMENT_BODY="${STATUS_EMOJI} **TC Branch Finalized** for \`${TC_REPO}\`
+
+          Engine PR was ${STATUS_TEXT}.
+          
+          **Cleanup Results:**"
+          
+          if [ "${DRAFT_PR_CLOSED}" == "true" ] && [ -n "${DRAFT_PR_NUMBER}" ]; then
+            COMMENT_BODY="${COMMENT_BODY}
+          - Draft PR #${DRAFT_PR_NUMBER}: Closed"
+          fi
+          
+          if [ "${BRANCH_DELETED}" == "true" ]; then
+            COMMENT_BODY="${COMMENT_BODY}
+          - Branch \`${BRANCH_NAME}\`: Deleted"
+          fi
+          
+          COMMENT_BODY="${COMMENT_BODY}
+          
+          TC develop branch is ready for the next PR."
+          
+          gh pr comment "${PR_NUMBER}" \
+            --repo "${ENGINE_REPO}" \
+            --body "${COMMENT_BODY}"
 
       - name: Comment on failure
         if: failure()
