@@ -14786,7 +14786,7 @@ pt_gen_optimized_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 		}
 	    }
 
-	  if (select_node->info.query.q.select.hint & PT_HINT_KEEP_PAGE)
+	  if (select_node->info.query.q.select.hint & PT_HINT_NLJ_KEEP_HEAP_PAGE_PINNED)
 	    {
 	      if (xasl->spec_list)
 		{

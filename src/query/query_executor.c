@@ -2690,6 +2690,8 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
       break;
     }				/* switch */
 
+  /* note : scan_end_scan (), scan_close_scan () should be called before clearing the xasl. */
+
   if (is_final)
     {
       /* clear the db_values in the tree */
