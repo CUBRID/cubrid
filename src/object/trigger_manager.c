@@ -1965,7 +1965,7 @@ register_user_trigger (DB_OBJECT * object)
 
       db_make_object (&value, object);
       error = set_insert_element (table, 0, &value);
-      if (error != NO_ERROR)
+      if (error == NO_ERROR)
 	{
 	  error = au_update_timestamps (Au_user);
 	}
@@ -2033,7 +2033,7 @@ unregister_user_trigger (TR_TRIGGER * trigger, int rollback)
 	  error = set_drop_element (table, &value, false);
 	  set_free (table);
 	}
-      if (error != NO_ERROR)
+      if (error == NO_ERROR)
 	{
 	  error = au_update_timestamps (Au_user);
 	}
