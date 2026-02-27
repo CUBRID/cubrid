@@ -9296,7 +9296,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  break;
 
 		case PT_UUID:
-			regu = pt_make_regu_arith (r1,r2,NULL,T_UUID,domain);
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_UUID, domain);
 		  break;
 
 		case PT_BIT_TO_BLOB:
