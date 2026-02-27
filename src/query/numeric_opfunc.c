@@ -125,9 +125,61 @@ static const double numeric_Pow_of_10[10] = {
   1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9
 };
 
-const int _gv_numeric_precision_to_bytes_lookup[DB_MAX_NUMERIC_PRECISION + 1] = {
-  0, 1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5, 6, 6, 7, 7, 8, 8, 8, 9, 9, 10, 10, 10, 11, 11, 12, 12, 13, 13, 13, 14, 14,
-  15, 15, 15, 16, 16, 17, 17
+/*
+ * _gv_numeric_precision_to_bytes_lookup
+ *
+ * this is a lookup table (LUT) that precomputes the number of bytes
+ * required for a numeric value based on its decimal digits (precision),
+ * instead of calculating it with floating-point operations each time.
+ *
+ *   bytes = ceil(precision / log10(256))
+ *
+ * - Index/size:
+ *   513 = (((DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + DB_MAX_NUMERIC_SCALE) + 6) + 1
+ *       = (((40 - (-214)) + 252) + 6) + 1
+ *
+ *   +6 : Extra space added to align the maximum index used internally
+ *        to a power-of-two boundary (e.g., aligning 506 -> 512).
+ *   +1 : Index 0 is reserved for special use / adjustment.
+ *
+ * the size is chosen generously to safely cover the full range of
+ * precision/scale values that are actually used, including the
+ * extra range required when adjusting scale and allocating working buffers.
+ */
+const int _gv_numeric_precision_to_bytes_lookup[513] = {
+  0, 1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5, 6, 6, 7,
+  7, 8, 8, 8, 9, 9, 10, 10, 10, 11, 11, 12, 12, 13, 13, 13,
+  14, 14, 15, 15, 15, 16, 16, 17, 17, 18, 18, 18, 19, 19, 20, 20,
+  20, 21, 21, 22, 22, 23, 23, 23, 24, 24, 25, 25, 25, 26, 26, 27,
+  27, 27, 28, 28, 29, 29, 30, 30, 30, 31, 31, 32, 32, 32, 33, 33,
+  34, 34, 35, 35, 35, 36, 36, 37, 37, 37, 38, 38, 39, 39, 40, 40,
+  40, 41, 41, 42, 42, 42, 43, 43, 44, 44, 45, 45, 45, 46, 46, 47,
+  47, 47, 48, 48, 49, 49, 49, 50, 50, 51, 51, 52, 52, 52, 53, 53,
+  54, 54, 54, 55, 55, 56, 56, 57, 57, 57, 58, 58, 59, 59, 59, 60,
+  60, 61, 61, 62, 62, 62, 63, 63, 64, 64, 64, 65, 65, 66, 66, 67,
+  67, 67, 68, 68, 69, 69, 69, 70, 70, 71, 71, 72, 72, 72, 73, 73,
+  74, 74, 74, 75, 75, 76, 76, 76, 77, 77, 78, 78, 79, 79, 79, 80,
+  80, 81, 81, 81, 82, 82, 83, 83, 84, 84, 84, 85, 85, 86, 86, 86,
+  87, 87, 88, 88, 89, 89, 89, 90, 90, 91, 91, 91, 92, 92, 93, 93,
+  94, 94, 94, 95, 95, 96, 96, 96, 97, 97, 98, 98, 98, 99, 99, 100,
+  100, 101, 101, 101, 102, 102, 103, 103, 103, 104, 104, 105, 105, 106, 106, 106,
+  107, 107, 108, 108, 108, 109, 109, 110, 110, 111, 111, 111, 112, 112, 113, 113,
+  113, 114, 114, 115, 115, 116, 116, 116, 117, 117, 118, 118, 118, 119, 119, 120,
+  120, 121, 121, 121, 122, 122, 123, 123, 123, 124, 124, 125, 125, 125, 126, 126,
+  127, 127, 128, 128, 128, 129, 129, 130, 130, 130, 131, 131, 132, 132, 133, 133,
+  133, 134, 134, 135, 135, 135, 136, 136, 137, 137, 138, 138, 138, 139, 139, 140,
+  140, 140, 141, 141, 142, 142, 143, 143, 143, 144, 144, 145, 145, 145, 146, 146,
+  147, 147, 147, 148, 148, 149, 149, 150, 150, 150, 151, 151, 152, 152, 152, 153,
+  153, 154, 154, 155, 155, 155, 156, 156, 157, 157, 157, 158, 158, 159, 159, 160,
+  160, 160, 161, 161, 162, 162, 162, 163, 163, 164, 164, 165, 165, 165, 166, 166,
+  167, 167, 167, 168, 168, 169, 169, 170, 170, 170, 171, 171, 172, 172, 172, 173,
+  173, 174, 174, 174, 175, 175, 176, 176, 177, 177, 177, 178, 178, 179, 179, 179,
+  180, 180, 181, 181, 182, 182, 182, 183, 183, 184, 184, 184, 185, 185, 186, 186,
+  187, 187, 187, 188, 188, 189, 189, 189, 190, 190, 191, 191, 192, 192, 192, 193,
+  193, 194, 194, 194, 195, 195, 196, 196, 196, 197, 197, 198, 198, 199, 199, 199,
+  200, 200, 201, 201, 201, 202, 202, 203, 203, 204, 204, 204, 205, 205, 206, 206,
+  206, 207, 207, 208, 208, 209, 209, 209, 210, 210, 211, 211, 211, 212, 212, 213,
+  213
 };
 
 /* precomputed lookup table for 10^1 through 10^16 */
@@ -166,7 +218,6 @@ static void numeric_init_pow_of_10 (void);
 #endif
 static DB_C_NUMERIC numeric_get_pow_of_10 (int exp);
 static void float_numeric_init_pow10_table (void);
-static int float_numeric_precision_to_bytes (int prec);
 static int float_numeric_find_first_nz_idx_msb (const uint8_t * buffer, int buffer_size);
 static int float_numeric_get_decimal_digit (const uint8_t * calc_buf, int calc_bytes);
 static void numeric_double_shift_bit (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, int numbits, DB_C_NUMERIC lsb,
@@ -632,41 +683,6 @@ float_numeric_init_pow10_table (void)
       initialized_10 = true;
     }
 #endif
-}
-
-/*
- * float_numeric_precision_to_bytes() - convert decimal precision to required byte length (base-256)
- *
- * prec(in): decimal precision (number of digits)
- *
- * Return:
- *   - prec > 0 : minimum number of bytes required
- *                (calculated as ceil(prec / log10(256)))
- *   - prec == 0: currently returns DB_NUMERIC_BUF_SIZE
- *                (reserved for future floating-point mode)
- *   - prec < 0 : invalid case, triggers assert and returns default precision
- *
- * Note:
- *   - log10(256) = 2.40824 -> one byte can store about 2.4 decimal digits
- */
-static int
-float_numeric_precision_to_bytes (int prec)
-{
-  static const double log10_256 = log10 (256.0);
-
-  if (prec == 0)
-    {
-      /* for future floating-point mode */
-      return DB_NUMERIC_BUF_SIZE;
-    }
-  else if (prec < 0)
-    {
-      /* cases where the value is 0 or negative cannot occur */
-      assert (false);
-      return DB_DEFAULT_PRECISION;
-    }
-
-  return (int) ceil ((double) prec / log10_256);
 }
 
 /*
@@ -1951,7 +1967,7 @@ float_numeric_compare (uint8_t * arg1, uint8_t * arg2, int prec1, int scale1, in
   scale_adjust1 = common_scale - scale1;
   scale_adjust2 = common_scale - scale2;
 
-  calc_bytes = float_numeric_precision_to_bytes (common_prec) + 1;
+  calc_bytes = _gv_numeric_precision_to_bytes_lookup[common_prec] + 1;
   if (calc_bytes <= (int) DB_NUMERIC_BUF_SIZE)
     {
       calc_bytes = (int) DB_NUMERIC_BUF_SIZE + 1;
@@ -2493,7 +2509,7 @@ float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   arg2_sign = numeric_is_negative (dbv2_copy);
 
   /* 3) determine working buffer size */
-  calc_bytes = float_numeric_precision_to_bytes (result_prec) + 1;
+  calc_bytes = _gv_numeric_precision_to_bytes_lookup[result_prec] + 1;
   if (calc_bytes <= (int) DB_NUMERIC_BUF_SIZE)
     {
       calc_bytes = (int) DB_NUMERIC_BUF_SIZE + 1;
@@ -2727,7 +2743,7 @@ float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   arg2_sign = numeric_is_negative (dbv2_copy);
 
   /* 3) determine working buffer size */
-  calc_bytes = float_numeric_precision_to_bytes (result_prec) + 1;
+  calc_bytes = _gv_numeric_precision_to_bytes_lookup[result_prec] + 1;
   if (calc_bytes <= (int) DB_NUMERIC_BUF_SIZE)
     {
       calc_bytes = (int) DB_NUMERIC_BUF_SIZE + 1;
@@ -2948,7 +2964,7 @@ float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   result_sign = arg1_sign ^ arg2_sign;
 
   /* 2) determine working buffer size */
-  calc_bytes = float_numeric_precision_to_bytes (result_prec) + 1;
+  calc_bytes = _gv_numeric_precision_to_bytes_lookup[result_prec] + 1;
   if (calc_bytes <= (int) DB_NUMERIC_BUF_SIZE)
     {
       calc_bytes = (int) DB_NUMERIC_BUF_SIZE + 1;
@@ -3287,7 +3303,7 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
     }
 
   /* 6) initialize new calculation buffers and pad absolute values */
-  int extra_bytes = float_numeric_precision_to_bytes (exponent10 > 0 ? exponent10 : 0);
+  int extra_bytes = _gv_numeric_precision_to_bytes_lookup[(exponent10 > 0) ? exponent10 : 0];
   calc_bytes = ((int) DB_NUMERIC_BUF_SIZE + extra_bytes + 2);
   if (calc_bytes <= (int) DB_NUMERIC_BUF_SIZE)
     {
@@ -4192,7 +4208,8 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
 
   /* 6) initialize new calculation buffers and pad absolute values */
   int extra_bytes =
-    float_numeric_precision_to_bytes ((dividend_exponent > divisor_exponent) ? dividend_exponent : divisor_exponent);
+    _gv_numeric_precision_to_bytes_lookup[(dividend_exponent >
+					   divisor_exponent) ? dividend_exponent : divisor_exponent];
   calc_bytes = ((int) DB_NUMERIC_BUF_SIZE + extra_bytes + 2);
   if (calc_bytes <= (int) DB_NUMERIC_BUF_SIZE)
     {
