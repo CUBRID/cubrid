@@ -43,4 +43,4 @@ To add a new source file: edit the appropriate top-level CMakeLists.txt, not any
 | Storage/buffer | ✓ | ✓ | ✗ | CS includes client-side subset (statistics_cl.c, es.c) only |
 | Transaction/lock | ✓ | ✓ | ✗ | CS includes client-side subset (transaction_cl.c, boot_cl.c) only |
 | Client API (db_\*) | partial | ✓ | ✓ | Server includes reduced compat subset (db_date, db_json, etc.) |
-| Connection/network | ✓ | ✓ | ✓ | Different files per mode: `_sr.c` (server), `_cl.c` (client/SA) |
+| Connection/network | ✓ | ✓ | ✓ | Different files per mode: `_sr` (server/SA), `_cl` (CS/SA) |
