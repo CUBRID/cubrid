@@ -3360,21 +3360,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  goto error;
 	}
-
-      /* when last_insert_id() is used in GROUP BY, the parser sets NUMERIC(40,0),
-       * but session_get_last_insert_id() changes it to NUMERIC(38,0). Because precision differs,
-       * the number of bytes used for storage and reading differs, causing incorrect results and NULL to be output.
-       * This fix addresses that issue. */
-      if (regu_var->domain != NULL && TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_NUMERIC
-	  && arithptr->value->domain.general_info.type == DB_TYPE_NUMERIC)
-	{
-	  dom_status = tp_value_auto_cast (arithptr->value, arithptr->value, regu_var->domain);
-	  if (dom_status != DOMAIN_COMPATIBLE)
-	    {
-	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, arithptr->value, regu_var->domain);
-	      goto error;
-	    }
-	}
       break;
 
     case T_EVALUATE_VARIABLE:

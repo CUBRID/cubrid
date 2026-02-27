@@ -441,11 +441,6 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
     case PT_SUM:
       if (acc->curr_cnt < 1)
 	{
-	  if (TP_DOMAIN_TYPE (domain->value_dom) == DB_TYPE_NUMERIC
-	      && value->domain.numeric_info.precision != DB_DEFAULT_NUMERIC_PRECISION)
-	    {
-	      FIXED_TO_FLOAT_NUMERIC (value);
-	    }
 	  copy_operator = true;
 	}
       else

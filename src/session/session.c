@@ -1498,8 +1498,8 @@ session_set_cur_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value, bool
   else
     {
       TP_DOMAIN *num = tp_domain_resolve_default (DB_TYPE_NUMERIC);
-      num->precision = DB_MAX_FIXED_NUMERIC_PRECISION;
-      num->scale = 0;
+      num->precision = DB_DEFAULT_NUMERIC_PRECISION;
+      num->scale = DB_DEFAULT_NUMERIC_SCALE;
       if (tp_value_cast (value, &state_p->cur_insert_id, num, false) != DOMAIN_COMPATIBLE)
 	{
 	  pr_clear_value (&state_p->cur_insert_id);

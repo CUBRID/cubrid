@@ -360,16 +360,6 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		}
 	    }
 
-	  if (opr_dbval_p->domain.general_info.type == DB_TYPE_NUMERIC
-	      && opr_dbval_p->domain.numeric_info.precision != DB_DEFAULT_NUMERIC_PRECISION)
-	    {
-	      /* SUM/AVG operations always use floating numeric
-	       * ex. SUM(ALL col1) OVER(...) or AVG(ALL col1) OVER(...)
-	       *     SUM(col1) OVER(...) or AVG(col1) OVER(...)
-	       */
-	      FIXED_TO_FLOAT_NUMERIC (opr_dbval_p);
-	    }
-
 	  /* this type setting is necessary, it ensures that for the case average handling, which is treated like sum
 	   * until final iteration, starts with the initial data type */
 	  if (db_value_domain_init (func_p->value, DB_VALUE_DOMAIN_TYPE (opr_dbval_p), DB_DEFAULT_PRECISION,
@@ -908,17 +898,6 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 			  qfile_close_list (thread_p, list_id_p);
 			  qfile_destroy_list (thread_p, list_id_p);
 			  return ER_FAILED;
-			}
-
-		      if ((func_p->function == PT_SUM || func_p->function == PT_AVG)
-			  && func_p->opr_dbtype == DB_TYPE_NUMERIC
-			  && dbval_type == DB_TYPE_NUMERIC
-			  && dbval.domain.numeric_info.precision != DB_DEFAULT_NUMERIC_PRECISION)
-			{
-			  /* SUM/AVG operations always use floating numeric
-			   * ex. SUM(DISTINCT col1) OVER(...) or AVG(DISTINCT col1) OVER(...)
-			   */
-			  FIXED_TO_FLOAT_NUMERIC (&dbval);
 			}
 
 		      if (func_p->function == PT_STDDEV || func_p->function == PT_STDDEV_POP
