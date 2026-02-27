@@ -1,6 +1,6 @@
 # src/thread/ — Worker Pools & Daemon Threads (C++17)
 
-25 code files. Modern C++17 threading infrastructure.
+Modern C++17 threading infrastructure.
 
 ## Key Files
 
@@ -66,6 +66,3 @@ The `THREAD_ENTRY *thread_p` parameter on virtually all server-side functions:
 - Daemon `looper` patterns: `INFINITE_LOOPER` (always active), periodic, or delta-based
 - Critical sections are named — CS tracker can detect potential deadlocks via ordering
 
-## Owner
-
-CODEOWNERS: @beyondykk9

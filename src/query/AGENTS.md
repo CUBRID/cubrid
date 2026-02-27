@@ -1,57 +1,30 @@
 # src/query/ — XASL Execution & Scan Managers
 
-82 code files. Server-side. Executes deserialized XASL plans.
+Server-side. Executes deserialized XASL plans.
 
 ## Key Files
 
-| File | Lines | Role |
-|------|-------|------|
-| `query_executor.c` | 27K | Main executor: `qexec_execute_mainblock()` — XASL tree walker |
-| `scan_manager.c` | 9K | Scan open/next/close for heap, index, list, set, method scans |
-| `fetch.c` | — | Tuple fetching, REGU_VARIABLE evaluation |
-| `query_manager.c` | — | Query cache, temp file management, result sets |
-| `list_file.c` | — | Temp list files for intermediate results, sorting |
-| `string_opfunc.c` | 28K | String function implementations (CONCAT, SUBSTR, etc.) |
-| `arithmetic.c` | 7K | Numeric/date/time function implementations |
-| `query_opfunc.c` | — | Aggregate functions (SUM, AVG, COUNT, etc.) |
-| `crypt_opfunc.c` | — | Crypto functions (MD5, SHA, AES, etc.) |
-| `numeric_opfunc.c` | — | NUMERIC/DECIMAL arbitrary-precision arithmetic |
-| `xasl_to_stream.c` | — | Client-side: XASL → byte stream serialization |
-| `stream_to_xasl.c` | — | Server-side: byte stream → XASL deserialization |
-| `query_aggregate.hpp` | — | Aggregate accumulator classes (C++) |
-| `query_analytic.cpp` | — | Window/analytic function execution (OVER clause) |
-| `query_hash_scan.c` | — | Hash join scan implementation |
-| `query_cl.c` | — | Client-side query API |
-| `vacuum.c` | — | MVCC vacuum — garbage collection of old row versions |
-| `xasl.h` | — | `XASL_NODE`, `PRED_EXPR`, `REGU_VARIABLE` definitions |
+| File | Role |
+|------|------|
+| `query_executor.c` | Main executor: `qexec_execute_mainblock()` — XASL tree walker (~27K lines) |
+| `scan_manager.c` | Scan open/next/close for heap, index, list, set, method scans |
+| `fetch.c` | Tuple fetching, REGU_VARIABLE evaluation |
+| `query_manager.c` | Query cache, temp file management, result sets |
+| `list_file.c` | Temp list files for intermediate results, sorting |
+| `string_opfunc.c` | String function implementations (CONCAT, SUBSTR, etc.) (~28K lines) |
+| `arithmetic.c` | Numeric/date/time function implementations |
+| `query_opfunc.c` | Aggregate functions (SUM, AVG, COUNT, etc.) |
+| `xasl_to_stream.c` | Client-side: XASL → byte stream serialization |
+| `stream_to_xasl.c` | Server-side: byte stream → XASL deserialization |
+| `query_analytic.cpp` | Window/analytic function execution (OVER clause) |
+| `query_hash_scan.c` | Hash join scan implementation |
+| `vacuum.c` | MVCC vacuum — garbage collection of old row versions |
+| `xasl.h` | `XASL_NODE`, `PRED_EXPR`, `REGU_VARIABLE` definitions |
 
 ## Subdirectory
+| Dir | Purpose |
 |-----|---------|
-| `parallel/` | Parallel query execution framework (owner: @shparkcubrid) |
-
-### parallel/ Structure
-
-```
-parallel/
-├── px_parallel.hpp/cpp         # Core parallel execution framework
-├── px_worker_manager.hpp/cpp    # Worker thread management
-├── px_callable_task.hpp/cpp     # Callable task abstraction
-├── px_thread_safe_queue.hpp     # Thread-safe queue for tasks
-├── px_interrupt.hpp             # Interrupt handling
-├── px_sort.c/h                  # Parallel sort
-├── px_heap_scan/                # Parallel heap scan (8 files)
-│   ├── px_heap_scan.hpp/cpp     # Main heap scan
-│   ├── px_heap_scan_task.*      # Scan task units
-│   ├── px_heap_scan_result_*    # Result handling
-│   └── px_heap_scan_slot_*      # Slot iteration
-├── px_hash_join/                # Parallel hash join (4 files)
-│   ├── px_hash_join.hpp/cpp     # Main hash join
-│   └── px_hash_join_*_manager.* # Task/spawn management
-└── px_query_execute/            # Parallel query execution (4 files)
-    ├── px_query_executor.*      # Query executor wrapper
-    ├── px_query_task.*           # Query task units
-    └── px_query_checker.*        # Execution checks
-```
+| `parallel/` | Parallel query execution: heap scan, hash join, query execute, sort. Core: `px_parallel.hpp`, `px_worker_manager.hpp`. Owner: @shparkcubrid |
 
 ## Where to Look
 

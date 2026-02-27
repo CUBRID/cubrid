@@ -1,42 +1,44 @@
 # src/method/ — Method & SP Invocation from Queries
 
-30 code files. Handles method calls and stored procedure invocation during query execution.
+Handles method calls and stored procedure invocation during query execution.
 
 ## Key Files
 
 | File | Role |
 |------|------|
-| `method_scan.c` | Method scan for query executor — calls methods during scan |
-| `method_def.hpp` | Method definition structures |
-| `method_invoke.cpp` | Method invocation dispatch |
-| `method_invoke_builtin.cpp` | Built-in method execution |
-| `method_invoke_java.cpp` | Java SP method invocation |
-| `method_invoke_group.cpp` | Grouped method invocation |
-| `method_connection_sr.cpp` | Server-side method connection handling |
-| `method_connection_cl.cpp` | Client-side method connection handling |
-| `method_query_handler.cpp` | Method query result handling |
-| `method_runtime_context.cpp` | Runtime context for method execution |
-| `method_struct_value.cpp` | Method argument/result value handling |
-| `method_compile.cpp` | Method compilation support |
-| `method_struct_oid_info.cpp` | OID info for method invocation |
+| `method_scan.cpp/hpp` | Method scan for query executor — calls methods during scan |
+| `query_method.cpp/hpp` | Query-level method invocation |
+| `method_query_handler.cpp/hpp` | Method query result handling |
+| `method_query_result.cpp/hpp` | Method query result processing |
+| `method_query_util.cpp/hpp` | Method query utility functions |
+| `method_struct_invoke.cpp/hpp` | Method invocation structure definitions |
+| `method_struct_value.cpp/hpp` | Method argument/result value handling |
+| `method_struct_oid_info.cpp/hpp` | OID info for method invocation |
+| `method_struct_parameter_info.cpp/hpp` | Parameter info structures |
+| `method_struct_query.cpp/hpp` | Query structures for method invocation |
+| `method_struct_schema_info.cpp/hpp` | Schema info structures for methods |
+| `method_schema_info.cpp/hpp` | Schema information handling |
+| `method_oid_handler.cpp/hpp` | OID handler for method results |
+| `method_callback.cpp/hpp` | Method callback handling |
+| `method_error.cpp/hpp` | Method error handling |
 
 ## Where to Look
 
 | Task | File |
 |------|------|
-| Fix method call in query | `method_scan.c`, `method_invoke.cpp` |
-| Fix Java SP invocation | `method_invoke_java.cpp` |
-| Fix built-in method | `method_invoke_builtin.cpp` |
-| Fix method argument passing | `method_struct_value.cpp` |
-| Fix method connection | `method_connection_sr.cpp` / `_cl.cpp` |
+| Fix method call in query | `method_scan.cpp`, `query_method.cpp` |
+| Fix method query handling | `method_query_handler.cpp`, `method_query_result.cpp` |
+| Fix method argument passing | `method_struct_value.cpp`, `method_struct_invoke.cpp` |
+| Fix method error handling | `method_error.cpp` |
+| Fix method callback | `method_callback.cpp` |
 
 ## Architecture
 
 ```
 query_executor.c → scan_manager.c (METHOD_SCAN)
-  → method_scan.c → method_invoke.cpp
-    → method_invoke_builtin.cpp (C methods)
-    → method_invoke_java.cpp → sp/ → PL Engine
+  → method_scan.cpp → query_method.cpp
+    → method_struct_invoke.cpp (dispatch)
+    → src/sp/ → PL Engine (for Java SP)
 ```
 
 ## Conventions
@@ -52,6 +54,3 @@ query_executor.c → scan_manager.c (METHOD_SCAN)
 - Java method calls involve cross-process communication — timeout handling critical
 - Method results must be properly converted to `DB_VALUE` for query engine
 
-## Owner
-
-CODEOWNERS: @beyondykk9

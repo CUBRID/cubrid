@@ -94,6 +94,3 @@ cd pl_engine && ./gradlew test
 - ANTLR grammar changes require `./gradlew generateGrammarSource`
 - Java 8 target — do not use Java 9+ APIs
 
-## Owner
-
-CODEOWNERS: @beyondykk9

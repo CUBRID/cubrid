@@ -1,6 +1,6 @@
 # src/compat/ — Client API & DB_VALUE
 
-47 code files. Public API layer — bridges client and server sides.
+Public API layer — bridges client and server sides.
 
 ## Key Files
 
@@ -14,18 +14,12 @@
 | `db_query.c` | Query execution API |
 | `db_vdb.c` | Virtual database (view) support API |
 | `db_date.c` | Date/time DB_VALUE operations |
-| `db_json.c` | JSON DB_VALUE support |
+| `db_json.cpp` | JSON DB_VALUE support |
 | `db_elo.c` | LOB (External Large Object) API |
 | `dbi_compat.h` | Client-visible error codes (mirrors `error_code.h`) |
 | `dbtype_def.h` | `DB_VALUE` union definition, `DB_TYPE` enum |
 | `dbtype_function.h` | DB_VALUE accessor/mutator declarations |
-| `db_set_function.c` | Set operation functions |
-
-## Subdirectories
-
-| Dir | Purpose |
-|-----|---------|
-| `lob/` | LOB locator client-side support |
+| `db_set_function.h` | Set operation function declarations |
 
 ## Where to Look
 
@@ -34,9 +28,9 @@
 | Add DB_VALUE constructor | `db_macro.c` — follow `db_make_*()` pattern |
 | Fix type conversion | `db_macro.c`, `dbtype_def.h` |
 | Fix date/time value | `db_date.c` |
-| Fix JSON handling | `db_json.c` |
+| Fix JSON handling | `db_json.cpp` |
 | Fix LOB API | `db_elo.c` |
-| Fix set operations | `db_set.c`, `db_set_function.c` |
+| Fix set operations | `db_set.c`, `db_set_function.h` |
 | Add client-visible error | `dbi_compat.h` (must mirror `error_code.h`) |
 
 ## DB_VALUE Structure
@@ -82,6 +76,3 @@ pr_clear_value (&val);     /* Alias used in server-side code */
 - Some `db_make_*()` copy data, others reference — check per type
 - LOB values require special handling: external storage, not inline in DB_VALUE
 
-## Owner
-
-CODEOWNERS: @beyondykk9

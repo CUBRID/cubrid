@@ -1,12 +1,12 @@
 # src/loaddb/ — Bulk Data Loader
 
-26 code files. Bison/flex grammar for CUBRID's `loaddb` data format.
+Bison/flex grammar for CUBRID's `loaddb` data format.
 
 ## Key Files
 
 | File | Role |
 |------|------|
-| `load_grammar.y` | Bison grammar for loaddb input format |
+| `load_grammar.yy` | Bison grammar for loaddb input format |
 | `load_lexer.l` | Flex lexer for loaddb input |
 | `load_driver.cpp` | Load driver — orchestrates parsing and insertion |
 | `load_session.cpp` | Load session management, batch processing |
@@ -23,7 +23,7 @@
 
 | Task | File |
 |------|------|
-| Fix loaddb parse error | `load_grammar.y`, `load_lexer.l` |
+| Fix loaddb parse error | `load_grammar.yy`, `load_lexer.l` |
 | Fix data conversion | `load_db_value_converter.cpp` |
 | Fix load performance | `load_worker_manager.cpp`, `load_session.cpp` |
 | Fix server-side loading | `load_server_loader.cpp` |
@@ -55,10 +55,7 @@
 
 ## Gotchas
 
-- Grammar generates C code via bison — `load_grammar.y` modifications require bison regen
+- Grammar generates C code via bison — `load_grammar.yy` modifications require bison regen
 - Server-side loader bypasses normal INSERT path — directly manipulates heap/index
 - Some unit tests disabled (`LOADDB` module) due to compilation issues
 
-## Owner
-
-CODEOWNERS: @beyondykk9

@@ -1,6 +1,6 @@
 # src/executables/ — Binary Entry Points & Utilities
 
-52 code files. All CUBRID binary programs start here.
+All CUBRID binary programs start here.
 
 ## Key Files
 
@@ -11,7 +11,6 @@
 | `csql_launcher.c` | csql command-line argument parsing |
 | `csql_result.c` | csql query result display |
 | `csql_session.c` | csql session management |
-| `loaddb.c` | `loaddb` bulk data loading entry point |
 | `unloaddb.c` | `unloaddb` data export entry point |
 | `compactdb.c` | `compactdb` space reclamation |
 | `util_service.c` | `cubrid` service command (start/stop/status) |
@@ -28,7 +27,7 @@
 |------|------|
 | Fix server startup | `server.c` |
 | Fix csql behavior | `csql.c`, `csql_session.c`, `csql_result.c` |
-| Fix loaddb/unloaddb | `loaddb.c`, `unloaddb.c` |
+| Fix loaddb/unloaddb | `src/loaddb/` (loaddb code), `unloaddb.c` |
 | Fix service commands | `util_service.c` |
 | Fix HA/heartbeat | `master_heartbeat.c` |
 | Add new utility | Create entry point here + add to CMakeLists.txt |
@@ -39,7 +38,7 @@
 |--------|-----------|--------------|
 | `cub_server` | `server.c` | `cubrid/CMakeLists.txt` |
 | `csql` | `csql_launcher.c` → `csql.c` | `cs/CMakeLists.txt` |
-| `loaddb` | `loaddb.c` | `sa/CMakeLists.txt` (standalone) |
+| `loaddb` | `src/loaddb/` (standalone loader) | `sa/CMakeLists.txt` |
 | `unloaddb` | `unloaddb.c` | `sa/CMakeLists.txt` |
 | `compactdb` | `compactdb.c` | `sa/CMakeLists.txt` |
 | `cub_master` | `master.c` | top-level CMake |
@@ -59,6 +58,3 @@
 - `csql` has its own mini-framework (session, result display, input handling)
 - `master.c` manages all database server processes on a host — not a database server itself
 
-## Owner
-
-CODEOWNERS: @beyondykk9

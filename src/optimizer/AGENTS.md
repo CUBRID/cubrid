@@ -1,6 +1,6 @@
 # src/optimizer/ — Cost-Based Query Planning
 
-16 code files. Client-side (`#if !defined(SERVER_MODE)`).
+Client-side (`#if !defined(SERVER_MODE)`).
 
 ## Key Files
 
@@ -56,7 +56,3 @@ parser/ (PT_NODE tree) → optimizer/ (QO_PLAN tree) → parser/xasl_generation.
 - Small module but high complexity — plan enumeration is exponential in join count
 - Cost model accuracy depends on up-to-date statistics — stale stats = bad plans
 - `query_planner.c` handles both simple queries and complex multi-way joins
-
-## Owner
-
-CODEOWNERS: @shparkcubrid
