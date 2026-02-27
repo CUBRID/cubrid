@@ -56,7 +56,6 @@
 #include "string_regex.hpp"
 #include "tz_support.h"
 #include "util_func.h"
-#include "dbtype_def.h"
 
 #include <algorithm>
 #include <string>

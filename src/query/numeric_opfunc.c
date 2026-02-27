@@ -167,6 +167,7 @@ static void numeric_init_pow_of_10 (void);
 static DB_C_NUMERIC numeric_get_pow_of_10 (int exp);
 static void float_numeric_init_pow10_table (void);
 static int float_numeric_precision_to_bytes (int prec);
+static int float_numeric_find_first_nz_idx_msb (const uint8_t * buffer, int buffer_size);
 static int float_numeric_get_decimal_digit (const uint8_t * calc_buf, int calc_bytes);
 static void numeric_double_shift_bit (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, int numbits, DB_C_NUMERIC lsb,
 				      DB_C_NUMERIC msb, bool is_long_num);
@@ -187,17 +188,6 @@ static void float_numeric_mul (const uint8_t * dbv1_buf, const uint8_t * dbv2_bu
 static void numeric_long_div (DB_C_NUMERIC a1, DB_C_NUMERIC a2, DB_C_NUMERIC answer, DB_C_NUMERIC remainder,
 			      bool is_long_num);
 static void numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, DB_C_NUMERIC remainder);
-#if 1				// division algorithm
-/*
- * the float_numeric_div() and float_numeric_knuth_div() functions will be maintained until phase-3.
- * after phase-3 completion, we plan to verify division accuracy by comparing whether both functions pass TC validation identically.
- */
-static void float_numeric_double_shift_bit (uint8_t * arg1, uint8_t * arg2, int calc_bytes, uint8_t * lsb,
-					    uint8_t * msb);
-static void float_numeric_div (uint8_t * dbv1_buf, uint8_t * dbv2_buf, uint8_t * quo_buf, uint8_t * rem_buf,
-			       int calc_bytes);
-#else
-static int knuth_find_first_nz_idx_msb (const uint8_t * buffer, int buffer_size);
 static unsigned int knuth_count_leading_zero_bits (uint8_t byte_value);
 static void knuth_normalize_left_shift_msb (uint8_t * buffer, int buffer_size, unsigned int k_bit);
 static void knuth_normalize_right_shift_msb (uint8_t * buffer, int buffer_size, unsigned int k_bit);
@@ -207,7 +197,6 @@ static uint32_t knuth_multiply_and_subtract (uint8_t * u_work, const uint8_t * v
 					     int divisor_bytes, uint32_t trial_quotient);
 static void float_numeric_knuth_div (uint8_t * dbv1_buf, uint8_t * dbv2_buf, uint8_t * quo_buf, uint8_t * rem_buf,
 				     int calc_bytes);
-#endif
 static int numeric_compare (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2);
 static int float_numeric_compare (uint8_t * arg1, uint8_t * arg2, int prec1, int scale1, int prec2, int scale2,
 				  bool arg1_sign, bool arg2_sign);
@@ -680,6 +669,59 @@ float_numeric_precision_to_bytes (int prec)
   return (int) ceil ((double) prec / log10_256);
 }
 
+/*
+ * float_numeric_find_first_nz_idx_msb() - Find the index of the first non-zero byte in an MSB-first buffer
+ *   return        : Index of the first non-zero byte,
+ *                   or buffer_size if all bytes are zero
+ *   buffer(in)    : Byte array stored in MSB-first order
+ *   buffer_size(in): Size of the buffer in bytes
+ *
+ * Implementation details:
+ *   - Scans the buffer in 8-byte (64-bit) blocks
+ *   - If a block contains non-zero data, narrow down
+ *     within the block by checking up to 8 bytes
+ *   - If no non-zero byte is found, returns buffer_size
+ *
+ * Note: memcpy is used to safely load 64-bit words,
+ *       avoiding alignment and strict aliasing issues (Undefined Behavior),
+ *       while allowing the compiler to optimize into a
+ *       single 64-bit load instruction.
+ */
+static int
+float_numeric_find_first_nz_idx_msb (const uint8_t * buffer, int buffer_size)
+{
+  int i = 0, j = 0;
+
+  if (unlikely (((uintptr_t) buffer & (alignof (uint64_t) - 1)) == 0))
+    {
+      uint64_t *ptr = (uint64_t *) buffer;
+      for (; i + 8 <= buffer_size; i += 8, ptr++)
+	{
+	  if (*ptr)
+	    {
+	      /* found non-zero block, find exact position within this block */
+	      for (j = i; j < (i + 8); j++)
+		{
+		  if (buffer[j])
+		    {
+		      return j;
+		    }
+		}
+	    }
+	}
+    }
+
+  for (; i < buffer_size; i++)
+    {
+      if (buffer[i])
+	{
+	  return i;
+	}
+    }
+
+  return buffer_size;		/* all zeros */
+}
+
 static int
 float_numeric_get_decimal_digit (const uint8_t * calc_buf, int calc_bytes)
 {
@@ -689,14 +731,8 @@ float_numeric_get_decimal_digit (const uint8_t * calc_buf, int calc_bytes)
 
   float_numeric_init_pow10_table ();
 
-  for (i = 0; i < calc_bytes; i++)
-    {
-      if (calc_buf[i] != 0)
-	{
-	  first_nz = calc_bytes - i;
-	  break;
-	}
-    }
+  first_nz = float_numeric_find_first_nz_idx_msb (calc_buf, calc_bytes);
+  first_nz = calc_bytes - first_nz;
 
   if (first_nz == 0)
     {
@@ -1382,123 +1418,6 @@ numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, DB_C_NUM
     }
 }
 
-#if 1				// division algorithm
-/*
- * the float_numeric_div() and float_numeric_knuth_div() functions will be maintained until phase-3.
- * after phase-3 completion, we plan to verify division accuracy by comparing whether both functions pass TC validation identically.
- */
-static void
-float_numeric_double_shift_bit (uint8_t * arg1, uint8_t * arg2, int calc_bytes, uint8_t * lsb, uint8_t * msb)
-{
-  int digit;
-  int numbits = 1;
-  uint8_t local_arg1[calc_bytes];
-  uint8_t local_arg2[calc_bytes];
-
-  /* Copy args into local variables */
-  memcpy (local_arg1, arg1, calc_bytes);
-  memcpy (local_arg2, arg2, calc_bytes);
-
-  /* Loop through all but last word of msb shifting bits */
-  for (digit = 0; digit < calc_bytes - 1; digit++)
-    {
-      msb[digit] = (local_arg2[digit] << numbits) | (local_arg2[digit + 1] >> (8 - numbits));
-    }
-
-  /* Do last word of msb separately using upper word of lsb */
-  msb[calc_bytes - 1] = (local_arg2[calc_bytes - 1] << numbits) | (local_arg1[0] >> (8 - numbits));
-
-  /* Loop through all but last word of lsb shifting bits */
-  for (digit = 0; digit < calc_bytes - 1; digit++)
-    {
-      lsb[digit] = (local_arg1[digit] << numbits) | (local_arg1[digit + 1] >> (8 - numbits));
-    }
-
-  /* Do last word of lsb separately.  */
-  lsb[calc_bytes - 1] = local_arg1[calc_bytes - 1] << numbits;
-}
-
-static void
-float_numeric_div (uint8_t * dbv1_buf, uint8_t * dbv2_buf, uint8_t * quo_buf, uint8_t * rem_buf, int calc_bytes)
-{
-  int nbit, total_bit;
-
-  /* calculate basic variables */
-  total_bit = calc_bytes * 8;
-
-  /* Initialize variables */
-  memcpy (quo_buf, dbv1_buf, calc_bytes);
-
-  /* Shift *answer and *remainder.  Bits shifted out of *answer * are placed into *remainder.  */
-  /*****  NEEDS TO BE UPGRADED TO SHIFT SO THAT FIRST NON-ZERO BIT OF *****/
-  /*****  REMAINDER IS AT LEAST EQUAL TO FIRST NON_ZERO BIT OF ARG2.  *****/
-  /*****  DON'T DO THIS ONE BIT AT A TIME.                            *****/
-  for (nbit = 0; nbit < total_bit; nbit++)
-    {
-      float_numeric_double_shift_bit (quo_buf, rem_buf, calc_bytes, quo_buf, rem_buf);
-
-      /* If remainder >= arg2, subtract arg2 from remainder and increment the answer.  */
-      if (float_numeric_operation_compare (rem_buf, dbv2_buf, calc_bytes) >= 0)
-	{
-	  float_numeric_sub (rem_buf, dbv2_buf, rem_buf, calc_bytes);
-	  quo_buf[calc_bytes - 1] += 1;
-	}
-    }
-}
-
-#else
-/*
- * knuth_find_first_nz_idx_msb() - Find the index of the first non-zero byte in an MSB-first buffer
- *   return        : Index of the first non-zero byte,
- *                   or buffer_size if all bytes are zero
- *   buffer(in)    : Byte array stored in MSB-first order
- *   buffer_size(in): Size of the buffer in bytes
- *
- * Implementation details:
- *   - Scans the buffer in 8-byte (64-bit) blocks
- *   - If a block contains non-zero data, narrow down
- *     within the block by checking up to 8 bytes
- *   - If no non-zero byte is found, returns buffer_size
- *
- * Note: memcpy is used to safely load 64-bit words,
- *       avoiding alignment and strict aliasing issues (Undefined Behavior),
- *       while allowing the compiler to optimize into a
- *       single 64-bit load instruction.
- */
-static int
-knuth_find_first_nz_idx_msb (const uint8_t * buffer, int buffer_size)
-{
-  int i = 0, j = 0;
-  char zero_buf[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-
-  /* scan 8-byte blocks */
-  for (; i + 8 <= buffer_size; i += 8)
-    {
-      if (memcmp (zero_buf, buffer + i, 8) != 0)
-	{
-	  /* found non-zero block, find exact position within this block */
-	  for (j = 0; j < 8; j++)
-	    {
-	      if (buffer[i + j])
-		{
-		  return i + j;
-		}
-	    }
-	}
-    }
-
-  /* tail (0..7 bytes) */
-  for (; i < buffer_size; i++)
-    {
-      if (buffer[i])
-	{
-	  return i;
-	}
-    }
-
-  return buffer_size;		/* all zeros */
-}
-
 /*
  * knuth_count_leading_zero_bits() - Count the number of leading zero bits in a single byte (MSB-first)
  *   return        : Number of leading zero bits (0 ~ 8)
@@ -1784,8 +1703,8 @@ float_numeric_knuth_div (uint8_t * dbv1_buf, uint8_t * dbv2_buf, uint8_t * quo_b
    *   which scales the value by 256^k and distorts it.
    * - First find the index of the first non-zero byte as the proper base.
    */
-  dividend_first_nz_index = knuth_find_first_nz_idx_msb (dbv1_buf, calc_bytes);
-  divisor_first_nz_index = knuth_find_first_nz_idx_msb (dbv2_buf, calc_bytes);
+  dividend_first_nz_index = float_numeric_find_first_nz_idx_msb (dbv1_buf, calc_bytes);
+  divisor_first_nz_index = float_numeric_find_first_nz_idx_msb (dbv2_buf, calc_bytes);
   dividend_bytes = calc_bytes - dividend_first_nz_index;
   divisor_bytes = calc_bytes - divisor_first_nz_index;
 
@@ -1861,7 +1780,6 @@ float_numeric_knuth_div (uint8_t * dbv1_buf, uint8_t * dbv2_buf, uint8_t * quo_b
       rem_buf[out_rem_idx + i] = u_work[quo_total_byte_count + i];
     }
 }
-#endif
 
 /*
  * numeric_is_longnum_value ()
@@ -3399,16 +3317,7 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
     }
 
   /* 8) division */
-#if 1				// division algorithm
-  /*
-   * the float_numeric_div() and float_numeric_knuth_div() functions will be maintained until phase-3.
-   * after phase-3 completion, we plan to verify division accuracy by comparing whether both functions pass TC validation identically.
-   */
-  float_numeric_div (dividend_work, divisor_work, quotient_work, remainder_work, calc_bytes);
-#else
-  /* knuth division */
   float_numeric_knuth_div (dividend_work, divisor_work, quotient_work, remainder_work, calc_bytes);
-#endif
 
   /* 9) round up if necessary */
   if (float_numeric_compare_rem_round_up (remainder_work, divisor_work, calc_bytes) >= 0)
@@ -3936,15 +3845,7 @@ float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int prec
 
       for (i = 0; i < tmp_scale; i++)
 	{
-#if 1
-	  /*
-	   * the float_numeric_div() and float_numeric_knuth_div() functions will be maintained until phase-3.
-	   * after phase-3 completion, we plan to verify division accuracy by comparing whether both functions pass TC validation identically.
-	   */
-	  float_numeric_div (calc_buf, base256_of_ten, quotient_buf, remainder_buf, DB_NUMERIC_BUF_SIZE);
-#else
 	  float_numeric_knuth_div (calc_buf, base256_of_ten, quotient_buf, remainder_buf, DB_NUMERIC_BUF_SIZE);
-#endif
 	  if (float_numeric_operation_compare (remainder_buf, base256_of_zero, DB_NUMERIC_BUF_SIZE) != 0)
 	    {
 	      break;
@@ -4319,17 +4220,7 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
       float_numeric_mul_normalize (divisor_work, calc_bytes, divisor_exponent, false);
     }
 
-#if 1				// division algorithm
-  /*
-   * the float_numeric_div() and float_numeric_knuth_div() functions will be maintained until phase-3.
-   * after phase-3 completion, we plan to verify division accuracy by comparing whether both functions pass TC validation identically.
-   */
-  /* 8) division */
-  float_numeric_div (dividend_work, divisor_work, quotient_work, remainder_work, calc_bytes);
-#else
-  /* knuth division */
   float_numeric_knuth_div (dividend_work, divisor_work, quotient_work, remainder_work, calc_bytes);
-#endif
 
   /* 9) check and recalculate precision/scale of the remainder result */
   result_prec = float_numeric_get_decimal_digit (remainder_work, calc_bytes);
