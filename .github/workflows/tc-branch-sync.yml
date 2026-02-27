@@ -88,7 +88,7 @@ jobs:
           app-id: ${{ secrets.TC_APP_ID }}
           private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
           repositories: ${{ matrix.tc-repo }}
-          owner: CUBRID
+          owner: tw-kang
 
       - name: Mask token
         env:
@@ -107,16 +107,16 @@ jobs:
           BRANCH_NAME="tc/pr-${PR_NUMBER}"
 
           # Check if branch already exists — skip if so
-          if gh api "repos/CUBRID/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" > /dev/null 2>&1; then
+          if gh api "repos/tw-kang/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" > /dev/null 2>&1; then
             echo "::notice::Branch '${BRANCH_NAME}' already exists in ${TC_REPO}. Skipping."
             exit 0
           fi
 
           # Get develop HEAD SHA
-          DEVELOP_SHA=$(gh api "repos/CUBRID/${TC_REPO}/git/refs/heads/develop" --jq '.object.sha')
+          DEVELOP_SHA=$(gh api "repos/tw-kang/${TC_REPO}/git/refs/heads/develop" --jq '.object.sha')
 
           # Create branch
-          gh api "repos/CUBRID/${TC_REPO}/git/refs" \
+          gh api "repos/tw-kang/${TC_REPO}/git/refs" \
             --method POST \
             --field ref="refs/heads/${BRANCH_NAME}" \
             --field sha="${DEVELOP_SHA}"
@@ -148,7 +148,7 @@ jobs:
           
           # Create draft PR from tc/pr-N to develop
           PR_URL=$(gh pr create \
-            --repo "CUBRID/${TC_REPO}" \
+            --repo "tw-kang/${TC_REPO}" \
             --head "${BRANCH_NAME}" \
             --base develop \
             --title "${DRAFT_TITLE}" \
@@ -207,7 +207,7 @@ jobs:
           app-id: ${{ secrets.TC_APP_ID }}
           private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
           repositories: ${{ matrix.tc-repo }}
-          owner: CUBRID
+          owner: tw-kang
 
       - name: Mask token
         env:
@@ -230,7 +230,7 @@ jobs:
 
           # Clone TC repo (treeless for speed — we need commit history)
           git clone --filter=blob:none \
-            "https://x-access-token:${APP_TOKEN}@github.com/CUBRID/${TC_REPO}.git" \
+            "https://x-access-token:${APP_TOKEN}@github.com/tw-kang/${TC_REPO}.git" \
             tc-repo
           cd tc-repo
 
@@ -337,8 +337,8 @@ jobs:
           **TC Branch:** \`${BRANCH_NAME}\`
           
           **TC Repositories:**
-          - [cubrid-testcases](https://github.com/CUBRID/cubrid-testcases/tree/${BRANCH_NAME})
-          - [cubrid-testcases-private-ex](https://github.com/CUBRID/cubrid-testcases-private-ex/tree/${BRANCH_NAME})"
+          - [cubrid-testcases](https://github.com/tw-kang/cubrid-testcases/tree/${BRANCH_NAME})
+          - [cubrid-testcases-private-ex](https://github.com/tw-kang/cubrid-testcases-private-ex/tree/${BRANCH_NAME})"
           
           COMMENT_BODY="${COMMENT_BODY}
           

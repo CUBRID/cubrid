@@ -41,7 +41,7 @@ jobs:
           app-id: ${{ secrets.TC_APP_ID }}
           private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
           repositories: ${{ matrix.tc-repo }}
-          owner: CUBRID
+          owner: tw-kang
 
       - name: Mask token
         env:
@@ -64,16 +64,16 @@ jobs:
           BRANCH_NAME="tc/pr-${PR_NUMBER}"
           
           # Find draft PR
-          DRAFT_PR_NUMBER=$(gh pr list --repo "CUBRID/${TC_REPO}" --head "${BRANCH_NAME}" --state open --json number --jq '.[0].number' || echo "")
+          DRAFT_PR_NUMBER=$(gh pr list --repo "tw-kang/${TC_REPO}" --head "${BRANCH_NAME}" --state open --json number --jq '.[0].number' || echo "")
           
           if [ -n "${DRAFT_PR_NUMBER}" ]; then
             if [ "${IS_MERGED}" == "true" ]; then
               # PR was merged - close draft PR with note
-              gh pr close "${DRAFT_PR_NUMBER}" --repo "CUBRID/${TC_REPO}" --comment "Engine PR #${PR_NUMBER} was merged. Closing this draft PR."
+              gh pr close "${DRAFT_PR_NUMBER}" --repo "tw-kang/${TC_REPO}" --comment "Engine PR #${PR_NUMBER} was merged. Closing this draft PR."
               echo "::notice::Closed draft PR #${DRAFT_PR_NUMBER} in ${TC_REPO}"
             else
               # PR was closed without merge - close draft PR
-              gh pr close "${DRAFT_PR_NUMBER}" --repo "CUBRID/${TC_REPO}" --comment "Engine PR #${PR_NUMBER} was closed without merge. Closing this draft PR."
+              gh pr close "${DRAFT_PR_NUMBER}" --repo "tw-kang/${TC_REPO}" --comment "Engine PR #${PR_NUMBER} was closed without merge. Closing this draft PR."
               echo "::notice::Closed draft PR #${DRAFT_PR_NUMBER} in ${TC_REPO} (PR not merged)"
             fi
             echo "draft_pr_closed=true" >> "${GITHUB_OUTPUT}"
@@ -85,8 +85,8 @@ jobs:
           fi
           
           # Delete TC branch
-          if gh api "repos/CUBRID/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" > /dev/null 2>&1; then
-            gh api "repos/CUBRID/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" --method DELETE
+          if gh api "repos/tw-kang/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" > /dev/null 2>&1; then
+            gh api "repos/tw-kang/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" --method DELETE
             echo "::notice::Deleted '${BRANCH_NAME}' from ${TC_REPO}"
             echo "branch_deleted=true" >> "${GITHUB_OUTPUT}"
           else
