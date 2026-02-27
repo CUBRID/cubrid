@@ -177,16 +177,6 @@ curl -X DELETE \
   "https://api.github.com/repos/CUBRID/cubrid-testcases/git/refs/heads/tc/pr-1234"
 ```
 
-## 12. 테스트 결과 (tw-kang fork)
-
-| 시나리오 | 결과 | PR |
-|---------|------|-----|
-| PR open → TC 브랜치 생성 | ✅ | #22 |
-| PR merge → develop 머지 + 삭제 | ✅ | #22 |
-| PR close (reject) → 브랜치 삭제 | ✅ | #26 |
-| TC 브랜치 이미 존재 (skip) | ✅ | #22 |
-| App 미설치 → 실패 코멘트 | ✅ | #27 |
-| Revert PR → TC 자동 revert | ✅ | #28/#29 |
 
 ## 13. 제안사항
 
@@ -211,22 +201,3 @@ curl -X DELETE \
 - [tc-branch-finalize.yml](./tc-branch-finalize.yml) — TC 브랜치 머지/삭제
 
 ---
-
-## A. 추가 고려사항
-
-### 운영
-- 주간 워크플로우 성공률 점검
-- 월간 orphan TC 브랜치 정리
-- GitHub App 토큰 유효성 확인
-- 슬랙/이메일 실패 알림 설정
-
-### 보안 강화
-- `tc/pr-*` 브랜치 force push 제한
-- TC 머지 전 승인 프로세스
-- GitHub App private key 정기 교체
-- Audit logging 외부 시스템 연동
-
-### 트러블슈팅
-- **401/403 오류**: GitHub App 설치, 권한, PEM 형식 확인
-- **Rate Limit**: 시간당 5,000 요청 제한, exponential backoff 고려
-- **머지 순서 위반**: 즉시 TC 수동 머지, 팀 알림
