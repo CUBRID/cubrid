@@ -21,12 +21,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # ──────────────────────────────────────────────
-  # Job 1: PR merged → squash merge TC branch into develop, then delete
-  # ──────────────────────────────────────────────
-  merge-tc-branch:
-    name: Merge TC (${{ matrix.tc-repo }})
-    if: github.event.pull_request.merged == true
+  finalize-tc-branch:
+    name: Finalize TC (${{ matrix.tc-repo }})
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -53,7 +49,10 @@ jobs:
         shell: bash
         run: echo "::add-mask::${APP_TOKEN}"
 
+      # Only runs when PR was merged — squash merges TC changes into develop.
+      # When PR was closed without merge, this step is skipped and delete still runs.
       - name: Squash merge TC branch into develop
+        if: github.event.pull_request.merged == true
         env:
           APP_TOKEN: ${{ steps.app-token.outputs.token }}
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -74,7 +73,7 @@ jobs:
           # Extract PR header (e.g. [CBRD-1234]) from title
           PR_HEADER=$(echo "${PR_TITLE}" | grep -oE '^\[[A-Z]+-[0-9]+\]' || echo "")
 
-          # Clone TC repo develop
+          # Clone TC repo develop (treeless for speed)
           git clone --filter=blob:none \
             "https://x-access-token:${APP_TOKEN}@github.com/CUBRID/${TC_REPO}.git" \
             tc-repo
@@ -83,104 +82,25 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Fetch TC branch
-          git fetch origin "${BRANCH_NAME}:${BRANCH_NAME}"
+          # Ensure we're on develop (default branch might differ)
+          git checkout develop
 
-          # Squash merge
+          # Fetch and squash merge TC branch
+          git fetch origin "${BRANCH_NAME}:${BRANCH_NAME}"
           git merge --squash "${BRANCH_NAME}"
 
-          # Check if there are actual changes to commit
+          # Commit only if there are actual changes
           if git diff --cached --quiet; then
             echo "::notice::No TC changes in '${BRANCH_NAME}' for ${TC_REPO}. Skipping commit."
           else
-            COMMIT_MSG="${PR_HEADER} Merge TC branch '${BRANCH_NAME}' into develop"
-            # Trim leading space if no header
-            COMMIT_MSG=$(echo "${COMMIT_MSG}" | sed 's/^ //')
+            COMMIT_MSG="${PR_HEADER:+${PR_HEADER} }Merge TC branch '${BRANCH_NAME}' into develop"
             git commit -m "${COMMIT_MSG}"
             git push origin develop
             echo "::notice::Squash merged '${BRANCH_NAME}' into develop in ${TC_REPO}"
           fi
 
-      - name: Delete TC branch
-        if: success()
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          TC_REPO: ${{ matrix.tc-repo }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          BRANCH_NAME="tc/pr-${PR_NUMBER}"
-
-          # Delete branch via API (no clone needed)
-          if gh api "repos/CUBRID/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" > /dev/null 2>&1; then
-            gh api "repos/CUBRID/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" --method DELETE
-            echo "::notice::Deleted '${BRANCH_NAME}' from ${TC_REPO}"
-          else
-            echo "::notice::Branch '${BRANCH_NAME}' already deleted from ${TC_REPO}."
-          fi
-
-      - name: Comment on failure
-        if: failure()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          TC_REPO: ${{ matrix.tc-repo }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        shell: bash
-        run: |
-          gh pr comment "${PR_NUMBER}" \
-            --repo "${{ github.repository }}" \
-            --body "$(cat <<EOF
-          ⚠️ **TC Branch Finalize Failed** for \`${TC_REPO}\`
-
-          Failed to squash merge or delete \`tc/pr-${PR_NUMBER}\`.
-          Please check the [workflow run](${RUN_URL}) for details.
-
-          **Manual recovery:**
-          \`\`\`bash
-          git clone -b develop https://github.com/CUBRID/${TC_REPO}.git && cd ${TC_REPO}
-          git fetch origin tc/pr-${PR_NUMBER}:tc/pr-${PR_NUMBER}
-          git merge --squash tc/pr-${PR_NUMBER}
-          git commit -m \"Merge TC branch 'tc/pr-${PR_NUMBER}' into develop\"
-          git push origin develop
-          git push origin --delete tc/pr-${PR_NUMBER}
-          \`\`\`
-          EOF
-          )"
-
-  # ──────────────────────────────────────────────
-  # Job 2: PR closed (not merged) → delete TC branch
-  # ──────────────────────────────────────────────
-  delete-tc-branch:
-    name: Delete TC (${{ matrix.tc-repo }})
-    if: github.event.pull_request.merged == false
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      pull-requests: write # For failure comments
-    strategy:
-      matrix:
-        tc-repo:
-          - cubrid-testcases
-          - cubrid-testcases-private-ex
-      fail-fast: false
-    steps:
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.TC_APP_ID }}
-          private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
-          repositories: ${{ matrix.tc-repo }}
-          owner: CUBRID
-
-      - name: Mask token
-        env:
-          APP_TOKEN: ${{ steps.app-token.outputs.token }}
-        shell: bash
-        run: echo "::add-mask::${APP_TOKEN}"
-
+      # Runs after merge succeeds OR when merge step is skipped (PR not merged).
+      # Skipped only if the merge step above failed (preserves branch for retry).
       - name: Delete TC branch
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -191,12 +111,11 @@ jobs:
           set -euo pipefail
           BRANCH_NAME="tc/pr-${PR_NUMBER}"
 
-          # Delete branch via REST API
           if gh api "repos/CUBRID/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" > /dev/null 2>&1; then
             gh api "repos/CUBRID/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" --method DELETE
             echo "::notice::Deleted '${BRANCH_NAME}' from ${TC_REPO}"
           else
-            echo "::notice::Branch '${BRANCH_NAME}' does not exist in ${TC_REPO}. Nothing to delete."
+            echo "::notice::Branch '${BRANCH_NAME}' not found in ${TC_REPO}. Already deleted."
           fi
 
       - name: Comment on failure
@@ -205,23 +124,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           TC_REPO: ${{ matrix.tc-repo }}
+          ENGINE_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         shell: bash
         run: |
           gh pr comment "${PR_NUMBER}" \
-            --repo "${{ github.repository }}" \
-            --body "$(cat <<EOF
-          ⚠️ **TC Branch Delete Failed** for \`${TC_REPO}\`
+            --repo "${ENGINE_REPO}" \
+            --body "⚠️ **TC Branch Finalize Failed** for \`${TC_REPO}\`
 
-          Failed to delete \`tc/pr-${PR_NUMBER}\` branch.
-          Please check the [workflow run](${RUN_URL}) for details.
-
-          **Manual cleanup:**
-          \`\`\`bash
-          curl -X DELETE \\
-            -H \"Authorization: Bearer \$GITHUB_TOKEN\" \\
-            -H \"Accept: application/vnd.github+json\" \\
-            \"https://api.github.com/repos/CUBRID/${TC_REPO}/git/refs/heads/tc/pr-${PR_NUMBER}\"
-          \`\`\`
-          EOF
-          )"
+          Failed to process \`tc/pr-${PR_NUMBER}\`.
+          Please check the [workflow run](${RUN_URL}) for details."

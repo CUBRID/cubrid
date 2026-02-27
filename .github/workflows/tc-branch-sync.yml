@@ -125,18 +125,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           TC_REPO: ${{ matrix.tc-repo }}
+          ENGINE_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         shell: bash
         run: |
           gh pr comment "${PR_NUMBER}" \
-            --repo "${{ github.repository }}" \
-            --body "$(cat <<EOF
-          ⚠️ **TC Branch Sync Failed** for \`${TC_REPO}\`
+            --repo "${ENGINE_REPO}" \
+            --body "⚠️ **TC Branch Sync Failed** for \`${TC_REPO}\`
 
           Failed to create \`tc/pr-${PR_NUMBER}\` branch.
-          Please check the [workflow run](${RUN_URL}) for details.
-          EOF
-          )"
+          Please check the [workflow run](${RUN_URL}) for details."
 
   # ──────────────────────────────────────────────
   # Job 3: Revert PR → revert original TC merge commit
@@ -193,13 +191,18 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          # Ensure we're on develop (default branch might differ)
+          git checkout develop
+
           # Find the squash merge commit for the original PR's TC branch
           MERGE_COMMIT=$(git log --format="%H" --grep="${ORIGINAL_BRANCH}" develop -1 || echo "")
 
           if [ -z "${MERGE_COMMIT}" ]; then
-            echo "::error::Could not find merge commit for '${ORIGINAL_BRANCH}' in develop of ${TC_REPO}"
-            echo "::notice::The original PR may not have had TC changes in this repository."
-            exit 1
+            echo "::notice::No TC merge commit found for '${ORIGINAL_BRANCH}' in ${TC_REPO}. Creating empty revert branch."
+            git checkout -b "${BRANCH_NAME}" develop
+            git push origin "${BRANCH_NAME}"
+            echo "::notice::Created empty branch '${BRANCH_NAME}' in ${TC_REPO} (no TC changes to revert)."
+            exit 0
           fi
 
           echo "::notice::Found merge commit ${MERGE_COMMIT:0:12} for '${ORIGINAL_BRANCH}'"
@@ -207,13 +210,13 @@ jobs:
           # Create revert branch from develop
           git checkout -b "${BRANCH_NAME}" develop
 
-          # Attempt revert — try -m 1 first (merge commit), fall back to plain revert (squash commit)
+          # Attempt revert — try plain first (squash commit), fall back to -m 1 (merge commit)
           REVERT_OK=false
-          if git revert --no-edit -m 1 "${MERGE_COMMIT}" 2>/dev/null; then
+          if git revert --no-edit "${MERGE_COMMIT}" 2>/dev/null; then
             REVERT_OK=true
           else
             git revert --abort 2>/dev/null || true
-            if git revert --no-edit "${MERGE_COMMIT}" 2>/dev/null; then
+            if git revert --no-edit -m 1 "${MERGE_COMMIT}" 2>/dev/null; then
               REVERT_OK=true
             else
               git revert --abort 2>/dev/null || true
@@ -228,7 +231,7 @@ jobs:
           # Amend commit message to include engine PR header
           if [ -n "${PR_HEADER}" ]; then
             CURRENT_MSG=$(git log -1 --format="%s")
-            git commit --amend --no-edit -m "${PR_HEADER} ${CURRENT_MSG}"
+            git commit --amend -m "${PR_HEADER} ${CURRENT_MSG}"
           fi
 
           # Push revert branch
@@ -242,13 +245,13 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           ORIGINAL_PR_NUMBER: ${{ needs.detect-pr-type.outputs.original_pr_number }}
           TC_REPO: ${{ matrix.tc-repo }}
+          ENGINE_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         shell: bash
         run: |
           gh pr comment "${PR_NUMBER}" \
-            --repo "${{ github.repository }}" \
-            --body "$(cat <<EOF
-          ⚠️ **TC Revert Failed** for \`${TC_REPO}\`
+            --repo "${ENGINE_REPO}" \
+            --body "⚠️ **TC Revert Failed** for \`${TC_REPO}\`
 
           Could not automatically revert TC changes from PR #${ORIGINAL_PR_NUMBER}.
           This may be due to a merge conflict requiring manual resolution.
@@ -258,6 +261,4 @@ jobs:
           2. Find the merge commit for \`tc/pr-${ORIGINAL_PR_NUMBER}\` and revert it
           3. Push the branch
 
-          See [workflow run](${RUN_URL}) for details.
-          EOF
-          )"
+          See [workflow run](${RUN_URL}) for details."
