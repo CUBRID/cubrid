@@ -1465,7 +1465,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1369 Login is disabled for user "%1$s".
 
-1370 An AUTO_INCREMENT attribute already exists. A class can have only one AUTO_INCREMENT attribute.
+1370 A class can have only one AUTO_INCREMENT attribute.
 
 1371 Last Error
 

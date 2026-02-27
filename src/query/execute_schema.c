@@ -1585,20 +1585,9 @@ do_alter_change_auto_increment (PARSER_CONTEXT * const parser, PT_NODE * const a
 	{
 	  continue;
 	}
-      if (ai_serial != NULL)
-	{
-	  /*
-	   * we already found a serial. AMBIGUITY!
-	   * CUBRID 11.5 (guava) allows only one AUTO_INCREMENT attribute per class.
-	   * Consider removing this logic.
-	   */
-	  ERROR0 (error, ER_AUTO_INCREMENT_SINGLE_COL_AMBIGUITY);
-	  goto change_ai_error;
-	}
-      else
-	{
-	  ai_serial = cur_attr->auto_increment;
-	}
+
+      ai_serial = cur_attr->auto_increment;
+      break;
     }
 
   if (ai_serial == NULL)
@@ -4994,7 +4983,6 @@ do_set_auto_increment (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const char
 		       SM_ATTRIBUTE ** attr)
 {
   SM_ATTRIBUTE *ctmpl_attrs = ctemplate->attributes;
-  SM_ATTRIBUTE *att = NULL;
   int error = NO_ERROR;
 
   assert (attribute->info.attr_def.attr_type != PT_META_ATTR && attribute->info.attr_def.attr_type != PT_SHARED);
@@ -5012,31 +5000,20 @@ do_set_auto_increment (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const char
       return ER_AUTO_INCREMENT_SINGLE_COL_ONLY;
     }
 
-  if (attr != NULL)
-    {
-      att = *attr;
-    }
-
   MOP auto_increment_obj = NULL;
   error = do_create_auto_increment_serial (parser, &auto_increment_obj, ctemplate->name, attribute);
 
-
   if (error == NO_ERROR)
     {
-      if (att == NULL)
+      if (*attr == NULL)
 	{
-	  error = smt_find_attribute (ctemplate, attr_name, 0, &att);
+	  error = smt_find_attribute (ctemplate, attr_name, 0, attr);
 	}
-      if (error == NO_ERROR && att != NULL)
+      if (error == NO_ERROR && *attr != NULL)
 	{
-	  att->auto_increment = auto_increment_obj;
-	  att->flags |= SM_ATTFLAG_AUTO_INCREMENT;
+	  (*attr)->auto_increment = auto_increment_obj;
+	  (*attr)->flags |= SM_ATTFLAG_AUTO_INCREMENT;
 	}
-    }
-
-  if (error == NO_ERROR && attr != NULL)
-    {
-      *attr = att;
     }
 
   return error;
