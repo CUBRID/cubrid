@@ -84,7 +84,7 @@ static unsigned char powers_of_10[TWICE_NUM_MAX_PREC + 1][DB_NUMERIC_BUF_SIZE];
 static bool initialized_10 = false;
 #endif
 
-static double numeric_Pow_of_10[10] = {
+static const double numeric_Pow_of_10[10] = {
   1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9
 };
 

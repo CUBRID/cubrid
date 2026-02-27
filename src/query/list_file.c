@@ -6986,23 +6986,13 @@ qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_ID * list_p,
       return;
     }
 
-  THREAD_ENTRY *target_thread_p = thread_p;
-  while (target_thread_p->m_px_orig_thread_entry != NULL)
-    {
-      if (target_thread_p->m_px_orig_thread_entry == target_thread_p)
-	{
-	  break;
-	}
-      target_thread_p = target_thread_p->m_px_orig_thread_entry;
-      assert (target_thread_p != thread_p);
-    }
-
-  target_thread_p->m_qlist_count.fetch_add (inc);
+  THREAD_ENTRY *main_thread_p = thread_get_main_thread (thread_p);
+  main_thread_p->m_qlist_count.fetch_add (inc);
 
   if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
     {
-      er_print_callstack (ARG_FILE_LINE, "update qlist_count by %d to %d\n", inc,
-			  target_thread_p->m_qlist_count.load ());
+      er_print_callstack (ARG_FILE_LINE, "[thread %d with tran index %d] update qlist_count by %d to %d\n",
+			  main_thread_p->index, main_thread_p->tran_index, inc, main_thread_p->m_qlist_count.load ());
     }
 #endif // SERVER_MODE
 }

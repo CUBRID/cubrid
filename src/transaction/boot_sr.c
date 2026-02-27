@@ -111,6 +111,8 @@
 #define BOOT_FORMAT_MAX_LENGTH	500
 #define BOOTSR_MAX_LINE	 500
 
+#define BOOT_LOB_TEMP_DIR_KEYWORD "ces"
+
 typedef struct boot_dbparm BOOT_DB_PARM;
 struct boot_dbparm
 {
@@ -2560,6 +2562,15 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   if (boot_Lob_path[0] != '\0')
     {
       error_code = es_init (boot_Lob_path);
+
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      /* remove lob ces temp dir */
+      error_code = fileio_lob_remove_matching_dir (BOOT_LOB_TEMP_DIR_KEYWORD);
+
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -3056,6 +3067,9 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   session_states_finalize (thread_p);
 
   (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
+
+  /* remove lob ces temp dir */
+  (void) fileio_lob_remove_matching_dir (BOOT_LOB_TEMP_DIR_KEYWORD);
 
   // ha delays are registered and logged, and must be stopped before vacuum master
   log_stop_ha_delay_registration ();
@@ -5240,6 +5254,12 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
       boot_server_status (BOOT_SERVER_UP);
       log_final (thread_p);
 
+      /* remove lob ces temp dir */
+      error_code = fileio_lob_remove_matching_dir (BOOT_LOB_TEMP_DIR_KEYWORD);
+      if (error_code != NO_ERROR)
+	{
+	  goto error_rem_allvols;
+	}
     }
 
   /* Now delete the database */

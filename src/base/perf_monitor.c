@@ -92,7 +92,6 @@
 #define pthread_mutex_destroy(a)
 #define pthread_mutex_lock(a)	0
 #define pthread_mutex_unlock(a)
-static int rv;
 #endif /* SERVER_MODE */
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
