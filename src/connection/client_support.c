@@ -181,7 +181,6 @@ void
 client_support::css_client_sub_terminate (const char *host_name)
 {
   CSS_MAP_ENTRY *entry;
-  unsigned short rid;
 
   entry = m_conn_less.css_return_open_entry ((char *) host_name, &m_css_Client_anchor);
   if (entry != NULL)
