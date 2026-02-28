@@ -325,6 +325,21 @@ static GETOPT_LONG ua_Diag_Option[] = {
   {0, 0, 0, 0}
 };
 
+static UTIL_ARG_MAP ua_Filemgr_Option_Map[] = {
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {FILEMGR_DUMP_FILE_LIST_S, {ARG_BOOLEAN}, {0}},
+  {FILEMGR_PURGE_ORPHANED_HEAP_S, {ARG_BOOLEAN}, {0}},
+  {FILEMGR_OUTPUT_FILE_S, {ARG_STRING}, {0}},
+  {0, {0}, {0}}
+};
+
+static GETOPT_LONG ua_Filemgr_Option[] = {
+  {FILEMGR_DUMP_FILE_LIST_L, 0, 0, FILEMGR_DUMP_FILE_LIST_S},
+  {FILEMGR_PURGE_ORPHANED_HEAP_L, 0, 0, FILEMGR_PURGE_ORPHANED_HEAP_S},
+  {FILEMGR_OUTPUT_FILE_L, 1, 0, FILEMGR_OUTPUT_FILE_S},
+  {0, 0, 0, 0}
+};
+
 static UTIL_ARG_MAP ua_Patch_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
   {PATCH_RECREATE_LOG_S, {ARG_BOOLEAN}, {0}},
@@ -883,6 +898,7 @@ static UTIL_MAP ua_Utility_Map[] = {
   {OPTIMIZEDB, SA_ONLY, 1, UTIL_OPTION_OPTIMIZEDB, "optimizedb", ua_Optimize_Option, ua_Optimize_Option_Map},
   {INSTALLDB, SA_ONLY, 1, UTIL_OPTION_INSTALLDB, "installdb", ua_Install_Option, ua_Install_Option_Map},
   {DIAGDB, SA_ONLY, 1, UTIL_OPTION_DIAGDB, "diagdb", ua_Diag_Option, ua_Diag_Option_Map},
+  {FILEMGR, SA_ONLY, 1, UTIL_OPTION_FILEMGR, "filemgr", ua_Filemgr_Option, ua_Filemgr_Option_Map},
   {PATCHDB, SA_ONLY, 2, UTIL_OPTION_PATCHDB, "patchdb", ua_Patch_Option, ua_Patch_Option_Map},
   {CHECKDB, SA_CS, 1, UTIL_OPTION_CHECKDB, "checkdb", ua_Check_Option, ua_Check_Option_Map},
   {ALTERDBHOST, SA_ONLY, 1, UTIL_OPTION_ALTERDBHOST, "alterdbhost", ua_Alterdbhost_Option, ua_Alterdbhost_Option_Map},

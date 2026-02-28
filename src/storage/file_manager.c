@@ -821,6 +821,11 @@ static int file_tracker_item_dump (THREAD_ENTRY * thread_p, PAGE_PTR page_of_ite
 				   int index_item, bool * stop, void *args);
 static int file_tracker_item_dump_capacity (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
 					    FILE_EXTENSIBLE_DATA * extdata, int index_item, bool * stop, void *args);
+static int file_tracker_item_dump_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EXTENSIBLE_DATA * extdata,
+					int index_item, bool * stop, void *args);
+static int file_tracker_item_purge_orphaned_heap_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
+						       FILE_EXTENSIBLE_DATA * extdata, int index_item, bool * stop,
+						       void *args);
 static int file_tracker_item_dump_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EXTENSIBLE_DATA * extdata,
 					int index_item, bool * stop, void *args);
 static int file_tracker_item_dump_heap_capacity (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
@@ -10945,6 +10950,185 @@ file_tracker_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp)
 
   fprintf (fp, "    VFID   npages    type             FDES\n");
   error_code = file_tracker_map (thread_p, PGBUF_LATCH_READ, file_tracker_item_dump_capacity, fp);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * file_tracker_item_dump_file () - FILE_TRACK_ITEM_FUNC to dump file capacity
+ *
+ * return            : error code
+ * thread_p (in)     : thread entry
+ * page_of_item (in) : tracker page
+ * extdata (in)      : tracker extensible data
+ * index_item (in)   : item index
+ * stop (in)         : not used
+ * args (in)         : FILE *
+ */
+static int
+file_tracker_item_dump_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EXTENSIBLE_DATA * extdata,
+			     int index_item, bool * stop, void *args)
+{
+  FILE_TRACK_ITEM *item;
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FILE_HEADER *fhead = NULL;
+  FILE *fp = (FILE *) args;
+  int error_code = NO_ERROR;
+
+  item = (FILE_TRACK_ITEM *) file_extdata_at (extdata, index_item);
+
+  vpid_fhead.volid = item->volid;
+  vpid_fhead.pageid = item->fileid;
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  fhead = (FILE_HEADER *) page_fhead;
+  file_header_sanity_check (thread_p, fhead);
+
+  fprintf (fp, "%4d|%4d %5d  %-22s ", item->volid, item->fileid, fhead->n_page_user, file_type_to_string (fhead->type));
+  if ((FILE_TYPE) item->type == FILE_HEAP && item->metadata.heap.is_marked_deleted)
+    {
+      fprintf (fp, "Marked as deleted... ");
+    }
+
+  file_header_dump_descriptor (thread_p, fhead, fp);
+
+  pgbuf_unfix (thread_p, page_fhead);
+  return NO_ERROR;
+}
+
+/*
+ * file_tracker_dump_file_list () - dump all files
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * fp (in)       : output file
+ */
+int
+file_tracker_dump_file_list (THREAD_ENTRY * thread_p, FILE * fp)
+{
+  int error_code = NO_ERROR;
+
+  fprintf (fp, "    VFID   npages    type             FDES\n");
+  error_code = file_tracker_map (thread_p, PGBUF_LATCH_READ, file_tracker_item_dump_file, fp);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * file_tracker_item_purge_orphaned_heap_file () - FILE_TRACK_ITEM_FUNC to dump file capacity
+ *
+ * return            : error code
+ * thread_p (in)     : thread entry
+ * page_of_item (in) : tracker page
+ * extdata (in)      : tracker extensible data
+ * index_item (in)   : item index
+ * stop (in)         : not used
+ * args (in)         : FILE *
+ */
+static int
+file_tracker_item_purge_orphaned_heap_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
+					    FILE_EXTENSIBLE_DATA * extdata, int index_item, bool * stop, void *args)
+{
+  FILE_TRACK_ITEM *item;
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FILE_HEADER *fhead = NULL;
+  int error_code = NO_ERROR;
+
+  item = (FILE_TRACK_ITEM *) file_extdata_at (extdata, index_item);
+
+  vpid_fhead.volid = item->volid;
+  vpid_fhead.pageid = item->fileid;
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  fhead = (FILE_HEADER *) page_fhead;
+  file_header_sanity_check (thread_p, fhead);
+
+  if (fhead->type == FILE_HEAP || fhead->type == FILE_HEAP_REUSE_SLOTS)
+    {
+      OID *class_oid_p = &fhead->descriptor.heap.class_oid;
+      char *class_name_p = NULL;
+
+      if (!OID_ISNULL (class_oid_p))
+	{
+	  if (heap_get_class_name (thread_p, class_oid_p, &class_name_p) != NO_ERROR)
+	    {
+	      /* ignore */
+	      er_clear ();
+	    }
+
+	  if (class_name_p == NULL)
+	    {
+	      VFID vfid;
+
+	      vfid.volid = item->volid;
+	      vfid.fileid = item->fileid;
+
+	      if (page_fhead != NULL)
+		{
+		  pgbuf_unfix (thread_p, page_fhead);
+		  page_fhead = NULL;
+		}
+
+	      log_sysop_start (thread_p);
+
+	      if (file_destroy (thread_p, &vfid, false) != NO_ERROR)
+		{
+		  ASSERT_ERROR_AND_SET (error_code);
+		  log_sysop_abort (thread_p);
+		  return error_code;
+		}
+
+	      // log_sysop_end_logical_undo (thread_p, RVFL_DESTROY, NULL, sizeof (vfid), (char *) &vfid);
+	      log_sysop_commit (thread_p);
+	    }
+	  else
+	    {
+	      free_and_init (class_name_p);
+	    }
+	}
+    }
+
+  if (page_fhead != NULL)
+    {
+      pgbuf_unfix (thread_p, page_fhead);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * file_tracker_purge_orphaned_heap_files () - dump all files
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * fp (in)       : output file
+ */
+int
+file_tracker_purge_orphaned_heap_files (THREAD_ENTRY * thread_p)
+{
+  int error_code = NO_ERROR;
+
+  error_code = file_tracker_map (thread_p, PGBUF_LATCH_WRITE, file_tracker_item_purge_orphaned_heap_file, NULL);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

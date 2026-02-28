@@ -723,6 +723,7 @@ typedef enum
   OPTIMIZEDB,
   INSTALLDB,
   DIAGDB,
+  FILEMGR,
   PATCHDB,
   CHECKDB,
   ALTERDBHOST,
@@ -929,6 +930,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_OPTIMIZEDB                  "optimizedb"
 #define UTIL_OPTION_INSTALLDB                   "installdb"
 #define UTIL_OPTION_DIAGDB                      "diagdb"
+#define UTIL_OPTION_FILEMGR                     "filemgr"
 #define UTIL_OPTION_PATCHDB                     "emergency_patchlog"
 #define UTIL_OPTION_CHECKDB                     "checkdb"
 #define UTIL_OPTION_ALTERDBHOST                 "alterdbhost"
@@ -1150,6 +1152,14 @@ typedef struct _ha_config
 #define DIAG_OUTPUT_FILE_L                      "output-file"
 #define DIAG_EMERGENCY_S                        11202
 #define DIAG_EMERGENCY_L                        "emergency"
+
+/* filemgr option list */
+#define FILEMGR_DUMP_FILE_LIST_S                'l'
+#define FILEMGR_DUMP_FILE_LIST_L                "list"
+#define FILEMGR_PURGE_ORPHANED_HEAP_S           'p'
+#define FILEMGR_PURGE_ORPHANED_HEAP_L           "purge-orphaned-heap-files"
+#define FILEMGR_OUTPUT_FILE_S                   'o'
+#define FILEMGR_OUTPUT_FILE_L                   "output-file"
 
 /* patch option list */
 #define PATCH_RECREATE_LOG_S                    'r'
@@ -1744,6 +1754,7 @@ extern "C"
   extern int copydb (UTIL_FUNCTION_ARG * arg_map);
   extern int optimizedb (UTIL_FUNCTION_ARG * arg_map);
   extern int diagdb (UTIL_FUNCTION_ARG * arg_map);
+  extern int filemgr (UTIL_FUNCTION_ARG * arg_map);
   extern int patchdb (UTIL_FUNCTION_ARG * arg_map);
   extern int estimatedb_data (UTIL_FUNCTION_ARG * arg_map);
   extern int estimatedb_index (UTIL_FUNCTION_ARG * arg_map);

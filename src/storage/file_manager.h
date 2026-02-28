@@ -213,6 +213,8 @@ extern int file_tracker_interruptable_iterate (THREAD_ENTRY * thread_p, FILE_TYP
 extern DISK_ISVALID file_tracker_check (THREAD_ENTRY * thread_p);
 extern int file_tracker_dump (THREAD_ENTRY * thread_p, FILE * fp);
 extern int file_tracker_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp);
+extern int file_tracker_dump_file_list (THREAD_ENTRY * thread_p, FILE * fp);
+extern int file_tracker_purge_orphaned_heap_files (THREAD_ENTRY * thread_p);
 extern int file_tracker_dump_all_heap (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records);
 extern int file_tracker_dump_all_heap_capacities (THREAD_ENTRY * thread_p, FILE * fp);
 extern int file_tracker_dump_all_btree_capacities (THREAD_ENTRY * thread_p, FILE * fp);
