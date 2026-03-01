@@ -1675,9 +1675,10 @@ filemgr (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *db_name;
   const char *output_file = NULL;
+  const char *target_vfid_str = NULL;
   FILE *outfp = NULL;
   bool should_dump_file_list;
-  bool should_purge_orphaned_heap_files;
+  bool should_purge_invalid_heap_files;
   THREAD_ENTRY *thread_p;
 
   db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
@@ -1702,8 +1703,10 @@ filemgr (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
+  target_vfid_str = utility_get_option_string_value (arg_map, FILEMGR_FORCE_PURGE_TARGET_VFID_S, 0);
+
   should_dump_file_list = utility_get_option_bool_value (arg_map, FILEMGR_DUMP_FILE_LIST_S);
-  should_purge_orphaned_heap_files = utility_get_option_bool_value (arg_map, FILEMGR_PURGE_ORPHANED_HEAP_S);
+  should_purge_invalid_heap_files = utility_get_option_bool_value (arg_map, FILEMGR_PURGE_INVALID_HEAP_S);
 
   if (check_database_name (db_name))
     {
@@ -1732,9 +1735,14 @@ filemgr (UTIL_FUNCTION_ARG * arg)
       (void) file_tracker_dump_file_list (thread_p, outfp);
     }
 
-  if (should_purge_orphaned_heap_files == true)
+  if (should_purge_invalid_heap_files == true)
     {
-      (void) file_tracker_purge_orphaned_heap_files (thread_p);
+      (void) file_tracker_purge_invalid_heap_files (thread_p);
+    }
+
+  if (target_vfid_str != NULL)
+    {
+      (void) file_tracker_purge_target_file (thread_p, target_vfid_str);
     }
 
   db_shutdown ();

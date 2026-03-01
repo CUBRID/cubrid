@@ -1156,8 +1156,10 @@ typedef struct _ha_config
 /* filemgr option list */
 #define FILEMGR_DUMP_FILE_LIST_S                'l'
 #define FILEMGR_DUMP_FILE_LIST_L                "list"
-#define FILEMGR_PURGE_ORPHANED_HEAP_S           'p'
-#define FILEMGR_PURGE_ORPHANED_HEAP_L           "purge-orphaned-heap-files"
+#define FILEMGR_PURGE_INVALID_HEAP_S            'p'
+#define FILEMGR_PURGE_INVALID_HEAP_L            "purge-invalid-heap-files"
+#define FILEMGR_FORCE_PURGE_TARGET_VFID_S       't'
+#define FILEMGR_FORCE_PURGE_TARGET_VFID_L       "force-purge-target-vfid"
 #define FILEMGR_OUTPUT_FILE_S                   'o'
 #define FILEMGR_OUTPUT_FILE_L                   "output-file"
 

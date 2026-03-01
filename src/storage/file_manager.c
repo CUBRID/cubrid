@@ -823,9 +823,12 @@ static int file_tracker_item_dump_capacity (THREAD_ENTRY * thread_p, PAGE_PTR pa
 					    FILE_EXTENSIBLE_DATA * extdata, int index_item, bool * stop, void *args);
 static int file_tracker_item_dump_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EXTENSIBLE_DATA * extdata,
 					int index_item, bool * stop, void *args);
-static int file_tracker_item_purge_orphaned_heap_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
-						       FILE_EXTENSIBLE_DATA * extdata, int index_item, bool * stop,
-						       void *args);
+static int file_tracker_item_purge_invalid_heap_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
+						      FILE_EXTENSIBLE_DATA * extdata, int index_item, bool * stop,
+						      void *args);
+static int file_tracker_item_purge_target_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
+						FILE_EXTENSIBLE_DATA * extdata, int index_item, bool * stop,
+						void *args);
 static int file_tracker_item_dump_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EXTENSIBLE_DATA * extdata,
 					int index_item, bool * stop, void *args);
 static int file_tracker_item_dump_heap_capacity (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
@@ -11030,7 +11033,7 @@ file_tracker_dump_file_list (THREAD_ENTRY * thread_p, FILE * fp)
 }
 
 /*
- * file_tracker_item_purge_orphaned_heap_file () - FILE_TRACK_ITEM_FUNC to dump file capacity
+ * file_tracker_item_purge_invalid_heap_file () - FILE_TRACK_ITEM_FUNC to dump file capacity
  *
  * return            : error code
  * thread_p (in)     : thread entry
@@ -11041,8 +11044,8 @@ file_tracker_dump_file_list (THREAD_ENTRY * thread_p, FILE * fp)
  * args (in)         : FILE *
  */
 static int
-file_tracker_item_purge_orphaned_heap_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
-					    FILE_EXTENSIBLE_DATA * extdata, int index_item, bool * stop, void *args)
+file_tracker_item_purge_invalid_heap_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
+					   FILE_EXTENSIBLE_DATA * extdata, int index_item, bool * stop, void *args)
 {
   FILE_TRACK_ITEM *item;
   VPID vpid_fhead;
@@ -11117,18 +11120,151 @@ file_tracker_item_purge_orphaned_heap_file (THREAD_ENTRY * thread_p, PAGE_PTR pa
 }
 
 /*
- * file_tracker_purge_orphaned_heap_files () - dump all files
+ * file_tracker_purge_invalid_heap_files () - dump all files
  *
  * return        : error code
  * thread_p (in) : thread entry
  * fp (in)       : output file
  */
 int
-file_tracker_purge_orphaned_heap_files (THREAD_ENTRY * thread_p)
+file_tracker_purge_invalid_heap_files (THREAD_ENTRY * thread_p)
 {
   int error_code = NO_ERROR;
 
-  error_code = file_tracker_map (thread_p, PGBUF_LATCH_WRITE, file_tracker_item_purge_orphaned_heap_file, NULL);
+  error_code = file_tracker_map (thread_p, PGBUF_LATCH_WRITE, file_tracker_item_purge_invalid_heap_file, NULL);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
+/**
+ *  * @brief "volid|fileid" 형식의 문자열을 VFID 구조체로 변환합니다.
+ *   * @param target_vfid_str 입력 문자열 (예: "0|1088")
+ *    * @param out_vfid 결과를 담을 VFID 포인터
+ *     * @return 성공 시 true, 형식 오류 시 false
+ *      */
+bool
+parse_target_vfid (const char *target_vfid_str, VFID * out_vfid)
+{
+  if (target_vfid_str == NULL || out_vfid == NULL)
+    {
+      return false;
+    }
+
+  // sscanf를 통해 지정된 형식(short|int32)으로 파싱 시도
+  //     // 리턴값이 2여야 두 항목 모두 정상적으로 읽힌 것임
+  if (sscanf (target_vfid_str, "%hd|%d", &out_vfid->volid, &out_vfid->fileid) != 2)
+    {
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * file_tracker_item_purge_target_file () - FILE_TRACK_ITEM_FUNC to dump file capacity
+ *
+ * return            : error code
+ * thread_p (in)     : thread entry
+ * page_of_item (in) : tracker page
+ * extdata (in)      : tracker extensible data
+ * index_item (in)   : item index
+ * stop (in)         : not used
+ * args (in)         : FILE *
+ */
+static int
+file_tracker_item_purge_target_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EXTENSIBLE_DATA * extdata,
+				     int index_item, bool * stop, void *args)
+{
+  FILE_TRACK_ITEM *item;
+  VFID target_vfid;
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FILE_HEADER *fhead = NULL;
+  int error_code = NO_ERROR;
+
+  target_vfid = (VFID *) args;
+
+  item = (FILE_TRACK_ITEM *) file_extdata_at (extdata, index_item);
+
+  if (target_vfid->fileid != item->fileid || target_vfid->volid != item->volid)
+    {
+      return NO_ERROR;
+    }
+
+  vpid_fhead.volid = item->volid;
+  vpid_fhead.pageid = item->fileid;
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  fhead = (FILE_HEADER *) page_fhead;
+  file_header_sanity_check (thread_p, fhead);
+
+  if (fhead->type == FILE_HEAP || fhead->type == FILE_HEAP_REUSE_SLOTS || fhead->type == FILE_MULTIPAGE_OBJECT_HEAP
+      || fhead->type == FILE_BTREE || fhead->type == FILE_BTREE_OVERFLOW_KEY || fhead->type == FILE_QUERY_AREA
+      || fhead->type == FILE_TEMP || fhead->type == FILE_UNKNOWN_TYPE)
+    {
+      VFID vfid;
+
+      vfid.volid = item->volid;
+      vfid.fileid = item->fileid;
+
+      log_sysop_start (thread_p);
+
+      if (fhead->type == FILE_QUERY_AREA || fhead->type == FILE_TEMP)
+	{
+	  if (file_destroy (thread_p, &vfid, true) != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      log_sysop_abort (thread_p);
+	      return error_code;
+	    }
+	}
+      else
+	{
+	  if (file_destroy (thread_p, &vfid, false) != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      log_sysop_abort (thread_p);
+	      return error_code;
+	    }
+	}
+
+      // log_sysop_end_logical_undo (thread_p, RVFL_DESTROY, NULL, sizeof (vfid), (char *) &vfid);
+      log_sysop_commit (thread_p);
+    }
+
+  if (page_fhead != NULL)
+    {
+      pgbuf_unfix (thread_p, page_fhead);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * file_tracker_purge_target_file () - dump all files
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * fp (in)       : output file
+ */
+int
+file_tracker_purge_target_file (THREAD_ENTRY * thread_p, const char *target_vfid_str)
+{
+  VFID target_vfid = VFID_INITIALIZER;
+  int error_code = NO_ERROR;
+
+  parse_target_vfid (target_vfid_str, &target_vfid);
+
+  error_code = file_tracker_map (thread_p, PGBUF_LATCH_WRITE, file_tracker_item_purge_target_file, &target_vfid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
