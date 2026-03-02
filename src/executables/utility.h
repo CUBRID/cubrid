@@ -1154,14 +1154,16 @@ typedef struct _ha_config
 #define DIAG_EMERGENCY_L                        "emergency"
 
 /* filemgr option list */
+#define FILEMGR_SA_MODE_S                       'S'
+#define FILEMGR_SA_MODE_L                       "SA-mode"
+#define FILEMGR_CS_MODE_S                       'C'
+#define FILEMGR_CS_MODE_L                       "CS-mode"
 #define FILEMGR_DUMP_FILE_LIST_S                'l'
 #define FILEMGR_DUMP_FILE_LIST_L                "list"
 #define FILEMGR_PURGE_INVALID_HEAP_S            'p'
 #define FILEMGR_PURGE_INVALID_HEAP_L            "purge-invalid-heap-files"
 #define FILEMGR_FORCE_PURGE_TARGET_VFID_S       't'
 #define FILEMGR_FORCE_PURGE_TARGET_VFID_L       "force-purge-target-vfid"
-#define FILEMGR_OUTPUT_FILE_S                   'o'
-#define FILEMGR_OUTPUT_FILE_L                   "output-file"
 
 /* patch option list */
 #define PATCH_RECREATE_LOG_S                    'r'

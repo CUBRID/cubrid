@@ -248,6 +248,12 @@ enum net_server_request
   NET_SERVER_LD_UPDATE_STATS,
 
   NET_SERVER_VACUUM_DUMP,
+
+  /* file manager */
+  NET_SERVER_FILEMGR_DUMP_FILE_LIST,
+  NET_SERVER_FILEMGR_PURGE_INVALID_HEAP_FILES,
+  NET_SERVER_FILEMGR_PURGE_TARGET_FILE,
+
   /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.

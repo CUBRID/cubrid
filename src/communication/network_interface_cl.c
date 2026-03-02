@@ -10420,3 +10420,128 @@ loaddb_update_stats ()
   return NO_ERROR;
 #endif /* !CS_MODE */
 }
+
+/*
+ * file_dump_file_list -
+ *
+ * return:
+ */
+int
+file_dump_file_list (void)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error =
+    net_client_request (NET_SERVER_FILEMGR_DUMP_FILE_LIST, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL,
+			0);
+  if (!req_error)
+    {
+      (void) or_unpack_errcode (reply, &error);
+    }
+
+  return error;
+#else /* CS_MODE */
+  int success;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xfile_tracker_dump_file_list (thread_p);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+/*
+ * file_purge_invalid_heap_files -
+ *
+ * return:
+ */
+int
+file_purge_invalid_heap_files (void)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error =
+    net_client_request (NET_SERVER_FILEMGR_PURGE_INVALID_HEAP_FILES, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+			NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      (void) or_unpack_errcode (reply, &error);
+    }
+
+  return error;
+#else /* CS_MODE */
+  int success;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xfile_tracker_purge_invalid_heap_files (thread_p);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+/*
+ * file_purge_target_file -
+ *
+ * return:
+ */
+int
+file_purge_target_file (const char *target_vfid_str)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error, request_size;
+  OR_ALIGNED_BUF (32) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  request_size = length_const_string (target_vfid_str, NULL);
+  if (request_size > 32)
+    {
+      return ER_QPROC_INVALID_PARAMETER;
+    }
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  (void) pack_const_string (request, target_vfid_str);
+
+  req_error =
+    net_client_request (NET_SERVER_FILEMGR_PURGE_TARGET_FILE, request, request_size, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      (void) or_unpack_errcode (reply, &error);
+    }
+
+  return error;
+#else /* CS_MODE */
+  int success;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xfile_tracker_purge_target_file (thread_p, target_vfid_str);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
