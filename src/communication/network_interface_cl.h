@@ -452,4 +452,8 @@ extern int flashback_get_loginfo (int trid, char *user, OID * classlist, int num
 				  LOG_LSA * end_lsa, int *num_item, bool forward, char **info_list,
 				  int *invalid_class_idx);
 
+extern int file_dump_file_list (void);
+extern int file_purge_invalid_heap_files (void);
+extern int file_purge_target_file (const char *target_vfid_str);
+
 #endif /* _NETWORK_INTERFACE_CL_H_ */

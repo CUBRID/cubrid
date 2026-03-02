@@ -257,4 +257,11 @@ extern void scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *r
 /* flashback */
 extern void sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+
+/* file manager */
+extern void sfile_tracker_dump_file_list (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sfile_tracker_purge_invalid_heap_files (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
+						    int reqlen);
+extern void sfile_tracker_purge_target_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+
 #endif /* _NETWORK_INTERFACE_SR_H_ */
