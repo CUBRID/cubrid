@@ -1312,3 +1312,15 @@ valid options:\n\
                                   for flashback; default: outputs only SQL statements for flashback\n\
     --oldest                      flashback is performed in chronological order for SQL statements executed from start time to end time;\n\
                                   default: latest\n
+
+$set 59 MSGCAT_UTIL_SET_FILEMGR
+60 \
+filemgr: file manager utility\n\
+usage: %1$s filemgr [OPTION] database-name\n\
+\n\
+valid options:\n\
+    -S, --SA-mode                      stand-alone mode execution\n\
+    -C, --CS-mode                      client-server mode execution\n\
+    -l, --list                         list all files\n\
+    -p, --purge-invalid-heap-files     purge invalid heap files\n\
+    -t, --force-purge-target-vfid=VFID purge file by VFID in \"fileid|volid\" format\n
