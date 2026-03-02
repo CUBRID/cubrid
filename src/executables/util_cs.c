@@ -4061,7 +4061,7 @@ filemgr (UTIL_FUNCTION_ARG * arg)
   return EXIT_SUCCESS;
 
 print_filemgr_usage:
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DIAGDB, DIAGDB_MSG_USAGE),
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FILEMGR, FILEMGR_MSG_USAGE),
 	   basename (arg->argv0));
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 

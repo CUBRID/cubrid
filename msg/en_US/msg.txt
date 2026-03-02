@@ -1,0 +1,125 @@
+diff --git a/cubrid-cci b/cubrid-cci
+index 06beccfbe..ef5470ffa 160000
+--- a/cubrid-cci
++++ b/cubrid-cci
+@@ -1 +1 @@
+-Subproject commit 06beccfbe655f9329ce6930c419e70c7388948bb
++Subproject commit ef5470ffae4aa934425145e393fefc81899c84a7-dirty
+diff --git a/cubrid-jdbc b/cubrid-jdbc
+index 47149374a..4a40cb95c 160000
+--- a/cubrid-jdbc
++++ b/cubrid-jdbc
+@@ -1 +1 @@
+-Subproject commit 47149374ab632b77cff5160e7005df637c6832c0
++Subproject commit 4a40cb95c9c876f8ffea7640906ffae33d2efbf5
+diff --git a/cubridmanager b/cubridmanager
+index 8e4865a2a..aee66659e 160000
+--- a/cubridmanager
++++ b/cubridmanager
+@@ -1 +1 @@
+-Subproject commit 8e4865a2a9a694899283575e05017da2115121e9
++Subproject commit aee66659e11bec1b426ec11f872d36a9345425f8-dirty
+diff --git a/jsp/cmake/copy_submodule_jdbc.cmake b/jsp/cmake/copy_submodule_jdbc.cmake
+index 875d8273b..1c9affb7b 100644
+--- a/jsp/cmake/copy_submodule_jdbc.cmake
++++ b/jsp/cmake/copy_submodule_jdbc.cmake
+@@ -21,7 +21,7 @@ message ("[INFO] JDBC Driver built at cubrid-jdbc submodule")
+ set(JDBC_VERSION_FILE ${JDBC_DIR}/output/VERSION-DIST)
+ file(STRINGS ${JDBC_VERSION_FILE} JDBC_VERSION_STR)
+ execute_process (
+-    COMMAND ${CMAKE_COMMAND} -E copy ${JDBC_DIR}/JDBC-${JDBC_VERSION_STR}-cubrid.jar ${JSP_LIB_DIR}/cubrid-jdbc-${JDBC_VERSION_STR}.jar
++    COMMAND ${CMAKE_COMMAND} -E copy ${JDBC_DIR}/cubrid-jdbc-${JDBC_VERSION_STR}.jar ${JSP_LIB_DIR}/cubrid-jdbc-${JDBC_VERSION_STR}.jar
+ )
+ 
+ if (NOT EXISTS ${JSP_LIB_DIR}/cubrid-jdbc-${JDBC_VERSION_STR}.jar)
+diff --git a/msg/en_US/utils.msg b/msg/en_US/utils.msg
+index 34a58d269..926b43edf 100644
+--- a/msg/en_US/utils.msg
++++ b/msg/en_US/utils.msg
+@@ -1312,3 +1312,15 @@ valid options:\n\
+                                   for flashback; default: outputs only SQL statements for flashback\n\
+     --oldest                      flashback is performed in chronological order for SQL statements executed from start time to end time;\n\
+                                   default: latest\n
++
++$set 59 MSGCAT_UTIL_SET_FILEMGR
++60 \
++filemgr: file manager utility\n\
++usage: %1$s filemgr [OPTION] database-name\n\
++\n\
++valid options:\n\
++    -S, --SA-mode                      stand-alone mode execution\n\
++    -C, --CS-mode                      client-server mode execution\n\
++    -l, --list                         list all files\n\
++    -p, --purge-invalid-heap-files     purge invalid heap files\n\
++    -t, --force-purge-target-vfid=VFID purge file by VFID in \"fileid|volid\" format\n
+diff --git a/src/executables/util_cs.c b/src/executables/util_cs.c
+index 8f08b241d..8a6e27356 100644
+--- a/src/executables/util_cs.c
++++ b/src/executables/util_cs.c
+@@ -4608,7 +4608,7 @@ filemgr (UTIL_FUNCTION_ARG * arg)
+   return EXIT_SUCCESS;
+ 
+ print_filemgr_usage:
+-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DIAGDB, DIAGDB_MSG_USAGE),
++  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FILEMGR, FILEMGR_MSG_USAGE),
+ 	   basename (arg->argv0));
+   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+ 
+diff --git a/src/executables/utility.h b/src/executables/utility.h
+index de4a3defd..634b65ff5 100644
+--- a/src/executables/utility.h
++++ b/src/executables/utility.h
+@@ -89,7 +89,8 @@ typedef enum
+   MSGCAT_UTIL_SET_VACUUMDB = 55,
+   MSGCAT_UTIL_SET_CHECKSUMDB = 56,
+   MSGCAT_UTIL_SET_TDE = 57,
+-  MSGCAT_UTIL_SET_FLASHBACK = 58
++  MSGCAT_UTIL_SET_FLASHBACK = 58,
++  MSGCAT_UTIL_SET_FILEMGR = 59
+ } MSGCAT_UTIL_SET;
+ 
+ /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
+@@ -738,6 +739,12 @@ typedef enum
+   FLASHBACK_MSG_USAGE = 60
+ } MSGCAT_FLASHBACK_MSG;
+ 
++/* Message id in the set MSGCAT_UTIL_SET_FILEMGR */
++typedef enum
++{
++  FILEMGR_MSG_USAGE = 60
++} MSGCAT_FILEMGR_MSG;
++
+ typedef void *DSO_HANDLE;
+ 
+ typedef enum
+diff --git a/src/storage/file_manager.c b/src/storage/file_manager.c
+index 5ed4821a7..1ac5ade6f 100644
+--- a/src/storage/file_manager.c
++++ b/src/storage/file_manager.c
+@@ -10954,26 +10954,6 @@ xfile_tracker_dump_file_list (THREAD_ENTRY * thread_p)
+   return NO_ERROR;
+ }
+ 
+-#if 0
+-{
+-  char *class_name_p = NULL;
+-
+-  if (heap_get_class_name (thread_p, class_oid_p, &class_name_p) != NO_ERROR)
+-    {
+-      /* ignore */
+-      er_clear ();
+-    }
+-
+-  if (class_name_p == NULL)
+-    {
+-      VFID vfid;
+-
+-      vfid.volid = item->volid;
+-      vfid.fileid = item->fileid;
+-    }
+-}
+-#endif
+-
+ /*
+  * file_tracker_item_purge_invalid_heap_file () - purge invalid heap file
+  *

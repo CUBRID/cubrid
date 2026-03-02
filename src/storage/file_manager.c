@@ -10982,26 +10982,6 @@ xfile_tracker_dump_file_list (THREAD_ENTRY * thread_p)
   return NO_ERROR;
 }
 
-#if 0
-{
-  char *class_name_p = NULL;
-
-  if (heap_get_class_name (thread_p, class_oid_p, &class_name_p) != NO_ERROR)
-    {
-      /* ignore */
-      er_clear ();
-    }
-
-  if (class_name_p == NULL)
-    {
-      VFID vfid;
-
-      vfid.volid = item->volid;
-      vfid.fileid = item->fileid;
-    }
-}
-#endif
-
 /*
  * file_tracker_item_purge_invalid_heap_file () - purge invalid heap file
  *

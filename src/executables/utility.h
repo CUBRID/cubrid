@@ -89,6 +89,7 @@ typedef enum
   MSGCAT_UTIL_SET_VACUUMDB = 55,
   MSGCAT_UTIL_SET_CHECKSUMDB = 56,
   MSGCAT_UTIL_SET_TDE = 57,
+  MSGCAT_UTIL_SET_FILEMGR = 58
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -702,6 +703,12 @@ typedef enum
   TDE_MSG_MK_GENERATED = 30,
   TDE_MSG_USAGE = 60
 } MSGCAT_TDE_MSG;
+
+/* Message id in the set MSGCAT_UTIL_SET_FILEMGR */
+typedef enum
+{
+  FILEMGR_MSG_USAGE = 60
+} MSGCAT_FILEMGR_MSG;
 
 typedef void *DSO_HANDLE;
 

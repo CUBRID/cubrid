@@ -1233,3 +1233,15 @@ OPERATIONs: one of the operations must be given, and they are exclusive \n\
     -n, --generate-new-key        generate a new key in the key file (_keys); max count: 128\n\
     -d, --delete-key=KEY_INDEX    delete a key in the key file (_keys)\n\
     -c, --change-key=KEY_INDEX    change the key set on the database for another key in the key file (_keys)\n
+
+$set 58 MSGCAT_UTIL_SET_FILEMGR
+60 \
+filemgr: file manager utility\n\
+usage: %1$s filemgr [OPTION] database-name\n\
+\n\
+valid options:\n\
+    -S, --SA-mode                      stand-alone mode execution\n\
+    -C, --CS-mode                      client-server mode execution\n\
+    -l, --list                         list all files\n\
+    -p, --purge-invalid-heap-files     purge invalid heap files\n\
+    -t, --force-purge-target-vfid=VFID purge file by VFID in \"fileid|volid\" format\n
