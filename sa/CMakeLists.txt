@@ -518,7 +518,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/tde.c
 
   ${INDEX_HNSW_DIR}/vector_distance_omp_simd.cpp
-  ${INDEX_HNSW_DIR}/hnsw_usearch_ng.cpp
+  ${INDEX_HNSW_DIR}/hnsw_impl.cpp
   ${INDEX_HNSW_DIR}/hnsw.cpp
   ${INDEX_HNSW_DIR}/hnsw_api.cpp
   # ${STORAGE_DIR}/hnsw_storage_mem.cpp
@@ -755,8 +755,6 @@ target_include_directories(cubridsa
     ${FLEX_INCLUDE_DIRS}
     ${EP_INCLUDES}
   )
-
-target_link_libraries(cubridsa PRIVATE usearch::usearch)
 
 target_link_libraries(cubridsa
   PRIVATE

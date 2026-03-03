@@ -466,9 +466,8 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/system_catalog.c
   ${STORAGE_DIR}/tde.c
 
-  # ${STORAGE_DIR}/hnsw_usearch.cpp
   ${INDEX_HNSW_DIR}/vector_distance_omp_simd.cpp
-  ${INDEX_HNSW_DIR}/hnsw_usearch_ng.cpp
+  ${INDEX_HNSW_DIR}/hnsw_impl.cpp
   ${INDEX_HNSW_DIR}/hnsw.cpp
   ${INDEX_HNSW_DIR}/hnsw_api.cpp
   # ${STORAGE_DIR}/hnsw_storage_mem.cpp
@@ -670,8 +669,6 @@ if(WIN32)
   set_target_properties(cubrid PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/libcubrid/libcubrid.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
 target_include_directories(cubrid PRIVATE ${JAVA_INC} ${EP_INCLUDES} ${FLEX_INCLUDE_DIRS})
-
-target_link_libraries(cubrid PRIVATE usearch::usearch)
 
 if(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
