@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Cache oh-my-opencode
         id: cache-oh-my-opencode
@@ -77,7 +77,9 @@ jobs:
             2. Write all comments in Korean. Be EXTREMELY concise.
             3. Check for bugs, memory leaks, and readability.
             4. Use GitHub Suggestion syntax (```suggestion) for all code fixes.
-
+            5. STRICTLY FORBIDDEN: You are a REVIEWER, not a contributor. Do NOT run `git add`, `git commit`, `git push`, or any git state modification commands under any circumstances.
+            6. You MUST ONLY use `gh api` to leave comments. Do not try to modify the local repository state.
+            
             [HOW TO POST COMMENTS]
             To avoid Bash syntax errors with backticks, you MUST use `cat << 'EOF'` to create a text file, then upload it via `gh api`. Use this EXACT block for each comment:
 
