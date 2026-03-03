@@ -1,6 +1,6 @@
 # src/broker/ — Connection Broker & CAS
 
-138 code files. Separate process architecture — broker spawns CAS (Common Application Server) worker processes.
+Separate process architecture — broker spawns CAS (Common Application Server) worker processes.
 
 ## Key Files
 
@@ -16,11 +16,11 @@
 | `broker_config.c` | Broker configuration parsing |
 | `broker_monitor.c` | `broker_monitor` utility |
 | `broker_admin.c` | `cubrid broker` admin commands |
-| `broker_log.c` | Query logging (slow query log, error log) |
+| `broker_log_util.c/h` | Log file parsing and analysis utilities |
+| `broker_log_top.c/h` | Query log analysis (top queries) |
 | `broker_acl.c` | Access control list management |
 | `shard_metadata.c` | Shard routing metadata |
 | `shard_proxy.c` | Shard proxy process |
-| `cas_dbms_util.c` | DBMS utility functions for CAS |
 
 ## Architecture
 
@@ -41,7 +41,7 @@ Client App → Broker (port listener) → CAS₁, CAS₂, ... CASₙ → cub_ser
 | Fix client dispatch | `broker.c` |
 | Fix query execution in CAS | `cas_execute.c` |
 | Fix connection pooling | `cas.c`, `broker_shm.c` |
-| Fix slow query log | `broker_log.c` |
+| Fix slow query log | `broker_log_util.c`, `broker_log_top.c` |
 | Fix broker config | `broker_config.c` |
 | Fix ACL/security | `broker_acl.c` |
 | Fix shard routing | `shard_metadata.c`, `shard_proxy.c` |
@@ -60,6 +60,3 @@ Client App → Broker (port listener) → CAS₁, CAS₂, ... CASₙ → cub_ser
 - `T_BROKER_INFO` and `T_APPL_SERVER_INFO` are packed structs in shared memory — alignment matters
 - Shard code (`shard_*.c`) is a significant subsystem within this module
 
-## Owner
-
-CODEOWNERS: @beyondykk9

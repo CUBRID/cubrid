@@ -1,6 +1,6 @@
 # src/xasl/ — XASL Node Type Definitions
 
-18 code files. Defines XASL plan structures used by both parser (client) and executor (server).
+Defines XASL plan structures used by both parser (client) and executor (server).
 
 ## Key Files
 
@@ -11,7 +11,7 @@
 | `xasl_aggregate.hpp` | Aggregate node definitions |
 | `xasl_analytic.hpp` | Analytic/window function node definitions |
 | `xasl_stream.hpp` | XASL stream (serialization format) constants |
-| `xasl_sig.hpp` | XASL signature types |
+| `xasl_sp.hpp` | XASL stored procedure types |
 
 ## Role in Pipeline
 
@@ -44,6 +44,3 @@ This module defines the **shared types** used at serialization and execution bou
 - Shared between `CS_MODE` (client) and `SERVER_MODE` — no mode-specific guards allowed
 - `REGU_VARIABLE` is the most complex type — deeply nested unions
 
-## Owner
-
-CODEOWNERS: @beyondykk9

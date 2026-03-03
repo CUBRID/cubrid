@@ -1,18 +1,17 @@
 # AGENTS.md — CUBRID Database Engine
 
-**Generated:** 2026-02-24 | **Commit:** 60ea5f1e4 | **Branch:** add_timestamps_and_invalidated_time_for_additional_system_catalog
 
 ## Overview
 
 CUBRID is an open-source C/C++17 RDBMS with a Java PL engine for stored procedures.
-~276K lines of code across 5930 files. Apache 2.0 license. Version 11.5.x.
+Apache 2.0 license. Version 11.5.x.
 
 **Note:** `.c` files are compiled as C++17 (see `c_to_cpp.sh`). Large files (10K–30K+ lines) are intentional, not tech debt.
 
 ## Structure
 
 ```
-├── src/                 # C/C++ engine (26 modules, see src/AGENTS.md)
+├── src/                 # C/C++ engine (see src/AGENTS.md)
 │   ├── parser/          # SQL → parse tree → XASL (bison/flex)
 │   ├── optimizer/       # Cost-based query planning
 │   ├── query/           # XASL execution, scan managers
@@ -37,9 +36,9 @@ CUBRID is an open-source C/C++17 RDBMS with a Java PL engine for stored procedur
 │   └── win_tools/       # Windows service/tray tools
 ├── unit_tests/          # Catch2 v2.11.3 (see unit_tests/AGENTS.md)
 ├── pl_engine/           # Java PL server, Gradle (see pl_engine/AGENTS.md)
-├── cubrid-jdbc/         # JDBC driver (Ant, git submodule)
-├── cubrid-cci/          # CCI C driver (CMake submodule)
-├── cubridmanager/       # CUBRID Manager server
+├── cubrid-jdbc/         # JDBC driver (git submodule, Ant build)
+├── cubrid-cci/          # CCI C driver (git submodule, CMake build)
+├── cubridmanager/       # CUBRID Manager server (git submodule)
 ├── broker/              # Broker configs + top-level CMake target
 ├── cs/                  # Client-server library (cubridcs) CMake target
 ├── sa/                  # Standalone library (cubridsa) CMake target
@@ -56,13 +55,15 @@ CUBRID is an open-source C/C++17 RDBMS with a Java PL engine for stored procedur
 └── win/                 # Windows build scripts
 ```
 
+> **Note:** Submodule canonical URLs and pinned revisions are defined in `.gitmodules`.
+
 ## Where to Look
 
 | Task | Location | Notes |
 |------|----------|-------|
 | Add SQL syntax | `src/parser/csql_grammar.y` | Bison grammar, ~646KB |
-| Add built-in function | parser → type_checking → xasl_generation → query/ | See `.github/copilot-instructions.md` |
-| Add info schema view | `src/object/schema_information_schema_*.cpp` | Strict formatting rules |
+| Add built-in function | parser → type_checking → xasl_generation → query/ | Full pipeline across 4 modules |
+| Add info schema view | `src/object/schema_system_catalog_install.cpp` + `*_install_query_spec.cpp` | Strict formatting rules |
 | Fix query execution | `src/query/query_executor.c` | Entry: `qexec_execute_mainblock()` |
 | Fix index scan | `src/storage/btree.c` | Entry: `btree_find()`, `btree_range_search()` |
 | Fix locking/deadlock | `src/transaction/lock_manager.c` | Wait-for graph in `wait_for_graph.c` |
@@ -92,32 +93,13 @@ SQL text
 ## Build Commands
 
 ```bash
-# Debug build (most common)
-./build.sh -m debug
-
-# Release build
-./build.sh -m release
-
-# CMake presets (IDE integration)
-cmake --preset debug && cmake --build build_preset_debug
-
-# With unit tests
-./build.sh -m debug -c "-DUNIT_TESTS=ON"
-
-# Single unit test
-cmake --preset debug -DUNIT_TEST_STRING_BUFFER=ON && cmake --build build_preset_debug --target test_string_buffer
-
-# PL engine tests
-ninja pl_unittest  # or: cd pl_engine && ./gradlew test
-
-# Run unit tests
-cd build_preset_debug && ctest
-
-# Packaging
-./build.sh -z tarball    # Binary tar.gz
-./build.sh -z shell      # Self-extracting .sh
-./build.sh -z rpm        # RPM package
+./build.sh -m debug            # Debug build (most common)
+./build.sh -m release           # Release build
+./build.sh -m debug -c "-DUNIT_TESTS=ON"  # With unit tests
+cmake --preset debug && cmake --build build_preset_debug  # CMake presets
 ```
+
+Run `./build.sh -h` for full options (`-m` mode, `-g` generator, `-C` compiler, `-z` packaging).
 
 ### build.sh Options
 
@@ -146,60 +128,29 @@ Parser/optimizer code is client-side: guarded with `#if !defined(SERVER_MODE)`.
 
 ### Formatting (CI-enforced)
 
-- **Indentation**: 2 spaces, no tabs
-- **Line width**: 120 characters
-- **C/H files**: Formatted with `indent -l120 -lc120`
-- **C++/HPP files**: Formatted with `astyle --style=gnu --indent=spaces=2 --max-code-length=120 --align-pointer=name`
-- **Java files**: `google-java-format`
-- **Braces**: GNU style — opening brace on new line, indented to body level:
-  ```c
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-  ```
-- **Function braces**: Column 0
-- **Pointer asterisk**: Attached to variable: `PT_NODE *node`
-- **Spaces**: Before `(` in calls: `er_set (ER_ERROR_SEVERITY, ...)`
+- **Indentation**: 2 spaces, no tabs. **Line width**: 120 chars
+- **C/H files**: `indent -l120 -lc120`. **C++/HPP**: `astyle --style=gnu`. **Java**: `google-java-format`
+- **Braces**: GNU style — opening brace on new line, indented to body level. Function braces at column 0
+- **Pointer asterisk**: Attached to variable: `PT_NODE *node`. **Spaces** before `(` in calls
 
 ### Naming
 
-| Element | Convention | Example |
-|---------|-----------|---------|
-| C functions | `module_action_object` | `pt_make_flat_name_list` |
-| C++ namespaces | Short lowercase | `cubthread`, `lockfree` |
-| C++ classes | snake_case | `worker_pool` |
-| Macros/constants | UPPER_SNAKE | `NO_ERROR`, `ARG_FILE_LINE` |
-| C struct typedefs | UPPER_SNAKE | `PT_NODE`, `DB_VALUE` |
-| Header guards | `_FILENAME_H_` | NOT `#pragma once` |
+- C functions: `module_action_object` (e.g. `pt_make_flat_name_list`)
+- C++ namespaces: short lowercase (`cubthread`, `lockfree`). Classes: `snake_case`
+- Macros/constants/C struct typedefs: `UPPER_SNAKE` (`NO_ERROR`, `PT_NODE`)
+- Header guards: `_FILENAME_H_` (NOT `#pragma once`)
 
 ### Includes
 
-- Project: `"quotes"` — System: `<angle brackets>`
-- `config.h` first in `.c` files
-- C++ STL after project headers
+- Project: `"quotes"` — System: `<angle brackets>`. `config.h` first in `.c` files
 - **`memory_wrapper.hpp` MUST be the LAST include** with comment: `// XXX: SHOULD BE THE LAST INCLUDE HEADER`
-  - CI enforces this for all `.c/.cpp` files listed in `cubrid/CMakeLists.txt`
-
-### Comments
-
-- C files: `/* ... */` only (even single-line)
-- C++ files: `//` acceptable
-- File headers: Apache 2.0 license block
+- C files: `/* ... */` comments only. C++ files: `//` acceptable. File headers: Apache 2.0 license block
 
 ## Error Handling
 
-```c
-er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+Error codes in `src/base/error_code.h` — always negative, `NO_ERROR = 0`. Use `er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CODE, ...)` and check `error != NO_ERROR`.
 
-/* Error codes: src/base/error_code.h — always negative, NO_ERROR = 0 */
-if (error != NO_ERROR)
-  {
-    return error;
-  }
-```
-
-Adding new error codes requires updates in 5 places:
+Adding new error codes requires updates in 6 places:
 1. `src/base/error_code.h` — Define the code
 2. `src/compat/dbi_compat.h` — Client-visible copy
 3. `msg/en_US.utf8/cubrid.msg` — English message
@@ -209,12 +160,7 @@ Adding new error codes requires updates in 5 places:
 
 ## Memory Management
 
-```c
-free_and_init (ptr);                      /* Free + nullify (ALWAYS use instead of bare free) */
-db_private_alloc (thread_p, size);         /* Thread-local server alloc */
-db_private_free_and_init (thread_p, ptr);  /* Thread-local server free */
-parser_alloc (parser, length);             /* Parser-lifetime alloc (freed on parser destroy) */
-```
+Use `free_and_init(ptr)` (never bare `free`), `db_private_alloc(thread_p, size)` for server, `parser_alloc(parser, len)` for parser-lifetime.
 
 ## Key Data Structures
 
@@ -230,20 +176,11 @@ parser_alloc (parser, length);             /* Parser-lifetime alloc (freed on pa
 
 ## CI
 
-| System | Config | Purpose |
-|--------|--------|---------|
-| GitHub Actions | `.github/workflows/check.yml` | License headers, PR title (`[CBRD-NNN] ...`), code style, cppcheck, memory_wrapper check |
-| Jenkins | `Jenkinsfile` | Primary: parallel release/debug builds, Docker `cubridci/cubridci:develop` |
-| CircleCI | `.circleci/config.yml` | SQL tests (10x parallel), shell tests (50x parallel) |
-| Travis CI | `.travis.yml` | Basic build verification |
+- **GitHub Actions** (`.github/workflows/check.yml`): License headers, PR title, code style, cppcheck, memory_wrapper check
+- **Jenkins** (`Jenkinsfile`): Primary build — parallel release/debug, Docker `cubridci/cubridci:develop`
+- **CircleCI** (`.circleci/config.yml`): SQL tests (10x parallel), shell tests (50x parallel)
 
-### PR Title Format
-
-Must match: `^\[[A-Z]+-\d+\]\s.+` — e.g., `[CBRD-12345] Fix buffer overflow in btree`
-
-### CLA
-
-CLA (Contributor License Agreement) required before PR merge.
+PR title must match `^\[[A-Z]+-\d+\]\s.+` (e.g. `[CBRD-12345] Fix buffer overflow in btree`). CLA required before merge.
 
 ## Anti-Patterns (This Project)
 
@@ -261,8 +198,8 @@ CLA (Contributor License Agreement) required before PR merge.
 ## Gotchas
 
 - Parser/optimizer run **client-side** (`#if !defined(SERVER_MODE)`), not on the server
-- `src/broker/` (265 files) and top-level `broker/` are different: src/ has implementation, top-level has CMake target
-- LOB handling is scattered across 7 modules (`base/lob/`, `compat/lob/`, `storage/lob/`, etc.) — cross-cutting concern
+- `src/broker/` and top-level `broker/` are different: src/ has implementation, top-level has CMake target
+- LOB handling: LOB locator in `src/object/lob_locator.cpp`, external storage backend in `src/storage/es.c` — cross-cutting concern
 - `csql_grammar.y` is 646KB — edits need care, bison regeneration is slow
 - Backup files (`.c~`, `.cpp.orig`) exist in repo — ignore them
 - Some unit test modules are disabled: `LOCKFREE`, `LOADDB`, `MEMORY_MONITOR` (compilation issues)
@@ -272,7 +209,6 @@ CLA (Contributor License Agreement) required before PR merge.
 
 - `src/parser/parse_tree.h` — PT_NODE definitions and macros
 - `src/base/error_code.h` — All error codes
-- `.github/copilot-instructions.md` — Extended architecture, common patterns, info schema rules
 - `src/object/schema_system_catalog_constants.h` — Catalog table name constants
 - `docs/install_build_requirements.md` — Build dependency installation
 

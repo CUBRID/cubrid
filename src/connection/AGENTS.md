@@ -1,6 +1,6 @@
 # src/connection/ — Client-Server Communication
 
-28 code files. TCP networking, CSS protocol, heartbeat.
+TCP networking, CSS protocol, heartbeat.
 
 ## Key Files
 
@@ -46,6 +46,3 @@
 - `heartbeat.c` is HA-specific — only active in replicated setups
 - `css_send_data()` / `css_receive_data()` can partially send/recv — must handle short reads/writes
 
-## Owner
-
-CODEOWNERS: @beyondykk9

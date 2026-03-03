@@ -1,6 +1,6 @@
 # src/transaction/ — MVCC, WAL, Locking, Recovery, Boot
 
-80 code files. Server-side. Largest module by scope.
+Server-side. Largest module by scope.
 
 ## Key Files
 
@@ -22,12 +22,6 @@
 | `log_tran_table.c` | Transaction table management |
 | `transaction_sr.c` | Server-side transaction ops: commit, abort, savepoint |
 | `transaction_cl.c` | Client-side transaction control |
-
-## Subdirectories
-
-| Dir | Purpose |
-|-----|---------|
-| `lob/` | LOB locator tracking during transactions |
 
 ## Where to Look
 
@@ -83,6 +77,3 @@ Database → Table (SCH-S/SCH-M/IX/IS/S/X) → Row (S/X)
 - Recovery code must handle partially-written log pages (torn writes)
 - Boot sequence has strict ordering — server must initialize subsystems in correct order
 
-## Owner
-
-CODEOWNERS: @hornetmj

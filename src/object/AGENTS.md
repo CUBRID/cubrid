@@ -1,6 +1,6 @@
 # src/object/ — Schema, Catalog, Auth, Information Schema
 
-80 code files. Schema management, system catalog, authorization, triggers.
+Schema management, system catalog, authorization, triggers.
 
 ## Key Files
 
@@ -8,10 +8,9 @@
 |------|------|
 | `schema_manager.c` | Class/attribute/index creation, modification, dropping |
 | `schema_template.c` | Schema edit templates (transactional schema changes) |
-| `schema_system_catalog_install.cpp` | System catalog table creation (`_db_class`, `_db_attribute`, etc.) |
+| `schema_system_catalog_install.cpp` | System catalog table creation + information schema view definitions |
 | `schema_system_catalog_constants.h` | Catalog table name constants (`CT_CLASS_NAME`, etc.) |
-| `schema_information_schema_install.cpp` | Information schema view definitions (columns, owner, grants) |
-| `schema_information_schema_install_query_spec.cpp` | Information schema SQL query generation |
+| `schema_system_catalog_install_query_spec.cpp` | Information schema SQL query generation |
 | `authenticate.c` | User authentication, privilege checking |
 | `trigger_manager.c` | Trigger creation, execution, event handling |
 | `class_object.c` | In-memory class representation manipulation |
@@ -28,7 +27,7 @@
 | Task | File |
 |------|------|
 | Add catalog table/column | `schema_system_catalog_install.cpp` + `schema_system_catalog_constants.h` |
-| Add info schema view | `schema_information_schema_install.cpp` + `*_query_spec.cpp` |
+| Add info schema view | `schema_system_catalog_install.cpp` + `*_install_query_spec.cpp` |
 | Fix auth/privilege | `authenticate.c` |
 | Fix trigger | `trigger_manager.c` |
 | Modify schema DDL | `schema_manager.c`, `schema_template.c` |
@@ -36,7 +35,7 @@
 
 ## Information Schema Rules (STRICT)
 
-Query specs in `schema_information_schema_install_query_spec.cpp` have CI-enforced formatting:
+Query specs in `schema_system_catalog_install_query_spec.cpp` have CI-enforced formatting:
 
 1. Indent: 1 tab + 2 spaces for statements, 2 spaces for CASE
 2. Lines end with space EXCEPT before `)` or after `(`
@@ -67,6 +66,3 @@ Query specs in `schema_information_schema_install_query_spec.cpp` have CI-enforc
 - Class type constants: `SM_CLASS_CT` (base table), `SM_VCLASS_CT` (view)
 - SERIAL ranges: MINVALUE = -10^36, MAXVALUE = 10^37 (NOT ±10^38)
 
-## Owner
-
-CODEOWNERS: @beyondykk9

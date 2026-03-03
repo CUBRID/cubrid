@@ -1,6 +1,6 @@
 # src/parser/ — SQL Parsing & Analysis
 
-36 code files. Client-side only (`#if !defined(SERVER_MODE)`).
+Client-side only (`#if !defined(SERVER_MODE)`).
 
 ## Key Files
 

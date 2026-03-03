@@ -1,6 +1,6 @@
 # src/storage/ — Buffer Pool, Heap, B-tree, Disk
 
-56 code files. Server-side (`SERVER_MODE` / `SA_MODE`).
+Server-side (`SERVER_MODE` / `SA_MODE`).
 
 ## Key Files
 
@@ -17,14 +17,7 @@
 | `slotted_page.c` | — | Slotted page format: slot directory + records |
 | `storage_common.h` | — | `VPID`, `OID`, `HFID`, `BTID` — core identifiers |
 | `oid.c/h` | — | Object identifier operations |
-| `log_storage.hpp` | — | Log volume storage management |
-| `es.c` | — | External storage (LOB file storage) |
-
-## Subdirectories
-
-| Dir | Purpose |
-|-----|---------|
-| `lob/` | LOB storage backend (part of cross-cutting LOB concern) |
+| `es.c/h` | — | External storage (LOB file storage backend: POSIX, OWFS) |
 
 ## Where to Look
 
