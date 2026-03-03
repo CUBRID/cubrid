@@ -41,7 +41,7 @@ namespace cubhnsw
     root_size = root.get_size();
   }
 
-  storage::page_handle
+  page_guard
   storage::get_block_to_insert (algo_context_t &context, block_group_id_t &vfid, block_id_t &last_vpid, std::size_t bytes)
   {
     PAGE_PTR page_ptr = nullptr;
@@ -63,10 +63,7 @@ namespace cubhnsw
 	  }
       }
 
-    return page_handle (page_ptr, [this, thread_p] (PAGE_PTR page_ptr) noexcept
-    {
-      pgbuf_set_dirty (thread_p, page_ptr, FREE);
-    });
+    return page_guard (page_ptr, thread_p);
   }
 
   PAGE_PTR
@@ -90,12 +87,38 @@ namespace cubhnsw
     return page_ptr;
   }
 
+  void
+  storage::release_pinned_ (void *owner,
+			    pinned_t::data_t &blk,
+			    void *page_ptr,
+			    void *thread_p) noexcept
+  {
+    auto *t = reinterpret_cast<cubthread::entry *> (thread_p);
+    auto *p = reinterpret_cast<PAGE_PTR> (page_ptr);
+
+    if (t == nullptr || p == nullptr)
+      {
+	return;
+      }
+
+    if (blk.mode == lock_mode::exclusive)
+      {
+	pgbuf_set_dirty (t, p, FREE);
+      }
+    else
+      {
+	pgbuf_unfix (t, p);
+      }
+
+    (void) owner;
+  }
+
   slot_id_t
   storage::add_node (algo_context_t &context, const key_id_t &key, const float *vector, const level_t &level)
   {
     // insert node
     std::size_t bytes = this->node_bytes_ (level, get_dimension(), get_connectivity());
-    page_handle page_ptr = get_block_to_insert (context, m_vfid, m_last_node_vpid, bytes);
+    page_guard page_ptr = get_block_to_insert (context, m_vfid, m_last_node_vpid, bytes);
 
     RECDES recdes;
     char rec_buf[IO_MAX_PAGE_SIZE];
@@ -144,22 +167,14 @@ namespace cubhnsw
 
     OID oid = { root_vpid.pageid, 1, root_vpid.volid };
 
-    cubthread::entry *thread_p = context.m_thread_p;
-    return make_pinned_block (oid, (std::byte *) root_page_ptr + slotp->offset_to_record,
-	   slotp->record_length, mode,
-	   [this, root_page_ptr, thread_p] (auto& blk) noexcept
-    {
-      if (blk.mode == lock_mode::exclusive)
-	{
-	  pgbuf_set_dirty (thread_p, reinterpret_cast<PAGE_PTR> (root_page_ptr), FREE);
-	}
-      else
-	{
-	  pgbuf_unfix (thread_p, reinterpret_cast<PAGE_PTR> (root_page_ptr));
-	}
-    }
+    pinned_t::data_t blk;
+    blk.id = oid;
+    blk.data = (std::byte *) root_page_ptr + slotp->offset_to_record;
+    blk.size = slotp->record_length;
+    blk.mode = mode;
 
-					    );
+    return pinned_t (this, &storage::release_pinned_, std::move (blk),
+		     (void *) root_page_ptr, (void *) context.m_thread_p);
   }
 
   pinned_t
@@ -184,22 +199,14 @@ namespace cubhnsw
 	context.m_visited_nodes++;
       }
 
-    cubthread::entry *thread_p = context.m_thread_p;
-    return make_pinned_block (id, (std::byte *) node_page_ptr + slotp->offset_to_record,
-	   slotp->record_length, mode,
-	   [this, node_page_ptr, thread_p] (auto& blk) noexcept
-    {
-      if (blk.mode == lock_mode::exclusive)
-	{
-	  pgbuf_set_dirty (thread_p, reinterpret_cast<PAGE_PTR> (node_page_ptr), FREE);
-	}
-      else
-	{
-	  pgbuf_unfix (thread_p, reinterpret_cast<PAGE_PTR> (node_page_ptr));
-	}
-    }
+    pinned_t::data_t blk;
+    blk.id = id;
+    blk.data = (std::byte *) node_page_ptr + slotp->offset_to_record;
+    blk.size = slotp->record_length;
+    blk.mode = mode;
 
-					    );
+    return pinned_t (this, &storage::release_pinned_, std::move (blk),
+		     (void *) node_page_ptr, (void *) context.m_thread_p);
 
   }
 

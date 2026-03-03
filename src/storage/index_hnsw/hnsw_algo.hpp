@@ -49,8 +49,6 @@ namespace cubhnsw
       using node_type   = node_t;
       using neighbors_ref_type = neighbors_ref_t;
 
-      using pinned_t = pinned_block_t<std::function<void (pinned_block_data &)>>;
-
       algo (const hnsw_build_params &build_params);
 
       // high-level APIs

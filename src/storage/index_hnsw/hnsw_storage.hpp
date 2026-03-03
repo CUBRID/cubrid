@@ -21,7 +21,6 @@
 #include "hnsw_api.hpp"
 #include "hnsw_graph_base.hpp"
 #include "hnsw_algo_common.hpp"
-#include "scoped_holder.hpp"
 
 namespace cubhnsw
 {
@@ -41,27 +40,186 @@ namespace cubhnsw
     lock_mode    mode{lock_mode::none};
   };
 
-  template <typename Cleanup>
-  using pinned_block_t = scoped_holder<pinned_block_data, Cleanup>;
-
-  using pinned_cleanup_t = std::function<void (pinned_block_data &)>;
-  using pinned_t = pinned_block_t<pinned_cleanup_t>;
-
-  template <typename Cleanup>
-  inline auto make_pinned_block (
-	  slot_id_t id,
-	  std::byte *data,
-	  std::size_t size,
-	  lock_mode mode,
-	  Cleanup &&cleanup) -> pinned_t
+  // ============================================================
+  // pinned_block (allocation-free, move-only, no std::function)
+  // ============================================================
+  class pinned_block
   {
-    pinned_block_data res { id, data, size, mode };
+    public:
+      using data_t = pinned_block_data;
 
-    // lambda / functor -> std::function 으로 type-erasure
-    pinned_cleanup_t fn { std::forward<Cleanup> (cleanup) };
+      // storage is responsible for unfix/dirty policy.
+      // page_ptr/thread_p are opaque.
+      using release_fn_t = void (*) (void *owner,
+				     data_t &blk,
+				     void *page_ptr,
+				     void *thread_p) noexcept;
 
-    return pinned_t (std::move (res), std::move (fn));
-  }
+      pinned_block () = default;
+
+      pinned_block (void *owner,
+		    release_fn_t release_fn,
+		    data_t blk,
+		    void *page_ptr,
+		    void *thread_p) noexcept
+	: m_owner (owner)
+	, m_release_fn (release_fn)
+	, m_page_ptr (page_ptr)
+	, m_thread_p (thread_p)
+	, m_blk (std::move (blk))
+	, m_valid (true)
+      {
+      }
+
+      pinned_block (const pinned_block &) = delete;
+      pinned_block &operator= (const pinned_block &) = delete;
+
+      pinned_block (pinned_block &&other) noexcept
+	: m_owner (other.m_owner)
+	, m_release_fn (other.m_release_fn)
+	, m_page_ptr (other.m_page_ptr)
+	, m_thread_p (other.m_thread_p)
+	, m_blk (std::move (other.m_blk))
+	, m_valid (other.m_valid)
+      {
+	other.invalidate_ ();
+      }
+
+      pinned_block &operator= (pinned_block &&other) noexcept
+      {
+	if (this == &other)
+	  {
+	    return *this;
+	  }
+
+	reset ();
+
+	m_owner = other.m_owner;
+	m_release_fn = other.m_release_fn;
+	m_page_ptr = other.m_page_ptr;
+	m_thread_p = other.m_thread_p;
+	m_blk = std::move (other.m_blk);
+	m_valid = other.m_valid;
+
+	other.invalidate_ ();
+	return *this;
+      }
+
+      ~pinned_block ()
+      {
+	reset ();
+      }
+
+      void reset () noexcept
+      {
+	if (!m_valid)
+	  {
+	    return;
+	  }
+
+	if (m_release_fn != nullptr)
+	  {
+	    m_release_fn (m_owner, m_blk, m_page_ptr, m_thread_p);
+	  }
+
+	invalidate_ ();
+      }
+
+      data_t *operator-> () noexcept
+      {
+	return &m_blk;
+      }
+      const data_t *operator-> () const noexcept
+      {
+	return &m_blk;
+      }
+      data_t &operator* () noexcept
+      {
+	return m_blk;
+      }
+      const data_t &operator* () const noexcept
+      {
+	return m_blk;
+      }
+
+      explicit operator bool () const noexcept
+      {
+	return m_valid;
+      }
+
+    private:
+      void invalidate_ () noexcept
+      {
+	m_owner = nullptr;
+	m_release_fn = nullptr;
+	m_page_ptr = nullptr;
+	m_thread_p = nullptr;
+	m_valid = false;
+      }
+
+    private:
+      void *m_owner{nullptr};
+      release_fn_t m_release_fn{nullptr};
+      void *m_page_ptr{nullptr};
+      void *m_thread_p{nullptr};
+      data_t m_blk{};
+      bool m_valid{false};
+  };
+
+  struct page_guard
+  {
+    page_guard () = default;
+    page_guard (PAGE_PTR page, cubthread::entry *thread_p) noexcept
+      : m_page (page), m_thread_p (thread_p) {}
+
+    page_guard (const page_guard &) = delete;
+    page_guard &operator= (const page_guard &) = delete;
+
+    page_guard (page_guard &&o) noexcept : m_page (o.m_page), m_thread_p (o.m_thread_p)
+    {
+      o.m_page = nullptr;
+      o.m_thread_p = nullptr;
+    }
+
+    page_guard &operator= (page_guard &&o) noexcept
+    {
+      if (this == &o)
+	{
+	  return *this;
+	}
+      release ();
+      m_page = o.m_page;
+      m_thread_p = o.m_thread_p;
+      o.m_page = nullptr;
+      o.m_thread_p = nullptr;
+      return *this;
+    }
+
+    ~page_guard ()
+    {
+      release ();
+    }
+
+    PAGE_PTR get () const noexcept
+    {
+      return m_page;
+    }
+
+    void release () noexcept
+    {
+      if (m_page != nullptr)
+	{
+	  pgbuf_set_dirty (m_thread_p, m_page, FREE);
+	  m_page = nullptr;
+	  m_thread_p = nullptr;
+	}
+    }
+
+    PAGE_PTR m_page{nullptr};
+    cubthread::entry *m_thread_p{nullptr};
+  };
+
+  using pinned_t = pinned_block;
 
   // =====================================================================
   // storage
@@ -135,11 +293,12 @@ namespace cubhnsw
 
     protected:
 
-      using page_handle = scoped_holder<PAGE_PTR, std::function<void (PAGE_PTR)>>;
-      page_handle get_block_to_insert (algo_context_t &context, block_group_id_t &vfid, block_id_t &last_vpid,
-				       std::size_t bytes);
+      page_guard get_block_to_insert (algo_context_t &context, block_group_id_t &vfid, block_id_t &last_vpid,
+				      std::size_t bytes);
       PAGE_PTR alloc_new_block (cubthread::entry *thread_p, block_group_id_t &vfid, block_id_t &vpid);
+
       static int initialize_new_block (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args);
+      static void release_pinned_ (void *owner, pinned_t::data_t &blk, void *page_ptr, void *thread_p) noexcept;
 
       hnsw_build_params m_build_params;
       index_id_t m_giid; // general index identifier
