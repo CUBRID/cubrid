@@ -25,26 +25,6 @@
 
 namespace cubhnsw
 {
-  // =====================================================================
-  // traits
-  // =====================================================================
-  enum class storage_kind
-  {
-    memory,
-    disk
-  };
-
-  template <storage_kind Kind>
-  struct storage_traits
-  {
-    using block_group_id_t = void;
-    using block_id_t = void;
-    using slot_id_t = void;
-  };
-
-  template <typename Traits>
-  class storage;
-
   // TODO (refactor) : there are similar objects in page_buffer or lock_manager..
   enum class lock_mode
   {
@@ -53,80 +33,67 @@ namespace cubhnsw
     exclusive   // single writer (insert/update)
   };
 
-  template <typename Traits>
   struct pinned_block_data
   {
-    using slot_id_t = typename Traits::slot_id_t;
     slot_id_t    id{};
     std::byte   *data{};
     std::size_t  size{};
     lock_mode    mode{lock_mode::none};
   };
 
-  template <typename Traits, typename Cleanup>
-  using pinned_block_t =
-	  scoped_holder<pinned_block_data<Traits>, Cleanup>;
+  template <typename Cleanup>
+  using pinned_block_t = scoped_holder<pinned_block_data, Cleanup>;
 
-  template <typename Traits>
-  using pinned_block_if_t =
-	  pinned_block_t<Traits, std::function<void (pinned_block_data<Traits> &)>>;
+  using pinned_cleanup_t = std::function<void (pinned_block_data &)>;
+  using pinned_t = pinned_block_t<pinned_cleanup_t>;
 
-  template <typename Traits, typename Cleanup>
+  template <typename Cleanup>
   inline auto make_pinned_block (
-	  typename Traits::slot_id_t id,
+	  slot_id_t id,
 	  std::byte *data,
 	  std::size_t size,
 	  lock_mode mode,
-	  Cleanup &&cleanup)
-  -> pinned_block_if_t<Traits>
+	  Cleanup &&cleanup) -> pinned_t
   {
-    using data_t = pinned_block_data<Traits>;
-    using fn_t   = std::function<void (data_t &)>;
+    pinned_block_data res { id, data, size, mode };
 
-    data_t res { id, data, size, mode };
-    fn_t fn (std::forward<Cleanup> (cleanup));
+    // lambda / functor -> std::function 으로 type-erasure
+    pinned_cleanup_t fn { std::forward<Cleanup> (cleanup) };
 
-    return pinned_block_if_t<Traits> (std::move (res), std::move (fn));
+    return pinned_t (std::move (res), std::move (fn));
   }
-
-  // =====================================================================
-  // algo's graph structs
-  // =====================================================================
 
   // =====================================================================
   // storage
   // =====================================================================
-  template <typename Traits>
   class storage
   {
     public:
-      using traits      = Traits;
-      using slot_id_t  = typename traits::slot_id_t;
-
-      using pinned_t = pinned_block_t<Traits, std::function<void (pinned_block_data<Traits>&)>>;
-
-      storage (const BTID &giid, const hnsw_build_params &build_params)
-	: m_giid (giid), m_build_params (build_params)
+      storage (const index_id_t &giid, const hnsw_build_params &build_params)
+	: m_build_params (build_params)
+	, m_giid (giid)
+	, m_vfid (giid.vfid)
+	, m_root_vpid (block_id_t { giid.root_pageid, giid.vfid.volid })
+	, m_last_node_vpid (m_root_vpid)
       {}
 
       ~storage () = default;
 
       // The root is not initialized yet
-      virtual bool is_empty () = 0;
-      virtual void set_empty (bool is_empty) noexcept = 0;
+      bool is_empty ();
+      void set_empty (bool is_empty) noexcept;
 
-      virtual void init_root (std::byte *root_block, std::size_t &root_size) = 0;
-      virtual slot_id_t add_node (algo_context_t<Traits> &context, const OID &key, const float *vector,
-				  const level_t &level) = 0;
+      void init_root (std::byte *root_block, std::size_t &root_size);
+      slot_id_t add_node (algo_context_t &context, const key_id_t &key, const float *vector,
+			  const level_t &level);
 
-      virtual pinned_t get_root (algo_context_t<Traits> &context, lock_mode mode) = 0;
-      virtual pinned_t get_node_by_slot_id (algo_context_t<Traits> &context, const slot_id_t &slot_id,
-					    const lock_mode &mode) = 0;
-      virtual pinned_t get_vector_by_slot_id (algo_context_t<Traits> &context, const slot_id_t &slot_id,
-					      const lock_mode &mode) = 0;
+      pinned_t get_root (algo_context_t &context, lock_mode mode);
+      pinned_t get_node_by_slot_id (algo_context_t &context, const slot_id_t &slot_id,
+				    const lock_mode &mode);
+      pinned_t get_vector_by_slot_id (algo_context_t &context, const slot_id_t &slot_id,
+				      const lock_mode &mode);
 
-      // promote lockmode from shared to exclusive
-      virtual void promote_root (pinned_t &root) = 0;
+      void promote_root (pinned_t &root);
 
       short get_max_level () const
       {
@@ -163,12 +130,25 @@ namespace cubhnsw
 
       inline std::size_t node_head_bytes_ (std::size_t dim, std::size_t neighbors_count) const noexcept
       {
-	return node_t<Traits>::get_size (dim, neighbors_count);
+	return node_t::get_size (dim, neighbors_count);
       }
 
     protected:
 
-      BTID m_giid; // general index identifier
+      using page_handle = scoped_holder<PAGE_PTR, std::function<void (PAGE_PTR)>>;
+      page_handle get_block_to_insert (algo_context_t &context, block_group_id_t &vfid, block_id_t &last_vpid,
+				       std::size_t bytes);
+      PAGE_PTR alloc_new_block (cubthread::entry *thread_p, block_group_id_t &vfid, block_id_t &vpid);
+      static int initialize_new_block (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args);
+
       hnsw_build_params m_build_params;
+      index_id_t m_giid; // general index identifier
+
+      // from m_giid
+      block_group_id_t m_vfid;
+      block_id_t m_root_vpid;
+
+      block_id_t m_last_node_vpid;
+      bool m_is_empty = true;
   };
 }

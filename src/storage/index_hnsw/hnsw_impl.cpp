@@ -31,7 +31,7 @@
 #include "hnsw_algo.hpp"
 
 // #include "hnsw_storage_mem.hpp"
-#include "hnsw_storage_disk.hpp"
+#include "hnsw_storage.hpp"
 
 #include "btree_load.h"
 #include "slotted_page.h"
@@ -75,15 +75,12 @@ class hnsw_impl_backend final:public hnsw_index_backend
 class hnsw_impl final:public hnsw_index
 {
   public:
-    // TODO: factory pattern
-    using traits = cubhnsw::disk_traits_t;
-
-    using algo_type = cubhnsw::algo < traits >;
-    using storage_type = cubhnsw::disk_storage;
+    using algo_type = cubhnsw::algo;
+    using storage_type = cubhnsw::storage;
 
     hnsw_impl (hnsw_index_backend &backend, const BTID &btid,
-		     const std::string &name,
-		     const hnsw_build_params &build_params);
+	       const std::string &name,
+	       const hnsw_build_params &build_params);
     ~hnsw_impl () override;
 
     int init (cubthread::entry *thread_p, PAGE_PTR page_ptr, RECDES &rec);
@@ -172,9 +169,9 @@ is_metric_supported (const DB_VECTOR_DISTANCE_METRIC &metric) const
 
 hnsw_index *
 hnsw_impl_backend::create_index (THREAD_ENTRY *thread_p,
-				       const BTID *btid,
-				       const std::string &name,
-				       const hnsw_build_params &build_params)
+				 const BTID *btid,
+				 const std::string &name,
+				 const hnsw_build_params &build_params)
 {
   VPID root_vpid = { btid->root_pageid, btid->vfid.volid };
   PAGE_PTR page_ptr =
@@ -212,8 +209,8 @@ hnsw_impl_backend::create_index (THREAD_ENTRY *thread_p,
 // =====================================================================
 
 hnsw_impl::hnsw_impl (hnsw_index_backend &backend, const BTID &btid, const std::string &name,
-				  const hnsw_build_params &build_params):hnsw_index (backend, btid, name,
-					build_params)
+		      const hnsw_build_params &build_params):hnsw_index (backend, btid, name,
+			    build_params)
 {
   m_root_vpid =
   {
@@ -329,7 +326,7 @@ hnsw_impl::~hnsw_impl ()
 
 int
 hnsw_impl::prepare_to_add (cubthread::entry *thread_p, int n_vectors, const OID *oid,
-				 const float *vector)
+			   const float *vector)
 {
   // do nothing
   return NO_ERROR;
@@ -423,7 +420,7 @@ hnsw_impl::add_internal (cubthread::entry &thread_ref, hnsw_build_worker_job &jo
     }
   else
     {
-      cubhnsw::add_result_t<traits> result = m_algo->add (&thread_ref, job.m_oid, job.m_vector);
+      auto result = m_algo->add (&thread_ref, job.m_oid, job.m_vector);
       error = result.error;
     }
 
@@ -436,7 +433,7 @@ hnsw_impl::add_internal (cubthread::entry &thread_ref, hnsw_build_worker_job &jo
 
 int
 hnsw_impl::search (cubthread::entry *thread_p, const float *query, const int k, const int ef_search,
-			 OID *rec_oids, float *distances)
+		   OID *rec_oids, float *distances)
 {
   if (m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE
       && db_vector_is_all_zeros (query, m_build_params.dimension))
@@ -477,8 +474,8 @@ hnsw_impl::update (cubthread::entry *thread_p, const OID *oid, const float *vect
 
 int
 hnsw_impl::filtered_search (cubthread::entry *thread_p, const float *query, const int k,
-				  const SCAN_PRED &filter, OID *rec_oids,
-				  float *distances)
+			    const SCAN_PRED &filter, OID *rec_oids,
+			    float *distances)
 {
   return ER_FAILED;
 }
