@@ -4005,6 +4005,8 @@ filemgr (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *db_name;
   const char *target_vfid_str = NULL;
+  const char *output_file = NULL;
+  FILE *outfp = NULL;
   bool should_dump_file_list;
   bool should_purge_invalid_heap_files;
 
@@ -4012,6 +4014,22 @@ filemgr (UTIL_FUNCTION_ARG * arg)
   if (db_name == NULL)
     {
       goto print_filemgr_usage;
+    }
+
+  output_file = utility_get_option_string_value (arg_map, FILEMGR_OUTPUT_FILE_S, 0);
+  if (output_file == NULL)
+    {
+      outfp = stdout;
+    }
+  else
+    {
+      outfp = fopen (output_file, "w");
+      if (outfp == NULL)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FILEMGR, FILEMGR_MSG_BAD_OUTPUT),
+				 output_file);
+	  goto error_exit;
+	}
     }
 
   should_dump_file_list = utility_get_option_bool_value (arg_map, FILEMGR_DUMP_FILE_LIST_S);
@@ -4043,7 +4061,9 @@ filemgr (UTIL_FUNCTION_ARG * arg)
 
   if (should_dump_file_list == true)
     {
-      (void) file_dump_file_list ();
+      (void) file_dump_file_list (outfp);
+
+      fflush (outfp);
     }
 
   if (should_purge_invalid_heap_files == true)
@@ -4058,6 +4078,11 @@ filemgr (UTIL_FUNCTION_ARG * arg)
 
   db_shutdown ();
 
+  if (output_file != NULL && outfp != NULL && outfp != stdout)
+    {
+      fclose (outfp);
+    }
+
   return EXIT_SUCCESS;
 
 print_filemgr_usage:
@@ -4066,6 +4091,10 @@ print_filemgr_usage:
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 
 error_exit:
+  if (output_file != NULL && outfp != NULL && outfp != stdout)
+    {
+      fclose (outfp);
+    }
 
   return EXIT_FAILURE;
 }

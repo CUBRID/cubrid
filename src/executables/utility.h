@@ -707,6 +707,7 @@ typedef enum
 /* Message id in the set MSGCAT_UTIL_SET_FILEMGR */
 typedef enum
 {
+  FILEMGR_MSG_BAD_OUTPUT = 10,
   FILEMGR_MSG_USAGE = 60
 } MSGCAT_FILEMGR_MSG;
 
@@ -1165,6 +1166,8 @@ typedef struct _ha_config
 #define FILEMGR_SA_MODE_L                       "SA-mode"
 #define FILEMGR_CS_MODE_S                       'C'
 #define FILEMGR_CS_MODE_L                       "CS-mode"
+#define FILEMGR_OUTPUT_FILE_S                   'o'
+#define FILEMGR_OUTPUT_FILE_L                   "output-file"
 #define FILEMGR_DUMP_FILE_LIST_S                'l'
 #define FILEMGR_DUMP_FILE_LIST_L                "list"
 #define FILEMGR_PURGE_INVALID_HEAP_S            'p'

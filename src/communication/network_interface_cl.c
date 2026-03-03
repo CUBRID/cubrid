@@ -10425,9 +10425,11 @@ loaddb_update_stats ()
  * file_dump_file_list -
  *
  * return:
+ *
+ *   outfp(in):
  */
 int
-file_dump_file_list (void)
+file_dump_file_list (FILE * outfp)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
@@ -10438,8 +10440,8 @@ file_dump_file_list (void)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    net_client_request (NET_SERVER_FILEMGR_DUMP_FILE_LIST, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL,
-			0);
+    net_client_request_recv_stream (NET_SERVER_FILEMGR_DUMP_FILE_LIST, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				    NULL, 0, outfp);
   if (!req_error)
     {
       (void) or_unpack_errcode (reply, &error);
@@ -10451,7 +10453,7 @@ file_dump_file_list (void)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xfile_tracker_dump_file_list (thread_p);
+  success = xfile_tracker_dump_file_list (thread_p, outfp);
 
   exit_server (*thread_p);
 

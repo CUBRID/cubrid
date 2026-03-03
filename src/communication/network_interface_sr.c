@@ -10263,18 +10263,68 @@ ssession_stop_attached_threads (void *session)
 void
 sfile_tracker_dump_file_list (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  int error;
+  FILE *outfp;
+  int file_size;
+  char *buffer;
+  int buffer_size;
+  int send_size;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  error = xfile_tracker_dump_file_list (thread_p);
-  if (error != NO_ERROR)
+  (void) or_unpack_int (request, &buffer_size);
+
+  buffer = (char *) db_private_alloc (thread_p, buffer_size);
+  if (buffer == NULL)
     {
-      (void) return_error_to_client (thread_p, rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      return;
     }
 
-  (void) or_pack_errcode (reply, error);
+  outfp = tmpfile ();
+  if (outfp == NULL)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      db_private_free_and_init (thread_p, buffer);
+      return;
+    }
+
+  xfile_tracker_dump_file_list (thread_p, outfp);
+  file_size = ftell (outfp);
+
+  /*
+   * Send the file in pieces
+   */
+  rewind (outfp);
+
+  (void) or_pack_int (reply, (int) file_size);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  while (file_size > 0)
+    {
+      if (file_size > buffer_size)
+	{
+	  send_size = buffer_size;
+	}
+      else
+	{
+	  send_size = file_size;
+	}
+
+      file_size -= send_size;
+      if (fread (buffer, 1, send_size, outfp) == 0)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
+	  /*
+	   * Continue sending the stuff that was prmoised to client. In this case
+	   * junk (i.e., whatever it is in the buffers) is sent.
+	   */
+	}
+      css_send_data_to_client (thread_p->conn_entry, rid, buffer, send_size);
+    }
+  fclose (outfp);
+  db_private_free_and_init (thread_p, buffer);
 }
 
 /*

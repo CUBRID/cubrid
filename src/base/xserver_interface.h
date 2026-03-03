@@ -288,7 +288,7 @@ extern int xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * clas
 extern bool xtran_should_connection_reset (THREAD_ENTRY * thread_p, bool has_updated);
 extern int xsession_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit);
 
-extern int xfile_tracker_dump_file_list (THREAD_ENTRY * thread_p);
+extern int xfile_tracker_dump_file_list (THREAD_ENTRY * thread_p, FILE * outfp);
 extern int xfile_tracker_purge_invalid_heap_files (THREAD_ENTRY * thread_p);
 extern int xfile_tracker_purge_target_file (THREAD_ENTRY * thread_p, const char *target_vfid_str);
 

@@ -10965,14 +10965,20 @@ file_tracker_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp)
  *
  * return        : error code
  * thread_p (in) : thread entry
+ * outfp (in)    : FILE stream where to dump the file list
  */
 int
-xfile_tracker_dump_file_list (THREAD_ENTRY * thread_p)
+xfile_tracker_dump_file_list (THREAD_ENTRY * thread_p, FILE * outfp)
 {
   int error_code = NO_ERROR;
 
-  printf ("    VFID   npages    type             FDES\n");
-  error_code = file_tracker_map (thread_p, PGBUF_LATCH_READ, file_tracker_item_dump_capacity, stdout);
+  if (outfp == NULL)
+    {
+      outfp = stdout;
+    }
+
+  fprintf (outfp, "    VFID   npages    type             FDES\n");
+  error_code = file_tracker_map (thread_p, PGBUF_LATCH_READ, file_tracker_item_dump_capacity, outfp);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
