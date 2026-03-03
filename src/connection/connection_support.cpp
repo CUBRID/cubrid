@@ -1925,6 +1925,7 @@ css_send_large_data (CSS_CONN_ENTRY *conn, unsigned short rid, const char **buff
 #endif /* ENABLE_UNUSED_FUNCTION */
 #endif /* SERVER_MODE */
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
 * css_send_error() - transfer an error packet to the client.
 *   return:  enum css_error_code (See connection_defs.h)
@@ -1952,6 +1953,7 @@ css_send_error (CSS_CONN_ENTRY *conn, unsigned short rid, const char *buffer, in
 
   return (css_net_send2 (conn, (char *) &header, sizeof (NET_HEADER), buffer, buffer_size));
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 #if !defined(SERVER_MODE)
 int
