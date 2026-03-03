@@ -179,8 +179,12 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/connection_globals.c
   ${CONNECTION_DIR}/connection_list_cl.c
   ${CONNECTION_DIR}/client_support.c
-  ${CONNECTION_DIR}/connection_support.c
+  ${CONNECTION_DIR}/connection_support.cpp
   ${CONNECTION_DIR}/host_lookup.c
+  )
+
+set(CONNECTION_HEADERS
+  ${CONNECTION_DIR}/connection_support.hpp
   )
 
 set(COMMUNICATION_SOURCES
@@ -532,6 +536,7 @@ add_library(cubridcs SHARED
   ${ES_SOURCES}
   ${COMMUNICATION_SOURCES}
   ${CONNECTION_SOURCES}
+  ${CONNECTION_HEADERS}
   ${CONNECTION_TCP_SOURCE}
   ${HEAPLAYER_SOURCES}
   ${OBJECT_HEADERS}

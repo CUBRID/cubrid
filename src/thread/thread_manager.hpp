@@ -227,6 +227,10 @@ namespace cubthread
 	  }
       }
 
+      // claim/retire entries
+      entry *claim_entry (void);
+      void retire_entry (entry &entry_p);
+
     private:
 
       // define friend classes/functions to access claim_entry/retire_entry functions
@@ -236,10 +240,6 @@ namespace cubthread
 
       // private type aliases
       using entry_dispatcher = resource_shared_pool<entry>;
-
-      // claim/retire entries
-      entry *claim_entry (void);
-      void retire_entry (entry &entry_p);
 
       // generic implementation to create and destroy resources (specialize through daemon and entry_workpool)
       template <typename Res, typename ... CtArgs>
