@@ -97,19 +97,22 @@ jobs:
             Before leaving a comment, you must FIRST fetch the target COMMIT_ID of this PR using the following command:
             COMMIT_ID=$(gh pr view $PR_NUMBER --repo $GITHUB_REPOSITORY --json commits --jq '.commits[-1].oid')
             
-            Then, run this exact command format for each issue you find, using the $COMMIT_ID you just fetched. 
-            (Note: Ensure proper escaping for the multiline string and backticks in the body parameter if necessary in your bash environment):
+            Then, use a HEREDOC to safely create the comment body without Bash escaping issues, and run the gh api command. Use this EXACT format for each issue:
+            
+            cat << 'EOF' > pr_comment.txt
+            🚨 **Issue**: [Explanation in Korean]
+            
+            💡 **Solution**:
+            ```suggestion
+            [Modified code]
+            ```
+            EOF
             
             gh api \
               --method POST \
               -H "Accept: application/vnd.github+json" \
               /repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/comments \
-              -f body="🚨 **Issue**: [Explanation in Korean]
-            
-            💡 **Solution**:
-            \`\`\`suggestion
-            [Modified code]
-            \`\`\`" \
+              -F body=@pr_comment.txt \
               -f commit_id="$COMMIT_ID" \
               -f path="[The exact file path from the diff]" \
               -F line=[The exact line number in the new code] \
