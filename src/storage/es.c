@@ -528,12 +528,13 @@ es_rename_file (const char *in_uri, const char *metaname, char *out_uri)
 }
 
 /*
- * es_move_file_with_prefix - TODO: write function comment
+ * es_move_file_with_prefix - Moves a LOB file from the source path to a destination directory defined by the prefix.
  *
  * return: error code
- * prev_uri(in):
- * metapath(in) : meta name combined with in_uri
- * out_uri(out):
+ * src_path(in): Source file path
+ * metaname(in) : Metadata used for the new file name
+ * prefix(in) : prefix to be added to the destination path when moving the file
+ * new_path(out): Resulting path of the moved file
  *
  * Note: CUBRID supports only the ES_POSIX type, so only the ES_POSIX case is handled.
  */
@@ -557,7 +558,7 @@ es_move_file_with_prefix (const char *src_path, const char *metaname, const char
   es_type = es_get_type (src_path);
   if (es_type != es_initialized_type)
     {
-      /* copy file operation is allowed only between same types */
+      /* move file operation is allowed only between same types */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_COPY_TO_DIFFERENT_TYPE, 2, es_get_type_string (es_type),
 	      es_get_type_string (es_initialized_type));
       return ER_ES_COPY_TO_DIFFERENT_TYPE;

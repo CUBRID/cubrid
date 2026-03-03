@@ -821,35 +821,34 @@ xes_posix_rename_file (const char *src_path, const char *metaname, char *new_pat
 }
 
 /*
- * es_posix_move_file - TODO: write function comment
+ * xes_posix_move_file_with_prefix - Moves a LOB file from the source path to a destination directory defined by the prefix.
  *
  * return: error code
- * src_path(in): file path to rename
- * new_path(out): new file path
+ * src_path(in): Source file path
+ * metaname(in) : Metadata used for the new file name
+ * prefix(in) : prefix to be added to the destination path when moving the file
+ * new_path(out): Resulting path of the moved file
  */
 int
 xes_posix_move_file_with_prefix (const char *src_path, const char *metaname, const char *prefix, char *new_path)
 {
   ssize_t ret;
   char dirname1[NAME_MAX], filename[NAME_MAX], dirname2[NAME_MAX];
-  const char *fname_p;
   char *p;
-  int n;
+  int fd;
 
   /* create a target file */
-  es_get_unique_name (dirname1, dirname2, metaname, filename);	/* TODO: Do we need create new dir name? */
+  es_get_unique_name (dirname1, dirname2, metaname, filename);
 
-  fname_p = strrchr (src_path, PATH_SEPARATOR);
-  n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s", prefix, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, fname_p + 1);
-  if (n < 0)
+  ret = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s", prefix, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
+  if (ret < 0)
     {
       return ER_ES_INVALID_PATH;
     }
   es_log ("xes_posix_copy_file(%s, %s): %s\n", src_path, metaname, new_path);
 
-  /* check file existence */
-  n = es_abs_open (new_path, O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH | O_LARGEFILE);
-  if (n < 0)
+  fd = es_abs_open (new_path, O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH | O_LARGEFILE);
+  if (fd < 0)
     {
       if (errno == ENOENT)
 	{
