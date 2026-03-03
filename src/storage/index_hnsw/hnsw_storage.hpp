@@ -50,22 +50,19 @@ namespace cubhnsw
 
       // storage is responsible for unfix/dirty policy.
       // page_ptr/thread_p are opaque.
-      using release_fn_t = void (*) (void *owner,
+      using release_fn_t = void (*) (cubthread::entry *owner,
 				     data_t &blk,
-				     void *page_ptr,
-				     void *thread_p) noexcept;
+				     PAGE_PTR page_ptr) noexcept;
 
       pinned_block () = default;
 
-      pinned_block (void *owner,
+      pinned_block (cubthread::entry *owner,
 		    release_fn_t release_fn,
 		    data_t blk,
-		    void *page_ptr,
-		    void *thread_p) noexcept
+		    PAGE_PTR page_ptr) noexcept
 	: m_owner (owner)
 	, m_release_fn (release_fn)
 	, m_page_ptr (page_ptr)
-	, m_thread_p (thread_p)
 	, m_blk (std::move (blk))
 	, m_valid (true)
       {
@@ -78,7 +75,6 @@ namespace cubhnsw
 	: m_owner (other.m_owner)
 	, m_release_fn (other.m_release_fn)
 	, m_page_ptr (other.m_page_ptr)
-	, m_thread_p (other.m_thread_p)
 	, m_blk (std::move (other.m_blk))
 	, m_valid (other.m_valid)
       {
@@ -97,7 +93,6 @@ namespace cubhnsw
 	m_owner = other.m_owner;
 	m_release_fn = other.m_release_fn;
 	m_page_ptr = other.m_page_ptr;
-	m_thread_p = other.m_thread_p;
 	m_blk = std::move (other.m_blk);
 	m_valid = other.m_valid;
 
@@ -119,7 +114,7 @@ namespace cubhnsw
 
 	if (m_release_fn != nullptr)
 	  {
-	    m_release_fn (m_owner, m_blk, m_page_ptr, m_thread_p);
+	    m_release_fn (m_owner, m_blk, m_page_ptr);
 	  }
 
 	invalidate_ ();
@@ -153,15 +148,13 @@ namespace cubhnsw
 	m_owner = nullptr;
 	m_release_fn = nullptr;
 	m_page_ptr = nullptr;
-	m_thread_p = nullptr;
 	m_valid = false;
       }
 
     private:
-      void *m_owner{nullptr};
+      cubthread::entry *m_owner{nullptr};
       release_fn_t m_release_fn{nullptr};
-      void *m_page_ptr{nullptr};
-      void *m_thread_p{nullptr};
+      PAGE_PTR m_page_ptr{nullptr};
       data_t m_blk{};
       bool m_valid{false};
   };
@@ -297,8 +290,8 @@ namespace cubhnsw
 				      std::size_t bytes);
       PAGE_PTR alloc_new_block (cubthread::entry *thread_p, block_group_id_t &vfid, block_id_t &vpid);
 
-      static int initialize_new_block (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args);
-      static void release_pinned_ (void *owner, pinned_t::data_t &blk, void *page_ptr, void *thread_p) noexcept;
+      static int initialize_new_block (cubthread::entry *thread_p, PAGE_PTR page, void *args);
+      static void release_pinned_ (cubthread::entry *thread_p, pinned_t::data_t &blk, PAGE_PTR page_ptr) noexcept;
 
       hnsw_build_params m_build_params;
       index_id_t m_giid; // general index identifier
