@@ -401,30 +401,30 @@ elo_copy_with_prefix (DB_ELO * src_elo, const char *prefix, DB_ELO * dest_elo)
 	case LOB_PERMANENT_DELETED:
 	  {
 	    ret = es_rename_file (src_elo->locator, src_elo->meta_data, rename_uri);
-            if (ret != NO_ERROR)
-              {
-                goto error_return;
-              }
+	    if (ret != NO_ERROR)
+	      {
+		goto error_return;
+	      }
 
-            ret = es_move_file_with_prefix (rename_uri, src_elo->meta_data, prefix, out_uri);
-            if (ret != NO_ERROR)
-              {
-                goto error_return;
-              }
+	    ret = es_move_file_with_prefix (rename_uri, src_elo->meta_data, prefix, out_uri);
+	    if (ret != NO_ERROR)
+	      {
+		goto error_return;
+	      }
 
-            locator = db_private_strdup (NULL, out_uri);
-            if (locator == NULL)
-              {
-                assert (er_errid () != NO_ERROR);
-                ret = er_errid ();
-                goto error_return;
-              }
+	    locator = db_private_strdup (NULL, out_uri);
+	    if (locator == NULL)
+	      {
+		assert (er_errid () != NO_ERROR);
+		ret = er_errid ();
+		goto error_return;
+	      }
 
-            ret = lob_locator_change_state (src_elo->locator, locator, LOB_PERMANENT_CREATED);
-            if (ret != NO_ERROR)
-              {
-                goto error_return;
-              }
+	    ret = lob_locator_change_state (src_elo->locator, locator, LOB_PERMANENT_CREATED);
+	    if (ret != NO_ERROR)
+	      {
+		goto error_return;
+	      }
 	  }
 	  break;
 

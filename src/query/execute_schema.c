@@ -1477,9 +1477,9 @@ lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count)
       attr = &class_->attributes[i];
 
       if (TP_IS_LOB_TYPE (attr->type->id))
-        {
-          lob_attrid_arr[index++] = attr->id;
-        }
+	{
+	  lob_attrid_arr[index++] = attr->id;
+	}
     }
 
   if (lob_attrid_arr_length)

@@ -7085,9 +7085,9 @@ locator_lob_process_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid)
     {
       attr = &class_->attributes[i];
       if (TP_IS_LOB_TYPE (attr->type->id))
-        {
-          lob_attrid_arr[index++] = attr->id;
-        }
+	{
+	  lob_attrid_arr[index++] = attr->id;
+	}
     }
 
   /* Create or Remove the lob dir if need */
