@@ -1,13 +1,6 @@
 name: opencode-review
 
 on:
-  # issue_comment: fork PR 포함 모든 PR에서 maintainer가 /oc review 를 코멘트할 때 실행
-  # - base repo 컨텍스트에서 실행 → secrets 접근 가능, GITHUB_TOKEN write 가능
-  # - assertPermissions()가 코멘트 작성자(maintainer)의 권한을 체크 → 통과
-  # pull_request 트리거는 외부 fork PR에서 세 가지 이유로 동작 불가:
-  #   1. assertPermissions(): 외부 기여자는 write 권한 없음 → 즉시 실패
-  #   2. GITHUB_TOKEN이 read-only → 코멘트 작성 403
-  #   3. secrets(OPENCODE_API_KEY)가 null → 모델 호출 불가
   issue_comment:
     types: [created]
 
@@ -59,7 +52,12 @@ jobs:
           grep -q "oh-my-opencode" $HOME/.config/opencode/opencode.json \
             && echo "✅ oh-my-opencode plugin registered" \
             || (echo "❌ oh-my-opencode not registered" && exit 1)
-      
+            
+      - name: Configure Git for Agent
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
       - uses: anomalyco/opencode/github@latest
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
@@ -71,49 +69,31 @@ jobs:
           use_github_token: true
           prompt: |
             /ulw
-            You are a strict and expert C/C++ DBMS Senior developer reviewing this pull request.
-            
-            [CRITICAL INSTRUCTION]
-            1. Do NOT just leave a single general summary comment on the PR.
-            2. Carefully check for code quality, potential bugs, readability, leftover debug codes, and memory leaks.
-            3. If you find any issues, you MUST leave **inline comments on the exact lines of code**.
-            4. To leave an inline comment, you MUST use your Shell/Bash execution tool to run the GitHub CLI (`gh api`) command. DO NOT output plain text for the review.
-            5. **All review comments and explanations MUST be written entirely in Korean.**
-            6. **Be EXTREMELY concise.** State ONLY the issue and the actionable fix without any unnecessary background context.
-            
-            [COMMENT FORMAT RULE]
-            Your inline comment body MUST strictly follow this short format. If code improvement is needed, you MUST use the GitHub Suggestion syntax (```suggestion):
-            
-            "🚨 **Issue**: [Briefly explain the bug, readability, or code quality issue in 1-2 sentences in Korean]
-            
-            💡 **Solution**:
-            ```suggestion
-            [Modified code]
-            ```"
-            
-            [COMMAND FORMAT TO USE]
-            The environment variables $GITHUB_REPOSITORY and $PR_NUMBER are already set in your terminal.
-            
-            Before leaving a comment, you must FIRST fetch the target COMMIT_ID of this PR using the following command:
-            COMMIT_ID=$(gh pr view $PR_NUMBER --repo $GITHUB_REPOSITORY --json commits --jq '.commits[-1].oid')
-            
-            Then, use a HEREDOC to safely create the comment body without Bash escaping issues, and run the gh api command. Use this EXACT format for each issue:
-            
+            You are an expert C/C++ DBMS Senior developer reviewing this PR.
+
+            [CRITICAL INSTRUCTIONS]
+            1. Leave ONLY inline comments on specific lines. No general summary.
+            2. Write all comments in Korean. Be EXTREMELY concise.
+            3. Check for bugs, memory leaks, and readability.
+            4. Use GitHub Suggestion syntax (```suggestion) for all code fixes.
+
+            [HOW TO POST COMMENTS]
+            To avoid Bash syntax errors with backticks, you MUST use `cat << 'EOF'` to create a text file, then upload it via `gh api`. Use this EXACT block for each comment:
+
+            COMMIT=$(gh pr view $PR_NUMBER --json commits --jq '.commits[-1].oid')
+
             cat << 'EOF' > pr_comment.txt
-            🚨 **Issue**: [Explanation in Korean]
-            
+            🚨 **Issue**: [Korean explanation]
+
             💡 **Solution**:
             ```suggestion
             [Modified code]
             ```
             EOF
-            
-            gh api \
-              --method POST \
-              -H "Accept: application/vnd.github+json" \
-              /repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/comments \
+
+            gh api --method POST /repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/comments \
               -F body=@pr_comment.txt \
-              -f commit_id="$COMMIT_ID" \
-              -f path="[The exact file path from the diff]" \
-              -F line=[The exact line number in the new code] \
+              -f commit_id=$COMMIT \
+              -f path="[file_path]" \
+              -F line=[line_number] \
               -f side="RIGHT"
