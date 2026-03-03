@@ -11416,7 +11416,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TYPE
     {
       if (remote_data_p)
 	{
-	  free_and_init (remote_data_p);
+	  thread_p->release_packet (remote_data_p);
 	}
 
       return ER_FAILED;
@@ -11425,7 +11425,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TYPE
   ptr = or_unpack_int (remote_data_p, &remote_status);
   if (remote_status != NO_ERROR)
     {
-      free_and_init (remote_data_p);
+      thread_p->release_packet (remote_data_p);
       return ER_FAILED;
     }
   data_size -= OR_INT_SIZE;
@@ -11439,7 +11439,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TYPE
 	}
     }
 
-  free_and_init (remote_data_p);
+  thread_p->release_packet (remote_data_p);
   return NO_ERROR;
 #else /* SERVER_MODE */
   extern unsigned int db_on_server;
