@@ -19,7 +19,7 @@
     "atlas": { "model": "opencode/kimi-k2.5" }
   },
   "categories": {
-    "visual-engineering": { "model": "opencode/glm-5-free", "variant": "high" },
+    "visual-engineering": { "model": "opencode/glm-5", "variant": "high" },
     "ultrabrain": { "model": "opencode/gpt-5.2-codex", "variant": "xhigh" },
     "deep": { "model": "opencode/gpt-5.2-codex", "variant": "medium" },
     "artistry": { "model": "opencode/gemini-3.1-pro", "variant": "high" },
