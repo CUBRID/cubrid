@@ -55,8 +55,8 @@
  *   db_error(in):
  */
 CSS_QUEUE_ENTRY *
-connection_list_cl::css_make_queue_entry (unsigned int key, char *buffer, int size, CSS_QUEUE_ENTRY * next, int rc,
-					  int transid, int invalidate_snapshot, int db_error)
+connection_list_cl::css_make_queue_entry (unsigned int key, char *buffer, int size, CSS_QUEUE_ENTRY *next, int rc,
+    int transid, int invalidate_snapshot, int db_error)
 {
   CSS_QUEUE_ENTRY *entry_p;
 
@@ -84,7 +84,7 @@ connection_list_cl::css_make_queue_entry (unsigned int key, char *buffer, int si
  *   header(in):
  */
 void
-connection_list_cl::css_free_queue_entry (CSS_QUEUE_ENTRY * entry_p)
+connection_list_cl::css_free_queue_entry (CSS_QUEUE_ENTRY *entry_p)
 {
   if (entry_p != NULL)
     {
@@ -103,7 +103,7 @@ connection_list_cl::css_free_queue_entry (CSS_QUEUE_ENTRY * entry_p)
  *   key(in):
  */
 CSS_QUEUE_ENTRY *
-connection_list_cl::css_find_queue_entry (CSS_QUEUE_ENTRY * header, unsigned int key)
+connection_list_cl::css_find_queue_entry (CSS_QUEUE_ENTRY *header, unsigned int key)
 {
   CSS_QUEUE_ENTRY *entry_p;
 
@@ -133,14 +133,14 @@ connection_list_cl::css_find_queue_entry (CSS_QUEUE_ENTRY * header, unsigned int
  * Note: this will add an entry to the end of the header
  */
 int
-connection_list_cl::css_add_entry_to_header (CSS_QUEUE_ENTRY ** anchor, unsigned short request_id, char *buffer,
-					     int buffer_size, int rc, int transid, int invalidate_snapshot,
-					     int db_error)
+connection_list_cl::css_add_entry_to_header (CSS_QUEUE_ENTRY **anchor, unsigned short request_id, char *buffer,
+    int buffer_size, int rc, int transid, int invalidate_snapshot,
+    int db_error)
 {
   CSS_QUEUE_ENTRY *enrty_p, *new_entry_p;
 
   new_entry_p =
-    css_make_queue_entry (request_id, buffer, buffer_size, NULL, rc, transid, invalidate_snapshot, db_error);
+	  css_make_queue_entry (request_id, buffer, buffer_size, NULL, rc, transid, invalidate_snapshot, db_error);
   if (new_entry_p == NULL)
     {
       return CANT_ALLOC_BUFFER;
@@ -170,7 +170,7 @@ connection_list_cl::css_add_entry_to_header (CSS_QUEUE_ENTRY ** anchor, unsigned
  *   anchor(in/out):
  */
 void
-connection_list_cl::css_queue_remove_header (CSS_QUEUE_ENTRY ** anchor)
+connection_list_cl::css_queue_remove_header (CSS_QUEUE_ENTRY **anchor)
 {
   CSS_QUEUE_ENTRY *entry_p, *prev_p;
 
@@ -207,7 +207,7 @@ connection_list_cl::css_queue_remove_header (CSS_QUEUE_ENTRY ** anchor)
  *   request_id(in):
  */
 void
-connection_list_cl::css_queue_remove_header_entry (CSS_QUEUE_ENTRY ** anchor, unsigned short request_id)
+connection_list_cl::css_queue_remove_header_entry (CSS_QUEUE_ENTRY **anchor, unsigned short request_id)
 {
   CSS_QUEUE_ENTRY *entry_p, *prev_p;
 
@@ -248,7 +248,7 @@ connection_list_cl::css_queue_remove_header_entry (CSS_QUEUE_ENTRY ** anchor, un
  *   entry(in):
  */
 void
-connection_list_cl::css_queue_remove_header_entry_ptr (CSS_QUEUE_ENTRY ** anchor, CSS_QUEUE_ENTRY * entry)
+connection_list_cl::css_queue_remove_header_entry_ptr (CSS_QUEUE_ENTRY **anchor, CSS_QUEUE_ENTRY *entry)
 {
   CSS_QUEUE_ENTRY *entry_p, *prev_p;
 
@@ -292,8 +292,8 @@ connection_list_cl::css_queue_remove_header_entry_ptr (CSS_QUEUE_ENTRY ** anchor
  *   conn(in):
  *   request_id(in):
  */
-bool 
-connection_list_cl::css_is_request_aborted (CSS_CONN_ENTRY * conn, unsigned short request_id)
+bool
+connection_list_cl::css_is_request_aborted (CSS_CONN_ENTRY *conn, unsigned short request_id)
 {
   if (css_find_queue_entry (conn->abort_queue, request_id) != NULL)
     {
@@ -304,7 +304,7 @@ connection_list_cl::css_is_request_aborted (CSS_CONN_ENTRY * conn, unsigned shor
 }
 
 int
-connection_list_cl::css_queue_packet (CSS_CONN_ENTRY * conn, CSS_QUEUE_ENTRY ** queue_p, unsigned short request_id,
+connection_list_cl::css_queue_packet (CSS_CONN_ENTRY *conn, CSS_QUEUE_ENTRY **queue_p, unsigned short request_id,
 				      char *buffer, int size, int rc)
 {
   if (!css_is_request_aborted (conn, request_id))
@@ -329,8 +329,8 @@ connection_list_cl::css_queue_packet (CSS_CONN_ENTRY * conn, CSS_QUEUE_ENTRY ** 
  *       save the buffer until data is returned from the client.
  */
 int
-connection_list_cl::css_queue_user_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id, int size,
-						char *buffer)
+connection_list_cl::css_queue_user_data_buffer (CSS_CONN_ENTRY *conn, unsigned short request_id, int size,
+    char *buffer)
 {
   if (buffer)
     {
@@ -341,8 +341,8 @@ connection_list_cl::css_queue_user_data_buffer (CSS_CONN_ENTRY * conn, unsigned 
 }
 
 bool
-  connection_list_cl::css_recv_and_queue_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, char *buffer,
-						 int size, CSS_QUEUE_ENTRY ** queue_p)
+connection_list_cl::css_recv_and_queue_packet (CSS_CONN_ENTRY *conn, unsigned short request_id, char *buffer,
+    int size, CSS_QUEUE_ENTRY **queue_p)
 {
   int rc;
 
@@ -373,8 +373,8 @@ bool
  *       request id. Save it for future processing.
  */
 void
-connection_list_cl::css_queue_unexpected_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, char *buffer,
-						      int size, int rc)
+connection_list_cl::css_queue_unexpected_data_packet (CSS_CONN_ENTRY *conn, unsigned short request_id, char *buffer,
+    int size, int rc)
 {
   (void) css_queue_packet (conn, &conn->data_queue, request_id, buffer, size, rc);
 }
@@ -389,7 +389,7 @@ connection_list_cl::css_queue_unexpected_data_packet (CSS_CONN_ENTRY * conn, uns
  * Note: The data packet will then be queued.
  */
 void
-connection_list_cl::css_queue_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, NET_HEADER * header)
+connection_list_cl::css_queue_data_packet (CSS_CONN_ENTRY *conn, unsigned short request_id, NET_HEADER *header)
 {
   char *buffer;
   int size;
@@ -424,8 +424,8 @@ connection_list_cl::css_queue_data_packet (CSS_CONN_ENTRY * conn, unsigned short
  *       request id. Save it for future processing.
  */
 void
-connection_list_cl::css_queue_unexpected_error_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, char *buffer,
-						       int size, int rc)
+connection_list_cl::css_queue_unexpected_error_packet (CSS_CONN_ENTRY *conn, unsigned short request_id, char *buffer,
+    int size, int rc)
 {
   (void) css_queue_packet (conn, &conn->error_queue, request_id, buffer, size, rc);
 }
@@ -441,7 +441,7 @@ connection_list_cl::css_queue_unexpected_error_packet (CSS_CONN_ENTRY * conn, un
  * Note: The data packet will then be queued.
  */
 void
-connection_list_cl::css_queue_error_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, NET_HEADER * header)
+connection_list_cl::css_queue_error_packet (CSS_CONN_ENTRY *conn, unsigned short request_id, NET_HEADER *header)
 {
   char *buffer;
   int size;
@@ -475,8 +475,8 @@ connection_list_cl::css_queue_error_packet (CSS_CONN_ENTRY * conn, unsigned shor
  *       Save it for future processing.
  */
 void
-connection_list_cl::css_queue_command_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, NET_HEADER * header,
-					      int size)
+connection_list_cl::css_queue_command_packet (CSS_CONN_ENTRY *conn, unsigned short request_id, NET_HEADER *header,
+    int size)
 {
   NET_HEADER *temp;
 
@@ -501,7 +501,7 @@ connection_list_cl::css_queue_command_packet (CSS_CONN_ENTRY * conn, unsigned sh
  *   request_id(in):
  */
 void
-connection_list_cl::css_process_abort_packet (CSS_CONN_ENTRY * conn, unsigned short request_id)
+connection_list_cl::css_process_abort_packet (CSS_CONN_ENTRY *conn, unsigned short request_id)
 {
   css_queue_remove_header_entry (&conn->request_queue, request_id);
   css_queue_remove_header_entry (&conn->data_queue, request_id);
@@ -519,7 +519,7 @@ connection_list_cl::css_process_abort_packet (CSS_CONN_ENTRY * conn, unsigned sh
  *   conn(in/out):
  */
 void
-connection_list_cl::css_process_close_packet (CSS_CONN_ENTRY * conn)
+connection_list_cl::css_process_close_packet (CSS_CONN_ENTRY *conn)
 {
   if (conn->fd >= 0)
     {
@@ -541,7 +541,7 @@ connection_list_cl::css_process_close_packet (CSS_CONN_ENTRY * conn)
  *   buffer_size(in/out):
  */
 char *
-connection_list_cl::css_get_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id, int *buffer_size)
+connection_list_cl::css_get_data_buffer (CSS_CONN_ENTRY *conn, unsigned short request_id, int *buffer_size)
 {
   CSS_QUEUE_ENTRY *buffer_q_entry_p;
   char *buffer;
@@ -584,8 +584,8 @@ connection_list_cl::css_get_data_buffer (CSS_CONN_ENTRY * conn, unsigned short r
  *       encountered when not expected.
  */
 void
-connection_list_cl::css_queue_unexpected_packet (int type, CSS_CONN_ENTRY * conn, unsigned short request_id,
-						 NET_HEADER * header, int size)
+connection_list_cl::css_queue_unexpected_packet (int type, CSS_CONN_ENTRY *conn, unsigned short request_id,
+    NET_HEADER *header, int size)
 {
   unsigned short flags = 0;
 
@@ -623,7 +623,7 @@ connection_list_cl::css_queue_unexpected_packet (int type, CSS_CONN_ENTRY * conn
 }
 
 void
-connection_list_cl::css_queue_find_and_remove_header_entry_ptr (CSS_CONN_ENTRY * conn, unsigned short request_id)
+connection_list_cl::css_queue_find_and_remove_header_entry_ptr (CSS_CONN_ENTRY *conn, unsigned short request_id)
 {
   CSS_QUEUE_ENTRY *queue_entry;
   queue_entry = css_find_queue_entry (conn->buffer_queue, request_id);

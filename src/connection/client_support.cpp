@@ -101,7 +101,7 @@ client_support::css_set_pipe_signal (void)
 #if !defined(LINUX)
       || (css_Previous_sigpipe_handler == SIG_HOLD)
 #endif /* not LINUX */
-    )
+     )
     {
       css_Previous_sigpipe_handler = NULL;
     }
@@ -248,7 +248,7 @@ client_support::css_send_request_to_server (char *host, int request, char *arg_b
  */
 unsigned int
 client_support::css_send_request_to_server_with_buffer (char *host, int request, char *arg_buffer, int arg_buffer_size,
-							char *data_buffer, int data_buffer_size)
+    char *data_buffer, int data_buffer_size)
 {
   CSS_MAP_ENTRY *entry;
   unsigned short rid;
@@ -265,8 +265,8 @@ client_support::css_send_request_to_server_with_buffer (char *host, int request,
   entry->conn->in_method = tran_is_in_libcas ();
 
   m_css_errno =
-    css_send_request_with_data_buffer_with_padding (entry->conn, request, &rid, arg_buffer, arg_buffer_size,
-						    data_buffer, data_buffer_size);
+	  css_send_request_with_data_buffer_with_padding (entry->conn, request, &rid, arg_buffer, arg_buffer_size,
+	      data_buffer, data_buffer_size);
   if (m_css_errno != NO_ERRORS)
     {
       m_conn_less.css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
@@ -314,7 +314,7 @@ client_support::css_send_req_to_server (char *host, int request, char *arg_buffe
   assert (!tran_was_latest_query_committed () || request != NET_SERVER_LS_GET_LIST_FILE_PAGE);
 
   m_css_errno = css_send_req_with_2_buffers (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data_buffer,
-					     data_buffer_size, reply_buffer, reply_size);
+		data_buffer_size, reply_buffer, reply_size);
   if (m_css_errno != NO_ERRORS)
     {
       m_conn_less.css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
@@ -356,8 +356,8 @@ css_send_req_to_server_with_large_data (char *host, int request, char *arg_buffe
       entry->conn->transaction_id = tm_Tran_index;
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
       m_css_errno =
-	css_send_req_with_large_buffer (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data_buffer,
-					data_buffer_size, reply_buffer, reply_size);
+	      css_send_req_with_large_buffer (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data_buffer,
+					      data_buffer_size, reply_buffer, reply_size);
       if (m_css_errno == NO_ERRORS)
 	{
 	  tm_Tran_invalidate_snapshot = 0;
@@ -394,8 +394,8 @@ css_send_req_to_server_with_large_data (char *host, int request, char *arg_buffe
  */
 unsigned int
 client_support::css_send_req_to_server_2_data (char *host, int request, char *arg_buffer, int arg_buffer_size,
-					       char *data1_buffer, int data1_buffer_size, char *data2_buffer,
-					       int data2_buffer_size, char *reply_buffer, int reply_size)
+    char *data1_buffer, int data1_buffer_size, char *data2_buffer,
+    int data2_buffer_size, char *reply_buffer, int reply_size)
 {
   CSS_MAP_ENTRY *entry;
   unsigned short rid;
@@ -412,8 +412,8 @@ client_support::css_send_req_to_server_2_data (char *host, int request, char *ar
   entry->conn->in_method = tran_is_in_libcas ();
 
   m_css_errno = css_send_req_with_3_buffers (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data1_buffer,
-					     data1_buffer_size, data2_buffer, data2_buffer_size, reply_buffer,
-					     reply_size);
+		data1_buffer_size, data2_buffer, data2_buffer_size, reply_buffer,
+		reply_size);
   if (m_css_errno != NO_ERRORS)
     {
       m_conn_less.css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
@@ -575,7 +575,7 @@ client_support::css_send_data_to_server (char *host, unsigned int eid, char *buf
  *   eid(in):
  */
 int
-client_support::css_test_for_server_errors (CSS_MAP_ENTRY * entry, unsigned int eid)
+client_support::css_test_for_server_errors (CSS_MAP_ENTRY *entry, unsigned int eid)
 {
   char *error_buffer;
   int error_size, rc, errid = NO_ERROR;

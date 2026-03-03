@@ -93,7 +93,7 @@
 #define TRACE(string, arg1)
 #endif /* PACKET_TRACE */
 
-  /* the queue anchor for all the connection structures */
+/* the queue anchor for all the connection structures */
 CSS_CONN_ENTRY *css_Conn_anchor = NULL;
 int css_Client_id = 0;
 
@@ -116,7 +116,7 @@ pthread_mutex_t Conn_anchor_lock = PTHREAD_MUTEX_INITIALIZER;
  *
  */
 void
-css_shutdown_conn (CSS_CONN_ENTRY * conn)
+css_shutdown_conn (CSS_CONN_ENTRY *conn)
 {
   if (!IS_INVALID_SOCKET (conn->fd))
     {
@@ -141,7 +141,7 @@ connection_cl::connection_cl ()
  *   fd(in):
  */
 void
-connection_cl::css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
+connection_cl::css_initialize_conn (CSS_CONN_ENTRY *conn, SOCKET fd)
 {
   conn->request_id = 0;
   conn->fd = fd;
@@ -189,7 +189,7 @@ connection_cl::css_make_conn (SOCKET fd)
  *   conn(in):
  */
 void
-connection_cl::css_close_conn (CSS_CONN_ENTRY * conn)
+connection_cl::css_close_conn (CSS_CONN_ENTRY *conn)
 {
   if (conn && !IS_INVALID_SOCKET (conn->fd))
     {
@@ -204,7 +204,7 @@ connection_cl::css_close_conn (CSS_CONN_ENTRY * conn)
  *   conn(in/out):
  */
 void
-connection_cl::css_dealloc_conn (CSS_CONN_ENTRY * conn)
+connection_cl::css_dealloc_conn (CSS_CONN_ENTRY *conn)
 {
   CSS_CONN_ENTRY *p, *previous;
 
@@ -238,7 +238,7 @@ connection_cl::css_dealloc_conn (CSS_CONN_ENTRY * conn)
  *   conn(in/out):
  */
 void
-connection_cl::css_free_conn (CSS_CONN_ENTRY * conn)
+connection_cl::css_free_conn (CSS_CONN_ENTRY *conn)
 {
   css_close_conn (conn);
   css_dealloc_conn (conn);
@@ -274,7 +274,7 @@ css_find_conn_from_fd (SOCKET fd)
  *   conn(in):
  */
 unsigned short
-connection_cl::css_get_request_id (CSS_CONN_ENTRY * conn)
+connection_cl::css_get_request_id (CSS_CONN_ENTRY *conn)
 {
   unsigned short old_rid;
 
@@ -311,7 +311,7 @@ connection_cl::css_get_request_id (CSS_CONN_ENTRY * conn)
  *   conn(in):
  */
 int
-connection_cl::css_send_close_request (CSS_CONN_ENTRY * conn)
+connection_cl::css_send_close_request (CSS_CONN_ENTRY *conn)
 {
   NET_HEADER header = DEFAULT_HEADER_DATA;
   unsigned short flags;
@@ -327,13 +327,13 @@ connection_cl::css_send_close_request (CSS_CONN_ENTRY * conn)
       header.transaction_id = htonl (conn->get_tran_index ());
       flags = 0;
 
-  /**
-   * FIXME!!
-   * make NET_HEADER_FLAG_INVALIDATE_SNAPSHOT be enabled always due to CBRD-24157
-   *
-   * flags was mis-readed at css_read_header() and fixed at CBRD-24118.
-   * But The side effects described in CBRD-24157 occurred.
-   */
+      /**
+       * FIXME!!
+       * make NET_HEADER_FLAG_INVALIDATE_SNAPSHOT be enabled always due to CBRD-24157
+       *
+       * flags was mis-readed at css_read_header() and fixed at CBRD-24118.
+       * But The side effects described in CBRD-24157 occurred.
+       */
       if (true)			// if (conn->invalidate_snapshot)
 	{
 	  flags |= NET_HEADER_FLAG_INVALIDATE_SNAPSHOT;
@@ -365,7 +365,7 @@ connection_cl::css_send_close_request (CSS_CONN_ENTRY * conn)
  * Note: It is a blocking read.
  */
 int
-connection_cl::css_read_header (CSS_CONN_ENTRY * conn, NET_HEADER * local_header)
+connection_cl::css_read_header (CSS_CONN_ENTRY *conn, NET_HEADER *local_header)
 {
   int buffer_size;
   int rc = 0;
@@ -406,7 +406,7 @@ connection_cl::css_read_header (CSS_CONN_ENTRY * conn, NET_HEADER * local_header
  * Note: If no input is available on the socket, it will block until something is available.
  */
 int
-connection_cl::css_read_one_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, int *buffer_size)
+connection_cl::css_read_one_request (CSS_CONN_ENTRY *conn, unsigned short *rid, int *request, int *buffer_size)
 {
   int rc;
   int type;
@@ -457,7 +457,7 @@ connection_cl::css_read_one_request (CSS_CONN_ENTRY * conn, unsigned short *rid,
  *   buffer_size(out):
  */
 int
-connection_cl::css_receive_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, int *buffer_size)
+connection_cl::css_receive_request (CSS_CONN_ENTRY *conn, unsigned short *rid, int *request, int *buffer_size)
 {
   int rc;
 
@@ -484,7 +484,7 @@ connection_cl::css_receive_request (CSS_CONN_ENTRY * conn, unsigned short *rid, 
  * Note: this is a blocking read.
  */
 int
-connection_cl::css_receive_data (CSS_CONN_ENTRY * conn, unsigned short req_id, char **buffer, int *buffer_size,
+connection_cl::css_receive_data (CSS_CONN_ENTRY *conn, unsigned short req_id, char **buffer, int *buffer_size,
 				 int timeout)
 {
   NET_HEADER header = DEFAULT_HEADER_DATA;
@@ -611,7 +611,7 @@ begin:
  * Note: this is a blocking read.
  */
 int
-connection_cl::css_receive_error (CSS_CONN_ENTRY * conn, unsigned short req_id, char **buffer, int *buffer_size)
+connection_cl::css_receive_error (CSS_CONN_ENTRY *conn, unsigned short req_id, char **buffer, int *buffer_size)
 {
   NET_HEADER header = DEFAULT_HEADER_DATA;
   int header_size;
@@ -723,7 +723,7 @@ begin:
  *   rid(out):
  */
 CSS_CONN_ENTRY *
-connection_cl::css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type,
+connection_cl::css_common_connect (const char *host_name, CSS_CONN_ENTRY *conn, int connect_type,
 				   const char *server_name, int server_name_length, int port, int timeout,
 				   unsigned short *rid, bool send_magic)
 {
@@ -780,7 +780,7 @@ connection_cl::css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn,
  *   rid(out):
  */
 CSS_CONN_ENTRY *
-connection_cl::css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, char *server_name, unsigned short *rid)
+connection_cl::css_server_connect (char *host_name, CSS_CONN_ENTRY *conn, char *server_name, unsigned short *rid)
 {
   int length;
 
@@ -810,7 +810,7 @@ connection_cl::css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, char 
  *   rid(in):
  */
 CSS_CONN_ENTRY *
-connection_cl::css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn, int port_id, unsigned short *rid)
+connection_cl::css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY *conn, int port_id, unsigned short *rid)
 {
   int reason = -1, buffer_size;
   char *buffer = NULL;
@@ -856,8 +856,8 @@ connection_cl::css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * co
 }
 
 CSS_CONN_ENTRY *
-connection_cl::css_connect_to_log_server (const char *host_name, CSS_CONN_ENTRY * conn,
-					  const char *server_name, int port, int timeout, unsigned short *rid)
+connection_cl::css_connect_to_log_server (const char *host_name, CSS_CONN_ENTRY *conn,
+    const char *server_name, int port, int timeout, unsigned short *rid)
 {
   return css_common_connect (host_name, conn, DATA_REQUEST, server_name, (int) strlen (server_name) + 1, port, timeout,
 			     rid, true);
@@ -1060,7 +1060,7 @@ connection_cl::css_connect_to_cubrid_server (char *host_name, char *server_name)
 
   if (buffer != NULL && size == sizeof (int))
     {
-      reason = ntohl (*((int *) buffer));
+      reason = ntohl (* ((int *) buffer));
     }
   else
     {
@@ -1099,7 +1099,7 @@ connection_cl::css_connect_to_cubrid_server (char *host_name, char *server_name)
 	}
       if (buffer != NULL && size == sizeof (int))
 	{
-	  port_id = ntohl (*((int *) buffer));
+	  port_id = ntohl (* ((int *) buffer));
 	  css_close_conn (conn);
 	  if (buffer != reason_buffer)
 	    {
@@ -1237,7 +1237,7 @@ connection_cl::css_does_master_exist (int port_id)
  *   request_id(in):
  */
 bool
-connection_cl::css_is_valid_request_id (CSS_CONN_ENTRY * conn, unsigned short request_id)
+connection_cl::css_is_valid_request_id (CSS_CONN_ENTRY *conn, unsigned short request_id)
 {
 #if defined(CS_MODE)
   extern unsigned short method_request_id;
@@ -1281,7 +1281,7 @@ connection_cl::css_is_valid_request_id (CSS_CONN_ENTRY * conn, unsigned short re
  *   buffer_size(in/out):
  */
 char *
-connection_cl::css_return_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id, int *buffer_size)
+connection_cl::css_return_data_buffer (CSS_CONN_ENTRY *conn, unsigned short request_id, int *buffer_size)
 {
   return css_get_data_buffer (conn, request_id, buffer_size);
 }
@@ -1296,7 +1296,7 @@ connection_cl::css_return_data_buffer (CSS_CONN_ENTRY * conn, unsigned short req
  *   rc(out):
  */
 int
-connection_cl::css_return_queued_data (CSS_CONN_ENTRY * conn, unsigned short request_id, char **buffer,
+connection_cl::css_return_queued_data (CSS_CONN_ENTRY *conn, unsigned short request_id, char **buffer,
 				       int *buffer_size, int *rc)
 {
   CSS_QUEUE_ENTRY *data_q_entry_p, *buffer_q_entry_p;
@@ -1357,7 +1357,7 @@ connection_cl::css_return_queued_data (CSS_CONN_ENTRY * conn, unsigned short req
  *   rc(out):
  */
 int
-connection_cl::css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short request_id, char **buffer,
+connection_cl::css_return_queued_error (CSS_CONN_ENTRY *conn, unsigned short request_id, char **buffer,
 					int *buffer_size, int *rc)
 {
   CSS_QUEUE_ENTRY *error_q_entry_p, *p;
@@ -1421,7 +1421,7 @@ connection_cl::css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short re
  *   buffer_size(out):
  */
 int
-connection_cl::css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, int *buffer_size)
+connection_cl::css_return_queued_request (CSS_CONN_ENTRY *conn, unsigned short *rid, int *request, int *buffer_size)
 {
   CSS_QUEUE_ENTRY *request_q_entry_p;
   NET_HEADER *buffer;
@@ -1462,7 +1462,7 @@ connection_cl::css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short 
  * Note: DO NOT REMOVE THE DATA BUFFERS QUEUED BY THE USER
  */
 void
-connection_cl::css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
+connection_cl::css_remove_all_unexpected_packets (CSS_CONN_ENTRY *conn)
 {
   css_queue_remove_header (&conn->request_queue);
   css_queue_remove_header (&conn->data_queue);

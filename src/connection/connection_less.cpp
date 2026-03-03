@@ -61,7 +61,7 @@ connection_less::css_make_eid (unsigned short entry_id, unsigned short rid)
  *   anchor(in): map entry anchor
  */
 CSS_MAP_ENTRY *
-connection_less::css_return_entry_from_eid (unsigned int eid, CSS_MAP_ENTRY * anchor)
+connection_less::css_return_entry_from_eid (unsigned int eid, CSS_MAP_ENTRY *anchor)
 {
   CSS_MAP_ENTRY *map_entry_p;
   unsigned short entry_id;
@@ -84,7 +84,7 @@ connection_less::css_return_entry_from_eid (unsigned int eid, CSS_MAP_ENTRY * an
  *   anchor(in): map entry anchor
  */
 unsigned short
-connection_less::css_make_entry_id (CSS_MAP_ENTRY * anchor)
+connection_less::css_make_entry_id (CSS_MAP_ENTRY *anchor)
 {
   CSS_MAP_ENTRY *map_entry_p;
   unsigned short old_value;
@@ -120,7 +120,7 @@ connection_less::css_make_entry_id (CSS_MAP_ENTRY * anchor)
  *   anchor(out): map entry anchor
  */
 CSS_MAP_ENTRY *
-connection_less::css_queue_connection (CSS_CONN_ENTRY * conn, const char *host, CSS_MAP_ENTRY ** anchor)
+connection_less::css_queue_connection (CSS_CONN_ENTRY *conn, const char *host, CSS_MAP_ENTRY **anchor)
 {
   CSS_MAP_ENTRY *map_entry_p;
 
@@ -167,7 +167,7 @@ connection_less::css_queue_connection (CSS_CONN_ENTRY * conn, const char *host, 
  *   anchor(in): map entry anchor
  */
 CSS_MAP_ENTRY *
-connection_less::css_get_queued_entry (char *host, CSS_MAP_ENTRY * anchor)
+connection_less::css_get_queued_entry (char *host, CSS_MAP_ENTRY *anchor)
 {
   CSS_MAP_ENTRY *map_entry_p;
 
@@ -199,7 +199,7 @@ connection_less::css_get_queued_entry (char *host, CSS_MAP_ENTRY * anchor)
  *   anchor(in/out): map entry anchor
  */
 void
-connection_less::css_remove_queued_connection_by_entry (CSS_MAP_ENTRY * entry, CSS_MAP_ENTRY ** anchor)
+connection_less::css_remove_queued_connection_by_entry (CSS_MAP_ENTRY *entry, CSS_MAP_ENTRY **anchor)
 {
   CSS_MAP_ENTRY *map_entry_p, *prev_map_entry_p;
 
@@ -233,7 +233,7 @@ connection_less::css_remove_queued_connection_by_entry (CSS_MAP_ENTRY * entry, C
  *   conn(in):
  */
 int
-connection_less::css_test_for_open_conn (CSS_CONN_ENTRY * conn)
+connection_less::css_test_for_open_conn (CSS_CONN_ENTRY *conn)
 {
   return (conn && conn->status == CONN_OPEN);
 }
@@ -250,7 +250,7 @@ connection_less::css_test_for_open_conn (CSS_CONN_ENTRY * conn)
  *       and returned.
  */
 CSS_MAP_ENTRY *
-connection_less::css_return_open_entry (char *host, CSS_MAP_ENTRY ** anchor)
+connection_less::css_return_open_entry (char *host, CSS_MAP_ENTRY **anchor)
 {
   CSS_MAP_ENTRY *map_entry_p;
 
@@ -274,7 +274,7 @@ connection_less::css_return_open_entry (char *host, CSS_MAP_ENTRY ** anchor)
  *   anchor(in): map entry anchor
  */
 CSS_MAP_ENTRY *
-connection_less::css_return_entry_from_conn (CSS_CONN_ENTRY * conn, CSS_MAP_ENTRY * anchor)
+connection_less::css_return_entry_from_conn (CSS_CONN_ENTRY *conn, CSS_MAP_ENTRY *anchor)
 {
   CSS_MAP_ENTRY *map_entry_p;
 
@@ -300,7 +300,7 @@ connection_less::css_return_entry_from_conn (CSS_CONN_ENTRY * conn, CSS_MAP_ENTR
  *       This is for use by servers ONLY (note lack of host name).
  */
 unsigned int
-connection_less::css_return_eid_from_conn (CSS_CONN_ENTRY * conn, CSS_MAP_ENTRY ** anchor, unsigned short rid)
+connection_less::css_return_eid_from_conn (CSS_CONN_ENTRY *conn, CSS_MAP_ENTRY **anchor, unsigned short rid)
 {
   CSS_MAP_ENTRY *map_entry_p;
 
