@@ -40,7 +40,7 @@ private:
 
 public:
     connection_less ();
-   ~connection_less ();
+   ~connection_less () = default;
 
   unsigned int css_make_eid (unsigned short host_id, unsigned short rid);
   CSS_MAP_ENTRY *css_return_entry_from_eid (unsigned int eid, CSS_MAP_ENTRY * anchor);

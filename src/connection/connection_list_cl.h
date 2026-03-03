@@ -62,8 +62,8 @@ protected:
   void css_queue_remove_header_entry_ptr (CSS_QUEUE_ENTRY ** anchor, CSS_QUEUE_ENTRY * entry);
 
 public:
-    connection_list_cl ();
-   ~connection_list_cl ();
+    connection_list_cl () = default;
+   ~connection_list_cl () = default;
   int css_queue_user_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id, int size, char *buffer);
   void css_queue_find_and_remove_header_entry_ptr (CSS_CONN_ENTRY * conn, unsigned short request_id);
 };

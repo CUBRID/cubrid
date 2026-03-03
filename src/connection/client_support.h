@@ -49,17 +49,12 @@ private:
   void css_set_pipe_signal (void);
   int css_test_for_server_errors (CSS_MAP_ENTRY * entry, unsigned int eid);
 
-//protected:
-public:
-  int css_get_errno ()
-  {
-    return m_css_errno;
-  };
 
 public:
-  client_support ();
-  ~client_support ();
+    client_support ();
+   ~client_support () = default;
 
+  int css_get_errno ();
   int css_client_init (int sockid, const char *server_name, const char *host_name);
 #if defined(MULTI_CONN_TO_A_SERVER)
   int css_client_sub_init (const char *server_name, const char *host_name);

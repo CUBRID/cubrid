@@ -38,10 +38,6 @@ connection_less::connection_less ()
   m_entry_id = 0;
 }
 
-connection_less::~connection_less ()
-{
-}
-
 /*
  * css_make_eid() - create an eid which is a combination of the entry id and
  *                  the request id

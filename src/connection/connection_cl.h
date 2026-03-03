@@ -70,11 +70,9 @@ private:
 				      const char *server_name, int server_name_length, int port, int timeout,
 				      unsigned short *rid, bool send_magic);
 
-
-
 public:
     connection_cl ();
-   ~connection_cl ();
+   ~connection_cl () = default;
 
   CSS_CONN_ENTRY *css_make_conn (SOCKET fd);
   void css_free_conn (CSS_CONN_ENTRY * conn);

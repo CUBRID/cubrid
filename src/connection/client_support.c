@@ -60,8 +60,10 @@ client_support::client_support ()
   m_css_errno = 0;
 }
 
-client_support::~client_support ()
+int
+client_support::css_get_errno ()
 {
+  return m_css_errno;
 }
 
 /*

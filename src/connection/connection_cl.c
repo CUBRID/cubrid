@@ -134,10 +134,6 @@ connection_cl::connection_cl ()
   m_service_port_id = DEFAULT_MASTER_PORT_NO;
 }
 
-connection_cl::~connection_cl ()
-{
-}
-
 /*
  * css_initialize_conn () -
  *   return: void

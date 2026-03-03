@@ -42,14 +42,6 @@
 #include "connection_list_cl.h"
 
 
-connection_list_cl::connection_list_cl ()
-{
-}
-
-connection_list_cl::~connection_list_cl ()
-{
-}
-
 /*
  * css_make_queue_entry() -
  *   return:
