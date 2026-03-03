@@ -75,8 +75,21 @@ jobs:
             
             [CRITICAL INSTRUCTION]
             1. Do NOT just leave a single general summary comment on the PR.
-            2. If you find leftover debug codes, commented-out codes, potential bugs, or memory leaks, you MUST leave **inline comments on the exact lines of code**.
-            3. To leave an inline comment, you MUST use your Shell/Bash execution tool to run the GitHub CLI (`gh api`) command. DO NOT output plain text for the review.
+            2. Carefully check for code quality, potential bugs, readability, leftover debug codes, and memory leaks.
+            3. If you find any issues, you MUST leave **inline comments on the exact lines of code**.
+            4. To leave an inline comment, you MUST use your Shell/Bash execution tool to run the GitHub CLI (`gh api`) command. DO NOT output plain text for the review.
+            5. **All review comments and explanations MUST be written entirely in Korean.**
+            6. **Be EXTREMELY concise.** State ONLY the issue and the actionable fix without any unnecessary background context.
+            
+            [COMMENT FORMAT RULE]
+            Your inline comment body MUST strictly follow this short format. If code improvement is needed, you MUST use the GitHub Suggestion syntax (```suggestion):
+            
+            "🚨 **Issue**: [Briefly explain the bug, readability, or code quality issue in 1-2 sentences in Korean]
+            
+            💡 **Solution**:
+            ```suggestion
+            [Modified code]
+            ```"
             
             [COMMAND FORMAT TO USE]
             The environment variables $GITHUB_REPOSITORY and $PR_NUMBER are already set in your terminal.
@@ -84,14 +97,20 @@ jobs:
             Before leaving a comment, you must FIRST fetch the target COMMIT_ID of this PR using the following command:
             COMMIT_ID=$(gh pr view $PR_NUMBER --repo $GITHUB_REPOSITORY --json commits --jq '.commits[-1].oid')
             
-            Then, run this exact command format for each issue you find, using the $COMMIT_ID you just fetched:
+            Then, run this exact command format for each issue you find, using the $COMMIT_ID you just fetched. 
+            (Note: Ensure proper escaping for the multiline string and backticks in the body parameter if necessary in your bash environment):
             
             gh api \
               --method POST \
               -H "Accept: application/vnd.github+json" \
               /repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/comments \
-              -f body="[Your review comment]" \
+              -f body="🚨 **Issue**: [Explanation in Korean]
+            
+            💡 **Solution**:
+            \`\`\`suggestion
+            [Modified code]
+            \`\`\`" \
               -f commit_id="$COMMIT_ID" \
               -f path="[The exact file path from the diff]" \
               -F line=[The exact line number in the new code] \
-              -f side="RIGHT"        
+              -f side="RIGHT"
