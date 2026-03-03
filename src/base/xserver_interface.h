@@ -300,7 +300,7 @@ extern int xmethod_invoke_fold_constants (THREAD_ENTRY * thread_p, const method_
 
 extern void xsynonym_remove_xasl_by_oid (THREAD_ENTRY * thread_p, OID * oidp);
 
-extern int xfile_tracker_dump_file_list (THREAD_ENTRY * thread_p);
+extern int xfile_tracker_dump_file_list (THREAD_ENTRY * thread_p, FILE * outfp);
 extern int xfile_tracker_purge_invalid_heap_files (THREAD_ENTRY * thread_p);
 extern int xfile_tracker_purge_target_file (THREAD_ENTRY * thread_p, const char *target_vfid_str);
 
