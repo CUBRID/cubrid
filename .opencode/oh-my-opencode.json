@@ -1,25 +1,31 @@
 {
   "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-opencode/master/assets/oh-my-opencode.schema.json",
   "agents": {
-    "sisyphus":   { "model": "opencode/kimi-k2.5" },
-    "momus":      { "model": "opencode/gpt-5.2" },
-    "hephaestus": { "model": "opencode/gpt-5.3-codex" },
-    "oracle":     { "model": "opencode/gpt-5.2" },
-    "librarian":  { "model": "opencode/gemini-3-flash" },
-    "explore":    { "model": "opencode/grok-code-fast-1" },
-    "prometheus": { "model": "opencode/kimi-k2.5" },
-    "metis":      { "model": "opencode/kimi-k2.5" },
-    "atlas":      { "model": "opencode/kimi-k2.5" },
-    "looker":     { "model": "opencode/kimi-k2.5" }
+    "sisyphus": {
+      "model": "opencode/kimi-k2.5",
+      "ultrawork": { "model": "opencode/kimi-k2.5", "variant": "max" }
+    },
+    "hephaestus": { "model": "opencode/gpt-5.3-codex", "variant": "medium" },
+    "oracle": { "model": "opencode/gpt-5.2", "variant": "high" },
+    "librarian": { "model": "opencode/minimax-m2.5-free" },
+    "explore": { "model": "opencode/minimax-m2.5-free" },
+    "multimodal-looker": { "model": "opencode/kimi-k2.5" },
+    "prometheus": {
+      "model": "opencode/gpt-5.2", 
+      "prompt_append": "Leverage deep & quick agents heavily, always in parallel." 
+    },
+    "metis": { "model": "opencode/kimi-k2.5", "variant": "max" },
+    "momus": { "model": "opencode/gpt-5.2", "variant": "medium" },
+    "atlas": { "model": "opencode/kimi-k2.5" }
   },
   "categories": {
-    "deep":               { "model": "opencode/gpt-5.3-codex", "variant": "high" },
-    "ultrabrain":         { "model": "opencode/gpt-5.3-codex", "variant": "high" },
-    "quick":              { "model": "opencode/claude-haiku-4-5" },
-    "unspecified-high":   { "model": "opencode/gpt-5.2" },
-    "unspecified-low":    { "model": "opencode/claude-sonnet-4-6" },
-    "visual-engineering": { "model": "opencode/gemini-3-pro" },
-    "writing":            { "model": "opencode/gemini-3-flash" },
-    "artistry":           { "model": "opencode/gemini-3-pro" }
+    "visual-engineering": { "model": "opencode/glm-5-free", "variant": "high" },
+    "ultrabrain": { "model": "opencode/gpt-5.2-codex", "variant": "xhigh" },
+    "deep": { "model": "opencode/gpt-5.2-codex", "variant": "medium" },
+    "artistry": { "model": "opencode/gemini-3.1-pro", "variant": "high" },
+    "quick": { "model": "opencode/claude-haiku-4-5" },
+    "unspecified-low": { "model": "opencode/kimi-k2.5" },
+    "unspecified-high": { "model": "opencode/claude-sonnet-4-6" },
+    "writing": { "model": "opencode/gemini-3-flash" }
   }
 }
