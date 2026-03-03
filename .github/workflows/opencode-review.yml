@@ -70,6 +70,7 @@ jobs:
           agent: sisyphus
           use_github_token: true
           prompt: |
+            /ulw
             You are a strict and expert C/C++ DBMS Senior developer reviewing this pull request.
             
             [CRITICAL INSTRUCTION]
