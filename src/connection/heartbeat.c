@@ -64,12 +64,14 @@
 #include "system_parameter.h"
 #include "error_manager.h"
 #include "connection_defs.h"
+
 #if defined(CS_MODE)
 #include "client_support.h"
-#include "network_cl.h"
+//#include "network_cl.h"
 #else
-#include "connection_support.h"
+#include "connection_support.hpp"
 #endif
+
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */
@@ -253,7 +255,7 @@ css_receive_heartbeat_data (CSS_CONN_ENTRY * conn, char *data, int size)
 *
 *   type(in):
 */
-static HBP_PROC_REGISTER *
+HBP_PROC_REGISTER *
 hb_make_set_hbp_register (int type)
 {
   HBP_PROC_REGISTER *hbp_register;

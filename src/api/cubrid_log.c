@@ -737,7 +737,7 @@ cubrid_log_send_configurations (void)
 
   request_size = (int) (ptr - request);
 
-  if (__gv_cvar.css_send_request_with_data_buffer
+  if (__gv_cvar.css_send_request_with_data_buffer_with_padding
       (g_conn_entry, NET_SERVER_CDC_START_SESSION, &rid, request, request_size, reply, reply_size) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,
@@ -950,7 +950,7 @@ cubrid_log_find_start_lsa (time_t * timestamp, LOG_LSA * lsa)
 
   or_pack_int64 (request, (INT64) (*timestamp));
 
-  if (__gv_cvar.css_send_request_with_data_buffer
+  if (__gv_cvar.css_send_request_with_data_buffer_with_padding
       (g_conn_entry, NET_SERVER_CDC_FIND_LSA, &rid, request, request_size, reply, reply_size) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,
@@ -1106,7 +1106,7 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
   or_pack_log_lsa (request, next_lsa);
 
   /* protocol name will be modified */
-  if (__gv_cvar.css_send_request_with_data_buffer
+  if (__gv_cvar.css_send_request_with_data_buffer_with_padding
       (g_conn_entry, NET_SERVER_CDC_GET_LOGINFO_METADATA, &rid, request, request_size, reply, reply_size) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,
@@ -1192,7 +1192,7 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 
   if (*total_length > 0)
     {
-      if (__gv_cvar.css_send_request_with_data_buffer
+      if (__gv_cvar.css_send_request_with_data_buffer_with_padding
 	  (g_conn_entry, NET_SERVER_CDC_GET_LOGINFO, &rid, NULL, 0, reply, reply_size) != NO_ERRORS)
 	{
 	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,
@@ -1840,7 +1840,7 @@ cubrid_log_disconnect_server (void)
   CSS_QUEUE_ENTRY *queue_entry;
   int err_code;
 
-  if (__gv_cvar.css_send_request_with_data_buffer
+  if (__gv_cvar.css_send_request_with_data_buffer_with_padding
       (g_conn_entry, NET_SERVER_CDC_END_SESSION, &rid, NULL, 0, reply, reply_size) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,

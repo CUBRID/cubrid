@@ -38,7 +38,7 @@
 #else /* WINDOWS */
 #include "tcp.h"
 #endif /* WINDOWS */
-#include "connection_support.h"
+#include "connection_support.hpp"
 #include "connection_list_cl.h"
 
 

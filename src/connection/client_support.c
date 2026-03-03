@@ -262,8 +262,9 @@ client_support::css_send_request_to_server_with_buffer (char *host, int request,
   entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
   entry->conn->in_method = tran_is_in_libcas ();
 
-  m_css_errno = css_send_request_with_data_buffer (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data_buffer,
-						   data_buffer_size);
+  m_css_errno =
+    css_send_request_with_data_buffer_with_padding (entry->conn, request, &rid, arg_buffer, arg_buffer_size,
+						    data_buffer, data_buffer_size);
   if (m_css_errno != NO_ERRORS)
     {
       m_conn_less.css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
@@ -518,7 +519,7 @@ client_support::css_send_error_to_server (char *host, unsigned int eid, char *bu
   entry->conn->in_method = tran_is_in_libcas ();
   entry->conn->db_error = er_errid ();
 
-  m_css_errno = css_send_error (entry->conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
+  m_css_errno = css_send_error_with_padding (entry->conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
   if (m_css_errno != NO_ERRORS)
     {
       m_conn_less.css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
@@ -554,7 +555,7 @@ client_support::css_send_data_to_server (char *host, unsigned int eid, char *buf
   entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
   entry->conn->in_method = tran_is_in_libcas ();
 
-  m_css_errno = css_send_data (entry->conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
+  m_css_errno = css_send_data_with_padding (entry->conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
   if (m_css_errno != NO_ERRORS)
     {
       m_conn_less.css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
