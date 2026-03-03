@@ -41,9 +41,6 @@ private:
   int m_css_errno;
   class connection_less m_conn_less;
 
-  // TODO: Integrating this into connection_less reduces function call complexity
-  CSS_MAP_ENTRY *m_css_Client_anchor;
-
 private:
   static void css_handle_pipe_shutdown (int sig);
   void css_set_pipe_signal (void);

@@ -36,6 +36,7 @@
 connection_less::connection_less ()
 {
   m_entry_id = 0;
+  m_css_map_entry = NULL;
 }
 
 /*
@@ -61,13 +62,13 @@ connection_less::css_make_eid (unsigned short entry_id, unsigned short rid)
  *   anchor(in): map entry anchor
  */
 CSS_MAP_ENTRY *
-connection_less::css_return_entry_from_eid (unsigned int eid, CSS_MAP_ENTRY *anchor)
+connection_less::css_return_entry_from_eid (unsigned int eid)
 {
   CSS_MAP_ENTRY *map_entry_p;
   unsigned short entry_id;
 
   entry_id = CSS_ENTRYID_FROM_EID (eid);
-  for (map_entry_p = anchor; map_entry_p; map_entry_p = map_entry_p->next)
+  for (map_entry_p = m_css_map_entry; map_entry_p; map_entry_p = map_entry_p->next)
     {
       if (map_entry_p->id == entry_id)
 	{
@@ -81,10 +82,9 @@ connection_less::css_return_entry_from_eid (unsigned int eid, CSS_MAP_ENTRY *anc
  * css_make_entry_id() - create an entry structure that will be queued for
  *                       reuse
  *   return: entry id
- *   anchor(in): map entry anchor
  */
 unsigned short
-connection_less::css_make_entry_id (CSS_MAP_ENTRY *anchor)
+connection_less::css_make_entry_id ()
 {
   CSS_MAP_ENTRY *map_entry_p;
   unsigned short old_value;
@@ -95,7 +95,7 @@ connection_less::css_make_entry_id (CSS_MAP_ENTRY *anchor)
       m_entry_id++;
     }
 
-  for (map_entry_p = anchor; map_entry_p; map_entry_p = map_entry_p->next)
+  for (map_entry_p = m_css_map_entry; map_entry_p; map_entry_p = map_entry_p->next)
     {
       if (m_entry_id == old_value)
 	{
@@ -105,7 +105,7 @@ connection_less::css_make_entry_id (CSS_MAP_ENTRY *anchor)
       if (m_entry_id == map_entry_p->id)
 	{
 	  m_entry_id++;
-	  map_entry_p = anchor;
+	  map_entry_p = m_css_map_entry;
 	}
     }
 
@@ -120,7 +120,7 @@ connection_less::css_make_entry_id (CSS_MAP_ENTRY *anchor)
  *   anchor(out): map entry anchor
  */
 CSS_MAP_ENTRY *
-connection_less::css_queue_connection (CSS_CONN_ENTRY *conn, const char *host, CSS_MAP_ENTRY **anchor)
+connection_less::css_queue_connection (CSS_CONN_ENTRY *conn, const char *host)
 {
   CSS_MAP_ENTRY *map_entry_p;
 
@@ -149,9 +149,9 @@ connection_less::css_queue_connection (CSS_CONN_ENTRY *conn, const char *host, C
 	  map_entry_p->key = NULL;
 	}
       map_entry_p->conn = conn;
-      map_entry_p->next = *anchor;
-      map_entry_p->id = css_make_entry_id (*anchor);
-      *anchor = map_entry_p;
+      map_entry_p->next = m_css_map_entry;
+      map_entry_p->id = css_make_entry_id ();
+      m_css_map_entry = map_entry_p;
 
       return (map_entry_p);
     }
@@ -164,16 +164,15 @@ connection_less::css_queue_connection (CSS_CONN_ENTRY *conn, const char *host, C
  *                          destination
  *   return: map entry if found, or NULL
  *   host(in): host name to find
- *   anchor(in): map entry anchor
  */
 CSS_MAP_ENTRY *
-connection_less::css_get_queued_entry (char *host, CSS_MAP_ENTRY *anchor)
+connection_less::css_get_queued_entry (char *host)
 {
   CSS_MAP_ENTRY *map_entry_p;
 
   pthread_t tid = pthread_self ();
 
-  for (map_entry_p = anchor; map_entry_p; map_entry_p = map_entry_p->next)
+  for (map_entry_p = m_css_map_entry; map_entry_p; map_entry_p = map_entry_p->next)
     {
       if (strcmp (host, map_entry_p->key) == 0)
 	{
@@ -199,18 +198,18 @@ connection_less::css_get_queued_entry (char *host, CSS_MAP_ENTRY *anchor)
  *   anchor(in/out): map entry anchor
  */
 void
-connection_less::css_remove_queued_connection_by_entry (CSS_MAP_ENTRY *entry, CSS_MAP_ENTRY **anchor)
+connection_less::css_remove_queued_connection_by_entry (CSS_MAP_ENTRY *entry)
 {
   CSS_MAP_ENTRY *map_entry_p, *prev_map_entry_p;
 
-  for (map_entry_p = *anchor, prev_map_entry_p = NULL; map_entry_p;
+  for (map_entry_p = m_css_map_entry, prev_map_entry_p = NULL; map_entry_p;
        prev_map_entry_p = map_entry_p, map_entry_p = map_entry_p->next)
     {
       if (entry == map_entry_p)
 	{
-	  if (map_entry_p == *anchor)
+	  if (map_entry_p == m_css_map_entry)
 	    {
-	      *anchor = map_entry_p->next;
+	      m_css_map_entry = map_entry_p->next;
 	    }
 	  else
 	    {
@@ -250,11 +249,11 @@ connection_less::css_test_for_open_conn (CSS_CONN_ENTRY *conn)
  *       and returned.
  */
 CSS_MAP_ENTRY *
-connection_less::css_return_open_entry (char *host, CSS_MAP_ENTRY **anchor)
+connection_less::css_return_open_entry (char *host)
 {
   CSS_MAP_ENTRY *map_entry_p;
 
-  map_entry_p = css_get_queued_entry (host, *anchor);
+  map_entry_p = css_get_queued_entry (host);
   if (map_entry_p != NULL)
     {
       if (css_test_for_open_conn (map_entry_p->conn))
@@ -266,19 +265,24 @@ connection_less::css_return_open_entry (char *host, CSS_MAP_ENTRY **anchor)
   return (NULL);
 }
 
+CSS_MAP_ENTRY *
+connection_less::css_get_map_entry()
+{
+  return m_css_map_entry;
+}
+
 #if defined(UNUSED_FUNCTION)
 /*
  * css_return_entry_from_conn() - check the queue based on a conn_ptr
  *   return: the entry if it exists, or NULL
  *   conn(in): connection
- *   anchor(in): map entry anchor
  */
 CSS_MAP_ENTRY *
-connection_less::css_return_entry_from_conn (CSS_CONN_ENTRY *conn, CSS_MAP_ENTRY *anchor)
+connection_less::css_return_entry_from_conn (CSS_CONN_ENTRY *conn)
 {
   CSS_MAP_ENTRY *map_entry_p;
 
-  for (map_entry_p = anchor; map_entry_p; map_entry_p = map_entry_p->next)
+  for (map_entry_p = m_css_map_entry; map_entry_p; map_entry_p = map_entry_p->next)
     {
       if (map_entry_p->conn == conn)
 	{
@@ -300,14 +304,14 @@ connection_less::css_return_entry_from_conn (CSS_CONN_ENTRY *conn, CSS_MAP_ENTRY
  *       This is for use by servers ONLY (note lack of host name).
  */
 unsigned int
-connection_less::css_return_eid_from_conn (CSS_CONN_ENTRY *conn, CSS_MAP_ENTRY **anchor, unsigned short rid)
+connection_less::css_return_eid_from_conn (CSS_CONN_ENTRY *conn, unsigned short rid)
 {
   CSS_MAP_ENTRY *map_entry_p;
 
-  map_entry_p = css_return_entry_from_conn (conn, *anchor);
+  map_entry_p = css_return_entry_from_conn (conn);
   if (map_entry_p == NULL)
     {
-      map_entry_p = css_queue_connection (conn, (char *) "", anchor);
+      map_entry_p = css_queue_connection (conn, (char *) "");
     }
 
   if (map_entry_p == NULL)
