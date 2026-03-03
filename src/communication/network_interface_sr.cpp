@@ -12012,7 +12012,7 @@ stdes_reset_query_start_info (THREAD_ENTRY *thread_p, unsigned int rid, char *re
  *   reqlen(in): the request length
  */
 void
-slob_create_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+slob_create_dir (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
@@ -12058,7 +12058,7 @@ end:
  *   reqlen(in): the request length
  */
 void
-slob_remove_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+slob_remove_dir (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
