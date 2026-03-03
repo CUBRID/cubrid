@@ -352,15 +352,16 @@ error_return:
 }
 
 /*
- * elo_copy_with_prefix () - Move a LOB file to a specified directory with a prefix.
- *                           Specifically, it renames a temporary LOB file to its permanent meta_data
- *                           and moves it into the LOB directory defined by the given prefix.
+ * elo_copy_with_prefix () - Relocate an ELO to a new path with a given prefix.
  * return: error code
- * src_elo(in): DB_ELO structure that represents the original source file
- * prefix(in): prefix to be added to the destination path when moving the file
- * dest_elo(out): DB_ELO structure that represents the moved file
+ * src_elo(in): DB_ELO structure representing the original source file.
+ * prefix(in): Path prefix to be added to the destination location.
+ * dest_elo(out): DB_ELO structure representing the relocated file.
  *
- * Note: CUBRID supports only the ES_POSIX type, so only the ES_POSIX case is handled.
+ * Note: This function operates similarly to elo_copy (), but with the following differences:
+ * 1. It adds a prefix to the destination path.
+ * 2. In LOB_TRANSIENT_CREATED or LOB_PERMANENT_DELETED states, it performs a rename followed by a move operation.
+ * 3. Currently, CUBRID supports only the ES_POSIX type, so only the ES_POSIX case is handled.
  */
 int
 elo_copy_with_prefix (DB_ELO * src_elo, const char *prefix, DB_ELO * dest_elo)

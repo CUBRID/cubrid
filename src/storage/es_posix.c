@@ -688,7 +688,8 @@ retry:
 }
 
 /*
- * xes_posix_copy_file_with_prefix - copy the external file to new one
+ * xes_posix_copy_file_with_prefix - Similar to xes_posix_copy_file(), but handles only the ES_POSIX type and performs file copy
+                              while adding a prefix to the destination path.
  *
  * return: error code
  * src_path(in): path of the original source file
