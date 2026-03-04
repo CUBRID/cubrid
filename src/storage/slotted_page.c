@@ -4571,7 +4571,7 @@ spage_is_unknown_slot (PGSLOTID slot_id, SPAGE_HEADER * page_header_p, SPAGE_SLO
   if (unlikely (offset < (int) sizeof (SPAGE_HEADER)))
     {
 #if defined (NDEBUG)
-      assert_release (offset >= sizeof (SPAGE_HEADER));
+      assert_release (offset >= (int) sizeof (SPAGE_HEADER));
 #else
       er_log_debug (ARG_FILE_LINE, "Offset violates header boundary : offset=%d\n", offset);
 #endif
@@ -4583,7 +4583,7 @@ spage_is_unknown_slot (PGSLOTID slot_id, SPAGE_HEADER * page_header_p, SPAGE_SLO
       (total_slots_size > (unsigned int) SPAGE_DB_PAGESIZE || offset > (int) (SPAGE_DB_PAGESIZE - total_slots_size)))
     {
 #if defined (NDEBUG)
-      assert_release (total_slots_size <= SPAGE_DB_PAGESIZE || offset <= (SPAGE_DB_PAGESIZE - total_slots_size));
+      assert_release (total_slots_size <= (unsigned int) SPAGE_DB_PAGESIZE || offset <= (int) (SPAGE_DB_PAGESIZE - total_slots_size));
 #else
       er_log_debug (ARG_FILE_LINE, "Offset violates slot array boundary : offset=%d, total_slots_size=%d\n", offset,
 		    total_slots_size);
