@@ -57,8 +57,8 @@ extern unsigned int css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int
 extern unsigned int css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply,
 						       int reply_size, char *buffer, int buffer_size,
 						       std::function < void () > &&deleter);
-extern unsigned int css_send_reply_and_data_to_client_old (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply,
-							   int reply_size, char *buffer, int buffer_size);
+extern unsigned int css_send_reply_and_data_to_client_direct (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply,
+							      int reply_size, char *buffer, int buffer_size);
 #if 0
 extern unsigned int css_send_reply_and_large_data_to_client (unsigned int eid, char *reply, int reply_size,
 							     char *buffer, INT64 buffer_size);
