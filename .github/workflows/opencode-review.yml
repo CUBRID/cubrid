@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       id-token: write
-      contents: read
+      contents: write 
       pull-requests: write
       issues: write
     steps:
@@ -68,6 +68,7 @@ jobs:
           model: opencode/kimi-k2.5
           agent: sisyphus
           use_github_token: true
+          share: true
           prompt: |
             /ulw
             You are an expert C/C++ DBMS Senior developer reviewing this PR.
