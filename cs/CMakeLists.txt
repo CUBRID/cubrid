@@ -134,6 +134,9 @@ set(BASE_SOURCES
   ${BASE_DIR}/variable_string.c
   ${BASE_DIR}/xml_parser.c
   ${BASE_DIR}/ddl_log.c
+  ${BASE_DIR}/filesys_parser.cpp
+  ${BASE_DIR}/cgroup.cpp
+  ${BASE_DIR}/resources.cpp
   )
 
 set(BASE_HEADERS
@@ -166,6 +169,9 @@ set(BASE_HEADERS
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/ddl_log.h
+  ${BASE_DIR}/filesys_parser.hpp
+  ${BASE_DIR}/cgroup.hpp
+  ${BASE_DIR}/resources.hpp
   )
 
 set(HEAPLAYER_SOURCES
@@ -179,8 +185,12 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/connection_globals.c
   ${CONNECTION_DIR}/connection_list_cl.c
   ${CONNECTION_DIR}/client_support.c
-  ${CONNECTION_DIR}/connection_support.c
+  ${CONNECTION_DIR}/connection_support.cpp
   ${CONNECTION_DIR}/host_lookup.c
+  )
+
+set(CONNECTION_HEADERS
+  ${CONNECTION_DIR}/connection_support.hpp
   )
 
 set(COMMUNICATION_SOURCES
@@ -532,6 +542,7 @@ add_library(cubridcs SHARED
   ${ES_SOURCES}
   ${COMMUNICATION_SOURCES}
   ${CONNECTION_SOURCES}
+  ${CONNECTION_HEADERS}
   ${CONNECTION_TCP_SOURCE}
   ${HEAPLAYER_SOURCES}
   ${OBJECT_HEADERS}
