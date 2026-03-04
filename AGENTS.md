@@ -54,7 +54,7 @@ Apache 2.0 license. Version 11.5.x.
 ├── debian/              # DEB packaging
 └── win/                 # Windows build scripts
 ```
-> **Note:** Submodule canonical URLs and pinned revisions are defined in `.gitmodules`.
+
 > **Note:** Submodule canonical URLs and pinned revisions are defined in `.gitmodules`.
 
 ## Where to Look
