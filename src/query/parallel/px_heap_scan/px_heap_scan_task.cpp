@@ -290,7 +290,7 @@ namespace parallel_heap_scan
       }
     else
       {
-	m_result_handler->write_initialize (&thread_ref, m_xasl->outptr_list, m_xasl->val_list, m_vd);
+	m_result_handler->write_initialize (&thread_ref, m_xasl->outptr_list, m_xasl, m_vd);
       }
     return NO_ERROR;
   }

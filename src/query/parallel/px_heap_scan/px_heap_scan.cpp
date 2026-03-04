@@ -702,7 +702,7 @@ namespace parallel_heap_scan
 	    m_g_agg_domain_resolve_need = true;
 	  }
 	m_result_handler = placement_new ((result_handler<RESULT_TYPE::MERGEABLE_LIST> *) m_result_handler, m_query_id,
-					  &m_interrupt, &m_err_messages, m_parallelism, m_g_agg_domain_resolve_need, m_xasl->val_list);
+					  &m_interrupt, &m_err_messages, m_parallelism, m_g_agg_domain_resolve_need, m_xasl);
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {
@@ -714,7 +714,7 @@ namespace parallel_heap_scan
 	    return ER_FAILED;
 	  }
 	m_result_handler = placement_new ((result_handler<RESULT_TYPE::XASL_SNAPSHOT> *) m_result_handler, m_query_id,
-					  &m_interrupt, &m_err_messages, m_parallelism, m_g_agg_domain_resolve_need, m_xasl->val_list);
+					  &m_interrupt, &m_err_messages, m_parallelism, m_g_agg_domain_resolve_need, m_xasl);
       }
     else if constexpr (result_type == RESULT_TYPE::COUNT_DISTINCT)
       {
@@ -862,28 +862,33 @@ namespace parallel_heap_scan
 	    m_join_info.apply_join_info (m_xasl);
 	  }
 
-	std::vector<DB_VALUE> dbval_container (m_xasl->val_list->val_cnt);
-	QPROC_DB_VALUE_LIST valp = m_xasl->val_list->valp;
-	for (int i = 0; i < m_xasl->val_list->val_cnt; i++)
-	  {
-	    pr_clone_value (valp->val, &dbval_container[i]);
-	    valp = valp->next;
-	  }
+	XASL_NODE *xptr = m_xasl;
 
-	HL_HEAPID heap_id = db_change_private_heap (m_thread_p, 0);
-	valp = m_xasl->val_list->valp;
-	for (int i = 0; i < m_xasl->val_list->val_cnt; i++)
+	for (xptr = m_xasl; xptr != nullptr; xptr = xptr->scan_ptr)
 	  {
-	    pr_clear_value (valp->val);
-	    valp = valp->next;
-	  }
-	db_change_private_heap (m_thread_p, heap_id);
-	valp = m_xasl->val_list->valp;
-	for (int i=0; i<m_xasl->val_list->val_cnt; i++)
-	  {
-	    pr_clone_value (&dbval_container[i], valp->val);
-	    pr_clear_value (&dbval_container[i]);
-	    valp = valp->next;
+	    std::vector<DB_VALUE> dbval_container (xptr->val_list->val_cnt);
+	    QPROC_DB_VALUE_LIST valp = xptr->val_list->valp;
+	    for (int i = 0; i < xptr->val_list->val_cnt; i++)
+	      {
+		pr_clone_value (valp->val, &dbval_container[i]);
+		valp = valp->next;
+	      }
+
+	    HL_HEAPID heap_id = db_change_private_heap (m_thread_p, 0);
+	    valp = xptr->val_list->valp;
+	    for (int i = 0; i < xptr->val_list->val_cnt; i++)
+	      {
+		pr_clear_value (valp->val);
+		valp = valp->next;
+	      }
+	    db_change_private_heap (m_thread_p, heap_id);
+	    valp = xptr->val_list->valp;
+	    for (int i=0; i<xptr->val_list->val_cnt; i++)
+	      {
+		pr_clone_value (&dbval_container[i], valp->val);
+		pr_clear_value (&dbval_container[i]);
+		valp = valp->next;
+	      }
 	  }
 
 	fetch_val_list (m_thread_p, m_xasl->outptr_list->valptrp, m_vd, nullptr, nullptr, NULL, true);
@@ -968,6 +973,12 @@ namespace parallel_heap_scan
 	m_interrupt.set_code (parallel_query::interrupt::interrupt_code::JOB_ENDED);
       }
 
+    /* Release worker manager */
+    if (m_worker_manager != nullptr)
+      {
+	m_worker_manager->wait_workers ();
+      }
+
     m_result_handler->read_finalize (m_thread_p);
 
     /* Clean up input handler */
@@ -984,12 +995,6 @@ namespace parallel_heap_scan
 	m_result_handler->~result_handler ();
 	db_private_free (m_thread_p, m_result_handler);
 	m_result_handler = nullptr;
-      }
-
-    /* Release worker manager */
-    if (m_worker_manager != nullptr)
-      {
-	m_worker_manager->wait_workers ();
       }
 
     /* Clean up previous value descriptor */
