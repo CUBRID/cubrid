@@ -73,7 +73,3 @@ Union-based linked list. Key fields:
 - Parser runs **client-side** — no `THREAD_ENTRY *` available, no server-side APIs
 - Bison shift/reduce conflicts: check `y.output` after grammar changes
 - `PT_NODE` unions: accessing wrong `info` member = undefined behavior
-
-## Owner
-
-CODEOWNERS: @beyondykk9 (except `view_transform.*` → @shparkcubrid)

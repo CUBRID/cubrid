@@ -69,7 +69,3 @@ pgbuf_set_dirty (thread_p, page, DONT_FREE);
 - Page latch ordering matters: parent before child to avoid deadlocks
 - Buffer pool uses victim selection via LRU zones — not simple LRU
 - `heap_file.c` has MVCC-aware and non-MVCC paths — check which you're in
-
-## Owner
-
-CODEOWNERS: @hornetmj (except `statistics*` → @shparkcubrid)

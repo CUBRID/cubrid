@@ -194,9 +194,3 @@ For project-wide coding style, anti-patterns, and error handling conventions, se
 ### Memory-Specific
 - `memory_cwrapper.h` CAN be included in headers; `memory_wrapper.hpp` CANNOT
 - Never include `memory_wrapper.hpp` in a header file
-
-## Owner
-
-From `.github/CODEOWNERS`:
-- `src/base/` → **@beyondykk9** (primary)
-- `src/base/memory_monitor_*` → **@hornetmj**

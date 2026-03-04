@@ -212,16 +212,3 @@ PR title must match `^\[[A-Z]+-\d+\]\s.+` (e.g. `[CBRD-12345] Fix buffer overflo
 - `src/object/schema_system_catalog_constants.h` — Catalog table name constants
 - `docs/install_build_requirements.md` — Build dependency installation
 
-## Code Owners
-
-From `.github/CODEOWNERS`:
-
-| Area | Owner |
-|------|-------|
-| `base/`, `broker/`, `parser/`, `compat/`, `xasl/`, `object/`, `sp/`, `method/`, `connection/`, `executables/`, `loaddb/`, `thread/`, `session/`, `monitor/`, `communication/`, `heaplayers/`, `cm_common/` | @beyondykk9 |
-| `optimizer/`, `query/query_executor.*`, `query/query_hash_scan.*`, `query/query_hash_join.*`, `query/scan_manager.*`, `query/subquery_cache.*`, `query/memoize.*`, `query/parallel/` | @shparkcubrid |
-| `storage/` (except `statistics*`), `transaction/`, `query/vacuum.*`, `base/memory_monitor_*` | @hornetmj |
-| `storage/statistics*` | @shparkcubrid |
-| `win_tools/` | @hwany7seo |
-| `pl_engine/` | @beyondykk9 |
-| `parser/view_transform.*` | @shparkcubrid |

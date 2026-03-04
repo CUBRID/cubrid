@@ -24,7 +24,7 @@ Server-side. Executes deserialized XASL plans.
 ## Subdirectory
 | Dir | Purpose |
 |-----|---------|
-| `parallel/` | Parallel query execution: heap scan, hash join, query execute, sort. Core: `px_parallel.hpp`, `px_worker_manager.hpp`. Owner: @shparkcubrid |
+| `parallel/` | Parallel query execution: heap scan, hash join, query execute, sort. Core: `px_parallel.hpp`, `px_worker_manager.hpp`. |
 
 ## Where to Look
 
@@ -78,9 +78,3 @@ XASL_NODE tree (deserialized on server)
 - XASL serialization must match exactly between client and server — version mismatches cause crashes
 - `REGU_VARIABLE` evaluation is recursive — deep expressions can stack overflow
 - List file I/O can be major bottleneck — temp files hit disk for large results
-
-## Owners
-
-CODEOWNERS: @beyondykk9 (general), per-file overrides:
-- `query_executor.*`, `query_hash_scan.*`, `query_hash_join.*`, `scan_manager.*`, `subquery_cache.*`, `memoize.*`, `parallel/` → @shparkcubrid
-- `vacuum.*` → @hornetmj
