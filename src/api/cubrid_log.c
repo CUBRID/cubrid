@@ -617,7 +617,8 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
 #if defined (WINDOWS)
   if (reason == SERVER_CONNECTED_NEW)
     {
-      if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_connection_timeout * 1000) != NO_ERRORS)
+      if (__gv_cvar.css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_connection_timeout * 1000) !=
+	  NO_ERRORS)
 	{
 	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,
 				     "Failed to receive the server port id from the master.\n");
@@ -629,9 +630,9 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
 
 	  int port_id = ntohl (*((int *) recv_data));
 
-	  css_close_conn (g_conn_entry);
+	  __gv_cvar.css_close_conn (g_conn_entry);
 
-	  g_conn_entry = css_server_connect_part_two (host, g_conn_entry, port_id, &rid);
+	  g_conn_entry = __gv_cvar.css_server_connect_part_two (host, g_conn_entry, port_id, &rid);
 	  if (g_conn_entry == NULL)
 	    {
 	      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,

@@ -49,11 +49,6 @@
 
 class connection_cl:public connection_support
 {
-private:
-/* the queue anchor for all the connection structures */
-//  CSS_CONN_ENTRY * m_css_conn_anchor;
-//  int m_css_client_id;
-
 public:
   int m_service_port_id;
 

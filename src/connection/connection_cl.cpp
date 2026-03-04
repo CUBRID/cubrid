@@ -74,6 +74,10 @@
 #include "connection_cl.h"
 #include "master_util.h"
 
+#if defined (SERVER_MODE)
+#error Does not belong to server module
+#endif /* defined (SERVER_MODE) */
+
 #if defined(HPUX)
 /*
  * HP uses a monster fd set size (2K) and recommends in sys/types.h
@@ -94,8 +98,7 @@
 #endif /* PACKET_TRACE */
 
 /* the queue anchor for all the connection structures */
-CSS_CONN_ENTRY *css_Conn_anchor = NULL;
-int css_Client_id = 0;
+CSS_CONN_ENTRY *css_Conn_anchor = NULL; // TODO: Let's define it as a member variable of the connection_cl class
 
 #if defined(MULTI_CONN_TO_A_SERVER)
 pthread_mutex_t Conn_anchor_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -130,7 +133,6 @@ css_shutdown_conn (CSS_CONN_ENTRY *conn)
 connection_cl::connection_cl ()
 {
   //m_css_conn_anchor = NULL;
-  //m_css_client_id = 0;
   m_service_port_id = DEFAULT_MASTER_PORT_NO;
 }
 
@@ -146,9 +148,6 @@ connection_cl::css_initialize_conn (CSS_CONN_ENTRY *conn, SOCKET fd)
   conn->request_id = 0;
   conn->fd = fd;
   conn->status = CONN_OPEN;
-  CS_LOCK ();
-  conn->client_id = ++css_Client_id;
-  CS_UnLOCK ();
   conn->data_queue = NULL;
   conn->request_queue = NULL;
   conn->abort_queue = NULL;
