@@ -1314,6 +1314,7 @@ valid options:\n\
                                   default: latest\n
 
 $set 59 MSGCAT_UTIL_SET_FILEMGR
+10 Couldn't open output file '%1$s'\n
 60 \
 filemgr: file manager utility\n\
 usage: %1$s filemgr [OPTION] database-name\n\
@@ -1321,6 +1322,7 @@ usage: %1$s filemgr [OPTION] database-name\n\
 valid options:\n\
     -S, --SA-mode                      stand-alone mode execution\n\
     -C, --CS-mode                      client-server mode execution\n\
+    -o, --output-file=FILE             redirect output message to FILE; default: none.\n\
     -l, --list                         list all files\n\
     -p, --purge-invalid-heap-files     purge invalid heap files\n\
     -t, --force-purge-target-vfid=VFID purge file by VFID in \"fileid|volid\" format\n
