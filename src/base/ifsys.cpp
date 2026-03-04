@@ -20,15 +20,17 @@
  * ifsys.cpp
  */
 
-#include "ifsys.hpp"
-
 #include <vector>
 #include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <cstring>
 #include <dirent.h>
+#include <unistd.h>
 #include <sys/stat.h>
+
+#include "ifsys.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -98,41 +100,6 @@ namespace cubbase
     sort (out.begin (), out.end ());
 
     return out;
-  }
-
-  int ifsys::listdir_count_prefix (const char *path, const char *prefix)
-  {
-    struct dirent *e;
-    DIR *dir;
-    int length;
-    int count;
-
-    dir = opendir (path);
-    if (!dir)
-      {
-	return 0;
-      }
-
-    count = 0;
-    length = prefix ? strlen (prefix) : 0;
-    while ((e = readdir (dir)))
-      {
-	if (strcmp (e->d_name, ".") == 0 || strcmp (e->d_name, "..") == 0)
-	  {
-	    continue;
-	  }
-	if (prefix && strncmp (e->d_name, prefix, length) != 0)
-	  {
-	    continue;
-	  }
-	if (e->d_type == DT_DIR || e->d_type == DT_LNK)
-	  {
-	    count++;
-	  }
-      }
-    closedir (dir);
-
-    return count;
   }
 
   std::string ifsys::read_one_line (const std::string &path)
@@ -256,6 +223,41 @@ namespace cubbase
     rx = read_u64 ("/sys/class/net/" + ifname + "/statistics/rx_packets");
     tx = read_u64 ("/sys/class/net/" + ifname + "/statistics/tx_packets");
     return rx + tx;
+  }
+
+  int ifsys::listdir_count_prefix (const char *path, const char *prefix)
+  {
+    struct dirent *e;
+    DIR *dir;
+    int length;
+    int count;
+
+    dir = opendir (path);
+    if (!dir)
+      {
+	return 0;
+      }
+
+    count = 0;
+    length = prefix ? strlen (prefix) : 0;
+    while ((e = readdir (dir)))
+      {
+	if (strcmp (e->d_name, ".") == 0 || strcmp (e->d_name, "..") == 0)
+	  {
+	    continue;
+	  }
+	if (prefix && strncmp (e->d_name, prefix, length) != 0)
+	  {
+	    continue;
+	  }
+	if (e->d_type == DT_DIR || e->d_type == DT_LNK)
+	  {
+	    count++;
+	  }
+      }
+    closedir (dir);
+
+    return count;
   }
 
   std::string ifsys::auto_select_primary_iface ()
