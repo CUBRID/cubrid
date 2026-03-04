@@ -197,10 +197,6 @@ static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
 static unsigned int css_enqueue_and_notify (cubconn::connection::worker::queue_type type,
 					    cubconn::connection::worker::message &&item, int wait_time = 0);
 
-#if defined(WINDOWS)
-static int css_process_new_connection_request (void);
-#endif /* WINDOWS */
-
 static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
 

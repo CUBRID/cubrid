@@ -3877,7 +3877,7 @@ sboot_notify_unregister_client (THREAD_ENTRY *thread_p, unsigned int rid, char *
   assert (conn != NULL);
 
   /* There's an interesting race condition among client, worker thread and connection handler.
-   * Please find CBRD-21375 for detail and also see css_connection_handler_thread.
+   * Please find CBRD-21375 for detail.
    *
    * It is important to synchronize worker thread with connection handler to avoid the race condition.
    * To change conn->status and send reply to client should be atomic.

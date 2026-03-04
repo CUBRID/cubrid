@@ -49,8 +49,6 @@ enum css_thread_stop_type
 
 extern void css_block_all_active_conn (unsigned short stop_phase);
 
-extern THREAD_RET_T THREAD_CALLING_CONVENTION css_master_thread (void);
-
 extern unsigned int css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size);
 extern unsigned int css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size,
 					     int wait_time = 0);
