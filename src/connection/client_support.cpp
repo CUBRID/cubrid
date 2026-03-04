@@ -155,7 +155,6 @@ client_support::css_client_sub_init (const char *server_name, const char *host_n
   CSS_MAP_ENTRY *map;
   int error = NO_ERROR;
 
-  // TODO: multi-connection support
   conn = css_connect_to_cubrid_server ((char *) host_name, (char *) server_name);
   if (conn != NULL)
     {

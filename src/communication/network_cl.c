@@ -103,6 +103,17 @@ char net_Server_host[CUB_MAXHOSTNAMELEN + 1] = { 0x00, };
 /* Contains the name of the current server name. */
 char net_Server_name[DB_MAX_IDENTIFIER_LENGTH + 1] = { 0x00, };;
 
+static void return_error_to_server (char *host, unsigned int eid);
+static int client_capabilities (void);
+static int check_server_capabilities (int server_cap, int client_type, int rel_compare,
+				      REL_COMPATIBILITY * compatibility, const char *server_host, int opt_cap);
+static int net_set_alloc_err_if_not_set (int err, const char *file, const int line);
+static void net_consume_expected_packets (int rc, int num_packets);
+static int compare_size_and_buffer (int *replysize, int size, char **replybuf, char *buf, const char *file,
+				    const int line);
+static int net_client_request_internal (int request, char *argbuf, int argsize, char *replybuf, int replysize,
+					char *databuf, int datasize, char *replydata, int replydatasize);
+static int set_server_error (int error);
 
 /*
  * set_server_error -
@@ -113,7 +124,7 @@ char net_Server_name[DB_MAX_IDENTIFIER_LENGTH + 1] = { 0x00, };;
  * Note:
  */
 
-int
+static int
 set_server_error (int error)
 {
   int server_error;
@@ -177,7 +188,7 @@ set_server_error (int error)
  *
  * Note:
  */
-void
+static void
 return_error_to_server (char *host, unsigned int eid)
 {
   char *area;
@@ -199,7 +210,7 @@ return_error_to_server (char *host, unsigned int eid)
  *
  * return:
  */
-int
+static int
 client_capabilities (void)
 {
   int capabilities = 0;
@@ -223,7 +234,7 @@ client_capabilities (void)
  *
  * return:
  */
-int
+static int
 check_server_capabilities (int server_cap, int client_type, int rel_compare,
 			   REL_COMPATIBILITY * compatibility, const char *server_host, int opt_cap)
 {
@@ -323,7 +334,7 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare,
  *   line(in):
  *
  */
-int
+static int
 net_set_alloc_err_if_not_set (int err, const char *file, const int line)
 {
   /* don't set error if there already is one */
@@ -336,7 +347,7 @@ net_set_alloc_err_if_not_set (int err, const char *file, const int line)
   return err;
 }
 
-void
+static void
 net_consume_expected_packets (int rc, int num_packets)
 {
   char *reply = NULL;
@@ -368,7 +379,7 @@ net_consume_expected_packets (int rc, int num_packets)
  *    Compares sizes and buffers that have been queued with the actual
  *    received values after a data read.  Called by macro of the same name.
  */
-int
+static int
 compare_size_and_buffer (int *replysize, int size, char **replybuf, char *buf, const char *file, const int line)
 {
   int err = NO_ERROR;
@@ -459,7 +470,7 @@ net_client_request_no_reply (int request, char *argbuf, int argsize)
  *       request.  All network interface routines will call either this
  *       function or net_client_request2.
  */
-int
+static int
 net_client_request_internal (int request, char *argbuf, int argsize, char *replybuf, int replysize,
 			     char *databuf, int datasize, char *replydata, int replydatasize)
 {

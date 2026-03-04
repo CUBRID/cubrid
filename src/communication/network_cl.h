@@ -40,86 +40,75 @@
 #include "log_writer.h"
 #include "client_support.h"
 
-void return_error_to_server (char *host, unsigned int eid);
-int client_capabilities (void);
-int check_server_capabilities (int server_cap, int client_type, int rel_compare,
-			       REL_COMPATIBILITY * compatibility, const char *server_host, int opt_cap);
-int net_set_alloc_err_if_not_set (int err, const char *file, const int line);
-void net_consume_expected_packets (int rc, int num_packets);
-int compare_size_and_buffer (int *replysize, int size, char **replybuf, char *buf, const char *file, const int line);
-int net_client_request_internal (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-				 char *databuf, int datasize, char *replydata, int replydatasize);
-int set_server_error (int error);
 
-
-int net_client_request_no_reply (int request, char *argbuf, int argsize);
-int net_client_request (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf,
-			int datasize, char *replydata, int replydatasize);
+extern int net_client_request_no_reply (int request, char *argbuf, int argsize);
+extern int net_client_request (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf,
+			       int datasize, char *replydata, int replydatasize);
 #if defined(ENABLE_UNUSED_FUNCTION)
-int net_client_request_send_large_data (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-					char *databuf, INT64 datasize, char *replydata, int replydatasize);
+extern int net_client_request_send_large_data (int request, char *argbuf, int argsize, char *replybuf, int replysize,
+					       char *databuf, INT64 datasize, char *replydata, int replydatasize);
 #endif
-int net_client_request2 (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf,
-			 int datasize, char **replydata_ptr, int *replydatasize_ptr);
-int net_client_request2_no_malloc (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-				   char *databuf, int datasize, char *replydata, int *replydatasize_ptr);
-int net_client_request_3_data (int request, char *argbuf, int argsize, char *databuf1, int datasize1,
-			       char *databuf2, int datasize2, char *replydata0, int replydatasize0,
-			       char *replydata1, int replydatasize1, char *replydata2, int replydatasize2);
-int net_client_request_with_callback (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-				      char *databuf1, int datasize1, char *databuf2, int datasize2,
-				      char **replydata_ptr1, int *replydatasize_ptr1, char **replydata_ptr2,
-				      int *replydatasize_ptr2, char **replydata_ptr3, int *replydatasize_ptr3);
-int net_client_request_method_callback (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-					char **replydata_ptr, int *replydatasize_ptr);
-int net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr, char *argbuf, int argsize, char *replybuf,
-				 int replysize, char **logpg_area_buf, bool verbose);
-int net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, char *argbuf, int argsize,
-					   char *replybuf, int replysize, char *databuf1, int datasize1,
-					   char *databuf2, int datasize2);
-void net_client_logwr_send_end_msg (int rc, int error);
-int net_client_get_next_log_pages (int rc, char *replybuf, int replysize, int length);
+extern int net_client_request2 (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf,
+				int datasize, char **replydata_ptr, int *replydatasize_ptr);
+extern int net_client_request2_no_malloc (int request, char *argbuf, int argsize, char *replybuf, int replysize,
+					  char *databuf, int datasize, char *replydata, int *replydatasize_ptr);
+extern int net_client_request_3_data (int request, char *argbuf, int argsize, char *databuf1, int datasize1,
+				      char *databuf2, int datasize2, char *replydata0, int replydatasize0,
+				      char *replydata1, int replydatasize1, char *replydata2, int replydatasize2);
+extern int net_client_request_with_callback (int request, char *argbuf, int argsize, char *replybuf, int replysize,
+					     char *databuf1, int datasize1, char *databuf2, int datasize2,
+					     char **replydata_ptr1, int *replydatasize_ptr1, char **replydata_ptr2,
+					     int *replydatasize_ptr2, char **replydata_ptr3, int *replydatasize_ptr3);
+extern int net_client_request_method_callback (int request, char *argbuf, int argsize, char *replybuf, int replysize,
+					       char **replydata_ptr, int *replydatasize_ptr);
+extern int net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr, char *argbuf, int argsize, char *replybuf,
+					int replysize, char **logpg_area_buf, bool verbose);
+extern int net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, char *argbuf, int argsize,
+						  char *replybuf, int replysize, char *databuf1, int datasize1,
+						  char *databuf2, int datasize2);
+extern void net_client_logwr_send_end_msg (int rc, int error);
+extern int net_client_get_next_log_pages (int rc, char *replybuf, int replysize, int length);
 #if defined(ENABLE_UNUSED_FUNCTION)
-int net_client_request3 (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf,
-			 int datasize, char **replydata_ptr, int *replydatasize_ptr, char **replydata_ptr2,
-			 int *replydatasize_ptr2);
+extern int net_client_request3 (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf,
+				int datasize, char **replydata_ptr, int *replydatasize_ptr, char **replydata_ptr2,
+				int *replydatasize_ptr2);
 #endif
 
-int net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-				      LC_COPYAREA ** reply_copy_area);
+extern int net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *replybuf, int replysize,
+					     LC_COPYAREA ** reply_copy_area);
 #if defined(ENABLE_UNUSED_FUNCTION)
-int net_client_request_recv_large_data (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-					char *databuf, int datasize, char *replydata, INT64 * replydatasize_ptr);
+extern int net_client_request_recv_large_data (int request, char *argbuf, int argsize, char *replybuf, int replysize,
+					       char *databuf, int datasize, char *replydata, INT64 * replydatasize_ptr);
 #endif
-int net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-				       char *databuf, int datasize, char *recvbuffer, int recvbuffer_size,
-				       LC_COPYAREA ** reply_copy_area, int *eid);
-int net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recvbuffer, int recvbuffer_size,
-			      LC_COPYAREA ** reply_copy_area, int eid);
-int net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize, char *databuf1,
-					     int datasize1, char *databuf2, int datasize2, char *replybuf,
-					     int replysize, LC_COPYAREA ** reply_copy_area);
-int net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-				       char *databuf, int datasize, char **recvbuffer, int *recvbuffer_size,
-				       LC_COPYAREA ** reply_copy_area);
-int net_client_request_recv_stream (int request, char *argbuf, int argsize, char *replybuf, int replybuf_size,
-				    char *databuf, int datasize, FILE * outfp);
-int net_client_ping_server (int client_val, int *server_val, int timeout);
-int net_client_ping_server_with_handshake (int client_type, bool check_capabilities, int opt_cap);
+extern int net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char *replybuf, int replysize,
+					      char *databuf, int datasize, char *recvbuffer, int recvbuffer_size,
+					      LC_COPYAREA ** reply_copy_area, int *eid);
+extern int net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recvbuffer, int recvbuffer_size,
+				     LC_COPYAREA ** reply_copy_area, int eid);
+extern int net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize, char *databuf1,
+						    int datasize1, char *databuf2, int datasize2, char *replybuf,
+						    int replysize, LC_COPYAREA ** reply_copy_area);
+extern int net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char *replybuf, int replysize,
+					      char *databuf, int datasize, char **recvbuffer, int *recvbuffer_size,
+					      LC_COPYAREA ** reply_copy_area);
+extern int net_client_request_recv_stream (int request, char *argbuf, int argsize, char *replybuf, int replybuf_size,
+					   char *databuf, int datasize, FILE * outfp);
+extern int net_client_ping_server (int client_val, int *server_val, int timeout);
+extern int net_client_ping_server_with_handshake (int client_type, bool check_capabilities, int opt_cap);
 
 /* Startup/Shutdown */
 #if defined(ENABLE_UNUSED_FUNCTION)
-void net_client_shutdown_server (void);
+extern void net_client_shutdown_server (void);
 #endif
-int net_client_init (const char *dbname, const char *hostname);
+extern int net_client_init (const char *dbname, const char *hostname);
 #if defined(MULTI_CONN_TO_A_SERVER)
-int net_client_sub_init ();
-void net_client_sub_final ();
+extern int net_client_sub_init ();
+extern void net_client_sub_final ();
 #endif
-int net_client_final (bool server_error);
+extern int net_client_final (bool server_error);
 
-void net_cleanup_client_queues (void);
-int net_client_send_data (unsigned int rc, char *databuf, int datasize);
-int net_client_receive_action (int rc, int *action);
+extern void net_cleanup_client_queues (void);
+extern int net_client_send_data (unsigned int rc, char *databuf, int datasize);
+extern int net_client_receive_action (int rc, int *action);
 
 #endif /* _NETWORK_CL_H_ */

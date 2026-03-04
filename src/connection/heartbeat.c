@@ -67,7 +67,6 @@
 
 #if defined(CS_MODE)
 #include "client_support.h"
-//#include "network_cl.h"
 #else
 #include "connection_support.hpp"
 #endif
