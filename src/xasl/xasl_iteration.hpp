@@ -278,6 +278,7 @@ namespace cubxasl
 extern "C" {
   XASL_NODE *xasl_find_by_id (XASL_NODE *xasl, int target_id);
   void xasl_dump_with_id (XASL_NODE *xasl);
+  void xasl_merge_stats (XASL_NODE *src, XASL_NODE *dst);
 }
 
 
