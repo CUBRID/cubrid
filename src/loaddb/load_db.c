@@ -984,13 +984,29 @@ ldr_compat_call_target (DB_SESSION * session)
   if (on_call_target != NULL && PT_IS_NAME_NODE (on_call_target))
     {
       origin_name = PT_NAME_ORIGINAL (on_call_target);
-      if (strcasecmp (origin_name, CTV_SERIAL_NAME) == 0)
+      assert (origin_name != NULL);
+
+      if (strcasecmp (origin_name, CTV_USER_NAME) == 0)
+	{
+	  /* db_user view supports find_user() and login() for backward compatibility.
+	   * See CTV_USER_NAME's definition in schema_system_catalog_install.cpp.
+	   */
+	  PT_NODE *method_name_node = PT_METHOD_CALL_NAME (statement);
+	  if (method_name_node == NULL)
+	    {
+	      return;
+	    }
+	  const char *method_name = PT_NAME_ORIGINAL (method_name_node);
+	  assert (method_name != NULL);
+
+	  if (strcasecmp (method_name, "find_user") != 0 && strcasecmp (method_name, "login") != 0)
+	    {
+	      on_call_target->info.name.original = CT_USER_NAME;
+	    }
+	}
+      else if (strcasecmp (origin_name, CTV_SERIAL_NAME) == 0)
 	{
 	  on_call_target->info.name.original = CT_SERIAL_NAME;
-	}
-      else if (strcasecmp (origin_name, CTV_USER_NAME) == 0)
-	{
-	  on_call_target->info.name.original = CT_USER_NAME;
 	}
       else if (strcasecmp (origin_name, CTV_AUTHORIZATION_NAME) == 0)
 	{
