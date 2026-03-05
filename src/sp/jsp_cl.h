@@ -41,6 +41,10 @@
 #include "sp_constants.hpp"
 #include "pl_signature.hpp"
 
+int jsp_create_package (PARSER_CONTEXT *parser, PT_NODE *statement);
+int jsp_alter_package (PARSER_CONTEXT *parser, PT_NODE *statement);
+int jsp_drop_package (PARSER_CONTEXT *parser, PT_NODE *statement);
+
 extern int jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int alter_stored_procedure_code (PARSER_CONTEXT * parser, MOP sp_mop, const char *name, const char *owner_str,

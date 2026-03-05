@@ -985,6 +985,57 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, bool &is_null, 
 }
 
 /*
+ * jsp_create_package
+ *   return: if failed return error code else execute jsp_add_stored_procedure
+ *           function
+ *   parser(in/out): parser environment
+ *   statement(in): a statement node
+ *
+ * Note:
+ */
+
+int
+jsp_create_package (PARSER_CONTEXT *parser, PT_NODE *statement)
+{
+    // TODO package
+    return NO_ERROR;
+}
+
+/*
+ * jsp_alter_package
+ *   return: if failed return error code else execute jsp_add_stored_procedure
+ *           function
+ *   parser(in/out): parser environment
+ *   statement(in): a statement node
+ *
+ * Note:
+ */
+
+int
+jsp_alter_package (PARSER_CONTEXT *parser, PT_NODE *statement)
+{
+    // TODO package
+    return NO_ERROR;
+}
+
+/*
+ * jsp_drop_package
+ *   return: if failed return error code else execute jsp_add_stored_procedure
+ *           function
+ *   parser(in/out): parser environment
+ *   statement(in): a statement node
+ *
+ * Note:
+ */
+
+int
+jsp_drop_package (PARSER_CONTEXT *parser, PT_NODE *statement)
+{
+    // TODO package
+    return NO_ERROR;
+}
+
+/*
  * jsp_create_stored_procedure
  *   return: if failed return error code else execute jsp_add_stored_procedure
  *           function
