@@ -328,7 +328,7 @@ struct analytic_state
   int input_recs;
 
   bool is_last_run;
-  bool is_first_run;
+  bool is_skip_sort;
   bool is_output_rec;
 };
 
@@ -495,7 +495,7 @@ static ANALYTIC_STATE *qexec_initialize_analytic_state (THREAD_ENTRY * thread_p,
 							ANALYTIC_TYPE * a_func_list, SORT_LIST * sort_list,
 							REGU_VARIABLE_LIST a_regu_list, VAL_LIST * a_val_list,
 							OUTPTR_LIST * a_outptr_list, OUTPTR_LIST * a_outptr_list_interm,
-							bool is_first_run, bool is_last_run, XASL_NODE * xasl,
+							bool is_skip_sort, bool is_last_run, XASL_NODE * xasl,
 							XASL_STATE * xasl_state,
 							QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
 							QFILE_TUPLE_RECORD * tplrec);
@@ -599,7 +599,7 @@ static int qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * 
 static void qexec_clear_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static int qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				   ANALYTIC_EVAL_TYPE * analytic_eval, QFILE_TUPLE_RECORD * tplrec, bool is_last,
-				   bool is_first);
+				   bool is_skip_sort);
 static void qexec_update_btree_unique_stats_info (THREAD_ENTRY * thread_p, multi_index_unique_stats * info,
 						  const HEAP_SCANCACHE * scan_cache);
 static int qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, VAL_DESCR * vd,
@@ -15879,17 +15879,17 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  && !XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
 	{
 	  ANALYTIC_EVAL_TYPE *eval_list;
-	  bool is_first = true;
+	  bool is_skip_sort = XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT);
 
 	  for (eval_list = xasl->proc.buildlist.a_eval_list; eval_list; eval_list = eval_list->next)
 	    {
 	      if (qexec_execute_analytic
-		  (thread_p, xasl, xasl_state, eval_list, &tplrec, (eval_list->next == NULL), is_first) != NO_ERROR)
+		  (thread_p, xasl, xasl_state, eval_list, &tplrec, (eval_list->next == NULL), is_skip_sort) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
 
-	      is_first = false;
+	      is_skip_sort = false;
 	    }
 	}
 
@@ -20877,7 +20877,8 @@ qexec_clear_analytic_stats_list (ANALYTIC_STATS ** stats_list)
  */
 static int
 qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
-			ANALYTIC_EVAL_TYPE * analytic_eval, QFILE_TUPLE_RECORD * tplrec, bool is_last, bool is_first)
+			ANALYTIC_EVAL_TYPE * analytic_eval, QFILE_TUPLE_RECORD * tplrec, bool is_last,
+			bool is_skip_sort)
 {
   QFILE_LIST_ID *list_id = xasl->list_id;
   BUILDLIST_PROC_NODE *buildlist = &xasl->proc.buildlist;
@@ -20903,7 +20904,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   /* initialized analytic functions state structure */
   if (qexec_initialize_analytic_state (thread_p, &analytic_state, analytic_eval->head, analytic_eval->sort_list,
 				       buildlist->a_regu_list, buildlist->a_val_list, a_outptr_list,
-				       buildlist->a_outptr_list_interm, is_first, is_last, xasl, xasl_state,
+				       buildlist->a_outptr_list_interm, is_skip_sort, is_last, xasl, xasl_state,
 				       &list_id->type_list, tplrec) == NULL)
     {
       GOTO_EXIT_ON_ERROR;
@@ -20924,7 +20925,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
     QFILE_LIST_ID *interm_list_id;
     QFILE_LIST_ID *output_list_id;
 
-    if (is_first && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
+    if (is_skip_sort)
       {
 	analytic_state.interm_file = list_id;
       }
@@ -21024,7 +21025,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
    * Now load up the sort module and set it off...
    */
 
-  if (is_first && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
+  if (is_skip_sort)
     {
       if (qexec_analytic_update_group_result (thread_p, &analytic_state) != NO_ERROR)
 	{
@@ -21098,7 +21099,7 @@ wrapup:
 	  memset (new_stat, 0, sizeof (ANALYTIC_STATS));
 	  new_stat->run_analytic = true;
 	  TSC_ADD_TIMEVAL (new_stat->analytic_time, tv_diff);
-	  new_stat->analytic_sort = !(is_first && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT));
+	  new_stat->analytic_sort = !is_skip_sort;
 
 	  new_stat->analytic_pages =
 	    (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) - old_sort_pages);
@@ -21199,98 +21200,102 @@ qdata_setup_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
 {
   ANALYTIC_EVAL_TYPE *a_eval_list;
   ANALYTIC_TYPE *a_func_list;
-  bool is_first = true;
+  bool is_skip_sort = XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT);
+  bool uses_limit_opt = XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT);
   int length = 0;
 
   for (a_eval_list = xasl->proc.buildlist.a_eval_list; a_eval_list; a_eval_list = a_eval_list->next)
     {
-      if (is_first && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
-	{
-	  length = a_eval_list->sort_list_size;
-
-	  a_eval_list->current_values = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * length);
-	  if (a_eval_list->current_values == NULL)
-	    {
-	      return ER_FAILED;
-	    }
-	  memset (a_eval_list->current_values, 0, sizeof (DB_VALUE) * length);
-
-	  a_eval_list->temp_values = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * length);
-	  if (a_eval_list->temp_values == NULL)
-	    {
-	      return ER_FAILED;
-	    }
-	  memset (a_eval_list->temp_values, 0, sizeof (DB_VALUE) * length);
-	}
-      else
-	{
-	  a_eval_list->current_values = NULL;
-	  a_eval_list->temp_values = NULL;
-	}
+      a_eval_list->current_values = NULL;
+      a_eval_list->temp_values = NULL;
 
       for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
 	{
-	  QFILE_TUPLE_VALUE_TYPE_LIST group_type_list, value_type_list;
-
 	  a_func_list->group_list_id = NULL;
 	  a_func_list->order_list_id = NULL;
 	  a_func_list->curr_group_tuple_count = 0;
 	  a_func_list->curr_group_tuple_count_nn = 0;
 	  a_func_list->curr_sort_key_tuple_count = 0;
+	}
+    }
 
-	  if (is_first && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT | XASL_ANALYTIC_USES_LIMIT_OPT))
-	    {
-	      if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id) != NO_ERROR)
-		{
-		  return ER_FAILED;
-		}
-	    }
+  if (!uses_limit_opt && !is_skip_sort)
+    {
+      return NO_ERROR;
+    }
 
-	  if (is_first && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
-	    {
-	      /* initialize group header listfile */
-	      group_type_list.type_cnt = 2;
-	      group_type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * 2);
-	      if (group_type_list.domp == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
-		  return ER_FAILED;
-		}
-	      group_type_list.domp[0] = &tp_Integer_domain;
-	      group_type_list.domp[1] = &tp_Integer_domain;
+  a_eval_list = xasl->proc.buildlist.a_eval_list;
+  if (is_skip_sort)
+    {
+      length = a_eval_list->sort_list_size;
 
-	      a_func_list->group_list_id =
-		qfile_open_list (thread_p, &group_type_list, NULL, xasl_state->query_id, 0, NULL);
-	      if (a_func_list->group_list_id == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
-		  return ER_FAILED;
-		}
+      a_eval_list->current_values = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * length);
+      if (a_eval_list->current_values == NULL)
+	{
+	  return ER_FAILED;
+	}
+      memset (a_eval_list->current_values, 0, sizeof (DB_VALUE) * length);
 
-	      db_private_free_and_init (thread_p, group_type_list.domp);
+      a_eval_list->temp_values = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * length);
+      if (a_eval_list->temp_values == NULL)
+	{
+	  return ER_FAILED;
+	}
+      memset (a_eval_list->temp_values, 0, sizeof (DB_VALUE) * length);
 
-	      /* initialize group value listfile */
-	      value_type_list.type_cnt = 2;
-	      value_type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * 2);
-	      if (value_type_list.domp == NULL)
-		{
-		  return ER_FAILED;
-		}
-	      value_type_list.domp[0] = &tp_Integer_domain;
-	      value_type_list.domp[1] = a_func_list->domain;
+    }
 
-	      a_func_list->order_list_id =
-		qfile_open_list (thread_p, &value_type_list, NULL, xasl_state->query_id, 0, NULL);
-	      if (a_func_list->order_list_id == NULL)
-		{
-		  return ER_FAILED;
-		}
-
-	      db_private_free_and_init (thread_p, value_type_list.domp);
-	    }
+  for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
+    {
+      if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id) != NO_ERROR)
+	{
+	  return ER_FAILED;
 	}
 
-      is_first = false;
+      if (is_skip_sort)
+	{
+	  QFILE_TUPLE_VALUE_TYPE_LIST group_type_list, value_type_list;
+
+	  /* initialize group header listfile */
+	  group_type_list.type_cnt = 2;
+	  group_type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * 2);
+	  if (group_type_list.domp == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
+	      return ER_FAILED;
+	    }
+	  group_type_list.domp[0] = &tp_Integer_domain;
+	  group_type_list.domp[1] = &tp_Integer_domain;
+
+	  a_func_list->group_list_id =
+	    qfile_open_list (thread_p, &group_type_list, NULL, xasl_state->query_id, 0, NULL);
+	  if (a_func_list->group_list_id == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
+	      return ER_FAILED;
+	    }
+
+	  db_private_free_and_init (thread_p, group_type_list.domp);
+
+	  /* initialize group value listfile */
+	  value_type_list.type_cnt = 2;
+	  value_type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * 2);
+	  if (value_type_list.domp == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+	  value_type_list.domp[0] = &tp_Integer_domain;
+	  value_type_list.domp[1] = a_func_list->domain;
+
+	  a_func_list->order_list_id =
+	    qfile_open_list (thread_p, &value_type_list, NULL, xasl_state->query_id, 0, NULL);
+	  if (a_func_list->order_list_id == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  db_private_free_and_init (thread_p, value_type_list.domp);
+	}
     }
 
   return NO_ERROR;
@@ -21442,7 +21447,7 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
 static ANALYTIC_STATE *
 qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state, ANALYTIC_TYPE * a_func_list,
 				 SORT_LIST * sort_list, REGU_VARIABLE_LIST a_regu_list, VAL_LIST * a_val_list,
-				 OUTPTR_LIST * a_outptr_list, OUTPTR_LIST * a_outptr_list_interm, bool is_first_run,
+				 OUTPTR_LIST * a_outptr_list, OUTPTR_LIST * a_outptr_list_interm, bool is_skip_sort,
 				 bool is_last_run, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				 QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE_RECORD * tplrec)
 {
@@ -21468,7 +21473,7 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
   analytic_state->xasl_state = xasl_state;
 
   analytic_state->is_last_run = is_last_run;
-  analytic_state->is_first_run = is_first_run;
+  analytic_state->is_skip_sort = is_skip_sort;
 
   analytic_state->analytic_rec.area_size = 0;
   analytic_state->analytic_rec.length = 0;
@@ -21518,8 +21523,7 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
   for (i = 0, func_p = a_func_list; i < analytic_state->func_count; i++, func_p = func_p->next)
     {
       if (qexec_initialize_analytic_function_state
-	  (thread_p, &analytic_state->func_state_list[i], func_p, xasl_state,
-	   (is_first_run && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))) != NO_ERROR)
+	  (thread_p, &analytic_state->func_state_list[i], func_p, xasl_state, is_skip_sort) != NO_ERROR)
 	{
 	  return NULL;
 	}
@@ -22985,7 +22989,7 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p, ANALYTIC_STATE * an
 
   assert (analytic_state != NULL);
 
-  if (analytic_state->is_first_run && XASL_IS_FLAGED (analytic_state->xasl, XASL_ANALYTIC_SKIP_SORT))
+  if (analytic_state->is_skip_sort)
     {
       stage = ANALYTIC_INTERM_PROC;
     }
