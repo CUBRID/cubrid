@@ -124,7 +124,10 @@ flashback_initialize (THREAD_ENTRY * thread_p)
 
   if (flashback_Current_conn != NULL)
     {
-      flashback_reset ();
+      flashback_Min_log_pageid = NULL_LOG_PAGEID;
+
+      flashback_Current_conn->in_flashback = false;
+      flashback_Current_conn = NULL;
     }
 
   flashback_Current_conn = thread_p->conn_entry;
@@ -194,8 +197,12 @@ flashback_reset ()
 {
   flashback_Min_log_pageid = NULL_LOG_PAGEID;
 
+  pthread_mutex_lock (&flashback_Conn_lock);
+
   flashback_Current_conn->in_flashback = false;
   flashback_Current_conn = NULL;
+
+  pthread_mutex_unlock (&flashback_Conn_lock);
 }
 
 /*
