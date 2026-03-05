@@ -28423,6 +28423,11 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
   int i, seg_idx, covered_count = 0;
   bool is_desc, is_desc_index;
 
+  if (qo_plan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (qo_plan))
+    {
+      return pt_count_analytic_covered_sort_list (parser, qo_plan->plan_un.join.outer, eval, info);
+    }
+
   if (!qo_is_iscan (qo_plan) || (env = (qo_plan->info)->env) == NULL)
     {
       return 0;

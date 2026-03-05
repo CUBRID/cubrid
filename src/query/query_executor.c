@@ -1138,9 +1138,6 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 {
   QPROC_TPLDESCR_STATUS tpldescr_status;
   TOPN_STATUS topn_stauts = TOPN_SUCCESS;
-  BUILDLIST_PROC_NODE *buildlist = &xasl->proc.buildlist;
-  ANALYTIC_EVAL_TYPE *a_eval_list = NULL;
-  ANALYTIC_TYPE *a_func_list = NULL;
   int ret = NO_ERROR;
   bool output_tuple = true;
 
@@ -21836,8 +21833,9 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p, ANALYTIC_STATE * anal
     {
       ANALYTIC_TYPE *func_p = analytic_state->func_state_list[i].func_p;
 
-      if (QPROC_ANALYTIC_IS_OFFSET_FUNCTION (func_p) || func_p->function == PT_NTILE
-	  || func_p->function == PT_FIRST_VALUE || func_p->function == PT_LAST_VALUE)
+      if ((QPROC_ANALYTIC_IS_OFFSET_FUNCTION (func_p) || func_p->function == PT_NTILE
+	   || func_p->function == PT_FIRST_VALUE || func_p->function == PT_LAST_VALUE)
+	  && !XASL_IS_FLAGED (analytic_state->xasl, XASL_ANALYTIC_SKIP_SORT))
 	{
 	  /* inst_num() predicate is evaluated at group processing for these functions, as the result is computed at
 	   * this stage using all group values */
