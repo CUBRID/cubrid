@@ -22,12 +22,14 @@
 
 #include "thread_worker_pool.hpp"
 
+#include "resources.hpp"
 #include "error_manager.h"
 #include "perf.hpp"
 
 #include <sstream>
-
 #include <cstring>
+#include <cmath>
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -114,14 +116,17 @@ namespace cubthread
   std::size_t
   system_core_count (void)
   {
-    std::size_t count = std::thread::hardware_concurrency ();
+    std::size_t core;
 
-    if (count == 0)
+    auto ctx = os::resources::cpu::effective ();
+    assert (ctx.max > 0);
+
+    core = static_cast<std::size_t> (std::floor (ctx.max));
+    if (core <= 0)
       {
-	count = 1;
+	return 1;
       }
-
-    return count;
+    return core;
   }
 
   void
