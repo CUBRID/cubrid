@@ -140,6 +140,8 @@ namespace cubhnsw
       std::size_t m_connectivity;
       std::size_t m_expansion;
 
+      std::default_random_engine m_level_generator {std::random_device{}()};
+
       // precomputed
       double m_inverse_log_connectivity;
   };
@@ -211,7 +213,7 @@ namespace cubhnsw
     root_type root_node = root_type (root_block->data);
     {
       curr_max_level = root_node.get_level(); // get max_level from root page
-      new_target_level = choose_random_level_ (context.m_level_generator, m_inverse_log_connectivity);
+      new_target_level = choose_random_level_ (m_level_generator, m_inverse_log_connectivity);
       entry_slot = root_node.get_entry();
       if (new_target_level > MAX_LEVELS)
 	{
