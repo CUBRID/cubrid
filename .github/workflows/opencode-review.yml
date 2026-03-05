@@ -70,7 +70,7 @@ jobs:
           use_github_token: true
           share: true
           prompt: |
-            /ulw
+            /review
             You are an expert C/C++ DBMS Senior developer reviewing this PR.
 
             [CRITICAL INSTRUCTIONS]
