@@ -521,11 +521,11 @@ hnsw_usearch_ng::add (cubthread::entry *thread_p, int n_vectors, const OID *oid,
       scored.emplace_back (score, i);
     }
 
-  std::sort (scored.begin (), scored.end (),
-	     [] (const auto &a, const auto &b)
+  /*std::sort (scored.begin (), scored.end (),
+       [] (const auto &a, const auto &b)
   {
     return a.first < b.first;
-  });
+  });*/
 
   // Build jobs in PCA order for worker pool / fallback (server mode and SA mode)
   std::vector<hnsw_build_worker_job> jobs;

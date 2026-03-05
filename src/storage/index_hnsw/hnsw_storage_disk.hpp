@@ -94,6 +94,12 @@ namespace cubhnsw
 					    const lock_mode &mode) override;
       virtual const float *get_vector_by_slot_id (algo_context_t<traits> &context, const slot_id_t &slot_id,
 	  const lock_mode &mode) override;
+      // neighbors cache helpers (single-thread)
+      void refresh_neighbors_cache (algo_context_t<traits> &context, const slot_id_t &slot_id, level_t level) override;
+      virtual const std::vector<slot_id_t> *get_neighbors_cached_ids (
+	      algo_context_t<traits> &context,
+	      const slot_id_t &slot_id,
+	      level_t level) override;
 
       // promote lockmode from shared to exclusive
       // TODO: not implemented
@@ -120,6 +126,33 @@ namespace cubhnsw
       VPID m_last_vec_vpid;
 
       vector_cache_t<traits> m_vector_cache;  // (slot_id_t, vector) cache
+
+      struct neighbors_key
+      {
+	slot_id_t slot;
+	level_t level;
+
+	bool operator== (const neighbors_key &o) const noexcept
+	{
+	  return level == o.level && oid_equal {} (slot, o.slot);
+	}
+      };
+
+      struct neighbors_key_hash
+      {
+	std::size_t operator() (neighbors_key const &k) const noexcept
+	{
+	  std::size_t h = oid_hash {} (k.slot);
+	  std::size_t x = std::hash<level_t> {} (k.level);
+	  h ^= x + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+	  return h;
+	}
+      };
+
+      using neighbors_cache_t =
+	      ankerl::unordered_dense::map<neighbors_key, std::vector<slot_id_t>, neighbors_key_hash>;
+
+      neighbors_cache_t m_neighbors_cache;    // (slot_id_t, level) -> neighbors
 
       bool m_is_empty = true;
   };

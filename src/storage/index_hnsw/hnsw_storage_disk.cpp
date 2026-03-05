@@ -251,6 +251,41 @@ namespace cubhnsw
 
   }
 
+  void
+  disk_storage::refresh_neighbors_cache (algo_context_t<traits> &context, const slot_id_t &slot, level_t level)
+  {
+    neighbors_key key { slot, level };
+
+    pinned_t node_blk = get_node_by_slot_id (context, slot, lock_mode::shared);
+    node_t<traits> node { reinterpret_cast<byte_t *> (node_blk->data) };
+    neighbors_ref_t<traits> neighbors (node.neighbors_tape() + node_neighbors_offset_ (level));
+
+    std::vector<slot_id_t> neigh;
+    neigh.reserve (neighbors.size ());
+    for (std::size_t i = 0; i < neighbors.size (); ++i)
+      {
+	neigh.push_back (neighbors.at (i));
+      }
+
+    m_neighbors_cache[std::move (key)] = std::move (neigh);
+  }
+
+  const std::vector<disk_storage::slot_id_t> *
+  disk_storage::get_neighbors_cached_ids (algo_context_t<traits> &context, const slot_id_t &slot, level_t level)
+  {
+    neighbors_key key { slot, level };
+    auto it = m_neighbors_cache.find (key);
+    if (it != m_neighbors_cache.end ())
+      {
+	return &it->second;
+      }
+
+    // Not cached yet: build once and cache (reusing refresh helper).
+    refresh_neighbors_cache (context, slot, level);
+    auto it2 = m_neighbors_cache.find (key);
+    return (it2 != m_neighbors_cache.end ()) ? &it2->second : nullptr;
+  }
+
   const float *
   disk_storage::get_vector_by_slot_id (algo_context_t<traits> &context, const slot_id_t &slot, const lock_mode &mode)
   {
