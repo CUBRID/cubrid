@@ -32,7 +32,6 @@ set(WITH_HDF_URL "https://github.com/HDFGroup/hdf5/releases/download/hdf5_1.14.6
 set(WITH_ZLIB_URL "https://github.com/madler/zlib")                                                           # ZLIB
 set(WITH_HIGHFIVE_URL "https://github.com/highfive-devs/highfive")                                            # HighFive
 set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_bison/win_flex_bison-2.5.22.zip") # Windows
-set(WITH_USEARCH_URL "https://github.com/unum-cloud/usearch")                                                 # usearch
 
 # URL_HASH is a hash value used to verify the integrity of a file downloaded from a specified URL.
 # It is optional but highly recommended to set this value. If not set, the file will be downloaded
@@ -82,7 +81,6 @@ set(WITH_LIBTBB       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with TBB lib
 set(WITH_HDF          "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with HDF5 library (default: EXTERNAL)")
 set(WITH_ZLIB         "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with ZLIB library (default: EXTERNAL)")
 set(WITH_HIGHFIVE     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with HIGHFIVE library (default: EXTERNAL)")
-set(WITH_USEARCH      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with usearch library (default: EXTERNAL)")
 
 message(STATUS "Build with flex and bison library: ${WITH_LIBFLEXBISON}")
 message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
@@ -96,7 +94,6 @@ message(STATUS "Build with TBB library: ${WITH_LIBTBB}")
 message(STATUS "Build with HDF5 library: ${WITH_HDF}")
 message(STATUS "Build with ZLIB library: ${WITH_ZLIB}")
 message(STATUS "Build with HighFive library: ${WITH_HIGHFIVE}")
-message(STATUS "Build with usearch library: ${WITH_USEARCH}")
 
 macro(ADD_BY_PRODUCTS_VARIABLE prefix_dependee)
   if (CMAKE_GENERATOR MATCHES "Ninja")
@@ -644,17 +641,6 @@ endif()
 # For SIMD optimizations
 find_package(AVX)
 
-# USEARCH (header-only)
-# Set options BEFORE calling MakeAvailable
-set(USEARCH_USE_OPENMP OFF CACHE BOOL "" FORCE)
-set(USEARCH_USE_SIMSIMD OFF CACHE BOOL "" FORCE)
-set(USEARCH_USE_JEMALLOC OFF CACHE BOOL "" FORCE)
-set(USEARCH_USE_FP16LIB ON CACHE BOOL "" FORCE)
-# set(USEARCH_BUILD_LIB_C ON CACHE BOOL "" FORCE)
-# set(USEARCH_BUILD_TEST_C ON CACHE BOOL "" FORCE)
-FetchContent_Declare(usearch GIT_REPOSITORY https://github.com/unum-cloud/usearch.git GIT_TAG v2.17.8)
-FetchContent_MakeAvailable(usearch)
-
 # [FIXME!] Expose variables for other CMakeLists
 set (EP_TARGETS ${EP_TARGETS} PARENT_SCOPE)
 set (EP_LIBS ${EP_LIBS} PARENT_SCOPE)
@@ -688,4 +674,3 @@ expose_3rdparty_variable(LIBUNIXODBC)
 expose_3rdparty_variable(RAPIDJSON)
 expose_3rdparty_variable(RE2)
 expose_3rdparty_variable(LIBTBB)
-expose_3rdparty_variable(USEARCH)
