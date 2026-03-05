@@ -40,6 +40,7 @@ class client_support:public connection_cl
 private:
   int m_css_errno;
   class connection_less m_conn_less;
+  inline static void (*m_css_Previous_sigpipe_handler) (int) = NULL;
 
 private:
   static void css_handle_pipe_shutdown (int sig);

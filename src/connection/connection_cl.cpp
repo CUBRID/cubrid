@@ -132,7 +132,6 @@ css_shutdown_conn (CSS_CONN_ENTRY *conn)
 
 connection_cl::connection_cl ()
 {
-  //m_css_conn_anchor = NULL;
   m_service_port_id = DEFAULT_MASTER_PORT_NO;
 }
 

@@ -50,8 +50,6 @@
 #error Belongs to not server module
 #endif /* !defined (SERVER_MODE) */
 
-static void (*css_Previous_sigpipe_handler) (int sig_no) = NULL;
-
 class client_support __gv_client_support;
 
 client_support::client_support ()
@@ -74,11 +72,12 @@ void
 client_support::css_handle_pipe_shutdown (int sig)
 {
   /* Avoid an infinite loop by checking if the previous handle is myself */
-  if (css_Previous_sigpipe_handler != NULL
-      && css_Previous_sigpipe_handler != SIG_IGN
-      && css_Previous_sigpipe_handler != SIG_DFL && css_Previous_sigpipe_handler != css_handle_pipe_shutdown)
+  if (client_support::m_css_Previous_sigpipe_handler != NULL
+      && client_support::m_css_Previous_sigpipe_handler != SIG_IGN
+      && client_support::m_css_Previous_sigpipe_handler != SIG_DFL
+      && client_support::m_css_Previous_sigpipe_handler != client_support::css_handle_pipe_shutdown)
     {
-      (*css_Previous_sigpipe_handler) (sig);
+      (*client_support::m_css_Previous_sigpipe_handler) (sig);
     }
 }
 
@@ -94,15 +93,17 @@ void
 client_support::css_set_pipe_signal (void)
 {
 #if !defined(WINDOWS)
-  css_Previous_sigpipe_handler = os_set_signal_handler (SIGPIPE, client_support::css_handle_pipe_shutdown);
-  if ((css_Previous_sigpipe_handler == SIG_IGN) || (css_Previous_sigpipe_handler == SIG_ERR)
-      || (css_Previous_sigpipe_handler == SIG_DFL)
+  client_support::m_css_Previous_sigpipe_handler =
+	  os_set_signal_handler (SIGPIPE, client_support::css_handle_pipe_shutdown);
+  if ((client_support::m_css_Previous_sigpipe_handler == SIG_IGN)
+      || (client_support::m_css_Previous_sigpipe_handler == SIG_ERR)
+      || (client_support::m_css_Previous_sigpipe_handler == SIG_DFL)
 #if !defined(LINUX)
-      || (css_Previous_sigpipe_handler == SIG_HOLD)
+      || (client_support::m_css_Previous_sigpipe_handler == SIG_HOLD)
 #endif /* not LINUX */
      )
     {
-      css_Previous_sigpipe_handler = NULL;
+      client_support::m_css_Previous_sigpipe_handler = NULL;
     }
 #endif /* not WINDOWS */
 }
@@ -701,10 +702,10 @@ client_support::css_terminate (bool server_error)
    * If there was a previous signal handler. restore it at this point.
    */
 #if !defined(WINDOWS)
-  if (css_Previous_sigpipe_handler != NULL)
+  if (client_support::m_css_Previous_sigpipe_handler != NULL)
     {
-      (void) os_set_signal_handler (SIGPIPE, css_Previous_sigpipe_handler);
-      css_Previous_sigpipe_handler = NULL;
+      (void) os_set_signal_handler (SIGPIPE, client_support::m_css_Previous_sigpipe_handler);
+      client_support::m_css_Previous_sigpipe_handler = NULL;
     }
 #endif /* not WINDOWS */
 }
