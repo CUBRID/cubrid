@@ -66,9 +66,6 @@ else(UNIX)
   set(ENABLE_SYSTEMTAP_DEFAULT OFF)
 endif(UNIX)
 
-# set AVX2 or AVX512
-set(FAISS_SIMD_MODE "${FAISS_SIMD_MODE}")
-
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "  CMAKE_RUNTIME_OUTPUT_DIRECTORY=${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 
@@ -80,7 +77,7 @@ option(WITH_JDBC "Build with JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
 option(UNIT_TESTS "Unit tests" OFF)
 option(WITH_CCI "Build with CCI driver" ON)
-option(USE_SIMD_NATIVE "Enable native SIMD optimizations with -march=native" ON)
+option(USE_SIMD_NATIVE "Enable native SIMD optimizations with -march=native" OFF)
 
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
@@ -205,6 +202,9 @@ if(MSVC)
   # TODO: remove version.rc files from win/*
 endif(MSVC)
 
+# Check OpenMP SIMD support
+include(cmake/OpenMP_SIMD.cmake)
+
 # Language setting
 #enable_language(C CXX)
 
@@ -268,9 +268,7 @@ if(UNIX)
     # C flags for both debug and release build
     set(CMAKE_C_COMMON_FLAGS "-ggdb -fno-omit-frame-pointer")
     # C++ flags for both debug and release build
-    set(CMAKE_CXX_COMMON_FLAGS "${CMAKE_C_COMMON_FLAGS} -std=c++17 -fopenmp")
-    # CUBVEC: cpu flag openmp and linking openblas required
-    list(APPEND EP_LIBS "openblas")
+    set(CMAKE_CXX_COMMON_FLAGS "${CMAKE_C_COMMON_FLAGS} -std=c++17 -fopenmp-simd")
 
     # C flags for debug build
     set(CMAKE_C_DEBUG_FLAGS "-ggdb3 -Wall -fno-inline ${CMAKE_C_COMMON_FLAGS}")
@@ -307,9 +305,8 @@ if(UNIX)
 
   elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
 
-    # CUBVEC: cpu flag openmp and linking openblas required
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
-    list(APPEND EP_LIBS "openblas")
+    # CUBVEC: cpu flag openmp and linking required?
+    # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
   else()
     message(FATAL_ERROR "We currently do not support ${CMAKE_CXX_COMPILER_ID} compiler")
   endif(CMAKE_COMPILER_IS_GNUCC)

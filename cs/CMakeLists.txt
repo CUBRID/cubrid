@@ -567,6 +567,18 @@ add_library(cubridcs SHARED
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
+if(USE_SIMD_NATIVE)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set_source_files_properties(${QUERY_DIR}/vector_opfunc.cpp
+        PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-ftree-vectorize;-mprefer-vector-width=512;-fopenmp-simd;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
+    )
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set_source_files_properties(${QUERY_DIR}/vector_opfunc.cpp
+        PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-fvectorize;-mprefer-vector-width=512;-fopenmp-simd;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
+    )
+  endif()
+endif()
+
 target_compile_definitions(cubridcs PRIVATE CS_MODE CUBRID_EXPORTING ${COMMON_DEFS})
 if(WIN32)
   set_source_files_properties(${HEAPLAYERS_DIR}/customheaps.cpp PROPERTIES COMPILE_FLAGS -Od)
@@ -588,7 +600,6 @@ if(UNIX)
   target_link_libraries(cubridcs PUBLIC stdc++fs)
   target_link_libraries(cubridcs LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
   target_link_libraries(cubridcs LINK_PUBLIC rt)
-  target_link_libraries(cubridcs PUBLIC openblas)
 else(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)

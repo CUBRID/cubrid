@@ -128,7 +128,6 @@ namespace cubhnsw
     top_candidates_t m_top_for_refine;
     next_candidates_t m_next_candidates;
     visited_set_t m_visits;
-    std::default_random_engine m_level_generator;
     cubthread::entry *m_thread_p {nullptr};
 
     // stats
