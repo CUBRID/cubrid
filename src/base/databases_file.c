@@ -62,7 +62,7 @@
 /* conservative upper bound of a line in databases.txt */
 #define CFG_MAX_LINE 4096
 
-static char CFG_HOST_SEPARATOR = ':';
+static const char CFG_HOST_SEPARATOR = ':';
 
 static char *cfg_next_char (char *str_p);
 static char *cfg_next_line (char *str_p);

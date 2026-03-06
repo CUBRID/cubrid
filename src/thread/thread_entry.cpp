@@ -139,7 +139,6 @@ namespace cubthread
     , m_px_stats (NULL)
     , m_px_orig_thread_entry (NULL)
     , m_uses_px_stats (false)
-    , m_skip_end_resource_tracks_in_recycle (false)
     , m_is_private_lru_enabled (false)
     , m_holder_anchor (NULL)
     , uuidv7_last_ms (0)
@@ -364,6 +363,12 @@ namespace cubthread
 	    tran_entries[i] = NULL;
 	  }
       }
+  }
+
+  void
+  entry::release_packet (void *buffer)
+  {
+    conn_entry->release_packet (buffer);
   }
 
   void

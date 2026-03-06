@@ -34,6 +34,10 @@
 #include "porting.h"
 #endif
 
+#if defined(SERVER_MODE)
+#error Does not belong to server module
+#endif
+
 static HL_HEAPID ws_Heap_id = 0;
 
 static pthread_t ws_Heap_Owner_id = (pthread_t) (-1);
