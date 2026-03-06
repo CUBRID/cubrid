@@ -5757,8 +5757,6 @@ xts_process_analytic_eval_type (char *ptr, const ANALYTIC_EVAL_TYPE * analytic_e
 
   ptr = or_pack_int (ptr, analytic_eval->sort_list_size);
 
-  ptr = or_pack_int (ptr, analytic_eval->covered_size);
-
   return ptr;
 }
 
@@ -7524,8 +7522,7 @@ xts_sizeof_analytic_eval_type (const ANALYTIC_EVAL_TYPE * analytic_eval)
   size = (PTR_SIZE		/* next */
 	  + PTR_SIZE		/* head */
 	  + PTR_SIZE		/* sort_list */
-	  + OR_INT_SIZE		/* sort_list_size */
-	  + OR_INT_SIZE);	/* covered_size */
+	  + OR_INT_SIZE);	/* sort_list_size */
   return size;
 }
 

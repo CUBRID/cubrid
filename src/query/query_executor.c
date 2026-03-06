@@ -737,6 +737,7 @@ static int qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p, AGGREGATE_H
 					    AGGREGATE_HASH_KEY * key, bool * found);
 static int qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE * default_val);
 static int qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
+static void qexec_clear_a_eval_values (THREAD_ENTRY * thread_p, ANALYTIC_EVAL_TYPE * a_eval_list);
 
 /*
  * Utility routines
@@ -15988,29 +15989,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
       /* destroy hash table */
       qexec_free_agg_hash_context (thread_p, &xasl->proc.buildlist);
 
-      if (xasl->proc.buildlist.a_eval_list != NULL)
-	{
-	  ANALYTIC_EVAL_TYPE *a_eval_p;
-	  for (a_eval_p = xasl->proc.buildlist.a_eval_list; a_eval_p; a_eval_p = a_eval_p->next)
-	    {
-	      if (a_eval_p->current_values != NULL)
-		{
-		  for (int i = 0; i < a_eval_p->sort_list_size; i++)
-		    {
-		      pr_clear_value (&a_eval_p->current_values[i]);
-		    }
-		  db_private_free_and_init (thread_p, a_eval_p->current_values);
-		}
-	      if (a_eval_p->temp_values != NULL)
-		{
-		  for (int i = 0; i < a_eval_p->sort_list_size; i++)
-		    {
-		      pr_clear_value (&a_eval_p->temp_values[i]);
-		    }
-		  db_private_free_and_init (thread_p, a_eval_p->temp_values);
-		}
-	    }
-	}
+      /* destroy analytic evaluation values */
+      qexec_clear_a_eval_values (thread_p, xasl->proc.buildlist.a_eval_list);
     }
 
   /* clear only non-zero correlation-level uncorrelated subquery list files */
@@ -16087,46 +16067,8 @@ exit_on_error:
       /* destroy hash table */
       qexec_free_agg_hash_context (thread_p, &xasl->proc.buildlist);
 
-      if (xasl->proc.buildlist.a_eval_list != NULL)
-	{
-	  ANALYTIC_EVAL_TYPE *a_eval_p;
-	  ANALYTIC_TYPE *a_func_list;
-	  for (a_eval_p = xasl->proc.buildlist.a_eval_list; a_eval_p; a_eval_p = a_eval_p->next)
-	    {
-	      if (a_eval_p->current_values != NULL)
-		{
-		  for (int i = 0; i < a_eval_p->sort_list_size; i++)
-		    {
-		      pr_clear_value (&a_eval_p->current_values[i]);
-		    }
-		  db_private_free_and_init (thread_p, a_eval_p->current_values);
-		}
-	      if (a_eval_p->temp_values != NULL)
-		{
-		  for (int i = 0; i < a_eval_p->sort_list_size; i++)
-		    {
-		      pr_clear_value (&a_eval_p->temp_values[i]);
-		    }
-		  db_private_free_and_init (thread_p, a_eval_p->temp_values);
-		}
-
-	      for (a_func_list = a_eval_p->head; a_func_list; a_func_list = a_func_list->next)
-		{
-		  if (a_func_list->group_list_id != NULL)
-		    {
-		      qfile_close_list (thread_p, a_func_list->group_list_id);
-		      qfile_destroy_list (thread_p, a_func_list->group_list_id);
-		      a_func_list->group_list_id = NULL;
-		    }
-		  if (a_func_list->order_list_id != NULL)
-		    {
-		      qfile_close_list (thread_p, a_func_list->order_list_id);
-		      qfile_destroy_list (thread_p, a_func_list->order_list_id);
-		      a_func_list->order_list_id = NULL;
-		    }
-		}
-	    }
-	}
+      /* destroy analytic evaluation values */
+      qexec_clear_a_eval_values (thread_p, xasl->proc.buildlist.a_eval_list);
     }
 
 #if defined (ENABLE_COMPOSITE_LOCK)
@@ -16138,6 +16080,56 @@ exit_on_error:
 
   qexec_failure_line (__LINE__, xasl_state);
   return ER_FAILED;
+}
+
+static void
+qexec_clear_a_eval_values (THREAD_ENTRY * thread_p, ANALYTIC_EVAL_TYPE * a_eval_list)
+{
+  ANALYTIC_EVAL_TYPE *a_eval_p;
+  ANALYTIC_TYPE *a_func_list;
+  int i;
+
+  if (a_eval_list == NULL)
+    {
+      return;
+    }
+
+  for (a_eval_p = a_eval_list; a_eval_p; a_eval_p = a_eval_p->next)
+    {
+      if (a_eval_p->current_values != NULL)
+	{
+	  for (i = 0; i < a_eval_p->sort_list_size; i++)
+	    {
+	      pr_clear_value (&a_eval_p->current_values[i]);
+	    }
+	  db_private_free_and_init (thread_p, a_eval_p->current_values);
+	}
+      if (a_eval_p->temp_values != NULL)
+	{
+	  for (i = 0; i < a_eval_p->sort_list_size; i++)
+	    {
+	      pr_clear_value (&a_eval_p->temp_values[i]);
+	    }
+	  db_private_free_and_init (thread_p, a_eval_p->temp_values);
+	}
+
+      for (a_func_list = a_eval_p->head; a_func_list; a_func_list = a_func_list->next)
+	{
+	  if (a_func_list->group_list_id != NULL)
+	    {
+	      qfile_close_list (thread_p, a_func_list->group_list_id);
+	      qfile_destroy_list (thread_p, a_func_list->group_list_id);
+	      a_func_list->group_list_id = NULL;
+	    }
+	  if (a_func_list->order_list_id != NULL)
+	    {
+	      qfile_close_list (thread_p, a_func_list->order_list_id);
+	      qfile_destroy_list (thread_p, a_func_list->order_list_id);
+	      a_func_list->order_list_id = NULL;
+	    }
+	}
+    }
+  return;
 }
 
 /*
@@ -21224,6 +21216,7 @@ qdata_setup_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
       return NO_ERROR;
     }
 
+  /* only the first a_eval_list needs current_values/temp_values and group/order list init. */
   a_eval_list = xasl->proc.buildlist.a_eval_list;
   if (is_skip_sort)
     {
@@ -23420,11 +23413,8 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 	  pr_clone_value (a_func_list->out_value, a_func_list->value);
 	}
 
-      if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
-	{
-	  a_func_list->curr_group_tuple_count++;
-	  a_func_list->curr_sort_key_tuple_count++;
-	}
+      a_func_list->curr_group_tuple_count++;
+      a_func_list->curr_sort_key_tuple_count++;
     }
 
   return NO_ERROR;
