@@ -4754,7 +4754,7 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
 	  if (!DB_IS_NULL (comment))
 	    {
 	      assert ((*scode_ptr)->info.sp.comment == NULL);	// CBRD-26513. scode cannot have the comment
-	      output_ctx ("\nCOMMENT ");
+	      output_ctx ("COMMENT ");
 	      desc_value_print (output_ctx, comment);
 	    }
 	}
