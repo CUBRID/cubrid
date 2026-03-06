@@ -550,7 +550,7 @@ au_is_user_group_member (MOP group_user, MOP user)
       set_free (groups);
     }
 
-  AU_DISABLE (save);
+  AU_ENABLE (save);
   return false;
 }
 
