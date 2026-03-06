@@ -49,16 +49,14 @@ enum css_thread_stop_type
 
 extern void css_block_all_active_conn (unsigned short stop_phase);
 
-extern THREAD_RET_T THREAD_CALLING_CONVENTION css_master_thread (void);
-
 extern unsigned int css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size);
 extern unsigned int css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size,
 					     int wait_time = 0);
 extern unsigned int css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply,
 						       int reply_size, char *buffer, int buffer_size,
 						       std::function < void () > &&deleter);
-extern unsigned int css_send_reply_and_data_to_client_old (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply,
-							   int reply_size, char *buffer, int buffer_size);
+extern unsigned int css_send_reply_and_data_to_client_direct (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply,
+							      int reply_size, char *buffer, int buffer_size);
 #if 0
 extern unsigned int css_send_reply_and_large_data_to_client (unsigned int eid, char *reply, int reply_size,
 							     char *buffer, INT64 buffer_size);
