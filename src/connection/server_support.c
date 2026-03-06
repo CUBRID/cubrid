@@ -197,10 +197,6 @@ static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
 static unsigned int css_enqueue_and_notify (cubconn::connection::worker::queue_type type,
 					    cubconn::connection::worker::message &&item, int wait_time = 0);
 
-#if defined(WINDOWS)
-static int css_process_new_connection_request (void);
-#endif /* WINDOWS */
-
 static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
 
@@ -223,8 +219,6 @@ css_count_transaction_worker_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & 
 
 static HA_SERVER_STATE css_transit_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE req_state);
 
-static bool css_get_connection_thread_pooling_configuration (void);
-static cubthread::wait_seconds css_get_connection_thread_timeout_configuration (void);
 static bool css_get_server_request_thread_pooling_configuration (void);
 static cubthread::wait_seconds css_get_server_request_thread_timeout_configuration (void);
 static void css_start_all_threads (void);
@@ -753,8 +747,8 @@ css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, 
 }
 
 unsigned int
-css_send_reply_and_data_to_client_old (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size,
-				       char *buffer, int buffer_size)
+css_send_reply_and_data_to_client_direct (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size,
+					  char *buffer, int buffer_size)
 {
   int rc = 0;
 
@@ -1375,7 +1369,6 @@ css_receive_data_from_client_with_timeout (CSS_CONN_ENTRY * conn, unsigned int e
   *size = 0;
 
   rc = css_receive_data (conn, CSS_RID_FROM_EID (eid), buffer, size, timeout);
-
   if (rc == NO_ERRORS || rc == RECORD_TRUNCATED)
     {
       css_test_for_client_errors (conn, eid);
@@ -2877,12 +2870,6 @@ size_t css_get_max_connections ()
 }
 
 static bool
-css_get_connection_thread_pooling_configuration (void)
-{
-  return prm_get_bool_value (PRM_ID_THREAD_CONNECTION_POOLING);
-}
-
-static bool
 css_get_server_request_thread_pooling_configuration (void)
 {
   return prm_get_bool_value (PRM_ID_THREAD_WORKER_POOLING);
@@ -2908,7 +2895,6 @@ css_start_all_threads (void)
   using clock_type = std::chrono::system_clock;
   clock_type::time_point start_time = clock_type::now ();
 
-  bool start_connections = css_get_connection_thread_pooling_configuration ();
   bool start_workers = css_get_server_request_thread_pooling_configuration ();
 
   if (start_workers)
@@ -2919,10 +2905,8 @@ css_start_all_threads (void)
   clock_type::time_point end_time = clock_type::now ();
   er_log_debug (ARG_FILE_LINE,
                 "css_start_all_threads: \n"
-                "\tstarting connection threads: %s\n"
                 "\tstarting transaction workers: %s\n"
                 "\telapsed time: %lld microseconds",
-                start_connections ? "true" : "false",
                 start_workers ? "true" : "false",
                 std::chrono::duration_cast<std::chrono::microseconds> (end_time - start_time).count ());
 }
