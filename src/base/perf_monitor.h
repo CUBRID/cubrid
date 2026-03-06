@@ -825,12 +825,12 @@ enum t_diag_server_type
 typedef enum t_diag_server_type T_DIAG_SERVER_TYPE;
 
 extern void perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *substr);
-
 extern void perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_size, const char *substr);
+extern void perfmon_trace_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_size, int trace_level);
 
 extern void perfmon_get_current_times (time_t * cpu_usr_time, time_t * cpu_sys_time, time_t * elapsed_time);
 
-extern int perfmon_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats);
+extern int perfmon_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats, bool need_pgbuf_stat);
 extern int perfmon_calc_diff_stats_for_trace (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats);
 extern int perfmon_initialize (int num_trans);
 extern void perfmon_finalize (void);
@@ -1196,9 +1196,9 @@ perfmon_merge_child_stats_to_parent_stats (THREAD_ENTRY * thread_p)
       return;
     }
 
-  THREAD_ENTRY *parent_thread_p = thread_p->m_px_orig_thread_entry;
+  THREAD_ENTRY *main_thread_p = thread_get_main_thread (thread_p);
 
-  if (parent_thread_p == NULL || parent_thread_p == thread_p)
+  if (main_thread_p == thread_p)
     {
       return;
     }
@@ -1208,9 +1208,9 @@ perfmon_merge_child_stats_to_parent_stats (THREAD_ENTRY * thread_p)
    * perfmon_initialize_parallel_stats is a temporary safeguard.
    * TODO: replace with assert().
    */
-  if (parent_thread_p->m_px_stats == NULL)
+  if (main_thread_p->m_px_stats == NULL)
     {
-      perfmon_initialize_parallel_stats (parent_thread_p);
+      perfmon_initialize_parallel_stats (main_thread_p);
     }
 
   /* immutable */
@@ -1222,14 +1222,14 @@ perfmon_merge_child_stats_to_parent_stats (THREAD_ENTRY * thread_p)
 
   const int stats_cnt = sizeof (offsets) / sizeof (offsets[0]);
 
-  pthread_mutex_lock (&(parent_thread_p->m_px_stats_mutex));
+  pthread_mutex_lock (&(main_thread_p->m_px_stats_mutex));
   for (int stats_index = 0; stats_index < stats_cnt; stats_index++)
     {
       const int offset = offsets[stats_index];
-      parent_thread_p->m_px_stats[offset] += thread_p->m_px_stats[offset];
+      main_thread_p->m_px_stats[offset] += thread_p->m_px_stats[offset];
       thread_p->m_px_stats[offset] = 0;
     }
-  pthread_mutex_unlock (&(parent_thread_p->m_px_stats_mutex));
+  pthread_mutex_unlock (&(main_thread_p->m_px_stats_mutex));
 #endif /* SERVER_MODE */
 }
 
@@ -1256,10 +1256,10 @@ perfmon_merge_parallel_stats_to_tran_stats (THREAD_ENTRY * thread_p)
       return;
     }
 
-  THREAD_ENTRY *parent_thread_p = thread_p->m_px_orig_thread_entry;
+  THREAD_ENTRY *main_thread_p = thread_get_main_thread (thread_p);
 
   /* Skip if not the top-level parent. */
-  if (parent_thread_p != NULL && parent_thread_p != thread_p)
+  if (main_thread_p != thread_p)
     {
       return;
     }
