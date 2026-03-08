@@ -101,7 +101,7 @@ unsigned short method_request_id;
 char net_Server_host[CUB_MAXHOSTNAMELEN + 1] = { 0x00, };
 
 /* Contains the name of the current server name. */
-char net_Server_name[DB_MAX_IDENTIFIER_LENGTH + 1] = { 0x00, };;
+char net_Server_name[DB_MAX_IDENTIFIER_LENGTH + 1] = { 0x00, };
 
 static void return_error_to_server (char *host, unsigned int eid);
 static int client_capabilities (void);
