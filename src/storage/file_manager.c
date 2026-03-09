@@ -11085,11 +11085,11 @@ xfile_tracker_purge_invalid_heap_files (THREAD_ENTRY * thread_p)
 
 #if !defined(NDEBUG)
 /*
- * parse_target_vfid () - vfid string to vfid
+ * parse_target_vfid () - Parse vfid string "fileid|volid" (e.g., "123|1")
  *
- * return           : error code
- * in_vfid_str (in) : vfid string
- * out_vfid (out)   : vfid
+ * return          : true on success, false on failure
+ * in_vfid_str (in): vfid string
+ * out_vfid (out)  : parsed vfid
  */
 bool
 parse_target_vfid (const char *in_vfid_str, VFID * out_vfid)
@@ -11101,12 +11101,18 @@ parse_target_vfid (const char *in_vfid_str, VFID * out_vfid)
       return false;
     }
 
-  if (sscanf (in_vfid_str, "%hd | %" SCNd32 " %c", &out_vfid->volid, &out_vfid->fileid, &sentinel) != 2)
+  for (int i = 0; in_vfid_str[i] != '\0'; i++)
+    {
+      if (!isdigit ((unsigned char) in_vfid_str[i]) && in_vfid_str[i] != '|')
+	{
+	  return false;
+	}
+    }
+
+  if (sscanf (in_vfid_str, "%d|%hd%c", &out_vfid->fileid, &out_vfid->volid, &sentinel) != 2)
     {
       return false;
     }
-
-  printf ("Parsed: volid=%hd, fileid=%" PRId32 "\n", out_vfid->volid, out_vfid->fileid);
 
   return true;
 }
