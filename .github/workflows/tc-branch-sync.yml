@@ -133,12 +133,6 @@ jobs:
             echo "::notice::Added initial commit to ${BRANCH_NAME}"
           fi
 
-          gh api "repos/tw-kang/${TC_REPO}/git/refs" \
-            --method POST \
-            --field ref="refs/heads/${BRANCH_NAME}" \
-            --field sha="${DEVELOP_SHA}"
-
-          echo "::notice::Created '${BRANCH_NAME}' in ${TC_REPO} from develop (${DEVELOP_SHA:0:12})"
 
       - name: Create draft PR in TC repo
         id: create-draft-pr
