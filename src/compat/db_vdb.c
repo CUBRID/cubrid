@@ -78,7 +78,7 @@ static DB_SESSION *initialize_session (DB_SESSION * session);
 static int db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result);
 static DB_OBJLIST *db_get_all_chosen_classes (int (*p) (MOBJ o));
 static int is_vclass_object (MOBJ class_);
-static char *get_reasonable_predicate (DB_ATTRIBUTE * att);
+static char *get_reasonable_predicate (DB_ATTRIBUTE * att, char *predicate, int predicate_buf_sz);
 static void update_execution_values (PARSER_CONTEXT * parser, int result, CUBRID_STMT_TYPE statement_type);
 static void copy_execution_values (EXECUTION_STATE_VALUES * source, EXECUTION_STATE_VALUES * destination);
 static int values_list_to_values_array (PARSER_CONTEXT * parser, PT_NODE * values_list, DB_VALUE_ARRAY * values_array);
@@ -3832,11 +3832,12 @@ db_validate_query_spec (DB_OBJECT * vclass, const char *query_spec)
  *   any reasonable predicate against this attribute and return that predicate
  * returns: a reasonable predicate against att if one exists, NULL otherwise
  * att(in) : an instance attribute
+ * predicate(out) : the buffer to store the predicate
+ * predicate_buf_sz(in) : the size of the predicate buffer
  */
 static char *
-get_reasonable_predicate (DB_ATTRIBUTE * att)
+get_reasonable_predicate (DB_ATTRIBUTE * att, char *predicate, int predicate_buf_sz)
 {
-  static char predicate[300];
   const char *att_name, *cond;
 
   if (!att || db_attribute_is_shared (att) || !(att_name = db_attribute_name (att)))
@@ -3899,7 +3900,8 @@ get_reasonable_predicate (DB_ATTRIBUTE * att)
       return NULL;
     }
 
-  snprintf (predicate, sizeof (predicate) - 1, "%s%s", att_name, cond);
+  assert (predicate != NULL && predicate_buf_sz > 1);
+  snprintf (predicate, predicate_buf_sz - 1, "%s%s", att_name, cond);
   return predicate;
 }
 
@@ -3913,12 +3915,6 @@ int
 db_validate (DB_OBJECT * vc)
 {
   int retval = NO_ERROR;
-  DB_QUERY_SPEC *specs;
-  const char *s, *separator = " where ";
-  char buffer[BUF_SIZE], *pred, *bufp, *newbuf;
-  DB_QUERY_RESULT *result = NULL;
-  DB_ATTRIBUTE *attributes;
-  int len, limit = BUF_SIZE;
 
   CHECK_CONNECT_ERROR ();
 
@@ -3941,6 +3937,8 @@ db_validate (DB_OBJECT * vc)
 	}
       else
 	{
+	  DB_QUERY_SPEC *specs;
+	  const char *s;
 
 	  for (specs = db_get_query_specs (vc); specs; specs = db_query_spec_next (specs))
 	    {
@@ -3959,20 +3957,28 @@ db_validate (DB_OBJECT * vc)
 
   if (retval >= 0)
     {
-      strcpy (buffer, "select count(*) from ");
-      strcat (buffer, db_get_class_name (vc));
+      DB_QUERY_RESULT *result = NULL;
+      DB_ATTRIBUTE *attributes;
+      const char *const separator[2] = { " where ", " and " };
+      const int separator_len[2] = { (int) strlen (separator[0]), (int) strlen (separator[1]) };
+      int separator_idx = 0;
+      char buffer[BUF_SIZE], *pred, *bufp, *newbuf;
+      int len, tlen, limit = BUF_SIZE;
+      char predicate[300];
+
+      sprintf (buffer, "select count(*) from %s", db_get_class_name (vc));
       attributes = db_get_attributes (vc);
       len = (int) strlen (buffer);
       bufp = buffer;
 
       while (attributes)
 	{
-	  pred = get_reasonable_predicate (attributes);
+	  pred = get_reasonable_predicate (attributes, predicate, sizeof (predicate));
 	  if (pred)
 	    {
 	      /* make sure we have enough room in the buffer */
-	      len += (int) (strlen (separator) + strlen (pred));
-	      if (len >= limit)
+	      tlen = (int) (separator_len[separator_idx] + strlen (pred));
+	      if (len + tlen >= limit)
 		{
 		  /* increase buffer by BUF_SIZE */
 		  limit += BUF_SIZE;
@@ -3992,9 +3998,12 @@ db_validate (DB_OBJECT * vc)
 		  bufp = newbuf;
 		}
 	      /* append another predicate */
-	      strcat (bufp, separator);
-	      strcat (bufp, pred);
-	      separator = " and ";
+	      sprintf (bufp + len, "%s%s", separator[separator_idx], pred);
+	      len += tlen;
+	      if (separator_idx == 0)
+		{
+		  separator_idx++;
+		}
 	    }
 	  attributes = db_attribute_next (attributes);
 	}
