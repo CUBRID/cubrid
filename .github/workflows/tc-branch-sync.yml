@@ -51,6 +51,10 @@ jobs:
           if echo "${PR_TITLE}" | grep -qi 'Revert'; then
             # Extract original PR number from body if "Reverts #N" pattern exists
             ORIGINAL_PR=$(echo "${PR_BODY}" | grep -oE 'Reverts #[0-9]+' | head -1 | grep -oE '[0-9]+' || echo "")
+            # If not found in body, try extracting from title pattern: "... (#N)"
+            if [ -z "${ORIGINAL_PR}" ]; then
+              ORIGINAL_PR=$(echo "${PR_TITLE}" | grep -oE '\(#[0-9]+\)' | grep -oE '[0-9]+' || echo "")
+            fi
             echo "is_revert=true" >> "${GITHUB_OUTPUT}"
             echo "original_pr_number=${ORIGINAL_PR}" >> "${GITHUB_OUTPUT}"
             echo "::notice::Revert PR detected — reverting TC changes"
