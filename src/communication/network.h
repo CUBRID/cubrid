@@ -252,7 +252,9 @@ enum net_server_request
   /* file manager */
   NET_SERVER_FILEMGR_DUMP_FILE_LIST,
   NET_SERVER_FILEMGR_PURGE_INVALID_HEAP_FILES,
+#if !defined(NDEBUG)
   NET_SERVER_FILEMGR_PURGE_TARGET_FILE,
+#endif
 
   /*
    * This is the last entry. It is also used for the end of an

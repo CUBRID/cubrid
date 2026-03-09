@@ -11098,6 +11098,7 @@ xfile_tracker_purge_invalid_heap_files (THREAD_ENTRY * thread_p)
   return NO_ERROR;
 }
 
+#if !defined(NDEBUG)
 /*
  * parse_target_vfid () - vfid string to vfid
  *
@@ -11124,6 +11125,7 @@ parse_target_vfid (const char *in_vfid_str, VFID * out_vfid)
 
   return true;
 }
+#endif
 
 /*
  * file_tracker_item_purge_target_file () - purge target file
@@ -11217,6 +11219,7 @@ file_tracker_item_purge_target_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_i
   return NO_ERROR;
 }
 
+#if !defined(NDEBUG)
 /*
  * xfile_tracker_purge_target_file () - purge target file
  *
@@ -11241,6 +11244,7 @@ xfile_tracker_purge_target_file (THREAD_ENTRY * thread_p, const char *target_vfi
 
   return NO_ERROR;
 }
+#endif
 
 /*
  * file_tracker_item_dump_heap () - FILE_TRACK_ITEM_FUNC to dump heap file

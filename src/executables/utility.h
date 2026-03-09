@@ -1172,8 +1172,10 @@ typedef struct _ha_config
 #define FILEMGR_DUMP_FILE_LIST_L                "list"
 #define FILEMGR_PURGE_INVALID_HEAP_S            'p'
 #define FILEMGR_PURGE_INVALID_HEAP_L            "purge-invalid-heap-files"
+#if !defined(NDEBUG)
 #define FILEMGR_FORCE_PURGE_TARGET_VFID_S       't'
 #define FILEMGR_FORCE_PURGE_TARGET_VFID_L       "force-purge-target-vfid"
+#endif
 
 /* patch option list */
 #define PATCH_RECREATE_LOG_S                    'r'

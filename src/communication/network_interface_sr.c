@@ -10355,6 +10355,7 @@ sfile_tracker_purge_invalid_heap_files (THREAD_ENTRY * thread_p, unsigned int ri
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
+#if !defined(NDEBUG)
 /*
  * sfile_tracker_purge_target_file -
  *
@@ -10385,3 +10386,4 @@ sfile_tracker_purge_target_file (THREAD_ENTRY * thread_p, unsigned int rid, char
   (void) or_pack_errcode (reply, error);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
+#endif

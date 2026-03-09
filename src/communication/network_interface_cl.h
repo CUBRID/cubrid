@@ -442,6 +442,8 @@ extern int loaddb_update_stats ();
 
 extern int file_dump_file_list (FILE * outfp);
 extern int file_purge_invalid_heap_files (void);
+#if !defined(NDEBUG)
 extern int file_purge_target_file (const char *target_vfid_str);
+#endif
 
 #endif /* _NETWORK_INTERFACE_CL_H_ */

@@ -1245,5 +1245,4 @@ valid options:\n\
     -C, --CS-mode                      client-server mode execution\n\
     -o, --output-file=FILE             redirect output message to FILE; default: none.\n\
     -l, --list                         list all files\n\
-    -p, --purge-invalid-heap-files     purge invalid heap files\n\
-    -t, --force-purge-target-vfid=VFID purge file by VFID in \"fileid|volid\" format\n
+    -p, --purge-invalid-heap-files     purge invalid heap files\n

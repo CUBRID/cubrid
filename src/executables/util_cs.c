@@ -4004,7 +4004,9 @@ filemgr (UTIL_FUNCTION_ARG * arg)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   const char *db_name;
+#if !defined(NDEBUG)
   const char *target_vfid_str = NULL;
+#endif
   const char *output_file = NULL;
   FILE *outfp = NULL;
   bool should_dump_file_list;
@@ -4034,7 +4036,14 @@ filemgr (UTIL_FUNCTION_ARG * arg)
 
   should_dump_file_list = utility_get_option_bool_value (arg_map, FILEMGR_DUMP_FILE_LIST_S);
   should_purge_invalid_heap_files = utility_get_option_bool_value (arg_map, FILEMGR_PURGE_INVALID_HEAP_S);
+#if !defined(NDEBUG)
+  /*
+   * INFO: Hidden option for debugging.
+   * Usage: -t, --force-purge-target-vfid=VFID
+   * Format: "fileid|volid" (e.g., "123|1")
+   */
   target_vfid_str = utility_get_option_string_value (arg_map, FILEMGR_FORCE_PURGE_TARGET_VFID_S, 0);
+#endif
 
   if (check_database_name (db_name))
     {
@@ -4071,10 +4080,12 @@ filemgr (UTIL_FUNCTION_ARG * arg)
       (void) file_purge_invalid_heap_files ();
     }
 
+#if !defined(NDEBUG)
   if (target_vfid_str != NULL)
     {
       (void) file_purge_target_file (target_vfid_str);
     }
+#endif
 
   db_shutdown ();
 
