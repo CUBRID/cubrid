@@ -844,6 +844,17 @@ css_master_accept (SOCKET sockfd)
 	    }
 
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_ACCEPT_ERROR, 0);
+	  if (errno == EMFILE)
+	    {
+	      er_log_debug (ARG_FILE_LINE,
+			    "failed to accept connection: too many open files in this process (EMFILE). current process fd limit may be insufficient.");
+	    }
+	  else if (errno == ENFILE)
+	    {
+	      er_log_debug (ARG_FILE_LINE,
+			    "failed to accept connection: system-wide file descriptor limit reached (ENFILE).");
+	    }
+
 	  return INVALID_SOCKET;
 	}
 
@@ -1048,33 +1059,30 @@ css_tcp_master_datagram (char *path_name, SOCKET * sockfd)
 SOCKET
 css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
 {
-  unsigned short req_id;
+  union
+  {
+    struct cmsghdr hdr;
+    char buf[CONTROLLEN];
+  } cmsgbuf;
+  struct cmsghdr *cmsg;
   SOCKET new_fd = INVALID_SOCKET;
-  int rc;
-  struct iovec iov[1];
+  unsigned short req_id;
   struct msghdr msg;
+  struct iovec iov;
   int pid;
-#if defined(LINUX) || defined(AIX)
-  static struct cmsghdr *cmptr = NULL;
-#endif /* LINUX || AIX */
+  int rc;
 
-  iov[0].iov_base = (char *) &req_id;
-  iov[0].iov_len = sizeof (unsigned short);
-  msg.msg_iov = iov;
-  msg.msg_iovlen = 1;
+  memset (&cmsgbuf, 0, sizeof (cmsgbuf));
+
+  iov.iov_base = &req_id;
+  iov.iov_len = sizeof (unsigned short);
+
   msg.msg_name = (caddr_t) NULL;
   msg.msg_namelen = 0;
-#if !defined(LINUX) && !defined(AIX)
-  msg.msg_accrights = (caddr_t) & new_fd;	/* address of descriptor */
-  msg.msg_accrightslen = sizeof (new_fd);	/* receive 1 descriptor */
-#else /* not LINUX and not AIX */
-  if (cmptr == NULL && (cmptr = (struct cmsghdr *) malloc (CONTROLLEN)) == NULL)
-    {
-      return INVALID_SOCKET;
-    }
-  msg.msg_control = (void *) cmptr;
-  msg.msg_controllen = CONTROLLEN;
-#endif /* not LINUX */
+  msg.msg_iov = &iov;
+  msg.msg_iovlen = 1;
+  msg.msg_control = cmsgbuf.buf;
+  msg.msg_controllen = sizeof (cmsgbuf.buf);
 
   rc = recvmsg (fd, &msg, 0);
   if (rc < 0)
@@ -1084,20 +1092,26 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
       return INVALID_SOCKET;
     }
 
+  for (cmsg = CMSG_FIRSTHDR (&msg); cmsg; cmsg = CMSG_NXTHDR (&msg, cmsg))
+    {
+      if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SCM_RIGHTS && cmsg->cmsg_len >= CMSG_LEN (sizeof (int)))
+	{
+	  memcpy (&new_fd, CMSG_DATA (cmsg), sizeof (new_fd));
+	  break;
+	}
+    }
+
+  if (IS_INVALID_SOCKET (new_fd))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_RECVMSG, 0);
+      return INVALID_SOCKET;
+    }
+
   *rid = ntohs (req_id);
-
   pid = getpid ();
-#if defined(LINUX) || defined(AIX)
-  new_fd = *(SOCKET *) CMSG_DATA (cmptr);
-#endif /* LINUX || AIX */
-
-#ifdef SYSV
-  ioctl (new_fd, SIOCSPGRP, (caddr_t) & pid);
-#else /* not SYSV */
   fcntl (new_fd, F_SETOWN, pid);
-#endif /* not SYSV */
-
   css_sockopt (new_fd);
+
   return new_fd;
 }
 
