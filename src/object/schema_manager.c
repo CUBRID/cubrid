@@ -3124,6 +3124,8 @@ sm_mark_system_class_for_catalog (void)
     CT_COLLATION_NAME,
     CT_SERVER_NAME,
     CTV_SERVER_NAME,
+    CTV_USER_NAME,
+    CTV_AUTHORIZATION_NAME,
     NULL
   };
 
