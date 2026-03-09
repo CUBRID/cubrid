@@ -1,0 +1,45 @@
+# Task 2 Verification Evidence
+# Generated: Mon Mar 09 2026
+# File: .github/workflows/tc-branch-sync.yml
+
+## Acceptance Criteria Checks
+
+### 1. Step "Comment TC revert PR link on engine PR" removed
+grep -c 'Comment TC revert PR link on engine PR' .github/workflows/tc-branch-sync.yml
+0 (PASS - step removed)
+
+### 2. New job comment-on-engine-pr-revert added exactly once
+grep -c 'comment-on-engine-pr-revert:' .github/workflows/tc-branch-sync.yml
+1 (PASS - job added once)
+
+### 3. Job structure verification
+59:            echo "is_revert=true" >> "${GITHUB_OUTPUT}"
+204:    if: needs.detect-pr-type.outputs.is_revert == 'true'
+442:  comment-on-engine-pr-revert:
+444:    needs: [detect-pr-type, revert-tc-branch]
+445:    if: needs.detect-pr-type.outputs.is_revert == 'true'
+452:        id: tc-token-public
+461:        id: tc-token-private
+471:          echo "::add-mask::${{ steps.tc-token-public.outputs.token }}"
+472:          echo "::add-mask::${{ steps.tc-token-private.outputs.token }}"
+474:      - name: Query TC PRs and comment
+479:          TC_TOKEN_PUBLIC: ${{ steps.tc-token-public.outputs.token }}
+480:          TC_TOKEN_PRIVATE: ${{ steps.tc-token-private.outputs.token }}
+
+### 4. heredoc usage in comment-on-engine-pr
+416:          COMMENT_BODY=$(cat <<EOF
+436:            --body "${COMMENT_BODY}"
+506:          COMMENT_BODY=$(cat <<EOF
+523:            --body "${COMMENT_BODY}"
+
+### 5. Token masking present
+99:        run: echo "::add-mask::${APP_TOKEN}"
+229:        run: echo "::add-mask::${APP_TOKEN}"
+471:          echo "::add-mask::${{ steps.tc-token-public.outputs.token }}"
+472:          echo "::add-mask::${{ steps.tc-token-private.outputs.token }}"
+
+### 6. GH_TOKEN uses github.token (not app token) for posting comment
+184:          GH_TOKEN: ${{ github.token }}
+371:          GH_TOKEN: ${{ github.token }}
+407:          GH_TOKEN: ${{ github.token }}
+476:          GH_TOKEN: ${{ github.token }}
