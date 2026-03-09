@@ -139,16 +139,13 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_HEADER: ${{ needs.detect-pr-type.outputs.pr_header }}
           TC_REPO: ${{ matrix.tc-repo }}
           ENGINE_REPO: ${{ github.repository }}
         shell: bash
         run: |
           set -euo pipefail
           BRANCH_NAME="tc/pr-${PR_NUMBER}"
-          
-          # Extract [CBRD-XXXX] header from engine PR title
-          PR_HEADER=$(echo "${PR_TITLE}" | grep -oE '^\[[A-Z]+-[0-9]+\]' || echo "")
           
           # Build TC draft PR title
           if [ -n "${PR_HEADER}" ]; then
@@ -236,6 +233,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          # Guard: ORIGINAL_PR_NUMBER must be set
+          if [ -z "${ORIGINAL_PR_NUMBER}" ]; then
+            echo "::error::Missing original PR number (expected 'Reverts #N' in body)"
+            exit 1
+          fi
+
           BRANCH_NAME="tc/pr-${PR_NUMBER}"
           ORIGINAL_BRANCH="tc/pr-${ORIGINAL_PR_NUMBER}"
 
@@ -246,54 +250,140 @@ jobs:
           cd tc-repo
 
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Ensure we're on develop (default branch might differ)
-          git checkout develop
+          # Fetch and reset branch to origin/develop (idempotent on reruns)
+          git fetch origin develop
+          git checkout -B "${BRANCH_NAME}" origin/develop
 
           # Find the squash merge commit for the original PR's TC branch
-          MERGE_COMMIT=$(git log --format="%H" --grep="${ORIGINAL_BRANCH}" develop -1 || echo "")
+          MERGE_COMMIT=$(git log --format="%H" --grep="${ORIGINAL_BRANCH}" origin/develop -1 || echo "")
 
-          if [ -z "${MERGE_COMMIT}" ]; then
-            echo "::notice::No TC merge commit found for '${ORIGINAL_BRANCH}' in ${TC_REPO}. Creating empty revert branch."
-            git checkout -b "${BRANCH_NAME}" develop
-            git push origin "${BRANCH_NAME}"
-            echo "::notice::Created empty branch '${BRANCH_NAME}' in ${TC_REPO} (no TC changes to revert)."
-            exit 0
-          fi
+          if [ -n "${MERGE_COMMIT}" ]; then
+            echo "::notice::Found merge commit ${MERGE_COMMIT:0:12} for '${ORIGINAL_BRANCH}'"
 
-          echo "::notice::Found merge commit ${MERGE_COMMIT:0:12} for '${ORIGINAL_BRANCH}'"
-
-          # Create revert branch from develop
-          git checkout -b "${BRANCH_NAME}" develop
-
-          # Attempt revert — try plain first (squash commit), fall back to -m 1 (merge commit)
-          REVERT_OK=false
-          if git revert --no-edit "${MERGE_COMMIT}" 2>/dev/null; then
-            REVERT_OK=true
-          else
-            git revert --abort 2>/dev/null || true
-            if git revert --no-edit -m 1 "${MERGE_COMMIT}" 2>/dev/null; then
+            # Attempt revert — try plain first (squash commit), fall back to -m 1 (merge commit)
+            REVERT_OK=false
+            if git revert --no-edit "${MERGE_COMMIT}" 2>/dev/null; then
               REVERT_OK=true
             else
               git revert --abort 2>/dev/null || true
+              if git revert --no-edit -m 1 "${MERGE_COMMIT}" 2>/dev/null; then
+                REVERT_OK=true
+              else
+                git revert --abort 2>/dev/null || true
+              fi
             fi
+
+            if [ "${REVERT_OK}" != "true" ]; then
+              echo "::error::Revert conflict detected for commit ${MERGE_COMMIT:0:12}. Manual resolution required."
+              exit 1
+            fi
+
+            # Amend commit message to include engine PR header
+            if [ -n "${PR_HEADER}" ]; then
+              CURRENT_MSG=$(git log -1 --format="%s")
+              git commit --amend -m "${PR_HEADER} ${CURRENT_MSG}"
+            fi
+          else
+            echo "::notice::No TC merge commit found for '${ORIGINAL_BRANCH}' in ${TC_REPO}. Creating empty revert branch."
           fi
 
-          if [ "${REVERT_OK}" != "true" ]; then
-            echo "::error::Revert conflict detected for commit ${MERGE_COMMIT:0:12}. Manual resolution required."
-            exit 1
+          # Ensure a commit exists on the branch so gh pr create does not fail
+          if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/develop)" ]; then
+            git commit --allow-empty -m "chore: No-op TC revert for engine PR #${PR_NUMBER} (reverts #${ORIGINAL_PR_NUMBER})"
+            echo "::notice::Added empty commit to '${BRANCH_NAME}' (no changes to revert)."
           fi
 
-          # Amend commit message to include engine PR header
-          if [ -n "${PR_HEADER}" ]; then
-            CURRENT_MSG=$(git log -1 --format="%s")
-            git commit --amend -m "${PR_HEADER} ${CURRENT_MSG}"
-          fi
+          # Push revert branch (force for idempotency on reruns)
+          git push origin "${BRANCH_NAME}" --force
 
-          # Push revert branch
-          git push origin "${BRANCH_NAME}"
+          # Write step outputs exactly once
+          echo "revert_branch_pushed=true" >> "${GITHUB_OUTPUT}"
+          echo "revert_branch=${BRANCH_NAME}" >> "${GITHUB_OUTPUT}"
           echo "::notice::Pushed revert branch '${BRANCH_NAME}' to ${TC_REPO}"
+        id: revert-commit
+
+      - name: Create open PR for revert
+        id: create-revert-pr
+        if: steps.revert-commit.outputs.revert_branch_pushed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ORIGINAL_PR_NUMBER: ${{ needs.detect-pr-type.outputs.original_pr_number }}
+          PR_HEADER: ${{ needs.detect-pr-type.outputs.pr_header }}
+          TC_REPO: ${{ matrix.tc-repo }}
+          ENGINE_REPO: ${{ github.repository }}
+          REVERT_BRANCH: ${{ steps.revert-commit.outputs.revert_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          # Build TC PR title for revert
+          if [ -n "${PR_HEADER}" ]; then
+            PR_TITLE_TC="${PR_HEADER} Revert: TC branch for PR #${PR_NUMBER} (reverts #${ORIGINAL_PR_NUMBER})"
+          else
+            PR_TITLE_TC="Revert: TC branch for PR #${PR_NUMBER} (reverts #${ORIGINAL_PR_NUMBER})"
+          fi
+          
+          # Check if PR already exists (open or closed)
+          EXISTING_PR=$(gh pr list --repo "tw-kang/${TC_REPO}" --head "${REVERT_BRANCH}" --state all --json number,state --jq '.[0]' || echo "")
+          if [ -n "${EXISTING_PR}" ]; then
+            PR_NUM=$(echo "${EXISTING_PR}" | jq -r '.number')
+            PR_STATE=$(echo "${EXISTING_PR}" | jq -r '.state')
+            if [ "${PR_STATE}" = "CLOSED" ]; then
+              echo "::notice::Reopening closed PR #${PR_NUM} for ${REVERT_BRANCH}"
+              gh pr reopen --repo "tw-kang/${TC_REPO}" "${PR_NUM}"
+            else
+              echo "::notice::Open PR #${PR_NUM} already exists for ${REVERT_BRANCH}"
+            fi
+            PR_URL="${GITHUB_SERVER_URL}/tw-kang/${TC_REPO}/pull/${PR_NUM}"
+            echo "tc_revert_pr_url=${PR_URL}" >> "${GITHUB_OUTPUT}"
+            echo "tc_revert_pr_number=${PR_NUM}" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          
+          # Create open PR (not draft) from revert branch to develop
+          PR_URL=$(gh pr create \
+            --repo "tw-kang/${TC_REPO}" \
+            --head "${REVERT_BRANCH}" \
+            --base develop \
+            --title "${PR_TITLE_TC}" \
+            --body "This PR reverts TC changes from PR #${ORIGINAL_PR_NUMBER}.
+
+          Related Engine Revert PR: ${ENGINE_REPO}#${PR_NUMBER}
+          TC Branch: ${REVERT_BRANCH}
+
+          **Please merge this PR FIRST, then merge the engine revert PR.**")
+          
+          echo "::notice::Created open PR: ${PR_URL}"
+          echo "tc_revert_pr_url=${PR_URL}" >> "${GITHUB_OUTPUT}"
+          echo "tc_revert_pr_number=$(echo ${PR_URL} | grep -oE '[0-9]+$')" >> "${GITHUB_OUTPUT}"
+
+      - name: Comment TC revert PR link on engine PR
+        id: comment-revert-pr-link
+        if: steps.create-revert-pr.outputs.tc_revert_pr_url != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TC_REPO: ${{ matrix.tc-repo }}
+          REVERT_BRANCH: ${{ steps.revert-commit.outputs.revert_branch }}
+          TC_REVERT_PR_URL: ${{ steps.create-revert-pr.outputs.tc_revert_pr_url }}
+          ENGINE_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          gh pr comment "${PR_NUMBER}" \
+            --repo "${ENGINE_REPO}" \
+            --body "✅ **TC Revert PR Created** for \`${TC_REPO}\`
+          
+          **TC Branch:** \`${REVERT_BRANCH}\`
+          **TC Revert PR:** [${TC_REPO}#$(echo ${TC_REVERT_PR_URL} | grep -oE '[0-9]+$')](${TC_REVERT_PR_URL})
+          
+          **Next Steps:**
+          1. Review and merge the TC revert PR first: ${TC_REVERT_PR_URL}
+          2. Then merge this engine revert PR"
 
       - name: Comment on failure
         if: failure()
