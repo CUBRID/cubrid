@@ -119,8 +119,8 @@ jobs:
         run: |
           set -euo pipefail
           BRANCH_NAME="tc/pr-${PR_NUMBER}"
-          
-          # Build comment based on what happened
+
+          # Determine status
           if [ "${IS_MERGED}" == "true" ]; then
             STATUS_EMOJI="✅"
             STATUS_TEXT="merged"
@@ -128,27 +128,30 @@ jobs:
             STATUS_EMOJI="🗑️"
             STATUS_TEXT="closed (not merged)"
           fi
-          
-          COMMENT_BODY="${STATUS_EMOJI} **TC Branch Finalized** for \`${TC_REPO}\`
 
-          Engine PR was ${STATUS_TEXT}.
-          
-          **Cleanup Results:**"
-          
+          # Build cleanup results section
+          CLEANUP_ITEMS=""
           if [ "${DRAFT_PR_CLOSED}" == "true" ] && [ -n "${DRAFT_PR_NUMBER}" ]; then
-            COMMENT_BODY="${COMMENT_BODY}
+            CLEANUP_ITEMS="${CLEANUP_ITEMS}
           - [Draft PR #${DRAFT_PR_NUMBER}: ${DRAFT_PR_TITLE}](${DRAFT_PR_URL}): Closed"
           fi
-          
           if [ "${BRANCH_DELETED}" == "true" ]; then
-            COMMENT_BODY="${COMMENT_BODY}
+            CLEANUP_ITEMS="${CLEANUP_ITEMS}
           - Branch \`${BRANCH_NAME}\`: Deleted"
           fi
-          
-          COMMENT_BODY="${COMMENT_BODY}
-          
-          TC develop branch is ready for the next PR."
-          
+
+          # Build comment body using heredoc
+          COMMENT_BODY=$(cat <<EOF
+          ${STATUS_EMOJI} **TC Branch Finalized** for \`${TC_REPO}\`
+
+          Engine PR was ${STATUS_TEXT}.
+
+          **Cleanup Results:**${CLEANUP_ITEMS}
+
+          TC develop branch is ready for the next PR.
+          EOF
+          )
+
           gh pr comment "${PR_NUMBER}" \
             --repo "${ENGINE_REPO}" \
             --body "${COMMENT_BODY}"
