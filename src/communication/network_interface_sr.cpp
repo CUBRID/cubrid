@@ -132,15 +132,15 @@ STATIC_INLINE int stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, i
 
 static bool need_to_abort_tran (THREAD_ENTRY *thread_p, int *errid);
 static int server_capabilities (void);
-static int check_client_capabilities (THREAD_ENTRY * thread_p, int client_cap, int rel_compare,
-				      REL_COMPATIBILITY * compatibility, const char *client_host);
-static void sbtree_find_unique_internal (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-static int er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time,
-			      UINT64 * diff_stats, char *queryinfo_string);
-static int trace_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats,
+static int check_client_capabilities (THREAD_ENTRY *thread_p, int client_cap, int rel_compare,
+				      REL_COMPATIBILITY *compatibility, const char *client_host);
+static void sbtree_find_unique_internal (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen);
+static int er_log_slow_query (THREAD_ENTRY *thread_p, EXECUTION_INFO *info, int time,
+			      UINT64 *diff_stats, char *queryinfo_string);
+static int trace_log_slow_query (THREAD_ENTRY *thread_p, EXECUTION_INFO *info, int time, UINT64 *diff_stats,
 				 char *queryinfo_string, int trace_level);
-static void event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats);
-static void event_log_extend_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info);
+static void event_log_many_ioreads (THREAD_ENTRY *thread_p, EXECUTION_INFO *info, int time, UINT64 *diff_stats);
+static void event_log_extend_pages (THREAD_ENTRY *thread_p, EXECUTION_INFO *info);
 static void set_tdes_query_exec_info (int tran_index, char *sql_user_text);
 
 /*
@@ -3877,7 +3877,7 @@ sboot_notify_unregister_client (THREAD_ENTRY *thread_p, unsigned int rid, char *
   assert (conn != NULL);
 
   /* There's an interesting race condition among client, worker thread and connection handler.
-   * Please find CBRD-21375 for detail and also see css_connection_handler_thread.
+   * Please find CBRD-21375 for detail.
    *
    * It is important to synchronize worker thread with connection handler to avoid the race condition.
    * To change conn->status and send reply to client should be atomic.
@@ -5718,7 +5718,7 @@ null_list:
 	    {
 	      queryinfo_string = (char *) malloc (QUERY_INFO_BUF_SIZE);
 	      queryinfo_string_length =
-		trace_log_slow_query (thread_p, &info, response_time, diff_stats, queryinfo_string, trace_level);
+		      trace_log_slow_query (thread_p, &info, response_time, diff_stats, queryinfo_string, trace_level);
 	    }
 
 	  if (trace_ioreads > 0
@@ -5852,7 +5852,7 @@ exit:
  *   diff_stats(in):
  */
 static int
-trace_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats,
+trace_log_slow_query (THREAD_ENTRY *thread_p, EXECUTION_INFO *info, int time, UINT64 *diff_stats,
 		      char *queryinfo_string, int trace_level)
 {
   FILE *log_fp;
@@ -5898,9 +5898,9 @@ trace_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, 
   trace_log_print_client_info (tran_index, indent);
 
   queryinfo_string_length =
-    snprintf (queryinfo_string, QUERY_INFO_BUF_SIZE, "%s\n%s\n%s\n %s\n\n SQL_ID: %s\n  sql: %s\n", line, title, line,
-	      info->sql_user_text ? info->sql_user_text : "(UNKNOWN USER_TEXT)", sql_id ? sql_id : "(UNKNOWN SQL_ID)",
-	      info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)");
+	  snprintf (queryinfo_string, QUERY_INFO_BUF_SIZE, "%s\n%s\n%s\n %s\n\n SQL_ID: %s\n  sql: %s\n", line, title, line,
+		    info->sql_user_text ? info->sql_user_text : "(UNKNOWN USER_TEXT)", sql_id ? sql_id : "(UNKNOWN SQL_ID)",
+		    info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)");
 
   fprintf (log_fp, "%*c%s\n", indent, ' ', info->sql_plan_text ? info->sql_plan_text : "");
 
@@ -12012,7 +12012,7 @@ stdes_reset_query_start_info (THREAD_ENTRY *thread_p, unsigned int rid, char *re
  *   reqlen(in): the request length
  */
 void
-slob_create_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+slob_create_dir (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
@@ -12058,7 +12058,7 @@ end:
  *   reqlen(in): the request length
  */
 void
-slob_remove_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+slob_remove_dir (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;

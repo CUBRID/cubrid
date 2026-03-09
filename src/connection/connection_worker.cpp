@@ -20,19 +20,6 @@
  * connection_worker.cpp
  */
 
-#include "porting.h"
-#include "hardware_topology.hpp"
-#include "tcp.h"
-#include "network.h"
-#include "network_interface_sr.h"
-#include "server_support.h"
-#include "connection_pool.hpp"
-#include "connection_sr.h"
-#include "connection_defs.h"
-#include "connection_worker.hpp"
-#include "buffer.hpp"
-#include "error_manager.h"
-
 #include <atomic>
 #include <iostream>
 #include <chrono>
@@ -45,6 +32,19 @@
 #include <sys/timerfd.h>
 #include <sys/epoll.h>
 #include <time.h>
+
+#include "resources.hpp"
+#include "porting.h"
+#include "tcp.h"
+#include "network.h"
+#include "network_interface_sr.h"
+#include "server_support.h"
+#include "connection_pool.hpp"
+#include "connection_sr.h"
+#include "connection_defs.h"
+#include "connection_worker.hpp"
+#include "buffer.hpp"
+#include "error_manager.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -1945,7 +1945,7 @@ respond:
     pthread_setname_np (pthread_self (), "connections");
 
     /* pin myself */
-    cubbase::topology.pin_core (m_core);
+    os::resources::cpu::setaffinity (m_core);
 
     /* entry */
     m_entry = cubthread::get_manager ()->claim_entry ();
