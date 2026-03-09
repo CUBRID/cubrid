@@ -248,7 +248,7 @@ namespace cubconn::connection
 
   std::uint32_t pool::initialize_topology (std::uint32_t max_connection_workers)
   {
-    auto ctx = os::resources::cpu::effective ();
+    const auto &ctx = os::resources::cpu::effective ();
 
     if (ctx.adjusted_effective && !ctx.adjusted_effective->empty ())
       {
@@ -270,7 +270,7 @@ namespace cubconn::connection
   {
     std::vector<std::size_t> cores;
     std::uint32_t i;
-    auto ctx = os::resources::cpu::effective ();
+    const auto &ctx = os::resources::cpu::effective ();
 
     assert (m_mutex_holder == std::this_thread::get_id ());
 
@@ -353,7 +353,7 @@ namespace cubconn::connection
   void pool::initialize_coordinator (std::uint32_t max_connection_workers, std::uint32_t min_connection_workers)
   {
     std::size_t core;
-    auto ctx = os::resources::cpu::effective ();
+    const auto &ctx = os::resources::cpu::effective ();
 
     if (ctx.adjusted_effective)
       {

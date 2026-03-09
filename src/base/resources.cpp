@@ -21,9 +21,9 @@
  */
 
 #include <cmath>
+#include <iterator>
 #include <thread>
 #include <fstream>
-#include <sched.h>
 #include <unistd.h>
 #include <net/if.h>
 #include <sys/socket.h>
@@ -41,6 +41,11 @@
 
 namespace os::resources
 {
+  void initialize ()
+  {
+    os::resources::cpu::effective ();
+  }
+
   std::optional<std::string> execute_command (const char *cmd)
   {
     std::string result;
@@ -65,7 +70,7 @@ namespace os::resources
 
   namespace cpu
   {
-    std::optional<std::set<std::size_t>> affinity_cpuset ()
+    std::tuple<std::optional<std::set<std::size_t>>, cpu_set_t *, std::size_t> affinity_cpuset ()
     {
       std::set<std::size_t> cpuset;
       cpu_set_t *bitmap;
@@ -80,7 +85,7 @@ namespace os::resources
 	  bitmap = CPU_ALLOC (size);
 	  if (!bitmap)
 	    {
-	      return std::nullopt;
+	      return { std::nullopt, nullptr, 0 };
 	    }
 
 	  CPU_ZERO_S (bytes, bitmap);
@@ -97,7 +102,7 @@ namespace os::resources
 	      /* _er_log_debug (ARG_FILE_LINE, "failed to sched_getaffinity: %s\n", strerror (errno)); */
 
 	      CPU_FREE (bitmap);
-	      return std::nullopt;
+	      return { std::nullopt, nullptr, 0 };
 	    }
 
 	  for (j = 0; j < size; j++)
@@ -108,12 +113,11 @@ namespace os::resources
 		}
 	    }
 
-	  CPU_FREE (bitmap);
-	  return cpuset;
+	  return { cpuset, bitmap, size };
 	}
 
       /* _er_log_debug (ARG_FILE_LINE, "failed to create cpuset: number of cores exceeds 2^18.\n"); */
-      return std::nullopt;
+      return { std::nullopt, nullptr, 0 };
     }
 
     std::optional<std::set<std::size_t>> online_cpuset ()
@@ -139,32 +143,78 @@ namespace os::resources
 
     void setaffinity (std::size_t core)
     {
-      cpu_set_t set;
+      cpu_set_t *bitmap;
+      std::size_t size;
       int status;
+      const auto &ctx = effective ();
+      if (!ctx.affinity.bitmap)
+	{
+	  return ;
+	}
 
-      CPU_ZERO (&set);
-      CPU_SET (core, &set);
-      status = pthread_setaffinity_np (pthread_self (), sizeof (set), &set);
+      size = CPU_ALLOC_SIZE (ctx.affinity.size);
+      bitmap = CPU_ALLOC (ctx.affinity.size);
+      if (!bitmap)
+	{
+	  return ;
+	}
+
+      CPU_ZERO_S (size, bitmap);
+      CPU_SET_S (core, size, bitmap);
+
+      status = pthread_setaffinity_np (pthread_self (), size, bitmap);
       if (status)
 	{
 	  _er_log_debug (__FILE__, __LINE__, "pthread_setaffinity_np failed for core %d: %s\n", core, strerror (status));
 	}
+
+      CPU_FREE (bitmap);
     }
 
-    context effective ()
+    void clearaffinity ()
     {
-      static const context ctx = []() -> context
+      int status;
+      const auto &ctx = effective ();
+      if (!ctx.affinity.bitmap)
+	{
+	  return ;
+	}
+
+      status = pthread_setaffinity_np (pthread_self (), CPU_ALLOC_SIZE (ctx.affinity.size), ctx.affinity.bitmap);
+      if (status)
+	{
+	  _er_log_debug (__FILE__, __LINE__, "pthread_setaffinity_np failed: %s\n", strerror (status));
+	}
+    }
+
+    /* This function must be called first in the main thread's entry point */
+    /* to initialize CPU and affinity information.			   */
+    context &effective ()
+    {
+      static context ctx = []() -> context
       {
 	std::optional<std::set<std::size_t>> affinity, online;
 	cgroup::cpu::context cgroup;
-	context ctx;
+	cpu_set_t *bitmap;
 	int nprocessors;
+	std::size_t size;
+	context ctx;
 
-	affinity = affinity_cpuset ();
+	std::tie (affinity, bitmap, size) = affinity_cpuset ();
 	if (affinity)
 	  {
+	    assert (bitmap);
+	    assert (size > 0);
+
 	    ctx.max = affinity->size ();
 	    ctx.effective = std::move (*affinity);
+
+	    if (ctx.affinity.bitmap)
+	      {
+		CPU_FREE (ctx.affinity.bitmap);
+	      }
+	    ctx.affinity.bitmap = bitmap;
+	    ctx.affinity.size = size;
 	  }
 
 	online = online_cpuset ();
