@@ -133,8 +133,7 @@ static char css_Vector_buffer[CSS_VECTOR_SIZE];
 #endif /* SERVER_MODE */
 #endif /* WINDOWS */
 
-static int css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name, const char **client_host_name,
-				     int *client_pid);
+static int css_sprintf_conn_infoids (SOCKET fd, char *client_user_name, char *client_host_name, int *client_pid);
 static int css_send_io_vector (CSS_CONN_ENTRY *conn, struct iovec *vec_p, ssize_t total_len, int vector_length,
 			       int timeout);
 
@@ -163,12 +162,9 @@ static LAST_ACCESS_STATUS *css_get_unused_access_status (LAST_ACCESS_STATUS **ac
 
 #if !defined(SERVER_MODE)
 static int
-css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name, const char **client_host_name, int *client_pid)
+css_sprintf_conn_infoids (SOCKET fd, char *user_name, char *host_name, int *client_pid)
 {
   CSS_CONN_ENTRY *conn;
-  static char user_name[L_cuserid] = { '\0' };
-  static char host_name[CUB_MAXHOSTNAMELEN] = { '\0' };
-  static int pid;
   int tran_index = -1;
 
   conn = css_find_conn_from_fd (fd);
@@ -185,11 +181,7 @@ css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name, const char *
 	  strcpy (host_name, "???");
 	}
 
-      pid = getpid ();
-
-      *client_user_name = user_name;
-      *client_host_name = host_name;
-      *client_pid = pid;
+      *client_pid = getpid ();
       tran_index = conn->get_tran_index ();
     }
 
@@ -215,21 +207,29 @@ css_default_server_timeout_fn (void)
  *   client_pid(in): client process of socket fd
  */
 static int
-css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name, const char **client_host_name, int *client_pid)
+css_sprintf_conn_infoids (SOCKET fd, char *user_name, char *host_name, int *client_pid)
 {
   const char *client_prog_name;
   CSS_CONN_ENTRY *conn;
   int error, tran_index = -1;
+  char *client_user_name, *client_host_name
 
   conn = css_find_conn_from_fd (fd);
 
   if (conn != NULL && conn->get_tran_index () != -1)
     {
-      error = logtb_find_client_name_host_pid (conn->get_tran_index (), &client_prog_name, client_user_name,
-	      client_host_name, client_pid);
+      error = logtb_find_client_name_host_pid (conn->get_tran_index (), &client_prog_name, &client_user_name,
+	      &client_host_name, client_pid);
       if (error == NO_ERROR)
 	{
+	  strcpy (user_name, client_user_name);
+	  strcpy (host_name, client_host_name);
 	  tran_index = conn->get_tran_index ();
+	}
+      else
+	{
+	  strcpy (user_name, "");
+	  strcpy (host_name, "???");
 	}
     }
 
@@ -241,12 +241,12 @@ css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name, const char *
 static void
 css_set_networking_error (SOCKET fd)
 {
-  const char *client_user_name;
-  const char *client_host_name;
+  char client_user_name[L_cuserid + 1] = { '\0' };
+  char client_host_name[CUB_MAXHOSTNAMELEN + 1] = { '\0' };
   int client_pid;
   int client_tranindex;
 
-  client_tranindex = css_sprintf_conn_infoids (fd, &client_user_name, &client_host_name, &client_pid);
+  client_tranindex = css_sprintf_conn_infoids (fd, client_user_name, client_host_name, &client_pid);
 
   if (client_tranindex != -1)
     {
