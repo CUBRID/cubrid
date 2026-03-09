@@ -64,7 +64,10 @@ jobs:
           BRANCH_NAME="tc/pr-${PR_NUMBER}"
           
           # Find draft PR
-          DRAFT_PR_NUMBER=$(gh pr list --repo "tw-kang/${TC_REPO}" --head "${BRANCH_NAME}" --state open --json number --jq '.[0].number' || echo "")
+          DRAFT_PR_DATA=$(gh pr list --repo "tw-kang/${TC_REPO}" --head "${BRANCH_NAME}" --state open --json number,title,url --jq '.[0]' || echo "")
+          DRAFT_PR_NUMBER=$(echo "${DRAFT_PR_DATA}" | jq -r '.number // empty')
+          DRAFT_PR_TITLE=$(echo "${DRAFT_PR_DATA}" | jq -r '.title // empty')
+          DRAFT_PR_URL=$(echo "${DRAFT_PR_DATA}" | jq -r '.url // empty')
           
           if [ -n "${DRAFT_PR_NUMBER}" ]; then
             if [ "${IS_MERGED}" == "true" ]; then
@@ -78,10 +81,14 @@ jobs:
             fi
             echo "draft_pr_closed=true" >> "${GITHUB_OUTPUT}"
             echo "draft_pr_number=${DRAFT_PR_NUMBER}" >> "${GITHUB_OUTPUT}"
+            echo "draft_pr_title=${DRAFT_PR_TITLE}" >> "${GITHUB_OUTPUT}"
+            echo "draft_pr_url=${DRAFT_PR_URL}" >> "${GITHUB_OUTPUT}"
           else
             echo "::notice::No open draft PR found for ${BRANCH_NAME} in ${TC_REPO}"
             echo "draft_pr_closed=false" >> "${GITHUB_OUTPUT}"
             echo "draft_pr_number=" >> "${GITHUB_OUTPUT}"
+            echo "draft_pr_title=" >> "${GITHUB_OUTPUT}"
+            echo "draft_pr_url=" >> "${GITHUB_OUTPUT}"
           fi
           
           # Delete TC branch
@@ -103,9 +110,11 @@ jobs:
           TC_REPO: ${{ matrix.tc-repo }}
           ENGINE_REPO: ${{ github.repository }}
           IS_MERGED: ${{ github.event.pull_request.merged }}
+          BRANCH_DELETED: ${{ steps.finalize.outputs.branch_deleted }}
           DRAFT_PR_CLOSED: ${{ steps.finalize.outputs.draft_pr_closed }}
           DRAFT_PR_NUMBER: ${{ steps.finalize.outputs.draft_pr_number }}
-          BRANCH_DELETED: ${{ steps.finalize.outputs.branch_deleted }}
+          DRAFT_PR_TITLE: ${{ steps.finalize.outputs.draft_pr_title }}
+          DRAFT_PR_URL: ${{ steps.finalize.outputs.draft_pr_url }}
         shell: bash
         run: |
           set -euo pipefail
@@ -128,7 +137,7 @@ jobs:
           
           if [ "${DRAFT_PR_CLOSED}" == "true" ] && [ -n "${DRAFT_PR_NUMBER}" ]; then
             COMMENT_BODY="${COMMENT_BODY}
-          - Draft PR #${DRAFT_PR_NUMBER}: Closed"
+          - [Draft PR #${DRAFT_PR_NUMBER}: ${DRAFT_PR_TITLE}](${DRAFT_PR_URL}): Closed"
           fi
           
           if [ "${BRANCH_DELETED}" == "true" ]; then
