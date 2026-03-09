@@ -1182,12 +1182,12 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
 	}
     }
 
-  AU_ENABLE (save);
   if (db_commit_transaction () < 0)
     {
       goto error_return;
     }
   db_shutdown ();
+  AU_ENABLE (save);
 
   return ERR_NO_ERROR;
 
