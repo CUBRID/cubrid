@@ -11218,7 +11218,11 @@ xfile_tracker_purge_target_file (THREAD_ENTRY * thread_p, const char *target_vfi
   VFID target_vfid = VFID_INITIALIZER;
   int error_code = NO_ERROR;
 
-  parse_target_vfid (target_vfid_str, &target_vfid);
+  if (parse_target_vfid (target_vfid_str, &target_vfid) != true)
+    {
+      // TODO: Define error message for release build
+      return ER_FAILED;
+    }
 
   error_code = file_tracker_map (thread_p, PGBUF_LATCH_WRITE, file_tracker_item_purge_target_file, &target_vfid);
   if (error_code != NO_ERROR)
