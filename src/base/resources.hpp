@@ -24,6 +24,8 @@
 #define _BASE_RESOURCES_HPP_
 
 #include <set>
+#include <string>
+#include <vector>
 #include <limits>
 #include <optional>
 
@@ -33,6 +35,8 @@ namespace os::resources
   {
     inline constexpr const char *cpu_online = "/sys/devices/system/cpu/online";
   }
+
+  std::optional<std::string> execute_command (const char *cmd);
 
   namespace cpu
   {
@@ -46,12 +50,23 @@ namespace os::resources
 
       double max;
       std::optional<std::set<std::size_t>> effective;
+
+      std::size_t adjusted_max;
+      std::optional<std::vector<std::size_t>> adjusted_effective;
     };
 
     std::optional<std::set<std::size_t>> affinity_cpuset ();
     std::optional<std::set<std::size_t>> online_cpuset ();
 
+    void setaffinity (std::size_t core);
+
     context effective ();
+  }
+
+  namespace net
+  {
+    bool set_nic_channels (std::string &ifname, unsigned int combined);
+    void map_nic_to_index (std::vector<std::size_t> &index);
   }
 }
 

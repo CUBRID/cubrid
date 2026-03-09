@@ -23,16 +23,16 @@
 #ifndef _CONNECTION_POOL_HPP_
 #define _CONNECTION_POOL_HPP_
 
-#include "connection_context.hpp"
-#include "connection_worker.hpp"
-#include "coordinator.hpp"
-
 #include <mutex>
 #include <cstring>
 #include <cstdint>
 #include <sys/socket.h>
 #include <sys/epoll.h>
 #include <fcntl.h>
+
+#include "connection_context.hpp"
+#include "connection_worker.hpp"
+#include "coordinator.hpp"
 
 namespace cubconn::connection
 {
