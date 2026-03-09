@@ -437,7 +437,7 @@ jobs:
 
 
   # ──────────────────────────────────────────────
-  # Job 4B: Comment on engine PR with TC revert PR links (aggregated)
+  # Job 4B: Comment on engine PR with TC revert PR links
   # ──────────────────────────────────────────────
   comment-on-engine-pr-revert:
     name: Comment Revert PR Links
@@ -448,73 +448,32 @@ jobs:
     permissions:
       pull-requests: write
     steps:
-      - name: Generate GitHub App Token (Public)
-        id: tc-token-public
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.TC_APP_ID }}
-          private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
-          repositories: cubrid-testcases
-          owner: tw-kang
-
-      - name: Generate GitHub App Token (Private)
-        id: tc-token-private
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.TC_APP_ID }}
-          private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
-          repositories: cubrid-testcases-private-ex
-          owner: tw-kang
-
-      - name: Mask tokens
-        run: |
-          echo "::add-mask::${{ steps.tc-token-public.outputs.token }}"
-          echo "::add-mask::${{ steps.tc-token-private.outputs.token }}"
-
-      - name: Query TC PRs and comment
+      - name: Comment TC branch info on engine PR
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           ENGINE_REPO: ${{ github.repository }}
-          TC_TOKEN_PUBLIC: ${{ steps.tc-token-public.outputs.token }}
-          TC_TOKEN_PRIVATE: ${{ steps.tc-token-private.outputs.token }}
+        shell: bash
         run: |
           set -euo pipefail
           BRANCH_NAME="tc/pr-${PR_NUMBER}"
 
-          # Query public TC repo for revert PR
-          PUBLIC_PR_URL=$(GH_TOKEN="${TC_TOKEN_PUBLIC}" gh pr list \
-            --repo "tw-kang/cubrid-testcases" \
-            --head "${BRANCH_NAME}" \
-            --state all \
-            --json url \
-            --jq '.[0].url // ""' 2>/dev/null || echo "")
-
-          # Query private TC repo for revert PR
-          PRIVATE_PR_URL=$(GH_TOKEN="${TC_TOKEN_PRIVATE}" gh pr list \
-            --repo "tw-kang/cubrid-testcases-private-ex" \
-            --head "${BRANCH_NAME}" \
-            --state all \
-            --json url \
-            --jq '.[0].url // ""' 2>/dev/null || echo "")
-
-          # Format PR links (use URL or fallback to 'not found')
-          PUBLIC_LINK="${PUBLIC_PR_URL:-not found}"
-          PRIVATE_LINK="${PRIVATE_PR_URL:-not found}"
-
-          # Build aggregated comment body using heredoc
+          # Build comment body using heredoc for readability
           COMMENT_BODY=$(cat <<EOF
-          ✅ **TC Revert PR Created**
+          ## 🔄 TC Revert Environment Ready
 
           **TC Branch:** \`${BRANCH_NAME}\`
 
-          **TC Revert PRs:**
-          - cubrid-testcases: ${PUBLIC_LINK}
-          - cubrid-testcases-private-ex: ${PRIVATE_LINK}
+          **TC Repositories:**
+          - [cubrid-testcases](https://github.com/tw-kang/cubrid-testcases/tree/${BRANCH_NAME})
+          - [cubrid-testcases-private-ex](https://github.com/tw-kang/cubrid-testcases-private-ex/tree/${BRANCH_NAME})
+
+          **CircleCI Testing:**
+          - CircleCI will automatically test using TC branch \`${BRANCH_NAME}\`
 
           **Next Steps:**
-          1. Review and merge the TC revert PR first
-          2. Then merge this engine revert PR
+          1. Wait for CircleCI tests to complete
+          2. When ready to merge this revert PR, the TC branch will be processed automatically
           EOF
           )
 
