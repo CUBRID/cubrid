@@ -120,6 +120,26 @@ jobs:
 
           echo "::notice::Created '${BRANCH_NAME}' in ${TC_REPO} from develop (${DEVELOP_SHA:0:12})"
 
+          # Add initial empty commit to enable PR creation
+          git clone --branch "${BRANCH_NAME}" --single-branch \
+            "https://x-access-token:${GH_TOKEN}@github.com/tw-kang/${TC_REPO}.git" \
+            /tmp/tc-init-${TC_REPO} 2>/dev/null || true
+          if [ -d "/tmp/tc-init-${TC_REPO}/.git" ]; then
+            cd /tmp/tc-init-${TC_REPO}
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "chore: Initialize TC branch for PR #${PR_NUMBER}"
+            git push origin "${BRANCH_NAME}" --force
+            echo "::notice::Added initial commit to ${BRANCH_NAME}"
+          fi
+
+          gh api "repos/tw-kang/${TC_REPO}/git/refs" \
+            --method POST \
+            --field ref="refs/heads/${BRANCH_NAME}" \
+            --field sha="${DEVELOP_SHA}"
+
+          echo "::notice::Created '${BRANCH_NAME}' in ${TC_REPO} from develop (${DEVELOP_SHA:0:12})"
+
       - name: Create draft PR in TC repo
         id: create-draft-pr
         env:
