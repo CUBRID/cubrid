@@ -195,6 +195,11 @@ extern "C" {
 	  dst_node->memoize_storage->add_size_for_merge_stats (src_node->memoize_storage->get_size_for_merge_stats ());
 	}
 
+      if (dst_node->memoize_storage != nullptr && src_node->memoize_storage == nullptr)
+	{
+	  clear_memoize_storage (nullptr, dst_node);
+	}
+
       return true;
     };
     cubxasl::iterate_xasl_tree<bool> (src,merge_stats,true);
