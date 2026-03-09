@@ -1755,7 +1755,9 @@
 
 #define ER_AU_LOGIN_DISABLED                        -1369
 
-#define ER_LAST_ERROR                               -1370
+#define ER_QSTR_INVALID_UUID_FORMAT                 -1370
+
+#define ER_LAST_ERROR                               -1371
 
 
 

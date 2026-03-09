@@ -2744,6 +2744,154 @@ db_string_md5 (DB_VALUE const *val, DB_VALUE * result)
 }
 
 /*
+ * UUID_FORMAT(val) - format UUID string or bit as 8-4-4-4-12 hyphenated string
+ * Arguments
+ *	val: string (32 hex chars) or bit (128 bits) representing UUID without hyphens
+ *	result: DB_VALUE to receive the formatted UUID string (e.g. 'a1b2c3d4-e5f6-a7b8-c9d0-e1f2a3b4c5d6')
+ */
+int
+db_uuid_format (DB_VALUE const *val, DB_VALUE * result)
+{
+  char hex_buf[32 + 1];
+  char out_buf[36 + 1];
+  int hex_len = 0;
+  const char *str = NULL;
+  int str_size = 0;
+  int i, j;
+  const char hex_digit[] = "0123456789ABCDEF";
+  DB_TYPE val_type;
+  bool is_bit_input = false;
+
+  assert (val != (DB_VALUE *) NULL);
+  assert (result != (DB_VALUE *) NULL);
+
+  if (DB_IS_NULL (val))
+    {
+      db_make_null (result);
+      return NO_ERROR;
+    }
+
+  val_type = DB_VALUE_DOMAIN_TYPE (val);
+
+  if (QSTR_IS_ANY_CHAR (val_type))
+    {
+      str = db_get_string (val);
+      str_size = db_get_string_length (val);
+      /* accept exactly 32 hex chars, or 36 with hyphens (32 hex chars) */
+      if (str_size > 32)
+	{
+	  /* maybe 36 with hyphens: collect exactly 32 hex chars by skipping hyphens */
+	  hex_len = 0;
+	  for (i = 0; i < str_size && hex_len < 32; i++)
+	    {
+	      char c = (char) str[i];
+	      if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f'))
+		hex_buf[hex_len++] = (char) toupper ((unsigned char) c);
+	    }
+	  /* if extra hex characters exist after collecting 32 hex digits, treat as invalid */
+	  for (; i < str_size; i++)
+	    {
+	      char c = (char) str[i];
+	      if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f'))
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+		  return ER_QSTR_INVALID_UUID_FORMAT;
+		}
+	    }
+	  if (hex_len != 32)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+	      return ER_QSTR_INVALID_UUID_FORMAT;
+	    }
+
+	  hex_buf[32] = '\0';
+	}
+      else if (str_size == 32)
+	{
+	  for (i = 0; i < 32; i++)
+	    {
+	      char c = (char) str[i];
+	      if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f'))
+		hex_buf[i] = (char) toupper ((unsigned char) c);
+	      else
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+		  return ER_QSTR_INVALID_UUID_FORMAT;
+		}
+	    }
+	  hex_buf[32] = '\0';
+	  hex_len = 32;
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+	  return ER_QSTR_INVALID_UUID_FORMAT;
+	}
+    }
+  else if (QSTR_IS_BIT (val_type))
+    {
+      int bit_len = 0;
+      str = db_get_bit (val, &bit_len);
+      str_size = QSTR_NUM_BYTES (bit_len);
+      if (str_size != 16)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+	  return ER_QSTR_INVALID_UUID_FORMAT;
+	}
+      for (i = 0; i < 16; i++)
+	{
+	  hex_buf[i * 2] = hex_digit[(str[i] >> 4) & 0xF];
+	  hex_buf[i * 2 + 1] = hex_digit[str[i] & 0xF];
+	}
+      hex_buf[32] = '\0';
+      hex_len = 32;
+      is_bit_input = true;
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+      return ER_QSTR_INVALID_UUID_FORMAT;
+    }
+
+  /* format as 8-4-4-4-12 */
+  j = 0;
+  for (i = 0; i < 32; i++)
+    {
+      if (i == 8 || i == 12 || i == 16 || i == 20)
+	out_buf[j++] = '-';
+      out_buf[j++] = hex_buf[i];
+    }
+  out_buf[36] = '\0';
+
+  if (is_bit_input)
+    {
+      /* Bit input: do not use db_get_string_codeset/collation (invalid for bit).
+       * Use db_make_string with allocated copy so result has a valid string representation. */
+      char *out_copy = (char *) db_private_alloc (NULL, 37);
+      if (out_copy == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+      memcpy (out_copy, out_buf, 37);
+      db_make_string (result, out_copy);
+      result->need_clear = true;
+    }
+  else
+    {
+      DB_VALUE out_val;
+      db_make_null (&out_val);
+      qstr_make_typed_string (DB_TYPE_VARCHAR, &out_val, 36, out_buf, 36,
+			      db_get_string_codeset (val), db_get_string_collation (val));
+      out_val.need_clear = false;
+      /* pr_clone_value copy out_buf to db_private_alloced space */
+      pr_clone_value (&out_val, result);
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * db_string_insert_substring - insert a substring into a string replacing
  *				"length" characters starting at "position"
  *
