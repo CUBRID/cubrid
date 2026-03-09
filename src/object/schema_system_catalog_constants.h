@@ -33,7 +33,6 @@
 #define CT_METHARG_NAME            "_db_meth_arg"
 #define CT_METHFILE_NAME           "_db_meth_file"
 #define CT_QUERYSPEC_NAME          "_db_query_spec"
-// #define CT_RESOLUTION_NAME         "_db_resolution"
 #define CT_INDEX_NAME              "_db_index"
 #define CT_INDEXKEY_NAME           "_db_index_key"
 #define CT_CLASSAUTH_NAME          "_db_auth"

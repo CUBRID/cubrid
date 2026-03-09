@@ -78,9 +78,6 @@ namespace cubschema
     CT_SERVER_NAME,		// "_db_server"
     CT_SYNONYM_NAME,			// "_db_synonym"
     CT_TRIGGER_NAME,		// "_db_trigger"
-
-    /* currently, not implemented */
-//     CT_RESOLUTION_NAME		// "_db_resolution"
   };
 
   static const std::vector <std::string> sm_system_vclass_names =
