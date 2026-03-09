@@ -288,6 +288,7 @@ void
 pt_initialize_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
 {
   static int was_initialized = 0;
+  static pthread_mutex_t hint_initialize_lock = PTHREAD_MUTEX_INITIALIZER;
 
 #if defined(ENABLE_WRITE_HINT_LOG)
   s_hint_msg.stmt_no = -1;
@@ -295,6 +296,13 @@ pt_initialize_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
 
   if (was_initialized)
     {
+      return;
+    }
+
+  pthread_mutex_lock (&hint_initialize_lock);
+  if (was_initialized)
+    {
+      pthread_mutex_unlock (&hint_initialize_lock);
       return;
     }
 
@@ -335,6 +343,7 @@ pt_initialize_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
     }
 
   was_initialized = 1;
+  pthread_mutex_unlock (&hint_initialize_lock);
 }
 
 /*
