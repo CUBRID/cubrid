@@ -49,9 +49,10 @@ jobs:
 
           # Detect Revert PR by checking title for "Revert" (case insensitive)
           if echo "${PR_TITLE}" | grep -qi 'Revert'; then
-            # Extract original PR number from body if "Reverts #N" pattern exists
-            ORIGINAL_PR=$(echo "${PR_BODY}" | grep -oE 'Reverts #[0-9]+' | head -1 | grep -oE '[0-9]+' || echo "")
-            # If not found in body, try extracting from title pattern: "... (#N)"
+            # Extract original PR number - try body first, then title
+            # Combined pattern matches: "Reverts #N" or "Reverts owner/repo#N" or just "#N" after Reverts
+            ORIGINAL_PR=$(echo "${PR_BODY}" | grep -oiE 'Reverts .*#[0-9]+' | grep -oE '[0-9]+' | head -1 || echo "")
+            # Fallback: try "(#N)" in title
             if [ -z "${ORIGINAL_PR}" ]; then
               ORIGINAL_PR=$(echo "${PR_TITLE}" | grep -oE '\(#[0-9]+\)' | grep -oE '[0-9]+' || echo "")
             fi
