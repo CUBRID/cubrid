@@ -134,7 +134,6 @@ set(BASE_SOURCES
   ${BASE_DIR}/packet_buffer.cpp
   ${BASE_DIR}/DMRBMemoryPool.cpp
   ${BASE_DIR}/ifsys.cpp
-  ${BASE_DIR}/hardware_topology.cpp
   ${BASE_DIR}/nonblocking.cpp
   ${BASE_DIR}/epoll.cpp
   ${BASE_DIR}/filesys_parser.cpp
@@ -183,7 +182,6 @@ set (BASE_HEADERS
   ${BASE_DIR}/fixed_size_allocator.hpp
   ${BASE_DIR}/span.hpp
   ${BASE_DIR}/ifsys.hpp
-  ${BASE_DIR}/hardware_topology.hpp
   ${BASE_DIR}/packet_buffer.hpp
   ${BASE_DIR}/DMRB.hpp
   ${BASE_DIR}/DMRBMemoryPool.hpp
