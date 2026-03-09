@@ -1,9 +1,9 @@
 #
-# TC Branch Finalize — Close draft PR and delete TC branches when engine PR closes
+# TC Branch Finalize — Cleanup TC branches/PRs when engine PR closes
 #
 # Trigger: pull_request_target (closed)
-# - PR merged: close draft PR, delete tc/pr-<N> branch
-# - PR closed (not merged): close draft PR, delete tc/pr-<N> branch
+# - PR merged: close draft PR with merge note, delete tc/pr-<N> branch
+# - PR closed without merge: close draft PR with close note, delete tc/pr-<N> branch
 #
 # Security: pull_request_target runs from base branch — secrets available
 #           but PR code is NEVER checked out or executed.
@@ -20,13 +20,16 @@ concurrency:
   group: tc-branch-finalize-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
+env:
+  OWNER: tw-kang
+
 jobs:
   finalize-tc-branch:
     name: Finalize TC (${{ matrix.tc-repo }})
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
-      pull-requests: write # For comments and closing PRs
+      pull-requests: write
     strategy:
       matrix:
         tc-repo:
@@ -41,7 +44,7 @@ jobs:
           app-id: ${{ secrets.TC_APP_ID }}
           private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
           repositories: ${{ matrix.tc-repo }}
-          owner: tw-kang
+          owner: ${{ env.OWNER }}
 
       - name: Mask token
         env:
@@ -49,34 +52,29 @@ jobs:
         shell: bash
         run: echo "::add-mask::${APP_TOKEN}"
 
-      # ──────────────────────────────────────────────
-      # Close draft PR and delete TC branch
-      # ──────────────────────────────────────────────
       - name: Close draft PR and delete TC branch
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           TC_REPO: ${{ matrix.tc-repo }}
           IS_MERGED: ${{ github.event.pull_request.merged }}
+          OWNER: ${{ env.OWNER }}
         shell: bash
         run: |
           set -euo pipefail
           BRANCH_NAME="tc/pr-${PR_NUMBER}"
           
-          # Find draft PR
-          DRAFT_PR_DATA=$(gh pr list --repo "tw-kang/${TC_REPO}" --head "${BRANCH_NAME}" --state open --json number,title,url --jq '.[0]' || echo "")
+          DRAFT_PR_DATA=$(gh pr list --repo "${OWNER}/${TC_REPO}" --head "${BRANCH_NAME}" --state open --json number,title,url --jq '.[0]' || echo "")
           DRAFT_PR_NUMBER=$(echo "${DRAFT_PR_DATA}" | jq -r '.number // empty')
           DRAFT_PR_TITLE=$(echo "${DRAFT_PR_DATA}" | jq -r '.title // empty')
           DRAFT_PR_URL=$(echo "${DRAFT_PR_DATA}" | jq -r '.url // empty')
           
           if [ -n "${DRAFT_PR_NUMBER}" ]; then
             if [ "${IS_MERGED}" == "true" ]; then
-              # PR was merged - close draft PR with note
-              gh pr close "${DRAFT_PR_NUMBER}" --repo "tw-kang/${TC_REPO}" --comment "Engine PR #${PR_NUMBER} was merged. Closing this draft PR."
+              gh pr close "${DRAFT_PR_NUMBER}" --repo "${OWNER}/${TC_REPO}" --comment "Engine PR #${PR_NUMBER} was merged. Closing this draft PR."
               echo "::notice::Closed draft PR #${DRAFT_PR_NUMBER} in ${TC_REPO}"
             else
-              # PR was closed without merge - close draft PR
-              gh pr close "${DRAFT_PR_NUMBER}" --repo "tw-kang/${TC_REPO}" --comment "Engine PR #${PR_NUMBER} was closed without merge. Closing this draft PR."
+              gh pr close "${DRAFT_PR_NUMBER}" --repo "${OWNER}/${TC_REPO}" --comment "Engine PR #${PR_NUMBER} was closed without merge. Closing this draft PR."
               echo "::notice::Closed draft PR #${DRAFT_PR_NUMBER} in ${TC_REPO} (PR not merged)"
             fi
             echo "draft_pr_closed=true" >> "${GITHUB_OUTPUT}"
@@ -91,9 +89,8 @@ jobs:
             echo "draft_pr_url=" >> "${GITHUB_OUTPUT}"
           fi
           
-          # Delete TC branch
-          if gh api "repos/tw-kang/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" > /dev/null 2>&1; then
-            gh api "repos/tw-kang/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" --method DELETE
+          if gh api "repos/${OWNER}/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" > /dev/null 2>&1; then
+            gh api "repos/${OWNER}/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" --method DELETE
             echo "::notice::Deleted '${BRANCH_NAME}' from ${TC_REPO}"
             echo "branch_deleted=true" >> "${GITHUB_OUTPUT}"
           else
@@ -120,7 +117,6 @@ jobs:
           set -euo pipefail
           BRANCH_NAME="tc/pr-${PR_NUMBER}"
 
-          # Determine status
           if [ "${IS_MERGED}" == "true" ]; then
             STATUS_EMOJI="✅"
             STATUS_TEXT="merged"
@@ -129,7 +125,6 @@ jobs:
             STATUS_TEXT="closed (not merged)"
           fi
 
-          # Build cleanup results section
           CLEANUP_ITEMS=""
           if [ "${DRAFT_PR_CLOSED}" == "true" ] && [ -n "${DRAFT_PR_NUMBER}" ]; then
             CLEANUP_ITEMS="${CLEANUP_ITEMS}
@@ -140,7 +135,6 @@ jobs:
           - Branch \`${BRANCH_NAME}\`: Deleted"
           fi
 
-          # Build comment body using heredoc
           COMMENT_BODY=$(cat <<EOF
           ${STATUS_EMOJI} **TC Branch Finalized** for \`${TC_REPO}\`
 

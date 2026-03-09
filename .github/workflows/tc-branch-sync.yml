@@ -1,34 +1,30 @@
 #
-# TC Branch Sync — Create or revert TC branches for engine PRs
+# TC Branch Sync — Create/revert TC branches for engine PRs
 #
-# Trigger: pull_request_target (opened, reopened, synchronize)
-# - Normal PR: creates tc/pr-<N> from develop in both TC repos, creates draft PRs
-# - Revert PR (title contains "Revert", case insensitive): reverts original TC merge commit
+# Trigger: pull_request_target (opened, reopened)
 #
-# Security: pull_request_target runs from base branch — secrets available
-#           but PR code is NEVER checked out or executed.
-#
+
 name: TC Branch Sync
 
 on:
   pull_request_target:
-    types: [opened, reopened, synchronize]
+    types: [opened, reopened]
 
 permissions: {} # Least privilege — jobs opt-in below
 
 concurrency:
   group: tc-branch-sync-${{ github.event.pull_request.number }}
   cancel-in-progress: true
+env:
+  OWNER: tw-kang
 
 jobs:
-  # ──────────────────────────────────────────────
-  # Job 1: Parse PR metadata (type, header, etc.)
-  # ──────────────────────────────────────────────
+  # Parse PR metadata: type, header, original PR number
   detect-pr-type:
     name: Detect PR Type
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    permissions: {} # Read-only from event payload — no API calls needed
+    permissions: {}
     outputs:
       is_revert: ${{ steps.detect.outputs.is_revert }}
       original_pr_number: ${{ steps.detect.outputs.original_pr_number }}
@@ -43,16 +39,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Extract PR header (e.g. [CBRD-1234]) from title
+          # Extract header [CBRD-XXXX] from title
           PR_HEADER=$(echo "${PR_TITLE}" | grep -oE '^\[[A-Z]+-[0-9]+\]' || echo "")
           echo "pr_header=${PR_HEADER}" >> "${GITHUB_OUTPUT}"
 
-          # Detect Revert PR by checking title for "Revert" (case insensitive)
+          # Detect revert by "Revert" in title
           if echo "${PR_TITLE}" | grep -qi 'Revert'; then
-            # Extract original PR number - try body first, then title
-            # Combined pattern matches: "Reverts #N" or "Reverts owner/repo#N" or just "#N" after Reverts
+            # Extract original PR number from body, fallback to title
             ORIGINAL_PR=$(echo "${PR_BODY}" | grep -oiE 'Reverts .*#[0-9]+' | grep -oE '[0-9]+' | head -1 || echo "")
-            # Fallback: try "(#N)" in title
             if [ -z "${ORIGINAL_PR}" ]; then
               ORIGINAL_PR=$(echo "${PR_TITLE}" | grep -oE '\(#[0-9]+\)' | grep -oE '[0-9]+' || echo "")
             fi
@@ -65,9 +59,7 @@ jobs:
             echo "::notice::Normal PR — will create TC branch and draft PR"
           fi
 
-  # ──────────────────────────────────────────────
-  # Job 2: Normal PR → create tc/pr-<N> from develop and draft PR
-  # ──────────────────────────────────────────────
+  # Normal PR: create tc/pr-<N> branch from develop, create draft PR
   sync-tc-branch:
     name: Create TC Branch (${{ matrix.tc-repo }})
     needs: detect-pr-type
@@ -75,7 +67,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
-      pull-requests: write # For failure comments and draft PR creation
+      pull-requests: write
     strategy:
       matrix:
         tc-repo:
@@ -90,7 +82,7 @@ jobs:
           app-id: ${{ secrets.TC_APP_ID }}
           private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
           repositories: ${{ matrix.tc-repo }}
-          owner: tw-kang
+          owner: ${{ env.OWNER }}
 
       - name: Mask token
         env:
@@ -103,31 +95,30 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           TC_REPO: ${{ matrix.tc-repo }}
+          OWNER: ${{ env.OWNER }}
         shell: bash
         run: |
           set -euo pipefail
           BRANCH_NAME="tc/pr-${PR_NUMBER}"
 
-          # Check if branch already exists — skip if so
-          if gh api "repos/tw-kang/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" > /dev/null 2>&1; then
+          # Skip if branch exists
+          if gh api "repos/${OWNER}/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" > /dev/null 2>&1; then
             echo "::notice::Branch '${BRANCH_NAME}' already exists in ${TC_REPO}. Skipping."
             exit 0
           fi
 
-          # Get develop HEAD SHA
-          DEVELOP_SHA=$(gh api "repos/tw-kang/${TC_REPO}/git/refs/heads/develop" --jq '.object.sha')
-
-          # Create branch
-          gh api "repos/tw-kang/${TC_REPO}/git/refs" \
+          # Create branch from develop HEAD
+          DEVELOP_SHA=$(gh api "repos/${OWNER}/${TC_REPO}/git/refs/heads/develop" --jq '.object.sha')
+          gh api "repos/${OWNER}/${TC_REPO}/git/refs" \
             --method POST \
             --field ref="refs/heads/${BRANCH_NAME}" \
             --field sha="${DEVELOP_SHA}"
 
           echo "::notice::Created '${BRANCH_NAME}' in ${TC_REPO} from develop (${DEVELOP_SHA:0:12})"
 
-          # Add initial empty commit to enable PR creation
+          # Add empty commit for PR creation
           git clone --branch "${BRANCH_NAME}" --single-branch \
-            "https://x-access-token:${GH_TOKEN}@github.com/tw-kang/${TC_REPO}.git" \
+            "https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${TC_REPO}.git" \
             /tmp/tc-init-${TC_REPO} 2>/dev/null || true
           if [ -d "/tmp/tc-init-${TC_REPO}/.git" ]; then
             cd /tmp/tc-init-${TC_REPO}
@@ -138,7 +129,6 @@ jobs:
             echo "::notice::Added initial commit to ${BRANCH_NAME}"
           fi
 
-
       - name: Create draft PR in TC repo
         id: create-draft-pr
         env:
@@ -147,21 +137,21 @@ jobs:
           PR_HEADER: ${{ needs.detect-pr-type.outputs.pr_header }}
           TC_REPO: ${{ matrix.tc-repo }}
           ENGINE_REPO: ${{ github.repository }}
+          OWNER: ${{ env.OWNER }}
         shell: bash
         run: |
           set -euo pipefail
           BRANCH_NAME="tc/pr-${PR_NUMBER}"
           
-          # Build TC draft PR title
           if [ -n "${PR_HEADER}" ]; then
             DRAFT_TITLE="${PR_HEADER} Draft: TC branch for PR #${PR_NUMBER}"
           else
             DRAFT_TITLE="Draft: TC branch for PR #${PR_NUMBER}"
           fi
           
-          # Create draft PR from tc/pr-N to develop
+          # Create draft PR to develop
           PR_URL=$(gh pr create \
-            --repo "tw-kang/${TC_REPO}" \
+            --repo "${OWNER}/${TC_REPO}" \
             --head "${BRANCH_NAME}" \
             --base develop \
             --title "${DRAFT_TITLE}" \
@@ -195,9 +185,7 @@ jobs:
           Failed to create \`tc/pr-${PR_NUMBER}\` branch or draft PR.
           Please check the [workflow run](${RUN_URL}) for details."
 
-  # ──────────────────────────────────────────────
-  # Job 3: Revert PR → revert original TC merge commit
-  # ──────────────────────────────────────────────
+  # Revert PR: revert original TC merge commit, create open PR
   revert-tc-branch:
     name: Revert TC (${{ matrix.tc-repo }})
     needs: detect-pr-type
@@ -205,7 +193,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
-      pull-requests: write # For failure/conflict comments
+      pull-requests: write
     strategy:
       matrix:
         tc-repo:
@@ -220,7 +208,7 @@ jobs:
           app-id: ${{ secrets.TC_APP_ID }}
           private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
           repositories: ${{ matrix.tc-repo }}
-          owner: tw-kang
+          owner: ${{ env.OWNER }}
 
       - name: Mask token
         env:
@@ -235,11 +223,12 @@ jobs:
           ORIGINAL_PR_NUMBER: ${{ needs.detect-pr-type.outputs.original_pr_number }}
           PR_HEADER: ${{ needs.detect-pr-type.outputs.pr_header }}
           TC_REPO: ${{ matrix.tc-repo }}
+          OWNER: ${{ env.OWNER }}
         shell: bash
         run: |
           set -euo pipefail
 
-          # Guard: ORIGINAL_PR_NUMBER must be set
+          # Require original PR number
           if [ -z "${ORIGINAL_PR_NUMBER}" ]; then
             echo "::error::Missing original PR number (expected 'Reverts #N' in body)"
             exit 1
@@ -248,26 +237,23 @@ jobs:
           BRANCH_NAME="tc/pr-${PR_NUMBER}"
           ORIGINAL_BRANCH="tc/pr-${ORIGINAL_PR_NUMBER}"
 
-          # Clone TC repo (treeless for speed — we need commit history)
+          # Clone TC repo with history
           git clone --filter=blob:none \
-            "https://x-access-token:${APP_TOKEN}@github.com/tw-kang/${TC_REPO}.git" \
+            "https://x-access-token:${APP_TOKEN}@github.com/${OWNER}/${TC_REPO}.git" \
             tc-repo
           cd tc-repo
-
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # Fetch and reset branch to origin/develop (idempotent on reruns)
           git fetch origin develop
           git checkout -B "${BRANCH_NAME}" origin/develop
 
-          # Find the squash merge commit for the original PR's TC branch
+          # Find merge commit for original PR -- has bug -- need to fix.
           MERGE_COMMIT=$(git log --format="%H" --grep="${ORIGINAL_BRANCH}" origin/develop -1 || echo "")
 
           if [ -n "${MERGE_COMMIT}" ]; then
             echo "::notice::Found merge commit ${MERGE_COMMIT:0:12} for '${ORIGINAL_BRANCH}'"
 
-            # Attempt revert — try plain first (squash commit), fall back to -m 1 (merge commit)
+            # Try plain revert (squash), then -m 1 (merge)
             REVERT_OK=false
             if git revert --no-edit "${MERGE_COMMIT}" 2>/dev/null; then
               REVERT_OK=true
@@ -285,7 +271,6 @@ jobs:
               exit 1
             fi
 
-            # Amend commit message to include engine PR header
             if [ -n "${PR_HEADER}" ]; then
               CURRENT_MSG=$(git log -1 --format="%s")
               git commit --amend -m "${PR_HEADER} ${CURRENT_MSG}"
@@ -294,16 +279,15 @@ jobs:
             echo "::notice::No TC merge commit found for '${ORIGINAL_BRANCH}' in ${TC_REPO}. Creating empty revert branch."
           fi
 
-          # Ensure a commit exists on the branch so gh pr create does not fail
+          # Ensure commit exists for PR creation
           if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/develop)" ]; then
             git commit --allow-empty -m "chore: No-op TC revert for engine PR #${PR_NUMBER} (reverts #${ORIGINAL_PR_NUMBER})"
             echo "::notice::Added empty commit to '${BRANCH_NAME}' (no changes to revert)."
           fi
 
-          # Push revert branch (force for idempotency on reruns)
+          #need to fix.
           git push origin "${BRANCH_NAME}" --force
 
-          # Write step outputs exactly once
           echo "revert_branch_pushed=true" >> "${GITHUB_OUTPUT}"
           echo "revert_branch=${BRANCH_NAME}" >> "${GITHUB_OUTPUT}"
           echo "::notice::Pushed revert branch '${BRANCH_NAME}' to ${TC_REPO}"
@@ -320,37 +304,37 @@ jobs:
           TC_REPO: ${{ matrix.tc-repo }}
           ENGINE_REPO: ${{ github.repository }}
           REVERT_BRANCH: ${{ steps.revert-commit.outputs.revert_branch }}
+          OWNER: ${{ env.OWNER }}
         shell: bash
         run: |
           set -euo pipefail
           
-          # Build TC PR title for revert
           if [ -n "${PR_HEADER}" ]; then
             PR_TITLE_TC="${PR_HEADER} Revert: TC branch for PR #${PR_NUMBER} (reverts #${ORIGINAL_PR_NUMBER})"
           else
             PR_TITLE_TC="Revert: TC branch for PR #${PR_NUMBER} (reverts #${ORIGINAL_PR_NUMBER})"
           fi
           
-          # Check if PR already exists (open or closed)
-          EXISTING_PR=$(gh pr list --repo "tw-kang/${TC_REPO}" --head "${REVERT_BRANCH}" --state all --json number,state --jq '.[0]' || echo "")
+          # Reopen existing PR if closed
+          EXISTING_PR=$(gh pr list --repo "${OWNER}/${TC_REPO}" --head "${REVERT_BRANCH}" --state all --json number,state --jq '.[0]' || echo "")
           if [ -n "${EXISTING_PR}" ]; then
             PR_NUM=$(echo "${EXISTING_PR}" | jq -r '.number')
             PR_STATE=$(echo "${EXISTING_PR}" | jq -r '.state')
             if [ "${PR_STATE}" = "CLOSED" ]; then
               echo "::notice::Reopening closed PR #${PR_NUM} for ${REVERT_BRANCH}"
-              gh pr reopen --repo "tw-kang/${TC_REPO}" "${PR_NUM}"
+              gh pr reopen --repo "${OWNER}/${TC_REPO}" "${PR_NUM}"
             else
               echo "::notice::Open PR #${PR_NUM} already exists for ${REVERT_BRANCH}"
             fi
-            PR_URL="${GITHUB_SERVER_URL}/tw-kang/${TC_REPO}/pull/${PR_NUM}"
+            PR_URL="${GITHUB_SERVER_URL}/${OWNER}/${TC_REPO}/pull/${PR_NUM}"
             echo "tc_revert_pr_url=${PR_URL}" >> "${GITHUB_OUTPUT}"
             echo "tc_revert_pr_number=${PR_NUM}" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
           
-          # Create open PR (not draft) from revert branch to develop
+          # Create open PR to develop
           PR_URL=$(gh pr create \
-            --repo "tw-kang/${TC_REPO}" \
+            --repo "${OWNER}/${TC_REPO}" \
             --head "${REVERT_BRANCH}" \
             --base develop \
             --title "${PR_TITLE_TC}" \
@@ -390,9 +374,7 @@ jobs:
 
           See [workflow run](${RUN_URL}) for details."
 
-  # ──────────────────────────────────────────────
-  # Job 4: Comment on engine PR with TC draft PR links
-  # ──────────────────────────────────────────────
+  # Comment TC info on engine PR (normal PR)
   comment-on-engine-pr:
     name: Comment on Engine PR
     needs: [detect-pr-type, sync-tc-branch]
@@ -407,20 +389,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           ENGINE_REPO: ${{ github.repository }}
+          OWNER: ${{ env.OWNER }}
         shell: bash
         run: |
           set -euo pipefail
           BRANCH_NAME="tc/pr-${PR_NUMBER}"
 
-          # Build comment body using heredoc for readability
           COMMENT_BODY=$(cat <<EOF
           ## 🧪 TC Test Environment Ready
 
           **TC Branch:** \`${BRANCH_NAME}\`
 
           **TC Repositories:**
-          - [cubrid-testcases](https://github.com/tw-kang/cubrid-testcases/tree/${BRANCH_NAME})
-          - [cubrid-testcases-private-ex](https://github.com/tw-kang/cubrid-testcases-private-ex/tree/${BRANCH_NAME})
+          - [cubrid-testcases](https://github.com/${OWNER}/cubrid-testcases/tree/${BRANCH_NAME})
+          - [cubrid-testcases-private-ex](https://github.com/${OWNER}/cubrid-testcases-private-ex/tree/${BRANCH_NAME})
 
           **CircleCI Testing:**
           - CircleCI will automatically test using TC branch \`${BRANCH_NAME}\`
@@ -435,10 +417,7 @@ jobs:
             --repo "${ENGINE_REPO}" \
             --body "${COMMENT_BODY}"
 
-
-  # ──────────────────────────────────────────────
-  # Job 4B: Comment on engine PR with TC revert PR links
-  # ──────────────────────────────────────────────
+  # Comment TC info on engine PR (revert PR)
   comment-on-engine-pr-revert:
     name: Comment Revert PR Links
     needs: [detect-pr-type, revert-tc-branch]
@@ -453,20 +432,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           ENGINE_REPO: ${{ github.repository }}
+          OWNER: ${{ env.OWNER }}
         shell: bash
         run: |
           set -euo pipefail
           BRANCH_NAME="tc/pr-${PR_NUMBER}"
 
-          # Build comment body using heredoc for readability
           COMMENT_BODY=$(cat <<EOF
           ## 🔄 TC Revert Environment Ready
 
           **TC Branch:** \`${BRANCH_NAME}\`
 
           **TC Repositories:**
-          - [cubrid-testcases](https://github.com/tw-kang/cubrid-testcases/tree/${BRANCH_NAME})
-          - [cubrid-testcases-private-ex](https://github.com/tw-kang/cubrid-testcases-private-ex/tree/${BRANCH_NAME})
+          - [cubrid-testcases](https://github.com/${OWNER}/cubrid-testcases/tree/${BRANCH_NAME})
+          - [cubrid-testcases-private-ex](https://github.com/${OWNER}/cubrid-testcases-private-ex/tree/${BRANCH_NAME})
 
           **CircleCI Testing:**
           - CircleCI will automatically test using TC branch \`${BRANCH_NAME}\`
