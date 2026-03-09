@@ -11049,6 +11049,7 @@ file_purge_invalid_heap_files (void)
 #endif /* !CS_MODE */
 }
 
+#if !defined(NDEBUG)
 /*
  * file_purge_target_file -
  *
@@ -11097,3 +11098,4 @@ file_purge_target_file (const char *target_vfid_str)
   return success;
 #endif /* !CS_MODE */
 }
+#endif

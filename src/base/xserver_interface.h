@@ -302,6 +302,8 @@ extern void xsynonym_remove_xasl_by_oid (THREAD_ENTRY * thread_p, OID * oidp);
 
 extern int xfile_tracker_dump_file_list (THREAD_ENTRY * thread_p, FILE * outfp);
 extern int xfile_tracker_purge_invalid_heap_files (THREAD_ENTRY * thread_p);
+#if !defined(NDEBUG)
 extern int xfile_tracker_purge_target_file (THREAD_ENTRY * thread_p, const char *target_vfid_str);
+#endif
 
 #endif /* _XSERVER_INTERFACE_H_ */
