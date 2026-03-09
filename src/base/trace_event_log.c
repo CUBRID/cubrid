@@ -382,6 +382,15 @@ trace_event_log_start (THREAD_ENTRY * thread_p, const char *log_name, const char
 
   fprintf (log_Fp, "%s - %s\n", time_array, log_name);
 
+  if (log_type == 'E')
+    {
+      event_Fp = log_Fp;
+    }
+  else
+    {
+      trace_Fp = log_Fp;
+    }
+
   return log_Fp;
 }
 
