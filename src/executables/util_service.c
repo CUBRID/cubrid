@@ -57,7 +57,6 @@
 
 #include <string>
 
-
 #if defined(WINDOWS)
 typedef int pid_t;
 #endif
