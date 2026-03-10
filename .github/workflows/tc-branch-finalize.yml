@@ -59,6 +59,7 @@ jobs:
           TC_REPO: ${{ matrix.tc-repo }}
           IS_MERGED: ${{ github.event.pull_request.merged }}
           OWNER: ${{ env.OWNER }}
+          ENGINE_REPO: ${{ github.repository }}
         shell: bash
         run: |
           set -euo pipefail
@@ -71,10 +72,10 @@ jobs:
           
           if [ -n "${DRAFT_PR_NUMBER}" ]; then
             if [ "${IS_MERGED}" == "true" ]; then
-              gh pr close "${DRAFT_PR_NUMBER}" --repo "${OWNER}/${TC_REPO}" --comment "Engine PR #${PR_NUMBER} was merged. Closing this draft PR."
+              gh pr close "${DRAFT_PR_NUMBER}" --repo "${OWNER}/${TC_REPO}" --comment "Engine PR ${ENGINE_REPO}#${PR_NUMBER} was merged. Closing this draft PR."
               echo "::notice::Closed draft PR #${DRAFT_PR_NUMBER} in ${TC_REPO}"
             else
-              gh pr close "${DRAFT_PR_NUMBER}" --repo "${OWNER}/${TC_REPO}" --comment "Engine PR #${PR_NUMBER} was closed without merge. Closing this draft PR."
+              gh pr close "${DRAFT_PR_NUMBER}" --repo "${OWNER}/${TC_REPO}" --comment "Engine PR ${ENGINE_REPO}#${PR_NUMBER} was closed without merge. Closing this draft PR."
               echo "::notice::Closed draft PR #${DRAFT_PR_NUMBER} in ${TC_REPO} (PR not merged)"
             fi
             echo "draft_pr_closed=true" >> "${GITHUB_OUTPUT}"
