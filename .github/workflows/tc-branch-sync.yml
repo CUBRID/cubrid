@@ -217,9 +217,10 @@ jobs:
         shell: bash
         run: echo "::add-mask::${APP_TOKEN}"
 
-      - name: Revert TC and Rename Branch via GitHub GraphQL & REST API
-        id: revert-tc-api
+      - name: Revert TC and Create Branch
+        id: revert-tc-commit
         env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           ORIGINAL_PR_NUMBER: ${{ needs.detect-pr-type.outputs.original_pr_number }}
@@ -237,24 +238,69 @@ jobs:
           fi
 
           # 1. Search merged original PR in TC repo and extract 'GraphQL Node ID'
-          TC_PR_DATA=$(gh pr list \
+          MERGE_COMMIT=$(gh pr list \
             --repo "${OWNER}/${TC_REPO}" \
             --search "${ENGINE_REPO}#${ORIGINAL_PR_NUMBER}" \
             --state merged \
-            --json id \
-            --jq '.[0]' || echo "")
+            --json mergeCommit \
+            --jq '.[0].mergeCommit.oid' || echo "")
 
-          # If there are no changes in the TC, skip cleanly
-          if [ -z "${TC_PR_DATA}" ] || [ "${TC_PR_DATA}" == "null" ]; then
+          # 2. If there are no changes in the TC, skip cleanly
+          if [ -z "${MERGE_COMMIT}" ] || [ "${MERGE_COMMIT}" == "null" ]; then
             echo "::notice::No merged TC PR found for ${ENGINE_REPO}#${ORIGINAL_PR_NUMBER}. Skipping TC revert."
             echo "revert_pr_created=false" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
 
-          PR_NODE_ID=$(echo "${TC_PR_DATA}" | jq -r '.id')
+          echo "::notice::Found TC Squash Merge Commit: ${MERGE_COMMIT:0:12}"
+          
+          # 3. Specify the branch name rule (safely create first)
           TARGET_BRANCH="tc/pr-${PR_NUMBER}"
 
-          # 2. Construct PR title and body
+          # 4. Maximize speed with blobless Clone (don't download file contents)
+          echo "::notice::Cloning repository with blob:none..."
+          git clone --filter=blob:none \
+            "https://x-access-token:${APP_TOKEN}@github.com/${OWNER}/${TC_REPO}.git" \
+            tc-repo
+          cd tc-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin develop
+          git checkout -B "${TARGET_BRANCH}" origin/develop
+
+          # 5. Safely revert locally (normal commit rollback)
+          if ! git revert --no-edit "${MERGE_COMMIT}"; then
+            echo "::error::Revert conflict! Manual resolution required."
+            exit 1
+          fi
+
+          [ -n "${PR_HEADER}" ] && git commit --amend -m "${PR_HEADER} $(git log -1 --format=%s)"
+
+          # 6. Push to remote
+          git push origin "${TARGET_BRANCH}" --force
+
+          echo "::notice::✅ Successfully pushed revert branch: ${TARGET_BRANCH}"
+          
+          # Output for next step (create-revert-pr)
+          echo "revert_pr_created=true" >> "${GITHUB_OUTPUT}"
+          echo "tc_revert_branch=${TARGET_BRANCH}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create open PR for revert
+        id: create-revert-pr
+        if: steps.revert-tc-commit.outputs.revert_pr_created == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ORIGINAL_PR_NUMBER: ${{ needs.detect-pr-type.outputs.original_pr_number }}
+          PR_HEADER: ${{ needs.detect-pr-type.outputs.pr_header }}
+          TC_REPO: ${{ matrix.tc-repo }}
+          ENGINE_REPO: ${{ github.repository }}
+          TARGET_BRANCH: ${{ steps.revert-tc-commit.outputs.tc_revert_branch }}
+          OWNER: ${{ env.OWNER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          
           PR_TITLE="Revert: TC branch for PR ${ENGINE_REPO}#${PR_NUMBER} (reverts ${ENGINE_REPO}#${ORIGINAL_PR_NUMBER})"
           [ -n "${PR_HEADER}" ] && PR_TITLE="${PR_HEADER} ${PR_TITLE}"
           
@@ -262,43 +308,18 @@ jobs:
 
           Related Engine Revert PR: ${ENGINE_REPO}#${PR_NUMBER}
           TC Branch: \`${TARGET_BRANCH}\`
-          
+
           **Please merge this PR FIRST, then merge the engine revert PR.**"
-
-          # 3. Request to create revert PR via GitHub GraphQL API (automatically assigned branch name)
-          echo "::notice::Calling GitHub GraphQL API to revert PR..."
-          REVERT_RESULT=$(gh api graphql -F prId="${PR_NODE_ID}" -F title="${PR_TITLE}" -F body="${PR_BODY}" -f query='
-            mutation($prId: ID!, $title: String!, $body: String!) {
-              revertPullRequest(input: {pullRequestId: $prId, title: $title, body: $body}) {
-                revertPullRequest {
-                  number
-                  url
-                  headRefName
-                }
-              }
-            }
-          ')
-
-          NEW_PR_URL=$(echo "${REVERT_RESULT}" | jq -r '.data.revertPullRequest.revertPullRequest.url')
-          AUTO_BRANCH=$(echo "${REVERT_RESULT}" | jq -r '.data.revertPullRequest.revertPullRequest.headRefName')
-
-          echo "::notice::API created revert branch: ${AUTO_BRANCH}"
-
-          # 4. Use REST API to rename the automatically created branch name to tc/pr-N form
-          # (When this API is called, the connected PR is automatically updated to look at the new branch name)
-          echo "::notice::Renaming branch ${AUTO_BRANCH} to ${TARGET_BRANCH}..."
-          gh api \
-            --method POST \
-            -H "Accept: application/vnd.github+json" \
-            "repos/${OWNER}/${TC_REPO}/branches/${AUTO_BRANCH}/rename" \
-            -f new_name="${TARGET_BRANCH}"
-
-          echo "::notice::✅ Branch renamed successfully and PR updated."
           
-          # Output for next job (comment-on-engine-pr-revert)
-          echo "revert_pr_created=true" >> "${GITHUB_OUTPUT}"
-          echo "tc_revert_pr_url=${NEW_PR_URL}" >> "${GITHUB_OUTPUT}"
-          echo "tc_revert_branch=${TARGET_BRANCH}" >> "${GITHUB_OUTPUT}"
+          echo "::notice::Creating PR..."
+          PR_URL=$(gh pr create \
+            --repo "${OWNER}/${TC_REPO}" \
+            --head "${TARGET_BRANCH}" \
+            --base develop \
+            --title "${PR_TITLE}" \
+            --body "${PR_BODY}")
+          
+          echo "::notice::✅ Created open PR: ${PR_URL}"
 
       - name: Comment on failure
         if: failure()
