@@ -767,7 +767,8 @@ typedef enum
   ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS = 0x1 << 2,	/* used with parallel heap scan. */
   ACCESS_SPEC_FLAG_MERGEABLE_LIST = 0x1 << 3,	/* used with parallel heap scan. */
   ACCESS_SPEC_FLAG_COUNT_DISTINCT = 0x1 << 4,	/* used with parallel heap scan count distinct aggregate. */
-  ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x1 << 5	/* used with min/max aggregate. */
+  ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x1 << 5,	/* used with min/max aggregate. */
+  ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN = 0x1 << 6	/* used with keep page hint. */
 } ACCESS_SPEC_FLAG;
 
 #define ACCESS_SPEC_IS_FLAGED(spec, f)		((ACCESS_SPEC_FLAGS(spec) & (int) (f)) != 0)

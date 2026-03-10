@@ -20,20 +20,20 @@
  * coordinator.cpp
  */
 
-#include "hardware_topology.hpp"
-#include "system_parameter.h"
-#include "thread_manager.hpp"
-#include "connection_pool.hpp"
-#include "coordinator.hpp"
-#include "connection_sr.h"
-#include "server_support.h"
-
 #include <random>
 #include <algorithm>
 #include <unistd.h>
 #include <sys/eventfd.h>
 #include <sys/timerfd.h>
 #include <sys/epoll.h>
+
+#include "resources.hpp"
+#include "system_parameter.h"
+#include "thread_manager.hpp"
+#include "connection_pool.hpp"
+#include "coordinator.hpp"
+#include "connection_sr.h"
+#include "server_support.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -1198,7 +1198,7 @@ not_transferred:
     pthread_setname_np (pthread_self (), "coordinator");
 
     /* pin myself */
-    cubbase::topology.pin_core (m_core);
+    os::resources::cpu::setaffinity (m_core);
 
     /* entry */
     m_entry = cubthread::get_manager ()->claim_entry ();
