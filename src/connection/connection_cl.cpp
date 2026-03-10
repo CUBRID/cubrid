@@ -796,7 +796,6 @@ connection_cl::css_server_connect (char *host_name, CSS_CONN_ENTRY *conn, char *
 			      prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT), rid, true));
 }
 
-
 /* New style server connection function that uses an explicit port id */
 
 /*
