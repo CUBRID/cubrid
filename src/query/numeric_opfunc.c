@@ -2371,7 +2371,7 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer)
   if (scale > 0)
     {
       numeric_div (arg, numeric_get_pow_of_10 (scale), zero_scale_arg, rem);
-      if (!numeric_is_negative (arg))
+      if (!numeric_is_negative (zero_scale_arg))
 	{
 	  numeric_negate (rem);
 	}
@@ -2381,7 +2381,7 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer)
       numeric_add (tmp, rem, tmp, DB_NUMERIC_BUF_SIZE);
       if (numeric_is_negative (tmp) || numeric_is_zero (tmp))
 	{
-	  if (numeric_is_negative (arg))
+	  if (numeric_is_negative (zero_scale_arg))
 	    {
 	      numeric_decrease (zero_scale_arg);
 	    }
@@ -2396,7 +2396,7 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer)
       numeric_copy (zero_scale_arg, arg);
     }
 
-  if (!numeric_is_bigint (arg))
+  if (!numeric_is_bigint (zero_scale_arg))
     {
       return ER_IT_DATA_OVERFLOW;
     }
