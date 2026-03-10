@@ -224,7 +224,15 @@ namespace cubhnsw
 
     if (context.m_is_perf_tracking)
       {
-	context.m_visited_nodes++;
+	/* do not collect at the end of the search (collecting OIDs from sorted buffer)*/
+	if (context.m_level >= 0)
+	  {
+	    context.m_stats.visited_nodes++;
+	    if (context.m_level == 0)
+	      {
+		context.m_stats.visited_nodes_l0++;
+	      }
+	  }
       }
 
     cubthread::entry *thread_p = context.m_thread_p;

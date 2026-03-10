@@ -139,20 +139,66 @@ namespace cubhnsw
     top_candidates_t<Traits> m_top_for_refine;
     next_candidates_t<Traits> m_next_candidates;
     visited_set_t<Traits> m_visits;
+
     cubthread::entry *m_thread_p {nullptr};
+    level_t m_level {0};
 
     // stats
     bool m_is_perf_tracking {false};
-    std::size_t m_visited_nodes{};
-    std::size_t m_computed_distances{};
-    std::size_t m_computed_distances_in_refines{};
-    std::size_t m_computed_distances_in_reverse_refines{};
+    struct stats
+    {
+      std::size_t visited_nodes{};
+      std::size_t computed_distances{};
+      std::size_t computed_distances_in_refines{};
+      std::size_t computed_distances_in_reverse_refines{};
+
+      std::size_t visited_nodes_l0{};
+      std::size_t computed_distances_l0{};
+      std::size_t computed_distances_in_refines_l0{};
+      std::size_t computed_distances_in_reverse_refines_l0{};
+
+      std::size_t entrypoint_updates{};
+    };
+
+    stats m_stats;
 
     void clear_candidates ()
     {
       m_top_candidates.clear ();
       m_next_candidates.clear();
       m_visits.clear();
+    }
+
+    std::size_t layer_connectivity (level_t level, std::size_t connectivity) const noexcept
+    {
+      return level == 0 ? connectivity * 2 : connectivity;
+    }
+
+    void collect_perf_stats ()
+    {
+      if (!m_is_perf_tracking)
+	{
+	  return;
+	}
+
+      perfmon_add_stat (m_thread_p, PSTAT_HNSW_NUM_VISITED_NODE, m_stats.visited_nodes);
+      perfmon_add_stat (m_thread_p, PSTAT_HNSW_NUM_COMPUTED_DISTANCES, m_stats.computed_distances);
+      perfmon_add_stat (m_thread_p, PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REFINES,
+			m_stats.computed_distances_in_refines);
+      perfmon_add_stat (m_thread_p, PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REVERSE_REFINES,
+			m_stats.computed_distances_in_reverse_refines);
+
+      perfmon_add_stat (m_thread_p, PSTAT_HNSW_NUM_VISITED_NODE_L0, m_stats.visited_nodes_l0);
+      perfmon_add_stat (m_thread_p, PSTAT_HNSW_NUM_COMPUTED_DISTANCES_L0, m_stats.computed_distances_l0);
+      perfmon_add_stat (m_thread_p, PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REFINES_L0,
+			m_stats.computed_distances_in_refines_l0);
+      perfmon_add_stat (m_thread_p, PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REVERSE_REFINES_L0,
+			m_stats.computed_distances_in_reverse_refines_l0);
+
+      perfmon_add_stat (m_thread_p, PSTAT_HNSW_NUM_ENTRYPOINT_UPDATES, m_stats.entrypoint_updates);
+
+      // stop tracking after collecting stats
+      m_is_perf_tracking = false;
     }
   };
 }
