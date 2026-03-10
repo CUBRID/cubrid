@@ -26080,7 +26080,6 @@ db_uuidv4 (THREAD_ENTRY * thread_p, DB_VALUE * result)
   int i = 0, error_code = NO_ERROR;
   const char hex_digit[] = "0123456789ABCDEF";
   unsigned char guid_bytes[GUID_STANDARD_BYTES_LENGTH];
-
   char *guid_hex = NULL;
 
   if (result == NULL)
@@ -26121,7 +26120,6 @@ db_uuidv4 (THREAD_ENTRY * thread_p, DB_VALUE * result)
   return NO_ERROR;
 
 error:
-  db_make_null (result);
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       er_clear ();
@@ -26189,7 +26187,6 @@ db_uuid_bin (THREAD_ENTRY * thread_p, UUID_VERSION version, uint64_t epoch_ms, D
   return NO_ERROR;
 
 error:
-  db_make_null (result);
   if (guid_bytes != NULL)
     {
       db_private_free (thread_p, guid_bytes);

@@ -543,26 +543,17 @@ const char *thread_resume_status_to_string (thread_resume_suspend_status resume_
 inline void
 thread_get_uuidv7_state (cubthread::entry *thread_p, uint64_t *last_ms, uint8_t *seq)
 {
-  if (thread_p != NULL)
-    {
-      *last_ms = thread_p->uuidv7_last_ms;
-      *seq = thread_p->uuidv7_seq;
-    }
-  else
-    {
-      *last_ms = 0;
-      *seq = 0;
-    }
+  assert (thread_p != NULL);
+  *last_ms = thread_p->uuidv7_last_ms;
+  *seq = thread_p->uuidv7_seq;
 }
 
 inline void
 thread_set_uuidv7_state (cubthread::entry *thread_p, uint64_t last_ms, uint8_t seq)
 {
-  if (thread_p != NULL)
-    {
-      thread_p->uuidv7_last_ms = last_ms;
-      thread_p->uuidv7_seq = seq;
-    }
+  assert (thread_p != NULL);
+  thread_p->uuidv7_last_ms = last_ms;
+  thread_p->uuidv7_seq = seq;
 }
 
 #endif // _THREAD_ENTRY_HPP_
