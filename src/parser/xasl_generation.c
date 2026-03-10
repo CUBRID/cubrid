@@ -8081,8 +8081,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_UTC_TIME || node->info.expr.op == PT_UTC_DATE
 		       || node->info.expr.op == PT_PI || node->info.expr.op == PT_LOCAL_TRANSACTION_ID
 		       || node->info.expr.op == PT_ROW_COUNT || node->info.expr.op == PT_LIST_DBS
-		       || node->info.expr.op == PT_SYS_GUID
-		       || node->info.expr.op == PT_LAST_INSERT_ID
+		       || node->info.expr.op == PT_SYS_GUID || node->info.expr.op == PT_LAST_INSERT_ID
 		       || node->info.expr.op == PT_DBTIMEZONE || node->info.expr.op == PT_SESSIONTIMEZONE
 		       || node->info.expr.op == PT_UTC_TIMESTAMP)
 		{
