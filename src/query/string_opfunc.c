@@ -26231,6 +26231,10 @@ uuidv7_generate_bytes (THREAD_ENTRY * thread_p, uint64_t xasl_vd_epoch_ms, unsig
   /* Load per-thread UUIDv7 state */
   thread_get_uuidv7_state (thread_p, &last_ms, &seq);
 
+  /* If the type of `seq` changes or if its maximum allowable value is modified 
+   * uuidv7_generate_bytes logics must be updated accordingly */
+  assert (seq <= GUID_V7_SEQ_MAX);
+
   if (xasl_vd_epoch_ms > last_ms)
     {
       /* New millisecond: reset sequence */
@@ -26248,11 +26252,13 @@ uuidv7_generate_bytes (THREAD_ENTRY * thread_p, uint64_t xasl_vd_epoch_ms, unsig
        * Increment sequence to ensure uniqueness within the same effective timestamp
        */
       seq++;
-      if (seq > GUID_V7_SEQ_MAX || seq == 0)
+      if (seq == 0)
 	{
-	  /* Sequence overflow: advance timestamp by 1ms to preserve monotonicity */
+	  /* Sequence overflow
+	   *   (seq is uint8_t and GUID_V7_SEQ_MAX represents maximum value of an 8-bit)
+	   *   : advance timestamp by 1ms to preserve monotonicity 
+	   */
 	  last_ms++;
-	  seq = 0;
 	}
     }
 
