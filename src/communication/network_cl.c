@@ -64,7 +64,7 @@
 
 #if !defined (CS_MODE)
 #error Does not belong to cs module
-#endif /* SERVER_MODE */
+#endif /* !defined (CS_MODE) */
 
 /*
  * To check for errors from the comm system. Note that if we get any error
