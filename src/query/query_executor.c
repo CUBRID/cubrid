@@ -3478,7 +3478,6 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p)
   new_xasl_state->vd.lrand = xasl_state_p->vd.lrand;
   new_xasl_state->vd.sys_datetime = xasl_state_p->vd.sys_datetime;
   new_xasl_state->vd.sys_epochtime = xasl_state_p->vd.sys_epochtime;
-  new_xasl_state->vd.sys_epochtime_ms = xasl_state_p->vd.sys_epochtime_ms;
   if (new_xasl_state->vd.dbval_cnt > 0)
     {
       new_xasl_state->vd.dbval_ptr =
@@ -16217,7 +16216,6 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
   c_time_struct = localtime_r (&sec, &tm_val);
 
   xasl_state.vd.sys_epochtime = (DB_TIMESTAMP) sec;
-  xasl_state.vd.sys_epochtime_ms = millisec;
 
   if (c_time_struct != NULL)
     {

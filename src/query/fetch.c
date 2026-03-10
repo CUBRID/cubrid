@@ -3545,7 +3545,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       else if (version == 7)
 	{
 	  if (db_uuid_bin
-	      (thread_p, UUID_V7, ((uint64_t) vd->sys_epochtime * 1000ULL) + (uint64_t) vd->sys_epochtime_ms,
+	      (thread_p, UUID_V7, ((uint64_t) vd->sys_epochtime * 1000ULL) + (uint64_t) (vd->sys_datetime.time % 1000),
 	       arithptr->value) != NO_ERROR)
 	    {
 	      goto error;
@@ -3573,7 +3573,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
       if (db_uuid_bin
-	  (thread_p, UUID_V7, ((uint64_t) vd->sys_epochtime * 1000ULL) + (uint64_t) vd->sys_epochtime_ms,
+	  (thread_p, UUID_V7, ((uint64_t) vd->sys_epochtime * 1000ULL) + (uint64_t) (vd->sys_datetime.time % 1000),
 	   arithptr->value) != NO_ERROR)
 	{
 	  goto error;

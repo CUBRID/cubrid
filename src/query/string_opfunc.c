@@ -26138,7 +26138,7 @@ error:
  *   result(out): BIT(128) DB_VALUE
  * Note:
  *   For UUIDv7, epoch_ms should be calculated from val_descr as:
- *   epoch_ms = (uint64_t)vd->sys_epochtime * 1000 + (uint64_t)vd->sys_epochtime_ms
+ *   epoch_ms = (uint64_t)vd->sys_epochtime * 1000 + (uint64_t)vd->sys_datetime.time % 1000
  */
 int
 db_uuid_bin (THREAD_ENTRY * thread_p, UUID_VERSION version, uint64_t epoch_ms, DB_VALUE * result)
