@@ -862,7 +862,6 @@ connection_cl::css_connect_to_log_server (const char *host_name, CSS_CONN_ENTRY 
 
 };
 
-
 /*
  * css_connect_to_master_server () - connect to the master from the server
  *   return:
