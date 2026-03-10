@@ -68,14 +68,13 @@ extern int dblink_global_tran_delete_row (THREAD_ENTRY * thread_p, int gtrid, in
  * Callback for scan: return true to continue, false to stop.
  * row_data is valid only during the callback.
  */
-typedef bool (*dblink_global_tran_scan_callback) (void *arg, const DBLINK_GLOBAL_TRAN_ROW * row_data);
+typedef bool (*dblink_global_tran_scan_callback) (const DBLINK_GLOBAL_TRAN_ROW * row_data);
 
 /*
  * Scan _db_global_tran rows where state is 'A' or 'C' (for recovery).
  * Invokes callback for each matching row. row_oid can be used for delete after send decision.
  */
-extern int dblink_global_tran_scan_for_recovery (THREAD_ENTRY * thread_p, dblink_global_tran_scan_callback callback,
-						 void *arg);
+extern int dblink_global_tran_scan_for_recovery (THREAD_ENTRY * thread_p, dblink_global_tran_scan_callback callback);
 
 #endif /* CCI_XA */
 

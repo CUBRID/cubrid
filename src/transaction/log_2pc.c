@@ -46,6 +46,7 @@
 #include "page_buffer.h"
 #include "storage_common.h"
 #include "system_parameter.h"
+#include "fault_injection.h"
 
 #if !defined(WINDOWS)
 #include "tcp.h"		/* for css_gethostid */
@@ -488,6 +489,8 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 #endif
 
 #ifdef CCI_XA
+      /* P1: Crash before (1) _db_global_tran INSERT - recovery: participant self rollback */
+      FI_TEST (thread_p, FI_TEST_DBLINK_2PC_CRASH_BEFORE_1, 0);
       /* Persist participant rows to _db_global_tran (state 'P') before prepare, using server transaction */
       log_sysop_start (thread_p);
       for (i = 0; i < tdes->coord->num_particps; i++)
@@ -502,6 +505,8 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	    }
 	}
       log_sysop_commit (thread_p);
+      /* P2: Crash after (1) before (2) SEND XA PREPARE - recovery: daemon ABORT then DELETE */
+      FI_TEST (thread_p, FI_TEST_DBLINK_2PC_CRASH_BETWEEN_1_2, 0);
 #endif
 
       *decision =
@@ -509,7 +514,8 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 
 #ifdef CCI_XA
       new_state = (*decision) ? DBLINK_2PC_STATE_COMMIT : DBLINK_2PC_STATE_ABORT;
-
+      /* P3: Crash after (2) before (4) UPDATE state - recovery: daemon ABORT then DELETE */
+      FI_TEST (thread_p, FI_TEST_DBLINK_2PC_CRASH_BETWEEN_2_4, 0);
       /* Update _db_global_tran state based on decision, using server transaction */
       for (i = 0; i < tdes->coord->num_particps; i++)
 	{
@@ -539,6 +545,8 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	    }
 	}
 
+      /* P4: Crash after (4),(3) before (5) enqueue - recovery: daemon sends decision then DELETE */
+      FI_TEST (thread_p, FI_TEST_DBLINK_2PC_CRASH_BETWEEN_4_6, 0);
       /* Enqueue participant data to daemon for recovery path */
       (void) dblink_2pc_daemon_enqueue (tdes->gtrid, new_state,
 					tdes->coord->num_particps, tdes->coord->block_particps_ids);

@@ -415,7 +415,7 @@ cleanup:
 }
 
 int
-dblink_global_tran_scan_for_recovery (THREAD_ENTRY * thread_p, dblink_global_tran_scan_callback callback, void *arg)
+dblink_global_tran_scan_for_recovery (THREAD_ENTRY * thread_p, dblink_global_tran_scan_callback callback)
 {
   OID class_oid, inst_oid;
   CLS_INFO *cls_info = NULL;
@@ -516,7 +516,7 @@ dblink_global_tran_scan_for_recovery (THREAD_ENTRY * thread_p, dblink_global_tra
       if (row.state == DBLINK_2PC_STATE_PREPARE || row.state == DBLINK_2PC_STATE_ABORT
 	  || row.state == DBLINK_2PC_STATE_COMMIT)
 	{
-	  if (!(*callback) (arg, &row))
+	  if (!(*callback) (&row))
 	    {
 	      break;
 	    }

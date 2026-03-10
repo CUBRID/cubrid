@@ -41,6 +41,7 @@
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
 #include "xserver_interface.h"
+#include "fault_injection.h"
 
 #include <assert.h>
 #include <chrono>
@@ -122,8 +123,7 @@ global_tran_queue_expand (void)
   GLOBAL_TRAN_QUEUE_ENTRY *
     new_queue;
   int
-    new_size;
-  int
+    new_size,
     i,
     j;
 
@@ -170,10 +170,8 @@ static int
 dblink_2pc_daemon_send_decision (int gtrid, char state, int num_participants, DBLINK_CONN_INFO * participants)
 {
   int
-    i;
-  int
-    ret;
-  int
+    i,
+    ret,
     error_count = 0;
   bool
     is_commit = (state == DBLINK_2PC_STATE_COMMIT);
@@ -195,14 +193,12 @@ dblink_2pc_daemon_send_decision (int gtrid, char state, int num_participants, DB
 /* Callback for dblink_global_tran_scan_for_recovery: enqueue participant data to daemon */
 static
   bool
-dblink_2pc_recovery_callback (void *arg, const DBLINK_GLOBAL_TRAN_ROW * row_data)
+dblink_2pc_recovery_callback (const DBLINK_GLOBAL_TRAN_ROW * row_data)
 {
   DBLINK_CONN_INFO
     participant;
   char
     state;
-
-  (void) arg;
 
   /* For 'P' state (before decision), use ABORT for recovery */
   if (row_data->state == DBLINK_2PC_STATE_PREPARE)
@@ -234,7 +230,7 @@ dblink_2pc_daemon_recovery_with_thread (THREAD_ENTRY * thread_p)
     {
       return;
     }
-  (void) dblink_global_tran_scan_for_recovery (thread_p, dblink_2pc_recovery_callback, (void *) thread_p);
+  (void) dblink_global_tran_scan_for_recovery (thread_p, dblink_2pc_recovery_callback);
 }
 
 #if defined(SERVER_MODE)
@@ -294,6 +290,8 @@ dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
       if (ret == NO_ERROR)
 	{
 	  thread_p = &thread_ref;
+	  /* P5: Crash after (6) send decision, before (7) DELETE - recovery: daemon resends decision then DELETE */
+	  FI_TEST (thread_p, FI_TEST_DBLINK_2PC_CRASH_BETWEEN_6_7, 0);
 	  /* Use a regular (worker) transaction so that delete runs with normal lock/MVCC semantics. */
 	  int
 	    tran_index = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, NULL,
@@ -450,8 +448,10 @@ dblink_2pc_daemon_init (void)
 	free (global_tran_queue);
 	global_tran_queue = NULL;
 	global_tran_queue_size = 0;
-	delete daemon_task;
-	delete dblink_2pc_Daemon_context_manager;
+	delete
+	  daemon_task;
+	delete
+	  dblink_2pc_Daemon_context_manager;
 	dblink_2pc_Daemon_context_manager = NULL;
 	return ER_FAILED;
       }
@@ -474,7 +474,8 @@ dblink_2pc_daemon_stop (void)
     }
   if (dblink_2pc_Daemon_context_manager != NULL)
     {
-      delete dblink_2pc_Daemon_context_manager;
+      delete
+	dblink_2pc_Daemon_context_manager;
       dblink_2pc_Daemon_context_manager = NULL;
     }
 #endif /* SERVER_MODE */
