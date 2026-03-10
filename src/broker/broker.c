@@ -1948,7 +1948,6 @@ connect_to_master_for_server_monitor (const char *db_name, const char *db_host)
       return NULL;
     }
 
-
   /* timeout : 5000 milliseconds */
   return (__gv_cvar.css_connect_to_master_timeout (db_host, port_id, 5000, &rid));
 }
