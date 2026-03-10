@@ -24031,6 +24031,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_CRC32:
     case PT_SCHEMA_DEF:
     case PT_DISK_SIZE:
+    case PT_UUID_FORMAT:
       {
 	PT_NODE *expr;
 	if (c != 1)
