@@ -31,7 +31,6 @@
 #include "connection_list_cl.h"
 #endif
 
-
 #if defined (WINDOWS)
 #include <winsock2.h>
 typedef WSAPOLLFD POLL_FD;
