@@ -110,7 +110,7 @@ namespace os::resources
       std::optional<std::vector<std::size_t>> adjusted_effective;
     };
 
-    std::tuple<std::optional<std::set<std::size_t>>, cpu_set_t *, std::size_t> affinity_cpuset ();
+    std::optional<std::tuple<std::set<std::size_t>, cpu_set_t *, std::size_t>> affinity_cpuset ();
     std::optional<std::set<std::size_t>> online_cpuset ();
 
     void setaffinity (std::size_t core);

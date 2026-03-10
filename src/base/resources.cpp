@@ -70,7 +70,7 @@ namespace os::resources
 
   namespace cpu
   {
-    std::tuple<std::optional<std::set<std::size_t>>, cpu_set_t *, std::size_t> affinity_cpuset ()
+    std::optional<std::tuple<std::set<std::size_t>, cpu_set_t *, std::size_t>> affinity_cpuset ()
     {
       std::set<std::size_t> cpuset;
       cpu_set_t *bitmap;
@@ -85,7 +85,7 @@ namespace os::resources
 	  bitmap = CPU_ALLOC (size);
 	  if (!bitmap)
 	    {
-	      return { std::nullopt, nullptr, 0 };
+	      return std::nullopt;
 	    }
 
 	  CPU_ZERO_S (bytes, bitmap);
@@ -102,7 +102,7 @@ namespace os::resources
 	      /* _er_log_debug (ARG_FILE_LINE, "failed to sched_getaffinity: %s\n", strerror (errno)); */
 
 	      CPU_FREE (bitmap);
-	      return { std::nullopt, nullptr, 0 };
+	      return std::nullopt;
 	    }
 
 	  for (j = 0; j < size; j++)
@@ -113,11 +113,11 @@ namespace os::resources
 		}
 	    }
 
-	  return { cpuset, bitmap, size };
+	  return std::tuple { cpuset, bitmap, size };
 	}
 
       /* _er_log_debug (ARG_FILE_LINE, "failed to create cpuset: number of cores exceeds 2^18.\n"); */
-      return { std::nullopt, nullptr, 0 };
+      return std::nullopt;
     }
 
     std::optional<std::set<std::size_t>> online_cpuset ()
@@ -193,21 +193,22 @@ namespace os::resources
     {
       static context ctx = []() -> context
       {
-	std::optional<std::set<std::size_t>> affinity, online;
+	std::optional<std::set<std::size_t>> online;
+	std::set<std::size_t> affinity;
 	cgroup::cpu::context cgroup;
 	cpu_set_t *bitmap;
 	int nprocessors;
 	std::size_t size;
 	context ctx;
 
-	std::tie (affinity, bitmap, size) = affinity_cpuset ();
-	if (affinity)
+	auto affinity_tuple = affinity_cpuset ();
+	if (affinity_tuple)
 	  {
-	    assert (bitmap);
-	    assert (size > 0);
+	    std::tie (affinity, bitmap, size) = *affinity_tuple;
+	    assert (bitmap && size > 0);
 
-	    ctx.max = affinity->size ();
-	    ctx.effective = std::move (*affinity);
+	    ctx.max = affinity.size ();
+	    ctx.effective = std::move (affinity);
 
 	    if (ctx.affinity.bitmap)
 	      {
