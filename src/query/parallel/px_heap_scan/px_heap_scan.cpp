@@ -812,11 +812,15 @@ namespace parallel_heap_scan
 
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {
-	QPROC_DB_VALUE_LIST valp = m_xasl->val_list->valp;
-	for (int i=0; i<m_xasl->val_list->val_cnt; i++)
+	XASL_NODE *xptr;
+	for (xptr = m_xasl; xptr != nullptr; xptr = xptr->scan_ptr)
 	  {
-	    pr_clear_value (valp->val);
-	    valp = valp->next;
+	    QPROC_DB_VALUE_LIST valp = xptr->val_list->valp;
+	    for (int i=0; i<xptr->val_list->val_cnt; i++)
+	      {
+		pr_clear_value (valp->val);
+		valp = valp->next;
+	      }
 	  }
       }
 
