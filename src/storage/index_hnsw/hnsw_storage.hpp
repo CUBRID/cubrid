@@ -128,12 +128,6 @@ namespace cubhnsw
       // promote lockmode from shared to exclusive
       virtual void promote_root (pinned_t &root) = 0;
 
-      // optional: neighbors cache hook (disk_storage overrides; default is no-op)
-      virtual void refresh_neighbors_cache (algo_context_t<Traits> &, const slot_id_t &, level_t)
-      {
-	// default: nothing
-      }
-
       // optional: neighbors IDs cache accessor (disk_storage overrides; default: no cache)
       virtual const std::vector<slot_id_t> *get_neighbors_cached_ids (
 	      algo_context_t<Traits> &,
@@ -141,6 +135,14 @@ namespace cubhnsw
 	      level_t)
       {
 	return nullptr;
+      }
+
+      // optional: direct neighbors cache writer (used by disk_storage; default: no-op)
+      virtual void set_neighbors_cached_ids (algo_context_t<Traits> &,
+					     const slot_id_t &,
+					     level_t,
+					     const std::vector<slot_id_t> &)
+      {
       }
 
       short get_max_level () const

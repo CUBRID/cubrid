@@ -606,8 +606,17 @@ namespace cubhnsw
 	new_neighbors.push_back (top_view[i].slot);
       }
 
-    // neighbors of new node changed, refresh neighbors cache (if storage supports it)
-    m_storage->refresh_neighbors_cache (context, new_node_blk->id, level);
+    // neighbors of new node changed; update in-memory neighbors cache if storage supports it
+    if constexpr (Traits::kind == storage_kind::disk)
+      {
+	std::vector<slot_id_t> neigh;
+	neigh.reserve (new_neighbors.size ());
+	for (std::size_t i = 0; i < new_neighbors.size (); ++i)
+	  {
+	    neigh.push_back (new_neighbors.at (i));
+	  }
+	m_storage->set_neighbors_cached_ids (context, new_node_blk->id, level, neigh);
+      }
   }
 
   template <typename Traits>
@@ -635,8 +644,17 @@ namespace cubhnsw
 	    {
 	      close_header.push_back (new_slot);
 
-	      // neighbors of close_slot changed, refresh cache
-	      m_storage->refresh_neighbors_cache (context, close_slot, level);
+	      // neighbors of close_slot changed; update in-memory cache
+	      if constexpr (Traits::kind == storage_kind::disk)
+		{
+		  std::vector<slot_id_t> neigh;
+		  neigh.reserve (close_header.size ());
+		  for (std::size_t i = 0; i < close_header.size (); ++i)
+		    {
+		      neigh.push_back (close_header.at (i));
+		    }
+		  m_storage->set_neighbors_cached_ids (context, close_slot, level, neigh);
+		}
 	      continue;
 	    }
 	}
@@ -666,8 +684,17 @@ namespace cubhnsw
 	    close_header.push_back (top_view[i].slot);
 	  }
 
-	// neighbors of close_slot changed, refresh cache
-	m_storage->refresh_neighbors_cache (context, close_slot, level);
+	// neighbors of close_slot changed; update in-memory cache
+	if constexpr (Traits::kind == storage_kind::disk)
+	  {
+	    std::vector<slot_id_t> neigh;
+	    neigh.reserve (close_header.size ());
+	    for (std::size_t i = 0; i < close_header.size (); ++i)
+	      {
+		neigh.push_back (close_header.at (i));
+	      }
+	    m_storage->set_neighbors_cached_ids (context, close_slot, level, neigh);
+	  }
       }
 
     return NO_ERROR;
