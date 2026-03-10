@@ -440,6 +440,15 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REVERSE_REFINES,
 				  "Num_hnsw_computed_distances_in_reverse_refines"),
 
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HNSW_NUM_VISITED_NODE_L0, "Num_hnsw_visited_node_l0"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HNSW_NUM_COMPUTED_DISTANCES_L0, "Num_hnsw_computed_distances_l0"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REFINES_L0,
+				  "Num_hnsw_computed_distances_in_refines_l0"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REVERSE_REFINES_L0,
+				  "Num_hnsw_computed_distances_in_reverse_refines_l0"),
+
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HNSW_NUM_ENTRYPOINT_UPDATES, "Num_hnsw_entrypoint_updates"),
+
   /* Vacuum master/worker timers. */
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_VAC_MASTER, "vacuum_master"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_VAC_JOB, "vacuum_job"),
