@@ -87,29 +87,6 @@ namespace cubhnsw
     return page_ptr;
   }
 
-  void
-  storage::release_pinned_ (cubthread::entry *owner,
-			    pinned_t::data_t &blk,
-			    PAGE_PTR page_ptr) noexcept
-  {
-    auto *t = reinterpret_cast<cubthread::entry *> (owner);
-    auto *p = reinterpret_cast<PAGE_PTR> (page_ptr);
-
-    if (t == nullptr || p == nullptr)
-      {
-	return;
-      }
-
-    if (blk.mode == lock_mode::exclusive)
-      {
-	pgbuf_set_dirty (t, p, FREE);
-      }
-    else
-      {
-	pgbuf_unfix (t, p);
-      }
-  }
-
   slot_id_t
   storage::add_node (algo_context_t &context, const key_id_t &key, const float *vector, const level_t &level)
   {
@@ -170,7 +147,7 @@ namespace cubhnsw
     blk.size = slotp->record_length;
     blk.mode = mode;
 
-    return pinned_t (context.m_thread_p, &storage::release_pinned_, std::move (blk), root_page_ptr);
+    return pinned_t (context.m_thread_p, std::move (blk), root_page_ptr);
   }
 
   pinned_t
@@ -201,7 +178,7 @@ namespace cubhnsw
     blk.size = slotp->record_length;
     blk.mode = mode;
 
-    return pinned_t (context.m_thread_p, &storage::release_pinned_, std::move (blk), node_page_ptr);
+    return pinned_t (context.m_thread_p, std::move (blk), node_page_ptr);
 
   }
 

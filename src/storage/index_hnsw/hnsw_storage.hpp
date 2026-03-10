@@ -40,6 +40,26 @@ namespace cubhnsw
     lock_mode    mode{lock_mode::none};
   };
 
+  inline void release_pinned_ (cubthread::entry *thread_p, pinned_block_data &blk, PAGE_PTR page_ptr) noexcept
+  {
+    auto *t = reinterpret_cast<cubthread::entry *> (thread_p);
+    auto *p = reinterpret_cast<PAGE_PTR> (page_ptr);
+
+    if (t == nullptr || p == nullptr)
+      {
+	return;
+      }
+
+    if (blk.mode == lock_mode::exclusive)
+      {
+	pgbuf_set_dirty (t, p, FREE);
+      }
+    else
+      {
+	pgbuf_unfix (t, p);
+      }
+  }
+
   // ============================================================
   // pinned_block (allocation-free, move-only, no std::function)
   // ============================================================
@@ -48,20 +68,10 @@ namespace cubhnsw
     public:
       using data_t = pinned_block_data;
 
-      // storage is responsible for unfix/dirty policy.
-      // page_ptr/thread_p are opaque.
-      using release_fn_t = void (*) (cubthread::entry *owner,
-				     data_t &blk,
-				     PAGE_PTR page_ptr) noexcept;
-
-      pinned_block () = default;
-
       pinned_block (cubthread::entry *owner,
-		    release_fn_t release_fn,
 		    data_t blk,
 		    PAGE_PTR page_ptr) noexcept
 	: m_owner (owner)
-	, m_release_fn (release_fn)
 	, m_page_ptr (page_ptr)
 	, m_blk (std::move (blk))
 	, m_valid (true)
@@ -73,7 +83,6 @@ namespace cubhnsw
 
       pinned_block (pinned_block &&other) noexcept
 	: m_owner (other.m_owner)
-	, m_release_fn (other.m_release_fn)
 	, m_page_ptr (other.m_page_ptr)
 	, m_blk (std::move (other.m_blk))
 	, m_valid (other.m_valid)
@@ -91,7 +100,6 @@ namespace cubhnsw
 	reset ();
 
 	m_owner = other.m_owner;
-	m_release_fn = other.m_release_fn;
 	m_page_ptr = other.m_page_ptr;
 	m_blk = std::move (other.m_blk);
 	m_valid = other.m_valid;
@@ -112,10 +120,7 @@ namespace cubhnsw
 	    return;
 	  }
 
-	if (m_release_fn != nullptr)
-	  {
-	    m_release_fn (m_owner, m_blk, m_page_ptr);
-	  }
+	release_pinned_ (m_owner, m_blk, m_page_ptr);
 
 	invalidate_ ();
       }
@@ -146,14 +151,13 @@ namespace cubhnsw
       void invalidate_ () noexcept
       {
 	m_owner = nullptr;
-	m_release_fn = nullptr;
 	m_page_ptr = nullptr;
+	m_blk = {};
 	m_valid = false;
       }
 
     private:
       cubthread::entry *m_owner{nullptr};
-      release_fn_t m_release_fn{nullptr};
       PAGE_PTR m_page_ptr{nullptr};
       data_t m_blk{};
       bool m_valid{false};
@@ -291,7 +295,6 @@ namespace cubhnsw
       PAGE_PTR alloc_new_block (cubthread::entry *thread_p, block_group_id_t &vfid, block_id_t &vpid);
 
       static int initialize_new_block (cubthread::entry *thread_p, PAGE_PTR page, void *args);
-      static void release_pinned_ (cubthread::entry *thread_p, pinned_t::data_t &blk, PAGE_PTR page_ptr) noexcept;
 
       hnsw_build_params m_build_params;
       index_id_t m_giid; // general index identifier
