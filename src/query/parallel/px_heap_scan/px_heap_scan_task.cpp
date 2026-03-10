@@ -277,6 +277,10 @@ namespace parallel_heap_scan
 	    m_scan_func_ptr[i] = (UINTPTR)NULL;
 	  }
       }
+    else
+      {
+	m_scan_func_ptr = nullptr;
+      }
 
     if (err_code != NO_ERROR)
       {
@@ -300,7 +304,13 @@ namespace parallel_heap_scan
   {
     THREAD_ENTRY *main_thread_p = thread_get_main_thread (m_parent_thread_p);
     xasl_node *xptr;
-    db_private_free (&thread_ref, m_scan_func_ptr);
+    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::COUNT_DISTINCT)
+      {
+	if (m_scan_func_ptr != nullptr)
+	  {
+	    db_private_free_and_init (&thread_ref, m_scan_func_ptr);
+	  }
+      }
 
     if (thread_ref.on_trace)
       {
@@ -310,8 +320,10 @@ namespace parallel_heap_scan
 	tsc_getticks (&end_tick);
 	tsc_elapsed_time_usec (&tv_diff, end_tick, m_start_tick);
 	TSC_ADD_TIMEVAL (elapsed_time, tv_diff);
-
-	m_trace_handler->m_trace_storage_for_sibling_xasl.merge_xasl_tree (m_xasl);
+	if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::COUNT_DISTINCT)
+	  {
+	    m_trace_handler->m_trace_storage_for_sibling_xasl.merge_xasl_tree (m_xasl);
+	  }
 	m_trace_handler->add_trace (perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_FETCHES),
 				    perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_IOREADS),
 				    perfmon_get_from_statistic (&thread_ref,PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC),
