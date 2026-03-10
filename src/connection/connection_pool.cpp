@@ -20,14 +20,7 @@
  * connection_pool.cpp
  */
 
-#include "hardware_topology.hpp"
-#include "thread_manager.hpp"
-#include "connection_pool.hpp"
-#include "connection_worker.hpp"
-#include "server_support.h"
-#include "system_parameter.h"
-#include "error_manager.h"
-
+#include <numeric>
 #include <cmath>
 #include <chrono>
 #include <csignal>
@@ -39,6 +32,14 @@
 #include <sys/socket.h>
 #include <sys/epoll.h>
 #include <utility>
+
+#include "resources.hpp"
+#include "thread_manager.hpp"
+#include "connection_pool.hpp"
+#include "connection_worker.hpp"
+#include "server_support.h"
+#include "system_parameter.h"
+#include "error_manager.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -247,13 +248,18 @@ namespace cubconn::connection
 
   std::uint32_t pool::initialize_topology (std::uint32_t max_connection_workers)
   {
-    std::vector<int> *cores;
+    auto ctx = os::resources::cpu::effective ();
 
-    cubbase::topology.load_cpu (max_connection_workers);
-    cubbase::topology.map_nic_to_core ();
-
-    cores = &cubbase::topology.get_cores ();
-    return cores->size ();
+    if (ctx.adjusted_effective && !ctx.adjusted_effective->empty ())
+      {
+	std::vector<std::size_t> cores (
+		ctx.adjusted_effective->begin (),
+		std::next (ctx.adjusted_effective->begin (),
+			   std::min (ctx.adjusted_effective->size (), static_cast<std::size_t> (max_connection_workers)))
+	);
+	os::resources::net::map_nic_to_index (cores);
+      }
+    return std::min (ctx.adjusted_max, static_cast<std::size_t> (max_connection_workers));
   }
 
   void pool::finalize_topology ()
@@ -262,20 +268,30 @@ namespace cubconn::connection
 
   void pool::initialize_workers (std::uint32_t max_connection_workers, std::uint32_t min_connection_workers)
   {
-    std::vector<int> *cores;
+    std::vector<std::size_t> cores;
     std::uint32_t i;
+    auto ctx = os::resources::cpu::effective ();
 
     assert (m_mutex_holder == std::this_thread::get_id ());
 
     m_workers.reserve (max_connection_workers);
 
-    cores = &cubbase::topology.get_cores ();
+    if (ctx.adjusted_effective)
+      {
+	cores = *ctx.adjusted_effective;
+      }
+    else
+      {
+	std::vector<std::size_t> vec (ctx.adjusted_max);
+	std::iota (vec.begin (), vec.end (), 0);
+	cores = vec;
+      }
 
-    assert (cores->size () == max_connection_workers);
+    assert (cores.size () >= max_connection_workers);
 
     for (i = 0; i < max_connection_workers; i++)
       {
-	m_workers.emplace_back (std::make_unique<worker> (this, m_coordinator, m_watcher, (*cores)[i], i));
+	m_workers.emplace_back (std::make_unique<worker> (this, m_coordinator, m_watcher, cores[i], i));
       }
 
     /* pre-warm the connection worker and its queue to avoid a race condition. */
@@ -336,13 +352,22 @@ namespace cubconn::connection
 
   void pool::initialize_coordinator (std::uint32_t max_connection_workers, std::uint32_t min_connection_workers)
   {
-    std::vector<int> *cores;
+    std::size_t core;
+    auto ctx = os::resources::cpu::effective ();
 
-    cores = &cubbase::topology.get_cores ();
+    if (ctx.adjusted_effective)
+      {
+	core = (*ctx.adjusted_effective)[0];
+      }
+    else
+      {
+	core = 0;
+      }
+
     m_coordinator = std::make_shared<coordinator> (
 			    this,
 			    m_watcher,
-			    (*cores)[0],
+			    core,
 			    max_connection_workers,
 			    min_connection_workers
 		    );
