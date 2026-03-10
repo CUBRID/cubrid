@@ -30,6 +30,7 @@
 #include "px_heap_scan_trace_handler.hpp"
 #include "px_heap_scan_result_type.hpp"
 #include "query_manager.h"
+#include "px_heap_scan_join_info.hpp"
 
 namespace parallel_heap_scan
 {
@@ -112,6 +113,7 @@ namespace parallel_heap_scan
       atomic_instnum m_atomic_instnum;
       err_messages_with_lock m_err_messages;
       worker_manager *m_worker_manager;
+      join_info m_join_info;
       bool m_is_fixed;
       bool m_is_grouped;
       bool m_uses_xasl_clone;
