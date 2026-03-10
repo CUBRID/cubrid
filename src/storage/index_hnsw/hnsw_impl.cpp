@@ -30,7 +30,6 @@
 
 #include "hnsw_algo.hpp"
 
-// #include "hnsw_storage_mem.hpp"
 #include "hnsw_storage.hpp"
 
 #include "btree_load.h"
