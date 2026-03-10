@@ -1359,7 +1359,6 @@ css_set_net_header (NET_HEADER *header_p, int type, short function_code, int req
   header_p->flags = htons (flags);
 }
 
-
 /*
  * css_send_request_with_data_buffer () - transfer a request to the server.
  *   return: enum css_error_code (See connection_defs.h)
