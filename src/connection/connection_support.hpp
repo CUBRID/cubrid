@@ -175,8 +175,6 @@ css_net_send_general (CSS_CONN_ENTRY *conn, int timeout, Args &&...args)
 
 class connection_support:public connection_list_cl
 {
-  private:
-
   public:
     connection_support () = default;
     ~connection_support () = default;
