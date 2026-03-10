@@ -50,7 +50,6 @@
 #include "system_parameter.h"
 #include "client_support.h"
 
-
 #if !defined(WINDOWS)
 #error belong to WINDOWS platform
 #endif
