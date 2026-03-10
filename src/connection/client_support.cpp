@@ -727,7 +727,6 @@ client_support::css_cleanup_client_queues (char *host_name)
     }
 }
 
-
 /*
  * css_ha_server_state - return the current HA server state
  *   return: one of HA_SERVER_STATE
