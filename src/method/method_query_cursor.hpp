@@ -43,6 +43,7 @@ namespace cubmethod
   {
     public:
       query_cursor (cubthread::entry *thread_p, QMGR_QUERY_ENTRY *query_entry_p, bool is_oid_included = false);
+      ~query_cursor();
 
       int open ();
       void close ();
@@ -56,7 +57,6 @@ namespace cubmethod
 
       SCAN_CODE cursor (int peek);
 
-      SCAN_CODE prev_row ();
       SCAN_CODE next_row ();
 
       void clear ();
