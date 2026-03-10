@@ -49,7 +49,7 @@ jobs:
             ORIGINAL_PR=$(echo "${PR_BODY}" | grep -oiE 'Reverts .*#[0-9]+' | grep -oE '[0-9]+' | head -1 || echo "")
             if [ -z "${ORIGINAL_PR}" ]; then
               SHA=$(git log -1 --format=%B | grep -oP 'This reverts commit \K[a-f0-9]+' | head -n 1)
-              [ -n "$SHA" ] && ORIGINAL_PR=$(gh api "repos/${OWNER}/${TC_REPO}/commits/$SHA/pulls" --jq '.[0].number' 2>/dev/null)
+              [ -n "$SHA" ] && ORIGINAL_PR=$(gh api "repos/${{ github.repository }}/commits/$SHA/pulls" --jq '.[0].number' 2>/dev/null)
             fi
             echo "is_revert=true" >> "${GITHUB_OUTPUT}"
             echo "original_pr_number=${ORIGINAL_PR}" >> "${GITHUB_OUTPUT}"
@@ -359,28 +359,81 @@ jobs:
     permissions:
       pull-requests: write
     steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.TC_APP_ID }}
+          private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
+          owner: ${{ env.OWNER }}
+
+      - name: Mask token
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        shell: bash
+        run: echo "::add-mask::${APP_TOKEN}"
+
       - name: Comment TC branch info on engine PR
         env:
-          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           ENGINE_REPO: ${{ github.repository }}
           OWNER: ${{ env.OWNER }}
         shell: bash
         run: |
           set -euo pipefail
-          BRANCH_NAME="tc/pr-${PR_NUMBER}"
+          
+          PUB_REPO="cubrid-testcases"
+          PRIV_REPO="cubrid-testcases-private-ex"
+          
+          TARGET_BRANCH="tc/pr-${PR_NUMBER}"
 
+          echo "::notice::Looking for created TC Draft PR information..."
+
+          # 1. Public Repo (cubrid-testcases) information
+          PUB_PR=$(GH_TOKEN="${APP_TOKEN}" gh pr list \
+            --repo "${OWNER}/${PUB_REPO}" \
+            --head "${TARGET_BRANCH}" \
+            --state open \
+            --json url,headRefName \
+            --jq '.[0]' || echo "")
+          PUB_BRANCH=$(echo "$PUB_PR" | jq -r '.headRefName // empty')
+          PUB_URL=$(echo "$PUB_PR" | jq -r '.url // empty')
+
+          # 2. Private Repo (cubrid-testcases-private-ex) information
+          PRIV_PR=$(GH_TOKEN="${APP_TOKEN}" gh pr list \
+            --repo "${OWNER}/${PRIV_REPO}" \
+            --head "${TARGET_BRANCH}" \
+            --state open \
+            --json url,headRefName \
+            --jq '.[0]' || echo "")
+          PRIV_BRANCH=$(echo "$PRIV_PR" | jq -r '.headRefName // empty')
+          PRIV_URL=$(echo "$PRIV_PR" | jq -r '.url // empty')
+
+          # 3. Dynamically create markdown text (link to Draft PR)
+          if [ -n "$PUB_BRANCH" ]; then
+            PUB_TEXT="- [${PUB_REPO} Draft PR](${PUB_URL}) (Branch: \`${PUB_BRANCH}\`)"
+          else
+            PUB_TEXT="- **${PUB_REPO}**: No TC Branch (Skipped or Failed)"
+          fi
+
+          if [ -n "$PRIV_BRANCH" ]; then
+            PRIV_TEXT="- [${PRIV_REPO} Draft PR](${PRIV_URL}) (Branch: \`${PRIV_BRANCH}\`)"
+          else
+            PRIV_TEXT="- **${PRIV_REPO}**: No TC Branch (Skipped or Failed)"
+          fi
+
+          # 4. Construct final comment body
           COMMENT_BODY=$(cat <<EOF
           ## 🧪 TC Test Environment Ready
 
-          **TC Branch:** \`${BRANCH_NAME}\`
-
-          **TC Repositories:**
-          - [cubrid-testcases](https://github.com/${OWNER}/cubrid-testcases/tree/${BRANCH_NAME})
-          - [cubrid-testcases-private-ex](https://github.com/${OWNER}/cubrid-testcases-private-ex/tree/${BRANCH_NAME})
-
           **CircleCI Testing:**
-          - CircleCI will automatically test using TC branch \`${BRANCH_NAME}\`
+          - CircleCI will automatically test using the branches below.
+
+          **TC Repositories & Branches:**
+          ${PUB_TEXT}
+          ${PRIV_TEXT}
 
           **Next Steps:**
           1. Wait for CircleCI tests to complete
@@ -389,7 +442,8 @@ jobs:
           EOF
           )
 
-          gh pr comment "${PR_NUMBER}" \
+          # 5. Comment on engine PR
+          GH_TOKEN="${GITHUB_TOKEN}" gh pr comment "${PR_NUMBER}" \
             --repo "${ENGINE_REPO}" \
             --body "${COMMENT_BODY}"
 
@@ -403,9 +457,24 @@ jobs:
     permissions:
       pull-requests: write
     steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.TC_APP_ID }}
+          private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
+          owner: ${{ env.OWNER }}
+
+      - name: Mask token
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        shell: bash
+        run: echo "::add-mask::${APP_TOKEN}"
+
       - name: Comment TC branch info on engine PR
         env:
-          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           ENGINE_REPO: ${{ github.repository }}
           OWNER: ${{ env.OWNER }}
@@ -416,12 +485,14 @@ jobs:
           PUB_REPO="cubrid-testcases"
           PRIV_REPO="cubrid-testcases-private-ex"
 
+          TARGET_BRANCH="tc/pr-${PR_NUMBER}"
+
           echo "::notice::Looking for created TC Revert PR information..."
 
           # 1. Public Repo (cubrid-testcases) information
-          PUB_PR=$(gh pr list \
+          PUB_PR=$(GH_TOKEN="${APP_TOKEN}" gh pr list \
             --repo "${OWNER}/${PUB_REPO}" \
-            --search "${ENGINE_REPO}#${PR_NUMBER} in:body" \
+            --head "${TARGET_BRANCH}" \
             --state open \
             --json url,headRefName \
             --jq '.[0]' || echo "")
@@ -429,9 +500,9 @@ jobs:
           PUB_URL=$(echo "$PUB_PR" | jq -r '.url // empty')
 
           # 2. Private Repo (cubrid-testcases-private-ex) information
-          PRIV_PR=$(gh pr list \
+          PRIV_PR=$(GH_TOKEN="${APP_TOKEN}" gh pr list \
             --repo "${OWNER}/${PRIV_REPO}" \
-            --search "${ENGINE_REPO}#${PR_NUMBER} in:body" \
+            --head "${TARGET_BRANCH}" \
             --state open \
             --json url,headRefName \
             --jq '.[0]' || echo "")
@@ -469,6 +540,6 @@ jobs:
           )
 
           # 5. Comment on engine PR
-          gh pr comment "${PR_NUMBER}" \
+          GH_TOKEN="${GITHUB_TOKEN}" gh pr comment "${PR_NUMBER}" \
             --repo "${ENGINE_REPO}" \
             --body "${COMMENT_BODY}"
