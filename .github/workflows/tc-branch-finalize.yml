@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  OWNER: tw-kang
+  OWNER: CUBRID
 
 jobs:
   finalize-tc-branch:

@@ -16,7 +16,7 @@ concurrency:
   group: tc-branch-sync-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 env:
-  OWNER: tw-kang
+  OWNER: CUBRID
 
 jobs:
   # Parse PR metadata: type, header, original PR number
