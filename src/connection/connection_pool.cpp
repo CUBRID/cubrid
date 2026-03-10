@@ -287,7 +287,7 @@ namespace cubconn::connection
 	cores = vec;
       }
 
-    assert (cores.size () == max_connection_workers);
+    assert (cores.size () >= max_connection_workers);
 
     for (i = 0; i < max_connection_workers; i++)
       {
