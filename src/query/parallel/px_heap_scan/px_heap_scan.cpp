@@ -950,6 +950,12 @@ namespace parallel_heap_scan
 	m_interrupt.set_code (parallel_query::interrupt::interrupt_code::JOB_ENDED);
       }
 
+    /* Release worker manager */
+    if (m_worker_manager != nullptr)
+      {
+	m_worker_manager->wait_workers ();
+      }
+
     m_result_handler->read_finalize (m_thread_p);
 
     /* Clean up input handler */
@@ -966,12 +972,6 @@ namespace parallel_heap_scan
 	m_result_handler->~result_handler ();
 	db_private_free (m_thread_p, m_result_handler);
 	m_result_handler = nullptr;
-      }
-
-    /* Release worker manager */
-    if (m_worker_manager != nullptr)
-      {
-	m_worker_manager->wait_workers ();
       }
 
     /* Clean up previous value descriptor */
