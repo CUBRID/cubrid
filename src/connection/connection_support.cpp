@@ -2534,9 +2534,6 @@ css_platform_independent_poll (POLL_FD *fds, int num_of_fds, int timeout)
   return rc;
 }
 
-
-
-
 #if !defined (SERVER_MODE)
 /*
  * css_send_request_no_reply () - transfer a request to the server (no reply)
