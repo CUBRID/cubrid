@@ -3222,23 +3222,25 @@ qfile_truncate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id)
   list_id->last_pgptr = NULL;
   list_id->last_offset = QFILE_NULL_PAGE_OFFSET;
   list_id->lasttpl_len = 0;
-
-  switch (tfile_vfid_p->membuf_type)
+  if (tfile_vfid_p != NULL)
     {
-    case TEMP_FILE_MEMBUF_NONE:
-      break;
-    case TEMP_FILE_MEMBUF_KEY_BUFFER:
-    case TEMP_FILE_MEMBUF_NORMAL:
-      {
-	tfile_vfid_p->membuf_last = -1;
-      }
-      break;
-    default:
-      assert (false);
-      break;
-    }
+      switch (tfile_vfid_p->membuf_type)
+	{
+	case TEMP_FILE_MEMBUF_NONE:
+	  break;
+	case TEMP_FILE_MEMBUF_KEY_BUFFER:
+	case TEMP_FILE_MEMBUF_NORMAL:
+	  {
+	    tfile_vfid_p->membuf_last = -1;
+	  }
+	  break;
+	default:
+	  assert (false);
+	  break;
+	}
 
-  error_code = file_temp_truncate (thread_p, &tfile_vfid_p->temp_vfid);
+      error_code = file_temp_truncate (thread_p, &tfile_vfid_p->temp_vfid);
+    }
   return error_code;
 }
 
@@ -3810,7 +3812,7 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 	      sort_info_p->fixed_page = page_p;
 	    }
 #else /* not SortCache */
-	  page_p = qmgr_get_old_page_read_only (thread_p, &vpid, list_id_p->tfile_vfid);
+	  page_p = qmgr_get_old_page_simple_fix (thread_p, &vpid, list_id_p->tfile_vfid);
 	  if (page_p == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -3840,7 +3842,7 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 	      error = qfile_add_overflow_tuple_to_list (thread_p, sort_info_p->output_file, page_p, list_id_p);
 	    }
 #if 1				/* not SortCache */
-	  qmgr_free_old_page_ro_and_init (thread_p, page_p, list_id_p->tfile_vfid);
+	  qmgr_free_old_page_simple_fix_and_init (thread_p, page_p, list_id_p->tfile_vfid);
 #endif /* not SortCache */
 	}
       else
@@ -4761,7 +4763,15 @@ qfile_scan_next (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p)
     {
       if (scan_id_p->list_id.tuple_cnt > 0)
 	{
-	  page_p = qmgr_get_old_page (thread_p, &scan_id_p->list_id.first_vpid, scan_id_p->list_id.tfile_vfid);
+	  if (scan_id_p->is_read_only)
+	    {
+	      page_p =
+		qmgr_get_old_page_read_only (thread_p, &scan_id_p->list_id.first_vpid, scan_id_p->list_id.tfile_vfid);
+	    }
+	  else
+	    {
+	      page_p = qmgr_get_old_page (thread_p, &scan_id_p->list_id.first_vpid, scan_id_p->list_id.tfile_vfid);
+	    }
 	  if (page_p == NULL)
 	    {
 	      return S_ERROR;
@@ -4792,7 +4802,14 @@ qfile_scan_next (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p)
       else if (qfile_has_next_page (scan_id_p->curr_pgptr))
 	{
 	  QFILE_GET_NEXT_VPID (&next_vpid, scan_id_p->curr_pgptr);
-	  next_page_p = qmgr_get_old_page (thread_p, &next_vpid, scan_id_p->list_id.tfile_vfid);
+	  if (scan_id_p->is_read_only)
+	    {
+	      next_page_p = qmgr_get_old_page_read_only (thread_p, &next_vpid, scan_id_p->list_id.tfile_vfid);
+	    }
+	  else
+	    {
+	      next_page_p = qmgr_get_old_page (thread_p, &next_vpid, scan_id_p->list_id.tfile_vfid);
+	    }
 	  if (next_page_p == NULL)
 	    {
 	      return S_ERROR;
@@ -4861,7 +4878,14 @@ qfile_scan_prev (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p)
       else if (QFILE_GET_PREV_PAGE_ID (scan_id_p->curr_pgptr) != NULL_PAGEID)
 	{
 	  QFILE_GET_PREV_VPID (&prev_vpid, scan_id_p->curr_pgptr);
-	  prev_page_p = qmgr_get_old_page (thread_p, &prev_vpid, scan_id_p->list_id.tfile_vfid);
+	  if (scan_id_p->is_read_only)
+	    {
+	      prev_page_p = qmgr_get_old_page_read_only (thread_p, &prev_vpid, scan_id_p->list_id.tfile_vfid);
+	    }
+	  else
+	    {
+	      prev_page_p = qmgr_get_old_page (thread_p, &prev_vpid, scan_id_p->list_id.tfile_vfid);
+	    }
 	  if (prev_page_p == NULL)
 	    {
 	      return S_ERROR;
@@ -4890,7 +4914,14 @@ qfile_scan_prev (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p)
 	{
 	  return S_END;
 	}
-      page_p = qmgr_get_old_page (thread_p, &scan_id_p->list_id.last_vpid, scan_id_p->list_id.tfile_vfid);
+      if (scan_id_p->is_read_only)
+	{
+	  page_p = qmgr_get_old_page_read_only (thread_p, &scan_id_p->list_id.last_vpid, scan_id_p->list_id.tfile_vfid);
+	}
+      else
+	{
+	  page_p = qmgr_get_old_page (thread_p, &scan_id_p->list_id.last_vpid, scan_id_p->list_id.tfile_vfid);
+	}
       if (page_p == NULL)
 	{
 	  return S_ERROR;
@@ -5006,7 +5037,15 @@ qfile_jump_scan_tuple_position (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * sc
 	  if (scan_id_p->curr_vpid.pageid != tuple_position_p->vpid.pageid
 	      || scan_id_p->curr_vpid.volid != tuple_position_p->vpid.volid)
 	    {
-	      page_p = qmgr_get_old_page (thread_p, &tuple_position_p->vpid, scan_id_p->list_id.tfile_vfid);
+	      if (scan_id_p->is_read_only)
+		{
+		  page_p =
+		    qmgr_get_old_page_read_only (thread_p, &tuple_position_p->vpid, scan_id_p->list_id.tfile_vfid);
+		}
+	      else
+		{
+		  page_p = qmgr_get_old_page (thread_p, &tuple_position_p->vpid, scan_id_p->list_id.tfile_vfid);
+		}
 	      if (page_p == NULL)
 		{
 		  return S_ERROR;
@@ -5020,7 +5059,14 @@ qfile_jump_scan_tuple_position (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * sc
 	}
       else
 	{
-	  page_p = qmgr_get_old_page (thread_p, &tuple_position_p->vpid, scan_id_p->list_id.tfile_vfid);
+	  if (scan_id_p->is_read_only)
+	    {
+	      page_p = qmgr_get_old_page_read_only (thread_p, &tuple_position_p->vpid, scan_id_p->list_id.tfile_vfid);
+	    }
+	  else
+	    {
+	      page_p = qmgr_get_old_page (thread_p, &tuple_position_p->vpid, scan_id_p->list_id.tfile_vfid);
+	    }
 	  if (page_p == NULL)
 	    {
 	      return S_ERROR;
@@ -5074,7 +5120,15 @@ qfile_start_scan_fix (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p)
 {
   if (scan_id_p->position == S_ON && !scan_id_p->curr_pgptr)
     {
-      scan_id_p->curr_pgptr = qmgr_get_old_page (thread_p, &scan_id_p->curr_vpid, scan_id_p->list_id.tfile_vfid);
+      if (scan_id_p->is_read_only)
+	{
+	  scan_id_p->curr_pgptr =
+	    qmgr_get_old_page_read_only (thread_p, &scan_id_p->curr_vpid, scan_id_p->list_id.tfile_vfid);
+	}
+      else
+	{
+	  scan_id_p->curr_pgptr = qmgr_get_old_page (thread_p, &scan_id_p->curr_vpid, scan_id_p->list_id.tfile_vfid);
+	}
       if (scan_id_p->curr_pgptr == NULL)
 	{
 	  return ER_FAILED;
@@ -5105,6 +5159,7 @@ qfile_open_list_scan (QFILE_LIST_ID * list_id_p, QFILE_LIST_SCAN_ID * scan_id_p)
   scan_id_p->status = S_OPENED;
   scan_id_p->position = S_BEFORE;
   scan_id_p->keep_page_on_finish = 0;
+  scan_id_p->is_read_only = false;
   scan_id_p->curr_vpid.pageid = NULL_PAGEID;
   scan_id_p->curr_vpid.volid = NULL_VOLID;
   QFILE_CLEAR_LIST_ID (&scan_id_p->list_id);
