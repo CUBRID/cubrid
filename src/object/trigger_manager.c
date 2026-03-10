@@ -2082,6 +2082,7 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
   error = obj_get (Au_user, "triggers", &value);
   if (error != NO_ERROR)
     {
+      AU_ENABLE (save);
       return error;
     }
 

@@ -2826,6 +2826,7 @@ revoke_all_from_user (DB_OBJECT * user)
       auth_obj = (DB_OBJECT **) (REALLOC (auth_obj, sizeof (DB_OBJECT *) * (num_auth + 1)));
       if (auth_obj == NULL)
 	{
+	  AU_ENABLE (save);
 	  return ERR_MEM_ALLOC;
 	}
       auth_obj[num_auth] = obj;
