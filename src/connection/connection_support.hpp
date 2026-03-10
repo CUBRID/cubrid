@@ -92,11 +92,6 @@ extern int css_send_data_with_padding (CSS_CONN_ENTRY *conn, unsigned short rid,
 #if defined (SERVER_MODE)
 extern int css_send_two_data (CSS_CONN_ENTRY *conn, unsigned short rid, const char *buffer1, int buffer1_size,
 			      const char *buffer2, int buffer2_size);
-extern int css_send_three_data (CSS_CONN_ENTRY *conn, unsigned short rid, const char *buffer1, int buffer1_size,
-				const char *buffer2, int buffer2_size, const char *buffer3, int buffer3_size);
-extern int css_send_four_data (CSS_CONN_ENTRY *conn, unsigned short rid, const char *buffer1, int buffer1_size,
-			       const char *buffer2, int buffer2_size, const char *buffer3, int buffer3_size,
-			       const char *buffer4, int buffer4_size);
 #endif /* SERVER_MODE */
 extern int css_send_error (CSS_CONN_ENTRY *conn, unsigned short rid, const char *buffer, int buffer_size);
 extern int css_send_error_with_padding (CSS_CONN_ENTRY *conn, unsigned short rid, const char *buffer, int buffer_size);

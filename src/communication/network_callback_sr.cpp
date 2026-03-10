@@ -53,8 +53,8 @@ int xs_callback_send (cubthread::entry *thread_p, const cubmem::extensible_block
 
   /* send */
   unsigned int rid = css_get_comm_request_id (thread_p);
-  return css_send_reply_and_data_to_client_old (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-	 (char * )mem.get_read_ptr(), (int) mem.get_size ());
+  return css_send_reply_and_data_to_client_direct (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+	 (char *) mem.get_read_ptr (), (int) mem.get_size ());
 }
 
 int xs_callback_receive (cubthread::entry *thread_p, const xs_callback_func &func)
