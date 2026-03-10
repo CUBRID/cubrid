@@ -1473,7 +1473,6 @@ connection_support::css_send_request_with_data_buffer_with_padding (CSS_CONN_ENT
  *   arg_buffer: argument data
  *   arg_buffer_size : argument data size
  */
-
 int
 #if defined (SERVER_MODE)
 css_send_request (CSS_CONN_ENTRY *conn, int command, unsigned short *request_id, const char *arg_buffer,
