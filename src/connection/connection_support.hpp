@@ -172,6 +172,7 @@ css_net_send_general (CSS_CONN_ENTRY *conn, int timeout, Args &&...args)
   /* timeout in milli-second in css_send_io_vector() */
   return css_send_io_vector (conn, iov, total_size, iov_size, timeout);
 }
+
 class connection_support:public connection_list_cl
 {
   private:
