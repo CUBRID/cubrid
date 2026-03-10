@@ -46,6 +46,13 @@ jobs:
             echo "RUN_SHELL_TEST: $RUN_SHELL_TEST"
             echo "RUN_ALL_TEST: $RUN_ALL_TEST"
             echo "BASELINE: $BASELINE"
+
+            if [[ "$CIRCLE_BRANCH" == pull/* ]]; then
+              TC_BRANCH="tc/pr-${CIRCLE_BRANCH//[^0-9]/}"
+            else
+              TC_BRANCH="develop"
+            fi
+            echo "TC_BRANCH: $TC_BRANCH"
                         
             TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git develop | cut -f1)
             echo "sha value from tc repository.(only from develop branch)"
@@ -81,6 +88,8 @@ jobs:
                 steps:
                   - run:
                       name: Test
+                      environment:
+                        BRANCH_TESTCASES: "${TC_BRANCH}"
                       shell: /bin/bash
                       no_output_timeout: 45m
                       command: |
