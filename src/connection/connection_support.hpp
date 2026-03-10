@@ -108,7 +108,6 @@ extern int css_send_request_with_socket (SOCKET &socket, int command, unsigned s
 
 #if !defined (SERVER_MODE)
 
-
 template <typename... Args>
 int
 css_net_send_general (CSS_CONN_ENTRY *conn, int timeout, Args &&...args)
