@@ -94,7 +94,7 @@ namespace parallel_heap_scan
 	scan_info &scan_info = m_scan_infos[xptr->header.id];
 	specp = xptr->curr_spec? xptr->curr_spec : xptr->spec_list;
 	specp->s_id.qualified_block = scan_info.qualified_block;
-	specp->s_id.status = scan_info.status;
+	specp->s_id.status = S_ENDED;
 	specp->s_id.position = S_AFTER;
       }
   }

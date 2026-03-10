@@ -595,6 +595,11 @@ namespace parallel_heap_scan
   template <RESULT_TYPE result_type>
   manager<result_type>::~manager()
   {
+    if (m_worker_manager != nullptr)
+      {
+	m_worker_manager->release_workers ();
+	m_worker_manager = nullptr;
+      }
     if (m_input_handler != nullptr)
       {
 	m_input_handler->~input_handler();
@@ -606,11 +611,6 @@ namespace parallel_heap_scan
 	m_result_handler->~result_handler();
 	db_private_free (m_thread_p, m_result_handler);
 	m_result_handler = nullptr;
-      }
-    if (m_worker_manager != nullptr)
-      {
-	m_worker_manager->release_workers ();
-	m_worker_manager = nullptr;
       }
     if (m_vd != nullptr)
       {
