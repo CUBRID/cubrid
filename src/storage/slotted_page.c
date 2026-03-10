@@ -4557,23 +4557,23 @@ spage_is_unknown_slot (PGSLOTID slot_id, SPAGE_HEADER * page_header_p, SPAGE_SLO
   const int offset = slot_p->offset_to_record;
   const int num_slots = page_header_p->num_slots;
 
-  if (unlikely (slot_id < 0 || slot_id >= num_slots || offset == SPAGE_EMPTY_OFFSET))
+  if (unlikely (slot_id < 0 || slot_id >= num_slots))
     {
 #if defined (NDEBUG)
-      assert_release (offset != SPAGE_EMPTY_OFFSET);
+      assert_release (slot_id >= 0 && slot_id < num_slots);
 #else
-      er_log_debug (ARG_FILE_LINE, "Invalid ID or Empty slot : id=%d(num_slots=%d), offset=%d\n", slot_id, num_slots,
-		    offset);
+      er_log_debug (ARG_FILE_LINE, "Invalid ID or Empty slot : id=%d(num_slots=%d)\n", slot_id, num_slots);
 #endif
       return true;
     }
 
-  if (unlikely (offset < (int) sizeof (SPAGE_HEADER)))
+  if (unlikely (offset == SPAGE_EMPTY_OFFSET || offset < (int) sizeof (SPAGE_HEADER)))
     {
 #if defined (NDEBUG)
-      assert_release (offset >= (int) sizeof (SPAGE_HEADER));
+      assert_release (offset != SPAGE_EMPTY_OFFSET && offset >= (int) sizeof (SPAGE_HEADER));
 #else
-      er_log_debug (ARG_FILE_LINE, "Offset violates header boundary : offset=%d\n", offset);
+      er_log_debug (ARG_FILE_LINE, "Offset violates header boundary : offset=%d, size of SPAGE_HEADER=%d\n", offset,
+		    sizeof (SPAGE_HEADER));
 #endif
       return true;
     }
@@ -4586,8 +4586,9 @@ spage_is_unknown_slot (PGSLOTID slot_id, SPAGE_HEADER * page_header_p, SPAGE_SLO
       assert_release (total_slots_size <= (unsigned int) SPAGE_DB_PAGESIZE
 		      || offset <= (int) (SPAGE_DB_PAGESIZE - total_slots_size));
 #else
-      er_log_debug (ARG_FILE_LINE, "Offset violates slot array boundary : offset=%d, total_slots_size=%d\n", offset,
-		    total_slots_size);
+      er_log_debug (ARG_FILE_LINE,
+		    "Offset violates slot array boundary : offset=%d, total_slots_size=%d, size of SPAGE_DB_PAGESIZE=%d\n",
+		    offset, total_slots_size, SPAGE_DB_PAGESIZE);
 #endif
       return true;
     }
