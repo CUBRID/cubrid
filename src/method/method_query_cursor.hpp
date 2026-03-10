@@ -46,26 +46,16 @@ namespace cubmethod
       ~query_cursor();
 
       int open ();
-      void close ();
-
-      int reset (QMGR_QUERY_ENTRY *query_entry_p);
 
       void change_owner (cubthread::entry *thread_p);
 
-      int first ();
-      int last ();
-
-      SCAN_CODE cursor (int peek);
-
       SCAN_CODE next_row ();
 
-      void clear ();
 
       QUERY_ID get_query_id ();
       int get_current_index ();
       std::vector<DB_VALUE> get_current_tuple ();
       OID *get_current_oid ();
-      int get_tuple_value (int index, DB_VALUE &result);
       bool get_is_oid_included ();
       bool get_is_opened ();
 
@@ -73,6 +63,11 @@ namespace cubmethod
       void set_fetch_count (int cnt);
 
     private:
+      int reset (QMGR_QUERY_ENTRY *query_entry_p);
+
+      void close ();
+      void clear ();
+
       cubthread::entry *m_thread; /* which thread owns this cursor */
 
       QUERY_ID m_query_id;		/* Query id for this cursor */

@@ -163,8 +163,6 @@ namespace cubmethod
     return m_current_tuple;
   }
 
-  void clear ();
-
   int
   query_cursor::get_current_index ()
   {

@@ -393,11 +393,6 @@ namespace cubmethod
 	query_cursor *cursor = search->second;
 	if (cursor)
 	  {
-	    cursor->close ();
-	    if (query_id > 0)
-	      {
-		(void) xqmgr_end_query (thread_p, query_id);
-	      }
 	    delete cursor;
 	  }
 
