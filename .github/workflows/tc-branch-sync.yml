@@ -45,10 +45,11 @@ jobs:
 
           # Detect revert by "Revert" in title
           if echo "${PR_TITLE}" | grep -qi 'Revert'; then
-            # Extract original PR number from body, fallback to title
+            # Extract original PR number from body, fallback to commit hash
             ORIGINAL_PR=$(echo "${PR_BODY}" | grep -oiE 'Reverts .*#[0-9]+' | grep -oE '[0-9]+' | head -1 || echo "")
             if [ -z "${ORIGINAL_PR}" ]; then
-              ORIGINAL_PR=$(echo "${PR_TITLE}" | grep -oE '\(#[0-9]+\)' | grep -oE '[0-9]+' || echo "")
+              SHA=$(git log -1 --format=%B | grep -oP 'This reverts commit \K[a-f0-9]+' | head -n 1)
+              [ -n "$SHA" ] && ORIGINAL_PR=$(gh api "repos/${OWNER}/${TC_REPO}/commits/$SHA/pulls" --jq '.[0].number' 2>/dev/null)
             fi
             echo "is_revert=true" >> "${GITHUB_OUTPUT}"
             echo "original_pr_number=${ORIGINAL_PR}" >> "${GITHUB_OUTPUT}"
@@ -216,138 +217,88 @@ jobs:
         shell: bash
         run: echo "::add-mask::${APP_TOKEN}"
 
-      - name: Revert TC merge commit
-        env:
-          APP_TOKEN: ${{ steps.app-token.outputs.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          ORIGINAL_PR_NUMBER: ${{ needs.detect-pr-type.outputs.original_pr_number }}
-          PR_HEADER: ${{ needs.detect-pr-type.outputs.pr_header }}
-          TC_REPO: ${{ matrix.tc-repo }}
-          OWNER: ${{ env.OWNER }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          # Require original PR number
-          if [ -z "${ORIGINAL_PR_NUMBER}" ]; then
-            echo "::error::Missing original PR number (expected 'Reverts #N' in body)"
-            exit 1
-          fi
-
-          BRANCH_NAME="tc/pr-${PR_NUMBER}"
-          ORIGINAL_BRANCH="tc/pr-${ORIGINAL_PR_NUMBER}"
-
-          # Clone TC repo with history
-          git clone --filter=blob:none \
-            "https://x-access-token:${APP_TOKEN}@github.com/${OWNER}/${TC_REPO}.git" \
-            tc-repo
-          cd tc-repo
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin develop
-          git checkout -B "${BRANCH_NAME}" origin/develop
-
-          # Find merge commit for original PR -- has bug -- need to fix.
-          MERGE_COMMIT=$(git log --format="%H" --grep="${ORIGINAL_BRANCH}" origin/develop -1 || echo "")
-
-          if [ -n "${MERGE_COMMIT}" ]; then
-            echo "::notice::Found merge commit ${MERGE_COMMIT:0:12} for '${ORIGINAL_BRANCH}'"
-
-            # Try plain revert (squash), then -m 1 (merge)
-            REVERT_OK=false
-            if git revert --no-edit "${MERGE_COMMIT}" 2>/dev/null; then
-              REVERT_OK=true
-            else
-              git revert --abort 2>/dev/null || true
-              if git revert --no-edit -m 1 "${MERGE_COMMIT}" 2>/dev/null; then
-                REVERT_OK=true
-              else
-                git revert --abort 2>/dev/null || true
-              fi
-            fi
-
-            if [ "${REVERT_OK}" != "true" ]; then
-              echo "::error::Revert conflict detected for commit ${MERGE_COMMIT:0:12}. Manual resolution required."
-              exit 1
-            fi
-
-            if [ -n "${PR_HEADER}" ]; then
-              CURRENT_MSG=$(git log -1 --format="%s")
-              git commit --amend -m "${PR_HEADER} ${CURRENT_MSG}"
-            fi
-          else
-            echo "::notice::No TC merge commit found for '${ORIGINAL_BRANCH}' in ${TC_REPO}. Creating empty revert branch."
-          fi
-
-          # Ensure commit exists for PR creation
-          if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/develop)" ]; then
-            git commit --allow-empty -m "chore: No-op TC revert for engine PR #${PR_NUMBER} (reverts #${ORIGINAL_PR_NUMBER})"
-            echo "::notice::Added empty commit to '${BRANCH_NAME}' (no changes to revert)."
-          fi
-
-          #need to fix.
-          git push origin "${BRANCH_NAME}" --force
-
-          echo "revert_branch_pushed=true" >> "${GITHUB_OUTPUT}"
-          echo "revert_branch=${BRANCH_NAME}" >> "${GITHUB_OUTPUT}"
-          echo "::notice::Pushed revert branch '${BRANCH_NAME}' to ${TC_REPO}"
-        id: revert-commit
-
-      - name: Create open PR for revert
-        id: create-revert-pr
-        if: steps.revert-commit.outputs.revert_branch_pushed == 'true'
+      - name: Revert TC and Rename Branch via GitHub GraphQL & REST API
+        id: revert-tc-api
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           ORIGINAL_PR_NUMBER: ${{ needs.detect-pr-type.outputs.original_pr_number }}
           PR_HEADER: ${{ needs.detect-pr-type.outputs.pr_header }}
           TC_REPO: ${{ matrix.tc-repo }}
-          ENGINE_REPO: ${{ github.repository }}
-          REVERT_BRANCH: ${{ steps.revert-commit.outputs.revert_branch }}
           OWNER: ${{ env.OWNER }}
+          ENGINE_REPO: ${{ github.repository }}
         shell: bash
         run: |
           set -euo pipefail
-          
-          if [ -n "${PR_HEADER}" ]; then
-            PR_TITLE_TC="${PR_HEADER} Revert: TC branch for PR #${PR_NUMBER} (reverts #${ORIGINAL_PR_NUMBER})"
-          else
-            PR_TITLE_TC="Revert: TC branch for PR #${PR_NUMBER} (reverts #${ORIGINAL_PR_NUMBER})"
+
+          if [ -z "${ORIGINAL_PR_NUMBER}" ]; then
+            echo "::error::Missing original PR number"
+            exit 1
           fi
-          
-          # Reopen existing PR if closed
-          EXISTING_PR=$(gh pr list --repo "${OWNER}/${TC_REPO}" --head "${REVERT_BRANCH}" --state all --json number,state --jq '.[0]' || echo "")
-          if [ -n "${EXISTING_PR}" ]; then
-            PR_NUM=$(echo "${EXISTING_PR}" | jq -r '.number')
-            PR_STATE=$(echo "${EXISTING_PR}" | jq -r '.state')
-            if [ "${PR_STATE}" = "CLOSED" ]; then
-              echo "::notice::Reopening closed PR #${PR_NUM} for ${REVERT_BRANCH}"
-              gh pr reopen --repo "${OWNER}/${TC_REPO}" "${PR_NUM}"
-            else
-              echo "::notice::Open PR #${PR_NUM} already exists for ${REVERT_BRANCH}"
-            fi
-            PR_URL="${GITHUB_SERVER_URL}/${OWNER}/${TC_REPO}/pull/${PR_NUM}"
-            echo "tc_revert_pr_url=${PR_URL}" >> "${GITHUB_OUTPUT}"
-            echo "tc_revert_pr_number=${PR_NUM}" >> "${GITHUB_OUTPUT}"
+
+          # 1. Search merged original PR in TC repo and extract 'GraphQL Node ID'
+          TC_PR_DATA=$(gh pr list \
+            --repo "${OWNER}/${TC_REPO}" \
+            --search "${ENGINE_REPO}#${ORIGINAL_PR_NUMBER}" \
+            --state merged \
+            --json id \
+            --jq '.[0]' || echo "")
+
+          # If there are no changes in the TC, skip cleanly
+          if [ -z "${TC_PR_DATA}" ] || [ "${TC_PR_DATA}" == "null" ]; then
+            echo "::notice::No merged TC PR found for ${ENGINE_REPO}#${ORIGINAL_PR_NUMBER}. Skipping TC revert."
+            echo "revert_pr_created=false" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
+
+          PR_NODE_ID=$(echo "${TC_PR_DATA}" | jq -r '.id')
+          TARGET_BRANCH="tc/pr-${PR_NUMBER}"
+
+          # 2. Construct PR title and body
+          PR_TITLE="Revert: TC branch for PR ${ENGINE_REPO}#${PR_NUMBER} (reverts ${ENGINE_REPO}#${ORIGINAL_PR_NUMBER})"
+          [ -n "${PR_HEADER}" ] && PR_TITLE="${PR_HEADER} ${PR_TITLE}"
           
-          # Create open PR to develop
-          PR_URL=$(gh pr create \
-            --repo "${OWNER}/${TC_REPO}" \
-            --head "${REVERT_BRANCH}" \
-            --base develop \
-            --title "${PR_TITLE_TC}" \
-            --body "This PR reverts TC changes from PR #${ORIGINAL_PR_NUMBER}.
+          PR_BODY="This PR reverts TC changes from ${ENGINE_REPO}#${ORIGINAL_PR_NUMBER}.
 
           Related Engine Revert PR: ${ENGINE_REPO}#${PR_NUMBER}
-          TC Branch: ${REVERT_BRANCH}
-
-          **Please merge this PR FIRST, then merge the engine revert PR.**")
+          TC Branch: \`${TARGET_BRANCH}\`
           
-          echo "::notice::Created open PR: ${PR_URL}"
-          echo "tc_revert_pr_url=${PR_URL}" >> "${GITHUB_OUTPUT}"
-          echo "tc_revert_pr_number=$(echo ${PR_URL} | grep -oE '[0-9]+$')" >> "${GITHUB_OUTPUT}"
+          **Please merge this PR FIRST, then merge the engine revert PR.**"
+
+          # 3. Request to create revert PR via GitHub GraphQL API (automatically assigned branch name)
+          echo "::notice::Calling GitHub GraphQL API to revert PR..."
+          REVERT_RESULT=$(gh api graphql -F prId="${PR_NODE_ID}" -F title="${PR_TITLE}" -F body="${PR_BODY}" -f query='
+            mutation($prId: ID!, $title: String!, $body: String!) {
+              revertPullRequest(input: {pullRequestId: $prId, title: $title, body: $body}) {
+                revertPullRequest {
+                  number
+                  url
+                  headRefName
+                }
+              }
+            }
+          ')
+
+          NEW_PR_URL=$(echo "${REVERT_RESULT}" | jq -r '.data.revertPullRequest.revertPullRequest.url')
+          AUTO_BRANCH=$(echo "${REVERT_RESULT}" | jq -r '.data.revertPullRequest.revertPullRequest.headRefName')
+
+          echo "::notice::API created revert branch: ${AUTO_BRANCH}"
+
+          # 4. Use REST API to rename the automatically created branch name to tc/pr-N form
+          # (When this API is called, the connected PR is automatically updated to look at the new branch name)
+          echo "::notice::Renaming branch ${AUTO_BRANCH} to ${TARGET_BRANCH}..."
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${OWNER}/${TC_REPO}/branches/${AUTO_BRANCH}/rename" \
+            -f new_name="${TARGET_BRANCH}"
+
+          echo "::notice::✅ Branch renamed successfully and PR updated."
+          
+          # Output for next job (comment-on-engine-pr-revert)
+          echo "revert_pr_created=true" >> "${GITHUB_OUTPUT}"
+          echo "tc_revert_pr_url=${NEW_PR_URL}" >> "${GITHUB_OUTPUT}"
+          echo "tc_revert_branch=${TARGET_BRANCH}" >> "${GITHUB_OUTPUT}"
 
       - name: Comment on failure
         if: failure()
@@ -364,16 +315,19 @@ jobs:
             --repo "${ENGINE_REPO}" \
             --body "⚠️ **TC Revert Failed** for \`${TC_REPO}\`
 
-          Could not automatically revert TC changes from PR #${ORIGINAL_PR_NUMBER}.
+          Could not automatically revert TC changes from PR ${ENGINE_REPO}#${ORIGINAL_PR_NUMBER}.
           This may be due to a merge conflict requiring manual resolution.
 
           **Manual steps:**
-          1. Clone the TC repo and create \`tc/pr-${PR_NUMBER}\` from develop
-          2. Find the merge commit for \`tc/pr-${ORIGINAL_PR_NUMBER}\` and revert it
-          3. Push the branch
-
+          1. fork the ${TC_REPO} repo and clone it to your local machine
+          2. find the merge commit for \`tc/pr-${ORIGINAL_PR_NUMBER}\` in ${TC_REPO} repo
+          3. checkout to develop branch
+          4. revert the merge commit using \`git revert --no-edit <merge-commit-hash>\`
+          5. push the branch using \`git push origin <revert-branch-name>\`
+          6. create a PR to develop 
+          
           See [workflow run](${RUN_URL}) for details."
-
+          
   # Comment TC info on engine PR (normal PR)
   comment-on-engine-pr:
     name: Comment on Engine PR
@@ -409,7 +363,8 @@ jobs:
 
           **Next Steps:**
           1. Wait for CircleCI tests to complete
-          2. When ready to merge this PR, the TC branch will be processed automatically
+          2. If CircleCI tests failed, please check the test results and fix the issues.
+          3. When ready to merge this PR, please merge the TC PR first, then merge this PR.
           EOF
           )
 
@@ -436,26 +391,63 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BRANCH_NAME="tc/pr-${PR_NUMBER}"
+          
+          PUB_REPO="cubrid-testcases"
+          PRIV_REPO="cubrid-testcases-private-ex"
 
+          echo "::notice::Looking for created TC Revert PR information..."
+
+          # 1. Public Repo (cubrid-testcases) information
+          PUB_PR=$(gh pr list \
+            --repo "${OWNER}/${PUB_REPO}" \
+            --search "${ENGINE_REPO}#${PR_NUMBER} in:body" \
+            --state open \
+            --json url,headRefName \
+            --jq '.[0]' || echo "")
+          PUB_BRANCH=$(echo "$PUB_PR" | jq -r '.headRefName // empty')
+          PUB_URL=$(echo "$PUB_PR" | jq -r '.url // empty')
+
+          # 2. Private Repo (cubrid-testcases-private-ex) information
+          PRIV_PR=$(gh pr list \
+            --repo "${OWNER}/${PRIV_REPO}" \
+            --search "${ENGINE_REPO}#${PR_NUMBER} in:body" \
+            --state open \
+            --json url,headRefName \
+            --jq '.[0]' || echo "")
+          PRIV_BRANCH=$(echo "$PRIV_PR" | jq -r '.headRefName // empty')
+          PRIV_URL=$(echo "$PRIV_PR" | jq -r '.url // empty')
+
+          # 3. Dynamically create markdown text
+          if [ -n "$PUB_BRANCH" ]; then
+            PUB_TEXT="- [${PUB_REPO} Revert PR](${PUB_URL}) (Branch: \`${PUB_BRANCH}\`)"
+          else
+            PUB_TEXT="- **${PUB_REPO}**: No TC to revert (Skipped)"
+          fi
+
+          if [ -n "$PRIV_BRANCH" ]; then
+            PRIV_TEXT="- [${PRIV_REPO} Revert PR](${PRIV_URL}) (Branch: \`${PRIV_BRANCH}\`)"
+          else
+            PRIV_TEXT="- **${PRIV_REPO}**: No TC to revert (Skipped)"
+          fi
+
+          # 4. Construct final comment body (using cat <<EOF)
           COMMENT_BODY=$(cat <<EOF
           ## 🔄 TC Revert Environment Ready
 
-          **TC Branch:** \`${BRANCH_NAME}\`
-
-          **TC Repositories:**
-          - [cubrid-testcases](https://github.com/${OWNER}/cubrid-testcases/tree/${BRANCH_NAME})
-          - [cubrid-testcases-private-ex](https://github.com/${OWNER}/cubrid-testcases-private-ex/tree/${BRANCH_NAME})
-
           **CircleCI Testing:**
-          - CircleCI will automatically test using TC branch \`${BRANCH_NAME}\`
+          - CircleCI will automatically test using the branches below.
+
+          **TC Repositories & Branches:**
+          ${PUB_TEXT}
+          ${PRIV_TEXT}
 
           **Next Steps:**
           1. Wait for CircleCI tests to complete
-          2. When ready to merge this revert PR, the TC branch will be processed automatically
+          2. When ready to merge this revert PR, the TC branches will be processed automatically
           EOF
           )
 
+          # 5. Comment on engine PR
           gh pr comment "${PR_NUMBER}" \
             --repo "${ENGINE_REPO}" \
             --body "${COMMENT_BODY}"
