@@ -416,7 +416,7 @@ jobs:
           ${TC_TEXT_BLOCK}
           **Next Steps:**
           1. Wait for CircleCI tests to complete
-          2. When ready to merge this revert PR, the TC branches will be processed automatically
+          2. When ready to merge this revert PR, please merge the TC revert PR first, then merge this revert PR.
           EOF
             )
           else
