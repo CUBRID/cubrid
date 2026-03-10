@@ -104,8 +104,6 @@ extern int css_send_request_with_socket (SOCKET &socket, int command, unsigned s
     const char *arg_buffer, int arg_buffer_size);
 #endif
 
-
-
 #if !defined (SERVER_MODE)
 
 template <typename... Args>
