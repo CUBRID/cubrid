@@ -151,8 +151,6 @@ static char **css_Server_argv;
 static int css_get_next_client_id (void);
 static CSS_CONN_ENTRY *css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid, const char *host_name,
 					   int connect_type, const char *server_name, int server_name_length, int port);
-
-static int css_abort_request (CSS_CONN_ENTRY * conn, unsigned short rid);
 static void css_dealloc_conn (CSS_CONN_ENTRY * conn);
 
 static unsigned int css_make_eid (unsigned short entry_id, unsigned short rid);
@@ -645,17 +643,6 @@ css_insert_into_active_conn_list (CSS_CONN_ENTRY * conn)
   assert (css_Num_active_conn <= css_Num_max_conn);
 
   END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
-}
-
-/*
- * css_dealloc_conn_rmutex() - free rmutex of connection entry
- *   return: void
- *   conn(in): connection entry
- */
-void
-css_dealloc_conn_rmutex (CSS_CONN_ENTRY * conn)
-{
-  (void) rmutex_finalize (&conn->rmutex);
 }
 
 /*
@@ -1431,77 +1418,6 @@ css_get_request_id (CSS_CONN_ENTRY * conn)
 }
 
 /*
- * css_abort_request() - helper routine to actually send the abort request.
- *   return:  0 if success, or error code
- *   conn(in): connection entry
- *   rid(in): request id
- */
-static int
-css_abort_request (CSS_CONN_ENTRY * conn, unsigned short rid)
-{
-  NET_HEADER header = DEFAULT_HEADER_DATA;
-  unsigned short flags = 0;
-
-  header.type = htonl (ABORT_TYPE);
-  header.request_id = htonl (rid);
-  header.transaction_id = htonl (conn->get_tran_index ());
-
-  /**
-   * FIXME!!
-   * make NET_HEADER_FLAG_INVALIDATE_SNAPSHOT be enabled always due to CBRD-24157
-   *
-   * flags was mis-readed at css_read_header() and fixed at CBRD-24118.
-   * But The side effects described in CBRD-24157 occurred.
-   */
-  if (true)			// if (conn->invalidate_snapshot)
-    {
-      flags |= NET_HEADER_FLAG_INVALIDATE_SNAPSHOT;
-    }
-
-  if (conn->in_method)
-    {
-      flags |= NET_HEADER_FLAG_METHOD_MODE;
-    }
-
-  header.flags = htons (flags);
-  header.db_error = htonl (conn->db_error);
-
-  /* timeout in milli-second in css_net_send() */
-  return css_net_send (conn, (char *) &header, sizeof (NET_HEADER), -1);
-}
-
-/*
- * css_send_abort_request() - abort an outstanding request.
- *   return:  0 if success, or error code
- *   conn(in): connection entry
- *   request_id(in): request id
- *
- * Note: Once this is issued, any queued data buffers for this command will be
- *       released.
- */
-int
-css_send_abort_request (CSS_CONN_ENTRY * conn, unsigned short request_id)
-{
-  int rc, r;
-
-  if (!conn || conn->status != CONN_OPEN)
-    {
-      return CONNECTION_CLOSED;
-    }
-
-  r = rmutex_lock (NULL, &conn->rmutex);
-  assert (r == NO_ERROR);
-
-  css_remove_unexpected_packets (conn, request_id);
-  rc = css_abort_request (conn, request_id);
-
-  r = rmutex_unlock (NULL, &conn->rmutex);
-  assert (r == NO_ERROR);
-
-  return rc;
-}
-
-/*
  * css_read_header() - helper routine that will read a header from the socket.
  *   return: 0 if success, or error code
  *   conn(in): connection entry
@@ -1555,41 +1471,6 @@ int
 css_receive_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, int *buffer_size)
 {
   return css_return_queued_request (conn, rid, request, buffer_size);
-}
-
-/*
- * css_read_and_queue() - Attempt to read any data packet from the connection.
- *   return: 0 if success, or error code
- *   conn(in): connection entry
- *   type(out): request type
- */
-int
-css_read_and_queue (CSS_CONN_ENTRY * conn, int *type)
-{
-  int rc;
-  NET_HEADER header = DEFAULT_HEADER_DATA;
-
-  if (!conn || conn->status != CONN_OPEN)
-    {
-      return ERROR_ON_READ;
-    }
-
-  rc = css_read_header (conn, &header);
-
-  if (conn->stop_talk == true)
-    {
-      return CONNECTION_CLOSED;
-    }
-
-  if (rc != NO_ERRORS)
-    {
-      return rc;
-    }
-
-  *type = ntohl (header.type);
-  rc = css_queue_packet (conn, (int) ntohl (header.type), (unsigned short) ntohl (header.request_id), &header,
-			 sizeof (NET_HEADER));
-  return rc;
 }
 
 /*
