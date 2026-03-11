@@ -2610,14 +2610,70 @@ qmgr_free_old_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, QMGR_TEMP_FILE * t
 #endif
 }
 
+PAGE_PTR
+qmgr_get_old_page_read_only (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfile_vfid_p)
+{
+  int tran_index;
+  PAGE_PTR page_p;
+#if defined(SERVER_MODE)
+  bool dummy;
+#endif /* SERVER_MODE */
+
+  if (vpid_p->volid == NULL_VOLID && tfile_vfid_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_TEMP_FILE, 1, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+      return NULL;
+    }
+
+  if (vpid_p->volid == NULL_VOLID)
+    {
+      /* return memory buffer */
+      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+      if (vpid_p->pageid >= 0 && vpid_p->pageid <= tfile_vfid_p->membuf_last)
+	{
+	  page_p = tfile_vfid_p->membuf[vpid_p->pageid];
+
+	  /* interrupt check */
+#if defined (SERVER_MODE)
+	  if (logtb_get_check_interrupt (thread_p) == true
+	      && logtb_is_interrupted_tran (thread_p, true, &dummy, tran_index) == true)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	      page_p = NULL;
+	    }
+#endif
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_TEMP_FILE, 1, tran_index);
+	  page_p = NULL;
+	}
+    }
+  else
+    {
+      /* return temp file page */
+      page_p = pgbuf_fix (thread_p, vpid_p, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+
+      if (page_p != NULL)
+	{
+#if !defined (NDEBUG)
+	  (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_QRESULT);
+#endif /* !NDEBUG */
+	}
+    }
+
+  return page_p;
+}
+
 /*
- * qmgr_get_old_page_read_only () -
+ * qmgr_get_old_page_simple_fix () -
  *   return:
  *   vpidp(in)  :
  *   tfile_vfidp(in)    :
  */
 PAGE_PTR
-qmgr_get_old_page_read_only (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfile_vfid_p)
+qmgr_get_old_page_simple_fix (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfile_vfid_p)
 {
   int tran_index;
   PAGE_PTR page_p;
@@ -2673,13 +2729,13 @@ qmgr_get_old_page_read_only (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_F
 }
 
 /*
- * qmgr_free_old_page_read_only () -
+ * qmgr_free_old_page_simple_fix () -
  *   return:
  *   page_ptr(in)       :
  *   tfile_vfidp(in)    :
  */
 void
-qmgr_free_old_page_read_only (THREAD_ENTRY * thread_p, PAGE_PTR page_p, QMGR_TEMP_FILE * tfile_vfid_p)
+qmgr_free_old_page_simple_fix (THREAD_ENTRY * thread_p, PAGE_PTR page_p, QMGR_TEMP_FILE * tfile_vfid_p)
 {
   QMGR_PAGE_TYPE page_type;
 
@@ -3349,21 +3405,6 @@ qmgr_is_query_interrupted (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
-
-  pthread_mutex_lock (&tran_entry_p->mutex);
-  query_p = qmgr_find_query_entry (tran_entry_p->query_entry_list_p, query_id);
-  pthread_mutex_unlock (&tran_entry_p->mutex);
-
-  if (query_p == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, query_id);
-      if (tran_entry_p->trans_stat != QMGR_TRAN_TERMINATED)
-	{
-	  // QMGR_TRAN_TERMINATED means a transaction has been terminated in PL/CSQL body.
-	  // And this routine is called in the middle of processing the root query.
-	  return true;
-	}
-    }
 
   return (logtb_get_check_interrupt (thread_p) && logtb_is_interrupted_tran (thread_p, true, &dummy, tran_index));
 }
