@@ -471,17 +471,20 @@ namespace cubmethod
 	  if (stmt_type == CUBRID_STMT_SELECT)
 	    {
 	      std::uint64_t qid = current_result_info.query_id;
-              if (current_result_info.tuple_count > 0) {
-                  bool is_oid_included = current_result_info.include_oid;
-                  (void) m_group->create_cursor (qid, is_oid_included);
-              } else {
-                  QMGR_QUERY_ENTRY *query_entry = qmgr_get_query_entry (&thread_ref, qid, NULL_TRAN_INDEX);
-                  if (query_entry)
-                    {
-                      qfile_close_list (&thread_ref, query_entry->list_id);
-                    }
-                  xqmgr_end_query (&thread_ref, qid);
-              }
+	      if (current_result_info.tuple_count > 0)
+		{
+		  bool is_oid_included = current_result_info.include_oid;
+		  (void) m_group->create_cursor (qid, is_oid_included);
+		}
+	      else
+		{
+		  QMGR_QUERY_ENTRY *query_entry = qmgr_get_query_entry (&thread_ref, qid, NULL_TRAN_INDEX);
+		  if (query_entry)
+		    {
+		      qfile_close_list (&thread_ref, query_entry->list_id);
+		    }
+		  xqmgr_end_query (&thread_ref, qid);
+		}
 	    }
 	}
 

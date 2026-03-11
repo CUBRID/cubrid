@@ -38,7 +38,7 @@ namespace cubmethod
 
   query_cursor::~query_cursor ()
   {
-      close();
+    close();
   }
 
   int
@@ -73,8 +73,8 @@ namespace cubmethod
       {
 	clear ();
 	qfile_close_scan (m_thread, &m_scan_id);
-        qfile_close_list (m_thread, m_list_id);
-        xqmgr_end_query (m_thread, m_query_id);
+	qfile_close_list (m_thread, m_list_id);
+	xqmgr_end_query (m_thread, m_query_id);
 	m_is_opened = false;
       }
   }
@@ -110,14 +110,14 @@ namespace cubmethod
 		TP_DOMAIN *domain = m_list_id->type_list.domp[i];
 		if (domain == NULL || domain->type == NULL)
 		  {
-                    scan_code = S_ERROR;
+		    scan_code = S_ERROR;
 		    break;
 		  }
 
 		PR_TYPE *pr_type = domain->type;
 		if (pr_type == NULL)
 		  {
-                    scan_code = S_ERROR;
+		    scan_code = S_ERROR;
 		    break;
 		  }
 
@@ -125,7 +125,7 @@ namespace cubmethod
 
 		if (pr_type->data_readval (&buf, value, domain, -1, true, NULL, 0) != NO_ERROR)
 		  {
-                    scan_code = S_ERROR;
+		    scan_code = S_ERROR;
 		    break;
 		  }
 	      }
@@ -133,9 +133,9 @@ namespace cubmethod
       }
 
     if (scan_code == S_END || scan_code == S_ERROR)
-    {
-      close ();
-    }
+      {
+	close ();
+      }
 
     return scan_code;
   }
