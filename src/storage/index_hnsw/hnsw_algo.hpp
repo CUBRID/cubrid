@@ -478,6 +478,7 @@ namespace cubhnsw
 
     visited_set_t<Traits> &visits = context.m_visits;
     cubthread::entry *thread_p = context.m_thread_p;
+    visits.clear ();
 
     slot_id_t closest_slot = start_slot;
     distance_t closest_dist = compute_distance_from_query_ (context, query, closest_slot);
