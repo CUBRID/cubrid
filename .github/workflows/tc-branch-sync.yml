@@ -125,7 +125,6 @@ jobs:
             git commit --allow-empty -m "chore: Initialize TC branch for PR #${PR_NUMBER}"
             git push origin "${BRANCH_NAME}" --force-with-lease
           fi
-          fi
 
       - name: Create draft PR in TC repo
         id: create-draft-pr
