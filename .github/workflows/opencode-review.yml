@@ -99,28 +99,29 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Check if the JSON file exists
           if [ ! -f review_results.json ]; then
             echo "No review_results.json found."
             exit 0
           fi
           
-          echo "Found review_results.json. Parsing and posting comments..."
+          echo "Processing review_results.json..."
           
-          # Get the latest commit SHA of the current PR
           PR_NUMBER=${{ github.event.issue.number }}
           COMMIT=$(gh pr view $PR_NUMBER --json commits --jq '.commits[-1].oid')
           
-          # Iterate through the JSON array using jq
-          # Use '-r' with read to prevent stripping backslashes
-          jq -c '.[]' review_results.json | while read -r i; do
-            FILE=$(echo "$i" | jq -r '.file')
-            LINE=$(echo "$i" | jq -r '.line')
-            ISSUE=$(echo "$i" | jq -r '.issue')
-            SUGGESTION=$(echo "$i" | jq -r '.suggestion')
-          
-            # Create a comment body file
-            cat << EOF > pr_comment.txt
+          # Process each entry - .[]? ignores errors, 2>/dev/null suppresses error output
+          jq -c '.[]?' review_results.json 2>/dev/null | while IFS= read -r entry; do
+            [ -z "$entry" ] && continue
+            
+            FILE=$(echo "$entry" | jq -r '.file // empty')
+            LINE=$(echo "$entry" | jq -r '.line // empty')
+            ISSUE=$(echo "$entry" | jq -r '.issue // empty')
+            SUGGESTION=$(echo "$entry" | jq -r '.suggestion // empty')
+            
+            [ -z "$FILE" ] || [ -z "$LINE" ] || [ -z "$ISSUE" ] && continue
+            
+            # Create and post comment
+            cat > pr_comment.txt << EOF
           🚨 **Issue**: $ISSUE
           
           💡 **Solution**:
@@ -129,11 +130,12 @@ jobs:
           \`\`\`
           EOF
           
-            # Post inline comment via GitHub API
             gh api --method POST /repos/${{ github.repository }}/pulls/$PR_NUMBER/comments \
               -F body=@pr_comment.txt \
               -f commit_id=$COMMIT \
               -f path="$FILE" \
               -F line=$LINE \
-              -f side="RIGHT" || echo "Failed to post comment on $FILE:$LINE"
+              -f side="RIGHT" 2>/dev/null || echo "⚠️ Failed: $FILE:$LINE"
           done
+          
+          echo "✅ Done"
