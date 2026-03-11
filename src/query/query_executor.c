@@ -94,15 +94,6 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-// XASL_STATE
-typedef struct xasl_state XASL_STATE;
-struct xasl_state
-{
-  VAL_DESCR vd;			/* Value Descriptor */
-  QUERY_ID query_id;		/* Query associated with XASL */
-  int qp_xasl_line;		/* Error line */
-};
-
 #define GOTO_EXIT_ON_ERROR \
   do \
     { \
@@ -443,6 +434,7 @@ static int qexec_clear_analytic_function_list (THREAD_ENTRY * thread_p, XASL_NOD
 					       bool is_final);
 static int qexec_clear_agg_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, AGGREGATE_TYPE * list, bool is_final);
 static void qexec_clear_head_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
+static void qexec_clear_head_lists_with_truncate (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static void qexec_clear_scan_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static void qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static int qexec_clear_update_assignment (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, UPDATE_ASSIGNMENT * assignment,
@@ -2000,6 +1992,12 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 				       for_parallel_aptr);
 	    }
 
+	  if (p->s_id.s.isid.indx_cov.list_id != NULL)
+	    {
+	      qfile_close_list (thread_p, p->s_id.s.isid.indx_cov.list_id);
+	      qfile_destroy_list (thread_p, p->s_id.s.isid.indx_cov.list_id);
+	    }
+
 	  isidp = &p->s_id.s.isid;
 	  if (isidp->caches_inited)
 	    {
@@ -2389,110 +2387,6 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
       sq_cache_destroy (thread_p, xasl->sq_cache);
     }
 
-  if (is_final)
-    {
-      /* clear the db_values in the tree */
-      if (xasl->outptr_list)
-	{
-	  pg_cnt += qexec_clear_regu_list (thread_p, xasl, xasl->outptr_list->valptrp, is_final, false);
-	}
-      pg_cnt += qexec_clear_access_spec_list (thread_p, xasl, xasl->spec_list, is_final, false, false);
-      pg_cnt += qexec_clear_access_spec_list (thread_p, xasl, xasl->merge_spec, is_final, false, false);
-      if (xasl->val_list)
-	{
-	  qexec_clear_db_val_list (xasl->val_list->valp);
-	}
-      if (xasl->merge_val_list)
-	{
-	  qexec_clear_db_val_list (xasl->merge_val_list->valp);
-	}
-      pg_cnt += qexec_clear_pred (thread_p, xasl, xasl->during_join_pred, is_final, false);
-      pg_cnt += qexec_clear_pred (thread_p, xasl, xasl->after_join_pred, is_final, false);
-      pg_cnt += qexec_clear_pred (thread_p, xasl, xasl->if_pred, is_final, false);
-      if (xasl->instnum_val)
-	{
-	  pr_clear_value (xasl->instnum_val);
-	}
-
-      pg_cnt += qexec_clear_pred (thread_p, xasl, xasl->instnum_pred, is_final, false);
-      if (xasl->ordbynum_val)
-	{
-	  pr_clear_value (xasl->ordbynum_val);
-	}
-
-      if (xasl->after_iscan_list)
-	{
-	  qexec_clear_sort_list (xasl, xasl->after_iscan_list, is_final);
-	}
-
-      if (xasl->orderby_list)
-	{
-	  qexec_clear_sort_list (xasl, xasl->orderby_list, is_final);
-	}
-      pg_cnt += qexec_clear_pred (thread_p, xasl, xasl->ordbynum_pred, is_final, false);
-
-      if (xasl->orderby_limit)
-	{
-	  pg_cnt += qexec_clear_regu_var (thread_p, xasl, xasl->orderby_limit, is_final, false);
-	}
-
-      if (xasl->limit_offset)
-	{
-	  pg_cnt += qexec_clear_regu_var (thread_p, xasl, xasl->limit_offset, is_final, false);
-	}
-
-      if (xasl->limit_offset)
-	{
-	  pg_cnt += qexec_clear_regu_var (thread_p, xasl, xasl->limit_offset, is_final, false);
-	}
-
-      if (xasl->limit_row_count)
-	{
-	  pg_cnt += qexec_clear_regu_var (thread_p, xasl, xasl->limit_row_count, is_final, false);
-	}
-
-      if (xasl->level_val)
-	{
-	  pr_clear_value (xasl->level_val);
-	}
-      if (xasl->isleaf_val)
-	{
-	  pr_clear_value (xasl->isleaf_val);
-	}
-      if (xasl->iscycle_val)
-	{
-	  pr_clear_value (xasl->iscycle_val);
-	}
-      if (xasl->topn_items != NULL)
-	{
-	  int i;
-	  BINARY_HEAP *heap;
-
-	  heap = xasl->topn_items->heap;
-	  for (i = 0; i < heap->element_count; i++)
-	    {
-	      qexec_clear_topn_tuple (thread_p, QEXEC_GET_BH_TOPN_TUPLE (heap, i), xasl->topn_items->values_count);
-	    }
-
-	  if (heap != NULL)
-	    {
-	      bh_destroy (thread_p, heap);
-	    }
-
-	  if (xasl->topn_items->tuples != NULL)
-	    {
-	      db_private_free_and_init (thread_p, xasl->topn_items->tuples);
-	    }
-
-	  db_private_free_and_init (thread_p, xasl->topn_items);
-	}
-
-      // clear trace stats
-      memset (&xasl->orderby_stats, 0, sizeof (ORDERBY_STATS));
-      memset (&xasl->groupby_stats, 0, sizeof (GROUPBY_STATS));
-      memset (&xasl->xasl_stats, 0, sizeof (XASL_STATS));
-      memset (&xasl->func_stats, 0, sizeof (FUNC_STATS));
-    }
 
   switch (xasl->type)
     {
@@ -2786,6 +2680,114 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
     default:
       break;
     }				/* switch */
+
+  /* note : scan_end_scan (), scan_close_scan () should be called before clearing the xasl. */
+
+  if (is_final)
+    {
+      /* clear the db_values in the tree */
+      if (xasl->outptr_list)
+	{
+	  pg_cnt += qexec_clear_regu_list (thread_p, xasl, xasl->outptr_list->valptrp, is_final, false);
+	}
+      pg_cnt += qexec_clear_access_spec_list (thread_p, xasl, xasl->spec_list, is_final, false, false);
+      pg_cnt += qexec_clear_access_spec_list (thread_p, xasl, xasl->merge_spec, is_final, false, false);
+      if (xasl->val_list)
+	{
+	  qexec_clear_db_val_list (xasl->val_list->valp);
+	}
+      if (xasl->merge_val_list)
+	{
+	  qexec_clear_db_val_list (xasl->merge_val_list->valp);
+	}
+      pg_cnt += qexec_clear_pred (thread_p, xasl, xasl->during_join_pred, is_final, false);
+      pg_cnt += qexec_clear_pred (thread_p, xasl, xasl->after_join_pred, is_final, false);
+      pg_cnt += qexec_clear_pred (thread_p, xasl, xasl->if_pred, is_final, false);
+      if (xasl->instnum_val)
+	{
+	  pr_clear_value (xasl->instnum_val);
+	}
+
+      pg_cnt += qexec_clear_pred (thread_p, xasl, xasl->instnum_pred, is_final, false);
+      if (xasl->ordbynum_val)
+	{
+	  pr_clear_value (xasl->ordbynum_val);
+	}
+
+      if (xasl->after_iscan_list)
+	{
+	  qexec_clear_sort_list (xasl, xasl->after_iscan_list, is_final);
+	}
+
+      if (xasl->orderby_list)
+	{
+	  qexec_clear_sort_list (xasl, xasl->orderby_list, is_final);
+	}
+      pg_cnt += qexec_clear_pred (thread_p, xasl, xasl->ordbynum_pred, is_final, false);
+
+      if (xasl->orderby_limit)
+	{
+	  pg_cnt += qexec_clear_regu_var (thread_p, xasl, xasl->orderby_limit, is_final, false);
+	}
+
+      if (xasl->limit_offset)
+	{
+	  pg_cnt += qexec_clear_regu_var (thread_p, xasl, xasl->limit_offset, is_final, false);
+	}
+
+      if (xasl->limit_offset)
+	{
+	  pg_cnt += qexec_clear_regu_var (thread_p, xasl, xasl->limit_offset, is_final, false);
+	}
+
+      if (xasl->limit_row_count)
+	{
+	  pg_cnt += qexec_clear_regu_var (thread_p, xasl, xasl->limit_row_count, is_final, false);
+	}
+
+      if (xasl->level_val)
+	{
+	  pr_clear_value (xasl->level_val);
+	}
+      if (xasl->isleaf_val)
+	{
+	  pr_clear_value (xasl->isleaf_val);
+	}
+      if (xasl->iscycle_val)
+	{
+	  pr_clear_value (xasl->iscycle_val);
+	}
+      if (xasl->topn_items != NULL)
+	{
+	  int i;
+	  BINARY_HEAP *heap;
+
+	  heap = xasl->topn_items->heap;
+	  for (i = 0; i < heap->element_count; i++)
+	    {
+	      qexec_clear_topn_tuple (thread_p, QEXEC_GET_BH_TOPN_TUPLE (heap, i), xasl->topn_items->values_count);
+	    }
+
+	  if (heap != NULL)
+	    {
+	      bh_destroy (thread_p, heap);
+	    }
+
+	  if (xasl->topn_items->tuples != NULL)
+	    {
+	      db_private_free_and_init (thread_p, xasl->topn_items->tuples);
+	    }
+
+	  db_private_free_and_init (thread_p, xasl->topn_items);
+	}
+
+      // clear trace stats
+      memset (&xasl->orderby_stats, 0, sizeof (ORDERBY_STATS));
+      memset (&xasl->groupby_stats, 0, sizeof (GROUPBY_STATS));
+      memset (&xasl->xasl_stats, 0, sizeof (XASL_STATS));
+      memset (&xasl->func_stats, 0, sizeof (FUNC_STATS));
+    }
+
 
   /* Note: Here reset the current pointer to access specification nodes.  This is needed because this XASL tree may be
    * used again if this thread is suspended and restarted. */
@@ -3278,6 +3280,63 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
   xasl->query_in_progress = query_save_state;
 
   return pg_cnt;
+}
+
+static void
+qexec_clear_head_lists_with_truncate (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
+{
+  XASL_NODE *xasl;
+  /* clear XASL head node */
+  VAL_LIST *single_tuple;
+  QPROC_DB_VALUE_LIST value_list;
+  int i;
+
+  for (xasl = xasl_list; xasl != NULL; xasl = xasl->next)
+    {
+      if (XASL_IS_FLAGED (xasl, XASL_ZERO_CORR_LEVEL))
+	{
+	  /* skip out zero correlation-level uncorrelated subquery */
+	  continue;
+	}
+
+
+      if (xasl->list_id && !xasl->list_id->is_result_cached)
+	{
+	  qfile_truncate_list (thread_p, xasl->list_id);
+	}
+
+      single_tuple = xasl->single_tuple;
+      if (single_tuple)
+	{
+	  /* clear result value */
+	  for (value_list = single_tuple->valp, i = 0; i < single_tuple->val_cnt; value_list = value_list->next, i++)
+	    {
+	      pr_clear_value (value_list->val);
+	    }
+	}
+
+      if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
+	{
+	  qexec_clear_xasl_head (thread_p, xasl->connect_by_ptr);
+	}
+
+      if (xcache_uses_clones ())
+	{
+	  if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE))
+	    {
+	      xasl->status = XASL_CLEARED;
+	    }
+	  else
+	    {
+	      /* The values allocated during execution will be cleared and the xasl is reused. */
+	      xasl->status = XASL_INITIALIZED;
+	    }
+	}
+      else
+	{
+	  xasl->status = XASL_CLEARED;
+	}
+    }
 }
 
 /*
@@ -7417,7 +7476,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 			       list_id, curr_spec->s.list_node.list_regu_list_pred,
 			       curr_spec->where_pred, curr_spec->s.list_node.list_regu_list_rest,
 			       curr_spec->s.list_node.list_regu_list_build, curr_spec->s.list_node.list_regu_list_probe,
-			       curr_spec->s.list_node.hash_list_scan_yn);
+			       curr_spec->s.list_node.hash_list_scan_yn, false);
 	if (error_code != NO_ERROR)
 	  {
 	    ASSERT_ERROR ();
@@ -8134,6 +8193,22 @@ qexec_execute_nljoin_with_memoize (THREAD_ENTRY * thread_p, bool * is_memoize_su
   return S_SUCCESS;
 }
 
+SCAN_CODE
+qexec_execute_scan_ptr (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state, void *scan_func_ptr)
+{
+  XASL_SCAN_FNC_PTR ptr = (XASL_SCAN_FNC_PTR) scan_func_ptr;
+  if (!(*ptr))
+    {
+      for (xasl_node * xptr = xasl; xptr != NULL; xptr = xptr->scan_ptr, ptr++)
+	{
+	  *ptr = ((XSAL_SCAN_FUNC) qexec_execute_scan);
+	}
+      ptr = (XASL_SCAN_FNC_PTR) scan_func_ptr;
+    }
+
+  return qexec_execute_scan (thread_p, xasl, xasl_state, NULL, ptr);
+}
+
 /*
  * qexec_execute_scan () -
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
@@ -8244,7 +8319,8 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	  for (xptr = xasl->dptr_list; xptr != NULL; xptr = xptr->next)
 	    {
 	      /* clear correlated subquery list files */
-	      qexec_clear_head_lists (thread_p, xptr);
+	      qexec_clear_head_lists_with_truncate (thread_p, xptr);
+
 	      if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
 		{
 		  /* skip if linked to regu var */
@@ -9137,7 +9213,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	      for (xptr = xasl->dptr_list; xptr != NULL; xptr = xptr->next)
 		{
 		  /* clear correlated subquery list files */
-		  qexec_clear_head_lists (thread_p, xptr);
+		  qexec_clear_head_lists_with_truncate (thread_p, xptr);
 		  if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
 		    {
 		      /* skip if linked to regu var */
@@ -14429,45 +14505,54 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	}
     }
 
-  /* a list of one tuple with a single value needs to be produced */
-  if (qdata_get_valptr_type_list (thread_p, xasl->outptr_list, &type_list) != NO_ERROR)
+  if (xasl->list_id->type_list.type_cnt != 0)
     {
-      GOTO_EXIT_ON_ERROR;
+      qfile_truncate_list (thread_p, xasl->list_id);
     }
+  else
+    {
+      /* a list of one tuple with a single value needs to be produced */
+      if (qdata_get_valptr_type_list (thread_p, xasl->outptr_list, &type_list) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
 
-  /* If BUILDVALUE_PROC does not have 'order by'(xasl->orderby_list), then the list file to be open at here will be the
-   * last one. Otherwise, the last list file will be open at qexec_orderby_distinct(). (Note that only one that can
-   * have 'group by' is BUILDLIST_PROC type.) And, the top most XASL is the other condition for the list file to be the
-   * last result file. */
-  QFILE_SET_FLAG (ls_flag, QFILE_FLAG_ALL);
-  if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) && XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED)
-      && (xasl->orderby_list == NULL || XASL_IS_FLAGED (xasl, XASL_SKIP_ORDERBY_LIST)) && xasl->option != Q_DISTINCT)
-    {
-      QFILE_SET_FLAG (ls_flag, QFILE_FLAG_RESULT_FILE);
-    }
-  t_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, ls_flag, NULL);
-  if (t_list_id == NULL)
-    {
+      /* If BUILDVALUE_PROC does not have 'order by'(xasl->orderby_list), then the list file to be open at here will be the
+       * last one. Otherwise, the last list file will be open at qexec_orderby_distinct(). (Note that only one that can
+       * have 'group by' is BUILDLIST_PROC type.) And, the top most XASL is the other condition for the list file to be the
+       * last result file. */
+      QFILE_SET_FLAG (ls_flag, QFILE_FLAG_ALL);
+      if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) && XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED)
+	  && (xasl->orderby_list == NULL || XASL_IS_FLAGED (xasl, XASL_SKIP_ORDERBY_LIST))
+	  && xasl->option != Q_DISTINCT)
+	{
+	  QFILE_SET_FLAG (ls_flag, QFILE_FLAG_RESULT_FILE);
+	}
+      t_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, ls_flag, NULL);
+      if (t_list_id == NULL)
+	{
+	  if (type_list.domp)
+	    {
+	      db_private_free_and_init (thread_p, type_list.domp);
+	    }
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+	    /***** WHAT IN THE WORLD IS THIS? *****/
       if (type_list.domp)
 	{
 	  db_private_free_and_init (thread_p, type_list.domp);
 	}
-      GOTO_EXIT_ON_ERROR;
-    }
 
-      /***** WHAT IN THE WORLD IS THIS? *****/
-  if (type_list.domp)
-    {
-      db_private_free_and_init (thread_p, type_list.domp);
-    }
+      if (qfile_copy_list_id (xasl->list_id, t_list_id, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
 
-  if (qfile_copy_list_id (xasl->list_id, t_list_id, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
-    {
-      GOTO_EXIT_ON_ERROR;
+      QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
     }
 
   output = xasl->list_id;
-  QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
 
   if (buildvalue->having_pred == NULL || ev_res == V_TRUE)
     {
@@ -15536,7 +15621,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		{
 		  for (specp = spec_ptr[spec_level]; specp; specp = specp->next)
 		    {
-		      specp->fixed_scan = (xptr == fixed_scan_xasl);
+		      specp->fixed_scan = (xptr == fixed_scan_xasl)
+			|| ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN);
 
 		      /* set if the scan will be done in a grouped manner */
 		      if ((level == 0 && xptr->scan_ptr == NULL) && (QPROC_MAX_GROUPED_SCAN_CNT > 0))
@@ -15607,7 +15693,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			  if (qexec_open_scan (thread_p, specp, xptr->val_list, &xasl_state->vd, force_select_lock,
 					       specp->fixed_scan, specp->grouped_scan, iscan_oid_order, &specp->s_id,
 					       xasl_state->query_id, xptr->scan_op_type, scan_immediately_stop,
-					       &mvcc_select_lock_needed, xasl) != NO_ERROR)
+					       &mvcc_select_lock_needed, xptr) != NO_ERROR)
 			    {
 			      qexec_clear_mainblock_iterations (thread_p, xasl);
 			      GOTO_EXIT_ON_ERROR;
