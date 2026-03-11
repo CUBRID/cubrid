@@ -147,21 +147,45 @@ namespace cubhnsw
     bool m_is_perf_tracking {false};
     struct stats
     {
+      // ===========================
       // base stats
+      // ===========================
       std::size_t visited_nodes{};
       std::size_t computed_distances{};
-
-      // refines
       std::size_t computed_distances_in_refines{};
       std::size_t computed_distances_in_reverse_refines{};
 
-      // layer 0
+      std::size_t candidates_push{};
+      std::size_t candidates_pop{};
+      std::size_t candidates_prune{};
+      std::size_t neighbors_scan{};
+
+      std::size_t page_access{};
+      std::size_t vector_access{};
+      std::size_t vector_cache_hit{};
+      std::size_t vector_cache_miss{};
+
+      // ===========================
+      // layer 0 stats
+      // ===========================
       std::size_t visited_nodes_l0{};
       std::size_t computed_distances_l0{};
       std::size_t computed_distances_in_refines_l0{};
       std::size_t computed_distances_in_reverse_refines_l0{};
 
+      std::size_t candidates_push_l0{};
+      std::size_t candidates_pop_l0{};
+      std::size_t candidates_prune_l0{};
+      std::size_t neighbors_scan_l0{};
+
+      std::size_t page_access_l0{};
+      std::size_t vector_access_l0{};
+      std::size_t vector_cache_hit_l0{};
+      std::size_t vector_cache_miss_l0{};
+
+      // ===========================
       // entry point
+      // ===========================
       std::size_t entrypoint_updates{};
     };
 
@@ -181,24 +205,83 @@ namespace cubhnsw
 	  return;
 	}
 
-      perfmon_add_stat (m_thread_p, PSTAT_HNSW_NUM_VISITED_NODE, m_stats.visited_nodes);
-      perfmon_add_stat (m_thread_p, PSTAT_HNSW_NUM_COMPUTED_DISTANCES, m_stats.computed_distances);
-      perfmon_add_stat (m_thread_p, PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REFINES,
-			m_stats.computed_distances_in_refines);
-      perfmon_add_stat (m_thread_p, PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REVERSE_REFINES,
-			m_stats.computed_distances_in_reverse_refines);
+      auto add_stat_if_positive = [this] (PERF_STAT_ID stat_id, std::int64_t value)
+      {
+	if (value > 0)
+	  {
+	    perfmon_add_stat (m_thread_p, stat_id, value);
+	  }
+      };
 
-      perfmon_add_stat (m_thread_p, PSTAT_HNSW_NUM_VISITED_NODE_L0, m_stats.visited_nodes_l0);
-      perfmon_add_stat (m_thread_p, PSTAT_HNSW_NUM_COMPUTED_DISTANCES_L0, m_stats.computed_distances_l0);
-      perfmon_add_stat (m_thread_p, PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REFINES_L0,
-			m_stats.computed_distances_in_refines_l0);
-      perfmon_add_stat (m_thread_p, PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REVERSE_REFINES_L0,
-			m_stats.computed_distances_in_reverse_refines_l0);
+      add_stat_if_positive (PSTAT_HNSW_NUM_VISITED_NODE, m_stats.visited_nodes);
+      add_stat_if_positive (PSTAT_HNSW_NUM_COMPUTED_DISTANCES, m_stats.computed_distances);
+      add_stat_if_positive (PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REFINES,
+			    m_stats.computed_distances_in_refines);
+      add_stat_if_positive (PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REVERSE_REFINES,
+			    m_stats.computed_distances_in_reverse_refines);
 
-      perfmon_add_stat (m_thread_p, PSTAT_HNSW_NUM_ENTRYPOINT_UPDATES, m_stats.entrypoint_updates);
+      add_stat_if_positive (PSTAT_HNSW_NUM_VISITED_NODE_L0, m_stats.visited_nodes_l0);
+      add_stat_if_positive (PSTAT_HNSW_NUM_COMPUTED_DISTANCES_L0, m_stats.computed_distances_l0);
+      add_stat_if_positive (PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REFINES_L0,
+			    m_stats.computed_distances_in_refines_l0);
+      add_stat_if_positive (PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REVERSE_REFINES_L0,
+			    m_stats.computed_distances_in_reverse_refines_l0);
+
+      add_stat_if_positive (PSTAT_HNSW_NUM_PAGE_ACCESS, m_stats.page_access);
+      add_stat_if_positive (PSTAT_HNSW_NUM_PAGE_ACCESS_L0, m_stats.page_access_l0);
+
+      add_stat_if_positive (PSTAT_HNSW_NUM_VECTOR_ACCESS, m_stats.vector_access);
+      add_stat_if_positive (PSTAT_HNSW_NUM_VECTOR_ACCESS_L0, m_stats.vector_access_l0);
+
+      add_stat_if_positive (PSTAT_HNSW_NUM_VECTOR_CACHE_HIT, m_stats.vector_cache_hit);
+      add_stat_if_positive (PSTAT_HNSW_NUM_VECTOR_CACHE_HIT, m_stats.vector_cache_hit_l0);
+
+      add_stat_if_positive (PSTAT_HNSW_NUM_VECTOR_CACHE_MISS, m_stats.vector_cache_miss);
+      add_stat_if_positive (PSTAT_HNSW_NUM_VECTOR_CACHE_MISS_L0, m_stats.vector_cache_miss_l0);
+
+      add_stat_if_positive (PSTAT_HNSW_NUM_ENTRYPOINT_UPDATES, m_stats.entrypoint_updates);
+
+      add_stat_if_positive (PSTAT_HNSW_NUM_CANDIDATES_PUSH, m_stats.candidates_push);
+      add_stat_if_positive (PSTAT_HNSW_NUM_CANDIDATES_POP, m_stats.candidates_pop);
+      add_stat_if_positive (PSTAT_HNSW_NUM_CANDIDATES_PRUNE,
+			    m_stats.candidates_prune);
+      add_stat_if_positive (PSTAT_HNSW_NUM_NEIGHBORS_SCAN,
+			    m_stats.neighbors_scan);
+
+      add_stat_if_positive (PSTAT_HNSW_NUM_CANDIDATES_PUSH_L0, m_stats.candidates_push_l0);
+      add_stat_if_positive (PSTAT_HNSW_NUM_CANDIDATES_POP_L0, m_stats.candidates_pop_l0);
+      add_stat_if_positive (PSTAT_HNSW_NUM_CANDIDATES_PRUNE_L0,
+			    m_stats.candidates_prune_l0);
+      add_stat_if_positive (PSTAT_HNSW_NUM_NEIGHBORS_SCAN_L0,
+			    m_stats.neighbors_scan_l0);
 
       // stop tracking after collecting stats
       m_is_perf_tracking = false;
+    }
+
+    inline void add_stat (std::size_t &stat, std::size_t &stat_l0, int counter)
+    {
+      if (!m_is_perf_tracking)
+	{
+	  return;
+	}
+
+      stat += counter;
+
+      if (m_level == 0)
+	{
+	  stat_l0 += counter;
+	}
+    }
+
+    inline void add_stat (std::size_t &stat, int counter)
+    {
+      if (!m_is_perf_tracking)
+	{
+	  return;
+	}
+
+      stat += counter;
     }
   };
 }

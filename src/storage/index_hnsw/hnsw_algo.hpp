@@ -96,14 +96,7 @@ namespace cubhnsw
       // distance
       inline distance_t compute_distance_ (algo_context_t<Traits> &context, const float *v1, const float *v2) const
       {
-	if (context.m_is_perf_tracking)
-	  {
-	    context.m_stats.computed_distances++;
-	    if (context.m_level == 0)
-	      {
-		context.m_stats.computed_distances_l0++;
-	      }
-	  }
+	context.add_stat (context.m_stats.computed_distances, context.m_stats.computed_distances_l0, 1);
 	return metric_table[static_cast<size_t> (m_metric)] (v1, v2, m_dimension);
       }
 
@@ -306,10 +299,9 @@ namespace cubhnsw
 	root_node.set_level (new_target_level);
 	m_storage->set_empty (false);
 
-	context.m_stats.entrypoint_updates++;
+	context.add_stat (context.m_stats.entrypoint_updates, 1);
       }
 
-    // recommend the function name "add_perf_stats"
     context.collect_perf_stats();
 
     return result;
@@ -398,6 +390,12 @@ namespace cubhnsw
   algo<Traits>::seek_on_layer_ (algo_context_t<Traits> &context, const float *query, const slot_id_t &start_slot,
 				const std::size_t expansion_limit)
   {
+    int num_visits = 0;
+    int num_cand_push = 0;
+    int num_cand_pop = 0;
+    int num_cand_prune = 0;
+    int num_neighbor_scan = 0;
+
     next_candidates_t<Traits> &next = context.m_next_candidates;
     top_candidates_t<Traits> &top = context.m_top_candidates;
     visited_set_t<Traits> &visits = context.m_visits;
@@ -420,6 +418,7 @@ namespace cubhnsw
 	  }
 
 	next.pop ();
+	num_cand_pop++;
 
 	slot_id_t candidate_slot = candidacy.slot;
 	pinned_t candidate_node_blk = m_storage->get_node_by_slot_id (context, candidate_slot, lock_mode::shared);
@@ -427,6 +426,7 @@ namespace cubhnsw
 	for (std::size_t i = 0; i < candidate_neighbors.size (); ++i)
 	  {
 	    slot_id_t successor_slot = candidate_neighbors.at (i);
+	    num_neighbor_scan++;
 
 	    bool already_visited = (visits.find (successor_slot) != visits.end());
 	    if (already_visited)
@@ -436,6 +436,7 @@ namespace cubhnsw
 	    else
 	      {
 		visits.insert (successor_slot);
+		num_visits++;
 	      }
 
 	    distance_t sucessor_dist = compute_distance_from_query_ (context, query, successor_slot);
@@ -445,12 +446,24 @@ namespace cubhnsw
 		top.insert (candidate_t<Traits> (sucessor_dist, successor_slot), expansion_limit);
 		radius = top.top ().distance;
 
+		num_cand_push++;
+
 		HNSW_ALGO_PRINT ("[search_to_insert] radius: %f\n", radius);
 		HNSW_ALGO_PRINT ("[search_to_insert] sucessor_dist: %f\n", sucessor_dist);
 		HNSW_ALGO_PRINT ("[search_to_insert] top.size(), expansion_limit: %zu, %zu\n", top.size(), expansion_limit);
 	      }
+	    else
+	      {
+		num_cand_prune++;
+	      }
 	  }
       }
+
+    context.add_stat (context.m_stats.visited_nodes, context.m_stats.visited_nodes_l0, num_visits + 1);
+    context.add_stat (context.m_stats.candidates_push, context.m_stats.candidates_push_l0, num_cand_push + 1);
+    context.add_stat (context.m_stats.candidates_pop, context.m_stats.candidates_pop_l0, num_cand_pop);
+    context.add_stat (context.m_stats.candidates_prune, context.m_stats.candidates_prune_l0, num_cand_prune);
+    context.add_stat (context.m_stats.neighbors_scan, context.m_stats.neighbors_scan_l0, num_neighbor_scan);
 
     return NO_ERROR;
   }
@@ -460,9 +473,11 @@ namespace cubhnsw
   algo<Traits>::seek_down_ (algo_context_t<Traits> &context, const float *query, const slot_id_t &start_slot,
 			    const level_t target_level, slot_id_t &out_slot)
   {
+    int num_visits = 0;
+    int num_neighbor_scan = 0;
+
     visited_set_t<Traits> &visits = context.m_visits;
     cubthread::entry *thread_p = context.m_thread_p;
-    visits.clear ();
 
     slot_id_t closest_slot = start_slot;
     distance_t closest_dist = compute_distance_from_query_ (context, query, closest_slot);
@@ -478,6 +493,7 @@ namespace cubhnsw
 	    for (std::size_t i = 0; i < neighbors.size (); ++i)
 	      {
 		slot_id_t neighbor_id = neighbors.at (i);
+		num_neighbor_scan++;
 
 		distance_t candidate_dist = compute_distance_from_query_ (context, query, neighbor_id);
 		if (candidate_dist < closest_dist)
@@ -487,10 +503,13 @@ namespace cubhnsw
 		    changed = true;
 		  }
 	      }
-
+	    num_visits++;
 	  }
 	while (changed);
       }
+
+    context.add_stat (context.m_stats.visited_nodes, context.m_stats.visited_nodes_l0, num_visits + 1);
+    context.add_stat (context.m_stats.neighbors_scan, context.m_stats.neighbors_scan_l0, num_neighbor_scan);
 
     out_slot = closest_slot;
     return NO_ERROR;
@@ -508,15 +527,8 @@ namespace cubhnsw
 
     std::size_t refines_counter = 0;
     refine_ (context, layer_connectivity, top, top_view, refines_counter);
-
-    if (context.m_is_perf_tracking)
-      {
-	context.m_stats.computed_distances_in_refines += refines_counter;
-	if (level == 0)
-	  {
-	    context.m_stats.computed_distances_in_refines_l0 += refines_counter;
-	  }
-      }
+    context.add_stat (context.m_stats.computed_distances_in_refines, context.m_stats.computed_distances_in_refines_l0,
+		      refines_counter);
 
     // outgoing links from new node
     neighbors_ref_type new_neighbors = get_neighbors (new_node_blk, level);
@@ -531,6 +543,8 @@ namespace cubhnsw
   algo<Traits>::form_reverse_links_ (algo_context_t<Traits> &context, const pinned_t &new_node_blk, const float *value,
 				     candidates_view_t<Traits> &new_neighbors)
   {
+    std::size_t refines_counter = 0;
+
     std::size_t level = context.m_level;
     std::size_t layer_connectivity = get_layer_connectivity (level, m_connectivity);
     for (auto n : new_neighbors)
@@ -573,23 +587,17 @@ namespace cubhnsw
 	close_header.clear();
 	candidates_view_t<Traits> top_view;
 
-	std::size_t refines_counter = 0;
 	(void) refine_ (context, layer_connectivity, top_for_refine, top_view, refines_counter);
-
-	if (context.m_is_perf_tracking)
-	  {
-	    context.m_stats.computed_distances_in_reverse_refines += refines_counter;
-	    if (level == 0)
-	      {
-		context.m_stats.computed_distances_in_reverse_refines_l0 += refines_counter;
-	      }
-	  }
 
 	for (std::size_t i = 0; i != top_view.size (); i++)
 	  {
 	    close_header.push_back (top_view[i].slot);
 	  }
       }
+
+    context.add_stat (context.m_stats.visited_nodes, context.m_stats.visited_nodes_l0, new_neighbors.size ());
+    context.add_stat (context.m_stats.computed_distances_in_reverse_refines,
+		      context.m_stats.computed_distances_in_reverse_refines_l0, refines_counter);
 
     return NO_ERROR;
   }
@@ -646,7 +654,7 @@ namespace cubhnsw
 
     if (context.m_is_perf_tracking)
       {
-	refines_counter = context.m_stats.computed_distances - old_computed_distances;
+	refines_counter += context.m_stats.computed_distances - old_computed_distances;
       }
 
     top.shrink (submitted_count);

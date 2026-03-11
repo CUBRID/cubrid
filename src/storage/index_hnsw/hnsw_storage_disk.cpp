@@ -224,14 +224,10 @@ namespace cubhnsw
 
     if (context.m_is_perf_tracking)
       {
-	/* do not collect at the end of the search (collecting OIDs from sorted buffer)*/
-	if (context.m_level >= 0)
+	context.m_stats.page_access++;
+	if (context.m_level == 0)
 	  {
-	    context.m_stats.visited_nodes++;
-	    if (context.m_level == 0)
-	      {
-		context.m_stats.visited_nodes_l0++;
-	      }
+	    context.m_stats.page_access_l0++;
 	  }
       }
 
@@ -258,6 +254,14 @@ namespace cubhnsw
   disk_storage::get_vector_by_slot_id (algo_context_t<traits> &context, const slot_id_t &slot, const lock_mode &mode)
   {
     // get node by slot id
+    if (context.m_is_perf_tracking)
+      {
+	context.m_stats.vector_access++;
+	if (context.m_level == 0)
+	  {
+	    context.m_stats.vector_access_l0++;
+	  }
+      }
     return get_node_by_slot_id (context, slot, lock_mode::shared);
   }
 
