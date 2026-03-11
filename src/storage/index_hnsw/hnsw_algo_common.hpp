@@ -24,8 +24,6 @@
 #define _HNSW_ALGO_COMMON_HPP_
 
 #include <random>
-#include <deque>
-#include <string_view>
 #include <ankerl/unordered_dense.h>
 
 #include "hnsw_api.hpp"

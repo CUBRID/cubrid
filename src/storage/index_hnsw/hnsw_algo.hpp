@@ -378,6 +378,7 @@ namespace cubhnsw
 
     algo_context_t<Traits> context;
     context.m_thread_p = thread_p;
+    context.m_is_perf_tracking = perfmon_is_perf_tracking ();
     context.clear_candidates();
 
     top_candidates_t<Traits> &top = context.m_top_candidates;
@@ -494,15 +495,15 @@ namespace cubhnsw
 		    continue;
 		  }
 
-		distance_t sucessor_dist = compute_distance_from_query_ (context, query, successor_slot);
-		if (top.size () < expansion_limit || sucessor_dist < radius)
+		distance_t successor_dist = compute_distance_from_query_ (context, query, successor_slot);
+		if (top.size () < expansion_limit || successor_dist < radius)
 		  {
-		    next.insert (candidate_t<Traits> (-sucessor_dist, successor_slot));
-		    top.insert (candidate_t<Traits> (sucessor_dist, successor_slot), expansion_limit);
+		    next.insert (candidate_t<Traits> (-successor_dist, successor_slot));
+		    top.insert (candidate_t<Traits> (successor_dist, successor_slot), expansion_limit);
 		    radius = top.top ().distance;
 
 		    HNSW_ALGO_PRINT ("[search_to_insert] radius: %f\n", radius);
-		    HNSW_ALGO_PRINT ("[search_to_insert] sucessor_dist: %f\n", sucessor_dist);
+		    HNSW_ALGO_PRINT ("[search_to_insert] successor_dist: %f\n", successor_dist);
 		    HNSW_ALGO_PRINT ("[search_to_insert] top.size(), expansion_limit: %zu, %zu\n", top.size(), expansion_limit);
 		  }
 	      }
@@ -541,15 +542,15 @@ namespace cubhnsw
 		continue;
 	      }
 
-	    distance_t sucessor_dist = compute_distance_from_query_ (context, query, successor_slot);
-	    if (top.size () < expansion_limit || sucessor_dist < radius)
+	    distance_t successor_dist = compute_distance_from_query_ (context, query, successor_slot);
+	    if (top.size () < expansion_limit || successor_dist < radius)
 	      {
-		next.insert (candidate_t<Traits> (-sucessor_dist, successor_slot));
-		top.insert (candidate_t<Traits> (sucessor_dist, successor_slot), expansion_limit);
+		next.insert (candidate_t<Traits> (-successor_dist, successor_slot));
+		top.insert (candidate_t<Traits> (successor_dist, successor_slot), expansion_limit);
 		radius = top.top ().distance;
 
 		HNSW_ALGO_PRINT ("[search_to_insert] radius: %f\n", radius);
-		HNSW_ALGO_PRINT ("[search_to_insert] sucessor_dist: %f\n", sucessor_dist);
+		HNSW_ALGO_PRINT ("[search_to_insert] successor_dist: %f\n", successor_dist);
 		HNSW_ALGO_PRINT ("[search_to_insert] top.size(), expansion_limit: %zu, %zu\n", top.size(), expansion_limit);
 	      }
 	  }

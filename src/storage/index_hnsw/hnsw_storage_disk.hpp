@@ -155,6 +155,7 @@ namespace cubhnsw
       using neighbors_cache_t =
 	      ankerl::unordered_dense::map<neighbors_key, std::vector<slot_id_t>, neighbors_key_hash>;
 
+      /* TODO: This is not thread-safe. Currently, we are assuming single-threaded access, but we need to make it thread-safe. */
       neighbors_cache_t m_neighbors_cache;    // (slot_id_t, level) -> neighbors
 
       bool m_is_empty = true;
