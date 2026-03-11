@@ -604,6 +604,7 @@ namespace cubhnsw
 		      }
 		  }
 		pinned_t closest_node_blk = m_storage->get_node_by_slot_id (context, closest_slot, lock_mode::shared);
+		const slot_id_t original_closest_slot = closest_slot;
 
 		neighbors_ref_type neighbors = get_neighbors (closest_node_blk, level);
 		std::vector<slot_id_t> neigh;
@@ -622,7 +623,7 @@ namespace cubhnsw
 			changed = true;
 		      }
 		  }
-		m_storage->set_neighbors_cached_ids (context, closest_slot, level, neigh);
+		m_storage->set_neighbors_cached_ids (context, original_closest_slot, level, neigh);
 	      }
 
 	  }
