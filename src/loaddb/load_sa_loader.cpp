@@ -1446,8 +1446,11 @@ ldr_find_class (const char *class_name)
     }
 
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (db_get_client_type() == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+  if (db_get_client_type() == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
     {
+      /* Called by ldr_sa_load or ldr_server_load to load an object file; DDL must not be executed. */
+      assert (db_get_client_statement_type () == CUBRID_STMT_NONE);
+
       char other_class_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
       ldr_find_class_by_query (realname, other_class_name, DB_MAX_IDENTIFIER_LENGTH);
@@ -1484,6 +1487,7 @@ ldr_find_class_by_query (const char *name, char *buf, int buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *current_schema_name = NULL;
   const char *class_name = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -1499,6 +1503,18 @@ ldr_find_class_by_query (const char *name, char *buf, int buf_size)
   assert (buf != NULL);
 
   current_schema_name = sc_current_schema_name ();
+
+  if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+    {
+      if (strcmp (qualifier_name, current_schema_name) != 0)
+	{
+	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
+	   * are beyond the scope of the compatibility option */
+	  assert (intl_identifier_casecmp (name, qualifier_name) != 0);
+	  ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, name);
+	  return error;
+	}
+    }
 
   class_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
@@ -1518,7 +1534,7 @@ ldr_find_class_by_query (const char *name, char *buf, int buf_size)
     {
       if (error == DB_CURSOR_END)
 	{
-	  error = NO_ERROR;
+	  ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, name);
 	}
       else
 	{
@@ -4902,6 +4918,10 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
       if (dot)
 	{
 	  /* user specified name */
+	  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
+	    {
+	      db_set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4);
+	    }
 
 	  /* user name of user specified name */
 	  sub_len = STATIC_CAST (int, dot - class_name);
@@ -6316,6 +6336,7 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
   int64_t lastcommit = 0;
   volatile  bool is_emptyfile = false;
   int ldr_init_ret = NO_ERROR;
+  int client_type = DB_CLIENT_TYPE_LOADDB_UTILITY;
 
   std::ifstream object_file (args->object_file);
 
@@ -6353,6 +6374,8 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
     }
   object_file.seekg (0, std::ios::beg);
 
+  client_type = db_get_client_type ();
+
   /* Check if we need to perform syntax checking. */
   if (!args->load_only)
     {
@@ -6387,6 +6410,24 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 
       if (object_file.is_open ())
 	{
+	  if (client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
+	    {
+	      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4)
+		{
+		  if (args->verbose)
+		    {
+		      print_log_msg (1, "\n");
+		      print_log_msg (1,
+				     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
+						     LOADDB_MSG_COMPAT_UNDER_11_4));
+		    }
+		}
+	      else
+		{
+		  assert (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2);
+		}
+	    }
+
 	  print_log_msg ((int) args->verbose,
 			 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSERTING));
 

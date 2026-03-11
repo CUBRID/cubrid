@@ -1544,13 +1544,21 @@ or_unpack_int_array (char *ptr, int n, int **number_array)
 {
   int i;
 
-  *number_array = (int *) db_private_alloc (NULL, (n * sizeof (int)));
-  if (*number_array)
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
+  if (n > 0)
     {
-      ASSERT_ALIGN (ptr, INT_ALIGNMENT);
-      for (i = 0; i < n; i++)
+      *number_array = (int *) db_private_alloc (NULL, (n * sizeof (int)));
+      if (*number_array)
 	{
-	  ptr = or_unpack_int (ptr, &(*number_array)[i]);
+	  for (i = 0; i < n; i++)
+	    {
+	      ptr = or_unpack_int (ptr, &(*number_array)[i]);
+	    }
+	}
+      else
+	{
+	  ptr = NULL;
 	}
     }
   else
@@ -5750,11 +5758,38 @@ int
 or_header_size (char *ptr)
 {
   int mvcc_flag = OR_GET_MVCC_FLAG (ptr);
-  int idx = mvcc_flag & 0x07;	// 0x07 to get last 3 bits. the 4th bit is used for OR_MVCC_FLAG_HAS_OOS (= 0b1000)
 
-  assert (0 <= idx && idx < (int) (sizeof (mvcc_header_size_lookup) / sizeof (mvcc_header_size_lookup[0])));
+  return mvcc_header_size_lookup[mvcc_flag & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
+}
 
-  return mvcc_header_size_lookup[idx];
+/*
+ * or_pack_int_array - write a int array
+ *    return: advanced buffer pointer
+ *    buffer(out): output buffer
+ *    count(in): array length
+ *    int_array(in): int array
+ */
+char *
+or_pack_int_array (char *buffer, int count, const int *int_array)
+{
+  int i;
+  char *ptr;
+
+  assert (buffer != NULL && int_array != NULL && count >= 0);
+
+  if (count < 0 || int_array == NULL)
+    {
+      count = 0;
+    }
+
+  /* pack count + that many integers */
+  ptr = or_pack_int (buffer, count);
+  for (i = 0; i < count; i++)
+    {
+      ptr = or_pack_int (ptr, int_array[i]);
+    }
+
+  return ptr;
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -5798,36 +5833,6 @@ or_packed_db_value_array_length (int count, DB_VALUE * val)
       size += or_db_value_size (val++);
     }
   return size;
-}
-
-/*
- * or_pack_int_array - write a int array
- *    return: advanced buffer pointer
- *    buffer(out): output buffer
- *    count(in): array length
- *    int_array(in): int array
- */
-char *
-or_pack_int_array (char *buffer, int count, int *int_array)
-{
-  int i;
-  char *ptr;
-
-  if (!int_array)
-    {
-      /* there are no values to pack, so pack a count of 0 */
-      ptr = or_pack_int (buffer, 0);
-    }
-  else
-    {
-      /* pack count + that many integers */
-      ptr = or_pack_int (buffer, count);
-      for (i = 0; i < count; i++)
-	{
-	  ptr = or_pack_int (ptr, int_array[i]);
-	}
-    }
-  return ptr;
 }
 
 /*

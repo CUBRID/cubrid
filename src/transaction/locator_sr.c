@@ -46,6 +46,7 @@
 #include "fetch.h"
 #include "filter_pred_cache.h"
 #include "heap_file.h"
+#include "oos_file.hpp"
 #include "list_file.h"
 #include "log_lsa.hpp"
 #include "lock_manager.h"
@@ -66,6 +67,7 @@
 #include "transaction_transient.hpp"
 #include "xserver_interface.h"
 #include "catalog_class.h"
+#include "es_posix.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -229,6 +231,11 @@ static DB_LOGICAL locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p
 							 MVCC_REEV_DATA * mvcc_reev_data_p,
 							 MVCC_REC_HEADER * mvcc_header_p,
 							 const OID * curr_row_version_oid_p, RECDES * recdes);
+
+/* lob */
+static int locator_lob_make_dir_path (char *buf, const HFID * hfid, int attrid);
+
+static int locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes);
 
 /*
  * locator_initialize () - Initialize the locator on the server
@@ -5265,6 +5272,59 @@ error2:
   return error_code;
 }
 
+int
+locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes)
+{
+  int error_code = NO_ERROR;
+  HFID oos_hfid = HFID_INITIALIZER;
+  VFID oos_vfid = VFID_INITIALIZER;
+  OID oos_oid = OID_INITIALIZER;
+  LOG_TDES *tdes = NULL;
+  int tran_index = 0;
+
+  if (heap_get_class_info (thread_p, class_oid, &oos_hfid, NULL, NULL) != NO_ERROR)
+    {
+      error_code = S_ERROR;
+      goto err;
+    }
+
+  if (!heap_oos_find_vfid (thread_p, &oos_hfid, &oos_vfid, true))
+    {
+      error_code = S_ERROR;
+      goto err;
+    }
+
+  /* Find transaction descriptor for current logging transaction */
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      return S_ERROR;
+    }
+
+  /* init oos tracking info */
+  tdes->oos_insert_lsa_queue.clear ();
+  thread_p->oos_oids.clear ();
+
+  /* The recdes data from the log includes the OOS record header. Since oos_insert adds its own header,
+   * we must skip the existing header to avoid duplication. */
+  recdes->data = recdes->data + OOS_RECORD_HEADER_SIZE;
+  recdes->length = recdes->length - OOS_RECORD_HEADER_SIZE;
+
+  recdes->type = REC_HOME;
+  if (oos_insert (thread_p, oos_vfid, *recdes, oos_oid) != NO_ERROR)
+    {
+      error_code = S_ERROR;
+      goto err;
+    }
+
+  oos_push_oos_oid (thread_p, &oos_oid);
+
+err:
+  return error_code;
+}
+
 /*
  * locator_move_record () - relocate a record from a partitioned class
  * return : error code or NO_ERROR
@@ -6940,6 +7000,8 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
   HFID prev_hfid = HFID_INITIALIZER;
   int has_index;
 
+  thread_p->oos_oids.clear ();
+
   /* need to start a topop to ensure the atomic operation. */
   error_code = xtran_server_start_topop (thread_p, &lsa);
   if (error_code != NO_ERROR)
@@ -7003,8 +7065,20 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	{
 	  has_index = LC_ONEOBJ_GET_INDEX_FLAG (obj);
 
+	  if (obj->operation == LC_FLUSH_INSERT && heap_recdes_contains_oos (&recdes))
+	    {
+	      error_code = locator_fixup_oos_oids_in_recdes (thread_p, &obj->class_oid, &recdes);
+	      if (error_code != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
+	    }
+
 	  switch (obj->operation)
 	    {
+	    case LC_FLUSH_INSERT_OOS:
+	      error_code = locator_oos_insert_force (thread_p, &obj->class_oid, &recdes);
+	      break;
 	    case LC_FLUSH_INSERT:
 	    case LC_FLUSH_INSERT_PRUNE:
 	    case LC_FLUSH_INSERT_PRUNE_VERIFY:
@@ -7077,6 +7151,11 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	  (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &oneobj_lsa);
 	}
       pr_clear_value (&key_value);
+
+      if (obj->operation != LC_FLUSH_INSERT_OOS)
+	{
+	  thread_p->oos_oids.clear ();
+	}
     }
 
   if (force_scancache != NULL)
@@ -8034,6 +8113,24 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
       if (need_replication && index->type == BTREE_PRIMARY_KEY && error_code == NO_ERROR
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
+	  if (heap_recdes_contains_oos (recdes))
+	    {
+	      // insert oos replication log
+	      for (int i = 0; i < (int) thread_p->oos_oids.size (); i++)
+		{
+		  error_code = repl_log_insert (thread_p,
+						class_oid,
+						&thread_p->oos_oids[i],
+						LOG_REPLICATION_DATA,
+						RVREPL_OOS_INSERT, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL);
+		  if (error_code != NO_ERROR)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      goto error;
+		    }
+		}
+	    }
+
 	  error_code =
 	    repl_log_insert (thread_p, class_oid, inst_oid, datayn ? LOG_REPLICATION_DATA : LOG_REPLICATION_STATEMENT,
 			     is_insert ? RVREPL_DATA_INSERT : RVREPL_DATA_DELETE, key_dbvalue,
@@ -8767,6 +8864,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
     {
       assert (repl_info != NULL);
 
+      bool free_old_key = false;
+
       if (repl_old_key == NULL)
 	{
 	  key_domain = NULL;
@@ -8796,22 +8895,59 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	       */
 	      repl_old_key->data.midxkey.domain = key_domain;
 	    }
-
-	  error_code =
-	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
-			     (REPL_INFO_TYPE) repl_info->repl_info_type);
-	  if (repl_old_key == &old_dbvalue)
-	    {
-	      pr_clear_value (&old_dbvalue);
-	    }
 	}
       else
 	{
-	  error_code =
-	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
-			     (REPL_INFO_TYPE) repl_info->repl_info_type);
+	  free_old_key = true;
+	}
+
+      /* insert oos replication log */
+      if (heap_recdes_contains_oos (new_recdes))
+	{
+	  if (new_key == NULL)
+	    {
+	      db_make_null (&new_dbvalue);
+	      new_key =
+		heap_attrvalue_get_key (thread_p, pk_btid_index, new_attrinfo, new_recdes, &new_btid, &new_dbvalue,
+					aligned_newbuf, NULL, NULL, oid, false);
+	      if (new_key == NULL)
+		{
+		  error_code = ER_FAILED;
+		  goto error;
+		}
+	    }
+
+	  for (int i = 0; i < (int) thread_p->oos_oids.size (); i++)
+	    {
+	      error_code =
+		repl_log_insert (thread_p, class_oid, &thread_p->oos_oids[i], LOG_REPLICATION_DATA, RVREPL_OOS_INSERT,
+				 new_key, REPL_INFO_TYPE_RBR_NORMAL);
+	      if (error_code != NO_ERROR)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  goto error;
+		}
+	    }
+
+	  if (new_key == &new_dbvalue)
+	    {
+	      pr_clear_value (&new_dbvalue);
+	      new_key = NULL;
+	    }
+	}
+
+      error_code =
+	repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
+			 (REPL_INFO_TYPE) repl_info->repl_info_type);
+
+      if (free_old_key)
+	{
 	  pr_free_ext_value (repl_old_key);
 	  repl_old_key = NULL;
+	}
+      else if (repl_old_key == &old_dbvalue)
+	{
+	  pr_clear_value (&old_dbvalue);
 	}
     }
   else
@@ -10970,8 +11106,8 @@ locator_guess_sub_classes (THREAD_ENTRY * thread_p, LC_LOCKHINT ** lockhint_subc
 		       */
 
 		      /* May be lock change */
-		      lockhint->classes[j].lock = lock_Conv[lockhint->classes[j].lock][lockhint->classes[ref_num].lock];
-		      assert (lockhint->classes[j].lock != NA_LOCK);
+		      lockhint->classes[j].lock =
+			lock_conv (lockhint->classes[j].lock, lockhint->classes[ref_num].lock);
 
 		      /* Make sure that subclasses are obtained */
 		      lockhint->classes[j].need_subclasses = 1;
@@ -10983,8 +11119,7 @@ locator_guess_sub_classes (THREAD_ENTRY * thread_p, LC_LOCKHINT ** lockhint_subc
 		       * revisit if a lock conversion is needed as a result of
 		       * several super classes
 		       */
-		      lock = lock_Conv[lockhint->classes[j].lock][lockhint->classes[ref_num].lock];
-		      assert (lock != NA_LOCK);
+		      lock = lock_conv (lockhint->classes[j].lock, lockhint->classes[ref_num].lock);
 
 		      if (lockhint->classes[j].lock != lock)
 			{
@@ -11289,8 +11424,7 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes, con
 	    {
 	      /* Duplicate class, merge the lock and the subclass entry */
 	      assert ((*hlock)->classes[i].lock >= NULL_LOCK && (*hlock)->classes[j].lock >= NULL_LOCK);
-	      (*hlock)->classes[i].lock = lock_Conv[(*hlock)->classes[i].lock][(*hlock)->classes[j].lock];
-	      assert ((*hlock)->classes[i].lock != NA_LOCK);
+	      (*hlock)->classes[i].lock = lock_conv ((*hlock)->classes[i].lock, (*hlock)->classes[j].lock);
 
 	      if ((*hlock)->classes[i].need_subclasses == 0)
 		{
@@ -12375,6 +12509,7 @@ locator_area_op_to_pruning_type (LC_COPYAREA_OPERATION op)
     case LC_FLUSH_INSERT:
     case LC_FLUSH_UPDATE:
     case LC_FLUSH_DELETE:
+    case LC_FLUSH_INSERT_OOS:
       return DB_NOT_PARTITIONED_CLASS;
 
     case LC_FLUSH_INSERT_PRUNE:
@@ -13929,4 +14064,191 @@ void
 xsynonym_remove_xasl_by_oid (THREAD_ENTRY * thread_p, OID * oidp)
 {
   xcache_remove_by_oid (thread_p, oidp);
+}
+
+static int
+locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes)
+{
+  HEAP_CACHE_ATTRINFO attr_info;
+  OR_CLASSREP *classrep = NULL;
+  OR_ATTRIBUTE *attrepr = NULL;
+  OID oos_oid = oid_Null_oid;
+  OR_BUF buf = { NULL, NULL, NULL, NULL };
+  char *oid_ptr = NULL;
+  int offset_size = 0;
+  int offset = 0;
+  int oos_oid_count = 0;
+  int error = NO_ERROR;
+
+  assert (thread_p->oos_oids.size () > 0);
+
+  error = heap_attrinfo_start (thread_p, class_oid, -1, NULL, &attr_info);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  classrep = attr_info.last_classrepr;
+  offset_size = OR_GET_OFFSET_SIZE (recdes->data);
+
+  for (int i = 0; i < classrep->n_attributes; i++)
+    {
+      attrepr = &classrep->attributes[i];
+
+      if (attrepr->is_fixed != 0)
+	{
+	  continue;
+	}
+
+      if (OR_VAR_IS_NULL (recdes->data, attrepr->location))
+	{
+	  continue;
+	}
+
+      offset = 0;
+
+      switch (offset_size)
+	{
+	case OR_BYTE_SIZE:
+	  offset = OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data),
+							  attrepr->location, offset_size));
+	  break;
+
+	case OR_SHORT_SIZE:
+	  offset = OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data),
+							   attrepr->location, offset_size));
+	  break;
+
+	default:
+	  assert_release (false);
+	  error = ER_FAILED;
+	  goto end;
+	}
+
+      if (!OR_IS_OOS (offset))
+	{
+	  continue;
+	}
+
+      assert (oos_oid_count < (int) thread_p->oos_oids.size ());
+      oos_oid = thread_p->oos_oids[oos_oid_count];
+      oid_ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location);
+
+      buf.ptr = oid_ptr;
+      buf.endptr = (char *) recdes->data + recdes->length;
+
+      or_put_oid (&buf, &oos_oid);
+
+      oos_oid_count++;
+
+      if (oos_oid_count >= (int) thread_p->oos_oids.size ())
+	{
+	  goto end;
+	}
+    }
+
+end:
+  heap_attrinfo_end (thread_p, &attr_info);
+  return error;
+}
+
+/*
+ * xlob_create_dir () - create lob dir
+ *
+ * thread_p (in) : thread_entry.
+ * hfid (in) : hfid(in): When creating the LOB directory, use each table's HFID as the directory name to distinguish them
+ * attrid_arr (in): An array that stores LOB attribute ids of the table.
+                    When creating the LOB directory, each LOB attribute is distinguished by its id
+ * attrid_arr_length (in)	 : Length of the attrid_arr array
+ */
+int
+xlob_create_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attrid_arr_length)
+{
+  char rv_path[PATH_MAX];
+  int ret = NO_ERROR;
+  LOG_DATA_ADDR addr;
+  addr.offset = -1;
+  addr.pgptr = NULL;
+  addr.vfid = NULL;
+
+  for (int i = 0; i < attrid_arr_length; i++)
+    {
+      ret = locator_lob_make_dir_path (rv_path, hfid, attrid_arr[i]);
+      if (ret != NO_ERROR)
+	{
+	  return ret;
+	}
+
+      log_append_undo_data (thread_p, RVHF_LOB_REMOVE_DIR, &addr, (strlen (rv_path) + 1), &rv_path);
+
+      ret = es_make_dirs (rv_path, NULL);
+      if (ret != NO_ERROR)
+	{
+	  return ret;
+	}
+    }
+
+  return ret;
+}
+
+/*
+ * xlob_remove_dir () - remove a lob directory
+ *
+ * thread_p (in) : thread_entry
+ * hfid (in) : Used to identify the table when removing the LOB directory
+ * attrid (in) : Used to identify the table's LOB attribute when removing the LOB directory.
+ *
+ * NOTE: A LOB directory is created immediately,
+ *       whereas deletion is deferred using the log_append_postpone() function and executed at commit time.
+ */
+int
+xlob_remove_dir (THREAD_ENTRY * thread_p, HFID * hfid, int attrid)
+{
+  char rv_path[PATH_MAX];
+  int ret = NO_ERROR;
+  LOG_DATA_ADDR addr;
+  addr.offset = -1;
+  addr.pgptr = NULL;
+  addr.vfid = NULL;
+
+  ret = locator_lob_make_dir_path (rv_path, hfid, attrid);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
+  log_append_postpone (thread_p, RVHF_LOB_REMOVE_DIR, &addr, (strlen (rv_path) + 1), rv_path);
+
+  return ret;
+}
+
+/*
+ * locator_lob_make_dir_path () - Construct the directory path for the LOB directory.
+ *
+ * lob_path (in) : A buffer that stores the LOB path to be constructed and returned.
+ * hfid (in) : Used to construct the LOB directory.
+ * attrid (in) : Used to construct the LOB directory.
+ *               If attrid is -1, it represents all LOB directories for the table.
+ *               In this case, the path is constructed using the hfid as a prefix.
+ */
+static int
+locator_lob_make_dir_path (char *lob_path, const HFID * hfid, int attrid)
+{
+  int ret;
+
+  if (attrid == -1)
+    {
+      ret = snprintf (lob_path, PATH_MAX, "%d%d%d", HFID_AS_ARGS (hfid));
+    }
+  else
+    {
+      ret = snprintf (lob_path, PATH_MAX, "%d%d%d%d", HFID_AS_ARGS (hfid), attrid);
+    }
+
+  if (ret < 0 || ret >= PATH_MAX)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
 }

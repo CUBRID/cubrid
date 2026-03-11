@@ -241,6 +241,9 @@ extern void sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *
 extern void sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void ssession_stop_attached_threads (THREAD_ENTRY * thread_p, void *session);
 
+extern void slob_create_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void slob_remove_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+
 /* For CDC */
 extern void slog_supplement_statement (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

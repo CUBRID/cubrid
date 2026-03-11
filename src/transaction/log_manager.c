@@ -2200,10 +2200,14 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
 	  LSA_COPY (&tdes->repl_update_lsa, &tdes->tail_lsa);
 	  assert (tdes->is_active_worker_transaction ());
 	}
-      else if (rcvindex == RVHF_INSERT || rcvindex == RVHF_MVCC_INSERT || rcvindex == RVOOS_INSERT)
+      else if (rcvindex == RVHF_INSERT || rcvindex == RVHF_MVCC_INSERT)
 	{
 	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
 	  assert (tdes->is_active_worker_transaction ());
+	}
+      else if (rcvindex == RVOOS_INSERT)
+	{
+	  tdes->oos_insert_lsa_queue.push (tdes->tail_lsa);
 	}
     }
 }
@@ -2464,9 +2468,14 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 	  LSA_COPY (&tdes->repl_update_lsa, &tdes->tail_lsa);
 	  assert (tdes->is_active_worker_transaction ());
 	}
-      else if (rcvindex == RVHF_INSERT || rcvindex == RVHF_MVCC_INSERT || rcvindex == RVOOS_INSERT)
+      else if (rcvindex == RVHF_INSERT || rcvindex == RVHF_MVCC_INSERT)
 	{
 	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
+	  assert (tdes->is_active_worker_transaction ());
+	}
+      else if (rcvindex == RVOOS_INSERT)
+	{
+	  tdes->oos_insert_lsa_queue.push (tdes->tail_lsa);
 	  assert (tdes->is_active_worker_transaction ());
 	}
     }
@@ -5770,6 +5779,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 
   state = tdes->state;
 
+#ifdef LOG_2PC_ACK_RECV_REQUIRED
   if (tdes->coord != NULL && tdes->coord->ack_received != NULL)
     {
       /*
@@ -5905,12 +5915,12 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	      return state;
 	    }
 	}
-
       /*
        * All acknowledgments of participants have been received, declare the
        * the transaction as completed
        */
     }
+#endif
 
   /*
    * DECLARE THE TRANSACTION AS COMPLETED
@@ -6614,6 +6624,10 @@ log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * l
       break;
     case RVREPL_DATA_DELETE:
       type = "RVREPL_DATA_DELETE";
+      dump_function = log_repl_data_dump;
+      break;
+    case RVREPL_OOS_INSERT:
+      type = "RVREPL_OOS_INSERT";
       dump_function = log_repl_data_dump;
       break;
     default:
@@ -11840,7 +11854,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 
 	    LOG_READ_ADD_ALIGN (thread_p, sizeof (*undoredo), &process_lsa, log_page_p);
 
-            //TODO : Additional handling for OOS columns in CDC will be needed later.
+	    //TODO : Additional handling for OOS columns in CDC will be needed later.
 	    if (rcvindex == RVHF_INSERT || rcvindex == RVHF_INSERT_NEWHOME)
 	      {
 		if (ZIP_CHECK (redo_length))

@@ -20,6 +20,10 @@
  * thread_manager.cpp - implementation for tracker for all thread resources
  */
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif // not SERVER_MODE and not SA_MODE
+
 #include "thread_manager.hpp"
 
 // same module includes

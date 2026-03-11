@@ -63,15 +63,25 @@ struct dblink_scan_info
 #define MAX_LEN_CONNECTION_URL 512
 
 /*
- * This data structure is the connection interface for dblink
+ * This data structure is the connection information for dblink
  */
-typedef struct dblink_conn_entry DBLINK_CONN_ENTRY;
-struct dblink_conn_entry
+typedef struct dblink_conn_info DBLINK_CONN_INFO;
+struct dblink_conn_info
 {
   int conn_handle;
   char conn_url[MAX_LEN_CONNECTION_URL + 1];
   char user_name[DB_MAX_USER_LENGTH + 1];
   char password[DB_MAX_PASSWORD_LENGTH + 1];
+};
+
+/*
+ * This data structure is the connection interface for dblink
+ */
+typedef struct dblink_conn_entry DBLINK_CONN_ENTRY;
+struct dblink_conn_entry
+{
+  DBLINK_CONN_INFO conn_info;
+  bool is_2pc_participant;
 
   DBLINK_CONN_ENTRY *next;
 };

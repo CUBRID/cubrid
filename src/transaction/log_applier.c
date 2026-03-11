@@ -4928,6 +4928,9 @@ la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
     case RVREPL_DATA_DELETE:
       operation = LC_FLUSH_DELETE;
       break;
+    case RVREPL_OOS_INSERT:
+      operation = LC_FLUSH_INSERT_OOS;
+      break;
     default:
       assert (false);
     }
@@ -5364,7 +5367,7 @@ la_apply_insert_log (LA_ITEM * item)
       goto end;
     }
 
-  if (rcvindex != RVHF_INSERT && rcvindex != RVHF_MVCC_INSERT)
+  if (rcvindex != RVHF_INSERT && rcvindex != RVHF_MVCC_INSERT && rcvindex != RVOOS_INSERT)
     {
       er_log_debug (ARG_FILE_LINE, "apply_insert : rcvindex = %d\n", rcvindex);
       error = ER_FAILED;
@@ -5808,6 +5811,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 		  break;
 
 		case RVREPL_DATA_INSERT:
+		case RVREPL_OOS_INSERT:
 		  error = la_apply_insert_log (item);
 		  break;
 

@@ -701,7 +701,8 @@ static void heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * a
 					RECDES * raw);
 static void heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
 					   RECDES * raw, bool * is_oos);
-static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw);
+static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
+						bool is_oos);
 static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info);
 
 static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value,
@@ -939,7 +940,6 @@ static int heap_update_and_log_header (THREAD_ENTRY * thread_p, const HFID * hfi
 				       const PGBUF_WATCHER heap_header_watcher, HEAP_HDR_STATS * heap_hdr,
 				       const VPID new_next_vpid, const VPID new_last_vpid, const int new_num_pages);
 
-static bool heap_recdes_contains_oos (const RECDES * record);
 static SCAN_CODE heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p,
 								     HEAP_GET_CONTEXT * context);
 
@@ -1286,8 +1286,7 @@ heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p, const VPID * vpid_pt
       else
 	{
 	  assert (scan_cache->page_latch > NULL_LOCK);
-	  page_lock = lock_Conv[scan_cache->page_latch][lock];
-	  assert (page_lock != NA_LOCK);
+	  page_lock = lock_conv (scan_cache->page_latch, lock);
 	}
     }
   else
@@ -6877,6 +6876,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 		      break;
 		    }
 		  target_thread_p = target_thread_p->m_px_orig_thread_entry;
+		  assert (target_thread_p != thread_p);
 		}
 	      assert (target_thread_p != NULL);
 	      pthread_mutex_lock (&target_thread_p->m_px_lock_mutex);
@@ -7926,6 +7926,10 @@ static SCAN_CODE
 heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 {
   using namespace oos_log;
+
+  // HOTFIX!
+  // todo: this function is buggy. by doing this, we give up unloaddb.
+  return S_SUCCESS;
 
   if (!heap_recdes_contains_oos (context->recdes_p))
     {
@@ -10644,7 +10648,7 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
  *
  */
 static int
-heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw)
+heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw, bool is_oos)
 {
   const PR_TYPE *pr_type;
   OR_BUF buf;
@@ -10677,7 +10681,7 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
       pr_type = pr_type_from_id (attrepr->type);
       if (pr_type)
 	{
-	  rv = pr_type->data_readval (&buf, &value->dbvalue, attrepr->domain, raw->length, false, NULL, 0);
+	  rv = pr_type->data_readval (&buf, &value->dbvalue, attrepr->domain, raw->length, is_oos, NULL, 0);
 	}
       value->state = HEAP_READ_ATTRVALUE;
       if (rv != NO_ERROR)
@@ -10747,7 +10751,14 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
     }
 
   /* the data pointer will point to either a current value in recdes or a default one in attrepr */
-  error = heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw);
+  error = heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw, is_oos);
+  // TODO: heap_attrvalue_transform_to_dbvalue() used to PEEK &raw when creating value (dbvalue),
+  // but oos_insert() makes &raw point to newly allocated memory.
+  // Thus,
+  // 1) we need to free &raw only when is_oos is true.
+  // 2) we need to create dbvalue with mr_data_readval...(...COPY).
+  // This can be refactored later when dbvalue supports zero-copy to OOS data.
+  // oos_insert(OID) must be refactored to oos_read(PAGE_PTR, slotid, PEEK/COPY) and allow PEEK mode.
   if (is_oos)
     {
       recdes_free_data_area (&raw);
@@ -10767,12 +10778,12 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 static int
 heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, HEAP_CACHE_ATTRINFO * attr_info)
 {
-  char *disk_data = NULL;
+  RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
+  bool is_oos = false;
   bool found = true;		/* Does attribute(att) exist in this disk representation? */
   int i;
 
   /* Initialize disk value information */
-  disk_data = NULL;
   db_make_null (value);
 
   if (recdes != NULL && recdes->data != NULL && att != NULL)
@@ -10795,9 +10806,10 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 	{
 	  /* It means that the representation has an attribute which was created after insertion of the record. In this
 	   * case, return the default value of the attribute if it exists. */
-	  if (att->default_value.val_length > 0)
+	  raw.length = att->default_value.val_length;
+	  if (raw.length > 0)
 	    {
-	      disk_data = (char *) att->default_value.value;
+	      raw.data = (char *) att->default_value.value;
 	    }
 	}
       else
@@ -10805,23 +10817,11 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 	  /* Is it a fixed size attribute ? */
 	  if (att->is_fixed != 0)
 	    {			/* A fixed attribute.  */
-	      if (!OR_FIXED_ATT_IS_UNBOUND (recdes->data, attr_info->read_classrepr->n_variable,
-					    attr_info->read_classrepr->fixed_length, att->position))
-		{
-		  /* The fixed attribute is bound. Access its information */
-		  disk_data =
-		    ((char *) recdes->data +
-		     OR_FIXED_ATTRIBUTES_OFFSET_BY_OBJ (recdes->data,
-							attr_info->read_classrepr->n_variable) + att->location);
-		}
+	      heap_attrvalue_point_fixed (recdes, attr_info, att, &raw);
 	    }
 	  else
 	    {			/* A variable attribute */
-	      if (!OR_VAR_IS_NULL (recdes->data, att->location))
-		{
-		  /* The variable attribute is bound. Find its location through the variable offset attribute table. */
-		  disk_data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, att->location));
-		}
+	      heap_attrvalue_point_variable (recdes, attr_info, att, &raw, &is_oos);
 	    }
 	}
     }
@@ -10831,12 +10831,17 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
       return ER_FAILED;
     }
 
-  if (disk_data != NULL)
+  if (raw.data != NULL)
     {
       OR_BUF buf;
 
-      or_init (&buf, disk_data, -1);
-      att->domain->type->data_readval (&buf, value, att->domain, -1, false, NULL, 0);
+      or_init (&buf, raw.data, raw.length);
+      att->domain->type->data_readval (&buf, value, att->domain, raw.length, is_oos, NULL, 0);
+    }
+
+  if (is_oos)
+    {
+      recdes_free_data_area (&raw);
     }
 
   return NO_ERROR;
@@ -12265,6 +12270,8 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
   VFID oos_vfid;
   OID oos_oid;
   RECDES recdes;
+  LOG_TDES *tdes;
+  int tran_index;
   int i;
 
   recdes.area_size = IO_MAX_PAGE_SIZE;
@@ -12280,6 +12287,19 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
     {
       return S_ERROR;
     }
+
+  /* Find transaction descriptor for current logging transaction */
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      return S_ERROR;
+    }
+
+  /* init oos tracking info */
+  tdes->oos_insert_lsa_queue.clear ();
+  thread_p->oos_oids.clear ();
 
   for (i = 0; i < attr_info->num_values; i++)
     {
@@ -12298,6 +12318,8 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
 	    {
 	      return S_ERROR;
 	    }
+
+	  thread_p->oos_oids.push_back (oos_oid);	/* for replication log */
 	  (*oos_oids)[i] = oos_oid;
 	  if (recdes.data != PTR_ALIGN (recbuf, MAX_ALIGNMENT))
 	    {
@@ -12903,12 +12925,11 @@ heap_attrinfo_transform_variable_to_disk_develop_ver (THREAD_ENTRY * thread_p, H
 {
   HEAP_ATTRVALUE *value;
   DB_VALUE *dbvalue;
+  ATTR_ID attrid;
   const PR_TYPE *pr_type;
-  DB_ELO dest_elo, *elo_p;
-  char *save_meta_data, *new_meta_data;
-  int rv;
 
   value = &attr_info->values[index];
+  attrid = value->attrid;
   pr_type = value->last_attrepr->domain->type;
   if (pr_type == NULL)
     {
@@ -12949,8 +12970,17 @@ heap_attrinfo_transform_variable_to_disk_develop_ver (THREAD_ENTRY * thread_p, H
       buf->ptr = *ptr_varvals;
 
       if (lob_create_flag == LOB_FLAG_INCLUDE_LOB && value->state == HEAP_WRITTEN_ATTRVALUE
-	  && (pr_type->id == DB_TYPE_BLOB || pr_type->id == DB_TYPE_CLOB))
+	  && TP_IS_LOB_TYPE (pr_type->id))
 	{
+	  DB_ELO dest_elo, *elo_p;
+	  HFID hfid;
+	  INT32 hpgid;
+	  int32_t fileid;
+	  short volid;
+	  char *save_meta_data, *new_meta_data;
+	  char lob_path_prefix[PATH_MAX];
+	  int ret;
+
 	  assert (db_value_type (dbvalue) == DB_TYPE_BLOB || db_value_type (dbvalue) == DB_TYPE_CLOB);
 
 	  elo_p = db_get_elo (dbvalue);
@@ -12966,22 +12996,27 @@ heap_attrinfo_transform_variable_to_disk_develop_ver (THREAD_ENTRY * thread_p, H
 	    {
 	      return S_ERROR;
 	    }
+
+	  heap_hfid_cache_get (thread_p, &attr_info->class_oid, &hfid, NULL, NULL);
+
+	  snprintf (lob_path_prefix, PATH_MAX, "%d%d%d%d", HFID_AS_ARGS (&hfid), attrid);
+
 	  save_meta_data = elo_p->meta_data;
 	  elo_p->meta_data = new_meta_data;
-	  rv = db_elo_copy (db_get_elo (dbvalue), &dest_elo);
+	  ret = db_elo_copy_with_prefix (db_get_elo (dbvalue), lob_path_prefix, &dest_elo);
 
 	  free_and_init (elo_p->meta_data);
+	  if (ret != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+
 	  elo_p->meta_data = save_meta_data;
 
 	  /* The purpose of HEAP_WRITTEN_LOB_ATTRVALUE is to avoid reenter this branch. In the first pass,
 	   * this branch is entered and elo is copied. When BUFFER_OVERFLOW happens, we need avoid to copy
 	   * elo again. Otherwize it will generate 2 copies. */
 	  value->state = HEAP_WRITTEN_LOB_ATTRVALUE;
-
-	  if (rv < 0)
-	    {
-	      return S_ERROR;
-	    }
 
 	  pr_clear_value (dbvalue);
 	  db_make_elo (dbvalue, pr_type->id, &dest_elo);
@@ -20458,7 +20493,8 @@ heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_
     }
 
   /* Safe guard */
-  assert (mvcc_header_size_lookup[MVCC_GET_FLAG (mvcc_header)] == OR_MVCC_MAX_HEADER_SIZE);
+  assert (mvcc_header_size_lookup[MVCC_GET_FLAG (mvcc_header) & OR_MVCC_HEADER_SIZE_LOOKUP_MASK] ==
+	  OR_MVCC_MAX_HEADER_SIZE);
   return or_mvcc_set_header (&ovf_recdes, mvcc_header);
 }
 
@@ -21491,9 +21527,9 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 	  int curr_header_size, new_header_size;
 
 	  /* strip MVCC information */
-	  curr_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag & 0x7];
+	  curr_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
 	  MVCC_CLEAR_ALL_FLAG_BITS (&mvcc_rec_header);
-	  new_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag & 0x7];
+	  new_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
 
 	  /* compute new record size */
 	  record_size -= (curr_header_size - new_header_size);
@@ -21651,9 +21687,9 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 	  int curr_header_size, new_header_size;
 
 	  /* strip MVCC information */
-	  curr_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag];
+	  curr_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
 	  MVCC_CLEAR_ALL_FLAG_BITS (&mvcc_rec_header);
-	  new_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag];
+	  new_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
 
 	  /* compute new record size */
 	  record_size -= (curr_header_size - new_header_size);
@@ -22335,7 +22371,8 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	{
 	  return ER_FAILED;
 	}
-      assert (mvcc_header_size_lookup[overflow_header.mvcc_flag] == OR_MVCC_MAX_HEADER_SIZE);
+      assert (mvcc_header_size_lookup[overflow_header.mvcc_flag & OR_MVCC_HEADER_SIZE_LOOKUP_MASK] ==
+	      OR_MVCC_MAX_HEADER_SIZE);
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
@@ -22528,7 +22565,9 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       if (is_adjusted_size_big)
 	{
 	  /* not exactly necessary, but we'll be able to compare sizes */
-	  adjusted_size = forward_recdes.length - mvcc_header_size_lookup[mvcc_flags] + OR_MVCC_MAX_HEADER_SIZE;
+	  adjusted_size =
+	    forward_recdes.length - mvcc_header_size_lookup[mvcc_flags & OR_MVCC_HEADER_SIZE_LOOKUP_MASK] +
+	    OR_MVCC_MAX_HEADER_SIZE;
 	}
 #endif
 
@@ -22568,8 +22607,9 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 		  if (is_adjusted_size_big)
 		    {
 		      /* not exactly necessary, but we'll be able to compare sizes */
-		      adjusted_size = forward_recdes.length - mvcc_header_size_lookup[mvcc_flags]
-			+ OR_MVCC_MAX_HEADER_SIZE;
+		      adjusted_size =
+			forward_recdes.length - mvcc_header_size_lookup[mvcc_flags & OR_MVCC_HEADER_SIZE_LOOKUP_MASK] +
+			OR_MVCC_MAX_HEADER_SIZE;
 		    }
 #endif
 		}
@@ -22608,7 +22648,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  else
 	    {
 	      /* Check that we need to copy from end of MVCC header up to the end of the buffer. */
-	      assert (delid_offset == mvcc_header_size_lookup[mvcc_flags]);
+	      assert (delid_offset == mvcc_header_size_lookup[mvcc_flags & OR_MVCC_HEADER_SIZE_LOOKUP_MASK]);
 	    }
 #endif
 
@@ -22631,7 +22671,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  or_mvcc_add_header (&new_forward_recdes, &forward_rec_header, OR_GET_BOUND_BIT_FLAG (forward_recdes.data),
 			      OR_GET_OFFSET_SIZE (forward_recdes.data));
 
-	  forward_rec_header_size = mvcc_header_size_lookup[mvcc_flags];
+	  forward_rec_header_size = mvcc_header_size_lookup[mvcc_flags & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
 	  memcpy (new_forward_recdes.data + new_forward_recdes.length, forward_recdes.data + forward_rec_header_size,
 		  forward_recdes.length - forward_rec_header_size);
 	  new_forward_recdes.length += forward_recdes.length - forward_rec_header_size;
@@ -23017,7 +23057,9 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       if (is_adjusted_size_big)
 	{
 	  /* not exactly necessary, but we'll be able to compare sizes */
-	  adjusted_size = context->home_recdes.length - mvcc_header_size_lookup[mvcc_flags] + OR_MVCC_MAX_HEADER_SIZE;
+	  adjusted_size =
+	    context->home_recdes.length - mvcc_header_size_lookup[mvcc_flags & OR_MVCC_HEADER_SIZE_LOOKUP_MASK] +
+	    OR_MVCC_MAX_HEADER_SIZE;
 	}
 #endif
 
@@ -23054,7 +23096,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  else
 	    {
 	      /* Check that we need to copy from end of MVCC header up to the end of the buffer. */
-	      assert (delid_offset == mvcc_header_size_lookup[mvcc_flags]);
+	      assert (delid_offset == mvcc_header_size_lookup[mvcc_flags & OR_MVCC_HEADER_SIZE_LOOKUP_MASK]);
 	    }
 #endif
 
@@ -23080,7 +23122,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  heap_delete_adjust_header (&record_header, mvcc_id, is_adjusted_size_big);
 	  or_mvcc_add_header (&built_recdes, &record_header, OR_GET_BOUND_BIT_FLAG (context->home_recdes.data),
 			      OR_GET_OFFSET_SIZE (context->home_recdes.data));
-	  header_size = mvcc_header_size_lookup[mvcc_flags];
+	  header_size = mvcc_header_size_lookup[mvcc_flags & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
 	  memcpy (built_recdes.data + built_recdes.length, context->home_recdes.data + header_size,
 		  context->home_recdes.length - header_size);
 	  built_recdes.length += (context->home_recdes.length - header_size);
@@ -27610,12 +27652,31 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
 
 // *INDENT-ON*
 
-static bool
+/*
+ * heap_rv_lob_remove_dir () - Recovery function for LOB directories.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data.
+ *
+ * NOTE: This function is called when creating or deleting a LOB directory.
+ *       If a LOB directory is created and the transaction is rolled back, this
+ *       function will be called to remove the created directory.
+ *       If a LOB directory deletion command is issued and the transaction is
+ *       committed, this function will be called to actually remove the directory.
+ */
+int
+heap_rv_lob_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  return fileio_lob_remove_matching_dir (rcv->data);
+}
+
+bool
 heap_recdes_contains_oos (const RECDES * record)
 {
   int flag = (INT32) OR_GET_MVCC_FLAG (record->data);
   return flag & OR_MVCC_FLAG_HAS_OOS;
-};
+}
 
 oid_vector
 heap_recdes_get_oos_oids (const RECDES * recdes)

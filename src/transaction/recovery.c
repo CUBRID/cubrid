@@ -836,6 +836,12 @@ struct rvfun RV_fun[] = {
    file_rv_set_tde_algorithm,
    NULL,
    NULL},
+  {RVHF_LOB_REMOVE_DIR,
+   "RVHF_LOB_REMOVE_DIR",
+   heap_rv_lob_remove_dir,
+   heap_rv_lob_remove_dir,
+   NULL,
+   NULL},
   {RVOOS_INSERT,
    "RVOOS_INSERT",
    oos_rv_redo_delete,
@@ -847,7 +853,19 @@ struct rvfun RV_fun[] = {
    oos_rv_redo_insert,
    oos_rv_redo_delete,
    NULL,
-   NULL}
+   NULL},
+  {RVREPL_OOS_INSERT,
+   "RVREPL_OOS_INSERT",
+   NULL,
+   NULL,
+   NULL,
+   repl_data_insert_log_dump},
+  {RVREPL_OOS_DELETE,
+   "RVREPL_OOS_DELETE",
+   NULL,
+   NULL,
+   NULL,
+   repl_data_insert_log_dump},
 };
 
 /*

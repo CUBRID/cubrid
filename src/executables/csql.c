@@ -77,6 +77,12 @@
 #include "file_io.h"		/* needed for _wyield() */
 #endif /* WINDOWS */
 
+#if defined (SA_MODE)
+#include "boot_sr.h"
+#include "catalog_class.h"
+#endif
+
+
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -252,6 +258,9 @@ static int csql_connect (char *argument, CSQL_ARGUMENT * csql_arg);
 static void csql_set_server_output (CSQL_ARGUMENT * csql_arg, bool server_output);
 static void csql_print_server_output (const CSQL_ARGUMENT * csql_arg);
 static int csql_execute_query (const char *stmts);
+
+static inline void csql_apply_catalog_rebuild_mode (CSQL_ARGUMENT * csql_arg, int *client_type);
+static inline int csql_rebuild_catalog (const CSQL_ARGUMENT * csql_arg);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(WINDOWS)
@@ -2485,6 +2494,15 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	}
     }
 
+  if (csql_arg->sysadm_rebuild_catalog)
+    {
+      if (csql_rebuild_catalog (csql_arg) != NO_ERROR)
+	{
+	  csql_Error_code = CSQL_ERR_SYSTEM_CATALOG_COMPILE;
+	  goto error;
+	}
+    }
+
   snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),
 	    num_stmts - csql_Num_failures);
   csql_display_msg (csql_Scratch_text);
@@ -2509,6 +2527,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   return csql_Num_failures;
 
 error:
+  if (csql_arg->sysadm_rebuild_catalog)
+    {
+      do_abort_transaction = true;
+    }
+
   display_error (session, stmt_start_line_no);
   if (csql_arg->pl_server_output)
     {
@@ -3093,6 +3116,42 @@ csql_exit (int exit_status)
   longjmp (csql_Exit_env, 1);
 }
 
+/* --sysadm-rebuild-catalog option is only supported in SA_MODE */
+static inline void
+csql_apply_catalog_rebuild_mode (CSQL_ARGUMENT * csql_arg, int *client_type)
+{
+#if defined (SA_MODE)
+  *client_type = DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG;
+  csql_arg->sysadm = true;
+  csql_arg->auto_commit = false;
+  boot_set_skip_check_ct_classes (true);
+#endif /* SA_MODE */
+}
+
+static int
+csql_rebuild_catalog (const CSQL_ARGUMENT * csql_arg)
+{
+#if defined (SA_MODE)
+  assert (catcls_Enable == false);
+
+  if (catcls_compile_catalog_classes (NULL) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  if (sm_force_write_all_classes () != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  if (sm_update_all_catalog_statistics (STATS_WITH_FULLSCAN) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  db_commit_transaction ();
+#endif /* SA_MODE */
+  return NO_ERROR;
+}
+
 /*
  * csql() - "main" interface function for the csql interpreter
  *   return: EXIT_SUCCESS, EXIT_FAILURE
@@ -3225,8 +3284,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
   if (csql_arg->sysadm_rebuild_catalog)
     {
-      client_type = DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG;
-      csql_arg->sysadm = true;
+      csql_apply_catalog_rebuild_mode (csql_arg, &client_type);
     }
 
   if (db_restart_ex (argv0, csql_arg->db_name, csql_arg->user_name, csql_arg->passwd, NULL, client_type) != NO_ERROR)
