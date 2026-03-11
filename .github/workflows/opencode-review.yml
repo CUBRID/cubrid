@@ -119,14 +119,15 @@ jobs:
             SUGGESTION=$(echo "$i" | jq -r '.suggestion')
 
             # Create a comment body file (Ensure heredoc safety)
+            # EOF and its content MUST be aligned with the base indentation of the run block
             cat << EOF > pr_comment.txt
-            🚨 **Issue**: $ISSUE
+          🚨 **Issue**: $ISSUE
 
-            💡 **Solution**:
-            \`\`\`suggestion
-            $SUGGESTION
-            \`\`\`
-            EOF
+          💡 **Solution**:
+          \`\`\`suggestion
+          $SUGGESTION
+          \`\`\`
+          EOF
 
             # Post inline comment via GitHub API (Use '|| echo' to prevent pipeline failure on individual errors)
             gh api --method POST /repos/${{ github.repository }}/pulls/$PR_NUMBER/comments \
@@ -136,3 +137,4 @@ jobs:
               -F line=$LINE \
               -f side="RIGHT" || echo "Failed to post comment on $FILE:$LINE"
           done
+          
