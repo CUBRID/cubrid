@@ -38,12 +38,9 @@ namespace cubhnsw
     std::byte   *data{};
     std::size_t  size{};
     lock_mode    mode{lock_mode::none};
-  };
-
   inline void release_pinned_ (cubthread::entry *thread_p, pinned_block_data &blk, PAGE_PTR page_ptr) noexcept
   {
-    auto *t = reinterpret_cast<cubthread::entry *> (thread_p);
-    auto *p = reinterpret_cast<PAGE_PTR> (page_ptr);
+    if (thread_p == nullptr || page_ptr == nullptr)
 
     if (t == nullptr || p == nullptr)
       {
