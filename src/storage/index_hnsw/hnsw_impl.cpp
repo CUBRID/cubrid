@@ -196,7 +196,7 @@ static inline bool is_all_zeros_f (const float *v, int dim)
 }
 
 void
-hnsw_usearch_ng::update_pca_online (const float *vectors, int n_vectors, int dim,
+hnsw_impl::update_pca_online (const float *vectors, int n_vectors, int dim,
 				    bool normalize_inputs)
 {
   if (m_pca_mean.empty ())
