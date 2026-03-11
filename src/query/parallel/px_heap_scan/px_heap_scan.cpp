@@ -1086,6 +1086,7 @@ namespace parallel_heap_scan
   int manager<result_type>::close()
   {
     THREAD_ENTRY *thread_p = m_thread_p;
+    m_result_handler->read_finalize (thread_p);
     m_scan_id->s.phsid.manager = nullptr;
     this->~manager();
     db_private_free (thread_p, this);
