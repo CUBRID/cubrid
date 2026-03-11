@@ -82,8 +82,8 @@ class hnsw_impl final:public hnsw_index
     using storage_type = cubhnsw::disk_storage;
 
     hnsw_impl (hnsw_index_backend &backend, const BTID &btid,
-		     const std::string &name,
-		     const hnsw_build_params &build_params);
+	       const std::string &name,
+	       const hnsw_build_params &build_params);
     ~hnsw_impl () override;
 
     int init (cubthread::entry *thread_p, PAGE_PTR page_ptr, RECDES &rec);
@@ -197,7 +197,7 @@ static inline bool is_all_zeros_f (const float *v, int dim)
 
 void
 hnsw_impl::update_pca_online (const float *vectors, int n_vectors, int dim,
-				    bool normalize_inputs)
+			      bool normalize_inputs)
 {
   if (m_pca_mean.empty ())
     {
@@ -298,9 +298,9 @@ is_metric_supported (const DB_VECTOR_DISTANCE_METRIC &metric) const
 
 hnsw_index *
 hnsw_impl_backend::create_index (THREAD_ENTRY *thread_p,
-				       const BTID *btid,
-				       const std::string &name,
-				       const hnsw_build_params &build_params)
+				 const BTID *btid,
+				 const std::string &name,
+				 const hnsw_build_params &build_params)
 {
   VPID root_vpid = { btid->root_pageid, btid->vfid.volid };
   PAGE_PTR page_ptr =
@@ -338,8 +338,8 @@ hnsw_impl_backend::create_index (THREAD_ENTRY *thread_p,
 // =====================================================================
 
 hnsw_impl::hnsw_impl (hnsw_index_backend &backend, const BTID &btid, const std::string &name,
-				  const hnsw_build_params &build_params):hnsw_index (backend, btid, name,
-					build_params)
+		      const hnsw_build_params &build_params):hnsw_index (backend, btid, name,
+			    build_params)
 {
   m_root_vpid =
   {
@@ -455,7 +455,7 @@ hnsw_impl::~hnsw_impl ()
 
 int
 hnsw_impl::prepare_to_add (cubthread::entry *thread_p, int n_vectors, const OID *oid,
-				 const float *vector)
+			   const float *vector)
 {
   // do nothing
   return NO_ERROR;
@@ -522,7 +522,7 @@ hnsw_impl::add (cubthread::entry *thread_p, int n_vectors, const OID *oid, const
     }
 
   std::sort (scored.begin (), scored.end (),
-       [] (const auto &a, const auto &b)
+	     [] (const auto &a, const auto &b)
   {
     return a.first < b.first;
   });
@@ -624,7 +624,7 @@ hnsw_impl::add_internal (cubthread::entry &thread_ref, hnsw_build_worker_job &jo
 
 int
 hnsw_impl::search (cubthread::entry *thread_p, const float *query, const int k, const int ef_search,
-			 OID *rec_oids, float *distances)
+		   OID *rec_oids, float *distances)
 {
   if (m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE
       && db_vector_is_all_zeros (query, m_build_params.dimension))
@@ -665,8 +665,8 @@ hnsw_impl::update (cubthread::entry *thread_p, const OID *oid, const float *vect
 
 int
 hnsw_impl::filtered_search (cubthread::entry *thread_p, const float *query, const int k,
-				  const SCAN_PRED &filter, OID *rec_oids,
-				  float *distances)
+			    const SCAN_PRED &filter, OID *rec_oids,
+			    float *distances)
 {
   return ER_FAILED;
 }
