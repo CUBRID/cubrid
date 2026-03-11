@@ -4562,7 +4562,7 @@ spage_is_unknown_slot (PGSLOTID slot_id, SPAGE_HEADER * page_header_p, SPAGE_SLO
 #if defined (NDEBUG)
       assert_release (slot_id >= 0 && slot_id < num_slots);
 #else
-      er_log_debug (ARG_FILE_LINE, "Invalid ID or Empty slot : id=%d(num_slots=%d)\n", slot_id, num_slots);
+      er_log_debug (ARG_FILE_LINE, "Invalid ID : id=%d, num_slots=%d\n", slot_id, num_slots);
 #endif
       return true;
     }
@@ -4584,7 +4584,7 @@ spage_is_unknown_slot (PGSLOTID slot_id, SPAGE_HEADER * page_header_p, SPAGE_SLO
     {
 #if defined (NDEBUG)
       assert_release (total_slots_size <= (unsigned int) SPAGE_DB_PAGESIZE
-		      || offset <= (int) (SPAGE_DB_PAGESIZE - total_slots_size));
+		      && offset <= (int) (SPAGE_DB_PAGESIZE - total_slots_size));
 #else
       er_log_debug (ARG_FILE_LINE,
 		    "Offset violates slot array boundary : offset=%d, total_slots_size=%d, size of SPAGE_DB_PAGESIZE=%d\n",
