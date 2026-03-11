@@ -50,7 +50,7 @@ jobs:
             if [ -z "${ORIGINAL_PR}" ]; then
               COMMIT_MSG=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/commits --jq '.[0].commit.message' 2>/dev/null || echo "")
               SHA=$(echo "$COMMIT_MSG" | grep -oP 'This reverts commit \K[a-f0-9]+' | head -n 1 || echo "")
-              [ -n "$SHA" ] && ORIGINAL_PR=$(gh api "repos/${{ github.repository }}/commits/$SHA/pulls" --jq '.[0].number' 2>/dev/null)
+              [ -n "$SHA" ] && ORIGINAL_PR=$(gh api "repos/${{ github.repository }}/commits/$SHA/pulls" --jq '.[0].number' 2>/dev/null || echo "")
             fi
             
             echo "is_revert=true" >> "${GITHUB_OUTPUT}"
