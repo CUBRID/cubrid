@@ -31,7 +31,6 @@
 
 #include "stack_dump.h"
 #include "oos_log.hpp"
-using namespace oos_log;
 
 #include <stdio.h>
 #include <string.h>
@@ -83,6 +82,8 @@ using namespace oos_log;
 #include <set>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+using namespace oos_log;
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -12628,16 +12629,12 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  length = OR_SET_VAR_OOS (length);
 	}
 
-      // OOS workaround:
-      // if this is the last element, set the LAST_ELEMENT flag for variable attribute
-      // purpose: in order to know the size of the variable offset table without knowing attrinfo->num_values
-      // By doing this, we can know the size of variable offset table when reading RECDES without attrinfo.
-      // This is useful when handling raw heap RECDES without attrinfo, e.g., in logging and replication.
+      /* Mark the last variable attribute so readers can determine the variable offset table boundary
+       * without needing attrinfo->num_values (e.g., in logging and replication paths). */
       if (index == attr_info->num_values - 1)
 	{
-	  oos_debug
-	    ("DEBUG: Setting LAST_ELEMENT flag for variable attribute at index %d, the attr_info->num_values is %d\n",
-	     index, attr_info->num_values);
+	  oos_debug ("Setting LAST_ELEMENT flag for variable attribute at index %d (num_values=%d)",
+		     index, attr_info->num_values);
 	  length = OR_SET_VAR_LAST_ELEMENT (length);
 	}
       or_put_offset_internal (buf, length, offset_size);
@@ -27681,8 +27678,6 @@ heap_recdes_contains_oos (const RECDES * record)
 oid_vector
 heap_recdes_get_oos_oids (const RECDES * recdes)
 {
-
-  OR_BUF buf;
   oid_vector oos_oids;
 
   if (!heap_recdes_contains_oos (recdes))
@@ -27690,80 +27685,62 @@ heap_recdes_get_oos_oids (const RECDES * recdes)
       return oos_oids;
     }
 
+  OR_BUF buf;
+  const int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
+  short *var_table = OR_GET_OBJECT_VAR_TABLE (recdes->data);
+
   for (int index = 0;; ++index)
     {
-      char *var_element_ptr = (char *) (OR_VAR_ELEMENT_PTR (recdes->data, index));
-      int offset = 0;
-      int offset_size = 0;
-
-      if (OR_VAR_IS_NULL (recdes->data, index))
-	{
-	  continue;
-	}
-
-      offset_size = OR_GET_OFFSET_SIZE (recdes->data);
+      int offset;
       switch (offset_size)
 	{
 	case OR_BYTE_SIZE:
-	  offset = OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), index, offset_size));
+	  offset = OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
 	  break;
 	case OR_SHORT_SIZE:
-	  offset = OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), index, offset_size));
+	  offset = OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
 	  break;
 	case OR_INT_SIZE:
-	  offset = OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), index, offset_size));
+	  offset = OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
 	  break;
 	default:
 	  assert_release (false);
-	  break;
+	  return oos_oids;
 	}
 
-      bool is_oos = OR_IS_OOS (offset);
-      OID oid = OID_INITIALIZER;
       if (OR_IS_OOS (offset))
 	{
+	  OID oid = OID_INITIALIZER;
 	  buf.ptr = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, index));
 	  buf.endptr = buf.ptr + OR_OID_SIZE;
 	  or_get_oid (&buf, &oid);
-
+	  assert (!OID_ISNULL (&oid));
 	  oos_debug ("there exists an OOS with OID %hd|%d|%hd at offset %d index %d", OID_AS_ARGS (&oid), offset,
 		     index);
-
 	  oos_oids.emplace_back (oid);
-
-	  assert (!OID_ISNULL (&oid));
 	}
 
       if (OR_IS_LAST_ELEMENT (offset))
 	{
-
+#if !defined (NDEBUG)
 	  if (oos_oids.empty ())
 	    {
 	      oos_debug ("No OOS OIDs found.");
-	      return oos_oids;
 	    }
-
-#if !defined (NDEBUG)
-	  char oid_buf[32];
-	  bool first = true;
-	  std::string line;
-	  line.reserve (2 + oos_oids.size () * 20);
-	  line.push_back ('{');
-	  for (int i = 0; i < (int) oos_oids.size (); ++i)
+	  else
 	    {
-	      OID oid = oos_oids[i];
-	      if (!first)
+	      std::string line = "{";
+	      for (size_t i = 0; i < oos_oids.size (); ++i)
 		{
-		  line.append (", ");
+		  char oid_buf[32];
+		  if (i > 0)
+		    line.append (", ");
+		  line.append (oid_to_string (oid_buf, sizeof oid_buf, &oos_oids[i]));
 		}
-	      first = false;
-
-	      line.append ((const char *) oid_to_string (oid_buf, sizeof oid_buf, &oid));
+	      line += '}';
+	      oos_debug ("Total %zu found. OOS OIDs: %s", oos_oids.size (), line.c_str ());
 	    }
-	  line.push_back ('}');
-	  oos_debug ("Total %zu found. OOS OIDs: %s", oos_oids.size (), line.c_str ());
 #endif
-
 	  return oos_oids;
 	}
     }
