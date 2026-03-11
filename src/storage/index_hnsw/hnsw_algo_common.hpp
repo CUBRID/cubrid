@@ -156,6 +156,8 @@ namespace cubhnsw
     std::size_t m_computed_distances{};
     std::size_t m_computed_distances_in_refines{};
     std::size_t m_computed_distances_in_reverse_refines{};
+    std::size_t m_neighbors_cache_hits{};
+    std::size_t m_neighbors_disk_accesses{};
 
     bool m_is_debugging {false};
     FILE *m_debug_fp {nullptr};
