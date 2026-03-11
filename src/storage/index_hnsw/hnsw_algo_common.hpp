@@ -234,7 +234,7 @@ namespace cubhnsw
       add_stat_if_positive (PSTAT_HNSW_NUM_VECTOR_ACCESS_L0, m_stats.vector_access_l0);
 
       add_stat_if_positive (PSTAT_HNSW_NUM_VECTOR_CACHE_HIT, m_stats.vector_cache_hit);
-      add_stat_if_positive (PSTAT_HNSW_NUM_VECTOR_CACHE_HIT, m_stats.vector_cache_hit_l0);
+      add_stat_if_positive (PSTAT_HNSW_NUM_VECTOR_CACHE_HIT_L0, m_stats.vector_cache_hit_l0);
 
       add_stat_if_positive (PSTAT_HNSW_NUM_VECTOR_CACHE_MISS, m_stats.vector_cache_miss);
       add_stat_if_positive (PSTAT_HNSW_NUM_VECTOR_CACHE_MISS_L0, m_stats.vector_cache_miss_l0);

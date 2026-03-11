@@ -509,8 +509,8 @@ namespace cubhnsw
 	while (changed);
       }
 
-    context.add_stat (context.m_stats.visited_nodes, context.m_stats.visited_nodes_l0, num_visits + 1);
-    context.add_stat (context.m_stats.neighbors_scan, context.m_stats.neighbors_scan_l0, num_neighbor_scan);
+    context.add_stat (context.m_stats.visited_nodes, num_visits + 1);
+    context.add_stat (context.m_stats.neighbors_scan, num_neighbor_scan);
 
     out_slot = closest_slot;
     return NO_ERROR;
