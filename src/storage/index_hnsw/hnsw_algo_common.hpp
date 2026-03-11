@@ -147,16 +147,21 @@ namespace cubhnsw
     bool m_is_perf_tracking {false};
     struct stats
     {
+      // base stats
       std::size_t visited_nodes{};
       std::size_t computed_distances{};
+
+      // refines
       std::size_t computed_distances_in_refines{};
       std::size_t computed_distances_in_reverse_refines{};
 
+      // layer 0
       std::size_t visited_nodes_l0{};
       std::size_t computed_distances_l0{};
       std::size_t computed_distances_in_refines_l0{};
       std::size_t computed_distances_in_reverse_refines_l0{};
 
+      // entry point
       std::size_t entrypoint_updates{};
     };
 

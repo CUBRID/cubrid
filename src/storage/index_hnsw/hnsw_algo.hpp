@@ -139,6 +139,11 @@ namespace cubhnsw
 	return neighbors;
       }
 
+      inline std::size_t get_layer_connectivity (level_t level, std::size_t connectivity) const noexcept
+      {
+	return level == 0 ? connectivity * 2 : connectivity;
+      }
+
       // variables
       storage_t *m_storage {nullptr};
 
@@ -499,7 +504,7 @@ namespace cubhnsw
     top_candidates_t<Traits> &top = context.m_top_candidates;
 
     std::size_t level = context.m_level;
-    std::size_t layer_connectivity = context.layer_connectivity (level, m_connectivity);
+    std::size_t layer_connectivity = get_layer_connectivity (level, m_connectivity);
 
     std::size_t stat_computed_distance = 0;
     refine_ (context, layer_connectivity, top, top_view, stat_computed_distance);
@@ -523,7 +528,7 @@ namespace cubhnsw
 				     candidates_view_t<Traits> &new_neighbors)
   {
     std::size_t level = context.m_level;
-    std::size_t layer_connectivity = context.layer_connectivity (level, m_connectivity);
+    std::size_t layer_connectivity = get_layer_connectivity (level, m_connectivity);
     for (auto n : new_neighbors)
       {
 	slot_id_t close_slot = n.slot;
