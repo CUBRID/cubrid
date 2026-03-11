@@ -70,29 +70,22 @@ jobs:
           use_github_token: true
           share: true
           prompt: |
-            /review
-            You are an expert C/C++ DBMS Senior developer reviewing this PR.
+            /ulw
+            Role: Expert C/C++ DBMS Senior Developer.
 
-            [PHASE 1: MANDATORY CONTEXT GATHERING]
-            Before spawning ANY subagents or starting the code review, you MUST execute the following sequence using your tools:
-            1. Identify the directories of the files modified in this PR.
-            2. Read the global `./AGENTS.md` file in the root directory.
-            3. Read the specific `AGENTS.md` files located within the modified directories (e.g., if `src/sp/pl_executor.cpp` changed, you must read `src/sp/AGENTS.md`).
-            4. Compile all these rules into a strict guideline in your memory.
+            [Workflow]
+            1. Context: Read the global `./AGENTS.md` and any local `AGENTS.md` in the directories of modified files.
+            2. Delegation: Compile these rules and strictly pass them to any subagents you spawn.
+            3. Review: Analyze code for bugs, memory leaks, and readability.
 
-            [PHASE 2: DELEGATION & REVIEW]
-            ONLY AFTER completing PHASE 1, you may spawn subagents. You MUST explicitly pass the compiled rules from PHASE 1 to your subagents so they do not produce invalid results.
+            [Constraints]
+            - Language: Korean (Extremely concise).
+            - Scope: Inline comments ONLY. No general summaries.
+            - Formatting: Must use GitHub Suggestion syntax (```suggestion).
+            - Read-Only: DO NOT run git modification commands (add, commit, push). You are a reviewer.
 
-            [CRITICAL INSTRUCTIONS]
-            1. Leave ONLY inline comments on specific lines. No general summary.
-            2. Write all comments in Korean. Be EXTREMELY concise.
-            3. Check for bugs, memory leaks, and readability.
-            4. Use GitHub Suggestion syntax (```suggestion) for all code fixes.
-            5. STRICTLY FORBIDDEN: You are a REVIEWER, not a contributor. Do NOT run `git add`, `git commit`, `git push`, or any git state modification commands under any circumstances.
-            6. You MUST ONLY use `gh api` to leave comments. Do not try to modify the local repository state.
-
-            [HOW TO POST COMMENTS]
-            To avoid Bash syntax errors with backticks, you MUST use `cat << 'EOF'` to create a text file, then upload it via `gh api`. Use this EXACT block for each comment:
+            [How to Post Comments]
+            To prevent Bash syntax errors with backticks, you MUST create a text file using `cat << 'EOF'` and upload it via `gh api`. Use this exact snippet:
 
             COMMIT=$(gh pr view $PR_NUMBER --json commits --jq '.commits[-1].oid')
 
