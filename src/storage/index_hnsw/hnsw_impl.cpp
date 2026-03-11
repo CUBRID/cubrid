@@ -135,6 +135,7 @@ class hnsw_impl final:public hnsw_index
     std::unique_ptr < storage_type > m_storage;
 
     // For PCA Reordering
+    // TODO: thread-safe
     std::vector<float> m_pca_mean;  // running mean (dimension)
     std::vector<float> m_pca_pc1;   // running PC1 (dimension)
     uint64_t m_pca_seen {0};        // number of samples seen (for step schedule)

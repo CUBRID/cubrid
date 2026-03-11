@@ -521,20 +521,13 @@ namespace cubhnsw
 	pinned_t candidate_node_blk = m_storage->get_node_by_slot_id (context, candidate_slot, lock_mode::shared);
 	neighbors_ref_type candidate_neighbors = get_neighbors (candidate_node_blk, level);
 
-	if constexpr (Traits::kind == storage_kind::disk)
-	  {
-	    std::vector<slot_id_t> neigh;
-	    neigh.reserve (candidate_neighbors.size ());
-	    for (std::size_t i = 0; i < candidate_neighbors.size (); ++i)
-	      {
-		neigh.push_back (candidate_neighbors.at (i));
-	      }
-	    m_storage->set_neighbors_cached_ids (context, candidate_slot, level, neigh);
-	  }
+	std::vector<slot_id_t> neigh;
+	neigh.reserve (candidate_neighbors.size ());
 
 	for (std::size_t i = 0; i < candidate_neighbors.size (); ++i)
 	  {
 	    slot_id_t successor_slot = candidate_neighbors.at (i);
+	    neigh.push_back (successor_slot);
 
 	    auto [it, inserted] = visits.insert (successor_slot);
 	    if (!inserted)
@@ -554,6 +547,7 @@ namespace cubhnsw
 		HNSW_ALGO_PRINT ("[search_to_insert] top.size(), expansion_limit: %zu, %zu\n", top.size(), expansion_limit);
 	      }
 	  }
+	m_storage->set_neighbors_cached_ids (context, candidate_slot, level, neigh);
       }
 
     return NO_ERROR;
@@ -612,21 +606,13 @@ namespace cubhnsw
 		pinned_t closest_node_blk = m_storage->get_node_by_slot_id (context, closest_slot, lock_mode::shared);
 
 		neighbors_ref_type neighbors = get_neighbors (closest_node_blk, level);
-
-		if constexpr (Traits::kind == storage_kind::disk)
-		  {
-		    std::vector<slot_id_t> neigh;
-		    neigh.reserve (neighbors.size ());
-		    for (std::size_t i = 0; i < neighbors.size (); ++i)
-		      {
-			neigh.push_back (neighbors.at (i));
-		      }
-		    m_storage->set_neighbors_cached_ids (context, closest_slot, level, neigh);
-		  }
+		std::vector<slot_id_t> neigh;
+		neigh.reserve (neighbors.size ());
 
 		for (std::size_t i = 0; i < neighbors.size (); ++i)
 		  {
 		    slot_id_t neighbor_id = neighbors.at (i);
+		    neigh.push_back (neighbor_id);
 
 		    distance_t candidate_dist = compute_distance_from_query_ (context, query, neighbor_id);
 		    if (candidate_dist < closest_dist)
@@ -636,6 +622,7 @@ namespace cubhnsw
 			changed = true;
 		      }
 		  }
+		m_storage->set_neighbors_cached_ids (context, closest_slot, level, neigh);
 	      }
 
 	  }
