@@ -3118,8 +3118,9 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 {
   ORDERBY_STATS *ostats;
   GROUPBY_STATS *gstats;
+  ANALYTIC_STATS *astats;
   json_t *proc, *scan = NULL;
-  json_t *subquery, *groupby, *orderby, *parallel;
+  json_t *subquery, *groupby, *orderby, *analytic, *parallel;
   json_t *outer, *inner;
   json_t *cte_non_recursive_part, *cte_recursive_part;
   json_t *temp;
@@ -3369,6 +3370,34 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 
     }
 
+  astats = xasl_p->analytic_stats;
+  if (astats != NULL)
+    {
+      json_t *analytic_array = json_array ();
+
+      for (ANALYTIC_STATS * curr = astats; curr != NULL; curr = curr->next)
+	{
+	  analytic = json_object ();
+	  json_object_set_new (analytic, "time", json_integer (TO_MSEC (curr->analytic_time)));
+
+	  if (curr->analytic_sort)
+	    {
+	      json_object_set_new (analytic, "sort", json_true ());
+	    }
+	  else
+	    {
+	      json_object_set_new (analytic, "sort", json_string ("skip"));
+	    }
+
+	  json_object_set_new (analytic, "page", json_integer (curr->analytic_pages));
+	  json_object_set_new (analytic, "ioread", json_integer (curr->analytic_ioreads));
+	  json_object_set_new (analytic, "rows", json_integer (curr->rows));
+	  json_array_append_new (analytic_array, analytic);
+	}
+
+      json_object_set_new (proc, "ANALYTIC", analytic_array);
+    }
+
   if (HAVE_SUBQUERY_PROC (xasl_p) && xasl_p->aptr_list != NULL)
     {
       subquery = json_array ();
@@ -3610,6 +3639,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 {
   ORDERBY_STATS *ostats;
   GROUPBY_STATS *gstats;
+  ANALYTIC_STATS *astats;
   xasl_node *xptr;
 
   if (xasl_p == NULL)
@@ -3765,6 +3795,30 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	{
 	  fprintf (fp, "SUBQUERY_CACHE (hit: %d, miss: %d, size: %lu, status: disabled)\n",
 		   SQ_CACHE_HIT (xasl_p), SQ_CACHE_MISS (xasl_p), SQ_CACHE_SIZE (xasl_p));
+	}
+    }
+
+  astats = xasl_p->analytic_stats;
+  if (astats != NULL)
+    {
+      int analytic_num = 0;
+      for (ANALYTIC_STATS * curr = astats; curr != NULL; curr = curr->next)
+	{
+	  fprintf (fp, "%*c", indent, ' ');
+	  fprintf (fp, "ANALYTIC #%d (time: %d", ++analytic_num, TO_MSEC (curr->analytic_time));
+
+	  if (curr->analytic_sort)
+	    {
+	      fprintf (fp, ", sort: true");
+	    }
+	  else
+	    {
+	      fprintf (fp, ", sort: skip");
+	    }
+
+	  fprintf (fp, ", page: %lld, ioread: %lld", (long long int) curr->analytic_pages,
+		   (long long int) curr->analytic_ioreads);
+	  fprintf (fp, ", rows: %d)\n", curr->rows);
 	}
     }
 
