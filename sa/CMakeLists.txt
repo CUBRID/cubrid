@@ -518,7 +518,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/tde.c
 
   ${INDEX_HNSW_DIR}/vector_distance_omp_simd.cpp
-  ${INDEX_HNSW_DIR}/hnsw_usearch_ng.cpp
+  ${INDEX_HNSW_DIR}/hnsw_impl.cpp
   ${INDEX_HNSW_DIR}/hnsw.cpp
   ${INDEX_HNSW_DIR}/hnsw_api.cpp
   # ${STORAGE_DIR}/hnsw_storage_mem.cpp
@@ -534,13 +534,14 @@ set(STORAGE_HEADERS
 )
 
 if(USE_SIMD_NATIVE)
+
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    set_source_files_properties(${INDEX_HNSW_DIR}/vector_distance_omp_simd.cpp
-        PROPERTIES COMPILE_FLAGS "-march=native -O3 -ftree-vectorize -mprefer-vector-width=512 -ffast-math -fno-trapping-math -funroll-loops -fassociative-math -fno-signed-zeros"
+    set_source_files_properties(${QUERY_DIR}/vector_opfunc.cpp ${INDEX_HNSW_DIR}/vector_distance_omp_simd.cpp
+        PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-ftree-vectorize;-mprefer-vector-width=512;-fopenmp-simd;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
     )
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    set_source_files_properties(${INDEX_HNSW_DIR}/vector_distance_omp_simd.cpp
-        PROPERTIES COMPILE_FLAGS "-march=native -O3 -fvectorize -mprefer-vector-width=512 -ffast-math -fno-trapping-math -funroll-loops -fassociative-math -fno-signed-zeros"
+    set_source_files_properties(${QUERY_DIR}/vector_opfunc.cpp ${INDEX_HNSW_DIR}/vector_distance_omp_simd.cpp
+        PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-fvectorize;-mprefer-vector-width=512;-fopenmp-simd;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
     )
   endif()
 endif()
@@ -755,8 +756,6 @@ target_include_directories(cubridsa
     ${FLEX_INCLUDE_DIRS}
     ${EP_INCLUDES}
   )
-
-target_link_libraries(cubridsa PRIVATE usearch::usearch)
 
 target_link_libraries(cubridsa
   PRIVATE

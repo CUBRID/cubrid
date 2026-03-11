@@ -17,7 +17,7 @@
  */
 
 //
-// hnsw_usearch_ng.cpp - new implementation of HNSW index
+// hnsw_impl.cpp - new implementation of HNSW index
 //
 
 #include "hnsw_api.hpp"
@@ -45,13 +45,13 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-class hnsw_usearch_ng_backend final:public hnsw_index_backend
+class hnsw_impl_backend final:public hnsw_index_backend
 {
   public:
-    hnsw_usearch_ng_backend (const std::string &id):hnsw_index_backend (id)
+    hnsw_impl_backend (const std::string &id):hnsw_index_backend (id)
     {
     }
-    ~hnsw_usearch_ng_backend () override = default;
+    ~hnsw_impl_backend () override = default;
 
     virtual bool is_metric_supported (const DB_VECTOR_DISTANCE_METRIC &metric)
     const override;
@@ -72,7 +72,7 @@ class hnsw_usearch_ng_backend final:public hnsw_index_backend
 };
 
 /* thread scope */
-class hnsw_usearch_ng final:public hnsw_index
+class hnsw_impl final:public hnsw_index
 {
   public:
     // TODO: factory pattern
@@ -81,10 +81,10 @@ class hnsw_usearch_ng final:public hnsw_index
     using algo_type = cubhnsw::algo < traits >;
     using storage_type = cubhnsw::disk_storage;
 
-    hnsw_usearch_ng (hnsw_index_backend &backend, const BTID &btid,
+    hnsw_impl (hnsw_index_backend &backend, const BTID &btid,
 		     const std::string &name,
 		     const hnsw_build_params &build_params);
-    ~hnsw_usearch_ng () override;
+    ~hnsw_impl () override;
 
     int init (cubthread::entry *thread_p, PAGE_PTR page_ptr, RECDES &rec);
 
@@ -276,11 +276,11 @@ hnsw_usearch_ng::update_pca_online (const float *vectors, int n_vectors, int dim
 }
 
 // =====================================================================
-// hnsw_usearch_ng_backend
+// hnsw_impl_backend
 // =====================================================================
 
 bool
-hnsw_usearch_ng_backend::
+hnsw_impl_backend::
 is_metric_supported (const DB_VECTOR_DISTANCE_METRIC &metric) const
 {
   switch (metric)
@@ -297,7 +297,7 @@ is_metric_supported (const DB_VECTOR_DISTANCE_METRIC &metric) const
 }
 
 hnsw_index *
-hnsw_usearch_ng_backend::create_index (THREAD_ENTRY *thread_p,
+hnsw_impl_backend::create_index (THREAD_ENTRY *thread_p,
 				       const BTID *btid,
 				       const std::string &name,
 				       const hnsw_build_params &build_params)
@@ -317,8 +317,8 @@ hnsw_usearch_ng_backend::create_index (THREAD_ENTRY *thread_p,
   {
     DB_PAGESIZE, 0, REC_HOME, PTR_ALIGN (rec_buf, INT_ALIGNMENT)};
 
-  hnsw_usearch_ng *index =
-	  new hnsw_usearch_ng (*this, *btid, name, build_params);
+  hnsw_impl *index =
+	  new hnsw_impl (*this, *btid, name, build_params);
 
   if (index->init (thread_p, page_ptr, rec) != NO_ERROR)
     {
@@ -334,10 +334,10 @@ hnsw_usearch_ng_backend::create_index (THREAD_ENTRY *thread_p,
 }
 
 // =====================================================================
-// hnsw_usearch_ng
+// hnsw_impl
 // =====================================================================
 
-hnsw_usearch_ng::hnsw_usearch_ng (hnsw_index_backend &backend, const BTID &btid, const std::string &name,
+hnsw_impl::hnsw_impl (hnsw_index_backend &backend, const BTID &btid, const std::string &name,
 				  const hnsw_build_params &build_params):hnsw_index (backend, btid, name,
 					build_params)
 {
@@ -351,7 +351,7 @@ hnsw_usearch_ng::hnsw_usearch_ng (hnsw_index_backend &backend, const BTID &btid,
 }
 
 int
-hnsw_usearch_ng::init (cubthread::entry *thread_p, PAGE_PTR page_ptr, RECDES &rec)
+hnsw_impl::init (cubthread::entry *thread_p, PAGE_PTR page_ptr, RECDES &rec)
 {
   std::size_t root_size;
   m_storage->init_root (reinterpret_cast < std::byte * > (rec.data),
@@ -374,7 +374,7 @@ hnsw_usearch_ng::init (cubthread::entry *thread_p, PAGE_PTR page_ptr, RECDES &re
 }
 
 void
-hnsw_usearch_ng::init_worker_pool ()
+hnsw_impl::init_worker_pool ()
 {
 #if defined (SERVER_MODE)
   // TODO (CUBVEC): parameterize the worker size
@@ -433,7 +433,7 @@ hnsw_usearch_ng::init_worker_pool ()
 #endif
 }
 
-hnsw_usearch_ng::~hnsw_usearch_ng ()
+hnsw_impl::~hnsw_impl ()
 {
 #if defined (SERVER_MODE)
   m_stop.store (true, std::memory_order_release);
@@ -454,7 +454,7 @@ hnsw_usearch_ng::~hnsw_usearch_ng ()
 }
 
 int
-hnsw_usearch_ng::prepare_to_add (cubthread::entry *thread_p, int n_vectors, const OID *oid,
+hnsw_impl::prepare_to_add (cubthread::entry *thread_p, int n_vectors, const OID *oid,
 				 const float *vector)
 {
   // do nothing
@@ -462,7 +462,7 @@ hnsw_usearch_ng::prepare_to_add (cubthread::entry *thread_p, int n_vectors, cons
 }
 
 int
-hnsw_usearch_ng::add (cubthread::entry *thread_p, int n_vectors, const OID *oid, const float *vector)
+hnsw_impl::add (cubthread::entry *thread_p, int n_vectors, const OID *oid, const float *vector)
 {
   hnsw_build_worker_context ctx;
   ctx.tran_index = thread_p->tran_index;
@@ -593,7 +593,7 @@ hnsw_usearch_ng::add (cubthread::entry *thread_p, int n_vectors, const OID *oid,
 }
 
 void
-hnsw_usearch_ng::add_internal (cubthread::entry &thread_ref, hnsw_build_worker_job &job)
+hnsw_impl::add_internal (cubthread::entry &thread_ref, hnsw_build_worker_job &job)
 {
   int error = NO_ERROR;
   hnsw_build_worker_context *ctx = job.m_ctx;
@@ -623,7 +623,7 @@ hnsw_usearch_ng::add_internal (cubthread::entry &thread_ref, hnsw_build_worker_j
 }
 
 int
-hnsw_usearch_ng::search (cubthread::entry *thread_p, const float *query, const int k, const int ef_search,
+hnsw_impl::search (cubthread::entry *thread_p, const float *query, const int k, const int ef_search,
 			 OID *rec_oids, float *distances)
 {
   if (m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE
@@ -652,19 +652,19 @@ hnsw_usearch_ng::search (cubthread::entry *thread_p, const float *query, const i
 }
 
 int
-hnsw_usearch_ng::remove (cubthread::entry *thread_p, const OID *oid)
+hnsw_impl::remove (cubthread::entry *thread_p, const OID *oid)
 {
   return ER_FAILED;
 }
 
 int
-hnsw_usearch_ng::update (cubthread::entry *thread_p, const OID *oid, const float *vector)
+hnsw_impl::update (cubthread::entry *thread_p, const OID *oid, const float *vector)
 {
   return ER_FAILED;
 }
 
 int
-hnsw_usearch_ng::filtered_search (cubthread::entry *thread_p, const float *query, const int k,
+hnsw_impl::filtered_search (cubthread::entry *thread_p, const float *query, const int k,
 				  const SCAN_PRED &filter, OID *rec_oids,
 				  float *distances)
 {
@@ -672,14 +672,14 @@ hnsw_usearch_ng::filtered_search (cubthread::entry *thread_p, const float *query
 }
 
 int
-hnsw_usearch_ng::dump (cubthread::entry *thread_p, FILE *fp)
+hnsw_impl::dump (cubthread::entry *thread_p, FILE *fp)
 {
   return ER_FAILED;
 }
 
-HNSW_REGISTER_BACKEND ("usearchng",[] (const char *id)
+HNSW_REGISTER_BACKEND ("hnsw_impl",[] (const char *id)
 {
-  return std::make_unique < hnsw_usearch_ng_backend >
+  return std::make_unique < hnsw_impl_backend >
 	 (id);
 }
 		      );

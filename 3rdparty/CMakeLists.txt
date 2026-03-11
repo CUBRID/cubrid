@@ -32,10 +32,6 @@ set(WITH_HDF_URL "https://github.com/HDFGroup/hdf5/releases/download/hdf5_1.14.6
 set(WITH_ZLIB_URL "https://github.com/madler/zlib")                                                           # ZLIB
 set(WITH_HIGHFIVE_URL "https://github.com/highfive-devs/highfive")                                            # HighFive
 set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_bison/win_flex_bison-2.5.22.zip") # Windows
-set(WITH_FAISS_URL "https://github.com/facebookresearch/faiss/archive/refs/tags/v1.8.0.tar.gz")               # Faiss
-set(WITH_OPENBLAS_URL "https://github.com/xianyi/OpenBLAS/archive/refs/tags/v0.3.24.tar.gz")                  # OpenBLAS
-set(WITH_LAPACK_URL "http://www.netlib.org/lapack/lapack-3.11.0.tar.gz")                                      # LAPACK
-set(WITH_USEARCH_URL "https://github.com/unum-cloud/usearch")                                                # usearch
 set(WITH_ANKERL_URL "https://github.com/martinus/unordered_dense.git")                                 # ankerl
 
 # URL_HASH is a hash value used to verify the integrity of a file downloaded from a specified URL.
@@ -86,8 +82,6 @@ set(WITH_LIBTBB       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with TBB lib
 set(WITH_HDF          "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with HDF5 library (default: EXTERNAL)")
 set(WITH_ZLIB         "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with ZLIB library (default: EXTERNAL)")
 set(WITH_HIGHFIVE     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with HIGHFIVE library (default: EXTERNAL)")
-set(WITH_FAISS        "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with Faiss library (default: EXTERNAL)")
-set(WITH_USEARCH      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with usearch library (default: EXTERNAL)")
 set(WITH_ANKERL       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with ankerl::unordered_dense (default: EXTERNAL)")
 
 message(STATUS "Build with flex and bison library: ${WITH_LIBFLEXBISON}")
@@ -102,8 +96,6 @@ message(STATUS "Build with TBB library: ${WITH_LIBTBB}")
 message(STATUS "Build with HDF5 library: ${WITH_HDF}")
 message(STATUS "Build with ZLIB library: ${WITH_ZLIB}")
 message(STATUS "Build with HighFive library: ${WITH_HIGHFIVE}")
-message(STATUS "Build with Faiss library: ${WITH_FAISS}")
-message(STATUS "Build with usearch library: ${WITH_USEARCH}")
 message(STATUS "Build with ankerl::unordered_dense library: ${WITH_ANKERL}")
 
 macro(ADD_BY_PRODUCTS_VARIABLE prefix_dependee)
@@ -649,75 +641,8 @@ if(WITH_HIGHFIVE STREQUAL "EXTERNAL")
   add_dependencies(${HIGHFIVE_TARGET} ${HDF_TARGET})
 endif()
 
-# For libfaiss and usearch
+# For SIMD optimizations
 find_package(AVX)
-
-# libFaiss
-set(LIBFAISS_TARGET libfaiss)
-set(LIBFAISS_INCLUDES ${3RDPARTY_LIBS_DIR}/faiss/include)
-
-# check option and architecture
-if(FAISS_SIMD_MODE STREQUAL "AVX512" AND !CXX_AVX512_FOUND)
-  message(FATAL_ERROR "avx512 is not supported on this architecture")
-endif()
-if(FAISS_SIMD_MODE STREQUAL "AVX2" AND !CXX_AVX2_FOUND)
-  message(FATAL_ERROR "avx2 is not supported on this architecture")
-endif()
-
-# set libfaiss library path
-if(FAISS_SIMD_MODE STREQUAL "AVX512")
-  set(LIBFAISS_LIBS_NAME "faiss_avx512")
-  set(LIBFAISS_LIBS ${3RDPARTY_LIBS_DIR}/Build/libfaiss/faiss/libfaiss_avx512.a)
-  set(FAISS_OPT_LEVEL "avx512")
-elseif(FAISS_SIMD_MODE STREQUAL "AVX2")
-  set(LIBFAISS_LIBS_NAME "faiss_avx2")
-  set(LIBFAISS_LIBS ${3RDPARTY_LIBS_DIR}/Build/libfaiss/faiss/libfaiss_avx2.a)
-  set(FAISS_OPT_LEVEL "avx2")
-else()
-  set(LIBFAISS_LIBS_NAME "faiss")
-  set(LIBFAISS_LIBS ${3RDPARTY_LIBS_DIR}/Build/libfaiss/faiss/libfaiss.a)
-  set(FAISS_OPT_LEVEL "")
-endif()
-
-ADD_BY_PRODUCTS_VARIABLE ("LIBFAISS" ${LIBFAISS_LIBS})
-if(WITH_FAISS STREQUAL "EXTERNAL")
-  externalproject_add(
-        ${LIBFAISS_TARGET}
-        URL ${WITH_FAISS_URL}
-        LOG_CONFIGURE TRUE
-        LOG_BUILD TRUE
-        LOG_INSTALL TRUE
-        TIMEOUT 600
-        DOWNLOAD_NO_PROGRESS 1
-        CONFIGURE_COMMAND ${CMAKE_COMMAND} -B <BINARY_DIR> -S <SOURCE_DIR>
-        "-DCMAKE_CXX_FLAGS=-llapack -lopenblas"
-        -DCMAKE_BUILD_TYPE=Release
-        -DCMAKE_INSTALL_PREFIX=${3RDPARTY_LIBS_DIR}/faiss
-        -DFAISS_OPT_LEVEL=${FAISS_OPT_LEVEL}
-        -DBUILD_SHARED_LIBS=OFF
-        -DFAISS_ENABLE_GPU=OFF
-        -DFAISS_ENABLE_PYTHON=OFF
-        -DBUILD_TESTING=OFF
-        BUILD_COMMAND make -C <BINARY_DIR> -j ${LIBFAISS_LIBS_NAME}
-        "${LIBFAISS_BYPRODUCTS}"
-  )
-endif()
-
-list(APPEND EP_TARGETS ${LIBFAISS_TARGET})
-list(APPEND EP_INCLUDES ${LIBFAISS_INCLUDES})
-list(APPEND EP_LIBS ${LIBFAISS_LIBS})
-
-
-# USEARCH (header-only)
-# Set options BEFORE calling MakeAvailable
-set(USEARCH_USE_OPENMP OFF CACHE BOOL "" FORCE)
-set(USEARCH_USE_SIMSIMD OFF CACHE BOOL "" FORCE)
-set(USEARCH_USE_JEMALLOC OFF CACHE BOOL "" FORCE)
-set(USEARCH_USE_FP16LIB ON CACHE BOOL "" FORCE)
-# set(USEARCH_BUILD_LIB_C ON CACHE BOOL "" FORCE)
-# set(USEARCH_BUILD_TEST_C ON CACHE BOOL "" FORCE)
-FetchContent_Declare(usearch GIT_REPOSITORY https://github.com/unum-cloud/usearch.git GIT_TAG v2.17.8)
-FetchContent_MakeAvailable(usearch)
 
 # ankerl::unordered_dense (header-only)
 if(WITH_ANKERL STREQUAL "EXTERNAL")
@@ -767,5 +692,3 @@ expose_3rdparty_variable(LIBUNIXODBC)
 expose_3rdparty_variable(RAPIDJSON)
 expose_3rdparty_variable(RE2)
 expose_3rdparty_variable(LIBTBB)
-expose_3rdparty_variable(LIBFAISS)
-expose_3rdparty_variable(USEARCH)

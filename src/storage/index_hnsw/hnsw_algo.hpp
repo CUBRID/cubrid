@@ -141,10 +141,7 @@ namespace cubhnsw
       std::size_t m_connectivity;
       std::size_t m_expansion;
 
-      std::default_random_engine m_level_generator;
-
-      std::size_t m_debug_group_start {0};
-      std::size_t m_debug_cnt {0};
+      std::default_random_engine m_level_generator {std::random_device{}()};
 
       // precomputed
       double m_inverse_log_connectivity;
