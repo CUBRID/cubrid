@@ -122,7 +122,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git commit --allow-empty -m "chore: Initialize TC branch for PR #${PR_NUMBER}"
-            git push origin "${BRANCH_NAME}" --force
+            git push origin "${BRANCH_NAME}" --force-with-lease
           fi
 
       - name: Create draft PR in TC repo
