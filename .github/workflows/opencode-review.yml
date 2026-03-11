@@ -104,32 +104,32 @@ jobs:
             echo "No review_results.json found."
             exit 0
           fi
-
+          
           echo "Found review_results.json. Parsing and posting comments..."
           
           # Get the latest commit SHA of the current PR
           PR_NUMBER=${{ github.event.pull_request.number }}
           COMMIT=$(gh pr view $PR_NUMBER --json commits --jq '.commits[-1].oid')
-
+          
           # Iterate through the JSON array using jq
-          jq -c '.[]' review_results.json | while read i; do
+          # Use '-r' with read to prevent stripping backslashes
+          jq -c '.[]' review_results.json | while read -r i; do
             FILE=$(echo "$i" | jq -r '.file')
             LINE=$(echo "$i" | jq -r '.line')
             ISSUE=$(echo "$i" | jq -r '.issue')
             SUGGESTION=$(echo "$i" | jq -r '.suggestion')
-
-            # Create a comment body file (Ensure heredoc safety)
-            # EOF and its content MUST be aligned with the base indentation of the run block
+          
+            # Create a comment body file
             cat << EOF > pr_comment.txt
           🚨 **Issue**: $ISSUE
-
+          
           💡 **Solution**:
           \`\`\`suggestion
           $SUGGESTION
           \`\`\`
           EOF
-
-            # Post inline comment via GitHub API (Use '|| echo' to prevent pipeline failure on individual errors)
+          
+            # Post inline comment via GitHub API
             gh api --method POST /repos/${{ github.repository }}/pulls/$PR_NUMBER/comments \
               -F body=@pr_comment.txt \
               -f commit_id=$COMMIT \
@@ -137,4 +137,3 @@ jobs:
               -F line=$LINE \
               -f side="RIGHT" || echo "Failed to post comment on $FILE:$LINE"
           done
-          
