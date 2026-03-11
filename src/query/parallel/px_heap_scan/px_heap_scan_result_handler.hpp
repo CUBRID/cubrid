@@ -52,11 +52,11 @@ namespace parallel_heap_scan
       using tls = std::conditional_t<result_type == RESULT_TYPE::MERGEABLE_LIST, mergeable_list_tls, xasl_snapshot_tls>;
     public:
       result_handler (QUERY_ID query_id, interrupt *interrupt_p, err_messages_with_lock *err_messages_p, int parallelism,
-		      bool g_agg_domain_resolve_need, VAL_LIST *orig_val_list_for_domain_resolve);
+		      bool g_agg_domain_resolve_need, XASL_NODE *orig_xasl_tree_for_domain_resolve);
       void read_initialize (THREAD_ENTRY *thread_p);
       SCAN_CODE read (THREAD_ENTRY *thread_p, read_dest_type *dest);
       void read_finalize (THREAD_ENTRY *thread_p);
-      void write_initialize (THREAD_ENTRY *thread_p, OUTPTR_LIST *outptr_list, VAL_LIST *val_list, VAL_DESCR *vd);
+      void write_initialize (THREAD_ENTRY *thread_p, OUTPTR_LIST *outptr_list, XASL_NODE *curr_xasl, VAL_DESCR *vd);
       bool write (THREAD_ENTRY *thread_p, write_dest_type *src);
       void write_finalize (THREAD_ENTRY *thread_p);
 
@@ -79,14 +79,14 @@ namespace parallel_heap_scan
     public:
       mergeable_list_variables()
 	: result_p (nullptr),
-	  orig_val_list_for_domain_resolve (nullptr),
+	  orig_xasl_tree_for_domain_resolve (nullptr),
 	  active_results (0),
 	  is_list_id_domain_resolved (false) {}
       ~mergeable_list_variables() = default;
       std::vector<QFILE_LIST_ID *> writer_results;
       std::mutex writer_results_mutex;
       QFILE_LIST_ID *result_p;
-      VAL_LIST *orig_val_list_for_domain_resolve;
+      XASL_NODE *orig_xasl_tree_for_domain_resolve;
       int active_results;
       bool is_list_id_domain_resolved;
   };
@@ -110,13 +110,13 @@ namespace parallel_heap_scan
       mergeable_list_tls()
 	: writer_result_p (nullptr),
 	  vd (nullptr),
-	  val_list_for_domain_resolve (nullptr),
+	  xasl_tree_for_domain_resolve (nullptr),
 	  val_list_domain_resolved (false) {}
       ~mergeable_list_tls() = default;
       QFILE_LIST_ID *writer_result_p;
       QFILE_TUPLE_RECORD tpl_buf;
       VAL_DESCR *vd;
-      VAL_LIST *val_list_for_domain_resolve;
+      XASL_NODE *xasl_tree_for_domain_resolve;
       std::vector<DB_VALUE> dbvals_for_domain_resolve;
       bool val_list_domain_resolved;
   };
