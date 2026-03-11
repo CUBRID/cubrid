@@ -380,38 +380,6 @@ namespace cubschema
   /* NEW DEFINITION (CLASS) */
   /* ========================================================================== */
 
-
-// TODO: find right place
-// TODO: implement formatting utility function for std::string (like fmt library)
-  const inline std::string format_varchar (const int size)
-  {
-    std::string s ("varchar(");
-    s += std::to_string (size);
-    s += ")";
-    return s;
-  }
-
-  const inline std::string format_numeric (const int prec, const int scale)
-  {
-    std::string s ("numeric(");
-    s += std::to_string (prec);
-    s += ",";
-    s += std::to_string (scale);
-    s += ")";
-    return s;
-  }
-
-  const inline std::string format_sequence (const std::string_view type)
-  {
-    std::string s ("sequence of");
-    if (!type.empty ())
-      {
-	s.append (" ");
-	s.append (type);
-      }
-    return s;
-  }
-
   system_catalog_definition
   system_catalog_initializer::get_class ()
   {
@@ -480,7 +448,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -514,7 +482,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -548,7 +516,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -577,7 +545,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -605,7 +573,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -632,7 +600,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -658,7 +626,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -683,7 +651,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -727,7 +695,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -756,7 +724,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -786,7 +754,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializers
     nullptr
@@ -825,7 +793,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializers
     nullptr
@@ -855,7 +823,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -880,7 +848,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     catcls_add_data_type
@@ -920,7 +888,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -952,7 +920,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -984,7 +952,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -1029,7 +997,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -1084,7 +1052,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -1115,7 +1083,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     catcls_add_collations
@@ -1140,7 +1108,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     catcls_add_charsets
@@ -1164,7 +1132,8 @@ namespace cubschema
       // owner, grants
       Au_dba_user,
       {
-	{Au_public_user, AU_SELECT, false}
+	{Au_public_user, AU_SELECT, false},
+	{Au_information_schema_user, AU_SELECT, false}
       }
     },
 // initializer
@@ -1205,7 +1174,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -1239,7 +1208,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
