@@ -296,6 +296,7 @@ struct llist_scan_id
   regu_variable_list_node *rest_regu_list;	/* regulator variable list */
   QFILE_TUPLE_RECORD *tplrecp;	/* tuple record pointer; output param */
   HASH_LIST_SCAN hlsid;		/* for hash scan */
+  bool is_read_only;		/* flag; when set, does not latch write */
 };
 
 typedef struct showstmt_scan_id SHOWSTMT_SCAN_ID;
@@ -486,7 +487,7 @@ extern int scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of LLIST_SCAN_ID */
 				QFILE_LIST_ID * list_id, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
 				regu_variable_list_node * regu_list_rest, regu_variable_list_node * regu_list_build,
-				regu_variable_list_node * regu_list_probe, int hash_list_scan_yn);
+				regu_variable_list_node * regu_list_probe, int hash_list_scan_yn, bool is_read_only);
 extern int scan_open_showstmt_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				    /* fields of SCAN_ID */
 				    int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
