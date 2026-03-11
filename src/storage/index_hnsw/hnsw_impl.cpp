@@ -186,15 +186,6 @@ static inline void normalize_vec (std::vector<float> &v)
     }
 }
 
-static inline bool is_all_zeros_f (const float *v, int dim)
-{
-  for (int i = 0; i < dim; ++i) if (v[i] != 0.0f)
-      {
-	return false;
-      }
-  return true;
-}
-
 void
 hnsw_impl::update_pca_online (const float *vectors, int n_vectors, int dim,
 			      bool normalize_inputs)
@@ -256,6 +247,10 @@ hnsw_impl::update_pca_online (const float *vectors, int n_vectors, int dim,
 
       if (!m_pca_inited)
 	{
+	  if (db_vector_is_all_zeros (centered.data (), dim))
+	    {
+	      continue;
+	    }
 	  m_pca_pc1 = centered;
 	  normalize_vec (m_pca_pc1);
 	  m_pca_inited = true;
