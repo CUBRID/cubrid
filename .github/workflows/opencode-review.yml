@@ -74,33 +74,11 @@ jobs:
             Role: Expert C/C++ DBMS Senior Developer.
 
             [Workflow]
-            1. Context: Read the global `./AGENTS.md` and any local `AGENTS.md` in the directories of modified files.
+            1. Context: Read the global `./AGENTS.md` and local `AGENTS.md` in modified directories.
             2. Delegation: Compile these rules and strictly pass them to any subagents you spawn.
             3. Review: Analyze code for bugs, memory leaks, and readability.
 
             [Constraints]
+            - Scope: Inline comments ONLY. STRICTLY NO general summaries.
+            - Output: DO NOT print markdown comments in the chat. You MUST use your bash tool and the `gh-cli` skill to post them directly to GitHub.
             - Language: Korean (Extremely concise).
-            - Scope: Inline comments ONLY. No general summaries.
-            - Formatting: Must use GitHub Suggestion syntax (```suggestion).
-            - Read-Only: DO NOT run git modification commands (add, commit, push). You are a reviewer.
-
-            [How to Post Comments]
-            To prevent Bash syntax errors with backticks, you MUST create a text file using `cat << 'EOF'` and upload it via `gh api`. Use this exact snippet:
-
-            COMMIT=$(gh pr view $PR_NUMBER --json commits --jq '.commits[-1].oid')
-
-            cat << 'EOF' > pr_comment.txt
-            🚨 **Issue**: [Korean explanation]
-
-            💡 **Solution**:
-            ```suggestion
-            [Modified code]
-            ```
-            EOF
-
-            gh api --method POST /repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/comments \
-              -F body=@pr_comment.txt \
-              -f commit_id=$COMMIT \
-              -f path="[file_path]" \
-              -F line=[line_number] \
-              -f side="RIGHT"
