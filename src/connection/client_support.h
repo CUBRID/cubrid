@@ -77,6 +77,9 @@ public:
 #if defined(ENABLE_UNUSED_FUNCTION)
   unsigned int css_send_request_to_server (char *host, int request, char *arg_buffer, int arg_buffer_size);
   unsigned int css_receive_error_from_server (unsigned int eid, char **buffer, int *size);
+  unsigned int css_send_req_to_server_with_large_data (char *host, int request, char *arg_buffer, int arg_buffer_size,
+						       char *data_buffer, INT64 data_buffer_size, char *reply_buffer,
+						       int reply_size);
 #endif
 };
 
@@ -84,7 +87,5 @@ extern HA_SERVER_STATE css_ha_server_state (void);
 
 extern class client_support __gv_client_support;
 #define __gv_cvar (__gv_client_support)
-#define __gv_cvar_x (__gv_client_support)
-
 
 #endif /* _CLIENT_SUPPORT_H_ */

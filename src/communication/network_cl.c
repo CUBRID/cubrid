@@ -98,10 +98,10 @@ unsigned short method_request_id;
 #endif /* CS_MODE */
 
 /* Contains the name of the current sever host machine.  */
-char net_Server_host[CUB_MAXHOSTNAMELEN + 1] = { 0x00, };
+static char net_Server_host[CUB_MAXHOSTNAMELEN + 1] = { 0x00, };
 
 /* Contains the name of the current server name. */
-char net_Server_name[DB_MAX_IDENTIFIER_LENGTH + 1] = { 0x00, };
+static char net_Server_name[DB_MAX_IDENTIFIER_LENGTH + 1] = { 0x00, };
 
 static void return_error_to_server (char *host, unsigned int eid);
 static int client_capabilities (void);
@@ -616,12 +616,13 @@ net_client_request_send_large_data (int request, char *argbuf, int argsize, char
     }
 #endif /* HISTO */
 
-  rc = css_send_req_to_server_with_large_data (net_Server_host, request, argbuf, argsize, databuf, datasize, replybuf,
-					       replysize);
+  rc =
+    __gv_cvar.css_send_req_to_server_with_large_data (net_Server_host, request, argbuf, argsize, databuf, datasize,
+						      replybuf, replysize);
 
   if (rc == 0)
     {
-      error = css_get_errno ();
+      error = __gv_cvar.css_get_errno ();
       return set_server_error (error);
     }
 
@@ -629,9 +630,9 @@ net_client_request_send_large_data (int request, char *argbuf, int argsize, char
     {
       if (replydata != NULL)
 	{
-	  css_queue_receive_data_buffer (rc, replydata, replydatasize);
+	  __gv_cvar.css_queue_receive_data_buffer (rc, replydata, replydatasize);
 	}
-      error = css_receive_data_from_server (rc, &reply, &size);
+      error = __gv_cvar.css_receive_data_from_server (rc, &reply, &size);
       if (error != NO_ERROR)
 	{
 	  COMPARE_AND_FREE_BUFFER (replybuf, reply);
@@ -644,7 +645,7 @@ net_client_request_send_large_data (int request, char *argbuf, int argsize, char
 
       if (replydata != NULL)
 	{
-	  error = css_receive_data_from_server (rc, &reply, &size);
+	  error = __gv_cvar.css_receive_data_from_server (rc, &reply, &size);
 	  if (error != NO_ERROR)
 	    {
 	      COMPARE_AND_FREE_BUFFER (replydata, reply);
@@ -711,13 +712,15 @@ net_client_request_recv_large_data (int request, char *argbuf, int argsize, char
 	  histo_add_request (request, argsize + datasize);
 	}
 #endif /* HISTO */
-      rc = css_send_req_to_server (net_Server_host, request, argbuf, argsize, databuf, datasize, replybuf, replysize);
+      rc =
+	__gv_cvar.css_send_req_to_server (net_Server_host, request, argbuf, argsize, databuf, datasize, replybuf,
+					  replysize);
       if (rc == 0)
 	{
-	  return set_server_error (css_get_errno ());
+	  return set_server_error (__gv_cvar.css_get_errno ());
 	}
 
-      error = css_receive_data_from_server (rc, &reply, &size);
+      error = __gv_cvar.css_receive_data_from_server (rc, &reply, &size);
 
       if (error != NO_ERROR || reply == NULL)
 	{
@@ -744,8 +747,8 @@ net_client_request_recv_large_data (int request, char *argbuf, int argsize, char
 		{
 		  return set_server_error (CANT_ALLOC_BUFFER);
 		}
-	      css_queue_receive_data_buffer (rc, packed_desc, packed_desc_size);
-	      error = css_receive_data_from_server (rc, &reply, &size);
+	      __gv_cvar.css_queue_receive_data_buffer (rc, packed_desc, packed_desc_size);
+	      error = __gv_cvar.css_receive_data_from_server (rc, &reply, &size);
 	      if (error != NO_ERROR || reply == NULL)
 		{
 		  COMPARE_AND_FREE_BUFFER (packed_desc, reply);

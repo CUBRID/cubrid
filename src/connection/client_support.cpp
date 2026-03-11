@@ -324,7 +324,7 @@ client_support::css_send_req_to_server (char *host, int request, char *arg_buffe
   return (m_conn_less.css_make_eid (entry->id, rid));
 }
 
-#if 0
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * css_send_req_to_server_with_large_data() - send a request to server with
  *    large data
@@ -343,8 +343,8 @@ client_support::css_send_req_to_server (char *host, int request, char *arg_buffe
  *       also enroll a data buffer to be filled with returned data.
  */
 unsigned int
-css_send_req_to_server_with_large_data (char *host, int request, char *arg_buffer, int arg_buffer_size,
-					char *data_buffer, INT64 data_buffer_size, char *reply_buffer, int reply_size)
+client_support::css_send_req_to_server_with_large_data (char *host, int request, char *arg_buffer, int arg_buffer_size,
+    char *data_buffer, INT64 data_buffer_size, char *reply_buffer, int reply_size)
 {
   CSS_MAP_ENTRY *entry;
   unsigned short rid;

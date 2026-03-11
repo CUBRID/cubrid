@@ -98,7 +98,7 @@
 #endif /* PACKET_TRACE */
 
 /* the queue anchor for all the connection structures */
-CSS_CONN_ENTRY *css_Conn_anchor = NULL; // TODO: Let's define it as a member variable of the connection_cl class
+static CSS_CONN_ENTRY *css_Conn_anchor = NULL; // TODO: Let's define it as a member variable of the connection_cl class
 
 #if defined(MULTI_CONN_TO_A_SERVER)
 pthread_mutex_t Conn_anchor_lock = PTHREAD_MUTEX_INITIALIZER;
