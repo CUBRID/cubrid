@@ -82,7 +82,7 @@ jobs:
                   - run:
                       name: Test
                       environment:
-                        BRANCH_TESTCASES: feature/add-replication-option2
+                        BRANCH_TESTCASES: add-replication-option2
                       shell: /bin/bash
                       no_output_timeout: 45m
                       command: |
