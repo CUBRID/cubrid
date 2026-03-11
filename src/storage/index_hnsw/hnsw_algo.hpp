@@ -506,12 +506,16 @@ namespace cubhnsw
     std::size_t level = context.m_level;
     std::size_t layer_connectivity = get_layer_connectivity (level, m_connectivity);
 
-    std::size_t stat_computed_distance = 0;
-    refine_ (context, layer_connectivity, top, top_view, stat_computed_distance);
-    context.m_stats.computed_distances_in_refines += stat_computed_distance;
-    if (context.m_level == 0)
+    std::size_t refines_counter = 0;
+    refine_ (context, layer_connectivity, top, top_view, refines_counter);
+
+    if (context.m_is_perf_tracking)
       {
-	context.m_stats.computed_distances_in_refines_l0 = stat_computed_distance;
+	context.m_stats.computed_distances_in_refines += refines_counter;
+	if (level == 0)
+	  {
+	    context.m_stats.computed_distances_in_refines_l0 += refines_counter;
+	  }
       }
 
     // outgoing links from new node
@@ -569,12 +573,16 @@ namespace cubhnsw
 	close_header.clear();
 	candidates_view_t<Traits> top_view;
 
-	std::size_t stat_computed_distance = 0;
-	(void) refine_ (context, layer_connectivity, top_for_refine, top_view, stat_computed_distance);
-	context.m_stats.computed_distances_in_reverse_refines += stat_computed_distance;
-	if (context.m_level == 0)
+	std::size_t refines_counter = 0;
+	(void) refine_ (context, layer_connectivity, top_for_refine, top_view, refines_counter);
+
+	if (context.m_is_perf_tracking)
 	  {
-	    context.m_stats.computed_distances_in_reverse_refines_l0 = stat_computed_distance;
+	    context.m_stats.computed_distances_in_reverse_refines += refines_counter;
+	    if (level == 0)
+	      {
+		context.m_stats.computed_distances_in_reverse_refines_l0 += refines_counter;
+	      }
 	  }
 
 	for (std::size_t i = 0; i != top_view.size (); i++)

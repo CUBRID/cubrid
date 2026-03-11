@@ -174,11 +174,6 @@ namespace cubhnsw
       m_visits.clear();
     }
 
-    std::size_t layer_connectivity (level_t level, std::size_t connectivity) const noexcept
-    {
-      return level == 0 ? connectivity * 2 : connectivity;
-    }
-
     void collect_perf_stats ()
     {
       if (!m_is_perf_tracking)
