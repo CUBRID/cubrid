@@ -74,11 +74,65 @@ jobs:
             Role: Expert C/C++ DBMS Senior Developer.
 
             [Workflow]
-            1. Context: Read the global `./AGENTS.md` and local `AGENTS.md` in modified directories.
-            2. Delegation: Compile these rules and strictly pass them to any subagents you spawn.
-            3. Review: Analyze code for bugs, memory leaks, and readability.
+            1. Context: Read `./AGENTS.md` and local `AGENTS.md` in modified directories.
+            2. Delegation: Compile these rules and strictly pass them to any subagents.
+            3. Review: Analyze code for bugs, memory leaks, thread safety, and readability.
+            4. Output Generation: You MUST save all your review comments into a single file named `review_results.json` in the workspace root.
 
             [Constraints]
-            - Scope: Inline comments ONLY. STRICTLY NO general summaries.
-            - Output: DO NOT print markdown comments in the chat. You MUST use your bash tool and the `gh-cli` skill to post them directly to GitHub.
+            - Scope: Inline comments ONLY. STRICTLY NO general summaries in the chat.
+            - Action: DO NOT execute any `gh` or git commands. Your ONLY output action is writing the `review_results.json` file using your bash/file tool.
             - Language: Korean (Extremely concise).
+
+            [JSON Schema]
+            You MUST ensure the file `review_results.json` contains a valid JSON array matching this exact format:
+            [
+              {
+                "file": "src/connection/coordinator.cpp",
+                "line": 74,
+                "issue": "assert_release는 런타임 종료 위험. 초기화 실패는 graceful degradation 필요.",
+                "suggestion": "if (!m_controller.open (...)) {\n    er_log_conn (__FILE__, __LINE__, \"failed\");\n    throw std::runtime_error(\"error\");\n}"
+              }
+            ]
+
+      - name: Post Inline Comments from JSON
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if the JSON file exists
+          if [ ! -f review_results.json ]; then
+            echo "No review_results.json found."
+            exit 0
+          fi
+
+          echo "Found review_results.json. Parsing and posting comments..."
+          
+          # Get the latest commit SHA of the current PR
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          COMMIT=$(gh pr view $PR_NUMBER --json commits --jq '.commits[-1].oid')
+
+          # Iterate through the JSON array using jq
+          jq -c '.[]' review_results.json | while read i; do
+            FILE=$(echo "$i" | jq -r '.file')
+            LINE=$(echo "$i" | jq -r '.line')
+            ISSUE=$(echo "$i" | jq -r '.issue')
+            SUGGESTION=$(echo "$i" | jq -r '.suggestion')
+
+            # Create a comment body file (Ensure heredoc safety)
+            cat << EOF > pr_comment.txt
+            🚨 **Issue**: $ISSUE
+
+            💡 **Solution**:
+            \`\`\`suggestion
+            $SUGGESTION
+            \`\`\`
+            EOF
+
+            # Post inline comment via GitHub API (Use '|| echo' to prevent pipeline failure on individual errors)
+            gh api --method POST /repos/${{ github.repository }}/pulls/$PR_NUMBER/comments \
+              -F body=@pr_comment.txt \
+              -f commit_id=$COMMIT \
+              -f path="$FILE" \
+              -F line=$LINE \
+              -f side="RIGHT" || echo "Failed to post comment on $FILE:$LINE"
+          done
