@@ -274,21 +274,21 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
 
   static int qmgr_max_query_entry_per_tran = prm_get_integer_value (PRM_ID_QMGR_MAX_QUERY_PER_TRAN);
 
+  pthread_mutex_lock (&tran_entry_p->mutex);
   query_p = tran_entry_p->free_query_entry_list_p;
-
   if (query_p)
     {
-      pthread_mutex_lock (&tran_entry_p->mutex);
       tran_entry_p->free_query_entry_list_p = query_p->next;
       pthread_mutex_unlock (&tran_entry_p->mutex);
     }
   else if (qmgr_max_query_entry_per_tran < tran_entry_p->num_query_entries)
     {
-      assert (qmgr_max_query_entry_per_tran >= tran_entry_p->num_query_entries);
+      pthread_mutex_unlock (&tran_entry_p->mutex);
       return NULL;
     }
   else
     {
+      pthread_mutex_unlock (&tran_entry_p->mutex);
       query_p = (QMGR_QUERY_ENTRY *) malloc (sizeof (QMGR_QUERY_ENTRY));
       if (query_p == NULL)
 	{

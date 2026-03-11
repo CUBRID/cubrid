@@ -23,6 +23,7 @@
 #include "list_file.h"
 #include "log_impl.h"
 #include "object_representation.h"
+#include "xserver_interface.h"
 
 namespace cubmethod
 {
@@ -33,6 +34,11 @@ namespace cubmethod
     , m_fetch_count (1000) // FIXME: change the fixed value, 1000
   {
     reset (query_entry_p);
+  }
+
+  query_cursor::~query_cursor ()
+  {
+    close();
   }
 
   int
@@ -67,6 +73,8 @@ namespace cubmethod
       {
 	clear ();
 	qfile_close_scan (m_thread, &m_scan_id);
+	qfile_close_list (m_thread, m_list_id);
+	xqmgr_end_query (m_thread, m_query_id);
 	m_is_opened = false;
       }
   }
@@ -76,53 +84,6 @@ namespace cubmethod
   {
     m_current_tuple.clear ();
     m_current_row_index = 0;
-  }
-
-  SCAN_CODE
-  query_cursor::prev_row ()
-  {
-    QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
-    SCAN_CODE scan_code = qfile_scan_list_prev (m_thread, &m_scan_id, &tuple_record, PEEK);
-    if (scan_code == S_SUCCESS)
-      {
-	m_current_row_index--;
-	char *ptr;
-	int length;
-	OR_BUF buf;
-
-	for (int i = 0; i < m_list_id->type_list.type_cnt; i++)
-	  {
-	    QFILE_TUPLE_VALUE_FLAG flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value_r (tuple_record.tpl, i, &ptr, &length);
-	    or_init (&buf, ptr, length);
-
-	    TP_DOMAIN *domain = m_list_id->type_list.domp[i];
-	    if (domain == NULL || domain->type == NULL)
-	      {
-		//TODO: error handling?
-		qfile_close_scan (m_thread, &m_scan_id);
-	      }
-
-	    DB_VALUE *value = &m_current_tuple[i];
-	    PR_TYPE *pr_type = domain->type;
-
-	    db_make_null (value);
-	    if (flag == V_BOUND)
-	      {
-		if (pr_type->data_readval (&buf, value, domain, -1, true, NULL, 0) != NO_ERROR)
-		  {
-		    scan_code = S_ERROR;
-		    break;
-		  }
-	      }
-	    else
-	      {
-		/* If value is NULL, properly initialize the result */
-		db_value_domain_init (value, pr_type->id, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	      }
-	  }
-      }
-
-    return scan_code;
   }
 
   SCAN_CODE
@@ -149,25 +110,31 @@ namespace cubmethod
 		TP_DOMAIN *domain = m_list_id->type_list.domp[i];
 		if (domain == NULL || domain->type == NULL)
 		  {
-		    //TODO: error handling?
-		    qfile_close_scan (m_thread, &m_scan_id);
-		    return S_ERROR;
+		    scan_code = S_ERROR;
+		    break;
 		  }
 
 		PR_TYPE *pr_type = domain->type;
 		if (pr_type == NULL)
 		  {
-		    return S_ERROR;
+		    scan_code = S_ERROR;
+		    break;
 		  }
 
 		or_init (&buf, ptr, length);
 
 		if (pr_type->data_readval (&buf, value, domain, -1, true, NULL, 0) != NO_ERROR)
 		  {
-		    return S_ERROR;
+		    scan_code = S_ERROR;
+		    break;
 		  }
 	      }
 	  }
+      }
+
+    if (scan_code == S_END || scan_code == S_ERROR)
+      {
+	close ();
       }
 
     return scan_code;
@@ -195,8 +162,6 @@ namespace cubmethod
   {
     return m_current_tuple;
   }
-
-  void clear ();
 
   int
   query_cursor::get_current_index ()
