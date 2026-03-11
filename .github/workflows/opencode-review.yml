@@ -108,7 +108,7 @@ jobs:
           echo "Found review_results.json. Parsing and posting comments..."
           
           # Get the latest commit SHA of the current PR
-          PR_NUMBER=${{ github.event.pull_request.number }}
+          PR_NUMBER=${{ github.event.issue.number }}
           COMMIT=$(gh pr view $PR_NUMBER --json commits --jq '.commits[-1].oid')
           
           # Iterate through the JSON array using jq
