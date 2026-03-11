@@ -12,6 +12,7 @@ Server-side. Executes deserialized XASL plans.
 | `query_manager.c` | Query cache, temp file management, result sets |
 | `list_file.c` | Temp list files for intermediate results, sorting |
 | `string_opfunc.c` | String function implementations (CONCAT, SUBSTR, etc.) (~28K lines) |
+| `xasl.h` | `XASL_NODE`, `REGU_VARIABLE` definitions; includes `src/xasl/xasl_predicate.hpp` for `PRED_EXPR` |
 | `arithmetic.c` | Numeric/date/time function implementations |
 | `query_opfunc.c` | Aggregate functions (SUM, AVG, COUNT, etc.) |
 | `xasl_to_stream.c` | Client-side: XASL → byte stream serialization |
@@ -19,7 +20,7 @@ Server-side. Executes deserialized XASL plans.
 | `query_analytic.cpp` | Window/analytic function execution (OVER clause) |
 | `query_hash_scan.c` | Hash join scan implementation |
 | `vacuum.c` | MVCC vacuum — garbage collection of old row versions |
-| `xasl.h` | `XASL_NODE`, `PRED_EXPR`, `REGU_VARIABLE` definitions |
+| `xasl.h` | `XASL_NODE`, `REGU_VARIABLE` definitions; includes `src/xasl/xasl_predicate.hpp` for `PRED_EXPR` |
 
 ## Subdirectory
 | Dir | Purpose |

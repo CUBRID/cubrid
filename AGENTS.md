@@ -167,7 +167,7 @@ Use `free_and_init(ptr)` (never bare `free`), `db_private_alloc(thread_p, size)`
 | Structure | Header | Role |
 |-----------|--------|------|
 | `PT_NODE` | `src/parser/parse_tree.h` | Parse tree node — union-based, linked list |
-| `XASL_NODE` | `src/query/xasl.h` | Executable query plan — serialized client→server |
+| `XASL_NODE` | `src/query/xasl.h` (main node), `src/xasl/` (modular type headers) | Executable query plan — serialized client→server |
 | `DB_VALUE` | `src/compat/dbtype_def.h` | Universal value container |
 | `PAGE_BUFFER` | `src/storage/page_buffer.h` | Buffer pool with LRU, hash, dirty tracking |
 | `LOCK_RESOURCE` | `src/transaction/lock_manager.h` | Lock with owner list and waiters |
