@@ -4572,7 +4572,7 @@ spage_is_unknown_slot (PGSLOTID slot_id, SPAGE_HEADER * page_header_p, SPAGE_SLO
 #if defined (NDEBUG)
       assert_release (offset != SPAGE_EMPTY_OFFSET && offset >= (int) sizeof (SPAGE_HEADER));
 #else
-      er_log_debug (ARG_FILE_LINE, "Offset violates header boundary : offset=%d, size of SPAGE_HEADER=%d\n", offset,
+      er_log_debug (ARG_FILE_LINE, "Offset violates header boundary : offset=%d, size of SPAGE_HEADER=%zu\n", offset,
 		    sizeof (SPAGE_HEADER));
 #endif
       return true;
