@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include "hnsw_algo_common.hpp"
 #include "hnsw_utils.hpp"
 #include "hnsw_api.hpp"
 
@@ -38,23 +39,7 @@ namespace cubhnsw
 		   std::to_string (oid.slotid));
   }
 
-  template <typename T>
-  static inline std::string dump_slot (const T &v)
-  {
-    if constexpr (std::is_integral_v<T>)
-      {
-	return std::to_string (v);
-      }
-    else
-      {
-	std::ostringstream oss;
-	oss << v;
-	return oss.str ();
-      }
-  }
-
-  template <>
-  inline std::string dump_slot<OID> (const OID &oid)
+  inline std::string dump_slot (const slot_id_t &oid)
   {
     return dump_oid (oid);
   }
@@ -105,14 +90,12 @@ namespace cubhnsw
    * This structure represents the minimal persistent metadata required
    * to bootstrap traversal of the HNSW graph.
    */
-  template <typename ID_TRAITS>
   class root_t
   {
     protected:
       byte_t *tape_ {};
 
     public:
-      using slot_id_t = typename ID_TRAITS::slot_id_t;
       using header_type_t = hnsw_build_params;
 
       explicit root_t (byte_t *tape) noexcept : tape_ (tape) {}
@@ -214,14 +197,12 @@ namespace cubhnsw
   * - The header is fixed-size; vector and neighbors are variable-size.
   * - neighbors_offset decouples vector dimension from graph topology.
   */
-  template <class ID_TRAITS>
   class node_t
   {
     protected:
       byte_t *tape_ {};
 
     public:
-      using slot_id_t = typename ID_TRAITS::slot_id_t;
 
       explicit node_t (byte_t *tape) noexcept : tape_ (tape)
       {
@@ -343,7 +324,6 @@ namespace cubhnsw
   * - No pointers: fully relocatable and disk-friendly.
   * - Erase and push_back operate in-place.
   */
-  template <class ID_TRAITS>
   class neighbors_ref_t
   {
     protected:
@@ -355,7 +335,6 @@ namespace cubhnsw
       }
 
     public:
-      using slot_id_t = typename ID_TRAITS::slot_id_t;
 
       explicit neighbors_ref_t (byte_t *tape) noexcept : tape_ (tape) {}
       byte_t *tape() const noexcept
