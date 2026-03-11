@@ -53,9 +53,13 @@ jobs:
               TC_BRANCH="develop"
             fi
             echo "TC_BRANCH: $TC_BRANCH"
-                        
-            TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git develop | cut -f1)
-            echo "sha value from tc repository.(only from develop branch)"
+
+            CACHE_KEY_BRANCH="${TC_BRANCH//\//-}"     
+            echo "CACHE_KEY_BRANCH: $CACHE_KEY_BRANCH"
+
+            TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git ${TC_BRANCH} | cut -f1)
+            [ -z "$TC_SHA" ] && TC_BRANCH="develop" && TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git develop | cut -f1)            
+            echo "sha value from tc repository.(from $TC_BRANCH branch)"
             echo "TC_SHA: $TC_SHA"
 
             # Generate dynamic configuration file (continue.yml)
@@ -369,7 +373,8 @@ jobs:
                 steps:
                   - restore_cache:
                       keys:
-                        - "cubrid-testcases-develop-${TC_SHA}"
+                        - "cubrid-testcases-${CACHE_KEY_BRANCH}-${TC_SHA}"
+                        - "cubrid-testcases-${CACHE_KEY_BRANCH}-"
                         - "cubrid-testcases-develop-"
                   - download-build-from-artifact
                   - attach-and-run-tests
@@ -380,7 +385,7 @@ jobs:
                         git clean -fd
                         git reset --hard
                   - save_cache:
-                      key: "cubrid-testcases-develop-${TC_SHA}"
+                      key: "cubrid-testcases-${CACHE_KEY_BRANCH}-${TC_SHA}"
                       paths:
                         - cubrid-testcases
                       
@@ -393,7 +398,8 @@ jobs:
                 steps:
                   - restore_cache:
                       keys:
-                        - "cubrid-testcases-develop-${TC_SHA}"
+                        - "cubrid-testcases-${CACHE_KEY_BRANCH}-${TC_SHA}"
+                        - "cubrid-testcases-${CACHE_KEY_BRANCH}-"
                         - "cubrid-testcases-develop-"
                   - download-build-from-artifact
                   - attach-and-run-tests
@@ -404,7 +410,7 @@ jobs:
                         git clean -fd
                         git reset --hard
                   - save_cache:
-                      key: "cubrid-testcases-develop-${TC_SHA}"
+                      key: "cubrid-testcases-${CACHE_KEY_BRANCH}-${TC_SHA}"
                       paths:
                         - cubrid-testcases
                       
