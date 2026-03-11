@@ -52,15 +52,16 @@ jobs:
             else
               TC_BRANCH="develop"
             fi
-            echo "TC_BRANCH: $TC_BRANCH"
-
-            CACHE_KEY_BRANCH="${TC_BRANCH//\//-}"     
-            echo "CACHE_KEY_BRANCH: $CACHE_KEY_BRANCH"
-
+            
             TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git ${TC_BRANCH} | cut -f1)
-            [ -z "$TC_SHA" ] && TC_BRANCH="develop" && TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git develop | cut -f1)            
+            [ -z "$TC_SHA" ] && TC_BRANCH="develop" && TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git develop | cut -f1)           
+            
+            CACHE_KEY_BRANCH="${TC_BRANCH//\//-}"
+            
+            echo "TC_BRANCH: $TC_BRANCH"
             echo "sha value from tc repository.(from $TC_BRANCH branch)"
             echo "TC_SHA: $TC_SHA"
+            echo "CACHE_KEY_BRANCH: $CACHE_KEY_BRANCH"
 
             # Generate dynamic configuration file (continue.yml)
             cat \<<EOF > .circleci/continue.yml
