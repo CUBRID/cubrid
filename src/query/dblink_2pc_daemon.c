@@ -123,8 +123,12 @@ global_tran_queue_entry_free (GLOBAL_TRAN_QUEUE_ENTRY * e)
 static int
 global_tran_queue_expand (void)
 {
-  GLOBAL_TRAN_QUEUE_ENTRY * new_queue;
-  int new_size, i, j;
+  GLOBAL_TRAN_QUEUE_ENTRY *
+    new_queue;
+  int
+    new_size,
+    i,
+    j;
 
   new_size = global_tran_queue_size + GLOBAL_TRAN_QUEUE_GROW_SIZE;
   new_queue = (GLOBAL_TRAN_QUEUE_ENTRY *) malloc (new_size * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
@@ -167,8 +171,12 @@ global_tran_queue_expand (void)
 static int
 dblink_2pc_daemon_send_decision (int gtrid, char state, int num_participants, DBLINK_CONN_INFO * participants)
 {
-  int i, ret, error_count = 0;
-  bool is_commit = (state == DBLINK_2PC_STATE_COMMIT);
+  int
+    i,
+    ret,
+    error_count = 0;
+  bool
+    is_commit = (state == DBLINK_2PC_STATE_COMMIT);
 
   for (i = 0; i < num_participants; i++)
     {
@@ -185,11 +193,14 @@ dblink_2pc_daemon_send_decision (int gtrid, char state, int num_participants, DB
 }
 
 /* Callback for dblink_global_tran_scan_for_recovery: enqueue participant data to daemon */
-static bool
+static
+  bool
 dblink_2pc_recovery_callback (const DBLINK_GLOBAL_TRAN_ROW * row_data)
 {
-  DBLINK_CONN_INFO participant;
-  char state;
+  DBLINK_CONN_INFO
+    participant;
+  char
+    state;
 
   /* For 'P' state (before decision), use ABORT for recovery */
   if (row_data->state == DBLINK_2PC_STATE_PREPARE)
@@ -228,11 +239,16 @@ dblink_2pc_daemon_recovery_with_thread (THREAD_ENTRY * thread_p)
 static void
 dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
 {
-  GLOBAL_TRAN_QUEUE_ENTRY e;
-  int ret;
-  char send_state;
-  THREAD_ENTRY * thread_p;
-  int i;
+  GLOBAL_TRAN_QUEUE_ENTRY
+    e;
+  int
+    ret;
+  char
+    send_state;
+  THREAD_ENTRY *
+    thread_p;
+  int
+    i;
 
   if (global_tran_queue == NULL)
     {
@@ -370,8 +386,10 @@ dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
 int
 dblink_2pc_daemon_enqueue (int gtrid, char state, int num_participants, void *block_particps_ids)
 {
-  size_t block_size;
-  DBLINK_CONN_INFO * copy;
+  size_t
+    block_size;
+  DBLINK_CONN_INFO *
+    copy;
 
   if (block_particps_ids == NULL || num_participants <= 0)
     {
@@ -443,7 +461,8 @@ dblink_2pc_daemon_init (void)
 void
 dblink_2pc_daemon_stop (void)
 {
-  int i;
+  int
+    i;
 
 #if defined(SERVER_MODE)
   if (dblink_2pc_Daemon != NULL)
@@ -452,8 +471,7 @@ dblink_2pc_daemon_stop (void)
     }
   if (dblink_2pc_Daemon_context_manager != NULL)
     {
-      delete
-	dblink_2pc_Daemon_context_manager;
+      delete dblink_2pc_Daemon_context_manager;
       dblink_2pc_Daemon_context_manager = NULL;
     }
 #endif /* SERVER_MODE */
