@@ -22,6 +22,7 @@
 
 #include "px_heap_scan_checker.hpp"
 
+#include "dbtype_def.h"
 #include "regu_var.hpp"
 #include "storage_common.h"
 #include "xasl_predicate.hpp"
@@ -148,6 +149,10 @@ namespace parallel_heap_scan
       case TYPE_ATTR_ID:		/* fetch object attribute value */
       case TYPE_SHARED_ATTR_ID:
       case TYPE_CLASS_ATTR_ID:
+	if (arg->value.attr_descr.type == DB_TYPE_OBJECT || arg->value.attr_descr.type == DB_TYPE_OID)
+	  {
+	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	  }
 	break;
       case TYPE_CONSTANT:
       case TYPE_OID:
