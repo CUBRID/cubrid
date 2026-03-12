@@ -28415,7 +28415,7 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
 				     ANALYTIC_INFO * info)
 {
   SORT_LIST *sort_list;
-  QO_ENV *env;
+  QO_ENV *env = NULL;
   QO_INDEX_ENTRY *index_entry;
   QO_SEGMENT *seg;
   PT_NODE *attr, *node;
