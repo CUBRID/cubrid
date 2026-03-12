@@ -552,9 +552,11 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 
       /* P4: Crash after (4),(3) before (5) enqueue - recovery: daemon sends decision then DELETE */
       FI_TEST (thread_p, FI_TEST_DBLINK_2PC_CRASH_BETWEEN_4_6, 0);
-      /* Enqueue participant data to daemon for recovery path */
-      (void) dblink_2pc_daemon_enqueue (tdes->gtrid, new_state,
-					tdes->coord->num_particps, tdes->coord->block_particps_ids);
+      /* Enqueue one entry per participant for daemon (only failed participants are retried) */
+      for (i = 0; i < tdes->coord->num_particps; i++)
+	{
+	  (void) dblink_2pc_daemon_enqueue (tdes->gtrid, new_state, &participants[i]);
+	}
       state = log_complete (thread_p, tdes, complete_type, LOG_NEED_NEWTRID, LOG_ALREADY_WROTE_EOT_LOG);
       if (state != expected_state)
 	{

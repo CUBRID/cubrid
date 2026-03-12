@@ -38,20 +38,23 @@
 
 #ifdef CCI_XA
 
+#include "dblink_scan.h"
+
 /* State for _db_global_tran: 'P' = before Prepare, 'A' = Abort decision, 'C' = Commit decision */
 #define DBLINK_2PC_STATE_PREPARE   'P'
 #define DBLINK_2PC_STATE_ABORT    'A'
 #define DBLINK_2PC_STATE_COMMIT   'C'
 
 /*
- * Enqueue participant data for daemon to persist to _db_global_tran and/or send decision.
+ * Enqueue one participant for daemon to persist to _db_global_tran and/or send decision.
+ * Call once per participant (per gtrid/state) for efficiency: only failed participants are retried.
  * - Before prepare: state = DBLINK_2PC_STATE_PREPARE -> daemon inserts (gtrid, bqual, conn_url, user, password, 'P').
  * - After prepare (decision phase): state = DBLINK_2PC_STATE_ABORT or DBLINK_2PC_STATE_COMMIT
- *   -> daemon updates state and sends abort/commit decision to each participant.
- * block_particps_ids is copied by the function; caller can free after return.
+ *   -> daemon sends abort/commit decision to this participant.
+ * participant is copied by the function; caller can free after return.
  * Returns NO_ERROR on success, ER_* on failure (e.g. queue full).
  */
-extern int dblink_2pc_daemon_enqueue (int gtrid, char state, int num_participants, void *block_particps_ids);
+extern int dblink_2pc_daemon_enqueue (int gtrid, char state, const DBLINK_CONN_INFO * participant);
 
 /* Start the send_2pc_decision daemon thread. Called during server boot.
  * Returns NO_ERROR on success, ER_OUT_OF_VIRTUAL_MEMORY if queue alloc failed,
