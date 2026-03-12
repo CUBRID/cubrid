@@ -15962,8 +15962,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	}
 
       /* process analytic functions */
-      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.a_eval_list
-	  && !XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.a_eval_list)
 	{
 	  ANALYTIC_EVAL_TYPE *eval_list;
 	  bool is_skip_sort = XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT);
@@ -20968,10 +20967,18 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   bool finalized = false;
   int i = 0;
   ANALYTIC_TYPE *func_p = NULL;
-  UINT64 old_sort_pages = 0, old_sort_ioreads = 0, old_ioreads = 0, old_fetches = 0;
+  UINT64 old_sort_pages = 0, old_sort_ioreads = 0;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   bool on_trace = false;
+
+  on_trace = thread_is_on_trace (thread_p);
+  if (on_trace)
+    {
+      tsc_getticks (&start_tick);
+      old_sort_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES);
+      old_sort_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+    }
 
   /* fetch regulist and outlist */
   a_outptr_list = (is_last ? buildlist->a_outptr_list : buildlist->a_outptr_list_interm);
@@ -20986,6 +20993,12 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 				       &list_id->type_list, tplrec) == NULL)
     {
       GOTO_EXIT_ON_ERROR;
+    }
+
+  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+    {
+      analytic_state.state = NO_ERROR;
+      goto wrapup;
     }
 
   if (analytic_state.is_last_run)
@@ -21089,22 +21102,13 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   interm_scan_id.keep_page_on_finish = 1;
   analytic_state.interm_scan = &interm_scan_id;
 
-  on_trace = thread_is_on_trace (thread_p);
-  if (on_trace)
-    {
-      tsc_getticks (&start_tick);
-      old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
-      old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
-      old_sort_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES);
-      old_sort_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
-    }
-
   /*
    * Now load up the sort module and set it off...
    */
 
   if (is_skip_sort)
     {
+      finalized = true;
       if (qexec_analytic_update_group_result (thread_p, &analytic_state) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
@@ -21175,7 +21179,7 @@ wrapup:
       if (new_stat != NULL)
 	{
 	  memset (new_stat, 0, sizeof (ANALYTIC_STATS));
-	  new_stat->run_analytic = true;
+	  new_stat->analytic_stopkey = XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT);
 	  TSC_ADD_TIMEVAL (new_stat->analytic_time, tv_diff);
 	  new_stat->analytic_sort = !is_skip_sort;
 
@@ -21225,13 +21229,16 @@ wrapup:
 	  analytic_state.input_scan = NULL;
 	}
 
-      /* replace current input with output */
-      qfile_close_list (thread_p, analytic_state.output_file);
-      qfile_destroy_list (thread_p, list_id);
-      qfile_copy_list_id (list_id, analytic_state.output_file, true, QFILE_PROHIBIT_DEPENDENT);
+      if (analytic_state.output_file != NULL)
+	{
+	  /* replace current input with output */
+	  qfile_close_list (thread_p, analytic_state.output_file);
+	  qfile_destroy_list (thread_p, list_id);
+	  qfile_copy_list_id (list_id, analytic_state.output_file, true, QFILE_PROHIBIT_DEPENDENT);
 
-      qfile_free_list_id (analytic_state.output_file);
-      analytic_state.output_file = NULL;
+	  qfile_free_list_id (analytic_state.output_file);
+	  analytic_state.output_file = NULL;
+	}
     }
 
   /* clear internal processing items */
