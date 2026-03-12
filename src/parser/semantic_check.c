@@ -1984,17 +1984,26 @@ pt_vclass_compatible (PARSER_CONTEXT * parser, const PT_NODE * att, const PT_NOD
     }
 
   /* return true iff att is a vclass & qcol is in att's query_spec list */
+  bool bret = false;
+  PARSER_CONTEXT *tmp_parser = parser_create_parser ();
+  if (tmp_parser == NULL)
+    {
+      return false;
+    }
+
   for (specs = db_get_query_specs (vcls); specs && (spec = db_query_spec_string (specs));
        specs = db_query_spec_next (specs))
     {
-      qs_clsnam = pt_get_proxy_spec_name (spec);
+      qs_clsnam = pt_get_proxy_spec_name (tmp_parser, spec);
       if (qs_clsnam && intl_identifier_casecmp (qs_clsnam, qcol_typnam) == 0)
 	{
-	  return true;		/* att is vclass_compatible with qcol */
+	  bret = true;		/* att is vclass_compatible with qcol */
+	  break;
 	}
     }
 
-  return false;			/* att is not vclass_compatible with qcol */
+  parser_free_parser (tmp_parser);
+  return bret;			/* att is not vclass_compatible with qcol */
 }
 
 /*
