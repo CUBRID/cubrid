@@ -726,9 +726,8 @@ extern void heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const 
 // *INDENT-ON*
 
 // *INDENT-OFF*
-using oid_vector = std::vector <OID>;
+extern std::vector<OID> heap_recdes_get_oos_oids (const RECDES * record);
 // *INDENT-ON*
-extern oid_vector heap_recdes_get_oos_oids (const RECDES * record);
 
 /* lob */
 extern int heap_rv_lob_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

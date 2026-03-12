@@ -12621,10 +12621,10 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
       /* Mark the last variable attribute so readers can determine the variable offset table boundary
        * without needing attrinfo->num_values (e.g., in logging and replication paths). */
-      if (index == attr_info->num_values - 1)
+      if (value->last_attrepr->location == attr_info->last_classrepr->n_variable - 1)
 	{
-	  oos_debug ("Setting LAST_ELEMENT flag for variable attribute at index %d (num_values=%d)",
-		     index, attr_info->num_values);
+	  oos_debug ("Setting LAST_ELEMENT flag for variable attribute at location %d (n_variable=%d)",
+		     value->last_attrepr->location, attr_info->last_classrepr->n_variable);
 	  length = OR_SET_VAR_LAST_ELEMENT (length);
 	}
       or_put_offset_internal (buf, length, offset_size);
@@ -27665,10 +27665,10 @@ heap_recdes_contains_oos (const RECDES * record)
   return flag & OR_MVCC_FLAG_HAS_OOS;
 }
 
-oid_vector
+std::vector<OID>
 heap_recdes_get_oos_oids (const RECDES * recdes)
 {
-  oid_vector oos_oids;
+  std::vector<OID> oos_oids;
 
   if (!heap_recdes_contains_oos (recdes))
     {
@@ -27678,9 +27678,16 @@ heap_recdes_get_oos_oids (const RECDES * recdes)
   OR_BUF buf;
   const int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
   short *var_table = OR_GET_OBJECT_VAR_TABLE (recdes->data);
+  const int max_var_count = recdes->length / offset_size;
 
-  for (int index = 0;; ++index)
+  for (int index = 0; index <= max_var_count; ++index)
     {
+      if (index == max_var_count)
+	{
+	  assert (false && "LAST_ELEMENT flag not found within record bounds");
+	  return oos_oids;
+	}
+
       int offset;
       switch (offset_size)
 	{
@@ -27701,7 +27708,13 @@ heap_recdes_get_oos_oids (const RECDES * recdes)
       if (OR_IS_OOS (offset))
 	{
 	  OID oid = OID_INITIALIZER;
-	  buf.ptr = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, index));
+	  const char *oid_ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, index);
+	  if (oid_ptr + OR_OID_SIZE > (char *) recdes->data + recdes->length)
+	    {
+	      assert (false && "OID read would exceed record bounds");
+	      return oos_oids;
+	    }
+	  buf.ptr = (char *) oid_ptr;
 	  buf.endptr = buf.ptr + OR_OID_SIZE;
 	  or_get_oid (&buf, &oid);
 	  assert (!OID_ISNULL (&oid));
@@ -27736,4 +27749,5 @@ heap_recdes_get_oos_oids (const RECDES * recdes)
     }
 
   assert (false && "unreachable: there must be last element");
+  return oos_oids;
 }
