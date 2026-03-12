@@ -65,7 +65,6 @@
 
 static void net_server_init (void);
 static int net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int size, char *buffer);
-static int net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg);
 
 static struct net_request net_Requests[NET_SERVER_REQUEST_END];
 
@@ -785,6 +784,16 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
   int error_code;
   CSS_CONN_ENTRY *conn;
 
+  conn = thread_p->conn_entry;
+  assert (conn != NULL);
+
+  /* check if the conn is valid */
+  if (IS_INVALID_SOCKET (conn->fd) || conn->status != CONN_OPEN)
+    {
+      /* have nothing to do because the client has gone */
+      goto end;
+    }
+
   if (buffer == NULL && size > 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_CANT_ALLOC_BUFFER, 0);
@@ -813,19 +822,10 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
       return_error_to_client (thread_p, rid);
       goto end;
     }
-  conn = thread_p->conn_entry;
-  assert (conn != NULL);
-  /* check if the conn is valid */
-  if (IS_INVALID_SOCKET (conn->fd) || conn->status != CONN_OPEN)
-    {
-      /* have nothing to do because the client has gone */
-      goto end;
-    }
 
   /* check the defined action attribute */
   if (net_Requests[request].action_attribute & CHECK_DB_MODIFICATION)
     {
-      int client_type;
       bool check = true;
 
       if (request == NET_SERVER_TM_SERVER_COMMIT)
@@ -836,7 +836,6 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
 	    }
 	}
       /* check if DB modification is allowed */
-      client_type = logtb_find_client_type (thread_p->tran_index);
       if (check)
 	{
 	  CHECK_MODIFICATION_NO_RETURN (thread_p, error_code);
@@ -904,7 +903,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
 end:
   if (buffer != NULL && size > 0)
     {
-      free_and_init (buffer);
+      thread_p->release_packet (buffer);
     }
 
   /* clear memory to be used at request handling */
@@ -913,62 +912,17 @@ end:
   return (status);
 }
 
-/*
- * net_server_conn_down () - CSS callback function used when a connection to a
- *                       particular client went down
- *   return: 0
- *   arg(in): transaction id
- */
-static int
-net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
+void
+net_server_wakeup_workers (THREAD_ENTRY * thread_p, int tran_index, int client_id)
 {
-  int tran_index;
-  CSS_CONN_ENTRY *conn_p;
-  size_t prev_thrd_cnt, thrd_cnt;
-  bool continue_check;
-  int client_id;
-  int local_tran_index;
   THREAD_ENTRY *suspended_p;
-  size_t loop_count_for_pending_request = 0;
+  size_t active_workers;
+  bool continue_check;
 
-  if (thread_p == NULL)
+  /* count and interrupt if possible */
+  active_workers = css_count_transaction_worker_threads (thread_p, tran_index, client_id);
+  if (active_workers > 0)
     {
-      thread_p = thread_get_thread_entry_info ();
-      if (thread_p == NULL)
-	{
-	  return 0;
-	}
-    }
-
-  local_tran_index = thread_p->tran_index;
-
-  conn_p = (CSS_CONN_ENTRY *) arg;
-  tran_index = conn_p->get_tran_index ();
-  client_id = conn_p->client_id;
-
-  css_set_thread_info (thread_p, client_id, 0, tran_index, NET_SERVER_SHUTDOWN);
-  pthread_mutex_unlock (&thread_p->tran_index_lock);
-
-  css_end_server_request (conn_p);
-
-  /* avoid infinite waiting with xtran_wait_server_active_trans() */
-  thread_p->m_status = cubthread::entry::status::TS_CHECK;
-
-  if (conn_p->session_p != NULL)
-    {
-      ssession_stop_attached_threads (thread_p, conn_p->session_p);
-    }
-
-loop:
-  prev_thrd_cnt = css_count_transaction_worker_threads (thread_p, tran_index, client_id);
-  if (prev_thrd_cnt > 0)
-    {
-      if (tran_index == NULL_TRAN_INDEX)
-	{
-	  /* the connected client does not yet finished boot_client_register */
-	  thread_sleep (50);	/* 50 msec */
-	  tran_index = conn_p->get_tran_index ();
-	}
       if (!logtb_is_interrupted_tran (thread_p, false, &continue_check, tran_index))
 	{
 	  logtb_set_tran_index_interrupt (thread_p, tran_index, true);
@@ -1037,47 +991,49 @@ loop:
 	    }
 	}
     }
+}
 
-  while ((thrd_cnt = css_count_transaction_worker_threads (thread_p, tran_index, client_id)) >= prev_thrd_cnt
-	 && thrd_cnt > 0)
+int
+net_server_active_workers (THREAD_ENTRY * thread_p, void *arg, int tran_index, int client_id)
+{
+  size_t active_workers;
+  CSS_CONN_ENTRY *conn;
+
+  assert (arg);
+
+  conn = (CSS_CONN_ENTRY *) arg;
+  active_workers = css_count_transaction_worker_threads (thread_p, tran_index, client_id);
+  if (active_workers > 0)
     {
-      /* Some threads may wait for data from the m-driver. It's possible from the fact that css_server_thread() is
-       * responsible for receiving every data from which is sent by a client and all m-drivers. We must have chance to
-       * receive data from them. */
-      thread_sleep (50);	/* 50 msec */
+      /* retry */
+      return active_workers;
     }
 
-  if (thrd_cnt > 0)
+  if (conn->has_pending_request () && !css_is_shutdowning_server ())
     {
-      goto loop;
+      /* need to wait for pending request */
+      /* retry */
+      return 1;
     }
 
-  if (conn_p->has_pending_request () && !css_is_shutdowning_server ())
-    {
-      // need to wait for pending request
-      thread_sleep (50);	/* 50 msec */
-      if (++loop_count_for_pending_request >= 10)
-	{
-	  // too long...
-	  assert (false);
-	}
-      else
-	{
-	  goto loop;
-	}
-    }
+  return 0;
+}
+
+/*
+ * net_server_conn_down () - CSS callback function used when a connection to a
+ *                       particular client went down
+ *   return: 0
+ *   arg(in): transaction id
+ */
+int
+net_server_conn_down (THREAD_ENTRY * thread_p, int tran_index)
+{
+  assert (thread_p && tran_index != NULL_TRAN_INDEX);
 
   logtb_set_tran_index_interrupt (thread_p, tran_index, false);
 
-  if (tran_index != NULL_TRAN_INDEX)
-    {
-      (void) xboot_unregister_client (thread_p, tran_index);
-      session_remove_query_entry_all (thread_p);
-    }
-  css_free_conn (conn_p);
-
-  css_set_thread_info (thread_p, -1, 0, local_tran_index, -1);
-  thread_p->m_status = cubthread::entry::status::TS_RUN;
+  (void) xboot_unregister_client (thread_p, tran_index);
+  session_remove_query_entry_all (thread_p);
 
   return NO_ERROR;
 }
@@ -1168,7 +1124,7 @@ net_server_start (const char *server_name)
 #endif /* !WINDOWS */
 
   net_server_init ();
-  css_initialize_server_interfaces (net_server_request, net_server_conn_down);
+  css_initialize_server_interfaces (net_server_request);
 
   if (boot_restart_server (thread_p, true, server_name, false, &check_coll_and_timezone, NULL, false) != NO_ERROR)
     {

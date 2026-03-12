@@ -24,6 +24,7 @@
 #define _PX_HEAP_SCAN_TASK_HPP_
 
 #include "query_manager.h"
+#include "query_executor.h"
 #include "thread_entry_task.hpp"
 #include "px_heap_scan_slot_iterator.hpp"
 #include "px_heap_scan_result_handler.hpp"
@@ -31,6 +32,7 @@
 #include "px_heap_scan_trace_handler.hpp"
 #include "px_interrupt.hpp"
 #include "px_worker_manager.hpp"
+#include "px_heap_scan_join_info.hpp"
 
 namespace parallel_heap_scan
 {
@@ -46,7 +48,7 @@ namespace parallel_heap_scan
 	    input_handler *input_handler,
 	    interrupt *interrupt, err_messages_with_lock *err_messages, val_descr *vd, trace_handler *trace_handler,
 	    worker_manager *worker_manager, int xasl_id, HFID hfid, OID cls_oid, bool is_fixed, bool is_grouped,
-	    bool uses_xasl_clone, XASL_NODE *orig_xasl)
+	    bool uses_xasl_clone, XASL_NODE *orig_xasl, join_info *join_info)
 	: m_parent_thread_p (parent_thread_p),
 	  m_query_entry (query_entry),
 	  m_xasl_cache_entry (nullptr),
@@ -68,6 +70,9 @@ namespace parallel_heap_scan
       m_trace_handler (trace_handler),
       m_orig_vd (vd),
       m_vd (nullptr),
+      m_xasl_state (nullptr),
+      m_scan_func_ptr (nullptr),
+      m_join_info (join_info),
       m_is_fixed (is_fixed),
       m_is_grouped (is_grouped),
       m_uses_xasl_clone (uses_xasl_clone),
@@ -107,6 +112,9 @@ namespace parallel_heap_scan
       trace_handler *m_trace_handler;
       val_descr *m_orig_vd;
       val_descr *m_vd;
+      xasl_state *m_xasl_state;
+      UINTPTR *m_scan_func_ptr;
+      join_info *m_join_info;
       bool m_is_fixed;
       bool m_is_grouped;
       bool m_uses_xasl_clone;
