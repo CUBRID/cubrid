@@ -79,7 +79,7 @@
 #include "db_date.h"
 #include "fault_injection.h"
 #if defined (SA_MODE)
-#include "connection_support.h"
+#include "connection_support.hpp"
 #endif /* defined (SA_MODE) */
 #include "db_value_printer.hpp"
 #include "mem_block.hpp"
