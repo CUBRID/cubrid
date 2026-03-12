@@ -444,7 +444,8 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 {
   int i, error;
   DBLINK_CONN_INFO *participants = (DBLINK_CONN_INFO *) tdes->coord->block_particps_ids;
-  TRAN_STATE state;
+  TRAN_STATE state, expected_state;
+  LOG_RECTYPE complete_type;
   char new_state;
 
   /* Start the first phase of 2PC. Prepare to commit or voting phase */
@@ -530,6 +531,8 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
       /* Perform local commit/abort after updating _db_global_tran; on failure return error, catalog update is aborted (will be rolled back) */
       if (*decision)
 	{
+	  complete_type = LOG_COMMIT;
+	  expected_state = TRAN_UNACTIVE_COMMITTED;
 	  state = log_commit_local (thread_p, tdes, false, true);
 	  if (state != TRAN_UNACTIVE_COMMITTED)
 	    {
@@ -538,6 +541,8 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	}
       else
 	{
+	  complete_type = LOG_ABORT;
+	  expected_state = TRAN_UNACTIVE_ABORTED;
 	  state = log_abort_local (thread_p, tdes, false);
 	  if (state != TRAN_UNACTIVE_ABORTED)
 	    {
@@ -545,17 +550,16 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	    }
 	}
 
-      state = log_complete (thread_p, tdes, LOG_COMMIT, LOG_NEED_NEWTRID, LOG_ALREADY_WROTE_EOT_LOG);
-      if (state != TRAN_UNACTIVE_COMMITTED)
-	{
-	  return ER_FAILED;
-	}
-
       /* P4: Crash after (4),(3) before (5) enqueue - recovery: daemon sends decision then DELETE */
       FI_TEST (thread_p, FI_TEST_DBLINK_2PC_CRASH_BETWEEN_4_6, 0);
       /* Enqueue participant data to daemon for recovery path */
       (void) dblink_2pc_daemon_enqueue (tdes->gtrid, new_state,
 					tdes->coord->num_particps, tdes->coord->block_particps_ids);
+      state = log_complete (thread_p, tdes, complete_type, LOG_NEED_NEWTRID, LOG_ALREADY_WROTE_EOT_LOG);
+      if (state != expected_state)
+	{
+	  return ER_FAILED;
+	}
 #endif
     }
   else

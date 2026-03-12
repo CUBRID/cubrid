@@ -190,7 +190,7 @@ dblink_2pc_send_decision_one_participant (int gtrid, int bqual, const char *conn
   XID xid;
   T_CCI_ERROR err_buf;
   char type = is_commit ? CCI_TRAN_COMMIT : CCI_TRAN_ROLLBACK;
-  char conn_url_gateway[MAX_LEN_CONNECTION_URL + 64];
+  char conn_url_gateway[MAX_LEN_CONNECTION_URL + 16];
 
   if (conn_url == NULL || user_name == NULL || password == NULL)
     {
@@ -208,7 +208,8 @@ dblink_2pc_send_decision_one_participant (int gtrid, int bqual, const char *conn
 
   if (err == CCI_ER_NO_ERROR)
     {
-      return err;
+      (void) cci_disconnect (conn_handle, &err_buf);
+      return NO_ERROR;
     }
 
   /* try to connect for cci_xa_end_tran, maybe recoverying */

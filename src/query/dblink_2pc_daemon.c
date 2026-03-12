@@ -78,19 +78,22 @@ static int global_tran_queue_tail = 0;
 static int global_tran_queue_count = 0;
 static pthread_mutex_t global_tran_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-/* *INDENT-OFF* */
-class dblink_2pc_daemon_context_manager : public cubthread::daemon_entry_manager
+// *INDENT-OFF*
+class dblink_2pc_daemon_context_manager:public
+  cubthread::daemon_entry_manager
 {
-  private:
-    void on_daemon_retire (cubthread::entry &context) final
-    {
-      if (context.get_system_tdes () != NULL)
-	{
-	  context.retire_system_worker ();
-	}
-    }
+private:
+  void
+  on_daemon_retire (cubthread::entry & context)
+    final
+  {
+    if (context.get_system_tdes () != NULL)
+      {
+	context.retire_system_worker ();
+      }
+  }
 };
-/* *INDENT-ON* */
+// *INDENT-ON*
 
 static
   cubthread::daemon *
@@ -120,12 +123,8 @@ global_tran_queue_entry_free (GLOBAL_TRAN_QUEUE_ENTRY * e)
 static int
 global_tran_queue_expand (void)
 {
-  GLOBAL_TRAN_QUEUE_ENTRY *
-    new_queue;
-  int
-    new_size,
-    i,
-    j;
+  GLOBAL_TRAN_QUEUE_ENTRY * new_queue;
+  int new_size, i, j;
 
   new_size = global_tran_queue_size + GLOBAL_TRAN_QUEUE_GROW_SIZE;
   new_queue = (GLOBAL_TRAN_QUEUE_ENTRY *) malloc (new_size * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
@@ -147,11 +146,10 @@ global_tran_queue_expand (void)
       memset (&new_queue[i], 0, sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
     }
 
+  assert (global_tran_queue != NULL);
+
   /* Free old queue and update pointers */
-  if (global_tran_queue != NULL)
-    {
-      free (global_tran_queue);
-    }
+  free (global_tran_queue);
 
   global_tran_queue = new_queue;
   global_tran_queue_size = new_size;
@@ -169,10 +167,7 @@ global_tran_queue_expand (void)
 static int
 dblink_2pc_daemon_send_decision (int gtrid, char state, int num_participants, DBLINK_CONN_INFO * participants)
 {
-  int
-    i,
-    ret,
-    error_count = 0;
+  int i, ret, error_count = 0;
   bool is_commit = (state == DBLINK_2PC_STATE_COMMIT);
 
   for (i = 0; i < num_participants; i++)
@@ -190,13 +185,11 @@ dblink_2pc_daemon_send_decision (int gtrid, char state, int num_participants, DB
 }
 
 /* Callback for dblink_global_tran_scan_for_recovery: enqueue participant data to daemon */
-static
-  bool
+static bool
 dblink_2pc_recovery_callback (const DBLINK_GLOBAL_TRAN_ROW * row_data)
 {
   DBLINK_CONN_INFO participant;
-  char
-    state;
+  char state;
 
   /* For 'P' state (before decision), use ABORT for recovery */
   if (row_data->state == DBLINK_2PC_STATE_PREPARE)
@@ -236,14 +229,10 @@ static void
 dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
 {
   GLOBAL_TRAN_QUEUE_ENTRY e;
-  int
-    ret;
-  char
-    send_state;
-  THREAD_ENTRY *
-    thread_p;
-  int
-    i;
+  int ret;
+  char send_state;
+  THREAD_ENTRY * thread_p;
+  int i;
 
   if (global_tran_queue == NULL)
     {
@@ -283,7 +272,7 @@ dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
     {
       pthread_mutex_lock (&global_tran_queue_mutex);
 
-      if (global_tran_queue == NULL || global_tran_queue_count == 0)
+      if (global_tran_queue_count == 0)
 	{
 	  pthread_mutex_unlock (&global_tran_queue_mutex);
 	  return;
@@ -373,7 +362,6 @@ dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
 	  global_tran_queue_count++;
 
 	  pthread_mutex_unlock (&global_tran_queue_mutex);
-	  return;
 	}
     }
 }
@@ -383,8 +371,7 @@ int
 dblink_2pc_daemon_enqueue (int gtrid, char state, int num_participants, void *block_particps_ids)
 {
   size_t block_size;
-  DBLINK_CONN_INFO *
-    copy;
+  DBLINK_CONN_INFO * copy;
 
   if (block_particps_ids == NULL || num_participants <= 0)
     {
@@ -456,8 +443,7 @@ dblink_2pc_daemon_init (void)
 void
 dblink_2pc_daemon_stop (void)
 {
-  int
-    i;
+  int i;
 
 #if defined(SERVER_MODE)
   if (dblink_2pc_Daemon != NULL)
@@ -466,7 +452,8 @@ dblink_2pc_daemon_stop (void)
     }
   if (dblink_2pc_Daemon_context_manager != NULL)
     {
-      delete dblink_2pc_Daemon_context_manager;
+      delete
+	dblink_2pc_Daemon_context_manager;
       dblink_2pc_Daemon_context_manager = NULL;
     }
 #endif /* SERVER_MODE */
