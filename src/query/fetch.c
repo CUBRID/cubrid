@@ -509,6 +509,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_SLEEP:
     case T_CRC32:
     case T_CONV_TZ:
+    case T_ESTIMATED_TABLE_ROWS:
       /* fetch rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
 	{
@@ -3536,6 +3537,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    {
 	      goto error;
 	    }
+	}
+      break;
+
+    case T_ESTIMATED_TABLE_ROWS:
+      if (qdata_get_estimated_table_rows (thread_p, peek_right, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
 	}
       break;
 

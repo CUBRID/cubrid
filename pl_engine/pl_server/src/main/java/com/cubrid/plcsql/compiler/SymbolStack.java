@@ -468,6 +468,7 @@ public class SymbolStack {
                         "DBTIMEZONE",
                         "DEFAULT",
                         "DISK_SIZE",
+                        "ESTIMATED_TABLE_ROWS",
                         "INDEX_CARDINALITY",
                         "INET_ATON",
                         "INET_NTOA",

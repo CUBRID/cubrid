@@ -8052,6 +8052,16 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		      goto end_expr_op_switch;
 		    }
 		}
+	      else if (node->info.expr.op == PT_ESTIMATED_TABLE_ROWS)
+		{
+		  r1 = NULL;
+		  r2 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
+		  domain = pt_xasl_node_to_domain (parser, node);
+		  if (domain == NULL)
+		    {
+		      goto end_expr_op_switch;
+		    }
+		}
 	      else if (node->info.expr.op == PT_CONV)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
@@ -9351,11 +9361,16 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    {
 		      XASL_SET_FLAG (parser->parent_proc_xasl, XASL_NO_FIXED_SCAN);
 		    }
-		  else
+		  /* else: no scan context (e.g., INSERT VALUES), flag not needed */
+		  break;
+
+		case PT_ESTIMATED_TABLE_ROWS:
+		  regu = pt_make_regu_arith (NULL, r2, NULL, T_ESTIMATED_TABLE_ROWS, domain);
+		  if (parser->parent_proc_xasl != NULL)
 		    {
-		      /* should not happen */
-		      assert (false);
+		      XASL_SET_FLAG (parser->parent_proc_xasl, XASL_NO_FIXED_SCAN);
 		    }
+		  /* else: no scan context (e.g., INSERT VALUES), flag not needed */
 		  break;
 
 		case PT_EXEC_STATS:

@@ -55,6 +55,8 @@
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"
+#include "xserver_interface.h"
+#include "intl_support.h"
 
 #include "dbtype.h"
 
@@ -8827,6 +8829,67 @@ qdata_get_cardinality (THREAD_ENTRY * thread_p, DB_VALUE * db_class_name, DB_VAL
 	{
 	  db_make_int (result_p, cardinality);
 	}
+    }
+
+exit:
+  return error;
+}
+
+/*
+ * qdata_get_estimated_table_rows () - gets the estimated number of objects
+ *				       in a table using its name
+ *   return: NO_ERROR, or error code
+ *   thread_p(in)      : thread context
+ *   db_table_name(in) : string DB_VALUE holding the name of the table
+ *   result_p(out)     : estimated row count (bigint or NULL DB_VALUE)
+ *
+ * Note: Like index_cardinality(), if the specified table does not exist,
+ *       result_p is set to NULL and NO_ERROR is returned (no error is raised).
+ */
+int
+qdata_get_estimated_table_rows (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name, DB_VALUE * result_p)
+{
+  const char *unique_name_str;
+  char lower_name[SM_MAX_IDENTIFIER_LENGTH];
+  OID class_oid;
+  HFID hfid;
+  int nobjs;
+  int error = NO_ERROR;
+
+  db_make_null (result_p);
+
+  if (DB_IS_NULL (db_table_name))
+    {
+      goto exit;
+    }
+
+  unique_name_str = db_get_string (db_table_name);
+  if (unique_name_str == NULL)
+    {
+      goto exit;
+    }
+
+  intl_identifier_lower (unique_name_str, lower_name);
+
+  if (xlocator_find_class_oid (thread_p, lower_name, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
+    {
+      goto exit;
+    }
+
+  error = heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  nobjs = heap_estimate_num_objects (thread_p, &hfid);
+  if (nobjs < 0)
+    {
+      db_make_null (result_p);
+    }
+  else
+    {
+      db_make_bigint (result_p, (DB_BIGINT) nobjs);
     }
 
 exit:
