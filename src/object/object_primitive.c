@@ -8361,13 +8361,13 @@ mr_setmem_numeric (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       else
 	{
 	  unsigned char header[NUMERIC_HEADER_SIZE] = { 0 };
-	  bool is_negative_data = (src_num[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
+	  bool is_value_negative = DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value);
 
 	  byte_size =
 	    DB_ALIGN ((NUMERIC_HEADER_SIZE + _gv_numeric_precision_to_bytes_lookup[precision]), INT_ALIGNMENT);
 	  assert ((byte_size & NUMERIC_VALUE_SIGN_BIT_MASK) == 0);
 
-	  header[0] = byte_size | (is_negative_data ? NUMERIC_VALUE_SIGN_BIT_MASK : 0x00);
+	  header[0] = byte_size | (is_value_negative ? NUMERIC_VALUE_SIGN_BIT_MASK : 0x00);
 	  if (scale < 0)
 	    {
 	      header[1] = precision | NUMERIC_HEADER_SCALE_SIGN_BIT_MASK;
@@ -8416,7 +8416,7 @@ mr_getmem_numeric (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy
   char **mem, *cur;
   int precision, scale;
   bool is_float_numeric = false;
-  bool is_negative_data = false;
+  bool is_value_negative = false;
 
   if (value == NULL)
     {
@@ -8435,34 +8435,23 @@ mr_getmem_numeric (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy
   else
     {
       num = (DB_C_NUMERIC) cur;
-
       unsigned char header[NUMERIC_HEADER_SIZE] = { num[0], num[1], num[2] };
 
       byte_size = ((header[0] & 0x7F) - NUMERIC_HEADER_SIZE);
-
       precision = (header[1] & 0x7F);
-
       bool is_negative_scale = (header[1] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) != 0;
       scale = is_negative_scale ? -header[2] : header[2];
-      is_negative_data = (header[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
+      is_value_negative = (header[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
 
       num = (DB_C_NUMERIC) ((char *) cur + NUMERIC_HEADER_SIZE);
-
-      if (is_negative_data)
-	{
-	  memset (value->data.num.d.buf, 0xFF, DB_NUMERIC_BUF_SIZE - byte_size);
-	}
-      else
-	{
-	  memset (value->data.num.d.buf, 0, DB_NUMERIC_BUF_SIZE - byte_size);
-	}
+      memset (value->data.num.d.buf, 0, DB_NUMERIC_BUF_SIZE - byte_size);
 
       if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
 	  is_float_numeric = true;
 	}
 
-      error = db_make_numeric (value, num, precision, scale, byte_size, is_float_numeric);
+      error = db_make_numeric (value, num, precision, scale, byte_size, is_value_negative, is_float_numeric);
       value->need_clear = false;
     }
 
@@ -8634,7 +8623,9 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	   * difference between the copy and non-copy operations, this may
 	   * need to change.
 	   */
-	  error = db_make_numeric (dest, src_numeric, precision, scale, DB_NUMERIC_BUF_SIZE, is_float_numeric);
+	  error =
+	    db_make_numeric (dest, src_numeric, precision, scale, DB_NUMERIC_BUF_SIZE,
+			     DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (src), is_float_numeric);
 	}
     }
   return error;
@@ -8690,7 +8681,7 @@ mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
 	    DB_ALIGN ((NUMERIC_HEADER_SIZE + _gv_numeric_precision_to_bytes_lookup[precision]), INT_ALIGNMENT);
 	  assert ((disk_size & NUMERIC_VALUE_SIGN_BIT_MASK) == 0);
 
-	  header[0] = disk_size | (is_negative_data ? NUMERIC_VALUE_SIGN_BIT_MASK : 0x00);
+	  header[0] = disk_size | (DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value) ? NUMERIC_VALUE_SIGN_BIT_MASK : 0x00);
 	  if (scale < 0)
 	    {
 	      header[1] = precision | NUMERIC_HEADER_SCALE_SIGN_BIT_MASK;
@@ -8772,7 +8763,7 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
        */
       int precision, scale;
       bool is_float_numeric = false;
-      bool is_negative_data = false;
+      bool is_value_negative = false;
 
       or_get_data (buf, (char *) header, NUMERIC_HEADER_SIZE);
       size = ((header[0] & 0x7F) - NUMERIC_HEADER_SIZE);
@@ -8780,26 +8771,18 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
       num = (DB_C_NUMERIC) buf->ptr;
 
       precision = (header[1] & 0x7F);
-
       bool is_negative_scale = (header[1] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) != 0;
       scale = is_negative_scale ? -(header[2]) : header[2];
-      is_negative_data = (header[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
+      is_value_negative = (header[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
 
-      if (is_negative_data)
-	{
-	  memset (value->data.num.d.buf, 0xFF, DB_NUMERIC_BUF_SIZE - size);
-	}
-      else
-	{
-	  memset (value->data.num.d.buf, 0, DB_NUMERIC_BUF_SIZE - size);
-	}
+      memset (value->data.num.d.buf, 0, DB_NUMERIC_BUF_SIZE - size);
 
       if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
 	  is_float_numeric = true;
 	}
 
-      (void) db_make_numeric (value, num, precision, scale, size, is_float_numeric);
+      (void) db_make_numeric (value, num, precision, scale, size, is_value_negative, is_float_numeric);
 
       value->need_clear = false;
       rc = or_advance (buf, size);

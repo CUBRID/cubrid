@@ -1034,8 +1034,8 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
   /* Now calculate next value */
   if (nth > 1)
     {
-      numeric_coerce_int_to_num (nth, num);
-      db_make_numeric (&tmp_val, num, DB_MAX_FIXED_NUMERIC_PRECISION, 0, DB_NUMERIC_BUF_SIZE, false);
+      numeric_coerce_int_to_num (nth, num, NULL);
+      db_make_numeric (&tmp_val, num, DB_MAX_FIXED_NUMERIC_PRECISION, 0, DB_NUMERIC_BUF_SIZE, false, false);
       numeric_db_value_mul (inc_val, &tmp_val, &add_val);
       FLOAT_TO_FIXED_NUMERIC (&add_val);
     }

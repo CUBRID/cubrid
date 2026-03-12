@@ -2452,9 +2452,10 @@ ldr_int_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
     {
       DB_NUMERIC num;
       DB_BIGINT tmp_bigint;
+      bool is_value_negative = false;
 
-      numeric_coerce_dec_str_to_num (str, num.d.buf);
-      if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint) != NO_ERROR)
+      numeric_coerce_dec_str_to_num (str, num.d.buf, &is_value_negative);
+      if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint, is_value_negative) != NO_ERROR)
 	{
 	  int precision = (int) len - (str[0] == '+' || str[0] == '-');
 	  if (precision > DB_MAX_NUMERIC_PRECISION)
@@ -2531,9 +2532,10 @@ ldr_int_db_bigint (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBU
     {
       DB_NUMERIC num;
       DB_BIGINT tmp_bigint;
+      bool is_value_negative = false;
 
-      numeric_coerce_dec_str_to_num (str, num.d.buf);
-      if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint) != NO_ERROR)
+      numeric_coerce_dec_str_to_num (str, num.d.buf, &is_value_negative);
+      if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint, is_value_negative) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_BIGINT));
 	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_BIGINT, str);

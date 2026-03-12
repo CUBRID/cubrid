@@ -97,7 +97,8 @@ STATIC_INLINE int db_make_method_error (DB_VALUE * value, const int errcode, con
 STATIC_INLINE int db_make_short (DB_VALUE * value, const DB_C_SHORT num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_bigint (DB_VALUE * value, const DB_BIGINT num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale,
-				   const int byte_size, const bool is_float_numeric) __attribute__ ((ALWAYS_INLINE));
+				   const int byte_size, const bool is_value_negative, const bool is_float_numeric)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_bit (DB_VALUE * value, const int bit_length, DB_CONST_C_BIT bit_str,
 			       const int bit_str_bit_size) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_varbit (DB_VALUE * value, const int max_bit_length, DB_CONST_C_BIT bit_str,
@@ -1642,7 +1643,7 @@ db_make_bigint (DB_VALUE * value, const DB_BIGINT num)
  */
 int
 db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale, const int byte_size,
-		 const bool is_float_numeric)
+		 const bool is_value_negative, const bool is_float_numeric)
 {
   int error = NO_ERROR;
 
@@ -1659,6 +1660,7 @@ db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, 
   if (num)
     {
       value->domain.general_info.is_null = 0;
+      value->domain.numeric_info.is_value_negative = is_value_negative;
       if (is_float_numeric)
 	{
 	  value->data.num.header.precision = DB_VALUE_PRECISION (value);

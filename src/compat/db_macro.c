@@ -164,6 +164,7 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
   value->domain.general_info.type = type;
   value->domain.numeric_info.precision = precision;
   value->domain.numeric_info.scale = scale;
+  value->domain.numeric_info.is_value_negative = false;
   value->data.num.header.precision = 0;
   value->data.num.header.scale = 0;
   value->need_clear = false;
@@ -472,8 +473,29 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
 
 	memset (str, 0, DB_MAX_NUMERIC_PRECISION + 2);
 	str[0] = '-';
-	memset (str + 1, '9', value->domain.numeric_info.precision);
-	numeric_coerce_dec_str_to_num (str, value->data.num.d.buf);
+
+	if (value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
+	  {
+	    memset (str + 1, '9', DB_MAX_NUMERIC_PRECISION);
+	    /* why the scale is always set to DB_MIN_NUMERIC_SCALE for float numeric:
+	     * if a decimal value exceeding the maximum precision (40) is given
+	     * (e.g., -0.00...999...9 (41,252))
+	     * the engine's precision rules will automatically round it up at the 41st decimal place,
+	     * resulting internally in -1.000... (40,39)
+	     *
+	     * since the engine handles these decimal edge cases gracefully via rounding,
+	     * this function only needs to consider the maximum integer magnitude case
+	     * by setting the scale to its minimum value.
+	     */
+	    value->domain.numeric_info.scale = DB_MIN_NUMERIC_SCALE;
+	    FIXED_TO_FLOAT_NUMERIC (value);
+	  }
+	else
+	  {
+	    memset (str + 1, '9', value->domain.numeric_info.precision);
+	  }
+	numeric_coerce_dec_str_to_num (str, value->data.num.d.buf, NULL);
+	value->domain.numeric_info.is_value_negative = true;
 	value->domain.general_info.is_null = 0;
       }
       break;
@@ -637,8 +659,29 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
 	char str[DB_MAX_NUMERIC_PRECISION + 1];
 
 	memset (str, 0, DB_MAX_NUMERIC_PRECISION + 1);
-	memset (str, '9', value->domain.numeric_info.precision);
-	numeric_coerce_dec_str_to_num (str, value->data.num.d.buf);
+
+	if (value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
+	  {
+	    memset (str, '9', DB_MAX_NUMERIC_PRECISION);
+	    /* why the scale is always set to DB_MIN_NUMERIC_SCALE for float numeric:
+	     * if a decimal value exceeding the maximum precision (40) is given
+	     * (e.g., 0.00...999...9 (41,252))
+	     * the engine's precision rules will automatically round it up at the 41st decimal place,
+	     * resulting internally in 1.000... (40,39)
+	     *
+	     * since the engine handles these decimal edge cases gracefully via rounding,
+	     * this function only needs to consider the maximum integer magnitude case
+	     * by setting the scale to its minimum value.
+	     */
+	    value->domain.numeric_info.scale = DB_MIN_NUMERIC_SCALE;
+	    FIXED_TO_FLOAT_NUMERIC (value);
+	  }
+	else
+	  {
+	    memset (str, '9', value->domain.numeric_info.precision);
+	  }
+	numeric_coerce_dec_str_to_num (str, value->data.num.d.buf, NULL);
+	value->domain.numeric_info.is_value_negative = false;
 	value->domain.general_info.is_null = 0;
       }
       break;
@@ -888,7 +931,8 @@ db_value_domain_zero (DB_VALUE * value, const DB_TYPE type, const int precision,
       value->domain.general_info.is_null = 0;
       break;
     case DB_TYPE_NUMERIC:
-      numeric_coerce_dec_str_to_num ("0", value->data.num.d.buf);
+      numeric_coerce_dec_str_to_num ("0", value->data.num.d.buf, NULL);
+      value->domain.numeric_info.is_value_negative = false;
       value->domain.general_info.is_null = 0;
       break;
     default:
@@ -1788,15 +1832,18 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	if (is_float_numeric)
 	  {
 	    db_make_numeric (value, db_locate_numeric (&tmp_value), DB_VALUE_NUMERIC_HEADER_PRECISION (&tmp_value),
-			     DB_VALUE_NUMERIC_HEADER_SCALE (&tmp_value), DB_NUMERIC_BUF_SIZE, true);
+			     DB_VALUE_NUMERIC_HEADER_SCALE (&tmp_value), DB_NUMERIC_BUF_SIZE,
+			     DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (&tmp_value), true);
 	  }
 	else
 	  {
 	    unsigned char new_num[DB_NUMERIC_BUF_SIZE];
+	    bool tmp_value_is_negative = DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (&tmp_value);
 
 	    if (numeric_coerce_num_to_num
-		(db_get_numeric (&tmp_value), DB_VALUE_NUMERIC_HEADER_PRECISION (&tmp_value),
-		 DB_VALUE_NUMERIC_HEADER_SCALE (&tmp_value), precision, scale, new_num) != NO_ERROR)
+		(&tmp_value, DB_VALUE_NUMERIC_HEADER_PRECISION (&tmp_value),
+		 DB_VALUE_NUMERIC_HEADER_SCALE (&tmp_value), precision, scale, new_num,
+		 &tmp_value_is_negative) != NO_ERROR)
 	      {
 		status = C_TO_VALUE_CONVERSION_ERROR;
 	      }
@@ -1804,7 +1851,7 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	      {
 		/* Yes, I know that the precision and scale are already set, but this is neater than just assigning the
 		 * value. */
-		db_make_numeric (value, new_num, precision, scale, DB_NUMERIC_BUF_SIZE, false);
+		db_make_numeric (value, new_num, precision, scale, DB_NUMERIC_BUF_SIZE, tmp_value_is_negative, false);
 	      }
 	  }
 	db_value_clear (&tmp_value);
