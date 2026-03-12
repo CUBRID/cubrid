@@ -85,8 +85,6 @@
 #include "log_manager.h"
 #include "catalog_class.h"
 
-#include "dblink_2pc_daemon.h"
-
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
 #include "server_support.h"
@@ -2411,7 +2409,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined(SERVER_MODE)
+#ifdef CCI_XA
   dblink_2pc_daemon_init ();
+#endif
   pgbuf_daemons_init ();
   dwb_daemons_init ();
   parallel_query::worker_manager_global::get_manager ().init ();

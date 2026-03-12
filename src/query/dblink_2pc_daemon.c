@@ -173,8 +173,7 @@ dblink_2pc_daemon_send_decision (int gtrid, char state, int num_participants, DB
     i,
     ret,
     error_count = 0;
-  bool
-    is_commit = (state == DBLINK_2PC_STATE_COMMIT);
+  bool is_commit = (state == DBLINK_2PC_STATE_COMMIT);
 
   for (i = 0; i < num_participants; i++)
     {
@@ -195,8 +194,7 @@ static
   bool
 dblink_2pc_recovery_callback (const DBLINK_GLOBAL_TRAN_ROW * row_data)
 {
-  DBLINK_CONN_INFO
-    participant;
+  DBLINK_CONN_INFO participant;
   char
     state;
 
@@ -237,8 +235,7 @@ dblink_2pc_daemon_recovery_with_thread (THREAD_ENTRY * thread_p)
 static void
 dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
 {
-  GLOBAL_TRAN_QUEUE_ENTRY
-    e;
+  GLOBAL_TRAN_QUEUE_ENTRY e;
   int
     ret;
   char
@@ -247,6 +244,28 @@ dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
     thread_p;
   int
     i;
+
+  global_tran_queue_head = 0;
+  global_tran_queue_tail = 0;
+  global_tran_queue_count = 0;
+  global_tran_queue_size = 0;
+  global_tran_queue = NULL;
+
+  global_tran_queue =
+    (GLOBAL_TRAN_QUEUE_ENTRY *) malloc (GLOBAL_TRAN_QUEUE_INIT_SIZE * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
+
+  if (global_tran_queue == NULL)
+    {
+#if defined(NDEBUG)
+      exit (EXIT_FAILURE);
+#else /* NDEBUG */
+      /* debugging purpose */
+      abort ();
+#endif /* NDEBUG */
+    }
+
+  global_tran_queue_size = GLOBAL_TRAN_QUEUE_INIT_SIZE;
+  memset (global_tran_queue, 0, global_tran_queue_size * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
 
   if (thread_ref.get_system_tdes () == NULL)
     {
@@ -360,8 +379,7 @@ dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
 int
 dblink_2pc_daemon_enqueue (int gtrid, char state, int num_participants, void *block_particps_ids)
 {
-  size_t
-    block_size;
+  size_t block_size;
   DBLINK_CONN_INFO *
     copy;
 
@@ -416,24 +434,9 @@ dblink_2pc_daemon_enqueue (int gtrid, char state, int num_participants, void *bl
   return NO_ERROR;
 }
 
-int
+void
 dblink_2pc_daemon_init (void)
 {
-  global_tran_queue_head = 0;
-  global_tran_queue_tail = 0;
-  global_tran_queue_count = 0;
-  global_tran_queue_size = 0;
-  global_tran_queue = NULL;
-
-  global_tran_queue =
-    (GLOBAL_TRAN_QUEUE_ENTRY *) malloc (GLOBAL_TRAN_QUEUE_INIT_SIZE * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
-  if (global_tran_queue == NULL)
-    {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  global_tran_queue_size = GLOBAL_TRAN_QUEUE_INIT_SIZE;
-  memset (global_tran_queue, 0, global_tran_queue_size * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
-
 #if defined(SERVER_MODE)
   {
     cubthread::looper looper = cubthread::looper (std::chrono::seconds (1));
@@ -443,22 +446,8 @@ dblink_2pc_daemon_init (void)
     dblink_2pc_Daemon =
       cubthread::get_manager ()->create_daemon (looper, daemon_task, "dblink_2pc_daemon",
 						dblink_2pc_Daemon_context_manager);
-    if (dblink_2pc_Daemon == NULL)
-      {
-	free (global_tran_queue);
-	global_tran_queue = NULL;
-	global_tran_queue_size = 0;
-	delete
-	  daemon_task;
-	delete
-	  dblink_2pc_Daemon_context_manager;
-	dblink_2pc_Daemon_context_manager = NULL;
-	return ER_FAILED;
-      }
   }
 #endif /* SERVER_MODE */
-
-  return NO_ERROR;
 }
 
 void
@@ -474,8 +463,7 @@ dblink_2pc_daemon_stop (void)
     }
   if (dblink_2pc_Daemon_context_manager != NULL)
     {
-      delete
-	dblink_2pc_Daemon_context_manager;
+      delete dblink_2pc_Daemon_context_manager;
       dblink_2pc_Daemon_context_manager = NULL;
     }
 #endif /* SERVER_MODE */

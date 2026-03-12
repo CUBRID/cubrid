@@ -545,6 +545,12 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	    }
 	}
 
+      state = log_complete (thread_p, tdes, LOG_COMMIT, LOG_NEED_NEWTRID, LOG_ALREADY_WROTE_EOT_LOG);
+      if (state != TRAN_UNACTIVE_COMMITTED)
+	{
+	  return ER_FAILED;
+	}
+
       /* P4: Crash after (4),(3) before (5) enqueue - recovery: daemon sends decision then DELETE */
       FI_TEST (thread_p, FI_TEST_DBLINK_2PC_CRASH_BETWEEN_4_6, 0);
       /* Enqueue participant data to daemon for recovery path */
