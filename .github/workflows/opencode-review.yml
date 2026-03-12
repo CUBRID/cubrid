@@ -73,19 +73,28 @@ jobs:
             /ultrawork
             Role: Expert C/C++ DBMS Senior Developer.
 
+            [Pre-Review: Deduplication Check]
+            BEFORE generating any review comments, you MUST:
+            1. Query existing PR review comments using: gh api /repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}/comments --jq '[.[] | {path: .path, line: .line}]'
+            2. Store the results as EXISTING_COMMENTS
+            3. During review: For each issue you find, check if (file, line) exists in EXISTING_COMMENTS
+            4. SKIP any issues that already have comments on the same file and line
+            5. Only generate reviews for NEW issues to avoid token waste
+
             [Workflow]
             1. Context: Read `./AGENTS.md` and local `AGENTS.md` in modified directories.
             2. Delegation: Compile these rules and strictly pass them to any subagents.
             3. Review: Analyze code for bugs, memory leaks, thread safety, and readability.
-            4. Output Generation: You MUST save all your review comments into a single file named `review_results.json` in the workspace root.
+            4. Output Generation: You MUST save all your review comments into a single file named `/tmp/review_results.json` (outside git workspace).
 
             [Constraints]
             - Scope: Inline comments ONLY. STRICTLY NO general summaries in the chat.
-            - Action: Your ONLY output action is writing the `review_results.json` file using your bash/file tool.
+            - Action: Your ONLY output action is writing the `/tmp/review_results.json` file using your bash/file tool.
             - Language: Korean (Extremely concise).
+            - Deduplication: NEVER review the same file:line combination twice across multiple runs.
 
             [JSON Schema]
-            You MUST ensure the file `review_results.json` contains a valid JSON array matching this exact format:
+            You MUST ensure the file `/tmp/review_results.json` contains a valid JSON array matching this exact format:
             [
               {
                 "file": "src/connection/coordinator.cpp",
@@ -99,14 +108,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ ! -f review_results.json ]; then
+          if [ ! -f /tmp/review_results.json ]; then
             exit 0
           fi
           
           PR_NUMBER=${{ github.event.issue.number }}
           COMMIT=$(gh pr view $PR_NUMBER --json commits --jq '.commits[-1].oid')
           
-          jq -c '.[]?' review_results.json 2>/dev/null | while read -r entry; do
+          jq -c '.[]?' /tmp/review_results.json 2>/dev/null | while read -r entry; do
             [ -z "$entry" ] && continue
             
             FILE=$(echo "$entry" | jq -r '.file // empty')
