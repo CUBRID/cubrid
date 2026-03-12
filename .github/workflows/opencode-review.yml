@@ -73,34 +73,27 @@ jobs:
             /ultrawork
             Role: Expert C/C++ DBMS Senior Developer.
 
-            [Pre-Review: Deduplication Check]
-            BEFORE generating any review comments, you MUST:
-            1. Query existing PR review comments using: gh api /repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}/comments --jq '[.[] | {path: .path, line: .line}]'
-            2. Store the results as EXISTING_COMMENTS
-            3. During review: For each issue you find, check if (file, line) exists in EXISTING_COMMENTS
-            4. SKIP any issues that already have comments on the same file and line
-            5. Only generate reviews for NEW issues to avoid token waste
+            [Deduplication]
+            BEFORE reviewing: Query existing PR comments via `gh api /repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}/comments --jq '[.[] | {path: .path, line: .line}]'`. Skip any (file, line) pairs that already have comments.
 
-            [Workflow]
-            1. Context: Read `./AGENTS.md` and local `AGENTS.md` in modified directories.
-            2. Delegation: Compile these rules and strictly pass them to any subagents.
-            3. Review: Analyze code for bugs, memory leaks, thread safety, and readability.
-            4. Output Generation: You MUST save all your review comments into a single file named `/tmp/review_results.json` (outside git workspace).
+            [Task]
+            1. Read `./AGENTS.md` and modified directories' local AGENTS.md
+            2. Review code for: bugs, memory leaks, thread safety, readability
+            3. Save results to `/tmp/review_results.json`
 
-            [Constraints]
-            - Scope: Inline comments ONLY. STRICTLY NO general summaries in the chat.
-            - Action: Your ONLY output action is writing the `/tmp/review_results.json` file using your bash/file tool.
-            - Language: Korean (Extremely concise).
-            - Deduplication: NEVER review the same file:line combination twice across multiple runs.
+            [Rules]
+            - Output: ONLY inline comments in `/tmp/review_results.json`. No chat summaries.
+            - Language: Korean
+            - Detail: Solution must explain WHY (root cause) and HOW (fix) in 2+ sentences
+            - NO markdown code blocks in solution field
 
-            [JSON Schema]
-            You MUST ensure the file `/tmp/review_results.json` contains a valid JSON array matching this exact format:
+            [JSON Format]
             [
               {
                 "file": "src/connection/coordinator.cpp",
                 "line": 74,
-                "issue": "assert_release는 런타임 종료 위험. 초기화 실패는 graceful degradation 필요.",
-                "suggestion": "if (!m_controller.open (...)) {\n    er_log_conn (__FILE__, __LINE__, \"failed\");\n    throw std::runtime_error(\"error\");\n}"
+                "issue": "assert_release는 런타임 종료 위험. 디버그/릴리즈 빌드 불일치 문제.",
+                "solution": "assert_release()는 릴리즈 빌드에서도 실행되어 프로세스를 강제 종료한다. 초기화 실패 시 graceful degradation이 필요하며, 에러를 로깅하고 예외를 throw하거나 에러 코드를 반환하여 호출자가 처리할 수 있도록 해야 한다. 또한 디버그 빌드와 릴리즈 빌드 간 동작 차이를 고려한 방어적 코딩이 필요하다."
               }
             ]
 
@@ -121,19 +114,16 @@ jobs:
             FILE=$(echo "$entry" | jq -r '.file // empty')
             LINE=$(echo "$entry" | jq -r '.line // empty')
             ISSUE=$(echo "$entry" | jq -r '.issue // empty')
-            SUGGESTION=$(echo "$entry" | jq -r '.suggestion // empty')
+            SOLUTION=$(echo "$entry" | jq -r '.solution // empty')
             
             [ -z "$FILE" ] || [ -z "$LINE" ] || [ -z "$ISSUE" ] && continue
             
             sleep 0.5
             
             cat > pr_comment.txt << EOF
-          🚨 **Issue**: $ISSUE
+          🚨 $ISSUE
           
-          💡 **Solution**:
-          \`\`\`suggestion
-          $SUGGESTION
-          \`\`\`
+          💡 $SOLUTION
           EOF
           
             gh api --method POST /repos/${{ github.repository }}/pulls/$PR_NUMBER/comments \
