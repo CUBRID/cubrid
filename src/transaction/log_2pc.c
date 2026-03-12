@@ -516,7 +516,7 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
       new_state = (*decision) ? DBLINK_2PC_STATE_COMMIT : DBLINK_2PC_STATE_ABORT;
       /* P3: Crash after (2) before (4) UPDATE state - recovery: daemon ABORT then DELETE */
       FI_TEST (thread_p, FI_TEST_DBLINK_2PC_CRASH_BETWEEN_2_4, 0);
-      /* Update _db_global_tran state based on decision, using server transaction */
+      /* Update _db_global_tran state based on decision */
       for (i = 0; i < tdes->coord->num_particps; i++)
 	{
 	  error = dblink_global_tran_update_state (thread_p, tdes->gtrid, participants[i].conn_handle, new_state);
@@ -527,7 +527,7 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	    }
 	}
 
-      /* First perform local commit/abort before updating _db_global_tran; on failure return error without catalog update */
+      /* Perform local commit/abort after updating _db_global_tran; on failure return error, catalog update is aborted (will be rolled back) */
       if (*decision)
 	{
 	  state = log_commit_local (thread_p, tdes, false, true);

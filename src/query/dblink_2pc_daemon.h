@@ -20,7 +20,7 @@
  * dblink_2pc_daemon.h - send_2pc_decision_daemon for coordinator recovery
  *
  * Daemon thread that:
- * 1) On startup: recovery - read _db_global_tran (state 'A'/'C'), send abort/commit decision, delete on success.
+ * 1) On startup: recovery - read _db_global_tran (state 'P'/'A'/'C'), send abort/commit decision, delete on success.
  * 2) Then: wait on global_tran_queue for participant data from coordinator.
  * 3) When data received: persist to _db_global_tran (insert 'P' or update 'A'/'C'), then send decision for 'A'/'C'.
  */

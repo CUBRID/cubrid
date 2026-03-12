@@ -48,7 +48,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-/* _db_global_tran column order: gtrid(0), bqual(1), conn_url(2), user(3), password(4), state(5), created_date(6), updated_date(7) */
+/* heap attrid (reverse of column order): gtrid(7), bqual(6), conn_url(5), user(4), password(3), state(2), created_date(1), updated_date(0) */
 #define GLOBAL_TRAN_NUM_ATTRS  8
 #define GLOBAL_TRAN_ATTR_GTRID    7
 #define GLOBAL_TRAN_ATTR_BQUAL    6
@@ -63,7 +63,8 @@ static void
 get_current_datetime (DB_DATETIME * dt)
 {
   time_t t = time (NULL);
-  struct tm *tm_p = localtime (&t);
+  struct tm tm_buf;
+  struct tm *tm_p = localtime_r (&t, &tm_buf);
   if (tm_p != NULL)
     {
       db_datetime_encode (dt, tm_p->tm_mon + 1, tm_p->tm_mday, tm_p->tm_year + 1900,
@@ -260,7 +261,8 @@ dblink_global_tran_update_state (THREAD_ENTRY * thread_p, int gtrid, int bqual, 
   int error = NO_ERROR;
   DB_VALUE dbval;
   DB_DATETIME now_dt;
-  bool scan_inited = false;
+  bool scan_cache_inited = false;
+  bool scan_modify_inited = false;
   bool attr_inited = false;
 
   if (xlocator_find_class_oid (thread_p, CT_GLOBAL_TRAN_NAME, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
@@ -279,7 +281,7 @@ dblink_global_tran_update_state (THREAD_ENTRY * thread_p, int gtrid, int bqual, 
       error = ER_FAILED;
       goto cleanup;
     }
-  scan_inited = true;
+  scan_cache_inited = true;
 
   if (heap_attrinfo_start (thread_p, &class_oid, -1, NULL, &attr_info) != NO_ERROR)
     {
@@ -295,14 +297,14 @@ dblink_global_tran_update_state (THREAD_ENTRY * thread_p, int gtrid, int bqual, 
     }
 
   heap_scancache_end (thread_p, &scan);
-  scan_inited = false;
+  scan_cache_inited = false;
 
   if (heap_scancache_start_modify (thread_p, &scan, hfid_p, &class_oid, SINGLE_ROW_UPDATE, NULL) != NO_ERROR)
     {
       error = ER_FAILED;
       goto cleanup;
     }
-  scan_inited = true;
+  scan_modify_inited = true;
 
   get_current_datetime (&now_dt);
   {
@@ -331,7 +333,11 @@ cleanup:
     {
       heap_attrinfo_end (thread_p, &attr_info);
     }
-  if (scan_inited)
+  if (scan_cache_inited)
+    {
+      heap_scancache_end (thread_p, &scan);
+    }
+  if (scan_modify_inited)
     {
       heap_scancache_end_modify (thread_p, &scan);
     }

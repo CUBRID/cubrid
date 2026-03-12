@@ -245,14 +245,17 @@ dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
   int
     i;
 
-  global_tran_queue_head = 0;
-  global_tran_queue_tail = 0;
-  global_tran_queue_count = 0;
-  global_tran_queue_size = 0;
-  global_tran_queue = NULL;
+  if (global_tran_queue == NULL)
+    {
+      global_tran_queue_head = 0;
+      global_tran_queue_tail = 0;
+      global_tran_queue_count = 0;
+      global_tran_queue_size = 0;
+      global_tran_queue = NULL;
 
-  global_tran_queue =
-    (GLOBAL_TRAN_QUEUE_ENTRY *) malloc (GLOBAL_TRAN_QUEUE_INIT_SIZE * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
+      global_tran_queue =
+	(GLOBAL_TRAN_QUEUE_ENTRY *) malloc (GLOBAL_TRAN_QUEUE_INIT_SIZE * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
+    }
 
   if (global_tran_queue == NULL)
     {
