@@ -77,7 +77,7 @@ static int global_tran_queue_tail = 0;
 static int global_tran_queue_count = 0;
 static pthread_mutex_t global_tran_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-// *INDENT-OFF*
+/* *INDENT-OFF* */
 class dblink_2pc_daemon_context_manager:public
   cubthread::daemon_entry_manager
 {
@@ -92,13 +92,13 @@ private:
       }
   }
 };
-// *INDENT-ON*
 
 static
   cubthread::daemon *
   dblink_2pc_Daemon = NULL;
 static dblink_2pc_daemon_context_manager *
   dblink_2pc_Daemon_context_manager = NULL;
+/* *INDENT-ON* */
 
 /*
  * global_tran_queue_expand - Expand queue by GLOBAL_TRAN_QUEUE_GROW_SIZE entries
@@ -113,12 +113,8 @@ static dblink_2pc_daemon_context_manager *
 static int
 global_tran_queue_expand (void)
 {
-  GLOBAL_TRAN_QUEUE_ENTRY *
-    new_queue;
-  int
-    new_size,
-    i,
-    j;
+  GLOBAL_TRAN_QUEUE_ENTRY *new_queue;
+  int new_size, i, j;
 
   new_size = global_tran_queue_size + GLOBAL_TRAN_QUEUE_GROW_SIZE;
   new_queue = (GLOBAL_TRAN_QUEUE_ENTRY *) malloc (new_size * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
@@ -154,13 +150,11 @@ global_tran_queue_expand (void)
 }
 
 /* Callback for dblink_global_tran_scan_for_recovery: enqueue participant data to daemon */
-static
-  bool
+static bool
 dblink_2pc_recovery_callback (const DBLINK_GLOBAL_TRAN_ROW * row_data)
 {
   DBLINK_CONN_INFO participant;
-  char
-    state;
+  char state;
 
   /* For 'P' state (before decision), use ABORT for recovery */
   if (row_data->state == DBLINK_2PC_STATE_PREPARE)
@@ -200,12 +194,9 @@ static void
 dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
 {
   GLOBAL_TRAN_QUEUE_ENTRY e;
-  int
-    ret;
-  char
-    send_state;
-  THREAD_ENTRY *
-    thread_p;
+  int ret;
+  char send_state;
+  THREAD_ENTRY *thread_p;
 
   if (global_tran_queue == NULL)
     {
@@ -279,13 +270,11 @@ dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
 	  /* P5: Crash after (6) send decision, before (7) DELETE - recovery: daemon resends decision then DELETE */
 	  FI_TEST (thread_p, FI_TEST_DBLINK_2PC_CRASH_BETWEEN_6_7, 0);
 	  /* Use a regular (worker) transaction so that delete runs with normal lock/MVCC semantics. */
-	  int
-	    tran_index = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, NULL,
-						  TRAN_LOCK_INFINITE_WAIT, TRAN_READ_COMMITTED);
+	  int tran_index = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, NULL,
+						    TRAN_LOCK_INFINITE_WAIT, TRAN_READ_COMMITTED);
 	  if (tran_index != NULL_TRAN_INDEX)
 	    {
-	      int
-		del_error = dblink_global_tran_delete_row (thread_p, e.gtrid, e.participant.conn_handle);
+	      int del_error = dblink_global_tran_delete_row (thread_p, e.gtrid, e.participant.conn_handle);
 	      if (del_error == NO_ERROR && xtran_server_commit (thread_p, false) == TRAN_UNACTIVE_COMMITTED)
 		{
 		  logtb_free_tran_index (thread_p, tran_index);
@@ -393,8 +382,7 @@ dblink_2pc_daemon_init (void)
 void
 dblink_2pc_daemon_stop (void)
 {
-  int
-    i;
+  int i;
 
 #if defined(SERVER_MODE)
   if (dblink_2pc_Daemon != NULL)
@@ -403,8 +391,7 @@ dblink_2pc_daemon_stop (void)
     }
   if (dblink_2pc_Daemon_context_manager != NULL)
     {
-      delete
-	dblink_2pc_Daemon_context_manager;
+      delete dblink_2pc_Daemon_context_manager;
       dblink_2pc_Daemon_context_manager = NULL;
     }
 #endif /* SERVER_MODE */
@@ -419,5 +406,4 @@ dblink_2pc_daemon_stop (void)
   global_tran_queue_tail = 0;
   global_tran_queue_count = 0;
 }
-
 #endif /* CCI_XA */
