@@ -707,8 +707,7 @@ static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CA
 static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value,
 				   HEAP_CACHE_ATTRINFO * attr_info);
 static OR_ATTRIBUTE *heap_locate_attribute (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info);
-static int heap_midxkey_get_oos_extra_size (THREAD_ENTRY * thread_p, RECDES * recdes,
-					    HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * att);
+static int heap_midxkey_get_oos_extra_size (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * att);
 
 static DB_MIDXKEY *heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 					 HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, TP_DOMAIN * func_domain,
@@ -10861,11 +10860,8 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
  *   att(in): the OR_ATTRIBUTE to check
  */
 static int
-heap_midxkey_get_oos_extra_size (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
-				 OR_ATTRIBUTE * att)
+heap_midxkey_get_oos_extra_size (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * att)
 {
-  int offset_size, offset;
-
   /* Resolve att to read_classrepr if representations differ (same as heap_midxkey_get_value) */
   if (or_rep_id (recdes) != attr_info->last_classrepr->id)
     {
@@ -10881,52 +10877,23 @@ heap_midxkey_get_oos_extra_size (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_
 	}
       if (!found)
 	{
-	  /* Attribute was added after this record was inserted; it uses a default value, not OOS */
+	  /* Attribute was added after this record was inserted; uses a default value, not OOS */
 	  return 0;
 	}
     }
 
   /* Only variable attributes can be OOS */
-  if (att->is_fixed != 0 || OR_VAR_IS_NULL (recdes->data, att->location))
+  if (att->is_fixed != 0)
     {
       return 0;
     }
 
-  /* Read the offset to check for OOS flag */
-  offset_size = OR_GET_OFFSET_SIZE (recdes->data);
-  switch (offset_size)
-    {
-    case OR_BYTE_SIZE:
-      offset =
-	OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), att->location, offset_size));
-      break;
-    case OR_SHORT_SIZE:
-      offset =
-	OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), att->location, offset_size));
-      break;
-    case OR_INT_SIZE:
-      offset =
-	OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), att->location, offset_size));
-      break;
-    default:
-      return 0;
-    }
-
-  if (!OR_IS_OOS (offset))
-    {
-      return 0;
-    }
-
-  /* Attribute is OOS: read it to get actual size */
+  /* Use heap_attrvalue_point_variable which already handles OOS detection and reading */
   RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
-  OR_BUF buf;
-  OID oos_oid;
+  bool is_oos = false;
+  heap_attrvalue_point_variable (recdes, attr_info, att, &raw, &is_oos);
 
-  buf.ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, att->location);
-  buf.endptr = recdes->data + recdes->length;
-  or_get_oid (&buf, &oos_oid);
-
-  if (oos_read (thread_p, oos_oid, raw) != NO_ERROR)
+  if (!is_oos)
     {
       return 0;
     }
@@ -14401,7 +14368,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 		continue;
 	      OR_ATTRIBUTE *oos_att = heap_locate_attribute (att_ids[oos_i], attr_info);
 	      if (oos_att != NULL)
-		midxkey_size += heap_midxkey_get_oos_extra_size (thread_p, recdes, attr_info, oos_att);
+		midxkey_size += heap_midxkey_get_oos_extra_size (recdes, attr_info, oos_att);
 	    }
 	}
 
@@ -14581,7 +14548,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 	{
 	  if (IS_DEDUPLICATE_KEY_ATTR_ID (index->atts[oos_i]->id))
 	    continue;
-	  midxkey_size += heap_midxkey_get_oos_extra_size (thread_p, recdes, idx_attrinfo, index->atts[oos_i]);
+	  midxkey_size += heap_midxkey_get_oos_extra_size (recdes, idx_attrinfo, index->atts[oos_i]);
 	}
 
       /* Allocate storage for the buf of midxkey */
