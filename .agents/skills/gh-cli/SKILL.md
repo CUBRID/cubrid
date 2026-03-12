@@ -2179,30 +2179,6 @@ gh help exit-codes
 gh help accessibility
 ```
 
-## How to post an INLINE PR Review Comment (Strictly follow this)
-Do NOT use `gh pr review --comment` for code reviews, as it leaves a general comment. You MUST use the GitHub API to leave inline comments on specific lines.
-
-Use this exact bash script pattern:
-
-```bash
-COMMIT=$(gh pr view $PR_NUMBER --json commits --jq '.commits[-1].oid')
-
-cat << 'EOF' > pr_comment.txt
-🚨 **Issue**: [Korean explanation]
-
-💡 **Solution**:
-```suggestion
-[Modified code]
-```
-EOF
-
-gh api --method POST /repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/comments
--F body=@pr_comment.txt
--f commit_id=$COMMIT
--f path="[file_path]"
--F line=[line_number]
--f side="RIGHT"
-
 ## References
 
 - Official Manual: https://cli.github.com/manual/
