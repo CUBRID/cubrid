@@ -70,7 +70,7 @@ jobs:
           use_github_token: true
           share: true
           prompt: |
-            /ulw
+            /ultrawork
             Role: Expert C/C++ DBMS Senior Developer.
 
             [Workflow]
@@ -81,7 +81,7 @@ jobs:
 
             [Constraints]
             - Scope: Inline comments ONLY. STRICTLY NO general summaries in the chat.
-            - Action: DO NOT execute any `gh` or git commands. Your ONLY output action is writing the `review_results.json` file using your bash/file tool.
+            - Action: Your ONLY output action is writing the `review_results.json` file using your bash/file tool.
             - Language: Korean (Extremely concise).
 
             [JSON Schema]
@@ -100,17 +100,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ ! -f review_results.json ]; then
-            echo "No review_results.json found."
             exit 0
           fi
-          
-          echo "Processing review_results.json..."
           
           PR_NUMBER=${{ github.event.issue.number }}
           COMMIT=$(gh pr view $PR_NUMBER --json commits --jq '.commits[-1].oid')
           
-          # Process each entry - .[]? ignores errors, 2>/dev/null suppresses error output
-          jq -c '.[]?' review_results.json 2>/dev/null | while IFS= read -r entry; do
+          jq -c '.[]?' review_results.json 2>/dev/null | while read -r entry; do
             [ -z "$entry" ] && continue
             
             FILE=$(echo "$entry" | jq -r '.file // empty')
@@ -120,7 +116,8 @@ jobs:
             
             [ -z "$FILE" ] || [ -z "$LINE" ] || [ -z "$ISSUE" ] && continue
             
-            # Create and post comment
+            sleep 0.5
+            
             cat > pr_comment.txt << EOF
           🚨 **Issue**: $ISSUE
           
@@ -135,7 +132,5 @@ jobs:
               -f commit_id=$COMMIT \
               -f path="$FILE" \
               -F line=$LINE \
-              -f side="RIGHT" 2>/dev/null || echo "⚠️ Failed: $FILE:$LINE"
+              -f side="RIGHT" 2>/dev/null || true
           done
-          
-          echo "✅ Done"
