@@ -75,7 +75,7 @@ XASL_NODE tree (deserialized on server)
 
 ## Gotchas
 
-- `query_executor.c` is ~25K lines — use function index
+- `query_executor.c` is ~27K lines — use function index
 - XASL serialization must match exactly between client and server — version mismatches cause crashes
 - `REGU_VARIABLE` evaluation is recursive — deep expressions can stack overflow
 - List file I/O can be major bottleneck — temp files hit disk for large results

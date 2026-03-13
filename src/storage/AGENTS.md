@@ -65,7 +65,7 @@ pgbuf_set_dirty (thread_p, page, DONT_FREE);
 
 ## Gotchas
 
-- `btree.c` is enormous (~30K lines) — use function index to navigate
+- `btree.c` is enormous (~37K lines) — use function index to navigate
 - Page latch ordering matters: parent before child to avoid deadlocks
 - Buffer pool uses victim selection via LRU zones — not simple LRU
 - `heap_file.c` has MVCC-aware and non-MVCC paths — check which you're in
