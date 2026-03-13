@@ -20,7 +20,6 @@ Server-side. Executes deserialized XASL plans.
 | `query_analytic.cpp` | Window/analytic function execution (OVER clause) |
 | `query_hash_scan.c` | Hash join scan implementation |
 | `vacuum.c` | MVCC vacuum — garbage collection of old row versions |
-| `xasl.h` | `XASL_NODE`, `REGU_VARIABLE` definitions; includes `src/xasl/xasl_predicate.hpp` for `PRED_EXPR` |
 
 ## Subdirectory
 | Dir | Purpose |

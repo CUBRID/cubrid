@@ -18,7 +18,6 @@ Server-side. Largest module by scope.
 | `log_compress.c` | Log record compression (LZ4) |
 | `boot_sr.c` | Server boot sequence, database creation |
 | `boot_cl.c` | Client-side boot, database connection |
-| `vacuum.c` | ⚠️ **Located in `src/query/vacuum.c`**, not here — MVCC vacuum (GC of old versions) |
 | `log_tran_table.c` | Transaction table management |
 | `transaction_sr.c` | Server-side transaction ops: commit, abort, savepoint |
 | `transaction_cl.c` | Client-side transaction control |
