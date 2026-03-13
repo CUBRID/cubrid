@@ -94,7 +94,7 @@ static int log_2pc_get_num_participants (int *partid_len, void **block_particps_
 static int log_2pc_make_global_tran_id (TRANID tranid);
 static bool log_2pc_check_duplicate_global_tran_id (int gtrid);
 static int log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EXECUTE execute_2pc_type,
-				       bool * decision);
+				       bool * decision, TRAN_STATE * state);
 static TRAN_STATE log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * decision);
 static void log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_2pc_append_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE decsion);
@@ -440,13 +440,14 @@ log_2pc_check_duplicate_global_tran_id (int gtrid)
  * Note:
  */
 static int
-log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EXECUTE execute_2pc_type, bool * decision)
+log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EXECUTE execute_2pc_type, bool * decision,
+			    TRAN_STATE * state)
 {
   int i;
 #ifdef CCI_XA
   int error;
   DBLINK_CONN_INFO *participants = (DBLINK_CONN_INFO *) tdes->coord->block_particps_ids;
-  TRAN_STATE state, expected_state;
+  TRAN_STATE expected_state;
   LOG_RECTYPE complete_type;
   char new_state;
 #endif
@@ -536,8 +537,8 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	{
 	  complete_type = LOG_COMMIT;
 	  expected_state = TRAN_UNACTIVE_COMMITTED;
-	  state = log_commit_local (thread_p, tdes, false, true);
-	  if (state != TRAN_UNACTIVE_COMMITTED)
+	  *state = log_commit_local (thread_p, tdes, false, true);
+	  if (*state != TRAN_UNACTIVE_COMMITTED)
 	    {
 	      return ER_FAILED;
 	    }
@@ -546,8 +547,8 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	{
 	  complete_type = LOG_ABORT;
 	  expected_state = TRAN_UNACTIVE_ABORTED;
-	  state = log_abort_local (thread_p, tdes, false);
-	  if (state != TRAN_UNACTIVE_ABORTED)
+	  *state = log_abort_local (thread_p, tdes, false);
+	  if (*state != TRAN_UNACTIVE_ABORTED)
 	    {
 	      return ER_FAILED;
 	    }
@@ -560,8 +561,8 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	{
 	  (void) dblink_2pc_daemon_enqueue (tdes->gtrid, new_state, &participants[i]);
 	}
-      state = log_complete (thread_p, tdes, complete_type, LOG_NEED_NEWTRID, LOG_ALREADY_WROTE_EOT_LOG);
-      if (state != expected_state)
+      *state = log_complete (thread_p, tdes, complete_type, LOG_NEED_NEWTRID, LOG_ALREADY_WROTE_EOT_LOG);
+      if (*state != expected_state)
 	{
 	  return ER_FAILED;
 	}
@@ -742,9 +743,9 @@ log_2pc_commit (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_2PC_EXECUTE execut
 
   if (execute_2pc_type == LOG_2PC_EXECUTE_FULL || execute_2pc_type == LOG_2PC_EXECUTE_PREPARE)
     {
-      if (log_2pc_commit_first_phase (thread_p, tdes, execute_2pc_type, decision) != NO_ERROR)
+      if (log_2pc_commit_first_phase (thread_p, tdes, execute_2pc_type, decision, &state) != NO_ERROR)
 	{
-	  return tdes->state;
+	  return state;
 	}
     }
   else
@@ -761,9 +762,9 @@ log_2pc_commit (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_2PC_EXECUTE execut
 	{
 	  *decision = false;
 	}
-    }
 
-  state = tdes->state;
+      state = tdes->state;
+    }
 
 #ifndef CCI_XA
   /*

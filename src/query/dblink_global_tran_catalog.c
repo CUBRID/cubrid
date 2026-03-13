@@ -217,6 +217,7 @@ find_row_by_gtrid_bqual (THREAD_ENTRY * thread_p, int gtrid, int bqual, OID * ou
   SCAN_CODE sc;
   int i;
   HEAP_ATTRVALUE *heap_value = NULL;
+  bool valid_gtrid, valid_bqual;
   int found_gtrid = 0, found_bqual = 0;
 
   sc = heap_first (thread_p, hfid_p, (OID *) class_oid_p, &inst_oid, &recdes, scan_p, PEEK);
@@ -226,20 +227,22 @@ find_row_by_gtrid_bqual (THREAD_ENTRY * thread_p, int gtrid, int bqual, OID * ou
 	{
 	  return ER_FAILED;
 	}
-      found_gtrid = 0;
-      found_bqual = 0;
+      valid_gtrid = false;
+      valid_bqual = false;
       for (i = 0, heap_value = attr_info->values; i < attr_info->num_values; i++, heap_value++)
 	{
 	  if (heap_value->attrid == GLOBAL_TRAN_ATTR_GTRID && !DB_IS_NULL (&heap_value->dbvalue))
 	    {
 	      found_gtrid = db_get_int (&heap_value->dbvalue);
+	      valid_gtrid = true;
 	    }
 	  else if (heap_value->attrid == GLOBAL_TRAN_ATTR_BQUAL && !DB_IS_NULL (&heap_value->dbvalue))
 	    {
 	      found_bqual = db_get_int (&heap_value->dbvalue);
+	      valid_bqual = true;
 	    }
 	}
-      if (found_gtrid == gtrid && found_bqual == bqual)
+      if (valid_gtrid && valid_bqual && found_gtrid == gtrid && found_bqual == bqual)
 	{
 	  *out_oid = inst_oid;
 	  return NO_ERROR;
