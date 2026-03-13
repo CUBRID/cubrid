@@ -33,6 +33,14 @@
 #include "thread_entry.hpp"
 #include "thread_entry_task.hpp"
 
+#ifndef TIMEOUT_INFINITE
+#define TIMEOUT_INFINITE -1
+#endif
+
+#ifndef TIMEOUT_NOWAIT
+#define TIMEOUT_NOWAIT 0
+#endif
+
 enum css_thread_stop_type
 {
   THREAD_STOP_WORKERS_EXCEPT_LOGWR,
@@ -44,27 +52,32 @@ extern void css_block_all_active_conn (unsigned short stop_phase);
 extern THREAD_RET_T THREAD_CALLING_CONVENTION css_master_thread (void);
 
 extern unsigned int css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size);
-extern unsigned int css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size);
+extern unsigned int css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size,
+					     int wait_time = 0);
 extern unsigned int css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply,
-						       int reply_size, char *buffer, int buffer_size);
+						       int reply_size, char *buffer, int buffer_size,
+						       std::function < void () > &&deleter);
+extern unsigned int css_send_reply_and_data_to_client_old (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply,
+							   int reply_size, char *buffer, int buffer_size);
 #if 0
 extern unsigned int css_send_reply_and_large_data_to_client (unsigned int eid, char *reply, int reply_size,
 							     char *buffer, INT64 buffer_size);
 #endif
 extern unsigned int css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply,
 							 int reply_size, char *buffer1, int buffer1_size, char *buffer2,
-							 int buffer2_size);
+							 int buffer2_size, std::function < void () > &&deleter);
 extern unsigned int css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply,
 							 int reply_size, char *buffer1, int buffer1_size, char *buffer2,
-							 int buffer2_size, char *buffer3, int buffer3_size);
+							 int buffer2_size, char *buffer3, int buffer3_size,
+							 std::function < void () > &&deleter);
+
 extern unsigned int css_receive_data_from_client (CSS_CONN_ENTRY * conn, unsigned int eid, char **buffer, int *size);
 extern unsigned int css_receive_data_from_client_with_timeout (CSS_CONN_ENTRY * conn, unsigned int eid, char **buffer,
 							       int *size, int timeout);
 extern unsigned int css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid);
 extern void
 css_initialize_server_interfaces (int (*request_handler)
-				  (THREAD_ENTRY * thrd, unsigned int eid, int request, int size, char *buffer),
-				  CSS_THREAD_FN connection_error_handler);
+				  (THREAD_ENTRY * thrd, unsigned int eid, int request, int size, char *buffer));
 extern char *css_pack_server_name (const char *server_name, int *name_length);
 extern int css_init (THREAD_ENTRY * thread_p, char *server_name, int server_name_length, int connection_id);
 extern char *css_add_client_version_string (THREAD_ENTRY * thread_p, const char *version_string);
@@ -74,6 +87,7 @@ extern char *css_get_client_version_string (void);
 extern void css_cleanup_server_queues (unsigned int eid);
 extern void css_end_server_request (CSS_CONN_ENTRY * conn);
 extern bool css_is_shutdown_timeout_expired (void);
+extern struct timeval *css_get_shutdown_timeout (void);
 
 #if defined (SERVER_MODE)
 extern bool css_is_shutdowning_server ();
@@ -92,10 +106,10 @@ extern int css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE 
 extern int css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE state);
 
 extern void css_push_external_task (CSS_CONN_ENTRY * conn, cubthread::entry_task * task);
+extern void css_push_server_task (CSS_CONN_ENTRY & conn_ref);
 extern void css_get_thread_stats (UINT64 * stats_out);
+extern void css_get_task_stats (UINT64 * stats_out);
 extern size_t css_get_num_request_workers (void);
-extern size_t css_get_num_connection_workers (void);
-extern size_t css_get_num_total_workers (void);
 extern bool css_are_all_request_handlers_suspended (void);
 extern size_t css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int tran_index, int client_id);
 
@@ -105,6 +119,8 @@ extern int css_get_client_id (THREAD_ENTRY * thread_p);
 extern unsigned int css_get_comm_request_id (THREAD_ENTRY * thread_p);
 extern struct css_conn_entry *css_get_current_conn_entry (void);
 extern int css_check_conn (CSS_CONN_ENTRY * p);
+
+extern int css_check_accessibility (SOCKET new_fd);
 
 extern size_t css_get_max_workers ();
 extern size_t css_get_max_task_count ();

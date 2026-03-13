@@ -141,7 +141,7 @@ au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor
 				DB_AUTH auth_type, bool grant_option)
 {
   DB_VALUE value;
-  MOP db_class = nullptr, inst_mop = nullptr;
+  MOP inst_mop = nullptr;
   DB_AUTH type;
   int i;
   int error = NO_ERROR;
@@ -197,8 +197,10 @@ au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor
   db_make_int (&value, (int) grant_option);
   obj_set (m_au_obj, "is_grantable", &value);
 
+  error = (au_obj == nullptr) ? au_set_new_timestamps (m_au_obj) : au_update_timestamps (m_au_obj);
+
   pr_clear_value (&value);
-  return NO_ERROR;
+  return error;
 }
 
 int

@@ -42,7 +42,7 @@
 #include "msgcat_set_log.hpp"
 #include "object_representation.h"
 #include "system_parameter.h"
-#include "connection_support.h"
+#include "connection_support.hpp"
 #include "log_applier.h"
 #include "log_storage.hpp"
 #include "log_volids.hpp"
@@ -2589,7 +2589,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
   bool copy_from_first_phy_page = false;
 
   logpg_used_size = 0;
-  logpg_area = (char *) db_private_alloc (thread_p, (LOGWR_COPY_LOG_BUFFER_NPAGES * LOG_PAGESIZE));
+  logpg_area = (char *) malloc (LOGWR_COPY_LOG_BUFFER_NPAGES * LOG_PAGESIZE);
   if (logpg_area == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -2759,6 +2759,8 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
 	  need_cs_exit_after_send = false;
 	}
 
+      /* the transmission is performed asynchronously, but waits for a response immediately below. */
+      /* so it behaves essentially the same as sync. therefore, the log page will not be overwritten. */
       error_code = xlog_send_log_pages_to_client (thread_p, logpg_area, logpg_used_size, mode);
       if (error_code != NO_ERROR)
 	{
@@ -2809,8 +2811,6 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
 	}
     }
 
-  db_private_free_and_init (thread_p, logpg_area);
-
   assert_release (false);
   return ER_FAILED;
 
@@ -2821,7 +2821,7 @@ error:
   logwr_cs_exit (thread_p, &check_cs_own);
   logwr_write_end (thread_p, writer_info, entry, status);
 
-  db_private_free_and_init (thread_p, logpg_area);
+  free_and_init (logpg_area);
 
   return error_code;
 }
