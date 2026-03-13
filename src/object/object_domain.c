@@ -10178,6 +10178,7 @@ tp_more_general_type (const DB_TYPE type1, const DB_TYPE type2)
 {
   static int rank[DB_TYPE_LAST + 1];
   static int rank_init = 0;
+  static pthread_mutex_t rank_init_lock = PTHREAD_MUTEX_INITIALIZER;
   int i;
 
   if (type1 == type2)
@@ -10200,14 +10201,19 @@ tp_more_general_type (const DB_TYPE type1, const DB_TYPE type2)
     }
   if (!rank_init)
     {
-      /* set up rank so we can do fast table lookup */
-      memset (rank, 0x00, sizeof (rank));
-
-      for (i = 0; db_type_rank[i] < (DB_TYPE_LAST + 1); i++)
+      pthread_mutex_lock (&rank_init_lock);
+      if (!rank_init)
 	{
-	  rank[db_type_rank[i]] = i;
+	  /* set up rank so we can do fast table lookup */
+	  memset (rank, 0x00, sizeof (rank));
+
+	  for (i = 0; db_type_rank[i] < (DB_TYPE_LAST + 1); i++)
+	    {
+	      rank[db_type_rank[i]] = i;
+	    }
+	  rank_init = 1;
 	}
-      rank_init = 1;
+      pthread_mutex_unlock (&rank_init_lock);
     }
 
   return rank[type1] - rank[type2];
