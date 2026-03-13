@@ -3373,10 +3373,9 @@ qo_nljoin_cost (QO_PLAN * planp)
       else if (outer->plan_type == QO_PLANTYPE_JOIN)
 	{
 	  guessed_result_cardinality = outer->limit_nljoin_guessed_card;
-          outer_card = ((outer->info)->cardinality == 0) ? 1 : (outer->info)->cardinality;
-          /* result = outer_guessed * (inner_card * selectivity) = outer_guessed * (plan_card/outer_card). */
-	  planp->limit_nljoin_guessed_card =
-	    guessed_result_cardinality * ((planp->info)->cardinality / outer_card);
+	  outer_card = ((outer->info)->cardinality == 0) ? 1 : (outer->info)->cardinality;
+	  /* result = outer_guessed * (inner_card * selectivity) = outer_guessed * (plan_card/outer_card). */
+	  planp->limit_nljoin_guessed_card = guessed_result_cardinality * ((planp->info)->cardinality / outer_card);
 	}
       else
 	{
