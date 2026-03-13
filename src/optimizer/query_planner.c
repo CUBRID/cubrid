@@ -247,7 +247,7 @@ static QO_PLAN_COMPARE_RESULT qo_group_by_skip_plans_cmp (QO_PLAN *, QO_PLAN *);
 static QO_PLAN_COMPARE_RESULT qo_multi_range_opt_plans_cmp (QO_PLAN *, QO_PLAN *);
 static void qo_plan_free (QO_PLAN *);
 static QO_PLAN *qo_plan_malloc (QO_ENV *);
-static const char *qo_term_string (QO_TERM *);
+static const char *qo_term_string (QO_TERM *, char *buf);
 static QO_PLAN *qo_worst_new (QO_ENV *);
 static QO_PLAN *qo_cp_new (QO_INFO *, QO_PLAN *, QO_PLAN *, BITSET *, BITSET *);
 static QO_PLAN *qo_follow_new (QO_INFO *, QO_PLAN *, QO_TERM *, BITSET *, BITSET *);
@@ -531,9 +531,8 @@ qo_plan_malloc (QO_ENV * env)
  *   term(in):
  */
 static const char *
-qo_term_string (QO_TERM * term)
+qo_term_string (QO_TERM * term, char *buf)
 {
-  static char buf[257];
   char *p;
   BITSET_ITERATOR bi;
   int i;
@@ -2379,6 +2378,7 @@ qo_scan_info (QO_PLAN * plan, FILE * f, int howfar)
   QO_NODE *node = plan->plan_un.scan.node;
   int i, n = 1;
   const char *name;
+  char buf[257] = { '\0', };
 
   fprintf (f, "\n%*c%s(", (int) howfar, ' ', (plan->vtbl)->info_string);
   if (QO_NODE_INFO (node))
@@ -2436,7 +2436,7 @@ qo_scan_info (QO_PLAN * plan, FILE * f, int howfar)
 
       for (i = bitset_iterate (&(plan->plan_un.scan.terms), &bi); i != -1; i = bitset_next_member (&bi))
 	{
-	  fprintf (f, "%s%s", separator, qo_term_string (QO_ENV_TERM (env, i)));
+	  fprintf (f, "%s%s", separator, qo_term_string (QO_ENV_TERM (env, i), buf));
 	  separator = " and ";
 	}
       if (bitset_cardinality (&(plan->plan_un.scan.kf_terms)) > 0)
@@ -2444,7 +2444,7 @@ qo_scan_info (QO_PLAN * plan, FILE * f, int howfar)
 	  separator = ", [";
 	  for (i = bitset_iterate (&(plan->plan_un.scan.kf_terms), &bi); i != -1; i = bitset_next_member (&bi))
 	    {
-	      fprintf (f, "%s%s", separator, qo_term_string (QO_ENV_TERM (env, i)));
+	      fprintf (f, "%s%s", separator, qo_term_string (QO_ENV_TERM (env, i), buf));
 	      separator = " and ";
 	    }
 	  fprintf (f, "]");
@@ -3188,6 +3188,7 @@ qo_join_info (QO_PLAN * plan, FILE * f, int howfar)
       const char *separator;
       int i;
       BITSET_ITERATOR bi;
+      char buf[257] = { '\0', };
 
       env = (plan->info)->env;
       separator = "";
@@ -3195,7 +3196,7 @@ qo_join_info (QO_PLAN * plan, FILE * f, int howfar)
       fprintf (f, "\n%*c%s(", (int) howfar, ' ', (plan->vtbl)->info_string);
       for (i = bitset_iterate (&(plan->plan_un.join.join_terms), &bi); i != -1; i = bitset_next_member (&bi))
 	{
-	  fprintf (f, "%s%s", separator, qo_term_string (QO_ENV_TERM (env, i)));
+	  fprintf (f, "%s%s", separator, qo_term_string (QO_ENV_TERM (env, i), buf));
 	  separator = " and ";
 	}
       fprintf (f, ")");
@@ -3706,7 +3707,9 @@ qo_follow_fprint (QO_PLAN * plan, FILE * f, int howfar)
 static void
 qo_follow_info (QO_PLAN * plan, FILE * f, int howfar)
 {
-  fprintf (f, "\n%*c%s(%s)", (int) howfar, ' ', (plan->vtbl)->info_string, qo_term_string (plan->plan_un.follow.path));
+  char buf[257] = { '\0', };
+  fprintf (f, "\n%*c%s(%s)", (int) howfar, ' ', (plan->vtbl)->info_string,
+	   qo_term_string (plan->plan_un.follow.path, buf));
   qo_plan_lite_print (plan->plan_un.follow.head, f, howfar + INDENT_INCR);
 }
 
@@ -11998,6 +12001,7 @@ qo_plan_scan_print_json (QO_PLAN * plan)
   json_t *scan, *range, *filter;
   const char *scan_string = "";
   const char *class_name;
+  char buf[257] = { '\0', };
   int i;
 
   scan = json_object ();
@@ -12028,7 +12032,7 @@ qo_plan_scan_print_json (QO_PLAN * plan)
 
       for (i = bitset_iterate (&(plan->plan_un.scan.terms), &bi); i != -1; i = bitset_next_member (&bi))
 	{
-	  json_array_append_new (range, json_string (qo_term_string (QO_ENV_TERM (env, i))));
+	  json_array_append_new (range, json_string (qo_term_string (QO_ENV_TERM (env, i), buf)));
 	}
 
       json_object_set_new (scan, "key range", range);
@@ -12038,7 +12042,7 @@ qo_plan_scan_print_json (QO_PLAN * plan)
 	  filter = json_array ();
 	  for (i = bitset_iterate (&(plan->plan_un.scan.kf_terms), &bi); i != -1; i = bitset_next_member (&bi))
 	    {
-	      json_array_append_new (filter, json_string (qo_term_string (QO_ENV_TERM (env, i))));
+	      json_array_append_new (filter, json_string (qo_term_string (QO_ENV_TERM (env, i), buf)));
 	    }
 
 	  json_object_set_new (scan, "key filter", filter);
@@ -12213,11 +12217,12 @@ static json_t *
 qo_plan_follow_print_json (QO_PLAN * plan)
 {
   json_t *head, *follow;
+  char buf[257] = { '\0', };
 
   head = qo_plan_print_json (plan->plan_un.follow.head);
 
   follow = json_object ();
-  json_object_set_new (follow, "edge", json_string (qo_term_string (plan->plan_un.follow.path)));
+  json_object_set_new (follow, "edge", json_string (qo_term_string (plan->plan_un.follow.path, buf)));
   json_object_set_new (follow, "head", head);
 
   return json_pack ("{s:o}", "FOLLOW", follow);
@@ -12325,6 +12330,7 @@ qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent)
   QO_ENV *env;
   bool natural_desc_index = false;
   const char *class_name;
+  char buf[257] = { '\0', };
   int i;
 
   indent += 2;
@@ -12355,7 +12361,7 @@ qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent)
 
       for (i = bitset_iterate (&(plan->plan_un.scan.terms), &bi); i != -1; i = bitset_next_member (&bi))
 	{
-	  fprintf (fp, "key range: %s", qo_term_string (QO_ENV_TERM (env, i)));
+	  fprintf (fp, "key range: %s", qo_term_string (QO_ENV_TERM (env, i), buf));
 	  first = false;
 	}
 
@@ -12363,7 +12369,7 @@ qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent)
 	{
 	  for (i = bitset_iterate (&(plan->plan_un.scan.kf_terms), &bi); i != -1; i = bitset_next_member (&bi))
 	    {
-	      fprintf (fp, "%skey filter: %s", first ? "" : ", ", qo_term_string (QO_ENV_TERM (env, i)));
+	      fprintf (fp, "%skey filter: %s", first ? "" : ", ", qo_term_string (QO_ENV_TERM (env, i), buf));
 	    }
 	  first = false;
 	}
@@ -12536,9 +12542,10 @@ qo_plan_join_print_text (FILE * fp, QO_PLAN * plan, int indent)
 static void
 qo_plan_follow_print_text (FILE * fp, QO_PLAN * plan, int indent)
 {
+  char buf[257] = { '\0', };
   indent += 2;
 
-  fprintf (fp, "%*cFOLLOW (edge: %s)\n", indent, ' ', qo_term_string (plan->plan_un.follow.path));
+  fprintf (fp, "%*cFOLLOW (edge: %s)\n", indent, ' ', qo_term_string (plan->plan_un.follow.path, buf));
 
   qo_plan_print_text (fp, plan->plan_un.follow.head, indent);
 }
