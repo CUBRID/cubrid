@@ -27678,7 +27678,7 @@ heap_recdes_get_oos_oids (const RECDES * recdes)
   OR_BUF buf;
   const int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
   short *var_table = OR_GET_OBJECT_VAR_TABLE (recdes->data);
-  const int max_var_count = recdes->length / offset_size;
+  const int max_var_count = (recdes->length - OR_HEADER_SIZE (recdes->data)) / offset_size;
 
   for (int index = 0; index <= max_var_count; ++index)
     {
