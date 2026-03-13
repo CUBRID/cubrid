@@ -23,21 +23,14 @@
 #ifndef _IFSYS_HPP_
 #define _IFSYS_HPP_
 
-#ident "$Id$"
-
 #include <vector>
 #include <string>
-#include <hwloc.h>
 
 namespace cubbase
 {
-  class hardware_topology;
-
   class ifsys
   {
-      friend hardware_topology;
-
-    private:
+    public:
       struct qirq
       {
 	int q;
@@ -52,6 +45,8 @@ namespace cubbase
       };
 
     public:
+      static int listdir_count_prefix (const char *path, const char *prefix);
+
       static std::string auto_select_primary_iface ();
 
       static int find_irqs_for_iface (const char *ifname, struct qirq_vec *out);
@@ -66,7 +61,6 @@ namespace cubbase
 
       static std::vector<std::string> list_entries (const std::string &path);
       static std::vector<std::string> list_dirs_with_prefix (const std::string &path, const std::string &prefix);
-      static int listdir_count_prefix (const char *path, const char *prefix);
 
       static std::string read_one_line (const std::string &path);
       static unsigned long long read_u64 (const std::string &path);
