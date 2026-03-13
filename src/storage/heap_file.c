@@ -27677,9 +27677,10 @@ heap_recdes_get_oos_oids (const RECDES * recdes)
       return oos_oids;
     }
 
-  OR_BUF buf;
   const int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
   short *var_table = OR_GET_OBJECT_VAR_TABLE (recdes->data);
+  /* NOTE: This upper bound may include VOT alignment padding and fixed-attribute bytes for legacy records
+   * that lack the OR_VAR_BIT_LAST_ELEMENT flag. Such records are not fully supported yet (see PR description). */
   const int max_var_count = (recdes->length - OR_HEADER_SIZE (recdes->data)) / offset_size;
 
   for (int index = 0; index <= max_var_count; ++index)
@@ -27716,10 +27717,14 @@ heap_recdes_get_oos_oids (const RECDES * recdes)
 	      assert (false && "OID read would exceed record bounds");
 	      return oos_oids;
 	    }
-	  buf.ptr = (char *) oid_ptr;
-	  buf.endptr = buf.ptr + OR_OID_SIZE;
+	  OR_BUF buf;
+	  or_init (&buf, (char *) oid_ptr, OR_OID_SIZE);
 	  or_get_oid (&buf, &oid);
-	  assert (!OID_ISNULL (&oid));
+	  if (OID_ISNULL (&oid))
+	    {
+	      assert (false && "OID read from OOS slot is null — corrupted record?");
+	      return oos_oids;
+	    }
 	  oos_debug ("there exists an OOS with OID %hd|%d|%hd at offset %d index %d", OID_AS_ARGS (&oid), offset,
 		     index);
 	  oos_oids.emplace_back (oid);
