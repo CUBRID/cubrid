@@ -442,11 +442,14 @@ log_2pc_check_duplicate_global_tran_id (int gtrid)
 static int
 log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EXECUTE execute_2pc_type, bool * decision)
 {
-  int i, error;
+  int i;
+#ifdef CCI_XA
+  int error;
   DBLINK_CONN_INFO *participants = (DBLINK_CONN_INFO *) tdes->coord->block_particps_ids;
   TRAN_STATE state, expected_state;
   LOG_RECTYPE complete_type;
   char new_state;
+#endif
 
   /* Start the first phase of 2PC. Prepare to commit or voting phase */
   if (tdes->state == TRAN_ACTIVE)
