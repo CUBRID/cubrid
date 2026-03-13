@@ -4044,6 +4044,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "index_cardinality ";
     case PT_ESTIMATED_TABLE_ROWS:
       return "estimated_table_rows";
+    case PT_ESTIMATED_AVG_ROW_LENGTH:
+      return "estimated_avg_row_length";
     case PT_EVALUATE_VARIABLE:
       return "evaluate_variable";
     case PT_DEFINE_VARIABLE:
@@ -12121,6 +12123,13 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_ESTIMATED_TABLE_ROWS:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_nulstring (parser, q, " estimated_table_rows(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_ESTIMATED_AVG_ROW_LENGTH:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " estimated_avg_row_length(");
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;

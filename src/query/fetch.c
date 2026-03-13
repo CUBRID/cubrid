@@ -53,6 +53,9 @@
 #include "xasl_predicate.hpp"
 #include "query_executor.h"
 #include "thread_entry.hpp"
+#include "heap_file.h"
+#include "log_impl.h"
+#include "xserver_interface.h"
 #include "subquery_cache.h"
 #include "pl_executor.hpp"
 
@@ -3540,13 +3543,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	}
       break;
 
-    case T_ESTIMATED_TABLE_ROWS:
-      if (qdata_get_estimated_table_rows (thread_p, peek_right, arithptr->value) != NO_ERROR)
-	{
-	  goto error;
-	}
-      break;
-
     case T_EXEC_STATS:
       /* session info is not constant */
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
@@ -3740,6 +3736,94 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       else if (db_crc32_dbval (arithptr->value, peek_right) != NO_ERROR)
 	{
 	  goto error;
+	}
+      break;
+
+    case T_ESTIMATED_TABLE_ROWS:
+      if (DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  const char *table_name;
+	  char lower_name[SM_MAX_IDENTIFIER_LENGTH + 1];
+	  char qualified_name[SM_MAX_IDENTIFIER_LENGTH + 1];
+	  const char *lookup_name;
+	  OID class_oid;
+	  HFID hfid;
+	  int nobjs;
+
+	  table_name = db_get_string (peek_right);
+	  if (table_name == NULL)
+	    {
+	      PRIM_SET_NULL (arithptr->value);
+	    }
+	  else
+	    {
+	      intl_identifier_lower (table_name, lower_name);
+	      /* If already qualified (has dot), use as-is */
+	      if (strchr (lower_name, '.') != NULL)
+		{
+		  lookup_name = lower_name;
+		}
+	      else
+		{
+		  /* Prepend current user as owner for non-system classes */
+		  const char *username = logtb_find_current_client_name (thread_p);
+		  if (username != NULL)
+		    {
+		      char lower_username[SM_MAX_IDENTIFIER_LENGTH + 1];
+		      intl_identifier_lower (username, lower_username);
+		      snprintf (qualified_name, sizeof (qualified_name), "%s.%s", lower_username, lower_name);
+		      lookup_name = qualified_name;
+		    }
+		  else
+		    {
+		      lookup_name = lower_name;
+		    }
+		}
+	      if (xlocator_find_class_oid (thread_p, lookup_name, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
+		{
+		  /* Retry with unqualified name (handles system classes) */
+		  if (xlocator_find_class_oid (thread_p, lower_name, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
+		    {
+		      PRIM_SET_NULL (arithptr->value);
+		    }
+		  else if (heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL) != NO_ERROR)
+		    {
+		      PRIM_SET_NULL (arithptr->value);
+		    }
+		  else
+		    {
+		      nobjs = heap_estimate_num_objects (thread_p, &hfid);
+		      if (nobjs < 0)
+			{
+			  PRIM_SET_NULL (arithptr->value);
+			}
+		      else
+			{
+			  db_make_bigint (arithptr->value, (DB_BIGINT) nobjs);
+			}
+		    }
+		}
+	      else if (heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL) != NO_ERROR)
+		{
+		  PRIM_SET_NULL (arithptr->value);
+		}
+	      else
+		{
+		  nobjs = heap_estimate_num_objects (thread_p, &hfid);
+		  if (nobjs < 0)
+		    {
+		      PRIM_SET_NULL (arithptr->value);
+		    }
+		  else
+		    {
+		      db_make_bigint (arithptr->value, (DB_BIGINT) nobjs);
+		    }
+		}
+	    }
 	}
       break;
 

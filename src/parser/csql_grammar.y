@@ -24030,6 +24030,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_SCHEMA_DEF:
     case PT_DISK_SIZE:
     case PT_ESTIMATED_TABLE_ROWS:
+    case PT_ESTIMATED_AVG_ROW_LENGTH:
       {
 	PT_NODE *expr;
 	if (c != 1)
