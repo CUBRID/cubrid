@@ -3308,7 +3308,7 @@ qo_can_apply_limit_card (QO_ENV * env)
       return false;
     }
 
-  /* 6. Recursive CTE */
+  /* 7. Recursive CTE */
   if (tree->info.query.with != NULL && tree->info.query.with->info.with_clause.recursive != 0)
     {
       return false;
@@ -3327,7 +3327,7 @@ qo_nljoin_cost (QO_PLAN * planp)
 {
   QO_PLAN *inner, *outer;
   double inner_io_cost, inner_cpu_cost, outer_io_cost, outer_cpu_cost;
-  double guessed_result_cardinality, limit_val;
+  double guessed_result_cardinality, limit_val, outer_card;
 
   inner = planp->plan_un.join.inner;
 
@@ -3373,9 +3373,10 @@ qo_nljoin_cost (QO_PLAN * planp)
       else if (outer->plan_type == QO_PLANTYPE_JOIN)
 	{
 	  guessed_result_cardinality = outer->limit_nljoin_guessed_card;
-	  /* result = outer_guessed * (inner_card * selectivity) = outer_guessed * (plan_card/outer_card). */
+          outer_card = ((outer->info)->cardinality == 0) ? 1 : (outer->info)->cardinality;
+          /* result = outer_guessed * (inner_card * selectivity) = outer_guessed * (plan_card/outer_card). */
 	  planp->limit_nljoin_guessed_card =
-	    guessed_result_cardinality * ((planp->info)->cardinality / (outer->info)->cardinality);
+	    guessed_result_cardinality * ((planp->info)->cardinality / outer_card);
 	}
       else
 	{
@@ -4412,7 +4413,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
     {
       if (qo_is_iscan_from_orderby (b->plan_un.join.outer))
 	{
-	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
+	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	  return PLAN_COMP_GT;
 	}
     }
