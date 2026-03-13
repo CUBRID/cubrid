@@ -1089,12 +1089,12 @@ or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO * vars, int offse
 
   if (nvars)
     {
-      offset = OR_GET_OFFSET_INTERNAL (ptr, offset_size);
+      offset = OR_GET_VAR_LENGTH (OR_GET_OFFSET_INTERNAL (ptr, offset_size));
       ptr += offset_size;
 
       for (i = 0; i < nvars; i++)
 	{
-	  offset2 = OR_GET_OFFSET_INTERNAL (ptr, offset_size);
+	  offset2 = OR_GET_VAR_LENGTH (OR_GET_OFFSET_INTERNAL (ptr, offset_size));
 	  ptr += offset_size;
 	  vars[i].offset = offset;
 	  vars[i].length = offset2 - offset;

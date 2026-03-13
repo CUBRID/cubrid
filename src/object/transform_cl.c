@@ -933,10 +933,10 @@ get_current (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int bound_bit_flag
       else
 	{
 	  /* get the offsets relative to the end of the header (beginning of variable table) */
-	  offset = or_get_offset_internal (buf, &rc, offset_size);
+	  offset = OR_GET_VAR_LENGTH (or_get_offset_internal (buf, &rc, offset_size));
 	  for (i = 0; i < class_->variable_count; i++)
 	    {
-	      offset2 = or_get_offset_internal (buf, &rc, offset_size);
+	      offset2 = OR_GET_VAR_LENGTH (or_get_offset_internal (buf, &rc, offset_size));
 	      vars[i] = offset2 - offset;
 	      offset = offset2;
 	    }
@@ -1142,10 +1142,10 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 	      else
 		{
 		  /* get the offsets relative to the end of the header (beginning of variable table) */
-		  offset = or_get_offset_internal (buf, &rc, offset_size);
+		  offset = OR_GET_VAR_LENGTH (or_get_offset_internal (buf, &rc, offset_size));
 		  for (i = 0; i < oldrep->variable_count; i++)
 		    {
-		      offset2 = or_get_offset_internal (buf, &rc, offset_size);
+		      offset2 = OR_GET_VAR_LENGTH (or_get_offset_internal (buf, &rc, offset_size));
 		      vars[i] = offset2 - offset;
 		      offset = offset2;
 		    }
