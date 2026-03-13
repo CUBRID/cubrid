@@ -410,6 +410,10 @@ authenticate_context::install (void)
       goto exit_on_error;
     }
   smt_add_attribute (def, "password", "string", (DB_DOMAIN *) 0);
+  smt_add_attribute (def, "created_time", "datetime", NULL);
+  smt_add_attribute (def, "updated_time", "datetime", NULL);
+  /* not yet implemented */
+  smt_add_attribute (def, "expire_time", "datetime", NULL);
 
   if (sm_update_class (def, NULL) != NO_ERROR || locator_create_heap_if_needed (pass_cls, false) == NULL)
     {

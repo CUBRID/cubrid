@@ -252,108 +252,112 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
   DB_VALUE value;
   MOP pass, pclass;
   int save, len;
+  bool is_new_pass = false;
   char pbuf[AU_MAX_PASSWORD_BUF + 4];
 
+  /* check if the current user has permission to change the password */
   AU_DISABLE (save);
   if (!ws_is_same_object (Au_user, user) && !au_is_dba_group_member (Au_user))
     {
       error = ER_AU_UPDATE_FAILURE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+  /* convert empty password strings to NULL passwords */
+  if (password != NULL)
+    {
+      len = strlen (password);
+      if (len == 0)
+	{
+	  password = NULL;
+	}
+      /*
+       * check for large passwords, only do this
+       * if the encode flag is on !
+       */
+      else if (len > AU_MAX_PASSWORD_CHARS && encode)
+	{
+	  error = ER_AU_PASSWORD_OVERFLOW;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  goto end;
+	}
+    }
+
+  /* get the existing password object from the user */
+  error = obj_get (user, "password", &value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* create a new password object and link it to the user */
+  pass = (DB_IS_NULL (&value)) ? NULL : db_get_object (&value);
+  if (pass == NULL)
+    {
+      is_new_pass = true;
+      pclass = sm_find_class (AU_PASSWORD_CLASS_NAME);
+      if (pclass == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto end;
+	}
+
+      pass = obj_create (pclass);
+      if (pass == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto end;
+	}
+
+      db_make_object (&value, pass);
+      error = obj_set (user, "password", &value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  /* encrypt the password or attach the prefix depending on the encode flag */
+  if (password == NULL)
+    {
+      db_make_null (&value);
+    }
+  else if (encode)
+    {
+      encrypt_password_sha2_512 (password, pbuf);
+      db_make_string (&value, pbuf);
     }
   else
     {
-      /* convert empty password strings to NULL passwords */
-      if (password != NULL)
-	{
-	  len = strlen (password);
-	  if (len == 0)
-	    {
-	      password = NULL;
-	    }
-	  /*
-	   * check for large passwords, only do this
-	   * if the encode flag is on !
-	   */
-	  else if (len > AU_MAX_PASSWORD_CHARS && encode)
-	    {
-	      error = ER_AU_PASSWORD_OVERFLOW;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	    }
-	}
-      if (error == NO_ERROR)
-	{
-	  if ((error = obj_get (user, "password", &value)) == NO_ERROR)
-	    {
-	      if (DB_IS_NULL (&value))
-		{
-		  pass = NULL;
-		}
-	      else
-		{
-		  pass = db_get_object (&value);
-		}
-
-	      if (pass == NULL)
-		{
-		  pclass = sm_find_class (AU_PASSWORD_CLASS_NAME);
-		  if (pclass != NULL)
-		    {
-		      pass = obj_create (pclass);
-		      if (pass != NULL)
-			{
-			  db_make_object (&value, pass);
-			  error = obj_set (user, "password", &value);
-			}
-		      else
-			{
-			  assert (er_errid () != NO_ERROR);
-			  error = er_errid ();
-			}
-		    }
-		  else
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      error = er_errid ();
-		    }
-		}
-
-	      if (error == NO_ERROR && pass != NULL)
-		{
-		  if (encode && password != NULL)
-		    {
-		      encrypt_password_sha2_512 (password, pbuf);
-		      db_make_string (&value, pbuf);
-		      error = obj_set (pass, "password", &value);
-		    }
-		  else
-		    {
-		      /*
-		       * always add the prefix, the unload process strips it out
-		       * so the password can be read by the csql interpreter
-		       */
-		      if (password == NULL)
-			{
-			  db_make_null (&value);
-			}
-		      else
-			{
-			  strcpy (pbuf + 1, password);
-			  pbuf[0] = encrypt_prefix;
-			  db_make_string (&value, pbuf);
-			}
-		      error = obj_set (pass, "password", &value);
-		    }
-		}
-	    }
-	}
+      strcpy (pbuf + 1, password);
+      pbuf[0] = encrypt_prefix;
+      db_make_string (&value, pbuf);
     }
 
-  if (error == NO_ERROR)
+  /* store the prepared password value into the password object */
+  error = obj_set (pass, "password", &value);
+  if (error != NO_ERROR)
     {
-      error = au_update_user_timestamp (user);
+      goto end;
     }
 
+  /* update timestamps of the password object */
+  error = is_new_pass ? au_set_new_timestamps (pass) : au_update_timestamps (pass);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* update timestamps of the user object */
+  error = au_update_timestamps (user);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+end:
   AU_ENABLE (save);
-  return (error);
+  return error;
 }
 

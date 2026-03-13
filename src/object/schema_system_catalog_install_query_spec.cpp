@@ -219,7 +219,11 @@ sm_define_view_vclass_spec (void)
 	  "[q].[class_of].[class_name] AS [vclass_name], "
 	  "CAST ([q].[class_of].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
 	  "[q].[spec] AS [vclass_def], "
-	  "[c].[comment] AS [comment] "
+	  "[c].[comment] AS [comment], "
+	  "[c].[created_time] AS [created_time], "
+	  "[c].[updated_time] AS [updated_time], "
+	  /* TODO: set to actual invalidation time once validity check logic is implemented */
+	  "[q].[invalidated_time] AS [invalidated_time] "
 	"FROM "
 	  /* CT_QUERYSPEC_NAME */
 	  "[%s] AS [q], "
@@ -977,7 +981,9 @@ sm_define_view_auth_spec (void)
 	  "[c].[class_name] AS [object_name], "
 	  "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
 	  "[a].[auth_type] AS [auth_type], "
-	  "CASE [a].[is_grantable] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_grantable] "
+	  "CASE [a].[is_grantable] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_grantable], "
+	  "[a].[created_time] AS [created_time], "
+	  "[a].[updated_time] AS [updated_time] "
 	"FROM "
 	  /* CT_CLASSAUTH_NAME, CT_CLASS_NAME */
 	  "[%s] AS [a], [%s] AS [c] "
@@ -1003,7 +1009,9 @@ sm_define_view_auth_spec (void)
           "[s].[sp_name] AS [object_name], "
           "CAST ([s].[owner].[name] AS VARCHAR(255)) AS [owner_name], "
           "[a].[auth_type] AS [auth_type], "
-          "CASE [a].[is_grantable] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_grantable] "
+          "CASE [a].[is_grantable] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_grantable], "
+          "[a].[created_time] AS [created_time], "
+          "[a].[updated_time] AS [updated_time] "
         "FROM "
           /* CT_CLASSAUTH_NAME, CT_STORED_PROC_NAME */
 	  "[%s] AS [a], [%s] AS [s] "
@@ -1122,7 +1130,9 @@ sm_define_view_partition_spec (void)
 	  "TRIM (SUBSTRING ([pp].[pexpr] FROM 8 FOR (POSITION (' FROM ' IN [pp].[pexpr]) - 8))) AS [partition_expr], "
 	  "[p].[pvalues] AS [partition_values], "
           "CASE [p].[class_partition_type] WHEN 2 THEN 'PARTITION CLASS' ELSE NULL END AS [class_partition_type], "
-	  "[p].[comment] AS [comment] "
+	  "[p].[comment] AS [comment], "
+	  "[s].[created_time] AS [created_time], "
+	  "[s].[updated_time] AS [updated_time] "
 	"FROM "
 	  /* CT_PARTITION_NAME */
 	  "[%s] AS [p], "
@@ -1387,6 +1397,7 @@ sm_define_view_serial_spec (void)
   // *INDENT-OFF*
   sprintf (stmt,
         "SELECT "
+          "[serial].[unique_name] AS [unique_name], "
           "[serial].[name] AS [name], "
           "CAST ([serial].[owner].[name] AS VARCHAR(255)) AS [owner], "
           "[serial].[current_val] AS [current_val], "
@@ -1588,7 +1599,9 @@ sm_define_view_server_spec (void)
 	  "CAST ([ds].[owner].[name] AS VARCHAR(255)) AS [owner], " /* string -> varchar(255) */
 	  "[ds].[comment] AS [comment], "
           "[ds].[created_time] AS [created_time], "
-          "[ds].[updated_time] AS [updated_time] "
+          "[ds].[updated_time] AS [updated_time], "
+	  /* TODO: set to actual invalidation time once validity check logic is implemented, currently set to NULL */
+	  "[ds].[invalidated_time] AS [invalidated_time] "
 	"FROM "
 	  /* CT_SERVER_NAME */
 	  "[%s] AS [ds] "

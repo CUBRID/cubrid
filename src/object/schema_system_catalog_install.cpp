@@ -674,7 +674,8 @@ namespace cubschema
 		   // columns
     {
       {"class_of", CT_CLASS_NAME},
-      {"spec", format_varchar (1073741823)}
+      {"spec", format_varchar (1073741823)},
+      {"invalidated_time", "datetime"}
     },
 // constraints
     {
@@ -776,7 +777,9 @@ namespace cubschema
       {"object_type", "integer"},
       {"object_of", "object"},
       {"auth_type", format_varchar (7)},
-      {"is_grantable", "integer"}
+      {"is_grantable", "integer"},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"}
     },
 // constraints
     {
@@ -1230,7 +1233,8 @@ namespace cubschema
       {"owner", AU_USER_CLASS_NAME},
       {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
-      {"updated_time", "datetime"}
+      {"updated_time", "datetime"},
+      {"invalidated_time", "datetime"}
     },
 // constraints
     {
@@ -1333,6 +1337,9 @@ namespace cubschema
       {"owner_name", format_varchar (255)},
       {"vclass_def", format_varchar (1073741823)},
       {"comment", format_varchar (2048)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      {"invalidated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_vclass_spec ()}
     },
@@ -1680,6 +1687,8 @@ namespace cubschema
       {"owner_name", format_varchar (255)},
       {"auth_type", format_varchar (7)},
       {"is_grantable", format_varchar (3)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_auth_spec ()}
     },
@@ -1754,6 +1763,8 @@ namespace cubschema
       {"partition_values", "sequence of"},
       {"class_partition_type", format_varchar (32)},
       {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_partition_spec ()}
     },
@@ -1861,6 +1872,8 @@ namespace cubschema
 		   CTV_SERIAL_NAME,
 		   // columns
     {
+      /* kept for compatibility */
+      {"unique_name", format_varchar (255)},
       {"name", format_varchar (255)},
       {"owner", format_varchar (255)},
       {"current_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
@@ -2065,6 +2078,7 @@ namespace cubschema
       {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"},
+      {"invalidated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_server_spec ()}
     },
