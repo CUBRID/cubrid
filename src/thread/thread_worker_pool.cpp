@@ -116,17 +116,7 @@ namespace cubthread
   std::size_t
   system_core_count (void)
   {
-    std::size_t core;
-
-    auto ctx = os::resources::cpu::effective ();
-    assert (ctx.max > 0);
-
-    core = static_cast<std::size_t> (std::floor (ctx.max));
-    if (core <= 0)
-      {
-	return 1;
-      }
-    return core;
+    return os::resources::cpu::effective ().adjusted_max;
   }
 
   void

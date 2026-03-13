@@ -14483,6 +14483,12 @@ pt_check_group_by (PARSER_CONTEXT * parser, PT_NODE * node)
       };
       parser_walk_tree (parser, node->info.query.q.select.list, pt_expr_disallow_op_except_agg, disallow_ops,
 			NULL, NULL);
+
+      if (node->info.query.order_by != NULL)
+	{
+	  parser_walk_tree (parser, node->info.query.order_by, pt_expr_disallow_op_except_agg, disallow_ops,
+			    NULL, NULL);
+	}
     }
 
   return error;
