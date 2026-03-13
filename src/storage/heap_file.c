@@ -83,8 +83,6 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-using namespace oos_log;
-
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
 #define pthread_mutex_destroy(a)
@@ -12577,6 +12575,8 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   char *save_meta_data, *new_meta_data;
   int length;
   int rv;
+
+  using namespace oos_log;
 
   value = &attr_info->values[index];
   pr_type = value->last_attrepr->domain->type;
@@ -27669,6 +27669,8 @@ OID_VECTOR
 heap_recdes_get_oos_oids (const RECDES * recdes)
 {
   OID_VECTOR oos_oids;
+
+  using namespace oos_log;
 
   if (!heap_recdes_contains_oos (recdes))
     {
