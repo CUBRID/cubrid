@@ -43,6 +43,7 @@
 #include "lockfree_transaction_system.hpp"
 #include "resource_shared_pool.hpp"
 #include "system_parameter.h"
+#include "resources.hpp"
 
 #include <cassert>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -423,8 +424,10 @@ namespace cubthread
   manager::set_max_thread_count_from_config (void)
   {
     // todo: is there a better way to decide on the maximum number of thread entries?
-    std::size_t max_active_workers = NUM_NON_SYSTEM_TRANS;  // one per each connection
-    std::size_t max_conn_workers = NUM_NON_SYSTEM_TRANS;    // one per each connection
+    std::size_t max_coordinator_workers = 1;
+    std::size_t max_connection_workers = prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
+    std::size_t max_active_workers = NUM_NON_SYSTEM_TRANS;  // this may be needed in utils
+    std::size_t max_transaction_workers = prm_get_integer_value (PRM_ID_TASK_WORKER);
     std::size_t max_vacuum_workers = prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT);
     std::size_t max_parallel_workers = prm_get_integer_value (PRM_ID_MAX_PARALLEL_WORKERS);
     std::size_t max_daemons = 128;  // magic number to cover predictable requirements; not cool
@@ -439,8 +442,8 @@ namespace cubthread
     //       generated at "runtime" (after thread starts its task). however, with current thread entry design, that is
     //       rather unlikely.
 
-    m_max_threads = max_active_workers + max_conn_workers + max_vacuum_workers + max_daemons + max_backup_read_workers +
-		    max_parallel_workers * 2;
+    m_max_threads = max_coordinator_workers + max_connection_workers + max_active_workers + max_transaction_workers +
+		    max_vacuum_workers + max_daemons + max_backup_read_workers + max_parallel_workers * 2;
   }
 
   void
@@ -489,6 +492,8 @@ namespace cubthread
   initialize (entry *&my_entry)
   {
     // note - currently it is designed to be called only once. if we want repeatable calls, code must be updated.
+
+    os::resources::initialize ();
 
     assert (my_entry == NULL);
 

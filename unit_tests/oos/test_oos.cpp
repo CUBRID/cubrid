@@ -32,7 +32,8 @@
 using namespace test_oos_log;
 
 // bridge functions to access static functions in oos_file.cpp
-const auto_unfix_page_ptr bridge_oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_length, VPID &vpid);
+const auto_unfix_page_ptr bridge_oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_length,
+    VPID &vpid);
 int bridge_oos_get_max_chunk_size_within_page ();
 int bridge_oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args);
 int bridge_oos_get_recently_inserted_oos_vpid (const VFID &oos_vfid, VPID &vpid);
