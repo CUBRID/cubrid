@@ -499,7 +499,8 @@ public class SymbolStack {
 
                         // others
                         "SLEEP",
-                        "SYS_GUID");
+                        "SYS_GUID",
+                        "UUID");
 
         for (String s : funcNames) {
             DeclFunc df =
