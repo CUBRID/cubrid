@@ -4403,7 +4403,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
   /* prefer order by skip plan over sort plan */
   if (a->plan_type == QO_PLANTYPE_JOIN && b->plan_type == QO_PLANTYPE_SORT)
     {
-      if (qo_is_iscan_from_orderby (a->plan_un.join.outer))
+      if (qo_plan_is_orderby_skip_candidate (a->plan_un.join.outer))
 	{
 	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
@@ -4411,7 +4411,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
     }
   else if (b->plan_type == QO_PLANTYPE_JOIN && a->plan_type == QO_PLANTYPE_SORT)
     {
-      if (qo_is_iscan_from_orderby (b->plan_un.join.outer))
+      if (qo_plan_is_orderby_skip_candidate (b->plan_un.join.outer))
 	{
 	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	  return PLAN_COMP_GT;
@@ -7899,6 +7899,18 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
       head_info->hit_prob = head_hit_prob;
       tail_info->hit_prob = tail_hit_prob;
+      if (IS_OUTER_JOIN_TYPE (join_type))
+	{
+	  /* set lower bound of outer join result */
+	  if (join_type == JOIN_RIGHT)
+	    {
+	      tail_info->hit_prob = 1.0;
+	    }
+	  else
+	    {
+	      head_info->hit_prob = 1.0;
+	    }
+	}
 
       new_info = planner->join_info[QO_INFO_INDEX (QO_PARTITION_M_OFFSET (partition), *visited_rel_nodes)] =
 	qo_alloc_info (planner, visited_nodes, visited_terms, &eqclasses, cardinality, total_rows);
