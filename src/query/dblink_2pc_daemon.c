@@ -198,31 +198,6 @@ dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
   char send_state;
   THREAD_ENTRY *thread_p;
 
-  if (global_tran_queue == NULL)
-    {
-      global_tran_queue_head = 0;
-      global_tran_queue_tail = 0;
-      global_tran_queue_count = 0;
-      global_tran_queue_size = 0;
-      global_tran_queue = NULL;
-
-      global_tran_queue =
-	(GLOBAL_TRAN_QUEUE_ENTRY *) malloc (GLOBAL_TRAN_QUEUE_INIT_SIZE * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
-    }
-
-  if (global_tran_queue == NULL)
-    {
-#if defined(NDEBUG)
-      exit (EXIT_FAILURE);
-#else /* NDEBUG */
-      /* debugging purpose */
-      abort ();
-#endif /* NDEBUG */
-    }
-
-  global_tran_queue_size = GLOBAL_TRAN_QUEUE_INIT_SIZE;
-  memset (global_tran_queue, 0, global_tran_queue_size * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
-
   if (thread_ref.get_system_tdes () == NULL)
     {
       if (!LOG_ISRESTARTED ())
@@ -315,6 +290,8 @@ dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
 	  global_tran_queue_count++;
 
 	  pthread_mutex_unlock (&global_tran_queue_mutex);
+
+	  return;
 	}
     }
 }
@@ -367,6 +344,28 @@ void
 dblink_2pc_daemon_init (void)
 {
 #if defined(SERVER_MODE)
+  global_tran_queue_head = 0;
+  global_tran_queue_tail = 0;
+  global_tran_queue_count = 0;
+  global_tran_queue_size = 0;
+  global_tran_queue = NULL;
+
+  global_tran_queue =
+    (GLOBAL_TRAN_QUEUE_ENTRY *) malloc (GLOBAL_TRAN_QUEUE_INIT_SIZE * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
+
+  if (global_tran_queue == NULL)
+    {
+#if defined(NDEBUG)
+      exit (EXIT_FAILURE);
+#else /* NDEBUG */
+      /* debugging purpose */
+      abort ();
+#endif /* NDEBUG */
+    }
+
+  global_tran_queue_size = GLOBAL_TRAN_QUEUE_INIT_SIZE;
+  memset (global_tran_queue, 0, global_tran_queue_size * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
+
   {
     cubthread::looper looper = cubthread::looper (std::chrono::seconds (1));
     cubthread::entry_callable_task * daemon_task = new cubthread::entry_callable_task (dblink_2pc_daemon_execute);

@@ -205,10 +205,10 @@ dblink_2pc_send_decision_one_participant (int gtrid, int bqual, const char *conn
   memcpy (xid.data + xid.gtrid_length, &bqual, xid.bqual_length);
 
   err = cci_xa_end_tran (conn_handle, &xid, type, &err_buf);
+  (void) cci_disconnect (conn_handle, &err_buf);
 
   if (err == CCI_ER_NO_ERROR)
     {
-      (void) cci_disconnect (conn_handle, &err_buf);
       return NO_ERROR;
     }
 
