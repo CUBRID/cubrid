@@ -26170,6 +26170,7 @@ db_uuid_bin (THREAD_ENTRY * thread_p, UUID_VERSION version, uint64_t epoch_ms, D
     case UUID_V7:
       error_code = uuidv7_generate_bytes (thread_p, epoch_ms, (unsigned char *) guid_bytes);
       break;
+    case UUID_UNSUPPORTED:
     default:
       error_code = ER_OBJ_INVALID_ARGUMENTS;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
