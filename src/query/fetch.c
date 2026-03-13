@@ -3915,6 +3915,7 @@ fetch_peek_arith_end:
       /* sys_guid() is not constant */
     case T_SYS_GUID:
       /* uuid() is not constant */
+    case T_UUID:
     case T_UUID4:
     case T_UUID7:
       /* sleep() is not constant */

@@ -1382,7 +1382,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.arg1_type.type = pt_arg_type::NORMAL;
       sig.arg1_type.val.type = PT_TYPE_NONE;
       sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_VARBIT;
+      sig.return_type.val.type = PT_TYPE_BIT;
 
       def->overloads[num++] = sig;
 
@@ -1390,7 +1390,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.arg1_type.type = pt_arg_type::NORMAL;
       sig.arg1_type.val.type = PT_TYPE_INTEGER;
       sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_VARBIT;
+      sig.return_type.val.type = PT_TYPE_BIT;
 
       def->overloads[num++] = sig;
 
