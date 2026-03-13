@@ -29,11 +29,11 @@
 #include "connection_error.h"
 #endif /* SERVER_MODE */
 #include "error_manager.h"
+#include "dblink_scan.h"
 #include "dblink_2pc.h"
 #ifdef CCI_XA
 #include "dblink_2pc_daemon.h"
 #include "dblink_global_tran_catalog.h"
-#include "dblink_scan.h"
 #endif
 #include "lock_manager.h"
 #include "log_append.hpp"
@@ -506,6 +506,7 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	  if (error != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
+	      *state = tdes->state;
 	      return error;
 	    }
 	}
@@ -528,6 +529,7 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	  if (error != NO_ERROR)
 	    {
 	      (void) log_abort_local (thread_p, tdes, false);
+	      *state = tdes->state;
 	      return error;
 	    }
 	}
@@ -540,6 +542,7 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	  *state = log_commit_local (thread_p, tdes, false, true);
 	  if (*state != TRAN_UNACTIVE_COMMITTED)
 	    {
+	      *state = tdes->state;
 	      return ER_FAILED;
 	    }
 	}
@@ -559,7 +562,15 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
       /* Enqueue one entry per participant for daemon (only failed participants are retried) */
       for (i = 0; i < tdes->coord->num_particps; i++)
 	{
+#ifdef SERVER_MODE
 	  (void) dblink_2pc_daemon_enqueue (tdes->gtrid, new_state, &participants[i]);
+#else
+	  error = dblink_2pc_send_decision_one_participant (tdes->gtrid, &participants[i], *decision);
+	  if (error == NO_ERROR)
+	    {
+	      (void) dblink_global_tran_delete_row (thread_p, tdes->gtrid, participants[i].conn_handle);
+	    }
+#endif
 	}
       *state = log_complete (thread_p, tdes, complete_type, LOG_NEED_NEWTRID, LOG_ALREADY_WROTE_EOT_LOG);
       if (*state != expected_state)
@@ -725,7 +736,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
 TRAN_STATE
 log_2pc_commit (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_2PC_EXECUTE execute_2pc_type, bool * decision)
 {
-  TRAN_STATE state = TRAN_UNACTIVE_UNKNOWN;
+  TRAN_STATE state = tdes->state;
 
   if (tdes->gtrid == LOG_2PC_NULL_GTRID)
     {
@@ -766,7 +777,7 @@ log_2pc_commit (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_2PC_EXECUTE execut
       state = tdes->state;
     }
 
-#ifndef CCI_XA
+#if !defined(CCI_XA) || !defined(SERVER_MODE)
   /*
    * PHASE II of 2PC: Inform decsion to participants (i.e., either commit or
    *                  abort)

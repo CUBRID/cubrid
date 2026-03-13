@@ -183,14 +183,19 @@ dblink_2pc_dump_participants (FILE * fp, int block_length, void *block_particps_
  *   Returns NO_ERROR on success, ER_* on failure.
  */
 int
-dblink_2pc_send_decision_one_participant (int gtrid, int bqual, const char *conn_url,
-					  const char *user_name, const char *password, bool is_commit)
+dblink_2pc_send_decision_one_participant (int gtrid, DBLINK_CONN_INFO * participant, bool is_commit)
 {
-  int err, conn_handle = bqual;
+  int err, bqual, conn_handle;
   XID xid;
   T_CCI_ERROR err_buf;
   char type = is_commit ? CCI_TRAN_COMMIT : CCI_TRAN_ROLLBACK;
   char conn_url_gateway[MAX_LEN_CONNECTION_URL + 16];
+
+  char *conn_url = participant->conn_url;
+  char *user_name = participant->user_name;
+  char *password = participant->password;
+
+  conn_handle = bqual = participant->conn_handle;
 
   if (conn_url == NULL || user_name == NULL || password == NULL)
     {
@@ -222,7 +227,7 @@ dblink_2pc_send_decision_one_participant (int gtrid, int bqual, const char *conn
       snprintf (conn_url_gateway, sizeof (conn_url_gateway), "%s%s", conn_url, "?__gateway=true");
     }
 
-  conn_handle = cci_connect_with_url_ex (conn_url_gateway, (char *) user_name, (char *) password, &err_buf);
+  conn_handle = cci_connect_with_url_ex (conn_url_gateway, user_name, password, &err_buf);
   if (conn_handle < 0)
     {
       return ER_DBLINK;
