@@ -43,31 +43,21 @@ namespace cubhnsw
   // =====================================================================
   // algo class definition
   // =====================================================================
-  template <typename Traits>
   class algo
   {
     public:
-      using traits      = Traits;
-
-      using key_id_t    = OID;
-      using slot_id_t  = typename traits::slot_id_t;
-
-      using storage_t   = storage<traits>;
-
-      using root_type   = root_t<traits>;
-      using node_type   = node_t<traits>;
-      using neighbors_ref_type = neighbors_ref_t<traits>;
-
-      using pinned_t = pinned_block_t<Traits, std::function<void (pinned_block_data<Traits>&)>>;
+      using root_type   = root_t;
+      using node_type   = node_t;
+      using neighbors_ref_type = neighbors_ref_t;
 
       algo (const hnsw_build_params &build_params);
 
       // high-level APIs
-      add_result_t<Traits> add (cubthread::entry *thread_p, const key_id_t &oid, const float *vector);
-      search_result_t<Traits> search (cubthread::entry *thread_p, const float *query, const std::size_t k,
-				      const std::size_t expansion);
+      add_result_t add (cubthread::entry *thread_p, const key_id_t &oid, const float *vector);
+      search_result_t search (cubthread::entry *thread_p, const float *query, const std::size_t k,
+			      const std::size_t expansion);
 
-      void set_storage (storage_t *storage) noexcept
+      void set_storage (storage *storage) noexcept
       {
 	m_storage = storage;
       }
@@ -75,29 +65,29 @@ namespace cubhnsw
     protected:
 
       // horizontal seeking
-      int seek_on_layer_ (algo_context_t<Traits> &context, const float *query, const slot_id_t &start_slot,
+      int seek_on_layer_ (algo_context_t &context, const float *query, const slot_id_t &start_slot,
 			  const level_t level,
 			  const std::size_t expansion_limit);
 
       // vertical seeking
-      int seek_down_ (algo_context_t<Traits> &context, const float *query, const slot_id_t &start_slot,
+      int seek_down_ (algo_context_t &context, const float *query, const slot_id_t &start_slot,
 		      const level_t begin_level,
 		      const level_t end_level, slot_id_t &closest_slot);
 
       // refining links
-      void form_links_to_closest_ (algo_context_t<Traits> &context, const pinned_t &new_slot, const level_t level,
-				   candidates_view_t<Traits> &out);
-      int form_reverse_links_ (algo_context_t<Traits> &context, const pinned_t &new_slot, const float *value,
-			       candidates_view_t<Traits> &new_neighbors,
+      void form_links_to_closest_ (algo_context_t &context, const pinned_t &new_slot, const level_t level,
+				   candidates_view_t &out);
+      int form_reverse_links_ (algo_context_t &context, const pinned_t &new_slot, const float *value,
+			       candidates_view_t &new_neighbors,
 			       level_t level);
-      void refine_ (algo_context_t<Traits> &context, std::size_t needed, top_candidates_t<Traits> &top,
-		    candidates_view_t<Traits> &out, std::size_t &refines_counter) const;
+      void refine_ (algo_context_t &context, std::size_t needed, top_candidates_t &top,
+		    candidates_view_t &out, std::size_t &refines_counter) const;
 
       // random level generation
       level_t choose_random_level_ (std::default_random_engine &generator, double inverse_log_connectivity);
 
       // distance
-      inline distance_t compute_distance_ (algo_context_t<Traits> &context, const float *v1, const float *v2) const
+      inline distance_t compute_distance_ (algo_context_t &context, const float *v1, const float *v2) const
       {
 	if (context.m_is_perf_tracking)
 	  {
@@ -106,14 +96,14 @@ namespace cubhnsw
 	return metric_table[static_cast<size_t> (m_metric)] (v1, v2, m_dimension);
       }
 
-      inline distance_t compute_distance_from_query_ (algo_context_t<Traits> &context, const float *query,
+      inline distance_t compute_distance_from_query_ (algo_context_t &context, const float *query,
 	  const slot_id_t &slot) const
       {
 	const float *vec = m_storage->get_vector_by_slot_id (context, slot, lock_mode::shared);
 	return compute_distance_ (context, query, vec);
       }
 
-      inline distance_t compute_distance_between (algo_context_t<Traits> &context, const slot_id_t &a,
+      inline distance_t compute_distance_between (algo_context_t &context, const slot_id_t &a,
 	  const slot_id_t &b) const
       {
 	const float *avec = m_storage->get_vector_by_slot_id (context, a, lock_mode::shared);
@@ -133,7 +123,7 @@ namespace cubhnsw
       }
 
       // variables
-      storage_t *m_storage {nullptr};
+      storage *m_storage {nullptr};
 
       // from build_params
       vector_distance_metric_t m_metric;
@@ -154,8 +144,7 @@ namespace cubhnsw
   // algo class implementation
   // =====================================================================
 
-  template <typename Traits>
-  algo<Traits>::algo (const hnsw_build_params &build_params)
+  algo::algo (const hnsw_build_params &build_params)
     : m_dimension ((size_t) build_params.dimension), m_connectivity (build_params.m),
       m_expansion (build_params.ef_construction)
   {
@@ -178,13 +167,12 @@ namespace cubhnsw
     m_inverse_log_connectivity = 1.0 / std::log (static_cast<double> (build_params.m));
   }
 
-  template <typename Traits>
-  add_result_t<Traits>
-  algo<Traits>::add (cubthread::entry *thread_p, const key_id_t &key, const float *vector)
+  add_result_t
+  algo::add (cubthread::entry *thread_p, const key_id_t &key, const float *vector)
   {
-    add_result_t<Traits> result;
+    add_result_t result;
 
-    algo_context_t<Traits> context;
+    algo_context_t context;
     context.m_thread_p = thread_p;
     context.m_is_perf_tracking = perfmon_is_perf_tracking ();
     context.m_is_debugging = prm_get_integer_value (PRM_ID_VECTOR_INDEX_DEBUG) != 0;
@@ -199,15 +187,15 @@ namespace cubhnsw
     // pre-reserve for visits
     context.m_visits.reserve (connectivity_max);
 
-    top_candidates_t<Traits> &top = context.m_top_candidates;
-    next_candidates_t<Traits> &next = context.m_next_candidates;
+    top_candidates_t &top = context.m_top_candidates;
+    next_candidates_t &next = context.m_next_candidates;
 
     // TODO: now, connectivity_base is not considered.
     // std::size_t connecitvity_max = m_connectivity;
     std::size_t top_limit = std::max (connectivity_max, m_expansion);
     if (!top.reserve (top_limit) || !next.reserve (top_limit))
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, top_limit * sizeof (candidate_t<Traits>));
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, top_limit * sizeof (candidate_t));
 	assert (false);
 	return {ER_FAILED, OID_INITIALIZER};
       }
@@ -303,7 +291,7 @@ namespace cubhnsw
 	{
 	  (void) seek_on_layer_ (context, vector, closest_slot, level, top_limit);
 
-	  candidates_view_t<Traits> closest_view;
+	  candidates_view_t closest_view;
 	  {
 	    neighbors_ref_type neighbors = get_neighbors (new_node_blk, level);
 	    neighbors.clear();
@@ -366,23 +354,22 @@ namespace cubhnsw
     return result;
   }
 
-  template <typename Traits>
-  search_result_t<Traits>
-  algo<Traits>::search (cubthread::entry *thread_p, const float *query, const std::size_t k, const std::size_t expansion)
+  search_result_t
+  algo::search (cubthread::entry *thread_p, const float *query, const std::size_t k, const std::size_t expansion)
   {
-    search_result_t<Traits> result;
+    search_result_t result;
     if (k == 0)
       {
 	return result;
       }
 
-    algo_context_t<Traits> context;
+    algo_context_t context;
     context.m_thread_p = thread_p;
     context.m_is_perf_tracking = perfmon_is_perf_tracking ();
     context.clear_candidates();
 
-    top_candidates_t<Traits> &top = context.m_top_candidates;
-    next_candidates_t<Traits> &next = context.m_next_candidates;
+    top_candidates_t &top = context.m_top_candidates;
+    next_candidates_t &next = context.m_next_candidates;
 
     std::size_t expansion_size = std::max (k, expansion);
 
@@ -392,7 +379,7 @@ namespace cubhnsw
     // pre-reserve for top and next
     if (!top.reserve (expansion_size) || !next.reserve (expansion_size))
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, expansion_size * sizeof (candidate_t<Traits>));
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, expansion_size * sizeof (candidate_t));
 	assert (false);
 	return result;
       }
@@ -445,21 +432,20 @@ namespace cubhnsw
     return result;
   }
 
-  template <typename Traits>
   int
-  algo<Traits>::seek_on_layer_ (algo_context_t<Traits> &context, const float *query, const slot_id_t &start_slot,
-				const level_t level, const std::size_t expansion_limit)
+  algo::seek_on_layer_ (algo_context_t &context, const float *query, const slot_id_t &start_slot,
+			const level_t level, const std::size_t expansion_limit)
   {
-    next_candidates_t<Traits> &next = context.m_next_candidates;
-    top_candidates_t<Traits> &top = context.m_top_candidates;
-    visited_set_t<Traits> &visits = context.m_visits;
+    next_candidates_t &next = context.m_next_candidates;
+    top_candidates_t &top = context.m_top_candidates;
+    visited_set_t &visits = context.m_visits;
 
     context.clear_candidates();
 
     distance_t radius = compute_distance_from_query_ (context, query, start_slot);
 
-    next.insert_reserved (candidate_t<Traits> (-radius, start_slot));
-    top.insert_reserved (candidate_t<Traits> (radius, start_slot));
+    next.insert_reserved (candidate_t (-radius, start_slot));
+    top.insert_reserved (candidate_t (radius, start_slot));
     visits.insert (start_slot);
 
     while (!next.empty ())
@@ -480,12 +466,9 @@ namespace cubhnsw
 
 	if (cached_neighbors != nullptr)
 	  {
-	    if constexpr (Traits::kind == storage_kind::disk)
+	    if (context.m_is_perf_tracking)
 	      {
-		if (context.m_is_perf_tracking)
-		  {
-		    context.m_neighbors_cache_hits++;
-		  }
+		context.m_neighbors_cache_hits++;
 	      }
 	    for (slot_id_t successor_slot : *cached_neighbors)
 	      {
@@ -498,8 +481,8 @@ namespace cubhnsw
 		distance_t successor_dist = compute_distance_from_query_ (context, query, successor_slot);
 		if (top.size () < expansion_limit || successor_dist < radius)
 		  {
-		    next.insert (candidate_t<Traits> (-successor_dist, successor_slot));
-		    top.insert (candidate_t<Traits> (successor_dist, successor_slot), expansion_limit);
+		    next.insert (candidate_t (-successor_dist, successor_slot));
+		    top.insert (candidate_t (successor_dist, successor_slot), expansion_limit);
 		    radius = top.top ().distance;
 
 		    HNSW_ALGO_PRINT ("[search_to_insert] radius: %f\n", radius);
@@ -511,12 +494,9 @@ namespace cubhnsw
 	  }
 
 	// No cache: load node and neighbors directly and populate cache.
-	if constexpr (Traits::kind == storage_kind::disk)
+	if (context.m_is_perf_tracking)
 	  {
-	    if (context.m_is_perf_tracking)
-	      {
-		context.m_neighbors_disk_accesses++;
-	      }
+	    context.m_neighbors_disk_accesses++;
 	  }
 	pinned_t candidate_node_blk = m_storage->get_node_by_slot_id (context, candidate_slot, lock_mode::shared);
 	neighbors_ref_type candidate_neighbors = get_neighbors (candidate_node_blk, level);
@@ -538,8 +518,8 @@ namespace cubhnsw
 	    distance_t successor_dist = compute_distance_from_query_ (context, query, successor_slot);
 	    if (top.size () < expansion_limit || successor_dist < radius)
 	      {
-		next.insert (candidate_t<Traits> (-successor_dist, successor_slot));
-		top.insert (candidate_t<Traits> (successor_dist, successor_slot), expansion_limit);
+		next.insert (candidate_t (-successor_dist, successor_slot));
+		top.insert (candidate_t (successor_dist, successor_slot), expansion_limit);
 		radius = top.top ().distance;
 
 		HNSW_ALGO_PRINT ("[search_to_insert] radius: %f\n", radius);
@@ -553,12 +533,11 @@ namespace cubhnsw
     return NO_ERROR;
   }
 
-  template <typename Traits>
   int
-  algo<Traits>::seek_down_ (algo_context_t<Traits> &context, const float *query, const slot_id_t &start_slot,
-			    const level_t begin_level, const level_t end_level, slot_id_t &out_slot)
+  algo::seek_down_ (algo_context_t &context, const float *query, const slot_id_t &start_slot,
+		    const level_t begin_level, const level_t end_level, slot_id_t &out_slot)
   {
-    visited_set_t<Traits> &visits = context.m_visits;
+    visited_set_t &visits = context.m_visits;
     visits.clear ();
 
     slot_id_t closest_slot = start_slot;
@@ -576,12 +555,9 @@ namespace cubhnsw
 
 	    if (cached_neighbors != nullptr)
 	      {
-		if constexpr (Traits::kind == storage_kind::disk)
+		if (context.m_is_perf_tracking)
 		  {
-		    if (context.m_is_perf_tracking)
-		      {
-			context.m_neighbors_cache_hits++;
-		      }
+		    context.m_neighbors_cache_hits++;
 		  }
 		for (slot_id_t neighbor_id : *cached_neighbors)
 		  {
@@ -596,12 +572,9 @@ namespace cubhnsw
 	      }
 	    else
 	      {
-		if constexpr (Traits::kind == storage_kind::disk)
+		if (context.m_is_perf_tracking)
 		  {
-		    if (context.m_is_perf_tracking)
-		      {
-			context.m_neighbors_disk_accesses++;
-		      }
+		    context.m_neighbors_disk_accesses++;
 		  }
 		pinned_t closest_node_blk = m_storage->get_node_by_slot_id (context, closest_slot, lock_mode::shared);
 		const slot_id_t original_closest_slot = closest_slot;
@@ -634,12 +607,11 @@ namespace cubhnsw
     return NO_ERROR;
   }
 
-  template <typename Traits>
   void
-  algo<Traits>::form_links_to_closest_ (algo_context_t<Traits> &context, const pinned_t &new_node_blk,
-					const level_t level, candidates_view_t<Traits> &top_view)
+  algo::form_links_to_closest_ (algo_context_t &context, const pinned_t &new_node_blk,
+				const level_t level, candidates_view_t &top_view)
   {
-    top_candidates_t<Traits> &top = context.m_top_candidates;
+    top_candidates_t &top = context.m_top_candidates;
     std::size_t layer_connectivity = level == 0 ? m_connectivity * 2 : m_connectivity;
 
     refine_ (context, layer_connectivity,top, top_view, context.m_computed_distances_in_refines);
@@ -652,22 +624,19 @@ namespace cubhnsw
       }
 
     // neighbors of new node changed; update in-memory neighbors cache if storage supports it
-    if constexpr (Traits::kind == storage_kind::disk)
+
+    std::vector<slot_id_t> neigh;
+    neigh.reserve (new_neighbors.size ());
+    for (std::size_t i = 0; i < new_neighbors.size (); ++i)
       {
-	std::vector<slot_id_t> neigh;
-	neigh.reserve (new_neighbors.size ());
-	for (std::size_t i = 0; i < new_neighbors.size (); ++i)
-	  {
-	    neigh.push_back (new_neighbors.at (i));
-	  }
-	m_storage->set_neighbors_cached_ids (context, new_node_blk->id, level, neigh);
+	neigh.push_back (new_neighbors.at (i));
       }
+    m_storage->set_neighbors_cached_ids (context, new_node_blk->id, level, neigh);
   }
 
-  template <typename Traits>
   int
-  algo<Traits>::form_reverse_links_ (algo_context_t<Traits> &context, const pinned_t &new_node_blk, const float *value,
-				     candidates_view_t<Traits> &new_neighbors, level_t level)
+  algo::form_reverse_links_ (algo_context_t &context, const pinned_t &new_node_blk, const float *value,
+			     candidates_view_t &new_neighbors, level_t level)
   {
     std::size_t layer_connectivity = level == 0 ? m_connectivity * 2 : m_connectivity;
     for (auto n : new_neighbors)
@@ -690,37 +659,34 @@ namespace cubhnsw
 	      close_header.push_back (new_slot);
 
 	      // neighbors of close_slot changed; update in-memory cache
-	      if constexpr (Traits::kind == storage_kind::disk)
+	      std::vector<slot_id_t> neigh;
+	      neigh.reserve (close_header.size ());
+	      for (std::size_t i = 0; i < close_header.size (); ++i)
 		{
-		  std::vector<slot_id_t> neigh;
-		  neigh.reserve (close_header.size ());
-		  for (std::size_t i = 0; i < close_header.size (); ++i)
-		    {
-		      neigh.push_back (close_header.at (i));
-		    }
-		  m_storage->set_neighbors_cached_ids (context, close_slot, level, neigh);
+		  neigh.push_back (close_header.at (i));
 		}
+	      m_storage->set_neighbors_cached_ids (context, close_slot, level, neigh);
 	      continue;
 	    }
 	}
 
-	top_candidates_t<Traits> &top_for_refine = context.m_top_for_refine;
+	top_candidates_t &top_for_refine = context.m_top_for_refine;
 	top_for_refine.clear ();
 
 	distance_t dist = compute_distance_from_query_ (context, value, close_slot);
 
-	top_for_refine.insert_reserved (candidate_t<Traits> (dist, close_slot));
+	top_for_refine.insert_reserved (candidate_t (dist, close_slot));
 
 	for (std::size_t i = 0; i < close_header.size (); i++)
 	  {
 	    slot_id_t successor_slot = close_header.at (i);
 	    dist = compute_distance_between (context, close_slot, successor_slot);
-	    top_for_refine.insert_reserved (candidate_t<Traits> (dist, successor_slot));
+	    top_for_refine.insert_reserved (candidate_t (dist, successor_slot));
 	  }
 
 	// remove all neighbors from close_header
 	close_header.clear();
-	candidates_view_t<Traits> top_view;
+	candidates_view_t top_view;
 
 	(void) refine_ (context, layer_connectivity, top_for_refine, top_view, context.m_computed_distances_in_reverse_refines);
 
@@ -730,30 +696,27 @@ namespace cubhnsw
 	  }
 
 	// neighbors of close_slot changed; update in-memory cache
-	if constexpr (Traits::kind == storage_kind::disk)
+
+	std::vector<slot_id_t> neigh;
+	neigh.reserve (close_header.size ());
+	for (std::size_t i = 0; i < close_header.size (); ++i)
 	  {
-	    std::vector<slot_id_t> neigh;
-	    neigh.reserve (close_header.size ());
-	    for (std::size_t i = 0; i < close_header.size (); ++i)
-	      {
-		neigh.push_back (close_header.at (i));
-	      }
-	    m_storage->set_neighbors_cached_ids (context, close_slot, level, neigh);
+	    neigh.push_back (close_header.at (i));
 	  }
+	m_storage->set_neighbors_cached_ids (context, close_slot, level, neigh);
       }
 
     return NO_ERROR;
   }
 
-  template <typename Traits>
   void
-  algo<Traits>::refine_ (algo_context_t<Traits> &context, std::size_t needed, top_candidates_t<Traits> &top,
-			 candidates_view_t<Traits> &out, std::size_t &refines_counter) const
+  algo::refine_ (algo_context_t &context, std::size_t needed, top_candidates_t &top,
+		 candidates_view_t &out, std::size_t &refines_counter) const
   {
     out = {};
     std::size_t old_computed_distances = 0;
 
-    candidate_t<Traits> *top_data = top.data();
+    candidate_t *top_data = top.data();
     std::size_t const top_count = top.size();
     if (top_count < needed)
       {
@@ -772,7 +735,7 @@ namespace cubhnsw
     std::size_t consumed_count = 1; /// Always equal or greater than `submitted_count`.
     while (submitted_count < needed && consumed_count < top_count)
       {
-	candidate_t<Traits> candidate = top_data[consumed_count];
+	candidate_t candidate = top_data[consumed_count];
 	bool good = true;
 	std::size_t idx = 0;
 	for (; idx < submitted_count; idx++)
@@ -804,9 +767,8 @@ namespace cubhnsw
     out.assign (top_data, top_data + submitted_count);
   }
 
-  template <typename Traits>
   level_t
-  algo<Traits>::choose_random_level_ (std::default_random_engine &generator, double inverse_log_connectivity)
+  algo::choose_random_level_ (std::default_random_engine &generator, double inverse_log_connectivity)
   {
     std::uniform_real_distribution<double> distribution (0.0, 1.0);
     double r = -std::log (distribution (generator)) * inverse_log_connectivity;

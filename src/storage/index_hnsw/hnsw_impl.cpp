@@ -30,8 +30,7 @@
 
 #include "hnsw_algo.hpp"
 
-// #include "hnsw_storage_mem.hpp"
-#include "hnsw_storage_disk.hpp"
+#include "hnsw_storage.hpp"
 
 #include "btree_load.h"
 #include "slotted_page.h"
@@ -75,11 +74,8 @@ class hnsw_impl_backend final:public hnsw_index_backend
 class hnsw_impl final:public hnsw_index
 {
   public:
-    // TODO: factory pattern
-    using traits = cubhnsw::disk_traits_t;
-
-    using algo_type = cubhnsw::algo < traits >;
-    using storage_type = cubhnsw::disk_storage;
+    using algo_type = cubhnsw::algo;
+    using storage_type = cubhnsw::storage;
 
     hnsw_impl (hnsw_index_backend &backend, const BTID &btid,
 	       const std::string &name,
@@ -607,7 +603,7 @@ hnsw_impl::add_internal (cubthread::entry &thread_ref, hnsw_build_worker_job &jo
     }
   else
     {
-      cubhnsw::add_result_t<traits> result = m_algo->add (&thread_ref, job.m_oid, job.m_vector);
+      auto result = m_algo->add (&thread_ref, job.m_oid, job.m_vector);
       error = result.error;
     }
 
