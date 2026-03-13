@@ -725,7 +725,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
 TRAN_STATE
 log_2pc_commit (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_2PC_EXECUTE execute_2pc_type, bool * decision)
 {
-  TRAN_STATE state;
+  TRAN_STATE state = TRAN_UNACTIVE_UNKNOWN;
 
   if (tdes->gtrid == LOG_2PC_NULL_GTRID)
     {
