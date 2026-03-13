@@ -1,0 +1,227 @@
+/*
+ *
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+#include "hnsw_storage.hpp"
+
+#include "file_manager.h" // FILE_DESCRIPTORS
+#include "slotted_page.h"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
+namespace cubhnsw
+{
+  // The root is not initialized yet
+  bool
+  storage::is_empty ()
+  {
+    return m_is_empty;
+  }
+
+  // not yet
+  void
+  storage::init_root (std::byte *root_block, std::size_t &root_size)
+  {
+    root_t root { reinterpret_cast<byte_t *> (root_block) };
+    root_size = root.get_size();
+  }
+
+  page_guard
+  storage::get_block_to_insert (algo_context_t &context, block_group_id_t &vfid, block_id_t &last_vpid, std::size_t bytes)
+  {
+    PAGE_PTR page_ptr = nullptr;
+
+    cubthread::entry *thread_p = context.m_thread_p;
+    if (VPID_ISNULL (&last_vpid))
+      {
+	// alloc a new page in case of root page
+	page_ptr = alloc_new_block (thread_p, vfid, last_vpid);
+      }
+    else
+      {
+	page_ptr = pgbuf_fix (thread_p, &last_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	if (spage_get_free_space (thread_p, page_ptr) < static_cast<int> (bytes))
+	  {
+	    // not enough
+	    pgbuf_unfix (thread_p, page_ptr);
+	    page_ptr = alloc_new_block (thread_p, vfid, last_vpid);
+	  }
+      }
+
+    return page_guard (page_ptr, thread_p);
+  }
+
+  PAGE_PTR
+  storage::alloc_new_block (cubthread::entry *thread_p, block_group_id_t &vfid, block_id_t &vpid)
+  {
+    PAGE_PTR page_ptr = NULL;
+
+    (void) file_alloc (thread_p, &vfid, &storage::initialize_new_block, NULL, &vpid, &page_ptr);
+    assert (page_ptr != NULL);
+
+    if (page_ptr == NULL)
+      {
+	assert (false);
+	return page_ptr;
+      }
+
+#if !defined (NDEBUG)
+    pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_HNSW);
+#endif /* !NDEBUG */
+
+    return page_ptr;
+  }
+
+  slot_id_t
+  storage::add_node (algo_context_t &context, const key_id_t &key, const float *vector, const level_t &level)
+  {
+    // insert node
+    std::size_t bytes = this->node_bytes_ (level, get_dimension(), get_connectivity());
+    page_guard page_ptr = get_block_to_insert (context, m_vfid, m_last_node_vpid, bytes);
+
+    RECDES recdes;
+    char rec_buf[IO_MAX_PAGE_SIZE];
+    memset (rec_buf, 0, bytes);
+
+    /* create header record */
+    recdes.area_size = DB_PAGESIZE;
+    recdes.data = rec_buf;
+    recdes.type = REC_HOME;
+    recdes.length = bytes;
+
+    node_t node { reinterpret_cast<byte_t *> (rec_buf) };
+    node.set_key (key);
+    node.set_level (level);
+    node.set_vector (vector, get_dimension());
+
+    PGSLOTID slot_id;
+
+    int error_code = spage_insert (context.m_thread_p, page_ptr.get(), &recdes, &slot_id);
+    if (error_code != SP_SUCCESS)
+      {
+	ASSERT_ERROR ();
+	return slot_id_t { -1, -1, -1 };
+      }
+
+    return { m_last_node_vpid.pageid, slot_id, m_last_node_vpid.volid };
+  }
+
+  pinned_t
+  storage::get_root (algo_context_t &context, lock_mode mode)
+  {
+    VPID root_vpid = m_root_vpid;
+
+    PGBUF_LATCH_MODE pgbuf_mode = PGBUF_LATCH_READ;
+    if (mode == lock_mode::exclusive)
+      {
+	pgbuf_mode = PGBUF_LATCH_WRITE;
+      }
+
+    PAGE_PTR root_page_ptr = pgbuf_fix (context.m_thread_p, &root_vpid, OLD_PAGE, pgbuf_mode, PGBUF_UNCONDITIONAL_LATCH);
+    assert (root_page_ptr != nullptr);
+
+    // TODO: hardcoded slot id 1
+    SPAGE_SLOT *slotp = spage_get_slot (root_page_ptr, 1);
+    assert (slotp != nullptr);
+
+    OID oid = { root_vpid.pageid, 1, root_vpid.volid };
+
+    pinned_t::data_t blk;
+    blk.id = oid;
+    blk.data = (std::byte *) root_page_ptr + slotp->offset_to_record;
+    blk.size = slotp->record_length;
+    blk.mode = mode;
+
+    return pinned_t (context.m_thread_p, std::move (blk), root_page_ptr);
+  }
+
+  pinned_t
+  storage::get_node_by_slot_id (algo_context_t &context, const slot_id_t &id, const lock_mode &mode)
+  {
+    VPID vpid = { id.pageid, id.volid };
+
+    PGBUF_LATCH_MODE pgbuf_mode = PGBUF_LATCH_READ;
+    if (mode == lock_mode::exclusive)
+      {
+	pgbuf_mode = PGBUF_LATCH_WRITE;
+      }
+
+    PAGE_PTR node_page_ptr = pgbuf_fix (context.m_thread_p, &vpid, OLD_PAGE, pgbuf_mode, PGBUF_UNCONDITIONAL_LATCH);
+    assert (node_page_ptr != nullptr);
+
+    SPAGE_SLOT *slotp = spage_get_slot (node_page_ptr, id.slotid);
+    assert (slotp != nullptr);
+
+    if (context.m_is_perf_tracking)
+      {
+	context.m_visited_nodes++;
+      }
+
+    pinned_t::data_t blk;
+    blk.id = id;
+    blk.data = (std::byte *) node_page_ptr + slotp->offset_to_record;
+    blk.size = slotp->record_length;
+    blk.mode = mode;
+
+    return pinned_t (context.m_thread_p, std::move (blk), node_page_ptr);
+
+  }
+
+  const float *
+  storage::get_vector_by_slot_id (algo_context_t &context, const slot_id_t &slot, const lock_mode &mode)
+  {
+    auto it = m_vector_cache.find (slot);
+    if (it != m_vector_cache.end ())
+      {
+	return it->second.data ();
+      }
+
+    pinned_t node_blk = get_node_by_slot_id (context, slot, mode);
+    node_t node { reinterpret_cast<byte_t *> (node_blk->data) };
+    const float *vec = node.get_vector ();
+
+    std::vector<float> &cached = m_vector_cache[slot];
+    cached.assign (vec, vec + get_dimension ());
+
+    return cached.data ();
+  }
+
+  // promote lockmode from shared to exclusive
+  void
+  storage::promote_root (pinned_t &old)
+  {
+    // not implemented yet
+    // int error_code = pgbuf_promote_read_latch (m_thread_p, reinterpret_cast<PAGE_PTR*>(old.data()), PGBUF_PROMOTE_SHARED_READER);
+  }
+
+  void
+  storage::set_empty (bool is_empty) noexcept
+  {
+    m_is_empty = is_empty;
+  }
+
+  int
+  storage::initialize_new_block (cubthread::entry *thread_p, PAGE_PTR page, void *args)
+  {
+    pgbuf_set_page_ptype (thread_p, page, PAGE_HNSW);
+    spage_initialize (thread_p, page, UNANCHORED_KEEP_SEQUENCE, HNSW_MAX_ALIGN, DONT_SAFEGUARD_RVSPACE);
+    pgbuf_set_dirty (thread_p, page, DONT_FREE);
+
+    return NO_ERROR;
+  }
+}

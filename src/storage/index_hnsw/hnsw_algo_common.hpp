@@ -28,6 +28,7 @@
 
 #include "hnsw_api.hpp"
 #include "hnsw_graph_base.hpp"
+#include "hnsw_utils.hpp"
 #include "thread_entry.hpp"
 #include "vector_distance.hpp"
 
@@ -36,10 +37,14 @@ namespace cubhnsw
   // =====================================================================
   // algo's base structs
   // =====================================================================
-  template <typename Traits>
+  using index_id_t = BTID;
+  using block_group_id_t = VFID;
+  using block_id_t = VPID;
+  using slot_id_t = OID;
+  using key_id_t = OID;
+
   struct candidate_t
   {
-    using slot_id_t = typename Traits::slot_id_t;
     distance_t distance;
     slot_id_t slot;
 
@@ -50,11 +55,10 @@ namespace cubhnsw
     }
   };
 
-  template <typename Traits>
   struct closer_candidate_t
   {
-    bool operator() (candidate_t<Traits> const &a,
-		     candidate_t<Traits> const &b) const noexcept
+    bool operator() (candidate_t const &a,
+		     candidate_t const &b) const noexcept
     {
       return a.distance < b.distance; // min-heap or ascending
     }
@@ -79,72 +83,49 @@ namespace cubhnsw
     }
   };
 
-  template <typename T>
   struct visit_set_helper
-  {
-    using type = ankerl::unordered_dense::set<T>;
-  };
-
-  template <>
-  struct visit_set_helper<OID>
   {
     using type = ankerl::unordered_dense::set<OID, oid_hash, oid_equal>;
   };
 
-  template <typename Traits>
-  using visited_set_t = typename visit_set_helper<typename Traits::slot_id_t>::type;
+  using visited_set_t = visit_set_helper::type;
 
-  template <typename T>
   struct vector_cache_helper
-  {
-    using type = ankerl::unordered_dense::map<T, std::vector<float>>;
-  };
-
-  template <>
-  struct vector_cache_helper<OID>
   {
     using type = ankerl::unordered_dense::map<OID, std::vector<float>, oid_hash, oid_equal>;
   };
 
-  template <typename Traits>
-  using vector_cache_t = typename vector_cache_helper<typename Traits::slot_id_t>::type;
+  using vector_cache_t = vector_cache_helper::type;
 
-  template <typename Traits>
-  using candidates_view_t = std::vector<candidate_t<Traits>>;
+  using candidates_view_t = std::vector<candidate_t>;
 
-  template <typename Traits>
-  using candidates_allocator_t = std::allocator<candidate_t<Traits>>;
+  using candidates_allocator_t = std::allocator<candidate_t>;
 
-  template <typename Traits>
   using top_candidates_t =
-	  sorted_buffer_gt<candidate_t<Traits>, std::less<candidate_t<Traits>>, candidates_allocator_t<Traits>>;
+	  sorted_buffer_gt<candidate_t, std::less<candidate_t>, candidates_allocator_t>;
 
-  template <typename Traits>
   using next_candidates_t =
-	  max_heap_gt<candidate_t<Traits>, std::less<candidate_t<Traits>>, candidates_allocator_t<Traits>>;
+	  max_heap_gt<candidate_t, std::less<candidate_t>, candidates_allocator_t>;
 
-  template <typename Traits>
   struct add_result_t
   {
     int error {NO_ERROR};
-    typename Traits::slot_id_t result;
+    slot_id_t result;
   };
 
-  template <typename Traits>
   struct search_result_t
   {
     int error {NO_ERROR};
-    candidates_view_t<Traits> results {};
+    candidates_view_t results {};
     std::vector<OID> oids {};
   };
 
-  template <typename Traits>
   struct algo_context_t
   {
-    top_candidates_t<Traits> m_top_candidates;
-    top_candidates_t<Traits> m_top_for_refine;
-    next_candidates_t<Traits> m_next_candidates;
-    visited_set_t<Traits> m_visits;
+    top_candidates_t m_top_candidates;
+    top_candidates_t m_top_for_refine;
+    next_candidates_t m_next_candidates;
+    visited_set_t m_visits;
     cubthread::entry *m_thread_p {nullptr};
 
     // stats

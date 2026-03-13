@@ -21,30 +21,9 @@
 #include "hnsw_api.hpp"
 #include "hnsw_graph_base.hpp"
 #include "hnsw_algo_common.hpp"
-#include "scoped_holder.hpp"
 
 namespace cubhnsw
 {
-  // =====================================================================
-  // traits
-  // =====================================================================
-  enum class storage_kind
-  {
-    memory,
-    disk
-  };
-
-  template <storage_kind Kind>
-  struct storage_traits
-  {
-    using block_group_id_t = void;
-    using block_id_t = void;
-    using slot_id_t = void;
-  };
-
-  template <typename Traits>
-  class storage;
-
   // TODO (refactor) : there are similar objects in page_buffer or lock_manager..
   enum class lock_mode
   {
@@ -53,80 +32,220 @@ namespace cubhnsw
     exclusive   // single writer (insert/update)
   };
 
-  template <typename Traits>
   struct pinned_block_data
   {
-    using slot_id_t = typename Traits::slot_id_t;
     slot_id_t    id{};
     std::byte   *data{};
     std::size_t  size{};
     lock_mode    mode{lock_mode::none};
   };
 
-  template <typename Traits, typename Cleanup>
-  using pinned_block_t =
-	  scoped_holder<pinned_block_data<Traits>, Cleanup>;
-
-  template <typename Traits>
-  using pinned_block_if_t =
-	  pinned_block_t<Traits, std::function<void (pinned_block_data<Traits> &)>>;
-
-  template <typename Traits, typename Cleanup>
-  inline auto make_pinned_block (
-	  typename Traits::slot_id_t id,
-	  std::byte *data,
-	  std::size_t size,
-	  lock_mode mode,
-	  Cleanup &&cleanup)
-  -> pinned_block_if_t<Traits>
+  inline void release_pinned_ (cubthread::entry *thread_p, pinned_block_data &blk, PAGE_PTR page_ptr) noexcept
   {
-    using data_t = pinned_block_data<Traits>;
-    using fn_t   = std::function<void (data_t &)>;
+    if (thread_p == nullptr || page_ptr == nullptr)
+      {
+	return;
+      }
 
-    data_t res { id, data, size, mode };
-    fn_t fn (std::forward<Cleanup> (cleanup));
-
-    return pinned_block_if_t<Traits> (std::move (res), std::move (fn));
+    if (blk.mode == lock_mode::exclusive)
+      {
+	pgbuf_set_dirty (thread_p, page_ptr, FREE);
+      }
+    else
+      {
+	pgbuf_unfix (thread_p, page_ptr);
+      }
   }
 
-  // =====================================================================
-  // algo's graph structs
-  // =====================================================================
+  // ============================================================
+  // pinned_block (allocation-free, move-only, no std::function)
+  // ============================================================
+  class pinned_block
+  {
+    public:
+      using data_t = pinned_block_data;
+
+      pinned_block (cubthread::entry *owner,
+		    data_t blk,
+		    PAGE_PTR page_ptr) noexcept
+	: m_owner (owner)
+	, m_page_ptr (page_ptr)
+	, m_blk (std::move (blk))
+	, m_valid (true)
+      {
+      }
+
+      pinned_block (const pinned_block &) = delete;
+      pinned_block &operator= (const pinned_block &) = delete;
+
+      pinned_block (pinned_block &&other) noexcept
+	: m_owner (other.m_owner)
+	, m_page_ptr (other.m_page_ptr)
+	, m_blk (std::move (other.m_blk))
+	, m_valid (other.m_valid)
+      {
+	other.invalidate_ ();
+      }
+
+      pinned_block &operator= (pinned_block &&other) noexcept
+      {
+	if (this == &other)
+	  {
+	    return *this;
+	  }
+
+	reset ();
+
+	m_owner = other.m_owner;
+	m_page_ptr = other.m_page_ptr;
+	m_blk = std::move (other.m_blk);
+	m_valid = other.m_valid;
+
+	other.invalidate_ ();
+	return *this;
+      }
+
+      ~pinned_block ()
+      {
+	reset ();
+      }
+
+      void reset () noexcept
+      {
+	if (!m_valid)
+	  {
+	    return;
+	  }
+
+	release_pinned_ (m_owner, m_blk, m_page_ptr);
+
+	invalidate_ ();
+      }
+
+      data_t *operator-> () noexcept
+      {
+	return &m_blk;
+      }
+      const data_t *operator-> () const noexcept
+      {
+	return &m_blk;
+      }
+      data_t &operator* () noexcept
+      {
+	return m_blk;
+      }
+      const data_t &operator* () const noexcept
+      {
+	return m_blk;
+      }
+
+      explicit operator bool () const noexcept
+      {
+	return m_valid;
+      }
+
+    private:
+      void invalidate_ () noexcept
+      {
+	m_owner = nullptr;
+	m_page_ptr = nullptr;
+	m_blk = {};
+	m_valid = false;
+      }
+
+    private:
+      cubthread::entry *m_owner{nullptr};
+      PAGE_PTR m_page_ptr{nullptr};
+      data_t m_blk{};
+      bool m_valid{false};
+  };
+
+  struct page_guard
+  {
+    page_guard () = default;
+    page_guard (PAGE_PTR page, cubthread::entry *thread_p) noexcept
+      : m_page (page), m_thread_p (thread_p) {}
+
+    page_guard (const page_guard &) = delete;
+    page_guard &operator= (const page_guard &) = delete;
+
+    page_guard (page_guard &&o) noexcept : m_page (o.m_page), m_thread_p (o.m_thread_p)
+    {
+      o.m_page = nullptr;
+      o.m_thread_p = nullptr;
+    }
+
+    page_guard &operator= (page_guard &&o) noexcept
+    {
+      if (this == &o)
+	{
+	  return *this;
+	}
+      release ();
+      m_page = o.m_page;
+      m_thread_p = o.m_thread_p;
+      o.m_page = nullptr;
+      o.m_thread_p = nullptr;
+      return *this;
+    }
+
+    ~page_guard ()
+    {
+      release ();
+    }
+
+    PAGE_PTR get () const noexcept
+    {
+      return m_page;
+    }
+
+    void release () noexcept
+    {
+      if (m_page != nullptr)
+	{
+	  pgbuf_set_dirty (m_thread_p, m_page, FREE);
+	  m_page = nullptr;
+	  m_thread_p = nullptr;
+	}
+    }
+
+    PAGE_PTR m_page{nullptr};
+    cubthread::entry *m_thread_p{nullptr};
+  };
+
+  using pinned_t = pinned_block;
 
   // =====================================================================
   // storage
   // =====================================================================
-  template <typename Traits>
   class storage
   {
     public:
-      using traits      = Traits;
-      using slot_id_t  = typename traits::slot_id_t;
-
-      using pinned_t = pinned_block_t<Traits, std::function<void (pinned_block_data<Traits>&)>>;
-
-      storage (const BTID &giid, const hnsw_build_params &build_params)
-	: m_giid (giid), m_build_params (build_params)
+      storage (const index_id_t &giid, const hnsw_build_params &build_params)
+	: m_build_params (build_params)
+	, m_giid (giid)
+	, m_vfid (giid.vfid)
+	, m_root_vpid (block_id_t { giid.root_pageid, giid.vfid.volid })
+	, m_last_node_vpid (m_root_vpid)
       {}
 
       ~storage () = default;
 
       // The root is not initialized yet
-      virtual bool is_empty () = 0;
-      virtual void set_empty (bool is_empty) noexcept = 0;
+      bool is_empty ();
+      void set_empty (bool is_empty) noexcept;
 
-      virtual void init_root (std::byte *root_block, std::size_t &root_size) = 0;
-      virtual slot_id_t add_node (algo_context_t<Traits> &context, const OID &key, const float *vector,
-				  const level_t &level) = 0;
+      void init_root (std::byte *root_block, std::size_t &root_size);
+      slot_id_t add_node (algo_context_t &context, const key_id_t &key, const float *vector,
+			  const level_t &level);
 
-      virtual pinned_t get_root (algo_context_t<Traits> &context, lock_mode mode) = 0;
-      virtual pinned_t get_node_by_slot_id (algo_context_t<Traits> &context, const slot_id_t &slot_id,
-					    const lock_mode &mode) = 0;
-      virtual const float *get_vector_by_slot_id (algo_context_t<Traits> &context, const slot_id_t &slot_id,
-	  const lock_mode &mode) = 0;
+      pinned_t get_root (algo_context_t &context, lock_mode mode);
+      pinned_t get_node_by_slot_id (algo_context_t &context, const slot_id_t &slot_id,
+				    const lock_mode &mode);
+      const float *get_vector_by_slot_id (algo_context_t &context, const slot_id_t &slot_id,
+					  const lock_mode &mode);
 
-      // promote lockmode from shared to exclusive
-      virtual void promote_root (pinned_t &root) = 0;
+      void promote_root (pinned_t &root);
 
       short get_max_level () const
       {
@@ -163,12 +282,27 @@ namespace cubhnsw
 
       inline std::size_t node_head_bytes_ (std::size_t dim, std::size_t neighbors_count) const noexcept
       {
-	return node_t<Traits>::get_size (dim, neighbors_count);
+	return node_t::get_size (dim, neighbors_count);
       }
 
     protected:
 
-      BTID m_giid; // general index identifier
+      page_guard get_block_to_insert (algo_context_t &context, block_group_id_t &vfid, block_id_t &last_vpid,
+				      std::size_t bytes);
+      PAGE_PTR alloc_new_block (cubthread::entry *thread_p, block_group_id_t &vfid, block_id_t &vpid);
+
+      static int initialize_new_block (cubthread::entry *thread_p, PAGE_PTR page, void *args);
+
       hnsw_build_params m_build_params;
+      index_id_t m_giid; // general index identifier
+
+      // from m_giid
+      block_group_id_t m_vfid;
+      block_id_t m_root_vpid;
+
+      block_id_t m_last_node_vpid;
+      bool m_is_empty = true;
+
+      vector_cache_t m_vector_cache;  // (slot_id_t, vector) cache
   };
 }
