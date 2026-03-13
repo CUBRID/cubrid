@@ -12623,7 +12623,7 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
        * without needing attrinfo->num_values (e.g., in logging and replication paths). */
       if (value->last_attrepr->location == attr_info->last_classrepr->n_variable - 1)
 	{
-	  oos_debug ("Setting LAST_ELEMENT flag for variable attribute at location %d (n_variable=%d)",
+	  oos_trace ("Setting LAST_ELEMENT flag for variable attribute at location %d (n_variable=%d)",
 		     value->last_attrepr->location, attr_info->last_classrepr->n_variable);
 	  length = OR_SET_VAR_LAST_ELEMENT (length);
 	}
