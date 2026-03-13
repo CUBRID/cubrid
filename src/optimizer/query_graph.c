@@ -3392,6 +3392,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_INDEX_CARDINALITY:
     case PT_ESTIMATED_TABLE_ROWS:
     case PT_ESTIMATED_AVG_ROW_LENGTH:
+    case PT_ESTIMATED_DATA_LENGTH:
     case PT_TO_BASE64:
     case PT_FROM_BASE64:
     case PT_SYS_GUID:
