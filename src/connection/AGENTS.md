@@ -42,7 +42,7 @@ TCP networking, CSS protocol, heartbeat.
 
 ## Gotchas
 
-- Connection module is NOT used in `SA_MODE` — standalone links both client and server in-process
+- `SA_MODE`: `connection_cl.c`, `connection_less.c`, `connection_globals.c`, `connection_list_cl.c`, `connection_support.c` are compiled into the SA build — no TCP socket connections, but the files themselves are still compiled and linked
 - `heartbeat.c` is HA-specific — only active in replicated setups
 - `css_send_data()` / `css_receive_data()` can partially send/recv — must handle short reads/writes
 

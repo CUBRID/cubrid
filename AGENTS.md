@@ -33,6 +33,8 @@ Apache 2.0 license. Version 11.5.x.
 │   ├── communication/   # Internal protocol (C++)
 │   ├── heaplayers/      # Embedded malloc/heap allocators
 │   ├── cm_common/       # CUBRID Manager shared utils
+│   ├── api/             # Public C API extensions (cubrid_log.c)
+│   ├── debugging/       # Compiler warning helpers, type utilities (strict_warnings, type_helper)
 │   └── win_tools/       # Windows service/tray tools
 ├── unit_tests/          # Catch2 v2.11.3 (see unit_tests/AGENTS.md)
 ├── pl_engine/           # Java PL server, Gradle (see pl_engine/AGENTS.md)
