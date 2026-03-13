@@ -515,6 +515,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_ESTIMATED_TABLE_ROWS:
     case T_ESTIMATED_AVG_ROW_LENGTH:
     case T_ESTIMATED_DATA_LENGTH:
+    case T_ESTIMATED_DATA_FREE:
       /* fetch rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
 	{
@@ -3838,6 +3839,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
     case T_ESTIMATED_DATA_LENGTH:
       if (qdata_get_estimated_data_length (thread_p, peek_right, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_ESTIMATED_DATA_FREE:
+      if (qdata_get_estimated_data_free (thread_p, peek_right, arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}

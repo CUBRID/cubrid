@@ -9023,6 +9023,70 @@ exit:
 }
 
 /*
+ * qdata_get_estimated_data_free () - gets the estimated free space
+ *				       of a table using its name
+ *   return: NO_ERROR, or error code
+ *   thread_p(in)      : thread context
+ *   db_table_name(in) : string DB_VALUE holding the unique_name of the table
+ *   result_p(out)     : estimated free space in bytes (bigint or NULL DB_VALUE)
+ *
+ * Note: Like index_cardinality(), if the specified table does not exist,
+ *       result_p is set to NULL and NO_ERROR is returned (no error is raised).
+ */
+int
+qdata_get_estimated_data_free (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name, DB_VALUE * result_p)
+{
+  const char *unique_name_str;
+  char lower_name[SM_MAX_IDENTIFIER_LENGTH];
+  OID class_oid;
+  HFID hfid;
+  int npages, nobjs, avg_length;
+  int error = NO_ERROR;
+
+  db_make_null (result_p);
+
+  if (DB_IS_NULL (db_table_name))
+    {
+      goto exit;
+    }
+
+  unique_name_str = db_get_string (db_table_name);
+  if (unique_name_str == NULL)
+    {
+      goto exit;
+    }
+
+  intl_identifier_lower (unique_name_str, lower_name);
+
+  if (xlocator_find_class_oid (thread_p, lower_name, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
+    {
+      er_clear ();
+      goto exit;
+    }
+
+  error = heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL);
+  if (error != NO_ERROR)
+    {
+      er_clear ();
+      error = NO_ERROR;
+      goto exit;
+    }
+
+  if (heap_estimate (thread_p, &hfid, &npages, &nobjs, &avg_length) < 0)
+    {
+      db_make_null (result_p);
+    }
+  else
+    {
+      DB_BIGINT data_free = (DB_BIGINT) npages * DB_PAGESIZE - (DB_BIGINT) nobjs * avg_length;
+      db_make_bigint (result_p, data_free > 0 ? data_free : 0);
+    }
+
+exit:
+  return error;
+}
+
+/*
  * qdata_tuple_to_values_array () - construct an array of values from a
  *				    tuple descriptor
  * return : error code or NO_ERROR

@@ -469,6 +469,7 @@ public class SymbolStack {
                         "DEFAULT",
                         "DISK_SIZE",
                         "ESTIMATED_AVG_ROW_LENGTH",
+                        "ESTIMATED_DATA_FREE",
                         "ESTIMATED_DATA_LENGTH",
                         "ESTIMATED_TABLE_ROWS",
                         "INDEX_CARDINALITY",

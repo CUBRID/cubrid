@@ -8166,7 +8166,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		}
 	      else if (node->info.expr.op == PT_ESTIMATED_TABLE_ROWS
 		       || node->info.expr.op == PT_ESTIMATED_AVG_ROW_LENGTH
-		       || node->info.expr.op == PT_ESTIMATED_DATA_LENGTH)
+		       || node->info.expr.op == PT_ESTIMATED_DATA_LENGTH
+		       || node->info.expr.op == PT_ESTIMATED_DATA_FREE)
 		{
 		  r1 = NULL;
 		  r2 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
@@ -9460,6 +9461,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_ESTIMATED_DATA_LENGTH:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_ESTIMATED_DATA_LENGTH, domain);
+		  if (parser->parent_proc_xasl != NULL)
+		    {
+		      XASL_SET_FLAG (parser->parent_proc_xasl, XASL_NO_FIXED_SCAN);
+		    }
+		  break;
+
+		case PT_ESTIMATED_DATA_FREE:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_ESTIMATED_DATA_FREE, domain);
 		  if (parser->parent_proc_xasl != NULL)
 		    {
 		      XASL_SET_FLAG (parser->parent_proc_xasl, XASL_NO_FIXED_SCAN);
