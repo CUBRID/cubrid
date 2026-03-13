@@ -27665,10 +27665,10 @@ heap_recdes_contains_oos (const RECDES * record)
   return flag & OR_MVCC_FLAG_HAS_OOS;
 }
 
-std::vector<OID>
+OID_VECTOR
 heap_recdes_get_oos_oids (const RECDES * recdes)
 {
-  std::vector<OID> oos_oids;
+  OID_VECTOR oos_oids;
 
   if (!heap_recdes_contains_oos (recdes))
     {
