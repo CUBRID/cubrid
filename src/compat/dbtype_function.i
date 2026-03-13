@@ -1663,12 +1663,43 @@ db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, 
       value->domain.numeric_info.is_value_negative = is_value_negative;
       if (is_float_numeric)
 	{
-	  value->data.num.header.precision = DB_VALUE_PRECISION (value);
-	  value->data.num.header.scale = DB_VALUE_SCALE (value);
+	  value->data.num.header.precision = precision;
+	  value->data.num.header.scale = scale;
 	  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
 	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
 	}
-      memcpy (value->data.num.d.buf + (DB_NUMERIC_BUF_SIZE - byte_size), num, byte_size);
+      switch (byte_size)
+	{
+	case 4:
+	  /* value_size (1) = byte_size(4) - header_size(3) */
+	  memcpy (value->data.num.d.buf + 16, num, 1);
+	  break;
+	case 8:
+	  /* value_size (5) = byte_size(8) - header_size(3) */
+	  memcpy (value->data.num.d.buf + 12, num, 5);
+	  break;
+	case 12:
+	  /* value_size (9) = byte_size(12) - header_size(3) */
+	  memcpy (value->data.num.d.buf + 8, num, 9);
+	  break;
+	case 16:
+	  /* value_size (13) = byte_size(16) - header_size(3) */
+	  memcpy (value->data.num.d.buf + 4, num, 13);
+	  break;
+	case DB_NUMERIC_BUF_SIZE:
+	  /* reached via call paths other than mr_data_*val_numeric() or mr_data_*mem_numeric(). */
+	case 20:
+	  /* value_size (17) = byte_size(20) - header_size(3) */
+	  memcpy (value->data.num.d.buf, num, DB_NUMERIC_BUF_SIZE);
+	  break;
+	default:
+	  {
+	    /* header_size == 3 */
+	    int tmp_byte_size = byte_size - 3;
+	    memcpy (value->data.num.d.buf + (DB_NUMERIC_BUF_SIZE - tmp_byte_size), num, tmp_byte_size);
+	  }
+	  break;
+	}
     }
   else
     {
