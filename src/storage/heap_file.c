@@ -27719,7 +27719,12 @@ heap_recdes_get_oos_oids (const RECDES * recdes)
 	    }
 	  OR_BUF buf;
 	  or_init (&buf, (char *) oid_ptr, OR_OID_SIZE);
-	  or_get_oid (&buf, &oid);
+	  int err = or_get_oid (&buf, &oid);
+	  if (err != NO_ERROR)
+	    {
+	      assert (false && "or_get_oid failed unexpectedly");
+	      return oos_oids;
+	    }
 	  if (OID_ISNULL (&oid))
 	    {
 	      assert (false && "OID read from OOS slot is null — corrupted record?");
