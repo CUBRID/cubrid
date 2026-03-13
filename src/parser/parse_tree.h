@@ -825,6 +825,7 @@ struct json_t;
 #define PT_METHOD_ARG_LIST(n)           ((n)->info.method_call.arg_list)
 #define PT_METHOD_CALL_AUTH_ID(n)	((n)->info.method_call.auth_id)
 #define PT_METHOD_CALL_AUTH_NAME(n)	((n)->info.method_call.auth_name)
+#define PT_METHOD_CALL_ON_CALL_TARGET(n)	((n)->info.method_call.on_call_target)
 
 /* Check node_type of PT_NODE */
 #define PT_NODE_IS_EXPR(n)		(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_EXPR)
@@ -1239,6 +1240,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_MATERIALIZE_CTE		(1ULL << 43)	/* materialize CTE */
 #define  PT_HINT_NO_PARALLEL_SUBQUERY		(1ULL << 44)	/* disable parallel subquery */
 #define  PT_HINT_NO_PARALLEL_HASH_JOIN		(1ULL << 45)	/* disable parallel hash join */
+#define  PT_HINT_NLJ_KEEP_HEAP_PAGE_PINNED	(1ULL << 46)	/* keep page fixed on nl join first table heap scan */
 
 /* Codes for error messages */
 typedef enum
