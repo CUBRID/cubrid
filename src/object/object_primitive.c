@@ -8444,34 +8444,6 @@ mr_getmem_numeric (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy
       is_value_negative = (header[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
 
       num = (DB_C_NUMERIC) ((char *) cur + NUMERIC_HEADER_SIZE);
-      switch (byte_size)
-	{
-	case 4:
-	  /* empty_space(16) = DB_NUMERIC_BUF_SIZE(17) - 1 (byte_size(4) - NUMERIC_HEADER_SIZE(3)) */
-	  memset (value->data.num.d.buf, 0, 16);
-	  break;
-	case 8:
-	  /* empty_space(12) = DB_NUMERIC_BUF_SIZE(17) - 5 (byte_size(8) - NUMERIC_HEADER_SIZE(3)) */
-	  memset (value->data.num.d.buf, 0, 12);
-	  break;
-	case 12:
-	  /* empty_space(8) = DB_NUMERIC_BUF_SIZE(17) - 9 (byte_size(12) - NUMERIC_HEADER_SIZE(3)) */
-	  memset (value->data.num.d.buf, 0, 8);
-	  break;
-	case 16:
-	  /* empty_space(4) = DB_NUMERIC_BUF_SIZE(17) - 13 (byte_size(16) - NUMERIC_HEADER_SIZE(3)) */
-	  memset (value->data.num.d.buf, 0, 4);
-	  break;
-	case 20:
-	  /* empty_space(0) = DB_NUMERIC_BUF_SIZE(17) - 17 (byte_size(20) - NUMERIC_HEADER_SIZE(3)). no need to fill */
-	  break;
-	default:
-	  {
-	    int tmp_byte_size = byte_size - NUMERIC_HEADER_SIZE;
-	    memset (value->data.num.d.buf, 0, DB_NUMERIC_BUF_SIZE - tmp_byte_size);
-	  }
-	  break;
-	}
 
       if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
@@ -8801,34 +8773,6 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
       bool is_negative_scale = (header[1] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) != 0;
       scale = is_negative_scale ? -(header[2]) : header[2];
       is_value_negative = (header[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
-      switch (size)
-	{
-	case 4:
-	  /* empty_space(16) = DB_NUMERIC_BUF_SIZE(17) - 1 (size(4) - NUMERIC_HEADER_SIZE(3)) */
-	  memset (value->data.num.d.buf, 0, 16);
-	  break;
-	case 8:
-	  /* empty_space(12) = DB_NUMERIC_BUF_SIZE(17) - 5 (size(8) - NUMERIC_HEADER_SIZE(3)) */
-	  memset (value->data.num.d.buf, 0, 12);
-	  break;
-	case 12:
-	  /* empty_space(8) = DB_NUMERIC_BUF_SIZE(17) - 9 (size(12) - NUMERIC_HEADER_SIZE(3)) */
-	  memset (value->data.num.d.buf, 0, 8);
-	  break;
-	case 16:
-	  /* empty_space(4) = DB_NUMERIC_BUF_SIZE(17) - 13 (size(16) - NUMERIC_HEADER_SIZE(3)) */
-	  memset (value->data.num.d.buf, 0, 4);
-	  break;
-	case 20:
-	  /* empty_space(0) = DB_NUMERIC_BUF_SIZE(17) - 17 (size(20) - NUMERIC_HEADER_SIZE(3)). no need to fill */
-	  break;
-	default:
-	  {
-	    int tmp_size = size - NUMERIC_HEADER_SIZE;
-	    memset (value->data.num.d.buf, 0, DB_NUMERIC_BUF_SIZE - tmp_size);
-	  }
-	  break;
-	}
 
       if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{

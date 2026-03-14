@@ -1668,22 +1668,30 @@ db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, 
 	  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
 	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
 	}
+
+      uint64_t *value_num_ptr = (uint64_t *) value->data.num.d.buf;
       switch (byte_size)
 	{
 	case 4:
 	  /* value_size (1) = byte_size(4) - header_size(3) */
+	  value_num_ptr[0] = 0;
+	  value_num_ptr[1] = 0;
 	  memcpy (value->data.num.d.buf + 16, num, 1);
 	  break;
 	case 8:
 	  /* value_size (5) = byte_size(8) - header_size(3) */
+	  value_num_ptr[0] = 0;
+	  value_num_ptr[1] = 0;
 	  memcpy (value->data.num.d.buf + 12, num, 5);
 	  break;
 	case 12:
 	  /* value_size (9) = byte_size(12) - header_size(3) */
+	  value_num_ptr[0] = 0;
 	  memcpy (value->data.num.d.buf + 8, num, 9);
 	  break;
 	case 16:
 	  /* value_size (13) = byte_size(16) - header_size(3) */
+	  value_num_ptr[0] = 0;
 	  memcpy (value->data.num.d.buf + 4, num, 13);
 	  break;
 	case DB_NUMERIC_BUF_SIZE:
@@ -1696,6 +1704,8 @@ db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, 
 	  {
 	    /* header_size == 3 */
 	    int tmp_byte_size = byte_size - 3;
+	    value_num_ptr[0] = 0;
+	    value_num_ptr[1] = 0;
 	    memcpy (value->data.num.d.buf + (DB_NUMERIC_BUF_SIZE - tmp_byte_size), num, tmp_byte_size);
 	  }
 	  break;
