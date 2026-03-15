@@ -185,7 +185,7 @@ namespace cubhnsw
   storage::get_vector_by_slot_id (algo_context_t &context, const slot_id_t &slot, const lock_mode &mode)
   {
     // get node by slot id
-    context.add_stat (context.m_stats.page_access, context.m_stats.page_access_l0, 1);
+    context.add_stat (context.m_stats.vector_access, context.m_stats.vector_access_l0, 1);
     return get_node_by_slot_id (context, slot, lock_mode::shared);
   }
 
