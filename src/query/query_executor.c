@@ -24968,48 +24968,54 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	      idx_val++;
 	    }
 
-	  /* Extra: attribute is auto-increment, invisible, or has an ON UPDATE clause */
-	  const char *is_auto_increment_string = "auto_increment";
-	  const char *is_invisible_string = "invisible";
-	  const char *on_update_string = "ON UPDATE ";
-	  const char *default_expr_op_string = NULL;
-	  int used = 0;
-
-	  size_t str_len = (attrepr->is_autoincrement ? strlen (is_auto_increment_string) : 0) + 1
-	    + (attrepr->is_invisible ? strlen (is_invisible_string) : 0) + 1
-	    + (attrepr->on_update_expr != DB_DEFAULT_NONE ? strlen (on_update_string) : 0) + 1;
-
-	  if (attrepr->on_update_expr != DB_DEFAULT_NONE)
+	  if (!attrepr->is_autoincrement && !attrepr->is_invisible && attrepr->on_update_expr == DB_DEFAULT_NONE)
 	    {
-	      default_expr_op_string = db_default_expression_string (attrepr->on_update_expr);
-	      if (default_expr_op_string == NULL)
+	      db_make_string (out_values[idx_val], "");
+	    }
+	  else
+	    {
+	      /* Extra: attribute is auto-increment, invisible, or has an ON UPDATE clause */
+	      const char *is_auto_increment_string = "auto_increment";
+	      const char *is_invisible_string = "invisible";
+	      const char *on_update_string = "ON UPDATE ";
+	      const char *default_expr_op_string = NULL;
+	      int used = 0;
+
+	      size_t str_len = (attrepr->is_autoincrement ? strlen (is_auto_increment_string) : 0) + 1
+		+ (attrepr->is_invisible ? strlen (is_invisible_string) : 0) + 1
+		+ (attrepr->on_update_expr != DB_DEFAULT_NONE ? strlen (on_update_string) : 0) + 1;
+
+	      if (attrepr->on_update_expr != DB_DEFAULT_NONE)
+		{
+		  default_expr_op_string = db_default_expression_string (attrepr->on_update_expr);
+		  if (default_expr_op_string == NULL)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		  str_len += strlen (default_expr_op_string);
+		}
+	      char *str_val = (char *) db_private_alloc (thread_p, str_len);
+	      if (str_val == NULL)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
-	      str_len += strlen (default_expr_op_string);
-	    }
-	  char *str_val = (char *) db_private_alloc (thread_p, str_len);
-	  if (str_val == NULL)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
 
-	  used += snprintf (str_val, str_len, "%s", (attrepr->is_autoincrement ? is_auto_increment_string : ""));
-	  if (attrepr->is_invisible)
-	    {
-	      used += snprintf (str_val + used, str_len - used, "%s%s", used ? " " : "", is_invisible_string);
+	      used += snprintf (str_val, str_len, "%s", (attrepr->is_autoincrement ? is_auto_increment_string : ""));
+	      if (attrepr->is_invisible)
+		{
+		  used += snprintf (str_val + used, str_len - used, "%s%s", used ? " " : "", is_invisible_string);
+		}
+
+	      if (attrepr->on_update_expr != DB_DEFAULT_NONE)
+		{
+		  used +=
+		    snprintf (str_val + used, str_len - used, "%s%s%s", used ? " " : "", on_update_string,
+			      default_expr_op_string);
+		}
+
+	      db_make_string (out_values[idx_val], str_val);
+	      out_values[idx_val]->need_clear = true;
 	    }
-
-	  if (attrepr->on_update_expr != DB_DEFAULT_NONE)
-	    {
-	      used +=
-		snprintf (str_val + used, str_len - used, "%s%s%s", used ? " " : "", on_update_string,
-			  default_expr_op_string);
-	    }
-
-	  db_make_string (out_values[idx_val], str_val);
-	  out_values[idx_val]->need_clear = true;
-
 	  idx_val++;
 
 	  /* attribute's comment */
