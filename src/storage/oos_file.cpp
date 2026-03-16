@@ -55,6 +55,8 @@ oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes,
 		       OOS_RECORD_HEADER &out_header);
 static void
 oos_log_insert_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, OID *oid_p, RECDES *recdes_p);
+static void
+oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, PGSLOTID slotid, RECDES *recdes_p);
 
 STATIC_INLINE __attribute__ ((ALWAYS_INLINE))
 int oos_get_max_chunk_size_within_page ();
@@ -610,6 +612,76 @@ oos_log_insert_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
   log_addr.pgptr = page_p;
 
   log_append_undoredo_recdes (thread_p, RVOOS_INSERT, &log_addr, NULL, recdes_p);
+}
+
+/*
+ * oos_log_delete_physical () - add logging information for physical deletion
+ *   thread_p(in): thread entry
+ *   page_p(in): page where delete will be performed
+ *   slotid(in): slot id of the record to delete
+ *   recdes_p(in): record descriptor of the record being deleted (undo data)
+ */
+static void
+oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, PGSLOTID slotid, RECDES *recdes_p)
+{
+  LOG_DATA_ADDR log_addr;
+
+  log_addr.vfid = NULL;
+  log_addr.offset = slotid;
+  log_addr.pgptr = page_p;
+
+  log_append_undoredo_recdes (thread_p, RVOOS_DELETE, &log_addr, recdes_p, NULL);
+}
+
+int
+oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
+{
+  oos_debug ("arguments: oid={vol=%d,page=%d,slot=%d}", oid.volid, oid.pageid, oid.slotid);
+
+  OID current_oid = oid;
+  while (current_oid.pageid != NULL_PAGEID)
+    {
+      const auto [pageid, slotid, volid] = current_oid;
+      VPID vpid = {pageid, volid};
+
+      PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (page_ptr == nullptr)
+	{
+	  oos_error ("pgbuf_fix failed for volid=%d, pageid=%d", volid, pageid);
+	  return ER_FAILED;
+	}
+
+      scope_exit page_unfixer ([&] ()
+      {
+	pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
+      });
+
+      RECDES recdes_with_header;
+      SCAN_CODE code = spage_get_record (thread_p, page_ptr, slotid, &recdes_with_header, PEEK);
+      if (code != S_SUCCESS)
+	{
+	  oos_error ("spage_get_record failed for volid=%d, pageid=%d, slotid=%d", volid, pageid, slotid);
+	  return ER_FAILED;
+	}
+
+      assert (recdes_with_header.length >= (int) sizeof (OOS_RECORD_HEADER));
+      OOS_RECORD_HEADER header;
+      std::memcpy (&header, recdes_with_header.data, sizeof (OOS_RECORD_HEADER));
+      OID next_chunk_oid = header.next_chunk_oid;
+
+      oos_log_delete_physical (thread_p, page_ptr, slotid, &recdes_with_header);
+
+      (void) spage_delete (thread_p, page_ptr, slotid);
+      pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
+
+      oos_debug ("deleted chunk at oid={vol=%d,page=%d,slot=%d}, next={vol=%d,page=%d,slot=%d}",
+		 volid, pageid, slotid,
+		 next_chunk_oid.volid, next_chunk_oid.pageid, next_chunk_oid.slotid);
+
+      current_oid = next_chunk_oid;
+    }
+
+  return NO_ERROR;
 }
 
 // TODO: since this value never changes, we can make it a constant or static variable,

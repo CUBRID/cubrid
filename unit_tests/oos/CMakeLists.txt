@@ -49,6 +49,7 @@ endforeach()
 
 # Register individual tests one by one.
 add_test(NAME test_oos COMMAND test_oos)
+add_test(NAME test_oos_delete COMMAND test_oos_delete)
 # add_test(NAME test_oos_persist COMMAND test_oos_persist)
 # add_test(NAME test_oos_record_descriptor COMMAND test_oos_record_descriptor)
 
