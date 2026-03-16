@@ -682,43 +682,55 @@ int
 hb_process_init (const char *server_name, const char *log_path, HB_PROC_TYPE type)
 {
 #if !defined(SERVER_MODE)
-  int error;
   static bool is_first = true;
+  static pthread_mutex_t hb_process_init_lock = PTHREAD_MUTEX_INITIALIZER;
 
   if (is_first == false)
     {
       return (NO_ERROR);
     }
 
-  er_log_debug (ARG_FILE_LINE, "hb_process_init. (type:%s). \n", hb_type_to_str (type));
-
-  if (hb_Exec_path[0] == '\0' || *(hb_Argv) == 0)
+  int error = NO_ERROR;
+  pthread_mutex_lock (&hb_process_init_lock);
+  if (is_first)
     {
-      er_log_debug (ARG_FILE_LINE, "hb_Exec_path or hb_Argv is not set. \n");
-      return (ER_FAILED);
+      er_log_debug (ARG_FILE_LINE, "hb_process_init. (type:%s). \n", hb_type_to_str (type));
+
+      if (hb_Exec_path[0] == '\0' || *(hb_Argv) == 0)
+	{
+	  er_log_debug (ARG_FILE_LINE, "hb_Exec_path or hb_Argv is not set. \n");
+	  error = ER_FAILED;
+	}
+      else
+	{
+	  hb_Conn = hb_connect_to_master (server_name, log_path, type);
+
+	  /* wait 1 sec */
+	  sleep (1);
+
+	  error = hb_register_to_master (hb_Conn, type);
+	  if (NO_ERROR != error)
+	    {
+	      er_log_debug (ARG_FILE_LINE, "hb_register_to_master failed. \n");
+	    }
+	  else
+	    {
+	      error = hb_create_master_reader ();
+	      if (NO_ERROR != error)
+		{
+		  er_log_debug (ARG_FILE_LINE, "hb_create_master_reader failed. \n");
+		}
+	      else
+		{
+		  is_first = false;
+		  error = NO_ERROR;
+		}
+	    }
+	}
     }
+  pthread_mutex_unlock (&hb_process_init_lock);
 
-  hb_Conn = hb_connect_to_master (server_name, log_path, type);
-
-  /* wait 1 sec */
-  sleep (1);
-
-  error = hb_register_to_master (hb_Conn, type);
-  if (NO_ERROR != error)
-    {
-      er_log_debug (ARG_FILE_LINE, "hb_register_to_master failed. \n");
-      return (error);
-    }
-
-  error = hb_create_master_reader ();
-  if (NO_ERROR != error)
-    {
-      er_log_debug (ARG_FILE_LINE, "hb_create_master_reader failed. \n");
-      return (error);
-    }
-
-  is_first = false;
-  return (NO_ERROR);
+  return error;
 #else
   return (ER_FAILED);
 #endif
