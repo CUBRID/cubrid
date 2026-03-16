@@ -8886,6 +8886,7 @@ qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name
 
   if (heap_get_class_record (thread_p, &class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
     {
+      error = er_errid ();
       goto exit;
     }
 
