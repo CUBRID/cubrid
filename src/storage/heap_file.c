@@ -10888,6 +10888,15 @@ heap_midxkey_get_oos_extra_size (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_inf
       return 0;
     }
 
+  /* Guard against oos_read failure: raw.length may remain -1 if oos_read failed (assert_release is no-op
+   * in release builds). Returning -1 would silently decrement midxkey_size and risk re-triggering the
+   * stack overflow this function is meant to prevent. */
+  if (raw.length <= 0)
+    {
+      recdes_free_data_area (&raw);
+      return 0;
+    }
+
   int size = raw.length;
   recdes_free_data_area (&raw);
   return size;
@@ -14534,11 +14543,14 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 
       /* If any indexed attribute is OOS, recdes->length underestimates the actual midxkey size.
        * Pre-scan to add the actual OOS data size so heap allocation is used instead of the stack buffer. */
-      for (int oos_i = 0; oos_i < n_atts; oos_i++)
+      if (recdes != NULL && recdes->data != NULL)
 	{
-	  if (IS_DEDUPLICATE_KEY_ATTR_ID (index->atts[oos_i]->id))
-	    continue;
-	  midxkey_size += heap_midxkey_get_oos_extra_size (recdes, idx_attrinfo, index->atts[oos_i]);
+	  for (int oos_i = 0; oos_i < n_atts; oos_i++)
+	    {
+	      if (IS_DEDUPLICATE_KEY_ATTR_ID (index->atts[oos_i]->id))
+		continue;
+	      midxkey_size += heap_midxkey_get_oos_extra_size (recdes, idx_attrinfo, index->atts[oos_i]);
+	    }
 	}
 
       /* Allocate storage for the buf of midxkey */
