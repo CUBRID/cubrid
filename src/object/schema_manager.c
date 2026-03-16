@@ -15750,7 +15750,6 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   DB_OBJLIST *subs;
   bool reuse_oid = false;
   int partition_type = DB_NOT_PARTITIONED_CLASS;
-  int attrid_arr[1];
   int error = NO_ERROR;
 
   oid = ws_oid (class_mop);
