@@ -954,9 +954,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 
 #ifdef CCI_XA
 #ifdef SERVER_MODE
-  /* Recover pending _db_global_tran (state 'A'/'C'): send decision to participants, delete on success */
   dblink_2pc_daemon_recovery_with_thread (thread_p);
-  /* Start send_2pc_decision daemon for coordinator recovery (_db_global_tran) */
 #endif
 #endif
 

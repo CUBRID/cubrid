@@ -777,7 +777,7 @@ log_2pc_commit (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_2PC_EXECUTE execut
       state = tdes->state;
     }
 
-#if !defined(CCI_XA) || !defined(SERVER_MODE)
+#ifndef CCI_XA
   /*
    * PHASE II of 2PC: Inform decsion to participants (i.e., either commit or
    *                  abort)

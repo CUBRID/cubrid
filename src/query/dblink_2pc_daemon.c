@@ -346,8 +346,13 @@ dblink_2pc_daemon_init (void)
 
   global_tran_queue =
     (GLOBAL_TRAN_QUEUE_ENTRY *) malloc (GLOBAL_TRAN_QUEUE_INIT_SIZE * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
-
-  if (global_tran_queue != NULL)
+  if (global_tran_queue == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      GLOBAL_TRAN_QUEUE_INIT_SIZE * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
+      /* falls through to exit/abort below */
+    }
+  else
     {
       global_tran_queue_size = GLOBAL_TRAN_QUEUE_INIT_SIZE;
       memset (global_tran_queue, 0, global_tran_queue_size * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
