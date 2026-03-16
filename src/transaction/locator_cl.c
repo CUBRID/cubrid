@@ -5927,7 +5927,7 @@ locator_remove_class (MOP class_mop)
       if (lob_attr_exist)
 	{
 	  attrid_arr[0] = -1;
-	  error_code = locator_lob_create_or_remove_dir (insts_hfid, NULL, attrid_arr, 0);
+	  error_code = locator_lob_create_or_remove_dir (insts_hfid, NULL, attrid_arr, 1);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;

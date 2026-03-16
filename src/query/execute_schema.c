@@ -1523,7 +1523,7 @@ lob_process_dir_drop_attr (SM_CLASS * class_, const char *attr_mthd_name)
 	      HFID lob_hfid = class_->header.ch_heap;
 	      int lob_attrid_arr[1] = { attr.id };
 
-	      error = locator_lob_create_or_remove_dir (&lob_hfid, NULL, lob_attrid_arr, 0);
+	      error = locator_lob_create_or_remove_dir (&lob_hfid, NULL, lob_attrid_arr, 1);
 	      if (error != NO_ERROR)
 		{
 		  return error;
