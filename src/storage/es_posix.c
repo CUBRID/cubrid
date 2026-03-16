@@ -848,30 +848,24 @@ xes_posix_move_file_with_prefix (const char *src_path, const char *metaname, con
     }
   es_log ("xes_posix_copy_file(%s, %s): %s\n", src_path, metaname, new_path);
 
-  fd = es_abs_open (new_path, O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH | O_LARGEFILE);
-  if (fd < 0)
+  p = strrchr (new_path, PATH_SEPARATOR);
+  if (p != NULL)
     {
-      if (errno == ENOENT)
-	{
-	  p = strrchr (new_path, PATH_SEPARATOR);
-	  if (p != NULL)
-	    {
-	      *p = '\0';	/* Temporarily truncate the path to extract the directory portion */
-	    }
-	  else
-	    {
-	      return ER_ES_GENERAL;
-	    }
-
-	  ret = es_make_dirs (new_path, dirname2);
-	  if (ret != NO_ERROR)
-	    {
-	      return ER_ES_GENERAL;
-	    }
-
-	  *p = PATH_SEPARATOR;
-	}
+      *p = '\0';	/* Temporarily truncate the path to extract the directory portion */
     }
+  else
+    {
+      return ER_ES_GENERAL;
+    }
+
+  /* Try create directory */
+  ret = es_make_dirs (new_path, dirname2);
+  if (ret != NO_ERROR)
+    {
+      return ER_ES_GENERAL;
+    }
+
+  *p = PATH_SEPARATOR;
 
   ret = es_os_rename_file_abs (src_path, new_path);
   es_log ("xes_posix_move_file(%s): %s\n", src_path, new_path);
