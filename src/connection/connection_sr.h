@@ -140,7 +140,6 @@ extern void css_final_conn_list (void);
 
 extern CSS_CONN_ENTRY *css_make_conn (SOCKET fd);
 extern void css_insert_into_active_conn_list (CSS_CONN_ENTRY * conn);
-extern void css_dealloc_conn_rmutex (CSS_CONN_ENTRY * conn);
 
 extern int css_get_num_free_conn (void);
 
@@ -158,10 +157,8 @@ extern CSS_CONN_ENTRY *css_find_conn_from_fd (SOCKET fd);
 extern int css_get_session_ids_for_active_connections (SESSION_ID ** ids, int *count);
 extern int css_shutdown_conn_by_tran_index (int tran_index, int wait_time);
 
-extern int css_send_abort_request (CSS_CONN_ENTRY * conn, unsigned short request_id);
 extern int css_read_header (CSS_CONN_ENTRY * conn, const NET_HEADER * local_header);
 extern int css_receive_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, int *buffer_size);
-extern int css_read_and_queue (CSS_CONN_ENTRY * conn, int *type);
 extern int css_receive_data (CSS_CONN_ENTRY * conn, unsigned short req_id, char **buffer, int *buffer_size,
 			     int timeout);
 
