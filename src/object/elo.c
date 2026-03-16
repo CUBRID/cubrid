@@ -458,6 +458,7 @@ elo_copy_with_prefix (DB_ELO * src_elo, const char *prefix, DB_ELO * dest_elo)
 	    if (locator == NULL)
 	      {
 		es_delete_file (out_uri);
+		ret = er_errid ();
 		goto error_return;
 	      }
 	    ret = lob_locator_add (locator, LOB_PERMANENT_CREATED);
@@ -475,11 +476,13 @@ elo_copy_with_prefix (DB_ELO * src_elo, const char *prefix, DB_ELO * dest_elo)
 
 	default:
 	  assert (0);
-	  return ER_FAILED;
+	  ret = ER_FAILED;
+	  goto error_return;
 	}
     }
   else
     {
+      ret = ER_ES_GENERAL;
       goto error_return;
     }
 
