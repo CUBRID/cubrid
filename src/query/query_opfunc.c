@@ -8844,9 +8844,10 @@ exit:
  *   result_p(out)     : estimated statistic (bigint or NULL DB_VALUE)
  *   op(in)            : which statistic to return
  *
- * Note: If the specified table does not exist or NULL is given,
+ * Note: If the specified table does not exist, is a view/vclass, or NULL is given,
  *       result_p is set to NULL and NO_ERROR is returned.
- *       Internal errors (heap_get_class_info, heap_estimate failures) are propagated.
+ *       heap_get_class_info() is not used because heap_hfid_cache_get() asserts
+ *       that the HFID is non-null and ftype == FILE_HEAP, which fails for views.
  */
 int
 qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name, DB_VALUE * result_p, OPERATOR_TYPE op)
@@ -8855,6 +8856,8 @@ qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name
   char lower_name[SM_MAX_IDENTIFIER_LENGTH];
   OID class_oid;
   HFID hfid;
+  RECDES recdes;
+  HEAP_SCANCACHE scan_cache;
   int npages, nobjs, avg_length;
   int error = NO_ERROR;
 
@@ -8879,7 +8882,21 @@ qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name
       goto exit;
     }
 
-  error = heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL);
+  (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
+
+  if (heap_get_class_record (thread_p, &class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
+    {
+      goto exit;
+    }
+
+  or_class_hfid (&recdes, &hfid);
+  if (HFID_IS_NULL (&hfid))
+    {
+      /* view or virtual class — no heap file; return NULL DB_VALUE */
+      goto exit;
+    }
+
+  error = heap_scancache_end (thread_p, &scan_cache);
   if (error != NO_ERROR)
     {
       goto exit;
@@ -8887,36 +8904,36 @@ qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name
 
   if (heap_estimate (thread_p, &hfid, &npages, &nobjs, &avg_length) < 0)
     {
-      error = ER_FAILED;
+      error = er_errid ();
       goto exit;
     }
-  else
+
+  switch (op)
     {
-      switch (op)
-	{
-	case T_ESTIMATED_TABLE_ROWS:
-	  db_make_bigint (result_p, (DB_BIGINT) nobjs);
-	  break;
-	case T_ESTIMATED_AVG_ROW_LENGTH:
-	  db_make_bigint (result_p, (DB_BIGINT) avg_length);
-	  break;
-	case T_ESTIMATED_DATA_LENGTH:
-	  db_make_bigint (result_p, (DB_BIGINT) npages * DB_PAGESIZE);
-	  break;
-	case T_ESTIMATED_DATA_FREE:
-	  {
-	    DB_BIGINT data_free = (DB_BIGINT) npages * DB_PAGESIZE - (DB_BIGINT) nobjs * avg_length;
-	    db_make_bigint (result_p, data_free > 0 ? data_free : 0);
-	  }
-	  break;
-	default:
-	  assert (false);
-	  db_make_null (result_p);
-	  break;
-	}
+    case T_ESTIMATED_TABLE_ROWS:
+      db_make_bigint (result_p, (DB_BIGINT) nobjs);
+      break;
+    case T_ESTIMATED_AVG_ROW_LENGTH:
+      db_make_bigint (result_p, (DB_BIGINT) avg_length);
+      break;
+    case T_ESTIMATED_DATA_LENGTH:
+      db_make_bigint (result_p, (DB_BIGINT) npages * DB_PAGESIZE);
+      break;
+    case T_ESTIMATED_DATA_FREE:
+      {
+	DB_BIGINT data_free = (DB_BIGINT) npages * DB_PAGESIZE - (DB_BIGINT) nobjs * avg_length;
+	db_make_bigint (result_p, data_free > 0 ? data_free : 0);
+      }
+      break;
+    default:
+      assert (false);
+      break;
     }
 
+  return NO_ERROR;
+
 exit:
+  heap_scancache_end (thread_p, &scan_cache);
   return error;
 }
 
