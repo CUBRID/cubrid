@@ -23,14 +23,6 @@
 #ifndef _CONNECTION_WORKER_HPP_
 #define _CONNECTION_WORKER_HPP_
 
-#include "connection_defs.h"
-#include "connection_context.hpp"
-#include "connection_statistics.hpp"
-#include "receiver.hpp"
-#include "transmitter.hpp"
-#include "epoll.hpp"
-#include "tbb/concurrent_queue.h"
-
 #include <atomic>
 #include <thread>
 #include <array>
@@ -43,6 +35,14 @@
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/epoll.h>
+
+#include "tbb/concurrent_queue.h"
+#include "connection_defs.h"
+#include "connection_context.hpp"
+#include "connection_statistics.hpp"
+#include "receiver.hpp"
+#include "transmitter.hpp"
+#include "epoll.hpp"
 
 namespace cubconn::connection
 {
