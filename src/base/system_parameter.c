@@ -5949,33 +5949,41 @@ static void
 sysprm_check_id_order ()
 {
   static bool is_first = true;
+  static pthread_mutex_t sysprm_check_id_order_lock = PTHREAD_MUTEX_INITIALIZER;
+
   if (is_first)
     {
-      int i, k;
-      const int *ptr;
-      assert (GET_PRM (0)->id == PRM_FIRST_ID);
-      for (i = 1; i < MAX_SYSTEM_PARAMS; i++)
+      pthread_mutex_lock (&sysprm_check_id_order_lock);
+      if (is_first)
 	{
-	  assert (GET_PRM (i - 1)->id == ((GET_PRM (i)->id) - 1));
-	  assert (GET_PRM (i)->id == (PARAM_ID) i);
-	}
-
-      for (i = 0; PARAM_VALUE_SHARE[i] != NULL; i++)
-	{
-	  ptr = PARAM_VALUE_SHARE[i];
-	  assert (ptr[0] >= 2);
-	  for (k = 1; k < ptr[0]; k++)
+	  int i, k;
+	  const int *ptr;
+	  assert (GET_PRM (0)->id == PRM_FIRST_ID);
+	  for (i = 1; i < MAX_SYSTEM_PARAMS; i++)
 	    {
-	      assert (ptr[k] < ptr[k + 1]);
+	      assert (GET_PRM (i - 1)->id == ((GET_PRM (i)->id) - 1));
+	      assert (GET_PRM (i)->id == (PARAM_ID) i);
 	    }
 
-	  if (i > 0)
+	  for (i = 0; PARAM_VALUE_SHARE[i] != NULL; i++)
 	    {
-	      assert (ptr[1] > PARAM_VALUE_SHARE[i - 1][1]);
+	      ptr = PARAM_VALUE_SHARE[i];
+	      assert (ptr[0] >= 2);
+	      for (k = 1; k < ptr[0]; k++)
+		{
+		  assert (ptr[k] < ptr[k + 1]);
+		}
+
+	      if (i > 0)
+		{
+		  assert (ptr[1] > PARAM_VALUE_SHARE[i - 1][1]);
+		}
 	    }
+
+	  is_first = false;
 	}
 
-      is_first = false;
+      pthread_mutex_unlock (&sysprm_check_id_order_lock);
     }
 }
 #endif
