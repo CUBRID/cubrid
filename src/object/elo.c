@@ -475,13 +475,14 @@ elo_copy_with_prefix (DB_ELO * src_elo, const char *prefix, DB_ELO * dest_elo)
 	  goto error_return;
 
 	default:
-	  assert (0);
+	  assert (false);
 	  ret = ER_FAILED;
 	  goto error_return;
 	}
     }
   else
     {
+      assert (false);
       ret = ER_ES_GENERAL;
       goto error_return;
     }
