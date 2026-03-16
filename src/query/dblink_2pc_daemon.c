@@ -251,13 +251,11 @@ dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
 	      if (del_error == NO_ERROR && xtran_server_commit (thread_p, false) == TRAN_UNACTIVE_COMMITTED)
 		{
 		  logtb_free_tran_index (thread_p, tran_index);
-		  logtb_set_to_system_tran_index (thread_p);
 		}
 	      else
 		{
 		  (void) xtran_server_abort (thread_p);
 		  logtb_free_tran_index (thread_p, tran_index);
-		  logtb_set_to_system_tran_index (thread_p);
 		  ret = ER_FAILED;	/* fall through to re-enqueue */
 		}
 	    }

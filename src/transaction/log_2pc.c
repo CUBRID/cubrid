@@ -631,7 +631,6 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
       (void) log_commit_local (thread_p, tdes, false, false);
 
       tdes->state = state;	/* Revert to 2PC state... */
-      /* _db_global_tran update and enqueue already done in first_phase */
       /*
        * If the following function fails, the transaction will be dangling
        * and we need to retry sending the decision at another point.
