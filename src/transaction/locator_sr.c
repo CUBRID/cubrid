@@ -8772,74 +8772,76 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	}
     }
 
-  if (rk_btid_index != -1)
+  if (heap_is_replication_class (thread_p, class_oid))
     {
-      assert (repl_info != NULL);
-
-      if (repl_old_key == NULL)
+      if (rk_btid_index != -1)
 	{
-	  key_domain = NULL;
-	  repl_old_key =
-	    heap_attrvalue_get_key (thread_p, rk_btid_index, old_attrinfo, old_recdes, &old_btid, &old_dbvalue,
-				    aligned_oldbuf, NULL, &key_domain, oid, false);
+	  assert (repl_info != NULL);
+
 	  if (repl_old_key == NULL)
 	    {
-	      error_code = ER_FAILED;
-	      goto error;
+	      key_domain = NULL;
+	      repl_old_key =
+		heap_attrvalue_get_key (thread_p, rk_btid_index, old_attrinfo, old_recdes, &old_btid, &old_dbvalue,
+					aligned_oldbuf, NULL, &key_domain, oid, false);
+	      if (repl_old_key == NULL)
+		{
+		  error_code = ER_FAILED;
+		  goto error;
+		}
+
+	      old_isnull = db_value_is_null (repl_old_key);
+	      pr_type = pr_type_from_id (DB_VALUE_DOMAIN_TYPE (repl_old_key));
+	      if (pr_type == NULL)
+		{
+		  error_code = ER_FAILED;
+		  goto error;
+		}
+
+	      if (pr_type->id == DB_TYPE_MIDXKEY)
+		{
+		  /*
+		   * The asc/desc properties in midxkey from log_applier may be
+		   * inaccurate. therefore, we should use btree header's domain
+		   * while processing btree search request from log_applier.
+		   */
+		  repl_old_key->data.midxkey.domain = key_domain;
+		}
+	      error_code =
+		repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
+				 (REPL_INFO_TYPE) repl_info->repl_info_type);
+
+	      if (repl_old_key == &old_dbvalue)
+		{
+		  pr_clear_value (&old_dbvalue);
+		}
 	    }
-
-	  old_isnull = db_value_is_null (repl_old_key);
-	  pr_type = pr_type_from_id (DB_VALUE_DOMAIN_TYPE (repl_old_key));
-	  if (pr_type == NULL)
+	  else
 	    {
-	      error_code = ER_FAILED;
-	      goto error;
-	    }
+	      error_code =
+		repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
+				 (REPL_INFO_TYPE) repl_info->repl_info_type);
 
-	  if (pr_type->id == DB_TYPE_MIDXKEY)
-	    {
-	      /*
-	       * The asc/desc properties in midxkey from log_applier may be
-	       * inaccurate. therefore, we should use btree header's domain
-	       * while processing btree search request from log_applier.
-	       */
-	      repl_old_key->data.midxkey.domain = key_domain;
-	    }
-
-	  error_code =
-	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
-			     (REPL_INFO_TYPE) repl_info->repl_info_type);
-
-	  if (repl_old_key == &old_dbvalue)
-	    {
-	      pr_clear_value (&old_dbvalue);
+	      pr_free_ext_value (repl_old_key);
+	      repl_old_key = NULL;
 	    }
 	}
       else
 	{
-	  error_code =
-	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
-			     (REPL_INFO_TYPE) repl_info->repl_info_type);
+	  /*
+	   * clear repl_insert_lsa to make sure that FK action
+	   * does not overwrite the original update's target lsa.
+	   */
+	  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+	  tdes = LOG_FIND_TDES (tran_index);
 
-	  pr_free_ext_value (repl_old_key);
-	  repl_old_key = NULL;
-	}
-    }
-  else
-    {
-      /*
-       * clear repl_insert_lsa to make sure that FK action
-       * does not overwrite the original update's target lsa.
-       */
-      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      tdes = LOG_FIND_TDES (tran_index);
+	  LSA_SET_NULL (&tdes->repl_insert_lsa);
 
-      LSA_SET_NULL (&tdes->repl_insert_lsa);
-
-      /* No need to replicate this record since there is no primary key */
-      if (repl_info != NULL)
-	{
-	  repl_info->need_replication = false;
+	  /* No need to replicate this record since there is no primary key */
+	  if (repl_info != NULL)
+	    {
+	      repl_info->need_replication = false;
+	    }
 	}
     }
 

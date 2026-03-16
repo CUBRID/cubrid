@@ -697,8 +697,8 @@ chksum_drop_and_create_checksum_table (void)
 	    " %s INT,"		/* 7 */
 	    " %s DATETIME DEFAULT sys_datetime,"	/* 8 */
 	    " %s INT,"		/* 9 */
-	    " CONSTRAINT UNIQUE INDEX (%s, %s));"	/* 10, 11 */
-	    "DROP TABLE IF EXISTS %s;"	/* 12 */
+	    " CONSTRAINT UNIQUE INDEX (%s, %s))"	/* 10, 11 */
+	    " REPLICATION=OFF;" "DROP TABLE IF EXISTS %s;"	/* 12 */
 	    "CREATE TABLE %s"	/* 13 */
 	    "(%s VARCHAR (255) NOT NULL,"	/* 14 */
 	    " %s INT NOT NULL,"	/* 15 */
