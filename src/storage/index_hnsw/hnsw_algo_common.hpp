@@ -106,7 +106,8 @@ namespace cubhnsw
 
     bool operator== (const neighbors_key &o) const noexcept
     {
-      return level == o.level && oid_equal {} (slot, o.slot);
+      static constexpr oid_equal eq {};
+      return level == o.level && eq (slot, o.slot);
     }
   };
 
@@ -162,7 +163,6 @@ namespace cubhnsw
     std::size_t m_computed_distances_in_refines{};
     std::size_t m_computed_distances_in_reverse_refines{};
     std::size_t m_neighbors_cache_hits{};
-    std::size_t m_neighbors_disk_accesses{};
     std::size_t m_neighbors_page_fixes{};
 
     bool m_is_debugging {false};

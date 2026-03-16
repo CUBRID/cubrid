@@ -440,7 +440,6 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REVERSE_REFINES,
 				  "Num_hnsw_computed_distances_in_reverse_refines"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HNSW_NUM_NEIGHBORS_CACHE_HIT, "Num_hnsw_neighbors_cache_hit"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HNSW_NUM_NEIGHBORS_DISK_ACCESS, "Num_hnsw_neighbors_disk_access"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HNSW_NUM_NEIGHBORS_PAGE_FIX, "Num_hnsw_neighbors_page_fix"),
 
   /* Vacuum master/worker timers. */

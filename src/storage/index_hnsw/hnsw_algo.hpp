@@ -111,16 +111,13 @@ namespace cubhnsw
 	return compute_distance_ (context, avec, bvec);
       }
 
-      inline neighbors_ref_type get_neighbors (algo_context_t<Traits> &context,
-					       const pinned_t &node_blk,
-					       const level_t level)
+      inline neighbors_ref_type get_neighbors (algo_context_t &context,
+	  const pinned_t &node_blk,
+	  const level_t level)
       {
-	if constexpr (Traits::kind == storage_kind::disk)
+	if (context.m_is_perf_tracking)
 	  {
-	    if (context.m_is_perf_tracking)
-	      {
-		context.m_neighbors_page_fixes++;
-	      }
+	    context.m_neighbors_page_fixes++;
 	  }
 
 	node_type node = node_type (node_blk->data);
@@ -342,7 +339,6 @@ namespace cubhnsw
     perfmon_add_stat (context.m_thread_p, PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REVERSE_REFINES,
 		      context.m_computed_distances_in_reverse_refines);
     perfmon_add_stat (context.m_thread_p, PSTAT_HNSW_NUM_NEIGHBORS_CACHE_HIT, context.m_neighbors_cache_hits);
-    perfmon_add_stat (context.m_thread_p, PSTAT_HNSW_NUM_NEIGHBORS_DISK_ACCESS, context.m_neighbors_disk_accesses);
     perfmon_add_stat (context.m_thread_p, PSTAT_HNSW_NUM_NEIGHBORS_PAGE_FIX, context.m_neighbors_page_fixes);
 
     if (context.m_is_debugging)
@@ -432,7 +428,6 @@ namespace cubhnsw
     perfmon_add_stat (context.m_thread_p, PSTAT_HNSW_NUM_VISITED_NODE, context.m_visited_nodes);
     perfmon_add_stat (context.m_thread_p, PSTAT_HNSW_NUM_COMPUTED_DISTANCES, context.m_computed_distances);
     perfmon_add_stat (context.m_thread_p, PSTAT_HNSW_NUM_NEIGHBORS_CACHE_HIT, context.m_neighbors_cache_hits);
-    perfmon_add_stat (context.m_thread_p, PSTAT_HNSW_NUM_NEIGHBORS_DISK_ACCESS, context.m_neighbors_disk_accesses);
     perfmon_add_stat (context.m_thread_p, PSTAT_HNSW_NUM_NEIGHBORS_PAGE_FIX, context.m_neighbors_page_fixes);
 
     result.results.assign (top.data(), top.data() + top.size());
@@ -507,10 +502,6 @@ namespace cubhnsw
 	  }
 
 	// No cache: load node and neighbors directly and populate cache.
-	if (context.m_is_perf_tracking)
-	  {
-	    context.m_neighbors_disk_accesses++;
-	  }
 	pinned_t candidate_node_blk = m_storage->get_node_by_slot_id (context, candidate_slot, lock_mode::shared);
 	neighbors_ref_type candidate_neighbors = get_neighbors (context, candidate_node_blk, level);
 
@@ -585,10 +576,6 @@ namespace cubhnsw
 	      }
 	    else
 	      {
-		if (context.m_is_perf_tracking)
-		  {
-		    context.m_neighbors_disk_accesses++;
-		  }
 		pinned_t closest_node_blk = m_storage->get_node_by_slot_id (context, closest_slot, lock_mode::shared);
 		const slot_id_t original_closest_slot = closest_slot;
 
