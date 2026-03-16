@@ -111,10 +111,21 @@ namespace cubhnsw
 	return compute_distance_ (context, avec, bvec);
       }
 
-      inline neighbors_ref_type get_neighbors (const pinned_t &node_blk, const level_t level)
+      inline neighbors_ref_type get_neighbors (algo_context_t<Traits> &context,
+					       const pinned_t &node_blk,
+					       const level_t level)
       {
+	if constexpr (Traits::kind == storage_kind::disk)
+	  {
+	    if (context.m_is_perf_tracking)
+	      {
+		context.m_neighbors_page_fixes++;
+	      }
+	  }
+
 	node_type node = node_type (node_blk->data);
-	neighbors_ref_type neighbors = neighbors_ref_type (node.neighbors_tape() + m_storage->node_neighbors_offset_ (level));
+	neighbors_ref_type neighbors =
+		neighbors_ref_type (node.neighbors_tape() + m_storage->node_neighbors_offset_ (level));
 
 	HNSW_ALGO_PRINT ("[node] node: %s\n", node.dump().c_str());
 	HNSW_ALGO_PRINT ("[neighbors of level %d] neighbors: %s\n", (int)level, neighbors.dump().c_str());
@@ -293,7 +304,7 @@ namespace cubhnsw
 
 	  candidates_view_t closest_view;
 	  {
-	    neighbors_ref_type neighbors = get_neighbors (new_node_blk, level);
+	    neighbors_ref_type neighbors = get_neighbors (context, new_node_blk, level);
 	    neighbors.clear();
 
 	    form_links_to_closest_ (context, new_node_blk, level, closest_view);
@@ -332,6 +343,7 @@ namespace cubhnsw
 		      context.m_computed_distances_in_reverse_refines);
     perfmon_add_stat (context.m_thread_p, PSTAT_HNSW_NUM_NEIGHBORS_CACHE_HIT, context.m_neighbors_cache_hits);
     perfmon_add_stat (context.m_thread_p, PSTAT_HNSW_NUM_NEIGHBORS_DISK_ACCESS, context.m_neighbors_disk_accesses);
+    perfmon_add_stat (context.m_thread_p, PSTAT_HNSW_NUM_NEIGHBORS_PAGE_FIX, context.m_neighbors_page_fixes);
 
     if (context.m_is_debugging)
       {
@@ -421,6 +433,7 @@ namespace cubhnsw
     perfmon_add_stat (context.m_thread_p, PSTAT_HNSW_NUM_COMPUTED_DISTANCES, context.m_computed_distances);
     perfmon_add_stat (context.m_thread_p, PSTAT_HNSW_NUM_NEIGHBORS_CACHE_HIT, context.m_neighbors_cache_hits);
     perfmon_add_stat (context.m_thread_p, PSTAT_HNSW_NUM_NEIGHBORS_DISK_ACCESS, context.m_neighbors_disk_accesses);
+    perfmon_add_stat (context.m_thread_p, PSTAT_HNSW_NUM_NEIGHBORS_PAGE_FIX, context.m_neighbors_page_fixes);
 
     result.results.assign (top.data(), top.data() + top.size());
     for (std::size_t i = 0; i < top.size (); ++i)
@@ -499,7 +512,7 @@ namespace cubhnsw
 	    context.m_neighbors_disk_accesses++;
 	  }
 	pinned_t candidate_node_blk = m_storage->get_node_by_slot_id (context, candidate_slot, lock_mode::shared);
-	neighbors_ref_type candidate_neighbors = get_neighbors (candidate_node_blk, level);
+	neighbors_ref_type candidate_neighbors = get_neighbors (context, candidate_node_blk, level);
 
 	std::vector<slot_id_t> neigh;
 	neigh.reserve (candidate_neighbors.size ());
@@ -579,7 +592,7 @@ namespace cubhnsw
 		pinned_t closest_node_blk = m_storage->get_node_by_slot_id (context, closest_slot, lock_mode::shared);
 		const slot_id_t original_closest_slot = closest_slot;
 
-		neighbors_ref_type neighbors = get_neighbors (closest_node_blk, level);
+		neighbors_ref_type neighbors = get_neighbors (context, closest_node_blk, level);
 		std::vector<slot_id_t> neigh;
 		neigh.reserve (neighbors.size ());
 
@@ -617,7 +630,7 @@ namespace cubhnsw
     refine_ (context, layer_connectivity,top, top_view, context.m_computed_distances_in_refines);
 
     // outgoing links from new node
-    neighbors_ref_type new_neighbors = get_neighbors (new_node_blk, level);
+    neighbors_ref_type new_neighbors = get_neighbors (context, new_node_blk, level);
     for (std::size_t i = 0; i != top_view.size(); i++)
       {
 	new_neighbors.push_back (top_view[i].slot);
@@ -653,7 +666,7 @@ namespace cubhnsw
 	// TODO: exclusive??
 	pinned_t close_node_blk = m_storage->get_node_by_slot_id (context, close_slot, lock_mode::exclusive);
 	{
-	  close_header = get_neighbors (close_node_blk, level);
+	  close_header = get_neighbors (context, close_node_blk, level);
 	  if (close_header.size () < layer_connectivity)
 	    {
 	      close_header.push_back (new_slot);
