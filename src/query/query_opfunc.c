@@ -8858,6 +8858,7 @@ qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name
   HFID hfid;
   RECDES recdes;
   HEAP_SCANCACHE scan_cache;
+  bool scan_cache_opened = false;
   int npages, nobjs, avg_length;
   int error = NO_ERROR;
 
@@ -8883,6 +8884,7 @@ qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name
     }
 
   (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
+  scan_cache_opened = true;
 
   if (heap_get_class_record (thread_p, &class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
     {
@@ -8898,6 +8900,7 @@ qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name
     }
 
   error = heap_scancache_end (thread_p, &scan_cache);
+  scan_cache_opened = false;
   if (error != NO_ERROR)
     {
       goto exit;
@@ -8931,10 +8934,11 @@ qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name
       break;
     }
 
-  return NO_ERROR;
-
 exit:
-  heap_scancache_end (thread_p, &scan_cache);
+  if (scan_cache_opened)
+    {
+      (void) heap_scancache_end (thread_p, &scan_cache);
+    }
   return error;
 }
 
