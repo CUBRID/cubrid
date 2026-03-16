@@ -12073,6 +12073,7 @@ slob_remove_dir (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
   ptr = or_unpack_int (ptr, &attrid);
   if (ptr == NULL)
     {
+      error = ER_FAILED;
       goto end;
     }
 
