@@ -12037,6 +12037,10 @@ slob_create_dir (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
     }
 
   error = xlob_create_dir (thread_p, &hfid, attrid_arr, attrid_arr_length);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
 
 end:
   db_private_free_and_init (thread_p, attrid_arr);
