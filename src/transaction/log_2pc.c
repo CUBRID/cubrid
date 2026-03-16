@@ -565,10 +565,17 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 #ifdef SERVER_MODE
 	  (void) dblink_2pc_daemon_enqueue (tdes->gtrid, new_state, &participants[i]);
 #else
+	  /* SA mode: no daemon/queue; run send decision and _db_global_tran delete in a system transaction */
+	  log_sysop_start (thread_p);
 	  error = dblink_2pc_send_decision_one_participant (tdes->gtrid, &participants[i], *decision);
 	  if (error == NO_ERROR)
 	    {
 	      (void) dblink_global_tran_delete_row (thread_p, tdes->gtrid, participants[i].conn_handle);
+	      log_sysop_commit (thread_p);
+	    }
+	  else
+	    {
+	      log_sysop_abort (thread_p);
 	    }
 #endif
 	}
