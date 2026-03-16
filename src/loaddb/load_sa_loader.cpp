@@ -1093,7 +1093,7 @@ ldr_clear_err_total (LDR_CONTEXT *context)
 static const char *
 ldr_class_name (LDR_CONTEXT *context)
 {
-  static const char *name = NULL;
+  const char *name = NULL;
 
   if (context)
     {
@@ -1117,7 +1117,7 @@ ldr_class_name (LDR_CONTEXT *context)
 static const char *
 ldr_attr_name (LDR_CONTEXT *context)
 {
-  static const char *name = NULL;
+  const char *name = NULL;
 
   if (context && context->attrs && context->valid)
     {
