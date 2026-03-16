@@ -8836,79 +8836,20 @@ exit:
 }
 
 /*
- * qdata_get_estimated_table_rows () - gets the estimated number of objects
- *				       in a table using its name
- *   return: NO_ERROR, or error code
- *   thread_p(in)      : thread context
- *   db_table_name(in) : string DB_VALUE holding the name of the table
- *   result_p(out)     : estimated row count (bigint or NULL DB_VALUE)
- *
- * Note: Like index_cardinality(), if the specified table does not exist,
- *       result_p is set to NULL and NO_ERROR is returned (no error is raised).
- */
-int
-qdata_get_estimated_table_rows (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name, DB_VALUE * result_p)
-{
-  const char *unique_name_str;
-  char lower_name[SM_MAX_IDENTIFIER_LENGTH];
-  OID class_oid;
-  HFID hfid;
-  int nobjs;
-  int error = NO_ERROR;
-
-  db_make_null (result_p);
-
-  if (DB_IS_NULL (db_table_name))
-    {
-      goto exit;
-    }
-
-  unique_name_str = db_get_string (db_table_name);
-  if (unique_name_str == NULL)
-    {
-      goto exit;
-    }
-
-  intl_identifier_lower (unique_name_str, lower_name);
-
-  if (xlocator_find_class_oid (thread_p, lower_name, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
-    {
-      goto exit;
-    }
-
-  error = heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL);
-  if (error != NO_ERROR)
-    {
-      goto exit;
-    }
-
-  nobjs = heap_estimate_num_objects (thread_p, &hfid);
-  if (nobjs < 0)
-    {
-      db_make_null (result_p);
-    }
-  else
-    {
-      db_make_bigint (result_p, (DB_BIGINT) nobjs);
-    }
-
-exit:
-  return error;
-}
-
-/*
- * qdata_get_estimated_avg_row_length () - gets the estimated average row
- *					     length of a table using its name
+ * qdata_get_estimated_heap_stat () - gets an estimated heap statistic
+ *				      of a table using its name
  *   return: NO_ERROR, or error code
  *   thread_p(in)      : thread context
  *   db_table_name(in) : string DB_VALUE holding the unique_name of the table
- *   result_p(out)     : estimated average row length in bytes (bigint or NULL DB_VALUE)
+ *   result_p(out)     : estimated statistic (bigint or NULL DB_VALUE)
+ *   op(in)            : which statistic to return
  *
- * Note: Like index_cardinality(), if the specified table does not exist,
- *       result_p is set to NULL and NO_ERROR is returned (no error is raised).
+ * Note: If the specified table does not exist or NULL is given,
+ *       result_p is set to NULL and NO_ERROR is returned.
+ *       Internal errors (heap_get_class_info, heap_estimate failures) are propagated.
  */
 int
-qdata_get_estimated_avg_row_length (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name, DB_VALUE * result_p)
+qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name, DB_VALUE * result_p, OPERATOR_TYPE op)
 {
   const char *unique_name_str;
   char lower_name[SM_MAX_IDENTIFIER_LENGTH];
@@ -8941,145 +8882,38 @@ qdata_get_estimated_avg_row_length (THREAD_ENTRY * thread_p, DB_VALUE * db_table
   error = heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL);
   if (error != NO_ERROR)
     {
-      er_clear ();
-      error = NO_ERROR;
       goto exit;
     }
 
   if (heap_estimate (thread_p, &hfid, &npages, &nobjs, &avg_length) < 0)
     {
-      db_make_null (result_p);
+      error = ER_FAILED;
+      goto exit;
     }
   else
     {
-      db_make_bigint (result_p, (DB_BIGINT) avg_length);
-    }
-
-exit:
-  return error;
-}
-
-/*
- * qdata_get_estimated_data_length () - gets the estimated data length
- *					  of a table using its name
- *   return: NO_ERROR, or error code
- *   thread_p(in)      : thread context
- *   db_table_name(in) : string DB_VALUE holding the unique_name of the table
- *   result_p(out)     : estimated data length in bytes (bigint or NULL DB_VALUE)
- *
- * Note: Like index_cardinality(), if the specified table does not exist,
- *       result_p is set to NULL and NO_ERROR is returned (no error is raised).
- */
-int
-qdata_get_estimated_data_length (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name, DB_VALUE * result_p)
-{
-  const char *unique_name_str;
-  char lower_name[SM_MAX_IDENTIFIER_LENGTH];
-  OID class_oid;
-  HFID hfid;
-  int npages, nobjs, avg_length;
-  int error = NO_ERROR;
-
-  db_make_null (result_p);
-
-  if (DB_IS_NULL (db_table_name))
-    {
-      goto exit;
-    }
-
-  unique_name_str = db_get_string (db_table_name);
-  if (unique_name_str == NULL)
-    {
-      goto exit;
-    }
-
-  intl_identifier_lower (unique_name_str, lower_name);
-
-  if (xlocator_find_class_oid (thread_p, lower_name, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
-    {
-      er_clear ();
-      goto exit;
-    }
-
-  error = heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL);
-  if (error != NO_ERROR)
-    {
-      er_clear ();
-      error = NO_ERROR;
-      goto exit;
-    }
-
-  if (heap_estimate (thread_p, &hfid, &npages, &nobjs, &avg_length) < 0)
-    {
-      db_make_null (result_p);
-    }
-  else
-    {
-      db_make_bigint (result_p, (DB_BIGINT) npages * DB_PAGESIZE);
-    }
-
-exit:
-  return error;
-}
-
-/*
- * qdata_get_estimated_data_free () - gets the estimated free space
- *				       of a table using its name
- *   return: NO_ERROR, or error code
- *   thread_p(in)      : thread context
- *   db_table_name(in) : string DB_VALUE holding the unique_name of the table
- *   result_p(out)     : estimated free space in bytes (bigint or NULL DB_VALUE)
- *
- * Note: Like index_cardinality(), if the specified table does not exist,
- *       result_p is set to NULL and NO_ERROR is returned (no error is raised).
- */
-int
-qdata_get_estimated_data_free (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name, DB_VALUE * result_p)
-{
-  const char *unique_name_str;
-  char lower_name[SM_MAX_IDENTIFIER_LENGTH];
-  OID class_oid;
-  HFID hfid;
-  int npages, nobjs, avg_length;
-  int error = NO_ERROR;
-
-  db_make_null (result_p);
-
-  if (DB_IS_NULL (db_table_name))
-    {
-      goto exit;
-    }
-
-  unique_name_str = db_get_string (db_table_name);
-  if (unique_name_str == NULL)
-    {
-      goto exit;
-    }
-
-  intl_identifier_lower (unique_name_str, lower_name);
-
-  if (xlocator_find_class_oid (thread_p, lower_name, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
-    {
-      er_clear ();
-      goto exit;
-    }
-
-  error = heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL);
-  if (error != NO_ERROR)
-    {
-      er_clear ();
-      error = NO_ERROR;
-      goto exit;
-    }
-
-  if (heap_estimate (thread_p, &hfid, &npages, &nobjs, &avg_length) < 0)
-    {
-      db_make_null (result_p);
-    }
-  else
-    {
-      DB_BIGINT data_free = (DB_BIGINT) npages * DB_PAGESIZE - (DB_BIGINT) nobjs * avg_length;
-      db_make_bigint (result_p, data_free > 0 ? data_free : 0);
+      switch (op)
+	{
+	case T_ESTIMATED_TABLE_ROWS:
+	  db_make_bigint (result_p, (DB_BIGINT) nobjs);
+	  break;
+	case T_ESTIMATED_AVG_ROW_LENGTH:
+	  db_make_bigint (result_p, (DB_BIGINT) avg_length);
+	  break;
+	case T_ESTIMATED_DATA_LENGTH:
+	  db_make_bigint (result_p, (DB_BIGINT) npages * DB_PAGESIZE);
+	  break;
+	case T_ESTIMATED_DATA_FREE:
+	  {
+	    DB_BIGINT data_free = (DB_BIGINT) npages * DB_PAGESIZE - (DB_BIGINT) nobjs * avg_length;
+	    db_make_bigint (result_p, data_free > 0 ? data_free : 0);
+	  }
+	  break;
+	default:
+	  assert (false);
+	  db_make_null (result_p);
+	  break;
+	}
     }
 
 exit:
