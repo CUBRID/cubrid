@@ -17,7 +17,7 @@
  */
 
 /*
- * connection_support.c - general networking function
+ * connection_support.cpp - general networking function
  */
 
 #ident "$Id$"
@@ -29,6 +29,7 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <sys/ioctl.h>
 #include <assert.h>
 
 #if defined(WINDOWS)
@@ -66,6 +67,7 @@
 #include "tcp.h"
 #endif /* !WINDOWS */
 #if defined(SERVER_MODE)
+#include "span.hpp"
 #include "connection_sr.h"
 #else
 #include "connection_list_cl.h"
@@ -133,45 +135,30 @@ static char css_Vector_buffer[CSS_VECTOR_SIZE];
 
 static int css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name, const char **client_host_name,
 				     int *client_pid);
-static int css_send_io_vector (CSS_CONN_ENTRY * conn, struct iovec *vec_p, ssize_t total_len, int vector_length,
+static int css_send_io_vector (CSS_CONN_ENTRY *conn, struct iovec *vec_p, ssize_t total_len, int vector_length,
 			       int timeout);
 
-static int css_net_send2 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *buff2, int len2);
-static int css_net_send3 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *buff2, int len2,
+static int css_net_send2 (CSS_CONN_ENTRY *conn, const char *buff1, int len1, const char *buff2, int len2);
+static int css_net_send3 (CSS_CONN_ENTRY *conn, const char *buff1, int len1, const char *buff2, int len2,
 			  const char *buff3, int len3);
-static int css_net_send4 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *buff2, int len2,
+static int css_net_send4 (CSS_CONN_ENTRY *conn, const char *buff1, int len1, const char *buff2, int len2,
 			  const char *buff3, int len3, const char *buff4, int len4);
-#if !defined(SERVER_MODE)
-static int css_net_send5 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *buff2, int len2,
-			  const char *buff3, int len3, const char *buff4, int len4, const char *buff5, int len5);
-#endif /* !SERVER_MODE */
-static int css_net_send6 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *buff2, int len2,
-			  const char *buff3, int len3, const char *buff4, int len4, const char *buff5, int len5,
-			  const char *buff6, int len6);
-#if !defined(SERVER_MODE)
-static int css_net_send7 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *buff2, int len2,
-			  const char *buff3, int len3, const char *buff4, int len4, const char *buff5, int len5,
-			  const char *buff6, int len6, const char *buff7, int len7);
-#endif /* !SERVER_MODE */
-static int css_net_send8 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *buff2, int len2,
-			  const char *buff3, int len3, const char *buff4, int len4, const char *buff5, int len5,
-			  const char *buff6, int len6, const char *buff7, int len7, const char *buff8, int len8);
 #if defined(ENABLE_UNUSED_FUNCTION)
-static int css_net_send_large_data_with_arg (CSS_CONN_ENTRY * conn, const char *header_buffer, int header_len,
-					     NET_HEADER * header_array, const char **data_array, int num_array);
+static int css_net_send_large_data_with_arg (CSS_CONN_ENTRY *conn, const char *header_buffer, int header_len,
+    NET_HEADER *header_array, const char **data_array, int num_array);
 #endif
 #if defined(SERVER_MODE)
 static char *css_trim_str (char *str);
 #endif
 
 #if !defined (CS_MODE)
-static int css_make_access_status_exist_user (THREAD_ENTRY * thread_p, OID * class_oid,
-					      LAST_ACCESS_STATUS ** access_status_array, int num_user,
-					      SHOWSTMT_ARRAY_CONTEXT * ctx);
+static int css_make_access_status_exist_user (THREAD_ENTRY *thread_p, OID *class_oid,
+    LAST_ACCESS_STATUS **access_status_array, int num_user,
+    SHOWSTMT_ARRAY_CONTEXT *ctx);
 
-static LAST_ACCESS_STATUS *css_get_access_status_with_name (LAST_ACCESS_STATUS ** access_status_array, int num_user,
-							    const char *user_name);
-static LAST_ACCESS_STATUS *css_get_unused_access_status (LAST_ACCESS_STATUS ** access_status_array, int num_user);
+static LAST_ACCESS_STATUS *css_get_access_status_with_name (LAST_ACCESS_STATUS **access_status_array, int num_user,
+    const char *user_name);
+static LAST_ACCESS_STATUS *css_get_unused_access_status (LAST_ACCESS_STATUS **access_status_array, int num_user);
 #endif /* !CS_MODE */
 
 #if !defined(SERVER_MODE)
@@ -239,7 +226,7 @@ css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name, const char *
   if (conn != NULL && conn->get_tran_index () != -1)
     {
       error = logtb_find_client_name_host_pid (conn->get_tran_index (), &client_prog_name, client_user_name,
-					       client_host_name, client_pid);
+	      client_host_name, client_pid);
       if (error == NO_ERROR)
 	{
 	  tran_index = conn->get_tran_index ();
@@ -370,6 +357,7 @@ int
 css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 {
   int nleft, n;
+  int remains;
 
 #if defined (WINDOWS)
   int winsock_error;
@@ -420,8 +408,16 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 	}
       else
 	{
-	  if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
+	  if (po[0].revents & POLLERR || ((po[0].revents & POLLHUP) && ! (po[0].revents & POLLIN)))
 	    {
+	      if (ioctl (fd, FIONREAD, &remains) >= 0)
+		{
+		  if (remains > 0)
+		    {
+		      er_log_debug (ARG_FILE_LINE, "%d bytes of data pending in buffer (fd = %d)\n", remains, fd);
+		    }
+		}
+
 	      errno = EINVAL;
 	      er_log_debug (ARG_FILE_LINE, "css_readn: %s %s", (po[0].revents & POLLERR ? "POLLERR" : "POLLHUP"),
 			    strerror (errno));
@@ -430,7 +426,7 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 	}
 #endif /* !WINDOWS */
 
-    read_again:
+read_again:
       n = recv (fd, ptr, nleft, 0);
 
       if (n == 0)
@@ -963,7 +959,7 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
 	    }
 	}
 
-    write_again:
+write_again:
       n = writev (fd, *vec, *len);
       if (n > 0)
 	{
@@ -1016,21 +1012,23 @@ css_set_io_vector (struct iovec *vec1_p, struct iovec *vec2_p, const char *buff,
  *   timeout(in): timeout value in milli-seconds
  */
 static int
-css_send_io_vector (CSS_CONN_ENTRY * conn, struct iovec *vec_p, ssize_t total_len, int vector_length, int timeout)
+css_send_io_vector (CSS_CONN_ENTRY *conn, struct iovec *vec_p, ssize_t total_len, int vector_length, int timeout)
 {
   int rc = NO_ERRORS;
 
   rc = css_send_io_vector_with_socket (conn->fd, vec_p, total_len, vector_length, timeout);
   if (rc != NO_ERRORS)
     {
+#if !defined (SERVER_MODE)
       css_shutdown_conn (conn);
+#endif
     }
 
   return rc;
 }
 
 int
-css_send_io_vector_with_socket (SOCKET & socket, struct iovec *vec_p, ssize_t total_len, int vector_length, int timeout)
+css_send_io_vector_with_socket (SOCKET &socket, struct iovec *vec_p, ssize_t total_len, int vector_length, int timeout)
 {
   int rc;
 
@@ -1040,12 +1038,14 @@ css_send_io_vector_with_socket (SOCKET & socket, struct iovec *vec_p, ssize_t to
       rc = css_vector_send (socket, &vec_p, &vector_length, rc, timeout);
       if (rc < 0)
 	{
+#if !defined (SERVER_MODE)
 	  if (!IS_INVALID_SOCKET (socket))
 	    {
 	      /* if this is the PC, it also shuts down Winsock */
 	      css_shutdown_socket (socket);
 	      socket = INVALID_SOCKET;
 	    }
+#endif
 	  return ERROR_ON_WRITE;
 	}
       total_len -= rc;
@@ -1065,19 +1065,20 @@ css_send_io_vector_with_socket (SOCKET & socket, struct iovec *vec_p, ssize_t to
  * Note: Used by client and server.
  */
 int
-css_net_send (CSS_CONN_ENTRY * conn, const char *buff, int len, int timeout)
+css_net_send (CSS_CONN_ENTRY *conn, const char *buff, int len, int timeout)
 {
   return css_net_send_with_socket (conn->fd, buff, len, timeout);
 }
 
 int
-css_net_send_with_socket (SOCKET & socket, const char *buff, int len, int timeout)
+css_net_send_with_socket (SOCKET &socket, const char *buff, int len, int timeout)
 {
   int templen;
   struct iovec iov[2];
   int total_len;
 
-  css_set_io_vector (&(iov[0]), &(iov[1]), buff, len, &templen);
+  css_set_io_vector (& (iov[0]), & (iov[1]), buff, len, &templen);
+  assert (templen != 0);
   total_len = len + sizeof (int);
 
   return css_send_io_vector_with_socket (socket, iov, total_len, 2, timeout);
@@ -1096,14 +1097,17 @@ css_net_send_with_socket (SOCKET & socket, const char *buff, int len, int timeou
  * Note: Used by client and server.
  */
 static int
-css_net_send2 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *buff2, int len2)
+css_net_send2 (CSS_CONN_ENTRY *conn, const char *buff1, int len1, const char *buff2, int len2)
 {
   int templen1, templen2;
   struct iovec iov[4];
   int total_len;
 
-  css_set_io_vector (&(iov[0]), &(iov[1]), buff1, len1, &templen1);
-  css_set_io_vector (&(iov[2]), &(iov[3]), buff2, len2, &templen2);
+  css_set_io_vector (& (iov[0]), & (iov[1]), buff1, len1, &templen1);
+  css_set_io_vector (& (iov[2]), & (iov[3]), buff2, len2, &templen2);
+
+  assert (templen1 != 0);
+  assert (templen2 != 0);
 
   total_len = len1 + len2 + sizeof (int) * 2;
 
@@ -1126,23 +1130,27 @@ css_net_send2 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *b
  * Note: Used by client and server.
  */
 static int
-css_net_send3 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *buff2, int len2, const char *buff3,
+css_net_send3 (CSS_CONN_ENTRY *conn, const char *buff1, int len1, const char *buff2, int len2, const char *buff3,
 	       int len3)
 {
   return css_net_send3_with_socket (conn->fd, buff1, len1, buff2, len2, buff3, len3);
 }
 
 int
-css_net_send3_with_socket (SOCKET & socket, const char *buff1, int len1, const char *buff2, int len2, const char *buff3,
+css_net_send3_with_socket (SOCKET &socket, const char *buff1, int len1, const char *buff2, int len2, const char *buff3,
 			   int len3)
 {
   int templen1, templen2, templen3;
   struct iovec iov[6];
   int total_len;
 
-  css_set_io_vector (&(iov[0]), &(iov[1]), buff1, len1, &templen1);
-  css_set_io_vector (&(iov[2]), &(iov[3]), buff2, len2, &templen2);
-  css_set_io_vector (&(iov[4]), &(iov[5]), buff3, len3, &templen3);
+  css_set_io_vector (& (iov[0]), & (iov[1]), buff1, len1, &templen1);
+  css_set_io_vector (& (iov[2]), & (iov[3]), buff2, len2, &templen2);
+  css_set_io_vector (& (iov[4]), & (iov[5]), buff3, len3, &templen3);
+
+  assert (templen1 != 0);
+  assert (templen2 != 0);
+  assert (templen3 != 0);
 
   total_len = len1 + len2 + len3 + sizeof (int) * 3;
 
@@ -1167,172 +1175,27 @@ css_net_send3_with_socket (SOCKET & socket, const char *buff1, int len1, const c
  * Note: Used by client and server.
  */
 static int
-css_net_send4 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *buff2, int len2, const char *buff3,
+css_net_send4 (CSS_CONN_ENTRY *conn, const char *buff1, int len1, const char *buff2, int len2, const char *buff3,
 	       int len3, const char *buff4, int len4)
 {
   int templen1, templen2, templen3, templen4;
   struct iovec iov[8];
   int total_len;
 
-  css_set_io_vector (&(iov[0]), &(iov[1]), buff1, len1, &templen1);
-  css_set_io_vector (&(iov[2]), &(iov[3]), buff2, len2, &templen2);
-  css_set_io_vector (&(iov[4]), &(iov[5]), buff3, len3, &templen3);
-  css_set_io_vector (&(iov[6]), &(iov[7]), buff4, len4, &templen4);
+  css_set_io_vector (& (iov[0]), & (iov[1]), buff1, len1, &templen1);
+  css_set_io_vector (& (iov[2]), & (iov[3]), buff2, len2, &templen2);
+  css_set_io_vector (& (iov[4]), & (iov[5]), buff3, len3, &templen3);
+  css_set_io_vector (& (iov[6]), & (iov[7]), buff4, len4, &templen4);
+
+  assert (templen1 != 0);
+  assert (templen2 != 0);
+  assert (templen3 != 0);
+  assert (templen4 != 0);
 
   total_len = len1 + len2 + len3 + len4 + sizeof (int) * 4;
 
   /* timeout in milli-second in css_send_io_vector() */
   return css_send_io_vector (conn, iov, total_len, 8, -1);
-}
-
-#if defined(CS_MODE) || defined(SA_MODE)
-/*
- * css_net_send5() - Send a record to the other end.
- *   return: enum css_error_code (See connection_defs.h)
- *   param(in):
- *
- * Note: Used by client and server.
- */
-static int
-css_net_send5 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *buff2, int len2, const char *buff3,
-	       int len3, const char *buff4, int len4, const char *buff5, int len5)
-{
-  int templen1, templen2, templen3, templen4, templen5;
-  struct iovec iov[10];
-  int total_len;
-
-  css_set_io_vector (&(iov[0]), &(iov[1]), buff1, len1, &templen1);
-  css_set_io_vector (&(iov[2]), &(iov[3]), buff2, len2, &templen2);
-  css_set_io_vector (&(iov[4]), &(iov[5]), buff3, len3, &templen3);
-  css_set_io_vector (&(iov[6]), &(iov[7]), buff4, len4, &templen4);
-  css_set_io_vector (&(iov[8]), &(iov[9]), buff5, len5, &templen5);
-
-  total_len = len1 + len2 + len3 + len4 + len5 + sizeof (int) * 5;
-
-  /* timeout in milli-second in css_send_io_vector() */
-  return css_send_io_vector (conn, iov, total_len, 10, -1);
-}
-#endif /* CS_MODE || SA_MODE */
-
-/*
- * css_net_send6() - Send a record to the other end.
- *   return: enum css_error_code (See connection_defs.h)
- *   conn(in): connection entry
- *   fd(in): socket descripter
- *   buff1(in): buffer for data will be sent
- *   len1(in): length for data will be sent
- *   buff2(in): buffer for data will be sent
- *   len2(in): length for data will be sent
- *   buff3(in): buffer for data will be sent
- *   len3(in): length for data will be sent
- *   buff4(in): buffer for data will be sent
- *   len4(in): length for data will be sent
- *   buff5(in): buffer for data will be sent
- *   len5(in): length for data will be sent
- *   buff6(in): buffer for data will be sent
- *   len6(in): length for data will be sent
- *
- * Note: Used by client and server.
- */
-static int
-css_net_send6 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *buff2, int len2, const char *buff3,
-	       int len3, const char *buff4, int len4, const char *buff5, int len5, const char *buff6, int len6)
-{
-  int templen1, templen2, templen3, templen4, templen5, templen6;
-  struct iovec iov[12];
-  int total_len;
-
-  css_set_io_vector (&(iov[0]), &(iov[1]), buff1, len1, &templen1);
-  css_set_io_vector (&(iov[2]), &(iov[3]), buff2, len2, &templen2);
-  css_set_io_vector (&(iov[4]), &(iov[5]), buff3, len3, &templen3);
-  css_set_io_vector (&(iov[6]), &(iov[7]), buff4, len4, &templen4);
-  css_set_io_vector (&(iov[8]), &(iov[9]), buff5, len5, &templen5);
-  css_set_io_vector (&(iov[10]), &(iov[11]), buff6, len6, &templen6);
-
-  total_len = len1 + len2 + len3 + len4 + len5 + len6 + sizeof (int) * 6;
-
-  /* timeout in milli-second in css_send_io_vector() */
-  return css_send_io_vector (conn, iov, total_len, 12, -1);
-}
-
-#if defined(CS_MODE) || defined(SA_MODE)
-/*
- * css_net_send7() - Send a record to the other end.
- *   return: enum css_error_code (See connection_defs.h)
- *   param(in):
- *
- * Note: Used by client and server.
- */
-static int
-css_net_send7 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *buff2, int len2, const char *buff3,
-	       int len3, const char *buff4, int len4, const char *buff5, int len5, const char *buff6, int len6,
-	       const char *buff7, int len7)
-{
-  int templen1, templen2, templen3, templen4, templen5, templen6, templen7;
-  struct iovec iov[14];
-  int total_len;
-
-  css_set_io_vector (&(iov[0]), &(iov[1]), buff1, len1, &templen1);
-  css_set_io_vector (&(iov[2]), &(iov[3]), buff2, len2, &templen2);
-  css_set_io_vector (&(iov[4]), &(iov[5]), buff3, len3, &templen3);
-  css_set_io_vector (&(iov[6]), &(iov[7]), buff4, len4, &templen4);
-  css_set_io_vector (&(iov[8]), &(iov[9]), buff5, len5, &templen5);
-  css_set_io_vector (&(iov[10]), &(iov[11]), buff6, len6, &templen6);
-  css_set_io_vector (&(iov[12]), &(iov[13]), buff7, len7, &templen7);
-
-  total_len = len1 + len2 + len3 + len4 + len5 + len6 + len7 + sizeof (int) * 7;
-
-  /* timeout in milli-second in css_send_io_vector() */
-  return css_send_io_vector (conn, iov, total_len, 14, -1);
-}
-#endif /* CS_MODE || SA_MODE */
-
-/*
- * css_net_send8() - Send a record to the other end.
- *   return: enum css_error_code (See connection_defs.h)
- *   conn(in): connection entry
- *   fd(in): socket descripter
- *   buff1(in): buffer for data will be sent
- *   len1(in): length for data will be sent
- *   buff2(in): buffer for data will be sent
- *   len2(in): length for data will be sent
- *   buff3(in): buffer for data will be sent
- *   len3(in): length for data will be sent
- *   buff4(in): buffer for data will be sent
- *   len4(in): length for data will be sent
- *   buff5(in): buffer for data will be sent
- *   len5(in): length for data will be sent
- *   buff6(in): buffer for data will be sent
- *   len6(in): length for data will be sent
- *   buff7(in): buffer for data will be sent
- *   len7(in): length for data will be sent
- *   buff8(in): buffer for data will be sent
- *   len8(in): length for data will be sent
- *
- * Note: Used by client and server.
- */
-static int
-css_net_send8 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *buff2, int len2, const char *buff3,
-	       int len3, const char *buff4, int len4, const char *buff5, int len5, const char *buff6, int len6,
-	       const char *buff7, int len7, const char *buff8, int len8)
-{
-  int templen1, templen2, templen3, templen4, templen5, templen6, templen7, templen8;
-  struct iovec iov[16];
-  int total_len;
-
-  css_set_io_vector (&(iov[0]), &(iov[1]), buff1, len1, &templen1);
-  css_set_io_vector (&(iov[2]), &(iov[3]), buff2, len2, &templen2);
-  css_set_io_vector (&(iov[4]), &(iov[5]), buff3, len3, &templen3);
-  css_set_io_vector (&(iov[6]), &(iov[7]), buff4, len4, &templen4);
-  css_set_io_vector (&(iov[8]), &(iov[9]), buff5, len5, &templen5);
-  css_set_io_vector (&(iov[10]), &(iov[11]), buff6, len6, &templen6);
-  css_set_io_vector (&(iov[12]), &(iov[13]), buff7, len7, &templen7);
-  css_set_io_vector (&(iov[14]), &(iov[15]), buff8, len8, &templen8);
-
-  total_len = len1 + len2 + len3 + len4 + len5 + len6 + len7 + len8 + sizeof (int) * 8;
-
-  /* timeout in milli-second in css_send_io_vector() */
-  return css_send_io_vector (conn, iov, total_len, 16, -1);
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -1347,7 +1210,7 @@ css_net_send8 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *b
  * Note: Used by client and server.
  */
 static int
-css_net_send_large_data (CSS_CONN_ENTRY * conn, NET_HEADER * header_array, const char **data_array, int num_array)
+css_net_send_large_data (CSS_CONN_ENTRY *conn, NET_HEADER *header_array, const char **data_array, int num_array)
 {
   int *templen;
   struct iovec *iov;
@@ -1370,12 +1233,12 @@ css_net_send_large_data (CSS_CONN_ENTRY * conn, NET_HEADER * header_array, const
 
   for (i = 0; i < num_array; i++)
     {
-      css_set_io_vector (&(iov[i * 4]), &(iov[i * 4 + 1]), (char *) (&header_array[i]), sizeof (NET_HEADER),
+      css_set_io_vector (& (iov[i * 4]), & (iov[i * 4 + 1]), (char *) (&header_array[i]), sizeof (NET_HEADER),
 			 &templen[i * 2]);
       total_len += sizeof (NET_HEADER) + sizeof (int);
 
       buffer_size = ntohl (header_array[i].buffer_size);
-      css_set_io_vector (&(iov[i * 4 + 2]), &(iov[i * 4 + 3]), data_array[i], buffer_size, &templen[i * 2 + 1]);
+      css_set_io_vector (& (iov[i * 4 + 2]), & (iov[i * 4 + 3]), data_array[i], buffer_size, &templen[i * 2 + 1]);
       total_len += buffer_size + sizeof (int);
     }
 
@@ -1400,8 +1263,8 @@ css_net_send_large_data (CSS_CONN_ENTRY * conn, NET_HEADER * header_array, const
  * Note: Used by client and server.
  */
 static int
-css_net_send_large_data_with_arg (CSS_CONN_ENTRY * conn, const char *header_buffer, int header_len,
-				  NET_HEADER * header_array, const char **data_array, int num_array)
+css_net_send_large_data_with_arg (CSS_CONN_ENTRY *conn, const char *header_buffer, int header_len,
+				  NET_HEADER *header_array, const char **data_array, int num_array)
 {
   int *templen;
   struct iovec *iov;
@@ -1422,16 +1285,16 @@ css_net_send_large_data_with_arg (CSS_CONN_ENTRY * conn, const char *header_buff
 
   total_len = 0;
 
-  css_set_io_vector (&(iov[0]), &(iov[1]), header_buffer, header_len, &templen[0]);
+  css_set_io_vector (& (iov[0]), & (iov[1]), header_buffer, header_len, &templen[0]);
   total_len += header_len + sizeof (int);
 
   for (i = 0; i < num_array; i++)
     {
-      css_set_io_vector (&(iov[i * 4 + 2]), &(iov[i * 4 + 3]), (char *) (&header_array[i]), sizeof (NET_HEADER),
+      css_set_io_vector (& (iov[i * 4 + 2]), & (iov[i * 4 + 3]), (char *) (&header_array[i]), sizeof (NET_HEADER),
 			 &templen[i * 2 + 1]);
 
       buffer_size = ntohl (header_array[i].buffer_size);
-      css_set_io_vector (&(iov[i * 4 + 4]), &(iov[i * 4 + 5]), data_array[i], buffer_size, &templen[i * 2 + 2]);
+      css_set_io_vector (& (iov[i * 4 + 4]), & (iov[i * 4 + 5]), data_array[i], buffer_size, &templen[i * 2 + 2]);
 
       total_len += (sizeof (NET_HEADER) + buffer_size + sizeof (int) * 2);
     }
@@ -1456,7 +1319,7 @@ css_net_send_large_data_with_arg (CSS_CONN_ENTRY * conn, const char *header_buff
  * Note: Used by client and server.
  */
 int
-css_net_send_buffer_only (CSS_CONN_ENTRY * conn, const char *buff, int len, int timeout)
+css_net_send_buffer_only (CSS_CONN_ENTRY *conn, const char *buff, int len, int timeout)
 {
   struct iovec iov[1];
 
@@ -1481,7 +1344,7 @@ css_net_read_header (SOCKET fd, char *buffer, int *maxlen, int timeout)
 }
 
 void
-css_set_net_header (NET_HEADER * header_p, int type, short function_code, int request_id, int buffer_size,
+css_set_net_header (NET_HEADER *header_p, int type, short function_code, int request_id, int buffer_size,
 		    int transaction_id, int invalidate_snapshot, int db_error)
 {
   unsigned short flags = 0;
@@ -1529,7 +1392,7 @@ css_set_net_header (NET_HEADER * header_p, int type, short function_code, int re
  * Note: used by css_send_request (with NULL as the data buffer).
  */
 int
-css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn, int request, unsigned short *request_id,
+css_send_request_with_data_buffer (CSS_CONN_ENTRY *conn, int request, unsigned short *request_id,
 				   const char *arg_buffer, int arg_size, char *reply_buffer, int reply_size)
 {
   NET_HEADER local_header = DEFAULT_HEADER_DATA;
@@ -1569,6 +1432,46 @@ css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn, int request, unsigned 
   return ERROR_ON_WRITE;
 }
 
+int
+css_send_request_with_data_buffer_with_padding (CSS_CONN_ENTRY *conn, int request, unsigned short *request_id,
+    const char *arg_buffer, int arg_size, char *reply_buffer, int reply_size)
+{
+  NET_HEADER local_header = DEFAULT_HEADER_DATA;
+  NET_HEADER data_header = DEFAULT_HEADER_DATA;
+
+  if (!conn || conn->status != CONN_OPEN)
+    {
+      return CONNECTION_CLOSED;
+    }
+
+  *request_id = css_get_request_id (conn);
+  css_set_net_header (&local_header, COMMAND_TYPE, request, *request_id, arg_size, conn->get_tran_index (),
+		      conn->invalidate_snapshot, conn->db_error);
+
+  if (reply_buffer && (reply_size > 0))
+    {
+      css_queue_user_data_buffer (conn, *request_id, reply_size, reply_buffer);
+    }
+
+  if (arg_size > 0 && arg_buffer != NULL)
+    {
+      css_set_net_header (&data_header, DATA_TYPE, 0, *request_id, arg_size, conn->get_tran_index (),
+			  conn->invalidate_snapshot, conn->db_error);
+
+      return css_net_send_general (conn->fd, -1, (char *) &local_header, sizeof (NET_HEADER), (char *) &data_header,
+				   sizeof (NET_HEADER), arg_buffer, arg_size);
+    }
+  else
+    {
+      if (css_net_send_general (conn->fd, -1, (char *) &local_header, sizeof (NET_HEADER)) == NO_ERRORS)
+	{
+	  return NO_ERRORS;
+	}
+    }
+
+  return ERROR_ON_WRITE;
+}
+
 #if defined(CS_MODE) || defined(SA_MODE)
 /*
  * css_send_request_no_reply () - transfer a request to the server (no reply)
@@ -1581,7 +1484,7 @@ css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn, int request, unsigned 
  *
  */
 int
-css_send_request_no_reply (CSS_CONN_ENTRY * conn, int request, unsigned short *request_id, char *arg_buffer,
+css_send_request_no_reply (CSS_CONN_ENTRY *conn, int request, unsigned short *request_id, char *arg_buffer,
 			   int arg_size)
 {
   NET_HEADER req_header = DEFAULT_HEADER_DATA;
@@ -1596,11 +1499,17 @@ css_send_request_no_reply (CSS_CONN_ENTRY * conn, int request, unsigned short *r
   css_set_net_header (&req_header, COMMAND_TYPE, request, *request_id, arg_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
 
+  if (arg_size == 0)
+    {
+      return css_net_send_general (conn->fd, -1, (char *) &req_header, sizeof (NET_HEADER));
+    }
+
   css_set_net_header (&data_header, DATA_TYPE, 0, *request_id, arg_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
 
-  return (css_net_send3 (conn, (char *) &req_header, sizeof (NET_HEADER), (char *) &data_header, sizeof (NET_HEADER),
-			 arg_buffer, arg_size));
+  return css_net_send_general (conn->fd, -1, (char *) &req_header, sizeof (NET_HEADER), (char *) &data_header,
+			       sizeof (NET_HEADER),
+			       arg_buffer, arg_size);
 }
 
 /*
@@ -1619,7 +1528,7 @@ css_send_request_no_reply (CSS_CONN_ENTRY * conn, int request, unsigned short *r
  * Note: It is used by css_send_request (with NULL as the data buffer).
  */
 int
-css_send_req_with_2_buffers (CSS_CONN_ENTRY * conn, int request, unsigned short *request_id, char *arg_buffer,
+css_send_req_with_2_buffers (CSS_CONN_ENTRY *conn, int request, unsigned short *request_id, char *arg_buffer,
 			     int arg_size, char *data_buffer, int data_size, char *reply_buffer, int reply_size)
 {
   NET_HEADER local_header = DEFAULT_HEADER_DATA;
@@ -1628,8 +1537,8 @@ css_send_req_with_2_buffers (CSS_CONN_ENTRY * conn, int request, unsigned short 
 
   if (data_buffer == NULL || data_size <= 0)
     {
-      return (css_send_request_with_data_buffer (conn, request, request_id, arg_buffer, arg_size, reply_buffer,
-						 reply_size));
+      return (css_send_request_with_data_buffer_with_padding (conn, request, request_id, arg_buffer, arg_size, reply_buffer,
+	      reply_size));
     }
   if (!conn || conn->status != CONN_OPEN)
     {
@@ -1651,8 +1560,9 @@ css_send_req_with_2_buffers (CSS_CONN_ENTRY * conn, int request, unsigned short 
   css_set_net_header (&data_header, DATA_TYPE, 0, *request_id, data_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
 
-  return (css_net_send5 (conn, (char *) &local_header, sizeof (NET_HEADER), (char *) &arg_header, sizeof (NET_HEADER),
-			 arg_buffer, arg_size, (char *) &data_header, sizeof (NET_HEADER), data_buffer, data_size));
+  return css_net_send_general (conn->fd, -1, (char *) &local_header, sizeof (NET_HEADER), (char *) &arg_header,
+			       sizeof (NET_HEADER),
+			       arg_buffer, arg_size, (char *) &data_header, sizeof (NET_HEADER), data_buffer, data_size);
 }
 
 /*
@@ -1673,7 +1583,7 @@ css_send_req_with_2_buffers (CSS_CONN_ENTRY * conn, int request, unsigned short 
  * Note: It is used by css_send_request (with NULL as the data buffer).
  */
 int
-css_send_req_with_3_buffers (CSS_CONN_ENTRY * conn, int request, unsigned short *request_id, char *arg_buffer,
+css_send_req_with_3_buffers (CSS_CONN_ENTRY *conn, int request, unsigned short *request_id, char *arg_buffer,
 			     int arg_size, char *data1_buffer, int data1_size, char *data2_buffer, int data2_size,
 			     char *reply_buffer, int reply_size)
 {
@@ -1711,9 +1621,10 @@ css_send_req_with_3_buffers (CSS_CONN_ENTRY * conn, int request, unsigned short 
   css_set_net_header (&data2_header, DATA_TYPE, 0, *request_id, data2_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
 
-  return (css_net_send7 (conn, (char *) &local_header, sizeof (NET_HEADER), (char *) &arg_header, sizeof (NET_HEADER),
-			 arg_buffer, arg_size, (char *) &data1_header, sizeof (NET_HEADER), data1_buffer, data1_size,
-			 (char *) &data2_header, sizeof (NET_HEADER), data2_buffer, data2_size));
+  return css_net_send_general (conn->fd, -1, (char *) &local_header, sizeof (NET_HEADER), (char *) &arg_header,
+			       sizeof (NET_HEADER),
+			       arg_buffer, arg_size, (char *) &data1_header, sizeof (NET_HEADER), data1_buffer, data1_size,
+			       (char *) &data2_header, sizeof (NET_HEADER), data2_buffer, data2_size);
 }
 
 #if 0
@@ -1733,7 +1644,7 @@ css_send_req_with_3_buffers (CSS_CONN_ENTRY * conn, int request, unsigned short 
  * Note: It is used by css_send_request (with NULL as the data buffer).
  */
 int
-css_send_req_with_large_buffer (CSS_CONN_ENTRY * conn, int request, unsigned short *request_id, char *arg_buffer,
+css_send_req_with_large_buffer (CSS_CONN_ENTRY *conn, int request, unsigned short *request_id, char *arg_buffer,
 				int arg_size, char *data_buffer, INT64 data_size, char *reply_buffer, int reply_size)
 {
   NET_HEADER local_header = DEFAULT_HEADER_DATA;
@@ -1745,7 +1656,7 @@ css_send_req_with_large_buffer (CSS_CONN_ENTRY * conn, int request, unsigned sho
   if (data_buffer == NULL || data_size <= 0)
     {
       return (css_send_request_with_data_buffer (conn, request, request_id, arg_buffer, arg_size, reply_buffer,
-						 reply_size));
+	      reply_size));
     }
   if (!conn || conn->status != CONN_OPEN)
     {
@@ -1822,14 +1733,14 @@ css_send_req_with_large_buffer (CSS_CONN_ENTRY * conn, int request, unsigned sho
  *   arg_buffer_size : argument data size
  */
 int
-css_send_request (CSS_CONN_ENTRY * conn, int command, unsigned short *request_id, const char *arg_buffer,
+css_send_request (CSS_CONN_ENTRY *conn, int command, unsigned short *request_id, const char *arg_buffer,
 		  int arg_buffer_size)
 {
   return (css_send_request_with_data_buffer (conn, command, request_id, arg_buffer, arg_buffer_size, 0, 0));
 }
 
 int
-css_send_request_with_socket (SOCKET & socket, int command, unsigned short *request_id, const char *arg_buffer,
+css_send_request_with_socket (SOCKET &socket, int command, unsigned short *request_id, const char *arg_buffer,
 			      int arg_buffer_size)
 {
   NET_HEADER local_header = DEFAULT_HEADER_DATA;
@@ -1871,7 +1782,7 @@ css_send_request_with_socket (SOCKET & socket, int command, unsigned short *requ
  *   buffer_size(in): buffer size
  */
 int
-css_send_data (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer, int buffer_size)
+css_send_data (CSS_CONN_ENTRY *conn, unsigned short rid, const char *buffer, int buffer_size)
 {
   NET_HEADER header = DEFAULT_HEADER_DATA;
 #if defined(SERVER_MODE)
@@ -1889,6 +1800,25 @@ css_send_data (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer, in
   return (css_net_send2 (conn, (char *) &header, sizeof (NET_HEADER), buffer, buffer_size));
 }
 
+int
+css_send_data_with_padding (CSS_CONN_ENTRY *conn, unsigned short rid, const char *buffer, int buffer_size)
+{
+  NET_HEADER header = DEFAULT_HEADER_DATA;
+#if defined(SERVER_MODE)
+  if (!conn || conn->status == CONN_CLOSED)
+#else
+  if (!conn || conn->status != CONN_OPEN)
+#endif
+    {
+      return (CONNECTION_CLOSED);
+    }
+
+  css_set_net_header (&header, DATA_TYPE, 0, rid, buffer_size, conn->get_tran_index (), conn->invalidate_snapshot,
+		      conn->db_error);
+
+  return css_net_send_general (conn->fd, -1, (char *) &header, sizeof (NET_HEADER), buffer, buffer_size);
+}
+
 #if defined(SERVER_MODE)
 /*
 * css_send_two_data() - transfer a data packet to the client.
@@ -1901,7 +1831,7 @@ css_send_data (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer, in
 *   buffer2_size(in): buffer size
 */
 int
-css_send_two_data (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer1, int buffer1_size,
+css_send_two_data (CSS_CONN_ENTRY *conn, unsigned short rid, const char *buffer1, int buffer1_size,
 		   const char *buffer2, int buffer2_size)
 {
   NET_HEADER header1 = DEFAULT_HEADER_DATA;
@@ -1922,92 +1852,6 @@ css_send_two_data (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer
 			 sizeof (NET_HEADER), buffer2, buffer2_size));
 }
 
-/*
-* css_send_three_data() - transfer a data packet to the client.
-*   return: enum css_error_code (See connection_defs.h)
-*   conn(in): connection entry
-*   rid(in): request id
-*   buffer1(in): buffer for data will be sent
-*   buffer1_size(in): buffer size
-*   buffer2(in): buffer for data will be sent
-*   buffer2_size(in): buffer size
-*   buffer3(in): buffer for data will be sent
-*   buffer3_size(in): buffer size
-*/
-int
-css_send_three_data (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer1, int buffer1_size,
-		     const char *buffer2, int buffer2_size, const char *buffer3, int buffer3_size)
-{
-  NET_HEADER header1 = DEFAULT_HEADER_DATA;
-  NET_HEADER header2 = DEFAULT_HEADER_DATA;
-  NET_HEADER header3 = DEFAULT_HEADER_DATA;
-
-  if (!conn || conn->status != CONN_OPEN)
-    {
-      return (CONNECTION_CLOSED);
-    }
-
-  css_set_net_header (&header1, DATA_TYPE, 0, rid, buffer1_size, conn->get_tran_index (), conn->invalidate_snapshot,
-		      conn->db_error);
-
-  css_set_net_header (&header2, DATA_TYPE, 0, rid, buffer2_size, conn->get_tran_index (), conn->invalidate_snapshot,
-		      conn->db_error);
-
-  css_set_net_header (&header3, DATA_TYPE, 0, rid, buffer3_size, conn->get_tran_index (), conn->invalidate_snapshot,
-		      conn->db_error);
-
-  return (css_net_send6 (conn, (char *) &header1, sizeof (NET_HEADER), buffer1, buffer1_size, (char *) &header2,
-			 sizeof (NET_HEADER), buffer2, buffer2_size, (char *) &header3, sizeof (NET_HEADER), buffer3,
-			 buffer3_size));
-}
-
-/*
-* css_send_four_data() - transfer a data packet to the client.
-*   return: enum css_error_code (See connection_defs.h)
-*   conn(in): connection entry
-*   rid(in): request id
-*   buffer1(in): buffer for data will be sent
-*   buffer1_size(in): buffer size
-*   buffer2(in): buffer for data will be sent
-*   buffer2_size(in): buffer size
-*   buffer3(in): buffer for data will be sent
-*   buffer3_size(in): buffer size
-*   buffer4(in): buffer for data will be sent
-*   buffer4_size(in): buffer size
-*
-*/
-int
-css_send_four_data (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer1, int buffer1_size,
-		    const char *buffer2, int buffer2_size, const char *buffer3, int buffer3_size, const char *buffer4,
-		    int buffer4_size)
-{
-  NET_HEADER header1 = DEFAULT_HEADER_DATA;
-  NET_HEADER header2 = DEFAULT_HEADER_DATA;
-  NET_HEADER header3 = DEFAULT_HEADER_DATA;
-  NET_HEADER header4 = DEFAULT_HEADER_DATA;
-
-  if (!conn || conn->status != CONN_OPEN)
-    {
-      return (CONNECTION_CLOSED);
-    }
-
-  css_set_net_header (&header1, DATA_TYPE, 0, rid, buffer1_size, conn->get_tran_index (), conn->invalidate_snapshot,
-		      conn->db_error);
-
-  css_set_net_header (&header2, DATA_TYPE, 0, rid, buffer2_size, conn->get_tran_index (), conn->invalidate_snapshot,
-		      conn->db_error);
-
-  css_set_net_header (&header3, DATA_TYPE, 0, rid, buffer3_size, conn->get_tran_index (), conn->invalidate_snapshot,
-		      conn->db_error);
-
-  css_set_net_header (&header4, DATA_TYPE, 0, rid, buffer4_size, conn->get_tran_index (), conn->invalidate_snapshot,
-		      conn->db_error);
-
-  return (css_net_send8 (conn, (char *) &header1, sizeof (NET_HEADER), buffer1, buffer1_size, (char *) &header2,
-			 sizeof (NET_HEADER), buffer2, buffer2_size, (char *) &header3, sizeof (NET_HEADER), buffer3,
-			 buffer3_size, (char *) &header4, sizeof (NET_HEADER), buffer4, buffer4_size));
-}
-
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
 * css_send_large_data() - transfer a data packet to the client.
@@ -2020,7 +1864,7 @@ css_send_four_data (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffe
 *
 */
 int
-css_send_large_data (CSS_CONN_ENTRY * conn, unsigned short rid, const char **buffers, int *buffers_size,
+css_send_large_data (CSS_CONN_ENTRY *conn, unsigned short rid, const char **buffers, int *buffers_size,
 		     int num_buffers)
 {
   NET_HEADER *headers;
@@ -2060,7 +1904,7 @@ css_send_large_data (CSS_CONN_ENTRY * conn, unsigned short rid, const char **buf
 *   buffer_size(in): buffer size
 */
 int
-css_send_error (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer, int buffer_size)
+css_send_error (CSS_CONN_ENTRY *conn, unsigned short rid, const char *buffer, int buffer_size)
 {
   NET_HEADER header = DEFAULT_HEADER_DATA;
 
@@ -2079,6 +1923,26 @@ css_send_error (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer, i
   return (css_net_send2 (conn, (char *) &header, sizeof (NET_HEADER), buffer, buffer_size));
 }
 
+int
+css_send_error_with_padding (CSS_CONN_ENTRY *conn, unsigned short rid, const char *buffer, int buffer_size)
+{
+  NET_HEADER header = DEFAULT_HEADER_DATA;
+
+#if defined (SERVER_MODE)
+  if (!conn || conn->status == CONN_CLOSED)
+#else
+  if (!conn || conn->status != CONN_OPEN)
+#endif
+    {
+      return (CONNECTION_CLOSED);
+    }
+
+  css_set_net_header (&header, ERROR_TYPE, 0, rid, buffer_size, conn->get_tran_index (), conn->invalidate_snapshot,
+		      conn->db_error);
+
+  return css_net_send_general (conn->fd, -1, (char *) &header, sizeof (NET_HEADER), buffer, buffer_size);
+}
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * css_local_host_name -
@@ -2089,7 +1953,7 @@ css_send_error (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer, i
  *   namelen(in): size of hostname argument
  */
 int
-css_local_host_name (CSS_CONN_ENTRY * conn, char *hostname, size_t namelen)
+css_local_host_name (CSS_CONN_ENTRY *conn, char *hostname, size_t namelen)
 {
   if (!conn || conn->status != CONN_OPEN || IS_INVALID_SOCKET (conn->fd))
     {
@@ -2113,7 +1977,7 @@ css_local_host_name (CSS_CONN_ENTRY * conn, char *hostname, size_t namelen)
  *   namelen(in): size of hostname argument
  */
 int
-css_peer_host_name (CSS_CONN_ENTRY * conn, char *hostname, size_t namelen)
+css_peer_host_name (CSS_CONN_ENTRY *conn, char *hostname, size_t namelen)
 {
   if (!conn || conn->status != CONN_OPEN || IS_INVALID_SOCKET (conn->fd))
     {
@@ -2239,7 +2103,7 @@ css_register_server_timeout_fn (CSS_SERVER_TIMEOUT_FN callback_fn)
 
 #if defined(SERVER_MODE)
 int
-css_check_ip (IP_INFO * ip_info, unsigned char *address)
+css_check_ip (IP_INFO *ip_info, unsigned char *address)
 {
   int i;
 
@@ -2264,7 +2128,7 @@ css_check_ip (IP_INFO * ip_info, unsigned char *address)
 }
 
 int
-css_free_ip_info (IP_INFO * ip_info)
+css_free_ip_info (IP_INFO *ip_info)
 {
   if (ip_info)
     {
@@ -2276,7 +2140,7 @@ css_free_ip_info (IP_INFO * ip_info)
 }
 
 int
-css_read_ip_info (IP_INFO ** out_ip_info, char *filename)
+css_read_ip_info (IP_INFO **out_ip_info, char *filename)
 {
   char buf[32];
   FILE *fd_ip_list;
@@ -2479,13 +2343,13 @@ css_trim_str (char *str)
  *   conn(in/out):
  */
 int
-css_send_magic (CSS_CONN_ENTRY * conn)
+css_send_magic (CSS_CONN_ENTRY *conn)
 {
   return css_send_magic_with_socket (conn->fd);
 }
 
 int
-css_send_magic_with_socket (SOCKET & socket)
+css_send_magic_with_socket (SOCKET &socket)
 {
   NET_HEADER header;
 
@@ -2502,7 +2366,7 @@ css_send_magic_with_socket (SOCKET & socket)
  *   conn(in/out):
  */
 int
-css_check_magic (CSS_CONN_ENTRY * conn)
+css_check_magic (CSS_CONN_ENTRY *conn)
 {
   return css_check_magic_with_socket (conn->fd);
 }
@@ -2536,7 +2400,7 @@ css_check_magic_with_socket (SOCKET fd)
 
   for (i = 0; i < sizeof (css_Net_magic); i++)
     {
-      if (*(p++) != css_Net_magic[i])
+      if (* (p++) != css_Net_magic[i])
 	{
 	  return WRONG_PACKET_TYPE;
 	}
@@ -2557,7 +2421,7 @@ css_check_magic_with_socket (SOCKET fd)
  *   ptr(in/out):
  */
 int
-css_user_access_status_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
+css_user_access_status_start_scan (THREAD_ENTRY *thread_p, int type, DB_VALUE **arg_values, int arg_cnt, void **ptr)
 {
   int error = NO_ERROR;
   int num_user = 0;
@@ -2666,8 +2530,8 @@ error:
  *   ctx(in):
  */
 static int
-css_make_access_status_exist_user (THREAD_ENTRY * thread_p, OID * class_oid, LAST_ACCESS_STATUS ** access_status_array,
-				   int num_user, SHOWSTMT_ARRAY_CONTEXT * ctx)
+css_make_access_status_exist_user (THREAD_ENTRY *thread_p, OID *class_oid, LAST_ACCESS_STATUS **access_status_array,
+				   int num_user, SHOWSTMT_ARRAY_CONTEXT *ctx)
 {
   int error = NO_ERROR;
   int i, attr_idx = -1;
@@ -2732,7 +2596,7 @@ css_make_access_status_exist_user (THREAD_ENTRY * thread_p, OID * class_oid, LAS
 	  goto clean_string;
 	}
 
-    clean_string:
+clean_string:
       if (string != NULL && alloced_string == 1)
 	{
 	  db_private_free_and_init (thread_p, string);
@@ -2850,7 +2714,7 @@ end:
  *   user_name(in):
  */
 static LAST_ACCESS_STATUS *
-css_get_access_status_with_name (LAST_ACCESS_STATUS ** access_status_array, int num_user, const char *user_name)
+css_get_access_status_with_name (LAST_ACCESS_STATUS **access_status_array, int num_user, const char *user_name)
 {
   int i = 0;
   LAST_ACCESS_STATUS *access_status = NULL;
@@ -2884,7 +2748,7 @@ css_get_access_status_with_name (LAST_ACCESS_STATUS ** access_status_array, int 
  *   num_user(in):
  */
 static LAST_ACCESS_STATUS *
-css_get_unused_access_status (LAST_ACCESS_STATUS ** access_status_array, int num_user)
+css_get_unused_access_status (LAST_ACCESS_STATUS **access_status_array, int num_user)
 {
   int i = 0;
   LAST_ACCESS_STATUS *access_status = NULL;
@@ -2910,7 +2774,7 @@ css_get_unused_access_status (LAST_ACCESS_STATUS ** access_status_array, int num
 #endif /* CS_MODE */
 
 int
-css_platform_independent_poll (POLL_FD * fds, int num_of_fds, int timeout)
+css_platform_independent_poll (POLL_FD *fds, int num_of_fds, int timeout)
 {
   int rc = 0;
 
@@ -2949,10 +2813,10 @@ css_conn_entry::add_pending_request ()
   ++pending_request_count;
 }
 
-void
+size_t
 css_conn_entry::start_request ()
 {
-  --pending_request_count;
+  return --pending_request_count;
 }
 
 bool
@@ -2966,4 +2830,31 @@ css_conn_entry::init_pending_request ()
 {
   pending_request_count = 0;
 }
+
+void
+css_conn_entry::add_working_task ()
+{
+  ++working_task_count;
+}
+
+size_t
+css_conn_entry::end_working_task ()
+{
+  return --working_task_count;
+}
+
+void
+css_conn_entry::init_working_task ()
+{
+  working_task_count = 0;
+}
+
+void
+css_conn_entry::release_packet (void *buffer)
+{
+#if defined(SERVER_MODE)
+  css_request_release_packet (this, buffer);
+#endif
+}
+
 // *INDENT-ON*

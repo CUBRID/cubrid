@@ -2367,6 +2367,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   memset (&xasl->groupby_stats, 0, sizeof (xasl->groupby_stats));
   memset (&xasl->xasl_stats, 0, sizeof (xasl->xasl_stats));
   memset (&xasl->func_stats, 0, sizeof (xasl->func_stats));
+  xasl->analytic_stats = NULL;
   xasl->max_iterations = -1;
   xasl->px_executor = NULL;
   xasl->memoize_storage = NULL;
@@ -6327,7 +6328,7 @@ error:
 static char *
 stx_build_analytic_eval_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_EVAL_TYPE * analytic_eval)
 {
-  int offset;
+  int offset, tmp_i;
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
@@ -6367,6 +6368,11 @@ stx_build_analytic_eval_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_EVAL_
 	  goto error;
 	}
     }
+
+  ptr = or_unpack_int (ptr, &tmp_i);
+  analytic_eval->sort_list_size = tmp_i;
+
+  analytic_eval->covered_size = 0;	/* not serialized; only used at XASL build time */
 
   return ptr;
 
