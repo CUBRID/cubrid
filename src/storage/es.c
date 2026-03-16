@@ -449,7 +449,7 @@ es_copy_file_with_prefix (const char *in_uri, const char *metaname, const char *
       ret =
 	xes_posix_copy_file_with_prefix (ES_POSIX_PATH_POS (in_uri), (char *) metaname, prefix,
 					 ES_POSIX_PATH_POS (out_uri));
-      es_log ("es_copy_file: xes_posix_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
+      es_log ("es_copy_file_with_prefix: xes_posix_copy_file_with_prefix(%s) -> %s: %d\n", in_uri, out_uri, ret);
     }
   else
     {
@@ -504,7 +504,7 @@ es_rename_file (const char *in_uri, const char *metaname, char *out_uri)
 #else /* WINDOWS */
       memcpy (out_uri, ES_OWFS_PATH_PREFIX, sizeof (ES_OWFS_PATH_PREFIX));
       ret = es_owfs_rename_file (ES_OWFS_PATH_POS (in_uri), metaname, ES_OWFS_PATH_POS (out_uri));
-      es_log ("es_copy_file: es_owfs_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
+      es_log ("es_rename_file: es_owfs_rename_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
 #endif /* !WINDOWS */
     }
   else if (es_type == ES_POSIX)
@@ -512,10 +512,10 @@ es_rename_file (const char *in_uri, const char *metaname, char *out_uri)
       memcpy (out_uri, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX));
 #if defined (CS_MODE)
       ret = es_posix_rename_file (ES_POSIX_PATH_POS (in_uri), metaname, ES_POSIX_PATH_POS (out_uri));
-      es_log ("es_copy_file: es_posix_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
+      es_log ("es_rename_file: es_posix_rename_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
 #else /* CS_MODE */
       ret = xes_posix_rename_file (ES_POSIX_PATH_POS (in_uri), metaname, ES_POSIX_PATH_POS (out_uri));
-      es_log ("es_copy_file: xes_posix_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
+      es_log ("es_rename_file: xes_posix_rename_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
 #endif /* SERVER_MODE || SA_MODE */
     }
   else
@@ -569,7 +569,7 @@ es_move_file_with_prefix (const char *src_path, const char *metaname, const char
       memcpy (new_path, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX));
       ret =
 	xes_posix_move_file_with_prefix (ES_POSIX_PATH_POS (src_path), metaname, prefix, ES_POSIX_PATH_POS (new_path));
-      es_log ("es_copy_file: xes_posix_copy_file(%s) -> %s: %d\n", src_path, new_path, ret);
+      es_log ("es_move_file_with_prefix: xes_posix_move_file_with_prefix(%s) -> %s: %d\n", src_path, new_path, ret);
     }
   else
     {
