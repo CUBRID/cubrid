@@ -1103,6 +1103,7 @@ extern "C"
 	  {
 	    xasl->memoize_storage->stop_timer();
 	  }
+	clear_memoize_storage (thread_p, xasl);
 	return NO_ERROR;
 	break;
 
@@ -1154,6 +1155,7 @@ extern "C"
 	  {
 	    xasl->memoize_storage->stop_timer();
 	  }
+	clear_memoize_storage (thread_p, xasl);
 	return NO_ERROR;
 	break;
 
@@ -1201,6 +1203,7 @@ extern "C"
 	  {
 	    xasl->memoize_storage->stop_timer();
 	  }
+	clear_memoize_storage (thread_p, xasl);
 	return NO_ERROR;
 	break;
 

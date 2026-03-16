@@ -134,7 +134,6 @@ set(BASE_SOURCES
   ${BASE_DIR}/packet_buffer.cpp
   ${BASE_DIR}/DMRBMemoryPool.cpp
   ${BASE_DIR}/ifsys.cpp
-  ${BASE_DIR}/hardware_topology.cpp
   ${BASE_DIR}/nonblocking.cpp
   ${BASE_DIR}/epoll.cpp
   ${BASE_DIR}/filesys_parser.cpp
@@ -183,7 +182,6 @@ set (BASE_HEADERS
   ${BASE_DIR}/fixed_size_allocator.hpp
   ${BASE_DIR}/span.hpp
   ${BASE_DIR}/ifsys.hpp
-  ${BASE_DIR}/hardware_topology.hpp
   ${BASE_DIR}/packet_buffer.hpp
   ${BASE_DIR}/DMRB.hpp
   ${BASE_DIR}/DMRBMemoryPool.hpp
@@ -362,6 +360,7 @@ set(PARALLEL_HEAP_SCAN_SOURCES
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler_single_table.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_slot_iterator.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_handler.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_join_info.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_trace_handler.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan.cpp
@@ -373,6 +372,7 @@ set(PARALLEL_HEAP_SCAN_HEADERS
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_handler.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_type.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_slot_iterator.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_join_info.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_trace_handler.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan.hpp
