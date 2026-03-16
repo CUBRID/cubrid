@@ -727,7 +727,7 @@ retry:
       return ER_ES_INVALID_PATH;
     }
 
-  es_log ("xes_posix_copy_file(%s, %s): %s\n", src_path, metaname, new_path);
+  es_log ("xes_posix_copy_file_with_prefix(%s, %s): %s\n", src_path, metaname, new_path);
 
   /* check file existence */
   wr_fd = es_abs_open (new_path, O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH | O_LARGEFILE);
@@ -846,12 +846,12 @@ xes_posix_move_file_with_prefix (const char *src_path, const char *metaname, con
     {
       return ER_ES_INVALID_PATH;
     }
-  es_log ("xes_posix_copy_file(%s, %s): %s\n", src_path, metaname, new_path);
+  es_log ("xes_posix_move_file_with_prefix(%s, %s): %s\n", src_path, metaname, new_path);
 
   p = strrchr (new_path, PATH_SEPARATOR);
   if (p != NULL)
     {
-      *p = '\0';	/* Temporarily truncate the path to extract the directory portion */
+      *p = '\0';		/* Temporarily truncate the path to extract the directory portion */
     }
   else
     {
