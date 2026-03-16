@@ -401,7 +401,7 @@ elo_copy_with_prefix (DB_ELO * src_elo, const char *prefix, DB_ELO * dest_elo)
 	case LOB_TRANSIENT_CREATED:
 	case LOB_PERMANENT_DELETED:
 	  {
-	    ret = es_rename_file (src_elo->locator, src_elo->meta_data, rename_uri);
+	    ret = es_rename_file (real_locator, src_elo->meta_data, rename_uri);
 	    if (ret != NO_ERROR)
 	      {
 		goto error_return;
