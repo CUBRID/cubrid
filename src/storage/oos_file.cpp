@@ -666,6 +666,42 @@ oos_rv_redo_insert (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
   return NO_ERROR;
 }
 
+int
+oos_get_length (THREAD_ENTRY *thread_p, const OID &oid)
+{
+  const auto [pageid, slotid, volid] = oid;
+  auto vpid = VPID{pageid, volid};
+
+  PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_ptr == nullptr)
+    {
+      oos_error ("oos_get_length: pgbuf_fix failed for volid=%d, pageid=%d", volid, pageid);
+      return -1;
+    }
+
+  auto page_unfixer = make_scope_exit ([&]()
+  {
+    pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
+  });
+
+  RECDES peek_recdes;
+  SCAN_CODE code = spage_get_record (thread_p, page_ptr, slotid, &peek_recdes, PEEK);
+  if (code != S_SUCCESS)
+    {
+      oos_error ("oos_get_length: spage_get_record failed for volid=%d, pageid=%d, slotid=%d",
+		 volid, pageid, slotid);
+      return -1;
+    }
+
+  assert (peek_recdes.length >= OOS_RECORD_HEADER_SIZE);
+
+  OOS_RECORD_HEADER header;
+  std::memcpy (&header, peek_recdes.data, sizeof (OOS_RECORD_HEADER));
+
+  return header.total_size;
+}
+
+
 void
 oos_push_oos_oid (THREAD_ENTRY *thread_p, const OID *oid)
 {
