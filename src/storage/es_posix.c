@@ -868,7 +868,7 @@ xes_posix_move_file_with_prefix (const char *src_path, const char *metaname, con
   *p = PATH_SEPARATOR;
 
   ret = es_os_rename_file_abs (src_path, new_path);
-  es_log ("xes_posix_move_file(%s): %s\n", src_path, new_path);
+  es_log ("xes_posix_move_file_with_prefix(%s): %s\n", src_path, new_path);
 
   return (ret < 0) ? ER_ES_GENERAL : NO_ERROR;
 }
