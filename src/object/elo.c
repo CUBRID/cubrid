@@ -373,6 +373,7 @@ elo_copy_with_prefix (DB_ELO * src_elo, const char *prefix, DB_ELO * dest_elo)
 
   assert (src_elo != NULL);
   assert (dest_elo != NULL);
+  assert (prefix != NULL);
   assert (src_elo->type == ELO_FBO);
   assert (src_elo->locator != NULL);
 

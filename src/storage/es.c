@@ -427,6 +427,7 @@ es_copy_file_with_prefix (const char *in_uri, const char *metaname, const char *
   assert (in_uri != NULL);
   assert (out_uri != NULL);
   assert (metaname != NULL);
+  assert (prefix != NULL);
 
   if (es_initialized_type == ES_NONE)
     {
@@ -548,6 +549,7 @@ es_move_file_with_prefix (const char *src_path, const char *metaname, const char
   assert (src_path != NULL);
   assert (new_path != NULL);
   assert (metaname != NULL);
+  assert (prefix != NULL);
 
   if (es_initialized_type == ES_NONE)
     {
