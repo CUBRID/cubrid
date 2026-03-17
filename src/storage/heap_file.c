@@ -27678,7 +27678,7 @@ heap_recdes_get_oos_oids (const RECDES * recdes)
     }
 
   const int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
-  short *var_table = OR_GET_OBJECT_VAR_TABLE (recdes->data);
+  void *var_table = OR_GET_OBJECT_VAR_TABLE (recdes->data);
   /* NOTE: This upper bound may include VOT alignment padding and fixed-attribute bytes for legacy records
    * that lack the OR_VAR_BIT_LAST_ELEMENT flag. Such records are not fully supported yet (see PR description). */
   const int max_var_count = (recdes->length - OR_HEADER_SIZE (recdes->data)) / offset_size;
@@ -27687,7 +27687,7 @@ heap_recdes_get_oos_oids (const RECDES * recdes)
     {
       if (index == max_var_count)
 	{
-	  assert (false && "LAST_ELEMENT flag not found within record bounds");
+	  assert_release (false && "LAST_ELEMENT flag not found within record bounds");
 	  return oos_oids;
 	}
 
