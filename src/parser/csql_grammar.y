@@ -9911,8 +9911,8 @@ attr_def_one
 			            PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 			              MSGCAT_SEMANTIC_CLASS_ATT_OR_SHARED_CANT_SET_VISIBILITY,
 				      node->info.attr_def.attr_name->info.name.original);
+				    node->info.attr_def.attr_invisible = 0;
 			          }
-				node->info.attr_def.attr_invisible = 0;
 			      }
 			    else
 			      {

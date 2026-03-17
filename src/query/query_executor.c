@@ -24979,7 +24979,8 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	      const char *is_invisible_string = "invisible";
 	      const char *on_update_string = "ON UPDATE ";
 	      const char *default_expr_op_string = NULL;
-	      int used = 0;
+	      size_t used = 0;
+	      int written = 0;
 
 	      size_t str_len = (attrepr->is_autoincrement ? strlen (is_auto_increment_string) : 0) + 1
 		+ (attrepr->is_invisible ? strlen (is_invisible_string) : 0) + 1
@@ -25000,17 +25001,31 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		  GOTO_EXIT_ON_ERROR;
 		}
 
-	      used += snprintf (str_val, str_len, "%s", (attrepr->is_autoincrement ? is_auto_increment_string : ""));
+	      written = snprintf (str_val, str_len, "%s", (attrepr->is_autoincrement ? is_auto_increment_string : ""));
+	      if (written < 0)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      used += written;
 	      if (attrepr->is_invisible)
 		{
-		  used += snprintf (str_val + used, str_len - used, "%s%s", used ? " " : "", is_invisible_string);
+		  written = snprintf (str_val + used, str_len - used, "%s%s", used ? " " : "", is_invisible_string);
+		  if (written < 0)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		  used += written;
 		}
 
 	      if (attrepr->on_update_expr != DB_DEFAULT_NONE)
 		{
-		  used +=
+		  written =
 		    snprintf (str_val + used, str_len - used, "%s%s%s", used ? " " : "", on_update_string,
 			      default_expr_op_string);
+		  if (written < 0)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
 		}
 
 	      db_make_string (out_values[idx_val], str_val);
