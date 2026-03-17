@@ -1,0 +1,149 @@
+/*
+ *
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+/*
+ * px_heap_scan_input_handler_ftabs.cpp
+ */
+
+
+#include "px_heap_scan_input_handler_ftabs.hpp"
+#include "error_code.h"
+#include "page_buffer.h"
+#include "px_heap_scan_ftab_set.hpp"
+#include "storage_common.h"
+#include "bit.h"
+
+#if !defined(NDEBUG)
+#include <sys/syscall.h>
+#include "error_manager.h"
+#endif
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
+namespace parallel_heap_scan
+{
+  thread_local HEAP_SCANCACHE *input_handler_ftabs::m_tl_scan_cache = NULL;
+  thread_local PGBUF_WATCHER input_handler_ftabs::m_tl_old_page_watcher = {0};
+  thread_local ftab_set *input_handler_ftabs::m_tl_ftab_set = NULL;
+  thread_local VPID input_handler_ftabs::m_tl_vpid = {-1,0};
+  thread_local size_t input_handler_ftabs::m_tl_pgoffset = 0;
+  thread_local FILE_PARTIAL_SECTOR input_handler_ftabs::m_tl_ftab = {0};
+
+
+  int input_handler_ftabs::initialize (THREAD_ENTRY *thread_p, HFID *hfid, SCAN_ID *scan_id)
+  {
+    m_tl_scan_cache = &scan_id->s.hsid.scan_cache;
+    /* open_scan should have succeeded */
+    assert (m_tl_scan_cache->debug_initpattern == 12345);
+    PGBUF_INIT_WATCHER (&m_tl_old_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+    m_tl_ftab_set = &m_splited_ftab_set[m_splited_ftab_set_idx.fetch_add (1)];
+    m_tl_vpid = {-1,0};
+    m_tl_pgoffset = 0;
+    return NO_ERROR;
+  }
+
+  int input_handler_ftabs::init_on_main (THREAD_ENTRY *thread_p, HFID hfid, int parallelism)
+  {
+    FILE_FTAB_COLLECTOR collector;
+    int error_code;
+    m_hfid = hfid;
+
+    error_code = file_get_ftabs (thread_p, &m_hfid, &collector);
+    if (error_code != NO_ERROR)
+      {
+	return error_code;
+      }
+    m_ftab_set.convert (&collector);
+    m_splited_ftab_set = m_ftab_set.split (parallelism);
+    if (collector.partsect_ftab != NULL)
+      {
+	db_private_free_and_init (thread_p, collector.partsect_ftab);
+      }
+    return NO_ERROR;
+  }
+
+  SCAN_CODE input_handler_ftabs::get_next_vpid_with_fix (THREAD_ENTRY *thread_p, VPID *vpid)
+  {
+    SCAN_CODE ret = S_SUCCESS;
+    int error_code = NO_ERROR;
+
+    bool found = false;
+    while (!found)
+      {
+	if (m_tl_vpid.pageid == -1)
+	  {
+	    m_tl_ftab = m_tl_ftab_set->get_next();
+	    if (m_tl_ftab.vsid.volid == -1)
+	      {
+		if (m_tl_old_page_watcher.pgptr != NULL)
+		  {
+		    pgbuf_ordered_unfix (thread_p, &m_tl_old_page_watcher);
+		  }
+		ret = S_END;
+		break;
+	      }
+	    m_tl_pgoffset = 0;
+	    m_tl_vpid.volid = m_tl_ftab.vsid.volid;
+	    m_tl_vpid.pageid = SECTOR_FIRST_PAGEID (m_tl_ftab.vsid.sectid);
+	  }
+
+	for (; m_tl_pgoffset < DISK_SECTOR_NPAGES; m_tl_pgoffset++, m_tl_vpid.pageid++)
+	  {
+	    if (bit64_is_set (m_tl_ftab.page_bitmap, (int) m_tl_pgoffset))
+	      {
+		found = true;
+
+		if (m_tl_scan_cache->page_watcher.pgptr != NULL)
+		  {
+		    pgbuf_replace_watcher (thread_p, &m_tl_scan_cache->page_watcher, &m_tl_old_page_watcher);
+		  }
+		error_code = pgbuf_ordered_fix (thread_p, &m_tl_vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ,
+						&m_tl_scan_cache->page_watcher);
+		if (error_code != NO_ERROR)
+		  {
+		    return S_ERROR;
+		  }
+		*vpid = m_tl_vpid;
+		return S_SUCCESS;
+	      }
+	  }
+
+	if (m_tl_pgoffset >= DISK_SECTOR_NPAGES)
+	  {
+	    m_tl_vpid.pageid = -1;
+	  }
+      }
+    return ret;
+  }
+
+  int input_handler_ftabs::finalize (THREAD_ENTRY *thread_p)
+  {
+    if (m_tl_old_page_watcher.pgptr != NULL)
+      {
+	pgbuf_ordered_unfix (thread_p, &m_tl_old_page_watcher);
+      }
+    if (m_tl_scan_cache->page_watcher.pgptr != NULL)
+      {
+	pgbuf_ordered_unfix (thread_p, &m_tl_scan_cache->page_watcher);
+      }
+    m_tl_scan_cache = NULL;
+    m_tl_old_page_watcher.pgptr = NULL;
+    return NO_ERROR;
+  }
+}

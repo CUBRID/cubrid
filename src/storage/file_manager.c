@@ -266,24 +266,6 @@ typedef int (*FILE_EXTDATA_ITEM_FUNC) (THREAD_ENTRY * thread_p, const void *data
  * set.
  */
 
-/* FILE_ALLOC_BITMAP -
- * Type used to store allocation bitmap for sectors.  */
-typedef UINT64 FILE_ALLOC_BITMAP;
-#define FILE_FULL_PAGE_BITMAP	    0xFFFFFFFFFFFFFFFF	/* Full allocation bitmap */
-#define FILE_EMPTY_PAGE_BITMAP	    0x0000000000000000	/* Empty allocation bitmap */
-
-#define FILE_ALLOC_BITMAP_NBITS ((int) (sizeof (FILE_ALLOC_BITMAP) * CHAR_BIT))
-
-/* FILE_PARTIAL_SECTOR -
- * Structure used by partially allocated sectors table. Store sector VSID and its allocation bitmap. */
-typedef struct file_partial_sector FILE_PARTIAL_SECTOR;
-struct file_partial_sector
-{
-  VSID vsid;			/* Important - VSID must be first member of FILE_PARTIAL_SECTOR. Sometimes, the
-				 * FILE_PARTIAL_SECTOR pointers in file table are reinterpreted as VSID. */
-  FILE_ALLOC_BITMAP page_bitmap;
-};
-#define FILE_PARTIAL_SECTOR_INITIALIZER { VSID_INITIALIZER, 0 }
 
 /************************************************************************/
 /* Utility structures                                                   */
@@ -410,15 +392,6 @@ typedef enum
 
 #define FILE_RV_DEALLOC_COMPENSATE true
 #define FILE_RV_DEALLOC_RUN_POSTPONE false
-
-typedef struct file_ftab_collector FILE_FTAB_COLLECTOR;
-struct file_ftab_collector
-{
-  int npages;
-  int nsects;
-  FILE_PARTIAL_SECTOR *partsect_ftab;
-};
-#define FILE_FTAB_COLLECTOR_INITIALIZER { 0, 0, NULL }
 
 /* FILE_MAP_CONTEXT - context variables for file_map_pages function. */
 typedef struct file_map_context FILE_MAP_CONTEXT;
@@ -11902,6 +11875,69 @@ exit:
     }
 
   return error_code;
+}
+
+int
+file_get_ftabs (THREAD_ENTRY * thread_p, const HFID * hfid, FILE_FTAB_COLLECTOR * collector_out)
+{
+  VFID vfid = hfid->vfid;
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead;
+  FILE_HEADER *fhead = NULL;
+  FILE_EXTENSIBLE_DATA *extdata_ftab = NULL;
+  int error_code = 0;
+  bool is_partial = false;
+
+  collector_out->npages = 0;
+  collector_out->nsects = 0;
+  collector_out->partsect_ftab = NULL;
+
+  FILE_GET_HEADER_VPID (&vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  fhead = (FILE_HEADER *) page_fhead;
+
+  collector_out->partsect_ftab =
+    (FILE_PARTIAL_SECTOR *) db_private_alloc (thread_p, fhead->n_page_ftab * sizeof (FILE_PARTIAL_SECTOR));
+  if (collector_out->partsect_ftab == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      fhead->n_page_ftab * sizeof (FILE_PARTIAL_SECTOR));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  FILE_HEADER_GET_PART_FTAB (fhead, extdata_ftab);
+  is_partial = true;
+  error_code =
+    file_extdata_apply_funcs (thread_p, extdata_ftab, file_extdata_collect_ftab_pages, collector_out,
+			      NULL, &is_partial, true, NULL, NULL);
+  if (error_code != NO_ERROR)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  FILE_HEADER_GET_FULL_FTAB (fhead, extdata_ftab);
+  is_partial = false;
+  error_code =
+    file_extdata_apply_funcs (thread_p, extdata_ftab, file_extdata_collect_ftab_pages, collector_out,
+			      NULL, &is_partial, true, NULL, NULL);
+  if (error_code != NO_ERROR)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  if (page_fhead != NULL)
+    {
+      pgbuf_unfix (thread_p, page_fhead);
+    }
+
+  return NO_ERROR;
 }
 
 /************************************************************************/

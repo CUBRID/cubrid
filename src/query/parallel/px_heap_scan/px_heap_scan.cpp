@@ -32,7 +32,7 @@
 #include "xasl.h"
 #include "fetch.h"
 #include "px_heap_scan_task.hpp"
-#include "px_heap_scan_input_handler_single_table.hpp"
+#include "px_heap_scan_input_handler_ftabs.hpp"
 #include "px_parallel.hpp"			/* parallel_query::compute_parallel_degree */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -681,13 +681,15 @@ namespace parallel_heap_scan
 	  }
       }
     m_vd = new_vd;
-    m_input_handler = (input_handler_single_table *) db_private_alloc (m_thread_p, sizeof (input_handler_single_table));
+    m_input_handler = (input_handler_ftabs *) db_private_alloc (m_thread_p, sizeof (input_handler_ftabs));
     if (m_input_handler == nullptr)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
 	return ER_FAILED;
       }
-    m_input_handler = placement_new ((input_handler_single_table *) m_input_handler, &m_interrupt, &m_err_messages);
+    m_input_handler = placement_new ((input_handler_ftabs *) m_input_handler, &m_interrupt, &m_err_messages);
+    ((input_handler_ftabs *)m_input_handler)->init_on_main (m_thread_p, m_hfid, m_parallelism);
+
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {
 	m_result_handler = (result_handler<RESULT_TYPE::MERGEABLE_LIST> *) db_private_alloc (m_thread_p,
