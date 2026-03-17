@@ -834,9 +834,8 @@ int
 xes_posix_move_file_with_prefix (const char *src_path, const char *metaname, const char *prefix, char *new_path)
 {
   ssize_t ret;
-  char dirname1[NAME_MAX], filename[NAME_MAX], dirname2[NAME_MAX];
+  char dirname1[NAME_MAX], dirname2[NAME_MAX], filename[NAME_MAX];
   char *p;
-  int fd;
 
   /* create a target file */
   es_get_unique_name (dirname1, dirname2, metaname, filename);
