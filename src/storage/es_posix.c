@@ -719,7 +719,7 @@ retry:
   es_get_unique_name (dirname1, dirname2, metaname, filename);
 
   n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s", prefix, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
-  if (n < 0 || n > PATH_MAX - 1)
+  if (n < 0 || n >= PATH_MAX - 1)
     {
       close (rd_fd);
 
