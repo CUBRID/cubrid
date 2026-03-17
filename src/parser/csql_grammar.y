@@ -9895,18 +9895,28 @@ attr_def_one
 	  opt_attr_ordering_info
 		{{
 			PT_NODE *node = parser_get_attr_def_one ();
-			if (node != NULL && node->info.attr_def.attr_type != PT_SHARED)
-			  {
-			    node->info.attr_def.attr_type = parser_attr_type;
-			  }
 			if (node != NULL)
 			  {
+			    if (node->info.attr_def.attr_type != PT_SHARED)
+			      {
+			        node->info.attr_def.attr_type = parser_attr_type;
+			      }
 			    node->info.attr_def.ordering_info = $5;
-			  }
-			unsigned int mask = $4;
-			if (node != NULL && !(mask & COLUMN_CONSTRAINT_INVISIBLE))
-			  {
-			    node->info.attr_def.attr_invisible = 0;
+			    unsigned int mask = $4;
+			    if ((mask & COLUMN_CONSTRAINT_INVISIBLE))
+			      {
+			        if ((node->info.attr_def.attr_type == PT_SHARED
+				    || node->info.attr_def.attr_type == PT_META_ATTR))
+			          {
+			            PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			              MSGCAT_SEMANTIC_CLASS_ATT_OR_SHARED_CANT_SET_VISIBILITY,
+				      node->info.attr_def.attr_name->info.name.original);
+			          }
+			      }
+			    else
+			      {
+			        node->info.attr_def.attr_invisible = 0;
+			      }
 			  }
 
 			$$ = node;

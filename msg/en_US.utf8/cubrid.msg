@@ -1975,6 +1975,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 333 CALL statements invoking a Stored Procedure may not have an INTO clause.
 
 334 An attribute of virtual class cannot set column's visibility.
+335 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set visibility.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
