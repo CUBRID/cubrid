@@ -430,6 +430,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 #endif
   SM_PARTITION_ALTER_INFO pinfo;
   bool partition_savepoint = false;
+  bool change_might_affect_visibility = false;
   const PT_ALTER_CODE alter_code = alter->info.alter.code;
 #if defined (ENABLE_RENAME_CONSTRAINT)
   SM_CONSTRAINT_FAMILY constraint_family;
@@ -647,6 +648,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      }
 	  }
 
+	change_might_affect_visibility = true;
 	break;
       }
 
@@ -777,6 +779,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  return error;
 	}
 
+      change_might_affect_visibility = true;
       break;
 
     case PT_MODIFY_ATTR_MTHD:
@@ -1332,16 +1335,19 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       return error;
     }
 
-  /* check if all of attributes are invisible. if is, abort */
-  error = smt_check_attribute_all_invisible (ctemplate, alter->info.alter.entity_name->info.name.original);
-  if (error != NO_ERROR)
+  if (change_might_affect_visibility)
     {
-      dbt_abort_class (ctemplate);
-      if (partition_savepoint)
+      /* check if all of attributes are invisible. if is, abort */
+      error = smt_check_attribute_all_invisible (ctemplate, alter->info.alter.entity_name->info.name.original);
+      if (error != NO_ERROR)
 	{
-	  goto alter_partition_fail;
+	  dbt_abort_class (ctemplate);
+	  if (partition_savepoint)
+	    {
+	      goto alter_partition_fail;
+	    }
+	  return error;
 	}
-      return error;
     }
 
   vclass = dbt_finish_class (ctemplate);
