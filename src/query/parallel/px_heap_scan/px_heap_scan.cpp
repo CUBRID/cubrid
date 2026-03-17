@@ -608,6 +608,7 @@ namespace parallel_heap_scan
       }
     if (m_result_handler != nullptr)
       {
+	m_result_handler->read_finalize (m_thread_p);
 	m_result_handler->~result_handler();
 	db_private_free (m_thread_p, m_result_handler);
 	m_result_handler = nullptr;
