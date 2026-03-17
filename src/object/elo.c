@@ -367,7 +367,7 @@ int
 elo_copy_with_prefix (DB_ELO * src_elo, const char *prefix, DB_ELO * dest_elo)
 {
   int ret = NO_ERROR;
-  ES_URI rename_uri, out_uri;
+  ES_URI out_uri;
   char *locator = NULL;
   char *meta_data = NULL;
 
