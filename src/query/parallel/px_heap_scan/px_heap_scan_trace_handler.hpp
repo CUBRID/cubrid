@@ -42,6 +42,20 @@ namespace parallel_heap_scan
     UINT64 qualified_rows;
     struct timeval elapsed_time;
   };
+
+  class trace_storage_for_sibling_xasl
+  {
+    public:
+      trace_storage_for_sibling_xasl() = default;
+      ~trace_storage_for_sibling_xasl() = default;
+
+      void set_main_xasl_tree (xasl_node *xasl_tree);
+      void merge_xasl_tree (xasl_node *xasl_tree);
+    private:
+      xasl_node *m_main_xasl_tree;
+      std::mutex m_mutex;
+  };
+
   class trace_handler
   {
     public:
@@ -54,6 +68,7 @@ namespace parallel_heap_scan
       void clear();
       std::vector<child_stats> m_stats;
       std::mutex m_stats_mutex;
+      trace_storage_for_sibling_xasl m_trace_storage_for_sibling_xasl;
   };
 
   class accumulative_trace_storage
