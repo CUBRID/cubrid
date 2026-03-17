@@ -27,6 +27,8 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
+#include <mutex>
+
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
 
@@ -34,24 +36,6 @@ namespace parallel_query
 {
   class worker_manager_global
   {
-    private:
-      static const int TASK_QUEUE_SIZE_PER_CORE = 2;
-      friend class worker_manager;
-      friend class worker_manager_with_dedicated_pool;
-      friend class worker_manager_reserver;
-      bool m_is_initialized;
-      int m_max_parallel_workers;
-      std::atomic<int> m_current_parallel_workers;
-      cubthread::entry_workpool *m_worker_pool;
-      worker_manager_global();
-      ~worker_manager_global();
-
-      worker_manager_global (const worker_manager_global &) = delete;
-      worker_manager_global &operator= (const worker_manager_global &) = delete;
-
-      bool try_reserve_workers (int parallelism);
-      void release_workers (int parallelism);
-      void push_task (cubthread::entry_task *task);
     public:
       static worker_manager_global &get_manager()
       {
@@ -61,6 +45,30 @@ namespace parallel_query
 
       void init();
       void destroy();
+
+    private:
+      /* constants */
+      static const int TASK_QUEUE_SIZE_PER_CORE = 2;
+
+      /* friends */
+      friend class worker_manager;
+
+      /* member variables (ordered by size for alignment) */
+      cubthread::entry_workpool *m_worker_pool;
+      std::once_flag m_init_flag;
+      std::atomic<int> m_available;
+      int m_capacity;
+
+      /* constructors / destructors */
+      worker_manager_global();
+      ~worker_manager_global();
+      worker_manager_global (const worker_manager_global &) = delete;
+      worker_manager_global &operator= (const worker_manager_global &) = delete;
+
+      /* methods */
+      int try_reserve_workers (const int num_workers);
+      void release_workers (const int num_workers);
+      void push_task (cubthread::entry_task *task);
   };
 }
 

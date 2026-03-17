@@ -70,7 +70,7 @@ typedef struct
 
 
 /* available list of general categories (id, name) */
-GENERAL_CATEGORY list_gen_cat[] = {
+static const GENERAL_CATEGORY list_gen_cat[] = {
   {CAT_Lu, "Lu"},
   {CAT_Ll, "Ll"},
 };
