@@ -9912,6 +9912,7 @@ attr_def_one
 			              MSGCAT_SEMANTIC_CLASS_ATT_OR_SHARED_CANT_SET_VISIBILITY,
 				      node->info.attr_def.attr_name->info.name.original);
 			          }
+				node->info.attr_def.attr_invisible = 0;
 			      }
 			    else
 			      {
