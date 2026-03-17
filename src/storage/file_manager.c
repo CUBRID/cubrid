@@ -11940,6 +11940,123 @@ file_get_ftabs (THREAD_ENTRY * thread_p, const HFID * hfid, FILE_FTAB_COLLECTOR 
   return NO_ERROR;
 }
 
+/*
+ * file_extdata_collect_data_sectors_part () - collect FILE_PARTIAL_SECTOR from partial table
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * item (in)     : item (FILE_PARTIAL_SECTOR)
+ * index (in)    : index
+ * stop (out)    : ignored
+ * args (in/out) : FILE_FTAB_COLLECTOR *
+ */
+static int
+file_extdata_collect_data_sectors_part (THREAD_ENTRY * thread_p, const void *item, int index_unused, bool * stop, void *args)
+{
+  FILE_FTAB_COLLECTOR *collect = (FILE_FTAB_COLLECTOR *) args;
+  FILE_PARTIAL_SECTOR *partsect = (FILE_PARTIAL_SECTOR *) item;
+
+  collect->partsect_ftab[collect->nsects++] = *partsect;
+  collect->npages += bit64_count_ones (partsect->page_bitmap);
+
+  return NO_ERROR;
+}
+
+/*
+ * file_extdata_collect_data_sectors_full () - collect VSID from full table and convert to FILE_PARTIAL_SECTOR
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * item (in)     : item (VSID)
+ * index (in)    : index
+ * stop (out)    : ignored
+ * args (in/out) : FILE_FTAB_COLLECTOR *
+ */
+static int
+file_extdata_collect_data_sectors_full (THREAD_ENTRY * thread_p, const void *item, int index_unused, bool * stop, void *args)
+{
+  FILE_FTAB_COLLECTOR *collect = (FILE_FTAB_COLLECTOR *) args;
+  VSID *vsid = (VSID *) item;
+
+  collect->partsect_ftab[collect->nsects].vsid = *vsid;
+  collect->partsect_ftab[collect->nsects].page_bitmap = FILE_FULL_PAGE_BITMAP;
+  collect->nsects++;
+  collect->npages += DISK_SECTOR_NPAGES;
+
+  return NO_ERROR;
+}
+
+/*
+ * file_get_all_data_sectors () - collect all data sectors
+ *
+ * return        : NO_ERROR or error code
+ * thread_p (in) : thread entry
+ * hfid (in)     : heap file ID
+ * collector_out(out): output collected table pages
+ */
+int
+file_get_all_data_sectors (THREAD_ENTRY * thread_p, const HFID * hfid, FILE_FTAB_COLLECTOR * collector_out)
+{
+  VFID vfid = hfid->vfid;
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead;
+  FILE_HEADER *fhead = NULL;
+  FILE_EXTENSIBLE_DATA *extdata_ftab = NULL;
+  int error_code = 0;
+
+  collector_out->npages = 0;
+  collector_out->nsects = 0;
+  collector_out->partsect_ftab = NULL;
+
+  FILE_GET_HEADER_VPID (&vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  fhead = (FILE_HEADER *) page_fhead;
+
+  collector_out->partsect_ftab =
+    (FILE_PARTIAL_SECTOR *) db_private_alloc (thread_p, fhead->n_sector_total * sizeof (FILE_PARTIAL_SECTOR));
+  if (collector_out->partsect_ftab == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      fhead->n_sector_total * sizeof (FILE_PARTIAL_SECTOR));
+      pgbuf_unfix (thread_p, page_fhead);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  FILE_HEADER_GET_PART_FTAB (fhead, extdata_ftab);
+  error_code =
+    file_extdata_apply_funcs (thread_p, extdata_ftab, NULL, NULL, file_extdata_collect_data_sectors_part,
+			      collector_out, false, NULL, NULL);
+  if (error_code != NO_ERROR)
+    {
+      assert_release (false);
+      pgbuf_unfix (thread_p, page_fhead);
+      return ER_FAILED;
+    }
+
+  FILE_HEADER_GET_FULL_FTAB (fhead, extdata_ftab);
+  error_code =
+    file_extdata_apply_funcs (thread_p, extdata_ftab, NULL, NULL, file_extdata_collect_data_sectors_full,
+			      collector_out, false, NULL, NULL);
+  if (error_code != NO_ERROR)
+    {
+      assert_release (false);
+      pgbuf_unfix (thread_p, page_fhead);
+      return ER_FAILED;
+    }
+
+  if (page_fhead != NULL)
+    {
+      pgbuf_unfix (thread_p, page_fhead);
+    }
+
+  return NO_ERROR;
+}
+
 /************************************************************************/
 /* End of file                                                          */
 /************************************************************************/

@@ -27,6 +27,7 @@
 #include "px_heap_scan_ftab_set.hpp"
 #include "storage_common.h"
 #include "bit.h"
+#include "file_manager.h"
 
 #if !defined(NDEBUG)
 #include <sys/syscall.h>
@@ -64,7 +65,7 @@ namespace parallel_heap_scan
     int error_code;
     m_hfid = hfid;
 
-    error_code = file_get_ftabs (thread_p, &m_hfid, &collector);
+    error_code = file_get_all_data_sectors (thread_p, &m_hfid, &collector);
     if (error_code != NO_ERROR)
       {
 	return error_code;
@@ -95,13 +96,15 @@ namespace parallel_heap_scan
 		  {
 		    pgbuf_ordered_unfix (thread_p, &m_tl_old_page_watcher);
 		  }
-		ret = S_END;
-		break;
+		return S_END;
 	      }
 	    m_tl_pgoffset = 0;
 	    m_tl_vpid.volid = m_tl_ftab.vsid.volid;
 	    m_tl_vpid.pageid = SECTOR_FIRST_PAGEID (m_tl_ftab.vsid.sectid);
 	  }
+
+	m_tl_pgoffset++;
+	m_tl_vpid.pageid++;
 
 	for (; m_tl_pgoffset < DISK_SECTOR_NPAGES; m_tl_pgoffset++, m_tl_vpid.pageid++)
 	  {
@@ -115,6 +118,10 @@ namespace parallel_heap_scan
 		  }
 		error_code = pgbuf_ordered_fix (thread_p, &m_tl_vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ,
 						&m_tl_scan_cache->page_watcher);
+		if (m_tl_old_page_watcher.pgptr != NULL)
+		  {
+		    pgbuf_ordered_unfix (thread_p, &m_tl_old_page_watcher);
+		  }
 		if (error_code != NO_ERROR)
 		  {
 		    return S_ERROR;

@@ -44,10 +44,10 @@ namespace parallel_heap_scan
       {
 	int i;
 	m_ftab_set.resize (ftab_collector->nsects);
-	for (i=0; i<ftab_collector->nsects; i++)
+	for (i = 0; i < ftab_collector->nsects; i++)
 	  {
 	    FILE_PARTIAL_SECTOR ftab;
-	    ftab= ftab_collector->partsect_ftab[i];
+	    ftab = ftab_collector->partsect_ftab[i];
 	    m_ftab_set[i] = ftab;
 	  }
       }
