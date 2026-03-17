@@ -842,7 +842,7 @@ xes_posix_move_file_with_prefix (const char *src_path, const char *metaname, con
   es_get_unique_name (dirname1, dirname2, metaname, filename);
 
   ret = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s", prefix, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
-  if (ret < 0)
+  if (ret < 0 || ret >= PATH_MAX - 1)
     {
       return ER_ES_INVALID_PATH;
     }
