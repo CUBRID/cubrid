@@ -402,20 +402,7 @@ elo_copy_with_prefix (DB_ELO * src_elo, const char *prefix, DB_ELO * dest_elo)
 	case LOB_TRANSIENT_CREATED:
 	case LOB_PERMANENT_DELETED:
 	  {
-	    ret = es_rename_file (real_locator, src_elo->meta_data, rename_uri);
-	    if (ret != NO_ERROR)
-	      {
-		goto error_return;
-	      }
-
-	    /* Update to intermediate path for traceability; no allocation needed as rename_uri is temporary. */
-	    ret = lob_locator_change_state (src_elo->locator, rename_uri, LOB_TRANSIENT_CREATED);
-	    if (ret != NO_ERROR)
-	      {
-		goto error_return;
-	      }
-
-	    ret = es_move_file_with_prefix (rename_uri, src_elo->meta_data, prefix, out_uri);
+	    ret = es_move_file_with_prefix (real_locator, src_elo->meta_data, prefix, out_uri);
 	    if (ret != NO_ERROR)
 	      {
 		goto error_return;
