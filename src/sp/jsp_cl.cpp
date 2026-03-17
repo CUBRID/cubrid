@@ -1218,6 +1218,14 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	statement->info.sp.comment = comment_saved;
       }
 
+      if (rewritten_code == NULL)
+	{
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	  err = ER_FAILED;
+	  goto error_exit;
+	}
+
       code_info.name = sp_info.target_class;
       code_info.created_time = stm.str ();
       code_info.stype = SPSC_PLCSQL;
