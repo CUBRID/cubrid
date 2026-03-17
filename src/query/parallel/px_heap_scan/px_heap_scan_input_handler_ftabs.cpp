@@ -101,10 +101,13 @@ namespace parallel_heap_scan
 	    m_tl_pgoffset = 0;
 	    m_tl_vpid.volid = m_tl_ftab.vsid.volid;
 	    m_tl_vpid.pageid = SECTOR_FIRST_PAGEID (m_tl_ftab.vsid.sectid);
+	    if (m_tl_vpid.volid == m_hfid.vfid.volid && m_tl_vpid.pageid == m_hfid.vfid.fileid)
+	      {
+		/* skip heap header page */
+		m_tl_pgoffset++;
+		m_tl_vpid.pageid++;
+	      }
 	  }
-
-	m_tl_pgoffset++;
-	m_tl_vpid.pageid++;
 
 	for (; m_tl_pgoffset < DISK_SECTOR_NPAGES; m_tl_pgoffset++, m_tl_vpid.pageid++)
 	  {
@@ -127,6 +130,8 @@ namespace parallel_heap_scan
 		    return S_ERROR;
 		  }
 		*vpid = m_tl_vpid;
+		m_tl_pgoffset++;
+		m_tl_vpid.pageid++;
 		return S_SUCCESS;
 	      }
 	  }
