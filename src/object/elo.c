@@ -454,6 +454,7 @@ elo_copy_with_prefix (DB_ELO * src_elo, const char *prefix, DB_ELO * dest_elo)
 	    locator = db_private_strdup (NULL, out_uri);
 	    if (locator == NULL)
 	      {
+                assert (er_errid () != NO_ERROR);
 		es_delete_file (out_uri);
 		ret = er_errid ();
 		goto error_return;
