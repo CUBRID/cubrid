@@ -274,6 +274,8 @@ dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
 	    {
 	      if (global_tran_queue_expand () != NO_ERROR)
 		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  (size_t) GLOBAL_TRAN_QUEUE_GROW_SIZE * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
 		  pthread_mutex_unlock (&global_tran_queue_mutex);
 		  return;
 		}

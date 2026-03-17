@@ -570,8 +570,15 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	  error = dblink_2pc_send_decision_one_participant (tdes->gtrid, &participants[i], *decision);
 	  if (error == NO_ERROR)
 	    {
-	      (void) dblink_global_tran_delete_row (thread_p, tdes->gtrid, participants[i].conn_handle);
-	      log_sysop_commit (thread_p);
+	      int del_err = dblink_global_tran_delete_row (thread_p, tdes->gtrid, participants[i].conn_handle);
+	      if (del_err == NO_ERROR)
+		{
+		  log_sysop_commit (thread_p);
+		}
+	      else
+		{
+		  log_sysop_abort (thread_p);
+		}
 	    }
 	  else
 	    {
