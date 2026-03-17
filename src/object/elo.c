@@ -407,6 +407,13 @@ elo_copy_with_prefix (DB_ELO * src_elo, const char *prefix, DB_ELO * dest_elo)
 		goto error_return;
 	      }
 
+	    /* Update to intermediate path for traceability; no allocation needed as rename_uri is temporary. */
+	    ret = lob_locator_change_state (src_elo->locator, rename_uri, LOB_TRANSIENT_CREATED);
+	    if (ret != NO_ERROR)
+	      {
+		goto error_return;
+	      }
+
 	    ret = es_move_file_with_prefix (rename_uri, src_elo->meta_data, prefix, out_uri);
 	    if (ret != NO_ERROR)
 	      {
