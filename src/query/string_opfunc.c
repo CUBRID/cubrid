@@ -26234,7 +26234,8 @@ uuidv7_generate_bytes (THREAD_ENTRY * thread_p, uint64_t xasl_vd_epoch_ms, unsig
 
   /* If the type of `seq` changes or if its maximum allowable value is modified 
    * uuidv7_generate_bytes logics must be updated accordingly */
-  assert (seq <= GUID_V7_SEQ_MAX);
+  assert (sizeof (seq) == sizeof (thread_p->uuidv7_seq));
+  assert (sizeof (thread_p->uuidv7_seq) * 8 >= GUID_V7_SEQ_BITS);
 
   if (xasl_vd_epoch_ms > last_ms)
     {
