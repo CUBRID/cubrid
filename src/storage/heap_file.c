@@ -10864,6 +10864,7 @@ heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att)
   /* Read the offset from the variable offset table to check the OOS flag */
   int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
   int offset;
+
   switch (offset_size)
     {
     case OR_BYTE_SIZE:
@@ -10891,16 +10892,17 @@ heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att)
   /* Extract OOS OID from inline data (no allocation needed) */
   OR_BUF buf;
   OID oos_oid;
+
   buf.ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, att->location);
   buf.endptr = recdes->data + recdes->length;
   or_get_oid (&buf, &oos_oid);
-
   assert (!OID_ISNULL (&oos_oid));
 
   /* Query OOS length without reading/allocating the full data */
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
   int length = oos_get_length (thread_p, oos_oid);
-  return (length > 0) ? length : 0;
+
+  return length;
 }
 
 /*
@@ -14351,7 +14353,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
       assert (recdes != NULL && recdes->data != NULL);
 
       /* Ensure attr_info is recached to the record's representation before OOS scan */
-      if (attr_info->read_classrepr == NULL || attr_info->read_classrepr->id != or_rep_id (recdes))
+      if (unlikely ((attr_info->read_classrepr == NULL || attr_info->read_classrepr->id != or_rep_id (recdes))))
 	{
 	  if (heap_attrinfo_recache (thread_p, or_rep_id (recdes), attr_info) != NO_ERROR)
 	    {
@@ -14367,6 +14369,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 	    {
 	      continue;
 	    }
+
 	  OR_ATTRIBUTE *oos_att = heap_locate_attribute (att_ids[oos_i], attr_info);
 	  if (oos_att != NULL)
 	    {
