@@ -592,10 +592,10 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
 	    }
 	}
       /* get the offsets relative to the end of the header (beginning of variable table) */
-      offset = OR_GET_VAR_LENGTH (or_get_offset_internal (buf, &rc, offset_size));
+      offset = or_get_offset_internal (buf, &rc, offset_size);
       for (i = 0; i < class_->variable_count; i++)
 	{
-	  offset2 = OR_GET_VAR_LENGTH (or_get_offset_internal (buf, &rc, offset_size));
+	  offset2 = or_get_offset_internal (buf, &rc, offset_size);
 	  vars[i] = offset2 - offset;
 	  offset = offset2;
 	}
@@ -740,10 +740,10 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
 	    }
 	}
       /* compute the variable offsets relative to the end of the header (beginning of variable table) */
-      offset = OR_GET_VAR_LENGTH (or_get_offset_internal (buf, &rc, offset_size));
+      offset = or_get_offset_internal (buf, &rc, offset_size);
       for (i = 0; i < oldrep->variable_count; i++)
 	{
-	  offset2 = OR_GET_VAR_LENGTH (or_get_offset_internal (buf, &rc, offset_size));
+	  offset2 = or_get_offset_internal (buf, &rc, offset_size);
 	  vars[i] = offset2 - offset;
 	  offset = offset2;
 	}

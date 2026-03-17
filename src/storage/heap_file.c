@@ -27737,24 +27737,25 @@ heap_recdes_get_oos_oids (const RECDES * recdes)
 
       if (OR_IS_LAST_ELEMENT (offset))
 	{
-#if !defined (NDEBUG)
 	  if (oos_oids.empty ())
 	    {
-	      oos_debug ("No OOS OIDs found.");
+	      /* heap_recdes_contains_oos() already confirmed OOS flag is set, so finding no OOS OIDs is inconsistent */
+	      assert (false && "heap_recdes_contains_oos() passed but no OOS OIDs found");
+	      return oos_oids;
 	    }
-	  else
-	    {
-	      std::string line = "{";
-	      for (size_t i = 0; i < oos_oids.size (); ++i)
-		{
-		  char oid_buf[32];
-		  if (i > 0)
-		    line.append (", ");
-		  line.append (oid_to_string (oid_buf, sizeof oid_buf, &oos_oids[i]));
-		}
-	      line += '}';
-	      oos_debug ("Total %zu found. OOS OIDs: %s", oos_oids.size (), line.c_str ());
-	    }
+#if !defined (NDEBUG)
+	  {
+	    std::string line = "{";
+	    for (size_t i = 0; i < oos_oids.size (); ++i)
+	      {
+		char oid_buf[32];
+		if (i > 0)
+		  line.append (", ");
+		line.append (oid_to_string (oid_buf, sizeof oid_buf, &oos_oids[i]));
+	      }
+	    line += '}';
+	    oos_debug ("Total %zu found. OOS OIDs: %s", oos_oids.size (), line.c_str ());
+	  }
 #endif
 	  return oos_oids;
 	}

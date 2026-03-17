@@ -3573,10 +3573,10 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
 		  DB_SIZEOF (int) * sm_class->variable_count);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-      offset = OR_GET_VAR_LENGTH (or_get_offset_internal (buf, &rc, offset_size));
+      offset = or_get_offset_internal (buf, &rc, offset_size);
       for (i = 0; i < sm_class->variable_count; i++)
 	{
-	  offset2 = OR_GET_VAR_LENGTH (or_get_offset_internal (buf, &rc, offset_size));
+	  offset2 = or_get_offset_internal (buf, &rc, offset_size);
 	  vars[i] = offset2 - offset;
 	  offset = offset2;
 	}
