@@ -8861,10 +8861,24 @@ qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name
   bool scan_cache_opened = false;
   int npages, nobjs, avg_length;
   int error = NO_ERROR;
+  int str_len;
 
   db_make_null (result_p);
 
   if (DB_IS_NULL (db_table_name))
+    {
+      goto exit;
+    }
+
+  if (!QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (db_table_name)))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 1, "Arguments type mismatching.");
+      error = ER_UNEXPECTED;
+      goto exit;
+    }
+
+  str_len = db_get_string_size (db_table_name);
+  if (str_len < 0 || str_len >= SM_MAX_IDENTIFIER_LENGTH)
     {
       goto exit;
     }
@@ -8888,7 +8902,7 @@ qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name
 
   if (heap_get_class_record (thread_p, &class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
     {
-      error = er_errid ();
+      ASSERT_ERROR_AND_SET (error);
       goto exit;
     }
 
@@ -8908,7 +8922,7 @@ qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name
 
   if (heap_estimate (thread_p, &hfid, &npages, &nobjs, &avg_length) < 0)
     {
-      error = er_errid ();
+      ASSERT_ERROR_AND_SET (error);
       goto exit;
     }
 
