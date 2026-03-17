@@ -378,7 +378,7 @@ namespace cubpl
     constexpr int MAX_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB max size
     if (res_size > MAX_BUFFER_SIZE || res_size < 0)
       {
-	return do_handle_network_error (ARG_FILE_LINE, nbytes);
+	return do_handle_network_error (ARG_FILE_LINE, res_size);
       }
 
     if (res_size == 0)
