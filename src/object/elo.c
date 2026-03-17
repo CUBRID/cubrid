@@ -412,6 +412,7 @@ elo_copy_with_prefix (DB_ELO * src_elo, const char *prefix, DB_ELO * dest_elo)
 	    if (locator == NULL)
 	      {
 		assert (er_errid () != NO_ERROR);
+                es_delete_file (out_uri);
 		ret = er_errid ();
 		goto error_return;
 	      }
@@ -419,6 +420,7 @@ elo_copy_with_prefix (DB_ELO * src_elo, const char *prefix, DB_ELO * dest_elo)
 	    ret = lob_locator_change_state (src_elo->locator, locator, LOB_PERMANENT_CREATED);
 	    if (ret != NO_ERROR)
 	      {
+                es_delete_file (out_uri);
 		goto error_return;
 	      }
 	  }
@@ -459,6 +461,7 @@ elo_copy_with_prefix (DB_ELO * src_elo, const char *prefix, DB_ELO * dest_elo)
 	    ret = lob_locator_add (locator, LOB_PERMANENT_CREATED);
 	    if (ret != NO_ERROR)
 	      {
+                es_delete_file (out_uri);
 		goto error_return;
 	      }
 	  }
