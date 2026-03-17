@@ -707,7 +707,7 @@ static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CA
 static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value,
 				   HEAP_CACHE_ATTRINFO * attr_info);
 static OR_ATTRIBUTE *heap_locate_attribute (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info);
-static int heap_midxkey_get_oos_extra_size (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * att);
+static int heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att);
 
 static DB_MIDXKEY *heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 					 HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, TP_DOMAIN * func_domain,
@@ -10844,34 +10844,12 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
  *   when recdes->length underestimates the actual OOS value size.
  *
  *   return: actual OOS data size, or 0 if not OOS
- *   thread_p(in):
  *   recdes(in): record descriptor
- *   attr_info(in): attribute cache info (used for repr mismatch handling)
- *   att(in): the OR_ATTRIBUTE to check
+ *   att(in): the OR_ATTRIBUTE to check (must already match the record's representation)
  */
 static int
-heap_midxkey_get_oos_extra_size (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * att)
+heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att)
 {
-  /* Resolve att to read_classrepr if representations differ (same as heap_midxkey_get_value) */
-  if (or_rep_id (recdes) != attr_info->last_classrepr->id)
-    {
-      bool found = false;
-      for (int i = 0; i < attr_info->read_classrepr->n_attributes; i++)
-	{
-	  if (attr_info->read_classrepr->attributes[i].id == att->id)
-	    {
-	      att = &attr_info->read_classrepr->attributes[i];
-	      found = true;
-	      break;
-	    }
-	}
-      if (!found)
-	{
-	  /* Attribute was added after this record was inserted; uses a default value, not OOS */
-	  return 0;
-	}
-    }
-
   /* Only variable attributes can be OOS */
   if (att->is_fixed != 0)
     {
@@ -14393,7 +14371,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 	  if (oos_att != NULL)
 	    {
 	      /* Returns 0 on error or if attribute is not OOS; safe to accumulate. */
-	      midxkey_size += heap_midxkey_get_oos_extra_size (recdes, attr_info, oos_att);
+	      midxkey_size += heap_midxkey_get_oos_extra_size (recdes, oos_att);
 	    }
 	  /* else: attribute not found in this representation — skip (uses default value, not OOS) */
 	}
@@ -14579,7 +14557,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 	      continue;
 	    }
 	  /* Returns 0 on error or if attribute is not OOS; safe to accumulate. */
-	  midxkey_size += heap_midxkey_get_oos_extra_size (recdes, idx_attrinfo, index->atts[oos_i]);
+	  midxkey_size += heap_midxkey_get_oos_extra_size (recdes, index->atts[oos_i]);
 	}
 
       /* Allocate storage for the buf of midxkey */
