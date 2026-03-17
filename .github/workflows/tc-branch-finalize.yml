@@ -1,0 +1,169 @@
+#
+# TC Branch Finalize — Cleanup TC branches/PRs when engine PR closes
+#
+# Trigger: pull_request_target (closed)
+# - PR merged: close draft PR with merge note, delete tc/pr-<N> branch
+# - PR closed without merge: close draft PR with close note, delete tc/pr-<N> branch
+#
+# Security: pull_request_target runs from base branch — secrets available
+#           but PR code is NEVER checked out or executed.
+#
+name: TC Branch Finalize
+
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions: {} # Least privilege — jobs opt-in below
+
+concurrency:
+  group: tc-branch-finalize-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+env:
+  OWNER: CUBRID
+
+jobs:
+  finalize-tc-branch:
+    name: Finalize TC (${{ matrix.tc-repo }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pull-requests: write
+    strategy:
+      matrix:
+        tc-repo:
+          - cubrid-testcases
+          - cubrid-testcases-private-ex
+      fail-fast: false
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.TC_APP_ID }}
+          private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
+          repositories: ${{ matrix.tc-repo }}
+          owner: ${{ env.OWNER }}
+
+      - name: Mask token
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        shell: bash
+        run: echo "::add-mask::${APP_TOKEN}"
+
+      - name: Close draft PR and delete TC branch
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TC_REPO: ${{ matrix.tc-repo }}
+          IS_MERGED: ${{ github.event.pull_request.merged }}
+          OWNER: ${{ env.OWNER }}
+          ENGINE_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRANCH_NAME="tc/pr-${PR_NUMBER}"
+          
+          DRAFT_PR_DATA=$(gh pr list --repo "${OWNER}/${TC_REPO}" --head "${BRANCH_NAME}" --state open --json number,title,url --jq '.[0]' || echo "")
+          DRAFT_PR_NUMBER=$(echo "${DRAFT_PR_DATA}" | jq -r '.number // empty')
+          DRAFT_PR_TITLE=$(echo "${DRAFT_PR_DATA}" | jq -r '.title // empty')
+          DRAFT_PR_URL=$(echo "${DRAFT_PR_DATA}" | jq -r '.url // empty')
+          
+          if [ -n "${DRAFT_PR_NUMBER}" ]; then
+            if [ "${IS_MERGED}" == "true" ]; then
+              gh pr close "${DRAFT_PR_NUMBER}" --repo "${OWNER}/${TC_REPO}" --comment "Engine PR ${ENGINE_REPO}#${PR_NUMBER} was merged. Closing this draft PR."
+              echo "::notice::Closed draft PR #${DRAFT_PR_NUMBER} in ${TC_REPO}"
+            else
+              gh pr close "${DRAFT_PR_NUMBER}" --repo "${OWNER}/${TC_REPO}" --comment "Engine PR ${ENGINE_REPO}#${PR_NUMBER} was closed without merge. Closing this draft PR."
+              echo "::notice::Closed draft PR #${DRAFT_PR_NUMBER} in ${TC_REPO} (PR not merged)"
+            fi
+            echo "draft_pr_closed=true" >> "${GITHUB_OUTPUT}"
+            echo "draft_pr_number=${DRAFT_PR_NUMBER}" >> "${GITHUB_OUTPUT}"
+            echo "draft_pr_title=${DRAFT_PR_TITLE}" >> "${GITHUB_OUTPUT}"
+            echo "draft_pr_url=${DRAFT_PR_URL}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "::notice::No open draft PR found for ${BRANCH_NAME} in ${TC_REPO}"
+            echo "draft_pr_closed=false" >> "${GITHUB_OUTPUT}"
+            echo "draft_pr_number=" >> "${GITHUB_OUTPUT}"
+            echo "draft_pr_title=" >> "${GITHUB_OUTPUT}"
+            echo "draft_pr_url=" >> "${GITHUB_OUTPUT}"
+          fi
+          
+          if gh api "repos/${OWNER}/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" > /dev/null 2>&1; then
+            gh api "repos/${OWNER}/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" --method DELETE
+            echo "::notice::Deleted '${BRANCH_NAME}' from ${TC_REPO}"
+            echo "branch_deleted=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "::notice::Branch '${BRANCH_NAME}' not found in ${TC_REPO}. Already deleted."
+            echo "branch_deleted=false" >> "${GITHUB_OUTPUT}"
+          fi
+        id: finalize
+
+      - name: Comment success on engine PR
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TC_REPO: ${{ matrix.tc-repo }}
+          ENGINE_REPO: ${{ github.repository }}
+          IS_MERGED: ${{ github.event.pull_request.merged }}
+          BRANCH_DELETED: ${{ steps.finalize.outputs.branch_deleted }}
+          DRAFT_PR_CLOSED: ${{ steps.finalize.outputs.draft_pr_closed }}
+          DRAFT_PR_NUMBER: ${{ steps.finalize.outputs.draft_pr_number }}
+          DRAFT_PR_TITLE: ${{ steps.finalize.outputs.draft_pr_title }}
+          DRAFT_PR_URL: ${{ steps.finalize.outputs.draft_pr_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRANCH_NAME="tc/pr-${PR_NUMBER}"
+
+          if [ "${IS_MERGED}" == "true" ]; then
+            STATUS_EMOJI="✅"
+            STATUS_TEXT="merged"
+          else
+            STATUS_EMOJI="🗑️"
+            STATUS_TEXT="closed (not merged)"
+          fi
+
+          CLEANUP_ITEMS=""
+          if [ "${DRAFT_PR_CLOSED}" == "true" ] && [ -n "${DRAFT_PR_NUMBER}" ]; then
+            CLEANUP_ITEMS="${CLEANUP_ITEMS}
+          - [Draft PR #${DRAFT_PR_NUMBER}: ${DRAFT_PR_TITLE}](${DRAFT_PR_URL}): Closed"
+          fi
+          if [ "${BRANCH_DELETED}" == "true" ]; then
+            CLEANUP_ITEMS="${CLEANUP_ITEMS}
+          - Branch \`${BRANCH_NAME}\`: Deleted"
+          fi
+
+          COMMENT_BODY=$(cat <<EOF
+          ${STATUS_EMOJI} **TC Branch Finalized** for \`${TC_REPO}\`
+
+          Engine PR was ${STATUS_TEXT}.
+
+          **Cleanup Results:**${CLEANUP_ITEMS}
+
+          TC develop branch is ready for the next PR.
+          EOF
+          )
+
+          gh pr comment "${PR_NUMBER}" \
+            --repo "${ENGINE_REPO}" \
+            --body "${COMMENT_BODY}"
+
+      - name: Comment on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TC_REPO: ${{ matrix.tc-repo }}
+          ENGINE_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          gh pr comment "${PR_NUMBER}" \
+            --repo "${ENGINE_REPO}" \
+            --body "⚠️ **TC Branch Finalize Failed** for \`${TC_REPO}\`
+
+          Failed to process \`tc/pr-${PR_NUMBER}\`.
+          Please check the [workflow run](${RUN_URL}) for details."
