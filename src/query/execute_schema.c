@@ -11420,10 +11420,18 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
     }
   else if (attr_def->info.attr_def.attr_invisible == 2)
     {
+      /* PRESENT_NEW without PRESENT_OLD will be converted to GAINED by the consolidate properties loop below */
       attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
     }
   else if (attr_chg_properties->p[P_INVISIBLE] & ATT_CHG_PROPERTY_PRESENT_OLD)
     {
+      /*
+       * attr_invisible == 1              -> NOW VISIBLE
+       * P_INVISIBLE & PRESENT_OLD        -> WAS INVISIBLE
+       *
+       * it changed from invisible to visible.
+       * This means the attribute has lost its invisible state
+       */
       attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_LOST;
       attr_chg_properties->p[P_INVISIBLE] &= ~ATT_CHG_PROPERTY_PRESENT_OLD;
     }
