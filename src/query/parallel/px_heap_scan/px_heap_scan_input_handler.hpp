@@ -34,7 +34,6 @@ namespace parallel_heap_scan
   enum class INPUT_TYPE:uint8_t
   {
     NONE,
-    SINGLE_TABLE,
     FTABS
     /* partitioned table specification need? */
   };

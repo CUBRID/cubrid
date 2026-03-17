@@ -11877,69 +11877,6 @@ exit:
   return error_code;
 }
 
-int
-file_get_ftabs (THREAD_ENTRY * thread_p, const HFID * hfid, FILE_FTAB_COLLECTOR * collector_out)
-{
-  VFID vfid = hfid->vfid;
-  VPID vpid_fhead;
-  PAGE_PTR page_fhead;
-  FILE_HEADER *fhead = NULL;
-  FILE_EXTENSIBLE_DATA *extdata_ftab = NULL;
-  int error_code = 0;
-  bool is_partial = false;
-
-  collector_out->npages = 0;
-  collector_out->nsects = 0;
-  collector_out->partsect_ftab = NULL;
-
-  FILE_GET_HEADER_VPID (&vfid, &vpid_fhead);
-  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_fhead == NULL)
-    {
-      assert_release (false);
-      return ER_FAILED;
-    }
-  fhead = (FILE_HEADER *) page_fhead;
-
-  collector_out->partsect_ftab =
-    (FILE_PARTIAL_SECTOR *) db_private_alloc (thread_p, fhead->n_page_ftab * sizeof (FILE_PARTIAL_SECTOR));
-  if (collector_out->partsect_ftab == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      fhead->n_page_ftab * sizeof (FILE_PARTIAL_SECTOR));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  FILE_HEADER_GET_PART_FTAB (fhead, extdata_ftab);
-  is_partial = true;
-  error_code =
-    file_extdata_apply_funcs (thread_p, extdata_ftab, file_extdata_collect_ftab_pages, collector_out,
-			      NULL, &is_partial, true, NULL, NULL);
-  if (error_code != NO_ERROR)
-    {
-      assert_release (false);
-      return ER_FAILED;
-    }
-
-  FILE_HEADER_GET_FULL_FTAB (fhead, extdata_ftab);
-  is_partial = false;
-  error_code =
-    file_extdata_apply_funcs (thread_p, extdata_ftab, file_extdata_collect_ftab_pages, collector_out,
-			      NULL, &is_partial, true, NULL, NULL);
-  if (error_code != NO_ERROR)
-    {
-      assert_release (false);
-      return ER_FAILED;
-    }
-
-  if (page_fhead != NULL)
-    {
-      pgbuf_unfix (thread_p, page_fhead);
-    }
-
-  return NO_ERROR;
-}
-
 /*
  * file_extdata_collect_data_sectors_part () - collect FILE_PARTIAL_SECTOR from partial table
  *
@@ -11951,7 +11888,8 @@ file_get_ftabs (THREAD_ENTRY * thread_p, const HFID * hfid, FILE_FTAB_COLLECTOR 
  * args (in/out) : FILE_FTAB_COLLECTOR *
  */
 static int
-file_extdata_collect_data_sectors_part (THREAD_ENTRY * thread_p, const void *item, int index_unused, bool * stop, void *args)
+file_extdata_collect_data_sectors_part (THREAD_ENTRY * thread_p, const void *item, int index_unused, bool * stop,
+					void *args)
 {
   FILE_FTAB_COLLECTOR *collect = (FILE_FTAB_COLLECTOR *) args;
   FILE_PARTIAL_SECTOR *partsect = (FILE_PARTIAL_SECTOR *) item;
@@ -11973,7 +11911,8 @@ file_extdata_collect_data_sectors_part (THREAD_ENTRY * thread_p, const void *ite
  * args (in/out) : FILE_FTAB_COLLECTOR *
  */
 static int
-file_extdata_collect_data_sectors_full (THREAD_ENTRY * thread_p, const void *item, int index_unused, bool * stop, void *args)
+file_extdata_collect_data_sectors_full (THREAD_ENTRY * thread_p, const void *item, int index_unused, bool * stop,
+					void *args)
 {
   FILE_FTAB_COLLECTOR *collect = (FILE_FTAB_COLLECTOR *) args;
   VSID *vsid = (VSID *) item;

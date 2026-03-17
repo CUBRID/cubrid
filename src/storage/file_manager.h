@@ -290,7 +290,6 @@ extern void file_rv_dump_extdata_add (FILE * fp, int length, void *data);
 extern void file_rv_dump_extdata_remove (FILE * fp, int length, void *data);
 
 /* partial file scan stuff */
-extern int file_get_ftabs (THREAD_ENTRY * thread_p, const HFID * hfid, FILE_FTAB_COLLECTOR * collector_out);
 extern int file_get_all_data_sectors (THREAD_ENTRY * thread_p, const HFID * hfid, FILE_FTAB_COLLECTOR * collector_out);
 
 #endif /* _FILE_MANAGER_H_ */
