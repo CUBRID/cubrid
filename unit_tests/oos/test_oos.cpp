@@ -396,6 +396,85 @@ TEST (OosTest, ShouldInsertIntoSamePage)
 
 }
 
+TEST (OosTest, OosGetLengthWithinPage)
+{
+  int err;
+  VFID oos_vfid;
+
+  err = oos_file_create (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  const std::string data = "Hello, this is test data for oos_get_length!";
+  RECDES rec_in{};
+  err = test_oos_utils::from_string_into_recdes (data, rec_in);
+  ASSERT_EQ (err, NO_ERROR);
+
+  OID oid;
+  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  int length = oos_get_length (thread_p, oid);
+  ASSERT_EQ (length, rec_in.length);
+
+  recdes_free_data_area (&rec_in);
+}
+
+TEST (OosTest, OosGetLengthAcrossPages)
+{
+  int err;
+  VFID oos_vfid;
+
+  err = oos_file_create (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  const int large_size = 160 * 1024; // 160 KB — spans multiple pages
+  auto large_data = test_oos_utils::make_repeated_pattern_string (large_size);
+
+  RECDES rec_in{};
+  err = test_oos_utils::from_string_into_recdes (large_data, rec_in);
+  ASSERT_EQ (err, NO_ERROR);
+
+  OID oid;
+  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  /* oos_get_length reads only the first chunk header, which stores the total size */
+  int length = oos_get_length (thread_p, oid);
+  ASSERT_EQ (length, rec_in.length);
+
+  recdes_free_data_area (&rec_in);
+}
+
+TEST (OosTest, OosGetLengthAroundMaxChunkSize)
+{
+  int err;
+  VFID oos_vfid;
+
+  err = oos_file_create (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  const int max_chunk_size = bridge_oos_get_max_chunk_size_within_page ();
+
+  /* Test sizes around the boundary between single-page and multi-page storage */
+  for (int size = max_chunk_size - 5; size <= max_chunk_size + 5; size++)
+    {
+      auto data = test_oos_utils::make_repeated_pattern_string (size);
+
+      RECDES rec_in{};
+      err = test_oos_utils::from_string_into_recdes (data, rec_in);
+      ASSERT_EQ (err, NO_ERROR);
+
+      OID oid;
+      err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+      ASSERT_EQ (err, NO_ERROR);
+
+      int length = oos_get_length (thread_p, oid);
+      ASSERT_EQ (length, rec_in.length);
+
+      recdes_free_data_area (&rec_in);
+    }
+}
+
 TEST (OosTest, ShouldInsertIntoDifferentPages)
 {
 
