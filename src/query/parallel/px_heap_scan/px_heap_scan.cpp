@@ -602,7 +602,7 @@ namespace parallel_heap_scan
       }
     if (m_input_handler != nullptr)
       {
-	m_input_handler->~input_handler();
+	((input_handler_ftabs *)m_input_handler)->~input_handler_ftabs();
 	db_private_free (m_thread_p, m_input_handler);
 	m_input_handler = nullptr;
       }
