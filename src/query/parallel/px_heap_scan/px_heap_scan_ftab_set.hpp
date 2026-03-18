@@ -76,6 +76,7 @@ namespace parallel_heap_scan
 	  }
 	return sets;
       }
+
       FILE_PARTIAL_SECTOR get_next()
       {
 	if (iterator >= m_ftab_set.size())
@@ -85,6 +86,12 @@ namespace parallel_heap_scan
 	FILE_PARTIAL_SECTOR ftab = m_ftab_set[iterator];
 	iterator++;
 	return ftab;
+      }
+
+      void clear()
+      {
+	m_ftab_set.clear();
+	iterator = 0;
       }
   };
 }

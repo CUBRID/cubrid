@@ -367,7 +367,6 @@ set(PARALLEL_HEAP_SCAN_SOURCES
   )
 
 set(PARALLEL_HEAP_SCAN_HEADERS
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler_ftabs.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_ftab_set.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_handler.hpp

@@ -20,6 +20,7 @@
  * file_manager.c - file manager
  */
 
+#include "error_code.h"
 #ident "$Id$"
 
 #include "config.h"
@@ -11941,7 +11942,7 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const HFID * hfid, FILE_FTAB
   PAGE_PTR page_fhead;
   FILE_HEADER *fhead = NULL;
   FILE_EXTENSIBLE_DATA *extdata_ftab = NULL;
-  int error_code = 0;
+  int error_code = NO_ERROR;
 
   collector_out->npages = 0;
   collector_out->nsects = 0;
@@ -11972,7 +11973,6 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const HFID * hfid, FILE_FTAB
 			      collector_out, false, NULL, NULL);
   if (error_code != NO_ERROR)
     {
-      assert_release (false);
       pgbuf_unfix (thread_p, page_fhead);
       return ER_FAILED;
     }
@@ -11981,16 +11981,11 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const HFID * hfid, FILE_FTAB
   error_code =
     file_extdata_apply_funcs (thread_p, extdata_ftab, NULL, NULL, file_extdata_collect_data_sectors_full,
 			      collector_out, false, NULL, NULL);
+
+  pgbuf_unfix (thread_p, page_fhead);
   if (error_code != NO_ERROR)
     {
-      assert_release (false);
-      pgbuf_unfix (thread_p, page_fhead);
       return ER_FAILED;
-    }
-
-  if (page_fhead != NULL)
-    {
-      pgbuf_unfix (thread_p, page_fhead);
     }
 
   return NO_ERROR;

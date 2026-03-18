@@ -681,14 +681,19 @@ namespace parallel_heap_scan
 	  }
       }
     m_vd = new_vd;
-    m_input_handler = (input_handler_ftabs *) db_private_alloc (m_thread_p, sizeof (input_handler_ftabs));
+    m_input_handler = (input_handler *) db_private_alloc (m_thread_p, sizeof (input_handler));
     if (m_input_handler == nullptr)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
 	return ER_FAILED;
       }
-    m_input_handler = placement_new ((input_handler_ftabs *) m_input_handler, &m_interrupt, &m_err_messages);
-    ((input_handler_ftabs *)m_input_handler)->init_on_main (m_thread_p, m_hfid, m_parallelism);
+    m_input_handler = placement_new ((input_handler *) m_input_handler, &m_interrupt, &m_err_messages);
+
+    if (m_input_handler->init_on_main (m_thread_p, m_hfid, m_parallelism)!=NO_ERROR)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	return ER_FAILED;
+      }
 
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {

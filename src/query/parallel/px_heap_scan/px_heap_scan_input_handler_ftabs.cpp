@@ -22,6 +22,7 @@
 
 
 #include "px_heap_scan_input_handler_ftabs.hpp"
+#include "dbtype_def.h"
 #include "error_code.h"
 #include "page_buffer.h"
 #include "px_heap_scan_ftab_set.hpp"
@@ -53,7 +54,13 @@ namespace parallel_heap_scan
     /* open_scan should have succeeded */
     assert (m_tl_scan_cache->debug_initpattern == 12345);
     PGBUF_INIT_WATCHER (&m_tl_old_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
-    m_tl_ftab_set = &m_splited_ftab_set[m_splited_ftab_set_idx.fetch_add (1)];
+    int idx = m_splited_ftab_set_idx.fetch_add (1);
+    if (idx < 0 || (size_t) idx >= m_splited_ftab_set.size ())
+      {
+	assert_release (false);
+	return ER_FAILED;
+      }
+    m_tl_ftab_set = &m_splited_ftab_set[idx];
     m_tl_vpid = {-1,0};
     m_tl_pgoffset = 0;
     return NO_ERROR;
@@ -68,10 +75,17 @@ namespace parallel_heap_scan
     error_code = file_get_all_data_sectors (thread_p, &m_hfid, &collector);
     if (error_code != NO_ERROR)
       {
+	if (collector.partsect_ftab != NULL)
+	  {
+	    db_private_free_and_init (thread_p, collector.partsect_ftab);
+	  }
 	return error_code;
       }
     m_ftab_set.convert (&collector);
     m_splited_ftab_set = m_ftab_set.split (parallelism);
+    m_splited_ftab_set_idx.store (0);
+    m_ftab_set.clear();
+
     if (collector.partsect_ftab != NULL)
       {
 	db_private_free_and_init (thread_p, collector.partsect_ftab);
@@ -87,10 +101,10 @@ namespace parallel_heap_scan
     bool found = false;
     while (!found)
       {
-	if (m_tl_vpid.pageid == -1)
+	if (VPID_ISNULL (&m_tl_vpid))
 	  {
 	    m_tl_ftab = m_tl_ftab_set->get_next();
-	    if (m_tl_ftab.vsid.volid == -1)
+	    if (VSID_IS_NULL (&m_tl_ftab.vsid))
 	      {
 		if (m_tl_old_page_watcher.pgptr != NULL)
 		  {
