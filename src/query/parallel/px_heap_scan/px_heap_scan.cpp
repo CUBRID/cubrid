@@ -825,12 +825,6 @@ namespace parallel_heap_scan
 	  }
       }
 
-    if (m_result_handler_read_initialized == false)
-      {
-	m_result_handler->read_initialize (m_thread_p);
-	m_result_handler_read_initialized = true;
-      }
-
     if (unlikely (!m_task_started))
       {
 	if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::COUNT_DISTINCT)
@@ -849,6 +843,12 @@ namespace parallel_heap_scan
 	  {
 	    return S_ERROR;
 	  }
+      }
+
+    if (m_result_handler_read_initialized == false)
+      {
+	m_result_handler->read_initialize (m_thread_p);
+	m_result_handler_read_initialized = true;
       }
 
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
