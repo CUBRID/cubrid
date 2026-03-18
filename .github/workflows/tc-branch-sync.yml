@@ -118,17 +118,17 @@ jobs:
 
           TC_BASE_REF="${ENGINE_BASE_REF}"
           API_RESPONSE=$(gh api "repos/${OWNER}/${TC_REPO}/git/refs/heads/${TC_BASE_REF}" 2>&1) || {
-            HTTP_STATUS=$?
             if echo "${API_RESPONSE}" | grep -q "Not Found\|404"; then
               echo "::notice::Branch '${TC_BASE_REF}' not found in ${TC_REPO}. Falling back to develop."
               TC_BASE_REF="develop"
+              API_RESPONSE=$(gh api "repos/${OWNER}/${TC_REPO}/git/refs/heads/${TC_BASE_REF}")
             else
               echo "::error::Failed to check branch '${TC_BASE_REF}' in ${TC_REPO}: ${API_RESPONSE}"
               exit 1
             fi
           }
 
-          BASE_SHA=$(gh api "repos/${OWNER}/${TC_REPO}/git/refs/heads/${TC_BASE_REF}" --jq '.object.sha')
+          BASE_SHA=$(echo "${API_RESPONSE}" | jq -r '.object.sha')
           gh api "repos/${OWNER}/${TC_REPO}/git/refs" \
             --method POST \
             --field ref="refs/heads/${BRANCH_NAME}" \
