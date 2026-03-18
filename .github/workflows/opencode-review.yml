@@ -78,8 +78,8 @@ jobs:
           use_github_token: true
           share: true
           prompt: |
-            /ultrawork
             /analyze
+            /ultrawork
 
             ## Role
             Expert C/C++ DBMS Senior Developer reviewing CUBRID RDBMS code.
