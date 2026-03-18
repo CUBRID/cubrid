@@ -159,6 +159,7 @@ connection_less::css_queue_connection (CSS_CONN_ENTRY *conn, const char *host)
 	    }
 	  else
 	    {
+	      free (map_entry_p);
 	      return (NULL);
 	    }
 	}

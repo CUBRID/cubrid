@@ -49,7 +49,7 @@
 
 class connection_cl:public connection_support
 {
-public:
+protected:
   int m_service_port_id;
 
 private:
@@ -71,6 +71,7 @@ public:
 
   CSS_CONN_ENTRY *css_make_conn (SOCKET fd);
   void css_free_conn (CSS_CONN_ENTRY * conn);
+  CSS_CONN_ENTRY *css_find_exception_conn (void);
 
   CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id, const char *server_name, int name_length);
   int css_receive_error (CSS_CONN_ENTRY * conn, unsigned short req_id, char **buffer, int *buffer_size);

@@ -52,6 +52,18 @@
 
 class client_support __gv_client_support;
 
+/*
+ * css_internal_server_shutdown() -
+ *   return:
+ */
+static void
+css_internal_server_shutdown (void)
+{
+#if !defined(WINDOWS)
+  syslog (LOG_ALERT, "Lost connection to server\n");
+#endif /* not WINDOWS */
+}
+
 client_support::client_support ()
 {
   m_css_errno = 0;
@@ -71,13 +83,30 @@ client_support::css_get_errno ()
 void
 client_support::css_handle_pipe_shutdown (int sig)
 {
-  /* Avoid an infinite loop by checking if the previous handle is myself */
-  if (client_support::m_css_Previous_sigpipe_handler != NULL
-      && client_support::m_css_Previous_sigpipe_handler != SIG_IGN
-      && client_support::m_css_Previous_sigpipe_handler != SIG_DFL
-      && client_support::m_css_Previous_sigpipe_handler != client_support::css_handle_pipe_shutdown)
+  CSS_CONN_ENTRY *conn;
+  CSS_MAP_ENTRY *entry;
+#if 0
+  conn = m_conn_less.css_find_exception_conn ();
+  if (conn != NULL)
     {
-      (*client_support::m_css_Previous_sigpipe_handler) (sig);
+      entry = m_conn_less.css_return_entry_from_conn (conn);
+      if (entry != NULL)
+	{
+	  m_conn_less.css_remove_queued_connection_by_entry (entry);
+	}
+      css_internal_server_shutdown ();
+    }
+  else
+#endif
+    {
+      /* Avoid an infinite loop by checking if the previous handle is myself */
+      if (client_support::m_css_Previous_sigpipe_handler != NULL
+	  && client_support::m_css_Previous_sigpipe_handler != SIG_IGN
+	  && client_support::m_css_Previous_sigpipe_handler != SIG_DFL
+	  && client_support::m_css_Previous_sigpipe_handler != client_support::css_handle_pipe_shutdown)
+	{
+	  (*client_support::m_css_Previous_sigpipe_handler) (sig);
+	}
     }
 }
 
@@ -131,12 +160,17 @@ client_support::css_client_init (int sockid, const char *server_name, const char
   conn = css_connect_to_cubrid_server ((char *) host_name, (char *) server_name);
   if (conn != NULL)
     {
-#if defined(MULTI_CONN_TO_A_SERVER)
       CSS_MAP_ENTRY *map = m_conn_less.css_queue_connection (conn, (char *) host_name);
-      map->owner_tid = pthread_self ();
-#else
-      // TODO: check error with NULL returned
-      m_conn_less.css_queue_connection (conn, (char *) host_name);
+      if (map == NULL)
+	{
+	  css_free_conn (conn);
+	  error = ER_FAILED;
+	}
+#if defined(MULTI_CONN_TO_A_SERVER)
+      else
+	{
+	  map->owner_tid = pthread_self ();
+	}
 #endif
     }
   else
@@ -162,6 +196,7 @@ client_support::css_client_sub_init (const char *server_name, const char *host_n
       map = m_conn_less.css_queue_connection (conn, (char *) host_name);
       if (map == NULL)
 	{
+	  css_free_conn (conn);
 	  error = ER_FAILED;
 	}
       else
@@ -360,7 +395,7 @@ client_support::css_send_req_to_server_with_large_data (char *host, int request,
       if (m_css_errno == NO_ERRORS)
 	{
 	  tm_Tran_invalidate_snapshot = 0;
-	  return (css_make_eid (entry->id, rid));
+	  return (m_conn_less.css_make_eid (entry->id, rid));
 	}
       else
 	{

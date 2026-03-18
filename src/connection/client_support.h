@@ -34,7 +34,6 @@
 #error Belongs to not server module
 #endif
 
-#define MAX_MULTIPLE_CONNECTION (100)
 class client_support:public connection_cl
 {
 private:

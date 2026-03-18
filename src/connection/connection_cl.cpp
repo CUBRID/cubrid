@@ -243,6 +243,16 @@ connection_cl::css_free_conn (CSS_CONN_ENTRY *conn)
 }
 
 /*
+ * css_find_exception_conn () -
+ *   return:
+ */
+CSS_CONN_ENTRY *
+connection_cl::css_find_exception_conn (void)
+{
+  return NULL;
+}
+
+/*
  * css_find_conn_from_fd () - find the connection associated with the current socket descriptor
  *   return: conn or NULL
  *   fd(in): Socket fd
