@@ -5210,8 +5210,8 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
 #if defined (SERVER_MODE)
-   {false, {.i = (int) cubthread::system_core_count ()}},
-   {false, {.i = (int) cubthread::system_core_count ()}},
+   {false, {.i = (int) cubthread::system_core_count () / 2}},
+   {false, {.i = (int) cubthread::system_core_count () / 2}},
    {false, {.i = (int) cubthread::system_core_count ()}},
 #else
    {false, {.i = 2}},
