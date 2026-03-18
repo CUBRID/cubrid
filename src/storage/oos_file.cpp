@@ -17,6 +17,7 @@
  */
 
 #include <cassert>
+#include <mutex>
 #include "error_code.h"
 #include "error_manager.h"
 #include "file_manager.h"
@@ -88,6 +89,7 @@ struct VFIDEq
   }
 };
 static std::unordered_map<VFID, VPID, VFIDHash, VFIDEq> oos_recently_inserted_oos_vpid_map;
+static std::mutex oos_vpid_map_mutex;
 
 // ****************************************************************************
 
@@ -117,7 +119,10 @@ oos_file_create (THREAD_ENTRY *thread_p, VFID &oos_vfid)
 int
 oos_file_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 {
-  oos_recently_inserted_oos_vpid_map.erase (oos_vfid);
+  {
+    std::lock_guard<std::mutex> lock (oos_vpid_map_mutex);
+    oos_recently_inserted_oos_vpid_map.erase (oos_vfid);
+  }
 
   file_postpone_destroy (thread_p, &oos_vfid);
 
@@ -328,6 +333,7 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &re
 
     try
       {
+	std::lock_guard<std::mutex> lock (oos_vpid_map_mutex);
 	auto result = oos_recently_inserted_oos_vpid_map.insert_or_assign (oos_vfid, vpid);
       }
     catch (const std::bad_alloc &)
@@ -530,6 +536,7 @@ oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
 static int
 oos_get_recently_inserted_oos_vpid (const VFID &oos_vfid, VPID &vpid)
 {
+  std::lock_guard<std::mutex> lock (oos_vpid_map_mutex);
   auto it = oos_recently_inserted_oos_vpid_map.find (oos_vfid);
   if (it != oos_recently_inserted_oos_vpid_map.end ())
     {
@@ -580,13 +587,15 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
   PAGE_TYPE page_type = PAGE_OOS;
 
   VPID recently_inserted_oos_vpid = VPID_INITIALIZER;
-  auto it = oos_recently_inserted_oos_vpid_map.find (oos_vfid);
-  if (it == oos_recently_inserted_oos_vpid_map.end ())
-    {
-      return oos_file_alloc_new (thread_p, oos_vfid, vpid);
-    }
-
-  recently_inserted_oos_vpid = it->second;
+  {
+    std::lock_guard<std::mutex> lock (oos_vpid_map_mutex);
+    auto it = oos_recently_inserted_oos_vpid_map.find (oos_vfid);
+    if (it == oos_recently_inserted_oos_vpid_map.end ())
+      {
+	return oos_file_alloc_new (thread_p, oos_vfid, vpid);
+      }
+    recently_inserted_oos_vpid = it->second;
+  }
   if (recently_inserted_oos_vpid.pageid == NULL_PAGEID)
     {
       assert (false); // should not happen
