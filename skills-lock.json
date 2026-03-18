@@ -11,6 +11,11 @@
       "sourceType": "github",
       "computedHash": "cbe644b0c6760ae2a1eaafa39133920d889331327065d92a131675a665273e56"
     },
+    "prompt-repetition": {
+      "source": "supercent-io/skills-template",
+      "sourceType": "github",
+      "computedHash": "303fefd182ca141233d1de103ef7230dacc40fbd9ccc17f8fa649144d7fb3d29"
+    },
     "receiving-code-review": {
       "source": "obra/superpowers",
       "sourceType": "github",
