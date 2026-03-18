@@ -834,7 +834,10 @@ namespace parallel_heap_scan
 		m_join_info.capture_join_info (m_xasl);
 		for (XASL_NODE *xptr = m_xasl->scan_ptr; xptr; xptr=xptr->scan_ptr)
 		  {
-		    scan_end_scan (m_thread_p, &xptr->spec_list->s_id);
+		    if (xptr->spec_list->type == TARGET_LIST)
+		      {
+			scan_end_scan (m_thread_p, &xptr->spec_list->s_id);
+		      }
 		  }
 	      }
 	  }
