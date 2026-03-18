@@ -438,7 +438,7 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 {
   SM_ATTRIBUTE *att;
   SM_CLASS *smclass;
-  int error;
+  int error = NO_ERROR;
   TP_DOMAIN_STATUS dom_status;
   char *user_name;
   DB_DATETIME *datetime;
@@ -459,8 +459,13 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 
   for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
+      if (DB_IS_DEFAULT_DETERMINE_BY_ROW(att->default_value.default_expr.default_expr_type)){
+        /* determin by row */
+        continue;
+      }
       if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
 	{
+	  error = NO_ERROR;
 	  switch (att->default_value.default_expr.default_expr_type)
 	    {
 	    case DB_DEFAULT_SYSTIME:
@@ -571,6 +576,37 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 		  db_make_timestamp (&default_value, tmp_timestamp);
 		}
 	      break;
+#if !defined (CS_MODE)
+	    case DB_DEFAULT_SYSGUID:
+	      error = db_uuidv4 (NULL, &default_value);
+	      break;
+	    case DB_DEFAULT_UUIDV4:
+	      error = db_uuid_bin (NULL, UUID_V4, 0, &default_value);
+	      default_value.need_clear = true;
+	      break;
+	    case DB_DEFAULT_UUIDV7:
+	      if (DB_IS_NULL (&parser->sys_epochtime) || DB_IS_NULL (&parser->sys_datetime))
+		{
+		  db_make_null (&default_value);
+		}
+	      else
+		{
+		  const uint64_t epoch_ms =
+		    (uint64_t) db_get_timestamp (&parser->sys_epochtime) * 1000ULL
+		    + (uint64_t) (db_get_datetime (&parser->sys_datetime)->time % 1000);
+		  error = db_uuid_bin (NULL, UUID_V7, epoch_ms, &default_value);
+		  default_value.need_clear = true;
+		}
+	      break;
+#else  /* !CS_MODE */
+	    case DB_DEFAULT_SYSGUID:
+	    case DB_DEFAULT_UUIDV4:
+	    case DB_DEFAULT_UUIDV7:
+	      /* Client-side statement preparation cannot generate row-level UUID defaults. */
+	      db_value_clear (&att->default_value.value);
+	      db_make_null (&att->default_value.value);
+	      continue;
+#endif /* !CS_MODE */
 	    default:
 	      break;
 	    }
@@ -13670,11 +13706,20 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  error = do_evaluate_default_expr (parser, class_);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
+  // error = is_server_insert_allowed (parser, statement);
+  // if (error != NO_ERROR)
+  //   {
+  //     return error;
+  //   }
+
+  // if (statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
+  //   {
+      error = do_evaluate_default_expr (parser, class_);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    // }
 
   error =
     check_missing_non_null_attrs (parser, statement->info.insert.spec, statement->info.insert.attr_list,

@@ -1672,6 +1672,56 @@ const PR_TYPE tp_Enumeration = {
 
 const PR_TYPE *tp_Type_enumeration = &tp_Enumeration;
 
+const PR_TYPE tp_Bit = {
+  "bit", DB_TYPE_BIT, 0, 0, 0, 1,
+  mr_initmem_bit,
+  mr_initval_bit,
+  mr_setmem_bit,
+  mr_getmem_bit,
+  mr_setval_bit,
+  mr_data_lengthmem_bit,
+  mr_data_lengthval_bit,
+  mr_data_writemem_bit,
+  mr_data_readmem_bit,
+  mr_data_writeval_bit,
+  mr_data_readval_bit,
+  mr_index_lengthmem_bit,
+  mr_index_lengthval_bit,
+  mr_index_writeval_bit,
+  mr_index_readval_bit,
+  mr_index_cmpdisk_bit,
+  mr_freemem_bit,
+  mr_data_cmpdisk_bit,
+  mr_cmpval_bit
+};
+
+const PR_TYPE *tp_Type_bit = &tp_Bit;
+
+const PR_TYPE tp_VarBit = {
+  "bit varying", DB_TYPE_VARBIT, 1, sizeof (const char *), 0, 1,
+  mr_initmem_varbit,
+  mr_initval_varbit,
+  mr_setmem_varbit,
+  mr_getmem_varbit,
+  mr_setval_varbit,
+  mr_data_lengthmem_varbit,
+  mr_data_lengthval_varbit,
+  mr_data_writemem_varbit,
+  mr_data_readmem_varbit,
+  mr_data_writeval_varbit,
+  mr_data_readval_varbit,
+  mr_index_lengthmem_varbit,
+  mr_index_lengthval_varbit,
+  mr_index_writeval_varbit,
+  mr_index_readval_varbit,
+  mr_index_cmpdisk_varbit,
+  mr_freemem_varbit,
+  mr_data_cmpdisk_varbit,
+  mr_cmpval_varbit
+};
+
+const PR_TYPE *tp_Type_varbit = &tp_VarBit;
+
 /*
  * tp_Type_id_map
  *    This quickly maps a type identifier to a type structure.
@@ -1756,6 +1806,31 @@ const PR_TYPE tp_ResultSet = {
 };
 
 const PR_TYPE *tp_Type_resultset = &tp_ResultSet;
+
+const PR_TYPE tp_Char = {
+  "character", DB_TYPE_CHAR, 0, 0, 0, 1,
+  mr_initmem_char,
+  mr_initval_char,
+  mr_setmem_char,
+  mr_getmem_char,
+  mr_setval_char,
+  mr_data_lengthmem_char,
+  mr_data_lengthval_char,
+  mr_data_writemem_char,
+  mr_data_readmem_char,
+  mr_data_writeval_char,
+  mr_data_readval_char,
+  mr_index_lengthmem_char,
+  mr_index_lengthval_char,
+  mr_index_writeval_char,
+  mr_index_readval_char,
+  mr_index_cmpdisk_char,
+  mr_freemem_char,
+  mr_data_cmpdisk_char,
+  mr_cmpval_char
+};
+
+const PR_TYPE *tp_Type_char = &tp_Char;
 
 /*
  * DB_VALUE MAINTENANCE
@@ -12059,31 +12134,6 @@ mr_cmpval_char2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coerci
 }
 #endif
 
-const PR_TYPE tp_Char = {
-  "character", DB_TYPE_CHAR, 0, 0, 0, 1,
-  mr_initmem_char,
-  mr_initval_char,
-  mr_setmem_char,
-  mr_getmem_char,
-  mr_setval_char,
-  mr_data_lengthmem_char,
-  mr_data_lengthval_char,
-  mr_data_writemem_char,
-  mr_data_readmem_char,
-  mr_data_writeval_char,
-  mr_data_readval_char,
-  mr_index_lengthmem_char,
-  mr_index_lengthval_char,
-  mr_index_writeval_char,
-  mr_index_readval_char,
-  mr_index_cmpdisk_char,
-  mr_freemem_char,
-  mr_data_cmpdisk_char,
-  mr_cmpval_char
-};
-
-const PR_TYPE *tp_Type_char = &tp_Char;
-
 /*
  * TYPE BIT
  */
@@ -12783,32 +12833,6 @@ mr_cmpval_bit2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercio
   return c;
 }
 
-
-const PR_TYPE tp_Bit = {
-  "bit", DB_TYPE_BIT, 0, 0, 0, 1,
-  mr_initmem_bit,
-  mr_initval_bit,
-  mr_setmem_bit,
-  mr_getmem_bit,
-  mr_setval_bit,
-  mr_data_lengthmem_bit,
-  mr_data_lengthval_bit,
-  mr_data_writemem_bit,
-  mr_data_readmem_bit,
-  mr_data_writeval_bit,
-  mr_data_readval_bit,
-  mr_index_lengthmem_bit,
-  mr_index_lengthval_bit,
-  mr_index_writeval_bit,
-  mr_index_readval_bit,
-  mr_index_cmpdisk_bit,
-  mr_freemem_bit,
-  mr_data_cmpdisk_bit,
-  mr_cmpval_bit
-};
-
-const PR_TYPE *tp_Type_bit = &tp_Bit;
-
 /*
  * TYPE VARBIT
  */
@@ -13471,33 +13495,6 @@ mr_cmpval_varbit2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coer
 
   return c;
 }
-
-
-const PR_TYPE tp_VarBit = {
-  "bit varying", DB_TYPE_VARBIT, 1, sizeof (const char *), 0, 1,
-  mr_initmem_varbit,
-  mr_initval_varbit,
-  mr_setmem_varbit,
-  mr_getmem_varbit,
-  mr_setval_varbit,
-  mr_data_lengthmem_varbit,
-  mr_data_lengthval_varbit,
-  mr_data_writemem_varbit,
-  mr_data_readmem_varbit,
-  mr_data_writeval_varbit,
-  mr_data_readval_varbit,
-  mr_index_lengthmem_varbit,
-  mr_index_lengthval_varbit,
-  mr_index_writeval_varbit,
-  mr_index_readval_varbit,
-  mr_index_cmpdisk_varbit,
-  mr_freemem_varbit,
-  mr_data_cmpdisk_varbit,
-  mr_cmpval_varbit
-};
-
-const PR_TYPE *tp_Type_varbit = &tp_VarBit;
-
 
 static void
 mr_initmem_enumeration (void *mem, TP_DOMAIN * domain)

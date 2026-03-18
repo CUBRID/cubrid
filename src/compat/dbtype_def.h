@@ -1207,7 +1207,20 @@ extern "C"
     DB_DEFAULT_CURRENTDATE = 10,
     DB_DEFAULT_SYSTIME = 11,
     DB_DEFAULT_FORMATTED_SYSDATE = 12,
+    DB_DEFAULT_SYSGUID = 13,
+    DB_DEFAULT_UUIDV4 = 14,
+    DB_DEFAULT_UUIDV7 = 15,
   } DB_DEFAULT_EXPR_TYPE;
+
+#define DB_IS_UUID_DEFAULT_EXPR(c) \
+  ( ((c) == DB_DEFAULT_SYSGUID || (c) == DB_DEFAULT_UUIDV4 || (c) == DB_DEFAULT_UUIDV7 ) ? true : false )
+
+#define DB_IS_DEFAULT_DETERMINE_BY_STATEMENT(c) \
+  ( ( DB_IS_DATETIME_DEFAULT_EXPR(c) || (c) == DB_DEFAULT_NONE || (c) == DB_DEFAULT_USER || (c) == DB_DEFAULT_CURR_USER \
+  || (c) == DB_DEFAULT_FORMATTED_SYSDATE ) ? true : false )
+
+#define DB_IS_DEFAULT_DETERMINE_BY_ROW(c) \
+  ( (DB_IS_UUID_DEFAULT_EXPR(c))? true : false )
 
   /* An attribute having valid default expression, must have NULL default value. Currently, we allow simple expressions
    * like SYS_DATE, CURRENT_TIME. Also we allow to_char expression.

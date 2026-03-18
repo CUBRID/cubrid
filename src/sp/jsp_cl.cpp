@@ -2355,8 +2355,12 @@ jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig
 	  // from pt_resolve_default_value
 	  if (default_expr.default_expr_type != DB_DEFAULT_NONE)
 	    {
-	      PT_OP_TYPE op = pt_op_type_from_default_expr_type (default_expr.default_expr_type);
-	      PT_NODE *default_op_value_node = pt_expression_0 (parser, op);
+	      // PT_OP_TYPE op = pt_op_type_from_default_expr_type (default_expr.default_expr_type);
+	      // PT_NODE *default_op_value_node = pt_expression_0 (parser, op);
+        PT_NODE *default_op_value_node = pt_make_expression_default_expr(parser, NULL, default_expr.default_expr_type);
+        if(default_op_value_node == NULL){
+          return NULL;
+        }
 
 	      if (default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
 		{

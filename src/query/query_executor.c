@@ -75,6 +75,7 @@
 #include "dbtype.h"
 #include "string_regex.hpp"
 #include "thread_entry.hpp"
+#include "string_opfunc.h"
 #include "regu_var.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
@@ -559,6 +560,8 @@ static void qexec_destroy_upddel_ehash_files (THREAD_ENTRY * thread_p, XASL_NODE
 static int qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete, XASL_STATE * xasl_state);
 static int qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool skip_aptr);
+static int qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * insert,
+					     HEAP_CACHE_ATTRINFO * attr_info, XASL_STATE * xasl_state);
 static int qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
@@ -12196,6 +12199,161 @@ qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE *
 }
 
 /*
+ * qexec_evaluate_row_default_exprs () - Regenerate row-level default expressions (e.g., UUID)
+ *   return: NO_ERROR or ER_code
+ *   thread_p(in): thread context
+ *   insert(in): INSERT_PROC_NODE
+ *   attr_info(in): attribute info
+ *   xasl_state(in): XASL state containing value descriptor
+ *
+ * Note: This function regenerates DEFAULT values that must be unique per row,
+ *       such as UUID(4), UUID(7), and SYS_GUID. These are identified by
+ *       DB_IS_DEFAULT_DETERMINE_BY_ROW macro.
+ */
+static int
+qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * insert,
+				  HEAP_CACHE_ATTRINFO * attr_info, XASL_STATE * xasl_state)
+{
+  int k;
+  int num_default_expr = insert->num_default_expr;
+  DB_VALUE new_val;
+  int error = NO_ERROR;
+
+  if (num_default_expr <= 0)
+    {
+      return NO_ERROR;
+    }
+
+  db_make_null (&new_val);
+
+  for (k = 0; k < num_default_expr; k++)
+    {
+      OR_ATTRIBUTE *attr = heap_locate_last_attrepr (insert->att_id[k], attr_info);
+      DB_DEFAULT_EXPR_TYPE expr_type;
+
+      if (attr == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      expr_type = attr->current_default_value.default_expr.default_expr_type;
+
+      /* Only regenerate row-level defaults (UUID, SYS_GUID) */
+      if (!DB_IS_DEFAULT_DETERMINE_BY_ROW (expr_type))
+	{
+	  continue;
+	}
+
+      /* Clear old value and generate new one */
+      pr_clear_value (insert->vals[k]);
+      db_make_null (&new_val);
+
+      switch (expr_type)
+	{
+	case DB_DEFAULT_SYSGUID:
+	  error = db_uuidv4 (thread_p, &new_val);
+	  break;
+
+	case DB_DEFAULT_UUIDV4:
+	  error = db_uuid_bin (thread_p, UUID_V4, 0, &new_val);
+	  break;
+
+	case DB_DEFAULT_UUIDV7:
+	  error =
+	    db_uuid_bin (thread_p, UUID_V7,
+			 ((uint64_t) xasl_state->vd.sys_epochtime * 1000ULL)
+			 + (uint64_t) (xasl_state->vd.sys_datetime.time % 1000), &new_val);
+	  break;
+
+	default:
+	  /* Unknown row-level default, skip */
+	  continue;
+	}
+
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      /* Apply TO_CHAR if needed */
+      if (attr->current_default_value.default_expr.default_expr_op == T_TO_CHAR)
+	{
+	  DB_VALUE format_val, lang_val;
+	  int has_user_format = 0;
+	  int flag = 0;
+	  const char *lang_str;
+	  TP_DOMAIN *result_domain;
+
+	  if (attr->current_default_value.default_expr.default_expr_format != NULL)
+	    {
+	      db_make_string (&format_val, attr->current_default_value.default_expr.default_expr_format);
+	      has_user_format = 1;
+	    }
+	  else
+	    {
+	      db_make_null (&format_val);
+	      has_user_format = 0;
+	    }
+
+	  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
+	  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
+	  db_make_int (&lang_val, flag);
+
+	  if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (attr->domain)))
+	    {
+	      if (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (&new_val)))
+		{
+		  result_domain = NULL;
+		}
+	      else if (DB_IS_NULL (&format_val))
+		{
+		  result_domain = tp_domain_resolve_default (DB_TYPE_STRING);
+		}
+	      else
+		{
+		  result_domain = tp_domain_resolve_value (&format_val, NULL);
+		}
+	    }
+	  else
+	    {
+	      result_domain = attr->domain;
+	    }
+
+	  error = db_to_char (&new_val, &format_val, &lang_val, insert->vals[k], result_domain);
+
+	  if (has_user_format)
+	    {
+	      pr_clear_value (&format_val);
+	    }
+	  pr_clear_value (&new_val);
+	}
+      else
+	{
+	  pr_clone_value (&new_val, insert->vals[k]);
+	  pr_clear_value (&new_val);
+	}
+
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      /* Cast to attribute domain */
+      if (expr_type != DB_DEFAULT_NONE)
+	{
+	  TP_DOMAIN_STATUS status = tp_value_cast (insert->vals[k], insert->vals[k], attr->domain, false);
+	  if (status != DOMAIN_COMPATIBLE)
+	    {
+	      (void) tp_domain_status_er_set (status, ARG_FILE_LINE, insert->vals[k], attr->domain);
+	      return ER_FAILED;
+	    }
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * qexec_execute_insert () -
  *   return: NO_ERROR or ER_code
  *   xasl(in)   : XASL Tree block
@@ -12501,6 +12659,16 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  }
 	  break;
 
+	case DB_DEFAULT_SYSGUID:
+	case DB_DEFAULT_UUIDV4:
+	case DB_DEFAULT_UUIDV7:
+	  /*
+	   * SYS_GUID(), UUID() in DEFAULT does not evaluate value per statement
+	   *   - use 'qexec_evaluate_row_default_exprs'
+	   * You can prepare things int here
+	   */
+	  break;
+
 	case DB_DEFAULT_NONE:
 	  if (attr->current_default_value.val_length <= 0)
 	    {
@@ -12644,6 +12812,12 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  s_id = &xasl->curr_spec->s_id;
 	  while ((ls_scan = scan_next_scan (thread_p, s_id)) == S_SUCCESS)
 	    {
+	      /* Regenerate row-level default expressions (UUID, SYS_GUID) for each row */
+	      if (qexec_evaluate_row_default_exprs (thread_p, insert, &attr_info, xasl_state) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+
 	      for (k = num_default_expr, vallist = s_id->val_list->valp; k < val_no; k++, vallist = vallist->next)
 		{
 		  if (vallist == NULL || vallist->val == NULL)
@@ -12812,6 +12986,12 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
       for (i = 0; i < insert->num_val_lists; i++)
 	{
+	  /* Regenerate row-level default expressions (UUID, SYS_GUID) for each row */
+	  if (qexec_evaluate_row_default_exprs (thread_p, insert, &attr_info, xasl_state) != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+
 	  for (regu_list = insert->valptr_lists[i]->valptrp, vallist = xasl->val_list->valp, k = num_default_expr;
 	       k < val_no; k++, regu_list = regu_list->next, vallist = vallist->next)
 	    {

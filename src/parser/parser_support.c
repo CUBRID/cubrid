@@ -10500,6 +10500,11 @@ parse_default_expr_type (const char *str, const int str_size, int *next_len)
 	  *next_len = 12;
 	  return DB_DEFAULT_SYSDATETIME;
 	}
+    if (str_size >= 10 && strncmp (str, "SYS_GUID()",10) == 0)
+    {
+      *next_len = 10;
+      return DB_DEFAULT_SYSGUID;
+    }
       if (str_size >= 8)
 	{
 	  if (strncmp (str, "SYS_DATE", 8) == 0)
@@ -10551,6 +10556,16 @@ parse_default_expr_type (const char *str, const int str_size, int *next_len)
 	{
 	  *next_len = 16;
 	  return DB_DEFAULT_UNIX_TIMESTAMP;
+	}
+      if (str_size >= 7 && strncmp (str, "UUID(4)", 7) == 0)
+	{
+	  *next_len = 7;
+	  return DB_DEFAULT_UUIDV4;
+	}
+      if (str_size >= 7 && strncmp (str, "UUID(7)", 7) == 0)
+	{
+	  *next_len = 7;
+	  return DB_DEFAULT_UUIDV7;
 	}
       if (str_size >= 6 && strncmp (str, "USER()", 6) == 0)
 	{
@@ -12415,6 +12430,35 @@ pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr)
 	      break;
 	    case PT_UNIX_TIMESTAMP:
 	      node->info.data_default.default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
+	      break;
+	    case PT_SYS_GUID:
+	      node->info.data_default.default_expr_type = DB_DEFAULT_SYSGUID;
+	      break;
+	    case PT_UUID:
+	      {
+		PT_NODE *uuid_arg = def->info.expr.arg1;
+
+		if (uuid_arg == NULL)
+		  {
+		    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
+		  }
+		else if (uuid_arg->node_type == PT_VALUE
+			 && PT_IS_NUMERIC_TYPE (uuid_arg->type_enum)
+			 && uuid_arg->info.value.data_value.i == 4)
+		  {
+		    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
+		  }
+		else if (uuid_arg->node_type == PT_VALUE
+			 && PT_IS_NUMERIC_TYPE (uuid_arg->type_enum)
+			 && uuid_arg->info.value.data_value.i == 7)
+		  {
+		    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV7;
+		  }
+		else
+		  {
+		    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
+		  }
+	      }
 	      break;
 	    default:
 	      node->info.data_default.default_expr_type = DB_DEFAULT_NONE;

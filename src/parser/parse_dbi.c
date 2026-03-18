@@ -541,13 +541,12 @@ pt_sm_attribute_default_value_to_node (PARSER_CONTEXT * parser, const SM_ATTRIBU
     }
   else
     {
-      result = parser_new_node (parser, PT_EXPR);
+      result = pt_make_expression_default_expr (parser, NULL, default_value->default_expr.default_expr_type);
       if (!result)
 	{
 	  PT_INTERNAL_ERROR (parser, "allocate new node");
 	  return NULL;
 	}
-      result->info.expr.op = pt_op_type_from_default_expr_type (default_value->default_expr.default_expr_type);
     }
 
   data_type = parser_new_node (parser, PT_DATA_TYPE);

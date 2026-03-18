@@ -13071,9 +13071,11 @@ check_default_on_update_clause (PARSER_CONTEXT * parser, PT_NODE * attribute)
       return error;
     }
 
-  PT_OP_TYPE op = pt_op_type_from_default_expr_type (on_update_expr_type);
+  // PT_OP_TYPE op = pt_op_type_from_default_expr_type (on_update_expr_type);
 
-  PT_NODE *on_update_default_expr = parser_make_expression (parser, op, NULL, NULL, NULL);
+  // PT_NODE *on_update_default_expr = parser_make_expression (parser, op, NULL, NULL, NULL);
+    PT_NODE *on_update_default_expr = pt_make_expression_default_expr(parser, NULL, on_update_expr_type);
+
   if (on_update_default_expr == NULL)
     {
       PT_ERRORm (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);

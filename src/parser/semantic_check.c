@@ -7977,7 +7977,8 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 	    }
 	  else
 	    {
-	      default_op_value = parser_new_node (parser, PT_EXPR);
+	      default_op_value =
+		pt_make_expression_default_expr (parser, NULL, col_attr->default_value.default_expr.default_expr_type);
 	      if (default_op_value == NULL)
 		{
 		  PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);

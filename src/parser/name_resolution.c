@@ -3860,12 +3860,15 @@ pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name)
   if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
     {
       /* if the default value is an expression, make a node for it */
-      PT_OP_TYPE op;
       PT_NODE *default_op_value_node;
 
-      op = pt_op_type_from_default_expr_type (att->default_value.default_expr.default_expr_type);
-      assert (op != (PT_OP_TYPE) 0);
-      default_op_value_node = pt_expression_0 (parser, op);
+      default_op_value_node =
+	pt_make_expression_default_expr (parser, NULL, att->default_value.default_expr.default_expr_type);
+      if (default_op_value_node == NULL)
+	{
+	  PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return ER_FAILED;
+	}
 
       if (att->default_value.default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
 	{
@@ -3998,12 +4001,15 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
 	  if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
 	    {
 	      /* if the default value is an expression, make a node for it */
-	      PT_OP_TYPE op;
 	      PT_NODE *default_op_value_node;
 
-	      op = pt_op_type_from_default_expr_type (att->default_value.default_expr.default_expr_type);
-	      assert (op != (PT_OP_TYPE) 0);
-	      default_op_value_node = pt_expression_0 (parser, op);
+	      default_op_value_node =
+		pt_make_expression_default_expr (parser, NULL, att->default_value.default_expr.default_expr_type);
+	      if (default_op_value_node == NULL)
+		{
+		  PT_ERRORm (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		  return 0;
+		}
 
 	      if (att->default_value.default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
 		{
@@ -10636,9 +10642,63 @@ pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type)
     case DB_DEFAULT_CURRENTDATE:
       return PT_CURRENT_DATE;
 
+    case DB_DEFAULT_SYSGUID:
+      return PT_SYS_GUID;
+
+    case DB_DEFAULT_UUIDV4:
+    case DB_DEFAULT_UUIDV7:
+      return PT_UUID;
+
     default:
       return (PT_OP_TYPE) 0;
     }
+}
+
+PT_NODE *
+pt_make_expression_default_expr (PARSER_CONTEXT * parser, PT_NODE * node, DB_DEFAULT_EXPR_TYPE expr_type)
+{
+  PT_OP_TYPE op;
+
+  op = pt_op_type_from_default_expr_type (expr_type);
+  assert (op != (PT_OP_TYPE) 0);
+
+  if (node == NULL)
+    {
+      node = pt_expression_0 (parser, op);
+      if (node == NULL)
+	{
+	  return NULL;
+	}
+    }
+
+  switch (expr_type)
+    {
+    case DB_DEFAULT_UUIDV4:
+    case DB_DEFAULT_UUIDV7:
+      {
+	PT_NODE *arg1 = parser_new_node (parser, PT_VALUE);
+	if (arg1 == NULL)
+	  {
+	    parser_free_tree (parser, node);
+	    return NULL;
+	  }
+
+	arg1->type_enum = PT_TYPE_INTEGER;
+	arg1->info.value.data_value.i = (expr_type == DB_DEFAULT_UUIDV4) ? 4 : 7;
+	node->info.expr.arg1 = arg1;
+	node->flag.do_not_fold = true;
+      }
+      break;
+
+    case DB_DEFAULT_SYSGUID:
+      node->flag.do_not_fold = true;
+      break;
+
+    default:
+      break;
+    }
+
+  return node;
 }
 
 DB_OBJECT *
