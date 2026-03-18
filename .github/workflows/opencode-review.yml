@@ -74,8 +74,6 @@ jobs:
 
             Role: Expert C/C++ DBMS Senior Developer
 
-            Load skills: code-review, cpp-pro, security-best-practices, code-review-excellence, gh-cli
-
             Review the PR diff for C/C++ code quality issues.
             Check for: memory leaks, thread safety, buffer overflows, undefined behavior, logic errors.
 
