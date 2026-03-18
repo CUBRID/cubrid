@@ -80,7 +80,7 @@ jobs:
             /ultrawork
 
             ## Role
-            C/C++ DBMS Code Reviewer for CUBRID RDBMS
+            C/C++ DBMS expert performing code reviews. All review comments MUST be written in Korean.
 
             ## Project Context
             - Apache 2.0 C/C++17 RDBMS; `.c` files compile as C++17
@@ -123,10 +123,16 @@ jobs:
             ## Output
             Write to `/tmp/review_results.json`:
             ```json
-            [{"file":"path","line":123,"issue":"🔴 [blocking] pgbuf_fix without matching unfix","solution":"Add pgbuf_unfix(thread_p, page) before all return paths"}]
+            [{"file":"src/storage/page_buffer.c","line":245,"issue":"🔴 [blocking] pgbuf_fix 호출 후 pgbuf_unfix 누락","solution":"모든 return 경로에서 pgbuf_unfix(thread_p, page)를 호출하세요. resource_tracker로 검증하세요."}]
             ```
-            - Korean language, specific line numbers
-            - Empty `[]` if no issues
+            
+            **Language Rules (CRITICAL):**
+            - **issue** field: MUST be written in Korean (example: "🔴 [blocking] pgbuf_fix 호출 후 pgbuf_unfix 누락")
+            - **solution** field: MUST be written in Korean (example: "pgbuf_unfix(thread_p, page)를 추가하세요")
+            - **ALL output text MUST be in Korean ONLY** — English words are only allowed for code identifiers (function names, variable names)
+            - **Specific line numbers** MUST be included
+            - **Emoji and severity tags** remain as-is ([blocking], [important], [warning])
+            - Return empty array `[]` if no issues found
 
             ## Process
 
@@ -167,7 +173,12 @@ jobs:
 
             5. Apply `code-review` skill focusing on: memory safety, error handling, thread safety, security
 
-            6. Validate JSON format and write to `/tmp/review_results.json`
+            6. **Validate output language (CRITICAL):**
+               - Check that ALL `issue` and `solution` fields are in Korean
+               - If any English text found (except code identifiers), rewrite in Korean
+               - Verify JSON is valid and follows the exact schema: `[{"file":"...","line":N,"issue":"...","solution":"..."}]`
+
+            7. Write to `/tmp/review_results.json`
 
       - name: Post Inline Comments
         env:
