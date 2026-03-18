@@ -860,16 +860,22 @@ xes_posix_move_file_with_prefix (const char *src_path, const char *metaname, con
 
   /* Try create directory */
   ret = es_make_dirs (new_path, dirname2);
+
+  *p = PATH_SEPARATOR;
+
   if (ret != NO_ERROR)
     {
       return ER_ES_GENERAL;
     }
 
-  *p = PATH_SEPARATOR;
-
   ret = es_os_rename_file_abs (src_path, new_path);
+  if (ret < 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", src_path);
+      return ER_ES_GENERAL;
+    }
 
-  return (ret < 0) ? ER_ES_GENERAL : NO_ERROR;
+  return NO_ERROR;
 }
 
 static int
