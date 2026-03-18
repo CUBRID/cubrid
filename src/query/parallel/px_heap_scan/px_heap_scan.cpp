@@ -691,6 +691,8 @@ namespace parallel_heap_scan
 
     if (m_input_handler->init_on_main (m_thread_p, m_hfid, m_parallelism) != NO_ERROR)
       {
+	m_input_handler->~input_handler();
+	db_private_free_and_init (m_thread_p, m_input_handler);
 	return ER_FAILED;
       }
 

@@ -11973,6 +11973,8 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const HFID * hfid, FILE_FTAB
 			      collector_out, false, NULL, NULL);
   if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
+      db_private_free_and_init (thread_p, collector_out->partsect_ftab);
       pgbuf_unfix (thread_p, page_fhead);
       return ER_FAILED;
     }
@@ -11985,6 +11987,8 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const HFID * hfid, FILE_FTAB
   pgbuf_unfix (thread_p, page_fhead);
   if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
+      db_private_free_and_init (thread_p, collector_out->partsect_ftab);
       return ER_FAILED;
     }
 
