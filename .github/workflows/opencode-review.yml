@@ -84,38 +84,90 @@ jobs:
 
             ## Project Context
             - Apache 2.0 C/C++17 RDBMS; `.c` files compile as C++17
-            - 3 build modes: SERVER_MODE / SA_MODE / CS_MODE
-            - Optimizer: client-side (`#if !defined(SERVER_MODE)`)
+            - 3 build modes: SERVER_MODE / SA_MODE / CS_MODE (check changed files)
+            - No exceptions — C error model throughout (`er_set()` + return codes)
+            - THREAD_ENTRY *thread_p first parameter on all server-side functions
 
-            ## CUBRID Conventions
-            - Memory: `free_and_init(ptr)` — NEVER bare `free()`; `db_private_free(thread_p, ptr)` is CORRECT
-            - Errors: `er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CODE)` before returns; check `error != NO_ERROR`
-            - Style: 2-space indent, 120 chars, `PT_NODE *node`, header guards `_FILENAME_H_` (NOT `#pragma once`), `memory_wrapper.hpp` LAST
+            ## CUBRID Critical Conventions
 
-            ## Severity
-            | Emoji | Level | Example |
-            |-------|-------|---------|
-            | 🔴 | blocking | Division by zero, buffer overflow |
-            | 🟡 | important | Missing NULL check |
-            | 🟢 | warning | Formatting |
+            ### Memory (CRITICAL — base/)
+            - `free_and_init(ptr)` — NEVER bare `free()`; nullifies pointer after free
+            - `db_private_alloc(thread_p, size)` / `db_private_free(thread_p, ptr)` — per-thread heaps
+            - `memory_wrapper.hpp`: SERVER_MODE only, **MUST be last #include in .c/.cpp files**
+            - `memory_cwrapper.h`: safe in headers, SERVER_MODE only
+
+            ### Error Handling (base/)
+            - `er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CODE, ...)` — ARG_FILE_LINE macro is 2nd arg
+            - Check `error != NO_ERROR` after operations that should set errors
+            - Severity: FATAL > ERROR > SYNTAX > WARNING > NOTIFICATION
+            - Use `ASSERT_ERROR()` or `ASSERT_ERROR_AND_SET(error_code)` for validation
+
+            ### Lock-Free Structures (base/)
+            - Modern: `lockfree::hashmap` → use `lockfree::tran::system` for reclamation
+            - Legacy: `LF_HASH_TABLE` → use `LF_TRAN_SYSTEM` — same concept, C API
+            - Always: start transaction before accessing, end after done
+            - Retired nodes reclaimed only when all readers advanced past retirement ID
+
+            ### Resource Tracking (Debug — base/)
+            - `resource_tracker.hpp`: tracks page fixes, lock acquisitions
+            - `push_track()` before scope, `pop_track()` after — leaks detected at pop
+
+            ## Severity (CUBRID-Specific)
+
+            | Emoji | Level | Examples |
+            |-------|-------|----------|
+            | 🔴 | blocking | pgbuf_fix/unfix mismatch, memory leak, lock-free reclamation error, WAL inconsistency |
+            | 🟡 | important | Missing NULL check, error code unchecked, latch ordering violation, MVCC visibility bug |
+            | 🟢 | warning | Style, formatting, missing comments |
 
             ## Output
             Write to `/tmp/review_results.json`:
             ```json
-            [{"file":"path","line":123,"issue":"🔴 [blocking] issue","solution":"fix with reason"}]
+            [{"file":"path","line":123,"issue":"🔴 [blocking] pgbuf_fix without matching unfix","solution":"Add pgbuf_unfix(thread_p, page) before all return paths"}]
             ```
             - Korean language, specific line numbers
             - Empty `[]` if no issues
 
             ## Process
+
             1. Load skills: `skill(name="gh-cli")`, `skill(name="code-review")`, `skill(name="requesting-code-review")`
-            2. Get PR diff: `gh pr view $PR_NUMBER --json baseRefOid,headRefOid --jq '[.baseRefOid, .headRefOid]'` → `git diff $BASE_SHA..$HEAD_SHA` (NOT HEAD~1)
-            3. Read AGENTS.md hierarchy for context:
-               - Root `AGENTS.md` → project overview
-               - `src/AGENTS.md` for changed files in `src/` → module relationships and build modes
-               - `src/<module>/AGENTS.md` for module-specific patterns
-            4. Apply `code-review` skill focusing on: memory safety, error handling, logic issues, thread safety, security
-            5. Validate JSON format and write to `/tmp/review_results.json`
+
+            2. Get PR diff: `gh pr view $PR_NUMBER --json baseRefOid,headRefOid --jq '[.baseRefOid, .headRefOid]'` → `git diff $BASE_SHA..$HEAD_SHA`
+
+            3. **Read AGENTS.md hierarchy for context:**
+               - Root `AGENTS.md` → project overview, build modes, code style
+               - `src/AGENTS.md` → module dependencies, SERVER/CS/SA mode boundaries
+               - For each changed file in `src/<module>/`, read `src/<module>/AGENTS.md`
+
+            4. **Apply module-specific checks (from AGENTS.md):**
+               
+               **base/ (Infrastructure):**
+               - Lock-free: `lockfree::tran::system` — transaction start before access, end after
+               - Memory: `memory_wrapper.hpp` last include only in .c/.cpp files (never headers)
+               - Error: `er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ...)` — ARG_FILE_LINE macro
+               - Debug: `resource_tracker.hpp` — push_track/pop_track pairs must match
+               
+               **transaction/ (MVCC/WAL/Locking):**
+               - MVCC: `insert_id`/`delete_id` are 64-bit, never reused — check `mvcc_satisfies_snapshot()`
+               - WAL: Log records identified by `LOG_LSN`, ensure undo/redo data completeness
+               - Lock: wait-for graph deadlock detection, lock escalation threshold
+               - Boot: strict subsystem initialization order in `boot_sr.c`
+               
+               **storage/ (Buffer/Heap/B-tree):**
+               - Buffer: Every `pgbuf_fix()` MUST have matching `pgbuf_unfix()` — use resource_tracker
+               - Latch: Acquire parent page before child page to prevent deadlocks
+               - Identifiers: `VPID` (vol+page), `OID` (vol+page+slot), `HFID`/`BTID` — use correctly
+               - B-tree: `btree.c` is ~37K lines — use function index to navigate
+               
+               **query/ (XASL Execution):**
+               - XASL: Serialization must match exactly between client/server — version compatibility
+               - Scan: `scan_next_scan()` return values must be checked (S_END, S_ERROR, etc.)
+               - REGU_VARIABLE: Recursive evaluation — watch for stack overflow on deep expressions
+               - Vacuum: `vacuum.c` in query/ — MVCC GC, handles races with active transactions
+
+            5. Apply `code-review` skill focusing on: memory safety, error handling, thread safety, security
+
+            6. Validate JSON format and write to `/tmp/review_results.json`
 
       - name: Post Inline Comments
         env:
