@@ -6666,6 +6666,11 @@ locator_delete_oos_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 							   attrepr->location, offset_size));
 	  break;
 
+	case OR_INT_SIZE:
+	  offset = OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data),
+							 attrepr->location, offset_size));
+	  break;
+
 	default:
 	  assert_release (false);
 	  error_code = ER_FAILED;
