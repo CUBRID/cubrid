@@ -279,11 +279,12 @@ extern PAGE_PTR pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAG
 				 int caller_line, const char *caller_func);
 #define pgbuf_ordered_fix(thread_p, req_vpid, fetch_mode, requestmode,\
 			  req_watcher) \
-        pgbuf_ordered_fix_debug(thread_p, req_vpid, fetch_mode, requestmode, req_watcher, ARG_FILE_LINE_FUNC)
+        pgbuf_ordered_fix_debug(thread_p, req_vpid, fetch_mode, requestmode, req_watcher, false, ARG_FILE_LINE_FUNC)
 
 extern int pgbuf_ordered_fix_debug (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_FETCH_MODE fetch_mode,
 				    const PGBUF_LATCH_MODE requestmode, PGBUF_WATCHER * req_watcher,
-				    const char *caller_file, int caller_line, const char *caller_func);
+				    bool allow_not_ordered_page, const char *caller_file, int caller_line,
+				    const char *caller_func);
 
 #define pgbuf_promote_read_latch(thread_p, pgptr_p, condition) \
 	pgbuf_promote_read_latch_debug(thread_p, pgptr_p, condition, ARG_FILE_LINE_FUNC)
@@ -324,10 +325,11 @@ extern PAGE_PTR pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, P
 #define pgbuf_ordered_fix(thread_p, req_vpid, fetch_mode, requestmode, \
 			  req_watcher) \
         pgbuf_ordered_fix_release(thread_p, req_vpid, fetch_mode, requestmode, \
-				  req_watcher)
+				  req_watcher, false)
 
 extern int pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_FETCH_MODE fetch_mode,
-				      const PGBUF_LATCH_MODE requestmode, PGBUF_WATCHER * watcher_object);
+				      const PGBUF_LATCH_MODE requestmode, PGBUF_WATCHER * watcher_object,
+				      bool allow_not_ordered_page);
 
 #define pgbuf_promote_read_latch(thread_p, pgptr_p, condition) \
   pgbuf_promote_read_latch_release(thread_p, pgptr_p, condition)

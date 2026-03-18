@@ -11975,12 +11975,13 @@ pgbuf_compare_hold_vpid_for_sort (const void *p1, const void *p2)
 #if !defined(NDEBUG)
 int
 pgbuf_ordered_fix_debug (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_FETCH_MODE fetch_mode,
-			 const PGBUF_LATCH_MODE request_mode, PGBUF_WATCHER * req_watcher, const char *caller_file,
-			 int caller_line, const char *caller_func)
+			 const PGBUF_LATCH_MODE request_mode, PGBUF_WATCHER * req_watcher, bool allow_not_ordered_page,
+			 const char *caller_file, int caller_line, const char *caller_func)
 #else /* NDEBUG */
 int
 pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_FETCH_MODE fetch_mode,
-			   const PGBUF_LATCH_MODE request_mode, PGBUF_WATCHER * req_watcher)
+			   const PGBUF_LATCH_MODE request_mode, PGBUF_WATCHER * req_watcher,
+			   bool allow_not_ordered_page)
 #endif				/* NDEBUG */
 {
   int er_status = NO_ERROR;
@@ -12065,6 +12066,16 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 #else
   ret_pgptr = pgbuf_fix_release (thread_p, req_vpid, fetch_mode, request_mode, latch_condition);
 #endif
+
+  if (allow_not_ordered_page)
+    {
+      CAST_PGPTR_TO_BFPTR (bufptr, ret_pgptr);
+      if (!PGBUF_IS_ORDERED_PAGETYPE (bufptr->iopage_buffer->iopage.prv.ptype))
+	{
+	  pgbuf_unfix (thread_p, ret_pgptr);
+	  return NO_ERROR;
+	}
+    }
 
   if (ret_pgptr != NULL)
     {
