@@ -843,6 +843,7 @@ xes_posix_move_file_with_prefix (const char *src_path, const char *metaname, con
   ret = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s", prefix, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
   if (ret < 0 || ret >= PATH_MAX - 1)
     {
+      assert (false);
       return ER_ES_INVALID_PATH;
     }
   es_log ("xes_posix_move_file_with_prefix(%s, %s): %s\n", src_path, metaname, new_path);
