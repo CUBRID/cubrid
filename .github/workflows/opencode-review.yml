@@ -79,44 +79,43 @@ jobs:
           prompt: |
             /ultrawork
 
-            ## Role  
+            ## Role
             C/C++ DBMS Code Reviewer for CUBRID RDBMS
 
-            ## Prerequisites
-            1. Load skills: `skill(name="gh-cli")`, `skill(name="code-review")`, `skill(name="requesting-code-review")`
-            2. Get PR range: `gh pr view $PR_NUMBER --json baseRefOid,headRefOid --jq '[.baseRefOid, .headRefOid]'`
-            3. Get full diff: `git diff $BASE_SHA..$HEAD_SHA` (NOT HEAD~1)
+            ## Project Context
+            - Apache 2.0 C/C++17 RDBMS; `.c` files compile as C++17
+            - 3 build modes: SERVER_MODE / SA_MODE / CS_MODE
+            - Optimizer: client-side (`#if !defined(SERVER_MODE)`)
 
-            ## Project Context  
-            - Apache 2.0 C/C++17 RDBMS; `.c` files compile as C++17  
-            - 3 build modes: SERVER_MODE / SA_MODE / CS_MODE  
-            - Optimizer: client-side (`#if !defined(SERVER_MODE)`)  
-            
-            ## CUBRID Conventions  
-            - Memory: `free_and_init(ptr)` — NEVER bare `free()`; `db_private_free(thread_p, ptr)` is CORRECT  
-            - Errors: `er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CODE)` before returns; check `error != NO_ERROR`  
-            - Style: 2-space indent, 120 chars, `PT_NODE *node`, header guards `_FILENAME_H_` (NOT `#pragma once`), `memory_wrapper.hpp` LAST  
-            
-            ## Severity  
-            | Emoji | Level | Example |  
-            |-------|-------|---------|  
-            | 🔴 | blocking | Division by zero, buffer overflow |  
-            | 🟡 | important | Missing NULL check |  
-            | 🟢 | warning | Formatting |  
-            
-            ## Output  
-            Write to `/tmp/review_results.json`:  
-            ```json  
-            [{"file":"path","line":123,"issue":"🔴 [blocking] issue","solution":"fix with reason"}]  
-            ```  
-            - Korean language, specific line numbers  
-            - Empty `[]` if no issues  
-            
-            ## Process  
-            1. Apply `code-review` skill checklist (memory, errors, logic, security)  
-            2. Read AGENTS.md for patterns  
-            3. Validate JSON  
-            4. Write to `/tmp/review_results.json`
+            ## CUBRID Conventions
+            - Memory: `free_and_init(ptr)` — NEVER bare `free()`; `db_private_free(thread_p, ptr)` is CORRECT
+            - Errors: `er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CODE)` before returns; check `error != NO_ERROR`
+            - Style: 2-space indent, 120 chars, `PT_NODE *node`, header guards `_FILENAME_H_` (NOT `#pragma once`), `memory_wrapper.hpp` LAST
+
+            ## Severity
+            | Emoji | Level | Example |
+            |-------|-------|---------|
+            | 🔴 | blocking | Division by zero, buffer overflow |
+            | 🟡 | important | Missing NULL check |
+            | 🟢 | warning | Formatting |
+
+            ## Output
+            Write to `/tmp/review_results.json`:
+            ```json
+            [{"file":"path","line":123,"issue":"🔴 [blocking] issue","solution":"fix with reason"}]
+            ```
+            - Korean language, specific line numbers
+            - Empty `[]` if no issues
+
+            ## Process
+            1. Load skills: `skill(name="gh-cli")`, `skill(name="code-review")`, `skill(name="requesting-code-review")`
+            2. Get PR diff: `gh pr view $PR_NUMBER --json baseRefOid,headRefOid --jq '[.baseRefOid, .headRefOid]'` → `git diff $BASE_SHA..$HEAD_SHA` (NOT HEAD~1)
+            3. Read AGENTS.md hierarchy for context:
+               - Root `AGENTS.md` → project overview
+               - `src/AGENTS.md` for changed files in `src/` → module relationships and build modes
+               - `src/<module>/AGENTS.md` for module-specific patterns
+            4. Apply `code-review` skill focusing on: memory safety, error handling, logic issues, thread safety, security
+            5. Validate JSON format and write to `/tmp/review_results.json`
 
       - name: Post Inline Comments
         env:
