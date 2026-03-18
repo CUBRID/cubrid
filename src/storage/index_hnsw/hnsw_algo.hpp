@@ -61,10 +61,39 @@ namespace cubhnsw
 	m_storage = storage;
       }
 
+      std::string dump ()
+      {
+	std::ostringstream oss;
+
+	if (m_graph_profile.total_nodes > 0)
+	  {
+	    oss << "==== HNSW Graph Profile ====\n";
+	    oss << "Total nodes: " << m_graph_profile.total_nodes << "\n";
+	    oss << "Max level: " << m_graph_profile.max_level << "\n";
+
+	    for (level_t l = 0; l <= m_graph_profile.max_level; ++l)
+	      {
+		std::size_t n = m_graph_profile.nodes_per_level[l];
+		std::size_t deg_sum = m_graph_profile.degree_sum_per_level[l];
+
+		double avg = (n > 0)
+			     ? static_cast<double> (deg_sum) / static_cast<double> (n)
+			     : 0.0;
+
+		oss << "[Level " << l
+		    << "] nodes: " << n
+		    << ", avg_degree: " << avg
+		    << "\n";
+	      }
+	  }
+
+	return oss.str();
+      }
+
     protected:
 
       // horizontal seeking
-      int seek_on_layer_ (algo_context_t& context, const float *query, const slot_id_t &start_slot,
+      int seek_on_layer_ (algo_context_t &context, const float *query, const slot_id_t &start_slot,
 			  const std::size_t expansion_limit);
 
       // vertical seeking
@@ -127,6 +156,38 @@ namespace cubhnsw
 	return level == 0 ? connectivity * 2 : connectivity;
       }
 
+
+      inline void
+      collect_node_profile (const level_t &level)
+      {
+	graph_profile_t &gp = m_graph_profile;
+	for (level_t l = 0; l <= level; ++l)
+	  {
+	    gp.nodes_per_level[l].fetch_add (1, std::memory_order_relaxed);
+	  }
+
+	if (level > gp.max_level)
+	  {
+	    gp.max_level = level;
+	  }
+
+	gp.total_nodes++;
+      }
+
+      inline void
+      collect_edge_profile (const level_t &level, const int count)
+      {
+	graph_profile_t &gp = m_graph_profile;
+	if (count > 0)
+	  {
+	    gp.degree_sum_per_level[level].fetch_add (count, std::memory_order_relaxed);
+	  }
+	else if (count < 0)
+	  {
+	    gp.degree_sum_per_level[level].fetch_sub (-count, std::memory_order_relaxed);
+	  }
+      }
+
       // variables
       storage *m_storage {nullptr};
 
@@ -140,6 +201,9 @@ namespace cubhnsw
 
       // precomputed
       double m_inverse_log_connectivity;
+
+      // profile
+      graph_profile_t m_graph_profile;
   };
 
   // =====================================================================
@@ -234,6 +298,7 @@ namespace cubhnsw
 	  root_node.set_entry (new_slot);
 	  root_node.set_level (new_target_level);
 	  m_storage->set_empty (false);
+	  collect_node_profile (new_target_level);
 	  return result;
 	}
     }
@@ -274,6 +339,9 @@ namespace cubhnsw
 	  --context.m_level;
 	}
     }
+
+    // TODO: hnsw_debug
+    collect_node_profile (new_target_level);
 
     if (new_target_level > curr_max_level)
       {
@@ -374,7 +442,7 @@ namespace cubhnsw
 
   int
   algo::seek_on_layer_ (algo_context_t &context, const float *query, const slot_id_t &start_slot,
-				const std::size_t expansion_limit)
+			const std::size_t expansion_limit)
   {
     int num_visits = 0;
     int num_cand_push = 0;
@@ -456,7 +524,7 @@ namespace cubhnsw
 
   int
   algo::seek_down_ (algo_context_t &context, const float *query, const slot_id_t &start_slot,
-			    const level_t target_level, slot_id_t &out_slot)
+		    const level_t target_level, slot_id_t &out_slot)
   {
     int num_visits = 0;
     int num_neighbor_scan = 0;
@@ -503,7 +571,7 @@ namespace cubhnsw
 
   void
   algo::form_links_to_closest_ (algo_context_t &context, const pinned_t &new_node_blk,
-					candidates_view_t &top_view)
+				candidates_view_t &top_view)
   {
     top_candidates_t &top = context.m_top_candidates;
 
@@ -521,11 +589,13 @@ namespace cubhnsw
       {
 	new_neighbors.push_back (top_view[i].slot);
       }
+
+    collect_edge_profile (level, top_view.size ());
   }
 
   int
   algo::form_reverse_links_ (algo_context_t &context, const pinned_t &new_node_blk, const float *value,
-				     candidates_view_t &new_neighbors)
+			     candidates_view_t &new_neighbors)
   {
     std::size_t refines_counter = 0;
 
@@ -549,6 +619,8 @@ namespace cubhnsw
 	  if (close_header.size () < layer_connectivity)
 	    {
 	      close_header.push_back (new_slot);
+
+	      collect_edge_profile (level, 1);
 	      continue;
 	    }
 	}
@@ -560,7 +632,8 @@ namespace cubhnsw
 
 	top_for_refine.insert_reserved (candidate_t (dist, close_slot));
 
-	for (std::size_t i = 0; i < close_header.size (); i++)
+	std::size_t close_header_size = close_header.size ();
+	for (std::size_t i = 0; i < close_header_size; i++)
 	  {
 	    slot_id_t successor_slot = close_header.at (i);
 	    dist = compute_distance_between (context, close_slot, successor_slot);
@@ -568,6 +641,7 @@ namespace cubhnsw
 	  }
 
 	// remove all neighbors from close_header
+	collect_edge_profile (level, -close_header_size);
 	close_header.clear();
 	candidates_view_t top_view;
 
@@ -577,6 +651,7 @@ namespace cubhnsw
 	  {
 	    close_header.push_back (top_view[i].slot);
 	  }
+	collect_edge_profile (level, top_view.size ());
       }
 
     context.add_stat (context.m_stats.visited_nodes, context.m_stats.visited_nodes_l0, new_neighbors.size ());

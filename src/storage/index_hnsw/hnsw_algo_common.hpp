@@ -44,6 +44,8 @@ namespace cubhnsw
 
   using level_t = int16_t;
 
+  constexpr level_t MAX_LEVELS = 16;
+
   struct candidate_t
   {
     distance_t distance;
@@ -124,6 +126,26 @@ namespace cubhnsw
     std::vector<OID> oids {};
   };
 
+  struct graph_profile_t
+  {
+    std::array<std::atomic<size_t>, MAX_LEVELS> nodes_per_level;
+    std::array<std::atomic<size_t>, MAX_LEVELS> degree_sum_per_level;
+
+    level_t max_level {0};
+    std::atomic<std::size_t> total_nodes;
+
+    graph_profile_t ()
+    {
+      total_nodes.store (0, std::memory_order_relaxed);
+      for (size_t i = 0; i < MAX_LEVELS; ++i)
+	{
+	  nodes_per_level[i].store (0, std::memory_order_relaxed);
+	  degree_sum_per_level[i].store (0, std::memory_order_relaxed);
+	}
+    }
+
+  };
+
   struct algo_context_t
   {
     top_candidates_t m_top_candidates;
@@ -136,6 +158,7 @@ namespace cubhnsw
 
     // stats
     bool m_is_perf_tracking {false};
+
     struct stats
     {
       // ===========================
