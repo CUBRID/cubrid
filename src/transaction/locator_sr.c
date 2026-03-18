@@ -6626,6 +6626,8 @@ locator_delete_oos_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
   VFID oos_vfid;
   if (!heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
+	      hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
       return ER_FAILED;
     }
 
