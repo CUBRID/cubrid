@@ -83,9 +83,18 @@ client_support::css_get_errno ()
 void
 client_support::css_handle_pipe_shutdown (int sig)
 {
+#if 0
+  /*
+   * TODO: The previous implementation of css_find_exception_conn() was redundant
+   * because it consistently returned NULL, making the associated logic meaningless.
+   *
+   * Before re-implementing, we must verify if registering a custom handler for
+   * SIGPIPE is truly preferable over using SIG_IGN.
+   * * This section is currently commented out for future review.
+   */
   CSS_CONN_ENTRY *conn;
   CSS_MAP_ENTRY *entry;
-#if 0
+
   conn = m_conn_less.css_find_exception_conn ();
   if (conn != NULL)
     {
