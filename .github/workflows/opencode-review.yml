@@ -90,7 +90,7 @@ jobs:
             - Optimizer is client-side (`#if !defined(SERVER_MODE)`)
 
             ## Critical Conventions (MUST CHECK)
-            - **Memory:** `free_and_init(ptr)` — NEVER bare `free()`; use `db_private_free(thread_p, ptr)` for private heap
+            - **Memory:** `free_and_init(ptr)` — NEVER bare `free()`; `db_private_free(thread_p, ptr)` is the CORRECT function for private heap (not bare free())
             - **Alloc checks:** `if (ptr == NULL)` → `er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size)`
             - **Errors:** Return `NO_ERROR` (0) on success; call `er_set()` before error returns; check `error != NO_ERROR`
             - **Style:** 2-space indent, 120 chars, `PT_NODE *node` style, header guards `_FILENAME_H_` (NOT `#pragma once`), `memory_wrapper.hpp` LAST with `// XXX: SHOULD BE THE LAST INCLUDE HEADER`
@@ -116,13 +116,17 @@ jobs:
             ```
             - `issue`: Korean, severity emoji + level
             - `solution`: Korean, explain WHY and HOW
-            - Empty `[]` if none; dedupe (file, line) with existing comments
+            - Empty `[]` if none
 
             ## Process
-            1. `git diff HEAD~1` → read AGENTS.md → apply checklist → create JSON → validate → write to `/tmp/review_results.json`
+            1. Load gh-cli skill: `skill(name="gh-cli")`
+            2. Get PR base commit: `gh pr view $PR_NUMBER --json baseRefOid,headRefOid --jq '.baseRefOid'`
+            3. Get full PR diff: `git diff $BASE_SHA $HEAD_SHA` (NOT HEAD~1)
+            4. Read AGENTS.md → apply checklist → create JSON → validate → write to `/tmp/review_results.json`
+            5. Deduplication: Before writing, fetch existing review comments via `gh api repos/{repo}/pulls/$PR_NUMBER/comments` and skip any (file, line) pairs that already have comments
 
             ## Constraints (NEVER)
-            - bare `free()` / `db_private_free()`
+            - bare `free()` (use `free_and_init()` or `db_private_free()`)
             - `#pragma once`
             - `as any`, `@ts-ignore`
             - Deleting tests to pass build
