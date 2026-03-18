@@ -117,8 +117,24 @@ oos_file_create (THREAD_ENTRY *thread_p, VFID &oos_vfid)
 int
 oos_file_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 {
-  // TODO: actually destroy the OOS file
-  return 0;
+  oos_recently_inserted_oos_vpid_map.erase (oos_vfid);
+
+  file_postpone_destroy (thread_p, &oos_vfid);
+
+  return NO_ERROR;
+}
+
+int
+oos_page_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid)
+{
+  int err = file_dealloc (thread_p, &oos_vfid, &vpid, FILE_OOS);
+  if (err != NO_ERROR)
+    {
+      oos_error ("file_dealloc failed for vpid={pageid=%d, volid=%d}", vpid.pageid, vpid.volid);
+      return err;
+    }
+
+  return NO_ERROR;
 }
 
 
