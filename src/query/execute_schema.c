@@ -5146,6 +5146,15 @@ do_set_auto_increment (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const char
   assert (attribute->info.attr_def.auto_increment != NULL);
   assert (attr != NULL);
 
+  if (*attr == NULL)
+    {
+      error = smt_find_attribute (ctemplate, attr_name, 0, attr);
+    }
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
   while (ctmpl_attrs != NULL)
     {
       if (ctmpl_attrs->auto_increment == NULL)
@@ -5161,22 +5170,8 @@ do_set_auto_increment (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const char
 
   if (error == NO_ERROR)
     {
-      if (*attr == NULL)
-	{
-	  error = smt_find_attribute (ctemplate, attr_name, 0, attr);
-	}
-      if (error == NO_ERROR && *attr != NULL)
-	{
-	  (*attr)->auto_increment = auto_increment_obj;
-	  (*attr)->flags |= SM_ATTFLAG_AUTO_INCREMENT;
-	}
-      else
-	{
-	  int save;
-	  AU_DISABLE (save);
-	  error = db_drop (auto_increment_obj);
-	  AU_ENABLE (save);
-	}
+      (*attr)->auto_increment = auto_increment_obj;
+      (*attr)->flags |= SM_ATTFLAG_AUTO_INCREMENT;
     }
 
   return error;
