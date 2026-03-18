@@ -443,9 +443,14 @@ static int
 log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EXECUTE execute_2pc_type, bool * decision,
 			    TRAN_STATE * state)
 {
-  int i;
 #ifdef CCI_XA
-  int error;
+  if (tdes->coord == NULL)
+    {
+      assert (tdes->coord != NULL);
+      return ER_FAILED;
+    }
+
+  int i, error;
   DBLINK_CONN_INFO *participants = (DBLINK_CONN_INFO *) tdes->coord->block_particps_ids;
   TRAN_STATE expected_state;
   LOG_RECTYPE complete_type;
