@@ -274,6 +274,7 @@ extern int vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT
 extern int vacuum_rv_es_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 #if defined (SERVER_MODE)
 extern void vacuum_notify_es_deleted (THREAD_ENTRY * thread_p, const char *uri);
+extern void vacuum_notify_oos_deleted (THREAD_ENTRY * thread_p, const VFID * oos_vfid, const OID * oos_oid);
 #endif /* SERVER_MODE */
 
 extern int vacuum_reset_data_after_copydb (THREAD_ENTRY * thread_p);

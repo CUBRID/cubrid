@@ -866,6 +866,11 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL,
    repl_data_insert_log_dump},
+  {RVOOS_NOTIFY_VACUUM,
+   "RVOOS_NOTIFY_VACUUM",
+   vacuum_rv_es_nop,
+   vacuum_rv_es_nop,
+   NULL, NULL},
 };
 
 /*
