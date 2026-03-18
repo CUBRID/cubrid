@@ -8420,7 +8420,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
       index = &(new_attrinfo->last_classrepr->indexes[i]);
       if (rk_btid_index == -1 && repl_info != NULL && repl_info->need_replication == true
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && or_is_replication_candidate_key (index)
-	  && log_does_allow_replication () == true)
+	  && heap_is_replication_class (thread_p, class_oid) && log_does_allow_replication () == true)
 	{
 	  rk_btid_index = i;
 	}
@@ -8772,76 +8772,73 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	}
     }
 
-  if (heap_is_replication_class (thread_p, class_oid))
+  if (rk_btid_index != -1)
     {
-      if (rk_btid_index != -1)
-	{
-	  assert (repl_info != NULL);
+      assert (repl_info != NULL);
 
+      if (repl_old_key == NULL)
+	{
+	  key_domain = NULL;
+	  repl_old_key =
+	    heap_attrvalue_get_key (thread_p, rk_btid_index, old_attrinfo, old_recdes, &old_btid, &old_dbvalue,
+				    aligned_oldbuf, NULL, &key_domain, oid, false);
 	  if (repl_old_key == NULL)
 	    {
-	      key_domain = NULL;
-	      repl_old_key =
-		heap_attrvalue_get_key (thread_p, rk_btid_index, old_attrinfo, old_recdes, &old_btid, &old_dbvalue,
-					aligned_oldbuf, NULL, &key_domain, oid, false);
-	      if (repl_old_key == NULL)
-		{
-		  error_code = ER_FAILED;
-		  goto error;
-		}
-
-	      old_isnull = db_value_is_null (repl_old_key);
-	      pr_type = pr_type_from_id (DB_VALUE_DOMAIN_TYPE (repl_old_key));
-	      if (pr_type == NULL)
-		{
-		  error_code = ER_FAILED;
-		  goto error;
-		}
-
-	      if (pr_type->id == DB_TYPE_MIDXKEY)
-		{
-		  /*
-		   * The asc/desc properties in midxkey from log_applier may be
-		   * inaccurate. therefore, we should use btree header's domain
-		   * while processing btree search request from log_applier.
-		   */
-		  repl_old_key->data.midxkey.domain = key_domain;
-		}
-	      error_code =
-		repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
-				 (REPL_INFO_TYPE) repl_info->repl_info_type);
-
-	      if (repl_old_key == &old_dbvalue)
-		{
-		  pr_clear_value (&old_dbvalue);
-		}
+	      error_code = ER_FAILED;
+	      goto error;
 	    }
-	  else
-	    {
-	      error_code =
-		repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
-				 (REPL_INFO_TYPE) repl_info->repl_info_type);
 
-	      pr_free_ext_value (repl_old_key);
-	      repl_old_key = NULL;
+	  old_isnull = db_value_is_null (repl_old_key);
+	  pr_type = pr_type_from_id (DB_VALUE_DOMAIN_TYPE (repl_old_key));
+	  if (pr_type == NULL)
+	    {
+	      error_code = ER_FAILED;
+	      goto error;
+	    }
+
+	  if (pr_type->id == DB_TYPE_MIDXKEY)
+	    {
+	      /*
+	       * The asc/desc properties in midxkey from log_applier may be
+	       * inaccurate. therefore, we should use btree header's domain
+	       * while processing btree search request from log_applier.
+	       */
+	      repl_old_key->data.midxkey.domain = key_domain;
+	    }
+	  error_code =
+	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
+			     (REPL_INFO_TYPE) repl_info->repl_info_type);
+
+	  if (repl_old_key == &old_dbvalue)
+	    {
+	      pr_clear_value (&old_dbvalue);
 	    }
 	}
       else
 	{
-	  /*
-	   * clear repl_insert_lsa to make sure that FK action
-	   * does not overwrite the original update's target lsa.
-	   */
-	  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	  tdes = LOG_FIND_TDES (tran_index);
+	  error_code =
+	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
+			     (REPL_INFO_TYPE) repl_info->repl_info_type);
 
-	  LSA_SET_NULL (&tdes->repl_insert_lsa);
+	  pr_free_ext_value (repl_old_key);
+	  repl_old_key = NULL;
+	}
+    }
+  else
+    {
+      /*
+       * clear repl_insert_lsa to make sure that FK action
+       * does not overwrite the original update's target lsa.
+       */
+      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+      tdes = LOG_FIND_TDES (tran_index);
 
-	  /* No need to replicate this record since there is no primary key */
-	  if (repl_info != NULL)
-	    {
-	      repl_info->need_replication = false;
-	    }
+      LSA_SET_NULL (&tdes->repl_insert_lsa);
+
+      /* No need to replicate this record since there is no primary key */
+      if (repl_info != NULL)
+	{
+	  repl_info->need_replication = false;
 	}
     }
 
