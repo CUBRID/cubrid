@@ -587,15 +587,23 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
   PAGE_TYPE page_type = PAGE_OOS;
 
   VPID recently_inserted_oos_vpid = VPID_INITIALIZER;
+  bool need_alloc = false;
   {
     std::lock_guard<std::mutex> lock (oos_vpid_map_mutex);
     auto it = oos_recently_inserted_oos_vpid_map.find (oos_vfid);
     if (it == oos_recently_inserted_oos_vpid_map.end ())
       {
-	return oos_file_alloc_new (thread_p, oos_vfid, vpid);
+	need_alloc = true;
       }
-    recently_inserted_oos_vpid = it->second;
+    else
+      {
+	recently_inserted_oos_vpid = it->second;
+      }
   }
+  if (need_alloc)
+    {
+      return oos_file_alloc_new (thread_p, oos_vfid, vpid);
+    }
   if (recently_inserted_oos_vpid.pageid == NULL_PAGEID)
     {
       assert (false); // should not happen
@@ -739,7 +747,13 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
 	  return ER_FAILED;
 	}
 
-      assert (recdes_with_header.length >= (int) sizeof (OOS_RECORD_HEADER));
+      if (recdes_with_header.length < (int) sizeof (OOS_RECORD_HEADER))
+	{
+	  assert_release (false);
+	  oos_error ("OOS record at volid=%d pageid=%d slotid=%d has invalid length %d",
+		     volid, pageid, slotid, recdes_with_header.length);
+	  return ER_FAILED;
+	}
       OOS_RECORD_HEADER header;
       std::memcpy (&header, recdes_with_header.data, sizeof (OOS_RECORD_HEADER));
       OID next_chunk_oid = header.next_chunk_oid;
