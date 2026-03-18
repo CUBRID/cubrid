@@ -126,6 +126,7 @@ void qo_add_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
 void qo_rewrite_terms (PARSER_CONTEXT * parser, PT_NODE * nodes, PT_NODE ** terms);
 void qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wherep);
 PT_NODE *qo_reduce_equality_terms_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+void qo_add_transitive_join_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wherep);
 int qo_is_reduceable_const (PT_NODE * expr);
 PT_NODE *qo_get_name_by_spec_id (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 PT_NODE *qo_check_nullable_expr_with_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);

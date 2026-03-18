@@ -992,9 +992,212 @@ qo_reduce_equality_terms_post (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
     {
       wherep = &node->info.query.q.select.where;
       QO_CHECK_AND_REDUCE_EQUALITY_TERMS (parser, node, wherep);
+      qo_add_transitive_join_terms (parser, node, wherep);
     }
 
   return node;
+}
+
+/*
+ * qo_add_transitive_join_terms () -
+ *   return: void
+ *   parser(in): parser context
+ *   node(in): SELECT node
+ *   wherep(in/out): pointer to WHERE clause list
+ *
+ * Note:
+ *   X.a=Y.a AND Y.a=Z.a 형태의 조인 조건이 있을 때,
+ *   이행성(transitivity)에 의해 X.a=Z.a 조건을 추가합니다.
+ *   이미 해당 조건이 존재하면 추가하지 않습니다.
+ */
+void
+qo_add_transitive_join_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wherep)
+{
+  PT_NODE *expr1, *expr2, *term;
+  PT_NODE *arg1_l, *arg1_r;	/* expr1의 좌변, 우변 attr */
+  PT_NODE *arg2_l, *arg2_r;	/* expr2의 좌변, 우변 attr */
+  PT_NODE *lhs_new, *rhs_new;
+  PT_NODE *new_term, *new_term_list;
+  PT_NODE **orgp = wherep;
+  bool already_exists;
+
+  new_term_list = NULL;
+
+  /* 모든 등치 조인 조건 쌍에 대해 이행 조건 탐색 */
+  for (expr1 = *orgp; expr1; expr1 = expr1->next)
+    {
+      /* expr1: 단순 attr = attr 형태의 조인 조건인지 확인 */
+      if (expr1->node_type != PT_EXPR
+	  || expr1->info.expr.op != PT_EQ
+	  || expr1->or_next != NULL || expr1->info.expr.arg1 == NULL || expr1->info.expr.arg2 == NULL)
+	{
+	  continue;
+	}
+
+      arg1_l = expr1->info.expr.arg1;
+      arg1_r = expr1->info.expr.arg2;
+
+      if (!pt_is_attr (arg1_l) || !pt_is_attr (arg1_r))
+	{
+	  continue;
+	}
+
+      /* 같은 spec이면 조인 조건이 아님 */
+      if (arg1_l->info.name.spec_id == arg1_r->info.name.spec_id)
+	{
+	  continue;
+	}
+
+      for (expr2 = expr1->next; expr2; expr2 = expr2->next)
+	{
+	  /* expr2: 단순 attr = attr 형태의 조인 조건인지 확인 */
+	  if (expr2->node_type != PT_EXPR
+	      || expr2->info.expr.op != PT_EQ
+	      || expr2->or_next != NULL || expr2->info.expr.arg1 == NULL || expr2->info.expr.arg2 == NULL)
+	    {
+	      continue;
+	    }
+
+	  arg2_l = expr2->info.expr.arg1;
+	  arg2_r = expr2->info.expr.arg2;
+
+	  if (!pt_is_attr (arg2_l) || !pt_is_attr (arg2_r))
+	    {
+	      continue;
+	    }
+
+	  if (arg2_l->info.name.spec_id == arg2_r->info.name.spec_id)
+	    {
+	      continue;
+	    }
+
+	  /* 공통 spec + 공통 컬럼 이름을 찾아 이행 조건의 양쪽 피연산자 결정
+	   * 네 가지 조합:
+	   *   expr1: A.x = B.x,  expr2: B.x = C.x  ->  A.x = C.x
+	   *   expr1: A.x = B.x,  expr2: C.x = B.x  ->  A.x = C.x
+	   *   expr1: B.x = A.x,  expr2: B.x = C.x  ->  A.x = C.x
+	   *   expr1: B.x = A.x,  expr2: C.x = B.x  ->  A.x = C.x
+	   */
+	  lhs_new = NULL;
+	  rhs_new = NULL;
+
+	  if (arg1_l->info.name.spec_id == arg2_l->info.name.spec_id && pt_name_equal (parser, arg1_l, arg2_l))
+	    {
+	      lhs_new = arg1_r;
+	      rhs_new = arg2_r;
+	    }
+	  else if (arg1_l->info.name.spec_id == arg2_r->info.name.spec_id && pt_name_equal (parser, arg1_l, arg2_r))
+	    {
+	      lhs_new = arg1_r;
+	      rhs_new = arg2_l;
+	    }
+	  else if (arg1_r->info.name.spec_id == arg2_l->info.name.spec_id && pt_name_equal (parser, arg1_r, arg2_l))
+	    {
+	      lhs_new = arg1_l;
+	      rhs_new = arg2_r;
+	    }
+	  else if (arg1_r->info.name.spec_id == arg2_r->info.name.spec_id && pt_name_equal (parser, arg1_r, arg2_r))
+	    {
+	      lhs_new = arg1_l;
+	      rhs_new = arg2_l;
+	    }
+
+	  if (lhs_new == NULL || rhs_new == NULL)
+	    {
+	      continue;
+	    }
+
+	  /* lhs_new와 rhs_new가 서로 다른 테이블의 컬럼인지 확인 */
+	  if (lhs_new->info.name.spec_id == rhs_new->info.name.spec_id)
+	    {
+	      continue;
+	    }
+
+	  /* 이미 존재하는 조건인지 확인 (새로 추가 예정 목록 포함) */
+	  already_exists = false;
+
+	  for (term = *orgp; term; term = term->next)
+	    {
+	      PT_NODE *t_l, *t_r;
+
+	      if (term->node_type != PT_EXPR
+		  || term->info.expr.op != PT_EQ
+		  || term->or_next != NULL || term->info.expr.arg1 == NULL || term->info.expr.arg2 == NULL)
+		{
+		  continue;
+		}
+
+	      t_l = term->info.expr.arg1;
+	      t_r = term->info.expr.arg2;
+
+	      if (!pt_is_attr (t_l) || !pt_is_attr (t_r))
+		{
+		  continue;
+		}
+
+	      if ((t_l->info.name.spec_id == lhs_new->info.name.spec_id
+		   && pt_name_equal (parser, t_l, lhs_new)
+		   && t_r->info.name.spec_id == rhs_new->info.name.spec_id
+		   && pt_name_equal (parser, t_r, rhs_new))
+		  || (t_l->info.name.spec_id == rhs_new->info.name.spec_id
+		      && pt_name_equal (parser, t_l, rhs_new)
+		      && t_r->info.name.spec_id == lhs_new->info.name.spec_id && pt_name_equal (parser, t_r, lhs_new)))
+		{
+		  already_exists = true;
+		  break;
+		}
+	    }
+
+	  if (already_exists)
+	    {
+	      continue;
+	    }
+
+	  /* 새로 추가 예정 목록에서도 중복 확인 */
+	  for (term = new_term_list; term; term = term->next)
+	    {
+	      PT_NODE *t_l = term->info.expr.arg1;
+	      PT_NODE *t_r = term->info.expr.arg2;
+
+	      if ((t_l->info.name.spec_id == lhs_new->info.name.spec_id
+		   && pt_name_equal (parser, t_l, lhs_new)
+		   && t_r->info.name.spec_id == rhs_new->info.name.spec_id
+		   && pt_name_equal (parser, t_r, rhs_new))
+		  || (t_l->info.name.spec_id == rhs_new->info.name.spec_id
+		      && pt_name_equal (parser, t_l, rhs_new)
+		      && t_r->info.name.spec_id == lhs_new->info.name.spec_id && pt_name_equal (parser, t_r, lhs_new)))
+		{
+		  already_exists = true;
+		  break;
+		}
+	    }
+
+	  if (already_exists)
+	    {
+	      continue;
+	    }
+
+	  /* 새 이행 조인 조건 생성: lhs_new = rhs_new */
+	  new_term = parser_new_node (parser, PT_EXPR);
+	  if (new_term == NULL)
+	    {
+	      continue;
+	    }
+
+	  new_term->info.expr.op = PT_EQ;
+	  new_term->info.expr.arg1 = parser_copy_tree (parser, lhs_new);
+	  new_term->info.expr.arg2 = parser_copy_tree (parser, rhs_new);
+	  new_term->type_enum = PT_TYPE_LOGICAL;
+	  new_term->info.expr.location = 0;	/* WHERE 절 */
+
+	  new_term_list = parser_append_node (new_term, new_term_list);
+	}
+    }
+
+  if (new_term_list != NULL)
+    {
+      *orgp = parser_append_node (new_term_list, *orgp);
+    }
 }
 
 /*
