@@ -6,25 +6,10 @@
       "sourceType": "github",
       "computedHash": "ac61353e7ec0c8b98660accf0c9688bf5183044b7fa1ee1e189c680ff1a083c6"
     },
-    "code-review-excellence": {
-      "source": "wshobson/agents",
-      "sourceType": "github",
-      "computedHash": "0f585a4ad2f6d8353069ca9051c6f0e8865abb9d3a6a268d423784c3c3852962"
-    },
-    "cpp-pro": {
-      "source": "jeffallan/claude-skills",
-      "sourceType": "github",
-      "computedHash": "e79d7d2b091213daab62076186f3ef9c9cc03ee175fea4d36c9f88274f38dd9d"
-    },
     "gh-cli": {
       "source": "github/awesome-copilot",
       "sourceType": "github",
       "computedHash": "cbe644b0c6760ae2a1eaafa39133920d889331327065d92a131675a665273e56"
-    },
-    "postgresql-code-review": {
-      "source": "github/awesome-copilot",
-      "sourceType": "github",
-      "computedHash": "1167ec9449aa866e16bc7449e05ab4d391cdce95a0b0c5e1155b793160471eb5"
     },
     "receiving-code-review": {
       "source": "obra/superpowers",
@@ -35,11 +20,6 @@
       "source": "obra/superpowers",
       "sourceType": "github",
       "computedHash": "246e65cd72a7e360987d94e6c61564ce6d71c6361d1784d529d70e4cbbe8522d"
-    },
-    "security-best-practices": {
-      "source": "supercent-io/skills-template",
-      "sourceType": "github",
-      "computedHash": "a8c825eb0f2d2d3381f93dad83ea531579445c5646b38be0170f4a782689cf4b"
     }
   }
 }
