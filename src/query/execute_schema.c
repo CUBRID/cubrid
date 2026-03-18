@@ -5140,6 +5140,7 @@ do_set_auto_increment (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const char
 {
   SM_ATTRIBUTE *ctmpl_attrs = ctemplate->attributes;
   int error = NO_ERROR;
+  MOP auto_increment_obj = NULL;
 
   assert (attribute->info.attr_def.attr_type != PT_META_ATTR && attribute->info.attr_def.attr_type != PT_SHARED);
   assert (attribute->info.attr_def.auto_increment != NULL);
@@ -5156,7 +5157,6 @@ do_set_auto_increment (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const char
       return ER_AUTO_INCREMENT_SINGLE_COL_ONLY;
     }
 
-  MOP auto_increment_obj = NULL;
   error = do_create_auto_increment_serial (parser, &auto_increment_obj, ctemplate->name, attribute);
 
   if (error == NO_ERROR)
@@ -5169,6 +5169,13 @@ do_set_auto_increment (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const char
 	{
 	  (*attr)->auto_increment = auto_increment_obj;
 	  (*attr)->flags |= SM_ATTFLAG_AUTO_INCREMENT;
+	}
+      else
+	{
+	  int save;
+	  AU_DISABLE (save);
+	  error = db_drop (auto_increment_obj);
+	  AU_ENABLE (save);
 	}
     }
 
@@ -11083,7 +11090,6 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
       || is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_GAINED))
     {
 
-      assert (attribute->info.attr_def.auto_increment != NULL);
       error = do_set_auto_increment (parser, ctemplate, attr_name, attribute, &found_att);
 
       if (error != NO_ERROR)
