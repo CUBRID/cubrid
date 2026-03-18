@@ -21108,11 +21108,11 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 
   if (is_skip_sort)
     {
-      finalized = true;
       if (qexec_analytic_update_group_result (thread_p, &analytic_state) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
+      finalized = true;
       analytic_state.state = NO_ERROR;
       goto wrapup;
     }
@@ -21179,9 +21179,14 @@ wrapup:
       if (new_stat != NULL)
 	{
 	  memset (new_stat, 0, sizeof (ANALYTIC_STATS));
-	  new_stat->analytic_stopkey = XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT);
-	  TSC_ADD_TIMEVAL (new_stat->analytic_time, tv_diff);
+	  new_stat->analytic_stopkey = false;
 	  new_stat->analytic_sort = !is_skip_sort;
+	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+	    {
+	      new_stat->analytic_stopkey = true;
+	      new_stat->analytic_sort = false;
+	    }
+	  TSC_ADD_TIMEVAL (new_stat->analytic_time, tv_diff);
 
 	  new_stat->analytic_pages =
 	    (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) - old_sort_pages);
