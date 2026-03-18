@@ -122,11 +122,20 @@ class hnsw_impl final:public hnsw_index
 
     void init_worker_pool ();
     void add_internal (cubthread::entry &thread_ref, hnsw_build_worker_job &job);
+    void update_pca_online (const float *vectors, int n_vectors, int dim,
+			    bool normalize_inputs);
 
     VPID m_root_vpid;
 
     std::unique_ptr < algo_type > m_algo;
     std::unique_ptr < storage_type > m_storage;
+
+    // For PCA Reordering
+    // TODO: thread-safe
+    std::vector<float> m_pca_mean;  // running mean (dimension)
+    std::vector<float> m_pca_pc1;   // running PC1 (dimension)
+    uint64_t m_pca_seen {0};        // number of samples seen (for step schedule)
+    bool m_pca_inited {false};
 
 #if defined (SERVER_MODE)
     cubthread::entry_workpool *m_build_worker_pool;
@@ -144,6 +153,119 @@ class hnsw_impl final:public hnsw_index
 #endif
     lockfree::circular_queue<hnsw_build_worker_job> *m_build_worker_job_queue;
 };
+
+// Helper functions for vector preprocessing
+
+static inline float dot_f (const float *a, const float *b, int dim)
+{
+  float s = 0.0f;
+  for (int i = 0; i < dim; ++i)
+    {
+      s += a[i] * b[i];
+    }
+  return s;
+}
+
+static inline float l2norm_f (const float *a, int dim)
+{
+  return std::sqrt (dot_f (a, a, dim));
+}
+
+static inline void normalize_vec (std::vector<float> &v)
+{
+  float n = std::sqrt (dot_f (v.data (), v.data (), (int) v.size ()));
+  if (n > 0.0f)
+    {
+      for (auto &x : v)
+	{
+	  x /= n;
+	}
+    }
+}
+
+void
+hnsw_impl::update_pca_online (const float *vectors, int n_vectors, int dim,
+			      bool normalize_inputs)
+{
+  if (m_pca_mean.empty ())
+    {
+      m_pca_mean.assign (dim, 0.0f);
+    }
+  if (m_pca_pc1.empty ())
+    {
+      m_pca_pc1.assign (dim, 0.0f);
+    }
+
+  std::vector<float> x (dim);
+  std::vector<float> centered (dim);
+
+  for (int i = 0; i < n_vectors; ++i)
+    {
+      const float *v = vectors + i * dim;
+
+      if (normalize_inputs && db_vector_is_all_zeros (v, dim))
+	{
+	  continue;
+	}
+
+      // x = v (or normalized v)
+      if (!normalize_inputs)
+	{
+	  for (int d = 0; d < dim; ++d)
+	    {
+	      x[d] = v[d];
+	    }
+	}
+      else
+	{
+	  float n = l2norm_f (v, dim);
+	  if (n <= 0.0f)
+	    {
+	      continue;
+	    }
+	  for (int d = 0; d < dim; ++d)
+	    {
+	      x[d] = v[d] / n;
+	    }
+	}
+
+      // centered = x - mean(prev)
+      for (int d = 0; d < dim; ++d)
+	{
+	  centered[d] = x[d] - m_pca_mean[d];
+	}
+
+      ++m_pca_seen;
+      const float inv = 1.0f / (float) m_pca_seen;
+      for (int d = 0; d < dim; ++d)
+	{
+	  m_pca_mean[d] += centered[d] * inv;
+	}
+
+      if (!m_pca_inited)
+	{
+	  if (db_vector_is_all_zeros (centered.data (), dim))
+	    {
+	      continue;
+	    }
+	  m_pca_pc1 = centered;
+	  normalize_vec (m_pca_pc1);
+	  m_pca_inited = true;
+	  continue;
+	}
+
+      // Oja update: w <- w + eta * centered * (centered^T w)
+      const float eta0 = 0.2f;
+      const float eta = eta0 / std::sqrt ((float) m_pca_seen);
+
+      const float proj = dot_f (centered.data (), m_pca_pc1.data (), dim);
+      for (int d = 0; d < dim; ++d)
+	{
+	  m_pca_pc1[d] += eta * centered[d] * proj;
+	}
+      normalize_vec (m_pca_pc1);
+    }
+}
 
 // =====================================================================
 // hnsw_impl_backend
@@ -336,17 +458,79 @@ hnsw_impl::add (cubthread::entry *thread_p, int n_vectors, const OID *oid, const
 {
   hnsw_build_worker_context ctx;
   ctx.tran_index = thread_p->tran_index;
-  // Push insert each vector insertion task to worker pool
 
-  std::vector<hnsw_build_worker_job> jobs;
-  jobs.reserve (n_vectors);
+  // PCA Reordering
+  const int dim = m_build_params.dimension;
+  const bool normalize_inputs =
+	  (m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE);
+
+  // 0) Update global PC1 using this batch
+  update_pca_online (vector, n_vectors, dim, normalize_inputs);
+
+  auto is_skippable = [&] (const float *v) -> bool
+  {
+    return (normalize_inputs && db_vector_is_all_zeros (v, dim));
+  };
+
+  // 1) score + ordering by projection onto (updated) PC1
+  std::vector<std::pair<float, int>> scored;
+  scored.reserve (n_vectors);
 
   for (int i = 0; i < n_vectors; ++i)
     {
+      const float *v = vector + i * dim;
+      if (is_skippable (v))
+	{
+	  er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping add");
+	  continue;
+	}
+
+      float score = 0.0f;
+
+      // score = dot(pc1, (x - mean))
+      if (!normalize_inputs)
+	{
+	  for (int d = 0; d < dim; ++d)
+	    {
+	      score += m_pca_pc1[d] * (v[d] - m_pca_mean[d]);
+	    }
+	}
+      else
+	{
+	  float n = l2norm_f (v, dim);
+	  if (n <= 0.0f)
+	    {
+	      continue;
+	    }
+
+	  for (int d = 0; d < dim; ++d)
+	    {
+	      const float x = v[d] / n;
+	      score += m_pca_pc1[d] * (x - m_pca_mean[d]);
+	    }
+	}
+
+      scored.emplace_back (score, i);
+    }
+
+  std::sort (scored.begin (), scored.end (),
+	     [] (const auto &a, const auto &b)
+  {
+    return a.first < b.first;
+  });
+
+  // Build jobs in PCA order for worker pool / fallback (server mode and SA mode)
+  std::vector<hnsw_build_worker_job> jobs;
+  jobs.reserve (scored.size ());
+
+  for (const auto &kv : scored)
+    {
+      const int idx = kv.second;
+
       hnsw_build_worker_job job;
       job.m_ctx = &ctx;
-      job.m_oid = oid[i];
-      job.m_vector = vector + i * m_build_params.dimension;
+      job.m_oid = oid[idx];
+      job.m_vector = vector + idx * dim;
 
       jobs.emplace_back (job);
     }

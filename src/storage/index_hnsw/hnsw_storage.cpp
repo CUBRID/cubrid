@@ -172,6 +172,11 @@ namespace cubhnsw
 	context.m_visited_nodes++;
       }
 
+    if (context.m_is_debugging)
+      {
+	context.m_accessed_nodes.push_back (dump_slot (id));
+      }
+
     pinned_t::data_t blk;
     blk.id = id;
     blk.data = (std::byte *) node_page_ptr + slotp->offset_to_record;
@@ -180,6 +185,30 @@ namespace cubhnsw
 
     return pinned_t (context.m_thread_p, std::move (blk), node_page_ptr);
 
+  }
+
+  const std::vector<slot_id_t> *
+  storage::get_neighbors_cached_ids (algo_context_t &context, const slot_id_t &slot, level_t level)
+  {
+    neighbors_key key { slot, level };
+    auto it = m_neighbors_cache.find (key);
+    if (it != m_neighbors_cache.end ())
+      {
+	return &it->second;
+      }
+
+    // Not cached yet: let caller fall back to loading neighbors directly.
+    return nullptr;
+  }
+
+  void
+  storage::set_neighbors_cached_ids (algo_context_t &context,
+				     const slot_id_t &slot,
+				     level_t level,
+				     const std::vector<slot_id_t> &neighbors)
+  {
+    neighbors_key key { slot, level };
+    m_neighbors_cache[key] = neighbors;
   }
 
   const float *
