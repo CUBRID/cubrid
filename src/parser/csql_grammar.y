@@ -487,6 +487,7 @@ void _push_msg (int code, int line);
 void pop_msg (void);
 
 char *g_query_string;
+int g_query_string_pos;
 int g_query_string_len;
 int g_original_buffer_len;
 
@@ -1841,10 +1842,12 @@ stmt
 			      }
 
 			    g_query_string = (char*) (this_parser->original_buffer + pos);
+                            g_query_string_pos = pos;
 
 			    while (char_isspace (*g_query_string))
 			      {
 			        g_query_string++;
+			        g_query_string_pos++;
 			      }
 			  }
 
@@ -12944,7 +12947,6 @@ pl_language_spec
                             } else {
                                 node->info.sp_body.impl = NULL; // set later
                             }
-			    node->info.sp_body.direct = 1;
 			  }
 
 			$$ = node;
@@ -12961,7 +12963,6 @@ pl_language_spec
 			  {
 			    node->info.sp_body.lang = SP_LANG_JAVA;
 			    node->info.sp_body.decl = $4;
-			    node->info.sp_body.direct = 0;
 			  }
 
 			$$ = node;
@@ -12982,8 +12983,7 @@ plcsql_text
 
                         assert(g_plcsql_text_pos == -1);
                         $$ = strlen($1);
-                        g_plcsql_text_pos = @$.buffer_pos - $$;
-
+                        g_plcsql_text_pos = @$.buffer_pos - g_query_string_pos - $$;
 		DBG_PRINT}}
         ;
 
@@ -26605,6 +26605,7 @@ parser_main (PARSER_CONTEXT * parser)
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;
+  g_query_string_pos = 0;
   g_query_string_len = 0;
   g_original_buffer_len = 0;
 
@@ -26713,6 +26714,7 @@ parse_one_statement (int state)
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;
+  g_query_string_pos = 0;
   g_query_string_len = 0;
   g_original_buffer_len = 0;
 
