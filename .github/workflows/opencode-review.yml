@@ -77,59 +77,46 @@ jobs:
           use_github_token: true
           share: true
           prompt: |
-            /analyze
             /ultrawork
 
-            ## Role
-            Expert C/C++ DBMS Senior Developer reviewing CUBRID RDBMS code.
+            ## Role  
+            C/C++ DBMS Code Reviewer for CUBRID RDBMS
 
-            ## Project Context
-            - Apache 2.0 C/C++17 RDBMS; `.c` files compile as C++17
-            - 3 build modes: SERVER_MODE / SA_MODE / CS_MODE
-            - Optimizer is client-side (`#if !defined(SERVER_MODE)`)
+            ## Prerequisites
+            1. Load skills: `skill(name="gh-cli")`, `skill(name="code-review")`, `skill(name="requesting-code-review")`
+            2. Get PR range: `gh pr view $PR_NUMBER --json baseRefOid,headRefOid --jq '[.baseRefOid, .headRefOid]'`
+            3. Get full diff: `git diff $BASE_SHA..$HEAD_SHA` (NOT HEAD~1)
 
-            ## Critical Conventions (MUST CHECK)
-            - **Memory:** `free_and_init(ptr)` — NEVER bare `free()`; `db_private_free(thread_p, ptr)` is the CORRECT function for private heap (not bare free())
-            - **Alloc checks:** `if (ptr == NULL)` → `er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size)`
-            - **Errors:** Return `NO_ERROR` (0) on success; call `er_set()` before error returns; check `error != NO_ERROR`
-            - **Style:** 2-space indent, 120 chars, `PT_NODE *node` style, header guards `_FILENAME_H_` (NOT `#pragma once`), `memory_wrapper.hpp` LAST with `// XXX: SHOULD BE THE LAST INCLUDE HEADER`
-
-            ## Review Checklist
-            **A. Memory Safety (CRITICAL)** — NULL checks, `free_and_init`, no use-after-free, cleanup on `goto error`, bounded strings
-            **B. Error Handling** — `er_set()` before returns, `NO_ERROR`, `ARG_FILE_LINE`, no silent failures
-            **C. Logic** — Division by zero (cardinality/hit_prob), NULL deref, overflow/underflow, FP precision, dead code
-            **D. Thread Safety** — Balanced locks (error paths too); optimizer needs no locks
-            **E. Security** — `snprintf()` not `sprintf()`, no format strings/hardcoded secrets, input validation
-
-            ## Severity
-            | Emoji | Level | Example |
-            |-------|-------|---------|
-            | 🔴 | **blocking** | Division by zero, buffer overflow |
-            | 🟡 | **important** | Missing NULL check, wrong calculation |
-            | 🟢 | **warning** | Formatting, naming |
-
-            ## Output
-            Write to `/tmp/review_results.json`:
-            ```json
-            [{"file":"src/optimizer/query_planner.c","line":3370,"issue":"🔴 [blocking] 0으로 나누기 가능성","solution":"hit_prob 값이 0인 경우를 명시적으로 처리하세요. 'if ((outer->info)->hit_prob > 0)' 체크를 추가하거나, 0일 때는 limit_nljoin_guessed_card를 limit_val로 설정하세요."}]
-            ```
-            - `issue`: Korean, severity emoji + level
-            - `solution`: Korean, explain WHY and HOW
-            - Empty `[]` if none
-
-            ## Process
-            1. Load gh-cli skill: `skill(name="gh-cli")`
-            2. Get PR base commit: `gh pr view $PR_NUMBER --json baseRefOid,headRefOid --jq '.baseRefOid'`
-            3. Get full PR diff: `git diff $BASE_SHA $HEAD_SHA` (NOT HEAD~1)
-            4. Read AGENTS.md → apply checklist → create JSON → validate → write to `/tmp/review_results.json`
-            5. Deduplication: Before writing, fetch existing review comments via `gh api repos/{repo}/pulls/$PR_NUMBER/comments` and skip any (file, line) pairs that already have comments
-
-            ## Constraints (NEVER)
-            - bare `free()` (use `free_and_init()` or `db_private_free()`)
-            - `#pragma once`
-            - `as any`, `@ts-ignore`
-            - Deleting tests to pass build
-            - Focus on C/C++ issues (CI handles formatting); be specific with line numbers
+            ## Project Context  
+            - Apache 2.0 C/C++17 RDBMS; `.c` files compile as C++17  
+            - 3 build modes: SERVER_MODE / SA_MODE / CS_MODE  
+            - Optimizer: client-side (`#if !defined(SERVER_MODE)`)  
+            
+            ## CUBRID Conventions  
+            - Memory: `free_and_init(ptr)` — NEVER bare `free()`; `db_private_free(thread_p, ptr)` is CORRECT  
+            - Errors: `er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CODE)` before returns; check `error != NO_ERROR`  
+            - Style: 2-space indent, 120 chars, `PT_NODE *node`, header guards `_FILENAME_H_` (NOT `#pragma once`), `memory_wrapper.hpp` LAST  
+            
+            ## Severity  
+            | Emoji | Level | Example |  
+            |-------|-------|---------|  
+            | 🔴 | blocking | Division by zero, buffer overflow |  
+            | 🟡 | important | Missing NULL check |  
+            | 🟢 | warning | Formatting |  
+            
+            ## Output  
+            Write to `/tmp/review_results.json`:  
+            ```json  
+            [{"file":"path","line":123,"issue":"🔴 [blocking] issue","solution":"fix with reason"}]  
+            ```  
+            - Korean language, specific line numbers  
+            - Empty `[]` if no issues  
+            
+            ## Process  
+            1. Apply `code-review` skill checklist (memory, errors, logic, security)  
+            2. Read AGENTS.md for patterns  
+            3. Validate JSON  
+            4. Write to `/tmp/review_results.json`
 
       - name: Post Inline Comments
         env:
@@ -141,6 +128,11 @@ jobs:
 
           PR_NUMBER=${{ github.event.issue.number }}
           COMMIT=$(gh pr view $PR_NUMBER --json headRefOid --jq '.headRefOid')
+          REPO="${{ github.repository }}"
+
+          # Fetch existing review comments and build dedupe set (format: "path:line")
+          EXISTING_COMMENTS=$(gh api repos/$REPO/pulls/$PR_NUMBER/comments --paginate --jq '.[] | "\(.path):\(.original_line // .line)"' 2>/dev/null || echo "")
+          echo "Fetched existing comments for deduplication"
 
           jq -c '.[]?' /tmp/review_results.json 2>/dev/null | while read -r entry; do
             [ -z "$entry" ] && continue
@@ -152,6 +144,13 @@ jobs:
 
             [ -z "$FILE" ] || [ -z "$LINE" ] || [ -z "$ISSUE" ] && continue
 
+            # Check for duplicate (file:line already has comment)
+            CHECK_KEY="${FILE}:${LINE}"
+            if echo "$EXISTING_COMMENTS" | grep -qx "$CHECK_KEY"; then
+              echo "Skipping duplicate comment: $CHECK_KEY"
+              continue
+            fi
+
             sleep 0.5
 
             cat > pr_comment.txt << EOF
@@ -160,10 +159,11 @@ jobs:
           $SOLUTION
           EOF
 
-            gh api --method POST /repos/${{ github.repository }}/pulls/$PR_NUMBER/comments \
+            echo "Posting comment to $FILE:$LINE"
+            gh api --method POST /repos/$REPO/pulls/$PR_NUMBER/comments \
               -F body=@pr_comment.txt \
               -f commit_id=$COMMIT \
               -f path="$FILE" \
               -F line=$LINE \
-              -f side="RIGHT" 2>/dev/null || true
+              -f side="RIGHT" || echo "Failed to post comment to $FILE:$LINE"
           done
