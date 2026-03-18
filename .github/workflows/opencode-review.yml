@@ -23,9 +23,17 @@ jobs:
       pull-requests: write
       issues: write
     steps:
+      - name: Verify required secrets
+        run: |
+          if [ -z "${{ secrets.OPENCODE_API_KEY }}" ]; then
+            echo "❌ OPENCODE_API_KEY secret is not set"
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Cache oh-my-opencode
         id: cache-oh-my-opencode
@@ -71,23 +79,54 @@ jobs:
           share: true
           prompt: |
             /ultrawork
+            /analyze
 
-            Role: Expert C/C++ DBMS Senior Developer
+            ## Role
+            Expert C/C++ DBMS Senior Developer reviewing CUBRID RDBMS code.
 
-            Review the PR diff for C/C++ code quality issues.
-            Check for: memory leaks, thread safety, buffer overflows, undefined behavior, logic errors.
+            ## Project Context
+            - Apache 2.0 C/C++17 RDBMS; `.c` files compile as C++17
+            - 3 build modes: SERVER_MODE / SA_MODE / CS_MODE
+            - Optimizer is client-side (`#if !defined(SERVER_MODE)`)
 
-            Deduplication: Skip (file, line) pairs that already have comments.
+            ## Critical Conventions (MUST CHECK)
+            - **Memory:** `free_and_init(ptr)` — NEVER bare `free()`; use `db_private_free(thread_p, ptr)` for private heap
+            - **Alloc checks:** `if (ptr == NULL)` → `er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size)`
+            - **Errors:** Return `NO_ERROR` (0) on success; call `er_set()` before error returns; check `error != NO_ERROR`
+            - **Style:** 2-space indent, 120 chars, `PT_NODE *node` style, header guards `_FILENAME_H_` (NOT `#pragma once`), `memory_wrapper.hpp` LAST with `// XXX: SHOULD BE THE LAST INCLUDE HEADER`
 
-            Output JSON to `/tmp/review_results.json`:
-            [
-              {
-                "file": "src/example.cpp",
-                "line": 42,
-                "issue": "🔴 [blocking] Brief issue description in Korean",
-                "solution": "Detailed fix explanation in Korean with WHY and HOW"
-              }
-            ]
+            ## Review Checklist
+            **A. Memory Safety (CRITICAL)** — NULL checks, `free_and_init`, no use-after-free, cleanup on `goto error`, bounded strings
+            **B. Error Handling** — `er_set()` before returns, `NO_ERROR`, `ARG_FILE_LINE`, no silent failures
+            **C. Logic** — Division by zero (cardinality/hit_prob), NULL deref, overflow/underflow, FP precision, dead code
+            **D. Thread Safety** — Balanced locks (error paths too); optimizer needs no locks
+            **E. Security** — `snprintf()` not `sprintf()`, no format strings/hardcoded secrets, input validation
+
+            ## Severity
+            | Emoji | Level | Example |
+            |-------|-------|---------|
+            | 🔴 | **blocking** | Division by zero, buffer overflow |
+            | 🟡 | **important** | Missing NULL check, wrong calculation |
+            | 🟢 | **warning** | Formatting, naming |
+
+            ## Output
+            Write to `/tmp/review_results.json`:
+            ```json
+            [{"file":"src/optimizer/query_planner.c","line":3370,"issue":"🔴 [blocking] 0으로 나누기 가능성","solution":"hit_prob 값이 0인 경우를 명시적으로 처리하세요. 'if ((outer->info)->hit_prob > 0)' 체크를 추가하거나, 0일 때는 limit_nljoin_guessed_card를 limit_val로 설정하세요."}]
+            ```
+            - `issue`: Korean, severity emoji + level
+            - `solution`: Korean, explain WHY and HOW
+            - Empty `[]` if none; dedupe (file, line) with existing comments
+
+            ## Process
+            1. `git diff HEAD~1` → read AGENTS.md → apply checklist → create JSON → validate → write to `/tmp/review_results.json`
+
+            ## Constraints (NEVER)
+            - bare `free()` / `db_private_free()`
+            - `#pragma once`
+            - `as any`, `@ts-ignore`
+            - Deleting tests to pass build
+            - Focus on C/C++ issues (CI handles formatting); be specific with line numbers
 
       - name: Post Inline Comments
         env:
@@ -98,7 +137,7 @@ jobs:
           fi
 
           PR_NUMBER=${{ github.event.issue.number }}
-          COMMIT=$(gh pr view $PR_NUMBER --json commits --jq '.commits[-1].oid')
+          COMMIT=$(gh pr view $PR_NUMBER --json headRefOid --jq '.headRefOid')
 
           jq -c '.[]?' /tmp/review_results.json 2>/dev/null | while read -r entry; do
             [ -z "$entry" ] && continue
