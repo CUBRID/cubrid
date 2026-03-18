@@ -139,6 +139,8 @@ namespace cubhnsw
     SPAGE_SLOT *slotp = spage_get_slot (root_page_ptr, 1);
     assert (slotp != nullptr);
 
+    context.add_stat (context.m_stats.page_access, context.m_stats.page_access_l0, 1);
+
     OID oid = { root_vpid.pageid, 1, root_vpid.volid };
 
     pinned_t::data_t blk;
@@ -167,7 +169,7 @@ namespace cubhnsw
     SPAGE_SLOT *slotp = spage_get_slot (node_page_ptr, id.slotid);
     assert (slotp != nullptr);
 
-    context.add_stat(context.m_stats.page_access, context.m_stats.page_access_l0, 1);
+    context.add_stat (context.m_stats.page_access, context.m_stats.page_access_l0, 1);
 
     pinned_t::data_t blk;
     blk.id = id;
@@ -183,7 +185,7 @@ namespace cubhnsw
   storage::get_vector_by_slot_id (algo_context_t &context, const slot_id_t &slot, const lock_mode &mode)
   {
     // get node by slot id
-    context.add_stat(context.m_stats.vector_access, context.m_stats.vector_access_l0, 1);
+    context.add_stat (context.m_stats.vector_access, context.m_stats.vector_access_l0, 1);
     return get_node_by_slot_id (context, slot, lock_mode::shared);
   }
 
