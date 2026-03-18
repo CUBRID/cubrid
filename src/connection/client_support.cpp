@@ -101,6 +101,7 @@ client_support::css_handle_pipe_shutdown (int sig)
       entry = m_conn_less.css_return_entry_from_conn (conn);
       if (entry != NULL)
 	{
+	  css_free_conn (entry->conn);
 	  m_conn_less.css_remove_queued_connection_by_entry (entry);
 	}
       css_internal_server_shutdown ();
@@ -186,6 +187,10 @@ client_support::css_client_init (int sockid, const char *server_name, const char
     {
       /* At here, er_errid () can be NO_ERROR */
       error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_FAILED;
+	}
     }
 
   return error;
@@ -216,7 +221,11 @@ client_support::css_client_sub_init (const char *server_name, const char *host_n
   else
     {
       /* At here, er_errid () can be NO_ERROR */
-      return er_errid ();
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_FAILED;
+	}
     }
 
   return error;
@@ -231,6 +240,7 @@ client_support::css_client_sub_terminate (const char *host_name)
   if (entry != NULL)
     {
       css_send_close_request (entry->conn);
+      css_free_conn (entry->conn);
       m_conn_less.css_remove_queued_connection_by_entry (entry);
     }
 }
@@ -261,6 +271,7 @@ client_support::css_send_request_to_server (char *host, int request, char *arg_b
       m_css_errno = css_send_request (entry->conn, (int) request, &rid, arg_buffer, (int) arg_buffer_size);
       if (m_css_errno != NO_ERRORS)
 	{
+	  css_free_conn (entry->conn);
 	  m_conn_less.css_remove_queued_connection_by_entry (entry);
 	  return 0;
 	}
@@ -312,6 +323,7 @@ client_support::css_send_request_to_server_with_buffer (char *host, int request,
 	      data_buffer, data_buffer_size);
   if (m_css_errno != NO_ERRORS)
     {
+      css_free_conn (entry->conn);
       m_conn_less.css_remove_queued_connection_by_entry (entry);
       return 0;
     }
@@ -360,6 +372,7 @@ client_support::css_send_req_to_server (char *host, int request, char *arg_buffe
 		data_buffer_size, reply_buffer, reply_size);
   if (m_css_errno != NO_ERRORS)
     {
+      css_free_conn (entry->conn);
       m_conn_less.css_remove_queued_connection_by_entry (entry);
       return 0;
     }
@@ -408,6 +421,7 @@ client_support::css_send_req_to_server_with_large_data (char *host, int request,
 	}
       else
 	{
+	  css_free_conn (entry->conn);
 	  m_conn_less.css_remove_queued_connection_by_entry (entry);
 	  return 0;
 	}
@@ -459,6 +473,7 @@ client_support::css_send_req_to_server_2_data (char *host, int request, char *ar
 		reply_size);
   if (m_css_errno != NO_ERRORS)
     {
+      css_free_conn (entry->conn);
       m_conn_less.css_remove_queued_connection_by_entry (entry);
       return 0;
     }
@@ -495,6 +510,7 @@ client_support::css_send_req_to_server_no_reply (char *host, int request, char *
   m_css_errno = css_send_request_no_reply (entry->conn, request, &rid, arg_buffer, arg_buffer_size);
   if (m_css_errno != NO_ERRORS)
     {
+      css_free_conn (entry->conn);
       m_conn_less.css_remove_queued_connection_by_entry (entry);
       return 0;
     }
@@ -567,6 +583,7 @@ client_support::css_send_error_to_server (char *host, unsigned int eid, char *bu
   m_css_errno = css_send_error_with_padding (entry->conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
   if (m_css_errno != NO_ERRORS)
     {
+      css_free_conn (entry->conn);
       m_conn_less.css_remove_queued_connection_by_entry (entry);
       return m_css_errno;
     }
@@ -603,6 +620,7 @@ client_support::css_send_data_to_server (char *host, unsigned int eid, char *buf
   m_css_errno = css_send_data_with_padding (entry->conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
   if (m_css_errno != NO_ERRORS)
     {
+      css_free_conn (entry->conn);
       m_conn_less.css_remove_queued_connection_by_entry (entry);
       return m_css_errno;
     }
@@ -705,6 +723,7 @@ client_support::css_receive_error_from_server (unsigned int eid, char **buffer, 
 	   */
 	  if (m_css_errno != CANT_ALLOC_BUFFER)
 	    {
+	      css_free_conn (entry->conn);
 	      m_conn_less.css_remove_queued_connection_by_entry (entry);
 	    }
 	  return m_css_errno;
@@ -734,6 +753,7 @@ client_support::css_terminate (bool server_error)
 	  entry->conn->status = CONN_CLOSING;
 	}
       css_send_close_request (entry->conn);
+      css_free_conn (entry->conn);
       m_conn_less.css_remove_queued_connection_by_entry (entry);
       entry = m_conn_less.css_get_map_entry();
     }

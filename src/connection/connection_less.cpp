@@ -142,7 +142,8 @@ connection_less::css_queue_connection (CSS_CONN_ENTRY *conn, const char *host)
 {
   CSS_MAP_ENTRY *map_entry_p;
 
-  if (conn == NULL)
+  assert (host != NULL);
+  if (conn == NULL || host == NULL)
     {
       return NULL;
     }
@@ -150,23 +151,17 @@ connection_less::css_queue_connection (CSS_CONN_ENTRY *conn, const char *host)
   map_entry_p = (CSS_MAP_ENTRY *) malloc (sizeof (CSS_MAP_ENTRY));
   if (map_entry_p != NULL)
     {
-      if (host)
+      map_entry_p->key = (char *) malloc (strlen (host) + 1);
+      if (map_entry_p->key != NULL)
 	{
-	  map_entry_p->key = (char *) malloc (strlen (host) + 1);
-	  if (map_entry_p->key != NULL)
-	    {
-	      strcpy (map_entry_p->key, host);
-	    }
-	  else
-	    {
-	      free (map_entry_p);
-	      return (NULL);
-	    }
+	  strcpy (map_entry_p->key, host);
 	}
       else
 	{
-	  map_entry_p->key = NULL;
+	  free (map_entry_p);
+	  return (NULL);
 	}
+
       map_entry_p->conn = conn;
       CS_LOCK();
       map_entry_p->next = m_css_map_entry;
@@ -190,8 +185,9 @@ CSS_MAP_ENTRY *
 connection_less::css_get_queued_entry (char *host)
 {
   CSS_MAP_ENTRY *map_entry_p;
-
+#if defined(MULTI_CONN_TO_A_SERVER)
   pthread_t tid = pthread_self ();
+#endif
 
   for (map_entry_p = m_css_map_entry; map_entry_p; map_entry_p = map_entry_p->next)
     {
