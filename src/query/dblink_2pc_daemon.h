@@ -44,6 +44,15 @@
 #define DBLINK_2PC_STATE_PREPARE   'P'
 #define DBLINK_2PC_STATE_ABORT    'A'
 #define DBLINK_2PC_STATE_COMMIT   'C'
+#define DBLINK_2PC_STATE_EMPTY    ' '
+
+typedef struct global_tran_queue_entry GLOBAL_TRAN_QUEUE_ENTRY;
+struct global_tran_queue_entry
+{
+  int gtrid;
+  char state;			/* DBLINK_2PC_STATE_PREPARE / ABORT / COMMIT */
+  DBLINK_CONN_INFO participant;	/* single participant (embedded) */
+};
 
 /*
  * Enqueue one participant for daemon to persist to _db_global_tran and/or send decision.
@@ -55,6 +64,7 @@
  * Returns NO_ERROR on success, ER_* on failure (e.g. queue full).
  */
 extern int dblink_2pc_daemon_enqueue (int gtrid, char state, const DBLINK_CONN_INFO * participant);
+extern int dblink_2pc_daemon_dequeue (GLOBAL_TRAN_QUEUE_ENTRY * e);
 
 /* Start the send_2pc_decision daemon thread. Called during server boot.
  * Returns NO_ERROR on success, ER_OUT_OF_VIRTUAL_MEMORY if queue alloc failed,

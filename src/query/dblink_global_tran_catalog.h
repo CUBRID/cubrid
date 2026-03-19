@@ -39,9 +39,9 @@ struct dblink_global_tran_row
 {
   int gtrid;
   int bqual;
-  char conn_url[513];
-  char user_name[33];
-  char password[33];
+  char conn_url[MAX_LEN_CONNECTION_URL + 1];
+  char user_name[DB_MAX_USER_LENGTH + 1];
+  char password[DB_MAX_PASSWORD_LENGTH + 1];
   char state;			/* 'P', 'A', 'C' */
 };
 

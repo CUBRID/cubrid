@@ -1259,10 +1259,10 @@ namespace cubschema
       {"bqual", "integer"},
       {"conn_url", format_varchar (512)},
       {"user", format_varchar (32)},
-      {"password", format_varchar (32)},
+      {"password", format_varchar (256)},
       {"state", format_varchar (1)},
-      {"created_date", "datetime"},
-      {"updated_date", "datetime"}
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"}
     },
 // constraints
     {},

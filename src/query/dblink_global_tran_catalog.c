@@ -87,8 +87,8 @@ dblink_global_tran_insert_row (THREAD_ENTRY * thread_p, int gtrid, int bqual,
   HEAP_CACHE_ATTRINFO attr_info;
   int force_count = 0;
   int error = NO_ERROR;
-  DB_VALUE dbval;
-  DB_DATETIME now_dt;
+  DB_VALUE dbval, datetime_val;
+  DB_DATETIME *datetime;
   bool scan_inited = false;
   bool attr_inited = false;
 
@@ -134,8 +134,6 @@ dblink_global_tran_insert_row (THREAD_ENTRY * thread_p, int gtrid, int bqual,
       goto cleanup;
     }
 
-  get_current_datetime (&now_dt);
-
   db_make_int (&dbval, gtrid);
   if (heap_attrinfo_set (&oid, GLOBAL_TRAN_ATTR_GTRID, &dbval, &attr_info) != NO_ERROR)
     {
@@ -175,7 +173,11 @@ dblink_global_tran_insert_row (THREAD_ENTRY * thread_p, int gtrid, int bqual,
 	goto cleanup;
       }
   }
-  db_make_datetime (&dbval, &now_dt);
+
+  db_sys_datetime (&datetime_val);
+  datetime = db_get_datetime (&datetime_val);
+
+  db_make_datetime (&dbval, datetime);
   if (heap_attrinfo_set (&oid, GLOBAL_TRAN_ATTR_CREATED, &dbval, &attr_info) != NO_ERROR)
     {
       error = ER_FAILED;
@@ -262,8 +264,8 @@ dblink_global_tran_update_state (THREAD_ENTRY * thread_p, int gtrid, int bqual, 
   HEAP_CACHE_ATTRINFO attr_info;
   int force_count = 0;
   int error = NO_ERROR;
-  DB_VALUE dbval;
-  DB_DATETIME now_dt;
+  DB_VALUE dbval, datetime_val;
+  DB_DATETIME *datetime;
   bool scan_cache_inited = false;
   bool scan_modify_inited = false;
   bool attr_inited = false;
@@ -309,7 +311,6 @@ dblink_global_tran_update_state (THREAD_ENTRY * thread_p, int gtrid, int bqual, 
     }
   scan_modify_inited = true;
 
-  get_current_datetime (&now_dt);
   {
     char state_str[2] = { new_state, '\0' };
     db_make_string (&dbval, state_str);
@@ -319,7 +320,11 @@ dblink_global_tran_update_state (THREAD_ENTRY * thread_p, int gtrid, int bqual, 
 	goto cleanup;
       }
   }
-  db_make_datetime (&dbval, &now_dt);
+
+  db_sys_datetime (&datetime_val);
+  datetime = db_get_datetime (&datetime_val);
+
+  db_make_datetime (&dbval, datetime);
   if (heap_attrinfo_set (&oid, GLOBAL_TRAN_ATTR_UPDATED, &dbval, &attr_info) != NO_ERROR)
     {
       error = ER_FAILED;
