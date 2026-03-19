@@ -1232,7 +1232,7 @@ parser_create_parser (void)
   parser->max_print_len = 0;
   parser->flag.is_auto_commit = 0;
   parser->flag.is_parsing_static_sql = 0;
-  parser->flag.is_unloading_schema = 0;
+  parser->flag.is_unloading_plcsql_def = 0;
   parser->flag.is_parsing_trigger = 0;
 
   parser->external_into_label = NULL;
