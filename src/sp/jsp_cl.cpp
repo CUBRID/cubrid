@@ -997,7 +997,9 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, bool &is_null, 
 int
 jsp_create_package (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
-    // TODO package
+    CHECK_MODIFICATION_ERROR ();
+    assert (!prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT));  // unreachable here if it is true
+
     return NO_ERROR;
 }
 
@@ -1066,12 +1068,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   DB_VALUE current_datetime;
 
   CHECK_MODIFICATION_ERROR ();
-
-  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
-      return ER_BLOCK_DDL_STMT;
-    }
+  assert (!prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT));    // unreachable here if it is true
 
   // check PL/CSQL's AUTHID with CURRENT_USER
   sp_info.directive = jsp_map_pt_to_sp_authid (PT_NODE_SP_AUTHID (statement));
