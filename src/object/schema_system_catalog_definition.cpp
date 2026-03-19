@@ -94,6 +94,6 @@ namespace cubschema
     , auth {au}
     , row_initializer {ri}
   {
-    assert (attr_num_to_check == 0 || (size_t) attr_num_to_check == attrs.size());
+    assert (attr_num_to_check == 0 || (size_t) attr_num_to_check == attrs.size()); // check only when non-zero
   }
 }
