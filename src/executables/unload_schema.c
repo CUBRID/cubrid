@@ -4733,6 +4733,7 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
 	  if ((*scode_ptr)->info.sp.comment)
 	    {
 	      assert (false);	// scode does not have the comment: CBRD-26513
+	      er_log_debug (ARG_FILE_LINE, "emit_stored_procedure_code: unexpected comment node in scode\n");
 	      (*scode_ptr)->info.sp.comment = NULL;
 	    }
 
