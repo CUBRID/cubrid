@@ -28,6 +28,7 @@
 #include "dbtype_function.h"
 #include "schema_system_catalog_constants.h"
 #include "sp_constants.hpp"
+#include "sp_catalog.hpp"
 #include "trigger_manager.h"
 #include "work_space.h"
 #include "schema_system_catalog_builder.hpp"
@@ -417,7 +418,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_CLASS_NAME,
+		   CT_CLASS_NAME, 0,
 		   // columns
     {
       {"class_of", "object"},
@@ -492,7 +493,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_ATTRIBUTE_NAME,
+		   CT_ATTRIBUTE_NAME, 0,
 		   // columns
     {
       {"class_of", CT_CLASS_NAME},
@@ -526,7 +527,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_DOMAIN_NAME,
+		   CT_DOMAIN_NAME, 0,
 		   // columns
     {
       {"object_of", "object"},
@@ -560,7 +561,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_METHOD_NAME,
+		   CT_METHOD_NAME, 0,
 		   // columns
     {
       {"class_of", CT_CLASS_NAME},
@@ -589,7 +590,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_METHSIG_NAME,
+		   CT_METHSIG_NAME, 0,
 		   // columns
     {
       {"meth_of", CT_METHOD_NAME},
@@ -617,7 +618,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_METHARG_NAME,
+		   CT_METHARG_NAME, 0,
 		   // columns
     {
       {"meth_sig_of", CT_METHSIG_NAME},
@@ -644,7 +645,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_METHFILE_NAME,
+		   CT_METHFILE_NAME, 0,
 		   // columns
     {
       {"class_of", CT_CLASS_NAME},
@@ -670,7 +671,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_QUERYSPEC_NAME,
+		   CT_QUERYSPEC_NAME, 0,
 		   // columns
     {
       {"class_of", CT_CLASS_NAME},
@@ -695,7 +696,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_INDEX_NAME,
+		   CT_INDEX_NAME, 0,
 		   // columns
     {
       {"class_of", CT_CLASS_NAME},
@@ -739,7 +740,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_INDEXKEY_NAME,
+		   CT_INDEXKEY_NAME, 0,
 		   // columns
     {
       {"index_of", CT_INDEX_NAME},
@@ -768,7 +769,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_CLASSAUTH_NAME,
+		   CT_CLASSAUTH_NAME, 0,
 		   // columns
     {
       {"grantor", AU_USER_CLASS_NAME},
@@ -798,7 +799,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_TRIGGER_NAME,
+		   CT_TRIGGER_NAME, 0,
 		   // columns
     {
       {TR_ATT_UNIQUE_NAME, "string"},
@@ -837,7 +838,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_PARTITION_NAME,
+		   CT_PARTITION_NAME, 0,
 		   // columns
     {
       {"class_of", CT_CLASS_NAME},
@@ -867,7 +868,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_DATATYPE_NAME,
+		   CT_DATATYPE_NAME, 0,
 		   // columns
     {
       {"type_id", "integer"},
@@ -892,7 +893,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_STORED_PROC_NAME,
+		   CT_STORED_PROC_NAME, NUM_SP_ATTR,
 		   // columns
     {
       {SP_ATTR_UNIQUE_NAME, format_varchar (255)},
@@ -932,7 +933,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_STORED_PROC_ARGS_NAME,
+		   CT_STORED_PROC_ARGS_NAME, NUM_SP_ARG_ATTR,
 		   // columns
     {
       {SP_ARG_ATTR_SP_OF, CT_STORED_PROC_NAME},
@@ -964,7 +965,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_STORED_PROC_CODE_NAME,
+		   CT_STORED_PROC_CODE_NAME, NUM_SP_CODE_ATTR,
 		   // columns
     {
       {SP_CODE_ATTR_NAME, format_varchar (1024)}, // same with [_db_stored_procedure].[target_class]
@@ -996,7 +997,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_SERIAL_NAME,
+		   CT_SERIAL_NAME, 0,
 		   // columns
     {
       {"unique_name", "string"},
@@ -1041,7 +1042,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_HA_APPLY_INFO_NAME,
+		   CT_HA_APPLY_INFO_NAME, 0,
 		   // columns
     {
       {"db_name", format_varchar (255)},
@@ -1096,7 +1097,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_COLLATION_NAME,
+		   CT_COLLATION_NAME, 0,
 		   // columns
     {
       {CT_DBCOLL_COLL_ID_COLUMN, "integer"},
@@ -1127,7 +1128,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_CHARSET_NAME,
+		   CT_CHARSET_NAME, 0,
 		   // columns
     {
       {CT_DBCHARSET_CHARSET_ID, "integer"},
@@ -1152,7 +1153,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_DUAL_NAME,
+		   CT_DUAL_NAME, 0,
 		   // columns
     {
       {CT_DUAL_DUMMY, format_varchar (1)}
@@ -1177,7 +1178,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_SYNONYM_NAME,
+		   CT_SYNONYM_NAME, 0,
 		   // columns
     {
       {"unique_name", format_varchar (255)},
@@ -1217,7 +1218,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_SERVER_NAME,
+		   CT_SERVER_NAME, 0,
 		   // columns
     {
       {"link_name", format_varchar (255)},
@@ -1255,7 +1256,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CTV_CLASS_NAME,
+		   CTV_CLASS_NAME, 0,
 		   // columns
     {
       {"class_name", format_varchar (255)},
@@ -1295,7 +1296,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CTV_SUPER_CLASS_NAME,
+		   CTV_SUPER_CLASS_NAME, 0,
 		   // columns
     {
       {"class_name", format_varchar (255)},
@@ -1326,7 +1327,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CTV_VCLASS_NAME,
+		   CTV_VCLASS_NAME, 0,
 		   // columns
     {
       {"vclass_name", format_varchar (255)},
@@ -1357,7 +1358,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CTV_ATTRIBUTE_NAME,
+		   CTV_ATTRIBUTE_NAME, 0,
 		   // columns
     {
       {"attr_name", format_varchar (255)},
@@ -1402,7 +1403,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CTV_ATTR_SD_NAME,
+		   CTV_ATTR_SD_NAME, 0,
 		   // columns
     {
       {"attr_name", format_varchar (255)},
@@ -1439,7 +1440,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CTV_METHOD_NAME,
+		   CTV_METHOD_NAME, 0,
 		   // columns
     {
       {"meth_name", format_varchar (255)},
@@ -1474,7 +1475,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CTV_METHARG_NAME,
+		   CTV_METHARG_NAME, 0,
 		   // columns
     {
       {"meth_name", format_varchar (255)},
@@ -1512,7 +1513,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CTV_METHARG_SD_NAME,
+		   CTV_METHARG_SD_NAME, 0,
 		   // columns
     {
       {"meth_name", format_varchar (255)},
@@ -1550,7 +1551,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CTV_METHFILE_NAME,
+		   CTV_METHFILE_NAME, 0,
 		   // columns
     {
       {"class_name", format_varchar (255)},
@@ -1582,7 +1583,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CTV_INDEX_NAME,
+		   CTV_INDEX_NAME, 0,
 		   // columns
     {
       {"index_name", format_varchar (255)},
@@ -1631,7 +1632,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CTV_INDEXKEY_NAME,
+		   CTV_INDEXKEY_NAME, 0,
 		   // columns
     {
       {"index_name", format_varchar (255)},
@@ -1670,7 +1671,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CTV_AUTH_NAME,
+		   CTV_AUTH_NAME, 0,
 		   // columns
     {
       {"grantor_name", format_varchar (255)},
@@ -1704,7 +1705,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CTV_TRIGGER_NAME,
+		   CTV_TRIGGER_NAME, 0,
 		   // columns
     {
       {"trigger_name", format_varchar (255)},
@@ -1742,7 +1743,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CTV_PARTITION_NAME,
+		   CTV_PARTITION_NAME, 0,
 		   // columns
     {
       {"class_name", format_varchar (255)},
@@ -1778,7 +1779,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CTV_STORED_PROC_NAME,
+		   CTV_STORED_PROC_NAME, 0,
 		   // columns
     {
       {"sp_name", format_varchar (255)},
@@ -1821,7 +1822,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CTV_STORED_PROC_ARGS_NAME,
+		   CTV_STORED_PROC_ARGS_NAME, 0,
 		   // columns
     {
       {"sp_name", format_varchar (255)},
@@ -1858,7 +1859,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CTV_SERIAL_NAME,
+		   CTV_SERIAL_NAME, 0,
 		   // columns
     {
       {"name", format_varchar (255)},
@@ -1899,7 +1900,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CTV_HA_APPLY_INFO_NAME,
+		   CTV_HA_APPLY_INFO_NAME, 0,
 		   // columns
     {
       {"db_name", format_varchar (255)},
@@ -1951,7 +1952,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CTV_COLLATION_NAME,
+		   CTV_COLLATION_NAME, 0,
 		   // columns
     {
       {"coll_id", "integer"},
@@ -1985,7 +1986,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CTV_CHARSET_NAME,
+		   CTV_CHARSET_NAME, 0,
 		   // columns
     {
       {CT_DBCHARSET_CHARSET_ID, "integer"},
@@ -2016,7 +2017,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CTV_SYNONYM_NAME,
+		   CTV_SYNONYM_NAME, 0,
 		   // columns
     {
       {"synonym_name", format_varchar (255)},
@@ -2051,7 +2052,7 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CTV_SERVER_NAME,
+		   CTV_SERVER_NAME, 0,
 		   // columns
     {
       {"link_name", format_varchar (255)},
