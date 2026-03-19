@@ -771,6 +771,7 @@ static FUNCTION_MAP functions[] = {
   {0, "crc32", PT_CRC32},
   {0, "schema_def", PT_SCHEMA_DEF},
   {0, "conv_tz", PT_CONV_TZ},
+  {0, "collection_to_string", PT_COLLECTION_TO_STRING},
 };
 
 

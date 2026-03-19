@@ -4449,6 +4449,23 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads_count = num;
       break;
 
+    case PT_COLLECTION_TO_STRING:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.type = pt_arg_type::GENERIC;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_SEQUENCE;
+
+      /* return type */
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     default:
       return false;
     }
@@ -6335,6 +6352,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_CRC32:
     case PT_SCHEMA_DEF:
     case PT_CONV_TZ:
+    case PT_COLLECTION_TO_STRING:
       return false;
 
     default:
@@ -8626,6 +8644,7 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_CRC32:
     case PT_DISK_SIZE:
     case PT_SCHEMA_DEF:
+    case PT_COLLECTION_TO_STRING:
       return true;
 
     default:
@@ -9093,6 +9112,16 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    goto error;
 	  }
       }
+      break;
+
+    case PT_COLLECTION_TO_STRING:
+      if (arg1_type != PT_TYPE_NULL && !PT_IS_COLLECTION_TYPE (arg1_type))
+	{
+	  PT_ERRORmf2 (parser, arg1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+		       pt_short_print (parser, arg1), "collection type");
+	  node->type_enum = PT_TYPE_NONE;
+	  goto error;
+	}
       break;
 
     default:
@@ -11822,6 +11851,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
     case PT_SUBSTRING:
     case PT_COERCIBILITY:
     case PT_INDEX_PREFIX:
+    case PT_COLLECTION_TO_STRING:
       assert (dt == NULL);
       dt = pt_make_prim_data_type (parser, node->type_enum);
       dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
@@ -17503,6 +17533,19 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	{
 	  return 1;
 	}
+
+    case PT_COLLECTION_TO_STRING:
+      db_value_clone (arg1, &tmp_val);
+      error = valcnv_convert_value_to_string (&tmp_val);
+      if (error != NO_ERROR)
+	{
+	  db_value_clear (&tmp_val);
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      db_value_clone (&tmp_val, result);
+      db_value_clear (&tmp_val);
+      return 1;
 
     default:
       break;
