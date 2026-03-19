@@ -27665,16 +27665,16 @@ heap_recdes_contains_oos (const RECDES * record)
   return flag & OR_MVCC_FLAG_HAS_OOS;
 }
 
-OID_VECTOR
-heap_recdes_get_oos_oids (const RECDES * recdes)
+int
+heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
 {
-  OID_VECTOR oos_oids;
-
   using namespace oos_log;
+
+  oos_oids.clear ();
 
   if (!heap_recdes_contains_oos (recdes))
     {
-      return oos_oids;
+      return NO_ERROR;
     }
 
   const int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
@@ -27688,7 +27688,7 @@ heap_recdes_get_oos_oids (const RECDES * recdes)
       if (index == max_var_count)
 	{
 	  assert_release (false && "LAST_ELEMENT flag not found within record bounds");
-	  return oos_oids;
+	  return ER_FAILED;
 	}
 
       int offset;
@@ -27705,7 +27705,7 @@ heap_recdes_get_oos_oids (const RECDES * recdes)
 	  break;
 	default:
 	  assert_release (false);
-	  return oos_oids;
+	  return ER_FAILED;
 	}
 
       if (OR_IS_OOS (offset))
@@ -27715,7 +27715,7 @@ heap_recdes_get_oos_oids (const RECDES * recdes)
 	  if (oid_ptr + OR_OID_SIZE > (char *) recdes->data + recdes->length)
 	    {
 	      assert (false && "OID read would exceed record bounds");
-	      return oos_oids;
+	      return ER_FAILED;
 	    }
 	  OR_BUF buf;
 	  or_init (&buf, (char *) oid_ptr, OR_OID_SIZE);
@@ -27723,12 +27723,12 @@ heap_recdes_get_oos_oids (const RECDES * recdes)
 	  if (err != NO_ERROR)
 	    {
 	      assert (false && "or_get_oid failed unexpectedly");
-	      return oos_oids;
+	      return ER_FAILED;
 	    }
 	  if (OID_ISNULL (&oid))
 	    {
 	      assert (false && "OID read from OOS slot is null — corrupted record?");
-	      return oos_oids;
+	      return ER_FAILED;
 	    }
 	  oos_debug ("there exists an OOS with OID %hd|%d|%hd at offset %d index %d", OID_AS_ARGS (&oid), offset,
 		     index);
@@ -27741,7 +27741,7 @@ heap_recdes_get_oos_oids (const RECDES * recdes)
 	    {
 	      /* heap_recdes_contains_oos() already confirmed OOS flag is set, so finding no OOS OIDs is inconsistent */
 	      assert (false && "heap_recdes_contains_oos() passed but no OOS OIDs found");
-	      return oos_oids;
+	      return ER_FAILED;
 	    }
 #if !defined (NDEBUG)
 	  {
@@ -27757,10 +27757,10 @@ heap_recdes_get_oos_oids (const RECDES * recdes)
 	    oos_debug ("Total %zu found. OOS OIDs: %s", oos_oids.size (), line.c_str ());
 	  }
 #endif
-	  return oos_oids;
+	  return NO_ERROR;
 	}
     }
 
   assert (false && "unreachable: there must be last element");
-  return oos_oids;
+  return ER_FAILED;
 }
