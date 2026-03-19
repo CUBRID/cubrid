@@ -45,9 +45,6 @@ connection_less::connection_less ()
 {
   m_entry_id = 0;
   m_css_map_entry = NULL;
-#if defined(MULTI_CONN_TO_A_SERVER)
-  m_css_map_entry_lock = PTHREAD_MUTEX_INITIALIZER;
-#endif
 }
 
 /*

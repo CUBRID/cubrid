@@ -409,7 +409,7 @@ client_support::css_send_req_to_server_with_large_data (char *host, int request,
   entry = m_conn_less.css_return_open_entry (host);
   if (entry != NULL)
     {
-      entry->conn->transaction_id = tm_Tran_index;
+      entry->conn->set_tran_index (tm_Tran_index);
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
       m_css_errno =
 	      css_send_req_with_large_buffer (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data_buffer,
