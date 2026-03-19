@@ -48,21 +48,21 @@ static std::vector <sp_info> sp_builtin_definition;
 static const std::vector<std::string> sp_entry_names
 {
 #define MAP_LIST_ITEM(item)     SP_ATTR_##item,
-SP_ATTR_LIST
+  SP_ATTR_LIST
 #undef MAP_LIST_ITEM
 };
 
 static const std::vector<std::string> sp_args_entry_names
 {
 #define MAP_LIST_ITEM(item)     SP_ARG_ATTR_##item,
-SP_ARG_ATTR_LIST
+  SP_ARG_ATTR_LIST
 #undef MAP_LIST_ITEM
 };
 
 static const std::vector<std::string> sp_code_entry_names
 {
 #define MAP_LIST_ITEM(item)     SP_CODE_ATTR_##item,
-SP_CODE_ATTR_LIST
+  SP_CODE_ATTR_LIST
 #undef MAP_LIST_ITEM
 };
 

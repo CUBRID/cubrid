@@ -51,7 +51,7 @@ enum sp_object_code_type
 enum index_sp_attr
 {
 #define MAP_LIST_ITEM(item)     INDEX_SP_ATTR_##item,
-SP_ATTR_LIST
+  SP_ATTR_LIST
 #undef MAP_LIST_ITEM
   NUM_SP_ATTR
 };
@@ -60,7 +60,7 @@ SP_ATTR_LIST
 enum index_sp_arg_attr
 {
 #define MAP_LIST_ITEM(item)     INDEX_SP_ARG_ATTR_##item,
-SP_ARG_ATTR_LIST
+  SP_ARG_ATTR_LIST
 #undef MAP_LIST_ITEM
   NUM_SP_ARG_ATTR
   /*
@@ -80,7 +80,7 @@ SP_ARG_ATTR_LIST
 enum index_sp_code_attr
 {
 #define MAP_LIST_ITEM(item)     INDEX_SP_CODE_ATTR_##item,
-SP_CODE_ATTR_LIST
+  SP_CODE_ATTR_LIST
 #undef MAP_LIST_ITEM
   NUM_SP_CODE_ATTR
 };

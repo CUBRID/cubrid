@@ -84,7 +84,7 @@ namespace cubschema
   }
 
   system_catalog_definition::system_catalog_definition (const std::string &n, const int attr_num_to_check,
-          const attr_vec_type &attrs,
+      const attr_vec_type &attrs,
       const cstr_vec_type &cts,
       const authorization &au,
       row_init_type ri = nullptr)
@@ -94,6 +94,6 @@ namespace cubschema
     , auth {au}
     , row_initializer {ri}
   {
-    assert(attr_num_to_check == 0 || attr_num_to_check == attrs.size());
+    assert (attr_num_to_check == 0 || attr_num_to_check == attrs.size());
   }
 }
