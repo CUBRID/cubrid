@@ -461,9 +461,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_ASCII:
     case T_SPACE:
     case T_MD5:
-#if 0
     case T_UUID_FORMAT:
-#endif
     case T_UUID:
     case T_SHA_ONE:
     case T_TO_BASE64:
