@@ -12645,6 +12645,8 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   int length;
   int rv;
 
+  using namespace oos_log;
+
   value = &attr_info->values[index];
   pr_type = value->last_attrepr->domain->type;
   if (pr_type == NULL)
@@ -12684,6 +12686,15 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  /* see Implementation in CBRD-26352 for details on why this design is possible. */
 	  /* use 2-bit of offset value as flags */
 	  length = OR_SET_VAR_OOS (length);
+	}
+
+      /* Mark the last variable attribute so readers can determine the variable offset table boundary
+       * without needing attrinfo->num_values (e.g., in logging and replication paths). */
+      if (value->last_attrepr->location == attr_info->last_classrepr->n_variable - 1)
+	{
+	  oos_trace ("Setting LAST_ELEMENT flag for variable attribute at location %d (n_variable=%d)",
+		     value->last_attrepr->location, attr_info->last_classrepr->n_variable);
+	  length = OR_SET_VAR_LAST_ELEMENT (length);
 	}
       or_put_offset_internal (buf, length, offset_size);
     }
@@ -27762,4 +27773,104 @@ heap_recdes_contains_oos (const RECDES * record)
 {
   int flag = (INT32) OR_GET_MVCC_FLAG (record->data);
   return flag & OR_MVCC_FLAG_HAS_OOS;
+}
+
+int
+heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
+{
+  using namespace oos_log;
+
+  oos_oids.clear ();
+
+  if (!heap_recdes_contains_oos (recdes))
+    {
+      return NO_ERROR;
+    }
+
+  const int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
+  void *var_table = OR_GET_OBJECT_VAR_TABLE (recdes->data);
+  /* NOTE: This upper bound may include VOT alignment padding and fixed-attribute bytes for legacy records
+   * that lack the OR_VAR_BIT_LAST_ELEMENT flag. Such records are not fully supported yet (see PR description). */
+  const int max_var_count = (recdes->length - OR_HEADER_SIZE (recdes->data)) / offset_size;
+
+  for (int index = 0; index <= max_var_count; ++index)
+    {
+      if (index == max_var_count)
+	{
+	  assert_release (false && "LAST_ELEMENT flag not found within record bounds");
+	  return ER_FAILED;
+	}
+
+      int offset;
+      switch (offset_size)
+	{
+	case OR_BYTE_SIZE:
+	  offset = OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
+	  break;
+	case OR_SHORT_SIZE:
+	  offset = OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
+	  break;
+	case OR_INT_SIZE:
+	  offset = OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
+	  break;
+	default:
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+
+      if (OR_IS_OOS (offset))
+	{
+	  OID oid = OID_INITIALIZER;
+	  const char *oid_ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, index);
+	  if (oid_ptr + OR_OID_SIZE > (char *) recdes->data + recdes->length)
+	    {
+	      assert (false && "OID read would exceed record bounds");
+	      return ER_FAILED;
+	    }
+	  OR_BUF buf;
+	  or_init (&buf, (char *) oid_ptr, OR_OID_SIZE);
+	  int err = or_get_oid (&buf, &oid);
+	  if (err != NO_ERROR)
+	    {
+	      assert (false && "or_get_oid failed unexpectedly");
+	      return ER_FAILED;
+	    }
+	  if (OID_ISNULL (&oid))
+	    {
+	      assert (false && "OID read from OOS slot is null — corrupted record?");
+	      return ER_FAILED;
+	    }
+	  oos_debug ("there exists an OOS with OID %hd|%d|%hd at offset %d index %d", OID_AS_ARGS (&oid), offset,
+		     index);
+	  oos_oids.emplace_back (oid);
+	}
+
+      if (OR_IS_LAST_ELEMENT (offset))
+	{
+	  if (oos_oids.empty ())
+	    {
+	      /* heap_recdes_contains_oos() already confirmed OOS flag is set, so finding no OOS OIDs is inconsistent */
+	      assert (false && "heap_recdes_contains_oos() passed but no OOS OIDs found");
+	      return ER_FAILED;
+	    }
+#if !defined (NDEBUG)
+	  {
+	    std::string line = "{";
+	    for (size_t i = 0; i < oos_oids.size (); ++i)
+	      {
+		char oid_buf[32];
+		if (i > 0)
+		  line.append (", ");
+		line.append (oid_to_string (oid_buf, sizeof oid_buf, &oos_oids[i]));
+	      }
+	    line += '}';
+	    oos_debug ("Total %zu found. OOS OIDs: %s", oos_oids.size (), line.c_str ());
+	  }
+#endif
+	  return NO_ERROR;
+	}
+    }
+
+  assert (false && "unreachable: there must be last element");
+  return ER_FAILED;
 }
