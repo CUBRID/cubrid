@@ -1375,6 +1375,28 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads_count = num;
       break;
 
+    case PT_UUID:
+      num = 0;
+
+      /* first overload: UUID() -> BIT (defaults to UUID(4)) */
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_NONE;
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_BIT;
+
+      def->overloads[num++] = sig;
+
+      /* second overload: UUID(int) -> BIT */
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_INTEGER;
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_BIT;
+
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     case PT_LOCAL_TRANSACTION_ID:
       num = 0;
 
@@ -6267,6 +6289,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_STR_TO_DATE:
     case PT_LIST_DBS:
     case PT_SYS_GUID:
+    case PT_UUID:
     case PT_IF:
     case PT_POWER:
     case PT_BIT_TO_BLOB:
@@ -11720,6 +11743,12 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       dt = pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
       /* Set a large enough precision so that CUBRID is able to handle GUID like 'B5B2D2FA9633460F820589FFDBD8C309'. */
       dt->info.data_type.precision = 32;
+      break;
+    case PT_UUID:
+      assert (dt == NULL);
+      dt = pt_make_prim_data_type (parser, PT_TYPE_VARBIT);
+      /* UUID returns 16 bytes = 128 bits */
+      dt->info.data_type.precision = 128;
       break;
     case PT_CHR:
       assert (dt != NULL);
@@ -17220,11 +17249,23 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	db_make_null (result);
       break;
 
+    case PT_SYS_GUID:
+      /* 
+       * constant folding for this expression is never performed : is always resolved on server
+       * PT_SYS_GUID and PT_UUID can be used as an attribute's default function
+       * We must perform a semantic check to ensure that the attribute domain and the default function type are compatible.
+       * During semantic checking, flag.do_not_fold is not considered; therefore, a dummy value is returned.
+       * Any PT_EXPR that contains PT_SYS_GUID or PT_UUID must always have flag.do_not_fold set to true.
+       */
+      db_make_string (result, "0123456789ABCDEF0123456789ABCDEF");
+      return 1;
+    case PT_UUID:
+      db_make_bit (result, GUID_STANDARD_BYTES_LENGTH * 8, "0123456789ABCDEF", GUID_STANDARD_BYTES_LENGTH * 8);
+      return 1;
     case PT_INDEX_CARDINALITY:
       /* constant folding for this expression is never performed : is always resolved on server */
       return 0;
     case PT_LIST_DBS:
-    case PT_SYS_GUID:
     case PT_ASSIGN:
     case PT_LIKE_ESCAPE:
     case PT_BETWEEN_AND:

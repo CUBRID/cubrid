@@ -7874,6 +7874,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_DECRYPT || node->info.expr.op == PT_BIN
 		       || node->info.expr.op == PT_MD5 || node->info.expr.op == PT_SHA_ONE
 		       || node->info.expr.op == PT_SPACE || node->info.expr.op == PT_PRIOR
+		       || node->info.expr.op == PT_UUID_FORMAT || node->info.expr.op == PT_UUID
 		       || node->info.expr.op == PT_CONNECT_BY_ROOT || node->info.expr.op == PT_QPRIOR
 		       || node->info.expr.op == PT_BIT_NOT || node->info.expr.op == PT_REVERSE
 		       || node->info.expr.op == PT_BIT_COUNT || node->info.expr.op == PT_ISNULL
@@ -9292,6 +9293,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_SYS_GUID:
 		  regu = pt_make_regu_arith (NULL, NULL, NULL, T_SYS_GUID, domain);
+		  break;
+
+		case PT_UUID:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_UUID, domain);
 		  break;
 
 		case PT_BIT_TO_BLOB:
@@ -28282,6 +28287,7 @@ pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * nod
       switch (node->info.expr.op)
 	{
 	case PT_SYS_GUID:
+	case PT_UUID:
 	case PT_RAND:
 	case PT_DRAND:
 	case PT_RANDOM:

@@ -461,6 +461,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_ASCII:
     case T_SPACE:
     case T_MD5:
+#if 0
+    case T_UUID_FORMAT:
+#endif
+    case T_UUID:
     case T_SHA_ONE:
     case T_TO_BASE64:
     case T_FROM_BASE64:
@@ -603,6 +607,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_DBTIMEZONE:
     case T_SESSIONTIMEZONE:
     case T_SYS_GUID:
+    case T_UUID4:
+    case T_UUID7:
     case T_UTC_TIMESTAMP:
       /* nothing to fetch */
       break;
@@ -3512,7 +3518,68 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       /* sys_guid() is not constant */
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
-      if (db_guid (thread_p, arithptr->value) != NO_ERROR)
+      if (db_uuidv4 (thread_p, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_UUID:
+      {
+	REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
+	assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
+	int version;
+	if (DB_IS_NULL (peek_right))
+	  {
+	    version = 4;
+	  }
+	else
+	  {
+	    version = db_get_int (peek_right);
+	  }
+
+	if (version == 0 || version == 4)
+	  {
+	    if (db_uuid_bin (thread_p, UUID_V4, 0, arithptr->value) != NO_ERROR)
+	      {
+		goto error;
+	      }
+	  }
+	else if (version == 7)
+	  {
+	    if (db_uuid_bin
+		(thread_p, UUID_V7,
+		 ((uint64_t) vd->sys_epochtime * 1000ULL) + (uint64_t) (vd->sys_datetime.time % 1000),
+		 arithptr->value) != NO_ERROR)
+	      {
+		goto error;
+	      }
+	  }
+	else
+	  {
+	    db_uuid_bin (thread_p, UUID_UNSUPPORTED, 0, arithptr->value);
+	    goto error;
+	  }
+      }
+      break;
+
+    case T_UUID4:
+      /* uuid(4) is not constant */
+      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
+      assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
+      if (db_uuid_bin (thread_p, UUID_V4, 0, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_UUID7:
+      /* uuid(7) is not constant */
+      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
+      assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
+      if (db_uuid_bin
+	  (thread_p, UUID_V7, ((uint64_t) vd->sys_epochtime * 1000ULL) + (uint64_t) (vd->sys_datetime.time % 1000),
+	   arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -3852,6 +3919,10 @@ fetch_peek_arith_end:
     case T_DRANDOM:
       /* sys_guid() is not constant */
     case T_SYS_GUID:
+      /* uuid() is not constant */
+    case T_UUID:
+    case T_UUID4:
+    case T_UUID7:
       /* sleep() is not constant */
     case T_SLEEP:
 

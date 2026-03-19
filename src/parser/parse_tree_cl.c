@@ -4018,6 +4018,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "list_dbs ";
     case PT_SYS_GUID:
       return "sys_guid ";
+    case PT_UUID:
+      return "uuid ";
     case PT_OID_OF_DUPLICATE_KEY:
       return "oid_of_duplicate_key ";
     case PT_BIT_TO_BLOB:
@@ -11992,6 +11994,13 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 
     case PT_SYS_GUID:
       q = pt_append_nulstring (parser, q, " sys_guid() ");
+      break;
+
+    case PT_UUID:
+      q = pt_append_nulstring (parser, q, " uuid(");
+      r1 = pt_print_bytes_l (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ") ");
       break;
 
     case PT_PATH_EXPR_SET:

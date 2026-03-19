@@ -23966,6 +23966,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_RANDOM:
     case PT_DRAND:
     case PT_DRANDOM:
+    case PT_UUID:
       {
 	PT_NODE *expr;
 	parser_cannot_cache = true;
