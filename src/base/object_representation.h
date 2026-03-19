@@ -421,7 +421,7 @@ OR_PUT_DOUBLE (char *ptr, double val)
   } while (0)
 
 #define OR_GET_OFFSET_INTERNAL(ptr, offset_size) \
-  OR_GET_VAR_LENGTH ( \
+  OR_GET_VAR_OFFSET ( \
     ((offset_size) == OR_BYTE_SIZE) \
      ? OR_GET_BYTE ((ptr)) \
      : (((offset_size) == OR_SHORT_SIZE) \
@@ -443,7 +443,7 @@ OR_PUT_DOUBLE (char *ptr, double val)
 #define OR_SET_VAR_LAST_ELEMENT(length) ((int) (length) | OR_VAR_BIT_LAST_ELEMENT)
 
 #define OR_GET_VAR_FLAG(length) ((int) (length) & OR_VAR_FLAG_MASK)
-#define OR_GET_VAR_LENGTH(length) ((int) (length) & (~OR_VAR_FLAG_MASK))
+#define OR_GET_VAR_OFFSET(length) ((int) (length) & (~OR_VAR_FLAG_MASK))
 
 #define OR_IS_OOS(length) (OR_GET_VAR_FLAG (length) & OR_VAR_BIT_OOS)
 #define OR_IS_LAST_ELEMENT(length) (OR_GET_VAR_FLAG (length) & OR_VAR_BIT_LAST_ELEMENT)
@@ -465,10 +465,10 @@ OR_PUT_DOUBLE (char *ptr, double val)
 
 #define OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL(table, index, offset_size) \
   ((offset_size == OR_BYTE_SIZE) \
-   ? (OR_GET_VAR_LENGTH (OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size)))) \
+   ? (OR_GET_VAR_OFFSET (OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size)))) \
    : ((offset_size == OR_SHORT_SIZE) \
-      ? (OR_GET_VAR_LENGTH (OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size)))) \
-      : (OR_GET_VAR_LENGTH (OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size))))))
+      ? (OR_GET_VAR_OFFSET (OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size)))) \
+      : (OR_GET_VAR_OFFSET (OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size))))))
 
 #define OR_VAR_TABLE_ELEMENT_LENGTH_INTERNAL(table, index, offset_size) \
   (OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (table, (index) + 1, offset_size) \
@@ -2588,7 +2588,7 @@ or_get_offset_internal (OR_BUF * buf, int *error, int offset_size)
       val = or_get_int (buf, error);
     }
 
-  return OR_GET_VAR_LENGTH (val);
+  return OR_GET_VAR_OFFSET (val);
 }
 
 /*
