@@ -613,7 +613,14 @@ TEST (OosTest, OosInlineFormatWithRealOosInsert)
   int oos_length = oos_get_length (thread_p, oos_oid);
   ASSERT_EQ (read_length, (DB_BIGINT) oos_length);
 
+  /* Verify that oos_read returns a recdes whose length matches the inline length */
+  RECDES rec_out{};
+  err = oos_read (thread_p, oos_oid, rec_out);
+  ASSERT_EQ (err, NO_ERROR);
+  ASSERT_EQ (read_length, (DB_BIGINT) rec_out.length);
+
   recdes_free_data_area (&rec_in);
+  recdes_free_data_area (&rec_out);
 }
 
 TEST (OosTest, OosInlineLengthMatchesAcrossPages)
@@ -666,7 +673,14 @@ TEST (OosTest, OosInlineLengthMatchesAcrossPages)
       int io_length = oos_get_length (thread_p, oos_oid);
       ASSERT_EQ (inline_length, (DB_BIGINT) io_length) << "Failed for data_size=" << data_size;
 
+      /* Inline length must match oos_read recdes length */
+      RECDES rec_out{};
+      err = oos_read (thread_p, oos_oid, rec_out);
+      ASSERT_EQ (err, NO_ERROR);
+      ASSERT_EQ (inline_length, (DB_BIGINT) rec_out.length) << "Failed for data_size=" << data_size;
+
       recdes_free_data_area (&rec_in);
+      recdes_free_data_area (&rec_out);
     }
 }
 
