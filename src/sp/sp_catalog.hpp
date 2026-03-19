@@ -31,6 +31,7 @@
 
 #include "jsp_cl.h"
 #include "dbi.h"
+#include "sp_constants.hpp"
 
 #define SAVEPOINT_ADD_STORED_PROC "ADDSTOREDPROC"
 #define SAVEPOINT_CREATE_STORED_PROC "CREATESTOREDPROC"
@@ -47,28 +48,22 @@ enum sp_object_code_type
   SPOC_JAVA_JAR
 };
 
-enum sp_entry_index
+enum index_sp_attr
 {
-  SP_ATTR_INDEX_UNIQUE_NAME,
-  SP_ATTR_INDEX_NAME,
-  SP_ATTR_INDEX_SP_TYPE,
-  SP_ATTR_INDEX_RETURN_TYPE,
-  SP_ATTR_INDEX_ARG_COUNT,
-  SP_ATTR_INDEX_ARGS,
-  SP_ATTR_INDEX_LANG,
-  SP_ATTR_INDEX_PKG,
-  SP_ATTR_INDEX_IS_SYSTEM_GENERATED,
-  SP_ATTR_INDEX_TARGET_CLASS,
-  SP_ATTR_INDEX_TARGET_METHOD,
-  SP_ATTR_INDEX_DIRECTIVE,
-  SP_ATTR_INDEX_OWNER,
-  SP_ATTR_INDEX_COMMENT,
-  SP_ATTR_INDEX_LAST
+#define MAP_LIST_ITEM(item)     INDEX_SP_ATTR_##item,
+SP_ATTR_LIST
+#undef MAP_LIST_ITEM
+  NUM_SP_ATTR
 };
 
 
-enum sp_args_entry_index
+enum index_sp_arg_attr
 {
+#define MAP_LIST_ITEM(item)     INDEX_SP_ARG_ATTR_##item,
+SP_ARG_ATTR_LIST
+#undef MAP_LIST_ITEM
+  NUM_SP_ARG_ATTR
+  /*
   SP_ARGS_ATTR_INDEX_SP_OF,
   SP_ARGS_ATTR_INDEX_INDEX_OF,
   SP_ARGS_ATTR_INDEX_IS_SYSTEM_GENERATED,
@@ -79,6 +74,15 @@ enum sp_args_entry_index
   SP_ARGS_ATTR_INDEX_IS_OPTIONAL,
   SP_ARGS_ATTR_INDEX_COMMENT,
   SP_ARGS_ATTR_INDEX_LAST
+   */
+};
+
+enum index_sp_code_attr
+{
+#define MAP_LIST_ITEM(item)     INDEX_SP_CODE_ATTR_##item,
+SP_CODE_ATTR_LIST
+#undef MAP_LIST_ITEM
+  NUM_SP_CODE_ATTR
 };
 
 // entry

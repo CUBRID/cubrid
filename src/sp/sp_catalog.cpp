@@ -47,36 +47,23 @@ static std::vector <sp_info> sp_builtin_definition;
 
 static const std::vector<std::string> sp_entry_names
 {
-  SP_ATTR_UNIQUE_NAME,
-  SP_ATTR_SP_NAME,
-  SP_ATTR_SP_TYPE,
-  SP_ATTR_RETURN_TYPE,
-  SP_ATTR_ARG_COUNT,
-  SP_ATTR_ARGS,
-  SP_ATTR_LANG,
-  SP_ATTR_PKG_NAME,
-  SP_ATTR_IS_SYSTEM_GENERATED,
-  SP_ATTR_TARGET_CLASS,
-  SP_ATTR_TARGET_METHOD,
-  SP_ATTR_DIRECTIVE,
-  SP_ATTR_SQL_DATA_ACCESS,
-  SP_ATTR_OWNER,
-  SP_ATTR_COMMENT,
-  SP_ATTR_CREATED_TIME,
-  SP_ATTR_UPDATED_TIME
+#define MAP_LIST_ITEM(item)     SP_ATTR_##item,
+SP_ATTR_LIST
+#undef MAP_LIST_ITEM
 };
 
 static const std::vector<std::string> sp_args_entry_names
 {
-  SP_ARG_ATTR_SP_OF,
-  SP_ARG_ATTR_INDEX_OF,
-  SP_ATTR_IS_SYSTEM_GENERATED,
-  SP_ARG_ATTR_ARG_NAME,
-  SP_ARG_ATTR_DATA_TYPE,
-  SP_ARG_ATTR_MODE,
-  SP_ARG_ATTR_DEFAULT_VALUE,
-  SP_ARG_ATTR_IS_OPTIONAL,
-  SP_ATTR_COMMENT
+#define MAP_LIST_ITEM(item)     SP_ARG_ATTR_##item,
+SP_ARG_ATTR_LIST
+#undef MAP_LIST_ITEM
+};
+
+static const std::vector<std::string> sp_code_entry_names
+{
+#define MAP_LIST_ITEM(item)     SP_CODE_ATTR_##item,
+SP_CODE_ATTR_LIST
+#undef MAP_LIST_ITEM
 };
 
 static int sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint);

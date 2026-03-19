@@ -2067,7 +2067,7 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 
   assert (node);
 
-  sp_entry entry (SP_ATTR_INDEX_LAST);
+  sp_entry entry (NUM_SP_ATTR);
 
   {
     PT_NODE *method_name_node = node->info.method_call.method_name;
@@ -2104,7 +2104,7 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 	AU_DISABLE (save);
 	entry.oid = *WS_OID (mop_p);
 
-	for (int i = 0; i < SP_ATTR_INDEX_LAST; i++)
+	for (int i = 0; i < NUM_SP_ATTR; i++)
 	  {
 	    error = obj_get (mop_p, sp_get_entry_name (i).data (), &entry.vals[i]);
 	    if (error != NO_ERROR)
@@ -2113,15 +2113,15 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 	      }
 	  }
 
-	int lang = db_get_int (&entry.vals[SP_ATTR_INDEX_LANG]);
+	int lang = db_get_int (&entry.vals[INDEX_SP_ATTR_LANG]);
 	sig.type = (lang == SP_LANG_PLCSQL) ? PL_TYPE_PLCSQL : PL_TYPE_JAVA_SP;
 
 	/* semantic check */
-	int directive = db_get_int (&entry.vals[SP_ATTR_INDEX_DIRECTIVE]);
+	int directive = db_get_int (&entry.vals[INDEX_SP_ATTR_DIRECTIVE]);
 	const char *auth_name = (! (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_CALLER) ? jsp_get_owner_name (
 					 name, user_name_buffer, DB_MAX_USER_LENGTH) : au_get_current_user_name ());
 
-	int result_type = db_get_int (&entry.vals[SP_ATTR_INDEX_RETURN_TYPE]);
+	int result_type = db_get_int (&entry.vals[INDEX_SP_ATTR_RETURN_TYPE]);
 	error = jsp_check_return_type_supported ((DB_TYPE) result_type);
 	if (error != NO_ERROR)
 	  {
@@ -2129,8 +2129,8 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 	  }
 
 	// args
-	int num_params = db_get_int (&entry.vals[SP_ATTR_INDEX_ARG_COUNT]);
-	DB_SET *param_set = db_get_set (&entry.vals[SP_ATTR_INDEX_ARGS]);
+	int num_params = db_get_int (&entry.vals[INDEX_SP_ATTR_ARG_COUNT]);
+	DB_SET *param_set = db_get_set (&entry.vals[INDEX_SP_ATTR_ARGS]);
 	error = jsp_make_pl_args (parser, node, num_params, param_set, sig);
 	if (error != NO_ERROR)
 	  {
@@ -2175,8 +2175,8 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
       }
     else
       {
-	sig.ext.sp.target_class_name = db_private_strdup (NULL, db_get_string (&entry.vals[SP_ATTR_INDEX_TARGET_CLASS]));
-	sig.ext.sp.target_method_name = db_private_strdup (NULL, db_get_string (&entry.vals[SP_ATTR_INDEX_TARGET_METHOD]));
+	sig.ext.sp.target_class_name = db_private_strdup (NULL, db_get_string (&entry.vals[INDEX_SP_ATTR_TARGET_CLASS]));
+	sig.ext.sp.target_method_name = db_private_strdup (NULL, db_get_string (&entry.vals[INDEX_SP_ATTR_TARGET_METHOD]));
 	if (sig.ext.sp.target_class_name != NULL)
 	  {
 	    MOP code_mop = jsp_find_stored_procedure_code (sig.ext.sp.target_class_name);
@@ -2221,7 +2221,7 @@ jsp_make_pl_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, DB_SET 
 	goto exit_on_error;
       }
 
-    sp_entry entry (SP_ARGS_ATTR_INDEX_LAST);
+    sp_entry entry (NUM_SP_ARG_ATTR);
 
     for (int i = 0; i < num_params; i++)
       {
@@ -2235,7 +2235,7 @@ jsp_make_pl_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, DB_SET 
 	    goto exit_on_error;
 	  }
 
-	for (int i = 0; i < SP_ARGS_ATTR_INDEX_LAST; i++)
+	for (int i = 0; i < NUM_SP_ARG_ATTR; i++)
 	  {
 	    error = obj_get (arg_mop_p, sp_args_get_entry_name (i).data (), &entry.vals[i]);
 	    if (error != NO_ERROR)
@@ -2244,14 +2244,14 @@ jsp_make_pl_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, DB_SET 
 	      }
 	  }
 
-	int arg_mode = db_get_int (&entry.vals[SP_ARGS_ATTR_INDEX_MODE]);
+	int arg_mode = db_get_int (&entry.vals[INDEX_SP_ARG_ATTR_MODE]);
 	error = jsp_check_out_param_in_query (parser, node, arg_mode);
 	if (error != NO_ERROR)
 	  {
 	    goto exit_on_error;
 	  }
 
-	int arg_type = db_get_int (&entry.vals[SP_ARGS_ATTR_INDEX_DATA_TYPE]);
+	int arg_type = db_get_int (&entry.vals[INDEX_SP_ARG_ATTR_DATA_TYPE]);
 	error = jsp_check_param_type_supported ((DB_TYPE) arg_type, arg_mode);
 	if (error != NO_ERROR)
 	  {
@@ -2265,10 +2265,10 @@ jsp_make_pl_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, DB_SET 
 
 	if (i >= num_required_args)
 	  {
-	    int is_optional = db_get_int (&entry.vals[SP_ARGS_ATTR_INDEX_IS_OPTIONAL]);
+	    int is_optional = db_get_int (&entry.vals[INDEX_SP_ARG_ATTR_IS_OPTIONAL]);
 	    if (is_optional == 1)
 	      {
-		const DB_VALUE &default_val = entry.vals[SP_ARGS_ATTR_INDEX_DEFAULT_VALUE];
+		const DB_VALUE &default_val = entry.vals[INDEX_SP_ARG_ATTR_DEFAULT_VALUE];
 		if (!DB_IS_NULL (&default_val))
 		  {
 		    default_value_size = db_get_string_size (&default_val); // null character

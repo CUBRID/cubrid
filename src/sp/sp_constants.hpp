@@ -23,6 +23,25 @@
 #define SP_ARG_CLASS_NAME       "_db_stored_procedure_args"
 #define SP_CODE_CLASS_NAME      "_db_stored_procedure_code"
 
+#define SP_ATTR_LIST    \
+    MAP_LIST_ITEM(UNIQUE_NAME) \
+    MAP_LIST_ITEM(SP_NAME) \
+    MAP_LIST_ITEM(SP_TYPE) \
+    MAP_LIST_ITEM(RETURN_TYPE) \
+    MAP_LIST_ITEM(ARG_COUNT) \
+    MAP_LIST_ITEM(ARGS) \
+    MAP_LIST_ITEM(LANG) \
+    MAP_LIST_ITEM(PKG_NAME) \
+    MAP_LIST_ITEM(IS_SYSTEM_GENERATED) \
+    MAP_LIST_ITEM(DIRECTIVE) \
+    MAP_LIST_ITEM(TARGET_CLASS) \
+    MAP_LIST_ITEM(TARGET_METHOD) \
+    MAP_LIST_ITEM(OWNER) \
+    MAP_LIST_ITEM(SQL_DATA_ACCESS) \
+    MAP_LIST_ITEM(COMMENT) \
+    MAP_LIST_ITEM(CREATED_TIME) \
+    MAP_LIST_ITEM(UPDATED_TIME)
+
 #define SP_ATTR_UNIQUE_NAME             "unique_name"
 #define SP_ATTR_SP_NAME                 "sp_name"
 #define SP_ATTR_SP_TYPE                 "sp_type"
@@ -41,6 +60,17 @@
 #define SP_ATTR_CREATED_TIME            "created_time"
 #define SP_ATTR_UPDATED_TIME            "updated_time"
 
+#define SP_ARG_ATTR_LIST    \
+    MAP_LIST_ITEM(SP_OF) \
+    MAP_LIST_ITEM(INDEX_OF) \
+    MAP_LIST_ITEM(IS_SYSTEM_GENERATED) \
+    MAP_LIST_ITEM(ARG_NAME) \
+    MAP_LIST_ITEM(DATA_TYPE) \
+    MAP_LIST_ITEM(MODE) \
+    MAP_LIST_ITEM(DEFAULT_VALUE) \
+    MAP_LIST_ITEM(IS_OPTIONAL) \
+    MAP_LIST_ITEM(COMMENT)
+
 #define SP_ARG_ATTR_SP_OF                   "sp_of"
 #define SP_ARG_ATTR_INDEX_OF                "index_of"
 #define SP_ARG_ATTR_IS_SYSTEM_GENERATED     "is_system_generated"
@@ -50,6 +80,17 @@
 #define SP_ARG_ATTR_DEFAULT_VALUE           "default_value"
 #define SP_ARG_ATTR_IS_OPTIONAL             "is_optional"
 #define SP_ARG_ATTR_COMMENT                 "comment"
+
+#define SP_CODE_ATTR_LIST    \
+    MAP_LIST_ITEM(NAME) \
+    MAP_LIST_ITEM(CREATED_TIME) \
+    MAP_LIST_ITEM(OWNER) \
+    MAP_LIST_ITEM(IS_STATIC) \
+    MAP_LIST_ITEM(IS_SYSTEM_GENERATED) \
+    MAP_LIST_ITEM(STYPE) \
+    MAP_LIST_ITEM(SCODE) \
+    MAP_LIST_ITEM(OTYPE) \
+    MAP_LIST_ITEM(OCODE)
 
 #define SP_CODE_ATTR_NAME                   "name"
 #define SP_CODE_ATTR_CREATED_TIME           "created_time"
