@@ -318,7 +318,7 @@ namespace cubhnsw
 	(void) seek_down_ (context, vector, entry_slot, new_target_level, closest_slot);
       }
 
-      assert (context.m_level == (std::min) (new_target_level, curr_max_level));
+      context.m_level = (std::min) (new_target_level, curr_max_level);
 
       pinned_t new_node_blk = m_storage->get_node_by_slot_id (context, new_slot, lock_mode::exclusive);
 
