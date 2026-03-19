@@ -1011,7 +1011,7 @@ qo_reduce_equality_terms_post (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
  *   이미 해당 조건이 존재하면 추가하지 않습니다.
  */
 void
-qo_add_transitive_join_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep)
+qo_add_transitive_join_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wherep)
 {
   PT_NODE *expr1, *expr2, *term;
   PT_NODE *arg1_l, *arg1_r;	/* expr1의 좌변, 우변 attr */
@@ -1021,12 +1021,9 @@ qo_add_transitive_join_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep)
   PT_NODE **orgp = wherep;
   bool already_exists;
 
-  /* 고정점 반복: 새 이행 조건이 생기지 않을 때까지 반복 */
-  do
-    {
-      new_term_list = NULL;
+  new_term_list = NULL;
 
-      /* 모든 등치 조인 조건 쌍에 대해 이행 조건 탐색 */
+  /* 모든 등치 조인 조건 쌍에 대해 이행 조건 탐색 */
   for (expr1 = *orgp; expr1; expr1 = expr1->next)
     {
       /* expr1: 단순 attr = attr 형태의 조인 조건인지 확인 */
@@ -1197,12 +1194,10 @@ qo_add_transitive_join_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	}
     }
 
-      if (new_term_list != NULL)
-	{
-	  *orgp = parser_append_node (new_term_list, *orgp);
-	}
+  if (new_term_list != NULL)
+    {
+      *orgp = parser_append_node (new_term_list, *orgp);
     }
-  while (new_term_list != NULL);
 }
 
 /*
