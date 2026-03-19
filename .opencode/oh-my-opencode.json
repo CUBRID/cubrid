@@ -3,7 +3,7 @@
   "agents": {
     "sisyphus": {
       "model": "opencode/kimi-k2.5",
-      "ultrawork": { "model": "opencode/kimi-k2.5", "variant": "max" }
+      "ultrawork": { "model": "opencode/claude-opus-4-6", "variant": "max" }
     },
     "hephaestus": { "model": "opencode/gpt-5.3-codex", "variant": "medium" },
     "oracle": { "model": "opencode/gpt-5.2", "variant": "high" },
