@@ -60,6 +60,14 @@
 #define SP_ATTR_CREATED_TIME            "created_time"
 #define SP_ATTR_UPDATED_TIME            "updated_time"
 
+enum index_sp_attr
+{
+#define MAP_LIST_ITEM(item)     INDEX_SP_ATTR_##item,
+  SP_ATTR_LIST
+#undef MAP_LIST_ITEM
+  NUM_SP_ATTR
+};
+
 #define SP_ARG_ATTR_LIST    \
     MAP_LIST_ITEM(SP_OF) \
     MAP_LIST_ITEM(INDEX_OF) \
@@ -81,6 +89,14 @@
 #define SP_ARG_ATTR_IS_OPTIONAL             "is_optional"
 #define SP_ARG_ATTR_COMMENT                 "comment"
 
+enum index_sp_arg_attr
+{
+#define MAP_LIST_ITEM(item)     INDEX_SP_ARG_ATTR_##item,
+  SP_ARG_ATTR_LIST
+#undef MAP_LIST_ITEM
+  NUM_SP_ARG_ATTR
+};
+
 #define SP_CODE_ATTR_LIST    \
     MAP_LIST_ITEM(NAME) \
     MAP_LIST_ITEM(CREATED_TIME) \
@@ -101,6 +117,15 @@
 #define SP_CODE_ATTR_SCODE                  "scode"
 #define SP_CODE_ATTR_OTYPE                  "otype"
 #define SP_CODE_ATTR_OCODE                  "ocode"
+
+enum index_sp_code_attr
+{
+#define MAP_LIST_ITEM(item)     INDEX_SP_CODE_ATTR_##item,
+  SP_CODE_ATTR_LIST
+#undef MAP_LIST_ITEM
+  NUM_SP_CODE_ATTR
+};
+
 
 typedef enum
 {

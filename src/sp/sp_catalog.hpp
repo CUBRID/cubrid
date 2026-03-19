@@ -48,31 +48,6 @@ enum sp_object_code_type
   SPOC_JAVA_JAR
 };
 
-enum index_sp_attr
-{
-#define MAP_LIST_ITEM(item)     INDEX_SP_ATTR_##item,
-  SP_ATTR_LIST
-#undef MAP_LIST_ITEM
-  NUM_SP_ATTR
-};
-
-
-enum index_sp_arg_attr
-{
-#define MAP_LIST_ITEM(item)     INDEX_SP_ARG_ATTR_##item,
-  SP_ARG_ATTR_LIST
-#undef MAP_LIST_ITEM
-  NUM_SP_ARG_ATTR
-};
-
-enum index_sp_code_attr
-{
-#define MAP_LIST_ITEM(item)     INDEX_SP_CODE_ATTR_##item,
-  SP_CODE_ATTR_LIST
-#undef MAP_LIST_ITEM
-  NUM_SP_CODE_ATTR
-};
-
 // entry
 // TODO: move to proper place to commonly use for any catalog
 struct sp_entry
