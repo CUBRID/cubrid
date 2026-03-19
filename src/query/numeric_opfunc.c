@@ -99,20 +99,6 @@
  */
 #define POW10_BUF_SIZE          (213)
 
-typedef struct dec_string DEC_STRING;
-struct dec_string
-{
-  char digits[TWICE_NUM_MAX_PREC];
-};
-
-static const char fast_mod[20] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
-  0, 1, 2, 3, 4, 5, 6, 7, 8, 9
-};
-
-static DEC_STRING powers_of_2[DB_NUMERIC_BUF_SIZE * 16];
-#if !defined(SERVER_MODE)
-static bool initialized_2 = false;
-#endif
 /* [10^n][Buffer containing 10^n values converted to base-256] */
 static unsigned char powers_of_10[POW10_MAX_INDEX + 1][POW10_BUF_SIZE];
 /* Number of significant bytes for each 10^n */
@@ -124,6 +110,12 @@ static bool initialized_10 = false;
 static const double numeric_Pow_of_10[10] = {
   1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9
 };
+
+/* look-up table : containing pre-calculated 4-byte ASCII representations for numbers 0000-9999. */
+static uint32_t _gv_digits4_ascii_lut[10000];
+#if !defined(SERVER_MODE)
+static bool initialized_digits4_ascii = false;
+#endif
 
 /*
  * _gv_numeric_precision_to_bytes_lookup
@@ -204,18 +196,16 @@ static void numeric_copy_long (DB_C_NUMERIC dest, DB_C_NUMERIC source, bool is_l
 static void numeric_increase (DB_C_NUMERIC answer);
 static void numeric_increase_long (DB_C_NUMERIC answer, bool is_long_num);
 static void numeric_zero (DB_C_NUMERIC answer, int size);
-static void numeric_init_dec_str (DEC_STRING * answer);
-static void numeric_add_dec_str (DEC_STRING * arg1, DEC_STRING * arg2, DEC_STRING * answer);
-static void numeric_init_pow_of_2_helper (void);
-#if defined(SERVER_MODE)
-static void numeric_init_pow_of_2 (void);
-#endif
-static DEC_STRING *numeric_get_pow_of_2 (int exp);
 static void numeric_init_pow_of_10_helper (void);
 #if defined(SERVER_MODE)
 static void numeric_init_pow_of_10 (void);
 #endif
 static DB_C_NUMERIC numeric_get_pow_of_10 (int exp);
+static void numeric_init_digits4_ascii_helper (void);
+#if defined(SERVER_MODE)
+static void numeric_init_digits4_ascii (void);
+#endif
+static inline uint32_t numeric_get_digits4_ascii (uint32_t val);
 static void float_numeric_init_pow10_table (void);
 static int float_numeric_find_first_nz_idx_msb (const uint8_t * buffer, int buffer_size);
 static int float_numeric_get_decimal_digit (const uint8_t * calc_buf, int calc_bytes);
@@ -293,6 +283,7 @@ static void float_numeric_round_and_pack (uint8_t * calc_buf, int calc_bytes, ui
 static int compare_mantissa_same_exponent (uint8_t * dividend_buf, uint8_t * divisor_buf, int buf_bytes,
 					   int prec1, int prec2);
 static int float_numeric_compare_rem_round_up (const uint8_t * rem, const uint8_t * div, int calc_bytes);
+static inline void numeric_pack_digits4_ascii (char *buf, uint64_t val);
 
 /*
  * numeric_is_negative () -
@@ -406,135 +397,6 @@ numeric_zero (DB_C_NUMERIC answer, int size)
 }
 
 /*
- * numeric_init_dec_str () -
- *   return:
- *   answer(in/out) : (IN/OUT) ptr to a DEC_STRING
- *
- * Note: Fills a DEC_STRING with -1 constant bytes and zero rightmost byte
- *
- *       digits:[00][01][02]......[73][74][75]
- *       values: -1  -1  -1 ...... -1  -1   0
- */
-static void
-numeric_init_dec_str (DEC_STRING * answer)
-{
-  /* sizeof(answer->digits[0]) == 1 */
-  memset (answer->digits, -1, TWICE_NUM_MAX_PREC);
-
-  /* Set first element to 0 */
-  answer->digits[TWICE_NUM_MAX_PREC - 1] = 0;
-}
-
-/*
- * numeric_add_dec_str () -
- *   arg1(in)   : ptr to a DEC_STRING
- *   arg2(in)   : ptr to a DEC_STRING
- *   answer(out): ptr to a DEC_STRING
- *
- * Note: This routine adds two DEC_STRINGs and returns the result.  It assumes
- *       that arg1 and arg2 have the same scaling.
- */
-
-static void
-numeric_add_dec_str (DEC_STRING * arg1, DEC_STRING * arg2, DEC_STRING * answer)
-{
-  unsigned int answer_bit = 0;
-  int digit;
-  char arg1_dec, arg2_dec;
-
-  /* Loop through the characters setting answer */
-  for (digit = TWICE_NUM_MAX_PREC - 1; digit >= 0; digit--)
-    {
-      arg1_dec = arg1->digits[digit];
-      arg2_dec = arg2->digits[digit];
-
-      if (arg1_dec == -1)
-	{
-	  arg1_dec = 0;
-
-	  if (answer_bit < 10)
-	    {
-	      break;		/* pass through the leftmost digits */
-	    }
-	}
-
-      if (arg2_dec == -1)
-	{
-	  /* is not first element */
-	  assert (digit < TWICE_NUM_MAX_PREC - 1);
-
-	  arg2_dec = 0;
-	}
-
-      assert (arg1_dec >= 0);
-      assert (arg2_dec >= 0);
-
-      answer_bit = (arg1_dec + arg2_dec) + (answer_bit >= 10);
-      answer->digits[digit] = fast_mod[answer_bit];
-    }
-}
-
-/*
- * numeric_init_pow_of_2_helper () -
- *   return:
- */
-static void
-numeric_init_pow_of_2_helper (void)
-{
-  unsigned int i;
-
-  numeric_init_dec_str (&(powers_of_2[0]));
-
-  /* Set first element to 1 */
-  powers_of_2[0].digits[TWICE_NUM_MAX_PREC - 1] = 1;
-
-  /* Loop through array elements setting each one to twice the prior */
-  for (i = 1; i < DB_NUMERIC_BUF_SIZE * 16; i++)
-    {
-      numeric_init_dec_str (&(powers_of_2[i]));
-      numeric_add_dec_str (&(powers_of_2[i - 1]), &(powers_of_2[i - 1]), &(powers_of_2[i]));
-    }
-}
-
-#if defined(SERVER_MODE)
-/*
- * numeric_init_pow_of_2 () -
- *   return:
- */
-static void
-numeric_init_pow_of_2 (void)
-{
-  numeric_init_pow_of_2_helper ();
-}
-#endif
-
-/*
- * numeric_get_pow_of_2 () -
- *   return: DEC_STRING containing the equivalent base 10 representation
- *   exp(in)    : positive integer exponent base 2
- *
- * Note: This routine returns a DEC_STRING that holds the base 10 digits of a
- *       power of 2.
- */
-static DEC_STRING *
-numeric_get_pow_of_2 (int exp)
-{
-  assert (exp < (int) (DB_NUMERIC_BUF_SIZE * 16 - 3));	/* exp < 253 */
-
-#if !defined(SERVER_MODE)
-  /* If this is the first time to call this routine, initialize */
-  if (!initialized_2)
-    {
-      numeric_init_pow_of_2_helper ();
-      initialized_2 = true;
-    }
-#endif
-
-  /* Return the appropriate power of 2 */
-  return &powers_of_2[exp];
-}
-
-/*
  * numeric_init_pow_of_10_helper () -
  *   return:
  */
@@ -621,6 +483,62 @@ numeric_get_pow_of_10 (int exp)
   return powers_of_10[exp] + (POW10_BUF_SIZE - DB_NUMERIC_BUF_SIZE);
 }
 
+/*
+ * numeric_init_digits4_ascii_helper () -
+ *   return:
+ */
+static void
+numeric_init_digits4_ascii_helper (void)
+{
+  int i;
+  uint8_t digit[4];
+
+  for (i = 0; i < 10000; i++)
+    {
+      digit[0] = '0' + (i / 1000);
+      digit[1] = '0' + (i / 100) % 10;
+      digit[2] = '0' + (i / 10) % 10;
+      digit[3] = '0' + (i % 10);
+
+      _gv_digits4_ascii_lut[i] =
+	(uint32_t) digit[0] | ((uint32_t) digit[1] << 8) | ((uint32_t) digit[2] << 16) | ((uint32_t) digit[3] << 24);
+    }
+}
+
+#if defined(SERVER_MODE)
+/*
+ * numeric_init_digits4_ascii () -
+ *   return:
+ */
+static void
+numeric_init_digits4_ascii (void)
+{
+  numeric_init_digits4_ascii_helper ();
+}
+#endif
+
+/*
+ * numeric_get_digits4_ascii () - returns pre-calculated ASCII value for a 4-digit number
+ *   return : uint32_t containing 4 ASCII bytes
+ *   val(in): integer value between 0 and 9999
+ *
+ * Note: high-performance lookup for 4-byte packed ASCII represented as uint32.
+ *       performs lazy initialization if not in SERVER_MODE.
+ */
+static inline uint32_t
+numeric_get_digits4_ascii (uint32_t val)
+{
+  assert (val < 10000);
+#if !defined(SERVER_MODE)
+  if (!initialized_digits4_ascii)
+    {
+      numeric_init_digits4_ascii_helper ();
+      initialized_digits4_ascii = true;
+    }
+#endif
+  return _gv_digits4_ascii_lut[val];
+}
+
 #if defined(SERVER_MODE)
 /*
  * numeric_init_power_value_string () -
@@ -629,8 +547,8 @@ numeric_get_pow_of_10 (int exp)
 void
 numeric_init_power_value_string (void)
 {
-  numeric_init_pow_of_2 ();
   numeric_init_pow_of_10 ();
+  numeric_init_digits4_ascii ();
 }
 #endif
 
@@ -2008,36 +1926,65 @@ numeric_prec_scale_when_overflow (const DB_VALUE * dbv1, const DB_VALUE * dbv2, 
 static void
 numeric_coerce_big_num_to_dec_str (unsigned char *num, char *dec_str)
 {
-  DEC_STRING *bit_value;
-  DEC_STRING result;
-  unsigned int i;
+  uint8_t work_buf[DB_NUMERIC_BUF_SIZE * 2];
+  uint64_t chunk;
+  char *p_digits;
+  int i, j;
+  bool all_zero = true;
 
-  /* Loop through the bits of the numeric building up string */
-  numeric_init_dec_str (&result);
-  for (i = 0; i < DB_NUMERIC_BUF_SIZE * 16; i++)
+  assert (num);
+  assert (dec_str);
+
+  /* 1. pre-fill with '0' for legacy alignment */
+  memset (dec_str, '0', TWICE_NUM_MAX_PREC);
+  dec_str[TWICE_NUM_MAX_PREC] = '\0';
+
+  /* 2. copy source to a working buffer for successive division. */
+  memcpy (work_buf, num, DB_NUMERIC_BUF_SIZE * 2);
+
+  /* 3. check if the entire buffer is 0 */
+  for (i = 0; i < DB_NUMERIC_BUF_SIZE * 2; i++)
     {
-      if (numeric_is_bit_set (num, i))
+      if (work_buf[i] != 0)
 	{
-	  bit_value = numeric_get_pow_of_2 ((DB_NUMERIC_BUF_SIZE * 16) - i - 1);
-	  numeric_add_dec_str (bit_value, &result, &result);
+	  all_zero = false;
+	  break;
 	}
     }
 
-  /* Convert result into ASCII array */
-  for (i = 0; i < TWICE_NUM_MAX_PREC; i++)
+  if (all_zero)
     {
-      if (result.digits[i] == -1)
-	{
-	  result.digits[i] = 0;
-	}
-      assert (result.digits[i] >= 0);
-
-      *dec_str = result.digits[i] + '0';
-      dec_str++;
+      return;
     }
 
-  /* Null terminate */
-  *dec_str = '\0';
+  /* 4. extract digits in 16-digit blocks from right to left (up to 6 iterations, covers 96 digits > Big Num 82 digits) */
+  p_digits = dec_str + TWICE_NUM_MAX_PREC - 16;
+
+  for (i = 0; i < 6; i++)
+    {
+      /* extract the remainder of division by 10^16 as a 64-bit integer chunk. */
+      chunk = float_numeric_div_pow10 (work_buf, DB_NUMERIC_BUF_SIZE * 2, _gv_mul_normalize_pow10_lookup[15]);
+
+      /* convert and store 16 decimal digits as ASCII at once */
+      numeric_pack_digits4_ascii (p_digits, chunk);
+      p_digits -= 16;
+
+      /* early exit if no more digits remain (quotient is zero) */
+      all_zero = true;
+      for (j = 0; j < DB_NUMERIC_BUF_SIZE * 2; j++)
+	{
+	  if (work_buf[j] != 0)
+	    {
+	      all_zero = false;
+	      break;
+	    }
+	}
+
+      if (all_zero)
+	{
+	  break;
+	}
+    }
 }
 
 /*
@@ -3255,26 +3202,22 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
 void
 numeric_coerce_int_to_num (int arg, DB_C_NUMERIC answer, bool * is_value_negative)
 {
-  int digit;
   unsigned int tmp_arg;
 
   tmp_arg = (arg < 0) ? -(unsigned int) arg : (unsigned int) arg;
-  if (is_value_negative != NULL)
+  if (is_value_negative)
     {
       *is_value_negative = (arg < 0);
     }
 
-  /* Copy the lower 32 bits into answer */
+  /* Copy the lower 32 bits into answer [16] ~ [13] (4 bytes) */
   answer[DB_NUMERIC_BUF_SIZE - 1] = ((tmp_arg) & 0xff);
   answer[DB_NUMERIC_BUF_SIZE - 2] = ((tmp_arg >> 8) & 0xff);
   answer[DB_NUMERIC_BUF_SIZE - 3] = ((tmp_arg >> 16) & 0xff);
   answer[DB_NUMERIC_BUF_SIZE - 4] = ((tmp_arg >> 24) & 0xff);
 
-  /* Pad extra bytes of answer accordingly */
-  for (digit = DB_NUMERIC_BUF_SIZE - 5; digit >= 0; digit--)
-    {
-      answer[digit] = 0;
-    }
+  /* Pad extra bytes of answer accordingly [0] ~ [12] (13 bytes) */
+  memset (answer, 0, DB_NUMERIC_BUF_SIZE - 4);
 }
 
 /*
@@ -3290,16 +3233,15 @@ numeric_coerce_int_to_num (int arg, DB_C_NUMERIC answer, bool * is_value_negativ
 void
 numeric_coerce_bigint_to_num (DB_BIGINT arg, DB_C_NUMERIC answer, bool * is_value_negative)
 {
-  int digit;
   UINT64 tmp_arg;
 
   tmp_arg = (arg < 0) ? -(UINT64) arg : (UINT64) arg;
-  if (is_value_negative != NULL)
+  if (is_value_negative)
     {
       *is_value_negative = (arg < 0);
     }
 
-  /* Copy the lower 64 bits into answer */
+  /* Copy the lower 64 bits into answer [16] ~ [9] (8 bytes) */
   answer[DB_NUMERIC_BUF_SIZE - 1] = ((tmp_arg) & 0xff);
   answer[DB_NUMERIC_BUF_SIZE - 2] = ((tmp_arg >> 8) & 0xff);
   answer[DB_NUMERIC_BUF_SIZE - 3] = ((tmp_arg >> 16) & 0xff);
@@ -3309,11 +3251,8 @@ numeric_coerce_bigint_to_num (DB_BIGINT arg, DB_C_NUMERIC answer, bool * is_valu
   answer[DB_NUMERIC_BUF_SIZE - 7] = ((tmp_arg >> 48) & 0xff);
   answer[DB_NUMERIC_BUF_SIZE - 8] = ((tmp_arg >> 56) & 0xff);
 
-  /* Pad extra bytes of answer accordingly */
-  for (digit = DB_NUMERIC_BUF_SIZE - 9; digit >= 0; digit--)
-    {
-      answer[digit] = 0;
-    }
+  /* Pad extra bytes of answer accordingly [0] ~ [8] (9 bytes) */
+  memset (answer, 0, DB_NUMERIC_BUF_SIZE - 8);
 }
 
 /*
@@ -3435,56 +3374,94 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer, c
  *   result(out): ptr to a DB_C_NUMERIC
  *   is_value_negative(out): sign of the value
  *
- * Note: This routine converts a character string that contains the positive
- * decimal digits of a numeric encoded as ASCII characters.
+ * Note: 
+ *   - Converts a character string containing decimal digits into a NUMERIC format.
+ *
+ *   - Implements Horner's Method for improved performance. Instead of multiplying
+ *     each digit by a power of 10 (a*10^n + b*10^(n-1) + ...), it iteratively 
+ *     accumulates the value using the formula: (...((a*10 + b)*10 + c)*10 + ...).
+ *     Example: 123 = ((1 * 10) + 2) * 10 + 3
+ *
+ *   - For optimal efficiency, the string is processed in 16-digit chunks (64-bit
+ *     arithmetic threshold) to minimize high-precision numeric additions.
  */
 void
 numeric_coerce_dec_str_to_num (const char *dec_str, DB_C_NUMERIC result, bool * is_value_negative)
 {
-  unsigned char big_chunk[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
-  int ntot_digits;
-  int ndigits;
-  int dec_dig;
-  int chunk_value;
-  char temp_buffer[10];
-  char *chunk;
-  bool is_negative = false;
-  bool has_non_zero = false;
+  int ntot_digits, ndigits;
+  uint64_t chunk_value;
+  bool is_negative = false, has_non_zero = false;
+  const char *curr = dec_str;
+#if 1
+  /* if numeric_add() is updated to support uint64 input directly, the coercion step can be removed to optimize performance */
+  unsigned char big_chunk[DB_NUMERIC_BUF_SIZE];
+#endif
 
-  /* Zero out the result */
   numeric_zero (result, DB_NUMERIC_BUF_SIZE);
-  /* Check for a negative number. Negative sign must be in the first decimal place */
-  if (*dec_str == '-')
+
+  if (*curr == '-')
     {
       is_negative = true;
-      dec_str++;
+      curr++;
     }
 
-  /* Loop through string reading 9 decimal digits at a time */
-  ntot_digits = strlen ((char *) dec_str);
-  chunk = (char *) dec_str + ntot_digits;
-  for (dec_dig = ntot_digits - 1; dec_dig >= 0; dec_dig -= 9)
+  ntot_digits = (int) strlen (curr);
+
+  /* fast path : bigint max(19) -1 = 18 */
+  if (ntot_digits <= 18)
     {
-      ndigits = MIN (dec_dig + 1, 9);
-      chunk -= ndigits;
-      memcpy (temp_buffer, chunk, ndigits);
-      temp_buffer[ndigits] = '\0';
-      chunk_value = (int) atol (temp_buffer);
+      uint64_t tmp_digits = 0;
+      while (*curr)
+	{
+	  tmp_digits = tmp_digits * 10 + (*curr++ - '0');
+	}
+
+      numeric_coerce_bigint_to_num (tmp_digits, result, NULL);
+
+      if (is_value_negative)
+	{
+	  *is_value_negative = (is_negative && tmp_digits > 0);
+	}
+      return;
+    }
+
+  /* maximize performance by processing in 16-digit chunks (uint64 threshold), 
+   * resulting in at most 3 iterations for 38-digit values. */
+  ndigits = ntot_digits % 16;
+  if (ndigits == 0 && ntot_digits > 0)
+    {
+      ndigits = 16;
+    }
+
+  while (ntot_digits > 0)
+    {
+      chunk_value = 0;
+      for (int i = 0; i < ndigits; i++)
+	{
+	  chunk_value = chunk_value * 10 + (*curr++ - '0');
+	}
+
       if (chunk_value != 0)
 	{
 	  has_non_zero = true;
-	  numeric_coerce_int_to_num (chunk_value, big_chunk, NULL);
-	  /* Scale the number if not first time through */
-	  if (dec_dig != ntot_digits - 1)
-	    {
-	      numeric_scale_dec (big_chunk, ntot_digits - dec_dig - 1, big_chunk);
-	    }
+#if 1
+	  /* if numeric_add() is updated to support uint64 input directly, the coercion step can be removed to optimize performance */
+	  numeric_coerce_bigint_to_num (chunk_value, big_chunk, NULL);
 	  numeric_add (big_chunk, result, result, DB_NUMERIC_BUF_SIZE);
+#else
+	  numeric_add (chunk_value, result, result, DB_NUMERIC_BUF_SIZE);
+#endif
+	}
+
+      ntot_digits -= ndigits;
+      if (ntot_digits > 0)
+	{
+	  float_numeric_mul_pow10 (result, DB_NUMERIC_BUF_SIZE, _gv_mul_normalize_pow10_lookup[15]);
+	  ndigits = 16;
 	}
     }
 
-  /* If negative, negate the result */
-  if (is_value_negative != NULL)
+  if (is_value_negative)
     {
       *is_value_negative = is_negative && has_non_zero;
     }
@@ -3497,59 +3474,66 @@ numeric_coerce_dec_str_to_num (const char *dec_str, DB_C_NUMERIC result, bool * 
  *   dec_str(out): returned string of decimal digits as ASCII chars
  *
  * Note: This routine converts a DB_C_NUMERIC into a character string that
- * contains the decimal digits of the numeric encoded as ASCII characters.
+ *       contains the decimal digits of the numeric encoded as ASCII characters.
+ *
+ *       it efficiently extracts digits using successive division by 10^16.
+ *
+ *       since a 17-byte (136-bit) numeric buffer represents up to approximately 
+ *       40 decimal digits, 3 iterations (reaching 48 digits) are sufficient 
+ *       to extract all significant digits.
+ *
+ *       the output is zero-padded to TWICE_NUM_MAX_PREC characters to maintain 
+ *       compatibility with existing CUBRID decimal formatting routines.
  */
 void
 numeric_coerce_num_to_dec_str (const DB_VALUE * num_value, char *dec_str)
 {
-  DB_C_NUMERIC num_ptr;
-  DEC_STRING *bit_value;
-  DEC_STRING result;
-  unsigned int i, j;
+  uint8_t work_buf[DB_NUMERIC_BUF_SIZE];
+  uint64_t chunk;
+  char *p_digits;
+  int i;
 
   assert (num_value);
+  assert (dec_str);
 
-  /* Check if the number is negative */
-  num_ptr = db_locate_numeric (num_value);
+  /* 1. handle negative sign */
   if (numeric_is_negative (num_value))
     {
-      *dec_str = '-';
-      dec_str++;
+      *dec_str++ = '-';
     }
 
-  /* Loop through the bits of the numeric building up string */
-  numeric_init_dec_str (&result);
-  for (i = 0; i < DB_NUMERIC_BUF_SIZE * 8; i += 8)
+  /* 2. pre-fill with '0' for legacy alignment */
+  memset (dec_str, '0', TWICE_NUM_MAX_PREC);
+  dec_str[TWICE_NUM_MAX_PREC] = '\0';
+
+  /* 3. fast exit for zero */
+  if (numeric_is_zero (db_locate_numeric (num_value)))
     {
-      if (num_ptr[i / 8] == 0)
-	{
-	  continue;
-	}
-      for (j = 0; j < 8; j++)
-	{
-	  if (numeric_is_bit_set (num_ptr, i + j))
-	    {
-	      bit_value = numeric_get_pow_of_2 ((DB_NUMERIC_BUF_SIZE * 8) - (i + j) - 1);
-	      numeric_add_dec_str (bit_value, &result, &result);
-	    }
-	}
+      return;
     }
 
-  /* Convert result into ASCII array */
-  for (i = 0; i < TWICE_NUM_MAX_PREC; i++)
+  /* 4. copy to local buffer for division */
+  memcpy (work_buf, db_locate_numeric (num_value), DB_NUMERIC_BUF_SIZE);
+
+  /* 5. successive division in 3 blocks of 16-digits
+   *    17-byte buffer capacity (~40 digits) < 3 iterations (48 digits) */
+  p_digits = dec_str + TWICE_NUM_MAX_PREC - 16;
+
+  for (i = 0; i < 3; i++)
     {
-      if (result.digits[i] == -1)
+      /* extract remaining digits as a single 64-bit integer */
+      chunk = float_numeric_div_pow10 (work_buf, DB_NUMERIC_BUF_SIZE, _gv_mul_normalize_pow10_lookup[15]);
+
+      /* convert and store 16 decimal digits as ASCII at once */
+      numeric_pack_digits4_ascii (p_digits, chunk);
+      p_digits -= 16;		/* move block unit to the left */
+
+      /* exit loop if no more digits to divide (prevent unnecessary 3rd iteration) */
+      if (numeric_is_zero (work_buf))
 	{
-	  result.digits[i] = 0;
+	  break;
 	}
-      assert (result.digits[i] >= 0);
-
-      *dec_str = result.digits[i] + '0';
-      dec_str++;
     }
-
-  /* Null terminate */
-  *dec_str = '\0';
 }
 
 void
@@ -4748,106 +4732,100 @@ numeric_coerce_num_to_num (const DB_VALUE * src_value, int src_prec, int src_sca
 			   DB_C_NUMERIC dest_num, bool * dest_num_is_negative)
 {
   int ret = NO_ERROR;
-  char num_string[NUMERIC_MAX_STRING_SIZE];
-  int scale_diff;
-  int orig_length;
-  int i, len;
+  int src_actual_prec = 0;
+  int final_prec = 0;
+  bool is_value_negative = false;
   bool round_up = false;
 
   assert (src_value);
   assert (dest_num_is_negative);
 
-  if (src_value == NULL)
-    {
-      return ER_FAILED;
-    }
+  is_value_negative = numeric_is_negative (src_value);
 
-  /* Check for trivial case */
+  /* 1. trivial case: copy immediately if no conversion is needed */
   if (dest_prec == DB_DEFAULT_NUMERIC_PRECISION || (src_prec <= dest_prec && src_scale == dest_scale))
     {
       numeric_copy (dest_num, db_locate_numeric (src_value));
-      *dest_num_is_negative = numeric_is_negative (src_value);
+      *dest_num_is_negative = is_value_negative;
       return NO_ERROR;
     }
 
-  /* Convert the src_num into a decimal string */
-  numeric_coerce_num_to_dec_str (src_value, num_string);
-  /* Scale the number */
-  if (src_scale < dest_scale)
-    {				/* add trailing zeroes */
-      scale_diff = dest_scale - src_scale;
-      if (scale_diff > DB_MAX_NUMERIC_SCALE)
-	{
-	  scale_diff = DB_MAX_NUMERIC_SCALE;
-	}
+  /* 2. for fixed numeric values, check the actual number of significant digits in the input. */
+  src_actual_prec = float_numeric_get_precision_digits (db_locate_numeric (src_value), DB_NUMERIC_BUF_SIZE);
 
-      orig_length = strlen (num_string);
-      for (i = 0; i < scale_diff; i++)
-	{
-	  num_string[orig_length + i] = '0';
-	}
-      num_string[orig_length + scale_diff] = '\0';
+  /* 3. fast zero check: if the significant digit count is 1 and the last byte of the buffer is 0, 
+   *    it is guaranteed to be zero (zero is treated as precision 1). */
+  if (src_actual_prec == 1 && (db_locate_numeric (src_value))[DB_NUMERIC_BUF_SIZE - 1] == 0)
+    {
+      numeric_zero (dest_num, DB_NUMERIC_BUF_SIZE);
+      *dest_num_is_negative = false;
+      return NO_ERROR;
     }
-  else if (dest_scale < src_scale)
-    {				/* Truncate and prepare for rounding */
-      scale_diff = src_scale - dest_scale;
-      if (scale_diff > DB_MAX_NUMERIC_SCALE)
-	{
-	  scale_diff = DB_MAX_NUMERIC_SCALE;
-	}
 
-      orig_length = strlen (num_string);
-      if (num_string[orig_length - scale_diff] >= '5' && num_string[orig_length - scale_diff] <= '9')
+  int scale_diff = dest_scale - src_scale;
+  int required_prec = src_actual_prec + scale_diff;
+
+  /* 4. pre-check for overflow and underflow (guaranteed zero). */
+  if (required_prec > dest_prec)
+    {
+      ret = ER_IT_DATA_OVERFLOW;
+      goto exit_on_error;
+    }
+  else if (required_prec < 0)
+    {
+      numeric_zero (dest_num, DB_NUMERIC_BUF_SIZE);
+      *dest_num_is_negative = false;
+      return NO_ERROR;
+    }
+
+  /* 5. prepare a temporary working buffer (17 bytes) and copy. */
+  uint8_t calc_buf[DB_NUMERIC_BUF_SIZE];
+  (void) float_numeric_pad (db_locate_numeric (src_value), DB_NUMERIC_BUF_SIZE, calc_buf, DB_NUMERIC_BUF_SIZE);
+
+  /* 6. scale adjustment (aligning the decimal position). */
+  if (scale_diff > 0)
+    {
+      /* increase scale: multiply by 10^delta. */
+      float_numeric_mul_normalize (calc_buf, DB_NUMERIC_BUF_SIZE, scale_diff);
+    }
+  else if (scale_diff < 0)
+    {
+      /* decrease scale: perform truncation and rounding decisions. */
+      int drop = -scale_diff;
+      uint8_t last_digit = float_numeric_div_normalize (calc_buf, DB_NUMERIC_BUF_SIZE, drop);
+
+      /* half-up rounding */
+      if (last_digit >= 5)
 	{
+	  (void) float_numeric_increment (calc_buf, DB_NUMERIC_BUF_SIZE, 1);
 	  round_up = true;
 	}
-      num_string[orig_length - scale_diff] = '\0';
     }
 
-  /*
-   * Check to see if the scaled number 'fits' into the desired precision
-   * and scaling by looking for significant digits prior to the last
-   * 'precision' digits.
-   */
-  for (i = 0, len = strlen (num_string) - dest_prec; i < len; i++)
+  /* 7. determine the final precision (final_prec) and re-check for overflow during rounding. */
+  final_prec = (required_prec == 0) ? 1 : required_prec;
+  if (round_up)
     {
-      if (num_string[i] >= '1' && num_string[i] <= '9')
+      /* scan the actual buffer to accurately check for precision changes after rounding (e.g., 9.9 -> 10.0). */
+      final_prec = float_numeric_get_decimal_digit (calc_buf, DB_NUMERIC_BUF_SIZE);
+      if (final_prec > dest_prec)
 	{
 	  ret = ER_IT_DATA_OVERFLOW;
 	  goto exit_on_error;
 	}
     }
 
-  /* only when all number are 9, round up will led overflow. */
-  if (round_up)
+  /* 8. save result and prevent negative zero. */
+  numeric_copy (dest_num, calc_buf);
+
+  /* if final_prec is 1 and LSB is 0, it's always zero (covers cases where computation result becomes zero). */
+  if (is_value_negative && final_prec == 1 && dest_num[DB_NUMERIC_BUF_SIZE - 1] == 0)
     {
-      bool is_all_nine = true;
-      for (len = strlen (num_string), i = len - dest_prec; i < len; i++)
-	{
-	  if (num_string[i] != '9')
-	    {
-	      is_all_nine = false;
-	      break;
-	    }
-	}
-      if (is_all_nine)
-	{
-	  ret = ER_IT_DATA_OVERFLOW;
-	  goto exit_on_error;
-	}
+      is_value_negative = false;
     }
+  *dest_num_is_negative = is_value_negative;
 
-  /* Convert scaled string into destination */
-  numeric_coerce_dec_str_to_num (num_string, dest_num, NULL);
-  /* Round up, if necessary */
-  if (round_up)
-    {
-      numeric_increase (dest_num);
-    }
-
-  *dest_num_is_negative = (numeric_is_zero (dest_num)) ? false : numeric_is_negative (src_value);
-
-  return ret;
+  return NO_ERROR;
 
 exit_on_error:
 
@@ -5252,6 +5230,44 @@ float_numeric_compare_rem_round_up (const uint8_t * rem, const uint8_t * div, in
     }
 
   return 0;
+}
+
+/*
+ * numeric_pack_digits4_ascii () -
+ *   return:
+ *   buf(out) : buffer to store ASCII digits
+ *   val(in)  : 64-bit integer value (0 ~ 10^16 - 1)
+ * 
+ * Note:
+ *   - Converts 16-digit decimal value to ASCII string in O(1) time.
+ *   - Uses 64-bit division once and 32-bit division twice.
+ *   - Uses LUT for fast ASCII conversion (no loops).
+ */
+static inline void
+numeric_pack_digits4_ascii (char *buf, uint64_t val)
+{
+  uint64_t h8, l8;
+  uint32_t digits[4];
+
+  assert (buf);
+
+  /* step 1: split 16-digit value into two 8-digit groups (one 64-bit division).
+   * separates the total 16 digits (val) into upper 8 digits (h8) and lower 8 digits (l8). */
+  h8 = val / 100000000ULL;
+  l8 = val % 100000000ULL;
+
+  /* step 2: split 8-digit groups into 4-digit blocks (32-bit math for better parallelism). */
+  digits[0] = (uint32_t) (h8 / 10000);
+  digits[1] = (uint32_t) (h8 % 10000);
+  digits[2] = (uint32_t) (l8 / 10000);
+  digits[3] = (uint32_t) (l8 % 10000);
+
+  /* step 3: reference LUT to pack 4-byte ASCII blocks at once.
+   * stores d1, d2, d3, d4 in sequence to the buffer starting from buf+0. */
+  *(uint32_t *) (buf + 0) = numeric_get_digits4_ascii (digits[0]);
+  *(uint32_t *) (buf + 4) = numeric_get_digits4_ascii (digits[1]);
+  *(uint32_t *) (buf + 8) = numeric_get_digits4_ascii (digits[2]);
+  *(uint32_t *) (buf + 12) = numeric_get_digits4_ascii (digits[3]);
 }
 
 /*
@@ -5734,7 +5750,8 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
   /* it should not be static because the parameter could be changed without broker restart */
   bool oracle_compat_number = prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR);
 
-  assert (val != NULL && buf != NULL);
+  assert (val);
+  assert (buf);
 
   if (DB_IS_NULL (val))
     {
