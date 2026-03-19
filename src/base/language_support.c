@@ -5312,22 +5312,28 @@ lang_init_common_en_cs (COLL_DATA * coll_data)
 {
   int i;
   static bool is_common_en_cs_init = false;
+  static pthread_mutex_t en_cs_init_lock = PTHREAD_MUTEX_INITIALIZER;
 
   if (is_common_en_cs_init)
     {
       return;
     }
 
-  for (i = 0; i < coll_data->w_count; i++)
+  pthread_mutex_lock (&en_cs_init_lock);
+  if (is_common_en_cs_init)
     {
-      coll_data->weights_ti[i] = coll_data->weights[i] = i;
-      coll_data->next_cp_ti[i] = coll_data->next_cp[i] = i + 1;
+      for (i = 0; i < coll_data->w_count; i++)
+	{
+	  coll_data->weights_ti[i] = coll_data->weights[i] = i;
+	  coll_data->next_cp_ti[i] = coll_data->next_cp[i] = i + 1;
+	}
+
+      coll_data->weights_ti[32] = 0;
+      coll_data->next_cp_ti[32] = 1;
+
+      is_common_en_cs_init = true;
     }
-
-  coll_data->weights_ti[32] = 0;
-  coll_data->next_cp_ti[32] = 1;
-
-  is_common_en_cs_init = true;
+  pthread_mutex_unlock (&en_cs_init_lock);
 }
 
 /*
@@ -5342,36 +5348,42 @@ lang_init_common_en_ci (COLL_DATA * coll_data)
 {
   int i;
   static bool is_common_en_ci_init = false;
+  static pthread_mutex_t en_ci_init_lock = PTHREAD_MUTEX_INITIALIZER;
 
   if (is_common_en_ci_init)
     {
       return;
     }
 
-  for (i = 0; i < coll_data->w_count; i++)
+  pthread_mutex_lock (&en_ci_init_lock);
+  if (is_common_en_ci_init)
     {
-      coll_data->weights_ti[i] = coll_data->weights[i] = i;
-      coll_data->next_cp_ti[i] = coll_data->next_cp[i] = i + 1;
+      for (i = 0; i < coll_data->w_count; i++)
+	{
+	  coll_data->weights_ti[i] = coll_data->weights[i] = i;
+	  coll_data->next_cp_ti[i] = coll_data->next_cp[i] = i + 1;
+	}
+
+      for (i = 'a'; i <= (int) 'z'; i++)
+	{
+	  coll_data->weights_ti[i] = coll_data->weights[i] = i - ('a' - 'A');
+	  coll_data->next_cp_ti[i] = coll_data->next_cp[i] = i + 1 - ('a' - 'A');
+	}
+
+      coll_data->next_cp['z'] = coll_data->next_cp['Z'];
+      coll_data->next_cp['a' - 1] = coll_data->next_cp['A' - 1];
+
+      coll_data->next_cp_ti['z'] = coll_data->next_cp_ti['Z'];
+      coll_data->next_cp_ti['a' - 1] = coll_data->next_cp_ti['A' - 1];
+
+      /* for ignore trailing space */
+      coll_data->weights_ti[32] = 0;
+      coll_data->next_cp_ti[32] = 1;
+
+
+      is_common_en_ci_init = true;
     }
-
-  for (i = 'a'; i <= (int) 'z'; i++)
-    {
-      coll_data->weights_ti[i] = coll_data->weights[i] = i - ('a' - 'A');
-      coll_data->next_cp_ti[i] = coll_data->next_cp[i] = i + 1 - ('a' - 'A');
-    }
-
-  coll_data->next_cp['z'] = coll_data->next_cp['Z'];
-  coll_data->next_cp['a' - 1] = coll_data->next_cp['A' - 1];
-
-  coll_data->next_cp_ti['z'] = coll_data->next_cp_ti['Z'];
-  coll_data->next_cp_ti['a' - 1] = coll_data->next_cp_ti['A' - 1];
-
-  /* for ignore trailing space */
-  coll_data->weights_ti[32] = 0;
-  coll_data->next_cp_ti[32] = 1;
-
-
-  is_common_en_ci_init = true;
+  pthread_mutex_unlock (&en_ci_init_lock);
 }
 
 /*
