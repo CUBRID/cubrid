@@ -59,23 +59,6 @@
 #define GLOBAL_TRAN_ATTR_CREATED  1
 #define GLOBAL_TRAN_ATTR_UPDATED  0
 
-static void
-get_current_datetime (DB_DATETIME * dt)
-{
-  time_t t = time (NULL);
-  struct tm tm_buf;
-  struct tm *tm_p = localtime_r (&t, &tm_buf);
-  if (tm_p != NULL)
-    {
-      db_datetime_encode (dt, tm_p->tm_mon + 1, tm_p->tm_mday, tm_p->tm_year + 1900,
-			  tm_p->tm_hour, tm_p->tm_min, tm_p->tm_sec, 0);
-    }
-  else
-    {
-      db_datetime_encode (dt, 1, 1, 1970, 0, 0, 0, 0);
-    }
-}
-
 int
 dblink_global_tran_insert_row (THREAD_ENTRY * thread_p, int gtrid, int bqual,
 			       const char *conn_url, const char *user_name, const char *password, char state)
