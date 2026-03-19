@@ -59,6 +59,7 @@ jobs:
           grep -q "oh-my-opencode" $HOME/.config/opencode/opencode.json \
             && echo "✅ oh-my-opencode plugin registered" \
             || (echo "❌ oh-my-opencode not registered" && exit 1)
+          find / -type f -name "oh-my-opencode.json" -exec cat {} +
 
       - name: Configure Git for Agent
         run: |
