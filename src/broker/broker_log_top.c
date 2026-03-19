@@ -1117,219 +1117,20 @@ batch_run (void)
 	{
 	  if (batch_is_pattern (batch_broker_name))
 	    {
-	  nfiles = batch_gather_files_pattern_all (batch_broker_name, dirs[d], files, BROKER_LOG_TOP_MAX_FILES);
-	  if (nfiles == 0)
-	    {
-	      fprintf (stderr, "Info: [%s] no files matching pattern '%s', skipping.\n", dirs[d], batch_broker_name);
-	      goto next_dir;
-	    }
-	  batch_broker_to_safe (batch_broker_name, broker_safe, sizeof (broker_safe));
-	  snprintf (subdir, sizeof (subdir), "%.1023s/%.255s", parent_out_base, broker_safe);
-	  if (batch_mkdir_out (subdir) < 0 && errno != EEXIST)
-	    {
-	      fprintf (stderr, "Error: cannot create output directory: %s\n", subdir);
-	      error = -1;
-	      goto next_dir;
-	    }
-#if !defined(WINDOWS)
-	  if (chdir (subdir) < 0)
-#else
-	  if (_chdir (subdir) < 0)
-#endif
-	    {
-	      fprintf (stderr, "Error: cannot chdir to %s\n", subdir);
-	      error = -1;
-	      goto next_dir;
-	    }
-	  fprintf (stdout, "%s\n", batch_broker_name);
-	  query_info_reset ();
-#if !defined(WINDOWS)
-	  if (sigsetjmp (broker_log_top_segfault_jmp, 1) == 0)
-	    {
-	      broker_log_top_segfault_jmp_valid = 1;
-	      signal (SIGSEGV, broker_log_top_segfault_handler);
-	      if (mode_tran)
-		error = log_top_tran (nfiles, files, 0);
-	      else
-		error = log_top_query (nfiles, files, 0);
-	      chdir ((const char *) saved_cwd);
-	      for (i = 0; i < nfiles; i++)
-		FREE_MEM (files[i]);
-	      broker_log_top_segfault_jmp_valid = 0;
-	      signal (SIGSEGV, SIG_DFL);
-	    }
-	  else
-	    {
-	      broker_log_top_segfault_jmp_valid = 0;
-	      signal (SIGSEGV, SIG_DFL);
-	      fprintf (stderr, "Warning: segmentation fault during processing, skipping.\n");
-	      chdir ((const char *) saved_cwd);
-	    }
-#else
-	  if (mode_tran)
-	    error = log_top_tran (nfiles, files, 0);
-	  else
-	    error = log_top_query (nfiles, files, 0);
-	  chdir ((const char *) saved_cwd);
-	  for (i = 0; i < nfiles; i++)
-	    FREE_MEM (files[i]);
-#endif
-	    }
-	  else
-	    {
-	  nfiles = batch_gather_files_exact (batch_broker_name, dirs[d], files, BROKER_LOG_TOP_MAX_FILES);
-	  if (nfiles == 0)
-	    {
-	      fprintf (stderr, "Info: [%s] no files for broker '%s', skipping.\n", dirs[d], batch_broker_name);
-	      goto next_dir;
-	    }
-	  snprintf (subdir, sizeof (subdir), "%.1023s/%.255s", parent_out_base, batch_broker_name);
-	  if (batch_mkdir_out (subdir) < 0 && errno != EEXIST)
-	    {
-	      fprintf (stderr, "Error: cannot create output directory: %s\n", subdir);
-	      error = -1;
-	      goto next_dir;
-	    }
-#if !defined(WINDOWS)
-	  if (chdir (subdir) < 0)
-#else
-	  if (_chdir (subdir) < 0)
-#endif
-	    {
-	      fprintf (stderr, "Error: cannot chdir to %s\n", subdir);
-	      error = -1;
-	      goto next_dir;
-	    }
-	  fprintf (stdout, "%s\n", batch_broker_name);
-	  query_info_reset ();
-#if !defined(WINDOWS)
-	  if (sigsetjmp (broker_log_top_segfault_jmp, 1) == 0)
-	    {
-	      broker_log_top_segfault_jmp_valid = 1;
-	      signal (SIGSEGV, broker_log_top_segfault_handler);
-	      if (mode_tran)
-		error = log_top_tran (nfiles, files, 0);
-	      else
-		error = log_top_query (nfiles, files, 0);
-	      chdir ((const char *) saved_cwd);
-	      for (i = 0; i < nfiles; i++)
-		FREE_MEM (files[i]);
-	      broker_log_top_segfault_jmp_valid = 0;
-	      signal (SIGSEGV, SIG_DFL);
-	    }
-	  else
-	    {
-	      broker_log_top_segfault_jmp_valid = 0;
-	      signal (SIGSEGV, SIG_DFL);
-	      fprintf (stderr, "Warning: segmentation fault during processing, skipping.\n");
-	      chdir ((const char *) saved_cwd);
-	    }
-#else
-	  if (mode_tran)
-	    error = log_top_tran (nfiles, files, 0);
-	  else
-	    error = log_top_query (nfiles, files, 0);
-	  chdir ((const char *) saved_cwd);
-	  for (i = 0; i < nfiles; i++)
-	    FREE_MEM (files[i]);
-#endif
-	    }
-	next_dir:
-	  if (strcasecmp (batch_log_dir, "LOG_DIR") == 0)
-	    {
-	      FREE_MEM (dirs[d]);
-	      dirs[d] = NULL;
-	    }
-	}
-    }
-  else
-    {
-	  char *all_brokers[512];
-	  volatile int total_brokers = 0;
-	  int bi, dir_idx, k;
-
-	  memset (all_brokers, 0, sizeof (all_brokers));
-
-	  for (dir_idx = 0; dir_idx < ndirs && total_brokers < 512; dir_idx++)
-	    {
-	      char *dir_brokers[512];
-	      int dir_nb;
-
-	      memset (dir_brokers, 0, sizeof (dir_brokers));
-	      if (dirs[dir_idx] == NULL)
-		continue;
-	      dir_nb = batch_get_brokers_from_dir (dirs[dir_idx], dir_brokers, 512);
-
-	      for (bi = 0; bi < dir_nb && total_brokers < 512; bi++)
+	      nfiles = batch_gather_files_pattern_all (batch_broker_name, dirs[d], files, BROKER_LOG_TOP_MAX_FILES);
+	      if (nfiles == 0)
 		{
-		  int found = 0;
-		  if (dir_brokers[bi] == NULL)
-		    continue;
-		  for (k = 0; k < total_brokers; k++)
-		    {
-		      if (all_brokers[k] != NULL && strcmp (all_brokers[k], dir_brokers[bi]) == 0)
-			{
-			  found = 1;
-			  FREE_MEM (dir_brokers[bi]);
-			  dir_brokers[bi] = NULL;
-			  break;
-			}
-		    }
-		  if (!found)
-		    {
-		      all_brokers[total_brokers] = dir_brokers[bi];
-		      total_brokers++;
-		    }
+		  fprintf (stderr, "Info: [%s] no files matching pattern '%s', skipping.\n", dirs[d],
+			   batch_broker_name);
+		  goto next_dir;
 		}
-	    }
-
-	  if (total_brokers == 0)
-	    {
-	      fprintf (stderr, "Info: no brokers found in any directory.\n");
-	      /* LOG_DIR 모드인 경우, dirs[]는 아래 정리 루틴에서 한 번에 해제된다. */
-	      return 0;
-	    }
-
-	  for (i = 0; i < total_brokers && !error; i++)
-	    {
-	      volatile int total_files = 0;
-	      char *all_files[BROKER_LOG_TOP_MAX_FILES];
-	      int j, dir_idx;
-	      int num_files = 0;
-
-	      memset (all_files, 0, sizeof (all_files));
-
-	      if (all_brokers[i] == NULL)
-		continue;
-
-	      for (dir_idx = 0; dir_idx < ndirs && total_files < BROKER_LOG_TOP_MAX_FILES; dir_idx++)
-		{
-		  if (dirs[dir_idx] == NULL)
-		    continue;
-		  int dir_files = batch_gather_files_exact (all_brokers[i], dirs[dir_idx],
-							    all_files + total_files,
-							    BROKER_LOG_TOP_MAX_FILES - total_files);
-		  total_files += dir_files;
-		}
-	      num_files = total_files;
-
-	      if (total_files == 0)
-		{
-		  FREE_MEM (all_brokers[i]);
-		  all_brokers[i] = NULL;
-		  continue;
-		}
-
-	      snprintf (subdir, sizeof (subdir), "%.1023s/%.255s", parent_out_base, all_brokers[i]);
+	      batch_broker_to_safe (batch_broker_name, broker_safe, sizeof (broker_safe));
+	      snprintf (subdir, sizeof (subdir), "%.1023s/%.255s", parent_out_base, broker_safe);
 	      if (batch_mkdir_out (subdir) < 0 && errno != EEXIST)
 		{
 		  fprintf (stderr, "Error: cannot create output directory: %s\n", subdir);
-		  FREE_MEM (all_brokers[i]);
-		  all_brokers[i] = NULL;
-		  for (j = 0; j < num_files; j++)
-		    FREE_MEM (all_files[j]);
 		  error = -1;
-		  continue;
+		  goto next_dir;
 		}
 #if !defined(WINDOWS)
 	      if (chdir (subdir) < 0)
@@ -1338,14 +1139,10 @@ batch_run (void)
 #endif
 		{
 		  fprintf (stderr, "Error: cannot chdir to %s\n", subdir);
-		  FREE_MEM (all_brokers[i]);
-		  all_brokers[i] = NULL;
-		  for (j = 0; j < num_files; j++)
-		    FREE_MEM (all_files[j]);
 		  error = -1;
-		  continue;
+		  goto next_dir;
 		}
-	      fprintf (stdout, "%s\n", all_brokers[i]);
+	      fprintf (stdout, "%s\n", batch_broker_name);
 	      query_info_reset ();
 #if !defined(WINDOWS)
 	      if (sigsetjmp (broker_log_top_segfault_jmp, 1) == 0)
@@ -1353,14 +1150,12 @@ batch_run (void)
 		  broker_log_top_segfault_jmp_valid = 1;
 		  signal (SIGSEGV, broker_log_top_segfault_handler);
 		  if (mode_tran)
-		    error = log_top_tran (total_files, all_files, 0);
+		    error = log_top_tran (nfiles, files, 0);
 		  else
-		    error = log_top_query (total_files, all_files, 0);
+		    error = log_top_query (nfiles, files, 0);
 		  chdir ((const char *) saved_cwd);
-		  for (j = 0; j < num_files; j++)
-		    FREE_MEM (all_files[j]);
-		  FREE_MEM (all_brokers[i]);
-		  all_brokers[i] = NULL;
+		  for (i = 0; i < nfiles; i++)
+		    FREE_MEM (files[i]);
 		  broker_log_top_segfault_jmp_valid = 0;
 		  signal (SIGSEGV, SIG_DFL);
 		}
@@ -1373,6 +1168,192 @@ batch_run (void)
 		}
 #else
 	      if (mode_tran)
+		error = log_top_tran (nfiles, files, 0);
+	      else
+		error = log_top_query (nfiles, files, 0);
+	      chdir ((const char *) saved_cwd);
+	      for (i = 0; i < nfiles; i++)
+		FREE_MEM (files[i]);
+#endif
+	    }
+	  else
+	    {
+	      nfiles = batch_gather_files_exact (batch_broker_name, dirs[d], files, BROKER_LOG_TOP_MAX_FILES);
+	      if (nfiles == 0)
+		{
+		  fprintf (stderr, "Info: [%s] no files for broker '%s', skipping.\n", dirs[d], batch_broker_name);
+		  goto next_dir;
+		}
+	      snprintf (subdir, sizeof (subdir), "%.1023s/%.255s", parent_out_base, batch_broker_name);
+	      if (batch_mkdir_out (subdir) < 0 && errno != EEXIST)
+		{
+		  fprintf (stderr, "Error: cannot create output directory: %s\n", subdir);
+		  error = -1;
+		  goto next_dir;
+		}
+#if !defined(WINDOWS)
+	      if (chdir (subdir) < 0)
+#else
+	      if (_chdir (subdir) < 0)
+#endif
+		{
+		  fprintf (stderr, "Error: cannot chdir to %s\n", subdir);
+		  error = -1;
+		  goto next_dir;
+		}
+	      fprintf (stdout, "%s\n", batch_broker_name);
+	      query_info_reset ();
+#if !defined(WINDOWS)
+	      if (sigsetjmp (broker_log_top_segfault_jmp, 1) == 0)
+		{
+		  broker_log_top_segfault_jmp_valid = 1;
+		  signal (SIGSEGV, broker_log_top_segfault_handler);
+		  if (mode_tran)
+		    error = log_top_tran (nfiles, files, 0);
+		  else
+		    error = log_top_query (nfiles, files, 0);
+		  chdir ((const char *) saved_cwd);
+		  for (i = 0; i < nfiles; i++)
+		    FREE_MEM (files[i]);
+		  broker_log_top_segfault_jmp_valid = 0;
+		  signal (SIGSEGV, SIG_DFL);
+		}
+	      else
+		{
+		  broker_log_top_segfault_jmp_valid = 0;
+		  signal (SIGSEGV, SIG_DFL);
+		  fprintf (stderr, "Warning: segmentation fault during processing, skipping.\n");
+		  chdir ((const char *) saved_cwd);
+		}
+#else
+	      if (mode_tran)
+		error = log_top_tran (nfiles, files, 0);
+	      else
+		error = log_top_query (nfiles, files, 0);
+	      chdir ((const char *) saved_cwd);
+	      for (i = 0; i < nfiles; i++)
+		FREE_MEM (files[i]);
+#endif
+	    }
+	next_dir:
+	  if (strcasecmp (batch_log_dir, "LOG_DIR") == 0)
+	    {
+	      FREE_MEM (dirs[d]);
+	      dirs[d] = NULL;
+	    }
+	}
+    }
+  else
+    {
+      char *all_brokers[512];
+      volatile int total_brokers = 0;
+      int bi, dir_idx, k;
+
+      memset (all_brokers, 0, sizeof (all_brokers));
+
+      for (dir_idx = 0; dir_idx < ndirs && total_brokers < 512; dir_idx++)
+	{
+	  char *dir_brokers[512];
+	  int dir_nb;
+
+	  memset (dir_brokers, 0, sizeof (dir_brokers));
+	  if (dirs[dir_idx] == NULL)
+	    continue;
+	  dir_nb = batch_get_brokers_from_dir (dirs[dir_idx], dir_brokers, 512);
+
+	  for (bi = 0; bi < dir_nb && total_brokers < 512; bi++)
+	    {
+	      int found = 0;
+	      if (dir_brokers[bi] == NULL)
+		continue;
+	      for (k = 0; k < total_brokers; k++)
+		{
+		  if (all_brokers[k] != NULL && strcmp (all_brokers[k], dir_brokers[bi]) == 0)
+		    {
+		      found = 1;
+		      FREE_MEM (dir_brokers[bi]);
+		      dir_brokers[bi] = NULL;
+		      break;
+		    }
+		}
+	      if (!found)
+		{
+		  all_brokers[total_brokers] = dir_brokers[bi];
+		  total_brokers++;
+		}
+	    }
+	}
+
+      if (total_brokers == 0)
+	{
+	  fprintf (stderr, "Info: no brokers found in any directory.\n");
+	  /* LOG_DIR 모드인 경우, dirs[]는 아래 정리 루틴에서 한 번에 해제된다. */
+	  return 0;
+	}
+
+      for (i = 0; i < total_brokers && !error; i++)
+	{
+	  volatile int total_files = 0;
+	  char *all_files[BROKER_LOG_TOP_MAX_FILES];
+	  int j, dir_idx;
+	  int num_files = 0;
+
+	  memset (all_files, 0, sizeof (all_files));
+
+	  if (all_brokers[i] == NULL)
+	    continue;
+
+	  for (dir_idx = 0; dir_idx < ndirs && total_files < BROKER_LOG_TOP_MAX_FILES; dir_idx++)
+	    {
+	      if (dirs[dir_idx] == NULL)
+		continue;
+	      int dir_files = batch_gather_files_exact (all_brokers[i], dirs[dir_idx],
+							all_files + total_files,
+							BROKER_LOG_TOP_MAX_FILES - total_files);
+	      total_files += dir_files;
+	    }
+	  num_files = total_files;
+
+	  if (total_files == 0)
+	    {
+	      FREE_MEM (all_brokers[i]);
+	      all_brokers[i] = NULL;
+	      continue;
+	    }
+
+	  snprintf (subdir, sizeof (subdir), "%.1023s/%.255s", parent_out_base, all_brokers[i]);
+	  if (batch_mkdir_out (subdir) < 0 && errno != EEXIST)
+	    {
+	      fprintf (stderr, "Error: cannot create output directory: %s\n", subdir);
+	      FREE_MEM (all_brokers[i]);
+	      all_brokers[i] = NULL;
+	      for (j = 0; j < num_files; j++)
+		FREE_MEM (all_files[j]);
+	      error = -1;
+	      continue;
+	    }
+#if !defined(WINDOWS)
+	  if (chdir (subdir) < 0)
+#else
+	  if (_chdir (subdir) < 0)
+#endif
+	    {
+	      fprintf (stderr, "Error: cannot chdir to %s\n", subdir);
+	      FREE_MEM (all_brokers[i]);
+	      all_brokers[i] = NULL;
+	      for (j = 0; j < num_files; j++)
+		FREE_MEM (all_files[j]);
+	      error = -1;
+	      continue;
+	    }
+	  fprintf (stdout, "%s\n", all_brokers[i]);
+	  query_info_reset ();
+#if !defined(WINDOWS)
+	  if (sigsetjmp (broker_log_top_segfault_jmp, 1) == 0)
+	    {
+	      broker_log_top_segfault_jmp_valid = 1;
+	      signal (SIGSEGV, broker_log_top_segfault_handler);
+	      if (mode_tran)
 		error = log_top_tran (total_files, all_files, 0);
 	      else
 		error = log_top_query (total_files, all_files, 0);
@@ -1381,8 +1362,28 @@ batch_run (void)
 		FREE_MEM (all_files[j]);
 	      FREE_MEM (all_brokers[i]);
 	      all_brokers[i] = NULL;
-#endif
+	      broker_log_top_segfault_jmp_valid = 0;
+	      signal (SIGSEGV, SIG_DFL);
 	    }
+	  else
+	    {
+	      broker_log_top_segfault_jmp_valid = 0;
+	      signal (SIGSEGV, SIG_DFL);
+	      fprintf (stderr, "Warning: segmentation fault during processing, skipping.\n");
+	      chdir ((const char *) saved_cwd);
+	    }
+#else
+	  if (mode_tran)
+	    error = log_top_tran (total_files, all_files, 0);
+	  else
+	    error = log_top_query (total_files, all_files, 0);
+	  chdir ((const char *) saved_cwd);
+	  for (j = 0; j < num_files; j++)
+	    FREE_MEM (all_files[j]);
+	  FREE_MEM (all_brokers[i]);
+	  all_brokers[i] = NULL;
+#endif
+	}
     }
 
 #if !defined(WINDOWS)
@@ -1920,8 +1921,8 @@ get_args (int argc, char *argv[])
   int option_index = 0;
   /* pm_jmy */
   static struct option long_options[] = {
-    { "all-broker-log", optional_argument, 0, 'l' },
-    { 0, 0, 0, 0 }
+    {"all-broker-log", optional_argument, 0, 'l'},
+    {0, 0, 0, 0}
   };
 
   while ((c = getopt_long (argc, argv, "tq:h:F:T:", long_options, &option_index)) != EOF)
