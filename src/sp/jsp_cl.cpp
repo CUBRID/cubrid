@@ -242,7 +242,7 @@ jsp_find_stored_procedure_code (const char *name)
   AU_DISABLE (save);
 
   db_make_string (&value, name);
-  mop = db_find_unique (db_find_class (SP_CODE_CLASS_NAME), SP_ATTR_CLS_NAME, &value);
+  mop = db_find_unique (db_find_class (SP_CODE_CLASS_NAME), SP_CODE_ATTR_NAME, &value);
 
   if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
     {
@@ -535,7 +535,7 @@ jsp_get_name (MOP mop_p)
   AU_DISABLE (save);
 
   /* check type */
-  int err = db_get (mop_p, SP_ATTR_NAME, &value);
+  int err = db_get (mop_p, SP_ATTR_SP_NAME, &value);
   if (err != NO_ERROR)
     {
       AU_ENABLE (save);
@@ -1805,7 +1805,7 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
       goto error;
     }
 
-  err = db_get (code_mop, SP_ATTR_SOURCE_CODE, &scode_val);
+  err = db_get (code_mop, SP_CODE_ATTR_SCODE, &scode_val);
   if (err != NO_ERROR)
     {
       goto error;

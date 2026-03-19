@@ -47,15 +47,15 @@ static sp_code_attr_map_type attr_idx_map;
 static void
 sp_code_attr_init ()
 {
-  attr_idx_map [SP_ATTR_CLS_NAME] = SPC_ATTR_NAME_INDEX;
-  attr_idx_map [SP_ATTR_TIMESTAMP] = SPC_ATTR_CREATED_TIME;
+  attr_idx_map [SP_CODE_ATTR_NAME] = SPC_ATTR_NAME_INDEX;
+  attr_idx_map [SP_CODE_ATTR_CREATED_TIME] = SPC_ATTR_CREATED_TIME;
   attr_idx_map [SP_ATTR_OWNER] = SPC_ATTR_OWNER_INDEX;
-  attr_idx_map [SP_ATTR_IS_STATIC] = SPC_ATTR_IS_STATIC_INDEX;
+  attr_idx_map [SP_CODE_ATTR_IS_STATIC] = SPC_ATTR_IS_STATIC_INDEX;
   attr_idx_map [SP_ATTR_IS_SYSTEM_GENERATED] = SPC_ATTR_IS_SYSTEM_GENERATED_INDEX;
-  attr_idx_map [SP_ATTR_SOURCE_TYPE] = SPC_ATTR_STYPE_INDEX;
-  attr_idx_map [SP_ATTR_SOURCE_CODE] = SPC_ATTR_SCODE_INDEX;
-  attr_idx_map [SP_ATTR_OBJECT_TYPE] = SPC_ATTR_OTYPE_INDEX;
-  attr_idx_map [SP_ATTR_OBJECT_CODE] = SPC_ATTR_OCODE_INDEX;
+  attr_idx_map [SP_CODE_ATTR_STYPE] = SPC_ATTR_STYPE_INDEX;
+  attr_idx_map [SP_CODE_ATTR_SCODE] = SPC_ATTR_SCODE_INDEX;
+  attr_idx_map [SP_CODE_ATTR_OTYPE] = SPC_ATTR_OTYPE_INDEX;
+  attr_idx_map [SP_CODE_ATTR_OCODE] = SPC_ATTR_OCODE_INDEX;
 }
 
 static int

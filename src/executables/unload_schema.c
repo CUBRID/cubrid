@@ -4357,10 +4357,10 @@ emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg
 
       arg = db_get_object (&arg_val);
 
-      if ((err = db_get (arg, SP_ATTR_ARG_NAME, &arg_name_val)) != NO_ERROR
-	  || (err = db_get (arg, SP_ATTR_MODE, &arg_mode_val)) != NO_ERROR
-	  || (err = db_get (arg, SP_ATTR_DATA_TYPE, &arg_type_val)) != NO_ERROR
-	  || (err = db_get (arg, SP_ATTR_ARG_COMMENT, &arg_comment_val)) != NO_ERROR)
+      if ((err = db_get (arg, SP_ARG_ATTR_ARG_NAME, &arg_name_val)) != NO_ERROR
+	  || (err = db_get (arg, SP_ARG_ATTR_MODE, &arg_mode_val)) != NO_ERROR
+	  || (err = db_get (arg, SP_ARG_ATTR_DATA_TYPE, &arg_type_val)) != NO_ERROR
+	  || (err = db_get (arg, SP_ARG_ATTR_COMMENT, &arg_comment_val)) != NO_ERROR)
 	{
 	  err_count++;
 	  continue;
@@ -4469,8 +4469,8 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 
       if ((err = db_get (obj, SP_ATTR_SP_TYPE, &sp_type_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_UNIQUE_NAME, &unique_name_val)) != NO_ERROR
-	  || (err = db_get (obj, SP_ATTR_NAME, &sp_name_val)) != NO_ERROR
-	  || (err = db_get (obj, SP_ATTR_PKG, &pkg_name_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_SP_NAME, &sp_name_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_PKG_NAME, &pkg_name_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_ARG_COUNT, &arg_cnt_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_ARGS, &args_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_RETURN_TYPE, &rtn_type_val)) != NO_ERROR
@@ -4702,7 +4702,7 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
   AU_DISABLE (save);
 
   db_make_string (&value, code_name);
-  obj = db_find_unique (db_find_class (SP_CODE_CLASS_NAME), SP_ATTR_CLS_NAME, &value);
+  obj = db_find_unique (db_find_class (SP_CODE_CLASS_NAME), SP_CODE_ATTR_NAME, &value);
   if (obj == NULL)
     {
       err = ER_FAILED;
@@ -4710,8 +4710,8 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
     }
 
 
-  if ((err = db_get (obj, SP_ATTR_SOURCE_TYPE, &stype_val)) != NO_ERROR
-      || (err = db_get (obj, SP_ATTR_SOURCE_CODE, &scode_val)) != NO_ERROR)
+  if ((err = db_get (obj, SP_CODE_ATTR_STYPE, &stype_val)) != NO_ERROR
+      || (err = db_get (obj, SP_CODE_ATTR_SCODE, &scode_val)) != NO_ERROR)
     {
       goto exit;
     }
