@@ -152,6 +152,7 @@ static const DB_TYPE db_type_rank[] = { DB_TYPE_NULL,
   DB_TYPE_DB_VALUE,
   (DB_TYPE) (DB_TYPE_LAST + 1)
 };
+static int db_type_rank_order[DB_TYPE_LAST + 1] = { 0, };
 
 AREA *tp_Domain_area = NULL;
 static bool tp_Initialized = false;
@@ -555,6 +556,25 @@ TP_DOMAIN **tp_Domain_conversion_matrix[] = {
 /* lock for domain list cache */
 static pthread_mutex_t tp_domain_cache_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif /* SERVER_MODE */
+
+
+/* Notice)
+ * The constructor of this class is used solely to initialize global variable(db_type_rank_order).
+ */
+class type_rank_order_initializer
+{
+public:
+  type_rank_order_initializer ()
+  {
+    memset (db_type_rank_order, 0x00, sizeof (db_type_rank_order));
+    for (int i = 0; db_type_rank[i] < (DB_TYPE_LAST + 1); i++)
+      {
+	db_type_rank_order[db_type_rank[i]] = i;
+      }
+  }
+};
+class type_rank_order_initializer tro_instance;
+
 
 static int tp_domain_size_internal (const TP_DOMAIN * domain);
 static void tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain);
@@ -10176,11 +10196,6 @@ oidcmp (OID * oid1, OID * oid2)
 int
 tp_more_general_type (const DB_TYPE type1, const DB_TYPE type2)
 {
-  static int rank[DB_TYPE_LAST + 1];
-  static int rank_init = 0;
-  static pthread_mutex_t rank_init_lock = PTHREAD_MUTEX_INITIALIZER;
-  int i;
-
   if (type1 == type2)
     {
       return 0;
@@ -10199,24 +10214,8 @@ tp_more_general_type (const DB_TYPE type1, const DB_TYPE type2)
 #endif /* CUBRID_DEBUG */
       return 0;
     }
-  if (!rank_init)
-    {
-      pthread_mutex_lock (&rank_init_lock);
-      if (!rank_init)
-	{
-	  /* set up rank so we can do fast table lookup */
-	  memset (rank, 0x00, sizeof (rank));
 
-	  for (i = 0; db_type_rank[i] < (DB_TYPE_LAST + 1); i++)
-	    {
-	      rank[db_type_rank[i]] = i;
-	    }
-	  rank_init = 1;
-	}
-      pthread_mutex_unlock (&rank_init_lock);
-    }
-
-  return rank[type1] - rank[type2];
+  return db_type_rank_order[type1] - db_type_rank_order[type2];
 }
 
 /*

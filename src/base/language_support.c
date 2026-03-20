@@ -5300,24 +5300,6 @@ lang_initloc_en_binary (LANG_LOCALE_DATA * ld)
   ld->is_initialized = true;
 }
 
-
-#if defined(SUPPORT_MULTI_THREADS_4_CS)
-#define CS_Lock(mutex) pthread_mutex_lock(&(mutex))
-#define CS_UnLock(mutex) pthread_mutex_unlock(&(mutex))
-#else
-#define CS_Lock(mutex)
-#define CS_UnLock(mutex)
-#if !defined(NDEBUG)
-static pthread_t gv_main_tid;
-
-__attribute__ ((constructor))
-     void my_constructor ()
-{
-  gv_main_tid = pthread_self ();
-}
-#endif
-#endif
-
 /*
  * lang_init_common_en_cs () - init collation data for English case
  *			       sensitive (no matter the charset)

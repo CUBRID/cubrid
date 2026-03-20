@@ -5949,11 +5949,16 @@ static void
 sysprm_check_id_order ()
 {
   static bool is_first = true;
-  static pthread_mutex_t sysprm_check_id_order_lock = PTHREAD_MUTEX_INITIALIZER;
 
   if (is_first)
     {
-      pthread_mutex_lock (&sysprm_check_id_order_lock);
+#if defined(SUPPORT_MULTI_THREADS_4_CS)
+      static pthread_mutex_t sysprm_check_id_order_lock = PTHREAD_MUTEX_INITIALIZER;
+#else
+      assert (pthread_equal (gv_main_tid, pthread_self ()));
+#endif
+
+      CS_Lock (sysprm_check_id_order_lock);
       if (is_first)
 	{
 	  int i, k;
@@ -5983,7 +5988,7 @@ sysprm_check_id_order ()
 	  is_first = false;
 	}
 
-      pthread_mutex_unlock (&sysprm_check_id_order_lock);
+      CS_UnLock (sysprm_check_id_order_lock);
     }
 }
 #endif
@@ -12257,3 +12262,14 @@ prm_get_bigint_value (PARAM_ID prm_id)
   return PRM_GET_BIGINT_P (prm_get_value (prm_id));
 }
 #endif /* window */
+
+
+#if !defined(NDEBUG) && !defined(SUPPORT_MULTI_THREADS_4_CS)
+pthread_t gv_main_tid;
+
+__attribute__ ((constructor))
+     void my_constructor ()
+{
+  gv_main_tid = pthread_self ();
+}
+#endif

@@ -683,7 +683,11 @@ hb_process_init (const char *server_name, const char *log_path, HB_PROC_TYPE typ
 {
 #if !defined(SERVER_MODE)
   static bool is_first = true;
+#if defined(SUPPORT_MULTI_THREADS_4_CS)
   static pthread_mutex_t hb_process_init_lock = PTHREAD_MUTEX_INITIALIZER;
+#else
+  assert (pthread_equal (gv_main_tid, pthread_self ()));
+#endif
 
   if (is_first == false)
     {
@@ -691,7 +695,7 @@ hb_process_init (const char *server_name, const char *log_path, HB_PROC_TYPE typ
     }
 
   int error = NO_ERROR;
-  pthread_mutex_lock (&hb_process_init_lock);
+  CS_Lock (hb_process_init_lock);
   if (is_first)
     {
       er_log_debug (ARG_FILE_LINE, "hb_process_init. (type:%s). \n", hb_type_to_str (type));
@@ -728,7 +732,7 @@ hb_process_init (const char *server_name, const char *log_path, HB_PROC_TYPE typ
 	    }
 	}
     }
-  pthread_mutex_unlock (&hb_process_init_lock);
+  CS_UnLock (hb_process_init_lock);
 
   return error;
 #else

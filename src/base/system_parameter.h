@@ -946,6 +946,20 @@ extern "C"
 
 #endif /* window */
 
+
+
+#if defined(SUPPORT_MULTI_THREADS_4_CS)
+#define CS_Lock(mutex)   pthread_mutex_lock(&(mutex))
+#define CS_UnLock(mutex) pthread_mutex_unlock(&(mutex))
+#else
+#define CS_Lock(mutex)
+#define CS_UnLock(mutex)
+#if !defined(NDEBUG)
+  extern pthread_t gv_main_tid;
+#endif
+#endif
+
+
 #ifdef __cplusplus
 }
 #endif
