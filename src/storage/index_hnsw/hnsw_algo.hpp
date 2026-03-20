@@ -272,7 +272,7 @@ namespace cubhnsw
       if (new_target_level > MAX_LEVELS)
 	{
 	  // TODO: for optimzation, if new_target_level is greater than max_level, we can just use max_level
-	  new_target_level = MAX_LEVELS;
+	  new_target_level = MAX_LEVELS - 1;
 	}
 
       if (m_metric == vector_distance_metric_t::COSINE)
