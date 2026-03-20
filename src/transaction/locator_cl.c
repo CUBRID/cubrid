@@ -7001,7 +7001,7 @@ locator_lob_create_or_remove_dir (HFID * prev_hfid, HFID * new_hfid, int *lob_at
 
   if (prev_hfid != NULL)
     {
-      int target_attrid = (new_hfid != NULL) ? -1 : lob_attrid_arr[0]; /* -1 means removing all LOB directories of the table, used in truncate case. */
+      int target_attrid = (new_hfid != NULL) ? -1 : lob_attrid_arr[0];	/* -1 means removing all LOB directories of the table, used in truncate case. */
 
       error = lob_remove_dir (prev_hfid, target_attrid);
       if (error != NO_ERROR)

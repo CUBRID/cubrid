@@ -5791,9 +5791,9 @@ or_pack_int_array (char *buffer, int count, const int *int_array)
     {
       ptr = or_pack_int (ptr, int_array[i]);
       if (ptr == NULL)
-        {
-          return NULL;
-        }
+	{
+	  return NULL;
+	}
     }
 
   return ptr;

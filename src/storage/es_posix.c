@@ -745,7 +745,7 @@ retry:
 	    {
 	      close (rd_fd);
 
-              assert (false);
+	      assert (false);
 	      return ER_ES_GENERAL;
 	    }
 
@@ -754,7 +754,7 @@ retry:
 	    {
 	      close (rd_fd);
 
-              er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", src_path);
+	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", src_path);
 	      return ER_ES_GENERAL;
 	    }
 
