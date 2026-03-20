@@ -1111,7 +1111,9 @@ static LK_CONFIG
 lock_make_default_config (void)
 {
   static const int DEFAULT_TRAN_LOCAL_POOL_MAX_SIZE = 10;
-  LK_CONFIG config {};
+  LK_CONFIG config
+  {
+  };
 
   /* Transaction lock table sizing. */
   config.num_trans = MAX_NTRANS;
@@ -1198,7 +1200,8 @@ lock_make_runtime_config (const LK_CONFIG * config)
   runtime_config.min_object_locks = runtime_config.num_trans * 300;
 
   runtime_config.object_res_block_size =
-    (int) MAX ((runtime_config.initial_object_locks * runtime_config.object_res_ratio) / runtime_config.object_res_block_count, 1);
+    (int) MAX ((runtime_config.initial_object_locks * runtime_config.object_res_ratio) /
+	       runtime_config.object_res_block_count, 1);
   runtime_config.object_entry_block_size =
     (int) MAX ((runtime_config.initial_object_locks * runtime_config.object_entry_ratio), 1);
 
@@ -4864,8 +4867,7 @@ lock_add_WFG_edge (int from_tran_index, int to_tran_index, int holder_flag, INT6
 		      (size_t) (SIZEOF_LK_WFG_EDGE * lk_Gl.max_TWFG_edge));
 	      return ER_OUT_OF_VIRTUAL_MEMORY;	/* no method */
 	    }
-	  (void) memcpy ((char *) lk_Gl.TWFG_edge, temp_ptr,
-			 (SIZEOF_LK_WFG_EDGE * lk_Gl.config.mid_twfg_edge_count));
+	  (void) memcpy ((char *) lk_Gl.TWFG_edge, temp_ptr, (SIZEOF_LK_WFG_EDGE * lk_Gl.config.mid_twfg_edge_count));
 	  for (i = lk_Gl.config.mid_twfg_edge_count; i < lk_Gl.max_TWFG_edge; i++)
 	    {
 	      lk_Gl.TWFG_edge[i].to_tran_index = -1;
@@ -5137,7 +5139,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
       if (TWFG_node[v].candidate == true)
 	{
 	  tranid = logtb_find_tranid (v);
-	      victim_tran_index = lk_Gl.victims[victim_count].tran_index;
+	  victim_tran_index = lk_Gl.victims[victim_count].tran_index;
 	  if (logtb_is_active (thread_p, tranid) == false)	/* Must be active transaction. */
 	    {
 	      inact_trans_found = true;
@@ -5736,13 +5738,10 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
  *
  * Note:Initialize the lock manager memory structures.
  */
+#if defined(SERVER_MODE)
 static int
 lock_initialize_with_config (const LK_CONFIG * config)
 {
-#if !defined (SERVER_MODE)
-  lk_Standalone_has_xlock = false;
-  return NO_ERROR;
-#else /* !defined (SERVER_MODE) */
   int error_code = NO_ERROR;
   LK_CONFIG local_config = lock_make_default_config ();
 
@@ -5781,13 +5780,18 @@ lock_initialize_with_config (const LK_CONFIG * config)
 error:
   (void) lock_finalize ();
   return error_code;
-#endif /* !SERVER_MODE */
 }
+#endif /* SERVER_MODE */
 
 int
 lock_initialize (void)
 {
+#if !defined(SERVER_MODE)
+  lk_Standalone_has_xlock = false;
+  return NO_ERROR;
+#else /* !defined(SERVER_MODE) */
   return lock_initialize_with_config (NULL);
+#endif /* !defined(SERVER_MODE) */
 }
 
 #if defined(SERVER_MODE)
