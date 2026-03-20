@@ -25,33 +25,38 @@
 
 #include <array>
 #include <atomic>
+#include <cstdint>
 #include <sstream>
 #include <string>
 
 namespace cubhnsw
 {
+  using graph_level_t = std::int16_t;
+
+  constexpr std::size_t HNSW_MAX_LEVEL_COUNT = 16;
+
   struct graph_structure_profile_t
   {
-    std::array<std::atomic<size_t>, MAX_LEVELS> nodes_per_level;
-    std::array<std::atomic<size_t>, MAX_LEVELS> degree_sum_per_level;
+    std::array<std::atomic<size_t>, HNSW_MAX_LEVEL_COUNT> nodes_per_level;
+    std::array<std::atomic<size_t>, HNSW_MAX_LEVEL_COUNT> degree_sum_per_level;
 
-    std::atomic<level_t> max_level;
+    std::atomic<graph_level_t> max_level;
     std::atomic<std::size_t> total_nodes;
 
     graph_structure_profile_t ()
     {
       total_nodes.store (0, std::memory_order_relaxed);
       max_level.store (0, std::memory_order_relaxed);
-      for (size_t i = 0; i < MAX_LEVELS; ++i)
+      for (size_t i = 0; i < HNSW_MAX_LEVEL_COUNT; ++i)
 	{
 	  nodes_per_level[i].store (0, std::memory_order_relaxed);
 	  degree_sum_per_level[i].store (0, std::memory_order_relaxed);
 	}
     }
 
-    void on_node_added (level_t level)
+    void on_node_added (graph_level_t level)
     {
-      for (level_t l = 0; l <= level; ++l)
+      for (graph_level_t l = 0; l <= level; ++l)
 	{
 	  nodes_per_level[l]++;
 	}
@@ -64,12 +69,12 @@ namespace cubhnsw
       total_nodes++;
     }
 
-    void on_edges_added (level_t level, std::size_t count)
+    void on_edges_added (graph_level_t level, std::size_t count)
     {
       degree_sum_per_level[level].fetch_add (count, std::memory_order_relaxed);
     }
 
-    void on_edges_removed (level_t level, std::size_t count)
+    void on_edges_removed (graph_level_t level, std::size_t count)
     {
       degree_sum_per_level[level].fetch_sub (count, std::memory_order_relaxed);
     }
@@ -87,7 +92,7 @@ namespace cubhnsw
       oss << "Total nodes: " << total_nodes << "\n";
       oss << "Max level: " << max_level << "\n";
 
-      for (level_t l = 0; l <= max_level; ++l)
+      for (graph_level_t l = 0; l <= max_level; ++l)
 	{
 	  std::size_t n = nodes_per_level[l];
 	  std::size_t deg_sum = degree_sum_per_level[l];

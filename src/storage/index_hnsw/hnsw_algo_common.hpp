@@ -47,6 +47,8 @@ namespace cubhnsw
 
   constexpr level_t MAX_LEVELS = 16;
 
+  static_assert (MAX_LEVELS == HNSW_MAX_LEVEL_COUNT, "profile level count must match MAX_LEVELS");
+
   struct candidate_t
   {
     distance_t distance;
