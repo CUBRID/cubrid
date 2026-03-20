@@ -231,7 +231,7 @@ static int drop_class_name (const char *name, bool is_cascade_constraints);
 
 static int do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter);
 static int lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count);
-static int lob_process_dir_drop_attr (SM_CLASS * class_, const char *attr_mthd_name);
+static int lob_process_dir_drop_attr (SM_CLASS * class_, const char *attr_name);
 static int do_alter_clause_rename_entity (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 static int do_alter_clause_add_index (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 static int do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter);
@@ -1442,6 +1442,9 @@ lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count)
   int *lob_attrid_arr = NULL;
   int error = NO_ERROR;
 
+  assert (class_ != NULL);
+  assert (old_att_count >= 0);
+
   for (int i = old_att_count; i < class_->att_count; i++)
     {
       attr = &class_->attributes[i];
@@ -1504,19 +1507,22 @@ end:
  *                               it removes the corresponding LOB directory.
  *   return: Error code
  *   class_(in): Class information
- *   attr_mthd_name(in): Name of the attribute to be dropped
+ *   attr_name(in): Name of the attribute to be dropped
  */
 static int
-lob_process_dir_drop_attr (SM_CLASS * class_, const char *attr_mthd_name)
+lob_process_dir_drop_attr (SM_CLASS * class_, const char *attr_name)
 {
   SM_ATTRIBUTE attr;
   int error = NO_ERROR;
+
+  assert (class_ != NULL);
+  assert (attr_name != NULL);
 
   for (int i = 0; i < class_->att_count; i++)
     {
       attr = class_->attributes[i];
 
-      if (strcmp (attr.header.name, attr_mthd_name) == 0)
+      if (strcmp (attr.header.name, attr_name) == 0)
 	{
 	  if (TP_IS_LOB_TYPE (attr.type->id))
 	    {
