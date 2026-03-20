@@ -513,9 +513,7 @@ namespace cubhnsw
     top_candidates_t &top = context.m_top_candidates;
 
     std::size_t level = context.m_level;
-    std::size_t layer_connectivity = get_layer_connectivity (level, m_connectivity);
-
-    refine_ (context, layer_connectivity, top, top_view, stats.get_refine_distance_collector ());
+    refine_ (context, m_connectivity, top, top_view, stats.get_refine_distance_collector ());
     stats.commit (context.m_stats, context.m_is_perf_tracking, context.m_level);
 
     // outgoing links from new node
