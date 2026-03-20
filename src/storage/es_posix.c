@@ -702,7 +702,7 @@ xes_posix_copy_file_with_prefix (const char *src_path, char *metaname, const cha
 {
   int rd_fd, wr_fd, n = 0;
   ssize_t ret;
-  char dirname1[NAME_MAX], filename[NAME_MAX], dirname2[NAME_MAX];
+  char dirname1[NAME_MAX], dirname2[NAME_MAX], filename[NAME_MAX];
   char buf[ES_POSIX_COPY_BUFSIZE];
   char *p;
 
@@ -721,6 +721,7 @@ retry:
   n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s", prefix, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
   if (n < 0 || n >= PATH_MAX - 1)
     {
+      /* impossible case */
       close (rd_fd);
 
       assert (false);
@@ -743,6 +744,8 @@ retry:
 	  else
 	    {
 	      close (rd_fd);
+
+              assert (false);
 	      return ER_ES_GENERAL;
 	    }
 
@@ -750,6 +753,8 @@ retry:
 	  if (ret != NO_ERROR)
 	    {
 	      close (rd_fd);
+
+              er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", src_path);
 	      return ER_ES_GENERAL;
 	    }
 
@@ -765,8 +770,9 @@ retry:
 	{
 	  goto retry;
 	}
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", new_path);
       close (rd_fd);
+
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", new_path);
       return ER_ES_GENERAL;
     }
 
@@ -837,12 +843,13 @@ xes_posix_move_file_with_prefix (const char *src_path, const char *metaname, con
   char dirname1[NAME_MAX], dirname2[NAME_MAX], filename[NAME_MAX];
   char *p;
 
-  /* create a target file */
+  /* Create a target file */
   es_get_unique_name (dirname1, dirname2, metaname, filename);
 
-  ret = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s", prefix, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
-  if (ret < 0 || ret >= PATH_MAX - 1)
+  ret = snprintf (new_path, PATH_MAX, "%s%c%s%c%s", prefix, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
+  if (ret < 0 || ret >= PATH_MAX)
     {
+      /* impossible case */
       assert (false);
       return ER_ES_INVALID_PATH;
     }
@@ -855,6 +862,8 @@ xes_posix_move_file_with_prefix (const char *src_path, const char *metaname, con
     }
   else
     {
+      /* impossible case */
+      assert (false);
       return ER_ES_GENERAL;
     }
 
@@ -865,11 +874,12 @@ xes_posix_move_file_with_prefix (const char *src_path, const char *metaname, con
 
   if (ret != NO_ERROR)
     {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", new_path);
       return ER_ES_GENERAL;
     }
 
   ret = es_os_rename_file_abs (src_path, new_path);
-  if (ret < 0)
+  if (ret != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", src_path);
       return ER_ES_GENERAL;
