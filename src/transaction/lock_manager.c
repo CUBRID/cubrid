@@ -120,24 +120,28 @@
 typedef struct lk_config LK_CONFIG;
 struct lk_config
 {
-  /* Input parameters */
+  /* Transaction lock table sizing. */
   int num_trans;
   int tran_local_pool_max_size;
+
+  /* Object lock hash table/freelist sizing. */
   int initial_object_locks;
   int object_res_block_count;
   int object_entry_block_count;
-  bool start_deadlock_detector;
-
-  /* Derived parameters computed during initialization */
   int min_object_locks;
-  int object_res_block_size;
-  int object_entry_block_size;
   float object_res_ratio;
   float object_entry_ratio;
+  int object_res_block_size;
+  int object_entry_block_size;
+
+  /* Deadlock detector resources and daemon control. */
+  bool start_deadlock_detector;
   int max_deadlock_victims;
   int min_twfg_edge_count;
   int mid_twfg_edge_count;
   int max_twfg_edge_count;
+
+  /* Optional diagnostics toggled at initialization time. */
   bool verbose_mode;
 #if defined(LK_DUMP)
   int dump_level;
@@ -489,7 +493,7 @@ static void lock_initialize_resource_as_allocated (LK_RES * res_ptr, LOCK lock);
 static unsigned int lock_get_hash_value (const OID * oid, int htsize);
 static LK_CONFIG lock_make_runtime_config (const LK_CONFIG * config);
 static int lock_initialize_tran_lock_table (void);
-static void lock_sanitize_init_config (LK_CONFIG * config);
+static void lock_tune_init_config (LK_CONFIG * config);
 static int lock_initialize_object_lock_structures (void);
 static int lock_initialize_deadlock_detection (void);
 static int lock_remove_resource (THREAD_ENTRY * thread_p, LK_RES * res_ptr);
@@ -1109,21 +1113,26 @@ lock_make_default_config (void)
   static const int DEFAULT_TRAN_LOCAL_POOL_MAX_SIZE = 10;
   LK_CONFIG config {};
 
+  /* Transaction lock table sizing. */
   config.num_trans = MAX_NTRANS;
   config.tran_local_pool_max_size = DEFAULT_TRAN_LOCAL_POOL_MAX_SIZE;
+
+  /* Object lock hash table/freelist sizing. */
   config.initial_object_locks = 10000;
   config.object_res_block_count = 2;
   config.object_entry_block_count = 1;
-  config.start_deadlock_detector = true;
-
   config.min_object_locks = MAX_NTRANS * 300;
   config.object_res_ratio = 0.1f;
   config.object_entry_ratio = 0.1f;
+
+  /* Deadlock detector resources and daemon control. */
+  config.start_deadlock_detector = true;
   config.max_deadlock_victims = 300;
   config.min_twfg_edge_count = 200;
   config.mid_twfg_edge_count = 1000;
   config.max_twfg_edge_count = MAX_NTRANS * MAX_NTRANS;
 
+  /* Optional diagnostics toggled at initialization time. */
 #if defined(CUBRID_DEBUG)
   config.verbose_mode = true;
 #else
@@ -1139,14 +1148,11 @@ lock_make_default_config (void)
 
 #if defined(SERVER_MODE)
 static void
-lock_sanitize_init_config (LK_CONFIG * config)
+lock_tune_init_config (LK_CONFIG * config)
 {
   LK_CONFIG default_config = lock_make_default_config ();
 
-  if (config->initial_object_locks <= 0)
-    {
-      config->initial_object_locks = default_config.initial_object_locks;
-    }
+  /* Transaction lock table sizing. */
   if (config->num_trans <= 0)
     {
       config->num_trans = default_config.num_trans;
@@ -1156,6 +1162,11 @@ lock_sanitize_init_config (LK_CONFIG * config)
       config->tran_local_pool_max_size = default_config.tran_local_pool_max_size;
     }
 
+  /* Object lock hash table/freelist sizing. */
+  if (config->initial_object_locks <= 0)
+    {
+      config->initial_object_locks = default_config.initial_object_locks;
+    }
   if (config->object_res_block_count <= 0)
     {
       config->object_res_block_count = default_config.object_res_block_count;
@@ -5739,7 +5750,7 @@ lock_initialize_with_config (const LK_CONFIG * config)
     {
       local_config = *config;
     }
-  lock_sanitize_init_config (&local_config);
+  lock_tune_init_config (&local_config);
   lk_Gl.config = lock_make_runtime_config (&local_config);
 
   error_code = lock_initialize_tran_lock_table ();
