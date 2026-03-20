@@ -171,16 +171,6 @@ namespace cubhnsw
     {
       m_stats.collect_perf_stats (m_thread_p, m_is_perf_tracking);
     }
-
-    inline void add_stat (std::size_t &stat, std::size_t &stat_l0, std::size_t counter)
-    {
-      m_stats.add_stat (m_is_perf_tracking, m_level, stat, stat_l0, counter);
-    }
-
-    inline void add_stat (std::size_t &stat, std::size_t counter)
-    {
-      m_stats.add_stat (m_is_perf_tracking, stat, counter);
-    }
   };
 }
 

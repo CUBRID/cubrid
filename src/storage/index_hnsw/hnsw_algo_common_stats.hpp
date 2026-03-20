@@ -261,6 +261,26 @@ namespace cubhnsw
       is_perf_tracking = false;
     }
 
+    inline void on_distance_computed (bool is_perf_tracking, std::int16_t level)
+    {
+      add_stat (is_perf_tracking, level, computed_distances, computed_distances_l0, 1);
+    }
+
+    inline void on_entrypoint_updated (bool is_perf_tracking)
+    {
+      add_stat (is_perf_tracking, entrypoint_updates, 1);
+    }
+
+    inline void on_page_access (bool is_perf_tracking, std::int16_t level)
+    {
+      add_stat (is_perf_tracking, level, page_access, page_access_l0, 1);
+    }
+
+    inline void on_vector_access (bool is_perf_tracking, std::int16_t level)
+    {
+      add_stat (is_perf_tracking, level, vector_access, vector_access_l0, 1);
+    }
+
     inline void add_stat (bool is_perf_tracking, std::int16_t level,
 			  std::size_t &stat, std::size_t &stat_l0, std::size_t counter)
     {

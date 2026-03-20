@@ -116,7 +116,7 @@ namespace cubhnsw
       // distance
       inline distance_t compute_distance_ (algo_context_t &context, const float *v1, const float *v2) const
       {
-	context.add_stat (context.m_stats.computed_distances, context.m_stats.computed_distances_l0, 1);
+	context.m_stats.on_distance_computed (context.m_is_perf_tracking, context.m_level);
 	return metric_table[static_cast<size_t> (m_metric)] (v1, v2, m_dimension);
       }
 
@@ -355,7 +355,7 @@ namespace cubhnsw
 	root_node.set_level (new_target_level);
 	m_storage->set_empty (false);
 
-	context.add_stat (context.m_stats.entrypoint_updates, 1);
+	context.m_stats.on_entrypoint_updated (context.m_is_perf_tracking);
       }
 
     context.collect_perf_stats();
