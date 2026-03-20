@@ -1219,17 +1219,14 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       // CBRD-26513, CBRD-26514: rewrite the user code without the user name and the comment
       const char *rewritten_code;
       {
-	PT_NODE *comment_saved = statement->info.sp.comment;
 	int custom_print_saved = parser->custom_print;
 
-	statement->info.sp.comment = NULL;
 	parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
-	parser->flag.is_unloading_schema = 1;
+	parser->flag.is_unloading_plcsql_def = 1;
 	rewritten_code = parser_print_tree (parser, statement);
-	parser->flag.is_unloading_schema = 0;
+	parser->flag.is_unloading_plcsql_def = 0;
 
 	parser->custom_print = custom_print_saved;
-	statement->info.sp.comment = comment_saved;
       }
 
       code_info.name = sp_info.target_class;
