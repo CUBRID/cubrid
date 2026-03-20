@@ -75,6 +75,8 @@ dblink_global_tran_insert_row (THREAD_ENTRY * thread_p, int gtrid, int bqual,
   bool scan_inited = false;
   bool attr_inited = false;
 
+  char state_str[2] = { state, '\0' };
+
   if (xlocator_find_class_oid (thread_p, CT_GLOBAL_TRAN_NAME, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
     {
       return ER_LC_UNKNOWN_CLASSNAME;
@@ -147,15 +149,13 @@ dblink_global_tran_insert_row (THREAD_ENTRY * thread_p, int gtrid, int bqual,
       error = ER_FAILED;
       goto cleanup;
     }
-  {
-    char state_str[2] = { state, '\0' };
-    db_make_string (&dbval, state_str);
-    if (heap_attrinfo_set (&oid, GLOBAL_TRAN_ATTR_STATE, &dbval, &attr_info) != NO_ERROR)
-      {
-	error = ER_FAILED;
-	goto cleanup;
-      }
-  }
+
+  db_make_string (&dbval, state_str);
+  if (heap_attrinfo_set (&oid, GLOBAL_TRAN_ATTR_STATE, &dbval, &attr_info) != NO_ERROR)
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
 
   db_sys_datetime (&datetime_val);
   datetime = db_get_datetime (&datetime_val);
@@ -253,6 +253,8 @@ dblink_global_tran_update_state (THREAD_ENTRY * thread_p, int gtrid, int bqual, 
   bool scan_modify_inited = false;
   bool attr_inited = false;
 
+  char state_str[2] = { new_state, '\0' };
+
   if (xlocator_find_class_oid (thread_p, CT_GLOBAL_TRAN_NAME, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
     {
       return ER_LC_UNKNOWN_CLASSNAME;
@@ -294,15 +296,12 @@ dblink_global_tran_update_state (THREAD_ENTRY * thread_p, int gtrid, int bqual, 
     }
   scan_modify_inited = true;
 
-  {
-    char state_str[2] = { new_state, '\0' };
-    db_make_string (&dbval, state_str);
-    if (heap_attrinfo_set (&oid, GLOBAL_TRAN_ATTR_STATE, &dbval, &attr_info) != NO_ERROR)
-      {
-	error = ER_FAILED;
-	goto cleanup;
-      }
-  }
+  db_make_string (&dbval, state_str);
+  if (heap_attrinfo_set (&oid, GLOBAL_TRAN_ATTR_STATE, &dbval, &attr_info) != NO_ERROR)
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
 
   db_sys_datetime (&datetime_val);
   datetime = db_get_datetime (&datetime_val);
