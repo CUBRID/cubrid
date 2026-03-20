@@ -117,6 +117,33 @@
 #define LK_MSG_LOCK_DEMOTE(entry) \
   LK_MSG_LOCK_HELPER(entry, MSGCAT_LK_OID_LOCK_DEMOTE)
 
+typedef struct lk_config LK_CONFIG;
+struct lk_config
+{
+  /* Input parameters */
+  int num_trans;
+  int tran_local_pool_max_size;
+  int initial_object_locks;
+  int object_res_block_count;
+  int object_entry_block_count;
+  bool start_deadlock_detector;
+
+  /* Derived parameters computed during initialization */
+  int min_object_locks;
+  int object_res_block_size;
+  int object_entry_block_size;
+  float object_res_ratio;
+  float object_entry_ratio;
+  int max_deadlock_victims;
+  int min_twfg_edge_count;
+  int mid_twfg_edge_count;
+  int max_twfg_edge_count;
+  bool verbose_mode;
+#if defined(LK_DUMP)
+  int dump_level;
+#endif				/* LK_DUMP */
+};
+
 #define EXPAND_WAIT_FOR_ARRAY_IF_NEEDED() \
   do \
     { \
@@ -345,8 +372,6 @@ struct lk_tran_lock
   /* locking on manual duration */
   bool is_instant_duration;
 };
-/* Max size of transaction local pool of lock entries. */
-static const int LK_DEFAULT_TRAN_LOCAL_POOL_MAX_SIZE = 10;
 
 /*
  * Lock Manager Global Data Structure
@@ -464,7 +489,6 @@ static void lock_initialize_resource_as_allocated (LK_RES * res_ptr, LOCK lock);
 static unsigned int lock_get_hash_value (const OID * oid, int htsize);
 static LK_CONFIG lock_make_runtime_config (const LK_CONFIG * config);
 static int lock_initialize_tran_lock_table (void);
-static void lock_initialize_default_config_internal (LK_CONFIG * config);
 static void lock_sanitize_init_config (LK_CONFIG * config);
 static int lock_initialize_object_lock_structures (void);
 static int lock_initialize_deadlock_detection (void);
@@ -1082,10 +1106,11 @@ lock_initialize_tran_lock_table (void)
 static LK_CONFIG
 lock_make_default_config (void)
 {
+  static const int DEFAULT_TRAN_LOCAL_POOL_MAX_SIZE = 10;
   LK_CONFIG config {};
 
   config.num_trans = MAX_NTRANS;
-  config.tran_local_pool_max_size = LK_DEFAULT_TRAN_LOCAL_POOL_MAX_SIZE;
+  config.tran_local_pool_max_size = DEFAULT_TRAN_LOCAL_POOL_MAX_SIZE;
   config.initial_object_locks = 10000;
   config.object_res_block_count = 2;
   config.object_entry_block_count = 1;
@@ -1109,17 +1134,6 @@ lock_make_default_config (void)
 #endif
 
   return config;
-}
-#endif /* SERVER_MODE */
-
-#if defined(SERVER_MODE)
-/*
- * lock_initialize_default_config_internal - Initialize lock-manager config defaults.
- */
-static void
-lock_initialize_default_config_internal (LK_CONFIG * config)
-{
-  *config = lock_make_default_config ();
 }
 #endif /* SERVER_MODE */
 
@@ -5711,19 +5725,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
  *
  * Note:Initialize the lock manager memory structures.
  */
-void
-lock_initialize_default_config (LK_CONFIG * config)
-{
-#if defined (SERVER_MODE)
-  assert (config != NULL);
-
-  lock_initialize_default_config_internal (config);
-#else /* defined (SERVER_MODE) */
-  (void) config;
-#endif /* defined (SERVER_MODE) */
-}
-
-int
+static int
 lock_initialize_with_config (const LK_CONFIG * config)
 {
 #if !defined (SERVER_MODE)
@@ -5731,9 +5733,8 @@ lock_initialize_with_config (const LK_CONFIG * config)
   return NO_ERROR;
 #else /* !defined (SERVER_MODE) */
   int error_code = NO_ERROR;
-  LK_CONFIG local_config;
+  LK_CONFIG local_config = lock_make_default_config ();
 
-  lock_initialize_default_config_internal (&local_config);
   if (config != NULL)
     {
       local_config = *config;
