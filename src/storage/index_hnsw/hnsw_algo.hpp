@@ -63,31 +63,7 @@ namespace cubhnsw
 
       std::string dump ()
       {
-	std::ostringstream oss;
-
-	if (m_graph_profile.total_nodes > 0)
-	  {
-	    oss << "==== HNSW Graph Profile ====\n";
-	    oss << "Total nodes: " << m_graph_profile.total_nodes << "\n";
-	    oss << "Max level: " << m_graph_profile.max_level << "\n";
-
-	    for (level_t l = 0; l <= m_graph_profile.max_level; ++l)
-	      {
-		std::size_t n = m_graph_profile.nodes_per_level[l];
-		std::size_t deg_sum = m_graph_profile.degree_sum_per_level[l];
-
-		double avg = (n > 0)
-			     ? static_cast<double> (deg_sum) / static_cast<double> (n)
-			     : 0.0;
-
-		oss << "[Level " << l
-		    << "] nodes: " << n
-		    << ", avg_degree: " << avg
-		    << "\n";
-	      }
-	  }
-
-	return oss.str();
+	return m_graph_profile.to_string ();
       }
 
     protected:
@@ -155,37 +131,6 @@ namespace cubhnsw
       inline std::size_t get_layer_connectivity (level_t level, std::size_t connectivity) const noexcept
       {
 	return level == 0 ? connectivity * 2 : connectivity;
-      }
-
-      inline void
-      collect_node_profile (const level_t &level)
-      {
-	graph_profile_t &gp = m_graph_profile;
-	for (level_t l = 0; l <= level; ++l)
-	  {
-	    gp.nodes_per_level[l]++;
-	  }
-
-	if (level > gp.max_level)
-	  {
-	    gp.max_level.store (level, std::memory_order_relaxed);
-	  }
-
-	gp.total_nodes++;
-      }
-
-      inline void
-      collect_edge_profile (const level_t &level, const int count)
-      {
-	graph_profile_t &gp = m_graph_profile;
-	if (count > 0)
-	  {
-	    gp.degree_sum_per_level[level].fetch_add (count, std::memory_order_relaxed);
-	  }
-	else if (count < 0)
-	  {
-	    gp.degree_sum_per_level[level].fetch_sub (-count, std::memory_order_relaxed);
-	  }
       }
 
       // variables
@@ -298,7 +243,7 @@ namespace cubhnsw
 	  root_node.set_entry (new_slot);
 	  root_node.set_level (new_target_level);
 	  m_storage->set_empty (false);
-	  collect_node_profile (new_target_level);
+	  m_graph_profile.on_node_added (new_target_level);
 	  return result;
 	}
     }
@@ -341,7 +286,7 @@ namespace cubhnsw
     }
 
     // TODO: hnsw_debug
-    collect_node_profile (new_target_level);
+    m_graph_profile.on_node_added (new_target_level);
 
     if (new_target_level > curr_max_level)
       {
@@ -579,7 +524,7 @@ namespace cubhnsw
 	new_neighbors.push_back (top_view[i].slot);
       }
 
-    collect_edge_profile (level, top_view.size ());
+    m_graph_profile.on_edges_added (level, top_view.size ());
   }
 
   int
@@ -609,7 +554,7 @@ namespace cubhnsw
 	    {
 	      close_header.push_back (new_slot);
 
-	      collect_edge_profile (level, 1);
+	      m_graph_profile.on_edges_added (level, 1);
 	      continue;
 	    }
 	}
@@ -630,7 +575,7 @@ namespace cubhnsw
 	  }
 
 	// remove all neighbors from close_header
-	collect_edge_profile (level, -close_header_size);
+	m_graph_profile.on_edges_removed (level, close_header_size);
 	close_header.clear();
 	candidates_view_t top_view;
 
@@ -640,7 +585,7 @@ namespace cubhnsw
 	  {
 	    close_header.push_back (top_view[i].slot);
 	  }
-	collect_edge_profile (level, top_view.size ());
+	m_graph_profile.on_edges_added (level, top_view.size ());
       }
 
     stats.commit (context.m_stats, context.m_is_perf_tracking, context.m_level);

@@ -26,6 +26,7 @@
 #include <random>
 
 #include "hnsw_api.hpp"
+#include "hnsw_algo_common_profile.hpp"
 #include "hnsw_algo_common_stats.hpp"
 #include "hnsw_graph_base.hpp"
 #include "hnsw_utils.hpp"
@@ -124,26 +125,6 @@ namespace cubhnsw
     int error {NO_ERROR};
     candidates_view_t results {};
     std::vector<OID> oids {};
-  };
-
-  struct graph_profile_t
-  {
-    std::array<std::atomic<size_t>, MAX_LEVELS> nodes_per_level;
-    std::array<std::atomic<size_t>, MAX_LEVELS> degree_sum_per_level;
-
-    std::atomic<level_t> max_level;
-    std::atomic<std::size_t> total_nodes;
-
-    graph_profile_t ()
-    {
-      total_nodes.store (0, std::memory_order_relaxed);
-      max_level.store (0, std::memory_order_relaxed);
-      for (size_t i = 0; i < MAX_LEVELS; ++i)
-	{
-	  nodes_per_level[i].store (0, std::memory_order_relaxed);
-	  degree_sum_per_level[i].store (0, std::memory_order_relaxed);
-	}
-    }
   };
 
   struct algo_context_t
