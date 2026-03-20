@@ -72,6 +72,34 @@ typedef enum
   KEY_LOCK_ESCALATED = 2
 } KEY_LOCK_ESCALATION;
 
+typedef struct lk_config LK_CONFIG;
+struct lk_config
+{
+  /* Input parameters */
+  int num_trans;
+  int tran_local_pool_max_size;
+  int initial_object_locks;
+  int object_res_block_count;
+  int object_entry_block_count;
+  bool start_deadlock_detector;
+
+  /* Derived parameters computed during initialization */
+  int min_object_locks;
+  int object_res_block_size;
+  int object_entry_block_size;
+  float object_res_ratio;
+  float object_entry_ratio;
+  int max_deadlock_victims;
+  int min_twfg_edge_count;
+  int mid_twfg_edge_count;
+  int max_twfg_edge_count;
+  bool verbose_mode;
+#if defined(LK_DUMP)
+  int dump_level;
+#endif				/* LK_DUMP */
+};
+typedef LK_CONFIG LK_INIT_CONFIG;
+
 /*****************************/
 /* Lock Heap Entry Structure */
 /*****************************/
@@ -194,6 +222,8 @@ struct lk_res
 #if defined(SERVER_MODE)
 extern void lock_remove_all_inst_locks (THREAD_ENTRY * thread_p, int tran_index, const OID * class_oid, LOCK lock);
 #endif /* SERVER_MODE */
+extern void lock_initialize_default_config (LK_CONFIG *config);
+extern int lock_initialize_with_config (const LK_CONFIG *config);
 extern int lock_initialize (void);
 extern void lock_finalize (void);
 extern int lock_hold_object_instant (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock);
