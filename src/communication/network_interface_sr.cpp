@@ -12074,14 +12074,7 @@ slob_remove_dir (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
   int error = NO_ERROR;
 
   ptr = or_unpack_hfid (request, &hfid);
-  assert (ptr != NULL);
-
   ptr = or_unpack_int (ptr, &attrid);
-  if (ptr == NULL)
-    {
-      error = ER_FAILED;
-      goto end;
-    }
 
   error = xlob_remove_dir (thread_p, &hfid, attrid);
   if (error != NO_ERROR)

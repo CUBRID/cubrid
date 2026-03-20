@@ -11413,14 +11413,7 @@ lob_create_dir (HFID * hfid, int *attrid_arr, int lob_attrid_arr_length)
     }
 
   ptr = or_pack_hfid (request, hfid);
-  assert (ptr != NULL);
-
   ptr = or_pack_int_array (ptr, lob_attrid_arr_length, attrid_arr);
-  if (ptr == NULL)
-    {
-      error = ER_FAILED;
-      return error;
-    }
 
   req_error =
     net_client_request (NET_SERVER_LOB_CREATE_DIR, request, request_size, reply,
@@ -11473,14 +11466,7 @@ lob_remove_dir (HFID * hfid, int attrid)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   ptr = or_pack_hfid (request, hfid);
-  assert (ptr != NULL);
-
   ptr = or_pack_int (ptr, attrid);
-  if (ptr == NULL)
-    {
-      error = ER_FAILED;
-      return error;
-    }
 
   req_error =
     net_client_request (NET_SERVER_LOB_REMOVE_DIR, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
