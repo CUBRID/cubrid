@@ -26,7 +26,7 @@
 #include <random>
 
 #include "hnsw_api.hpp"
-#include "hnsw_algo_common_profile.hpp"
+#include "hnsw_algo_common_graph_structure_profile.hpp"
 #include "hnsw_algo_common_stats.hpp"
 #include "hnsw_graph_base.hpp"
 #include "hnsw_utils.hpp"

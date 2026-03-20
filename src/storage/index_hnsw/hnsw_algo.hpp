@@ -63,7 +63,7 @@ namespace cubhnsw
 
       std::string dump ()
       {
-	return m_graph_profile.to_string ();
+	return m_graph_structure_profile.to_string ();
       }
 
     protected:
@@ -148,7 +148,7 @@ namespace cubhnsw
       double m_inverse_log_connectivity;
 
       // profile
-      graph_profile_t m_graph_profile;
+      graph_structure_profile_t m_graph_structure_profile;
   };
 
   // =====================================================================
@@ -243,7 +243,7 @@ namespace cubhnsw
 	  root_node.set_entry (new_slot);
 	  root_node.set_level (new_target_level);
 	  m_storage->set_empty (false);
-	  m_graph_profile.on_node_added (new_target_level);
+	  m_graph_structure_profile.on_node_added (new_target_level);
 	  return result;
 	}
     }
@@ -286,7 +286,7 @@ namespace cubhnsw
     }
 
     // TODO: hnsw_debug
-    m_graph_profile.on_node_added (new_target_level);
+    m_graph_structure_profile.on_node_added (new_target_level);
 
     if (new_target_level > curr_max_level)
       {
@@ -319,6 +319,7 @@ namespace cubhnsw
 
     algo_context_t context;
     context.m_thread_p = thread_p;
+    context.m_is_perf_tracking = perfmon_is_perf_tracking ();
     context.clear_candidates();
 
     top_candidates_t &top = context.m_top_candidates;
@@ -524,7 +525,7 @@ namespace cubhnsw
 	new_neighbors.push_back (top_view[i].slot);
       }
 
-    m_graph_profile.on_edges_added (level, top_view.size ());
+    m_graph_structure_profile.on_edges_added (level, top_view.size ());
   }
 
   int
@@ -554,7 +555,7 @@ namespace cubhnsw
 	    {
 	      close_header.push_back (new_slot);
 
-	      m_graph_profile.on_edges_added (level, 1);
+	      m_graph_structure_profile.on_edges_added (level, 1);
 	      continue;
 	    }
 	}
@@ -575,7 +576,7 @@ namespace cubhnsw
 	  }
 
 	// remove all neighbors from close_header
-	m_graph_profile.on_edges_removed (level, close_header_size);
+	m_graph_structure_profile.on_edges_removed (level, close_header_size);
 	close_header.clear();
 	candidates_view_t top_view;
 
@@ -585,7 +586,7 @@ namespace cubhnsw
 	  {
 	    close_header.push_back (top_view[i].slot);
 	  }
-	m_graph_profile.on_edges_added (level, top_view.size ());
+	m_graph_structure_profile.on_edges_added (level, top_view.size ());
       }
 
     stats.commit (context.m_stats, context.m_is_perf_tracking, context.m_level);

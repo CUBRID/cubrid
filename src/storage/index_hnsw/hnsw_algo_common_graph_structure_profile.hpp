@@ -17,11 +17,11 @@
  */
 
 //
-// hnsw_algo_common_profile.hpp
+// hnsw_algo_common_graph_structure_profile.hpp
 //
 
-#ifndef _HNSW_ALGO_COMMON_PROFILE_HPP_
-#define _HNSW_ALGO_COMMON_PROFILE_HPP_
+#ifndef _HNSW_ALGO_COMMON_GRAPH_STRUCTURE_PROFILE_HPP_
+#define _HNSW_ALGO_COMMON_GRAPH_STRUCTURE_PROFILE_HPP_
 
 #include <array>
 #include <atomic>
@@ -30,7 +30,7 @@
 
 namespace cubhnsw
 {
-  struct graph_profile_t
+  struct graph_structure_profile_t
   {
     std::array<std::atomic<size_t>, MAX_LEVELS> nodes_per_level;
     std::array<std::atomic<size_t>, MAX_LEVELS> degree_sum_per_level;
@@ -38,7 +38,7 @@ namespace cubhnsw
     std::atomic<level_t> max_level;
     std::atomic<std::size_t> total_nodes;
 
-    graph_profile_t ()
+    graph_structure_profile_t ()
     {
       total_nodes.store (0, std::memory_order_relaxed);
       max_level.store (0, std::memory_order_relaxed);
@@ -107,4 +107,4 @@ namespace cubhnsw
   };
 }
 
-#endif // _HNSW_ALGO_COMMON_PROFILE_HPP_
+#endif // _HNSW_ALGO_COMMON_GRAPH_STRUCTURE_PROFILE_HPP_
