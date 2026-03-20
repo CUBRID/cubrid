@@ -139,8 +139,6 @@ namespace cubhnsw
     SPAGE_SLOT *slotp = spage_get_slot (root_page_ptr, 1);
     assert (slotp != nullptr);
 
-    context.add_stat (context.m_stats.page_access, context.m_stats.page_access_l0, 1);
-
     OID oid = { root_vpid.pageid, 1, root_vpid.volid };
 
     pinned_t::data_t blk;
