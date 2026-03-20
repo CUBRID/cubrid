@@ -139,39 +139,32 @@ static bool initialized_digits4_ascii = false;
  * extra range required when adjusting scale and allocating working buffers.
  */
 const int _gv_numeric_precision_to_bytes_lookup[513] = {
-  0, 1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5, 6, 6, 7,
-  7, 8, 8, 8, 9, 9, 10, 10, 10, 11, 11, 12, 12, 13, 13, 13,
-  14, 14, 15, 15, 15, 16, 16, 17, 17, 18, 18, 18, 19, 19, 20, 20,
-  20, 21, 21, 22, 22, 23, 23, 23, 24, 24, 25, 25, 25, 26, 26, 27,
-  27, 27, 28, 28, 29, 29, 30, 30, 30, 31, 31, 32, 32, 32, 33, 33,
-  34, 34, 35, 35, 35, 36, 36, 37, 37, 37, 38, 38, 39, 39, 40, 40,
-  40, 41, 41, 42, 42, 42, 43, 43, 44, 44, 45, 45, 45, 46, 46, 47,
-  47, 47, 48, 48, 49, 49, 49, 50, 50, 51, 51, 52, 52, 52, 53, 53,
-  54, 54, 54, 55, 55, 56, 56, 57, 57, 57, 58, 58, 59, 59, 59, 60,
-  60, 61, 61, 62, 62, 62, 63, 63, 64, 64, 64, 65, 65, 66, 66, 67,
-  67, 67, 68, 68, 69, 69, 69, 70, 70, 71, 71, 72, 72, 72, 73, 73,
-  74, 74, 74, 75, 75, 76, 76, 76, 77, 77, 78, 78, 79, 79, 79, 80,
-  80, 81, 81, 81, 82, 82, 83, 83, 84, 84, 84, 85, 85, 86, 86, 86,
-  87, 87, 88, 88, 89, 89, 89, 90, 90, 91, 91, 91, 92, 92, 93, 93,
-  94, 94, 94, 95, 95, 96, 96, 96, 97, 97, 98, 98, 98, 99, 99, 100,
-  100, 101, 101, 101, 102, 102, 103, 103, 103, 104, 104, 105, 105, 106, 106, 106,
-  107, 107, 108, 108, 108, 109, 109, 110, 110, 111, 111, 111, 112, 112, 113, 113,
-  113, 114, 114, 115, 115, 116, 116, 116, 117, 117, 118, 118, 118, 119, 119, 120,
-  120, 121, 121, 121, 122, 122, 123, 123, 123, 124, 124, 125, 125, 125, 126, 126,
-  127, 127, 128, 128, 128, 129, 129, 130, 130, 130, 131, 131, 132, 132, 133, 133,
-  133, 134, 134, 135, 135, 135, 136, 136, 137, 137, 138, 138, 138, 139, 139, 140,
-  140, 140, 141, 141, 142, 142, 143, 143, 143, 144, 144, 145, 145, 145, 146, 146,
-  147, 147, 147, 148, 148, 149, 149, 150, 150, 150, 151, 151, 152, 152, 152, 153,
-  153, 154, 154, 155, 155, 155, 156, 156, 157, 157, 157, 158, 158, 159, 159, 160,
-  160, 160, 161, 161, 162, 162, 162, 163, 163, 164, 164, 165, 165, 165, 166, 166,
-  167, 167, 167, 168, 168, 169, 169, 170, 170, 170, 171, 171, 172, 172, 172, 173,
-  173, 174, 174, 174, 175, 175, 176, 176, 177, 177, 177, 178, 178, 179, 179, 179,
-  180, 180, 181, 181, 182, 182, 182, 183, 183, 184, 184, 184, 185, 185, 186, 186,
-  187, 187, 187, 188, 188, 189, 189, 189, 190, 190, 191, 191, 192, 192, 192, 193,
-  193, 194, 194, 194, 195, 195, 196, 196, 196, 197, 197, 198, 198, 199, 199, 199,
-  200, 200, 201, 201, 201, 202, 202, 203, 203, 204, 204, 204, 205, 205, 206, 206,
-  206, 207, 207, 208, 208, 209, 209, 209, 210, 210, 211, 211, 211, 212, 212, 213,
-  213
+  0, 1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5, 6, 6, 7, 7, 8, 8, 8,
+  9, 9, 10, 10, 10, 11, 11, 12, 12, 13, 13, 13, 14, 14, 15, 15, 15, 16, 16, 17,
+  17, 18, 18, 18, 19, 19, 20, 20, 20, 21, 21, 22, 22, 23, 23, 23, 24, 24, 25, 25,
+  25, 26, 26, 27, 27, 27, 28, 28, 29, 29, 30, 30, 30, 31, 31, 32, 32, 32, 33, 33,
+  34, 34, 35, 35, 35, 36, 36, 37, 37, 37, 38, 38, 39, 39, 40, 40, 40, 41, 41, 42,
+  42, 42, 43, 43, 44, 44, 45, 45, 45, 46, 46, 47, 47, 47, 48, 48, 49, 49, 49, 50,
+  50, 51, 51, 52, 52, 52, 53, 53, 54, 54, 54, 55, 55, 56, 56, 57, 57, 57, 58, 58,
+  59, 59, 59, 60, 60, 61, 61, 62, 62, 62, 63, 63, 64, 64, 64, 65, 65, 66, 66, 67,
+  67, 67, 68, 68, 69, 69, 69, 70, 70, 71, 71, 72, 72, 72, 73, 73, 74, 74, 74, 75,
+  75, 76, 76, 76, 77, 77, 78, 78, 79, 79, 79, 80, 80, 81, 81, 81, 82, 82, 83, 83,
+  84, 84, 84, 85, 85, 86, 86, 86, 87, 87, 88, 88, 89, 89, 89, 90, 90, 91, 91, 91,
+  92, 92, 93, 93, 94, 94, 94, 95, 95, 96, 96, 96, 97, 97, 98, 98, 98, 99, 99, 100,
+  100, 101, 101, 101, 102, 102, 103, 103, 103, 104, 104, 105, 105, 106, 106, 106, 107, 107, 108, 108,
+  108, 109, 109, 110, 110, 111, 111, 111, 112, 112, 113, 113, 113, 114, 114, 115, 115, 116, 116, 116,
+  117, 117, 118, 118, 118, 119, 119, 120, 120, 121, 121, 121, 122, 122, 123, 123, 123, 124, 124, 125,
+  125, 125, 126, 126, 127, 127, 128, 128, 128, 129, 129, 130, 130, 130, 131, 131, 132, 132, 133, 133,
+  133, 134, 134, 135, 135, 135, 136, 136, 137, 137, 138, 138, 138, 139, 139, 140, 140, 140, 141, 141,
+  142, 142, 143, 143, 143, 144, 144, 145, 145, 145, 146, 146, 147, 147, 147, 148, 148, 149, 149, 150,
+  150, 150, 151, 151, 152, 152, 152, 153, 153, 154, 154, 155, 155, 155, 156, 156, 157, 157, 157, 158,
+  158, 159, 159, 160, 160, 160, 161, 161, 162, 162, 162, 163, 163, 164, 164, 165, 165, 165, 166, 166,
+  167, 167, 167, 168, 168, 169, 169, 170, 170, 170, 171, 171, 172, 172, 172, 173, 173, 174, 174, 174,
+  175, 175, 176, 176, 177, 177, 177, 178, 178, 179, 179, 179, 180, 180, 181, 181, 182, 182, 182, 183,
+  183, 184, 184, 184, 185, 185, 186, 186, 187, 187, 187, 188, 188, 189, 189, 189, 190, 190, 191, 191,
+  192, 192, 192, 193, 193, 194, 194, 194, 195, 195, 196, 196, 196, 197, 197, 198, 198, 199, 199, 199,
+  200, 200, 201, 201, 201, 202, 202, 203, 203, 204, 204, 204, 205, 205, 206, 206, 206, 207, 207, 208,
+  208, 209, 209, 209, 210, 210, 211, 211, 211, 212, 212, 213, 213
 };
 
 /* precomputed lookup table for 10^1 through 10^16 */
@@ -3202,6 +3195,7 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
 void
 numeric_coerce_int_to_num (int arg, DB_C_NUMERIC answer, bool * is_value_negative)
 {
+  uint32_t *digit;
   unsigned int tmp_arg;
 
   tmp_arg = (arg < 0) ? -(unsigned int) arg : (unsigned int) arg;
@@ -3210,14 +3204,16 @@ numeric_coerce_int_to_num (int arg, DB_C_NUMERIC answer, bool * is_value_negativ
       *is_value_negative = (arg < 0);
     }
 
-  /* Copy the lower 32 bits into answer [16] ~ [13] (4 bytes) */
-  answer[DB_NUMERIC_BUF_SIZE - 1] = ((tmp_arg) & 0xff);
-  answer[DB_NUMERIC_BUF_SIZE - 2] = ((tmp_arg >> 8) & 0xff);
-  answer[DB_NUMERIC_BUF_SIZE - 3] = ((tmp_arg >> 16) & 0xff);
-  answer[DB_NUMERIC_BUF_SIZE - 4] = ((tmp_arg >> 24) & 0xff);
+  /* Copy the lower 32 bits into answer [13] ~ [16] (4 bytes) */
+  digit = (uint32_t *) (answer + (DB_NUMERIC_BUF_SIZE - sizeof (int)));
+#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
+  *digit = __builtin_bswap32 ((uint32_t) tmp_arg);
+#else
+  *digit = (uint32_t) tmp_arg;
+#endif
 
   /* Pad extra bytes of answer accordingly [0] ~ [12] (13 bytes) */
-  memset (answer, 0, DB_NUMERIC_BUF_SIZE - 4);
+  memset (answer, 0, DB_NUMERIC_BUF_SIZE - sizeof (int));
 }
 
 /*
@@ -3233,6 +3229,7 @@ numeric_coerce_int_to_num (int arg, DB_C_NUMERIC answer, bool * is_value_negativ
 void
 numeric_coerce_bigint_to_num (DB_BIGINT arg, DB_C_NUMERIC answer, bool * is_value_negative)
 {
+  uint64_t *digit;
   UINT64 tmp_arg;
 
   tmp_arg = (arg < 0) ? -(UINT64) arg : (UINT64) arg;
@@ -3241,18 +3238,16 @@ numeric_coerce_bigint_to_num (DB_BIGINT arg, DB_C_NUMERIC answer, bool * is_valu
       *is_value_negative = (arg < 0);
     }
 
-  /* Copy the lower 64 bits into answer [16] ~ [9] (8 bytes) */
-  answer[DB_NUMERIC_BUF_SIZE - 1] = ((tmp_arg) & 0xff);
-  answer[DB_NUMERIC_BUF_SIZE - 2] = ((tmp_arg >> 8) & 0xff);
-  answer[DB_NUMERIC_BUF_SIZE - 3] = ((tmp_arg >> 16) & 0xff);
-  answer[DB_NUMERIC_BUF_SIZE - 4] = ((tmp_arg >> 24) & 0xff);
-  answer[DB_NUMERIC_BUF_SIZE - 5] = ((tmp_arg >> 32) & 0xff);
-  answer[DB_NUMERIC_BUF_SIZE - 6] = ((tmp_arg >> 40) & 0xff);
-  answer[DB_NUMERIC_BUF_SIZE - 7] = ((tmp_arg >> 48) & 0xff);
-  answer[DB_NUMERIC_BUF_SIZE - 8] = ((tmp_arg >> 56) & 0xff);
+  /* Copy the lower 64 bits into answer [9] ~ [16] (8 bytes) */
+  digit = (uint64_t *) (answer + (DB_NUMERIC_BUF_SIZE - sizeof (DB_BIGINT)));
+#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
+  *digit = __builtin_bswap64 (tmp_arg);
+#else
+  *digit = tmp_arg;
+#endif
 
   /* Pad extra bytes of answer accordingly [0] ~ [8] (9 bytes) */
-  memset (answer, 0, DB_NUMERIC_BUF_SIZE - 8);
+  memset (answer, 0, DB_NUMERIC_BUF_SIZE - sizeof (DB_BIGINT));
 }
 
 /*
@@ -3268,23 +3263,20 @@ numeric_coerce_bigint_to_num (DB_BIGINT arg, DB_C_NUMERIC answer, bool * is_valu
 void
 numeric_coerce_num_to_int (DB_C_NUMERIC arg, int *answer, const bool is_value_negative)
 {
-  uint32_t magnitude;
+  uint32_t *digit;
 
   /* Copy the lower 32 bits into answer. */
-  magnitude = ((uint32_t) arg[DB_NUMERIC_BUF_SIZE - 1]) +
-    (((uint32_t) arg[DB_NUMERIC_BUF_SIZE - 2]) << 8) +
-    (((uint32_t) arg[DB_NUMERIC_BUF_SIZE - 3]) << 16) + (((uint32_t) arg[DB_NUMERIC_BUF_SIZE - 4]) << 24);
+  digit = (uint32_t *) (arg + (DB_NUMERIC_BUF_SIZE - sizeof (int)));
+#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
+  *answer = (int) __builtin_bswap32 (*digit);
+#else
+  *answer = (int) *digit;
+#endif
 
   /* Apply sign */
   if (is_value_negative)
     {
-      /* magnitude 2^31: negation overflow */
-      assert (magnitude != (uint32_t) INT_MAX + 1);
-      *answer = -((int) magnitude);
-    }
-  else
-    {
-      *answer = (int) magnitude;
+      *answer = -(*answer);
     }
 }
 
@@ -3313,6 +3305,7 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer, c
   unsigned int i;
   char *ptr;
   bool arg_value_is_negative = is_value_negative;
+  uint64_t magnitude;
 
   if (scale >= (int) (sizeof (powers_of_10) / sizeof (powers_of_10[0])))
     {
@@ -3348,19 +3341,15 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer, c
     }
 
   /* Copy the lower 64 bits into answer */
-  ptr = (char *) answer;
-  for (i = 0; i < sizeof (DB_BIGINT); i++)
-    {
+  magnitude = *(uint64_t *) (zero_scale_arg + (DB_NUMERIC_BUF_SIZE - sizeof (DB_BIGINT)));
 #if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
-      ptr[i] = zero_scale_arg[DB_NUMERIC_BUF_SIZE - (i + 1)];
+  *answer = (DB_BIGINT) __builtin_bswap64 (magnitude);
 #else
-      ptr[sizeof (DB_BIGINT) - (i + 1)] = zero_scale_arg[DB_NUMERIC_BUF_SIZE - (i + 1)];
+  *answer = (DB_BIGINT) magnitude;
 #endif
-    }
 
   if (arg_value_is_negative)
     {
-      assert (*answer != DB_BIGINT_MIN);
       *answer = -(*answer);
     }
 
