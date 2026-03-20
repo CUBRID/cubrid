@@ -163,6 +163,10 @@ static int uuidv4_generate_bytes (THREAD_ENTRY * thread_p, unsigned char *out_by
 static int uuidv7_generate_bytes (THREAD_ENTRY * thread_p, uint64_t epoch_ms, unsigned char *out_bytes);
 #endif /* !defined (CS_MODE) */
 
+#define UUID_FORMAT_LEN 36
+#define UUID_HEX_LEN 32
+#define IS_HEX_CHAR(c) (((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) ? true : false)
+
 typedef enum
 {
   COMPOSITE_YEAR = 0,
@@ -2752,15 +2756,16 @@ db_string_md5 (DB_VALUE const *val, DB_VALUE * result)
 int
 db_uuid_format (DB_VALUE const *val, DB_VALUE * result)
 {
-  char hex_buf[32 + 1];
-  char out_buf[36 + 1];
-  int hex_len = 0;
+  char hex_buf[UUID_FORMAT_LEN + 1];
+  char *out_buf;
   const char *str = NULL;
   int str_size = 0;
   int i, j;
+  const int dash_pos[] = { 8, 13, 18, 23 };
   const char hex_digit[] = "0123456789ABCDEF";
   DB_TYPE val_type;
   bool is_bit_input = false;
+  int error_status = NO_ERROR;
 
   assert (val != (DB_VALUE *) NULL);
   assert (result != (DB_VALUE *) NULL);
@@ -2777,41 +2782,20 @@ db_uuid_format (DB_VALUE const *val, DB_VALUE * result)
     {
       str = db_get_string (val);
       str_size = db_get_string_length (val);
-      /* accept exactly 32 hex chars, or 36 with hyphens (32 hex chars) */
-      if (str_size > 32)
-	{
-	  /* maybe 36 with hyphens: collect exactly 32 hex chars by skipping hyphens */
-	  hex_len = 0;
-	  for (i = 0; i < str_size && hex_len < 32; i++)
-	    {
-	      char c = (char) str[i];
-	      if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f'))
-		hex_buf[hex_len++] = (char) toupper ((unsigned char) c);
-	    }
-	  /* if extra hex characters exist after collecting 32 hex digits, treat as invalid */
-	  for (; i < str_size; i++)
-	    {
-	      char c = (char) str[i];
-	      if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f'))
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
-		  return ER_QSTR_INVALID_UUID_FORMAT;
-		}
-	    }
-	  if (hex_len != 32)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
-	      return ER_QSTR_INVALID_UUID_FORMAT;
-	    }
 
-	  hex_buf[32] = '\0';
-	}
-      else if (str_size == 32)
+      if (str_size == UUID_HEX_LEN)
 	{
-	  for (i = 0; i < 32; i++)
+	  for (i = 0, j = 0; i < UUID_FORMAT_LEN; i++)
 	    {
-	      char c = (char) str[i];
-	      if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f'))
+	      char c = (char) str[i - j];
+
+	      if (j < 4 && i == dash_pos[j])
+		{
+		  j++;
+		  hex_buf[i++] = '-';
+		}
+
+	      if (IS_HEX_CHAR (c))
 		hex_buf[i] = (char) toupper ((unsigned char) c);
 	      else
 		{
@@ -2819,8 +2803,6 @@ db_uuid_format (DB_VALUE const *val, DB_VALUE * result)
 		  return ER_QSTR_INVALID_UUID_FORMAT;
 		}
 	    }
-	  hex_buf[32] = '\0';
-	  hex_len = 32;
 	}
       else
 	{
@@ -2833,18 +2815,21 @@ db_uuid_format (DB_VALUE const *val, DB_VALUE * result)
       int bit_len = 0;
       str = db_get_bit (val, &bit_len);
       str_size = QSTR_NUM_BYTES (bit_len);
-      if (str_size != 16)
+      if (str_size != UUID_HEX_LEN / 2)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
 	  return ER_QSTR_INVALID_UUID_FORMAT;
 	}
-      for (i = 0; i < 16; i++)
+      for (i = 0, j = 0; i < UUID_HEX_LEN / 2; i++)
 	{
-	  hex_buf[i * 2] = hex_digit[(str[i] >> 4) & 0xF];
-	  hex_buf[i * 2 + 1] = hex_digit[str[i] & 0xF];
+	  if (j < 4 && i == (dash_pos[j] - j) / 2)
+	    {
+	      hex_buf[i * 2 + j] = '-';
+	      j++;
+	    }
+	  hex_buf[i * 2 + j] = hex_digit[(str[i] >> 4) & 0xF];
+	  hex_buf[i * 2 + 1 + j] = hex_digit[str[i] & 0xF];
 	}
-      hex_buf[32] = '\0';
-      hex_len = 32;
       is_bit_input = true;
     }
   else
@@ -2852,43 +2837,30 @@ db_uuid_format (DB_VALUE const *val, DB_VALUE * result)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
       return ER_QSTR_INVALID_UUID_FORMAT;
     }
+  hex_buf[UUID_FORMAT_LEN] = '\0';
 
-  /* format as 8-4-4-4-12 */
-  j = 0;
-  for (i = 0; i < 32; i++)
+  out_buf = (char *) db_private_alloc (NULL, UUID_FORMAT_LEN + 1);
+  if (out_buf == NULL)
     {
-      if (i == 8 || i == 12 || i == 16 || i == 20)
-	out_buf[j++] = '-';
-      out_buf[j++] = hex_buf[i];
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
     }
-  out_buf[36] = '\0';
-
+  memcpy (out_buf, hex_buf, UUID_FORMAT_LEN + 1);
   if (is_bit_input)
     {
       /* Bit input: do not use db_get_string_codeset/collation (invalid for bit).
        * Use db_make_string with allocated copy so result has a valid string representation. */
-      char *out_copy = (char *) db_private_alloc (NULL, 37);
-      if (out_copy == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
-      memcpy (out_copy, out_buf, 37);
-      db_make_string (result, out_copy);
-      result->need_clear = true;
+      error_status = db_make_string (result, out_buf);
     }
   else
     {
-      DB_VALUE out_val;
-      db_make_null (&out_val);
-      qstr_make_typed_string (DB_TYPE_VARCHAR, &out_val, 36, out_buf, 36,
-			      db_get_string_codeset (val), db_get_string_collation (val));
-      out_val.need_clear = false;
-      /* pr_clone_value copy out_buf to db_private_alloced space */
-      pr_clone_value (&out_val, result);
+      error_status = db_make_varchar (result, UUID_FORMAT_LEN, out_buf, UUID_FORMAT_LEN,
+				      db_get_string_codeset (val), db_get_string_collation (val));
     }
+  if (error_status == NO_ERROR)
+    result->need_clear = true;
 
-  return NO_ERROR;
+  return error_status;
 }
 
 /*
