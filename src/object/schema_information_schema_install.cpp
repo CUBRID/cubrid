@@ -376,7 +376,7 @@ namespace cubschema
       {"partition_ordinal_position", "integer"},
       {"partition_method", format_varchar (5)},
       {"partition_expression", format_varchar (2048)},
-      {"partition_description", format_varchar (1024)},
+      {"partition_description", "string"},
       {"subpartition_name", format_varchar (255)},
       {"subpartition_ordinal_position", "integer"},
       {"subpartition_method", format_varchar (5)},
