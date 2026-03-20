@@ -212,7 +212,7 @@ css_sprintf_conn_infoids (SOCKET fd, char *user_name, char *host_name, int *clie
   const char *client_prog_name;
   CSS_CONN_ENTRY *conn;
   int error, tran_index = -1;
-  char *client_user_name, *client_host_name
+  char *client_user_name, *client_host_name;
 
   conn = css_find_conn_from_fd (fd);
 

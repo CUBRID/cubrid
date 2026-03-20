@@ -5342,7 +5342,7 @@ lang_init_common_en_cs (COLL_DATA * coll_data)
     }
 
   CS_Lock (en_cs_init_lock);
-  if (is_common_en_cs_init)
+  if (!is_common_en_cs_init)
     {
       for (i = 0; i < coll_data->w_count; i++)
 	{
@@ -5382,7 +5382,7 @@ lang_init_common_en_ci (COLL_DATA * coll_data)
     }
 
   CS_Lock (en_ci_init_lock);
-  if (is_common_en_ci_init)
+  if (!is_common_en_ci_init)
     {
       for (i = 0; i < coll_data->w_count; i++)
 	{
