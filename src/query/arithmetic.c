@@ -5062,7 +5062,7 @@ db_collection_to_string_dbval (DB_VALUE * result, DB_VALUE * value)
       return error;
     }
 
-  error = valcnv_convert_value_to_string (result);
+  error = valcnv_convert_collection_value_to_string_all_elements (result);
   if (error != NO_ERROR)
     {
       db_value_clear (result);

@@ -83,7 +83,7 @@ bool db_Keep_session = false;
 
 int db_Row_count = DB_ROW_COUNT_NOT_SET;
 
-static int valcnv_Max_set_elements = 10;
+static thread_local int valcnv_Max_set_elements = 10;
 
 #if defined(SERVER_MODE)
 int db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
@@ -2758,6 +2758,21 @@ valcnv_convert_value_to_string (DB_VALUE * value_p)
     }
 
   return NO_ERROR;
+}
+
+int
+valcnv_convert_collection_value_to_string_all_elements (DB_VALUE * value_p)
+{
+  int save = valcnv_Max_set_elements;
+  int err;
+
+  assert (db_value_type_is_collection (value_p));
+
+  valcnv_Max_set_elements = 0;
+  err = valcnv_convert_value_to_string (value_p);
+  valcnv_Max_set_elements = save;
+
+  return err;
 }
 
 int
