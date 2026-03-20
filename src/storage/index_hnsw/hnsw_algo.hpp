@@ -156,19 +156,18 @@ namespace cubhnsw
 	return level == 0 ? connectivity * 2 : connectivity;
       }
 
-
       inline void
       collect_node_profile (const level_t &level)
       {
 	graph_profile_t &gp = m_graph_profile;
 	for (level_t l = 0; l <= level; ++l)
 	  {
-	    gp.nodes_per_level[l].fetch_add (1, std::memory_order_relaxed);
+	    gp.nodes_per_level[l]++;
 	  }
 
 	if (level > gp.max_level)
 	  {
-	    gp.max_level = level;
+	    gp.max_level.store (level, std::memory_order_relaxed);
 	  }
 
 	gp.total_nodes++;

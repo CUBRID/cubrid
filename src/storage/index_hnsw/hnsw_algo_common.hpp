@@ -128,16 +128,17 @@ namespace cubhnsw
 
   struct graph_profile_t
   {
-    std::array<std::atomic<size_t>, MAX_LEVELS> nodes_per_level;
-    std::array<std::atomic<size_t>, MAX_LEVELS> degree_sum_per_level;
+    std::array<std::atomic<size_t>, MAX_LEVELS + 1> nodes_per_level;
+    std::array<std::atomic<size_t>, MAX_LEVELS + 1> degree_sum_per_level;
 
-    level_t max_level {0};
+    std::atomic<level_t> max_level;
     std::atomic<std::size_t> total_nodes;
 
     graph_profile_t ()
     {
       total_nodes.store (0, std::memory_order_relaxed);
-      for (size_t i = 0; i < MAX_LEVELS; ++i)
+      max_level.store (0, std::memory_order_relaxed);
+      for (size_t i = 0; i < MAX_LEVELS + 1; ++i)
 	{
 	  nodes_per_level[i].store (0, std::memory_order_relaxed);
 	  degree_sum_per_level[i].store (0, std::memory_order_relaxed);
