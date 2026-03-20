@@ -425,9 +425,9 @@ es_copy_file_with_prefix (const char *in_uri, const char *metaname, const char *
   int ret = NO_ERROR;
 
   assert (in_uri != NULL);
-  assert (out_uri != NULL);
   assert (metaname != NULL);
   assert (prefix != NULL);
+  assert (out_uri != NULL);
 
   if (es_initialized_type == ES_NONE)
     {
@@ -447,6 +447,7 @@ es_copy_file_with_prefix (const char *in_uri, const char *metaname, const char *
   if (es_type == ES_POSIX)
     {
       memcpy (out_uri, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX));
+
       ret =
 	xes_posix_copy_file_with_prefix (ES_POSIX_PATH_POS (in_uri), (char *) metaname, prefix,
 					 ES_POSIX_PATH_POS (out_uri));
@@ -547,9 +548,9 @@ es_move_file_with_prefix (const char *src_path, const char *metaname, const char
   ES_TYPE es_type;
 
   assert (src_path != NULL);
-  assert (new_path != NULL);
   assert (metaname != NULL);
   assert (prefix != NULL);
+  assert (new_path != NULL);
 
   if (es_initialized_type == ES_NONE)
     {
@@ -569,6 +570,7 @@ es_move_file_with_prefix (const char *src_path, const char *metaname, const char
   if (es_type == ES_POSIX)
     {
       memcpy (new_path, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX));
+
       ret =
 	xes_posix_move_file_with_prefix (ES_POSIX_PATH_POS (src_path), metaname, prefix, ES_POSIX_PATH_POS (new_path));
       es_log ("es_move_file_with_prefix: xes_posix_move_file_with_prefix(%s) -> %s: %d\n", src_path, new_path, ret);
