@@ -9115,7 +9115,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
 
     case PT_COLLECTION_TO_STRING:
-      if (arg1_type != PT_TYPE_NULL && !PT_IS_COLLECTION_TYPE (arg1_type))
+      if (arg1_type != PT_TYPE_NULL && arg1_type != PT_TYPE_MAYBE && !PT_IS_COLLECTION_TYPE (arg1_type))
 	{
 	  PT_ERRORmf2 (parser, arg1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
 		       pt_short_print (parser, arg1), "collection type");
