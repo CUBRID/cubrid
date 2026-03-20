@@ -17535,16 +17535,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_COLLECTION_TO_STRING:
-      db_value_clone (arg1, &tmp_val);
-      error = valcnv_convert_value_to_string (&tmp_val);
-      if (error != NO_ERROR)
+      error = db_collection_to_string_dbval (result, arg1);
+      if (error < 0)
 	{
-	  db_value_clear (&tmp_val);
 	  PT_ERRORc (parser, o1, er_msg ());
 	  return 0;
 	}
-      db_value_clone (&tmp_val, result);
-      db_value_clear (&tmp_val);
       return 1;
 
     default:

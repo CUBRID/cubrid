@@ -3737,20 +3737,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       break;
 
     case T_COLLECTION_TO_STRING:
-      if (DB_IS_NULL (peek_right))
+      if (db_collection_to_string_dbval (arithptr->value, peek_right) != NO_ERROR)
 	{
-	  PRIM_SET_NULL (arithptr->value);
-	}
-      else
-	{
-	  if (db_value_clone (peek_right, arithptr->value) != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	  if (valcnv_convert_value_to_string (arithptr->value) != NO_ERROR)
-	    {
-	      goto error;
-	    }
+	  goto error;
 	}
       break;
 
