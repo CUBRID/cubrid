@@ -72,7 +72,7 @@ dblink_global_tran_insert_row (THREAD_ENTRY * thread_p, int gtrid, int bqual,
   int error = NO_ERROR;
   DB_VALUE dbval, datetime_val;
   DB_DATETIME *datetime;
-  bool scan_inited = false;
+  bool scan_cache_inited = false;
   bool attr_inited = false;
 
   char state_str[2] = { state, '\0' };
@@ -94,7 +94,7 @@ dblink_global_tran_insert_row (THREAD_ENTRY * thread_p, int gtrid, int bqual,
       error = ER_FAILED;
       goto cleanup;
     }
-  scan_inited = true;
+  scan_cache_inited = true;
 
   if (heap_assign_address (thread_p, hfid_p, &class_oid, &oid, 0) != NO_ERROR)
     {
@@ -182,7 +182,7 @@ cleanup:
     {
       heap_attrinfo_end (thread_p, &attr_info);
     }
-  if (scan_inited)
+  if (scan_cache_inited)
     {
       heap_scancache_end_modify (thread_p, &scan);
     }
@@ -348,7 +348,8 @@ dblink_global_tran_delete_row (THREAD_ENTRY * thread_p, int gtrid, int bqual)
   HEAP_CACHE_ATTRINFO attr_info;
   int force_count = 0;
   int error = NO_ERROR;
-  bool scan_inited = false;
+  bool scan_cache_inited = false;
+  bool scan_modify_inited = false;
   bool attr_inited = false;
 
   if (xlocator_find_class_oid (thread_p, CT_GLOBAL_TRAN_NAME, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
@@ -367,7 +368,7 @@ dblink_global_tran_delete_row (THREAD_ENTRY * thread_p, int gtrid, int bqual)
       error = ER_FAILED;
       goto cleanup;
     }
-  scan_inited = true;
+  scan_cache_inited = true;
 
   if (heap_attrinfo_start (thread_p, &class_oid, -1, NULL, &attr_info) != NO_ERROR)
     {
@@ -383,14 +384,14 @@ dblink_global_tran_delete_row (THREAD_ENTRY * thread_p, int gtrid, int bqual)
     }
 
   heap_scancache_end (thread_p, &scan);
-  scan_inited = false;
+  scan_cache_inited = false;
 
   if (heap_scancache_start_modify (thread_p, &scan, hfid_p, &class_oid, SINGLE_ROW_DELETE, NULL) != NO_ERROR)
     {
       error = ER_FAILED;
       goto cleanup;
     }
-  scan_inited = true;
+  scan_modify_inited = true;
 
   error = locator_delete_force (thread_p, hfid_p, &oid, true, SINGLE_ROW_DELETE, &scan, &force_count, NULL, false);
 
@@ -399,7 +400,11 @@ cleanup:
     {
       heap_attrinfo_end (thread_p, &attr_info);
     }
-  if (scan_inited)
+  if (scan_cache_inited)
+    {
+      heap_scancache_end (thread_p, &scan);
+    }
+  if (scan_modify_inited)
     {
       heap_scancache_end_modify (thread_p, &scan);
     }
@@ -424,7 +429,7 @@ dblink_global_tran_scan_for_recovery (THREAD_ENTRY * thread_p, dblink_global_tra
   HEAP_ATTRVALUE *heap_value = NULL;
   DBLINK_GLOBAL_TRAN_ROW row;
   int error = NO_ERROR;
-  bool scan_inited = false;
+  bool scan_cache_inited = false;
   bool attr_inited = false;
 
   if (callback == NULL)
@@ -448,7 +453,7 @@ dblink_global_tran_scan_for_recovery (THREAD_ENTRY * thread_p, dblink_global_tra
       error = ER_FAILED;
       goto cleanup;
     }
-  scan_inited = true;
+  scan_cache_inited = true;
 
   if (heap_attrinfo_start (thread_p, &class_oid, -1, NULL, &attr_info) != NO_ERROR)
     {
@@ -525,7 +530,7 @@ cleanup:
     {
       heap_attrinfo_end (thread_p, &attr_info);
     }
-  if (scan_inited)
+  if (scan_cache_inited)
     {
       heap_scancache_end (thread_p, &scan);
     }
