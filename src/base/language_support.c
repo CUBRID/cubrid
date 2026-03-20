@@ -5300,6 +5300,24 @@ lang_initloc_en_binary (LANG_LOCALE_DATA * ld)
   ld->is_initialized = true;
 }
 
+
+#if defined(SUPPORT_MULTI_THREADS_4_CS)
+#define CS_Lock(mutex) pthread_mutex_lock(&(mutex))
+#define CS_UnLock(mutex) pthread_mutex_unlock(&(mutex))
+#else
+#define CS_Lock(mutex)
+#define CS_UnLock(mutex)
+#if !defined(NDEBUG)
+static pthread_t gv_main_tid;
+
+__attribute__ ((constructor))
+     void my_constructor ()
+{
+  gv_main_tid = pthread_self ();
+}
+#endif
+#endif
+
 /*
  * lang_init_common_en_cs () - init collation data for English case
  *			       sensitive (no matter the charset)
@@ -5312,14 +5330,18 @@ lang_init_common_en_cs (COLL_DATA * coll_data)
 {
   int i;
   static bool is_common_en_cs_init = false;
+#if defined(SUPPORT_MULTI_THREADS_4_CS)
   static pthread_mutex_t en_cs_init_lock = PTHREAD_MUTEX_INITIALIZER;
+#elif !defined(NDEBUG)
+  assert (pthread_equal (gv_main_tid, pthread_self ()));
+#endif
 
   if (is_common_en_cs_init)
     {
       return;
     }
 
-  pthread_mutex_lock (&en_cs_init_lock);
+  CS_Lock (en_cs_init_lock);
   if (is_common_en_cs_init)
     {
       for (i = 0; i < coll_data->w_count; i++)
@@ -5333,7 +5355,7 @@ lang_init_common_en_cs (COLL_DATA * coll_data)
 
       is_common_en_cs_init = true;
     }
-  pthread_mutex_unlock (&en_cs_init_lock);
+  CS_UnLock (en_cs_init_lock);
 }
 
 /*
@@ -5348,14 +5370,18 @@ lang_init_common_en_ci (COLL_DATA * coll_data)
 {
   int i;
   static bool is_common_en_ci_init = false;
+#if defined(SUPPORT_MULTI_THREADS_4_CS)
   static pthread_mutex_t en_ci_init_lock = PTHREAD_MUTEX_INITIALIZER;
+#elif !defined(NDEBUG)
+  assert (pthread_equal (gv_main_tid, pthread_self ()));
+#endif
 
   if (is_common_en_ci_init)
     {
       return;
     }
 
-  pthread_mutex_lock (&en_ci_init_lock);
+  CS_Lock (en_ci_init_lock);
   if (is_common_en_ci_init)
     {
       for (i = 0; i < coll_data->w_count; i++)
@@ -5383,7 +5409,7 @@ lang_init_common_en_ci (COLL_DATA * coll_data)
 
       is_common_en_ci_init = true;
     }
-  pthread_mutex_unlock (&en_ci_init_lock);
+  CS_UnLock (en_ci_init_lock);
 }
 
 /*
