@@ -24,11 +24,8 @@
 
 namespace cubhnsw
 {
-  using level_t = int16_t;
   using byte_t = std::byte;
   using neighbors_count_t = uint32_t;
-
-  constexpr level_t MAX_LEVELS = 16;
 
   // =====================================================================
   // utility functions
