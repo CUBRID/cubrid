@@ -581,6 +581,13 @@ hnsw_impl::add (cubthread::entry *thread_p, int n_vectors, const OID *oid, const
     }
 #endif
 
+  // debugging mode (TODO)
+  const std::string &graph_profile = m_algo->dump ();
+  if (!graph_profile.empty())
+    {
+      fprintf (stdout, "%s\n", graph_profile.c_str ());
+    }
+
   return NO_ERROR;
 }
 

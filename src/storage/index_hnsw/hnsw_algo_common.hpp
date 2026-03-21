@@ -27,6 +27,8 @@
 #include <ankerl/unordered_dense.h>
 
 #include "hnsw_api.hpp"
+#include "hnsw_algo_common_graph_structure_profile.hpp"
+#include "hnsw_algo_common_stats.hpp"
 #include "hnsw_utils.hpp"
 #include "thread_entry.hpp"
 #include "vector_distance.hpp"
@@ -45,6 +47,9 @@ namespace cubhnsw
 
   using level_t = int16_t;
 
+  constexpr level_t MAX_LEVELS = 16;
+
+  static_assert (MAX_LEVELS == HNSW_MAX_LEVEL_COUNT, "profile level count must match MAX_LEVELS");
   struct candidate_t
   {
     distance_t distance;
@@ -154,17 +159,12 @@ namespace cubhnsw
     top_candidates_t m_top_for_refine;
     next_candidates_t m_next_candidates;
     visited_set_t m_visits;
+
     cubthread::entry *m_thread_p {nullptr};
+    level_t m_level {0};
 
     // stats
     bool m_is_perf_tracking {false};
-    std::size_t m_visited_nodes{};
-    std::size_t m_computed_distances{};
-    std::size_t m_computed_distances_in_refines{};
-    std::size_t m_computed_distances_in_reverse_refines{};
-    std::size_t m_neighbors_cache_hits{};
-    std::size_t m_neighbors_page_fixes{};
-
     bool m_is_debugging {false};
     FILE *m_debug_fp {nullptr};
     std::vector<std::string> m_accessed_nodes; // for debug
@@ -201,12 +201,18 @@ namespace cubhnsw
 	  m_debug_fp = nullptr;
 	}
     }
+    algo_stats_t m_stats;
 
     void clear_candidates ()
     {
       m_top_candidates.clear ();
       m_next_candidates.clear();
       m_visits.clear();
+    }
+
+    void collect_perf_stats ()
+    {
+      m_stats.collect_perf_stats (m_thread_p, m_is_perf_tracking);
     }
   };
 }

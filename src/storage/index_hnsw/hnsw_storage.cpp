@@ -139,6 +139,8 @@ namespace cubhnsw
     SPAGE_SLOT *slotp = spage_get_slot (root_page_ptr, 1);
     assert (slotp != nullptr);
 
+    context.m_stats.on_page_access (context.m_is_perf_tracking, context.m_level);
+
     OID oid = { root_vpid.pageid, 1, root_vpid.volid };
 
     pinned_t::data_t blk;
@@ -167,10 +169,7 @@ namespace cubhnsw
     SPAGE_SLOT *slotp = spage_get_slot (node_page_ptr, id.slotid);
     assert (slotp != nullptr);
 
-    if (context.m_is_perf_tracking)
-      {
-	context.m_visited_nodes++;
-      }
+    context.m_stats.on_page_access (context.m_is_perf_tracking, context.m_level);
 
     if (context.m_is_debugging)
       {
@@ -214,11 +213,16 @@ namespace cubhnsw
   const float *
   storage::get_vector_by_slot_id (algo_context_t &context, const slot_id_t &slot, const lock_mode &mode)
   {
+    context.m_stats.on_vector_access (context.m_is_perf_tracking, context.m_level);
+
     auto it = m_vector_cache.find (slot);
     if (it != m_vector_cache.end ())
       {
+	context.m_stats.on_vector_cache_hit (context.m_is_perf_tracking, context.m_level);
 	return it->second.data ();
       }
+
+    context.m_stats.on_vector_cache_miss (context.m_is_perf_tracking, context.m_level);
 
     pinned_t node_blk = get_node_by_slot_id (context, slot, mode);
     node_t node { reinterpret_cast<byte_t *> (node_blk->data) };
