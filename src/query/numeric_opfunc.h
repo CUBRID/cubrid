@@ -82,16 +82,6 @@ typedef enum
     (value)->data.num.header.scale = 0; \
   } while(0)
 
-/*
- * Lookup table for converting precision value to byte count
- *
- * Precomputed values of:
- *   bytes = ceil(precision / log10(256))
- * including extra entries for scale adjustment and internal intermediate ranges,
- * so callers can use fast O(1) integer lookup instead of floating point computation.
- */
-extern const int _gv_numeric_precision_to_bytes_lookup[513];
-
 #if defined(SERVER_MODE)
 extern void numeric_init_power_value_string (void);
 #endif
