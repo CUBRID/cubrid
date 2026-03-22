@@ -72,7 +72,7 @@ namespace parallel_heap_scan
     int error_code;
     m_hfid = hfid;
 
-    error_code = file_get_all_data_sectors (thread_p, &m_hfid, &collector);
+    error_code = file_get_all_data_sectors (thread_p, &m_hfid.vfid, &collector);
     if (error_code != NO_ERROR)
       {
 	if (collector.partsect_ftab != NULL)

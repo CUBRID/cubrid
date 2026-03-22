@@ -20,7 +20,6 @@
  * file_manager.c - file manager
  */
 
-#include "error_code.h"
 #ident "$Id$"
 
 #include "config.h"
@@ -11935,9 +11934,8 @@ file_extdata_collect_data_sectors_full (THREAD_ENTRY * thread_p, const void *ite
  * collector_out(out): output collected table pages
  */
 int
-file_get_all_data_sectors (THREAD_ENTRY * thread_p, const HFID * hfid, FILE_FTAB_COLLECTOR * collector_out)
+file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB_COLLECTOR * collector_out)
 {
-  VFID vfid = hfid->vfid;
   VPID vpid_fhead;
   PAGE_PTR page_fhead;
   FILE_HEADER *fhead = NULL;
@@ -11948,7 +11946,7 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const HFID * hfid, FILE_FTAB
   collector_out->nsects = 0;
   collector_out->partsect_ftab = NULL;
 
-  FILE_GET_HEADER_VPID (&vfid, &vpid_fhead);
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
   page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (page_fhead == NULL)
     {
