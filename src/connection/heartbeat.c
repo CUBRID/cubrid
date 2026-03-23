@@ -698,7 +698,7 @@ hb_process_init (const char *server_name, const char *log_path, HB_PROC_TYPE typ
   
   if (is_first.load (std::memory_order_acquire) == false)
     {
-      return NO_ERROR;
+      return (NO_ERROR);
     }
 
   std::lock_guard <std::mutex> lock (init_mtx);
@@ -706,7 +706,7 @@ hb_process_init (const char *server_name, const char *log_path, HB_PROC_TYPE typ
 
   if (is_first.load (std::memory_order_relaxed) == false)
     {
-      return NO_ERROR;
+      return (NO_ERROR);
     }
 
   er_log_debug (ARG_FILE_LINE, "hb_process_init. (type:%s). \n", hb_type_to_str (type));
@@ -714,35 +714,31 @@ hb_process_init (const char *server_name, const char *log_path, HB_PROC_TYPE typ
   if (hb_Exec_path[0] == '\0' || *(hb_Argv) == 0)
     {
       er_log_debug (ARG_FILE_LINE, "hb_Exec_path or hb_Argv is not set. \n");
-      error = ER_FAILED;
+      return (ER_FAILED);
     }
-  else
+
+  hb_Conn = hb_connect_to_master (server_name, log_path, type);
+
+  /* wait 1 sec */
+  sleep (1);
+
+  error = hb_register_to_master (hb_Conn, type);
+  if (NO_ERROR != error)
     {
-      hb_Conn = hb_connect_to_master (server_name, log_path, type);
-
-      /* wait 1 sec */
-      sleep (1);
-
-      error = hb_register_to_master (hb_Conn, type);
-      if (NO_ERROR != error)
-	{
-	  er_log_debug (ARG_FILE_LINE, "hb_register_to_master failed. \n");
-	}
-      else
-	{
-	  error = hb_create_master_reader ();
-	  if (NO_ERROR != error)
-	    {
-	      er_log_debug (ARG_FILE_LINE, "hb_create_master_reader failed. \n");
-	    }
-	  else
-	    {
-	      is_first.store (false, std::memory_order_release);
-	    }
-	}
+      er_log_debug (ARG_FILE_LINE, "hb_register_to_master failed. \n");
+      return (error);
     }
 
-  return error;
+  error = hb_create_master_reader ();
+  if (NO_ERROR != error)
+    {
+      er_log_debug (ARG_FILE_LINE, "hb_create_master_reader failed. \n");
+      return (error);
+    }
+
+  is_first.store (false, std::memory_order_release);
+
+  return (NO_ERROR);
 #else
   return (ER_FAILED);
 #endif
