@@ -893,7 +893,7 @@ function copy_active_log_from_master()
 
 	# 2. copy all transaction logs from master.
 	echo -ne "\n - 2. copy all transaction logs from master.\n\n"
-	execute "cubrid copylogdb -L ${repl_log_path} -m async --start-page-id=-1 ${db_name}@${master_host}"
+	execute "cub_admin copylogdb -L ${repl_log_path} -m async --start-page-id=-1 ${db_name}@${master_host}"
 }
 
 function show_complete()

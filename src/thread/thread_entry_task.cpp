@@ -67,7 +67,7 @@ namespace cubthread
     context.get_error_context ().deregister_thread_local ();
 
     context.end_resource_tracks ();
-    context.m_skip_end_resource_tracks_in_recycle = false;
+
     // todo: here we should do more operations to clear thread entry before being reused
     context.unregister_id ();
     context.tran_index = NULL_TRAN_INDEX;
@@ -89,10 +89,7 @@ namespace cubthread
   entry_manager::recycle_context (entry &context)
   {
     er_clear ();    // clear errors
-    if (!context.m_skip_end_resource_tracks_in_recycle)
-      {
-	context.end_resource_tracks ();
-      }
+    context.end_resource_tracks ();
     std::memset (&context.event_stats, 0, sizeof (context.event_stats));  // clear even stats
     context.tran_index = NULL_TRAN_INDEX;    // clear transaction ID
     context.private_lru_index = -1;

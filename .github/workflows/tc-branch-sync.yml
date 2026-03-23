@@ -1,0 +1,452 @@
+#
+# TC Branch Sync — Create/revert TC branches for engine PRs
+#
+# Trigger: pull_request_target (opened, reopened)
+#
+
+name: TC Branch Sync
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions: {} # Least privilege — jobs opt-in below
+
+concurrency:
+  group: tc-branch-sync-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+env:
+  OWNER: CUBRID
+
+jobs:
+  # Parse PR metadata: type, header, original PR number
+  detect-pr-type:
+    name: Detect PR Type
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions: {}
+    outputs:
+      is_revert: ${{ steps.detect.outputs.is_revert }}
+      original_pr_number: ${{ steps.detect.outputs.original_pr_number }}
+      pr_header: ${{ steps.detect.outputs.pr_header }}
+    steps:
+      - name: Parse PR body and title
+        id: detect
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PR_HEADER=$(echo "${PR_TITLE}" | grep -oE '^\[[A-Z]+-[0-9]+\]' || echo "")
+          echo "pr_header=${PR_HEADER}" >> "${GITHUB_OUTPUT}"
+
+          if echo "${PR_TITLE}" | grep -qE '^Revert "'; then
+            # Extract number from body
+            ORIGINAL_PR=$(echo "${PR_BODY}" | grep -oiE 'Reverts .*#[0-9]+' | grep -oE '[0-9]+' | head -1 || echo "")
+            
+            if [ -z "${ORIGINAL_PR}" ]; then
+              COMMIT_MSG=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/commits --jq '.[0].commit.message' 2>/dev/null || echo "")
+              SHA=$(echo "$COMMIT_MSG" | grep -oP 'This reverts commit \K[a-f0-9]+' | head -n 1 || echo "")
+              [ -n "$SHA" ] && ORIGINAL_PR=$(gh api "repos/${{ github.repository }}/commits/$SHA/pulls" --jq '.[0].number' 2>/dev/null || echo "")
+            fi
+            
+            echo "is_revert=true" >> "${GITHUB_OUTPUT}"
+            echo "original_pr_number=${ORIGINAL_PR}" >> "${GITHUB_OUTPUT}"
+            echo "::notice::Revert PR detected — reverting TC changes"
+          else
+            echo "is_revert=false" >> "${GITHUB_OUTPUT}"
+            echo "original_pr_number=" >> "${GITHUB_OUTPUT}"
+            echo "::notice::Normal PR — will create TC branch and draft PR"
+          fi
+
+  # Normal PR: create tc/pr-<N> branch from develop, create draft PR
+  sync-tc-branch:
+    name: Create TC Branch (${{ matrix.tc-repo }})
+    needs: detect-pr-type
+    if: needs.detect-pr-type.outputs.is_revert == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pull-requests: write
+    strategy:
+      matrix:
+        tc-repo:
+          - cubrid-testcases
+          - cubrid-testcases-private-ex
+      fail-fast: false
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.TC_APP_ID }}
+          private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
+          repositories: ${{ matrix.tc-repo }}
+          owner: ${{ env.OWNER }}
+
+      - name: Mask token
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        shell: bash
+        run: echo "::add-mask::${APP_TOKEN}"
+
+      - name: Create TC branch from develop
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TC_REPO: ${{ matrix.tc-repo }}
+          OWNER: ${{ env.OWNER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRANCH_NAME="tc/pr-${PR_NUMBER}"
+
+          if gh api "repos/${OWNER}/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" > /dev/null 2>&1; then
+            echo "::notice::Branch '${BRANCH_NAME}' already exists in ${TC_REPO}. Skipping branch creation."
+            exit 0
+          fi
+
+          DEVELOP_SHA=$(gh api "repos/${OWNER}/${TC_REPO}/git/refs/heads/develop" --jq '.object.sha')
+          gh api "repos/${OWNER}/${TC_REPO}/git/refs" \
+            --method POST \
+            --field ref="refs/heads/${BRANCH_NAME}" \
+            --field sha="${DEVELOP_SHA}"
+
+          git clone --branch "${BRANCH_NAME}" --single-branch \
+            "https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${TC_REPO}.git" \
+            /tmp/tc-init-${TC_REPO} 2>/dev/null || true
+          if [ -d "/tmp/tc-init-${TC_REPO}/.git" ]; then
+            cd /tmp/tc-init-${TC_REPO}
+            git config --local user.name "github-actions[bot]"
+            git config --local user.email "github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "chore: Initialize TC branch for PR #${PR_NUMBER}"
+            git push origin "${BRANCH_NAME}" --force-with-lease
+          fi
+
+      - name: Create draft PR in TC repo
+        id: create-draft-pr
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEADER: ${{ needs.detect-pr-type.outputs.pr_header }}
+          TC_REPO: ${{ matrix.tc-repo }}
+          ENGINE_REPO: ${{ github.repository }}
+          OWNER: ${{ env.OWNER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRANCH_NAME="tc/pr-${PR_NUMBER}"
+          
+          EXISTING_PR=$(gh pr list --repo "${OWNER}/${TC_REPO}" --head "${BRANCH_NAME}" --state open --json url --jq '.[0].url' || echo "")
+          
+          if [ -n "${EXISTING_PR}" ]; then
+            echo "::notice::Draft PR already exists: ${EXISTING_PR}"
+            exit 0
+          fi
+
+          [ -n "${PR_HEADER}" ] && DRAFT_TITLE="${PR_HEADER} Draft: TC changes for PR ${ENGINE_REPO}#${PR_NUMBER}" || DRAFT_TITLE="Draft: TC changes for PR ${ENGINE_REPO}#${PR_NUMBER}"
+          
+          PR_URL=$(gh pr create \
+            --repo "${OWNER}/${TC_REPO}" \
+            --head "${BRANCH_NAME}" \
+            --base develop \
+            --title "${DRAFT_TITLE}" \
+            --body "This is a draft PR for testing TC changes.
+
+            Related Engine PR: ${ENGINE_REPO}#${PR_NUMBER}
+            TC Branch: ${BRANCH_NAME}
+            
+            This PR will be tested by CircleCI.
+            Please review and merge manually when ready." \
+            --draft)
+          
+          echo "::notice::Created draft PR: ${PR_URL}"
+
+  # Comment TC info on engine PR (normal PR)
+  comment-on-engine-pr:
+    name: Comment on Engine PR
+    needs: [detect-pr-type, sync-tc-branch]
+    if: ${{ !cancelled() && needs.detect-pr-type.outputs.is_revert == 'false' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.TC_APP_ID }}
+          private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
+          owner: ${{ env.OWNER }}
+
+      - name: Post or Update PR Comment
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ENGINE_REPO: ${{ github.repository }}
+          OWNER: ${{ env.OWNER }}
+          SYNC_RESULT: ${{ needs.sync-tc-branch.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "$SYNC_RESULT" == "success" ]; then
+            TARGET_BRANCH="tc/pr-${PR_NUMBER}"
+            TC_REPOS=("cubrid-testcases" "cubrid-testcases-private-ex")
+            TC_TEXT_BLOCK=""
+
+            for REPO in "${TC_REPOS[@]}"; do
+              PR_DATA=$(GH_TOKEN="${APP_TOKEN}" gh pr list --repo "${OWNER}/${REPO}" --head "${TARGET_BRANCH}" --state open --json url,headRefName --jq '.[0]' || echo "")
+              BRANCH=$(echo "$PR_DATA" | jq -r '.headRefName // empty')
+              URL=$(echo "$PR_DATA" | jq -r '.url // empty')
+
+              if [ -n "$BRANCH" ]; then
+                TC_TEXT_BLOCK+="- [${REPO} Draft PR](${URL}) (Branch: \`${BRANCH}\`)"$'\n'
+              else
+                TC_TEXT_BLOCK+="- **${REPO}**: No TC Branch (Skipped or Failed)"$'\n'
+              fi
+            done
+
+            COMMENT_BODY=$(cat <<EOF
+          ## 🧪 TC Test Environment Ready
+          
+          **CircleCI Testing:**
+          - CircleCI will automatically test using the branches below.
+
+          **TC Repositories & Branches:**
+          ${TC_TEXT_BLOCK}
+          **Next Steps:**
+          1. Wait for CircleCI tests to complete
+          2. If CircleCI tests failed, please check the test results and fix the issues.
+          3. When ready to merge this PR, please merge the TC PR first, then merge this PR.
+          EOF
+            )
+          else
+            COMMENT_BODY=$(cat <<EOF
+          ## ⚠️ TC Branch Sync Failed
+          
+          Failed to create TC branches or draft PRs.
+          Please check the [workflow run](${RUN_URL}) for details.
+          EOF
+            )
+          fi
+
+          COMMENT_ID=$(GH_TOKEN="${GITHUB_TOKEN}" gh api "repos/${ENGINE_REPO}/issues/${PR_NUMBER}/comments" \
+            --jq '.[] | select(.user.login=="github-actions[bot]" and (.body | contains("TC Test Environment Ready") or contains("TC Branch Sync Failed"))) | .id' \
+            | tail -n 1)
+
+          if [ -n "$COMMENT_ID" ]; then
+            GH_TOKEN="${GITHUB_TOKEN}" gh api -X PATCH "repos/${ENGINE_REPO}/issues/comments/${COMMENT_ID}" -f body="${COMMENT_BODY}" > /dev/null
+          else
+            GH_TOKEN="${GITHUB_TOKEN}" gh pr comment "${PR_NUMBER}" --repo "${ENGINE_REPO}" --body "${COMMENT_BODY}"
+          fi
+
+  # Revert PR: revert original TC merge commit, create open PR
+  revert-tc-branch:
+    name: Revert TC (${{ matrix.tc-repo }})
+    needs: detect-pr-type
+    if: needs.detect-pr-type.outputs.is_revert == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pull-requests: write
+    strategy:
+      matrix:
+        tc-repo:
+          - cubrid-testcases
+          - cubrid-testcases-private-ex
+      fail-fast: false
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.TC_APP_ID }}
+          private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
+          repositories: ${{ matrix.tc-repo }}
+          owner: ${{ env.OWNER }}
+
+      - name: Revert TC and Create Branch
+        id: revert-tc-commit
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ORIGINAL_PR_NUMBER: ${{ needs.detect-pr-type.outputs.original_pr_number }}
+          PR_HEADER: ${{ needs.detect-pr-type.outputs.pr_header }}
+          TC_REPO: ${{ matrix.tc-repo }}
+          OWNER: ${{ env.OWNER }}
+          ENGINE_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          [ -z "${ORIGINAL_PR_NUMBER}" ] && echo "::error::Missing original PR number" && exit 1
+
+          MERGE_COMMIT=$(gh pr list \
+            --repo "${OWNER}/${TC_REPO}" \
+            --head "tc/pr-${ORIGINAL_PR_NUMBER}" \
+            --state merged \
+            --json mergeCommit \
+            --jq '.[0].mergeCommit.oid' || echo "")
+
+          if [ -z "${MERGE_COMMIT}" ] || [ "${MERGE_COMMIT}" == "null" ]; then
+            echo "::notice::No merged TC PR found. Skipping TC revert."
+            echo "revert_pr_created=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          TARGET_BRANCH="tc/pr-${PR_NUMBER}"
+
+          git clone --filter=blob:none "https://x-access-token:${APP_TOKEN}@github.com/${OWNER}/${TC_REPO}.git" tc-repo
+          cd tc-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin develop
+          git checkout -B "${TARGET_BRANCH}" origin/develop
+
+          if ! git revert --no-edit "${MERGE_COMMIT}" 2>/dev/null; then
+            git revert --abort 2>/dev/null || true
+            if ! git revert --no-edit -m 1 "${MERGE_COMMIT}"; then
+              echo "::error::Revert conflict! Manual resolution required."
+              git revert --abort || true
+              exit 1
+            fi
+          fi
+
+          [ -n "${PR_HEADER}" ] && git commit --amend -m "${PR_HEADER} $(git log -1 --format=%s)"
+          git push origin "${TARGET_BRANCH}" --force
+
+          echo "revert_pr_created=true" >> "${GITHUB_OUTPUT}"
+          echo "tc_revert_branch=${TARGET_BRANCH}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create open PR for revert
+        id: create-revert-pr
+        if: steps.revert-tc-commit.outputs.revert_pr_created == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ORIGINAL_PR_NUMBER: ${{ needs.detect-pr-type.outputs.original_pr_number }}
+          PR_HEADER: ${{ needs.detect-pr-type.outputs.pr_header }}
+          TC_REPO: ${{ matrix.tc-repo }}
+          ENGINE_REPO: ${{ github.repository }}
+          TARGET_BRANCH: ${{ steps.revert-tc-commit.outputs.tc_revert_branch }}
+          OWNER: ${{ env.OWNER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          EXISTING_PR=$(gh pr list --repo "${OWNER}/${TC_REPO}" --head "${TARGET_BRANCH}" --state open --json url --jq '.[0].url' || echo "")
+          if [ -n "${EXISTING_PR}" ]; then
+            echo "::notice::Revert PR already exists: ${EXISTING_PR}"
+            exit 0
+          fi
+          
+          [ -n "${PR_HEADER}" ] && PR_TITLE="${PR_HEADER} Revert: TC branch for PR ${ENGINE_REPO}#${PR_NUMBER} (reverts ${ENGINE_REPO}#${ORIGINAL_PR_NUMBER})" || PR_TITLE="Revert: TC branch for PR ${ENGINE_REPO}#${PR_NUMBER} (reverts ${ENGINE_REPO}#${ORIGINAL_PR_NUMBER})"
+          
+          PR_BODY="This PR reverts TC changes from ${ENGINE_REPO}#${ORIGINAL_PR_NUMBER}.
+
+          Related Engine Revert PR: ${ENGINE_REPO}#${PR_NUMBER}
+          TC Branch: \`${TARGET_BRANCH}\`
+
+          **Please merge this PR FIRST, then merge the engine revert PR.**"
+          
+          gh pr create --repo "${OWNER}/${TC_REPO}" --head "${TARGET_BRANCH}" --base develop --title "${PR_TITLE}" --body "${PR_BODY}"
+
+  # Comment TC info on engine PR (revert PR)
+  comment-on-engine-pr-revert:
+    name: Comment Revert PR Links
+    needs: [detect-pr-type, revert-tc-branch]
+    if: ${{ !cancelled() && needs.detect-pr-type.outputs.is_revert == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.TC_APP_ID }}
+          private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
+          owner: ${{ env.OWNER }}
+
+      - name: Post or Update PR Comment
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ORIGINAL_PR_NUMBER: ${{ needs.detect-pr-type.outputs.original_pr_number }}
+          ENGINE_REPO: ${{ github.repository }}
+          OWNER: ${{ env.OWNER }}
+          REVERT_RESULT: ${{ needs.revert-tc-branch.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "$REVERT_RESULT" == "success" ]; then
+            TARGET_BRANCH="tc/pr-${PR_NUMBER}"
+            TC_REPOS=("cubrid-testcases" "cubrid-testcases-private-ex")
+            TC_TEXT_BLOCK=""
+
+            for REPO in "${TC_REPOS[@]}"; do
+              PR_DATA=$(GH_TOKEN="${APP_TOKEN}" gh pr list --repo "${OWNER}/${REPO}" --head "${TARGET_BRANCH}" --state open --json url,headRefName --jq '.[0]' || echo "")
+              BRANCH=$(echo "$PR_DATA" | jq -r '.headRefName // empty')
+              URL=$(echo "$PR_DATA" | jq -r '.url // empty')
+
+              if [ -n "$BRANCH" ]; then
+                TC_TEXT_BLOCK+="- [${REPO} Revert PR](${URL}) (Branch: \`${BRANCH}\`)"$'\n'
+              else
+                TC_TEXT_BLOCK+="- **${REPO}**: No TC to revert (Skipped)"$'\n'
+              fi
+            done
+
+            COMMENT_BODY=$(cat <<EOF
+          ## 🔄 TC Revert Environment Ready
+
+          **CircleCI Testing:**
+          - CircleCI will automatically test using the branches below.
+
+          **TC Repositories & Branches:**
+          ${TC_TEXT_BLOCK}
+          **Next Steps:**
+          1. Wait for CircleCI tests to complete
+          2. When ready to merge this revert PR, please merge the TC revert PR first, then merge this revert PR.
+          EOF
+            )
+          else
+            COMMENT_BODY=$(cat <<EOF
+          ## ⚠️ TC Revert Failed
+
+          Could not automatically revert TC changes from PR ${ENGINE_REPO}#${ORIGINAL_PR_NUMBER}.
+          This may be due to a merge conflict requiring manual resolution.
+
+          **Manual steps:**
+          1. fork the TC repo and clone it to your local machine
+          2. find the merge commit for \`tc/pr-${ORIGINAL_PR_NUMBER}\` in the TC repo
+          3. checkout to develop branch
+          4. revert the merge commit using \`git revert --no-edit <merge-commit-hash>\`
+          5. push the branch using \`git push origin tc/pr-${PR_NUMBER}\`
+          6. create a PR to develop 
+          
+          See [workflow run](${RUN_URL}) for details.
+          EOF
+            )
+          fi
+
+          COMMENT_ID=$(GH_TOKEN="${GITHUB_TOKEN}" gh api "repos/${ENGINE_REPO}/issues/${PR_NUMBER}/comments" \
+            --jq '.[] | select(.user.login=="github-actions[bot]" and (.body | contains("TC Revert Environment Ready") or contains("TC Revert Failed"))) | .id' \
+            | tail -n 1)
+
+          if [ -n "$COMMENT_ID" ]; then
+            GH_TOKEN="${GITHUB_TOKEN}" gh api -X PATCH "repos/${ENGINE_REPO}/issues/comments/${COMMENT_ID}" -f body="${COMMENT_BODY}" > /dev/null
+          else
+            GH_TOKEN="${GITHUB_TOKEN}" gh pr comment "${PR_NUMBER}" --repo "${ENGINE_REPO}" --body "${COMMENT_BODY}"
+          fi

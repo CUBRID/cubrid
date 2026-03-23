@@ -1877,11 +1877,6 @@ namespace cubschema
       {"created_time", "datetime"},
       {"updated_time", "datetime"},
       {attribute_kind::QUERY_SPEC, sm_define_view_serial_spec ()},
-      /*
-       * Temporary: class method support in system view class for compatibility.
-       * To be removed when class/instance method support is officially dropped.
-       */
-      {attribute_kind::CLASS_METHOD, "change_serial_owner", "au_change_serial_owner_method"},
     },
 // constraints
     {},
