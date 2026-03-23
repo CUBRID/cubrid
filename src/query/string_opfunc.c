@@ -2827,8 +2827,8 @@ db_uuid_format (DB_VALUE const *val, DB_VALUE * result)
 	      hex_buf[i * 2 + j] = '-';
 	      j++;
 	    }
-	  hex_buf[i * 2 + j] = hex_digit[(str[i] >> 4) & 0xF];
-	  hex_buf[i * 2 + 1 + j] = hex_digit[str[i] & 0xF];
+	  hex_buf[i * 2 + j] = hex_digit[((unsigned char) str[i] >> 4) & 0xF];
+	  hex_buf[i * 2 + 1 + j] = hex_digit[(unsigned char) str[i] & 0xF];
 	}
       is_bit_input = true;
     }
@@ -2858,7 +2858,13 @@ db_uuid_format (DB_VALUE const *val, DB_VALUE * result)
 				      db_get_string_codeset (val), db_get_string_collation (val));
     }
   if (error_status == NO_ERROR)
-    result->need_clear = true;
+    {
+      result->need_clear = true;
+    }
+  else
+    {
+      db_private_free_and_init (NULL, out_buf);
+    }
 
   return error_status;
 }
