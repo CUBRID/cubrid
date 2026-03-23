@@ -33,6 +33,7 @@
 #include <thread>
 
 #include <cinttypes>
+#include <pthread.h>
 
 // cubthread::daemon
 //
