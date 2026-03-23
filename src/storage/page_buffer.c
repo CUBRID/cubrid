@@ -16513,7 +16513,7 @@ pgbuf_page_maintenance_daemon_init ()
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (pgbuf_page_maintenance_execute);
 
   pgbuf_Page_maintenance_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                            "pgbuf_page_maintenance");
+                                                                            "pgbuf-page-maintenance");
 }
 #endif /* SERVER_MODE */
 
@@ -16529,7 +16529,7 @@ pgbuf_page_flush_daemon_init ()
   cubthread::looper looper = cubthread::looper (pgbuf_get_page_flush_interval);
   pgbuf_page_flush_daemon_task *daemon_task = new pgbuf_page_flush_daemon_task ();
 
-  pgbuf_Page_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "pgbuf_page_flush");
+  pgbuf_Page_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "pgbuf-page-flush");
 }
 #endif /* SERVER_MODE */
 
@@ -16552,7 +16552,7 @@ pgbuf_page_post_flush_daemon_init ()
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (pgbuf_page_post_flush_execute);
 
   pgbuf_Page_post_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                           "pgbuf_page_post_flush");
+                                                                           "pgbuf-page-post-flush");
 }
 #endif /* SERVER_MODE */
 
@@ -16575,7 +16575,7 @@ pgbuf_flush_control_daemon_init ()
 
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (50));
   pgbuf_Flush_control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                         "pgbuf_flush_control");
+                                                                         "pgbuf-flush-control");
 }
 #endif /* SERVER_MODE */
 
