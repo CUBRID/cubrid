@@ -2895,6 +2895,7 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
   DB_OBJLIST *classes = NULL;
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char *database_name = NULL;
+  char local_database_name[CUB_MAXHOSTNAMELEN];
   int rk_violation_count = 0, fk_violation_count = 0;
   char er_msg_file[PATH_MAX];
   char violation_list_file[PATH_MAX];
@@ -2918,7 +2919,18 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
 
-  if (db_restart (arg->command_name, TRUE, database_name))
+  memset (local_database_name, 0x00, CUB_MAXHOSTNAMELEN);
+  strcpy (local_database_name, database_name);
+  strcat (local_database_name, "@localhost");
+
+  if (check_database_name (local_database_name))
+    {
+      err = ER_FAILED;
+      PRINT_AND_LOG_ERR_MSG ("%s: %s\n", arg->command_name, db_error_string (3));
+      goto end2;
+    }
+
+  if (db_restart (arg->command_name, TRUE, local_database_name))
     {
       err = ER_FAILED;
       PRINT_AND_LOG_ERR_MSG ("%s: %s\n", arg->command_name, db_error_string (3));
