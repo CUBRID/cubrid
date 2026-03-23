@@ -3086,6 +3086,63 @@ bool do_Trigger_involved;
  * Therefore, a separate global variable is set to distinguish whether the query is related to a trigger */
 bool cdc_Trigger_involved = false;
 
+static bool
+is_replication_class (const char *classname)
+{
+  DB_OBJECT *class_obj;
+
+  if (classname == NULL)
+    {
+      return false;
+    }
+
+  class_obj = db_find_class (classname);
+  if (class_obj == NULL)
+    {
+      return false;
+    }
+
+  return sm_is_replication_class (class_obj);
+}
+
+int
+is_data_repl_log_enabled (PT_NODE * statement)
+{
+  PT_NODE *spec;
+  const char *classname;
+
+  if (statement == NULL)
+    {
+      return FALSE;
+    }
+
+  switch (statement->node_type)
+    {
+    case PT_INSERT:
+      classname = statement->info.insert.spec->info.spec.entity_name->info.name.original;
+      return is_replication_class (classname);
+
+    case PT_UPDATE:
+      classname = statement->info.update.spec->info.spec.entity_name->info.name.original;
+      return is_replication_class (classname);
+
+    case PT_DELETE:
+      for (spec = statement->info.delete_.spec; spec != NULL; spec = spec->next)
+	{
+	  classname = spec->info.spec.entity_name->info.name.original;
+
+	  if (is_replication_class (classname))
+	    {
+	      return TRUE;
+	    }
+	}
+      return FALSE;
+
+    default:
+      return TRUE;
+    }
+}
+
 /*
  * do_statement() -
  *   return: Error code
@@ -3141,7 +3198,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
        * error. */
 
       /* disable data replication log for schema replication log types in HA mode */
-      if (!HA_DISABLED () && is_stmt_based_repl_type (statement))
+      if (!HA_DISABLED () && is_stmt_based_repl_type (statement) && is_data_repl_log_enabled (statement))
 	{
 	  need_stmt_replication = true;
 
@@ -3718,63 +3775,6 @@ do_check_subquery_cache (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   return err;
-}
-
-static bool
-is_replication_class_by_name (const char *classname)
-{
-  DB_OBJECT *class_obj;
-
-  if (classname == NULL)
-    {
-      return false;
-    }
-
-  class_obj = db_find_class (classname);
-  if (class_obj == NULL)
-    {
-      return false;
-    }
-
-  return sm_is_replication_class (class_obj);
-}
-
-int
-is_data_repl_log_enabled (PT_NODE * statement)
-{
-  PT_NODE *spec;
-  const char *classname;
-
-  if (statement == NULL)
-    {
-      return FALSE;
-    }
-
-  switch (statement->node_type)
-    {
-    case PT_INSERT:
-      classname = statement->info.insert.spec->info.spec.entity_name->info.name.original;
-      return is_replication_class_by_name (classname);
-
-    case PT_UPDATE:
-      classname = statement->info.update.spec->info.spec.entity_name->info.name.original;
-      return is_replication_class_by_name (classname);
-
-    case PT_DELETE:
-      for (spec = statement->info.delete_.spec; spec != NULL; spec = spec->next)
-	{
-	  classname = spec->info.spec.entity_name->info.name.original;
-
-	  if (is_replication_class_by_name (classname))
-	    {
-	      return TRUE;
-	    }
-	}
-      return FALSE;
-
-    default:
-      return TRUE;
-    }
 }
 
 /*
