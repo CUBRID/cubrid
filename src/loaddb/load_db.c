@@ -540,7 +540,12 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
   char *passwd;
   int status = 0;
+#if defined (SA_MODE)
+  /* to avoid compiler warning (clobbered by longjump) */
+  volatile bool interrupted = false;
+#else
   bool interrupted = false;
+#endif
   int au_save = 0;
   extern bool obt_Enable_autoincrement;
   char log_file_name[PATH_MAX];

@@ -6327,7 +6327,7 @@ ldr_init_driver ()
 }
 
 void
-ldr_sa_load (load_args *args, int *status, bool *interrupted)
+ldr_sa_load (load_args *args, int *status, volatile bool *interrupted)
 {
   int errors = 0;
   int64_t objects = 0;
@@ -6337,8 +6337,6 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
   volatile  bool is_emptyfile = false;
   int ldr_init_ret = NO_ERROR;
   int client_type = DB_CLIENT_TYPE_LOADDB_UTILITY;
-  /* to avoid compiler warning (clobbered by longjump) */
-  volatile bool tmp_interrupted = false;
 
   std::ifstream object_file (args->object_file);
 
@@ -6456,7 +6454,8 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 				 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
 						 LOADDB_MSG_LAST_COMMITTED_LINE), lastcommit);
 		}
-	      tmp_interrupted = true;
+
+	      *interrupted = true;
 	    }
 	  else
 	    {
@@ -6535,7 +6534,6 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 	}
     }
 
-  *interrupted = tmp_interrupted;
   if (errors > 0 || *interrupted == true)
     {
       *status = 3;
