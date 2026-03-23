@@ -57,6 +57,9 @@
 #include "pl_struct_compile.hpp"
 #include "pl_signature.hpp"
 #include "memory_monitor_common.hpp"
+#if defined (CS_MODE)
+#include "network_cl.h"
+#endif
 
 // forward declarations
 #if defined (SA_MODE)
@@ -307,75 +310,6 @@ extern int logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr);
 
 extern int log_supplement_statement (int ddl_type, int objtype, OID * classoid, OID * objoid, const char *stmt_text);
 
-extern int net_client_request_no_reply (int request, char *argbuf, int argsize);
-extern int net_client_request (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf,
-			       int datasize, char *replydata, int replydatasize);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern int net_client_request_send_large_data (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-					       char *databuf, INT64 datasize, char *replydata, int replydatasize);
-#endif
-extern int net_client_request2 (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf,
-				int datasize, char **replydata_ptr, int *replydatasize_ptr);
-extern int net_client_request2_no_malloc (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-					  char *databuf, int datasize, char *replydata, int *replydatasize_ptr);
-extern int net_client_request_3_data (int request, char *argbuf, int argsize, char *databuf1, int datasize1,
-				      char *databuf2, int datasize2, char *replydata0, int replydatasize0,
-				      char *replydata1, int replydatasize1, char *replydata2, int replydatasize2);
-extern int net_client_request_with_callback (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-					     char *databuf1, int datasize1, char *databuf2, int datasize2,
-					     char **replydata_ptr1, int *replydatasize_ptr1, char **replydata_ptr2,
-					     int *replydatasize_ptr2, char **replydata_ptr3, int *replydatasize_ptr3);
-extern int net_client_request_method_callback (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-					       char **replydata_ptr, int *replydatasize_ptr);
-extern int net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr, char *argbuf, int argsize, char *replybuf,
-					int replysize, char **logpg_area_buf, bool verbose);
-extern int net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, char *argbuf, int argsize,
-						  char *replybuf, int replysize, char *databuf1, int datasize1,
-						  char *databuf2, int datasize2);
-extern void net_client_logwr_send_end_msg (int rc, int error);
-extern int net_client_get_next_log_pages (int rc, char *replybuf, int replysize, int length);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern int net_client_request3 (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf,
-				int datasize, char **replydata_ptr, int *replydatasize_ptr, char **replydata_ptr2,
-				int *replydatasize_ptr2);
-#endif
-
-extern int net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-					     LC_COPYAREA ** reply_copy_area);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern int net_client_request_recv_large_data (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-					       char *databuf, int datasize, char *replydata, INT64 * replydatasize_ptr);
-#endif
-extern int net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-					      char *databuf, int datasize, char *recvbuffer, int recvbuffer_size,
-					      LC_COPYAREA ** reply_copy_area, int *eid);
-extern int net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recvbuffer, int recvbuffer_size,
-				     LC_COPYAREA ** reply_copy_area, int eid);
-extern int net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize, char *databuf1,
-						    int datasize1, char *databuf2, int datasize2, char *replybuf,
-						    int replysize, LC_COPYAREA ** reply_copy_area);
-extern int net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-					      char *databuf, int datasize, char **recvbuffer, int *recvbuffer_size,
-					      LC_COPYAREA ** reply_copy_area);
-extern int net_client_request_recv_stream (int request, char *argbuf, int argsize, char *replybuf, int replybuf_size,
-					   char *databuf, int datasize, FILE * outfp);
-extern int net_client_ping_server (int client_val, int *server_val, int timeout);
-extern int net_client_ping_server_with_handshake (int client_type, bool check_capabilities, int opt_cap);
-
-/* Startup/Shutdown */
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern void net_client_shutdown_server (void);
-#endif
-extern int net_client_init (const char *dbname, const char *hostname);
-extern int net_client_final (void);
-
-extern void net_cleanup_client_queues (void);
-extern int net_client_send_data (char *host, unsigned int rc, char *databuf, int datasize);
-extern int net_client_receive_action (int rc, int *action);
-
-extern char *net_client_get_server_host (void);
-extern char *net_client_get_server_name (void);
-
 extern int boot_compact_classes (OID ** class_oids, int num_classes, int space_to_process, int instance_lock_timeout,
 				 int class_lock_timeout, bool delete_old_repr, OID * last_processed_class_oid,
 				 OID * last_processed_oid, int *total_objects, int *failed_objects,
@@ -469,4 +403,5 @@ extern void tdes_reset_query_start_info (PT_NODE * node);
 /* lob dir */
 extern int lob_create_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length);
 extern int lob_remove_dir (HFID * hfid, int attrid);
+
 #endif /* _NETWORK_INTERFACE_CL_H_ */
