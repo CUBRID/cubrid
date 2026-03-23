@@ -946,16 +946,16 @@ extern "C"
 
 #endif /* window */
 
-
-
-#if defined(SUPPORT_MULTI_THREADS_4_CS)
-#define CS_Lock(mutex)   pthread_mutex_lock(&(mutex))
-#define CS_UnLock(mutex) pthread_mutex_unlock(&(mutex))
+#if defined(MULTI_CONN_TO_A_SERVER)
+#define CS_Lock(mutex)   pthread_mutex_lock(mutex)
+#define CS_UnLock(mutex) pthread_mutex_unlock(mutex)
+#define CHECK_MAIN_THREAD()
 #else
 #define CS_Lock(mutex)
 #define CS_UnLock(mutex)
 #if !defined(NDEBUG)
   extern pthread_t gv_main_tid;
+#define  CHECK_MAIN_THREAD()   assert (pthread_equal (gv_main_tid, pthread_self ()))
 #endif
 #endif
 

@@ -12252,11 +12252,11 @@ prm_get_bigint_value (PARAM_ID prm_id)
 #endif /* window */
 
 
-#if !defined(NDEBUG) && !defined(SUPPORT_MULTI_THREADS_4_CS)
+#if !defined(NDEBUG) && !defined(MULTI_CONN_TO_A_SERVER)
 pthread_t gv_main_tid;
 
 __attribute__ ((constructor))
-     void my_constructor ()
+     void get_main_thread_id ()
 {
   gv_main_tid = pthread_self ();
 }
