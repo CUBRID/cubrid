@@ -441,6 +441,9 @@ namespace cubconn::connection
     /* stop the sessions associated with conn */
 
     css_end_server_request (ctx->m_conn);
+    /* any sessions that are not cleared (e.g. cdc, flashback) should be handled here */
+    css_prepare_shutdown_conn (ctx->m_conn);
+
     /* avoid infinite waiting with xtran_wait_server_active_trans() */
     m_entry->m_status = cubthread::entry::status::TS_CHECK;
     if (ctx->m_conn->session_p != NULL)
@@ -516,9 +519,6 @@ namespace cubconn::connection
     /* wake up the thread blocked until this request is complete */
     this->wakeup_blocked_worker (handle);
     this->wakeup_blocked_worker (ctx->m_send.m_blocker);
-
-    /* any sessions that are nat cleared (e.g. cdc, flashback) should be handled here */
-    css_prepare_shutdown_conn (ctx->m_conn);
 
     /* mark deleted and lazily release this */
     ctx->m_removed = true;
