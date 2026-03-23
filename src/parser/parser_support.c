@@ -4165,11 +4165,18 @@ pt_get_proxy_spec_name (PARSER_CONTEXT * parser, const char *qspec)
   if (qspec)
     {
       qtree = parser_parse_string (parser, qspec);
-      if (qtree && qtree[0] && !pt_has_error (parser))
+      if (qtree && qtree[0])
 	{
-	  from_name = pt_get_spec_name (parser, qtree[0]);
+	  if (!pt_has_error (parser))
+	    {
+	      from_name = pt_get_spec_name (parser, qtree[0]);
+	    }
+	  parser_free_tree (parser, qtree[0]);
 	}
-      parser_free_tree (parser, qtree[0]);
+
+      /* remove error which is occured in this function */
+      pt_reset_error (parser);
+      parser->flag.has_internal_error = 0;
     }
   return from_name;
 }

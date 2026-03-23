@@ -31,6 +31,10 @@
 #include <sys/types.h>
 #include <assert.h>
 #include <signal.h>
+#if !defined(SERVER_MODE)
+#include <atomic>
+#include <mutex>
+#endif
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -682,57 +686,56 @@ int
 hb_process_init (const char *server_name, const char *log_path, HB_PROC_TYPE type)
 {
 #if !defined(SERVER_MODE)
-  static bool is_first = true;
-#if defined(SUPPORT_MULTI_THREADS_4_CS)
-  static pthread_mutex_t hb_process_init_lock = PTHREAD_MUTEX_INITIALIZER;
-#else
-  assert (pthread_equal (gv_main_tid, pthread_self ()));
-#endif
-
-  if (is_first == false)
+// *INDENT-OFF*
+  static std::atomic <bool> is_first{true};
+  static std::mutex init_mtx;
+  int error = NO_ERROR;
+  
+  if (is_first.load (std::memory_order_acquire) == false)
     {
-      return (NO_ERROR);
+      return NO_ERROR;
     }
 
-  int error = NO_ERROR;
-  CS_Lock (hb_process_init_lock);
-  if (is_first)
-    {
-      er_log_debug (ARG_FILE_LINE, "hb_process_init. (type:%s). \n", hb_type_to_str (type));
+  std::lock_guard <std::mutex> lock (init_mtx);
+// *INDENT-ON*  
 
-      if (hb_Exec_path[0] == '\0' || *(hb_Argv) == 0)
+  if (is_first.load (std::memory_order_relaxed) == false)
+    {
+      return NO_ERROR;
+    }
+
+  er_log_debug (ARG_FILE_LINE, "hb_process_init. (type:%s). \n", hb_type_to_str (type));
+
+  if (hb_Exec_path[0] == '\0' || *(hb_Argv) == 0)
+    {
+      er_log_debug (ARG_FILE_LINE, "hb_Exec_path or hb_Argv is not set. \n");
+      error = ER_FAILED;
+    }
+  else
+    {
+      hb_Conn = hb_connect_to_master (server_name, log_path, type);
+
+      /* wait 1 sec */
+      sleep (1);
+
+      error = hb_register_to_master (hb_Conn, type);
+      if (NO_ERROR != error)
 	{
-	  er_log_debug (ARG_FILE_LINE, "hb_Exec_path or hb_Argv is not set. \n");
-	  error = ER_FAILED;
+	  er_log_debug (ARG_FILE_LINE, "hb_register_to_master failed. \n");
 	}
       else
 	{
-	  hb_Conn = hb_connect_to_master (server_name, log_path, type);
-
-	  /* wait 1 sec */
-	  sleep (1);
-
-	  error = hb_register_to_master (hb_Conn, type);
+	  error = hb_create_master_reader ();
 	  if (NO_ERROR != error)
 	    {
-	      er_log_debug (ARG_FILE_LINE, "hb_register_to_master failed. \n");
+	      er_log_debug (ARG_FILE_LINE, "hb_create_master_reader failed. \n");
 	    }
 	  else
 	    {
-	      error = hb_create_master_reader ();
-	      if (NO_ERROR != error)
-		{
-		  er_log_debug (ARG_FILE_LINE, "hb_create_master_reader failed. \n");
-		}
-	      else
-		{
-		  is_first = false;
-		  error = NO_ERROR;
-		}
+	      is_first.store (false, std::memory_order_release);
 	    }
 	}
     }
-  CS_UnLock (hb_process_init_lock);
 
   return error;
 #else

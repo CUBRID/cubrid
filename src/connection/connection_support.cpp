@@ -222,8 +222,10 @@ css_sprintf_conn_infoids (SOCKET fd, char *user_name, char *host_name, int *clie
 	      &client_host_name, client_pid);
       if (error == NO_ERROR)
 	{
-	  strcpy (user_name, client_user_name);
-	  strcpy (host_name, client_host_name);
+	  strncpy (user_name, client_user_name, L_cuserid);
+	  user_name[L_cuserid] = '\0';
+	  strncpy (host_name, client_host_name, CUB_MAXHOSTNAMELEN);
+	  host_name[CUB_MAXHOSTNAMELEN] = '\0';
 	  tran_index = conn->get_tran_index ();
 	}
       else
