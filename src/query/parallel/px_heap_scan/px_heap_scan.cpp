@@ -832,6 +832,13 @@ namespace parallel_heap_scan
 	    if (m_xasl->scan_ptr)
 	      {
 		m_join_info.capture_join_info (m_xasl);
+		for (XASL_NODE *xptr = m_xasl->scan_ptr; xptr; xptr=xptr->scan_ptr)
+		  {
+		    if (xptr->spec_list->type == TARGET_LIST)
+		      {
+			scan_end_scan (m_thread_p, &xptr->spec_list->s_id);
+		      }
+		  }
 	      }
 	  }
 	err_code = start_tasks();
@@ -840,6 +847,7 @@ namespace parallel_heap_scan
 	    return S_ERROR;
 	  }
       }
+
     if (m_result_handler_read_initialized == false)
       {
 	m_result_handler->read_initialize (m_thread_p);
