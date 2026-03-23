@@ -25026,6 +25026,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
+		  used += written;
 		}
 
 	      db_make_string (out_values[idx_val], str_val);

@@ -1907,6 +1907,13 @@ struct pt_attach_info
   int trans_id;			/* transaction id */
 };
 
+typedef enum
+{
+  PT_ATTR_INVISIBLE_UNSET,
+  PT_ATTR_VISIBLE,
+  PT_ATTR_INVISIBLE
+} PT_ATTR_INVISIBLE_SETTING;
+
 /* Info for ATTR_DEF */
 struct pt_attr_def_info
 {
@@ -1919,7 +1926,7 @@ struct pt_attr_def_info
   PT_MISC_TYPE attr_type;	/* PT_NORMAL or PT_META */
   int size_constraint;		/* max length of STRING */
   short constrain_not_null;
-  unsigned attr_invisible:2;	/* 0: unchange, 1: VISIBLE, 2: INVISIBLE */
+  PT_ATTR_INVISIBLE_SETTING attr_invisible:2;	/* unchange | VISIBLE | INVISIBLE */
 };
 
 /* Info for ALTER TABLE ADD COLUMN [FIRST | AFTER column_name ] */

@@ -9911,12 +9911,12 @@ attr_def_one
 			            PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 			              MSGCAT_SEMANTIC_CLASS_ATT_OR_SHARED_CANT_SET_VISIBILITY,
 				      node->info.attr_def.attr_name->info.name.original);
-				    node->info.attr_def.attr_invisible = 0;
+				    node->info.attr_def.attr_invisible = PT_ATTR_INVISIBLE_UNSET;
 			          }
 			      }
 			    else
 			      {
-			        node->info.attr_def.attr_invisible = 0;
+			        node->info.attr_def.attr_invisible = PT_ATTR_INVISIBLE_UNSET;
 			      }
 			  }
 
@@ -10504,12 +10504,12 @@ column_invisible_def
 	: VISIBLE
 		{{
 			PT_NODE* attr_node = parser_get_attr_def_one ();
-			attr_node->info.attr_def.attr_invisible = 1;
+			attr_node->info.attr_def.attr_invisible = PT_ATTR_VISIBLE;
 		}}
 	| INVISIBLE
 		{{
 			PT_NODE* attr_node = parser_get_attr_def_one ();
-			attr_node->info.attr_def.attr_invisible = 2;
+			attr_node->info.attr_def.attr_invisible = PT_ATTR_INVISIBLE;
 		}}
 	;
 

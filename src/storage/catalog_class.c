@@ -5830,9 +5830,9 @@ end:
 
 /*
  * catcls_filter_attflag () -
- *   return: 
+ *   return: flags for system catalog 'db_attribute'
+ * 
  *   or_flags (in): flags from attribute object representation
- *   catcls_attr_flags (out): flags for system catalog 'db_attribute'
  */
 static int
 catcls_filter_attflag (int or_flags)
