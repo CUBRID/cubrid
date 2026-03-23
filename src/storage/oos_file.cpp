@@ -56,7 +56,7 @@ oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes,
 static void
 oos_log_insert_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, OID *oid_p, RECDES *recdes_p);
 static void
-oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, PGSLOTID slotid, RECDES *recdes_p);
+oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, PGSLOTID slotid, RECDES *recdes_p);
 
 STATIC_INLINE __attribute__ ((ALWAYS_INLINE))
 int oos_get_max_chunk_size_within_page ();
@@ -622,11 +622,11 @@ oos_log_insert_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
  *   recdes_p(in): record descriptor of the record being deleted (undo data)
  */
 static void
-oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, PGSLOTID slotid, RECDES *recdes_p)
+oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, PGSLOTID slotid, RECDES *recdes_p)
 {
   LOG_DATA_ADDR log_addr;
 
-  log_addr.vfid = NULL;
+  log_addr.vfid = vfid_p;
   log_addr.offset = slotid;
   log_addr.pgptr = page_p;
 
@@ -669,7 +669,7 @@ oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
       std::memcpy (&header, recdes_with_header.data, sizeof (OOS_RECORD_HEADER));
       OID next_chunk_oid = header.next_chunk_oid;
 
-      oos_log_delete_physical (thread_p, page_ptr, slotid, &recdes_with_header);
+      oos_log_delete_physical (thread_p, page_ptr, const_cast<VFID *> (&oos_vfid), slotid, &recdes_with_header);
 
       (void) spage_delete (thread_p, page_ptr, slotid);
       pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
