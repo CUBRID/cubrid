@@ -100,7 +100,7 @@ namespace cubschema
     const authorization auth;
     const row_init_type row_initializer;
 
-    system_catalog_definition (const std::string &n, const int attr_num_to_check, const attr_vec_type &attrs,
+    system_catalog_definition (const std::string &n, const attr_vec_type &attrs,
 			       const cstr_vec_type &cts,
 			       const authorization &au,
 			       row_init_type ri);
