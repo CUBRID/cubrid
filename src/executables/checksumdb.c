@@ -697,8 +697,8 @@ chksum_drop_and_create_checksum_table (void)
 	    " %s INT,"		/* 7 */
 	    " %s DATETIME DEFAULT sys_datetime,"	/* 8 */
 	    " %s INT,"		/* 9 */
-	    " CONSTRAINT UNIQUE INDEX (%s, %s))"	/* 10, 11 */
-	    " REPLICATION=OFF;" "DROP TABLE IF EXISTS %s;"	/* 12 */
+	    " CONSTRAINT UNIQUE INDEX (%s, %s));"	/* 10, 11 */
+	    "DROP TABLE IF EXISTS %s;"	/* 12 */
 	    "CREATE TABLE %s"	/* 13 */
 	    "(%s VARCHAR (255) NOT NULL,"	/* 14 */
 	    " %s INT NOT NULL,"	/* 15 */
@@ -1097,7 +1097,7 @@ chksum_print_checksum_query (PARSER_CONTEXT * parser, const char *table_name, DB
   escaped_lower_bound = chksum_get_quote_escaped_lower_bound (parser, lower_bound);
 
   /* query for calculating checksum */
-  buffer = pt_append_nulstring (parser, buffer, "REPLACE INTO ");
+  buffer = pt_append_nulstring (parser, buffer, "REPLACE /*+ USE_SBR */ INTO ");
   buffer = pt_append_nulstring (parser, buffer, chksum_result_Table_name);
   buffer =
     pt_append_nulstring (parser, buffer,
@@ -1123,7 +1123,7 @@ chksum_print_checksum_query (PARSER_CONTEXT * parser, const char *table_name, DB
   buffer = pt_append_nulstring (parser, buffer, ");");
 
   /* query for updating elapsed time */
-  buffer = pt_append_nulstring (parser, buffer, " UPDATE ");
+  buffer = pt_append_nulstring (parser, buffer, " UPDATE /*+ USE_SBR */ ");
   buffer = pt_append_nulstring (parser, buffer, chksum_result_Table_name);
   buffer = pt_append_nulstring (parser, buffer, " SET ");
   buffer =
@@ -1701,20 +1701,6 @@ chksum_calculate_checksum (PARSER_CONTEXT * parser, const OID * class_oidp, cons
     }
 
   query = (const char *) pt_get_varchar_bytes (checksum_query);
-
-  /*
-   * write replication log first and release all locks
-   * to avoid long lock wait of other concurrent clients on active server
-   */
-  error = chksum_set_repl_info_and_demote_table_lock (table_name, query, class_oidp);
-  if (error != NO_ERROR)
-    {
-      snprintf (err_msg, LINE_MAX,
-		"Failed to write a checksum replication log." " (table name: %s, chunk id: %d, lower bound: %s)",
-		table_name, chunk_id, (char *) pt_get_varchar_bytes (lower_bound));
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2, err_msg, error);
-      return error;
-    }
 
   res = db_execute (query, &query_result, &query_error);
   if (res >= 0)
