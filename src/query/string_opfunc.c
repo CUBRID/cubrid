@@ -165,7 +165,9 @@ static int uuidv7_generate_bytes (THREAD_ENTRY * thread_p, uint64_t epoch_ms, un
 
 #define UUID_FORMAT_LEN 36
 #define UUID_HEX_LEN 32
-#define IS_HEX_CHAR(c) (((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) ? true : false)
+#define IS_HEX_CHAR(c) ((((unsigned char)(c) >= '0' && (unsigned char)(c) <= '9') \
+            || ((unsigned char)(c) >= 'A' && (unsigned char)(c) <= 'F') \
+            || ((unsigned char)(c) >= 'a' && (unsigned char)(c) <= 'f')) ? true : false)
 
 typedef enum
 {
