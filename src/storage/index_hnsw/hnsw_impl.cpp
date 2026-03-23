@@ -459,73 +459,27 @@ hnsw_impl::add (cubthread::entry *thread_p, int n_vectors, const OID *oid, const
   hnsw_build_worker_context ctx;
   ctx.tran_index = thread_p->tran_index;
 
-  // PCA Reordering
   const int dim = m_build_params.dimension;
   const bool normalize_inputs =
 	  (m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE);
-
-  // 0) Update global PC1 using this batch
-  update_pca_online (vector, n_vectors, dim, normalize_inputs);
 
   auto is_skippable = [&] (const float *v) -> bool
   {
     return (normalize_inputs && db_vector_is_all_zeros (v, dim));
   };
 
-  // 1) score + ordering by projection onto (updated) PC1
-  std::vector<std::pair<float, int>> scored;
-  scored.reserve (n_vectors);
+  std::vector<hnsw_build_worker_job> jobs;
+  jobs.reserve (n_vectors);
 
-  for (int i = 0; i < n_vectors; ++i)
+  // Preserve input order to avoid build-quality bias from PCA-based reordering.
+  for (int idx = 0; idx < n_vectors; ++idx)
     {
-      const float *v = vector + i * dim;
+      const float *v = vector + idx * dim;
       if (is_skippable (v))
 	{
 	  er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping add");
 	  continue;
 	}
-
-      float score = 0.0f;
-
-      // score = dot(pc1, (x - mean))
-      if (!normalize_inputs)
-	{
-	  for (int d = 0; d < dim; ++d)
-	    {
-	      score += m_pca_pc1[d] * (v[d] - m_pca_mean[d]);
-	    }
-	}
-      else
-	{
-	  float n = l2norm_f (v, dim);
-	  if (n <= 0.0f)
-	    {
-	      continue;
-	    }
-
-	  for (int d = 0; d < dim; ++d)
-	    {
-	      const float x = v[d] / n;
-	      score += m_pca_pc1[d] * (x - m_pca_mean[d]);
-	    }
-	}
-
-      scored.emplace_back (score, i);
-    }
-
-  std::sort (scored.begin (), scored.end (),
-	     [] (const auto &a, const auto &b)
-  {
-    return a.first < b.first;
-  });
-
-  // Build jobs in PCA order for worker pool / fallback (server mode and SA mode)
-  std::vector<hnsw_build_worker_job> jobs;
-  jobs.reserve (scored.size ());
-
-  for (const auto &kv : scored)
-    {
-      const int idx = kv.second;
 
       hnsw_build_worker_job job;
       job.m_ctx = &ctx;
