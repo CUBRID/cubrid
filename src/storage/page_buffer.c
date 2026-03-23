@@ -12067,7 +12067,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
   ret_pgptr = pgbuf_fix_release (thread_p, req_vpid, fetch_mode, request_mode, latch_condition);
 #endif
 
-  if (ret_pgptr && allow_not_ordered_page)
+  if (ret_pgptr && latch_condition == PGBUF_UNCONDITIONAL_LATCH && allow_not_ordered_page)
     {
       CAST_PGPTR_TO_BFPTR (bufptr, ret_pgptr);
       if (!PGBUF_IS_ORDERED_PAGETYPE (bufptr->iopage_buffer->iopage.prv.ptype))
