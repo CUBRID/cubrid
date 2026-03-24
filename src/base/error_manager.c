@@ -371,7 +371,7 @@ static void _er_log_debug_internal (const char *file_name, const int line_no, co
 static bool er_is_error_severity (er_severity severity);
 
 /* vector of functions to call when an error is set */
-static PTR_FNERLOG er_Fnlog[ER_MAX_SEVERITY + 1] = {
+static const PTR_FNERLOG er_Fnlog[ER_MAX_SEVERITY + 1] = {
   er_log,			/* ER_FATAL_ERROR_SEVERITY */
   er_log,			/* ER_ERROR_SEVERITY */
   er_log,			/* ER_SYNTAX_ERROR_SEVERITY */

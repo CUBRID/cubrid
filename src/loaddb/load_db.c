@@ -68,6 +68,7 @@ struct t_schema_file_list_info
 
 static int ldr_validate_object_file (const char *argv0, load_args * args);
 static int ldr_get_start_line_no (std::string & file_name);
+static void ldr_compat_serial_call_target (DB_SESSION * session);
 static FILE *ldr_check_file (std::string & file_name, int &error_code);
 static int loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode);
 static void ldr_exec_query_interrupt_handler (void);
@@ -957,6 +958,39 @@ loaddb_user (UTIL_FUNCTION_ARG * arg)
 }
 
 /*
+ * ldr_compat_serial_call_target - Compatibility fix for CALL ... ON CLASS db_serial statements
+ *                                  unloaded from version 11.4 or earlier.
+ *   In 11.5+, "db_serial" was renamed to a view (CTV_SERIAL_NAME) and "_db_serial" became
+ *   the catalog table (CT_SERIAL_NAME). This function rewrites the ON CLASS target from the
+ *   old name to the current one before compilation.
+ *   return: void
+ *   session(in): current DB session
+ */
+static void
+ldr_compat_serial_call_target (DB_SESSION * session)
+{
+  PT_NODE *statement = NULL;
+  PT_NODE *on_call_target = NULL;
+  const char *origin_name = NULL;
+
+  statement = db_get_statement (session, 0);
+  if (statement == NULL)
+    {
+      return;
+    }
+
+  on_call_target = PT_METHOD_CALL_ON_CALL_TARGET (statement);
+  if (on_call_target != NULL && PT_IS_NAME_NODE (on_call_target))
+    {
+      origin_name = PT_NAME_ORIGINAL (on_call_target);
+      if (strcasecmp (origin_name, CTV_SERIAL_NAME) == 0)
+	{
+	  on_call_target->info.name.original = CT_SERIAL_NAME;
+	}
+    }
+}
+
+/*
  * ldr_exec_query_interrupt_handler - signal handler registered via
  * util_arm_signal_handlers
  *    return: void
@@ -1043,11 +1077,10 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	{
 	  assert (stmt_cnt == 1);
 
+	  CUBRID_STMT_TYPE statement_type = (CUBRID_STMT_TYPE) db_get_statement_type (session, stmt_cnt);
 	  if (client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2
 	      || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4)
 	    {
-	      CUBRID_STMT_TYPE statement_type = (CUBRID_STMT_TYPE) db_get_statement_type (session, stmt_cnt);
-
 	      switch (statement_type)
 		{
 		case CUBRID_STMT_CREATE_CLASS:
@@ -1069,6 +1102,11 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 		  db_set_client_statement_type (CUBRID_STMT_NONE);
 		  break;
 		}		/* switch (statement_type) */
+	    }
+
+	  if (statement_type == CUBRID_STMT_CALL)
+	    {
+	      ldr_compat_serial_call_target (session);
 	    }
 
 	  stmt_id = db_compile_statement (session);
