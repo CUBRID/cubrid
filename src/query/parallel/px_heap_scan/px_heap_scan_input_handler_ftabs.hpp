@@ -48,6 +48,7 @@ namespace parallel_heap_scan
     private:
       thread_local static VPID m_tl_vpid;
       thread_local static HEAP_SCANCACHE *m_tl_scan_cache;
+      thread_local static PGBUF_WATCHER m_tl_old_page_watcher;
       thread_local static ftab_set *m_tl_ftab_set;
       thread_local static size_t m_tl_pgoffset;
       thread_local static FILE_PARTIAL_SECTOR m_tl_ftab;
