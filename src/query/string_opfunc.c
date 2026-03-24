@@ -26102,7 +26102,7 @@ coerce_pos:
       /* compute hex representation */
       for (i = 0; i < str_size; i++)
 	{
-	  hexval[i * 2] = UPPER_HEX_DIGIT[(unsigned char) (str[i] >> 4) & 0xF];
+	  hexval[i * 2] = UPPER_HEX_DIGIT[((unsigned char) str[i] >> 4) & 0xF];
 	  hexval[i * 2 + 1] = UPPER_HEX_DIGIT[(unsigned char) str[i] & 0xF];
 	}
 
