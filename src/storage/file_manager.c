@@ -11950,8 +11950,8 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
   page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (page_fhead == NULL)
     {
-      assert_release (false);
-      return ER_FAILED;
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
     }
   fhead = (FILE_HEADER *) page_fhead;
 

@@ -12072,6 +12072,10 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
       CAST_PGPTR_TO_BFPTR (bufptr, ret_pgptr);
       if (!PGBUF_IS_ORDERED_PAGETYPE (bufptr->iopage_buffer->iopage.prv.ptype))
 	{
+	  if (fetch_mode == OLD_PAGE_PREVENT_DEALLOC)
+	    {
+	      pgbuf_bcb_unregister_avoid_deallocation (bufptr);
+	    }
 	  pgbuf_unfix (thread_p, ret_pgptr);
 	  return NO_ERROR;
 	}
@@ -12611,6 +12615,11 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	      CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
 	      if (!PGBUF_IS_ORDERED_PAGETYPE (bufptr->iopage_buffer->iopage.prv.ptype))
 		{
+		  if (has_dealloc_prevent_flag == true)
+		    {
+		      pgbuf_bcb_unregister_avoid_deallocation (bufptr);
+		      has_dealloc_prevent_flag = false;
+		    }
 		  pgbuf_unfix (thread_p, pgptr);
 		  pgptr = NULL;
 		  ret_pgptr = NULL;
