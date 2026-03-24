@@ -129,6 +129,7 @@ oos_file_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
   return NO_ERROR;
 }
 
+// TODO: will be called by vacuum when OOS vacuum is implemented
 int
 oos_page_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid)
 {
@@ -719,6 +720,7 @@ oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
 static int
 oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
 {
+  int error = NO_ERROR;
   OID current_oid = oid;
   while (!OID_ISNULL (&current_oid))
     {
@@ -727,9 +729,9 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
       PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_ptr == nullptr)
 	{
+	  ASSERT_ERROR_AND_SET (error);
 	  oos_error ("pgbuf_fix failed for volid=%d, pageid=%d", current_oid.volid, current_oid.pageid);
-	  ASSERT_ERROR ();
-	  return er_errid ();
+	  return error;
 	}
 
       scope_exit page_unfixer ([&] ()
@@ -741,18 +743,19 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
       SCAN_CODE code = spage_get_record (thread_p, page_ptr, current_oid.slotid, &recdes_with_header, PEEK);
       if (code != S_SUCCESS)
 	{
+	  ASSERT_ERROR_AND_SET (error);
 	  oos_error ("spage_get_record failed for volid=%d, pageid=%d, slotid=%d",
 		     OID_AS_ARGS (&current_oid));
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return ER_FAILED;
+	  return error;
 	}
 
       if (recdes_with_header.length < (int) sizeof (OOS_RECORD_HEADER))
 	{
 	  assert_release (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  oos_error ("OOS record at volid=%d pageid=%d slotid=%d has invalid length %d",
-		     volid, pageid, slotid, recdes_with_header.length);
-	  return ER_FAILED;
+		     OID_AS_ARGS (&current_oid), recdes_with_header.length);
+	  return ER_GENERIC_ERROR;
 	}
       OOS_RECORD_HEADER header;
       std::memcpy (&header, recdes_with_header.data, sizeof (OOS_RECORD_HEADER));
@@ -764,11 +767,10 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
       PGSLOTID deleted_slotid = spage_delete (thread_p, page_ptr, current_oid.slotid);
       if (deleted_slotid == NULL_SLOTID)
 	{
+	  ASSERT_ERROR_AND_SET (error);
 	  oos_error ("spage_delete failed for volid=%d, pageid=%d, slotid=%d",
 		     OID_AS_ARGS (&current_oid));
-	  assert (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return ER_FAILED;
+	  return error;
 	}
       pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
 
