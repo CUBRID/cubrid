@@ -155,8 +155,6 @@ namespace cubconn::master
 
   bool connector::run (int port, std::string &server_name) noexcept
   {
-    pthread_setname_np (pthread_self (), "connector");
-
     m_master_port = port;
     m_server_name = server_name;
     if (!this->connect (port))
