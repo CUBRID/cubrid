@@ -147,6 +147,8 @@ namespace parallel_heap_scan
 
 		if (error_code != NO_ERROR)
 		  {
+		    m_err_messages_p->move_top_error_message_to_this();
+		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		    return S_ERROR;
 		  }
 
