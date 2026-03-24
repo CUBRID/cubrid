@@ -1464,7 +1464,16 @@ $ LOADDB
 
 1369 사용자 "%1$s"는 로그인할 수 없습니다.
 
-1370 마지막 에러
+1370 패키지 '%1$s' 가 이미 존재합니다.
+1371 패키지 바디 '%1$s' 가 이미 존재합니다.
+1372 패키지 '%1$s' 가 존재하지 않습니다.
+1373 패키지 바디 '%1$s' 가 존재하지 않습니다.
+1374 Package compile error: %1$s
+1375 소유자나 DBA 그룹의 멤버만이 대상 package를 %1$s할 수 있습니다.
+1376 시스템 생성 stored procedure를 삭제(drop)할 수 없습니다.
+1377 Package Procedure의 고유 이름이 255자를 넘습니다.
+
+1378 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1632,6 +1641,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 137 Server의 USER 최대 길이는 %1$d 바이트입니다.
 138 Invalid level. 유효값은 %1$d부터 %2$d까지 입니다.
 139 저장 프로시저/함수의 인수 타입과 결과 타입에는 정밀도를 지정할 수 없습니다.
+140 잘못된 형식의 create pacakge 구문입니다.\n  CREATE [OR REPLACE] PACKAGE [<schema_name>.]<package_name> {IS|AS} <package_item> {<package_item>}... END [<package_name>] [COMMENT 'comment_string']
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다

@@ -1465,7 +1465,16 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1369 Login is disabled for user "%1$s".
 
-1370 Last Error
+1370 Package "%1$s" already exists.
+1371 Package Body "%1$s" already exists.
+1372 Package "%1$s" does not exist.
+1373 Package Body "%1$s" does not exist.
+1374 Package compile error: %1$s
+1375 The owner or a member of DBA group can %1$s a package.
+1376 Dropping a system generated package is not allowed.
+1377 Package Procedure's unique name exceeds 255 characters.
+
+1378 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1633,6 +1642,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 137 Maximum length of a server user is %1$d bytes.
 138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 139 Precision cannot be specified for argument types and return types ​​of stored procedures and functions.
+140 invalid create pacakge.\n  CREATE [OR REPLACE] PACKAGE [<schema_name>.]<package_name> {IS|AS} <package_item> {<package_item>}... END [<package_name>] [COMMENT 'comment_string']
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.

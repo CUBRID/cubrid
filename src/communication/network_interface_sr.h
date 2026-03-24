@@ -260,7 +260,7 @@ extern void sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, c
 extern void sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
 /* PL */
-extern void splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void splcsql_compile (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
 /* memmon */

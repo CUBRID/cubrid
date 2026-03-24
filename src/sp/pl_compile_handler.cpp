@@ -77,7 +77,7 @@ namespace cubpl
   void
   compile_handler::create_error_response (cubmem::extensible_block &res, int error_code)
   {
-    compile_response compile_response;
+    plcsql_compile_response compile_response;
     compile_response.err_code = (er_errid () != NO_ERROR) ? er_errid () : error_code;
     compile_response.err_msg = er_msg ()? er_msg () : "unknown error";
     compile_response.err_line = -1;
@@ -89,7 +89,7 @@ namespace cubpl
   }
 
   int
-  compile_handler::compile (const compile_request &req, cubmem::extensible_block &out_blk)
+  compile_handler::compile (const plcsql_compile_request &req, cubmem::extensible_block &out_blk)
   {
     cubpl::session *pl_session = cubpl::get_session ();
     if (!pl_session)
