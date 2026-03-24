@@ -50,6 +50,7 @@ $set 1 MSGCAT_CSQL_SET_CSQL
       --no-pager               페이지 단위로 표시 안 함\n\
       --no-single-line         단일 라인 실행 안 함\n\
       --no-trigger-action      트리거 실행 안함\n\
+      --echo                   SQL 실행 전에 SQL 문장 출력\n\
       --delimiter=ARG          컬럼간 구분자 (-q에서만 사용 가능)\n\
       --enclosure=ARG          결과 문자열 엔클러저 (-q에서만 사용 가능)\n\
 \n\
