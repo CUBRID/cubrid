@@ -49,9 +49,9 @@
 #include "system_parameter.h"
 #include "dbtype.h"
 #include "object_primitive.h"
+#include "schema_system_catalog_constants.h"
+#include "authenticate.h"
 
-extern int set_size (DB_COLLECTION * set);
-extern int set_get_element (DB_COLLECTION * set, int index, DB_VALUE * value);
 
 #if defined(WINDOWS)
 #define OP_SERVER_SHM_OPEN(SHM_KEY, HANDLE_PTR)            \
@@ -986,6 +986,7 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
   int i, sect, sect_len;
   char *tval, *sval;
   int anum;
+  int save = 0;
 
   db_passwd = nv_get_val (req, "_DBPASSWD");
   db_name = nv_get_val (req, "_DBNAME");
@@ -1043,6 +1044,7 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
     }
 
   /* clear existing group - clear group, direct group */
+  AU_DISABLE (save);
   if (db_get (dbuser, "groups", &val) < 0)
     {
       goto error_return;
@@ -1185,10 +1187,12 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
       goto error_return;
     }
   db_shutdown ();
+  AU_ENABLE (save);
 
   return ERR_NO_ERROR;
 
 error_return:
+  AU_ENABLE (save);
   CUBRID_ERR_MSG_SET (_dbmt_error);
   db_shutdown ();
   return ERR_WITH_MSG;
@@ -1331,6 +1335,7 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
   char *db_name;
   int ha_mode = 0;
   T_DB_SERVICE_MODE db_mode;
+  int save = 0;
 
   db_name = nv_get_val (in, "dbname");
   if (db_name == NULL)
@@ -1348,7 +1353,7 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
     {
       return ERR_WITH_MSG;
     }
-  p_class_db_user = db_find_class ("db_user");
+  p_class_db_user = db_find_class (CT_USER_NAME);
   if (p_class_db_user == NULL)
     {
       goto error_return;
@@ -1364,6 +1369,7 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
 	  goto error_return;
 	}
     }
+  AU_DISABLE (save);
   temp = user_list;
   while (temp != NULL)
     {
@@ -1388,10 +1394,12 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
     {
       goto error_return;
     }
+  AU_ENABLE (save);
   db_shutdown ();
   return ERR_NO_ERROR;
 
 error_return:
+  AU_ENABLE (save);
   CUBRID_ERR_MSG_SET (_dbmt_error);
   db_shutdown ();
   return ERR_WITH_MSG;
@@ -2802,7 +2810,9 @@ revoke_all_from_user (DB_OBJECT * user)
   DB_OBJECT *obj, **auth_obj = NULL;
   int num_auth = 0;
   DB_COLLECTION *col;
+  int save;
 
+  AU_DISABLE (save);
   db_get (user, "authorization.grants", &v);
   col = db_get_collection (&v);
   for (i = 0; i < db_seq_size (col); i += GRANT_ENTRY_LENGTH)
@@ -2816,6 +2826,7 @@ revoke_all_from_user (DB_OBJECT * user)
       auth_obj = (DB_OBJECT **) (REALLOC (auth_obj, sizeof (DB_OBJECT *) * (num_auth + 1)));
       if (auth_obj == NULL)
 	{
+	  AU_ENABLE (save);
 	  return ERR_MEM_ALLOC;
 	}
       auth_obj[num_auth] = obj;
@@ -2827,6 +2838,7 @@ revoke_all_from_user (DB_OBJECT * user)
       db_revoke (user, auth_obj[i], DB_AUTH_ALL);
     }
   FREE_MEM (auth_obj);
+  AU_ENABLE (save);
   return ERR_NO_ERROR;
 }
 

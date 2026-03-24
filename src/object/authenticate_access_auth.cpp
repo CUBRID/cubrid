@@ -651,7 +651,7 @@ exit:
 }
 
 /*
- * au_delete_authorizartion_of_dropping_user - delete a db_authorization record refers to the given user.
+ * au_delete_authorizartion_of_dropping_user - delete a _db_authorization record refers to the given user.
  *   return: error code
  *   user(in): the user name to be dropped
  */
@@ -1203,7 +1203,7 @@ au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP object_mop, MOP 
 
   assert (old_owner_mop != NULL && new_owner_mop != NULL && unique_name != NULL);
 
-  /* modify db_authorization catalog */
+  /* modify _db_authorization catalog */
   error = update_authorization_for_new_owner (obj_type, old_owner_mop, new_owner_mop, unique_name,
 	  &update_count_db_authorization);
   if (error != NO_ERROR)
@@ -1212,10 +1212,10 @@ au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP object_mop, MOP 
       goto exit;
     }
 
-  /* if there are no results from querying the db authorization catalog, there is no need to check db_auth. */
+  /* if there are no results from querying the _db_authorization catalog, there is no need to check db_auth. */
   if (update_count_db_authorization)
     {
-      /* modify db_auth catalog */
+      /* modify _db_auth catalog */
       error = update_auth_for_new_owner (obj_type, old_owner_mop, new_owner_mop, unique_name);
       if (error != NO_ERROR)
 	{
@@ -1397,7 +1397,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
 		   * grantee_mop : grantee_user
 		   * new_owner_mop : grnator_user
 		   *
-		   * ex) SELECT * FROM db_authorization;
+		   * ex) SELECT * FROM _db_authorization;
 		   *   owner            grants
 		   * ================================
 		   *   grantee         {..,unique_name, grantor, ..}
@@ -1424,7 +1424,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
 			}
 		      current_cache = db_get_int (&element);
 
-		      /* before deleting the data in db_authorization, merge the data and temp store it. */
+		      /* before deleting the data in _db_authorization, merge the data and temp store it. */
 		      std::get<0> (key) = ws_is_same_object (grantor_mop, old_owner_mop) ? new_owner_mop : grantor_mop;
 		      std::get<1> (key) = grantee_mop;
 		      std::get<2> (key) = object_of_mop;
@@ -1723,7 +1723,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
        * grantee_mop : grantee_user
        * new_owner_mop : grnator_user
        *
-       * ex) SELECT * FROM db_authorization;
+       * ex) SELECT * FROM _db_authorization;
        *   owner            grants
        * ================================
        *   grantee         {..,unique_name, grantor, ..}

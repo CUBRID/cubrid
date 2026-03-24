@@ -1505,6 +1505,78 @@ sm_define_view_collation_spec (void)
 }
 
 const char *
+sm_define_view_user_spec (void)
+{
+  static char stmt [2048];
+
+  // *INDENT-OFF*
+  sprintf (stmt,
+	"SELECT "
+	  "[u].[name] AS [name], "
+	  "[u].[id] AS [id], "
+	  "NULL AS [password], "
+	  "(SELECT COALESCE (SUM (SET {[dg].[name]}), SET {}) "
+	   "FROM TABLE ([u].[direct_groups]) AS [t] ([dg])) AS [direct_groups], "
+	  "(SELECT COALESCE (SUM (SET {[g].[name]}), SET {}) "
+	   "FROM TABLE ([u].[groups]) AS [t] ([g])) AS [groups], "
+	  "NULL AS [authorization], "
+	  "[u].[triggers] AS [triggers], "
+	  "CASE [u].[is_loginable] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_loginable], "
+	  "CASE [u].[is_system_created] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_system_created], "
+	  "[u].[comment] AS [comment], "
+	  "[u].[created_time] AS [created_time], "
+	  "[u].[updated_time] AS [updated_time] "
+	"FROM "
+	  /* CT_USER_NAME */
+	  "[%s] AS [u] "
+	"WHERE "
+	  "{ 'DBA', [u].[name] } * ("
+	    "SELECT "
+	      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	    "FROM "
+	      /* CT_USER_NAME */
+	      "[%s] AS [uu], TABLE ([uu].[groups]) AS [t] ([g]) "
+	    "WHERE "
+	      "[uu].[name] = CURRENT_USER"
+	  ") SETNEQ {}",
+	CT_USER_NAME,
+	CT_USER_NAME);
+  // *INDENT-ON*
+
+  return stmt;
+}
+
+const char *
+sm_define_view_authorization_spec (void)
+{
+  static char stmt [2048];
+
+  // *INDENT-OFF*
+  sprintf (stmt,
+	"SELECT "
+	  "CAST ([a].[owner].[name] AS VARCHAR(255)) AS [owner], " /* string -> varchar(255) */
+	  "[a].[grants] AS [grants] "
+	"FROM "
+	  /* CT_AUTHORIZATION_NAME */
+	  "[%s] AS [a] "
+	"WHERE "
+	  "{'DBA', [a].[owner].[name]} * ("
+	    "SELECT "
+	      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	    "FROM "
+	      /* AU_USER_CLASS_NAME */
+	      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	    "WHERE "
+	      "[u].[name] = CURRENT_USER"
+	  ") SETNEQ {}",
+	CT_AUTHORIZATION_NAME,
+	AU_USER_CLASS_NAME);
+  // *INDENT-ON*
+
+  return stmt;
+}
+
+const char *
 sm_define_view_charset_spec (void)
 {
   static char stmt [2048];
