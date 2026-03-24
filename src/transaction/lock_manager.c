@@ -6018,8 +6018,8 @@ lock_finalize (void)
       lock_deadlock_detect_daemon_destroy ();
     }
   lock_finalize_deadlock_detection ();
-  lock_finalize_tran_lock_table ();
   lock_finalize_object_lock_structures ();
+  lock_finalize_tran_lock_table ();
   lk_Gl.config = lock_make_default_config ();
 #endif /* !SERVER_MODE */
 }
