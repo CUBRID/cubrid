@@ -133,16 +133,21 @@ namespace parallel_heap_scan
 		  {
 		    pgbuf_replace_watcher (thread_p, &m_tl_scan_cache->page_watcher, &m_tl_old_page_watcher);
 		  }
-#if defined(NDEBUG)
-		error_code = pgbuf_ordered_fix_release (thread_p, &m_tl_vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ,
-							&m_tl_scan_cache->page_watcher, true);
-#else
-		error_code = pgbuf_ordered_fix_debug (thread_p, &m_tl_vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ,
-						      &m_tl_scan_cache->page_watcher, true, ARG_FILE_LINE_FUNC);
-#endif
+
+		error_code = pgbuf_ordered_fix (thread_p, &m_tl_vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ,
+						&m_tl_scan_cache->page_watcher);
+
 		if (m_tl_old_page_watcher.pgptr != NULL)
 		  {
 		    pgbuf_ordered_unfix (thread_p, &m_tl_old_page_watcher);
+		  }
+
+		PAGE_TYPE page_type = pgbuf_get_page_ptype (thread_p, m_tl_scan_cache->page_watcher.pgptr);
+
+		if (page_type != PAGE_HEAP)
+		  {
+		    found = false;
+		    continue;
 		  }
 
 		if (error_code != NO_ERROR)
