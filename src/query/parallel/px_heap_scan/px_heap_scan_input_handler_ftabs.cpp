@@ -43,9 +43,9 @@ namespace parallel_heap_scan
   thread_local HEAP_SCANCACHE *input_handler_ftabs::m_tl_scan_cache = NULL;
   thread_local PGBUF_WATCHER input_handler_ftabs::m_tl_old_page_watcher = {0};
   thread_local ftab_set *input_handler_ftabs::m_tl_ftab_set = NULL;
-  thread_local VPID input_handler_ftabs::m_tl_vpid = {-1,0};
+  thread_local VPID input_handler_ftabs::m_tl_vpid = VPID_INITIALIZER;
   thread_local size_t input_handler_ftabs::m_tl_pgoffset = 0;
-  thread_local FILE_PARTIAL_SECTOR input_handler_ftabs::m_tl_ftab = {0};
+  thread_local FILE_PARTIAL_SECTOR input_handler_ftabs::m_tl_ftab = FILE_PARTIAL_SECTOR_INITIALIZER;
 
 
   int input_handler_ftabs::initialize (THREAD_ENTRY *thread_p, HFID *hfid, SCAN_ID *scan_id)
@@ -61,8 +61,9 @@ namespace parallel_heap_scan
 	return ER_FAILED;
       }
     m_tl_ftab_set = &m_splited_ftab_set[idx];
-    m_tl_vpid = {-1,0};
+    m_tl_vpid = VPID_INITIALIZER;
     m_tl_pgoffset = 0;
+    m_tl_ftab = FILE_PARTIAL_SECTOR_INITIALIZER;
     return NO_ERROR;
   }
 
