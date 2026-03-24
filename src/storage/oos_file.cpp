@@ -732,6 +732,27 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
  *       committed sysop that would not be rolled back if the outer transaction
  *       aborts, which could leave pages deallocated while undo tries to
  *       re-insert records into them.
+ *
+ * TODO: chain marker dummy log (overflow file precedent)
+ *
+ *       The current implementation only uses a sysop for error atomicity
+ *       (partial delete rollback). However, following the overflow file
+ *       precedent (LOG_DUMMY_OVF_RECORD in overflow_file.c), we should also
+ *       add dummy log records at the start/end of a multi-chunk chain delete.
+ *
+ *       Sysop and chain markers solve different problems:
+ *       - sysop: rollback partial deletes on error (atomicity)
+ *       - chain marker: let recovery/vacuum identify multi-page chains (identification)
+ *
+ *       Without chain markers, vacuum processing delete undo logs can only
+ *       infer chain membership from OOS_RECORD_HEADER fields (next_chunk_oid,
+ *       chunk_index) embedded in the undo data. Explicit dummy logs at chain
+ *       boundaries would make recovery/vacuum logic simpler and more robust.
+ *
+ *       Implementation requires:
+ *       1. New LOG_RECTYPE (e.g., LOG_DUMMY_OOS_CHAIN_DELETE)
+ *       2. Recovery code to handle the new log type
+ *       3. Vacuum integration to read chain markers and deallocate pages
  */
 int
 oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
