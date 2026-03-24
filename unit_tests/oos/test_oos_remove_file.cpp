@@ -48,7 +48,7 @@ TEST (OosFileDestroyTest, OosFileDestroyBasic)
   err = oos_file_create (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
-  err = oos_file_destroy (thread_p, oos_vfid);
+  err = oos_remove_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 }
 
@@ -77,7 +77,7 @@ TEST (OosFileDestroyTest, OosFileDestroyWithData)
   ASSERT_NE (oid.pageid, NULL_PAGEID);
   test_oos_debug ("Inserted oid={vol=%d,page=%d,slot=%d}", oid.volid, oid.pageid, oid.slotid);
 
-  err = oos_file_destroy (thread_p, oos_vfid);
+  err = oos_remove_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 }
 
@@ -110,7 +110,7 @@ TEST (OosFileDestroyTest, OosFileDestroyWithMultiChunkData)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_debug ("Inserted multi-chunk oid={vol=%d,page=%d,slot=%d}", oid.volid, oid.pageid, oid.slotid);
 
-  err = oos_file_destroy (thread_p, oos_vfid);
+  err = oos_remove_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 }
 
@@ -145,7 +145,7 @@ TEST (OosFileDestroyTest, OosFileDestroyMapCleared)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_debug ("Before destroy: recent vpid={vol=%d,page=%d}", vpid_before.volid, vpid_before.pageid);
 
-  err = oos_file_destroy (thread_p, oos_vfid);
+  err = oos_remove_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   // After destroy, the map entry should be gone
@@ -159,7 +159,7 @@ TEST (OosFileDestroyTest, OosFileDestroyMapCleared)
 // TEST: OosPageDestroyBasic
 //
 // Create file, insert to allocate a page, deallocate the page via
-// oos_page_destroy.
+// oos_remove_page.
 // ===========================================================================
 TEST (OosFileDestroyTest, OosPageDestroyBasic)
 {
@@ -182,7 +182,7 @@ TEST (OosFileDestroyTest, OosPageDestroyBasic)
   VPID vpid = {oid.pageid, oid.volid};
   test_oos_debug ("Deallocating page vpid={vol=%d,page=%d}", vpid.volid, vpid.pageid);
 
-  err = oos_page_destroy (thread_p, oos_vfid, vpid);
+  err = oos_remove_page (thread_p, oos_vfid, vpid);
   ASSERT_EQ (err, NO_ERROR);
 }
 
@@ -225,7 +225,7 @@ TEST (OosFileDestroyTest, OosFileDestroyMultipleFiles)
   ASSERT_EQ (err, NO_ERROR);
 
   // Destroy file 1
-  err = oos_file_destroy (thread_p, oos_vfid1);
+  err = oos_remove_file (thread_p, oos_vfid1);
   ASSERT_EQ (err, NO_ERROR);
 
   // File 2 should still be readable
