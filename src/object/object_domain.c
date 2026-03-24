@@ -11353,6 +11353,7 @@ tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, 
     }
 
   return dom_status;
+#undef NUMERIC_MAX_PRECISION
 }
 
 /*

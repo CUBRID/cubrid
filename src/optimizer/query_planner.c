@@ -468,17 +468,16 @@ static PRED_CLASS qo_classify (PT_NODE * attr);
 static int qo_index_cardinality (QO_ENV * env, PT_NODE * attr);
 static int qo_index_cardinality_with_dedup (QO_ENV * env, PT_NODE * attr, BITSET * seg_bitset);
 
-
 /*
  * log3 () -
  *   return:
  *   n(in):
  */
-// C++11 and later: Thread-safe initialization for local static variables is guaranteed by the compiler, called "Magic Statics"
-static double ln3_value = log (3.0);
 static double
 log3 (double n)
 {
+  // C++11 and later: Thread-safe initialization for local static variables is guaranteed by the compiler, called "Magic Statics"
+  static double ln3_value = log (3.0);
   return log (n) / ln3_value;
 }
 
