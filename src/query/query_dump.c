@@ -3380,17 +3380,22 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 	  analytic = json_object ();
 	  json_object_set_new (analytic, "time", json_integer (TO_MSEC (curr->analytic_time)));
 
-	  if (curr->analytic_stopkey)
-	    {
-	      json_object_set_new (analytic, "sort", json_string ("nosort stopkey"));
-	    }
-	  else if (curr->analytic_sort)
+	  if (curr->analytic_sort)
 	    {
 	      json_object_set_new (analytic, "sort", json_true ());
 	    }
 	  else
 	    {
-	      json_object_set_new (analytic, "sort", json_string ("skip"));
+	      json_object_set_new (analytic, "sort", json_false ());
+	    }
+
+	  if (curr->analytic_stopkey)
+	    {
+	      json_object_set_new (analytic, "stopkey", json_true ());
+	    }
+	  else
+	    {
+	      json_object_set_new (analytic, "stopkey", json_false ());
 	    }
 
 	  json_object_set_new (analytic, "page", json_integer (curr->analytic_pages));
@@ -3811,22 +3816,23 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	  fprintf (fp, "%*c", indent, ' ');
 	  fprintf (fp, "ANALYTIC #%d (time: %d", ++analytic_num, TO_MSEC (curr->analytic_time));
 
-	  if (curr->analytic_stopkey)
-	    {
-	      fprintf (fp, ", sort: nosort stopkey");
-	    }
-	  else if (curr->analytic_sort)
+	  if (curr->analytic_sort)
 	    {
 	      fprintf (fp, ", sort: true");
 	    }
 	  else
 	    {
-	      fprintf (fp, ", sort: skip");
+	      fprintf (fp, ", sort: false");
 	    }
 
 	  fprintf (fp, ", page: %lld, ioread: %lld", (long long int) curr->analytic_pages,
 		   (long long int) curr->analytic_ioreads);
-	  fprintf (fp, ", rows: %d)\n", curr->rows);
+	  fprintf (fp, ", rows: %d)", curr->rows);
+	  if (curr->analytic_stopkey)
+	    {
+	      fprintf (fp, " (stopkey)");
+	    }
+	  fprintf (fp, "\n");
 	}
     }
 

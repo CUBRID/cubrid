@@ -21575,6 +21575,9 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
   analytic_state->input_tplrec.tpl = 0;
   analytic_state->input_recs = 0;
 
+  analytic_state->func_state_list = NULL;
+  analytic_state->func_count = 0;
+
   analytic_state->curr_sort_page.vpid.pageid = NULL_PAGEID;
   analytic_state->curr_sort_page.vpid.volid = NULL_VOLID;
   analytic_state->curr_sort_page.page_p = NULL;
@@ -21593,6 +21596,11 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
       analytic_state->key_info.use_original = 1;
       analytic_state->key_info.key = NULL;
       analytic_state->key_info.error = NO_ERROR;
+    }
+
+  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+    {
+      goto resolve_domain;
     }
 
   /* build function states */
@@ -21651,6 +21659,7 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
 	}
     }
 
+resolve_domain:
   /* resolve domains in regulist */
   for (regu_list = a_regu_list; regu_list; regu_list = regu_list->next)
     {

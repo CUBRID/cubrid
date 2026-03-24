@@ -28443,6 +28443,7 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
 
     case QO_PLANTYPE_FOLLOW:
     case QO_PLANTYPE_WORST:
+    default:
       return 0;
     }
 
