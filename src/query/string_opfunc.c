@@ -2760,7 +2760,7 @@ db_string_md5 (DB_VALUE const *val, DB_VALUE * result)
 int
 db_uuid_format (DB_VALUE const *val, DB_VALUE * result)
 {
-  char *hex_buf;
+  char *hex_buf = NULL;
   const char *str = NULL;
   int str_size = 0;
   int i, j;
@@ -2785,7 +2785,8 @@ db_uuid_format (DB_VALUE const *val, DB_VALUE * result)
   if (hex_buf == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      return er_errid ();
+      error_status = er_errid ();
+      goto exit;
     }
 
   if (QSTR_IS_ANY_CHAR (val_type))
@@ -2812,14 +2813,16 @@ db_uuid_format (DB_VALUE const *val, DB_VALUE * result)
 	      else
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
-		  return ER_QSTR_INVALID_UUID_FORMAT;
+		  error_status ER_QSTR_INVALID_UUID_FORMAT;
+		  goto exit;
 		}
 	    }
 	}
       else
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
-	  return ER_QSTR_INVALID_UUID_FORMAT;
+	  error_status = ER_QSTR_INVALID_UUID_FORMAT;
+	  goto exit;
 	}
     }
   else if (QSTR_IS_BIT (val_type))
@@ -2828,7 +2831,8 @@ db_uuid_format (DB_VALUE const *val, DB_VALUE * result)
       if (str_size != UUID_HEX_LEN * 4)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
-	  return ER_QSTR_INVALID_UUID_FORMAT;
+	  error_status = ER_QSTR_INVALID_UUID_FORMAT;
+	  goto exit;
 	}
       for (i = 0, j = 0; i < UUID_HEX_LEN / 2; i++)
 	{
@@ -2845,7 +2849,8 @@ db_uuid_format (DB_VALUE const *val, DB_VALUE * result)
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
-      return ER_QSTR_INVALID_UUID_FORMAT;
+      error_status = ER_QSTR_INVALID_UUID_FORMAT;
+      goto exit;
     }
   hex_buf[UUID_FORMAT_LEN] = '\0';
 
@@ -2864,9 +2869,18 @@ db_uuid_format (DB_VALUE const *val, DB_VALUE * result)
     {
       result->need_clear = true;
     }
-  else
+
+exit:
+  if (error_status != NO_ERROR)
     {
       db_private_free_and_init (NULL, hex_buf);
+      db_make_null (result);
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	{
+	  /* we must not return an error code */
+	  er_clear ();
+	  error_status = NO_ERROR;
+	}
     }
 
   return error_status;
