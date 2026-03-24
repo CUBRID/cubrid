@@ -117,7 +117,7 @@ oos_file_create (THREAD_ENTRY *thread_p, VFID &oos_vfid)
 }
 
 int
-oos_file_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
+oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 {
   {
     std::lock_guard<std::mutex> lock (oos_vpid_map_mutex);
@@ -131,7 +131,7 @@ oos_file_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 
 // TODO: will be called by vacuum when OOS vacuum is implemented
 int
-oos_page_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid)
+oos_remove_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid)
 {
   int err = file_dealloc (thread_p, &oos_vfid, &vpid, FILE_OOS);
   if (err != NO_ERROR)

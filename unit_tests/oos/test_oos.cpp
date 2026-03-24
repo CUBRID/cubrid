@@ -52,7 +52,7 @@ TEST (OosTest, OosCreateAndDestroy)
   ASSERT_NE (fileid, NULL_FILEID);
   ASSERT_NE (volid, NULL_VOLID);
 
-  err = oos_file_destroy (thread_p, oos_vfid);
+  err = oos_remove_file (thread_p, oos_vfid);
   auto [fileid_after_destroy, volid_after_destroy] = oos_vfid;
 
   ASSERT_EQ (err, NO_ERROR);
