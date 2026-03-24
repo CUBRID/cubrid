@@ -18,6 +18,7 @@
 
 #include <cassert>
 #include "error_code.h"
+#include "error_manager.h"
 #include "file_manager.h"
 #include "memory_alloc.h"
 #include "page_buffer.h"
@@ -637,22 +638,25 @@ oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
 //       These will be connected in the upper story.
 // TODO: concurrency — this function assumes the caller holds a row-level lock (e.g., X_LOCK from heap layer)
 //       to prevent concurrent deletion of the same OOS chain. Verify this assumption when wiring callers.
+// TODO: multi-page atomicity — for multi-chunk OOS records, consider wrapping the entire delete in a
+//       log_sysop_start/commit pair or introducing chain marker dummy logs (like LOG_DUMMY_OVF_RECORD)
+//       so that recovery can detect and complete partial chain deletes after a crash.
 int
 oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
 {
   oos_debug ("arguments: oid={vol=%d,page=%d,slot=%d}", oid.volid, oid.pageid, oid.slotid);
 
   OID current_oid = oid;
-  while (current_oid.pageid != NULL_PAGEID)
+  while (!OID_ISNULL (&current_oid))
     {
-      const auto [pageid, slotid, volid] = current_oid;
-      VPID vpid = {pageid, volid};
+      VPID vpid = {current_oid.pageid, current_oid.volid};
 
       PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_ptr == nullptr)
 	{
-	  oos_error ("pgbuf_fix failed for volid=%d, pageid=%d", volid, pageid);
-	  return ER_FAILED;
+	  oos_error ("pgbuf_fix failed for volid=%d, pageid=%d", current_oid.volid, current_oid.pageid);
+	  ASSERT_ERROR ();
+	  return er_errid ();
 	}
 
       scope_exit page_unfixer ([&] ()
@@ -660,11 +664,13 @@ oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
 	pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
       });
 
-      RECDES recdes_with_header;
-      SCAN_CODE code = spage_get_record (thread_p, page_ptr, slotid, &recdes_with_header, PEEK);
+      RECDES recdes_with_header = RECDES_INITIALIZER;
+      SCAN_CODE code = spage_get_record (thread_p, page_ptr, current_oid.slotid, &recdes_with_header, PEEK);
       if (code != S_SUCCESS)
 	{
-	  oos_error ("spage_get_record failed for volid=%d, pageid=%d, slotid=%d", volid, pageid, slotid);
+	  oos_error ("spage_get_record failed for volid=%d, pageid=%d, slotid=%d",
+		     current_oid.volid, current_oid.pageid, current_oid.slotid);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return ER_FAILED;
 	}
 
@@ -673,13 +679,38 @@ oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
       std::memcpy (&header, recdes_with_header.data, sizeof (OOS_RECORD_HEADER));
       OID next_chunk_oid = header.next_chunk_oid;
 
-      oos_log_delete_physical (thread_p, page_ptr, const_cast<VFID *> (&oos_vfid), slotid, &recdes_with_header);
+      oos_log_delete_physical (thread_p, page_ptr, const_cast<VFID *> (&oos_vfid), current_oid.slotid,
+			       &recdes_with_header);
 
-      (void) spage_delete (thread_p, page_ptr, slotid);
+      PGSLOTID deleted_slotid = spage_delete (thread_p, page_ptr, current_oid.slotid);
+      if (deleted_slotid == NULL_SLOTID)
+	{
+	  oos_error ("spage_delete failed for volid=%d, pageid=%d, slotid=%d",
+		     current_oid.volid, current_oid.pageid, current_oid.slotid);
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_FAILED;
+	}
       pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
 
+      // Deallocate page if it became empty after deleting the last record.
+      // OOS pages are shared (multiple records per slotted page), so only deallocate when truly empty.
+      if (spage_number_of_records (page_ptr) == 0)
+	{
+	  // Must unfix before file_dealloc
+	  pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
+	  int dealloc_err = file_dealloc (thread_p, &oos_vfid, &vpid, FILE_OOS);
+	  if (dealloc_err != NO_ERROR)
+	    {
+	      // Page deallocation failure is not fatal — the page is just leaked.
+	      // Log and continue rather than aborting the entire chain delete.
+	      oos_error ("file_dealloc failed for volid=%d, pageid=%d (non-fatal, page leaked)",
+			 vpid.volid, vpid.pageid);
+	    }
+	}
+
       oos_debug ("deleted chunk at oid={vol=%d,page=%d,slot=%d}, next={vol=%d,page=%d,slot=%d}",
-		 volid, pageid, slotid,
+		 current_oid.volid, current_oid.pageid, current_oid.slotid,
 		 next_chunk_oid.volid, next_chunk_oid.pageid, next_chunk_oid.slotid);
 
       current_oid = next_chunk_oid;
@@ -705,7 +736,13 @@ oos_rv_redo_delete (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
   INT16 slotid;
 
   slotid = rcv->offset;
-  (void) spage_delete (thread_p, rcv->pgptr, slotid);
+  PGSLOTID deleted_slotid = spage_delete (thread_p, rcv->pgptr, slotid);
+  if (deleted_slotid == NULL_SLOTID)
+    {
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return er_errid ();
+    }
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   return NO_ERROR;
