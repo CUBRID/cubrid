@@ -6367,7 +6367,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	}
 
       /* remove query result cache entries which are relevant with this class */
-      if (!QFILE_IS_LIST_CACHE_DISABLED)
+      if (!QFILE_IS_LIST_CACHE_DISABLED && !OID_ISNULL (&class_oid))
 	{
 	  OID superclass_oid;
 	  OID real_class_oid;

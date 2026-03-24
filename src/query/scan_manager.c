@@ -715,20 +715,28 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_l
       err = ER_FAILED;
       goto exit_on_error;
     }
-
-  /*
-   * Covering index scan needs large-size memory buffer in order to decrease
-   * the number of times doing stop-and-resume during btree_range_search.
-   * To do it, QFILE_FLAG_USE_KEY_BUFFER is introduced. If the flag is set,
-   * the list file allocates PRM_INDEX_SCAN_KEY_BUFFER_PAGES pages memory
-   * for its memory buffer, which is generally larger than prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES).
-   */
-  indx_cov->list_id =
-    qfile_open_list (thread_p, indx_cov->type_list, NULL, query_id, QFILE_FLAG_USE_KEY_BUFFER, indx_cov->list_id);
-  if (indx_cov->list_id == NULL)
+  if (indx_cov->list_id != NULL && indx_cov->list_id->tfile_vfid != NULL)
     {
-      err = ER_FAILED;
-      goto exit_on_error;
+      assert (indx_cov->list_id->tfile_vfid != NULL);
+      qfile_truncate_list (thread_p, indx_cov->list_id);
+    }
+  else
+    {
+
+      /*
+       * Covering index scan needs large-size memory buffer in order to decrease
+       * the number of times doing stop-and-resume during btree_range_search.
+       * To do it, QFILE_FLAG_USE_KEY_BUFFER is introduced. If the flag is set,
+       * the list file allocates PRM_INDEX_SCAN_KEY_BUFFER_PAGES pages memory
+       * for its memory buffer, which is generally larger than prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES).
+       */
+      indx_cov->list_id =
+	qfile_open_list (thread_p, indx_cov->type_list, NULL, query_id, QFILE_FLAG_USE_KEY_BUFFER, indx_cov->list_id);
+      if (indx_cov->list_id == NULL)
+	{
+	  err = ER_FAILED;
+	  goto exit_on_error;
+	}
     }
 
   num_membuf_pages = qmgr_get_temp_file_membuf_pages (indx_cov->list_id->tfile_vfid);
@@ -3711,7 +3719,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		     /* fields of LLIST_SCAN_ID */
 		     QFILE_LIST_ID * list_id, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
 		     regu_variable_list_node * regu_list_rest, regu_variable_list_node * regu_list_build,
-		     regu_variable_list_node * regu_list_probe, int hash_list_scan_yn)
+		     regu_variable_list_node * regu_list_probe, int hash_list_scan_yn, bool is_read_only)
 {
   LLIST_SCAN_ID *llsidp;
   int val_cnt;
@@ -3742,6 +3750,8 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   llsidp->hlsid.build_regu_list = regu_list_build;
   llsidp->hlsid.probe_regu_list = regu_list_probe;
   llsidp->hlsid.need_coerce_type = false;
+
+  llsidp->is_read_only = is_read_only;
 
   /* check if hash list scan is possible? */
   llsidp->hlsid.hash_list_scan_type = check_hash_list_scan (llsidp, &val_cnt, hash_list_scan_yn);
@@ -4363,6 +4373,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  goto exit_on_error;
 	}
+      llsidp->lsid.is_read_only = llsidp->is_read_only;
       qfile_start_scan_fix (thread_p, &llsidp->lsid);
       break;
 
@@ -4946,11 +4957,6 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  qfile_close_scan (thread_p, isidp->indx_cov.lsid);
 	  db_private_free_and_init (thread_p, isidp->indx_cov.lsid);
-	}
-      if (isidp->indx_cov.list_id != NULL)
-	{
-	  qfile_close_list (thread_p, isidp->indx_cov.list_id);
-	  qfile_destroy_list (thread_p, isidp->indx_cov.list_id);
 	}
       if (isidp->indx_cov.type_list != NULL)
 	{

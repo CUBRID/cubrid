@@ -43,6 +43,7 @@
 #include "lockfree_transaction_system.hpp"
 #include "resource_shared_pool.hpp"
 #include "system_parameter.h"
+#include "resources.hpp"
 
 #include <cassert>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -491,6 +492,8 @@ namespace cubthread
   initialize (entry *&my_entry)
   {
     // note - currently it is designed to be called only once. if we want repeatable calls, code must be updated.
+
+    os::resources::initialize ();
 
     assert (my_entry == NULL);
 

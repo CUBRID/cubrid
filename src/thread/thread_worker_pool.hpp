@@ -30,6 +30,7 @@
 // cubrid includes
 #include "perf_def.hpp"
 #include "extensible_array.hpp"
+#include "resources.hpp"
 
 // system includes
 #include <atomic>
@@ -1580,6 +1581,7 @@ namespace cubthread
   {
     task_type *task_p = NULL;
 
+    os::resources::cpu::clearaffinity ();   // clear the affinity at start
     init_run ();    // do stuff at the beginning like creating context
 
     if (m_is_temp)
