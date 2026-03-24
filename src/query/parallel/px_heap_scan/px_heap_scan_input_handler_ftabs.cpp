@@ -41,7 +41,6 @@
 namespace parallel_heap_scan
 {
   thread_local HEAP_SCANCACHE *input_handler_ftabs::m_tl_scan_cache = NULL;
-  thread_local PGBUF_WATCHER input_handler_ftabs::m_tl_old_page_watcher = {0};
   thread_local ftab_set *input_handler_ftabs::m_tl_ftab_set = NULL;
   thread_local VPID input_handler_ftabs::m_tl_vpid = VPID_INITIALIZER;
   thread_local size_t input_handler_ftabs::m_tl_pgoffset = 0;
@@ -53,7 +52,6 @@ namespace parallel_heap_scan
     m_tl_scan_cache = &scan_id->s.hsid.scan_cache;
     /* open_scan should have succeeded */
     assert (m_tl_scan_cache->debug_initpattern == 12345);
-    PGBUF_INIT_WATCHER (&m_tl_old_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
     int idx = m_splited_ftab_set_idx.fetch_add (1);
     if (idx < 0 || (size_t) idx >= m_splited_ftab_set.size ())
       {
@@ -106,10 +104,6 @@ namespace parallel_heap_scan
 	    m_tl_ftab = m_tl_ftab_set->get_next();
 	    if (VSID_IS_NULL (&m_tl_ftab.vsid))
 	      {
-		if (m_tl_old_page_watcher.pgptr != NULL)
-		  {
-		    pgbuf_ordered_unfix (thread_p, &m_tl_old_page_watcher);
-		  }
 		return S_END;
 	      }
 	    m_tl_pgoffset = 0;
@@ -129,38 +123,14 @@ namespace parallel_heap_scan
 	      {
 		found = true;
 
-		if (m_tl_scan_cache->page_watcher.pgptr != NULL)
-		  {
-		    pgbuf_replace_watcher (thread_p, &m_tl_scan_cache->page_watcher, &m_tl_old_page_watcher);
-		  }
-
 		error_code = pgbuf_ordered_fix (thread_p, &m_tl_vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ,
 						&m_tl_scan_cache->page_watcher);
 
-		if (m_tl_old_page_watcher.pgptr != NULL)
-		  {
-		    pgbuf_ordered_unfix (thread_p, &m_tl_old_page_watcher);
-		  }
-
-		PAGE_TYPE page_type = pgbuf_get_page_ptype (thread_p, m_tl_scan_cache->page_watcher.pgptr);
-
-		if (page_type != PAGE_HEAP)
-		  {
-		    found = false;
-		    continue;
-		  }
-
-		if (error_code != NO_ERROR)
+		if (error_code != NO_ERROR || m_tl_scan_cache->page_watcher.pgptr == NULL)
 		  {
 		    m_err_messages_p->move_top_error_message_to_this();
 		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		    return S_ERROR;
-		  }
-
-		if (m_tl_scan_cache->page_watcher.pgptr == NULL)
-		  {
-		    found = false;
-		    continue;
 		  }
 
 		*vpid = m_tl_vpid;
@@ -180,16 +150,11 @@ namespace parallel_heap_scan
 
   int input_handler_ftabs::finalize (THREAD_ENTRY *thread_p)
   {
-    if (m_tl_old_page_watcher.pgptr != NULL)
-      {
-	pgbuf_ordered_unfix (thread_p, &m_tl_old_page_watcher);
-      }
     if (m_tl_scan_cache->page_watcher.pgptr != NULL)
       {
 	pgbuf_ordered_unfix (thread_p, &m_tl_scan_cache->page_watcher);
       }
     m_tl_scan_cache = NULL;
-    m_tl_old_page_watcher.pgptr = NULL;
     return NO_ERROR;
   }
 }
