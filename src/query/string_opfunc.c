@@ -167,6 +167,8 @@ static int uuidv7_generate_bytes (THREAD_ENTRY * thread_p, uint64_t epoch_ms, un
 
 #define UUID_FORMAT_LEN 36
 #define UUID_HEX_LEN 32
+
+/* NOTE: argument 'c' must be a simple expression; it is evaluated up to 6 times. */
 #define IS_HEX_CHAR(c) ((((unsigned char)(c) >= '0' && (unsigned char)(c) <= '9') \
             || ((unsigned char)(c) >= 'A' && (unsigned char)(c) <= 'F') \
             || ((unsigned char)(c) >= 'a' && (unsigned char)(c) <= 'f')))
