@@ -2873,7 +2873,7 @@ check_repl_constraint_violations (DB_OBJLIST * classes, FILE * fp, REPL_CONSTRAI
 
   for (c = classes; c != NULL; c = c->next)
     {
-      if (db_is_system_class (c->op) || !sm_is_replication_class (c->op))
+      if (db_is_system_class (c->op) || db_is_vclass (c->op) || !sm_is_replication_class (c->op))
 	{
 	  continue;
 	}
