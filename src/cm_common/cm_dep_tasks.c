@@ -252,9 +252,9 @@ _op_db_login (nvplist * out, nvplist * in, int ha_mode, char *_dbmt_error)
   char *id, *pwd, *db_name;
   char dbname_at_hostname[CUB_MAXHOSTNAMELEN + DB_NAME_LEN];
 
-  id = nv_get_val (in, "_DBID");
-  pwd = nv_get_val (in, "_DBPASSWD");
-  db_name = nv_get_val (in, "_DBNAME");
+  id = nv_get_val (in, "dbuser");
+  pwd = nv_get_val (in, "dbpasswd");
+  db_name = nv_get_val (in, "dbname");
 
   db_login (id, pwd);
 
@@ -597,7 +597,7 @@ cm_ts_class_info (nvplist * in, nvplist * out, char *_dbmt_error)
   int ha_mode = 0;
 
   dbstatus = nv_get_val (in, "dbstatus");
-  dbname = nv_get_val (in, "_DBNAME");
+  dbname = nv_get_val (in, "dbname");
   if (dbname == NULL)
     {
       return ERR_PARAM_MISSING;
@@ -612,8 +612,8 @@ cm_ts_class_info (nvplist * in, nvplist * out, char *_dbmt_error)
 
   if (db_mode == DB_SERVICE_MODE_NONE)
     {
-      char *uid = nv_get_val (in, "_DBID");
-      char *passwd = nv_get_val (in, "_DBPASSWD");
+      char *uid = nv_get_val (in, "dbuser");
+      char *passwd = nv_get_val (in, "dbpasswd");
       char *cli_ver_val = nv_get_val (in, "_CLIENT_VERSION");
       return (class_info_sa (dbname, uid, passwd, cli_ver_val, out, _dbmt_error));
     }
@@ -728,8 +728,9 @@ cm_ts_get_triggerinfo (nvplist * req, nvplist * res, char *_dbmt_error)
       /* use ts_get_triggerinfo_sa funtion */
       char *uid;
       char *password;
-      uid = nv_get_val (req, "_DBID");
-      password = nv_get_val (req, "_DBPASSWD");
+      uid = nv_get_val (req, "dbuser");
+      password = nv_get_val (req, "dbpasswd");
+
       return (trigger_info_sa (dbname, uid, password, res, _dbmt_error));
     }
 
@@ -1017,7 +1018,7 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
       const char *dbmt_db_id;
       const char *old_db_passwd;
 
-      dbmt_db_id = nv_get_val (req, "_DBID");
+      dbmt_db_id = nv_get_val (req, "dbuser");
       if (dbmt_db_id == NULL)
 	dbmt_db_id = "";
 
@@ -1211,7 +1212,7 @@ cm_ts_create_user (nvplist * req, nvplist * res, char *_dbmt_error)
   char *tval, *sval;
   int anum;
 
-  dbname = nv_get_val (req, "_DBNAME");
+  dbname = nv_get_val (req, "dbname");
   if (dbname == NULL)
     {
       return ERR_PARAM_MISSING;
