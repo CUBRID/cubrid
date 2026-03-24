@@ -633,6 +633,10 @@ oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
   log_append_undoredo_recdes (thread_p, RVOOS_DELETE, &log_addr, recdes_p, NULL);
 }
 
+// TODO: caller connection — heap_update → oos_delete, vacuum → oos_delete are not yet wired.
+//       These will be connected in the upper story.
+// TODO: concurrency — this function assumes the caller holds a row-level lock (e.g., X_LOCK from heap layer)
+//       to prevent concurrent deletion of the same OOS chain. Verify this assumption when wiring callers.
 int
 oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
 {
