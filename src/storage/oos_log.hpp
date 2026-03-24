@@ -102,6 +102,14 @@ namespace oos_log
   }
 
 
+/* oos_error and oos_warn are always active — they must be visible in release builds
+ * for replication and QA diagnostics.  Lower levels are debug-only. */
+#define oos_error(fmt, ...) \
+    oos_log_internal(OosLogLevel::ERROR, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
+
+#define oos_warn(fmt, ...) \
+    oos_log_internal(OosLogLevel::WARN, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
+
 #if !defined (NDEBUG)
 #define oos_trace(fmt, ...) \
     oos_log_internal(OosLogLevel::TRACE, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
@@ -111,12 +119,6 @@ namespace oos_log
 
 #define oos_info(fmt, ...) \
     oos_log_internal(OosLogLevel::INFO, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
-
-#define oos_warn(fmt, ...) \
-    oos_log_internal(OosLogLevel::WARN, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
-
-#define oos_error(fmt, ...) \
-    oos_log_internal(OosLogLevel::ERROR, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 #else
 
 #define oos_trace(...)   do {} while (0)
@@ -124,10 +126,6 @@ namespace oos_log
 #define oos_debug(...)   do {} while (0)
 
 #define oos_info(...)    do {} while (0)
-
-#define oos_warn(...)    do {} while (0)
-
-#define oos_error(...)   do {} while (0)
 
 #endif
 
