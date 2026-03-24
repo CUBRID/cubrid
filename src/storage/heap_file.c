@@ -5921,7 +5921,12 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
     VFID oos_vfid;
     if (heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
       {
-	oos_file_destroy (thread_p, oos_vfid);
+	int error = oos_file_destroy (thread_p, oos_vfid);
+	if (error != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    return error;
+	  }
       }
   }
 
@@ -5974,7 +5979,12 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
     VFID oos_vfid;
     if (heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
       {
-	oos_file_destroy (thread_p, oos_vfid);
+	ret = oos_file_destroy (thread_p, oos_vfid);
+	if (ret != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    return ret;
+	  }
       }
   }
 
