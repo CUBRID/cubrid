@@ -58,6 +58,8 @@ static void
 oos_log_insert_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, OID *oid_p, RECDES *recdes_p);
 static void
 oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, PGSLOTID slotid, RECDES *recdes_p);
+static int
+oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid);
 
 STATIC_INLINE __attribute__ ((ALWAYS_INLINE))
 int oos_get_max_chunk_size_within_page ();
@@ -638,14 +640,22 @@ oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
 //       These will be connected in the upper story.
 // TODO: concurrency — this function assumes the caller holds a row-level lock (e.g., X_LOCK from heap layer)
 //       to prevent concurrent deletion of the same OOS chain. Verify this assumption when wiring callers.
-// TODO: multi-page atomicity — for multi-chunk OOS records, consider wrapping the entire delete in a
-//       log_sysop_start/commit pair or introducing chain marker dummy logs (like LOG_DUMMY_OVF_RECORD)
-//       so that recovery can detect and complete partial chain deletes after a crash.
-int
-oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
-{
-  oos_debug ("arguments: oid={vol=%d,page=%d,slot=%d}", oid.volid, oid.pageid, oid.slotid);
 
+/*
+ * oos_delete_chain () - delete all chunks in an OOS record chain (internal)
+ *
+ *   return: NO_ERROR or error code
+ *   thread_p(in): thread entry
+ *   oos_vfid(in): OOS file identifier
+ *   oid(in): head OID of the OOS record chain
+ *
+ * NOTE: This is the inner workhorse called by oos_delete(). It must be called
+ *       inside a system operation (log_sysop_start) so that on error the
+ *       caller can abort the sysop and restore all partially deleted chunks.
+ */
+static int
+oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
+{
   OID current_oid = oid;
   while (!OID_ISNULL (&current_oid))
     {
@@ -693,28 +703,53 @@ oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
 	}
       pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
 
-      // Deallocate page if it became empty after deleting the last record.
-      // OOS pages are shared (multiple records per slotted page), so only deallocate when truly empty.
-      if (spage_number_of_records (page_ptr) == 0)
-	{
-	  // Must unfix before file_dealloc
-	  pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
-	  int dealloc_err = file_dealloc (thread_p, &oos_vfid, &vpid, FILE_OOS);
-	  if (dealloc_err != NO_ERROR)
-	    {
-	      // Page deallocation failure is not fatal — the page is just leaked.
-	      // Log and continue rather than aborting the entire chain delete.
-	      oos_error ("file_dealloc failed for volid=%d, pageid=%d (non-fatal, page leaked)",
-			 vpid.volid, vpid.pageid);
-	    }
-	}
-
       oos_debug ("deleted chunk at oid={vol=%d,page=%d,slot=%d}, next={vol=%d,page=%d,slot=%d}",
 		 current_oid.volid, current_oid.pageid, current_oid.slotid,
 		 next_chunk_oid.volid, next_chunk_oid.pageid, next_chunk_oid.slotid);
 
       current_oid = next_chunk_oid;
     }
+
+  return NO_ERROR;
+}
+
+/*
+ * oos_delete () - delete an OOS record (single-chunk or multi-chunk chain)
+ *
+ *   return: NO_ERROR or error code
+ *   thread_p(in): thread entry
+ *   oos_vfid(in): OOS file identifier
+ *   oid(in): head OID of the OOS record
+ *
+ * NOTE: Uses a system operation to guarantee atomicity for multi-chunk deletes.
+ *       On success, the sysop is attached to the outer transaction so that the
+ *       delete can be undone if the transaction aborts.
+ *       On error mid-chain, the sysop is aborted, restoring all partially
+ *       deleted chunks to a consistent state.
+ *
+ *       Page deallocation is NOT done here. Empty pages will be reclaimed by
+ *       vacuum after the transaction commits. file_dealloc() uses an internal
+ *       committed sysop that would not be rolled back if the outer transaction
+ *       aborts, which could leave pages deallocated while undo tries to
+ *       re-insert records into them.
+ */
+int
+oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
+{
+  oos_debug ("arguments: oid={vol=%d,page=%d,slot=%d}", oid.volid, oid.pageid, oid.slotid);
+
+  log_sysop_start (thread_p);
+
+  int error = oos_delete_chain (thread_p, oos_vfid, oid);
+  if (error != NO_ERROR)
+    {
+      log_sysop_abort (thread_p);
+      return error;
+    }
+
+  // Attach to outer transaction: if the outer transaction commits, the deletes persist.
+  // If the outer transaction aborts, the deletes are undone (chunks restored).
+  log_sysop_attach_to_outer (thread_p);
 
   return NO_ERROR;
 }
