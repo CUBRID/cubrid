@@ -95,7 +95,6 @@ namespace parallel_heap_scan
 
   SCAN_CODE input_handler_ftabs::get_next_vpid_with_fix (THREAD_ENTRY *thread_p, VPID *vpid)
   {
-    SCAN_CODE ret = S_SUCCESS;
     int error_code = NO_ERROR;
 
     bool found = false;
@@ -167,10 +166,10 @@ namespace parallel_heap_scan
 
 	if (m_tl_pgoffset >= DISK_SECTOR_NPAGES)
 	  {
-	    m_tl_vpid.pageid = -1;
+	    VPID_SET_NULL (&m_tl_vpid);
 	  }
       }
-    return ret;
+    return S_ERROR;	/* unreachable */
   }
 
   int input_handler_ftabs::finalize (THREAD_ENTRY *thread_p)
