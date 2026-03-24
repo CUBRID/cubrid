@@ -392,6 +392,63 @@ TEST (OosDeleteTest, OosDeleteLarge160KBMultiChunk)
 }
 
 
+// ===========================================================================
+// TEST: OosDeleteSlotBecomesUnknown
+//
+// After oos_delete, the slot is internally marked REC_DELETED_WILL_REUSE by
+// spage_delete. The public API spage_get_record_type maps deleted slots to
+// REC_UNKNOWN. Verify this transition: valid type before, REC_UNKNOWN after.
+// ===========================================================================
+TEST (OosDeleteTest, OosDeleteSlotBecomesUnknown)
+{
+  int err;
+  VFID oos_vfid;
+
+  err = oos_file_create (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  RECDES rec_in{};
+  err = test_oos_utils::from_string_into_recdes ("slot state verification test", rec_in);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_free (&rec_in, recdes_free_data_area);
+
+  OID oid = OID_INITIALIZER;
+  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  ASSERT_EQ (err, NO_ERROR);
+  ASSERT_NE (oid.pageid, NULL_PAGEID);
+
+  // Before deletion: slot must hold a valid record type (not unknown/deleted)
+  {
+    VPID vpid = {oid.pageid, oid.volid};
+    PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER,
+				   PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+    ASSERT_NE (page_ptr, nullptr);
+    test_oos_utils::auto_unfixed_page_ptr auto_page { page_ptr, test_oos_utils::page_auto_unfix {thread_p} };
+
+    INT16 type_before = spage_get_record_type (page_ptr, oid.slotid);
+    ASSERT_NE (type_before, REC_UNKNOWN);
+    test_oos_debug ("type_before=%d", type_before);
+  }
+
+  err = oos_delete (thread_p, oos_vfid, oid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  // After deletion: spage_get_record_type returns REC_UNKNOWN for deleted slots
+  // (internally the slot is REC_DELETED_WILL_REUSE, but the API maps it to REC_UNKNOWN)
+  {
+    VPID vpid = {oid.pageid, oid.volid};
+    PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER,
+				   PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+    ASSERT_NE (page_ptr, nullptr);
+    test_oos_utils::auto_unfixed_page_ptr auto_page { page_ptr, test_oos_utils::page_auto_unfix {thread_p} };
+
+    INT16 type_after = spage_get_record_type (page_ptr, oid.slotid);
+    ASSERT_EQ (type_after, REC_UNKNOWN);
+    test_oos_debug ("type_after=%d (REC_UNKNOWN=%d)", type_after, REC_UNKNOWN);
+  }
+}
+
+
 int main (int argc, char **argv)
 {
   ::testing::InitGoogleTest (&argc, argv);
