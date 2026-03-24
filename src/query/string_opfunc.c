@@ -26102,8 +26102,8 @@ coerce_pos:
       /* compute hex representation */
       for (i = 0; i < str_size; i++)
 	{
-	  hexval[i * 2] = UPPER_HEX_DIGIT[(str[i] >> 4) & 0xF];
-	  hexval[i * 2 + 1] = UPPER_HEX_DIGIT[str[i] & 0xF];
+	  hexval[i * 2] = UPPER_HEX_DIGIT[(unsigned char) (str[i] >> 4) & 0xF];
+	  hexval[i * 2 + 1] = UPPER_HEX_DIGIT[(unsigned char) str[i] & 0xF];
 	}
 
       /* set return string */
@@ -26249,8 +26249,8 @@ db_uuidv4 (THREAD_ENTRY * thread_p, DB_VALUE * result)
   /* Encode the bytes to HEX */
   for (i = 0; i < GUID_STANDARD_BYTES_LENGTH; i++)
     {
-      guid_hex[i * 2] = UPPER_HEX_DIGIT[(guid_bytes[i] >> 4) & 0xF];
-      guid_hex[i * 2 + 1] = UPPER_HEX_DIGIT[(guid_bytes[i] & 0xF)];
+      guid_hex[i * 2] = UPPER_HEX_DIGIT[((unsigned char) guid_bytes[i] >> 4) & 0xF];
+      guid_hex[i * 2 + 1] = UPPER_HEX_DIGIT[(unsigned char) guid_bytes[i] & 0xF];
     }
 
   db_make_string (result, guid_hex);
