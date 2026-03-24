@@ -2813,7 +2813,7 @@ db_uuid_format (DB_VALUE const *val, DB_VALUE * result)
 	      else
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
-		  error_status ER_QSTR_INVALID_UUID_FORMAT;
+		  error_status = ER_QSTR_INVALID_UUID_FORMAT;
 		  goto exit;
 		}
 	    }
