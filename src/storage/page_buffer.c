@@ -12067,7 +12067,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
   ret_pgptr = pgbuf_fix_release (thread_p, req_vpid, fetch_mode, request_mode, latch_condition);
 #endif
 
-  if (ret_pgptr && latch_condition == PGBUF_UNCONDITIONAL_LATCH && allow_not_ordered_page)
+  if (ret_pgptr && allow_not_ordered_page)
     {
       CAST_PGPTR_TO_BFPTR (bufptr, ret_pgptr);
       if (!PGBUF_IS_ORDERED_PAGETYPE (bufptr->iopage_buffer->iopage.prv.ptype))
@@ -12606,34 +12606,48 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 
       if (VPID_EQ (req_vpid, &(ordered_holders_info[i].vpid)))
 	{
-	  ret_pgptr = pgptr;
-
-	  if (has_dealloc_prevent_flag == true)
+	  if (allow_not_ordered_page)
 	    {
 	      CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
-	      pgbuf_bcb_unregister_avoid_deallocation (bufptr);
-	      has_dealloc_prevent_flag = false;
+	      if (!PGBUF_IS_ORDERED_PAGETYPE (bufptr->iopage_buffer->iopage.prv.ptype))
+		{
+		  pgbuf_unfix (thread_p, pgptr);
+		  pgptr = NULL;
+		  ret_pgptr = NULL;
+		}
 	    }
 
-	  if (req_watcher != NULL)
+	  if (pgptr != NULL)
 	    {
+	      ret_pgptr = pgptr;
+
+	      if (has_dealloc_prevent_flag == true)
+		{
+		  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+		  pgbuf_bcb_unregister_avoid_deallocation (bufptr);
+		  has_dealloc_prevent_flag = false;
+		}
+
+	      if (req_watcher != NULL)
+		{
 #if !defined(NDEBUG)
-	      pgbuf_add_watch_instance_internal (holder, pgptr, req_watcher, request_mode, true, caller_file,
-						 caller_line);
+		  pgbuf_add_watch_instance_internal (holder, pgptr, req_watcher, request_mode, true, caller_file,
+						     caller_line);
 #else
-	      pgbuf_add_watch_instance_internal (holder, pgptr, req_watcher, request_mode, true);
+		  pgbuf_add_watch_instance_internal (holder, pgptr, req_watcher, request_mode, true);
 #endif
-	      req_page_has_watcher = true;
+		  req_page_has_watcher = true;
 
 #if defined(PGBUF_ORDERED_DEBUG)
-	      _er_log_debug (__FILE__, __LINE__,
-			     "ordered_fix(%u) : fixed req page, VPID:(%d,%d), GROUP:%d,%d, "
-			     "rank:%d, pgptr:%X, holder_fix_count:%d, holder_watch_count:%d, holder_fixed_at:%s, ",
-			     ordered_fix_id, ordered_holders_info[i].vpid.volid, ordered_holders_info[i].vpid.pageid,
-			     ordered_holders_info[i].group_id.volid, ordered_holders_info[i].group_id.pageid,
-			     ordered_holders_info[i].rank, pgptr, holder->fix_count, holder->watch_count,
-			     holder->fixed_at);
+		  _er_log_debug (__FILE__, __LINE__,
+				 "ordered_fix(%u) : fixed req page, VPID:(%d,%d), GROUP:%d,%d, "
+				 "rank:%d, pgptr:%X, holder_fix_count:%d, holder_watch_count:%d, holder_fixed_at:%s, ",
+				 ordered_fix_id, ordered_holders_info[i].vpid.volid,
+				 ordered_holders_info[i].vpid.pageid, ordered_holders_info[i].group_id.volid,
+				 ordered_holders_info[i].group_id.pageid, ordered_holders_info[i].rank, pgptr,
+				 holder->fix_count, holder->watch_count, holder->fixed_at);
 #endif
+		}
 	    }
 	}
       else
