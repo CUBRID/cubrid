@@ -31,6 +31,7 @@
 #include "schema_manager.h" /* sm_issystem */
 #include "execute_schema.h"
 #include "execute_statement.h" /* do_get_serial_obj_id */
+#include "boot_cl.h" /* BOOT_IS_CLIENT_RESTARTED */
 #include "transaction_cl.h" /* tran_system_savepoint */
 #include "optimizer.h" /* qo_plan_set_cost_fn */
 #include "object_print.h" /* help_print_info */
@@ -685,6 +686,17 @@ au_login_method (MOP class_mop, DB_VALUE *returnval, DB_VALUE *user, DB_VALUE *p
 {
   int error = NO_ERROR;
   char *user_name;
+
+  /* Abort any in-flight transaction before switching user (same effect as ROLLBACK before login). */
+  if (BOOT_IS_CLIENT_RESTARTED ())
+    {
+      error = db_abort_transaction ();
+      if (error != NO_ERROR)
+	{
+	  db_make_error (returnval, error);
+	  return;
+	}
+    }
 
   if (user != NULL)
     {
