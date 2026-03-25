@@ -1201,6 +1201,24 @@ lock_tune_init_config (LK_CONFIG * config)
     {
       config->object_entry_block_count = default_config.object_entry_block_count;
     }
+
+  /* Deadlock detection sizing. */
+  if (config->max_deadlock_victims <= 0)
+    {
+      config->max_deadlock_victims = default_config.max_deadlock_victims;
+    }
+  if (config->min_twfg_edge_count <= 0)
+    {
+      config->min_twfg_edge_count = default_config.min_twfg_edge_count;
+    }
+  if (config->mid_twfg_edge_count <= config->min_twfg_edge_count)
+    {
+      config->mid_twfg_edge_count = default_config.mid_twfg_edge_count;
+      if (config->mid_twfg_edge_count <= config->min_twfg_edge_count)
+	{
+	  config->mid_twfg_edge_count = config->min_twfg_edge_count + 1;
+	}
+    }
 }
 #endif /* SERVER_MODE */
 
@@ -1235,10 +1253,6 @@ lock_make_runtime_config (const LK_CONFIG * config)
   if (env_value != NULL)
     {
       runtime_config.verbose_mode = (bool) atoi (env_value);
-      if (runtime_config.verbose_mode != false)
-	{
-	  runtime_config.verbose_mode = true;
-	}
     }
 #endif /* !CUBRID_DEBUG */
 
@@ -5877,10 +5891,19 @@ lock_finalize_deadlock_detection (void)
     {
       free_and_init (lk_Gl.victims);
     }
+  if (lk_Gl.TWFG_edge != NULL && lk_Gl.TWFG_edge != lk_Gl.TWFG_edge_storage)
+    {
+      free_and_init (lk_Gl.TWFG_edge);
+    }
+  else
+    {
+      lk_Gl.TWFG_edge = NULL;
+    }
   if (lk_Gl.TWFG_edge_storage != NULL)
     {
       free_and_init (lk_Gl.TWFG_edge_storage);
     }
+  lk_Gl.TWFG_edge = NULL;
   if (lk_Gl.TWFG_node != NULL)
     {
       free_and_init (lk_Gl.TWFG_node);
@@ -6031,8 +6054,8 @@ lock_finalize (void)
       lock_deadlock_detect_daemon_destroy ();
     }
   lock_finalize_deadlock_detection ();
-  lock_finalize_tran_lock_table ();
   lock_finalize_object_lock_structures ();
+  lock_finalize_tran_lock_table ();
   lk_Gl.config = lock_make_default_config ();
   lk_Gl.init_state = LK_INIT_STATE
   {
