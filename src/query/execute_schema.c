@@ -9240,6 +9240,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   DB_QUERY_TYPE *query_columns = NULL;
   PT_NODE *tbl_opt = NULL;
   bool found_reuse_oid_option = false, reuse_oid = false;
+  bool is_replication_on = true;
   bool do_rollback_on_error = false;
   bool do_abort_class_on_error = false;
   bool do_flush_class_mop = false;
@@ -9587,7 +9588,16 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
 
-      if (IS_CREATE_STMT_SET_REPL_OPTION (tbl_opt_replication))
+      if (create_like)
+	{
+	  is_replication_on = !(source_class->flags & SM_CLASSFLAG_DATA_REPLICATION_OFF);
+	}
+      else
+	{
+	  is_replication_on = IS_CREATE_STMT_SET_REPL_OPTION (tbl_opt_replication);
+	}
+
+      if (is_replication_on)
 	{
 	  error = check_ha_repl_constraint (class_obj);
 	  if (error != NO_ERROR)
