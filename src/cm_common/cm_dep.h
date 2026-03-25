@@ -269,6 +269,8 @@ extern "C"
   int make_temp_filename (char *tempfile, const char *prefix, int size);
   int make_temp_filepath (char *tempfile, char *tempdir, char *prefix, int task_code, int size);
 
+  bool key_not_exist (nvplist *req, const char *key);
+
 #ifdef __cplusplus
 }
 #endif

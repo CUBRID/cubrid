@@ -610,11 +610,18 @@ cm_ts_class_info (nvplist * in, nvplist * out, char *_dbmt_error)
       return ERR_STANDALONE_MODE;
     }
 
+  if (key_not_exist (in, "dbuser") || key_not_exist (in, "dbpassword"))
+    {
+      sprintf (_dbmt_error, "%s", "key \'dbuser\' or \'dbpassword\' does not exist");
+      return ERR_WITH_MSG;
+    }
+
   if (db_mode == DB_SERVICE_MODE_NONE)
     {
       char *uid = nv_get_val (in, "dbuser");
-      char *passwd = nv_get_val (in, "dbpasswd");
+      char *passwd = nv_get_val (in, "dbpassword");
       char *cli_ver_val = nv_get_val (in, "_CLIENT_VERSION");
+
       return (class_info_sa (dbname, uid, passwd, cli_ver_val, out, _dbmt_error));
     }
   else
@@ -3082,4 +3089,22 @@ error_file_to_buf (const char *err_file, char *err_buf)
   unlink (err_file);
 
   return;
+}
+
+bool
+key_not_exist (nvplist *req, const char *key)
+{
+  int i;
+  char *n, *v;
+
+  for (i = 0; i < req->nvplist_leng; i++)
+    {
+      nv_lookup (req, i, &n, &v);
+      if (n != NULL && strcasecmp (n, key) == 0)
+        {
+          return false;
+        }
+    }
+
+  return true;
 }
