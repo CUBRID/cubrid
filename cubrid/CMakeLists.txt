@@ -52,6 +52,7 @@ set(THREAD_SOURCES
   ${THREAD_DIR}/thread_manager.cpp
   ${THREAD_DIR}/thread_waiter.cpp
   ${THREAD_DIR}/thread_worker_pool.cpp
+  ${THREAD_DIR}/thread_worker_pool_taskcap.cpp
   )
 set(THREAD_HEADERS
   ${THREAD_DIR}/critical_section_tracker.hpp
