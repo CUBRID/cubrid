@@ -50,7 +50,9 @@
 #include <cstring>
 #include <pthread.h>
 
+#ifndef TASK_COMM_LEN
 #define TASK_COMM_LEN 16
+#endif
 
 namespace cubthread
 {
