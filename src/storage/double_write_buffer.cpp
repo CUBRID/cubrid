@@ -4083,7 +4083,7 @@ dwb_file_sync_helper_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (dwb_file_sync_helper_execute);
 
-  dwb_file_sync_helper_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "dwb-file-sync-helper");
+  dwb_file_sync_helper_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "dwb-file-sync");
 }
 
 /*

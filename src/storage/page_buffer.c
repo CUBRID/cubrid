@@ -16512,8 +16512,7 @@ pgbuf_page_maintenance_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (100));
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (pgbuf_page_maintenance_execute);
 
-  pgbuf_Page_maintenance_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                            "pgbuf-page-maintenance");
+  pgbuf_Page_maintenance_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "pgbuf-maintain");
 }
 #endif /* SERVER_MODE */
 

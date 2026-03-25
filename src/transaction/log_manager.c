@@ -10430,8 +10430,7 @@ log_remove_log_archive_daemon_init ()
   cubthread::looper looper = cubthread::looper (setup_period_function);
 
   // create log archive remover daemon thread
-  log_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                            "log-remove-log-archive");
+  log_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log-rm-archive");
 }
 #endif /* SERVER_MODE */
 
@@ -10470,8 +10469,7 @@ log_check_ha_delay_info_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::seconds (1));
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (log_check_ha_delay_info_execute);
 
-  log_Check_ha_delay_info_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                             "log-check-ha-delay-info");
+  log_Check_ha_delay_info_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "ha-delay-check");
 }
 #endif /* SERVER_MODE */
 
