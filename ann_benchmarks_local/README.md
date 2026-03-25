@@ -12,10 +12,11 @@ Benchmark script:
 
 - `CUBRID` must point to the local CUBRID install.
 - `cubrid`, `csql`, `awk`, `perl`, `rg`, and `python3` must be available.
-- Dataset files must exist in `ann_benchmarks_local`:
+- Dataset files are resolved in this order:
   - `ann_benchmarks_local/nytimes_256_angular_schema`
   - `ann_benchmarks_local/nytimes_256_angular_object`
-  - or `ann_benchmarks_local/nytimes-256-angular.hdf5`
+  - `ann_benchmarks_local/nytimes-256-angular.hdf5`
+  - if the `.hdf5` file is missing, the script downloads `https://ann-benchmarks.com/nytimes-256-angular.hdf5` automatically
 
 ## Basic Run
 
@@ -73,6 +74,14 @@ Use a different dataset `.hdf5` base name. The script derives the matching schem
 
 ```bash
 DATASET_HDF5=./ann_benchmarks_local/glove-100-angular.hdf5 ./ann_benchmarks_local/test_ann.sh
+```
+
+Override the dataset download URL when the default `ann-benchmarks.com/<dataset>.hdf5` location is not what you want:
+
+```bash
+DATASET_DOWNLOAD_URL=https://ann-benchmarks.com/glove-100-angular.hdf5 \
+DATASET_HDF5=./ann_benchmarks_local/glove-100-angular.hdf5 \
+./ann_benchmarks_local/test_ann.sh
 ```
 
 Tune build/search parameters:
@@ -141,7 +150,11 @@ Usually important:
   - result CSV/SVG names
   - query-id cache names
   - perf output directory name
+  If the `.hdf5` file is missing and schema/object files are also absent, the script tries to download it from `https://ann-benchmarks.com/<dataset>.hdf5`.
   Hyphens in the dataset base name are converted to underscores for schema/object/perf paths.
+
+- `DATASET_DOWNLOAD_URL`
+  Overrides the default dataset download URL used when `DATASET_HDF5` is missing.
 
 - `HNSW_EF_SEARCH_VALUES`
   Controls which `ef_search` values are measured during recall testing.

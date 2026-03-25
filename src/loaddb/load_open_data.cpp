@@ -90,18 +90,21 @@ namespace cubload
 	      }
 	  }
 
-	// create a new schema file with the same name as the hdf5 file without the extension
-	std::string base_name = file_name.substr (0, file_name.find_last_of ('.'));
+	// Use only the input file stem for class/table names; keep generated files next to the input.
+	std::filesystem::path input_path (file_name);
+	std::string base_name = input_path.stem ().string ();
 	std::replace (base_name.begin(), base_name.end(), '-', '_');
 
-	std::string schema_file_name = base_name + "_schema";
+	std::filesystem::path schema_file_path = input_path.parent_path () / (base_name + "_schema");
+	std::string schema_file_name = schema_file_path.string ();
 	fprintf (stdout, "schema file name: %s\n", schema_file_name.c_str());
 
 	// open schema file
 	std::ofstream schema_file (schema_file_name);
 
 	// create a new object file with the same name as the hdf5 file without the extension
-	std::string object_file_name = base_name + "_object";
+	std::filesystem::path object_file_path = input_path.parent_path () / (base_name + "_object");
+	std::string object_file_name = object_file_path.string ();
 	fprintf (stdout, "object file name: %s\n", object_file_name.c_str());
 
 	// open object file
@@ -224,10 +227,11 @@ namespace cubload
 	object_file.close ();
 	schema_file.close ();
 
-	std::filesystem::path schema_file_path = std::filesystem::absolute (schema_file_name);
-	std::filesystem::path object_file_path = std::filesystem::absolute (object_file_name);
-	fprintf (stdout, "\n[completed]\nschema file: %s\nobject file: %s\n", schema_file_path.string().c_str (),
-		 object_file_path.string().c_str ());
+		std::filesystem::path absolute_schema_file_path = std::filesystem::absolute (schema_file_name);
+		std::filesystem::path absolute_object_file_path = std::filesystem::absolute (object_file_name);
+		fprintf (stdout, "\n[completed]\nschema file: %s\nobject file: %s\n",
+			 absolute_schema_file_path.string().c_str (),
+			 absolute_object_file_path.string().c_str ());
       }
     catch (const HighFive::Exception &e)
       {

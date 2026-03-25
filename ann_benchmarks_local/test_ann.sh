@@ -9,6 +9,7 @@ DATA_DIR="$SCRIPT_DIR"
 DB_NAME="${DB_NAME:-demodb}"
 DB_USER="${DB_USER:-dba}"
 DATASET_HDF5="${DATASET_HDF5:-$SCRIPT_DIR/nytimes-256-angular.hdf5}"
+DATASET_DOWNLOAD_URL="${DATASET_DOWNLOAD_URL:-}"
 
 TOPK="${TOPK:-10}"
 PROGRESS_EVERY="${PROGRESS_EVERY:-100}"
@@ -31,6 +32,8 @@ RESULT_SVG="$SCRIPT_DIR/${DATASET_NAME}_ef_search_results.svg"
 EXCLUDED_QUERY_FILE="$SCRIPT_DIR/${DATASET_NAME}_excluded_queries.txt"
 QUERY_ID_FILE="$SCRIPT_DIR/${DATASET_NAME}_query_ids.txt"
 QUERY_ID_CACHE_MARKER="$SCRIPT_DIR/${DATASET_NAME}_query_ids.cache_ready"
+GT_CACHE_FILE="$SCRIPT_DIR/${DATASET_NAME}_gt_topk${TOPK}.out"
+GT_CACHE_MARKER="$SCRIPT_DIR/${DATASET_NAME}_gt_topk${TOPK}.cache_ready"
 PERF_OUTPUT_DIR="$SCRIPT_DIR/perf_${DATASET_FILE_STEM}"
 HNSW_EF_SEARCH=""
 
@@ -55,6 +58,15 @@ log() {
   printf '[%s] %s\n' "$(date '+%F %T')" "$*"
 }
 
+get_dataset_download_url() {
+  if [[ -n "$DATASET_DOWNLOAD_URL" ]]; then
+    printf '%s\n' "$DATASET_DOWNLOAD_URL"
+    return
+  fi
+
+  printf 'https://ann-benchmarks.com/%s\n' "$DATASET_FILENAME"
+}
+
 run_stage() {
   local stage_name="$1"
   shift
@@ -75,6 +87,57 @@ require_cmd() {
     printf 'missing command: %s\n' "$1" >&2
     exit 1
   }
+}
+
+download_file_with_python() {
+  local source_url="$1"
+  local destination_path="$2"
+  local destination_dir
+  local tmp_file
+
+  destination_dir="$(dirname "$destination_path")"
+  mkdir -p "$destination_dir"
+  tmp_file="$(mktemp "$destination_dir/.dataset_download.XXXXXX")"
+
+  if ! python3 - "$source_url" "$tmp_file" <<'PY'
+import sys
+from urllib.request import build_opener, install_opener, urlretrieve
+
+source_url = sys.argv[1]
+destination_path = sys.argv[2]
+
+opener = build_opener()
+opener.addheaders = [("User-agent", "Mozilla/5.0")]
+install_opener(opener)
+urlretrieve(source_url, destination_path)
+PY
+  then
+    rm -f "$tmp_file"
+    return 1
+  fi
+
+  mv "$tmp_file" "$destination_path"
+}
+
+ensure_dataset_hdf5() {
+  local dataset_url
+
+  if [[ -f "$DATASET_HDF5" ]]; then
+    return 0
+  fi
+
+  dataset_url="$(get_dataset_download_url)"
+  log "dataset hdf5 not found: $DATASET_HDF5"
+  log "downloading dataset from $dataset_url"
+
+  if download_file_with_python "$dataset_url" "$DATASET_HDF5"; then
+    log "downloaded dataset to $DATASET_HDF5"
+    return 0
+  fi
+
+  printf 'failed to download dataset: %s -> %s\n' \
+    "$dataset_url" "$DATASET_HDF5" >&2
+  return 1
 }
 
 resolve_existing_file() {
@@ -668,6 +731,84 @@ sql_exec() {
   csql -u "$DB_USER" "$DB_NAME" -c "$query"
 }
 
+validate_required_classes() {
+  local missing_classes=""
+  local required_classes=(
+    nytimes_256_angular_train
+    nytimes_256_angular_test
+    nytimes_256_angular_answer
+  )
+  local class_name
+  local found
+
+  for class_name in "${required_classes[@]}"; do
+    found="$(
+      sql_capture "
+        SELECT class_name
+          FROM db_class
+         WHERE class_name = '${class_name}';
+      " | awk -F'|' 'NF > 0 {print $1; exit}'
+    )"
+
+    if [[ "$found" != "$class_name" ]]; then
+      missing_classes+=" $class_name"
+    fi
+  done
+
+  if [[ -n "$missing_classes" ]]; then
+    printf 'required dataset classes are missing in %s:%s\n' \
+      "$DB_NAME" \
+      "$missing_classes" >&2
+    printf 'expected classes: nytimes_256_angular_train, nytimes_256_angular_test, nytimes_256_angular_answer\n' >&2
+    return 1
+  fi
+}
+
+invalidate_dataset_cache() {
+  log "invalidating cached query/results artifacts for $DATASET_NAME"
+  rm -f \
+    "$QUERY_ID_FILE" \
+    "$EXCLUDED_QUERY_FILE" \
+    "$QUERY_ID_CACHE_MARKER" \
+    "$GT_CACHE_FILE" \
+    "$GT_CACHE_MARKER" \
+    "$RESULT_CSV" \
+    "$RESULT_SVG"
+}
+
+prepare_ground_truth_cache() {
+  local total_queries
+
+  total_queries="${#QUERY_IDS[@]}"
+
+  if [[ -s "$GT_CACHE_FILE" && -f "$GT_CACHE_MARKER" && "$GT_CACHE_MARKER" -nt "$QUERY_ID_FILE" ]]; then
+    log "reusing cached ground-truth neighbors from $GT_CACHE_FILE"
+    return
+  fi
+
+  log "fetching ground-truth neighbors for ${total_queries} queries with one set-based query"
+  sql_capture "
+    SELECT 2, id, neighbor_id
+      FROM (
+        SELECT id,
+               neighbor_id,
+               ROW_NUMBER() OVER (PARTITION BY id ORDER BY neighbor_distance) AS rn
+          FROM nytimes_256_angular_answer
+         WHERE neighbor_distance IS NOT NULL
+      ) gt
+     WHERE rn <= ${TOPK}
+     ORDER BY id, rn;
+  " > "$GT_CACHE_FILE"
+
+  if [[ ! -s "$GT_CACHE_FILE" ]]; then
+    printf 'failed to fetch ground-truth neighbors from nytimes_256_angular_answer\n' >&2
+    exit 1
+  fi
+
+  touch "$GT_CACHE_MARKER"
+  log "cached ground-truth neighbors to $GT_CACHE_FILE"
+}
+
 setup_demo_db() {
   if [[ -z "${CUBRID:-}" ]]; then
     printf 'CUBRID environment variable is not set.\n' >&2
@@ -694,7 +835,7 @@ load_dataset() {
   local load_object_file
   local object_input_file
 
-  if [[ -f "$SCHEMA_FILE" && -f "$OBJECT_FILE" ]]; then
+  load_schema_and_object_files() {
     sanitize_schema_file
     sanitize_object_file
     load_schema_file="$(mktemp /tmp/nytimes_load_schema.XXXXXX)"
@@ -708,15 +849,28 @@ load_dataset() {
       rm -f "$load_object_file"
     fi
     return
-  fi
+  }
 
-  if [[ -f "$DATASET_HDF5" ]]; then
-    log "loading dataset from $DATASET_HDF5"
-    cubrid loaddb -h "$DATASET_HDF5" -C -u "$DB_USER" "$DB_NAME" --no-statistics
+  if [[ -f "$SCHEMA_FILE" && -f "$OBJECT_FILE" ]]; then
+    load_schema_and_object_files
     return
   fi
 
-  printf 'dataset not found. checked: %s, %s, %s\n' \
+  if ensure_dataset_hdf5; then
+    log "converting hdf5 dataset to loaddb files from $DATASET_HDF5"
+    cubrid loaddb -h "$DATASET_HDF5" -C -u "$DB_USER" "$DB_NAME" --no-statistics
+
+    if [[ -f "$SCHEMA_FILE" && -f "$OBJECT_FILE" ]]; then
+      load_schema_and_object_files
+      return
+    fi
+
+    printf 'dataset conversion did not produce expected files: %s, %s\n' \
+      "$SCHEMA_FILE" "$OBJECT_FILE" >&2
+    exit 1
+  fi
+
+  printf 'dataset not found or download failed. checked: %s, %s, %s\n' \
     "$DATASET_HDF5" "$SCHEMA_FILE" "$OBJECT_FILE" >&2
   exit 1
 }
@@ -840,8 +994,8 @@ measure_recall() {
   local elapsed_sec
   local recall
   local qps
-  local sql_file
-  local out_file
+  local ann_sql_file
+  local ann_out_file
   local summary
   local qid
   local total_queries
@@ -849,8 +1003,8 @@ measure_recall() {
   total_queries="${#QUERY_IDS[@]}"
   log "measuring recall@${TOPK} for ${total_queries} queries (hnsw_ef_search=$HNSW_EF_SEARCH)"
   start_ns="$(date +%s%N)"
-  sql_file="$(mktemp /tmp/nytimes_measure_sql.XXXXXX)"
-  out_file="$(mktemp /tmp/nytimes_measure_out.XXXXXX)"
+  ann_sql_file="$(mktemp /tmp/nytimes_measure_ann_sql.XXXXXX)"
+  ann_out_file="$(mktemp /tmp/nytimes_measure_ann_out.XXXXXX)"
 
   {
     printf "SET SYSTEM PARAMETERS 'hnsw_ef_search=%s';\n" "$HNSW_EF_SEARCH"
@@ -864,16 +1018,6 @@ PREPARE ann FROM '
        LIMIT ${TOPK}
     ) ann
 ';
-PREPARE gt FROM '
-  SELECT 2, @qid, neighbor_id
-    FROM (
-      SELECT neighbor_id
-        FROM nytimes_256_angular_answer
-       WHERE id = @qid
-       ORDER BY neighbor_distance
-       LIMIT ${TOPK}
-    ) gt
-';
 EOF
 
     for ((i = 0; i < total_queries; i++)); do
@@ -881,18 +1025,30 @@ EOF
       printf "SET @qid = %s;\n" "$qid"
       printf "SET @v = (SELECT vec FROM nytimes_256_angular_test WHERE id = @qid);\n"
       printf "EXECUTE ann;\n"
-      printf "EXECUTE gt;\n"
     done
-  } > "$sql_file"
+  } > "$ann_sql_file"
 
+  log "running ANN queries for ${total_queries} test vectors"
   run_csql_input_with_perf \
-    "$sql_file" \
-    "$out_file" \
-    "query_ef${HNSW_EF_SEARCH}_topk${TOPK}_q${total_queries}"
+    "$ann_sql_file" \
+    "$ann_out_file" \
+    "query_ann_ef${HNSW_EF_SEARCH}_topk${TOPK}_q${total_queries}"
 
-  summary="$(
-    awk -F'|' -v topk="$TOPK" '
-      function flush_query(   hits, i, n) {
+  log "aggregating ANN results against ground truth"
+  while IFS='|' read -r line_type line_processed line_hits; do
+    case "$line_type" in
+      P)
+        partial="$(awk -v hits="$line_hits" -v total="$((line_processed * TOPK))" 'BEGIN { printf "%.6f", hits / total }')"
+        log "progress: ${line_processed}/${total_queries} queries, partial recall@${TOPK}=${partial}"
+        ;;
+      S)
+        processed="$line_processed"
+        total_hits="$line_hits"
+        ;;
+    esac
+  done < <(
+    awk -F'|' -v topk="$TOPK" -v progress_every="$PROGRESS_EVERY" '
+      function flush_query(   hits, i, n, key) {
         if (curr_qid == "") {
           return
         }
@@ -900,7 +1056,8 @@ EOF
         hits = 0
         n = split(ann_list, ann_arr, " ")
         for (i = 1; i <= n; i++) {
-          if (ann_arr[i] != "" && (ann_arr[i] in gt_set)) {
+          key = curr_qid SUBSEP ann_arr[i]
+          if (ann_arr[i] != "" && (key in gt_hits)) {
             hits++
           }
         }
@@ -908,12 +1065,17 @@ EOF
         total_hits += hits
         processed++
 
-        delete gt_set
         ann_list = ""
         curr_qid = ""
       }
 
-      $1 ~ /^[12]$/ && $2 ~ /^-?[0-9]+$/ && $3 ~ /^-?[0-9]+$/ {
+      FILENAME == gt_file && $1 == 2 && $2 ~ /^-?[0-9]+$/ && $3 ~ /^-?[0-9]+$/ {
+        qid = $2 + 0
+        rid = $3 + 0
+        gt_hits[qid SUBSEP rid] = 1
+      }
+
+      FILENAME == ann_file && $1 == 1 && $2 ~ /^-?[0-9]+$/ && $3 ~ /^-?[0-9]+$/ {
         qid = $2 + 0
         rid = $3 + 0
 
@@ -925,24 +1087,17 @@ EOF
           curr_qid = qid
         }
 
-        if ($1 == 1) {
-          ann_list = ann_list " " rid
-        } else {
-          gt_set[rid] = 1
-        }
+        ann_list = ann_list " " rid
       }
 
       END {
         flush_query()
-        printf "%d|%d\n", processed, total_hits
+        printf "S|%d|%d\n", processed, total_hits
       }
-    ' "$out_file"
-  )"
+    ' ann_file="$ann_out_file" gt_file="$GT_CACHE_FILE" "$GT_CACHE_FILE" "$ann_out_file"
+  )
 
-  processed="${summary%%|*}"
-  total_hits="${summary##*|}"
-
-  rm -f "$sql_file" "$out_file"
+  rm -f "$ann_sql_file" "$ann_out_file"
 
   end_ns="$(date +%s%N)"
   elapsed_ns=$((end_ns - start_ns))
@@ -1155,8 +1310,20 @@ main() {
 
   run_stage "reset db" setup_demo_db
   run_stage "bulk load" load_dataset
-  run_stage "build index" build_index
+
+  if run_stage "validate dataset classes" validate_required_classes; then
+    :
+  else
+    log "dataset validation failed; clearing caches and retrying bulk load once"
+    invalidate_dataset_cache
+    run_stage "reset db (retry)" setup_demo_db
+    run_stage "bulk load (retry)" load_dataset
+    run_stage "validate dataset classes (retry)" validate_required_classes
+  fi
+
   run_stage "prepare query ids" prepare_query_ids
+  run_stage "prepare ground truth" prepare_ground_truth_cache
+  run_stage "build index" build_index
   run_stage "ef_search sweep" run_ef_search_experiments
 }
 

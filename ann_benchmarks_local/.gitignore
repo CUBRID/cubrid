@@ -9,3 +9,8 @@ perf_*/
 nytimes_256_angular_object.nan_sanitized
 nytimes_256_angular_object.load_sanitized
 flame_graph
+*_object
+*_schema
+*.hdf5
+perf_*/
+*.cache_ready
