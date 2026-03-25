@@ -23,6 +23,10 @@
 #ifndef _THREAD_WORKER_POOL_HPP_
 #define _THREAD_WORKER_POOL_HPP_
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Wrong module
+#endif // not SERVER_MODE and not SA_MODE
+
 // same module include
 #include "thread_task.hpp"
 #include "thread_waiter.hpp"

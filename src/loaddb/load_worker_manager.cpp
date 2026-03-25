@@ -119,7 +119,7 @@ namespace cubload
 	g_worker_pool = cubthread::get_manager ()->create_worker_pool (pool_size, 2 * pool_size, "loaddb-workers",
 			g_wp_context_manager, 1, false, true);
 
-	g_wp_task_capper = new cubthread::worker_pool_task_capper<cubthread::entry> (g_worker_pool);
+	g_wp_task_capper = new cubthread::worker_pool_task_capper (g_worker_pool);
       }
     else
       {
