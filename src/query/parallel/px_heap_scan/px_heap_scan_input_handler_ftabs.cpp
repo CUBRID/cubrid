@@ -22,18 +22,8 @@
 
 
 #include "px_heap_scan_input_handler_ftabs.hpp"
-#include "dbtype_def.h"
 #include "error_code.h"
-#include "page_buffer.h"
-#include "px_heap_scan_ftab_set.hpp"
-#include "storage_common.h"
 #include "bit.h"
-#include "file_manager.h"
-
-#if !defined(NDEBUG)
-#include <sys/syscall.h>
-#include "error_manager.h"
-#endif
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
