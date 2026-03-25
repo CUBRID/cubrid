@@ -265,8 +265,8 @@ namespace cubthread
       entry_dispatcher *m_entry_dispatcher;
       // available entries count
       std::size_t m_available_entries_count;
-      entry_manager *m_entry_manager;
-      daemon_entry_manager *m_daemon_entry_manager;
+      entry_manager m_entry_manager;
+      daemon_entry_manager m_daemon_entry_manager;
 
       // lock-free transaction system
       lockfree::tran::system *m_lf_tran_sys;
