@@ -649,9 +649,9 @@ oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
  *   oos_vfid(in): OOS file identifier
  *   oid(in): head OID of the OOS record chain
  *
- * NOTE: This is the inner workhorse called by oos_delete(). It must be called
- *       inside a system operation (log_sysop_start) so that on error the
- *       caller can abort the sysop and restore all partially deleted chunks.
+ * NOTE: This is the inner workhorse called by oos_delete(). Each chunk
+ *       deletion is logged individually with undo data, so transaction
+ *       abort restores all deleted chunks in reverse order.
  */
 static int
 oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
@@ -721,58 +721,34 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
  *   oos_vfid(in): OOS file identifier
  *   oid(in): head OID of the OOS record
  *
- * NOTE: Uses a system operation to guarantee atomicity for multi-chunk deletes.
- *       On success, the sysop is attached to the outer transaction so that the
- *       delete can be undone if the transaction aborts.
- *       On error mid-chain, the sysop is aborted, restoring all partially
- *       deleted chunks to a consistent state.
+ * NOTE: No sysop is used. Each chunk deletion is logged individually
+ *       (RVOOS_DELETE with full record as undo data).
  *
- *       Page deallocation is NOT done here. Empty pages will be reclaimed by
- *       vacuum after the transaction commits. file_dealloc() uses an internal
- *       committed sysop that would not be rolled back if the outer transaction
- *       aborts, which could leave pages deallocated while undo tries to
- *       re-insert records into them.
+ *       Why this is safe:
+ *       - Transaction abort: undo records are replayed in reverse order,
+ *         restoring all deleted chunks to their original slotids via
+ *         spage_insert_for_recovery. The chain is fully restored.
+ *       - Crash recovery: same mechanism — incomplete transaction's undo
+ *         records are replayed during recovery, restoring the chain.
+ *       - Error mid-chain: partial deletes have undo records in the
+ *         transaction log. The caller must abort the transaction to
+ *         restore consistency.
  *
- * TODO: chain marker dummy log (overflow file precedent)
+ *       Limitation: the caller MUST NOT continue the transaction after
+ *       this function returns an error. If the caller ignores the error
+ *       and commits, partially deleted chunks become permanent while
+ *       remaining chunks are orphaned. This is acceptable because storage
+ *       layer errors always propagate up and result in transaction abort.
  *
- *       The current implementation only uses a sysop for error atomicity
- *       (partial delete rollback). However, following the overflow file
- *       precedent (LOG_DUMMY_OVF_RECORD in overflow_file.c), we should also
- *       add dummy log records at the start/end of a multi-chunk chain delete.
- *
- *       Sysop and chain markers solve different problems:
- *       - sysop: rollback partial deletes on error (atomicity)
- *       - chain marker: let recovery/vacuum identify multi-page chains (identification)
- *
- *       Without chain markers, vacuum processing delete undo logs can only
- *       infer chain membership from OOS_RECORD_HEADER fields (next_chunk_oid,
- *       chunk_index) embedded in the undo data. Explicit dummy logs at chain
- *       boundaries would make recovery/vacuum logic simpler and more robust.
- *
- *       Implementation requires:
- *       1. New LOG_RECTYPE (e.g., LOG_DUMMY_OOS_CHAIN_DELETE)
- *       2. Recovery code to handle the new log type
- *       3. Vacuum integration to read chain markers and deallocate pages
+ *       Page deallocation is NOT done here. Empty pages will be reclaimed
+ *       by vacuum after the transaction commits.
  */
 int
 oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
 {
   oos_debug ("arguments: oid={vol=%d,page=%d,slot=%d}", oid.volid, oid.pageid, oid.slotid);
 
-  log_sysop_start (thread_p);
-
-  int error = oos_delete_chain (thread_p, oos_vfid, oid);
-  if (error != NO_ERROR)
-    {
-      log_sysop_abort (thread_p);
-      return error;
-    }
-
-  // Attach to outer transaction: if the outer transaction commits, the deletes persist.
-  // If the outer transaction aborts, the deletes are undone (chunks restored).
-  log_sysop_attach_to_outer (thread_p);
-
-  return NO_ERROR;
+  return oos_delete_chain (thread_p, oos_vfid, oid);
 }
 
 // TODO: since this value never changes, we can make it a constant or static variable,
