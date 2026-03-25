@@ -3101,9 +3101,9 @@ key_not_exist (nvplist *req, const char *key)
     {
       nv_lookup (req, i, &n, &v);
       if (n != NULL && strcasecmp (n, key) == 0)
-        {
-          return false;
-        }
+	{
+	  return false;
+	}
     }
 
   return true;
