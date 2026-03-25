@@ -140,7 +140,7 @@ static HA_LOG_APPLIER_STATE_TABLE ha_Log_applier_state[HA_LOG_APPLIER_STATE_TABL
 static int ha_Log_applier_state_num = 0;
 
 // *INDENT-OFF*
-static cubthread::entry_workpool *css_Server_request_worker_pool = NULL;
+static cubthread::worker_pool *css_Server_request_worker_pool = NULL;
 
 class css_server_task : public cubthread::entry_task
 {
@@ -211,8 +211,9 @@ static void css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop, bool i
 static bool css_is_log_writer (const THREAD_ENTRY & thread_arg);
 static void css_stop_all_workers (THREAD_ENTRY & thread_ref, css_thread_stop_type stop_phase);
 static void css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapper, int &busy_count);
-// cubthread::entry_workpool::core confuses indent
-static void css_wp_core_job_scan_mapper (const cubthread::entry_workpool::core & wp_core, bool & stop_mapper,
+
+// cubthread::worker_pool::core confuses indent
+static void css_wp_core_job_scan_mapper (const cubthread::worker_pool::core & wp_core, bool & stop_mapper,
                                          THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx, size_t & core_index,
                                          int & error_code);
 static void
@@ -2689,7 +2690,7 @@ css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapp
 // error_code (out)     : output error_code if any errors occur
 //
 static void
-css_wp_core_job_scan_mapper (const cubthread::entry_workpool::core & wp_core, bool & stop_mapper,
+css_wp_core_job_scan_mapper (const cubthread::worker_pool::core & wp_core, bool & stop_mapper,
                              THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx, size_t & core_index,
                              int & error_code)
 {

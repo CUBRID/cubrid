@@ -7516,7 +7516,7 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
 }
 
 // *INDENT-OFF*
-cubthread::entry_workpool * g_backup_read_worker_pool = NULL;
+cubthread::worker_pool * g_backup_read_worker_pool = NULL;
 // *INDENT-ON*
 
 void
