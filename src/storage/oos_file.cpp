@@ -87,7 +87,7 @@ static std::unordered_map<VFID, VPID, VFIDHash, VFIDEq> oos_recently_inserted_oo
 
 // ****************************************************************************
 
-using namespace oos_log;
+
 
 // review point: should it be MAX_ALIGNMENT?
 static constexpr int OOS_ALIGNMENT = MAX_ALIGNMENT;

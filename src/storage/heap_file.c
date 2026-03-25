@@ -7915,7 +7915,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 static SCAN_CODE
 heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 {
-  using namespace oos_log;
+
 
   // HOTFIX!
   // todo: this function is buggy. by doing this, we give up unloaddb.
