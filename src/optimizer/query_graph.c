@@ -8480,7 +8480,7 @@ qo_insert_transitive_join_terms (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC * specs, 
       QO_TERM_SET_FLAG (term, QO_TERM_EQUAL_OP);
       QO_TERM_SET_FLAG (term, QO_TERM_SINGLE_PRED);
       QO_TERM_LOCATION (term) = 0;
-      
+
       /* EXPLAIN 등 출력을 위해 가상의 PT_EXPR(A=B) 노드를 생성하여 할당 */
       QO_TERM_PT_EXPR (term) = NULL;
       if (env->parser)
