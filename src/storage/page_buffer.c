@@ -12618,10 +12618,10 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	      _er_log_debug (__FILE__, __LINE__,
 			     "ordered_fix(%u) : fixed req page, VPID:(%d,%d), GROUP:%d,%d, "
 			     "rank:%d, pgptr:%X, holder_fix_count:%d, holder_watch_count:%d, holder_fixed_at:%s, ",
-			     ordered_fix_id, ordered_holders_info[i].vpid.volid,
-			     ordered_holders_info[i].vpid.pageid, ordered_holders_info[i].group_id.volid,
-			     ordered_holders_info[i].group_id.pageid, ordered_holders_info[i].rank, pgptr,
-			     holder->fix_count, holder->watch_count, holder->fixed_at);
+			     ordered_fix_id, ordered_holders_info[i].vpid.volid, ordered_holders_info[i].vpid.pageid,
+			     ordered_holders_info[i].group_id.volid, ordered_holders_info[i].group_id.pageid,
+			     ordered_holders_info[i].rank, pgptr, holder->fix_count, holder->watch_count,
+			     holder->fixed_at);
 #endif
 	    }
 	}
