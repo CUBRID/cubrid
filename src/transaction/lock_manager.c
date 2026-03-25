@@ -377,6 +377,25 @@ struct lk_tran_lock
   bool is_instant_duration;
 };
 
+typedef struct lk_init_state LK_INIT_STATE;
+struct lk_init_state
+{
+  bool tran_lock_table_initialized;
+  int tran_lock_table_initialized_count;
+  bool object_lock_structures_initialized;
+  bool deadlock_detection_initialized;
+
+  // *INDENT-OFF*
+  lk_init_state ()
+    : tran_lock_table_initialized (false)
+    , tran_lock_table_initialized_count (0)
+    , object_lock_structures_initialized (false)
+    , deadlock_detection_initialized (false)
+  {
+  }
+  // *INDENT-ON*
+};
+
 /*
  * Lock Manager Global Data Structure
  */
@@ -389,6 +408,7 @@ typedef struct lk_global_data LK_GLOBAL_DATA;
 struct lk_global_data
 {
   LK_CONFIG config;
+  LK_INIT_STATE init_state;
 
   /* object lock table including hash table */
   lk_hashmap_type m_obj_hash_table;
@@ -417,6 +437,7 @@ struct lk_global_data
   // *INDENT-OFF*
   lk_global_data ()
     : config {}
+    , init_state {}
     , m_obj_hash_table {}
     , obj_free_entry_list LF_FREELIST_INITIALIZER
     , tran_lock_table (NULL)
@@ -1077,6 +1098,7 @@ lock_initialize_tran_lock_table (void)
 	      (size_t) (SIZEOF_LK_TRAN_LOCK * lk_Gl.config.num_trans));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+  lk_Gl.init_state.tran_lock_table_initialized = true;
 
   /* initialize all the entries of transaction lock table */
   memset (lk_Gl.tran_lock_table, 0, SIZEOF_LK_TRAN_LOCK * lk_Gl.config.num_trans);
@@ -1085,6 +1107,7 @@ lock_initialize_tran_lock_table (void)
       tran_lock = &lk_Gl.tran_lock_table[i];
       pthread_mutex_init (&tran_lock->hold_mutex, NULL);
       pthread_mutex_init (&tran_lock->non2pl_mutex, NULL);
+      lk_Gl.init_state.tran_lock_table_initialized_count++;
 
       for (j = 0; j < lk_Gl.config.tran_local_pool_max_size; j++)
 	{
@@ -1255,8 +1278,10 @@ lock_initialize_object_lock_structures (void)
   if (lf_freelist_init (&lk_Gl.obj_free_entry_list, lk_Gl.config.object_entry_block_count,
 			lk_Gl.config.object_entry_block_size, &obj_lock_entry_desc, &obj_lock_ent_Ts) != NO_ERROR)
     {
+      lk_Gl.m_obj_hash_table.destroy ();
       return ER_FAILED;
     }
+  lk_Gl.init_state.object_lock_structures_initialized = true;
 
   return NO_ERROR;
 }
@@ -1276,6 +1301,7 @@ lock_initialize_deadlock_detection (void)
   int i;
 
   pthread_mutex_init (&lk_Gl.DL_detection_mutex, NULL);
+  lk_Gl.init_state.deadlock_detection_initialized = true;
   gettimeofday (&lk_Gl.last_deadlock_run, NULL);
 
   /* allocate transaction WFG node table */
@@ -5809,9 +5835,9 @@ lock_finalize_tran_lock_table (void)
   int i;
 
   /* remove resources */
-  if (lk_Gl.tran_lock_table != NULL)
+  if (lk_Gl.init_state.tran_lock_table_initialized)
     {
-      for (i = 0; i < lk_Gl.config.num_trans; i++)
+      for (i = 0; i < lk_Gl.init_state.tran_lock_table_initialized_count; i++)
 	{
 	  tran_lock = &lk_Gl.tran_lock_table[i];
 	  pthread_mutex_destroy (&tran_lock->hold_mutex);
@@ -5825,6 +5851,8 @@ lock_finalize_tran_lock_table (void)
 	}
       free_and_init (lk_Gl.tran_lock_table);
     }
+  lk_Gl.init_state.tran_lock_table_initialized = false;
+  lk_Gl.init_state.tran_lock_table_initialized_count = 0;
 }
 #endif /* SERVER_MODE */
 
@@ -5832,8 +5860,12 @@ lock_finalize_tran_lock_table (void)
 static void
 lock_finalize_object_lock_structures (void)
 {
-  lk_Gl.m_obj_hash_table.destroy ();
-  lf_freelist_destroy (&lk_Gl.obj_free_entry_list);
+  if (lk_Gl.init_state.object_lock_structures_initialized)
+    {
+      lk_Gl.m_obj_hash_table.destroy ();
+      lf_freelist_destroy (&lk_Gl.obj_free_entry_list);
+      lk_Gl.init_state.object_lock_structures_initialized = false;
+    }
 }
 #endif /* SERVER_MODE */
 
@@ -5853,7 +5885,11 @@ lock_finalize_deadlock_detection (void)
     {
       free_and_init (lk_Gl.TWFG_node);
     }
-  pthread_mutex_destroy (&lk_Gl.DL_detection_mutex);
+  if (lk_Gl.init_state.deadlock_detection_initialized)
+    {
+      pthread_mutex_destroy (&lk_Gl.DL_detection_mutex);
+      lk_Gl.init_state.deadlock_detection_initialized = false;
+    }
 }
 #endif /* SERVER_MODE */
 
@@ -5998,6 +6034,9 @@ lock_finalize (void)
   lock_finalize_tran_lock_table ();
   lock_finalize_object_lock_structures ();
   lk_Gl.config = lock_make_default_config ();
+  lk_Gl.init_state = LK_INIT_STATE
+  {
+  };
 #endif /* !SERVER_MODE */
 }
 
