@@ -142,13 +142,7 @@ namespace parallel_heap_scan
 		    pgbuf_ordered_unfix (thread_p, &m_tl_old_page_watcher);
 		  }
 
-		PAGE_TYPE page_type = pgbuf_get_page_ptype (thread_p, m_tl_scan_cache->page_watcher.pgptr);
-
-		if (page_type != PAGE_HEAP)
-		  {
-		    found = false;
-		    continue;
-		  }
+		assert (pgbuf_get_page_ptype (thread_p, m_tl_scan_cache->page_watcher.pgptr) == PAGE_HEAP);
 
 		if (error_code != NO_ERROR)
 		  {
