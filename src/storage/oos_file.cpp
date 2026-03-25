@@ -195,7 +195,7 @@ oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &o
       err = oos_insert_across_pages (thread_p, oos_vfid, recdes, oid);
     }
 
-  oos_debug ("inserted to oid={vol=%d,page=%d,slot=%d}", oid.volid, oid.pageid, oid.slotid);
+  oos_debug ("inserted to oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
   return err;
 }
 
@@ -444,8 +444,7 @@ oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes,
 int
 oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
 {
-  oos_debug ("reading from oid={vol=%d,page=%d,slot=%d}",
-	     oid.volid, oid.pageid, oid.slotid);
+  oos_debug ("reading from oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
 
   int err = NO_ERROR;
 
@@ -679,7 +678,7 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
       if (code != S_SUCCESS)
 	{
 	  oos_error ("spage_get_record failed for volid=%d, pageid=%d, slotid=%d",
-		     current_oid.volid, current_oid.pageid, current_oid.slotid);
+		     OID_AS_ARGS (&current_oid));
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return ER_FAILED;
 	}
@@ -696,7 +695,7 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
       if (deleted_slotid == NULL_SLOTID)
 	{
 	  oos_error ("spage_delete failed for volid=%d, pageid=%d, slotid=%d",
-		     current_oid.volid, current_oid.pageid, current_oid.slotid);
+		     OID_AS_ARGS (&current_oid));
 	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return ER_FAILED;
@@ -704,8 +703,7 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
       pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
 
       oos_debug ("deleted chunk at oid={vol=%d,page=%d,slot=%d}, next={vol=%d,page=%d,slot=%d}",
-		 current_oid.volid, current_oid.pageid, current_oid.slotid,
-		 next_chunk_oid.volid, next_chunk_oid.pageid, next_chunk_oid.slotid);
+		 OID_AS_ARGS (&current_oid), OID_AS_ARGS (&next_chunk_oid));
 
       current_oid = next_chunk_oid;
     }
@@ -746,7 +744,7 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
 int
 oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
 {
-  oos_debug ("arguments: oid={vol=%d,page=%d,slot=%d}", oid.volid, oid.pageid, oid.slotid);
+  oos_debug ("arguments: oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
 
   return oos_delete_chain (thread_p, oos_vfid, oid);
 }
