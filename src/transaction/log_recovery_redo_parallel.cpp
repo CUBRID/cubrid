@@ -662,7 +662,7 @@ namespace cublog
     // NOTE: already initialized globally (probably during boot)
     cubthread::manager *thread_manager = cubthread::get_manager ();
 
-    m_worker_pool = thread_manager->create_worker_pool (a_task_count, a_task_count, "log_recovery_redo_thread_pool",
+    m_worker_pool = thread_manager->create_worker_pool (a_task_count, a_task_count, "recovery-redo",
 		    m_pool_context_manager.get (),
 		    a_task_count, false /*debug_logging*/);
   }

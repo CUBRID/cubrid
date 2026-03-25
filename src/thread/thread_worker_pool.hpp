@@ -48,6 +48,11 @@
 
 #include <cassert>
 #include <cstring>
+#include <pthread.h>
+
+#ifndef TASK_COMM_LEN
+#define TASK_COMM_LEN 16
+#endif
 
 namespace cubthread
 {
@@ -170,6 +175,9 @@ namespace cubthread
       // is_running = is not stopped; when created, a worker pool starts running.
       // worker is stopped after stop_execution () is called
       bool is_running (void) const;
+
+      // get name
+      const std::string &get_name (void) const;
 
       // is_full = the maximum number of tasks is reached
       bool is_full (void) const;
@@ -575,7 +583,7 @@ namespace cubthread
     , m_log (debug_log)
     , m_pool_threads (pool_threads)
     , m_wait_for_task_time (wait_for_task_time)
-    , m_name (name == NULL ? "" : name)
+    , m_name (name == NULL ? "" : std::string (name, 0, TASK_COMM_LEN - 1))
   {
     // initialize cores; we'll try to distribute pool evenly to all cores. if core count is not fully contained in
     // pool size, some cores will have one additional worker
@@ -731,6 +739,13 @@ namespace cubthread
   worker_pool<Context>::is_running (void) const
   {
     return !m_stopped;
+  }
+
+  template<typename Context>
+  const std::string &
+  worker_pool<Context>::get_name (void) const
+  {
+    return m_name;
   }
 
   template<typename Context>
@@ -1582,6 +1597,8 @@ namespace cubthread
     task_type *task_p = NULL;
 
     os::resources::cpu::clearaffinity ();   // clear the affinity at start
+    pthread_setname_np (pthread_self (), m_parent_core->get_parent_pool ()->get_name ().c_str ());
+
     init_run ();    // do stuff at the beginning like creating context
 
     if (m_is_temp)

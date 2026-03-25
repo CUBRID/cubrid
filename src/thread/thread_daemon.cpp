@@ -196,8 +196,15 @@ namespace cubthread
   void
   daemon::loop_without_context (daemon *daemon_arg, task_without_context *exec_arg, const char *name)
   {
-    (void) name;  // suppress unused parameter warning
     // its purpose is to help visualize daemon thread stacks
+    if (!std::string (name).empty ())
+      {
+	pthread_setname_np (pthread_self (), std::string (name).substr (0, TASK_COMM_LEN - 1).c_str ());
+      }
+    else
+      {
+	pthread_setname_np (pthread_self (), "unnamed-daemon");
+      }
 
     daemon_arg->register_stat_start ();
 
