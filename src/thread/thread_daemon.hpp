@@ -35,6 +35,8 @@
 #include <cinttypes>
 #include <pthread.h>
 
+#define TASK_COMM_LEN 16
+
 // cubthread::daemon
 //
 //  description
@@ -167,7 +169,7 @@ namespace cubthread
     // its purpose is to help visualize daemon thread stacks
     if (!std::string (name).empty ())
       {
-	pthread_setname_np (pthread_self (), std::string (name).substr (0, 15).c_str ());
+	pthread_setname_np (pthread_self (), std::string (name).substr (0, TASK_COMM_LEN - 1).c_str ());
       }
     else
       {
