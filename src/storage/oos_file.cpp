@@ -101,8 +101,9 @@ oos_file_create (THREAD_ENTRY *thread_p, VFID &oos_vfid)
   err = file_create_with_npages (thread_p, FILE_OOS, 1, &des, &oos_vfid);
   if (err != NO_ERROR)
     {
-      assert_release_error (er_errid () != NO_ERROR);
       oos_error ("file_create_with_npages failed");
+      assert_release_error (er_errid () != NO_ERROR);
+      assert (false);
       return err;
     }
 
@@ -130,8 +131,9 @@ oos_make_oos_recdes (RECDES &rec_in, const OOS_RECORD_HEADER &oos_header, RECDES
   err = recdes_allocate_data_area (&rec_out, rec_in.length + (int)sizeof (OOS_RECORD_HEADER));
   if (err != NO_ERROR)
     {
-      assert_release_error (er_errid () != NO_ERROR);
       oos_error ("recdes_allocate_data_area failed in oos_make_oos_recdes");
+      assert_release_error (er_errid () != NO_ERROR);
+      assert (false);
       return err;
     }
 
@@ -156,8 +158,9 @@ oos_pop_record_header (RECDES &rec_in, OOS_RECORD_HEADER &header_out, RECDES &re
   err = recdes_allocate_data_area (&rec_out, rec_in.length - (int)sizeof (OOS_RECORD_HEADER));
   if (err != NO_ERROR)
     {
-      assert_release_error (er_errid () != NO_ERROR);
       oos_error ("recdes_allocate_data_area failed");
+      assert_release_error (er_errid () != NO_ERROR);
+      assert (false);
       return err;
     }
 
@@ -238,8 +241,9 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
       err = oos_insert_within_page (thread_p, oos_vfid, chunk_recdes, header, current_chunk_oid);
       if (err != NO_ERROR)
 	{
-	  assert_release_error (er_errid () != NO_ERROR);
 	  oos_error ("could not insert chunk index=%d of length %d.", i, chunk_recdes.length);
+	  assert_release_error (er_errid () != NO_ERROR);
+	  assert (false);
 	  // TODO: free partially inserted chunks.
 	  // Currently, already inserted chunks to slotted pages will remain as garbage.
 	  return err;
@@ -276,8 +280,9 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &re
     err = oos_make_oos_recdes (recdes, header, oos_rec);
     if (err != NO_ERROR)
       {
-	assert_release_error (er_errid () != NO_ERROR);
 	oos_error ("oos_prepend_record_header failed");
+	assert_release_error (er_errid () != NO_ERROR);
+	assert (false);
 	return err;
       }
 
@@ -343,8 +348,9 @@ oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &oid,
   err = recdes_allocate_data_area (&recdes, total_size);
   if (err != NO_ERROR)
     {
-      assert_release_error (er_errid () != NO_ERROR);
       oos_error ("recdes_allocate_data_area failed in oos_read_across_pages, total_size=%d", total_size);
+      assert_release_error (er_errid () != NO_ERROR);
+      assert (false);
       return err;
     }
 
@@ -363,8 +369,9 @@ oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &oid,
 	int err = oos_read_within_page (thread_p, current_chunk_oid, chunk_recdes, header);
 	if (err != NO_ERROR)
 	  {
-	    assert_release_error (er_errid () != NO_ERROR);
 	    oos_error ("oos_read_within_page failed for chunk index=%d", idx);
+	    assert_release_error (er_errid () != NO_ERROR);
+	    assert (false);
 	    recdes_free_data_area (&recdes);
 	    return err;
 	  }
@@ -406,8 +413,9 @@ oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes,
   PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == nullptr)
     {
-      assert_release_error (er_errid () != NO_ERROR);
       oos_error ("oos_read_within_page: pgbuf_fix failed for volid=%d, pageid=%d", volid, pageid);
+      assert_release_error (er_errid () != NO_ERROR);
+      assert (false);
       return er_errid ();
     }
 
@@ -431,9 +439,10 @@ oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes,
   err = oos_pop_record_header (recdes_with_oos_header, header_out, recdes);
   if (err != NO_ERROR)
     {
-      assert_release_error (er_errid () != NO_ERROR);
       oos_error ("oos_pop_record_header failed for volid=%d, pageid=%d, slotid=%d",
 		 volid, pageid, slotid);
+      assert_release_error (er_errid () != NO_ERROR);
+      assert (false);
       return err;
     }
 
@@ -467,8 +476,9 @@ oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
   err = oos_read_within_page (thread_p, oid, first_chunk_recdes, first_chunk_header);
   if (err != NO_ERROR)
     {
-      assert_release_error (er_errid () != NO_ERROR);
       oos_error ("oos_read_within_page failed");
+      assert_release_error (er_errid () != NO_ERROR);
+      assert (false);
       return err;
     }
 
@@ -480,8 +490,9 @@ oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
       recdes_free_data_area (&first_chunk_recdes);
       if (err != NO_ERROR)
 	{
-	  assert_release_error (er_errid () != NO_ERROR);
 	  oos_error ("oos_read_across_pages failed");
+	  assert_release_error (er_errid () != NO_ERROR);
+	  assert (false);
 	  return err;
 	}
     }
@@ -525,8 +536,9 @@ oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
   err = file_alloc (thread_p, &oos_vfid, oos_vpid_init_new, &page_type, &vpid_out, nullptr);
   if (err != NO_ERROR)
     {
-      assert_release_error (er_errid () != NO_ERROR);
       oos_error ("file_alloc failed");
+      assert_release_error (er_errid () != NO_ERROR);
+      assert (false);
       log_sysop_abort (thread_p);
       return nullptr;
     }
@@ -694,8 +706,9 @@ oos_get_length (THREAD_ENTRY *thread_p, const OID &oid)
   PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == nullptr)
     {
-      assert_release_error (er_errid () != NO_ERROR);
       oos_error ("oos_get_length: pgbuf_fix failed for volid=%d, pageid=%d", volid, pageid);
+      assert_release_error (er_errid () != NO_ERROR);
+      assert (false);
       return -1;
     }
 
