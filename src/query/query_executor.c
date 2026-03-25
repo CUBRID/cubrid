@@ -606,6 +606,8 @@ static int qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, 
 				     bool * empty_result);
 static int qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					     UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info);
+static int qexec_execute_mainblock_nested (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xstate,
+					   UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info);
 static void qexec_mark_count_optim_class_for_buildvalue (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static void qexec_prepare_count_optim_classes_from_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static DEL_LOB_INFO *qexec_create_delete_lob_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
@@ -3548,7 +3550,9 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p)
     }
   new_xasl_state->qp_xasl_line = xasl_state_p->qp_xasl_line;
   new_xasl_state->query_id = xasl_state_p->query_id;
-  new_xasl_state->count_optim_statement_root = xasl_state_p->count_optim_statement_root;
+  /* Do not propagate the statement root: nested / parallel workers must not run RC COUNT(*) retry that
+   * invalidates the parent query snapshot or re-traverses the parent XASL tree. */
+  new_xasl_state->count_optim_statement_root = NULL;
   new_xasl_state->vd.xasl_state = new_xasl_state;
   new_xasl_state->vd.dbval_cnt = xasl_state_p->vd.dbval_cnt;
   new_xasl_state->vd.drand = xasl_state_p->vd.drand;
@@ -8344,7 +8348,7 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 		  /* skip if linked to regu var */
 		  continue;
 		}
-	      if (qexec_execute_mainblock (thread_p, xptr, xasl_state, NULL) != NO_ERROR)
+	      if (qexec_execute_mainblock_nested (thread_p, xptr, xasl_state, NULL) != NO_ERROR)
 		{
 		  return S_ERROR;
 		}
@@ -9238,7 +9242,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 		      /* skip if linked to regu var */
 		      continue;
 		    }
-		  if (qexec_execute_mainblock (thread_p, xptr, xasl_state, NULL) != NO_ERROR)
+		  if (qexec_execute_mainblock_nested (thread_p, xptr, xasl_state, NULL) != NO_ERROR)
 		    {
 		      return S_ERROR;
 		    }
@@ -9624,7 +9628,7 @@ qexec_merge_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 		      /* skip if linked to regu var */
 		      continue;
 		    }
-		  if (qexec_execute_mainblock (thread_p, xptr, xasl_state, NULL) != NO_ERROR)
+		  if (qexec_execute_mainblock_nested (thread_p, xptr, xasl_state, NULL) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
@@ -13505,7 +13509,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		  /* skip if linked to regu var */
 		  continue;
 		}
-	      if (qexec_execute_mainblock (thread_p, xptr, xasl_state, NULL) != NO_ERROR)
+	      if (qexec_execute_mainblock_nested (thread_p, xptr, xasl_state, NULL) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -14843,6 +14847,37 @@ qexec_clear_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 }
 
 /*
+ * qexec_execute_mainblock_nested () - execute a nested XASL mainblock
+ *
+ * Clears count_optim_statement_root for the duration of the call so that RC retry in
+ * qexec_evaluate_aggregates_optimize() does not call logtb_invalidate_snapshot_data() / full-statement
+ * qexec_prepare_count_optim_classes_from_xasl() while the parent query already holds a snapshot (e.g. correlated
+ * subquery, merge/hash join aptr subqueries).
+ */
+static int
+qexec_execute_mainblock_nested (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xstate,
+				UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info)
+{
+  XASL_NODE *save_count_optim_root = NULL;
+  int err;
+
+  if (xstate != NULL)
+    {
+      save_count_optim_root = xstate->count_optim_statement_root;
+      xstate->count_optim_statement_root = NULL;
+    }
+
+  err = qexec_execute_mainblock (thread_p, xasl, xstate, p_class_instance_lock_info);
+
+  if (xstate != NULL)
+    {
+      xstate->count_optim_statement_root = save_count_optim_root;
+    }
+
+  return err;
+}
+
+/*
  * qexec_execute_mainblock () -
  *   return: NO_ERROR, or ER_code
  *   xasl(in)   : XASL Tree pointer
@@ -15037,9 +15072,10 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
   /*
    * Pre_processing
+   *
+   * MVCC COUNT(*) index optim: qexec_prepare_count_optim_classes_from_xasl is invoked once on the statement root in
+   * qexec_execute_query (before the optional RR snapshot), not here per nested mainblock.
    */
-
-  qexec_prepare_count_optim_classes_from_xasl (thread_p, xasl);
 
   if (xasl->limit_offset != NULL || xasl->limit_row_count != NULL)
     {
@@ -15461,7 +15497,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			{
 			  if (!xasl->px_executor->add_job (thread_p, xptr2, xasl_state))
 			    {
-			      if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
+			      if (qexec_execute_mainblock_nested (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
 				{
 				  if (tplrec.tpl)
 				    {
@@ -15474,7 +15510,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			}
 		      else
 			{
-			  if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
+			  if (qexec_execute_mainblock_nested (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
 			    {
 			      if (tplrec.tpl)
 				{
@@ -15485,7 +15521,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			    }
 			}
 #else
-		      if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
+		      if (qexec_execute_mainblock_nested (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
 			{
 			  if (tplrec.tpl)
 			    {
@@ -16397,9 +16433,9 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
   xasl_state.count_optim_statement_root = xasl;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  /* Mark every class used by COUNT(*) index optimization in this XASL tree so btree unique stats load together with
-   * the next MVCC snapshot (atomic in logtb_get_mvcc_snapshot), e.g. all UNION ALL branches before the first branch
-   * takes a snapshot. */
+  /* Single site: mark every class for COUNT(*) index optim on the full statement XASL so stats load with the next
+   * logtb_get_mvcc_snapshot (RR snapshot below, or first branch on RC). Nested qexec_execute_mainblock_internal paths
+   * do not repeat this — COS_TO_LOAD on already-LOADED is a no-op; revisit via qexec_evaluate_aggregates_optimize on RC if needed. */
   qexec_prepare_count_optim_classes_from_xasl (thread_p, xasl);
   if (logtb_find_current_isolation (thread_p) >= TRAN_REP_READ)
     {
@@ -19174,7 +19210,7 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
   /* evaluate subqueries in HAVING predicate */
   for (xptr = gbstate->eptr_list; xptr; xptr = xptr->next)
     {
-      error_code = qexec_execute_mainblock (thread_p, xptr, xasl_state, NULL);
+      error_code = qexec_execute_mainblock_nested (thread_p, xptr, xasl_state, NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -25547,7 +25583,7 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
       XASL_NODE *xptr = xasl->proc.merge.insert_xasl;
       if (xptr && xptr->aptr_list)
 	{
-	  error = qexec_execute_mainblock (thread_p, xptr->aptr_list, xasl_state, NULL);
+	  error = qexec_execute_mainblock_nested (thread_p, xptr->aptr_list, xasl_state, NULL);
 	}
     }
   /* execute update */
@@ -25802,6 +25838,10 @@ cleanup:
  * qexec_mark_count_optim_class_for_buildvalue () - If this XASL block uses MVCC COUNT(*) index optimization, mark its
  *						  class COS_TO_LOAD so logtb_get_mvcc_snapshot loads btree stats in the
  *						  same critical section as the snapshot.
+ *
+ * Called at mainblock entry before scan_open_index_scan: do not read index scan state (e.g. multi_range_opt in
+ * s_id). Eligibility for need_count_only / MRO / index-only paths is reflected in agg_optimized (and companion plan
+ * fields) from XASL generation; trust that flag here instead of SCAN_IS_INDEX_MRO on an uninitialized scan descriptor.
  */
 static void
 qexec_mark_count_optim_class_for_buildvalue (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
@@ -25836,8 +25876,7 @@ qexec_mark_count_optim_class_for_buildvalue (THREAD_ENTRY * thread_p, XASL_NODE 
   specp = xptr->spec_list;
   if (specp == NULL || specp->next != NULL || specp->access != ACCESS_METHOD_INDEX
       || specp->s.cls_node.cls_regu_list_pred != NULL || specp->where_pred != NULL || specp->indexptr == NULL
-      || specp->indexptr->use_iss || SCAN_IS_INDEX_MRO (&specp->s_id.s.isid) || xptr->after_join_pred != NULL
-      || xptr->if_pred != NULL)
+      || specp->indexptr->use_iss || xptr->after_join_pred != NULL || xptr->if_pred != NULL)
     {
       return;
     }

@@ -82,6 +82,8 @@ static PT_NODE *pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node, vo
 static PT_NODE *pt_find_lck_class_from_partition (PARSER_CONTEXT * parser, PT_NODE * node, PT_CLASS_LOCKS * locks);
 static int pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str, LC_PREFETCH_FLAGS flags);
 static bool pt_select_eligible_count_optim_lock_hint (PARSER_CONTEXT * parser, PT_NODE * node);
+static PT_NODE *pt_find_non_count_star_aggregate (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+						  int *continue_walk);
 
 static void remove_appended_trigger_info (char *msg, int with_evaluate);
 static char *change_trigger_action_query (PARSER_CONTEXT * parser, PT_NODE * statement, int with_evaluate);
@@ -816,7 +818,27 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
  * Matches single-table SELECT with exactly one COUNT(*) and no other aggregates — e.g.
  *   SELECT 'lbl', COUNT(*) FROM t
  * so UNION ALL branches are all prepared; otherwise only the first branch may see COS_LOADED after snapshot.
+ *
+ * Select-list items that are scalar expressions (e.g. IFNULL(SUM(a), 0)) must not qualify: aggregates nested under
+ * generic functions are not visible to a top-level pt_is_aggregate_function check alone.
+ *
+ * parser_walk_tree follows PT_NODE::next, which chains sibling select-list columns; walking one column would also
+ * visit later columns and can mis-detect aggregates or confuse UNION/cached-tree shapes. Each list item is walked
+ * with next/or_next temporarily cleared so only that projection expression subtree is searched.
  */
+static PT_NODE *
+pt_find_non_count_star_aggregate (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  if (pt_is_aggregate_function (parser, node) && node->info.function.function_type != PT_COUNT_STAR)
+    {
+      *found = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
 static bool
 pt_select_eligible_count_optim_lock_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 {
@@ -859,6 +881,24 @@ pt_select_eligible_count_optim_lock_hint (PARSER_CONTEXT * parser, PT_NODE * nod
       if (pt_is_aggregate_function (parser, p))
 	{
 	  return false;
+	}
+      else
+	{
+	  bool nested_other_agg = false;
+	  PT_NODE *save_next = p->next;
+	  PT_NODE *save_or_next = p->or_next;
+
+	  /* Isolate this select-list item; do not follow sibling columns via next/or_next. */
+	  p->next = NULL;
+	  p->or_next = NULL;
+	  (void) parser_walk_tree (parser, p, pt_find_non_count_star_aggregate, &nested_other_agg, NULL, NULL);
+	  p->next = save_next;
+	  p->or_next = save_or_next;
+
+	  if (nested_other_agg)
+	    {
+	      return false;
+	    }
 	}
     }
 
