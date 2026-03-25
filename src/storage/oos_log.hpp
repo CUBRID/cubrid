@@ -28,7 +28,6 @@
 #include <ctime>
 #include <cstring>
 #include <atomic>
-#include <mutex>
 #include <climits>
 
 #include "environment_variable.h"
@@ -79,33 +78,19 @@ namespace oos_log
       }
   }
 
+  // C++11 magic static: the standard guarantees that initialization of a
+  // function-local static variable is thread-safe (§6.7/4).  If multiple
+  // threads enter concurrently, exactly one performs the initializer while
+  // the others block until it completes — no explicit mutex or atomic needed.
   inline FILE *oos_log_get_file()
   {
-    static std::mutex mtx;
-    static FILE *fp = nullptr;
-    static bool tried = false;
-
-    if (fp != nullptr)
-      {
-	return fp;
-      }
-
-    if (tried)
-      {
-	return nullptr;
-      }
-
-    std::lock_guard<std::mutex> lock (mtx);
-    if (fp != nullptr)
-      {
-	return fp;
-      }
-    tried = true;
-
-    char path[PATH_MAX];
-    envvar_logdir_file (path, sizeof (path), "oos.log");
-    fp = std::fopen (path, "a");
-    return fp;
+    static FILE *s_fp = []() -> FILE *
+    {
+      char path[PATH_MAX];
+      envvar_logdir_file (path, sizeof (path), "oos.log");
+      return std::fopen (path, "a");
+    }();
+    return s_fp;
   }
 
   inline void oos_log_internal (OosLogLevel level,
