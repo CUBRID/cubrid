@@ -14856,7 +14856,7 @@ qexec_clear_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
  * subquery, merge/hash join aptr subqueries).
  */
 static int
-qexec_execute_mainblock_nested (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xstate,
+qexec_execute_mainblock_nested (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xstate,
 				UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info)
 {
   XASL_NODE *save_count_optim_root = NULL;
