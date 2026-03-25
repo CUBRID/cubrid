@@ -606,6 +606,8 @@ static int qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, 
 				     bool * empty_result);
 static int qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					     UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info);
+static void qexec_mark_count_optim_class_for_buildvalue (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
+static void qexec_prepare_count_optim_classes_from_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static DEL_LOB_INFO *qexec_create_delete_lob_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
 						   UPDDEL_CLASS_INFO_INTERNAL * class_info);
 static DEL_LOB_INFO *qexec_change_delete_lob_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
@@ -697,7 +699,7 @@ static int qexec_init_agg_hierarchy_helpers (THREAD_ENTRY * thread_p, ACCESS_SPE
 					     AGGREGATE_TYPE * aggregate_list, HIERARCHY_AGGREGATE_HELPER ** helpers,
 					     int *helpers_countp);
 static int qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list,
-					       ACCESS_SPEC_TYPE * spec, bool * is_scan_needed);
+					       ACCESS_SPEC_TYPE * spec, bool * is_scan_needed, XASL_STATE * xasl_state);
 static int qexec_evaluate_partition_aggregates (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec,
 						AGGREGATE_TYPE * agg_list, bool * is_scan_needed);
 
@@ -3546,6 +3548,7 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p)
     }
   new_xasl_state->qp_xasl_line = xasl_state_p->qp_xasl_line;
   new_xasl_state->query_id = xasl_state_p->query_id;
+  new_xasl_state->count_optim_statement_root = xasl_state_p->count_optim_statement_root;
   new_xasl_state->vd.xasl_state = new_xasl_state;
   new_xasl_state->vd.dbval_cnt = xasl_state_p->vd.dbval_cnt;
   new_xasl_state->vd.drand = xasl_state_p->vd.drand;
@@ -9077,7 +9080,8 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	  if (!buildvalue->is_always_false)
 	    {
 	      error =
-		qexec_evaluate_aggregates_optimize (thread_p, buildvalue->agg_list, xasl->spec_list, &is_scan_needed);
+		qexec_evaluate_aggregates_optimize (thread_p, buildvalue->agg_list, xasl->spec_list, &is_scan_needed,
+						    xasl_state);
 	      if (error != NO_ERROR)
 		{
 		  is_scan_needed = true;
@@ -15035,6 +15039,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
    * Pre_processing
    */
 
+  qexec_prepare_count_optim_classes_from_xasl (thread_p, xasl);
+
   if (xasl->limit_offset != NULL || xasl->limit_row_count != NULL)
     {
       if (qexec_check_limit_clause (thread_p, xasl, xasl_state, &empty_result) != NO_ERROR)
@@ -16388,8 +16394,13 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
 
   /* initialize error line */
   xasl_state.qp_xasl_line = 0;
+  xasl_state.count_optim_statement_root = xasl;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  /* Mark every class used by COUNT(*) index optimization in this XASL tree so btree unique stats load together with
+   * the next MVCC snapshot (atomic in logtb_get_mvcc_snapshot), e.g. all UNION ALL branches before the first branch
+   * takes a snapshot. */
+  qexec_prepare_count_optim_classes_from_xasl (thread_p, xasl);
   if (logtb_find_current_isolation (thread_p) >= TRAN_REP_READ)
     {
       /* We need to be sure we have a snapshot. Insert ... values execution might not get any snapshot. Then next
@@ -25788,6 +25799,134 @@ cleanup:
 }
 
 /*
+ * qexec_mark_count_optim_class_for_buildvalue () - If this XASL block uses MVCC COUNT(*) index optimization, mark its
+ *						  class COS_TO_LOAD so logtb_get_mvcc_snapshot loads btree stats in the
+ *						  same critical section as the snapshot.
+ */
+static void
+qexec_mark_count_optim_class_for_buildvalue (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+{
+  XASL_NODE *xptr;
+  ACCESS_SPEC_TYPE *specp;
+  AGGREGATE_TYPE *agg_ptr;
+  LOG_TRAN_CLASS_COS *class_cos;
+
+  if (xasl == NULL || xasl->type != BUILDVALUE_PROC)
+    {
+      return;
+    }
+
+  agg_ptr = xasl->proc.buildvalue.agg_list;
+  if (agg_ptr == NULL || agg_ptr->next != NULL || agg_ptr->function != PT_COUNT_STAR || !agg_ptr->flag.agg_optimized)
+    {
+      return;
+    }
+
+  if (xasl->fptr_list != NULL || xasl->instnum_pred != NULL)
+    {
+      return;
+    }
+
+  xptr = xasl;
+  while (xptr->scan_ptr != NULL)
+    {
+      xptr = xptr->scan_ptr;
+    }
+
+  specp = xptr->spec_list;
+  if (specp == NULL || specp->next != NULL || specp->access != ACCESS_METHOD_INDEX
+      || specp->s.cls_node.cls_regu_list_pred != NULL || specp->where_pred != NULL || specp->indexptr == NULL
+      || specp->indexptr->use_iss || SCAN_IS_INDEX_MRO (&specp->s_id.s.isid) || xptr->after_join_pred != NULL
+      || xptr->if_pred != NULL)
+    {
+      return;
+    }
+
+  class_cos = logtb_tran_find_class_cos (thread_p, &ACCESS_SPEC_CLS_OID (specp), true);
+  if (class_cos != NULL && class_cos->count_state != COS_LOADED)
+    {
+      class_cos->count_state = COS_TO_LOAD;
+    }
+}
+
+/*
+ * qexec_prepare_count_optim_classes_from_xasl () - Depth-first walk: mark every class that participates in COUNT(*)
+ *						    index-cardinality optimization for the upcoming MVCC snapshot.
+ */
+static void
+qexec_prepare_count_optim_classes_from_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+{
+  XASL_NODE *it;
+
+  if (xasl == NULL)
+    {
+      return;
+    }
+
+  if (xasl->type == BUILDVALUE_PROC)
+    {
+      qexec_mark_count_optim_class_for_buildvalue (thread_p, xasl);
+    }
+
+  for (it = xasl->aptr_list; it != NULL; it = it->next)
+    {
+      qexec_prepare_count_optim_classes_from_xasl (thread_p, it);
+    }
+  for (it = xasl->bptr_list; it != NULL; it = it->next)
+    {
+      qexec_prepare_count_optim_classes_from_xasl (thread_p, it);
+    }
+  for (it = xasl->dptr_list; it != NULL; it = it->next)
+    {
+      qexec_prepare_count_optim_classes_from_xasl (thread_p, it);
+    }
+  for (it = xasl->fptr_list; it != NULL; it = it->next)
+    {
+      qexec_prepare_count_optim_classes_from_xasl (thread_p, it);
+    }
+  for (it = xasl->scan_ptr; it != NULL; it = it->next)
+    {
+      qexec_prepare_count_optim_classes_from_xasl (thread_p, it);
+    }
+  if (xasl->connect_by_ptr != NULL)
+    {
+      qexec_prepare_count_optim_classes_from_xasl (thread_p, xasl->connect_by_ptr);
+    }
+
+  if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.eptr_list != NULL)
+    {
+      for (it = xasl->proc.buildlist.eptr_list; it != NULL; it = it->next)
+	{
+	  qexec_prepare_count_optim_classes_from_xasl (thread_p, it);
+	}
+    }
+
+  if (xasl->type == CTE_PROC)
+    {
+      qexec_prepare_count_optim_classes_from_xasl (thread_p, xasl->proc.cte.non_recursive_part);
+      qexec_prepare_count_optim_classes_from_xasl (thread_p, xasl->proc.cte.recursive_part);
+    }
+
+  if (xasl->type == UNION_PROC || xasl->type == DIFFERENCE_PROC || xasl->type == INTERSECTION_PROC)
+    {
+      qexec_prepare_count_optim_classes_from_xasl (thread_p, xasl->proc.union_.left);
+      qexec_prepare_count_optim_classes_from_xasl (thread_p, xasl->proc.union_.right);
+    }
+
+  if (xasl->type == MERGELIST_PROC)
+    {
+      qexec_prepare_count_optim_classes_from_xasl (thread_p, xasl->proc.mergelist.outer_xasl);
+      qexec_prepare_count_optim_classes_from_xasl (thread_p, xasl->proc.mergelist.inner_xasl);
+    }
+
+  if (xasl->type == HASHJOIN_PROC)
+    {
+      qexec_prepare_count_optim_classes_from_xasl (thread_p, xasl->proc.hashjoin.outer.xasl);
+      qexec_prepare_count_optim_classes_from_xasl (thread_p, xasl->proc.hashjoin.inner.xasl);
+    }
+}
+
+/*
  * qexec_evaluate_aggregates_optimize () - optimize aggregate evaluation
  * return : error code or NO_ERROR
  * thread_p (in) : thread entry
@@ -25797,7 +25936,7 @@ cleanup:
  */
 static int
 qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list, ACCESS_SPEC_TYPE * spec,
-				    bool * is_scan_needed)
+				    bool * is_scan_needed, XASL_STATE * xasl_state)
 {
   AGGREGATE_TYPE *agg_ptr;
   int error = NO_ERROR;
@@ -25821,37 +25960,41 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 	  LOG_TRAN_CLASS_COS *class_cos = logtb_tran_find_class_cos (thread_p, &ACCESS_SPEC_CLS_OID (spec),
 								     true);
+	  bool retried_after_invalidate = false;
+
 	  if (class_cos == NULL)
 	    {
 	      agg_ptr->flag.agg_optimized = false;
 	      *is_scan_needed = true;
 	      continue;
 	    }
+	count_optim_snapshot_retry:
 	  if (tdes->mvccinfo.snapshot.valid)
 	    {
 	      if (class_cos->count_state != COS_LOADED)
 		{
-		  /* Snapshot invalidation resets count optim state (logtb_tran_reset_count_optim_state). Later SELECTs
-		   * in the same transaction may not redo client prefetch (cached XASL), so only the first UNION branch
-		   * gets COS_TO_LOAD from the !snapshot.valid path. Load btree unique stats for this class now. */
-		  if (class_cos->count_state == COS_NOT_LOADED)
+		  /* An early snapshot (e.g. qexec_execute_query for RR) can load stats for only the classes that
+		   * were COS_TO_LOAD then; UNION's second branch may still be NOT_LOADED on a later run. Under RC,
+		   * invalidate and retake snapshot after marking the full statement tree — still atomic, no fresher-than
+		   * snapshot stats. */
+		  if (!retried_after_invalidate && logtb_find_current_isolation (thread_p) < TRAN_REPEATABLE_READ
+		      && xasl_state != NULL && xasl_state->count_optim_statement_root != NULL)
 		    {
-		      class_cos->count_state = COS_TO_LOAD;
-		    }
-		  if (class_cos->count_state == COS_TO_LOAD)
-		    {
-		      error = logtb_load_global_statistics_to_tran (thread_p);
-		      if (error != NO_ERROR)
+		      logtb_invalidate_snapshot_data (thread_p);
+		      qexec_prepare_count_optim_classes_from_xasl (thread_p, xasl_state->count_optim_statement_root);
+		      retried_after_invalidate = true;
+		      class_cos = logtb_tran_find_class_cos (thread_p, &ACCESS_SPEC_CLS_OID (spec), true);
+		      if (class_cos == NULL)
 			{
-			  return (error == NO_ERROR ? ER_FAILED : error);
+			  agg_ptr->flag.agg_optimized = false;
+			  *is_scan_needed = true;
+			  continue;
 			}
+		      goto count_optim_snapshot_retry;
 		    }
-		  if (class_cos->count_state != COS_LOADED)
-		    {
-		      agg_ptr->flag.agg_optimized = false;
-		      *is_scan_needed = true;
-		      continue;
-		    }
+		  agg_ptr->flag.agg_optimized = false;
+		  *is_scan_needed = true;
+		  continue;
 		}
 	    }
 	  else
