@@ -151,6 +151,14 @@ struct walk_info
   QO_TERM *term;
 };
 
+typedef struct qo_transitive_join_spec QO_TRANSITIVE_JOIN_SPEC;
+struct qo_transitive_join_spec
+{
+  QO_SEGMENT *head_seg;
+  QO_SEGMENT *tail_seg;
+  QO_EQCLASS *eqclass;
+};
+
 double QO_INFINITY = 0.0;
 
 static QO_PLAN *qo_optimize_helper (QO_ENV * env);
@@ -230,6 +238,13 @@ static QO_ENV *qo_env_new (PARSER_CONTEXT *, PT_NODE *);
 static void qo_discover_partitions (QO_ENV *);
 static void qo_discover_indexes (QO_ENV *);
 static void qo_assign_eq_classes (QO_ENV *);
+static void qo_generate_transitive_join_terms (QO_ENV *);
+static int qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs_p, int *count_p,
+					     int *cap_p);
+static void qo_shift_bitset_indices (QO_ENV * env, BITSET * bs, int old_nedges, int extra);
+static int qo_segment_cardinality (QO_SEGMENT * seg);
+static void qo_sort_edge_terms (QO_ENV * env);
+static void qo_insert_transitive_join_terms (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC * specs, int count, int start_idx);
 static void qo_discover_edges (QO_ENV *);
 static void qo_classify_outerjoin_terms (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
@@ -593,6 +608,7 @@ qo_optimize_helper (QO_ENV * env)
    * one) will be pointing to the wrong term after they're rearranged.
    */
   qo_assign_eq_classes (env);
+  qo_generate_transitive_join_terms (env);
 
   get_local_subqueries (env, tree);
   get_rank (env);
@@ -8074,6 +8090,428 @@ qo_assign_eq_classes (QO_ENV * env)
 	{
 	  QO_TERM_EQCLASS (term) = QO_UNORDERED;
 	}
+    }
+}
+
+/* qo_generate_transitive_join_terms () -
+ *   return:
+ *   env(in):
+*/
+static void
+qo_generate_transitive_join_terms (QO_ENV * env)
+{
+  int i, q, extra, old_nedges, old_terms;
+  QO_TRANSITIVE_JOIN_SPEC *specs = NULL;
+  int specs_count = 0, specs_cap = 0;
+  size_t new_size;
+  QO_TERM *new_arr;
+  int *eqclass_term_idx = NULL;
+
+  /* 1. 후보 수집 */
+  if (qo_collect_transitive_join_specs (env, &specs, &specs_count, &specs_cap) != 0 || specs_count == 0)
+    {
+      if (specs)
+	{
+	  free_and_init (specs);
+	}
+      return;
+    }
+  /* 2. 배열 확장 및 Shift (기본 로직 유지) */
+  extra = specs_count;
+  old_nedges = env->nedges;
+  old_terms = env->nterms;
+
+  /* 1-5. eqclass의 term 포인터들을 인덱스로 백업 (realloc 시 포인터 유실 방지) */
+  eqclass_term_idx = (int *) malloc (sizeof (int) * env->neqclasses);
+  if (eqclass_term_idx == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * env->neqclasses);
+      free_and_init (specs);
+      return;
+    }
+  for (i = 0; i < env->neqclasses; i++)
+    {
+      QO_EQCLASS *eqc = QO_ENV_EQCLASS (env, i);
+      eqclass_term_idx[i] = (eqc->term != NULL) ? QO_TERM_IDX (eqc->term) : -1;
+    }
+
+  /* ------------------------------------------------------------------
+   * Pass 2: realloc term array
+   * ------------------------------------------------------------------ */
+  {
+    new_size = sizeof (QO_TERM) * (env->Nterms + extra);
+    new_arr = (QO_TERM *) realloc (env->terms, new_size);
+    if (new_arr == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, new_size);
+	free_and_init (specs);
+	free_and_init (eqclass_term_idx);
+	return;
+      }
+    env->terms = new_arr;
+    env->Nterms += extra;
+  }
+
+  /* ------------------------------------------------------------------
+   * Pass 3: shift non-edge terms right by 'extra' slots
+   *         [old_nedges..old_terms-1] -> [old_nedges+extra..old_terms+extra-1]
+   * ------------------------------------------------------------------ */
+  if (old_terms > old_nedges)
+    {
+      memmove (&env->terms[old_nedges + extra], &env->terms[old_nedges], sizeof (QO_TERM) * (old_terms - old_nedges));
+    }
+
+  /* realloc 및 memmove 로 인해 term 내부 bitset(nodes, segments, subqueries)의
+   * self-referencing 포인터(setp)가 틀어졌을 수 있으므로 전체 보정 */
+  for (i = 0; i < old_nedges; i++)
+    {
+      QO_TERM *term = QO_ENV_TERM (env, i);
+      if (term->nodes.nwords <= NWORDS)
+	term->nodes.setp = term->nodes.set.word;
+      if (term->segments.nwords <= NWORDS)
+	term->segments.setp = term->segments.set.word;
+      if (term->subqueries.nwords <= NWORDS)
+	term->subqueries.setp = term->subqueries.set.word;
+    }
+
+  for (i = old_nedges; i < old_terms; i++)
+    {
+      QO_TERM *term = QO_ENV_TERM (env, i + extra);
+      QO_TERM_IDX (term) = i + extra;
+
+      if (term->nodes.nwords <= NWORDS)
+	term->nodes.setp = term->nodes.set.word;
+      if (term->segments.nwords <= NWORDS)
+	term->segments.setp = term->segments.set.word;
+      if (term->subqueries.nwords <= NWORDS)
+	term->subqueries.setp = term->subqueries.set.word;
+    }
+
+  /* ------------------------------------------------------------------
+   * Pass 4: fix bitsets that hold non-edge term indices
+   * ------------------------------------------------------------------ */
+  /* 노드별 SARG 업데이트 */
+  for (i = 0; i < env->nnodes; i++)
+    {
+      qo_shift_bitset_indices (env, &QO_NODE_SARGS (QO_ENV_NODE (env, i)), old_nedges, extra);
+    }
+  /* 특수 목적 term index 캐시 업데이트 */
+  qo_shift_bitset_indices (env, &env->fake_terms, old_nedges, extra);
+  /* 서브쿼리별 Term 업데이트 */
+  for (q = 0; q < env->nsubqueries; q++)
+    {
+      qo_shift_bitset_indices (env, &env->subqueries[q].terms, old_nedges, extra);
+    }
+
+  /* ------------------------------------------------------------------
+   * Pass 5: fill new terms at positions [old_nedges .. old_nedges+extra-1]
+   * ------------------------------------------------------------------ */
+  qo_insert_transitive_join_terms (env, specs, specs_count, old_nedges);
+
+  /* ------------------------------------------------------------------
+   * Pass 6: fix eqclass term pointers (invalidated by realloc/memmove)
+   * ------------------------------------------------------------------ */
+  for (i = 0; i < env->neqclasses; i++)
+    {
+      QO_EQCLASS *eqc = QO_ENV_EQCLASS (env, i);
+      if (eqclass_term_idx[i] != -1)
+	{
+	  int old_idx = eqclass_term_idx[i];
+	  int new_idx = (old_idx >= old_nedges) ? (old_idx + extra) : old_idx;
+	  eqc->term = QO_ENV_TERM (env, new_idx);
+	}
+    }
+
+  env->nedges += extra;
+  env->nterms += extra;
+
+  /* ------------------------------------------------------------------
+   * Pass 7: sort edge terms by selectivity descending
+   * ------------------------------------------------------------------ */
+  qo_sort_edge_terms (env);
+
+  free_and_init (specs);
+  free_and_init (eqclass_term_idx);
+}
+
+static int
+qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs_p, int *count_p, int *cap_p)
+{
+  int i, j, k, e, s;
+  BITSET_ITERATOR bi;
+  QO_EQCLASS *eqclass;
+  QO_SEGMENT *seg1, *seg2, *head_seg, *tail_seg;
+  QO_NODE *node1, *node2, *head_node, *tail_node;
+  QO_TERM *term;
+  bool already_has_term;
+
+  for (i = 0; i < env->neqclasses; i++)
+    {
+      int segs_arr[64];
+      int nsegs = 0;
+
+      eqclass = QO_ENV_EQCLASS (env, i);
+      if (bitset_is_empty (&QO_EQCLASS_SEGS (eqclass)) || QO_EQCLASS_TERM (eqclass) != NULL)
+	{
+	  continue;
+	}
+
+      for (s = bitset_iterate (&QO_EQCLASS_SEGS (eqclass), &bi); s != -1; s = bitset_next_member (&bi))
+	{
+	  if (nsegs < 64)
+	    segs_arr[nsegs++] = s;
+	}
+
+      if (nsegs < 2)
+	continue;
+
+      for (j = 0; j < nsegs; j++)
+	{
+	  for (k = j + 1; k < nsegs; k++)
+	    {
+	      seg1 = QO_ENV_SEG (env, segs_arr[j]);
+	      seg2 = QO_ENV_SEG (env, segs_arr[k]);
+	      node1 = QO_SEG_HEAD (seg1);
+	      node2 = QO_SEG_HEAD (seg2);
+
+	      if (QO_NODE_IDX (node1) == QO_NODE_IDX (node2))
+		continue;
+
+	      if (QO_NODE_IDX (node1) < QO_NODE_IDX (node2))
+		{
+		  head_seg = seg1;
+		  tail_seg = seg2;
+		  head_node = node1;
+		  tail_node = node2;
+		}
+	      else
+		{
+		  head_seg = seg2;
+		  tail_seg = seg1;
+		  head_node = node2;
+		  tail_node = node1;
+		}
+
+	      already_has_term = false;
+	      for (e = 0; e < env->nedges; e++)
+		{
+		  term = QO_ENV_TERM (env, e);
+		  if (QO_NODE_IDX (QO_TERM_HEAD (term)) == QO_NODE_IDX (head_node)
+		      && QO_NODE_IDX (QO_TERM_TAIL (term)) == QO_NODE_IDX (tail_node))
+		    {
+		      if (QO_TERM_EQCLASS (term) == eqclass || IS_OUTER_JOIN_TYPE (QO_TERM_JOIN_TYPE (term)))
+			{
+			  already_has_term = true;
+			  break;
+			}
+		    }
+		}
+
+	      if (already_has_term)
+		continue;
+
+	      /* 배열 확장 로직 */
+	      if (*count_p >= *cap_p)
+		{
+		  int new_cap = (*cap_p == 0) ? 8 : (*cap_p * 2);
+		  QO_TRANSITIVE_JOIN_SPEC *np =
+		    (QO_TRANSITIVE_JOIN_SPEC *) realloc (*specs_p, sizeof (QO_TRANSITIVE_JOIN_SPEC) * new_cap);
+		  if (np == NULL)
+		    return -1;
+		  *specs_p = np;
+		  *cap_p = new_cap;
+		}
+
+	      (*specs_p)[*count_p].head_seg = head_seg;
+	      (*specs_p)[*count_p].tail_seg = tail_seg;
+	      (*specs_p)[*count_p].eqclass = eqclass;
+	      (*count_p)++;
+	    }
+	}
+    }
+  return 0;
+}
+
+/* bitset 내의 term 인덱스들을 일괄적으로 shift 해주는 헬퍼 함수 */
+static void
+qo_shift_bitset_indices (QO_ENV * env, BITSET * bs, int old_nedges, int extra)
+{
+  int member;
+  BITSET_ITERATOR bi;
+  BITSET to_remove, to_add;
+
+  bitset_init (&to_remove, env);
+  bitset_init (&to_add, env);
+
+  /* 1. 이동 대상 수집 */
+  for (member = bitset_iterate (bs, &bi); member != -1; member = bitset_next_member (&bi))
+    {
+      if (member >= old_nedges)
+	{
+	  bitset_add (&to_remove, member);
+	  bitset_add (&to_add, member + extra);
+	}
+    }
+
+  /* 2. 기존 값 제거 및 새 값 추가 */
+  for (member = bitset_iterate (&to_remove, &bi); member != -1; member = bitset_next_member (&bi))
+    {
+      bitset_remove (bs, member);
+    }
+  for (member = bitset_iterate (&to_add, &bi); member != -1; member = bitset_next_member (&bi))
+    {
+      bitset_add (bs, member);
+    }
+
+  bitset_delset (&to_remove);
+  bitset_delset (&to_add);
+}
+
+/* 수집된 스펙의 segment 통계(NDV, index cardinality)를 바탕으로 추정치를 반환하는 헬퍼 함수 */
+static int
+qo_segment_cardinality (QO_SEGMENT * seg)
+{
+  QO_ATTR_INFO *info = QO_SEG_INFO (seg);
+  int icard = 0;
+
+  if (info)
+    {
+      if (info->ndv > 0)
+	{
+	  icard = (info->ndv > INT_MAX) ? INT_MAX : info->ndv;
+	  if (info->cum_stats.is_indexed && info->cum_stats.pkeys[0] > 0)
+	    icard = MIN (icard, info->cum_stats.pkeys[0]);
+	}
+      else if (info->cum_stats.is_indexed && info->cum_stats.pkeys[0] > 0)
+	{
+	  icard = info->cum_stats.pkeys[0];
+	}
+    }
+  return icard;
+}
+
+/* 새로 생성된 Edge Term들을 포함하여 모든 Edge Term을 Selectivity 기준으로 정렬하고 관련 포인터들을 업데이트하는 함수 */
+static void
+qo_sort_edge_terms (QO_ENV * env)
+{
+  int t1, t2;
+  for (t1 = 0; t1 < env->nedges - 1; t1++)
+    {
+      QO_TERM *term1 = QO_ENV_TERM (env, t1);
+      for (t2 = t1 + 1; t2 < env->nedges; t2++)
+	{
+	  QO_TERM *term2 = QO_ENV_TERM (env, t2);
+	  if (QO_TERM_SELECTIVITY (term1) < QO_TERM_SELECTIVITY (term2))
+	    {
+	      bool is_fake1, is_fake2;
+
+	      is_fake1 = BITSET_MEMBER (env->fake_terms, t1) ? true : false;
+	      is_fake2 = BITSET_MEMBER (env->fake_terms, t2) ? true : false;
+
+	      qo_exchange (term1, term2);
+
+	      /* fix eqclass term pointers */
+	      if (term1->eqclass && QO_EQCLASS_TERM (term1->eqclass) != NULL)
+		QO_EQCLASS_TERM (term1->eqclass) = term1;
+	      if (term2->eqclass && QO_EQCLASS_TERM (term2->eqclass) != NULL)
+		QO_EQCLASS_TERM (term2->eqclass) = term2;
+
+	      /* fix fake_terms bitset */
+	      if (is_fake1 && !is_fake2)
+		{
+		  bitset_remove (&env->fake_terms, t1);
+		  bitset_add (&env->fake_terms, t2);
+		}
+	      else if (!is_fake1 && is_fake2)
+		{
+		  bitset_add (&env->fake_terms, t1);
+		  bitset_remove (&env->fake_terms, t2);
+		}
+	    }
+	}
+    }
+}
+
+/* 수집된 스펙을 바탕으로 실제 QO_TERM들을 생성하고 초기화하는 헬퍼 함수 */
+static void
+qo_insert_transitive_join_terms (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC * specs, int count, int start_idx)
+{
+  int i;
+  QO_TERM *term;
+  QO_SEGMENT *head_seg, *tail_seg;
+  QO_NODE *head_node, *tail_node;
+  QO_EQCLASS *eqclass;
+  int head_icard, tail_icard, icard;
+
+  for (i = 0; i < count; i++)
+    {
+      int new_idx = start_idx + i;
+      head_seg = specs[i].head_seg;
+      tail_seg = specs[i].tail_seg;
+      head_node = QO_SEG_HEAD (head_seg);
+      tail_node = QO_SEG_HEAD (tail_seg);
+      eqclass = specs[i].eqclass;
+      term = QO_ENV_TERM (env, new_idx);
+      /* 비트셋 및 기본 정보 초기화 */
+      bitset_init (&QO_TERM_NODES (term), env);
+      bitset_init (&QO_TERM_SEGS (term), env);
+      bitset_init (&QO_TERM_SUBQUERIES (term), env);
+      QO_TERM_ENV (term) = env;
+      QO_TERM_CLASS (term) = QO_TC_JOIN;
+      QO_TERM_IDX (term) = new_idx;
+      QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
+
+      head_icard = qo_segment_cardinality (head_seg);
+      tail_icard = qo_segment_cardinality (tail_seg);
+      icard = MAX (head_icard, tail_icard);
+
+      if (icard != 0)
+	{
+	  QO_TERM_SELECTIVITY (term) = (1.0 / icard);
+	}
+      else
+	{
+	  QO_TERM_SELECTIVITY (term) = 0.1;
+	}
+
+      QO_TERM_RANK (term) = 0;
+      QO_TERM_FLAG (term) = 0;
+      QO_TERM_SET_FLAG (term, QO_TERM_MERGEABLE_EDGE);
+      QO_TERM_SET_FLAG (term, QO_TERM_EQUAL_OP);
+      QO_TERM_SET_FLAG (term, QO_TERM_SINGLE_PRED);
+      QO_TERM_LOCATION (term) = 0;
+      
+      /* EXPLAIN 등 출력을 위해 가상의 PT_EXPR(A=B) 노드를 생성하여 할당 */
+      QO_TERM_PT_EXPR (term) = NULL;
+      if (env->parser)
+	{
+	  PT_NODE *eq_node = parser_new_node (env->parser, PT_EXPR);
+	  if (eq_node != NULL)
+	    {
+	      eq_node->info.expr.op = PT_EQ;
+	      eq_node->info.expr.arg1 = parser_copy_tree_list (env->parser, QO_SEG_PT_NODE (head_seg));
+	      eq_node->info.expr.arg2 = parser_copy_tree_list (env->parser, QO_SEG_PT_NODE (tail_seg));
+	      eq_node->type_enum = PT_TYPE_LOGICAL;
+	      QO_TERM_PT_EXPR (term) = eq_node;
+	      QO_TERM_SET_FLAG (term, QO_TERM_COPY_PT_EXPR);
+	    }
+	}
+
+      QO_TERM_EQCLASS (term) = eqclass;
+      QO_TERM_NOMINAL_SEG (term) = head_seg;
+      QO_TERM_HEAD (term) = head_node;
+      QO_TERM_TAIL (term) = tail_node;
+      QO_TERM_SEG (term) = head_seg;
+      QO_TERM_OID_SEG (term) = tail_seg;
+      QO_TERM_CAN_USE_INDEX (term) = 0;
+      QO_TERM_MULTI_COL_SEGS (term) = NULL;
+      QO_TERM_MULTI_COL_CNT (term) = 0;
+      QO_TERM_PRED_ORDER (term) = 0;
+      /* 관계 정보 연결 */
+      bitset_add (&QO_TERM_NODES (term), QO_NODE_IDX (head_node));
+      bitset_add (&QO_TERM_NODES (term), QO_NODE_IDX (tail_node));
+      bitset_add (&QO_TERM_SEGS (term), QO_SEG_IDX (head_seg));
+      bitset_add (&QO_TERM_SEGS (term), QO_SEG_IDX (tail_seg));
     }
 }
 
