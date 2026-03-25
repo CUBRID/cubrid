@@ -239,8 +239,9 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
       if (err != NO_ERROR)
 	{
 	  oos_error ("could not insert chunk index=%d of length %d.", i, chunk_recdes.length);
-	  // TODO: free partially inserted chunks.
-	  // Currently, already inserted chunks to slotted pages will remain as garbage.
+	  // Partially inserted chunks are cleaned up when the caller aborts the transaction
+	  // (individual undo records replay in reverse). The caller MUST NOT continue
+	  // the transaction after this error.
 	  return err;
 	}
 
