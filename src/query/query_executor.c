@@ -56,6 +56,7 @@
 #include "elo.h"
 #include "db_elo.h"
 #include "locator_sr.h"
+#include "log_impl.h"
 #include "log_lsa.hpp"
 #include "log_volids.hpp"
 #include "xserver_interface.h"
@@ -25830,9 +25831,27 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	    {
 	      if (class_cos->count_state != COS_LOADED)
 		{
-		  agg_ptr->flag.agg_optimized = false;
-		  *is_scan_needed = true;
-		  continue;
+		  /* Snapshot invalidation resets count optim state (logtb_tran_reset_count_optim_state). Later SELECTs
+		   * in the same transaction may not redo client prefetch (cached XASL), so only the first UNION branch
+		   * gets COS_TO_LOAD from the !snapshot.valid path. Load btree unique stats for this class now. */
+		  if (class_cos->count_state == COS_NOT_LOADED)
+		    {
+		      class_cos->count_state = COS_TO_LOAD;
+		    }
+		  if (class_cos->count_state == COS_TO_LOAD)
+		    {
+		      error = logtb_load_global_statistics_to_tran (thread_p);
+		      if (error != NO_ERROR)
+			{
+			  return (error == NO_ERROR ? ER_FAILED : error);
+			}
+		    }
+		  if (class_cos->count_state != COS_LOADED)
+		    {
+		      agg_ptr->flag.agg_optimized = false;
+		      *is_scan_needed = true;
+		      continue;
+		    }
 		}
 	    }
 	  else

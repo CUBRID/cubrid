@@ -81,6 +81,7 @@ static int pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT
 static PT_NODE *pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_find_lck_class_from_partition (PARSER_CONTEXT * parser, PT_NODE * node, PT_CLASS_LOCKS * locks);
 static int pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str, LC_PREFETCH_FLAGS flags);
+static bool pt_select_eligible_count_optim_lock_hint (PARSER_CONTEXT * parser, PT_NODE * node);
 
 static void remove_appended_trigger_info (char *msg, int with_evaluate);
 static char *change_trigger_action_query (PARSER_CONTEXT * parser, PT_NODE * statement, int with_evaluate);
@@ -809,6 +810,62 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
 }
 
 /*
+ * pt_select_eligible_count_optim_lock_hint () - Whether prefetch should mark the FROM class for MVCC count(*)
+ *						  optimization (unique index stats loaded at first snapshot).
+ *
+ * Matches single-table SELECT with exactly one COUNT(*) and no other aggregates — e.g.
+ *   SELECT 'lbl', COUNT(*) FROM t
+ * so UNION ALL branches are all prepared; otherwise only the first branch may see COS_LOADED after snapshot.
+ */
+static bool
+pt_select_eligible_count_optim_lock_hint (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_SELECT_INFO *sel;
+  PT_NODE *p;
+  int n_count_star;
+
+  if (parser == NULL || node == NULL || node->node_type != PT_SELECT)
+    {
+      return false;
+    }
+
+  sel = &node->info.query.q.select;
+
+  if (sel->where != NULL || sel->group_by != NULL || sel->having != NULL || sel->connect_by != NULL
+      || sel->start_with != NULL)
+    {
+      return false;
+    }
+
+  if (sel->from == NULL || sel->from->next != NULL || sel->from->info.spec.entity_name == NULL
+      || sel->from->info.spec.entity_name->node_type != PT_NAME)
+    {
+      return false;
+    }
+
+  if (PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_HAS_ANALYTIC))
+    {
+      return false;
+    }
+
+  n_count_star = 0;
+  for (p = sel->list; p != NULL; p = p->next)
+    {
+      if (p->node_type == PT_FUNCTION && p->info.function.function_type == PT_COUNT_STAR)
+	{
+	  n_count_star++;
+	  continue;
+	}
+      if (pt_is_aggregate_function (parser, p))
+	{
+	  return false;
+	}
+    }
+
+  return n_count_star == 1;
+}
+
+/*
  * pt_find_lck_classes () - identifies classes and adds an unique entry in the
  *                          prefetch structure with the SCH-S lock mode
  *   return:
@@ -824,28 +881,17 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 
   lcks->lock_type = DB_FETCH_READ;
 
-  /* Temporary disable count optimization. To enable it just restore the condition and also remove deactivation in
-   * qexec_evaluate_aggregates_optimize */
-  if (node->node_type == PT_SELECT)
+  if (node->node_type == PT_SELECT && pt_select_eligible_count_optim_lock_hint (parser, node))
     {
-      /* count optimization */
-      PT_NODE *list = node->info.query.q.select.list;
       PT_NODE *from = node->info.query.q.select.from;
 
-      /* Check if query is of form 'SELECT count(*) from t' */
-      if (list != NULL && list->next == NULL && list->node_type == PT_FUNCTION
-	  && list->info.function.function_type == PT_COUNT_STAR && from != NULL && from->next == NULL
-	  && from->info.spec.entity_name != NULL && from->info.spec.entity_name->node_type == PT_NAME
-	  && node->info.query.q.select.where == NULL)
+      /* only add to the array, if not there already in this lock mode. */
+      if (!pt_in_lck_array (lcks, from->info.spec.entity_name->info.name.original, LC_PREF_FLAG_COUNT_OPTIM))
 	{
-	  /* only add to the array, if not there already in this lock mode. */
-	  if (!pt_in_lck_array (lcks, from->info.spec.entity_name->info.name.original, LC_PREF_FLAG_COUNT_OPTIM))
+	  if (pt_add_lock_class (parser, lcks, from, LC_PREF_FLAG_COUNT_OPTIM) != NO_ERROR)
 	    {
-	      if (pt_add_lock_class (parser, lcks, from, LC_PREF_FLAG_COUNT_OPTIM) != NO_ERROR)
-		{
-		  *continue_walk = PT_STOP_WALK;
-		  return node;
-		}
+	      *continue_walk = PT_STOP_WALK;
+	      return node;
 	    }
 	}
     }
