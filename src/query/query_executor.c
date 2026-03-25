@@ -609,6 +609,7 @@ static int qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE 
 static int qexec_execute_mainblock_nested (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xstate,
 					   UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info);
 static void qexec_mark_count_optim_class_for_buildvalue (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
+static void qexec_reset_count_star_agg_optimized_flags_from_xasl (XASL_NODE * xasl);
 static void qexec_prepare_count_optim_classes_from_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static DEL_LOB_INFO *qexec_create_delete_lob_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
 						   UPDDEL_CLASS_INFO_INTERNAL * class_info);
@@ -16432,6 +16433,14 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
   xasl_state.qp_xasl_line = 0;
   xasl_state.count_optim_statement_root = xasl;
 
+  /*
+   * COUNT(*) index optimization can disable itself by setting
+   * agg_ptr->flag.agg_optimized=false during execution (snapshot/stats mismatch).
+   * When XASL is cached/reused, those flags must be restored for the next execution
+   * (e.g. UNION branches executed consecutively).
+   */
+  qexec_reset_count_star_agg_optimized_flags_from_xasl (xasl);
+
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   /* Single site: mark every class for COUNT(*) index optim on the full statement XASL so stats load with the next
    * logtb_get_mvcc_snapshot (RR snapshot below, or first branch on RC). Nested qexec_execute_mainblock_internal paths
@@ -25885,6 +25894,96 @@ qexec_mark_count_optim_class_for_buildvalue (THREAD_ENTRY * thread_p, XASL_NODE 
   if (class_cos != NULL && class_cos->count_state != COS_LOADED)
     {
       class_cos->count_state = COS_TO_LOAD;
+    }
+}
+
+/*
+ * qexec_reset_count_star_agg_optimized_flags_from_xasl () - restore COUNT(*)
+ *							   agg_optimized eligibility.
+ *
+ * Runtime evaluation can set agg_ptr->flag.agg_optimized=false to force scan fallback.
+ * Those flags persist in the cached XASL tree; restore them for the next execution.
+ */
+static void
+qexec_reset_count_star_agg_optimized_flags_from_xasl (XASL_NODE * xasl)
+{
+  XASL_NODE *it;
+
+  if (xasl == NULL)
+    {
+      return;
+    }
+
+  if (xasl->type == BUILDVALUE_PROC)
+    {
+      AGGREGATE_TYPE *agg_ptr;
+
+      for (agg_ptr = xasl->proc.buildvalue.agg_list; agg_ptr != NULL; agg_ptr = agg_ptr->next)
+	{
+	  if (agg_ptr->function == PT_COUNT_STAR)
+	    {
+	      /* Eligibility is derived from compile-time BTID metadata. */
+	      agg_ptr->flag.agg_optimized = !BTID_IS_NULL (&agg_ptr->btid);
+	    }
+	}
+    }
+
+  for (it = xasl->aptr_list; it != NULL; it = it->next)
+    {
+      qexec_reset_count_star_agg_optimized_flags_from_xasl (it);
+    }
+  for (it = xasl->bptr_list; it != NULL; it = it->next)
+    {
+      qexec_reset_count_star_agg_optimized_flags_from_xasl (it);
+    }
+  for (it = xasl->dptr_list; it != NULL; it = it->next)
+    {
+      qexec_reset_count_star_agg_optimized_flags_from_xasl (it);
+    }
+  for (it = xasl->fptr_list; it != NULL; it = it->next)
+    {
+      qexec_reset_count_star_agg_optimized_flags_from_xasl (it);
+    }
+  for (it = xasl->scan_ptr; it != NULL; it = it->next)
+    {
+      qexec_reset_count_star_agg_optimized_flags_from_xasl (it);
+    }
+
+  if (xasl->connect_by_ptr != NULL)
+    {
+      qexec_reset_count_star_agg_optimized_flags_from_xasl (xasl->connect_by_ptr);
+    }
+
+  if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.eptr_list != NULL)
+    {
+      for (it = xasl->proc.buildlist.eptr_list; it != NULL; it = it->next)
+	{
+	  qexec_reset_count_star_agg_optimized_flags_from_xasl (it);
+	}
+    }
+
+  if (xasl->type == CTE_PROC)
+    {
+      qexec_reset_count_star_agg_optimized_flags_from_xasl (xasl->proc.cte.non_recursive_part);
+      qexec_reset_count_star_agg_optimized_flags_from_xasl (xasl->proc.cte.recursive_part);
+    }
+
+  if (xasl->type == UNION_PROC || xasl->type == DIFFERENCE_PROC || xasl->type == INTERSECTION_PROC)
+    {
+      qexec_reset_count_star_agg_optimized_flags_from_xasl (xasl->proc.union_.left);
+      qexec_reset_count_star_agg_optimized_flags_from_xasl (xasl->proc.union_.right);
+    }
+
+  if (xasl->type == MERGELIST_PROC)
+    {
+      qexec_reset_count_star_agg_optimized_flags_from_xasl (xasl->proc.mergelist.outer_xasl);
+      qexec_reset_count_star_agg_optimized_flags_from_xasl (xasl->proc.mergelist.inner_xasl);
+    }
+
+  if (xasl->type == HASHJOIN_PROC)
+    {
+      qexec_reset_count_star_agg_optimized_flags_from_xasl (xasl->proc.hashjoin.outer.xasl);
+      qexec_reset_count_star_agg_optimized_flags_from_xasl (xasl->proc.hashjoin.inner.xasl);
     }
 }
 
