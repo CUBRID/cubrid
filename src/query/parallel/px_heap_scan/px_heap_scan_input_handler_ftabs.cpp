@@ -151,12 +151,6 @@ namespace parallel_heap_scan
 		    return S_ERROR;
 		  }
 
-		if (m_tl_scan_cache->page_watcher.pgptr == NULL)
-		  {
-		    found = false;
-		    continue;
-		  }
-
 		*vpid = m_tl_vpid;
 		m_tl_pgoffset++;
 		m_tl_vpid.pageid++;
