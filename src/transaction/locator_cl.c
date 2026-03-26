@@ -7066,6 +7066,7 @@ locator_lob_process_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid)
       lob_alloc_attrid_arr = (int *) malloc (sizeof (int) * lob_attrid_arr_length);
       if (lob_alloc_attrid_arr == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * lob_attrid_arr_length);
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto end;
 	}
