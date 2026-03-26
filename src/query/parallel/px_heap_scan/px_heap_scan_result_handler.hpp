@@ -111,7 +111,9 @@ namespace parallel_heap_scan
 	: writer_result_p (nullptr),
 	  vd (nullptr),
 	  xasl (nullptr),
-	  val_list_domain_resolved (false) {}
+	  val_list_domain_resolved (false),
+	  agg_hash_state (HS_NONE),
+	  g_agg_domains_resolved (TRUE) {}
       ~mergeable_list_tls() = default;
       QFILE_LIST_ID *writer_result_p;
       QFILE_TUPLE_RECORD tpl_buf;
