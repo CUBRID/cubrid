@@ -327,7 +327,10 @@ namespace parallel_heap_scan
 		 * context->part_list_id will be destroyed in thread's qexec_clear_xasl */
 		hash_aggregate_append = false;
 	      }
-	    qfile_close_list (thread_p, context->part_list_id);
+	    if (context->part_list_id != NULL)
+	      {
+		qfile_close_list (thread_p, context->part_list_id);
+	      }
 	  }
 	qfile_close_list (thread_p, tl.writer_result_p);
 
