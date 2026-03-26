@@ -138,6 +138,9 @@
 	    } \
 	} \
     } while (0)
+
+#define DEFAULT_EQUIJOIN_SELECTIVITY 0.1
+
 typedef enum
 {
   QO_BUILD_ENTITY = 0x01,	/* 0000 0001 */
@@ -8244,11 +8247,13 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
   QO_NODE *node1, *node2, *head_node, *tail_node;
   QO_TERM *term;
   bool already_has_term;
+  int *segs_arr = NULL;
+  int segs_arr_cap = 0;
+  int nsegs;
 
   for (i = 0; i < env->neqclasses; i++)
     {
-      int segs_arr[64];
-      int nsegs = 0;
+      int required_segs;
 
       eqclass = QO_ENV_EQCLASS (env, i);
       if (bitset_is_empty (&QO_EQCLASS_SEGS (eqclass)) || QO_EQCLASS_TERM (eqclass) != NULL)
@@ -8256,14 +8261,32 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 	  continue;
 	}
 
-      for (s = bitset_iterate (&QO_EQCLASS_SEGS (eqclass), &bi); s != -1; s = bitset_next_member (&bi))
+      required_segs = bitset_cardinality (&QO_EQCLASS_SEGS (eqclass));
+      if (required_segs < 2)
 	{
-	  if (nsegs < 64)
-	    segs_arr[nsegs++] = s;
+	  continue;
 	}
 
-      if (nsegs < 2)
-	continue;
+      if (required_segs > segs_arr_cap)
+	{
+	  if (segs_arr)
+	    {
+	      free_and_init (segs_arr);
+	    }
+	  segs_arr = (int *) malloc (sizeof (int) * required_segs);
+	  if (segs_arr == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * required_segs);
+	      return -1;
+	    }
+	  segs_arr_cap = required_segs;
+	}
+
+      nsegs = 0;
+      for (s = bitset_iterate (&QO_EQCLASS_SEGS (eqclass), &bi); s != -1; s = bitset_next_member (&bi))
+	{
+	  segs_arr[nsegs++] = s;
+	}
 
       for (j = 0; j < nsegs; j++)
 	{
@@ -8317,7 +8340,13 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 		  QO_TRANSITIVE_JOIN_SPEC *np =
 		    (QO_TRANSITIVE_JOIN_SPEC *) realloc (*specs_p, sizeof (QO_TRANSITIVE_JOIN_SPEC) * new_cap);
 		  if (np == NULL)
-		    return -1;
+		    {
+		      if (segs_arr)
+			{
+			  free_and_init (segs_arr);
+			}
+		      return -1;
+		    }
 		  *specs_p = np;
 		  *cap_p = new_cap;
 		}
@@ -8329,6 +8358,12 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 	    }
 	}
     }
+
+  if (segs_arr)
+    {
+      free_and_init (segs_arr);
+    }
+
   return 0;
 }
 
@@ -8380,7 +8415,9 @@ qo_segment_cardinality (QO_SEGMENT * seg)
 	{
 	  icard = (info->ndv > INT_MAX) ? INT_MAX : info->ndv;
 	  if (info->cum_stats.is_indexed && info->cum_stats.pkeys[0] > 0)
-	    icard = MIN (icard, info->cum_stats.pkeys[0]);
+	    {
+	      icard = MIN (icard, info->cum_stats.pkeys[0]);
+	    }
 	}
       else if (info->cum_stats.is_indexed && info->cum_stats.pkeys[0] > 0)
 	{
@@ -8471,7 +8508,7 @@ qo_insert_transitive_join_terms (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC * specs, 
 	}
       else
 	{
-	  QO_TERM_SELECTIVITY (term) = 0.1;
+	  QO_TERM_SELECTIVITY (term) = DEFAULT_EQUIJOIN_SELECTIVITY;
 	}
 
       QO_TERM_RANK (term) = 0;
@@ -8491,9 +8528,17 @@ qo_insert_transitive_join_terms (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC * specs, 
 	      eq_node->info.expr.op = PT_EQ;
 	      eq_node->info.expr.arg1 = parser_copy_tree_list (env->parser, QO_SEG_PT_NODE (head_seg));
 	      eq_node->info.expr.arg2 = parser_copy_tree_list (env->parser, QO_SEG_PT_NODE (tail_seg));
-	      eq_node->type_enum = PT_TYPE_LOGICAL;
-	      QO_TERM_PT_EXPR (term) = eq_node;
-	      QO_TERM_SET_FLAG (term, QO_TERM_COPY_PT_EXPR);
+	      if (eq_node->info.expr.arg1 == NULL || eq_node->info.expr.arg2 == NULL)
+		{
+		  parser_free_node (env->parser, eq_node);
+		  eq_node = NULL;
+		}
+	      else
+		{
+		  eq_node->type_enum = PT_TYPE_LOGICAL;
+		  QO_TERM_PT_EXPR (term) = eq_node;
+		  QO_TERM_SET_FLAG (term, QO_TERM_COPY_PT_EXPR);
+		}
 	    }
 	}
 
