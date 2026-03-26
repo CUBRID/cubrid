@@ -576,6 +576,9 @@ namespace parallel_heap_scan
 	  {
 	    BUILDLIST_PROC_NODE *buildlist_proc = &m_.orig_xasl->proc.buildlist;
 	    merge_list_ids (thread_p, buildlist_proc->agg_hash_context->part_list_id, m_.hgby_results);
+	    /* Using HS_REJECT_ALL to force 'hash: partial' in trace during hash group by with part list IDs.
+	     * Refer to gstats in qdump_print_stats_text(). */
+	    m_.orig_xasl->groupby_stats.groupby_hash = HS_REJECT_ALL;
 	  }
 
 	return S_END;
