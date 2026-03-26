@@ -65,6 +65,8 @@
 
 namespace cubconn::master
 {
+  REGISTER_CONNECTION (master_connector, 1);
+
   connector::connector () :
     m_stop (false),
     m_entry (nullptr),
