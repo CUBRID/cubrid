@@ -139,7 +139,7 @@
 	} \
     } while (0)
 
-#define DEFAULT_EQUIJOIN_SELECTIVITY 0.1
+#define DEFAULT_EQUIJOIN_SELECTIVITY 0.001
 
 typedef enum
 {
@@ -244,9 +244,9 @@ static void qo_assign_eq_classes (QO_ENV *);
 static void qo_generate_transitive_join_terms (QO_ENV *);
 static int qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs_p, int *count_p,
 					     int *cap_p);
-static void qo_shift_bitset_indices (QO_ENV * env, BITSET * bs, int old_nedges, int extra);
+static void qo_adjust_bitset_indices (QO_ENV * env, BITSET * bs, int old_nedges, int extra);
 static int qo_segment_cardinality (QO_SEGMENT * seg);
-static void qo_sort_edge_terms (QO_ENV * env);
+static void qo_sort_edges (QO_ENV * env);
 static void qo_insert_transitive_join_terms (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC * specs, int count, int start_idx);
 static void qo_discover_edges (QO_ENV *);
 static void qo_classify_outerjoin_terms (QO_ENV *);
@@ -8096,10 +8096,17 @@ qo_assign_eq_classes (QO_ENV * env)
     }
 }
 
-/* qo_generate_transitive_join_terms () -
- *   return:
+/*
+ * qo_generate_transitive_join_terms () - Generate implied join terms from
+ *   equivalence classes using transitive closure.
  *   env(in):
-*/
+ *
+ * Note: For each equivalence class with N segments on different nodes, this
+ *   function generates join terms for all missing (head, tail) node pairs.
+ *   It expands the term array, shifts non-edge terms, inserts new edge terms,
+ *   fixes internal pointers invalidated by realloc/memmove, and finally sorts
+ *   all edge terms by selectivity.
+ */
 static void
 qo_generate_transitive_join_terms (QO_ENV * env)
 {
@@ -8110,7 +8117,6 @@ qo_generate_transitive_join_terms (QO_ENV * env)
   QO_TERM *new_arr;
   int *eqclass_term_idx = NULL;
 
-  /* 1. 후보 수집 */
   if (qo_collect_transitive_join_specs (env, &specs, &specs_count, &specs_cap) != 0 || specs_count == 0)
     {
       if (specs)
@@ -8119,53 +8125,42 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 	}
       return;
     }
-  /* 2. 배열 확장 및 Shift (기본 로직 유지) */
+
   extra = specs_count;
   old_nedges = env->nedges;
   old_terms = env->nterms;
-
-  /* 1-5. eqclass의 term 포인터들을 인덱스로 백업 (realloc 시 포인터 유실 방지) */
   eqclass_term_idx = (int *) malloc (sizeof (int) * env->neqclasses);
+
   if (eqclass_term_idx == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * env->neqclasses);
       free_and_init (specs);
       return;
     }
+
   for (i = 0; i < env->neqclasses; i++)
     {
       QO_EQCLASS *eqc = QO_ENV_EQCLASS (env, i);
       eqclass_term_idx[i] = (eqc->term != NULL) ? QO_TERM_IDX (eqc->term) : -1;
     }
 
-  /* ------------------------------------------------------------------
-   * Pass 2: realloc term array
-   * ------------------------------------------------------------------ */
-  {
-    new_size = sizeof (QO_TERM) * (env->Nterms + extra);
-    new_arr = (QO_TERM *) realloc (env->terms, new_size);
-    if (new_arr == NULL)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, new_size);
-	free_and_init (specs);
-	free_and_init (eqclass_term_idx);
-	return;
-      }
-    env->terms = new_arr;
-    env->Nterms += extra;
-  }
+  new_size = sizeof (QO_TERM) * (env->Nterms + extra);
+  new_arr = (QO_TERM *) realloc (env->terms, new_size);
+  if (new_arr == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, new_size);
+      free_and_init (specs);
+      free_and_init (eqclass_term_idx);
+      return;
+    }
+  env->terms = new_arr;
+  env->Nterms += extra;
 
-  /* ------------------------------------------------------------------
-   * Pass 3: shift non-edge terms right by 'extra' slots
-   *         [old_nedges..old_terms-1] -> [old_nedges+extra..old_terms+extra-1]
-   * ------------------------------------------------------------------ */
   if (old_terms > old_nedges)
     {
       memmove (&env->terms[old_nedges + extra], &env->terms[old_nedges], sizeof (QO_TERM) * (old_terms - old_nedges));
     }
 
-  /* realloc 및 memmove 로 인해 term 내부 bitset(nodes, segments, subqueries)의
-   * self-referencing 포인터(setp)가 틀어졌을 수 있으므로 전체 보정 */
   for (i = 0; i < old_nedges; i++)
     {
       QO_TERM *term = QO_ENV_TERM (env, i);
@@ -8190,30 +8185,19 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 	term->subqueries.setp = term->subqueries.set.word;
     }
 
-  /* ------------------------------------------------------------------
-   * Pass 4: fix bitsets that hold non-edge term indices
-   * ------------------------------------------------------------------ */
-  /* 노드별 SARG 업데이트 */
   for (i = 0; i < env->nnodes; i++)
     {
-      qo_shift_bitset_indices (env, &QO_NODE_SARGS (QO_ENV_NODE (env, i)), old_nedges, extra);
+      qo_adjust_bitset_indices (env, &QO_NODE_SARGS (QO_ENV_NODE (env, i)), old_nedges, extra);
     }
-  /* 특수 목적 term index 캐시 업데이트 */
-  qo_shift_bitset_indices (env, &env->fake_terms, old_nedges, extra);
-  /* 서브쿼리별 Term 업데이트 */
+  qo_adjust_bitset_indices (env, &env->fake_terms, old_nedges, extra);
+
   for (q = 0; q < env->nsubqueries; q++)
     {
-      qo_shift_bitset_indices (env, &env->subqueries[q].terms, old_nedges, extra);
+      qo_adjust_bitset_indices (env, &env->subqueries[q].terms, old_nedges, extra);
     }
 
-  /* ------------------------------------------------------------------
-   * Pass 5: fill new terms at positions [old_nedges .. old_nedges+extra-1]
-   * ------------------------------------------------------------------ */
   qo_insert_transitive_join_terms (env, specs, specs_count, old_nedges);
 
-  /* ------------------------------------------------------------------
-   * Pass 6: fix eqclass term pointers (invalidated by realloc/memmove)
-   * ------------------------------------------------------------------ */
   for (i = 0; i < env->neqclasses; i++)
     {
       QO_EQCLASS *eqc = QO_ENV_EQCLASS (env, i);
@@ -8228,15 +8212,26 @@ qo_generate_transitive_join_terms (QO_ENV * env)
   env->nedges += extra;
   env->nterms += extra;
 
-  /* ------------------------------------------------------------------
-   * Pass 7: sort edge terms by selectivity descending
-   * ------------------------------------------------------------------ */
-  qo_sort_edge_terms (env);
+  qo_sort_edges (env);
 
   free_and_init (specs);
   free_and_init (eqclass_term_idx);
 }
 
+/*
+ * qo_collect_transitive_join_specs () - Collect candidate transitive join
+ *   specifications from equivalence classes.
+ *   return: 0 on success, -1 on memory allocation failure
+ *   env(in): 
+ *   specs_p(in/out): Pointer to the dynamically growing specs array
+ *   count_p(in/out): Pointer to the current number of collected specs
+ *   cap_p(in/out): Pointer to the current capacity of the specs array
+ *
+ * Note: Iterates over all equivalence classes and enumerates segment pairs
+ *   belonging to different nodes. For each pair that does not already have
+ *   an edge term (or is blocked by an outer join), a QO_TRANSITIVE_JOIN_SPEC
+ *   is appended to the output array.
+ */
 static int
 qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs_p, int *count_p, int *cap_p)
 {
@@ -8333,7 +8328,6 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 	      if (already_has_term)
 		continue;
 
-	      /* 배열 확장 로직 */
 	      if (*count_p >= *cap_p)
 		{
 		  int new_cap = (*cap_p == 0) ? 8 : (*cap_p * 2);
@@ -8367,9 +8361,20 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
   return 0;
 }
 
-/* bitset 내의 term 인덱스들을 일괄적으로 shift 해주는 헬퍼 함수 */
+/*
+ * qo_adjust_bitset_indices () - Shift term indices in a bitset after new edge
+ *   terms have been inserted.
+ *   return: 
+ *   env(in): 
+ *   bs(in/out): Bitset whose member indices are to be shifted
+ *   old_nedges(in): The original number of edge terms before insertion
+ *   extra(in): The number of newly inserted edge terms
+ *
+ * Note: All members in the bitset that are >= old_nedges are shifted right
+ *   by 'extra' positions to accommodate newly inserted edge terms.
+ */
 static void
-qo_shift_bitset_indices (QO_ENV * env, BITSET * bs, int old_nedges, int extra)
+qo_adjust_bitset_indices (QO_ENV * env, BITSET * bs, int old_nedges, int extra)
 {
   int member;
   BITSET_ITERATOR bi;
@@ -8378,7 +8383,6 @@ qo_shift_bitset_indices (QO_ENV * env, BITSET * bs, int old_nedges, int extra)
   bitset_init (&to_remove, env);
   bitset_init (&to_add, env);
 
-  /* 1. 이동 대상 수집 */
   for (member = bitset_iterate (bs, &bi); member != -1; member = bitset_next_member (&bi))
     {
       if (member >= old_nedges)
@@ -8388,7 +8392,6 @@ qo_shift_bitset_indices (QO_ENV * env, BITSET * bs, int old_nedges, int extra)
 	}
     }
 
-  /* 2. 기존 값 제거 및 새 값 추가 */
   for (member = bitset_iterate (&to_remove, &bi); member != -1; member = bitset_next_member (&bi))
     {
       bitset_remove (bs, member);
@@ -8402,7 +8405,17 @@ qo_shift_bitset_indices (QO_ENV * env, BITSET * bs, int old_nedges, int extra)
   bitset_delset (&to_add);
 }
 
-/* 수집된 스펙의 segment 통계(NDV, index cardinality)를 바탕으로 추정치를 반환하는 헬퍼 함수 */
+/*
+ * qo_segment_cardinality () - Determine the cardinality (number of distinct
+ *   values) of a segment using its attribute statistics.
+ *   return: cardinality of the segment if available, otherwise 0
+ *   seg(in): Pointer to the segment for which we want the cardinality
+ *
+ * Note: If NDV (Number of Distinct Values) statistics are available, they are
+ *   used. When an index also exists on the segment, the minimum of NDV and
+ *   the first partial-key cardinality (pkeys[0]) is chosen for a tighter
+ *   estimate. If only index statistics exist, pkeys[0] is returned directly.
+ */
 static int
 qo_segment_cardinality (QO_SEGMENT * seg)
 {
@@ -8427,9 +8440,18 @@ qo_segment_cardinality (QO_SEGMENT * seg)
   return icard;
 }
 
-/* 새로 생성된 Edge Term들을 포함하여 모든 Edge Term을 Selectivity 기준으로 정렬하고 관련 포인터들을 업데이트하는 함수 */
+/*
+ * qo_sort_edges () - Sort all edge terms by selectivity in descending
+ *   order and fix related pointers.
+ *   return: 
+ *   env(in): Pointer to the optimizer environment
+ *
+ * Note: Uses selection sort to order edge terms [0..nedges-1] so that higher
+ *   selectivity (less selective) terms come first. After each swap, eqclass
+ *   term pointers and the fake_terms bitset are corrected accordingly.
+ */
 static void
-qo_sort_edge_terms (QO_ENV * env)
+qo_sort_edges (QO_ENV * env)
 {
   int t1, t2;
   for (t1 = 0; t1 < env->nedges - 1; t1++)
@@ -8469,7 +8491,20 @@ qo_sort_edge_terms (QO_ENV * env)
     }
 }
 
-/* 수집된 스펙을 바탕으로 실제 QO_TERM들을 생성하고 초기화하는 헬퍼 함수 */
+/*
+ * qo_insert_transitive_join_terms () - Initialize new QO_TERM entries for
+ *   the collected transitive join specifications.
+ *   return: 
+ *   env(in): Pointer to the optimizer environment
+ *   specs(in): Array of transitive join specifications
+ *   count(in): Number of specifications in the array
+ *   start_idx(in): Starting index in env->terms where new terms are placed
+ *
+ * Note: For each spec, a new edge term is initialized via qo_term_clear()
+ *   and configured as a QO_TC_JOIN / JOIN_INNER term. Selectivity is computed
+ *   from the segment cardinality. A synthetic PT_EXPR (A = B) node is created
+ *   for EXPLAIN output.
+ */
 static void
 qo_insert_transitive_join_terms (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC * specs, int count, int start_idx)
 {
@@ -8488,14 +8523,10 @@ qo_insert_transitive_join_terms (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC * specs, 
       head_node = QO_SEG_HEAD (head_seg);
       tail_node = QO_SEG_HEAD (tail_seg);
       eqclass = specs[i].eqclass;
+      qo_term_clear (env, new_idx);
       term = QO_ENV_TERM (env, new_idx);
-      /* 비트셋 및 기본 정보 초기화 */
-      bitset_init (&QO_TERM_NODES (term), env);
-      bitset_init (&QO_TERM_SEGS (term), env);
-      bitset_init (&QO_TERM_SUBQUERIES (term), env);
-      QO_TERM_ENV (term) = env;
+
       QO_TERM_CLASS (term) = QO_TC_JOIN;
-      QO_TERM_IDX (term) = new_idx;
       QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
 
       head_icard = qo_segment_cardinality (head_seg);
@@ -8511,15 +8542,10 @@ qo_insert_transitive_join_terms (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC * specs, 
 	  QO_TERM_SELECTIVITY (term) = DEFAULT_EQUIJOIN_SELECTIVITY;
 	}
 
-      QO_TERM_RANK (term) = 0;
-      QO_TERM_FLAG (term) = 0;
       QO_TERM_SET_FLAG (term, QO_TERM_MERGEABLE_EDGE);
       QO_TERM_SET_FLAG (term, QO_TERM_EQUAL_OP);
       QO_TERM_SET_FLAG (term, QO_TERM_SINGLE_PRED);
-      QO_TERM_LOCATION (term) = 0;
 
-      /* EXPLAIN 등 출력을 위해 가상의 PT_EXPR(A=B) 노드를 생성하여 할당 */
-      QO_TERM_PT_EXPR (term) = NULL;
       if (env->parser)
 	{
 	  PT_NODE *eq_node = parser_new_node (env->parser, PT_EXPR);
@@ -8548,11 +8574,6 @@ qo_insert_transitive_join_terms (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC * specs, 
       QO_TERM_TAIL (term) = tail_node;
       QO_TERM_SEG (term) = head_seg;
       QO_TERM_OID_SEG (term) = tail_seg;
-      QO_TERM_CAN_USE_INDEX (term) = 0;
-      QO_TERM_MULTI_COL_SEGS (term) = NULL;
-      QO_TERM_MULTI_COL_CNT (term) = 0;
-      QO_TERM_PRED_ORDER (term) = 0;
-      /* 관계 정보 연결 */
       bitset_add (&QO_TERM_NODES (term), QO_NODE_IDX (head_node));
       bitset_add (&QO_TERM_NODES (term), QO_NODE_IDX (tail_node));
       bitset_add (&QO_TERM_SEGS (term), QO_SEG_IDX (head_seg));
