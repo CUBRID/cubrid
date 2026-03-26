@@ -1436,6 +1436,7 @@ static int
 lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count)
 {
   SM_ATTRIBUTE *attr;
+  HFID lob_hfid;
   int lob_attrid_arr_length = 0;
   int *lob_alloc_attrid_arr = NULL;
   int lob_local_attrid_arr[2];
@@ -1485,14 +1486,11 @@ lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count)
 	}
     }
 
-  if (lob_attrid_arr_length)
+  lob_hfid = class_->header.ch_heap;
+  error = locator_lob_create_or_remove_dir (NULL, &lob_hfid, lob_attrid_arr, lob_attrid_arr_length);
+  if (error != NO_ERROR)
     {
-      HFID lob_hfid = class_->header.ch_heap;
-      error = locator_lob_create_or_remove_dir (NULL, &lob_hfid, lob_attrid_arr, lob_attrid_arr_length);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
+      goto end;
     }
 
 end:
