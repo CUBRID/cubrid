@@ -11976,8 +11976,16 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      fhead->n_page_ftab * sizeof (FILE_PARTIAL_SECTOR));
       pgbuf_unfix (thread_p, page_fhead);
+      db_private_free_and_init (thread_p, collector_out->partsect_ftab);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+
+  VSID_FROM_VPID (&ftab_collector.partsect_ftab[0].vsid, &vpid_fhead);
+  ftab_collector.partsect_ftab[0].page_bitmap = FILE_EMPTY_PAGE_BITMAP;
+  file_partsect_set_bit (&ftab_collector.partsect_ftab[0],
+			 file_partsect_pageid_to_offset (&ftab_collector.partsect_ftab[0], vpid_fhead.pageid));
+  ftab_collector.nsects = 1;
+  ftab_collector.npages = 1;
 
   FILE_HEADER_GET_PART_FTAB (fhead, extdata_ftab);
   error_code =
@@ -11993,29 +12001,21 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
       return ER_FAILED;
     }
 
-  j = 0;
-  for (i = 0; i < ftab_collector.nsects; i++)
+  if (!FILE_IS_TEMPORARY (fhead))
     {
-      FILE_PARTIAL_SECTOR *ftab_sec = &ftab_collector.partsect_ftab[i];
-      FILE_PARTIAL_SECTOR *data_sec;
-      for (; j < collector_out->nsects; j++)
+      FILE_HEADER_GET_FULL_FTAB (fhead, extdata_ftab);
+      error_code =
+	file_extdata_apply_funcs (thread_p, extdata_ftab, file_extdata_collect_ftab_pages, &ftab_collector,
+				  file_extdata_collect_data_sectors_full, collector_out, false, NULL, NULL);
+      if (error_code != NO_ERROR)
 	{
-	  data_sec = &collector_out->partsect_ftab[j];
-	  if (VSID_EQ (&ftab_sec->vsid, &data_sec->vsid))
-	    {
-	      data_sec->page_bitmap &= ~ftab_sec->page_bitmap;
-	      break;
-	    }
+	  ASSERT_ERROR ();
+	  db_private_free_and_init (thread_p, ftab_collector.partsect_ftab);
+	  db_private_free_and_init (thread_p, collector_out->partsect_ftab);
+	  pgbuf_unfix (thread_p, page_fhead);
+	  return ER_FAILED;
 	}
     }
-
-  ftab_collector.npages = 0;
-  ftab_collector.nsects = 0;
-
-  FILE_HEADER_GET_FULL_FTAB (fhead, extdata_ftab);
-  error_code =
-    file_extdata_apply_funcs (thread_p, extdata_ftab, file_extdata_collect_ftab_pages, &ftab_collector,
-			      file_extdata_collect_data_sectors_full, collector_out, false, NULL, NULL);
 
   j = 0;
   for (i = 0; i < ftab_collector.nsects; i++)
