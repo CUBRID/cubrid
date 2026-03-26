@@ -481,7 +481,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
     {
       if (sa_mode)
 	{
-	  fprintf (stderr, "-t (--voltype) options is not supported in standalone mode.\n");
+	  fprintf (stderr, "-t (--voltype) option is not supported in standalone mode.\n");
 	  goto error_exit;
 	}
       ext_info.voltype = DB_TEMPORARY_VOLTYPE;
