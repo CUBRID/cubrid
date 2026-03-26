@@ -851,6 +851,7 @@ xes_posix_move_file_with_prefix (const char *src_path, const char *metaname, con
     {
       /* impossible case */
       assert (false);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", new_path);
       return ER_ES_INVALID_PATH;
     }
   es_log ("xes_posix_move_file_with_prefix(%s, %s): %s\n", src_path, metaname, new_path);
