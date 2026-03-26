@@ -11963,7 +11963,7 @@ pt_strip_serial_dot_for_dblink_remote (PARSER_CONTEXT * parser, PT_NODE * serial
 	  return;
 	}
 
-      if (arg1->info.name.original != NULL)
+      if (arg1->info.name.original != NULL && arg1->info.name.original[0] != '\0')
 	{
 	  arg1->info.name.original = sm_remove_qualifier_name (arg1->info.name.original);
 	}
@@ -12004,6 +12004,7 @@ pt_strip_serial_dot_for_dblink_remote (PARSER_CONTEXT * parser, PT_NODE * serial
   new_arg1 = parser_copy_tree (parser, dot_leaf);
   if (new_arg1 == NULL)
     {
+      PT_ERRORm (parser, serial_expr, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY);
       return;
     }
 
@@ -12013,7 +12014,7 @@ pt_strip_serial_dot_for_dblink_remote (PARSER_CONTEXT * parser, PT_NODE * serial
 
   if (new_arg1->node_type == PT_NAME && !PT_NAME_INFO_IS_FLAGED (new_arg1, PT_NAME_INFO_USER_SPECIFIED))
     {
-      if (new_arg1->info.name.original != NULL)
+      if (new_arg1->info.name.original != NULL && arg1->info.name.original[0] != '\0')
 	{
 	  new_arg1->info.name.original = sm_remove_qualifier_name (new_arg1->info.name.original);
 	}
@@ -12193,6 +12194,12 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   /* Prevent "user.serial.nextval" qualifier leakage in remote SQL text. */
   {
     PT_NODE *node_for_dml = parser_copy_tree (parser, node);
+
+    if (node_for_dml == NULL)
+      {
+	PT_ERRORm (parser, node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY);
+	return;
+      }
 
     parser_walk_tree (parser, node_for_dml, pt_strip_implicit_serial_user_qualifier_for_dblink_remote, NULL, NULL,
 		      NULL);
