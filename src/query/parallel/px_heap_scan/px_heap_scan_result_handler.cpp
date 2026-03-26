@@ -313,7 +313,8 @@ namespace parallel_heap_scan
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {
 	AGGREGATE_HASH_CONTEXT *context = tl.xasl->proc.buildlist.agg_hash_context;
-	if (m_.g_hash_eligible)
+	bool hash_aggregate_append = m_.g_hash_eligible;
+	if (hash_aggregate_append)
 	  {
 	    if (qdata_save_agg_htable_to_list (thread_p, context->hash_table, tl.writer_result_p,
 					       context->part_list_id, context->temp_dbval_array) != NO_ERROR)
@@ -322,7 +323,7 @@ namespace parallel_heap_scan
 		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		/* for prevent data corruption at m_.hgby_results;
 		 * context->part_list_id will be destroyed in thread's qexec_clear_xasl */
-		m_.g_hash_eligible = false;
+		hash_aggregate_append = false;
 	      }
 	    qfile_close_list (thread_p, context->part_list_id);
 	  }
@@ -367,7 +368,7 @@ namespace parallel_heap_scan
 	    }
 	  tl.dbvals_for_domain_resolve.clear();
 
-	  if (m_.g_hash_eligible)
+	  if (hash_aggregate_append)
 	    {
 	      m_.hgby_results.push_back (context->part_list_id);
 	      context->part_list_id = NULL;
