@@ -7009,6 +7009,7 @@ locator_lob_create_or_remove_dir (HFID * prev_hfid, HFID * new_hfid, int *lob_at
 	  return error;
 	}
     }
+
   if (new_hfid != NULL)
     {
       error = lob_create_dir (new_hfid, lob_attrid_arr, lob_attrid_arr_length);
@@ -7034,7 +7035,6 @@ int
 locator_lob_process_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid)
 {
   SM_ATTRIBUTE *attr;
-  bool lob_attr_exist = false;
   int lob_attrid_arr_length = 0;
   int lob_local_attrid_arr[2];
   int *lob_alloc_attrid_arr = NULL;
@@ -7072,7 +7072,6 @@ locator_lob_process_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid)
 
       lob_attrid_arr = lob_alloc_attrid_arr;
     }
-  lob_attr_exist = true;
 
   for (int i = 0, index = 0; i < class_->att_count; i++)
     {
@@ -7084,10 +7083,7 @@ locator_lob_process_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid)
     }
 
   /* Create or remove LOB dir as needed */
-  if (lob_attr_exist)
-    {
-      error = locator_lob_create_or_remove_dir (prev_hfid, new_hfid, lob_attrid_arr, lob_attrid_arr_length);
-    }
+  error = locator_lob_create_or_remove_dir (prev_hfid, new_hfid, lob_attrid_arr, lob_attrid_arr_length);
   if (error != NO_ERROR)
     {
       goto end;
