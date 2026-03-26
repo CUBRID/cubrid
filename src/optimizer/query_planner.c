@@ -84,7 +84,7 @@
 #define HJ_MEM_ALLOC_CONSTANT 100
 #define HJ_FILE_IO_WEIGHT 0.5	/* Unused */
 #define ISCAN_IO_HIT_RATIO 0.5
-#define SSCAN_DEFAULT_CARD 100
+#define SSCAN_DEFAULT_CARD 50
 #define GUESSED_BIND_LIMIT_CARD 2000	/* When limit is a bind variable, assume that fewer rows will be assigned. */
 
 #define RBO_CHECK_COST 50
