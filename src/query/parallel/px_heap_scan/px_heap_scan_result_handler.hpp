@@ -29,6 +29,12 @@
 #include "px_interrupt.hpp"
 #include "xasl.h"
 #include "px_heap_scan_result_type.hpp"
+#include <atomic>
+#include <condition_variable>
+#include <cstdint>
+#include <mutex>
+#include <type_traits>
+#include <vector>
 
 namespace parallel_heap_scan
 {

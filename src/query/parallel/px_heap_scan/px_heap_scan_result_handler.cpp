@@ -21,7 +21,6 @@
  */
 
 #include "px_heap_scan_result_handler.hpp"
-#include "db_function.hpp"
 #include "error_code.h"
 #include "error_manager.h"
 #include "memory_alloc.h"
@@ -29,19 +28,12 @@
 #include "porting.h"
 #include "query_opfunc.h"
 #include "list_file.h"
-#include "regu_var.hpp"
-#include "storage_common.h"
-#include "system.h"
 #include "dbtype_def.h"
-#include "query_list.h"
 #include "object_representation.h"
-#include <atomic>
 #include <chrono>
 #include "dbtype.h"
 #include "fetch.h"
 #include "query_aggregate.hpp"
-#include "thread_compat.hpp"
-#include "xasl.h"
 #include "xasl_aggregate.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -163,6 +155,16 @@ namespace parallel_heap_scan
 	    if (list_id != nullptr && list_id->type_list.type_cnt > 0)
 	      {
 		qfile_destroy_list (thread_p, list_id);
+		QFILE_FREE_AND_INIT_LIST_ID (list_id);
+	      }
+	  }
+	m_.writer_results.clear();
+	for (QFILE_LIST_ID *list_id : m_.hgby_results)
+	  {
+	    if (list_id != nullptr && list_id->type_list.type_cnt > 0)
+	      {
+		qfile_destroy_list (thread_p, list_id);
+		QFILE_FREE_AND_INIT_LIST_ID (list_id);
 	      }
 	  }
 	m_.writer_results.clear();
@@ -529,7 +531,9 @@ namespace parallel_heap_scan
 	else
 	  {
 	    qfile_destroy_list (thread_p, list_id);
+	    QFILE_FREE_AND_INIT_LIST_ID (list_id);
 	  }
+	list_id = nullptr;
       }
     lists.clear();
     if (tmp_merged_list != nullptr)
@@ -573,6 +577,11 @@ namespace parallel_heap_scan
 		}
 	    }
 	}
+
+	if (m_interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+	  {
+	    return S_ERROR;
+	  }
 
 	merge_list_ids (thread_p, dest, m_.writer_results);
 
