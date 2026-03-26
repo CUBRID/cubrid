@@ -11785,7 +11785,7 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 	{
 	  char *a_name = NULL, *t_name, *r_name;
 
-	  if (spec->info.spec.range_var)
+	  if (spec->info.spec.remote_server_name && spec->info.spec.range_var)
 	    {
 	      a_name = (char *) spec->info.spec.range_var->info.name.original;
 	      /* to skip aliased name at rewriting for mariadb and etc. */
@@ -11864,7 +11864,7 @@ pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 
   for (spec = node->info.update.spec; spec; spec = spec->next)
     {
-      if (spec->info.spec.range_var)
+      if (spec->info.spec.remote_server_name && spec->info.spec.range_var)
 	{
 	  char *a_name = (char *) spec->info.spec.range_var->info.name.original;
 
