@@ -549,7 +549,7 @@ namespace parallel_heap_scan
 		qfile_destroy_list (thread_p, dest);
 	      }
 	    qfile_copy_list_id (dest, tmp_merged_list, true, QFILE_MOVE_DEPENDENT);
-	    qfile_clear_list_id (tmp_merged_list);
+	    QFILE_FREE_AND_INIT_LIST_ID (tmp_merged_list);
 	  }
       }
   }
