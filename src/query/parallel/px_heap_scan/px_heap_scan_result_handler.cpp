@@ -167,7 +167,7 @@ namespace parallel_heap_scan
 		QFILE_FREE_AND_INIT_LIST_ID (list_id);
 	      }
 	  }
-	m_.writer_results.clear();
+	m_.hgby_results.clear();
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {
