@@ -12014,7 +12014,7 @@ pt_strip_serial_dot_for_dblink_remote (PARSER_CONTEXT * parser, PT_NODE * serial
 
   if (new_arg1->node_type == PT_NAME && !PT_NAME_INFO_IS_FLAGED (new_arg1, PT_NAME_INFO_USER_SPECIFIED))
     {
-      if (new_arg1->info.name.original != NULL && arg1->info.name.original[0] != '\0')
+      if (new_arg1->info.name.original != NULL && new_arg1->info.name.original[0] != '\0')
 	{
 	  new_arg1->info.name.original = sm_remove_qualifier_name (new_arg1->info.name.original);
 	}
