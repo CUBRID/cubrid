@@ -8458,7 +8458,7 @@ qo_seg_width (QO_SEGMENT * seg)
     {
     case DB_TYPE_VARBIT:
     case DB_TYPE_VARCHAR:
-      /* do guessing for variable character type */
+      /* guessing for variable character type */
       ratio = (domain->precision <= 32) ? 0.8 :
 	(domain->precision <= 128) ? 0.5 : (domain->precision <= 512) ? 0.3 : (domain->precision <= 4000) ? 0.2 : 0.1;
       /* to avoid the issue of the variable character type precision being too large. */
