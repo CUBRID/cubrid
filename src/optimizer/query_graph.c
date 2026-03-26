@@ -8441,6 +8441,7 @@ qo_seg_width (QO_SEGMENT * seg)
    */
   int size;
   DB_DOMAIN *domain;
+  double ratio;
 
   domain = pt_node_to_db_domain (QO_ENV_PARSER (QO_SEG_ENV (seg)), QO_SEG_PT_NODE (seg), NULL);
   if (domain)
@@ -8458,15 +8459,10 @@ qo_seg_width (QO_SEGMENT * seg)
     case DB_TYPE_VARBIT:
     case DB_TYPE_VARCHAR:
       /* do guessing for variable character type */
-      if (domain->precision < 4000)
-	{
-	  size = domain->precision * 2 / 3;
-	}
-      else
-	{
-	  /* to avoid the issue of the variable character type precision being too large. */
-	  size = 4000;
-	}
+      ratio = (domain->precision <= 32) ? 0.8 :
+	(domain->precision <= 128) ? 0.5 : (domain->precision <= 512) ? 0.3 : (domain->precision <= 4000) ? 0.2 : 0.1;
+      /* to avoid the issue of the variable character type precision being too large. */
+      size = MIN (domain->precision * ratio, 4000);
       break;
     default:
       size = tp_domain_disk_size (domain);
