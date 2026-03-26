@@ -249,6 +249,20 @@ consume_tokens (char *stmt, STATEMENT_STATUS stmt_status)
 	    }
 	}
     }
+  else if (stmt_status == BRACKETED_IDENTIFIER)
+    {
+      for (; *p; p++)
+	{
+	  if (*p == ']' && *(p + 1) == ']')
+	    {
+	      p++;
+	    }
+	  else if (*p == ']')
+	    {
+	      break;
+	    }
+	}
+    }
 
   return p;
 }
@@ -281,9 +295,13 @@ get_num_markers (char *stmt)
 	{
 	  p = consume_tokens (p + 1, SINGLE_QUOTED_STRING);
 	}
-      else if (cas_default_ansi_quotes == false && *p == '\"')
+      else if ( /* cas_default_ansi_quotes == false && */ *p == '\"')
 	{
 	  p = consume_tokens (p + 1, DOUBLE_QUOTED_STRING);
+	}
+      else if (*p == '[')
+	{
+	  p = consume_tokens (p + 1, BRACKETED_IDENTIFIER);
 	}
 
       if (*p == '\0')
