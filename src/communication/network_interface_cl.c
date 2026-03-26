@@ -4201,7 +4201,7 @@ boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info)
   request_size = (length_const_string (ext_info->path, &strlen1)
 		  + length_const_string (ext_info->name, &strlen2)
 		  + length_const_string (ext_info->comments, &strlen3)
-		  + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE);
+		  + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE);
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -4217,6 +4217,8 @@ boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info)
   ptr = or_pack_int (ptr, (int) ext_info->max_writesize_in_sec);
   ptr = or_pack_int (ptr, (int) ext_info->purpose);
   ptr = or_pack_int (ptr, (int) ext_info->overwrite);
+  ptr = or_pack_int (ptr, (int) ext_info->voltype);
+
   req_error = net_client_request (NET_SERVER_BO_ADD_VOLEXT, request, request_size, reply,
 				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)

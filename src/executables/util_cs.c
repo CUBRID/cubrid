@@ -367,6 +367,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
   UINT64 volext_size;
   UINT64 volext_max_writesize;
   const char *volext_string_purpose = NULL;
+  const char *volext_string_voltype = NULL;
   const char *volext_npages_string = NULL;
   const char *volext_size_str = NULL;
   const char *volext_max_writesize_in_sec_str = NULL;
@@ -467,6 +468,25 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
       ext_info.max_writesize_in_sec = 0;
       fprintf (stderr,
 	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ADDVOLDB, ADDVOLDB_INVALID_MAX_WRITESIZE_IN_SEC));
+    }
+
+  volext_string_voltype = utility_get_option_string_value (arg_map, ADDVOL_VOLTYPE_S, 0);
+  if (volext_string_voltype == NULL)
+    {
+      volext_string_voltype = "perm";
+    }
+
+  ext_info.voltype = DB_PERMANENT_VOLTYPE;
+  if (strcasecmp (volext_string_voltype, "temp") == 0)
+    {
+      if (sa_mode)
+	{
+	  fprintf (stderr, "-t (--voltype) options is not supported in standalone mode.\n");
+	  goto error_exit;
+	}
+      ext_info.voltype = DB_TEMPORARY_VOLTYPE;
+      ext_info.purpose = DB_TEMPORARY_DATA_PURPOSE;
+      ext_info.path = NULL;
     }
 
   /* extra validation */

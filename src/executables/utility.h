@@ -1163,6 +1163,8 @@ typedef struct _ha_config
 #define ADDVOL_VOLUME_SIZE_L                    "db-volume-size"
 #define ADDVOL_MAX_WRITESIZE_IN_SEC_S           10707
 #define ADDVOL_MAX_WRITESIZE_IN_SEC_L           "max-writesize-in-sec"
+#define ADDVOL_VOLTYPE_L			"voltype"
+#define ADDVOL_VOLTYPE_S			't'
 
 #if 0
 /* delvoldb option list */

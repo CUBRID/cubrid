@@ -3989,6 +3989,8 @@ sboot_add_volume_extension (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
   ext_info.purpose = (DB_VOLPURPOSE) tmp;
   ptr = or_unpack_int (ptr, &tmp);
   ext_info.overwrite = (bool) tmp;
+  ptr = or_unpack_int (ptr, &tmp);
+  ext_info.voltype = (DB_VOLTYPE) tmp;
 
   volid = xboot_add_volume_extension (thread_p, &ext_info);
 
