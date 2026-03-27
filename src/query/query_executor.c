@@ -25826,6 +25826,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	      *is_scan_needed = true;
 	      continue;
 	    }
+
 	  if (tdes->mvccinfo.snapshot.valid)
 	    {
 	      if (class_cos->count_state != COS_LOADED)
@@ -25837,13 +25838,10 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 		   * snapshot stats.
 		   */
 		  logtb_invalidate_snapshot_data (thread_p);
-		  class_cos = logtb_tran_find_class_cos (thread_p, &ACCESS_SPEC_CLS_OID (spec), true);
-		  if (class_cos)
-		    {
-		      class_cos->count_state = COS_TO_LOAD;
-		    }
 
-		  if (class_cos == NULL || logtb_tran_find_btid_stats (thread_p, &agg_ptr->btid, true) == NULL)
+		  class_cos->count_state = COS_TO_LOAD;
+
+		  if (logtb_tran_find_btid_stats (thread_p, &agg_ptr->btid, true) == NULL)
 		    {
 		      agg_ptr->flag.agg_optimized = false;
 		      *is_scan_needed = true;
