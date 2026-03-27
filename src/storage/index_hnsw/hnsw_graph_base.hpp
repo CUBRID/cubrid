@@ -372,14 +372,6 @@ namespace cubhnsw
       void push_back (slot_id_t slot) noexcept
       {
 	neighbors_count_t n = misaligned_load<neighbors_count_t> (tape_);
-	if (capacity_ > 0 && n >= capacity_)
-	  {
-	    fprintf (stderr,
-		     "HNSW neighbor overflow: count=%u capacity=%zu push=(%d|%d|%d)\n",
-		     n, capacity_, slot.volid, slot.pageid, slot.slotid);
-	    fflush (stderr);
-	    abort ();
-	  }
 	misaligned_store<slot_id_t> (tape_ + shift (n), slot);
 	misaligned_store<neighbors_count_t> (tape_, n + 1);
       }

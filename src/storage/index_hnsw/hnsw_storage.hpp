@@ -54,19 +54,6 @@ namespace cubhnsw
 	    && blk.id.slotid == 1
 	    && blk.size == root_t::get_size ())
 	  {
-	    VPID *page_vpid = pgbuf_get_vpid_ptr (page_ptr);
-	    root_t root_view (blk.data);
-	    fprintf (stderr,
-		     "HNSW root release redo: blk=(%d|%d|%d) page=(%d|%d) size=%zu level=%d entry=(%d|%d|%d)\n",
-		     blk.id.volid, blk.id.pageid, blk.id.slotid,
-		     page_vpid != nullptr ? page_vpid->volid : -1,
-		     page_vpid != nullptr ? page_vpid->pageid : -1,
-		     blk.size,
-		     (int) root_view.get_level (),
-		     root_view.get_entry ().volid,
-		     root_view.get_entry ().pageid,
-		     root_view.get_entry ().slotid);
-	    fflush (stderr);
 	    log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page_ptr,
 				   (PGLENGTH) PAGE_HNSW, DB_PAGESIZE, page_ptr);
 	  }
