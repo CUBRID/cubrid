@@ -40,7 +40,8 @@ namespace cubmethod
     C_STYLE_COMMENT,
     CPP_STYLE_COMMENT,
     SINGLE_QUOTED_STRING,
-    DOUBLE_QUOTED_STRING
+    DOUBLE_QUOTED_STRING,
+    BRACKETED_IDENTIFIER
   } STATEMENT_STATUS;
 
   int get_stmt_type (std::string sql);

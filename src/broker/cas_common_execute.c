@@ -295,7 +295,7 @@ get_num_markers (char *stmt)
 	{
 	  p = consume_tokens (p + 1, SINGLE_QUOTED_STRING);
 	}
-      else if ( /* cas_default_ansi_quotes == false && */ *p == '\"')
+      else if (/* cas_default_ansi_quotes == false && */ *p == '\"')
 	{
 	  p = consume_tokens (p + 1, DOUBLE_QUOTED_STRING);
 	}
