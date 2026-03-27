@@ -2407,6 +2407,13 @@ qdump_print_xasl (xasl_node * xasl_p)
 	  nflag++;
 	}
 
+      if (XASL_IS_FLAGED (xasl_p, XASL_REUSE_DBLINK))
+	{
+	  XASL_CLEAR_FLAG (xasl_p, XASL_REUSE_DBLINK);
+	  fprintf (foutput, "%sXASL_REUSE_DBLINK", (nflag ? "|" : ""));
+	  nflag++;
+	}
+
       if (XASL_IS_FLAGED (xasl_p, XASL_TOP_MOST_XASL))
 	{
 	  XASL_CLEAR_FLAG (xasl_p, XASL_TOP_MOST_XASL);
