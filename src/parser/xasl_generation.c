@@ -4392,6 +4392,13 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	  pt_add_regu_var_to_list (&regu_constant_list, to_add);
 
 	  pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list, regu_constant_list);
+
+	  regu_alloc (to_add);
+	  to_add->value = *regu;
+
+	  pt_add_regu_var_to_list (&scan_regu_constant_list, to_add);
+
+	  pt_aggregate_info_update_scan_regu_list (info, scan_regu_constant_list);
 	}
       *continue_walk = PT_LIST_WALK;
     }
@@ -16372,7 +16379,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       buildlist->g_hkey_size = 0;
       if (buildlist->g_hash_eligible)
 	{
-	  REGU_VARIABLE_LIST regu_list = buildlist->g_hk_scan_regu_list;
+	  REGU_VARIABLE_LIST regu_list = buildlist->g_hk_sort_regu_list;
 	  while (regu_list != NULL)
 	    {
 	      buildlist->g_hkey_size++;

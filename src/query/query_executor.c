@@ -4548,10 +4548,12 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     }
 
   /* build key */
-  rc = qexec_build_agg_hkey (thread_p, xasl_state, proc->g_hk_scan_regu_list, NULL, key);
-  if (rc != NO_ERROR)
+  key->free_values = false;	/* references precreated DB_VALUES */
+  for (key->val_count = 0; key->val_count < proc->g_hkey_size; key->val_count++)
     {
-      return rc;
+      assert (!pr_is_set_type (DB_VALUE_DOMAIN_TYPE (tpldesc->f_valp[key->val_count])));
+
+      key->values[key->val_count] = tpldesc->f_valp[key->val_count];
     }
 
   /* probe hash table */
@@ -4628,7 +4630,19 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       context->tuple_count++;
 
       /* fetch values */
-      rc = fetch_val_list (thread_p, proc->g_scan_regu_list, &xasl_state->vd, NULL, NULL, tplrec->tpl, true);
+      int i;
+      REGU_VARIABLE_LIST reg_var_p = proc->g_scan_regu_list;
+      for (i = 0; i < xasl->outptr_list->valptr_cnt && reg_var_p != NULL; i++, reg_var_p = reg_var_p->next)
+	{
+	  assert (!pr_is_set_type (DB_VALUE_DOMAIN_TYPE (tpldesc->f_valp[i])));
+
+	  if (DB_NEED_CLEAR (reg_var_p->value.vfetch_to))
+	    {
+	      pr_clear_value (reg_var_p->value.vfetch_to);
+	    }
+
+	  pr_share_value (tpldesc->f_valp[i], reg_var_p->value.vfetch_to);
+	}
 
       /* eval aggregate functions */
       if (rc == NO_ERROR)
