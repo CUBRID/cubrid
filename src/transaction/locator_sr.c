@@ -14031,8 +14031,6 @@ locator_lob_make_dir_path (char *lob_path, const HFID * hfid, int attrid)
 
   if (ret < 0 || ret >= PATH_MAX)
     {
-      /* impossible case */
-      assert (false);
       return ER_FAILED;
     }
 

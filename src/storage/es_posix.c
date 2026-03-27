@@ -721,10 +721,7 @@ retry:
   n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s", prefix, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
   if (n < 0 || n >= PATH_MAX - 1)
     {
-      /* impossible case */
       close (rd_fd);
-
-      assert (false);
       return ER_ES_INVALID_PATH;
     }
 
@@ -744,8 +741,6 @@ retry:
 	  else
 	    {
 	      close (rd_fd);
-
-	      assert (false);
 	      return ER_ES_GENERAL;
 	    }
 
@@ -849,8 +844,6 @@ xes_posix_move_file_with_prefix (const char *src_path, const char *metaname, con
   ret = snprintf (new_path, PATH_MAX, "%s%c%s%c%s", prefix, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
   if (ret < 0 || ret >= PATH_MAX)
     {
-      /* impossible case */
-      assert (false);
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", new_path);
       return ER_ES_INVALID_PATH;
     }
@@ -863,8 +856,6 @@ xes_posix_move_file_with_prefix (const char *src_path, const char *metaname, con
     }
   else
     {
-      /* impossible case */
-      assert (false);
       return ER_ES_GENERAL;
     }
 
