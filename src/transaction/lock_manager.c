@@ -1238,6 +1238,10 @@ lock_make_runtime_config (const LK_CONFIG * config)
     }
 
   runtime_config.max_twfg_edge_count = runtime_config.num_trans * runtime_config.num_trans;
+  if (runtime_config.max_twfg_edge_count < runtime_config.mid_twfg_edge_count)
+    {
+      runtime_config.max_twfg_edge_count = runtime_config.mid_twfg_edge_count + 1;
+    }
   runtime_config.min_object_locks = runtime_config.num_trans * 300;
 
   runtime_config.object_res_block_size =
