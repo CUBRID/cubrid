@@ -8244,7 +8244,7 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
   int *segs_arr = NULL;
   int segs_arr_cap = 0;
   int nsegs;
-  bool eqclass_has_outer_join;
+  bool eqclass_has_outer_join, already_has_term;
 
   for (i = 0; i < env->neqclasses; i++)
     {
@@ -8311,17 +8311,30 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 		}
 
 	      eqclass_has_outer_join = false;
+	      already_has_term = false;
+
 	      for (e = 0; e < env->nedges; e++)
 		{
 		  term = QO_ENV_TERM (env, e);
+
 		  if (QO_TERM_EQCLASS (term) == eqclass && IS_OUTER_JOIN_TYPE (QO_TERM_JOIN_TYPE (term)))
 		    {
 		      eqclass_has_outer_join = true;
+		      break;
+		    }
+
+		  if ((QO_TERM_HEAD (term) == head_node && QO_TERM_TAIL (term) == tail_node)
+		      || (QO_TERM_HEAD (term) == tail_node && QO_TERM_TAIL (term) == head_node))
+		    {
+		      already_has_term = true;
+		      break;
 		    }
 		}
 
-	      if (eqclass_has_outer_join)
-		continue;
+	      if (eqclass_has_outer_join || already_has_term)
+		{
+		  continue;
+		}
 
 	      if (*count_p >= *cap_p)
 		{
