@@ -81,8 +81,8 @@
 #define MJ_CPU_OVERHEAD_FACTOR 20
 #define HJ_BUILD_CPU_OVERHEAD_FACTOR 40
 #define HJ_PROBE_CPU_OVERHEAD_FACTOR 20
-#define HJ_MEM_ALLOC_CONSTANT 1000	/* Heuristic offset to prefer NL join over hash join:
-					   ~1000 cost observed for NL with ~2000 rows,
+#define HJ_MEM_ALLOC_CONSTANT 1500	/* Heuristic offset to prefer NL join over hash join:
+					   ~1500 cost observed for NL with ~3000 rows,
 					   preventing hash join selection for small inputs */
 #define HJ_FILE_IO_WEIGHT 0.5	/* Unused */
 #define ISCAN_IO_HIT_RATIO 0.5
