@@ -571,6 +571,11 @@ session_control_daemon_execute (cubthread::entry & thread_ref)
 void
 session_control_daemon_init ()
 {
+  if (PRM_TEST_DISABLE_ALL_DAEMONS)
+    {
+      return;
+    }
+
   assert (session_Control_daemon == NULL);
 
   cubthread::looper looper = cubthread::looper (std::chrono::seconds (60));

@@ -260,8 +260,15 @@ namespace cubpl
   server_manager::start ()
   {
 #if defined (SERVER_MODE)
-    cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (1000));
-    m_monitor_helper_daemon = cubthread::get_manager ()->create_daemon (looper, m_server_monitor_task, "pl_monitor");
+    if (PRM_TEST_DISABLE_ALL_DAEMONS)
+      {
+	m_server_monitor_task->do_monitor ();
+      }
+    else
+      {
+	cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (1000));
+	m_monitor_helper_daemon = cubthread::get_manager ()->create_daemon (looper, m_server_monitor_task, "pl_monitor");
+      }
 #else
     m_server_monitor_task->do_monitor ();
 #endif
@@ -693,7 +700,7 @@ static cubpl::server_manager *pl_server_manager = nullptr;
 int
 pl_server_init (const char *db_name)
 {
-  if (pl_server_manager != nullptr || prm_get_bool_value (PRM_ID_STORED_PROCEDURE) == false)
+  if (PRM_TEST_DISABLE_ALL_DAEMONS || pl_server_manager != nullptr || prm_get_bool_value (PRM_ID_STORED_PROCEDURE) == false)
     {
       return NO_ERROR;
     }

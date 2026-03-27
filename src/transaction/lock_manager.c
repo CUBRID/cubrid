@@ -5807,6 +5807,11 @@ deadlock_detect_task_execute (cubthread::entry & thread_ref)
 void
 lock_deadlock_detect_daemon_init ()
 {
+  if (PRM_TEST_DISABLE_ALL_DAEMONS)
+    {
+      return;
+    }
+
   assert (lock_Deadlock_detect_daemon == NULL);
 
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (100));

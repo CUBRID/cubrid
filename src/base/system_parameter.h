@@ -36,6 +36,9 @@
 #include "porting_inline.hpp"
 #include "chartype.h"
 
+/* Temporary test-build switch for context-switch cost measurements. */
+#define PRM_TEST_DISABLE_ALL_DAEMONS 1
+
 typedef enum
 {
   PRM_ERR_NO_ERROR = NO_ERROR,

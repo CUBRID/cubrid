@@ -1556,7 +1556,7 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 100}},
    {false, {.i = 100}},
    {false, {.i = CSS_MAX_CLIENT_COUNT}},
-   {false, {.i = 10}},
+   {false, {.i = 1}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
