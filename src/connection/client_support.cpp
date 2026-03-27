@@ -174,7 +174,7 @@ client_support::css_client_init (int sockid, const char *server_name, const char
       if (map == NULL)
 	{
 	  css_free_conn (conn);
-	  error = ER_FAILED;
+	  error = ER_CSS_ALLOC;
 	}
 #if defined(MULTI_CONN_TO_A_SERVER)
       else
@@ -189,7 +189,7 @@ client_support::css_client_init (int sockid, const char *server_name, const char
       error = er_errid ();
       if (error == NO_ERROR)
 	{
-	  error = ER_FAILED;
+	  error = ER_NET_CANT_CONNECT_SERVER;
 	}
     }
 

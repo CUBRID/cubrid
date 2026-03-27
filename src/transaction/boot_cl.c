@@ -1705,6 +1705,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
 	case ERR_CSS_TCP_CONNECT_TIMEDOUT:
 	case ERR_CSS_ERROR_FROM_SERVER:
 	case ER_CSS_CLIENTS_EXCEEDED:
+	case ER_CSS_ALLOC:
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_BO_CONNECT_FAILED, 2, db->name, hostlist[n]);
 	  /* try to connect to next host */
 	  er_log_debug (ARG_FILE_LINE, "error %d. try to connect to next host\n", error);
