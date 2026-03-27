@@ -28432,6 +28432,10 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
       break;
 
     case QO_PLANTYPE_SORT:
+      if (qo_plan->plan_un.sort.subplan == NULL)
+	{
+	  return 0;
+	}
       return pt_count_analytic_covered_sort_list (parser, qo_plan->plan_un.sort.subplan, eval, info);
 
     case QO_PLANTYPE_JOIN:
