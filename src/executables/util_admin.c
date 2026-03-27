@@ -200,11 +200,11 @@ static UTIL_ARG_MAP ua_Addvol_Option_Map[] = {
   {ADDVOL_VOLUME_SIZE_S, {ARG_STRING}, {0}},
   {ADDVOL_FILE_PATH_S, {ARG_STRING}, {0}},
   {ADDVOL_COMMENT_S, {ARG_STRING}, {0}},
-  {ADDVOL_PURPOSE_S, {ARG_STRING}, {(void *) "generic"}},
+  {ADDVOL_PURPOSE_S, {ARG_STRING}, {0}},
   {ADDVOL_SA_MODE_S, {ARG_BOOLEAN}, {0}},
   {ADDVOL_CS_MODE_S, {ARG_BOOLEAN}, {0}},
   {ADDVOL_MAX_WRITESIZE_IN_SEC_S, {ARG_STRING}, {0}},
-  {ADDVOL_VOLTYPE_S, {ARG_STRING}, {(void *) "perm"}},
+  {ADDVOL_VOLTYPE_S, {ARG_STRING}, {0}},
   {0, {0}, {0}}
 };
 

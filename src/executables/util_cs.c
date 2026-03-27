@@ -433,12 +433,9 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
   volext_string_purpose = utility_get_option_string_value (arg_map, ADDVOL_PURPOSE_S, 0);
   if (volext_string_purpose == NULL)
     {
-      volext_string_purpose = "generic";
+      ext_info.purpose = DB_PERMANENT_DATA_PURPOSE;
     }
-
-  ext_info.purpose = DB_PERMANENT_DATA_PURPOSE;
-
-  if (strcasecmp (volext_string_purpose, "data") == 0)
+  else if (strcasecmp (volext_string_purpose, "data") == 0)
     {
       ext_info.purpose = DB_PERMANENT_DATA_PURPOSE;
     }
@@ -471,22 +468,45 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
     }
 
   volext_string_voltype = utility_get_option_string_value (arg_map, ADDVOL_VOLTYPE_S, 0);
-  if (volext_string_voltype == NULL)
+  if (volext_string_voltype == NULL || strcasecmp (volext_string_voltype, "perm") == 0)
     {
-      volext_string_voltype = "perm";
+      ext_info.voltype = DB_PERMANENT_VOLTYPE;
     }
-
-  ext_info.voltype = DB_PERMANENT_VOLTYPE;
-  if (strcasecmp (volext_string_voltype, "temp") == 0)
+  else if (strcasecmp (volext_string_voltype, "temp") == 0)
     {
       if (sa_mode)
 	{
-	  fprintf (stderr, "-t (--voltype) option is not supported in standalone mode.\n");
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ADDVOLDB, ADDVOLDB_VOLTYPE_NOT_SUPPORT_SAMODE));
 	  goto error_exit;
 	}
+
+      if (volext_string_purpose != NULL && ext_info.purpose != DB_TEMPORARY_DATA_PURPOSE)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ADDVOLDB,
+				  ADDVOLDB_VOLTYPE_MUSTBE_TEMP_PURPOSE));
+	  goto error_exit;
+	}
+      else
+	{
+	  ext_info.purpose = DB_TEMPORARY_DATA_PURPOSE;
+	}
+
+      if (ext_info.name != NULL || ext_info.path != NULL)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ADDVOLDB, ADDVOLDB_VOLTYPE_NOT_USED_PATH_NAME));
+	  goto error_exit;
+	}
+
       ext_info.voltype = DB_TEMPORARY_VOLTYPE;
-      ext_info.purpose = DB_TEMPORARY_DATA_PURPOSE;
-      ext_info.path = NULL;
+    }
+  else
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ADDVOLDB, ADDVOLDB_MSG_BAD_VOLTYPE),
+			     volext_string_voltype);
+      goto error_exit;
     }
 
   /* extra validation */

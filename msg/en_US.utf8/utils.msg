@@ -683,6 +683,10 @@ $set 17 MSGCAT_UTIL_SET_ADDVOLDB
 20 Wrong value %1$d for npages\n
 21 Wrong value '%1$s' for volume storage purpose.\n
 22 WARNING: --max-writesize-in-sec option is ignored in stand-alone mode execution.\n
+23 Wrong value '%1$s' for volume type.\n
+24 -t is not supported in SA mode.\n
+25 -t can only use with '-p TEMP'.\n
+26 -t is cannot be used with -F or -n options.\n
 60 \
 addvoldb: Add a volume-file for the database.\n\
 usage: %1$s addvoldb [OPTION] database-name\n\
@@ -698,6 +702,9 @@ valid options:\n\
                                            INDEX - only for indices\n\
                                            TEMP - only for temporary\n\
                                            GENERIC - for all purposes\n\
+  -t, --voltype=VOLTYPE            VOLTYPE for adding volume type; allowed:\n\
+                                           PERM - permanent volume type\n\
+                                           TEMP - temporary volume type\n\
   -S, --SA-mode                    stand-alone mode execution\n\
   -C, --CS-mode                    client-server mode execution\n
 
