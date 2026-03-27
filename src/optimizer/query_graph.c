@@ -8241,7 +8241,6 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
   QO_SEGMENT *seg1, *seg2, *head_seg, *tail_seg;
   QO_NODE *node1, *node2, *head_node, *tail_node;
   QO_TERM *term;
-  bool already_has_term;
   int *segs_arr = NULL;
   int segs_arr_cap = 0;
   int nsegs;
@@ -8542,13 +8541,21 @@ qo_insert_transitive_join_terms (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC * specs, 
       QO_TERM_SET_FLAG (term, QO_TERM_EQUAL_OP);
       QO_TERM_SET_FLAG (term, QO_TERM_SINGLE_PRED);
 
-      eq_node->info.expr.arg1 = parser_copy_tree_list (env->parser, QO_SEG_PT_NODE (head_seg));
+      if (env->parser)
+	{
+	  PT_NODE *eq_node = parser_new_node (env->parser, PT_EXPR);
+	  if (eq_node != NULL)
+	    {
+	      eq_node->info.expr.op = PT_EQ;
+	      eq_node->info.expr.arg1 = parser_copy_tree_list (env->parser, QO_SEG_PT_NODE (head_seg));
 	      eq_node->info.expr.arg2 = parser_copy_tree_list (env->parser, QO_SEG_PT_NODE (tail_seg));
 	      if (eq_node->info.expr.arg1 == NULL || eq_node->info.expr.arg2 == NULL)
 		{
 		  parser_free_tree (env->parser, eq_node);
 		  eq_node = NULL;
 		}
+	      else
+		{
 		  eq_node->type_enum = PT_TYPE_LOGICAL;
 		  QO_TERM_PT_EXPR (term) = eq_node;
 		  QO_TERM_SET_FLAG (term, QO_TERM_COPY_PT_EXPR);
