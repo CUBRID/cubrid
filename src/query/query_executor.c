@@ -25830,9 +25830,31 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	    {
 	      if (class_cos->count_state != COS_LOADED)
 		{
-		  agg_ptr->flag.agg_optimized = false;
-		  *is_scan_needed = true;
-		  continue;
+		  /* 
+		   * An early snapshot (e.g. qexec_execute_query for RR) can load stats for only the classes that
+		   * were COS_TO_LOAD then; UNION's second branch may still be NOT_LOADED on a later run. Under RC,
+		   * invalidate and retake snapshot after marking the full statement tree — still atomic, no fresher-than
+		   * snapshot stats.
+		   */
+		  logtb_invalidate_snapshot_data (thread_p);
+		  class_cos = logtb_tran_find_class_cos (thread_p, &ACCESS_SPEC_CLS_OID (spec), true);
+		  if (class_cos)
+		    {
+		      class_cos->count_state = COS_TO_LOAD;
+		    }
+
+		  if (class_cos == NULL || logtb_tran_find_btid_stats (thread_p, &agg_ptr->btid, true) == NULL)
+		    {
+		      agg_ptr->flag.agg_optimized = false;
+		      *is_scan_needed = true;
+		      continue;
+		    }
+
+		  if (logtb_get_mvcc_snapshot (thread_p) == NULL)
+		    {
+		      error = er_errid ();
+		      return (error == NO_ERROR ? ER_FAILED : error);
+		    }
 		}
 	    }
 	  else
@@ -25843,6 +25865,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 		  *is_scan_needed = true;
 		  continue;
 		}
+
 	      class_cos->count_state = COS_TO_LOAD;
 
 	      if (logtb_get_mvcc_snapshot (thread_p) == NULL)
