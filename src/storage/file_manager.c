@@ -12017,12 +12017,11 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
 	}
     }
 
-  j = 0;
   for (i = 0; i < ftab_collector.nsects; i++)
     {
       FILE_PARTIAL_SECTOR *ftab_sec = &ftab_collector.partsect_ftab[i];
       FILE_PARTIAL_SECTOR *data_sec;
-      for (; j < collector_out->nsects; j++)
+      for (j = 0; j < collector_out->nsects; j++)
 	{
 	  data_sec = &collector_out->partsect_ftab[j];
 	  if (VSID_EQ (&ftab_sec->vsid, &data_sec->vsid))
