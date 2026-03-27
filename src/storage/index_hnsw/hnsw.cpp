@@ -442,7 +442,8 @@ hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, 
   assert (vf != NULL && vf->dim == index->get_dimension());
 
   int ef_search = prm_get_integer_value (PRM_ID_VECTOR_INDEX_EF_SEARCH);
-  return index->search (thread_p, vf->float_array, k, ef_search, rec_oids, distances);
+  std::vector<float> query_copy (vf->float_array, vf->float_array + vf->dim);
+  return index->search (thread_p, query_copy.data (), k, ef_search, rec_oids, distances);
 }
 
 // =====================================================================

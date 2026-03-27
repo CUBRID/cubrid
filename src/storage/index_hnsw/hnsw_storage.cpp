@@ -18,6 +18,7 @@
 
 #include "hnsw_storage.hpp"
 
+#include "error_manager.h"
 #include "file_manager.h" // FILE_DESCRIPTORS
 #include "slotted_page.h"
 
@@ -155,6 +156,14 @@ namespace cubhnsw
   pinned_t
   storage::get_node_by_slot_id (algo_context_t &context, const slot_id_t &id, const lock_mode &mode)
   {
+    if (OID_ISNULL (&id) || id.volid < 0 || id.pageid <= 0 || id.slotid < 0 || id.pageid > 100000000)
+      {
+	er_print_callstack (ARG_FILE_LINE,
+			    "HNSW get_node_by_slot_id invalid slot: (%d|%d|%d) level=%d\n",
+			    id.volid, id.pageid, id.slotid, (int) context.m_level);
+	abort ();
+      }
+
     VPID vpid = { id.pageid, id.volid };
 
     PGBUF_LATCH_MODE pgbuf_mode = PGBUF_LATCH_READ;

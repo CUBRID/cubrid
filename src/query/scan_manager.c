@@ -6484,6 +6484,13 @@ scan_next_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (visid->curr_oidno < visid->oid_cnt)
 	{
 	  scan_id->qualification = QPROC_QUALIFIED;
+	  fprintf (stderr,
+		   "VECTOR_SCAN heap fetch[%d/%d]: oid=(%d|%d|%d)\n",
+		   visid->curr_oidno, visid->oid_cnt,
+		   visid->oidp[visid->curr_oidno].volid,
+		   visid->oidp[visid->curr_oidno].pageid,
+		   visid->oidp[visid->curr_oidno].slotid);
+	  fflush (stderr);
 
 	  SCAN_CODE sp_scan =
 	    heap_get_visible_version (thread_p, &visid->oidp[visid->curr_oidno], NULL, &recdes, &visid->scan_cache,

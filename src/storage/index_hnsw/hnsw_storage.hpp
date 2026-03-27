@@ -21,6 +21,7 @@
 #include "hnsw_api.hpp"
 #include "hnsw_graph_base.hpp"
 #include "hnsw_algo_common.hpp"
+#include "log_manager.h"
 
 namespace cubhnsw
 {
@@ -49,6 +50,26 @@ namespace cubhnsw
 
     if (blk.mode == lock_mode::exclusive)
       {
+	if (pgbuf_get_page_ptype (thread_p, page_ptr) == PAGE_HNSW
+	    && blk.id.slotid == 1
+	    && blk.size == root_t::get_size ())
+	  {
+	    VPID *page_vpid = pgbuf_get_vpid_ptr (page_ptr);
+	    root_t root_view (blk.data);
+	    fprintf (stderr,
+		     "HNSW root release redo: blk=(%d|%d|%d) page=(%d|%d) size=%zu level=%d entry=(%d|%d|%d)\n",
+		     blk.id.volid, blk.id.pageid, blk.id.slotid,
+		     page_vpid != nullptr ? page_vpid->volid : -1,
+		     page_vpid != nullptr ? page_vpid->pageid : -1,
+		     blk.size,
+		     (int) root_view.get_level (),
+		     root_view.get_entry ().volid,
+		     root_view.get_entry ().pageid,
+		     root_view.get_entry ().slotid);
+	    fflush (stderr);
+	    log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page_ptr,
+				   (PGLENGTH) PAGE_HNSW, DB_PAGESIZE, page_ptr);
+	  }
 	pgbuf_set_dirty (thread_p, page_ptr, FREE);
       }
     else
@@ -144,6 +165,11 @@ namespace cubhnsw
 	return m_valid;
       }
 
+      PAGE_PTR page_ptr () const noexcept
+      {
+	return m_page_ptr;
+      }
+
     private:
       void invalidate_ () noexcept
       {
@@ -159,6 +185,24 @@ namespace cubhnsw
       data_t m_blk{};
       bool m_valid{false};
   };
+
+  inline void log_hnsw_root_redo (cubthread::entry *thread_p, const pinned_block &blk) noexcept
+  {
+    if (!blk || thread_p == nullptr || blk.page_ptr () == nullptr)
+      {
+	return;
+      }
+
+    const auto &data = *blk;
+    if (pgbuf_get_page_ptype (thread_p, blk.page_ptr ()) == PAGE_HNSW
+	&& data.id.slotid == 1
+	&& data.size == root_t::get_size ())
+      {
+	log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, blk.page_ptr (),
+			       (PGLENGTH) PAGE_HNSW, DB_PAGESIZE, blk.page_ptr ());
+	pgbuf_set_dirty (thread_p, blk.page_ptr (), DONT_FREE);
+      }
+  }
 
   struct page_guard
   {

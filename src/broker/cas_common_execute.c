@@ -70,6 +70,7 @@ static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_DATETIMETZ,	/* 38 */
   CCI_U_TYPE_DATETIMELTZ,	/* 39 */
   CCI_U_TYPE_JSON,		/* 40 */
+  CCI_U_TYPE_VECTOR,		/* 41 */
 };
 
 static CAS_ERROR_LOG_HANDLE_CONTEXT *cas_EHCTX = NULL;

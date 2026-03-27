@@ -32,6 +32,7 @@
 #include "hnsw_storage.hpp" // storage_t
 #include "vector_distance.hpp"
 #include "perf_monitor.h"
+#include "error_manager.h"
 #include "system_parameter.h"
 
 #define HNSW_ALGO_DEBUG 0
@@ -39,6 +40,16 @@
 
 namespace cubhnsw
 {
+  static inline bool
+  hnsw_is_suspicious_slot (const slot_id_t &slot) noexcept
+  {
+    return OID_ISNULL (&slot)
+	   || slot.volid < 0
+	   || slot.pageid <= 0
+	   || slot.slotid < 0
+	   || slot.pageid > 100000000;
+  }
+
   /* this class is modified version of the usearch implementation */
   // =====================================================================
   // algo class definition
@@ -119,8 +130,9 @@ namespace cubhnsw
 	context.m_stats.on_neighbors_page_fix (context.m_is_perf_tracking, level);
 
 	node_type node = node_type (node_blk->data);
+	std::size_t layer_connectivity = get_layer_connectivity (level, m_connectivity);
 	neighbors_ref_type neighbors =
-		neighbors_ref_type (node.neighbors_tape() + m_storage->node_neighbors_offset_ (level));
+		neighbors_ref_type (node.neighbors_tape() + m_storage->node_neighbors_offset_ (level), layer_connectivity);
 
 	HNSW_ALGO_PRINT ("[node] node: %s\n", node.dump().c_str());
 	HNSW_ALGO_PRINT ("[neighbors of level %d] neighbors: %s\n", (int)level, neighbors.dump().c_str());
@@ -259,6 +271,7 @@ namespace cubhnsw
 	  //root_type promoted_root_node = root_type (promoted_root.data());
 	  root_node.set_entry (new_slot);
 	  root_node.set_level (new_target_level);
+	  log_hnsw_root_redo (thread_p, root_block);
 	  m_storage->set_empty (false);
 	  m_graph_structure_profile.on_node_added (new_target_level);
 	  return result;
@@ -351,6 +364,7 @@ namespace cubhnsw
 	}
 	root_node.set_entry (new_slot);
 	root_node.set_level (new_target_level);
+	log_hnsw_root_redo (thread_p, root_block);
 	m_storage->set_empty (false);
 
 	context.m_stats.on_entrypoint_updated (context.m_is_perf_tracking);
@@ -393,12 +407,20 @@ namespace cubhnsw
 
     slot_id_t entry_slot;
     level_t root_level;
-    {
-      pinned_t root_block = m_storage->get_root (context, lock_mode::shared);
-      root_type root_node = root_type (root_block->data);
-      entry_slot = root_node.get_entry();
-      root_level = root_node.get_level();
-    }
+	    {
+	      pinned_t root_block = m_storage->get_root (context, lock_mode::shared);
+	      root_type root_node = root_type (root_block->data);
+	      entry_slot = root_node.get_entry();
+	      root_level = root_node.get_level();
+	    }
+	    if (hnsw_is_suspicious_slot (entry_slot))
+	      {
+		er_print_callstack (ARG_FILE_LINE,
+				    "HNSW suspicious root entry: level=%d entry=(%d|%d|%d)\n",
+				    (int) root_level,
+				    entry_slot.volid, entry_slot.pageid, entry_slot.slotid);
+		abort ();
+	      }
 
     if (m_metric == vector_distance_metric_t::COSINE)
       {
@@ -411,11 +433,19 @@ namespace cubhnsw
     slot_id_t closest_slot;
 
     context.m_level = root_level;
-    if (seek_down_ (context, query, entry_slot, /* target level */ 0, closest_slot) != NO_ERROR)
-      {
-	// TODO: error handling
-	assert (false);
-      }
+	    if (seek_down_ (context, query, entry_slot, /* target level */ 0, closest_slot) != NO_ERROR)
+	      {
+		// TODO: error handling
+		assert (false);
+	      }
+	    if (hnsw_is_suspicious_slot (closest_slot))
+	      {
+		er_print_callstack (ARG_FILE_LINE,
+				    "HNSW suspicious closest slot after seek_down: root_level=%d closest=(%d|%d|%d)\n",
+				    (int) root_level,
+				    closest_slot.volid, closest_slot.pageid, closest_slot.slotid);
+		abort ();
+	      }
 
     // search from base level (0)
     assert (context.m_level == 0);
@@ -429,13 +459,50 @@ namespace cubhnsw
     // not to collect stats after seeking on base layer (0-level)
     context.m_level--;
 
-    top.sort_ascending();
-    top.shrink (k);
-    result.results.assign (top.data(), top.data() + top.size());
-    for (std::size_t i = 0; i < top.size (); ++i)
-      {
-	pinned_t node_blk = m_storage->get_node_by_slot_id (context, result.results[i].slot, lock_mode::shared);
-	result.oids.push_back (node_type (node_blk->data).get_key());
+	    top.sort_ascending();
+	    top.shrink (k);
+	    result.results.assign (top.data(), top.data() + top.size());
+	    for (std::size_t i = 0; i < top.size (); ++i)
+	      {
+		if (hnsw_is_suspicious_slot (result.results[i].slot))
+		  {
+		    er_print_callstack (ARG_FILE_LINE,
+					"HNSW suspicious top result: idx=%zu size=%zu slot=(%d|%d|%d) dist=%f\n",
+					i, top.size (),
+					result.results[i].slot.volid, result.results[i].slot.pageid, result.results[i].slot.slotid,
+					result.results[i].distance);
+		    abort ();
+		  }
+		pinned_t node_blk = m_storage->get_node_by_slot_id (context, result.results[i].slot, lock_mode::shared);
+		OID key = node_type (node_blk->data).get_key();
+		bool slot_oid_valid = !OID_ISNULL (&result.results[i].slot)
+		  && result.results[i].slot.volid >= 0
+		  && result.results[i].slot.pageid > 0
+		  && result.results[i].slot.slotid >= 0;
+		bool key_oid_valid = !OID_ISNULL (&key)
+		  && key.volid >= 0
+		  && key.pageid > 0
+		  && key.slotid >= 0;
+		if (key.pageid > 100000000)
+		  {
+		    er_print_callstack (ARG_FILE_LINE,
+					"HNSW suspicious result key: idx=%zu size=%zu slot=(%d|%d|%d) key=(%d|%d|%d) dist=%f\n",
+					i, top.size (),
+					result.results[i].slot.volid, result.results[i].slot.pageid, result.results[i].slot.slotid,
+					key.volid, key.pageid, key.slotid,
+					result.results[i].distance);
+		    abort ();
+		  }
+		fprintf (stderr,
+			 "HNSW search result[%zu]: slot=(%d|%d|%d) slot_valid=%d key=(%d|%d|%d) key_valid=%d dist=%f\n",
+		 i,
+		 result.results[i].slot.volid, result.results[i].slot.pageid, result.results[i].slot.slotid,
+		 slot_oid_valid ? 1 : 0,
+		 key.volid, key.pageid, key.slotid,
+		 key_oid_valid ? 1 : 0,
+		 result.results[i].distance);
+	fflush (stderr);
+	result.oids.push_back (key);
       }
 
     context.collect_perf_stats();
@@ -514,11 +581,21 @@ namespace cubhnsw
 	std::vector<slot_id_t> neigh;
 	neigh.reserve (candidate_neighbors.size ());
 
-	for (std::size_t i = 0; i < candidate_neighbors.size (); ++i)
-	  {
-	    slot_id_t successor_slot = candidate_neighbors.at (i);
-	    neigh.push_back (successor_slot);
-	    stats.on_neighbor_scan ();
+		for (std::size_t i = 0; i < candidate_neighbors.size (); ++i)
+		  {
+		    slot_id_t successor_slot = candidate_neighbors.at (i);
+		    if (hnsw_is_suspicious_slot (successor_slot))
+		      {
+			er_print_callstack (ARG_FILE_LINE,
+					    "HNSW suspicious successor: level=%d parent=(%d|%d|%d) idx=%zu size=%zu child=(%d|%d|%d)\n",
+					    (int) level,
+					    candidate_slot.volid, candidate_slot.pageid, candidate_slot.slotid,
+					    i, candidate_neighbors.size (),
+					    successor_slot.volid, successor_slot.pageid, successor_slot.slotid);
+			abort ();
+		      }
+		    neigh.push_back (successor_slot);
+		    stats.on_neighbor_scan ();
 
 	    auto [it, inserted] = visits.insert (successor_slot);
 	    if (!inserted)
@@ -600,11 +677,21 @@ namespace cubhnsw
 		std::vector<slot_id_t> neigh;
 		neigh.reserve (neighbors.size ());
 
-		for (std::size_t i = 0; i < neighbors.size (); ++i)
-		  {
-		    slot_id_t neighbor_id = neighbors.at (i);
-		    neigh.push_back (neighbor_id);
-		    stats.on_neighbor_scan ();
+			for (std::size_t i = 0; i < neighbors.size (); ++i)
+			  {
+			    slot_id_t neighbor_id = neighbors.at (i);
+			    if (hnsw_is_suspicious_slot (neighbor_id))
+			      {
+				er_print_callstack (ARG_FILE_LINE,
+						    "HNSW suspicious downhill neighbor: level=%d parent=(%d|%d|%d) idx=%zu size=%zu child=(%d|%d|%d)\n",
+						    (int) level,
+						    original_closest_slot.volid, original_closest_slot.pageid, original_closest_slot.slotid,
+						    i, neighbors.size (),
+						    neighbor_id.volid, neighbor_id.pageid, neighbor_id.slotid);
+				abort ();
+			      }
+			    neigh.push_back (neighbor_id);
+			    stats.on_neighbor_scan ();
 
 		    distance_t candidate_dist = compute_distance_from_query_ (context, query, neighbor_id);
 		    if (candidate_dist < closest_dist)

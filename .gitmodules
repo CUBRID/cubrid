@@ -8,5 +8,5 @@
 	branch = develop
 [submodule "cubrid-cci"]
 	path = cubrid-cci
-	url = https://github.com/CUBRID/cubrid-cci.git
-	branch = develop
+	url = https://github.com/hgryoo/cubrid-cci.git
+	branch = cubvec/m1-nv
