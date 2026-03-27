@@ -220,6 +220,9 @@ struct qo_plan
   bool has_sort_limit;		/* true if this plan or one if its subplans is a SORT-LIMIT plan */
   bool use_iscan_descending;
   bool need_final_sort;
+
+  /* Guessed result cardinality for NL join when LIMIT is present (3+ tables); used for cost and dump */
+  double limit_nljoin_guessed_card;
 };
 
 #define qo_plan_add_ref(p)	((p->refcount)++, (p))
@@ -236,6 +239,9 @@ struct qo_plan
 
 #define NPLANS		4	/* Maximum number of plans to keep in a PlanVec */
 #define QO_PLAN_HAS_LIMIT(plan) (plan && plan->info && plan->info->env && \
+        PT_IS_SELECT (plan->info->env->pt_tree) && \
+        ( plan->info->env->pt_tree->info.query.limit != NULL || plan->info->env->pt_tree->info.query.orderby_for != NULL))
+#define QO_PLAN_HAS_CONSTANT_LIMIT(plan) (plan && plan->info && plan->info->env && \
 				  !DB_IS_NULL (&QO_ENV_LIMIT_VALUE (plan->info->env)) && \
                                   db_get_bigint (&QO_ENV_LIMIT_VALUE (plan->info->env)) > 0)
 
@@ -303,6 +309,7 @@ struct qo_info
   double scan_rows;		/* Number of rows required for scanning */
   double total_rows;		/* Number of rows excluding search conditions */
   double group_rows;		/* Number of rows expected after grouping */
+  double hit_prob;		/* Hit probability for NL join: B's hit_prob = NDV(B.key)/NDV(A.key); used like fanout in cost */
 
   /*
    * One plan for each equivalence class, in each case the best we have
@@ -410,6 +417,9 @@ struct qo_planner
    * control flow takes an unexpected longjmp.
    */
   int cleanup_needed;
+
+  /* Cached result of qo_can_apply_limit_card(env); set once in qo_alloc_planner */
+  bool can_apply_limit_card;
 };
 
 extern QO_PLAN *qo_planner_search (QO_ENV *);

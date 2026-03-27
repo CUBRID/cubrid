@@ -86,6 +86,11 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+
+#if !defined (SERVER_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) */
+
 #define CSS_WAIT_COUNT 5	/* # of retry to connect to master */
 #define CSS_GOING_DOWN_IMMEDIATELY "Server going down immediately"
 
@@ -569,7 +574,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
   // create request worker pool
   css_Server_request_worker_pool =
-    cubthread::get_manager ()->create_worker_pool (task_worker, MAX_TASK_COUNT, "transaction workers", NULL,
+    cubthread::get_manager ()->create_worker_pool (task_worker, MAX_TASK_COUNT, "transaction", NULL,
 						   task_group,
 						   cubthread::is_logging_configured
 						   (cubthread::LOG_WORKER_POOL_TRAN_WORKERS),
@@ -1267,14 +1272,8 @@ css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
   header->type = htonl (ABORT_TYPE);
   header->request_id = htonl (CSS_RID_FROM_EID (eid));
   header->transaction_id = htonl (conn->get_tran_index ());
-  /**
-   * FIXME!!
-   * make NET_HEADER_FLAG_INVALIDATE_SNAPSHOT be enabled always due to CBRD-24157
-   *
-   * flags was mis-readed at css_read_header() and fixed at CBRD-24118.
-   * But The side effects described in CBRD-24157 occurred.
-   */
-  if (true) /* if (conn->invalidate_snapshot) */
+
+  if (conn->invalidate_snapshot)
     {
       flags |= NET_HEADER_FLAG_INVALIDATE_SNAPSHOT;
     }

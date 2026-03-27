@@ -63,7 +63,7 @@ namespace parallel_query
       assert (m_worker_pool == nullptr);
       m_worker_pool = cubthread::get_manager()->create_worker_pool (
 			      pool_size, task_max_count,
-			      "parallel_query_worker_pool", NULL, 1, false);
+			      "parallel-query", NULL, 1, false);
       if (m_worker_pool == nullptr)
 	{
 	  return;
