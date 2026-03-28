@@ -28368,16 +28368,25 @@ pt_check_analytic_limit_optimization (XASL_NODE * xasl, ANALYTIC_EVAL_TYPE * eva
 {
   ANALYTIC_EVAL_TYPE *eval;
   ANALYTIC_TYPE *a_func_list;
-  bool is_optimizable = false;
+  bool is_optimizable = true;
 
   if (!xasl->instnum_pred && !xasl->instnum_val)
     {
       return NO_ERROR;
     }
 
+  if (eval_list == NULL)
+    {
+      return NO_ERROR;
+    }
+
   for (eval = eval_list; eval != NULL; eval = eval->next)
     {
-      is_optimizable = (eval->covered_size == eval->sort_list_size) ? true : false;
+      if (!is_optimizable || eval->covered_size != eval->sort_list_size)
+	{
+	  is_optimizable = false;
+	  break;
+	}
 
       for (a_func_list = eval->head; a_func_list && is_optimizable; a_func_list = a_func_list->next)
 	{
