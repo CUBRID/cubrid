@@ -2407,10 +2407,10 @@ qdump_print_xasl (xasl_node * xasl_p)
 	  nflag++;
 	}
 
-      if (XASL_IS_FLAGED (xasl_p, XASL_REUSE_DBLINK))
+      if (XASL_IS_FLAGED (xasl_p, XASL_DBLINK_CURSOR_REWIND))
 	{
-	  XASL_CLEAR_FLAG (xasl_p, XASL_REUSE_DBLINK);
-	  fprintf (foutput, "%sXASL_REUSE_DBLINK", (nflag ? "|" : ""));
+	  XASL_CLEAR_FLAG (xasl_p, XASL_DBLINK_CURSOR_REWIND);
+	  fprintf (foutput, "%sXASL_DBLINK_CURSOR_REWIND", (nflag ? "|" : ""));
 	  nflag++;
 	}
 

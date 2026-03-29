@@ -2448,8 +2448,18 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 
 	if (xasl->curr_spec)
 	  {
-	    scan_end_scan (thread_p, &xasl->curr_spec->s_id);
-	    scan_close_scan (thread_p, &xasl->curr_spec->s_id);
+	    SCAN_ID *s_id = &xasl->curr_spec->s_id;
+
+	    /* Force-close reuse-mode DBLink: scan_close_scan would see S_CLOSED (set during the
+	     * last iteration's skipped dblink_close_scan) and return early, leaking CCI handles. */
+	    if (s_id->type == S_DBLINK_SCAN && s_id->s.dblid.scan_info.cursor_rewind)
+	      {
+		s_id->s.dblid.scan_info.cursor_rewind = 0;
+		dblink_close_scan (&s_id->s.dblid.scan_info);
+	      }
+
+	    scan_end_scan (thread_p, s_id);
+	    scan_close_scan (thread_p, s_id);
 	  }
 	if (xasl->merge_spec)
 	  {
@@ -3313,13 +3323,6 @@ qexec_clear_head_lists_with_truncate (THREAD_ENTRY * thread_p, XASL_NODE * xasl_
 	  /* skip out zero correlation-level uncorrelated subquery */
 	  continue;
 	}
-      if (IS_REUSE_DBLINK_XASL (xasl))
-	{
-	  /* correlated DBLink: keep materialized list for outer-row reuse (CBRD-26640) */
-	  continue;
-	}
-
-
       if (xasl->list_id && !xasl->list_id->is_result_cached)
 	{
 	  qfile_truncate_list (thread_p, xasl->list_id);
@@ -3379,11 +3382,6 @@ qexec_clear_head_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
       if (XASL_IS_FLAGED (xasl, XASL_ZERO_CORR_LEVEL))
 	{
 	  /* skip out zero correlation-level uncorrelated subquery */
-	  continue;
-	}
-      if (IS_REUSE_DBLINK_XASL (xasl))
-	{
-	  /* correlated DBLink: keep materialized list for outer-row reuse (CBRD-26640) */
 	  continue;
 	}
       /* clear XASL head node */
@@ -7628,6 +7626,10 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 
 	host_vars.count = curr_spec->s.dblink_node.host_var_count;
 	host_vars.index = curr_spec->s.dblink_node.host_var_index;
+
+	/* inject reuse flag before open: scan_init_scan_id does not touch s.dblid.scan_info,
+	 * so the flag survives across open/close cycles. */
+	s_id->s.dblid.scan_info.cursor_rewind = IS_DBLINK_CURSOR_REWIND_XASL (xasl) ? 1 : 0;
 
 	error_code = scan_open_dblink_scan (thread_p, s_id, curr_spec, vd, val_list, &host_vars);
 	if (error_code != NO_ERROR)

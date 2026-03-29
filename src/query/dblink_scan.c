@@ -679,7 +679,7 @@ error_exit:
  *   scan_info(out)      : dblink information
  *   conn_url(in)        : connection URL for dblink
  *   user_name(in)	 : user name for dblink
- *   passowrd(in)	 : password for dblink
+ *   password(in)	 : password for dblink
  *   sql_text(in)	 : SQL text for dblink
  */
 int
@@ -703,6 +703,13 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
   else
     {
       snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", spec->s.dblink_node.conn_url, "?__gateway=true");
+    }
+
+  /* correlated reuse mode: CCI connection/stmt already open, just rewind cursor */
+  if (scan_info->cursor_rewind && scan_info->conn_handle >= 0 && scan_info->stmt_handle >= 0)
+    {
+      scan_info->cursor = CCI_CURSOR_FIRST;
+      return NO_ERROR;
     }
 
   scan_info->conn_handle = -1;
@@ -793,6 +800,15 @@ dblink_close_scan (DBLINK_SCAN_INFO * scan_info)
   static bool auto_commit = prm_get_bool_value (PRM_ID_DBLINK_AUTO_COMMIT);
 
   /*  note: return NO_ERROR even though the connection or stmt handle is not valid */
+
+  /* correlated reuse mode: keep CCI resources open for next outer-row iteration.
+   * Actual close is deferred to qexec_clear_xasl (BUILDLIST_PROC, is_final=true),
+   * which clears cursor_rewind and calls dblink_close_scan directly before
+   * scan_close_scan (which would otherwise see S_CLOSED and return early). */
+  if (scan_info->cursor_rewind)
+    {
+      return NO_ERROR;
+    }
 
   if (scan_info->stmt_handle >= 0)
     {
