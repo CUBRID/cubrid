@@ -2545,6 +2545,9 @@ ws_clear_internal (bool clear_vmop_keys)
 void
 ws_clear (void)
 {
+#if defined(SA_MODE)
+  au_reset_authorization_caches ();
+#endif
   ws_clear_internal (false);
 }
 
