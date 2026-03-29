@@ -12024,21 +12024,14 @@ slob_create_dir (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
 
   ptr = or_unpack_hfid (request, &hfid);
   ptr = or_unpack_int (ptr, &attrid_arr_length);
-  if (ptr == NULL)
-    {
-      error = ER_FAILED;
-      goto end;
-    }
   ptr = or_unpack_int_array (ptr, attrid_arr_length, &attrid_arr);
-  if (ptr == NULL)
-    {
-      error = ER_FAILED;
-      goto end;
-    }
 
   error = xlob_create_dir (thread_p, &hfid, attrid_arr, attrid_arr_length);
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
 
-end:
   db_private_free_and_init (thread_p, attrid_arr);
 
   ptr = or_pack_errcode (reply, error);
@@ -12068,26 +12061,17 @@ slob_remove_dir (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
   int error = NO_ERROR;
 
   ptr = or_unpack_hfid (request, &hfid);
-  assert (ptr != NULL);
-
   ptr = or_unpack_int (ptr, &attrid);
-  if (ptr == NULL)
-    {
-      goto error_end;
-    }
 
   error = xlob_remove_dir (thread_p, &hfid, attrid);
   if (error != NO_ERROR)
     {
-      goto error_end;
+      (void) return_error_to_client (thread_p, rid);
     }
 
-  ptr = or_pack_errcode (reply, error);
+  (void) or_pack_errcode (reply, error);
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-  return;
 
-error_end:
-  (void) return_error_to_client (thread_p, rid);
   return;
 }

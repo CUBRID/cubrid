@@ -554,7 +554,7 @@ au_change_sp_owner (PARSER_CONTEXT *parser, MOP sp, MOP owner)
   AU_DISABLE (save);
 
   /* change _db_stored_procedure */
-  error = obj_get (sp, SP_ATTR_NAME, &name_value);
+  error = obj_get (sp, SP_ATTR_SP_NAME, &name_value);
   if (error != NO_ERROR)
     {
       goto end;
