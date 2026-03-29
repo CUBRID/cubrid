@@ -230,8 +230,8 @@ struct db_value_slist
 static int drop_class_name (const char *name, bool is_cascade_constraints);
 
 static int do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter);
-static int lob_process_dir_add_attr_if_needed (SM_CLASS * class_, int old_att_count);
-static int lob_process_dir_drop_attr_if_needed (SM_CLASS * class_, const char *attr_mthd_name);
+static int lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count);
+static int lob_process_dir_drop_attr (SM_CLASS * class_, const char *attr_name);
 static int do_alter_clause_rename_entity (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 static int do_alter_clause_add_index (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 static int do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter);
@@ -637,7 +637,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
 	    assert (alter->info.alter.create_index == NULL);
 
-	    error = lob_process_dir_add_attr_if_needed (ctemplate->current, old_att_count);
+	    error = lob_process_dir_add_attr (ctemplate->current, old_att_count);
 	    if (error != NO_ERROR)
 	      {
 		dbt_abort_class (ctemplate);
@@ -769,7 +769,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    }
 	}
 
-      error = lob_process_dir_drop_attr_if_needed (ctemplate->current, (char *) attr_mthd_name);
+      error = lob_process_dir_drop_attr (ctemplate->current, (char *) attr_mthd_name);
       if (error != NO_ERROR)
 	{
 	  dbt_abort_class (ctemplate);
@@ -1424,22 +1424,27 @@ alter_partition_fail:
 }
 
 /*
- * lob_process_dir_add_attr_if_needed() - Collect newly added LOB attributes, build/manage
- *                              their attribute id array, and trigger LOB
- *                              directory creation for those attributes.
+ * lob_process_dir_add_attr() - This function is called during the execution of
+ *                              ALTER TABLE ... ADD COLUMN. If the newly added column is a LOB type,
+ *                              it constructs an attribute ID array and triggers the creation of the
+ *                              corresponding LOB directory.
  *   return: Error code
  *   class_(in): Class information
  *   old_att_count(in): Number of attributes before adding new attributes
  */
 static int
-lob_process_dir_add_attr_if_needed (SM_CLASS * class_, int old_att_count)
+lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count)
 {
   SM_ATTRIBUTE *attr;
+  HFID lob_hfid;
   int lob_attrid_arr_length = 0;
   int *lob_alloc_attrid_arr = NULL;
   int lob_local_attrid_arr[2];
   int *lob_attrid_arr = NULL;
   int error = NO_ERROR;
+
+  assert (class_ != NULL);
+  assert (old_att_count >= 0);
 
   for (int i = old_att_count; i < class_->att_count; i++)
     {
@@ -1455,52 +1460,38 @@ lob_process_dir_add_attr_if_needed (SM_CLASS * class_, int old_att_count)
     {
       goto end;
     }
-  else if (lob_attrid_arr_length > 2)
+  else if (lob_attrid_arr_length <= 2)
     {
-      int index = 0;
-
+      lob_attrid_arr = lob_local_attrid_arr;
+    }
+  else
+    {
       lob_alloc_attrid_arr = (int *) malloc (sizeof (int) * lob_attrid_arr_length);
       if (lob_alloc_attrid_arr == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * lob_attrid_arr_length);
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto end;
 	}
 
-      for (int i = old_att_count; i < class_->att_count; i++)
-	{
-	  attr = &class_->attributes[i];
-
-	  if (TP_IS_LOB_TYPE (attr->type->id))
-	    {
-	      lob_alloc_attrid_arr[index++] = attr->id;
-	    }
-	}
       lob_attrid_arr = lob_alloc_attrid_arr;
     }
-  else
+
+  for (int i = old_att_count, index = 0; i < class_->att_count; i++)
     {
-      int index = 0;
+      attr = &class_->attributes[i];
 
-      for (int i = old_att_count; i < class_->att_count; i++)
+      if (TP_IS_LOB_TYPE (attr->type->id))
 	{
-	  attr = &class_->attributes[i];
-
-	  if (TP_IS_LOB_TYPE (attr->type->id))
-	    {
-	      lob_local_attrid_arr[index++] = attr->id;
-	    }
+	  lob_attrid_arr[index++] = attr->id;
 	}
-      lob_attrid_arr = lob_local_attrid_arr;
     }
 
-  if (lob_attrid_arr_length)
+  lob_hfid = class_->header.ch_heap;
+  error = locator_lob_create_or_remove_dir (NULL, &lob_hfid, lob_attrid_arr, lob_attrid_arr_length);
+  if (error != NO_ERROR)
     {
-      HFID lob_hfid = class_->header.ch_heap;
-      error = locator_lob_create_or_remove_dir (NULL, &lob_hfid, lob_attrid_arr, lob_attrid_arr_length);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
+      goto end;
     }
 
 end:
@@ -1510,31 +1501,34 @@ end:
 }
 
 /*
- * lob_process_dir_drop_attr_if_needed() - Handle LOB directory removal when a LOB attribute is dropped.
- *
+ * lob_process_dir_drop_attr() - This function is called during the execution of
+ *                               ALTER TABLE ... DROP COLUMN. If the column being dropped is a LOB type,
+ *                               it removes the corresponding LOB directory.
  *   return: Error code
  *   class_(in): Class information
- *   attr_mthd_name(in): Name of the attribute to be dropped
+ *   attr_name(in): Name of the attribute to be dropped
  */
 static int
-lob_process_dir_drop_attr_if_needed (SM_CLASS * class_, const char *attr_mthd_name)
+lob_process_dir_drop_attr (SM_CLASS * class_, const char *attr_name)
 {
   SM_ATTRIBUTE attr;
   int error = NO_ERROR;
+
+  assert (class_ != NULL);
+  assert (attr_name != NULL);
 
   for (int i = 0; i < class_->att_count; i++)
     {
       attr = class_->attributes[i];
 
-      if (strcmp (attr.header.name, attr_mthd_name) == 0)
+      if (strcmp (attr.header.name, attr_name) == 0)
 	{
 	  if (TP_IS_LOB_TYPE (attr.type->id))
 	    {
 	      HFID lob_hfid = class_->header.ch_heap;
-	      int lob_attrid_arr[1];
+	      int lob_attrid_arr[1] = { attr.id };
 
-	      lob_attrid_arr[0] = attr.id;
-	      error = locator_lob_create_or_remove_dir (&lob_hfid, NULL, lob_attrid_arr, 0);
+	      error = locator_lob_create_or_remove_dir (&lob_hfid, NULL, lob_attrid_arr, 1);
 	      if (error != NO_ERROR)
 		{
 		  return error;
