@@ -705,8 +705,9 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
       snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", spec->s.dblink_node.conn_url, "?__gateway=true");
     }
 
-  /* correlated reuse mode: CCI connection/stmt already open, just rewind cursor */
-  if (scan_info->cursor_rewind && scan_info->conn_handle >= 0 && scan_info->stmt_handle >= 0)
+  /* correlated reuse mode: CCI connection/stmt already open, just rewind cursor.
+   * Check > 0: CCI handles are positive integers; 0 is the uninitialized/zero-init value. */
+  if (scan_info->cursor_rewind && scan_info->conn_handle > 0 && scan_info->stmt_handle > 0)
     {
       scan_info->cursor = CCI_CURSOR_FIRST;
       return NO_ERROR;
