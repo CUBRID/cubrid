@@ -93,11 +93,12 @@ extern int qexec_clear_pred_context (THREAD_ENTRY * thread_p, pred_expr_with_con
 				     bool dealloc_dbvalues);
 extern int qexec_clear_func_pred (THREAD_ENTRY * thread_p, func_pred * pred_filter);
 extern int qexec_clear_partition_expression (THREAD_ENTRY * thread_p, regu_variable_node * expr);
-extern int qexec_resolve_domains_for_aggregation_for_parallel_heap_scan (THREAD_ENTRY * thread_p, xasl_node * xasl,
-									 void *vd, int *resolved);
-extern int
-qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_aggregate (THREAD_ENTRY * thread_p, xasl_node * xasl,
-									void *vd, int *resolved);
+extern int qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_g_agg (THREAD_ENTRY * thread_p,
+									       xasl_node * xasl, void *vd,
+									       int *resolved);
+extern int qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_buildvalue_proc (THREAD_ENTRY * thread_p,
+											 xasl_node * xasl, void *vd,
+											 int *resolved);
 extern int qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final);
 extern qfile_list_id *qexec_get_xasl_list_id (xasl_node * xasl);
 extern xasl_state *qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state);
@@ -119,4 +120,9 @@ extern void qexec_replace_prior_regu_vars_prior_expr (THREAD_ENTRY * thread_p, r
 						      xasl_node * xasl, xasl_node * connect_by_ptr);
 extern SCAN_CODE qexec_execute_scan_ptr (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,
 					 void *scan_func_ptr);
+extern int qexec_alloc_agg_hash_context_buildlist_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl,
+							XASL_STATE * xasl_state, bool not_use_membuf);
+extern int qexec_hash_gby_agg_tuple_public (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,
+					    QFILE_TUPLE_RECORD * tplrec, QFILE_TUPLE_DESCRIPTOR * tpldesc,
+					    QFILE_LIST_ID * groupby_list, bool * output_tuple);
 #endif /* _QUERY_EXECUTOR_H_ */

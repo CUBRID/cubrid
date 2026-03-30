@@ -29,6 +29,12 @@
 #include "px_interrupt.hpp"
 #include "xasl.h"
 #include "px_heap_scan_result_type.hpp"
+#include <atomic>
+#include <condition_variable>
+#include <cstdint>
+#include <mutex>
+#include <type_traits>
+#include <vector>
 
 namespace parallel_heap_scan
 {
@@ -78,17 +84,17 @@ namespace parallel_heap_scan
   {
     public:
       mergeable_list_variables()
-	: result_p (nullptr),
-	  orig_xasl_tree_for_domain_resolve (nullptr),
+	: orig_xasl (nullptr),
 	  active_results (0),
 	  is_list_id_domain_resolved (false) {}
       ~mergeable_list_variables() = default;
       std::vector<QFILE_LIST_ID *> writer_results;
       std::mutex writer_results_mutex;
-      QFILE_LIST_ID *result_p;
-      XASL_NODE *orig_xasl_tree_for_domain_resolve;
+      XASL_NODE *orig_xasl;
       int active_results;
       bool is_list_id_domain_resolved;
+      std::vector<QFILE_LIST_ID *> hgby_results;
+      bool g_hash_eligible;
   };
 
   class xasl_snapshot_variables
@@ -110,15 +116,19 @@ namespace parallel_heap_scan
       mergeable_list_tls()
 	: writer_result_p (nullptr),
 	  vd (nullptr),
-	  xasl_tree_for_domain_resolve (nullptr),
-	  val_list_domain_resolved (false) {}
+	  xasl (nullptr),
+	  val_list_domain_resolved (false),
+	  agg_hash_state (HS_NONE),
+	  g_agg_domains_resolved (TRUE) {}
       ~mergeable_list_tls() = default;
       QFILE_LIST_ID *writer_result_p;
       QFILE_TUPLE_RECORD tpl_buf;
       VAL_DESCR *vd;
-      XASL_NODE *xasl_tree_for_domain_resolve;
+      XASL_NODE *xasl;
       std::vector<DB_VALUE> dbvals_for_domain_resolve;
       bool val_list_domain_resolved;
+      AGGREGATE_HASH_STATE agg_hash_state;
+      int g_agg_domains_resolved;
   };
 
   class xasl_snapshot_tls
