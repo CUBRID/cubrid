@@ -3749,6 +3749,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  goto error;
 	}
       break;
+
     case T_COLLECTION_TO_STRING:
       if (db_collection_to_string_dbval (arithptr->value, peek_right) != NO_ERROR)
 	{
