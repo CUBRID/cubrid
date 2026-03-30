@@ -322,13 +322,9 @@ namespace cubthread
 
   // backward compatibility initialization
   int initialize_thread_entries (bool with_lock_free = true);
-  entry *get_main_entry (void);
 
   // get thread manager
   manager *get_manager (void);
-
-  // quick fix for unit test mock-ups
-  void set_manager (manager *manager);
 
   // get maximum thread count
   std::size_t get_max_thread_count (void);

@@ -582,27 +582,12 @@ namespace cubthread
     return NO_ERROR;
   }
 
-  entry *
-  get_main_entry (void)
-  {
-    assert (Main_entry_p != NULL);
-
-    return Main_entry_p;
-  }
-
   manager *
   get_manager (void)
   {
     assert (Manager != NULL);
 
     return Manager;
-  }
-
-  void set_manager (manager *manager)
-  {
-    assert (Manager == NULL);
-
-    Manager = manager;
   }
 
   std::size_t
@@ -661,7 +646,6 @@ namespace cubthread
 	Manager->return_lock_free_transaction_entries ();
       }
   }
-
 
   bool
   is_logging_configured (const int logging_flag)

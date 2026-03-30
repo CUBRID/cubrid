@@ -24,6 +24,9 @@
 
 #include "test_output.hpp"
 
+// testing server mode
+#define SERVER_MODE
+#include "thread_entry_task.hpp"
 #include "thread_task.hpp"
 #include "thread_worker_pool.hpp"
 
@@ -33,53 +36,36 @@
 
 namespace test_thread
 {
-  class test_context
-  {
-    public:
-
-      test_context (void)
-      {
-	//
-      }
-
-      void interrupt_execution (void)
-      {
-	// do nothing
-      }
-  };
-
-  class test_context_manager : public cubthread::context_manager<test_context>
+  class test_context_manager : public cubthread::context_manager
   {
     public:
 
       context_type &
-      create_context (void) final      // create a new thread context; cannot fail
+      create_context (void) final
       {
 	return * (new context_type);
       }
 
       void
-      retire_context (context_type &context) final      // retire the thread context
+      retire_context (context_type &context) final
       {
 	delete &context;
       }
   };
 
-  class test_task : public cubthread::task<test_context>
+  class test_task : public cubthread::entry_task
   {
-      void execute (context_type &context)
+      void execute (cubthread::entry &context)
       {
 	(void) context;  // suppress unused parameter
 	test_common::sync_cout ("test\n");
       }
   };
 
-  using test_worker_pool_type = cubthread::worker_pool<test_context>;
-
-  class start_end_task : public cubthread::task<test_context>
+  class start_end_task : public cubthread::entry_task
   {
     public:
-      void execute (context_type &context)
+      void execute (cubthread::entry &context)
       {
 	(void) context;  // suppress unused parameter
 	test_common::sync_cout ("start\n");
@@ -88,10 +74,10 @@ namespace test_thread
       }
   };
 
-  class inc_work : public cubthread::task<test_context>
+  class inc_work : public cubthread::entry_task
   {
     public:
-      void execute (context_type &context)
+      void execute (cubthread::entry &context)
       {
 	(void) context;  // suppress unused parameter
 	if (++m_count % 1000 == 0)
@@ -109,7 +95,7 @@ namespace test_thread
   test_one_thread_pool (void)
   {
     test_context_manager ctx_mgr;
-    test_worker_pool_type pool (1, 1, ctx_mgr, NULL, 1, false);
+    cubthread::worker_pool pool (1, 1, ctx_mgr, NULL, 1, false);
     pool.execute (new test_task ());
     pool.execute (new test_task ());
 
@@ -125,7 +111,7 @@ namespace test_thread
   test_two_threads_pool (void)
   {
     test_context_manager ctx_mgr;
-    test_worker_pool_type pool (2, 16, ctx_mgr, NULL, 1, false);
+    cubthread::worker_pool pool (2, 16, ctx_mgr, NULL, 1, false);
 
     pool.execute (new start_end_task ());
     pool.execute (new start_end_task ());
@@ -144,7 +130,7 @@ namespace test_thread
 
     nthreads *= 4;
 
-    test_worker_pool_type workpool (nthreads, nthreads * 16, ctx_mgr, NULL, 1, false);
+    cubthread::worker_pool workpool (nthreads, nthreads * 16, ctx_mgr, NULL, 1, false);
 
     auto start_time = std::chrono::high_resolution_clock::now ();
     for (int i = 0; i < 10000; i++)
