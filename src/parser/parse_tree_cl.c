@@ -4098,6 +4098,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "schema_def";
     case PT_CONV_TZ:
       return "conv_tz";
+    case PT_COLLECTION_TO_STRING:
+      return "collection_to_string";
     default:
       assert (false);
       return "unknown opcode";
@@ -12405,6 +12407,12 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_SCHEMA_DEF:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_nulstring (parser, q, " schema_def(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_COLLECTION_TO_STRING:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " collection_to_string(");
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;

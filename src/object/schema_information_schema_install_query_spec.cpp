@@ -426,7 +426,7 @@ const char *sm_define_view_partitions_spec (void)
       "DECODE ([part].[ptype], %d, 'HASH', %d, 'RANGE', %d, 'LIST') AS [partition_method], "
       "[part_info].[pexpr] AS [partition_expression], "
       /* DB_PARTITION_RANGE, DB_PARTITION_LIST */
-      "IF ([part].[ptype] IN (%d, %d), [part].[pvalues], NULL) AS [partition_description], "
+      "IF ([part].[ptype] IN (%d, %d), COLLECTION_TO_STRING ([part].[pvalues]), NULL) AS [partition_description], "
       "NULL AS [subpartition_name], "
       "NULL AS [subpartition_ordinal_position], "
       "NULL AS [subpartition_method], "

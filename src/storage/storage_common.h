@@ -854,6 +854,7 @@ typedef enum
   T_CURRENT_DATE,
   T_CURRENT_TIME,
   T_CONV_TZ,
+  T_COLLECTION_TO_STRING,
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 /************************************************************************/

@@ -7891,7 +7891,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_TO_BASE64 || node->info.expr.op == PT_FROM_BASE64
 		       || node->info.expr.op == PT_FROM_BASE64 || node->info.expr.op == PT_SLEEP
 		       || node->info.expr.op == PT_TZ_OFFSET || node->info.expr.op == PT_CRC32
-		       || node->info.expr.op == PT_DISK_SIZE || node->info.expr.op == PT_CONV_TZ)
+		       || node->info.expr.op == PT_DISK_SIZE || node->info.expr.op == PT_CONV_TZ
+		       || node->info.expr.op == PT_COLLECTION_TO_STRING)
 		{
 		  r1 = NULL;
 
@@ -9475,6 +9476,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_CRC32:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_CRC32, domain);
+		  break;
+
+		case PT_COLLECTION_TO_STRING:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_COLLECTION_TO_STRING, domain);
 		  break;
 
 		default:

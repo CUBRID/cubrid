@@ -3372,6 +3372,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_TO_TIMESTAMP_TZ:
     case PT_CRC32:
     case PT_CONV_TZ:
+    case PT_COLLECTION_TO_STRING:
       return RANK_EXPR_MEDIUM;
 
       /* Group 3 -- heavy */

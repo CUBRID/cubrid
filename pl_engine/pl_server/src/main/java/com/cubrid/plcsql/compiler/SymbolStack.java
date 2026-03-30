@@ -406,6 +406,7 @@ public class SymbolStack {
 
                         // data type casting
                         "CAST",
+                        "COLLECTION_TO_STRING",
                         "DATE_FORMAT",
                         "FORMAT",
                         "STR_TO_DATE",
