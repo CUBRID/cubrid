@@ -1755,7 +1755,9 @@
 
 #define ER_AU_LOGIN_DISABLED                        -1369
 
-#define ER_LAST_ERROR                               -1370
+#define ER_IMPLICITLY_ABORT_FOR_LOGIN_METHOD        -1370
+
+#define ER_LAST_ERROR                               -1371
 
 
 
