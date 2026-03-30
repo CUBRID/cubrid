@@ -14,3 +14,9 @@ flame_graph
 *.hdf5
 perf_*/
 *.cache_ready
+*.access
+*.err
+*.log
+__pycache__
+bench_logs
+vendor

@@ -39,7 +39,7 @@ HNSW_EF_SEARCH=""
 
 PERF_ENABLE="${PERF_ENABLE:-0}"
 PERF_STAT_ENABLE="${PERF_STAT_ENABLE:-1}"
-PERF_TARGETS="${PERF_TARGETS:-csql cub_server}"
+PERF_TARGETS="${PERF_TARGETS:-csql}"
 PERF_STAT_EVENTS="${PERF_STAT_EVENTS:-task-clock,cycles,instructions,branches,branch-misses,cache-references,cache-misses}"
 PERF_RECORD_TARGETS="${PERF_RECORD_TARGETS:-}"
 PERF_RECORD_PROFILE="${PERF_RECORD_PROFILE:-hot}"
@@ -1287,21 +1287,273 @@ with open(svg_path, "w", encoding="utf-8") as f:
 PY
 }
 
-run_ef_search_experiments() {
+stop_db_server_for_sa() {
+  local server_pid=""
+
+  log "stopping database server for standalone csql"
+  cubrid server stop "$DB_NAME" >/dev/null 2>&1 || true
+
+  server_pid="$(get_cub_server_pid || true)"
+  if [[ -n "$server_pid" ]]; then
+    log "terminating lingering cub_server pid=$server_pid for standalone csql"
+    kill -TERM "$server_pid" >/dev/null 2>&1 || true
+    sleep 2
+  fi
+
+  if [[ -n "$(get_cub_server_pid || true)" ]]; then
+    printf 'failed to stop cub_server for standalone mode: %s\n' "$DB_NAME" >&2
+    exit 1
+  fi
+}
+
+run_csql_sa_input_with_perf() {
+  local sql_file="$1"
+  local out_file="$2"
+  local label="$3"
+  local record_label
+  local safe_label
+  local safe_record_label
+  local csql_pid=""
+  local csql_status=0
+  local csql_stat_pid=""
+  local csql_record_pid=""
+
+  if (( PERF_ENABLE != 1 )); then
+    csql -S -u "$DB_USER" -q -N --delimiter='|' "$DB_NAME" -i "$sql_file" > "$out_file"
+    return
+  fi
+
+  mkdir -p "$PERF_OUTPUT_DIR"
+  safe_label="$(sanitize_perf_label "$label")"
+  record_label="$(append_perf_record_profile_suffix "$label")"
+  safe_record_label="$(sanitize_perf_label "$record_label")"
+
+  csql -S -u "$DB_USER" -q -N --delimiter='|' "$DB_NAME" -i "$sql_file" > "$out_file" &
+  csql_pid=$!
+
+  if perf_enabled_for_target csql; then
+    csql_stat_pid="$(
+      start_perf_stat_attach "$csql_pid" "$PERF_OUTPUT_DIR/${safe_label}.csql.stat.csv" || true
+    )"
+  fi
+
+  if perf_record_enabled_for_target csql; then
+    csql_record_pid="$(
+      start_perf_record_attach "$csql_pid" "$PERF_OUTPUT_DIR/${safe_record_label}.csql.data" || true
+    )"
+  fi
+
+  if perf_enabled_for_target cub_server || perf_record_enabled_for_target cub_server; then
+    log "ignoring cub_server perf targets in standalone csql mode"
+  fi
+
+  set +e
+  wait "$csql_pid"
+  csql_status=$?
+  set -e
+
+  stop_perf_background_job "$csql_stat_pid"
+  stop_perf_background_job "$csql_record_pid"
+
+  if perf_record_enabled_for_target csql; then
+    generate_flamegraph \
+      "$PERF_OUTPUT_DIR/${safe_record_label}.csql.data" \
+      "$PERF_OUTPUT_DIR/${safe_record_label}.csql.flamegraph.svg"
+  fi
+
+  if (( csql_status != 0 )); then
+    return "$csql_status"
+  fi
+}
+
+write_sa_workload_file() {
+  local sql_file="$1"
+  local total_queries
   local ef
+  local qid
+
+  total_queries="${#QUERY_IDS[@]}"
+
+  {
+    printf "CREATE VECTOR INDEX vidx_nytimes_train ON nytimes_256_angular_train (vec COSINE) WITH (M = %s, ef_construction = %s);\n" \
+      "$HNSW_M" \
+      "$HNSW_EF_CONSTRUCTION"
+
+    for ef in $HNSW_EF_SEARCH_VALUES; do
+      printf "SELECT 7, %s, UNIX_TIMESTAMP(CURRENT_DATETIME);\n" "$ef"
+      printf "SET SYSTEM PARAMETERS 'hnsw_ef_search=%s';\n" "$ef"
+      cat <<EOF
+PREPARE ann FROM '
+  SELECT 1, ${ef}, @qid, id
+    FROM (
+      SELECT /*+ recompile no_parallel_heap_scan */ id
+        FROM nytimes_256_angular_train
+       ORDER BY vec <c> cast(@v as vector)
+       LIMIT ${TOPK}
+    ) ann
+';
+EOF
+
+      for qid in "${QUERY_IDS[@]}"; do
+        printf "SET @qid = %s;\n" "$qid"
+        printf "SET @v = (SELECT vec FROM nytimes_256_angular_test WHERE id = @qid);\n"
+        printf "EXECUTE ann;\n"
+      done
+
+      printf "SELECT 8, %s, UNIX_TIMESTAMP(CURRENT_DATETIME);\n" "$ef"
+      printf "SELECT 9, %s, %s;\n" "$ef" "$total_queries"
+    done
+  } > "$sql_file"
+}
+
+collect_sa_experiment_results() {
+  local out_file="$1"
 
   write_result_csv_header
 
-  for ef in $HNSW_EF_SEARCH_VALUES; do
-    HNSW_EF_SEARCH="$ef"
-    measure_recall
-    append_result_csv
-  done
+  python3 - "$GT_CACHE_FILE" "$out_file" "$RESULT_CSV" "$TOPK" "$DATASET_NAME" "$HNSW_M" "$HNSW_EF_CONSTRUCTION" "${EXCLUDED_QUERY_COUNT:-0}" $HNSW_EF_SEARCH_VALUES <<'PY'
+import csv
+import sys
+
+gt_file = sys.argv[1]
+out_file = sys.argv[2]
+result_csv = sys.argv[3]
+topk = int(sys.argv[4])
+dataset_name = sys.argv[5]
+hnsw_m = int(sys.argv[6])
+hnsw_ef_construction = int(sys.argv[7])
+excluded_queries = sys.argv[8]
+ef_values = [int(value) for value in sys.argv[9:]]
+
+gt_hits = set()
+with open(gt_file, encoding="utf-8") as stream:
+    for raw in stream:
+        parts = raw.rstrip("\n").split("|")
+        if len(parts) >= 3 and parts[0] == "2":
+            gt_hits.add((int(parts[1]), int(parts[2])))
+
+ann_hits = {ef: {} for ef in ef_values}
+start_ts = {}
+end_ts = {}
+declared_queries = {}
+
+with open(out_file, encoding="utf-8") as stream:
+    for raw in stream:
+        parts = raw.rstrip("\n").split("|")
+        if not parts:
+            continue
+        line_type = parts[0]
+
+        if line_type == "1" and len(parts) >= 4:
+          ef = int(parts[1])
+          qid = int(parts[2])
+          rid = int(parts[3])
+          ann_hits.setdefault(ef, {}).setdefault(qid, []).append(rid)
+        elif line_type == "7" and len(parts) >= 3:
+          start_ts[int(parts[1])] = int(parts[2])
+        elif line_type == "8" and len(parts) >= 3:
+          end_ts[int(parts[1])] = int(parts[2])
+        elif line_type == "9" and len(parts) >= 3:
+          declared_queries[int(parts[1])] = int(parts[2])
+
+rows = []
+for ef in ef_values:
+    queries = ann_hits.get(ef, {})
+    processed = len(queries)
+    total_hits = 0
+
+    for qid, results in queries.items():
+        total_hits += sum(1 for rid in results if (qid, rid) in gt_hits)
+
+    total_expected = processed * topk
+    recall = (total_hits / total_expected) if total_expected else 0.0
+    elapsed = max(0, end_ts.get(ef, 0) - start_ts.get(ef, 0))
+    qps = (processed / elapsed) if elapsed > 0 else 0.0
+
+    if ef in declared_queries and declared_queries[ef] != processed:
+        raise SystemExit(
+            f"ef_search={ef}: processed query count mismatch: expected {declared_queries[ef]}, got {processed}"
+        )
+
+    rows.append({
+        "dataset": dataset_name,
+        "queries": processed,
+        "excluded_queries": excluded_queries,
+        "topk": topk,
+        "hnsw_m": hnsw_m,
+        "hnsw_ef_construction": hnsw_ef_construction,
+        "hnsw_ef_search": ef,
+        "total_hits": total_hits,
+        "recall": f"{recall:.6f}",
+        "elapsed_sec": f"{elapsed:.6f}",
+        "qps": f"{qps:.3f}",
+    })
+
+with open(result_csv, "a", newline="", encoding="utf-8") as stream:
+    writer = csv.DictWriter(
+        stream,
+        fieldnames=[
+            "dataset",
+            "queries",
+            "excluded_queries",
+            "topk",
+            "hnsw_m",
+            "hnsw_ef_construction",
+            "hnsw_ef_search",
+            "total_hits",
+            "recall",
+            "elapsed_sec",
+            "qps",
+        ],
+    )
+    for row in rows:
+        writer.writerow(row)
+
+for row in rows:
+    print(f"dataset={row['dataset']}")
+    print(f"queries={row['queries']}")
+    print(f"topk={row['topk']}")
+    print(f"hnsw_m={row['hnsw_m']}")
+    print(f"hnsw_ef_construction={row['hnsw_ef_construction']}")
+    print(f"hnsw_ef_search={row['hnsw_ef_search']}")
+    print(f"excluded_queries={row['excluded_queries']}")
+    print(f"total_hits={row['total_hits']}")
+    print(f"recall@{topk}={row['recall']}")
+    print(f"elapsed_sec={row['elapsed_sec']}")
+    print(f"qps={row['qps']}")
+    print()
+PY
 
   render_result_svg
   log "saved ef_search results to $RESULT_CSV"
   log "saved ef_search graph to $RESULT_SVG"
   log "saved excluded query list to $EXCLUDED_QUERY_FILE"
+}
+
+run_sa_workload() {
+  local sql_file
+  local out_file
+
+  stop_db_server_for_sa
+
+  sql_file="$(mktemp /tmp/nytimes_sa_workload_sql.XXXXXX)"
+  out_file="$(mktemp /tmp/nytimes_sa_workload_out.XXXXXX)"
+
+  log "running standalone csql workload: build index + ef_search sweep"
+  write_sa_workload_file "$sql_file"
+  run_csql_sa_input_with_perf \
+    "$sql_file" \
+    "$out_file" \
+    "sa_index_and_query_sweep_m${HNSW_M}_efc${HNSW_EF_CONSTRUCTION}"
+
+  collect_sa_experiment_results "$out_file"
+
+  rm -f "$sql_file" "$out_file"
+}
+
+restart_db_server_after_sa() {
+  log "restarting database server after standalone csql workload"
+  cubrid server start "$DB_NAME" >/dev/null 2>&1 || true
 }
 
 main() {
@@ -1333,8 +1585,8 @@ main() {
 
   run_stage "prepare query ids" prepare_query_ids
   run_stage "prepare ground truth" prepare_ground_truth_cache
-  run_stage "build index" build_index
-  run_stage "ef_search sweep" run_ef_search_experiments
+  run_stage "sa index + query sweep" run_sa_workload
+  run_stage "restart db server" restart_db_server_after_sa
 }
 
 main "$@"
