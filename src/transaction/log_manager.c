@@ -1376,7 +1376,10 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * As we parallelize the log recovery redo process, this flush operation can also run in multiple threads.
        * To prevent this, daemons performing the flush should be activated to flush the pages in single thread.
        * If recovery is not being performed, these daemons will run after completing the log_initialize () */
-      BO_ENABLE_FLUSH_DAEMONS ();
+      if (!PRM_TEST_DISABLE_ALL_DAEMONS)
+	{
+	  BO_ENABLE_FLUSH_DAEMONS ();
+	}
 #endif /* SERVER_MODE */
       log_recovery (thread_p, ismedia_crash, stopat);
     }
@@ -10498,6 +10501,11 @@ log_flush_daemon_init ()
 static void
 log_daemons_init ()
 {
+  if (PRM_TEST_DISABLE_ALL_DAEMONS)
+    {
+      return;
+    }
+
   log_remove_log_archive_daemon_init ();
   log_checkpoint_daemon_init ();
   log_check_ha_delay_info_daemon_init ();
@@ -14038,6 +14046,11 @@ cdc_loginfo_producer_daemon_init ()
 void
 cdc_daemons_init ()
 {
+  if (PRM_TEST_DISABLE_ALL_DAEMONS)
+    {
+      return;
+    }
+
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 0)
     {
       return;

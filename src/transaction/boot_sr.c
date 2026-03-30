@@ -2406,8 +2406,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined(SERVER_MODE)
-  pgbuf_daemons_init ();
-  dwb_daemons_init ();
+  if (!PRM_TEST_DISABLE_ALL_DAEMONS)
+    {
+      pgbuf_daemons_init ();
+      dwb_daemons_init ();
+    }
   parallel_query::worker_manager_global::get_manager ().init ();
 #endif /* SERVER_MODE */
 
@@ -2425,9 +2428,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined(SERVER_MODE)
-  BO_ENABLE_FLUSH_DAEMONS ();
-
-  cdc_daemons_init ();
+  if (!PRM_TEST_DISABLE_ALL_DAEMONS)
+    {
+      BO_ENABLE_FLUSH_DAEMONS ();
+      cdc_daemons_init ();
+    }
 #endif /* SERVER_MODE */
 
   // after recovery we can boot vacuum

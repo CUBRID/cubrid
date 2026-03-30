@@ -1340,7 +1340,9 @@ vacuum_boot (THREAD_ENTRY * thread_p)
 
   // create vacuum master thread
   vacuum_Master_daemon =
-    thread_manager->create_daemon (looper, new vacuum_master_task (), "vacuum_master", vacuum_Master_context_manager);
+    PRM_TEST_DISABLE_ALL_DAEMONS ? NULL
+				 : thread_manager->create_daemon (looper, new vacuum_master_task (), "vacuum_master",
+								  vacuum_Master_context_manager);
 
   /* *INDENT-ON* */
 #endif /* SERVER_MODE */
@@ -3735,7 +3737,10 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
   if (vacuum_Finished_job_queue->is_half_full ())
     {
       /* Wakeup master to process finished jobs. */
-      vacuum_Master_daemon->wakeup ();
+      if (vacuum_Master_daemon != NULL)
+	{
+	  vacuum_Master_daemon->wakeup ();
+	}
     }
 #endif /* SERVER_MODE */
 }

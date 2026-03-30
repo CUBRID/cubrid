@@ -2930,7 +2930,10 @@ css_conn_entry::set_tran_index (int tran_index)
   // can never be system transaction index
   if (tran_index == LOG_SYSTEM_TRAN_INDEX)
     {
-      assert (false);
+      if (!PRM_TEST_DISABLE_ALL_DAEMONS)
+	{
+	  assert (false);
+	}
       tran_index = NULL_TRAN_INDEX;
     }
   transaction_id = tran_index;
