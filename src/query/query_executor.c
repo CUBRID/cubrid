@@ -25829,49 +25829,35 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 
 	  if (tdes->mvccinfo.snapshot.valid)
 	    {
-	      if (class_cos->count_state != COS_LOADED)
-		{
-		  /* 
-		   * An early snapshot (e.g. qexec_execute_query for RR) can load stats for only the classes that
-		   * were COS_TO_LOAD then; UNION's second branch may still be NOT_LOADED on a later run. Under RC,
-		   * invalidate and retake snapshot after marking the full statement tree — still atomic, no fresher-than
-		   * snapshot stats.
-		   */
-		  logtb_invalidate_snapshot_data (thread_p);
+	      /* 
+	       * An early snapshot (e.g. qexec_execute_query for RR) can load stats for only the classes that
+	       * were COS_TO_LOAD then; UNION's second branch may still be NOT_LOADED on a later run. Under RC,
+	       * invalidate and retake snapshot after marking the full statement tree — still atomic, no fresher-than
+	       * snapshot stats.
+	       */
 
-		  class_cos->count_state = COS_TO_LOAD;
-
-		  if (logtb_tran_find_btid_stats (thread_p, &agg_ptr->btid, true) == NULL)
-		    {
-		      agg_ptr->flag.agg_optimized = false;
-		      *is_scan_needed = true;
-		      continue;
-		    }
-
-		  if (logtb_get_mvcc_snapshot (thread_p) == NULL)
-		    {
-		      error = er_errid ();
-		      return (error == NO_ERROR ? ER_FAILED : error);
-		    }
-		}
+	      logtb_invalidate_snapshot_data (thread_p);
 	    }
-	  else
+
+	  class_cos->count_state = COS_TO_LOAD;
+	  if (logtb_tran_find_btid_stats (thread_p, &agg_ptr->btid, true) == NULL)
 	    {
-	      if (logtb_tran_find_btid_stats (thread_p, &agg_ptr->btid, true) == NULL)
-		{
-		  agg_ptr->flag.agg_optimized = false;
-		  *is_scan_needed = true;
-		  continue;
-		}
+	      agg_ptr->flag.agg_optimized = false;
+	      *is_scan_needed = true;
+	      continue;
+	    }
 
-	      class_cos->count_state = COS_TO_LOAD;
+	  if (logtb_get_mvcc_snapshot (thread_p) == NULL)
+	    {
+	      error = er_errid ();
+	      return (error == NO_ERROR ? ER_FAILED : error);
+	    }
 
-	      if (logtb_get_mvcc_snapshot (thread_p) == NULL)
-		{
-		  error = er_errid ();
-		  return (error == NO_ERROR ? ER_FAILED : error);
-		}
-
+	  if (class_cos->count_state != COS_LOADED)
+	    {
+	      agg_ptr->flag.agg_optimized = false;
+	      *is_scan_needed = true;
+	      continue;
 	    }
 	}
 
