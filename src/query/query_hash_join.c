@@ -2233,6 +2233,9 @@ hjoin_init_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
       }
     }
 
+  assert (shared_info->membuf_claimed.load () == false);
+  assert (shared_info->next_sector_idx.load () == 0);
+
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 
@@ -2275,6 +2278,8 @@ hjoin_clear_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manag
       assert (shared_info->part_mutexes == NULL);
       return;			/* nothing to do */
     }
+
+  qfile_free_list_sector_info (thread_p, &shared_info->sector_info);
 
   if (shared_info->part_mutexes != NULL)
     {
