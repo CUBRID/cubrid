@@ -550,10 +550,93 @@ namespace cubthread
 
   bool wp_is_thread_always_alive_forced ();
   void wp_set_force_thread_always_alive ();
+
 } // namespace cubthread
 
 namespace cubthread
 {
+  /************************************************************************/
+  /* Template/inline implementation                                       */
+  /************************************************************************/
+
+  template <typename Func, typename ... Args>
+  void
+  worker_pool::map_running_contexts (Func &&func, Args &&... args)
+  {
+    bool stop = false;
+    for (std::size_t it = 0; it < m_core_count && !stop; it++)
+      {
+	m_core_array[it].map_running_contexts (stop, func, args...);
+	if (stop)
+	  {
+	    // mapping is stopped
+	    return;
+	  }
+      }
+  }
+
+  template <typename Func, typename ... Args>
+  void
+  worker_pool::map_cores (Func &&func, Args &&... args)
+  {
+    bool stop = false;
+    const core *core_p;
+    for (std::size_t it = 0; it < m_core_count && !stop; it++)
+      {
+	core_p = &m_core_array[it];
+	func (*core_p, stop, args...);
+	if (stop)
+	  {
+	    // mapping is stopped
+	    return;
+	  }
+      }
+  }
+
+  template <typename Func, typename ... Args>
+  void
+  worker_pool::core::map_running_contexts (bool &stop, Func &&func, Args &&... args) const
+  {
+    for (std::size_t it = 0; it < m_max_workers && !stop; it++)
+      {
+	m_worker_array[it].map_context_if_running (stop, func, args...);
+	if (stop)
+	  {
+	    // stop mapping
+	    return;
+	  }
+      }
+
+    std::unique_lock<std::mutex> ulock (m_temp_workers_mutex);
+    for (worker *w : m_temp_workers)
+      {
+	w->map_context_if_running (stop, func, args...);
+	if (stop)
+	  {
+	    // stop mapping
+	    return;
+	  }
+      }
+  }
+
+  template <typename Func, typename ... Args>
+  void
+  worker_pool::core::worker::map_context_if_running (bool &stop, Func &&func, Args &&... args)
+  {
+    if (m_task_p == NULL)
+      {
+	// not running
+	return;
+      }
+
+    context_type *ctxp = m_context_p;
+
+    if (ctxp != NULL)
+      {
+	func (*ctxp, stop, args...);
+      }
+  }
+
   //////////////////////////////////////////////////////////////////////////
   // other functions
   //////////////////////////////////////////////////////////////////////////
@@ -577,6 +660,7 @@ namespace cubthread
       }
 #endif // DEBUG
   }
+
 } // namespace cubthread
 
 #endif // _THREAD_WORKER_POOL_HPP_

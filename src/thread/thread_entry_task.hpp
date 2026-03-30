@@ -61,20 +61,16 @@ namespace cubthread
   //  description:
   //    complex tasks may require bulky context that can take a long time to construct/destruct.
   //    context_manager abstract class is designed to pool context and hand them quickly on demand.
-  //
-  //  templates:
-  //    Context - thread execution context, a helper/cache structure that can be passed to multiple tasks
+  //    context type is fixed to cubthread::entry.
   //
   //  how to use:
-  //    1. specialize context_manager with custom context
+  //    1. derive from context_manager and override create_context, retire_context and recycle_context functions.
   //       e.g. see CUBRID implementation for entry_manager.
   //
-  //    2. override create_context, retire_context and recycle_context functions
-  //
-  //    3. execute multiple tasks using same context:
-  //          custom_context_manager context_mgr; // using custom_context_manager = context_manager<custom_context>
-  //          custom_context& context_ref = context_mgr.create_context ();
-  //          custom_task* task_p = NULL;   // using custom_task = task<custom_context>
+  //    2. execute multiple tasks using same context:
+  //          custom_context_manager context_mgr;
+  //          entry& context_ref = context_mgr.create_context ();
+  //          entry_task* task_p = NULL;
   //
   //          for (task_p = get_task (); task_p != NULL; task_p = get_task ())
   //            {
@@ -86,10 +82,10 @@ namespace cubthread
   //          context_mgr.retire_context (context_ref);
   //
   //    [optional]
-  //    4. if task execution can take a very long time and you need to force stop it, you can use stop_execution:
-  //        4.1. implement context_manager::stop_execution; should notify context to stop.
-  //        4.2. you have to check stop notifications in custom_task::execute
-  //        4.3. call context_mgr.stop_execution (context_ref).
+  //    3. if task execution can take a very long time and you need to force stop it, you can use stop_execution:
+  //        3.1. implement context_manager::stop_execution; should notify context to stop.
+  //        3.2. you have to check stop notifications in entry_task::execute
+  //        3.3. call context_mgr.stop_execution (context_ref).
   //
   class context_manager
   {
