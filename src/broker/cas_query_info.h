@@ -16,6 +16,10 @@
  *
  */
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> b61c37829 ([CBRD-26610] Update cas_query_info logic)
 /*
  * cas_query_info.h -
  */
@@ -27,6 +31,7 @@
 
 #include "broker_log_top.h"
 #include "broker_log_util.h"
+<<<<<<< HEAD
 typedef struct t_query_info T_QUERY_INFO;
 struct t_query_info
 {
@@ -46,6 +51,28 @@ struct t_query_info
 void query_info_mutex_init ();
 
 #endif /*  */
+=======
+
+typedef struct t_query_info T_QUERY_INFO;
+struct t_query_info
+{
+  char *sql;
+  char *organized_sql;
+  char *cas_log;
+  int cas_log_len;
+  int min;
+  int max;
+  int sum;
+  int count;
+  int err_count;
+  char start_date[DATE_STR_LEN + 1];
+};
+
+#ifdef MT_MODE
+void query_info_mutex_init ();
+#endif
+
+>>>>>>> b61c37829 ([CBRD-26610] Update cas_query_info logic)
 extern void query_info_init (T_QUERY_INFO * query_info);
 extern void query_info_clear (T_QUERY_INFO * qi);
 extern int query_info_add (T_QUERY_INFO * qi, int exec_time, int execute_res, char *filename, int lineno,
