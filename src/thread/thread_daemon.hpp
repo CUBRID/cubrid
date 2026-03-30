@@ -23,6 +23,7 @@
 #ifndef _THREAD_DAEMON_HPP_
 #define _THREAD_DAEMON_HPP_
 
+#include "thread_entry_task.hpp"
 #include "thread_looper.hpp"
 #include "thread_task.hpp"
 #include "thread_waiter.hpp"
@@ -90,9 +91,8 @@ namespace cubthread
       //
       //  NOTE: it is recommended to use dynamic allocation for execution tasks
       //
-      template <typename Context>
-      daemon (const looper &loop_pattern_arg, context_manager<Context> *context_manager_arg,
-	      task<Context> *exec, const char *name);
+      daemon (const looper &loop_pattern_arg, context_manager *context_manager_arg,
+	      entry_task *exec, const char *name);
       daemon (const looper &loop_pattern_arg, task_without_context *exec_arg, const char *name);
       ~daemon();
 
@@ -119,9 +119,8 @@ namespace cubthread
       //                     task until stopped.
       //
       // note: context must implement interrupt_execution function
-      template <typename Context>
-      static void loop_with_context (daemon *daemon_arg, context_manager<Context> *context_manager_arg,
-				     task<Context> *exec_arg, const char *name);
+      static void loop_with_context (daemon *daemon_arg, context_manager *context_manager_arg,
+				     entry_task *exec_arg, const char *name);
 
       // loop_without_context - just execute context-less task in a loop
       static void loop_without_context (daemon *daemon_arg, task_without_context *exec_arg, const char *name);
@@ -146,62 +145,6 @@ namespace cubthread
       cubperf::statset &m_stats;
   };
 
-  /************************************************************************/
-  /* Inline/template Implementation                                       */
-  /************************************************************************/
-
-  template <typename Context>
-  daemon::daemon (const looper &loop_pattern_arg, context_manager<Context> *context_manager_arg,
-		  task<Context> *exec, const char *name /* = "" */)
-    : m_waiter ()
-    , m_looper (loop_pattern_arg)
-    , m_thread ()
-    , m_name (name)
-    , m_stats (daemon::create_statset ())
-  {
-    // starts a thread to execute daemon::loop
-    m_thread = std::thread (daemon::loop_with_context<Context>, this, context_manager_arg, exec, m_name.c_str ());
-  }
-
-  template <typename Context>
-  void
-  daemon::loop_with_context (daemon *daemon_arg, context_manager<Context> *context_manager_arg,
-			     task<Context> *exec_arg, const char *name)
-  {
-    // its purpose is to help visualize daemon thread stacks
-    if (!std::string (name).empty ())
-      {
-	pthread_setname_np (pthread_self (), std::string (name).substr (0, TASK_COMM_LEN - 1).c_str ());
-      }
-    else
-      {
-	pthread_setname_np (pthread_self (), "unnamed-daemon");
-      }
-
-    // create execution context
-    Context &context = context_manager_arg->create_context ();
-
-    daemon_arg->register_stat_start ();
-
-    while (!daemon_arg->m_looper.is_stopped ())
-      {
-	// execute task
-	exec_arg->execute (context);
-	daemon_arg->register_stat_execute ();
-
-	// take a break
-	daemon_arg->pause ();
-	daemon_arg->register_stat_pause ();
-      }
-
-    context_manager_arg->stop_execution (context);
-
-    // retire execution context
-    context_manager_arg->retire_context (context);
-
-    // retire task
-    exec_arg->retire ();
-  }
 
 } // namespace cubthread
 

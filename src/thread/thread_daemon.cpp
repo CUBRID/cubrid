@@ -50,6 +50,18 @@ namespace cubthread
   // daemon implementation
   //////////////////////////////////////////////////////////////////////////
 
+  daemon::daemon (const looper &loop_pattern_arg, context_manager *context_manager_arg,
+		  entry_task *exec, const char *name /* = "" */)
+    : m_waiter ()
+    , m_looper (loop_pattern_arg)
+    , m_thread ()
+    , m_name (name)
+    , m_stats (daemon::create_statset ())
+  {
+    // starts a thread to execute daemon::loop
+    m_thread = std::thread (daemon::loop_with_context, this, context_manager_arg, exec, m_name.c_str ());
+  }
+
   daemon::daemon (const looper &loop_pattern_arg, task_without_context *exec_arg, const char *name)
     : m_waiter ()
     , m_looper (loop_pattern_arg)
@@ -191,6 +203,38 @@ namespace cubthread
   daemon::register_stat_execute (void)
   {
     Daemon_statistics.time_and_increment (m_stats, STAT_LOOP_EXECUTE_COUNT_AND_TIME);
+  }
+
+  void
+  daemon::loop_with_context (daemon *daemon_arg, context_manager *context_manager_arg,
+			     entry_task *exec_arg, const char *name)
+  {
+    (void) name;  // suppress unused parameter warning
+    // its purpose is to help visualize daemon thread stacks
+
+    // create execution context
+    entry &context = context_manager_arg->create_context ();
+
+    daemon_arg->register_stat_start ();
+
+    while (!daemon_arg->m_looper.is_stopped ())
+      {
+	// execute task
+	exec_arg->execute (context);
+	daemon_arg->register_stat_execute ();
+
+	// take a break
+	daemon_arg->pause ();
+	daemon_arg->register_stat_pause ();
+      }
+
+    context_manager_arg->stop_execution (context);
+
+    // retire execution context
+    context_manager_arg->retire_context (context);
+
+    // retire task
+    exec_arg->retire ();
   }
 
   void

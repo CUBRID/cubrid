@@ -208,7 +208,7 @@ namespace cubthread
     return !m_stopped;
   }
 
-  inline bool
+  bool
   worker_pool::is_full (void) const
   {
     return m_task_count >= m_task_max_count;
