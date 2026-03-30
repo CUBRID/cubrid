@@ -72,13 +72,10 @@ static int global_tran_queue_count = 0;
 static pthread_mutex_t global_tran_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* *INDENT-OFF* */
-class dblink_2pc_daemon_context_manager:public
-  cubthread::daemon_entry_manager
+class dblink_2pc_daemon_context_manager:public cubthread::daemon_entry_manager
 {
 private:
-  void
-  on_daemon_retire (cubthread::entry & context)
-    final
+  void on_daemon_retire (cubthread::entry & context) final
   {
     if (context.get_system_tdes () != NULL)
       {
@@ -87,11 +84,8 @@ private:
   }
 };
 
-static
-  cubthread::daemon *
-  dblink_2pc_Daemon = NULL;
-static dblink_2pc_daemon_context_manager *
-  dblink_2pc_Daemon_context_manager = NULL;
+static cubthread::daemon * dblink_2pc_Daemon = NULL;
+static dblink_2pc_daemon_context_manager * dblink_2pc_Daemon_context_manager = NULL;
 /* *INDENT-ON* */
 
 /*
