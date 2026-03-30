@@ -6291,39 +6291,30 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	  }			/* for (t = ...) */
       }
 
-      if (bitset_cardinality (&(outer->nodes)) == 1)
-	{			/* single class spec */
-	  inner_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
-	  if (QO_NODE_HINT (inner_node) & PT_HINT_ORDERED)
-	    {
-	      /* join hint: force join left-to-right; skip idx-join because, these are only support left outer join */
-	      goto exit;
-	    }
-
-	  if (QO_NODE_HINT (inner_node) & PT_HINT_USE_NL)
-	    {
-	      /* join hint: force nl-join */
-	    }
-	  else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
-	    {
-	      /* join hint: force idx-join, merge-join; skip nl-join */
-	      goto exit;
-	    }
-	  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
-	    {
-	      /* join hint: force hash-join; skip nl-join */
-	      goto exit;
-	    }
-	  else
-	    {
-	      /* fall through */
-	    }
+      inner_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
+      if (QO_NODE_HINT (inner_node) & PT_HINT_ORDERED)
+	{
+	  /* join hint: force join left-to-right; skip idx-join because, these are only support left outer join */
+	  goto exit;
 	}
 
-      if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
+      if (QO_NODE_HINT (inner_node) & PT_HINT_USE_NL)
+	{
+	  /* join hint: force nl-join */
+	}
+      else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
+	{
+	  /* join hint: force idx-join, merge-join; skip nl-join */
+	  goto exit;
+	}
+      else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
 	{
 	  /* join hint: force hash-join; skip nl-join */
 	  goto exit;
+	}
+      else
+	{
+	  /* fall through */
 	}
 
       outer_plan = qo_find_best_plan_on_info (inner, QO_UNORDERED, 1.0);
