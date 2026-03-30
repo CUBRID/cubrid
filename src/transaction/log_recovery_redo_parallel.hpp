@@ -187,14 +187,14 @@ namespace cublog
 
       std::unique_ptr<cubthread::entry_manager> m_pool_context_manager;
 
-      /* the workpool already has and internal bookkeeping and can also wait for the tasks to terminate;
+      /* the worker pool already has and internal bookkeeping and can also wait for the tasks to terminate;
        * however, it also has a hardcoded maximum wait time (60 seconds) after which it will assert;
        * adding this internal additional bookeeping - which does not assume a maximum wait time - allows
        * to circumvent that hardcoded parameter
        */
       task_active_state_bookkeeping m_task_state_bookkeeping;
 
-      cubthread::entry_workpool *m_worker_pool;
+      cubthread::worker_pool *m_worker_pool;
       /* tasks have owner-controlled life-time in order to be able to
        * collect post-execution perf stats from them
        */

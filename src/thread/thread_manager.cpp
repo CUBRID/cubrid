@@ -164,7 +164,7 @@ namespace cubthread
     return new_res;
   }
 
-  entry_workpool *
+  worker_pool *
   manager::create_worker_pool (size_t pool_size, size_t task_max_count, const char *name,
 			       entry_manager *context_manager, std::size_t core_count, bool debug_logging,
 			       bool pool_threads, wait_seconds wait_for_task_time)
@@ -264,7 +264,7 @@ namespace cubthread
   }
 
   void
-  manager::destroy_worker_pool (entry_workpool *&worker_pool_arg)
+  manager::destroy_worker_pool (worker_pool *&worker_pool_arg)
   {
 #if defined (SERVER_MODE)
     if (worker_pool_arg == NULL)
@@ -279,7 +279,7 @@ namespace cubthread
   }
 
   void
-  manager::push_task (entry_workpool *worker_pool_arg, entry_task *exec_p)
+  manager::push_task (worker_pool *worker_pool_arg, entry_task *exec_p)
   {
     if (worker_pool_arg == NULL)
       {
@@ -302,7 +302,7 @@ namespace cubthread
   }
 
   void
-  manager::push_task_on_core (entry_workpool *worker_pool_arg, entry_task *exec_p, std::size_t core_hash,
+  manager::push_task_on_core (worker_pool *worker_pool_arg, entry_task *exec_p, std::size_t core_hash,
 			      bool method_mode = false)
   {
     if (worker_pool_arg == NULL)
@@ -326,7 +326,7 @@ namespace cubthread
   }
 
   bool
-  manager::try_task (entry &thread_p, entry_workpool *worker_pool_arg, entry_task *exec_p)
+  manager::try_task (entry &thread_p, worker_pool *worker_pool_arg, entry_task *exec_p)
   {
     if (worker_pool_arg == NULL)
       {
@@ -348,7 +348,7 @@ namespace cubthread
   }
 
   bool
-  manager::is_pool_full (entry_workpool *worker_pool_arg)
+  manager::is_pool_full (worker_pool *worker_pool_arg)
   {
 #if defined (SERVER_MODE)
     return worker_pool_arg == NULL || worker_pool_arg->is_full ();

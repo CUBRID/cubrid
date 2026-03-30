@@ -63,9 +63,9 @@ namespace cubload
   static std::mutex g_wp_mutex;
   static std::condition_variable g_wp_condvar;
   std::set<session *> g_active_sessions;
-  static cubthread::entry_workpool *g_worker_pool;
+  static cubthread::worker_pool *g_worker_pool;
   static worker_context_manager *g_wp_context_manager;
-  static cubthread::worker_pool_task_capper<cubthread::entry> *g_wp_task_capper;
+  static cubthread::worker_pool_task_capper *g_wp_task_capper;
 
   worker_context_manager::worker_context_manager (unsigned int pool_size)
     : m_driver_pool (pool_size)

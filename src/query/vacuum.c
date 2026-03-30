@@ -934,7 +934,7 @@ static cubthread::daemon *vacuum_Master_daemon = NULL;                       // 
 static vacuum_master_context_manager *vacuum_Master_context_manager = NULL;  // context manager
 
 // vacuum worker globals
-static cubthread::entry_workpool *vacuum_Worker_threads = NULL;              // thread pool
+static cubthread::worker_pool *vacuum_Worker_threads = NULL;              // thread pool
 static vacuum_worker_context_manager *vacuum_Worker_context_manager = NULL;  // context manager
 
 /* *INDENT-ON* */
