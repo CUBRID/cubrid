@@ -2921,6 +2921,7 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
 
   if (strchr (database_name, '@') == NULL)
     {
+      /* TODO: Handle truncation explicitly here; keep this in sync with applyinfo() local_database_name build path. */
       snprintf (tmp_database_name, sizeof (tmp_database_name), "%s@localhost", database_name);
       database_name = tmp_database_name;
     }
@@ -2928,7 +2929,6 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
   if (check_database_name (database_name))
     {
       err = ER_FAILED;
-      PRINT_AND_LOG_ERR_MSG ("%s: %s\n", arg->command_name, db_error_string (3));
       goto end2;
     }
 
@@ -3670,6 +3670,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   do
     {
       memset (local_database_name, 0x00, CUB_MAXHOSTNAMELEN);
+      /* TODO: Replace strcpy/strcat with bounded formatting and keep behavior aligned with rkcheck() tmp_database_name path. */
       strcpy (local_database_name, database_name);
       strcat (local_database_name, "@localhost");
 
