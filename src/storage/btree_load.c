@@ -54,6 +54,8 @@
 #include "xserver_interface.h"
 #include "xasl.h"
 #include "xasl_unpack_info.hpp"
+#include "px_ftab_set.hpp"
+#include "bit.h"
 #ifndef NDEBUG
 #include "db_value_printer.hpp"
 #endif
@@ -257,11 +259,6 @@ static int bt_load_add_same_key_to_record (THREAD_ENTRY * thread_p, LOAD_ARGS * 
 					   int *sp_success);
 static int bt_load_notify_to_vacuum (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam,
 				     char **notify_vacuum_rv_data, char *notify_vacuum_rv_data_bufalign);
-static int bt_load_heap_scancache_start_for_attrinfo (THREAD_ENTRY * thread_p, SORT_ARGS * args,
-						      HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info,
-						      int save_cache_last_fix_page);
-static void bt_load_heap_scancache_end_for_attrinfo (THREAD_ENTRY * thread_p, SORT_ARGS * args,
-						     HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info);
 static void bt_load_clear_pred_and_unpack (THREAD_ENTRY * thread_p, SORT_ARGS * args,
 					   XASL_UNPACK_INFO * func_unpack_info);
 
@@ -692,7 +689,7 @@ btree_get_next_overflow_vpid (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, VPID *
   return NO_ERROR;
 }
 
-static int
+int
 bt_load_heap_scancache_start_for_attrinfo (THREAD_ENTRY * thread_p, SORT_ARGS * args, HEAP_SCANCACHE * scan_cache,
 					   HEAP_CACHE_ATTRINFO * attr_info, int save_cache_last_fix_page)
 {
@@ -743,7 +740,7 @@ bt_load_heap_scancache_start_for_attrinfo (THREAD_ENTRY * thread_p, SORT_ARGS * 
   return NO_ERROR;
 }
 
-static void
+void
 bt_load_heap_scancache_end_for_attrinfo (THREAD_ENTRY * thread_p, SORT_ARGS * args, HEAP_SCANCACHE * scan_cache,
 					 HEAP_CACHE_ATTRINFO * attr_info)
 {
@@ -873,9 +870,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
    * COMMITTED, so that the new file becomes kind of permanent.  This allows
    * us to make use of un-used pages in the case of a bad init_pgcnt guess.
    */
-
-  log_sysop_start (thread_p);
-  is_sysop_started = true;
 
   thread_p->push_resource_tracks ();
 
@@ -1038,6 +1032,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     {
       goto error;
     }
+
+  is_sysop_started = true;
 
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
@@ -3184,6 +3180,385 @@ btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args, SORT_PUT_FUNC 
   return sort_listfile (thread_p, sort_args->hfids[0].vfid.volid, 0 /* TODO - support parallelism */ ,
 			&btree_sort_get_next, sort_args, out_func, out_args, compare_driver, sort_args, SORT_DUP,
 			NO_SORT_LIMIT, includes_tde_class, SORT_INDEX_LEAF);
+}
+
+static SCAN_CODE
+get_next_vpid (THREAD_ENTRY * thread_p, parallel_query::ftab_set & ftab, FILE_PARTIAL_SECTOR * fsector, int *offset,
+	       VPID * vpid_out, HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * old_pgwatcher)
+{
+  bool found = false;
+  int error = NO_ERROR;
+
+  while (!found)
+    {
+      if (fsector == NULL || VSID_IS_NULL (&fsector->vsid))
+	{
+	  /* try to get new partial sector */
+	  FILE_PARTIAL_SECTOR new_fsector = ftab.get_next ();
+	  if (VSID_IS_NULL (&new_fsector.vsid))
+	    {
+	      /* end */
+	      return S_END;
+	    }
+	  *fsector = new_fsector;
+	  *offset = 0;
+	  vpid_out->volid = new_fsector.vsid.volid;
+	  vpid_out->pageid = SECTOR_FIRST_PAGEID (new_fsector.vsid.sectid);
+	}
+      else
+	{
+	  (*offset)++;
+	  (*vpid_out).pageid++;
+	}
+      /* fsector exists */
+      for (; *offset < DISK_SECTOR_NPAGES; (*offset)++, (*vpid_out).pageid++)
+	{
+	  if (bit64_is_set (fsector->page_bitmap, *offset))
+	    {
+	      if (scan_cache->page_watcher.pgptr != NULL)
+		{
+		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, old_pgwatcher);
+		}
+
+	      error = pgbuf_ordered_fix (thread_p, vpid_out, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
+					 &scan_cache->page_watcher);
+
+	      if (scan_cache->page_watcher.pgptr == NULL)
+		{
+		  if (error != NO_ERROR && error != ER_PB_BAD_PAGEID)
+		    {
+		      /* non-dealloc error (e.g. ER_INTERRUPTED): propagate */
+		      return S_ERROR;
+		    }
+		  /* when bitmap is built, that page was valid.
+		   * but now, it's deallocated in some reasons.
+		   * this is not error, it can be ignored */
+		  er_clear ();
+		  found = false;
+		  continue;
+		}
+
+	      if (old_pgwatcher->pgptr != NULL)
+		{
+		  pgbuf_ordered_unfix (thread_p, old_pgwatcher);
+		}
+
+	      if (error != NO_ERROR)
+		{
+		  return S_ERROR;
+		}
+
+	      return S_SUCCESS;
+	    }
+	}
+    }
+}
+
+SORT_STATUS
+btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
+{
+  SCAN_CODE page_iter_scan_result, slot_iter_scan_result;
+  DB_VALUE dbvalue;
+  DB_VALUE *dbvalue_ptr;
+  int key_len;
+  OID prev_oid;
+  VPID vpid;
+  SORT_ARGS *sort_args;
+  int value_has_null;
+  char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
+  int *prefix_lengthp;
+  int result;
+  MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
+  MVCC_SNAPSHOT mvcc_snapshot_dirty;
+  MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_dirty_satisfied;
+  bool is_btree_ops_log = prm_get_bool_value (PRM_ID_LOG_BTREE_OPS);
+
+  PGBUF_WATCHER old_pgwatcher;
+  HFID hfid;
+  int offset = 0, ftab_set_index = 0;
+  VPID curr_vpid;
+  FILE_PARTIAL_SECTOR s = FILE_PARTIAL_SECTOR_INITIALIZER;
+
+  db_make_null (&dbvalue);
+
+  aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
+
+  sort_args = (SORT_ARGS *) arg;
+  prev_oid = sort_args->cur_oid;
+
+  mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
+
+  VPID_SET_NULL (&vpid);
+  hfid = sort_args->hfids[0];
+  PGBUF_INIT_WATCHER (&old_pgwatcher, PGBUF_ORDERED_HEAP_NORMAL, &hfid);
+
+
+  page_iter_scan_result =
+    get_next_vpid (thread_p, (*sort_args->ftab_sets)[ftab_set_index], &s, &offset, &vpid,
+		   &sort_args->hfscan_cache, &old_pgwatcher);
+  if (page_iter_scan_result == S_END)
+    {
+      return SORT_NOMORE_RECS;
+    }
+  else if (page_iter_scan_result == S_SUCCESS)
+    {
+      ;
+    }
+  else
+    {
+      return SORT_ERROR_OCCURRED;
+    }
+
+  do
+    {				/* Infinite loop */
+      int cur_class, attr_offset;
+      bool save_cache_last_fix_page;
+
+      /*
+       * This infinite loop will be exited when a satisfactory next value is
+       * found (i.e., when an object belonging to this class with a non-null
+       * attribute value is found), or when there are no more objects in the
+       * heap files.
+       */
+
+      /*
+       * RETRIEVE THE NEXT OBJECT
+       */
+
+      cur_class = sort_args->cur_class;
+      attr_offset = cur_class * sort_args->n_attrs;
+      sort_args->in_recdes.data = NULL;
+      slot_iter_scan_result =
+	heap_next_1page (thread_p, &sort_args->hfids[cur_class], &vpid, &sort_args->class_ids[cur_class],
+			 &sort_args->cur_oid, &sort_args->in_recdes, &sort_args->hfscan_cache,
+			 sort_args->hfscan_cache.cache_last_fix_page ? PEEK : COPY);
+
+      switch (slot_iter_scan_result)
+	{
+	case S_SUCCESS:
+	  break;
+
+	case S_END:
+	  {
+	    page_iter_scan_result =
+	      get_next_vpid (thread_p, (*sort_args->ftab_sets)[ftab_set_index], &s, &offset, &vpid,
+			     &sort_args->hfscan_cache, &old_pgwatcher);
+	    if (page_iter_scan_result == S_END)
+	      {
+		/* fall through */
+	      }
+	    else if (page_iter_scan_result == S_SUCCESS)
+	      {
+		continue;
+	      }
+	    else
+	      {
+		return SORT_ERROR_OCCURRED;
+	      }
+	  }
+	  /* No more objects in this heap, finish the current scan */
+	  save_cache_last_fix_page = sort_args->hfscan_cache.cache_last_fix_page;
+	  bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args, NULL, NULL);
+
+	  /* Are we through with all the non-null heaps? */
+	  sort_args->cur_class++;
+	  while ((sort_args->cur_class < sort_args->n_classes)
+		 && HFID_IS_NULL (&sort_args->hfids[sort_args->cur_class]))
+	    {
+	      sort_args->cur_class++;
+	    }
+
+	  if (sort_args->cur_class == sort_args->n_classes)
+	    {
+	      return SORT_NOMORE_RECS;
+	    }
+	  else
+	    {
+	      ftab_set_index++;
+	      /* When there is a class inheritance relationship, n_classes may be 2 or more 
+	       * only if it is a reverse unique, unique, or primary index.
+	       * In addition, filter and func_index_info cannot exist in this case.   
+	       */
+	      /* start up the next scan */
+	      cur_class = sort_args->cur_class;
+	      attr_offset = cur_class * sort_args->n_attrs;
+
+	      if (bt_load_heap_scancache_start_for_attrinfo (thread_p, sort_args, NULL, NULL, save_cache_last_fix_page)
+		  != NO_ERROR)
+		{
+		  return SORT_ERROR_OCCURRED;
+		}
+
+	      /* set the scan to the initial state for this new heap */
+	      OID_SET_NULL (&sort_args->cur_oid);
+
+	      if (is_btree_ops_log)
+		{
+		  _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: load start on class(%d, %d, %d), btid(%d, (%d, %d)).",
+				 sort_args->class_ids[sort_args->cur_class].volid,
+				 sort_args->class_ids[sort_args->cur_class].pageid,
+				 sort_args->class_ids[sort_args->cur_class].slotid,
+				 sort_args->btid->sys_btid->root_pageid, sort_args->btid->sys_btid->vfid.volid,
+				 sort_args->btid->sys_btid->vfid.fileid);
+		}
+	      hfid = sort_args->hfids[sort_args->cur_class];
+	      PGBUF_INIT_WATCHER (&old_pgwatcher, PGBUF_ORDERED_HEAP_NORMAL, &hfid);
+	    }
+	  continue;
+
+	  /*
+	     case S_ERROR:
+	     case S_DOESNT_EXIST:
+	     case S_DOESNT_FIT:
+	     case S_SUCCESS_CHN_UPTODATE:
+	     case S_SNAPSHOT_NOT_SATISFIED:
+	   */
+	default:
+	  return SORT_ERROR_OCCURRED;
+	}
+
+      /*
+       * Produce the sort item for this object
+       */
+
+      /* filter out dead records before any more checks */
+      if (or_mvcc_get_header (&sort_args->in_recdes, &mvcc_header) != NO_ERROR)
+	{
+	  return SORT_ERROR_OCCURRED;
+	}
+      if (MVCC_IS_HEADER_DELID_VALID (&mvcc_header) && MVCC_GET_DELID (&mvcc_header) < sort_args->oldest_visible_mvccid)
+	{
+	  continue;
+	}
+      if (MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (&mvcc_header)
+	  && MVCC_GET_INSID (&mvcc_header) < sort_args->oldest_visible_mvccid)
+	{
+	  /* Insert MVCCID is now visible to everyone. Clear it to avoid unnecessary vacuuming. */
+	  MVCC_CLEAR_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_INSID);
+	}
+
+      snapshot_dirty_satisfied = mvcc_snapshot_dirty.snapshot_fnc (thread_p, &mvcc_header, &mvcc_snapshot_dirty);
+
+      if (sort_args->filter)
+	{
+	  if (heap_attrinfo_read_dbvalues
+	      (thread_p, &sort_args->cur_oid, &sort_args->in_recdes, sort_args->filter->cache_pred) != NO_ERROR)
+	    {
+	      return SORT_ERROR_OCCURRED;
+	    }
+
+	  result = (*sort_args->filter_eval_func) (thread_p, sort_args->filter->pred, NULL, &sort_args->cur_oid);
+	  if (result == V_ERROR)
+	    {
+	      return SORT_ERROR_OCCURRED;
+	    }
+	  else if (result != V_TRUE)
+	    {
+	      continue;
+	    }
+	}
+
+      if (sort_args->func_index_info && sort_args->func_index_info->expr)
+	{
+	  if (snapshot_dirty_satisfied != SNAPSHOT_SATISFIED)
+	    {
+	      /* Check snapshot before key generation. Key generation may leads to errors when a function is involved. */
+	      continue;
+	    }
+	}
+
+      prefix_lengthp = (sort_args->attrs_prefix_length) ? &(sort_args->attrs_prefix_length[0]) : NULL;
+      dbvalue_ptr =
+	heap_attrinfo_generate_key (thread_p, sort_args->n_attrs, &sort_args->attr_ids[attr_offset], prefix_lengthp,
+				    &sort_args->attr_info, &sort_args->in_recdes, &dbvalue, aligned_midxkey_buf,
+				    sort_args->func_index_info, NULL, &sort_args->cur_oid);
+      if (dbvalue_ptr == NULL)
+	{
+	  return SORT_ERROR_OCCURRED;
+	}
+
+      value_has_null = 0;	/* init */
+      if (DB_IS_NULL (dbvalue_ptr) || btree_multicol_key_has_null (dbvalue_ptr))
+	{
+	  if (sort_args->not_null_flag && snapshot_dirty_satisfied == SNAPSHOT_SATISFIED)
+	    {
+	      if (dbvalue_ptr == &dbvalue || dbvalue_ptr->need_clear == true)
+		{
+		  pr_clear_value (dbvalue_ptr);
+		}
+
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE, 0);
+	      return SORT_ERROR_OCCURRED;
+	    }
+
+	  value_has_null = 1;	/* found null columns */
+	}
+
+      if (DB_IS_NULL (dbvalue_ptr) || btree_multicol_key_is_null (dbvalue_ptr))
+	{
+	  if (snapshot_dirty_satisfied == SNAPSHOT_SATISFIED)
+	    {
+	      /* All objects that were not candidates for vacuum are loaded, but statistics should only care for
+	       * objects that have not been deleted and committed at the time of load. */
+	      sort_args->n_oids++;	/* Increment the OID counter */
+	      sort_args->n_nulls++;	/* Increment the NULL counter */
+	    }
+	  if (dbvalue_ptr == &dbvalue || dbvalue_ptr->need_clear == true)
+	    {
+	      pr_clear_value (dbvalue_ptr);
+	    }
+	  if (is_btree_ops_log)
+	    {
+	      _er_log_debug (ARG_FILE_LINE,
+			     "DEBUG_BTREE: load sort found null at oid(%d, %d, %d)"
+			     ", class_oid(%d, %d, %d), btid(%d, (%d, %d).", sort_args->cur_oid.volid,
+			     sort_args->cur_oid.pageid, sort_args->cur_oid.slotid,
+			     sort_args->class_ids[sort_args->cur_class].volid,
+			     sort_args->class_ids[sort_args->cur_class].pageid,
+			     sort_args->class_ids[sort_args->cur_class].slotid, sort_args->btid->sys_btid->root_pageid,
+			     sort_args->btid->sys_btid->vfid.volid, sort_args->btid->sys_btid->vfid.fileid);
+	    }
+	  continue;
+	}
+
+      key_len = sort_args->key_type->type->get_disk_size_of_value (dbvalue_ptr);
+      if (key_len > 0)
+	{
+	  result = bt_load_put_buf_to_record (temp_recdes, sort_args, value_has_null, &prev_oid, &mvcc_header,
+					      dbvalue_ptr, key_len, cur_class, is_btree_ops_log);
+	  if (result != NO_ERROR)
+	    {
+	      goto nofit;
+	    }
+
+	  if (dbvalue_ptr == &dbvalue || dbvalue_ptr->need_clear == true)
+	    {
+	      pr_clear_value (dbvalue_ptr);
+	    }
+	}
+
+      if (snapshot_dirty_satisfied == SNAPSHOT_SATISFIED)
+	{
+	  /* All objects that were not candidates for vacuum are loaded, but statistics should only care for objects
+	   * that have not been deleted and committed at the time of load. */
+	  sort_args->n_oids++;	/* Increment the OID counter */
+	}
+
+      if (key_len > 0)
+	{
+	  return SORT_SUCCESS;
+	}
+    }
+  while (true);
+
+nofit:
+
+  if (dbvalue_ptr == &dbvalue || dbvalue_ptr->need_clear == true)
+    {
+      pr_clear_value (dbvalue_ptr);
+    }
+
+  return SORT_REC_DOESNT_FIT;
 }
 
 /*

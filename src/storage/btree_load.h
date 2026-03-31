@@ -261,7 +261,12 @@ struct btree_node
 };
 
 struct pred_expr_with_context;
-class ftab_set;
+/* *INDENT-OFF* */
+namespace parallel_query
+{
+  class ftab_set;
+}
+/* *INDENT-ON* */
 
 typedef struct sort_args SORT_ARGS;
 struct sort_args
@@ -297,7 +302,9 @@ struct sort_args
   MVCCID oldest_visible_mvccid;
 
   /* for parallel processing */
-  ftab_set *ftabs;		/* file table for parallel execution */
+  /* *INDENT-OFF* */
+  std::vector<parallel_query::ftab_set> *ftab_sets;
+  /* *INDENT-ON* */
 };
 
 /* Recovery routines */
@@ -331,6 +338,11 @@ extern int btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * k
 				       TP_DOMAIN * key_domain);
 
 extern int btree_get_asc_desc (THREAD_ENTRY * thread_p, BTID * btid, int col_idx, int *asc_desc);
+extern int bt_load_heap_scancache_start_for_attrinfo (THREAD_ENTRY * thread_p, SORT_ARGS * args,
+						      HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info,
+						      int save_cache_last_fix_page);
+extern void bt_load_heap_scancache_end_for_attrinfo (THREAD_ENTRY * thread_p, SORT_ARGS * args,
+						     HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info);
 
 /*
  * btree_clear_key_value () -

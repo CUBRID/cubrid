@@ -1597,6 +1597,16 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
 	  tsc_getticks (&start_tick);
 	}
     }
+  else if (sort_param->px_type == SORT_INDEX_LEAF)
+    {
+      sort_param->get_fn = &btree_sort_get_next_parallel;
+      SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
+      if (bt_load_heap_scancache_start_for_attrinfo (thread_p, sort_args_p, NULL, NULL, true) != NO_ERROR)
+	{
+	  px_status = PX_ERR_FAILED;
+	  goto cleanup;
+	}
+    }
   else
     {
       /* Not implemented yet */
@@ -1630,6 +1640,11 @@ cleanup:
 	  sort_param->orderby_stats.orderby_pages += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES));
 	  sort_param->orderby_stats.orderby_ioreads += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES));
 	}
+    }
+  else if (sort_param->px_type == SORT_INDEX_LEAF)
+    {
+      SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
+      bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args_p, NULL, NULL);
     }
   else
     {
@@ -4127,40 +4142,52 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
 
   if (parallel_type == PX_THREAD_IN_PARALLEL)
     {
-      if (sort_param->get_arg != NULL)
+      if (sort_param->px_type == SORT_ORDER_BY)
 	{
-	  SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
-	  if (sort_info_p->input_file)
+	  if (sort_param->get_arg != NULL)
 	    {
-	      qfile_free_list_id (sort_info_p->input_file);
+	      SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
+	      if (sort_info_p->input_file)
+		{
+		  qfile_free_list_id (sort_info_p->input_file);
+		}
+	      if (sort_info_p->s_id->s_id != NULL)
+		{
+		  db_private_free_and_init (thread_p, sort_info_p->s_id->s_id);
+		}
+	      if (sort_info_p->s_id != NULL)
+		{
+		  db_private_free_and_init (thread_p, sort_info_p->s_id);
+		}
+	      db_private_free_and_init (thread_p, sort_param->get_arg);
 	    }
-	  if (sort_info_p->s_id->s_id != NULL)
+	  if (sort_param->put_arg != NULL)
 	    {
-	      db_private_free_and_init (thread_p, sort_info_p->s_id->s_id);
+	      SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->put_arg;
+	      SORT_INFO *ori_sort_info_p = (SORT_INFO *) sort_param->ori_sort_param->put_arg;
+	      if (sort_info_p->output_file && sort_info_p->output_file != ori_sort_info_p->output_file)
+		{
+		  qfile_free_list_id (sort_info_p->output_file);
+		}
+	      if (sort_info_p->s_id->s_id != NULL)
+		{
+		  db_private_free_and_init (thread_p, sort_info_p->s_id->s_id);
+		}
+	      if (sort_info_p->s_id != NULL)
+		{
+		  db_private_free_and_init (thread_p, sort_info_p->s_id);
+		}
+	      db_private_free_and_init (thread_p, sort_param->put_arg);
 	    }
-	  if (sort_info_p->s_id != NULL)
-	    {
-	      db_private_free_and_init (thread_p, sort_info_p->s_id);
-	    }
-	  db_private_free_and_init (thread_p, sort_param->get_arg);
 	}
-      if (sort_param->put_arg != NULL)
+      else if (sort_param->px_type == SORT_INDEX_LEAF)
 	{
-	  SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->put_arg;
-	  SORT_INFO *ori_sort_info_p = (SORT_INFO *) sort_param->ori_sort_param->put_arg;
-	  if (sort_info_p->output_file && sort_info_p->output_file != ori_sort_info_p->output_file)
-	    {
-	      qfile_free_list_id (sort_info_p->output_file);
-	    }
-	  if (sort_info_p->s_id->s_id != NULL)
-	    {
-	      db_private_free_and_init (thread_p, sort_info_p->s_id->s_id);
-	    }
-	  if (sort_info_p->s_id != NULL)
-	    {
-	      db_private_free_and_init (thread_p, sort_info_p->s_id);
-	    }
-	  db_private_free_and_init (thread_p, sort_param->put_arg);
+	  ;
+	}
+      else
+	{
+	  assert (false);
+	  return;
 	}
     }
 }
@@ -4979,18 +5006,55 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
       using ftab_set = parallel_query::ftab_set;
       SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg, *px_sort_args_p;
       std::vector < ftab_set > ftab_sets (parallel_num);
+      ftab_set temp;
+      FILE_FTAB_COLLECTOR collector;
 
       for (int i = 0; i < parallel_num; i++)
 	{
-	  memcpy (&px_sort_param[i].get_arg, &sort_param->get_arg, sizeof (SORT_ARGS));
-	  px_sort_args_p = (SORT_ARGS *) px_sort_param[i].get_arg;
-	  px_sort_args_p->ftabs = NULL;
+	  px_sort_args_p = (SORT_ARGS *) malloc (sizeof (SORT_ARGS));
+	  if (px_sort_args_p == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SORT_ARGS));
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	  memcpy (px_sort_args_p, sort_param->get_arg, sizeof (SORT_ARGS));
+	  px_sort_param[i].get_arg = px_sort_args_p;
+	  px_sort_args_p->ftab_sets = NULL;
 	}
 
-
-
-      return ER_FAILED;
+      /* split ftab into each parallel sort param */
+      for (int i = 0; i < sort_args_p->n_classes; i++)
+	{
+	  error = file_get_all_data_sectors (thread_p, &sort_args_p->hfids[i].vfid, &collector);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  temp.convert (&collector);
+	  ftab_sets = temp.split (parallel_num);
+	  for (int i = 0; i < parallel_num; i++)
+	    {
+	      px_sort_args_p = (SORT_ARGS *) px_sort_param[i].get_arg;
+	      if (ftab_sets[i].size () != 0)
+		{
+		  if (px_sort_args_p->ftab_sets == NULL)
+		    {
+		      px_sort_args_p->ftab_sets =
+			(std::vector < ftab_set > *)malloc (sizeof (std::vector < ftab_set >));
+		      if (px_sort_args_p->ftab_sets == NULL)
+			{
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+				  sizeof (std::vector < ftab_set >));
+			  return ER_OUT_OF_VIRTUAL_MEMORY;
+			}
+		      placement_new (px_sort_args_p->ftab_sets);
+		    }
+		  px_sort_args_p->ftab_sets->push_back (ftab_sets[i]);
+		}
+	    }
+	}
     }
+
   else
     {
       /* not implemented yet (group by, analytic fuction) */
@@ -5062,6 +5126,10 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	    }
 	  orderby_stats->parallel_num = parallel_num;
 	}
+    }
+  else if (sort_param->px_type == SORT_INDEX_LEAF)
+    {
+      log_sysop_start (thread_p);
     }
   else
     {

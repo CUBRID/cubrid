@@ -40,6 +40,51 @@ namespace parallel_query
 	 iterator (0)
       {}
 
+      ftab_set (const ftab_set &other)
+	:m_ftab_set (other.m_ftab_set),
+	 iterator (other.iterator)
+      {}
+
+      ftab_set (ftab_set &&other)
+	:m_ftab_set (std::move (other.m_ftab_set)),
+	 iterator (other.iterator)
+      {
+	other.iterator = 0;
+      }
+
+      ftab_set &operator= (const ftab_set &other)
+      {
+	if (this != &other)
+	  {
+	    m_ftab_set = other.m_ftab_set;
+	    iterator = other.iterator;
+	  }
+	return *this;
+      }
+
+      ftab_set &operator= (ftab_set &&other)
+      {
+	if (this != &other)
+	  {
+	    m_ftab_set = std::move (other.m_ftab_set);
+	    iterator = other.iterator;
+	    other.iterator = 0;
+	  }
+	return *this;
+      }
+
+      void append (const ftab_set &other)
+      {
+	m_ftab_set.insert (m_ftab_set.end (), other.m_ftab_set.begin (), other.m_ftab_set.end ());
+      }
+
+      void move_from (ftab_set &other)
+      {
+	m_ftab_set = std::move (other.m_ftab_set);
+	iterator = other.iterator;
+	other.iterator = 0;
+      }
+
       void convert (FILE_FTAB_COLLECTOR *ftab_collector)
       {
 	int i;
@@ -86,6 +131,11 @@ namespace parallel_query
 	FILE_PARTIAL_SECTOR ftab = m_ftab_set[iterator];
 	iterator++;
 	return ftab;
+      }
+
+      size_t size() const
+      {
+	return m_ftab_set.size();
       }
 
       void clear()
