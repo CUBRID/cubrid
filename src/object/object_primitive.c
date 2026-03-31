@@ -8898,8 +8898,12 @@ mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int to
 static inline int
 mr_get_fixed_numeric_size (const unsigned char *data)
 {
-  uint64_t hi = *(uint64_t *) (data + 1);	// data[1..8]
-  uint64_t lo = *(uint64_t *) (data + 9);	// data[9..16]
+  uint64_t word_buf[2];
+  uint64_t hi, lo;
+
+  memcpy (word_buf, data + 1, sizeof (word_buf));
+  hi = word_buf[0];
+  lo = word_buf[1];
 
   if (hi != 0)
     {

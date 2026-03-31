@@ -210,7 +210,7 @@ static void numeric_init_pow_of_10_helper (void);
 #if defined(SERVER_MODE)
 static void numeric_init_pow_of_10 (void);
 #endif
-static DB_C_NUMERIC numeric_get_pow_of_10 (int exp);
+static void numeric_get_pow_of_10 (int exp, uint8_t * result);
 static void numeric_init_digits4_ascii_helper (void);
 #if defined(SERVER_MODE)
 static void numeric_init_digits4_ascii (void);
@@ -508,8 +508,8 @@ numeric_init_pow_of_10 (void)
  * On little-endian systems, BSWAP64 is applied to ensure correct
  * byte order.
  */
-static DB_C_NUMERIC
-numeric_get_pow_of_10 (int exp)
+static void
+numeric_get_pow_of_10 (int exp, uint8_t * result)
 {
   assert (exp < (int) sizeof (powers_of_10));
 
@@ -525,16 +525,14 @@ numeric_get_pow_of_10 (int exp)
   /* convert word-based (host-endian) powers_of_10 into
    * 17-byte big-endian NUMERIC format */
 #if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
-  static __thread uint8_t converted[DB_NUMERIC_BUF_SIZE];
   const uint64_t *src = &powers_of_10[exp][POW10_BUF_WORDS - NUMERIC_AS_WORDS];
-
-  converted[0] = (uint8_t) (src[0] & 0xFF);
-  *(uint64_t *) (converted + 1) = NUMERIC_BSWAP64 (src[1]);
-  *(uint64_t *) (converted + 9) = NUMERIC_BSWAP64 (src[2]);
-
-  return (DB_C_NUMERIC) converted;
+  result[0] = (uint8_t) (src[0] & 0xFF);
+  uint64_t temp_word[2];
+  temp_word[0] = NUMERIC_BSWAP64 (src[1]);
+  temp_word[1] = NUMERIC_BSWAP64 (src[2]);
+  memcpy (result + 1, temp_word, sizeof (temp_word));
 #else
-  return (DB_C_NUMERIC) ((uint8_t *) powers_of_10[exp] + (POW10_BUF_SIZE - DB_NUMERIC_BUF_SIZE));
+  memcpy (result, (uint8_t *) powers_of_10[exp] + (POW10_BUF_SIZE - DB_NUMERIC_BUF_SIZE), DB_NUMERIC_BUF_SIZE);
 #endif
 }
 
@@ -939,7 +937,9 @@ numeric_is_bigint (DB_C_NUMERIC arg, bool is_value_negative)
 static bool
 numeric_overflow (DB_C_NUMERIC arg, int exp)
 {
-  return (numeric_compare_pos (arg, numeric_get_pow_of_10 (exp)) >= 0) ? true : false;
+  uint8_t pow10_buf[DB_NUMERIC_BUF_SIZE];
+  numeric_get_pow_of_10 (exp, pow10_buf);
+  return (numeric_compare_pos (arg, pow10_buf) >= 0) ? true : false;
 }
 
 /*
@@ -1361,24 +1361,24 @@ float_numeric_mul_fast (const uint64_t * dbv1_word, const uint64_t * dbv2_word, 
   result_word[1] = (uint64_t) (prod >> 64);
 #else
   /* fallback: emulate 64-bit multiplication using 32-bit halves */
-  uint64_t tmp, carry, result_low, result_mid;
+  uint64_t temp, carry, result_low, result_mid;
 
   uint64_t dbv1_high = dbv1_word[2] >> 32;
   uint64_t dbv1_low = dbv1_word[2] & 0xFFFFFFFFULL;	// 1111 1111
   uint64_t dbv2_high = dbv2_word[2] >> 32;
   uint64_t dbv2_low = dbv2_word[2] & 0xFFFFFFFFULL;
 
-  tmp = dbv1_low * dbv2_low;
-  result_low = tmp & 0xFFFFFFFFULL;
-  carry = tmp >> 32;
-  tmp = dbv1_high * dbv2_low + carry;
+  temp = dbv1_low * dbv2_low;
+  result_low = temp & 0xFFFFFFFFULL;
+  carry = temp >> 32;
+  temp = dbv1_high * dbv2_low + carry;
 
-  result_mid = tmp & 0xFFFFFFFFULL;
-  carry = tmp >> 32;
-  tmp = dbv1_low * dbv2_high + result_mid;
+  result_mid = temp & 0xFFFFFFFFULL;
+  carry = temp >> 32;
+  temp = dbv1_low * dbv2_high + result_mid;
 
-  result_word[2] = (tmp << 32) | result_low;
-  result_word[1] = dbv1_high * dbv2_high + carry + (tmp >> 32);
+  result_word[2] = (temp << 32) | result_low;
+  result_word[1] = dbv1_high * dbv2_high + carry + (temp >> 32);
 #endif
 
   numeric_words_to_bytes (result_word, calc_words, result_buf);
@@ -3704,7 +3704,7 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
 void
 numeric_coerce_int_to_num (int arg, DB_C_NUMERIC answer, bool * is_value_negative)
 {
-  uint32_t *digit;
+  uint32_t digit;
   unsigned int tmp_arg;
 
   tmp_arg = (arg < 0) ? -(unsigned int) arg : (unsigned int) arg;
@@ -3714,8 +3714,8 @@ numeric_coerce_int_to_num (int arg, DB_C_NUMERIC answer, bool * is_value_negativ
     }
 
   /* Copy the lower 32 bits into answer [13] ~ [16] (4 bytes) */
-  digit = (uint32_t *) (answer + (DB_NUMERIC_BUF_SIZE - sizeof (int)));
-  *digit = NUMERIC_BSWAP32 (tmp_arg);
+  digit = NUMERIC_BSWAP32 (tmp_arg);
+  memcpy (answer + (DB_NUMERIC_BUF_SIZE - sizeof (int)), &digit, sizeof (digit));
 
   /* Pad extra bytes of answer accordingly [0] ~ [12] (13 bytes) */
   memset (answer, 0, DB_NUMERIC_BUF_SIZE - sizeof (int));
@@ -3744,8 +3744,7 @@ numeric_coerce_bigint_to_num (DB_BIGINT arg, DB_C_NUMERIC answer, bool * is_valu
     }
 
   /* Copy the lower 64 bits into answer [9] ~ [16] (8 bytes) */
-  digit = (uint64_t *) (answer + (DB_NUMERIC_BUF_SIZE - sizeof (DB_BIGINT)));
-  *digit = NUMERIC_BSWAP64 (tmp_arg);
+  numeric_put_uint64_to_be (answer + (DB_NUMERIC_BUF_SIZE - sizeof (DB_BIGINT)), tmp_arg);
 
   /* Pad extra bytes of answer accordingly [0] ~ [8] (9 bytes) */
   memset (answer, 0, DB_NUMERIC_BUF_SIZE - sizeof (DB_BIGINT));
@@ -3764,11 +3763,11 @@ numeric_coerce_bigint_to_num (DB_BIGINT arg, DB_C_NUMERIC answer, bool * is_valu
 void
 numeric_coerce_num_to_int (DB_C_NUMERIC arg, int *answer, const bool is_value_negative)
 {
-  uint32_t *digit;
+  uint32_t digit;
 
   /* Copy the lower 32 bits into answer. */
-  digit = (uint32_t *) (arg + (DB_NUMERIC_BUF_SIZE - sizeof (int)));
-  *answer = (int) NUMERIC_BSWAP32 (*digit);
+  memcpy (&digit, arg + (DB_NUMERIC_BUF_SIZE - sizeof (int)), sizeof (digit));
+  *answer = (int) NUMERIC_BSWAP32 (digit);
 
   /* Apply sign */
   if (is_value_negative)
@@ -3804,8 +3803,9 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer, c
 
   /* 1. load DB_C_NUMERIC (Big-endian bytes) into word-aligned work_buf */
   work_buf[0] = (uint64_t) arg[0];
-  work_buf[1] = NUMERIC_BSWAP64 (*(uint64_t *) (arg + 1));
-  work_buf[2] = NUMERIC_BSWAP64 (*(uint64_t *) (arg + 9));
+  memcpy (&work_buf[1], arg + 1, 16);
+  work_buf[1] = NUMERIC_BSWAP64 (work_buf[1]);
+  work_buf[2] = NUMERIC_BSWAP64 (work_buf[2]);
 
   /* 2. perform scale adjustment if scale > 0 (divide by 10^scale) */
   if (scale > 0)
@@ -5837,8 +5837,9 @@ numeric_bytes_to_words (const uint8_t * src, int src_bytes, uint64_t * dest, int
        *   src[9..16]  → LSB 64-bit word
        */
       dest[dest_words - 3] = (uint64_t) src[0];
-      dest[dest_words - 2] = numeric_get_uint64_from_be (src + 1);
-      dest[dest_words - 1] = numeric_get_uint64_from_be (src + 9);
+      memcpy (&dest[dest_words - 2], src + 1, 16);
+      dest[dest_words - 2] = NUMERIC_BSWAP64 (dest[dest_words - 2]);
+      dest[dest_words - 1] = NUMERIC_BSWAP64 (dest[dest_words - 1]);
       return;
     }
 
@@ -5902,8 +5903,10 @@ numeric_words_to_bytes (const uint64_t * src, int src_words, uint8_t * dest)
    *   dest[9..16]  : least 64 bits   (lsb_ptr[2])
    */
   dest[0] = (uint8_t) (lsb_ptr[0] & 0xFF);
-  numeric_put_uint64_to_be (dest + 1, lsb_ptr[1]);
-  numeric_put_uint64_to_be (dest + 9, lsb_ptr[2]);
+  uint64_t temp_word[2];
+  temp_word[0] = NUMERIC_BSWAP64 (lsb_ptr[1]);
+  temp_word[1] = NUMERIC_BSWAP64 (lsb_ptr[2]);
+  memcpy (dest + 1, temp_word, sizeof (temp_word));
 }
 
 /*
