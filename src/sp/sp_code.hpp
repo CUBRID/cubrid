@@ -31,25 +31,5 @@
 #include "query_list.h" /* QUERY_ID, QFILE_LIST_ID */
 #include "query_manager.h"
 
-// thread_entry.hpp
-namespace cubthread
-{
-  class entry;
-}
-
-enum SP_CODE_ATTRIBUTES
-{
-  SPC_ATTR_NAME_INDEX,
-  SPC_ATTR_CREATED_TIME,
-  SPC_ATTR_OWNER_INDEX,
-  SPC_ATTR_IS_STATIC_INDEX,
-  SPC_ATTR_IS_SYSTEM_GENERATED_INDEX,
-  SPC_ATTR_STYPE_INDEX,
-  SPC_ATTR_SCODE_INDEX,
-  SPC_ATTR_OTYPE_INDEX,
-  SPC_ATTR_OCODE_INDEX,
-  SPC_ATTR_MAX_INDEX
-};
-
 int sp_get_code_attr (THREAD_ENTRY *thread_p, const std::string &attr_name, const OID *sp_oidp, DB_VALUE *result);
 #endif				/* _SP_CODE_HPP_ */

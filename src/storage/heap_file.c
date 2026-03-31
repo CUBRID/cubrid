@@ -13030,9 +13030,6 @@ heap_attrinfo_transform_variable_to_disk_develop_ver (THREAD_ENTRY * thread_p, H
 	{
 	  DB_ELO dest_elo, *elo_p;
 	  HFID hfid;
-	  INT32 hpgid;
-	  int32_t fileid;
-	  short volid;
 	  char *save_meta_data, *new_meta_data;
 	  char lob_path_prefix[PATH_MAX];
 	  int ret;

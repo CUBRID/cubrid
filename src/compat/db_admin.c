@@ -65,7 +65,7 @@
 #if !defined(CS_MODE)
 #include "session.h"
 #endif
-#include "connection_cl.h"
+
 #include "dbtype.h"
 #include "method_callback.hpp"
 #include "filesys_temp.hpp"
