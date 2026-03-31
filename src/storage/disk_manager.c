@@ -4497,7 +4497,7 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
       /* reserve sectors from temporary volumes */
       extend_info = &disk_Cache->temp_purpose_info.extend_info;
       if (extend_info->nsect_total - extend_info->nsect_free + context->n_cache_reserve_remaining
-	  >= disk_Temp_max_sects)
+	  > disk_Temp_max_sects)
 	{
 	  /* too much temporary space */
 	  assert (false);

@@ -5658,7 +5658,7 @@ typedef enum
 static int prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print_mode,
 		      PRM_PRINT_VALUE_MODE print_value_mode);
 static int sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool reload,
-					  const int load_flags);
+					  const int load_flags, const bool ignore_error);
 static void prm_check_environment (void);
 #if defined(_ENABLE_SYSTEM_PARAMS_CHECK_)
 static int prm_check_parameters (void);
@@ -5669,7 +5669,7 @@ static SYSPRM_ERR sysprm_validate_escape_char_parameters (const SYSPRM_ASSIGN_VA
 static int prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, bool reload,
 				const char *file, const int load_flags, bool ignore_case, bool is_common_section);
 static int prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name, const bool reload,
-					const int load_flags);
+					const int load_flags, const bool ignore_error);
 static void prm_report_bad_entry (const char *key, int line, int err, const char *where);
 static SYSPRM_ERR sysprm_get_param_range (SYSPRM_PARAM * prm, void *min, void *max);
 static int prm_check_range (SYSPRM_PARAM * prm, void *value);
@@ -5991,7 +5991,7 @@ sysprm_check_id_order ()
  * Note: Parameters would be tuned and forced according to the internal rules.
  */
 static int
-sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool reload, const int load_flags)
+sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool reload, const int load_flagsm, bool ignore_error)
 {
   char *base_db_name = NULL;
   const char *file_path_ptr = NULL;
@@ -6087,7 +6087,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
     }
   else
     {
-      r = prm_read_and_parse_ini_file (file_path_ptr, base_db_name, reload, load_flags | SYSPRM_IGNORE_HA);
+      r = prm_read_and_parse_ini_file (file_path_ptr, base_db_name, reload, load_flags | SYSPRM_IGNORE_HA, ignore_error);
       if (r != NO_ERROR)
 	{
 	  return r;
@@ -6109,7 +6109,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
 	}
       if (stat (file_path_ptr, &stat_buf) == 0)
 	{
-	  r = prm_read_and_parse_ini_file (file_path_ptr, NULL, reload, load_flags);
+	  r = prm_read_and_parse_ini_file (file_path_ptr, NULL, reload, load_flags, ignore_error);
 	  if (r != NO_ERROR)
 	    {
 	      return r;
@@ -6550,7 +6550,7 @@ prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, 
  *   load_flags(in):
  */
 static int
-prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name, const bool reload, const int load_flags)
+prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name, const bool reload, const int load_flags, const bool ignore_error)
 {
   INI_TABLE *ini;
   char sec_name[LINE_MAX];
