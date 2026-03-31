@@ -124,8 +124,16 @@ namespace parallel_heap_scan
 		    pgbuf_replace_watcher (thread_p, &m_tl_scan_cache->page_watcher, &m_tl_old_page_watcher);
 		  }
 
-		error_code = pgbuf_ordered_fix (thread_p, &m_tl_vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ,
+		error_code = pgbuf_ordered_fix (thread_p, &m_tl_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
 						&m_tl_scan_cache->page_watcher);
+
+		if (m_tl_scan_cache->page_watcher.pgptr == NULL)
+		  {
+		    /* when bitmap is built, that page was valid.
+		     * but now, it's deallocated in some reasons.
+		     * this is not error, it can be ignored */
+		    continue;
+		  }
 
 		if (m_tl_old_page_watcher.pgptr != NULL)
 		  {
