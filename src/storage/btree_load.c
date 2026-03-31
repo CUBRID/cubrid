@@ -60,40 +60,6 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-typedef struct sort_args SORT_ARGS;
-struct sort_args
-{				/* Collection of information required for "sr_index_sort" */
-  int unique_pk;
-  int not_null_flag;
-  HFID *hfids;			/* Array of HFIDs for the class(es) */
-  OID *class_ids;		/* Array of class OIDs */
-  OID cur_oid;			/* Identifier of the current object */
-  RECDES in_recdes;		/* Input record descriptor */
-  int n_attrs;			/* Number of attribute ID's */
-  ATTR_ID *attr_ids;		/* Specification of the attribute(s) to sort on */
-  int *attrs_prefix_length;	/* prefix length */
-  TP_DOMAIN *key_type;
-  HEAP_SCANCACHE hfscan_cache;	/* A heap scan cache */
-  HEAP_CACHE_ATTRINFO attr_info;	/* Attribute information */
-  int n_nulls;			/* Number of NULLs */
-  int n_oids;			/* Number of OIDs */
-  int n_classes;		/* cardinality of the hfids, the class_ids, and (with n_attrs) the attr_ids arrays */
-  int cur_class;		/* index into the hfids, class_ids, and attr_ids arrays */
-  bool scancache_inited;
-  bool attrinfo_inited;
-
-  BTID_INT *btid;
-
-  OID *fk_refcls_oid;
-  BTID *fk_refcls_pk_btid;
-  const char *fk_name;
-  PRED_EXPR_WITH_CONTEXT *filter;
-  PR_EVAL_FNC filter_eval_func;
-  FUNCTION_INDEX_INFO *func_index_info;
-
-  MVCCID oldest_visible_mvccid;
-};
-
 typedef struct btree_page BTREE_PAGE;
 struct btree_page
 {

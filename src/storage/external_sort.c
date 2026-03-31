@@ -57,6 +57,8 @@
 #include "px_callable_task.hpp"
 #include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
 #include "px_sort.h"
+#include "btree_load.h"
+#include "px_ftab_set.hpp"
 
 #include <functional>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -4686,11 +4688,11 @@ sort_merge_nruns (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 int
 sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 {
-  SORT_INFO *sort_info_p;
   int parallel_num = 1;
 
   if (sort_param->px_type == SORT_ORDER_BY)
     {
+      SORT_INFO *sort_info_p;
       /* get scan id of input file */
       sort_info_p = (SORT_INFO *) sort_param->get_arg;
 
@@ -4708,6 +4710,40 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	  return 1;
 	}
 
+      /* check worker */
+      sort_param->px_worker_manager = parallel_query::worker_manager::try_reserve_workers (parallel_num);
+      if (sort_param->px_worker_manager == NULL)
+	{
+	  return 1;
+	}
+      else
+	{
+	  return parallel_num;
+	}
+    }
+  else if (sort_param->px_type == SORT_INDEX_LEAF)
+    {
+      SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
+      int n_user_pages = 0, tmp = 0, error_code = NO_ERROR;
+      /* get number of pages to sort */
+      for (int i = 0; i < sort_args_p->n_classes; i++)
+	{
+	  error_code = file_get_num_user_pages (thread_p, &sort_args_p->hfids[i].vfid, &tmp);
+	  if (error_code != NO_ERROR)
+	    {
+	      return 1;
+	    }
+	  n_user_pages += tmp;
+	}
+
+      parallel_num = parallel_query::compute_parallel_degree (parallel_query::parallel_type::SORT, n_user_pages,
+							      -1 /* no hint at parallel index build */ );
+
+      if (parallel_num < 2)
+	{
+	  /* single process */
+	  return 1;
+	}
       /* check worker */
       sort_param->px_worker_manager = parallel_query::worker_manager::try_reserve_workers (parallel_num);
       if (sort_param->px_worker_manager == NULL)
@@ -4938,9 +4974,26 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	  return ER_FAILED;
 	}
     }
+  else if (sort_param->px_type == SORT_INDEX_LEAF)
+    {
+      using ftab_set = parallel_query::ftab_set;
+      SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg, *px_sort_args_p;
+      std::vector < ftab_set > ftab_sets (parallel_num);
+
+      for (int i = 0; i < parallel_num; i++)
+	{
+	  memcpy (&px_sort_param[i].get_arg, &sort_param->get_arg, sizeof (SORT_ARGS));
+	  px_sort_args_p = (SORT_ARGS *) px_sort_param[i].get_arg;
+	  px_sort_args_p->ftabs = NULL;
+	}
+
+
+
+      return ER_FAILED;
+    }
   else
     {
-      /* not implemented yet (group by, analytic fuction, create index) */
+      /* not implemented yet (group by, analytic fuction) */
       return ER_FAILED;
     }
 
