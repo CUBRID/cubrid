@@ -64,6 +64,7 @@ class log_postpone_cache
     ~log_postpone_cache () = default;
 
     void reset ();
+    void reset_from (std::size_t cursor);
 
     void add_redo_data (const log_prior_node &node);
     void add_lsa (const log_lsa &lsa);
