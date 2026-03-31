@@ -1313,15 +1313,16 @@ valid options:\n\
     --oldest                      flashback is performed in chronological order for SQL statements executed from start time to end time;\n\
                                   default: latest\n
 
-$set 59 MSGCAT_UTIL_SET_FILEMGR
+$set 59 MSGCAT_UTIL_SET_CLEANFILEDB
 10 Couldn't open output file '%1$s'\n
+11 '%1$d' invalid files successfully cleaned. (heap: '%2$d', heap-ovf: '%3$d', btree: '%4$d', btree-ovf: '%5$d')\n
 60 \
-filemgr: file manager utility\n\
-usage: %1$s filemgr [OPTION] database-name\n\
+cleanfiledb: file manager utility\n\
+usage: %1$s cleanfiledb [OPTION] database-name\n\
 \n\
 valid options:\n\
-    -S, --SA-mode                      stand-alone mode execution\n\
-    -C, --CS-mode                      client-server mode execution\n\
-    -o, --output-file=FILE             redirect output message to FILE; default: none.\n\
-    -l, --list                         list all files\n\
-    -p, --purge-invalid-heap-files     purge invalid heap files\n
+    -S, --SA-mode                 stand-alone mode execution\n\
+    -C, --CS-mode                 client-server mode execution\n\
+    -o, --output-file=FILE        redirect output message to FILE; default: none.\n\
+    -l, --list                    list all files\n\
+    -c, --clean-invalid-file      clean invalid files\n
