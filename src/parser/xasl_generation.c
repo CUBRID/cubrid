@@ -4386,6 +4386,10 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 
 	  REGU_VARIABLE_LIST to_add;
 	  regu_alloc (to_add);
+	  if (!to_add)
+	    {
+	      return NULL;
+	    }
 	  to_add->value = *regu;
 
 	  // insert also in the regu_constant_list to ensure compatibility
@@ -4394,6 +4398,10 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	  pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list, regu_constant_list);
 
 	  regu_alloc (to_add);
+	  if (!to_add)
+	    {
+	      return NULL;
+	    }
 	  to_add->value = *regu;
 
 	  pt_add_regu_var_to_list (&scan_regu_constant_list, to_add);

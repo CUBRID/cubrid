@@ -4535,6 +4535,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   int rc = NO_ERROR;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
+  bool has_hidden_columns = (tpldesc->f_cnt == xasl->outptr_list->valptr_cnt);
 
   if (context->state == HS_REJECT_ALL)
     {
@@ -4548,12 +4549,23 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     }
 
   /* build key */
-  key->free_values = false;	/* references precreated DB_VALUES */
-  for (key->val_count = 0; key->val_count < proc->g_hkey_size; key->val_count++)
+  if (has_hidden_columns && proc->g_hkey_size <= tpldesc->f_cnt)
     {
-      assert (!pr_is_set_type (DB_VALUE_DOMAIN_TYPE (tpldesc->f_valp[key->val_count])));
+      key->free_values = false;
+      for (key->val_count = 0; key->val_count < proc->g_hkey_size; key->val_count++)
+	{
+	  assert (!pr_is_set_type (DB_VALUE_DOMAIN_TYPE (tpldesc->f_valp[key->val_count])));
 
-      key->values[key->val_count] = tpldesc->f_valp[key->val_count];
+	  key->values[key->val_count] = tpldesc->f_valp[key->val_count];
+	}
+    }
+  else
+    {
+      rc = qexec_build_agg_hkey (thread_p, xasl_state, proc->g_hk_scan_regu_list, NULL, key);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
     }
 
   /* probe hash table */
@@ -4630,18 +4642,26 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       context->tuple_count++;
 
       /* fetch values */
-      int i;
-      REGU_VARIABLE_LIST reg_var_p = proc->g_scan_regu_list;
-      for (i = 0; i < xasl->outptr_list->valptr_cnt && reg_var_p != NULL; i++, reg_var_p = reg_var_p->next)
+      if (has_hidden_columns)
 	{
-	  assert (!pr_is_set_type (DB_VALUE_DOMAIN_TYPE (tpldesc->f_valp[i])));
-
-	  if (DB_NEED_CLEAR (reg_var_p->value.vfetch_to))
+	  int i = 0;
+	  REGU_VARIABLE_LIST reg_var_p;
+	  for (reg_var_p = proc->g_scan_regu_list; reg_var_p != NULL; reg_var_p = reg_var_p->next)
 	    {
-	      pr_clear_value (reg_var_p->value.vfetch_to);
-	    }
+	      assert (!pr_is_set_type (DB_VALUE_DOMAIN_TYPE (tpldesc->f_valp[i])));
 
-	  pr_share_value (tpldesc->f_valp[i], reg_var_p->value.vfetch_to);
+	      if (DB_NEED_CLEAR (reg_var_p->value.vfetch_to))
+		{
+		  pr_clear_value (reg_var_p->value.vfetch_to);
+		}
+
+	      pr_share_value (tpldesc->f_valp[i], reg_var_p->value.vfetch_to);
+	      i++;
+	    }
+	}
+      else
+	{
+	  rc = fetch_val_list (thread_p, proc->g_scan_regu_list, &xasl_state->vd, NULL, NULL, tplrec->tpl, true);
 	}
 
       /* eval aggregate functions */
