@@ -736,6 +736,7 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
       ret = cci_cursor (scan_info->stmt_handle, 1, CCI_CURSOR_FIRST, &err_buf);
       if (ret < 0)
 	{
+	  /* 0-row remote result: cci_cursor (FIRST) returns CCI_ER_NO_MORE_DATA (expected, not a link error). */
 	  if (ret == CCI_ER_NO_MORE_DATA)
 	    {
 	      scan_info->cursor = CCI_CURSOR_FIRST;
