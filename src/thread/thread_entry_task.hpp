@@ -56,78 +56,51 @@ namespace cubthread
   using entry_task = task<entry>;
   using entry_callable_task = callable_task<entry>;
 
-  // context_manager
+  // cubthread::entry_manager
   //
   //  description:
+  //    entry_manager is the base class for managing thread execution contexts (cubthread::entry).
   //    complex tasks may require bulky context that can take a long time to construct/destruct.
-  //    context_manager abstract class is designed to pool context and hand them quickly on demand.
-  //    context type is fixed to cubthread::entry.
+  //    entry_manager is designed to pool context and hand them quickly on demand.
+  //    entry_manager acts as a base for specialized context managers that may need to do additional
+  //    operations on entry contexts during create, retire and recycle context operations.
   //
   //  how to use:
-  //    1. derive from context_manager and override create_context, retire_context and recycle_context functions.
-  //       e.g. see CUBRID implementation for entry_manager.
+  //    1. derive from entry_manager and override on_create, on_retire and on_recycle functions.
+  //       create worker pools using derived entry_manager.
   //
   //    2. execute multiple tasks using same context:
-  //          custom_context_manager context_mgr;
-  //          entry& context_ref = context_mgr.create_context ();
+  //          custom_entry_manager entry_mgr;
+  //          entry& context_ref = entry_mgr.create_context ();
   //          entry_task* task_p = NULL;
   //
   //          for (task_p = get_task (); task_p != NULL; task_p = get_task ())
   //            {
   //              task_p->execute (context_ref);
   //              task_p->retire (); // this will delete task_p
-  //              // context_mgr.recycle_context ();    // optional operation before reusing context
+  //              // entry_mgr.recycle_context ();    // optional operation before reusing context
   //            }
   //
-  //          context_mgr.retire_context (context_ref);
+  //          entry_mgr.retire_context (context_ref);
   //
   //    [optional]
   //    3. if task execution can take a very long time and you need to force stop it, you can use stop_execution:
-  //        3.1. implement context_manager::stop_execution; should notify context to stop.
+  //        3.1. implement entry_manager::stop_execution; should notify context to stop.
   //        3.2. you have to check stop notifications in entry_task::execute
-  //        3.3. call context_mgr.stop_execution (context_ref).
+  //        3.3. call entry_mgr.stop_execution (context_ref).
   //
-  class context_manager
+  class entry_manager
   {
     public:
       using context_type = entry;
 
-      // abstract class requires virtual destructor
-      virtual ~context_manager () = default;
-
-      virtual context_type &create_context (void) = 0;      // create a new thread context; cannot fail
-      virtual void retire_context (context_type &) = 0;     // retire the thread context
-      virtual void recycle_context (context_type &)         // recycle context before reuse
-      {
-	// usage and implementation is optional
-      }
-      virtual void stop_execution (context_type &)          // notify context to stop execution
-      {
-	// usage and implementation is optional
-      }
-  };
-
-  // cubthread::entry_manager
-  //
-  //  description:
-  //    entry_manager abstract class is a cubthread::context_manager specialization using entry as Context.
-  //    the entry pool is managed by thread_manager. entry_manager acts as an base for specialized context managers
-  //    that may need to do additional operations on entry contexts during create, retire and recycle context
-  //    operations.
-  //
-  //  how to use:
-  //    create a context manager derived from entry manager and override on_create, on_retire and on_recycle functions.
-  //    create worker pools using derived context manager
-  //
-  class entry_manager : public context_manager
-  {
-    public:
       entry_manager (void) = default;
+      virtual ~entry_manager () = default;
 
-      entry &create_context (void) final;
-      void retire_context (entry &context) final;
-      void recycle_context (entry &context) final;
-      void stop_execution (entry &context) override;
+      virtual context_type &create_context (void);
+      virtual void retire_context (context_type &context);
+      virtual void recycle_context (context_type &context);
+      virtual void stop_execution (context_type &context);
 
     protected:
 
@@ -186,7 +159,7 @@ namespace cubthread
   // system_worker_entry_manager
   //
   // description:
-  //    - generic context manager implementation can be used to provide custom
+  //    - generic entry manager implementation can be used to provide custom
   //      thread type and transaction index
   //    - useful in scenarios where there is no actual transaction and perf logging
   //      still needs a non-null transaction index

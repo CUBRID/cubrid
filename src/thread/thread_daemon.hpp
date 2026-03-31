@@ -53,8 +53,8 @@
 //      void execute (custom_thread_context & context) override { ... }
 //    }
 //
-//    // define your custom context manager
-//    class custom_thread_context_manager : public cubthread::context_manager<custom_thread_context>
+//    // define your custom entry manager
+//    class custom_entry_manager : public cubthread::entry_manager
 //    {
 //      custom_thread_context & create_context (void) override { ... }
 //      void retire_context(custom_thread_context & context) override { ... }
@@ -63,8 +63,8 @@
 //    // declare a looper
 //    cubthread::looper loop_pattern;   // by default sleep until wakeup
 //
-//    // context manager is required
-//    custom_thread_context_manager thr_ctxt_mgr;
+//    // entry manager is required
+//    custom_entry_manager thr_ctxt_mgr;
 //
 //    // and finally looping task
 //    custom_task *task = new_custom_task ();
@@ -86,12 +86,12 @@ namespace cubthread
 
       //  daemon constructor needs:
       //    loop_pattern_arg    : loop pattern for task execution
-      //    context_manager_arg : context manager to create and retire thread execution context
+      //    entry_manager_arg   : entry manager to create and retire thread execution context
       //    exec                : task to execute
       //
       //  NOTE: it is recommended to use dynamic allocation for execution tasks
       //
-      daemon (const looper &loop_pattern_arg, context_manager *context_manager_arg,
+      daemon (const looper &loop_pattern_arg, entry_manager *entry_manager_arg,
 	      entry_task *exec, const char *name);
       daemon (const looper &loop_pattern_arg, task_without_context *exec_arg, const char *name);
       ~daemon();
@@ -115,11 +115,11 @@ namespace cubthread
 
       // loop functions invoked by spawned daemon thread
 
-      // loop_with_context - after thread is spawned, it claims context from context manager and repeatedly executes
+      // loop_with_context - after thread is spawned, it claims context from entry manager and repeatedly executes
       //                     task until stopped.
       //
       // note: context must implement interrupt_execution function
-      static void loop_with_context (daemon *daemon_arg, context_manager *context_manager_arg,
+      static void loop_with_context (daemon *daemon_arg, entry_manager *entry_manager_arg,
 				     entry_task *exec_arg, const char *name);
 
       // loop_without_context - just execute context-less task in a loop

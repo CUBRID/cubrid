@@ -152,7 +152,7 @@ namespace cubthread
       // forward definition
       class core;
 
-      worker_pool (std::size_t pool_size, std::size_t task_max_count, context_manager &context_mgr,
+      worker_pool (std::size_t pool_size, std::size_t task_max_count, entry_manager &entry_mgr,
 		   const char *name, std::size_t core_count = 1, bool debug_logging = false, bool pool_threads = false,
 		   wait_seconds wait_for_task_time = std::chrono::seconds (5));
       ~worker_pool ();
@@ -253,8 +253,8 @@ namespace cubthread
       std::size_t m_task_max_count;
       std::atomic<std::size_t> m_task_count;
 
-      // thread context manager
-      context_manager &m_context_manager;
+      // thread entry manager
+      entry_manager &m_entry_manager;
 
       // core variables
       core *m_core_array;                                   // all cores
@@ -320,7 +320,7 @@ namespace cubthread
       // is worker available?
       void check_worker_not_available (const worker &worker_arg);
       // context management
-      context_manager &get_context_manager (void);
+      entry_manager &get_entry_manager (void);
 
       // getters
       std::size_t get_max_worker_count (void) const;

@@ -44,12 +44,12 @@ namespace cubthread
   //////////////////////////////////////////////////////////////////////////
 
   worker_pool::worker_pool (std::size_t pool_size, std::size_t task_max_count,
-			    context_manager &context_mgr, const char *name, std::size_t core_count,
+			    entry_manager &entry_mgr, const char *name, std::size_t core_count,
 			    bool debug_log, bool pool_threads, wait_seconds wait_for_task_time)
     : m_max_workers (pool_size)
     , m_task_max_count (task_max_count)
     , m_task_count (0)
-    , m_context_manager (context_mgr)
+    , m_entry_manager (entry_mgr)
     , m_core_array (NULL)
     , m_core_count (core_count)
     , m_round_robin_counter (0)
@@ -204,6 +204,12 @@ namespace cubthread
   worker_pool::is_running (void) const
   {
     return !m_stopped;
+  }
+
+  const std::string &
+  worker_pool::get_name (void) const
+  {
+    return m_name;
   }
 
   bool
@@ -478,10 +484,10 @@ namespace cubthread
 #endif // DEBUG
   }
 
-  context_manager &
-  worker_pool::core::get_context_manager (void)
+  entry_manager &
+  worker_pool::core::get_entry_manager (void)
   {
-    return m_parent_pool->m_context_manager;
+    return m_parent_pool->m_entry_manager;
   }
 
   std::size_t
@@ -769,7 +775,7 @@ namespace cubthread
     if (context_p != NULL)
       {
 	// notify context to stop
-	m_parent_core->get_context_manager ().stop_execution (*context_p);
+	m_parent_core->get_entry_manager ().stop_execution (*context_p);
       }
 
     // make sure thread is not waiting for tasks
@@ -809,7 +815,7 @@ namespace cubthread
     wp_worker_statset_time_and_increment (m_statistics, Wpstat_start_thread);
 
     // a context is required
-    m_context_p = &m_parent_core->get_context_manager ().create_context ();
+    m_context_p = &m_parent_core->get_entry_manager ().create_context ();
     wp_worker_statset_time_and_increment (m_statistics, Wpstat_create_context);
   }
 
@@ -820,7 +826,7 @@ namespace cubthread
     assert (m_context_p != NULL);
 
     // retire context
-    m_parent_core->get_context_manager ().retire_context (*m_context_p);
+    m_parent_core->get_entry_manager ().retire_context (*m_context_p);
     m_context_p = NULL;
     wp_worker_statset_time_and_increment (m_statistics, Wpstat_retire_context);
 
@@ -858,7 +864,7 @@ namespace cubthread
     retire_current_task ();
 
     // and recycle context before getting another task
-    m_parent_core->get_context_manager ().recycle_context (*m_context_p);
+    m_parent_core->get_entry_manager ().recycle_context (*m_context_p);
     wp_worker_statset_time_and_increment (m_statistics, Wpstat_recycle_context);
 
     // notify core one task was finished

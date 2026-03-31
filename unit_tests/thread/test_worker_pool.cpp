@@ -36,20 +36,32 @@
 
 namespace test_thread
 {
-  class test_context_manager : public cubthread::context_manager
+  class test_context_manager : public cubthread::entry_manager
   {
     public:
 
       context_type &
-      create_context (void) final
+      create_context (void) override
       {
 	return * (new context_type);
       }
 
       void
-      retire_context (context_type &context) final
+      retire_context (context_type &context) override
       {
 	delete &context;
+      }
+
+      void
+      recycle_context (context_type &) override
+      {
+	// no-op for test
+      }
+
+      void
+      stop_execution (context_type &) override
+      {
+	// no-op for test
       }
   };
 
