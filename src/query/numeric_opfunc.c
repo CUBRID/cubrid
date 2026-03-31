@@ -526,7 +526,7 @@ numeric_get_pow_of_10 (int exp)
    * 17-byte big-endian NUMERIC format */
 #if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
   static __thread uint8_t converted[DB_NUMERIC_BUF_SIZE];
-  const uint64_t *src = &powers_of_10[exp][POW10_BUF_WORDS - 3];
+  const uint64_t *src = &powers_of_10[exp][POW10_BUF_WORDS - NUMERIC_AS_WORDS];
 
   converted[0] = (uint8_t) (src[0] & 0xFF);
   *(uint64_t *) (converted + 1) = NUMERIC_BSWAP64 (src[1]);
