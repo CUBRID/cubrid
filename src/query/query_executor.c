@@ -4535,7 +4535,6 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   int rc = NO_ERROR;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
-  bool has_hidden_columns = (tpldesc->f_cnt == xasl->outptr_list->valptr_cnt);
 
   if (context->state == HS_REJECT_ALL)
     {
@@ -4548,24 +4547,22 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       tsc_getticks (&start_tick);
     }
 
-  /* build key */
-  if (has_hidden_columns && proc->g_hkey_size <= tpldesc->f_cnt)
-    {
-      key->free_values = false;
-      for (key->val_count = 0; key->val_count < proc->g_hkey_size; key->val_count++)
-	{
-	  assert (!pr_is_set_type (DB_VALUE_DOMAIN_TYPE (tpldesc->f_valp[key->val_count])));
 
-	  key->values[key->val_count] = tpldesc->f_valp[key->val_count];
-	}
-    }
-  else
+  REGU_VARIABLE_LIST regu_var_p = xasl->outptr_list->valptrp;
+  for (int i = 0; i < xasl->outptr_list->valptr_cnt && regu_var_p; i++, regu_var_p = regu_var_p->next)
     {
-      rc = qexec_build_agg_hkey (thread_p, xasl_state, proc->g_hk_scan_regu_list, NULL, key);
-      if (rc != NO_ERROR)
+      if (REGU_VARIABLE_IS_FLAGED (&regu_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
 	{
-	  return rc;
+	  continue;
 	}
+      pr_share_value (tpldesc->f_valp[i], regu_var_p->value.vfetch_to);
+    }
+
+  /* build key */
+  rc = qexec_build_agg_hkey (thread_p, xasl_state, proc->g_hk_scan_regu_list, NULL, key);
+  if (rc != NO_ERROR)
+    {
+      return rc;
     }
 
   /* probe hash table */
@@ -4634,6 +4631,9 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     }
   else
     {
+      REGU_VARIABLE_LIST regu_var_p;
+      DB_VALUE *tmp;
+
       /* no need to output tuple */
       *output_tuple = false;
 
@@ -4642,26 +4642,29 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       context->tuple_count++;
 
       /* fetch values */
-      if (has_hidden_columns)
+      for (regu_var_p = proc->g_scan_regu_list; regu_var_p != NULL; regu_var_p = regu_var_p->next)
 	{
-	  int i = 0;
-	  REGU_VARIABLE_LIST reg_var_p;
-	  for (reg_var_p = proc->g_scan_regu_list; reg_var_p != NULL; reg_var_p = reg_var_p->next)
+	  if (regu_var_p->value.vfetch_to && pr_is_set_type (DB_VALUE_DOMAIN_TYPE (regu_var_p->value.vfetch_to)))
 	    {
-	      assert (!pr_is_set_type (DB_VALUE_DOMAIN_TYPE (tpldesc->f_valp[i])));
+	      pr_clear_value (regu_var_p->value.vfetch_to);
+	    }
 
-	      if (DB_NEED_CLEAR (reg_var_p->value.vfetch_to))
+	  if (DB_NEED_CLEAR (regu_var_p->value.vfetch_to))
+	    {
+	      pr_clear_value (regu_var_p->value.vfetch_to);
+	    }
+
+	  if (DB_IS_NULL (regu_var_p->value.vfetch_to))
+	    {
+	      rc = fetch_peek_dbval (thread_p, &regu_var_p->value, &xasl_state->vd, NULL, NULL, tplrec->tpl, &tmp);
+	      if (rc != NO_ERROR)
 		{
-		  pr_clear_value (reg_var_p->value.vfetch_to);
+		  pr_clear_value (regu_var_p->value.vfetch_to);
+		  return ER_FAILED;
 		}
 
-	      pr_share_value (tpldesc->f_valp[i], reg_var_p->value.vfetch_to);
-	      i++;
+	      pr_share_value (tmp, regu_var_p->value.vfetch_to);
 	    }
-	}
-      else
-	{
-	  rc = fetch_val_list (thread_p, proc->g_scan_regu_list, &xasl_state->vd, NULL, NULL, tplrec->tpl, true);
 	}
 
       /* eval aggregate functions */
@@ -27220,11 +27223,20 @@ qexec_build_agg_hkey (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, REGU_VAR
   key->val_count = 0;
   while (regu_list != NULL)
     {
-      rc =
-	fetch_peek_dbval (thread_p, &regu_list->value, &xasl_state->vd, NULL, NULL, tpl, &key->values[key->val_count]);
-      if (rc != NO_ERROR)
+      if (tpl == NULL && !DB_IS_NULL (regu_list->value.vfetch_to))
 	{
-	  return rc;
+	  /* tpl is NULL when called during the processing phase */
+	  key->values[key->val_count] = regu_list->value.vfetch_to;
+	}
+      else
+	{
+	  rc =
+	    fetch_peek_dbval (thread_p, &regu_list->value, &xasl_state->vd, NULL, NULL, tpl,
+			      &key->values[key->val_count]);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
 	}
 
       /* next */
