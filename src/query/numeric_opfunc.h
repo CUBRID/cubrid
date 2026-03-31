@@ -32,6 +32,165 @@
 #include "intl_support.h"
 #include "dbtype_def.h"
 #include "error_manager.h"
+#include "byte_order.h"
+
+#if defined(__SIZEOF_INT128__)
+#define HAS_INT128_SUPPORT (1)
+#ifndef uint128_t
+typedef __uint128_t uint128_t;
+#endif /* uint128_t */
+typedef uint64_t knuth_digit_t;
+typedef uint128_t knuth_double_digit_t;
+#define KNUTH_DIGIT_BITS (64)
+#define KNUTH_BASE ((knuth_double_digit_t)1 << 64)
+#else /* !__SIZEOF_INT128__ */
+#define HAS_INT128_SUPPORT (0)
+typedef uint32_t knuth_digit_t;
+typedef uint64_t knuth_double_digit_t;
+#define KNUTH_DIGIT_BITS (32)
+#define KNUTH_BASE ((knuth_double_digit_t)1 << 32)
+#endif /* __SIZEOF_INT128__ */
+
+/* CLZ / BSWAP / bit manipulations */
+#if defined(__GNUC__) || defined(__clang__)
+#define NUMERIC_CLZ64(x) __builtin_clzll(x)
+#define NUMERIC_CTZ64(x) __builtin_ctzll(x)
+#define NUMERIC_CLZ32(x) __builtin_clz(x)
+#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
+#define NUMERIC_BSWAP64(x) __builtin_bswap64(x)
+#define NUMERIC_BSWAP32(x) __builtin_bswap32(x)
+#else /* OR_BYTE_ORDER == OR_BIG_ENDIAN */
+#define NUMERIC_BSWAP64(x) (x)
+#define NUMERIC_BSWAP32(x) (x)
+#endif /* OR_BYTE_ORDER */
+#else /* !(__GNUC__ || __clang__) */
+  /* Manual fallbacks for non-GCC/Clang compilers */
+static inline int
+NUMERIC_CLZ64 (uint64_t x)
+{
+  if (x == 0)
+    return 64;
+  int msb = 0;
+  if (x >= (1ull << 32))
+    {
+      x >>= 32;
+      msb += 32;
+    }
+  if (x >= (1ull << 16))
+    {
+      x >>= 16;
+      msb += 16;
+    }
+  if (x >= (1ull << 8))
+    {
+      x >>= 8;
+      msb += 8;
+    }
+  if (x >= (1ull << 4))
+    {
+      x >>= 4;
+      msb += 4;
+    }
+  if (x >= (1ull << 2))
+    {
+      x >>= 2;
+      msb += 2;
+    }
+  if (x >= (1ull << 1))
+    {
+      msb += 1;
+    }
+  return 63 - msb;
+}
+
+static inline int
+NUMERIC_CTZ64 (uint64_t x)
+{
+  if (x == 0)
+    return 64;
+  int lsb = 0;
+  if ((x & 0xffffffffull) == 0)
+    {
+      x >>= 32;
+      lsb += 32;
+    }
+  if ((x & 0xffffull) == 0)
+    {
+      x >>= 16;
+      lsb += 16;
+    }
+  if ((x & 0xffull) == 0)
+    {
+      x >>= 8;
+      lsb += 8;
+    }
+  if ((x & 0xfull) == 0)
+    {
+      x >>= 4;
+      lsb += 4;
+    }
+  if ((x & 0x3ull) == 0)
+    {
+      x >>= 2;
+      lsb += 2;
+    }
+  if ((x & 0x1ull) == 0)
+    {
+      lsb += 1;
+    }
+  return lsb;
+}
+
+static inline int
+NUMERIC_CLZ32 (uint32_t x)
+{
+  if (x == 0)
+    return 32;
+  int msb = 0;
+  if (x >= (1u << 16))
+    {
+      x >>= 16;
+      msb += 16;
+    }
+  if (x >= (1u << 8))
+    {
+      x >>= 8;
+      msb += 8;
+    }
+  if (x >= (1u << 4))
+    {
+      x >>= 4;
+      msb += 4;
+    }
+  if (x >= (1u << 2))
+    {
+      x >>= 2;
+      msb += 2;
+    }
+  if (x >= (1u << 1))
+    {
+      msb += 1;
+    }
+  return 31 - msb;
+}
+
+#define NUMERIC_BSWAP64(x) swap64(x)
+#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
+#define NUMERIC_BSWAP32(x) \
+      ((((uint32_t)(x) & 0x000000ffU) << 24) | \
+       (((uint32_t)(x) & 0x0000ff00U) <<  8) | \
+       (((uint32_t)(x) & 0x00ff0000U) >>  8) | \
+       (((uint32_t)(x) & 0xff000000U) >> 24))
+#else /* OR_BYTE_ORDER == OR_BIG_ENDIAN */
+#define NUMERIC_BSWAP32(x) (x)
+#endif /* OR_BYTE_ORDER */
+#endif /* !(__GNUC__ || __clang__) */
+
+#if HAS_INT128_SUPPORT
+#define NUMERIC_CLZ(x) NUMERIC_CLZ64(x)
+#else /* !HAS_INT128_SUPPORT */
+#define NUMERIC_CLZ(x) NUMERIC_CLZ32(x)
+#endif /* HAS_INT128_SUPPORT */
 
 typedef enum
 {
@@ -110,10 +269,6 @@ extern int numeric_internal_double_to_num (double adouble, int dst_scale, DB_C_N
 extern int numeric_internal_float_to_num (float afloat, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
 					  bool * is_value_negative);
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern int numeric_coerce_double_to_num (double adouble, DB_C_NUMERIC num, int *prec, int *scale);
-#endif
-
 extern int numeric_coerce_string_to_num (const char *astring, int astring_len, INTL_CODESET codeset, DB_VALUE * num);
 
 extern int numeric_coerce_num_to_num (const DB_VALUE * src_value, int src_prec, int src_scale, int dest_prec,
@@ -125,7 +280,7 @@ extern int numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * d
 extern char *numeric_db_value_print (const DB_VALUE * val, char *buf);
 
 /* Floating-Point NUMERIC */
-extern int float_numeric_get_precision_digits (uint8_t * calc_buf, int calc_bytes);
+extern int numeric_get_precision_digits (uint8_t * calc_buf);
 extern int float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);

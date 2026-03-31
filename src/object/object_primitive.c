@@ -8901,110 +8901,26 @@ mr_get_fixed_numeric_size (const unsigned char *data)
   uint64_t hi = *(uint64_t *) (data + 1);	// data[1..8]
   uint64_t lo = *(uint64_t *) (data + 9);	// data[9..16]
 
-#if defined(__GNUC__) || defined(__clang__)
+  if (hi != 0)
+    {
 #if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
-  if (hi != 0)
-    {
-      return 16 - (__builtin_ctzll (hi) >> 3);
-    }
-  else if (lo != 0)
-    {
-      return 8 - (__builtin_ctzll (lo) >> 3);
-    }
-  else
-    {
-      return 1;			// value = 0
-    }
+      return 16 - (NUMERIC_CTZ64 (hi) >> 3);
 #else
-  if (hi != 0)
-    {
-      return 16 - (__builtin_clzll (hi) >> 3);
+      return 16 - (NUMERIC_CLZ64 (hi) >> 3);
+#endif
     }
   else if (lo != 0)
     {
-      return 8 - (__builtin_clzll (lo) >> 3);
-    }
-  else
-    {
-      return 1;			// value = 0
-    }
-#endif /* End (OR_BYTE_ORDER == OR_LITTLE_ENDIAN) */
+#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
+      return 8 - (NUMERIC_CTZ64 (lo) >> 3);
 #else
-  if (hi != 0)
-    {
-      int msb = 0;
-      uint64_t x = hi;
-      if (x >= (1ull << 32))
-	{
-	  x >>= 32;
-	  msb += 32;
-	}
-      if (x >= (1ull << 16))
-	{
-	  x >>= 16;
-	  msb += 16;
-	}
-      if (x >= (1ull << 8))
-	{
-	  x >>= 8;
-	  msb += 8;
-	}
-      if (x >= (1ull << 4))
-	{
-	  x >>= 4;
-	  msb += 4;
-	}
-      if (x >= (1ull << 2))
-	{
-	  x >>= 2;
-	  msb += 2;
-	}
-      if (x >= (1ull << 1))
-	{
-	  msb += 1;
-	}
-      return 8 + (msb >> 3) + 1;
-    }
-  else if (lo != 0)
-    {
-      int msb = 0;
-      uint64_t x = lo;
-      if (x >= (1ull << 32))
-	{
-	  x >>= 32;
-	  msb += 32;
-	}
-      if (x >= (1ull << 16))
-	{
-	  x >>= 16;
-	  msb += 16;
-	}
-      if (x >= (1ull << 8))
-	{
-	  x >>= 8;
-	  msb += 8;
-	}
-      if (x >= (1ull << 4))
-	{
-	  x >>= 4;
-	  msb += 4;
-	}
-      if (x >= (1ull << 2))
-	{
-	  x >>= 2;
-	  msb += 2;
-	}
-      if (x >= (1ull << 1))
-	{
-	  msb += 1;
-	}
-      return (msb >> 3) + 1;
+      return 8 - (NUMERIC_CLZ64 (lo) >> 3);
+#endif
     }
   else
     {
       return 1;			// value = 0
     }
-#endif /* End (__GNUC__ || __clang__) */
 }
 
 /*
