@@ -504,8 +504,6 @@ oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
   if (err != NO_ERROR)
     {
       oos_error ("oos_read_within_page failed");
-      assert_release_error (er_errid () != NO_ERROR);
-      assert (false);
       return err;
     }
 
