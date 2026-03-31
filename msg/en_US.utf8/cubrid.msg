@@ -1465,7 +1465,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1369 Login is disabled for user "%1$s".
 
-1370 Invalid UUID format. The argument must be a string of 32 hexadecimal characters or a 128-bit value.
+1370 Invalid UUID format. The argument must be a string of 32 hexadecimal characters, 36 UUID formatted characters, or a 128-bit value.
 
 1371 Last Error
 

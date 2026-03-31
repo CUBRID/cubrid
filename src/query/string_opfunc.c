@@ -2820,6 +2820,42 @@ db_uuid_format (DB_VALUE const *val, DB_VALUE * result)
 		}
 	    }
 	}
+      else if (str_size == UUID_FORMAT_LEN)
+	{
+	  /* 36-char string: already has hyphens, validate positions and hex chars */
+	  for (j = 0; j < dash_len; j++)
+	    {
+	      if (str[dash_pos[j]] != '-')
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+		  error_status = ER_QSTR_INVALID_UUID_FORMAT;
+		  goto exit;
+		}
+	    }
+
+	  for (i = 0, j = 0; i < UUID_FORMAT_LEN; i++)
+	    {
+	      if (j < dash_len && i == dash_pos[j])
+		{
+		  hex_buf[i] = '-';
+		  j++;
+		}
+	      else
+		{
+		  char c = str[i];
+		  if (IS_HEX_CHAR (c))
+		    {
+		      hex_buf[i] = (char) toupper ((unsigned char) c);
+		    }
+		  else
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+		      error_status = ER_QSTR_INVALID_UUID_FORMAT;
+		      goto exit;
+		    }
+		}
+	    }
+	}
       else
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
