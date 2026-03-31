@@ -734,19 +734,14 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
   if (scan_info->cursor_rewind && scan_info->conn_handle > 0 && scan_info->stmt_handle > 0)
     {
       ret = cci_cursor (scan_info->stmt_handle, 1, CCI_CURSOR_FIRST, &err_buf);
-      if (ret < 0)
+      /* Success (CCI_ER_NO_ERROR) or 0-row remote result (CCI_ER_NO_MORE_DATA, expected). */
+      if (ret == CCI_ER_NO_ERROR || ret == CCI_ER_NO_MORE_DATA)
 	{
-	  /* 0-row remote result: cci_cursor (FIRST) returns CCI_ER_NO_MORE_DATA (expected, not a link error). */
-	  if (ret == CCI_ER_NO_MORE_DATA)
-	    {
-	      scan_info->cursor = CCI_CURSOR_FIRST;
-	      return NO_ERROR;
-	    }
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	  return ER_DBLINK;
+	  scan_info->cursor = CCI_CURSOR_FIRST;
+	  return NO_ERROR;
 	}
-      scan_info->cursor = CCI_CURSOR_FIRST;
-      return NO_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      return ER_DBLINK;
     }
 
   scan_info->conn_handle = -1;
