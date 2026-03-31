@@ -139,6 +139,10 @@ namespace parallel_heap_scan
 		    /* when bitmap is built, that page was valid.
 		     * but now, it's deallocated in some reasons.
 		     * this is not error, it can be ignored */
+		    if (m_tl_old_page_watcher.pgptr != NULL)
+		      {
+			pgbuf_ordered_unfix (thread_p, &m_tl_old_page_watcher);
+		      }
 		    er_clear ();
 		    found = false;
 		    continue;
