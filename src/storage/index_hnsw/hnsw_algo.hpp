@@ -80,7 +80,7 @@ namespace cubhnsw
 		      slot_id_t &closest_slot);
 
       // refining links
-      void form_links_to_closest_ (algo_context_t &context, const pinned_t &new_slot,
+      void form_links_to_closest_ (algo_context_t &context, pinned_t &new_slot,
 				   candidates_view_t &out);
       int form_reverse_links_ (algo_context_t &context, const pinned_t &new_slot, const float *value,
 			       candidates_view_t &new_neighbors);
@@ -95,7 +95,7 @@ namespace cubhnsw
       inline distance_t compute_distance_ (algo_context_t &context, const float *v1, const float *v2) const
       {
 	context.m_stats.on_distance_computed (context.m_is_perf_tracking, context.m_level);
-	return metric_table[static_cast<size_t> (m_metric)] (v1, v2, m_dimension);
+	return metric_table_both_aligned[static_cast<size_t> (m_metric)] (v1, v2, m_dimension);
       }
 
       inline distance_t compute_distance_from_query_ (algo_context_t &context, const float *query,
@@ -261,7 +261,7 @@ namespace cubhnsw
 	  //root_type promoted_root_node = root_type (promoted_root.data());
 	  root_node.set_entry (new_slot);
 	  root_node.set_level (new_target_level);
-	  log_hnsw_root_redo (thread_p, root_block);
+	  mark_hnsw_root_dirty (thread_p, root_block);
 	  m_storage->set_empty (false);
 	  m_graph_structure_profile.on_node_added (new_target_level);
 	  return result;
@@ -354,7 +354,7 @@ namespace cubhnsw
 	}
 	root_node.set_entry (new_slot);
 	root_node.set_level (new_target_level);
-	log_hnsw_root_redo (thread_p, root_block);
+	mark_hnsw_root_dirty (thread_p, root_block);
 	m_storage->set_empty (false);
 
 	context.m_stats.on_entrypoint_updated (context.m_is_perf_tracking);
@@ -411,6 +411,8 @@ namespace cubhnsw
 	    abort ();
 	  }
       }
+
+    assert (is_aligned_ptr<VECTOR_CACHE_ALIGNMENT> (query));
 
     slot_id_t closest_slot;
 
@@ -633,7 +635,7 @@ namespace cubhnsw
   }
 
   void
-  algo::form_links_to_closest_ (algo_context_t &context, const pinned_t &new_node_blk,
+  algo::form_links_to_closest_ (algo_context_t &context, pinned_t &new_node_blk,
 				candidates_view_t &top_view)
   {
     algo_stats_t::refine_collector stats;
@@ -659,6 +661,7 @@ namespace cubhnsw
 	neigh.push_back (new_neighbors.at (i));
       }
     m_storage->set_neighbors_cached_ids (context, new_node_blk->id, level, neigh);
+    new_node_blk.set_dirty ();
     m_graph_structure_profile.on_edges_added (level, top_view.size ());
   }
 
@@ -696,6 +699,7 @@ namespace cubhnsw
 		  neigh.push_back (close_header.at (i));
 		}
 	      m_storage->set_neighbors_cached_ids (context, close_slot, level, neigh);
+	      close_node_blk.set_dirty ();
 	      m_graph_structure_profile.on_edges_added (level, 1);
 	      continue;
 	    }
@@ -737,11 +741,11 @@ namespace cubhnsw
 	    neigh.push_back (close_header.at (i));
 	  }
 	m_storage->set_neighbors_cached_ids (context, close_slot, level, neigh);
+	close_node_blk.set_dirty ();
 	m_graph_structure_profile.on_edges_added (level, top_view.size ());
       }
 
     stats.commit (context.m_stats, context.m_is_perf_tracking, context.m_level);
-
     return NO_ERROR;
   }
 

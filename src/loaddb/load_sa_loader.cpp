@@ -22,6 +22,7 @@
 
 #include "config.h"
 #include "cubvec_assert.h"
+#include "db_vector.hpp"
 #include "dbtype_def.h"
 
 #include <assert.h>
@@ -6823,7 +6824,7 @@ ldr_vector_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *va
 {
   int count = 0;
   const int max_vector_size = 2000;
-  float *float_array = (float *) db_private_alloc (NULL, sizeof (float) * max_vector_size);
+  float *float_array = db_vector_allocate_float_array (max_vector_size);
   vimkim_log ("db_private_alloc: %p, size = %zu\n", float_array, sizeof (float) * max_vector_size);
   ASSERT_CUBVEC (float_array != NULL);
   if (float_array == NULL)

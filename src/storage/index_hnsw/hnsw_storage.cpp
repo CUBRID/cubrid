@@ -224,11 +224,12 @@ namespace cubhnsw
   {
     context.m_stats.on_vector_access (context.m_is_perf_tracking, context.m_level);
 
-    auto it = m_vector_cache.find (slot);
+    const uint64_t cache_key = make_vector_cache_key_ (slot);
+    auto it = m_vector_cache.find (cache_key);
     if (it != m_vector_cache.end ())
       {
 	context.m_stats.on_vector_cache_hit (context.m_is_perf_tracking, context.m_level);
-	return it->second.data ();
+	return it->second;
       }
 
     context.m_stats.on_vector_cache_miss (context.m_is_perf_tracking, context.m_level);
@@ -237,10 +238,45 @@ namespace cubhnsw
     node_t node { reinterpret_cast<byte_t *> (node_blk->data) };
     const float *vec = node.get_vector ();
 
-    std::vector<float> &cached = m_vector_cache[slot];
-    cached.assign (vec, vec + get_dimension ());
+    return cache_vector_copy_ (slot, vec);
+  }
 
-    return cached.data ();
+  const float *
+  storage::cache_vector_copy_ (const slot_id_t &slot_id, const float *vector)
+  {
+    const uint64_t cache_key = make_vector_cache_key_ (slot_id);
+    auto it = m_vector_cache.find (cache_key);
+    if (it != m_vector_cache.end ())
+      {
+	return it->second;
+      }
+
+    const float *cached_ptr = append_vector_copy_ (vector);
+    m_vector_cache.emplace (cache_key, cached_ptr);
+    return cached_ptr;
+  }
+
+  const float *
+  storage::append_vector_copy_ (const float *vector)
+  {
+    if (m_vector_cache_tail == nullptr)
+      {
+	m_vector_cache_blocks =
+		std::make_unique<vector_cache_block> (m_vector_cache_vector_stride_bytes,
+		    get_initial_vector_cache_block_capacity_ ());
+	m_vector_cache_tail = m_vector_cache_blocks.get ();
+      }
+
+    if (!m_vector_cache_tail->has_capacity ())
+      {
+	const std::size_t next_capacity = std::max<std::size_t> (m_vector_cache_tail->m_vector_capacity * 2,
+					  get_initial_vector_cache_block_capacity_ ());
+	m_vector_cache_tail->m_next =
+		std::make_unique<vector_cache_block> (m_vector_cache_vector_stride_bytes, next_capacity);
+	m_vector_cache_tail = m_vector_cache_tail->m_next.get ();
+      }
+
+    return m_vector_cache_tail->append (vector, get_dimension ());
   }
 
   // promote lockmode from shared to exclusive

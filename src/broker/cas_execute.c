@@ -40,6 +40,8 @@
 #include <fcntl.h>
 #include <sys/time.h>
 #endif /* WINDOWS */
+
+#include "db_vector.hpp"
 #include <assert.h>
 
 #include "cas_common.h"
@@ -209,7 +211,8 @@ static void add_res_data_int (T_NET_BUF * net_buf, int value, unsigned char ext_
 static void add_res_data_bigint (T_NET_BUF * net_buf, DB_BIGINT value, unsigned char ext_type, int *net_size);
 static void add_res_data_short (T_NET_BUF * net_buf, short value, unsigned char ext_type, int *net_size);
 static void add_res_data_float (T_NET_BUF * net_buf, float value, unsigned char ext_type, int *net_size);
-static void add_res_data_vector (T_NET_BUF * net_buf, const DB_VECTOR_FLOAT * value, unsigned char ext_type, int *net_size);
+static void add_res_data_vector (T_NET_BUF * net_buf, const DB_VECTOR_FLOAT * value, unsigned char ext_type,
+				 int *net_size);
 static void add_res_data_double (T_NET_BUF * net_buf, double value, unsigned char ext_type, int *net_size);
 static void add_res_data_timestamp (T_NET_BUF * net_buf, short yr, short mon, short day, short hh, short mm, short ss,
 				    unsigned char ext_type, int *net_size);
@@ -3910,7 +3913,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	  }
 
 	vector_float.dim = dim;
-	vector_float.float_array = (float *) db_private_alloc (NULL, (dim > 0 ? dim : 1) * sizeof (float));
+	vector_float.float_array = db_vector_allocate_float_array (dim > 0 ? dim : 1);
 	if (vector_float.float_array == NULL)
 	  {
 	    return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);

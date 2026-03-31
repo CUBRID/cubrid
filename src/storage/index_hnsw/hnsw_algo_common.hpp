@@ -23,6 +23,13 @@
 #ifndef _HNSW_ALGO_COMMON_HPP_
 #define _HNSW_ALGO_COMMON_HPP_
 
+#include <algorithm>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <memory>
 #include <random>
 #include <ankerl/unordered_dense.h>
 
@@ -99,10 +106,66 @@ namespace cubhnsw
 
   struct vector_cache_helper
   {
-    using type = ankerl::unordered_dense::map<OID, std::vector<float>, oid_hash, oid_equal>;
+    using type = ankerl::unordered_dense::map<uint64_t, const float *>;
   };
 
   using vector_cache_t = vector_cache_helper::type;
+
+  static constexpr std::size_t VECTOR_CACHE_ALIGNMENT = 64;
+  static constexpr std::size_t VECTOR_CACHE_TARGET_BLOCK_BYTES = 1U << 20;
+
+  struct alignas (VECTOR_CACHE_ALIGNMENT) vector_cache_region_unit final
+  {
+    std::byte m_bytes[VECTOR_CACHE_ALIGNMENT];
+  };
+
+  struct vector_cache_block final
+  {
+    explicit vector_cache_block (std::size_t vector_stride_bytes, std::size_t vector_capacity)
+      : m_vector_stride_bytes (vector_stride_bytes)
+      , m_vector_capacity (vector_capacity)
+    {
+      const std::size_t block_bytes = m_vector_stride_bytes * m_vector_capacity;
+      m_data = std::aligned_alloc (VECTOR_CACHE_ALIGNMENT, block_bytes);
+      assert (m_data != nullptr);
+    }
+
+    ~vector_cache_block ()
+    {
+      free (m_data);
+      m_data = nullptr;
+    }
+
+    vector_cache_block (const vector_cache_block &) = delete;
+    vector_cache_block &operator= (const vector_cache_block &) = delete;
+    vector_cache_block (vector_cache_block &&) = delete;
+    vector_cache_block &operator= (vector_cache_block &&) = delete;
+
+    const float *append (const float *vector, std::size_t dimension) noexcept
+    {
+      if (!has_capacity ())
+	{
+	  return nullptr;
+	}
+
+      std::byte *slot_ptr = reinterpret_cast<std::byte *> (m_data) + (m_used_vectors * m_vector_stride_bytes);
+      std::memcpy (slot_ptr, vector, dimension * sizeof (float));
+      ++m_used_vectors;
+
+      return reinterpret_cast<const float *> (slot_ptr);
+    }
+
+    bool has_capacity () const noexcept
+    {
+      return m_used_vectors < m_vector_capacity;
+    }
+
+    std::size_t m_vector_stride_bytes {0};
+    std::size_t m_vector_capacity {0};
+    std::size_t m_used_vectors {0};
+    void *m_data {nullptr};
+    std::unique_ptr<vector_cache_block> m_next {nullptr};
+  };
 
   struct neighbors_key
   {

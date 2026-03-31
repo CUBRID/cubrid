@@ -18,11 +18,11 @@
 
 #pragma once
 
+#include <memory>
+
 #include "hnsw_api.hpp"
 #include "hnsw_graph_base.hpp"
 #include "hnsw_algo_common.hpp"
-#include "log_manager.h"
-
 namespace cubhnsw
 {
   // TODO (refactor) : there are similar objects in page_buffer or lock_manager..
@@ -39,6 +39,7 @@ namespace cubhnsw
     std::byte   *data{};
     std::size_t  size{};
     lock_mode    mode{lock_mode::none};
+    bool         is_dirty{false};
   };
 
   inline void release_pinned_ (cubthread::entry *thread_p, pinned_block_data &blk, PAGE_PTR page_ptr) noexcept
@@ -50,14 +51,14 @@ namespace cubhnsw
 
     if (blk.mode == lock_mode::exclusive)
       {
-	if (pgbuf_get_page_ptype (thread_p, page_ptr) == PAGE_HNSW
-	    && blk.id.slotid == 1
-	    && blk.size == root_t::get_size ())
+	if (!blk.is_dirty)
 	  {
-	    log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page_ptr,
-				   (PGLENGTH) PAGE_HNSW, DB_PAGESIZE, page_ptr);
+	    pgbuf_unfix (thread_p, page_ptr);
 	  }
-	pgbuf_set_dirty (thread_p, page_ptr, FREE);
+	else
+	  {
+	    pgbuf_set_dirty (thread_p, page_ptr, FREE);
+	  }
       }
     else
       {
@@ -157,6 +158,11 @@ namespace cubhnsw
 	return m_page_ptr;
       }
 
+      void set_dirty () noexcept
+      {
+	m_blk.is_dirty = true;
+      }
+
     private:
       void invalidate_ () noexcept
       {
@@ -173,7 +179,7 @@ namespace cubhnsw
       bool m_valid{false};
   };
 
-  inline void log_hnsw_root_redo (cubthread::entry *thread_p, const pinned_block &blk) noexcept
+  inline void mark_hnsw_root_dirty (cubthread::entry *thread_p, const pinned_block &blk) noexcept
   {
     if (!blk || thread_p == nullptr || blk.page_ptr () == nullptr)
       {
@@ -185,9 +191,7 @@ namespace cubhnsw
 	&& data.id.slotid == 1
 	&& data.size == root_t::get_size ())
       {
-	log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, blk.page_ptr (),
-			       (PGLENGTH) PAGE_HNSW, DB_PAGESIZE, blk.page_ptr ());
-	pgbuf_set_dirty (thread_p, blk.page_ptr (), DONT_FREE);
+	const_cast<pinned_block::data_t &> (data).is_dirty = true;
       }
   }
 
@@ -258,6 +262,7 @@ namespace cubhnsw
 	, m_vfid (giid.vfid)
 	, m_root_vpid (block_id_t { giid.root_pageid, giid.vfid.volid })
 	, m_last_node_vpid (m_root_vpid)
+	, m_vector_cache_vector_stride_bytes (get_aligned_vector_cache_stride_ ())
       {}
 
       ~storage () = default;
@@ -328,6 +333,25 @@ namespace cubhnsw
 
     protected:
 
+      std::size_t get_aligned_vector_cache_stride_ () const noexcept
+      {
+	const std::size_t vector_bytes = get_dimension () * sizeof (float);
+	return ((vector_bytes + VECTOR_CACHE_ALIGNMENT - 1) / VECTOR_CACHE_ALIGNMENT) * VECTOR_CACHE_ALIGNMENT;
+      }
+
+      std::size_t get_initial_vector_cache_block_capacity_ () const noexcept
+      {
+	return std::max<std::size_t> (1, VECTOR_CACHE_TARGET_BLOCK_BYTES / m_vector_cache_vector_stride_bytes);
+      }
+
+      uint64_t make_vector_cache_key_ (const slot_id_t &slot_id) noexcept
+      {
+	return m_oid_encoder.encode_oid (slot_id);
+      }
+
+      const float *cache_vector_copy_ (const slot_id_t &slot_id, const float *vector);
+      const float *append_vector_copy_ (const float *vector);
+
       page_guard get_block_to_insert (algo_context_t &context, block_group_id_t &vfid, block_id_t &last_vpid,
 				      std::size_t bytes);
       PAGE_PTR alloc_new_block (cubthread::entry *thread_p, block_group_id_t &vfid, block_id_t &vpid);
@@ -345,6 +369,10 @@ namespace cubhnsw
       bool m_is_empty = true;
 
       vector_cache_t m_vector_cache;  // (slot_id_t, vector) cache
+      hnsw_oid_encoder_default m_oid_encoder;
+      std::size_t m_vector_cache_vector_stride_bytes {0};
+      std::unique_ptr<vector_cache_block> m_vector_cache_blocks;
+      vector_cache_block *m_vector_cache_tail {nullptr};
 
       /* TODO: This is not thread-safe. Currently, we are assuming single-threaded access, but we need to make it thread-safe. */
       neighbors_cache_t m_neighbors_cache;    // (slot_id_t, level) -> neighbors

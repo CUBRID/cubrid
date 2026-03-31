@@ -20,9 +20,38 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 
 namespace cubhnsw
 {
+  template <std::size_t Alignment, typename T>
+  inline T *
+  assume_aligned_ptr (T *ptr) noexcept
+  {
+#if defined(__GNUC__) || defined(__clang__)
+    return reinterpret_cast<T *> (__builtin_assume_aligned (ptr, Alignment));
+#else
+    return ptr;
+#endif
+  }
+
+  template <std::size_t Alignment, typename T>
+  inline const T *
+  assume_aligned_ptr (const T *ptr) noexcept
+  {
+#if defined(__GNUC__) || defined(__clang__)
+    return reinterpret_cast<const T *> (__builtin_assume_aligned (ptr, Alignment));
+#else
+    return ptr;
+#endif
+  }
+
+  template <std::size_t Alignment, typename T>
+  inline bool
+  is_aligned_ptr (const T *ptr) noexcept
+  {
+    return (reinterpret_cast<std::uintptr_t> (ptr) % Alignment) == 0;
+  }
 
   enum class vector_distance_metric_t
   {
@@ -36,9 +65,16 @@ namespace cubhnsw
 
   using distance_t = float;
   using distance_fn_t = distance_t (*) (const float *, const float *, std::size_t);
+  using aligned_distance_fn_t = distance_t (*) (const float *__restrict, const float *__restrict, std::size_t);
 
   extern const std::array<distance_fn_t,
 	 static_cast<std::size_t> (vector_distance_metric_t::MAX)>
 	 metric_table;
+  extern const std::array<aligned_distance_fn_t,
+	 static_cast<std::size_t> (vector_distance_metric_t::MAX)>
+	 metric_table_rhs_aligned;
+  extern const std::array<aligned_distance_fn_t,
+	 static_cast<std::size_t> (vector_distance_metric_t::MAX)>
+	 metric_table_both_aligned;
 
 } // namespace cubhnsw

@@ -29,6 +29,8 @@
 
 namespace cubhnsw
 {
+  constexpr std::size_t VECTOR_DISTANCE_ALIGNMENT = 64;
+
   bool
   cubvec_cosine_normalize (float *__restrict vec, std::size_t dim)
   {
@@ -72,6 +74,35 @@ namespace cubhnsw
   }
 
   STATIC_INLINE distance_t __attribute__ ((ALWAYS_INLINE))
+  cubvec_cosine_distance_rhs_aligned (const float *__restrict vec1, const float *__restrict vec2, std::size_t dim)
+  {
+    float dot = 0.0f;
+    const float *__restrict aligned_vec2 = assume_aligned_ptr<VECTOR_DISTANCE_ALIGNMENT> (vec2);
+
+    #pragma omp simd aligned(aligned_vec2 : VECTOR_DISTANCE_ALIGNMENT) reduction(+ : dot)
+    for (std::size_t i = 0; i < dim; ++i)
+      {
+	dot += vec1[i] * aligned_vec2[i];
+      }
+    return 1.0f - dot;
+  }
+
+  STATIC_INLINE distance_t __attribute__ ((ALWAYS_INLINE))
+  cubvec_cosine_distance_both_aligned (const float *__restrict vec1, const float *__restrict vec2, std::size_t dim)
+  {
+    float dot = 0.0f;
+    const float *__restrict aligned_vec1 = assume_aligned_ptr<VECTOR_DISTANCE_ALIGNMENT> (vec1);
+    const float *__restrict aligned_vec2 = assume_aligned_ptr<VECTOR_DISTANCE_ALIGNMENT> (vec2);
+
+    #pragma omp simd aligned(aligned_vec1, aligned_vec2 : VECTOR_DISTANCE_ALIGNMENT) reduction(+ : dot)
+    for (std::size_t i = 0; i < dim; ++i)
+      {
+	dot += aligned_vec1[i] * aligned_vec2[i];
+      }
+    return 1.0f - dot;
+  }
+
+  STATIC_INLINE distance_t __attribute__ ((ALWAYS_INLINE))
   cubvec_inner_product_distance (const float *vec1, const float *vec2, std::size_t dim)
   {
     float sum = 0.0f;
@@ -80,6 +111,39 @@ namespace cubhnsw
     for (std::size_t i = 0; i < dim; ++i)
       {
 	sum += vec1[i] * vec2[i];
+      }
+    return sum;
+  };
+
+  STATIC_INLINE distance_t __attribute__ ((ALWAYS_INLINE))
+  cubvec_inner_product_distance_rhs_aligned (const float *__restrict vec1,
+      const float *__restrict vec2,
+      std::size_t dim)
+  {
+    float sum = 0.0f;
+    const float *__restrict aligned_vec2 = assume_aligned_ptr<VECTOR_DISTANCE_ALIGNMENT> (vec2);
+
+    #pragma omp simd aligned(aligned_vec2 : VECTOR_DISTANCE_ALIGNMENT) reduction(+ : sum)
+    for (std::size_t i = 0; i < dim; ++i)
+      {
+	sum += vec1[i] * aligned_vec2[i];
+      }
+    return sum;
+  };
+
+  STATIC_INLINE distance_t __attribute__ ((ALWAYS_INLINE))
+  cubvec_inner_product_distance_both_aligned (const float *__restrict vec1,
+      const float *__restrict vec2,
+      std::size_t dim)
+  {
+    float sum = 0.0f;
+    const float *__restrict aligned_vec1 = assume_aligned_ptr<VECTOR_DISTANCE_ALIGNMENT> (vec1);
+    const float *__restrict aligned_vec2 = assume_aligned_ptr<VECTOR_DISTANCE_ALIGNMENT> (vec2);
+
+    #pragma omp simd aligned(aligned_vec1, aligned_vec2 : VECTOR_DISTANCE_ALIGNMENT) reduction(+ : sum)
+    for (std::size_t i = 0; i < dim; ++i)
+      {
+	sum += aligned_vec1[i] * aligned_vec2[i];
       }
     return sum;
   };
@@ -97,6 +161,37 @@ namespace cubhnsw
     return sum;
   }
 
+  STATIC_INLINE distance_t __attribute__ ((ALWAYS_INLINE))
+  cubvec_l2_distance_rhs_aligned (const float *__restrict vec1, const float *__restrict vec2, std::size_t dim)
+  {
+    float sum = 0.0f;
+    const float *__restrict aligned_vec2 = assume_aligned_ptr<VECTOR_DISTANCE_ALIGNMENT> (vec2);
+
+    #pragma omp simd aligned(aligned_vec2 : VECTOR_DISTANCE_ALIGNMENT) reduction(+ : sum)
+    for (std::size_t i = 0; i < dim; ++i)
+      {
+	const float d = vec1[i] - aligned_vec2[i];
+	sum += d * d;
+      }
+    return sum;
+  }
+
+  STATIC_INLINE distance_t __attribute__ ((ALWAYS_INLINE))
+  cubvec_l2_distance_both_aligned (const float *__restrict vec1, const float *__restrict vec2, std::size_t dim)
+  {
+    float sum = 0.0f;
+    const float *__restrict aligned_vec1 = assume_aligned_ptr<VECTOR_DISTANCE_ALIGNMENT> (vec1);
+    const float *__restrict aligned_vec2 = assume_aligned_ptr<VECTOR_DISTANCE_ALIGNMENT> (vec2);
+
+    #pragma omp simd aligned(aligned_vec1, aligned_vec2 : VECTOR_DISTANCE_ALIGNMENT) reduction(+ : sum)
+    for (std::size_t i = 0; i < dim; ++i)
+      {
+	const float d = aligned_vec1[i] - aligned_vec2[i];
+	sum += d * d;
+      }
+    return sum;
+  }
+
   const std::array<distance_fn_t,
 	static_cast<std::size_t> (vector_distance_metric_t::MAX)>
 	metric_table =
@@ -104,6 +199,24 @@ namespace cubhnsw
     cubvec_cosine_distance,
     cubvec_l2_distance,
     cubvec_inner_product_distance
+  };
+
+  const std::array<aligned_distance_fn_t,
+	static_cast<std::size_t> (vector_distance_metric_t::MAX)>
+	metric_table_rhs_aligned =
+  {
+    cubvec_cosine_distance_rhs_aligned,
+    cubvec_l2_distance_rhs_aligned,
+    cubvec_inner_product_distance_rhs_aligned
+  };
+
+  const std::array<aligned_distance_fn_t,
+	static_cast<std::size_t> (vector_distance_metric_t::MAX)>
+	metric_table_both_aligned =
+  {
+    cubvec_cosine_distance_both_aligned,
+    cubvec_l2_distance_both_aligned,
+    cubvec_inner_product_distance_both_aligned
   };
 
 } // namespace cubhnsw

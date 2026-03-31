@@ -22,6 +22,8 @@
 
 #include "hnsw_api.hpp"
 
+#include <cstring>
+
 #include "page_buffer.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
@@ -43,6 +45,45 @@
 #endif
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+namespace
+{
+  class aligned_vector_buffer final
+  {
+    public:
+      explicit aligned_vector_buffer (std::size_t dimension)
+      {
+	m_data = db_vector_allocate_float_array (static_cast<int> (dimension));
+	assert (m_data != nullptr);
+      }
+
+      ~aligned_vector_buffer ()
+      {
+	db_vector_free_float_array (m_data);
+      }
+
+      aligned_vector_buffer (const aligned_vector_buffer &) = delete;
+      aligned_vector_buffer &operator= (const aligned_vector_buffer &) = delete;
+
+      float *data () noexcept
+      {
+	return m_data;
+      }
+
+      const float *data () const noexcept
+      {
+	return m_data;
+      }
+
+      void copy_from (const float *source, std::size_t dimension) noexcept
+      {
+	std::memcpy (m_data, source, dimension * sizeof (float));
+      }
+
+    private:
+      float *m_data {nullptr};
+  };
+}
 
 class hnsw_impl_backend final:public hnsw_index_backend
 {
@@ -564,7 +605,21 @@ hnsw_impl::add_internal (cubthread::entry &thread_ref, hnsw_build_worker_job &jo
     }
   else
     {
-      auto result = m_algo->add (&thread_ref, job.m_oid, job.m_vector);
+      const bool needs_vector_copy =
+	      m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE
+	      || !db_vector_is_aligned (job.m_vector);
+
+      std::unique_ptr<aligned_vector_buffer> aligned_vector;
+      const float *vector_ptr = job.m_vector;
+
+      if (needs_vector_copy)
+	{
+	  aligned_vector = std::make_unique<aligned_vector_buffer> (m_build_params.dimension);
+	  aligned_vector->copy_from (job.m_vector, m_build_params.dimension);
+	  vector_ptr = aligned_vector->data ();
+	}
+
+      auto result = m_algo->add (&thread_ref, job.m_oid, vector_ptr);
       error = result.error;
     }
 
@@ -579,14 +634,28 @@ int
 hnsw_impl::search (cubthread::entry *thread_p, const float *query, const int k, const int ef_search,
 		   OID *rec_oids, float *distances)
 {
+  const bool needs_query_copy =
+	  m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE
+	  || !db_vector_is_aligned (query);
+
+  std::unique_ptr<aligned_vector_buffer> aligned_query;
+  const float *query_ptr = query;
+
+  if (needs_query_copy)
+    {
+      aligned_query = std::make_unique<aligned_vector_buffer> (m_build_params.dimension);
+      aligned_query->copy_from (query, m_build_params.dimension);
+      query_ptr = aligned_query->data ();
+    }
+
   if (m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE
-      && db_vector_is_all_zeros (query, m_build_params.dimension))
+      && db_vector_is_all_zeros (query_ptr, m_build_params.dimension))
     {
       er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping search");
       return NO_ERROR;
     }
 
-  auto results = m_algo->search (thread_p, query, k, ef_search);
+  auto results = m_algo->search (thread_p, query_ptr, k, ef_search);
   if (results.error != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE, "Error during search: %s", results.error);
