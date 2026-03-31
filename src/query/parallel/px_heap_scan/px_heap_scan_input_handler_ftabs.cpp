@@ -129,6 +129,13 @@ namespace parallel_heap_scan
 
 		if (m_tl_scan_cache->page_watcher.pgptr == NULL)
 		  {
+		    if (error_code != NO_ERROR && error_code != ER_PB_BAD_PAGEID)
+		      {
+			/* non-dealloc error (e.g. ER_INTERRUPTED): propagate */
+			m_err_messages_p->move_top_error_message_to_this ();
+			m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+			return S_ERROR;
+		      }
 		    /* when bitmap is built, that page was valid.
 		     * but now, it's deallocated in some reasons.
 		     * this is not error, it can be ignored */
