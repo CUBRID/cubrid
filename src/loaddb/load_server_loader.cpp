@@ -128,7 +128,7 @@ namespace cubload
 	/* maybe unloaded from version 11.2+ or later */
 	if (m_session.get_client_type() == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
 	  {
-	    assert (m_session.get_client_type() == thread_ref.conn_entry->client_type);
+	    assert (thread_ref.conn_entry->client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2);
 	    m_session.set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4);
 	  }
       }
