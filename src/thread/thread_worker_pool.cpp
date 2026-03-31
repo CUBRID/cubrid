@@ -154,8 +154,6 @@ namespace cubthread
     const std::chrono::milliseconds time_spin_sleep (10);       // sleep between spins for 10 milliseconds
 #endif
 
-    // loop until all workers are stopped or until timeout expires
-    std::size_t stop_count = 0;
     auto timeout = std::chrono::system_clock::now () + time_wait_to_thread_stop;
 
     bool is_not_stopped;
@@ -950,6 +948,8 @@ namespace cubthread
   worker_pool::core::worker::run (void)
   {
     os::resources::cpu::clearaffinity ();   // clear the affinity at start
+    pthread_setname_np (pthread_self (), m_parent_core->get_parent_pool ()->get_name ().c_str ());
+
     init_run ();    // do stuff at the beginning like creating context
 
     if (m_is_temp)

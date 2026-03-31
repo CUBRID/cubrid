@@ -209,8 +209,15 @@ namespace cubthread
   daemon::loop_with_context (daemon *daemon_arg, context_manager *context_manager_arg,
 			     entry_task *exec_arg, const char *name)
   {
-    (void) name;  // suppress unused parameter warning
     // its purpose is to help visualize daemon thread stacks
+    if (!std::string (name).empty ())
+      {
+	pthread_setname_np (pthread_self (), std::string (name).substr (0, TASK_COMM_LEN - 1).c_str ());
+      }
+    else
+      {
+	pthread_setname_np (pthread_self (), "unnamed-daemon");
+      }
 
     // create execution context
     entry &context = context_manager_arg->create_context ();
