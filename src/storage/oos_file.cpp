@@ -56,6 +56,10 @@ oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes,
 		       OOS_RECORD_HEADER &out_header);
 static void
 oos_log_insert_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, OID *oid_p, RECDES *recdes_p);
+static void
+oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, PGSLOTID slotid, RECDES *recdes_p);
+static int
+oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid);
 
 STATIC_INLINE __attribute__ ((ALWAYS_INLINE))
 int oos_get_max_chunk_size_within_page ();
@@ -198,7 +202,7 @@ oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &o
       err = oos_insert_across_pages (thread_p, oos_vfid, recdes, oid);
     }
 
-  oos_debug ("inserted to oid={vol=%d,page=%d,slot=%d}", oid.volid, oid.pageid, oid.slotid);
+  oos_debug ("inserted to oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
   return err;
 }
 
@@ -244,8 +248,9 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
 	  oos_error ("could not insert chunk index=%d of length %d.", i, chunk_recdes.length);
 	  assert_release_error (er_errid () != NO_ERROR);
 	  assert (false);
-	  // TODO: free partially inserted chunks.
-	  // Currently, already inserted chunks to slotted pages will remain as garbage.
+	  // Partially inserted chunks are cleaned up when the caller aborts the transaction
+	  // (individual undo records replay in reverse). The caller MUST NOT continue
+	  // the transaction after this error.
 	  return err;
 	}
 
@@ -464,8 +469,7 @@ oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes,
 int
 oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
 {
-  oos_debug ("reading from oid={vol=%d,page=%d,slot=%d}",
-	     oid.volid, oid.pageid, oid.slotid);
+  oos_debug ("reading from oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
 
   int err = NO_ERROR;
 
@@ -643,6 +647,139 @@ oos_log_insert_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
   log_append_undoredo_recdes (thread_p, RVOOS_INSERT, &log_addr, NULL, recdes_p);
 }
 
+/*
+ * oos_log_delete_physical () - add logging information for physical deletion
+ *   thread_p(in): thread entry
+ *   page_p(in): page where delete will be performed
+ *   slotid(in): slot id of the record to delete
+ *   recdes_p(in): record descriptor of the record being deleted (undo data)
+ */
+static void
+oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, PGSLOTID slotid, RECDES *recdes_p)
+{
+  LOG_DATA_ADDR log_addr;
+
+  log_addr.vfid = vfid_p;
+  log_addr.offset = slotid;
+  log_addr.pgptr = page_p;
+
+  log_append_undoredo_recdes (thread_p, RVOOS_DELETE, &log_addr, recdes_p, NULL);
+}
+
+// TODO: caller connection — heap_update → oos_delete, vacuum → oos_delete are not yet wired.
+//       These will be connected in the upper story.
+// TODO: concurrency — this function assumes the caller holds a row-level lock (e.g., X_LOCK from heap layer)
+//       to prevent concurrent deletion of the same OOS chain. Verify this assumption when wiring callers.
+
+/*
+ * oos_delete_chain () - delete all chunks in an OOS record chain (internal)
+ *
+ *   return: NO_ERROR or error code
+ *   thread_p(in): thread entry
+ *   oos_vfid(in): OOS file identifier
+ *   oid(in): head OID of the OOS record chain
+ *
+ * NOTE: This is the inner workhorse called by oos_delete(). Each chunk
+ *       deletion is logged individually with undo data, so transaction
+ *       abort restores all deleted chunks in reverse order.
+ */
+static int
+oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
+{
+  OID current_oid = oid;
+  while (!OID_ISNULL (&current_oid))
+    {
+      VPID vpid = {current_oid.pageid, current_oid.volid};
+
+      PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (page_ptr == nullptr)
+	{
+	  oos_error ("pgbuf_fix failed for volid=%d, pageid=%d", current_oid.volid, current_oid.pageid);
+	  ASSERT_ERROR ();
+	  return er_errid ();
+	}
+
+      scope_exit page_unfixer ([&] ()
+      {
+	pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
+      });
+
+      RECDES recdes_with_header = RECDES_INITIALIZER;
+      SCAN_CODE code = spage_get_record (thread_p, page_ptr, current_oid.slotid, &recdes_with_header, PEEK);
+      if (code != S_SUCCESS)
+	{
+	  oos_error ("spage_get_record failed for volid=%d, pageid=%d, slotid=%d",
+		     OID_AS_ARGS (&current_oid));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_FAILED;
+	}
+
+      assert (recdes_with_header.length >= (int) sizeof (OOS_RECORD_HEADER));
+      OOS_RECORD_HEADER header;
+      std::memcpy (&header, recdes_with_header.data, sizeof (OOS_RECORD_HEADER));
+      OID next_chunk_oid = header.next_chunk_oid;
+
+      oos_log_delete_physical (thread_p, page_ptr, const_cast<VFID *> (&oos_vfid), current_oid.slotid,
+			       &recdes_with_header);
+
+      PGSLOTID deleted_slotid = spage_delete (thread_p, page_ptr, current_oid.slotid);
+      if (deleted_slotid == NULL_SLOTID)
+	{
+	  oos_error ("spage_delete failed for volid=%d, pageid=%d, slotid=%d",
+		     OID_AS_ARGS (&current_oid));
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_FAILED;
+	}
+      pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
+
+      oos_debug ("deleted chunk at oid={vol=%d,page=%d,slot=%d}, next={vol=%d,page=%d,slot=%d}",
+		 OID_AS_ARGS (&current_oid), OID_AS_ARGS (&next_chunk_oid));
+
+      current_oid = next_chunk_oid;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * oos_delete () - delete an OOS record (single-chunk or multi-chunk chain)
+ *
+ *   return: NO_ERROR or error code
+ *   thread_p(in): thread entry
+ *   oos_vfid(in): OOS file identifier
+ *   oid(in): head OID of the OOS record
+ *
+ * NOTE: No sysop is used. Each chunk deletion is logged individually
+ *       (RVOOS_DELETE with full record as undo data).
+ *
+ *       Why this is safe:
+ *       - Transaction abort: undo records are replayed in reverse order,
+ *         restoring all deleted chunks to their original slotids via
+ *         spage_insert_for_recovery. The chain is fully restored.
+ *       - Crash recovery: same mechanism — incomplete transaction's undo
+ *         records are replayed during recovery, restoring the chain.
+ *       - Error mid-chain: partial deletes have undo records in the
+ *         transaction log. The caller must abort the transaction to
+ *         restore consistency.
+ *
+ *       Limitation: the caller MUST NOT continue the transaction after
+ *       this function returns an error. If the caller ignores the error
+ *       and commits, partially deleted chunks become permanent while
+ *       remaining chunks are orphaned. This is acceptable because storage
+ *       layer errors always propagate up and result in transaction abort.
+ *
+ *       Page deallocation is NOT done here. Empty pages will be reclaimed
+ *       by vacuum after the transaction commits.
+ */
+int
+oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
+{
+  oos_debug ("arguments: oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
+
+  return oos_delete_chain (thread_p, oos_vfid, oid);
+}
+
 // TODO: since this value never changes, we can make it a constant or static variable,
 // and make it initialized only once in something like oos_boot().
 STATIC_INLINE __attribute__ ((ALWAYS_INLINE)) int
@@ -660,7 +797,13 @@ oos_rv_redo_delete (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
   INT16 slotid;
 
   slotid = rcv->offset;
-  (void) spage_delete (thread_p, rcv->pgptr, slotid);
+  PGSLOTID deleted_slotid = spage_delete (thread_p, rcv->pgptr, slotid);
+  if (deleted_slotid == NULL_SLOTID)
+    {
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return er_errid ();
+    }
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   return NO_ERROR;
