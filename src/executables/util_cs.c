@@ -2895,6 +2895,7 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
   DB_OBJLIST *classes = NULL;
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char *database_name = NULL;
+  char tmp_database_name[CUB_MAXHOSTNAMELEN];
   int rk_violation_count = 0, fk_violation_count = 0;
   char er_msg_file[PATH_MAX];
   char violation_list_file[PATH_MAX];
@@ -2917,6 +2918,19 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
   AU_DISABLE_PASSWORDS ();	/* disable authorization for this operation */
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
+
+  if (strchr (database_name, '@') == NULL)
+    {
+      /* TODO: Handle truncation explicitly here; keep this in sync with applyinfo() local_database_name build path. */
+      snprintf (tmp_database_name, sizeof (tmp_database_name), "%s@localhost", database_name);
+      database_name = tmp_database_name;
+    }
+
+  if (check_database_name (database_name))
+    {
+      err = ER_FAILED;
+      goto end2;
+    }
 
   if (db_restart (arg->command_name, TRUE, database_name))
     {
@@ -3656,6 +3670,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   do
     {
       memset (local_database_name, 0x00, CUB_MAXHOSTNAMELEN);
+      /* TODO: Replace strcpy/strcat with bounded formatting and keep behavior aligned with rkcheck() tmp_database_name path. */
       strcpy (local_database_name, database_name);
       strcat (local_database_name, "@localhost");
 
