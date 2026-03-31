@@ -191,7 +191,8 @@ au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	}
       else if (ws_is_same_object (classobj->owner, user))
 	{
-	  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	  /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
+	  if (db_client_type_is_loaddb_compat () /*latest compat client type */ )
 	    {
 	      goto fail_end;
 	    }
