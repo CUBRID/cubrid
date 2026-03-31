@@ -132,6 +132,8 @@ namespace parallel_heap_scan
 		    /* when bitmap is built, that page was valid.
 		     * but now, it's deallocated in some reasons.
 		     * this is not error, it can be ignored */
+		    er_clear ();
+		    found = false;
 		    continue;
 		  }
 
