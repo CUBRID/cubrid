@@ -2324,9 +2324,9 @@ exit:
  * volid_out (out)            : Output new volume identifier
  */
 int
-disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DKNPAGES npages, const char *path,
-			   const char *name, const char *comments, int max_write_size_in_sec, bool overwrite,
-			   VOLID * volid_out)
+disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DB_VOLTYPE voltype, DKNPAGES npages,
+			   const char *path, const char *name, const char *comments, int max_write_size_in_sec,
+			   bool overwrite, VOLID * volid_out)
 {
   DBDEF_VOL_EXT_INFO ext_info;
   VOLID volid_new;
@@ -2361,8 +2361,25 @@ disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DKNPA
   ext_info.nsect_max = ext_info.nsect_total;
   ext_info.max_npages = npages;	/* this is obsolete. I set it just to see it if a crash occurs. */
 
-  /* extensions are permanent */
-  ext_info.voltype = DB_PERMANENT_VOLTYPE;
+  /* check voltype */
+  if (voltype == DB_TEMPORARY_VOLTYPE)
+    {
+      /* check parameter of temp_file_max_size_in_pages */
+      if (disk_Cache->temp_purpose_info.extend_info.nsect_total + ext_info.nsect_total > disk_Temp_max_sects)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED, 1,
+		  disk_Temp_max_sects * DISK_SECTOR_NPAGES);
+	  disk_unlock_extend ();
+	  csect_exit (thread_p, CSECT_DISK_CHECK);
+	  error_code = ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED;
+	  return error_code;
+	}
+      ext_info.voltype = DB_TEMPORARY_VOLTYPE;
+    }
+  else
+    {
+      ext_info.voltype = DB_PERMANENT_VOLTYPE;
+    }
 
   /* add volume */
   error_code = disk_add_volume (thread_p, &ext_info, &volid_new, &nsect_free);
@@ -2373,7 +2390,8 @@ disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DKNPA
       csect_exit (thread_p, CSECT_DISK_CHECK);
       return error_code;
     }
-  assert (volid_new == disk_Cache->nvols_perm - 1);
+
+  assert (ext_info.voltype != DB_PERMANENT_VOLTYPE || volid_new == disk_Cache->nvols_perm - 1);
 
   if (ext_info.purpose == DB_PERMANENT_DATA_PURPOSE)
     {
@@ -2382,7 +2400,14 @@ disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DKNPA
     }
   else
     {
-      disk_Cache->temp_purpose_info.nsect_perm_total += ext_info.nsect_total;
+      if (ext_info.voltype == DB_PERMANENT_VOLTYPE)
+	{
+	  disk_Cache->temp_purpose_info.nsect_perm_total += ext_info.nsect_total;
+	}
+      else
+	{
+	  disk_Cache->temp_purpose_info.extend_info.nsect_total += ext_info.nsect_total;
+	}
     }
 
   disk_cache_lock_reserve_for_purpose (ext_info.purpose);
@@ -4471,12 +4496,12 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
 
       /* reserve sectors from temporary volumes */
       extend_info = &disk_Cache->temp_purpose_info.extend_info;
-      if (extend_info->nsect_total - extend_info->nsect_free + context->n_cache_reserve_remaining
-	  >= disk_Temp_max_sects)
+      if (extend_info->nsect_total - extend_info->nsect_free + context->n_cache_reserve_remaining > disk_Temp_max_sects)
 	{
 	  /* too much temporary space */
 	  assert (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED, 1, disk_Temp_max_sects);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED, 1,
+		  disk_Temp_max_sects * DISK_SECTOR_NPAGES);
 	  disk_cache_unlock_reserve_for_purpose (context->purpose);
 	  return ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED;
 	}
