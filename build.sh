@@ -529,6 +529,7 @@ function show_usage ()
   echo " TARGET"
   echo "  all     Build and create packages (default)"
   echo "  build   Build only"
+  echo "  test    Run unit tests (auto-enables -DUNIT_TESTS=ON and creates test DB)"
   echo "  dist    Create packages only"
   echo ""
   echo " EXAMPLES"
@@ -651,6 +652,36 @@ function build_dist ()
 function build_build ()
 {
   build_configure && build_compile && build_install
+
+  # Auto-run unit tests if any unit test option is enabled
+  if grep -qE "UNIT_TEST(S|_OOS):BOOL=ON" "$build_dir/CMakeCache.txt" 2>/dev/null; then
+    build_test
+  fi
+}
+
+
+function build_test ()
+{
+  # Set up environment for test database creation
+  export CUBRID="$prefix_dir"
+  export CUBRID_DATABASES="$prefix_dir/databases"
+  export PATH="$prefix_dir/bin:$PATH"
+
+  # Create unit test database if it doesn't exist
+  print_check "Setting up unit test database"
+  if [ ! -f "$CUBRID_DATABASES/databases.txt" ] || ! grep -q "unittestdb" "$CUBRID_DATABASES/databases.txt" 2>/dev/null; then
+    mkdir -p "$CUBRID_DATABASES/unittestdb"
+    cubrid createdb --db-volume-size=20M --log-volume-size=20M unittestdb en_US.utf8 \
+      -F "$CUBRID_DATABASES/unittestdb"
+    [ $? -eq 0 ] && print_result "OK" || print_fatal "Failed to create unit test database"
+  else
+    print_result "SKIP (already exists)"
+  fi
+
+  # Run unit tests
+  print_check "Running unit tests"
+  ctest --test-dir $build_dir --output-on-failure
+  [ $? -eq 0 ] && print_result "OK" || print_fatal "Unit tests failed"
 }
 
 

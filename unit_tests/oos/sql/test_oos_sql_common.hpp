@@ -51,7 +51,7 @@ class SqlServerEnv : public ::testing::Environment
       printf ("##### Starting Server For OOS SQL Testing #####\n");
       er_init ("./test_oos_sql_log", ER_NEVER_EXIT);
       db_set_client_type (DB_CLIENT_TYPE_MAX);
-      auto err = db_restart ("unit_test", TRUE, "testdb");
+      auto err = db_restart ("unit_test", TRUE, "unittestdb");
       printf ("will be written at %s\n", er_get_msglog_filename ());
       assert (err == NO_ERROR);
     }
