@@ -36,7 +36,7 @@
 
 namespace test_thread
 {
-  class test_context_manager : public cubthread::entry_manager
+  class test_entry_manager : public cubthread::entry_manager
   {
     public:
 
@@ -106,7 +106,7 @@ namespace test_thread
   int
   test_one_thread_pool (void)
   {
-    test_context_manager ctx_mgr;
+    test_entry_manager ctx_mgr;
     cubthread::worker_pool pool (1, 1, ctx_mgr, NULL, 1, false);
     pool.execute (new test_task ());
     pool.execute (new test_task ());
@@ -122,7 +122,7 @@ namespace test_thread
   int
   test_two_threads_pool (void)
   {
-    test_context_manager ctx_mgr;
+    test_entry_manager ctx_mgr;
     cubthread::worker_pool pool (2, 16, ctx_mgr, NULL, 1, false);
 
     pool.execute (new start_end_task ());
@@ -136,7 +136,7 @@ namespace test_thread
   int
   test_stress (void)
   {
-    test_context_manager ctx_mgr;
+    test_entry_manager ctx_mgr;
     size_t nthreads = std::thread::hardware_concurrency ();
     nthreads = nthreads == 0 ? 24 : nthreads;
 

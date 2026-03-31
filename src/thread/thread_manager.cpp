@@ -160,7 +160,7 @@ namespace cubthread
 
   worker_pool *
   manager::create_worker_pool (size_t pool_size, size_t task_max_count, const char *name,
-			       entry_manager *context_manager, std::size_t core_count, bool debug_logging,
+			       entry_manager *entry_mgr, std::size_t core_count, bool debug_logging,
 			       bool pool_threads, wait_seconds wait_for_task_time)
   {
 #if defined (SERVER_MODE)
@@ -170,12 +170,12 @@ namespace cubthread
       }
     else
       {
-	if (context_manager == NULL)
+	if (entry_mgr == NULL)
 	  {
-	    context_manager = &m_entry_manager;
+	    entry_mgr = &m_entry_manager;
 	  }
 	// reserve pool_size entries and add to m_worker_pools
-	return create_and_track_resource (m_worker_pools, pool_size, pool_size, task_max_count, *context_manager,
+	return create_and_track_resource (m_worker_pools, pool_size, pool_size, task_max_count, *entry_mgr,
 					  name, core_count, debug_logging, pool_threads, wait_for_task_time);
       }
 #else // not SERVER_MODE = SA_MODE
@@ -185,7 +185,7 @@ namespace cubthread
 
   daemon *
   manager::create_daemon (const looper &looper_arg, entry_task *exec_p, const char *daemon_name /* = "" */,
-			  entry_manager *context_manager /* = NULL */)
+			  entry_manager *entry_mgr /* = NULL */)
   {
 #if defined (SERVER_MODE)
     if (is_single_thread ())
@@ -195,12 +195,12 @@ namespace cubthread
       }
     else
       {
-	if (context_manager == NULL)
+	if (entry_mgr == NULL)
 	  {
-	    context_manager = &m_daemon_entry_manager;
+	    entry_mgr = &m_daemon_entry_manager;
 	  }
 	// reserve 1 entry and add to m_daemons
-	return create_and_track_resource (m_daemons, 1, looper_arg, context_manager, exec_p, daemon_name);
+	return create_and_track_resource (m_daemons, 1, looper_arg, entry_mgr, exec_p, daemon_name);
       }
 #else // not SERVER_MODE = SA_MODE
     assert (false);

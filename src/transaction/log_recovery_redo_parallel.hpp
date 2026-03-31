@@ -185,7 +185,7 @@ namespace cublog
     private:
       const std::size_t m_task_count;
 
-      std::unique_ptr<cubthread::entry_manager> m_pool_context_manager;
+      std::unique_ptr<cubthread::entry_manager> m_pool_entry_manager;
 
       /* the worker pool already has and internal bookkeeping and can also wait for the tasks to terminate;
        * however, it also has a hardcoded maximum wait time (60 seconds) after which it will assert;

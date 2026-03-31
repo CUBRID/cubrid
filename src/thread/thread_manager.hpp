@@ -123,7 +123,7 @@ namespace cubthread
       // notes: if there are not pool_size number of entries available, worker pool is not created and NULL is returned
       //        signature emulates worker_pool constructor signature
       worker_pool *create_worker_pool (std::size_t pool_size, std::size_t task_max_count, const char *name,
-				       entry_manager *context_manager, std::size_t core_count,
+				       entry_manager *entry_mgr, std::size_t core_count,
 				       bool debug_logging, bool pool_threads = false,
 				       wait_seconds wait_for_task_time = std::chrono::seconds (5));
 
@@ -163,12 +163,12 @@ namespace cubthread
 
       // create daemon thread
       //
-      // note: signature should match context-based daemon constructor. only exception is context manager which is
+      // note: signature should match context-based daemon constructor. only exception is entry manager which is
       //       moved at the end to allow a default value
       //
       // todo: remove default daemon name
       daemon *create_daemon (const looper &looper_arg, entry_task *exec_p, const char *daemon_name = "",
-			     entry_manager *context_manager = NULL);
+			     entry_manager *entry_mgr = NULL);
       // destroy daemon thread
       void destroy_daemon (daemon *&daemon_arg);
 
