@@ -1465,7 +1465,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1369 Login is disabled for user "%1$s".
 
-1370 Last Error
+1370 A class "%1$s" cannot have all of its attributes defined as invisible. At least one visible attribute is required in the class.
+
+1371 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1972,6 +1974,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 332 Stored Procedures can be invoked only through CALL statements.
 333 CALL statements invoking a Stored Procedure may not have an INTO clause.
 
+334 An attribute of virtual class cannot set column's visibility.
+335 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set visibility.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME

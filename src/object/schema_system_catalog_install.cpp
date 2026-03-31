@@ -518,6 +518,7 @@ namespace cubschema
       {"default_value", format_varchar (255)},
       {"domains", format_sequence (CT_DOMAIN_NAME)},
       {"is_nullable", "integer"},
+      {"flags", "integer"},
       {"comment", format_varchar (2048)}
     },
 // constraints
@@ -1397,6 +1398,7 @@ namespace cubschema
       {"domain_owner_name", format_varchar (255)},
       {"default_value", format_varchar (255)},
       {"is_nullable", format_varchar (3)},
+      {"is_invisible", format_varchar (3)},
       {"comment", format_varchar (1024)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_attribute_spec ()}
