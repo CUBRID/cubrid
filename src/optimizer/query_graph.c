@@ -8159,24 +8159,17 @@ qo_generate_transitive_join_terms (QO_ENV * env)
   if (old_terms > old_nedges)
     {
       memmove (&env->terms[old_nedges + extra], &env->terms[old_nedges], sizeof (QO_TERM) * (old_terms - old_nedges));
+
+      for (i = old_nedges; i < old_terms; i++)
+	{
+	  QO_TERM *term = QO_ENV_TERM (env, i + extra);
+	  QO_TERM_IDX (term) = i + extra;
+	}
     }
 
-  for (i = 0; i < old_nedges; i++)
+  for (i = 0; i < env->Nterms; i++)
     {
       QO_TERM *term = QO_ENV_TERM (env, i);
-      if (term->nodes.nwords <= NWORDS)
-	term->nodes.setp = term->nodes.set.word;
-      if (term->segments.nwords <= NWORDS)
-	term->segments.setp = term->segments.set.word;
-      if (term->subqueries.nwords <= NWORDS)
-	term->subqueries.setp = term->subqueries.set.word;
-    }
-
-  for (i = old_nedges; i < old_terms; i++)
-    {
-      QO_TERM *term = QO_ENV_TERM (env, i + extra);
-      QO_TERM_IDX (term) = i + extra;
-
       if (term->nodes.nwords <= NWORDS)
 	term->nodes.setp = term->nodes.set.word;
       if (term->segments.nwords <= NWORDS)
