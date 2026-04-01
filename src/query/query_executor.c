@@ -25830,10 +25830,9 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	  if (tdes->mvccinfo.snapshot.valid)
 	    {
 	      /* 
-	       * An early snapshot (e.g. qexec_execute_query for RR) can load stats for only the classes that
-	       * were COS_TO_LOAD then; UNION's second branch may still be NOT_LOADED on a later run. Under RC,
-	       * invalidate and retake snapshot after marking the full statement tree — still atomic, no fresher-than
-	       * snapshot stats.
+	       * An early snapshot can load stats for only the classes that
+	       * were COS_TO_LOAD then; UNION's second branch may still be NOT_LOADED on a later run.
+	       * It needs to invalidate and retake snapshot.
 	       */
 
 	      logtb_invalidate_snapshot_data (thread_p);
