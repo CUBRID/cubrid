@@ -1298,3 +1298,32 @@ flashback: 특정 트랜잭션을 플래시백하는 명령문을 제공합니�
                                 기본값: 플래시백을 위한 SQL 문만 출력\n\
     --oldest                    시작 시간부터 종료 시간까지 수행된 SQL문에 대하여 시간 순으로 플래시백을 수행합니다;\n\
                                 기본값: 최근에 수행된 SQL문부터 역순으로 플래시백을 수행합니다.\n
+
+$set 59 MSGCAT_UTIL_SET_CLEANFILEDB
+10 Couldn't open output file '%1$s'\n
+11 \
+*** CUBRID cleanfiledb (Database: %1$s) ***\n\
+\n\
+  Summary of invalid files cleaned:\n\
+  ======================================================================\n\
+  Type                  Cleaned Count      Status\n\
+  ======================================================================\n\
+  Heap                  %2$d                  Success\n\
+  Heap Overflow         %3$d                  Success\n\
+  B-Tree                %4$d                  Success\n\
+  B-Tree Overflow       %5$d                  Success\n\
+  ----------------------------------------------------------------------\n\
+  Total                 %6$d\n\
+  ======================================================================\n\
+\n\
+  Cleanup execution finished successfully.\n
+60 \
+cleanfiledb: Delete invalid files and reclaim storage space.\n\
+usage: %1$s cleanfiledb [OPTION] database-name\n\
+\n\
+valid options:\n\
+    -S, --SA-mode                 stand-alone mode execution\n\
+    -C, --CS-mode                 client-server mode execution\n\
+    -o, --output-file=FILE        redirect output message to FILE; default: none.\n\
+    -l, --list                    list all files\n\
+    -c, --clean-invalid-file      clean invalid files\n

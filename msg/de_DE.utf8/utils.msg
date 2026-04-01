@@ -1313,3 +1313,32 @@ gültige Optionen:\n\
                                         zurückgegeben für Rückblende; Standard: gibt nur SQL-Anweisungen für Flashback aus\n\
     --oldest                            Flashback wird in chronologischer Reihenfolge für SQL-Anweisungen durchgeführt,\n\
                                         die von der Startzeit bis zur Endzeit ausgeführt werden; Standard: neueste\n
+
+$set 59 MSGCAT_UTIL_SET_CLEANFILEDB
+10 Couldn't open output file '%1$s'\n
+11 \
+*** CUBRID cleanfiledb (Database: %1$s) ***\n\
+\n\
+  Summary of invalid files cleaned:\n\
+  ======================================================================\n\
+  Type                  Cleaned Count      Status\n\
+  ======================================================================\n\
+  Heap                  %2$d                  Success\n\
+  Heap Overflow         %3$d                  Success\n\
+  B-Tree                %4$d                  Success\n\
+  B-Tree Overflow       %5$d                  Success\n\
+  ----------------------------------------------------------------------\n\
+  Total                 %6$d\n\
+  ======================================================================\n\
+\n\
+  Cleanup execution finished successfully.\n
+60 \
+cleanfiledb: Delete invalid files and reclaim storage space.\n\
+usage: %1$s cleanfiledb [OPTION] database-name\n\
+\n\
+valid options:\n\
+    -S, --SA-mode                 stand-alone mode execution\n\
+    -C, --CS-mode                 client-server mode execution\n\
+    -o, --output-file=FILE        redirect output message to FILE; default: none.\n\
+    -l, --list                    list all files\n\
+    -c, --clean-invalid-file      clean invalid files\n

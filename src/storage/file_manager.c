@@ -11176,50 +11176,51 @@ file_tracker_item_clean_invalid_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_
   file_header_sanity_check (thread_p, fhead);
 
   FILE_TYPE file_type = fhead->type;
-  OID *class_oid_p = NULL;
+  OID class_oid = OID_INITIALIZER;
   bool need_clean = false;
 
   switch (file_type)
     {
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
-      class_oid_p = &fhead->descriptor.heap.class_oid;
+      class_oid = fhead->descriptor.heap.class_oid;
       break;
     case FILE_MULTIPAGE_OBJECT_HEAP:
-      class_oid_p = &fhead->descriptor.heap_overflow.class_oid;
+      class_oid = fhead->descriptor.heap_overflow.class_oid;
       break;
     case FILE_BTREE:
-      class_oid_p = &fhead->descriptor.btree.class_oid;
+      class_oid = fhead->descriptor.btree.class_oid;
       break;
     case FILE_BTREE_OVERFLOW_KEY:
-      class_oid_p = &fhead->descriptor.btree_key_overflow.class_oid;
+      class_oid = fhead->descriptor.btree_key_overflow.class_oid;
       break;
     default:
-      class_oid_p = NULL;
       break;
     }
 
-  if (class_oid_p != NULL)
+  pgbuf_unfix_and_init (thread_p, page_fhead);
+
+  if (!OID_ISNULL (&class_oid))
     {
-      auto it = invalid_oids->find (*class_oid_p);
+      auto it = invalid_oids->find (class_oid);
       if (it != invalid_oids->end ())
 	{
 	  need_clean = true;
 	}
       else
 	{
-	  auto it = valid_oids->find (*class_oid_p);
+	  auto it = valid_oids->find (class_oid);
 	  if (it == valid_oids->end ())
 	    {
-	      if (!file_is_valid_heap_file (thread_p, class_oid_p))
+	      if (!file_is_valid_heap_file (thread_p, &class_oid))
 		{
 		  need_clean = true;
 
-		  invalid_oids->insert (*class_oid_p);
+		  invalid_oids->insert (class_oid);
 		}
 	      else
 		{
-		  valid_oids->insert (*class_oid_p);
+		  valid_oids->insert (class_oid);
 		}
 	    }
 	}
@@ -11231,8 +11232,6 @@ file_tracker_item_clean_invalid_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_
 
       vfid.volid = item->volid;
       vfid.fileid = item->fileid;
-
-      pgbuf_unfix_and_init (thread_p, page_fhead);
 
       log_sysop_start (thread_p);
 
@@ -11267,8 +11266,6 @@ file_tracker_item_clean_invalid_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_
 	  break;
 	}
     }
-
-  pgbuf_unfix_and_init_after_check (thread_p, page_fhead);
 
   return NO_ERROR;
 }
@@ -11389,9 +11386,11 @@ file_tracker_item_delete_target_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_
 
   file_header_sanity_check (thread_p, fhead);
 
-  if (fhead->type == FILE_HEAP || fhead->type == FILE_HEAP_REUSE_SLOTS || fhead->type == FILE_MULTIPAGE_OBJECT_HEAP
-      || fhead->type == FILE_BTREE || fhead->type == FILE_BTREE_OVERFLOW_KEY || fhead->type == FILE_QUERY_AREA
-      || fhead->type == FILE_TEMP || fhead->type == FILE_UNKNOWN_TYPE)
+  FILE_TYPE file_type = fhead->type;
+
+  if (file_type == FILE_HEAP || file_type == FILE_HEAP_REUSE_SLOTS || file_type == FILE_MULTIPAGE_OBJECT_HEAP
+      || file_type == FILE_BTREE || file_type == FILE_BTREE_OVERFLOW_KEY || file_type == FILE_QUERY_AREA
+      || file_type == FILE_TEMP || file_type == FILE_UNKNOWN_TYPE)
     {
       if (page_fhead != NULL)
 	{
@@ -11402,7 +11401,7 @@ file_tracker_item_delete_target_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_
 
       log_sysop_start (thread_p);
 
-      if (fhead->type == FILE_QUERY_AREA || fhead->type == FILE_TEMP)
+      if (file_type == FILE_QUERY_AREA || file_type == FILE_TEMP)
 	{
 	  if (file_destroy (thread_p, target_vfid, true) != NO_ERROR)
 	    {
