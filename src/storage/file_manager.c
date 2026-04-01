@@ -11042,14 +11042,14 @@ file_tracker_item_dump_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FIL
 
       if (class_oid_p != NULL)
 	{
-	  auto it = std::find (valid_oids->begin (), valid_oids->end (), *class_oid_p);
+	  auto it = valid_oids->find (*class_oid_p);
 	  if (it != valid_oids->end ())
 	    {
 	      need_dump = false;
 	    }
 	  else
 	    {
-	      auto it = std::find (invalid_oids->begin (), invalid_oids->end (), *class_oid_p);
+	      auto it = invalid_oids->find (*class_oid_p);
 	      if (it == invalid_oids->end ())
 		{
 		  if (file_is_valid_heap_file (thread_p, class_oid_p))
@@ -11201,14 +11201,14 @@ file_tracker_item_clean_invalid_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_
 
   if (class_oid_p != NULL)
     {
-      auto it = std::find (invalid_oids->begin (), invalid_oids->end (), *class_oid_p);
+      auto it = invalid_oids->find (*class_oid_p);
       if (it != invalid_oids->end ())
 	{
 	  need_clean = true;
 	}
       else
 	{
-	  auto it = std::find (valid_oids->begin (), valid_oids->end (), *class_oid_p);
+	  auto it = valid_oids->find (*class_oid_p);
 	  if (it == valid_oids->end ())
 	    {
 	      if (!file_is_valid_heap_file (thread_p, class_oid_p))
