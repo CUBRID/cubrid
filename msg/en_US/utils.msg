@@ -1315,9 +1315,24 @@ valid options:\n\
 
 $set 59 MSGCAT_UTIL_SET_CLEANFILEDB
 10 Couldn't open output file '%1$s'\n
-11 '%1$d' invalid files successfully cleaned. (heap: '%2$d', heap-ovf: '%3$d', btree: '%4$d', btree-ovf: '%5$d')\n
+11 \
+*** CUBRID cleanfiledb (Database: %1$s) ***\n\
+\n\
+  Summary of invalid files cleaned:\n\
+  ======================================================================\n\
+  Type                  Cleaned Count      Status\n\
+  ======================================================================\n\
+  Heap                  %2$d                  Success\n\
+  Heap Overflow         %3$d                  Success\n\
+  B-Tree                %4$d                  Success\n\
+  B-Tree Overflow       %5$d                  Success\n\
+  ----------------------------------------------------------------------\n\
+  Total                 %6$d\n\
+  ======================================================================\n\
+\n\
+  Cleanup execution finished successfully.\n
 60 \
-cleanfiledb: file manager utility\n\
+cleanfiledb: Delete invalid files and reclaim storage space.\n\
 usage: %1$s cleanfiledb [OPTION] database-name\n\
 \n\
 valid options:\n\

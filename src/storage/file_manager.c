@@ -11109,9 +11109,9 @@ xfile_tracker_dump_file_list (THREAD_ENTRY * thread_p, FILE * outfp, bool invali
       outfp = stdout;
     }
 
-  args[0] = (void *) outfp;
-  args[1] = (void *) &invalid_only;
 // *INDENT-OFF*
+  args[0] = static_cast<void *>(outfp);
+  args[1] = static_cast<void *>(&invalid_only);
   args[2] = static_cast<void *>(&valid_oids);
   args[3] = static_cast<void *>(&invalid_oids);
 // *INDENT-ON*
@@ -11249,16 +11249,16 @@ file_tracker_item_clean_invalid_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_
 	{
 	case FILE_HEAP:
 	case FILE_HEAP_REUSE_SLOTS:
-	  *heap++;
+	  (*heap)++;
 	  break;
 	case FILE_MULTIPAGE_OBJECT_HEAP:
-	  *heap_ovf++;
+	  (*heap_ovf)++;
 	  break;
 	case FILE_BTREE:
-	  *btree++;
+	  (*btree)++;
 	  break;
 	case FILE_BTREE_OVERFLOW_KEY:
-	  *btree_ovf++;
+	  (*btree_ovf)++;
 	  break;
 	default:
 	  assert (false);

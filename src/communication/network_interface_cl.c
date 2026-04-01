@@ -11044,10 +11044,10 @@ file_clean_invalid_file (int *heap, int *heap_ovf, int *btree, int *btree_ovf)
   if (!req_error)
     {
       ptr = or_unpack_errcode (reply, &error);
-      ptr = or_unpack_int (reply, heap);
-      ptr = or_unpack_int (reply, heap_ovf);
-      ptr = or_unpack_int (reply, btree);
-      ptr = or_unpack_int (reply, btree_ovf);
+      ptr = or_unpack_int (ptr, heap);
+      ptr = or_unpack_int (ptr, heap_ovf);
+      ptr = or_unpack_int (ptr, btree);
+      ptr = or_unpack_int (ptr, btree_ovf);
     }
 
   return error;

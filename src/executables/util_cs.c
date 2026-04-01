@@ -4651,7 +4651,7 @@ cleanfiledb (UTIL_FUNCTION_ARG * arg)
 
 	  fprintf (stdout,
 		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CLEANFILEDB, CLEANFILEDB_MSG_CLEAN_SUMMARY),
-		   total, heap, heap_ovf, btree, btree_ovf);
+		   db_name, heap, heap_ovf, btree, btree_ovf, total);
 	}
 
 #if !defined(NDEBUG)
