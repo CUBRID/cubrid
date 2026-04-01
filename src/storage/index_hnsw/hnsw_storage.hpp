@@ -263,6 +263,7 @@ namespace cubhnsw
 	, m_root_vpid (block_id_t { giid.root_pageid, giid.vfid.volid })
 	, m_last_node_vpid (m_root_vpid)
 	, m_vector_cache_vector_stride_bytes (get_aligned_vector_cache_stride_ ())
+	, m_i8_cache_stride_bytes (get_aligned_i8_cache_stride_ ())
       {}
 
       ~storage () = default;
@@ -278,8 +279,6 @@ namespace cubhnsw
       pinned_t get_root (algo_context_t &context, lock_mode mode);
       pinned_t get_node_by_slot_id (algo_context_t &context, const slot_id_t &slot_id,
 				    const lock_mode &mode);
-      const float *get_vector_by_slot_id (algo_context_t &context, const slot_id_t &slot_id,
-					  const lock_mode &mode);
 
       // neighbors cache helpers (single-thread, in-memory)
       const std::vector<slot_id_t> *get_neighbors_cached_ids (
@@ -293,35 +292,9 @@ namespace cubhnsw
 
       void promote_root (pinned_t &root);
 
-      // Prefetch the vector data for a slot if it is already in the vector cache.
-      // Call one iteration ahead in the neighbor traversal loop to hide memory latency.
-      inline void prefetch_vector_if_cached (const slot_id_t &slot) noexcept
-      {
-	const uint64_t cache_key = make_vector_cache_key_ (slot);
-	auto it = m_vector_cache.find (cache_key);
-	if (it != m_vector_cache.end ())
-	  {
-	    __builtin_prefetch (it->second, 0 /* read */, 1 /* L2 locality */);
-	  }
-      }
-
-      // Overload: accept pre-encoded key to avoid redundant OID encoding in hot loops.
-      inline void prefetch_vector_if_cached (uint64_t cache_key) noexcept
-      {
-	auto it = m_vector_cache.find (cache_key);
-	if (it != m_vector_cache.end ())
-	  {
-	    __builtin_prefetch (it->second, 0 /* read */, 1 /* L2 locality */);
-	  }
-      }
-
-      // Fast inline path for hot loops: no stats overhead, no virtual dispatch.
-      // Returns nullptr on cache miss; caller must fall back to get_vector_by_slot_id.
-      inline const float *try_get_vector_cached (uint64_t cache_key) noexcept
-      {
-	auto it = m_vector_cache.find (cache_key);
-	return (it != m_vector_cache.end ()) ? it->second : nullptr;
-      }
+      const cached_vector *get_cached_vector_by_slot_id (algo_context_t &context,
+							 const slot_id_t &slot_id,
+							 const lock_mode &mode);
 
       // Fast inline path for neighbors cache lookup: no stats overhead.
       inline const std::vector<slot_id_t> *try_get_neighbors_cached (const slot_id_t &slot,
@@ -378,6 +351,12 @@ namespace cubhnsw
 	return ((vector_bytes + VECTOR_CACHE_ALIGNMENT - 1) / VECTOR_CACHE_ALIGNMENT) * VECTOR_CACHE_ALIGNMENT;
       }
 
+      std::size_t get_aligned_i8_cache_stride_ () const noexcept
+      {
+	const std::size_t i8_bytes = get_dimension () * sizeof (std::int8_t);
+	return ((i8_bytes + VECTOR_CACHE_ALIGNMENT - 1) / VECTOR_CACHE_ALIGNMENT) * VECTOR_CACHE_ALIGNMENT;
+      }
+
       std::size_t get_initial_vector_cache_block_capacity_ () const noexcept
       {
 	return std::max<std::size_t> (1, VECTOR_CACHE_TARGET_BLOCK_BYTES / m_vector_cache_vector_stride_bytes);
@@ -388,8 +367,9 @@ namespace cubhnsw
 	return m_oid_encoder.encode_oid (slot_id);
       }
 
-      const float *cache_vector_copy_ (const slot_id_t &slot_id, const float *vector);
+      const cached_vector *cache_vector_copy_ (const slot_id_t &slot_id, const float *vector);
       const float *append_vector_copy_ (const float *vector);
+      const std::int8_t *append_i8_copy_ (const std::int8_t *data);
 
       page_guard get_block_to_insert (algo_context_t &context, block_group_id_t &vfid, block_id_t &last_vpid,
 				      std::size_t bytes);
@@ -407,11 +387,15 @@ namespace cubhnsw
       block_id_t m_last_node_vpid;
       bool m_is_empty = true;
 
-      vector_cache_t m_vector_cache;  // (slot_id_t, vector) cache
+      vector_cache_t m_vector_cache;  // (slot_id_t, cached_vector) cache
       hnsw_oid_encoder_default m_oid_encoder;
       std::size_t m_vector_cache_vector_stride_bytes {0};
       std::unique_ptr<vector_cache_block> m_vector_cache_blocks;
       vector_cache_block *m_vector_cache_tail {nullptr};
+
+      std::size_t m_i8_cache_stride_bytes {0};
+      std::unique_ptr<i8_cache_block> m_i8_cache_blocks;
+      i8_cache_block *m_i8_cache_tail {nullptr};
 
       /* TODO: This is not thread-safe. Currently, we are assuming single-threaded access, but we need to make it thread-safe. */
       neighbors_cache_t m_neighbors_cache;    // (slot_id_t, level) -> neighbors

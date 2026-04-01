@@ -18,6 +18,8 @@
 
 #include "hnsw_storage.hpp"
 
+#include <vector>
+
 #include "error_manager.h"
 #include "file_manager.h" // FILE_DESCRIPTORS
 #include "slotted_page.h"
@@ -219,8 +221,9 @@ namespace cubhnsw
     m_neighbors_cache.insert_or_assign (key, std::move (neighbors));
   }
 
-  const float *
-  storage::get_vector_by_slot_id (algo_context_t &context, const slot_id_t &slot, const lock_mode &mode)
+  const cached_vector *
+  storage::get_cached_vector_by_slot_id (algo_context_t &context, const slot_id_t &slot,
+					  const lock_mode &mode)
   {
     context.m_stats.on_vector_access (context.m_is_perf_tracking, context.m_level);
 
@@ -229,7 +232,7 @@ namespace cubhnsw
     if (it != m_vector_cache.end ())
       {
 	context.m_stats.on_vector_cache_hit (context.m_is_perf_tracking, context.m_level);
-	return it->second;
+	return &it->second;
       }
 
     context.m_stats.on_vector_cache_miss (context.m_is_perf_tracking, context.m_level);
@@ -241,19 +244,47 @@ namespace cubhnsw
     return cache_vector_copy_ (slot, vec);
   }
 
-  const float *
+  const cached_vector *
   storage::cache_vector_copy_ (const slot_id_t &slot_id, const float *vector)
   {
     const uint64_t cache_key = make_vector_cache_key_ (slot_id);
     auto it = m_vector_cache.find (cache_key);
     if (it != m_vector_cache.end ())
       {
-	return it->second;
+	return &it->second;
       }
 
-    const float *cached_ptr = append_vector_copy_ (vector);
-    m_vector_cache.emplace (cache_key, cached_ptr);
-    return cached_ptr;
+    const std::size_t dim = get_dimension ();
+
+    // Quantize float vector to int8
+    float max_abs = 0.0f;
+    for (std::size_t i = 0; i < dim; ++i)
+      {
+	const float v = vector[i];
+	if (v > max_abs) max_abs = v;
+	else if (-v > max_abs) max_abs = -v;
+      }
+    const float scale = (max_abs > 0.0f) ? max_abs / 127.0f : 1.0f;
+
+    std::vector<std::int8_t> i8_buf (dim);
+    for (std::size_t i = 0; i < dim; ++i)
+      {
+	float s = vector[i] / scale;
+	if (s > 127.0f) s = 127.0f;
+	else if (s < -127.0f) s = -127.0f;
+	i8_buf[i] = static_cast<std::int8_t> (s + (s >= 0.0f ? 0.5f : -0.5f));
+      }
+
+    const float *float_ptr = append_vector_copy_ (vector);
+    const std::int8_t *i8_ptr = append_i8_copy_ (i8_buf.data ());
+
+    cached_vector cv;
+    cv.values = float_ptr;
+    cv.values_i8.values = i8_ptr;
+    cv.values_i8.scale = scale;
+
+    auto [ins_it, ok] = m_vector_cache.emplace (cache_key, cv);
+    return &ins_it->second;
   }
 
   const float *
@@ -277,6 +308,29 @@ namespace cubhnsw
       }
 
     return m_vector_cache_tail->append (vector, get_dimension ());
+  }
+
+  const std::int8_t *
+  storage::append_i8_copy_ (const std::int8_t *data)
+  {
+    const std::size_t dim = get_dimension ();
+    const std::size_t initial_capacity = get_initial_vector_cache_block_capacity_ ();
+
+    if (m_i8_cache_tail == nullptr)
+      {
+	m_i8_cache_blocks = std::make_unique<i8_cache_block> (m_i8_cache_stride_bytes, initial_capacity);
+	m_i8_cache_tail = m_i8_cache_blocks.get ();
+      }
+
+    if (!m_i8_cache_tail->has_capacity ())
+      {
+	const std::size_t next_capacity = std::max<std::size_t> (m_i8_cache_tail->m_capacity * 2,
+					  initial_capacity);
+	m_i8_cache_tail->m_next = std::make_unique<i8_cache_block> (m_i8_cache_stride_bytes, next_capacity);
+	m_i8_cache_tail = m_i8_cache_tail->m_next.get ();
+      }
+
+    return m_i8_cache_tail->append (data, dim);
   }
 
   // promote lockmode from shared to exclusive

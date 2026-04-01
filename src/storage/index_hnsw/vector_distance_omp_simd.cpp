@@ -283,6 +283,41 @@ namespace cubhnsw
     cubvec_inner_product_distance
   };
 
+  distance_t
+  cubvec_inner_product_distance_int8 (const std::int8_t *vec1, float scale1,
+                                      const std::int8_t *vec2, float scale2, std::size_t dim)
+  {
+#if defined(__AVX2__)
+    return cubvec_inner_product_distance_int8_avx2 (vec1, scale1, vec2, scale2, dim);
+#else
+    return cubvec_inner_product_distance_int8_batch4 (vec1, scale1, vec2, scale2, dim);
+#endif
+  }
+
+  distance_t
+  cubvec_l2_distance_int8 (const std::int8_t *vec1, float scale1,
+                           const std::int8_t *vec2, float scale2, std::size_t dim)
+  {
+    return cubvec_l2_distance_int8_batch4 (vec1, scale1, vec2, scale2, dim);
+  }
+
+  distance_t
+  cubvec_cosine_distance_int8 (const std::int8_t *vec1, float scale1,
+                               const std::int8_t *vec2, float scale2, std::size_t dim)
+  {
+    // Vectors are unit-normalized at insert; cosine distance = 1 - dot product
+    return 1.0f - cubvec_inner_product_distance_int8 (vec1, scale1, vec2, scale2, dim);
+  }
+
+  const std::array<distance_i8_fn_t,
+       static_cast<std::size_t> (vector_distance_metric_t::MAX)>
+       metric_table_i8 =
+  {
+    cubvec_cosine_distance_int8,
+    cubvec_l2_distance_int8,
+    cubvec_inner_product_distance_int8,
+  };
+
   const std::array<aligned_distance_fn_t,
 	static_cast<std::size_t> (vector_distance_metric_t::MAX)>
 	metric_table_rhs_aligned =

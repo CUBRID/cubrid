@@ -107,22 +107,23 @@ namespace cubhnsw
 	  }
 
 	context.m_query_i8.scale = (max_abs > 0.0f) ? max_abs / 127.0f : 1.0f;
-	context.m_query_i8.values.resize (m_dimension);
+	context.m_query_i8_buf.resize (m_dimension);
 	for (std::size_t i = 0; i < m_dimension; ++i)
 	  {
 	    const float scaled = query[i] / context.m_query_i8.scale;
 	    const float rounded = std::round (scaled);
 	    const float clamped = std::max (-127.0f, std::min (127.0f, rounded));
-	    context.m_query_i8.values[i] = static_cast<std::int8_t> (clamped);
+	    context.m_query_i8_buf[i] = static_cast<std::int8_t> (clamped);
 	  }
+	context.m_query_i8.values = context.m_query_i8_buf.data ();
       }
 
       inline distance_t compute_distance_i8_ (algo_context_t &context, const quantized_vector_i8 &v1,
 					      const quantized_vector_i8 &v2) const
       {
 	context.m_stats.on_distance_computed (context.m_is_perf_tracking, context.m_level, true);
-	return metric_table_i8[static_cast<size_t> (m_metric)] (v1.values.data (), v1.scale,
-								 v2.values.data (), v2.scale, m_dimension);
+	return metric_table_i8[static_cast<size_t> (m_metric)] (v1.values, v1.scale,
+								 v2.values, v2.scale, m_dimension);
       }
 
       inline distance_t get_i8_recheck_window_ (distance_t radius) const
@@ -149,7 +150,7 @@ namespace cubhnsw
       inline distance_t compute_distance_from_query_ (algo_context_t &context, const float *query,
 						      const cached_vector &vec) const
       {
-	return compute_distance_ (context, query, vec.values.data ());
+	return compute_distance_ (context, query, vec.values);
       }
 
       inline distance_t compute_distance_from_query_ (algo_context_t &context, const float *query,
@@ -168,9 +169,9 @@ namespace cubhnsw
       inline distance_t compute_distance_between (algo_context_t &context, const slot_id_t &a,
 	  const slot_id_t &b) const
       {
-	const float *avec = m_storage->get_vector_by_slot_id (context, a, lock_mode::shared);
-	const float *bvec = m_storage->get_vector_by_slot_id (context, b, lock_mode::shared);
-	return compute_distance_ (context, avec, bvec);
+	const cached_vector *avec = m_storage->get_cached_vector_by_slot_id (context, a, lock_mode::shared);
+	const cached_vector *bvec = m_storage->get_cached_vector_by_slot_id (context, b, lock_mode::shared);
+	return compute_distance_ (context, avec->values, bvec->values);
       }
 
       inline neighbors_ref_type get_neighbors (algo_context_t &context,
@@ -524,7 +525,7 @@ namespace cubhnsw
 
     next.insert_reserved (candidate_t (-radius, start_slot));
     top.insert_reserved (candidate_t (radius, start_slot));
-    visits.insert (start_slot);
+    visits.insert (encode_oid_key (start_slot));
     stats.on_start_node ();
 
     while (!next.empty ())
@@ -549,7 +550,7 @@ namespace cubhnsw
 	    context.m_stats.on_neighbors_cache_hit (context.m_is_perf_tracking, level);
 	    for (slot_id_t successor_slot : *cached_neighbors)
 	      {
-		auto [it, inserted] = visits.insert (successor_slot);
+		auto [it, inserted] = visits.insert (encode_oid_key (successor_slot));
 		if (!inserted)
 		  {
 		    continue;
@@ -596,7 +597,7 @@ namespace cubhnsw
 	    neigh.push_back (successor_slot);
 	    stats.on_neighbor_scan ();
 
-	    auto [it, inserted] = visits.insert (successor_slot);
+	    auto [it, inserted] = visits.insert (encode_oid_key (successor_slot));
 	    if (!inserted)
 	      {
 		continue;
