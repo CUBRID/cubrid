@@ -253,7 +253,7 @@ namespace cubhnsw
       void set_neighbors_cached_ids (algo_context_t &context,
 				     const slot_id_t &slot_id,
 				     level_t level,
-				     const std::vector<slot_id_t> &neighbors);
+				     std::vector<slot_id_t> neighbors);
 
       void promote_root (pinned_t &root);
 

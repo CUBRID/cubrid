@@ -71,14 +71,18 @@ namespace cubhnsw
     }
   };
 
+  inline uint64_t encode_oid_key (const OID &o) noexcept
+  {
+    return (uint64_t (uint32_t (o.pageid)) << 32)
+	   | (uint64_t (uint16_t (o.slotid)) << 16)
+	   | uint64_t (uint16_t (o.volid));
+  }
+
   struct oid_hash
   {
     inline std::size_t operator() (const OID &o) const noexcept
     {
-      // bit packing of oid
-      return (uint64_t (uint32_t (o.pageid)) << 32)
-	     | (uint64_t (uint16_t (o.slotid)) << 16)
-	     |  uint64_t (uint16_t (o.volid));
+      return encode_oid_key (o);
     }
   };
 
@@ -92,7 +96,7 @@ namespace cubhnsw
 
   struct visit_set_helper
   {
-    using type = ankerl::unordered_dense::set<OID, oid_hash, oid_equal>;
+    using type = ankerl::unordered_dense::set<uint64_t>;
   };
 
   using visited_set_t = visit_set_helper::type;
@@ -120,7 +124,7 @@ namespace cubhnsw
   {
     std::size_t operator() (neighbors_key const &k) const noexcept
     {
-      std::size_t h = oid_hash {} (k.slot);
+      std::size_t h = encode_oid_key (k.slot);
       std::size_t x = std::hash<level_t> {} (k.level);
       h ^= x + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
       return h;

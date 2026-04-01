@@ -204,10 +204,10 @@ namespace cubhnsw
   storage::set_neighbors_cached_ids (algo_context_t &context,
 				     const slot_id_t &slot,
 				     level_t level,
-				     const std::vector<slot_id_t> &neighbors)
+				     std::vector<slot_id_t> neighbors)
   {
     neighbors_key key { slot, level };
-    m_neighbors_cache[key] = neighbors;
+    m_neighbors_cache.insert_or_assign (key, std::move (neighbors));
   }
 
   const float *
