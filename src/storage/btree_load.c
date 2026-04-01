@@ -4884,7 +4884,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   std::unique_ptr<index_builder_loader_task> load_task = NULL;
 
   // a worker pool is built only of loading is done in parallel
-  cubthread::entry_workpool *ib_workpool =
+  cubthread::worker_pool *ib_workpool =
     is_parallel ?
     thread_get_manager()->create_worker_pool (ib_thread_count, 32, "online-index", &load_context, 1,
                                               btree_is_worker_pool_logging_true ())
