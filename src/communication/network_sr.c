@@ -38,7 +38,6 @@
 #include "connection_sr.h"
 #include "critical_section.h"
 #include "event_log.h"
-#include "internal_tasks_worker_pool.hpp"
 #include "log_impl.h"
 #include "memory_alloc.h"
 #include "message_catalog.h"
@@ -1061,7 +1060,6 @@ net_server_start (const char *server_name)
     }
 
   cubthread::initialize (thread_p);
-  cubthread::internal_tasks_worker_pool::initialize ();
   assert (thread_p == thread_get_thread_entry_info ());
 
 #if defined(WINDOWS)
@@ -1168,7 +1166,6 @@ net_server_start (const char *server_name)
     }
 
   cubthread::finalize ();
-  cubthread::internal_tasks_worker_pool::finalize ();
 #if !defined(WINDOWS)
   mmon_finalize ();
 #endif /* !WINDOWS */
