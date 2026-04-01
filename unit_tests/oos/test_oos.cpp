@@ -22,6 +22,7 @@
 #include "page_buffer.h"
 #include "slotted_page.h"
 #include "storage_common.h"
+#include "object_representation.h"
 #include "oos_file.hpp"
 #include "test_oos_common.hpp"
 #include "page_buffer_util.hpp"
@@ -525,6 +526,162 @@ TEST (OosTest, ShouldInsertIntoDifferentPages)
   }
 
   // TODO
+}
+
+TEST (OosTest, OosInlineFormatWriteAndReadBack)
+{
+  /* Test that OR_OOS_INLINE_SIZE = OR_OID_SIZE + OR_BIGINT_SIZE = 16 bytes */
+  ASSERT_EQ (OR_OOS_INLINE_SIZE, OR_OID_SIZE + OR_BIGINT_SIZE);
+  ASSERT_EQ (OR_OOS_INLINE_SIZE, 16);
+
+  /* Simulate writing OOS inline data: [OOS OID (8B) + length (8B)] */
+  char buf_data[OR_OOS_INLINE_SIZE];
+  OR_BUF write_buf;
+  or_init (&write_buf, buf_data, OR_OOS_INLINE_SIZE);
+
+  OID test_oid;
+  test_oid.pageid = 42;
+  test_oid.slotid = 7;
+  test_oid.volid = 3;
+  DB_BIGINT test_length = 160 * 1024; /* 160 KB */
+
+  or_put_oid (&write_buf, &test_oid);
+  or_put_bigint (&write_buf, test_length);
+
+  /* Verify we wrote exactly OR_OOS_INLINE_SIZE bytes */
+  ASSERT_EQ (write_buf.ptr - buf_data, OR_OOS_INLINE_SIZE);
+
+  /* Read back: simulate what heap_midxkey_get_oos_extra_size does */
+  OR_BUF read_buf;
+  or_init (&read_buf, buf_data, OR_OOS_INLINE_SIZE);
+
+  OID read_oid;
+  or_get_oid (&read_buf, &read_oid);
+  ASSERT_EQ (read_oid.pageid, test_oid.pageid);
+  ASSERT_EQ (read_oid.slotid, test_oid.slotid);
+  ASSERT_EQ (read_oid.volid, test_oid.volid);
+
+  int rc = NO_ERROR;
+  DB_BIGINT read_length = or_get_bigint (&read_buf, &rc);
+  ASSERT_EQ (rc, NO_ERROR);
+  ASSERT_EQ (read_length, test_length);
+}
+
+TEST (OosTest, OosInlineFormatWithRealOosInsert)
+{
+  /* Insert data into OOS, then verify the inline format [OID + length] round-trips correctly */
+  int err;
+  VFID oos_vfid;
+
+  err = oos_file_create (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  const int data_size = 2048;
+  auto data = test_oos_utils::make_repeated_pattern_string (data_size);
+
+  RECDES rec_in{};
+  err = test_oos_utils::from_string_into_recdes (data, rec_in);
+  ASSERT_EQ (err, NO_ERROR);
+
+  OID oos_oid;
+  err = oos_insert (thread_p, oos_vfid, rec_in, oos_oid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  /* Build inline OOS data: [OOS OID (8B) + length (8B)] */
+  char inline_buf[OR_OOS_INLINE_SIZE];
+  OR_BUF write_buf;
+  or_init (&write_buf, inline_buf, OR_OOS_INLINE_SIZE);
+  or_put_oid (&write_buf, &oos_oid);
+  or_put_bigint (&write_buf, (DB_BIGINT) rec_in.length);
+
+  /* Read back OID and length from inline data */
+  OR_BUF read_buf;
+  or_init (&read_buf, inline_buf, OR_OOS_INLINE_SIZE);
+
+  OID read_oid;
+  or_get_oid (&read_buf, &read_oid);
+  ASSERT_EQ (read_oid.pageid, oos_oid.pageid);
+  ASSERT_EQ (read_oid.slotid, oos_oid.slotid);
+  ASSERT_EQ (read_oid.volid, oos_oid.volid);
+
+  int rc = NO_ERROR;
+  DB_BIGINT read_length = or_get_bigint (&read_buf, &rc);
+  ASSERT_EQ (rc, NO_ERROR);
+  ASSERT_EQ (read_length, (DB_BIGINT) rec_in.length);
+
+  /* Verify that the inline length matches what oos_get_length returns (via I/O) */
+  int oos_length = oos_get_length (thread_p, oos_oid);
+  ASSERT_EQ (read_length, (DB_BIGINT) oos_length);
+
+  /* Verify that oos_read returns a recdes whose length matches the inline length */
+  RECDES rec_out{};
+  err = oos_read (thread_p, oos_oid, rec_out);
+  ASSERT_EQ (err, NO_ERROR);
+  ASSERT_EQ (read_length, (DB_BIGINT) rec_out.length);
+
+  recdes_free_data_area (&rec_in);
+  recdes_free_data_area (&rec_out);
+}
+
+TEST (OosTest, OosInlineLengthMatchesAcrossPages)
+{
+  /* Test with data spanning multiple OOS pages to ensure inline length is correct */
+  int err;
+  VFID oos_vfid;
+
+  err = oos_file_create (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  const int max_chunk_size = bridge_oos_get_max_chunk_size_within_page ();
+
+  /* Test sizes: within page, at boundary, and across pages */
+  int test_sizes[] = { 512, max_chunk_size - 1, max_chunk_size, max_chunk_size + 1, 160 * 1024 };
+
+  for (int data_size : test_sizes)
+    {
+      auto data = test_oos_utils::make_repeated_pattern_string (data_size);
+
+      RECDES rec_in{};
+      err = test_oos_utils::from_string_into_recdes (data, rec_in);
+      ASSERT_EQ (err, NO_ERROR);
+
+      OID oos_oid;
+      err = oos_insert (thread_p, oos_vfid, rec_in, oos_oid);
+      ASSERT_EQ (err, NO_ERROR);
+
+      /* Write inline format */
+      char inline_buf[OR_OOS_INLINE_SIZE];
+      OR_BUF write_buf;
+      or_init (&write_buf, inline_buf, OR_OOS_INLINE_SIZE);
+      or_put_oid (&write_buf, &oos_oid);
+      or_put_bigint (&write_buf, (DB_BIGINT) rec_in.length);
+
+      /* Read back length from inline data */
+      OR_BUF read_buf;
+      or_init (&read_buf, inline_buf, OR_OOS_INLINE_SIZE);
+      OID read_oid;
+      or_get_oid (&read_buf, &read_oid);
+
+      int rc = NO_ERROR;
+      DB_BIGINT inline_length = or_get_bigint (&read_buf, &rc);
+      ASSERT_EQ (rc, NO_ERROR);
+
+      /* Inline length must equal original data length */
+      ASSERT_EQ (inline_length, (DB_BIGINT) rec_in.length) << "Failed for data_size=" << data_size;
+
+      /* Inline length must match oos_get_length (I/O-based) */
+      int io_length = oos_get_length (thread_p, oos_oid);
+      ASSERT_EQ (inline_length, (DB_BIGINT) io_length) << "Failed for data_size=" << data_size;
+
+      /* Inline length must match oos_read recdes length */
+      RECDES rec_out{};
+      err = oos_read (thread_p, oos_oid, rec_out);
+      ASSERT_EQ (err, NO_ERROR);
+      ASSERT_EQ (inline_length, (DB_BIGINT) rec_out.length) << "Failed for data_size=" << data_size;
+
+      recdes_free_data_area (&rec_in);
+      recdes_free_data_area (&rec_out);
+    }
 }
 
 int main (int argc, char **argv)
