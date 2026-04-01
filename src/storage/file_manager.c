@@ -824,9 +824,11 @@ static int file_tracker_item_dump_capacity (THREAD_ENTRY * thread_p, PAGE_PTR pa
 static int file_tracker_item_clean_invalid_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
 						 FILE_EXTENSIBLE_DATA * extdata, int index_item, bool * stop,
 						 void *args);
+#if !defined (NDEBUG)
 static int file_tracker_item_delete_target_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
 						 FILE_EXTENSIBLE_DATA * extdata, int index_item, bool * stop,
 						 void *args);
+#endif
 static int file_tracker_item_dump_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EXTENSIBLE_DATA * extdata,
 					int index_item, bool * stop, void *args);
 static int file_tracker_item_dump_heap_capacity (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
@@ -11341,10 +11343,9 @@ parse_target_vfid (const char *in_vfid_str, VFID * out_vfid)
 
   return true;
 }
-#endif
 
 /*
- * file_tracker_item_delete_target_file () - purge target file
+ * file_tracker_item_delete_target_file () - delete target file
  *
  * return            : error code
  * thread_p (in)     : thread entry
@@ -11435,9 +11436,8 @@ file_tracker_item_delete_target_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_
   return NO_ERROR;
 }
 
-#if !defined(NDEBUG)
 /*
- * xfile_tracker_delete_target_file () - purge target file
+ * xfile_tracker_delete_target_file () - delete target file
  *
  * return               : error code
  * thread_p (in)        : thread entry
