@@ -219,7 +219,7 @@ namespace cubload
     mvcc_snapshot = logtb_get_mvcc_snapshot (&thread_ref);
     if (mvcc_snapshot == NULL)
       {
-	ASSERT_ERROR_AND_SET (error);
+	ASSERT_ERROR ();
 	heap_attrinfo_end (&thread_ref, &attr_info);
 	return LC_CLASSNAME_ERROR;
       }
