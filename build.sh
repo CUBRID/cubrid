@@ -667,18 +667,7 @@ function build_test ()
   export CUBRID_DATABASES="$prefix_dir/databases"
   export PATH="$prefix_dir/bin:$PATH"
 
-  # Create unit test database if it doesn't exist
-  print_check "Setting up unit test database"
-  if [ ! -f "$CUBRID_DATABASES/databases.txt" ] || ! grep -q "unittestdb" "$CUBRID_DATABASES/databases.txt" 2>/dev/null; then
-    mkdir -p "$CUBRID_DATABASES/unittestdb"
-    cubrid createdb --db-volume-size=20M --log-volume-size=20M unittestdb en_US.utf8 \
-      -F "$CUBRID_DATABASES/unittestdb"
-    [ $? -eq 0 ] && print_result "OK" || print_fatal "Failed to create unit test database"
-  else
-    print_result "SKIP (already exists)"
-  fi
-
-  # Run unit tests
+  # Run unit tests (unittestdb is created/cleaned by CTest fixtures)
   print_check "Running unit tests"
   ctest --test-dir $build_dir --output-on-failure
   [ $? -eq 0 ] && print_result "OK" || print_fatal "Unit tests failed"

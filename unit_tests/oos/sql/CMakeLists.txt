@@ -35,3 +35,9 @@ add_test(NAME test_oos_sql_delete COMMAND test_oos_sql_delete)
 add_test(NAME test_oos_sql_boundary COMMAND test_oos_sql_boundary)
 add_test(NAME test_oos_sql_update_delete COMMAND test_oos_sql_update_delete)
 add_test(NAME test_oos_sql_txn COMMAND test_oos_sql_txn)
+
+set_tests_properties(
+  test_oos_sql_crud test_oos_sql_ddl test_oos_sql_delete
+  test_oos_sql_boundary test_oos_sql_update_delete test_oos_sql_txn
+  PROPERTIES FIXTURES_REQUIRED OOS_DB
+)
