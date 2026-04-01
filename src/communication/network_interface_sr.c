@@ -3799,7 +3799,7 @@ sboot_add_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   ext_info.overwrite = (bool) tmp;
 
   /* check if request is from an older patch version. */
-  if ((ptr - request) < reqlen)
+  if ((reqlen - (ptr - request)) >= OR_INT_SIZE)
     {
       ptr = or_unpack_int (ptr, &tmp);
       ext_info.voltype = (DB_VOLTYPE) tmp;
