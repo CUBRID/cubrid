@@ -189,7 +189,7 @@ client_support::css_client_init (int sockid, const char *server_name, const char
       error = er_errid ();
       if (error == NO_ERROR)
 	{
-	  error = ER_NET_CANT_CONNECT_SERVER;
+	  error = ER_BO_CONNECT_FAILED;
 	}
     }
 
@@ -224,7 +224,7 @@ client_support::css_client_sub_init (const char *server_name, const char *host_n
       error = er_errid ();
       if (error == NO_ERROR)
 	{
-	  error = ER_NET_CANT_CONNECT_SERVER;
+	  error = ER_BO_CONNECT_FAILED;
 	}
     }
 
