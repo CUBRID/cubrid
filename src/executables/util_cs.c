@@ -4653,6 +4653,8 @@ cleanfiledb (UTIL_FUNCTION_ARG * arg)
 	  fprintf (outfp,
 		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CLEANFILEDB, CLEANFILEDB_MSG_CLEAN_SUMMARY),
 		   db_name, heap, heap_ovf, btree, btree_ovf, total);
+
+	  fflush (outfp);
 	}
 #if !defined(NDEBUG)
       else if (target_vfid_str != NULL)
