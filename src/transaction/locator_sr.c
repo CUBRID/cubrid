@@ -6628,7 +6628,7 @@ locator_delete_oos_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
 	      hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
-      return ER_FAILED;
+      return ER_HEAP_UNKNOWN_OBJECT;
     }
 
   error_code = heap_attrinfo_start (thread_p, class_oid, -1, NULL, &attr_info);
@@ -6686,8 +6686,22 @@ locator_delete_oos_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 
       /* Read the OOS OID stored at this variable's data position */
       char *oid_ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location);
+      if (oid_ptr + OR_OID_SIZE > (char *) recdes->data + recdes->length)
+	{
+	  assert_release (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  error_code = ER_GENERIC_ERROR;
+	  goto end;
+	}
+
       OID oos_oid;
       OR_GET_OID (oid_ptr, &oos_oid);
+
+      if (OID_ISNULL (&oos_oid))
+	{
+	  assert_release (false);
+	  continue;
+	}
 
       error_code = oos_delete (thread_p, oos_vfid, oos_oid);
       if (error_code != NO_ERROR)
