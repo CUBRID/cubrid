@@ -170,7 +170,8 @@ static FILE *open_violation_list_file (const char *database_name, const char *ut
 static int get_print_flags (UTIL_ARG_MAP * arg_map);
 static int check_rk_constraint (MOP classop, FILE * fp);
 static int check_fk_constraint (MOP classop, FILE * fp);
-static int check_repl_constraint_violations (DB_OBJLIST * classes, FILE * fp, REPL_CONSTRAINT_CHECK_FUNC check_func);
+static int check_repl_constraint_violations (DB_OBJLIST * classes, FILE * fp, REPL_CONSTRAINT_CHECK_FUNC check_func,
+					     int *violation_count);
 
 /*
  * backupdb() - backupdb main routine
@@ -2859,29 +2860,38 @@ check_fk_constraint (MOP classop, FILE * fp)
  * check_repl_constraint_violations - Check replication constraint violations
  *                                   for replicated user classes.
  *
- * return: Number of detected constraint violations.
+ * return: NO_ERROR on success, error code otherwise.
  *
  * NOTE:
  *   - System classes are skipped.
  *   - Only replication-enabled classes are checked.
+ *   - Vclasses are skipped because they can be created with replication ON,
+ *     but do not have replication constraints to validate.
  */
 static int
-check_repl_constraint_violations (DB_OBJLIST * classes, FILE * fp, REPL_CONSTRAINT_CHECK_FUNC check_func)
+check_repl_constraint_violations (DB_OBJLIST * classes, FILE * fp, REPL_CONSTRAINT_CHECK_FUNC check_func,
+				  int *violation_count)
 {
   DB_OBJLIST *c;
-  int ret = 0;
+  int is_vclass;
 
   for (c = classes; c != NULL; c = c->next)
     {
-      if (db_is_system_class (c->op) || !sm_is_replication_class (c->op))
+      is_vclass = db_is_vclass (c->op);
+      if (is_vclass < 0)
+	{
+	  return is_vclass;
+	}
+
+      if (db_is_system_class (c->op) || is_vclass > 0 || !sm_is_replication_class (c->op))
 	{
 	  continue;
 	}
 
-      ret += check_func (c->op, fp);
+      *violation_count += check_func (c->op, fp);
     }
 
-  return ret;
+  return NO_ERROR;
 }
 
 /*
@@ -2955,7 +2965,12 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
   if ((repl_check_flags & REPL_CHECK_RK) != 0)
     {
       PRINT_SECTION_TITLE (fp, RK_CONSTRAINT_VIOLATIONS_SECTION_TITLE);
-      rk_violation_count = check_repl_constraint_violations (classes, fp, check_rk_constraint);
+      err = check_repl_constraint_violations (classes, fp, check_rk_constraint, &rk_violation_count);
+      if (err != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s: RK constraint check failed (error=%d)\n", arg->command_name, err);
+	  goto end1;
+	}
       if (rk_violation_count == 0)
 	{
 	  PRINT_MESSAGE (fp, RK_CONSTRAINT_COMPLIANCE_MESSAGE);
@@ -2966,7 +2981,12 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
   if ((repl_check_flags & REPL_CHECK_FK) != 0)
     {
       PRINT_SECTION_TITLE (fp, FK_CONSTRAINT_VIOLATIONS_SECTION_TITLE);
-      fk_violation_count = check_repl_constraint_violations (classes, fp, check_fk_constraint);
+      err = check_repl_constraint_violations (classes, fp, check_fk_constraint, &fk_violation_count);
+      if (err != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s: FK constraint check failed (error=%d)\n", arg->command_name, err);
+	  goto end1;
+	}
       if (fk_violation_count == 0)
 	{
 	  PRINT_MESSAGE (fp, FK_CONSTRAINT_COMPLIANCE_MESSAGE);
