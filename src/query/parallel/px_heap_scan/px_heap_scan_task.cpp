@@ -490,6 +490,7 @@ namespace parallel_heap_scan
     m_xasl_state->query_id = m_orig_vd->xasl_state->query_id;
     m_vd = &m_xasl_state->vd;
     memcpy (m_vd, m_orig_vd, sizeof (val_descr));
+    m_vd->xasl_state = m_xasl_state;
     if (m_orig_vd->dbval_cnt > 0)
       {
 	m_vd->dbval_ptr = (DB_VALUE *) db_private_alloc (&thread_ref, sizeof (DB_VALUE) * m_orig_vd->dbval_cnt);

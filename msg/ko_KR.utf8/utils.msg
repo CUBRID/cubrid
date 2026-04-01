@@ -671,9 +671,13 @@ usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
 
 
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
-20 페이지 개수 값 %1$d가 잘못되었습니다\n
-21 볼륨 저장소이름 '%1$s'가 잘못되었습니다\n
+20 페이지 개수 값 %1$d가 잘못되었습니다.\n
+21 볼륨 사용 용도 '%1$s'가 잘못되었습니다.\n
 22 --max-writesize-in-sec 옵션은 독립 실행 모드에서는 무시 됩니다.\n
+23 볼륨 타입 '%1$s'가 잘못되었습니다.\n
+24 -t는 SA 모드에서 지원하지 않습니다.\n
+25 -t는 -p TEMP 만 함께 사용할 수 있습니다.\n
+26 -t는 -F와 -n과는 함께 사용할 수 없습니다.\n
 60 \
 addvoldb: 데이터베이스 볼륨 파일을 추가\n\
 사용법: %1$s addvoldb [옵션] <데이터베이스 이름>\n\
@@ -689,6 +693,9 @@ addvoldb: 데이터베이스 볼륨 파일을 추가\n\
                                            INDEX - 인덱스 볼륨\n\
                                            TEMP - 임시 데이터 볼륨\n\
                                            GENERIC - 임의 데이터 볼륨\n\
+  -t, --voltype=VOLTYPE            볼륨 타입; 다음과 같은 값이 허용됨\n\
+                                           PERM - 영구 볼륨\n\
+                                           TEMP - 임시 볼륨\n\
   -S, --SA-mode                    독립 모드 실행\n\
   -C, --CS-mode                    클라이언트 서버 모드 실행\n
 
