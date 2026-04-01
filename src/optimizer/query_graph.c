@@ -8269,6 +8269,10 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 	  int *np = (int *) realloc (segs_arr, sizeof (int) * required_segs);
 	  if (np == NULL)
 	    {
+	      if (segs_arr)
+		{
+		  free_and_init (segs_arr);
+		}
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * required_segs);
 	      return -1;
 	    }
@@ -8437,12 +8441,12 @@ qo_segment_cardinality (QO_SEGMENT * seg)
       if (info->ndv > 0)
 	{
 	  icard = (info->ndv > INT_MAX) ? INT_MAX : info->ndv;
-	  if (info->cum_stats.is_indexed && info->cum_stats.pkeys[0] > 0)
+	  if (info->cum_stats.is_indexed && info->cum_stats.pkeys != NULL && info->cum_stats.pkeys[0] > 0)
 	    {
 	      icard = MIN (icard, info->cum_stats.pkeys[0]);
 	    }
 	}
-      else if (info->cum_stats.is_indexed && info->cum_stats.pkeys[0] > 0)
+      else if (info->cum_stats.is_indexed && info->cum_stats.pkeys != NULL && info->cum_stats.pkeys[0] > 0)
 	{
 	  icard = info->cum_stats.pkeys[0];
 	}
