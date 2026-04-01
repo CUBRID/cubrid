@@ -719,6 +719,13 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
   char *password = spec->s.dblink_node.conn_password;
   char *sql_text = spec->s.dblink_node.conn_sql;
 
+  /* CBRD-26640 invariant: a non-reuse open must arrive without an active stmt_handle.
+   * CCI handles are positive integers; 0 = zero-initialized (never opened), -1 = sentinel
+   * set by dblink_close_scan after successful close.  Both mean "no active statement".
+   * conn_handle is intentionally excluded: when auto_commit=false the connection is
+   * pool-managed (qmgr_dblink_*) and conn_handle legitimately remains >= 0 after close. */
+  assert (scan_info->cursor_rewind || scan_info->stmt_handle <= 0);
+
   char *find = strstr (spec->s.dblink_node.conn_url, ":?");
   if (find)
     {
@@ -846,9 +853,15 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
  * dblink_close_scan () -
  *   return: int
  *   scan_info(in)       : information for dblink
+ *   is_final(in)        : true  = final teardown (XASL clear path); always close CCI handles.
+ *                         false = per-iteration close; skip if cursor_rewind is set so that
+ *                                 the next outer row can rewind the CCI cursor without re-executing.
+ *
+ * Note: stmt_handle and conn_handle are set to -1 after successful close so that repeated calls
+ * (e.g. via scan_close_scan after an explicit is_final=true call) are safe no-ops.
  */
 int
-dblink_close_scan (DBLINK_SCAN_INFO * scan_info)
+dblink_close_scan (DBLINK_SCAN_INFO * scan_info, bool is_final)
 {
   int error;
   T_CCI_ERROR err_buf;
@@ -857,35 +870,44 @@ dblink_close_scan (DBLINK_SCAN_INFO * scan_info)
 
   /*  note: return NO_ERROR even though the connection or stmt handle is not valid */
 
-  /* correlated reuse mode: keep CCI resources open for next outer-row iteration.
-   * Actual close is deferred to qexec_clear_xasl (BUILDLIST_PROC, is_final=true),
-   * which clears cursor_rewind and calls dblink_close_scan directly before
-   * scan_close_scan (which would otherwise see S_CLOSED and return early). */
+  /* correlated reuse mode: keep CCI resources open for the next outer-row cursor rewind.
+   * On is_final=true (called from qexec_clear_xasl spec-list walk) clear the flag and
+   * fall through to the real teardown below. */
   if (scan_info->cursor_rewind)
+    {
+      if (!is_final)
+	{
+	  return NO_ERROR;
+	}
+      scan_info->cursor_rewind = 0;
+    }
+
+  /* sentinel: already closed (set below on success) */
+  if (scan_info->stmt_handle < 0)
     {
       return NO_ERROR;
     }
 
-  if (scan_info->stmt_handle >= 0)
+  if ((error = cci_close_req_handle (scan_info->stmt_handle)) < 0)
     {
-      if ((error = cci_close_req_handle (scan_info->stmt_handle)) < 0)
+      cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      (void) dblink_restore_cci_autocommit_if_saved (scan_info);
+      if (auto_commit)
 	{
-	  cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	  (void) dblink_restore_cci_autocommit_if_saved (scan_info);
-	  if (auto_commit)
-	    {
-	      (void) cci_disconnect (scan_info->conn_handle, &err_buf);
-	    }
-	  return S_ERROR;
+	  (void) cci_disconnect (scan_info->conn_handle, &err_buf);
+	  scan_info->conn_handle = -1;
 	}
+      return S_ERROR;
     }
+  scan_info->stmt_handle = -1;
 
   if (dblink_restore_cci_autocommit_if_saved (scan_info) != NO_ERROR)
     {
       if (auto_commit && scan_info->conn_handle >= 0)
 	{
 	  (void) cci_disconnect (scan_info->conn_handle, &err_buf);
+	  scan_info->conn_handle = -1;
 	}
       return S_ERROR;
     }
@@ -897,6 +919,7 @@ dblink_close_scan (DBLINK_SCAN_INFO * scan_info)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
 	  return S_ERROR;
 	}
+      scan_info->conn_handle = -1;
     }
 
   return NO_ERROR;
