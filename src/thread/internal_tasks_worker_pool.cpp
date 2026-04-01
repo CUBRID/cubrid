@@ -44,7 +44,7 @@ namespace cubthread
 	}
 
       instance = cubthread::get_manager ()->create_worker_pool (WORKER_COUNT,
-		 TASK_COUNT, "internal_tasks_worker_pool", NULL, CORE_COUNT, ENABLE_LOGGING);
+		 TASK_COUNT, "internal", NULL, CORE_COUNT, ENABLE_LOGGING);
     }
 
     entry_workpool *get_instance ()
