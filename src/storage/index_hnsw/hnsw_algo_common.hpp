@@ -101,6 +101,21 @@ namespace cubhnsw
     }
   };
 
+  struct quantized_vector_i8
+  {
+    const std::int8_t *values {nullptr}; // pointer into aligned i8 block
+    float scale {1.0f};
+  };
+
+  // View into per-vector aligned storage.
+  // float pointer comes from the existing aligned vector_cache_block;
+  // int8 pointer comes from an analogous i8_cache_block.
+  struct cached_vector
+  {
+    const float *values {nullptr};       // aligned float data
+    quantized_vector_i8 values_i8 {};    // aligned int8 data + scale
+  };
+
   struct visit_set_helper
   {
     using type = ankerl::unordered_dense::set<uint64_t>;
@@ -110,7 +125,7 @@ namespace cubhnsw
 
   struct vector_cache_helper
   {
-    using type = ankerl::unordered_dense::map<uint64_t, const float *>;
+    using type = ankerl::unordered_dense::map<uint64_t, cached_vector>;
   };
 
   using vector_cache_t = vector_cache_helper::type;
@@ -164,6 +179,45 @@ namespace cubhnsw
     std::size_t m_used_vectors {0};
     void *m_data {nullptr};
     std::unique_ptr<vector_cache_block> m_next {nullptr};
+  };
+
+  struct i8_cache_block final
+  {
+    explicit i8_cache_block (std::size_t stride_bytes, std::size_t capacity)
+      : m_stride_bytes (stride_bytes), m_capacity (capacity)
+    {
+      m_data = std::aligned_alloc (VECTOR_CACHE_ALIGNMENT, stride_bytes * capacity);
+      assert (m_data != nullptr);
+    }
+
+    ~i8_cache_block ()
+    {
+      free (m_data);
+      m_data = nullptr;
+    }
+
+    i8_cache_block (const i8_cache_block &) = delete;
+    i8_cache_block &operator= (const i8_cache_block &) = delete;
+    i8_cache_block (i8_cache_block &&) = delete;
+    i8_cache_block &operator= (i8_cache_block &&) = delete;
+
+    const std::int8_t *append (const std::int8_t *data, std::size_t count) noexcept
+    {
+      if (!has_capacity ())
+	return nullptr;
+      std::byte *slot_ptr = reinterpret_cast<std::byte *> (m_data) + (m_used * m_stride_bytes);
+      std::memcpy (slot_ptr, data, count);
+      ++m_used;
+      return reinterpret_cast<const std::int8_t *> (slot_ptr);
+    }
+
+    bool has_capacity () const noexcept { return m_used < m_capacity; }
+
+    std::size_t m_stride_bytes {0};
+    std::size_t m_capacity {0};
+    std::size_t m_used {0};
+    void *m_data {nullptr};
+    std::unique_ptr<i8_cache_block> m_next {nullptr};
   };
 
   struct neighbors_key
@@ -224,6 +278,10 @@ namespace cubhnsw
 
     cubthread::entry *m_thread_p {nullptr};
     level_t m_level {0};
+
+    // query i8 quantization (owned buffer + view)
+    std::vector<std::int8_t> m_query_i8_buf;
+    quantized_vector_i8 m_query_i8;  // view into m_query_i8_buf (set by prepare_query_i8_)
 
     // stats
     bool m_is_perf_tracking {false};

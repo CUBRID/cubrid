@@ -23,6 +23,7 @@
 #ifndef _HNSW_ALGO_HPP_
 #define _HNSW_ALGO_HPP_
 
+#include <cmath>
 #include <functional>
 
 #include "hnsw_api.hpp"
@@ -32,7 +33,6 @@
 #include "hnsw_storage.hpp" // storage_t
 #include "vector_distance.hpp"
 #include "perf_monitor.h"
-#include "error_manager.h"
 #include "system_parameter.h"
 
 #define HNSW_ALGO_DEBUG 0
@@ -69,10 +69,6 @@ namespace cubhnsw
       }
 
     protected:
-      inline uint64_t encode_slot_id_ (const slot_id_t &slot) const noexcept
-      {
-	return encode_oid_key (slot);
-      }
 
       // horizontal seeking
       int seek_on_layer_ (algo_context_t &context, const float *query, const slot_id_t &start_slot,
@@ -84,7 +80,7 @@ namespace cubhnsw
 		      slot_id_t &closest_slot);
 
       // refining links
-      void form_links_to_closest_ (algo_context_t &context, pinned_t &new_slot,
+      void form_links_to_closest_ (algo_context_t &context, const pinned_t &new_slot,
 				   candidates_view_t &out);
       int form_reverse_links_ (algo_context_t &context, const pinned_t &new_slot, const float *value,
 			       candidates_view_t &new_neighbors);
@@ -99,14 +95,74 @@ namespace cubhnsw
       inline distance_t compute_distance_ (algo_context_t &context, const float *v1, const float *v2) const
       {
 	context.m_stats.on_distance_computed (context.m_is_perf_tracking, context.m_level);
-	return metric_table_both_aligned_fast[static_cast<size_t> (m_metric)] (v1, v2, m_dimension);
+	return metric_table[static_cast<size_t> (m_metric)] (v1, v2, m_dimension);
+      }
+
+      inline void prepare_query_i8_ (algo_context_t &context, const float *query) const
+      {
+	float max_abs = 0.0f;
+	for (std::size_t i = 0; i < m_dimension; ++i)
+	  {
+	    max_abs = std::max (max_abs, std::fabs (query[i]));
+	  }
+
+	context.m_query_i8.scale = (max_abs > 0.0f) ? max_abs / 127.0f : 1.0f;
+	context.m_query_i8.values.resize (m_dimension);
+	for (std::size_t i = 0; i < m_dimension; ++i)
+	  {
+	    const float scaled = query[i] / context.m_query_i8.scale;
+	    const float rounded = std::round (scaled);
+	    const float clamped = std::max (-127.0f, std::min (127.0f, rounded));
+	    context.m_query_i8.values[i] = static_cast<std::int8_t> (clamped);
+	  }
+      }
+
+      inline distance_t compute_distance_i8_ (algo_context_t &context, const quantized_vector_i8 &v1,
+					      const quantized_vector_i8 &v2) const
+      {
+	context.m_stats.on_distance_computed (context.m_is_perf_tracking, context.m_level, true);
+	return metric_table_i8[static_cast<size_t> (m_metric)] (v1.values.data (), v1.scale,
+								 v2.values.data (), v2.scale, m_dimension);
+      }
+
+      inline distance_t get_i8_recheck_window_ (distance_t radius) const
+      {
+	const distance_t base = std::max (std::fabs (radius), 1.0f);
+	switch (m_metric)
+	  {
+	  case vector_distance_metric_t::EUCLIDEAN:
+	    return std::max (0.02f * base, static_cast<distance_t> (0.001f * m_dimension));
+	  case vector_distance_metric_t::COSINE:
+	  case vector_distance_metric_t::DOT:
+	    return 0.02f * base;
+	  default:
+	    assert (false);
+	    return 0.02f * base;
+	  }
+      }
+
+      inline bool should_recheck_candidate_fp32_ (distance_t coarse_dist, distance_t radius) const
+      {
+	return coarse_dist <= radius + get_i8_recheck_window_ (radius);
+      }
+
+      inline distance_t compute_distance_from_query_ (algo_context_t &context, const float *query,
+						      const cached_vector &vec) const
+      {
+	return compute_distance_ (context, query, vec.values.data ());
       }
 
       inline distance_t compute_distance_from_query_ (algo_context_t &context, const float *query,
 	  const slot_id_t &slot) const
       {
-	const float *vec = m_storage->get_vector_by_slot_id (context, slot, lock_mode::shared);
-	return compute_distance_ (context, query, vec);
+	const cached_vector *vec = m_storage->get_cached_vector_by_slot_id (context, slot, lock_mode::shared);
+	return compute_distance_from_query_ (context, query, *vec);
+      }
+
+      inline distance_t compute_distance_from_query_i8_ (algo_context_t &context,
+							 const cached_vector &vec) const
+      {
+	return compute_distance_i8_ (context, context.m_query_i8, vec.values_i8);
       }
 
       inline distance_t compute_distance_between (algo_context_t &context, const slot_id_t &a,
@@ -124,9 +180,8 @@ namespace cubhnsw
 	context.m_stats.on_neighbors_page_fix (context.m_is_perf_tracking, level);
 
 	node_type node = node_type (node_blk->data);
-	std::size_t layer_connectivity = get_layer_connectivity (level, m_connectivity);
 	neighbors_ref_type neighbors =
-		neighbors_ref_type (node.neighbors_tape() + m_storage->node_neighbors_offset_ (level), layer_connectivity);
+		neighbors_ref_type (node.neighbors_tape() + m_storage->node_neighbors_offset_ (level));
 
 	HNSW_ALGO_PRINT ("[node] node: %s\n", node.dump().c_str());
 	HNSW_ALGO_PRINT ("[neighbors of level %d] neighbors: %s\n", (int)level, neighbors.dump().c_str());
@@ -204,8 +259,8 @@ namespace cubhnsw
     // pre-reserve top_for_refine
     context.m_top_for_refine.reserve (connectivity_max);
 
-    // pre-reserve for visits: ef_construction * base-level connectivity bounds the visited set.
-    context.m_visits.reserve (m_expansion * connectivity_max);
+    // pre-reserve for visits
+    context.m_visits.reserve (connectivity_max);
 
     top_candidates_t &top = context.m_top_candidates;
     next_candidates_t &next = context.m_next_candidates;
@@ -265,7 +320,6 @@ namespace cubhnsw
 	  //root_type promoted_root_node = root_type (promoted_root.data());
 	  root_node.set_entry (new_slot);
 	  root_node.set_level (new_target_level);
-	  mark_hnsw_root_dirty (thread_p, root_block);
 	  m_storage->set_empty (false);
 	  m_graph_structure_profile.on_node_added (new_target_level);
 	  return result;
@@ -358,7 +412,6 @@ namespace cubhnsw
 	}
 	root_node.set_entry (new_slot);
 	root_node.set_level (new_target_level);
-	mark_hnsw_root_dirty (thread_p, root_block);
 	m_storage->set_empty (false);
 
 	context.m_stats.on_entrypoint_updated (context.m_is_perf_tracking);
@@ -388,9 +441,8 @@ namespace cubhnsw
 
     std::size_t expansion_size = std::max (k, expansion);
 
-    // pre-reserve for visits: each candidate can produce up to base-level connectivity neighbors,
-    // so the total visited set is bounded by expansion_size * base_connectivity.
-    context.m_visits.reserve (expansion_size * (get_layer_connectivity (0, m_connectivity) + 1));
+    // pre-reserve for visits
+    context.m_visits.reserve (expansion_size);
 
     // pre-reserve for top and next
     if (!top.reserve (expansion_size) || !next.reserve (expansion_size))
@@ -417,7 +469,7 @@ namespace cubhnsw
 	  }
       }
 
-    assert (is_aligned_ptr<VECTOR_CACHE_ALIGNMENT> (query));
+    prepare_query_i8_ (context, query);
 
     slot_id_t closest_slot;
 
@@ -446,8 +498,7 @@ namespace cubhnsw
     for (std::size_t i = 0; i < top.size (); ++i)
       {
 	pinned_t node_blk = m_storage->get_node_by_slot_id (context, result.results[i].slot, lock_mode::shared);
-	OID key = node_type (node_blk->data).get_key();
-	result.oids.push_back (key);
+	result.oids.push_back (node_type (node_blk->data).get_key());
       }
 
     context.collect_perf_stats();
@@ -467,12 +518,13 @@ namespace cubhnsw
     visited_set_t &visits = context.m_visits;
 
     context.clear_candidates();
+    prepare_query_i8_ (context, query);
 
     distance_t radius = compute_distance_from_query_ (context, query, start_slot);
 
     next.insert_reserved (candidate_t (-radius, start_slot));
     top.insert_reserved (candidate_t (radius, start_slot));
-    visits.insert (encode_slot_id_ (start_slot));
+    visits.insert (start_slot);
     stats.on_start_node ();
 
     while (!next.empty ())
@@ -490,44 +542,33 @@ namespace cubhnsw
 
 	// Try neighbors cache first (disk storage); fallback to direct neighbors_ref_type.
 	const std::vector<slot_id_t> *cached_neighbors =
-		m_storage->try_get_neighbors_cached (candidate_slot, level);
+		m_storage->get_neighbors_cached_ids (context, candidate_slot, level);
 
 	if (cached_neighbors != nullptr)
 	  {
 	    context.m_stats.on_neighbors_cache_hit (context.m_is_perf_tracking, level);
-	    const std::size_t nb_count = cached_neighbors->size ();
-	    for (std::size_t ni = 0; ni < nb_count; ++ni)
+	    for (slot_id_t successor_slot : *cached_neighbors)
 	      {
-		slot_id_t successor_slot = (*cached_neighbors)[ni];
-		const uint64_t successor_key = encode_oid_key (successor_slot);
-
-		// Prefetch vector for next neighbor using pre-encoded key to hide latency.
-		if (ni + 1 < nb_count)
-		  {
-		    m_storage->prefetch_vector_if_cached (encode_oid_key ((*cached_neighbors)[ni + 1]));
-		  }
-
-		auto [it, inserted] = visits.insert (successor_key);
+		auto [it, inserted] = visits.insert (successor_slot);
 		if (!inserted)
 		  {
 		    continue;
 		  }
 		stats.on_visit ();
 
-		// Inline fast path: reuse pre-computed key, bypassing virtual dispatch and
-		// stats branches (no-ops when is_perf_tracking=false, folded by optimizer).
-		context.m_stats.on_vector_access (context.m_is_perf_tracking, context.m_level);
-		const float *vec = m_storage->try_get_vector_cached (successor_key);
-		if (likely (vec != nullptr))
+		const cached_vector *successor_vec =
+			m_storage->get_cached_vector_by_slot_id (context, successor_slot, lock_mode::shared);
+		context.m_stats.on_prefilter_checked (context.m_is_perf_tracking, context.m_level);
+		distance_t successor_dist_i8 = compute_distance_from_query_i8_ (context, *successor_vec);
+		if (top.size () >= expansion_limit
+		    && !should_recheck_candidate_fp32_ (successor_dist_i8, radius))
 		  {
-		    context.m_stats.on_vector_cache_hit (context.m_is_perf_tracking, context.m_level);
+		    context.m_stats.on_prefilter_rejected (context.m_is_perf_tracking, context.m_level);
+		    stats.on_candidate_prune ();
+		    continue;
 		  }
-		else
-		  {
-		    vec = m_storage->get_vector_by_slot_id (context, successor_slot, lock_mode::shared);
-		  }
-
-		distance_t successor_dist = compute_distance_ (context, query, vec);
+		context.m_stats.on_prefilter_passed_to_fp32 (context.m_is_perf_tracking, context.m_level);
+		distance_t successor_dist = compute_distance_from_query_ (context, query, *successor_vec);
 		if (top.size () < expansion_limit || successor_dist < radius)
 		  {
 		    next.insert (candidate_t (-successor_dist, successor_slot));
@@ -554,33 +595,27 @@ namespace cubhnsw
 	    slot_id_t successor_slot = candidate_neighbors.at (i);
 	    neigh.push_back (successor_slot);
 	    stats.on_neighbor_scan ();
-	    const uint64_t successor_key = encode_oid_key (successor_slot);
 
-	    // Prefetch vector for next neighbor ahead to hide memory latency.
-	    if (i + 1 < candidate_neighbors.size ())
-	      {
-		m_storage->prefetch_vector_if_cached (encode_oid_key (candidate_neighbors.at (i + 1)));
-	      }
-
-	    auto [it, inserted] = visits.insert (successor_key);
+	    auto [it, inserted] = visits.insert (successor_slot);
 	    if (!inserted)
 	      {
 		continue;
 	      }
 	    stats.on_visit ();
 
-		context.m_stats.on_vector_access (context.m_is_perf_tracking, context.m_level);
-	    const float *vec = m_storage->try_get_vector_cached (successor_key);
-	    if (likely (vec != nullptr))
+	    const cached_vector *successor_vec =
+		    m_storage->get_cached_vector_by_slot_id (context, successor_slot, lock_mode::shared);
+	    context.m_stats.on_prefilter_checked (context.m_is_perf_tracking, context.m_level);
+	    distance_t successor_dist_i8 = compute_distance_from_query_i8_ (context, *successor_vec);
+	    if (top.size () >= expansion_limit
+		&& !should_recheck_candidate_fp32_ (successor_dist_i8, radius))
 	      {
-		context.m_stats.on_vector_cache_hit (context.m_is_perf_tracking, context.m_level);
+		context.m_stats.on_prefilter_rejected (context.m_is_perf_tracking, context.m_level);
+		stats.on_candidate_prune ();
+		continue;
 	      }
-	    else
-	      {
-		vec = m_storage->get_vector_by_slot_id (context, successor_slot, lock_mode::shared);
-	      }
-
-	    distance_t successor_dist = compute_distance_ (context, query, vec);
+	    context.m_stats.on_prefilter_passed_to_fp32 (context.m_is_perf_tracking, context.m_level);
+	    distance_t successor_dist = compute_distance_from_query_ (context, query, *successor_vec);
 	    if (top.size () < expansion_limit || successor_dist < radius)
 	      {
 		next.insert (candidate_t (-successor_dist, successor_slot));
@@ -598,7 +633,7 @@ namespace cubhnsw
 		stats.on_candidate_prune ();
 	      }
 	  }
-	m_storage->set_neighbors_cached_ids (context, candidate_slot, level, std::move (neigh));
+	m_storage->set_neighbors_cached_ids (context, candidate_slot, level, neigh);
       }
 
     stats.commit (context.m_stats, context.m_is_perf_tracking, context.m_level);
@@ -614,6 +649,7 @@ namespace cubhnsw
 
     visited_set_t &visits = context.m_visits;
     visits.clear ();
+    prepare_query_i8_ (context, query);
 
     slot_id_t closest_slot = start_slot;
     distance_t closest_dist = compute_distance_from_query_ (context, query, closest_slot);
@@ -627,7 +663,7 @@ namespace cubhnsw
 	    level_t level = context.m_level;
 	    // Try neighbors cache first; fallback to direct neighbors_ref_type.
 	    const std::vector<slot_id_t> *cached_neighbors =
-		    m_storage->try_get_neighbors_cached (closest_slot, level);
+		    m_storage->get_neighbors_cached_ids (context, closest_slot, level);
 
 	    if (cached_neighbors != nullptr)
 	      {
@@ -635,7 +671,18 @@ namespace cubhnsw
 		for (slot_id_t neighbor_id : *cached_neighbors)
 		  {
 		    stats.on_neighbor_scan ();
-		    distance_t candidate_dist = compute_distance_from_query_ (context, query, neighbor_id);
+
+		    const cached_vector *neighbor_vec =
+			    m_storage->get_cached_vector_by_slot_id (context, neighbor_id, lock_mode::shared);
+		    context.m_stats.on_prefilter_checked (context.m_is_perf_tracking, context.m_level);
+		    distance_t candidate_dist_i8 = compute_distance_from_query_i8_ (context, *neighbor_vec);
+		    if (!should_recheck_candidate_fp32_ (candidate_dist_i8, closest_dist))
+		      {
+			context.m_stats.on_prefilter_rejected (context.m_is_perf_tracking, context.m_level);
+			continue;
+		      }
+		    context.m_stats.on_prefilter_passed_to_fp32 (context.m_is_perf_tracking, context.m_level);
+		    distance_t candidate_dist = compute_distance_from_query_ (context, query, *neighbor_vec);
 		    if (candidate_dist < closest_dist)
 		      {
 			closest_dist = candidate_dist;
@@ -659,7 +706,17 @@ namespace cubhnsw
 		    neigh.push_back (neighbor_id);
 		    stats.on_neighbor_scan ();
 
-		    distance_t candidate_dist = compute_distance_from_query_ (context, query, neighbor_id);
+		    const cached_vector *neighbor_vec =
+			    m_storage->get_cached_vector_by_slot_id (context, neighbor_id, lock_mode::shared);
+		    context.m_stats.on_prefilter_checked (context.m_is_perf_tracking, context.m_level);
+		    distance_t candidate_dist_i8 = compute_distance_from_query_i8_ (context, *neighbor_vec);
+		    if (!should_recheck_candidate_fp32_ (candidate_dist_i8, closest_dist))
+		      {
+			context.m_stats.on_prefilter_rejected (context.m_is_perf_tracking, context.m_level);
+			continue;
+		      }
+		    context.m_stats.on_prefilter_passed_to_fp32 (context.m_is_perf_tracking, context.m_level);
+		    distance_t candidate_dist = compute_distance_from_query_ (context, query, *neighbor_vec);
 		    if (candidate_dist < closest_dist)
 		      {
 			closest_dist = candidate_dist;
@@ -667,7 +724,7 @@ namespace cubhnsw
 			changed = true;
 		      }
 		  }
-		m_storage->set_neighbors_cached_ids (context, original_closest_slot, level, std::move (neigh));
+		m_storage->set_neighbors_cached_ids (context, original_closest_slot, level, neigh);
 	      }
 	    stats.on_visit ();
 	  }
@@ -681,7 +738,7 @@ namespace cubhnsw
   }
 
   void
-  algo::form_links_to_closest_ (algo_context_t &context, pinned_t &new_node_blk,
+  algo::form_links_to_closest_ (algo_context_t &context, const pinned_t &new_node_blk,
 				candidates_view_t &top_view)
   {
     algo_stats_t::refine_collector stats;
@@ -706,8 +763,7 @@ namespace cubhnsw
       {
 	neigh.push_back (new_neighbors.at (i));
       }
-    m_storage->set_neighbors_cached_ids (context, new_node_blk->id, level, std::move (neigh));
-    new_node_blk.set_dirty ();
+    m_storage->set_neighbors_cached_ids (context, new_node_blk->id, level, neigh);
     m_graph_structure_profile.on_edges_added (level, top_view.size ());
   }
 
@@ -744,8 +800,7 @@ namespace cubhnsw
 		{
 		  neigh.push_back (close_header.at (i));
 		}
-	      m_storage->set_neighbors_cached_ids (context, close_slot, level, std::move (neigh));
-	      close_node_blk.set_dirty ();
+	      m_storage->set_neighbors_cached_ids (context, close_slot, level, neigh);
 	      m_graph_structure_profile.on_edges_added (level, 1);
 	      continue;
 	    }
@@ -786,12 +841,12 @@ namespace cubhnsw
 	  {
 	    neigh.push_back (close_header.at (i));
 	  }
-	m_storage->set_neighbors_cached_ids (context, close_slot, level, std::move (neigh));
-	close_node_blk.set_dirty ();
+	m_storage->set_neighbors_cached_ids (context, close_slot, level, neigh);
 	m_graph_structure_profile.on_edges_added (level, top_view.size ());
       }
 
     stats.commit (context.m_stats, context.m_is_perf_tracking, context.m_level);
+
     return NO_ERROR;
   }
 
