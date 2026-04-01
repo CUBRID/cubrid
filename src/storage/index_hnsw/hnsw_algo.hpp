@@ -69,6 +69,10 @@ namespace cubhnsw
       }
 
     protected:
+      inline uint64_t encode_slot_id_ (const slot_id_t &slot) const noexcept
+      {
+	return encode_oid_key (slot);
+      }
 
       // horizontal seeking
       int seek_on_layer_ (algo_context_t &context, const float *query, const slot_id_t &start_slot,
@@ -467,7 +471,7 @@ namespace cubhnsw
 
     next.insert_reserved (candidate_t (-radius, start_slot));
     top.insert_reserved (candidate_t (radius, start_slot));
-    visits.insert (start_slot);
+    visits.insert (encode_slot_id_ (start_slot));
     stats.on_start_node ();
 
     while (!next.empty ())
@@ -492,7 +496,7 @@ namespace cubhnsw
 	    context.m_stats.on_neighbors_cache_hit (context.m_is_perf_tracking, level);
 	    for (slot_id_t successor_slot : *cached_neighbors)
 	      {
-		auto [it, inserted] = visits.insert (successor_slot);
+		auto [it, inserted] = visits.insert (encode_slot_id_ (successor_slot));
 		if (!inserted)
 		  {
 		    continue;
@@ -527,7 +531,7 @@ namespace cubhnsw
 	    neigh.push_back (successor_slot);
 	    stats.on_neighbor_scan ();
 
-	    auto [it, inserted] = visits.insert (successor_slot);
+	    auto [it, inserted] = visits.insert (encode_slot_id_ (successor_slot));
 	    if (!inserted)
 	      {
 		continue;
@@ -552,7 +556,7 @@ namespace cubhnsw
 		stats.on_candidate_prune ();
 	      }
 	  }
-	m_storage->set_neighbors_cached_ids (context, candidate_slot, level, neigh);
+	m_storage->set_neighbors_cached_ids (context, candidate_slot, level, std::move (neigh));
       }
 
     stats.commit (context.m_stats, context.m_is_perf_tracking, context.m_level);
@@ -621,7 +625,7 @@ namespace cubhnsw
 			changed = true;
 		      }
 		  }
-		m_storage->set_neighbors_cached_ids (context, original_closest_slot, level, neigh);
+		m_storage->set_neighbors_cached_ids (context, original_closest_slot, level, std::move (neigh));
 	      }
 	    stats.on_visit ();
 	  }
@@ -660,7 +664,7 @@ namespace cubhnsw
       {
 	neigh.push_back (new_neighbors.at (i));
       }
-    m_storage->set_neighbors_cached_ids (context, new_node_blk->id, level, neigh);
+    m_storage->set_neighbors_cached_ids (context, new_node_blk->id, level, std::move (neigh));
     new_node_blk.set_dirty ();
     m_graph_structure_profile.on_edges_added (level, top_view.size ());
   }
@@ -698,7 +702,7 @@ namespace cubhnsw
 		{
 		  neigh.push_back (close_header.at (i));
 		}
-	      m_storage->set_neighbors_cached_ids (context, close_slot, level, neigh);
+	      m_storage->set_neighbors_cached_ids (context, close_slot, level, std::move (neigh));
 	      close_node_blk.set_dirty ();
 	      m_graph_structure_profile.on_edges_added (level, 1);
 	      continue;
@@ -740,7 +744,7 @@ namespace cubhnsw
 	  {
 	    neigh.push_back (close_header.at (i));
 	  }
-	m_storage->set_neighbors_cached_ids (context, close_slot, level, neigh);
+	m_storage->set_neighbors_cached_ids (context, close_slot, level, std::move (neigh));
 	close_node_blk.set_dirty ();
 	m_graph_structure_profile.on_edges_added (level, top_view.size ());
       }
