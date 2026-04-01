@@ -26,8 +26,9 @@
 
 #ident "$Id$"
 
+#include "connection_support.hpp"
+#include "connection_list_sr.h"
 #include "connection_defs.h"
-#include "connection_support.h"
 #include "critical_section.h"
 #include "error_manager.h"
 #include "porting.h"
@@ -126,26 +127,19 @@ extern SYNC_RWLOCK css_Rwlock_free_conn_anchor;
 
 extern int css_Num_access_user;
 
-typedef void *CSS_THREAD_ARG;
-typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
-
-extern css_error_code (*css_Connect_handler) (CSS_CONN_ENTRY *);
-extern CSS_THREAD_FN css_Request_handler;
-extern CSS_THREAD_FN css_Connection_error_handler;
-
 #define CSS_LOG(msg_arg, ...) \
   if (prm_get_bool_value (PRM_ID_CONNECTION_LOGGING)) _er_log_debug (ARG_FILE_LINE, msg_arg "\n", __VA_ARGS__)
 #define CSS_LOG_STACK(msg_arg, ...) \
   if (prm_get_bool_value (PRM_ID_CONNECTION_LOGGING)) er_print_callstack (ARG_FILE_LINE, msg_arg "\n", __VA_ARGS__)
 
 extern int css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd);
+extern void css_prepare_shutdown_conn (CSS_CONN_ENTRY * conn);
 extern void css_shutdown_conn (CSS_CONN_ENTRY * conn);
 extern int css_init_conn_list (void);
 extern void css_final_conn_list (void);
 
 extern CSS_CONN_ENTRY *css_make_conn (SOCKET fd);
 extern void css_insert_into_active_conn_list (CSS_CONN_ENTRY * conn);
-extern void css_dealloc_conn_rmutex (CSS_CONN_ENTRY * conn);
 
 extern int css_get_num_free_conn (void);
 
@@ -157,18 +151,14 @@ extern void css_print_conn_entry_info (CSS_CONN_ENTRY * p);
 extern void css_print_conn_list (void);
 extern void css_print_free_conn_list (void);
 extern CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id, const char *server_name, int name_length);
-extern void css_register_handler_routines (css_error_code (*connect_handler) (CSS_CONN_ENTRY * conn),
-					   CSS_THREAD_FN request_handler, CSS_THREAD_FN connection_error_handler);
 
 extern CSS_CONN_ENTRY *css_find_conn_by_tran_index (int tran_index);
 extern CSS_CONN_ENTRY *css_find_conn_from_fd (SOCKET fd);
 extern int css_get_session_ids_for_active_connections (SESSION_ID ** ids, int *count);
-extern void css_shutdown_conn_by_tran_index (int tran_index);
+extern int css_shutdown_conn_by_tran_index (int tran_index, int wait_time);
 
-extern int css_send_abort_request (CSS_CONN_ENTRY * conn, unsigned short request_id);
 extern int css_read_header (CSS_CONN_ENTRY * conn, const NET_HEADER * local_header);
 extern int css_receive_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, int *buffer_size);
-extern int css_read_and_queue (CSS_CONN_ENTRY * conn, int *type);
 extern int css_receive_data (CSS_CONN_ENTRY * conn, unsigned short req_id, char **buffer, int *buffer_size,
 			     int timeout);
 
@@ -179,6 +169,8 @@ extern int css_return_queued_data (CSS_CONN_ENTRY * conn, unsigned short rid, ch
 extern int css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short request_id, char **buffer, int *buffer_size,
 				    int *rc);
 extern int css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, int *buffer_size);
+
+extern void css_remove_unexpected_packets (CSS_CONN_ENTRY * conn, unsigned short request_id);
 extern void css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn);
 extern int css_queue_user_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id, int size, char *buffer);
 extern unsigned short css_get_request_id (CSS_CONN_ENTRY * conn);
@@ -194,5 +186,20 @@ extern void css_free_user_access_status (void);
 
 extern void css_set_exec_path (char *exec_path);
 extern void css_set_argv (char **argv);
+
+extern void css_process_abort_packet (CSS_CONN_ENTRY * conn, unsigned short request_id);
+extern bool css_is_request_aborted (CSS_CONN_ENTRY * conn, unsigned short request_id);
+
+extern css_error_code css_add_queue_entry (CSS_CONN_ENTRY * conn, CSS_LIST * list, unsigned short request_id,
+					   char *buffer, int buffer_size, int rc, int transid, int invalidate_snapshot,
+					   int db_error);
+extern CSS_WAIT_QUEUE_ENTRY *css_find_and_remove_wait_queue_entry (CSS_LIST * list, unsigned int key);
+extern void css_free_wait_queue_entry (CSS_CONN_ENTRY * conn, CSS_WAIT_QUEUE_ENTRY * entry);
+
+extern char *css_get_exec_path (void);
+extern char **css_get_argv (void);
+extern void css_request_shutdown_conn (css_conn_entry * conn, uint8_t ignore, bool retry, int wait_time);
+extern void css_request_release_packet (css_conn_entry * conn, void *buffer);
+extern void css_wakeup_handler (css_conn_entry * conn);
 
 #endif /* _CONNECTION_SR_H_ */

@@ -14712,12 +14712,12 @@ mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_q
 	      /* ignore leading hint */
 	      src_query->info.query.q.select.hint &= ~PT_HINT_LEADING;
 	    }
-	  else
-	    {
-	      dest_query->info.query.q.select.leading =
-		parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.leading),
-				    dest_query->info.query.q.select.leading);
-	    }
+	}
+      if (src_query->info.query.q.select.hint & PT_HINT_LEADING)
+	{
+	  dest_query->info.query.q.select.leading =
+	    parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.leading),
+				dest_query->info.query.q.select.leading);
 	}
 
       /* merge HINT of vclass spec */

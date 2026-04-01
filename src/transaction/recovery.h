@@ -183,8 +183,9 @@ typedef enum
 
   RVPGBUF_SET_TDE_ALGORITHM = 127,
   RVFL_FHEAD_SET_TDE_ALGORITHM = 128,
+  RVHF_LOB_REMOVE_DIR = 129,
 
-  RV_LAST_LOGID = RVFL_FHEAD_SET_TDE_ALGORITHM,
+  RV_LAST_LOGID = RVHF_LOB_REMOVE_DIR,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;
@@ -255,10 +256,12 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVFL_USER_PAGE_MARK_DELETE \
    || (idx) == RVPGBUF_DEALLOC \
    || (idx) == RVFL_TRACKER_HEAP_REUSE \
+   || (idx) == RVHF_LOB_REMOVE_DIR \
    || (idx) == RVFL_TRACKER_UNREGISTER)
 #define RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL(idx) \
   ((idx) == RVFL_DEALLOC \
    || (idx) == RVHF_MARK_DELETED \
+   || (idx) == RVHF_LOB_REMOVE_DIR \
    || (idx) == RVBT_DELETE_OBJECT_POSTPONE)
 
 #define RCV_IS_LOGICAL_LOG(vpid, idx) \
