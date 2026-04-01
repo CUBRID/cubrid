@@ -43,6 +43,7 @@
 #include "mvcc_table.hpp"
 #include "object_representation.h"
 #include "object_representation_sr.h"
+#include "oos_file.hpp"
 #include "overflow_file.h"
 #include "page_buffer.h"
 #include "perf_monitor.h"
@@ -518,6 +519,7 @@ struct vacuum_heap_helper
 
   HFID hfid;			/* Heap file identifier. */
   VFID overflow_vfid;		/* Overflow file identifier. */
+  VFID oos_vfid;		/* OOS file identifier (if any). */
   bool reusable;		/* True if heap file has reusable slots. */
 
   MVCC_SATISFIES_VACUUM_RESULT can_vacuum;	/* Result of vacuum check. */
@@ -1607,6 +1609,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   helper.n_bulk_vacuumed = 0;
   helper.initial_home_free_space = -1;
   VFID_SET_NULL (&helper.overflow_vfid);
+  VFID_SET_NULL (&helper.oos_vfid);
 
   /* Fix heap page. */
   if (was_interrupted)
@@ -2043,6 +2046,12 @@ retry_prepare:
 	  assert_release (false);
 	  return error_code;
 	}
+
+      /* OOS VFID lookup for REC_RELOCATION — needed to delete OOS records during vacuum. */
+      if (heap_recdes_contains_oos (&helper->record) && VFID_ISNULL (&helper->oos_vfid))
+	{
+	  (void) heap_oos_find_vfid (thread_p, &helper->hfid, &helper->oos_vfid, false);
+	}
       return NO_ERROR;
 
     case REC_BIGONE:
@@ -2151,6 +2160,12 @@ retry_prepare:
 	{
 	  assert_release (false);
 	  return ER_FAILED;
+	}
+
+      /* OOS VFID lookup for REC_HOME — needed to delete OOS records during vacuum. */
+      if (heap_recdes_contains_oos (&helper->record) && VFID_ISNULL (&helper->oos_vfid))
+	{
+	  (void) heap_oos_find_vfid (thread_p, &helper->hfid, &helper->oos_vfid, false);
 	}
       break;
 
@@ -2342,6 +2357,41 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 }
 
 /*
+ * vacuum_heap_oos_delete () - Delete OOS records referenced by a heap record being vacuumed.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * helper (in)	 : Vacuum heap helper (must have valid oos_vfid and record).
+ */
+static int
+vacuum_heap_oos_delete (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
+{
+  assert (!VFID_ISNULL (&helper->oos_vfid));
+
+  OID_VECTOR oos_oids;
+  int error_code = heap_recdes_get_oos_oids (&helper->record, oos_oids);
+  if (error_code != NO_ERROR)
+    {
+      assert_release (false);
+      return error_code;
+    }
+
+  for (const OID &oos_oid : oos_oids)
+    {
+      error_code = oos_delete (thread_p, helper->oos_vfid, oos_oid);
+      if (error_code != NO_ERROR)
+	{
+	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
+			       "Failed to delete OOS record %d|%d|%d.",
+			       oos_oid.volid, oos_oid.pageid, oos_oid.slotid);
+	  return error_code;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * vacuum_heap_record () - Vacuum heap record.
  *
  * return	 : Error code.
@@ -2357,10 +2407,14 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
   assert (helper->home_page != NULL);
   assert (MVCC_IS_HEADER_DELID_VALID (&helper->mvcc_header));
 
-  if (helper->record_type == REC_RELOCATION || helper->record_type == REC_BIGONE)
+  bool has_oos = (!VFID_ISNULL (&helper->oos_vfid)
+		  && (helper->record_type == REC_HOME || helper->record_type == REC_RELOCATION)
+		  && heap_recdes_contains_oos (&helper->record));
+
+  if (helper->record_type == REC_RELOCATION || helper->record_type == REC_BIGONE || has_oos)
     {
-      /* HOME record of rel/big records are performed as a single operation: flush all existing vacuumed slots before
-       * starting a system op for current record */
+      /* Multi-page operations (rel/big/oos) are performed as a single operation: flush all existing vacuumed slots
+       * before starting a system op for current record */
       vacuum_heap_page_log_and_reset (thread_p, helper, false, false);
       log_sysop_start (thread_p);
     }
@@ -2432,6 +2486,17 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
       helper->forward_page = NULL;
 
+      /* Delete OOS records (if any) before committing the sysop. */
+      if (has_oos)
+	{
+	  int oos_err = vacuum_heap_oos_delete (thread_p, helper);
+	  if (oos_err != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      return oos_err;
+	    }
+	}
+
       log_sysop_commit (thread_p);
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
@@ -2472,7 +2537,26 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       break;
 
     case REC_HOME:
-      helper->n_bulk_vacuumed++;
+      if (has_oos)
+	{
+	  /* OOS deletion was wrapped in a sysop. Log individually and commit. */
+	  pgbuf_set_dirty (thread_p, helper->home_page, DONT_FREE);
+	  vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page, helper->crt_slotid, &helper->record,
+					     helper->reusable);
+
+	  int oos_err = vacuum_heap_oos_delete (thread_p, helper);
+	  if (oos_err != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      return oos_err;
+	    }
+
+	  log_sysop_commit (thread_p);
+	}
+      else
+	{
+	  helper->n_bulk_vacuumed++;
+	}
 
       perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_VACUUMS);
       break;
