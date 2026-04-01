@@ -47,36 +47,23 @@ static std::vector <sp_info> sp_builtin_definition;
 
 static const std::vector<std::string> sp_entry_names
 {
-  SP_ATTR_UNIQUE_NAME,
-  SP_ATTR_NAME,
-  SP_ATTR_SP_TYPE,
-  SP_ATTR_RETURN_TYPE,
-  SP_ATTR_ARG_COUNT,
-  SP_ATTR_ARGS,
-  SP_ATTR_LANG,
-  SP_ATTR_PKG,
-  SP_ATTR_IS_SYSTEM_GENERATED,
-  SP_ATTR_TARGET_CLASS,
-  SP_ATTR_TARGET_METHOD,
-  SP_ATTR_DIRECTIVE,
-  SP_ATTR_SQL_DATA_ACCESS,
-  SP_ATTR_OWNER,
-  SP_ATTR_COMMENT,
-  SP_ATTR_CREATED_TIME,
-  SP_ATTR_UPDATED_TIME
+#define MAP_LIST_ITEM(item)     SP_ATTR_##item,
+  SP_ATTR_LIST
+#undef MAP_LIST_ITEM
 };
 
 static const std::vector<std::string> sp_args_entry_names
 {
-  SP_ATTR_SP_OF,
-  SP_ATTR_INDEX_OF_NAME,
-  SP_ATTR_IS_SYSTEM_GENERATED,
-  SP_ATTR_ARG_NAME,
-  SP_ATTR_DATA_TYPE,
-  SP_ATTR_MODE,
-  SP_ATTR_DEFAULT_VALUE,
-  SP_ATTR_IS_OPTIONAL,
-  SP_ATTR_COMMENT
+#define MAP_LIST_ITEM(item)     SP_ARG_ATTR_##item,
+  SP_ARG_ATTR_LIST
+#undef MAP_LIST_ITEM
+};
+
+static const std::vector<std::string> sp_code_entry_names
+{
+#define MAP_LIST_ITEM(item)     SP_CODE_ATTR_##item,
+  SP_CODE_ATTR_LIST
+#undef MAP_LIST_ITEM
 };
 
 static int sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint);
@@ -402,7 +389,7 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 
     /* sp_name */
     db_make_string (&value, info.sp_name.data ());
-    err = dbt_put_internal (obt_p, SP_ATTR_NAME, &value);
+    err = dbt_put_internal (obt_p, SP_ATTR_SP_NAME, &value);
     pr_clear_value (&value);
     if (err != NO_ERROR)
       {
@@ -443,7 +430,7 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	sp_normalize_name (info.pkg_name);
 	db_make_string (&value, info.pkg_name.data ());
       }
-    err = dbt_put_internal (obt_p, SP_ATTR_PKG, &value);
+    err = dbt_put_internal (obt_p, SP_ATTR_PKG_NAME, &value);
     pr_clear_value (&value);
 
     if (err != NO_ERROR)
@@ -620,7 +607,7 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	  }
 
 	db_make_object (&value, object_p);
-	err = dbt_put_internal (obt_p, SP_ATTR_SP_OF, &value);
+	err = dbt_put_internal (obt_p, SP_ARG_ATTR_SP_OF, &value);
 	pr_clear_value (&value);
 	if (err != NO_ERROR)
 	  {
@@ -702,7 +689,7 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
     }
 
   db_make_string (&value, info.arg_name.data ());
-  err = dbt_put_internal (obt_p, SP_ATTR_ARG_NAME, &value);
+  err = dbt_put_internal (obt_p, SP_ARG_ATTR_ARG_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {
@@ -710,7 +697,7 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
     }
 
   db_make_int (&value, info.index_of);
-  err = dbt_put_internal (obt_p, SP_ATTR_INDEX_OF_NAME, &value);
+  err = dbt_put_internal (obt_p, SP_ARG_ATTR_INDEX_OF, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {
@@ -726,7 +713,7 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
     }
 
   db_make_int (&value, info.data_type);
-  err = dbt_put_internal (obt_p, SP_ATTR_DATA_TYPE, &value);
+  err = dbt_put_internal (obt_p, SP_ARG_ATTR_DATA_TYPE, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {
@@ -734,7 +721,7 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
     }
 
   db_make_int (&value, info.mode);
-  err = dbt_put_internal (obt_p, SP_ATTR_MODE, &value);
+  err = dbt_put_internal (obt_p, SP_ARG_ATTR_MODE, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {
@@ -742,14 +729,14 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
     }
 
   db_make_int (&value, info.is_optional);
-  err = dbt_put_internal (obt_p, SP_ATTR_IS_OPTIONAL, &value);
+  err = dbt_put_internal (obt_p, SP_ARG_ATTR_IS_OPTIONAL, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {
       goto error;
     }
 
-  err = dbt_put_internal (obt_p, SP_ATTR_DEFAULT_VALUE, &info.default_value);
+  err = dbt_put_internal (obt_p, SP_ARG_ATTR_DEFAULT_VALUE, &info.default_value);
   if (err != NO_ERROR)
     {
       goto error;
@@ -759,7 +746,7 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
     {
       db_make_string (&value, info.comment.data ());
     }
-  err = dbt_put_internal (obt_p, SP_ATTR_ARG_COMMENT, &value);
+  err = dbt_put_internal (obt_p, SP_ARG_ATTR_COMMENT, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {
@@ -827,7 +814,7 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
     }
 
   db_make_string (&value, info.created_time.data ());
-  err = dbt_put_internal (obt_p, SP_ATTR_TIMESTAMP, &value);
+  err = dbt_put_internal (obt_p, SP_CODE_ATTR_CREATED_TIME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {
@@ -843,7 +830,7 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
     }
 
   db_make_string (&value, info.name.data ());
-  err = dbt_put_internal (obt_p, SP_ATTR_CLS_NAME, &value);
+  err = dbt_put_internal (obt_p, SP_CODE_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {
@@ -851,7 +838,7 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
     }
 
   db_make_int (&value, info.stype);
-  err = dbt_put_internal (obt_p, SP_ATTR_SOURCE_TYPE, &value);
+  err = dbt_put_internal (obt_p, SP_CODE_ATTR_STYPE, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {
@@ -860,7 +847,7 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
 
   db_make_varchar (&value, DB_DEFAULT_PRECISION, info.scode.data (), info.scode.length (), lang_get_client_charset (),
 		   lang_get_client_collation ());
-  err = dbt_put_internal (obt_p, SP_ATTR_SOURCE_CODE, &value);
+  err = dbt_put_internal (obt_p, SP_CODE_ATTR_SCODE, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {
@@ -869,7 +856,7 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
 
 
   db_make_int (&value, info.otype);
-  err = dbt_put_internal (obt_p, SP_ATTR_OBJECT_TYPE, &value);
+  err = dbt_put_internal (obt_p, SP_CODE_ATTR_OTYPE, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {
@@ -878,7 +865,7 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
 
   db_make_varchar (&value, DB_DEFAULT_PRECISION, info.ocode.data (), info.ocode.length (), lang_get_client_charset (),
 		   lang_get_client_collation ());
-  err = dbt_put_internal (obt_p, SP_ATTR_OBJECT_CODE, &value);
+  err = dbt_put_internal (obt_p, SP_CODE_ATTR_OCODE, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {
@@ -936,7 +923,7 @@ sp_edit_stored_procedure_code (MOP code_mop, SP_CODE_INFO &info)
     }
 
   db_make_string (&value, info.name.data ());
-  err = dbt_put_internal (obt_p, SP_ATTR_CLS_NAME, &value);
+  err = dbt_put_internal (obt_p, SP_CODE_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {
@@ -956,7 +943,7 @@ sp_edit_stored_procedure_code (MOP code_mop, SP_CODE_INFO &info)
 
   db_make_varchar (&value, DB_DEFAULT_PRECISION, info.ocode.data (), info.ocode.length (), LANG_SYS_CODESET,
 		   LANG_SYS_COLLATION);
-  err = dbt_put_internal (obt_p, SP_ATTR_OBJECT_CODE, &value);
+  err = dbt_put_internal (obt_p, SP_CODE_ATTR_OCODE, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {

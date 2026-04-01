@@ -439,14 +439,14 @@ struct css_conn_entry
   unsigned short request_id;
   int status;			/* CONN_OPEN, CONN_CLOSED, CONN_CLOSING = 3 */
   int invalidate_snapshot;
-  int client_id;
   int db_error;
-  bool in_transaction;		/* this client is in-transaction or out-of- */
-  bool reset_on_commit;		/* set reset_on_commit when commit/abort */
   bool in_method;		/* this connection is for method callback */
-
   bool in_flashback;		/* this client is in progress of flashback */
 #if defined(SERVER_MODE)
+  int client_id;
+  bool in_transaction;		/* this client is in-transaction or out-of- */
+  bool reset_on_commit;		/* set reset_on_commit when commit/abort */
+
   int idx;			/* connection index */
   BOOT_CLIENT_TYPE client_type;
   SYNC_RMUTEX rmutex;		/* connection mutex */
@@ -475,6 +475,8 @@ struct css_conn_entry
   CSS_LIST buffer_queue;	/* list of buffers queued for data */
   CSS_LIST error_queue;		/* list of (server) error messages */
   struct session_state *session_p;	/* session object for current request */
+
+  SESSION_ID session_id;
 #else
   FILE *file;
   CSS_QUEUE_ENTRY *request_queue;	/* the header for unseen requests */
@@ -484,7 +486,7 @@ struct css_conn_entry
   CSS_QUEUE_ENTRY *error_queue;	/* queue of (server) error messages */
   void *cnxn;
 #endif
-  SESSION_ID session_id;
+
   CSS_CONN_ENTRY *next;
 
 #if defined __cplusplus
@@ -530,6 +532,7 @@ typedef struct css_wait_queue_entry
   unsigned int key;
 } CSS_WAIT_QUEUE_ENTRY;
 
+#if !defined (SERVER_MODE)
 /*
  * This is the mapping entry from a host/key to/from the entry id.
  */
@@ -537,13 +540,16 @@ typedef struct css_mapping_entry CSS_MAP_ENTRY;
 struct css_mapping_entry
 {
   char *key;			/* host name (or some such) */
-  CSS_CONN_ENTRY *conn;		/* the connection */
-#if !defined(SERVER_MODE)
-  CSS_MAP_ENTRY *next;
+#if defined(MULTI_CONN_TO_A_SERVER)
+  pthread_t owner_tid;
 #endif
+  CSS_CONN_ENTRY *conn;		/* the connection */
+  CSS_MAP_ENTRY *next;
   unsigned short id;		/* host id to help identify the connection */
 };
+#endif
 
+#if !defined (CS_MODE)
 /*
  * This data structure is the information of user access status written
  * when client login server.
@@ -557,5 +563,6 @@ struct last_access_status
   char program_name[32];
   LAST_ACCESS_STATUS *next;
 };
+#endif
 
 #endif /* _CONNECTION_DEFS_H_ */

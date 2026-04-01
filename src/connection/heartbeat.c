@@ -64,7 +64,13 @@
 #include "system_parameter.h"
 #include "error_manager.h"
 #include "connection_defs.h"
+
+#if defined(CS_MODE)
+#include "client_support.h"
+#else
 #include "connection_support.hpp"
+#endif
+
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */
@@ -73,9 +79,7 @@
 #include "release_string.h"
 #include "heartbeat.h"
 
-extern CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id, const char *server_name, int name_length);
-extern void css_shutdown_conn (CSS_CONN_ENTRY * conn);
-
+#if defined(CS_MODE)
 static THREAD_RET_T THREAD_CALLING_CONVENTION hb_thread_master_reader (void *arg);
 static char *hb_pack_server_name (const char *server_name, int *name_length, const char *log_path, HB_PROC_TYPE type);
 
@@ -83,10 +87,11 @@ static CSS_CONN_ENTRY *hb_connect_to_master (const char *server_name, const char
 static int hb_create_master_reader (void);
 static int hb_process_master_request_info (CSS_CONN_ENTRY * conn);
 static const char *hb_type_to_str (HB_PROC_TYPE type);
-
-static pthread_t hb_Master_mon_th;
+static int hb_process_master_request (void);
 
 static CSS_CONN_ENTRY *hb_Conn = NULL;
+#endif //#if defined(CS_MODE)
+
 static char hb_Exec_path[PATH_MAX];
 static char **hb_Argv;
 
@@ -244,39 +249,6 @@ css_receive_heartbeat_data (CSS_CONN_ENTRY * conn, char *data, int size)
 }
 
 /*
-* hb_thread_master_reader () -
-*   return: none
-*
-*   arg(in):
-*/
-static THREAD_RET_T THREAD_CALLING_CONVENTION
-hb_thread_master_reader (void *arg)
-{
-#if !defined(WINDOWS)
-  int error;
-
-  /* *INDENT-OFF* */
-  cuberr::context er_context (true);
-  /* *INDENT-ON* */
-
-  error = hb_process_master_request ();
-  if (error != NO_ERROR)
-    {
-      hb_process_term ();
-
-      /* wait 1 sec */
-      sleep (1);
-
-
-      /* is it ok? */
-      kill (getpid (), SIGTERM);
-    }
-#endif
-  return (THREAD_RET_T) 0;
-}
-
-
-/*
 * hb_make_set_hbp_register () -
 *   return:
 *
@@ -309,39 +281,6 @@ hb_make_set_hbp_register (int type)
     }
 
   return (hbp_register);
-}
-
-
-/*
-* hb_deregister_from_master () -
-*   return: NO_ERROR or ER_FAILED
-*
-*/
-int
-hb_deregister_from_master (void)
-{
-  int css_error;
-  int pid;
-
-  if (hb_Conn == NULL || IS_INVALID_SOCKET (hb_Conn->fd))
-    {
-      return ER_FAILED;
-    }
-
-  css_error = css_send_heartbeat_request (hb_Conn, SERVER_DEREGISTER_HA_PROCESS);
-  if (css_error != NO_ERRORS)
-    {
-      return ER_FAILED;
-    }
-
-  pid = htonl (getpid ());
-  css_error = css_send_heartbeat_data (hb_Conn, (char *) &pid, sizeof (pid));
-  if (css_error != NO_ERRORS)
-    {
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
 }
 
 /*
@@ -390,6 +329,72 @@ hb_register_to_master (CSS_CONN_ENTRY * conn, int type)
 error_return:
   free_and_init (hbp_register);
   return (ER_FAILED);
+}
+
+#if defined(CS_MODE)
+
+/*
+* hb_thread_master_reader () -
+*   return: none
+*
+*   arg(in):
+*/
+static THREAD_RET_T THREAD_CALLING_CONVENTION
+hb_thread_master_reader (void *arg)
+{
+#if !defined(WINDOWS)
+  int error;
+
+  /* *INDENT-OFF* */
+  cuberr::context er_context (true);
+  /* *INDENT-ON* */
+
+  error = hb_process_master_request ();
+  if (error != NO_ERROR)
+    {
+      hb_process_term ();
+
+      /* wait 1 sec */
+      sleep (1);
+
+
+      /* is it ok? */
+      kill (getpid (), SIGTERM);
+    }
+#endif
+  return (THREAD_RET_T) 0;
+}
+
+/*
+* hb_deregister_from_master () -
+*   return: NO_ERROR or ER_FAILED
+*
+*/
+int
+hb_deregister_from_master (void)
+{
+  int css_error;
+  int pid;
+
+  if (hb_Conn == NULL || IS_INVALID_SOCKET (hb_Conn->fd))
+    {
+      return ER_FAILED;
+    }
+
+  css_error = css_send_heartbeat_request (hb_Conn, SERVER_DEREGISTER_HA_PROCESS);
+  if (css_error != NO_ERRORS)
+    {
+      return ER_FAILED;
+    }
+
+  pid = htonl (getpid ());
+  css_error = css_send_heartbeat_data (hb_Conn, (char *) &pid, sizeof (pid));
+  if (css_error != NO_ERRORS)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -587,7 +592,7 @@ hb_connect_to_master (const char *server_name, const char *log_path, HB_PROC_TYP
     {
       return NULL;
     }
-  conn = css_connect_to_master_server (prm_get_master_port_id (), packed_name, name_length);
+  conn = __gv_cvar.css_connect_to_master_server (prm_get_master_port_id (), packed_name, name_length);
   if (conn == NULL)
     {
       free_and_init (packed_name);
@@ -741,6 +746,7 @@ hb_process_term (void)
     }
   hb_Proc_shutdown = true;
 }
+#endif // #if defined(CS_MODE)
 
 /*
  * hb_node_state_string -

@@ -742,7 +742,6 @@ struct qo_term
 #define QO_TERM_MULTI_COL_CNT(t)   (t)->multi_col_cnt
 #define QO_TERM_PRED_ORDER(t)   (t)->pred_order
 
-
 #define QO_TERM_EQUAL_OP             1	/* is equal op ? */
 #define QO_TERM_RANGELIST            2	/* is RANGE (r1, r2, ...) ? */
 #define QO_TERM_SINGLE_PRED          4	/* is single_pred ? */

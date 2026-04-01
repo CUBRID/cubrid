@@ -484,10 +484,6 @@ namespace parallel_heap_scan
     switch (arg->type)
       {
       case BUILDLIST_PROC:
-	if (arg->proc.buildlist.g_hash_eligible)
-	  {
-	    set_flag (result, CANNOT_LIST_MERGE);
-	  }
 	break;
       case BUILDVALUE_PROC:
 	if (arg->proc.buildvalue.agg_list)

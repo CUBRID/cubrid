@@ -86,6 +86,11 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+
+#if !defined (SERVER_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) */
+
 #define CSS_WAIT_COUNT 5	/* # of retry to connect to master */
 #define CSS_GOING_DOWN_IMMEDIATELY "Server going down immediately"
 
@@ -569,7 +574,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
   // create request worker pool
   css_Server_request_worker_pool =
-    cubthread::get_manager ()->create_worker_pool (task_worker, MAX_TASK_COUNT, "transaction workers", NULL,
+    cubthread::get_manager ()->create_worker_pool (task_worker, MAX_TASK_COUNT, "transaction", NULL,
 						   task_group,
 						   cubthread::is_logging_configured
 						   (cubthread::LOG_WORKER_POOL_TRAN_WORKERS),
