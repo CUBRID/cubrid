@@ -3797,8 +3797,18 @@ sboot_add_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   ext_info.purpose = (DB_VOLPURPOSE) tmp;
   ptr = or_unpack_int (ptr, &tmp);
   ext_info.overwrite = (bool) tmp;
-  ptr = or_unpack_int (ptr, &tmp);
-  ext_info.voltype = (DB_VOLTYPE) tmp;
+
+  /* check if request is from an older patch version. */
+  if ((ptr - request) < reqlen)
+    {
+      ptr = or_unpack_int (ptr, &tmp);
+      ext_info.voltype = (DB_VOLTYPE) tmp;
+    }
+  else
+    {
+      /* If the request is from an older patch version, set permanent volume type. */
+      ext_info.voltype = DB_PERMANENT_VOLTYPE;
+    }
 
   volid = xboot_add_volume_extension (thread_p, &ext_info);
 

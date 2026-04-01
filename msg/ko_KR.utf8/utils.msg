@@ -693,9 +693,6 @@ addvoldb: 데이터베이스 볼륨 파일을 추가\n\
                                            INDEX - 인덱스 볼륨\n\
                                            TEMP - 임시 데이터 볼륨\n\
                                            GENERIC - 임의 데이터 볼륨\n\
-  -t, --voltype=VOLTYPE            볼륨 타입; 다음과 같은 값이 허용됨\n\
-                                           PERM - 영구 볼륨\n\
-                                           TEMP - 임시 볼륨\n\
   -S, --SA-mode                    독립 모드 실행\n\
   -C, --CS-mode                    클라이언트 서버 모드 실행\n
 

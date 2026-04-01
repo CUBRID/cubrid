@@ -696,9 +696,6 @@ valid options:\n\
                                            INDEX - only for indices\n\
                                            TEMP - only for temporary\n\
                                            GENERIC - for all purposes\n\
-  -t, --voltype=VOLTYPE            VOLTYPE for adding volume type; allowed:\n\
-                                           PERM - permanent volume type\n\
-                                           TEMP - temporary volume type\n\
   -S, --SA-mode                    stand-alone mode execution\n\
   -C, --CS-mode                    client-server mode execution\n
 
