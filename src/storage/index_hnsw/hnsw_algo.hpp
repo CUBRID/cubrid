@@ -490,7 +490,7 @@ namespace cubhnsw
 
 	// Try neighbors cache first (disk storage); fallback to direct neighbors_ref_type.
 	const std::vector<slot_id_t> *cached_neighbors =
-		m_storage->get_neighbors_cached_ids (context, candidate_slot, level);
+		m_storage->try_get_neighbors_cached (candidate_slot, level);
 
 	if (cached_neighbors != nullptr)
 	  {
@@ -498,21 +498,36 @@ namespace cubhnsw
 	    const std::size_t nb_count = cached_neighbors->size ();
 	    for (std::size_t ni = 0; ni < nb_count; ++ni)
 	      {
-		// Prefetch the vector data for the next neighbor one step ahead to hide latency.
+		slot_id_t successor_slot = (*cached_neighbors)[ni];
+		const uint64_t successor_key = encode_oid_key (successor_slot);
+
+		// Prefetch vector for next neighbor using pre-encoded key to hide latency.
 		if (ni + 1 < nb_count)
 		  {
-		    m_storage->prefetch_vector_if_cached ((*cached_neighbors)[ni + 1]);
+		    m_storage->prefetch_vector_if_cached (encode_oid_key ((*cached_neighbors)[ni + 1]));
 		  }
-		slot_id_t successor_slot = (*cached_neighbors)[ni];
 
-		auto [it, inserted] = visits.insert (encode_slot_id_ (successor_slot));
+		auto [it, inserted] = visits.insert (successor_key);
 		if (!inserted)
 		  {
 		    continue;
 		  }
 		stats.on_visit ();
 
-		distance_t successor_dist = compute_distance_from_query_ (context, query, successor_slot);
+		// Inline fast path: reuse pre-computed key, bypassing virtual dispatch and
+		// stats branches (no-ops when is_perf_tracking=false, folded by optimizer).
+		context.m_stats.on_vector_access (context.m_is_perf_tracking, context.m_level);
+		const float *vec = m_storage->try_get_vector_cached (successor_key);
+		if (likely (vec != nullptr))
+		  {
+		    context.m_stats.on_vector_cache_hit (context.m_is_perf_tracking, context.m_level);
+		  }
+		else
+		  {
+		    vec = m_storage->get_vector_by_slot_id (context, successor_slot, lock_mode::shared);
+		  }
+
+		distance_t successor_dist = compute_distance_ (context, query, vec);
 		if (top.size () < expansion_limit || successor_dist < radius)
 		  {
 		    next.insert (candidate_t (-successor_dist, successor_slot));
@@ -539,21 +554,33 @@ namespace cubhnsw
 	    slot_id_t successor_slot = candidate_neighbors.at (i);
 	    neigh.push_back (successor_slot);
 	    stats.on_neighbor_scan ();
+	    const uint64_t successor_key = encode_oid_key (successor_slot);
 
 	    // Prefetch vector for next neighbor ahead to hide memory latency.
 	    if (i + 1 < candidate_neighbors.size ())
 	      {
-		m_storage->prefetch_vector_if_cached (candidate_neighbors.at (i + 1));
+		m_storage->prefetch_vector_if_cached (encode_oid_key (candidate_neighbors.at (i + 1)));
 	      }
 
-	    auto [it, inserted] = visits.insert (encode_slot_id_ (successor_slot));
+	    auto [it, inserted] = visits.insert (successor_key);
 	    if (!inserted)
 	      {
 		continue;
 	      }
 	    stats.on_visit ();
 
-	    distance_t successor_dist = compute_distance_from_query_ (context, query, successor_slot);
+		context.m_stats.on_vector_access (context.m_is_perf_tracking, context.m_level);
+	    const float *vec = m_storage->try_get_vector_cached (successor_key);
+	    if (likely (vec != nullptr))
+	      {
+		context.m_stats.on_vector_cache_hit (context.m_is_perf_tracking, context.m_level);
+	      }
+	    else
+	      {
+		vec = m_storage->get_vector_by_slot_id (context, successor_slot, lock_mode::shared);
+	      }
+
+	    distance_t successor_dist = compute_distance_ (context, query, vec);
 	    if (top.size () < expansion_limit || successor_dist < radius)
 	      {
 		next.insert (candidate_t (-successor_dist, successor_slot));
@@ -600,7 +627,7 @@ namespace cubhnsw
 	    level_t level = context.m_level;
 	    // Try neighbors cache first; fallback to direct neighbors_ref_type.
 	    const std::vector<slot_id_t> *cached_neighbors =
-		    m_storage->get_neighbors_cached_ids (context, closest_slot, level);
+		    m_storage->try_get_neighbors_cached (closest_slot, level);
 
 	    if (cached_neighbors != nullptr)
 	      {

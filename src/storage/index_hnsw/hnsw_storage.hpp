@@ -305,6 +305,33 @@ namespace cubhnsw
 	  }
       }
 
+      // Overload: accept pre-encoded key to avoid redundant OID encoding in hot loops.
+      inline void prefetch_vector_if_cached (uint64_t cache_key) noexcept
+      {
+	auto it = m_vector_cache.find (cache_key);
+	if (it != m_vector_cache.end ())
+	  {
+	    __builtin_prefetch (it->second, 0 /* read */, 1 /* L2 locality */);
+	  }
+      }
+
+      // Fast inline path for hot loops: no stats overhead, no virtual dispatch.
+      // Returns nullptr on cache miss; caller must fall back to get_vector_by_slot_id.
+      inline const float *try_get_vector_cached (uint64_t cache_key) noexcept
+      {
+	auto it = m_vector_cache.find (cache_key);
+	return (it != m_vector_cache.end ()) ? it->second : nullptr;
+      }
+
+      // Fast inline path for neighbors cache lookup: no stats overhead.
+      inline const std::vector<slot_id_t> *try_get_neighbors_cached (const slot_id_t &slot,
+	  level_t level) noexcept
+      {
+	neighbors_key key { slot, level };
+	auto it = m_neighbors_cache.find (key);
+	return (it != m_neighbors_cache.end ()) ? &it->second : nullptr;
+      }
+
       short get_max_level () const
       {
 	return static_cast<short> (MAX_LEVELS);
