@@ -16386,7 +16386,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       buildlist->g_hkey_size = 0;
       if (buildlist->g_hash_eligible)
 	{
-	  REGU_VARIABLE_LIST regu_list = buildlist->g_hk_sort_regu_list;
+	  REGU_VARIABLE_LIST regu_list = buildlist->g_hk_scan_regu_list;
 	  while (regu_list != NULL)
 	    {
 	      buildlist->g_hkey_size++;
@@ -27355,8 +27355,6 @@ pt_aggregate_info_update_value_and_reguvar_lists (AGGREGATE_INFO * info, VAL_LIS
   pt_aggregate_info_append_value_list (info, value_list);
 
   pt_merge_regu_var_lists (&info->regu_list, regu_position_list);
-
-//   pt_merge_regu_var_lists (&info->out_list->valptrp, regu_constant_list);
 
   // also increment list count
   int regu_constant_list_size = 0;
