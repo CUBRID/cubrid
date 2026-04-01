@@ -21190,12 +21190,15 @@ wrapup:
       if (new_stat != NULL)
 	{
 	  memset (new_stat, 0, sizeof (ANALYTIC_STATS));
-	  new_stat->analytic_stopkey = false;
-	  new_stat->analytic_sort = !is_skip_sort;
 	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
 	    {
 	      new_stat->analytic_stopkey = true;
 	      new_stat->analytic_sort = false;
+	    }
+	  else
+	    {
+	      new_stat->analytic_stopkey = false;
+	      new_stat->analytic_sort = !is_skip_sort;
 	    }
 	  TSC_ADD_TIMEVAL (new_stat->analytic_time, tv_diff);
 
