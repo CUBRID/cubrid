@@ -99,7 +99,7 @@ namespace cubhnsw
       inline distance_t compute_distance_ (algo_context_t &context, const float *v1, const float *v2) const
       {
 	context.m_stats.on_distance_computed (context.m_is_perf_tracking, context.m_level);
-	return metric_table_both_aligned[static_cast<size_t> (m_metric)] (v1, v2, m_dimension);
+	return metric_table_both_aligned_fast[static_cast<size_t> (m_metric)] (v1, v2, m_dimension);
       }
 
       inline distance_t compute_distance_from_query_ (algo_context_t &context, const float *query,
@@ -204,8 +204,8 @@ namespace cubhnsw
     // pre-reserve top_for_refine
     context.m_top_for_refine.reserve (connectivity_max);
 
-    // pre-reserve for visits
-    context.m_visits.reserve (connectivity_max);
+    // pre-reserve for visits: ef_construction * base-level connectivity bounds the visited set.
+    context.m_visits.reserve (m_expansion * connectivity_max);
 
     top_candidates_t &top = context.m_top_candidates;
     next_candidates_t &next = context.m_next_candidates;
@@ -388,8 +388,9 @@ namespace cubhnsw
 
     std::size_t expansion_size = std::max (k, expansion);
 
-    // pre-reserve for visits
-    context.m_visits.reserve (expansion_size);
+    // pre-reserve for visits: each candidate can produce up to base-level connectivity neighbors,
+    // so the total visited set is bounded by expansion_size * base_connectivity.
+    context.m_visits.reserve (expansion_size * (get_layer_connectivity (0, m_connectivity) + 1));
 
     // pre-reserve for top and next
     if (!top.reserve (expansion_size) || !next.reserve (expansion_size))
@@ -494,8 +495,16 @@ namespace cubhnsw
 	if (cached_neighbors != nullptr)
 	  {
 	    context.m_stats.on_neighbors_cache_hit (context.m_is_perf_tracking, level);
-	    for (slot_id_t successor_slot : *cached_neighbors)
+	    const std::size_t nb_count = cached_neighbors->size ();
+	    for (std::size_t ni = 0; ni < nb_count; ++ni)
 	      {
+		// Prefetch the vector data for the next neighbor one step ahead to hide latency.
+		if (ni + 1 < nb_count)
+		  {
+		    m_storage->prefetch_vector_if_cached ((*cached_neighbors)[ni + 1]);
+		  }
+		slot_id_t successor_slot = (*cached_neighbors)[ni];
+
 		auto [it, inserted] = visits.insert (encode_slot_id_ (successor_slot));
 		if (!inserted)
 		  {
@@ -530,6 +539,12 @@ namespace cubhnsw
 	    slot_id_t successor_slot = candidate_neighbors.at (i);
 	    neigh.push_back (successor_slot);
 	    stats.on_neighbor_scan ();
+
+	    // Prefetch vector for next neighbor ahead to hide memory latency.
+	    if (i + 1 < candidate_neighbors.size ())
+	      {
+		m_storage->prefetch_vector_if_cached (candidate_neighbors.at (i + 1));
+	      }
 
 	    auto [it, inserted] = visits.insert (encode_slot_id_ (successor_slot));
 	    if (!inserted)

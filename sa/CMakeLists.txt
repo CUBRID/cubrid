@@ -518,6 +518,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/tde.c
 
   ${INDEX_HNSW_DIR}/vector_distance_omp_simd.cpp
+  ${INDEX_HNSW_DIR}/vector_distance_intrinsics.cpp
   ${INDEX_HNSW_DIR}/hnsw_impl.cpp
   ${INDEX_HNSW_DIR}/hnsw.cpp
   ${INDEX_HNSW_DIR}/hnsw_api.cpp
@@ -538,11 +539,21 @@ if(USE_SIMD_NATIVE)
     set_source_files_properties(${QUERY_DIR}/vector_opfunc.cpp ${INDEX_HNSW_DIR}/vector_distance_omp_simd.cpp
         PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-ftree-vectorize;-mprefer-vector-width=512;-fopenmp-simd;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
     )
+    set_source_files_properties(${INDEX_HNSW_DIR}/vector_distance_intrinsics.cpp
+        PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
+    )
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set_source_files_properties(${QUERY_DIR}/vector_opfunc.cpp ${INDEX_HNSW_DIR}/vector_distance_omp_simd.cpp
         PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-fvectorize;-mprefer-vector-width=512;-fopenmp-simd;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
     )
+    set_source_files_properties(${INDEX_HNSW_DIR}/vector_distance_intrinsics.cpp
+        PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
+    )
   endif()
+elseif(CXX_AVX2_FOUND)
+  set_source_files_properties(${INDEX_HNSW_DIR}/vector_distance_intrinsics.cpp
+      PROPERTIES COMPILE_OPTIONS "${CXX_AVX2_FLAGS};-O3;-ffast-math;-fno-trapping-math;-funroll-loops"
+  )
 endif()
 
 set(SESSION_SOURCES

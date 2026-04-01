@@ -77,4 +77,10 @@ namespace cubhnsw
 	 static_cast<std::size_t> (vector_distance_metric_t::MAX)>
 	 metric_table_both_aligned;
 
+  // AVX-512 / AVX2 FMA 4-accumulator variants (defined in vector_distance_intrinsics.cpp).
+  // Falls back to the omp-simd functions on CPUs without those extensions.
+  extern const std::array<aligned_distance_fn_t,
+	 static_cast<std::size_t> (vector_distance_metric_t::MAX)>
+	 metric_table_both_aligned_fast;
+
 } // namespace cubhnsw

@@ -293,6 +293,18 @@ namespace cubhnsw
 
       void promote_root (pinned_t &root);
 
+      // Prefetch the vector data for a slot if it is already in the vector cache.
+      // Call one iteration ahead in the neighbor traversal loop to hide memory latency.
+      inline void prefetch_vector_if_cached (const slot_id_t &slot) noexcept
+      {
+	const uint64_t cache_key = make_vector_cache_key_ (slot);
+	auto it = m_vector_cache.find (cache_key);
+	if (it != m_vector_cache.end ())
+	  {
+	    __builtin_prefetch (it->second, 0 /* read */, 1 /* L2 locality */);
+	  }
+      }
+
       short get_max_level () const
       {
 	return static_cast<short> (MAX_LEVELS);
