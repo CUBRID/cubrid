@@ -301,6 +301,7 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
+    case DB_TYPE_VECTOR:
     case DB_TYPE_MIDXKEY:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
@@ -1570,6 +1571,14 @@ db_type_to_db_domain (const DB_TYPE type)
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
+    case DB_TYPE_VECTOR:
+      {
+	if (type == DB_TYPE_VECTOR)
+	  {
+	    vimkim_log ("WARNING: Not analyzed yet.\n");
+	  }
+	[[fallthrough]];
+      }
     case DB_TYPE_NULL:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:

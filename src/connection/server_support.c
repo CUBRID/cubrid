@@ -32,6 +32,7 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
+#include "hnsw.hpp"
 #include "master_connector.hpp"
 #include "connection_pool.hpp"
 
@@ -603,6 +604,8 @@ shutdown:
    * start to shutdown server
    */
   css_start_shutdown_server ();
+
+  xhnsw_finalize (thread_p);
 
   connector.stop ();
   connections.finalize ();

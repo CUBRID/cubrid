@@ -46,6 +46,7 @@
 #include "string_opfunc.h"
 #include "system_parameter.h"
 #include "tz_support.h"
+#include "cubvec_assert.h"
 
 #include <utility>
 
@@ -57,6 +58,7 @@
 #endif /* !defined (SERVER_MODE) */
 
 #include "dbtype.h"
+#include "db_vector.hpp"
 #include "memory_private_allocator.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -758,6 +760,43 @@ static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_sequence (void *mem1, void *mem2,
 							 int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_cmpval_sequence (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
 						   int total_order, int *start_colp, int collation);
+
+/******************************************************************************
+ * TYPE VECTOR (FLOAT)
+ *****************************************************************************/
+
+// mem functions
+static void mr_initmem_vector_float (void *mem, TP_DOMAIN * domain);
+static int mr_setmem_vector_float (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
+static int mr_getmem_vector_float (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
+static int mr_data_lengthmem_vector_float (void *memptr, TP_DOMAIN * domain, int disk);
+static void mr_data_writemem_vector_float (OR_BUF * buf, void *memptr, TP_DOMAIN * domain);
+static void mr_data_readmem_vector_float (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size);
+static void mr_freemem_vector_float (void *memptr);
+
+// DB_VALUE functions
+static void mr_initval_vector_float (DB_VALUE * value, int precision, int scale);
+static int mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy);
+static int mr_data_lengthval_vector_float (DB_VALUE * value, int disk);
+static int mr_data_writeval_vector_float (OR_BUF * buf, DB_VALUE * value);
+static int mr_data_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+					 char *copy_buf, int copy_buf_len);
+
+// index functions
+static int mr_index_lengthmem_vector_float (void *memptr, TP_DOMAIN * domain);
+static int mr_index_lengthval_vector_float (DB_VALUE * value);
+static int mr_index_writeval_vector_float (OR_BUF * buf, DB_VALUE * value);
+static int mr_index_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+					  char *copy_buf, int copy_buf_len);
+static DB_VALUE_COMPARE_RESULT mr_index_cmpdisk_vector_float (void *mem1, void *mem2, TP_DOMAIN * domain,
+							      int do_coercion, int total_order, int *start_colp);
+
+// val cmp functions
+static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_vector_float (void *mem1, void *mem2, TP_DOMAIN * domain,
+							     int do_coercion, int total_order, int *start_colp);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_vector_float (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
+						       int total_order, int *start_colp, int collation);
+
 static void mr_initval_midxkey (DB_VALUE * value, int precision, int scale);
 static int mr_setval_midxkey (DB_VALUE * dest, const DB_VALUE * src, bool copy);
 static int mr_data_lengthmem_midxkey (void *memptr, TP_DOMAIN * domain, int disk);
@@ -1572,6 +1611,31 @@ const PR_TYPE tp_Sequence = {
 
 const PR_TYPE *tp_Type_sequence = &tp_Sequence;
 
+const PR_TYPE tp_Vector = {
+  "vector", DB_TYPE_VECTOR, 1, sizeof (DB_VECTOR_FLOAT), 0, 1,
+  mr_initmem_vector_float,
+  mr_initval_vector_float,
+  mr_setmem_vector_float,
+  mr_getmem_vector_float,
+  mr_setval_vector_float,
+  mr_data_lengthmem_vector_float,
+  mr_data_lengthval_vector_float,
+  mr_data_writemem_vector_float,
+  mr_data_readmem_vector_float,
+  mr_data_writeval_vector_float,
+  mr_data_readval_vector_float,
+  NULL,				// mr_index_lengthmem_vector_float,
+  NULL,				// mr_index_lengthval_vector_float,
+  NULL,				// mr_index_writeval_vector_float,
+  NULL,				// mr_index_readval_vector_float,
+  NULL,				// mr_index_cmpdisk_vector_float,
+  mr_freemem_vector_float,
+  mr_data_cmpdisk_vector_float,
+  mr_cmpval_vector_float
+};
+
+const PR_TYPE *tp_Type_vector = &tp_Vector;
+
 const PR_TYPE tp_Midxkey = {
   "midxkey", DB_TYPE_MIDXKEY, 1, 0, 0, 1,
   NULL,				/* initmem */
@@ -1730,6 +1794,7 @@ const PR_TYPE *tp_Type_id_map[] = {
   &tp_Datetimetz,
   &tp_Datetimeltz,
   &tp_Json,
+  &tp_Vector,
 };
 
 const PR_TYPE tp_ResultSet = {
@@ -1918,6 +1983,23 @@ pr_clear_value (DB_VALUE * value)
       value->data.op = NULL;
       break;
 
+    case DB_TYPE_VECTOR:
+      {
+	if (value->need_clear)
+	  {
+	    vimkim_log ("freeing addr: %p, vf: %s\n", value,
+			db_vector_float_to_string (value->data.vector_float).c_str ());
+	    db_private_free (NULL, value->data.vector_float.float_array);
+	  }
+	else
+	  {
+	    vimkim_log ("skip freeing addr: %p, vf: %s\n", value,
+			db_vector_float_to_string (value->data.vector_float).c_str ());
+	  }
+	value->data.vector_float.dim = 0;
+	value->data.vector_float.float_array = NULL;
+	break;
+      }
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
@@ -7453,6 +7535,369 @@ mr_cmpval_sequence (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
 		    int collation)
 {
   return set_seq_compare (db_get_set (value1), db_get_set (value2), do_coercion, total_order);
+}
+
+/******************************************************************************
+ * TYPE VECTOR (FLOAT)
+ *****************************************************************************/
+static void
+mr_initmem_vector_float (void *mem, TP_DOMAIN * domain)
+{
+  vimkim_log ("args: mem = %p\n", mem);
+  DB_VECTOR_FLOAT *vf = (DB_VECTOR_FLOAT *) mem;
+  vf->dim = 0;
+  vf->float_array = NULL;
+}
+
+static int
+mr_setmem_vector_float (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
+{
+  vimkim_log ("args: memptr %p, domain %p, value %p\n", memptr, domain, value);
+
+  char **mem;
+  char *new_;
+  char *cur;
+
+  mem = (char **) memptr;
+
+  int error = NO_ERROR;
+
+  if (value == NULL)
+    {
+      mr_initmem_vector_float (memptr, domain);
+    }
+  else
+    {
+      const DB_VECTOR_FLOAT *vf = db_get_vector_float (value);
+      vimkim_log ("vf: %s\n", db_vector_float_to_string (*vf).c_str ());
+
+      const auto dim = vf->dim;
+      const auto arr = vf->float_array;
+
+      std::size_t size = sizeof (int) + dim * sizeof (float);
+      char *new_ = (char *) db_private_alloc (NULL, size);
+      vimkim_log ("db_private_alloc new_: %p, size = %zu\n", new_, size);
+      ASSERT_CUBVEC (new_ != nullptr);
+      if (new_ == nullptr)
+	{
+	  return ER_FAILED;
+	}
+
+      cur = new_;
+
+      // save vector dim
+      *(int *) cur = dim;
+
+      // save vector float array
+      cur += sizeof (int);
+      memcpy (cur, arr, dim * sizeof (float));
+
+      *mem = new_;
+    }
+
+  return error;
+}
+
+static int
+mr_getmem_vector_float (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+{
+  ASSERT_CUBVEC (false);
+}
+
+static int
+mr_data_lengthmem_vector_float (void *memptr, TP_DOMAIN * domain, int disk)
+{
+  vimkim_log ("args: memptr %p, domain %p, disk %d\n", memptr, domain, disk);
+  int len;
+
+  len = 0;
+  if (!disk)
+    {
+      len = tp_Vector.size;
+      vimkim_log ("WARNING: not analyzed why len = %d is returned.\n", len);
+    }
+  else if (memptr != NULL)
+    {
+      char *mem = *(char **) memptr;
+      const int dim = *(int *) mem;
+      vimkim_log ("mem = %p, dim = %d\n", mem, dim);
+
+      len = sizeof (int) + dim * sizeof (float);
+    }
+  vimkim_log ("returning len = %d\n", len);
+  return len;
+}
+
+static void
+mr_data_writemem_vector_float (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
+{
+  vimkim_log ("buf %p, memptr %p, domain %p\n", buf, memptr, domain);
+
+  char *mem = *(char **) memptr;
+
+  int dim = *(int *) mem;
+  mem += sizeof (int);
+
+  float *arr = (float *) mem;
+
+  or_put_int (buf, dim);
+  or_put_data (buf, (char *) arr, dim * sizeof (float));
+}
+
+static void
+mr_data_readmem_vector_float (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
+{
+  if (memptr == NULL)
+    {
+      or_advance (buf, size);
+    }
+  else
+    {
+      or_get_data (buf, (char *) memptr, size);
+    }
+}
+
+static void
+mr_freemem_vector_float (void *memptr)
+{
+
+  // TODO (CUBVEC): The following code causes segfault when shutting down the CAS.
+  // We need to figure out why.
+#if 0
+  if (memptr != NULL)
+    {
+      char *mem = *(char **) memptr;
+      if (mem != NULL)
+	{
+	  db_private_free_and_init (NULL, mem);
+	}
+    }
+#endif
+}
+
+static void
+mr_initval_vector_float (DB_VALUE * value, int precision, int scale)
+{
+  vimkim_log ("args: value %p, precision %d, scale %d\n", value, precision, scale);
+
+  DB_VECTOR_FLOAT vf;
+  vf.dim = 0;
+  vf.float_array = nullptr;
+
+  db_value_domain_init (value, DB_TYPE_VECTOR, precision, scale);
+  db_make_vector_float (value, &vf);
+}
+
+static int
+mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+{
+  vimkim_log ("args: dest %p, src %p, copy %d\n", dest, src, copy);
+
+  ASSERT_CUBVEC ((src == nullptr) || (dest != src));
+
+  int error = NO_ERROR;
+  if (src && !DB_IS_NULL (src))
+    {
+      if (copy)
+	{
+
+	  const auto *src_vf = db_get_vector_float (src);
+	  const auto dim = src_vf->dim;
+
+	  // print vector_float for debugging
+	  vimkim_log ("vf: %s\n", db_vector_float_to_string (*src_vf).c_str ());
+
+	  DB_VECTOR_FLOAT dest_vf;
+	  dest_vf.dim = src_vf->dim;
+	  dest_vf.float_array = (float *) db_private_alloc (NULL, dim * sizeof (float));
+	  assert (dest_vf.float_array != NULL);
+	  if (dest_vf.float_array == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+	  vimkim_log ("db_private_alloc: %p, size = %lu\n", dest_vf.float_array, dim * sizeof (float));
+
+	  memcpy (dest_vf.float_array, src_vf->float_array, dim * sizeof (float));
+
+	  error = db_value_domain_init (dest, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+	  ASSERT_CUBVEC (error == NO_ERROR);
+
+	  error = db_make_vector_float (dest, &dest_vf);
+	  ASSERT_CUBVEC (error == NO_ERROR);
+
+	  return error;
+	}
+      else
+	{
+	  error = db_value_domain_init (dest, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+	  ASSERT_CUBVEC (error == NO_ERROR);
+
+	  db_make_vector_float (dest, db_get_vector_float (src));
+	  ASSERT_CUBVEC (error == NO_ERROR);
+
+	  dest->need_clear = false;
+	}
+    }
+  else
+    {
+      // Not analyzed.
+      // log vector_float for easier debugging
+      const DB_VECTOR_FLOAT *vf = db_get_vector_float (dest);
+      vimkim_log ("vf: %s\n", db_vector_float_to_string (*vf).c_str ());
+
+      assert (false);
+      ASSERT_CUBVEC (false);
+    }
+
+  return error;
+}
+
+static int
+mr_data_lengthval_vector_float (DB_VALUE * value, int disk)
+{
+  ASSERT_CUBVEC (disk == 1);
+  vimkim_log ("args: value %p, disk %d\n", value, disk);
+
+  int dim = value->data.vector_float.dim;
+  int byte_length = sizeof (dim) + dim * sizeof (float);
+  vimkim_log ("locals: dim = %d, byte_length = %d\n", dim, byte_length);
+
+  return byte_length;
+}
+
+static int
+mr_data_writeval_vector_float (OR_BUF * buf, DB_VALUE * value)
+{
+  vimkim_log ("args: buf %p, value %p\n", buf, value);
+
+  const DB_VECTOR_FLOAT *vf = db_get_vector_float (value);
+  const auto dim = vf->dim;
+  const auto arr = vf->float_array;
+
+  vimkim_log ("vf: %s\n", db_vector_float_to_string (*vf).c_str ());
+
+  or_put_int (buf, dim);
+  or_put_data (buf, (char *) arr, dim * sizeof (float));
+
+  return NO_ERROR;
+}
+
+static int
+mr_data_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+			      char *copy_buf, int copy_buf_len)
+{
+  int error = NO_ERROR;
+
+  vimkim_log ("args: buf %p, value %p, domain %p, size %d, copy %d, copy_buf %p, copy_buf_len %d\n",
+	      buf, value, domain, size, copy, copy_buf, copy_buf_len);
+
+  /* it is assumed that a vector has a variable length so that the size should be always -1. */
+  ASSERT_CUBVEC (size == -1);
+
+  DB_VECTOR_FLOAT vector_float = { 0, nullptr };
+  vector_float.dim = or_get_int (buf, &error);
+
+  if (copy)
+    {
+
+      vector_float.float_array = (float *) db_private_alloc (NULL, vector_float.dim * sizeof (float));
+      vimkim_log ("db_private_alloc: %p, size = %lu\n", vector_float.float_array, vector_float.dim * sizeof (float));
+      ASSERT_CUBVEC (vector_float.float_array != NULL);
+      if (vector_float.float_array == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      or_get_data (buf, (char *) vector_float.float_array, vector_float.dim * sizeof (float));
+      ASSERT_CUBVEC (error == NO_ERROR);
+
+      error = db_make_vector_float (value, &vector_float);
+      ASSERT_CUBVEC (error == NO_ERROR);
+    }
+  else
+    {
+
+      vector_float.float_array = (float *) buf->ptr;
+
+      error = db_make_vector_float (value, &vector_float);
+      ASSERT_CUBVEC (error == NO_ERROR);
+
+      value->need_clear = false;
+    }
+
+  // print vector_float for debugging
+  vimkim_log ("vf: %s\n", db_vector_float_to_string (vector_float).c_str ());
+
+  return error;
+}
+
+static int
+mr_index_lengthmem_vector_float (void *memptr, TP_DOMAIN * domain)
+{
+  ASSERT_CUBVEC (false);
+}
+
+static int
+mr_index_lengthval_vector_float (DB_VALUE * value)
+{
+  ASSERT_CUBVEC (false);
+}
+
+static int
+mr_index_writeval_vector_float (OR_BUF * buf, DB_VALUE * value)
+{
+  ASSERT_CUBVEC (false);
+}
+
+static int
+mr_index_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+			       char *copy_buf, int copy_buf_len)
+{
+  ASSERT_CUBVEC (false);
+}
+
+static DB_VALUE_COMPARE_RESULT
+mr_index_cmpdisk_vector_float (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
+			       int total_order, int *start_colp)
+{
+  ASSERT_CUBVEC (false);
+}
+
+static DB_VALUE_COMPARE_RESULT
+mr_data_cmpdisk_vector_float (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
+			      int total_order, int *start_colp)
+{
+  ASSERT_CUBVEC (false);
+
+  // TODO (CUBVEC): not implemented yet, the following line is for suppressing warnings.
+  return DB_UNK;
+}
+
+static DB_VALUE_COMPARE_RESULT
+mr_cmpval_vector_float (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
+			int total_order, int *start_colp, int collation)
+{
+  const DB_VECTOR_FLOAT *vf1 = db_get_vector_float (value1);
+  const DB_VECTOR_FLOAT *vf2 = db_get_vector_float (value2);
+
+  if (vf1->dim != vf2->dim)
+    {
+      return DB_UNK;
+    }
+
+  for (int i = 0; i < vf1->dim; i++)
+    {
+      if (vf1->float_array[i] < vf2->float_array[i])
+	{
+	  return DB_LT;
+	}
+      else if (vf1->float_array[i] > vf2->float_array[i])
+	{
+	  return DB_GT;
+	}
+    }
+
+  return DB_EQ;
 }
 
 /*

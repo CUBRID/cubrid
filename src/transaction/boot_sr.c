@@ -2440,6 +2440,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
+  xhnsw_initialize (thread_p);
+
   /*
    * Initialize the catalog manager, the query evaluator, and install meta
    * classes

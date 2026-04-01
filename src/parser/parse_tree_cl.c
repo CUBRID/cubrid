@@ -55,6 +55,7 @@
 #include "parser_allocator.hpp"
 #include "tde.h"
 #include "jsp_cl.h"
+#include "db_vector.hpp"
 
 #include <malloc.h>
 
@@ -4090,6 +4091,14 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "schema_def";
     case PT_CONV_TZ:
       return "conv_tz";
+    case PT_DISTANCE_OP_COSINE:
+      return " <c> ";
+    case PT_DISTANCE_OP_EUCLIDEAN:
+      return " <-> ";
+    case PT_DISTANCE_OP_MANHATTAN:
+      return " <+> ";
+    case PT_DISTANCE_OP_NEG_INNER_PROD:
+      return " <#> ";
     default:
       assert (false);
       return "unknown opcode";
@@ -4215,6 +4224,8 @@ pt_show_type_enum (PT_TYPE_ENUM t)
       return "multiset";
     case PT_TYPE_SEQUENCE:
       return "sequence";
+    case PT_TYPE_VECTOR:
+      return "vector";
     case PT_TYPE_RESULTSET:
       return "cursor";
     case PT_TYPE_COMPOUND:
@@ -6799,6 +6810,20 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_TYPE_VECTOR:
+      q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
+      if (p->data_type)
+	{
+	  int precision = p->data_type->info.data_type.precision;
+	  if (precision != 0 && precision != DB_DEFAULT_PRECISION)
+	    {
+	      q = pt_append_nulstring (parser, q, "(");
+	      sprintf (s, "%d", precision);
+	      q = pt_append_nulstring (parser, q, s);
+	      q = pt_append_nulstring (parser, q, ")");
+	    }
+	}
       break;
     default:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
@@ -16793,6 +16818,9 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, (char *) p->info.value.data_value.str->bytes);
       q = pt_append_nulstring (parser, q, "\'");
       break;
+    case PT_TYPE_VECTOR:
+      q = pt_append_nulstring (parser, q, db_vector_float_to_string (p->info.value.data_value.vector_float).c_str ());
+      break;
     default:
       q = pt_append_nulstring (parser, q, "-- Unknown value type --");
       parser->flag.print_type_ambiguity = 1;
@@ -17841,6 +17869,16 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_GT:
 	case PT_LT:
 	case PT_LE:
+	case PT_DISTANCE_OP_EUCLIDEAN:
+	  {
+	    if (node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
+	      {
+		// CUBVEC todo: not yet analyzed
+		ASSERT_CUBVEC (false);
+	      }
+	    [[fallthrough]];
+	  }
+
 	case PT_NULLSAFE_EQ:
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && pt_is_const_expr_node (node->info.expr.arg2)) ? true : false;

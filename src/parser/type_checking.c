@@ -20,6 +20,7 @@
  * type_checking.c - auxiliary functions for parse tree translation
  */
 
+#include "db_function.hpp"
 #ident "$Id$"
 
 #include "config.h"
@@ -47,6 +48,7 @@
 #include "set_object.h"
 #include "arithmetic.h"
 #include "string_opfunc.h"
+#include "vector_opfunc.hpp"
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -60,6 +62,8 @@
 #include "db.h"
 #include "tz_support.h"
 #include "func_type.hpp"
+
+#include "cubvec_assert.h"
 
 #include "dbtype.h"
 
@@ -1577,6 +1581,25 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       sig.return_type.type = pt_arg_type::NORMAL;
       sig.return_type.val.type = PT_TYPE_MULTISET;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_DISTANCE_OP_COSINE:
+    case PT_DISTANCE_OP_EUCLIDEAN:
+    case PT_DISTANCE_OP_MANHATTAN:
+    case PT_DISTANCE_OP_NEG_INNER_PROD:
+      num = 0;
+      vimkim_log ("op: %s\n", pt_show_binopcode (op));
+
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_VECTOR;
+      sig.arg2_type.type = pt_arg_type::NORMAL;
+      sig.arg2_type.val.type = PT_TYPE_VECTOR;
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_FLOAT;
+
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
@@ -5714,6 +5737,7 @@ pt_is_range_or_comp (PT_OP_TYPE op)
     case PT_GT:
     case PT_LT:
     case PT_LE:
+    case PT_DISTANCE_OP_EUCLIDEAN:
     case PT_NULLSAFE_EQ:
     case PT_GT_INF:
     case PT_LT_INF:
@@ -5728,6 +5752,10 @@ pt_is_range_or_comp (PT_OP_TYPE op)
     case PT_BETWEEN_GT_INF:
       return true;
     default:
+      if (op == PT_DISTANCE_OP_EUCLIDEAN)
+	{
+	  vimkim_log ("PT_DISTANCE_OP_EUCLIDEAN is not a range nor comp.\n");
+	}
       return false;
     }
 }
@@ -10281,6 +10309,17 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       node->type_enum = node->info.expr.arg1->type_enum;
       break;
 
+    case PT_DISTANCE_OP_COSINE:
+    case PT_DISTANCE_OP_EUCLIDEAN:
+    case PT_DISTANCE_OP_MANHATTAN:
+    case PT_DISTANCE_OP_NEG_INNER_PROD:
+      {
+	node->info.expr.arg1 = arg1;
+	node->info.expr.arg2 = arg2;
+	node->type_enum = PT_TYPE_VECTOR;
+	goto error;
+      }
+
     default:
       node->type_enum = PT_TYPE_NONE;
       break;
@@ -12485,6 +12524,55 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
   switch (op)
     {
+
+    case PT_DISTANCE_OP_COSINE:
+      {
+	DB_VALUE *arr[2] = { arg1, arg2 };
+	error = vector_cosine_distance (result, arr, 2);
+	if (error != NO_ERROR)
+	  {
+	    PT_ERRORc (parser, o1, er_msg ());
+	    return 0;
+	  }
+	break;
+      }
+
+    case PT_DISTANCE_OP_EUCLIDEAN:
+      {
+	DB_VALUE *arr[2] = { arg1, arg2 };
+	error = vector_l2_distance (result, arr, 2);
+	if (error != NO_ERROR)
+	  {
+	    PT_ERRORc (parser, o1, er_msg ());
+	    return 0;
+	  }
+	break;
+      }
+
+    case PT_DISTANCE_OP_MANHATTAN:
+      {
+	DB_VALUE *arr[2] = { arg1, arg2 };
+	error = vector_l1_distance (result, arr, 2);
+	if (error != NO_ERROR)
+	  {
+	    PT_ERRORc (parser, o1, er_msg ());
+	    return 0;
+	  }
+	break;
+      }
+
+    case PT_DISTANCE_OP_NEG_INNER_PROD:
+      {
+	DB_VALUE *arr[2] = { arg1, arg2 };
+	error = vector_negative_inner_product (result, arr, 2);
+	if (error != NO_ERROR)
+	  {
+	    PT_ERRORc (parser, o1, er_msg ());
+	    return 0;
+	  }
+	break;
+      }
+
     case PT_NOT:
       if (typ1 == DB_TYPE_NULL)
 	{
@@ -18771,6 +18859,26 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_CODE fcode, DB_VALUE 
 
     case F_REGEXP_SUBSTR:
       error = db_string_regexp_substr (result, args, num_args, NULL);
+      break;
+
+    case F_VECTOR_DISTANCE:
+      error = vector_distance (result, args, num_args);
+      break;
+
+    case F_L1_DISTANCE:
+      error = vector_l1_distance (result, args, num_args);
+      break;
+
+    case F_L2_DISTANCE:
+      error = vector_l2_distance (result, args, num_args);
+      break;
+
+    case F_INNER_PRODUCT:
+      error = vector_inner_product (result, args, num_args);
+      break;
+
+    case F_COSINE_DISTANCE:
+      error = vector_cosine_distance (result, args, num_args);
       break;
 
     default:

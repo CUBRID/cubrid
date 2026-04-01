@@ -182,7 +182,7 @@ extern "C"
 
 #define DB_IS_CONSTRAINT_INDEX_FAMILY(c) \
   ( (DB_IS_CONSTRAINT_UNIQUE_FAMILY(c) || (c) == DB_CONSTRAINT_INDEX || (c) == DB_CONSTRAINT_REVERSE_INDEX \
-     || (c) == DB_CONSTRAINT_FOREIGN_KEY) ? true : false )
+     || (c) == DB_CONSTRAINT_FOREIGN_KEY || (c) == DB_CONSTRAINT_VECTOR_INDEX) ? true : false )
 
 #define DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY(c) \
   ( ((DB_CONSTRAINT_TYPE) (c) == DB_CONSTRAINT_REVERSE_UNIQUE || (DB_CONSTRAINT_TYPE) (c) == DB_CONSTRAINT_REVERSE_INDEX) \
@@ -468,7 +468,8 @@ extern "C"
     DB_CONSTRAINT_REVERSE_UNIQUE = 3,
     DB_CONSTRAINT_REVERSE_INDEX = 4,
     DB_CONSTRAINT_PRIMARY_KEY = 5,
-    DB_CONSTRAINT_FOREIGN_KEY = 6
+    DB_CONSTRAINT_FOREIGN_KEY = 6,
+    DB_CONSTRAINT_VECTOR_INDEX = 7
   } DB_CONSTRAINT_TYPE;		/* TODO: only one enum for DB_CONSTRAINT_TYPE and SM_CONSTRAINT_TYPE */
 
   typedef enum
@@ -730,6 +731,7 @@ extern "C"
     DB_TYPE_DATETIMETZ = 38,
     DB_TYPE_DATETIMELTZ = 39,
     DB_TYPE_JSON = 40,
+    DB_TYPE_VECTOR = 41,
 
     /* aliases */
     DB_TYPE_LIST = DB_TYPE_SEQUENCE,
@@ -737,7 +739,7 @@ extern "C"
     DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values */
     DB_TYPE_UTIME = DB_TYPE_TIMESTAMP,	/* SQL TIMESTAMP */
 
-    DB_TYPE_LAST = DB_TYPE_JSON
+    DB_TYPE_LAST = DB_TYPE_VECTOR
   } DB_TYPE;
 
   /* Domain information stored in DB_VALUE structures. */
@@ -1058,6 +1060,13 @@ extern "C"
     JSON_DOC *document;
   };
 
+  typedef struct db_vector_float DB_VECTOR_FLOAT;
+  struct db_vector_float
+  {
+    int dim;
+    float *float_array;
+  };
+
   /* A union of all of the possible basic type values. This is used in the definition of the DB_VALUE which is the fundamental
    * structure used in passing data in and out of the db_ function layer.
    */
@@ -1089,6 +1098,7 @@ extern "C"
     DB_RESULTSET rset;
     DB_ENUM_ELEMENT enumeration;
     DB_JSON json;
+    DB_VECTOR_FLOAT vector_float;
   };
 
   /* This is the primary structure used for passing values in and out of the db_ function layer. Values are always tagged with

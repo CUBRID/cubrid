@@ -2484,6 +2484,10 @@ partition_match_key_range (PRUNING_CONTEXT * pinfo, const KEY_RANGE * key_range,
       lop = PO_INVALID;
       rop = PO_INVALID;
       break;
+
+    default:
+      assert (false);
+      break;
     }
 
   pruningset_init (&left, PARTITIONS_COUNT (pinfo));

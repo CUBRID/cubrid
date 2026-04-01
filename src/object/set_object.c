@@ -2437,6 +2437,12 @@ set_create_sequence (int size)
 }
 
 DB_COLLECTION *
+set_create_vector (int size)
+{
+  return set_create (DB_TYPE_VECTOR, size);
+}
+
+DB_COLLECTION *
 set_create_with_domain (TP_DOMAIN * domain, int initial_size)
 {
   DB_COLLECTION *col;

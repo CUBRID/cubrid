@@ -23,6 +23,9 @@ yum install -y ncurses-devel git which
 # install JDK 1.8
 yum install -y java-1.8.0-openjdk-devel
 
+# install openblas and lapack (Required to build FAISS)
+yum install -y openblas lapack opanblas-devel lapack-devel
+
 
 # install build tools
 export CMAKE_VERSION=3.26.3

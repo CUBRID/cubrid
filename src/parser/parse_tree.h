@@ -44,6 +44,8 @@
 #include "hide_password.h"
 #include "misctype_def.h"
 
+#include "vector_distance_enum.h"
+
 // forward definitions
 struct json_t;
 
@@ -1123,6 +1125,7 @@ enum pt_type_enum
   PT_TYPE_LOGICAL,
   PT_TYPE_MAYBE,
   PT_TYPE_JSON,
+  PT_TYPE_VECTOR,
 
   /* special values */
   PT_TYPE_NA,			/* in SELECT NA */
@@ -1519,6 +1522,12 @@ typedef enum
   PT_CRC32,
   PT_SCHEMA_DEF,
   PT_CONV_TZ,
+
+  /* CUBVEC */
+  PT_DISTANCE_OP_COSINE,
+  PT_DISTANCE_OP_EUCLIDEAN,
+  PT_DISTANCE_OP_MANHATTAN,
+  PT_DISTANCE_OP_NEG_INNER_PROD,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
@@ -1975,9 +1984,23 @@ struct pt_create_entity_info
   unsigned if_not_exists:1;	/* IF NOT EXISTS clause for create table | class */
 };
 
+#define HNSW_DEFAULT_M 16
+#define HNSW_DEFAULT_EF_CONSTRUCTION 64
+
+/* Structure for vector index specific information */
+typedef struct pt_vector_index_info
+{
+  int hnsw_m;
+  int hnsw_ef_construction;
+  enum DB_VECTOR_DISTANCE_METRIC metric;
+} PT_VECTOR_INDEX_INFO;
+
 /* CREATE/DROP INDEX INFO */
 struct pt_index_info
 {
+  bool is_vector_index;
+  PT_VECTOR_INDEX_INFO vector_index;
+
   PT_NODE *indexed_class;	/* PT_SPEC */
   PT_NODE *column_names;	/* PT_SORT_SPEC (list) */
   PT_NODE *index_name;		/* PT_NAME */
@@ -3139,6 +3162,7 @@ union pt_data_value
   DB_ELO elo;			/* ??? */
   int b;
   PT_ENUM_ELEMENT enumeration;
+  DB_VECTOR_FLOAT vector_float;
 };
 
 /* Info for the VALUE node */

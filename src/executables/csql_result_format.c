@@ -23,6 +23,8 @@
 #ident "$Id$"
 
 #include "config.h"
+#include "cubvec_assert.h"
+#include "db_vector.hpp"
 
 #include <float.h>
 #include <time.h>
@@ -224,6 +226,10 @@ typedef struct
 
 static DB_TYPE_SET_PROFILE default_set_profile = {
   '{', '}', -1
+};
+
+static DB_TYPE_SET_PROFILE default_vector_profile = {
+  '[', ']', -1
 };
 
 
@@ -1638,6 +1644,13 @@ csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * cs
 	  len = strlen (result);
 	}
       break;
+    case DB_TYPE_VECTOR:
+      {
+	std::string result_str = db_vector_float_to_string (*db_get_vector_float (value));
+	result = strdup (result_str.c_str ());
+	len = strlen (result);
+	break;
+      }
     case DB_TYPE_TIME:
       {
 	char buf[TIME_BUF_SIZE];

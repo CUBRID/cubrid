@@ -316,6 +316,18 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 	    }
 	  break;
 
+	case DB_TYPE_VECTOR:
+	  strcpy (temp_buffer, temp_domain->type->name);
+	  if (temp_domain->precision == 0 || temp_domain->precision == DB_DEFAULT_PRECISION)
+	    {
+	      m_buf ("%s", ustr_upper (temp_buffer));
+	    }
+	  else
+	    {
+	      m_buf ("%s(%d)", ustr_upper (temp_buffer), temp_domain->precision);
+	    }
+	  break;
+
 	case DB_TYPE_ENUMERATION:
 	  has_collation = 1;
 	  strcpy (temp_buffer, temp_domain->type->name);
@@ -666,6 +678,9 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	case SM_CONSTRAINT_FOREIGN_KEY:
 	  m_buf ("FOREIGN KEY ");
 	  break;
+	case SM_CONSTRAINT_VECTOR_INDEX:
+	  m_buf ("VECTOR INDEX ");
+	  break;
 	default:
 	  m_buf ("CONSTRAINT ");
 	  break;
@@ -703,6 +718,10 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	  m_buf (" CONSTRAINT ");
 	  describe_identifier (constraint.name, prt_type);
 	  m_buf (" FOREIGN KEY ");
+	  break;
+	case SM_CONSTRAINT_VECTOR_INDEX:
+	  m_buf (" VECTOR INDEX ");
+	  describe_identifier (constraint.name, prt_type);
 	  break;
 	default:
 	  assert (false);

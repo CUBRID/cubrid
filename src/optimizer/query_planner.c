@@ -265,6 +265,8 @@ static bool qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index
 static bool qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_NODE * col);
 static int qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
 static int qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
+static int qo_validate_index_for_vector_index (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
+
 static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
@@ -316,6 +318,17 @@ static QO_PLAN_VTBL qo_index_scan_plan_vtbl = {
   qo_iscan_cost,
   qo_scan_info,
   "Index scan"
+};
+
+static QO_PLAN_VTBL qo_vector_index_scan_plan_vtbl = {
+  "viscan",
+  qo_scan_fprint,
+  qo_scan_walk,
+  qo_scan_free,
+  qo_zero_cost,			// TODO (CUBVEC): always use vector index scan instead of sequential scan
+  qo_zero_cost,			// TODO (CUBVEC): always use vector index scan instead of sequential scan
+  qo_scan_info,
+  "Vector index scan"
 };
 
 static QO_PLAN_VTBL qo_sort_plan_vtbl = {
@@ -421,7 +434,8 @@ QO_PLAN_VTBL *all_vtbls[] = {
   &qo_hash_join_plan_vtbl,
   &qo_follow_plan_vtbl,
   &qo_set_follow_plan_vtbl,
-  &qo_worst_plan_vtbl
+  &qo_worst_plan_vtbl,
+  &qo_vector_index_scan_plan_vtbl
 };
 
 #define DEFAULT_NULL_SELECTIVITY (double) 0.01
@@ -1113,6 +1127,15 @@ qo_top_plan_new (QO_PLAN * plan)
       /* already found out that multi range optimization can be applied on current plan, skip any other checks */
       return plan;
     }
+  if (qo_is_viscan (plan))
+    {
+      return plan;
+    }
+
+  if (qo_is_viscan (plan))
+    {
+      return plan;
+    }
 
   all_distinct = tree->info.query.all_distinct;
   group_by = tree->info.query.q.select.group_by;
@@ -1299,6 +1322,11 @@ qo_top_plan_new (QO_PLAN * plan)
 	      if (qo_is_iscan_from_orderby (plan))
 		{
 		  qo_worst_cost (plan);
+		  return plan;
+		}
+
+	      if (qo_is_viscan (plan))
+		{
 		  return plan;
 		}
 
@@ -1813,15 +1841,29 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
   assert (ni_entry->head != NULL);
 
   assert (scan_method == QO_SCANMETHOD_INDEX_SCAN || scan_method == QO_SCANMETHOD_INDEX_ORDERBY_SCAN
-	  || scan_method == QO_SCANMETHOD_INDEX_GROUPBY_SCAN || scan_method == QO_SCANMETHOD_INDEX_SCAN_INSPECT);
+	  || scan_method == QO_SCANMETHOD_INDEX_GROUPBY_SCAN || scan_method == QO_SCANMETHOD_INDEX_SCAN_INSPECT
+	  || scan_method == QO_SCANMETHOD_VECTOR_INDEX_SCAN);
 
   assert (scan_method != QO_SCANMETHOD_INDEX_SCAN || !(ni_entry->head->force < 0));
-  assert (scan_method == QO_SCANMETHOD_INDEX_SCAN_INSPECT || range_terms != NULL);
+  assert (scan_method == QO_SCANMETHOD_INDEX_SCAN_INSPECT || scan_method == QO_SCANMETHOD_VECTOR_INDEX_SCAN
+	  || range_terms != NULL);
 
   plan = qo_scan_new (info, node, scan_method);
   if (plan == NULL)
     {
       return NULL;
+    }
+
+  if (scan_method == QO_SCANMETHOD_VECTOR_INDEX_SCAN)
+    {
+      /*
+       * This is, in essence, the selectivity of the index.  We
+       * really need to do a better job of figuring out the cost of
+       * an indexed scan.
+       */
+      plan->vtbl = &qo_vector_index_scan_plan_vtbl;
+      plan->plan_un.scan.index = ni_entry;
+      goto exit;
     }
 
   bitset_init (&index_segs, env);
@@ -2075,6 +2117,8 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
 
   assert (plan->plan_un.scan.index != NULL);
 
+exit:
+
   qo_plan_compute_cost (plan);
 
   plan = qo_top_plan_new (plan);
@@ -2313,6 +2357,12 @@ qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
     {
       fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "index: ");
       fprintf (f, "%s ", plan->plan_un.scan.index->head->constraints->name);
+
+      if (plan->plan_un.scan.scan_method == QO_SCANMETHOD_VECTOR_INDEX_SCAN)
+	{
+	  // TODO (CUBVEC)
+	  // print attributes of vector index scan
+	}
 
       /* print key limit */
       if (plan->plan_un.scan.index->head->key_limit)
@@ -8637,6 +8687,22 @@ qo_is_iscan (QO_PLAN * plan)
 }
 
 /*
+ * qo_is_viscan ()
+ *   return: true/false
+ *   plan(in):
+ */
+bool
+qo_is_viscan (QO_PLAN * plan)
+{
+  if (plan && plan->plan_type == QO_PLANTYPE_SCAN
+      && (plan->plan_un.scan.scan_method == QO_SCANMETHOD_VECTOR_INDEX_SCAN))
+    {
+      return true;
+    }
+  return false;
+}
+
+/*
  * qo_generate_index_scan () - With index information, generates index scan plan
  *   return: num of index scan plans
  *   infop(in): pointer to QO_INFO (environment info node which holds plans)
@@ -8782,6 +8848,34 @@ qo_generate_loose_index_scan (QO_INFO * infop, QO_NODE * nodep, QO_NODE_INDEX_EN
   n = qo_check_plan_on_info (infop, planp);
 
   bitset_delset (&range_terms);
+
+  return n;
+}
+
+/*
+ * qo_generate_vector_index_scan () - generate vector index scan plan
+ *   return: number of vector index scan plans
+ *   infop(in): pointer to QO_INFO (environment info node which holds plans)
+ *   nodep(in): pointer to QO_NODE (node in the join graph)
+ *   ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
+ */
+static int
+qo_generate_vector_index_scan (QO_INFO * infop, QO_NODE * nodep, QO_NODE_INDEX_ENTRY * ni_entryp)
+{
+  QO_INDEX_ENTRY *index_entryp;
+  int n = 0;
+  QO_PLAN *planp;
+
+  index_entryp = (ni_entryp)->head;
+  if (index_entryp->force < 0)
+    {
+      assert (false);
+      return 0;
+    }
+
+  planp = qo_index_scan_new (infop, nodep, ni_entryp, QO_SCANMETHOD_VECTOR_INDEX_SCAN, NULL /* &vec_term */ , NULL);
+
+  n = qo_check_plan_on_info (infop, planp);
 
   return n;
 }
@@ -9105,6 +9199,11 @@ qo_search_planner (QO_PLANNER * planner)
 		  assert (bitset_is_empty (&seg_terms));
 
 		  n = qo_generate_loose_index_scan (info, node, ni_entry);
+		}
+	      else if (index_entry->constraints->type == SM_CONSTRAINT_VECTOR_INDEX
+		       && qo_validate_index_for_vector_index (info->env, ni_entry))
+		{
+		  n = qo_generate_vector_index_scan (info, node, ni_entry);
 		}
 	      else
 		{
@@ -9758,6 +9857,16 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  lhs_selectivity = qo_equal_selectivity (env, node);
 	  selectivity = qo_not_selectivity (env, lhs_selectivity);
 	  break;
+
+	case PT_DISTANCE_OP_EUCLIDEAN:
+	  {
+	    if (node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
+	      {
+		// CUBVEC todo: not yet analyzed
+		ASSERT_CUBVEC (false);
+	      }
+	    [[fallthrough]];
+	  }
 
 	case PT_NULLSAFE_EQ:
 	  selectivity = qo_equal_selectivity (env, node);
@@ -10924,6 +11033,137 @@ qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_
 }
 
 /*
+ * qo_validate_index_for_vector_index () - checks for isnull(key) or not null flag
+ *  env(in): pointer to the optimizer environment
+ *  ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
+ *  return: 1 if the index can be used, 0 elseware
+ */
+static int
+qo_validate_index_for_vector_index (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
+{
+  QO_INDEX_ENTRY *index_entryp;
+  QO_CLASS_INFO_ENTRY *index_class;
+
+  int pos;
+  PT_NODE *node = NULL;
+  PT_NODE *order_by = NULL;
+  PT_NODE *order_by_for = NULL;
+  PT_NODE *arg1 = NULL;
+  PT_NODE *arg2 = NULL;
+
+  assert (ni_entryp != NULL);
+  assert (ni_entryp->head != NULL);
+  assert (ni_entryp->head->class_ != NULL);
+
+  index_entryp = ni_entryp->head;
+  index_class = index_entryp->class_;
+
+  if (!QO_ENV_PT_TREE (env))
+    {
+      goto end;
+    }
+
+  order_by = QO_ENV_PT_TREE (env)->info.query.order_by;
+  order_by_for = QO_ENV_PT_TREE (env)->info.query.orderby_for;
+
+  if (!order_by || !order_by_for)
+    {
+      goto end;
+    }
+
+  /* limit a, b */
+  if (order_by_for->next != NULL)
+    {
+      goto end;
+    }
+
+  pos = QO_ENV_PT_TREE (env)->info.query.order_by->info.sort_spec.pos_descr.pos_no;
+  node = QO_ENV_PT_TREE (env)->info.query.q.select.list;
+
+  while (pos > 1 && node)
+    {
+      node = node->next;
+      pos--;
+    }
+  if (!node)
+    {
+      goto end;
+    }
+
+  if (node->node_type == PT_EXPR && node->info.expr.op == PT_FUNCTION_HOLDER)
+    {
+      // FUNCTION HOLDER
+      node = node->info.expr.arg1;
+      if (!node)
+	{
+	  goto end;
+	}
+    }
+
+  if (pt_is_vector_distance_function (QO_ENV_PARSER (env), node))
+    {
+      // naiive check for vector index
+      PT_NODE *arg_list = node->info.function.arg_list;
+      arg1 = arg_list;
+      arg2 = arg_list->next;
+    }
+  else if (pt_is_vector_distance_expr (QO_ENV_PARSER (env), node))
+    {
+      arg1 = node->info.expr.arg1;
+      arg2 = node->info.expr.arg2;
+    }
+
+  // check arg1 and arg2
+  {
+    if (arg1 == NULL || arg2 == NULL)
+      {
+	goto end;
+      }
+
+    if (arg1->node_type == arg2->node_type)
+      {
+	goto end;
+      }
+
+    /* session variable */
+    if (arg1->node_type == PT_EXPR && arg1->info.expr.op == PT_CAST)
+      {
+	arg1 = arg1->info.expr.arg1;
+	if (arg1->node_type == PT_EXPR && arg1->info.expr.op == PT_EVALUATE_VARIABLE)
+	  {
+	    arg1 = arg1->info.expr.arg1;
+	  }
+      }
+    if (arg2->node_type == PT_EXPR && arg2->info.expr.op == PT_CAST)
+      {
+	arg2 = arg2->info.expr.arg1;
+	if (arg2->node_type == PT_EXPR && arg2->info.expr.op == PT_EVALUATE_VARIABLE)
+	  {
+	    arg2 = arg2->info.expr.arg1;
+	  }
+      }
+
+    if (arg1->node_type == PT_NAME && PT_IS_CONST (arg2))
+      {
+	// ok
+      }
+    else if (PT_IS_CONST (arg1) && (arg2->node_type == PT_NAME))
+      {
+	// ok
+      }
+    else
+      {
+	goto end;
+      }
+  }
+
+  return 1;
+
+end:
+  return 0;
+}
+
+/*
  * qo_validate_index_for_orderby () - checks for isnull(key) or not null flag
  *  env(in): pointer to the optimizer environment
  *  ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
@@ -11979,7 +12219,7 @@ exit_on_end:
 bool
 qo_is_interesting_order_scan (QO_PLAN * plan)
 {
-  if (qo_is_iscan (plan) || qo_is_iscan_from_groupby (plan) || qo_is_iscan_from_orderby (plan))
+  if (qo_is_iscan (plan) || qo_is_iscan_from_groupby (plan) || qo_is_iscan_from_orderby (plan) || qo_is_viscan (plan))
     {
       return true;
     }
@@ -12245,6 +12485,10 @@ qo_plan_scan_print_json (QO_PLAN * plan)
     {
     case QO_SCANMETHOD_SEQ_SCAN:
       scan_string = "TABLE SCAN";
+      break;
+
+    case QO_SCANMETHOD_VECTOR_INDEX_SCAN:
+      scan_string = "VECTOR INDEX SCAN";
       break;
 
     case QO_SCANMETHOD_INDEX_SCAN:
@@ -12571,6 +12815,10 @@ qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent)
     {
     case QO_SCANMETHOD_SEQ_SCAN:
       fprintf (fp, "TABLE SCAN (%s)", class_name);
+      break;
+
+    case QO_SCANMETHOD_VECTOR_INDEX_SCAN:
+      fprintf (fp, "VECTOR INDEX SCAN (%s)", class_name);
       break;
 
     case QO_SCANMETHOD_INDEX_SCAN:

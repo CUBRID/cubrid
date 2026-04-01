@@ -16,9 +16,9 @@ jobs:
           COMMENT="${{ github.event.comment.body }}"
           echo "[debug] Comment: $COMMENT"
 
-          # Allowed commands: /run all, /run shell, /run sql, /run medium
+          # Allowed commands: /run all, /run shell, /run sql, /run medium, /run cubvec
           # Or any combination of them (up to 4)
-          if ! [[ "$COMMENT" =~ ^/run([[:space:]]+(all|shell|sql|medium)){1,4}$ ]]; then
+          if ! [[ "$COMMENT" =~ ^/run([[:space:]]+(all|shell|sql|medium|cubvec)){1,4}$ ]]; then
             echo "[info] Ignored invalid command: $COMMENT"
             exit 0
           fi
@@ -33,7 +33,7 @@ jobs:
           COMMENT="${{ github.event.comment.body }}"
           echo "[debug] Comment: $COMMENT"
 
-          TEST_TYPES="shell sql medium"
+          TEST_TYPES="shell sql medium cubvec"
           TEST_JSON="{"
 
           # If 'all' is included, run all tests

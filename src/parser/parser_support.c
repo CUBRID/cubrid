@@ -62,6 +62,8 @@
 #include "parser_allocator.hpp"
 #include "execute_schema.h"
 
+#include "cubvec_assert.h"
+
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -711,13 +713,34 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  || function_type == F_JSON_SET
 	  || function_type == F_JSON_TYPE || function_type == F_JSON_UNQUOTE || function_type == F_JSON_VALID
 	  || function_type == F_REGEXP_COUNT || function_type == F_REGEXP_INSTR || function_type == F_REGEXP_LIKE
-	  || function_type == F_REGEXP_REPLACE || function_type == F_REGEXP_SUBSTR)
+	  || function_type == F_REGEXP_REPLACE || function_type == F_REGEXP_SUBSTR
+	  || function_type == F_VECTOR_DISTANCE || function_type == F_L1_DISTANCE || function_type == F_L2_DISTANCE
+	  || function_type == F_INNER_PRODUCT || function_type == F_COSINE_DISTANCE)
 	{
 	  return true;
 	}
     }
 
   return false;
+}
+
+bool
+pt_is_vector_distance_function (PARSER_CONTEXT * parser, const PT_NODE * node)
+{
+  return node->node_type == PT_FUNCTION && (node->info.function.function_type == F_VECTOR_DISTANCE
+					    || node->info.function.function_type == F_L1_DISTANCE
+					    || node->info.function.function_type == F_L2_DISTANCE
+					    || node->info.function.function_type == F_INNER_PRODUCT
+					    || node->info.function.function_type == F_COSINE_DISTANCE);
+}
+
+bool
+pt_is_vector_distance_expr (PARSER_CONTEXT * parser, const PT_NODE * node)
+{
+  return node->node_type == PT_EXPR && (node->info.expr.op == PT_DISTANCE_OP_COSINE
+					|| node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN
+					|| node->info.expr.op == PT_DISTANCE_OP_MANHATTAN
+					|| node->info.expr.op == PT_DISTANCE_OP_NEG_INNER_PROD);
 }
 
 /*
@@ -8342,6 +8365,14 @@ pt_is_operator_arith (PT_OP_TYPE op)
 {
   switch (op)
     {
+    case PT_DISTANCE_OP_COSINE:
+    case PT_DISTANCE_OP_EUCLIDEAN:
+    case PT_DISTANCE_OP_MANHATTAN:
+    case PT_DISTANCE_OP_NEG_INNER_PROD:
+      {
+	vimkim_log ("PT_DISTANCE_OP_<vector metric> is arithmetic.");
+	return true;
+      }
     case PT_PLUS:
     case PT_MINUS:
     case PT_TIMES:
@@ -8399,6 +8430,15 @@ pt_is_operator_logical (PT_OP_TYPE op)
     case PT_LE:
     case PT_LE_ALL:
     case PT_LE_SOME:
+    case PT_DISTANCE_OP_EUCLIDEAN:
+      {
+	if (op == PT_DISTANCE_OP_EUCLIDEAN)
+	  {
+	    vimkim_log ("PT_DISTANCE_OP_EUCLIDEAN is not logical.\n");
+	    return false;
+	  }
+	[[fallthrough]];
+      }
     case PT_NULLSAFE_EQ:
     case PT_IS_NOT_NULL:
     case PT_IS_NULL:

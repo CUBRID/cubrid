@@ -115,6 +115,7 @@ extern void set_area_reset ();
 extern DB_COLLECTION *set_create_basic (void);
 extern DB_COLLECTION *set_create_multi (void);
 extern DB_COLLECTION *set_create_sequence (int size);
+extern DB_COLLECTION *set_create_vector (int size);
 extern DB_COLLECTION *set_create_with_domain (TP_DOMAIN * domain, int initial_size);
 extern DB_COLLECTION *set_make_reference (void);
 extern DB_COLLECTION *set_copy (DB_COLLECTION * set);

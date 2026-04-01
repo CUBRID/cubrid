@@ -25,6 +25,7 @@
 %{/*%CODE_REQUIRES_START%*/
 #include "json_table_def.h"
 #include "parser.h"
+#include "parser_kv_pair.h"
 
 #if 1
 /* TODO: 
@@ -147,6 +148,7 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #include "storage_common.h"
 #include "sp_constants.hpp"
 #include "db_function.hpp"
+#include "vector_distance_enum.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -554,6 +556,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
   container_10 c10;
   container_11 c11;
   struct json_table_column_behavior jtcb;
+  kv_pair *kvp;
 }
 
 
@@ -848,6 +851,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> sort_spec_list
 %type <node> expression_
 %type <node> normal_expression
+%type <node> expression_vector_distance
 %type <node> expression_strcat
 %type <node> expression_add_sub
 %type <node> expression_bitshift
@@ -1021,6 +1025,9 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> opt_sp_default_value
 %type <node> table_column
 
+%type <node> opt_vector_distance_metric
+%type <node> vector_distance_metric
+
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -1081,7 +1088,12 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <c2> class_name_with_server_name
 %type <c2> opt_index_with_clause
 %type <c2> index_with_item_list
+%type <c2> opt_vector_args
 %type <c2> opt_authid_and_deterministic
+%type <c2> vector_index_column_with_metric
+%type <kvp> opt_vector_index_with_clause
+%type <kvp> vector_index_with_item_list
+%type <kvp> vector_index_with_item
 
 /*}}}*/
 
@@ -1192,6 +1204,10 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token DIAGNOSTICS
 %token DIFFERENCE_
 %token DISCONNECT
+%token DISTANCE_OP_COSINE
+%token DISTANCE_OP_EUCLIDEAN
+%token DISTANCE_OP_MANHATTAN
+%token DISTANCE_OP_NEG_INNER_PROD
 %token DISTINCT
 %token DIV
 %token DO
@@ -1439,6 +1455,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token VARIABLE_
 %token VARYING
 %token VCLASS
+%token VECTOR
 %token VIEW
 %token WHEN
 %token WHENEVER
@@ -1513,6 +1530,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> COMMENT
 %token <cptr> COMMITTED
 %token <cptr> COMPILE
+%token <cptr> COSINE_DISTANCE
 %token <cptr> COST
 %token <cptr> CRITICAL
 %token <cptr> CUME_DIST
@@ -1555,6 +1573,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> INF_LE_
 %token <cptr> INF_LT_
 %token <cptr> INFINITE_
+%token <cptr> INNER_PRODUCT
 %token <cptr> INSTANCES
 %token <cptr> INVALIDATE
 %token <cptr> INVISIBLE
@@ -1591,6 +1610,8 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> JSON_UNQUOTE
 %token <cptr> JSON_VALID
 %token <cptr> JOB
+%token <cptr> L1_DISTANCE
+%token <cptr> L2_DISTANCE
 %token <cptr> LAG
 %token <cptr> LAST_VALUE
 %token <cptr> LCASE
@@ -1695,6 +1716,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> VAR_POP
 %token <cptr> VAR_SAMP
 %token <cptr> VARIANCE
+%token <cptr> VECTOR_DISTANCE
 %token <cptr> VISIBLE
 %token <cptr> VOLUME
 %token <cptr> WEEK
@@ -2637,6 +2659,243 @@ create_stmt
 
 			$$ = qc;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| CREATE					/* 1 */
+		{					/* 2 */
+			PT_NODE* node = parser_new_node (this_parser, PT_CREATE_INDEX);
+			parser_push_hint_node (node);
+			push_msg (MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+		}
+	  opt_hint_list					/* 3 */
+	  opt_reverse					/* 4 */
+	  VECTOR
+	  INDEX						/* 6 */
+		{ pop_msg(); }  			/* 7 */
+	  identifier					/* 8 */
+	  ON_						/* 9 */
+	  only_class_name				/* 10 */
+	  vector_index_column_with_metric	        /* 11 */
+	  opt_where_clause				/* 12 */
+          // TODO: remove this: opt_index_with_clause	/* 13 */
+	  opt_vector_index_with_clause			/* 13 */
+	  opt_invisible					/* 14 */
+	  opt_comment_spec				/* 15 */
+		{{
+
+			PT_NODE *node = parser_pop_hint_node ();
+			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
+			PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
+
+			// TODO: CUBVEC - Old opt_index_with_clause ($13) not handled in this CREATE VECTOR INDEX statement.
+			// Therefore we cannot set deduplication level for the index.
+			// Also, we cannot specify online / offline option for the index.
+			container_2 rule_13;
+			// TODO: CUBVEC - Initialize the rule 13 as it was not set.
+			SET_CONTAINER_2 (rule_13, 0, DEDUPLICATE_OPTION_AUTO);
+
+			assert(node != NULL);
+
+
+			node->info.index.is_vector_index = true;
+
+			node->info.index.vector_index.hnsw_m = HNSW_DEFAULT_M;
+			node->info.index.vector_index.hnsw_ef_construction = HNSW_DEFAULT_EF_CONSTRUCTION;
+
+			kv_pair *kvp = $13; // opt_vector_index_with_clause
+			if (kvp) 
+			  {
+			    PT_NODE *m_node = kv_pair_lookup(kvp, "m");
+			    if (m_node != NULL)
+			      {
+				int m = m_node->info.value.data_value.i;
+				node->info.index.vector_index.hnsw_m = m;
+			      }
+			    PT_NODE *ef_construction_node = kv_pair_lookup(kvp, "ef_construction");
+			    if (ef_construction_node != NULL)
+			      {
+				int ef_con = ef_construction_node->info.value.data_value.i;
+				node->info.index.vector_index.hnsw_ef_construction = ef_con;
+			      }
+			  }
+
+			bool opt_unique = false; // original $5
+
+		        if (opt_unique && $12)
+			  {
+			    /* Currently, not allowed unique with filter/function index.
+			       However, may be introduced later, if it will be usefull.
+			       Unique filter/function index code is removed from
+			       grammar module only. It is kept yet in the others modules.
+			       This will allow us to easily support this feature later by
+			       adding in grammar only. If no need such feature,
+			       filter/function code must be removed from all modules. */
+			    PT_ERRORm (this_parser, node,
+			               MSGCAT_SET_PARSER_SYNTAX,
+			               MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			  }
+			if (node && ocs)
+			  {
+			    PT_NODE *col, *temp;
+			    int arg_count = 0, prefix_col_count = 0;
+
+			    ocs->info.spec.entity_name = $10;
+			    ocs->info.spec.only_all = PT_ONLY;
+			    ocs->info.spec.meta_class = PT_CLASS;
+
+			    PARSER_SAVE_ERR_CONTEXT (ocs, @10.buffer_pos)
+
+			    node->info.index.indexed_class = ocs;
+			    node->info.index.reverse = $4;
+			    node->info.index.unique = opt_unique;
+			    node->info.index.index_name = $8;
+			    if (node->info.index.index_name)
+			      {
+				node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
+			      }
+
+			    col = CONTAINER_AT_0 ($11);
+			    PT_NODE *metric_node = CONTAINER_AT_1 ($11);
+
+			    const char* metric_name = metric_node->info.name.original;
+			    enum DB_VECTOR_DISTANCE_METRIC metric = string_to_vector_distance_metric (metric_name);
+				if (metric == METRIC_UNKNOWN)
+				  {
+				PT_ERRORm (this_parser, metric_node,
+					   MSGCAT_SET_PARSER_SEMANTIC,
+					   MSGCAT_SEMANTIC_INVALID_VECTOR_DISTANCE_METRIC);
+				  }
+			    node->info.index.vector_index.metric = metric;
+
+			    if (node->info.index.unique)
+			      {
+			        for (temp = col; temp != NULL; temp = temp->next)
+			          {
+			            if (temp->info.sort_spec.expr->node_type == PT_EXPR)
+			              {
+			                /* Currently, not allowed unique with
+			                   filter/function index. However, may be
+			                   introduced later, if it will be usefull.
+			                   Unique filter/function index code is removed
+			                   from grammar module only. It is kept yet in
+			                   the others modules. This will allow us to
+			                   easily support this feature later by adding in
+			                   grammar only. If no need such feature,
+			                   filter/function code must be removed from all
+			                   modules. */
+			                PT_ERRORm (this_parser, node,
+			                           MSGCAT_SET_PARSER_SYNTAX,
+			                           MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			              }
+			          }
+			      }
+
+			    prefix_col_count =
+				parser_count_prefix_columns (col, &arg_count);
+
+			    if (prefix_col_count > 1 ||	(prefix_col_count == 1 && arg_count > 1))
+			      {
+				PT_ERRORm (this_parser, node,
+					   MSGCAT_SET_PARSER_SEMANTIC,
+					   MSGCAT_SEMANTIC_MULTICOL_PREFIX_INDX_NOT_ALLOWED);
+			      }
+			    else
+			      {
+				if (arg_count == 1 && (prefix_col_count == 1
+				    || col->info.sort_spec.expr->node_type == PT_FUNCTION))
+				  {
+				    PT_NODE *expr = col->info.sort_spec.expr;
+				    PT_NODE *arg_list = expr->info.function.arg_list;
+				    if ((arg_list != NULL)
+					&& (arg_list->next == NULL)
+					&& (arg_list->node_type == PT_VALUE))
+				      {
+					if (node->info.index.reverse
+					    || node->info.index.unique)
+					  {
+					    PT_ERRORm (this_parser, node,
+						       MSGCAT_SET_PARSER_SYNTAX,
+						       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+					  }
+					else
+					  {
+					    PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+					    if (p)
+					      {
+						p->info.name.original = expr->info.function.generic_name;
+                                                expr->info.function.generic_name = NULL;
+					      }
+					    node->info.index.prefix_length = expr->info.function.arg_list;
+
+                                            expr->info.function.arg_list = NULL;
+                                            parser_free_node (this_parser, expr);
+
+					    col->info.sort_spec.expr = p;
+					  }
+				      }
+				    else
+				      {
+                                        char buf[512], *ptr;
+                                        PT_FUNCTION_INFO *function_ptr = &col->info.sort_spec.expr->info.function;                                        
+
+                                        ptr = (char*)fcode_get_lowercase_name (function_ptr->function_type);
+                                        if(function_ptr->function_type == PT_GENERIC)
+                                        {
+                                           snprintf(buf, sizeof(buf)-1, "%s(%s)", ptr, function_ptr->generic_name);
+                                           ptr = buf;
+                                        }
+                                        
+					PT_ERRORmf (this_parser, col->info.sort_spec.expr,
+						    MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_INDEX, ptr);
+				      }
+				  }
+			      }
+                       
+			    node->info.index.where = $12;
+			    node->info.index.column_names = col;
+
+			    // TODO: CUBVEC - Use rule_13 instead of $13
+                            // original code: 
+			    // node->info.index.deduplicate_level = CONTAINER_AT_1($13);
+                            node->info.index.deduplicate_level = CONTAINER_AT_1(rule_13);
+
+                             if (opt_unique && (node->info.index.deduplicate_level >= DEDUPLICATE_KEY_LEVEL_OFF && node->info.index.deduplicate_level <= DEDUPLICATE_KEY_LEVEL_MAX))
+                              {
+                                  PT_ERRORf (this_parser, node, "%s", "UNIQUE and DEDUPLICATE cannot be specified together.");
+                              }
+
+			    node->info.index.comment = $15;
+
+			    // TODO: CUBVEC - Use rule_13 instead of $13
+			    // original code:
+                            // int with_online_ret = CONTAINER_AT_0($13);  // 0 for normal, 1 for online no parallel,
+                                                        // thread_count + 1 for parallel
+                            int with_online_ret = CONTAINER_AT_0(rule_13);  // 0 for normal, 1 for online no parallel,
+                                                        // thread_count + 1 for parallel
+                            bool is_online = with_online_ret > 0;
+                            bool is_invisible = $14;
+
+                            if (is_online && is_invisible)
+                              {
+                                /* We do not allow invisible and online index at the same time. */
+                                PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
+                                           MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+                              }
+                            node->info.index.index_status = SM_NORMAL_INDEX;
+                            if (is_invisible)
+                              {
+                                /* Invisible index. */
+                                node->info.index.index_status = SM_INVISIBLE_INDEX;
+                              }
+                            else if (is_online)
+                              {
+                                /* Online index. */
+                                node->info.index.index_status = SM_ONLINE_INDEX_BUILDING_IN_PROGRESS;
+                                node->info.index.ib_threads = with_online_ret - 1;
+                              }
+			  }
+
+		      $$ = node;
+
 		}}
 	| CREATE					/* 1 */
 		{					/* 2 */
@@ -4461,7 +4720,71 @@ drop_stmt
 			    $$ = node;
 			    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 			  }
-		}}
+                }}
+	| DROP					/* 1 */
+		{				/* 2 */
+			PT_NODE* node = parser_new_node(this_parser, PT_DROP_INDEX);
+			parser_push_hint_node(node);
+		}
+	  opt_hint_list					/* 3 */
+	  opt_reverse					/* 4 */
+	  VECTOR					/* 5 */
+	  INDEX						/* 6 */
+	  identifier					/* 7 */
+	  ON_						/* 8 */
+	  only_class_name				/* 9 */
+	  opt_index_column_name_list			/* 10 */
+		{{
+			PT_NODE *node = parser_pop_hint_node ();
+			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
+
+			if (node && ocs)
+			  {
+			    PT_NODE *col, *temp;
+			    node->info.index.reverse = $4;
+			    // node->info.index.unique = $5;
+			    node->info.index.unique = false;
+			    node->info.index.index_name = $7;
+			    if (node->info.index.index_name)
+			      {
+				node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
+			      }
+
+			    ocs->info.spec.entity_name = $9;
+			    ocs->info.spec.only_all = PT_ONLY;
+			    ocs->info.spec.meta_class = PT_CLASS;
+			    PARSER_SAVE_ERR_CONTEXT (ocs, @9.buffer_pos)
+			    node->info.index.indexed_class = ocs;
+
+			    col = $10;
+			    if (node->info.index.unique)
+			      {
+			        for (temp = col; temp != NULL; temp = temp->next)
+			          {
+			            if (temp->info.sort_spec.expr->node_type == PT_EXPR)
+			              {
+			                /* Currently, not allowed unique with
+			                   filter/function index. However, may be
+			                   introduced later, if it will be usefull.
+			                   Unique filter/function index code is removed
+			                   from grammar module only. It is kept yet in
+			                   the others modules. This will allow us to
+			                   easily support this feature later by adding in
+			                   grammar only. If no need such feature,
+			                   filter/function code must be removed from all
+			                   modules. */
+			                PT_ERRORm (this_parser, node,
+			                           MSGCAT_SET_PARSER_SYNTAX,
+			                           MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			              }
+			          }
+			      }
+			    node->info.index.column_names = col;
+
+			    $$ = node;
+			    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			  }
+                }}
 	| DROP USER identifier
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP_USER);
@@ -4680,6 +5003,15 @@ index_column_name_list
 		      PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	;
+
+vector_index_column_with_metric
+	: '(' sort_spec identifier ')'
+	    {{
+	       container_2 cnt2;
+	       SET_CONTAINER_2(cnt2, $2, $3);
+	       $$ = cnt2;
+	    }}
+	// TODO: : '(' sort_spec vector_distance_metric ')'
 
 update_statistics_stmt
 	: UPDATE STATISTICS ON_ only_class_name_list opt_with_fullscan
@@ -14802,6 +15134,37 @@ normal_expression
 		{{
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		}}
+	| expression_vector_distance
+		{{
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		 }}
+;
+
+expression_vector_distance
+	: expression_vector_distance DISTANCE_OP_COSINE expression_strcat
+		{{
+			$$ = parser_make_expression (this_parser, PT_DISTANCE_OP_COSINE, $1, $3, NULL);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| expression_vector_distance DISTANCE_OP_EUCLIDEAN expression_strcat
+		{{
+			$$ = parser_make_expression (this_parser, PT_DISTANCE_OP_EUCLIDEAN, $1, $3, NULL);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| expression_vector_distance DISTANCE_OP_MANHATTAN expression_strcat
+		{{
+			$$ = parser_make_expression (this_parser, PT_DISTANCE_OP_MANHATTAN, $1, $3, NULL);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| expression_vector_distance DISTANCE_OP_NEG_INNER_PROD expression_strcat
+		{{
+			$$ = parser_make_expression (this_parser, PT_DISTANCE_OP_NEG_INNER_PROD, $1, $3, NULL);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	| expression_strcat
 		{{
@@ -16174,6 +16537,47 @@ reserved_func
 		{{
 			$$ = parser_make_expression (this_parser, PT_ISNULL, $4, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		}}
+	| L1_DISTANCE '(' expression_ ',' expression_ ')'
+		{{
+			PT_NODE *arg1 = $3;
+			PT_NODE *arg2 = $5;
+
+			arg1->next = arg2;
+
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			$$ = parser_make_func_with_arg_count (this_parser, F_L1_DISTANCE, arg1, 2, 2);
+		}}
+	| L2_DISTANCE '(' expression_ ',' expression_ ')'
+		{{
+			PT_NODE *arg1 = $3;
+			PT_NODE *arg2 = $5;
+
+			arg1->next = arg2;
+
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			$$ = parser_make_func_with_arg_count (this_parser, F_L2_DISTANCE, arg1, 2, 2);
+		}}
+	| INNER_PRODUCT '(' expression_ ',' expression_ ')'
+		{{
+			PT_NODE *arg1 = $3;
+			PT_NODE *arg2 = $5;
+
+			arg1->next = arg2;
+
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			$$ = parser_make_func_with_arg_count (this_parser, F_INNER_PRODUCT, arg1, 2, 2);
+		}}
+	| COSINE_DISTANCE '(' expression_ ',' expression_ ')'
+		{{
+			PT_NODE *arg1 = $3;
+			PT_NODE *arg2 = $5;
+
+			arg1->next = arg2;
+
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			$$ = parser_make_func_with_arg_count (this_parser, F_COSINE_DISTANCE, arg1, 2, 2);
 		}}
 	| LEFT
 		{ push_msg(MSGCAT_SYNTAX_INVALID_LEFT); }
@@ -16488,6 +16892,19 @@ reserved_func
 		{{
 			$$ = parser_make_func_with_arg_count (this_parser, F_REGEXP_SUBSTR, $3, 2, 5);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| VECTOR_DISTANCE '(' expression_ ',' expression_ opt_vector_distance_metric ')'
+		{{
+			PT_NODE *arg1 = $3;
+			PT_NODE *arg2 = $5;
+			PT_NODE *metric = $6;
+
+			// Connect arguments as linked list.
+			arg1->next = arg2;
+			arg2->next = metric;
+
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			$$ = parser_make_func_with_arg_count (this_parser, F_VECTOR_DISTANCE, arg1, 2, 3);
 		}}
 	;
 
@@ -19589,7 +20006,70 @@ primitive_type
 
 			$$ = ctn;
 	  }}
+  | VECTOR opt_vector_args
+		{{
+
+			container_2 ctn;
+			PT_TYPE_ENUM type;
+			PT_NODE *prec, *vec_type, *dt;
+
+			prec = CONTAINER_AT_0 ($2);
+			vec_type = CONTAINER_AT_1 ($2);
+
+			dt = parser_new_node (this_parser, PT_DATA_TYPE);
+			type = PT_TYPE_VECTOR;
+
+			if (dt)
+			  {
+			    assert (prec);
+
+			    dt->type_enum = type;
+			    dt->info.data_type.precision = prec->info.value.data_value.i;
+			  }
+
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (type), dt);
+			$$ = ctn;
+
+			// TODO: The opt_vector_args are not covered in this milestone.
+			// Dimension and type validation for VECTOR arguments must be included
+			// in the milestone that checks user input for correctness.
+
+		}}
 	;
+
+opt_vector_args
+  : /* empty */
+		{{
+
+			container_2 ctn;
+			PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+			if (val)
+                          {
+			    val->info.value.data_value.i = DB_DEFAULT_PRECISION; /* -1 */
+                          }
+
+			SET_CONTAINER_2 (ctn, val, FROM_NUMBER(PT_TYPE_FLOAT));
+			$$ = ctn;
+
+		}}
+	| '(' unsigned_integer ')'
+		{{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, $2, FROM_NUMBER(PT_TYPE_FLOAT));
+			$$ = ctn;
+
+		}}
+	| '(' unsigned_integer ',' FLOAT_ ')'
+		{{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, $2, FROM_NUMBER(PT_TYPE_FLOAT));
+			$$ = ctn;
+
+		}}
+	;
+
 
 opt_internal_external
 	: /* empty */
@@ -19834,6 +20314,35 @@ opt_index_with_clause
              $$ = $2;
           }
         ;
+
+opt_vector_index_with_clause
+        : /* empty */
+          {
+	    $$ = NULL;
+	  }
+        | WITH '(' vector_index_with_item_list ')'
+          {
+             $$ = $3;
+          }
+        ;
+
+vector_index_with_item_list
+	: vector_index_with_item
+	  {
+	    $$ = $1;
+	  }
+	| vector_index_with_item_list ',' vector_index_with_item
+	  {
+	    $$ = kv_pair_push_back($1, $3);
+	  }
+	;
+
+vector_index_with_item
+	: identifier '=' unsigned_integer
+	  {
+	    $$ = kv_pair_make($1, $3);
+	  }
+	;
 
 index_with_item_list  
         : online_parallel
@@ -22493,6 +23002,67 @@ opt_alter_synonym
 		{{
 			$$ = $2;
 		}}
+
+opt_vector_distance_metric
+	: /*empty*/
+		{{
+			$$ = NULL;
+		}}
+	| ',' vector_distance_metric
+		{{
+			$$ = $2;
+		}}
+
+vector_distance_metric
+	: identifier
+		{{
+
+			PT_NODE *identifier = $1;
+			assert (identifier != NULL);
+
+			// Convert identifier (PT_NAME) to PT_VALUE manually.
+			// This is a hack to map vector metric name to an ENUM value.
+			// Conversion starts.
+
+			enum DB_VECTOR_DISTANCE_METRIC metric;
+			const char* metric_name = identifier->info.name.original;
+
+			assert(metric_name != NULL);
+			if (strcasecmp(metric_name, "cosine") == 0)
+			  {
+			    metric = METRIC_COSINE;
+			  }
+			else if (strcasecmp(metric_name, "dot") == 0)
+			  {
+			    metric = METRIC_DOT;
+			  }
+			else if (strcasecmp(metric_name, "euclidean") == 0)
+			  {
+			    metric = METRIC_EUCLIDEAN;
+			  }
+			else if (strcasecmp(metric_name, "manhattan") == 0)
+			  {
+			    metric = METRIC_MANHATTAN;
+			  }
+			else
+			  {
+				metric = METRIC_UNKNOWN;
+			  }
+
+			PT_NODE *ret = parser_new_node (this_parser, PT_VALUE);
+			if (ret)
+			  {
+			    ret->type_enum = PT_TYPE_INTEGER;
+			    ret->info.value.data_value.i = metric;
+			  }
+
+			parser_free_node (this_parser, identifier);
+			// Conversion ends.
+
+			$$ = ret;
+
+		}}
+	;
 
 %%
 

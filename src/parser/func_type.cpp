@@ -20,6 +20,7 @@
  * func_type.cpp
  */
 
+#include "db_function.hpp"
 #include "dbtype.h"
 #include "func_type.hpp"
 #include "message_catalog.h"
@@ -372,6 +373,32 @@ func_all_signatures sig_of_regexp_substr =
   {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_CHAR}, {}},
 };
 
+func_all_signatures sig_of_vector_distance =
+{
+  {PT_TYPE_DOUBLE, {PT_TYPE_VECTOR, PT_TYPE_VECTOR}, {}},
+  {PT_TYPE_DOUBLE, {PT_TYPE_VECTOR, PT_TYPE_VECTOR, PT_TYPE_INTEGER}, {}},
+};
+
+func_all_signatures sig_of_l1_distance =
+{
+  {PT_TYPE_DOUBLE, {PT_TYPE_VECTOR, PT_TYPE_VECTOR}, {}},
+};
+
+func_all_signatures sig_of_l2_distance =
+{
+  {PT_TYPE_DOUBLE, {PT_TYPE_VECTOR, PT_TYPE_VECTOR}, {}},
+};
+
+func_all_signatures sig_of_inner_product =
+{
+  {PT_TYPE_DOUBLE, {PT_TYPE_VECTOR, PT_TYPE_VECTOR}, {}},
+};
+
+func_all_signatures sig_of_cosine_distance =
+{
+  {PT_TYPE_DOUBLE, {PT_TYPE_VECTOR, PT_TYPE_VECTOR}, {}},
+};
+
 func_all_signatures *
 get_signatures (FUNC_CODE ft)
 {
@@ -511,6 +538,16 @@ get_signatures (FUNC_CODE ft)
       return &sig_of_regexp_replace;
     case F_REGEXP_SUBSTR:
       return &sig_of_regexp_substr;
+    case F_VECTOR_DISTANCE:
+      return &sig_of_vector_distance;
+    case F_L1_DISTANCE:
+      return &sig_of_l1_distance;
+    case F_L2_DISTANCE:
+      return &sig_of_l2_distance;
+    case F_INNER_PRODUCT:
+      return &sig_of_inner_product;
+    case F_COSINE_DISTANCE:
+      return &sig_of_cosine_distance;
     default:
       assert (false);
       return nullptr;
@@ -661,6 +698,8 @@ namespace func_type
 	    return (PT_IS_SIMPLE_CHAR_STRING_TYPE (type_enum) || PT_IS_NUMERIC_TYPE (type_enum)
 		    || PT_IS_DATE_TIME_TYPE (type_enum) || PT_IS_BIT_STRING_TYPE (type_enum)
 		    || type_enum == PT_TYPE_ENUMERATION); //monetary should be here???
+	  case PT_TYPE_VECTOR:
+	    return PT_IS_STRING_TYPE (type_enum);
 	  default:
 	    return type.val.type == type_enum;
 	  }
@@ -2952,6 +2991,11 @@ pt_is_function_new_type_checking (FUNC_CODE fcode)
     case F_REGEXP_LIKE:
     case F_REGEXP_REPLACE:
     case F_REGEXP_SUBSTR:
+    case F_VECTOR_DISTANCE:
+    case F_L1_DISTANCE:
+    case F_L2_DISTANCE:
+    case F_INNER_PRODUCT:
+    case F_COSINE_DISTANCE:
     // COUNT functions
     case PT_COUNT:
     case PT_COUNT_STAR:

@@ -152,6 +152,7 @@ extern TP_DOMAIN tp_Object_domain;
 extern TP_DOMAIN tp_Set_domain;
 extern TP_DOMAIN tp_Multiset_domain;
 extern TP_DOMAIN tp_Sequence_domain;
+extern TP_DOMAIN tp_Vector_domain;
 extern TP_DOMAIN tp_Elo_domain;
 extern TP_DOMAIN tp_Blob_domain;
 extern TP_DOMAIN tp_Clob_domain;
@@ -222,7 +223,8 @@ typedef enum tp_match
 
 #define TP_IS_SET_TYPE(typenum) \
   ((((typenum) == DB_TYPE_SET) || ((typenum) == DB_TYPE_MULTISET) || \
-    ((typenum) == DB_TYPE_SEQUENCE)) ? true : false)
+    ((typenum) == DB_TYPE_SEQUENCE) \
+    ? true : false))
 
 /*
  * TP_IS_BIT_TYPE
@@ -280,6 +282,9 @@ typedef enum tp_match
 #define TP_IS_DISCRETE_NUMBER_TYPE(typeid) \
   (((typeid) == DB_TYPE_INTEGER) || ((typeid) == DB_TYPE_SMALLINT) \
    || ((typeid) == DB_TYPE_BIGINT))
+
+#define TP_IS_VECTOR_TYPE(typeid) \
+  (((typeid) == DB_TYPE_VECTOR))
 
 /*
  * Precision for non-parameterized predefined types

@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,14 +16,20 @@
  *
  */
 
+
+
+#ifndef _LOAD_OPEN_DATA_HPP_
+#define _LOAD_OPEN_DATA_HPP_
+
 /*
- * strict_warnings_off.hpp - A utility header file that disables strict warnings previously enabled by strict_warnings_on.hpp
- * NOTE: This header must be included after strict_warnings.h, preferably at the end of the source file.
- * INFO: Header guards are not necessary as this file is intended to be included multiple times.
+ * load_open_data.hpp: load routines to read open data and write into loaddb format
  */
 
-#if defined(__GNUC__) || defined(__clang__)
-#pragma GCC diagnostic pop
-#elif defined(_MSC_VER)
-#pragma warning(pop)
-#endif
+#include <string>
+
+namespace cubload
+{
+  int read_hdf5_file (const std::string &file_name);
+} // namespace cubload
+
+#endif // _LOAD_OPEN_DATA_HPP_

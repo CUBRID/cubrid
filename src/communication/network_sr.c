@@ -435,6 +435,18 @@ net_server_init (void)
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sbtree_get_key_type;
 
+  req_p = &net_Requests[NET_SERVER_HNSW_ADDINDEX];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = shnsw_add_index;
+
+  req_p = &net_Requests[NET_SERVER_HNSW_DELINDEX];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = shnsw_delete_index;
+
+  req_p = &net_Requests[NET_SERVER_HNSW_LOADINDEX];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = shnsw_load_index;
+
   /* disk */
   req_p = &net_Requests[NET_SERVER_DISK_TOTALPGS];
   req_p->processing_function = sdk_totalpgs;
@@ -841,8 +853,9 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
 	  CHECK_MODIFICATION_NO_RETURN (thread_p, error_code);
 	  if (error_code != NO_ERROR)
 	    {
-	      er_log_debug (ARG_FILE_LINE, "net_server_request(): CHECK_DB_MODIFICATION error" " request %s\n",
-			    get_net_request_name (request));
+	      er_log_debug (ARG_FILE_LINE,
+			    "net_server_request(): CHECK_DB_MODIFICATION error"
+			    " request %s\n", get_net_request_name (request));
 	      return_error_to_client (thread_p, rid);
 	      css_send_abort_to_client (conn, rid);
 	      goto end;
@@ -853,8 +866,9 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
     {
       if (!logtb_am_i_dba_client (thread_p))
 	{
-	  er_log_debug (ARG_FILE_LINE, "net_server_request(): CHECK_AUTHORIZATION error" " request %s\n",
-			get_net_request_name (request));
+	  er_log_debug (ARG_FILE_LINE,
+			"net_server_request(): CHECK_AUTHORIZATION error"
+			" request %s\n", get_net_request_name (request));
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "");
 	  return_error_to_client (thread_p, rid);
 	  css_send_abort_to_client (conn, rid);

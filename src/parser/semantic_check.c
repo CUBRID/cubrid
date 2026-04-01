@@ -49,6 +49,8 @@
 #include "msgcat_glossary.hpp"
 #include "network_interface_cl.h"
 
+#include "cubvec_assert.h"
+
 #include "dbtype.h"
 #define PT_CHAIN_LENGTH 10
 
@@ -5571,6 +5573,14 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_TIMEF:
     case PT_DATEDIFF:
     case PT_TIMEDIFF:
+    case PT_DISTANCE_OP_EUCLIDEAN:
+      {
+	if (expr->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
+	  {
+	    vimkim_log ("find partition column count\n");
+	    ASSERT_CUBVEC (false);
+	  }
+      }
     case PT_MODULUS:
     case PT_POSITION:
     case PT_FINDINSET:
@@ -16768,6 +16778,7 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case PT_BETWEEN_GE_INF:
 	case PT_BETWEEN_GT_INF:
 	case PT_RANGE:
+	case PT_DISTANCE_OP_EUCLIDEAN:
 	case PT_MODULUS:
 	case PT_POSITION:
 	case PT_SUBSTRING:

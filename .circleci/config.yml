@@ -18,6 +18,9 @@ parameters:
   run_medium_test:
     type: boolean
     default: false
+  run_cubvec_test:
+    type: boolean
+    default: true
   run_all_test:
     type: boolean
     default: false
@@ -32,6 +35,7 @@ jobs:
     environment:
       RUN_MEDIUM_TEST: << pipeline.parameters.run_medium_test >>
       RUN_SQL_TEST: << pipeline.parameters.run_sql_test >>
+      RUN_CUBVEC_TEST: << pipeline.parameters.run_cubvec_test >>
       RUN_SHELL_TEST: << pipeline.parameters.run_shell_test >>
       RUN_ALL_TEST: << pipeline.parameters.run_all_test >>
       BASELINE: << pipeline.parameters.baseline >>
@@ -43,6 +47,7 @@ jobs:
             echo "Pipeline parameters:"
             echo "RUN_MEDIUM_TEST: $RUN_MEDIUM_TEST"
             echo "RUN_SQL_TEST: $RUN_SQL_TEST"
+            echo "RUN_CUBVEC_TEST: $RUN_CUBVEC_TEST"
             echo "RUN_SHELL_TEST: $RUN_SHELL_TEST"
             echo "RUN_ALL_TEST: $RUN_ALL_TEST"
             echo "BASELINE: $BASELINE"
@@ -50,11 +55,11 @@ jobs:
             if [[ "$CIRCLE_BRANCH" == pull/* ]]; then
               TC_BRANCH="tc/pr-${CIRCLE_BRANCH//[^0-9]/}"
             else
-              TC_BRANCH="develop"
+              TC_BRANCH="cubvec/cubvec"
             fi
             
             TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git ${TC_BRANCH} | cut -f1)
-            [ -z "$TC_SHA" ] && TC_BRANCH="develop" && TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git develop | cut -f1)           
+            [ -z "$TC_SHA" ] && TC_BRANCH="cubvec/cubvec" && TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git cubvec/cubvec | cut -f1)           
             
             CACHE_KEY_BRANCH="${TC_BRANCH//\//-}"
             
@@ -66,7 +71,7 @@ jobs:
             # Generate dynamic configuration file (continue.yml)
             cat \<<EOF > .circleci/continue.yml
             version: 2.1
-            
+
             parameters:
               baseline:
                 type: string
@@ -80,10 +85,13 @@ jobs:
               run_medium_test:
                 type: boolean
                 default: << pipeline.parameters.run_medium_test >>
+              run_cubvec_test:
+                type: boolean
+                default: << pipeline.parameters.run_cubvec_test >>
               run_all_test:
                 type: boolean
                 default: << pipeline.parameters.run_all_test >>
-            
+
             # --------------------------------------------------
             # 1. Reusable commands
             # --------------------------------------------------
@@ -96,6 +104,8 @@ jobs:
                       environment:
                         BRANCH_TESTCASES: "${TC_BRANCH}"
                       shell: /bin/bash
+                      environment:
+                        BRANCH_TESTCASES: cubvec/cubvec
                       no_output_timeout: 45m
                       command: |
                         # Limit core files to 10mb
@@ -108,8 +118,15 @@ jobs:
                             echo "TEST_SUITE is none"
                             exit 1
                             ;;
+                          cubvec)
+                            TEST_SUITE="sql"
+                            base_dir="cubrid-testcases"
+                            glob_path="\$base_dir/sql/_36_cubvec"
+                            ;;
                           sql)
                             base_dir="cubrid-testcases"
+                            rm -rf \$base_dir/sql/_05_plcsql \$base_dir/sql/_35_fig_cake/plcsql
+                            rm -rf \$base_dir/sql/_36_cubvec
                             glob_path="\$base_dir/\$TEST_SUITE/_*"
                             ;;
                           shell)
@@ -286,7 +303,7 @@ jobs:
             executors:
               cubrid-default:
                 docker:
-                  - image: cubridci/cubridci:develop
+                  - image: cubridci/cubridci:cubvec
                 working_directory: /home
 
               cubrid-test-shell:
@@ -414,7 +431,31 @@ jobs:
                       key: "cubrid-testcases-${CACHE_KEY_BRANCH}-${TC_SHA}"
                       paths:
                         - cubrid-testcases
-                      
+
+              test_cubvec:
+                executor: cubrid-default
+                resource_class: medium
+                parallelism: 1
+                environment:
+                  BASELINE: << pipeline.parameters.baseline >>
+                  TEST_SUITE: "cubvec"
+                  GITHUB_TOKEN: \$GHI_TOKEN
+                steps:
+                  - restore_cache:
+                      keys:
+                        - "cubrid-testcases-develop-${TC_SHA}"
+                        - "cubrid-testcases-develop-"
+                  - attach-and-run-tests
+                  - run:
+                      name: Clean up tc before save_cache
+                      command: |
+                        cd cubrid-testcases
+                        git clean -fd
+                        git reset --hard
+                  - save_cache:
+                      key: "cubrid-testcases-${TC_SHA}"
+                      paths:
+                        - cubrid-testcases
               test_shell:
                 executor: cubrid-test-shell
                 parallelism: 50
@@ -440,10 +481,11 @@ jobs:
                 jobs:
                   - build
             EOF
-            
+
             echo "[debug] Conditionally add test jobs based on parameters"
             [ "$RUN_MEDIUM_TEST"  = "true" ] && echo "      - test_medium:    {requires: [build]}" >> .circleci/continue.yml
             [ "$RUN_SQL_TEST"     = "true" ] && echo "      - test_sql:       {requires: [build]}" >> .circleci/continue.yml
+            [ "$RUN_CUBVEC_TEST"  = "true" ] && echo "      - test_cubvec:    {requires: [build]}" >> .circleci/continue.yml
             if [ "$RUN_SHELL_TEST" = "true" ]; then
               echo "      - download-build: {requires: [build]}" >> .circleci/continue.yml
               echo "      - test_shell:     {requires: [download-build]}" >> .circleci/continue.yml
@@ -451,7 +493,7 @@ jobs:
             
             echo "[debug] Output generated configuration (.circleci/continue.yml)"
             cat .circleci/continue.yml
-      
+
       - continuation/continue:
           configuration_path: .circleci/continue.yml
 
@@ -461,4 +503,4 @@ jobs:
 workflows:
   # Initial setup workflow to generate dynamic configuration
   setup:
-    jobs: [ setup ]
+    jobs: [setup]

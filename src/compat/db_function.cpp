@@ -180,6 +180,16 @@ fcode_get_uppercase_name (FUNC_CODE ftype)
       return "REGEXP_REPLACE";
     case F_REGEXP_SUBSTR:
       return "REGEXP_SUBSTR";
+    case F_VECTOR_DISTANCE:
+      return "VECTOR_DISTANCE";
+    case F_L1_DISTANCE:
+      return "L1_DISTANCE";
+    case F_L2_DISTANCE:
+      return "L2_DISTANCE";
+    case F_INNER_PRODUCT:
+      return "INNER_PRODUCT";
+    case F_COSINE_DISTANCE:
+      return "COSINE_DISTANCE";
     default:
       return "***UNKNOWN***";
     }
@@ -336,6 +346,16 @@ fcode_get_lowercase_name (FUNC_CODE ftype)
       return "regexp_replace";
     case F_REGEXP_SUBSTR:
       return "regexp_substr";
+    case F_VECTOR_DISTANCE:
+      return "vector_distance";
+    case F_L1_DISTANCE:
+      return "l1_distance";
+    case F_L2_DISTANCE:
+      return "l2_distance";
+    case F_INNER_PRODUCT:
+      return "inner_product";
+    case F_COSINE_DISTANCE:
+      return "cosine_distance";
     default:
       return "unknown function";
     }

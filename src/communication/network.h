@@ -30,7 +30,6 @@
 #include "locator.h"
 #include "log_comm.h"
 
-
 /* Server statistics structure size, used to make sure the pack/unpack
    routines follow the current structure definition.
    This must be the byte size of the structure
@@ -276,6 +275,10 @@
   /* tdes */ \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_TDES_SET_QUERY_START_INFO) \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_TDES_RESET_QUERY_START_INFO) \
+  /* hnsw */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_HNSW_ADDINDEX) \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_HNSW_DELINDEX) \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_HNSW_LOADINDEX) \
   \
   /* lob */ \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_LOB_CREATE_DIR) \

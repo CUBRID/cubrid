@@ -58,6 +58,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_temp.c
   ${COMPAT_DIR}/db_value_printer.cpp
   ${COMPAT_DIR}/db_vdb.c
+  ${COMPAT_DIR}/db_vector.cpp
   ${COMPAT_DIR}/db_virt.c
   ${COMPAT_DIR}/dbtype_function.c
   )
@@ -78,6 +79,7 @@ set (COMPAT_HEADERS
   ${COMPAT_DIR}/dbtype_function.h
   ${COMPAT_DIR}/dbtype_function.i
   ${COMPAT_DIR}/db_admin.h
+  ${COMPAT_DIR}/db_vector.hpp
   )
 
 set(BASE_SOURCES
@@ -233,6 +235,7 @@ set(PARSER_SOURCES
   ${PARSER_DIR}/xasl_regu_alloc.cpp
   ${PARSER_DIR}/xasl_generation.c
   ${PARSER_DIR}/func_type.cpp
+  ${PARSER_DIR}/parser_kv_pair.c
   )
 set(PARSER_HEADERS
   ${PARSER_DIR}/func_type.hpp
@@ -271,6 +274,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/string_regex.cpp
   ${QUERY_DIR}/string_regex_std.cpp
   ${QUERY_DIR}/string_regex_re2.cpp
+  ${QUERY_DIR}/vector_opfunc.cpp
   ${QUERY_DIR}/xasl_to_stream.c
   )
 set(QUERY_HEADERS
@@ -408,6 +412,7 @@ set(LOADDB_SOURCES
   ${LOADDB_DIR}/load_common.cpp
   ${LOADDB_DIR}/load_db.c
   ${LOADDB_DIR}/load_object.c
+  ${LOADDB_DIR}/load_open_data.cpp
   )
 
 set(LOADDB_HEADERS
@@ -463,13 +468,6 @@ set_source_files_properties(${BISON_loader_grammar_OUTPUTS} PROPERTIES GENERATED
 set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED true)
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
 
-if(UNIX)
-  set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
-  set_source_files_properties(${COMPAT_DIR}/db_json_allocator.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
-  set_source_files_properties(${COMPAT_DIR}/db_json_path.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
-  set_source_files_properties(${COMPAT_DIR}/db_json_types_internal.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
-endif(UNIX)
-
 SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/compactdb_cl.c
   ${EXECUTABLES_DIR}/compactdb_common.c
@@ -524,7 +522,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${API_SOURCES}
   ${PARALLEL_HEAP_SCAN_SOURCES}
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
-  PROPERTIES LANGUAGE CXX
+  PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-Werror"
   )
 SET_SOURCE_FILES_PROPERTIES(
   ${CSQL_GRAMMAR_OUTPUT}
@@ -532,6 +530,14 @@ SET_SOURCE_FILES_PROPERTIES(
   ${COMPAT_SOURCES_C}
   PROPERTIES LANGUAGE C
   )
+
+if(UNIX)
+  set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_json_allocator.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_json_path.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_json_types_internal.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_vector.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+endif(UNIX)
 
 add_library(cubridcs SHARED
   ${EXECUTABLE_SOURCES}
@@ -573,6 +579,18 @@ add_library(cubridcs SHARED
   ${PARALLEL_QUERY_EXECUTE_HEADERS}
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
+
+if(USE_SIMD_NATIVE)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set_source_files_properties(${QUERY_DIR}/vector_opfunc.cpp
+        PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-ftree-vectorize;-mprefer-vector-width=512;-fopenmp-simd;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
+    )
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set_source_files_properties(${QUERY_DIR}/vector_opfunc.cpp
+        PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-fvectorize;-mprefer-vector-width=512;-fopenmp-simd;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
+    )
+  endif()
+endif()
 
 target_compile_definitions(cubridcs PRIVATE CS_MODE CUBRID_EXPORTING ${COMMON_DEFS})
 if(WIN32)

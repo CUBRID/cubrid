@@ -21,6 +21,7 @@
  * fetch.c - Object/Tuple value fetch routines
  */
 
+#include "db_function.hpp"
 #ident "$Id$"
 
 #include "config.h"
@@ -55,6 +56,9 @@
 #include "thread_entry.hpp"
 #include "subquery_cache.h"
 #include "pl_executor.hpp"
+
+#include "cubvec_assert.h"
+#include "vector_opfunc.hpp"
 
 #include "dbtype.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -179,6 +183,17 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_MUL:
     case T_DIV:
     case T_MOD:
+    case T_DISTANCE_OP_COSINE:
+    case T_DISTANCE_OP_EUCLIDEAN:
+    case T_DISTANCE_OP_MANHATTAN:
+    case T_DISTANCE_OP_NEG_INNER_PROD:
+      {
+	if (arithptr->opcode == T_DISTANCE_OP_EUCLIDEAN)
+	  {
+	    vimkim_log ("fetch peek arith.\n");
+	  }
+	[[fallthrough]];
+      }
     case T_POSITION:
     case T_FINDINSET:
     case T_ADD_MONTHS:
@@ -811,6 +826,50 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  goto error;
 	}
+      break;
+
+    case T_DISTANCE_OP_COSINE:
+      {
+	DB_VALUE *args[2] = { peek_left, peek_right };
+	int err = vector_cosine_distance (arithptr->value, args, 2);
+	if (err != NO_ERROR)
+	  {
+	    goto error;
+	  }
+      }
+      break;
+
+    case T_DISTANCE_OP_EUCLIDEAN:
+      {
+	DB_VALUE *args[2] = { peek_left, peek_right };
+	int err = vector_l2_distance (arithptr->value, args, 2);
+	if (err != NO_ERROR)
+	  {
+	    goto error;
+	  }
+      }
+      break;
+
+    case T_DISTANCE_OP_MANHATTAN:
+      {
+	DB_VALUE *args[2] = { peek_left, peek_right };
+	int err = vector_l1_distance (arithptr->value, args, 2);
+	if (err != NO_ERROR)
+	  {
+	    goto error;
+	  }
+      }
+      break;
+
+    case T_DISTANCE_OP_NEG_INNER_PROD:
+      {
+	DB_VALUE *args[2] = { peek_left, peek_right };
+	int err = vector_negative_inner_product (arithptr->value, args, 2);
+	if (err != NO_ERROR)
+	  {
+	    goto error;
+	  }
+      }
       break;
 
     case T_MOD:
@@ -4204,6 +4263,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    case F_REGEXP_LIKE:
 	    case F_REGEXP_REPLACE:
 	    case F_REGEXP_SUBSTR:
+	    case F_VECTOR_DISTANCE:
 	      {
 		regu_variable_list_node *operand;
 
@@ -4415,6 +4475,11 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	case F_REGEXP_LIKE:
 	case F_REGEXP_REPLACE:
 	case F_REGEXP_SUBSTR:
+	case F_VECTOR_DISTANCE:
+	case F_L1_DISTANCE:
+	case F_L2_DISTANCE:
+	case F_INNER_PRODUCT:
+	case F_COSINE_DISTANCE:
 	  break;
 
 	default:

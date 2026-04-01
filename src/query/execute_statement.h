@@ -93,6 +93,7 @@ extern int do_alter (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement);
 extern int do_create_index (PARSER_CONTEXT * parser, const PT_NODE * statement);
+extern int do_create_vector_index (PARSER_CONTEXT * parser, const PT_NODE * statement);
 extern int do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement);
 
 extern int do_attach (PARSER_CONTEXT * parser, PT_NODE * statement);

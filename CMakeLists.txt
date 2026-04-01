@@ -19,6 +19,8 @@ message(STATUS "======== CMakeLists.txt")
 
 cmake_minimum_required(VERSION 3.21)
 
+include(FetchContent)
+
 function(with_unit_tests res) # checks for -DUNIT_TESTS=ON or -DUNIT_TEST_???=ON
   get_cmake_property(vars VARIABLES)
   foreach(var ${vars})
@@ -75,6 +77,7 @@ option(WITH_JDBC "Build with JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
 option(UNIT_TESTS "Unit tests" OFF)
 option(WITH_CCI "Build with CCI driver" ON)
+option(USE_SIMD_NATIVE "Enable native SIMD optimizations with -march=native" OFF)
 
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
@@ -199,8 +202,56 @@ if(MSVC)
   # TODO: remove version.rc files from win/*
 endif(MSVC)
 
+# Check OpenMP SIMD support
+include(cmake/OpenMP_SIMD.cmake)
+
 # Language setting
 #enable_language(C CXX)
+
+
+# Debug Macros for CUBVEC Project
+#
+# These options enable developer-specific debugging features by defining
+# preprocessor macros that interact with assertions in cubvec_assert.h.
+#
+# Usage Options:
+#   1. Direct CMake configuration:
+#      $ cmake -DCUBVEC_TEAM_BUILD=ON -DCMAKE_BUILD_TYPE=Debug <other_options>
+#
+#   2. Using the project build script:
+#      $ configure_options="-DCUBVEC_TEAM_BUILD=ON" ./build.sh -m debug build
+#
+# Available build flags:
+#   - CUBVEC_TEAM_BUILD: Enables team-wide debugging features
+#   - HORNETMJ_BUILD, HGRYOO_BUILD, YEUNJUNLEE_BUILD, VIMKIM_BUILD:
+#     Developer-specific debugging features
+#
+# These build flags correspond to preprocessor definitions that can be used
+# in conditional compilation blocks throughout the codebase.
+#
+# Protip: Always build in debug mode (-DCMAKE_BUILD_TYPE=Debug) to ensure
+# assertion statements are properly evaluated and not optimized away.
+option(CUBVEC_TEAM_BUILD "Enable CUBVEC team build" ON)
+if(CUBVEC_TEAM_BUILD)
+    add_compile_definitions(CUBVEC_TEAM)
+endif()
+if(HORNETMJ_BUILD)
+    add_compile_definitions(HORNETMJ)
+endif()
+if(HGRYOO_BUILD)
+    add_compile_definitions(HGRYOO)
+endif()
+if(YEUNJUNLEE_BUILD)
+    add_compile_definitions(YEUNJUNLEE)
+endif()
+if(VIMKIM_BUILD)
+    add_compile_definitions(VIMKIM)
+endif()
+
+option(ENABLE_CUBVEC_LOG "Enable CUBVEC team logging" ON)
+if(ENABLE_CUBVEC_LOG)
+    add_compile_definitions(CUBVEC_LOG)
+endif()
 
 # System check
 if(UNIX)
@@ -217,7 +268,7 @@ if(UNIX)
     # C flags for both debug and release build
     set(CMAKE_C_COMMON_FLAGS "-ggdb -fno-omit-frame-pointer")
     # C++ flags for both debug and release build
-    set(CMAKE_CXX_COMMON_FLAGS "${CMAKE_C_COMMON_FLAGS} -std=c++17")
+    set(CMAKE_CXX_COMMON_FLAGS "${CMAKE_C_COMMON_FLAGS} -std=c++17 -fopenmp-simd")
 
     # C flags for debug build
     set(CMAKE_C_DEBUG_FLAGS "-ggdb3 -Wall -fno-inline ${CMAKE_C_COMMON_FLAGS}")
@@ -253,6 +304,9 @@ if(UNIX)
     set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,--hash-style=both -static-libstdc++")
 
   elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+
+    # CUBVEC: cpu flag openmp and linking required?
+    # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
   else()
     message(FATAL_ERROR "We currently do not support ${CMAKE_CXX_COMPILER_ID} compiler")
   endif(CMAKE_COMPILER_IS_GNUCC)
@@ -413,6 +467,7 @@ set(PARALLEL_QUERY_DIR       ${CMAKE_SOURCE_DIR}/src/query/parallel)
 set(PARALLEL_HASH_JOIN_DIR   ${CMAKE_SOURCE_DIR}/src/query/parallel/px_hash_join)
 set(PARALLEL_HEAP_SCAN_DIR    ${CMAKE_SOURCE_DIR}/src/query/parallel/px_heap_scan)
 set(PARALLEL_QUERY_EXECUTE_DIR ${CMAKE_SOURCE_DIR}/src/query/parallel/px_query_execute)
+set(INDEX_HNSW_DIR            ${CMAKE_SOURCE_DIR}/src/storage/index_hnsw)
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(
@@ -437,6 +492,7 @@ include_directories(
   src/query
   src/session
   src/storage
+  src/storage/index_hnsw
   src/thread
   src/transaction
   src/xasl
@@ -601,11 +657,11 @@ if(CMAKE_SYSTEM_NAME MATCHES "Linux")
     add_definitions(-DCCI_XA)
   endif(SUPPORT_XA)
   if(CMAKE_BUILD_TYPE MATCHES "Release|RelWithDebInfo")  
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror -Wwrite-strings -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused -pthread")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror -Wwrite-strings  -Wredundant-decls -Wextra -Wno-unused -Wno-unused-parameter -pthread")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wwrite-strings -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused -Wno-format-security -Wno-unused-result -pthread")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings  -Wredundant-decls -Wextra -Wno-unused -Wno-unused-parameter -Wno-format-security -Wno-unused-result -pthread")
   else()
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused -Wno-format-security -pthread")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused -Wno-unused-parameter -Wno-format-security -pthread")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused -Wno-format-security -Wno-unused-result -pthread")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused -Wno-unused-parameter -Wno-format-security -Wno-unused-result -pthread")
   endif()
  
   if(SIZEOF_OFF64_T)

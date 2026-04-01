@@ -32,6 +32,7 @@
 #include <setjmp.h>
 #include <assert.h>
 
+#include "cubvec_assert.h"
 #include "db_json.hpp"
 #include "dbtype.h"
 #include "error_manager.h"
@@ -45,6 +46,7 @@
 #include "porting_inline.hpp"
 #include "query_list.h"
 #include "set_object.h"
+#include "db_vector.hpp"
 #include "access_spec.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -2644,6 +2646,10 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	  size += or_packed_json_validator_length (d->json_validator);
 	  break;
 
+	case DB_TYPE_VECTOR:
+	  precision = d->precision;
+	  break;
+
 	default:
 	  break;
 	}
@@ -2824,6 +2830,10 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	      carrier |= OR_DOMAIN_CLASS_OID_FLAG;
 	      has_oid = 1;
 	    }
+	  break;
+
+	case DB_TYPE_VECTOR:
+	  precision = d->precision;
 	  break;
 
 	case DB_TYPE_SET:
@@ -3135,6 +3145,10 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 
 	    case DB_TYPE_JSON:
 	      has_schema = (carrier & OR_DOMAIN_SCHEMA_FLAG) != 0;
+	      break;
+
+	    case DB_TYPE_VECTOR:
+	      precision = (carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
 	      break;
 
 	    default:
@@ -3619,6 +3633,10 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		}
 	      break;
 
+	    case DB_TYPE_VECTOR:
+	      vimkim_log ("WARNING: not implemented yet...\n");
+	      break;
+
 	    default:
 	      break;
 	    }
@@ -3785,6 +3803,7 @@ or_pack_domain (char *ptr, TP_DOMAIN * domain, int include_classoids, int is_nul
     }
   else
     {
+      ASSERT_CUBVEC (false);
       return NULL;
     }
 }

@@ -16757,6 +16757,8 @@ pgbuf_scan_bcb_table ()
 	    case PAGE_DROPPED_FILES:
 	      show_status_snapshot->num_system_pages++;
 	      break;
+	    case PAGE_HNSW:
+	      assert (false);
 	    default:
 	      /* dealloc pages, we don't know page type */
 	      assert (page_type == PAGE_UNKNOWN);

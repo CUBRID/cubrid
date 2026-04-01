@@ -159,6 +159,7 @@ typedef enum
   PAGE_AREA,			/* area page */
   PAGE_CATALOG,			/* catalog page */
   PAGE_BTREE,			/* b+tree index page (with ovf_OIDs) */
+  PAGE_HNSW,			/* hnsw vector index page */
   PAGE_LOG,			/* NONE - log page (unused) */
   PAGE_DROPPED_FILES,		/* Dropped files page.  */
   PAGE_VACUUM_DATA,		/* Vacuum data. */
@@ -315,6 +316,16 @@ struct lorecdes
 #define BTID_IS_EQUAL(b1,b2) \
   (((b1)->vfid.fileid == (b2)->vfid.fileid) && \
    ((b1)->vfid.volid == (b2)->vfid.volid))
+
+   /* TODO (CUBVEC) : This function is used to check if the index is a vector index.
+    * Since all vector indexes are now stored in disk storage,
+    * we cannot check if the index is a vector index by checking the volume ID.
+    * We need to check the index type by lookup page header of the index page.
+    */
+#define BTID_IS_VECTOR_INDEX(btid)  ((btid)->vfid.volid == NULL_VOLID)
+
+// TODO (CUBVEC): the following should be removed after CUBVEC-135 is resolved.
+#define BTID_IS_VECTOR_INDEX_DUMMY(name) (strncmp(name, "vidx", 4) == 0)
 
 #define DISK_VOLPURPOSE DB_VOLPURPOSE
 
@@ -624,7 +635,8 @@ typedef enum
   BTREE_REVERSE_UNIQUE,
   BTREE_REVERSE_INDEX,
   BTREE_PRIMARY_KEY,
-  BTREE_FOREIGN_KEY
+  BTREE_FOREIGN_KEY,
+  HNSW_VECTOR_INDEX
 } BTREE_TYPE;
 
 /************************************************************************/
@@ -850,6 +862,10 @@ typedef enum
   T_CURRENT_DATE,
   T_CURRENT_TIME,
   T_CONV_TZ,
+  T_DISTANCE_OP_COSINE,
+  T_DISTANCE_OP_EUCLIDEAN,
+  T_DISTANCE_OP_MANHATTAN,
+  T_DISTANCE_OP_NEG_INNER_PROD,
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 /************************************************************************/
@@ -983,8 +999,9 @@ extern const int SM_MAX_STRING_LENGTH;
 #define SM_PROPERTY_VID_KEY "*V_KY"
 #define SM_PROPERTY_PRIMARY_KEY "*P"
 #define SM_PROPERTY_FOREIGN_KEY "*FK"
+#define SM_PROPERTY_VECTOR_INDEX "*VI"
 
-#define SM_PROPERTY_NUM_INDEX_FAMILY         6
+#define SM_PROPERTY_NUM_INDEX_FAMILY         7
 
 #define SM_FILTER_INDEX_ID "*FP*"
 #define SM_FUNCTION_INDEX_ID "*FI*"
@@ -1076,7 +1093,8 @@ typedef enum
   SM_ATTFLAG_PRIMARY_KEY = 128,	/* attribute has a primary key 0x80 */
   SM_ATTFLAG_AUTO_INCREMENT = 256,	/* auto increment attribute 0x0100 */
   SM_ATTFLAG_FOREIGN_KEY = 512,	/* attribute has a primary key 0x200 */
-  SM_ATTFLAG_PARTITION_KEY = 1024	/* attribute is the partitioning key for the class 0x400 */
+  SM_ATTFLAG_PARTITION_KEY = 1024,	/* attribute is the partitioning key for the class 0x400 */
+  SM_ATTFLAG_VECTOR_INDEX = 2048	/* attribute has a vector index 0x800 */
 } SM_ATTRIBUTE_FLAG;
 
 /* delete or update action type for foreign key */

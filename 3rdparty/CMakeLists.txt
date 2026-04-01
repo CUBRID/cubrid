@@ -15,6 +15,8 @@
 #   limitations under the License.
 # 
 
+include(FetchContent)
+
 set(WITH_FLEX_URL "https://github.com/CUBRID/3rdparty/raw/develop/flex/flex-2.6.4.tar.gz")                    # flex
 set(WITH_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/bison/bison-3.4.1.tar.gz")                 # bison
 set(WITH_LIBEXPAT_URL "https://github.com/CUBRID/3rdparty/raw/develop/expat/expat-2.6.4.tar.gz")             # expat library sources URL
@@ -26,6 +28,9 @@ set(WITH_LIBUNIXODBC_URL "https://github.com/CUBRID/3rdparty/raw/develop/unixODB
 set(WITH_LIBTBB_URL "https://github.com/CUBRID/3rdparty/raw/develop/tbb/v2021.11.0.tar.gz")                   # intel oneTBB library sources URL
 set(WITH_RE2_URL "https://github.com/CUBRID/3rdparty/raw/develop/re2/2022-06-01.tar.gz")                      # RE2
 set(WITH_LZ4_URL "https://github.com/CUBRID/3rdparty/raw/develop/lz4/v1.9.4.tar.gz")                          # LZ4
+set(WITH_HDF_URL "https://github.com/HDFGroup/hdf5/releases/download/hdf5_1.14.6/hdf5-1.14.6.tar.gz")         # HDF5
+set(WITH_ZLIB_URL "https://github.com/madler/zlib")                                                           # ZLIB
+set(WITH_HIGHFIVE_URL "https://github.com/highfive-devs/highfive")                                            # HighFive
 set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_bison/win_flex_bison-2.5.22.zip") # Windows
 
 # URL_HASH is a hash value used to verify the integrity of a file downloaded from a specified URL.
@@ -72,6 +77,9 @@ set(WITH_LIBUNIXODBC  "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with unixODB
 set(WITH_RE2          "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with re2 library (default: EXTERNAL)")
 set(WITH_LZ4          "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lz4 library (default: EXTERNAL)")
 set(WITH_LIBTBB       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with TBB library (default: EXTERNAL)")
+set(WITH_HDF          "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with HDF5 library (default: EXTERNAL)")
+set(WITH_ZLIB         "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with ZLIB library (default: EXTERNAL)")
+set(WITH_HIGHFIVE     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with HIGHFIVE library (default: EXTERNAL)")
 
 message(STATUS "Build with flex and bison library: ${WITH_LIBFLEXBISON}")
 message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
@@ -82,6 +90,9 @@ message(STATUS "Build with unixODBC library: ${WITH_LIBUNIXODBC}")
 message(STATUS "Build with RE2 library: ${WITH_RE2}")
 message(STATUS "Build with LZ4 library: ${WITH_LZ4}")
 message(STATUS "Build with TBB library: ${WITH_LIBTBB}")
+message(STATUS "Build with HDF5 library: ${WITH_HDF}")
+message(STATUS "Build with ZLIB library: ${WITH_ZLIB}")
+message(STATUS "Build with HighFive library: ${WITH_HIGHFIVE}")
 
 macro(ADD_BY_PRODUCTS_VARIABLE prefix_dependee)
   if (CMAKE_GENERATOR MATCHES "Ninja")
@@ -364,6 +375,9 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
     #e.g. https://www.openssl.org/source/openssl-1.1.1f.tar.gz
     set(LIBOPENSSL_LIBS ${3RDPARTY_LIBS_DIR}/lib/libssl.a ${3RDPARTY_LIBS_DIR}/lib/libcrypto.a)
     set(LIBOPENSSL_INCLUDES ${3RDPARTY_LIBS_DIR}/include)
+
+    set(LIBOPENSSL_CONFIGURE_OPTS_PATENT_ALGOS no-idea no-md2 no-mdc2 no-rc5 no-rc4)
+    set(LIBOPENSSL_CONFIGURE_OPTS_REDUNDANTS no-tests no-ui-console no-comp no-ssl3 no-zlib no-engine no-dso no-async)
     ADD_BY_PRODUCTS_VARIABLE ("LIBOPENSSL" ${LIBOPENSSL_LIBS})
     externalproject_add(${LIBOPENSSL_TARGET}
       URL                  ${WITH_LIBOPENSSL_URL}
@@ -373,9 +387,9 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
       LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${3RDPARTY_LIBS_DIR} no-shared # ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      CONFIGURE_COMMAND    <SOURCE_DIR>/config no-shared ${LIBOPENSSL_CONFIGURE_OPTS_REDUNDANTS} ${LIBOPENSSL_CONFIGURE_OPTS_PATENT_ALGOS} --prefix=${3RDPARTY_LIBS_DIR} # ${DEFAULT_CONFIGURE_OPTS}
+      BUILD_COMMAND        make build_libs AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      make install_dev AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       "${LIBOPENSSL_BYPRODUCTS}"
       )
     list(APPEND EP_TARGETS ${LIBOPENSSL_TARGET})
@@ -523,6 +537,109 @@ if(WITH_LIBTBB STREQUAL "EXTERNAL")
   endif(UNIX)
 endif()
 
+# libhdf5
+set(HDF_INCLUDES "")
+set(HDF_LIBS "")
+
+set(HDF_TARGET hdf)
+if(WITH_HDF STREQUAL "EXTERNAL")
+  if(WIN32)
+    message(FATAL_ERROR "Invalid WITH_HDF option value ${WITH_HDF}")
+  else()
+    set(HDF_INCLUDES ${3RDPARTY_LIBS_DIR}/include)
+    set(HDF_LIBS ${3RDPARTY_LIBS_DIR}/lib/libhdf5.a)
+    set(HDF_CONFIGURE_OPTS --enable-static --disable-shared --disable-tests --disable-tools --disable-hl --disable-cxx --disable-fortran --disable-parallel --without-zlib --without-szlib)
+
+    ADD_BY_PRODUCTS_VARIABLE ("HDF" ${HDF_LIBS})
+    externalproject_add(${HDF_TARGET}
+      URL                   ${WITH_HDF_URL}
+      TIMEOUT               600
+      LOG_BUILD             TRUE
+      DOWNLOAD_NO_PROGRESS  1
+      CONFIGURE_COMMAND     <SOURCE_DIR>/configure --prefix=${3RDPARTY_LIBS_DIR} ${HDF_CONFIGURE_OPTS}
+      BUILD_IN_SOURCE       false
+      BUILD_COMMAND         make CFLAGS=-fPIC CXXFLAGS=-fPIC # to allow static linking in shared library
+      INSTALL_COMMAND       make install
+      "${HDF_BYPRODUCTS}"
+    )
+
+    list(APPEND EP_TARGETS ${HDF_TARGET})
+    list(APPEND EP_LIBS ${HDF_LIBS})
+    list(APPEND EP_INCLUDES ${HDF_INCLUDES})
+  endif()
+endif()
+
+# ZLIB (libz)
+set(ZLIB_TARGET zlib)
+if(WITH_ZLIB STREQUAL "EXTERNAL")
+  if(WIN32)
+    message(FATAL_ERROR "Invalid WITH_ZLIB option value ${WITH_ZLIB}")
+  else()
+    set(ZLIB_INCLUDES ${3RDPARTY_LIBS_DIR}/include)
+    set(ZLIB_LIBS     ${3RDPARTY_LIBS_DIR}/lib/libz.a)
+
+    ADD_BY_PRODUCTS_VARIABLE ("ZLIB" ${ZLIB_LIBS})
+    ExternalProject_Add(
+          ${ZLIB_TARGET}
+          GIT_REPOSITORY ${WITH_ZLIB_URL}
+          GIT_TAG v1.3.1
+          CONFIGURE_COMMAND ${CMAKE_COMMAND} -B <BINARY_DIR> -S <SOURCE_DIR>
+          -DCMAKE_INSTALL_PREFIX=${3RDPARTY_LIBS_DIR}
+          -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+          BUILD_COMMAND make -C <BINARY_DIR>
+          "${ZLIB_BYPRODUCTS}"
+    )
+
+    list(APPEND EP_TARGETS ${ZLIB_TARGET})
+    list(APPEND EP_LIBS ${ZLIB_LIBS})
+    list(APPEND EP_INCLUDES ${ZLIB_INCLUDES})
+  endif()
+endif()
+
+# highfive (header-only)
+set(HIGHFIVE_TARGET highfive)
+if(WITH_HIGHFIVE STREQUAL "EXTERNAL")
+  if(WIN32)
+    message(FATAL_ERROR "Invalid WITH_HIGHFIVE option value ${WITH_HIGHFIVE}")
+  else()
+    set(HIGHFIVE_INCLUDES ${3RDPARTY_LIBS_DIR}/include)
+
+    # dependencies (HDF5)
+    set(HDF5_LIBRARIES ${HDF_LIBS})
+    set(HDF5_INCLUDE_DIRS ${HDF_INCLUDES})
+
+    ADD_BY_PRODUCTS_VARIABLE ("HIGHFIVE" ${HIGHFIVE_INCLUDES}/highfive)
+    ExternalProject_Add(
+          ${HIGHFIVE_TARGET}
+          GIT_REPOSITORY ${WITH_HIGHFIVE_URL}
+          GIT_TAG v2.10.1
+          CONFIGURE_COMMAND ${CMAKE_COMMAND} -B <BINARY_DIR> -S <SOURCE_DIR>
+          -DCMAKE_INSTALL_PREFIX=${3RDPARTY_LIBS_DIR}
+          -DHIGHFIVE_EXAMPLES=Off
+          -DHIGHFIVE_USE_BOOST=Off
+          -DHIGHFIVE_USE_EIGEN=Off
+          -DHIGHFIVE_USE_XTENSOR=Off
+          -DHIGHFIVE_USE_OPENCV=Off
+          -DHIGHFIVE_UNIT_TESTS=Off
+          -DDHDF5_BUILD_CPP_LIB=ON
+          -DHDF5_LIBRARIES=${HDF5_LIBRARIES}
+          -DHDF5_INCLUDE_DIRS=${HDF5_INCLUDE_DIRS}
+          -DHDF5_ROOT=${3RDPARTY_LIBS_DIR}
+          BUILD_COMMAND make -C <BINARY_DIR>
+          "${HIGHFIVE_BYPRODUCTS}"
+    )
+
+    list(APPEND EP_TARGETS ${HIGHFIVE_TARGET})
+    # list(APPEND EP_LIBS ${HIGHFIVE_LIBS})
+    list(APPEND EP_INCLUDES ${HIGHFIVE_INCLUDES})
+  endif()
+  add_dependencies(${HIGHFIVE_TARGET} ${ZLIB_TARGET})
+  add_dependencies(${HIGHFIVE_TARGET} ${HDF_TARGET})
+endif()
+
+# For SIMD optimizations
+find_package(AVX)
+
 # [FIXME!] Expose variables for other CMakeLists
 set (EP_TARGETS ${EP_TARGETS} PARENT_SCOPE)
 set (EP_LIBS ${EP_LIBS} PARENT_SCOPE)
@@ -543,6 +660,9 @@ include (3rdparty_util)
 if(UNIX)
 expose_3rdparty_variable(LIBEDIT)
 expose_3rdparty_variable(LIBNCURSES)
+expose_3rdparty_variable(HDF)
+expose_3rdparty_variable(ZLIB)
+expose_3rdparty_variable(HIGHFIVE)
 endif(UNIX)
 
 expose_3rdparty_variable(LIBEXPAT)

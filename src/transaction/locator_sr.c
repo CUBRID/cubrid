@@ -38,6 +38,7 @@
 #include "btree_load.h"
 #include "critical_section.h"
 #include "dbtype.h"
+#include "hnsw.hpp"
 #if defined(DMALLOC)
 #include "dmalloc.h"
 #endif /* DMALLOC */
@@ -7770,7 +7771,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
   DB_VALUE *key_dbvalue, *key_ins_del = NULL;
   DB_VALUE dbvalue;
   int unique_pk;
-  btree_unique_stats *unique_stat_info;
+  btree_unique_stats *unique_stat_info = NULL;
   HEAP_IDX_ELEMENTS_INFO idx_info;
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
   OR_INDEX *index;
@@ -7861,6 +7862,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
     {
       index = &(index_attrinfo.last_classrepr->indexes[i]);
       or_pred = index->filter_predicate;
+
       if (or_pred && or_pred->pred_stream)
 	{
 	  error_code =
@@ -7898,7 +7900,12 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	      if (op_type == MULTI_ROW_UPDATE || op_type == MULTI_ROW_INSERT || op_type == MULTI_ROW_DELETE)
 		{
 		  assert (scan_cache->m_index_stats != NULL);
-		  unique_stat_info = &scan_cache->m_index_stats->get_stats_of (index->btid);
+
+		  // TODO (CUBVEC): refactor this code
+		  if (index->type != HNSW_VECTOR_INDEX)
+		    {
+		      unique_stat_info = &scan_cache->m_index_stats->get_stats_of (index->btid);
+		    }
 		}
 	      else
 		{
@@ -7926,31 +7933,43 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 #if defined(ENABLE_SYSTEMTAP)
 	      CUBRID_IDX_INSERT_START (classname, index->btname);
 #endif /* ENABLE_SYSTEMTAP */
-
-	      if (index->type == BTREE_FOREIGN_KEY && !skip_checking_fk)
+	      if (index->type == HNSW_VECTOR_INDEX)
 		{
-		  if (lock_object (thread_p, inst_oid, class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+		  const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);
+
+		  error_code = hnsw_add_element (thread_p, &btid, inst_oid, vf->float_array, 1);
+		  if (error_code != NO_ERROR)
 		    {
 		      goto error;
 		    }
 		}
-
-	      if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-		{
-		  /* Online index is currently loading. */
-		  error_code =
-		    btree_online_index_dispatcher (thread_p, &btid, key_dbvalue, class_oid, inst_oid, unique_pk,
-						   BTREE_OP_ONLINE_INDEX_TRAN_INSERT, NULL);
-		}
 	      else
 		{
-		  error_code =
-		    btree_insert (thread_p, &btid, key_dbvalue, class_oid, inst_oid, op_type, unique_stat_info,
-				  &unique_pk, p_mvcc_rec_header);
-		}
+		  if (index->type == BTREE_FOREIGN_KEY && !skip_checking_fk)
+		    {
+		      if (lock_object (thread_p, inst_oid, class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+			{
+			  goto error;
+			}
+		    }
+
+		  if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+		    {
+		      /* Online index is currently loading. */
+		      error_code =
+			btree_online_index_dispatcher (thread_p, &btid, key_dbvalue, class_oid, inst_oid, unique_pk,
+						       BTREE_OP_ONLINE_INDEX_TRAN_INSERT, NULL);
+		    }
+		  else
+		    {
+		      error_code =
+			btree_insert (thread_p, &btid, key_dbvalue, class_oid, inst_oid, op_type, unique_stat_info,
+				      &unique_pk, p_mvcc_rec_header);
+		    }
 #if defined(ENABLE_SYSTEMTAP)
-	      CUBRID_IDX_INSERT_END (classname, index->btname, (error_code != NO_ERROR));
+		  CUBRID_IDX_INSERT_END (classname, index->btname, (error_code != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
+		}
 	    }
 	  else
 	    {
@@ -8274,7 +8293,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   OR_INDEX *index = NULL;
   int i, j, k, num_btids, old_num_btids, unique_pk;
   bool found_btid = true;
-  btree_unique_stats *unique_stat_info;
+  btree_unique_stats *unique_stat_info = NULL;
   HEAP_IDX_ELEMENTS_INFO new_idx_info;
   HEAP_IDX_ELEMENTS_INFO old_idx_info;
   char newbuf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_newbuf;
@@ -8522,7 +8541,15 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	  if (op_type == MULTI_ROW_UPDATE || op_type == MULTI_ROW_INSERT || op_type == MULTI_ROW_DELETE)
 	    {
 	      assert (scan_cache->m_index_stats != NULL);
-	      unique_stat_info = &scan_cache->m_index_stats->get_stats_of (index->btid);
+	      // TODO (CUBVEC): refactor this code
+	      if (index->type != HNSW_VECTOR_INDEX)
+		{
+		  unique_stat_info = &scan_cache->m_index_stats->get_stats_of (index->btid);
+		}
+	      else
+		{
+		  unique_stat_info = NULL;
+		}
 	    }
 	  else
 	    {

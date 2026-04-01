@@ -1972,6 +1972,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 332 Stored Procedures can be invoked only through CALL statements.
 333 CALL statements invoking a Stored Procedure may not have an INTO clause.
 
+334 Invalid vector distance metric specified.
+
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME

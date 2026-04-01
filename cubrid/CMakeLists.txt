@@ -28,6 +28,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_macro.c
   ${COMPAT_DIR}/db_set.c
   ${COMPAT_DIR}/db_value_printer.cpp
+  ${COMPAT_DIR}/db_vector.cpp
   )
 set (COMPAT_HEADERS
   ${COMPAT_DIR}/dbtype_def.h
@@ -39,6 +40,7 @@ set (COMPAT_HEADERS
   ${COMPAT_DIR}/db_set.h
   ${COMPAT_DIR}/db_set_function.h
   ${COMPAT_DIR}/dbtype_function.i
+  ${COMPAT_DIR}/db_vector.hpp
   )
 
 set(THREAD_SOURCES
@@ -293,6 +295,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/string_regex_std.cpp
   ${QUERY_DIR}/string_regex_re2.cpp
   ${QUERY_DIR}/vacuum.c  
+  ${QUERY_DIR}/vector_opfunc.cpp
   ${QUERY_DIR}/xasl_cache.c
   )
 set(QUERY_HEADERS
@@ -503,13 +506,35 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/storage_common.c
   ${STORAGE_DIR}/system_catalog.c
   ${STORAGE_DIR}/tde.c
+
+  ${INDEX_HNSW_DIR}/vector_distance_omp_simd.cpp
+  ${INDEX_HNSW_DIR}/hnsw_impl.cpp
+  ${INDEX_HNSW_DIR}/hnsw.cpp
+  ${INDEX_HNSW_DIR}/hnsw_api.cpp
+  ${INDEX_HNSW_DIR}/hnsw_storage.cpp
   )
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/double_write_buffer.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
   ${STORAGE_DIR}/vpid.hpp
+
+  ${INDEX_HNSW_DIR}/hnsw_storage.hpp
+  ${INDEX_HNSW_DIR}/hnsw_algo.hpp
+  ${INDEX_HNSW_DIR}/hnsw_api.hpp
 )
+
+if(USE_SIMD_NATIVE)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set_source_files_properties(${QUERY_DIR}/vector_opfunc.cpp ${INDEX_HNSW_DIR}/vector_distance_omp_simd.cpp
+        PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-ftree-vectorize;-mprefer-vector-width=512;-fopenmp-simd;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
+    )
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set_source_files_properties(${QUERY_DIR}/vector_opfunc.cpp ${INDEX_HNSW_DIR}/vector_distance_omp_simd.cpp
+        PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-fvectorize;-mprefer-vector-width=512;-fopenmp-simd;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
+    )
+  endif()
+endif()
 
 set(SESSION_SOURCES
   ${SESSION_DIR}/session.c
@@ -546,6 +571,7 @@ set(LOADDB_SOURCES
   ${LOADDB_DIR}/load_db_value_converter.cpp
   ${LOADDB_DIR}/load_driver.cpp
   ${LOADDB_DIR}/load_error_handler.cpp
+  ${LOADDB_DIR}/load_open_data.cpp
   ${LOADDB_DIR}/load_semantic_helper.cpp
   ${LOADDB_DIR}/load_server_loader.cpp
   ${LOADDB_DIR}/load_session.cpp
@@ -581,13 +607,6 @@ set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GEN
 set_source_files_properties(${BISON_loader_grammar_OUTPUTS} PROPERTIES GENERATED true)
 set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED true)
 
-if(UNIX)
-  set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
-  set_source_files_properties(${COMPAT_DIR}/db_json_allocator.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
-  set_source_files_properties(${COMPAT_DIR}/db_json_path.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
-  set_source_files_properties(${COMPAT_DIR}/db_json_types_internal.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
-endif(UNIX)
-
 SET_SOURCE_FILES_PROPERTIES(
   ${BASE_SOURCES}
   ${COMMUNICATION_SOURCES}
@@ -613,6 +632,14 @@ SET_SOURCE_FILES_PROPERTIES(
   ${PARALLEL_QUERY_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
+
+if(UNIX)
+  set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_json_allocator.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_json_path.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_json_types_internal.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_vector.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+endif(UNIX)
 
 set (CUBRID_LIB_SOURCES
   ${BASE_SOURCES}

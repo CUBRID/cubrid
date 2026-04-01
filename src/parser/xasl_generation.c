@@ -74,6 +74,8 @@
 #include "wintcp.h"
 #endif /* WINDOWS */
 
+#include "cubvec_assert.h"
+
 #include "dbtype.h"
 
 extern void qo_plan_lite_print (QO_PLAN * plan, FILE * f, int howfar);
@@ -390,8 +392,12 @@ static int pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIM
 			    KEY_INFO * key_infop, bool key_limit_reset);
 static int pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
 static int pt_ordbynum_to_key_limit_multiple_ranges (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
+
 static INDX_INFO *pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where_pred, QO_PLAN * plan,
 				    QO_XASL_INDEX_INFO * qo_index_infop);
+static INDX_INFO *pt_to_vector_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where_pred,
+					   QO_PLAN * plan, QO_XASL_INDEX_INFO * qo_index_infop);
+
 static ACCESS_SPEC_TYPE *pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_part,
 						PT_NODE * where_part, QO_PLAN * plan, QO_XASL_INDEX_INFO * index_pred);
 static ACCESS_SPEC_TYPE *pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * subquery,
@@ -1551,6 +1557,12 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 	  saved_etc = parser->etc;
 	  parser->etc = NULL;
 
+	  if (node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
+	    {
+	      // CUBVEC todo: not yet analyzed
+	      ASSERT_CUBVEC (false);
+	    }
+
 	  /* set regu variables */
 	  if (node->info.expr.op == PT_SETEQ || node->info.expr.op == PT_EQ || node->info.expr.op == PT_SETNEQ
 	      || node->info.expr.op == PT_NE || node->info.expr.op == PT_GE || node->info.expr.op == PT_GT
@@ -1608,6 +1620,15 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 					((node->info.expr.qualifier == PT_EQ_TORDER) ? R_EQ_TORDER : R_EQ), data_type);
 	      break;
 
+	    case PT_DISTANCE_OP_EUCLIDEAN:
+	      {
+		if (node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
+		  {
+		    // CUBVEC todo: not yet analyzed
+		    ASSERT_CUBVEC (false);
+		  }
+		[[fallthrough]];
+	      }
 	    case PT_NULLSAFE_EQ:
 	      pred = pt_make_pred_term_comp (regu_var1, regu_var2, R_NULLSAFE_EQ, data_type);
 	      break;
@@ -6485,6 +6506,11 @@ REGU_VARIABLE *
 pt_make_regu_arith (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, const REGU_VARIABLE * arg3,
 		    const OPERATOR_TYPE op, const TP_DOMAIN * domain)
 {
+  if (op == T_DISTANCE_OP_EUCLIDEAN)
+    {
+      vimkim_log ("inside make regu func.\n");
+    }
+
   REGU_VARIABLE *regu = NULL;
   ARITH_TYPE *arith;
   DB_VALUE *dbval;
@@ -6897,6 +6923,11 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	case F_REGEXP_LIKE:
 	case F_REGEXP_REPLACE:
 	case F_REGEXP_SUBSTR:
+	case F_VECTOR_DISTANCE:
+	case F_L1_DISTANCE:
+	case F_L2_DISTANCE:
+	case F_INNER_PRODUCT:
+	case F_COSINE_DISTANCE:
 	  result_type = pt_node_to_db_type (function);
 	  break;
 	case F_BENCHMARK:
@@ -7695,6 +7726,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	      break;
 
 	    case PT_EXPR:
+	      if (node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
+		{
+		  vimkim_log ("op is PT_DISTANCE_OP_EUCLIDEAN and the vector is operated against a column.\n");
+		}
 	      if (node->info.expr.op == PT_FUNCTION_HOLDER)
 		{
 		  //TODO FIND WHY NEXT WASN'T RESTORED
@@ -7743,11 +7778,12 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	      domain = NULL;
 	      if (node->info.expr.op == PT_PLUS || node->info.expr.op == PT_MINUS || node->info.expr.op == PT_TIMES
 		  || node->info.expr.op == PT_DIVIDE || node->info.expr.op == PT_MODULUS
-		  || node->info.expr.op == PT_POWER || node->info.expr.op == PT_AES_ENCRYPT
-		  || node->info.expr.op == PT_AES_DECRYPT || node->info.expr.op == PT_SHA_TWO
-		  || node->info.expr.op == PT_ROUND || node->info.expr.op == PT_LOG || node->info.expr.op == PT_TRUNC
-		  || node->info.expr.op == PT_POSITION || node->info.expr.op == PT_FINDINSET
-		  || node->info.expr.op == PT_LPAD || node->info.expr.op == PT_RPAD || node->info.expr.op == PT_REPLACE
+		  || node->info.expr.op == PT_POWER
+		  || node->info.expr.op == PT_AES_ENCRYPT || node->info.expr.op == PT_AES_DECRYPT
+		  || node->info.expr.op == PT_SHA_TWO || node->info.expr.op == PT_ROUND || node->info.expr.op == PT_LOG
+		  || node->info.expr.op == PT_TRUNC || node->info.expr.op == PT_POSITION
+		  || node->info.expr.op == PT_FINDINSET || node->info.expr.op == PT_LPAD
+		  || node->info.expr.op == PT_RPAD || node->info.expr.op == PT_REPLACE
 		  || node->info.expr.op == PT_TRANSLATE || node->info.expr.op == PT_ADD_MONTHS
 		  || node->info.expr.op == PT_MONTHS_BETWEEN || node->info.expr.op == PT_FORMAT
 		  || node->info.expr.op == PT_ATAN || node->info.expr.op == PT_ATAN2
@@ -7767,7 +7803,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_WEEKF || node->info.expr.op == PT_MAKEDATE
 		  || node->info.expr.op == PT_ADDTIME || node->info.expr.op == PT_DEFINE_VARIABLE
 		  || node->info.expr.op == PT_CHR || node->info.expr.op == PT_CLOB_TO_CHAR
-		  || node->info.expr.op == PT_INDEX_PREFIX || node->info.expr.op == PT_FROM_TZ)
+		  || node->info.expr.op == PT_INDEX_PREFIX || node->info.expr.op == PT_FROM_TZ
+		  || node->info.expr.op == PT_DISTANCE_OP_COSINE || node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN
+		  || node->info.expr.op == PT_DISTANCE_OP_MANHATTAN
+		  || node->info.expr.op == PT_DISTANCE_OP_NEG_INNER_PROD)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
 		  if ((node->info.expr.op == PT_CONCAT) && node->info.expr.arg2 == NULL)
@@ -8219,6 +8258,22 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_MOD:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_INTMOD, domain);
+		  break;
+
+		case PT_DISTANCE_OP_COSINE:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_DISTANCE_OP_COSINE, domain);
+		  break;
+
+		case PT_DISTANCE_OP_EUCLIDEAN:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_DISTANCE_OP_EUCLIDEAN, domain);
+		  break;
+
+		case PT_DISTANCE_OP_MANHATTAN:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_DISTANCE_OP_MANHATTAN, domain);
+		  break;
+
+		case PT_DISTANCE_OP_NEG_INNER_PROD:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_DISTANCE_OP_NEG_INNER_PROD, domain);
 		  break;
 
 		case PT_IF:
@@ -11839,6 +11894,189 @@ error:
 }
 
 /*
+ * pt_to_vector_index_info () - Create an INDX_INFO structure for VECTOR index search
+ *   return:
+ *   parser(in):
+ *   class(in):
+ *   where_pred(in):
+ *   plan(in):
+ *   qo_index_infop(in):
+*/
+static INDX_INFO *
+pt_to_vector_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where_pred, QO_PLAN * plan,
+			 QO_XASL_INDEX_INFO * qo_index_infop)
+{
+  INDX_INFO *indx_infop;
+  QO_NODE_INDEX_ENTRY *ni_entryp;
+  QO_INDEX_ENTRY *index_entryp;
+  int i;
+
+  assert (parser != NULL);
+  assert (class_ != NULL);
+  assert (plan != NULL);
+  assert (qo_index_infop->ni_entry != NULL && qo_index_infop->ni_entry->head != NULL);
+
+  ni_entryp = qo_index_infop->ni_entry;
+
+  for (i = 0, index_entryp = ni_entryp->head; i < ni_entryp->n; i++, index_entryp = index_entryp->next)
+    {
+      if (class_ == index_entryp->class_->mop)
+	{
+	  break;		/* found */
+	}
+    }
+  assert (index_entryp != NULL);
+
+  if (class_ == NULL || index_entryp == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "index plan generation - invalid arg");
+      return NULL;
+    }
+
+  /* make INDX_INFO structure and fill it up using information in QO_XASL_INDEX_INFO structure */
+  regu_alloc (indx_infop);
+  if (indx_infop == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "index plan generation - memory alloc");
+      return NULL;
+    }
+
+  /* BTID */
+  BTID_COPY (&indx_infop->btid, &index_entryp->constraints->index_btid);
+
+  indx_infop->class_oid = class_->oid_info.oid;
+  indx_infop->use_desc_index = index_entryp->use_descending;
+  indx_infop->orderby_skip = index_entryp->orderby_skip;
+  indx_infop->groupby_skip = index_entryp->groupby_skip;
+
+  /* 0 for now, see gen optimized plan for its computation */
+  indx_infop->orderby_desc = 0;
+  indx_infop->groupby_desc = 0;
+  indx_infop->use_iss = 0;	/* init */
+  indx_infop->ils_prefix_len = 0;	/* init */
+
+  indx_infop->range_type = R_KEY;
+
+  {
+    KEY_INFO *key_infop = &indx_infop->key_info;
+    PT_NODE *query = QO_ENV_PT_TREE (plan->info->env);
+    PT_NODE *select_list = query->info.query.q.select.list;
+    PT_NODE *orderby = query->info.query.order_by;
+    PT_NODE *orderby_for = query->info.query.orderby_for;
+    PT_NODE *vector_query = NULL;
+    PT_NODE *save_next = NULL;
+    PT_NODE *arg_list = NULL;
+
+    for (PT_NODE * sort_col = orderby; sort_col != NULL; sort_col = sort_col->next)
+      {
+	int pos_spec = sort_col->info.sort_spec.pos_descr.pos_no;
+
+	int i;
+	PT_NODE *col;
+
+	/* sort_col is a position specifier in select list. Have to walk the select list to find the actual node */
+	for (i = 1, col = select_list; col != NULL && i != pos_spec; col = col->next, i++);
+
+	if (col == NULL)
+	  {
+	    assert_release (col != NULL);
+	  }
+
+	save_next = col->next;
+	col->next = NULL;
+
+	PT_NODE *node = col;
+	if (node->node_type == PT_EXPR && node->info.expr.op == PT_FUNCTION_HOLDER)
+	  {
+	    // FUNCTION HOLDER
+	    node = node->info.expr.arg1;
+	    if (!node)
+	      {
+		goto exit;
+	      }
+	  }
+
+	if (pt_is_vector_distance_function (parser, node))
+	  {
+	    arg_list = node->info.function.arg_list;
+
+	    // TODO (CUBVEC): imporve the following logic
+	    if (arg_list->node_type == PT_NAME)
+	      {
+		vector_query = arg_list->next;
+	      }
+	    else if (PT_IS_CONST (arg_list) || pt_is_pseudo_const (arg_list))
+	      {
+		vector_query = arg_list;
+	      }
+	  }
+	else if (pt_is_vector_distance_expr (parser, node))
+	  {
+	    PT_NODE *arg1 = node->info.expr.arg1;
+	    PT_NODE *arg2 = node->info.expr.arg2;
+
+	    assert ((arg1->node_type == PT_NAME && (pt_is_pseudo_const (arg2) || PT_IS_CONST (arg2)))
+		    || (arg2->node_type == PT_NAME && (pt_is_pseudo_const (arg1) || PT_IS_CONST (arg1))));
+
+	    // TODO (CUBVEC): imporve the following logic
+	    if (arg1->node_type == PT_NAME)
+	      {
+		vector_query = arg2;
+	      }
+	    else if (PT_IS_CONST (arg1) || pt_is_pseudo_const (arg1))
+	      {
+		vector_query = arg1;
+	      }
+	  }
+
+	col->next = save_next;
+
+	// TODO (CUBVEC): only one orderby is supported for now
+	break;
+      }
+
+    key_infop->key_cnt = 1;	/* single range */
+    regu_array_alloc (&key_infop->key_ranges, 1);
+    if (!key_infop->key_ranges)
+      {
+	goto exit;
+      }
+
+    REGU_VARIABLE *q_regu_var = pt_to_regu_variable (parser, vector_query, UNBOX_AS_VALUE);
+    if (q_regu_var == NULL)
+      {
+	goto exit;
+      }
+
+    REGU_VARIABLE *k_regu_var = pt_to_regu_variable (parser, query->info.query.limit, UNBOX_AS_VALUE);
+    if (k_regu_var == NULL)
+      {
+	goto exit;
+      }
+
+    key_infop->key_ranges[0].range = K_NN;
+    key_infop->key_ranges[0].key1 = q_regu_var;
+    key_infop->key_ranges[0].key2 = k_regu_var;
+
+    if (key_infop->key_cnt > 0)
+      {
+	regu_array_alloc (&key_infop->key_vals, key_infop->key_cnt);
+	if (key_infop->key_vals == NULL)
+	  {
+	    goto exit;
+	  }
+      }
+  }
+
+  return indx_infop;
+
+exit:
+
+  assert (false);
+  return indx_infop;
+}
+
+/*
  * pt_to_index_info () - Create an INDX_INFO structure for communication
  * 	to a class access spec for eventual incorporation into an index scan
  *   return:
@@ -12529,9 +12767,55 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      index_info = pt_to_index_info (parser, class_->info.name.db_object, where, plan, index_pred);
 	      access =
 		pt_make_class_access_spec (parser, flat, class_->info.name.db_object, TARGET_CLASS, access_method,
-					   index_info, NULL, where, NULL, NULL, NULL, NULL, NULL, output_val_list, NULL,
-					   NULL, NULL, NULL, NULL, NO_SCHEMA, db_values_array_p,
+					   index_info, NULL, where, NULL, NULL, NULL, NULL, NULL, output_val_list,
+					   NULL, NULL, NULL, NULL, NULL, NO_SCHEMA, db_values_array_p,
 					   regu_attributes_reserved);
+	    }
+	  else if (plan->plan_un.scan.scan_method == QO_SCANMETHOD_VECTOR_INDEX_SCAN)
+	    {
+	      /* TODO (CUBVEC) */
+	      // very happy!
+	      // assert (false);
+
+	      if (pt_split_attrs (parser, table_info, where_part, &pred_attrs, &rest_attrs, &reserved_attrs,
+				  &pred_offsets, &rest_offsets, &reserved_offsets) != NO_ERROR)
+		{
+		  return NULL;
+		}
+
+	      symbols->current_class = class_;
+
+	      regu_alloc (cache_pred);
+	      regu_alloc (cache_rest);
+
+	      symbols->cache_attrinfo = cache_pred;
+	      where = pt_to_pred_expr (parser, where_part);
+	      regu_attributes_pred =
+		pt_to_regu_variable_list (parser, pred_attrs, UNBOX_AS_VALUE, table_info->value_list, pred_offsets);
+
+	      symbols->cache_attrinfo = cache_rest;
+	      regu_attributes_rest =
+		pt_to_regu_variable_list (parser, rest_attrs, UNBOX_AS_VALUE, table_info->value_list, rest_offsets);
+
+	      output_val_list = pt_make_outlist_from_vallist (parser, table_info->value_list);
+
+	      regu_var_list =
+		pt_to_position_regu_variable_list (parser, rest_attrs, table_info->value_list, rest_offsets);
+
+	      parser_free_tree (parser, pred_attrs);
+	      parser_free_tree (parser, rest_attrs);
+
+	      index_info = pt_to_vector_index_info (parser, class_->info.name.db_object, where, plan, index_pred);
+	      if (pt_has_error (parser))
+		{
+		  return NULL;
+		}
+
+	      access =
+		pt_make_class_access_spec (parser, flat, class_->info.name.db_object, TARGET_CLASS,
+					   ACCESS_METHOD_VECTOR_INDEX_SCAN, index_info, NULL, where, NULL, NULL,
+					   regu_attributes_pred, regu_attributes_rest, NULL, output_val_list,
+					   regu_var_list, NULL, cache_pred, cache_rest, NULL, NO_SCHEMA, NULL, NULL);
 	    }
 	  else
 	    {
@@ -12665,11 +12949,11 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 
 	      assert (index_info != NULL);
 	      access =
-		pt_make_class_access_spec (parser, flat, class_->info.name.db_object, TARGET_CLASS, ACCESS_METHOD_INDEX,
-					   index_info, where_key, where, where_range, regu_attributes_key,
-					   regu_attributes_pred, regu_attributes_rest, regu_attributes_range,
-					   output_val_list, regu_var_list, cache_key, cache_pred, cache_rest,
-					   cache_range, NO_SCHEMA, NULL, NULL);
+		pt_make_class_access_spec (parser, flat, class_->info.name.db_object, TARGET_CLASS,
+					   ACCESS_METHOD_INDEX, index_info, where_key, where, where_range,
+					   regu_attributes_key, regu_attributes_pred, regu_attributes_rest,
+					   regu_attributes_range, output_val_list, regu_var_list, cache_key,
+					   cache_pred, cache_rest, cache_range, NO_SCHEMA, NULL, NULL);
 
 	      if (ipl_where_part)
 		{
@@ -16984,8 +17268,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 
 	  /* check order by opt */
-	  if (qo_plan && !qo_plan->need_final_sort && qo_plan_skip_orderby (qo_plan)
-	      && !qo_plan_multi_range_opt (qo_plan))
+	  if ((qo_plan && !qo_plan->need_final_sort && qo_plan_skip_orderby (qo_plan)
+	      && !qo_plan_multi_range_opt (qo_plan)) || qo_is_viscan (qo_plan))
 	    {
 	      orderby_skip = true;
 

@@ -1565,6 +1565,17 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
       return;
     }
 
+  if (plan->plan_un.scan.scan_method == QO_SCANMETHOD_VECTOR_INDEX_SCAN)
+    {
+      // TODO (CUBVEC): analysis is required
+      // key range predicates for vector index scan are not required
+      key_predp = NULL;
+
+      // TODO (CUBVEC): analysis is required
+      // continue to make predicates for data filter
+      // return;
+    }
+
   /* This is safe guard code - DO NOT DELETE ME */
   do
     {
@@ -3214,6 +3225,23 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
   /* number of indexed segments */
   nsegs = index_entryp->nsegs;	/* nsegs == nterms ? */
 
+  /* allocate QO_XASL_INDEX_INFO structure */
+  index_infop = (QO_XASL_INDEX_INFO *) malloc (sizeof (QO_XASL_INDEX_INFO));
+  if (index_infop == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QO_XASL_INDEX_INFO));
+      goto error;
+    }
+
+  if (plan->plan_un.scan.scan_method == QO_SCANMETHOD_VECTOR_INDEX_SCAN)
+    {
+      index_infop->nterms = 0;
+      index_infop->term_exprs = NULL;
+      index_infop->multi_col_pos = NULL;
+      index_infop->ni_entry = ni_entryp;
+      return index_infop;
+    }
+
   /* support also full range indexes */
   if (nterms <= 0 && nkfterms <= 0 && bitset_cardinality (&(plan->sarged_terms)) == 0)
     {
@@ -3230,14 +3258,6 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
 	  assert (false);
 	  return NULL;		/* give up */
 	}
-    }
-
-  /* allocate QO_XASL_INDEX_INFO structure */
-  index_infop = (QO_XASL_INDEX_INFO *) malloc (sizeof (QO_XASL_INDEX_INFO));
-  if (index_infop == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QO_XASL_INDEX_INFO));
-      goto error;
     }
 
   if (qo_is_index_iss_scan (plan))

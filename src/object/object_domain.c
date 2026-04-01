@@ -35,6 +35,7 @@
 #include <assert.h>
 
 #include "area_alloc.h"
+#include "cubvec_assert.h"
 #include "deduplicate_key.h"
 #include "object_domain.h"
 #include "object_primitive.h"
@@ -51,6 +52,7 @@
 #include "db_json.hpp"
 #include "string_buffer.hpp"
 #include "db_value_printer.hpp"
+#include "db_vector.hpp"
 
 #if !defined (SERVER_MODE)
 #include "work_space.h"
@@ -259,6 +261,9 @@ TP_DOMAIN tp_Multiset_domain = { NULL, NULL, &tp_Multiset, DOMAIN_INIT3 };
 
 TP_DOMAIN tp_Sequence_domain = { NULL, NULL, &tp_Sequence, DOMAIN_INIT3 };
 
+// TODO: CUBVEC: DOMAIN or DOMAIN_INIT3? Not analyzed yet.
+TP_DOMAIN tp_Vector_domain = { NULL, NULL, &tp_Vector, DOMAIN_INIT4 (DB_DEFAULT_PRECISION, 0) };
+
 TP_DOMAIN tp_Midxkey_domain_list_heads[TP_NUM_MIDXKEY_DOMAIN_LIST] = {
   {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3},
   {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3},
@@ -380,7 +385,7 @@ static TP_DOMAIN *tp_Domains[] = {
   &tp_Datetimetz_domain,
   &tp_Datetimeltz_domain,
   &tp_Json_domain,
-  &tp_Null_domain,
+  &tp_Vector_domain,
   &tp_Null_domain,
   &tp_Null_domain,
   &tp_Null_domain,
@@ -576,6 +581,7 @@ static int tp_atodatetimetz (const DB_VALUE * src, DB_DATETIMETZ * temp);
 static int tp_atonumeric (const DB_VALUE * src, DB_VALUE * temp);
 static int tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat);
 static int tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value, DB_DATA_STATUS * data_stat);
+static int tp_atovector (DB_VALUE const *src, DB_VALUE * result);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static char *tp_itoa (int value, char *string, int radix);
 #endif
@@ -1555,6 +1561,12 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
       match = (int) db_json_are_validators_equal (dom1->json_validator, dom2->json_validator);
       break;
 
+
+    case DB_TYPE_VECTOR:
+      // TODO (CUBVEC): Only precision is considered for now.
+      match = ((dom1->precision == dom2->precision));
+      break;
+
     case DB_TYPE_VOBJ:
     case DB_TYPE_OBJECT:
     case DB_TYPE_SUB:
@@ -2195,6 +2207,21 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	}
       break;
 
+    case DB_TYPE_VECTOR:
+      while (domain)
+	{
+	  // TODO (CUBVEC): Only precision is considered for now.
+	  match = ((domain->precision == transient->precision));
+
+	  if (match)
+	    {
+	      break;
+	    }
+	  *ins_pos = domain;
+	  domain = domain->next_list;
+	}
+      break;
+
     case DB_TYPE_VARCHAR:
       while (domain)
 	{
@@ -2460,6 +2487,13 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
       assert (false);
       break;
       /* don't have a default so we make sure to add clauses for all types */
+    }
+
+  if (TP_DOMAIN_TYPE (dlist) == DB_TYPE_VECTOR)
+    {
+      vimkim_log ("WARNING: not analyzed yet.\n");
+      vimkim_log ("args: dlist %p, transient %p, exact %d\n", dlist, transient, exact);
+      vimkim_log ("match %d, domain %p, return %p\n", match, domain, (match ? domain : NULL));
     }
 
   return (match ? domain : NULL);
@@ -3168,6 +3202,7 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
     {
       switch (value_type)
 	{
+	case DB_TYPE_VECTOR:
 	case DB_TYPE_NULL:
 	case DB_TYPE_INTEGER:
 	case DB_TYPE_BIGINT:
@@ -4892,6 +4927,60 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
     }
 
   return status;
+}
+
+/*
+ * tp_str_to_vector - Coerce a string to a vector.
+ *    return: NO_ERROR or error code.
+ *    src(in): string DB_VALUE
+ *    result(out): vector DB_VALUE
+ * Note:
+ *    Accepts strings that are not null terminated. Don't call this unless
+ *    src is a string db_value.
+ */
+static int
+tp_atovector (const DB_VALUE * src, DB_VALUE * result)
+{
+  vimkim_log ("args: src = %p, result = %p\n", src, result);
+
+  const char *p = db_get_string (src);
+  const int max_vector_size = 2000;
+
+  DB_VECTOR_FLOAT vector_float;
+  vector_float.dim = 0;
+  vector_float.float_array = (float *) db_private_alloc (nullptr, max_vector_size * sizeof (float));
+
+  vimkim_log ("db_private_alloc: %p of size %zu\n", vector_float.float_array, max_vector_size * sizeof (float));
+
+  if (vector_float.float_array == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max_vector_size * sizeof (float));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  int error = db_string_to_vector (p, db_get_string_size (src), vector_float.float_array, &vector_float.dim);
+  if (error != NO_ERROR)
+    {
+      db_private_free (nullptr, vector_float.float_array);
+      vimkim_log ("db_string_to_vector failed: %d\n", error);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
+    }
+
+  // db_string_to_vector() should return Error if vector_float.dim > max_vector_size
+  ASSERT_CUBVEC (vector_float.dim <= max_vector_size);
+
+  if (vector_float.dim == 0)
+    {
+      vimkim_log ("TODO: dim should not be zero yet.\n");
+      db_private_free (nullptr, vector_float.float_array);
+      return ER_FAILED;
+    }
+
+  db_value_domain_init (result, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+  db_make_vector_float (result, &vector_float);
+
+  return NO_ERROR;
 }
 
 /*
@@ -8932,6 +9021,22 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	}
       break;
 
+    case DB_TYPE_VECTOR:
+      switch (original_type)
+	{
+	case DB_TYPE_CHAR:
+	case DB_TYPE_VARCHAR:
+	  {
+
+	    err = tp_atovector (src, target);
+	    break;
+
+	  }
+	default:
+	  status = DOMAIN_INCOMPATIBLE;
+	  break;
+	}
+      break;
     case DB_TYPE_VOBJ:
       if (original_type == DB_TYPE_VOBJ)
 	{
@@ -9333,6 +9438,62 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      }
 	  }
 	  break;
+
+	case DB_TYPE_VECTOR:
+	  {
+
+	    const DB_VECTOR_FLOAT *vf = db_get_vector_float (src);
+	    if (vf == nullptr)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    const auto dim = vf->dim;
+	    const auto arr = vf->float_array;
+
+	    if (!arr)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    std::ostringstream oss;
+
+	    oss << "[";
+	    int vector_dim = dim;
+	    for (int i = 0; i < vector_dim; i++)
+	      {
+		oss << arr[i];
+		if (i < vector_dim - 1)
+		  {
+		    oss << ", ";
+		  }
+	      }
+	    oss << "]";
+
+	    char *new_string = db_private_strdup (NULL, oss.str ().c_str ());
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    // check varchar's precision e.g.) 'select cast (vec as varchar (1)) from tbl;'
+	    int new_string_len = oss.str ().size ();
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < new_string_len)
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		make_desired_string_db_value (desired_type, desired_domain, new_string, target, &status, &data_stat);
+	      }
+	    break;
+	  }
 
 	case DB_TYPE_DATE:
 	case DB_TYPE_TIME:
@@ -10919,6 +11080,7 @@ tp_init_value_domain (TP_DOMAIN * domain, DB_VALUE * value)
 {
   if (domain == NULL)
     {
+      ASSERT_CUBVEC (false);
       /* shouldn't happen ? */
       db_value_domain_init (value, DB_TYPE_NULL, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
     }
@@ -11119,6 +11281,17 @@ fprint_domain (FILE * fp, TP_DOMAIN * domain)
 	  fprintf (fp, "%s(%d,%d)", d->type->name, d->precision, d->scale);
 	  break;
 
+	case DB_TYPE_VECTOR:
+	  if (d->precision == 0 || d->precision == DB_DEFAULT_PRECISION)
+	    {
+	      fprintf (fp, "%s", d->type->name);
+	    }
+	  else
+	    {
+	      fprintf (fp, "%s(%d)", d->type->name, d->precision);
+	    }
+	  break;
+
 	default:
 	  fprintf (fp, "%s", d->type->name);
 	  break;
@@ -11199,6 +11372,7 @@ tp_valid_indextype (DB_TYPE type)
     case DB_TYPE_VARBIT:
     case DB_TYPE_CHAR:
     case DB_TYPE_ENUMERATION:
+    case DB_TYPE_VECTOR:
       return 1;
     default:
       return 0;

@@ -49,6 +49,7 @@
 #include "pl_sr.h"
 #include "vacuum.h"
 #include "serial.h"
+#include "hnsw.hpp"
 #endif /* defined (SA_MODE) */
 #include "oid.h"
 #include "error_manager.h"
@@ -6660,6 +6661,192 @@ btree_class_test_unique (char *buf, int buf_size)
   exit_server (*thread_p);
 
   return success;
+#endif /* !CS_MODE */
+}
+
+int
+hnsw_add_index (BTID * btid, OID * class_oid, int attr_id, int dimension, int hnsw_M, int hnsw_efConstruction,
+		int metric)
+{
+#if defined(CS_MODE)
+  int error = NO_ERROR;
+  int req_error;
+  char *ptr;
+  OR_ALIGNED_BUF (OR_BTID_ALIGNED_SIZE + OR_OID_SIZE + OR_INT_SIZE * 5) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
+  char *reply;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_btid (request, btid);
+  ptr = or_pack_oid (ptr, class_oid);
+  ptr = or_pack_int (ptr, attr_id);
+  ptr = or_pack_int (ptr, dimension);
+  ptr = or_pack_int (ptr, hnsw_M);
+  ptr = or_pack_int (ptr, hnsw_efConstruction);
+  ptr = or_pack_int (ptr, metric);
+
+  req_error =
+    net_client_request (NET_SERVER_HNSW_ADDINDEX, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &error);
+      ptr = or_unpack_btid (ptr, btid);
+    }
+  else
+    {
+      error = req_error;
+    }
+
+  return error;
+#else /* CS_MODE */
+  int error = NO_ERROR;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  hnsw_build_params params;
+
+  params.dimension = dimension;
+  params.m = hnsw_M;
+  params.ef_construction = hnsw_efConstruction;
+  params.metric = (DB_VECTOR_DISTANCE_METRIC) metric;
+
+  error = xhnsw_add_index (thread_p, class_oid, attr_id, params, *btid);
+
+  exit_server (*thread_p);
+
+  return error;
+#endif /* !CS_MODE */
+}
+
+int
+hnsw_delete_index (BTID * btid)
+{
+#if defined(CS_MODE)
+  int req_error, status = NO_ERROR;
+  OR_ALIGNED_BUF (OR_BTID_ALIGNED_SIZE) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  (void) or_pack_btid (request, btid);
+
+  req_error =
+    net_client_request (NET_SERVER_HNSW_DELINDEX, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &status);
+    }
+  else
+    {
+      status = req_error;
+    }
+
+  return status;
+#else /* CS_MODE */
+  int success = ER_FAILED;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xhnsw_delete_index (thread_p, btid);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+int
+hnsw_load_index (BTID * btid, OID * class_oids, int n_classes, int n_attrs, int *attr_ids, HFID * hfids, int dimension,
+		 int m, int ef_construction, int metric)
+{
+#if defined(CS_MODE)
+  int error = NO_ERROR, req_error, request_size;
+  char *ptr;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
+  char *reply;
+  int i, total_attrs;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = (OR_BTID_ALIGNED_SIZE	/* btid */
+		  + (n_classes * OR_OID_SIZE)	/* class_oids */
+		  + OR_INT_SIZE	/* n_classes */
+		  + OR_INT_SIZE	/* n_attrs */
+		  + (n_classes * n_attrs * OR_INT_SIZE)	/* attr_ids */
+		  + (n_classes * OR_HFID_SIZE)	/* hfids */
+		  + OR_INT_SIZE	/* dimension */
+		  + OR_INT_SIZE	/* m */
+		  + OR_INT_SIZE	/* ef_construction */
+		  + OR_INT_SIZE /* metric */ );
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = or_pack_btid (request, btid);
+  ptr = or_pack_int (ptr, n_classes);
+  ptr = or_pack_int (ptr, n_attrs);
+  ptr = or_pack_int (ptr, dimension);
+  ptr = or_pack_int (ptr, m);
+  ptr = or_pack_int (ptr, ef_construction);
+  ptr = or_pack_int (ptr, metric);
+
+  for (i = 0; i < n_classes; i++)
+    {
+      ptr = or_pack_oid (ptr, &class_oids[i]);
+    }
+
+  total_attrs = n_classes * n_attrs;
+  for (i = 0; i < total_attrs; i++)
+    {
+      ptr = or_pack_int (ptr, attr_ids[i]);
+    }
+
+  for (i = 0; i < n_classes; i++)
+    {
+      ptr = or_pack_hfid (ptr, &hfids[i]);
+    }
+
+  req_error =
+    net_client_request (NET_SERVER_HNSW_LOADINDEX, request, request_size, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &error);
+      ptr = or_unpack_btid (ptr, btid);
+    }
+
+  free_and_init (request);
+
+  return error;
+#else /* CS_MODE */
+  int error = NO_ERROR;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  hnsw_build_params params;
+
+  params.dimension = dimension;
+  params.m = m;
+  params.ef_construction = ef_construction;
+  params.metric = (DB_VECTOR_DISTANCE_METRIC) metric;
+
+  error = xhnsw_load_index (thread_p, btid, class_oids, n_classes, n_attrs, attr_ids, hfids, params);
+
+  exit_server (*thread_p);
+
+  return error;
 #endif /* !CS_MODE */
 }
 

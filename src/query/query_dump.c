@@ -486,6 +486,8 @@ qdump_access_method_string (ACCESS_METHOD access)
       return "sequential sampling scan";
     case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
       return "sequential page scan";
+    case ACCESS_METHOD_VECTOR_INDEX_SCAN:
+      return "vindex";
     default:
       return "undefined";
     }
@@ -1226,6 +1228,8 @@ qdump_data_type_string (DB_TYPE type)
       return "ENUM";
     case DB_TYPE_JSON:
       return "JSON";
+    case DB_TYPE_VECTOR:
+      return "VECTOR";
     default:
       return "[***UNKNOWN***]";
     }
@@ -3499,6 +3503,10 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		      fprintf (fp, "(index: unknown), ");
 		    }
 		}
+	    }
+	  else if (spec->access == ACCESS_METHOD_VECTOR_INDEX_SCAN)
+	    {
+	      fprintf (fp, "(vector index: %s.%s), ", class_name, index_name);
 	    }
 	  scan_print_stats_text (fp, &spec->s_id);
 #if !WINDOWS

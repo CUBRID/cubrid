@@ -616,6 +616,29 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       pt_add_type_to_set (parser, result->info.value.data_value.set, &result->data_type);
       break;
 
+    case DB_TYPE_VECTOR:
+      {
+	const DB_VECTOR_FLOAT *src_vector_float = db_get_vector_float (val);
+	int dim = src_vector_float->dim;
+	float *arr = src_vector_float->float_array;
+
+	// WARNING: not analyzed. db_private_alloc results in core dump.
+	vimkim_log ("TRACE: pt_dbval_to_value not analyzed.\n");
+	DB_VECTOR_FLOAT dest_vector_float;
+	dest_vector_float.dim = dim;
+	dest_vector_float.float_array = (float *) malloc (dim * sizeof (float));
+	if (dest_vector_float.float_array == NULL)
+	  {
+	    PT_INTERNAL_ERROR (parser, "Cannot allocate float_array for vector");
+	    return NULL;
+	  }
+
+	memcpy (dest_vector_float.float_array, arr, dim * sizeof (float));
+
+	result->info.value.data_value.vector_float = dest_vector_float;
+      }
+      break;
+
     case DB_TYPE_INTEGER:
       result->info.value.data_value.i = db_get_int (val);
       break;
@@ -1496,6 +1519,10 @@ pt_type_enum_to_db_domain_name (const PT_TYPE_ENUM t)
       name = "sequence";
       break;
 
+    case PT_TYPE_VECTOR:
+      name = "vector";
+      break;
+
     case PT_TYPE_BIT:
       name = "bit";
       break;
@@ -1583,6 +1610,7 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
     case DB_TYPE_OBJECT:
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
+    case DB_TYPE_VECTOR:
     case DB_TYPE_SEQUENCE:
     case DB_TYPE_MIDXKEY:
     case DB_TYPE_ENUMERATION:
@@ -1900,6 +1928,10 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
       scale = dt->info.data_type.dec_precision;
       break;
 
+    case DB_TYPE_VECTOR:
+      precision = dt->info.data_type.precision;
+      break;
+
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
@@ -2085,6 +2117,11 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
 	{
 	  return pt_type_enum_to_db_domain (dt->type_enum);
 	}
+
+    case DB_TYPE_VECTOR:
+      /* TODO (CUBVEC): Only precision is considered for now. */
+      precision = dt->info.data_type.precision;
+      break;
 
     case DB_TYPE_OBJECT:
       /* first check if its a VOBJ */
@@ -2361,6 +2398,10 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
 
     case PT_TYPE_JSON:
       db_type = DB_TYPE_JSON;
+      break;
+
+    case PT_TYPE_VECTOR:
+      db_type = DB_TYPE_VECTOR;
       break;
 
     case PT_TYPE_OBJECT:
@@ -2648,6 +2689,9 @@ pt_db_to_type_enum (const DB_TYPE t)
       break;
     case DB_TYPE_SEQUENCE:
       pt_type = PT_TYPE_SEQUENCE;
+      break;
+    case DB_TYPE_VECTOR:
+      pt_type = PT_TYPE_VECTOR;
       break;
 
     case DB_TYPE_CHAR:

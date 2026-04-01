@@ -101,7 +101,7 @@ static void or_install_btids_prefix_length (DB_SEQ * prefix_seq, OR_INDEX * inde
 static int or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index);
 static void or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, int seq_size,
 				    BTREE_TYPE type, const char *cons_name);
-static int or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id);
+static int or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id, BTREE_TYPE type);
 static void or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_TYPE type,
 					 const char *cons_name);
 static void or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index);
@@ -179,6 +179,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
   OR_ATTRIBUTE *or_att;
   int i, j, k, n_attributes, n_btstats;
   BTREE_STATS *bt_statsp;
+  int bt_stat_index;
 
   DISK_REPR *rep = NULL;
   OR_CLASSREP *or_rep = NULL;
@@ -284,7 +285,8 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 
       /* initialize B+tree statistics information */
 
-      n_btstats = att->n_btstats = or_att->n_btids;
+      /* Vector indexes are not included in B+tree statistics */
+      n_btstats = att->n_btstats = or_att->n_btids - or_att->n_vector_indexes;
       if (n_btstats > 0)
 	{
 	  att->bt_stats = (BTREE_STATS *) malloc (sizeof (BTREE_STATS) * n_btstats);
@@ -295,9 +297,15 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	    }
 	  memset (att->bt_stats, 0, sizeof (BTREE_STATS) * n_btstats);
 
-	  for (j = 0, bt_statsp = att->bt_stats; j < n_btstats; j++, bt_statsp++)
+	  bt_stat_index = 0;
+	  for (j = 0; j < or_att->n_btids; j++)
 	    {
-	      bt_statsp->btid = or_att->btids[j];
+	      if (or_att->btids[j].type == HNSW_VECTOR_INDEX)
+		{
+		  continue;
+		}
+	      bt_statsp = &att->bt_stats[bt_stat_index++];
+	      bt_statsp->btid = or_att->btids[j].btid;
 
 	      bt_statsp->leafs = 0;
 	      bt_statsp->pages = 0;
@@ -330,8 +338,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      /* read B+tree Root page header info */
 	      root_vpid.pageid = bt_statsp->btid.root_pageid;
 	      root_vpid.volid = bt_statsp->btid.vfid.volid;
-
-	      if (VPID_ISNULL (&root_vpid))
+	      if (VPID_ISNULL (&root_vpid) || root_vpid.volid == -1)
 		{
 		  /* after create the catalog record of the class, and before create the catalog record of the
 		   * constraints for the class currently, does not know BTID */
@@ -397,6 +404,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 		  bt_statsp->pkeys[k] = 0;
 		}
 	    }			/* for (j = 0, ...) */
+	  assert (bt_stat_index == n_btstats);
 	}
       else
 	{
@@ -2129,7 +2137,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
  *   id(in): B-tree ID
  */
 static int
-or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
+or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id, BTREE_TYPE type)
 {
   int i;
   OR_ATTRIBUTE *att;
@@ -2167,10 +2175,10 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
 		{
 		  /* allocate a bigger array and copy over our local pack */
 		  size = ptr->n_btids + OR_ATT_BTID_PREALLOC;
-		  ptr->btids = (BTID *) malloc (sizeof (BTID) * size);
+		  ptr->btids = (OR_ATTRIBUTE_INDEX *) malloc (sizeof (OR_ATTRIBUTE_INDEX) * size);
 		  if (ptr->btids != NULL)
 		    {
-		      memcpy (ptr->btids, ptr->btid_pack, (sizeof (BTID) * ptr->n_btids));
+		      memcpy (ptr->btids, ptr->btid_pack, (sizeof (OR_ATTRIBUTE_INDEX) * ptr->n_btids));
 		    }
 		  ptr->max_btids = size;
 		}
@@ -2178,7 +2186,7 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
 		{
 		  /* we already have an externally allocated array, make it bigger */
 		  size = ptr->n_btids + OR_ATT_BTID_PREALLOC;
-		  ptr->btids = (BTID *) realloc (ptr->btids, size * sizeof (BTID));
+		  ptr->btids = (OR_ATTRIBUTE_INDEX *) realloc (ptr->btids, size * sizeof (OR_ATTRIBUTE_INDEX));
 		  ptr->max_btids = size;
 		}
 	    }
@@ -2186,8 +2194,13 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
 
       if (ptr->btids)
 	{
-	  ptr->btids[ptr->n_btids] = *id;
+	  ptr->btids[ptr->n_btids].btid = *id;
+	  ptr->btids[ptr->n_btids].type = type;
 	  ptr->n_btids += 1;
+	  if (type == HNSW_VECTOR_INDEX)
+	    {
+	      ptr->n_vector_indexes += 1;
+	    }
 	}
       else
 	{
@@ -2274,7 +2287,7 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
 	    }
 	}
 
-      (void) or_install_btids_attribute (rep, att_id, &id);
+      (void) or_install_btids_attribute (rep, att_id, &id, type);
     }
 
   /*
@@ -2301,7 +2314,8 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
     {SM_PROPERTY_UNIQUE, NULL, BTREE_UNIQUE, 0},
     {SM_PROPERTY_REVERSE_UNIQUE, NULL, BTREE_REVERSE_UNIQUE, 0},
     {SM_PROPERTY_INDEX, NULL, BTREE_INDEX, 0},
-    {SM_PROPERTY_REVERSE_INDEX, NULL, BTREE_REVERSE_INDEX, 0}
+    {SM_PROPERTY_REVERSE_INDEX, NULL, BTREE_REVERSE_INDEX, 0},
+    {SM_PROPERTY_VECTOR_INDEX, NULL, HNSW_VECTOR_INDEX, 0}
   };
 
   DB_VALUE vals[SM_PROPERTY_NUM_INDEX_FAMILY];
@@ -3548,7 +3562,8 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 
       if (strcmp (prop_name, SM_PROPERTY_PRIMARY_KEY) != 0 && strcmp (prop_name, SM_PROPERTY_UNIQUE) != 0
 	  && strcmp (prop_name, SM_PROPERTY_REVERSE_UNIQUE) != 0 && strcmp (prop_name, SM_PROPERTY_INDEX) != 0
-	  && strcmp (prop_name, SM_PROPERTY_REVERSE_INDEX) != 0 && strcmp (prop_name, SM_PROPERTY_FOREIGN_KEY) != 0)
+	  && strcmp (prop_name, SM_PROPERTY_REVERSE_INDEX) != 0 && strcmp (prop_name, SM_PROPERTY_FOREIGN_KEY) != 0
+	  && strcmp (prop_name, SM_PROPERTY_VECTOR_INDEX) != 0)
 	{
 	  continue;
 	}

@@ -94,7 +94,7 @@
 #include "pl_compile_handler.hpp"
 #include "pl_session.hpp"
 #include "pl_executor.hpp"
-
+#include "hnsw.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -4826,6 +4826,132 @@ sbtree_class_test_unique (THREAD_ENTRY *thread_p, unsigned int rid, char *reques
 
   (void) or_pack_int (reply, (int) success);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+void
+shnsw_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  BTID btid;
+  int dimension, hnsw_M, hnsw_efConstruction, metric_type, attr_id;
+  OID class_oid;
+  char *ptr;
+
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_unpack_btid (request, &btid);
+  ptr = or_unpack_oid (ptr, &class_oid);
+  ptr = or_unpack_int (ptr, &attr_id);
+  ptr = or_unpack_int (ptr, &dimension);
+  ptr = or_unpack_int (ptr, &hnsw_M);
+  ptr = or_unpack_int (ptr, &hnsw_efConstruction);
+  ptr = or_unpack_int (ptr, &metric_type);
+
+  hnsw_build_params params;
+
+  params.dimension = dimension;
+  params.m = hnsw_M;
+  params.ef_construction = hnsw_efConstruction;
+  params.metric = (DB_VECTOR_DISTANCE_METRIC) metric_type;
+
+  int error = xhnsw_add_index (thread_p, &class_oid, attr_id, params, btid);
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_int (reply, error);
+  ptr = or_pack_btid (ptr, &btid);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+void
+shnsw_delete_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  BTID btid;
+  int success;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  (void) or_unpack_btid (request, &btid);
+
+  success = (xhnsw_delete_index (thread_p, &btid) == NO_ERROR) ? NO_ERROR : ER_FAILED;
+  if (success != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  (void) or_pack_int (reply, (int) success);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+void
+shnsw_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error = NO_ERROR;
+  BTID btid;
+  BTID *return_btid = NULL;
+  int dimension, hnsw_M, hnsw_efConstruction, metric_type;
+  OID *class_oids = NULL;
+  HFID *hfids = NULL;
+  int n_classes, n_attrs, *attr_ids = NULL;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+
+  ptr = or_unpack_btid (request, &btid);
+  ptr = or_unpack_int (ptr, &n_classes);
+  ptr = or_unpack_int (ptr, &n_attrs);
+  ptr = or_unpack_int (ptr, &dimension);
+  ptr = or_unpack_int (ptr, &hnsw_M);
+  ptr = or_unpack_int (ptr, &hnsw_efConstruction);
+  ptr = or_unpack_int (ptr, &metric_type);
+
+  ptr = or_unpack_oid_array (ptr, n_classes, &class_oids);
+  if (ptr == NULL)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      return;
+    }
+  ptr = or_unpack_int_array (ptr, (n_classes * n_attrs), &attr_ids);
+  if (ptr == NULL)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      return;
+    }
+  ptr = or_unpack_hfid_array (ptr, n_classes, &hfids);
+  if (ptr == NULL)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      return;
+    }
+
+  hnsw_build_params params;
+
+  params.dimension = dimension;
+  params.m = hnsw_M;
+  params.ef_construction = hnsw_efConstruction;
+  params.metric = (DB_VECTOR_DISTANCE_METRIC) metric_type;
+
+  error = xhnsw_load_index (thread_p, &btid, class_oids, n_classes, n_attrs, attr_ids, hfids, params);
+
+  ptr = or_pack_int (reply, NO_ERROR);
+  ptr = or_pack_btid (ptr, &btid);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  if (attr_ids != NULL)
+    {
+      db_private_free_and_init (thread_p, attr_ids);
+    }
+  if (class_oids != NULL)
+    {
+      db_private_free_and_init (thread_p, class_oids);
+    }
+  if (hfids != NULL)
+    {
+      db_private_free_and_init (thread_p, hfids);
+    }
+
 }
 
 /*
