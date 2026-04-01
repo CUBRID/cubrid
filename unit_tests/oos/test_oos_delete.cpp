@@ -32,7 +32,6 @@ using namespace test_oos_log;
 
 // bridge functions to access static functions in oos_file.cpp
 int bridge_oos_get_max_chunk_size_within_page ();
-int bridge_oos_get_recently_inserted_oos_vpid (const VFID &oos_vfid, VPID &vpid);
 
 // ---------------------------------------------------------------------------
 // helper: fix page from OID with READ latch, return free space, then unfix
