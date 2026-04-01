@@ -2865,6 +2865,8 @@ check_fk_constraint (MOP classop, FILE * fp)
  * NOTE:
  *   - System classes are skipped.
  *   - Only replication-enabled classes are checked.
+ *   - Vclasses are skipped because they can be created with replication ON,
+ *     but do not have replication constraints to validate.
  */
 static int
 check_repl_constraint_violations (DB_OBJLIST * classes, FILE * fp, REPL_CONSTRAINT_CHECK_FUNC check_func,
