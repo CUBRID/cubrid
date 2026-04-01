@@ -11025,53 +11025,96 @@ file_tracker_item_purge_invalid_heap_file (THREAD_ENTRY * thread_p, PAGE_PTR pag
 
   file_header_sanity_check (thread_p, fhead);
 
-  if (fhead->type == FILE_HEAP || fhead->type == FILE_HEAP_REUSE_SLOTS)
+  FILE_TYPE file_type = fhead->type;
+  OID class_oid = OID_INITIALIZER;
+  bool need_clean = false;
+
+  switch (file_type)
     {
-      OID *class_oid_p = &fhead->descriptor.heap.class_oid;
+    case FILE_HEAP:
+    case FILE_HEAP_REUSE_SLOTS:
+      class_oid = fhead->descriptor.heap.class_oid;
+      break;
+    case FILE_MULTIPAGE_OBJECT_HEAP:
+      class_oid = fhead->descriptor.heap_overflow.class_oid;
+      break;
+    case FILE_BTREE:
+      class_oid = fhead->descriptor.btree.class_oid;
+      break;
+    case FILE_BTREE_OVERFLOW_KEY:
+      class_oid = fhead->descriptor.btree_key_overflow.class_oid;
+      break;
+    default:
+      break;
+    }
 
-      if (!OID_ISNULL (class_oid_p))
+  pgbuf_unfix_and_init (thread_p, page_fhead);
+
+  if (!OID_ISNULL (&class_oid))
+    {
+      auto it = invalid_oids->find (class_oid);
+      if (it != invalid_oids->end ())
 	{
-	  RECDES recdes;
-	  HEAP_SCANCACHE scan_cache;
-
-	  (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
-
-	  if (heap_get_class_record (thread_p, class_oid_p, &recdes, &scan_cache, PEEK) != S_SUCCESS)
+	  need_clean = true;
+	}
+      else
+	{
+	  auto it = valid_oids->find (class_oid);
+	  if (it == valid_oids->end ())
 	    {
-	      VFID vfid;
-
-	      vfid.volid = item->volid;
-	      vfid.fileid = item->fileid;
-
-	      if (page_fhead != NULL)
+	      if (!file_is_valid_heap_file (thread_p, &class_oid))
 		{
-		  pgbuf_unfix (thread_p, page_fhead);
-		  page_fhead = NULL;
+		  need_clean = true;
+
+		  invalid_oids->insert (class_oid);
 		}
-
-	      log_sysop_start (thread_p);
-
-	      if (file_destroy (thread_p, &vfid, false) != NO_ERROR)
+	      else
 		{
-		  ASSERT_ERROR_AND_SET (error_code);
-
-		  log_sysop_abort (thread_p);
-
-		  heap_scancache_end (thread_p, &scan_cache);
-
-		  return error_code;
+		  valid_oids->insert (class_oid);
 		}
-
-	      log_sysop_commit (thread_p);
 	    }
-
-	  heap_scancache_end (thread_p, &scan_cache);
 	}
     }
 
-  if (page_fhead != NULL)
+  if (need_clean)
     {
-      pgbuf_unfix (thread_p, page_fhead);
+      VFID vfid;
+
+      vfid.volid = item->volid;
+      vfid.fileid = item->fileid;
+
+      log_sysop_start (thread_p);
+
+      if (file_destroy (thread_p, &vfid, false) != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+
+	  log_sysop_abort (thread_p);
+
+	  return error_code;
+	}
+
+      log_sysop_commit (thread_p);
+
+      switch (file_type)
+	{
+	case FILE_HEAP:
+	case FILE_HEAP_REUSE_SLOTS:
+	  (*heap)++;
+	  break;
+	case FILE_MULTIPAGE_OBJECT_HEAP:
+	  (*heap_ovf)++;
+	  break;
+	case FILE_BTREE:
+	  (*btree)++;
+	  break;
+	case FILE_BTREE_OVERFLOW_KEY:
+	  (*btree_ovf)++;
+	  break;
+	default:
+	  assert (false);
+	  break;
+	}
     }
 
   return NO_ERROR;
@@ -11172,9 +11215,11 @@ file_tracker_item_purge_target_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_i
 
   file_header_sanity_check (thread_p, fhead);
 
-  if (fhead->type == FILE_HEAP || fhead->type == FILE_HEAP_REUSE_SLOTS || fhead->type == FILE_MULTIPAGE_OBJECT_HEAP
-      || fhead->type == FILE_BTREE || fhead->type == FILE_BTREE_OVERFLOW_KEY || fhead->type == FILE_QUERY_AREA
-      || fhead->type == FILE_TEMP || fhead->type == FILE_UNKNOWN_TYPE)
+  FILE_TYPE file_type = fhead->type;
+
+  if (file_type == FILE_HEAP || file_type == FILE_HEAP_REUSE_SLOTS || file_type == FILE_MULTIPAGE_OBJECT_HEAP
+      || file_type == FILE_BTREE || file_type == FILE_BTREE_OVERFLOW_KEY || file_type == FILE_QUERY_AREA
+      || file_type == FILE_TEMP || file_type == FILE_UNKNOWN_TYPE)
     {
       if (page_fhead != NULL)
 	{
@@ -11185,7 +11230,7 @@ file_tracker_item_purge_target_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_i
 
       log_sysop_start (thread_p);
 
-      if (fhead->type == FILE_QUERY_AREA || fhead->type == FILE_TEMP)
+      if (file_type == FILE_QUERY_AREA || file_type == FILE_TEMP)
 	{
 	  if (file_destroy (thread_p, target_vfid, true) != NO_ERROR)
 	    {

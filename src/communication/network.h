@@ -250,11 +250,9 @@ enum net_server_request
   NET_SERVER_VACUUM_DUMP,
 
   /* file manager */
-  NET_SERVER_FILEMGR_DUMP_FILE_LIST,
-  NET_SERVER_FILEMGR_PURGE_INVALID_HEAP_FILES,
-#if !defined(NDEBUG)
-  NET_SERVER_FILEMGR_PURGE_TARGET_FILE,
-#endif
+  NET_SERVER_CLEANFILEDB_DUMP_FILE_LIST,
+  NET_SERVER_CLEANFILEDB_CLEAN_INVALID_FILE,
+  NET_SERVER_CLEANFILEDB_DELETE_TARGET_FILE,	// Debug only: unsafe, may break DB consistency
 
   /*
    * This is the last entry. It is also used for the end of an

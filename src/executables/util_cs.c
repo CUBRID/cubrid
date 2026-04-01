@@ -4077,13 +4077,27 @@ filemgr (UTIL_FUNCTION_ARG * arg)
 
   if (should_purge_invalid_heap_files == true)
     {
-      (void) file_purge_invalid_heap_files ();
+      int heap = 0, heap_ovf = 0, btree = 0, btree_ovf = 0;
+      int total;
+
+      if (file_clean_invalid_file (&heap, &heap_ovf, &btree, &btree_ovf) != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  db_shutdown ();
+	  goto error_exit;
+	}
+
+      total = heap + heap_ovf + btree + btree_ovf;
+
+      fprintf (outfp,
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CLEANFILEDB, CLEANFILEDB_MSG_CLEAN_SUMMARY),
+	       db_name, heap, heap_ovf, btree, btree_ovf, total);
     }
 
 #if !defined(NDEBUG)
   if (target_vfid_str != NULL)
     {
-      (void) file_purge_target_file (target_vfid_str);
+      (void) file_delete_target_file (target_vfid_str);
     }
 #endif
 
