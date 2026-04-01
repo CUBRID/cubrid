@@ -114,11 +114,6 @@ namespace cubhnsw
   static constexpr std::size_t VECTOR_CACHE_ALIGNMENT = 64;
   static constexpr std::size_t VECTOR_CACHE_TARGET_BLOCK_BYTES = 1U << 20;
 
-  struct alignas (VECTOR_CACHE_ALIGNMENT) vector_cache_region_unit final
-  {
-    std::byte m_bytes[VECTOR_CACHE_ALIGNMENT];
-  };
-
   struct vector_cache_block final
   {
     explicit vector_cache_block (std::size_t vector_stride_bytes, std::size_t vector_capacity)

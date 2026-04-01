@@ -279,6 +279,8 @@ extern "C"
 #endif
   extern char *db_private_strdup (THREAD_ENTRY * thrd, const char *s);
   extern char *db_private_strndup (THREAD_ENTRY * thrd, const char *s, size_t size);
+  extern void *db_private_aligned_alloc (THREAD_ENTRY * thrd, size_t alignment, size_t size);
+  extern void db_private_aligned_free (THREAD_ENTRY * thrd, void *ptr);
 #ifdef __cplusplus
 }
 #endif

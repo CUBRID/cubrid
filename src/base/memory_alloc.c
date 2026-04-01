@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <stdint.h>
 
 #include "set_object.h"
 #include "misc_string.h"
@@ -60,6 +61,12 @@ HL_HEAPID private_heap_id = 0;
 #if defined (SERVER_MODE)
 static HL_HEAPID db_private_get_heapid_from_thread (REFPTR (THREAD_ENTRY, thread_p));
 #endif // SERVER_MODE
+
+typedef struct db_private_aligned_header DB_PRIVATE_ALIGNED_HEADER;
+struct db_private_aligned_header
+{
+  void *raw_ptr;
+};
 
 /*
  * ansisql_strcmp - String comparison according to ANSI SQL
@@ -747,6 +754,58 @@ db_private_strndup (THREAD_ENTRY * thrd, const char *s, size_t size)
     }
 
   return cp;
+}
+
+void *
+db_private_aligned_alloc (THREAD_ENTRY * thrd, size_t alignment, size_t size)
+{
+  char *raw_ptr = NULL;
+  uintptr_t aligned_addr;
+  size_t total_size;
+  DB_PRIVATE_ALIGNED_HEADER *header = NULL;
+
+  if (size == 0)
+    {
+      return NULL;
+    }
+
+  if (alignment < sizeof (void *))
+    {
+      alignment = sizeof (void *);
+    }
+
+  if ((alignment & (alignment - 1)) != 0)
+    {
+      return NULL;
+    }
+
+  total_size = size + alignment - 1 + sizeof (DB_PRIVATE_ALIGNED_HEADER);
+  raw_ptr = (char *) db_private_alloc (thrd, total_size);
+  if (raw_ptr == NULL)
+    {
+      return NULL;
+    }
+
+  aligned_addr =
+    ((uintptr_t) (raw_ptr + sizeof (DB_PRIVATE_ALIGNED_HEADER)) + alignment - 1) & ~((uintptr_t) alignment - 1);
+  header = (DB_PRIVATE_ALIGNED_HEADER *) ((char *) aligned_addr - sizeof (DB_PRIVATE_ALIGNED_HEADER));
+  header->raw_ptr = raw_ptr;
+
+  return (void *) aligned_addr;
+}
+
+void
+db_private_aligned_free (THREAD_ENTRY * thrd, void *ptr)
+{
+  DB_PRIVATE_ALIGNED_HEADER *header = NULL;
+
+  if (ptr == NULL)
+    {
+      return;
+    }
+
+  header = (DB_PRIVATE_ALIGNED_HEADER *) ((char *) ptr - sizeof (DB_PRIVATE_ALIGNED_HEADER));
+  db_private_free (thrd, header->raw_ptr);
 }
 
 /*

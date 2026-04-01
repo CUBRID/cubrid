@@ -25,9 +25,7 @@
 #include "db_vector.hpp"
 #include "error_code.h"
 
-#include <cstdlib>
 #include <cstdint>
-#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <sstream>
@@ -50,20 +48,7 @@ db_vector_allocate_float_array (int dim)
     }
 
   const std::size_t bytes = static_cast<std::size_t> (dim) * sizeof (float);
-  const std::size_t extra_bytes = DB_VECTOR_ALIGNMENT - 1 + sizeof (void *);
-  char *raw = static_cast<char *> (db_private_alloc (NULL, bytes + extra_bytes));
-  if (raw == nullptr)
-    {
-      return nullptr;
-    }
-
-  const std::uintptr_t aligned_addr =
-	  (reinterpret_cast<std::uintptr_t> (raw + sizeof (void *)) + DB_VECTOR_ALIGNMENT - 1)
-	  & ~ (static_cast<std::uintptr_t> (DB_VECTOR_ALIGNMENT - 1));
-  float *aligned = reinterpret_cast<float *> (aligned_addr);
-
-  reinterpret_cast<void **> (aligned)[-1] = raw;
-  return aligned;
+  return static_cast<float *> (db_private_aligned_alloc (NULL, DB_VECTOR_ALIGNMENT, bytes));
 }
 
 void
@@ -74,8 +59,7 @@ db_vector_free_float_array (float *vf)
       return;
     }
 
-  void *raw = reinterpret_cast<void **> (vf)[-1];
-  db_private_free (NULL, raw);
+  db_private_aligned_free (NULL, vf);
 }
 
 bool
