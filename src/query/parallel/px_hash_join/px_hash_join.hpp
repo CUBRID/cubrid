@@ -25,53 +25,11 @@
 #include "query_hash_join.h"
 
 #include "thread_entry.hpp"		/* cubthread::entry */
-#include "thread_entry_task.hpp"	/* cubthread::entry_manager */
-#include "thread_worker_pool.hpp"	/* cubthread::entry_workpool */
 
 namespace parallel_query
 {
   namespace hash_join
   {
-    /*
-     * entry_manager
-     */
-
-    class entry_manager : public cubthread::entry_manager
-    {
-      public:
-	entry_manager (cubthread::entry &main_thread_ref);
-
-      protected:
-	void on_create (cubthread::entry &context) override;
-	void on_retire (cubthread::entry &context) override;
-	void on_recycle (cubthread::entry &context) override;
-
-      private:
-	cubthread::entry &m_main_thread_ref;
-
-	void emulate_main_thread (cubthread::entry &thread_ref) noexcept;
-    };
-
-    /*
-     * worker_pool_manager
-     */
-
-    class worker_pool_manager
-    {
-      public:
-	worker_pool_manager (cubthread::entry &main_thread_ref);
-	~worker_pool_manager ();
-
-	bool try_reserve_workers (int pool_size);
-	void release_workers ();
-
-	cubthread::entry_workpool *get_worker_pool () const noexcept;
-
-      private:
-	entry_manager m_entry_manager;
-	cubthread::entry_workpool *m_worker_pool;
-    };
-
     /*
      * build_partitions
      */

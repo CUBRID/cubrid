@@ -5483,9 +5483,7 @@ pgbuf_initialize_lock_table (void)
 
   /* allocate memory space for the buffer lock table */
   thrd_num_total = thread_num_total_threads ();
-#if defined(SERVER_MODE)
-  assert ((int) thrd_num_total > MAX_NTRANS * 2);
-#else /* !SERVER_MODE */
+#if !defined(SERVER_MODE)
   assert (thrd_num_total == 1);
 #endif /* !SERVER_MODE */
 
@@ -5704,9 +5702,7 @@ pgbuf_initialize_thrd_holder (void)
   size_t i, j, idx;
 
   thrd_num_total = thread_num_total_threads ();
-#if defined(SERVER_MODE)
-  assert ((int) thrd_num_total > MAX_NTRANS * 2);
-#else /* !SERVER_MODE */
+#if !defined(SERVER_MODE)
   assert (thrd_num_total == 1);
 #endif /* !SERVER_MODE */
 
@@ -12125,6 +12121,13 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	{
 	  goto exit;
 	}
+      /* OLD_PAGE_MAYBE_DEALLOCATED sets ER_WARNING_SEVERITY for ER_PB_BAD_PAGEID,
+       * which er_errid_if_has_error() does not catch; handle it explicitly here. */
+      if (fetch_mode == OLD_PAGE_MAYBE_DEALLOCATED && er_errid () == ER_PB_BAD_PAGEID)
+	{
+	  er_status = ER_PB_BAD_PAGEID;
+	  goto exit;
+	}
 
       wait_msecs = pgbuf_find_current_wait_msecs (thread_p);
       if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
@@ -12571,10 +12574,21 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	    }
 	  if (er_status == ER_PB_BAD_PAGEID)
 	    {
-	      /* page was probably deallocated? so has the impossible indeed happen?? */
-	      assert (false);
-	      er_log_debug (ARG_FILE_LINE, "pgbuf_ordered_fix: page %d|%d was deallocated an we told it not to!\n",
-			    VPID_AS_ARGS (&ordered_holders_info[i].vpid));
+	      if (VPID_EQ (req_vpid, &(ordered_holders_info[i].vpid)) && fetch_mode == OLD_PAGE_MAYBE_DEALLOCATED)
+		{
+		  /* page was deallocated between ftab snapshot and actual fix; this is expected with
+		   * OLD_PAGE_MAYBE_DEALLOCATED. */
+		  er_log_debug (ARG_FILE_LINE,
+				"pgbuf_ordered_fix: page %d|%d was deallocated (OLD_PAGE_MAYBE_DEALLOCATED mode).\n",
+				VPID_AS_ARGS (&ordered_holders_info[i].vpid));
+		}
+	      else
+		{
+		  /* page was probably deallocated? so has the impossible indeed happen?? */
+		  assert (false);
+		  er_log_debug (ARG_FILE_LINE, "pgbuf_ordered_fix: page %d|%d was deallocated an we told it not to!\n",
+				VPID_AS_ARGS (&ordered_holders_info[i].vpid));
+		}
 	    }
 	  if (!VPID_EQ (req_vpid, &(ordered_holders_info[i].vpid)))
 	    {
@@ -16516,8 +16530,7 @@ pgbuf_page_maintenance_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (100));
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (pgbuf_page_maintenance_execute);
 
-  pgbuf_Page_maintenance_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                            "pgbuf_page_maintenance");
+  pgbuf_Page_maintenance_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "pgbuf-maintain");
 }
 #endif /* SERVER_MODE */
 
@@ -16533,7 +16546,7 @@ pgbuf_page_flush_daemon_init ()
   cubthread::looper looper = cubthread::looper (pgbuf_get_page_flush_interval);
   pgbuf_page_flush_daemon_task *daemon_task = new pgbuf_page_flush_daemon_task ();
 
-  pgbuf_Page_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "pgbuf_page_flush");
+  pgbuf_Page_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "pgbuf-page-flush");
 }
 #endif /* SERVER_MODE */
 
@@ -16556,7 +16569,7 @@ pgbuf_page_post_flush_daemon_init ()
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (pgbuf_page_post_flush_execute);
 
   pgbuf_Page_post_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                           "pgbuf_page_post_flush");
+                                                                           "pgbuf-page-post-flush");
 }
 #endif /* SERVER_MODE */
 
@@ -16579,7 +16592,7 @@ pgbuf_flush_control_daemon_init ()
 
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (50));
   pgbuf_Flush_control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                         "pgbuf_flush_control");
+                                                                         "pgbuf-flush-control");
 }
 #endif /* SERVER_MODE */
 
