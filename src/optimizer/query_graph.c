@@ -8115,7 +8115,7 @@ qo_generate_transitive_join_terms (QO_ENV * env)
   int specs_count = 0, specs_cap = 0;
   size_t new_size;
   QO_TERM *new_arr;
-  int *eqclass_term_idx = NULL;
+  int *term_idx_backup = NULL;
 
   if (qo_collect_transitive_join_specs (env, &specs, &specs_count, &specs_cap) != 0 || specs_count == 0)
     {
@@ -8129,9 +8129,11 @@ qo_generate_transitive_join_terms (QO_ENV * env)
   extra = specs_count;
   old_nedges = env->nedges;
   old_terms = env->nterms;
-  eqclass_term_idx = (int *) malloc (sizeof (int) * env->neqclasses);
 
-  if (eqclass_term_idx == NULL)
+  /* Backup current term indices for eqclass. */
+  term_idx_backup = (int *) malloc (sizeof (int) * env->neqclasses);
+
+  if (term_idx_backup == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * env->neqclasses);
       free_and_init (specs);
@@ -8141,18 +8143,20 @@ qo_generate_transitive_join_terms (QO_ENV * env)
   for (i = 0; i < env->neqclasses; i++)
     {
       QO_EQCLASS *eqc = QO_ENV_EQCLASS (env, i);
-      eqclass_term_idx[i] = (eqc->term != NULL) ? QO_TERM_IDX (eqc->term) : -1;
+      term_idx_backup[i] = (eqc->term != NULL) ? QO_TERM_IDX (eqc->term) : -1;
     }
 
   new_size = sizeof (QO_TERM) * (env->Nterms + extra);
   new_arr = (QO_TERM *) realloc (env->terms, new_size);
+
   if (new_arr == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, new_size);
       free_and_init (specs);
-      free_and_init (eqclass_term_idx);
+      free_and_init (term_idx_backup);
       return;
     }
+
   env->terms = new_arr;
   env->Nterms += extra;
 
@@ -8167,6 +8171,7 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 	}
     }
 
+  /* Reset internal bitset pointers that may have been invalidated by realloc */
   for (i = 0; i < env->Nterms; i++)
     {
       QO_TERM *term = QO_ENV_TERM (env, i);
@@ -8178,10 +8183,12 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 	term->subqueries.setp = term->subqueries.set.word;
     }
 
+  /* Adjust term indices in all related structures to reflect the shift */
   for (i = 0; i < env->nnodes; i++)
     {
       qo_adjust_bitset_indices (env, &QO_NODE_SARGS (QO_ENV_NODE (env, i)), old_nedges, extra);
     }
+
   qo_adjust_bitset_indices (env, &env->fake_terms, old_nedges, extra);
 
   for (q = 0; q < env->nsubqueries; q++)
@@ -8189,14 +8196,16 @@ qo_generate_transitive_join_terms (QO_ENV * env)
       qo_adjust_bitset_indices (env, &env->subqueries[q].terms, old_nedges, extra);
     }
 
+  /* Insert new transitive joins into the vacancies created at the end of join edges */
   qo_insert_transitive_join_terms (env, specs, specs_count, old_nedges);
 
+  /* Restore equivalence class terms using the backed-up indices */
   for (i = 0; i < env->neqclasses; i++)
     {
       QO_EQCLASS *eqc = QO_ENV_EQCLASS (env, i);
-      if (eqclass_term_idx[i] != -1)
+      if (term_idx_backup[i] != -1)
 	{
-	  int old_idx = eqclass_term_idx[i];
+	  int old_idx = term_idx_backup[i];
 	  int new_idx = (old_idx >= old_nedges) ? (old_idx + extra) : old_idx;
 	  eqc->term = QO_ENV_TERM (env, new_idx);
 	}
@@ -8208,7 +8217,7 @@ qo_generate_transitive_join_terms (QO_ENV * env)
   qo_sort_edges (env);
 
   free_and_init (specs);
-  free_and_init (eqclass_term_idx);
+  free_and_init (term_idx_backup);
 }
 
 /*
@@ -8257,16 +8266,13 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 
       if (required_segs > segs_arr_cap)
 	{
-	  if (segs_arr)
-	    {
-	      free_and_init (segs_arr);
-	    }
-	  segs_arr = (int *) malloc (sizeof (int) * required_segs);
-	  if (segs_arr == NULL)
+	  int *np = (int *) realloc (segs_arr, sizeof (int) * required_segs);
+	  if (np == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * required_segs);
 	      return -1;
 	    }
+	  segs_arr = np;
 	  segs_arr_cap = required_segs;
 	}
 
@@ -8316,8 +8322,9 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 		      break;
 		    }
 
-		  if ((QO_TERM_HEAD (term) == head_node && QO_TERM_TAIL (term) == tail_node)
-		      || (QO_TERM_HEAD (term) == tail_node && QO_TERM_TAIL (term) == head_node))
+		  if (QO_TERM_EQCLASS (term) == eqclass
+		      && ((QO_TERM_HEAD (term) == head_node && QO_TERM_TAIL (term) == tail_node)
+			  || (QO_TERM_HEAD (term) == tail_node && QO_TERM_TAIL (term) == head_node)))
 		    {
 		      already_has_term = true;
 		      break;
@@ -8334,6 +8341,7 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 		  int new_cap = (*cap_p == 0) ? 8 : (*cap_p * 2);
 		  QO_TRANSITIVE_JOIN_SPEC *np =
 		    (QO_TRANSITIVE_JOIN_SPEC *) realloc (*specs_p, sizeof (QO_TRANSITIVE_JOIN_SPEC) * new_cap);
+
 		  if (np == NULL)
 		    {
 		      if (segs_arr)
@@ -8342,6 +8350,7 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 			}
 		      return -1;
 		    }
+
 		  *specs_p = np;
 		  *cap_p = new_cap;
 		}
@@ -8455,12 +8464,15 @@ static void
 qo_sort_edges (QO_ENV * env)
 {
   int t1, t2;
+
   for (t1 = 0; t1 < env->nedges - 1; t1++)
     {
       QO_TERM *term1 = QO_ENV_TERM (env, t1);
+
       for (t2 = t1 + 1; t2 < env->nedges; t2++)
 	{
 	  QO_TERM *term2 = QO_ENV_TERM (env, t2);
+
 	  if (QO_TERM_SELECTIVITY (term1) < QO_TERM_SELECTIVITY (term2))
 	    {
 	      bool is_fake1, is_fake2;
