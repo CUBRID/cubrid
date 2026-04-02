@@ -10459,7 +10459,7 @@ log_clock_daemon_init ()
 /*
  * log_check_ha_delay_info_daemon_init () - initialize check ha delay info daemon
  */
-REGISTER_DAEMON (ha_dalay_check);
+REGISTER_DAEMON (ha_delay_check);
 
 void
 log_check_ha_delay_info_daemon_init ()

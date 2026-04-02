@@ -170,7 +170,7 @@ namespace cubthread
       }
     else
       {
-	assert (m_worker_pools.size () < workerpool_registry_t::count ());
+	assert (m_worker_pools.size () <= workerpool_registry_t::count ());
 
 	if (entry_mgr == NULL)
 	  {
@@ -197,7 +197,7 @@ namespace cubthread
       }
     else
       {
-	assert (m_daemons.size () < daemon_registry_t::count ());
+	assert (m_daemons.size () <= daemon_registry_t::count ());
 
 	if (entry_mgr == NULL)
 	  {
