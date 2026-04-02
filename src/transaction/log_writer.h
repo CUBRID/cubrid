@@ -96,7 +96,7 @@ struct logwr_global
   int last_arv_num;
 
   bool force_flush;
-  struct timeval last_flush_time;
+  struct timespec last_flush_time;
   /* background log archiving info */
   BACKGROUND_ARCHIVING_INFO bg_archive_info;
   char bg_archive_name[PATH_MAX];

@@ -211,6 +211,12 @@ namespace cubthread
     std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
     goto_sleep ();
 
+    /* NOTE: GCC 8 libstdc++ condition_variable internally uses CLOCK_REALTIME (system_clock) for all wait
+     * operations, regardless of the clock type used for the delta parameter. This means the pthread-level wait
+     * is still subject to NTP time adjustments (wall clock jumps).
+     * The steady_clock-based delta parameter ensures correct elapsed-time calculation in our code.
+     * After upgrading to GCC 11+ (glibc 2.30+), condition_variable will automatically use CLOCK_MONOTONIC
+     * for wait operations via pthread_cond_clockwait(), fully eliminating NTP influence. */
     ret = m_condvar.wait_for (lock, delta, [this] { return m_status == AWAKENING; });
     if (!ret)
       {
@@ -229,6 +235,9 @@ namespace cubthread
     std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
     goto_sleep ();
 
+    /* NOTE: GCC 8 libstdc++ condition_variable internally uses CLOCK_REALTIME for wait_until,
+     * regardless of the time_point clock type. The pthread-level wait is still subject to NTP adjustments.
+     * After upgrading to GCC 11+ (glibc 2.30+), this will automatically use CLOCK_MONOTONIC. */
     bool ret = m_condvar.wait_until (lock, timeout_time, [this] { return m_status == AWAKENING; });
     if (!ret)
       {

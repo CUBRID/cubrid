@@ -3258,7 +3258,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   assert (end_redo_lsa != nullptr && !end_redo_lsa->is_null ());
 
   // *INDENT-OFF*
-  const auto time_start_setting_up = std::chrono::system_clock::now ();
+  const auto time_start_setting_up = std::chrono::steady_clock::now ();
   // *INDENT-ON*
 
   /* depending on compilation mode and on a system parameter, initialize the
@@ -3282,7 +3282,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 #endif
 
   // *INDENT-OFF*
-  const auto time_start_main = std::chrono::system_clock::now ();
+  const auto time_start_main = std::chrono::steady_clock::now ();
   /* 'setting_up' measures the time taken to initialize parallel log recovery redo infrstructure */
   const auto duration_setting_up_ms
       = std::chrono::duration_cast <std::chrono::milliseconds>(time_start_main - time_start_setting_up);
@@ -3880,7 +3880,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
     // *INDENT-OFF*
     /* 'main' measures the time taken by the main thread to execute sync log records and dispatch async ones */
     const auto duration_main_ms = std::chrono::duration_cast <std::chrono::milliseconds> (
-          std::chrono::system_clock::now () - time_start_main);
+          std::chrono::steady_clock::now () - time_start_main);
     if (parallel_recovery_redo != nullptr)
       {
 	parallel_recovery_redo->wait_for_termination_and_stop_execution ();
@@ -3889,7 +3889,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
     /* 'async' measures the time taken by the main thread to execute sync log records, dispatch async ones
      * and wait for the async infrastructure to finish */
     const auto duration_async_ms = std::chrono::duration_cast <std::chrono::milliseconds> (
-          std::chrono::system_clock::now () - time_start_main);
+          std::chrono::steady_clock::now () - time_start_main);
     _er_log_debug (ARG_FILE_LINE,
 		   "log_recovery_redo_perf:  parallel_count=%2d  reusable_jobs_count=%6d  flush_back_count=%4d\n"
 		   "log_recovery_redo_perf:  setting_up=%6lld  main=%6lld  async=%6lld (ms)\n",

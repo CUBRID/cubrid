@@ -461,11 +461,11 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       unload_context.login_user = user;
       unload_context.output_prefix = output_prefix;
 
-      struct timeval startTime, endTime;
+      struct timespec startTime, endTime;
       double diffTime;
       if (sampling_records >= 0)
 	{
-	  gettimeofday (&startTime, NULL);
+	  clock_gettime (CLOCK_MONOTONIC, &startTime);
 	}
 
       if (extract_objects (unload_context, output_dirname, thread_count, sampling_records, enhanced_estimates))
@@ -475,18 +475,18 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 
       if (sampling_records >= 0)
 	{
-	  gettimeofday (&endTime, NULL);
-	  int elapsed_sec = 0, elapsed_usec = 0;
+	  clock_gettime (CLOCK_MONOTONIC, &endTime);
+	  int elapsed_sec = 0, elapsed_nsec = 0;
 
 	  elapsed_sec = endTime.tv_sec - startTime.tv_sec;
-	  elapsed_usec = endTime.tv_usec - startTime.tv_usec;
-	  if (endTime.tv_usec < startTime.tv_usec)
+	  elapsed_nsec = endTime.tv_nsec - startTime.tv_nsec;
+	  if (endTime.tv_nsec < startTime.tv_nsec)
 	    {
-	      elapsed_usec += 1000000;
+	      elapsed_nsec += 1000000000;
 	      elapsed_sec--;
 	    }
 
-	  fprintf (stdout, "Elapsed= %.6f sec\n", elapsed_sec + ((double) elapsed_usec / 1000000));
+	  fprintf (stdout, "Elapsed= %.6f sec\n", elapsed_sec + ((double) elapsed_nsec / 1000000000));
 	}
     }
   AU_RESTORE (au_save);

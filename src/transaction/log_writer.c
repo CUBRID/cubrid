@@ -512,7 +512,7 @@ logwr_initialize (const char *db_name, const char *log_path, int mode, LOG_PAGEI
 
   logwr_Gl.force_flush = false;
   logwr_Gl.last_flush_time.tv_sec = 0;
-  logwr_Gl.last_flush_time.tv_usec = 0;
+  logwr_Gl.last_flush_time.tv_nsec = 0;
 
   logwr_Gl.ori_nxarv_pageid = NULL_PAGEID;
 
@@ -612,7 +612,7 @@ logwr_finalize (void)
 
   logwr_Gl.force_flush = false;
   logwr_Gl.last_flush_time.tv_sec = 0;
-  logwr_Gl.last_flush_time.tv_usec = 0;
+  logwr_Gl.last_flush_time.tv_nsec = 0;
 
   logwr_Gl.ori_nxarv_pageid = NULL_PAGEID;
   logwr_Gl.start_pageid = -2;
@@ -1512,7 +1512,7 @@ int
 logwr_write_log_pages (void)
 {
   int error;
-  struct timeval curtime;
+  struct timespec curtime;
   int diff_msec;
 
   if (logwr_Gl.num_toflush <= 0)
@@ -1520,10 +1520,10 @@ logwr_write_log_pages (void)
 
   if (logwr_Gl.mode == LOGWR_MODE_SEMISYNC)
     {
-      gettimeofday (&curtime, NULL);
+      clock_gettime (CLOCK_MONOTONIC, &curtime);
       diff_msec =
 	(((curtime.tv_sec - logwr_Gl.last_flush_time.tv_sec) * 1000) +
-	 ((curtime.tv_usec - logwr_Gl.last_flush_time.tv_usec) / 1000));
+	 ((curtime.tv_nsec - logwr_Gl.last_flush_time.tv_nsec) / 1000000));
 
       if (logwr_Gl.force_flush == false && !LOGWR_AT_SERVER_ARCHIVING ()
 	  && (logwr_Gl.hdr.eof_lsa.pageid <= logwr_Gl.toflush[0]->hdr.logical_pageid) && (diff_msec < 1000))
@@ -1569,7 +1569,7 @@ logwr_write_log_pages (void)
 
   logwr_flush_header_page ();
 
-  gettimeofday (&logwr_Gl.last_flush_time, NULL);
+  clock_gettime (CLOCK_MONOTONIC, &logwr_Gl.last_flush_time);
 
   return NO_ERROR;
 }

@@ -155,6 +155,8 @@ namespace cubthread
       }
     else
       {
+	/* NOTE: GCC 8 libstdc++ condition_variable::wait_for internally converts to CLOCK_REALTIME-based
+	 * absolute time. The pthread-level wait is subject to NTP adjustments until GCC 11+ (glibc 2.30+). */
 	(void) condvar.wait_for (lock, duration.m_duration);
       }
   }
@@ -171,6 +173,8 @@ namespace cubthread
       }
     else
       {
+	/* NOTE: GCC 8 libstdc++ condition_variable::wait_for internally converts to CLOCK_REALTIME-based
+	 * absolute time. The pthread-level wait is subject to NTP adjustments until GCC 11+ (glibc 2.30+). */
 	return condvar.wait_for (lock, duration.m_duration, pred);
       }
   }

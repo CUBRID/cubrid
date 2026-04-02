@@ -371,7 +371,7 @@ struct lk_global_data
 
   /* deadlock detection related fields */
   pthread_mutex_t DL_detection_mutex;
-  struct timeval last_deadlock_run;	/* last deadlock detection time */
+  struct timespec last_deadlock_run;	/* last deadlock detection time */
   LK_WFG_NODE *TWFG_node;	/* transaction WFG node */
   LK_WFG_EDGE *TWFG_edge;	/* transaction WFG edge */
   int max_TWFG_edge;
@@ -1180,7 +1180,7 @@ lock_initialize_deadlock_detection (void)
   int i;
 
   pthread_mutex_init (&lk_Gl.DL_detection_mutex, NULL);
-  gettimeofday (&lk_Gl.last_deadlock_run, NULL);
+  clock_gettime (CLOCK_MONOTONIC, &lk_Gl.last_deadlock_run);
 
   /* allocate transaction WFG node table */
   lk_Gl.TWFG_node = (LK_WFG_NODE *) malloc (SIZEOF_LK_WFG_NODE * lk_Gl.num_trans);
@@ -2149,7 +2149,7 @@ static LOCK_WAIT_STATE
 lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
 {
   THREAD_ENTRY *p;
-  struct timeval tv;
+  struct timespec ts;
   int client_id;
   LOG_TDES *tdes;
 
@@ -2177,8 +2177,8 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
 
   /* register lock wait info. into the thread entry */
   entry_ptr->thrd_entry->lockwait = (void *) entry_ptr;
-  gettimeofday (&tv, NULL);
-  entry_ptr->thrd_entry->lockwait_stime = (tv.tv_sec * 1000000LL + tv.tv_usec) / 1000LL;
+  clock_gettime (CLOCK_MONOTONIC, &ts);
+  entry_ptr->thrd_entry->lockwait_stime = ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL;
   entry_ptr->thrd_entry->lockwait_msecs = wait_msecs;
   entry_ptr->thrd_entry->lockwait_state = (int) LOCK_SUSPENDED;
 
@@ -7459,11 +7459,11 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
 	}
       else if (LK_CAN_TIMEOUT (thrd->lockwait_msecs))
 	{
-	  struct timeval tv;
+	  struct timespec ts;
 	  INT64 etime;
 
-	  (void) gettimeofday (&tv, NULL);
-	  etime = (tv.tv_sec * 1000000LL + tv.tv_usec) / 1000LL;
+	  (void) clock_gettime (CLOCK_MONOTONIC, &ts);
+	  etime = ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL;
 	  if (etime - thrd->lockwait_stime > thrd->lockwait_msecs)
 	    {
 	      /* wake up the thread */
@@ -7618,13 +7618,13 @@ static bool
 lock_is_local_deadlock_detection_interval_up (void)
 {
 #if defined (SERVER_MODE)
-  struct timeval now, elapsed;
+  struct timespec now;
   double elapsed_sec;
 
   /* check deadlock detection interval */
-  gettimeofday (&now, NULL);
-  perfmon_diff_timeval (&elapsed, &lk_Gl.last_deadlock_run, &now);
-  elapsed_sec = elapsed.tv_sec + (elapsed.tv_usec / 1000000.0);
+  clock_gettime (CLOCK_MONOTONIC, &now);
+  elapsed_sec = (double) (now.tv_sec - lk_Gl.last_deadlock_run.tv_sec)
+		+ (double) (now.tv_nsec - lk_Gl.last_deadlock_run.tv_nsec) / 1000000000.0;
 
   if (elapsed_sec < prm_get_float_value (PRM_ID_LK_RUN_DEADLOCK_INTERVAL))
     {

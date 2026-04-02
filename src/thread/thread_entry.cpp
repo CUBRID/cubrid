@@ -163,11 +163,16 @@ namespace cubthread
 	// cannot recover from this
 	assert (false);
       }
-    if (pthread_cond_init (&wakeup_cond, NULL) != 0)
-      {
-	// cannot recover from this
-	assert (false);
-      }
+    {
+      pthread_condattr_t attr;
+      pthread_condattr_init (&attr);
+      pthread_condattr_setclock (&attr, CLOCK_MONOTONIC);
+      if (pthread_cond_init (&wakeup_cond, &attr) != 0)
+	{
+	  assert (false);
+	}
+      pthread_condattr_destroy (&attr);
+    }
     if (pthread_mutex_init (&m_px_lock_mutex, NULL) != 0)
       {
 	// cannot recover from this
@@ -563,6 +568,9 @@ thread_suspend_timeout_wakeup_and_unlock_entry (cubthread::entry *thread_p, stru
       start_time_pt = thread_clock_type::now ();
     }
 
+  /* NOTE: wakeup_cond is initialized with CLOCK_MONOTONIC (see entry::entry constructor).
+   * Callers must construct time_p using clock_gettime(CLOCK_MONOTONIC).
+   * thread_clock_type (steady_clock) above is used solely for elapsed-time statistics (latch_waits). */
   r = pthread_cond_timedwait (&thread_p->wakeup_cond, &thread_p->th_entry_lock, time_p);
 
   if (thread_p->event_stats.trace_slow_query == true && suspended_reason == THREAD_PGBUF_SUSPENDED)
@@ -708,6 +716,7 @@ thread_suspend_with_other_mutex (cubthread::entry *thread_p, pthread_mutex_t *mu
     }
   else
     {
+      /* NOTE: wakeup_cond uses CLOCK_MONOTONIC. Callers must construct 'to' via clock_gettime(CLOCK_MONOTONIC). */
       r = pthread_cond_timedwait (&thread_p->wakeup_cond, mutex_p, to);
     }
 

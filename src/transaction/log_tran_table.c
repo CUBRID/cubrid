@@ -2891,8 +2891,11 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
 #if defined(SERVER_MODE)
       now = log_get_clock_msec ();
 #else /* SERVER_MODE */
-      gettimeofday (&tv, NULL);
-      now = (tv.tv_sec * 1000LL) + (tv.tv_usec / 1000LL);
+      {
+	struct timespec ts;
+	clock_gettime (CLOCK_MONOTONIC, &ts);
+	now = (ts.tv_sec * 1000LL) + (ts.tv_nsec / 1000000LL);
+      }
 #endif /* !SERVER_MODE */
       if (tdes->query_timeout < now)
 	{

@@ -341,6 +341,9 @@ namespace cubconn::connection
       }
 
     std::unique_lock<std::mutex> lock (m_watcher->mtx);
+    /* NOTE: GCC 8 libstdc++ condition_variable::wait_for internally uses CLOCK_REALTIME. The deadline
+     * calculation above uses steady_clock (correct), but the pthread-level wait may be affected by NTP
+     * adjustments. After upgrading to GCC 11+ (glibc 2.30+), CLOCK_MONOTONIC will be used automatically. */
     compelete = m_watcher->cv.wait_for (lock, wait_for, [this] { return m_watcher->active == 1; /* coordinator */ });
     lock.unlock ();
     if (!compelete)
@@ -412,6 +415,9 @@ namespace cubconn::connection
       }
 
     std::unique_lock<std::mutex> lock (m_watcher->mtx);
+    /* NOTE: GCC 8 libstdc++ condition_variable::wait_for internally uses CLOCK_REALTIME. The deadline
+     * calculation above uses steady_clock (correct), but the pthread-level wait may be affected by NTP
+     * adjustments. After upgrading to GCC 11+ (glibc 2.30+), CLOCK_MONOTONIC will be used automatically. */
     compelete = m_watcher->cv.wait_for (lock, wait_for, [this] { return m_watcher->active == 0; });
     lock.unlock ();
     if (!compelete)

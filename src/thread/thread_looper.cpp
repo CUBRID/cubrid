@@ -149,6 +149,10 @@ namespace cubthread
 	    wait_time = period - execution_time;
 	  }
 
+	/* NOTE: waiter::wait_for uses condition_variable::wait_for internally. In GCC 8, this converts to
+	 * CLOCK_REALTIME-based absolute time at the pthread level, so NTP adjustments may affect the actual
+	 * wait duration. After upgrading to GCC 11+ (glibc 2.30+), CLOCK_MONOTONIC will be used
+	 * automatically via pthread_cond_clockwait(). */
 	m_was_woken_up = waiter_arg.wait_for (wait_time);
       }
     else

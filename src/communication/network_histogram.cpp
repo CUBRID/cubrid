@@ -137,10 +137,13 @@ net_histo_ctx::add_request (int request, int data_sent)
   entry.request_count++;
   entry.total_size_sent += data_sent;
 
-  if (gettimeofday (&tp, NULL) == 0)
-    {
-      last_call_time = tp.tv_sec * 1000000LL + tp.tv_usec;
-    }
+  {
+    struct timespec ts;
+    if (clock_gettime (CLOCK_MONOTONIC, &ts) == 0)
+      {
+	last_call_time = ts.tv_sec * 1000000LL + ts.tv_nsec / 1000;
+      }
+  }
 
   call_cnt++;
 }
@@ -151,7 +154,7 @@ net_histo_ctx::add_request (int request, int data_sent)
 void
 net_histo_ctx::finish_request (int request, int data_received)
 {
-  struct timeval tp;
+  struct timespec ts;
   INT64 current_time;
 
   if (request <= NET_SERVER_REQUEST_START || request >= NET_SERVER_REQUEST_END)
@@ -162,9 +165,9 @@ net_histo_ctx::finish_request (int request, int data_received)
   net_histogram_entry &entry = histogram_entries[request];
   entry.total_size_received += data_received;
 
-  if (gettimeofday (&tp, NULL) == 0)
+  if (clock_gettime (CLOCK_MONOTONIC, &ts) == 0)
     {
-      current_time = tp.tv_sec * 1000000LL + tp.tv_usec;
+      current_time = ts.tv_sec * 1000000LL + ts.tv_nsec / 1000;
       total_server_time = current_time - last_call_time;
       entry.elapsed_time += total_server_time;
     }
