@@ -41,6 +41,7 @@
 #include "virtual_object.h"
 #include "dbtype.h"
 #include "boot.h"
+#include "system_parameter.h"
 
 #define MAX_STACK_OBJECTS 500
 
@@ -7153,32 +7154,35 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 	  dinfo = &derived_table->info.dblink_table;
 	  mq_dblink_clear_corr_keys (parser, dinfo);
 
-	  ncorr = mq_detect_dblink_corr_eq (parser, node, spec);
-	  if (ncorr == 1)
+	  if (prm_get_bool_value (PRM_ID_USE_DBLINK_CORR_PUSHDOWN))
 	    {
-	      if (!mq_dblink_corr_get_eq_pair (parser, node, spec, &remote_expr, &outer_expr))
+	      ncorr = mq_detect_dblink_corr_eq (parser, node, spec);
+	      if (ncorr == 1)
 		{
-		  mq_dblink_clear_corr_keys (parser, dinfo);
-		}
-	      else
-		{
-		  dinfo->corr_key_remote_cols[0] = remote_expr;
-		  dinfo->corr_key_outer_refs[0] = outer_expr;
-		  dinfo->corr_key_col_names[0] = mq_dblink_extract_col_name (parser, remote_expr);
-		  if (dinfo->corr_key_col_names[0] == NULL)
+		  if (!mq_dblink_corr_get_eq_pair (parser, node, spec, &remote_expr, &outer_expr))
 		    {
 		      mq_dblink_clear_corr_keys (parser, dinfo);
 		    }
 		  else
 		    {
-		      dinfo->corr_key_outer_copy[0] = parser_copy_tree (parser, outer_expr);
-		      if (dinfo->corr_key_outer_copy[0] == NULL)
+		      dinfo->corr_key_remote_cols[0] = remote_expr;
+		      dinfo->corr_key_outer_refs[0] = outer_expr;
+		      dinfo->corr_key_col_names[0] = mq_dblink_extract_col_name (parser, remote_expr);
+		      if (dinfo->corr_key_col_names[0] == NULL)
 			{
 			  mq_dblink_clear_corr_keys (parser, dinfo);
 			}
 		      else
 			{
-			  dinfo->corr_key_count = 1;
+			  dinfo->corr_key_outer_copy[0] = parser_copy_tree (parser, outer_expr);
+			  if (dinfo->corr_key_outer_copy[0] == NULL)
+			    {
+			      mq_dblink_clear_corr_keys (parser, dinfo);
+			    }
+			  else
+			    {
+			      dinfo->corr_key_count = 1;
+			    }
 			}
 		    }
 		}

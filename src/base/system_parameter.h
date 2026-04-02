@@ -298,7 +298,7 @@ enum param_id
   /* All the compound parameters *must* be at the end of the array so that the changes they cause are not overridden by
    * other parameters (for example in sysprm_load_and_init the parameters are set to their default in the order they
    * are found in this array). */
-  PRM_ID_COMPAT_MODE,
+  Psrc/base/system_parameter.hRM_ID_COMPAT_MODE,
   PRM_ID_DB_VOLUME_SIZE,
   PRM_ID_LOG_VOLUME_SIZE,
   PRM_ID_UNICODE_INPUT_NORMALIZATION,
@@ -532,6 +532,8 @@ enum param_id
   PRM_ID_LOG_POSTPONE_CACHE_SIZE,
 
   PRM_ID_ENABLE_HEAP_FIXED_SCAN,
+
+  PRM_ID_USE_DBLINK_CORR_PUSHDOWN,
 
   /* change PRM_LAST_ID when adding new system parameters */
   PRM_ID_UPDATE_STATISTICS_UPDATE_HISTOGRAM,
