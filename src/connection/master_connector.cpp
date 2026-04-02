@@ -65,9 +65,9 @@
 
 namespace cubconn::master
 {
-  /* Master connector skips entry counting since this thread uses Main_entry_p (TT_MASTER). */
-  /* Defined here to maintain rule consistency. */
-  REGISTER_CONNECTION (master_connector, 1);
+  /* Master connector uses Main_entry_p (TT_MASTER) instead of claiming a separate entry. */
+  /* It is still registered here for consistency with other connection components.	  */
+  REGISTER_CONNECTION (master_connector, 0);
 
   connector::connector () :
     m_stop (false),
