@@ -11288,8 +11288,7 @@ TP_DOMAIN_STATUS
 tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
   TP_DOMAIN_STATUS dom_status = DOMAIN_COMPATIBLE;
-#define NUMERIC_MAX_PRECISION (19)
-  static const INT64 max_value[NUMERIC_MAX_PRECISION] = {
+  static const INT64 max_value[DB_BIGINT_PRECISION] = {
     1LL,
     10LL,
     100LL,
@@ -11311,10 +11310,22 @@ tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, 
     1000000000000000000LL
   };				/* max precision of a big integer is 19 */
 
+#if defined(SA_MODE) && !defined(NDEBUG)
+  static int dbg_check_initialize = 0;
+  if (dbg_check_initialize == 0)
+    {
+      for (int i = 1; i < DB_BIGINT_PRECISION; i++)
+	{
+	  assert (max_value[i] == (max_value[i - 1] * 10));
+	}
+      dbg_check_initialize = 1;
+    }
+#endif
+
   if (TP_IS_DISCRETE_NUMBER_TYPE (src->domain.general_info.type))
     {
       /* if the numeric's precision is 19 or more, then it can get the bigint enough */
-      if (desired_domain->type->id == DB_TYPE_NUMERIC && desired_domain->precision < NUMERIC_MAX_PRECISION)
+      if (desired_domain->type->id == DB_TYPE_NUMERIC && desired_domain->precision < DB_BIGINT_PRECISION)
 	{
 	  INT64 bigint;
 
@@ -11353,7 +11364,6 @@ tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, 
     }
 
   return dom_status;
-#undef NUMERIC_MAX_PRECISION
 }
 
 /*

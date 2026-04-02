@@ -5978,6 +5978,12 @@ sysprm_check_id_order ()
   ();
 
   assert (is_initialized == true);
+  /* Notice:
+   * This ensures the variable is not optimized away, even though it does not change the functional logic of the code
+   * Please do not delete the following two lines.
+   */
+  (void) is_initialized;	// Dummy Reference  
+  *(volatile bool *) &is_initialized;
 }
 #endif
 

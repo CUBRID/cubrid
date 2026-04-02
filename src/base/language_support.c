@@ -5327,6 +5327,13 @@ lang_init_coll_en_cs (LANG_COLLATION * lang_coll)
   (&lang_coll->coll);
 
   lang_coll->need_init = false;
+
+  /* Notice:
+   * This ensures the variable is not optimized away, even though it does not change the functional logic of the code
+   * Please do not delete the following two lines.
+   */
+  (void) is_common_en_cs_init;	// Dummy Reference  
+  *(volatile bool *) &is_common_en_cs_init;
 }
 
 /*
