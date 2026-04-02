@@ -138,9 +138,9 @@ namespace cubthread
 	delta_time wait_time = delta_time (0);
 	delta_time execution_time = delta_time (0);
 
-	if (m_start_execution_time != std::chrono::system_clock::time_point ())
+	if (m_start_execution_time != std::chrono::steady_clock::time_point ())
 	  {
-	    execution_time = std::chrono::system_clock::now () - m_start_execution_time;
+	    execution_time = std::chrono::steady_clock::now () - m_start_execution_time;
 	  }
 
 	// compute task execution time
@@ -158,7 +158,7 @@ namespace cubthread
       }
 
     // register start of the task execution time
-    m_start_execution_time = std::chrono::system_clock::now ();
+    m_start_execution_time = std::chrono::steady_clock::now ();
     Looper_statistics.time_and_increment (m_stats, STAT_LOOPER_SLEEP_COUNT_AND_TIME);
   }
 

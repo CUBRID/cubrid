@@ -313,7 +313,7 @@ namespace cubconn::connection
 
   void pool::finalize_workers ()
   {
-    std::chrono::system_clock::time_point deadline, now;
+    std::chrono::steady_clock::time_point deadline, now;
     std::chrono::microseconds wait_for (0);
     struct timeval *timeout;
     bool compelete;
@@ -331,10 +331,10 @@ namespace cubconn::connection
 
     /* shutdown timeout */
     timeout = css_get_shutdown_timeout ();
-    deadline = std::chrono::system_clock::time_point (
-		       std::chrono::seconds (timeout->tv_sec) +
-		       std::chrono::microseconds (timeout->tv_usec));
-    now = std::chrono::system_clock::now ();
+    now = std::chrono::steady_clock::now ();
+    deadline = now +
+	       std::chrono::seconds (timeout->tv_sec) +
+	       std::chrono::microseconds (timeout->tv_usec);
     if (deadline > now)
       {
 	wait_for = std::chrono::duration_cast<std::chrono::microseconds> (deadline - now);
@@ -387,7 +387,7 @@ namespace cubconn::connection
 
   void pool::finalize_coordinator ()
   {
-    std::chrono::system_clock::time_point deadline, now;
+    std::chrono::steady_clock::time_point deadline, now;
     std::chrono::microseconds wait_for (0);
     coordinator::message request;
     struct timeval *timeout;
@@ -402,10 +402,10 @@ namespace cubconn::connection
 
     /* shutdown timeout */
     timeout = css_get_shutdown_timeout ();
-    deadline = std::chrono::system_clock::time_point (
-		       std::chrono::seconds (timeout->tv_sec) +
-		       std::chrono::microseconds (timeout->tv_usec));
-    now = std::chrono::system_clock::now ();
+    now = std::chrono::steady_clock::now ();
+    deadline = now +
+	       std::chrono::seconds (timeout->tv_sec) +
+	       std::chrono::microseconds (timeout->tv_usec);
     if (deadline > now)
       {
 	wait_for = std::chrono::duration_cast<std::chrono::microseconds> (deadline - now);

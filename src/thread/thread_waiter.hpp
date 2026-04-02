@@ -62,9 +62,9 @@ namespace cubthread
       void wakeup (void);                                             // wakeup waiter thread
 
       void wait_inf (void);                                           // wait until wakeup
-      bool wait_for (const std::chrono::system_clock::duration &delta);   // wait for period of time or until wakeup
+      bool wait_for (const std::chrono::steady_clock::duration &delta);   // wait for period of time or until wakeup
       // returns true if woke up before timeout
-      bool wait_until (const std::chrono::system_clock::time_point &timeout_time);  // wait until time or until wakeup
+      bool wait_until (const std::chrono::steady_clock::time_point &timeout_time);  // wait until time or until wakeup
       // returns true if woke up before timeout
 
       // statistics

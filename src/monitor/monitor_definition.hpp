@@ -33,9 +33,10 @@ namespace cubmonitor
   using statistic_value = std::uint64_t;
 
   // clocking
-  using clock_type = std::chrono::high_resolution_clock;
+  using clock_type = std::chrono::steady_clock;       // monotonic clock for elapsed time measurement
   using time_point = clock_type::time_point;
   using duration = clock_type::duration;
+  static_assert (clock_type::is_steady, "cubmonitor::clock_type must be steady (monotonic)");
 
   // fetching global & transaction sheet
   using fetch_mode = bool;

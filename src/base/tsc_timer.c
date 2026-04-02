@@ -93,7 +93,7 @@ tsc_getticks (TSC_TICKS * tck)
 #else
       struct timespec ts;
       /* replace gettimeofday with clock_gettime for performance */
-      clock_gettime (CLOCK_REALTIME_COARSE, &ts);
+      clock_gettime (CLOCK_MONOTONIC, &ts);
       tck->tv.tv_sec = ts.tv_sec;
       tck->tv.tv_usec = ts.tv_nsec / 1000;
 #endif

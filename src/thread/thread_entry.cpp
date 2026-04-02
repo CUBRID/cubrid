@@ -463,7 +463,7 @@ namespace cubthread
 // legacy C functions
 //////////////////////////////////////////////////////////////////////////
 
-using thread_clock_type = std::chrono::system_clock;
+using thread_clock_type = std::chrono::steady_clock;
 
 static void thread_wakeup_internal (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason,
 				    bool had_mutex);

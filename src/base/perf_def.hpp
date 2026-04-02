@@ -36,9 +36,10 @@
 namespace cubperf
 {
   // clocking
-  using clock = std::chrono::high_resolution_clock;   // default clock
+  using clock = std::chrono::steady_clock;            // monotonic clock for elapsed time measurement
   using time_point = clock::time_point;               // default time point
   using duration = clock::duration;                   // default duration
+  static_assert (clock::is_steady, "cubperf::clock must be steady (monotonic)");
 
   // statistics value types
   template <bool IsAtomic>

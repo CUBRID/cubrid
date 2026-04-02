@@ -198,7 +198,7 @@ namespace cubthread
   }
 
   bool
-  waiter::wait_for (const std::chrono::system_clock::duration &delta)
+  waiter::wait_for (const std::chrono::steady_clock::duration &delta)
   {
     if (delta == std::chrono::microseconds (0))
       {
@@ -224,7 +224,7 @@ namespace cubthread
   }
 
   bool
-  waiter::wait_until (const std::chrono::system_clock::time_point &timeout_time)
+  waiter::wait_until (const std::chrono::steady_clock::time_point &timeout_time)
   {
     std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
     goto_sleep ();
