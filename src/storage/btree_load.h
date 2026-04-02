@@ -304,6 +304,8 @@ struct sort_args
   /* for parallel processing */
   /* *INDENT-OFF* */
   std::vector<parallel_query::ftab_set> *ftab_sets;
+  FILE_PARTIAL_SECTOR curr_sec;
+  int curr_pgoffset;
   /* *INDENT-ON* */
 };
 

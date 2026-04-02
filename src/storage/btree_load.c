@@ -3172,6 +3172,7 @@ get_next_vpid (THREAD_ENTRY * thread_p, parallel_query::ftab_set & ftab, FILE_PA
 {
   bool found = false;
   int error = NO_ERROR;
+  assert (*offset >= 0);
 
   while (!found)
     {
@@ -3192,7 +3193,8 @@ get_next_vpid (THREAD_ENTRY * thread_p, parallel_query::ftab_set & ftab, FILE_PA
       else
 	{
 	  (*offset)++;
-	  (*vpid_out).pageid++;
+	  vpid_out->volid = fsector->vsid.volid;
+	  vpid_out->pageid = SECTOR_FIRST_PAGEID (fsector->vsid.sectid) + (*offset);
 	}
       /* fsector exists */
       for (; *offset < DISK_SECTOR_NPAGES; (*offset)++, (*vpid_out).pageid++)
@@ -3206,6 +3208,8 @@ get_next_vpid (THREAD_ENTRY * thread_p, parallel_query::ftab_set & ftab, FILE_PA
 
 	      error = pgbuf_ordered_fix (thread_p, vpid_out, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
 					 &scan_cache->page_watcher);
+	      er_log_debug (ARG_FILE_LINE, "parallel btree: thread %d fix page %d|%d for scanning", thread_p->index,
+			    vpid_out->volid, vpid_out->pageid);
 
 	      if (scan_cache->page_watcher.pgptr == NULL)
 		{
@@ -3231,10 +3235,13 @@ get_next_vpid (THREAD_ENTRY * thread_p, parallel_query::ftab_set & ftab, FILE_PA
 		{
 		  return S_ERROR;
 		}
+	      found = true;
 
 	      return S_SUCCESS;
 	    }
 	}
+      assert (fsector);
+      VSID_SET_NULL (&fsector->vsid);
     }
 }
 
@@ -3246,7 +3253,6 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
   DB_VALUE *dbvalue_ptr;
   int key_len;
   OID prev_oid;
-  VPID vpid;
   SORT_ARGS *sort_args;
   int value_has_null;
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
@@ -3259,9 +3265,7 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 
   PGBUF_WATCHER old_pgwatcher;
   HFID hfid;
-  int offset = 0, ftab_set_index = 0;
-  VPID curr_vpid;
-  FILE_PARTIAL_SECTOR s = FILE_PARTIAL_SECTOR_INITIALIZER;
+  VPID vpid = vpid_Null_vpid;
 
   db_make_null (&dbvalue);
 
@@ -3276,21 +3280,28 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
   hfid = sort_args->hfids[0];
   PGBUF_INIT_WATCHER (&old_pgwatcher, PGBUF_ORDERED_HEAP_NORMAL, &hfid);
 
-
-  page_iter_scan_result =
-    get_next_vpid (thread_p, (*sort_args->ftab_sets)[ftab_set_index], &s, &offset, &vpid,
-		   &sort_args->hfscan_cache, &old_pgwatcher);
-  if (page_iter_scan_result == S_END)
+  if (OID_ISNULL (&sort_args->cur_oid))
     {
-      return SORT_NOMORE_RECS;
-    }
-  else if (page_iter_scan_result == S_SUCCESS)
-    {
-      ;
+      page_iter_scan_result =
+	get_next_vpid (thread_p, (*sort_args->ftab_sets)[sort_args->cur_class], &sort_args->curr_sec,
+		       &sort_args->curr_pgoffset, &vpid, &sort_args->hfscan_cache, &old_pgwatcher);
+      if (page_iter_scan_result == S_END)
+	{
+	  return SORT_NOMORE_RECS;
+	}
+      else if (page_iter_scan_result == S_SUCCESS)
+	{
+	  ;
+	}
+      else
+	{
+	  return SORT_ERROR_OCCURRED;
+	}
     }
   else
     {
-      return SORT_ERROR_OCCURRED;
+      vpid.pageid = sort_args->cur_oid.pageid;
+      vpid.volid = sort_args->cur_oid.volid;
     }
 
   do
@@ -3325,8 +3336,8 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 	case S_END:
 	  {
 	    page_iter_scan_result =
-	      get_next_vpid (thread_p, (*sort_args->ftab_sets)[ftab_set_index], &s, &offset, &vpid,
-			     &sort_args->hfscan_cache, &old_pgwatcher);
+	      get_next_vpid (thread_p, (*sort_args->ftab_sets)[sort_args->cur_class], &sort_args->curr_sec,
+			     &sort_args->curr_pgoffset, &vpid, &sort_args->hfscan_cache, &old_pgwatcher);
 	    if (page_iter_scan_result == S_END)
 	      {
 		/* fall through */
@@ -3339,57 +3350,56 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 	      {
 		return SORT_ERROR_OCCURRED;
 	      }
+
+	    /* No more objects in this heap, finish the current scan */
+	    save_cache_last_fix_page = sort_args->hfscan_cache.cache_last_fix_page;
+	    bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args, NULL, NULL);
+
+	    /* Are we through with all the non-null heaps? */
+	    sort_args->cur_class++;
+	    while ((sort_args->cur_class < sort_args->n_classes)
+		   && HFID_IS_NULL (&sort_args->hfids[sort_args->cur_class]))
+	      {
+		sort_args->cur_class++;
+	      }
+
+	    if (sort_args->cur_class == sort_args->n_classes)
+	      {
+		return SORT_NOMORE_RECS;
+	      }
+	    else
+	      {
+		/* When there is a class inheritance relationship, n_classes may be 2 or more 
+		 * only if it is a reverse unique, unique, or primary index.
+		 * In addition, filter and func_index_info cannot exist in this case.   
+		 */
+		/* start up the next scan */
+		cur_class = sort_args->cur_class;
+		attr_offset = cur_class * sort_args->n_attrs;
+
+		if (bt_load_heap_scancache_start_for_attrinfo
+		    (thread_p, sort_args, NULL, NULL, save_cache_last_fix_page) != NO_ERROR)
+		  {
+		    return SORT_ERROR_OCCURRED;
+		  }
+
+		/* set the scan to the initial state for this new heap */
+		OID_SET_NULL (&sort_args->cur_oid);
+
+		if (is_btree_ops_log)
+		  {
+		    _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: load start on class(%d, %d, %d), btid(%d, (%d, %d)).",
+				   sort_args->class_ids[sort_args->cur_class].volid,
+				   sort_args->class_ids[sort_args->cur_class].pageid,
+				   sort_args->class_ids[sort_args->cur_class].slotid,
+				   sort_args->btid->sys_btid->root_pageid, sort_args->btid->sys_btid->vfid.volid,
+				   sort_args->btid->sys_btid->vfid.fileid);
+		  }
+		hfid = sort_args->hfids[sort_args->cur_class];
+		PGBUF_INIT_WATCHER (&old_pgwatcher, PGBUF_ORDERED_HEAP_NORMAL, &hfid);
+	      }
+	    continue;
 	  }
-	  /* No more objects in this heap, finish the current scan */
-	  save_cache_last_fix_page = sort_args->hfscan_cache.cache_last_fix_page;
-	  bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args, NULL, NULL);
-
-	  /* Are we through with all the non-null heaps? */
-	  sort_args->cur_class++;
-	  while ((sort_args->cur_class < sort_args->n_classes)
-		 && HFID_IS_NULL (&sort_args->hfids[sort_args->cur_class]))
-	    {
-	      sort_args->cur_class++;
-	    }
-
-	  if (sort_args->cur_class == sort_args->n_classes)
-	    {
-	      return SORT_NOMORE_RECS;
-	    }
-	  else
-	    {
-	      ftab_set_index++;
-	      /* When there is a class inheritance relationship, n_classes may be 2 or more 
-	       * only if it is a reverse unique, unique, or primary index.
-	       * In addition, filter and func_index_info cannot exist in this case.   
-	       */
-	      /* start up the next scan */
-	      cur_class = sort_args->cur_class;
-	      attr_offset = cur_class * sort_args->n_attrs;
-
-	      if (bt_load_heap_scancache_start_for_attrinfo (thread_p, sort_args, NULL, NULL, save_cache_last_fix_page)
-		  != NO_ERROR)
-		{
-		  return SORT_ERROR_OCCURRED;
-		}
-
-	      /* set the scan to the initial state for this new heap */
-	      OID_SET_NULL (&sort_args->cur_oid);
-
-	      if (is_btree_ops_log)
-		{
-		  _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: load start on class(%d, %d, %d), btid(%d, (%d, %d)).",
-				 sort_args->class_ids[sort_args->cur_class].volid,
-				 sort_args->class_ids[sort_args->cur_class].pageid,
-				 sort_args->class_ids[sort_args->cur_class].slotid,
-				 sort_args->btid->sys_btid->root_pageid, sort_args->btid->sys_btid->vfid.volid,
-				 sort_args->btid->sys_btid->vfid.fileid);
-		}
-	      hfid = sort_args->hfids[sort_args->cur_class];
-	      PGBUF_INIT_WATCHER (&old_pgwatcher, PGBUF_ORDERED_HEAP_NORMAL, &hfid);
-	    }
-	  continue;
-
 	  /*
 	     case S_ERROR:
 	     case S_DOESNT_EXIST:
