@@ -271,6 +271,11 @@ enum net_server_request
   NET_SERVER_FLASHBACK_GET_SUMMARY,
   NET_SERVER_FLASHBACK_GET_LOGINFO,
 
+  /* file manager */
+  NET_SERVER_CLEANFILEDB_DUMP_FILE_LIST,
+  NET_SERVER_CLEANFILEDB_CLEAN_INVALID_FILE,
+  NET_SERVER_CLEANFILEDB_DELETE_TARGET_FILE,	// Debug only: unsafe, may break DB consistency
+
   /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.
