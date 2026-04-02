@@ -163,63 +163,6 @@ namespace cubthread
       std::function<void (void)> m_exec_f;
       std::function<void (void)> m_retire_f;
   };
-
-  // context_manager
-  //
-  //  description:
-  //    complex tasks may require bulky context that can take a long time to construct/destruct.
-  //    context_manager abstract class is designed to pool context and hand them quickly on demand.
-  //
-  //  templates:
-  //    Context - thread execution context, a helper/cache structure that can be passed to multiple tasks
-  //
-  //  how to use:
-  //    1. specialize context_manager with custom context
-  //       e.g. see CUBRID implementation for entry_manager.
-  //
-  //    2. override create_context, retire_context and recycle_context functions
-  //
-  //    3. execute multiple tasks using same context:
-  //          custom_context_manager context_mgr; // using custom_context_manager = context_manager<custom_context>
-  //          custom_context& context_ref = context_mgr.create_context ();
-  //          custom_task* task_p = NULL;   // using custom_task = task<custom_context>
-  //
-  //          for (task_p = get_task (); task_p != NULL; task_p = get_task ())
-  //            {
-  //              task_p->execute (context_ref);
-  //              task_p->retire (); // this will delete task_p
-  //              // context_mgr.recycle_context ();    // optional operation before reusing context
-  //            }
-  //
-  //          context_mgr.retire_context (context_ref);
-  //
-  //    [optional]
-  //    4. if task execution can take a very long time and you need to force stop it, you can use stop_execution:
-  //        4.1. implement context_manager::stop_execution; should notify context to stop.
-  //        4.2. you have to check stop notifications in custom_task::execute
-  //        4.3. call context_mgr.stop_execution (context_ref).
-  //
-  template <typename Context>
-  class context_manager
-  {
-    public:
-      using context_type = Context;
-
-      // abstract class requires virtual destructor
-      virtual ~context_manager () = default;
-
-      virtual context_type &create_context (void) = 0;      // create a new thread context; cannot fail
-      virtual void retire_context (context_type &) = 0;     // retire the thread context
-      virtual void recycle_context (context_type &)         // recycle context before reuse
-      {
-	// usage and implementation is optional
-      }
-      virtual void stop_execution (context_type &)          // notify context to stop execution
-      {
-	// usage and implementation is optional
-      }
-  };
-
 } // namespace cubthread
 
 //////////////////////////////////////////////////////////////////////////
