@@ -25838,6 +25838,12 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	      continue;
 	    }
 
+	  /* to check for query like 'select count(*), count(*) ...' */
+	  if (class_cos->count_state == COS_LOADED)
+	    {
+	      continue;
+	    }
+
 	  if (tdes->mvccinfo.snapshot.valid)
 	    {
 	      /* 
