@@ -707,7 +707,10 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
   char *password = spec->s.dblink_node.conn_password;
   char *sql_text = spec->s.dblink_node.conn_sql;
 
-  /* Invariant: a non-reuse open must arrive without an active stmt_handle.
+  scan_info->corr_key_count = spec->s.dblink_node.corr_key_count;
+  scan_info->corr_key_regu_list = spec->s.dblink_node.corr_key_regu_list;
+
+  /* CBRD-26640 invariant: a non-reuse open must arrive without an active stmt_handle.
    * CCI handles are positive integers; 0 = zero-initialized (never opened), -1 = sentinel
    * set by dblink_close_scan after successful close.  Both mean "no active statement".
    * conn_handle is intentionally excluded: when auto_commit=false the connection is

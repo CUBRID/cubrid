@@ -843,6 +843,8 @@ struct dblink_spec_node
 {
   REGU_VARIABLE_LIST dblink_regu_list_pred;	/* regu list for the predicate */
   REGU_VARIABLE_LIST dblink_regu_list_rest;	/* regu list for rest of attrs */
+  int corr_key_count;		/* CBRD-26601: correlated push-down key count; 0 if unused */
+  REGU_VARIABLE_LIST corr_key_regu_list;	/* CBRD-26601: outer-column bind regs (list chain); owned by XASL heap */
   int host_var_count;		/* host variable count for dblink spec */
   int *host_var_index;		/* host variable indexes for dblink spec */
   char *conn_url;		/* connection URL for remote DB server */
