@@ -780,6 +780,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_MEMOIZE_MEMORY_LIMIT "memoize_memory_limit"
 
 #define PRM_NAME_VECTOR_INDEX_EF_SEARCH "hnsw_ef_search"
+#define PRM_NAME_VECTOR_INDEX_I8_PREFILTER_MULTIPLIER "hnsw_i8_prefilter_multiplier"
 #define PRM_NAME_VECTOR_INDEX_DEBUG "hnsw_debug"
 
 // #endregion 
@@ -978,6 +979,11 @@ static int prm_vector_index_ef_search_default = 40;
 static int prm_vector_index_ef_search_lower = 1;
 static int prm_vector_index_ef_search_upper = 1000;
 static unsigned int prm_vector_index_ef_search_flag = 0;
+
+float PRM_VECTOR_INDEX_I8_PREFILTER_MULTIPLIER = 1.0f;
+static float prm_vector_index_i8_prefilter_multiplier_default = 1.0f;
+static float prm_vector_index_i8_prefilter_multiplier_lower = 0.0f;
+static float prm_vector_index_i8_prefilter_multiplier_upper = 10.0f;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5196,6 +5202,18 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = PRM_VECTOR_INDEX_EF_SEARCH}},
    {false, {.i = prm_vector_index_ef_search_upper}},
    {false, {.i = prm_vector_index_ef_search_lower}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_VECTOR_INDEX_I8_PREFILTER_MULTIPLIER,
+   PRM_NAME_VECTOR_INDEX_I8_PREFILTER_MULTIPLIER,
+   (PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   PRM_FLOAT,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.f = prm_vector_index_i8_prefilter_multiplier_default}},
+   {false, {.f = PRM_VECTOR_INDEX_I8_PREFILTER_MULTIPLIER}},
+   {false, {.f = prm_vector_index_i8_prefilter_multiplier_upper}},
+   {false, {.f = prm_vector_index_i8_prefilter_multiplier_lower}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

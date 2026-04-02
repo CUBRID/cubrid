@@ -204,14 +204,19 @@ namespace cubhnsw
     const std::int8_t *append (const std::int8_t *data, std::size_t count) noexcept
     {
       if (!has_capacity ())
-	return nullptr;
+	{
+	  return nullptr;
+	}
       std::byte *slot_ptr = reinterpret_cast<std::byte *> (m_data) + (m_used * m_stride_bytes);
       std::memcpy (slot_ptr, data, count);
       ++m_used;
       return reinterpret_cast<const std::int8_t *> (slot_ptr);
     }
 
-    bool has_capacity () const noexcept { return m_used < m_capacity; }
+    bool has_capacity () const noexcept
+    {
+      return m_used < m_capacity;
+    }
 
     std::size_t m_stride_bytes {0};
     std::size_t m_capacity {0};
@@ -271,6 +276,11 @@ namespace cubhnsw
 
   struct algo_context_t
   {
+    ~algo_context_t ()
+    {
+      free (m_query_i8_raw);
+    }
+
     top_candidates_t m_top_candidates;
     top_candidates_t m_top_for_refine;
     next_candidates_t m_next_candidates;
@@ -279,9 +289,15 @@ namespace cubhnsw
     cubthread::entry *m_thread_p {nullptr};
     level_t m_level {0};
 
-    // query i8 quantization (owned buffer + view)
-    std::vector<std::int8_t> m_query_i8_buf;
-    quantized_vector_i8 m_query_i8;  // view into m_query_i8_buf (set by prepare_query_i8_)
+    // query i8 quantization: 64-byte aligned buffer (same alignment as i8_cache_block slots)
+    // owned via m_query_i8_raw; m_query_i8 is a view into it.
+    void *m_query_i8_raw {nullptr};
+    std::size_t m_query_i8_raw_capacity {0};
+    quantized_vector_i8 m_query_i8 {};  // view into m_query_i8_raw (set by prepare_query_i8_)
+    bool m_query_i8_ready {false};      // guard against redundant prepare_query_i8_ calls
+
+    // i8 prefilter window multiplier (read once from system parameter per add/search)
+    float m_i8_prefilter_multiplier {1.0f};
 
     // stats
     bool m_is_perf_tracking {false};

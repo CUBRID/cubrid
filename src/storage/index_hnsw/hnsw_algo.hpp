@@ -100,6 +100,11 @@ namespace cubhnsw
 
       inline void prepare_query_i8_ (algo_context_t &context, const float *query) const
       {
+	if (context.m_query_i8_ready)
+	  {
+	    return;
+	  }
+
 	float max_abs = 0.0f;
 	for (std::size_t i = 0; i < m_dimension; ++i)
 	  {
@@ -107,48 +112,63 @@ namespace cubhnsw
 	  }
 
 	context.m_query_i8.scale = (max_abs > 0.0f) ? max_abs / 127.0f : 1.0f;
-	context.m_query_i8_buf.resize (m_dimension);
+
+	// Ensure 64-byte aligned buffer (matches i8_cache_block slot alignment).
+	const std::size_t needed = ((m_dimension + VECTOR_CACHE_ALIGNMENT - 1) / VECTOR_CACHE_ALIGNMENT)
+				   * VECTOR_CACHE_ALIGNMENT;
+	if (needed > context.m_query_i8_raw_capacity)
+	  {
+	    free (context.m_query_i8_raw);
+	    context.m_query_i8_raw = std::aligned_alloc (VECTOR_CACHE_ALIGNMENT, needed);
+	    assert (context.m_query_i8_raw != nullptr);
+	    context.m_query_i8_raw_capacity = needed;
+	  }
+
+	std::int8_t *buf = static_cast<std::int8_t *> (context.m_query_i8_raw);
 	for (std::size_t i = 0; i < m_dimension; ++i)
 	  {
 	    const float scaled = query[i] / context.m_query_i8.scale;
 	    const float rounded = std::round (scaled);
 	    const float clamped = std::max (-127.0f, std::min (127.0f, rounded));
-	    context.m_query_i8_buf[i] = static_cast<std::int8_t> (clamped);
+	    buf[i] = static_cast<std::int8_t> (clamped);
 	  }
-	context.m_query_i8.values = context.m_query_i8_buf.data ();
+	context.m_query_i8.values = buf;
+	context.m_query_i8_ready = true;
       }
 
       inline distance_t compute_distance_i8_ (algo_context_t &context, const quantized_vector_i8 &v1,
 					      const quantized_vector_i8 &v2) const
       {
 	context.m_stats.on_distance_computed (context.m_is_perf_tracking, context.m_level, true);
-	return metric_table_i8[static_cast<size_t> (m_metric)] (v1.values, v1.scale,
-								 v2.values, v2.scale, m_dimension);
+	// Both v1 (query, aligned_alloc) and v2 (i8_cache_block slot) are 64-byte aligned.
+	return metric_table_i8_aligned[static_cast<size_t> (m_metric)] (v1.values, v1.scale,
+	       v2.values, v2.scale, m_dimension);
       }
 
-      inline distance_t get_i8_recheck_window_ (distance_t radius) const
+      inline distance_t get_i8_recheck_window_ (float multiplier, distance_t radius) const
       {
 	const distance_t base = std::max (std::fabs (radius), 1.0f);
 	switch (m_metric)
 	  {
 	  case vector_distance_metric_t::EUCLIDEAN:
-	    return std::max (0.02f * base, static_cast<distance_t> (0.001f * m_dimension));
+	    return multiplier * std::max (0.02f * base, static_cast<distance_t> (0.001f * m_dimension));
 	  case vector_distance_metric_t::COSINE:
 	  case vector_distance_metric_t::DOT:
-	    return 0.02f * base;
+	    return multiplier * 0.02f * base;
 	  default:
 	    assert (false);
-	    return 0.02f * base;
+	    return multiplier * 0.02f * base;
 	  }
       }
 
-      inline bool should_recheck_candidate_fp32_ (distance_t coarse_dist, distance_t radius) const
+      inline bool should_recheck_candidate_fp32_ (const algo_context_t &context,
+	  distance_t coarse_dist, distance_t radius) const
       {
-	return coarse_dist <= radius + get_i8_recheck_window_ (radius);
+	return coarse_dist <= radius + get_i8_recheck_window_ (context.m_i8_prefilter_multiplier, radius);
       }
 
       inline distance_t compute_distance_from_query_ (algo_context_t &context, const float *query,
-						      const cached_vector &vec) const
+	  const cached_vector &vec) const
       {
 	return compute_distance_ (context, query, vec.values);
       }
@@ -161,7 +181,7 @@ namespace cubhnsw
       }
 
       inline distance_t compute_distance_from_query_i8_ (algo_context_t &context,
-							 const cached_vector &vec) const
+	  const cached_vector &vec) const
       {
 	return compute_distance_i8_ (context, context.m_query_i8, vec.values_i8);
       }
@@ -252,6 +272,7 @@ namespace cubhnsw
     context.m_thread_p = thread_p;
     context.m_is_perf_tracking = perfmon_is_perf_tracking ();
     context.m_is_debugging = prm_get_integer_value (PRM_ID_VECTOR_INDEX_DEBUG) != 0;
+    context.m_i8_prefilter_multiplier = prm_get_float_value (PRM_ID_VECTOR_INDEX_I8_PREFILTER_MULTIPLIER);
 
     context.clear_candidates();
 
@@ -435,6 +456,7 @@ namespace cubhnsw
     algo_context_t context;
     context.m_thread_p = thread_p;
     context.m_is_perf_tracking = perfmon_is_perf_tracking ();
+    context.m_i8_prefilter_multiplier = prm_get_float_value (PRM_ID_VECTOR_INDEX_I8_PREFILTER_MULTIPLIER);
     context.clear_candidates();
 
     top_candidates_t &top = context.m_top_candidates;
@@ -562,7 +584,7 @@ namespace cubhnsw
 		context.m_stats.on_prefilter_checked (context.m_is_perf_tracking, context.m_level);
 		distance_t successor_dist_i8 = compute_distance_from_query_i8_ (context, *successor_vec);
 		if (top.size () >= expansion_limit
-		    && !should_recheck_candidate_fp32_ (successor_dist_i8, radius))
+		    && !should_recheck_candidate_fp32_ (context, successor_dist_i8, radius))
 		  {
 		    context.m_stats.on_prefilter_rejected (context.m_is_perf_tracking, context.m_level);
 		    stats.on_candidate_prune ();
@@ -609,7 +631,7 @@ namespace cubhnsw
 	    context.m_stats.on_prefilter_checked (context.m_is_perf_tracking, context.m_level);
 	    distance_t successor_dist_i8 = compute_distance_from_query_i8_ (context, *successor_vec);
 	    if (top.size () >= expansion_limit
-		&& !should_recheck_candidate_fp32_ (successor_dist_i8, radius))
+		&& !should_recheck_candidate_fp32_ (context, successor_dist_i8, radius))
 	      {
 		context.m_stats.on_prefilter_rejected (context.m_is_perf_tracking, context.m_level);
 		stats.on_candidate_prune ();
@@ -677,7 +699,7 @@ namespace cubhnsw
 			    m_storage->get_cached_vector_by_slot_id (context, neighbor_id, lock_mode::shared);
 		    context.m_stats.on_prefilter_checked (context.m_is_perf_tracking, context.m_level);
 		    distance_t candidate_dist_i8 = compute_distance_from_query_i8_ (context, *neighbor_vec);
-		    if (!should_recheck_candidate_fp32_ (candidate_dist_i8, closest_dist))
+		    if (!should_recheck_candidate_fp32_ (context, candidate_dist_i8, closest_dist))
 		      {
 			context.m_stats.on_prefilter_rejected (context.m_is_perf_tracking, context.m_level);
 			continue;
@@ -711,7 +733,7 @@ namespace cubhnsw
 			    m_storage->get_cached_vector_by_slot_id (context, neighbor_id, lock_mode::shared);
 		    context.m_stats.on_prefilter_checked (context.m_is_perf_tracking, context.m_level);
 		    distance_t candidate_dist_i8 = compute_distance_from_query_i8_ (context, *neighbor_vec);
-		    if (!should_recheck_candidate_fp32_ (candidate_dist_i8, closest_dist))
+		    if (!should_recheck_candidate_fp32_ (context, candidate_dist_i8, closest_dist))
 		      {
 			context.m_stats.on_prefilter_rejected (context.m_is_perf_tracking, context.m_level);
 			continue;

@@ -518,7 +518,6 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/tde.c
 
   ${INDEX_HNSW_DIR}/vector_distance_omp_simd.cpp
-  ${INDEX_HNSW_DIR}/vector_distance_intrinsics.cpp
   ${INDEX_HNSW_DIR}/hnsw_impl.cpp
   ${INDEX_HNSW_DIR}/hnsw.cpp
   ${INDEX_HNSW_DIR}/hnsw_api.cpp
@@ -533,26 +532,39 @@ set(STORAGE_HEADERS
   ${INDEX_HNSW_DIR}/hnsw_api.hpp
 )
 
-if(USE_SIMD_NATIVE)
+# Select intrinsics implementation based on detected ISA.
+# One file is compiled per build — no runtime dispatch, no #if guards inside.
+if(CXX_AVX512_FOUND)
+  set(VECTOR_INTRINSICS_FILE ${INDEX_HNSW_DIR}/vector_distance_intrinsics_avx512.cpp)
+  set(VECTOR_INTRINSICS_ISA_FLAGS "${CXX_AVX512_FLAGS}")
+elseif(CXX_AVX2_FOUND)
+  set(VECTOR_INTRINSICS_FILE ${INDEX_HNSW_DIR}/vector_distance_intrinsics_avx2.cpp)
+  set(VECTOR_INTRINSICS_ISA_FLAGS "${CXX_AVX2_FLAGS}")
+else()
+  set(VECTOR_INTRINSICS_FILE ${INDEX_HNSW_DIR}/vector_distance_intrinsics_fallback.cpp)
+  set(VECTOR_INTRINSICS_ISA_FLAGS "")
+endif()
+list(APPEND STORAGE_SOURCES ${VECTOR_INTRINSICS_FILE})
 
+if(USE_SIMD_NATIVE)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set_source_files_properties(${QUERY_DIR}/vector_opfunc.cpp ${INDEX_HNSW_DIR}/vector_distance_omp_simd.cpp
         PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-ftree-vectorize;-mprefer-vector-width=512;-fopenmp-simd;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
     )
-    set_source_files_properties(${INDEX_HNSW_DIR}/vector_distance_intrinsics.cpp
+    set_source_files_properties(${VECTOR_INTRINSICS_FILE}
         PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
     )
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set_source_files_properties(${QUERY_DIR}/vector_opfunc.cpp ${INDEX_HNSW_DIR}/vector_distance_omp_simd.cpp
         PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-fvectorize;-mprefer-vector-width=512;-fopenmp-simd;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
     )
-    set_source_files_properties(${INDEX_HNSW_DIR}/vector_distance_intrinsics.cpp
+    set_source_files_properties(${VECTOR_INTRINSICS_FILE}
         PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
     )
   endif()
-elseif(CXX_AVX2_FOUND)
-  set_source_files_properties(${INDEX_HNSW_DIR}/vector_distance_intrinsics.cpp
-      PROPERTIES COMPILE_OPTIONS "${CXX_AVX2_FLAGS};-O3;-ffast-math;-fno-trapping-math;-funroll-loops"
+elseif(VECTOR_INTRINSICS_ISA_FLAGS)
+  set_source_files_properties(${VECTOR_INTRINSICS_FILE}
+      PROPERTIES COMPILE_OPTIONS "${VECTOR_INTRINSICS_ISA_FLAGS};-O3;-ffast-math;-fno-trapping-math;-funroll-loops"
   )
 endif()
 

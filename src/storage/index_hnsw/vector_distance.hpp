@@ -85,17 +85,26 @@ namespace cubhnsw
 
   // int8 quantized distance functions
   using distance_i8_fn_t =
-      distance_t (*) (const std::int8_t *, float, const std::int8_t *, float, std::size_t);
+	  distance_t (*) (const std::int8_t *, float, const std::int8_t *, float, std::size_t);
 
   extern const std::array<distance_i8_fn_t,
-       static_cast<std::size_t> (vector_distance_metric_t::MAX)>
-       metric_table_i8;
+	 static_cast<std::size_t> (vector_distance_metric_t::MAX)>
+	 metric_table_i8;
+
+  // Both pointers 64-byte aligned (query buf + i8_cache_block). Uses aligned SIMD loads.
+  extern const std::array<distance_i8_fn_t,
+	 static_cast<std::size_t> (vector_distance_metric_t::MAX)>
+	 metric_table_i8_aligned;
 
   distance_t cubvec_cosine_distance_int8 (const std::int8_t *vec1, float scale1,
-                                         const std::int8_t *vec2, float scale2, std::size_t dim);
+					  const std::int8_t *vec2, float scale2, std::size_t dim);
   distance_t cubvec_l2_distance_int8 (const std::int8_t *vec1, float scale1,
-                                     const std::int8_t *vec2, float scale2, std::size_t dim);
+				      const std::int8_t *vec2, float scale2, std::size_t dim);
   distance_t cubvec_inner_product_distance_int8 (const std::int8_t *vec1, float scale1,
-                                                const std::int8_t *vec2, float scale2, std::size_t dim);
+      const std::int8_t *vec2, float scale2, std::size_t dim);
+  distance_t cubvec_inner_product_distance_int8_aligned (const std::int8_t *vec1, float scale1,
+      const std::int8_t *vec2, float scale2, std::size_t dim);
+  distance_t cubvec_cosine_distance_int8_aligned (const std::int8_t *vec1, float scale1,
+      const std::int8_t *vec2, float scale2, std::size_t dim);
 
 } // namespace cubhnsw
