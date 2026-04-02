@@ -23,6 +23,7 @@
 #ifndef _COUNT_REGISTRY_HPP_
 #define _COUNT_REGISTRY_HPP_
 
+#include <string>
 #include <variant>
 #include <functional>
 
@@ -48,6 +49,8 @@ namespace cubbase
 
 	for (p = m_head; p; p = p->m_next)
 	  {
+	    // type: %s, name: %s, entries: %d\n
+	    // typeid (*p).name (), p->m_name.c_str (), p->get ()
 	    sum += p->get ();
 	  }
 	return sum;
@@ -66,14 +69,16 @@ namespace cubbase
       }
 
     public:
-      count_registry (std::function<int ()> getter) :
+      count_registry (std::string name, std::function<int ()> getter) :
+	m_name (name),
 	m_getter (std::move (getter)),
 	m_next (m_head)
       {
 	m_head = this;
       }
 
-      count_registry (int count) :
+      count_registry (std::string name, int count) :
+	m_name (name),
 	m_getter (count),
 	m_next (m_head)
       {
@@ -107,6 +112,7 @@ namespace cubbase
       }
 
     private:
+      std::string m_name;
       std::variant<std::function<int ()>, int> m_getter;
       count_registry *m_next;
   };

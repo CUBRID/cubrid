@@ -197,7 +197,7 @@ namespace cubthread
       }
     else
       {
-	assert (m_daemons.size () + m_daemons_without_entries.size () < daemon_registry_t::count ());
+	assert (m_daemons.size () < daemon_registry_t::count ());
 
 	if (entry_mgr == NULL)
 	  {
@@ -223,8 +223,6 @@ namespace cubthread
       }
     else
       {
-	assert (m_daemons.size () + m_daemons_without_entries.size () < daemon_registry_t::count ());
-
 	// reserve no entry and add to m_daemons_without_entries
 	return create_and_track_resource (m_daemons_without_entries, 0, looper_arg, exec_p, daemon_name);
       }
