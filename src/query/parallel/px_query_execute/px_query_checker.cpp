@@ -316,7 +316,19 @@ namespace parallel_query_execute
     check_pred_expr (xasl->instnum_pred);
     check_regu_var (xasl->limit_offset);
     check_regu_var (xasl->limit_row_count);
-
+    if (xasl->type == BUILDLIST_PROC)
+      {
+	if (xasl->proc.buildlist.a_outptr_list)
+	  {
+	    check_regu_var_list (xasl->proc.buildlist.a_outptr_list->valptrp);
+	  }
+	if (xasl->proc.buildlist.g_outptr_list)
+	  {
+	    check_regu_var_list (xasl->proc.buildlist.g_outptr_list->valptrp);
+	  }
+	check_regu_var_list (xasl->proc.buildlist.a_regu_list);
+	check_regu_var_list (xasl->proc.buildlist.g_regu_list);
+      }
   }
 
   void xasl_checker::check_access_spec_type (ACCESS_SPEC_TYPE *access_spec_type)
