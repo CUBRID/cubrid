@@ -547,7 +547,6 @@ oos_get_recently_inserted_oos_vpid (const VFID &oos_vfid, VPID &vpid)
       vpid = VPID_INITIALIZER;
       return ER_FAILED;
     }
-  return NO_ERROR;
 }
 
 

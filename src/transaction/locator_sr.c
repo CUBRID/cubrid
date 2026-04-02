@@ -6371,16 +6371,6 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
        * Note that we cannot have server deletes on classes.
        */
 
-      /* Delete OOS column data before deleting the heap record */
-      if (isold_object == true && copy_recdes.data != NULL)
-	{
-	  error_code = locator_delete_oos_force (thread_p, hfid, &class_oid, &copy_recdes);
-	  if (error_code != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	}
-
       if (isold_object == true && has_index)
 	{
 	  /* if MVCC then delete before updating index */

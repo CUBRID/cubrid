@@ -41,10 +41,10 @@
 #include "memory_alloc.h"
 #include "server_interface.h"
 #endif /* !SERVER_MODE */
+#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "thread_worker_pool.hpp"
-#if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
-#endif // SERVER_MODE
+#endif // SERVER_MODE || SA_MODE
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE or SA_MODE
@@ -2096,6 +2096,8 @@ perfmon_stat_page_type_name (const int page_type)
       return "PAGE_EHASH";
     case PERF_PAGE_OVERFLOW:
       return "PAGE_OVERFLOW";
+    case PERF_PAGE_OOS:
+      return "PAGE_OOS";
     case PERF_PAGE_AREA:
       return "PAGE_AREA";
     case PERF_PAGE_CATALOG:

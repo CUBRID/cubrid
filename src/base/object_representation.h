@@ -448,6 +448,9 @@ OR_PUT_DOUBLE (char *ptr, double val)
 #define OR_IS_OOS(length) (OR_GET_VAR_FLAG (length) & OR_VAR_BIT_OOS)
 #define OR_IS_LAST_ELEMENT(length) (OR_GET_VAR_FLAG (length) & OR_VAR_BIT_LAST_ELEMENT)
 
+/* OOS inline size: OOS OID (8 bytes) + OOS length (8 bytes) */
+#define OR_OOS_INLINE_SIZE (OR_OID_SIZE + OR_BIGINT_SIZE)
+
 /* variable offset */
 
 #define OR_VAR_TABLE_SIZE(vars) \

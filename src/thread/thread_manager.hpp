@@ -55,14 +55,10 @@ namespace cubthread
 {
 
   // forward definition
-  template <typename Context>
   class worker_pool;
   class looper;
   class daemon;
   class daemon_entry_manager;
-
-  // alias for worker_pool<entry>
-  using entry_workpool = worker_pool<entry>;
 
   // cubthread::manager
   //
@@ -100,9 +96,9 @@ namespace cubthread
   //          // daemon loops and execute task on each iteration
   //          cubthread::get_manager ()->destroy_daemon (my_daemon);
   //
-  //     2. entry_workpool -
-  //          entry_workpool *my_workpool = cubthread::get_manager ()->create_worker_pool (MAX_THREADS, MAX_JOBS);
-  //          cubthread::get_manager ()->push_task (entry_workpool, entry_task_p);
+  //     2. worker_pool -
+  //          worker_pool *my_workpool = cubthread::get_manager ()->create_worker_pool (MAX_THREADS, MAX_JOBS);
+  //          cubthread::get_manager ()->push_task (my_workpool, entry_task_p);
   //          cubthread::get_manager ()->destroy_worker_pool (my_workpool);
   //
   class manager
@@ -123,32 +119,32 @@ namespace cubthread
       // worker pool management
       //////////////////////////////////////////////////////////////////////////
 
-      // create a entry_workpool with pool_size number of threads
+      // create a worker pool with pool_size number of threads
       // notes: if there are not pool_size number of entries available, worker pool is not created and NULL is returned
       //        signature emulates worker_pool constructor signature
-      entry_workpool *create_worker_pool (std::size_t pool_size, std::size_t task_max_count, const char *name,
-					  entry_manager *context_manager, std::size_t core_count,
-					  bool debug_logging, bool pool_threads = false,
-					  wait_seconds wait_for_task_time = std::chrono::seconds (5));
+      worker_pool *create_worker_pool (std::size_t pool_size, std::size_t task_max_count, const char *name,
+				       entry_manager *entry_mgr, std::size_t core_count,
+				       bool debug_logging, bool pool_threads = false,
+				       wait_seconds wait_for_task_time = std::chrono::seconds (5));
 
       // destroy worker pool
-      void destroy_worker_pool (entry_workpool *&worker_pool_arg);
+      void destroy_worker_pool (worker_pool *&worker_pool_arg);
 
       // push task to worker pool created with this manager
       // if worker_pool_arg is NULL, the task is executed immediately
-      void push_task (entry_workpool *worker_pool_arg, entry_task *exec_p);
+      void push_task (worker_pool *worker_pool_arg, entry_task *exec_p);
       // push task on the given core of entry worker pool.
       // read cubthread::worker_pool::execute_on_core for details.
-      void push_task_on_core (entry_workpool *worker_pool_arg, entry_task *exec_p, std::size_t core_hash, bool method_mode);
+      void push_task_on_core (worker_pool *worker_pool_arg, entry_task *exec_p, std::size_t core_hash, bool method_mode);
 
       // try to execute task if there are available thread in worker pool
       // if worker_pool_arg is NULL, the task is executed immediately
-      bool try_task (entry &thread_p, entry_workpool *worker_pool_arg, entry_task *exec_p);
+      bool try_task (entry &thread_p, worker_pool *worker_pool_arg, entry_task *exec_p);
 
       // return if pool is full
       // for SERVER_MODE see worker_pool::is_full
       // for SA_MODE it is always false
-      bool is_pool_full (entry_workpool *worker_pool_arg);
+      bool is_pool_full (worker_pool *worker_pool_arg);
 
       //////////////////////////////////////////////////////////////////////////
       // daemon management
@@ -167,12 +163,12 @@ namespace cubthread
 
       // create daemon thread
       //
-      // note: signature should match context-based daemon constructor. only exception is context manager which is
+      // note: signature should match context-based daemon constructor. only exception is entry manager which is
       //       moved at the end to allow a default value
       //
       // todo: remove default daemon name
       daemon *create_daemon (const looper &looper_arg, entry_task *exec_p, const char *daemon_name = "",
-			     entry_manager *context_manager = NULL);
+			     entry_manager *entry_mgr = NULL);
       // destroy daemon thread
       void destroy_daemon (daemon *&daemon_arg);
 
@@ -241,7 +237,7 @@ namespace cubthread
       // private type aliases
       using entry_dispatcher = resource_shared_pool<entry>;
 
-      // generic implementation to create and destroy resources (specialize through daemon and entry_workpool)
+      // generic implementation to create and destroy resources (specialize through daemon and worker pool)
       template <typename Res, typename ... CtArgs>
       Res *create_and_track_resource (std::vector<Res *> &tracker, size_t entries_count, CtArgs &&... args);
       template <typename Res>
@@ -257,7 +253,7 @@ namespace cubthread
       // guard for thread resources
       std::mutex m_entries_mutex;
       // worker pools
-      std::vector<entry_workpool *> m_worker_pools;
+      std::vector<worker_pool *> m_worker_pools;
       // daemons
       std::vector<daemon *> m_daemons;
       // daemons without entries
@@ -269,8 +265,8 @@ namespace cubthread
       entry_dispatcher *m_entry_dispatcher;
       // available entries count
       std::size_t m_available_entries_count;
-      entry_manager *m_entry_manager;
-      daemon_entry_manager *m_daemon_entry_manager;
+      entry_manager m_entry_manager;
+      daemon_entry_manager m_daemon_entry_manager;
 
       // lock-free transaction system
       lockfree::tran::system *m_lf_tran_sys;
@@ -326,13 +322,9 @@ namespace cubthread
 
   // backward compatibility initialization
   int initialize_thread_entries (bool with_lock_free = true);
-  entry *get_main_entry (void);
 
   // get thread manager
   manager *get_manager (void);
-
-  // quick fix for unit test mock-ups
-  void set_manager (manager *manager);
 
   // get maximum thread count
   std::size_t get_max_thread_count (void);
