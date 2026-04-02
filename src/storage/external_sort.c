@@ -4954,7 +4954,7 @@ void
 sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
 {
   THREAD_ENTRY *thread_p = &thread_ref;
-  SORT_INFO *sort_info_p, *ori_sort_info_p;
+  SORT_INFO *sort_info_p = NULL, *ori_sort_info_p;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   PX_STATUS px_status;
