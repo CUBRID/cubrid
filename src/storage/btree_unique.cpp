@@ -111,7 +111,10 @@ btree_unique_stats::delete_row ()
 bool
 btree_unique_stats::is_zero () const
 {
-  return m_keys == 0 && m_nulls == 0;
+  /* For unique indexes m_rows == m_keys + m_nulls, so checking keys/nulls was sufficient.
+   * Non-unique indexes may have row-only deltas (delete_row) where m_keys and m_nulls stay zero
+   * while m_rows changes; include m_rows in the check to handle that case. */
+  return m_keys == 0 && m_nulls == 0 && m_rows == 0;
 }
 
 bool
