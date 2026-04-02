@@ -25868,17 +25868,6 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	      continue;
 	    }
 
-	  if (tdes->mvccinfo.snapshot.valid)
-	    {
-	      /* 
-	       * An early snapshot can load stats for only the classes that
-	       * were COS_TO_LOAD then; UNION's second branch may still be NOT_LOADED on a later run.
-	       * It needs to invalidate and retake snapshot.
-	       */
-
-	      logtb_invalidate_snapshot_data (thread_p);
-	    }
-
 	  class_cos->count_state = COS_TO_LOAD;
 	  if (logtb_tran_find_btid_stats (thread_p, &agg_ptr->btid, true) == NULL)
 	    {
@@ -25887,10 +25876,22 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	      continue;
 	    }
 
-	  if (logtb_get_mvcc_snapshot (thread_p) == NULL)
+	  if (!tdes->mvccinfo.snapshot.valid)
 	    {
-	      error = er_errid ();
-	      return (error == NO_ERROR ? ER_FAILED : error);
+	      if (logtb_get_mvcc_snapshot (thread_p) == NULL)
+		{
+		  error = er_errid ();
+		  return (error == NO_ERROR ? ER_FAILED : error);
+		}
+	    }
+	  else
+	    {
+	      /* 
+	       * An early snapshot can load stats for only the classes that
+	       * were COS_TO_LOAD then; UNION's second branch may still be NOT_LOADED on a later run.
+	       * It needs to load global statistics of btid.
+	       */
+	      logtb_load_global_statistics_to_tran (thread_p);
 	    }
 
 	  if (class_cos->count_state != COS_LOADED)
