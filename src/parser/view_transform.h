@@ -100,4 +100,8 @@ extern PT_NODE *mq_rewrite_query_as_derived (PARSER_CONTEXT * parser, PT_NODE * 
 extern int mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec);
 
 extern PT_NODE *mq_has_click_counter (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+
+/* CBRD-26601 T1-2: remote SQL WHERE/AND col = ? — see pt_copypush_terms, pt_to_dblink_table_spec_list */
+extern bool mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di);
+extern void mq_dblink_clear_corr_keys (PARSER_CONTEXT * parser, PT_DBLINK_INFO * dinfo);
 #endif /* _VIEW_TRANSFORM_H_ */

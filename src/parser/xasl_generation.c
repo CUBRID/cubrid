@@ -12931,6 +12931,15 @@ pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE *
   char *sql;
   int count = 0;
 
+  /* CBRD-26601 T1-2: pure correlated — pt_copypush_terms did not set rewritten; build before conn_sql */
+  if (pdblink->rewritten == NULL && pdblink->corr_key_count > 0 && pdblink->corr_key_col_names[0] != NULL)
+    {
+      if (!mq_dblink_append_corr_pred_sql (parser, pdblink))
+	{
+	  mq_dblink_clear_corr_keys (parser, pdblink);
+	}
+    }
+
   PRED_EXPR *where = pt_to_pred_expr (parser, where_p);
 
   TABLE_INFO *tbl_info = pt_find_table_info (spec->info.spec.id, parser->symbols->table_info);

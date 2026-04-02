@@ -23,6 +23,7 @@
 #ident "$Id$"
 
 #include <assert.h>
+#include <ctype.h>
 
 #include "authenticate.h"
 #include "view_transform.h"
@@ -4186,6 +4187,15 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 
       query->info.dblink_table.rewritten = rewritten;
 
+      /* CBRD-26601 T1-2: corr pred after rewritten is final (mixed case). */
+      if (query->info.dblink_table.corr_key_count > 0 && query->info.dblink_table.corr_key_col_names[0] != NULL)
+	{
+	  if (!mq_dblink_append_corr_pred_sql (parser, &query->info.dblink_table))
+	    {
+	      mq_dblink_clear_corr_keys (parser, &query->info.dblink_table);
+	    }
+	}
+
       parser->custom_print = save_custom;
 
 #if 0
@@ -4832,6 +4842,264 @@ mq_detect_dblink_corr_eq (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE *
     }
 
   return corr_eq_count;
+}
+
+/*
+ * mq_dblink_corr_get_eq_pair () - after mq_detect_dblink_corr_eq == 1, fill remote/outer expr pointers.
+ */
+static bool
+mq_dblink_corr_get_eq_pair (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * dblink_spec, PT_NODE ** remote_out,
+			    PT_NODE ** outer_out)
+{
+  UINTPTR dblink_sid;
+  PT_NODE *where, *term;
+  bool forbidden;
+  int c1, c2;
+  int found;
+
+  assert (parser != NULL && subquery != NULL && dblink_spec != NULL && remote_out != NULL && outer_out != NULL);
+
+  *remote_out = NULL;
+  *outer_out = NULL;
+
+  if (!PT_IS_SELECT (subquery))
+    {
+      return false;
+    }
+
+  where = subquery->info.query.q.select.where;
+  if (where == NULL)
+    {
+      return false;
+    }
+
+  dblink_sid = dblink_spec->info.spec.id;
+  found = 0;
+
+  for (term = where; term; term = term->next)
+    {
+      if (term->node_type == PT_EXPR && term->info.expr.location > 0)
+	{
+	  continue;
+	}
+      if (term->node_type == PT_VALUE && term->info.value.location > 0)
+	{
+	  continue;
+	}
+
+      forbidden = false;
+      parser_walk_tree (parser, term, mq_dblink_corr_forbidden_pre, &forbidden, NULL, NULL);
+      if (forbidden)
+	{
+	  return false;
+	}
+
+      if (mq_dblink_corr_is_correlated_eq_term (parser, term, dblink_sid))
+	{
+	  c1 = mq_dblink_corr_classify_side (term->info.expr.arg1, dblink_sid);
+	  c2 = mq_dblink_corr_classify_side (term->info.expr.arg2, dblink_sid);
+	  if (c1 == MQ_DBLINK_CORR_SIDE_REMOTE && c2 == MQ_DBLINK_CORR_SIDE_OUTER)
+	    {
+	      *remote_out = mq_dblink_corr_strip_cast_wrap (term->info.expr.arg1);
+	      *outer_out = mq_dblink_corr_strip_cast_wrap (term->info.expr.arg2);
+	    }
+	  else if (c1 == MQ_DBLINK_CORR_SIDE_OUTER && c2 == MQ_DBLINK_CORR_SIDE_REMOTE)
+	    {
+	      *remote_out = mq_dblink_corr_strip_cast_wrap (term->info.expr.arg2);
+	      *outer_out = mq_dblink_corr_strip_cast_wrap (term->info.expr.arg1);
+	    }
+	  else
+	    {
+	      return false;
+	    }
+	  found++;
+	}
+      else if (mq_dblink_corr_term_has_outer_ref (parser, term))
+	{
+	  return false;
+	}
+    }
+
+  return (found == 1 && *remote_out != NULL && *outer_out != NULL);
+}
+
+/* Clear correlated key slots; free owning corr_key_outer_copy trees. */
+void
+mq_dblink_clear_corr_keys (PARSER_CONTEXT * parser, PT_DBLINK_INFO * dinfo)
+{
+  int i;
+
+  assert (parser != NULL && dinfo != NULL);
+
+  for (i = 0; i < PT_DBLINK_MAX_CORR_KEYS; i++)
+    {
+      if (dinfo->corr_key_outer_copy[i] != NULL)
+	{
+	  parser_free_tree (parser, dinfo->corr_key_outer_copy[i]);
+	  dinfo->corr_key_outer_copy[i] = NULL;
+	}
+    }
+
+  dinfo->corr_key_count = 0;
+  for (i = 0; i < PT_DBLINK_MAX_CORR_KEYS; i++)
+    {
+      dinfo->corr_key_remote_cols[i] = NULL;
+      dinfo->corr_key_outer_refs[i] = NULL;
+      dinfo->corr_key_col_names[i] = NULL;
+    }
+}
+
+/* True if [start, start+len) contains WHERE as an SQL keyword (case-insensitive, word-bounded). */
+static bool
+mq_dblink_sql_has_where_keyword (const char *start, size_t len)
+{
+  size_t i;
+
+  if (start == NULL || len < 5)
+    {
+      return false;
+    }
+  for (i = 0; i + 5 <= len; i++)
+    {
+      if (toupper ((unsigned char) start[i]) != 'W')
+	{
+	  continue;
+	}
+      if (toupper ((unsigned char) start[i + 1]) != 'H')
+	{
+	  continue;
+	}
+      if (toupper ((unsigned char) start[i + 2]) != 'E')
+	{
+	  continue;
+	}
+      if (toupper ((unsigned char) start[i + 3]) != 'R')
+	{
+	  continue;
+	}
+      if (toupper ((unsigned char) start[i + 4]) != 'E')
+	{
+	  continue;
+	}
+      if (i > 0 && (isalnum ((unsigned char) start[i - 1]) || start[i - 1] == '_'))
+	{
+	  continue;
+	}
+      if (i + 5 < len && (isalnum ((unsigned char) start[i + 5]) || start[i + 5] == '_'))
+	{
+	  continue;
+	}
+      return true;
+    }
+  return false;
+}
+
+/* Extract column name string from remote_col (PT_NAME / PT_DOT_). */
+static const char *
+mq_dblink_extract_col_name (PARSER_CONTEXT * parser, PT_NODE * remote_col)
+{
+  const char *original;
+
+  if (remote_col == NULL)
+    {
+      return NULL;
+    }
+  if (remote_col->node_type == PT_NAME)
+    {
+      original = remote_col->info.name.original;
+    }
+  else if (remote_col->node_type == PT_DOT_ && remote_col->info.dot.arg2 != NULL
+	   && remote_col->info.dot.arg2->node_type == PT_NAME)
+    {
+      original = remote_col->info.dot.arg2->info.name.original;
+    }
+  else
+    {
+      return NULL;
+    }
+  if (original == NULL || original[0] == '\0')
+    {
+      return NULL;
+    }
+  return pt_append_string (parser, NULL, original);
+}
+
+/* Build base PARSER_VARCHAR for di->rewritten when NULL (VALUE string or printed qstr). */
+static PARSER_VARCHAR *
+mq_dblink_build_rewritten_base_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di)
+{
+  PARSER_VARCHAR *v;
+  unsigned int save;
+
+  assert (di->rewritten == NULL);
+  if (di->qstr == NULL)
+    {
+      return NULL;
+    }
+  if (di->qstr->node_type == PT_VALUE && di->qstr->info.value.data_value.str != NULL)
+    {
+      return pt_append_bytes (parser, NULL, (const char *) di->qstr->info.value.data_value.str->bytes,
+			      di->qstr->info.value.data_value.str->length);
+    }
+  save = parser->custom_print;
+  parser->custom_print |= PT_SUPPRESS_RESOLVED | PT_PRINT_SUPPRESS_FOR_DBLINK;
+  v = pt_print_bytes (parser, di->qstr);
+  parser->custom_print = save;
+  return v;
+}
+
+/* Append " WHERE col = ?" or " AND col = ?" to di->rewritten (or set rewritten from qstr first). */
+bool
+mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di)
+{
+  PARSER_VARCHAR *base;
+  bool has_where;
+  const char *col_name = di->corr_key_col_names[0];
+
+  if (col_name == NULL || col_name[0] == '\0')
+    {
+      return false;
+    }
+
+  if (di->rewritten != NULL)
+    {
+      base = di->rewritten;
+      has_where = mq_dblink_sql_has_where_keyword ((const char *) base->bytes, (size_t) base->length);
+    }
+  else
+    {
+      base = mq_dblink_build_rewritten_base_sql (parser, di);
+      if (base == NULL)
+	{
+	  return false;
+	}
+      has_where = mq_dblink_sql_has_where_keyword ((const char *) base->bytes, (size_t) base->length);
+    }
+
+  if (has_where)
+    {
+      base = pt_append_bytes (parser, base, " AND ", 5);
+    }
+  else
+    {
+      base = pt_append_bytes (parser, base, " WHERE ", 7);
+    }
+  if (base == NULL)
+    {
+      return false;
+    }
+  base = pt_append_nulstring (parser, base, col_name);
+  if (base == NULL)
+    {
+      return false;
+    }
+  base = pt_append_bytes (parser, base, " = ?", 4);
+  if (base == NULL)
+    {
+      return false;
+    }
+  di->rewritten = base;
+  return true;
 }
 
 /*
@@ -6865,6 +7133,12 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 {
   PT_NODE *spec, *derived = NULL;
   PT_NODE *derived_table;
+  PT_DBLINK_INFO *dinfo;
+  PT_NODE *remote_expr = NULL;
+  PT_NODE *outer_expr = NULL;
+  int ncorr;
+
+  (void) arg;
 
   if (node->node_type != PT_SELECT)
     {
@@ -6876,8 +7150,39 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
       if ((derived_table = spec->info.spec.derived_table)
 	  && spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	{
-	  /* T1-1: correlated (remote = outer) eq count; T1-2 uses result == 1 for PT_DBLINK_INFO */
-	  (void) mq_detect_dblink_corr_eq (parser, node, spec);
+	  dinfo = &derived_table->info.dblink_table;
+	  mq_dblink_clear_corr_keys (parser, dinfo);
+
+	  ncorr = mq_detect_dblink_corr_eq (parser, node, spec);
+	  if (ncorr == 1)
+	    {
+	      if (!mq_dblink_corr_get_eq_pair (parser, node, spec, &remote_expr, &outer_expr))
+		{
+		  mq_dblink_clear_corr_keys (parser, dinfo);
+		}
+	      else
+		{
+		  dinfo->corr_key_remote_cols[0] = remote_expr;
+		  dinfo->corr_key_outer_refs[0] = outer_expr;
+		  dinfo->corr_key_col_names[0] = mq_dblink_extract_col_name (parser, remote_expr);
+		  if (dinfo->corr_key_col_names[0] == NULL)
+		    {
+		      mq_dblink_clear_corr_keys (parser, dinfo);
+		    }
+		  else
+		    {
+		      dinfo->corr_key_outer_copy[0] = parser_copy_tree (parser, outer_expr);
+		      if (dinfo->corr_key_outer_copy[0] == NULL)
+			{
+			  mq_dblink_clear_corr_keys (parser, dinfo);
+			}
+		      else
+			{
+			  dinfo->corr_key_count = 1;
+			}
+		    }
+		}
+	    }
 
 	  derived = mq_rewrite_dblink_as_derived (parser, derived_table);
 	  if (derived == NULL)
