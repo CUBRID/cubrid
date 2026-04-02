@@ -29,6 +29,8 @@
 #include <stddef.h>
 #include <string.h>
 #include <time.h>
+#include <unordered_map>
+#include <functional>
 
 #include "file_manager.h"
 
@@ -11391,9 +11393,6 @@ xfile_tracker_dump_file_list (THREAD_ENTRY * thread_p, FILE * outfp, bool invali
 
   return NO_ERROR;
 }
-
-#include <unordered_map>
-#include <functional>
 
 // *INDENT-OFF*
 inline bool operator==(const VFID &a, const VFID &b)
