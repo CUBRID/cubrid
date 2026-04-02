@@ -300,6 +300,8 @@ static void sort_spage_dump (PAGE_PTR pgptr, int rec_p);
 #endif /* CUBRID_DEBUG */
 
 static void sort_append (const void *pk0, const void *pk1);
+static int sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
+							 SORT_PARAM * sort_param, int parallel_num);
 
 /*
  * sort_spage_initialize () - Initialize a slotted page
@@ -4182,7 +4184,16 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
 	}
       else if (sort_param->px_type == SORT_INDEX_LEAF)
 	{
-	  ;
+	  if (sort_param->get_arg != NULL)
+	    {
+	      SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
+	      if (sort_args_p->ftab_sets != NULL)
+		{
+		  sort_args_p->ftab_sets->clear ();
+		  free_and_init (sort_args_p->ftab_sets);
+		}
+	      free_and_init (sort_param->get_arg);
+	    }
 	}
       else
 	{
@@ -4653,6 +4664,118 @@ cleanup:
   return error;
 }
 
+int
+sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
+					      SORT_PARAM * sort_param, int parallel_num)
+{
+  int error = NO_ERROR;
+  int i = 0, idx = 0, file_pg_cnt_est;
+  int remaining_run, level, merge_num;
+  RESULT_RUN result_run[SORT_MAX_PARALLEL];
+  QFILE_LIST_ID *origin_list_id, *mergeable_list_id;
+  SORT_ARGS *sort_args_p;
+
+  if (parallel_num > SORT_MAX_PARALLEL)
+    {
+      return ER_FAILED;
+    }
+
+  /* init result_run */
+  for (i = 0; i < parallel_num; i++)
+    {
+      result_run[i].temp_file = px_sort_param[i].temp[px_sort_param[i].px_result_file_idx];
+      result_run[i].num_pages = px_sort_param[i].file_contents[px_sort_param[i].px_result_file_idx].num_pages[0];
+    }
+
+  remaining_run = parallel_num;
+  level = 0;
+
+
+  /* merge result run */
+  while (remaining_run > 1)
+    {
+      merge_num = (remaining_run + (SORT_PX_MERGE_FILES - 1)) / SORT_PX_MERGE_FILES;
+
+      for (i = 0; i < merge_num; i++)
+	{
+	  int first_idx = i * pow (SORT_PX_MERGE_FILES, level + 1);
+
+	  /* init file info */
+	  int half_files = MIN (remaining_run - (first_idx / pow (SORT_PX_MERGE_FILES, level)), SORT_PX_MERGE_FILES);
+	  if (half_files == 1)
+	    {
+	      /* skip last one file */
+	      continue;
+	    }
+
+	  px_sort_param[i].px_result_file_idx = 0;
+	  px_sort_param[i].half_files = half_files;
+	  px_sort_param[i].tot_tempfiles = half_files * 2;
+	  px_sort_param[i].in_half = 0;
+
+	  /* copy temp file and file contents */
+	  for (int j = 0; j < px_sort_param[i].half_files; j++)
+	    {
+	      idx = (level == 0) ? (j + first_idx) : ((j * pow (SORT_PX_MERGE_FILES, level)) + first_idx);
+	      px_sort_param[i].temp[j] = result_run[idx].temp_file;
+	      /* copy the number of pages for one run */
+	      px_sort_param[i].file_contents[j].num_pages[0] = result_run[idx].num_pages;
+	      px_sort_param[i].file_contents[j].first_run = 0;
+	      px_sort_param[i].file_contents[j].last_run = 0;
+	    }
+	  for (int j = px_sort_param[i].half_files; j < px_sort_param[i].tot_tempfiles; j++)
+	    {
+	      /* init temp file and contents */
+	      px_sort_param[i].temp[j].volid = NULL_VOLID;
+	      px_sort_param[i].file_contents[j].first_run = -1;
+	      px_sort_param[i].file_contents[j].last_run = -1;
+	    }
+	  px_sort_param[i].px_result_run = &result_run[first_idx];
+	  px_sort_param[i].px_status = PX_PROGRESS;
+
+	  parallel_query::callable_task * task =
+	    new parallel_query::callable_task (sort_param->px_worker_manager,
+					       std::bind (sort_merge_nruns_parallel, std::placeholders::_1,
+							  &px_sort_param[i]));
+	  sort_param->px_worker_manager->push_task (task);
+	}
+
+      SORT_WAIT_PARALLEL (merge_num, sort_param, px_sort_param);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      remaining_run = merge_num;
+      level++;
+    }
+
+  sort_args_p = (SORT_ARGS *) sort_param->get_arg;
+  log_sysop_start (thread_p);
+  if (btree_create_file
+      (thread_p, &sort_args_p->class_ids[0], sort_args_p->attr_ids[0], sort_args_p->btid->sys_btid) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return ER_FAILED;
+    }
+
+  /* if loading is aborted or if transaction is aborted, vacuum must be notified before file is destoyed. */
+  vacuum_log_add_dropped_file (thread_p, &sort_args_p->btid->sys_btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
+
+  int result_file_idx = px_sort_param[0].px_result_file_idx;
+  sort_param->px_result_file_idx = result_file_idx;
+  sort_param->file_contents[result_file_idx].num_pages[0] =
+    px_sort_param[0].file_contents[result_file_idx].num_pages[0];
+  sort_param->temp[result_file_idx] = px_sort_param[0].temp[result_file_idx];
+
+  if (sort_put_result_from_tmpfile (thread_p, sort_param, 0) != NO_ERROR)
+    {
+      error = ER_FAILED;
+    }
+
+  return error;
+}
+
+
 /*
  * sort_merge_nruns () - merge n run
  *   return: NO_ERROR
@@ -4811,7 +4934,14 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
   thread_ref.m_px_orig_thread_entry = sort_param->px_orig_thread_p;
   thread_ref.conn_entry = sort_param->px_orig_thread_p->conn_entry;
 
-  thread_p->push_resource_tracks ();
+  /* For SORT_INDEX_LEAF, this function is called on the main thread whose resource tracks are already managed
+   * by xbtree_load_index(). Pushing a nested level here causes a false assertion because btree_construct_leafs
+   * intentionally leaves load_args->current_key alive across this call (freed later by xbtree_load_index). */
+  bool needs_resource_tracking = (thread_p != thread_p->m_px_orig_thread_entry);
+  if (needs_resource_tracking)
+    {
+      thread_p->push_resource_tracks ();
+    }
 
   if (thread_is_on_trace (sort_param->px_orig_thread_p))
     {
@@ -4821,18 +4951,21 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
       tsc_getticks (&start_tick);
     }
 
-  sort_info_p = (SORT_INFO *) sort_param->put_arg;
-  ori_sort_info_p = (SORT_INFO *) sort_param->ori_sort_param->put_arg;
-  if (sort_param->file_contents[0].start_index == 0)
+  if (sort_param->px_type == SORT_ORDER_BY)
     {
-      /* first file : use origin output temp file */
-      sort_info_p->output_file = ori_sort_info_p->output_file;
-    }
-  else
-    {
-      sort_info_p->output_file =
-	qfile_open_list (thread_p, &ori_sort_info_p->input_file->type_list, ori_sort_info_p->sort_list_p,
-			 ori_sort_info_p->input_file->query_id, ori_sort_info_p->flag | QFILE_NOT_USE_MEMBUF, NULL);
+      sort_info_p = (SORT_INFO *) sort_param->put_arg;
+      ori_sort_info_p = (SORT_INFO *) sort_param->ori_sort_param->put_arg;
+      if (sort_param->file_contents[0].start_index == 0)
+	{
+	  /* first file : use origin output temp file */
+	  sort_info_p->output_file = ori_sort_info_p->output_file;
+	}
+      else
+	{
+	  sort_info_p->output_file =
+	    qfile_open_list (thread_p, &ori_sort_info_p->input_file->type_list, ori_sort_info_p->sort_list_p,
+			     ori_sort_info_p->input_file->query_id, ori_sort_info_p->flag | QFILE_NOT_USE_MEMBUF, NULL);
+	}
     }
 
   /* write last temp file */
@@ -4845,11 +4978,14 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
       px_status = PX_DONE;
     }
 
-  qfile_close_list (thread_p, sort_info_p->output_file);
-  if (sort_info_p->output_recdes.data)
+  if (sort_param->px_type == SORT_ORDER_BY)
     {
-      db_private_free_and_init (NULL, sort_info_p->output_recdes.data);
-      sort_info_p->output_recdes.data = NULL;
+      qfile_close_list (thread_p, sort_info_p->output_file);
+      if (sort_info_p->output_recdes.data)
+	{
+	  db_private_free_and_init (NULL, sort_info_p->output_recdes.data);
+	  sort_info_p->output_recdes.data = NULL;
+	}
     }
 
   if (thread_is_on_trace (sort_param->px_orig_thread_p))
@@ -4864,7 +5000,10 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
       thread_set_sort_stats_active (thread_p, false);
       perfmon_destroy_parallel_stats (&thread_ref);
     }
-  thread_p->pop_resource_tracks ();
+  if (needs_resource_tracking)
+    {
+      thread_p->pop_resource_tracks ();
+    }
 
   /* done */
   pthread_mutex_lock (sort_param->px_mtx);
@@ -4887,7 +5026,6 @@ void
 sort_merge_nruns_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
 {
   THREAD_ENTRY *thread_p = &thread_ref;
-  SORT_INFO *sort_info_p, *ori_sort_info_p;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   PX_STATUS px_status;
@@ -5031,6 +5169,7 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	      return error;
 	    }
 	  temp.convert (&collector);
+	  db_private_free_and_init (thread_p, collector.partsect_ftab);
 	  ftab_sets = temp.split (parallel_num);
 	  for (int i = 0; i < parallel_num; i++)
 	    {
@@ -5129,7 +5268,11 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
     }
   else if (sort_param->px_type == SORT_INDEX_LEAF)
     {
-      log_sysop_start (thread_p);
+      error = sort_merge_run_for_parallel_index_leaf_build (thread_p, px_sort_param, sort_param, parallel_num);
+      if (error != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
     }
   else
     {

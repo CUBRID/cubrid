@@ -967,20 +967,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   /* Start scancache */
   has_fk = (fk_refcls_oid != NULL && !OID_ISNULL (fk_refcls_oid));
 
-  if (bt_load_heap_scancache_start_for_attrinfo (thread_p, sort_args, NULL, NULL, !has_fk) != NO_ERROR)
-    {
-      goto error;
-    }
-
-  if (btree_create_file (thread_p, &class_oids[0], attr_ids[0], btid) != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto error;
-    }
-
-  /* if loading is aborted or if transaction is aborted, vacuum must be notified before file is destoyed. */
-  vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
-
   /** Initialize the fields of loading argument structures **/
   load_args->btid = &btid_int;
   load_args->bt_name = bt_name;
@@ -1041,8 +1027,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 		     "DEBUG_BTREE: load finished all. %d classes loaded, found %d nulls and %d oids, "
 		     "load %d keys.", sort_args->n_classes, sort_args->n_nulls, sort_args->n_oids, load_args->n_keys);
     }
-
-  bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args, NULL, NULL);
 
   /* Just to make sure that there were entries to put into the tree */
   if (load_args->leaf.pgptr != NULL)

@@ -40,6 +40,12 @@ namespace parallel_query
 	 iterator (0)
       {}
 
+      ~ftab_set()
+      {
+	m_ftab_set.clear();
+      }
+
+
       ftab_set (const ftab_set &other)
 	:m_ftab_set (other.m_ftab_set),
 	 iterator (other.iterator)
