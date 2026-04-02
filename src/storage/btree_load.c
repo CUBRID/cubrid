@@ -259,8 +259,8 @@ static int bt_load_add_same_key_to_record (THREAD_ENTRY * thread_p, LOAD_ARGS * 
 					   int *sp_success);
 static int bt_load_notify_to_vacuum (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam,
 				     char **notify_vacuum_rv_data, char *notify_vacuum_rv_data_bufalign);
-static void bt_load_clear_pred_and_unpack (THREAD_ENTRY * thread_p, SORT_ARGS * args,
-					   XASL_UNPACK_INFO * func_unpack_info);
+void bt_load_clear_pred_and_unpack (THREAD_ENTRY * thread_p, SORT_ARGS * args,
+				    XASL_UNPACK_INFO * func_unpack_info);
 
 /*
  * btree_get_node_header () -
@@ -774,7 +774,7 @@ bt_load_heap_scancache_end_for_attrinfo (THREAD_ENTRY * thread_p, SORT_ARGS * ar
     }
 }
 
-static void
+void
 bt_load_clear_pred_and_unpack (THREAD_ENTRY * thread_p, SORT_ARGS * args, XASL_UNPACK_INFO * func_unpack_info)
 {
   if (args->filter != NULL)
@@ -799,6 +799,37 @@ bt_load_clear_pred_and_unpack (THREAD_ENTRY * thread_p, SORT_ARGS * args, XASL_U
     {
       free_xasl_unpack_info (thread_p, func_unpack_info);
     }
+}
+
+int
+btree_load_filter_pred_function_info (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args,
+				      PRED_EXPR_WITH_CONTEXT ** filter_pred_p, FILTER_INDEX_INFO * filter_index_info_p,
+				      FUNCTION_INDEX_INFO * func_index_info_p, XASL_UNPACK_INFO ** func_unpack_info_p,
+				      DB_TYPE * single_node_type)
+{
+  if (filter_index_info_p && filter_index_info_p->pred_stream && filter_index_info_p->pred_stream_size > 0)
+    {
+      if (stx_map_stream_to_filter_pred (thread_p, filter_pred_p, filter_index_info_p->pred_stream,
+					 filter_index_info_p->pred_stream_size) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      sort_args->filter = *filter_pred_p;
+      sort_args->filter_eval_func = eval_fnc (thread_p, (*filter_pred_p)->pred, single_node_type);
+    }
+
+  if (func_index_info_p && func_index_info_p->expr_stream && func_index_info_p->expr_stream_size > 0)
+    {
+      XASL_NODE *xasl_node = NULL;
+      if (stx_map_stream_to_func_pred (thread_p, &func_index_info_p->expr, func_index_info_p->expr_stream,
+				       func_index_info_p->expr_stream_size, func_unpack_info_p) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      sort_args->func_index_info = func_index_info_p;
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -836,6 +867,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   LOAD_ARGS load_args_info, *load_args;
   BTID_INT btid_int;
   PRED_EXPR_WITH_CONTEXT *filter_pred = NULL;
+  FILTER_INDEX_INFO filter_index_info;
   FUNCTION_INDEX_INFO func_index_info;
   DB_TYPE single_node_type = DB_TYPE_NULL;
   XASL_UNPACK_INFO *func_unpack_info = NULL;
@@ -922,12 +954,16 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   sort_args->fk_refcls_oid = fk_refcls_oid;
   sort_args->fk_refcls_pk_btid = fk_refcls_pk_btid;
   sort_args->fk_name = fk_name;
+  sort_args->filter_index_info = NULL;
   if (pred_stream && pred_stream_size > 0)
     {
       if (stx_map_stream_to_filter_pred (thread_p, &filter_pred, pred_stream, pred_stream_size) != NO_ERROR)
 	{
 	  goto error;
 	}
+      filter_index_info.pred_stream = pred_stream;
+      filter_index_info.pred_stream_size = pred_stream_size;
+      sort_args->filter_index_info = &filter_index_info;
     }
   sort_args->filter = filter_pred;
   sort_args->filter_eval_func = (filter_pred) ? eval_fnc (thread_p, filter_pred->pred, &single_node_type) : NULL;

@@ -1571,6 +1571,11 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
   TSCTIMEVAL tv_diff;
   THREAD_ENTRY *thread_p = &thread_ref;
   PX_STATUS px_status;
+  PRED_EXPR_WITH_CONTEXT *filter_pred = NULL;
+  FILTER_INDEX_INFO filter_index_info = { NULL, 0 };
+  FUNCTION_INDEX_INFO func_index_info;
+  XASL_UNPACK_INFO *func_unpack_info;
+  DB_TYPE single_node_type = DB_TYPE_NULL;
 
   thread_p->push_resource_tracks ();
 
@@ -1610,6 +1615,27 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
 	}
       sort_args_p->curr_pgoffset = 0;
       sort_args_p->curr_sec = FILE_PARTIAL_SECTOR_INITIALIZER;
+
+      func_index_info.expr_stream = NULL;
+      func_index_info.expr_stream_size = 0;
+
+      if (sort_args_p->filter != NULL)
+	{
+	  filter_index_info = *sort_args_p->filter_index_info;
+	}
+
+      if (sort_args_p->func_index_info != NULL)
+	{
+	  func_index_info = *sort_args_p->func_index_info;
+	}
+
+      if (btree_load_filter_pred_function_info
+	  (thread_p, sort_args_p, &filter_pred, &filter_index_info, &func_index_info, &func_unpack_info,
+	   &single_node_type) != NO_ERROR)
+	{
+	  px_status = PX_ERR_FAILED;
+	  goto cleanup;
+	}
     }
   else
     {
@@ -1649,6 +1675,7 @@ cleanup:
     {
       SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
       bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args_p, NULL, NULL);
+      bt_load_clear_pred_and_unpack (thread_p, sort_args_p, func_unpack_info);
     }
   else
     {

@@ -38,6 +38,10 @@
 #include "object_domain.h"
 #include "slotted_page.h"
 
+/* Forward declarations for filter predicate and XASL unpack types */
+typedef struct pred_expr_with_context PRED_EXPR_WITH_CONTEXT;
+typedef struct xasl_unpack_info XASL_UNPACK_INFO;
+
 /*
  * Constants related to b+tree structure
  */
@@ -268,6 +272,13 @@ namespace parallel_query
 }
 /* *INDENT-ON* */
 
+typedef struct filter_index_info FILTER_INDEX_INFO;
+struct filter_index_info
+{
+  char *pred_stream;
+  int pred_stream_size;
+};
+
 typedef struct sort_args SORT_ARGS;
 struct sort_args
 {				/* Collection of information required for "sr_index_sort" */
@@ -297,6 +308,7 @@ struct sort_args
   const char *fk_name;
   struct pred_expr_with_context *filter;
   PR_EVAL_FNC filter_eval_func;
+  FILTER_INDEX_INFO *filter_index_info;
   FUNCTION_INDEX_INFO *func_index_info;
 
   MVCCID oldest_visible_mvccid;
@@ -345,6 +357,13 @@ extern int bt_load_heap_scancache_start_for_attrinfo (THREAD_ENTRY * thread_p, S
 						      int save_cache_last_fix_page);
 extern void bt_load_heap_scancache_end_for_attrinfo (THREAD_ENTRY * thread_p, SORT_ARGS * args,
 						     HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info);
+extern int
+btree_load_filter_pred_function_info (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args,
+				      PRED_EXPR_WITH_CONTEXT ** filter_pred_p, FILTER_INDEX_INFO * filter_index_info_p,
+				      FUNCTION_INDEX_INFO * func_index_info_p, XASL_UNPACK_INFO ** func_unpack_info_p,
+				      DB_TYPE * single_node_type);
+void bt_load_clear_pred_and_unpack (THREAD_ENTRY * thread_p, SORT_ARGS * args, XASL_UNPACK_INFO * func_unpack_info);
+
 
 /*
  * btree_clear_key_value () -
