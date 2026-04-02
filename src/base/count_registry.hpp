@@ -42,10 +42,10 @@ namespace cubbase
       inline static count_registry *m_head = nullptr;
 
     public:
-      inline static int total ()
+      inline static std::size_t total ()
       {
 	count_registry *p;
-	int sum = 0;
+	std::size_t sum = 0;
 
 	for (p = m_head; p; p = p->m_next)
 	  {
