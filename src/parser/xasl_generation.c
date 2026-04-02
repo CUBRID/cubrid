@@ -17969,6 +17969,33 @@ pt_xasl_spec_has_dblink (XASL_NODE * xasl)
 }
 
 /*
+ * pt_xasl_spec_has_corr_dblink () - true if any TARGET_DBLINK spec has correlated push-down keys (CBRD-26601 T2-1).
+ */
+static bool
+pt_xasl_spec_has_corr_dblink (XASL_NODE * xasl)
+{
+  XASL_NODE *scan;
+  ACCESS_SPEC_TYPE *spec;
+
+  if (xasl == NULL)
+    {
+      return false;
+    }
+
+  for (scan = xasl; scan != NULL; scan = scan->scan_ptr)
+    {
+      for (spec = scan->spec_list; spec != NULL; spec = spec->next)
+	{
+	  if (spec->type == TARGET_DBLINK && spec->s.dblink_node.corr_key_count > 0)
+	    {
+	      return true;
+	    }
+	}
+    }
+  return false;
+}
+
+/*
  * parser_generate_xasl_proc () - Creates xasl proc for parse tree.
  * 	Also used for direct recursion, not for subquery recursion
  *   return:
@@ -18130,14 +18157,19 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * qu
 	  XASL_SET_FLAG (xasl, XASL_ZERO_CORR_LEVEL);
 	}
 
-      /* correlated subquery with DBLink: rewind CCI cursor instead of re-issuing cci_execute per outer row.
-       * Assumption: conn_sql is invariant across outer rows — mq_copypush never modifies conn_sql for
-       * correlated terms (they are always pushed to access_pred only).
-       * NOTE: if a future optimization (e.g. join push-down) places per-row host variables into
-       * conn_sql, this flag must NOT be set for that case; re-bind + re-execute would be required instead. */
-      if (PT_IS_QUERY (node) && node->info.query.correlation_level > 0 && pt_xasl_spec_has_dblink (xasl))
+      /* Correlated DBLink: CBRD-26601 push-down (per-row bind, XASL_CORR_DBLINK) vs CBRD-26640 rewind cursor
+       * (XASL_DBLINK_CURSOR_REWIND).  The two flags are mutually exclusive.  */
+      if (PT_IS_QUERY (node) && node->info.query.correlation_level != 0 && pt_xasl_spec_has_dblink (xasl))
 	{
-	  XASL_SET_FLAG (xasl, XASL_DBLINK_CURSOR_REWIND);
+	  if (pt_xasl_spec_has_corr_dblink (xasl))
+	    {
+	      XASL_SET_FLAG (xasl, XASL_CORR_DBLINK);
+	    }
+	  else
+	    {
+	      /* conn_sql invariant across outer rows; correlated terms in access_pred only (26640). */
+	      XASL_SET_FLAG (xasl, XASL_DBLINK_CURSOR_REWIND);
+	    }
 	}
 
 /* BUG FIX - COMMENT OUT: DO NOT REMOVE ME FOR USE IN THE FUTURE */
