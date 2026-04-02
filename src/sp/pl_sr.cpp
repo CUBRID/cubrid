@@ -260,15 +260,8 @@ namespace cubpl
   server_manager::start ()
   {
 #if defined (SERVER_MODE)
-    if (PRM_TEST_DISABLE_ALL_DAEMONS)
-      {
-	m_server_monitor_task->do_monitor ();
-      }
-    else
-      {
-	cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (1000));
-	m_monitor_helper_daemon = cubthread::get_manager ()->create_daemon (looper, m_server_monitor_task, "pl_monitor");
-      }
+    cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (1000));
+    m_monitor_helper_daemon = cubthread::get_manager ()->create_daemon (looper, m_server_monitor_task, "pl-monitor");
 #else
     m_server_monitor_task->do_monitor ();
 #endif

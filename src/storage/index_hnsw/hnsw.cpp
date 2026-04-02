@@ -848,7 +848,7 @@ hnsw_init_header (THREAD_ENTRY *thread_p, VFID *vfid, PAGE_PTR page_ptr, HNSW_HE
       return ER_FAILED;
     }
 
-  if (spage_insert_at (thread_p, page_ptr, HEADER, &rec) != SP_SUCCESS)
+  if (spage_insert_at (thread_p, page_ptr, HNSW_HEADER_NUM, &rec) != SP_SUCCESS)
     {
       ASSERT_ERROR ();
       return ER_FAILED;
@@ -881,7 +881,7 @@ hnsw_get_header (THREAD_ENTRY *thread_p, PAGE_PTR page_ptr)
   (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_HNSW);
 #endif
 
-  if (spage_get_record (thread_p, page_ptr, HEADER, &header_record, PEEK) != S_SUCCESS)
+  if (spage_get_record (thread_p, page_ptr, HNSW_HEADER_NUM, &header_record, PEEK) != S_SUCCESS)
     {
       assert_release (false);
       return NULL;

@@ -1426,12 +1426,12 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 
   /* The size of a sort buffer is limited to PRM_SR_NBUFFERS. */
   sort_param->tot_buffers = MIN (prm_get_integer_value (PRM_ID_SR_NBUFFERS), input_pages);
-  sort_param->tot_buffers = MAX (16, sort_param->tot_buffers);
+  sort_param->tot_buffers = MAX (4, sort_param->tot_buffers);
 
   sort_param->internal_memory = (char *) malloc ((size_t) sort_param->tot_buffers * (size_t) DB_PAGESIZE);
   if (sort_param->internal_memory == NULL)
     {
-      sort_param->tot_buffers = 16;
+      sort_param->tot_buffers = 4;
 
       sort_param->internal_memory = (char *) malloc (sort_param->tot_buffers * DB_PAGESIZE);
       if (sort_param->internal_memory == NULL)
@@ -1545,7 +1545,7 @@ cleanup:
 	}
 
       sort_return_used_resources (thread_p, sort_param, PX_MAIN_IN_PARALLEL);
-      sort_param->px_worker_manager->release_workers (sort_param->px_parallel_num);
+      sort_param->px_worker_manager->release_workers ();
       free_and_init (px_sort_param);
     }
   else
@@ -4260,6 +4260,25 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	}
     }
 
+  /* For parallel sort, tot_buffers must be at least 8 (bump up if currently < 8) */
+  if (sort_param->tot_buffers < 8)
+    {
+      char *new_internal_memory;
+      int saved_tot_buffers = sort_param->tot_buffers;
+
+      sort_param->tot_buffers = 8;
+      new_internal_memory =
+	(char *) realloc (sort_param->internal_memory, (size_t) sort_param->tot_buffers * (size_t) DB_PAGESIZE);
+      if (new_internal_memory == NULL)
+	{
+	  sort_param->tot_buffers = saved_tot_buffers;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (size_t) (8 * DB_PAGESIZE));
+	  goto clear;
+	}
+      sort_param->internal_memory = new_internal_memory;
+    }
+
   /* alloc new memory */
   for (i = 0; i < parallel_num; i++)
     {
@@ -4268,19 +4287,19 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (size_t) (sort_param->tot_buffers * DB_PAGESIZE));
-	  break;
+	  goto clear;
 	}
+      px_sort_param[i].tot_buffers = sort_param->tot_buffers;	/* match allocated size (may be 8 for parallel) */
       for (j = 0; j < SORT_MAX_TOT_FILES; j++)
 	{
 	  /* Initilize file contents list */
 	  px_sort_param[i].file_contents[j].num_pages = (int *) malloc (SORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int));
 	  if (px_sort_param[i].file_contents[j].num_pages == NULL)
 	    {
-	      sort_param->tot_tempfiles = j;
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
 		      (size_t) (SORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int)));
-	      break;
+	      goto clear;
 	    }
 
 	  px_sort_param[i].file_contents[j].num_slots = SORT_INITIAL_DYN_ARRAY_SIZE;
@@ -4299,6 +4318,7 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
       px_sort_param[i].main_error_context = &cuberr::context::get_thread_local_context ();
     }
 
+clear:
   if (error != NO_ERROR)
     {
       /* free memory */

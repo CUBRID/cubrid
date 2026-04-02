@@ -199,6 +199,9 @@ extern void ses_posix_get_file_size (THREAD_ENTRY * thread_p, unsigned int rid, 
 extern void ses_posix_delete_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void ses_posix_create_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
+extern void net_server_wakeup_workers (THREAD_ENTRY * thread_p, int tran_index, int client_id);
+extern int net_server_active_workers (THREAD_ENTRY * thread_p, void *arg, int tran_index, int client_id);
+extern int net_server_conn_down (THREAD_ENTRY * thread_p, int tran_index);
 extern void net_cleanup_server_queues (unsigned int rid);
 
 extern void sboot_compact_db (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -243,6 +246,9 @@ extern void sloaddb_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *re
 extern void sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void ssession_stop_attached_threads (THREAD_ENTRY * thread_p, void *session);
+
+extern void slob_create_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void slob_remove_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
 /* For CDC */
 extern void slog_supplement_statement (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
