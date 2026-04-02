@@ -4577,6 +4577,263 @@ mq_is_dblink_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term)
     }
 }
 
+/* mq_detect_dblink_corr_eq helpers (CBRD-26601 T1-1) */
+#define MQ_DBLINK_CORR_SIDE_ERR     (-1)
+#define MQ_DBLINK_CORR_SIDE_OTHER    0
+#define MQ_DBLINK_CORR_SIDE_REMOTE   1
+#define MQ_DBLINK_CORR_SIDE_OUTER    2
+#define MQ_DBLINK_CORR_SIDE_LOCAL    3
+#define MQ_DBLINK_CORR_SIDE_CONST    4
+
+/*
+ * mq_dblink_corr_strip_cast_wrap () - unwrap CAST_WRAP for dblink-style predicates
+ */
+static PT_NODE *
+mq_dblink_corr_strip_cast_wrap (PT_NODE * expr)
+{
+  while (expr && expr->node_type == PT_EXPR && expr->info.expr.op == PT_CAST
+	 && PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_WRAP))
+    {
+      expr = expr->info.expr.arg1;
+    }
+  return expr;
+}
+
+/*
+ * mq_dblink_corr_dot_to_leaf_name () - rightmost name in a path (a.b.c -> c)
+ */
+static PT_NODE *
+mq_dblink_corr_dot_to_leaf_name (PT_NODE * expr)
+{
+  PT_NODE *e = expr;
+
+  while (e && e->node_type == PT_DOT_)
+    {
+      e = e->info.dot.arg2;
+    }
+  return e;
+}
+
+/*
+ * mq_dblink_corr_classify_side () - classify one side of a potential corr eq
+ *   return: MQ_DBLINK_CORR_SIDE_*; ERR on host var
+ */
+static int
+mq_dblink_corr_classify_side (PT_NODE * expr, UINTPTR dblink_sid)
+{
+  PT_NODE *leaf;
+
+  expr = mq_dblink_corr_strip_cast_wrap (expr);
+  if (expr == NULL)
+    {
+      return MQ_DBLINK_CORR_SIDE_ERR;
+    }
+  if (expr->node_type == PT_HOST_VAR)
+    {
+      return MQ_DBLINK_CORR_SIDE_ERR;
+    }
+  if (pt_is_const (expr))
+    {
+      return MQ_DBLINK_CORR_SIDE_CONST;
+    }
+  if (expr->node_type == PT_NAME)
+    {
+      if (PT_IS_OID_NAME (expr))
+	{
+	  return MQ_DBLINK_CORR_SIDE_OTHER;
+	}
+      if (expr->info.name.correlation_level > 0)
+	{
+	  return MQ_DBLINK_CORR_SIDE_OUTER;
+	}
+      if (expr->info.name.spec_id == dblink_sid)
+	{
+	  return MQ_DBLINK_CORR_SIDE_REMOTE;
+	}
+      return MQ_DBLINK_CORR_SIDE_LOCAL;
+    }
+  if (expr->node_type == PT_DOT_)
+    {
+      leaf = mq_dblink_corr_dot_to_leaf_name (expr);
+      if (leaf && leaf->node_type == PT_NAME && !PT_IS_OID_NAME (leaf))
+	{
+	  if (leaf->info.name.correlation_level > 0)
+	    {
+	      return MQ_DBLINK_CORR_SIDE_OUTER;
+	    }
+	  if (leaf->info.name.spec_id == dblink_sid)
+	    {
+	      return MQ_DBLINK_CORR_SIDE_REMOTE;
+	    }
+	  return MQ_DBLINK_CORR_SIDE_LOCAL;
+	}
+    }
+  return MQ_DBLINK_CORR_SIDE_OTHER;
+}
+
+/*
+ * mq_dblink_corr_is_correlated_eq_term () - true if term is PT_EQ (remote = outer)
+ */
+static bool
+mq_dblink_corr_is_correlated_eq_term (PARSER_CONTEXT * parser, PT_NODE * term, UINTPTR dblink_sid)
+{
+  int c1, c2;
+
+  (void) parser;
+  if (term->node_type != PT_EXPR || term->info.expr.op != PT_EQ)
+    {
+      return false;
+    }
+  if (term->info.expr.arg2 == NULL)
+    {
+      return false;
+    }
+  c1 = mq_dblink_corr_classify_side (term->info.expr.arg1, dblink_sid);
+  c2 = mq_dblink_corr_classify_side (term->info.expr.arg2, dblink_sid);
+  if (c1 == MQ_DBLINK_CORR_SIDE_ERR || c2 == MQ_DBLINK_CORR_SIDE_ERR)
+    {
+      return false;
+    }
+  return ((c1 == MQ_DBLINK_CORR_SIDE_REMOTE && c2 == MQ_DBLINK_CORR_SIDE_OUTER)
+	  || (c1 == MQ_DBLINK_CORR_SIDE_OUTER && c2 == MQ_DBLINK_CORR_SIDE_REMOTE));
+}
+
+/*
+ * mq_dblink_corr_forbidden_pre () - OR/NOT/subquery/host var/method in predicate (Phase 1 fail)
+ */
+static PT_NODE *
+mq_dblink_corr_forbidden_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *bad = (bool *) arg;
+
+  (void) parser;
+  (void) continue_walk;
+  switch (node->node_type)
+    {
+    case PT_HOST_VAR:
+      *bad = true;
+      break;
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      *bad = true;
+      break;
+    case PT_METHOD_CALL:
+      *bad = true;
+      break;
+    case PT_EXPR:
+      if (node->info.expr.op == PT_OR || node->info.expr.op == PT_NOT)
+	{
+	  *bad = true;
+	}
+      break;
+    default:
+      break;
+    }
+  return node;
+}
+
+/*
+ * mq_dblink_corr_outer_ref_pre () - mark if any correlated (outer) column ref
+ */
+static PT_NODE *
+mq_dblink_corr_outer_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+  PT_NODE *leaf;
+
+  (void) parser;
+  (void) continue_walk;
+  if (node->node_type == PT_NAME && !PT_IS_OID_NAME (node) && node->info.name.correlation_level > 0)
+    {
+      *found = true;
+    }
+  else if (node->node_type == PT_DOT_)
+    {
+      leaf = mq_dblink_corr_dot_to_leaf_name (node);
+      if (leaf && leaf->node_type == PT_NAME && !PT_IS_OID_NAME (leaf) && leaf->info.name.correlation_level > 0)
+	{
+	  *found = true;
+	}
+    }
+  return node;
+}
+
+/*
+ * mq_dblink_corr_term_has_outer_ref () - any name with correlation_level > 0
+ */
+static bool
+mq_dblink_corr_term_has_outer_ref (PARSER_CONTEXT * parser, PT_NODE * term)
+{
+  bool found = false;
+
+  parser_walk_tree (parser, term, mq_dblink_corr_outer_ref_pre, &found, NULL, NULL);
+  return found;
+}
+
+/*
+ * mq_detect_dblink_corr_eq () - count correlated equalities (remote = outer) in subquery WHERE.
+ *
+ *   return:
+ *     >=0 : number of AND terms that are exactly one remote=outer PT_EQ (Phase 1 uses == 1)
+ *     -1  : Phase 1 not applicable (host var, OR/NOT, subquery in pred, outer ref without corr eq, etc.)
+ */
+static int
+mq_detect_dblink_corr_eq (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * dblink_spec)
+{
+  PT_NODE *where, *term;
+  bool forbidden;
+  UINTPTR dblink_sid;
+  int corr_eq_count;
+
+  assert (parser != NULL && subquery != NULL && dblink_spec != NULL);
+
+  if (!PT_IS_SELECT (subquery))
+    {
+      return 0;
+    }
+
+  where = subquery->info.query.q.select.where;
+  if (where == NULL)
+    {
+      return 0;
+    }
+
+  dblink_sid = dblink_spec->info.spec.id;
+  corr_eq_count = 0;
+
+  for (term = where; term; term = term->next)
+    {
+      if (term->node_type == PT_EXPR && term->info.expr.location > 0)
+	{
+	  continue;
+	}
+      if (term->node_type == PT_VALUE && term->info.value.location > 0)
+	{
+	  continue;
+	}
+
+      forbidden = false;
+      parser_walk_tree (parser, term, mq_dblink_corr_forbidden_pre, &forbidden, NULL, NULL);
+      if (forbidden)
+	{
+	  return -1;
+	}
+
+      if (mq_dblink_corr_is_correlated_eq_term (parser, term, dblink_sid))
+	{
+	  corr_eq_count++;
+	}
+      else if (mq_dblink_corr_term_has_outer_ref (parser, term))
+	{
+	  return -1;
+	}
+    }
+
+  return corr_eq_count;
+}
+
 /*
  * mq_copypush_sargable_terms_helper() -
  *   return:
@@ -6619,6 +6876,9 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
       if ((derived_table = spec->info.spec.derived_table)
 	  && spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	{
+	  /* T1-1: correlated (remote = outer) eq count; T1-2 uses result == 1 for PT_DBLINK_INFO */
+	  (void) mq_detect_dblink_corr_eq (parser, node, spec);
+
 	  derived = mq_rewrite_dblink_as_derived (parser, derived_table);
 	  if (derived == NULL)
 	    {
