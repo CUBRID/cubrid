@@ -11591,7 +11591,7 @@ file_clean_invalid_file (int *heap, int *heap_ovf, int *btree, int *btree_ovf)
       ptr = or_unpack_int (ptr, heap_ovf);
       ptr = or_unpack_int (ptr, btree);
       ptr = or_unpack_int (ptr, btree_ovf);
-    }Expand commentComment on lines R11046 to R11051Resolved
+    }
 
   return error;
 #else /* CS_MODE */

@@ -12105,7 +12105,7 @@ sfile_tracker_dump_file_list (THREAD_ENTRY * thread_p, unsigned int rid, char *r
   ptr = or_unpack_int (request, &buffer_size);
   ptr = or_unpack_int (ptr, &invalid_only);
 
-  buffer = (char *) db_private_alloc (thread_p, buffer_size);Expand commentComment on lines R11213 to R11216Resolved
+  buffer = (char *) db_private_alloc (thread_p, buffer_size);
   if (buffer == NULL)
     {
       css_send_abort_to_client (thread_p->conn_entry, rid);
@@ -12122,7 +12122,7 @@ sfile_tracker_dump_file_list (THREAD_ENTRY * thread_p, unsigned int rid, char *r
     }
 
   xfile_tracker_dump_file_list (thread_p, outfp, (bool) invalid_only);
-  file_size = ftell (outfp);Expand commentComment on lines R11232 to R11233Resolved
+  file_size = ftell (outfp);
 
   /*
    * Send the file in pieces
