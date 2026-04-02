@@ -12090,7 +12090,7 @@ slob_remove_dir (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
  * NOTE:
  */
 void
-sfile_tracker_dump_file_list (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+sfile_tracker_dump_file_list (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   FILE *outfp;
   int file_size;
@@ -12171,7 +12171,7 @@ sfile_tracker_dump_file_list (THREAD_ENTRY * thread_p, unsigned int rid, char *r
  * NOTE:
  */
 void
-sfile_tracker_clean_invalid_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+sfile_tracker_clean_invalid_file (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   int heap = 0, heap_ovf = 0, btree = 0, btree_ovf = 0;
   int error;
@@ -12207,7 +12207,7 @@ sfile_tracker_clean_invalid_file (THREAD_ENTRY * thread_p, unsigned int rid, cha
  * NOTE:
  */
 void
-sfile_tracker_delete_target_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+sfile_tracker_delete_target_file (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   int error;
   char *target_vfid_str;
