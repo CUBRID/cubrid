@@ -3798,6 +3798,18 @@ sboot_add_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   ptr = or_unpack_int (ptr, &tmp);
   ext_info.overwrite = (bool) tmp;
 
+  /* check if request is from an older patch version. */
+  if ((reqlen - (ptr - request)) >= OR_INT_SIZE)
+    {
+      ptr = or_unpack_int (ptr, &tmp);
+      ext_info.voltype = (DB_VOLTYPE) tmp;
+    }
+  else
+    {
+      /* If the request is from an older patch version, set permanent volume type. */
+      ext_info.voltype = DB_PERMANENT_VOLTYPE;
+    }
+
   volid = xboot_add_volume_extension (thread_p, &ext_info);
 
   if (volid == NULL_VOLID)
@@ -10232,6 +10244,7 @@ sloaddb_init (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
   args.unpack (unpacker);
 
   load_session *session = new load_session (args);
+  session->set_client_type (thread_p->conn_entry->client_type);
 
   int error_code = session_set_load_session (thread_p, session);
   if (error_code != NO_ERROR)

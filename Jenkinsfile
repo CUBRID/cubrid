@@ -2,7 +2,7 @@ pipeline {
   agent none
 
   triggers {
-    pollSCM('H 21 * * 1,2,3,4,5')
+    pollSCM('H 18 * * 1,2,3,4,5')
   }
 
   environment {
@@ -50,7 +50,7 @@ pipeline {
             always {
               script {
                 archiveArtifacts "${OUTPUT_DIR}/*"
-                if (env.JUNIT_REQUIRED == 'true' && fileExists("${TEST_REPORT}/summary.xml")) {
+                if (env.JUNIT_REQUIRED == 'true') {
                   junit "${TEST_REPORT}/*.xml"
                 } else {
                   echo 'Skip junit for feature branch'
@@ -92,7 +92,7 @@ pipeline {
             always {
               script {
                 archiveArtifacts "${OUTPUT_DIR}/*"
-                if (env.JUNIT_REQUIRED == 'true' && fileExists("${TEST_REPORT}/summary.xml")) {
+                if (env.JUNIT_REQUIRED == 'true') {
                   junit "${TEST_REPORT}/*.xml"
                 } else {
                   echo 'Skip junit for feature branch'

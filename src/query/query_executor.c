@@ -16084,6 +16084,8 @@ qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
+      /* monitor */
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_MJOINS);
       break;
 
     case HASHJOIN_PROC:
@@ -17321,8 +17323,10 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    }
 	}
 
-      /* monitor */
-      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SELECTS);
+      if (xasl->type == BUILDLIST_PROC || xasl->type == BUILDVALUE_PROC)
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SELECTS);
+	}
       break;
     }
 
@@ -17567,7 +17571,9 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
   qlist_enter_count = thread_p->m_qlist_count;
   if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
     {
-      er_print_callstack (ARG_FILE_LINE, "starting query execution with qlist_count = %d\n", qlist_enter_count);
+      er_print_callstack (ARG_FILE_LINE,
+			  "[thread %d with tran index %d] starting query execution with qlist_count = %d\n",
+			  thread_p->index, thread_p->tran_index, qlist_enter_count);
     }
 #endif // SERVER_MODE
 
@@ -17724,7 +17730,9 @@ end:
 #if defined (SERVER_MODE)
   if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
     {
-      er_print_callstack (ARG_FILE_LINE, "ending query execution with qlist_count = %d\n", thread_p->m_qlist_count);
+      er_print_callstack (ARG_FILE_LINE,
+			  "[thread %d with tran index %d] ending query execution with qlist_count = %d\n",
+			  thread_p->index, thread_p->tran_index, thread_p->m_qlist_count);
     }
   if (list_id && list_id->type_list.type_cnt != 0)
     {

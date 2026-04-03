@@ -2849,13 +2849,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 // SP being defined
 
                 assert scopeLevel == SymbolStack.LEVEL_MAIN;
+                if (ctx.routine_uniq_name().owner != null) {
+                    String owner = Misc.getNormalizedText(ctx.routine_uniq_name().owner);
+                    assert owner.equals(spOwner);
+                }
                 spName = name;
                 isSpFunc = (ctx.PROCEDURE() == null);
-            }
-
-            if (ctx.routine_uniq_name().owner != null) {
-                String owner = Misc.getNormalizedText(ctx.routine_uniq_name().owner);
-                assert owner.equals(spOwner);
             }
 
             // push a temporary symbol table, in order not to corrupt the current symbol table with
@@ -3341,6 +3340,15 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     private SqlSemantics getSqlSemanticsFromServer(Static_sqlContext ctx) {
+
+        List<TerminalNode> bindParamTokens = ctx.SS_BIND_PARAM();
+        if (bindParamTokens != null && bindParamTokens.size() > 0) {
+            TerminalNode token = bindParamTokens.get(0);
+            throw new SemanticError(
+                    Misc.getLineColumnOf(token),
+                    "Static SQL statements cannot have a bind parameter");
+        }
+
         String text = expandRecordIfAny(ctx);
         return getSqlSemanticsFromServer(text, ctx);
     }

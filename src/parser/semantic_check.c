@@ -1370,7 +1370,7 @@ pt_check_user_owns_class (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
     }
 
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
     {
       return result;
     }
@@ -5111,9 +5111,8 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  MOP me = NULL;
 	  MOP owner = NULL;
 	  bool change_owner_flag = false;
-	  int client_type = db_get_client_type ();
 
-	  if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	  if (db_client_type_is_loaddb ())
 	    {
 	      const char *user_name = pt_get_qualifier_name (parser, alter->info.alter.entity_name);
 	      if (user_name != NULL)
@@ -8814,9 +8813,8 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       MOP me = NULL;
       MOP owner = NULL;
       bool change_owner_flag = false;
-      int client_type = db_get_client_type ();
 
-      if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+      if (db_client_type_is_loaddb ())
 	{
 	  const char *user_name = pt_get_qualifier_name (parser, node->info.create_entity.entity_name);
 	  if (user_name != NULL)
@@ -9801,6 +9799,7 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *temp;
   PT_NODE *name;
+  const char *entity_name;
   DB_OBJECT *db_obj;
   DB_ATTRIBUTE *attributes;
   PT_FLAT_SPEC_INFO info;
@@ -9816,13 +9815,12 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 
       while ((free_node != NULL) && (free_node->node_type == PT_SPEC))
 	{
-	  const char *cls_name;
 	  /* check if class name exists. if not, we remove the corresponding node from spec_list. */
 	  if ((name = free_node->info.spec.entity_name) != NULL && name->node_type == PT_NAME
-	      && (cls_name = name->info.name.original) != NULL)
+	      && (entity_name = name->info.name.original) != NULL)
 	    {
 	      /* We cannot change the schema of a class by using synonym names. */
-	      if (db_find_synonym (cls_name) == NULL)
+	      if (db_find_synonym (entity_name) == NULL)
 		{
 		  ASSERT_ERROR ();
 
@@ -9835,7 +9833,7 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 		      return;
 		    }
 
-		  if ((db_obj = db_find_class_with_purpose (cls_name, true)) != NULL)
+		  if ((db_obj = db_find_class_with_purpose (entity_name, true)) != NULL)
 		    {
 		      prev_node = free_node;
 		      free_node = free_node->next;
@@ -9913,7 +9911,6 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 
       while ((free_node != NULL) && (free_node->node_type == PT_SPEC))
 	{
-
 	  if ((name = free_node->info.spec.entity_name) == NULL)
 	    {
 	      if (free_node == node->info.drop.spec_list)
@@ -9936,29 +9933,19 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 	      free_node = free_node->next;
 	    }
 	}
-
     }
-
-  info.spec_parent = NULL;
-  info.for_update = true;
-  /* Replace each Entity Spec with an Equivalent flat list */
-  parser_walk_tree (parser, node, pt_flat_spec_pre, &info, pt_continue_walk, NULL);
-
-  if (node->info.drop.entity_type != PT_MISC_DUMMY || node->info.drop.is_cascade_constraints)
+  else
     {
-      const char *cls_nam;
-      PT_MISC_TYPE typ = node->info.drop.entity_type;
-
-      /* verify declared class type is correct */
       for (temp = node->info.drop.spec_list; temp && temp->node_type == PT_SPEC; temp = temp->next)
 	{
 	  if ((name = temp->info.spec.entity_name) != NULL && name->node_type == PT_NAME
-	      && (cls_nam = name->info.name.original) != NULL)
+	      && (entity_name = name->info.name.original) != NULL)
 	    {
 	      /* We cannot change the schema of a class by using synonym names. */
-	      if (db_find_synonym (cls_nam) != NULL)
+	      if (db_find_synonym (entity_name) != NULL)
 		{
-		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
+		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST,
+			      entity_name);
 		  return;
 		}
 	      else
@@ -9975,26 +9962,41 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 		      return;
 		    }
 		}
+	    }
+	}
+    }
 
-	      if ((db_obj = db_find_class (cls_nam)) != NULL)
+  info.spec_parent = NULL;
+  info.for_update = true;
+  /* Replace each Entity Spec with an Equivalent flat list */
+  parser_walk_tree (parser, node, pt_flat_spec_pre, &info, pt_continue_walk, NULL);
+
+  if (node->info.drop.entity_type != PT_MISC_DUMMY || node->info.drop.is_cascade_constraints)
+    {
+      PT_MISC_TYPE typ = node->info.drop.entity_type;
+
+      /* verify declared class type is correct */
+      for (temp = node->info.drop.spec_list; temp && temp->node_type == PT_SPEC; temp = temp->next)
+	{
+	  if ((name = temp->info.spec.entity_name) != NULL && name->node_type == PT_NAME
+	      && (entity_name = name->info.name.original) != NULL && (db_obj = db_find_class (entity_name)) != NULL)
+	    {
+	      if (typ != PT_MISC_DUMMY)
 		{
-		  if (typ != PT_MISC_DUMMY)
+		  name->info.name.db_object = db_obj;
+		  pt_check_user_owns_class (parser, name);
+		  if ((typ == PT_CLASS && db_is_class (db_obj) <= 0)
+		      || (typ == PT_VCLASS && db_is_vclass (db_obj) <= 0))
 		    {
-		      name->info.name.db_object = db_obj;
-		      pt_check_user_owns_class (parser, name);
-		      if ((typ == PT_CLASS && db_is_class (db_obj) <= 0)
-			  || (typ == PT_VCLASS && db_is_vclass (db_obj) <= 0))
-			{
-			  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A, cls_nam,
-				       pt_show_misc_type (typ));
-			}
+		      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A, entity_name,
+				   pt_show_misc_type (typ));
 		    }
+		}
 
-		  if (node->info.drop.is_cascade_constraints && db_is_vclass (db_obj) > 0)
-		    {
-		      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-				  MSGCAT_SEMANTIC_VIEW_CASCADE_CONSTRAINTS_NOT_ALLOWED, cls_nam);
-		    }
+	      if (node->info.drop.is_cascade_constraints && db_is_vclass (db_obj) > 0)
+		{
+		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			      MSGCAT_SEMANTIC_VIEW_CASCADE_CONSTRAINTS_NOT_ALLOWED, entity_name);
 		}
 	    }
 	}
@@ -10004,10 +10006,8 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
    * for the attr */
   for (temp = node->info.drop.spec_list; temp && temp->node_type == PT_SPEC; temp = temp->next)
     {
-      const char *cls_nam;
-
       if ((name = temp->info.spec.entity_name) != NULL && name->node_type == PT_NAME
-	  && (cls_nam = name->info.name.original) != NULL && (db_obj = db_find_class (cls_nam)) != NULL)
+	  && (entity_name = name->info.name.original) != NULL && (db_obj = db_find_class (entity_name)) != NULL)
 	{
 	  attributes = db_get_attributes_force (db_obj);
 	  while (attributes)
@@ -11161,80 +11161,10 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  node->info.query.q.select.with_increment = NULL;
 	}
 
-      if (pt_has_aggregate (parser, node))
+      /* check the group by */
+      if (pt_check_group_by (parser, node) != NO_ERROR)
 	{
-	  PT_AGG_CHECK_INFO info;
-	  PT_NODE *r;
-	  QFILE_TUPLE_VALUE_POSITION pos;
-	  PT_NODE *referred_node;
-	  int max_position;
-
-	  /* STEP 1: init agg info */
-	  info.from = node->info.query.q.select.from;
-	  info.depth = 0;
-	  info.group_by = node->info.query.q.select.group_by;
-
-	  max_position = pt_length_of_select_list (node->info.query.q.select.list, EXCLUDE_HIDDEN_COLUMNS);
-
-	  for (t_node = info.group_by; t_node; t_node = t_node->next)
-	    {
-	      r = t_node->info.sort_spec.expr;
-	      if (r == NULL)
-		{
-		  continue;
-		}
-	      /*
-	       * If a position is specified on group by clause,
-	       * we should check its range.
-	       */
-	      if (r->node_type == PT_VALUE && r->alias_print == NULL)
-		{
-		  if (r->type_enum != PT_TYPE_INTEGER)
-		    {
-		      PT_ERRORm (parser, r, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SORT_SPEC_WANT_NUM);
-		      continue;
-		    }
-		  else if (r->info.value.data_value.i == 0 || r->info.value.data_value.i > max_position)
-		    {
-		      PT_ERRORmf (parser, r, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SORT_SPEC_RANGE_ERR,
-				  r->info.value.data_value.i);
-		      continue;
-		    }
-		}
-	      else if (r->node_type == PT_HOST_VAR)
-		{
-		  PT_ERRORmf (parser, r, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_GROUPBY_ALLOWED,
-			      pt_short_print (parser, r));
-		  continue;
-		}
-
-	      /* check for after group by position */
-	      pt_to_pos_descr (parser, &pos, r, node, &referred_node);
-	      if (pos.pos_no > 0)
-		{
-		  /* set after group by position num, domain info */
-		  t_node->info.sort_spec.pos_descr = pos;
-		}
-	      /*
-	       * If there is a node referred by the position,
-	       * we should rewrite the position to real name or expression
-	       * regardless of pos.pos_no.
-	       */
-	      if (referred_node != NULL)
-		{
-		  t_node->info.sort_spec.expr = parser_copy_tree (parser, referred_node);
-		  parser_free_node (parser, r);
-		}
-	    }
-
-	  /* STEP 2: check that grouped things are single valued */
-	  if (prm_get_bool_value (PRM_ID_ONLY_FULL_GROUP_BY) || node->info.query.q.select.group_by == NULL)
-	    {
-	      (void) parser_walk_tree (parser, node->info.query.q.select.list, pt_check_single_valued_node, &info,
-				       pt_check_single_valued_node_post, &info);
-	      (void) parser_walk_tree (parser, node->info.query.q.select.having, pt_check_single_valued_node, &info,
-				       pt_check_single_valued_node_post, &info);
-	    }
+	  break;		/* error */
 	}
 
       if (pt_has_analytic (parser, node))
@@ -11247,20 +11177,6 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       if (pt_check_order_by (parser, node) != NO_ERROR)
 	{
 	  break;		/* error */
-	}
-
-      if (node->info.query.q.select.group_by != NULL && node->info.query.q.select.group_by->flag.with_rollup)
-	{
-	  bool has_gbynum = false;
-
-	  /* we do not allow GROUP BY ... WITH ROLLUP and GROUPBY_NUM () */
-	  (void) parser_walk_tree (parser, node->info.query.q.select.having, pt_check_groupbynum_pre, NULL,
-				   pt_check_groupbynum_post, (void *) &has_gbynum);
-
-	  if (has_gbynum)
-	    {
-	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANNOT_USE_GROUPBYNUM_WITH_ROLLUP);
-	    }
 	}
 
       if (node->info.query.q.select.connect_by)
@@ -14434,6 +14350,137 @@ check_select_list:
 	      PT_ERRORm (parser, col, MSGCAT_SET_PARSER_SEMANTIC, error);
 	      break;
 	    }
+	}
+    }
+
+  return error;
+}
+
+/*
+ * pt_check_order_by () - checking an GROUP_BY clause
+ *   return:
+ *   parser(in):
+ *   query(in): query node has GROUP BY
+ *
+ * Note :
+ * 1. If a position is specified on group by clause, rewrite the position to name or expression.
+ * 2. check that grouped things are single valued.
+ * 3. do not allow GROUP BY ... WITH ROLLUP and GROUPBY_NUM ()
+ * 4. CONNECT_BY_ROOT, SYS_CONNECT_BY_PATH cannot be written with GROUP_BY
+ */
+
+int
+pt_check_group_by (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  int error = NO_ERROR;
+  PT_NODE *t_node;
+
+  /* If a position is specified on group by clause, rewrite the position to name or expression. */
+  if (pt_has_aggregate (parser, node))
+    {
+      PT_AGG_CHECK_INFO info;
+      PT_NODE *r;
+      QFILE_TUPLE_VALUE_POSITION pos;
+      PT_NODE *referred_node;
+      int max_position;
+
+      /* STEP 1: init agg info */
+      info.from = node->info.query.q.select.from;
+      info.depth = 0;
+      info.group_by = node->info.query.q.select.group_by;
+
+      max_position = pt_length_of_select_list (node->info.query.q.select.list, EXCLUDE_HIDDEN_COLUMNS);
+
+      /* If a position is specified on group by clause, rewrite the position to name or expression */
+      for (t_node = info.group_by; t_node; t_node = t_node->next)
+	{
+	  r = t_node->info.sort_spec.expr;
+	  if (r == NULL)
+	    {
+	      continue;
+	    }
+	  /*
+	   * If a position is specified on group by clause,
+	   * we should check its range.
+	   */
+	  if (r->node_type == PT_VALUE && r->alias_print == NULL)
+	    {
+	      if (r->type_enum != PT_TYPE_INTEGER)
+		{
+		  PT_ERRORm (parser, r, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SORT_SPEC_WANT_NUM);
+		  continue;
+		}
+	      else if (r->info.value.data_value.i == 0 || r->info.value.data_value.i > max_position)
+		{
+		  PT_ERRORmf (parser, r, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SORT_SPEC_RANGE_ERR,
+			      r->info.value.data_value.i);
+		  continue;
+		}
+	    }
+	  else if (r->node_type == PT_HOST_VAR)
+	    {
+	      PT_ERRORmf (parser, r, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_GROUPBY_ALLOWED,
+			  pt_short_print (parser, r));
+	      continue;
+	    }
+
+	  /* check for after group by position */
+	  pt_to_pos_descr (parser, &pos, r, node, &referred_node);
+	  if (pos.pos_no > 0)
+	    {
+	      /* set after group by position num, domain info */
+	      t_node->info.sort_spec.pos_descr = pos;
+	    }
+	  /*
+	   * If there is a node referred by the position,
+	   * we should rewrite the position to real name or expression
+	   * regardless of pos.pos_no.
+	   */
+	  if (referred_node != NULL)
+	    {
+	      t_node->info.sort_spec.expr = parser_copy_tree (parser, referred_node);
+	      parser_free_node (parser, r);
+	    }
+	}
+
+      /* STEP 2: check that grouped things are single valued */
+      if (prm_get_bool_value (PRM_ID_ONLY_FULL_GROUP_BY) || node->info.query.q.select.group_by == NULL)
+	{
+	  (void) parser_walk_tree (parser, node->info.query.q.select.list, pt_check_single_valued_node, &info,
+				   pt_check_single_valued_node_post, &info);
+	  (void) parser_walk_tree (parser, node->info.query.q.select.having, pt_check_single_valued_node, &info,
+				   pt_check_single_valued_node_post, &info);
+	}
+    }
+
+  /* do not allow GROUP BY ... WITH ROLLUP and GROUPBY_NUM () */
+  if (node->info.query.q.select.group_by != NULL && node->info.query.q.select.group_by->flag.with_rollup)
+    {
+      bool has_gbynum = false;
+      (void) parser_walk_tree (parser, node->info.query.q.select.having, pt_check_groupbynum_pre, NULL,
+			       pt_check_groupbynum_post, (void *) &has_gbynum);
+
+      if (has_gbynum)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANNOT_USE_GROUPBYNUM_WITH_ROLLUP);
+	}
+    }
+
+  /* CONNECT_BY_ROOT, SYS_CONNECT_BY_PATH cannot be written with GROUP_BY */
+  if (node->info.query.q.select.group_by != NULL)
+    {
+      int disallow_ops[] = {
+	2,			/* number of operators */
+	PT_CONNECT_BY_ROOT,
+	PT_SYS_CONNECT_BY_PATH,
+      };
+      parser_walk_tree (parser, node->info.query.q.select.list, pt_expr_disallow_op_except_agg, disallow_ops,
+			NULL, NULL);
+
+      if (node->info.query.order_by != NULL)
+	{
+	  parser_walk_tree (parser, node->info.query.order_by, pt_expr_disallow_op_except_agg, disallow_ops,
+			    NULL, NULL);
 	}
     }
 
