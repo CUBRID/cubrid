@@ -12262,7 +12262,7 @@ prm_get_bigint_value (PARAM_ID prm_id)
 pthread_t gv_main_tid;
 
 __attribute__ ((constructor))
-     void get_main_thread_id ()
+     static void get_main_thread_id ()
 {
   gv_main_tid = pthread_self ();
 }

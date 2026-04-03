@@ -574,7 +574,7 @@ public:
       }
   }
 };
-class type_rank_order_initializer tro_instance;
+static volatile class type_rank_order_initializer tro_instance;
 #else
 __attribute__ ((constructor))
      static void tp_init_db_type_rank_order (void)
