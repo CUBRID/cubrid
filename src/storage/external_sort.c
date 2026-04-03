@@ -1597,7 +1597,7 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
   PRED_EXPR_WITH_CONTEXT *filter_pred = NULL;
   FILTER_INDEX_INFO filter_index_info = { NULL, 0 };
   FUNCTION_INDEX_INFO func_index_info;
-  XASL_UNPACK_INFO *func_unpack_info;
+  XASL_UNPACK_INFO *func_unpack_info = NULL;
   DB_TYPE single_node_type = DB_TYPE_NULL;
 
   thread_p->push_resource_tracks ();
@@ -1631,13 +1631,7 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
     {
       sort_param->get_fn = &btree_sort_get_next_parallel;
       SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
-      memset (&sort_args_p->hfscan_cache, 0, sizeof (HEAP_SCANCACHE));
-      memset (&sort_args_p->attr_info, 0, sizeof (HEAP_CACHE_ATTRINFO));
-      if (bt_load_heap_scancache_start_for_attrinfo (thread_p, sort_args_p, NULL, NULL, true) != NO_ERROR)
-	{
-	  px_status = PX_ERR_FAILED;
-	  goto cleanup;
-	}
+
       sort_args_p->curr_pgoffset = 0;
       sort_args_p->curr_sec = FILE_PARTIAL_SECTOR_INITIALIZER;
 
@@ -1654,9 +1648,22 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
 	  func_index_info = *sort_args_p->func_index_info;
 	}
 
+      sort_args_p->filter = NULL;
+      sort_args_p->func_index_info = NULL;
+
       if (btree_load_filter_pred_function_info
 	  (thread_p, sort_args_p, &filter_pred, &filter_index_info, &func_index_info, &func_unpack_info,
 	   &single_node_type) != NO_ERROR)
+	{
+	  px_status = PX_ERR_FAILED;
+	  goto cleanup;
+	}
+
+      sort_args_p->attrinfo_inited = false;
+      sort_args_p->scancache_inited = false;
+      memset (&sort_args_p->hfscan_cache, 0, sizeof (HEAP_SCANCACHE));
+      memset (&sort_args_p->attr_info, 0, sizeof (HEAP_CACHE_ATTRINFO));
+      if (bt_load_heap_scancache_start_for_attrinfo (thread_p, sort_args_p, NULL, NULL, true) != NO_ERROR)
 	{
 	  px_status = PX_ERR_FAILED;
 	  goto cleanup;
@@ -4804,6 +4811,14 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
     }
 
   sort_args_p = (SORT_ARGS *) sort_param->get_arg;
+
+  for (i = 0; i < parallel_num; i++)
+    {
+      SORT_ARGS *px_sort_args_p = (SORT_ARGS *) px_sort_param[i].get_arg;
+      sort_args_p->n_oids += px_sort_args_p->n_oids;
+      sort_args_p->n_nulls += px_sort_args_p->n_nulls;
+    }
+
   log_sysop_start (thread_p);
   if (btree_create_file
       (thread_p, &sort_args_p->class_ids[0], sort_args_p->attr_ids[0], sort_args_p->btid->sys_btid) != NO_ERROR)
@@ -4929,6 +4944,12 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
     {
       SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
       int n_user_pages = 0, n_sects = 0, tmp_pg = 0, tmp_sects, error_code = NO_ERROR;
+      if (sort_args_p->n_classes > 1)
+	{
+	  /* not partition, partition has own indexes, this means like this :
+	   * create t1; create t2 under t1; */
+	  return 1;
+	}
       /* get number of pages to sort */
       for (int i = 0; i < sort_args_p->n_classes; i++)
 	{
@@ -5240,25 +5261,23 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	  temp.convert (&collector);
 	  db_private_free_and_init (thread_p, collector.partsect_ftab);
 	  ftab_sets = temp.split (parallel_num);
-	  for (int i = 0; i < parallel_num; i++)
+	  for (int j = 0; j < parallel_num; j++)
 	    {
-	      px_sort_args_p = (SORT_ARGS *) px_sort_param[i].get_arg;
-	      if (ftab_sets[i].size () != 0)
+	      px_sort_args_p = (SORT_ARGS *) px_sort_param[j].get_arg;
+	      if (px_sort_args_p->ftab_sets == NULL)
 		{
+		  px_sort_args_p->ftab_sets = (std::vector < ftab_set > *)malloc (sizeof (std::vector < ftab_set >));
 		  if (px_sort_args_p->ftab_sets == NULL)
 		    {
-		      px_sort_args_p->ftab_sets =
-			(std::vector < ftab_set > *)malloc (sizeof (std::vector < ftab_set >));
-		      if (px_sort_args_p->ftab_sets == NULL)
-			{
-			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-				  sizeof (std::vector < ftab_set >));
-			  return ER_OUT_OF_VIRTUAL_MEMORY;
-			}
-		      placement_new (px_sort_args_p->ftab_sets);
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			      sizeof (std::vector < ftab_set >));
+		      return ER_OUT_OF_VIRTUAL_MEMORY;
 		    }
-		  px_sort_args_p->ftab_sets->push_back (ftab_sets[i]);
+		  placement_new (px_sort_args_p->ftab_sets);
 		}
+	      /* Always push (even if empty) to keep ftab_sets index aligned with cur_class.
+	       * An empty ftab_set causes get_next_vpid() to return S_END immediately. */
+	      px_sort_args_p->ftab_sets->push_back (ftab_sets[j]);
 	    }
 	}
     }

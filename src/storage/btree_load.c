@@ -3588,7 +3588,7 @@ btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args, SORT_PUT_FUNC 
 
 static SCAN_CODE
 get_next_vpid (THREAD_ENTRY * thread_p, parallel_query::ftab_set & ftab, FILE_PARTIAL_SECTOR * fsector, int *offset,
-	       VPID * vpid_out, HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * old_pgwatcher)
+	       VPID * vpid_out, HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * old_pgwatcher, HFID * hfid)
 {
   bool found = false;
   int error = NO_ERROR;
@@ -3619,6 +3619,11 @@ get_next_vpid (THREAD_ENTRY * thread_p, parallel_query::ftab_set & ftab, FILE_PA
       /* fsector exists */
       for (; *offset < DISK_SECTOR_NPAGES; (*offset)++, (*vpid_out).pageid++)
 	{
+	  if (vpid_out->pageid == hfid->vfid.fileid && vpid_out->volid == hfid->vfid.volid)
+	    {
+	      /* heap header page, skip it. */
+	      continue;
+	    }
 	  if (bit64_is_set (fsector->page_bitmap, *offset))
 	    {
 	      if (scan_cache->page_watcher.pgptr != NULL)
@@ -3706,7 +3711,8 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
     {
       page_iter_scan_result =
 	get_next_vpid (thread_p, (*sort_args->ftab_sets)[sort_args->cur_class], &sort_args->curr_sec,
-		       &sort_args->curr_pgoffset, &vpid, &sort_args->hfscan_cache, &old_pgwatcher);
+		       &sort_args->curr_pgoffset, &vpid, &sort_args->hfscan_cache, &old_pgwatcher,
+		       &sort_args->hfids[sort_args->cur_class]);
       if (page_iter_scan_result == S_END)
 	{
 	  return SORT_NOMORE_RECS;
@@ -3745,10 +3751,19 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
       cur_class = sort_args->cur_class;
       attr_offset = cur_class * sort_args->n_attrs;
       sort_args->in_recdes.data = NULL;
-      slot_iter_scan_result =
-	heap_next_1page (thread_p, &sort_args->hfids[cur_class], &vpid, &sort_args->class_ids[cur_class],
-			 &sort_args->cur_oid, &sort_args->in_recdes, &sort_args->hfscan_cache,
-			 sort_args->hfscan_cache.cache_last_fix_page ? PEEK : COPY);
+      if (vpid.pageid == sort_args->hfids[cur_class].vfid.fileid
+	  && vpid.volid == sort_args->hfids[cur_class].vfid.volid)
+	{
+	  /* heap header page */
+	  slot_iter_scan_result = S_END;
+	}
+      else
+	{
+	  slot_iter_scan_result =
+	    heap_next_1page (thread_p, &sort_args->hfids[cur_class], &vpid, &sort_args->class_ids[cur_class],
+			     &sort_args->cur_oid, &sort_args->in_recdes, &sort_args->hfscan_cache,
+			     sort_args->hfscan_cache.cache_last_fix_page ? PEEK : COPY);
+	}
 
       switch (slot_iter_scan_result)
 	{
@@ -3759,7 +3774,8 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 	  {
 	    page_iter_scan_result =
 	      get_next_vpid (thread_p, (*sort_args->ftab_sets)[sort_args->cur_class], &sort_args->curr_sec,
-			     &sort_args->curr_pgoffset, &vpid, &sort_args->hfscan_cache, &old_pgwatcher);
+			     &sort_args->curr_pgoffset, &vpid, &sort_args->hfscan_cache, &old_pgwatcher,
+			     &sort_args->hfids[sort_args->cur_class]);
 	    if (page_iter_scan_result == S_END)
 	      {
 		/* fall through */
