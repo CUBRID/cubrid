@@ -4758,7 +4758,7 @@ SYSPRM_PARAM prm_Def[] = {
   {PRM_ID_SQL_TRACE_EXECUTION_PLAN,
    PRM_NAME_SQL_TRACE_EXECUTION_PLAN,
    (PRM_USER_CHANGE | PRM_FOR_SERVER),
-   <<<<<<<HEAD PRM_BOOLEAN,
+   PRM_INTEGER,
    &prm_sql_trace_execution_plan_flag,
    (void *) &prm_sql_trace_execution_plan_default,
    (void *) &PRM_SQL_TRACE_EXECUTION_PLAN,
