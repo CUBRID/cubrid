@@ -90,7 +90,8 @@ typedef enum
   MSGCAT_UTIL_SET_CHECKSUMDB = 56,
   MSGCAT_UTIL_SET_TDE = 57,
   MSGCAT_UTIL_SET_FLASHBACK = 58,
-  MSGCAT_UTIL_SET_MEMMON = 59
+  MSGCAT_UTIL_SET_MEMMON = 59,
+  MSGCAT_UTIL_SET_CLEANFILEDB = 60
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -763,6 +764,14 @@ typedef enum
   MEMMON_MSG_USAGE = 60
 } MSGCAT_MEMMON_MSG;
 
+/* Message id in the set MSGCAT_UTIL_SET_CLEANFILEDB */
+typedef enum
+{
+  CLEANFILEDB_MSG_BAD_OUTPUT = 10,
+  CLEANFILEDB_MSG_CLEAN_SUMMARY = 11,
+  CLEANFILEDB_MSG_USAGE = 60
+} MSGCAT_CLEANFILEDB_MSG;
+
 typedef void *DSO_HANDLE;
 
 typedef enum
@@ -783,6 +792,7 @@ typedef enum
   OPTIMIZEDB,
   INSTALLDB,
   DIAGDB,
+  CLEANFILEDB,
   PATCHDB,
   CHECKDB,
   ALTERDBHOST,
@@ -998,6 +1008,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_OPTIMIZEDB                  "optimizedb"
 #define UTIL_OPTION_INSTALLDB                   "installdb"
 #define UTIL_OPTION_DIAGDB                      "diagdb"
+#define UTIL_OPTION_CLEANFILEDB                 "cleanfiledb"
 #define UTIL_OPTION_PATCHDB                     "emergency_patchlog"
 #define UTIL_OPTION_CHECKDB                     "checkdb"
 #define UTIL_OPTION_ALTERDBHOST                 "alterdbhost"
@@ -1231,6 +1242,22 @@ typedef struct _ha_config
 #define DIAG_CLASS_NAME_L                       "class-name"
 #define DIAG_INPUT_FILE_S                       'i'
 #define DIAG_INPUT_FILE_L                       "input-file"
+
+/* cleanfiledb option list */
+#define CLEANFILEDB_SA_MODE_S                   'S'
+#define CLEANFILEDB_SA_MODE_L                   "SA-mode"
+#define CLEANFILEDB_CS_MODE_S                   'C'
+#define CLEANFILEDB_CS_MODE_L                   "CS-mode"
+#define CLEANFILEDB_OUTPUT_FILE_S               'o'
+#define CLEANFILEDB_OUTPUT_FILE_L               "output-file"
+#define CLEANFILEDB_DUMP_FILE_LIST_S            'l'
+#define CLEANFILEDB_DUMP_FILE_LIST_L            "list"
+#define CLEANFILEDB_CLEAN_INVALID_FILE_S        'c'
+#define CLEANFILEDB_CLEAN_INVALID_FILE_L        "clean-invalid-file"
+#if !defined(NDEBUG)
+#define CLEANFILEDB_DELETE_TARGET_FILE_S        'd'
+#define CLEANFILEDB_DELETE_TARGET_FILE_L        "delete-target-file"
+#endif
 
 /* patch option list */
 #define PATCH_RECREATE_LOG_S                    'r'
@@ -1877,6 +1904,7 @@ extern "C"
   extern int copydb (UTIL_FUNCTION_ARG * arg_map);
   extern int optimizedb (UTIL_FUNCTION_ARG * arg_map);
   extern int diagdb (UTIL_FUNCTION_ARG * arg_map);
+  extern int cleanfiledb (UTIL_FUNCTION_ARG * arg_map);
   extern int patchdb (UTIL_FUNCTION_ARG * arg_map);
   extern int estimatedb_data (UTIL_FUNCTION_ARG * arg_map);
   extern int estimatedb_index (UTIL_FUNCTION_ARG * arg_map);

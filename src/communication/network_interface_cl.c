@@ -11509,3 +11509,147 @@ lob_remove_dir (HFID * hfid, int attrid)
   return error;
 #endif /* CS_MODE */
 }
+
+/*
+ * file_dump_file_list -
+ *
+ * return:
+ *
+ *   outfp(in):
+ *   invalid_file_only(in):
+ */
+int
+file_dump_file_list (FILE * outfp, bool invalid_only)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  (void) or_pack_int (request, (int) invalid_only);
+
+  req_error =
+    net_client_request_recv_stream (NET_SERVER_CLEANFILEDB_DUMP_FILE_LIST, request, OR_ALIGNED_BUF_SIZE (a_request),
+				    reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, outfp);
+  if (!req_error)
+    {
+      (void) or_unpack_errcode (reply, &error);
+    }
+
+  return error;
+#else /* CS_MODE */
+  int success;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xfile_tracker_dump_file_list (thread_p, outfp, invalid_only);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+/*
+ * file_clean_invalid_file -
+ *
+ * return:
+ *
+ *   heap(out):
+ *   heap_ovf(out):
+ *   btree(out):
+ *   btree_ovf(out):
+ */
+int
+file_clean_invalid_file (int *heap, int *heap_ovf, int *btree, int *btree_ovf)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
+  char *reply, *ptr;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error =
+    net_client_request (NET_SERVER_CLEANFILEDB_CLEAN_INVALID_FILE, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+			NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_errcode (reply, &error);
+      ptr = or_unpack_int (ptr, heap);
+      ptr = or_unpack_int (ptr, heap_ovf);
+      ptr = or_unpack_int (ptr, btree);
+      ptr = or_unpack_int (ptr, btree_ovf);
+    }
+
+  return error;
+#else /* CS_MODE */
+  int success;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xfile_tracker_clean_invalid_file (thread_p, heap, heap_ovf, btree, btree_ovf);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+#if !defined(NDEBUG)
+/*
+ * file_delete_target_file -
+ *
+ * return:
+ */
+int
+file_delete_target_file (const char *target_vfid_str)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error, request_size;
+  OR_ALIGNED_BUF (32) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  request_size = length_const_string (target_vfid_str, NULL);
+  if (request_size > 32)
+    {
+      return ER_QPROC_INVALID_PARAMETER;
+    }
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  (void) pack_const_string (request, target_vfid_str);
+
+  req_error =
+    net_client_request (NET_SERVER_CLEANFILEDB_DELETE_TARGET_FILE, request, request_size, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      (void) or_unpack_errcode (reply, &error);
+    }
+
+  return error;
+#else /* CS_MODE */
+  int success;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xfile_tracker_delete_target_file (thread_p, target_vfid_str);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+#endif
