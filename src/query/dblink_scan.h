@@ -71,6 +71,7 @@ struct dblink_scan_info
   char cci_autocommit_before;	/* CCI autocommit mode before open_scan forced CCI_AUTOCOMMIT_FALSE */
   int corr_key_count;		/* CBRD-26601: copy of spec->s.dblink_node.corr_key_count */
   struct regu_variable_list_node *corr_key_regu_list;	/* CBRD-26601: non-owning; same chain as in access spec */
+  char corr_skip_result_fetch;	/* CBRD-26601 T3-3: corr key NULL — no cci_execute; scan_next returns S_END */
 };
 
 #define MAX_LEN_CONNECTION_URL 512

@@ -384,7 +384,7 @@ dblink_make_date_time_tz (T_CCI_U_TYPE utype, DB_VALUE * value_p, T_CCI_DATE_TZ 
 }
 
 static int
-dblink_bind_dbval_to_param (int stmt_handle, int param_index, DB_VALUE *dbval)
+dblink_bind_dbval_to_param (int stmt_handle, int param_index, DB_VALUE * dbval)
 {
   int ret, num_size = 0;
   T_CCI_A_TYPE a_type;
@@ -842,6 +842,7 @@ dblink_corr_prepare (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, DBLINK_SC
 
 /*
  * dblink_corr_execute () - CBRD-26601: per outer row — bind corr keys + cci_execute + result metadata.
+ *   FR-6 (T3-3): NULL corr key — skip cci_execute; dblink_scan_next returns S_END (scalar NULL).
  */
 int
 dblink_corr_execute (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd)
@@ -855,6 +856,8 @@ dblink_corr_execute (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, VAL_
   assert (scan_info->stmt_handle > 0);
 #endif
 
+  scan_info->corr_skip_result_fetch = 0;
+
   if (scan_info->corr_key_regu_list == NULL || scan_info->corr_key_count <= 0)
     {
       return NO_ERROR;
@@ -866,6 +869,12 @@ dblink_corr_execute (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, VAL_
       if (ret != NO_ERROR)
 	{
 	  return ret;
+	}
+      if (DB_IS_NULL (peek_val))
+	{
+	  /* No remote round-trip; avoid reading a stale result set in dblink_scan_next (FR-6). */
+	  scan_info->corr_skip_result_fetch = 1;
+	  return NO_ERROR;
 	}
       ret = dblink_bind_dbval_to_param (scan_info->stmt_handle, i + 1, peek_val);
       if (ret != NO_ERROR)
@@ -1055,6 +1064,11 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
   col_cnt = scan_info->col_cnt;
 
   assert (scan_info->stmt_handle >= 0);
+
+  if (scan_info->corr_key_count > 0 && scan_info->corr_skip_result_fetch)
+    {
+      return S_END;
+    }
 
   if ((error = cci_cursor (scan_info->stmt_handle, 1, (T_CCI_CURSOR_POS) scan_info->cursor, &err_buf)) < 0)
     {
@@ -1267,7 +1281,10 @@ dblink_scan_reset (DBLINK_SCAN_INFO * scan_info)
 {
   assert (scan_info->conn_handle >= 0 && scan_info->stmt_handle >= 0);
 
-  scan_info->cursor = CCI_CURSOR_FIRST;
+  if (!(scan_info->corr_key_count > 0 && scan_info->corr_skip_result_fetch))
+    {
+      scan_info->cursor = CCI_CURSOR_FIRST;
+    }
 
   return S_SUCCESS;
 }
