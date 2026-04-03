@@ -994,8 +994,8 @@ static int prm_vector_index_ef_search_lower = 1;
 static int prm_vector_index_ef_search_upper = 1000;
 static unsigned int prm_vector_index_ef_search_flag = 0;
 
-float PRM_VECTOR_INDEX_I8_PREFILTER_MULTIPLIER = 1.0f;
-static float prm_vector_index_i8_prefilter_multiplier_default = 1.0f;
+float PRM_VECTOR_INDEX_I8_PREFILTER_MULTIPLIER = 0.7f;
+static float prm_vector_index_i8_prefilter_multiplier_default = 0.7f;
 static float prm_vector_index_i8_prefilter_multiplier_lower = 0.0f;
 static float prm_vector_index_i8_prefilter_multiplier_upper = 10.0f;
 
