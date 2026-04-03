@@ -2423,6 +2423,12 @@ static int prm_page_latch_timeout_upper = 3000;
 static int prm_page_latch_timeout_lower = 0;
 static unsigned int prm_page_latch_timeout_flag = 0;
 
+int PRM_LOG_POSTPONE_CACHE_SIZE = 512;
+static int prm_log_postpone_cache_size_default = 512;
+static int prm_log_postpone_cache_size_upper = 4096;
+static int prm_log_postpone_cache_size_lower = 4;
+static unsigned int prm_log_postpone_cache_size_flag = 0;
+
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
 static int prm_size_to_io_pages (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_DATATYPE in_type);
@@ -6373,11 +6379,11 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_NAME_LOG_POSTPONE_CACHE_SIZE,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
-   PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 512}},
-   {false, {.i = 512}},
-   {false, {.i = 4096}},
-   {false, {.i = 4}},
+   &prm_log_postpone_cache_size_flag,
+   (void *) &prm_log_postpone_cache_size_default,
+   (void *) &PRM_LOG_POSTPONE_CACHE_SIZE,
+   (void *) &prm_log_postpone_cache_size_upper,
+   (void *) &prm_log_postpone_cache_size_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
