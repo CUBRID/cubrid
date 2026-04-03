@@ -37,6 +37,7 @@ log_postpone_cache::copy_to (log_postpone_cache &dest) const
   m_redo_data_buf.copy_to (dest.m_redo_data_buf);
   dest.m_redo_data_offset = m_redo_data_offset;
   dest.m_is_redo_data_buf_full = m_is_redo_data_buf_full;
+  dest.m_max_cache_entries = m_max_cache_entries;
   dest.m_cursor = m_cursor;
   dest.m_cache_entries = m_cache_entries;
 }
@@ -87,7 +88,7 @@ log_postpone_cache::add_redo_data (const log_prior_node &node)
 {
   assert (node.data_header != NULL);
   assert (node.rlength == 0 || node.rdata != NULL);
-  assert (m_cursor <= MAX_CACHE_ENTRIES);
+  assert (m_cursor <= m_max_cache_entries);
 
   if (is_full ())
     {
@@ -153,7 +154,7 @@ log_postpone_cache::add_lsa (const log_lsa &lsa)
       return;
     }
 
-  assert (m_cursor < MAX_CACHE_ENTRIES);
+  assert (m_cursor < m_max_cache_entries);
 
   m_cache_entries[m_cursor].m_lsa = lsa;
 
@@ -237,5 +238,5 @@ log_postpone_cache::do_postpone (cubthread::entry &thread_ref, const log_lsa &st
 bool
 log_postpone_cache::is_full () const
 {
-  return m_cursor == MAX_CACHE_ENTRIES || m_is_redo_data_buf_full;
+  return m_cursor == m_max_cache_entries || m_is_redo_data_buf_full;
 }
