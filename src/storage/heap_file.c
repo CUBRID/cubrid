@@ -27895,6 +27895,7 @@ heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
   assert (false && "unreachable: there must be last element");
   return ER_FAILED;
 }
+
 bool
 heap_recdes_check_has_oos (const RECDES * recdes)
 {
