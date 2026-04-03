@@ -12691,14 +12691,8 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  length = OR_SET_VAR_OOS (length);
 	}
 
-      /* Mark the last variable attribute so readers can determine the variable offset table boundary
-       * without needing attrinfo->num_values (e.g., in logging and replication paths). */
-      if (value->last_attrepr->location == attr_info->last_classrepr->n_variable - 1)
-	{
-	  oos_trace ("Setting LAST_ELEMENT flag for variable attribute at location %d (n_variable=%d)",
-		     value->last_attrepr->location, attr_info->last_classrepr->n_variable);
-	  length = OR_SET_VAR_LAST_ELEMENT (length);
-	}
+      /* VOT low 2 bits are reserved for storage flags. Keep all writes centralized. */
+      length = heap_vot_apply_flags (length, is_oos, false);
       or_put_offset_internal (buf, length, offset_size);
     }
 
@@ -12847,7 +12841,9 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 	}
       else
 	{
-	  or_put_offset_internal (buf, CAST_BUFLEN (ptr_varvals - buf->buffer - header_size), offset_size);
+	  or_put_offset_internal (buf,
+				  heap_vot_apply_flags (CAST_BUFLEN (ptr_varvals - buf->buffer - header_size), false,
+							true), offset_size);
 	}
       buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
@@ -21701,6 +21697,27 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
   update_mvcc_flags = OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION;
 
+  /* Root-class records do not use the generic object header layout handled here. */
+  assert (!OID_IS_ROOTOID (&update_context->class_oid));
+
+  bool has_oos = heap_recdes_check_has_oos (update_context->recdes_p);
+  bool old_has_oos = (mvcc_flags & OR_MVCC_FLAG_HAS_OOS) != 0;
+
+  if (has_oos != old_has_oos)
+    {
+      if (has_oos)
+	{
+	  mvcc_flags |= OR_MVCC_FLAG_HAS_OOS;
+	  repid_and_flag_bits |= (OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
+	}
+      else
+	{
+	  mvcc_flags &= ~OR_MVCC_FLAG_HAS_OOS;
+	  repid_and_flag_bits &= ~(OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
+	}
+
+      OR_PUT_INT (update_context->recdes_p->data, repid_and_flag_bits);
+    }
   is_mvcc_op = HEAP_UPDATE_IS_MVCC_OP (is_mvcc_class, update_context->update_in_place);
 #if defined (SERVER_MODE)
   use_optimization = (is_mvcc_op && !heap_is_big_length (record_size + OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE));
@@ -27878,4 +27895,52 @@ heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
 
   assert (false && "unreachable: there must be last element");
   return ER_FAILED;
+}
+bool
+heap_recdes_check_has_oos (const RECDES * recdes)
+{
+  if (recdes == NULL || recdes->data == NULL)
+    {
+      return false;
+    }
+
+  const int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
+  void *var_table = OR_GET_OBJECT_VAR_TABLE (recdes->data);
+  const int max_var_count = (recdes->length - OR_HEADER_SIZE (recdes->data)) / offset_size;
+
+  for (int index = 0; index <= max_var_count; ++index)
+    {
+      if (index == max_var_count)
+	{
+	  return false;
+	}
+
+      int offset;
+      switch (offset_size)
+	{
+	case OR_BYTE_SIZE:
+	  offset = OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
+	  break;
+	case OR_SHORT_SIZE:
+	  offset = OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
+	  break;
+	case OR_INT_SIZE:
+	  offset = OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
+	  break;
+	default:
+	  return false;
+	}
+
+      if (OR_IS_OOS (offset))
+	{
+	  return true;
+	}
+
+      if (OR_IS_LAST_ELEMENT (offset))
+	{
+	  return false;
+	}
+    }
+
+  return false;
 }
