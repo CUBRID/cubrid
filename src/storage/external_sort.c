@@ -1487,6 +1487,29 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
     {
       /* single process */
       sort_param->px_parallel_num = 1;
+      if (sort_param->px_type == SORT_INDEX_LEAF)
+	{
+	  SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
+	  memset (&sort_args_p->hfscan_cache, 0, sizeof (HEAP_SCANCACHE));
+	  memset (&sort_args_p->attr_info, 0, sizeof (HEAP_CACHE_ATTRINFO));
+	  if (bt_load_heap_scancache_start_for_attrinfo (thread_p, sort_args_p, NULL, NULL, true) != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto cleanup;
+	    }
+	  log_sysop_start (thread_p);
+	  if (btree_create_file (thread_p, &sort_args_p->class_ids[0], sort_args_p->attr_ids[0],
+				 sort_args_p->btid->sys_btid) != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      log_sysop_abort (thread_p);
+	      bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args_p, NULL, NULL);
+	      error = ER_FAILED;
+	      goto cleanup;
+	    }
+	  vacuum_log_add_dropped_file (thread_p, &sort_args_p->btid->sys_btid->vfid, NULL,
+				       VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
+	}
       error = sort_listfile_internal (thread_p, sort_param);
     }
   else
@@ -1608,6 +1631,8 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
     {
       sort_param->get_fn = &btree_sort_get_next_parallel;
       SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
+      memset (&sort_args_p->hfscan_cache, 0, sizeof (HEAP_SCANCACHE));
+      memset (&sort_args_p->attr_info, 0, sizeof (HEAP_CACHE_ATTRINFO));
       if (bt_load_heap_scancache_start_for_attrinfo (thread_p, sort_args_p, NULL, NULL, true) != NO_ERROR)
 	{
 	  px_status = PX_ERR_FAILED;
@@ -4903,16 +4928,22 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   else if (sort_param->px_type == SORT_INDEX_LEAF)
     {
       SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
-      int n_user_pages = 0, tmp = 0, error_code = NO_ERROR;
+      int n_user_pages = 0, n_sects = 0, tmp_pg = 0, tmp_sects, error_code = NO_ERROR;
       /* get number of pages to sort */
       for (int i = 0; i < sort_args_p->n_classes; i++)
 	{
-	  error_code = file_get_num_user_pages (thread_p, &sort_args_p->hfids[i].vfid, &tmp);
+	  error_code = file_get_num_user_pages (thread_p, &sort_args_p->hfids[i].vfid, &tmp_pg);
 	  if (error_code != NO_ERROR)
 	    {
 	      return 1;
 	    }
-	  n_user_pages += tmp;
+	  error_code = file_get_num_data_sectors (thread_p, &sort_args_p->hfids[i].vfid, &tmp_sects);
+	  if (error_code != NO_ERROR)
+	    {
+	      return 1;
+	    }
+	  n_user_pages += tmp_pg;
+	  n_sects += tmp_sects;
 	}
 
       parallel_num = parallel_query::compute_parallel_degree (parallel_query::parallel_type::SORT, n_user_pages,
@@ -4923,6 +4954,13 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	  /* single process */
 	  return 1;
 	}
+
+      if (n_sects < parallel_num)
+	{
+	  /* no sector in some threads */
+	  return 1;
+	}
+
       /* check worker */
       sort_param->px_worker_manager = parallel_query::worker_manager::try_reserve_workers (parallel_num);
       if (sort_param->px_worker_manager == NULL)
