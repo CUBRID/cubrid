@@ -280,6 +280,12 @@ namespace os::resources
 	      }
 	  }
 
+	if (ctx.adjusted_max < 8)
+	{
+		// trick
+		ctx.adjusted_max = 8;
+	}
+
 	return ctx;
       } ();
 
