@@ -4179,11 +4179,13 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 	  rewritten = pt_append_bytes (parser, rewritten, ")", 1);
 	}
 #endif
+      query->info.dblink_table.rewritten_has_where = false;
       if (pushed_pred != NULL)
 	{
 	  /* where predicate */
 	  rewritten = pt_append_bytes (parser, rewritten, " WHERE ", 7);
 	  rewritten = pt_append_varchar (parser, rewritten, pushed_pred);
+	  query->info.dblink_table.rewritten_has_where = true;
 	}
 
       query->info.dblink_table.rewritten = rewritten;
@@ -4950,51 +4952,6 @@ mq_dblink_clear_corr_keys (PARSER_CONTEXT * parser, PT_DBLINK_INFO * dinfo)
     }
 }
 
-/* True if [start, start+len) contains WHERE as an SQL keyword (case-insensitive, word-bounded). */
-static bool
-mq_dblink_sql_has_where_keyword (const char *start, size_t len)
-{
-  size_t i;
-
-  if (start == NULL || len < 5)
-    {
-      return false;
-    }
-  for (i = 0; i + 5 <= len; i++)
-    {
-      if (toupper ((unsigned char) start[i]) != 'W')
-	{
-	  continue;
-	}
-      if (toupper ((unsigned char) start[i + 1]) != 'H')
-	{
-	  continue;
-	}
-      if (toupper ((unsigned char) start[i + 2]) != 'E')
-	{
-	  continue;
-	}
-      if (toupper ((unsigned char) start[i + 3]) != 'R')
-	{
-	  continue;
-	}
-      if (toupper ((unsigned char) start[i + 4]) != 'E')
-	{
-	  continue;
-	}
-      if (i > 0 && (isalnum ((unsigned char) start[i - 1]) || start[i - 1] == '_'))
-	{
-	  continue;
-	}
-      if (i + 5 < len && (isalnum ((unsigned char) start[i + 5]) || start[i + 5] == '_'))
-	{
-	  continue;
-	}
-      return true;
-    }
-  return false;
-}
-
 /* Extract column name string from remote_col (PT_NAME / PT_DOT_). */
 static const char *
 mq_dblink_extract_col_name (PARSER_CONTEXT * parser, PT_NODE * remote_col)
@@ -5025,11 +4982,16 @@ mq_dblink_extract_col_name (PARSER_CONTEXT * parser, PT_NODE * remote_col)
   return pt_append_string (parser, NULL, original);
 }
 
-/* Build base PARSER_VARCHAR for di->rewritten when NULL (VALUE string or printed qstr). */
+/* Build base PARSER_VARCHAR for di->rewritten when NULL.
+ * Always wraps the original SQL as a subquery so that WHERE can be safely appended
+ * regardless of ORDER BY / GROUP BY / HAVING / LIMIT in the original SQL.
+ * Result: "SELECT * FROM (original_sql) cublink"
+ * This mirrors the wrapping done by pt_copypush_terms for the mixed-case path. */
 static PARSER_VARCHAR *
 mq_dblink_build_rewritten_base_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di)
 {
-  PARSER_VARCHAR *v;
+  PARSER_VARCHAR *v = NULL;
+  PARSER_VARCHAR *inner;
   unsigned int save;
 
   assert (di->rewritten == NULL);
@@ -5039,22 +5001,34 @@ mq_dblink_build_rewritten_base_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di
     }
   if (di->qstr->node_type == PT_VALUE && di->qstr->info.value.data_value.str != NULL)
     {
-      return pt_append_bytes (parser, NULL, (const char *) di->qstr->info.value.data_value.str->bytes,
-			      di->qstr->info.value.data_value.str->length);
+      inner = di->qstr->info.value.data_value.str;
     }
-  save = parser->custom_print;
-  parser->custom_print |= PT_SUPPRESS_RESOLVED | PT_PRINT_SUPPRESS_FOR_DBLINK;
-  v = pt_print_bytes (parser, di->qstr);
-  parser->custom_print = save;
+  else
+    {
+      save = parser->custom_print;
+      parser->custom_print |= PT_SUPPRESS_RESOLVED | PT_PRINT_SUPPRESS_FOR_DBLINK;
+      inner = pt_print_bytes (parser, di->qstr);
+      parser->custom_print = save;
+      if (inner == NULL)
+	{
+	  return NULL;
+	}
+    }
+  v = pt_append_bytes (parser, NULL, "SELECT * FROM (", 15);
+  v = pt_append_varchar (parser, v, inner);
+  v = pt_append_bytes (parser, v, ") cublink", 9);
   return v;
 }
 
-/* Append " WHERE col = ?" or " AND col = ?" to di->rewritten (or set rewritten from qstr first). */
+/* Append corr pred to di->rewritten.
+ * di->rewritten != NULL (mixed case): pt_copypush_terms already built
+ *   "SELECT * FROM (...) cublink WHERE pushed_pred" — always append AND.
+ * di->rewritten == NULL (pure corr case): mq_dblink_build_rewritten_base_sql
+ *   always produces "SELECT * FROM (...) cublink" (no WHERE) — always append WHERE. */
 bool
 mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di)
 {
   PARSER_VARCHAR *base;
-  bool has_where;
   const char *col_name = di->corr_key_col_names[0];
 
   if (col_name == NULL || col_name[0] == '\0')
@@ -5065,7 +5039,14 @@ mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di)
   if (di->rewritten != NULL)
     {
       base = di->rewritten;
-      has_where = mq_dblink_sql_has_where_keyword ((const char *) base->bytes, (size_t) base->length);
+      if (di->rewritten_has_where)
+	{
+	  base = pt_append_bytes (parser, base, " AND ", 5);
+	}
+      else
+	{
+	  base = pt_append_bytes (parser, base, " WHERE ", 7);
+	}
     }
   else
     {
@@ -5074,15 +5055,6 @@ mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di)
 	{
 	  return false;
 	}
-      has_where = mq_dblink_sql_has_where_keyword ((const char *) base->bytes, (size_t) base->length);
-    }
-
-  if (has_where)
-    {
-      base = pt_append_bytes (parser, base, " AND ", 5);
-    }
-  else
-    {
       base = pt_append_bytes (parser, base, " WHERE ", 7);
     }
   if (base == NULL)
