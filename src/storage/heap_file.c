@@ -855,6 +855,8 @@ static int heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERA
 					     bool is_mvcc_class);
 static int heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * update_context,
 					     bool is_mvcc_class);
+static int heap_vot_apply_flags (int offset, bool is_oos, bool is_last_element);
+static bool heap_recdes_check_has_oos (const RECDES * recdes);
 static int heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 static int heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 					       PGBUF_WATCHER * home_hint_p);
@@ -12768,6 +12770,22 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   assert (!(((uint64_t) * ptr_varvals) & 0x3));
 
   return S_SUCCESS;
+}
+
+static int
+heap_vot_apply_flags (int offset, bool is_oos, bool is_last_element)
+{
+  if (is_oos)
+    {
+      offset = OR_SET_VAR_OOS (offset);
+    }
+
+  if (is_last_element)
+    {
+      offset = OR_SET_VAR_LAST_ELEMENT (offset);
+    }
+
+  return offset;
 }
 
 /*
@@ -27896,7 +27914,7 @@ heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
   return ER_FAILED;
 }
 
-bool
+static bool
 heap_recdes_check_has_oos (const RECDES * recdes)
 {
   if (recdes == NULL || recdes->data == NULL)
