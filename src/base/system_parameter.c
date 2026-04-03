@@ -1854,7 +1854,7 @@ static unsigned int prm_sql_trace_slow_msecs_flag = 0;
 int PRM_SQL_TRACE_EXECUTION_PLAN = 0;
 static int prm_sql_trace_execution_plan_default = 0;
 static int prm_sql_trace_execution_plan_lower = 0;
-static int prm_sql_trace_execution_plan_upper = 0;
+static int prm_sql_trace_execution_plan_upper = 2;
 static unsigned int prm_sql_trace_execution_plan_flag = 0;
 
 int PRM_LOG_TRACE_FLUSH_TIME_MSECS = 0;
