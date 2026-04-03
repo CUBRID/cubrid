@@ -137,6 +137,7 @@ static int catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * bu
 					    DISK_REPR * rep);
 static int catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p, OID * class_oid,
 					    DISK_REPR * rep);
+static void catcls_put_last_var_offset (char *offset_p, int offset);
 
 static OR_VALUE *catcls_get_or_value_from_class_record (THREAD_ENTRY * thread_p, RECDES * record);
 static OR_VALUE *catcls_get_or_value_from_record (THREAD_ENTRY * thread_p, RECDES * record, OID * class_oid);
@@ -3307,7 +3308,7 @@ catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p, OI
 
   /* put last offset */
   offset = (int) (buf_p->ptr - buf_p->buffer - header_size);
-  OR_PUT_OFFSET (offset_p, offset);
+  catcls_put_last_var_offset (offset_p, offset);
 
   if (bound_bits)
     {
@@ -3324,6 +3325,12 @@ error:
     }
 
   return error;
+}
+
+static void
+catcls_put_last_var_offset (char *offset_p, int offset)
+{
+  OR_PUT_OFFSET (offset_p, OR_SET_VAR_LAST_ELEMENT (offset));
 }
 
 /*
