@@ -37,6 +37,7 @@ log_postpone_cache::copy_to (log_postpone_cache &dest) const
   m_redo_data_buf.copy_to (dest.m_redo_data_buf);
   dest.m_redo_data_offset = m_redo_data_offset;
   dest.m_is_redo_data_buf_full = m_is_redo_data_buf_full;
+  dest.m_max_cache_entries = m_max_cache_entries;
   dest.m_cursor = m_cursor;
   dest.m_cache_entries = m_cache_entries;
 }
@@ -53,6 +54,29 @@ log_postpone_cache::reset ()
     }
 }
 
+void
+log_postpone_cache::reset_from (std::size_t cursor)
+{
+  if (cursor >= m_cursor)
+    {
+      // Cannot reset
+      assert (false);
+      return ;
+    }
+
+  if (cursor > 0)
+    {
+      m_cursor = cursor;
+      m_redo_data_offset = m_cache_entries[cursor].m_offset;
+      m_is_redo_data_buf_full = false;
+    }
+  else
+    {
+      assert (cursor == 0);
+      reset ();
+    }
+}
+
 /**
  * Cache redo data for log postpone
  *
@@ -64,7 +88,7 @@ log_postpone_cache::add_redo_data (const log_prior_node &node)
 {
   assert (node.data_header != NULL);
   assert (node.rlength == 0 || node.rdata != NULL);
-  assert (m_cursor <= MAX_CACHE_ENTRIES);
+  assert (m_cursor <= m_max_cache_entries);
 
   if (is_full ())
     {
@@ -130,7 +154,7 @@ log_postpone_cache::add_lsa (const log_lsa &lsa)
       return;
     }
 
-  assert (m_cursor < MAX_CACHE_ENTRIES);
+  assert (m_cursor < m_max_cache_entries);
 
   m_cache_entries[m_cursor].m_lsa = lsa;
 
@@ -150,13 +174,6 @@ log_postpone_cache::do_postpone (cubthread::entry &thread_ref, const log_lsa &st
 {
   assert (!start_postpone_lsa.is_null ());
 
-  if (is_full ())
-    {
-      // Cache is not usable
-      reset ();
-      return false;
-    }
-
   // First cached postpone entry at start_postpone_lsa
   int start_index = -1;
   for (std::size_t i = 0; i < m_cursor; ++i)
@@ -171,7 +188,16 @@ log_postpone_cache::do_postpone (cubthread::entry &thread_ref, const log_lsa &st
 
   if (start_index < 0)
     {
-      // Start LSA was not found. Unexpected situation
+      // Start LSA was not found.
+      // Should call log_do_postpone.
+      return false;
+    }
+
+  if (is_full ())
+    {
+      // Do not reset the entire cache; the postponed logs might be used by an outer loop.
+      // Since we cannot handle all of these postponed logs here, we must call log_do_postpone.
+      reset_from (static_cast<std::size_t> (start_index));
       return false;
     }
 
@@ -197,9 +223,9 @@ log_postpone_cache::do_postpone (cubthread::entry &thread_ref, const log_lsa &st
     }
 
   // Finished running postpones, update the number of entries which should be run on next commit
-  assert (!m_is_redo_data_buf_full);
   m_cursor = start_index;
   m_redo_data_offset = m_cache_entries[start_index].m_offset;
+  m_is_redo_data_buf_full = false;
   if (m_cursor == 0)
     {
       assert (m_redo_data_offset == 0); // should be 0 when cursor is back to 0
@@ -212,5 +238,5 @@ log_postpone_cache::do_postpone (cubthread::entry &thread_ref, const log_lsa &st
 bool
 log_postpone_cache::is_full () const
 {
-  return m_cursor == MAX_CACHE_ENTRIES || m_is_redo_data_buf_full;
+  return m_cursor == m_max_cache_entries || m_is_redo_data_buf_full;
 }

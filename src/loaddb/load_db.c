@@ -531,7 +531,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   int error = NO_ERROR;
-  /* set to static to avoid compiler warning (clobbered by longjump) */
   FILE *schema_file = NULL;
   T_SCHEMA_FILE_LIST_INFO **schema_file_list = NULL;
   FILE *index_file = NULL;
@@ -541,8 +540,12 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
   char *passwd;
   int status = 0;
-  /* set to static to avoid compiler warning (clobbered by longjump) */
-  static bool interrupted = false;
+#if defined (SA_MODE)
+  /* to avoid compiler warning (clobbered by longjump) */
+  volatile bool interrupted = false;
+#else
+  bool interrupted = false;
+#endif
   int au_save = 0;
   extern bool obt_Enable_autoincrement;
   char log_file_name[PATH_MAX];

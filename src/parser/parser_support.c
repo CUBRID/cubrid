@@ -4151,63 +4151,34 @@ pt_chop_trailing_dots (PARSER_CONTEXT * parser, const char *msg)
 /*
  * pt_get_proxy_spec_name () - return a proxy query_spec's "from" entity name
  *   return: qspec's from entity name if all OK, NULL otherwise
+ *   parser(in): the parser context
  *   qspec(in): a proxy's SELECT query specification
  */
 
 const char *
-pt_get_proxy_spec_name (const char *qspec)
+pt_get_proxy_spec_name (PARSER_CONTEXT * parser, const char *qspec)
 {
   PT_NODE **qtree;
-  PARSER_CONTEXT *parser = NULL;
-  const char *from_name = NULL, *result;
-  size_t newlen;
+  const char *from_name = NULL;
 
-  /* the parser and its strings go away upon return, but the caller probably wants the proxy_spec_name to remain, so */
-  static char tblname[256], *name;
-  static size_t namelen = 256;
-
-  name = tblname;
-
-  if (qspec && (parser = parser_create_parser ()) && (qtree = parser_parse_string (parser, qspec))
-      && !pt_has_error (parser) && qtree[0])
+  assert (parser != NULL);
+  if (qspec)
     {
-      from_name = pt_get_spec_name (parser, qtree[0]);
-    }
-
-  if (from_name == NULL)
-    {
-      result = NULL;		/* no, it failed */
-    }
-  else
-    {
-      /* copy from_name into tblname but do not overrun it! */
-      newlen = strlen (from_name) + 1;
-      if (newlen + 1 > namelen)
+      qtree = parser_parse_string (parser, qspec);
+      if (qtree && qtree[0])
 	{
-	  /* get a bigger name buffer */
-	  if (name != tblname)
+	  if (!pt_has_error (parser))
 	    {
-	      free_and_init (name);
+	      from_name = pt_get_spec_name (parser, qtree[0]);
 	    }
-	  name = (char *) malloc (newlen);
-	  namelen = newlen;
+	  parser_free_tree (parser, qtree[0]);
 	}
 
-
-      if (name)
-	{
-	  strcpy (name, from_name);
-	}
-
-      result = name;
+      /* remove error which is occured in this function */
+      pt_reset_error (parser);
+      parser->flag.has_internal_error = 0;
     }
-
-  if (parser != NULL)
-    {
-      parser_free_parser (parser);
-    }
-
-  return result;
+  return from_name;
 }
 
 /*

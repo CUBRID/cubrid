@@ -92,7 +92,7 @@ static char
 flashback_util_get_char ()
 {
   int c;
-  static struct termios oldt, newt;
+  struct termios oldt, newt;
 
   tcgetattr (STDIN_FILENO, &oldt);
   newt = oldt;
