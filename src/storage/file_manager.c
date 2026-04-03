@@ -11237,7 +11237,7 @@ file_is_valid_heap_file (THREAD_ENTRY * thread_p, OID * class_oid_p)
 }
 
 /*
- * file_tracker_item_dump_capacity () - FILE_TRACK_ITEM_FUNC to dump file capacity
+ * file_tracker_item_dump_file () - FILE_TRACK_ITEM_FUNC to dump file
  *
  * return            : error code
  * thread_p (in)     : thread entry
