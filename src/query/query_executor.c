@@ -65,6 +65,7 @@
 #include "db_date.h"
 #include "btree_load.h"
 #include "query_dump.h"
+#include "dblink_scan.h"
 #if defined (SERVER_MODE)
 #include "jansson.h"
 #endif /* defined (SERVER_MODE) */
@@ -15155,6 +15156,48 @@ qexec_clear_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 }
 
 /*
+ * qexec_prep_exec_corr_dblink () - CBRD-26601: cci_prepare once + cci_execute per outer row before the DBLink aptr
+ *   mainblock (open_scan then skips re-prepare when stmt_handle is already valid).
+ */
+static int
+qexec_prep_exec_corr_dblink (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STATE * xasl_state)
+{
+  ACCESS_SPEC_TYPE *spec;
+  int err;
+
+  if (!IS_CORR_DBLINK_XASL (aptr))
+    {
+      return NO_ERROR;
+    }
+  spec = aptr->spec_list;
+  if (spec == NULL || spec->type != TARGET_DBLINK)
+    {
+      return NO_ERROR;
+    }
+  {
+    DBLINK_SCAN_INFO *scan_info = &spec->s_id.s.dblid.scan_info;
+
+    if (scan_info->stmt_handle <= 0)
+      {
+	err = dblink_corr_prepare (thread_p, spec, scan_info);
+	if (err != NO_ERROR)
+	  {
+	    return err;
+	  }
+      }
+#if !defined (NDEBUG)
+    assert (scan_info->stmt_handle > 0);
+#endif
+    err = dblink_corr_execute (thread_p, scan_info, &xasl_state->vd);
+    if (err != NO_ERROR)
+      {
+	return err;
+      }
+  }
+  return NO_ERROR;
+}
+
+/*
  * qexec_execute_mainblock () -
  *   return: NO_ERROR, or ER_code
  *   xasl(in)   : XASL Tree pointer
@@ -15463,6 +15506,16 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    {
 	      scan_immediately_stop = true;
 	    }
+	}
+    }
+
+  /* CBRD-26601: corr DBLink aptr — bind outer-row keys and re-execute before opening the scan.
+   * xasl_state->vd already reflects the current outer row at every entry to this function. */
+  if (IS_CORR_DBLINK_XASL (xasl))
+    {
+      if (qexec_prep_exec_corr_dblink (thread_p, xasl, xasl_state) != NO_ERROR)
+	{
+	  goto exit_on_error;
 	}
     }
 
@@ -15861,10 +15914,13 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      xasl->executed_parallelism = 0;
 			    }
 			}
-		      if (xasl->px_executor)
+		      /* CBRD-26601: corr DBLink aptr subqueries must not run in parallel threads — bind reads
+		       * outer val_list that could be stale once the outer row advances in another thread. */
+		      if (xasl->px_executor && !IS_CORR_DBLINK_XASL (xptr2))
 			{
 			  if (!xasl->px_executor->add_job (thread_p, xptr2, xasl_state))
 			    {
+			      /* Parallel slot exhausted; fall back to sequential execution. */
 			      if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
 				{
 				  if (tplrec.tpl)
