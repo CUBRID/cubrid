@@ -1323,3 +1323,32 @@ memmon: 데이터베이스 서버의 메모리 사용량 정보를 제공합니�
 유효한 옵션:\n\
     -o, --output-file=FILE    결과를 FILE에 출력합니다\n\
     --disable-force           서버의 메모리 모니터링을 강제로 비활성화합니다.\n
+
+$set 60 MSGCAT_UTIL_SET_CLEANFILEDB
+10 출력 파일 '%1$s'을 열 수 없습니다.\n
+11 \
+*** CUBRID cleanfiledb (Database: %1$s) ***\n\
+\n\
+  Summary of invalid files cleaned:\n\
+  ======================================================================\n\
+  Type                  Cleaned Count      Status\n\
+  ======================================================================\n\
+  Heap                  %2$d                  성공\n\
+  Heap Overflow         %3$d                  성공\n\
+  B-Tree                %4$d                  성공\n\
+  B-Tree Overflow       %5$d                  성공\n\
+  ----------------------------------------------------------------------\n\
+  Total                 %6$d\n\
+  ======================================================================\n\
+\n\
+  유효하지 않은 파일 정리가 완료 되었습니다.\n
+60 \
+cleanfiledb: 유효하지 않은 파일을 삭제하고 저장 공간을 회수합니다.\n\
+usage: %1$s cleanfiledb [OPTION] database-name\n\
+\n\
+valid options:\n\
+    -S, --SA-mode                 독립 모드 실행\n\
+    -C, --CS-mode                 클라이언트 서버 모드 실행\n\
+    -o, --output-file=FILE        출력 메시지를 FILE로 리디렉션합니다. 기본값: 없음.\n\
+    -l, --list                    모든 파일 항목 출력\n\
+    -c, --clean-invalid-file      유효하지 않은 파일 정리\n
