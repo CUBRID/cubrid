@@ -439,7 +439,7 @@ dl_destroy_candidates (DYNAMIC_LOADER * this_)
 static int
 dl_validate_file_entry (FILE_ENTRY * this_, const char *filename)
 {
-  static char pathbuf[PATH_MAX];
+  char pathbuf[PATH_MAX];
 #if (defined(sun) || defined(sparc)) && !defined(SOLARIS)
 #define AR_MAGIC_STR		ARMAG
 #define AR_MAGIC_STR_SIZ	SARMAG

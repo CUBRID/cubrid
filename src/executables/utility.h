@@ -1833,8 +1833,7 @@ extern "C"
   extern int changemode_keyword (int *keyval_p, char **keystr_p);
   extern int copylogdb_keyword (int *keyval_p, char **keystr_p);
 
-  extern int utility_keyword_value (UTIL_KEYWORD * keywords, int *keyval_p, char **keystr_p);
-  extern int utility_keyword_search (UTIL_KEYWORD * keywords, int *keyval_p, char **keystr_p);
+  extern int utility_keyword_search (const UTIL_KEYWORD * keywords, int *keyval_p, char **keystr_p);
 
   extern int utility_localtime (const time_t * ts, struct tm *result);
 
