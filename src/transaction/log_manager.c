@@ -10407,7 +10407,7 @@ log_checkpoint_daemon_init ()
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (log_checkpoint_execute);
 
   // create checkpoint daemon thread
-  log_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log_checkpoint");
+  log_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log-checkpoint");
 }
 #endif /* SERVER_MODE */
 
@@ -10430,8 +10430,7 @@ log_remove_log_archive_daemon_init ()
   cubthread::looper looper = cubthread::looper (setup_period_function);
 
   // create log archive remover daemon thread
-  log_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                            "log_remove_log_archive");
+  log_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log-rm-archive");
 }
 #endif /* SERVER_MODE */
 
@@ -10447,7 +10446,7 @@ log_clock_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (200));
   log_Clock_daemon =
     cubthread::get_manager ()->create_daemon (looper, new cubthread::entry_callable_task (log_clock_execute),
-                                              "log_clock");
+                                              "log-clock");
 }
 #endif /* SERVER_MODE */
 
@@ -10470,8 +10469,7 @@ log_check_ha_delay_info_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::seconds (1));
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (log_check_ha_delay_info_execute);
 
-  log_Check_ha_delay_info_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                             "log_check_ha_delay_info");
+  log_Check_ha_delay_info_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "ha-delay-check");
 }
 #endif /* SERVER_MODE */
 
@@ -10487,7 +10485,7 @@ log_flush_daemon_init ()
   cubthread::looper looper = cubthread::looper (log_get_log_group_commit_interval);
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (log_flush_execute);
 
-  log_Flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log_flush");
+  log_Flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log-flush");
 }
 #endif /* SERVER_MODE */
 
@@ -14031,7 +14029,7 @@ cdc_loginfo_producer_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10)); /* 주석 처리  */
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (cdc_loginfo_producer_execute);
 
-  cdc_Loginfo_producer_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "cdc_loginfo_producer"); 
+  cdc_Loginfo_producer_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "cdc-loginfo-producer"); 
   /* *INDENT-ON* */
 }
 
