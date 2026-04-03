@@ -689,6 +689,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_STATDUMP_FORCE_ADD_INT_MAX "statdump_force_add_int_max"
 
+#define PRM_NAME_LOG_POSTPONE_CACHE_SIZE "postpone_cache_size"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -2312,6 +2314,12 @@ static int prm_recovery_progress_logging_interval_default = 0;
 static int prm_recovery_progress_logging_interval_lower = 0;
 static int prm_recovery_progress_logging_interval_upper = 3600;
 static unsigned int prm_recovery_progress_logging_interval_flag = 0;
+
+int PRM_LOG_POSTPONE_CACHE_SIZE = 512;
+static int prm_log_postpone_cache_size_default = 512;
+static int prm_log_postpone_cache_size_upper = 4096;
+static int prm_log_postpone_cache_size_lower = 4;
+static unsigned int prm_log_postpone_cache_size_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5950,7 +5958,19 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_recovery_progress_logging_interval_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_LOG_POSTPONE_CACHE_SIZE,
+   PRM_NAME_LOG_POSTPONE_CACHE_SIZE,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   &prm_log_postpone_cache_size_flag,
+   (void *) &prm_log_postpone_cache_size_default,
+   (void *) &PRM_LOG_POSTPONE_CACHE_SIZE,
+   (void *) &prm_log_postpone_cache_size_upper,
+   (void *) &prm_log_postpone_cache_size_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
