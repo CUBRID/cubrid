@@ -817,7 +817,6 @@ locator_fetch_lockset (LC_LOCKSET * lockset, LC_COPYAREA ** fetch_copyarea)
   char *reply;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   char *request;
-  static int eid;
   char *packed = NULL;
   int packed_size;
   int send_size;
@@ -840,10 +839,9 @@ locator_fetch_lockset (LC_LOCKSET * lockset, LC_COPYAREA ** fetch_copyarea)
       ptr = or_pack_int (request, send_size);
 
       req_error =
-	net_client_request_2recv_copyarea (NET_SERVER_LC_FETCH_LOCKSET, request,
-					   OR_ALIGNED_BUF_SIZE (a_request), reply,
-					   OR_ALIGNED_BUF_SIZE (a_reply), packed, send_size, packed,
-					   packed_size, fetch_copyarea, &eid);
+	net_client_request_2recv_copyarea (NET_SERVER_LC_FETCH_LOCKSET, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+					   OR_ALIGNED_BUF_SIZE (a_reply), packed, send_size, packed, packed_size,
+					   fetch_copyarea, &lockset->eid);
     }
   else
     {
@@ -851,8 +849,8 @@ locator_fetch_lockset (LC_LOCKSET * lockset, LC_COPYAREA ** fetch_copyarea)
       packed = lockset->packed;
       packed_size = lockset->packed_size;
       req_error =
-	net_client_recv_copyarea (NET_SERVER_LC_FETCH_LOCKSET, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				  packed, packed_size, fetch_copyarea, eid);
+	net_client_recv_copyarea (NET_SERVER_LC_FETCH_LOCKSET, reply, OR_ALIGNED_BUF_SIZE (a_reply), packed,
+				  packed_size, fetch_copyarea, lockset->eid);
     }
 
   if (!req_error)
@@ -1560,7 +1558,6 @@ int
 locator_fetch_lockhint_classes (LC_LOCKHINT * lockhint, LC_COPYAREA ** fetch_copyarea)
 {
 #if defined(CS_MODE)
-  static int eid;		/* TODO: remove static */
   int success = ER_FAILED;
   int req_error;
   char *ptr;
@@ -1593,9 +1590,8 @@ locator_fetch_lockhint_classes (LC_LOCKHINT * lockhint, LC_COPYAREA ** fetch_cop
 
       req_error =
 	net_client_request_2recv_copyarea (NET_SERVER_LC_FETCH_LOCKHINT_CLASSES, request,
-					   OR_ALIGNED_BUF_SIZE (a_request), reply,
-					   OR_ALIGNED_BUF_SIZE (a_reply), packed, send_size, packed,
-					   packed_size, fetch_copyarea, &eid);
+					   OR_ALIGNED_BUF_SIZE (a_request), reply, OR_ALIGNED_BUF_SIZE (a_reply),
+					   packed, send_size, packed, packed_size, fetch_copyarea, &lockhint->eid);
     }
   else
     {
@@ -1603,8 +1599,8 @@ locator_fetch_lockhint_classes (LC_LOCKHINT * lockhint, LC_COPYAREA ** fetch_cop
       packed = lockhint->packed;
       packed_size = lockhint->packed_size;
       req_error =
-	net_client_recv_copyarea (NET_SERVER_LC_FETCH_LOCKHINT_CLASSES, reply,
-				  OR_ALIGNED_BUF_SIZE (a_reply), packed, packed_size, fetch_copyarea, eid);
+	net_client_recv_copyarea (NET_SERVER_LC_FETCH_LOCKHINT_CLASSES, reply, OR_ALIGNED_BUF_SIZE (a_reply), packed,
+				  packed_size, fetch_copyarea, lockhint->eid);
     }
 
   if (!req_error)
