@@ -264,7 +264,6 @@ struct btree_node
   VPID pageid;			/* Identifier of the page */
 };
 
-struct pred_expr_with_context;
 /* *INDENT-OFF* */
 namespace parallel_query
 {

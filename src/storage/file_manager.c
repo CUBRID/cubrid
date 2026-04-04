@@ -6829,8 +6829,7 @@ file_get_num_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, int *n_se
   fhead = (FILE_HEADER *) page_fhead;
   file_header_sanity_check (thread_p, fhead);
 
-  *n_sectors_out += fhead->n_sector_full;
-  *n_sectors_out += fhead->n_sector_partial;
+  *n_sectors_out = fhead->n_sector_full + fhead->n_sector_partial;
   pgbuf_unfix (thread_p, page_fhead);
 
   return NO_ERROR;

@@ -1511,6 +1511,11 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 				       VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 	}
       error = sort_listfile_internal (thread_p, sort_param);
+      if (sort_param->px_type == SORT_INDEX_LEAF)
+	{
+	  SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
+	  bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args_p, NULL, NULL);
+	}
     }
   else
     {
@@ -4250,7 +4255,7 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
 	      SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
 	      if (sort_args_p->ftab_sets != NULL)
 		{
-		  sort_args_p->ftab_sets->clear ();
+		  sort_args_p->ftab_sets->~vector ();
 		  free_and_init (sort_args_p->ftab_sets);
 		}
 	      free_and_init (sort_param->get_arg);
@@ -4824,6 +4829,7 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
       (thread_p, &sort_args_p->class_ids[0], sort_args_p->attr_ids[0], sort_args_p->btid->sys_btid) != NO_ERROR)
     {
       ASSERT_ERROR ();
+      log_sysop_abort (thread_p);
       return ER_FAILED;
     }
 
@@ -4838,6 +4844,7 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
 
   if (sort_put_result_from_tmpfile (thread_p, sort_param, 0) != NO_ERROR)
     {
+      log_sysop_abort (thread_p);
       error = ER_FAILED;
     }
 
@@ -4943,7 +4950,7 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   else if (sort_param->px_type == SORT_INDEX_LEAF)
     {
       SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
-      int n_user_pages = 0, n_sects = 0, tmp_pg = 0, tmp_sects, error_code = NO_ERROR;
+      int n_user_pages = 0, n_sects = 0, tmp_pg = 0, tmp_sects = 0, error_code = NO_ERROR;
       if (sort_args_p->n_classes > 1)
 	{
 	  /* not partition, partition has own indexes, this means like this :
