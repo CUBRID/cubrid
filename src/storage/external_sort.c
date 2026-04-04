@@ -5244,6 +5244,11 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 
       for (int i = 0; i < parallel_num; i++)
 	{
+	  px_sort_param[i].get_arg = NULL;
+	}
+
+      for (int i = 0; i < parallel_num; i++)
+	{
 	  px_sort_args_p = (SORT_ARGS *) malloc (sizeof (SORT_ARGS));
 	  if (px_sort_args_p == NULL)
 	    {

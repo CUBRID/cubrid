@@ -6839,7 +6839,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
        * Scanning the instances of a specific class
        */
       scan_cache->node.class_oid = *class_oid;
-      if (is_queryscan == true && thread_p->tran_index != LOG_SYSTEM_TRAN_INDEX)
+      if (is_queryscan == true)
 	{
 	  /*
 	   * Acquire a lock for the heap scan so that the class is not updated
