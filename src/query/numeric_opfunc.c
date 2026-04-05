@@ -1791,7 +1791,7 @@ knuth_estimate_quotient_digit (const knuth_digit_t * u_work, const knuth_digit_t
   knuth_double_digit_t trial_quotient, trial_remainder;
   knuth_double_digit_t numerator;
 
-  /* extract the top 3 bytes from U and top 2 bytes from V */
+  /* extract the top 3 words from U and top 2 words from V */
   u_high = u_work[window_offset];
   u_next = u_work[window_offset + 1];
   u_next2 = (window_offset + 2 < dividend_words + 1) ? u_work[window_offset + 2] : 0;
@@ -1829,7 +1829,7 @@ knuth_estimate_quotient_digit (const knuth_digit_t * u_work, const knuth_digit_t
 
 /*
  * knuth_multiply_and_subtract() 
- *   - Knuth’s division algorithm, steps D4–D5: apply q·V to the dividend window U by subtraction, and perform add-back if needed
+ *   - Knuth’s division algorithm, steps D4–D6: apply q·V to the dividend window U by subtraction, and perform add-back if needed
  *   return             : Final q (decremented by 1 if add-back occurred)
  *   u_work(in/out)     : Dividend work array U (MSB-first, modified in place)
  *   v_work(in)         : Divisor work array V (MSB-first)
@@ -1841,7 +1841,11 @@ knuth_estimate_quotient_digit (const knuth_digit_t * u_work, const knuth_digit_t
  *   - Compute trial_quotient * V
  *   - Subtract it from U window while propagating carry and borrow
  *
- * D5 (Add-back correction):
+ * D5 (Update topmost word & Test remainder):
+ *   - Apply remaining carry and borrow to the topmost word of the U window
+ *   - Check if a borrow occurred (result is negative)
+ *
+ * D6 (Add-back correction):
  *   - If borrow occurred in the topmost word, decrement trial_quotient (q-1)
  *   - Add V back to the U window to restore the remainder
  *
@@ -1880,13 +1884,10 @@ knuth_multiply_and_subtract (knuth_digit_t * u_work, const knuth_digit_t * v_wor
 	}
     }
 
-  /* [D4: Update the topmost word]
-   * The loop processed the lower words (U[j+1]..U[j+n]).
-   * Apply remaining carry and borrow to the topmost word U[j].
-   */
+  /* D5: update topmost word & test remainder */
   if (u_work[window_offset] < (knuth_double_digit_t) carry + borrow)
     {
-      /* D5: add-back correction */
+      /* D6: add-back correction */
       u_work[window_offset] = u_work[window_offset] - carry - borrow;
 
       trial_quotient--;
@@ -1925,8 +1926,8 @@ knuth_multiply_and_subtract (knuth_digit_t * u_work, const knuth_digit_t * v_wor
  *   3) D1 normalize
  *   4) D2–D7 main loop (per quotient digit)
  *      - D2–D3: estimate and adjust trial quotient
- *      - D4–D5: subtract q*V from U window. if borrow, add back
- *      - D6–D7: store the finalized quotient digit
+ *      - D4–D6: subtract q*V from U window. if borrow, add back
+ *      - D7: store the finalized quotient digit
  *   5) D8 denormalize
  *   6) extract remainder
  */
@@ -2004,10 +2005,10 @@ float_numeric_knuth_div (knuth_digit_t * dbv1_buf, knuth_digit_t * dbv2_buf, knu
       trial_quotient =
 	knuth_estimate_quotient_digit (u_work, v_work, window_offset, dividend_words, divisor_words, &trial_remainder);
 
-      /* D4–D5: subtract q*V from U window. if borrow, add back */
+      /* D4–D6: subtract q*V from U window. if borrow, add back */
       trial_quotient = knuth_multiply_and_subtract (u_work, v_work, window_offset, divisor_words, trial_quotient);
 
-      /* D6–D7: store the finalized quotient digit */
+      /* D7: store the finalized quotient digit */
       quo_buf[quo_store_start_idx + quo_digit_index] = trial_quotient;
     }
 
@@ -3460,10 +3461,8 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   db_get_numeric_precision_and_scale (dbv1, &prec1, &scale1, NULL);
   db_get_numeric_precision_and_scale (dbv2, &prec2, &scale2, NULL);
 
-  uint64_t dbv1_word[NUMERIC_AS_WORDS] = { 0 }
-  , dbv2_word[NUMERIC_AS_WORDS] =
-  {
-  0};
+  uint64_t dbv1_word[NUMERIC_AS_WORDS] = { 0 };
+  uint64_t dbv2_word[NUMERIC_AS_WORDS] = { 0 };
 
   numeric_bytes_to_words (db_locate_numeric (dbv1), DB_NUMERIC_BUF_SIZE, dbv1_word, NUMERIC_AS_WORDS,
 			  NUMERIC_AS_WORD_BYTES);
