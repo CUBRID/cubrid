@@ -1545,7 +1545,7 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
       pgbuf_unfix_and_init (thread_p, found_page);
 
       auto result_page = pgbuf_fix_auto_unfix (thread_p, &vpid, OLD_PAGE,
-					       PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+			 PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (result_page != nullptr)
 	{
 	  /* Re-check free space after unconditional re-fix (race window protection) */
