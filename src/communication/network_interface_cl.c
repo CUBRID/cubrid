@@ -10395,27 +10395,53 @@ locator_redistribute_partition_data (OID * class_oid, int no_oids, OID * oid_lis
  * spaceall (out)   : output aggregated space information
  * spacevols (out)  : if not NULL, output space information per volume
  * spacefiles (out) : if not NULL, out detailed space information on file usage
+ * table_sizes_p (out): if table_array_length > 0, output table size info
+ * actual_count_p (out): actual number of tables returned by server
+ * table_array (in) : list of table names to query, or "*" for all user tables
+ * table_array_length (in) : number of entries in table_array
  */
 int
-netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILES * spacefiles)
+netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILES * spacefiles, SPACEDB_TABLE_SIZES_HEADER ** table_sizes_p, int *actual_count_p, char ** table_array, int table_array_length)
 {
 #if defined (CS_MODE)
   int error_code = NO_ERROR;
   OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_request;
-  char *request;
+  char *request = NULL;
+  int request_size = 0;
+  char request_local[2 * OR_INT_SIZE + SM_MAX_IDENTIFIER_LENGTH];
   OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
   char *reply;
   char *data_reply = NULL;
   int data_reply_size = 0;
   char *ptr;
 
-  request = OR_ALIGNED_BUF_START (a_request);
+  *table_sizes_p = NULL;
+  *actual_count_p = 0;
+
+  assert (table_array_length >= 0);
+  if (table_array_length == 0)
+    {
+      request = OR_ALIGNED_BUF_START (a_request);
+      request_size = OR_ALIGNED_BUF_SIZE (a_request);
+    }
+  else if (table_array_length == 1)
+    {
+      request = request_local;
+      request_size = sizeof (request_local);
+    }
+  else
+    {
+      request_size = 2 * OR_INT_SIZE + table_array_length * SM_MAX_IDENTIFIER_LENGTH;
+      request = (char *) malloc (request_size);
+    }
+
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   ptr = or_pack_int (request, spacevols != NULL ? 1 : 0);
   ptr = or_pack_int (ptr, spacefiles != NULL ? 1 : 0);
+  ptr = or_pack_string_array (ptr, table_array_length, (const char **) table_array);
 
-  error_code = net_client_request2 (NET_SERVER_SPACEDB, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+  error_code = net_client_request2 (NET_SERVER_SPACEDB, request, request_size, reply,
 				    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_reply_size);
   if (error_code != NO_ERROR)
     {
@@ -10424,7 +10450,8 @@ netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILE
     }
   ptr = or_unpack_int (reply, &data_reply_size);
   ptr = or_unpack_int (ptr, &error_code);
-  if (error_code != NO_ERROR)
+
+  if (error_code != NO_ERROR && data_reply == NULL)
     {
       /* error */
       ASSERT_ERROR ();
@@ -10441,13 +10468,43 @@ netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILE
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
+
+  int actual_table_count = 0;
+  ptr = or_unpack_int (ptr, &actual_table_count);
+
+  if (actual_table_count > 0)
+    {
+      *table_sizes_p = (SPACEDB_TABLE_SIZES_HEADER *) malloc (actual_table_count * sizeof (SPACEDB_TABLE_SIZES_HEADER));
+      if (*table_sizes_p == NULL)
+	{
+	  free_and_init (data_reply);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  (size_t) actual_table_count * sizeof (SPACEDB_TABLE_SIZES_HEADER));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      ptr = or_unpack_spacedb_table_sizes (ptr, *table_sizes_p, actual_table_count);
+    }
+  else
+    {
+      *table_sizes_p = NULL;
+    }
+
+  *actual_count_p = actual_table_count;
   assert ((ptr - data_reply) == data_reply_size);
 
   free_and_init (data_reply);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
   return NO_ERROR;
 
-#else	/* !CS_MODE */	       /* SA_MDOE */
+#else	/* !CS_MODE */	       /* SA_MODE */
   int error_code = ER_FAILED;
+
+  *table_sizes_p = NULL;
+  *actual_count_p = 0;
 
   THREAD_ENTRY *thread_p = enter_server ();
   error_code = disk_spacedb (thread_p, spaceall, spacevols);
@@ -10455,14 +10512,15 @@ netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILE
     {
       ASSERT_ERROR ();
     }
-  else if (spacefiles != NULL)
+  else if (spacefiles != NULL || table_array_length > 0)
     {
-      error_code = file_spacedb (thread_p, spacefiles);
+      error_code = file_spacedb (thread_p, spacefiles, table_array, table_array_length, table_sizes_p, actual_count_p);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	}
     }
+
   exit_server (*thread_p);
 
   return error_code;

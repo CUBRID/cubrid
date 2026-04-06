@@ -38,6 +38,9 @@
 #include "file_io.h"
 #include "log_lsa.hpp"
 
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#endif
 #include "compressor.hpp"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -2095,6 +2098,7 @@ or_unpack_string (char *ptr, char **string)
       /* need to handle allocation errors */
       if (new_ == NULL)
 	{
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (length * sizeof (char))); /* new handling code */
 	  ptr += length;
 	}
       else
@@ -5790,49 +5794,6 @@ or_pack_int_array (char *buffer, int count, const int *int_array)
   return ptr;
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * or_packed_string_array_length - get the amount of space needed to pack an
- * array of strings.
- *    return: packed string array length
- *    count(in): element count
- *    string_array(out): packed string array
- * Note:
- */
-int
-or_packed_string_array_length (int count, const char **string_array)
-{
-  int i;
-  int size = OR_INT_SIZE;
-
-  for (i = 0; i < count; i++)
-    {
-      size += or_packed_string_length (string_array[i]);
-    }
-
-  return size;
-}
-
-/*
- * or_packed_db_value_array_length - get the amount of space needed to pack an
- * array of db_values.
- *    return: packed db value array length
- *    count(in): array size
- *    val(in): DB_VALUE array
- */
-int
-or_packed_db_value_array_length (int count, DB_VALUE * val)
-{
-  int i;
-  int size = OR_INT_SIZE;
-
-  for (i = 0; i < count; i++)
-    {
-      size += or_db_value_size (val++);
-    }
-  return size;
-}
-
 /*
  * or_pack_string_array - write a string array
  *    return: advanced buffer pointer
@@ -5905,6 +5866,49 @@ or_unpack_string_array (char *buffer, char ***string_array, int *cnt)
 {
   char *ptr = or_unpack_int (buffer, cnt);
   return unpack_str_array (ptr, string_array, *cnt);
+}
+
+#if defined(ENABLE_UNUSED_FUNCTION)
+/*
+ * or_packed_string_array_length - get the amount of space needed to pack an
+ * array of strings.
+ *    return: packed string array length
+ *    count(in): element count
+ *    string_array(out): packed string array
+ * Note:
+ */
+int
+or_packed_string_array_length (int count, const char **string_array)
+{
+  int i;
+  int size = OR_INT_SIZE;
+
+  for (i = 0; i < count; i++)
+    {
+      size += or_packed_string_length (string_array[i]);
+    }
+
+  return size;
+}
+
+/*
+ * or_packed_db_value_array_length - get the amount of space needed to pack an
+ * array of db_values.
+ *    return: packed db value array length
+ *    count(in): array size
+ *    val(in): DB_VALUE array
+ */
+int
+or_packed_db_value_array_length (int count, DB_VALUE * val)
+{
+  int i;
+  int size = OR_INT_SIZE;
+
+  for (i = 0; i < count; i++)
+    {
+      size += or_db_value_size (val++);
+    }
+  return size;
 }
 
 /*
@@ -6183,6 +6187,73 @@ or_pack_spacedb (char *ptr, const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols
 }
 
 /*
+ * or_pack_spacedb () - TODO: write this comment
+ *
+ * return     : new pointer after packed spacedb_table_size
+ * ptr (in)   : TODO
+ * table_sizes (in)   : TODO
+ * array_length (in)  : TODO
+ */
+int
+or_packed_spacedb_table_sizes_size (const SPACEDB_TABLE_SIZES_HEADER *table_sizes, int array_length)
+{
+  int size_total = 0;
+  int size_one_item = 5 * OR_INT_SIZE;
+
+  if (table_sizes == NULL || array_length <= 0)
+    {
+      return 0;
+    }
+
+  for (int table_num = 0; table_num < array_length; table_num++)
+    {
+      size_total += OR_INT_SIZE;
+      size_total += size_one_item * table_sizes[table_num].file_count;
+
+      for (int file_num = 0; file_num < table_sizes[table_num].file_count; file_num++)
+        {
+          size_total += or_packed_string_length (table_sizes[table_num].header[file_num].name, NULL);
+        }
+    }
+
+  return size_total;
+}
+
+/*
+ * or_pack_spacedb_table_sizes () - TODO: write this comment
+ *
+ * return     : new pointer after packed spacedb_table_size
+ * ptr (in)   : TODO
+ * table_sizes (in)   : TODO
+ * array_length (in)  : TODO
+ */
+char *
+or_pack_spacedb_table_sizes (char *ptr, const SPACEDB_TABLE_SIZES_HEADER *table_sizes, int array_length)
+{
+  if (table_sizes == NULL || array_length <= 0)
+    {
+      return ptr;
+    }
+
+  for (int table_num = 0; table_num < array_length; table_num++)
+    {
+      ptr = or_pack_int (ptr, table_sizes[table_num].file_count);
+
+      for (int file_num = 0; file_num < table_sizes[table_num].file_count; file_num++)
+        {
+          ptr = or_pack_string (ptr, table_sizes[table_num].header[file_num].name);
+          ptr = or_pack_int (ptr, table_sizes[table_num].header[file_num].ftype);
+          ptr = or_pack_int (ptr, (int) table_sizes[table_num].header[file_num].data_used_page);
+          ptr = or_pack_int (ptr, (int) table_sizes[table_num].header[file_num].data_alloced_page);
+          ptr = or_pack_int (ptr, table_sizes[table_num].header[file_num].ovf_free_size);
+          ptr = or_pack_int (ptr, (int) table_sizes[table_num].header[file_num].ovf_alloced_page);
+        }
+    }
+
+  return ptr;
+}
+
+/*
  * or_unpack_spacedb () - document me!
  *
  * return :
@@ -6261,6 +6332,65 @@ or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB
 	  ptr = or_unpack_int (ptr, &unpacked_value);
 	  files[i].npage_reserved = (DKNPAGES) unpacked_value;
 	}
+    }
+
+  return ptr;
+}
+
+/*
+ * or_unpack_spacedb_table_sizes () - TODO: write this comment
+ *
+ * return : TODO
+ * ptr (in) : TODO
+ * table_sizes (in) : TODO
+ * array_length (in) : TODO
+ */
+char *
+or_unpack_spacedb_table_sizes (char *ptr, SPACEDB_TABLE_SIZES_HEADER *table_sizes, int array_length)
+{
+  // THREAD_ENTRY thread_p = thread_get_thread_entry_info ();
+  char *temp_name = NULL;
+
+  if (table_sizes == NULL || array_length <= 0)
+    {
+      return ptr;
+    }
+
+  for (int table_num = 0; table_num < array_length; table_num++)
+    {
+      ptr = or_unpack_int (ptr, &table_sizes[table_num].file_count);
+
+      if (table_sizes[table_num].file_count > 0)
+        {
+          table_sizes[table_num].header = 
+            (SPACEDB_TABLE_SIZES *) malloc (sizeof (SPACEDB_TABLE_SIZES) * table_sizes[table_num].file_count);
+        }
+      else /* Is it correct to assign NULL when count <= 0? */
+        {
+          table_sizes[table_num].header = NULL;
+        }
+
+      for (int file_num = 0; file_num < table_sizes[table_num].file_count; file_num++)
+        {
+          ptr = or_unpack_string (ptr, &temp_name);
+          if (temp_name != NULL)
+            {
+              strncpy (table_sizes[table_num].header[file_num].name, temp_name, DB_MAX_IDENTIFIER_LENGTH - 1);
+              table_sizes[table_num].header[file_num].name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';
+              db_private_free_and_init (NULL, temp_name);
+            }
+          else
+            {
+              /* error case. name can never be NULL */
+              table_sizes[table_num].header[file_num].name[0] = '\0';
+            }
+
+          ptr = or_unpack_int (ptr, &table_sizes[table_num].header[file_num].ftype);
+          ptr = or_unpack_int (ptr, &table_sizes[table_num].header[file_num].data_used_page);
+          ptr = or_unpack_int (ptr, &table_sizes[table_num].header[file_num].data_alloced_page);
+          ptr = or_unpack_int (ptr, &table_sizes[table_num].header[file_num].ovf_free_size);
+          ptr = or_unpack_int (ptr, &table_sizes[table_num].header[file_num].ovf_alloced_page);
+        }
     }
 
   return ptr;

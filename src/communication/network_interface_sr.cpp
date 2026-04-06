@@ -10456,11 +10456,15 @@ netsr_spacedb (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
   int get_files = 0;
   SPACEDB_ONEVOL **volsp = NULL;
   SPACEDB_FILES *filesp = NULL;
+  SPACEDB_TABLE_SIZES_HEADER *table_sizes = NULL;
 
   OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *data_reply = NULL;
   int data_reply_length = 0;
+  int table_array_length = 0;
+  int actual_table_count = 0;
+  char **table_array = NULL;
 
   char *ptr;
 
@@ -10478,6 +10482,7 @@ netsr_spacedb (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
     {
       filesp = files;
     }
+  ptr = or_unpack_string_array (ptr, &table_array, &table_array_length);
 
   /* get info from disk manager */
   error_code = disk_spacedb (thread_p, all, volsp);
@@ -10485,27 +10490,31 @@ netsr_spacedb (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
     {
       ASSERT_ERROR ();
     }
-  else if (get_files)
+
+  /* get info from file manager */
+  if (get_files || table_array_length > 0)
     {
-      /* get info from file manager */
-      error_code = file_spacedb (thread_p, filesp);
+      error_code = file_spacedb (thread_p, filesp, table_array, table_array_length,
+                                 &table_sizes, &actual_table_count);
       if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	}
+        {
+          ASSERT_ERROR ();
+        }
     }
 
   if (error_code == NO_ERROR)
     {
-      /* success. pack space info */
-      data_reply_length = or_packed_spacedb_size (all, vols, filesp);
+      data_reply_length += or_packed_spacedb_size (all, vols, filesp);
+      data_reply_length += OR_INT_SIZE;	/* actual_table_count */
+      data_reply_length += or_packed_spacedb_table_sizes_size (table_sizes, actual_table_count);
       data_reply = (char *) malloc (data_reply_length);
       ptr = or_pack_spacedb (data_reply, all, vols, filesp);
+      ptr = or_pack_int (ptr, actual_table_count);
+      ptr = or_pack_spacedb_table_sizes (ptr, table_sizes, actual_table_count);
       assert (ptr - data_reply == data_reply_length);
     }
   else
     {
-      /* error */
       (void) return_error_to_client (thread_p, rid);
     }
 
@@ -10526,6 +10535,17 @@ netsr_spacedb (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
     {
       free_and_init (vols);
     }
+
+  for (int i = 0; i < table_array_length; i++)
+    {
+      db_private_free_and_init (thread_p, table_array[i]);
+    }
+  db_private_free_and_init (thread_p, table_array);
+  for (int i = 0; i < actual_table_count; i++)
+    {
+      db_private_free_and_init (thread_p, table_sizes[i].header);
+    }
+  free_and_init (table_sizes);
 }
 
 void

@@ -85,6 +85,7 @@ typedef INT16 PGLENGTH;		/* Page length */
 
 typedef PAGEID FILEID;		/* File identifier */
 typedef INT32 LOLENGTH;		/* Length for a large object */
+typedef PAGEID FNPAGES;	        /* Number of file pages */
 
 /* BOTH IO_PAGESIZE AND DB_PAGESIZE MUST BE MULTIPLE OF sizeof(int) */
 
@@ -595,6 +596,24 @@ struct spacedb_files
   DKNPAGES npage_ftab;
   DKNPAGES npage_user;
   DKNPAGES npage_reserved;
+};
+
+typedef struct spacedb_table_sizes SPACEDB_TABLE_SIZES;
+struct spacedb_table_sizes
+{
+  char name[DB_MAX_IDENTIFIER_LENGTH];
+  int ftype; /* FILE_TYPE */
+  int data_used_page;
+  int data_alloced_page;
+  int ovf_free_size;
+  int ovf_alloced_page;
+};
+
+typedef struct spacedb_table_sizes_header SPACEDB_TABLE_SIZES_HEADER;
+struct spacedb_table_sizes_header
+{
+  int file_count;
+  SPACEDB_TABLE_SIZES *header;
 };
 
 /************************************************************************/
