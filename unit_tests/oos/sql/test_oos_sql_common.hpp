@@ -53,14 +53,22 @@ class SqlServerEnv : public ::testing::Environment
       db_set_client_type (DB_CLIENT_TYPE_MAX);
       auto err = db_restart ("unit_test", TRUE, "unittestdb");
       printf ("will be written at %s\n", er_get_msglog_filename ());
-      assert (err == NO_ERROR);
+      if (err != NO_ERROR)
+	{
+	  fprintf (stderr, "db_restart failed with error %d\n", err);
+	  abort ();
+	}
     }
     void TearDown () override
     {
       printf ("##### Stopping Server For OOS SQL Testing #####\n");
       auto err = db_shutdown ();
       fflush (stdout);
-      assert (err == NO_ERROR);
+      if (err != NO_ERROR)
+	{
+	  fprintf (stderr, "db_shutdown failed with error %d\n", err);
+	  abort ();
+	}
     }
 };
 
@@ -98,6 +106,7 @@ fetch_single_int (const char *sql, int *out_val)
 {
   DB_QUERY_RESULT *result = nullptr;
   DB_VALUE val;
+  db_make_null (&val);
   int rc;
 
   rc = exec_sql_with_result (sql, &result);
@@ -149,13 +158,5 @@ fetch_single_int (const char *sql, int *out_val)
   return NO_ERROR;
 }
 
-// Execute DDL/DML and commit. Asserts success.
-static void
-exec_sql_commit (const char *sql)
-{
-  int rc = exec_sql (sql);
-  assert (rc >= 0);
-  db_commit_transaction ();
-}
 
 #endif /* _TEST_OOS_SQL_COMMON_HPP_ */

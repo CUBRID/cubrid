@@ -39,5 +39,5 @@ add_test(NAME test_oos_sql_txn COMMAND test_oos_sql_txn)
 set_tests_properties(
   test_oos_sql_crud test_oos_sql_ddl test_oos_sql_delete
   test_oos_sql_boundary test_oos_sql_update_delete test_oos_sql_txn
-  PROPERTIES FIXTURES_REQUIRED OOS_DB
+  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE
 )
