@@ -84,7 +84,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/environment_variable.c
   ${BASE_DIR}/error_context.cpp
   ${BASE_DIR}/error_manager.c
-  ${BASE_DIR}/event_log.c
+  ${BASE_DIR}/trace_event_log.c
   ${BASE_DIR}/fault_injection.c
   ${BASE_DIR}/fileline_location.cpp
   ${BASE_DIR}/fixed_alloc.c
