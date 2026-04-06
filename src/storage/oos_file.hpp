@@ -31,8 +31,9 @@ using OOS_RECORD_HEADER = struct oos_record_header;
 
 #define OOS_RECORD_HEADER_SIZE ((int) sizeof (OOS_RECORD_HEADER))
 
-extern int oos_file_create (THREAD_ENTRY *thread_p, VFID &oos_vfid);
-extern int oos_file_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
+extern int oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid);
+extern int oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
+extern int oos_remove_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid);
 extern int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &oid);
 extern int oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes);
 extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid);

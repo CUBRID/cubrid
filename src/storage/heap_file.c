@@ -5917,6 +5917,20 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
       file_postpone_destroy (thread_p, &vfid);
     }
 
+  /* OOS file cleanup */
+  {
+    VFID oos_vfid;
+    if (heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
+      {
+	int error = oos_remove_file (thread_p, oos_vfid);
+	if (error != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    return error;
+	  }
+      }
+  }
+
   file_postpone_destroy (thread_p, &hfid->vfid);
 
   (void) heap_stats_del_bestspace_by_hfid (thread_p, hfid);
@@ -5960,6 +5974,20 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
     {
       file_postpone_destroy (thread_p, &vfid);
     }
+
+  /* OOS file cleanup */
+  {
+    VFID oos_vfid;
+    if (heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
+      {
+	ret = oos_remove_file (thread_p, oos_vfid);
+	if (ret != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    return ret;
+	  }
+      }
+  }
 
   log_append_postpone (thread_p, RVHF_MARK_DELETED, &addr, sizeof (hfid->vfid), &hfid->vfid);
 
@@ -12205,7 +12233,7 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
 	{
 	  /* START A TOP SYSTEM OPERATION */
 	  log_sysop_start (thread_p);
-	  if (oos_file_create (thread_p, *oos_vfid) != NO_ERROR)
+	  if (oos_create_file (thread_p, *oos_vfid) != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
 	      goto exit_on_error;

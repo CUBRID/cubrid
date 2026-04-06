@@ -17,6 +17,7 @@
  */
 
 #include <cassert>
+#include <mutex>
 #include "error_code.h"
 #include "error_manager.h"
 #include "file_manager.h"
@@ -88,6 +89,7 @@ struct VFIDEq
   }
 };
 static std::unordered_map<VFID, VPID, VFIDHash, VFIDEq> oos_recently_inserted_oos_vpid_map;
+static std::mutex oos_vpid_map_mutex;
 
 // ****************************************************************************
 
@@ -97,7 +99,7 @@ static std::unordered_map<VFID, VPID, VFIDHash, VFIDEq> oos_recently_inserted_oo
 static constexpr int OOS_ALIGNMENT = MAX_ALIGNMENT;
 
 int
-oos_file_create (THREAD_ENTRY *thread_p, VFID &oos_vfid)
+oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid)
 {
   FILE_DESCRIPTORS des; // unused
   int err = NO_ERROR;
@@ -115,10 +117,30 @@ oos_file_create (THREAD_ENTRY *thread_p, VFID &oos_vfid)
 }
 
 int
-oos_file_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
+oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 {
-  // TODO: actually destroy the OOS file
-  return 0;
+  {
+    std::lock_guard<std::mutex> lock (oos_vpid_map_mutex);
+    oos_recently_inserted_oos_vpid_map.erase (oos_vfid);
+  }
+
+  file_postpone_destroy (thread_p, &oos_vfid);
+
+  return NO_ERROR;
+}
+
+// TODO: will be called by vacuum when OOS vacuum is implemented
+int
+oos_remove_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid)
+{
+  int err = file_dealloc (thread_p, &oos_vfid, &vpid, FILE_OOS);
+  if (err != NO_ERROR)
+    {
+      oos_error ("file_dealloc failed for vpid={pageid=%d, volid=%d}", vpid.pageid, vpid.volid);
+      return err;
+    }
+
+  return NO_ERROR;
 }
 
 
@@ -312,6 +334,7 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &re
 
     try
       {
+	std::lock_guard<std::mutex> lock (oos_vpid_map_mutex);
 	auto result = oos_recently_inserted_oos_vpid_map.insert_or_assign (oos_vfid, vpid);
       }
     catch (const std::bad_alloc &)
@@ -481,8 +504,6 @@ oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
   if (err != NO_ERROR)
     {
       oos_error ("oos_read_within_page failed");
-      assert_release_error (er_errid () != NO_ERROR);
-      assert (false);
       return err;
     }
 
@@ -514,6 +535,7 @@ oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
 static int
 oos_get_recently_inserted_oos_vpid (const VFID &oos_vfid, VPID &vpid)
 {
+  std::lock_guard<std::mutex> lock (oos_vpid_map_mutex);
   auto it = oos_recently_inserted_oos_vpid_map.find (oos_vfid);
   if (it != oos_recently_inserted_oos_vpid_map.end ())
     {
@@ -525,7 +547,6 @@ oos_get_recently_inserted_oos_vpid (const VFID &oos_vfid, VPID &vpid)
       vpid = VPID_INITIALIZER;
       return ER_FAILED;
     }
-  return NO_ERROR;
 }
 
 
@@ -564,13 +585,23 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
   PAGE_TYPE page_type = PAGE_OOS;
 
   VPID recently_inserted_oos_vpid = VPID_INITIALIZER;
-  auto it = oos_recently_inserted_oos_vpid_map.find (oos_vfid);
-  if (it == oos_recently_inserted_oos_vpid_map.end ())
+  bool need_alloc = false;
+  {
+    std::lock_guard<std::mutex> lock (oos_vpid_map_mutex);
+    auto it = oos_recently_inserted_oos_vpid_map.find (oos_vfid);
+    if (it == oos_recently_inserted_oos_vpid_map.end ())
+      {
+	need_alloc = true;
+      }
+    else
+      {
+	recently_inserted_oos_vpid = it->second;
+      }
+  }
+  if (need_alloc)
     {
       return oos_file_alloc_new (thread_p, oos_vfid, vpid);
     }
-
-  recently_inserted_oos_vpid = it->second;
   if (recently_inserted_oos_vpid.pageid == NULL_PAGEID)
     {
       assert (false); // should not happen
@@ -686,6 +717,7 @@ oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
 static int
 oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
 {
+  int error = NO_ERROR;
   OID current_oid = oid;
   while (!OID_ISNULL (&current_oid))
     {
@@ -694,9 +726,9 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
       PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_ptr == nullptr)
 	{
+	  ASSERT_ERROR_AND_SET (error);
 	  oos_error ("pgbuf_fix failed for volid=%d, pageid=%d", current_oid.volid, current_oid.pageid);
-	  ASSERT_ERROR ();
-	  return er_errid ();
+	  return error;
 	}
 
       scope_exit page_unfixer ([&] ()
@@ -708,13 +740,20 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
       SCAN_CODE code = spage_get_record (thread_p, page_ptr, current_oid.slotid, &recdes_with_header, PEEK);
       if (code != S_SUCCESS)
 	{
+	  ASSERT_ERROR_AND_SET (error);
 	  oos_error ("spage_get_record failed for volid=%d, pageid=%d, slotid=%d",
 		     OID_AS_ARGS (&current_oid));
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return ER_FAILED;
+	  return error;
 	}
 
-      assert (recdes_with_header.length >= (int) sizeof (OOS_RECORD_HEADER));
+      if (recdes_with_header.length < (int) sizeof (OOS_RECORD_HEADER))
+	{
+	  assert_release (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  oos_error ("OOS record at volid=%d pageid=%d slotid=%d has invalid length %d",
+		     OID_AS_ARGS (&current_oid), recdes_with_header.length);
+	  return ER_GENERIC_ERROR;
+	}
       OOS_RECORD_HEADER header;
       std::memcpy (&header, recdes_with_header.data, sizeof (OOS_RECORD_HEADER));
       OID next_chunk_oid = header.next_chunk_oid;
@@ -725,11 +764,10 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
       PGSLOTID deleted_slotid = spage_delete (thread_p, page_ptr, current_oid.slotid);
       if (deleted_slotid == NULL_SLOTID)
 	{
+	  ASSERT_ERROR_AND_SET (error);
 	  oos_error ("spage_delete failed for volid=%d, pageid=%d, slotid=%d",
 		     OID_AS_ARGS (&current_oid));
-	  assert (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return ER_FAILED;
+	  return error;
 	}
       pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
 

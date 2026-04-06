@@ -93,7 +93,7 @@ TEST (OosDeleteTest, OosDeleteBasic)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES rec_in{};
@@ -133,7 +133,7 @@ TEST (OosDeleteTest, OosDeleteThenReadFails)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES rec_in{};
@@ -173,7 +173,7 @@ TEST (OosDeleteTest, OosDeleteMultiChunk)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   const int max_chunk_size = bridge_oos_get_max_chunk_size_within_page ();
@@ -233,7 +233,7 @@ TEST (OosDeleteTest, OosUpdatePattern)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   const std::string old_data = "old value before update";
@@ -293,7 +293,7 @@ TEST (OosDeleteTest, OosDeleteRestoresFreeSpace)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   const std::string data = "free space restore test data";
@@ -353,7 +353,7 @@ TEST (OosDeleteTest, OosDeleteLarge160KBMultiChunk)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   const int large_size = 160 * 1024; // 160 KB
@@ -404,7 +404,7 @@ TEST (OosDeleteTest, OosDeleteSlotBecomesUnknown)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES rec_in{};
@@ -451,6 +451,7 @@ TEST (OosDeleteTest, OosDeleteSlotBecomesUnknown)
 
 // TODO: add recovery tests — verify undo (rollback restores deleted chunks) and redo (crash recovery re-deletes)
 //       for both single-chunk and multi-chunk records. Requires integration test infrastructure.
+
 
 int main (int argc, char **argv)
 {
