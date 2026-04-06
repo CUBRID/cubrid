@@ -1553,7 +1553,7 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
     }
 
   /* No existing page found — allocate new */
-  pgbuf_unfix_and_init (thread_p, hdr_page);
+  pgbuf_unfix_and_init_after_check (thread_p, hdr_page);
 
   auto new_page = oos_file_alloc_new (thread_p, oos_vfid, vpid);
 
