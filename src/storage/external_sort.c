@@ -4608,8 +4608,7 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
 	  int half_files = MIN (remaining_run - (first_idx / pow (SORT_PX_MERGE_FILES, level)), SORT_PX_MERGE_FILES);
 	  if (half_files == 1)
 	    {
-	      /* skip last one file - mark as done so SORT_WAIT_PARALLEL does not block on it */
-	      px_sort_param[i].px_status = PX_DONE;
+	      /* skip last one file */
 	      continue;
 	    }
 
@@ -4753,10 +4752,8 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
   /* init result_run */
   for (i = 0; i < parallel_num; i++)
     {
-      int rfi = px_sort_param[i].px_result_file_idx;
-      result_run[i].temp_file = px_sort_param[i].temp[rfi];
-      result_run[i].num_pages = (px_sort_param[i].file_contents[rfi].first_run >= 0)
-	? px_sort_param[i].file_contents[rfi].num_pages[0] : 0;
+      result_run[i].temp_file = px_sort_param[i].temp[px_sort_param[i].px_result_file_idx];
+      result_run[i].num_pages = px_sort_param[i].file_contents[px_sort_param[i].px_result_file_idx].num_pages[0];
     }
 
   remaining_run = parallel_num;
@@ -4776,35 +4773,48 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
 	  int half_files = MIN (remaining_run - (first_idx / pow (SORT_PX_MERGE_FILES, level)), SORT_PX_MERGE_FILES);
 	  if (half_files == 1)
 	    {
-	      /* skip last one file - mark as done so SORT_WAIT_PARALLEL does not block on it */
-	      px_sort_param[i].px_status = PX_DONE;
+	      /* skip last one file */
 	      continue;
 	    }
 
 	  px_sort_param[i].px_result_file_idx = 0;
-	  px_sort_param[i].half_files = half_files;
-	  px_sort_param[i].tot_tempfiles = half_files * 2;
 	  px_sort_param[i].in_half = 0;
 
-	  /* copy temp file and file contents */
-	  for (int j = 0; j < px_sort_param[i].half_files; j++)
+	  /* copy temp file and file contents, skip empty (0-page) workers */
+	  int valid_j = 0;
+	  for (int j = 0; j < half_files; j++)
 	    {
 	      idx = (level == 0) ? (j + first_idx) : ((j * pow (SORT_PX_MERGE_FILES, level)) + first_idx);
-	      px_sort_param[i].temp[j] = result_run[idx].temp_file;
-	      /* copy the number of pages for one run */
-	      px_sort_param[i].file_contents[j].num_pages[0] = result_run[idx].num_pages;
-	      if (result_run[idx].num_pages > 0)
+	      if (result_run[idx].num_pages == 0)
 		{
-		  px_sort_param[i].file_contents[j].first_run = 0;
-		  px_sort_param[i].file_contents[j].last_run = 0;
+		  continue;
+		}
+	      px_sort_param[i].temp[valid_j] = result_run[idx].temp_file;
+	      px_sort_param[i].file_contents[valid_j].num_pages[0] = result_run[idx].num_pages;
+	      px_sort_param[i].file_contents[valid_j].first_run = 0;
+	      px_sort_param[i].file_contents[valid_j].last_run = 0;
+	      valid_j++;
+	    }
+
+	  if (valid_j <= 1)
+	    {
+	      /* 0 or 1 non-empty runs: no merge needed, propagate result directly */
+	      if (valid_j == 1)
+		{
+		  result_run[first_idx].temp_file = px_sort_param[i].temp[0];
+		  result_run[first_idx].num_pages = px_sort_param[i].file_contents[0].num_pages[0];
 		}
 	      else
 		{
-		  px_sort_param[i].file_contents[j].first_run = -1;
-		  px_sort_param[i].file_contents[j].last_run = -1;
+		  result_run[first_idx].num_pages = 0;
 		}
+	      px_sort_param[i].px_status = PX_DONE;
+	      continue;
 	    }
-	  for (int j = px_sort_param[i].half_files; j < px_sort_param[i].tot_tempfiles; j++)
+
+	  px_sort_param[i].half_files = valid_j;
+	  px_sort_param[i].tot_tempfiles = valid_j * 2;
+	  for (int j = valid_j; j < px_sort_param[i].tot_tempfiles; j++)
 	    {
 	      /* init temp file and contents */
 	      px_sort_param[i].temp[j].volid = NULL_VOLID;
@@ -5275,6 +5285,9 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	  px_sort_args_p->ftab_sets = NULL;
 	  px_sort_args_p->curr_sec = FILE_PARTIAL_SECTOR_INITIALIZER;
 	  px_sort_args_p->curr_pgoffset = 0;
+	  px_sort_args_p->in_recdes =
+	  {
+	  0, 0, 0, NULL};
 	}
 
       /* split ftab into each parallel sort param */
