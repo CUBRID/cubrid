@@ -617,6 +617,7 @@ db_compile_statement_local (DB_SESSION * session)
 
   /* store user-specified-name in info.name.original. */
   parser_walk_tree (parser, statement, NULL, NULL, pt_set_user_specified_name, NULL);
+  parser->flag.skip_implicit_serial_qualifier_merge = 0;
 
   /* get type list describing the output columns titles of the given query */
   cmd_type = pt_node_to_cmd_type (statement);

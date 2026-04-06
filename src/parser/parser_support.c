@@ -10905,6 +10905,47 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   // *INDENT-ON*
   assert (original_name && original_name[0] != '\0');
 
+  /* DBLink remote SQL: keep user-written owner.serial; do not merge schema into names that were unqualified in SQL. */
+  if (parser->flag.skip_implicit_serial_qualifier_merge && node->node_type == PT_EXPR && PT_IS_SERIAL (node->info.expr.op))
+    {
+      if (PT_IS_NAME_NODE (node->info.expr.arg1))
+	{
+	  if (!PT_NAME_INFO_IS_FLAGED (node->info.expr.arg1, PT_NAME_INFO_USER_SPECIFIED))
+	    {
+	      node->info.expr.arg1->info.name.resolved = NULL;
+	      return node;
+	    }
+	}
+      else if (PT_IS_DOT_NODE (node->info.expr.arg1))
+	{
+	  PT_NODE *own = node->info.expr.arg1->info.dot.arg1;
+	  PT_NODE *leaf = node->info.expr.arg1->info.dot.arg2;
+
+	  while (leaf != NULL && leaf->node_type == PT_DOT_)
+	    {
+	      leaf = leaf->info.dot.arg2;
+	    }
+
+	  bool own_u =
+	    (own != NULL && own->node_type == PT_NAME && PT_NAME_INFO_IS_FLAGED (own, PT_NAME_INFO_USER_SPECIFIED));
+	  bool leaf_u =
+	    (leaf != NULL && leaf->node_type == PT_NAME && PT_NAME_INFO_IS_FLAGED (leaf, PT_NAME_INFO_USER_SPECIFIED));
+
+	  if (!own_u && !leaf_u)
+	    {
+	      if (own != NULL && own->node_type == PT_NAME)
+		{
+		  own->info.name.resolved = NULL;
+		}
+	      if (leaf != NULL && leaf->node_type == PT_NAME)
+		{
+		  leaf->info.name.resolved = NULL;
+		}
+	      return node;
+	    }
+	}
+    }
+
   if (strchr (original_name, '.'))
     {
       /* It is already user_specified_name. */
