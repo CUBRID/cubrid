@@ -376,7 +376,7 @@ TEST_F (OosSqlVacuum, VerifyOosSpaceReusedAfterVacuum)
   /* If vacuum cleaned OOS records, reinsert reuses freed slots → page count stays the same.
    * Without vacuum, old dead records would still occupy slots, forcing new page allocations. */
   EXPECT_EQ (pages_after_reinsert, pages_after_first_insert)
-    << "OOS pages should be reused after vacuum — proves vacuum freed OOS record slots";
+      << "OOS pages should be reused after vacuum — proves vacuum freed OOS record slots";
 
   /* Verify data integrity */
   int count = 0;
@@ -443,7 +443,7 @@ TEST_F (OosSqlVacuum, MultiOosColumnVacuum)
   /* If vacuum cleaned BOTH OOS columns, reinsert reuses all freed slots.
    * If only one column was cleaned, we'd need extra pages for the other. */
   EXPECT_EQ (pages_after_reinsert, pages_after_first_insert)
-    << "Both OOS columns must be cleaned — reinsert should reuse all freed slots";
+      << "Both OOS columns must be cleaned — reinsert should reuse all freed slots";
 
   /* Verify data integrity */
   int count = 0;
@@ -516,7 +516,7 @@ TEST_F (OosSqlVacuum, RelocationWithOosVacuum)
   /* Verify OOS cleanup happened (page count should not grow unboundedly) */
   int pages_after = get_oos_page_count ("t_oos_vac");
   EXPECT_LE (pages_after, pages_before)
-    << "OOS pages should not increase after vacuum of relocated record";
+      << "OOS pages should not increase after vacuum of relocated record";
 }
 
 // ============================================================================
@@ -547,7 +547,7 @@ TEST_F (OosSqlVacuum, UpdateOosPageCountCleanup)
 
   int pages_after_update = get_oos_page_count ("t_oos_vac");
   EXPECT_GE (pages_after_update, pages_after_insert)
-    << "UPDATE should create additional OOS record (old version kept for MVCC)";
+      << "UPDATE should create additional OOS record (old version kept for MVCC)";
 
   /* Vacuum should clean the old OOS version */
   rc = run_vacuum ();
@@ -555,7 +555,7 @@ TEST_F (OosSqlVacuum, UpdateOosPageCountCleanup)
 
   int pages_after_vacuum = get_oos_page_count ("t_oos_vac");
   EXPECT_LE (pages_after_vacuum, pages_after_insert)
-    << "Vacuum should clean old OOS version, page count should return to pre-update level";
+      << "Vacuum should clean old OOS version, page count should return to pre-update level";
 
   /* Current value should still be readable */
   int len = 0;

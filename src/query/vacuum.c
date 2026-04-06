@@ -2376,14 +2376,13 @@ vacuum_heap_oos_delete (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       return error_code;
     }
 
-  for (const OID &oos_oid : oos_oids)
+for (const OID & oos_oid:oos_oids)
     {
       error_code = oos_delete (thread_p, helper->oos_vfid, oos_oid);
       if (error_code != NO_ERROR)
 	{
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
-			       "Failed to delete OOS record %d|%d|%d.",
-			       oos_oid.volid, oos_oid.pageid, oos_oid.slotid);
+			       "Failed to delete OOS record %d|%d|%d.", oos_oid.volid, oos_oid.pageid, oos_oid.slotid);
 	  return error_code;
 	}
     }
