@@ -218,6 +218,7 @@ typedef enum
   PERF_PAGE_QRESULT,		/* query result page */
   PERF_PAGE_EHASH,		/* ehash bucket/dir page */
   PERF_PAGE_OVERFLOW,		/* overflow page (with ovf_keyval) */
+  PERF_PAGE_OOS,		/* oos page */
   PERF_PAGE_AREA,		/* area page */
   PERF_PAGE_CATALOG,		/* catalog page */
   PERF_PAGE_BTREE_GENERIC,	/* b+tree index (uninitialized) */

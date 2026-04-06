@@ -688,7 +688,8 @@ retry:
 }
 
 /*
- * xes_posix_copy_file_with_prefix - copy the external file to new one
+ * xes_posix_copy_file_with_prefix - Similar to xes_posix_copy_file(), but handles only the ES_POSIX type and performs file copy
+                              while adding a prefix to the destination path.
  *
  * return: error code
  * src_path(in): path of the original source file
@@ -701,7 +702,7 @@ xes_posix_copy_file_with_prefix (const char *src_path, char *metaname, const cha
 {
   int rd_fd, wr_fd, n = 0;
   ssize_t ret;
-  char dirname1[NAME_MAX], filename[NAME_MAX], dirname2[NAME_MAX];
+  char dirname1[NAME_MAX], dirname2[NAME_MAX], filename[NAME_MAX];
   char buf[ES_POSIX_COPY_BUFSIZE];
   char *p;
 
@@ -718,15 +719,13 @@ retry:
   es_get_unique_name (dirname1, dirname2, metaname, filename);
 
   n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s", prefix, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
-  if (n < 0)
+  if (n < 0 || n >= PATH_MAX - 1)
     {
       close (rd_fd);
-
-      assert (false);
       return ER_ES_INVALID_PATH;
     }
 
-  es_log ("xes_posix_copy_file(%s, %s): %s\n", src_path, metaname, new_path);
+  es_log ("xes_posix_copy_file_with_prefix(%s, %s): %s\n", src_path, metaname, new_path);
 
   /* check file existence */
   wr_fd = es_abs_open (new_path, O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH | O_LARGEFILE);
@@ -749,6 +748,8 @@ retry:
 	  if (ret != NO_ERROR)
 	    {
 	      close (rd_fd);
+
+	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", src_path);
 	      return ER_ES_GENERAL;
 	    }
 
@@ -764,8 +765,9 @@ retry:
 	{
 	  goto retry;
 	}
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", new_path);
       close (rd_fd);
+
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", new_path);
       return ER_ES_GENERAL;
     }
 
@@ -799,7 +801,7 @@ retry:
 }
 
 /*
- * es_posix_rename_file - convert a locator & file path according to the metaname
+ * xes_posix_rename_file - convert a locator & file path according to the metaname
  *
  * return: error code, ER_ES_GENERAL or NO_ERRROR
  * src_path(in): file path to rename
@@ -818,6 +820,64 @@ xes_posix_rename_file (const char *src_path, const char *metaname, char *new_pat
   ret = es_os_rename_file_abs (src_path, new_path);
 
   return (ret < 0) ? ER_ES_GENERAL : NO_ERROR;
+}
+
+/*
+ * xes_posix_move_file_with_prefix - Moves a LOB file from the source path to a destination directory defined by the prefix.
+ *
+ * return: error code
+ * src_path(in): Source file path
+ * metaname(in) : Metadata used for the new file name
+ * prefix(in) : prefix to be added to the destination path when moving the file
+ * new_path(out): Resulting path of the moved file
+ */
+int
+xes_posix_move_file_with_prefix (const char *src_path, const char *metaname, const char *prefix, char *new_path)
+{
+  ssize_t ret;
+  char dirname1[NAME_MAX], dirname2[NAME_MAX], filename[NAME_MAX];
+  char *p;
+
+  /* Create a target file */
+  es_get_unique_name (dirname1, dirname2, metaname, filename);
+
+  ret = snprintf (new_path, PATH_MAX, "%s%c%s%c%s", prefix, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
+  if (ret < 0 || ret >= PATH_MAX)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", new_path);
+      return ER_ES_INVALID_PATH;
+    }
+  es_log ("xes_posix_move_file_with_prefix(%s, %s): %s\n", src_path, metaname, new_path);
+
+  p = strrchr (new_path, PATH_SEPARATOR);
+  if (p != NULL)
+    {
+      *p = '\0';		/* Temporarily truncate the path to extract the directory portion */
+    }
+  else
+    {
+      return ER_ES_GENERAL;
+    }
+
+  /* Try create directory */
+  ret = es_make_dirs (new_path, dirname2);
+
+  *p = PATH_SEPARATOR;
+
+  if (ret != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", new_path);
+      return ER_ES_GENERAL;
+    }
+
+  ret = es_os_rename_file_abs (src_path, new_path);
+  if (ret != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", src_path);
+      return ER_ES_GENERAL;
+    }
+
+  return NO_ERROR;
 }
 
 static int

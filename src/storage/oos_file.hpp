@@ -71,10 +71,12 @@ struct oos_hdr_stats
   int reserve1_for_future;
 };
 
-extern int oos_file_create (THREAD_ENTRY *thread_p, VFID &oos_vfid);
-extern int oos_file_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
+extern int oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid);
+extern int oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
+extern int oos_remove_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid);
 extern int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &oid);
 extern int oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes);
+extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid);
 extern int oos_get_length (THREAD_ENTRY *thread_p, const OID &oid);
 
 extern int oos_rv_redo_delete (THREAD_ENTRY *thread_p, LOG_RCV *rcv);

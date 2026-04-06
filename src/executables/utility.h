@@ -238,6 +238,10 @@ typedef enum
   ADDVOLDB_MSG_BAD_NPAGES = 20,
   ADDVOLDB_MSG_BAD_PURPOSE = 21,
   ADDVOLDB_INVALID_MAX_WRITESIZE_IN_SEC = 22,
+  ADDVOLDB_MSG_BAD_VOLTYPE = 23,
+  ADDVOLDB_VOLTYPE_NOT_SUPPORT_SAMODE = 24,
+  ADDVOLDB_VOLTYPE_MUSTBE_TEMP_PURPOSE = 25,
+  ADDVOLDB_VOLTYPE_NOT_USED_PATH_NAME = 26,
   ADDVOLDB_MSG_USAGE = 60
 } MSGCAT_ADDVOLDB_MSG;
 
@@ -1163,6 +1167,8 @@ typedef struct _ha_config
 #define ADDVOL_VOLUME_SIZE_L                    "db-volume-size"
 #define ADDVOL_MAX_WRITESIZE_IN_SEC_S           10707
 #define ADDVOL_MAX_WRITESIZE_IN_SEC_L           "max-writesize-in-sec"
+#define ADDVOL_VOLTYPE_L			"voltype"
+#define ADDVOL_VOLTYPE_S			't'
 
 #if 0
 /* delvoldb option list */
