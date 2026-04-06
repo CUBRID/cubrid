@@ -70,7 +70,7 @@ namespace cubbase
 
     public:
       count_registry (std::string name, std::function<int ()> getter) :
-	m_name (name),
+	m_name (std::move (name)),
 	m_getter (std::move (getter)),
 	m_next (m_head)
       {
@@ -78,7 +78,7 @@ namespace cubbase
       }
 
       count_registry (std::string name, int count) :
-	m_name (name),
+	m_name (std::move (name)),
 	m_getter (count),
 	m_next (m_head)
       {
