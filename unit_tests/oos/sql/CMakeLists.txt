@@ -41,5 +41,5 @@ set_tests_properties(
   test_oos_sql_crud test_oos_sql_ddl test_oos_sql_delete
   test_oos_sql_boundary test_oos_sql_update_delete test_oos_sql_txn
   test_oos_sql_vacuum
-  PROPERTIES FIXTURES_REQUIRED OOS_DB
+  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE
 )

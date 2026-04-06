@@ -61,7 +61,7 @@ TEST_F (OosSqlCrud, BasicInsertSelect)
   int len = 0;
   rc = fetch_single_int ("SELECT LENGTH(oos_col) FROM t_oos_crud WHERE id = 1", &len);
   ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_GT (len, 0);
+  EXPECT_EQ (len, 2048);
 }
 
 // TC-02: Small record should NOT trigger OOS

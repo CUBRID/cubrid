@@ -654,7 +654,7 @@ function build_build ()
   build_configure && build_compile && build_install
 
   # Auto-run unit tests if any unit test option is enabled
-  if grep -qE "UNIT_TEST(S|_OOS):BOOL=ON" "$build_dir/CMakeCache.txt" 2>/dev/null; then
+  if grep -qE "UNIT_TEST[A-Z_]*:BOOL=ON" "$build_dir/CMakeCache.txt" 2>/dev/null; then
     build_test
   fi
 }
@@ -669,7 +669,7 @@ function build_test ()
 
   # Run unit tests (unittestdb is created/cleaned by CTest fixtures)
   print_check "Running unit tests"
-  ctest --test-dir $build_dir --output-on-failure
+  ctest --test-dir "$build_dir" --output-on-failure
   [ $? -eq 0 ] && print_result "OK" || print_fatal "Unit tests failed"
 }
 
