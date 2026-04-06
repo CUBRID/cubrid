@@ -873,13 +873,18 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
+  char *only_table[1];
   const char *database_name;
+  char **table_array = NULL;
   const char *output_file = NULL;
+  const char *table_name = NULL;
+  const char *table_array_file = NULL;
   int i;
+  int table_array_length = 0;
   const char *size_unit;
   T_SPACEDB_SIZE_UNIT size_unit_type;
 
-  bool summarize, purpose;
+  bool summarize, purpose, table_size;
   FILE *outfp = NULL;
   char io_size_str[64], log_size_str[64];
 
@@ -888,6 +893,9 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   SPACEDB_ONEVOL **volsp = NULL;
   SPACEDB_FILES files[SPACEDB_FILE_COUNT];
   SPACEDB_FILES *filesp = NULL;
+  SPACEDB_TABLE_SIZES_HEADER *table_sizes = NULL;
+  int actual_table_count = 0;
+  int spacedb_error = NO_ERROR;
 
   char size_str_1[64];
   char size_str_2[64];
@@ -915,8 +923,24 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   size_unit = utility_get_option_string_value (arg_map, SPACE_SIZE_UNIT_S, 0);
   summarize = utility_get_option_bool_value (arg_map, SPACE_SUMMARIZE_S);
   purpose = utility_get_option_bool_value (arg_map, SPACE_PURPOSE_S);
+  table_size = utility_get_option_bool_value (arg_map, SPACE_TABLE_SIZE_S);
+  table_name = utility_get_option_string_value (arg_map, SPACE_TABLE_NAME_S, 0);
+  table_array_file = utility_get_option_string_value (arg_map, SPACE_INPUT_FILE_S, 0);
 
   size_unit_type = SPACEDB_SIZE_UNIT_HUMAN_READABLE;
+
+  if (table_size)
+    {
+      if (table_name && table_array_file)
+        {
+          fprintf (stderr, "The -n and -i options cannot be used together.\n");
+          goto error_exit;
+        }
+      if (table_name == NULL && table_array_file == NULL)
+        {
+          goto print_space_usage;
+        }
+    }
 
   if (size_unit != NULL)
     {
@@ -994,8 +1018,78 @@ spacedb (UTIL_FUNCTION_ARG * arg)
       /* we need detailed space info for file usage. set filesp to non-NULL value */
       filesp = files;
     }
+  if (table_size)
+    {
+      if (table_name != NULL)
+        {          
+          only_table[0] = (char *) table_name;
+          table_array = only_table;
+          table_array_length = 1;
+        }
+      else if (table_array_file != NULL)
+        {
+          FILE *infp = NULL;
+          char input_table[SM_MAX_IDENTIFIER_LENGTH];
+          int capacity = 16;
 
-  if (netcl_spacedb (all, volsp, filesp) != NO_ERROR)
+          infp = fopen (table_array_file, "r");
+          if (infp == NULL)
+            {
+              perror (table_array_file);
+              goto error_exit;
+            }
+
+          table_array = (char **) malloc (capacity * sizeof (char *));
+          if (table_array == NULL)
+            {
+              fclose (infp);
+              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+                      (size_t) capacity * sizeof (char *));
+              goto error_exit;
+            }
+
+          while (fgets (input_table, sizeof (input_table), infp) != NULL)
+            {
+              char **new_table_array = NULL;
+
+              trim (input_table);
+              if (strlen (input_table) == 0)
+                {
+                  continue;
+                }
+
+              if (table_array_length >= capacity)
+                {
+                  capacity *= 2;
+                  new_table_array = (char **) realloc (table_array, capacity * sizeof (char *));
+                  if (new_table_array == NULL)
+                    {
+                      fclose (infp);
+                      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+                              (size_t) capacity * sizeof (char *));
+                      goto error_exit;
+                    }
+                  table_array = new_table_array;
+                }
+
+              table_array[table_array_length] = strdup (input_table);
+              if (table_array[table_array_length] == NULL)
+                {
+                  fclose (infp);
+                  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (input_table) + 1);
+                  goto error_exit;
+                }
+
+              table_array_length++;
+            }
+
+          fclose (infp);
+        }
+      
+    }
+
+  spacedb_error = netcl_spacedb (all, volsp, filesp, &table_sizes, &actual_table_count, table_array, table_array_length);
+  if (spacedb_error != NO_ERROR && actual_table_count == 0)
     {
       ASSERT_ERROR ();
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (ER_WARNING_SEVERITY));
@@ -1113,7 +1207,91 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 	       boot_get_lob_path ());
     }
 
+  /* print table_size */
+  if (table_size)
+    {
+      for (int table_num = 0; table_num < actual_table_count; table_num++)
+        {
+
+          const char *class_name = (table_sizes[table_num].file_count > 0)
+                                   ? table_sizes[table_num].header[0].name
+                                   : "";
+          INT64 total_used_npage = 0;
+          INT64 total_alloc_npage = 0;
+          char total_used_pct_str[32];
+
+          fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_FILES_TABLE_SIZE_CLASS_NAME), class_name);
+          fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_END_UNDERLINE));
+          fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, (size_unit_type == SPACEDB_SIZE_UNIT_PAGE ? SPACEDB_MSG_FILES_TABLE_SIZE_PAGE : SPACEDB_MSG_FILES_TABLE_SIZE_SIZE)));
+          fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_END_UNDERLINE));
+
+          for (int file_num = 0; file_num < table_sizes[table_num].file_count; file_num++)
+            {
+              SPACEDB_TABLE_SIZES table_size_cp = table_sizes[table_num].header[file_num];
+              char *name = table_size_cp.name;
+              char used_pct_str[32];
+              int used_npage;
+              int alloc_npage;
+              const char *ftype_str;
+              int ftype = table_size_cp.ftype;
+              double used_pct;
+
+              used_npage = table_size_cp.data_used_page + table_size_cp.ovf_alloced_page;
+              alloc_npage = table_size_cp.data_alloced_page + table_size_cp.ovf_alloced_page;
+              used_pct = (alloc_npage > 0) ? ((double) used_npage / (double) alloc_npage) * 100.0 : 0.0;
+
+              ftype_str = (ftype == 1) ? "HEAP" : (ftype == 4) ? "BTREE" : "UNKNOWN";
+              snprintf (used_pct_str, sizeof (used_pct_str), "%.1f", used_pct);
+
+              fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_FILES_TABLE_SIZE_FORMAT),
+                       name, ftype_str, SPACEDB_TO_SIZE_ARG (1, used_npage), SPACEDB_TO_SIZE_ARG (2, alloc_npage), used_pct_str);
+
+              total_used_npage += used_npage;
+              total_alloc_npage += alloc_npage;
+            }
+
+          fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_END_UNDERLINE));
+          snprintf (total_used_pct_str, sizeof (total_used_pct_str), "%.1f",
+		    (total_alloc_npage > 0) ? ((double) total_used_npage / (double) total_alloc_npage) * 100.0 : 0.0);
+          fprintf (outfp,
+		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_FILES_TABLE_SIZE_TOTAL),
+		   SPACEDB_TO_SIZE_ARG (1, total_used_npage),
+		   SPACEDB_TO_SIZE_ARG (2, total_alloc_npage), total_used_pct_str);
+          fprintf (outfp, "\n");
+        }
+    }
+
+  if (spacedb_error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (ER_WARNING_SEVERITY));
+      db_shutdown ();
+      goto error_exit;
+    }
+
   db_shutdown ();
+  if (table_sizes != NULL)
+    {
+      for (i = 0; i < actual_table_count; i++)
+        {
+          if (table_sizes[i].header != NULL)
+            {
+              free_and_init (table_sizes[i].header);
+            }
+        }
+      free_and_init (table_sizes);
+    }
+  if (table_array != NULL && table_array != only_table)
+    {
+      for (i = 0; i < table_array_length; i++)
+        {
+          if (table_array[i] != NULL)
+            {
+              free_and_init (table_array[i]);
+            }
+        }
+      free_and_init (table_array);
+    }
   if (outfp != stdout)
     {
       fclose (outfp);
@@ -1132,6 +1310,28 @@ print_space_usage:
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 
 error_exit:
+  if (table_sizes != NULL)
+    {
+      for (i = 0; i < actual_table_count; i++)
+        {
+          if (table_sizes[i].header != NULL)
+            {
+              free_and_init (table_sizes[i].header);
+            }
+        }
+      free_and_init (table_sizes);
+    }
+  if (table_array != NULL && table_array != only_table)
+    {
+      for (i = 0; i < table_array_length; i++)
+        {
+          if (table_array[i] != NULL)
+            {
+              free_and_init (table_array[i]);
+            }
+        }
+      free_and_init (table_array);
+    }
   if (outfp != stdout && outfp != NULL)
     {
       fclose (outfp);
