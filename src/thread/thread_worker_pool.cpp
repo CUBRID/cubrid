@@ -29,6 +29,7 @@
 #include <sstream>
 #include <cstring>
 #include <cmath>
+#include <random>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -129,7 +130,8 @@ namespace cubthread
     // increment task count
     ++m_task_count;
 
-    std::size_t core_index = core_hash % m_core_count;
+    thread_local std::mt19937 rng (std::random_device{}());
+    std::size_t core_index = rng () % m_core_count;
     m_core_array[core_index].execute_task (work_arg, for_method);
   }
 
