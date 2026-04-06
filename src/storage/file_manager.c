@@ -58,6 +58,8 @@
 #include "vacuum.h"
 #include "btree_load.h"
 #include "critical_section.h"
+#include "locator_sr.h"
+#include "overflow_file.h"
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #endif /* SERVER_MODE */
@@ -710,6 +712,10 @@ static int file_compare_vfids (const void *first, const void *second);
 static int file_compare_track_items (const void *first, const void *second);
 
 static void file_print_name_of_class (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p);
+
+static int file_spacedb_fill_one_table (THREAD_ENTRY * thread_p, const OID * class_oid,
+                            const char *class_name, SPACEDB_TABLE_SIZES_HEADER * entry);
+static void file_spacedb_free_table_sizes (SPACEDB_TABLE_SIZES_HEADER * table_sizes, int count);
 
 /************************************************************************/
 /* File manipulation section                                            */
@@ -7877,36 +7883,278 @@ file_user_page_table_item_dump (THREAD_ENTRY * thread_p, const void *data, int i
  * return        : error code
  * thread_p (in) : thread entry
  * spacedb (out) : output space usage information
+ * table_array (in) : TODO: write this comment
+ * table_array_length (in) : TODO: write this comment
+ * file_sizes (out) : TODO: write this comment
  */
 int
-file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb)
+file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb, char **table_array, int table_array_length, SPACEDB_TABLE_SIZES_HEADER ** table_sizes_p, int *actual_count_p)
 {
   int i;
   int error_code = NO_ERROR;
 
-  /* init */
-  memset (spacedb, 0, sizeof (SPACEDB_FILES) * SPACEDB_FILE_COUNT);
+  if (spacedb != NULL)
+  {
+    /* init */
+    memset (spacedb, 0, sizeof (SPACEDB_FILES) * SPACEDB_FILE_COUNT);
 
-  /* temporary files stats are already cached. */
-  spacedb[SPACEDB_TEMP_FILE] = file_Tempcache.spacedb_temp;
+    /* temporary files stats are already cached. */
+    spacedb[SPACEDB_TEMP_FILE] = file_Tempcache.spacedb_temp;
 
-  /* use file tracker to get info on permanent purpose files */
-  error_code = file_tracker_spacedb (thread_p, spacedb);
-  if (error_code != NO_ERROR)
+    /* use file tracker to get info on permanent purpose files */
+    error_code = file_tracker_spacedb (thread_p, spacedb);
+    if (error_code != NO_ERROR)
+      {
+        ASSERT_ERROR ();
+        return error_code;
+      }
+
+    /* compute total */
+    memset (&spacedb[SPACEDB_TOTAL_FILE], 0, sizeof (spacedb[SPACEDB_TOTAL_FILE]));
+    for (i = 0; i < SPACEDB_TOTAL_FILE; i++)
+      {
+        spacedb[SPACEDB_TOTAL_FILE].nfile += spacedb[i].nfile;
+        spacedb[SPACEDB_TOTAL_FILE].npage_ftab += spacedb[i].npage_ftab;
+        spacedb[SPACEDB_TOTAL_FILE].npage_user += spacedb[i].npage_user;
+        spacedb[SPACEDB_TOTAL_FILE].npage_reserved += spacedb[i].npage_reserved;
+      }
+  }
+
+  *table_sizes_p = NULL;
+  *actual_count_p = 0;
+
+  if (table_array_length == 1 && strcmp (table_array[0], "*") == 0)
     {
-      ASSERT_ERROR ();
+      OID *user_class_oids = NULL;
+      int user_class_count = 0;
+
+      error_code = locator_get_user_class_oids (thread_p, &user_class_oids, &user_class_count);
+      if (error_code != NO_ERROR || user_class_count == 0)
+        {
+          return error_code;
+        }
+
+      *table_sizes_p = (SPACEDB_TABLE_SIZES_HEADER *) malloc (user_class_count * sizeof (SPACEDB_TABLE_SIZES_HEADER));
+      if (*table_sizes_p == NULL)
+        {
+          free_and_init (user_class_oids);
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+                  (size_t) user_class_count * sizeof (SPACEDB_TABLE_SIZES_HEADER));
+          return ER_OUT_OF_VIRTUAL_MEMORY;
+        }
+
+      for (int i = 0; i < user_class_count; i++)
+        {
+          char *class_name = NULL;
+
+          error_code = heap_get_class_name (thread_p, &user_class_oids[i], &class_name);
+          if (error_code != NO_ERROR || class_name == NULL)
+            {
+              free_and_init (user_class_oids);
+              free_and_init (*table_sizes_p);
+              return error_code != NO_ERROR ? error_code : ER_FAILED;
+            }
+
+          error_code = file_spacedb_fill_one_table (thread_p, &user_class_oids[i], class_name, &(*table_sizes_p)[i]);
+          free_and_init (class_name);
+          if (error_code != NO_ERROR)
+            {
+              free_and_init (user_class_oids);
+              file_spacedb_free_table_sizes (*table_sizes_p, i);
+              *table_sizes_p = NULL;
+              return error_code;
+            }
+        }
+
+      *actual_count_p = user_class_count;
+      free_and_init (user_class_oids);
+    }
+  else
+    {
+      *table_sizes_p = (SPACEDB_TABLE_SIZES_HEADER *) malloc (table_array_length * sizeof (SPACEDB_TABLE_SIZES_HEADER));
+      if (*table_sizes_p == NULL)
+        {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+                  (size_t) table_array_length * sizeof (SPACEDB_TABLE_SIZES_HEADER));
+          return ER_OUT_OF_VIRTUAL_MEMORY;
+        }
+
+      *actual_count_p = 0;
+      for (int table_num = 0; table_num < table_array_length; table_num++)
+        {
+          OID class_oid;
+
+          OID_SET_NULL (&class_oid);
+          xlocator_find_class_oid (thread_p, table_array[table_num], &class_oid, S_LOCK);
+          if (OID_ISNULL (&class_oid))
+            {
+              er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, table_array[table_num]);
+              return ER_LC_UNKNOWN_CLASSNAME;
+            }
+
+          error_code = file_spacedb_fill_one_table (thread_p, &class_oid, table_array[table_num], &(*table_sizes_p)[table_num]);
+          if (error_code != NO_ERROR)
+            {
+              file_spacedb_free_table_sizes (*table_sizes_p, table_num);
+              *table_sizes_p = NULL;
+              return error_code;
+            }
+
+          *actual_count_p = table_num + 1;
+        }
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * file_spacedb_free_table_sizes () - free nested spacedb table size entries
+ *
+ * return         : void
+ * table_sizes(in): array to free
+ * count (in)     : number of valid entries
+ */
+static void
+file_spacedb_free_table_sizes (SPACEDB_TABLE_SIZES_HEADER * table_sizes, int count)
+{
+  if (table_sizes == NULL)
+    {
+      return;
+    }
+
+  for (int i = 0; i < count; i++)
+    {
+      if (table_sizes[i].header != NULL)
+        {
+          db_private_free_and_init (NULL, table_sizes[i].header);
+        }
+    }
+
+  free_and_init (table_sizes);
+}
+
+/*
+  * file_spacedb_fill_one_table () - Fill space usage info for a single table.
+  *
+  * return        : error code
+  * thread_p (in) : thread entry
+  * class_oid (in): class OID
+  * class_name(in): class name (used for output label)
+  * entry (out)   : SPACEDB_TABLE_SIZES_HEADER slot to fill
+  */
+static int
+file_spacedb_fill_one_table (THREAD_ENTRY * thread_p, const OID * class_oid,
+                            const char *class_name, SPACEDB_TABLE_SIZES_HEADER * entry)
+{
+  OR_CLASSREP *class_rep = NULL;
+  int idx_incache = -1;
+  HFID hfid;
+  VFID ovf_vfid;
+  VPID vpid_fhead;
+  VPID ovf_vpid;
+  PAGE_PTR page_fhead = NULL;
+  PAGE_PTR page_ovf_fhead = NULL;
+  FILE_HEADER *fhead;
+  FILE_HEADER *ovfhead;
+  int error_code = NO_ERROR;
+
+  HFID_SET_NULL (&hfid);
+  VFID_SET_NULL (&ovf_vfid);
+
+  heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL);
+
+  class_rep = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &idx_incache);
+  if (class_rep == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
 
-  /* compute total */
-  memset (&spacedb[SPACEDB_TOTAL_FILE], 0, sizeof (spacedb[SPACEDB_TOTAL_FILE]));
-  for (i = 0; i < SPACEDB_TOTAL_FILE; i++)
+  entry->file_count = class_rep->n_indexes + 1;
+  entry->header = (SPACEDB_TABLE_SIZES *) db_private_alloc (thread_p,
+                                                          sizeof (SPACEDB_TABLE_SIZES) * entry->file_count);
+  if (entry->header == NULL)
     {
-      spacedb[SPACEDB_TOTAL_FILE].nfile += spacedb[i].nfile;
-      spacedb[SPACEDB_TOTAL_FILE].npage_ftab += spacedb[i].npage_ftab;
-      spacedb[SPACEDB_TOTAL_FILE].npage_user += spacedb[i].npage_user;
-      spacedb[SPACEDB_TOTAL_FILE].npage_reserved += spacedb[i].npage_reserved;
+      ASSERT_ERROR_AND_SET (error_code);
+      heap_classrepr_free_and_init (class_rep, &idx_incache);
+      return error_code;
     }
+  memset (entry->header, 0, sizeof (SPACEDB_TABLE_SIZES) * entry->file_count);
+
+  snprintf (entry->header[0].name, DB_MAX_IDENTIFIER_LENGTH, "%s", class_name);
+  entry->header[0].ftype = FILE_HEAP;
+
+  vpid_fhead.volid = hfid.vfid.volid;
+  vpid_fhead.pageid = hfid.vfid.fileid;
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      heap_classrepr_free_and_init (class_rep, &idx_incache);
+      return error_code;
+    }
+  fhead = (FILE_HEADER *) page_fhead;
+
+  entry->header[0].data_used_page = fhead->n_page_user + fhead->n_page_ftab;
+  entry->header[0].data_alloced_page = fhead->n_page_total;
+
+  heap_ovf_find_vfid (thread_p, &hfid, &ovf_vfid, false, PGBUF_UNCONDITIONAL_LATCH);
+  if (!VFID_ISNULL (&ovf_vfid))
+    {
+      ovf_vpid.volid = ovf_vfid.volid;
+      ovf_vpid.pageid = ovf_vfid.fileid;
+      page_ovf_fhead = pgbuf_fix (thread_p, &ovf_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (page_ovf_fhead == NULL)
+      {
+        ASSERT_ERROR_AND_SET (error_code);
+        pgbuf_unfix_and_init (thread_p, page_fhead);
+        heap_classrepr_free_and_init (class_rep, &idx_incache);
+        return error_code;
+      }
+
+      ovfhead = (FILE_HEADER *) page_ovf_fhead;
+      entry->header[0].ovf_free_size = ovfhead->n_page_user + ovfhead->n_page_ftab;
+      entry->header[0].ovf_alloced_page = ovfhead->n_page_total;
+      pgbuf_unfix_and_init (thread_p, page_ovf_fhead);
+    }
+
+  for (int index_num = 0; index_num < class_rep->n_indexes; index_num++)
+    {
+      VPID vpid_btree_fhead;
+      PAGE_PTR page_btree_fhead;
+      FILE_HEADER *btree_fhead;
+      BTREE_CAPACITY idx_cpc;
+
+      snprintf (entry->header[index_num + 1].name, DB_MAX_IDENTIFIER_LENGTH, "%s",
+              class_rep->indexes[index_num].btname);
+      entry->header[index_num + 1].ftype = FILE_BTREE;
+
+      vpid_btree_fhead.volid = class_rep->indexes[index_num].btid.vfid.volid;
+      vpid_btree_fhead.pageid = class_rep->indexes[index_num].btid.vfid.fileid;
+      page_btree_fhead = pgbuf_fix (thread_p, &vpid_btree_fhead, OLD_PAGE, PGBUF_LATCH_READ,
+                                  PGBUF_UNCONDITIONAL_LATCH);
+      if (page_btree_fhead == NULL)
+      {
+        ASSERT_ERROR_AND_SET (error_code);
+        pgbuf_unfix_and_init (thread_p, page_fhead);
+        heap_classrepr_free_and_init (class_rep, &idx_incache);
+        return error_code;
+      }
+
+      btree_fhead = (FILE_HEADER *) page_btree_fhead;
+      entry->header[index_num + 1].data_used_page = btree_fhead->n_page_user + btree_fhead->n_page_ftab;
+      entry->header[index_num + 1].data_alloced_page = btree_fhead->n_page_total;
+
+      btree_index_capacity (thread_p, &class_rep->indexes[index_num].btid, &idx_cpc);
+      entry->header[index_num + 1].ovf_free_size = idx_cpc.ovfl_oid_pg.tot_free_space;
+      entry->header[index_num + 1].ovf_alloced_page = idx_cpc.ovfl_oid_pg.tot_pg_cnt;
+
+      pgbuf_unfix_and_init (thread_p, page_btree_fhead);
+    }
+
+  pgbuf_unfix_and_init (thread_p, page_fhead);
+  heap_classrepr_free_and_init (class_rep, &idx_incache);
+
   return NO_ERROR;
 }
 

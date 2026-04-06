@@ -67,6 +67,7 @@
 #include "xserver_interface.h"
 #include "catalog_class.h"
 #include "es_posix.h"
+#include "schema_system_catalog.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -113,6 +114,13 @@ struct locator_return_nxobj
   int area_offset;		/* Relative offset to recdes->data in the communication area */
 };
 
+typedef struct locator_user_class_collect_ctx LOCATOR_USER_CLASS_COLLECT_CTX;
+struct locator_user_class_collect_ctx
+{
+  OID *oids;
+  int count;
+};
+
 bool locator_Dont_check_foreign_key = false;
 
 static MHT_TABLE *locator_Mht_classnames = NULL;
@@ -125,6 +133,9 @@ static const INT32 locator_Pseudo_pageid_last = -0x7FFF;
 static INT32 locator_Pseudo_pageid_crt = -2;
 
 static int locator_permoid_class_name (THREAD_ENTRY * thread_p, const char *classname, const OID * class_oid);
+static bool locator_is_user_class_entry (const LOCATOR_CLASSNAME_ENTRY * entry);
+static int locator_count_user_class_oid_func (THREAD_ENTRY * thread_p, void *data, void *args);
+static int locator_collect_user_class_oid_func (THREAD_ENTRY * thread_p, void *data, void *args);
 static int locator_defence_drop_class_name_entry (const void *name, void *ent, void *args);
 static int locator_force_drop_class_name_entry (const void *name, void *ent, void *args);
 static int locator_drop_class_name_entry (THREAD_ENTRY * thread_p, const char *classname, LOG_LSA * savep_lsa);
@@ -1155,6 +1166,141 @@ start:
 #endif
 
   return find;
+}
+
+/*
+  * locator_is_user_class_entry () - Returns true if entry is a permanent
+  *                                  user (non-system, non-view) class.
+  */
+static bool
+locator_is_user_class_entry (const LOCATOR_CLASSNAME_ENTRY * entry)
+{
+  const OID *class_oid;
+
+  if (entry->e_current.action != LC_CLASSNAME_EXIST)
+    {
+      return false;
+    }
+
+  class_oid = &entry->e_current.oid;
+
+  if (OID_ISNULL (class_oid))
+    {
+      return false;
+    }
+
+  /* Fast path: filter by OID against cached system class OIDs */
+  if (oid_is_system_class (class_oid))
+    {
+      return false;
+    }
+
+  /*
+    * Name-based filter: catches system classes/vclasses whose OIDs are NOT
+    * in oid_Cache (e.g. "dual", "_db_resolution", "db_class", "db_vclass", ...).
+    */
+  if (sm_is_system_class (entry->e_name) || sm_is_system_vclass (entry->e_name))
+    {
+      return false;
+    }
+
+  return true;
+}
+
+static int
+locator_count_user_class_oid_func (THREAD_ENTRY * thread_p, void *data, void *args)
+{
+  LOCATOR_CLASSNAME_ENTRY *entry = (LOCATOR_CLASSNAME_ENTRY *) data;
+  int *count_p = (int *) args;
+
+  if (locator_is_user_class_entry (entry))
+    {
+      (*count_p)++;
+    }
+
+  return NO_ERROR;
+}
+
+static int
+locator_collect_user_class_oid_func (THREAD_ENTRY * thread_p, void *data, void *args)
+{
+  LOCATOR_CLASSNAME_ENTRY *entry = (LOCATOR_CLASSNAME_ENTRY *) data;
+  struct locator_user_class_collect_ctx *ctx = (struct locator_user_class_collect_ctx *) args;
+
+  if (locator_is_user_class_entry (entry))
+    {
+      COPY_OID (&ctx->oids[ctx->count], &entry->e_current.oid);
+      ctx->count++;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+  * locator_get_user_class_oids () - Collect OIDs of all permanent user
+  *                                  (non-system, non-view) classes.
+  *
+  * return: NO_ERROR or error code
+  *
+  *   thread_p(in)  : thread entry
+  *   oids_p(out)   : caller must free with free_and_init()
+  *   count_p(out)  : number of OIDs in *oids_p
+  *
+  * Note: Two-pass approach — first counts, then collects — so malloc is
+  *       exactly sized.  Reader lock is held across both passes.
+  */
+int
+locator_get_user_class_oids (THREAD_ENTRY * thread_p, OID ** oids_p, int *count_p)
+{
+  struct locator_user_class_collect_ctx ctx;
+  int user_class_count = 0;
+  int error_code = NO_ERROR;
+
+  assert (oids_p != NULL && count_p != NULL);
+
+  *oids_p = NULL;
+  *count_p = 0;
+
+  if (csect_enter_as_reader (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  /* Pass 1: count user classes exactly */
+  error_code =
+    mht_map_no_key (thread_p, locator_Mht_classnames, locator_count_user_class_oid_func, &user_class_count);
+  if (error_code != NO_ERROR || user_class_count == 0)
+    {
+      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+      return error_code;
+    }
+
+  ctx.oids = (OID *) malloc (user_class_count * sizeof (OID));
+  if (ctx.oids == NULL)
+    {
+      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) user_class_count * sizeof (OID));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  ctx.count = 0; /* why ctx.count = 0? */
+
+  /* Pass 2: collect OIDs — reader lock is still held, table cannot change */
+  error_code =
+    mht_map_no_key (thread_p, locator_Mht_classnames, locator_collect_user_class_oid_func, &ctx);
+
+  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+
+  if (error_code != NO_ERROR)
+    {
+      free_and_init (ctx.oids);
+      return error_code;
+    }
+
+  *oids_p = ctx.oids;
+  *count_p = ctx.count;
+
+  return NO_ERROR;
 }
 
 /*
