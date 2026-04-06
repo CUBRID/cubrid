@@ -3751,8 +3751,7 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
       cur_class = sort_args->cur_class;
       attr_offset = cur_class * sort_args->n_attrs;
       sort_args->in_recdes.data = NULL;
-      if (vpid.pageid == sort_args->hfids[cur_class].hpgid
-	  && vpid.volid == sort_args->hfids[cur_class].vfid.volid)
+      if (vpid.pageid == sort_args->hfids[cur_class].hpgid && vpid.volid == sort_args->hfids[cur_class].vfid.volid)
 	{
 	  /* heap header page */
 	  slot_iter_scan_result = S_END;
