@@ -4065,6 +4065,8 @@ dwb_file_sync_helper_execute (cubthread::entry &thread_ref)
 /*
  * dwb_flush_block_daemon_init () - initialize DWB flush block daemon thread
  */
+REGISTER_DAEMON (dwb_flush_block);
+
 void
 dwb_flush_block_daemon_init ()
 {
@@ -4077,6 +4079,8 @@ dwb_flush_block_daemon_init ()
 /*
  * dwb_file_sync_helper_daemon_init () - initialize DWB file sync helper daemon thread
  */
+REGISTER_DAEMON (dwb_file_sync_helper);
+
 void
 dwb_file_sync_helper_daemon_init ()
 {

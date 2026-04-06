@@ -65,6 +65,10 @@
 
 namespace cubconn::master
 {
+  /* Master connector uses Main_entry_p (TT_MASTER) instead of claiming a separate entry. */
+  /* It is still registered here for consistency with other connection components.	  */
+  REGISTER_CONNECTION (master_connector, 0);
+
   connector::connector () :
     m_stop (false),
     m_entry (nullptr),
