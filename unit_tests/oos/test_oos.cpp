@@ -44,7 +44,7 @@ TEST (OosTest, OosCreateAndDestroy)
   int err;
 
   VFID oos_vfid;
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   auto [fileid, volid] = oos_vfid;
@@ -67,11 +67,11 @@ TEST (OosTest, OosCreateAndCreateAgain)
   int err;
 
   VFID oos_vfid;
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   VFID oos_vfid2;
-  err = oos_file_create (thread_p, oos_vfid2);
+  err = oos_create_file (thread_p, oos_vfid2);
   ASSERT_EQ (err, NO_ERROR);
 
   auto [fileid1, volid1] = oos_vfid;
@@ -90,7 +90,7 @@ TEST (OosTest, OosInsertAndRead)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES rec{};
@@ -119,7 +119,7 @@ TEST (OosTest, OosInsertLargerThanPageSize)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   const int large_size = DB_PAGESIZE + 5;
@@ -151,7 +151,7 @@ TEST (OosTest, OosInsertLarge160KBString)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   const int large_size = 160 * 1024; // 160 KB
@@ -183,7 +183,7 @@ TEST (OosTest, OosInsertAndRead100LargeStringsAroundMaxOosChunkSize)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   // max chunk size that can be stored in a single OOS slotted page
@@ -220,7 +220,7 @@ TEST (OosTest, OosFindBestSpace)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   VPID vpid{};
@@ -240,7 +240,7 @@ TEST (OosTest, OosFindBestSpaceReturnsExistingPage)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   VPID vpid{};
@@ -270,7 +270,7 @@ TEST (OosTest, OosFixAndUnfixPage)
   int err;
 
   VFID oos_vfid;
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   VPID vpid{NULL_PAGEID, NULL_VOLID};
@@ -290,7 +290,7 @@ TEST (OosTest, OosManualSlottedPageInsertAndGet)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   const auto data1 = std::string ("this is a random data 1");
@@ -345,7 +345,7 @@ TEST (OosTest, ShouldInsertIntoSamePage)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   const int large_size = DB_PAGESIZE + 5;
@@ -402,7 +402,7 @@ TEST (OosTest, OosGetLengthWithinPage)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   const std::string data = "Hello, this is test data for oos_get_length!";
@@ -425,7 +425,7 @@ TEST (OosTest, OosGetLengthAcrossPages)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   const int large_size = 160 * 1024; // 160 KB — spans multiple pages
@@ -451,7 +451,7 @@ TEST (OosTest, OosGetLengthAroundMaxChunkSize)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   const int max_chunk_size = bridge_oos_get_max_chunk_size_within_page ();
@@ -482,7 +482,7 @@ TEST (OosTest, ShouldInsertIntoDifferentPages)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   const int max_chunk_size = bridge_oos_get_max_chunk_size_within_page ();
@@ -572,7 +572,7 @@ TEST (OosTest, OosInlineFormatWithRealOosInsert)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   const int data_size = 2048;
@@ -628,7 +628,7 @@ TEST (OosTest, OosInlineLengthMatchesAcrossPages)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   const int max_chunk_size = bridge_oos_get_max_chunk_size_within_page ();

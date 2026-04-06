@@ -878,7 +878,7 @@ oos_stats_update (THREAD_ENTRY *thread_p, PAGE_PTR pgptr, const VFID *vfid, int 
 // ****************************************************************************
 
 int
-oos_file_create (THREAD_ENTRY *thread_p, VFID &oos_vfid)
+oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid)
 {
   int err = NO_ERROR;
   FILE_DESCRIPTORS des;
