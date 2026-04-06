@@ -12687,6 +12687,91 @@ pt_to_showstmt_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * whe
 }
 
 /*
+ * pt_dblink_corr_side_has_spec () - CBRD-26601 T4-1 helper: strip an optional CAST wrap and return true
+ *   if node is a PT_NAME that belongs to the given spec (identified by spec_id).
+ */
+static bool
+pt_dblink_corr_side_has_spec (PT_NODE * node, UINTPTR spec_id)
+{
+  if (node != NULL && node->node_type == PT_EXPR && node->info.expr.op == PT_CAST)
+    {
+      node = node->info.expr.arg1;
+    }
+  return node != NULL && node->node_type == PT_NAME && node->info.name.spec_id == spec_id;
+}
+
+/*
+ * pt_dblink_corr_side_is_outer_ref () - CBRD-26601 T4-1 helper: strip an optional CAST wrap and return true
+ *   if node is a PT_NAME that belongs to a spec OTHER than the inner DBLink spec (i.e. an outer-query column).
+ *   A literal or NULL has no spec_id (== 0) and returns false.
+ *   An inner-spec column (spec_id == dblink_sid) also returns false.
+ */
+static bool
+pt_dblink_corr_side_is_outer_ref (PT_NODE * node, UINTPTR dblink_sid)
+{
+  if (node != NULL && node->node_type == PT_EXPR && node->info.expr.op == PT_CAST)
+    {
+      node = node->info.expr.arg1;
+    }
+  return node != NULL && node->node_type == PT_NAME
+    && node->info.name.spec_id != 0 && node->info.name.spec_id != dblink_sid;
+}
+
+/*
+ * pt_remove_corr_dblink_term () - CBRD-26601 T4-1: remove the correlated-equality term that was push-downed
+ *   into conn_sql from the access_pred AND list.  Unlinks only a PT_EQ that is a cross-spec equality:
+ *   exactly one side must belong to the inner DBLink spec (dblink_sid) and the other side must be an outer
+ *   column reference (spec_id != 0 and spec_id != dblink_sid).  This avoids removing constant filters such
+ *   as "r.status = 'A'" (literal has spec_id == 0) or inner-only equalities like "r.a = r.b" (both sides have
+ *   spec_id == dblink_sid).  Returns the (possibly new) list head.  Does NOT free unlinked nodes.
+ *
+ * NOTE: This function mutates the ->next links of the list in place.  The caller must use the returned head
+ *   and must NOT re-walk the original where_list pointer after this call, as the first node may have been
+ *   unlinked (its ->next is set to NULL).
+ */
+static PT_NODE *
+pt_remove_corr_dblink_term (PT_NODE * where_list, UINTPTR dblink_sid)
+{
+  PT_NODE *prev = NULL, *curr, *next;
+  PT_NODE *head = where_list;
+
+  for (curr = where_list; curr != NULL; curr = next)
+    {
+      next = curr->next;
+
+      PT_NODE *actual = curr;
+      CAST_POINTER_TO_NODE (actual);
+
+      if (actual != NULL && actual->node_type == PT_EXPR && actual->info.expr.op == PT_EQ)
+	{
+	  PT_NODE *arg1 = actual->info.expr.arg1;
+	  PT_NODE *arg2 = actual->info.expr.arg2;
+	  bool is_corr_term = (pt_dblink_corr_side_has_spec (arg1, dblink_sid)
+			       && pt_dblink_corr_side_is_outer_ref (arg2, dblink_sid))
+	    || (pt_dblink_corr_side_has_spec (arg2, dblink_sid)
+		&& pt_dblink_corr_side_is_outer_ref (arg1, dblink_sid));
+
+	  if (is_corr_term)
+	    {
+	      if (prev == NULL)
+		{
+		  head = next;
+		}
+	      else
+		{
+		  prev->next = next;
+		}
+	      curr->next = NULL;
+	      continue;
+	    }
+	}
+      prev = curr;
+    }
+
+  return head;
+}
+
+/*
  * pt_to_subquery_table_spec_list () - Convert a QUERY PT_NODE
  * 	an ACCESS_SPEC_LIST list for its list file
  *   return:
@@ -12707,16 +12792,35 @@ pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE
   TABLE_INFO *tbl_info;
   PT_NODE *pred_attrs = NULL, *rest_attrs = NULL, *build_attrs = NULL, *probe_attrs = NULL;
   int *pred_offsets = NULL, *rest_offsets = NULL;
+  PT_NODE *effective_where;
 
   /* CBRD-26601 T2-1 Plan B: inner SELECT from with PT_DERIVED_DBLINK_TABLE is XASL-lowered separately; corr_key_* is
    * filled in pt_to_dblink_table_spec_list when that inner spec is built.  */
 
   subquery_proc = (XASL_NODE *) subquery->info.query.xasl;
 
+  /* CBRD-26601 T4-1: for correlated DBLink push-down, strip the push-downed cross-spec equality from
+   * access_pred so it is not re-evaluated locally (the remote side already filters via "WHERE col = ?").
+   * pt_remove_corr_dblink_term mutates the list in place — use effective_where exclusively from here on;
+   * do NOT re-walk where_part after this point. */
+  effective_where = where_part;
+  if (subquery_proc != NULL && IS_CORR_DBLINK_XASL (subquery_proc))
+    {
+      PT_NODE *inner_spec;
+      for (inner_spec = subquery->info.query.q.select.from; inner_spec; inner_spec = inner_spec->next)
+	{
+	  if (inner_spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
+	    {
+	      effective_where = pt_remove_corr_dblink_term (where_part, inner_spec->info.spec.id);
+	      break;
+	    }
+	}
+    }
+
   tbl_info = pt_find_table_info (spec->info.spec.id, parser->symbols->table_info);
 
-  if (pt_split_attrs (parser, tbl_info, where_part, &pred_attrs, &rest_attrs, NULL, &pred_offsets, &rest_offsets, NULL)
-      != NO_ERROR)
+  if (pt_split_attrs (parser, tbl_info, effective_where, &pred_attrs, &rest_attrs, NULL, &pred_offsets, &rest_offsets,
+		      NULL) != NO_ERROR)
     {
       return NULL;
     }
@@ -12750,7 +12854,7 @@ pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE
    * turn off the current_class, if there is one. */
   saved_current_class = parser->symbols->current_class;
   parser->symbols->current_class = NULL;
-  where = pt_to_pred_expr (parser, where_part);
+  where = pt_to_pred_expr (parser, effective_where);
   parser->symbols->current_class = saved_current_class;
 
   access =
@@ -12994,7 +13098,14 @@ pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE *
 	}
     }
 
-  PRED_EXPR *where = pt_to_pred_expr (parser, where_p);
+  /* CBRD-26601 T4-1: when corr push-down is active (corr_key_count > 0), strip the pushed-down cross-spec
+   * equality from the local access_pred — the remote side already filters via "WHERE col = ?".
+   * pt_remove_corr_dblink_term mutates the list in place — use effective_where_p exclusively from here on;
+   * do NOT re-walk where_p after this point. */
+  PT_NODE *effective_where_p = (pdblink->corr_key_count > 0)
+    ? pt_remove_corr_dblink_term (where_p, spec->info.spec.id) : where_p;
+
+  PRED_EXPR *where = pt_to_pred_expr (parser, effective_where_p);
 
   TABLE_INFO *tbl_info = pt_find_table_info (spec->info.spec.id, parser->symbols->table_info);
   assert (tbl_info != NULL);
@@ -13005,7 +13116,7 @@ pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE *
   PT_NODE *pred_attrs = NULL, *rest_attrs = NULL, *reserved_attrs = NULL;
   int *pred_offsets = NULL, *rest_offsets = NULL, *reserved_offsets = NULL;
 
-  if (pt_split_attrs (parser, tbl_info, where_p, &pred_attrs, &rest_attrs, &reserved_attrs,
+  if (pt_split_attrs (parser, tbl_info, effective_where_p, &pred_attrs, &rest_attrs, &reserved_attrs,
 		      &pred_offsets, &rest_offsets, &reserved_offsets) != NO_ERROR)
     {
       return NULL;
