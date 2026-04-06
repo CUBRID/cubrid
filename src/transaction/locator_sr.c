@@ -6369,7 +6369,6 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
        *
        * Note that we cannot have server deletes on classes.
        */
-
       if (isold_object == true && has_index)
 	{
 	  /* if MVCC then delete before updating index */

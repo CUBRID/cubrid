@@ -45,7 +45,7 @@ TEST (OosFileDestroyTest, OosFileDestroyBasic)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   err = oos_remove_file (thread_p, oos_vfid);
@@ -63,7 +63,7 @@ TEST (OosFileDestroyTest, OosFileDestroyWithData)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES rec_in{};
@@ -92,7 +92,7 @@ TEST (OosFileDestroyTest, OosFileDestroyWithMultiChunkData)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   const int max_chunk_size = bridge_oos_get_max_chunk_size_within_page ();
@@ -127,7 +127,7 @@ TEST (OosFileDestroyTest, OosFileDestroyMapCleared)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES rec_in{};
@@ -166,7 +166,7 @@ TEST (OosFileDestroyTest, OosPageDestroyBasic)
   int err;
   VFID oos_vfid;
 
-  err = oos_file_create (thread_p, oos_vfid);
+  err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES rec_in{};
@@ -199,10 +199,10 @@ TEST (OosFileDestroyTest, OosFileDestroyMultipleFiles)
   VFID oos_vfid1;
   VFID oos_vfid2;
 
-  err = oos_file_create (thread_p, oos_vfid1);
+  err = oos_create_file (thread_p, oos_vfid1);
   ASSERT_EQ (err, NO_ERROR);
 
-  err = oos_file_create (thread_p, oos_vfid2);
+  err = oos_create_file (thread_p, oos_vfid2);
   ASSERT_EQ (err, NO_ERROR);
 
   // Insert into both files
