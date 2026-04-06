@@ -83,8 +83,8 @@ extern void disk_manager_final (void);
 
 extern int disk_format_first_volume (THREAD_ENTRY * thread_p, const char *full_dbname, const char *dbcomments,
 				     DKNPAGES npages);
-extern int disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DKNPAGES npages,
-				      const char *path, const char *name, const char *comments,
+extern int disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DB_VOLTYPE voltype,
+				      DKNPAGES npages, const char *path, const char *name, const char *comments,
 				      int max_write_size_in_sec, bool overwrite, VOLID * volid_out);
 extern void disk_lock_extend (void);
 extern void disk_unlock_extend (void);

@@ -26,7 +26,7 @@
 #include "xasl.h"
 #include "px_worker_manager.hpp"
 #include "px_heap_scan_result_handler.hpp"
-#include "px_heap_scan_input_handler.hpp"
+#include "px_heap_scan_input_handler_ftabs.hpp"
 #include "px_heap_scan_trace_handler.hpp"
 #include "px_heap_scan_result_type.hpp"
 #include "query_manager.h"
@@ -39,7 +39,7 @@ namespace parallel_heap_scan
   {
       using interrupt = parallel_query::interrupt;
       using err_messages_with_lock = parallel_query::err_messages_with_lock;
-      using input_handler = parallel_heap_scan::input_handler;
+      using input_handler = parallel_heap_scan::input_handler_ftabs;
       using atomic_instnum = parallel_query::atomic_instnum;
       using worker_manager = parallel_query::worker_manager;
     public:
@@ -102,7 +102,7 @@ namespace parallel_heap_scan
       OID m_cls_oid;
       val_descr *m_vd;
       val_descr *m_orig_vd;
-      input_handler *m_input_handler;
+      input_handler_ftabs *m_input_handler;
       result_handler<result_type> *m_result_handler;
       bool m_on_trace;
       bool m_px_stats_initialized_by_me;
