@@ -1515,12 +1515,16 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 	{
 	  SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
 	  bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args_p, NULL, NULL);
+	  if (error != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	    }
 	}
     }
   else
     {
       px_sort_param = (SORT_PARAM *) malloc (sizeof (SORT_PARAM) * sort_param->px_parallel_num);
-      if (sort_param == NULL)
+      if (px_sort_param == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (SORT_PARAM));
@@ -4399,7 +4403,7 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
       for (j = 0; j < SORT_MAX_TOT_FILES; j++)
 	{
 	  /* Initilize file contents list */
-	  px_sort_param[i].file_contents[j].num_pages = (int *) malloc (SORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int));
+	  px_sort_param[i].file_contents[j].num_pages = (int *) calloc (SORT_INITIAL_DYN_ARRAY_SIZE, sizeof (int));
 	  if (px_sort_param[i].file_contents[j].num_pages == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -4604,7 +4608,8 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
 	  int half_files = MIN (remaining_run - (first_idx / pow (SORT_PX_MERGE_FILES, level)), SORT_PX_MERGE_FILES);
 	  if (half_files == 1)
 	    {
-	      /* skip last one file */
+	      /* skip last one file - mark as done so SORT_WAIT_PARALLEL does not block on it */
+	      px_sort_param[i].px_status = PX_DONE;
 	      continue;
 	    }
 
@@ -4735,10 +4740,9 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
 					      SORT_PARAM * sort_param, int parallel_num)
 {
   int error = NO_ERROR;
-  int i = 0, idx = 0, file_pg_cnt_est;
+  int i = 0, idx = 0;
   int remaining_run, level, merge_num;
   RESULT_RUN result_run[SORT_MAX_PARALLEL];
-  QFILE_LIST_ID *origin_list_id, *mergeable_list_id;
   SORT_ARGS *sort_args_p;
 
   if (parallel_num > SORT_MAX_PARALLEL)
@@ -4749,8 +4753,10 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
   /* init result_run */
   for (i = 0; i < parallel_num; i++)
     {
-      result_run[i].temp_file = px_sort_param[i].temp[px_sort_param[i].px_result_file_idx];
-      result_run[i].num_pages = px_sort_param[i].file_contents[px_sort_param[i].px_result_file_idx].num_pages[0];
+      int rfi = px_sort_param[i].px_result_file_idx;
+      result_run[i].temp_file = px_sort_param[i].temp[rfi];
+      result_run[i].num_pages = (px_sort_param[i].file_contents[rfi].first_run >= 0)
+	? px_sort_param[i].file_contents[rfi].num_pages[0] : 0;
     }
 
   remaining_run = parallel_num;
@@ -4770,7 +4776,8 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
 	  int half_files = MIN (remaining_run - (first_idx / pow (SORT_PX_MERGE_FILES, level)), SORT_PX_MERGE_FILES);
 	  if (half_files == 1)
 	    {
-	      /* skip last one file */
+	      /* skip last one file - mark as done so SORT_WAIT_PARALLEL does not block on it */
+	      px_sort_param[i].px_status = PX_DONE;
 	      continue;
 	    }
 
@@ -4786,8 +4793,16 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
 	      px_sort_param[i].temp[j] = result_run[idx].temp_file;
 	      /* copy the number of pages for one run */
 	      px_sort_param[i].file_contents[j].num_pages[0] = result_run[idx].num_pages;
-	      px_sort_param[i].file_contents[j].first_run = 0;
-	      px_sort_param[i].file_contents[j].last_run = 0;
+	      if (result_run[idx].num_pages > 0)
+		{
+		  px_sort_param[i].file_contents[j].first_run = 0;
+		  px_sort_param[i].file_contents[j].last_run = 0;
+		}
+	      else
+		{
+		  px_sort_param[i].file_contents[j].first_run = -1;
+		  px_sort_param[i].file_contents[j].last_run = -1;
+		}
 	    }
 	  for (int j = px_sort_param[i].half_files; j < px_sort_param[i].tot_tempfiles; j++)
 	    {

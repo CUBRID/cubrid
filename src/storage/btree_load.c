@@ -3619,7 +3619,7 @@ get_next_vpid (THREAD_ENTRY * thread_p, parallel_query::ftab_set & ftab, FILE_PA
       /* fsector exists */
       for (; *offset < DISK_SECTOR_NPAGES; (*offset)++, (*vpid_out).pageid++)
 	{
-	  if (vpid_out->pageid == hfid->vfid.fileid && vpid_out->volid == hfid->vfid.volid)
+	  if (vpid_out->pageid == hfid->hpgid && vpid_out->volid == hfid->vfid.volid)
 	    {
 	      /* heap header page, skip it. */
 	      continue;
@@ -3751,7 +3751,7 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
       cur_class = sort_args->cur_class;
       attr_offset = cur_class * sort_args->n_attrs;
       sort_args->in_recdes.data = NULL;
-      if (vpid.pageid == sort_args->hfids[cur_class].vfid.fileid
+      if (vpid.pageid == sort_args->hfids[cur_class].hpgid
 	  && vpid.volid == sort_args->hfids[cur_class].vfid.volid)
 	{
 	  /* heap header page */
