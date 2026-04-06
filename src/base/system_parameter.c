@@ -1850,8 +1850,10 @@ static int prm_sql_trace_slow_msecs_lower = -1;
 static int prm_sql_trace_slow_msecs_upper = 1000 * 60 * 60 * 24;	/* 24 hours */
 static unsigned int prm_sql_trace_slow_msecs_flag = 0;
 
-bool PRM_SQL_TRACE_EXECUTION_PLAN = false;
-static bool prm_sql_trace_execution_plan_default = false;
+int PRM_SQL_TRACE_EXECUTION_PLAN = 0;
+static int prm_sql_trace_execution_plan_default = 0;
+static int prm_sql_trace_execution_plan_lower = 0;
+static int prm_sql_trace_execution_plan_upper = 2;
 static unsigned int prm_sql_trace_execution_plan_flag = 0;
 
 int PRM_LOG_TRACE_FLUSH_TIME_MSECS = 0;
@@ -4744,12 +4746,12 @@ static SYSPRM_PARAM prm_Def[] = {
   {PRM_ID_SQL_TRACE_EXECUTION_PLAN,
    PRM_NAME_SQL_TRACE_EXECUTION_PLAN,
    (PRM_USER_CHANGE | PRM_FOR_SERVER),
-   PRM_BOOLEAN,
+   PRM_INTEGER,
    &prm_sql_trace_execution_plan_flag,
-   (void *) &prm_sql_trace_execution_plan_default,
-   (void *) &PRM_SQL_TRACE_EXECUTION_PLAN,
-   (void *) NULL,
-   (void *) NULL,
+   &prm_sql_trace_execution_plan_default,
+   &PRM_SQL_TRACE_EXECUTION_PLAN,
+   (void *) &prm_sql_trace_execution_plan_upper,
+   (void *) &prm_sql_trace_execution_plan_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
