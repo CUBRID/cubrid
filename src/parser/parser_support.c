@@ -10749,6 +10749,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	      PT_NODE *name = node->info.expr.arg1;
 
 	      original_name = name->info.name.original;
+	      resolved_name = name->info.name.resolved;
 	    }
 	  else
 	    {
@@ -10904,6 +10905,26 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
           || (node->node_type == PT_EXPR && PT_IS_SERIAL (node->info.expr.op)));
   // *INDENT-ON*
   assert (original_name && original_name[0] != '\0');
+
+  /* DBLink remote SQL: do not merge current schema into SERIAL names that were unqualified in SQL.
+   * path_id_list (owner.serial.nextval) is PT_DOT_ without USER_SPECIFIED — still explicit; do not strip here.
+   * object_name sets resolved (qualifier) but may not set USER_SPECIFIED — do not strip when resolved is set.
+   * pt_compile/name binding has not run yet, so unqualified identifiers still have resolved == NULL. */
+  if (parser->flag.dblink_skip_implicit_serial_qualifier && node->node_type == PT_EXPR
+      && PT_IS_SERIAL (node->info.expr.op))
+    {
+      if (PT_IS_NAME_NODE (node->info.expr.arg1))
+	{
+	  PT_NODE *nm = node->info.expr.arg1;
+
+	  if (!PT_NAME_INFO_IS_FLAGED (nm, PT_NAME_INFO_USER_SPECIFIED)
+	      && (nm->info.name.resolved == NULL || nm->info.name.resolved[0] == '\0'))
+	    {
+	      nm->info.name.resolved = NULL;
+	      return node;
+	    }
+	}
+    }
 
   if (strchr (original_name, '.'))
     {
@@ -11927,119 +11948,6 @@ pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   return node;
 }
 
-/*
- * pt_strip_serial_dot_for_dblink_remote () -
- *   Make SERIAL reference unqualified for remote DBMS text when the qualifier
- *   was not user-specified (PT_NAME_INFO_USER_SPECIFIED).
- *   - PT_NAME: remove leading "owner." from original; clear resolved so printing
- *     does not emit "owner.name"
- *   - PT_DOT_: replace with rightmost name only (copy), since pt_print_dot would
- *     otherwise keep the owner side
- */
-static void
-pt_strip_serial_dot_for_dblink_remote (PARSER_CONTEXT * parser, PT_NODE * serial_expr)
-{
-  PT_NODE *arg1;
-  PT_NODE *dot_owner;
-  PT_NODE *dot_leaf;
-  PT_NODE *old_arg1;
-  PT_NODE *new_arg1;
-
-  if (serial_expr == NULL || serial_expr->node_type != PT_EXPR || !PT_IS_SERIAL (serial_expr->info.expr.op))
-    {
-      return;
-    }
-
-  arg1 = serial_expr->info.expr.arg1;
-  if (arg1 == NULL)
-    {
-      return;
-    }
-
-  if (arg1->node_type == PT_NAME)
-    {
-      if (PT_NAME_INFO_IS_FLAGED (arg1, PT_NAME_INFO_USER_SPECIFIED))
-	{
-	  return;
-	}
-
-      if (arg1->info.name.original != NULL && arg1->info.name.original[0] != '\0')
-	{
-	  arg1->info.name.original = sm_remove_qualifier_name (arg1->info.name.original);
-	}
-
-      /* resolved + original prints as "resolved.original"; drop implicit owner/schema */
-      arg1->info.name.resolved = NULL;
-
-      return;
-    }
-
-  if (arg1->node_type != PT_DOT_)
-    {
-      return;
-    }
-
-  dot_owner = arg1->info.dot.arg1;
-  dot_leaf = arg1->info.dot.arg2;
-
-  while (dot_leaf != NULL && dot_leaf->node_type == PT_DOT_)
-    {
-      dot_leaf = dot_leaf->info.dot.arg2;
-    }
-
-  if ((dot_owner != NULL && dot_owner->node_type == PT_NAME
-       && PT_NAME_INFO_IS_FLAGED (dot_owner, PT_NAME_INFO_USER_SPECIFIED)) || (dot_leaf != NULL
-									       && dot_leaf->node_type == PT_NAME
-									       && PT_NAME_INFO_IS_FLAGED (dot_leaf,
-													  PT_NAME_INFO_USER_SPECIFIED)))
-    {
-      return;
-    }
-
-  if (dot_leaf == NULL)
-    {
-      return;
-    }
-
-  new_arg1 = parser_copy_tree (parser, dot_leaf);
-  if (new_arg1 == NULL)
-    {
-      PT_ERRORm (parser, serial_expr, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY);
-      return;
-    }
-
-  old_arg1 = arg1;
-  serial_expr->info.expr.arg1 = new_arg1;
-  parser_free_tree (parser, old_arg1);
-
-  if (new_arg1->node_type == PT_NAME && !PT_NAME_INFO_IS_FLAGED (new_arg1, PT_NAME_INFO_USER_SPECIFIED))
-    {
-      if (new_arg1->info.name.original != NULL && new_arg1->info.name.original[0] != '\0')
-	{
-	  new_arg1->info.name.original = sm_remove_qualifier_name (new_arg1->info.name.original);
-	}
-
-      new_arg1->info.name.resolved = NULL;
-    }
-}
-
-/*
- * pt_strip_implicit_serial_user_qualifier_for_dblink_remote() -
- *   Walk callback: strip implicit serial qualifiers on a tree used only for
- *   remote DBLink DML string generation.
- */
-static PT_NODE *
-pt_strip_implicit_serial_user_qualifier_for_dblink_remote (PARSER_CONTEXT * parser, PT_NODE * node,
-							   void *arg, int *continue_walk)
-{
-  if (node != NULL && node->node_type == PT_EXPR && PT_IS_SERIAL (node->info.expr.op))
-    {
-      pt_strip_serial_dot_for_dblink_remote (parser, node);
-    }
-
-  return node;
-}
-
 static void
 pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 			     int local_upd, int remote_upd, SERVER_NAME_LIST * snl)
@@ -12191,22 +12099,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
     PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_NO_HOST_VAR_INDEX |
     PT_PRINT_SUPPRESS_FOR_DBLINK;
 
-  /* Prevent "user.serial.nextval" qualifier leakage in remote SQL text. */
-  {
-    PT_NODE *node_for_dml = parser_copy_tree (parser, node);
-
-    if (node_for_dml == NULL)
-      {
-	PT_ERRORm (parser, node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY);
-	return;
-      }
-
-    parser_walk_tree (parser, node_for_dml, pt_strip_implicit_serial_user_qualifier_for_dblink_remote, NULL, NULL,
-		      NULL);
-    dml = pt_print_bytes (parser, node_for_dml);
-
-    parser_free_tree (parser, node_for_dml);
-  }
+  dml = pt_print_bytes (parser, node);
 
   val->info.value.data_value.str = pt_append_bytes (parser, comment, (const char *) dml->bytes, dml->length);
 
@@ -12389,6 +12282,7 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
   SERVER_NAME_LIST snl;
 
   memset (&snl, 0x00, sizeof (SERVER_NAME_LIST));
+  parser->flag.dblink_skip_implicit_serial_qualifier = 0;
 
   parser_walk_tree (parser, stmt, pt_set_print_in_value_for_dblink, NULL, NULL, NULL);
 
@@ -12447,10 +12341,20 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
     case PT_CREATE_ENTITY:
     case PT_ALTER:
       parser_walk_tree (parser, stmt, NULL, NULL, pt_convert_select, &snl);
+      if (snl.has_dblink_query || snl.server_node_cnt > 0)
+	{
+	  parser->flag.dblink_skip_implicit_serial_qualifier = 1;
+	}
+
       return;
     default:
       /* no action */
       return;
+    }
+
+  if (snl.has_dblink_query || snl.server_node_cnt > 0)
+    {
+      parser->flag.dblink_skip_implicit_serial_qualifier = 1;
     }
 
   switch (stmt->node_type)
