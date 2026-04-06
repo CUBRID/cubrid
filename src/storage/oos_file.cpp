@@ -191,16 +191,16 @@ oos_bestspace_initialize (void)
   oos_Bestspace->free_list = NULL;
 
   oos_Bestspace->vpid_ht = mht_create ("OOS best-space vpid hash table",
-					OOS_STATS_ENTRY_MHT_EST_SIZE,
-					oos_hash_vpid, oos_compare_vpid);
+				       OOS_STATS_ENTRY_MHT_EST_SIZE,
+				       oos_hash_vpid, oos_compare_vpid);
   if (oos_Bestspace->vpid_ht == NULL)
     {
       return ER_FAILED;
     }
 
   oos_Bestspace->vfid_ht = mht_create ("OOS best-space vfid hash table",
-					OOS_STATS_ENTRY_MHT_EST_SIZE,
-					oos_hash_vfid, oos_compare_vfid);
+				       OOS_STATS_ENTRY_MHT_EST_SIZE,
+				       oos_hash_vfid, oos_compare_vfid);
   if (oos_Bestspace->vfid_ht == NULL)
     {
       mht_destroy (oos_Bestspace->vpid_ht);
@@ -408,7 +408,7 @@ oos_get_header_stats_ptr (THREAD_ENTRY *thread_p, PAGE_PTR page_header)
 static void
 oos_stats_put_second_best (OOS_HDR_STATS *oos_hdr, VPID *vpid)
 {
-  if (++(oos_hdr->estimates.num_substitutions) % 1000 == 0)
+  if (++ (oos_hdr->estimates.num_substitutions) % 1000 == 0)
     {
       int tail = oos_hdr->estimates.tail_second_best;
       oos_hdr->estimates.second_best[tail] = *vpid;
@@ -422,7 +422,7 @@ oos_stats_put_second_best (OOS_HDR_STATS *oos_hdr, VPID *vpid)
 	{
 	  /* Overwrite head */
 	  oos_hdr->estimates.head_second_best =
-	    OOS_STATS_NEXT_BEST_INDEX (oos_hdr->estimates.head_second_best);
+		  OOS_STATS_NEXT_BEST_INDEX (oos_hdr->estimates.head_second_best);
 	}
     }
 }
@@ -1434,9 +1434,9 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
   while (try_find < 2)
     {
       result = oos_stats_find_page_in_bestspace (thread_p, &oos_vfid,
-						 oos_hdr->estimates.best,
-						 &idx_badspace, total_space,
-						 &vpid, &found_page);
+	       oos_hdr->estimates.best,
+	       &idx_badspace, total_space,
+	       &vpid, &found_page);
       if (result == OOS_FINDSPACE_FOUND)
 	{
 	  break;
