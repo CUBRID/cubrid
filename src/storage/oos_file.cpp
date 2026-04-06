@@ -184,7 +184,11 @@ oos_bestspace_initialize (void)
 
   oos_Bestspace = &oos_Bestspace_cache_area;
 
-  pthread_mutex_init (&oos_Bestspace->bestspace_mutex, NULL);
+  if (pthread_mutex_init (&oos_Bestspace->bestspace_mutex, NULL) != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_INIT, 0);
+      return ER_CSS_PTHREAD_MUTEX_INIT;
+    }
 
   oos_Bestspace->num_stats_entries = 0;
   oos_Bestspace->free_list_count = 0;
@@ -195,7 +199,8 @@ oos_bestspace_initialize (void)
 				       oos_hash_vpid, oos_compare_vpid);
   if (oos_Bestspace->vpid_ht == NULL)
     {
-      return ER_FAILED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (MHT_TABLE));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   oos_Bestspace->vfid_ht = mht_create ("OOS best-space vfid hash table",
@@ -205,7 +210,8 @@ oos_bestspace_initialize (void)
     {
       mht_destroy (oos_Bestspace->vpid_ht);
       oos_Bestspace->vpid_ht = NULL;
-      return ER_FAILED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (MHT_TABLE));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   return NO_ERROR;
@@ -258,14 +264,13 @@ static OOS_STATS_ENTRY *
 oos_stats_add_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid, VPID *vpid, int freespace)
 {
   OOS_STATS_ENTRY *ent;
-  int rc;
 
   if (oos_Bestspace == NULL)
     {
       return NULL;
     }
 
-  rc = pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
 
   ent = (OOS_STATS_ENTRY *) mht_get (oos_Bestspace->vpid_ht, vpid);
   if (ent != NULL)
@@ -292,6 +297,7 @@ oos_stats_add_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid, VPID *vpid, i
       ent = (OOS_STATS_ENTRY *) malloc (sizeof (OOS_STATS_ENTRY));
       if (ent == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OOS_STATS_ENTRY));
 	  pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
 	  return NULL;
 	}
@@ -327,14 +333,13 @@ static int
 oos_stats_del_bestspace_by_vpid (THREAD_ENTRY *thread_p, VPID *vpid)
 {
   OOS_STATS_ENTRY *ent;
-  int rc;
 
   if (oos_Bestspace == NULL)
     {
       return NO_ERROR;
     }
 
-  rc = pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
 
   ent = (OOS_STATS_ENTRY *) mht_get (oos_Bestspace->vpid_ht, vpid);
   if (ent == NULL)
@@ -357,14 +362,13 @@ static int
 oos_stats_del_bestspace_by_vfid (THREAD_ENTRY *thread_p, const VFID *vfid)
 {
   OOS_STATS_ENTRY *ent;
-  int rc;
 
   if (oos_Bestspace == NULL)
     {
       return NO_ERROR;
     }
 
-  rc = pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
 
   while (true)
     {
@@ -467,7 +471,6 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
   int notfound_cnt = 0;
   int old_wait_msecs;
   VPID hdr_vpid;
-  int rc;
 
   *out_pgptr = NULL;
   VPID_SET_NULL (out_vpid);
@@ -489,7 +492,7 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
       /* Phase A: Search global hash table */
       if (oos_Bestspace != NULL)
 	{
-	  rc = pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+	  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
 
 	  while (notfound_cnt < BEST_PAGE_SEARCH_MAX_COUNT)
 	    {
@@ -637,13 +640,13 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 static int
 oos_stats_sync_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 			  OOS_HDR_STATS *oos_hdr, VPID *hdr_vpid,
-			  bool scan_all, bool can_cycle)
+			  bool scan_all)
 {
   int num_high_best = 0;
   int num_other_high_best = 0;
   int num_pages = 0;
   int num_recs = 0;
-  int recs_sumlen = 0;
+  float recs_sumlen = 0.0;
   int start_idx = 1; /* Skip page 0 (header page) */
   int max_iterations;
   int total_pages;
@@ -757,15 +760,49 @@ oos_stats_sync_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
       oos_hdr->estimates.full_search_vpid = scan_vpid;
     }
 
-  /* Update estimates */
-  if (scan_all)
+  /* On full scan, clear best[] entries that were not refreshed (heap pattern).
+   * Since OOS fills into NULL slots rather than linearly, we clear all slots
+   * and re-derive best_count from non-null entries after the scan loop. */
+  if (scan_all && best_count < OOS_NUM_BEST_SPACESTATS)
     {
+      for (int i = 0; i < OOS_NUM_BEST_SPACESTATS; i++)
+	{
+	  if (!VPID_ISNULL (&oos_hdr->estimates.best[i].vpid)
+	      && oos_hdr->estimates.best[i].freespace <= OOS_DROP_FREE_SPACE)
+	    {
+	      VPID_SET_NULL (&oos_hdr->estimates.best[i].vpid);
+	      oos_hdr->estimates.best[i].freespace = 0;
+	    }
+	}
+    }
+
+  /* Update estimates */
+  if (scan_all || oos_hdr->estimates.num_pages <= num_pages)
+    {
+      /* Full scan — reset all statistics */
+      oos_hdr->estimates.num_other_high_best = num_other_high_best;
       oos_hdr->estimates.num_pages = num_pages;
       oos_hdr->estimates.num_recs = num_recs;
-      oos_hdr->estimates.recs_sumlen = (float) recs_sumlen;
+      oos_hdr->estimates.recs_sumlen = recs_sumlen;
+    }
+  else
+    {
+      /* Partial scan — preserve cumulative knowledge (heap pattern) */
+      oos_hdr->estimates.num_other_high_best -= oos_hdr->estimates.num_high_best;
+
+      if (oos_hdr->estimates.num_other_high_best < num_other_high_best)
+	{
+	  oos_hdr->estimates.num_other_high_best = num_other_high_best;
+	}
+
+      if (num_recs > oos_hdr->estimates.num_recs || recs_sumlen > oos_hdr->estimates.recs_sumlen)
+	{
+	  oos_hdr->estimates.num_pages = num_pages;
+	  oos_hdr->estimates.num_recs = num_recs;
+	  oos_hdr->estimates.recs_sumlen = recs_sumlen;
+	}
     }
   oos_hdr->estimates.num_high_best = best_count;
-  oos_hdr->estimates.num_other_high_best = num_other_high_best;
 
   return num_high_best + num_other_high_best;
 }
@@ -1443,6 +1480,7 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 	}
       if (result == OOS_FINDSPACE_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  pgbuf_unfix_and_init (thread_p, hdr_page);
 	  return nullptr;
 	}
@@ -1456,7 +1494,33 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 
       if (ratio >= OOS_BESTSPACE_SYNC_THRESHOLD || try_find == 0)
 	{
-	  (void) oos_stats_sync_bestspace (thread_p, &oos_vfid, oos_hdr, &hdr_vpid, false, true);
+	  /* Release header latch before sync scan to reduce contention.
+	   * Sync only updates the global hash cache (not best[]),
+	   * so we don't need the header page during the scan. */
+	  pgbuf_set_dirty (thread_p, hdr_page, DONT_FREE);
+	  pgbuf_unfix_and_init (thread_p, hdr_page);
+	  oos_hdr = NULL;
+
+	  /* Sync scan — populates global cache only.
+	   * We pass a temporary OOS_HDR_STATS to collect scan stats,
+	   * and discard the header-specific updates. */
+	  OOS_HDR_STATS tmp_hdr;
+	  memset (&tmp_hdr, 0, sizeof (tmp_hdr));
+	  (void) oos_stats_sync_bestspace (thread_p, &oos_vfid, &tmp_hdr, &hdr_vpid, false);
+
+	  /* Re-acquire header latch after sync */
+	  hdr_page = pgbuf_fix (thread_p, &hdr_vpid, OLD_PAGE,
+				PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  if (hdr_page == NULL)
+	    {
+	      return nullptr;
+	    }
+	  oos_hdr = oos_get_header_stats_ptr (thread_p, hdr_page);
+	  if (oos_hdr == NULL)
+	    {
+	      pgbuf_unfix_and_init (thread_p, hdr_page);
+	      return nullptr;
+	    }
 	}
       else
 	{
@@ -1476,11 +1540,23 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
       pgbuf_set_dirty (thread_p, hdr_page, DONT_FREE);
       pgbuf_unfix_and_init (thread_p, hdr_page);
 
-      /* Unfix the page returned by find_page_in_bestspace before re-fixing as auto_unfix */
+      /* Unfix the conditional-latch page and re-fix as auto_unfix with unconditional latch.
+       * Between unfix and re-fix, another thread may fill the page (race window). */
       pgbuf_unfix_and_init (thread_p, found_page);
 
-      return pgbuf_fix_auto_unfix (thread_p, &vpid, OLD_PAGE,
-				   PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      auto result_page = pgbuf_fix_auto_unfix (thread_p, &vpid, OLD_PAGE,
+					       PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (result_page != nullptr)
+	{
+	  /* Re-check free space after unconditional re-fix (race window protection) */
+	  int actual_free = spage_max_space_for_new_record (thread_p, result_page.get ());
+	  if (actual_free >= total_space)
+	    {
+	      return result_page;
+	    }
+	  /* Page was filled by another thread — fall through to allocate new */
+	  result_page.reset ();
+	}
     }
 
   /* No existing page found — allocate new */
