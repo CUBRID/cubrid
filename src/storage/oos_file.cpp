@@ -99,7 +99,7 @@ static std::mutex oos_vpid_map_mutex;
 static constexpr int OOS_ALIGNMENT = MAX_ALIGNMENT;
 
 int
-oos_file_create (THREAD_ENTRY *thread_p, VFID &oos_vfid)
+oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid)
 {
   FILE_DESCRIPTORS des; // unused
   int err = NO_ERROR;
