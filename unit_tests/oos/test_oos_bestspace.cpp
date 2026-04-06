@@ -22,6 +22,7 @@
 #include <set>
 #include <vector>
 
+#include "file_manager.h"
 #include "page_buffer.h"
 #include "slotted_page.h"
 #include "storage_common.h"
@@ -37,6 +38,22 @@ using namespace test_oos_log;
 const auto_unfix_page_ptr bridge_oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_length,
     VPID &vpid);
 int bridge_oos_get_max_chunk_size_within_page ();
+
+// additional bridges for thorough bestspace testing
+struct oos_stats_entry;  /* opaque forward declaration */
+typedef struct oos_stats_entry OOS_STATS_ENTRY;
+OOS_STATS_ENTRY *bridge_oos_stats_add_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid, VPID *vpid, int freespace);
+int bridge_oos_stats_del_bestspace_by_vpid (THREAD_ENTRY *thread_p, VPID *vpid);
+OOS_HDR_STATS *bridge_oos_get_header_stats_ptr (THREAD_ENTRY *thread_p, PAGE_PTR page_header);
+void bridge_oos_stats_put_second_best (OOS_HDR_STATS *oos_hdr, VPID *vpid);
+bool bridge_oos_stats_get_second_best (OOS_HDR_STATS *oos_hdr, VPID *vpid);
+int bridge_oos_stats_sync_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
+				      OOS_HDR_STATS *oos_hdr, VPID *hdr_vpid,
+				      bool scan_all);
+OOS_FINDSPACE bridge_oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
+    OOS_BESTSPACE *bestspace, int *idx_badspace,
+    int needed_space, VPID *out_vpid,
+    PAGE_PTR *out_pgptr);
 
 
 // ---------------------------------------------------------------------------
@@ -713,6 +730,499 @@ TEST (OosBestspaceTest, BestspaceBulkInsertDeleteReinsert)
       ASSERT_EQ ((int) strlen (rec_out.data), record_size);
       recdes_free_data_area (&rec_out);
     }
+
+  err = oos_remove_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+}
+
+
+// ===========================================================================
+// TEST: BestspaceArrayOverflowEviction
+//
+// Fill more than OOS_NUM_BEST_SPACESTATS (10) distinct pages, then delete
+// all records.  Subsequent inserts should reuse freed pages (found via
+// the global hash cache, even if best[] array overflowed).  The file
+// should not grow beyond the pages already allocated.
+// ===========================================================================
+TEST (OosBestspaceTest, BestspaceArrayOverflowEviction)
+{
+  int err;
+  VFID oos_vfid;
+
+  err = oos_create_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  const int max_chunk = bridge_oos_get_max_chunk_size_within_page ();
+
+  // Insert records that each nearly fill a page, forcing allocation of
+  // many distinct pages (more than OOS_NUM_BEST_SPACESTATS = 10).
+  const int num_pages_to_fill = 15;
+  std::vector<OID> oids;
+  std::set<PAGEID> pages_round1;
+
+  for (int i = 0; i < num_pages_to_fill; i++)
+    {
+      // Use a size that fills most of the page so each insert gets its own page
+      auto data = test_oos_utils::make_repeated_pattern_string (max_chunk - 50);
+      RECDES rec{};
+      err = test_oos_utils::from_string_into_recdes (data, rec);
+      ASSERT_EQ (err, NO_ERROR);
+
+      OID oid = OID_INITIALIZER;
+      err = oos_insert (thread_p, oos_vfid, rec, oid);
+      ASSERT_EQ (err, NO_ERROR);
+
+      oids.push_back (oid);
+      pages_round1.insert (oid.pageid);
+      recdes_free_data_area (&rec);
+    }
+
+  // We should have more than OOS_NUM_BEST_SPACESTATS distinct pages
+  ASSERT_GT ((int) pages_round1.size (), OOS_NUM_BEST_SPACESTATS);
+  test_oos_debug ("Round 1: filled %d distinct pages (> best[] capacity %d)",
+		  (int) pages_round1.size (), OOS_NUM_BEST_SPACESTATS);
+
+  // Delete all records — every page now has large free space
+  for (auto &oid : oids)
+    {
+      err = oos_delete (thread_p, oos_vfid, oid);
+      ASSERT_EQ (err, NO_ERROR);
+    }
+
+  // Round 2: reinsert the same number — should reuse the freed pages
+  std::set<PAGEID> pages_round2;
+  for (int i = 0; i < num_pages_to_fill; i++)
+    {
+      auto data = test_oos_utils::make_repeated_pattern_string (max_chunk - 50);
+      RECDES rec{};
+      err = test_oos_utils::from_string_into_recdes (data, rec);
+      ASSERT_EQ (err, NO_ERROR);
+
+      OID oid = OID_INITIALIZER;
+      err = oos_insert (thread_p, oos_vfid, rec, oid);
+      ASSERT_EQ (err, NO_ERROR);
+
+      pages_round2.insert (oid.pageid);
+      recdes_free_data_area (&rec);
+    }
+
+  test_oos_debug ("Round 2: %d records across %d pages", num_pages_to_fill,
+		  (int) pages_round2.size ());
+
+  // Round 2 should not use more pages than Round 1
+  ASSERT_LE ((int) pages_round2.size (), (int) pages_round1.size ());
+
+  // Most round 2 pages should be reused from round 1.
+  // The best[] array only holds OOS_NUM_BEST_SPACESTATS entries, so
+  // with >10 pages some may not be cached.  But the global hash cache
+  // and sync should recover most of them.
+  int reused_count = 0;
+  for (auto page : pages_round2)
+    {
+      if (pages_round1.count (page) > 0)
+	{
+	  reused_count++;
+	}
+    }
+  test_oos_debug ("Round 2 reused %d/%d pages from Round 1",
+		  reused_count, (int) pages_round2.size ());
+  // At least 60% of round 2 pages should be reused.
+  // The bestspace cache (hash + best[10]) cannot track all pages when
+  // there are more than OOS_NUM_BEST_SPACESTATS, so some new allocations
+  // are expected.  The key invariant is that bestspace meaningfully helps.
+  ASSERT_GE (reused_count, (int) (pages_round2.size () * 0.6))
+    << "Too few pages reused — bestspace cache not working well for >best[] overflow";
+
+  err = oos_remove_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+}
+
+
+// ===========================================================================
+// TEST: BestspaceStaleCacheEviction
+//
+// Populate the bestspace cache with a page, then fill that page so the
+// cached freespace is stale.  The next find should detect the stale
+// entry, evict it, and allocate a new page instead.
+// ===========================================================================
+TEST (OosBestspaceTest, BestspaceStaleCacheEviction)
+{
+  int err;
+  VFID oos_vfid;
+
+  err = oos_create_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  const int max_chunk = bridge_oos_get_max_chunk_size_within_page ();
+
+  // Insert a small record to establish a page in the cache
+  RECDES rec_small{};
+  err = test_oos_utils::from_string_into_recdes ("seed record", rec_small);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_small (&rec_small, recdes_free_data_area);
+
+  OID oid_seed = OID_INITIALIZER;
+  err = oos_insert (thread_p, oos_vfid, rec_small, oid_seed);
+  ASSERT_EQ (err, NO_ERROR);
+  PAGEID seed_page = oid_seed.pageid;
+
+  // Now fill that page with a large record so the cache entry becomes stale
+  auto large_data = test_oos_utils::make_repeated_pattern_string (max_chunk - 50);
+  RECDES rec_large{};
+  err = test_oos_utils::from_string_into_recdes (large_data, rec_large);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_large (&rec_large, recdes_free_data_area);
+
+  OID oid_large = OID_INITIALIZER;
+  err = oos_insert (thread_p, oos_vfid, rec_large, oid_large);
+  ASSERT_EQ (err, NO_ERROR);
+
+  // The page should now be (nearly) full — verify the large record landed there
+  ASSERT_EQ (oid_large.pageid, seed_page);
+
+  // Now try to insert another large record — the cache may still think seed_page
+  // has space, but the find logic should detect the stale entry and allocate new
+  auto large_data2 = test_oos_utils::make_repeated_pattern_string (max_chunk - 50);
+  RECDES rec_large2{};
+  err = test_oos_utils::from_string_into_recdes (large_data2, rec_large2);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_large2 (&rec_large2, recdes_free_data_area);
+
+  OID oid_large2 = OID_INITIALIZER;
+  err = oos_insert (thread_p, oos_vfid, rec_large2, oid_large2);
+  ASSERT_EQ (err, NO_ERROR);
+
+  // Must go to a different page since seed_page is full
+  ASSERT_NE (oid_large2.pageid, seed_page);
+
+  err = oos_remove_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+}
+
+
+// ===========================================================================
+// TEST: BestspaceHeaderPageNeverReturned
+//
+// Verify that bridge_oos_find_best_page never returns the header page.
+// The header page is page 0 of the file and must be skipped.
+// ===========================================================================
+TEST (OosBestspaceTest, BestspaceHeaderPageNeverReturned)
+{
+  int err;
+  VFID oos_vfid;
+
+  err = oos_create_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  // Get the header page VPID
+  VPID hdr_vpid;
+  err = file_get_sticky_first_page (thread_p, &oos_vfid, &hdr_vpid);
+  ASSERT_EQ (err, NO_ERROR);
+  ASSERT_FALSE (VPID_ISNULL (&hdr_vpid));
+
+  // Call find_best_page multiple times and verify it never returns the header page
+  for (int i = 0; i < 20; i++)
+    {
+      VPID found_vpid{NULL_PAGEID, NULL_VOLID};
+      auto page = bridge_oos_find_best_page (thread_p, oos_vfid, 100, found_vpid);
+      ASSERT_NE (page, nullptr);
+      ASSERT_FALSE (VPID_EQ (&found_vpid, &hdr_vpid))
+	<< "find_best_page returned the header page at iteration " << i;
+
+      // Insert a small record to move things along
+      RECDES rec{};
+      err = test_oos_utils::from_string_into_recdes ("hdr skip test #" + std::to_string (i), rec);
+      ASSERT_EQ (err, NO_ERROR);
+
+      OID oid = OID_INITIALIZER;
+      err = oos_insert (thread_p, oos_vfid, rec, oid);
+      ASSERT_EQ (err, NO_ERROR);
+      ASSERT_NE (oid.pageid, hdr_vpid.pageid);
+      recdes_free_data_area (&rec);
+    }
+
+  err = oos_remove_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+}
+
+
+// ===========================================================================
+// TEST: BestspaceSyncRefillsCache
+//
+// Create a file with multiple pages, clear the global cache, then verify
+// that sync_bestspace repopulates the cache so find_best_page succeeds.
+// ===========================================================================
+TEST (OosBestspaceTest, BestspaceSyncRefillsCache)
+{
+  int err;
+  VFID oos_vfid;
+
+  err = oos_create_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  const int max_chunk = bridge_oos_get_max_chunk_size_within_page ();
+
+  // Create multiple pages with some free space by inserting medium records
+  const int medium_size = max_chunk / 2;
+  std::vector<OID> oids;
+  std::set<PAGEID> original_pages;
+
+  for (int i = 0; i < 5; i++)
+    {
+      auto data = test_oos_utils::make_repeated_pattern_string (medium_size);
+      RECDES rec{};
+      err = test_oos_utils::from_string_into_recdes (data, rec);
+      ASSERT_EQ (err, NO_ERROR);
+
+      OID oid = OID_INITIALIZER;
+      err = oos_insert (thread_p, oos_vfid, rec, oid);
+      ASSERT_EQ (err, NO_ERROR);
+      oids.push_back (oid);
+      original_pages.insert (oid.pageid);
+      recdes_free_data_area (&rec);
+    }
+
+  test_oos_debug ("Created %d pages with medium records", (int) original_pages.size ());
+
+  // Delete all cached entries for these pages from the global cache
+  for (auto &oid : oids)
+    {
+      VPID vpid = {oid.pageid, oid.volid};
+      bridge_oos_stats_del_bestspace_by_vpid (thread_p, &vpid);
+    }
+
+  // Get header page for sync
+  VPID hdr_vpid;
+  err = file_get_sticky_first_page (thread_p, &oos_vfid, &hdr_vpid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  PAGE_PTR hdr_page = pgbuf_fix (thread_p, &hdr_vpid, OLD_PAGE,
+				  PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  ASSERT_NE (hdr_page, nullptr);
+
+  OOS_HDR_STATS *oos_hdr = bridge_oos_get_header_stats_ptr (thread_p, hdr_page);
+  ASSERT_NE (oos_hdr, nullptr);
+
+  // Clear best[] array in header
+  for (int i = 0; i < OOS_NUM_BEST_SPACESTATS; i++)
+    {
+      VPID_SET_NULL (&oos_hdr->estimates.best[i].vpid);
+      oos_hdr->estimates.best[i].freespace = 0;
+    }
+
+  // Run sync to repopulate
+  int found = bridge_oos_stats_sync_bestspace (thread_p, &oos_vfid, oos_hdr, &hdr_vpid, true);
+  test_oos_debug ("sync_bestspace found %d pages with good free space", found);
+
+  pgbuf_unfix_and_init (thread_p, hdr_page);
+
+  // Now find_best_page should succeed (sync repopulated cache)
+  VPID found_vpid{NULL_PAGEID, NULL_VOLID};
+  auto page = bridge_oos_find_best_page (thread_p, oos_vfid, 100, found_vpid);
+  ASSERT_NE (page, nullptr);
+  ASSERT_NE (found_vpid.pageid, NULL_PAGEID);
+
+  // The found page should be one of the original pages (which still have space)
+  ASSERT_TRUE (original_pages.count (found_vpid.pageid) > 0)
+    << "sync did not find any of the original pages";
+
+  err = oos_remove_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+}
+
+
+// ===========================================================================
+// TEST: BestspaceSecondBestRingBuffer
+//
+// Directly test the second_best ring buffer via bridge functions.
+// The ring buffer holds OOS_NUM_BEST_SPACESTATS entries and wraps around.
+// ===========================================================================
+TEST (OosBestspaceTest, BestspaceSecondBestRingBuffer)
+{
+  int err;
+  VFID oos_vfid;
+
+  err = oos_create_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  VPID hdr_vpid;
+  err = file_get_sticky_first_page (thread_p, &oos_vfid, &hdr_vpid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  PAGE_PTR hdr_page = pgbuf_fix (thread_p, &hdr_vpid, OLD_PAGE,
+				  PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  ASSERT_NE (hdr_page, nullptr);
+
+  OOS_HDR_STATS *oos_hdr = bridge_oos_get_header_stats_ptr (thread_p, hdr_page);
+  ASSERT_NE (oos_hdr, nullptr);
+
+  // Reset second_best state
+  oos_hdr->estimates.num_second_best = 0;
+  oos_hdr->estimates.head_second_best = 0;
+  oos_hdr->estimates.tail_second_best = 0;
+  oos_hdr->estimates.num_substitutions = 0;
+
+  // put_second_best only stores every 1000th call (num_substitutions % 1000 == 0)
+  // So we need to call it with num_substitutions at 999 to trigger storage on the next call.
+
+  // Pre-set num_substitutions so the next put triggers storage
+  oos_hdr->estimates.num_substitutions = 999;
+
+  VPID test_vpid1 = {100, 1};
+  bridge_oos_stats_put_second_best (oos_hdr, &test_vpid1);
+  ASSERT_EQ (oos_hdr->estimates.num_second_best, 1);
+
+  // Next storage at 1999
+  oos_hdr->estimates.num_substitutions = 1999;
+  VPID test_vpid2 = {200, 1};
+  bridge_oos_stats_put_second_best (oos_hdr, &test_vpid2);
+  ASSERT_EQ (oos_hdr->estimates.num_second_best, 2);
+
+  // Retrieve — should come out in FIFO order
+  VPID out_vpid;
+  bool got = bridge_oos_stats_get_second_best (oos_hdr, &out_vpid);
+  ASSERT_TRUE (got);
+  ASSERT_EQ (out_vpid.pageid, 100);
+  ASSERT_EQ (out_vpid.volid, 1);
+  ASSERT_EQ (oos_hdr->estimates.num_second_best, 1);
+
+  got = bridge_oos_stats_get_second_best (oos_hdr, &out_vpid);
+  ASSERT_TRUE (got);
+  ASSERT_EQ (out_vpid.pageid, 200);
+  ASSERT_EQ (out_vpid.volid, 1);
+  ASSERT_EQ (oos_hdr->estimates.num_second_best, 0);
+
+  // Empty — should return false
+  got = bridge_oos_stats_get_second_best (oos_hdr, &out_vpid);
+  ASSERT_FALSE (got);
+
+  // Test wrap-around: fill all OOS_NUM_BEST_SPACESTATS slots
+  for (int i = 0; i < OOS_NUM_BEST_SPACESTATS; i++)
+    {
+      oos_hdr->estimates.num_substitutions = (i + 3) * 1000 - 1;
+      VPID vpid = {300 + i, 1};
+      bridge_oos_stats_put_second_best (oos_hdr, &vpid);
+    }
+  ASSERT_EQ (oos_hdr->estimates.num_second_best, OOS_NUM_BEST_SPACESTATS);
+
+  // Add one more — should overwrite the oldest (wrap-around)
+  oos_hdr->estimates.num_substitutions = 99999;
+  VPID vpid_overflow = {999, 1};
+  bridge_oos_stats_put_second_best (oos_hdr, &vpid_overflow);
+  // num_second_best stays at max
+  ASSERT_EQ (oos_hdr->estimates.num_second_best, OOS_NUM_BEST_SPACESTATS);
+
+  // The first get should return the second entry (first was overwritten by wrap)
+  got = bridge_oos_stats_get_second_best (oos_hdr, &out_vpid);
+  ASSERT_TRUE (got);
+  ASSERT_EQ (out_vpid.pageid, 301);  // 300 was overwritten by the wrap
+
+  pgbuf_unfix_and_init (thread_p, hdr_page);
+
+  err = oos_remove_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+}
+
+
+// ===========================================================================
+// TEST: BestspaceFindPageIdxBadspace
+//
+// Directly test that find_page_in_bestspace correctly computes idx_badspace
+// (the index in best[] with the worst/smallest free space).
+// ===========================================================================
+TEST (OosBestspaceTest, BestspaceFindPageIdxBadspace)
+{
+  int err;
+  VFID oos_vfid;
+
+  err = oos_create_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  // Prepare a best[] array with known values
+  OOS_BESTSPACE bestspace[OOS_NUM_BEST_SPACESTATS];
+  for (int i = 0; i < OOS_NUM_BEST_SPACESTATS; i++)
+    {
+      VPID_SET_NULL (&bestspace[i].vpid);
+      bestspace[i].freespace = 0;
+    }
+
+  // Populate first 3 slots with pages that don't exist (will fail latch)
+  // but we can still verify idx_badspace computation
+  // Use a tiny needed_space that none of our fake entries satisfy
+  int idx_badspace = -1;
+  VPID out_vpid;
+  PAGE_PTR out_pgptr = NULL;
+
+  // All NULL vpids — idx_badspace should be 0 (first NULL slot)
+  OOS_FINDSPACE result = bridge_oos_stats_find_page_in_bestspace (
+			   thread_p, &oos_vfid, bestspace, &idx_badspace,
+			   999999, &out_vpid, &out_pgptr);
+  ASSERT_EQ (result, OOS_FINDSPACE_NOTFOUND);
+  ASSERT_EQ (idx_badspace, 0);  // first NULL slot
+
+  err = oos_remove_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+}
+
+
+// ===========================================================================
+// TEST: BestspaceExactMaxChunkBoundary
+//
+// Insert a record of exactly max_chunk_size.  Verify it succeeds and
+// the page is fully utilized (boundary condition).
+// ===========================================================================
+TEST (OosBestspaceTest, BestspaceExactMaxChunkBoundary)
+{
+  int err;
+  VFID oos_vfid;
+
+  err = oos_create_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  const int max_chunk = bridge_oos_get_max_chunk_size_within_page ();
+
+  // Insert a record of exactly max_chunk size
+  auto exact_data = test_oos_utils::make_repeated_pattern_string (max_chunk);
+  RECDES rec_exact{};
+  err = test_oos_utils::from_string_into_recdes (exact_data, rec_exact);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_exact (&rec_exact, recdes_free_data_area);
+
+  OID oid_exact = OID_INITIALIZER;
+  err = oos_insert (thread_p, oos_vfid, rec_exact, oid_exact);
+  ASSERT_EQ (err, NO_ERROR);
+
+  PAGEID exact_page = oid_exact.pageid;
+
+  // The page should be nearly full after this insert
+  int free_after = get_free_space_of_oid_page (oid_exact);
+  test_oos_debug ("free space after exact max_chunk insert: %d", free_after);
+
+  // A second record of the same size should go to a different page
+  auto exact_data2 = test_oos_utils::make_repeated_pattern_string (max_chunk);
+  RECDES rec_exact2{};
+  err = test_oos_utils::from_string_into_recdes (exact_data2, rec_exact2);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_exact2 (&rec_exact2, recdes_free_data_area);
+
+  OID oid_exact2 = OID_INITIALIZER;
+  err = oos_insert (thread_p, oos_vfid, rec_exact2, oid_exact2);
+  ASSERT_EQ (err, NO_ERROR);
+
+  ASSERT_NE (oid_exact2.pageid, exact_page);
+
+  // Verify both records are readable
+  RECDES rec_out{};
+  err = oos_read (thread_p, oid_exact, rec_out);
+  ASSERT_EQ (err, NO_ERROR);
+  ASSERT_EQ ((int) strlen (rec_out.data), max_chunk);
+  recdes_free_data_area (&rec_out);
+
+  RECDES rec_out2{};
+  err = oos_read (thread_p, oid_exact2, rec_out2);
+  ASSERT_EQ (err, NO_ERROR);
+  ASSERT_EQ ((int) strlen (rec_out2.data), max_chunk);
+  recdes_free_data_area (&rec_out2);
 
   err = oos_remove_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);

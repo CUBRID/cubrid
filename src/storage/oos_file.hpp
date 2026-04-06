@@ -82,6 +82,13 @@ extern int oos_get_length (THREAD_ENTRY *thread_p, const OID &oid);
 extern int oos_rv_redo_delete (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
 extern int oos_rv_redo_insert (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
 
+typedef enum
+{
+  OOS_FINDSPACE_FOUND = 0,
+  OOS_FINDSPACE_NOTFOUND,
+  OOS_FINDSPACE_ERROR
+} OOS_FINDSPACE;
+
 extern int oos_bestspace_initialize (void);
 extern int oos_bestspace_finalize (void);
 

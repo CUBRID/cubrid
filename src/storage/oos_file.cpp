@@ -452,13 +452,6 @@ oos_stats_get_second_best (OOS_HDR_STATS *oos_hdr, VPID *vpid)
 // OOS Bestspace — find page in bestspace (hash + best[])
 // ****************************************************************************
 
-typedef enum
-{
-  OOS_FINDSPACE_FOUND = 0,
-  OOS_FINDSPACE_NOTFOUND,
-  OOS_FINDSPACE_ERROR
-} OOS_FINDSPACE;
-
 static OOS_FINDSPACE
 oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 				  OOS_BESTSPACE *bestspace, int *idx_badspace,
@@ -1882,5 +1875,53 @@ bridge_oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const i
 			   VPID &vpid)
 {
   return oos_find_best_page (thread_p, oos_vfid, rec_length, vpid);
+}
+
+OOS_STATS_ENTRY *
+bridge_oos_stats_add_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid, VPID *vpid, int freespace)
+{
+  return oos_stats_add_bestspace (thread_p, vfid, vpid, freespace);
+}
+
+int
+bridge_oos_stats_del_bestspace_by_vpid (THREAD_ENTRY *thread_p, VPID *vpid)
+{
+  return oos_stats_del_bestspace_by_vpid (thread_p, vpid);
+}
+
+OOS_HDR_STATS *
+bridge_oos_get_header_stats_ptr (THREAD_ENTRY *thread_p, PAGE_PTR page_header)
+{
+  return oos_get_header_stats_ptr (thread_p, page_header);
+}
+
+void
+bridge_oos_stats_put_second_best (OOS_HDR_STATS *oos_hdr, VPID *vpid)
+{
+  oos_stats_put_second_best (oos_hdr, vpid);
+}
+
+bool
+bridge_oos_stats_get_second_best (OOS_HDR_STATS *oos_hdr, VPID *vpid)
+{
+  return oos_stats_get_second_best (oos_hdr, vpid);
+}
+
+int
+bridge_oos_stats_sync_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
+				 OOS_HDR_STATS *oos_hdr, VPID *hdr_vpid,
+				 bool scan_all)
+{
+  return oos_stats_sync_bestspace (thread_p, vfid, oos_hdr, hdr_vpid, scan_all);
+}
+
+OOS_FINDSPACE
+bridge_oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
+    OOS_BESTSPACE *bestspace, int *idx_badspace,
+    int needed_space, VPID *out_vpid,
+    PAGE_PTR *out_pgptr)
+{
+  return oos_stats_find_page_in_bestspace (thread_p, vfid, bestspace, idx_badspace,
+	 needed_space, out_vpid, out_pgptr);
 }
 #endif
