@@ -1021,7 +1021,8 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
   int executed_cnt = 0;
   int last_statement_line_no = 0;	// tracks line no of the last successfully executed stmt. -1 for failed ones.
   int base_line = *start_line - 1;
-  int client_type = DB_CLIENT_TYPE_LOADDB_UTILITY;
+  int client_type;
+  int save_client_type = DB_CLIENT_TYPE_LOADDB_UTILITY;	/* prevents compat check in 'end' on early goto */
 
   if ((*start_line) > 1)
     {
@@ -1057,7 +1058,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 
   util_arm_signal_handlers (&ldr_exec_query_interrupt_handler, &ldr_exec_query_interrupt_handler);
 
-  client_type = db_get_client_type ();
+  save_client_type = client_type = db_get_client_type ();
 
   while (true)
     {
@@ -1071,6 +1072,8 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	  db_close_session (session);
 	  goto end;
 	}
+
+      client_type = db_get_client_type ();
 
       stmt_cnt = db_parse_one_statement (session);
       if (stmt_cnt > 0)
@@ -1197,17 +1200,17 @@ end:
       db_commit_transaction ();
     }
 
-  if (client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2
-      || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4)
+  if (save_client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2
+      || save_client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4)
     {
       /* For stored procedures, jsp_find_stored_procedure() is invoked from db_execute_statement()
        * and may change the client type.
        * Check whether the client type has changed after db_execute_statement(). */
 
-      int load_client_type = db_get_client_type ();
+      client_type = db_get_client_type ();
 
-      if (client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2
-	  && load_client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4)
+      if (save_client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2
+	  && client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4)
 	{
 	  if (args->verbose)
 	    {
@@ -1222,7 +1225,7 @@ end:
 	    }
 	}
 
-      if (load_client_type == DB_CLIENT_TYPE_LOADDB_UTILITY)
+      if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY)
 	{
 	  if (args->verbose)
 	    {

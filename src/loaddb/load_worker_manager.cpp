@@ -38,7 +38,7 @@
 namespace cubload
 {
   /*
-   * cubload::worker_context_manager
+   * cubload::worker_entry_manager
    *    extends cubthread::entry_manager
    *
    * description
@@ -47,11 +47,11 @@ namespace cubload
    *      on_create - a driver instance is claimed from the pool and assigned on thread ref
    *      on_retire - previously stored driver in thread ref, is retired to the pool
    */
-  class worker_context_manager : public cubthread::entry_manager
+  class worker_entry_manager : public cubthread::entry_manager
   {
     public:
-      explicit worker_context_manager (unsigned int pool_size);
-      ~worker_context_manager () override = default;
+      explicit worker_entry_manager (unsigned int pool_size);
+      ~worker_entry_manager () override = default;
 
       void on_create (cubthread::entry &context) override;
       void on_retire (cubthread::entry &context) override;
@@ -63,17 +63,17 @@ namespace cubload
   static std::mutex g_wp_mutex;
   static std::condition_variable g_wp_condvar;
   std::set<session *> g_active_sessions;
-  static cubthread::entry_workpool *g_worker_pool;
-  static worker_context_manager *g_wp_context_manager;
-  static cubthread::worker_pool_task_capper<cubthread::entry> *g_wp_task_capper;
+  static cubthread::worker_pool *g_worker_pool;
+  static worker_entry_manager *g_wp_entry_manager;
+  static cubthread::worker_pool_task_capper *g_wp_task_capper;
 
-  worker_context_manager::worker_context_manager (unsigned int pool_size)
+  worker_entry_manager::worker_entry_manager (unsigned int pool_size)
     : m_driver_pool (pool_size)
   {
     //
   }
 
-  void worker_context_manager::on_create (cubthread::entry &context)
+  void worker_entry_manager::on_create (cubthread::entry &context)
   {
     driver *driver = m_driver_pool.claim ();
 
@@ -81,7 +81,7 @@ namespace cubload
     context.type = TT_LOADDB;
   }
 
-  void worker_context_manager::on_retire (cubthread::entry &context)
+  void worker_entry_manager::on_retire (cubthread::entry &context)
   {
     if (context.m_loaddb_driver == NULL)
       {
@@ -111,20 +111,20 @@ namespace cubload
     if (g_active_sessions.empty ())
       {
 	assert (g_worker_pool == NULL);
-	assert (g_wp_context_manager == NULL);
+	assert (g_wp_entry_manager == NULL);
 
 	unsigned int pool_size = prm_get_integer_value (PRM_ID_LOADDB_WORKER_COUNT);
 
-	g_wp_context_manager = new worker_context_manager (pool_size);
+	g_wp_entry_manager = new worker_entry_manager (pool_size);
 	g_worker_pool = cubthread::get_manager ()->create_worker_pool (pool_size, 2 * pool_size, "loaddb",
-			g_wp_context_manager, 1, false, true);
+			g_wp_entry_manager, 1, false, true);
 
-	g_wp_task_capper = new cubthread::worker_pool_task_capper<cubthread::entry> (g_worker_pool);
+	g_wp_task_capper = new cubthread::worker_pool_task_capper (g_worker_pool);
       }
     else
       {
 	assert (g_worker_pool != NULL);
-	assert (g_wp_context_manager != NULL);
+	assert (g_wp_entry_manager != NULL);
       }
 
     g_active_sessions.insert (&load_session);
@@ -147,12 +147,12 @@ namespace cubload
       {
 	// We are the last session so we can safely destroy the worker pool and the manager.
 	cubthread::get_manager ()->destroy_worker_pool (g_worker_pool);
-	delete g_wp_context_manager;
+	delete g_wp_entry_manager;
 
 	delete g_wp_task_capper;
 
 	g_worker_pool = NULL;
-	g_wp_context_manager = NULL;
+	g_wp_entry_manager = NULL;
 	g_wp_task_capper = NULL;
       }
 

@@ -88,7 +88,6 @@
 #include "log_common_impl.h"
 #include "log_volids.hpp"
 #include "fault_injection.h"
-#include "thread_worker_pool.hpp"
 #include "es_posix.h"
 
 #if defined (SERVER_MODE)
@@ -115,9 +114,9 @@
 
 #include "intl_support.h"
 #include "tsc_timer.h"
-#include "thread_worker_pool.hpp"	// for system_core_count
 
 #if defined (SERVER_MODE)
+#include "thread_worker_pool.hpp"	// for system_core_count
 #include "server_support.h"
 #endif // SERVER_MODE
 #if defined (SERVER_MODE)
