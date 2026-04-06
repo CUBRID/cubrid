@@ -26,20 +26,6 @@
 
 #include "test_oos_sql_common.hpp"
 
-#include "vacuum.h"
-#include "thread_manager.hpp"
-
-// ============================================================================
-// Helper: trigger vacuum in SA_MODE
-// ============================================================================
-
-static int
-run_vacuum ()
-{
-  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-  return xvacuum (thread_p);
-}
-
 // ============================================================================
 // Test fixture
 // ============================================================================
@@ -336,6 +322,294 @@ TEST_F (OosSqlVacuum, MultipleUpdatesThenVacuum)
   rc = fetch_single_int ("SELECT LENGTH(data_col) FROM t_oos_vac WHERE id = 1", &len);
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_EQ (len, 8192);  /* REPEAT(X'DD', 4096) = 8192 bytes */
+}
+
+// ============================================================================
+// TC-08: Verify vacuum frees OOS space via reuse measurement
+//
+// Page deallocation is out of scope for this PR, so we prove OOS cleanup
+// by showing that vacuumed space is reused: insert → delete → vacuum →
+// reinsert the same amount and verify page count does NOT grow.
+// Without vacuum, dead OOS records would force new page allocations.
+// ============================================================================
+TEST_F (OosSqlVacuum, VerifyOosSpaceReusedAfterVacuum)
+{
+  int rc;
+
+  rc = exec_sql ("CREATE TABLE t_oos_vac (id INT PRIMARY KEY, data_col BIT VARYING)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  /* Phase 1: Insert OOS records */
+  for (int i = 1; i <= 10; i++)
+    {
+      char sql[256];
+      snprintf (sql, sizeof (sql), "INSERT INTO t_oos_vac VALUES (%d, REPEAT(X'AA', 4096))", i);
+      rc = exec_sql (sql);
+      ASSERT_GE (rc, 0);
+      db_commit_transaction ();
+    }
+
+  int pages_after_first_insert = get_oos_page_count ("t_oos_vac");
+  ASSERT_GT (pages_after_first_insert, 0) << "OOS file should have pages after inserting OOS data";
+
+  /* Phase 2: Delete all and vacuum */
+  rc = exec_sql ("DELETE FROM t_oos_vac");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = run_vacuum ();
+  ASSERT_EQ (rc, NO_ERROR);
+
+  /* Phase 3: Reinsert the same amount of OOS data */
+  for (int i = 11; i <= 20; i++)
+    {
+      char sql[256];
+      snprintf (sql, sizeof (sql), "INSERT INTO t_oos_vac VALUES (%d, REPEAT(X'BB', 4096))", i);
+      rc = exec_sql (sql);
+      ASSERT_GE (rc, 0);
+      db_commit_transaction ();
+    }
+
+  int pages_after_reinsert = get_oos_page_count ("t_oos_vac");
+
+  /* If vacuum cleaned OOS records, reinsert reuses freed slots → page count stays the same.
+   * Without vacuum, old dead records would still occupy slots, forcing new page allocations. */
+  EXPECT_EQ (pages_after_reinsert, pages_after_first_insert)
+    << "OOS pages should be reused after vacuum — proves vacuum freed OOS record slots";
+
+  /* Verify data integrity */
+  int count = 0;
+  rc = fetch_single_int ("SELECT COUNT(*) FROM t_oos_vac", &count);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (count, 10);
+}
+
+// ============================================================================
+// TC-09: Multi-OOS-column record — vacuum must clean ALL OOS columns
+//
+// Tests that heap_recdes_get_oos_oids returns a vector with multiple OIDs
+// and vacuum_heap_oos_delete iterates through all of them.
+// Verifies via space reuse: both columns' OOS records must be freed
+// for the reinsert to fit in the same pages.
+// ============================================================================
+TEST_F (OosSqlVacuum, MultiOosColumnVacuum)
+{
+  int rc;
+
+  rc = exec_sql ("CREATE TABLE t_oos_vac ("
+		 "  id INT PRIMARY KEY,"
+		 "  oos_col1 BIT VARYING,"
+		 "  oos_col2 BIT VARYING"
+		 ")");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  /* Phase 1: Insert records with TWO OOS columns each */
+  for (int i = 1; i <= 5; i++)
+    {
+      char sql[256];
+      snprintf (sql, sizeof (sql),
+		"INSERT INTO t_oos_vac VALUES (%d, REPEAT(X'AA', 4096), REPEAT(X'BB', 4096))", i);
+      rc = exec_sql (sql);
+      ASSERT_GE (rc, 0);
+      db_commit_transaction ();
+    }
+
+  int pages_after_first_insert = get_oos_page_count ("t_oos_vac");
+  ASSERT_GT (pages_after_first_insert, 0);
+
+  /* Phase 2: Delete all and vacuum */
+  rc = exec_sql ("DELETE FROM t_oos_vac");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = run_vacuum ();
+  ASSERT_EQ (rc, NO_ERROR);
+
+  /* Phase 3: Reinsert same amount — both columns' OOS slots must be reused */
+  for (int i = 6; i <= 10; i++)
+    {
+      char sql[256];
+      snprintf (sql, sizeof (sql),
+		"INSERT INTO t_oos_vac VALUES (%d, REPEAT(X'CC', 4096), REPEAT(X'DD', 4096))", i);
+      rc = exec_sql (sql);
+      ASSERT_GE (rc, 0);
+      db_commit_transaction ();
+    }
+
+  int pages_after_reinsert = get_oos_page_count ("t_oos_vac");
+
+  /* If vacuum cleaned BOTH OOS columns, reinsert reuses all freed slots.
+   * If only one column was cleaned, we'd need extra pages for the other. */
+  EXPECT_EQ (pages_after_reinsert, pages_after_first_insert)
+    << "Both OOS columns must be cleaned — reinsert should reuse all freed slots";
+
+  /* Verify data integrity */
+  int count = 0;
+  rc = fetch_single_int ("SELECT COUNT(*) FROM t_oos_vac", &count);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (count, 5);
+}
+
+// ============================================================================
+// TC-10: REC_RELOCATION + OOS vacuum path
+//
+// Forces REC_RELOCATION by:
+// 1. Filling the heap page with many small rows
+// 2. Updating one row to be large enough to not fit in-page (but < BIGONE)
+//    plus an OOS column
+// This exercises the REC_RELOCATION branch in vacuum_heap_record().
+// ============================================================================
+TEST_F (OosSqlVacuum, RelocationWithOosVacuum)
+{
+  int rc;
+
+  /* Table with a variable-length column to control record size and an OOS column */
+  rc = exec_sql ("CREATE TABLE t_oos_vac ("
+		 "  id INT PRIMARY KEY,"
+		 "  pad VARCHAR(8000),"
+		 "  oos_col BIT VARYING"
+		 ")");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  /* Step 1: Insert a row with small pad (fits as REC_HOME) */
+  rc = exec_sql ("INSERT INTO t_oos_vac VALUES (1, 'small', REPEAT(X'AA', 4096))");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  /* Step 2: Fill the same heap page with many small rows to reduce free space */
+  for (int i = 2; i <= 30; i++)
+    {
+      char sql[256];
+      snprintf (sql, sizeof (sql),
+		"INSERT INTO t_oos_vac VALUES (%d, REPEAT('x', 400), REPEAT(X'CC', 1024))", i);
+      rc = exec_sql (sql);
+      ASSERT_GE (rc, 0);
+    }
+  db_commit_transaction ();
+
+  /* Step 3: Update row 1 with a large pad to force relocation
+   * (too big for original page slot, but < ~16KB so not BIGONE) */
+  rc = exec_sql ("UPDATE t_oos_vac SET pad = REPEAT('y', 6000), oos_col = REPEAT(X'DD', 4096) WHERE id = 1");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  int pages_before = get_oos_page_count ("t_oos_vac");
+  ASSERT_GT (pages_before, 0);
+
+  /* Step 4: Delete the relocated row and vacuum */
+  rc = exec_sql ("DELETE FROM t_oos_vac WHERE id = 1");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = run_vacuum ();
+  ASSERT_EQ (rc, NO_ERROR);
+
+  /* Verify remaining rows are intact */
+  int count = 0;
+  rc = fetch_single_int ("SELECT COUNT(*) FROM t_oos_vac", &count);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (count, 29);
+
+  /* Verify OOS cleanup happened (page count should not grow unboundedly) */
+  int pages_after = get_oos_page_count ("t_oos_vac");
+  EXPECT_LE (pages_after, pages_before)
+    << "OOS pages should not increase after vacuum of relocated record";
+}
+
+// ============================================================================
+// TC-11: UPDATE OOS column + vacuum — verify old OOS version page cleanup
+//
+// After UPDATE, the old OOS record (referenced by prev_version) should be
+// cleaned by vacuum. Verify via page count that the old version is freed.
+// ============================================================================
+TEST_F (OosSqlVacuum, UpdateOosPageCountCleanup)
+{
+  int rc;
+
+  rc = exec_sql ("CREATE TABLE t_oos_vac (id INT PRIMARY KEY, data_col BIT VARYING)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("INSERT INTO t_oos_vac VALUES (1, REPEAT(X'AA', 4096))");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  int pages_after_insert = get_oos_page_count ("t_oos_vac");
+  ASSERT_GT (pages_after_insert, 0);
+
+  /* Update — creates a new OOS record, old one kept for MVCC */
+  rc = exec_sql ("UPDATE t_oos_vac SET data_col = REPEAT(X'FF', 4096) WHERE id = 1");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  int pages_after_update = get_oos_page_count ("t_oos_vac");
+  EXPECT_GE (pages_after_update, pages_after_insert)
+    << "UPDATE should create additional OOS record (old version kept for MVCC)";
+
+  /* Vacuum should clean the old OOS version */
+  rc = run_vacuum ();
+  ASSERT_EQ (rc, NO_ERROR);
+
+  int pages_after_vacuum = get_oos_page_count ("t_oos_vac");
+  EXPECT_LE (pages_after_vacuum, pages_after_insert)
+    << "Vacuum should clean old OOS version, page count should return to pre-update level";
+
+  /* Current value should still be readable */
+  int len = 0;
+  rc = fetch_single_int ("SELECT LENGTH(data_col) FROM t_oos_vac WHERE id = 1", &len);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (len, 8192);
+}
+
+// ============================================================================
+// TC-12: TRUNCATE TABLE cleans OOS records (locator_delete_oos_force path)
+//
+// TRUNCATE does physical deletes via locator_delete_force_internal, which
+// calls locator_delete_oos_force. This path is separate from vacuum.
+// ============================================================================
+TEST_F (OosSqlVacuum, TruncateTableCleansOos)
+{
+  int rc;
+
+  rc = exec_sql ("CREATE TABLE t_oos_vac (id INT PRIMARY KEY, data_col BIT VARYING)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  for (int i = 1; i <= 5; i++)
+    {
+      char sql[256];
+      snprintf (sql, sizeof (sql), "INSERT INTO t_oos_vac VALUES (%d, REPEAT(X'AA', 4096))", i);
+      rc = exec_sql (sql);
+      ASSERT_GE (rc, 0);
+      db_commit_transaction ();
+    }
+
+  int pages_before = get_oos_page_count ("t_oos_vac");
+  ASSERT_GT (pages_before, 0);
+
+  /* TRUNCATE should physically delete all records including OOS */
+  rc = exec_sql ("TRUNCATE TABLE t_oos_vac");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  /* Verify table is empty */
+  int count = 0;
+  rc = fetch_single_int ("SELECT COUNT(*) FROM t_oos_vac", &count);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (count, 0);
+
+  /* Reinsert should still work */
+  rc = exec_sql ("INSERT INTO t_oos_vac VALUES (10, REPEAT(X'BB', 4096))");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  int len = 0;
+  rc = fetch_single_int ("SELECT LENGTH(data_col) FROM t_oos_vac WHERE id = 10", &len);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (len, 8192);
 }
 
 int

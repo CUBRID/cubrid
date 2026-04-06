@@ -36,6 +36,11 @@
 #include "error_manager.h"
 #include "thread_manager.hpp"
 
+#include "file_manager.h"
+#include "heap_file.h"
+#include "oos_file.hpp"
+#include "vacuum.h"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -165,6 +170,70 @@ exec_sql_commit (const char *sql)
   int rc = exec_sql (sql);
   assert (rc >= 0);
   db_commit_transaction ();
+}
+
+// ============================================================================
+// OOS file inspection helpers
+// ============================================================================
+
+// Get the OOS VFID for a given table name. Returns true on success.
+static bool
+get_oos_vfid_for_table (const char *table_name, VFID *oos_vfid_out)
+{
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+
+  DB_OBJECT *cls = db_find_class (table_name);
+  if (cls == NULL)
+    {
+      return false;
+    }
+
+  OID *class_oid = (OID *) db_identifier (cls);
+  if (class_oid == NULL)
+    {
+      return false;
+    }
+
+  HFID hfid;
+  FILE_TYPE ftype;
+  int err = heap_get_class_info (thread_p, class_oid, &hfid, &ftype, NULL);
+  if (err != NO_ERROR)
+    {
+      return false;
+    }
+
+  return heap_oos_find_vfid (thread_p, &hfid, oos_vfid_out, false);
+}
+
+// Get the number of user pages in the OOS file for a given table.
+// Returns -1 on failure.
+static int
+get_oos_page_count (const char *table_name)
+{
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+
+  VFID oos_vfid;
+  if (!get_oos_vfid_for_table (table_name, &oos_vfid))
+    {
+      return -1;
+    }
+
+  int num_pages = 0;
+  int err = file_get_num_user_pages (thread_p, &oos_vfid, &num_pages);
+  if (err != NO_ERROR)
+    {
+      return -1;
+    }
+
+  return num_pages;
+}
+
+// Trigger vacuum in SA_MODE. Returns error code.
+static int
+run_vacuum ()
+{
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  return xvacuum (thread_p);
 }
 
 #endif /* _TEST_OOS_SQL_COMMON_HPP_ */
