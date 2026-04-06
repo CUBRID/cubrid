@@ -47,4 +47,4 @@ extern void trace_log_bind_values (THREAD_ENTRY * thread_p, FILE * log_fp, int t
 #define TRACE_LOG_LEVEL_SIMPLE  1
 #define TRACE_LOG_LEVEL_DETAIL  2
 
-#endif /* _EVENT_LOG_H_ */
+#endif /* _TRACE_LOG_H_ */
