@@ -48,8 +48,8 @@ OOS_HDR_STATS *bridge_oos_get_header_stats_ptr (THREAD_ENTRY *thread_p, PAGE_PTR
 void bridge_oos_stats_put_second_best (OOS_HDR_STATS *oos_hdr, VPID *vpid);
 bool bridge_oos_stats_get_second_best (OOS_HDR_STATS *oos_hdr, VPID *vpid);
 int bridge_oos_stats_sync_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
-				      OOS_HDR_STATS *oos_hdr, VPID *hdr_vpid,
-				      bool scan_all);
+				     OOS_HDR_STATS *oos_hdr, VPID *hdr_vpid,
+				     bool scan_all);
 OOS_FINDSPACE bridge_oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
     OOS_BESTSPACE *bestspace, int *idx_badspace,
     int needed_space, VPID *out_vpid,
@@ -718,7 +718,7 @@ TEST (OosBestspaceTest, BestspaceBulkInsertDeleteReinsert)
   for (auto page : pages_round2)
     {
       ASSERT_TRUE (pages_round1.count (page) > 0)
-	<< "Round 2 page " << page << " was not used in Round 1 — unexpected file growth";
+	  << "Round 2 page " << page << " was not used in Round 1 — unexpected file growth";
     }
 
   // Verify all round 2 records are readable
@@ -831,7 +831,7 @@ TEST (OosBestspaceTest, BestspaceArrayOverflowEviction)
   // there are more than OOS_NUM_BEST_SPACESTATS, so some new allocations
   // are expected.  The key invariant is that bestspace meaningfully helps.
   ASSERT_GE (reused_count, (int) (pages_round2.size () * 0.6))
-    << "Too few pages reused — bestspace cache not working well for >best[] overflow";
+      << "Too few pages reused — bestspace cache not working well for >best[] overflow";
 
   err = oos_remove_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
@@ -927,7 +927,7 @@ TEST (OosBestspaceTest, BestspaceHeaderPageNeverReturned)
       auto page = bridge_oos_find_best_page (thread_p, oos_vfid, 100, found_vpid);
       ASSERT_NE (page, nullptr);
       ASSERT_FALSE (VPID_EQ (&found_vpid, &hdr_vpid))
-	<< "find_best_page returned the header page at iteration " << i;
+	  << "find_best_page returned the header page at iteration " << i;
 
       // Insert a small record to move things along
       RECDES rec{};
@@ -997,7 +997,7 @@ TEST (OosBestspaceTest, BestspaceSyncRefillsCache)
   ASSERT_EQ (err, NO_ERROR);
 
   PAGE_PTR hdr_page = pgbuf_fix (thread_p, &hdr_vpid, OLD_PAGE,
-				  PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+				 PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   ASSERT_NE (hdr_page, nullptr);
 
   OOS_HDR_STATS *oos_hdr = bridge_oos_get_header_stats_ptr (thread_p, hdr_page);
@@ -1024,7 +1024,7 @@ TEST (OosBestspaceTest, BestspaceSyncRefillsCache)
 
   // The found page should be one of the original pages (which still have space)
   ASSERT_TRUE (original_pages.count (found_vpid.pageid) > 0)
-    << "sync did not find any of the original pages";
+      << "sync did not find any of the original pages";
 
   err = oos_remove_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
@@ -1050,7 +1050,7 @@ TEST (OosBestspaceTest, BestspaceSecondBestRingBuffer)
   ASSERT_EQ (err, NO_ERROR);
 
   PAGE_PTR hdr_page = pgbuf_fix (thread_p, &hdr_vpid, OLD_PAGE,
-				  PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+				 PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   ASSERT_NE (hdr_page, nullptr);
 
   OOS_HDR_STATS *oos_hdr = bridge_oos_get_header_stats_ptr (thread_p, hdr_page);
@@ -1155,8 +1155,8 @@ TEST (OosBestspaceTest, BestspaceFindPageIdxBadspace)
 
   // All NULL vpids — idx_badspace should be 0 (first NULL slot)
   OOS_FINDSPACE result = bridge_oos_stats_find_page_in_bestspace (
-			   thread_p, &oos_vfid, bestspace, &idx_badspace,
-			   999999, &out_vpid, &out_pgptr);
+				 thread_p, &oos_vfid, bestspace, &idx_badspace,
+				 999999, &out_vpid, &out_pgptr);
   ASSERT_EQ (result, OOS_FINDSPACE_NOTFOUND);
   ASSERT_EQ (idx_badspace, 0);  // first NULL slot
 
