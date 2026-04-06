@@ -25872,42 +25872,41 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	    }
 
 	  /* to check for query like 'select count(*), count(*) ...' */
-	  if (class_cos->count_state == COS_LOADED)
-	    {
-	      continue;
-	    }
-
-	  class_cos->count_state = COS_TO_LOAD;
-	  if (logtb_tran_find_btid_stats (thread_p, &agg_ptr->btid, true) == NULL)
-	    {
-	      agg_ptr->flag.agg_optimized = false;
-	      *is_scan_needed = true;
-	      continue;
-	    }
-
-	  if (!tdes->mvccinfo.snapshot.valid)
-	    {
-	      if (logtb_get_mvcc_snapshot (thread_p) == NULL)
-		{
-		  error = er_errid ();
-		  return (error == NO_ERROR ? ER_FAILED : error);
-		}
-	    }
-	  else
-	    {
-	      /* 
-	       * An early snapshot can load stats for only the classes that
-	       * were COS_TO_LOAD then; UNION's second branch may still be NOT_LOADED on a later run.
-	       * It needs to load global statistics of btid.
-	       */
-	      logtb_load_global_statistics_to_tran (thread_p);
-	    }
-
 	  if (class_cos->count_state != COS_LOADED)
 	    {
-	      agg_ptr->flag.agg_optimized = false;
-	      *is_scan_needed = true;
-	      continue;
+
+	      class_cos->count_state = COS_TO_LOAD;
+	      if (logtb_tran_find_btid_stats (thread_p, &agg_ptr->btid, true) == NULL)
+		{
+		  agg_ptr->flag.agg_optimized = false;
+		  *is_scan_needed = true;
+		  continue;
+		}
+
+	      if (!tdes->mvccinfo.snapshot.valid)
+		{
+		  if (logtb_get_mvcc_snapshot (thread_p) == NULL)
+		    {
+		      error = er_errid ();
+		      return (error == NO_ERROR ? ER_FAILED : error);
+		    }
+		}
+	      else
+		{
+		  /* 
+		   * An early snapshot can load stats for only the classes that
+		   * were COS_TO_LOAD then; UNION's second branch may still be NOT_LOADED on a later run.
+		   * It needs to load global statistics of btid.
+		   */
+		  logtb_load_global_statistics_to_tran (thread_p);
+		}
+
+	      if (class_cos->count_state != COS_LOADED)
+		{
+		  agg_ptr->flag.agg_optimized = false;
+		  *is_scan_needed = true;
+		  continue;
+		}
 	    }
 	}
 
