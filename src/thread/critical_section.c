@@ -167,7 +167,13 @@ csect_initialize_critical_section (SYNC_CRITICAL_SECTION * csect, const char *na
       return ER_CSS_PTHREAD_MUTEX_INIT;
     }
 
-  error_code = pthread_cond_init (&csect->readers_ok, NULL);
+  {
+    pthread_condattr_t cond_attr;
+    pthread_condattr_init (&cond_attr);
+    pthread_condattr_setclock (&cond_attr, CLOCK_MONOTONIC);
+    error_code = pthread_cond_init (&csect->readers_ok, &cond_attr);
+    pthread_condattr_destroy (&cond_attr);
+  }
   if (error_code != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_INIT, 0);
@@ -781,8 +787,8 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, SYNC_CRITICAL_S
 	  else if (wait_secs > 0)
 	    {
 	      struct timespec to;
-	      to.tv_sec = time (NULL) + wait_secs;
-	      to.tv_nsec = 0;
+	      clock_gettime (CLOCK_MONOTONIC, &to);
+	      to.tv_sec += wait_secs;
 
 	      csect->waiting_readers++;
 	      thread_p->resume_status = THREAD_CSECT_READER_SUSPENDED;
@@ -1024,8 +1030,8 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * 
 	  else if (wait_secs > 0)
 	    {
 	      struct timespec to;
-	      to.tv_sec = time (NULL) + wait_secs;
-	      to.tv_nsec = 0;
+	      clock_gettime (CLOCK_MONOTONIC, &to);
+	      to.tv_sec += wait_secs;
 
 	      csect->waiting_readers++;
 	      thread_p->resume_status = THREAD_CSECT_READER_SUSPENDED;

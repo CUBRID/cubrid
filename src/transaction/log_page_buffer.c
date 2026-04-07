@@ -632,7 +632,13 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   logpb_Initialized = true;
   pthread_mutex_init (&log_Gl.chkpt_lsa_lock, NULL);
 
-  pthread_cond_init (&group_commit_info->gc_cond, NULL);
+  {
+    pthread_condattr_t cond_attr;
+    pthread_condattr_init (&cond_attr);
+    pthread_condattr_setclock (&cond_attr, CLOCK_MONOTONIC);
+    pthread_cond_init (&group_commit_info->gc_cond, &cond_attr);
+    pthread_condattr_destroy (&cond_attr);
+  }
   pthread_mutex_init (&group_commit_info->gc_mutex, NULL);
 
   pthread_mutex_init (&writer_info->wr_list_mutex, NULL);
@@ -4063,9 +4069,10 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 
       while (LSA_LT (&nxio_lsa, flush_lsa))
 	{
-	  gettimeofday (&start_time, NULL);
-	  (void) timeval_add_msec (&tmp_timeval, &start_time, max_wait_time_in_msec);
-	  (void) timeval_to_timespec (&to, &tmp_timeval);
+	  clock_gettime (CLOCK_MONOTONIC, &to);
+	  to.tv_nsec += max_wait_time_in_msec * 1000000L;
+	  to.tv_sec += to.tv_nsec / 1000000000L;
+	  to.tv_nsec = to.tv_nsec % 1000000000L;
 
 	  rv = pthread_mutex_lock (&group_commit_info->gc_mutex);
 	  nxio_lsa = log_Gl.append.get_nxio_lsa ();

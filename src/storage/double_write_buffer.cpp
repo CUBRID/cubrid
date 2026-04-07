@@ -1596,9 +1596,13 @@ dwb_wait_for_block_completion (THREAD_ENTRY *thread_p, unsigned int block_no)
 
   save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
   /* Waits for maximum 20 milliseconds. */
-  gettimeofday (&timeval_crt, NULL);
-  timeval_add_msec (&timeval_timeout, &timeval_crt, 20);
-  timeval_to_timespec (&to, &timeval_timeout);
+  clock_gettime (CLOCK_MONOTONIC, &to);
+  to.tv_nsec += 20 * 1000000L;
+  if (to.tv_nsec >= 1000000000L)
+    {
+      to.tv_sec++;
+      to.tv_nsec -= 1000000000L;
+    }
 
   r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_DWB_QUEUE_SUSPENDED);
 
@@ -1737,9 +1741,13 @@ dwb_wait_for_strucure_modification (THREAD_ENTRY *thread_p)
 
   save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
   /* Waits for maximum 10 milliseconds. */
-  gettimeofday (&timeval_crt, NULL);
-  timeval_add_msec (&timeval_timeout, &timeval_crt, 10);
-  timeval_to_timespec (&to, &timeval_timeout);
+  clock_gettime (CLOCK_MONOTONIC, &to);
+  to.tv_nsec += 10 * 1000000L;
+  if (to.tv_nsec >= 1000000000L)
+    {
+      to.tv_sec++;
+      to.tv_nsec -= 1000000000L;
+    }
 
   r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_DWB_QUEUE_SUSPENDED);
 

@@ -138,9 +138,9 @@ namespace cubthread
 	delta_time wait_time = delta_time (0);
 	delta_time execution_time = delta_time (0);
 
-	if (m_start_execution_time != std::chrono::system_clock::time_point ())
+	if (m_start_execution_time != std::chrono::steady_clock::time_point ())
 	  {
-	    execution_time = std::chrono::system_clock::now () - m_start_execution_time;
+	    execution_time = std::chrono::steady_clock::now () - m_start_execution_time;
 	  }
 
 	// compute task execution time
@@ -149,6 +149,10 @@ namespace cubthread
 	    wait_time = period - execution_time;
 	  }
 
+	/* NOTE: waiter::wait_for uses condition_variable::wait_for internally. In GCC 8, this converts to
+	 * CLOCK_REALTIME-based absolute time at the pthread level, so NTP adjustments may affect the actual
+	 * wait duration. After upgrading to GCC 11+ (glibc 2.30+), CLOCK_MONOTONIC will be used
+	 * automatically via pthread_cond_clockwait(). */
 	m_was_woken_up = waiter_arg.wait_for (wait_time);
       }
     else
@@ -158,7 +162,7 @@ namespace cubthread
       }
 
     // register start of the task execution time
-    m_start_execution_time = std::chrono::system_clock::now ();
+    m_start_execution_time = std::chrono::steady_clock::now ();
     Looper_statistics.time_and_increment (m_stats, STAT_LOOPER_SLEEP_COUNT_AND_TIME);
   }
 

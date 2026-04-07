@@ -154,7 +154,7 @@ namespace cubthread
     const std::chrono::milliseconds time_spin_sleep (10);       // sleep between spins for 10 milliseconds
 #endif
 
-    auto timeout = std::chrono::system_clock::now () + time_wait_to_thread_stop;
+    auto timeout = std::chrono::steady_clock::now () + time_wait_to_thread_stop;
 
     bool is_not_stopped;
     while (true)
@@ -173,7 +173,7 @@ namespace cubthread
 	    break;
 	  }
 
-	if (std::chrono::system_clock::now () > timeout)
+	if (std::chrono::steady_clock::now () > timeout)
 	  {
 	    // timed out
 	    assert (false);

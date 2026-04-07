@@ -313,7 +313,7 @@ namespace cubconn::connection
 
   void pool::finalize_workers ()
   {
-    std::chrono::system_clock::time_point deadline, now;
+    std::chrono::steady_clock::time_point deadline, now;
     std::chrono::microseconds wait_for (0);
     struct timeval *timeout;
     bool compelete;
@@ -331,16 +331,19 @@ namespace cubconn::connection
 
     /* shutdown timeout */
     timeout = css_get_shutdown_timeout ();
-    deadline = std::chrono::system_clock::time_point (
-		       std::chrono::seconds (timeout->tv_sec) +
-		       std::chrono::microseconds (timeout->tv_usec));
-    now = std::chrono::system_clock::now ();
+    now = std::chrono::steady_clock::now ();
+    deadline = now +
+	       std::chrono::seconds (timeout->tv_sec) +
+	       std::chrono::microseconds (timeout->tv_usec);
     if (deadline > now)
       {
 	wait_for = std::chrono::duration_cast<std::chrono::microseconds> (deadline - now);
       }
 
     std::unique_lock<std::mutex> lock (m_watcher->mtx);
+    /* NOTE: GCC 8 libstdc++ condition_variable::wait_for internally uses CLOCK_REALTIME. The deadline
+     * calculation above uses steady_clock (correct), but the pthread-level wait may be affected by NTP
+     * adjustments. After upgrading to GCC 11+ (glibc 2.30+), CLOCK_MONOTONIC will be used automatically. */
     compelete = m_watcher->cv.wait_for (lock, wait_for, [this] { return m_watcher->active == 1; /* coordinator */ });
     lock.unlock ();
     if (!compelete)
@@ -387,7 +390,7 @@ namespace cubconn::connection
 
   void pool::finalize_coordinator ()
   {
-    std::chrono::system_clock::time_point deadline, now;
+    std::chrono::steady_clock::time_point deadline, now;
     std::chrono::microseconds wait_for (0);
     coordinator::message request;
     struct timeval *timeout;
@@ -402,16 +405,19 @@ namespace cubconn::connection
 
     /* shutdown timeout */
     timeout = css_get_shutdown_timeout ();
-    deadline = std::chrono::system_clock::time_point (
-		       std::chrono::seconds (timeout->tv_sec) +
-		       std::chrono::microseconds (timeout->tv_usec));
-    now = std::chrono::system_clock::now ();
+    now = std::chrono::steady_clock::now ();
+    deadline = now +
+	       std::chrono::seconds (timeout->tv_sec) +
+	       std::chrono::microseconds (timeout->tv_usec);
     if (deadline > now)
       {
 	wait_for = std::chrono::duration_cast<std::chrono::microseconds> (deadline - now);
       }
 
     std::unique_lock<std::mutex> lock (m_watcher->mtx);
+    /* NOTE: GCC 8 libstdc++ condition_variable::wait_for internally uses CLOCK_REALTIME. The deadline
+     * calculation above uses steady_clock (correct), but the pthread-level wait may be affected by NTP
+     * adjustments. After upgrading to GCC 11+ (glibc 2.30+), CLOCK_MONOTONIC will be used automatically. */
     compelete = m_watcher->cv.wait_for (lock, wait_for, [this] { return m_watcher->active == 0; });
     lock.unlock ();
     if (!compelete)

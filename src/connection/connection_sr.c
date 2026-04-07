@@ -2597,8 +2597,8 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 		  int r;
 		  struct timespec abstime;
 
-		  abstime.tv_sec = (int) time (NULL) + waitsec;
-		  abstime.tv_nsec = 0;
+		  clock_gettime (CLOCK_MONOTONIC, &abstime);
+		  abstime.tv_sec += waitsec;
 
 		  r = thread_suspend_timeout_wakeup_and_unlock_entry (thrd, &abstime, THREAD_CSS_QUEUE_SUSPENDED);
 

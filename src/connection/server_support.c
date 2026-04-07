@@ -2896,7 +2896,7 @@ css_start_all_threads (void)
     }
 
   // start if pooling is configured
-  using clock_type = std::chrono::system_clock;
+  using clock_type = std::chrono::steady_clock;
   clock_type::time_point start_time = clock_type::now ();
 
   bool start_workers = css_get_server_request_thread_pooling_configuration ();

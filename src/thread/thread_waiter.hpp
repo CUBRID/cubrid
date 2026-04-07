@@ -62,9 +62,9 @@ namespace cubthread
       void wakeup (void);                                             // wakeup waiter thread
 
       void wait_inf (void);                                           // wait until wakeup
-      bool wait_for (const std::chrono::system_clock::duration &delta);   // wait for period of time or until wakeup
+      bool wait_for (const std::chrono::steady_clock::duration &delta);   // wait for period of time or until wakeup
       // returns true if woke up before timeout
-      bool wait_until (const std::chrono::system_clock::time_point &timeout_time);  // wait until time or until wakeup
+      bool wait_until (const std::chrono::steady_clock::time_point &timeout_time);  // wait until time or until wakeup
       // returns true if woke up before timeout
 
       // statistics
@@ -155,6 +155,8 @@ namespace cubthread
       }
     else
       {
+	/* NOTE: GCC 8 libstdc++ condition_variable::wait_for internally converts to CLOCK_REALTIME-based
+	 * absolute time. The pthread-level wait is subject to NTP adjustments until GCC 11+ (glibc 2.30+). */
 	(void) condvar.wait_for (lock, duration.m_duration);
       }
   }
@@ -171,6 +173,8 @@ namespace cubthread
       }
     else
       {
+	/* NOTE: GCC 8 libstdc++ condition_variable::wait_for internally converts to CLOCK_REALTIME-based
+	 * absolute time. The pthread-level wait is subject to NTP adjustments until GCC 11+ (glibc 2.30+). */
 	return condvar.wait_for (lock, duration.m_duration, pred);
       }
   }

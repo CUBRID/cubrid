@@ -1183,6 +1183,10 @@ dispatch_thr_f (void *arg)
 	  struct timeval tv;
 	  int r;
 
+	  /* NOTE: timeout is CLOCK_REALTIME-based (gettimeofday + 30ms). pthread_cond_timedwait uses
+	   * CLOCK_REALTIME by default, so NTP adjustments may affect the actual wait duration.
+	   * To use CLOCK_MONOTONIC, pthread_condattr_setclock(CLOCK_MONOTONIC) + clock_gettime(CLOCK_MONOTONIC)
+	   * would be needed. */
 	  gettimeofday (&tv, NULL);
 	  ts.tv_sec = tv.tv_sec;
 	  ts.tv_nsec = (tv.tv_usec + 30000) * 1000;

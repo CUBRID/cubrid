@@ -535,7 +535,7 @@ static int la_change_state (void);
 static int la_log_commit (bool update_commit_time);
 static unsigned long la_get_mem_size (void);
 static int la_check_mem_size (void);
-static int la_check_time_commit (struct timeval *time, unsigned int threshold);
+static int la_check_time_commit (struct timespec *time, unsigned int threshold);
 
 static void la_init (const char *log_path, const int max_mem_size);
 
@@ -6704,10 +6704,10 @@ la_commit_transaction (void)
 }
 
 static int
-la_check_time_commit (struct timeval *time_commit, unsigned int threshold)
+la_check_time_commit (struct timespec *time_commit, unsigned int threshold)
 {
   int error = NO_ERROR;
-  struct timeval curtime;
+  struct timespec curtime;
   int diff_msec;
   bool need_commit = false;
 
@@ -6716,8 +6716,8 @@ la_check_time_commit (struct timeval *time_commit, unsigned int threshold)
   assert (time_commit);
 
   /* check interval time for commit */
-  gettimeofday (&curtime, NULL);
-  diff_msec = (curtime.tv_sec - time_commit->tv_sec) * 1000 + (curtime.tv_usec / 1000 - time_commit->tv_usec / 1000);
+  clock_gettime (CLOCK_MONOTONIC, &curtime);
+  diff_msec = (curtime.tv_sec - time_commit->tv_sec) * 1000 + (curtime.tv_nsec / 1000000 - time_commit->tv_nsec / 1000000);
   if (diff_msec < 0)
     {
       diff_msec = 0;
@@ -6725,7 +6725,7 @@ la_check_time_commit (struct timeval *time_commit, unsigned int threshold)
 
   if (threshold < (unsigned int) diff_msec)
     {
-      gettimeofday (time_commit, NULL);
+      clock_gettime (CLOCK_MONOTONIC, time_commit);
 
       /* check server is connected now */
       error = db_ping_server (0, NULL);
@@ -8081,7 +8081,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
     -1, -1
   };
   LOG_LSA prev_final;
-  struct timeval time_commit;
+  struct timespec time_commit;
   int last_nxarv_num = 0;
   bool clear_owner;
   int now = 0, last_eof_time = 0;
@@ -8212,7 +8212,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   /* initialize final_lsa */
   LSA_COPY (&la_Info.committed_lsa, &la_Info.required_lsa);
 
-  gettimeofday (&time_commit, NULL);
+  clock_gettime (CLOCK_MONOTONIC, &time_commit);
   last_eof_time = time (NULL);
   LSA_SET_NULL (&last_eof_lsa);
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG

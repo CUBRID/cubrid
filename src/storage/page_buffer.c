@@ -7040,8 +7040,8 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
     }
 
 try_again:
-  to.tv_sec = (int) time (NULL) + wait_secs;
-  to.tv_nsec = 0;
+  clock_gettime (CLOCK_MONOTONIC, &to);
+  to.tv_sec += wait_secs;
 
   if (thread_p->type == TT_WORKER)
     {
@@ -7976,8 +7976,8 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
       high_priority = high_priority || VACUUM_IS_THREAD_VACUUM (thread_p) || pgbuf_is_thread_high_priority (thread_p);
 
       /* add to waiters thread list to be assigned victim directly */
-      to.tv_sec = (int) time (NULL) + pgbuf_latch_timeout;
-      to.tv_nsec = 0;
+      clock_gettime (CLOCK_MONOTONIC, &to);
+      to.tv_sec += pgbuf_latch_timeout;
 
       thread_lock_entry (thread_p);
 

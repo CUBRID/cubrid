@@ -10182,7 +10182,7 @@ log_checkpoint_execute (cubthread::entry & thread_ref)
 class log_remove_log_archive_daemon_task : public cubthread::entry_task
 {
   private:
-    using clock = std::chrono::system_clock;
+    using clock = std::chrono::steady_clock;
 
     bool m_is_timed_wait;
     cubthread::delta_time m_period;
@@ -10280,10 +10280,10 @@ log_clock_execute (cubthread::entry & thread_ref)
       return;
     }
 
-  struct timeval now;
-  gettimeofday (&now, NULL);
+  struct timespec now;
+  clock_gettime (CLOCK_MONOTONIC, &now);
 
-  log_Clock_msec = (now.tv_sec * 1000LL) + (now.tv_usec / 1000LL);
+  log_Clock_msec = (now.tv_sec * 1000LL) + (now.tv_nsec / 1000000LL);
 }
 #endif /* SERVER_MODE */
 
@@ -10543,10 +10543,10 @@ log_get_clock_msec (void)
     }
 #endif /* SERVER_MODE */
 
-  struct timeval now;
-  gettimeofday (&now, NULL);
+  struct timespec now;
+  clock_gettime (CLOCK_MONOTONIC, &now);
 
-  return (now.tv_sec * 1000LL) + (now.tv_usec / 1000LL);
+  return (now.tv_sec * 1000LL) + (now.tv_nsec / 1000000LL);
 }
 
 // *INDENT-OFF*

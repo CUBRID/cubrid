@@ -8587,7 +8587,7 @@ qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR 
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
-  using bench_clock = std::chrono::system_clock;
+  using bench_clock = std::chrono::steady_clock;
   bench_clock::time_point start_timept = bench_clock::now ();
 
   for (INT64 step = 0; step < count; step++)

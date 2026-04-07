@@ -37,7 +37,7 @@
 namespace cubthread
 {
   // definitions
-  typedef std::chrono::system_clock::duration delta_time;
+  typedef std::chrono::steady_clock::duration delta_time;
   typedef std::function<void (bool &, delta_time &)> period_function;
 
   // for increasing period pattern
@@ -152,7 +152,7 @@ namespace cubthread
 
       // a time point that represents the start of task execution
       // used by put_to_sleep function in order to sleep for difference between period interval and task execution time
-      std::chrono::system_clock::time_point m_start_execution_time;
+      std::chrono::steady_clock::time_point m_start_execution_time;
 
       // statistics
       cubperf::statset &m_stats;
