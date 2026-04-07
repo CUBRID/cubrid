@@ -80,7 +80,7 @@ namespace parallel_query
 	  return er_errid ();
 	}
       shared_info.membuf_claimed.store (false, std::memory_order_relaxed);
-      shared_info.next_sector_index.store (0);
+      shared_info.next_sector_index.store (0, std::memory_order_relaxed);
 
       for (task_index = 0; task_index < task_cnt; task_index++)
 	{
@@ -106,21 +106,20 @@ namespace parallel_query
 	  return er_errid ();
 	}
 
-      /* collect data page sectors for inner relation */
-      qfile_free_list_sector_info (&thread_ref, &shared_info.sector_info);
-
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_start (&thread_ref, &start_stats);
 	}
 
+      /* collect data page sectors for inner relation
+       * (outer's sector_info is freed internally by qfile_collect_list_sector_info) */
       if (qfile_collect_list_sector_info (&thread_ref, inner->fetch_info->list_id, &shared_info.sector_info) != NO_ERROR)
 	{
 	  hjoin_clear_shared_split_info (&thread_ref, manager, &shared_info);
 	  return er_errid ();
 	}
       shared_info.membuf_claimed.store (false, std::memory_order_relaxed);
-      shared_info.next_sector_index.store (0);
+      shared_info.next_sector_index.store (0, std::memory_order_relaxed);
 
       for (task_index = 0; task_index < task_cnt; task_index++)
 	{

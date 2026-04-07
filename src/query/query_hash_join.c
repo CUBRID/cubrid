@@ -2272,14 +2272,17 @@ hjoin_clear_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manag
   assert (manager != NULL);
   assert (shared_info != NULL);
 
+  /* NOTE: sector_info must be freed BEFORE the early-return below.
+   * Do not move this call into the (part_cnt > 1) branch — doing so would leak
+   * sectors/tfiles arrays when part_cnt <= 1. */
+  qfile_free_list_sector_info (thread_p, &shared_info->sector_info);
+
   part_cnt = manager->context_cnt;
   if (part_cnt <= 1)
     {
       assert (shared_info->part_mutexes == NULL);
-      return;			/* nothing to do */
+      return;			/* nothing more to do */
     }
-
-  qfile_free_list_sector_info (thread_p, &shared_info->sector_info);
 
   if (shared_info->part_mutexes != NULL)
     {

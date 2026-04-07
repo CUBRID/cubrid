@@ -432,7 +432,14 @@ namespace parallel_query
 		    if (part_list_id[part_id]->tuple_cnt > 0)
 		      {
 			qfile_append_list (&thread_ref, part_list_id[part_id], temp_part_list_id[part_id]);
-			qfile_truncate_list (&thread_ref, temp_part_list_id[part_id]);
+			error = qfile_truncate_list (&thread_ref, temp_part_list_id[part_id]);
+			if (error != NO_ERROR)
+			  {
+			    assert_release_error (er_errid () != NO_ERROR);
+			    m_task_manager.handle_error (thread_ref);
+			    has_error = true;
+			    break;
+			  }
 		      }
 		    else
 		      {
@@ -559,40 +566,50 @@ namespace parallel_query
       void **tfiles = sector_info->tfiles;
       int sector_index;
 
-      /* Phase 1: membuf pages — one worker claims and iterates all membuf pages */
-      if (m_membuf_index >= 0)
+      /* Phase 1: membuf pages — the CAS winner claims the entire membuf region
+       *                          and iterates it sequentially. Non-owners fall
+       *                          through to Phase 2 directly. */
+      while (true)
 	{
-	  if (m_membuf_index <= sector_info->membuf_tfile->membuf_last)
+	  if (m_membuf_index >= 0)
 	    {
-	      VPID vpid;
-	      vpid.volid = NULL_VOLID;
-	      vpid.pageid = m_membuf_index++;
-
-	      PAGE_PTR page = qmgr_get_old_page (&thread_ref, &vpid, m_split_info->fetch_info->list_id->tfile_vfid);
-	      if (page == nullptr)
+	      /* this worker is the membuf owner */
+	      if (m_membuf_index <= sector_info->membuf_tfile->membuf_last)
 		{
-		  assert_release_error (er_errid () != NO_ERROR);
-		  return nullptr;
+		  VPID vpid;
+		  vpid.volid = NULL_VOLID;
+		  vpid.pageid = m_membuf_index++;
+
+		  PAGE_PTR page = qmgr_get_old_page (&thread_ref, &vpid, m_split_info->fetch_info->list_id->tfile_vfid);
+		  if (page == nullptr)
+		    {
+		      assert_release_error (er_errid () != NO_ERROR);
+		      return nullptr;
+		    }
+
+		  return page;
 		}
 
-	      return page;
+	      /* membuf exhausted — fall through to Phase 2 */
+	      m_membuf_index = -1;
+	      break;
 	    }
 
-	  /* membuf exhausted — fall through to sector iteration */
-	  m_membuf_index = -1;
-	}
-
-      if (m_sector_index == -1 && sector_info->membuf_tfile != nullptr)
-	{
-	  /* try to claim membuf (exactly one winner) */
-	  bool expected = false;
-
-	  if (m_shared_info->membuf_claimed.compare_exchange_strong (expected, true, std::memory_order_acq_rel))
+	  if (m_sector_index == -1 && sector_info->membuf_tfile != nullptr)
 	    {
-	      assert (m_membuf_index == -1);
-	      m_membuf_index = 0;
-	      return get_next_page (thread_ref);
+	      /* first call: try to claim membuf (exactly one winner) */
+	      bool expected = false;
+
+	      if (m_shared_info->membuf_claimed.compare_exchange_strong (expected, true, std::memory_order_acq_rel))
+		{
+		  assert (m_membuf_index == -1);
+		  m_membuf_index = 0;
+		  continue;		/* re-enter Phase 1 as the owner */
+		}
 	    }
+
+	  /* not the owner — proceed to Phase 2 */
+	  break;
 	}
 
       /* Phase 2: sector-based disk pages */
