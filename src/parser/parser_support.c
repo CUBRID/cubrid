@@ -11759,8 +11759,9 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 	  if (spec->info.spec.range_var)
 	    {
 	      a_name = (char *) spec->info.spec.range_var->info.name.original;
+
 	      /* to skip aliased name at rewriting for mariadb and etc. */
-	      if (spec->info.spec.entity_name
+	      if (a_name && spec->info.spec.remote_server_name && spec->info.spec.entity_name
 		  && strcasecmp (a_name, spec->info.spec.entity_name->info.name.original) == 0)
 		{
 		  spec->info.spec.range_var = NULL;
@@ -11825,11 +11826,27 @@ pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 {
   int local_upd = 0, remote_upd = 0;
   int error;
+  PT_NODE *spec;
 
   parser_walk_tree (parser, node, pt_convert_dblink_synonym, NULL, NULL, NULL);
   if (pt_has_error (parser))
     {
       return;
+    }
+
+  for (spec = node->info.update.spec; spec; spec = spec->next)
+    {
+      if (spec->info.spec.range_var)
+	{
+	  char *a_name = (char *) spec->info.spec.range_var->info.name.original;
+
+	  /* to skip aliased name at rewriting for mariadb and etc. */
+	  if (a_name && spec->info.spec.entity_name && spec->info.spec.remote_server_name
+	      && strcasecmp (a_name, spec->info.spec.entity_name->info.name.original) == 0)
+	    {
+	      spec->info.spec.range_var = NULL;
+	    }
+	}
     }
 
   error = pt_check_update_set (parser, node, &local_upd, &remote_upd);
