@@ -59,12 +59,6 @@ jobs:
           repositories: cubrid-testcases,cubrid-testcases-private-ex
           owner: ${{ env.OWNER }}
 
-      - name: Mask token
-        env:
-          APP_TOKEN: ${{ steps.app-token.outputs.token }}
-        shell: bash
-        run: echo "::add-mask::${APP_TOKEN}"
-
       - name: Check TC PRs
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -86,14 +80,12 @@ jobs:
           OVERALL_PASS=true
           TC_TEXT_BLOCK=""
 
-          echo "Checking TC PR status for branch '${BRANCH_NAME}' in ${#TC_REPOS[@]} repos..."
-          echo ""
-
           for TC_REPO in "${TC_REPOS[@]}"; do
             OPEN_PR=$(gh pr list \
               --repo "${OWNER}/${TC_REPO}" \
               --head "${BRANCH_NAME}" \
               --state open \
+              --limit 1 \
               --json url,isDraft \
               --jq '.[0] // empty' 2>/dev/null || echo "")
 
@@ -103,20 +95,13 @@ jobs:
             else
               IS_DRAFT=$(echo "${OPEN_PR}" | jq -r '.isDraft')
               URL=$(echo "${OPEN_PR}" | jq -r '.url')
-
-              if [ "${IS_DRAFT}" == "true" ]; then
-                STATE_DISPLAY="open (draft)"
-              else
-                STATE_DISPLAY="open"
-              fi
+              STATE_DISPLAY=$( [ "${IS_DRAFT}" == "true" ] && echo "open (draft)" || echo "open" )
 
               echo "::error::${TC_REPO}: TC PR is ${STATE_DISPLAY}: ${URL}"
               TC_TEXT_BLOCK+="- ❌ **${TC_REPO}**: TC PR [\`${BRANCH_NAME}\`](${URL}) is ${STATE_DISPLAY} — must be merged or closed first"$'\n'
               OVERALL_PASS=false
             fi
           done
-
-          echo ""
 
           if [ "${OVERALL_PASS}" == "false" ]; then
             COMMENT_BODY=$(cat <<EOF
@@ -130,7 +115,7 @@ jobs:
           1. Merge or close all TC PRs listed above.
           2. Re-run this check: **Actions tab → TC Merge Gate → Re-run failed jobs**
           EOF
-            )
+          )
           else
             COMMENT_BODY=$(cat <<EOF
           ## ✅ TC Merge Gate — Merge Allowed
@@ -140,19 +125,22 @@ jobs:
           **TC Repositories & Branches:**
           ${TC_TEXT_BLOCK}
           EOF
-            )
+          )
           fi
 
-          COMMENT_ID=$(GH_TOKEN="${GITHUB_TOKEN}" gh api "repos/${ENGINE_REPO}/issues/${PR_NUMBER}/comments" \
-            --jq '.[] | select(.user.login=="github-actions[bot]" and (.body | contains("TC Merge Gate"))) | .id' \
-            | tail -n 1 || echo "")
+          # Post or update comment on engine PR (best-effort — does not affect check result)
+          {
+            COMMENT_ID=$(GH_TOKEN="${GITHUB_TOKEN}" gh api "repos/${ENGINE_REPO}/issues/${PR_NUMBER}/comments" \
+              --jq '.[] | select(.user.login=="github-actions[bot]" and (.body | contains("TC Merge Gate"))) | .id' \
+              | tail -n 1)
 
-          if [ -n "${COMMENT_ID}" ]; then
-            GH_TOKEN="${GITHUB_TOKEN}" gh api -X PATCH "repos/${ENGINE_REPO}/issues/comments/${COMMENT_ID}" \
-              -f body="${COMMENT_BODY}" > /dev/null
-          else
-            GH_TOKEN="${GITHUB_TOKEN}" gh pr comment "${PR_NUMBER}" --repo "${ENGINE_REPO}" --body "${COMMENT_BODY}"
-          fi
+            if [ -n "${COMMENT_ID}" ]; then
+              GH_TOKEN="${GITHUB_TOKEN}" gh api -X PATCH "repos/${ENGINE_REPO}/issues/comments/${COMMENT_ID}" \
+                -f body="${COMMENT_BODY}" > /dev/null
+            else
+              GH_TOKEN="${GITHUB_TOKEN}" gh pr comment "${PR_NUMBER}" --repo "${ENGINE_REPO}" --body "${COMMENT_BODY}"
+            fi
+          } || echo "::warning::Failed to post PR comment — check result is unaffected"
 
           if [ "${OVERALL_PASS}" == "false" ]; then
             echo "TC Merge Gate FAILED: One or more TC PRs are still open."
