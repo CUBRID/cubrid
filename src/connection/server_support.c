@@ -2657,7 +2657,7 @@ css_get_task_stats (UINT64 *stats_out)
 size_t
 css_get_num_request_workers (void)
 {
-  return css_Server_request_worker_pool->get_max_count ();
+  return css_Server_request_worker_pool->get_worker_count ();
 }
 
 //
@@ -2712,7 +2712,7 @@ css_wp_core_job_scan_mapper (const cubthread::worker_pool::core & wp_core, bool 
   (void) db_make_int (&vals[val_index++], (int) core_index);
 
   // add max worker count; it used to be max thread workers per job queue
-  (void) db_make_int (&vals[val_index++], (int) wp_core.get_max_worker_count ());
+  (void) db_make_int (&vals[val_index++], (int) wp_core.get_worker_count ());
 
   // number of busy workers; core does not keep it, we need to count them manually
   int busy_count = 0;
@@ -2767,7 +2767,7 @@ css_are_all_request_handlers_suspended (void)
       return false;
     }
 
-  if (checked_threads_count == css_Server_request_worker_pool->get_max_count ())
+  if (checked_threads_count == css_Server_request_worker_pool->get_worker_count ())
     {
       // all threads are suspended
       return true;

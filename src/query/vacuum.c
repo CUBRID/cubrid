@@ -3078,7 +3078,7 @@ vacuum_master_task::check_shutdown() const
 bool
 vacuum_master_task::is_task_queue_full() const
 {
-  if (cubthread::get_manager ()->is_pool_full (vacuum_Worker_threads))
+  if (vacuum_Worker_threads->is_full ())
     {
       // stop if worker pool is full
       vacuum_er_log (VACUUM_ER_LOG_MASTER, "%s", "Interrupt iteration: full worker pool");
