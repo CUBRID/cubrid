@@ -7085,6 +7085,7 @@ locator_repl::locator_repl_flush_all (void)
     }
   else if (error != NO_ERROR)
     {
+      locator_mflush_end (&mflush);
       return error;
     }
 
