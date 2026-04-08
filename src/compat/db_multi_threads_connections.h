@@ -1,4 +1,5 @@
 /*
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,49 +23,49 @@
  *         Application Program Interface (API).
  */
 
- #ifndef _DB_MULTI_THREADS_CONNECTIONS_H_
- #define _DB_MULTI_THREADS_CONNECTIONS_H_
- 
- #ident "$Id$"
- 
- #if defined (SERVER_MODE)
+#ifndef _DB_MULTI_THREADS_CONNECTIONS_H_
+#define _DB_MULTI_THREADS_CONNECTIONS_H_
+
+#ident "$Id$"
+
+#if defined (SERVER_MODE)
  //#  define THREAD_LOCAL
- #else /* defined (SERVER_MODE) */  
+#else /* defined (SERVER_MODE) */
 
 #if defined(__cplusplus) && __cplusplus >= 201103L
 /* C++11 after */
-#  define THREAD_LOCAL thread_local
+#define THREAD_LOCAL thread_local
 
 #elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L && !defined(__cplusplus)
 /* C11 standard */
-#  define THREAD_LOCAL _Thread_local
+#define THREAD_LOCAL _Thread_local
 
 #elif defined(__GNUC__)
 /* GCC (C/C++) extension */
-#  define THREAD_LOCAL __thread
+#define THREAD_LOCAL __thread
 
 #elif defined(_MSC_VER)
 /* MSVC (Windows) */
-#  define THREAD_LOCAL __declspec(thread)
+#define THREAD_LOCAL __declspec(thread)
 
 #else
 /* not supported environment */
-#  error "No thread-local storage specifier available on this compiler."
+#error "No thread-local storage specifier available on this compiler."
 #endif
 #endif /* defined (SERVER_MODE) */
 
 #if defined(MULTI_CONN_TO_A_SERVER)
-#  define CUB_THREAD_LOCAL THREAD_LOCAL
+#define CUB_THREAD_LOCAL THREAD_LOCAL
 #else
-#  define CUB_THREAD_LOCAL
+#define CUB_THREAD_LOCAL
 #endif
 
- #ifdef __cplusplus
- extern "C"
- {
- #endif
- 
-extern pthread_t css_get_thread_id ();
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+  extern pthread_t css_get_thread_id ();
 
 #if defined(NDEBUG)
 #define DBG_PRINT(format, ...)
@@ -73,7 +74,7 @@ extern pthread_t css_get_thread_id ();
 #endif
 
 #if !defined(NDEBUG) || defined(MULTI_CONN_TO_A_SERVER)
-extern pthread_t gv_main_tid;
+  extern pthread_t gv_main_tid;
 #define  CHECK_MAIN_THREAD()   assert (pthread_equal (gv_main_tid, css_get_thread_id ()))
 #else
 #define  IS_MAIN_THREAD()
@@ -90,9 +91,8 @@ extern pthread_t gv_main_tid;
 #endif
 // *INDENT-ON*
 
- #ifdef __cplusplus
- }
- #endif
+#ifdef __cplusplus
+}
+#endif
 
- #endif				/* _DB_MULTI_THREADS_CONNECTIONS_H_ */
- 
+#endif				/* _DB_MULTI_THREADS_CONNECTIONS_H_ */
