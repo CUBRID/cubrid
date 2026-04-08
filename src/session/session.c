@@ -568,6 +568,8 @@ session_control_daemon_execute (cubthread::entry & thread_ref)
 /*
  * session_control_daemon_init () - initialize session control daemon
  */
+REGISTER_DAEMON (session_control);
+
 void
 session_control_daemon_init ()
 {

@@ -34,6 +34,7 @@
 #include "thread_waiter.hpp"
 
 // other module includes
+#include "count_registry.hpp"
 #include "base_flag.hpp"
 
 #include <mutex>
@@ -55,6 +56,7 @@ namespace cubthread
 {
 
   // forward definition
+  class connection;
   class worker_pool;
   class looper;
   class daemon;
@@ -92,11 +94,13 @@ namespace cubthread
   //
   //  how to use:
   //     1. daemon -
+  //	      REGISTER_DAEMON (name);
   //          daemon *my_daemon = cubthread::get_manager ()->create_daemon (daemon_looper, daemon_task_p);
   //          // daemon loops and execute task on each iteration
   //          cubthread::get_manager ()->destroy_daemon (my_daemon);
   //
   //     2. worker_pool -
+  //	      REGISTER_WORKERPOOL (name, getter);
   //          worker_pool *my_workpool = cubthread::get_manager ()->create_worker_pool (MAX_THREADS, MAX_JOBS);
   //          cubthread::get_manager ()->push_task (my_workpool, entry_task_p);
   //          cubthread::get_manager ()->destroy_worker_pool (my_workpool);
@@ -104,6 +108,10 @@ namespace cubthread
   class manager
   {
     public:
+      using connection_registry_t = cubbase::count_registry<connection>;
+      using workerpool_registry_t = cubbase::count_registry<worker_pool>;
+      using daemon_registry_t = cubbase::count_registry<daemon>;
+
       manager ();
       ~manager ();
 
@@ -167,8 +175,8 @@ namespace cubthread
       //       moved at the end to allow a default value
       //
       // todo: remove default daemon name
-      daemon *create_daemon (const looper &looper_arg, entry_task *exec_p, const char *daemon_name = "",
-			     entry_manager *entry_mgr = NULL);
+      daemon *create_daemon (const looper &looper_arg, entry_task *exec_p,
+			     const char *daemon_name = "", entry_manager *entry_mgr = NULL);
       // destroy daemon thread
       void destroy_daemon (daemon *&daemon_arg);
 
@@ -362,6 +370,14 @@ namespace cubthread
   }
 
 } // namespace cubthread
+
+//////////////////////////////////////////////////////////////////////////
+// macros to count the number of entries
+//////////////////////////////////////////////////////////////////////////
+
+#define REGISTER_CONNECTION(name, getter) static cubthread::manager::connection_registry_t _gl_reg_conn_##name (#name, getter)
+#define REGISTER_WORKERPOOL(name, getter) static cubthread::manager::workerpool_registry_t _gl_reg_wp_##name (#name, getter)
+#define REGISTER_DAEMON(name) static cubthread::manager::daemon_registry_t _gl_reg_daemon_##name (#name, 1)
 
 //////////////////////////////////////////////////////////////////////////
 // alias functions to be used in C legacy code
