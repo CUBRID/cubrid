@@ -28,10 +28,7 @@
 
 #ident "$Id$"
 
-#if defined (SERVER_MODE)
- //#  define THREAD_LOCAL
-#else /* defined (SERVER_MODE) */
-
+#if !defined (SERVER_MODE)
 #if defined(__cplusplus) && __cplusplus >= 201103L
 /* C++11 after */
 #define THREAD_LOCAL thread_local
@@ -52,9 +49,9 @@
 /* not supported environment */
 #error "No thread-local storage specifier available on this compiler."
 #endif
-#endif /* defined (SERVER_MODE) */
+#endif /* !defined (SERVER_MODE) */
 
-#if defined(MULTI_CONN_TO_A_SERVER)
+#if !defined(SERVER_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 #define CUB_THREAD_LOCAL THREAD_LOCAL
 #else
 #define CUB_THREAD_LOCAL
@@ -65,19 +62,20 @@ extern "C"
 {
 #endif
 
-  extern pthread_t css_get_thread_id ();
-
 #if defined(NDEBUG)
 #define DBG_PRINT(format, ...)
 #else
 #define DBG_PRINT(format, ...) fprintf(stderr, format, ##__VA_ARGS__)
 #endif
 
+
+#if !defined(SERVER_MODE)
+  extern pthread_t css_get_thread_id ();
+
 #if !defined(NDEBUG) || defined(MULTI_CONN_TO_A_SERVER)
   extern pthread_t gv_main_tid;
 #define  CHECK_MAIN_THREAD()   assert (pthread_equal (gv_main_tid, css_get_thread_id ()))
 #else
-#define  IS_MAIN_THREAD()
 #define  CHECK_MAIN_THREAD()
 #endif
 
@@ -90,6 +88,8 @@ extern "C"
 #  define CS_UnLock(mutex)
 #endif
 // *INDENT-ON*
+
+#endif				// #if !defined(SERVER_MODE)
 
 #ifdef __cplusplus
 }
