@@ -64,6 +64,7 @@ private:
   CSS_CONN_ENTRY *css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type,
 				      const char *server_name, int server_name_length, int port, int timeout,
 				      unsigned short *rid, bool send_magic);
+  bool css_is_valid_request_id (CSS_CONN_ENTRY * conn, unsigned short request_id);
 
 public:
     connection_cl ();
@@ -85,7 +86,6 @@ public:
   int css_send_close_request (CSS_CONN_ENTRY * conn);
   unsigned short css_get_request_id (CSS_CONN_ENTRY * conn) override;
   char *css_return_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id, int *buffer_size);
-  bool css_is_valid_request_id (CSS_CONN_ENTRY * conn, unsigned short request_id);
   int css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short request_id, char **buffer, int *buffer_size,
 			       int *rc);
   void css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn);

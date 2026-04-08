@@ -38,6 +38,7 @@
 #include "storage_common.h"
 #include "locator.h"
 #include "replication.h"
+#include "db_multi_threads_connections.h"
 
 // forward declarations
 struct log_lsa;
@@ -94,7 +95,6 @@ extern int locator_flush_and_decache_instance (MOP mop);
 extern int locator_flush_all_instances (MOP class_mop, bool decache);
 extern int locator_flush_for_multi_update (MOP class_mop);
 extern int locator_all_flush (void);
-extern int locator_repl_flush_all (void);
 extern MOP locator_add_class (MOBJ classobj, const char *classname);
 extern MOP locator_add_instance (MOBJ instance, MOP class_mop);
 extern MOP locator_add_root (OID * root_oid, MOBJ class_root);
@@ -145,5 +145,24 @@ extern LC_FIND_CLASSNAME locator_reserve_class_name (const char *class_name, OID
 extern int locator_lob_create_or_remove_dir (HFID * old_hfid, HFID * new_hfid, int *lob_attrid_arr,
 					     int lob_attrid_arr_length);
 extern int locator_lob_process_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid);
+
+
+typedef struct locator_mflush_cache LOCATOR_MFLUSH_CACHE;
+class locator_repl:public ws_repl
+{
+private:
+  int locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush);
+  int locator_repl_mflush_force (LOCATOR_MFLUSH_CACHE * mflush);
+  void locator_repl_mflush_check_error (LC_COPYAREA * mflush);
+
+public:
+    locator_repl () = default;
+   ~locator_repl () = default;
+
+  int locator_repl_flush_all (void);
+};
+
+extern CUB_THREAD_LOCAL class locator_repl __gv_locator_repl;
+#define __gv_loc_repl (__gv_locator_repl)
 
 #endif /* _LOCATOR_CL_H_ */
