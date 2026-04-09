@@ -16522,6 +16522,8 @@ class pgbuf_flush_control_daemon_task : public cubthread::entry_task
 /*
  * pgbuf_page_maintenance_daemon_init () - initialize page maintenance daemon thread
  */
+REGISTER_DAEMON (pgbuf_page_maintenance);
+
 void
 pgbuf_page_maintenance_daemon_init ()
 {
@@ -16538,6 +16540,8 @@ pgbuf_page_maintenance_daemon_init ()
 /*
  * pgbuf_page_flush_daemon_init () - initialize page flush daemon thread
  */
+REGISTER_DAEMON (pgbuf_page_flush);
+
 void
 pgbuf_page_flush_daemon_init ()
 {
@@ -16554,6 +16558,8 @@ pgbuf_page_flush_daemon_init ()
 /*
  * pgbuf_page_post_flush_daemon_init () - initialize page post flush daemon thread
  */
+REGISTER_DAEMON (pgbuf_page_post_flush);
+
 void
 pgbuf_page_post_flush_daemon_init ()
 {
@@ -16568,8 +16574,7 @@ pgbuf_page_post_flush_daemon_init ()
   cubthread::looper looper = cubthread::looper (looper_interval);
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (pgbuf_page_post_flush_execute);
 
-  pgbuf_Page_post_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                           "pgbuf-page-post-flush");
+  pgbuf_Page_post_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "pgbuf-page-post-flush");
 }
 #endif /* SERVER_MODE */
 
@@ -16577,6 +16582,8 @@ pgbuf_page_post_flush_daemon_init ()
 /*
  * pgbuf_flush_control_daemon_init () - initialize flush control daemon thread
  */
+REGISTER_DAEMON (pgbuf_flush_control);
+
 void
 pgbuf_flush_control_daemon_init ()
 {
@@ -16591,8 +16598,7 @@ pgbuf_flush_control_daemon_init ()
     }
 
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (50));
-  pgbuf_Flush_control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                         "pgbuf-flush-control");
+  pgbuf_Flush_control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "pgbuf-flush-control");
 }
 #endif /* SERVER_MODE */
 
