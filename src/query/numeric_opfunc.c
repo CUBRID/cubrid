@@ -511,7 +511,7 @@ numeric_init_pow_of_10 (void)
 static void
 numeric_get_pow_of_10 (int exp, uint8_t * result)
 {
-  assert (exp < (int) sizeof (powers_of_10));
+  assert (exp >= 0 && exp <= POW10_MAX_INDEX);
 
 #if !defined(SERVER_MODE)
   /* If this is the first time to call this routine, initialize */
@@ -1049,7 +1049,7 @@ float_numeric_add_fast (const uint64_t * dbv1_word, const uint64_t * dbv2_word, 
 	{
 	  *result_sign = dbv1_sign;
 #if USE_X86_INTRINSICS
-	  uint64_t borrow = _subborrow_u64 (0, dbv1_word[2], dbv2_word[2], (unsigned long long *) &result_word[2]);
+	  (void) _subborrow_u64 (0, dbv1_word[2], dbv2_word[2], (unsigned long long *) &result_word[2]);
 #else
 	  result_word[2] = dbv1_word[2] - dbv2_word[2];
 #endif
@@ -1058,7 +1058,7 @@ float_numeric_add_fast (const uint64_t * dbv1_word, const uint64_t * dbv2_word, 
 	{
 	  *result_sign = dbv2_sign;
 #if USE_X86_INTRINSICS
-	  uint64_t borrow = _subborrow_u64 (0, dbv2_word[2], dbv1_word[2], (unsigned long long *) &result_word[2]);
+	  (void) _subborrow_u64 (0, dbv2_word[2], dbv1_word[2], (unsigned long long *) &result_word[2]);
 #else
 	  result_word[2] = dbv2_word[2] - dbv1_word[2];
 #endif

@@ -8898,27 +8898,42 @@ mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int to
 static inline int
 mr_get_fixed_numeric_size (const unsigned char *data)
 {
-  uint64_t word_buf[2];
-  uint64_t hi, lo;
+  uint64_t word_buf[2] = { 0 };
 
+  /*
+   * 'data' points to a 17-byte numeric value stored in big-endian byte order.
+   * memcpy() copies the raw bytes as-is (no endianness conversion).
+   */
   memcpy (word_buf, data + 1, sizeof (word_buf));
-  hi = word_buf[0];
-  lo = word_buf[1];
 
-  if (hi != 0)
+  /*
+   * When the copied bytes are interpreted as uint64_t, the result depends on
+   * the host endianness:
+   *
+   * - On little-endian systems, the byte significance within each 64-bit word
+   *   is effectively reversed. 
+   *   Therefore, counting leading zeros (CLZ) in the original big-endian
+   *   representation is equivalent to counting trailing zeros (CTZ) here.
+   *
+   * - On big-endian systems, the byte order is preserved, so CLZ can be used
+   *   directly.
+   *
+   * This avoids the need for an explicit byte swap (bswap).
+   */
+  if (word_buf[0] != 0)
     {
 #if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
-      return 16 - (NUMERIC_CTZ64 (hi) >> 3);
+      return 16 - (NUMERIC_CTZ64 (word_buf[0]) >> 3);
 #else
-      return 16 - (NUMERIC_CLZ64 (hi) >> 3);
+      return 16 - (NUMERIC_CLZ64 (word_buf[0]) >> 3);
 #endif
     }
-  else if (lo != 0)
+  else if (word_buf[1] != 0)
     {
 #if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
-      return 8 - (NUMERIC_CTZ64 (lo) >> 3);
+      return 8 - (NUMERIC_CTZ64 (word_buf[1]) >> 3);
 #else
-      return 8 - (NUMERIC_CLZ64 (lo) >> 3);
+      return 8 - (NUMERIC_CLZ64 (word_buf[1]) >> 3);
 #endif
     }
   else
