@@ -172,6 +172,11 @@ static int scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BI
 static void scan_init_scan_id (SCAN_ID * scan_id, bool force_select_lock, SCAN_OPERATION_TYPE scan_op_type, int fixed,
 			       int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
 			       val_list_node * val_list, VAL_DESCR * vd);
+static DB_VALUE *scan_find_numeric_leaf (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd);
+static int scan_fetch_and_coerce_key_limit_lower (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp,
+						  REGU_VARIABLE * key_limit_l, VAL_DESCR * vd, DB_VALUE ** out_dbvalp);
+static int scan_fetch_and_coerce_key_limit_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp,
+						  REGU_VARIABLE * key_limit_u, VAL_DESCR * vd, DB_VALUE ** out_dbvalp);
 static int scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_INFO * key_infop,
 				      VAL_DESCR * vd);
 static SCAN_CODE scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -805,6 +810,309 @@ exit_on_error:
 }
 
 /*
+ * scan_find_numeric_leaf () - Recursively search leftptr of an arith tree for the first NUMERIC-typed leaf.
+ *
+ *   return       : peeked DB_VALUE of the NUMERIC leaf, or NULL if not found
+ *   thread_p(in) : thread entry
+ *   regu_var(in) : root of the regu variable arith tree to search
+ *   vd(in)       : value descriptor
+ */
+static DB_VALUE *
+scan_find_numeric_leaf (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd)
+{
+  ARITH_TYPE *arithptr;
+  DB_VALUE *dbvalp;
+
+  if (regu_var == NULL)
+    {
+      return NULL;
+    }
+
+  if (TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_NUMERIC)
+    {
+      dbvalp = NULL;
+      if (fetch_peek_dbval (thread_p, regu_var, vd, NULL, NULL, NULL, &dbvalp) == NO_ERROR
+	  && dbvalp != NULL && DB_VALUE_DOMAIN_TYPE (dbvalp) == DB_TYPE_NUMERIC)
+	{
+	  return dbvalp;
+	}
+      return NULL;
+    }
+
+  if (regu_var->type == TYPE_INARITH || regu_var->type == TYPE_OUTARITH)
+    {
+      arithptr = regu_var->value.arithptr;
+      return scan_find_numeric_leaf (thread_p, arithptr->leftptr, vd);
+    }
+
+  return NULL;
+}
+
+/*
+ * scan_fetch_and_coerce_key_limit_lower () - fetch and coerce lower key limit to BIGINT,
+ *                                            handling NUMERIC-to-BIGINT overflow.
+ *
+ *   return         : NO_ERROR or error code
+ *   thread_p (in)  : thread entry
+ *   isidp (out)    : index scan id — key_limit_lower is set directly on overflow
+ *   key_limit_l(in): regu variable for lower key limit
+ *   vd (in)        : value descriptor
+ *   out_dbvalp(out): set to NULL when overflow is handled (key_limit_lower already set);
+ *                    set to the coerced BIGINT DB_VALUE otherwise (caller reads the value)
+ *
+ * Note: overflow sign semantics for lower limit are the opposite of upper:
+ *   positive overflow → no rows match (DB_BIGINT_MAX), negative overflow → all rows match (0).
+ */
+static int
+scan_fetch_and_coerce_key_limit_lower (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, REGU_VARIABLE * key_limit_l,
+				       VAL_DESCR * vd, DB_VALUE ** out_dbvalp)
+{
+  TP_DOMAIN *domainp = tp_domain_resolve_default (DB_TYPE_BIGINT);
+  TP_DOMAIN_STATUS dom_status;
+  DB_VALUE *tmp_dbvalp;
+  int error_code;
+
+  assert (isidp != NULL);
+  assert (key_limit_l != NULL);
+  assert (vd != NULL);
+  assert (out_dbvalp != NULL);
+
+  *out_dbvalp = NULL;
+
+  if (key_limit_l->type == TYPE_INARITH)
+    {
+      /* rownum > N or rownum >= N or BETWEEN */
+      error_code = fetch_peek_dbval (thread_p, key_limit_l, vd, NULL, NULL, NULL, out_dbvalp);
+      if (error_code != NO_ERROR)
+	{
+	  if (er_errid () != ER_IT_DATA_OVERFLOW && er_errid () != ER_QPROC_OVERFLOW_SUBTRACTION)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  /* NUMERIC -> BIGINT overflow during arithmetic: find the NUMERIC operand and check its sign */
+	  tmp_dbvalp = scan_find_numeric_leaf (thread_p, key_limit_l, vd);
+	  if (tmp_dbvalp == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  /* if negative, all rows are returned (full scan from the beginning) 
+	   * if positive, returns 0 rows. */
+	  isidp->key_limit_lower = (tmp_dbvalp->data.num.d.buf[0] & NUMERIC_VALUE_SIGN_BIT_MASK) ? 0 : DB_BIGINT_MAX;
+	  er_clear ();
+	  /* overflow handled: *out_dbvalp stays NULL */
+	  return NO_ERROR;
+	}
+    }
+  else
+    {
+      if (fetch_peek_dbval (thread_p, key_limit_l, vd, NULL, NULL, NULL, out_dbvalp) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  /* coerce fetched value to BIGINT */
+  dom_status = tp_value_coerce (*out_dbvalp, *out_dbvalp, domainp);
+  if (dom_status != DOMAIN_COMPATIBLE)
+    {
+      if (dom_status == DOMAIN_OVERFLOW && DB_VALUE_DOMAIN_TYPE (*out_dbvalp) == DB_TYPE_NUMERIC)
+	{
+	  /* NUMERIC → BIGINT coercion overflow: handle by sign
+	   * if negative, all rows are returned (full scan from the beginning) 
+	   * if positive, returns 0 rows. 
+	   */
+	  isidp->key_limit_lower = ((*out_dbvalp)->data.num.d.buf[0] & NUMERIC_VALUE_SIGN_BIT_MASK) ? 0 : DB_BIGINT_MAX;
+	  er_clear ();
+	  /* overflow handled: *out_dbvalp stays NULL */
+	  *out_dbvalp = NULL;
+	  return NO_ERROR;
+	}
+      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, *out_dbvalp, domainp);
+      return ER_FAILED;
+    }
+
+  if (DB_VALUE_DOMAIN_TYPE (*out_dbvalp) != DB_TYPE_BIGINT)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+      return ER_QPROC_INVALID_DATATYPE;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * scan_fetch_and_coerce_key_limit_upper () - fetch and coerce upper key limit to BIGINT,
+ *                                            handling NUMERIC-to-BIGINT overflow.
+ *
+ *   return         : NO_ERROR or error code
+ *   thread_p (in)  : thread entry
+ *   isidp (out)    : index scan id — key_limit_upper is set directly on overflow
+ *   key_limit_u(in): regu variable for upper key limit
+ *   vd (in)        : value descriptor
+ *   out_dbvalp(out): set to NULL when overflow is handled (key_limit_upper already set);
+ *                    set to the coerced BIGINT DB_VALUE otherwise (caller reads the value)
+ *
+ * Note: BIGINT overflow can only occur when the bound value is NUMERIC. Two cases arise:
+ *   - TYPE_INARITH  : arithmetic expression overflows during fetch (e.g. rownum < 10^100 - 1)
+ *   - other types   : coercion to BIGINT overflows (e.g. LIMIT 10^100 stored as NUMERIC)
+ * In both cases the sign of the NUMERIC value determines the result:
+ *   positive overflow → no upper bound (-1), negative overflow → no rows match (0).
+ */
+static int
+scan_fetch_and_coerce_key_limit_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, REGU_VARIABLE * key_limit_u,
+				       VAL_DESCR * vd, DB_VALUE ** out_dbvalp)
+{
+  TP_DOMAIN *domainp = tp_domain_resolve_default (DB_TYPE_BIGINT);
+  TP_DOMAIN_STATUS dom_status;
+  DB_VALUE *tmp_dbvalp;
+  int error_code;
+
+  assert (isidp != NULL);
+  assert (key_limit_u != NULL);
+  assert (vd != NULL);
+  assert (out_dbvalp != NULL);
+
+  *out_dbvalp = NULL;
+
+  if (key_limit_u->type == TYPE_INARITH)
+    {
+      /* rownum < N or rownum <= N: arithmetic may overflow when N exceeds BIGINT range */
+      error_code = fetch_peek_dbval (thread_p, key_limit_u, vd, NULL, NULL, NULL, out_dbvalp);
+      if (error_code != NO_ERROR)
+	{
+	  if (er_errid () == ER_IT_DATA_OVERFLOW)
+	    {
+	      /* ER_IT_DATA_OVERFLOW: NUMERIC value itself exceeds BIGINT range (e.g. BIGINT < rownum < HUGE).
+	       * find the NUMERIC leaf and check sign:
+	       *   positive NUMERIC -> no upper bound (-1), 
+	       *   negative NUMERIC -> no rows match (0). 
+	       */
+	      tmp_dbvalp = scan_find_numeric_leaf (thread_p, key_limit_u, vd);
+	      if (tmp_dbvalp == NULL)
+		{
+		  return ER_FAILED;
+		}
+	      isidp->key_limit_upper = (tmp_dbvalp->data.num.d.buf[0] & NUMERIC_VALUE_SIGN_BIT_MASK) ? 0 : -1;
+	    }
+	  else if (er_errid () == ER_QPROC_OVERFLOW_SUBTRACTION)
+	    {
+	      /* T_SUB(upper_expr, lower_expr) overflows because a bound contains a huge NUMERIC.
+	       * branch on top-level left/right structure:
+	       *   case1: -HUGE < rownum < 5 -> fetch left (BIGINT upper bound)
+	       *          - left=INARITH[bigint](int,int)
+	       *          - right=POS_VALUE[numeric]
+	       *   case2: rownum BETWEEN -HUGE AND 5 -> fetch left (INT/BIGINT upper bound)
+	       *          - left=POS_VALUE[int|bigint]
+	       *          - right=INARITH[bigint]
+	       *   case3: BIGINT or -HUGE < rownum < HUGE -> fetch left (NUMERIC sign check)
+	       *          - left=INARITH[bigint](numeric,int)
+	       *          - right=POS_VALUE[numeric]
+	       *   case4: rownum BETWEEN BIGINT or -HUGE AND HUGE -> fetch left (NUMERIC sign check)
+	       *          - left=POS_VALUE[numeric]
+	       *          - right=INARITH[bigint]
+	       */
+	      ARITH_TYPE *arithptr = key_limit_u->value.arithptr;
+	      REGU_VARIABLE *left = arithptr->leftptr;
+	      REGU_VARIABLE *right = arithptr->rightptr;
+	      bool left_is_inarith = (left->type == TYPE_INARITH || left->type == TYPE_OUTARITH);
+	      bool left_is_numeric = (TP_DOMAIN_TYPE (left->domain) == DB_TYPE_NUMERIC);
+
+	      if (left_is_inarith)
+		{
+		  /* case1 or case3 */
+		  tmp_dbvalp = NULL;
+		  if (fetch_peek_dbval (thread_p, left, vd, NULL, NULL, NULL, &tmp_dbvalp) == NO_ERROR
+		      && tmp_dbvalp != NULL)
+		    {
+		      /* case1 */
+		      isidp->key_limit_upper = db_get_bigint (tmp_dbvalp);
+		    }
+		  else
+		    {
+		      /* case3 */
+		      er_clear ();
+		      tmp_dbvalp = scan_find_numeric_leaf (thread_p, left, vd);
+		      if (tmp_dbvalp == NULL)
+			{
+			  return ER_FAILED;
+			}
+		      isidp->key_limit_upper = (tmp_dbvalp->data.num.d.buf[0] & NUMERIC_VALUE_SIGN_BIT_MASK) ? 0 : -1;
+		    }
+		}
+	      else if (left_is_numeric)
+		{
+		  /* case4 */
+		  tmp_dbvalp = scan_find_numeric_leaf (thread_p, left, vd);
+		  if (tmp_dbvalp == NULL)
+		    {
+		      return ER_FAILED;
+		    }
+		  isidp->key_limit_upper = (tmp_dbvalp->data.num.d.buf[0] & NUMERIC_VALUE_SIGN_BIT_MASK) ? 0 : -1;
+		}
+	      else
+		{
+		  /* case2 */
+		  assert (right->type == TYPE_INARITH || right->type == TYPE_OUTARITH);
+		  tmp_dbvalp = NULL;
+		  if (fetch_peek_dbval (thread_p, left, vd, NULL, NULL, NULL, &tmp_dbvalp) != NO_ERROR
+		      || tmp_dbvalp == NULL)
+		    {
+		      return ER_FAILED;
+		    }
+		  isidp->key_limit_upper =
+		    (DB_VALUE_DOMAIN_TYPE (tmp_dbvalp) ==
+		     DB_TYPE_BIGINT) ? db_get_bigint (tmp_dbvalp) : db_get_int (tmp_dbvalp);
+		}
+	    }
+	  else
+	    {
+	      return ER_FAILED;
+	    }
+	  er_clear ();
+	  /* overflow handled: *out_dbvalp stays NULL */
+	  return NO_ERROR;
+	}
+    }
+  else
+    {
+      if (fetch_peek_dbval (thread_p, key_limit_u, vd, NULL, NULL, NULL, out_dbvalp) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  /* coerce fetched value to BIGINT */
+  dom_status = tp_value_coerce (*out_dbvalp, *out_dbvalp, domainp);
+  if (dom_status != DOMAIN_COMPATIBLE)
+    {
+      if (dom_status == DOMAIN_OVERFLOW && DB_VALUE_DOMAIN_TYPE (*out_dbvalp) == DB_TYPE_NUMERIC)
+	{
+	  /* NUMERIC -> BIGINT coercion overflow: handle by sign
+	   * if negative, all rows are returned (full scan from the beginning) 
+	   * if positive, returns 0 rows. 
+	   */
+	  isidp->key_limit_upper = ((*out_dbvalp)->data.num.d.buf[0] & NUMERIC_VALUE_SIGN_BIT_MASK) ? 0 : -1;
+	  er_clear ();
+	  /* overflow handled: *out_dbvalp stays NULL */
+	  *out_dbvalp = NULL;
+	  return NO_ERROR;
+	}
+      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, *out_dbvalp, domainp);
+      return ER_FAILED;
+    }
+
+  if (DB_VALUE_DOMAIN_TYPE (*out_dbvalp) != DB_TYPE_BIGINT)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+      return ER_QPROC_INVALID_DATATYPE;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * scan_init_index_key_limit () - initialize/reset index key limits
  *   return: error code
  */
@@ -812,55 +1120,39 @@ static int
 scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_INFO * key_infop, VAL_DESCR * vd)
 {
   DB_VALUE *dbvalp;
-  TP_DOMAIN *domainp = tp_domain_resolve_default (DB_TYPE_BIGINT);
   bool is_lower_limit_negative = false;
-  TP_DOMAIN_STATUS dom_status;
+  int error_code;
 
   if (key_infop->key_limit_l != NULL)
     {
-      if (fetch_peek_dbval (thread_p, key_infop->key_limit_l, vd, NULL, NULL, NULL, &dbvalp) != NO_ERROR)
+      error_code = scan_fetch_and_coerce_key_limit_lower (thread_p, isidp, key_infop->key_limit_l, vd, &dbvalp);
+      if (error_code != NO_ERROR)
 	{
-	  return ER_FAILED;
-	}
-      dom_status = tp_value_coerce (dbvalp, dbvalp, domainp);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbvalp, domainp);
-
-	  return ER_FAILED;
+	  return error_code;
 	}
 
-      if (DB_VALUE_DOMAIN_TYPE (dbvalp) != DB_TYPE_BIGINT)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-	  return ER_QPROC_INVALID_DATATYPE;
-	}
-      else
+      if (dbvalp != NULL)
 	{
 	  isidp->key_limit_lower = db_get_bigint (dbvalp);
-	}
 
-      if (isidp->key_limit_lower < 0)
-	{
-	  if (key_infop->is_user_given_keylimit == true)
+	  if (isidp->key_limit_lower < 0)
 	    {
-	      /* We don't allow users to give us a bad keylimit bound */
+	      if (key_infop->is_user_given_keylimit == true)
+		{
+		  /* We don't allow users to give us a bad keylimit bound */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
+		  return ER_QPROC_INVALID_PARAMETER;
+		}
 
-	      /* still want to have better error code */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
-	      return ER_QPROC_INVALID_PARAMETER;
+	      /* SELECT * from t where ROWNUM = 0 order by a: this would sometimes get optimized using keylimit, if the
+	       * circumstances are right. in this case, the lower limit would be "0-1", effectiveley -1. We cannot allow
+	       * that to happen, since -1 is a special value meaning "there is no lower limit", and certain critical
+	       * decisions (such as resetting the key limit for multiple ranges) depend on knowing whether or not there is
+	       * a lower key limit. We set a flag to remember, later on, to "adjust" the key limits such that, if the lower
+	       * limit is negative, to return no results.
+	       */
+	      is_lower_limit_negative = true;
 	    }
-
-	  /* Optimizer adopts keylimit optimization */
-
-	  /* SELECT * from t where ROWNUM = 0 order by a: this would sometimes get optimized using keylimit, if the
-	   * circumstances are right. in this case, the lower limit would be "0-1", effectiveley -1. We cannot allow
-	   * that to happen, since -1 is a special value meaning "there is no lower limit", and certain critical
-	   * decisions (such as resetting the key limit for multiple ranges) depend on knowing whether or not there is
-	   * a lower key limit. We set a flag to remember, later on, to "adjust" the key limits such that, if the lower
-	   * limit is negative, to return no results.
-	   */
-	  is_lower_limit_negative = true;
 	}
     }
   else
@@ -870,44 +1162,31 @@ scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_IN
 
   if (key_infop->key_limit_u != NULL)
     {
-      if (fetch_peek_dbval (thread_p, key_infop->key_limit_u, vd, NULL, NULL, NULL, &dbvalp) != NO_ERROR)
+      error_code = scan_fetch_and_coerce_key_limit_upper (thread_p, isidp, key_infop->key_limit_u, vd, &dbvalp);
+      if (error_code != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  return error_code;
 	}
-      dom_status = tp_value_coerce (dbvalp, dbvalp, domainp);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbvalp, domainp);
 
-	  return ER_FAILED;
-	}
-      if (DB_VALUE_DOMAIN_TYPE (dbvalp) != DB_TYPE_BIGINT)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-	  return ER_QPROC_INVALID_DATATYPE;
-	}
-      else
+      if (dbvalp != NULL)
 	{
 	  isidp->key_limit_upper = db_get_bigint (dbvalp);
-	}
 
-      if (isidp->key_limit_upper < 0)
-	{
-	  if (key_infop->is_user_given_keylimit == true)
+	  if (isidp->key_limit_upper < 0)
 	    {
-	      /* We don't allow users to give us a bad keylimit bound */
+	      if (key_infop->is_user_given_keylimit == true)
+		{
+		  /* We don't allow users to give us a bad keylimit bound */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
+		  return ER_QPROC_INVALID_PARAMETER;
+		}
 
-	      /* still want to have better error code */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
-	      return ER_QPROC_INVALID_PARAMETER;
+	      /* Optimizer adopts keylimit optimization.
+	       * Try to sanitize the upper value — it might have been computed from operations on host variables,
+	       * which are unpredictable.
+	       */
+	      isidp->key_limit_upper = 0;
 	    }
-
-	  /* Optimizer adopts keylimit optimization */
-
-	  /* Try to sanitize the upper value. It might have been computed from operations on host variables, which are
-	   * unpredictable.
-	   */
-	  isidp->key_limit_upper = 0;
 	}
     }
   else
