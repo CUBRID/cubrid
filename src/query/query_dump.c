@@ -3386,7 +3386,16 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 	    }
 	  else
 	    {
-	      json_object_set_new (analytic, "sort", json_string ("skip"));
+	      json_object_set_new (analytic, "sort", json_false ());
+	    }
+
+	  if (curr->analytic_stopkey)
+	    {
+	      json_object_set_new (analytic, "stopkey", json_true ());
+	    }
+	  else
+	    {
+	      json_object_set_new (analytic, "stopkey", json_false ());
 	    }
 
 	  json_object_set_new (analytic, "page", json_integer (curr->analytic_pages));
@@ -3813,12 +3822,17 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	    }
 	  else
 	    {
-	      fprintf (fp, ", sort: skip");
+	      fprintf (fp, ", sort: false");
 	    }
 
 	  fprintf (fp, ", page: %lld, ioread: %lld", (long long int) curr->analytic_pages,
 		   (long long int) curr->analytic_ioreads);
-	  fprintf (fp, ", rows: %d)\n", curr->rows);
+	  fprintf (fp, ", rows: %d)", curr->rows);
+	  if (curr->analytic_stopkey)
+	    {
+	      fprintf (fp, " (stopkey)");
+	    }
+	  fprintf (fp, "\n");
 	}
     }
 

@@ -5724,10 +5724,6 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
     {
       OID *oid;
       SM_CLASS *class_;
-      SM_ATTRIBUTE *attr;
-      int *lob_alloc_attrid_arr = NULL;
-      int lob_local_attrid_arr[2];
-      int lob_attrid_arr_length = 0;
 
       /* Need to update the class, must fetch it again with write purpose */
       class_obj = locator_fetch_class (class_mop, DB_FETCH_WRITE);
@@ -5931,7 +5927,7 @@ locator_remove_class (MOP class_mop)
       if (lob_attr_exist)
 	{
 	  attrid_arr[0] = -1;
-	  error_code = locator_lob_create_or_remove_dir (insts_hfid, NULL, attrid_arr, 0);
+	  error_code = locator_lob_create_or_remove_dir (insts_hfid, NULL, attrid_arr, 1);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
@@ -7001,30 +6997,20 @@ locator_lob_create_or_remove_dir (HFID * prev_hfid, HFID * new_hfid, int *lob_at
   int error = NO_ERROR;
 
   assert (prev_hfid != NULL || new_hfid != NULL);
+  assert (lob_attrid_arr_length >= 1);
 
-  if (prev_hfid && new_hfid)	/* truncate case */
+  if (prev_hfid != NULL)
     {
-      error = lob_remove_dir (prev_hfid, -1);	/* -1 means remove all LOB directories of the table. */
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
+      int target_attrid = (new_hfid != NULL) ? -1 : lob_attrid_arr[0];	/* -1 means removing all LOB directories of the table, used in truncate case. */
 
-      error = lob_create_dir (new_hfid, lob_attrid_arr, lob_attrid_arr_length);
+      error = lob_remove_dir (prev_hfid, target_attrid);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
     }
-  else if (prev_hfid != NULL)
-    {
-      error = lob_remove_dir (prev_hfid, lob_attrid_arr[0]);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
-  else if (new_hfid != NULL)
+
+  if (new_hfid != NULL)
     {
       error = lob_create_dir (new_hfid, lob_attrid_arr, lob_attrid_arr_length);
       if (error != NO_ERROR)
@@ -7055,6 +7041,8 @@ locator_lob_process_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid)
   int *lob_attrid_arr = NULL;
   int error = NO_ERROR;
 
+  assert (new_hfid != NULL);
+
   for (int i = 0; i < class_->att_count; i++)
     {
       attr = &class_->attributes[i];
@@ -7069,49 +7057,34 @@ locator_lob_process_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid)
     {
       goto end;
     }
+  else if (lob_attrid_arr_length <= 2)
+    {
+      lob_attrid_arr = lob_local_attrid_arr;
+    }
   else if (lob_attrid_arr_length > 2)
     {
-      int index = 0;
-
       lob_alloc_attrid_arr = (int *) malloc (sizeof (int) * lob_attrid_arr_length);
       if (lob_alloc_attrid_arr == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * lob_attrid_arr_length);
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto end;
 	}
 
-      for (int i = 0; i < class_->att_count; i++)
-	{
-	  attr = &class_->attributes[i];
-
-	  if (TP_IS_LOB_TYPE (attr->type->id))
-	    {
-	      lob_alloc_attrid_arr[index++] = attr->id;
-	    }
-	}
       lob_attrid_arr = lob_alloc_attrid_arr;
     }
-  else
-    {
-      int index = 0;
 
-      for (int i = 0; i < class_->att_count; i++)
+  for (int i = 0, index = 0; i < class_->att_count; i++)
+    {
+      attr = &class_->attributes[i];
+      if (TP_IS_LOB_TYPE (attr->type->id))
 	{
-	  attr = &class_->attributes[i];
-
-	  if (TP_IS_LOB_TYPE (attr->type->id))
-	    {
-	      lob_local_attrid_arr[index++] = attr->id;
-	    }
+	  lob_attrid_arr[index++] = attr->id;
 	}
-      lob_attrid_arr = lob_local_attrid_arr;
     }
 
-  /* Create or Remove the lob dir if need */
-  if (lob_attrid_arr_length)
-    {
-      error = locator_lob_create_or_remove_dir (prev_hfid, new_hfid, lob_attrid_arr, lob_attrid_arr_length);
-    }
+  /* Create or remove LOB dir as needed */
+  error = locator_lob_create_or_remove_dir (prev_hfid, new_hfid, lob_attrid_arr, lob_attrid_arr_length);
   if (error != NO_ERROR)
     {
       goto end;
