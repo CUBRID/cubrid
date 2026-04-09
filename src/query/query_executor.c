@@ -9087,14 +9087,6 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
 	  if (!buildvalue->is_always_false)
 	    {
-	      for (agg_ptr = buildvalue->agg_list; agg_ptr; agg_ptr = agg_ptr->next)
-		{
-		  if (!BTID_IS_NULL (&agg_ptr->btid))
-		    {
-		      agg_ptr->flag.agg_optimized = true;
-		    }
-		}
-
 	      error =
 		qexec_evaluate_aggregates_optimize (thread_p, buildvalue->agg_list, xasl->spec_list, &is_scan_needed);
 	      if (error != NO_ERROR)
@@ -25891,13 +25883,14 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 		      return (error == NO_ERROR ? ER_FAILED : error);
 		    }
 		}
-	      else
+
+	      /* 
+	       * build_mvcc_info() loads stats only for classes already marked COS_TO_LOAD at snapshot time.
+	       * Under parallel UNION execution, the snapshot may have been built by another thread before this
+	       * class was marked COS_TO_LOAD, so its stats were never loaded.  Always retry here if still needed.
+	       */
+	      if (class_cos->count_state != COS_LOADED)
 		{
-		  /* 
-		   * An early snapshot can load stats for only the classes that
-		   * were COS_TO_LOAD then; UNION's second branch may still be NOT_LOADED on a later run.
-		   * It needs to load global statistics of btid.
-		   */
 		  if (logtb_load_global_statistics_to_tran (thread_p) != NO_ERROR)
 		    {
 		      error = er_errid ();
