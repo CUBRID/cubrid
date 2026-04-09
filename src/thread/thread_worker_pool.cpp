@@ -170,7 +170,7 @@ namespace cubthread
   std::unique_ptr<worker_pool::core>
   worker_pool::allocate_core (void)
   {
-    return std::make_unique<worker_pool::core> ();
+    return std::unique_ptr<core> (new core ());
   }
 
   void
@@ -197,13 +197,13 @@ namespace cubthread
     for (it = 0; it < remainder; it++)
       {
 	m_cores[it]->set_worker_pool (*this);
-	// worker pool is referenced in worker to get m_pool_threads when initialing core
+	// worker pool is referenced in worker to get m_pool_threads when initializing core
 	m_cores[it]->initialize (quotient + 1);
       }
     for (; it < m_cores.size (); it++)
       {
 	m_cores[it]->set_worker_pool (*this);
-	// worker pool is referenced in worker to get m_pool_threads when initialing core
+	// worker pool is referenced in worker to get m_pool_threads when initializing core
 	m_cores[it]->initialize (quotient);
       }
   }
@@ -267,56 +267,17 @@ namespace cubthread
   {
   }
 
-  std::unique_ptr<worker_pool::core::worker>
-  worker_pool::core::allocate_worker (bool is_temp)
-  {
-    return std::make_unique<worker_pool::core::worker> (is_temp);
-  }
-
-  void
-  worker_pool::core::allocate_workers (std::size_t worker_count)
-  {
-    std::size_t it;
-
-    m_workers.reserve (worker_count);
-    for (it = 0; it < worker_count; it++)
-      {
-	m_workers.push_back (allocate_worker ());
-      }
-  }
-
-  void
-  worker_pool::core::initialize_workers ()
-  {
-    for (auto it = m_workers.begin (); it != m_workers.end (); it++)
-      {
-	(*it)->set_core (*this);
-
-	if (m_parent_pool->get_pool_threads ())
-	  {
-	    // assign task / start thread
-	    // it will add itself to available workers
-	    (*it)->assign_task (NULL);
-	  }
-	else
-	  {
-	    // add to available workers
-	    m_available_workers.push_back (it->get ());
-	  }
-      }
-  }
-
   void
   worker_pool::core::initialize (std::size_t worker_count)
   {
     assert (worker_count > 0);
 
+    // resources reserve
+    m_available_workers.reserve (worker_count);
+
     // workers
     allocate_workers (worker_count);
     initialize_workers ();
-
-    // resources reserve
-    m_available_workers.reserve (worker_count);
   }
 
   void
@@ -384,7 +345,7 @@ namespace cubthread
       }
     temp_guard.unlock ();
 
-    // stop all workers to stop
+    // tell all workers to stop
     std::unique_lock<std::mutex> worker_guard (m_workers_mutex);
 
     for (auto it = m_workers.begin (); it != m_workers.end (); it++)
@@ -482,6 +443,45 @@ namespace cubthread
     std::unique_lock<std::mutex> ulock (m_temp_workers_mutex);
 
     m_free_temp_workers.clear ();
+  }
+
+  std::unique_ptr<worker_pool::core::worker>
+  worker_pool::core::allocate_worker (bool is_temp)
+  {
+    return std::unique_ptr<worker> (new worker (is_temp));
+  }
+
+  void
+  worker_pool::core::allocate_workers (std::size_t worker_count)
+  {
+    std::size_t it;
+
+    m_workers.reserve (worker_count);
+    for (it = 0; it < worker_count; it++)
+      {
+	m_workers.push_back (allocate_worker ());
+      }
+  }
+
+  void
+  worker_pool::core::initialize_workers ()
+  {
+    for (auto it = m_workers.begin (); it != m_workers.end (); it++)
+      {
+	(*it)->set_core (*this);
+
+	if (m_parent_pool->get_pool_threads ())
+	  {
+	    // assign task / start thread
+	    // it will add itself to available workers
+	    (*it)->assign_task (NULL);
+	  }
+	else
+	  {
+	    // add to available workers
+	    m_available_workers.push_back (it->get ());
+	  }
+      }
   }
 
   void
@@ -807,7 +807,7 @@ namespace cubthread
   }
 
   //////////////////////////////////////////////////////////////////////////
-  // [optional] userful when using perf
+  // [optional] useful when using perf
   //////////////////////////////////////////////////////////////////////////
 
   static bool FORCE_THREAD_ALWAYS_ALIVE = false;

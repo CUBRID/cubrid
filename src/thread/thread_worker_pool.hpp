@@ -104,14 +104,13 @@ namespace cubthread
   class worker_pool
   {
     public:
+      // forward definition for nested core class
+      friend class thread_manager;
+      class core;
+
       using context_type = entry;
       using task_type = task<context_type>;
 
-      // forward definition
-      class core;
-
-      worker_pool (std::size_t pool_size, std::size_t core_count, const char *name, entry_manager &entry_mgr,
-		   bool pool_threads = false, wait_seconds wait_for_task_time = std::chrono::seconds (5));
       virtual ~worker_pool ();
 
       // get name
@@ -178,8 +177,8 @@ namespace cubthread
       void map_cores (Func &&func, Args &&... args);
 
     protected:
-      // forward definition for nested core class; he's a friend
-      friend class core;
+      worker_pool (std::size_t pool_size, std::size_t core_count, const char *name, entry_manager &entry_mgr,
+		   bool pool_threads = false, wait_seconds wait_for_task_time = std::chrono::seconds (5));
 
       // override this if want to change core type
       virtual std::unique_ptr<core> allocate_core ();
@@ -227,23 +226,18 @@ namespace cubthread
   {
     public:
       // forward definition of nested class worker
+      friend class worker_pool;
       class worker;
 
-      core ();
       virtual ~core (void);
 
-      // override this if want to change worker type
-      virtual std::unique_ptr<worker> allocate_worker (bool is_temp = false);
-
-      virtual void allocate_workers (std::size_t worker_count);
-      virtual void initialize_workers ();
       virtual void initialize (std::size_t worker_count);
 
       void set_worker_pool (worker_pool &parent);
 
       // task management
       // execute task
-      virtual void execute_task (task_type *task_p, bool is_temp);
+      void execute_task (task_type *task_p, bool is_temp);
 
       // worker management
       // notify workers to stop; if any of core's workers are still running, outputs is_not_stopped = true
@@ -252,8 +246,8 @@ namespace cubthread
 
       // worker management
       // get a task or add worker to free active list (still running, but ready to execute another task)
-      virtual task_type *get_task_or_become_available (worker &worker_arg);
-      virtual void become_available (worker &worker_arg);
+      task_type *get_task_or_become_available (worker &worker_arg);
+      void become_available (worker &worker_arg);
       // is worker available?
       void check_worker_not_available (const worker &worker_arg);
 
@@ -277,10 +271,16 @@ namespace cubthread
       void map_running_contexts (bool &stop, Func &&func, Args &&... args) const;
 
     protected:
+      core ();
+
+      // override this if want to change worker type
+      virtual std::unique_ptr<worker> allocate_worker (bool is_temp = false);
+
+      virtual void allocate_workers (std::size_t worker_count);
+      virtual void initialize_workers ();
+
       // execute task for method/stored procedure by recursive call; This task is not pooled and executes in a temporary created thread.
       virtual void execute_task_as_temp (task_type *task_p);
-
-      friend worker_pool;
 
       worker_pool *m_parent_pool;		      // pointer to parent pool
 
@@ -303,19 +303,20 @@ namespace cubthread
   class worker_pool::core::worker
   {
     public:
-      worker (bool is_temp = false);
+      friend class core;
+
       virtual ~worker (void);
 
       // init
       void set_core (core &parent);
 
       // start thread for current worker
-      virtual void start_thread (void);
+      void start_thread (void);
 
       // assign task (can be NULL) to running thread or start thread
-      virtual void assign_task (task_type *work_p);
+      void assign_task (task_type *work_p);
       // run task on current thread (push_time is provided by core)
-      virtual void push_task_on_running_thread (task_type *work_p);
+      void push_task_on_running_thread (task_type *work_p);
 
       // stop execution; if worker has a thread running, it outputs is_not_stopped = true
       void stop_execution (bool &is_not_stopped);
@@ -342,21 +343,22 @@ namespace cubthread
       void map_context_if_running (bool &stop, Func &&func, Args &&... args);
 
     protected:
+      worker (bool is_temp = false);
 
       // run function invoked by spawned thread
-      virtual void run (void);
+      void run (void);
 
       // run initialization (creating execution context)
-      virtual void init_run (void);
+      void init_run (void);
       // finishing initialization (retiring execution context, worker becomes inactive)
-      virtual void finish_run (void);
+      void finish_run (void);
 
       // execute m_task_p
-      virtual void execute_current_task (void);
+      void execute_current_task (void);
       // retire m_task_p
-      virtual void retire_current_task (void);
+      void retire_current_task (void);
       // get new task from 1. worker pool task queue or 2. wait for incoming tasks
-      virtual bool get_new_task (void);
+      bool get_new_task (void);
 
       core *m_parent_core;		      // parent core
 

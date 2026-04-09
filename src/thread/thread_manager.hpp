@@ -491,9 +491,10 @@ thread_get_entry_manager (void)
 
 inline cubthread::worker_pool *
 thread_create_worker_pool_base (std::size_t pool_size, std::size_t core_count, const char *name,
-				cubthread::entry_manager &entry_mgr)
+				cubthread::entry_manager &entry_mgr, bool pool_threads = false)
 {
-  return cubthread::get_manager ()->create_worker_pool<cubthread::worker_pool> (pool_size, core_count, name, entry_mgr);
+  return cubthread::get_manager ()->create_worker_pool<cubthread::worker_pool> (pool_size, core_count, name, entry_mgr,
+	 pool_threads);
 }
 
 inline std::size_t
