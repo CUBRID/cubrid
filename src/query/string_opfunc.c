@@ -163,6 +163,16 @@ static int uuidv4_generate_bytes (THREAD_ENTRY * thread_p, unsigned char *out_by
 static int uuidv7_generate_bytes (THREAD_ENTRY * thread_p, uint64_t epoch_ms, unsigned char *out_bytes);
 #endif /* !defined (CS_MODE) */
 
+#define UPPER_HEX_DIGIT "0123456789ABCDEF"
+
+#define UUID_FORMAT_LEN 36
+#define UUID_HEX_LEN 32
+
+/* NOTE: argument 'c' must be a simple expression; it is evaluated up to 6 times. */
+#define IS_HEX_CHAR(c) ((((unsigned char)(c) >= '0' && (unsigned char)(c) <= '9') \
+            || ((unsigned char)(c) >= 'A' && (unsigned char)(c) <= 'F') \
+            || ((unsigned char)(c) >= 'a' && (unsigned char)(c) <= 'f')))
+
 typedef enum
 {
   COMPOSITE_YEAR = 0,
@@ -2737,6 +2747,177 @@ db_string_md5 (DB_VALUE const *val, DB_VALUE * result)
       else
 	{
 	  error_status = ER_QSTR_INVALID_DATA_TYPE;
+	}
+    }
+
+  return error_status;
+}
+
+/*
+ * UUID_FORMAT(val) - format UUID string or bit as 8-4-4-4-12 hyphenated string
+ * Arguments
+ *	val: string (32 hex chars) or bit (128 bits) representing UUID without hyphens
+ *	result: DB_VALUE to receive the formatted UUID string (e.g. 'a1b2c3d4-e5f6-a7b8-c9d0-e1f2a3b4c5d6')
+ */
+int
+db_uuid_format (DB_VALUE const *val, DB_VALUE * result)
+{
+  char *hex_buf = NULL;
+  const char *str = NULL;
+  int str_size = 0;
+  int i, j;
+  static const int dash_pos[] = { 8, 13, 18, 23 };
+  static const int dash_len = 4;
+  DB_TYPE val_type;
+  bool is_bit_input = false;
+  int error_status = NO_ERROR;
+
+  assert (val != (DB_VALUE *) NULL);
+  assert (result != (DB_VALUE *) NULL);
+
+  if (DB_IS_NULL (val))
+    {
+      db_make_null (result);
+      return NO_ERROR;
+    }
+
+  val_type = DB_VALUE_DOMAIN_TYPE (val);
+
+  hex_buf = (char *) db_private_alloc (NULL, UUID_FORMAT_LEN + 1);
+  if (hex_buf == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_status = er_errid ();
+      goto exit;
+    }
+
+  if (QSTR_IS_ANY_CHAR (val_type))
+    {
+      str = db_get_string (val);
+      str_size = db_get_string_length (val);
+
+      if (str_size == UUID_HEX_LEN)
+	{
+	  for (i = 0, j = 0; i < UUID_FORMAT_LEN; i++)
+	    {
+	      char c = (char) str[i - j];
+
+	      if (j < dash_len && i == dash_pos[j])
+		{
+		  j++;
+		  hex_buf[i++] = '-';
+		}
+
+	      if (IS_HEX_CHAR (c))
+		{
+		  hex_buf[i] = (char) toupper ((unsigned char) c);
+		}
+	      else
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+		  error_status = ER_QSTR_INVALID_UUID_FORMAT;
+		  goto exit;
+		}
+	    }
+	}
+      else if (str_size == UUID_FORMAT_LEN)
+	{
+	  /* 36-char string: already has hyphens, validate positions and hex chars */
+	  for (j = 0; j < dash_len; j++)
+	    {
+	      if (str[dash_pos[j]] != '-')
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+		  error_status = ER_QSTR_INVALID_UUID_FORMAT;
+		  goto exit;
+		}
+	    }
+
+	  for (i = 0, j = 0; i < UUID_FORMAT_LEN; i++)
+	    {
+	      if (j < dash_len && i == dash_pos[j])
+		{
+		  hex_buf[i] = '-';
+		  j++;
+		}
+	      else
+		{
+		  char c = str[i];
+		  if (IS_HEX_CHAR (c))
+		    {
+		      hex_buf[i] = (char) toupper ((unsigned char) c);
+		    }
+		  else
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+		      error_status = ER_QSTR_INVALID_UUID_FORMAT;
+		      goto exit;
+		    }
+		}
+	    }
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+	  error_status = ER_QSTR_INVALID_UUID_FORMAT;
+	  goto exit;
+	}
+    }
+  else if (QSTR_IS_BIT (val_type))
+    {
+      str = db_get_bit (val, &str_size);
+      if (str_size != UUID_HEX_LEN * 4)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+	  error_status = ER_QSTR_INVALID_UUID_FORMAT;
+	  goto exit;
+	}
+      for (i = 0, j = 0; i < UUID_HEX_LEN / 2; i++)
+	{
+	  if (j < dash_len && i == (dash_pos[j] - j) / 2)
+	    {
+	      hex_buf[i * 2 + j] = '-';
+	      j++;
+	    }
+	  hex_buf[i * 2 + j] = UPPER_HEX_DIGIT[((unsigned char) str[i] >> 4) & 0xF];
+	  hex_buf[i * 2 + 1 + j] = UPPER_HEX_DIGIT[(unsigned char) str[i] & 0xF];
+	}
+      is_bit_input = true;
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+      error_status = ER_QSTR_INVALID_UUID_FORMAT;
+      goto exit;
+    }
+  hex_buf[UUID_FORMAT_LEN] = '\0';
+
+  if (is_bit_input)
+    {
+      /* Bit input: do not use db_get_string_codeset/collation (invalid for bit).
+       * Use db_make_string with allocated copy so result has a valid string representation. */
+      error_status = db_make_string (result, hex_buf);
+    }
+  else
+    {
+      error_status = db_make_varchar (result, UUID_FORMAT_LEN, hex_buf, UUID_FORMAT_LEN,
+				      db_get_string_codeset (val), db_get_string_collation (val));
+    }
+  if (error_status == NO_ERROR)
+    {
+      result->need_clear = true;
+    }
+
+exit:
+  if (error_status != NO_ERROR)
+    {
+      db_private_free_and_init (NULL, hex_buf);
+      db_make_null (result);
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	{
+	  /* we must not return an error code */
+	  er_clear ();
+	  error_status = NO_ERROR;
 	}
     }
 
@@ -25893,9 +26074,6 @@ db_hex (const DB_VALUE * param, DB_VALUE * result)
     0xFFFFFFFFFFFFFFFF
   };
 
-  /* hex digits */
-  const char hex_digit[] = "0123456789ABCDEF";
-
   /* other variables */
   DB_TYPE param_type = DB_TYPE_UNKNOWN;
   const char *str = NULL;
@@ -25962,8 +26140,8 @@ coerce_pos:
       /* compute hex representation */
       for (i = 0; i < str_size; i++)
 	{
-	  hexval[i * 2] = hex_digit[(str[i] >> 4) & 0xF];
-	  hexval[i * 2 + 1] = hex_digit[str[i] & 0xF];
+	  hexval[i * 2] = UPPER_HEX_DIGIT[((unsigned char) str[i] >> 4) & 0xF];
+	  hexval[i * 2 + 1] = UPPER_HEX_DIGIT[(unsigned char) str[i] & 0xF];
 	}
 
       /* set return string */
@@ -26010,7 +26188,7 @@ coerce_pos:
       /* compute hex representation */
       for (i = hexval_len - 1; i >= 0; --i)
 	{
-	  hexval[i] = hex_digit[param_bigint & 0xF];
+	  hexval[i] = UPPER_HEX_DIGIT[param_bigint & 0xF];
 	  param_bigint >>= 4;
 	}
 
@@ -26078,7 +26256,6 @@ int
 db_uuidv4 (THREAD_ENTRY * thread_p, DB_VALUE * result)
 {
   int i = 0, error_code = NO_ERROR;
-  const char hex_digit[] = "0123456789ABCDEF";
   unsigned char guid_bytes[GUID_STANDARD_BYTES_LENGTH];
   char *guid_hex = NULL;
 
@@ -26110,8 +26287,8 @@ db_uuidv4 (THREAD_ENTRY * thread_p, DB_VALUE * result)
   /* Encode the bytes to HEX */
   for (i = 0; i < GUID_STANDARD_BYTES_LENGTH; i++)
     {
-      guid_hex[i * 2] = hex_digit[(guid_bytes[i] >> 4) & 0xF];
-      guid_hex[i * 2 + 1] = hex_digit[(guid_bytes[i] & 0xF)];
+      guid_hex[i * 2] = UPPER_HEX_DIGIT[((unsigned char) guid_bytes[i] >> 4) & 0xF];
+      guid_hex[i * 2 + 1] = UPPER_HEX_DIGIT[(unsigned char) guid_bytes[i] & 0xF];
     }
 
   db_make_string (result, guid_hex);

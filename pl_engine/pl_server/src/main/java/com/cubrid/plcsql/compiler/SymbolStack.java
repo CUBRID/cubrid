@@ -418,6 +418,7 @@ public class SymbolStack {
                         "TO_TIME",
                         "TO_TIMESTAMP",
                         "TO_TIMESTAMP_TZ",
+                        "UUID_FORMAT",
 
                         // aggregate and analytic
                         "AVG",
