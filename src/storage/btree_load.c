@@ -1176,11 +1176,9 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     {
       /* todo: we have the option to commit & undo here. on undo, we can destroy the file directly. */
       log_sysop_attach_to_outer (thread_p);
-      if (unique_pk)
-	{
-	  /* drop statistics if aborted */
-	  log_append_undo_data2 (thread_p, RVBT_REMOVE_UNIQUE_STATS, NULL, NULL, NULL_OFFSET, sizeof (BTID), btid);
-	}
+      /* Drop statistics if aborted: unique indexes always track; non-unique indexes also track OID statistics now.
+       * A lazy global stats entry may have been created by a concurrent COUNT(*) between load and commit. */
+      log_append_undo_data2 (thread_p, RVBT_REMOVE_UNIQUE_STATS, NULL, NULL, NULL_OFFSET, sizeof (BTID), btid);
     }
   else
     {

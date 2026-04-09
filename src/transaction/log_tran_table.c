@@ -4422,17 +4422,25 @@ logtb_create_unique_stats_from_repr (THREAD_ENTRY * thread_p, OID * class_oid)
 	  long long g_oid = -1, g_null = -1, g_key = -1;
 
 	  /* Non-unique indexes that track OID statistics (new format); legacy headers skip. */
-	  if (btree_get_unique_statistics (thread_p, &classrepr->indexes[idx].btid, &g_oid, &g_null, &g_key) !=
-	      NO_ERROR)
+	  if (btree_get_unique_statistics (thread_p, &classrepr->indexes[idx].btid,
+					   &g_oid, &g_null, &g_key) != NO_ERROR)
 	    {
+	      if (er_errid () != NO_ERROR)
+		{
+		  error_code = er_errid ();
+		  goto exit_on_error;
+		}
+
 	      continue;
 	    }
+
 	  unique_stats = logtb_tran_find_btid_stats (thread_p, &classrepr->indexes[idx].btid, true);
 	  if (unique_stats == NULL)
 	    {
 	      error_code = ER_FAILED;
 	      goto exit_on_error;
 	    }
+
 	  error_code =
 	    logtb_get_global_unique_stats (thread_p, &unique_stats->btid, &unique_stats->global_stats.num_oids,
 					   &unique_stats->global_stats.num_nulls, &unique_stats->global_stats.num_keys);

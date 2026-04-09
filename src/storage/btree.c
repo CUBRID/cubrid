@@ -5853,11 +5853,10 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
 
   log_sysop_attach_to_outer (thread_p);
   vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
-  if (unique_pk)
-    {
-      /* drop statistics if aborted */
-      log_append_undo_data2 (thread_p, RVBT_REMOVE_UNIQUE_STATS, NULL, NULL, NULL_OFFSET, sizeof (BTID), btid);
-    }
+  /* Drop statistics if aborted: unique indexes always track, and non-unique indexes also track OID statistics
+   * (num_oids=0) since they now support COUNT(*) optimization. Any transaction doing COUNT(*) between index creation
+   * and the abort may have lazily created an entry in log_Gl.unique_stats_table that must be cleaned up. */
+  log_append_undo_data2 (thread_p, RVBT_REMOVE_UNIQUE_STATS, NULL, NULL, NULL_OFFSET, sizeof (BTID), btid);
 
   return btid;
 
@@ -5915,10 +5914,12 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
     }
   ovfid = root_header->ovfid;
   unique_pk = root_header->unique_pk;
+  /* num_oids >= 0 means OID stats are tracked (unique, or new non-unique); -1 is legacy non-unique. */
+  bool tracks_oid_stats = (root_header->num_oids >= 0);
   pgbuf_unfix_and_init (thread_p, P);
 
   vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE);
-  if (unique_pk)
+  if (unique_pk || tracks_oid_stats)
     {
       LOG_DATA_ADDR addr = { NULL, NULL, NULL_OFFSET };
       log_append_postpone (thread_p, RVBT_REMOVE_UNIQUE_STATS, &addr, sizeof (*btid), btid);
@@ -27356,7 +27357,7 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
       else
 	{
 	  /* NULL row being inserted: btree key will not be created (is_null early-exit below),
-	   * so track it here ??mirroring the unique-index path. */
+	   * so track it here mirroring the unique-index path. */
 	  incr.insert_null_and_row ();
 	}
 
