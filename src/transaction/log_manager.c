@@ -10615,7 +10615,12 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
       return error_code;
     }
 
-  assert (!OID_ISNULL (&class_oid));
+  if (OID_ISNULL (&class_oid))
+    {
+      /* Non-unique index: btree_get_class_oid_of_unique_btid only fills class_oid for unique indexes.
+       * Non-unique indexes do not participate in online index build stats tracking; skip. */
+      return NO_ERROR;
+    }
 
   if (!btree_is_btid_online_index (thread_p, &class_oid, &unique_stats->btid))
     {
