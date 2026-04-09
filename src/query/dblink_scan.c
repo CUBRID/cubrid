@@ -842,7 +842,7 @@ dblink_corr_prepare (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, DBLINK_SC
 
 /*
  * dblink_corr_execute () - CBRD-26601: per outer row — bind corr keys + cci_execute + result metadata.
- *   FR-6 (T3-3): NULL corr key — skip cci_execute; dblink_scan_next returns S_END (scalar NULL).
+ *   NULL corr key — skip cci_execute and set corr_skip_result_fetch; dblink_scan_next returns S_END (scalar NULL).
  */
 int
 dblink_corr_execute (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd)
@@ -872,7 +872,7 @@ dblink_corr_execute (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, VAL_
 	}
       if (DB_IS_NULL (peek_val))
 	{
-	  /* No remote round-trip; avoid reading a stale result set in dblink_scan_next (FR-6). */
+	  /* corr key is NULL: skip remote round-trip; corr_skip_result_fetch prevents reading a stale result set. */
 	  scan_info->corr_skip_result_fetch = 1;
 	  return NO_ERROR;
 	}

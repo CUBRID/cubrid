@@ -12687,7 +12687,7 @@ pt_to_showstmt_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * whe
 }
 
 /*
- * pt_dblink_corr_side_has_spec () - CBRD-26601 T4-1 helper: strip an optional CAST wrap and return true
+ * pt_dblink_corr_side_has_spec () - CBRD-26601: strip an optional CAST wrap and return true
  *   if node is a PT_NAME that belongs to the given spec (identified by spec_id).
  */
 static bool
@@ -12701,7 +12701,7 @@ pt_dblink_corr_side_has_spec (PT_NODE * node, UINTPTR spec_id)
 }
 
 /*
- * pt_dblink_corr_side_is_outer_ref () - CBRD-26601 T4-1 helper: strip an optional CAST wrap and return true
+ * pt_dblink_corr_side_is_outer_ref () - CBRD-26601: strip an optional CAST wrap and return true
  *   if node is a PT_NAME that belongs to a spec OTHER than the inner DBLink spec (i.e. an outer-query column).
  *   A literal or NULL has no spec_id (== 0) and returns false.
  *   An inner-spec column (spec_id == dblink_sid) also returns false.
@@ -12718,7 +12718,7 @@ pt_dblink_corr_side_is_outer_ref (PT_NODE * node, UINTPTR dblink_sid)
 }
 
 /*
- * pt_remove_corr_dblink_term () - CBRD-26601 T4-1: remove the correlated-equality term that was push-downed
+ * pt_remove_corr_dblink_term () - CBRD-26601: remove the correlated-equality term that was push-downed
  *   into conn_sql from the access_pred AND list.  Unlinks only a PT_EQ that is a cross-spec equality:
  *   exactly one side must belong to the inner DBLink spec (dblink_sid) and the other side must be an outer
  *   column reference (spec_id != 0 and spec_id != dblink_sid).  This avoids removing constant filters such
@@ -12748,8 +12748,7 @@ pt_remove_corr_dblink_term (PT_NODE * where_list, UINTPTR dblink_sid)
 	  PT_NODE *arg2 = actual->info.expr.arg2;
 	  bool is_corr_term = (pt_dblink_corr_side_has_spec (arg1, dblink_sid)
 			       && pt_dblink_corr_side_is_outer_ref (arg2, dblink_sid))
-	    || (pt_dblink_corr_side_has_spec (arg2, dblink_sid)
-		&& pt_dblink_corr_side_is_outer_ref (arg1, dblink_sid));
+	    || (pt_dblink_corr_side_has_spec (arg2, dblink_sid) && pt_dblink_corr_side_is_outer_ref (arg1, dblink_sid));
 
 	  if (is_corr_term)
 	    {
@@ -12794,12 +12793,12 @@ pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE
   int *pred_offsets = NULL, *rest_offsets = NULL;
   PT_NODE *effective_where;
 
-  /* CBRD-26601 T2-1 Plan B: inner SELECT from with PT_DERIVED_DBLINK_TABLE is XASL-lowered separately; corr_key_* is
+  /* CBRD-26601: inner SELECT from with PT_DERIVED_DBLINK_TABLE is XASL-lowered separately; corr_key_* is
    * filled in pt_to_dblink_table_spec_list when that inner spec is built.  */
 
   subquery_proc = (XASL_NODE *) subquery->info.query.xasl;
 
-  /* CBRD-26601 T4-1: for correlated DBLink push-down, strip the push-downed cross-spec equality from
+  /* CBRD-26601: for correlated DBLink push-down, strip the push-downed cross-spec equality from
    * access_pred so it is not re-evaluated locally (the remote side already filters via "WHERE col = ?").
    * pt_remove_corr_dblink_term mutates the list in place — use effective_where exclusively from here on;
    * do NOT re-walk where_part after this point. */
@@ -13033,7 +13032,7 @@ pt_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * term_list, void *arg, int
 }
 
 /*
- * pt_fill_dblink_corr_for_spec () - CBRD-26601 T2-1: copy correlated outer bind regs into TARGET_DBLINK spec.
+ * pt_fill_dblink_corr_for_spec () - CBRD-26601: copy correlated outer bind regs into TARGET_DBLINK spec.
  *   corr_regu must come from pt_to_regu_variable (parser, pdblink->corr_key_outer_copy[0], ...).
  */
 static void
@@ -13074,7 +13073,7 @@ pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE *
   int count = 0;
   REGU_VARIABLE *corr_regu = NULL;
 
-  /* CBRD-26601 T1-2: pure correlated — pt_copypush_terms did not set rewritten; build before conn_sql */
+  /* CBRD-26601: pure corr push-down — pt_copypush_terms did not set rewritten; build before conn_sql */
   if (pdblink->rewritten == NULL && pdblink->corr_key_count > 0 && pdblink->corr_key_col_names[0] != NULL)
     {
       if (!mq_dblink_append_corr_pred_sql (parser, pdblink))
@@ -13083,7 +13082,7 @@ pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE *
 	}
     }
 
-  /* CBRD-26601 T2-1: outer-column regu for per-row bind (same val_list slots as access_pred) */
+  /* CBRD-26601: outer-column regu for per-row bind (same val_list slots as access_pred) */
   if (pdblink->corr_key_count > 0 && pdblink->corr_key_outer_copy[0] != NULL)
     {
       corr_regu = pt_to_regu_variable (parser, pdblink->corr_key_outer_copy[0], UNBOX_AS_VALUE);
@@ -13098,7 +13097,7 @@ pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE *
 	}
     }
 
-  /* CBRD-26601 T4-1: when corr push-down is active (corr_key_count > 0), strip the pushed-down cross-spec
+  /* CBRD-26601: when corr push-down is active (corr_key_count > 0), strip the pushed-down cross-spec
    * equality from the local access_pred — the remote side already filters via "WHERE col = ?".
    * pt_remove_corr_dblink_term mutates the list in place — use effective_where_p exclusively from here on;
    * do NOT re-walk where_p after this point. */
@@ -18080,7 +18079,7 @@ pt_xasl_spec_has_dblink (XASL_NODE * xasl)
 }
 
 /*
- * pt_xasl_spec_has_corr_dblink () - true if any TARGET_DBLINK spec has correlated push-down keys (CBRD-26601 T2-1).
+ * pt_xasl_spec_has_corr_dblink () - true if any TARGET_DBLINK spec has correlated push-down keys (CBRD-26601).
  */
 static bool
 pt_xasl_spec_has_corr_dblink (XASL_NODE * xasl)

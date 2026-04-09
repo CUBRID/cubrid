@@ -4190,7 +4190,8 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 
       query->info.dblink_table.rewritten = rewritten;
 
-      /* CBRD-26601 T1-2: corr pred after rewritten is final (mixed case). */
+      /* CBRD-26601: both view-level push (pt_copypush_terms) and corr push-down are active;
+       * rewritten already has "WHERE pushed_pred" — append corr pred as AND. */
       if (query->info.dblink_table.corr_key_count > 0 && query->info.dblink_table.corr_key_col_names[0] != NULL)
 	{
 	  if (!mq_dblink_append_corr_pred_sql (parser, &query->info.dblink_table))
@@ -4590,7 +4591,7 @@ mq_is_dblink_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term)
     }
 }
 
-/* mq_detect_dblink_corr_eq helpers (CBRD-26601 T1-1) */
+/* mq_detect_dblink_corr_eq helpers (CBRD-26601) */
 #define MQ_DBLINK_CORR_SIDE_ERR     (-1)
 #define MQ_DBLINK_CORR_SIDE_OTHER    0
 #define MQ_DBLINK_CORR_SIDE_REMOTE   1
@@ -4712,7 +4713,7 @@ mq_dblink_corr_is_correlated_eq_term (PARSER_CONTEXT * parser, PT_NODE * term, U
 }
 
 /*
- * mq_dblink_corr_forbidden_pre () - OR/NOT/subquery/host var/method in predicate (Phase 1 fail)
+ * mq_dblink_corr_forbidden_pre () - forbid OR, NOT, host var, method, query block in predicate
  */
 static PT_NODE *
 mq_dblink_corr_forbidden_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
@@ -4789,8 +4790,8 @@ mq_dblink_corr_term_has_outer_ref (PARSER_CONTEXT * parser, PT_NODE * term)
  * mq_detect_dblink_corr_eq () - count correlated equalities (remote = outer) in subquery WHERE.
  *
  *   return:
- *     >=0 : number of AND terms that are exactly one remote=outer PT_EQ (Phase 1 uses == 1)
- *     -1  : Phase 1 not applicable (host var, OR/NOT, subquery in pred, outer ref without corr eq, etc.)
+ *     >=0 : number of AND terms that are exactly one remote=outer PT_EQ (currently == 1 required)
+ *     -1  : not applicable (host var, OR/NOT, query block in predicate, outer ref without corr eq, etc.)
  */
 static int
 mq_detect_dblink_corr_eq (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * dblink_spec)
@@ -5021,10 +5022,10 @@ mq_dblink_build_rewritten_base_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di
 }
 
 /* Append corr pred to di->rewritten.
- * di->rewritten != NULL (mixed case): pt_copypush_terms already built
- *   "SELECT * FROM (...) cublink WHERE pushed_pred" — always append AND.
- * di->rewritten == NULL (pure corr case): mq_dblink_build_rewritten_base_sql
- *   always produces "SELECT * FROM (...) cublink" (no WHERE) — always append WHERE. */
+ * di->rewritten != NULL: pt_copypush_terms already built "SELECT * FROM (...) cublink WHERE pushed_pred"
+ *   (both view-level push and corr push-down active) — always append AND.
+ * di->rewritten == NULL: mq_dblink_build_rewritten_base_sql always produces
+ *   "SELECT * FROM (...) cublink" (no WHERE, pure corr push-down) — always append WHERE. */
 bool
 mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di)
 {
