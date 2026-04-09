@@ -9650,7 +9650,7 @@ pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_N
 static void
 pt_check_create_package (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-    // TODO package
+  // TODO package
 }
 
 /*
@@ -9662,7 +9662,7 @@ pt_check_create_package (PARSER_CONTEXT * parser, PT_NODE * node)
 static void
 pt_check_drop_package (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-    // TODO package
+  // TODO package
 }
 
 /*
@@ -9674,7 +9674,7 @@ pt_check_drop_package (PARSER_CONTEXT * parser, PT_NODE * node)
 static void
 pt_check_alter_package (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-    // TODO package
+  // TODO package
 }
 
 /*

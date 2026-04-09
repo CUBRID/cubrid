@@ -1331,7 +1331,7 @@ namespace cubschema
 		   CT_PACKAGE_VAR_NAME,
 		   // columns
     {
-      {PKG_VAR_ATTR_PKG_UNIQUE_NAME, format_varchar(255)},
+      {PKG_VAR_ATTR_PKG_UNIQUE_NAME, format_varchar (255)},
       {PKG_VAR_ATTR_NAME, format_varchar (255)},
       {PKG_VAR_ATTR_DATA_TYPE, "integer"},
       {PKG_VAR_ATTR_INIT_VALUE, "string"},
@@ -1360,7 +1360,7 @@ namespace cubschema
 		   CT_PACKAGE_EXCEPTION_NAME,
 		   // columns
     {
-      {PKG_EXCEPTION_ATTR_PKG_UNIQUE_NAME, format_varchar(255)},
+      {PKG_EXCEPTION_ATTR_PKG_UNIQUE_NAME, format_varchar (255)},
       {PKG_EXCEPTION_ATTR_NAME, format_varchar (255)},
       {PKG_EXCEPTION_ATTR_COMMENT, format_varchar (1024)}
     },
@@ -1386,7 +1386,7 @@ namespace cubschema
 		   CT_PACKAGE_CURSOR_NAME,
 		   // columns
     {
-      {PKG_CURSOR_ATTR_PKG_UNIQUE_NAME, format_varchar(255)},
+      {PKG_CURSOR_ATTR_PKG_UNIQUE_NAME, format_varchar (255)},
       {PKG_CURSOR_ATTR_NAME, format_varchar (255)},
       {PKG_CURSOR_ATTR_RECORD_TYPE, "string"},
       {PKG_CURSOR_ATTR_PARAMETERS, format_sequence ("string")}, // sequence of 'name:type' strings
@@ -1414,7 +1414,7 @@ namespace cubschema
 		   CT_PACKAGE_RECORD_TYPE_NAME,
 		   // columns
     {
-      {PKG_RECORD_TYPE_ATTR_PKG_UNIQUE_NAME, format_varchar(255)},
+      {PKG_RECORD_TYPE_ATTR_PKG_UNIQUE_NAME, format_varchar (255)},
       {PKG_RECORD_TYPE_ATTR_NAME, format_varchar (255)},
       {PKG_RECORD_TYPE_ATTR_FIELDS, format_sequence ("string")}, // sequence of 'name:type:not-null-or-nullable:init-expr' strings
       {PKG_RECORD_TYPE_ATTR_COMMENT, format_varchar (1024)}

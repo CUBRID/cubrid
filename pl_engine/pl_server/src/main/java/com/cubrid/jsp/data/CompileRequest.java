@@ -33,9 +33,9 @@ package com.cubrid.jsp.data;
 
 public class CompileRequest {
 
-    public final static int PLCSQL_COMPILE_TYPE_SP = 1;
-    public final static int PLCSQL_COMPILE_TYPE_PKG_SPEC = 2;
-    public final static int PLCSQL_COMPILE_TYPE_PKG_BODY = 3;
+    public static final int PLCSQL_COMPILE_TYPE_SP = 1;
+    public static final int PLCSQL_COMPILE_TYPE_PKG_SPEC = 2;
+    public static final int PLCSQL_COMPILE_TYPE_PKG_BODY = 3;
 
     public int type = 0;
     public String code = null;
@@ -65,6 +65,5 @@ public class CompileRequest {
                 mode = unpacker.unpackCString();
                 break;
         }
-
     }
 }

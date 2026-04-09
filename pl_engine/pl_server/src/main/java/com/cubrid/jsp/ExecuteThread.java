@@ -40,8 +40,8 @@ import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
-import com.cubrid.jsp.data.CompileResponse;
 import com.cubrid.jsp.data.CompileRequest;
+import com.cubrid.jsp.data.CompileResponse;
 import com.cubrid.jsp.data.DataUtilities;
 import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
@@ -66,10 +66,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.SQLException;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
-import java.util.Arrays;
 import org.apache.commons.compress.archivers.jar.JarArchiveEntry;
 import org.apache.commons.compress.archivers.jar.JarArchiveOutputStream;
 
@@ -409,12 +409,14 @@ public class ExecuteThread extends Thread {
                 response = new CompileResponse("translated", "Poo", null);
                 response.compiledCode = "compiled".getBytes();
 
-                CompileResponse.PkgSp sp1 = new CompileResponse.PkgSp("Poo.sp1(java.lang.Integer[], java.lang.String)");
+                CompileResponse.PkgSp sp1 =
+                        new CompileResponse.PkgSp("Poo.sp1(java.lang.Integer[], java.lang.String)");
                 sp1.addArg("sp1a1", 1, 3, null, "sp1a1 comment");
                 sp1.addArg("sp1a2", 4, 1, "'a'", "sp1a2 comment");
                 response.addPkgSp(sp1);
 
-                CompileResponse.PkgSp sp2 = new CompileResponse.PkgSp("Poo.sp2(java.lang.String[], java.lang.Integer)");
+                CompileResponse.PkgSp sp2 =
+                        new CompileResponse.PkgSp("Poo.sp2(java.lang.String[], java.lang.Integer)");
                 sp2.addArg("sp2a1", 4, 2, null, "sp2a1 comment");
                 sp2.addArg("sp2a2", 1, 1, "7", "sp2a2 comment");
                 response.addPkgSp(sp2);
@@ -423,10 +425,14 @@ public class ExecuteThread extends Thread {
                 response.addPkgVar(2, 2, 2, 2, "name2", "init value2", "comment2");
                 response.addPkgException("name1", "comment1");
                 response.addPkgException("name2", "comment2");
-                response.addPkgCursor("name1", "recordtype1", "comment1", Arrays.asList("p1:int", "p2:char"));
-                response.addPkgCursor("name2", "recordtype2", "comment2", Arrays.asList("p1:int", "p2:char"));
-                response.addPkgRecType("name1", "comment1", Arrays.asList("f1:int:1:0", "f2:char:0:'c'"));
-                response.addPkgRecType("name2", "comment2", Arrays.asList("f1:char:1:'b'", "f2:int:0:7"));
+                response.addPkgCursor(
+                        "name1", "recordtype1", "comment1", Arrays.asList("p1:int", "p2:char"));
+                response.addPkgCursor(
+                        "name2", "recordtype2", "comment2", Arrays.asList("p1:int", "p2:char"));
+                response.addPkgRecType(
+                        "name1", "comment1", Arrays.asList("f1:int:1:0", "f2:char:0:'c'"));
+                response.addPkgRecType(
+                        "name2", "comment2", Arrays.asList("f1:char:1:'b'", "f2:int:0:7"));
             } else if (request.type == CompileRequest.PLCSQL_COMPILE_TYPE_PKG_BODY) {
                 response = new CompileResponse();
             } else {
@@ -476,7 +482,8 @@ public class ExecuteThread extends Thread {
                 // write to persistent
                 if (mode == 0) {
                     Path jarPath =
-                            ClassLoaderManager.getDynamicPath().resolve(response.className + ".jar");
+                            ClassLoaderManager.getDynamicPath()
+                                    .resolve(response.className + ".jar");
                     OutputStream jarStream = Files.newOutputStream(jarPath);
                     writeJar(codeSet, jarStream);
                     data = Files.readAllBytes(jarPath);

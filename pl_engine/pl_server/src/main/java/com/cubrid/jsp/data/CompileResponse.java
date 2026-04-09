@@ -32,9 +32,9 @@
 package com.cubrid.jsp.data;
 
 import com.cubrid.jsp.protocol.PackableObject;
-import java.util.Set;
-import java.util.List;
 import java.util.LinkedList;
+import java.util.List;
+import java.util.Set;
 
 public class CompileResponse implements PackableObject {
 
@@ -43,7 +43,7 @@ public class CompileResponse implements PackableObject {
     public int errColumn = 0;
     public String errMsg = null;
 
-    public int type = 0;    // CompileRequest.PLCSQL_COMPILE_TYPE_...
+    public int type = 0; // CompileRequest.PLCSQL_COMPILE_TYPE_...
 
     // common to sp and package spec
     public String translated = null;
@@ -62,7 +62,6 @@ public class CompileResponse implements PackableObject {
     public String createStmt = null;
     public String javaSignature = null;
 
-
     public CompileResponse(int errCode, int line, int column, String msg) {
 
         assert errCode < 0;
@@ -80,7 +79,13 @@ public class CompileResponse implements PackableObject {
         sp.add(p);
     }
 
-    public void addPkgVar(int dataType, int prec, int scale, int flags, String name, String initValue,
+    public void addPkgVar(
+            int dataType,
+            int prec,
+            int scale,
+            int flags,
+            String name,
+            String initValue,
             String comment) {
         if (var == null) {
             var = new LinkedList<>();
@@ -95,14 +100,15 @@ public class CompileResponse implements PackableObject {
         exception.add(new PkgException(name, comment));
     }
 
-    public void addPkgCursor(String name, String recordType, String comment, List <String> parameters) {
+    public void addPkgCursor(
+            String name, String recordType, String comment, List<String> parameters) {
         if (cursor == null) {
             cursor = new LinkedList<>();
         }
         cursor.add(new PkgCursor(name, recordType, comment, parameters));
     }
 
-    public void addPkgRecType(String name, String comment, List <String> fields) {
+    public void addPkgRecType(String name, String comment, List<String> fields) {
         if (recType == null) {
             recType = new LinkedList<>();
         }
@@ -111,7 +117,11 @@ public class CompileResponse implements PackableObject {
 
     // for Stored Procedure
     public CompileResponse(
-            String translated, String stmt, String className, String javaSignature, Set<Dependency> dependencies) {
+            String translated,
+            String stmt,
+            String className,
+            String javaSignature,
+            Set<Dependency> dependencies) {
 
         this.errCode = 0;
         this.type = CompileRequest.PLCSQL_COMPILE_TYPE_SP;
@@ -123,8 +133,7 @@ public class CompileResponse implements PackableObject {
     }
 
     // for Package Spec
-    public CompileResponse(
-            String translated, String className, Set<Dependency> dependencies) {
+    public CompileResponse(String translated, String className, Set<Dependency> dependencies) {
 
         this.errCode = 0;
         this.type = CompileRequest.PLCSQL_COMPILE_TYPE_PKG_SPEC;
@@ -228,7 +237,6 @@ public class CompileResponse implements PackableObject {
                         packer.packInt(0);
                     }
 
-
                     break;
 
                 case CompileRequest.PLCSQL_COMPILE_TYPE_PKG_BODY:
@@ -264,7 +272,7 @@ public class CompileResponse implements PackableObject {
         }
     }
 
-    static public class PkgSp implements PackableObject {
+    public static class PkgSp implements PackableObject {
 
         public String javaSignature;
         public List<PkgSpArg> args;
@@ -273,7 +281,8 @@ public class CompileResponse implements PackableObject {
             this.javaSignature = javaSignature;
         }
 
-        public void addArg(String name, int dataType, int mode, String defaultValue, String comment) {
+        public void addArg(
+                String name, int dataType, int mode, String defaultValue, String comment) {
             if (args == null) {
                 args = new LinkedList<>();
             }
@@ -305,7 +314,14 @@ public class CompileResponse implements PackableObject {
         public String initValue;
         public String comment;
 
-        PkgVar(int dataType, int prec, int scale, int flags, String name, String initValue, String comment) {
+        PkgVar(
+                int dataType,
+                int prec,
+                int scale,
+                int flags,
+                String name,
+                String initValue,
+                String comment) {
             this.dataType = dataType;
             this.prec = prec;
             this.scale = scale;
@@ -349,9 +365,9 @@ public class CompileResponse implements PackableObject {
         public String name;
         public String recordType;
         public String comment;
-        public List <String> parameters;
+        public List<String> parameters;
 
-        PkgCursor(String name, String recordType, String comment, List <String> parameters) {
+        PkgCursor(String name, String recordType, String comment, List<String> parameters) {
             this.name = name;
             this.recordType = recordType;
             this.comment = comment;
@@ -371,7 +387,6 @@ public class CompileResponse implements PackableObject {
             } else {
                 packer.packInt(0);
             }
-
         }
     }
 
@@ -379,9 +394,9 @@ public class CompileResponse implements PackableObject {
 
         public String name;
         public String comment;
-        public List <String> fields;
+        public List<String> fields;
 
-        PkgRecType(String name, String comment, List <String> fields) {
+        PkgRecType(String name, String comment, List<String> fields) {
             this.name = name;
             this.comment = comment;
             this.fields = fields;
