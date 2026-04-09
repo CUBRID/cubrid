@@ -108,9 +108,6 @@ typedef enum
 
 static struct hostent *hostent_Cache[MAX_NUM_HOSTS];
 
-static int hosts_conf_file_Load = LOAD_INIT;
-
-static pthread_mutex_t load_hosts_file_lock = PTHREAD_MUTEX_INITIALIZER;
 
 // *INDENT-OFF*
 static std::unordered_map <std::string, int> user_host_Map;
@@ -193,7 +190,8 @@ return_phase:
 static struct hostent *
 host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE lookup_type)
 {
-  static struct hostent *hp;
+  static int hosts_conf_file_Load = LOAD_INIT;
+  static pthread_mutex_t load_hosts_file_lock = PTHREAD_MUTEX_INITIALIZER;
 
   char addr_trans_ch_buf[IPADDR_LEN];
   struct sockaddr_in *addr_trans = NULL;
@@ -210,7 +208,7 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
     }
   if (hosts_conf_file_Load == LOAD_FAIL)
     {
-      goto return_phase;
+      return NULL;
     }
 
   addr_trans = (struct sockaddr_in *) saddr;
@@ -222,9 +220,8 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
       if (inet_ntop (AF_INET, &addr_trans->sin_addr, addr_trans_ch_buf, sizeof (addr_trans_ch_buf)) == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  goto return_phase;
+	  return NULL;
 	}
-
     }
 
   strcpy_ucase (hostname_u, (size_t) HOSTNAME_LEN, hostname);
@@ -233,22 +230,14 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
   /* The case which is looking up the IP addr and checking the hostname or IP addr in the hash map */
   if ((lookup_type == HOSTNAME_TO_IPADDR) && (user_host_Map.find (hostname_u) != user_host_Map.end ()))
     {
-      hp = hostent_Cache[user_host_Map.find (hostname_u)->second];
+      return hostent_Cache[user_host_Map.find (hostname_u)->second];
     }
   else if ((lookup_type == IPADDR_TO_HOSTNAME) && (user_host_Map.find (addr_trans_ch_buf) != user_host_Map.end ()))
     {
-      hp = hostent_Cache[user_host_Map.find (addr_trans_ch_buf)->second];
+      return hostent_Cache[user_host_Map.find (addr_trans_ch_buf)->second];
     }
+
   /*Hostname and IP addr cannot be found */
-  else
-    {
-      goto return_phase;
-    }
-
-  return hp;
-
-return_phase:
-
   return NULL;
 }
 

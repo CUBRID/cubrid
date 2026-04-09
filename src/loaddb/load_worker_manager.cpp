@@ -103,6 +103,11 @@ namespace cubload
     return g_wp_task_capper->try_task (task);
   }
 
+  REGISTER_WORKERPOOL (loaddb, []()
+  {
+    return prm_get_integer_value (PRM_ID_LOADDB_WORKER_COUNT);
+  });
+
   void
   worker_manager_register_session (session &load_session)
   {

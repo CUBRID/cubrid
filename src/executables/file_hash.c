@@ -832,8 +832,8 @@ fh_bittest (FH_TABLE * ht, int page)
 void
 fh_dump (FH_TABLE * ht)
 {
-  static char oid_string[] = "OID";
-  static char int_string[] = "INT";
+  static const char oid_string[] = "OID";
+  static const char int_string[] = "INT";
 
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_NAME), ht->name);
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_SIZE), ht->name);

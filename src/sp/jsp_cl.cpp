@@ -1514,7 +1514,7 @@ jsp_check_stored_procedure_name (const char *str)
   char buffer[SM_MAX_IDENTIFIER_LENGTH + 2];
   char tmp[SM_MAX_IDENTIFIER_LENGTH + 2];
   char *name = NULL;
-  static int dbms_output_len = strlen ("dbms_output.");
+  static const int dbms_output_len = strlen ("dbms_output.");
 
 
   if (strncasecmp (str, "dbms_output.", dbms_output_len) == 0)
