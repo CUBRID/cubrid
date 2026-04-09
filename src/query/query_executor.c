@@ -9084,17 +9084,8 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	{
 	  int error = NO_ERROR;
 	  bool is_scan_needed = false;
-
 	  if (!buildvalue->is_always_false)
 	    {
-	      for (agg_ptr = buildvalue->agg_list; agg_ptr; agg_ptr = agg_ptr->next)
-		{
-		  if (!BTID_IS_NULL (&agg_ptr->btid))
-		    {
-		      agg_ptr->flag.agg_optimized = true;
-		    }
-		}
-
 	      error =
 		qexec_evaluate_aggregates_optimize (thread_p, buildvalue->agg_list, xasl->spec_list, &is_scan_needed);
 	      if (error != NO_ERROR)
