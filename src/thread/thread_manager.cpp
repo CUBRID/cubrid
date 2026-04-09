@@ -170,6 +170,8 @@ namespace cubthread
       }
     else
       {
+	assert (m_worker_pools.size () <= workerpool_registry_t::count ());
+
 	if (entry_mgr == NULL)
 	  {
 	    entry_mgr = &m_entry_manager;
@@ -184,8 +186,8 @@ namespace cubthread
   }
 
   daemon *
-  manager::create_daemon (const looper &looper_arg, entry_task *exec_p, const char *daemon_name /* = "" */,
-			  entry_manager *entry_mgr /* = NULL */)
+  manager::create_daemon (const looper &looper_arg, entry_task *exec_p,
+			  const char *daemon_name /* = "" */, entry_manager *entry_mgr /* = NULL */)
   {
 #if defined (SERVER_MODE)
     if (is_single_thread ())
@@ -195,6 +197,8 @@ namespace cubthread
       }
     else
       {
+	assert (m_daemons.size () <= daemon_registry_t::count ());
+
 	if (entry_mgr == NULL)
 	  {
 	    entry_mgr = &m_daemon_entry_manager;
@@ -417,27 +421,8 @@ namespace cubthread
   void
   manager::set_max_thread_count_from_config (void)
   {
-    // todo: is there a better way to decide on the maximum number of thread entries?
-    std::size_t max_coordinator_workers = 1;
-    std::size_t max_connection_workers = prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
-    std::size_t max_active_workers = NUM_NON_SYSTEM_TRANS;  // this may be needed in utils
-    std::size_t max_transaction_workers = prm_get_integer_value (PRM_ID_TASK_WORKER);
-    std::size_t max_vacuum_workers = prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT);
-    std::size_t max_parallel_workers = prm_get_integer_value (PRM_ID_MAX_PARALLEL_WORKERS);
-    std::size_t max_daemons = 128;  // magic number to cover predictable requirements; not cool
-    std::size_t max_backup_read_workers = 0; // one per each backup read task
-
-#if defined (SERVER_MODE)
-    max_backup_read_workers = cubthread::system_core_count ();
-#endif // SERVER_MODE
-
-    // note: thread entry initialization is slow, that is why we keep a static pool initialized from the beginning to
-    //       quickly claim entries. in my opinion, it would be better to have thread contexts that can be quickly
-    //       generated at "runtime" (after thread starts its task). however, with current thread entry design, that is
-    //       rather unlikely.
-
-    m_max_threads = max_coordinator_workers + max_connection_workers + max_active_workers + max_transaction_workers +
-		    max_vacuum_workers + max_daemons + max_backup_read_workers + max_parallel_workers * 2;
+    m_max_threads = cubbase::count_registry<connection>::total () + cubbase::count_registry<worker_pool>::total () +
+		    cubbase::count_registry<daemon>::total () + 1 /* PAD */;
   }
 
   void

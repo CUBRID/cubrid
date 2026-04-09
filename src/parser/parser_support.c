@@ -4151,63 +4151,34 @@ pt_chop_trailing_dots (PARSER_CONTEXT * parser, const char *msg)
 /*
  * pt_get_proxy_spec_name () - return a proxy query_spec's "from" entity name
  *   return: qspec's from entity name if all OK, NULL otherwise
+ *   parser(in): the parser context
  *   qspec(in): a proxy's SELECT query specification
  */
 
 const char *
-pt_get_proxy_spec_name (const char *qspec)
+pt_get_proxy_spec_name (PARSER_CONTEXT * parser, const char *qspec)
 {
   PT_NODE **qtree;
-  PARSER_CONTEXT *parser = NULL;
-  const char *from_name = NULL, *result;
-  size_t newlen;
+  const char *from_name = NULL;
 
-  /* the parser and its strings go away upon return, but the caller probably wants the proxy_spec_name to remain, so */
-  static char tblname[256], *name;
-  static size_t namelen = 256;
-
-  name = tblname;
-
-  if (qspec && (parser = parser_create_parser ()) && (qtree = parser_parse_string (parser, qspec))
-      && !pt_has_error (parser) && qtree[0])
+  assert (parser != NULL);
+  if (qspec)
     {
-      from_name = pt_get_spec_name (parser, qtree[0]);
-    }
-
-  if (from_name == NULL)
-    {
-      result = NULL;		/* no, it failed */
-    }
-  else
-    {
-      /* copy from_name into tblname but do not overrun it! */
-      newlen = strlen (from_name) + 1;
-      if (newlen + 1 > namelen)
+      qtree = parser_parse_string (parser, qspec);
+      if (qtree && qtree[0])
 	{
-	  /* get a bigger name buffer */
-	  if (name != tblname)
+	  if (!pt_has_error (parser))
 	    {
-	      free_and_init (name);
+	      from_name = pt_get_spec_name (parser, qtree[0]);
 	    }
-	  name = (char *) malloc (newlen);
-	  namelen = newlen;
+	  parser_free_tree (parser, qtree[0]);
 	}
 
-
-      if (name)
-	{
-	  strcpy (name, from_name);
-	}
-
-      result = name;
+      /* remove error which is occured in this function */
+      pt_reset_error (parser);
+      parser->flag.has_internal_error = 0;
     }
-
-  if (parser != NULL)
-    {
-      parser_free_parser (parser);
-    }
-
-  return result;
+  return from_name;
 }
 
 /*
@@ -11788,8 +11759,9 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 	  if (spec->info.spec.range_var)
 	    {
 	      a_name = (char *) spec->info.spec.range_var->info.name.original;
+
 	      /* to skip aliased name at rewriting for mariadb and etc. */
-	      if (spec->info.spec.entity_name
+	      if (a_name && spec->info.spec.remote_server_name && spec->info.spec.entity_name
 		  && strcasecmp (a_name, spec->info.spec.entity_name->info.name.original) == 0)
 		{
 		  spec->info.spec.range_var = NULL;
@@ -11854,11 +11826,27 @@ pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 {
   int local_upd = 0, remote_upd = 0;
   int error;
+  PT_NODE *spec;
 
   parser_walk_tree (parser, node, pt_convert_dblink_synonym, NULL, NULL, NULL);
   if (pt_has_error (parser))
     {
       return;
+    }
+
+  for (spec = node->info.update.spec; spec; spec = spec->next)
+    {
+      if (spec->info.spec.range_var)
+	{
+	  char *a_name = (char *) spec->info.spec.range_var->info.name.original;
+
+	  /* to skip aliased name at rewriting for mariadb and etc. */
+	  if (a_name && spec->info.spec.entity_name && spec->info.spec.remote_server_name
+	      && strcasecmp (a_name, spec->info.spec.entity_name->info.name.original) == 0)
+	    {
+	      spec->info.spec.range_var = NULL;
+	    }
+	}
     }
 
   error = pt_check_update_set (parser, node, &local_upd, &remote_upd);
