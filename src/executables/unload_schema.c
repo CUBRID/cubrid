@@ -4760,7 +4760,7 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
 	  output_ctx ("\n%s", scode_ptr_result);
 	  if (!DB_IS_NULL (comment))
 	    {
-	      output_ctx ("COMMENT ");
+	      output_ctx (" COMMENT ");
 	      desc_value_print (output_ctx, comment);
 	    }
 	}

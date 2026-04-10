@@ -568,6 +568,8 @@ session_control_daemon_execute (cubthread::entry & thread_ref)
 /*
  * session_control_daemon_init () - initialize session control daemon
  */
+REGISTER_DAEMON (session_control);
+
 void
 session_control_daemon_init ()
 {
@@ -578,7 +580,7 @@ session_control_daemon_init ()
     new cubthread::entry_callable_task (std::bind (session_control_daemon_execute, std::placeholders::_1));
 
   // create session control daemon thread
-  session_Control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "session_control");
+  session_Control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "session-control");
 }
 
 /*

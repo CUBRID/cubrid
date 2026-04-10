@@ -44,7 +44,6 @@ set (COMPAT_HEADERS
 set(THREAD_SOURCES
   ${THREAD_DIR}/critical_section.c
   ${THREAD_DIR}/critical_section_tracker.cpp
-  ${THREAD_DIR}/internal_tasks_worker_pool.cpp
   ${THREAD_DIR}/thread_daemon.cpp
   ${THREAD_DIR}/thread_entry.cpp
   ${THREAD_DIR}/thread_entry_task.cpp
@@ -53,10 +52,10 @@ set(THREAD_SOURCES
   ${THREAD_DIR}/thread_manager.cpp
   ${THREAD_DIR}/thread_waiter.cpp
   ${THREAD_DIR}/thread_worker_pool.cpp
+  ${THREAD_DIR}/thread_worker_pool_taskcap.cpp
   )
 set(THREAD_HEADERS
   ${THREAD_DIR}/critical_section_tracker.hpp
-  ${THREAD_DIR}/internal_tasks_worker_pool.hpp
   ${THREAD_DIR}/thread_compat.hpp
   ${THREAD_DIR}/thread_daemon.hpp
   ${THREAD_DIR}/thread_entry.hpp
@@ -190,6 +189,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/filesys_parser.hpp
   ${BASE_DIR}/cgroup.hpp
   ${BASE_DIR}/resources.hpp
+  ${BASE_DIR}/count_registry.hpp
   )
 
 set(EXECUTABLE_SOURCES
@@ -357,7 +357,7 @@ set(PARALLEL_HASH_JOIN_HEADERS
 )
 
 set(PARALLEL_HEAP_SCAN_SOURCES
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler_single_table.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler_ftabs.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_slot_iterator.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_handler.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_join_info.cpp
@@ -367,8 +367,8 @@ set(PARALLEL_HEAP_SCAN_SOURCES
   )
 
 set(PARALLEL_HEAP_SCAN_HEADERS
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler_single_table.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler_ftabs.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_ftab_set.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_handler.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_type.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_slot_iterator.hpp

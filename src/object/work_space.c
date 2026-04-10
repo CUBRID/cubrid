@@ -2545,6 +2545,13 @@ ws_clear_internal (bool clear_vmop_keys)
 void
 ws_clear (void)
 {
+#if defined(SA_MODE)
+  /* In SA_MODE, rollback calls ws_clear() instead of ws_abort_mops().
+   * ws_abort_mops() already calls au_reset_authorization_caches() in CS_MODE,
+   * so we must do it here explicitly for the SA_MODE path. 
+   */
+  au_reset_authorization_caches ();
+#endif
   ws_clear_internal (false);
 }
 

@@ -21,19 +21,15 @@
  */
 
 #include "px_heap_scan_result_handler.hpp"
-#include "db_function.hpp"
+#include "error_code.h"
 #include "error_manager.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
+#include "porting.h"
 #include "query_opfunc.h"
 #include "list_file.h"
-#include "regu_var.hpp"
-#include "storage_common.h"
-#include "system.h"
 #include "dbtype_def.h"
-#include "query_list.h"
 #include "object_representation.h"
-#include <atomic>
 #include <chrono>
 #include "dbtype.h"
 #include "fetch.h"
@@ -94,10 +90,10 @@ namespace parallel_heap_scan
     m_err_messages_p = err_messages_p;
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {
-	m_.result_p = nullptr;
-	m_.orig_xasl_tree_for_domain_resolve = orig_xasl_tree_for_domain_resolve;
+	m_.orig_xasl = orig_xasl_tree_for_domain_resolve;
 	m_.active_results = parallelism;
 	m_.is_list_id_domain_resolved = false;
+	m_.g_hash_eligible = (bool) orig_xasl_tree_for_domain_resolve->proc.buildlist.g_hash_eligible;
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {
@@ -159,9 +155,19 @@ namespace parallel_heap_scan
 	    if (list_id != nullptr && list_id->type_list.type_cnt > 0)
 	      {
 		qfile_destroy_list (thread_p, list_id);
+		QFILE_FREE_AND_INIT_LIST_ID (list_id);
 	      }
 	  }
 	m_.writer_results.clear();
+	for (QFILE_LIST_ID *list_id : m_.hgby_results)
+	  {
+	    if (list_id != nullptr && list_id->type_list.type_cnt > 0)
+	      {
+		qfile_destroy_list (thread_p, list_id);
+		QFILE_FREE_AND_INIT_LIST_ID (list_id);
+	      }
+	  }
+	m_.hgby_results.clear();
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {
@@ -254,12 +260,11 @@ namespace parallel_heap_scan
 	  {
 	    m_err_messages_p->move_top_error_message_to_this();
 	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-	    /* error occurred, return false to stop the writer */
 	    return;
 	  }
 	tl.tpl_buf.size = DB_PAGESIZE;
 	int total_val_cnt = 0;
-	for (XASL_NODE *xasl = m_.orig_xasl_tree_for_domain_resolve; xasl != nullptr; xasl = xasl->scan_ptr)
+	for (XASL_NODE *xasl = m_.orig_xasl; xasl != nullptr; xasl = xasl->scan_ptr)
 	  {
 	    total_val_cnt += xasl->val_list->val_cnt;
 	  }
@@ -269,7 +274,20 @@ namespace parallel_heap_scan
 	    dbval.domain.general_info.is_null = 1;
 	  }
 	tl.val_list_domain_resolved = false;
-	tl.xasl_tree_for_domain_resolve = curr_xasl;
+	tl.xasl = curr_xasl;
+	tl.agg_hash_state = HS_NONE;
+	tl.g_agg_domains_resolved = TRUE;
+	if (m_.g_hash_eligible)
+	  {
+	    if (qexec_alloc_agg_hash_context_buildlist_xasl (thread_p, curr_xasl, vd->xasl_state, true) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		return;
+	      }
+	    tl.agg_hash_state = HS_ACCEPT_ALL;
+	    tl.g_agg_domains_resolved = FALSE;
+	  }
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {
@@ -296,6 +314,24 @@ namespace parallel_heap_scan
   {
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {
+	AGGREGATE_HASH_CONTEXT *context = tl.xasl->proc.buildlist.agg_hash_context;
+	bool hash_aggregate_append = m_.g_hash_eligible;
+	if (hash_aggregate_append)
+	  {
+	    if (qdata_save_agg_htable_to_list (thread_p, context->hash_table, tl.writer_result_p,
+					       context->part_list_id, context->temp_dbval_array) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		/* for prevent data corruption at m_.hgby_results;
+		 * context->part_list_id will be destroyed in thread's qexec_clear_xasl */
+		hash_aggregate_append = false;
+	      }
+	    if (context->part_list_id != NULL)
+	      {
+		qfile_close_list (thread_p, context->part_list_id);
+	      }
+	  }
 	qfile_close_list (thread_p, tl.writer_result_p);
 
 	assert (tl.writer_result_p->last_pgptr == nullptr);
@@ -314,7 +350,7 @@ namespace parallel_heap_scan
 	  std::lock_guard<std::mutex> lock (m_result_mutex);
 
 	  HL_HEAPID heap_id = db_change_private_heap (thread_p, 0);
-	  XASL_NODE *xptr = m_.orig_xasl_tree_for_domain_resolve;
+	  XASL_NODE *xptr = m_.orig_xasl;
 	  int i = 0;
 	  for (; xptr != nullptr; xptr = xptr->scan_ptr)
 	    {
@@ -336,6 +372,12 @@ namespace parallel_heap_scan
 	      pr_clear_value (&dbval);
 	    }
 	  tl.dbvals_for_domain_resolve.clear();
+
+	  if (hash_aggregate_append)
+	    {
+	      m_.hgby_results.push_back (context->part_list_id);
+	      context->part_list_id = NULL;
+	    }
 
 	  m_.active_results--;
 	  if (m_.active_results == 0)
@@ -471,6 +513,54 @@ namespace parallel_heap_scan
       }
   }
 
+  void merge_list_ids (THREAD_ENTRY *thread_p, QFILE_LIST_ID *dest, std::vector<QFILE_LIST_ID *> &lists)
+  {
+    QFILE_LIST_ID *tmp_merged_list = nullptr;
+    for (QFILE_LIST_ID *list_id : lists)
+      {
+	assert (list_id != nullptr);
+	assert (list_id->last_pgptr == nullptr);
+	if (list_id->tuple_cnt > 0)
+	  {
+	    if (tmp_merged_list == nullptr)
+	      {
+		tmp_merged_list = list_id;
+	      }
+	    else
+	      {
+		qfile_connect_list (thread_p, tmp_merged_list, list_id);
+	      }
+	  }
+	else
+	  {
+	    qfile_destroy_list (thread_p, list_id);
+	    QFILE_FREE_AND_INIT_LIST_ID (list_id);
+	  }
+	list_id = nullptr;
+      }
+    lists.clear();
+    if (tmp_merged_list != nullptr)
+      {
+	if (dest->tuple_cnt > 0)
+	  {
+	    if (dest->last_pgptr != nullptr)
+	      {
+		qfile_close_list (thread_p, dest);
+	      }
+	    qfile_connect_list (thread_p, dest, tmp_merged_list);
+	  }
+	else
+	  {
+	    if (dest->type_list.type_cnt > 0)
+	      {
+		qfile_destroy_list (thread_p, dest);
+	      }
+	    qfile_copy_list_id (dest, tmp_merged_list, true, QFILE_MOVE_DEPENDENT);
+	    QFILE_FREE_AND_INIT_LIST_ID (tmp_merged_list);
+	  }
+      }
+  }
+
   template <RESULT_TYPE result_type>
   SCAN_CODE result_handler<result_type>::read (THREAD_ENTRY *thread_p, read_dest_type *dest)
   {
@@ -490,49 +580,23 @@ namespace parallel_heap_scan
 		}
 	    }
 	}
-	for (QFILE_LIST_ID *list_id : m_.writer_results)
+
+	if (m_interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
 	  {
-	    assert (list_id != nullptr);
-	    assert (list_id->last_pgptr == nullptr);
-	    if (list_id->tuple_cnt > 0)
-	      {
-		if (m_.result_p == nullptr)
-		  {
-		    m_.result_p = list_id;
-		  }
-		else
-		  {
-		    qfile_connect_list (thread_p, m_.result_p, list_id);
-		  }
-	      }
-	    else
-	      {
-		qfile_destroy_list (thread_p, list_id);
-	      }
+	    return S_ERROR;
 	  }
-	m_.writer_results.clear();
-	if (m_.result_p != nullptr)
+
+	merge_list_ids (thread_p, dest, m_.writer_results);
+
+	if (m_.g_hash_eligible)
 	  {
-	    if (dest->tuple_cnt > 0)
-	      {
-		if (dest->last_pgptr != nullptr)
-		  {
-		    qfile_close_list (thread_p, dest);
-		  }
-		qfile_connect_list (thread_p, dest, m_.result_p);
-	      }
-	    else
-	      {
-		if (dest->type_list.type_cnt > 0)
-		  {
-		    qfile_destroy_list (thread_p, dest);
-		  }
-		qfile_copy_list_id (dest, m_.result_p, true, QFILE_MOVE_DEPENDENT);
-		qfile_clear_list_id (m_.result_p);
-	      }
+	    BUILDLIST_PROC_NODE *buildlist_proc = &m_.orig_xasl->proc.buildlist;
+	    merge_list_ids (thread_p, buildlist_proc->agg_hash_context->part_list_id, m_.hgby_results);
+	    /* Using HS_REJECT_ALL to force 'hash: partial' in trace during hash group by with part list IDs.
+	     * Refer to gstats in qdump_print_stats_text(). */
+	    m_.orig_xasl->groupby_stats.groupby_hash = HS_REJECT_ALL;
 	  }
-	m_.result_p = nullptr;
-	/* immediately return false to stop the reader */
+
 	return S_END;
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
@@ -676,7 +740,6 @@ namespace parallel_heap_scan
       {
 	int err_code = NO_ERROR;
 	QPROC_TPLDESCR_STATUS status;
-	QFILE_TUPLE_RECORD *tplrec;
 
 	OUTPTR_LIST *input = (OUTPTR_LIST *)src;
 
@@ -691,7 +754,7 @@ namespace parallel_heap_scan
 	  }
 	if (unlikely (!tl.val_list_domain_resolved))
 	  {
-	    XASL_NODE *xptr = tl.xasl_tree_for_domain_resolve;
+	    XASL_NODE *xptr = tl.xasl;
 	    int i = 0;
 	    tl.val_list_domain_resolved = true;
 
@@ -719,11 +782,36 @@ namespace parallel_heap_scan
 
 	if (likely (status == QPROC_TPLDESCR_SUCCESS))
 	  {
-	    if (unlikely (qfile_generate_tuple_into_list (thread_p, tl.writer_result_p, T_NORMAL) != NO_ERROR))
+	    bool output_tuple = true;
+	    if (tl.agg_hash_state == HS_ACCEPT_ALL)
 	      {
-		m_err_messages_p->move_top_error_message_to_this();
-		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		return false;
+		if (unlikely (!tl.g_agg_domains_resolved))
+		  {
+		    if (qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_g_agg (thread_p, tl.xasl, tl.vd,
+			&tl.g_agg_domains_resolved) != NO_ERROR)
+		      {
+			m_err_messages_p->move_top_error_message_to_this();
+			m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+			return false;
+		      }
+		  }
+		if (qexec_hash_gby_agg_tuple_public (thread_p, tl.xasl, tl.vd->xasl_state, &tl.tpl_buf,
+						     & (tl.writer_result_p->tpl_descr), tl.writer_result_p, &output_tuple) != NO_ERROR)
+		  {
+		    m_err_messages_p->move_top_error_message_to_this();
+		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		    return false;
+		  }
+		tl.agg_hash_state = tl.xasl->proc.buildlist.agg_hash_context->state;
+	      }
+	    if (output_tuple)
+	      {
+		if (unlikely (qfile_generate_tuple_into_list (thread_p, tl.writer_result_p, T_NORMAL) != NO_ERROR))
+		  {
+		    m_err_messages_p->move_top_error_message_to_this();
+		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		    return false;
+		  }
 	      }
 	  }
 	else if (unlikely (status == QPROC_TPLDESCR_FAILURE))
@@ -952,7 +1040,7 @@ namespace parallel_heap_scan
     QFILE_TUPLE_RECORD tpl_buf;
     if (!tl_xasl_p->proc.buildvalue.agg_domains_resolved)
       {
-	if (qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_aggregate (thread_p, tl_xasl_p, tl_vd,
+	if (qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_buildvalue_proc (thread_p, tl_xasl_p, tl_vd,
 	    &tl_xasl_p->proc.buildvalue.agg_domains_resolved) != NO_ERROR)
 	  {
 	    return false;
