@@ -33,7 +33,7 @@
 #include "thread_worker_pool.hpp"
 
 // cubrid includes
-#include "perf_def.hpp"
+#include "perf.hpp"
 #include "resources.hpp"
 #include "error_manager.h"
 
@@ -49,7 +49,7 @@
 #include <string>
 #include <system_error>
 #include <thread>
-
+#include <sstream>
 #include <cassert>
 #include <cstring>
 #include <pthread.h>
@@ -107,6 +107,10 @@ namespace cubthread
     public:
       // forward definition for nested core class
       friend class manager;
+
+    public:
+      // forward definition
+      class stats;
       class core_impl;
 
       virtual ~worker_pool_impl ();
@@ -349,28 +353,38 @@ namespace cubthread
   // statistics
   //////////////////////////////////////////////////////////////////////////
 
-  struct stats
+  template <bool Stats>
+  class worker_pool_impl<Stats>::stats
   {
-    enum class id : cubperf::stat_id
-    {
-      start_thread = 0,
-      create_context = 1,
-      execute_task = 2,
-      retire_task = 3,
-      found_in_queue = 4,
-      wakeup_with_task = 5,
-      recycle_context = 6,
-      retire_context = 7
-    };
+    public:
+      enum class id : cubperf::stat_id
+      {
+	start_thread = 0,
+	create_context = 1,
+	execute_task = 2,
+	retire_task = 3,
+	found_in_queue = 4,
+	wakeup_with_task = 5,
+	recycle_context = 6,
+	retire_context = 7
+      };
 
-    static cubperf::statset &create (void);
-    static void destroy (cubperf::statset &stats);
+      static const cubperf::statset_definition statdef;
 
-    static void time_and_increment (cubperf::statset &stats, cubperf::stat_id id);
-    static void accumulate (const cubperf::statset &what, cubperf::stat_value *where);
+      static constexpr cubperf::stat_definition make_def (id stat_id, cubperf::stat_definition::type stat_type,
+	  const char *first_name, const char *second_name);
 
-    static std::size_t get_count (void);
-    static const char *get_name (std::size_t stat_index);
+      static cubperf::statset *create (void);
+      static void destroy (cubperf::statset *stats);
+
+      static void time_and_increment (cubperf::statset &stats, cubperf::stat_id id);
+      static void accumulate (const cubperf::statset &what, cubperf::stat_value *where);
+
+      static std::size_t get_count (void);
+      static const char *get_name (std::size_t stat_index);
+
+    private:
+      stats () = delete;
   };
 
   //////////////////////////////////////////////////////////////////////////
@@ -387,8 +401,6 @@ namespace cubthread
   void wp_handle_system_error (const char *message, const std::system_error &e);
   template <typename Func>
   void wp_call_func_throwing_system_error (const char *message, Func &func);
-
-  void wp_er_log_stats (const char *header, cubperf::stat_value *statsp);
 
   bool wp_is_thread_always_alive_forced ();
   void wp_set_force_thread_always_alive ();
@@ -550,18 +562,30 @@ namespace cubthread
   void
   worker_pool_impl<Stats>::er_log_stats (void) const
   {
-    /*
-    if (!m_log)
+    if constexpr (Stats)
       {
-    return;
-      }
+	const std::size_t MAX_SIZE = 32;
+	cubperf::stat_value stats[MAX_SIZE];
+	std::stringstream ss;
 
-    const std::size_t MAX_SIZE = 32;
-    cubperf::stat_value stats[MAX_SIZE];
-    std::memset (stats, 0, sizeof (stats));
-    get_stats (stats);
-    wp_er_log_stats (m_name.c_str (), stats);
-    */
+	if (!m_log)
+	  {
+	    return;
+	  }
+
+	std::memset (stats, 0, sizeof (stats));
+	get_stats (stats);
+
+	ss << "Worker pool statistics: " << m_name << std::endl;
+
+	for (std::size_t index = 0; index < stats::get_count (); index++)
+	  {
+	    ss << "\t" << stats::get_name (index) << ": ";
+	    ss << stats[index] << std::endl;
+	  }
+
+	_er_log_debug (ARG_FILE_LINE, ss.str ().c_str ());
+      }
   }
 
   template <bool Stats>
@@ -1353,6 +1377,110 @@ namespace cubthread
 
 	// found task
 	return true;
+      }
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // statistics
+  //////////////////////////////////////////////////////////////////////////
+
+  template <bool Stats>
+  constexpr cubperf::stat_definition worker_pool_impl<Stats>::stats::make_def (id stat_id,
+      cubperf::stat_definition::type stat_type, const char *first_name, const char *second_name)
+  {
+    return cubperf::stat_definition (static_cast<cubperf::stat_id> (stat_id), stat_type, first_name, second_name);
+  }
+
+  template <bool Stats>
+  inline const cubperf::statset_definition worker_pool_impl<Stats>::stats::statdef =
+  {
+    make_def (id::start_thread, cubperf::stat_definition::COUNTER_AND_TIMER,
+	      "Counter_start_thread", "Timer_start_thread"),
+    make_def (id::create_context, cubperf::stat_definition::COUNTER_AND_TIMER,
+	      "Counter_create_context", "Timer_create_context"),
+    make_def (id::execute_task, cubperf::stat_definition::COUNTER_AND_TIMER,
+	      "Counter_execute_task", "Timer_execute_task"),
+    make_def (id::retire_task, cubperf::stat_definition::COUNTER_AND_TIMER,
+	      "Counter_retire_task", "Timer_retire_task"),
+    make_def (id::found_in_queue, cubperf::stat_definition::COUNTER_AND_TIMER,
+	      "Counter_found_task_in_queue", "Timer_found_task_in_queue"),
+    make_def (id::wakeup_with_task, cubperf::stat_definition::COUNTER_AND_TIMER,
+	      "Counter_wakeup_with_task", "Timer_wakeup_with_task"),
+    make_def (id::recycle_context, cubperf::stat_definition::COUNTER_AND_TIMER,
+	      "Counter_recycle_context", "Timer_recycle_context"),
+    make_def (id::retire_context, cubperf::stat_definition::COUNTER_AND_TIMER,
+	      "Counter_retire_context", "Timer_retire_context")
+  };
+
+  template <bool Stats>
+  cubperf::statset *
+  worker_pool_impl<Stats>::stats::create (void)
+  {
+    if constexpr (Stats)
+      {
+	return statdef.create_statset ();
+      }
+    else
+      {
+	return nullptr;
+      }
+  }
+
+  template <bool Stats>
+  void
+  worker_pool_impl<Stats>::stats::destroy (cubperf::statset *stats)
+  {
+    if constexpr (Stats)
+      {
+	delete stats;
+      }
+  }
+
+  template <bool Stats>
+  void
+  worker_pool_impl<Stats>::stats::time_and_increment (cubperf::statset &stats, cubperf::stat_id id)
+  {
+    if constexpr (Stats)
+      {
+	statdef.time_and_increment (stats, id);
+      }
+  }
+
+  template <bool Stats>
+  void
+  worker_pool_impl<Stats>::stats::accumulate (const cubperf::statset &what, cubperf::stat_value *where)
+  {
+    if constexpr (Stats)
+      {
+	statdef.add_stat_values_with_converted_timers<std::chrono::microseconds> (what, where);
+      }
+  }
+
+  template <bool Stats>
+  std::size_t
+  worker_pool_impl<Stats>::stats::get_count (void)
+  {
+    if constexpr (Stats)
+      {
+	return statdef.get_value_count ();
+      }
+    else
+      {
+	return 0;
+      }
+  }
+
+  template <bool Stats>
+  const char *
+  worker_pool_impl<Stats>::stats::get_name (std::size_t stat_index)
+  {
+    if constexpr (Stats)
+      {
+	return statdef.get_value_name (stat_index);
+      }
+    else
+      {
+	return nullptr;
       }
   }
 
