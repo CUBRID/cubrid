@@ -1420,6 +1420,7 @@ jsp_drop_pkg_members (MOP pkg_mop, const char *cnt_attr, const char *members_att
     }
 
   seq = db_get_set (&seq_val);
+  pr_clear_value (&seq_val);
 
   for (i = 0; i < cnt; i++)
     {
@@ -1433,7 +1434,6 @@ jsp_drop_pkg_members (MOP pkg_mop, const char *cnt_attr, const char *members_att
 	}
     }
 
-  pr_clear_value (&seq_val);
 
   return NO_ERROR;
 }

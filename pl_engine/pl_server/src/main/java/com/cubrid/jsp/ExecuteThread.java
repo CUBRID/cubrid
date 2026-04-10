@@ -410,13 +410,27 @@ public class ExecuteThread extends Thread {
                 response.compiledCode = "compiled".getBytes();
 
                 CompileResponse.PkgSp sp1 =
-                        new CompileResponse.PkgSp("Poo.sp1(java.lang.Integer[], java.lang.String)");
+                        new CompileResponse.PkgSp(
+                                "Poo.sp1(java.lang.Integer[], java.lang.String)",
+                                "xyz", // name
+                                1, // type
+                                0, // return type
+                                0, // directive
+                                0, // sql data access
+                                "xyz hello");
                 sp1.addArg("sp1a1", 1, 3, null, "sp1a1 comment");
                 sp1.addArg("sp1a2", 4, 1, "'a'", "sp1a2 comment");
                 response.addPkgSp(sp1);
 
                 CompileResponse.PkgSp sp2 =
-                        new CompileResponse.PkgSp("Poo.sp2(java.lang.String[], java.lang.Integer)");
+                        new CompileResponse.PkgSp(
+                                "Poo.sp2(java.lang.String[], java.lang.Integer) return java.lang.Integer",
+                                "zyx", // name
+                                2, // type
+                                1, // return type
+                                3, // directive
+                                2, // sql data access
+                                "zyx hello");
                 sp2.addArg("sp2a1", 4, 2, null, "sp2a1 comment");
                 sp2.addArg("sp2a2", 1, 1, "7", "sp2a2 comment");
                 response.addPkgSp(sp2);

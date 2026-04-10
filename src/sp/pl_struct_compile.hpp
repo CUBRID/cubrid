@@ -275,12 +275,10 @@ namespace cubpl
     size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
 
     string java_signature;
-
     string name;
     int type;   // procedure or function
     int return_type;  // NOTE: no prec and scale. SP return types cannot have prec and scale
     int directive;
-    string target_method;
     int sql_data_access;
     string comment;
     vector <pkg_sp_arg> args;

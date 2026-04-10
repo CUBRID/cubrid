@@ -849,8 +849,7 @@ namespace cubpl
   void
   pkg_sp::unpack (cubpacking::unpacker &deserializator)
   {
-    deserializator.unpack_all (java_signature, name, type, return_type,
-			       directive, target_method, sql_data_access, comment);
+    deserializator.unpack_all (java_signature, name, type, return_type, directive, sql_data_access, comment);
 
     int args_size = 0;
     deserializator.unpack_int (args_size);

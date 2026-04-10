@@ -275,10 +275,30 @@ public class CompileResponse implements PackableObject {
     public static class PkgSp implements PackableObject {
 
         public String javaSignature;
+        public String name;
+        public int type;
+        public int returnType;
+        public int directive;
+        public int sqlDataAccess;
+        public String comment;
         public List<PkgSpArg> args;
 
-        public PkgSp(String javaSignature) {
+        public PkgSp(
+                String javaSignature,
+                String name,
+                int type,
+                int returnType,
+                int directive,
+                int sqlDataAccess,
+                String comment) {
+
             this.javaSignature = javaSignature;
+            this.name = name;
+            this.type = type;
+            this.returnType = returnType;
+            this.directive = directive;
+            this.sqlDataAccess = sqlDataAccess;
+            this.comment = comment;
         }
 
         public void addArg(
@@ -291,7 +311,14 @@ public class CompileResponse implements PackableObject {
 
         @Override
         public void pack(CUBRIDPacker packer) {
+
             packer.packString(javaSignature);
+            packer.packString(name);
+            packer.packInt(type);
+            packer.packInt(returnType);
+            packer.packInt(directive);
+            packer.packInt(sqlDataAccess);
+            packer.packString(comment);
 
             if (args != null && args.size() > 0) {
                 packer.packInt(args.size());
