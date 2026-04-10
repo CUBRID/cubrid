@@ -20,7 +20,7 @@
  * thread_worker_pool_impl.cpp
  */
 
-#include "thread_worker_pool.hpp"
+#include "thread_worker_pool_impl.hpp"
 
 #include "resources.hpp"
 #include "error_manager.h"
