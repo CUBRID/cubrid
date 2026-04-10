@@ -1229,6 +1229,7 @@ jsp_drop_pkg_body (const char *unique_name)
 	  {
 	    has_scode_body = false;
 	  }
+	pr_clear_value(&value);
       }
     else
       {
@@ -1326,19 +1327,19 @@ static int
 jsp_drop_pkg_member_sp (MOP pkg_mop)
 {
 
-  int err, args_cnt, cnt;
-  DB_VALUE args_cnt_val, cnt_val, args_seq_val, seq_val, sp_elem, arg_elem, target_cls_val;
+  int err, args_cnt, proc_cnt;
+  DB_VALUE args_cnt_val, proc_cnt_val, args_seq_val, seq_val, sp_elem, arg_elem;
   DB_SET *seq, *args_seq;
   MOP sp_mop, sp_code_mop, sp_arg_mop;
 
-  err = db_get (pkg_mop, PKG_ATTR_VARIABLES_CNT, &cnt_val);
+  err = db_get (pkg_mop, PKG_ATTR_PROCEDURES_CNT, &proc_cnt_val);
   if (err != NO_ERROR)
     {
       return err;
     }
-  cnt = db_get_int (&cnt_val);
+  proc_cnt = db_get_int (&proc_cnt_val);
 
-  err = db_get (pkg_mop, PKG_ATTR_VARIABLES, &seq_val);
+  err = db_get (pkg_mop, PKG_ATTR_PROCEDURES, &seq_val);
   if (err != NO_ERROR)
     {
       return err;
@@ -1347,37 +1348,17 @@ jsp_drop_pkg_member_sp (MOP pkg_mop)
   seq = db_get_set (&seq_val);
   pr_clear_value (&seq_val);
 
-  for (int i = 0; i < cnt; i++)
+  for (int i = 0; i < proc_cnt; i++)
     {
       // find sp
       set_get_element (seq, i, &sp_elem);
       sp_mop = db_get_object (&sp_elem);
       pr_clear_value (&sp_elem);
 
-      // drop from _db_stored_procedure_code
-      {
-	err = db_get (sp_mop, SP_ATTR_TARGET_CLASS, &target_cls_val);
-	if (err != NO_ERROR)
-	  {
-	    return err;
-	  }
-	sp_code_mop = db_find_unique (db_find_class (CT_STORED_PROC_CODE_NAME), SP_CODE_ATTR_NAME, &target_cls_val);
-	if (sp_code_mop)
-	  {
-	    err = obj_delete (sp_code_mop);
-	    if (err != NO_ERROR)
-	      {
-		return err;
-	      }
-	  }
-	else
-	  {
-	    assert (false);
-	    return ER_FAILED;
-	  }
-      }
+      // NOTE: Package member procedures/functions do not have their records in  _db_stored_procedure_code.
+      //       Information about code is stored in _db_package_code for package member procedures/functions
 
-      // drop from _db_stored_procedure_code
+      // drop from _db_stored_procedure_args
       {
 	err = db_get (sp_mop, SP_ATTR_ARG_COUNT, &args_cnt_val);
 	if (err != NO_ERROR)
@@ -1394,7 +1375,7 @@ jsp_drop_pkg_member_sp (MOP pkg_mop)
 	args_seq = db_get_set (&args_seq_val);
 	pr_clear_value (&args_seq_val);
 
-	for (int j = 0; j < cnt; j++)
+	for (int j = 0; j < args_cnt; j++)
 	  {
 	    set_get_element (args_seq, j, &arg_elem);
 	    sp_arg_mop = db_get_object (&arg_elem);
@@ -1453,6 +1434,8 @@ jsp_drop_pkg_members (MOP pkg_mop, const char *cnt_attr, const char *members_att
 	  return err;
 	}
     }
+
+  pr_clear_value(&seq_val);
 
   return NO_ERROR;
 }
