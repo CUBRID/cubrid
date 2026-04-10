@@ -22,6 +22,7 @@
 
 #include "thread_worker_pool_impl.hpp"
 
+#include "perf.hpp"
 #include "resources.hpp"
 #include "error_manager.h"
 
@@ -32,6 +33,73 @@
 
 namespace cubthread
 {
+  //////////////////////////////////////////////////////////////////////////
+  // statistics
+  //////////////////////////////////////////////////////////////////////////
+
+  static constexpr cubperf::stat_definition
+  stat_definition (stats::id id, cubperf::stat_definition::type stat_type, const char *first_name,
+		   const char *second_name)
+  {
+    return cubperf::stat_definition (static_cast<cubperf::stat_id> (id), stat_type, first_name, second_name);
+  }
+
+  static const cubperf::statset_definition statdef =
+  {
+    stat_definition (stats::id::start_thread, cubperf::stat_definition::COUNTER_AND_TIMER,
+		     "Counter_start_thread", "Timer_start_thread"),
+    stat_definition (stats::id::create_context, cubperf::stat_definition::COUNTER_AND_TIMER,
+		     "Counter_create_context", "Timer_create_context"),
+    stat_definition (stats::id::execute_task, cubperf::stat_definition::COUNTER_AND_TIMER,
+		     "Counter_execute_task", "Timer_execute_task"),
+    stat_definition (stats::id::retire_task, cubperf::stat_definition::COUNTER_AND_TIMER,
+		     "Counter_retire_task", "Timer_retire_task"),
+    stat_definition (stats::id::found_in_queue, cubperf::stat_definition::COUNTER_AND_TIMER,
+		     "Counter_found_task_in_queue", "Timer_found_task_in_queue"),
+    stat_definition (stats::id::wakeup_with_task, cubperf::stat_definition::COUNTER_AND_TIMER,
+		     "Counter_wakeup_with_task", "Timer_wakeup_with_task"),
+    stat_definition (stats::id::recycle_context, cubperf::stat_definition::COUNTER_AND_TIMER,
+		     "Counter_recycle_context", "Timer_recycle_context"),
+    stat_definition (stats::id::retire_context, cubperf::stat_definition::COUNTER_AND_TIMER,
+		     "Counter_retire_context", "Timer_retire_context")
+  };
+
+  cubperf::statset &
+  stats::create (void)
+  {
+    return *statdef.create_statset ();
+  }
+
+  void
+  stats::destroy (cubperf::statset &stats)
+  {
+    delete &stats;
+  }
+
+  void
+  stats::time_and_increment (cubperf::statset &stats, cubperf::stat_id id)
+  {
+    statdef.time_and_increment (stats, id);
+  }
+
+  void
+  stats::accumulate (const cubperf::statset &what, cubperf::stat_value *where)
+  {
+    statdef.add_stat_values_with_converted_timers<std::chrono::microseconds> (what, where);
+  }
+
+  std::size_t
+  stats::get_count (void)
+  {
+    return statdef.get_value_count ();
+  }
+
+  const char *
+  stats::get_name (std::size_t stat_index)
+  {
+    return statdef.get_value_name (stat_index);
+  }
+
   //////////////////////////////////////////////////////////////////////////
   // functions
   //////////////////////////////////////////////////////////////////////////
