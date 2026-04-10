@@ -259,13 +259,13 @@ multi_index_unique_stats::operator+= (const multi_index_unique_stats &other)
     {
       auto map_it = m_stats_map.find (it.first);
       if (map_it == m_stats_map.end ())
-        {
-          m_stats_map[it.first] = it.second;
-        }
+	{
+	  m_stats_map[it.first] = it.second;
+	}
       else
-        {
-          map_it->second += it.second;
-        }
+	{
+	  map_it->second += it.second;
+	}
     }
 }
 
