@@ -346,6 +346,34 @@ namespace cubthread
   };
 
   //////////////////////////////////////////////////////////////////////////
+  // statistics
+  //////////////////////////////////////////////////////////////////////////
+
+  struct stats
+  {
+    enum class id : cubperf::stat_id
+    {
+      start_thread = 0,
+      create_context = 1,
+      execute_task = 2,
+      retire_task = 3,
+      found_in_queue = 4,
+      wakeup_with_task = 5,
+      recycle_context = 6,
+      retire_context = 7
+    };
+
+    static cubperf::statset &create (void);
+    static void destroy (cubperf::statset &stats);
+
+    static void time_and_increment (cubperf::statset &stats, cubperf::stat_id id);
+    static void accumulate (const cubperf::statset &what, cubperf::stat_value *where);
+
+    static std::size_t get_count (void);
+    static const char *get_name (std::size_t stat_index);
+  };
+
+  //////////////////////////////////////////////////////////////////////////
   // base functions
   //////////////////////////////////////////////////////////////////////////
 
