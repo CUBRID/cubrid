@@ -27361,24 +27361,14 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 	  incr.insert_null_and_row ();
 	}
 
-      if (BTREE_IS_MULTI_ROW_OP (insert_helper->op_type))
+      /* Non-unique indexes do not need statement-level uniqueness checking, so always update tran stats directly.
+       * Accumulating in unique_stats_info (scan_cache) requires a flush via qexec_process_*_unique_stats, which is
+       * only called when has_uniques is true — tables with only non-unique indexes would lose these deltas. */
+      error_code = logtb_tran_update_unique_stats (thread_p, *btid, incr, true);
+      if (error_code != NO_ERROR)
 	{
-	  if (insert_helper->unique_stats_info == NULL)
-	    {
-	      assert_release (false);
-	      error_code = ER_FAILED;
-	      goto error;
-	    }
-	  (*insert_helper->unique_stats_info) += incr;
-	}
-      else
-	{
-	  error_code = logtb_tran_update_unique_stats (thread_p, *btid, incr, true);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      goto error;
-	    }
+	  ASSERT_ERROR ();
+	  goto error;
 	}
     }
 
@@ -28583,20 +28573,11 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
   if (!BTREE_IS_UNIQUE (btid_int->unique_pk) && !btree_is_online_index_loading (insert_helper->purpose)
       && insert_helper->nonunique_oid_stats_valid)
     {
-      if (BTREE_IS_MULTI_ROW_OP (insert_helper->op_type) && insert_helper->unique_stats_info != NULL)
+      error_code = logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 1LL, 1LL, 0LL, true);
+      if (error_code != NO_ERROR)
 	{
-	  btree_unique_stats incr;
-	  incr.insert_key_and_row ();
-	  (*insert_helper->unique_stats_info) += incr;
-	}
-      else
-	{
-	  error_code = logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 1LL, 1LL, 0LL, true);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      return error_code;
-	    }
+	  ASSERT_ERROR ();
+	  return error_code;
 	}
     }
 
@@ -29099,20 +29080,11 @@ btree_key_append_object_non_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int
       if (!BTREE_IS_UNIQUE (btid_int->unique_pk) && !btree_is_online_index_loading (insert_helper->purpose)
 	  && btree_is_insert_object_purpose (insert_helper->purpose) && insert_helper->nonunique_oid_stats_valid)
 	{
-	  if (BTREE_IS_MULTI_ROW_OP (insert_helper->op_type) && insert_helper->unique_stats_info != NULL)
+	  error_code = logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 0LL, 1LL, 0LL, true);
+	  if (error_code != NO_ERROR)
 	    {
-	      btree_unique_stats incr;
-	      incr.insert_key_and_row ();
-	      (*insert_helper->unique_stats_info) += incr;
-	    }
-	  else
-	    {
-	      error_code = logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 0LL, 1LL, 0LL, true);
-	      if (error_code != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  return error_code;
-		}
+	      ASSERT_ERROR ();
+	      return error_code;
 	    }
 	}
 
@@ -29135,20 +29107,11 @@ btree_key_append_object_non_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int
   if (!BTREE_IS_UNIQUE (btid_int->unique_pk) && !btree_is_online_index_loading (insert_helper->purpose)
       && btree_is_insert_object_purpose (insert_helper->purpose) && insert_helper->nonunique_oid_stats_valid)
     {
-      if (BTREE_IS_MULTI_ROW_OP (insert_helper->op_type) && insert_helper->unique_stats_info != NULL)
+      error_code = logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 0LL, 1LL, 0LL, true);
+      if (error_code != NO_ERROR)
 	{
-	  btree_unique_stats incr;
-	  incr.insert_key_and_row ();
-	  (*insert_helper->unique_stats_info) += incr;
-	}
-      else
-	{
-	  error_code = logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 0LL, 1LL, 0LL, true);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      return error_code;
-	    }
+	  ASSERT_ERROR ();
+	  return error_code;
 	}
     }
 
