@@ -462,6 +462,8 @@ namespace cubthread
 	is_not_stopped = false;     // assume all are stopped
 	for (const auto &it : m_cores)
 	  {
+	    assert (dynamic_cast<core_impl *> (it.get ()));
+
 	    // notify all workers to stop. if any worker is still running, is_not_stopped = true is output
 	    static_cast<core_impl *> (it.get ())->notify_stop (is_not_stopped);
 	  }
@@ -486,6 +488,8 @@ namespace cubthread
     // retire all tasks that have not been executed; at this point, no new tasks are produced
     for (const auto &it : m_cores)
       {
+	assert (dynamic_cast<core_impl *> (it.get ()));
+
 	static_cast<core_impl *> (it.get ())->retire_queued_tasks ();
       }
   }
