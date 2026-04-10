@@ -185,13 +185,13 @@ multi_index_unique_stats::add_index_stats (const BTID &index, const btree_unique
   assert (!BTID_IS_NULL (&index));
   auto map_it = m_stats_map.find (index);
   if (map_it == m_stats_map.end ())
-	{
-	  m_stats_map[index] = us;
-	}
+    {
+      m_stats_map[index] = us;
+    }
   else
-	{
-	  map_it->second += us;
-	}
+    {
+      map_it->second += us;
+    }
 }
 
 void
