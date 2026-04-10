@@ -31,7 +31,6 @@ set (TEST_INCLUDES
 
 option (UNIT_TEST_MEMORY_ALLOC  "Unit testing: memory allocation")
 option (UNIT_TEST_STRING_BUFFER "Unit testing: string buffer with format")
-option (UNIT_TEST_STRING "Unit testing: string functions (UUID, etc.)")
 option (UNIT_TEST_LOCKFREE "Unit testing: lockfree module")
 option (UNIT_TEST_THREAD "Unit testing: thread module")
 option (UNIT_TEST_PACKING "Unit testing: packing")
@@ -69,11 +68,6 @@ endif()
 if (UNIT_TESTS OR UNIT_TEST_STRING_BUFFER)
   message("    string_buffer")
   add_subdirectory(string_buffer)
-endif()
-
-if (UNIT_TESTS OR UNIT_TEST_STRING)
-  message("    string")
-  add_subdirectory(string)
 endif()
 
 #[[
