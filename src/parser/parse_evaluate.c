@@ -1552,7 +1552,7 @@ pt_find_expr_eval_on_server_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *
       return node;
     }
 
-  if (node->node_type == PT_EXPR && PT_IS_EXPR_OP_EVAL_ONLY_SERVER(node->info.expr.op))
+  if (node->node_type == PT_EXPR && PT_IS_EXPR_OP_EVAL_ONLY_SERVER (node->info.expr.op))
     {
       info->found = true;
       *continue_walk = PT_STOP_WALK;
