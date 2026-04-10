@@ -42,6 +42,7 @@ btree_unique_stats::btree_unique_stats (stat_type keys, stat_type nulls /* = 0 *
   : m_rows (keys + nulls)
   , m_keys (keys)
   , m_nulls (nulls)
+  , m_is_unique_index (true)
 {
 }
 
@@ -120,7 +121,17 @@ btree_unique_stats::is_zero () const
 bool
 btree_unique_stats::is_unique () const
 {
+  if (!m_is_unique_index)
+    {
+      return true;
+    }
   return m_rows == m_keys + m_nulls;
+}
+
+void
+btree_unique_stats::set_unique_index_type (bool is_unique_index)
+{
+  m_is_unique_index = is_unique_index;
 }
 
 btree_unique_stats &
@@ -129,6 +140,7 @@ btree_unique_stats::operator= (const btree_unique_stats &us)
   m_rows = us.m_rows;
   m_keys = us.m_keys;
   m_nulls = us.m_nulls;
+  m_is_unique_index = us.m_is_unique_index;
 
   return *this;
 }
@@ -171,14 +183,24 @@ void
 multi_index_unique_stats::add_index_stats (const BTID &index, const btree_unique_stats &us)
 {
   assert (!BTID_IS_NULL (&index));
-  m_stats_map[index] += us;
+  auto map_it = m_stats_map.find (index);
+  if (map_it == m_stats_map.end ())
+    {
+      m_stats_map[index] = us;
+    }
+  else
+    {
+      map_it->second += us;
+    }
 }
 
 void
-multi_index_unique_stats::add_empty (const BTID &index)
+multi_index_unique_stats::add_empty (const BTID &index, bool is_unique_index)
 {
   assert (!BTID_IS_NULL (&index));
-  m_stats_map[index] = btree_unique_stats ();
+  btree_unique_stats stats;
+  stats.set_unique_index_type (is_unique_index);
+  m_stats_map[index] = stats;
 }
 
 void
@@ -233,10 +255,17 @@ multi_index_unique_stats::operator= (multi_index_unique_stats &&other)
 void
 multi_index_unique_stats::operator+= (const multi_index_unique_stats &other)
 {
-  // collector all stats from other.m_stats_map
   for (const auto &it : other.m_stats_map)
     {
-      m_stats_map[it.first] += it.second;
+      auto map_it = m_stats_map.find (it.first);
+      if (map_it == m_stats_map.end ())
+        {
+          m_stats_map[it.first] = it.second;
+        }
+      else
+        {
+          map_it->second += it.second;
+        }
     }
 }
 

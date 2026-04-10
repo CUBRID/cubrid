@@ -51,7 +51,9 @@ class btree_unique_stats
     void delete_row ();
 
     bool is_zero () const;
-    bool is_unique () const;   // rows == keys + nulls
+    bool is_unique () const;
+
+    void set_unique_index_type (bool is_unique_index);
 
     btree_unique_stats &operator= (const btree_unique_stats &us);
     void operator+= (const btree_unique_stats &us);
@@ -60,10 +62,11 @@ class btree_unique_stats
     void to_string (string_buffer &strbuf) const;
 
   private:
-    // m_rows = m_keys + m_nulls
+    // m_rows = m_keys + m_nulls (holds only for unique indexes)
     stat_type m_rows;
     stat_type m_keys;
     stat_type m_nulls;
+    bool m_is_unique_index;
 };
 
 class multi_index_unique_stats
@@ -87,7 +90,7 @@ class multi_index_unique_stats
     void destruct ();
 
     void add_index_stats (const BTID &index, const btree_unique_stats &us);
-    void add_empty (const BTID &index);
+    void add_empty (const BTID &index, bool is_unique_index = true);
     void clear ();
 
     const container_type &get_map () const;

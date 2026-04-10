@@ -7030,7 +7030,8 @@ heap_scancache_start_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
 	  /* initialize the structure */
 	  for (i = 0; i < scan_cache->num_btids; i++)
 	    {
-	      scan_cache->m_index_stats->add_empty (classrepr->indexes[i].btid);
+	      scan_cache->m_index_stats->add_empty (classrepr->indexes[i].btid,
+						    btree_is_unique_type (classrepr->indexes[i].type));
 	    }
 	}
 
