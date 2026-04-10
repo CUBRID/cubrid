@@ -1229,7 +1229,7 @@ jsp_drop_pkg_body (const char *unique_name)
 	  {
 	    has_scode_body = false;
 	  }
-	pr_clear_value(&value);
+	pr_clear_value (&value);
       }
     else
       {
@@ -1435,7 +1435,7 @@ jsp_drop_pkg_members (MOP pkg_mop, const char *cnt_attr, const char *members_att
 	}
     }
 
-  pr_clear_value(&seq_val);
+  pr_clear_value (&seq_val);
 
   return NO_ERROR;
 }
