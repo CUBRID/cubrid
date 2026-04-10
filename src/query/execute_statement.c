@@ -459,10 +459,11 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 
   for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
-      if (DB_IS_DEFAULT_DETERMINE_BY_ROW(att->default_value.default_expr.default_expr_type)){
-        /* in here, we calculate statement-fixed default values */
-        continue;
-      }
+      if (DB_IS_DEFAULT_DETERMINE_BY_ROW (att->default_value.default_expr.default_expr_type))
+	{
+	  /* in here, we calculate statement-fixed default values */
+	  continue;
+	}
       if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
 	{
 	  error = NO_ERROR;
@@ -13680,20 +13681,20 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  // error = is_server_insert_allowed (parser, statement);
-  // if (error != NO_ERROR)
-  //   {
-  //     return error;
-  //   }
+  error = is_server_insert_allowed (parser, statement);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
 
-  // if (statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
-  //   {
+  if (statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
+    {
       error = do_evaluate_default_expr (parser, class_);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
-    // }
+    }
 
   error =
     check_missing_non_null_attrs (parser, statement->info.insert.spec, statement->info.insert.attr_list,

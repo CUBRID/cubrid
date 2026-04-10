@@ -10500,11 +10500,11 @@ parse_default_expr_type (const char *str, const int str_size, int *next_len)
 	  *next_len = 12;
 	  return DB_DEFAULT_SYSDATETIME;
 	}
-    if (str_size >= 10 && strncmp (str, "SYS_GUID()",10) == 0)
-    {
-      *next_len = 10;
-      return DB_DEFAULT_SYSGUID;
-    }
+      if (str_size >= 10 && strncmp (str, "SYS_GUID()", 10) == 0)
+	{
+	  *next_len = 10;
+	  return DB_DEFAULT_SYSGUID;
+	}
       if (str_size >= 8)
 	{
 	  if (strncmp (str, "SYS_DATE", 8) == 0)
@@ -10630,6 +10630,104 @@ pt_get_default_expression_from_string (PARSER_CONTEXT * parser, const char *str,
 
       default_expr->default_expr_format = strndup (formatted_string, remaining_len);
     }
+}
+
+PT_NODE *
+pt_make_default_value_tree_from_default_expr (PARSER_CONTEXT * parser, const DB_DEFAULT_EXPR * default_expr)
+{
+  PT_NODE *default_value = NULL;
+
+  if (parser == NULL || default_expr == NULL || default_expr->default_expr_type == DB_DEFAULT_NONE)
+    {
+      return NULL;
+    }
+
+  default_value = pt_make_expression_default_expr (parser, NULL, default_expr->default_expr_type);
+  if (default_value == NULL)
+    {
+      return NULL;
+    }
+
+  if (default_expr->default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
+    {
+      return default_value;
+    }
+
+  if (default_expr->default_expr_op == T_TO_CHAR)
+    {
+      PT_NODE *arg1, *arg2, *arg3;
+      bool has_user_format = (default_expr->default_expr_format != NULL);
+      const char *lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
+      int flag = 0;
+
+      arg1 = default_value;
+      arg2 = pt_make_string_value (parser, default_expr->default_expr_format);
+      if (arg2 == NULL)
+	{
+	  parser_free_tree (parser, default_value);
+	  return NULL;
+	}
+
+      arg3 = parser_new_node (parser, PT_VALUE);
+      if (arg3 == NULL)
+	{
+	  parser_free_tree (parser, default_value);
+	  parser_free_tree (parser, arg2);
+	  return NULL;
+	}
+
+      arg3->type_enum = PT_TYPE_INTEGER;
+      lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
+      arg3->info.value.data_value.i = (long) flag;
+
+      default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
+      if (default_value == NULL)
+	{
+	  parser_free_tree (parser, arg1);
+	  parser_free_tree (parser, arg2);
+	  parser_free_tree (parser, arg3);
+	  return NULL;
+	}
+    }
+
+  return default_value;
+}
+
+PT_NODE *
+pt_make_default_value_tree_from_string (PARSER_CONTEXT * parser, const char *str, const int str_size)
+{
+  PT_NODE *default_value = NULL;
+  DB_DEFAULT_EXPR default_expr;
+  classobj_initialize_default_expr (&default_expr);
+
+  if (parser == NULL || str == NULL || str_size < 0)
+    {
+      return NULL;
+    }
+
+  pt_get_default_expression_from_string (parser, str, str_size, &default_expr);
+
+  if (default_expr.default_expr_type != DB_DEFAULT_NONE)
+    {
+      default_value = pt_make_default_value_tree_from_default_expr (parser, &default_expr);
+    }
+  else
+    {
+      default_value = pt_make_string_value (parser, str);
+    }
+
+  if (default_value != NULL)
+    {
+      default_value = pt_semantic_type (parser, default_value, NULL);
+    }
+
+exit:
+  if (default_expr.default_expr_format != NULL)
+    {
+      free_and_init (default_expr.default_expr_format);
+    }
+
+  return default_value;
 }
 
 /*
@@ -12443,14 +12541,12 @@ pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr)
 		    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
 		  }
 		else if (uuid_arg->node_type == PT_VALUE
-			 && PT_IS_NUMERIC_TYPE (uuid_arg->type_enum)
-			 && uuid_arg->info.value.data_value.i == 4)
+			 && PT_IS_NUMERIC_TYPE (uuid_arg->type_enum) && uuid_arg->info.value.data_value.i == 4)
 		  {
 		    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
 		  }
 		else if (uuid_arg->node_type == PT_VALUE
-			 && PT_IS_NUMERIC_TYPE (uuid_arg->type_enum)
-			 && uuid_arg->info.value.data_value.i == 7)
+			 && PT_IS_NUMERIC_TYPE (uuid_arg->type_enum) && uuid_arg->info.value.data_value.i == 7)
 		  {
 		    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV7;
 		  }

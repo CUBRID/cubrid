@@ -541,7 +541,7 @@ pt_sm_attribute_default_value_to_node (PARSER_CONTEXT * parser, const SM_ATTRIBU
     }
   else
     {
-      result = pt_make_expression_default_expr (parser, NULL, default_value->default_expr.default_expr_type);
+      result = pt_make_default_value_tree_from_default_expr (parser, &default_value->default_expr);
       if (!result)
 	{
 	  PT_INTERNAL_ERROR (parser, "allocate new node");

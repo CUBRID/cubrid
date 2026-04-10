@@ -25,6 +25,7 @@
 
 #include "packable_object.hpp"
 #include "thread_compat.hpp"
+#include "dbtype_def.h"
 
 enum PL_TYPE
 {
@@ -55,6 +56,9 @@ namespace cubpl
     // Only used in runtime
     int   *arg_default_value_size;
     char **arg_default_value;
+    int   *arg_default_expr_type;
+    int   *arg_default_expr_op;
+    char **arg_default_expr_format;
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;

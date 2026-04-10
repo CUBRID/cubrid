@@ -6430,22 +6430,27 @@ alter_column_clause_mysql_specific
 				              node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
 				            }
 				          else if (uuid_arg->node_type == PT_VALUE
-						   && PT_IS_NUMERIC_TYPE (uuid_arg->type_enum)
-						   && uuid_arg->info.value.data_value.i == 4)
+						   && PT_IS_NUMERIC_TYPE (uuid_arg->type_enum))
+					{
+						   if(uuid_arg->info.value.data_value.i == 4)
 				            {
 				              node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
 				            }
-				          else if (uuid_arg->node_type == PT_VALUE
-						   && PT_IS_NUMERIC_TYPE (uuid_arg->type_enum)
-						   && uuid_arg->info.value.data_value.i == 7)
+				          else if (uuid_arg->info.value.data_value.i == 7)
 				            {
 				              node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV7;
 				            }
 				          else
 				            {
 					      node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-					      PT_ERROR (this_parser, node, "UUID default only supports UUID(), UUID(4), or UUID(7)");
+					      PT_ERROR (this_parser, node, "DEFAULT UUID only supports UUID(), UUID(4), or UUID(7)");
 				            }
+					}
+					else
+					{
+					      node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
+					      PT_ERROR (this_parser, node, "DEFAULT UUID only supports UUID(), UUID(4), or UUID(7).\nOnly literal arguments 4 or 7 are allowed; nested expressions in DEFAULT are not supported");
+					}
 				        }
 					break;
 				      default:
@@ -10498,23 +10503,28 @@ column_default_constraint_def
 				        {
 				          node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
 				        }
-				      else if (uuid_arg->node_type == PT_VALUE
-					       && PT_IS_NUMERIC_TYPE (uuid_arg->type_enum)
-					       && uuid_arg->info.value.data_value.i == 4)
+				     else if (uuid_arg->node_type == PT_VALUE
+						   && PT_IS_NUMERIC_TYPE (uuid_arg->type_enum))
 					{
-					  node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
+						   if(uuid_arg->info.value.data_value.i == 4)
+				            {
+				              node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
+				            }
+				          else if (uuid_arg->info.value.data_value.i == 7)
+				            {
+				              node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV7;
+				            }
+				          else
+				            {
+					      node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
+					      PT_ERROR (this_parser, node, "DEFAULT UUID only supports UUID(), UUID(4), or UUID(7)");
+				            }
 					}
-				      else if (uuid_arg->node_type == PT_VALUE
-					       && PT_IS_NUMERIC_TYPE (uuid_arg->type_enum)
-					       && uuid_arg->info.value.data_value.i == 7)
-				        {
-				          node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV7;
-				        }
-				      else
-				        {
-					  node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-					  PT_ERROR (this_parser, node, "UUID default only supports UUID(), UUID(4), or UUID(7)");
-				        }
+					else
+					{
+					      node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
+					      PT_ERROR (this_parser, node, "DEFAULT UUID only supports UUID(), UUID(4), or UUID(7). Only literal arguments 4 or 7 are allowed; nested expressions in DEFAULT are not supported");
+					}
 				    }
 				    break;
 				  default:

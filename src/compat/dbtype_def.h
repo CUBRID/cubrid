@@ -1212,7 +1212,7 @@ extern "C"
     DB_DEFAULT_UUIDV7 = 15,
   } DB_DEFAULT_EXPR_TYPE;
 
-#define DB_IS_UUID_DEFAULT_EXPR(c) \
+#define DB_IS_DEFAULT_UUID_EXPR(c) \
   ( ((c) == DB_DEFAULT_SYSGUID || (c) == DB_DEFAULT_UUIDV4 || (c) == DB_DEFAULT_UUIDV7 ) ? true : false )
 
 #define DB_IS_DEFAULT_DETERMINE_BY_STATEMENT(c) \
@@ -1220,7 +1220,13 @@ extern "C"
   || (c) == DB_DEFAULT_FORMATTED_SYSDATE ) ? true : false )
 
 #define DB_IS_DEFAULT_DETERMINE_BY_ROW(c) \
-  ( (DB_IS_UUID_DEFAULT_EXPR(c))? true : false )
+  ( (DB_IS_DEFAULT_UUID_EXPR(c))? true : false )
+
+  /* if default function only be evaluated on server, avoid pre-evaluate on CAS.
+   * if possible, perform coercion check without actual value
+   */
+#define DB_IS_DEFAULT_EVAL_ONLY_SERVER(c) \
+  ( (DB_IS_DEFAULT_UUID_EXPR(c))? true : false )
 
   /* An attribute having valid default expression, must have NULL default value. Currently, we allow simple expressions
    * like SYS_DATE, CURRENT_TIME. Also we allow to_char expression.
