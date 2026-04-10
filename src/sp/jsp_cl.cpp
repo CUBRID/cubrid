@@ -1035,8 +1035,6 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, bool &is_null, 
   return error;
 }
 
-#define SAVEPOINT_CREATE_PACKAGE "CREATEPACKAGE"
-
 static MOP
 jsp_find_pkg_code (const char *unique_name)
 {
@@ -1446,6 +1444,8 @@ jsp_drop_pkg_spec (const char *unique_name, MOP pkg_mop, MOP owner)
   MOP mop;
   int err, save;
 
+  err = NO_ERROR;
+
   AU_DISABLE (save);
 
   // clear authorization settings of the dropped package
@@ -1484,6 +1484,8 @@ jsp_drop_pkg_spec (const char *unique_name, MOP pkg_mop, MOP owner)
     }
   else
     {
+      assert (false);
+      err = ER_FAILED;
       goto cleanup;
     }
 
@@ -2154,7 +2156,7 @@ sp_add_pkg_var (MOP *mop_out, DB_OBJECT *classobj, const char *pkg_unique_name, 
 
   // attribute init_value
   db_make_string (&value, var.init_value.data());
-  err = dbt_put_internal (obt, PKG_VAR_ATTR_NAME, &value);
+  err = dbt_put_internal (obt, PKG_VAR_ATTR_INIT_VALUE, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {
@@ -2519,8 +2521,6 @@ error:
   return err;
 }
 
-#define SAVEPOINT_ADD_PKG_AND_RELATED "ADDPKGANDRELATED"
-
 static int
 sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP owner,
 			const char *class_name, const char *scode_spec, const char *scode_body, const char *comment,
@@ -2544,14 +2544,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
       return err;
     }
 
-  AU_DISABLE (save);    // side effect 0
-
-  err = tran_system_savepoint (SAVEPOINT_ADD_PKG_AND_RELATED);
-  if (err != NO_ERROR)
-    {
-      goto cleanup0;
-    }	// side effect 1
-
+  AU_DISABLE (save);    // side effect 1
 
   classobj = db_find_class (CT_PACKAGE_NAME);
   if (classobj == NULL)
@@ -2902,7 +2895,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
     {
       db_make_null (&value);
     }
-  err = dbt_put_internal (obt, PKG_ATTR_PKG_NAME, &value);
+  err = dbt_put_internal (obt, PKG_ATTR_COMMENT, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {
@@ -2940,7 +2933,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
       assert (er_errid () != NO_ERROR);
       err = er_errid ();
       obj_delete (object);
-      goto cleanup2;
+      goto cleanup1;
     }
 
   return NO_ERROR;
@@ -2950,9 +2943,6 @@ cleanup2:
   dbt_abort_object (obt);
 
 cleanup1:
-  tran_abort_upto_system_savepoint (SAVEPOINT_ADD_PKG_AND_RELATED);
-
-cleanup0:
 
   AU_ENABLE (save);
   pr_clear_value (&current_datetime);
@@ -3032,36 +3022,23 @@ jsp_create_pkg_spec (PARSER_CONTEXT *parser, PT_NODE *statement, const char *uni
   int err;
   PLCSQL_COMPILE_REQUEST pkg_compile_request;
   PLCSQL_COMPILE_RESPONSE pkg_compile_response;
-  bool has_savepoint;
   DB_VALUE value;
   MOP pkg_mop;
 
   err = NO_ERROR;
-  has_savepoint = false;
 
   // does it already exist?
   pkg_mop = jsp_find_pkg (unique_name, DB_AUTH_NONE);
   if (pkg_mop)
     {
-
       if (statement->info.pkg.or_replace)
 	{
-
 	  // drop existing stored procedure
-
-	  err = tran_system_savepoint (SAVEPOINT_CREATE_PACKAGE);
-	  if (err != NO_ERROR)
-	    {
-	      return err;
-	    }
-	  has_savepoint = true;
-
 	  err = jsp_drop_pkg_spec (unique_name, pkg_mop, owner_mop);
 	  if (err != NO_ERROR)
 	    {
 	      goto error_exit;
 	    }
-
 	}
       else
 	{
@@ -3093,9 +3070,8 @@ jsp_create_pkg_spec (PARSER_CONTEXT *parser, PT_NODE *statement, const char *uni
 
   if (err == NO_ERROR && pkg_compile_response.err_code == NO_ERROR)
     {
-      err = sp_add_pkg_and_related (unique_name, owner_name, owner_mop,
-				    pkg_compile_response.class_name.data(), pkg_compile_request.code.data(), pkg_compile_request.body_code.data(),
-				    comment, pkg_compile_response);
+      err = sp_add_pkg_and_related (unique_name, owner_name, owner_mop, pkg_compile_response.class_name.data(),
+				    pkg_compile_request.code.data(), pkg_compile_request.body_code.data(), comment, pkg_compile_response);
       if (err != NO_ERROR)
 	{
 	  goto error_exit;
@@ -3106,19 +3082,13 @@ jsp_create_pkg_spec (PARSER_CONTEXT *parser, PT_NODE *statement, const char *uni
       err = ER_PKG_COMPILE_ERROR;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, pkg_compile_response.err_msg.c_str ());
       pt_record_error (parser, parser->statement_number, pkg_compile_response.err_line, pkg_compile_response.err_column,
-		       er_msg (),
-		       NULL);
+		       er_msg (), NULL);
       goto error_exit;
     }
 
   return NO_ERROR;
 
 error_exit:
-  if (has_savepoint)
-    {
-      tran_abort_upto_system_savepoint (SAVEPOINT_CREATE_PACKAGE);
-    }
-
   return (err == NO_ERROR) ? er_errid () : err;
 }
 
@@ -3131,6 +3101,8 @@ error_exit:
  *
  * Note:
  */
+
+#define SAVEPOINT_CREATE_PACKAGE "CREATEPACKAGE"
 
 int
 jsp_create_package (PARSER_CONTEXT *parser, PT_NODE *statement)
@@ -3164,15 +3136,34 @@ jsp_create_package (PARSER_CONTEXT *parser, PT_NODE *statement)
       }
   }
 
+  err = tran_system_savepoint (SAVEPOINT_CREATE_PACKAGE);
+  if (err != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
   if (statement->info.pkg.for_body)
     {
-      return jsp_create_pkg_body (parser, statement, unique_name, owner_name, owner);
+      err = jsp_create_pkg_body (parser, statement, unique_name, owner_name, owner);
+      if (err != NO_ERROR)
+	{
+	  goto rollback;
+	}
     }
   else
     {
       const char *comment = PT_NODE_PKG_COMMENT (statement);
-      return jsp_create_pkg_spec (parser, statement, unique_name, owner_name, owner, comment);
+      err = jsp_create_pkg_spec (parser, statement, unique_name, owner_name, owner, comment);
+      if (err != NO_ERROR)
+	{
+	  goto rollback;
+	}
     }
+
+  return NO_ERROR;
+
+rollback:
+  tran_abort_upto_system_savepoint (SAVEPOINT_CREATE_PACKAGE);
 
 error_exit:
   return (err == NO_ERROR) ? er_errid () : err;
@@ -3204,6 +3195,8 @@ jsp_alter_package (PARSER_CONTEXT *parser, PT_NODE *statement)
  *
  * Note:
  */
+
+#define SAVEPOINT_DROP_PACKAGE "DROPPACKAGE"
 
 int
 jsp_drop_package (PARSER_CONTEXT *parser, PT_NODE *statement)
@@ -3268,24 +3261,43 @@ jsp_drop_package (PARSER_CONTEXT *parser, PT_NODE *statement)
       }
     else
       {
-	// OK for now: package spec has not been created yet
+	if (!statement->info.pkg.for_body)    // if it is dropping the spec
+	  {
+	    err = ER_PKG_NOT_EXIST;
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+	    goto error_exit;
+	  }
       }
   }
 
+
+  err = tran_system_savepoint (SAVEPOINT_DROP_PACKAGE);
+  if (err != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
   if (statement->info.pkg.for_body)
     {
-      return jsp_drop_pkg_body (unique_name);
+      err = jsp_drop_pkg_body (unique_name);
+      if (err != NO_ERROR)
+	{
+	  goto rollback;
+	}
     }
   else
     {
-      if (pkg_mop == NULL)
+      err = jsp_drop_pkg_spec (unique_name, pkg_mop, owner_mop);
+      if (err != NO_ERROR)
 	{
-	  err = ER_PKG_NOT_EXIST;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-	  goto error_exit;
+	  goto rollback;
 	}
-      return jsp_drop_pkg_spec (unique_name, pkg_mop, owner_mop);
     }
+
+  return NO_ERROR;
+
+rollback:
+  tran_abort_upto_system_savepoint (SAVEPOINT_DROP_PACKAGE);
 
 error_exit:
   return (err == NO_ERROR) ? er_errid () : err;
