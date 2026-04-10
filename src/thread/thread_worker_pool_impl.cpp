@@ -17,7 +17,7 @@
  */
 
 /*
- * thread_worker_pool.cpp
+ * thread_worker_pool_impl.cpp
  */
 
 #include "thread_worker_pool.hpp"
@@ -48,6 +48,25 @@ namespace cubthread
     er_print_callstack (ARG_FILE_LINE, "%s - throws err = %d: %s\n", message, e.code().value(), e.what ());
     assert (false);
     throw e;
+  }
+
+  void
+  wp_er_log_stats (const char *header, cubperf::stat_value *statsp)
+  {
+    /*
+    std::stringstream ss;
+
+    ss << "Worker pool statistics: " << header << std::endl;
+
+    for (std::size_t index = 0; index < Worker_pool_statdef.get_value_count (); index++)
+      {
+    ss << "\t" << Worker_pool_statdef.get_value_name (index) << ": ";
+    ss << statsp[index] << std::endl;
+      }
+
+    std::string str = ss.str ();
+    _er_log_debug (ARG_FILE_LINE, str.c_str ());
+    */
   }
 
   //////////////////////////////////////////////////////////////////////////
