@@ -29088,7 +29088,7 @@ btree_key_append_object_non_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 						  leaf_record->length, btid_int->sys_btid));
 
       if (!BTREE_IS_UNIQUE (btid_int->unique_pk) && !btree_is_online_index_loading (insert_helper->purpose)
-	  && insert_helper->nonunique_oid_stats_valid)
+	  && btree_is_insert_object_purpose (insert_helper->purpose) && insert_helper->nonunique_oid_stats_valid)
 	{
 	  error_code = logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 0LL, 1LL, 0LL, true);
 	  if (error_code != NO_ERROR)
@@ -29115,7 +29115,7 @@ btree_key_append_object_non_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int
     }
 
   if (!BTREE_IS_UNIQUE (btid_int->unique_pk) && !btree_is_online_index_loading (insert_helper->purpose)
-      && insert_helper->nonunique_oid_stats_valid)
+      && btree_is_insert_object_purpose (insert_helper->purpose) && insert_helper->nonunique_oid_stats_valid)
     {
       error_code = logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 0LL, 1LL, 0LL, true);
       if (error_code != NO_ERROR)
@@ -36343,11 +36343,9 @@ btree_get_class_oid_of_unique_btid (THREAD_ENTRY * thread_p, BTID * btid, OID * 
       return ER_FAILED;
     }
 
-  if (BTREE_IS_UNIQUE (root_header->unique_pk))
-    {
-      /* Copy the class oid */
-      COPY_OID (class_oid, &root_header->topclass_oid);
-    }
+  /* topclass_oid is stored for both unique and non-unique indexes (set in xbtree_add_index unconditionally).
+   * Non-unique indexes also track OID statistics and need class_oid for online index build rollback. */
+  COPY_OID (class_oid, &root_header->topclass_oid);
 
   pgbuf_unfix_and_init (thread_p, root_page);
 
