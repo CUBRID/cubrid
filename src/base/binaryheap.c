@@ -405,7 +405,7 @@ bh_to_sorted_array (BINARY_HEAP * heap)
  * return : true if the heap is consistent, false otherwise
  * heap (in) : heap
  */
-int
+bool
 bh_tests_consistent (BINARY_HEAP * heap)
 {
   int i;

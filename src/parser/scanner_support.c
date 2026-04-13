@@ -287,54 +287,51 @@ hint_token_cmp (const void *a, const void *b)
 void
 pt_initialize_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
 {
-  static int was_initialized = 0;
 
 #if defined(ENABLE_WRITE_HINT_LOG)
   s_hint_msg.stmt_no = -1;
 #endif
 
-  if (was_initialized)
-    {
-      return;
-    }
+  static bool was_initialized =[](PT_HINT hint_table[]){
+    int i;
 
-  int i;
-
-  memset (hint_table_lead_offset, 0x00, sizeof (hint_table_lead_offset));
-  for (i = 0; hint_table[i].tokens; i++)
-    {
+    memset (hint_table_lead_offset, 0x00, sizeof (hint_table_lead_offset));
+    for (i = 0; hint_table[i].tokens; i++)
+      {
 #ifndef NDEBUG
-      char *p;
-      for (p = (char *) hint_table[i].tokens; *p; p++)
-	{
-	  assert (toupper (*p) == *p);
-	}
+	char *p;
+	for (p = (char *) hint_table[i].tokens; *p; p++)
+	  {
+	    assert (toupper (*p) == *p);
+	  }
 #endif
-      hint_table[i].is_hit = false;
-      hint_table[i].length = (int) strlen (hint_table[i].tokens);
-      hint_table_lead_offset[(unsigned char) (hint_table[i].tokens[0])]++;
-    }
+	hint_table[i].is_hit = false;
+	hint_table[i].length = (int) strlen (hint_table[i].tokens);
+	hint_table_lead_offset[(unsigned char) (hint_table[i].tokens[0])]++;
+      }
 
-  // ordering by asc 
-  qsort (hint_table, i, sizeof (hint_table[0]), &hint_token_cmp);
+    // ordering by asc 
+    qsort (hint_table, i, sizeof (hint_table[0]), &hint_token_cmp);
 
-  // Cumulative Distribution Counting
-  int sum = 0;
-  int tCnt = hint_table_lead_offset[0];
-  for (i = 0; i < HINT_LEAD_CHAR_SIZE; i++)
-    {
-      tCnt = hint_table_lead_offset[i];
-      hint_table_lead_offset[i] = sum;
-      sum += tCnt;
-    }
+    // Cumulative Distribution Counting
+    int sum = 0;
+    int tCnt = hint_table_lead_offset[0];
+    for (i = 0; i < HINT_LEAD_CHAR_SIZE; i++)
+      {
+	tCnt = hint_table_lead_offset[i];
+	hint_table_lead_offset[i] = sum;
+	sum += tCnt;
+      }
 
-  // Copy for lower character
-  for (i = 'A'; i <= 'Z'; i++)
-    {
-      hint_table_lead_offset[i + 32 /*('a'-'A') */ ] = hint_table_lead_offset[i];
-    }
+    // Copy for lower character
+    for (i = 'A'; i <= 'Z'; i++)
+      {
+	hint_table_lead_offset[i + 32 /*('a'-'A') */ ] = hint_table_lead_offset[i];
+      }
 
-  was_initialized = 1;
+    return true;
+  }
+  (hint_table);
 }
 
 /*

@@ -12121,6 +12121,13 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	{
 	  goto exit;
 	}
+      /* OLD_PAGE_MAYBE_DEALLOCATED sets ER_WARNING_SEVERITY for ER_PB_BAD_PAGEID,
+       * which er_errid_if_has_error() does not catch; handle it explicitly here. */
+      if (fetch_mode == OLD_PAGE_MAYBE_DEALLOCATED && er_errid () == ER_PB_BAD_PAGEID)
+	{
+	  er_status = ER_PB_BAD_PAGEID;
+	  goto exit;
+	}
 
       wait_msecs = pgbuf_find_current_wait_msecs (thread_p);
       if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
@@ -12567,10 +12574,21 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	    }
 	  if (er_status == ER_PB_BAD_PAGEID)
 	    {
-	      /* page was probably deallocated? so has the impossible indeed happen?? */
-	      assert (false);
-	      er_log_debug (ARG_FILE_LINE, "pgbuf_ordered_fix: page %d|%d was deallocated an we told it not to!\n",
-			    VPID_AS_ARGS (&ordered_holders_info[i].vpid));
+	      if (VPID_EQ (req_vpid, &(ordered_holders_info[i].vpid)) && fetch_mode == OLD_PAGE_MAYBE_DEALLOCATED)
+		{
+		  /* page was deallocated between ftab snapshot and actual fix; this is expected with
+		   * OLD_PAGE_MAYBE_DEALLOCATED. */
+		  er_log_debug (ARG_FILE_LINE,
+				"pgbuf_ordered_fix: page %d|%d was deallocated (OLD_PAGE_MAYBE_DEALLOCATED mode).\n",
+				VPID_AS_ARGS (&ordered_holders_info[i].vpid));
+		}
+	      else
+		{
+		  /* page was probably deallocated? so has the impossible indeed happen?? */
+		  assert (false);
+		  er_log_debug (ARG_FILE_LINE, "pgbuf_ordered_fix: page %d|%d was deallocated an we told it not to!\n",
+				VPID_AS_ARGS (&ordered_holders_info[i].vpid));
+		}
 	    }
 	  if (!VPID_EQ (req_vpid, &(ordered_holders_info[i].vpid)))
 	    {
@@ -16504,6 +16522,8 @@ class pgbuf_flush_control_daemon_task : public cubthread::entry_task
 /*
  * pgbuf_page_maintenance_daemon_init () - initialize page maintenance daemon thread
  */
+REGISTER_DAEMON (pgbuf_page_maintenance);
+
 void
 pgbuf_page_maintenance_daemon_init ()
 {
@@ -16520,6 +16540,8 @@ pgbuf_page_maintenance_daemon_init ()
 /*
  * pgbuf_page_flush_daemon_init () - initialize page flush daemon thread
  */
+REGISTER_DAEMON (pgbuf_page_flush);
+
 void
 pgbuf_page_flush_daemon_init ()
 {
@@ -16536,6 +16558,8 @@ pgbuf_page_flush_daemon_init ()
 /*
  * pgbuf_page_post_flush_daemon_init () - initialize page post flush daemon thread
  */
+REGISTER_DAEMON (pgbuf_page_post_flush);
+
 void
 pgbuf_page_post_flush_daemon_init ()
 {
@@ -16550,8 +16574,7 @@ pgbuf_page_post_flush_daemon_init ()
   cubthread::looper looper = cubthread::looper (looper_interval);
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (pgbuf_page_post_flush_execute);
 
-  pgbuf_Page_post_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                           "pgbuf-page-post-flush");
+  pgbuf_Page_post_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "pgbuf-page-post-flush");
 }
 #endif /* SERVER_MODE */
 
@@ -16559,6 +16582,8 @@ pgbuf_page_post_flush_daemon_init ()
 /*
  * pgbuf_flush_control_daemon_init () - initialize flush control daemon thread
  */
+REGISTER_DAEMON (pgbuf_flush_control);
+
 void
 pgbuf_flush_control_daemon_init ()
 {
@@ -16573,8 +16598,7 @@ pgbuf_flush_control_daemon_init ()
     }
 
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (50));
-  pgbuf_Flush_control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                         "pgbuf-flush-control");
+  pgbuf_Flush_control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "pgbuf-flush-control");
 }
 #endif /* SERVER_MODE */
 
