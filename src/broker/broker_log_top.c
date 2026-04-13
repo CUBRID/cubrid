@@ -78,8 +78,7 @@ struct t_work_msg
 
 static int log_top_query (int argc, char *argv[], int arg_start);
 static int log_top_query_split_paths (int nfiles, char **paths);
-static int log_top_sigjmp_tran_query_inner (int nfiles, char **files, volatile int *qerr);
-static int log_top_sigjmp_tran_query_argv (int argc, char **argv, int arg_start, volatile int *qerr);
+static int log_top_sigjmp_tran_query (int argc, char **argv, int arg_start, volatile int *qerr);
 static int log_top (FILE * fp, char *filename, long start_offset, long end_offset);
 static int log_execute (T_QUERY_INFO * qi, char *linebuf, char **query_p);
 static int get_args (int argc, char *argv[]);
@@ -131,7 +130,6 @@ static int log_top_discover_log_dirs (char *out_dirs[], int max_dirs);
 static void log_top_normalize_path (const char *in, char *out, size_t out_len);
 static size_t log_top_cas_log_suffix_len (const char *basename);
 static int log_top_gather_files_exact (const char *broker, const char *dir, char *out_files[], int max_files);
-static int log_top_gather_files_pattern (const char *pattern, const char *dir, char *out_files[], int max_files);
 static int log_top_is_pattern (const char *s);
 static int log_top_get_brokers_from_dir (const char *dir, char *out_brokers[], int max_brokers);
 static void log_top_broker_to_safe (const char *name, char *out, size_t out_len);
@@ -203,53 +201,26 @@ main (int argc, char *argv[])
   if (!log_top_out_merge && get_cnt > 0)
     error = log_top_query_split_paths (get_cnt, file_list);
   else
-#if !defined(WINDOWS)
-  if (sigsetjmp (broker_log_top_segfault_jmp, 1) == 0)
     {
-      broker_log_top_segfault_jmp_valid = 1;
-      signal (SIGSEGV, broker_log_top_segfault_handler);
-      if (mode_tran)
-	error = log_top_tran (get_cnt, file_list, 0);
+      volatile int mqerr = 0;
+      if (log_top_sigjmp_tran_query (get_cnt, file_list, 0, &mqerr) == 0)
+	error = (int) mqerr;
       else
-	error = log_top_query (get_cnt, file_list, 0);
-      broker_log_top_segfault_jmp_valid = 0;
-      signal (SIGSEGV, SIG_DFL);
+	error = 0;
     }
-  else
-    {
-      broker_log_top_segfault_jmp_valid = 0;
-      signal (SIGSEGV, SIG_DFL);
-      fprintf (stderr, "Warning: segmentation fault during processing.\n");
-      error = 0;
-    }
-#else
-  if (mode_tran)
-    error = log_top_tran (get_cnt, file_list, 0);
-  else
-    error = log_top_query (get_cnt, file_list, 0);
-#endif
 
   free_file_list (file_list, file_cnt);
 #else
-#if !defined(WINDOWS)
   if (!log_top_out_merge && arg_start < argc)
     error = log_top_query_split_paths (argc - arg_start, argv + arg_start);
   else
     {
       volatile int mqerr = 0;
-      if (log_top_sigjmp_tran_query_argv (argc, argv, arg_start, &mqerr) == 0)
+      if (log_top_sigjmp_tran_query (argc, argv, arg_start, &mqerr) == 0)
 	error = (int) mqerr;
       else
 	error = 0;
     }
-#else
-  if (!log_top_out_merge && arg_start < argc)
-    error = log_top_query_split_paths (argc - arg_start, argv + arg_start);
-  else if (mode_tran)
-    error = log_top_tran (argc, argv, arg_start);
-  else
-    error = log_top_query (argc, argv, arg_start);
-#endif
 #endif
 
   return error;
@@ -425,6 +396,36 @@ log_top_free_heap_files (char **tab, int n)
   for (j = 0; j < n; j++)
     {
       FREE_MEM (tab[j]);
+    }
+}
+
+/*
+ * log_top_multi_run 내 dirs[] 배열 해제 — 4곳에서 반복되던 패턴을 통합.
+ * is_conf_multi 일 때는 전체 배열, 아니면 dirs[0]만 해제.
+ */
+static void
+log_top_free_dirs (char **dirs, int ndirs, int is_conf_multi)
+{
+  int d;
+
+  if (is_conf_multi)
+    {
+      for (d = 0; d < ndirs; d++)
+	{
+	  if (dirs[d] != NULL)
+	    {
+	      FREE_MEM (dirs[d]);
+	      dirs[d] = NULL;
+	    }
+	}
+    }
+  else
+    {
+      if (dirs[0] != NULL)
+	{
+	  FREE_MEM (dirs[0]);
+	  dirs[0] = NULL;
+	}
     }
 }
 
@@ -629,50 +630,6 @@ log_top_gather_files_exact (const char *broker, const char *dir, char *out_files
 }
 
 static int
-log_top_gather_files_pattern (const char *pattern, const char *dir, char *out_files[], int max_files)
-{
-  DIR *d;
-  struct dirent *e;
-  char path[BROKER_LOG_TOP_MAX_PATH];
-  char broker_prefix[256];
-  char *last_underscore;
-  int n = 0;
-  size_t elen;
-
-  d = opendir (dir);
-  if (!d)
-    return 0;
-
-  while ((e = readdir (d)) != NULL && n < max_files)
-    {
-      size_t copy_len;
-      elen = strlen (e->d_name);
-      if (log_top_cas_log_suffix_len (e->d_name) != 8)
-	continue;
-      copy_len = elen - 8;
-      if (copy_len >= sizeof (broker_prefix))
-	copy_len = sizeof (broker_prefix) - 1;
-      memcpy (broker_prefix, e->d_name, copy_len);
-      broker_prefix[copy_len] = '\0';
-      last_underscore = strrchr (broker_prefix, '_');
-      if (!last_underscore)
-	continue;
-      *last_underscore = '\0';
-      if (!log_top_match_pattern (broker_prefix, pattern))
-	continue;
-      snprintf (path, sizeof (path), "%s/%s", dir, e->d_name);
-      out_files[n] = (char *) MALLOC (strlen (path) + 1);
-      if (out_files[n])
-	{
-	  strcpy (out_files[n], path);
-	  n++;
-	}
-    }
-  closedir (d);
-  return n;
-}
-
-static int
 log_top_gather_files_pattern_suffix (const char *pattern, const char *dir, const char *suffix, size_t suffix_len,
 				   char *out_files[], int max_files)
 {
@@ -766,102 +723,39 @@ log_top_gather_files_exact (const char *broker, const char *dir, char *out_files
 }
 
 static int
-log_top_gather_files_pattern (const char *pattern, const char *dir, char *out_files[], int max_files)
+log_top_gather_files_pattern_all (const char *pattern, const char *dir, char *out_files[], int max_files)
 {
   HANDLE h;
   WIN32_FIND_DATAA fd;
   char search[BROKER_LOG_TOP_MAX_PATH];
   char path[BROKER_LOG_TOP_MAX_PATH];
   int n = 0;
-  size_t plen = strlen (pattern);
+  int si;
+  const char *suffixes[] = { "*.sql.log", "*.sql.log.bak", "*.slow.log", "*.slow.log.bak", NULL };
 
-  snprintf (search, sizeof (search), "%s\\%s_*.sql.log", dir, pattern);
-  h = FindFirstFileA (search, &fd);
-  if (h == INVALID_HANDLE_VALUE)
-    return 0;
-  do
+  for (si = 0; suffixes[si] && n < max_files; si++)
     {
-      if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+      snprintf (search, sizeof (search), "%s\\%s_%s", dir, pattern, suffixes[si]);
+      h = FindFirstFileA (search, &fd);
+      if (h == INVALID_HANDLE_VALUE)
 	continue;
-      snprintf (path, sizeof (path), "%s\\%s", dir, fd.cFileName);
-      out_files[n] = (char *) MALLOC (strlen (path) + 1);
-      if (out_files[n])
+      do
 	{
-	  strcpy (out_files[n], path);
-	  n++;
+	  if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+	    continue;
+	  if (n >= max_files)
+	    break;
+	  snprintf (path, sizeof (path), "%s\\%s", dir, fd.cFileName);
+	  out_files[n] = (char *) MALLOC (strlen (path) + 1);
+	  if (out_files[n])
+	    {
+	      strcpy (out_files[n], path);
+	      n++;
+	    }
 	}
+      while (FindNextFileA (h, &fd));
+      FindClose (h);
     }
-  while (FindNextFileA (h, &fd) && n < max_files);
-  FindClose (h);
-  return n;
-}
-
-static int
-log_top_gather_files_pattern_all (const char *pattern, const char *dir, char *out_files[], int max_files)
-{
-  int n = 0;
-  n += log_top_gather_files_pattern (pattern, dir, out_files, max_files);
-  /* Windows: log_top_gather_files_pattern only gets .sql.log; add other suffixes via FindFirstFile */
-  {
-    HANDLE h;
-    WIN32_FIND_DATAA fd;
-    char search[BROKER_LOG_TOP_MAX_PATH];
-    char path[BROKER_LOG_TOP_MAX_PATH];
-    snprintf (search, sizeof (search), "%s\\%s_*.sql.log.bak", dir, pattern);
-    h = FindFirstFileA (search, &fd);
-    if (h != INVALID_HANDLE_VALUE)
-      {
-	do
-	  {
-	    if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-	      continue;
-	    if (n >= max_files)
-	      break;
-	    snprintf (path, sizeof (path), "%s\\%s", dir, fd.cFileName);
-	    out_files[n] = (char *) MALLOC (strlen (path) + 1);
-	    if (out_files[n])
-	      strcpy (out_files[n], path), n++;
-	  }
-	while (FindNextFileA (h, &fd));
-	FindClose (h);
-      }
-    snprintf (search, sizeof (search), "%s\\%s_*.slow.log", dir, pattern);
-    h = FindFirstFileA (search, &fd);
-    if (h != INVALID_HANDLE_VALUE)
-      {
-	do
-	  {
-	    if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-	      continue;
-	    if (n >= max_files)
-	      break;
-	    snprintf (path, sizeof (path), "%s\\%s", dir, fd.cFileName);
-	    out_files[n] = (char *) MALLOC (strlen (path) + 1);
-	    if (out_files[n])
-	      strcpy (out_files[n], path), n++;
-	  }
-	while (FindNextFileA (h, &fd));
-	FindClose (h);
-      }
-    snprintf (search, sizeof (search), "%s\\%s_*.slow.log.bak", dir, pattern);
-    h = FindFirstFileA (search, &fd);
-    if (h != INVALID_HANDLE_VALUE)
-      {
-	do
-	  {
-	    if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-	      continue;
-	    if (n >= max_files)
-	      break;
-	    snprintf (path, sizeof (path), "%s\\%s", dir, fd.cFileName);
-	    out_files[n] = (char *) MALLOC (strlen (path) + 1);
-	    if (out_files[n])
-	      strcpy (out_files[n], path), n++;
-	  }
-	while (FindNextFileA (h, &fd));
-	FindClose (h);
-      }
-  }
   return n;
 }
 
@@ -1063,40 +957,13 @@ log_top_fill_parent_out_base (char *parent_out_base, size_t parent_sz)
   return 0;
 }
 
-/* sigsetjmp로 감싼 log_top_tran / log_top_query — 원본 main(Unix)과 동일한 호출, 복구만 추가 */
+/*
+ * sigsetjmp로 감싼 log_top_tran / log_top_query 통합 래퍼.
+ * 기존 _inner(nfiles, files)는 arg_start=0으로, _argv(argc, argv, arg_start)는 그대로 호출.
+ * 반환값: 0 = 정상 완료, 1 = SIGSEGV로 건너뜀.
+ */
 static int
-log_top_sigjmp_tran_query_inner (int nfiles, char **files, volatile int *qerr)
-{
-#if !defined(WINDOWS)
-  if (sigsetjmp (broker_log_top_segfault_jmp, 1) == 0)
-    {
-      broker_log_top_segfault_jmp_valid = 1;
-      signal (SIGSEGV, broker_log_top_segfault_handler);
-      if (mode_tran)
-	*qerr = log_top_tran (nfiles, files, 0);
-      else
-	*qerr = log_top_query (nfiles, files, 0);
-      broker_log_top_segfault_jmp_valid = 0;
-      signal (SIGSEGV, SIG_DFL);
-      return 0;
-    }
-  broker_log_top_segfault_jmp_valid = 0;
-  signal (SIGSEGV, SIG_DFL);
-  fprintf (stderr, "Warning: segmentation fault during processing, skipping.\n");
-  *qerr = 0;
-  return 1;
-#else
-  if (mode_tran)
-    *qerr = log_top_tran (nfiles, files, 0);
-  else
-    *qerr = log_top_query (nfiles, files, 0);
-  return 0;
-#endif
-}
-
-/* broker_log_top.c_old 의 Unix main 과 동일하게 (argc,argv,arg_start) 로 tran/query 호출 */
-static int
-log_top_sigjmp_tran_query_argv (int argc, char **argv, int arg_start, volatile int *qerr)
+log_top_sigjmp_tran_query (int argc, char **argv, int arg_start, volatile int *qerr)
 {
 #if !defined(WINDOWS)
   if (sigsetjmp (broker_log_top_segfault_jmp, 1) == 0)
@@ -1113,7 +980,7 @@ log_top_sigjmp_tran_query_argv (int argc, char **argv, int arg_start, volatile i
     }
   broker_log_top_segfault_jmp_valid = 0;
   signal (SIGSEGV, SIG_DFL);
-  fprintf (stderr, "Warning: segmentation fault during processing.\n");
+  fprintf (stderr, "Warning: segmentation fault during processing, skipping.\n");
   *qerr = 0;
   return 1;
 #else
@@ -1158,7 +1025,7 @@ log_top_multi_run_one_broker (const char *parent_out_base, const char *subdir_fo
     }
   fprintf (stdout, "%s\n", stdout_label);
   query_info_reset ();
-  if (log_top_sigjmp_tran_query_inner (nfiles, files, &qerr) == 0)
+  if (log_top_sigjmp_tran_query (nfiles, files, 0, &qerr) == 0)
     {
       LOG_TOP_CHDIR ((char *) saved_cwd);
       for (i = 0; i < nfiles; i++)
@@ -1223,7 +1090,7 @@ log_top_multi_run (void)
 	}
       fprintf (stdout, "%s\n", log_top_multi_broker_name);
       query_info_reset ();
-      if (log_top_sigjmp_tran_query_inner (nfiles, (char **) files, &qerr_dot) == 0)
+      if (log_top_sigjmp_tran_query (nfiles, (char **) files, 0, &qerr_dot) == 0)
 	error = (int) qerr_dot;
       else
 	error = 0;
@@ -1285,17 +1152,7 @@ log_top_multi_run (void)
   if (files == NULL)
     {
       fprintf (stderr, "Error: memory allocation failed\n");
-      if (log_top_multi_dir_is_conf_multi ())
-	{
-	  for (d = 0; d < ndirs; d++)
-	    {
-	      FREE_MEM (dirs[d]);
-	    }
-	}
-      else if (dirs[0] != NULL)
-	{
-	  FREE_MEM (dirs[0]);
-	}
+      log_top_free_dirs (dirs, ndirs, log_top_multi_dir_is_conf_multi ());
       return -1;
     }
 
@@ -1353,17 +1210,7 @@ log_top_multi_run (void)
       if (all_files == NULL)
 	{
 	  fprintf (stderr, "Error: memory allocation failed\n");
-	  if (log_top_multi_dir_is_conf_multi ())
-	    {
-	      for (d = 0; d < ndirs; d++)
-		{
-		  FREE_MEM (dirs[d]);
-		}
-	    }
-	  else if (dirs[0] != NULL)
-	    {
-	      FREE_MEM (dirs[0]);
-	    }
+	  log_top_free_dirs (dirs, ndirs, log_top_multi_dir_is_conf_multi ());
 	  free ((void *) files);
 	  return -1;
 	}
@@ -1412,19 +1259,7 @@ log_top_multi_run (void)
       if (total_brokers == 0)
 	{
 	  fprintf (stderr, "Info: no brokers found in any directory.\n");
-	  if (log_top_multi_dir_is_conf_multi ())
-	    {
-	      for (d = 0; d < ndirs; d++)
-		{
-		  FREE_MEM (dirs[d]);
-		  dirs[d] = NULL;
-		}
-	    }
-	  else if (dirs[0] != NULL)
-	    {
-	      FREE_MEM (dirs[0]);
-	      dirs[0] = NULL;
-	    }
+	  log_top_free_dirs (dirs, ndirs, log_top_multi_dir_is_conf_multi ());
 	  free (all_files);
 	  free ((void *) files);
 	  return 0;
@@ -1483,60 +1318,7 @@ log_top_multi_run (void)
       files = NULL;
     }
 
-#if !defined(WINDOWS)
-  if (sigsetjmp (broker_log_top_segfault_jmp, 1) == 0)
-    {
-      broker_log_top_segfault_jmp_valid = 1;
-      signal (SIGSEGV, broker_log_top_segfault_handler);
-      if (log_top_multi_dir_is_conf_multi ())
-	{
-	  for (d = 0; d < ndirs; d++)
-	    {
-	      if (dirs[d] != NULL)
-		{
-		  FREE_MEM (dirs[d]);
-		  dirs[d] = NULL;
-		}
-	    }
-	}
-      else
-	{
-	  if (dirs[0] != NULL)
-	    {
-	      FREE_MEM (dirs[0]);
-	      dirs[0] = NULL;
-	    }
-	}
-      broker_log_top_segfault_jmp_valid = 0;
-      signal (SIGSEGV, SIG_DFL);
-    }
-  else
-    {
-      broker_log_top_segfault_jmp_valid = 0;
-      signal (SIGSEGV, SIG_DFL);
-      fprintf (stderr, "Warning: segmentation fault during final cleanup, skipping.\n");
-    }
-#else
-  if (log_top_multi_dir_is_conf_multi ())
-    {
-      for (d = 0; d < ndirs; d++)
-	{
-	  if (dirs[d] != NULL)
-	    {
-	      FREE_MEM (dirs[d]);
-	      dirs[d] = NULL;
-	    }
-	}
-    }
-  else
-    {
-      if (dirs[0] != NULL)
-	{
-	  FREE_MEM (dirs[0]);
-	  dirs[0] = NULL;
-	}
-    }
-#endif
+  log_top_free_dirs (dirs, ndirs, log_top_multi_dir_is_conf_multi ());
 
   return error;
 }
@@ -1919,7 +1701,7 @@ log_top_query_split_paths (int nfiles, char **paths)
 
       fprintf (stdout, "%s\n", tab[g_start].key);
       query_info_reset ();
-      if (log_top_sigjmp_tran_query_inner (g_end - g_start, (char **) argv_small, &qerr) == 0)
+      if (log_top_sigjmp_tran_query (g_end - g_start, (char **) argv_small, 0, &qerr) == 0)
 	{
 	  LOG_TOP_CHDIR ((char *) saved_cwd);
 	  if (qerr != 0)
