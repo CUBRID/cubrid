@@ -167,6 +167,7 @@ jsp_find_pkg (const char *unique_name, DB_AUTH purpose)
   if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
     {
       er_clear ();
+      AU_ENABLE (save);
       return NULL;
     }
 
