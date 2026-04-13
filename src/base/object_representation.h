@@ -451,22 +451,6 @@ OR_PUT_DOUBLE (char *ptr, double val)
 #define OR_IS_OOS(length) (OR_GET_VAR_FLAG (length) & OR_VAR_BIT_OOS)
 #define OR_IS_LAST_ELEMENT(length) (OR_GET_VAR_FLAG (length) & OR_VAR_BIT_LAST_ELEMENT)
 
-STATIC_INLINE int
-or_var_offset_apply_flags (int offset, bool is_oos, bool is_last_element)
-{
-  if (is_oos)
-    {
-      offset = OR_SET_VAR_OOS (offset);
-    }
-
-  if (is_last_element)
-    {
-      offset = OR_SET_VAR_LAST_ELEMENT (offset);
-    }
-
-  return offset;
-}
-
 /* OOS inline size: OOS OID (8 bytes) + OOS length (8 bytes) */
 #define OR_OOS_INLINE_SIZE (OR_OID_SIZE + OR_BIGINT_SIZE)
 

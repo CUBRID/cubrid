@@ -12692,8 +12692,6 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  length = OR_SET_VAR_OOS (length);
 	}
 
-      /* VOT low 2 bits are reserved for storage flags. Keep all writes centralized. */
-      length = or_var_offset_apply_flags (length, is_oos, false);
       or_put_offset_internal (buf, length, offset_size);
     }
 
@@ -12842,9 +12840,8 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 	}
       else
 	{
-	  or_put_offset_internal (buf,
-				  or_var_offset_apply_flags (CAST_BUFLEN (ptr_varvals - buf->buffer - header_size),
-							     false, true), offset_size);
+	  or_put_offset_internal (buf, OR_SET_VAR_LAST_ELEMENT (CAST_BUFLEN (ptr_varvals - buf->buffer - header_size)),
+				  offset_size);
 	}
       buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
@@ -21701,6 +21698,7 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   update_mvcc_flags = OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION;
 
   bool has_oos = heap_recdes_check_has_oos (update_context->recdes_p);
+  /* old_has_oos is the current HAS_OOS bit already stored in the recdes header before resynchronization. */
   bool old_has_oos = (mvcc_flags & OR_MVCC_FLAG_HAS_OOS) != 0;
 
   if (has_oos != old_has_oos)
@@ -27913,6 +27911,7 @@ heap_recdes_check_has_oos (const RECDES * recdes)
     {
       if (index == max_var_count)
 	{
+	  assert (false && "LAST_ELEMENT flag not found within record bounds");
 	  return false;
 	}
 
