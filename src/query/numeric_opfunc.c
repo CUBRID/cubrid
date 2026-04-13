@@ -3496,14 +3496,12 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
 	    }
 	  return ret;
 	}
-      else
-	{
-	  /* the fast path is disabled at compile time by HAS_INT128_SUPPORT,
-	   * but this check defensively prevents any unintended entry.
-	   * if triggered, the fast path is skipped and Knuth division is used instead.
-	   */
-	  ret = NO_ERROR;
-	}
+
+      /* the fast path is disabled at compile time by HAS_INT128_SUPPORT,
+       * but this check defensively prevents any unintended entry.
+       * if triggered, the fast path is skipped and Knuth division is used instead.
+       */
+      ret = NO_ERROR;
     }
 #endif
 
@@ -4277,8 +4275,7 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
   /* fast path */
   if (calc_words == NUMERIC_AS_WORDS && (dividend_work[0] | dividend_work[1] | divisor_work[0] | divisor_work[1]) == 0)
     {
-      float_numeric_mod_fast (dividend_work[2], divisor_work[2], result_buf, &result_prec, &result_scale);
-
+      ret = float_numeric_mod_fast (dividend_work[2], divisor_work[2], result_buf, &result_prec, &result_scale);
       if (ret == NO_ERROR)
 	{
 	  ret = float_numeric_check_overflow_and_adjust_scale (&result_prec, &result_scale, result);
@@ -4288,14 +4285,12 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
 	    }
 	  return ret;
 	}
-      else
-	{
-	  /* the fast path is disabled at compile time by HAS_INT128_SUPPORT,
-	   * but this check defensively prevents any unintended entry.
-	   * if triggered, the fast path is skipped and Knuth division is used instead.
-	   */
-	  ret = NO_ERROR;
-	}
+
+      /* the fast path is disabled at compile time by HAS_INT128_SUPPORT,
+       * but this check defensively prevents any unintended entry.
+       * if triggered, the fast path is skipped and Knuth division is used instead.
+       */
+      ret = NO_ERROR;
     }
 #endif
 
