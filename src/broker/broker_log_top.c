@@ -28,8 +28,23 @@
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <setjmp.h>
+#include <signal.h>
+#include <sys/stat.h>
+#include <time.h>
 #if !defined(WINDOWS)
 #include <unistd.h>
+#include <dirent.h>
+#else
+#include <direct.h>
+#include <io.h>
+#include <windows.h>
+#endif
+
+#if !defined(WINDOWS)
+#define LOG_TOP_CHDIR(D)  chdir (D)
+#else
+#define LOG_TOP_CHDIR(D)  _chdir (D)
 #endif
 
 #ifdef MT_MODE
@@ -40,7 +55,6 @@
 #include "cas_common.h"
 #include "cas_query_info.h"
 #include "broker_log_time.h"
-#include "broker_log_sql_list.h"
 #include "log_top_string.h"
 #include "broker_log_top.h"
 #include "broker_log_util.h"
@@ -63,6 +77,9 @@ struct t_work_msg
 #endif
 
 static int log_top_query (int argc, char *argv[], int arg_start);
+static int log_top_query_split_paths (int nfiles, char **paths);
+static int log_top_sigjmp_tran_query_inner (int nfiles, char **files, volatile int *qerr);
+static int log_top_sigjmp_tran_query_argv (int argc, char **argv, int arg_start, volatile int *qerr);
 static int log_top (FILE * fp, char *filename, long start_offset, long end_offset);
 static int log_execute (T_QUERY_INFO * qi, char *linebuf, char **query_p);
 static int get_args (int argc, char *argv[]);
@@ -81,6 +98,51 @@ static int read_execute_end_msg (char *msg_p, int *res_code, int *runtime_msec);
 static int read_bind_value (FILE * fp, T_STRING * t_str, char **linebuf, int *lineno, T_STRING * cas_log_buf);
 static int search_offset (FILE * fp, char *string, long *offset, bool start);
 static char *organize_query_string (const char *sql);
+
+static const char *log_top_multi_log_dir = NULL;
+static const char *log_top_multi_broker_name = NULL;
+#define BROKER_LOG_TOP_MAX_PATH 2048
+#define BROKER_LOG_TOP_MAX_FILES 4096
+#define BROKER_LOG_TOP_MAX_DIRS 128
+
+static int broker_log_top_force_single_thread = 0;
+
+#if !defined(WINDOWS)
+/* Segmentation fault 복구: 예외 시 longjmp로 복귀하여 무시하고 진행 */
+static sigjmp_buf broker_log_top_segfault_jmp;
+static volatile int broker_log_top_segfault_jmp_valid;
+
+static void
+broker_log_top_segfault_handler (int sig)
+{
+  if (sig == SIGSEGV && broker_log_top_segfault_jmp_valid)
+    {
+      broker_log_top_segfault_jmp_valid = 0;
+      siglongjmp (broker_log_top_segfault_jmp, 1);
+    }
+  /* 재진입 방지 실패 시 기본 동작 */
+  signal (SIGSEGV, SIG_DFL);
+  raise (sig);
+}
+#endif
+
+static void log_top_free_heap_files (char **tab, int n);
+static int log_top_discover_log_dirs (char *out_dirs[], int max_dirs);
+static void log_top_normalize_path (const char *in, char *out, size_t out_len);
+static size_t log_top_cas_log_suffix_len (const char *basename);
+static int log_top_gather_files_exact (const char *broker, const char *dir, char *out_files[], int max_files);
+static int log_top_gather_files_pattern (const char *pattern, const char *dir, char *out_files[], int max_files);
+static int log_top_is_pattern (const char *s);
+static int log_top_get_brokers_from_dir (const char *dir, char *out_brokers[], int max_brokers);
+static void log_top_broker_to_safe (const char *name, char *out, size_t out_len);
+static int log_top_mkdir_out (const char *path);
+static int log_top_multi_run (void);
+
+static int log_top_out_merge = 1;
+static int log_top_multi_explicit_dirs_flag = 0;
+static int log_top_multi_explicit_ndirs = 0;
+static char *log_top_multi_explicit_dirs_buf[BROKER_LOG_TOP_MAX_DIRS];
+static const char log_top_multi_explicit_sentinel[] = "__EXPLICIT__";
 
 T_LOG_TOP_MODE log_top_mode = MODE_PROC_TIME;
 
@@ -113,6 +175,12 @@ main (int argc, char *argv[])
       return -1;
     }
 
+  if (log_top_multi_log_dir != NULL)
+    {
+      error = log_top_multi_run ();
+      return error;
+    }
+
 #if defined(WINDOWS)
   file_cnt = get_file_count (argc, argv, arg_start);
   if (file_cnt <= 0)
@@ -132,25 +200,56 @@ main (int argc, char *argv[])
       get_cnt = file_cnt;
     }
 
-  if (mode_tran)
+  if (!log_top_out_merge && get_cnt > 0)
+    error = log_top_query_split_paths (get_cnt, file_list);
+  else
+#if !defined(WINDOWS)
+  if (sigsetjmp (broker_log_top_segfault_jmp, 1) == 0)
     {
-      error = log_top_tran (get_cnt, file_list, 0);
+      broker_log_top_segfault_jmp_valid = 1;
+      signal (SIGSEGV, broker_log_top_segfault_handler);
+      if (mode_tran)
+	error = log_top_tran (get_cnt, file_list, 0);
+      else
+	error = log_top_query (get_cnt, file_list, 0);
+      broker_log_top_segfault_jmp_valid = 0;
+      signal (SIGSEGV, SIG_DFL);
     }
   else
     {
-      error = log_top_query (get_cnt, file_list, 0);
+      broker_log_top_segfault_jmp_valid = 0;
+      signal (SIGSEGV, SIG_DFL);
+      fprintf (stderr, "Warning: segmentation fault during processing.\n");
+      error = 0;
     }
+#else
+  if (mode_tran)
+    error = log_top_tran (get_cnt, file_list, 0);
+  else
+    error = log_top_query (get_cnt, file_list, 0);
+#endif
 
   free_file_list (file_list, file_cnt);
 #else
-  if (mode_tran)
-    {
-      error = log_top_tran (argc, argv, arg_start);
-    }
+#if !defined(WINDOWS)
+  if (!log_top_out_merge && arg_start < argc)
+    error = log_top_query_split_paths (argc - arg_start, argv + arg_start);
   else
     {
-      error = log_top_query (argc, argv, arg_start);
+      volatile int mqerr = 0;
+      if (log_top_sigjmp_tran_query_argv (argc, argv, arg_start, &mqerr) == 0)
+	error = (int) mqerr;
+      else
+	error = 0;
     }
+#else
+  if (!log_top_out_merge && arg_start < argc)
+    error = log_top_query_split_paths (argc - arg_start, argv + arg_start);
+  else if (mode_tran)
+    error = log_top_tran (argc, argv, arg_start);
+  else
+    error = log_top_query (argc, argv, arg_start);
+#endif
 #endif
 
   return error;
@@ -296,6 +395,1152 @@ free_file_list (char **list, int size)
 }
 #endif
 
+#if !defined(WINDOWS)
+static int
+log_top_match_pattern (const char *broker_prefix, const char *pattern)
+{
+  size_t plen = strlen (pattern);
+  size_t blen = strlen (broker_prefix);
+  if (plen > 0 && pattern[plen - 1] == '*')
+    {
+      if (plen == 1)
+	return 1;
+      if (blen < plen - 1)
+	return 0;
+      return strncmp (broker_prefix, pattern, plen - 1) == 0 ? 1 : 0;
+    }
+  return (blen == plen && strncmp (broker_prefix, pattern, plen) == 0) ? 1 : 0;
+}
+#endif
+
+static void
+log_top_free_heap_files (char **tab, int n)
+{
+  int j;
+
+  if (tab == NULL || n <= 0)
+    {
+      return;
+    }
+  for (j = 0; j < n; j++)
+    {
+      FREE_MEM (tab[j]);
+    }
+}
+
+static void
+log_top_normalize_path (const char *in, char *out, size_t out_len)
+{
+  const char *cubrid;
+  char buf[BROKER_LOG_TOP_MAX_PATH];
+  size_t i, j;
+
+  if (out_len < 2)
+    return;
+  out[0] = '\0';
+
+  if (in[0] == '/' || (in[0] && in[1] == ':'))
+    {
+      snprintf (out, out_len, "%s", in);
+      for (i = 0; out[i]; i++)
+	if (out[i] == '\\')
+	  out[i] = '/';
+      j = strlen (out);
+      while (j > 1 && out[j - 1] == '/')
+	out[--j] = '\0';
+      return;
+    }
+
+  cubrid = getenv ("CUBRID");
+  if (!cubrid || !cubrid[0])
+    {
+      snprintf (out, out_len, "%s", in);
+      return;
+    }
+  snprintf (buf, sizeof (buf), "%s/%s", cubrid, in[0] == '.' && in[1] == '/' ? in + 2 : in);
+  for (i = 0; buf[i]; i++)
+    if (buf[i] == '\\')
+      buf[i] = '/';
+  while (i > 1 && buf[i - 1] == '/')
+    buf[--i] = '\0';
+  snprintf (out, out_len, "%s", buf);
+}
+
+static int
+log_top_discover_log_dirs (char *out_dirs[], int max_dirs)
+{
+  FILE *fp;
+  char conf_path[BROKER_LOG_TOP_MAX_PATH];
+  char line[BROKER_LOG_TOP_MAX_PATH + 64];
+  const char *env_conf;
+  const char *cubrid;
+  int count = 0;
+  char norm[BROKER_LOG_TOP_MAX_PATH];
+  int i;
+
+  env_conf = getenv ("CUBRID_BROKER_CONF_FILE");
+  if (env_conf && env_conf[0])
+    snprintf (conf_path, sizeof (conf_path), "%s", env_conf);
+  else
+    {
+      cubrid = getenv ("CUBRID");
+      if (!cubrid || !cubrid[0])
+	{
+	  fprintf (stderr, "Error: CUBRID environment variable not set.\n");
+	  return -1;
+	}
+      snprintf (conf_path, sizeof (conf_path), "%s/conf/cubrid_broker.conf", cubrid);
+    }
+
+  fp = fopen (conf_path, "r");
+  if (!fp)
+    {
+      fprintf (stderr, "Error: cannot open broker config: %s\n", conf_path);
+      return -1;
+    }
+
+  while (fgets (line, sizeof (line), fp) && count < max_dirs)
+    {
+      char *val, *p;
+      for (p = line; *p && (*p == ' ' || *p == '\t'); p++)
+	;
+      if (strncasecmp (p, "SLOW_LOG_DIR", 12) == 0
+	  && (p[12] == '=' || p[12] == ' ' || p[12] == '\t'))
+	{
+	  p += 12;
+	}
+      else if (strncasecmp (p, "LOG_DIR", 7) == 0
+	       && (p[7] == '=' || p[7] == ' ' || p[7] == '\t'))
+	{
+	  p += 7;
+	}
+      else
+	{
+	  continue;
+	}
+      while (*p == ' ' || *p == '\t')
+	p++;
+      if (*p != '=')
+	continue;
+      p++;
+      while (*p == ' ' || *p == '\t')
+	p++;
+      val = p;
+      while (*val && *val != '#' && *val != '\n' && *val != '\r')
+	val++;
+      while (val > p && (val[-1] == ' ' || val[-1] == '\t' || val[-1] == '\n' || val[-1] == '\r'))
+	val--;
+      *val = '\0';
+      if (p[0] == '\0')
+	continue;
+      log_top_normalize_path (p, norm, sizeof (norm));
+      if (norm[0] == '\0')
+	continue;
+      for (i = 0; i < count; i++)
+	{
+	  if (strcmp (out_dirs[i], norm) == 0)
+	    {
+	      break;
+	    }
+	}
+      if (i < count)
+	continue;
+      out_dirs[count] = (char *) MALLOC (strlen (norm) + 1);
+      if (out_dirs[count] == NULL)
+	{
+	  continue;
+	}
+      strcpy (out_dirs[count], norm);
+      count++;
+    }
+  fclose (fp);
+  return count;
+}
+
+static int
+log_top_is_pattern (const char *s)
+{
+  return strchr (s, '*') != NULL || strchr (s, '?') != NULL || strchr (s, '[') != NULL;
+}
+
+/* Returns 0 if basename is not a CAS sql/slow log filename; else suffix length (8, 9, 12, or 13). */
+static size_t
+log_top_cas_log_suffix_len (const char *basename)
+{
+  size_t elen;
+
+  if (basename == NULL)
+    {
+      return 0;
+    }
+  elen = strlen (basename);
+  if (elen >= 13 && strcmp (basename + elen - 13, ".slow.log.bak") == 0)
+    {
+      return 13;
+    }
+  if (elen >= 12 && strcmp (basename + elen - 12, ".sql.log.bak") == 0)
+    {
+      return 12;
+    }
+  if (elen >= 9 && strcmp (basename + elen - 9, ".slow.log") == 0)
+    {
+      return 9;
+    }
+  if (elen >= 8 && strcmp (basename + elen - 8, ".sql.log") == 0)
+    {
+      return 8;
+    }
+  return 0;
+}
+
+#if !defined(WINDOWS)
+static int
+log_top_gather_files_exact (const char *broker, const char *dir, char *out_files[], int max_files)
+{
+  DIR *d;
+  struct dirent *e;
+  char path[BROKER_LOG_TOP_MAX_PATH];
+  int n = 0;
+  size_t blen = strlen (broker);
+
+  d = opendir (dir);
+  if (!d)
+    return 0;
+
+  while ((e = readdir (d)) != NULL && n < max_files)
+    {
+      size_t elen = strlen (e->d_name);
+      if (elen < blen + 2)
+	continue;
+      if (strncmp (e->d_name, broker, blen) != 0 || e->d_name[blen] != '_')
+	continue;
+      if (log_top_cas_log_suffix_len (e->d_name) == 0)
+	continue;
+      snprintf (path, sizeof (path), "%s/%s", dir, e->d_name);
+      out_files[n] = (char *) MALLOC (strlen (path) + 1);
+      if (out_files[n])
+	{
+	  strcpy (out_files[n], path);
+	  n++;
+	}
+    }
+  closedir (d);
+  return n;
+}
+
+static int
+log_top_gather_files_pattern (const char *pattern, const char *dir, char *out_files[], int max_files)
+{
+  DIR *d;
+  struct dirent *e;
+  char path[BROKER_LOG_TOP_MAX_PATH];
+  char broker_prefix[256];
+  char *last_underscore;
+  int n = 0;
+  size_t elen;
+
+  d = opendir (dir);
+  if (!d)
+    return 0;
+
+  while ((e = readdir (d)) != NULL && n < max_files)
+    {
+      size_t copy_len;
+      elen = strlen (e->d_name);
+      if (log_top_cas_log_suffix_len (e->d_name) != 8)
+	continue;
+      copy_len = elen - 8;
+      if (copy_len >= sizeof (broker_prefix))
+	copy_len = sizeof (broker_prefix) - 1;
+      memcpy (broker_prefix, e->d_name, copy_len);
+      broker_prefix[copy_len] = '\0';
+      last_underscore = strrchr (broker_prefix, '_');
+      if (!last_underscore)
+	continue;
+      *last_underscore = '\0';
+      if (!log_top_match_pattern (broker_prefix, pattern))
+	continue;
+      snprintf (path, sizeof (path), "%s/%s", dir, e->d_name);
+      out_files[n] = (char *) MALLOC (strlen (path) + 1);
+      if (out_files[n])
+	{
+	  strcpy (out_files[n], path);
+	  n++;
+	}
+    }
+  closedir (d);
+  return n;
+}
+
+static int
+log_top_gather_files_pattern_suffix (const char *pattern, const char *dir, const char *suffix, size_t suffix_len,
+				   char *out_files[], int max_files)
+{
+  DIR *d;
+  struct dirent *e;
+  char path[BROKER_LOG_TOP_MAX_PATH];
+  char broker_prefix[256];
+  char *last_underscore;
+  int n = 0;
+  size_t elen;
+
+  d = opendir (dir);
+  if (!d)
+    return 0;
+
+  while ((e = readdir (d)) != NULL && n < max_files)
+    {
+      elen = strlen (e->d_name);
+      if (elen <= suffix_len)
+	continue;
+      if (strcmp (e->d_name + elen - suffix_len, suffix) != 0)
+	continue;
+      {
+	size_t copy_len = elen - suffix_len;
+	if (copy_len >= sizeof (broker_prefix))
+	  copy_len = sizeof (broker_prefix) - 1;
+	memcpy (broker_prefix, e->d_name, copy_len);
+	broker_prefix[copy_len] = '\0';
+      }
+      last_underscore = strrchr (broker_prefix, '_');
+      if (!last_underscore)
+	continue;
+      *last_underscore = '\0';
+      if (!log_top_match_pattern (broker_prefix, pattern))
+	continue;
+      snprintf (path, sizeof (path), "%s/%s", dir, e->d_name);
+      out_files[n] = (char *) MALLOC (strlen (path) + 1);
+      if (out_files[n])
+	{
+	  strcpy (out_files[n], path);
+	  n++;
+	}
+    }
+  closedir (d);
+  return n;
+}
+
+static int
+log_top_gather_files_pattern_all (const char *pattern, const char *dir, char *out_files[], int max_files)
+{
+  int n = 0;
+  n += log_top_gather_files_pattern_suffix (pattern, dir, ".sql.log", 8, out_files, max_files);
+  n += log_top_gather_files_pattern_suffix (pattern, dir, ".sql.log.bak", 12, out_files + n, max_files - n);
+  n += log_top_gather_files_pattern_suffix (pattern, dir, ".slow.log", 9, out_files + n, max_files - n);
+  n += log_top_gather_files_pattern_suffix (pattern, dir, ".slow.log.bak", 13, out_files + n, max_files - n);
+  return n;
+}
+#else
+static int
+log_top_gather_files_exact (const char *broker, const char *dir, char *out_files[], int max_files)
+{
+  HANDLE h;
+  WIN32_FIND_DATAA fd;
+  char pattern[BROKER_LOG_TOP_MAX_PATH];
+  char path[BROKER_LOG_TOP_MAX_PATH];
+  int n = 0;
+  const char *suffixes[] = { "*.sql.log", "*.sql.log.bak", "*.slow.log", "*.slow.log.bak", NULL };
+
+  for (int i = 0; suffixes[i] && n < max_files; i++)
+    {
+      snprintf (pattern, sizeof (pattern), "%s\\%s_%s", dir, broker, suffixes[i]);
+      h = FindFirstFileA (pattern, &fd);
+      if (h == INVALID_HANDLE_VALUE)
+	continue;
+      do
+	{
+	  if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+	    continue;
+	  snprintf (path, sizeof (path), "%s\\%s", dir, fd.cFileName);
+	  out_files[n] = (char *) MALLOC (strlen (path) + 1);
+	  if (out_files[n])
+	    {
+	      strcpy (out_files[n], path);
+	      n++;
+	    }
+	}
+      while (FindNextFileA (h, &fd) && n < max_files);
+      FindClose (h);
+    }
+  return n;
+}
+
+static int
+log_top_gather_files_pattern (const char *pattern, const char *dir, char *out_files[], int max_files)
+{
+  HANDLE h;
+  WIN32_FIND_DATAA fd;
+  char search[BROKER_LOG_TOP_MAX_PATH];
+  char path[BROKER_LOG_TOP_MAX_PATH];
+  int n = 0;
+  size_t plen = strlen (pattern);
+
+  snprintf (search, sizeof (search), "%s\\%s_*.sql.log", dir, pattern);
+  h = FindFirstFileA (search, &fd);
+  if (h == INVALID_HANDLE_VALUE)
+    return 0;
+  do
+    {
+      if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+	continue;
+      snprintf (path, sizeof (path), "%s\\%s", dir, fd.cFileName);
+      out_files[n] = (char *) MALLOC (strlen (path) + 1);
+      if (out_files[n])
+	{
+	  strcpy (out_files[n], path);
+	  n++;
+	}
+    }
+  while (FindNextFileA (h, &fd) && n < max_files);
+  FindClose (h);
+  return n;
+}
+
+static int
+log_top_gather_files_pattern_all (const char *pattern, const char *dir, char *out_files[], int max_files)
+{
+  int n = 0;
+  n += log_top_gather_files_pattern (pattern, dir, out_files, max_files);
+  /* Windows: log_top_gather_files_pattern only gets .sql.log; add other suffixes via FindFirstFile */
+  {
+    HANDLE h;
+    WIN32_FIND_DATAA fd;
+    char search[BROKER_LOG_TOP_MAX_PATH];
+    char path[BROKER_LOG_TOP_MAX_PATH];
+    snprintf (search, sizeof (search), "%s\\%s_*.sql.log.bak", dir, pattern);
+    h = FindFirstFileA (search, &fd);
+    if (h != INVALID_HANDLE_VALUE)
+      {
+	do
+	  {
+	    if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+	      continue;
+	    if (n >= max_files)
+	      break;
+	    snprintf (path, sizeof (path), "%s\\%s", dir, fd.cFileName);
+	    out_files[n] = (char *) MALLOC (strlen (path) + 1);
+	    if (out_files[n])
+	      strcpy (out_files[n], path), n++;
+	  }
+	while (FindNextFileA (h, &fd));
+	FindClose (h);
+      }
+    snprintf (search, sizeof (search), "%s\\%s_*.slow.log", dir, pattern);
+    h = FindFirstFileA (search, &fd);
+    if (h != INVALID_HANDLE_VALUE)
+      {
+	do
+	  {
+	    if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+	      continue;
+	    if (n >= max_files)
+	      break;
+	    snprintf (path, sizeof (path), "%s\\%s", dir, fd.cFileName);
+	    out_files[n] = (char *) MALLOC (strlen (path) + 1);
+	    if (out_files[n])
+	      strcpy (out_files[n], path), n++;
+	  }
+	while (FindNextFileA (h, &fd));
+	FindClose (h);
+      }
+    snprintf (search, sizeof (search), "%s\\%s_*.slow.log.bak", dir, pattern);
+    h = FindFirstFileA (search, &fd);
+    if (h != INVALID_HANDLE_VALUE)
+      {
+	do
+	  {
+	    if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+	      continue;
+	    if (n >= max_files)
+	      break;
+	    snprintf (path, sizeof (path), "%s\\%s", dir, fd.cFileName);
+	    out_files[n] = (char *) MALLOC (strlen (path) + 1);
+	    if (out_files[n])
+	      strcpy (out_files[n], path), n++;
+	  }
+	while (FindNextFileA (h, &fd));
+	FindClose (h);
+      }
+  }
+  return n;
+}
+
+static int
+log_top_get_brokers_from_dir (const char *dir, char *out_brokers[], int max_brokers)
+{
+  HANDLE h;
+  WIN32_FIND_DATAA fd;
+  char pattern[BROKER_LOG_TOP_MAX_PATH];
+  char seen[256][256];
+  char broker[256];
+  char *last_underscore;
+  size_t elen, suffix_len;
+  int nseen = 0;
+  int n = 0;
+  int i;
+  const char *patterns[] =
+    { "*_*.sql.log", "*_*.sql.log.bak", "*_*.slow.log", "*_*.slow.log.bak", NULL };
+
+  for (i = 0; patterns[i] && n < max_brokers; i++)
+    {
+      snprintf (pattern, sizeof (pattern), "%s\\%s", dir, patterns[i]);
+      h = FindFirstFileA (pattern, &fd);
+      if (h == INVALID_HANDLE_VALUE)
+	continue;
+      do
+	{
+	  if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+	    continue;
+	  elen = strlen (fd.cFileName);
+	  suffix_len = log_top_cas_log_suffix_len (fd.cFileName);
+	  if (suffix_len == 0)
+	    continue;
+	  if (elen <= suffix_len)
+	    continue;
+	  {
+	    size_t copy_len = elen - suffix_len;
+	    if (copy_len >= sizeof (broker))
+	      copy_len = sizeof (broker) - 1;
+	    memcpy (broker, fd.cFileName, copy_len);
+	    broker[copy_len] = '\0';
+	  }
+	  last_underscore = strrchr (broker, '_');
+	  if (!last_underscore || (size_t) (last_underscore - broker) >= sizeof (broker) - 1)
+	    continue;
+	  *last_underscore = '\0';
+	  {
+	    int j;
+	    for (j = 0; j < nseen; j++)
+	      if (strcmp (seen[j], broker) == 0)
+		break;
+	    if (j < nseen)
+	      continue;
+	  }
+	  if (nseen < 256)
+	    {
+	      snprintf (seen[nseen], sizeof (seen[0]), "%.255s", broker);
+	      nseen++;
+	    }
+	  if (n >= max_brokers)
+	    continue;
+	  out_brokers[n] = (char *) MALLOC (strlen (broker) + 1);
+	  if (out_brokers[n])
+	    {
+	      strcpy (out_brokers[n], broker);
+	      n++;
+	    }
+	}
+      while (FindNextFileA (h, &fd));
+      FindClose (h);
+    }
+  return n;
+}
+#endif
+
+#if !defined(WINDOWS)
+static int
+log_top_get_brokers_from_dir (const char *dir, char *out_brokers[], int max_brokers)
+{
+  DIR *d;
+  struct dirent *e;
+  char seen[256][256];
+  int nseen = 0;
+  int n = 0;
+  int i;
+  char broker[256];
+  char *last_underscore;
+  size_t suffix_len;
+
+  d = opendir (dir);
+  if (!d)
+    return 0;
+
+  while ((e = readdir (d)) != NULL && n < max_brokers)
+    {
+      size_t elen = strlen (e->d_name);
+      if (elen < 4)
+	continue;
+      suffix_len = log_top_cas_log_suffix_len (e->d_name);
+      if (suffix_len == 0)
+	continue;
+      {
+	size_t copy_len = elen - suffix_len;
+	if (copy_len >= sizeof (broker))
+	  copy_len = sizeof (broker) - 1;
+	memcpy (broker, e->d_name, copy_len);
+	broker[copy_len] = '\0';
+      }
+      last_underscore = strrchr (broker, '_');
+      if (!last_underscore || (size_t) (last_underscore - broker) >= sizeof (broker) - 1)
+	continue;
+      *last_underscore = '\0';
+      for (i = 0; i < nseen; i++)
+	if (strcmp (seen[i], broker) == 0)
+	  break;
+      if (i < nseen)
+	continue;
+      if (nseen < 256)
+	{
+	  snprintf (seen[nseen], sizeof (seen[0]), "%.255s", broker);
+	  nseen++;
+	}
+      if (n >= max_brokers)
+	continue;
+      out_brokers[n] = (char *) MALLOC (strlen (broker) + 1);
+      if (out_brokers[n])
+	{
+	  strcpy (out_brokers[n], broker);
+	  n++;
+	}
+    }
+  closedir (d);
+  return n;
+}
+#endif
+
+static void
+log_top_broker_to_safe (const char *name, char *out, size_t out_len)
+{
+  size_t i, j;
+  if (out_len < 2)
+    return;
+  for (i = 0, j = 0; name[i] && j < out_len - 1; i++)
+    {
+      if (name[i] == '*' || name[i] == '?' || name[i] == '[')
+	out[j++] = '_';
+      else
+	out[j++] = name[i];
+    }
+  out[j] = '\0';
+}
+
+#if !defined(WINDOWS)
+static int
+log_top_mkdir_out (const char *path)
+{
+  return mkdir (path, 0755);
+}
+#else
+static int
+log_top_mkdir_out (const char *path)
+{
+  return _mkdir (path);
+}
+#endif
+
+static int
+log_top_multi_dir_is_conf_multi (void)
+{
+  return log_top_multi_explicit_dirs_flag != 0
+    || strcasecmp (log_top_multi_log_dir, "LOG_DIR") == 0;
+}
+
+static int
+log_top_fill_parent_out_base (char *parent_out_base, size_t parent_sz)
+{
+  time_t now;
+  struct tm tm_buf;
+
+  memset (&tm_buf, 0, sizeof (tm_buf));
+  const char *env_out_base = getenv ("OUT_BASE");
+
+  if (env_out_base && env_out_base[0])
+    {
+      snprintf (parent_out_base, parent_sz, "%s", env_out_base);
+      return 0;
+    }
+  now = time (NULL);
+#if !defined(WINDOWS)
+  if (localtime_r (&now, &tm_buf) == NULL)
+#else
+  if (localtime_s (&tm_buf, &now) != 0)
+#endif
+    {
+      fprintf (stderr, "Error: cannot get local time\n");
+      return -1;
+    }
+  strftime (parent_out_base, parent_sz, "broker_log_top_%y%m%d_%H%M", &tm_buf);
+  return 0;
+}
+
+/* sigsetjmp로 감싼 log_top_tran / log_top_query — 원본 main(Unix)과 동일한 호출, 복구만 추가 */
+static int
+log_top_sigjmp_tran_query_inner (int nfiles, char **files, volatile int *qerr)
+{
+#if !defined(WINDOWS)
+  if (sigsetjmp (broker_log_top_segfault_jmp, 1) == 0)
+    {
+      broker_log_top_segfault_jmp_valid = 1;
+      signal (SIGSEGV, broker_log_top_segfault_handler);
+      if (mode_tran)
+	*qerr = log_top_tran (nfiles, files, 0);
+      else
+	*qerr = log_top_query (nfiles, files, 0);
+      broker_log_top_segfault_jmp_valid = 0;
+      signal (SIGSEGV, SIG_DFL);
+      return 0;
+    }
+  broker_log_top_segfault_jmp_valid = 0;
+  signal (SIGSEGV, SIG_DFL);
+  fprintf (stderr, "Warning: segmentation fault during processing, skipping.\n");
+  *qerr = 0;
+  return 1;
+#else
+  if (mode_tran)
+    *qerr = log_top_tran (nfiles, files, 0);
+  else
+    *qerr = log_top_query (nfiles, files, 0);
+  return 0;
+#endif
+}
+
+/* broker_log_top.c_old 의 Unix main 과 동일하게 (argc,argv,arg_start) 로 tran/query 호출 */
+static int
+log_top_sigjmp_tran_query_argv (int argc, char **argv, int arg_start, volatile int *qerr)
+{
+#if !defined(WINDOWS)
+  if (sigsetjmp (broker_log_top_segfault_jmp, 1) == 0)
+    {
+      broker_log_top_segfault_jmp_valid = 1;
+      signal (SIGSEGV, broker_log_top_segfault_handler);
+      if (mode_tran)
+	*qerr = log_top_tran (argc, argv, arg_start);
+      else
+	*qerr = log_top_query (argc, argv, arg_start);
+      broker_log_top_segfault_jmp_valid = 0;
+      signal (SIGSEGV, SIG_DFL);
+      return 0;
+    }
+  broker_log_top_segfault_jmp_valid = 0;
+  signal (SIGSEGV, SIG_DFL);
+  fprintf (stderr, "Warning: segmentation fault during processing.\n");
+  *qerr = 0;
+  return 1;
+#else
+  if (mode_tran)
+    *qerr = log_top_tran (argc, argv, arg_start);
+  else
+    *qerr = log_top_query (argc, argv, arg_start);
+  return 0;
+#endif
+}
+
+static void
+log_top_multi_run_one_broker (const char *parent_out_base, const char *subdir_for_mkdir,
+			      int use_safe_mkdir, const char *stdout_label, char **files, int nfiles, char *saved_cwd,
+			      volatile int *error_io)
+{
+  char subdir[BROKER_LOG_TOP_MAX_PATH];
+  char broker_safe[256];
+  const char *mkcomp = subdir_for_mkdir;
+  volatile int i;
+  volatile int qerr = 0;
+
+  if (use_safe_mkdir)
+    {
+      log_top_broker_to_safe (subdir_for_mkdir, broker_safe, sizeof (broker_safe));
+      mkcomp = broker_safe;
+    }
+  snprintf (subdir, sizeof (subdir), "%.1023s/%.255s", parent_out_base, mkcomp);
+  if (log_top_mkdir_out (subdir) < 0 && errno != EEXIST)
+    {
+      fprintf (stderr, "Error: cannot create output directory: %s\n", subdir);
+      log_top_free_heap_files (files, nfiles);
+      *error_io = -1;
+      return;
+    }
+  if (LOG_TOP_CHDIR (subdir) < 0)
+    {
+      fprintf (stderr, "Error: cannot chdir to %s\n", subdir);
+      log_top_free_heap_files (files, nfiles);
+      *error_io = -1;
+      return;
+    }
+  fprintf (stdout, "%s\n", stdout_label);
+  query_info_reset ();
+  if (log_top_sigjmp_tran_query_inner (nfiles, files, &qerr) == 0)
+    {
+      LOG_TOP_CHDIR ((char *) saved_cwd);
+      for (i = 0; i < nfiles; i++)
+	FREE_MEM (files[i]);
+      if (qerr != 0)
+	*error_io = qerr;
+    }
+  else
+    {
+      LOG_TOP_CHDIR ((char *) saved_cwd);
+      log_top_free_heap_files (files, nfiles);
+    }
+}
+
+static int
+log_top_multi_run (void)
+{
+  char *dirs[BROKER_LOG_TOP_MAX_DIRS];
+  volatile char **files = NULL;
+  char norm[BROKER_LOG_TOP_MAX_PATH];
+  char parent_out_base[BROKER_LOG_TOP_MAX_PATH];
+  char cwd_buf[BROKER_LOG_TOP_MAX_PATH];
+  volatile char *saved_cwd = NULL;
+  volatile int ndirs = 0;
+  volatile int d = 0, i = 0;
+  volatile int nfiles = 0;
+  int error = 0;
+  struct stat st;
+
+  saved_cwd = getcwd (cwd_buf, sizeof (cwd_buf));
+  if (saved_cwd == NULL)
+    {
+      fprintf (stderr, "Error: cannot get current directory\n");
+      return -1;
+    }
+
+  /* 배치 모드는 안정성이 우선: MT_MODE 사용 시에도 단일 스레드로 실행 */
+  broker_log_top_force_single_thread = 1;
+
+  if (strcmp (log_top_multi_log_dir, ".") == 0 && log_top_multi_broker_name != NULL)
+    {
+      int nfiles;
+      int j;
+      volatile int qerr_dot = 0;
+
+      files = (volatile char **) calloc (BROKER_LOG_TOP_MAX_FILES, sizeof (char *));
+      if (files == NULL)
+	{
+	  fprintf (stderr, "Error: memory allocation failed\n");
+	  return -1;
+	}
+      nfiles = log_top_is_pattern (log_top_multi_broker_name)
+	? log_top_gather_files_pattern_all (log_top_multi_broker_name, cwd_buf, (char **) files,
+					    BROKER_LOG_TOP_MAX_FILES)
+	: log_top_gather_files_exact (log_top_multi_broker_name, cwd_buf, (char **) files,
+				      BROKER_LOG_TOP_MAX_FILES);
+      if (nfiles == 0)
+	{
+	  fprintf (stderr, "Info: no files for broker '%s' in current directory.\n", log_top_multi_broker_name);
+	  free ((void *) files);
+	  return -1;
+	}
+      fprintf (stdout, "%s\n", log_top_multi_broker_name);
+      query_info_reset ();
+      if (log_top_sigjmp_tran_query_inner (nfiles, (char **) files, &qerr_dot) == 0)
+	error = (int) qerr_dot;
+      else
+	error = 0;
+      for (j = 0; j < nfiles; j++)
+	{
+	  char *fj = (char *) files[j];
+
+	  FREE_MEM (fj);
+	  files[j] = fj;
+	}
+      free ((void *) files);
+      return error;
+    }
+
+  if (log_top_fill_parent_out_base (parent_out_base, sizeof (parent_out_base)) < 0)
+    {
+      return -1;
+    }
+
+  if (log_top_mkdir_out (parent_out_base) < 0 && errno != EEXIST)
+    {
+      fprintf (stderr, "Error: cannot create output directory: %s\n", parent_out_base);
+      return -1;
+    }
+
+  if (log_top_multi_explicit_dirs_flag)
+    {
+      ndirs = log_top_multi_explicit_ndirs;
+      for (d = 0; d < ndirs; d++)
+	{
+	  dirs[d] = log_top_multi_explicit_dirs_buf[d];
+	}
+    }
+  else if (strcasecmp (log_top_multi_log_dir, "LOG_DIR") == 0)
+    {
+      ndirs = log_top_discover_log_dirs (dirs, BROKER_LOG_TOP_MAX_DIRS);
+      if (ndirs <= 0)
+	{
+	  fprintf (stderr, "Error: no valid LOG_DIR or SLOW_LOG_DIR found in cubrid_broker.conf\n");
+	  return -1;
+	}
+    }
+  else
+    {
+      log_top_normalize_path (log_top_multi_log_dir, norm, sizeof (norm));
+      if (stat (norm, &st) < 0 || !S_ISDIR (st.st_mode))
+	{
+	  fprintf (stderr, "Error: directory does not exist: %s\n", norm);
+	  return -1;
+	}
+      dirs[0] = (char *) MALLOC (strlen (norm) + 1);
+      if (!dirs[0])
+	return -1;
+      strcpy (dirs[0], norm);
+      ndirs = 1;
+    }
+
+  files = (volatile char **) calloc (BROKER_LOG_TOP_MAX_FILES, sizeof (char *));
+  if (files == NULL)
+    {
+      fprintf (stderr, "Error: memory allocation failed\n");
+      if (log_top_multi_dir_is_conf_multi ())
+	{
+	  for (d = 0; d < ndirs; d++)
+	    {
+	      FREE_MEM (dirs[d]);
+	    }
+	}
+      else if (dirs[0] != NULL)
+	{
+	  FREE_MEM (dirs[0]);
+	}
+      return -1;
+    }
+
+  if (log_top_multi_broker_name)
+    {
+      for (d = 0; d < ndirs && !error; d++)
+	{
+	  if (log_top_is_pattern (log_top_multi_broker_name))
+	    {
+	      nfiles = log_top_gather_files_pattern_all (log_top_multi_broker_name, dirs[d], (char **) files,
+							 BROKER_LOG_TOP_MAX_FILES);
+	      if (nfiles == 0)
+		{
+		  fprintf (stderr, "Info: [%s] no files matching pattern '%s', skipping.\n", dirs[d],
+			   log_top_multi_broker_name);
+		  goto next_dir;
+		}
+	      log_top_multi_run_one_broker (parent_out_base, log_top_multi_broker_name, 1,
+					   log_top_multi_broker_name, (char **) files, nfiles, (char *) saved_cwd,
+					   &error);
+	      nfiles = 0;
+	    }
+	  else
+	    {
+	      nfiles = log_top_gather_files_exact (log_top_multi_broker_name, dirs[d], (char **) files,
+						   BROKER_LOG_TOP_MAX_FILES);
+	      if (nfiles == 0)
+		{
+		  fprintf (stderr, "Info: [%s] no files for broker '%s', skipping.\n", dirs[d], log_top_multi_broker_name);
+		  goto next_dir;
+		}
+	      log_top_multi_run_one_broker (parent_out_base, log_top_multi_broker_name, 0,
+					   log_top_multi_broker_name, (char **) files, nfiles, (char *) saved_cwd,
+					   &error);
+	      nfiles = 0;
+	    }
+	next_dir:
+	  if (log_top_multi_dir_is_conf_multi ())
+	    {
+	      FREE_MEM (dirs[d]);
+	      dirs[d] = NULL;
+	    }
+	}
+    }
+  else
+    {
+      char *all_brokers[512];
+      char **all_files;
+      volatile int total_brokers = 0;
+      int bi, dir_idx, k;
+
+      memset (all_brokers, 0, sizeof (all_brokers));
+
+      all_files = (char **) calloc (BROKER_LOG_TOP_MAX_FILES, sizeof (char *));
+      if (all_files == NULL)
+	{
+	  fprintf (stderr, "Error: memory allocation failed\n");
+	  if (log_top_multi_dir_is_conf_multi ())
+	    {
+	      for (d = 0; d < ndirs; d++)
+		{
+		  FREE_MEM (dirs[d]);
+		}
+	    }
+	  else if (dirs[0] != NULL)
+	    {
+	      FREE_MEM (dirs[0]);
+	    }
+	  free ((void *) files);
+	  return -1;
+	}
+
+      for (dir_idx = 0; dir_idx < ndirs && total_brokers < 512; dir_idx++)
+	{
+	  char *dir_brokers[512];
+	  int dir_nb;
+
+	  memset (dir_brokers, 0, sizeof (dir_brokers));
+	  if (dirs[dir_idx] == NULL)
+	    continue;
+	  dir_nb = log_top_get_brokers_from_dir (dirs[dir_idx], dir_brokers, 512);
+
+	  for (bi = 0; bi < dir_nb && total_brokers < 512; bi++)
+	    {
+	      int found = 0;
+	      if (dir_brokers[bi] == NULL)
+		continue;
+	      for (k = 0; k < total_brokers; k++)
+		{
+		  if (all_brokers[k] != NULL && strcmp (all_brokers[k], dir_brokers[bi]) == 0)
+		    {
+		      found = 1;
+		      FREE_MEM (dir_brokers[bi]);
+		      dir_brokers[bi] = NULL;
+		      break;
+		    }
+		}
+	      if (!found)
+		{
+		  all_brokers[total_brokers] = dir_brokers[bi];
+		  total_brokers++;
+		}
+	    }
+	  for (; bi < dir_nb; bi++)
+	    {
+	      if (dir_brokers[bi] != NULL)
+		{
+		  FREE_MEM (dir_brokers[bi]);
+		  dir_brokers[bi] = NULL;
+		}
+	    }
+	}
+
+      if (total_brokers == 0)
+	{
+	  fprintf (stderr, "Info: no brokers found in any directory.\n");
+	  if (log_top_multi_dir_is_conf_multi ())
+	    {
+	      for (d = 0; d < ndirs; d++)
+		{
+		  FREE_MEM (dirs[d]);
+		  dirs[d] = NULL;
+		}
+	    }
+	  else if (dirs[0] != NULL)
+	    {
+	      FREE_MEM (dirs[0]);
+	      dirs[0] = NULL;
+	    }
+	  free (all_files);
+	  free ((void *) files);
+	  return 0;
+	}
+
+      for (i = 0; i < total_brokers && !error; i++)
+	{
+	  volatile int total_files = 0;
+	  int dir_idx;
+	  int num_files = 0;
+
+	  memset (all_files, 0, sizeof (char *) * BROKER_LOG_TOP_MAX_FILES);
+
+	  if (all_brokers[i] == NULL)
+	    continue;
+
+	  for (dir_idx = 0; dir_idx < ndirs && total_files < BROKER_LOG_TOP_MAX_FILES; dir_idx++)
+	    {
+	      if (dirs[dir_idx] == NULL)
+		continue;
+	      int dir_files = log_top_gather_files_exact (all_brokers[i], dirs[dir_idx],
+							all_files + total_files,
+							BROKER_LOG_TOP_MAX_FILES - total_files);
+	      total_files += dir_files;
+	    }
+	  num_files = total_files;
+
+	  if (total_files == 0)
+	    {
+	      FREE_MEM (all_brokers[i]);
+	      all_brokers[i] = NULL;
+	      continue;
+	    }
+
+	  log_top_multi_run_one_broker (parent_out_base, all_brokers[i], 0, all_brokers[i], all_files, num_files,
+				       (char *) saved_cwd, &error);
+	  memset (all_files, 0, sizeof (char *) * BROKER_LOG_TOP_MAX_FILES);
+	  FREE_MEM (all_brokers[i]);
+	  all_brokers[i] = NULL;
+	}
+
+      for (k = 0; k < total_brokers; k++)
+	{
+	  if (all_brokers[k] != NULL)
+	    {
+	      FREE_MEM (all_brokers[k]);
+	      all_brokers[k] = NULL;
+	    }
+	}
+      free (all_files);
+    }
+
+  if (files != NULL)
+    {
+      free ((void *) files);
+      files = NULL;
+    }
+
+#if !defined(WINDOWS)
+  if (sigsetjmp (broker_log_top_segfault_jmp, 1) == 0)
+    {
+      broker_log_top_segfault_jmp_valid = 1;
+      signal (SIGSEGV, broker_log_top_segfault_handler);
+      if (log_top_multi_dir_is_conf_multi ())
+	{
+	  for (d = 0; d < ndirs; d++)
+	    {
+	      if (dirs[d] != NULL)
+		{
+		  FREE_MEM (dirs[d]);
+		  dirs[d] = NULL;
+		}
+	    }
+	}
+      else
+	{
+	  if (dirs[0] != NULL)
+	    {
+	      FREE_MEM (dirs[0]);
+	      dirs[0] = NULL;
+	    }
+	}
+      broker_log_top_segfault_jmp_valid = 0;
+      signal (SIGSEGV, SIG_DFL);
+    }
+  else
+    {
+      broker_log_top_segfault_jmp_valid = 0;
+      signal (SIGSEGV, SIG_DFL);
+      fprintf (stderr, "Warning: segmentation fault during final cleanup, skipping.\n");
+    }
+#else
+  if (log_top_multi_dir_is_conf_multi ())
+    {
+      for (d = 0; d < ndirs; d++)
+	{
+	  if (dirs[d] != NULL)
+	    {
+	      FREE_MEM (dirs[d]);
+	      dirs[d] = NULL;
+	    }
+	}
+    }
+  else
+    {
+      if (dirs[0] != NULL)
+	{
+	  FREE_MEM (dirs[0]);
+	  dirs[0] = NULL;
+	}
+    }
+#endif
+
+  return error;
+}
+
 int
 get_file_offset (char *filename, long *start_offset, long *end_offset)
 {
@@ -352,25 +1597,37 @@ log_top_query (int argc, char *argv[], int arg_start)
   int error = 0;
   long start_offset, end_offset;
 #ifdef MT_MODE
+  int use_mt = 0;
   T_THREAD thrid;
   int j;
 #endif
 
 #ifdef MT_MODE
-  query_info_mutex_init ();
+  if (!broker_log_top_force_single_thread && num_thread > 1)
+    {
+      use_mt = 1;
+    }
+  if (use_mt)
+    {
+      query_info_mutex_init ();
+    }
 #endif
 
 #ifdef MT_MODE
-  work_msg = MALLOC (sizeof (T_WORK_MSG) * num_thread);
-  if (work_msg == NULL)
+  if (use_mt)
     {
-      fprintf (stderr, "malloc error\n");
-      return -1;
-    }
-  memset (work_msg, 0, sizeof (T_WORK_MSG *) * num_thread);
+      process_flag = 1;
+      work_msg = MALLOC (sizeof (T_WORK_MSG) * num_thread);
+      if (work_msg == NULL)
+	{
+	  fprintf (stderr, "malloc error\n");
+	  return -1;
+	}
+      memset (work_msg, 0, sizeof (T_WORK_MSG) * num_thread);
 
-  for (i = 0; i < num_thread; i++)
-    THREAD_BEGIN (thrid, thr_main, (void *) i);
+      for (i = 0; i < num_thread; i++)
+	THREAD_BEGIN (thrid, thr_main, (void *) i);
+    }
 #endif
 
   for (i = arg_start; i < argc; i++)
@@ -398,21 +1655,33 @@ log_top_query (int argc, char *argv[], int arg_start)
 	}
 
 #ifdef MT_MODE
-      while (1)
+      if (use_mt)
 	{
-	  for (j = 0; j < num_thread; j++)
+	  while (1)
 	    {
-	      if (work_msg[j].filename == NULL)
+	      for (j = 0; j < num_thread; j++)
 		{
-		  work_msg[j].fp = fp;
-		  work_msg[j].filename = filename;
-		  break;
+		  if (work_msg[j].filename == NULL)
+		    {
+		      work_msg[j].fp = fp;
+		      work_msg[j].filename = filename;
+		      break;
+		    }
 		}
+	      if (j == num_thread)
+		SLEEP_MILISEC (1, 0);
+	      else
+		break;
 	    }
-	  if (j == num_thread)
-	    SLEEP_MILISEC (1, 0);
-	  else
-	    break;
+	}
+      else
+	{
+	  error = log_top (fp, filename, start_offset, end_offset);
+	  fclose (fp);
+	  if (error == LT_INVAILD_VERSION)
+	    {
+	      return error;
+	    }
 	}
 #else
       error = log_top (fp, filename, start_offset, end_offset);
@@ -425,7 +1694,10 @@ log_top_query (int argc, char *argv[], int arg_start)
     }
 
 #ifdef MT_MODE
-  process_flag = 0;
+  if (use_mt)
+    {
+      process_flag = 0;
+    }
 #endif
 
   if (sql_info_file != NULL)
@@ -441,6 +1713,227 @@ log_top_query (int argc, char *argv[], int arg_start)
   query_info_print ();
 
   return 0;
+}
+
+typedef struct lt_split_sort lt_split_sort;
+struct lt_split_sort
+{
+  char *path;
+  char key[256];
+};
+
+static int
+lt_split_sort_cmp (const void *a, const void *b)
+{
+  return strcmp (((const lt_split_sort *) a)->key, ((const lt_split_sort *) b)->key);
+}
+
+static int
+log_top_basename_is_cas_sql_slow_log (const char *basename)
+{
+  return log_top_cas_log_suffix_len (basename) != 0;
+}
+
+static int
+log_top_path_is_cas_sql_slow_log (const char *path)
+{
+  const char *base = path;
+  const char *p;
+
+  p = strrchr (path, '/');
+#if defined(WINDOWS)
+  {
+    const char *p2 = strrchr (path, '\\');
+    if (p2 != NULL && (p == NULL || p2 > p))
+      p = p2;
+  }
+#endif
+  if (p != NULL)
+    base = p + 1;
+  return log_top_basename_is_cas_sql_slow_log (base);
+}
+
+static int
+log_top_broker_key_from_basename (const char *basename, char *out, size_t outlen)
+{
+  size_t elen = strlen (basename);
+  size_t suffix_len;
+  char tmp[512];
+  char *lastu;
+
+  suffix_len = log_top_cas_log_suffix_len (basename);
+  if (suffix_len == 0)
+    {
+      snprintf (out, outlen, "%s", basename);
+      return -1;
+    }
+  if (elen <= suffix_len)
+    {
+      snprintf (out, outlen, "%s", basename);
+      return -1;
+    }
+  if (elen - suffix_len >= sizeof (tmp))
+    {
+      snprintf (out, outlen, "%s", basename);
+      return -1;
+    }
+  memcpy (tmp, basename, elen - suffix_len);
+  tmp[elen - suffix_len] = '\0';
+  lastu = strrchr (tmp, '_');
+  if (lastu == NULL || lastu == tmp)
+    {
+      snprintf (out, outlen, "%s", basename);
+      return -1;
+    }
+  *lastu = '\0';
+  snprintf (out, outlen, "%.255s", tmp);
+  return 0;
+}
+
+static void
+log_top_broker_key_from_path (const char *path, char *out, size_t outlen)
+{
+  const char *base = path;
+  const char *p;
+
+  p = strrchr (path, '/');
+#if defined(WINDOWS)
+  {
+    const char *p2 = strrchr (path, '\\');
+    if (p2 != NULL && (p == NULL || p2 > p))
+      p = p2;
+  }
+#endif
+  if (p != NULL)
+    base = p + 1;
+  (void) log_top_broker_key_from_basename (base, out, outlen);
+}
+
+static int
+log_top_query_split_paths (int nfiles, char **paths)
+{
+  lt_split_sort *tab = NULL;
+  char parent_out_base[BROKER_LOG_TOP_MAX_PATH];
+  char cwd_buf[BROKER_LOG_TOP_MAX_PATH];
+  char *saved_cwd;
+  char subdir[BROKER_LOG_TOP_MAX_PATH];
+  char broker_safe[256];
+  int i, k;
+  int nvalid;
+  volatile int error = 0;
+  int g_start, g_end;
+  volatile char **argv_small = NULL;
+
+  if (nfiles <= 0 || paths == NULL)
+    return -1;
+
+  nvalid = 0;
+  for (i = 0; i < nfiles; i++)
+    {
+      if (log_top_path_is_cas_sql_slow_log (paths[i]))
+	nvalid++;
+      else
+	fprintf (stderr, "Info: skipping (not a CAS sql/slow log): %s\n", paths[i]);
+    }
+  if (nvalid == 0)
+    {
+      fprintf (stderr,
+	       "Error: no CAS sql/slow log files (.sql.log, .sql.log.bak, .slow.log, .slow.log.bak) in arguments.\n");
+      return -1;
+    }
+
+  tab = (lt_split_sort *) calloc ((size_t) nvalid, sizeof (lt_split_sort));
+  if (tab == NULL)
+    {
+      fprintf (stderr, "Error: memory allocation failed\n");
+      return -1;
+    }
+  for (i = 0, k = 0; i < nfiles; i++)
+    {
+      if (!log_top_path_is_cas_sql_slow_log (paths[i]))
+	continue;
+      tab[k].path = paths[i];
+      log_top_broker_key_from_path (paths[i], tab[k].key, sizeof (tab[k].key));
+      k++;
+    }
+  qsort (tab, (size_t) nvalid, sizeof (tab[0]), lt_split_sort_cmp);
+
+  saved_cwd = getcwd (cwd_buf, sizeof (cwd_buf));
+  if (saved_cwd == NULL)
+    {
+      fprintf (stderr, "Error: cannot get current directory\n");
+      free (tab);
+      return -1;
+    }
+
+  broker_log_top_force_single_thread = 1;
+
+  if (log_top_fill_parent_out_base (parent_out_base, sizeof (parent_out_base)) < 0)
+    {
+      free (tab);
+      return -1;
+    }
+  if (log_top_mkdir_out (parent_out_base) < 0 && errno != EEXIST)
+    {
+      fprintf (stderr, "Error: cannot create output directory: %s\n", parent_out_base);
+      free (tab);
+      return -1;
+    }
+
+  g_start = 0;
+  while (g_start < nvalid)
+    {
+      volatile int qerr = 0;
+
+      g_end = g_start + 1;
+      while (g_end < nvalid && strcmp (tab[g_end].key, tab[g_start].key) == 0)
+	g_end++;
+
+      argv_small = (volatile char **) calloc ((size_t) (g_end - g_start), sizeof (char *));
+      if (argv_small == NULL)
+	{
+	  fprintf (stderr, "Error: memory allocation failed\n");
+	  error = -1;
+	  break;
+	}
+      for (k = 0; k < g_end - g_start; k++)
+	argv_small[k] = tab[g_start + k].path;
+
+      log_top_broker_to_safe (tab[g_start].key, broker_safe, sizeof (broker_safe));
+      snprintf (subdir, sizeof (subdir), "%.1023s/%.255s", parent_out_base, broker_safe);
+
+      if (log_top_mkdir_out (subdir) < 0 && errno != EEXIST)
+	{
+	  fprintf (stderr, "Error: cannot create output directory: %s\n", subdir);
+	  error = -1;
+	  free ((void *) argv_small);
+	  break;
+	}
+      if (LOG_TOP_CHDIR (subdir) < 0)
+	{
+	  fprintf (stderr, "Error: cannot chdir to %s\n", subdir);
+	  error = -1;
+	  free ((void *) argv_small);
+	  break;
+	}
+
+      fprintf (stdout, "%s\n", tab[g_start].key);
+      query_info_reset ();
+      if (log_top_sigjmp_tran_query_inner (g_end - g_start, (char **) argv_small, &qerr) == 0)
+	{
+	  LOG_TOP_CHDIR ((char *) saved_cwd);
+	  if (qerr != 0)
+	    error = qerr;
+	}
+      else
+	LOG_TOP_CHDIR ((char *) saved_cwd);
+      free ((void *) argv_small);
+      argv_small = NULL;
+      g_start = g_end;
+    }
+
+  free (tab);
+  return (int) error;
 }
 
 #ifdef MT_MODE
@@ -728,7 +2221,9 @@ log_execute (T_QUERY_INFO * qi, char *linebuf, char **query_p)
   exec_h_id = atoi (p + 9);
   *query_p = strchr (p + 9, ' ');
   if (*query_p)
-    *query_p = *query_p + 1;
+    {
+      *query_p = *query_p + 1;
+    }
 
   if (exec_h_id <= 0 || exec_h_id > MAX_SRV_HANDLE)
     {
@@ -744,8 +2239,19 @@ static int
 get_args (int argc, char *argv[])
 {
   int c;
+  int option_index = 0;
+  int from_conf_mode = 0;
 
-  while ((c = getopt (argc, argv, "tq:h:F:T:")) != EOF)
+  log_top_multi_explicit_dirs_flag = 0;
+  log_top_out_merge = 1;
+
+  static struct option long_options[] = {
+    {"all-broker-log", optional_argument, 0, 'l'},
+    {"from-conf", no_argument, 0, 'C'},
+    {0, 0, 0, 0}
+  };
+
+  while ((c = getopt_long (argc, argv, "tq:h:F:T:O:Cl::", long_options, &option_index)) != EOF)
     {
       switch (c)
 	{
@@ -770,19 +2276,135 @@ get_args (int argc, char *argv[])
 	      goto date_format_err;
 	    }
 	  break;
+	case 'l':
+	  if (from_conf_mode)
+	    {
+	      goto getargs_err;
+	    }
+	  if (optarg && optarg[0])
+	    {
+	      log_top_multi_log_dir = optarg;
+	    }
+	  else if (optind < argc && strchr (argv[optind], '/') != NULL)
+	    {
+	      log_top_multi_log_dir = argv[optind];
+	      optind++;
+	    }
+	  else
+	    {
+	      log_top_multi_log_dir = "LOG_DIR";
+	    }
+	  break;
+	case 'C':
+	  if (log_top_multi_log_dir != NULL)
+	    {
+	      goto getargs_err;
+	    }
+	  from_conf_mode = 1;
+	  log_top_multi_log_dir = "LOG_DIR";
+	  break;
+	case 'O':
+	  if (optarg == NULL)
+	    {
+	      goto getargs_err;
+	    }
+	  if (strcmp (optarg, "merge") != 0 && strcmp (optarg, "split") != 0)
+	    {
+	      fprintf (stderr, "Error: invalid -O value: %s (allowed: merge|split)\n", optarg);
+	      goto getargs_err;
+	    }
+	  log_top_out_merge = (strcmp (optarg, "merge") == 0);
+	  break;
 	default:
 	  goto getargs_err;
 	}
     }
 
   if (mode_max_handle_lower_bound > 0)
-    log_top_mode = MODE_MAX_HANDLE;
+    {
+      log_top_mode = MODE_MAX_HANDLE;
+    }
+
+  /* -O split + only directory path(s): same batch layout as --from-conf / --all-broker-log */
+  if (!log_top_out_merge && log_top_multi_log_dir == NULL && optind < argc)
+    {
+      struct stat st;
+      char norm[BROKER_LOG_TOP_MAX_PATH];
+      int dir_idx;
+      int n_remain = argc - optind;
+      int all_dir = 1;
+
+      for (dir_idx = 0; dir_idx < n_remain; dir_idx++)
+	{
+	  log_top_normalize_path (argv[optind + dir_idx], norm, sizeof (norm));
+	  if (stat (norm, &st) != 0 || !S_ISDIR (st.st_mode))
+	    {
+	      all_dir = 0;
+	      break;
+	    }
+	}
+      if (all_dir && n_remain >= 1 && n_remain <= BROKER_LOG_TOP_MAX_DIRS)
+	{
+	  for (dir_idx = 0; dir_idx < n_remain; dir_idx++)
+	    {
+	      log_top_normalize_path (argv[optind + dir_idx], norm, sizeof (norm));
+	      log_top_multi_explicit_dirs_buf[dir_idx] = (char *) MALLOC (strlen (norm) + 1);
+	      if (log_top_multi_explicit_dirs_buf[dir_idx] == NULL)
+		{
+		  while (dir_idx > 0)
+		    {
+		      dir_idx--;
+		      FREE_MEM (log_top_multi_explicit_dirs_buf[dir_idx]);
+		      log_top_multi_explicit_dirs_buf[dir_idx] = NULL;
+		    }
+		  goto getargs_err;
+		}
+	      strcpy (log_top_multi_explicit_dirs_buf[dir_idx], norm);
+	    }
+	  log_top_multi_explicit_dirs_flag = 1;
+	  log_top_multi_explicit_ndirs = n_remain;
+	  optind += n_remain;
+	  log_top_multi_log_dir = log_top_multi_explicit_sentinel;
+	  log_top_multi_broker_name = NULL;
+	  return optind;
+	}
+    }
+
+  if (optind < argc && optind + 1 == argc)
+    {
+      const char *arg = argv[optind];
+      if (strchr (arg, '/') == NULL && log_top_cas_log_suffix_len (arg) == 0)
+	{
+	  log_top_multi_broker_name = arg;
+	  if (log_top_multi_log_dir == NULL)
+	    {
+	      log_top_multi_log_dir = ".";
+	    }
+	}
+    }
+
+  if (from_conf_mode && optind < argc)
+    {
+      goto getargs_err;
+    }
+
+  if (log_top_multi_log_dir != NULL)
+    {
+      return optind;
+    }
 
   if (optind < argc)
-    return optind;
+    {
+      return optind;
+    }
+
+  goto getargs_err;
 
 getargs_err:
-  fprintf (stderr, "%s [-t] [-F <from date>] [-T <to date>] <log_file> ...\n", argv[0]);
+  fprintf (stderr,
+	   "%s [-t] [-F <from date>] [-T <to date>] [-O <merge | split>] <log_file> ...\n"
+	   "or\n"
+	   "%s [-t] [-F <from date>] [-T <to date>] <--from-conf>\n", argv[0], argv[0]);
   return -1;
 date_format_err:
   fprintf (stderr, "invalid date. valid date format is yy-mm-dd hh:mm:ss.\n");
