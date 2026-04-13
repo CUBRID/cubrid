@@ -127,22 +127,14 @@ namespace cubthread
 			  const char *daemon_name /* = "" */, entry_manager *entry_mgr /* = NULL */)
   {
 #if defined (SERVER_MODE)
-    if (is_single_thread ())
-      {
-	assert (false);
-	return NULL;
-      }
-    else
-      {
-	assert (m_daemons.size () <= daemon_registry_t::count ());
+    assert (m_daemons.size () <= daemon_registry_t::count ());
 
-	if (entry_mgr == NULL)
-	  {
-	    entry_mgr = &m_daemon_entry_manager;
-	  }
-	// reserve 1 entry and add to m_daemons
-	return create_and_track_resource (m_daemons, 1, looper_arg, entry_mgr, exec_p, daemon_name);
+    if (entry_mgr == NULL)
+      {
+	entry_mgr = &m_daemon_entry_manager;
       }
+    // reserve 1 entry and add to m_daemons
+    return create_and_track_resource (m_daemons, 1, looper_arg, entry_mgr, exec_p, daemon_name);
 #else // not SERVER_MODE = SA_MODE
     assert (false);
     return NULL;
@@ -153,16 +145,8 @@ namespace cubthread
   manager::create_daemon_without_entry (const looper &looper_arg, task_without_context *exec_p, const char *daemon_name)
   {
 #if defined (SERVER_MODE)
-    if (is_single_thread ())
-      {
-	assert (false);
-	return NULL;
-      }
-    else
-      {
-	// reserve no entry and add to m_daemons_without_entries
-	return create_and_track_resource (m_daemons_without_entries, 0, looper_arg, exec_p, daemon_name);
-      }
+    // reserve no entry and add to m_daemons_without_entries
+    return create_and_track_resource (m_daemons_without_entries, 0, looper_arg, exec_p, daemon_name);
 #else // not SERVER_MODE = SA_MODE
     assert (false);
     return NULL;

@@ -357,23 +357,16 @@ namespace cubthread
 #if defined (SERVER_MODE)
     Res *workerpool;
 
-    if (is_single_thread ())
-      {
-	return NULL;
-      }
-    else
-      {
-	assert (m_worker_pools.size () <= workerpool_registry_t::count ());
+    assert (m_worker_pools.size () <= workerpool_registry_t::count ());
 
-	// reserve pool_size entries and add to m_worker_pools
-	workerpool = create_and_track_resource (m_worker_pools, pool_size,
-						pool_size, core_count, std::forward<CtArgs> (args)...);
-	if (workerpool)
-	  {
-	    workerpool->initialize (pool_size, core_count);
-	  }
-	return workerpool;
+    // reserve pool_size entries and add to m_worker_pools
+    workerpool = create_and_track_resource (m_worker_pools, pool_size,
+					    pool_size, core_count, std::forward<CtArgs> (args)...);
+    if (workerpool)
+      {
+	workerpool->initialize (pool_size, core_count);
       }
+    return workerpool;
 #else // not SERVER_MODE = SA_MODE
     return NULL;
 #endif // not SERVER_MODE = SA_MODE
@@ -400,7 +393,7 @@ namespace cubthread
   {
     check_not_single_thread ();
 
-    std::unique_lock<std::mutex> lock (m_entries_mutex);  // safe-guard
+    std::lock_guard<std::mutex> lock (m_entries_mutex);
 
     if (m_available_entries_count < entries_count)
       {
@@ -419,8 +412,9 @@ namespace cubthread
   void
   manager::destroy_and_untrack_resource (std::vector<Res *> &tracker, Res *&res, std::size_t entries_count)
   {
-    std::unique_lock<std::mutex> lock (m_entries_mutex);    // safe-guard
     check_not_single_thread ();
+
+    std::lock_guard<std::mutex> lock (m_entries_mutex);
 
     for (auto iter = tracker.begin (); iter != tracker.end (); ++iter)
       {
