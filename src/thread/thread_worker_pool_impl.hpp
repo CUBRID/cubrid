@@ -226,7 +226,7 @@ namespace cubthread
       // execute task
       void execute_task (task_type *task_p, bool is_temp) override;
 
-      // notify workers to stop; if any of core's workers are still running, outputs is_not_stopped = true
+      // notify workers to stop; if any of core's workers are still running, returns true
       bool stop_execution (void) override;
       void retire_queued_tasks (void);
 
@@ -303,7 +303,7 @@ namespace cubthread
       // run task on current thread (push_time is provided by core)
       void push_task_on_running_thread (task_type *work_p);
 
-      // stop execution; if worker has a thread running, it outputs is_not_stopped = true
+      // stop execution; if worker has a thread running, returns true
       bool stop_execution (void) override;
 
       std::mutex &get_mutex (void)
@@ -373,7 +373,10 @@ namespace cubthread
       struct task_with_stats
       {
 	task_type *task;
+
 	cubperf::time_point at_created;
+
+	// Other stats might be added here
       };
 
       using inner_type = typename std::conditional_t<Stats, task_with_stats, task_only>;
