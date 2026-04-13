@@ -316,9 +316,12 @@ sp_make_int_sp_value_from_string (SP_VALUE * value_p, char *pos, int length)
 {
   int result = 0;
   char shard_key[SHARD_KEY_LENGTH + 1];
+  int key_len = (length > SHARD_KEY_LENGTH) ? SHARD_KEY_LENGTH : length;
   char *p;
 
-  snprintf (shard_key, SHARD_KEY_LENGTH, "%s", pos);
+  memcpy (shard_key, pos, key_len);
+  shard_key[key_len] = '\0';
+
   p = strchr (shard_key, ';');
   if (p)
     {
