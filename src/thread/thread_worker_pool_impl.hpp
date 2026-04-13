@@ -418,6 +418,7 @@ namespace cubthread
       static void destroy (cubperf::statset *stats);
 
       static void time_and_increment (cubperf::statset &stats, cubperf::stat_id id);
+      static void time_and_increment (cubperf::statset &stats, cubperf::stat_id id, cubperf::duration d);
       static void accumulate (const cubperf::statset &what, cubperf::stat_value *where);
 
       static std::size_t get_count (void);
@@ -1410,13 +1411,17 @@ namespace cubthread
       }
   }
 
+  //////////////////////////////////////////////////////////////////////////
+  // worker_pool_impl<Stats>::wrapped_task
+  //////////////////////////////////////////////////////////////////////////
+
   template <bool Stats>
   worker_pool_impl<Stats>::wrapped_task::wrapped_task (task_type *task_p)
   {
     m_inner.task = task_p;
     if constexpr (Stats)
       {
-	m_inner.at_created = cubperf::clock::now ();
+	m_inner.time = cubperf::clock::now ();
       }
   }
 
@@ -1504,6 +1509,16 @@ namespace cubthread
     if constexpr (Stats)
       {
 	statdef.time_and_increment (stats, id);
+      }
+  }
+
+  template <bool Stats>
+  void
+  worker_pool_impl<Stats>::stats::time_and_increment (cubperf::statset &stats, cubperf::stat_id id, cubperf::duration d)
+  {
+    if constexpr (Stats)
+      {
+	statdef.time_and_increment (stats, id, d);
       }
   }
 
