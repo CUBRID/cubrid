@@ -288,8 +288,6 @@ namespace cubthread
     public:
       friend class core_impl;
 
-      using stats_type = std::conditional_t<Stats, cubperf::statset, bool /* dummy */>;
-
       virtual ~worker_impl (void);
 
       // init
@@ -352,7 +350,7 @@ namespace cubthread
 
       bool m_is_temp;                         // true if worker is for temp task
 
-      stats_type *m_statistics;
+      cubperf::statset *m_statistics;	      // stats
   };
 
   // worker_pool_impl<Stats>::wrapped_task
@@ -373,7 +371,7 @@ namespace cubthread
       {
 	task_type *task;
 
-	cubperf::time_point at_created;
+	cubperf::time_point time;
 
 	// Other stats might be added here
       };
@@ -385,7 +383,7 @@ namespace cubthread
       ~wrapped_task ();
 
       task_type *get_task (void);
-      cubperf::time_point &get_created (void);
+      cubperf::time_point &get_time (void);
 
     private:
       inner_type m_inner;
@@ -1084,12 +1082,15 @@ namespace cubthread
     , m_stop (false)
     , m_has_thread (false)
     , m_is_temp (is_temp)
+    , m_statistics (stats::create ())
   {
+    assert (Stats ? m_statistics != nullptr : m_statistics == nullptr);
   }
 
   template <bool Stats>
   worker_pool_impl<Stats>::core_impl::worker_impl::~worker_impl (void)
   {
+    stats::destroy (m_statistics);
   }
 
   template <bool Stats>
@@ -1433,11 +1434,11 @@ namespace cubthread
 
   template <bool Stats>
   cubperf::time_point &
-  worker_pool_impl<Stats>::wrapped_task::get_created (void)
+  worker_pool_impl<Stats>::wrapped_task::get_time (void)
   {
     static_assert (Stats, "get_time() requires Stats == true");
 
-    return m_inner.at_created;
+    return m_inner.time;
   }
 
   //////////////////////////////////////////////////////////////////////////
