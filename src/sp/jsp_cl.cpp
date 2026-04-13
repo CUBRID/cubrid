@@ -1967,6 +1967,12 @@ sp_add_pkg_sp (MOP *mop_out, DB_OBJECT *classobj, MOP owner, DB_VALUE &current_d
 
   // attribute args
   mop_list = (MOP *) malloc (args_cnt * sizeof (MOP));	// side effect 1
+  if (!mop_list)
+    {
+      err = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, args_cnt * sizeof (MOP));
+      goto cleanup0;
+    }
 
   {
     DB_SET *seq;

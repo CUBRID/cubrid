@@ -418,7 +418,7 @@ public class ExecuteThread extends Thread {
                                 0, // directive
                                 0, // sql data access
                                 "xyz hello");
-                sp1.addArg("sp1a1", 1, 3, null, "sp1a1 comment");
+                sp1.addArg("sp1a1", 1, 3, "", "sp1a1 comment");
                 sp1.addArg("sp1a2", 4, 1, "'a'", "sp1a2 comment");
                 response.addPkgSp(sp1);
 
@@ -431,7 +431,7 @@ public class ExecuteThread extends Thread {
                                 3, // directive
                                 2, // sql data access
                                 "zyx hello");
-                sp2.addArg("sp2a1", 4, 2, null, "sp2a1 comment");
+                sp2.addArg("sp2a1", 4, 2, "", "sp2a1 comment");
                 sp2.addArg("sp2a2", 1, 1, "7", "sp2a2 comment");
                 response.addPkgSp(sp2);
 
