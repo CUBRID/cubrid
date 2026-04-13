@@ -505,13 +505,11 @@ log_top_discover_log_dirs (char *out_dirs[], int max_dirs)
       char *val, *p;
       for (p = line; *p && (*p == ' ' || *p == '\t'); p++)
 	;
-      if (strncasecmp (p, "SLOW_LOG_DIR", 12) == 0
-	  && (p[12] == '=' || p[12] == ' ' || p[12] == '\t'))
+      if (strncasecmp (p, "SLOW_LOG_DIR", 12) == 0 && (p[12] == '=' || p[12] == ' ' || p[12] == '\t'))
 	{
 	  p += 12;
 	}
-      else if (strncasecmp (p, "LOG_DIR", 7) == 0
-	       && (p[7] == '=' || p[7] == ' ' || p[7] == '\t'))
+      else if (strncasecmp (p, "LOG_DIR", 7) == 0 && (p[7] == '=' || p[7] == ' ' || p[7] == '\t'))
 	{
 	  p += 7;
 	}
@@ -631,7 +629,7 @@ log_top_gather_files_exact (const char *broker, const char *dir, char *out_files
 
 static int
 log_top_gather_files_pattern_suffix (const char *pattern, const char *dir, const char *suffix, size_t suffix_len,
-				   char *out_files[], int max_files)
+				     char *out_files[], int max_files)
 {
   DIR *d;
   struct dirent *e;
@@ -772,8 +770,7 @@ log_top_get_brokers_from_dir (const char *dir, char *out_brokers[], int max_brok
   int nseen = 0;
   int n = 0;
   int i;
-  const char *patterns[] =
-    { "*_*.sql.log", "*_*.sql.log.bak", "*_*.slow.log", "*_*.slow.log.bak", NULL };
+  const char *patterns[] = { "*_*.sql.log", "*_*.sql.log.bak", "*_*.slow.log", "*_*.slow.log.bak", NULL };
 
   for (i = 0; patterns[i] && n < max_brokers; i++)
     {
@@ -925,8 +922,7 @@ log_top_mkdir_out (const char *path)
 static int
 log_top_multi_dir_is_conf_multi (void)
 {
-  return log_top_multi_explicit_dirs_flag != 0
-    || strcasecmp (log_top_multi_log_dir, "LOG_DIR") == 0;
+  return log_top_multi_explicit_dirs_flag != 0 || strcasecmp (log_top_multi_log_dir, "LOG_DIR") == 0;
 }
 
 static int
@@ -1080,8 +1076,7 @@ log_top_multi_run (void)
       nfiles = log_top_is_pattern (log_top_multi_broker_name)
 	? log_top_gather_files_pattern_all (log_top_multi_broker_name, cwd_buf, (char **) files,
 					    BROKER_LOG_TOP_MAX_FILES)
-	: log_top_gather_files_exact (log_top_multi_broker_name, cwd_buf, (char **) files,
-				      BROKER_LOG_TOP_MAX_FILES);
+	: log_top_gather_files_exact (log_top_multi_broker_name, cwd_buf, (char **) files, BROKER_LOG_TOP_MAX_FILES);
       if (nfiles == 0)
 	{
 	  fprintf (stderr, "Info: no files for broker '%s' in current directory.\n", log_top_multi_broker_name);
@@ -1171,8 +1166,8 @@ log_top_multi_run (void)
 		  goto next_dir;
 		}
 	      log_top_multi_run_one_broker (parent_out_base, log_top_multi_broker_name, 1,
-					   log_top_multi_broker_name, (char **) files, nfiles, (char *) saved_cwd,
-					   &error);
+					    log_top_multi_broker_name, (char **) files, nfiles, (char *) saved_cwd,
+					    &error);
 	      nfiles = 0;
 	    }
 	  else
@@ -1181,12 +1176,13 @@ log_top_multi_run (void)
 						   BROKER_LOG_TOP_MAX_FILES);
 	      if (nfiles == 0)
 		{
-		  fprintf (stderr, "Info: [%s] no files for broker '%s', skipping.\n", dirs[d], log_top_multi_broker_name);
+		  fprintf (stderr, "Info: [%s] no files for broker '%s', skipping.\n", dirs[d],
+			   log_top_multi_broker_name);
 		  goto next_dir;
 		}
 	      log_top_multi_run_one_broker (parent_out_base, log_top_multi_broker_name, 0,
-					   log_top_multi_broker_name, (char **) files, nfiles, (char *) saved_cwd,
-					   &error);
+					    log_top_multi_broker_name, (char **) files, nfiles, (char *) saved_cwd,
+					    &error);
 	      nfiles = 0;
 	    }
 	next_dir:
@@ -1281,8 +1277,8 @@ log_top_multi_run (void)
 	      if (dirs[dir_idx] == NULL)
 		continue;
 	      int dir_files = log_top_gather_files_exact (all_brokers[i], dirs[dir_idx],
-							all_files + total_files,
-							BROKER_LOG_TOP_MAX_FILES - total_files);
+							  all_files + total_files,
+							  BROKER_LOG_TOP_MAX_FILES - total_files);
 	      total_files += dir_files;
 	    }
 	  num_files = total_files;
@@ -1295,7 +1291,7 @@ log_top_multi_run (void)
 	    }
 
 	  log_top_multi_run_one_broker (parent_out_base, all_brokers[i], 0, all_brokers[i], all_files, num_files,
-				       (char *) saved_cwd, &error);
+					(char *) saved_cwd, &error);
 	  memset (all_files, 0, sizeof (char *) * BROKER_LOG_TOP_MAX_FILES);
 	  FREE_MEM (all_brokers[i]);
 	  all_brokers[i] = NULL;
@@ -2185,8 +2181,7 @@ get_args (int argc, char *argv[])
 getargs_err:
   fprintf (stderr,
 	   "%s [-t] [-F <from date>] [-T <to date>] [-O <merge | split>] <log_file> ...\n"
-	   "or\n"
-	   "%s [-t] [-F <from date>] [-T <to date>] <--from-conf>\n", argv[0], argv[0]);
+	   "or\n" "%s [-t] [-F <from date>] [-T <to date>] <--from-conf>\n", argv[0], argv[0]);
   return -1;
 date_format_err:
   fprintf (stderr, "invalid date. valid date format is yy-mm-dd hh:mm:ss.\n");
