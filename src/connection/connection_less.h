@@ -33,9 +33,6 @@ class connection_less
 private:
   unsigned short m_entry_id;
   CSS_MAP_ENTRY *m_css_map_entry;
-#if defined(MULTI_CONN_TO_A_SERVER)
-  pthread_mutex_t m_css_map_entry_lock = PTHREAD_MUTEX_INITIALIZER;
-#endif
 
 private:
   unsigned short css_make_entry_id ();
