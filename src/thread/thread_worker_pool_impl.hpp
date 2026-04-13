@@ -181,7 +181,7 @@ namespace cubthread
       virtual std::unique_ptr<core> allocate_core (bool pool_threads);
 
       virtual void allocate_cores (std::size_t core_count);
-      virtual void assign_workers_to_cores (std::size_t core_count, std::size_t worker_count);
+      virtual void assign_workers_to_cores (std::size_t worker_count);
 
       // get next core by policy
       virtual std::size_t get_next_core (void);
@@ -404,7 +404,7 @@ namespace cubthread
   worker_pool_impl<Stats>::initialize (std::size_t worker_count, std::size_t core_count)
   {
     allocate_cores (core_count);
-    assign_workers_to_cores (core_count, worker_count);
+    assign_workers_to_cores (worker_count);
   }
 
   template <bool Stats>
@@ -594,7 +594,7 @@ namespace cubthread
 
   template <bool Stats>
   void
-  worker_pool_impl<Stats>::assign_workers_to_cores (std::size_t core_count, std::size_t worker_count)
+  worker_pool_impl<Stats>::assign_workers_to_cores (std::size_t worker_count)
   {
     std::size_t quotient, remainder;
     std::size_t it;
