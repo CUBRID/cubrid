@@ -131,7 +131,6 @@ static void tf_free_fixup (OR_FIXUP * fix);
 static void fixup_callback (LC_OIDMAP * oidmap);
 static int tf_do_fixup (OR_FIXUP * fix);
 static int put_varinfo (OR_BUF * buf, char *obj, SM_CLASS * class_, int offset_size);
-static void tf_put_last_var_offset (OR_BUF * buf, int offset);
 static int object_size (SM_CLASS * class_, MOBJ obj, int *offset_size_ptr);
 static int put_attributes (OR_BUF * buf, char *obj, SM_CLASS * class_);
 static char *get_current (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int bound_bit_flag, int offset_size);
@@ -646,13 +645,6 @@ put_varinfo (OR_BUF * buf, char *obj, SM_CLASS * class_, int offset_size)
     }
   return rc;
 }
-
-static void
-tf_put_last_var_offset (OR_BUF * buf, int offset)
-{
-  or_put_offset (buf, OR_SET_VAR_LAST_ELEMENT (offset));
-}
-
 
 /*
  * object_size - Calculates the amount of disk storage required for an instance.
@@ -2078,7 +2070,7 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
   offset += (domain->json_validator == NULL
 	     ? 0 : string_disk_size (db_json_get_schema_raw_from_validator (domain->json_validator)));
 
-  tf_put_last_var_offset (buf, offset);
+  or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   /* ATTRIBUTES */
@@ -2270,7 +2262,7 @@ metharg_to_disk (OR_BUF * buf, SM_METHOD_ARGUMENT * arg)
   offset = tf_Metaclass_metharg.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_metharg.mc_n_variable);
   or_put_offset (buf, offset);
   offset += substructure_set_size ((DB_LIST *) arg->domain, (LSIZER) domain_size);
-  tf_put_last_var_offset (buf, offset);
+  or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   /* ATTRIBUTES */
@@ -2391,7 +2383,7 @@ methsig_to_disk (OR_BUF * buf, SM_METHOD_SIGNATURE * sig)
   or_put_offset (buf, offset);
   offset += substructure_set_size ((DB_LIST *) sig->args, (LSIZER) metharg_size);
 
-  tf_put_last_var_offset (buf, offset);
+  or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
 
@@ -2544,7 +2536,7 @@ method_to_disk (OR_BUF * buf, SM_METHOD * method)
   offset += property_list_size (method->properties);
 
   /* end of variables */
-  tf_put_last_var_offset (buf, offset);
+  or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   /* ATTRIBUTES */
@@ -2671,7 +2663,7 @@ methfile_to_disk (OR_BUF * buf, SM_METHOD_FILE * file)
   offset += property_list_size (NULL);
 
   /* end of object */
-  tf_put_last_var_offset (buf, offset);
+  or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   /* ATTRIBUTES */
@@ -2793,7 +2785,7 @@ query_spec_to_disk (OR_BUF * buf, SM_QUERY_SPEC * query_spec)
   or_put_offset (buf, offset);
   offset += string_disk_size (query_spec->specification);
 
-  tf_put_last_var_offset (buf, offset);
+  or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   /* ATTRIBUTES */
@@ -2916,7 +2908,7 @@ attribute_to_disk (OR_BUF * buf, SM_ATTRIBUTE * att)
   offset += string_disk_size (att->comment);
 
   /* end of object */
-  tf_put_last_var_offset (buf, offset);
+  or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   /* ATTRIBUTES */
@@ -3207,7 +3199,7 @@ resolution_to_disk (OR_BUF * buf, SM_RESOLUTION * res)
   offset += string_disk_size (res->alias);
 
   /* end of object */
-  tf_put_last_var_offset (buf, offset);
+  or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   /* ATTRIBUTES */
@@ -3343,7 +3335,7 @@ repattribute_to_disk (OR_BUF * buf, SM_REPR_ATTRIBUTE * rat)
   offset += substructure_set_size ((DB_LIST *) rat->domain, (LSIZER) domain_size);
 
   /* end of object */
-  tf_put_last_var_offset (buf, offset);
+  or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
   /* fixed width attributes */
   or_put_int (buf, rat->attid);
@@ -3468,7 +3460,7 @@ representation_to_disk (OR_BUF * buf, SM_REPRESENTATION * rep)
   or_put_offset (buf, offset);
   offset += property_list_size (NULL);
   /* end of object */
-  tf_put_last_var_offset (buf, offset);
+  or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   or_put_int (buf, rep->id);
@@ -3668,7 +3660,7 @@ put_class_varinfo (OR_BUF * buf, SM_CLASS * class_)
   offset += substructure_set_size ((DB_LIST *) class_->partition, (LSIZER) partition_info_size);
 
   /* end of object */
-  tf_put_last_var_offset (buf, offset);
+  or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   return (offset);
@@ -4261,7 +4253,7 @@ root_to_disk (OR_BUF * buf, ROOT_CLASS * root)
   offset += string_disk_size (sm_ch_name ((MOBJ) root));
 
   /* end of object */
-  tf_put_last_var_offset (buf, offset);
+  or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   assert (OID_ISNULL (sm_ch_rep_dir ((MOBJ) root)));	/* is dummy */
@@ -4899,7 +4891,7 @@ partition_info_to_disk (OR_BUF * buf, SM_PARTITION * partition_info)
   or_put_offset (buf, offset);
   offset += string_disk_size (partition_info->comment);
 
-  tf_put_last_var_offset (buf, offset);
+  or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   /* ATTRIBUTES */

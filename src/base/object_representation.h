@@ -400,6 +400,9 @@ OR_PUT_DOUBLE (char *ptr, double val)
 #define OR_PUT_OFFSET(ptr, val) \
   OR_PUT_BIG_VAR_OFFSET ((ptr), (val))
 
+#define OR_PUT_LAST_VAR_OFFSET(ptr, val) \
+  OR_PUT_OFFSET ((ptr), OR_SET_VAR_LAST_ELEMENT (val))
+
 #define OR_GET_OFFSET(ptr) \
   OR_GET_BIG_VAR_OFFSET ((ptr))
 
@@ -447,6 +450,22 @@ OR_PUT_DOUBLE (char *ptr, double val)
 
 #define OR_IS_OOS(length) (OR_GET_VAR_FLAG (length) & OR_VAR_BIT_OOS)
 #define OR_IS_LAST_ELEMENT(length) (OR_GET_VAR_FLAG (length) & OR_VAR_BIT_LAST_ELEMENT)
+
+STATIC_INLINE int
+or_var_offset_apply_flags (int offset, bool is_oos, bool is_last_element)
+{
+  if (is_oos)
+    {
+      offset = OR_SET_VAR_OOS (offset);
+    }
+
+  if (is_last_element)
+    {
+      offset = OR_SET_VAR_LAST_ELEMENT (offset);
+    }
+
+  return offset;
+}
 
 /* OOS inline size: OOS OID (8 bytes) + OOS length (8 bytes) */
 #define OR_OOS_INLINE_SIZE (OR_OID_SIZE + OR_BIGINT_SIZE)
@@ -2552,6 +2571,12 @@ STATIC_INLINE int
 or_put_offset (OR_BUF * buf, int num)
 {
   return or_put_big_var_offset (buf, num);
+}
+
+STATIC_INLINE int
+or_put_last_var_offset (OR_BUF * buf, int num)
+{
+  return or_put_offset (buf, OR_SET_VAR_LAST_ELEMENT (num));
 }
 
 STATIC_INLINE int

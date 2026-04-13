@@ -855,7 +855,6 @@ static int heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERA
 					     bool is_mvcc_class);
 static int heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * update_context,
 					     bool is_mvcc_class);
-static int heap_vot_apply_flags (int offset, bool is_oos, bool is_last_element);
 static bool heap_recdes_check_has_oos (const RECDES * recdes);
 static int heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 static int heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
@@ -12694,7 +12693,7 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	}
 
       /* VOT low 2 bits are reserved for storage flags. Keep all writes centralized. */
-      length = heap_vot_apply_flags (length, is_oos, false);
+      length = or_var_offset_apply_flags (length, is_oos, false);
       or_put_offset_internal (buf, length, offset_size);
     }
 
@@ -12772,22 +12771,6 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   return S_SUCCESS;
 }
 
-static int
-heap_vot_apply_flags (int offset, bool is_oos, bool is_last_element)
-{
-  if (is_oos)
-    {
-      offset = OR_SET_VAR_OOS (offset);
-    }
-
-  if (is_last_element)
-    {
-      offset = OR_SET_VAR_LAST_ELEMENT (offset);
-    }
-
-  return offset;
-}
-
 /*
  * heap_attrinfo_transform_columns_to_disk ()
  *   return: SCAN_CODE
@@ -12860,8 +12843,8 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
       else
 	{
 	  or_put_offset_internal (buf,
-				  heap_vot_apply_flags (CAST_BUFLEN (ptr_varvals - buf->buffer - header_size), false,
-							true), offset_size);
+				  or_var_offset_apply_flags (CAST_BUFLEN (ptr_varvals - buf->buffer - header_size),
+							     false, true), offset_size);
 	}
       buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
