@@ -7111,7 +7111,7 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
   PT_NODE *remote_expr = NULL;
   PT_NODE *outer_expr = NULL;
   int ncorr;
-  bool hint_corr_push;
+  bool hint_no_push;
 
   (void) arg;
 
@@ -7120,7 +7120,7 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
       return node;
     }
 
-  hint_corr_push = (node->info.query.q.select.hint & PT_HINT_DBLINK_CORR_PUSH) != 0;
+  hint_no_push = (node->info.query.q.select.hint & PT_HINT_DBLINK_NO_PUSH_DOWN_SUBQ) != 0;
 
   for (spec = node->info.query.q.select.from; spec; spec = spec->next)
     {
@@ -7130,7 +7130,7 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 	  dinfo = &derived_table->info.dblink_table;
 	  mq_dblink_clear_corr_keys (parser, dinfo);
 
-	  if (hint_corr_push || prm_get_bool_value (PRM_ID_USE_DBLINK_CORR_PUSHDOWN))
+	  if (!hint_no_push && prm_get_bool_value (PRM_ID_USE_DBLINK_CORR_PUSHDOWN))
 	    {
 	      ncorr = mq_detect_dblink_corr_eq (parser, node, spec);
 	      if (ncorr == 1)
