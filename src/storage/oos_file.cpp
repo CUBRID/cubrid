@@ -560,9 +560,11 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 	      found = OOS_FINDSPACE_ERROR;
 	      break;
 	    }
-	  /* Clear error and continue */
+	  /* Clear error and continue — log unexpected errors for diagnostics */
 	  if (err != NO_ERROR)
 	    {
+	      oos_trace ("conditional latch failed for vpid={vol=%d,page=%d}, er_errid=%d — skipping",
+			 candidate_vpid.volid, candidate_vpid.pageid, err);
 	      er_clear ();
 	    }
 	  notfound_cnt++;
@@ -753,10 +755,10 @@ oos_stats_sync_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
       oos_hdr->estimates.full_search_vpid = scan_vpid;
     }
 
-  /* On full scan, clear best[] entries that were not refreshed (heap pattern).
-   * Since OOS fills into NULL slots rather than linearly, we clear all slots
-   * and re-derive best_count from non-null entries after the scan loop. */
-  if (scan_all && best_count < OOS_NUM_BEST_SPACESTATS)
+  /* On full scan, clear stale best[] entries with freespace below the threshold.
+   * This runs regardless of best_count so that full slots with stale low-freespace
+   * values are cleaned up after a complete scan. */
+  if (scan_all)
     {
       for (int i = 0; i < OOS_NUM_BEST_SPACESTATS; i++)
 	{
@@ -1213,8 +1215,9 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &re
 
     oos_log_insert_physical (thread_p, page_ptr, const_cast<VFID *> (&oos_vfid), &oid, &oos_rec);
 
-    /* Update bestspace cache after insert */
-    int freespace_after = spage_get_free_space (thread_p, page_ptr);
+    /* Update bestspace cache after insert — use spage_max_space_for_new_record
+     * for consistency with the lookup check in oos_stats_find_page_in_bestspace */
+    int freespace_after = spage_max_space_for_new_record (thread_p, page_ptr);
     (void) oos_stats_add_bestspace (thread_p, &oos_vfid, &vpid, freespace_after);
   }
   assert (oos_rec.data == nullptr); // should be freed by scope_exit
@@ -1539,7 +1542,17 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 
       auto result_page = pgbuf_fix_auto_unfix (thread_p, &vpid, OLD_PAGE,
 			 PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (result_page != nullptr)
+      if (result_page == nullptr)
+	{
+	  /* Re-fix failed — propagate error if it is not a benign latch timeout */
+	  int refix_err = er_errid ();
+	  if (refix_err == ER_INTERRUPTED)
+	    {
+	      return nullptr;
+	    }
+	  /* Fall through to allocate new page */
+	}
+      else
 	{
 	  /* Re-check free space after unconditional re-fix (race window protection) */
 	  int actual_free = spage_max_space_for_new_record (thread_p, result_page.get ());
@@ -1557,10 +1570,11 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 
   auto new_page = oos_file_alloc_new (thread_p, oos_vfid, vpid);
 
-  /* Update bestspace cache with the new page */
+  /* Update bestspace cache with the new page — use spage_max_space_for_new_record
+   * for consistency with the lookup check in oos_stats_find_page_in_bestspace */
   if (new_page != nullptr)
     {
-      int free_space = spage_get_free_space (thread_p, new_page.get());
+      int free_space = spage_max_space_for_new_record (thread_p, new_page.get());
       (void) oos_stats_add_bestspace (thread_p, &oos_vfid, &vpid, free_space);
     }
 
@@ -1626,8 +1640,6 @@ oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
   log_append_undoredo_recdes (thread_p, RVOOS_DELETE, &log_addr, recdes_p, NULL);
 }
 
-// TODO: caller connection — heap_update → oos_delete, vacuum → oos_delete are not yet wired.
-//       These will be connected in the upper story.
 // TODO: concurrency — this function assumes the caller holds a row-level lock (e.g., X_LOCK from heap layer)
 //       to prevent concurrent deletion of the same OOS chain. Verify this assumption when wiring callers.
 
@@ -1699,6 +1711,9 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
 	  return error;
 	}
       pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
+
+      /* Update bestspace cache — page now has more free space after delete */
+      oos_stats_update (thread_p, page_ptr, &oos_vfid, 0);
 
       oos_debug ("deleted chunk at oid={vol=%d,page=%d,slot=%d}, next={vol=%d,page=%d,slot=%d}",
 		 OID_AS_ARGS (&current_oid), OID_AS_ARGS (&next_chunk_oid));

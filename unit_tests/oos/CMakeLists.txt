@@ -87,7 +87,7 @@ add_test(NAME test_oos_bestspace COMMAND test_oos_bestspace)
 # add_test(NAME test_oos_record_descriptor COMMAND test_oos_record_descriptor)
 
 set_tests_properties(
-  test_oos test_oos_delete test_oos_remove_file
+  test_oos test_oos_delete test_oos_remove_file test_oos_bestspace
   PROPERTIES FIXTURES_REQUIRED OOS_DB
 )
 
