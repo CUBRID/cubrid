@@ -1611,7 +1611,6 @@ float_numeric_div_fast (uint64_t dividend_val, uint64_t divisor_val,
 
   return ret;
 #else
-  assert (false);
   return ER_FAILED;
 #endif
 }
