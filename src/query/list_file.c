@@ -7093,11 +7093,7 @@ qfile_collect_list_sector_info (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
   assert (list_id->tfile_vfid != NULL);
   assert (sector_info != NULL);
 
-  /* Defensively free any prior state so callers may reuse sector_info without
-   * having to remember to call qfile_free_list_sector_info() first. This also
-   * prevents a silent memory leak in release builds if a caller forgets.
-   * After this call sector_info is already in its fully-initialized state
-   * (all pointers NULL, sector_cnt = 0), so no separate INIT is needed. */
+  /* reset sector_info */
   qfile_free_list_sector_info (thread_p, sector_info);
 
   /* membuf exists only in the first list_id */
