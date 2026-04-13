@@ -110,34 +110,34 @@ namespace cubthread
 
     public:
       // forward definition
-      class stats;
       class core_impl;
+      class wrapped_task;
+      class stats;
 
       virtual ~worker_pool_impl ();
 
       // init
-      virtual void initialize (std::size_t worker_count, std::size_t core_count);
+      virtual void initialize (std::size_t worker_count, std::size_t core_count) override;
 
       // execute task; execution is guaranteed, even if maximum number of tasks is reached.
-      void execute (task_type *work_arg);
+      void execute (task_type *work_arg) override;
 
       // execute on give core.
-      virtual void execute_on_core (task_type *work_arg, std::size_t core_hash, bool is_temp = false);
+      virtual void execute_on_core (task_type *work_arg, std::size_t core_hash, bool is_temp = false) override;
 
       // stop worker pool; stop all running threads; discard any tasks in queue
-      void stop_execution (void);
+      void stop_execution (void) override;
 
-      // is_running = is not stopped; when created, a worker pool starts running.
       // worker is stopped after stop_execution () is called
-      bool is_running (void) const;
+      bool is_running (void) const override;
 
       // get maximum number of threads that can run concurrently in this worker pool
-      std::size_t get_worker_count (void) const;
+      std::size_t get_worker_count (void) const override;
       // get the number of cores
-      std::size_t get_core_count (void) const;
+      std::size_t get_core_count (void) const override;
 
       // get worker pool statistics
-      void get_stats (cubperf::stat_value *stats_out) const;
+      void get_stats (cubperf::stat_value *stats_out) const override;
       // log stats to error log file
 
       void er_log_stats (void) const;
@@ -227,7 +227,7 @@ namespace cubthread
       void execute_task (task_type *task_p, bool is_temp) override;
 
       // notify workers to stop; if any of core's workers are still running, outputs is_not_stopped = true
-      void notify_stop (bool &is_not_stopped);
+      bool stop_execution (void) override;
       void retire_queued_tasks (void);
 
       // get a task or add worker to free active list (still running, but ready to execute another task)
@@ -265,12 +265,15 @@ namespace cubthread
 
       std::vector<std::unique_ptr<worker>> m_workers;
       std::vector<worker *> m_available_workers;
-      std::queue<task_type *> m_task_queue;           // list of tasks pushed while all workers were occupied
-      mutable std::mutex m_workers_mutex;             // mutex to synchronize activity on worker lists
+      std::queue<wrapped_task> m_task_queue;
+      // mutex to synchronize activity on worker lists
+      mutable std::mutex m_workers_mutex;
 
-      std::vector<std::unique_ptr<worker>> m_temp_workers;	      // temporary executed workers for method/stored procedure
+      // temporary executed workers for method/stored procedure
+      std::vector<std::unique_ptr<worker>> m_temp_workers;
       std::vector<std::unique_ptr<worker>> m_free_temp_workers;
-      mutable std::mutex m_temp_workers_mutex;        // mutex to synchronize temp worker lists
+      // mutex to synchronize temp worker lists
+      mutable std::mutex m_temp_workers_mutex;
   };
 
   // worker_pool_impl<Stats>::core_impl::worker_impl
@@ -284,6 +287,8 @@ namespace cubthread
   {
     public:
       friend class core_impl;
+
+      using stats_type = std::conditional_t<Stats, cubperf::statset, bool /* dummy */>;
 
       virtual ~worker_impl (void);
 
@@ -299,7 +304,7 @@ namespace cubthread
       void push_task_on_running_thread (task_type *work_p);
 
       // stop execution; if worker has a thread running, it outputs is_not_stopped = true
-      void stop_execution (bool &is_not_stopped);
+      bool stop_execution (void) override;
 
       std::mutex &get_mutex (void)
       {
@@ -347,6 +352,41 @@ namespace cubthread
       bool m_has_thread;                      // true if worker has a thread running
 
       bool m_is_temp;                         // true if worker is for temp task
+
+      stats_type *m_statistics;
+  };
+
+  // worker_pool_impl<Stats>::wrapped_task
+  //
+  // description
+  //    wrapper task for timing.
+  //
+  template <bool Stats>
+  class worker_pool_impl<Stats>::wrapped_task
+  {
+    private:
+      struct task_only
+      {
+	task_type *task;
+      };
+
+      struct task_with_stats
+      {
+	task_type *task;
+	cubperf::time_point at_created;
+      };
+
+      using inner_type = typename std::conditional_t<Stats, task_with_stats, task_only>;
+
+    public:
+      explicit wrapped_task (task_type *task_p);
+      ~wrapped_task ();
+
+      task_type *get_task (void);
+      cubperf::time_point &get_created (void);
+
+    private:
+      inner_type m_inner;
   };
 
   //////////////////////////////////////////////////////////////////////////
@@ -494,21 +534,20 @@ namespace cubthread
 #endif
 
     auto timeout = std::chrono::system_clock::now () + time_wait_to_thread_stop;
+    bool has_running_workers;
 
-    bool is_not_stopped;
     while (true)
       {
 	// notify all cores to stop
-	is_not_stopped = false;     // assume all are stopped
+	has_running_workers = false;
+
 	for (const auto &it : m_cores)
 	  {
-	    assert (dynamic_cast<core_impl *> (it.get ()));
-
 	    // notify all workers to stop. if any worker is still running, is_not_stopped = true is output
-	    static_cast<core_impl *> (it.get ())->notify_stop (is_not_stopped);
+	    has_running_workers |= it->stop_execution ();
 	  }
 
-	if (!is_not_stopped)
+	if (!has_running_workers)
 	  {
 	    // all stopped
 	    break;
@@ -786,22 +825,24 @@ namespace cubthread
 	else
 	  {
 	    // save to queue
-	    m_task_queue.push (task_p);
+	    m_task_queue.emplace (task_p);
 	  }
       }
   }
 
   template <bool Stats>
-  void
-  worker_pool_impl<Stats>::core_impl::notify_stop (bool &is_not_stopped)
+  bool
+  worker_pool_impl<Stats>::core_impl::stop_execution (void)
   {
+    bool has_running_workers = false;
+
     // stop all temp workers first
     {
       std::unique_lock<std::mutex> ulock (m_temp_workers_mutex);
 
       for (const auto &it : m_temp_workers)
 	{
-	  static_cast<worker_impl *> (it.get ())->stop_execution (is_not_stopped);
+	  has_running_workers |= it->stop_execution ();
 	}
     }
 
@@ -811,9 +852,11 @@ namespace cubthread
 
       for (const auto &it : m_workers)
 	{
-	  static_cast<worker_impl *> (it.get ())->stop_execution (is_not_stopped);
+	  has_running_workers |= it->stop_execution ();
 	}
     }
+
+    return has_running_workers;
   }
 
   template <bool Stats>
@@ -824,7 +867,8 @@ namespace cubthread
 
     while (!m_task_queue.empty ())
       {
-	m_task_queue.front ()->retire ();
+	wrapped_task &queued_task = m_task_queue.front ();
+	queued_task.get_task ()->retire ();
 	m_task_queue.pop ();
       }
   }
@@ -837,7 +881,8 @@ namespace cubthread
 
     if (!m_task_queue.empty ())
       {
-	task_type *task_p = m_task_queue.front ();
+	wrapped_task &queued_task = m_task_queue.front ();
+	task_type *task_p = queued_task.get_task ();
 	assert (task_p != NULL);
 	m_task_queue.pop ();
 
@@ -1129,10 +1174,11 @@ namespace cubthread
   }
 
   template <bool Stats>
-  void
-  worker_pool_impl<Stats>::core_impl::worker_impl::stop_execution (bool &is_not_stopped)
+  bool
+  worker_pool_impl<Stats>::core_impl::worker_impl::stop_execution (void)
   {
     context_type *context_p = m_context_p;
+    bool has_thread = false;
 
     if (context_p != NULL)
       {
@@ -1146,7 +1192,7 @@ namespace cubthread
     if (m_has_thread)
       {
 	// this thread is still running
-	is_not_stopped = true;
+	has_thread = true;
       }
 
     // stop worker
@@ -1154,12 +1200,12 @@ namespace cubthread
     // mutex is not needed for notify
     ulock.unlock ();
 
-    if (m_is_temp)
+    // The temp worker doesn't wait on task_cv; it executes the task immediately and terminates.
+    if (!m_is_temp)
       {
-	// not to notify one if it is for temp
-	return;
+	m_task_cv.notify_one ();
       }
-    m_task_cv.notify_one ();
+    return has_thread;
   }
 
   template <bool Stats>
@@ -1378,6 +1424,37 @@ namespace cubthread
 	// found task
 	return true;
       }
+  }
+
+  template <bool Stats>
+  worker_pool_impl<Stats>::wrapped_task::wrapped_task (task_type *task_p)
+  {
+    m_inner.task = task_p;
+    if constexpr (Stats)
+      {
+	m_inner.at_created = cubperf::clock::now ();
+      }
+  }
+
+  template <bool Stats>
+  worker_pool_impl<Stats>::wrapped_task::~wrapped_task (void)
+  {
+  }
+
+  template <bool Stats>
+  typename worker_pool_impl<Stats>::task_type *
+  worker_pool_impl<Stats>::wrapped_task::get_task (void)
+  {
+    return m_inner.task;
+  }
+
+  template <bool Stats>
+  cubperf::time_point &
+  worker_pool_impl<Stats>::wrapped_task::get_created (void)
+  {
+    static_assert (Stats, "get_time() requires Stats == true");
+
+    return m_inner.at_created;
   }
 
   //////////////////////////////////////////////////////////////////////////
