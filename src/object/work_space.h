@@ -667,19 +667,6 @@ extern bool ws_need_flush (void);
 
 extern int ws_set_ignore_error_list_for_mflush (int error_count, int *error_list);
 
-extern int ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int packed_pkey_value_length,
-				    RECDES * recdes, int operation, bool has_index);
-extern void ws_init_repl_objs (void);
-extern void ws_clear_all_repl_objs (void);
-extern void ws_free_repl_obj (WS_REPL_OBJ * obj);
-extern WS_REPL_OBJ *ws_get_repl_obj_from_list (void);
-
-extern void ws_set_repl_error_into_error_link (LC_COPYAREA_ONEOBJ * obj, char *content_ptr);
-
-extern WS_REPL_FLUSH_ERR *ws_get_repl_error_from_error_link (void);
-extern void ws_clear_all_repl_errors_of_error_link (void);
-extern void ws_free_repl_flush_error (WS_REPL_FLUSH_ERR * flush_err);
-
 extern unsigned int ws_get_mvcc_snapshot_version (void);
 extern void ws_increment_mvcc_snapshot_version (void);
 extern bool ws_is_mop_fetched_with_current_snapshot (MOP mop);
@@ -692,5 +679,28 @@ extern int ws_add_label_value_to_mop (MOP mop, DB_VALUE * val);
 extern void ws_clean_label_value_list (MOP mop);
 
 extern bool ws_is_trigger_involved ();
+
+#ifdef __cplusplus
+class ws_repl
+{
+private:
+  WS_REPL_FLUSH_ERR * m_Repl_error_link;
+  WS_REPL_LIST m_Repl_objs;
+public:
+    ws_repl ();
+   ~ws_repl ();
+
+  int ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int packed_pkey_value_length,
+			       RECDES * recdes, int operation, bool has_index);
+  void ws_init_repl_objs (void);
+  void ws_clear_all_repl_objs (void);
+  void ws_free_repl_obj (WS_REPL_OBJ * obj);
+  WS_REPL_OBJ *ws_get_repl_obj_from_list (void);
+  void ws_set_repl_error_into_error_link (LC_COPYAREA_ONEOBJ * obj, char *content_ptr);
+  WS_REPL_FLUSH_ERR *ws_get_repl_error_from_error_link (void);
+  void ws_clear_all_repl_errors_of_error_link (void);
+  void ws_free_repl_flush_error (WS_REPL_FLUSH_ERR * flush_err);
+};
+#endif
 
 #endif /* _WORK_SPACE_H_ */
