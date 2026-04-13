@@ -65,7 +65,7 @@ namespace cubthread
   worker_pool::initialize (std::size_t worker_count, std::size_t core_count)
   {
     allocate_cores (core_count);
-    assign_workers_to_cores (core_count, worker_count);
+    assign_workers_to_cores (worker_count);
 
     // [optional] this option must be useful using perf
     if (wp_is_thread_always_alive_forced ())
@@ -186,7 +186,7 @@ namespace cubthread
   }
 
   void
-  worker_pool::assign_workers_to_cores (std::size_t core_count, std::size_t worker_count)
+  worker_pool::assign_workers_to_cores (std::size_t worker_count)
   {
     std::size_t quotient, remainder;
     std::size_t it;

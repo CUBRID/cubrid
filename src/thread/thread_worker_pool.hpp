@@ -184,7 +184,7 @@ namespace cubthread
       virtual std::unique_ptr<core> allocate_core ();
 
       virtual void allocate_cores (std::size_t core_count);
-      virtual void assign_workers_to_cores (std::size_t core_count, std::size_t worker_count);
+      virtual void assign_workers_to_cores (std::size_t worker_count);
 
       // get next core by policy
       virtual std::size_t get_next_core (void);
