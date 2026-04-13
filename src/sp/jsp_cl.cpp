@@ -2943,11 +2943,11 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
       goto cleanup1;
     }
 
-  return NO_ERROR;
-
 cleanup2:
-  assert (obt);
-  dbt_abort_object (obt);
+  if (obt)
+    {
+      dbt_abort_object (obt);
+    }
 
 cleanup1:
 
