@@ -2003,6 +2003,7 @@ sp_add_pkg_sp (MOP *mop_out, DB_OBJECT *classobj, MOP owner, DB_VALUE &current_d
 	err = sp_add_pkg_sp_arg (&mop_list[i], classobj, i, a);
 	if (err != NO_ERROR)
 	  {
+	    set_free (seq);
 	    goto cleanup1;
 	  }
 
@@ -2011,6 +2012,7 @@ sp_add_pkg_sp (MOP *mop_out, DB_OBJECT *classobj, MOP owner, DB_VALUE &current_d
 	pr_clear_value (&v);
 	if (err != NO_ERROR)
 	  {
+	    set_free (seq);
 	    goto cleanup1;
 	  }
 
@@ -2361,6 +2363,7 @@ sp_add_pkg_cursor (MOP *mop_out, DB_OBJECT *classobj, const char *pkg_unique_nam
 	pr_clear_value (&v);
 	if (err != NO_ERROR)
 	  {
+	    set_free (seq);
 	    goto cleanup0;
 	  }
 
@@ -2474,6 +2477,7 @@ sp_add_pkg_rec_type (MOP *mop_out, DB_OBJECT *classobj, const char *pkg_unique_n
 	pr_clear_value (&v);
 	if (err != NO_ERROR)
 	  {
+	    set_free (seq);
 	    goto cleanup0;
 	  }
 
@@ -2625,16 +2629,16 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
 
   // insert into _db_stored_procedure and _db_stored_procedure_args (NOTE: but not into _db_stored_procedure_code)
   {
-    seq = set_create_sequence (0);
-    if (!seq)
+    classobj = db_find_class (CT_STORED_PROC_NAME);
+    if (classobj == NULL)
       {
 	assert (er_errid() != NO_ERROR);
 	err = er_errid();
 	goto cleanup2;
       }
 
-    classobj = db_find_class (CT_STORED_PROC_NAME);
-    if (classobj == NULL)
+    seq = set_create_sequence (0);
+    if (!seq)
       {
 	assert (er_errid() != NO_ERROR);
 	err = er_errid();
@@ -2648,6 +2652,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
 	err = sp_add_pkg_sp (&mop, classobj, owner, current_datetime, unique_name, pkg_name, sp);
 	if (err != NO_ERROR)
 	  {
+	    set_free (seq);
 	    goto cleanup2;
 	  }
 
@@ -2656,6 +2661,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
 	pr_clear_value (&v);
 	if (err != NO_ERROR)
 	  {
+	    set_free (seq);
 	    goto cleanup2;
 	  }
 
@@ -2679,16 +2685,16 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
 
   // insert into _db_package_var
   {
-    seq = set_create_sequence (0);
-    if (!seq)
+    classobj = db_find_class (CT_PACKAGE_VAR_NAME);
+    if (classobj == NULL)
       {
 	assert (er_errid() != NO_ERROR);
 	err = er_errid();
 	goto cleanup2;
       }
 
-    classobj = db_find_class (CT_PACKAGE_VAR_NAME);
-    if (classobj == NULL)
+    seq = set_create_sequence (0);
+    if (!seq)
       {
 	assert (er_errid() != NO_ERROR);
 	err = er_errid();
@@ -2702,6 +2708,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
 	err = sp_add_pkg_var (&mop, classobj, unique_name, var);
 	if (err != NO_ERROR)
 	  {
+	    set_free (seq);
 	    goto cleanup2;
 	  }
 
@@ -2710,6 +2717,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
 	pr_clear_value (&v);
 	if (err != NO_ERROR)
 	  {
+	    set_free (seq);
 	    goto cleanup2;
 	  }
 
@@ -2733,16 +2741,16 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
 
   // insert into _db_package_exception
   {
-    seq = set_create_sequence (0);
-    if (!seq)
+    classobj = db_find_class (CT_PACKAGE_EXCEPTION_NAME);
+    if (classobj == NULL)
       {
 	assert (er_errid() != NO_ERROR);
 	err = er_errid();
 	goto cleanup2;
       }
 
-    classobj = db_find_class (CT_PACKAGE_EXCEPTION_NAME);
-    if (classobj == NULL)
+    seq = set_create_sequence (0);
+    if (!seq)
       {
 	assert (er_errid() != NO_ERROR);
 	err = er_errid();
@@ -2756,6 +2764,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
 	err = sp_add_pkg_exception (&mop, classobj, unique_name, exc);
 	if (err != NO_ERROR)
 	  {
+	    set_free (seq);
 	    goto cleanup2;
 	  }
 
@@ -2764,6 +2773,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
 	pr_clear_value (&v);
 	if (err != NO_ERROR)
 	  {
+	    set_free (seq);
 	    goto cleanup2;
 	  }
 
@@ -2787,16 +2797,16 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
 
   // insert into _db_package_cursor
   {
-    seq = set_create_sequence (0);
-    if (!seq)
+    classobj = db_find_class (CT_PACKAGE_CURSOR_NAME);
+    if (classobj == NULL)
       {
 	assert (er_errid() != NO_ERROR);
 	err = er_errid();
 	goto cleanup2;
       }
 
-    classobj = db_find_class (CT_PACKAGE_CURSOR_NAME);
-    if (classobj == NULL)
+    seq = set_create_sequence (0);
+    if (!seq)
       {
 	assert (er_errid() != NO_ERROR);
 	err = er_errid();
@@ -2810,6 +2820,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
 	err = sp_add_pkg_cursor (&mop, classobj, unique_name, cr);
 	if (err != NO_ERROR)
 	  {
+	    set_free (seq);
 	    goto cleanup2;
 	  }
 
@@ -2818,6 +2829,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
 	pr_clear_value (&v);
 	if (err != NO_ERROR)
 	  {
+	    set_free (seq);
 	    goto cleanup2;
 	  }
 
@@ -2841,16 +2853,16 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
 
   // insert into _db_package_record_type
   {
-    seq = set_create_sequence (0);
-    if (!seq)
+    classobj = db_find_class (CT_PACKAGE_RECORD_TYPE_NAME);
+    if (classobj == NULL)
       {
 	assert (er_errid() != NO_ERROR);
 	err = er_errid();
 	goto cleanup2;
       }
 
-    classobj = db_find_class (CT_PACKAGE_RECORD_TYPE_NAME);
-    if (classobj == NULL)
+    seq = set_create_sequence (0);
+    if (!seq)
       {
 	assert (er_errid() != NO_ERROR);
 	err = er_errid();
@@ -2864,6 +2876,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
 	err = sp_add_pkg_rec_type (&mop, classobj, unique_name, rt);
 	if (err != NO_ERROR)
 	  {
+	    set_free (seq);
 	    goto cleanup2;
 	  }
 
@@ -2872,6 +2885,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
 	pr_clear_value (&v);
 	if (err != NO_ERROR)
 	  {
+	    set_free (seq);
 	    goto cleanup2;
 	  }
 
