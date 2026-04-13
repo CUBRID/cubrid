@@ -298,10 +298,9 @@ namespace cubthread
       // start thread for current worker
       void start_thread (void);
 
-      // assign task (can be NULL) to running thread or start thread
+      // assign task to worker; wake a running thread or start a new one.
+      // NULL is used only to prestart pooled threads.
       void assign_task (task_type *work_p);
-      // run task on current thread (push_time is provided by core)
-      void push_task_on_running_thread (task_type *work_p);
 
       // stop execution; if worker has a thread running, returns true
       bool stop_execution (void) override;
@@ -1128,6 +1127,8 @@ namespace cubthread
   {
     std::unique_lock<std::mutex> ulock (m_task_mutex);
 
+    assert (m_task_p == NULL);
+
     // save task
     m_task_p = work_p;
 
@@ -1153,27 +1154,6 @@ namespace cubthread
 
 	start_thread ();
       }
-  }
-
-  template <bool Stats>
-  void
-  worker_pool_impl<Stats>::core_impl::worker_impl::push_task_on_running_thread (task_type *work_p)
-  {
-    // must lock task mutex
-    std::unique_lock<std::mutex> ulock (m_task_mutex);
-
-    assert (work_p != NULL);
-    // make sure worker is in a valid state
-    assert (m_task_p == NULL);
-    assert (m_context_p != NULL);
-
-    // set task
-    m_task_p = work_p;
-
-    // mutex is not needed for notify
-    ulock.unlock ();
-    // notify waiting thread
-    m_task_cv.notify_one ();
   }
 
   template <bool Stats>
@@ -1589,4 +1569,3 @@ namespace cubthread
 } // namespace cubthread
 
 #endif // _THREAD_WORKER_POOL_IMPL_HPP_
-
