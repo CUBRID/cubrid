@@ -1966,67 +1966,88 @@ sp_add_pkg_sp (MOP *mop_out, DB_OBJECT *classobj, MOP owner, DB_VALUE &current_d
       goto cleanup0;
     }
 
-  // attribute args
-  mop_list = (MOP *) malloc (args_cnt * sizeof (MOP));	// side effect 1
-  if (!mop_list)
+  if (args_cnt > 0)
     {
-      err = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, args_cnt * sizeof (MOP));
-      goto cleanup0;
+
+      // attribute args
+      mop_list = (MOP *) malloc (args_cnt * sizeof (MOP));	// side effect 1
+      if (!mop_list)
+	{
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, args_cnt * sizeof (MOP));
+	  goto cleanup0;
+	}
+
+      DB_SET *seq;
+      int i;
+      DB_VALUE v;
+
+      classobj = db_find_class (CT_STORED_PROC_ARGS_NAME);
+      if (classobj == NULL)
+	{
+	  assert (er_errid() != NO_ERROR);
+	  err = er_errid();
+	  goto cleanup1;
+	}
+
+      seq = set_create_sequence (0);
+      if (!seq)
+	{
+	  assert (er_errid() != NO_ERROR);
+	  err = er_errid();
+	  goto cleanup1;
+	}
+
+      i = 0;
+      for (const cubpl::pkg_sp_arg &a: sp.args)
+	{
+
+	  err = sp_add_pkg_sp_arg (&mop_list[i], classobj, i, a);
+	  if (err != NO_ERROR)
+	    {
+	      set_free (seq);
+	      goto cleanup1;
+	    }
+
+	  db_make_object (&v, mop_list[i]);
+	  err = set_put_element (seq, i, &v);
+	  pr_clear_value (&v);
+	  if (err != NO_ERROR)
+	    {
+	      set_free (seq);
+	      goto cleanup1;
+	    }
+
+	  i++;
+	}
+
+      db_make_sequence (&value, seq);
+      err = dbt_put_internal (obt, SP_ATTR_ARGS, &value);
+      pr_clear_value (&value);
+      if (err != NO_ERROR)
+	{
+	  goto cleanup1;
+	}
     }
+  else
+    {
 
-  {
-    DB_SET *seq;
-    int i;
-    DB_VALUE v;
+      DB_SET *seq = set_create_sequence (0);
+      if (!seq)
+	{
+	  assert (er_errid() != NO_ERROR);
+	  err = er_errid();
+	  goto cleanup0;
+	}
 
-    classobj = db_find_class (CT_STORED_PROC_ARGS_NAME);
-    if (classobj == NULL)
-      {
-	assert (er_errid() != NO_ERROR);
-	err = er_errid();
-	goto cleanup1;
-      }
-
-    seq = set_create_sequence (0);
-    if (!seq)
-      {
-	assert (er_errid() != NO_ERROR);
-	err = er_errid();
-	goto cleanup1;
-      }
-
-    i = 0;
-    for (const cubpl::pkg_sp_arg &a: sp.args)
-      {
-
-	err = sp_add_pkg_sp_arg (&mop_list[i], classobj, i, a);
-	if (err != NO_ERROR)
-	  {
-	    set_free (seq);
-	    goto cleanup1;
-	  }
-
-	db_make_object (&v, mop_list[i]);
-	err = set_put_element (seq, i, &v);
-	pr_clear_value (&v);
-	if (err != NO_ERROR)
-	  {
-	    set_free (seq);
-	    goto cleanup1;
-	  }
-
-	i++;
-      }
-
-    db_make_sequence (&value, seq);
-    err = dbt_put_internal (obt, SP_ATTR_ARGS, &value);
-    pr_clear_value (&value);
-    if (err != NO_ERROR)
-      {
-	goto cleanup1;
-      }
-  }
+      db_make_sequence (&value, seq);
+      err = dbt_put_internal (obt, SP_ATTR_ARGS, &value);
+      pr_clear_value (&value);
+      if (err != NO_ERROR)
+	{
+	  goto cleanup0;
+	}
+    }
 
   // finish object
   object = dbt_finish_object (obt);
