@@ -297,7 +297,7 @@ namespace cubthread
       void start_thread (void);
 
       // assign task to worker; wake a running thread or start a new one.
-      // NULL is used only to prestart pooled threads.
+      // nullptr is used only to prestart pooled threads.
       void assign_task (task_type *work_p);
 
       // stop execution; if worker has a thread running, returns true
@@ -792,9 +792,9 @@ namespace cubthread
     // 2. inactive will do too
     // 3. if no workers, enqueue the task
 
-    assert (task_p != NULL);
+    assert (task_p != nullptr);
 
-    worker_impl *refp = NULL;
+    worker_impl *refp = nullptr;
 
     if (!m_parent_pool->is_running ())
       {
@@ -811,7 +811,7 @@ namespace cubthread
 	m_available_workers.pop_back ();
 	ulock.unlock ();
 
-	assert (refp != NULL);
+	assert (refp != nullptr);
 	refp->assign_task (task_p);
       }
     else
@@ -884,7 +884,7 @@ namespace cubthread
       {
 	wrapped_task &queued_task = m_task_queue.front ();
 	task_type *task_p = queued_task.get_task ();
-	assert (task_p != NULL);
+	assert (task_p != nullptr);
 	m_task_queue.pop ();
 
 	return task_p;
@@ -893,7 +893,7 @@ namespace cubthread
     m_available_workers.push_back (&worker_arg);
     assert (m_available_workers.size () <= m_workers.size ());
 
-    return NULL;
+    return nullptr;
   }
 
   template <bool Stats>
@@ -1048,7 +1048,7 @@ namespace cubthread
 
 	    // assign task / start thread
 	    // it will add itself to available workers
-	    static_cast<worker_impl *> (worker.get ())->assign_task (NULL);
+	    static_cast<worker_impl *> (worker.get ())->assign_task (nullptr);
 	  }
 	else
 	  {
@@ -1078,8 +1078,8 @@ namespace cubthread
   template <bool Stats>
   worker_pool_impl<Stats>::core_impl::worker_impl::worker_impl (bool is_temp)
     : worker_pool::core::worker ()
-    , m_context_p (NULL)
-    , m_task_p (NULL)
+    , m_context_p (nullptr)
+    , m_task_p (nullptr)
     , m_stop (false)
     , m_has_thread (false)
     , m_is_temp (is_temp)
@@ -1129,7 +1129,7 @@ namespace cubthread
   {
     std::unique_lock<std::mutex> ulock (m_task_mutex);
 
-    assert (m_task_p == NULL);
+    assert (m_task_p == nullptr);
 
     // save task
     m_task_p = work_p;
@@ -1137,7 +1137,7 @@ namespace cubthread
     if (m_is_temp)
       {
 	m_has_thread = true;
-	assert (m_context_p == NULL);
+	assert (m_context_p == nullptr);
 	start_thread ();
       }
 
@@ -1152,7 +1152,7 @@ namespace cubthread
 	m_has_thread = true;
 	ulock.unlock ();
 
-	assert (m_context_p == NULL);
+	assert (m_context_p == nullptr);
 
 	start_thread ();
       }
@@ -1165,7 +1165,7 @@ namespace cubthread
     context_type *context_p = m_context_p;
     bool has_thread = false;
 
-    if (context_p != NULL)
+    if (context_p != nullptr)
       {
 	// notify context to stop
 	m_parent_core->get_entry_manager ().stop_execution (*context_p);
@@ -1204,7 +1204,7 @@ namespace cubthread
   void
   worker_pool_impl<Stats>::core_impl::worker_impl::map_context_if_running (bool &stop, Func &&func, Args &&... args)
   {
-    if (m_task_p == NULL)
+    if (m_task_p == nullptr)
       {
 	// not running
 	return;
@@ -1212,7 +1212,7 @@ namespace cubthread
 
     context_type *ctxp = m_context_p;
 
-    if (ctxp != NULL)
+    if (ctxp != nullptr)
       {
 	func (*ctxp, stop, args...);
       }
@@ -1237,16 +1237,16 @@ namespace cubthread
 	return;
       }
 
-    if (m_task_p == NULL)
+    if (m_task_p == nullptr)
       {
 	// started without task; get one
 	if (get_new_task ())
 	  {
-	    assert (m_task_p != NULL);
+	    assert (m_task_p != nullptr);
 	  }
       }
 
-    if (m_task_p != NULL)
+    if (m_task_p != nullptr)
       {
 	// loop and execute as many tasks as possible
 	do
@@ -1288,12 +1288,12 @@ namespace cubthread
   void
   worker_pool_impl<Stats>::core_impl::worker_impl::finish_run (void)
   {
-    assert (m_task_p == NULL);
-    assert (m_context_p != NULL);
+    assert (m_task_p == nullptr);
+    assert (m_context_p != nullptr);
 
     // retire context
     m_parent_core->get_entry_manager ().retire_context (*m_context_p);
-    m_context_p = NULL;
+    m_context_p = nullptr;
 
     if (m_is_temp)
       {
@@ -1307,7 +1307,7 @@ namespace cubthread
   void
   worker_pool_impl<Stats>::core_impl::worker_impl::execute_current_task (void)
   {
-    assert (m_task_p != NULL);
+    assert (m_task_p != nullptr);
 
     // execute task
     m_task_p->execute (*m_context_p);
@@ -1331,18 +1331,18 @@ namespace cubthread
   void
   worker_pool_impl<Stats>::core_impl::worker_impl::retire_current_task (void)
   {
-    assert (m_task_p != NULL);
+    assert (m_task_p != nullptr);
 
     // retire task
     m_task_p->retire ();
-    m_task_p = NULL;
+    m_task_p = nullptr;
   }
 
   template <bool Stats>
   bool
   worker_pool_impl<Stats>::core_impl::worker_impl::get_new_task (void)
   {
-    assert (m_task_p == NULL);
+    assert (m_task_p == nullptr);
     assert (dynamic_cast<core_impl *> (m_parent_core));
 
     std::unique_lock<std::mutex> ulock (m_task_mutex, std::defer_lock);
@@ -1353,12 +1353,12 @@ namespace cubthread
 	// get a queued task or wait for one to come
 
 	// either get a queued task or add to free active list
-	// note: returned task cannot be saved directly to m_task_p. if worker is added to wait queue and NULL is returned,
+	// note: returned task cannot be saved directly to m_task_p. if worker is added to wait queue and nullptr is returned,
 	//       current thread may be preempted. worker is then claimed from free active list and worker is assigned
 	//       a task. this changes expected behavior and can have unwanted consequences.
 
 	task_type *task_p = static_cast<core_impl *> (m_parent_core)->get_task_or_become_available (*this);
-	if (task_p != NULL)
+	if (task_p != nullptr)
 	  {
 	    // it is safe to set here
 	    m_task_p = task_p;
@@ -1367,12 +1367,12 @@ namespace cubthread
 
 	// wait for task
 	ulock.lock ();
-	if (m_task_p == NULL && !m_stop)
+	if (m_task_p == nullptr && !m_stop)
 	  {
 	    // wait until a task is received or stopped ...
 	    // ... or time out
 	    condvar_wait (m_task_cv, ulock, m_parent_core->get_parent_pool ()->get_idle_timeout (),
-			  [this] () -> bool { return m_task_p != NULL || m_stop; });
+			  [this] () -> bool { return m_task_p != nullptr || m_stop; });
 	  }
 	else
 	  {
@@ -1388,7 +1388,7 @@ namespace cubthread
       }
 
     // did I get a task?
-    if (m_task_p == NULL)
+    if (m_task_p == nullptr)
       {
 	// no; this thread will stop. from this point forward, if a new task is assigned, a new thread must be spawned
 	m_has_thread = false;
