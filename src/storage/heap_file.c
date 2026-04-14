@@ -13141,7 +13141,8 @@ heap_attrinfo_transform_columns_to_disk_develop_ver (THREAD_ENTRY * thread_p, HE
 	}
       else
 	{
-	  or_put_offset_internal (buf, CAST_BUFLEN (ptr_varvals - buf->buffer - header_size), offset_size);
+	  const int end_of_vot_offset = CAST_BUFLEN (ptr_varvals - buf->buffer - header_size);
+	  or_put_offset_internal (buf, OR_SET_VAR_LAST_ELEMENT (end_of_vot_offset), offset_size);
 	}
       buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
