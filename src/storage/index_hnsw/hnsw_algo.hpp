@@ -279,6 +279,8 @@ namespace cubhnsw
 	assert (false);
       }
 
+    assert (static_cast<std::size_t> (build_params.m) <= HNSW_MAX_M);
+
     // precompute inverse log connectivity
     m_inverse_log_connectivity = 1.0 / std::log (static_cast<double> (build_params.m));
   }
@@ -566,6 +568,18 @@ namespace cubhnsw
     context.clear_candidates();
     prepare_query_i8_ (context, query);
 
+    // Use epoch-based visited tracking for in-memory builds (O(1) array vs hash set).
+    const bool use_epoch_visited = m_storage->has_fast_visited ();
+    if (use_epoch_visited)
+      {
+	m_storage->visit_new_round ();
+	m_storage->visit_check_and_mark (start_slot);
+      }
+    else
+      {
+	visits.insert (encode_oid_key (start_slot));
+      }
+
     distance_t radius;
     if (context.m_i8_only_build)
       {
@@ -580,7 +594,6 @@ namespace cubhnsw
 
     next.insert_reserved (candidate_t (-radius, start_slot));
     top.insert_reserved (candidate_t (radius, start_slot));
-    visits.insert (encode_oid_key (start_slot));
     stats.on_start_node ();
 
     while (!next.empty ())
@@ -630,8 +643,21 @@ namespace cubhnsw
 	    for (std::size_t ni = 0; ni < neigh_n && n_resolved < MAX_RESOLVED; ++ni)
 	      {
 		slot_id_t successor_slot = cached_neighbors.data[ni];
-		auto [it, inserted] = visits.insert (encode_oid_key (successor_slot));
-		if (!inserted) continue;
+		if (use_epoch_visited)
+		  {
+		    if (!m_storage->visit_check_and_mark (successor_slot))
+		      {
+			continue;
+		      }
+		  }
+		else
+		  {
+		    auto [it, inserted] = visits.insert (encode_oid_key (successor_slot));
+		    if (!inserted)
+		      {
+			continue;
+		      }
+		  }
 		stats.on_visit ();
 		const cached_vector *vec =
 			m_storage->get_cached_vector_by_slot_id (context, successor_slot, lock_mode::shared);
@@ -691,19 +717,33 @@ namespace cubhnsw
 	pinned_t candidate_node_blk = m_storage->get_node_by_slot_id (context, candidate_slot, lock_mode::shared);
 	neighbors_ref_type candidate_neighbors = get_neighbors (context, candidate_node_blk, level);
 
-	std::vector<slot_id_t> neigh;
-	neigh.reserve (candidate_neighbors.size ());
+	static constexpr std::size_t MAX_NEIGH = HNSW_MAX_M * 2 + 1;
+	slot_id_t neigh_buf[MAX_NEIGH];
+	std::size_t neigh_count = 0;
 
 	for (std::size_t i = 0; i < candidate_neighbors.size (); ++i)
 	  {
 	    slot_id_t successor_slot = candidate_neighbors.at (i);
-	    neigh.push_back (successor_slot);
+	    if (neigh_count < MAX_NEIGH)
+	      {
+		neigh_buf[neigh_count++] = successor_slot;
+	      }
 	    stats.on_neighbor_scan ();
 
-	    auto [it, inserted] = visits.insert (encode_oid_key (successor_slot));
-	    if (!inserted)
+	    if (use_epoch_visited)
 	      {
-		continue;
+		if (!m_storage->visit_check_and_mark (successor_slot))
+		  {
+		    continue;
+		  }
+	      }
+	    else
+	      {
+		auto [it, inserted] = visits.insert (encode_oid_key (successor_slot));
+		if (!inserted)
+		  {
+		    continue;
+		  }
 	      }
 	    stats.on_visit ();
 
@@ -750,7 +790,7 @@ namespace cubhnsw
 		stats.on_candidate_prune ();
 	      }
 	  }
-	m_storage->set_neighbors_cached_ids (context, candidate_slot, level, neigh.data (), neigh.size ());
+	m_storage->set_neighbors_cached_ids (context, candidate_slot, level, neigh_buf, neigh_count);
       }
 
     stats.commit (context.m_stats, context.m_is_perf_tracking, context.m_level);
@@ -894,14 +934,14 @@ namespace cubhnsw
       }
 
     // neighbors of new node changed; update in-memory neighbors cache if storage supports it
-
-    std::vector<slot_id_t> neigh;
-    neigh.reserve (new_neighbors.size ());
-    for (std::size_t i = 0; i < new_neighbors.size (); ++i)
+    static constexpr std::size_t MAX_NEIGH = HNSW_MAX_M * 2 + 1;
+    slot_id_t neigh_buf[MAX_NEIGH];
+    std::size_t neigh_count = 0;
+    for (std::size_t i = 0; i < new_neighbors.size () && neigh_count < MAX_NEIGH; ++i)
       {
-	neigh.push_back (new_neighbors.at (i));
+	neigh_buf[neigh_count++] = new_neighbors.at (i);
       }
-    m_storage->set_neighbors_cached_ids (context, new_node_blk->id, level, neigh.data (), neigh.size ());
+    m_storage->set_neighbors_cached_ids (context, new_node_blk->id, level, neigh_buf, neigh_count);
     m_graph_structure_profile.on_edges_added (level, top_view.size ());
   }
 
@@ -932,13 +972,14 @@ namespace cubhnsw
 	    {
 	      close_header.push_back (new_slot);
 	      // neighbors of close_slot changed; update in-memory cache
-	      std::vector<slot_id_t> neigh;
-	      neigh.reserve (close_header.size ());
-	      for (std::size_t i = 0; i < close_header.size (); ++i)
+	      static constexpr std::size_t MAX_NEIGH = HNSW_MAX_M * 2 + 1;
+	      slot_id_t neigh_buf[MAX_NEIGH];
+	      std::size_t neigh_count = 0;
+	      for (std::size_t i = 0; i < close_header.size () && neigh_count < MAX_NEIGH; ++i)
 		{
-		  neigh.push_back (close_header.at (i));
+		  neigh_buf[neigh_count++] = close_header.at (i);
 		}
-	      m_storage->set_neighbors_cached_ids (context, close_slot, level, neigh.data (), neigh.size ());
+	      m_storage->set_neighbors_cached_ids (context, close_slot, level, neigh_buf, neigh_count);
 	      m_graph_structure_profile.on_edges_added (level, 1);
 	      continue;
 	    }
@@ -972,14 +1013,14 @@ namespace cubhnsw
 	  }
 
 	// neighbors of close_slot changed; update in-memory cache
-
-	std::vector<slot_id_t> neigh;
-	neigh.reserve (close_header.size ());
-	for (std::size_t i = 0; i < close_header.size (); ++i)
+	static constexpr std::size_t MAX_NEIGH_REV = HNSW_MAX_M * 2 + 1;
+	slot_id_t neigh_buf_rev[MAX_NEIGH_REV];
+	std::size_t neigh_count_rev = 0;
+	for (std::size_t i = 0; i < close_header.size () && neigh_count_rev < MAX_NEIGH_REV; ++i)
 	  {
-	    neigh.push_back (close_header.at (i));
+	    neigh_buf_rev[neigh_count_rev++] = close_header.at (i);
 	  }
-	m_storage->set_neighbors_cached_ids (context, close_slot, level, neigh.data (), neigh.size ());
+	m_storage->set_neighbors_cached_ids (context, close_slot, level, neigh_buf_rev, neigh_count_rev);
 	m_graph_structure_profile.on_edges_added (level, top_view.size ());
       }
 

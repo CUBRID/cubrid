@@ -350,6 +350,14 @@ namespace cubhnsw
   {
     context.m_stats.on_vector_access (context.m_is_perf_tracking, context.m_level);
 
+    // Fast path: direct-indexed array lookup (no hashing) for in-memory builds.
+    const cached_vector *direct = get_direct_cached_vector (slot);
+    if (direct != nullptr)
+      {
+	context.m_stats.on_vector_cache_hit (context.m_is_perf_tracking, context.m_level);
+	return direct;
+      }
+
     const uint64_t cache_key = make_vector_cache_key_ (slot);
     auto it = m_vector_cache.find (cache_key);
     if (it != m_vector_cache.end ())
@@ -407,7 +415,20 @@ namespace cubhnsw
     cv.values_i8.scale = scale;
 
     auto [ins_it, ok] = m_vector_cache.emplace (cache_key, cv);
-    return &ins_it->second;
+    const cached_vector *result = &ins_it->second;
+
+    // Store pointer in direct-indexed cache for O(1) future lookups.
+    // Only safe when m_vector_cache has not reallocated past its initial reservation.
+    if (m_inmem.is_active () && m_vector_cache.size () <= m_vector_cache_reserved_capacity)
+      {
+	uint32_t idx = node_idx_of_ (slot_id);
+	if (idx < static_cast<uint32_t> (m_vector_direct_cache.size ()))
+	  {
+	    m_vector_direct_cache[idx] = result;
+	  }
+      }
+
+    return result;
   }
 
   const float *

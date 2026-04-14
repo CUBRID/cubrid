@@ -319,6 +319,15 @@ namespace cubhnsw
 	// any insert that crosses a capacity boundary invalidates ALL cached_vector* pointers
 	// held in resolved_vecs[] during the two-pass seek_on_layer_ cache-hit path.
 	m_vector_cache.reserve (estimated_nodes);
+	// Capture the reserved capacity — used by the capacity guard
+	// in cache_vector_copy_() to ensure pointer stability for m_vector_direct_cache.
+	// ankerl::unordered_dense::map reserves m_values (a std::vector) with this count;
+	// as long as size() stays within the reservation, no reallocation occurs.
+	m_vector_cache_reserved_capacity = estimated_nodes;
+	// Direct-indexed vector cache: O(1) lookup by node_idx_of_(slot).
+	m_vector_direct_cache.resize (cache_size, nullptr);
+	// Epoch-based visited set: O(1) check-and-mark by node_idx_of_(slot).
+	m_visit_epoch.resize (cache_size, 0);
       }
 
       void promote_root (pinned_t &root);
@@ -326,6 +335,71 @@ namespace cubhnsw
       const cached_vector *get_cached_vector_by_slot_id (algo_context_t &context,
 							 const slot_id_t &slot_id,
 							 const lock_mode &mode);
+
+      // Direct-indexed vector cache: O(1) lookup for in-memory builds.
+      // Returns nullptr if not in-memory mode, out of range, or not yet populated.
+      inline const cached_vector *get_direct_cached_vector (const slot_id_t &slot) const noexcept
+      {
+	if (!m_inmem.is_active ())
+	  {
+	    return nullptr;
+	  }
+	uint32_t idx = node_idx_of_ (slot);
+	if (idx < static_cast<uint32_t> (m_vector_direct_cache.size ()))
+	  {
+	    return m_vector_direct_cache[idx];
+	  }
+	return nullptr;
+      }
+
+      // Epoch-based visited set: O(1) check-and-mark for in-memory builds.
+      // Returns true if the node was NOT yet visited in this round (newly marked).
+      // Returns false if already visited or not in-memory mode.
+      inline bool visit_check_and_mark (const slot_id_t &slot) noexcept
+      {
+	if (!m_inmem.is_active ())
+	  {
+	    return false;
+	  }
+	uint32_t idx = node_idx_of_ (slot);
+	if (idx >= static_cast<uint32_t> (m_visit_epoch.size ()))
+	  {
+	    return false;
+	  }
+	if (m_visit_epoch[idx] == m_current_epoch)
+	  {
+	    return false;
+	  }
+	m_visit_epoch[idx] = m_current_epoch;
+	return true;
+      }
+
+      // Returns true if the node was already visited in this round.
+      inline bool is_visited (const slot_id_t &slot) const noexcept
+      {
+	if (!m_inmem.is_active ())
+	  {
+	    return false;
+	  }
+	uint32_t idx = node_idx_of_ (slot);
+	if (idx >= static_cast<uint32_t> (m_visit_epoch.size ()))
+	  {
+	    return false;
+	  }
+	return m_visit_epoch[idx] == m_current_epoch;
+      }
+
+      // Advance epoch — invalidates all visited marks without clearing the array.
+      inline void visit_new_round () noexcept
+      {
+	++m_current_epoch;
+      }
+
+      // Whether the fast epoch-based visited path is available.
+      inline bool has_fast_visited () const noexcept
+      {
+	return m_inmem.is_active ();
+      }
 
       // Fast inline path for neighbors cache lookup: no stats overhead.
       // Level 0 uses a direct array (no hashing); level > 0 falls through to the hash map.
@@ -477,5 +551,16 @@ namespace cubhnsw
       std::vector<slot_id_t> m_flat_neighbors; // flat contiguous buffer for all neighbor lists
       std::vector<level0_entry_t> m_level0_cache; // direct-indexed level-0 neighbor cache
       uint32_t m_level0_slots_per_page {1};    // stride for node_idx_of_(): upper bound on nodes per page
+
+      // Direct-indexed vector cache: indexed by node_idx_of_(slot).
+      // Stores pointers into m_vector_cache entries for O(1) lookup during in-memory builds.
+      // Falls back to hash map when the pointer may be invalid (capacity exceeded).
+      std::vector<const cached_vector *> m_vector_direct_cache;
+      std::size_t m_vector_cache_reserved_capacity {0};
+
+      // Epoch-based visited tracking: indexed by node_idx_of_(slot).
+      // Avoids hash-set overhead in seek_on_layer_ for in-memory builds.
+      std::vector<uint32_t> m_visit_epoch;
+      uint32_t m_current_epoch {0};
   };
 }
