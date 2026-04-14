@@ -22688,7 +22688,8 @@ parser_make_expression (PARSER_CONTEXT * parser, PT_OP_TYPE OP, PT_NODE * arg1, 
 	  || OP == PT_CURRENT_DATETIME || OP == PT_SYS_TIMESTAMP
 	  || OP == PT_CURRENT_TIMESTAMP || OP == PT_UTC_TIME
 	  || OP == PT_UTC_DATE || OP == PT_UNIX_TIMESTAMP
-	  || OP == PT_TZ_OFFSET || OP == PT_UTC_TIMESTAMP)
+	  || OP == PT_TZ_OFFSET || OP == PT_UTC_TIMESTAMP
+	  || OP == PT_UUID)
 	{
 	  parser_si_datetime = true;
 	  parser_cannot_cache = true;

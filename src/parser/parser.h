@@ -280,7 +280,6 @@ extern "C"
 					  const int num_args, DB_VALUE * result);
 
   extern int pt_evaluate_function (PARSER_CONTEXT * parser, PT_NODE * func, DB_VALUE * dbval_res);
-  extern bool pt_has_expr_eval_on_server (PARSER_CONTEXT * parser, PT_NODE * expr);
 
   extern bool pt_is_symmetric_op (PT_OP_TYPE op);
 

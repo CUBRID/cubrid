@@ -1215,6 +1215,9 @@ extern "C"
 #define DB_IS_DEFAULT_UUID_EXPR(c) \
   ( ((c) == DB_DEFAULT_SYSGUID || (c) == DB_DEFAULT_UUIDV4 || (c) == DB_DEFAULT_UUIDV7 ) ? true : false )
 
+#define DB_IS_DEFAULT_UUID_TIMEBASE_EXPR(c) \
+  ( ((c) == DB_DEFAULT_UUIDV7 ) )
+
 #define DB_IS_DEFAULT_DETERMINE_BY_STATEMENT(c) \
   ( ( DB_IS_DATETIME_DEFAULT_EXPR(c) || (c) == DB_DEFAULT_NONE || (c) == DB_DEFAULT_USER || (c) == DB_DEFAULT_CURR_USER \
   || (c) == DB_DEFAULT_FORMATTED_SYSDATE ) ? true : false )

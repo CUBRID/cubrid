@@ -76,17 +76,10 @@ namespace cubpl
 		  {
 		    CHECK_NULL_AND_FREE (owner, arg_default_value[i]);
 		  }
-		if (arg_default_expr_format != nullptr && arg_default_expr_format[i] != nullptr)
-		  {
-		    CHECK_NULL_AND_FREE (owner, arg_default_expr_format[i]);
-		  }
 	      }
 	  }
 	CHECK_NULL_AND_FREE (owner, arg_default_value_size);
 	CHECK_NULL_AND_FREE (owner, arg_default_value);
-	CHECK_NULL_AND_FREE (owner, arg_default_expr_type);
-	CHECK_NULL_AND_FREE (owner, arg_default_expr_op);
-	CHECK_NULL_AND_FREE (owner, arg_default_expr_format);
       }
   }
 
@@ -100,21 +93,11 @@ namespace cubpl
 	serializator.pack_int_array (arg_mode, arg_size);
 	serializator.pack_int_array (arg_type, arg_size);
 	serializator.pack_int_array (arg_default_value_size, arg_size);
-	serializator.pack_int_array (arg_default_expr_type, arg_size);
-	serializator.pack_int_array (arg_default_expr_op, arg_size);
-
 	for (int i = 0; i < arg_size; i++)
 	  {
-	    bool has_default_expr_format = (arg_default_expr_format[i] != nullptr);
-
 	    if (arg_default_value_size[i] > 0)
 	      {
 		serializator.pack_c_string (arg_default_value[i], arg_default_value_size[i]);
-	      }
-	    serializator.pack_bool (has_default_expr_format);
-	    if (has_default_expr_format)
-	      {
-		serializator.pack_c_string (arg_default_expr_format[i], strlen (arg_default_expr_format[i]));
 	      }
 	  }
       }
@@ -138,27 +121,13 @@ namespace cubpl
 
 	deserializator.unpack_int_array (arg_default_value_size, cnt);
 	assert (arg_size == cnt);
-	deserializator.unpack_int_array (arg_default_expr_type, cnt);
-	assert (arg_size == cnt);
-	deserializator.unpack_int_array (arg_default_expr_op, cnt);
-	assert (arg_size == cnt);
-
 	for (int i = 0; i < arg_size; i++)
 	  {
-	    bool has_default_expr_format = false;
-
 	    if (arg_default_value_size[i] > 0)
 	      {
 		cubmem::extensible_block default_value_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
 		deserializator.unpack_string_to_memblock (default_value_blk);
 		arg_default_value[i] = default_value_blk.release_ptr ();
-	      }
-	    deserializator.unpack_bool (has_default_expr_format);
-	    if (has_default_expr_format)
-	      {
-		cubmem::extensible_block default_format_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
-		deserializator.unpack_string_to_memblock (default_format_blk);
-		arg_default_expr_format[i] = default_format_blk.release_ptr ();
 	      }
 	  }
       }
@@ -173,22 +142,12 @@ namespace cubpl
 	size += serializator.get_packed_int_array_size (size, arg_size); // arg_mode
 	size += serializator.get_packed_int_array_size (size, arg_size); // arg_type
 	size += serializator.get_packed_int_array_size (size, arg_size); // arg_default_value_size
-	size += serializator.get_packed_int_array_size (size, arg_size); // arg_default_expr_type
-	size += serializator.get_packed_int_array_size (size, arg_size); // arg_default_expr_op
 
 	for (int i = 0; i < arg_size; i++)
 	  {
-	    bool has_default_expr_format = (arg_default_expr_format[i] != nullptr);
-
 	    if (arg_default_value_size[i] > 0)
 	      {
 		size += serializator.get_packed_c_string_size (arg_default_value[i], arg_default_value_size[i], size);
-	      }
-	    size += serializator.get_packed_bool_size (size);
-	    if (has_default_expr_format)
-	      {
-		size += serializator.get_packed_c_string_size (arg_default_expr_format[i], strlen (arg_default_expr_format[i]),
-			size);
 	      }
 	  }
       }
@@ -207,23 +166,13 @@ namespace cubpl
 	arg_type = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
 	arg_default_value_size = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
 	arg_default_value = (char **) db_private_alloc (NULL, (num_args) * sizeof (char *));
-	arg_default_expr_type = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
-	arg_default_expr_op = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
-	arg_default_expr_format = (char **) db_private_alloc (NULL, (num_args) * sizeof (char *));
 
-	if (arg_mode && arg_type && arg_default_value_size && arg_default_value && arg_default_expr_type
-	    && arg_default_expr_op && arg_default_expr_format)
+	if (arg_mode && arg_type && arg_default_value_size && arg_default_value)
 	  {
 	    memset (arg_mode, 0x00, (num_args * sizeof (int)));
 	    memset (arg_type, 0x00, (num_args * sizeof (int)));
 	    memset (arg_default_value_size, 0x00, (num_args * sizeof (int)));
 	    memset (arg_default_value, 0x00, (num_args * sizeof (char *)));
-	    memset (arg_default_expr_type, 0x00, (num_args * sizeof (int)));
-	    memset (arg_default_expr_format, 0x00, (num_args * sizeof (char *)));
-	    for (int i = 0; i < num_args; i++)
-	      {
-		arg_default_expr_op[i] = NULL_DEFAULT_EXPRESSION_OPERATOR;
-	      }
 	  }
 	else
 	  {
@@ -237,9 +186,6 @@ namespace cubpl
 	arg_type = nullptr;
 	arg_default_value_size = nullptr;
 	arg_default_value = nullptr;
-	arg_default_expr_type = nullptr;
-	arg_default_expr_op = nullptr;
-	arg_default_expr_format = nullptr;
       }
   }
 

@@ -24,11 +24,6 @@
 
 // runtime
 #include "dbtype.h"
-#include "db_date.h"
-#include "string_opfunc.h"
-#include "system_parameter.h"
-#include "log_impl.h"
-#include "tz_support.h"
 
 #include "method_struct_invoke.hpp"
 #include "method_struct_query.hpp"
@@ -46,190 +41,6 @@
 namespace cubpl
 {
   using namespace cubmethod;
-
-  static int
-  sp_evaluate_default_expr (THREAD_ENTRY *thread_p, const DB_DEFAULT_EXPR_TYPE expr_type, const int expr_op,
-			    const char *expr_format, const DB_VALUE *sys_datetime, const DB_VALUE *sys_epochtime,
-			    DB_VALUE *result)
-  {
-    int error = NO_ERROR;
-    DB_VALUE temp_value, format_val, lang_val;
-    TP_DOMAIN *result_domain = NULL;
-    bool has_user_format = false;
-    const char *lang_str = NULL;
-    int flag = 0;
-
-    db_make_null (&temp_value);
-    db_make_null (&format_val);
-    db_make_null (&lang_val);
-    db_make_null (result);
-
-    switch (expr_type)
-      {
-      case DB_DEFAULT_SYSTIME:
-      {
-	int month, day, year, hour, minute, second, millisecond;
-	db_datetime_decode ((DB_DATETIME *) db_get_datetime (sys_datetime), &month, &day, &year, &hour, &minute,
-			    &second, &millisecond);
-	db_make_time (&temp_value, hour, minute, second);
-      }
-      break;
-
-      case DB_DEFAULT_CURRENTTIME:
-      {
-	DB_TIME cur_time, db_time;
-	const char *t_source, *t_dest;
-	DB_DATETIME *datetime = db_get_datetime (sys_datetime);
-
-	t_source = tz_get_system_timezone ();
-	t_dest = tz_get_session_local_timezone ();
-	db_time = datetime->time / 1000;
-	error =
-		tz_conv_tz_time_w_zone_name (&db_time, t_source, (int) strlen (t_source), t_dest, (int) strlen (t_dest),
-					     &cur_time);
-	if (error == NO_ERROR)
-	  {
-	    db_value_put_encoded_time (&temp_value, &cur_time);
-	  }
-      }
-      break;
-
-      case DB_DEFAULT_SYSDATE:
-	error = db_value_put_encoded_date (&temp_value, &db_get_datetime (sys_datetime)->date);
-	break;
-
-      case DB_DEFAULT_CURRENTDATE:
-      case DB_DEFAULT_CURRENTDATETIME:
-      {
-	TZ_REGION system_tz_region, session_tz_region;
-	DB_DATETIME dest_dt;
-
-	tz_get_system_tz_region (&system_tz_region);
-	tz_get_session_tz_region (&session_tz_region);
-	error =
-		tz_conv_tz_datetime_w_region (db_get_datetime (sys_datetime), &system_tz_region, &session_tz_region, &dest_dt,
-					      NULL, NULL);
-	if (error == NO_ERROR)
-	  {
-	    if (expr_type == DB_DEFAULT_CURRENTDATE)
-	      {
-		db_value_put_encoded_date (&temp_value, &dest_dt.date);
-	      }
-	    else
-	      {
-		db_make_datetime (&temp_value, &dest_dt);
-	      }
-	  }
-      }
-      break;
-
-      case DB_DEFAULT_SYSDATETIME:
-	error = pr_clone_value (sys_datetime, &temp_value);
-	break;
-
-      case DB_DEFAULT_SYSTIMESTAMP:
-	error = db_datetime_to_timestamp (sys_datetime, &temp_value);
-	break;
-
-      case DB_DEFAULT_CURRENTTIMESTAMP:
-      {
-	DB_DATE tmp_date = db_get_datetime (sys_datetime)->date;
-	DB_TIME tmp_time = db_get_datetime (sys_datetime)->time / 1000;
-	DB_TIMESTAMP tmp_timestamp;
-
-	db_timestamp_encode_sys (&tmp_date, &tmp_time, &tmp_timestamp, NULL);
-	db_make_timestamp (&temp_value, tmp_timestamp);
-      }
-      break;
-
-      case DB_DEFAULT_UNIX_TIMESTAMP:
-	error = db_unix_timestamp (sys_datetime, &temp_value);
-	break;
-
-      case DB_DEFAULT_USER:
-      {
-	int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
-	char *temp = NULL;
-
-	if (tdes != NULL)
-	  {
-	    size_t len = tdes->client.db_user.length () + tdes->client.host_name.length () + 2;
-	    temp = (char *) db_private_alloc (thread_p, len);
-	    if (temp == NULL)
-	      {
-		error = er_errid ();
-	      }
-	    else
-	      {
-		strcpy (temp, tdes->client.get_db_user ());
-		strcat (temp, "@");
-		strcat (temp, tdes->client.get_host_name ());
-		db_make_string (&temp_value, temp);
-		temp_value.need_clear = true;
-	      }
-	  }
-      }
-      break;
-
-      case DB_DEFAULT_CURR_USER:
-      {
-	int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
-	char *temp = (tdes != NULL) ? CONST_CAST (char *, tdes->client.get_db_user ()) : NULL;
-	db_make_string (&temp_value, temp);
-      }
-      break;
-
-      case DB_DEFAULT_SYSGUID:
-	error = db_uuidv4 (thread_p, &temp_value);
-	break;
-
-      case DB_DEFAULT_UUIDV4:
-	error = db_uuid_bin (thread_p, UUID_V4, 0, &temp_value);
-	break;
-
-      case DB_DEFAULT_UUIDV7:
-	error = db_uuid_bin (thread_p, UUID_V7,
-			     ((uint64_t) db_get_timestamp (sys_epochtime) * 1000ULL)
-			     + (uint64_t) (db_get_datetime (sys_datetime)->time % 1000),
-			     &temp_value);
-	break;
-
-      case DB_DEFAULT_NONE:
-      default:
-	error = ER_OBJ_INVALID_ARGUMENTS;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	break;
-      }
-
-    if (error != NO_ERROR)
-      {
-	pr_clear_value (&temp_value);
-	return error;
-      }
-
-    if (expr_op == T_TO_CHAR)
-      {
-	if (expr_format != NULL)
-	  {
-	    db_make_string (&format_val, expr_format);
-	    has_user_format = true;
-	  }
-	lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
-	lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
-	db_make_int (&lang_val, flag);
-	error = db_to_char (&temp_value, &format_val, &lang_val, result, result_domain);
-	pr_clear_value (&format_val);
-      }
-    else
-      {
-	error = pr_clone_value (&temp_value, result);
-      }
-
-    pr_clear_value (&temp_value);
-    return error;
-  }
 
   invoke_java::invoke_java (int tid, pl_signature *sig, bool tc)
     : tran_id (tid)
@@ -314,7 +125,6 @@ namespace cubpl
   executor::~executor ()
   {
     // destory local resources
-    pr_clear_value_vector (m_default_in_args);
     pr_clear_value_vector (m_out_args);
 
     // exit stack
@@ -322,86 +132,6 @@ namespace cubpl
       {
 	delete m_stack;
       }
-  }
-
-  int
-  executor::append_missing_default_args ()
-  {
-    DB_VALUE sys_datetime, sys_epochtime;
-    THREAD_ENTRY *thread_p = NULL;
-    int error = NO_ERROR;
-    const int supplied_arg_count = (int) m_args.size ();
-
-    if (supplied_arg_count >= m_sig.arg.arg_size)
-      {
-	return NO_ERROR;
-      }
-
-    db_make_null (&sys_datetime);
-    db_make_null (&sys_epochtime);
-
-    if (m_stack == NULL)
-      {
-	return ER_FAILED;
-      }
-
-    thread_p = m_stack->get_thread_entry ();
-    if (db_sys_date_and_epoch_time (&sys_datetime, &sys_epochtime) != NO_ERROR)
-      {
-	error = er_errid ();
-	goto exit_clear;
-      }
-
-    m_default_in_args.reserve ((size_t) (m_sig.arg.arg_size - supplied_arg_count));
-
-    for (int i = supplied_arg_count; i < m_sig.arg.arg_size; i++)
-      {
-	DB_VALUE default_arg_value;
-
-	db_make_null (&default_arg_value);
-
-	if (m_sig.arg.arg_default_value_size[i] == PL_ARG_DEFAULT_NONE)
-	  {
-	    error = ER_SP_INVALID_PARAM_COUNT;
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, m_sig.arg.arg_size, supplied_arg_count);
-	    db_value_clear (&default_arg_value);
-	    goto exit_clear;
-	  }
-
-	if (m_sig.arg.arg_default_value_size[i] == PL_ARG_DEFAULT_NULL)
-	  {
-	    db_make_null (&default_arg_value);
-	  }
-	else if ((DB_DEFAULT_EXPR_TYPE) m_sig.arg.arg_default_expr_type[i] != DB_DEFAULT_NONE)
-	  {
-	    error = sp_evaluate_default_expr (thread_p, (DB_DEFAULT_EXPR_TYPE) m_sig.arg.arg_default_expr_type[i],
-					      m_sig.arg.arg_default_expr_op[i], m_sig.arg.arg_default_expr_format[i],
-					      &sys_datetime, &sys_epochtime, &default_arg_value);
-	    if (error != NO_ERROR)
-	      {
-		db_value_clear (&default_arg_value);
-		goto exit_clear;
-	      }
-	  }
-	else
-	  {
-	    error = db_make_string_copy (&default_arg_value, m_sig.arg.arg_default_value_size[i] > 0
-					 ? m_sig.arg.arg_default_value[i] : "");
-	    if (error != NO_ERROR)
-	      {
-		db_value_clear (&default_arg_value);
-		goto exit_clear;
-	      }
-	  }
-
-	m_default_in_args.emplace_back (default_arg_value);
-	m_args.emplace_back (std::ref (m_default_in_args.back ()));
-      }
-
-exit_clear:
-    db_value_clear (&sys_datetime);
-    db_value_clear (&sys_epochtime);
-    return error;
   }
 
   int
@@ -478,7 +208,7 @@ exit_clear:
 	  }
       }
 
-    return append_missing_default_args ();
+    return NO_ERROR;
   }
 
   bool

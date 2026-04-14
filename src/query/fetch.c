@@ -3525,7 +3525,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       /* sys_guid() is not constant */
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
-      if (db_uuidv4 (thread_p, arithptr->value) != NO_ERROR)
+      if (db_uuidv4 (arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -3547,15 +3547,19 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
 	if (version == 0 || version == 4)
 	  {
-	    if (db_uuid_bin (thread_p, UUID_V4, 0, arithptr->value) != NO_ERROR)
+	    if (db_uuid_bin (UUID_V4, NULL, 0, arithptr->value) != NO_ERROR)
 	      {
 		goto error;
 	      }
 	  }
 	else if (version == 7)
 	  {
+	    UUID_STATE uuid_state;
+	    uuid_state.last_ms = &thread_p->uuidv7_last_ms;
+	    uuid_state.seq = &thread_p->uuidv7_seq;
+
 	    if (db_uuid_bin
-		(thread_p, UUID_V7,
+		(UUID_V7, &uuid_state,
 		 ((uint64_t) vd->sys_epochtime * 1000ULL) + (uint64_t) (vd->sys_datetime.time % 1000),
 		 arithptr->value) != NO_ERROR)
 	      {
@@ -3564,7 +3568,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  }
 	else
 	  {
-	    db_uuid_bin (thread_p, UUID_UNSUPPORTED, 0, arithptr->value);
+	    db_uuid_bin (UUID_UNSUPPORTED, NULL, 0, arithptr->value);
 	    goto error;
 	  }
       }

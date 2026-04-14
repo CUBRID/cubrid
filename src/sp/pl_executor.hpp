@@ -89,7 +89,6 @@ namespace cubpl
       pl_signature &m_sig;
 
       std::vector <std::reference_wrapper <DB_VALUE>> m_args;
-      std::vector <DB_VALUE> m_default_in_args;
       std::vector <DB_VALUE> m_out_args;
 
       // check
@@ -97,7 +96,6 @@ namespace cubpl
       bool is_supported_dbtype (const DB_VALUE &val);
 
       int change_exec_rights (const char *auth_name);
-      int append_missing_default_args ();
 
       void handle_type_resultset (DB_VALUE &returnval);
 

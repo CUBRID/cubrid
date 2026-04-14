@@ -1839,8 +1839,8 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
 
   assert (node->node_type == PT_INSERT || node->node_type == PT_MERGE);
 
-  /* if an attribute has a default expression as default value and that expression refers to the current date and time,
-   * then we make sure that we mark this statement as one that needs the system datetime from the server */
+  /* If an attribute default expression needs server time information, make sure this statement fetches it before any
+   * client-side evaluation path uses the cached default value. */
   if (node->node_type == PT_INSERT)
     {
       cls_name = node->info.insert.spec->info.spec.entity_name;
@@ -1859,7 +1859,8 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
     {
       for (attr = smclass->attributes; attr != NULL; attr = (SM_ATTRIBUTE *) attr->header.next)
 	{
-	  if (DB_IS_DATETIME_DEFAULT_EXPR (attr->default_value.default_expr.default_expr_type))
+	  if (DB_IS_DATETIME_DEFAULT_EXPR (attr->default_value.default_expr.default_expr_type)
+	      || DB_IS_DEFAULT_UUID_TIMEBASE_EXPR (attr->default_value.default_expr.default_expr_type))
 	    {
 	      node->flag.si_datetime = true;
 	      db_make_null (&parser->sys_datetime);

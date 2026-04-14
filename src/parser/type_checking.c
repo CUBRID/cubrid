@@ -17293,8 +17293,49 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       break;
 
     case PT_SYS_GUID:
+      error = db_uuidv4 (result);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, expr, er_msg ());
+	  return 0;
+	}
+      return 1;
+
     case PT_UUID:
-      return 0;
+      {
+	int version = 4;
+	UINT64 epoch_ms = 0;
+	UUID_STATE uuid_state;
+
+	if (arg1 != NULL && DB_VALUE_TYPE (arg1) != DB_TYPE_NULL)
+	  {
+	    version = db_get_int (arg1);
+	  }
+
+	if (version == 0 || version == 4)
+	  {
+	    error = db_uuid_bin (UUID_V4, NULL, 0, result);
+	  }
+	else if (version == 7)
+	  {
+	    uuid_state.last_ms = &parser->uuidv7_last_ms;
+	    uuid_state.seq = &parser->uuidv7_seq;
+	    epoch_ms = ((UINT64) (*db_get_timestamp (&parser->sys_epochtime)) * 1000ULL)
+	      + (UINT64) (db_get_datetime (&parser->sys_datetime)->time % 1000);
+	    error = db_uuid_bin (UUID_V7, &uuid_state, epoch_ms, result);
+	  }
+	else
+	  {
+	    error = db_uuid_bin (UUID_UNSUPPORTED, NULL, 0, result);
+	  }
+
+	if (error != NO_ERROR)
+	  {
+	    PT_ERRORc (parser, expr, er_msg ());
+	    return 0;
+	  }
+      }
+      return 1;
 
     case PT_INDEX_CARDINALITY:
       /* constant folding for this expression is never performed : is always resolved on server */

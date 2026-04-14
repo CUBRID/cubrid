@@ -168,6 +168,14 @@ typedef enum
   UUID_V8 = UUID_UNSUPPORTED,	/* not supported */
 } UUID_VERSION;
 
+typedef struct UUID_STATE UUID_STATE;
+
+struct UUID_STATE
+{
+  UINT64 *last_ms;
+  UINT8 *seq;
+};
+
 #define GUID_STANDARD_BYTES_LENGTH 16
 #define GUID_V7_TS_BYTES_LENGTH 6
 #define GUID_V7_SEQ_BITS 8
@@ -369,11 +377,8 @@ extern int db_get_like_optimization_bounds (const DB_VALUE * const pattern, DB_V
 extern int db_like_bound (const DB_VALUE * const src_pattern, const DB_VALUE * const src_escape,
 			  DB_VALUE * const result_bound, const bool compute_lower_bound);
 extern int db_hex (const DB_VALUE * param, DB_VALUE * result);
-#if !defined (CS_MODE)
-/* todo(rem): this does not belong here */
-extern int db_uuidv4 (THREAD_ENTRY * thread_p, DB_VALUE * result);
-extern int db_uuid_bin (THREAD_ENTRY * thread_p, UUID_VERSION version, uint64_t epoch_ms, DB_VALUE * result);
-#endif /* !defined (CS_MODE) */
+extern int db_uuidv4 (DB_VALUE * result);
+extern int db_uuid_bin (UUID_VERSION version, UUID_STATE * uuid_state, uint64_t epoch_ms, DB_VALUE * result);
 extern int db_ascii (const DB_VALUE * param, DB_VALUE * result);
 extern int db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_base, DB_VALUE * result);
 extern void init_builtin_calendar_names (LANG_LOCALE_DATA * lld);

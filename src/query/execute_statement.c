@@ -87,6 +87,7 @@
 #include "xasl_to_stream.h"
 #include "query_cl.h"
 #include "parser_support.h"
+#include "string_opfunc.h"
 #include "tz_support.h"
 #include "dbtype.h"
 #include "crypt_opfunc.h"
@@ -459,11 +460,6 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 
   for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
-      if (DB_IS_DEFAULT_DETERMINE_BY_ROW (att->default_value.default_expr.default_expr_type))
-	{
-	  /* in here, we calculate statement-fixed default values */
-	  continue;
-	}
       if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
 	{
 	  error = NO_ERROR;
@@ -578,10 +574,23 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 		}
 	      break;
 	    case DB_DEFAULT_SYSGUID:
+	      error = db_uuidv4 (&default_value);
+	      break;
 	    case DB_DEFAULT_UUIDV4:
+	      error = db_uuid_bin (UUID_V4, NULL, 0, &default_value);
+	      break;
 	    case DB_DEFAULT_UUIDV7:
-	      /* Client-side statement preparation cannot generate row-level UUID defaults. */
-	      continue;
+	      {
+		UUID_STATE uuid_state;
+
+		uuid_state.last_ms = &parser->uuidv7_last_ms;
+		uuid_state.seq = &parser->uuidv7_seq;
+		error =
+		  db_uuid_bin (UUID_V7, &uuid_state,
+			       ((UINT64) (*db_get_timestamp (&parser->sys_epochtime)) * 1000ULL)
+			       + (UINT64) (db_get_datetime (&parser->sys_datetime)->time % 1000), &default_value);
+	      }
+	      break;
 	    default:
 	      break;
 	    }
@@ -13237,6 +13246,13 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 		      break;
 		    }
 
+		  error = do_evaluate_default_expr (parser, class_);
+		  if (error != NO_ERROR)
+		    {
+		      cnt = error;
+		      goto cleanup;
+		    }
+
 		  /* create an instance of the target class using templates */
 		  otemplate = dbt_create_object_internal (class_->info.name.db_object);
 		  if (otemplate == NULL)
@@ -13681,19 +13697,10 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  error = is_server_insert_allowed (parser, statement);
+  error = do_evaluate_default_expr (parser, class_);
   if (error != NO_ERROR)
     {
       return error;
-    }
-
-  if (statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
-    {
-      error = do_evaluate_default_expr (parser, class_);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
     }
 
   error =

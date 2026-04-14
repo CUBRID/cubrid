@@ -12218,6 +12218,9 @@ qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * in
   int num_default_expr = insert->num_default_expr;
   DB_VALUE new_val;
   int error = NO_ERROR;
+  UUID_STATE uuid_state;
+  uuid_state.last_ms = &thread_p->uuidv7_last_ms;
+  uuid_state.seq = &thread_p->uuidv7_seq;
 
   if (num_default_expr <= 0)
     {
@@ -12251,16 +12254,16 @@ qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * in
       switch (expr_type)
 	{
 	case DB_DEFAULT_SYSGUID:
-	  error = db_uuidv4 (thread_p, &new_val);
+	  error = db_uuidv4 (&new_val);
 	  break;
 
 	case DB_DEFAULT_UUIDV4:
-	  error = db_uuid_bin (thread_p, UUID_V4, 0, &new_val);
+	  error = db_uuid_bin (UUID_V4, NULL, 0, &new_val);
 	  break;
 
 	case DB_DEFAULT_UUIDV7:
 	  error =
-	    db_uuid_bin (thread_p, UUID_V7,
+	    db_uuid_bin (UUID_V7, &uuid_state,
 			 ((uint64_t) xasl_state->vd.sys_epochtime * 1000ULL)
 			 + (uint64_t) (xasl_state->vd.sys_datetime.time % 1000), &new_val);
 	  break;
