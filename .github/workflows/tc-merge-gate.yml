@@ -87,7 +87,7 @@ jobs:
               --state open \
               --limit 1 \
               --json url,isDraft \
-              --jq '.[0] // empty' 2>/dev/null || echo "")
+              --jq '.[0] // empty')
 
             if [ -z "${OPEN_PR}" ]; then
               echo "::notice::${TC_REPO}: No open TC PR for '${BRANCH_NAME}' — pass"
