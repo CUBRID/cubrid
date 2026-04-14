@@ -282,18 +282,22 @@ namespace cubhnsw
 				    const lock_mode &mode);
 
       // neighbors cache helpers (single-thread, in-memory)
-      const std::vector<slot_id_t> *get_neighbors_cached_ids (
+      neighbors_view get_neighbors_cached_ids (
 	      algo_context_t &context,
 	      const slot_id_t &slot_id,
 	      level_t level);
       void set_neighbors_cached_ids (algo_context_t &context,
 				     const slot_id_t &slot_id,
 				     level_t level,
-				     std::vector<slot_id_t> neighbors);
+				     const slot_id_t *data,
+				     std::size_t count);
 
       void init_in_memory_block (std::size_t estimated_nodes)
       {
 	m_inmem.init (estimated_nodes, m_root_vpid.pageid, m_root_vpid.volid);
+	// Pre-reserve flat neighbor buffer: each node has at most 2*M+1 neighbor slots across
+	// level 0 (2*M) plus one extra level-1 entry; multiply by estimated_nodes for the total.
+	m_flat_neighbors.reserve (estimated_nodes * (2 * m_build_params.m + 2));
       }
 
       void promote_root (pinned_t &root);
@@ -303,12 +307,17 @@ namespace cubhnsw
 							 const lock_mode &mode);
 
       // Fast inline path for neighbors cache lookup: no stats overhead.
-      inline const std::vector<slot_id_t> *try_get_neighbors_cached (const slot_id_t &slot,
+      inline neighbors_view try_get_neighbors_cached (const slot_id_t &slot,
 	  level_t level) noexcept
       {
 	neighbors_key key { slot, level };
 	auto it = m_neighbors_cache.find (key);
-	return (it != m_neighbors_cache.end ()) ? &it->second : nullptr;
+	if (it == m_neighbors_cache.end ())
+	  {
+	    return {};
+	  }
+	auto [offset, count] = it->second;
+	return neighbors_view { m_flat_neighbors.data () + offset, count };
       }
 
       short get_max_level () const
@@ -406,6 +415,7 @@ namespace cubhnsw
       i8_cache_block *m_i8_cache_tail {nullptr};
 
       /* TODO: This is not thread-safe. Currently, we are assuming single-threaded access, but we need to make it thread-safe. */
-      neighbors_cache_t m_neighbors_cache;    // (slot_id_t, level) -> neighbors
+      neighbors_cache_t m_neighbors_cache;    // (slot_id_t, level) -> (offset, count) into m_flat_neighbors
+      std::vector<slot_id_t> m_flat_neighbors; // flat contiguous buffer for all neighbor lists
   };
 }

@@ -257,28 +257,52 @@ namespace cubhnsw
 
   }
 
-  const std::vector<slot_id_t> *
+  neighbors_view
   storage::get_neighbors_cached_ids (algo_context_t &context, const slot_id_t &slot, level_t level)
   {
     neighbors_key key { slot, level };
     auto it = m_neighbors_cache.find (key);
-    if (it != m_neighbors_cache.end ())
+    if (it == m_neighbors_cache.end ())
       {
-	return &it->second;
+	return {};
       }
-
-    // Not cached yet: let caller fall back to loading neighbors directly.
-    return nullptr;
+    auto [offset, count] = it->second;
+    return neighbors_view { m_flat_neighbors.data () + offset, count };
   }
 
   void
   storage::set_neighbors_cached_ids (algo_context_t &context,
 				     const slot_id_t &slot,
 				     level_t level,
-				     std::vector<slot_id_t> neighbors)
+				     const slot_id_t *data,
+				     std::size_t count)
   {
+    // Each node's neighbor list is pre-allocated with a fixed max capacity so that subsequent
+    // updates (form_reverse_links_ push_back / refine paths) can overwrite in-place without
+    // appending new entries to m_flat_neighbors.  Without this, each update would append the
+    // full neighbor list again, causing O(N * M^2) buffer growth and OOM.
+    const uint32_t max_per_slot = (level == 0)
+				  ? static_cast<uint32_t> (2 * m_build_params.m + 1)
+				  : static_cast<uint32_t> (m_build_params.m + 1);
+
     neighbors_key key { slot, level };
-    m_neighbors_cache.insert_or_assign (key, std::move (neighbors));
+    auto [it, inserted] = m_neighbors_cache.try_emplace (key, std::make_pair (0u, 0u));
+    if (inserted)
+      {
+	// First write: allocate max_per_slot contiguous slots and copy count entries.
+	uint32_t offset = static_cast<uint32_t> (m_flat_neighbors.size ());
+	m_flat_neighbors.resize (m_flat_neighbors.size () + max_per_slot);
+	std::copy (data, data + count, m_flat_neighbors.data () + offset);
+	it->second = { offset, static_cast<uint32_t> (count) };
+      }
+    else
+      {
+	// Subsequent write: overwrite in-place within the pre-allocated slot.
+	// count must be <= max_per_slot (guaranteed by HNSW neighbor-list invariants).
+	auto [offset, old_count] = it->second;
+	std::copy (data, data + count, m_flat_neighbors.data () + offset);
+	it->second.second = static_cast<uint32_t> (count);
+      }
   }
 
   const cached_vector *

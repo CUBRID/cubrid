@@ -248,8 +248,18 @@ namespace cubhnsw
     }
   };
 
+  // Non-owning view into the flat neighbor buffer in storage.
+  struct neighbors_view
+  {
+    const slot_id_t *data {nullptr};
+    std::size_t size {0};
+    explicit operator bool () const noexcept { return data != nullptr; }
+  };
+
+  // Value is (offset, count) into storage::m_flat_neighbors instead of an owned std::vector.
+  // Eliminates per-entry heap allocations and makes neighbor list data contiguous in memory.
   using neighbors_cache_t =
-	  ankerl::unordered_dense::map<neighbors_key, std::vector<slot_id_t>, neighbors_key_hash>;
+	  ankerl::unordered_dense::map<neighbors_key, std::pair<uint32_t, uint32_t>, neighbors_key_hash>;
 
   using candidates_view_t = std::vector<candidate_t>;
 

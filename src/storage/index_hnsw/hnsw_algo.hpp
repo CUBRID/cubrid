@@ -604,7 +604,7 @@ namespace cubhnsw
 
 	    for (std::size_t ni = 0; ni < neigh_n && n_resolved < MAX_RESOLVED; ++ni)
 	      {
-		slot_id_t successor_slot = (*cached_neighbors)[ni];
+		slot_id_t successor_slot = cached_neighbors.data[ni];
 		auto [it, inserted] = visits.insert (encode_oid_key (successor_slot));
 		if (!inserted) continue;
 		stats.on_visit ();
@@ -698,7 +698,7 @@ namespace cubhnsw
 		stats.on_candidate_prune ();
 	      }
 	  }
-	m_storage->set_neighbors_cached_ids (context, candidate_slot, level, neigh);
+	m_storage->set_neighbors_cached_ids (context, candidate_slot, level, neigh.data (), neigh.size ());
       }
 
     stats.commit (context.m_stats, context.m_is_perf_tracking, context.m_level);
@@ -727,13 +727,13 @@ namespace cubhnsw
 	    changed = false;
 	    level_t level = context.m_level;
 	    // Try neighbors cache first; fallback to direct neighbors_ref_type.
-	    const std::vector<slot_id_t> *cached_neighbors =
+	    neighbors_view cached_neighbors =
 		    m_storage->get_neighbors_cached_ids (context, closest_slot, level);
 
-	    if (cached_neighbors != nullptr)
+	    if (cached_neighbors)
 	      {
 		context.m_stats.on_neighbors_cache_hit (context.m_is_perf_tracking, level);
-		const std::size_t neigh_n = cached_neighbors->size ();
+		const std::size_t neigh_n = cached_neighbors.size;
 
 		// Two-pass: resolve + prefetch in pass 1, compute in pass 2.
 		constexpr std::size_t MAX_RESOLVED = 128; // >= M for any supported M
@@ -743,7 +743,7 @@ namespace cubhnsw
 
 		for (std::size_t ni = 0; ni < neigh_n && n_resolved < MAX_RESOLVED; ++ni)
 		  {
-		    slot_id_t neighbor_id = (*cached_neighbors)[ni];
+		    slot_id_t neighbor_id = cached_neighbors.data[ni];
 		    stats.on_neighbor_scan ();
 		    const cached_vector *vec =
 			    m_storage->get_cached_vector_by_slot_id (context, neighbor_id, lock_mode::shared);
@@ -810,7 +810,7 @@ namespace cubhnsw
 			changed = true;
 		      }
 		  }
-		m_storage->set_neighbors_cached_ids (context, original_closest_slot, level, neigh);
+		m_storage->set_neighbors_cached_ids (context, original_closest_slot, level, neigh.data (), neigh.size ());
 	      }
 	    stats.on_visit ();
 	  }
@@ -849,7 +849,7 @@ namespace cubhnsw
       {
 	neigh.push_back (new_neighbors.at (i));
       }
-    m_storage->set_neighbors_cached_ids (context, new_node_blk->id, level, neigh);
+    m_storage->set_neighbors_cached_ids (context, new_node_blk->id, level, neigh.data (), neigh.size ());
     m_graph_structure_profile.on_edges_added (level, top_view.size ());
   }
 
@@ -886,7 +886,7 @@ namespace cubhnsw
 		{
 		  neigh.push_back (close_header.at (i));
 		}
-	      m_storage->set_neighbors_cached_ids (context, close_slot, level, neigh);
+	      m_storage->set_neighbors_cached_ids (context, close_slot, level, neigh.data (), neigh.size ());
 	      m_graph_structure_profile.on_edges_added (level, 1);
 	      continue;
 	    }
@@ -927,7 +927,7 @@ namespace cubhnsw
 	  {
 	    neigh.push_back (close_header.at (i));
 	  }
-	m_storage->set_neighbors_cached_ids (context, close_slot, level, neigh);
+	m_storage->set_neighbors_cached_ids (context, close_slot, level, neigh.data (), neigh.size ());
 	m_graph_structure_profile.on_edges_added (level, top_view.size ());
       }
 
