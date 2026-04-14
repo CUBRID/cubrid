@@ -400,6 +400,9 @@ OR_PUT_DOUBLE (char *ptr, double val)
 #define OR_PUT_OFFSET(ptr, val) \
   OR_PUT_BIG_VAR_OFFSET ((ptr), (val))
 
+#define OR_PUT_LAST_VAR_OFFSET(ptr, val) \
+  OR_PUT_OFFSET ((ptr), OR_SET_VAR_LAST_ELEMENT (val))
+
 #define OR_GET_OFFSET(ptr) \
   OR_GET_BIG_VAR_OFFSET ((ptr))
 
@@ -2552,6 +2555,12 @@ STATIC_INLINE int
 or_put_offset (OR_BUF * buf, int num)
 {
   return or_put_big_var_offset (buf, num);
+}
+
+STATIC_INLINE int
+or_put_last_var_offset (OR_BUF * buf, int num)
+{
+  return or_put_offset (buf, OR_SET_VAR_LAST_ELEMENT (num));
 }
 
 STATIC_INLINE int

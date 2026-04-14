@@ -3307,7 +3307,7 @@ catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p, OI
 
   /* put last offset */
   offset = (int) (buf_p->ptr - buf_p->buffer - header_size);
-  OR_PUT_OFFSET (offset_p, offset);
+  OR_PUT_LAST_VAR_OFFSET (offset_p, offset);
 
   if (bound_bits)
     {
