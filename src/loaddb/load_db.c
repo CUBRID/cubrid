@@ -68,6 +68,7 @@ struct t_schema_file_list_info
 
 static int ldr_validate_object_file (const char *argv0, load_args * args);
 static int ldr_get_start_line_no (std::string & file_name);
+static void ldr_compat_serial_call_target (DB_SESSION * session);
 static FILE *ldr_check_file (std::string & file_name, int &error_code);
 static int loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode);
 static void ldr_exec_query_interrupt_handler (void);
@@ -530,7 +531,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   int error = NO_ERROR;
-  /* set to static to avoid compiler warning (clobbered by longjump) */
   FILE *schema_file = NULL;
   T_SCHEMA_FILE_LIST_INFO **schema_file_list = NULL;
   FILE *index_file = NULL;
@@ -540,8 +540,12 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
   char *passwd;
   int status = 0;
-  /* set to static to avoid compiler warning (clobbered by longjump) */
-  static bool interrupted = false;
+#if defined (SA_MODE)
+  /* to avoid compiler warning (clobbered by longjump) */
+  volatile bool interrupted = false;
+#else
+  bool interrupted = false;
+#endif
   int au_save = 0;
   extern bool obt_Enable_autoincrement;
   char log_file_name[PATH_MAX];
@@ -957,6 +961,39 @@ loaddb_user (UTIL_FUNCTION_ARG * arg)
 }
 
 /*
+ * ldr_compat_serial_call_target - Compatibility fix for CALL ... ON CLASS db_serial statements
+ *                                  unloaded from version 11.4 or earlier.
+ *   In 11.5+, "db_serial" was renamed to a view (CTV_SERIAL_NAME) and "_db_serial" became
+ *   the catalog table (CT_SERIAL_NAME). This function rewrites the ON CLASS target from the
+ *   old name to the current one before compilation.
+ *   return: void
+ *   session(in): current DB session
+ */
+static void
+ldr_compat_serial_call_target (DB_SESSION * session)
+{
+  PT_NODE *statement = NULL;
+  PT_NODE *on_call_target = NULL;
+  const char *origin_name = NULL;
+
+  statement = db_get_statement (session, 0);
+  if (statement == NULL)
+    {
+      return;
+    }
+
+  on_call_target = PT_METHOD_CALL_ON_CALL_TARGET (statement);
+  if (on_call_target != NULL && PT_IS_NAME_NODE (on_call_target))
+    {
+      origin_name = PT_NAME_ORIGINAL (on_call_target);
+      if (strcasecmp (origin_name, CTV_SERIAL_NAME) == 0)
+	{
+	  on_call_target->info.name.original = CT_SERIAL_NAME;
+	}
+    }
+}
+
+/*
  * ldr_exec_query_interrupt_handler - signal handler registered via
  * util_arm_signal_handlers
  *    return: void
@@ -987,7 +1024,8 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
   int executed_cnt = 0;
   int last_statement_line_no = 0;	// tracks line no of the last successfully executed stmt. -1 for failed ones.
   int base_line = *start_line - 1;
-  int client_type = DB_CLIENT_TYPE_LOADDB_UTILITY;
+  int client_type;
+  int save_client_type = DB_CLIENT_TYPE_LOADDB_UTILITY;	/* prevents compat check in 'end' on early goto */
 
   if ((*start_line) > 1)
     {
@@ -1023,7 +1061,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 
   util_arm_signal_handlers (&ldr_exec_query_interrupt_handler, &ldr_exec_query_interrupt_handler);
 
-  client_type = db_get_client_type ();
+  save_client_type = client_type = db_get_client_type ();
 
   while (true)
     {
@@ -1038,16 +1076,17 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	  goto end;
 	}
 
+      client_type = db_get_client_type ();
+
       stmt_cnt = db_parse_one_statement (session);
       if (stmt_cnt > 0)
 	{
 	  assert (stmt_cnt == 1);
 
+	  CUBRID_STMT_TYPE statement_type = (CUBRID_STMT_TYPE) db_get_statement_type (session, stmt_cnt);
 	  if (client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2
 	      || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4)
 	    {
-	      CUBRID_STMT_TYPE statement_type = (CUBRID_STMT_TYPE) db_get_statement_type (session, stmt_cnt);
-
 	      switch (statement_type)
 		{
 		case CUBRID_STMT_CREATE_CLASS:
@@ -1069,6 +1108,11 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 		  db_set_client_statement_type (CUBRID_STMT_NONE);
 		  break;
 		}		/* switch (statement_type) */
+	    }
+
+	  if (statement_type == CUBRID_STMT_CALL)
+	    {
+	      ldr_compat_serial_call_target (session);
 	    }
 
 	  stmt_id = db_compile_statement (session);
@@ -1159,17 +1203,17 @@ end:
       db_commit_transaction ();
     }
 
-  if (client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2
-      || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4)
+  if (save_client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2
+      || save_client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4)
     {
       /* For stored procedures, jsp_find_stored_procedure() is invoked from db_execute_statement()
        * and may change the client type.
        * Check whether the client type has changed after db_execute_statement(). */
 
-      int load_client_type = db_get_client_type ();
+      client_type = db_get_client_type ();
 
-      if (client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2
-	  && load_client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4)
+      if (save_client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2
+	  && client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4)
 	{
 	  if (args->verbose)
 	    {
@@ -1184,7 +1228,7 @@ end:
 	    }
 	}
 
-      if (load_client_type == DB_CLIENT_TYPE_LOADDB_UTILITY)
+      if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY)
 	{
 	  if (args->verbose)
 	    {

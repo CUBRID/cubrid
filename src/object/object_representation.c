@@ -5782,6 +5782,7 @@ or_pack_int_array (char *buffer, int count, const int *int_array)
 
   /* pack count + that many integers */
   ptr = or_pack_int (buffer, count);
+
   for (i = 0; i < count; i++)
     {
       ptr = or_pack_int (ptr, int_array[i]);

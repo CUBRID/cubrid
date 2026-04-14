@@ -96,7 +96,6 @@
 
 #if defined(CS_MODE)
 #include "network.h"
-#include "connection_cl.h"
 #endif /* CS_MODE */
 #include "network_interface_cl.h"
 
@@ -1385,7 +1384,7 @@ boot_shutdown_client (bool is_er_final)
 	{
 	  (void) boot_unregister_client (tm_Tran_index);
 #if defined(CS_MODE)
-	  (void) net_client_final ();
+	  (void) net_client_final (false);
 #else /* CS_MODE */
 #if defined(WINDOWS)
 	  css_windows_shutdown ();
@@ -1467,7 +1466,7 @@ boot_server_die_or_changed (void)
       boot_client (NULL_TRAN_INDEX, TM_TRAN_WAIT_MSECS (), TM_TRAN_ISOLATION ());
       boot_Is_client_all_final = false;
 #if defined(CS_MODE)
-      css_terminate (true);
+      net_client_final (true);
 #endif /* !CS_MODE */
       if (prm_get_bool_value (PRM_ID_TEST_MODE))
 	{
@@ -1684,7 +1683,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
 	  error = net_client_ping_server_with_handshake (client_type, check_capabilities, opt_cap);
 	  if (error != NO_ERROR)
 	    {
-	      css_terminate (false);
+	      net_client_final (false);
 	    }
 	}
 

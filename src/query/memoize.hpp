@@ -96,9 +96,26 @@ namespace memoize
 	current_key_joined = false;
       }
       size_t get_current_size () const;
+
+      void add_size_for_merge_stats (const std::vector<size_t> &size_list)
+      {
+	m_key_sz += size_list[0];
+	m_value_sz += size_list[1];
+	m_hash_sz += size_list[2];
+      }
+
+      std::vector<size_t> get_size_for_merge_stats () const
+      {
+	return {m_key_sz, m_value_sz, m_hash_sz};
+      }
+
       bool is_disabled () const
       {
 	return disabled;
+      }
+      void set_disabled_flag (bool disabled)
+      {
+	this->disabled = disabled;
       }
       size_t hit;
       size_t miss;

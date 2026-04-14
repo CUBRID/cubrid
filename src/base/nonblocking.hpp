@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,22 +17,26 @@
  */
 
 /*
- * internal_tasks_worker_pool.hpp
+ * nonblocking.hpp
  */
 
-#ifndef _INTERNAL_TASKS_WORKER_POOL_HPP_
-#define _INTERNAL_TASKS_WORKER_POOL_HPP_
+#ifndef _CONNECTION_NONBLOCKING_HPP_
+#define _CONNECTION_NONBLOCKING_HPP_
 
-#include "thread_manager.hpp"
-
-namespace cubthread
+namespace cubsocket
 {
-  namespace internal_tasks_worker_pool
+  class nonblocking
   {
-    void initialize ();
-    void finalize ();
-    entry_workpool *get_instance ();
-  }
+    public:
+      nonblocking ();
+      ~nonblocking ();
+
+      virtual int wait (void *events, int maxevents, int timeout) = 0;
+
+      bool is_nonblocking (int fd) noexcept;
+      int get_flags (int fd) noexcept;
+      int set_flags (int fd, int flags) noexcept;
+  };
 }
 
-#endif // _INTERNAL_TASKS_WORKER_POOL_HPP_
+#endif

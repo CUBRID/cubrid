@@ -3819,12 +3819,11 @@ locale_alloc_collation_id (COLL_TAILORING * coll_tail)
 
   int coll_id = 0;
   char coll_name[COLL_NAME_SIZE];
-  const char *charset_part, *lang_part, *desc_part;
+  const char *lang_part, *desc_part;
   int range_start, range_size;
 
   strcpy (coll_name, coll_tail->coll_name);
 
-  charset_part = coll_name;
   lang_part = strchr (coll_name, '_');
   if (lang_part != NULL)
     {

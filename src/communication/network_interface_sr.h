@@ -196,6 +196,9 @@ extern void ses_posix_get_file_size (THREAD_ENTRY * thread_p, unsigned int rid, 
 extern void ses_posix_delete_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void ses_posix_create_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
+extern void net_server_wakeup_workers (THREAD_ENTRY * thread_p, int tran_index, int client_id);
+extern int net_server_active_workers (THREAD_ENTRY * thread_p, void *arg, int tran_index, int client_id);
+extern int net_server_conn_down (THREAD_ENTRY * thread_p, int tran_index);
 extern void net_cleanup_server_queues (unsigned int rid);
 
 extern void sboot_compact_db (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -267,4 +270,12 @@ extern void smmon_disable_force (THREAD_ENTRY * thread_p, unsigned int rid, char
 /* tdes */
 extern void stdes_set_query_start_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void stdes_reset_query_start_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+
+/* file manager */
+extern void sfile_tracker_dump_file_list (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sfile_tracker_clean_invalid_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+#if !defined(NDEBUG)
+extern void sfile_tracker_delete_target_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+#endif
+
 #endif /* _NETWORK_INTERFACE_SR_H_ */

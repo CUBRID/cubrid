@@ -3241,6 +3241,12 @@ log_recovery_get_redo_parallel_count ()
  *              The redo of aborted transactions are undone executing its
  *              respective compensating log records.
  */
+#if defined(SERVER_MODE)
+// *INDENT-OFF*
+REGISTER_WORKERPOOL (parallel_recovery_redo, []() { return log_recovery_get_redo_parallel_count (); });
+// *INDENT-ON*
+#endif
+
 static void
 log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa)
 {

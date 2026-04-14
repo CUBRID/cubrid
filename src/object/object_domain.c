@@ -152,6 +152,7 @@ static const DB_TYPE db_type_rank[] = { DB_TYPE_NULL,
   DB_TYPE_DB_VALUE,
   (DB_TYPE) (DB_TYPE_LAST + 1)
 };
+static int db_type_rank_order[DB_TYPE_LAST + 1] = { 0, };
 
 AREA *tp_Domain_area = NULL;
 static bool tp_Initialized = false;
@@ -555,6 +556,37 @@ TP_DOMAIN **tp_Domain_conversion_matrix[] = {
 /* lock for domain list cache */
 static pthread_mutex_t tp_domain_cache_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif /* SERVER_MODE */
+
+
+#ifdef __cplusplus
+/* Notice)
+ * The constructor of this class is used solely to initialize global variable(db_type_rank_order).
+ */
+class type_rank_order_initializer
+{
+public:
+  type_rank_order_initializer ()
+  {
+    memset (db_type_rank_order, 0x00, sizeof (db_type_rank_order));
+    for (int i = 0; db_type_rank[i] < (DB_TYPE_LAST + 1); i++)
+      {
+	db_type_rank_order[db_type_rank[i]] = i;
+      }
+  }
+};
+static volatile class type_rank_order_initializer tro_instance;
+#else
+__attribute__ ((constructor))
+     static void tp_init_db_type_rank_order (void)
+{
+  memset (db_type_rank_order, 0x00, sizeof (db_type_rank_order));
+  for (int i = 0; db_type_rank[i] < (DB_TYPE_LAST + 1); i++)
+    {
+      db_type_rank_order[db_type_rank[i]] = i;
+    }
+}
+#endif
+
 
 static int tp_domain_size_internal (const TP_DOMAIN * domain);
 static void tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain);
@@ -10176,10 +10208,6 @@ oidcmp (OID * oid1, OID * oid2)
 int
 tp_more_general_type (const DB_TYPE type1, const DB_TYPE type2)
 {
-  static int rank[DB_TYPE_LAST + 1];
-  static int rank_init = 0;
-  int i;
-
   if (type1 == type2)
     {
       return 0;
@@ -10198,19 +10226,8 @@ tp_more_general_type (const DB_TYPE type1, const DB_TYPE type2)
 #endif /* CUBRID_DEBUG */
       return 0;
     }
-  if (!rank_init)
-    {
-      /* set up rank so we can do fast table lookup */
-      memset (rank, 0x00, sizeof (rank));
 
-      for (i = 0; db_type_rank[i] < (DB_TYPE_LAST + 1); i++)
-	{
-	  rank[db_type_rank[i]] = i;
-	}
-      rank_init = 1;
-    }
-
-  return rank[type1] - rank[type2];
+  return db_type_rank_order[type1] - db_type_rank_order[type2];
 }
 
 /*
@@ -11271,27 +11288,44 @@ TP_DOMAIN_STATUS
 tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
   TP_DOMAIN_STATUS dom_status = DOMAIN_COMPATIBLE;
+  static const INT64 max_value[DB_BIGINT_PRECISION] = {
+    1LL,
+    10LL,
+    100LL,
+    1000LL,
+    10000LL,
+    100000LL,
+    1000000LL,
+    10000000LL,
+    100000000LL,
+    1000000000LL,
+    10000000000LL,
+    100000000000LL,
+    1000000000000LL,
+    10000000000000LL,
+    100000000000000LL,
+    1000000000000000LL,
+    10000000000000000LL,
+    100000000000000000LL,
+    1000000000000000000LL
+  };				/* max precision of a big integer is 19 */
 
-  static INT64 max_value[19];	/* max precision of a big integer is 19 */
-  static bool init_bigint_value = false;
-
-  if (!init_bigint_value)
+#if defined(SA_MODE) && !defined(NDEBUG)
+  static int dbg_check_initialize = 0;
+  if (dbg_check_initialize == 0)
     {
-      int i;
-
-      max_value[0] = 1;
-      for (i = 1; i < 19; i++)
+      for (int i = 1; i < DB_BIGINT_PRECISION; i++)
 	{
-	  max_value[i] = max_value[i - 1] * 10;
+	  assert (max_value[i] == (max_value[i - 1] * 10));
 	}
-
-      init_bigint_value = true;
+      dbg_check_initialize = 1;
     }
+#endif
 
   if (TP_IS_DISCRETE_NUMBER_TYPE (src->domain.general_info.type))
     {
       /* if the numeric's precision is 19 or more, then it can get the bigint enough */
-      if (desired_domain->type->id == DB_TYPE_NUMERIC && desired_domain->precision < 19)
+      if (desired_domain->type->id == DB_TYPE_NUMERIC && desired_domain->precision < DB_BIGINT_PRECISION)
 	{
 	  INT64 bigint;
 

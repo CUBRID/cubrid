@@ -60,12 +60,12 @@
 #endif /* SA_MODE */
 #include "jsp_cl.h"
 #include "execute_statement.h"
-#include "connection_support.h"
+#include "connection_support.hpp"
 #include "trigger_manager.h"
 #if !defined(CS_MODE)
 #include "session.h"
 #endif
-#include "connection_cl.h"
+
 #include "dbtype.h"
 #include "method_callback.hpp"
 #include "filesys_temp.hpp"

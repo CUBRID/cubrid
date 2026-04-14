@@ -87,7 +87,7 @@ namespace parallel_query_execute
 	delete m_is_task_running_p;
 	if (m_worker_manager_p != nullptr)
 	  {
-	    m_worker_manager_p->release_workers (m_parallelism);
+	    m_worker_manager_p->release_workers ();
 	    m_worker_manager_p = nullptr;
 	  }
 	qexec_free_xasl_state (m_root_thread_p, m_xasl_state);
@@ -170,7 +170,7 @@ namespace parallel_query_execute
     if (m_is_root_executor)
       {
 	m_job_execution_queue->push_last();
-	m_worker_manager_p->release_workers (m_parallelism);
+	m_worker_manager_p->release_workers ();
 	m_worker_manager_p = nullptr;
       }
 
@@ -281,7 +281,7 @@ extern "C" {
   {
     if (!xcache_uses_clones())
       {
-	worker_manager_p->release_workers (parallelism);
+	worker_manager_p->release_workers ();
 	return false;
       }
     using namespace parallel_query_execute;
@@ -357,7 +357,7 @@ extern "C" {
     cubxasl::iterate_xasl_tree (xasl, executor_iter, true);
     if (!executor_p)
       {
-	worker_manager_p->release_workers (parallelism);
+	worker_manager_p->release_workers ();
 	return false;
       }
     if (executor_p->m_xasl_state == nullptr)

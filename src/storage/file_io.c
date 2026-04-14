@@ -88,7 +88,6 @@
 #include "log_common_impl.h"
 #include "log_volids.hpp"
 #include "fault_injection.h"
-#include "thread_worker_pool.hpp"
 #include "es_posix.h"
 
 #if defined (SERVER_MODE)
@@ -115,9 +114,9 @@
 
 #include "intl_support.h"
 #include "tsc_timer.h"
-#include "thread_worker_pool.hpp"	// for system_core_count
 
 #if defined (SERVER_MODE)
+#include "thread_worker_pool.hpp"	// for system_core_count
 #include "server_support.h"
 #endif // SERVER_MODE
 #if defined (SERVER_MODE)
@@ -11416,7 +11415,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TYPE
     {
       if (remote_data_p)
 	{
-	  free_and_init (remote_data_p);
+	  thread_p->release_packet (remote_data_p);
 	}
 
       return ER_FAILED;
@@ -11425,7 +11424,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TYPE
   ptr = or_unpack_int (remote_data_p, &remote_status);
   if (remote_status != NO_ERROR)
     {
-      free_and_init (remote_data_p);
+      thread_p->release_packet (remote_data_p);
       return ER_FAILED;
     }
   data_size -= OR_INT_SIZE;
@@ -11439,7 +11438,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TYPE
 	}
     }
 
-  free_and_init (remote_data_p);
+  thread_p->release_packet (remote_data_p);
   return NO_ERROR;
 #else /* SERVER_MODE */
   extern unsigned int db_on_server;

@@ -45,9 +45,9 @@ extern void freeaddrinfo_uhost (struct addrinfo *res);
 
 #ifdef HAVE_GETHOSTBYNAME_R
 #if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
-extern int
-gethostbyname_r_uhost (const char *name,
-		       struct hostent *ret, char *buf, size_t buflen, struct hostent **result, int *h_errnop);
+extern int gethostbyname_r_uhost (const char *name,
+				  struct hostent *ret, char *buf, size_t buflen, struct hostent **result,
+				  int *h_errnop);
 #elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
 extern struct hostent *gethostbyname_r_uhost (const char *name,
 					      struct hostent *ret, char *buf, size_t buflen, int *h_errnop);

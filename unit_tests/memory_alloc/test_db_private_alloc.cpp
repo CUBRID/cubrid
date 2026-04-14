@@ -114,9 +114,6 @@ namespace test_memalloc
 	return 0;
       }
 
-    //cub_th_m.set_max_thread_count (100);
-
-    //cubthread::set_manager (&cub_th_m);
     cubthread::initialize (thread_p);
     cub_th_m = cubthread::get_manager();
     cub_th_m->set_max_thread_count (100);

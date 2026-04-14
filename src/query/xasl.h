@@ -161,6 +161,7 @@ using PRED_EXPR = cubxasl::pred_expr;
 // *INDENT-ON*
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
+typedef struct analytic_stat ANALYTIC_STATS;
 typedef struct groupby_stat GROUPBY_STATS;
 typedef struct orderby_stat ORDERBY_STATS;
 typedef struct xasl_stat XASL_STATS;
@@ -517,6 +518,7 @@ struct cte_proc_node
 #define XASL_USES_SQ_CACHE	       (0x1 << 18)	/* subquery uses result cache */
 #define XASL_NO_PARALLEL_SUBQUERY       (0x1 << 19)	/* disable parallel subquery */
 #define XASL_ANALYTIC_USES_LIMIT_OPT (0x1 << 20)	/* analytic uses limit optimization */
+#define XASL_ANALYTIC_SKIP_SORT (0x1 << 21)	/* analytic skip sort optimization */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
@@ -767,7 +769,8 @@ typedef enum
   ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS = 0x1 << 2,	/* used with parallel heap scan. */
   ACCESS_SPEC_FLAG_MERGEABLE_LIST = 0x1 << 3,	/* used with parallel heap scan. */
   ACCESS_SPEC_FLAG_COUNT_DISTINCT = 0x1 << 4,	/* used with parallel heap scan count distinct aggregate. */
-  ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x1 << 5	/* used with min/max aggregate. */
+  ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x1 << 5,	/* used with min/max aggregate. */
+  ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN = 0x1 << 6	/* used with keep page hint. */
 } ACCESS_SPEC_FLAG;
 
 #define ACCESS_SPEC_IS_FLAGED(spec, f)		((ACCESS_SPEC_FLAGS(spec) & (int) (f)) != 0)
@@ -979,6 +982,17 @@ struct groupby_stat
   bool groupby_sort;
 };
 
+struct analytic_stat
+{
+  struct timeval analytic_time;
+  UINT64 analytic_pages;
+  UINT64 analytic_ioreads;
+  int rows;
+  bool analytic_stopkey;
+  bool analytic_sort;
+  struct analytic_stat *next;
+};
+
 struct xasl_stat
 {
   struct timeval elapsed_time;
@@ -1161,6 +1175,7 @@ struct xasl_node
 #if defined (SERVER_MODE) || defined (SA_MODE)
   ORDERBY_STATS orderby_stats;
   GROUPBY_STATS groupby_stats;
+  ANALYTIC_STATS *analytic_stats;
   XASL_STATS xasl_stats;
   FUNC_STATS func_stats;
 
