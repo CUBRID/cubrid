@@ -298,8 +298,22 @@ namespace cubhnsw
 	// Pre-reserve flat neighbor buffer: each node has at most 2*M+1 neighbor slots across
 	// level 0 (2*M) plus one extra level-1 entry; multiply by estimated_nodes for the total.
 	m_flat_neighbors.reserve (estimated_nodes * (2 * m_build_params.m + 2));
-	// Level-0 direct cache: one entry per node, indexed by node_idx_of_().
-	m_level0_cache.resize (estimated_nodes, {UINT32_MAX, 0});
+	// Compute the stride for node_idx_of_(): upper bound on nodes per page.
+	// Multiple nodes are packed onto each IO_MAX_PAGE_SIZE page; node_idx_of_() must
+	// incorporate slotid to produce a unique index per node (not just per page).
+	{
+	  const std::size_t node_sz = node_bytes_ (0, get_dimension (), m_build_params.m);
+	  // Divide with +1 to ensure we never underestimate the packing density.
+	  m_level0_slots_per_page =
+		  static_cast<uint32_t> (IO_MAX_PAGE_SIZE / node_sz) + 1;
+	}
+	// Level-0 direct cache: indexed by node_idx_of_(slot) = page_offset * slots_per_page + slotid.
+	// Slotids are 0-based; actual_spp ≈ m_level0_slots_per_page - 1 (the +1 is an overcount).
+	// Max page_offset ≈ ceil(N / (M-1)); max idx ≈ ceil(N/(M-1)) * M + M.
+	// Formula: (N / (M-1) + 3) * M gives adequate headroom.
+	const uint32_t spp_denom = (m_level0_slots_per_page > 1u) ? (m_level0_slots_per_page - 1u) : 1u;
+	const std::size_t cache_size = (estimated_nodes / spp_denom + 3) * m_level0_slots_per_page;
+	m_level0_cache.resize (cache_size, {UINT32_MAX, 0});
 	// Pre-reserve the vector cache so that emplace() never reallocates during build.
 	// ankerl::unordered_dense stores values in a flat std::vector; without a reserve,
 	// any insert that crosses a capacity boundary invalidates ALL cached_vector* pointers
@@ -403,11 +417,18 @@ namespace cubhnsw
 	return m_oid_encoder.encode_oid (slot_id);
       }
 
-      // Compact 0-based index for a node: root is page 0 (page_idx=0), nodes start at page_idx=1.
-      // Subtracting root_pageid+1 maps pageid → [0, estimated_nodes).
+      // Unique flat index for a node in m_level0_cache.
+      // Multiple HNSW nodes are packed onto the same IO_MAX_PAGE_SIZE page, so pageid alone
+      // is not unique per node.  We combine the page offset from root with the slot id:
+      //   page_offset = slot.pageid - root_pageid   (root page = 0, first node page = 1, ...)
+      //   idx         = page_offset * m_level0_slots_per_page + slotid
+      // Slotids are 0-based in the inmem block: first insert on a page gets slotid 0.
+      // Root lives at (page_offset=0, slotid=1) → idx = 1; dummy at slotid 0 is never a node.
+      // This is injective: different (pageid, slotid) pairs always map to different indices.
       inline uint32_t node_idx_of_ (const slot_id_t &slot) const noexcept
       {
-	return static_cast<uint32_t> (slot.pageid - m_root_vpid.pageid - 1);
+	const uint32_t page_offset = static_cast<uint32_t> (slot.pageid - m_root_vpid.pageid);
+	return page_offset * m_level0_slots_per_page + static_cast<uint32_t> (slot.slotid);
       }
 
       const cached_vector *cache_vector_copy_ (const slot_id_t &slot_id, const float *vector);
@@ -455,5 +476,6 @@ namespace cubhnsw
       neighbors_cache_t m_neighbors_cache;     // (slot_id_t, level > 0) -> (offset, count) into m_flat_neighbors
       std::vector<slot_id_t> m_flat_neighbors; // flat contiguous buffer for all neighbor lists
       std::vector<level0_entry_t> m_level0_cache; // direct-indexed level-0 neighbor cache
+      uint32_t m_level0_slots_per_page {1};    // stride for node_idx_of_(): upper bound on nodes per page
   };
 }
