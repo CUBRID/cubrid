@@ -462,7 +462,10 @@ namespace cubthread
 	found_in_queue = 4,
 	wakeup_with_task = 5,
 	recycle_context = 6,
-	retire_context = 7
+	retire_context = 7,
+
+	// must be last
+	type_count
       };
 
       static const cubperf::statset_definition statdef;
@@ -660,19 +663,18 @@ namespace cubthread
   {
     if constexpr (Stats)
       {
-	const std::size_t MAX_SIZE = 32;
-	cubperf::stat_value stats[MAX_SIZE];
+	cubperf::stat_value statset[static_cast<std::size_t> (stats::id::type_count)];
 	std::stringstream ss;
 
-	std::memset (stats, 0, sizeof (stats));
-	get_stats (stats);
+	std::memset (statset, 0, sizeof (stats));
+	get_stats (statset);
 
 	ss << "Worker pool statistics: " << m_name << std::endl;
 
 	for (std::size_t index = 0; index < stats::get_count (); index++)
 	  {
 	    ss << "\t" << stats::get_name (index) << ": ";
-	    ss << stats[index] << std::endl;
+	    ss << statset[index] << std::endl;
 	  }
 
 	_er_log_debug (ARG_FILE_LINE, ss.str ().c_str ());
