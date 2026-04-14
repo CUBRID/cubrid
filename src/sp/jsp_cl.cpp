@@ -1212,11 +1212,11 @@ jsp_drop_pkg_body (const char *unique_name)
   obt = NULL;
   pkg_code_mop = NULL;
 
-  AU_DISABLE (save);
+  AU_DISABLE (save);    // side effect 0
 
   // check if scode_body has been set
   {
-    bool has_scode_body = true;
+    bool has_scode_body;
 
     pkg_code_mop = jsp_find_pkg_code (unique_name);
     if (pkg_code_mop)
@@ -1224,21 +1224,25 @@ jsp_drop_pkg_body (const char *unique_name)
 	err = db_get (pkg_code_mop, PKG_CODE_ATTR_SCODE_BODY, &value);
 	if (err != NO_ERROR)
 	  {
-	    goto cleanup;
+	    goto cleanup0;
 	  }
 
 	if (DB_IS_NULL (&value))
 	  {
 	    has_scode_body = false;
 	  }
-	pr_clear_value (&value);
+	else
+	  {
+	    has_scode_body = true;
+	    pr_clear_value (&value);
+	  }
       }
     else
       {
 	if (er_errid() != NO_ERROR)
 	  {
 	    err = er_errid();
-	    goto cleanup;
+	    goto cleanup0;
 	  }
 	has_scode_body = false;
       }
@@ -1247,7 +1251,7 @@ jsp_drop_pkg_body (const char *unique_name)
       {
 	err = ER_PKG_BODY_NOT_EXIST;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-	goto cleanup;
+	goto cleanup0;
       }
   }
 
@@ -1260,7 +1264,7 @@ jsp_drop_pkg_body (const char *unique_name)
     err = db_get (pkg_code_mop, PKG_CODE_ATTR_SCODE_SPEC, &value);
     if (err != NO_ERROR)
       {
-	goto cleanup;
+	goto cleanup0;
       }
 
     if (DB_IS_NULL (&value))
@@ -1270,7 +1274,7 @@ jsp_drop_pkg_body (const char *unique_name)
 	err = obj_delete (pkg_code_mop);
 	if (err != NO_ERROR)
 	  {
-	    goto cleanup;
+	    goto cleanup0;
 	  }
       }
     else
@@ -1286,14 +1290,14 @@ jsp_drop_pkg_body (const char *unique_name)
 	  {
 	    assert (er_errid () != NO_ERROR);
 	    err = er_errid ();
-	    goto cleanup;
-	  }
+	    goto cleanup0;
+	  }     // side effect 1
 
 	db_make_null (&value);
 	err = dbt_put_internal (obt, PKG_CODE_ATTR_SCODE_BODY, &value);
 	if (err != NO_ERROR)
 	  {
-	    goto cleanup;
+	    goto cleanup1;
 	  }
 
 	object = dbt_finish_object (obt);
@@ -1301,24 +1305,27 @@ jsp_drop_pkg_body (const char *unique_name)
 	  {
 	    assert (er_errid () != NO_ERROR);
 	    err = er_errid ();
-	    goto cleanup;
+	    goto cleanup1;
 	  }
-	obt = NULL;
+	obt = NULL;     // side effect 1 cleaned
 
 	err = locator_flush_instance (object);
 	if (err != NO_ERROR)
 	  {
-	    goto cleanup;
+	    obj_delete (object);
+	    goto cleanup0;
 	  }
       }
   }
 
-cleanup:
-  if (obt)
-    {
-      dbt_abort_object (obt);
-    }
+  AU_ENABLE (save);
+  return NO_ERROR;
 
+cleanup1:
+  assert (obt);
+  dbt_abort_object (obt);
+
+cleanup0:
   AU_ENABLE (save);
 
   return err;
