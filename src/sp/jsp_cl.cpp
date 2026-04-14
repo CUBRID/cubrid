@@ -1574,10 +1574,10 @@ jsp_drop_pkg_spec (const char *unique_name, MOP pkg_mop, MOP owner)
   else
     {
       if (er_errid () != NO_ERROR)
-        {
-          err = er_errid ();
-          goto cleanup0;
-        }
+	{
+	  err = er_errid ();
+	  goto cleanup0;
+	}
       // _db_package exists but _db_package_code doesn't - abnormal state
       assert (false);
       err = ER_FAILED;
