@@ -315,17 +315,18 @@ static int
 sp_make_int_sp_value_from_string (SP_VALUE * value_p, char *pos, int length)
 {
   int result = 0;
-  const int KEY_LENGTH = 128;
-  char shard_key[KEY_LENGTH];
+  char shard_key[SHARD_KEY_LENGTH + 1];
+  int key_len = (length > SHARD_KEY_LENGTH) ? SHARD_KEY_LENGTH : length;
   char *p;
 
-  snprintf (shard_key, KEY_LENGTH, "%s", pos);
+  memcpy (shard_key, pos, key_len);
+  shard_key[key_len] = '\0';
+
   p = strchr (shard_key, ';');
   if (p)
     {
       *p = '\0';
     }
-  shard_key[length] = '\0';
 
   result = parse_bigint (&value_p->integer, shard_key, 10);
   if (result != 0)
