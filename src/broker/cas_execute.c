@@ -4142,13 +4142,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	cur_p = (char *) net_value + NET_SIZE_INT;
 	memcpy (&net_dim, cur_p, NET_SIZE_INT);
 	dim = ntohl (net_dim);
-	if (dim < 0 || data_size != NET_SIZE_INT + (dim * NET_SIZE_FLOAT))
-	  {
-	    return ERROR_INFO_SET (CAS_ER_TYPE_CONVERSION, CAS_ERROR_INDICATOR);
-	  }
-
-	vector_float.dim = dim;
-	vector_float.float_array = (float *) MALLOC ((dim > 0 ? dim : 1) * NET_SIZE_FLOAT);
+	if (dim < 0 || dim > DB_MAX_VECTOR_DIMENSION || data_size != NET_SIZE_INT + (dim * NET_SIZE_FLOAT))
 	if (vector_float.float_array == NULL)
 	  {
 	    return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
