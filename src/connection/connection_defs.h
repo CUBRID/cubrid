@@ -38,6 +38,7 @@
 #include "memory_alloc.h"
 #include "porting.h"
 #include "thread_compat.hpp"
+#include "db_multi_threads_connections.h"
 
 #if defined(WINDOWS)
 #include <dos.h>
@@ -540,9 +541,6 @@ typedef struct css_mapping_entry CSS_MAP_ENTRY;
 struct css_mapping_entry
 {
   char *key;			/* host name (or some such) */
-#if defined(MULTI_CONN_TO_A_SERVER)
-  pthread_t owner_tid;
-#endif
   CSS_CONN_ENTRY *conn;		/* the connection */
   CSS_MAP_ENTRY *next;
   unsigned short id;		/* host id to help identify the connection */

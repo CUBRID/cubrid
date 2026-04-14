@@ -35,7 +35,7 @@
 #include "error_code.h"
 
 #define SP_VALUE_INIT_SIZE 50
-
+#define SHARD_KEY_LENGTH 128
 
 enum sp_error_code
 {
