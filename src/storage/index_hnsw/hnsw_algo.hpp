@@ -590,17 +590,39 @@ namespace cubhnsw
 	if (cached_neighbors != nullptr)
 	  {
 	    context.m_stats.on_neighbors_cache_hit (context.m_is_perf_tracking, level);
-	    for (slot_id_t successor_slot : *cached_neighbors)
-	      {
-		auto [it, inserted] = visits.insert (encode_oid_key (successor_slot));
-		if (!inserted)
-		  {
-		    continue;
-		  }
-		stats.on_visit ();
+	    const std::size_t neigh_n = cached_neighbors->size ();
 
-		const cached_vector *successor_vec =
+	    // Two-pass over unvisited neighbors to hide DRAM latency.
+	    // Pass 1: resolve cached_vector* via hash map (L3 hit) + issue __builtin_prefetch
+	    //         for float/i8 data immediately. Each prefetch has (n_resolved - i) *
+	    //         T_pass2 cycles until consumed — far exceeding ~300 cycle DRAM latency.
+	    // Pass 2: compute distances — data arrives from DRAM while we iterate.
+	    constexpr std::size_t MAX_RESOLVED = 128; // >= 2*M for M up to 64
+	    const cached_vector *resolved_vecs[MAX_RESOLVED];
+	    slot_id_t            resolved_slots[MAX_RESOLVED];
+	    std::size_t          n_resolved = 0;
+
+	    for (std::size_t ni = 0; ni < neigh_n && n_resolved < MAX_RESOLVED; ++ni)
+	      {
+		slot_id_t successor_slot = (*cached_neighbors)[ni];
+		auto [it, inserted] = visits.insert (encode_oid_key (successor_slot));
+		if (!inserted) continue;
+		stats.on_visit ();
+		const cached_vector *vec =
 			m_storage->get_cached_vector_by_slot_id (context, successor_slot, lock_mode::shared);
+		__builtin_prefetch (vec->values, 0, 0);
+		__builtin_prefetch (vec->values + 16, 0, 0);
+		if (vec->values_i8.values)
+		  __builtin_prefetch (vec->values_i8.values, 0, 0);
+		resolved_vecs[n_resolved] = vec;
+		resolved_slots[n_resolved] = successor_slot;
+		++n_resolved;
+	      }
+
+	    for (std::size_t i = 0; i < n_resolved; ++i)
+	      {
+		slot_id_t successor_slot = resolved_slots[i];
+		const cached_vector *successor_vec = resolved_vecs[i];
 		context.m_stats.on_prefilter_checked (context.m_is_perf_tracking, context.m_level);
 		distance_t successor_dist_i8 = compute_distance_from_query_i8_ (context, *successor_vec);
 		if (top.size () >= expansion_limit
@@ -711,12 +733,33 @@ namespace cubhnsw
 	    if (cached_neighbors != nullptr)
 	      {
 		context.m_stats.on_neighbors_cache_hit (context.m_is_perf_tracking, level);
-		for (slot_id_t neighbor_id : *cached_neighbors)
-		  {
-		    stats.on_neighbor_scan ();
+		const std::size_t neigh_n = cached_neighbors->size ();
 
-		    const cached_vector *neighbor_vec =
+		// Two-pass: resolve + prefetch in pass 1, compute in pass 2.
+		constexpr std::size_t MAX_RESOLVED = 128; // >= M for any supported M
+		const cached_vector *resolved_vecs[MAX_RESOLVED];
+		slot_id_t            resolved_slots[MAX_RESOLVED];
+		std::size_t          n_resolved = 0;
+
+		for (std::size_t ni = 0; ni < neigh_n && n_resolved < MAX_RESOLVED; ++ni)
+		  {
+		    slot_id_t neighbor_id = (*cached_neighbors)[ni];
+		    stats.on_neighbor_scan ();
+		    const cached_vector *vec =
 			    m_storage->get_cached_vector_by_slot_id (context, neighbor_id, lock_mode::shared);
+		    __builtin_prefetch (vec->values, 0, 0);
+		    __builtin_prefetch (vec->values + 16, 0, 0);
+		    if (vec->values_i8.values)
+		      __builtin_prefetch (vec->values_i8.values, 0, 0);
+		    resolved_vecs[n_resolved] = vec;
+		    resolved_slots[n_resolved] = neighbor_id;
+		    ++n_resolved;
+		  }
+
+		for (std::size_t i = 0; i < n_resolved; ++i)
+		  {
+		    const cached_vector *neighbor_vec = resolved_vecs[i];
+		    slot_id_t neighbor_id = resolved_slots[i];
 		    context.m_stats.on_prefilter_checked (context.m_is_perf_tracking, context.m_level);
 		    distance_t candidate_dist_i8 = compute_distance_from_query_i8_ (context, *neighbor_vec);
 		    if (!should_recheck_candidate_fp32_ (context, candidate_dist_i8, closest_dist))
