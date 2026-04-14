@@ -1093,7 +1093,7 @@ ldr_clear_err_total (LDR_CONTEXT *context)
 static const char *
 ldr_class_name (LDR_CONTEXT *context)
 {
-  static const char *name = NULL;
+  const char *name = NULL;
 
   if (context)
     {
@@ -1117,7 +1117,7 @@ ldr_class_name (LDR_CONTEXT *context)
 static const char *
 ldr_attr_name (LDR_CONTEXT *context)
 {
-  static const char *name = NULL;
+  const char *name = NULL;
 
   if (context && context->attrs && context->valid)
     {
@@ -6327,7 +6327,7 @@ ldr_init_driver ()
 }
 
 void
-ldr_sa_load (load_args *args, int *status, bool *interrupted)
+ldr_sa_load (load_args *args, int *status, volatile bool *interrupted)
 {
   int errors = 0;
   int64_t objects = 0;
@@ -6454,6 +6454,7 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 				 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
 						 LOADDB_MSG_LAST_COMMITTED_LINE), lastcommit);
 		}
+
 	      *interrupted = true;
 	    }
 	  else

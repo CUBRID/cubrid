@@ -5804,6 +5804,8 @@ deadlock_detect_task_execute (cubthread::entry & thread_ref)
 /*
  * lock_deadlock_detect_daemon_init () - initialize deadlock detect daemon thread
  */
+REGISTER_DAEMON (lock_deadlock_detect);
+
 void
 lock_deadlock_detect_daemon_init ()
 {

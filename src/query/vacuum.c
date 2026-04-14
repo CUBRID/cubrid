@@ -775,12 +775,12 @@ vacuum_init_thread_context (cubthread::entry &context, thread_type type, VACUUM_
   context.claim_system_worker ();
 }
 
-// class vacuum_master_context_manager
+// class vacuum_master_entry_manager
 //
 //  description:
 //    extend entry_manager to override context construction and retirement
 //
-class vacuum_master_context_manager : public cubthread::daemon_entry_manager
+class vacuum_master_entry_manager : public cubthread::daemon_entry_manager
 {
   private:
     void on_daemon_create (cubthread::entry &context) final
@@ -830,20 +830,20 @@ class vacuum_master_task : public cubthread::entry_task
     MVCCID m_oldest_visible_mvccid;                   // saved oldest visible mvccid (recomputed on each iteration)
 };
 
-// class vacuum_worker_context_manager
+// class vacuum_worker_entry_manager
 //
 //  description:
 //    extern entry manager to override construction/retirement of vacuum worker context
 //
-class vacuum_worker_context_manager : public cubthread::entry_manager
+class vacuum_worker_entry_manager : public cubthread::entry_manager
 {
   public:
-    vacuum_worker_context_manager () : cubthread::entry_manager ()
+    vacuum_worker_entry_manager () : cubthread::entry_manager ()
     {
       m_pool = new resource_shared_pool<VACUUM_WORKER> (vacuum_Workers, VACUUM_MAX_WORKER_COUNT);
     }
 
-    ~vacuum_worker_context_manager ()
+    ~vacuum_worker_entry_manager ()
     {
       delete m_pool;
     }
@@ -931,11 +931,11 @@ class vacuum_worker_task : public cubthread::entry_task
 
 // vacuum master globals
 static cubthread::daemon *vacuum_Master_daemon = NULL;                       // daemon thread
-static vacuum_master_context_manager *vacuum_Master_context_manager = NULL;  // context manager
+static vacuum_master_entry_manager *vacuum_Master_entry_manager = NULL;  // entry manager
 
 // vacuum worker globals
-static cubthread::entry_workpool *vacuum_Worker_threads = NULL;              // thread pool
-static vacuum_worker_context_manager *vacuum_Worker_context_manager = NULL;  // context manager
+static cubthread::worker_pool *vacuum_Worker_threads = NULL;              // thread pool
+static vacuum_worker_entry_manager *vacuum_Worker_entry_manager = NULL;  // entry manager
 
 /* *INDENT-ON* */
 
@@ -946,7 +946,7 @@ vacuum_sa_run_job (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry
 {
   PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_VAC_MASTER);
 
-  VACUUM_WORKER *worker_p = vacuum_Worker_context_manager->claim_worker ();
+  VACUUM_WORKER *worker_p = vacuum_Worker_entry_manager->claim_worker ();
   thread_type save_type = thread_type::TT_NONE;
   vacuum_convert_thread_to_worker (thread_p, worker_p, save_type);
   assert (save_type == thread_type::TT_VACUUM_MASTER);
@@ -956,7 +956,7 @@ vacuum_sa_run_job (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry
 
   vacuum_convert_thread_to_master (thread_p, save_type);
   assert (save_type == thread_type::TT_VACUUM_WORKER);
-  vacuum_Worker_context_manager->retire_worker (*worker_p);
+  vacuum_Worker_entry_manager->retire_worker (*worker_p);
 
   PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
 }
@@ -1277,6 +1277,11 @@ error:
   return (error_code == NO_ERROR) ? ER_FAILED : error_code;
 }
 
+REGISTER_DAEMON (vacuum);
+// *INDENT-OFF*
+REGISTER_WORKERPOOL (vacuum, []() { return prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT); });
+// *INDENT-ON*
+
 int
 vacuum_boot (THREAD_ENTRY * thread_p)
 {
@@ -1314,8 +1319,8 @@ vacuum_boot (THREAD_ENTRY * thread_p)
     }
 
   // create context managers
-  vacuum_Master_context_manager = new vacuum_master_context_manager ();
-  vacuum_Worker_context_manager = new vacuum_worker_context_manager ();
+  vacuum_Master_entry_manager = new vacuum_master_entry_manager ();
+  vacuum_Worker_entry_manager = new vacuum_worker_entry_manager ();
 
 #if defined (SERVER_MODE)
 
@@ -1332,7 +1337,7 @@ vacuum_boot (THREAD_ENTRY * thread_p)
   vacuum_Worker_threads =
     thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT),
 					VACUUM_MAX_TASKS_IN_WORKER_POOL, "vacuum",
-					vacuum_Worker_context_manager, 1, log_vacuum_worker_pool);
+					vacuum_Worker_entry_manager, 1, log_vacuum_worker_pool);
   assert (vacuum_Worker_threads != NULL);
 
   int vacuum_master_wakeup_interval_msec = prm_get_integer_value (PRM_ID_VACUUM_MASTER_WAKEUP_INTERVAL);
@@ -1340,7 +1345,7 @@ vacuum_boot (THREAD_ENTRY * thread_p)
 
   // create vacuum master thread
   vacuum_Master_daemon =
-    thread_manager->create_daemon (looper, new vacuum_master_task (), "vacuum-master", vacuum_Master_context_manager);
+    thread_manager->create_daemon (looper, new vacuum_master_task (), "vacuum-master", vacuum_Master_entry_manager);
 
   /* *INDENT-ON* */
 #endif /* SERVER_MODE */
@@ -1373,8 +1378,8 @@ vacuum_stop_workers (THREAD_ENTRY * thread_p)
       cubthread::get_manager ()->destroy_worker_pool (vacuum_Worker_threads);
     }
 
-  delete vacuum_Worker_context_manager;
-  vacuum_Worker_context_manager = NULL;
+  delete vacuum_Worker_entry_manager;
+  vacuum_Worker_entry_manager = NULL;
 }
 
 void
@@ -1391,8 +1396,8 @@ vacuum_stop_master (THREAD_ENTRY * thread_p)
     {
       cubthread::get_manager ()->destroy_daemon (vacuum_Master_daemon);
     }
-  delete vacuum_Master_context_manager;
-  vacuum_Master_context_manager = NULL;
+  delete vacuum_Master_entry_manager;
+  vacuum_Master_entry_manager = NULL;
 
   vacuum_Is_booted = false;
 }
