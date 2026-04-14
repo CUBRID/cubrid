@@ -41,6 +41,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <optional>
 #include <algorithm>
 #include <vector>
 #include <memory>
@@ -211,6 +212,9 @@ namespace cubthread
   //    a worker pool core execution. manages a sub-group of workers.
   //    acts as middleman between worker pool and workers
   //
+  //    task in: execute_task
+  //    task out: execute_task (immediately execute) or get_task_or_become_available (queued task)
+  //
   template <bool Stats>
   class worker_pool_impl<Stats>::core_impl : public worker_pool::core
   {
@@ -231,7 +235,7 @@ namespace cubthread
       void retire_queued_tasks (void);
 
       // get a task or add worker to free active list (still running, but ready to execute another task)
-      task_type *get_task_or_become_available (worker &worker_arg);
+      std::optional<wrapped_task> get_task_or_become_available (worker &worker_arg);
       void become_available (worker &worker_arg);
 
       // is worker available?
@@ -261,7 +265,7 @@ namespace cubthread
       virtual void initialize_workers ();
 
       // execute task for method/stored procedure by recursive call; This task is not pooled and executes in a temporary created thread.
-      virtual void execute_task_as_temp (task_type *task_p);
+      virtual void execute_task_as_temp (wrapped_task &task_ref);
 
       std::vector<std::unique_ptr<worker>> m_workers;
       std::vector<worker *> m_available_workers;
@@ -297,8 +301,9 @@ namespace cubthread
       void start_thread (void);
 
       // assign task to worker; wake a running thread or start a new one.
-      // nullptr is used only to prestart pooled threads.
-      void assign_task (task_type *work_p);
+      void assign_task (wrapped_task &task_ref);
+      // [optional] used only to prestart pooled threads.
+      void assign_task (void);
 
       // stop execution; if worker has a thread running, returns true
       bool stop_execution (void) override;
@@ -330,27 +335,27 @@ namespace cubthread
       // finishing initialization (retiring execution context, worker becomes inactive)
       void finish_run (void);
 
-      // execute m_task_p
+      // execute m_wrapped_task
       void execute_current_task (void);
-      // retire m_task_p
+      // retire m_wrapped_task
       void retire_current_task (void);
       // get new task from 1. worker pool task queue or 2. wait for incoming tasks
       bool get_new_task (void);
 
-      context_type *m_context_p;              // execution context (same lifetime as spawned thread)
-      task_type *m_task_p;                    // current task
+      context_type *m_context_p;		    // execution context (same lifetime as spawned thread)
+      std::optional<wrapped_task> m_wrapped_task;   // current task and metadata
 
       // synchronization on task wait
-      std::condition_variable m_task_cv;      // condition variable used to notify when a task is assigned or when
+      std::condition_variable m_task_cv;	    // condition variable used to notify when a task is assigned or when
       // worker is stopped
-      std::mutex m_task_mutex;                // mutex to protect waiting task condition
+      std::mutex m_task_mutex;			    // mutex to protect waiting task condition
 
-      bool m_stop;                            // stop execution (set to true when worker pool is stopped)
-      bool m_has_thread;                      // true if worker has a thread running
+      bool m_stop;				    // stop execution (set to true when worker pool is stopped)
+      bool m_has_thread;			    // true if worker has a thread running
 
-      bool m_is_temp;                         // true if worker is for temp task
+      bool m_is_temp;				    // true if worker is for temp task
 
-      cubperf::statset *m_statistics;	      // stats
+      cubperf::statset *m_statistics;		    // stats
   };
 
   // worker_pool_impl<Stats>::wrapped_task
@@ -384,6 +389,10 @@ namespace cubthread
 
       task_type *get_task (void);
       cubperf::time_point &get_time (void);
+
+      // helper
+      void execute (context_type &thread_ref);
+      void retire (void);
 
     private:
       inner_type m_inner;
@@ -803,6 +812,7 @@ namespace cubthread
 	return;
       }
 
+    wrapped_task task_ref (task_p);
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
 
     if (!m_available_workers.empty ())
@@ -812,7 +822,8 @@ namespace cubthread
 	ulock.unlock ();
 
 	assert (refp != nullptr);
-	refp->assign_task (task_p);
+
+	refp->assign_task (task_ref);
       }
     else
       {
@@ -821,12 +832,12 @@ namespace cubthread
 	    // no need to hold the mutex (prevent deadlock)
 	    ulock.unlock ();
 
-	    execute_task_as_temp (task_p);
+	    execute_task_as_temp (task_ref);
 	  }
 	else
 	  {
 	    // save to queue
-	    m_task_queue.emplace (task_p);
+	    m_task_queue.push (task_ref);
 	  }
       }
   }
@@ -875,25 +886,25 @@ namespace cubthread
   }
 
   template <bool Stats>
-  typename worker_pool_impl<Stats>::task_type *
+  std::optional<typename worker_pool_impl<Stats>::wrapped_task>
   worker_pool_impl<Stats>::core_impl::get_task_or_become_available (worker &worker_arg)
   {
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
 
     if (!m_task_queue.empty ())
       {
-	wrapped_task &queued_task = m_task_queue.front ();
-	task_type *task_p = queued_task.get_task ();
-	assert (task_p != nullptr);
+	wrapped_task queued_task = m_task_queue.front ();
 	m_task_queue.pop ();
 
-	return task_p;
+	assert (queued_task.get_task ());
+
+	return queued_task;
       }
 
     m_available_workers.push_back (&worker_arg);
     assert (m_available_workers.size () <= m_workers.size ());
 
-    return nullptr;
+    return std::nullopt;
   }
 
   template <bool Stats>
@@ -1048,7 +1059,7 @@ namespace cubthread
 
 	    // assign task / start thread
 	    // it will add itself to available workers
-	    static_cast<worker_impl *> (worker.get ())->assign_task (nullptr);
+	    static_cast<worker_impl *> (worker.get ())->assign_task ();
 	  }
 	else
 	  {
@@ -1060,7 +1071,7 @@ namespace cubthread
 
   template <bool Stats>
   void
-  worker_pool_impl<Stats>::core_impl::execute_task_as_temp (task_type *task_p)
+  worker_pool_impl<Stats>::core_impl::execute_task_as_temp (wrapped_task &task_ref)
   {
     auto w = allocate_worker (true);
     w->set_parent_core (*this);
@@ -1068,7 +1079,7 @@ namespace cubthread
     std::lock_guard<std::mutex> ulock (m_temp_workers_mutex);
 
     m_temp_workers.push_back (std::move (w));
-    static_cast<worker_impl *> (m_temp_workers.back ())->assign_task (task_p);
+    static_cast<worker_impl *> (m_temp_workers.back ())->assign_task (task_ref);
   }
 
   //////////////////////////////////////////////////////////////////////////
@@ -1079,7 +1090,7 @@ namespace cubthread
   worker_pool_impl<Stats>::core_impl::worker_impl::worker_impl (bool is_temp)
     : worker_pool::core::worker ()
     , m_context_p (nullptr)
-    , m_task_p (nullptr)
+    , m_wrapped_task (std::nullopt)
     , m_stop (false)
     , m_has_thread (false)
     , m_is_temp (is_temp)
@@ -1125,14 +1136,14 @@ namespace cubthread
 
   template <bool Stats>
   void
-  worker_pool_impl<Stats>::core_impl::worker_impl::assign_task (task_type *work_p)
+  worker_pool_impl<Stats>::core_impl::worker_impl::assign_task (wrapped_task &task_ref)
   {
     std::unique_lock<std::mutex> ulock (m_task_mutex);
 
-    assert (m_task_p == nullptr);
+    assert (!m_wrapped_task.has_value ());
 
     // save task
-    m_task_p = work_p;
+    m_wrapped_task = task_ref;
 
     if (m_is_temp)
       {
@@ -1146,6 +1157,30 @@ namespace cubthread
 	// notify waiting thread
 	ulock.unlock (); // mutex is not needed for notify
 	m_task_cv.notify_one ();
+      }
+    else
+      {
+	m_has_thread = true;
+	ulock.unlock ();
+
+	assert (m_context_p == nullptr);
+
+	start_thread ();
+      }
+  }
+
+  template <bool Stats>
+  void
+  worker_pool_impl<Stats>::core_impl::worker_impl::assign_task (void)
+  {
+    std::unique_lock<std::mutex> ulock (m_task_mutex);
+
+    assert (!m_wrapped_task.has_value ());
+    assert (!m_is_temp);
+
+    if (m_has_thread)
+      {
+	ulock.unlock ();
       }
     else
       {
@@ -1204,7 +1239,7 @@ namespace cubthread
   void
   worker_pool_impl<Stats>::core_impl::worker_impl::map_context_if_running (bool &stop, Func &&func, Args &&... args)
   {
-    if (m_task_p == nullptr)
+    if (!m_wrapped_task.has_value ())
       {
 	// not running
 	return;
@@ -1237,16 +1272,16 @@ namespace cubthread
 	return;
       }
 
-    if (m_task_p == nullptr)
+    if (!m_wrapped_task.has_value ())
       {
 	// started without task; get one
 	if (get_new_task ())
 	  {
-	    assert (m_task_p != nullptr);
+	    assert (m_wrapped_task.has_value ());
 	  }
       }
 
-    if (m_task_p != nullptr)
+    if (m_wrapped_task.has_value ())
       {
 	// loop and execute as many tasks as possible
 	do
@@ -1259,8 +1294,6 @@ namespace cubthread
       {
 	// never got a task
       }
-
-    // finish_run ();    // do stuff on end like retiring context
   }
 
   template <bool Stats>
@@ -1288,7 +1321,7 @@ namespace cubthread
   void
   worker_pool_impl<Stats>::core_impl::worker_impl::finish_run (void)
   {
-    assert (m_task_p == nullptr);
+    assert (!m_wrapped_task.has_value ());
     assert (m_context_p != nullptr);
 
     // retire context
@@ -1307,10 +1340,10 @@ namespace cubthread
   void
   worker_pool_impl<Stats>::core_impl::worker_impl::execute_current_task (void)
   {
-    assert (m_task_p != nullptr);
+    assert (m_wrapped_task.has_value ());
 
     // execute task
-    m_task_p->execute (*m_context_p);
+    m_wrapped_task->execute (*m_context_p);
 
     // and retire task
     retire_current_task ();
@@ -1331,18 +1364,18 @@ namespace cubthread
   void
   worker_pool_impl<Stats>::core_impl::worker_impl::retire_current_task (void)
   {
-    assert (m_task_p != nullptr);
+    assert (m_wrapped_task.has_value ());
 
     // retire task
-    m_task_p->retire ();
-    m_task_p = nullptr;
+    m_wrapped_task->retire ();
+    m_wrapped_task = std::nullopt;
   }
 
   template <bool Stats>
   bool
   worker_pool_impl<Stats>::core_impl::worker_impl::get_new_task (void)
   {
-    assert (m_task_p == nullptr);
+    assert (!m_wrapped_task.has_value ());
     assert (dynamic_cast<core_impl *> (m_parent_core));
 
     std::unique_lock<std::mutex> ulock (m_task_mutex, std::defer_lock);
@@ -1357,22 +1390,23 @@ namespace cubthread
 	//       current thread may be preempted. worker is then claimed from free active list and worker is assigned
 	//       a task. this changes expected behavior and can have unwanted consequences.
 
-	task_type *task_p = static_cast<core_impl *> (m_parent_core)->get_task_or_become_available (*this);
-	if (task_p != nullptr)
+	std::optional<wrapped_task> queued_task =
+		static_cast<core_impl *> (m_parent_core)->get_task_or_become_available (*this);
+	if (queued_task.has_value ())
 	  {
 	    // it is safe to set here
-	    m_task_p = task_p;
+	    m_wrapped_task = std::move (queued_task);
 	    return true;
 	  }
 
 	// wait for task
 	ulock.lock ();
-	if (m_task_p == nullptr && !m_stop)
+	if (!m_wrapped_task.has_value () && !m_stop)
 	  {
 	    // wait until a task is received or stopped ...
 	    // ... or time out
 	    condvar_wait (m_task_cv, ulock, m_parent_core->get_parent_pool ()->get_idle_timeout (),
-			  [this] () -> bool { return m_task_p != nullptr || m_stop; });
+			  [this] () -> bool { return m_wrapped_task.has_value () || m_stop; });
 	  }
 	else
 	  {
@@ -1388,7 +1422,7 @@ namespace cubthread
       }
 
     // did I get a task?
-    if (m_task_p == nullptr)
+    if (!m_wrapped_task.has_value ())
       {
 	// no; this thread will stop. from this point forward, if a new task is assigned, a new thread must be spawned
 	m_has_thread = false;
@@ -1418,6 +1452,8 @@ namespace cubthread
   template <bool Stats>
   worker_pool_impl<Stats>::wrapped_task::wrapped_task (task_type *task_p)
   {
+    assert (task_p != nullptr);
+
     m_inner.task = task_p;
     if constexpr (Stats)
       {
@@ -1444,6 +1480,25 @@ namespace cubthread
     static_assert (Stats, "get_time() requires Stats == true");
 
     return m_inner.time;
+  }
+
+  template <bool Stats>
+  void
+  worker_pool_impl<Stats>::wrapped_task::execute (context_type &thread_ref)
+  {
+    assert (m_inner.task != nullptr);
+
+    m_inner.task->execute (thread_ref);
+  }
+
+  template <bool Stats>
+  void
+  worker_pool_impl<Stats>::wrapped_task::retire (void)
+  {
+    assert (m_inner.task != nullptr);
+
+    m_inner.task->retire ();
+    m_inner.task = nullptr;
   }
 
   //////////////////////////////////////////////////////////////////////////
