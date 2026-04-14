@@ -1107,7 +1107,7 @@ jsp_set_pkg_scode_body (const char *unique_name, const char *scode_body)
   err = NO_ERROR;
   obt = NULL;
 
-  AU_DISABLE (save);
+  AU_DISABLE (save);    // side effect 0
 
   mop = jsp_find_pkg_code (unique_name);
   if (mop == NULL)
@@ -1115,7 +1115,7 @@ jsp_set_pkg_scode_body (const char *unique_name, const char *scode_body)
       if (er_errid() != NO_ERROR)
 	{
 	  err = er_errid();
-	  goto cleanup;
+	  goto cleanup0;
 	}
 
       // insert a new record and set
@@ -1127,15 +1127,15 @@ jsp_set_pkg_scode_body (const char *unique_name, const char *scode_body)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  err = er_errid ();
-	  goto cleanup;
+	  goto cleanup0;
 	}
 
-      obt = dbt_create_object_internal (classobj);
+      obt = dbt_create_object_internal (classobj);      // side effect 1
       if (obt == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  err = er_errid ();
-	  goto cleanup;
+	  goto cleanup0;
 	}
 
       // set the unque_name of the new record
@@ -1144,7 +1144,7 @@ jsp_set_pkg_scode_body (const char *unique_name, const char *scode_body)
       pr_clear_value (&value);
       if (err != NO_ERROR)
 	{
-	  goto cleanup;
+	  goto cleanup1;
 	}
 
     }
@@ -1153,12 +1153,12 @@ jsp_set_pkg_scode_body (const char *unique_name, const char *scode_body)
 
       // set in the existing record
 
-      obt = dbt_edit_object (mop);
+      obt = dbt_edit_object (mop);      // side effect 1
       if (obt == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  err = er_errid ();
-	  goto cleanup;
+	  goto cleanup0;
 	}
     }
 
@@ -1167,7 +1167,7 @@ jsp_set_pkg_scode_body (const char *unique_name, const char *scode_body)
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {
-      goto cleanup;
+      goto cleanup1;
     }
 
   object = dbt_finish_object (obt);
@@ -1175,23 +1175,26 @@ jsp_set_pkg_scode_body (const char *unique_name, const char *scode_body)
     {
       assert (er_errid() != NO_ERROR);
       err = er_errid();
-      goto cleanup;
+      goto cleanup1;
     }
-  obt = NULL;
+  obt = NULL;   // side effect 1 cleaned
 
   err = locator_flush_instance (object);
   if (err != NO_ERROR)
     {
-      goto cleanup;
+      obj_delete (object);
+      goto cleanup0;
     }
 
-cleanup:
   AU_ENABLE (save);
+  return NO_ERROR;
 
-  if (obt)
-    {
-      dbt_abort_object (obt);
-    }
+cleanup1:
+  assert (obt);
+  dbt_abort_object (obt);
+
+cleanup0:
+  AU_ENABLE (save);
 
   return err;
 }
@@ -1449,10 +1452,11 @@ jsp_drop_pkg_spec (const char *unique_name, MOP pkg_mop, MOP owner)
 {
   MOP mop;
   int err, save;
+  DB_OTMPL *obt;
 
   err = NO_ERROR;
 
-  AU_DISABLE (save);
+  AU_DISABLE (save);    // side effect 0
 
   // clear authorization settings of the dropped package
   {
@@ -1465,7 +1469,7 @@ jsp_drop_pkg_spec (const char *unique_name, MOP pkg_mop, MOP owner)
 	if (err != NO_ERROR)
 	  {
 	    AU_SET_USER (save_user);
-	    goto cleanup;
+	    goto cleanup0;
 	  }
       }
 
@@ -1474,7 +1478,7 @@ jsp_drop_pkg_spec (const char *unique_name, MOP pkg_mop, MOP owner)
     err = au_delete_auth_of_dropping_database_object (DB_OBJECT_PACKAGE, unique_name);
     if (err != NO_ERROR)
       {
-	goto cleanup;
+	goto cleanup0;
       }
   }
 
@@ -1487,7 +1491,7 @@ jsp_drop_pkg_spec (const char *unique_name, MOP pkg_mop, MOP owner)
       err = db_get (mop, PKG_CODE_ATTR_SCODE_BODY, &scode_body);
       if (err != NO_ERROR)
 	{
-	  goto cleanup;
+	  goto cleanup0;
 	}
 
       if (DB_IS_NULL (&scode_body))
@@ -1496,24 +1500,22 @@ jsp_drop_pkg_spec (const char *unique_name, MOP pkg_mop, MOP owner)
 	  err = obj_delete (mop);
 	  if (err != NO_ERROR)
 	    {
-	      goto cleanup;
+	      goto cleanup0;
 	    }
 	}
       else
 	{
-
-	  DB_OTMPL *obt;
 	  DB_OBJECT *object;
 	  DB_VALUE null_value;
 
 	  pr_clear_value (&scode_body);
 
-	  obt = dbt_edit_object (mop);
+	  obt = dbt_edit_object (mop);  // side effect 1
 	  if (!obt)
 	    {
 	      assert (er_errid() != NO_ERROR);
 	      err = er_errid();
-	      goto cleanup;
+	      goto cleanup1;
 	    }
 
 	  // set null to all the attributes except for pkg_unique_name and scode_body
@@ -1521,27 +1523,27 @@ jsp_drop_pkg_spec (const char *unique_name, MOP pkg_mop, MOP owner)
 	  err = dbt_put_internal (obt, PKG_CODE_ATTR_NAME, &null_value);
 	  if (err != NO_ERROR)
 	    {
-	      goto cleanup;
+	      goto cleanup1;
 	    }
 	  err = dbt_put_internal (obt, PKG_CODE_ATTR_STYPE, &null_value);
 	  if (err != NO_ERROR)
 	    {
-	      goto cleanup;
+	      goto cleanup1;
 	    }
 	  err = dbt_put_internal (obt, PKG_CODE_ATTR_SCODE_SPEC, &null_value);
 	  if (err != NO_ERROR)
 	    {
-	      goto cleanup;
+	      goto cleanup1;
 	    }
 	  err = dbt_put_internal (obt, PKG_CODE_ATTR_OTYPE, &null_value);
 	  if (err != NO_ERROR)
 	    {
-	      goto cleanup;
+	      goto cleanup1;
 	    }
 	  err = dbt_put_internal (obt, PKG_CODE_ATTR_OCODE, &null_value);
 	  if (err != NO_ERROR)
 	    {
-	      goto cleanup;
+	      goto cleanup1;
 	    }
 
 	  object = dbt_finish_object (obt);
@@ -1549,16 +1551,16 @@ jsp_drop_pkg_spec (const char *unique_name, MOP pkg_mop, MOP owner)
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      err = er_errid ();
-	      goto cleanup;
+	      goto cleanup1;
 	    }
-	  obt = NULL;
+	  obt = NULL;   // side effect 1 cleaned
 
 	  // flush instance
 	  err = locator_flush_instance (object);
 	  if (err != NO_ERROR)
 	    {
 	      obj_delete (object);
-	      goto cleanup;
+	      goto cleanup0;
 	    }
 	}
     }
@@ -1567,49 +1569,59 @@ jsp_drop_pkg_spec (const char *unique_name, MOP pkg_mop, MOP owner)
       assert (false);
       err = ER_FAILED;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-      goto cleanup;
+      goto cleanup0;
     }
 
   // drop the records in _db_stored_procedure
   err = jsp_drop_pkg_member_sp (pkg_mop);
   if (err != NO_ERROR)
     {
-      goto cleanup;
+      goto cleanup0;
     }
 
   // drop the records in _db_package_var
   err = jsp_drop_pkg_members (pkg_mop, PKG_ATTR_VARIABLES_CNT, PKG_ATTR_VARIABLES);
   if (err != NO_ERROR)
     {
-      goto cleanup;
+      goto cleanup0;
     }
 
   // drop the records in _db_package_exception
   err = jsp_drop_pkg_members (pkg_mop, PKG_ATTR_EXCEPTIONS_CNT, PKG_ATTR_EXCEPTIONS);
   if (err != NO_ERROR)
     {
-      goto cleanup;
+      goto cleanup0;
     }
 
   // drop the records in _db_package_cursor
   err = jsp_drop_pkg_members (pkg_mop, PKG_ATTR_CURSORS_CNT, PKG_ATTR_CURSORS);
   if (err != NO_ERROR)
     {
-      goto cleanup;
+      goto cleanup0;
     }
 
   // drop the records in _db_package_record_type
   err = jsp_drop_pkg_members (pkg_mop, PKG_ATTR_RECORD_TYPES_CNT, PKG_ATTR_RECORD_TYPES);
   if (err != NO_ERROR)
     {
-      goto cleanup;
+      goto cleanup0;
     }
 
   // drop the record in _db_package
   err = obj_delete (pkg_mop);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
 
-cleanup:
+  AU_ENABLE (save);
+  return NO_ERROR;
 
+cleanup1:
+  assert (obt);
+  dbt_abort_object (obt);
+
+cleanup0:
   AU_ENABLE (save);
 
   return err;
