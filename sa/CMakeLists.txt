@@ -534,6 +534,7 @@ set(STORAGE_SOURCES
   ${INDEX_HNSW_DIR}/hnsw.cpp
   ${INDEX_HNSW_DIR}/hnsw_api.cpp
   ${INDEX_HNSW_DIR}/hnsw_storage.cpp
+  ${INDEX_HNSW_DIR}/hnsw_inmem_block.cpp
   )
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/btree_unique.hpp
