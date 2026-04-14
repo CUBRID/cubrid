@@ -1484,6 +1484,11 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 	  /* Release header latch before sync scan to reduce contention.
 	   * Sync only updates the global hash cache (not best[]),
 	   * so we don't need the header page during the scan. */
+	  LOG_DATA_ADDR addr;
+	  addr.vfid = NULL;
+	  addr.pgptr = hdr_page;
+	  addr.offset = 0;
+	  log_skip_logging (thread_p, &addr);
 	  pgbuf_set_dirty (thread_p, hdr_page, DONT_FREE);
 	  pgbuf_unfix_and_init (thread_p, hdr_page);
 	  oos_hdr = NULL;
