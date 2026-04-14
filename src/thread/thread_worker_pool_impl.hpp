@@ -306,7 +306,7 @@ namespace cubthread
       virtual void initialize_workers ();
 
       // execute task for method/stored procedure by recursive call; This task is not pooled and executes in a temporary created thread.
-      virtual void execute_task_as_temp (wrapped_task &task_ref);
+      virtual void execute_task_as_temp (wrapped_task &&task_ref);
 
       std::vector<std::unique_ptr<worker>> m_workers;
       std::vector<worker *> m_available_workers;
@@ -342,7 +342,7 @@ namespace cubthread
       void start_thread (void);
 
       // assign task to worker; wake a running thread or start a new one.
-      void assign_task (wrapped_task &task_ref);
+      void assign_task (wrapped_task &&task_ref);
       // [optional] used only to prestart pooled threads.
       void assign_task (void);
 
@@ -427,6 +427,12 @@ namespace cubthread
     public:
       explicit wrapped_task (task_type *task_p);
       ~wrapped_task ();
+
+      wrapped_task (const wrapped_task &) = delete;
+      wrapped_task &operator= (const wrapped_task &) = delete;
+
+      wrapped_task (wrapped_task &&other);
+      wrapped_task &operator= (wrapped_task &&other) = delete;
 
       task_type *get_task (void);
       cubperf::time_point &get_time (void);
@@ -896,7 +902,7 @@ namespace cubthread
 
 	assert (refp != nullptr);
 
-	refp->assign_task (task_ref);
+	refp->assign_task (std::move (task_ref));
       }
     else
       {
@@ -905,12 +911,12 @@ namespace cubthread
 	    // no need to hold the mutex (prevent deadlock)
 	    ulock.unlock ();
 
-	    execute_task_as_temp (task_ref);
+	    execute_task_as_temp (std::move (task_ref));
 	  }
 	else
 	  {
 	    // save to queue
-	    m_task_queue.push (task_ref);
+	    m_task_queue.push (std::move (task_ref));
 	  }
       }
   }
@@ -966,12 +972,12 @@ namespace cubthread
 
     if (!m_task_queue.empty ())
       {
-	wrapped_task queued_task = m_task_queue.front ();
+	wrapped_task queued_task = std::move (m_task_queue.front ());
 	m_task_queue.pop ();
 
 	assert (queued_task.get_task ());
 
-	return queued_task;
+	return std::optional<wrapped_task> (std::in_place, std::move (queued_task));
       }
 
     m_available_workers.push_back (&worker_arg);
@@ -1144,7 +1150,7 @@ namespace cubthread
 
   template <bool Stats>
   void
-  worker_pool_impl<Stats>::core_impl::execute_task_as_temp (wrapped_task &task_ref)
+  worker_pool_impl<Stats>::core_impl::execute_task_as_temp (wrapped_task &&task_ref)
   {
     auto w = allocate_worker (true);
     w->set_parent_core (*this);
@@ -1152,7 +1158,7 @@ namespace cubthread
     std::lock_guard<std::mutex> ulock (m_temp_workers_mutex);
 
     m_temp_workers.push_back (std::move (w));
-    static_cast<worker_impl *> (m_temp_workers.back ())->assign_task (task_ref);
+    static_cast<worker_impl *> (m_temp_workers.back ())->assign_task (std::move (task_ref));
   }
 
   //////////////////////////////////////////////////////////////////////////
@@ -1208,14 +1214,14 @@ namespace cubthread
 
   template <bool Stats>
   void
-  worker_pool_impl<Stats>::core_impl::worker_impl::assign_task (wrapped_task &task_ref)
+  worker_pool_impl<Stats>::core_impl::worker_impl::assign_task (wrapped_task &&task_ref)
   {
     std::unique_lock<std::mutex> ulock (m_task_mutex);
 
     assert (!m_wrapped_task.has_value ());
 
     // save task
-    m_wrapped_task = task_ref;
+    m_wrapped_task.emplace (std::move (task_ref));
 
     if (m_is_temp)
       {
@@ -1487,7 +1493,7 @@ namespace cubthread
 	    stats::time_and_increment (m_stats, stats::id::found_in_queue);
 
 	    // it is safe to set here
-	    m_wrapped_task = std::move (queued_task);
+	    m_wrapped_task.emplace (std::move (*queued_task));
 	    return true;
 	  }
 
@@ -1559,6 +1565,18 @@ namespace cubthread
   template <bool Stats>
   worker_pool_impl<Stats>::wrapped_task::~wrapped_task (void)
   {
+  }
+
+  template <bool Stats>
+  worker_pool_impl<Stats>::wrapped_task::wrapped_task (wrapped_task &&other)
+  {
+    m_inner.task = other.m_inner.task;
+    other.m_inner.task = nullptr;
+
+    if constexpr (Stats)
+      {
+	m_inner.time = other.m_inner.time;
+      }
   }
 
   template <bool Stats>
