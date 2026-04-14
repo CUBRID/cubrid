@@ -95,7 +95,7 @@ namespace cubhnsw
       inline distance_t compute_distance_ (algo_context_t &context, const float *v1, const float *v2) const
       {
 	context.m_stats.on_distance_computed (context.m_is_perf_tracking, context.m_level);
-	return metric_table[static_cast<size_t> (m_metric)] (v1, v2, m_dimension);
+	return metric_table_both_aligned_fast[static_cast<size_t> (m_metric)] (v1, v2, m_dimension);
       }
 
       inline void prepare_query_i8_ (algo_context_t &context, const float *query) const
@@ -920,8 +920,28 @@ namespace cubhnsw
     // When disabled (multiplier == 0), fall back to fp32-only compute_distance_between().
     const bool use_i8_prefilter = (context.m_i8_prefilter_multiplier > 0.0f);
 
+    constexpr std::size_t MAX_SUBMITTED_CACHE = 128;
+    const cached_vector *submitted_vec_cache[MAX_SUBMITTED_CACHE] = {};
+    std::size_t submitted_vec_cached_count = 0;
+
+    auto ensure_submitted_cached = [&] (std::size_t up_to)
+    {
+      for (; submitted_vec_cached_count < up_to; ++submitted_vec_cached_count)
+        {
+          submitted_vec_cache[submitted_vec_cached_count] =
+              m_storage->get_cached_vector_by_slot_id (context,
+                  top_data[submitted_vec_cached_count].slot, lock_mode::shared);
+        }
+    };
+
     std::size_t submitted_count = 1;
     std::size_t consumed_count = 1; /// Always equal or greater than `submitted_count`.
+
+    if (use_i8_prefilter && top_count > 0)
+      {
+        ensure_submitted_cached (1);
+      }
+
     while (submitted_count < needed && consumed_count < top_count)
       {
 	candidate_t candidate = top_data[consumed_count];
@@ -944,8 +964,7 @@ namespace cubhnsw
 		// Uses a 2x-widened window (see should_recheck_pairwise_fp32_()) because both
 		// vectors carry independent quantization errors from their insertion time.
 		// On skip, continue the inner loop — candidate may still be pruned by a later submitted entry.
-		const cached_vector *subm_vec =
-			m_storage->get_cached_vector_by_slot_id (context, submitted.slot, lock_mode::shared);
+		const cached_vector *subm_vec = submitted_vec_cache[idx];
 		context.m_stats.on_prefilter_checked (context.m_is_perf_tracking, context.m_level);
 		distance_t i8_dist = compute_distance_i8_between_ (context, *cand_vec, *subm_vec);
 		if (!should_recheck_pairwise_fp32_ (context, i8_dist, candidate.distance))
@@ -976,6 +995,10 @@ namespace cubhnsw
 	  {
 	    top_data[submitted_count] = top_data[consumed_count];
 	    submitted_count++;
+	    if (use_i8_prefilter)
+	      {
+		ensure_submitted_cached (submitted_count);
+	      }
 	  }
 	consumed_count++;
       }
