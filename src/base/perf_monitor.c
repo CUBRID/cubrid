@@ -41,10 +41,10 @@
 #include "memory_alloc.h"
 #include "server_interface.h"
 #endif /* !SERVER_MODE */
-#if defined (SERVER_MODE) || defined (SA_MODE)
+#if defined (SERVER_MODE)
 #include "thread_worker_pool.hpp"
 #include "thread_daemon.hpp"
-#endif // SERVER_MODE || SA_MODE
+#endif // SERVER_MODE
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE or SA_MODE
@@ -81,9 +81,9 @@
 #include "heap_file.h"
 #include "vacuum.h"
 #include "xasl_cache.h"
-#include "load_worker_manager.hpp"
 
 #if defined (SERVER_MODE)
+#include "load_worker_manager.hpp"
 #include "connection_error.h"
 #endif
 
