@@ -1505,13 +1505,17 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 				PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	  if (hdr_page == NULL)
 	    {
-	      return nullptr;
+	      if (er_errid () == ER_INTERRUPTED)
+		{
+		  return nullptr;
+		}
+	      return oos_file_alloc_new (thread_p, oos_vfid, vpid);
 	    }
 	  oos_hdr = oos_get_header_stats_ptr (thread_p, hdr_page);
 	  if (oos_hdr == NULL)
 	    {
 	      pgbuf_unfix_and_init (thread_p, hdr_page);
-	      return nullptr;
+	      return oos_file_alloc_new (thread_p, oos_vfid, vpid);
 	    }
 	}
       else
