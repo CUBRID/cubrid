@@ -12840,9 +12840,10 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 	}
       else
 	{
-	  or_put_offset_internal (buf, OR_SET_VAR_LAST_ELEMENT (CAST_BUFLEN (ptr_varvals - buf->buffer - header_size)),
-				  offset_size);
+	  const int end_of_vot_offset = CAST_BUFLEN (ptr_varvals - buf->buffer - header_size);
+	  or_put_offset_internal (buf, OR_SET_VAR_LAST_ELEMENT (end_of_vot_offset), offset_size);
 	}
+
       buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
 
