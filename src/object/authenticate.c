@@ -84,7 +84,7 @@
  *
  * 
  */
-static authenticate_context *au_ctx_obj = nullptr;
+static CUB_THREAD_LOCAL authenticate_context *au_ctx_obj = nullptr;
 
 int
 au_login (const char *name, const char *password, bool ignore_dba_privilege)

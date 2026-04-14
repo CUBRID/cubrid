@@ -1514,8 +1514,7 @@ struct perfmon_client_stat_info
   UINT64 *current_global_stats;
 };
 
-extern bool perfmon_Iscollecting_stats;
-
+extern void disable_perfmon_start_stats ();
 extern int perfmon_start_stats (bool for_all_trans);
 extern int perfmon_stop_stats (void);
 extern void perfmon_reset_stats (void);

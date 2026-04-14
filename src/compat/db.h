@@ -41,21 +41,25 @@
 #include "log_comm.h"
 #include "dbtype_def.h"
 #include "db_admin.h"
+#include "db_multi_threads_connections.h"
 
 /* GLOBAL STATE */
 #define DB_CONNECTION_STATUS_NOT_CONNECTED      0
 #define DB_CONNECTION_STATUS_CONNECTED          1
 #define DB_CONNECTION_STATUS_RESET              -1
-extern int db_Connect_status;
+#if !defined(SERVER_MODE)
+extern CUB_THREAD_LOCAL int db_Connect_status;
+#endif
 
-extern SESSION_ID db_Session_id;
-extern bool db_Keep_session;
-
-extern int db_Row_count;
+extern CUB_THREAD_LOCAL SESSION_ID db_Session_id;
 
 #if !defined(_DB_DISABLE_MODIFICATIONS_)
 #define _DB_DISABLE_MODIFICATIONS_
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+extern CUB_THREAD_LOCAL int db_Disable_modifications;
+#else
 extern int db_Disable_modifications;
+#endif
 #endif /* _DB_DISABLE_MODIFICATIONS_ */
 
 #if !defined(SERVER_MODE)
@@ -68,6 +72,10 @@ extern char db_Program_name[];
    various validations before executing. */
 
 /* CHECK CONNECT */
+#if defined(SERVER_MODE)
+#define CHECK_CONNECT_VOID()	/* nothing to do */
+#define CHECK_CONNECT_AND_RETURN_EXPR(return_expr_)	/* nothing to do */
+#else
 #define CHECK_CONNECT_VOID()                                            \
   do {                                                                  \
     if (db_Connect_status != DB_CONNECTION_STATUS_CONNECTED)            \
@@ -85,6 +93,7 @@ extern char db_Program_name[];
       return (return_expr_);                                            \
     }                                                                   \
   } while (0)
+#endif
 
 #define CHECK_CONNECT_ERROR()     \
   CHECK_CONNECT_AND_RETURN_EXPR((DB_TYPE) ER_OBJ_NO_CONNECT)

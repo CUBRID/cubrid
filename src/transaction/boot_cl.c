@@ -119,7 +119,21 @@
 #define BOOT_NO_OPT_CAP                 0
 #define BOOT_CHECK_HA_DELAY_CAP         NET_CAP_HA_REPL_DELAY
 
-static BOOT_SERVER_CREDENTIAL boot_Server_credential = {
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+#define MAX_TRANS_MULTI_CONN_TO_A_SERVER (10)
+int g_max_trans_multi_conn_to_a_server = MAX_TRANS_MULTI_CONN_TO_A_SERVER;
+
+struct
+{
+  int tran_index;
+  int tran_wait_msecs;
+  TRAN_ISOLATION tran_isolation;
+} g_main_tran_info =
+{
+NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT, TRAN_UNKNOWN_ISOLATION};
+#endif
+
+static CUB_THREAD_LOCAL BOOT_SERVER_CREDENTIAL boot_Server_credential = {
   /* db_full_name */ NULL, /* host_name */ NULL, /* lob_path */ NULL,
   /* process_id */ -1,
   /* root_class_oid */ {NULL_PAGEID, NULL_SLOTID, NULL_VOLID},
@@ -565,7 +579,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   oid_set_root (&rootclass_oid);
   OID_INIT_TEMPID ();
 
-  error_code = ws_init ();
+  error_code = ws_init (false);
   if (error_code == NO_ERROR)
     {
       sm_create_root (&rootclass_oid, &rootclass_hfid);
@@ -588,6 +602,11 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   else
     {
       boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+      g_main_tran_info.tran_index = tran_index;
+      g_main_tran_info.tran_wait_msecs = tran_lock_wait_msecs;
+      g_main_tran_info.tran_isolation = tran_isolation;
+#endif
 #if defined (CS_MODE)
       /* print version string */
       strncpy_bufsize (format, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_GENERAL,
@@ -628,11 +647,10 @@ error_exit:
 
       showstmt_metadata_final ();
       tran_free_savepoint_list ();
-      set_final ();
       tr_final ();
       au_final ();
       sm_final ();
-      ws_final ();
+      ws_final (false);
       es_final ();
       tp_final ();
 
@@ -662,6 +680,10 @@ error_exit:
 
   return error_code;
 }
+
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+BOOT_CLIENT_CREDENTIAL gv_client_credential;
+#endif
 
 /*
  * boot_restart_client () - restart client
@@ -786,7 +808,11 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   area_init ();
   locator_initialize_areas ();
 
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  error_code = perfmon_initialize (g_max_trans_multi_conn_to_a_server + 1);
+#else
   error_code = perfmon_initialize (1);	/* 1 transaction for SA_MODE */
+#endif
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1110,7 +1136,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   /* Initialize tsc-timer */
   tsc_init ();
 
-  error_code = ws_init ();
+  error_code = ws_init (false);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -1182,11 +1208,16 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
   /* Initialize client modules for execution */
   boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  g_main_tran_info.tran_index = tran_index;
+  g_main_tran_info.tran_wait_msecs = tran_lock_wait_msecs;
+  g_main_tran_info.tran_isolation = tran_isolation;
+#endif
 
   oid_set_root (&boot_Server_credential.root_class_oid);
   OID_INIT_TEMPID ();
 
-  sm_init (&boot_Server_credential.root_class_oid, &boot_Server_credential.root_class_hfid);
+  sm_init (&boot_Server_credential.root_class_oid, &boot_Server_credential.root_class_hfid, false);
   au_init ();			/* initialize authorization globals */
 
   /* start authorization and make sure the logged in user has access */
@@ -1262,6 +1293,10 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
   json_set_alloc_funcs (malloc, free);
 
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  gv_client_credential = *client_credential;
+#endif
+
   return error_code;
 
 error:
@@ -1296,11 +1331,10 @@ error:
 
       showstmt_metadata_final ();
       tran_free_savepoint_list ();
-      set_final ();
       tr_final ();
       au_final ();
       sm_final ();
-      ws_final ();
+      ws_final (false);
       es_final ();
       tp_final ();
 
@@ -1329,6 +1363,264 @@ error:
 
   return error_code;
 }
+
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+int
+boot_restart_client_sub (int sub_index, bool new_transaction)
+{
+  int error_code;
+#ifndef NDEBUG
+  static int is_multi_tran = -1;
+
+  if (is_multi_tran == -1)
+    {
+      is_multi_tran = (new_transaction ? 1 : 0);
+    }
+  else if (new_transaction != (bool) is_multi_tran)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+#endif
+
+  if (!new_transaction)
+    {
+      error_code = net_client_sub_init ();
+      if (error_code == NO_ERROR)
+	{
+	  /* Initialize client modules for execution */
+	  error_code =
+	    boot_client (g_main_tran_info.tran_index, g_main_tran_info.tran_wait_msecs,
+			 g_main_tran_info.tran_isolation);
+	}
+      return error_code;
+    }
+
+  /* **************************************************************** */
+  int tran_index;
+  TRAN_ISOLATION tran_isolation;
+  int tran_lock_wait_msecs;
+  TRAN_STATE transtate;
+
+  BOOT_CLIENT_CREDENTIAL client_credential;
+  char program_name[512];
+
+  static BOOT_SERVER_CREDENTIAL t_boot_Server_credential = {
+    /* db_full_name */ NULL, /* host_name */ NULL, /* lob_path */ NULL,
+    /* process_id */ -1,
+    /* root_class_oid */ {NULL_PAGEID, NULL_SLOTID, NULL_VOLID},
+    /* root_class_hfid */ {{NULL_FILEID, NULL_VOLID}, NULL_PAGEID},
+    /* data page_size */ -1, /* log page_size */ -1,
+    /* disk_compatibility */ 0.0,
+    /* ha_server_state */ HA_SERVER_STATE_NA,
+    /* server_session_key */ {(char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF,
+			      (char) 0xFF,
+			      (char) 0xFF},
+    INTL_CODESET_NONE,
+    NULL
+  };
+
+  //lang_init();
+  //tz_load();
+  //msgcat_init();
+  //sysprm_load_and_init_client(NULL, NULL);
+  // er_init()
+  //area_init ();
+  //locator_initialize_areas ();
+  //error_code = perfmon_initialize (1);        // 필요할지 추가 점검
+  //if (error_code != NO_ERROR)
+  //  {
+  //    ASSERT_ERROR ();
+  //    goto error;
+  //  }
+
+  //er_clear ();    
+
+  /* read only mode? */
+  if (prm_get_bool_value (PRM_ID_READ_ONLY_MODE) || BOOT_READ_ONLY_CLIENT_TYPE (gv_client_credential.client_type))
+    {
+      db_disable_modification ();
+    }
+
+  error_code =
+    snprintf (program_name, sizeof (program_name), "%s(%d)", gv_client_credential.get_program_name (), sub_index + 1);
+  if (error_code < 0 || error_code >= (int) sizeof (program_name))
+    {
+      return error_code;
+    }
+
+  client_credential = gv_client_credential;
+  client_credential.program_name = program_name;
+
+  error_code = net_client_sub_init ();
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  //sysprm_tune_client_parameters ();  
+  //error_code = tp_init ();
+  //if (error_code != NO_ERROR)
+  //  {
+  //    goto error;
+  //  }
+
+  // tsc_init ();  
+
+  error_code = ws_init (true);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  tran_isolation = TRAN_DEFAULT_ISOLATION_LEVEL ();
+  tran_lock_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
+
+  tran_index = boot_register_client (&client_credential, tran_lock_wait_msecs, tran_isolation, &transtate,
+#if 0
+				     NULL
+#else
+				     &boot_Server_credential
+#endif
+    );
+
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_code = er_errid ();
+      goto error;
+    }
+
+#if 0
+  //============================================
+  if (lang_set_charset ((INTL_CODESET) boot_Server_credential.db_charset) != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_code = er_errid ();
+      goto error;
+    }
+  if (lang_set_language (boot_Server_credential.db_lang) != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_code = er_errid ();
+      goto error;
+    }
+
+  /* Reset the pagesize according to server.. */
+  if (db_set_page_size (boot_Server_credential.page_size, boot_Server_credential.log_page_size) != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_code = er_errid ();
+      goto error;
+    }
+
+  /* Reset the disk_level according to server.. */
+  if (rel_disk_compatible () != boot_Server_credential.disk_compatibility)
+    {
+      rel_set_disk_compatible (boot_Server_credential.disk_compatibility);
+    }
+  //============================================  
+#endif //
+
+  //if (sysprm_init_intl_param () != NO_ERROR)
+  //  {
+  //    error_code = er_errid ();
+  //    goto error;
+  //  }
+
+  /* Initialize client modules for execution */
+  boot_client (tran_index, g_main_tran_info.tran_wait_msecs, g_main_tran_info.tran_isolation);
+
+  // need session? 
+
+  (void) db_find_or_create_session (client_credential.get_db_user (), client_credential.get_program_name ());
+
+
+  sm_init (&boot_Server_credential.root_class_oid, &boot_Server_credential.root_class_hfid, true);
+
+  au_login (client_credential.get_db_user (), client_credential.get_db_password (), false);
+  au_init ();
+  au_start ();
+
+  //error_code = boot_check_locales (&client_credential);
+  //if (error_code != NO_ERROR)
+  //  {
+  //    goto error;
+  //  }
+
+  //error_code = boot_check_timezone_checksum (&client_credential);
+  //if (error_code != NO_ERROR)
+  //  {
+  //    goto error;
+  //  }
+
+  //tr_init ();
+
+  //(void) tran_commit (false);
+
+  //error_code = showstmt_metadata_init ();
+  //if (error_code != NO_ERROR)
+  //  {
+  //    goto error;
+  //  }
+  //json_set_alloc_funcs (malloc, free);
+
+
+  //boot_get_host_connected
+
+  if (t_boot_Server_credential.db_full_name)
+    {
+      db_private_free_and_init (NULL, t_boot_Server_credential.db_full_name);
+    }
+  if (t_boot_Server_credential.host_name)
+    {
+      db_private_free_and_init (NULL, t_boot_Server_credential.host_name);
+    }
+  if (t_boot_Server_credential.lob_path)
+    {
+      db_private_free_and_init (NULL, t_boot_Server_credential.lob_path);
+    }
+  if (t_boot_Server_credential.db_lang)
+    {
+      db_private_free_and_init (NULL, t_boot_Server_credential.db_lang);
+    }
+
+  return NO_ERROR;
+
+error:
+  boot_finalize_client_sub (new_transaction);
+  return error_code;
+}
+
+void
+boot_finalize_client_sub (bool new_transaction)
+{
+  //usleep (1000000);           // ctshim, 디버깅용
+
+  net_client_sub_final ();
+  //showstmt_metadata_final ();
+  tran_free_savepoint_list ();
+
+  //tr_final ();
+  au_final ();
+  sm_final ();
+  ws_final (true);
+  //es_final ();
+  //tp_final ();
+
+  //locator_free_areas ();
+  //sysprm_final ();
+  //perfmon_finalize ();
+  //area_final ();
+  //msgcat_final ();
+  //er_final (ER_ALL_FINAL);
+
+  //lang_final ();
+  //tz_unload ();
+  boot_client (NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT, TRAN_DEFAULT_ISOLATION_LEVEL ());
+  //boot_Is_client_all_final = true;
+}
+#endif // #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 
 /*
  * boot_shutdown_client () - shutdown client
@@ -1465,6 +1757,11 @@ boot_server_die_or_changed (void)
       (void) tran_abort_only_client (true);
       boot_client (NULL_TRAN_INDEX, TM_TRAN_WAIT_MSECS (), TM_TRAN_ISOLATION ());
       boot_Is_client_all_final = false;
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+      g_main_tran_info.tran_index = NULL_TRAN_INDEX;
+      g_main_tran_info.tran_wait_msecs = TM_TRAN_WAIT_MSECS ();
+      g_main_tran_info.tran_isolation = TM_TRAN_ISOLATION ();
+#endif
 #if defined(CS_MODE)
       net_client_final (true);
 #endif /* !CS_MODE */
@@ -1522,7 +1819,6 @@ boot_client_all_finalize (int final_level)
       showstmt_metadata_final ();
       tran_free_savepoint_list ();
       sm_flush_static_methods ();
-      set_final ();
       parser_final ();
 
       if (final_level != OPTIONAL_FINALIZATION)
@@ -1530,7 +1826,7 @@ boot_client_all_finalize (int final_level)
 	  tr_final ();
 	  au_final ();
 	  sm_final ();
-	  ws_final ();
+	  ws_final (false);
 	  es_final ();
 	  tp_final ();
 	}
@@ -1561,6 +1857,11 @@ boot_client_all_finalize (int final_level)
 
       boot_client (NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT, TRAN_DEFAULT_ISOLATION_LEVEL ());
       boot_Is_client_all_final = true;
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+      g_main_tran_info.tran_index = NULL_TRAN_INDEX;
+      g_main_tran_info.tran_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
+      g_main_tran_info.tran_isolation = TRAN_DEFAULT_ISOLATION_LEVEL ();
+#endif
 
       /* restore the signals that was blocked, when the function started. */
       signal (SIGTERM, sigterm_handler);

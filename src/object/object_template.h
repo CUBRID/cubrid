@@ -190,13 +190,6 @@ typedef struct obj_template
 } OBJ_TEMPLATE, *OBT;
 
 /*
- * State used when creating templates, to indicate whether unique constraint
- * checking is enabled.
- * This state can be modifed using obt_enable_unique_checking()
- */
-extern bool obt_Check_uniques;
-
-/*
  * State variable used when creating object template, to indicate whether enable
  * auto increment feature
  */

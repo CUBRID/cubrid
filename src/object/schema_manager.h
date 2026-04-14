@@ -83,12 +83,12 @@ struct sm_constraint_info
   SM_INDEX_STATUS index_status;	// Used to save index_status in case of rebuild or moving the constraint
 };
 
-extern ROOT_CLASS sm_Root_class;
+extern CUB_THREAD_LOCAL ROOT_CLASS sm_Root_class;
 
 extern const char TEXT_CONSTRAINT_PREFIX[];
 
-extern MOP sm_Root_class_mop;
-extern HFID *sm_Root_class_hfid;
+extern CUB_THREAD_LOCAL MOP sm_Root_class_mop;
+extern CUB_THREAD_LOCAL HFID *sm_Root_class_hfid;
 extern const char *sm_Root_class_name;
 
 extern int sm_finish_class (SM_TEMPLATE * template_, MOP * classmop);
@@ -294,7 +294,7 @@ extern void sm_final (void);
 extern void sm_transaction_boundary (void);
 
 extern void sm_create_root (OID * rootclass_oid, HFID * rootclass_hfid);
-extern void sm_init (OID * rootclass_oid, HFID * rootclass_hfid);
+extern void sm_init (OID * rootclass_oid, HFID * rootclass_hfid, bool is_sub);
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 extern int sm_has_text_domain (DB_ATTRIBUTE * attributes, int check_all);
 #endif /* ENABLE_UNUSED_FUNCTION */

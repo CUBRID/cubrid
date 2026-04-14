@@ -105,10 +105,8 @@ extern unsigned int db_on_server;
  * and oid promotion cannot be controlled there.
  *
  */
-#if defined (SERVER_MODE)
-#define PR_INHIBIT_OID_PROMOTION_DEFAULT 1
-#else
-#define PR_INHIBIT_OID_PROMOTION_DEFAULT 0
+#if !defined (SERVER_MODE)
+#define PR_INHIBIT_OID_PROMOTION_DEFAULT (0)
 #endif
 
 /*
@@ -875,9 +873,11 @@ static DB_VALUE_COMPARE_RESULT mr_cmpval_json (DB_VALUE * value1, DB_VALUE * val
  *    Area used for allocation of value containers that may be given out
  *    to database applications.
  */
-static AREA *Value_area = NULL;
+static CUB_THREAD_LOCAL AREA *Value_area = NULL;
 
+#if !defined (SERVER_MODE)
 int pr_Inhibit_oid_promotion = PR_INHIBIT_OID_PROMOTION_DEFAULT;
+#endif
 
 int pr_Enable_string_compression = true;
 const PR_TYPE tp_Null = {

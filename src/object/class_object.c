@@ -92,7 +92,7 @@ static const char *Constraint_properties[] = {
 #define NUM_CONSTRAINT_PROPERTIES       \
   ((int)(sizeof(Constraint_properties)/sizeof(Constraint_properties[0])))
 
-static AREA *Template_area = NULL;
+static CUB_THREAD_LOCAL AREA *Template_area = NULL;
 
 static void classobj_print_props (DB_SEQ * properties);
 static DB_SEQ *classobj_make_foreign_key_info_seq (SM_FOREIGN_KEY_INFO * fk_info);

@@ -53,8 +53,11 @@
 
 #if !defined(SERVER_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 #define CUB_THREAD_LOCAL THREAD_LOCAL
+//#define CUB_THREAD_LOCAL_PSR THREAD_LOCAL
+#define CUB_THREAD_LOCAL_PSR
 #else
 #define CUB_THREAD_LOCAL
+#define CUB_THREAD_LOCAL_PSR
 #endif
 
 #ifdef __cplusplus
@@ -71,6 +74,7 @@ extern "C"
 
 #if !defined(SERVER_MODE)
   extern pthread_t css_get_thread_id ();
+  extern CUB_THREAD_LOCAL pthread_t gv_current_tid;
 
 #if !defined(NDEBUG) || defined(MULTI_CONN_TO_A_SERVER)
   extern pthread_t gv_main_tid;

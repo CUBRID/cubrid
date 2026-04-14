@@ -15274,7 +15274,9 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (ws_need_flush ())
 	{
+#if defined(SA_MODE)
 	  if (tm_Use_OID_preflush)
+#endif
 	    {
 	      (void) locator_assign_all_permanent_oids ();
 	    }

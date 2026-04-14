@@ -323,7 +323,9 @@ extern int pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE
 extern int pr_midxkey_remove_prefix (DB_VALUE * key, int prefix);
 extern int pr_midxkey_common_prefix (DB_VALUE * key1, DB_VALUE * key2);
 
+#if !defined (SERVER_MODE)
 extern int pr_Inhibit_oid_promotion;
+#endif
 
 /* Helper function for DB_VALUE printing; caller must free_and_init result. */
 extern char *pr_valstring (const DB_VALUE *);

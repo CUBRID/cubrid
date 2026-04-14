@@ -112,7 +112,7 @@ struct locator_list_keep_mops
   LIST_MOPS *list;		/* The list of mops */
 };
 
-static volatile sig_atomic_t lc_Is_siginterrupt = false;
+static CUB_THREAD_LOCAL volatile sig_atomic_t lc_Is_siginterrupt = false;
 
 #if defined(CUBRID_DEBUG)
 static void locator_dump_mflush (FILE * out_fp, LOCATOR_MFLUSH_CACHE * mflush);

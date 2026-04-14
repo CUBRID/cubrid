@@ -125,6 +125,12 @@ static int fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose, int quit_on_
 void sigfpe_handler (int sig);
 #endif
 
+/*  db_Keep_session is set to true only when the mode is CAS; 
+ * otherwise, there is no code that resets it to false except for the initialization */
+static bool db_Keep_session = false;
+CUB_THREAD_LOCAL SESSION_ID db_Session_id = DB_EMPTY_SESSION;
+static CUB_THREAD_LOCAL int db_Row_count = DB_ROW_COUNT_NOT_SET;
+
 /*
  * install_static_methods() - Installs the static method definitions for the
  *        system defined classes. This may change depending upon the product

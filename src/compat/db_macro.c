@@ -78,19 +78,16 @@ struct valcnv_buffer
   unsigned char *bytes;
 };
 
-SESSION_ID db_Session_id = DB_EMPTY_SESSION;
-bool db_Keep_session = false;
+static const int valcnv_Max_set_elements = 10;
 
-int db_Row_count = DB_ROW_COUNT_NOT_SET;
-
-static int valcnv_Max_set_elements = 10;
-
-#if defined(SERVER_MODE)
-int db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
+CUB_THREAD_LOCAL int db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+// FIX-ME: fix me for call method 
+// When the method is called, the task must be executed by the same existing thread.
+CUB_THREAD_LOCAL int db_Disable_modifications = 0;
 #else
-int db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
+int db_Disable_modifications = 0;	// for read only mode, 
 #endif
-int db_Disable_modifications = 0;
 
 
 static int coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen);

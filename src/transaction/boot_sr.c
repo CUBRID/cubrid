@@ -3871,7 +3871,6 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
       es_final ();
       tp_final ();
       locator_free_areas ();
-      set_final ();
       sysprm_final ();
       area_final ();
       msgcat_final ();

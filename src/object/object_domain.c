@@ -154,7 +154,7 @@ static const DB_TYPE db_type_rank[] = { DB_TYPE_NULL,
 };
 static int db_type_rank_order[DB_TYPE_LAST + 1] = { 0, };
 
-AREA *tp_Domain_area = NULL;
+static AREA *tp_Domain_area = NULL;
 static bool tp_Initialized = false;
 
 extern unsigned int db_on_server;
@@ -552,12 +552,13 @@ TP_DOMAIN **tp_Domain_conversion_matrix[] = {
   NULL				/* DB_TYPE_JSON */
 };
 
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || (defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
 /* lock for domain list cache */
 static pthread_mutex_t tp_domain_cache_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif /* SERVER_MODE */
 
 
+/* *INDENT-OFF* */
 #ifdef __cplusplus
 /* Notice)
  * The constructor of this class is used solely to initialize global variable(db_type_rank_order).
@@ -577,7 +578,8 @@ public:
 static volatile class type_rank_order_initializer tro_instance;
 #else
 __attribute__ ((constructor))
-     static void tp_init_db_type_rank_order (void)
+static void 
+tp_init_db_type_rank_order (void)
 {
   memset (db_type_rank_order, 0x00, sizeof (db_type_rank_order));
   for (int i = 0; db_type_rank[i] < (DB_TYPE_LAST + 1); i++)
@@ -586,7 +588,7 @@ __attribute__ ((constructor))
     }
 }
 #endif
-
+/* *INDENT-ON* */
 
 static int tp_domain_size_internal (const TP_DOMAIN * domain);
 static void tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain);
@@ -2906,7 +2908,7 @@ tp_domain_cache (TP_DOMAIN * transient)
 {
   TP_DOMAIN *domain, **dlist;
   TP_DOMAIN *ins_pos = NULL;
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || (defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
   int rv;
 #endif /* SERVER_MODE */
 
@@ -2952,7 +2954,7 @@ tp_domain_cache (TP_DOMAIN * transient)
   /*
    * second search stage: LOCK
    */
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || (defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
   rv = pthread_mutex_lock (&tp_domain_cache_lock);	/* LOCK */
 
   /* locate the root of the cache list for domains of this type */
@@ -3002,7 +3004,7 @@ tp_domain_cache (TP_DOMAIN * transient)
 
   domain = transient;
 
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || (defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
   pthread_mutex_unlock (&tp_domain_cache_lock);
 #endif /* SERVER_MODE */
 

@@ -3029,6 +3029,10 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
   char executable_path[PATH_MAX];
 #endif
 
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  db_set_use_utility_thread (true);
+#endif
+
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
       goto print_applylog_usage;

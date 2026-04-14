@@ -45,7 +45,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-#if !defined(SERVER_MODE)
+#if !defined(SERVER_MODE) && !(defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
 #define pthread_mutex_init(a, b)
 #define pthread_mutex_destroy(a)
 #define pthread_mutex_lock(a)	0
@@ -69,7 +69,7 @@ struct locator_global
   {
     int number;			/* Num of copy areas that has been kept */
     LC_COPYAREA *areas[LOCATOR_NKEEP_LIMIT];	/* Array of free copy areas */
-#if defined(SERVER_MODE)
+#if defined (SERVER_MODE)  || (defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
     pthread_mutex_t lock;
 #endif				/* SERVER_MODE */
   } copy_areas;
@@ -78,7 +78,7 @@ struct locator_global
   {
     int number;			/* Num of requested areas that has been kept */
     LC_LOCKSET *areas[LOCATOR_NKEEP_LIMIT];	/* Array of free lockset areas */
-#if defined(SERVER_MODE)
+#if defined(SERVER_MODE) || (defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
     pthread_mutex_t lock;
 #endif				/* SERVER_MODE */
   } lockset_areas;
@@ -87,7 +87,7 @@ struct locator_global
   {
     int number;			/* Num of lockhinted areas that has been kept */
     LC_LOCKHINT *areas[LOCATOR_NKEEP_LIMIT];	/* Array of free lockhinted */
-#if defined(SERVER_MODE)
+#if defined(SERVER_MODE) || (defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
     pthread_mutex_t lock;
 #endif				/* SERVER_MODE */
   } lockhint_areas;
@@ -96,7 +96,7 @@ struct locator_global
   {
     int number;			/* Num of packed areas that have been kept */
     LC_COPYAREA *areas[LOCATOR_NKEEP_LIMIT];	/* Array of free packed areas */
-#if defined(SERVER_MODE)
+#if defined(SERVER_MODE) || (defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
     pthread_mutex_t lock;
 #endif				/* SERVER_MODE */
   } packed_areas;
@@ -278,7 +278,7 @@ locator_allocate_packed (int packed_size)
 {
   char *packed_area = NULL;
   int i, tail;
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE)  || (defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
   int rv;
 #endif /* SERVER_MODE */
 
@@ -349,7 +349,7 @@ void
 locator_free_packed (char *packed_area, int packed_size)
 {
   int tail;
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE)  || (defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
   int rv;
 #endif /* SERVER_MODE */
 
@@ -410,7 +410,7 @@ locator_allocate_copy_area_by_length (int min_length)
   LC_COPYAREA *copyarea = NULL;
   int network_pagesize;
   int i;
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE)  || (defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
   int rv;
 #endif /* SERVER_MODE */
 
@@ -534,7 +534,7 @@ locator_reallocate_copy_area_by_length (LC_COPYAREA * old_area, int new_length)
 void
 locator_free_copy_area (LC_COPYAREA * copyarea)
 {
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE)  || (defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
   int rv;
 #endif /* SERVER_MODE */
 
@@ -984,7 +984,7 @@ locator_allocate_lockset (int max_reqobjs, LOCK reqobj_inst_lock, LOCK reqobj_cl
   LC_LOCKSET *lockset = NULL;	/* Area for requested objects */
   int length;
   int i;
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE)  || (defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
   int rv;
 #endif /* SERVER_MODE */
 
@@ -1166,7 +1166,7 @@ locator_reallocate_lockset (LC_LOCKSET * lockset, int max_reqobjs)
 void
 locator_free_lockset (LC_LOCKSET * lockset)
 {
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE)  || (defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
   int rv;
 #endif /* SERVER_MODE */
 
@@ -1658,7 +1658,7 @@ locator_allocate_lockhint (int max_classes, bool quit_on_errors)
   LC_LOCKHINT *lockhint = NULL;
   int length;
   int i;
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE)  || (defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
   int rv;
 #endif /* SERVER_MODE */
 
@@ -1791,7 +1791,7 @@ locator_reallocate_lockhint (LC_LOCKHINT * lockhint, int max_classes)
 void
 locator_free_lockhint (LC_LOCKHINT * lockhint)
 {
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE)  || (defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
   int rv;
 #endif /* SERVER_MODE */
 
