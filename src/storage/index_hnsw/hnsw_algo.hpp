@@ -581,16 +581,28 @@ namespace cubhnsw
 	next.pop ();
 	stats.on_candidate_pop ();
 
+	// Prefetch the next iteration's neighbor list data while we process the current candidate.
+	// try_get_neighbors_cached is a pure hash-map lookup (no stats); the prefetch issues
+	// a cache-line read for the flat neighbor array before we need it next iteration.
+	if (!next.empty ())
+	  {
+	    neighbors_view pf = m_storage->try_get_neighbors_cached (next.top ().slot, level);
+	    if (pf)
+	      {
+		__builtin_prefetch (pf.data, 0, 1);
+	      }
+	  }
+
 	slot_id_t candidate_slot = candidacy.slot;
 
 	// Try neighbors cache first (disk storage); fallback to direct neighbors_ref_type.
-	const std::vector<slot_id_t> *cached_neighbors =
+	neighbors_view cached_neighbors =
 		m_storage->get_neighbors_cached_ids (context, candidate_slot, level);
 
-	if (cached_neighbors != nullptr)
+	if (cached_neighbors)
 	  {
 	    context.m_stats.on_neighbors_cache_hit (context.m_is_perf_tracking, level);
-	    const std::size_t neigh_n = cached_neighbors->size ();
+	    const std::size_t neigh_n = cached_neighbors.size;
 
 	    // Two-pass over unvisited neighbors to hide DRAM latency.
 	    // Pass 1: resolve cached_vector* via hash map (L3 hit) + issue __builtin_prefetch
