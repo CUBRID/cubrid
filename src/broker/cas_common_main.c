@@ -634,7 +634,7 @@ cas_free (bool from_sighandler)
    * for AIX. In AIX, we use 20M as max_process_size. */
   max_process_size = (shm_appl->appl_server_max_size > 0) ? shm_appl->appl_server_max_size : 20 * ONE_K;
 #else
-  max_process_size = (shm_appl->appl_server_max_size > 0) ? shm_appl->appl_server_max_size : (psize_at_start * 2);
+  max_process_size = (shm_appl->appl_server_max_size > 0) ? shm_appl->appl_server_max_size : (psize_at_start * 10);
 #endif
   if (as_info->psize > max_process_size)
     {
@@ -846,7 +846,7 @@ restart_is_needed (void)
    * for AIX. In AIX, we use 20M as max_process_size. */
   max_process_size = (shm_appl->appl_server_max_size > 0) ? shm_appl->appl_server_max_size : 20 * ONE_K;
 #else
-  max_process_size = (shm_appl->appl_server_max_size > 0) ? shm_appl->appl_server_max_size : (psize_at_start * 2);
+  max_process_size = (shm_appl->appl_server_max_size > 0) ? shm_appl->appl_server_max_size : (psize_at_start * 10);
 #endif
 
   if (as_info->psize > max_process_size)
