@@ -27925,6 +27925,7 @@ heap_recdes_check_has_oos (const RECDES * recdes)
 	  offset = OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
 	  break;
 	default:
+	  assert (false && "unexpected variable offset size");
 	  return false;
 	}
 
