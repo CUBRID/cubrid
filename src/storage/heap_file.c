@@ -21698,24 +21698,19 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   update_mvcc_flags = OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION;
 
   bool has_oos = heap_recdes_check_has_oos (update_context->recdes_p);
-  /* old_has_oos is the current HAS_OOS bit already stored in the recdes header before resynchronization. */
-  bool old_has_oos = (mvcc_flags & OR_MVCC_FLAG_HAS_OOS) != 0;
 
-  if (has_oos != old_has_oos)
+  if (has_oos)
     {
-      if (has_oos)
-	{
-	  mvcc_flags |= OR_MVCC_FLAG_HAS_OOS;
-	  repid_and_flag_bits |= (OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
-	}
-      else
-	{
-	  mvcc_flags &= ~OR_MVCC_FLAG_HAS_OOS;
-	  repid_and_flag_bits &= ~(OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
-	}
-
-      OR_PUT_INT (update_context->recdes_p->data, repid_and_flag_bits);
+      mvcc_flags |= OR_MVCC_FLAG_HAS_OOS;
+      repid_and_flag_bits |= (OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
     }
+  else
+    {
+      mvcc_flags &= ~OR_MVCC_FLAG_HAS_OOS;
+      repid_and_flag_bits &= ~(OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
+    }
+
+  OR_PUT_INT (update_context->recdes_p->data, repid_and_flag_bits);
   is_mvcc_op = HEAP_UPDATE_IS_MVCC_OP (is_mvcc_class, update_context->update_in_place);
 #if defined (SERVER_MODE)
   use_optimization = (is_mvcc_op && !heap_is_big_length (record_size + OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE));
@@ -27907,7 +27902,7 @@ heap_recdes_check_has_oos (const RECDES * recdes)
   void *var_table = OR_GET_OBJECT_VAR_TABLE (recdes->data);
   const int max_var_count = (recdes->length - OR_HEADER_SIZE (recdes->data)) / offset_size;
 
-  for (int index = 0; index <= max_var_count; ++index)
+  for (int index = 0;; ++index)
     {
       if (index == max_var_count)
 	{
