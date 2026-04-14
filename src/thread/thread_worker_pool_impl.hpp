@@ -106,7 +106,7 @@ namespace cubthread
   {
     public:
       // forward definition for nested core class
-      friend class thread_manager;
+      friend class manager;
       class core_impl;
 
       virtual ~worker_pool_impl ();
