@@ -167,6 +167,26 @@ namespace cubhnsw
 	return coarse_dist <= radius + get_i8_recheck_window_ (context.m_i8_prefilter_multiplier, radius);
       }
 
+      // Slot-to-slot i8 coarse distance using pre-fetched cached_vector refs.
+      // Both vectors must already be retrieved via get_cached_vector_by_slot_id().
+      inline distance_t compute_distance_i8_between_ (algo_context_t &context,
+	  const cached_vector &avec, const cached_vector &bvec) const
+      {
+	return compute_distance_i8_ (context, avec.values_i8, bvec.values_i8);
+      }
+
+      // Like should_recheck_candidate_fp32_() but for slot-to-slot (pair-wise) comparisons
+      // in refine_(). Uses a wider window because both vectors were independently quantized
+      // at insertion time, combining two independent quantization errors (variance ~2x vs
+      // query-to-candidate, hence sqrt(2)~1.41x theoretical; 2.0x adds a safety margin).
+      inline bool should_recheck_pairwise_fp32_ (const algo_context_t &context,
+	  distance_t coarse_dist, distance_t threshold) const
+      {
+	constexpr float PAIRWISE_WINDOW_SCALE = 2.0f;
+	return coarse_dist <= threshold
+	       + PAIRWISE_WINDOW_SCALE * get_i8_recheck_window_ (context.m_i8_prefilter_multiplier, threshold);
+      }
+
       inline distance_t compute_distance_from_query_ (algo_context_t &context, const float *query,
 	  const cached_vector &vec) const
       {
@@ -896,6 +916,10 @@ namespace cubhnsw
 	old_computed_distances = context.m_stats.computed_distances;
       }
 
+    // Loop-invariant: multiplier does not change during refine.
+    // When disabled (multiplier == 0), fall back to fp32-only compute_distance_between().
+    const bool use_i8_prefilter = (context.m_i8_prefilter_multiplier > 0.0f);
+
     std::size_t submitted_count = 1;
     std::size_t consumed_count = 1; /// Always equal or greater than `submitted_count`.
     while (submitted_count < needed && consumed_count < top_count)
@@ -903,15 +927,48 @@ namespace cubhnsw
 	candidate_t candidate = top_data[consumed_count];
 	bool good = true;
 	std::size_t idx = 0;
+
+	// Fetch candidate vector once outside the inner loop (constant across all submitted entries).
+	const cached_vector *cand_vec = use_i8_prefilter
+					? m_storage->get_cached_vector_by_slot_id (context, candidate.slot, lock_mode::shared)
+					: nullptr;
+	assert (!use_i8_prefilter || cand_vec != nullptr);
+
 	for (; idx < submitted_count; idx++)
 	  {
 	    candidate_t submitted = top_data[idx];
 
-	    distance_t inter_result_dist = compute_distance_between (context, candidate.slot, submitted.slot);
-	    if (inter_result_dist < candidate.distance)
+	    if (use_i8_prefilter)
 	      {
-		good = false;
-		break;
+		// i8 prefilter: skip fp32 when inter-distance is clearly > candidate.distance.
+		// Uses a 2x-widened window (see should_recheck_pairwise_fp32_()) because both
+		// vectors carry independent quantization errors from their insertion time.
+		// On skip, continue the inner loop — candidate may still be pruned by a later submitted entry.
+		const cached_vector *subm_vec =
+			m_storage->get_cached_vector_by_slot_id (context, submitted.slot, lock_mode::shared);
+		context.m_stats.on_prefilter_checked (context.m_is_perf_tracking, context.m_level);
+		distance_t i8_dist = compute_distance_i8_between_ (context, *cand_vec, *subm_vec);
+		if (!should_recheck_pairwise_fp32_ (context, i8_dist, candidate.distance))
+		  {
+		    context.m_stats.on_prefilter_rejected (context.m_is_perf_tracking, context.m_level);
+		    continue;
+		  }
+		context.m_stats.on_prefilter_passed_to_fp32 (context.m_is_perf_tracking, context.m_level);
+		distance_t inter_result_dist = compute_distance_ (context, cand_vec->values, subm_vec->values);
+		if (inter_result_dist < candidate.distance)
+		  {
+		    good = false;
+		    break;
+		  }
+	      }
+	    else
+	      {
+		distance_t inter_result_dist = compute_distance_between (context, candidate.slot, submitted.slot);
+		if (inter_result_dist < candidate.distance)
+		  {
+		    good = false;
+		    break;
+		  }
 	      }
 	  }
 
