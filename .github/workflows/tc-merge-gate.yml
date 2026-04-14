@@ -22,7 +22,7 @@ name: TC Merge Gate
 
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, labeled, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - develop
       - 'feature/**'
