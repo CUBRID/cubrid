@@ -298,6 +298,8 @@ namespace cubhnsw
 	// Pre-reserve flat neighbor buffer: each node has at most 2*M+1 neighbor slots across
 	// level 0 (2*M) plus one extra level-1 entry; multiply by estimated_nodes for the total.
 	m_flat_neighbors.reserve (estimated_nodes * (2 * m_build_params.m + 2));
+	// Level-0 direct cache: one entry per node, indexed by node_idx_of_().
+	m_level0_cache.resize (estimated_nodes, {UINT32_MAX, 0});
       }
 
       void promote_root (pinned_t &root);
@@ -307,9 +309,23 @@ namespace cubhnsw
 							 const lock_mode &mode);
 
       // Fast inline path for neighbors cache lookup: no stats overhead.
+      // Level 0 uses a direct array (no hashing); level > 0 falls through to the hash map.
       inline neighbors_view try_get_neighbors_cached (const slot_id_t &slot,
 	  level_t level) noexcept
       {
+	if (level == 0)
+	  {
+	    const uint32_t idx = node_idx_of_ (slot);
+	    if (idx < static_cast<uint32_t> (m_level0_cache.size ()))
+	      {
+		const auto &e = m_level0_cache[idx];
+		if (e.offset != UINT32_MAX)
+		  {
+		    return neighbors_view { m_flat_neighbors.data () + e.offset, e.count };
+		  }
+	      }
+	    return {};
+	  }
 	neighbors_key key { slot, level };
 	auto it = m_neighbors_cache.find (key);
 	if (it == m_neighbors_cache.end ())
@@ -382,6 +398,13 @@ namespace cubhnsw
 	return m_oid_encoder.encode_oid (slot_id);
       }
 
+      // Compact 0-based index for a node: root is page 0 (page_idx=0), nodes start at page_idx=1.
+      // Subtracting root_pageid+1 maps pageid → [0, estimated_nodes).
+      inline uint32_t node_idx_of_ (const slot_id_t &slot) const noexcept
+      {
+	return static_cast<uint32_t> (slot.pageid - m_root_vpid.pageid - 1);
+      }
+
       const cached_vector *cache_vector_copy_ (const slot_id_t &slot_id, const float *vector);
       const float *append_vector_copy_ (const float *vector);
       const std::int8_t *append_i8_copy_ (const std::int8_t *data);
@@ -414,8 +437,18 @@ namespace cubhnsw
       std::unique_ptr<i8_cache_block> m_i8_cache_blocks;
       i8_cache_block *m_i8_cache_tail {nullptr};
 
+      // Swizzled level-0 neighbor cache: indexed by node_idx_of_(slot).
+      // Eliminates hash-map overhead for the dominant (level==0) lookup path.
+      // Entries for level > 0 remain in m_neighbors_cache.
+      struct level0_entry_t
+      {
+	uint32_t offset {UINT32_MAX}; // UINT32_MAX = not yet inserted
+	uint32_t count {0};
+      };
+
       /* TODO: This is not thread-safe. Currently, we are assuming single-threaded access, but we need to make it thread-safe. */
-      neighbors_cache_t m_neighbors_cache;    // (slot_id_t, level) -> (offset, count) into m_flat_neighbors
+      neighbors_cache_t m_neighbors_cache;     // (slot_id_t, level > 0) -> (offset, count) into m_flat_neighbors
       std::vector<slot_id_t> m_flat_neighbors; // flat contiguous buffer for all neighbor lists
+      std::vector<level0_entry_t> m_level0_cache; // direct-indexed level-0 neighbor cache
   };
 }

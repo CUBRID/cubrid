@@ -260,6 +260,19 @@ namespace cubhnsw
   neighbors_view
   storage::get_neighbors_cached_ids (algo_context_t &context, const slot_id_t &slot, level_t level)
   {
+    if (level == 0)
+      {
+	const uint32_t idx = node_idx_of_ (slot);
+	if (idx < static_cast<uint32_t> (m_level0_cache.size ()))
+	  {
+	    const auto &e = m_level0_cache[idx];
+	    if (e.offset != UINT32_MAX)
+	      {
+		return neighbors_view { m_flat_neighbors.data () + e.offset, e.count };
+	      }
+	  }
+	return {};
+      }
     neighbors_key key { slot, level };
     auto it = m_neighbors_cache.find (key);
     if (it == m_neighbors_cache.end ())
@@ -284,6 +297,32 @@ namespace cubhnsw
     const uint32_t max_per_slot = (level == 0)
 				  ? static_cast<uint32_t> (2 * m_build_params.m + 1)
 				  : static_cast<uint32_t> (m_build_params.m + 1);
+
+    if (level == 0)
+      {
+	const uint32_t idx = node_idx_of_ (slot);
+	if (idx >= static_cast<uint32_t> (m_level0_cache.size ()))
+	  {
+	    // Guard against nodes beyond initial estimate (inmem block can grow).
+	    m_level0_cache.resize (idx + 1, {UINT32_MAX, 0});
+	  }
+	auto &e = m_level0_cache[idx];
+	if (e.offset == UINT32_MAX)
+	  {
+	    // First write: allocate max_per_slot contiguous slots and copy count entries.
+	    uint32_t offset = static_cast<uint32_t> (m_flat_neighbors.size ());
+	    m_flat_neighbors.resize (m_flat_neighbors.size () + max_per_slot);
+	    std::copy (data, data + count, m_flat_neighbors.data () + offset);
+	    e = {offset, static_cast<uint32_t> (count)};
+	  }
+	else
+	  {
+	    // Subsequent write: overwrite in-place within the pre-allocated slot.
+	    std::copy (data, data + count, m_flat_neighbors.data () + e.offset);
+	    e.count = static_cast<uint32_t> (count);
+	  }
+	return;
+      }
 
     neighbors_key key { slot, level };
     auto [it, inserted] = m_neighbors_cache.try_emplace (key, std::make_pair (0u, 0u));
