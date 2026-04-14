@@ -21703,16 +21703,15 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 
   if (has_oos)
     {
-      mvcc_flags |= OR_MVCC_FLAG_HAS_OOS;
       repid_and_flag_bits |= (OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
     }
   else
     {
-      mvcc_flags &= ~OR_MVCC_FLAG_HAS_OOS;
       repid_and_flag_bits &= ~(OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
     }
 
   OR_PUT_INT (update_context->recdes_p->data, repid_and_flag_bits);
+
   is_mvcc_op = HEAP_UPDATE_IS_MVCC_OP (is_mvcc_class, update_context->update_in_place);
 #if defined (SERVER_MODE)
   use_optimization = (is_mvcc_op && !heap_is_big_length (record_size + OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE));
@@ -21826,6 +21825,15 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 #endif /* SERVER_MODE */
     {
       MVCC_CLEAR_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
+    }
+
+  if (has_oos)
+    {
+      mvcc_rec_header.mvcc_flag |= OR_MVCC_FLAG_HAS_OOS;
+    }
+  else
+    {
+      mvcc_rec_header.mvcc_flag &= ~OR_MVCC_FLAG_HAS_OOS;
     }
 
   if (is_mvcc_class && heap_is_big_length (record_size))
