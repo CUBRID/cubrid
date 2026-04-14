@@ -34,28 +34,21 @@
 #include "error_manager.h"
 #include "byte_order.h"
 
-#if defined(__SIZEOF_INT128__)
-#define HAS_INT128_SUPPORT (1)
-#ifndef uint128_t
-typedef __uint128_t uint128_t;
-#endif /* uint128_t */
-typedef uint64_t knuth_digit_t;
-typedef uint128_t knuth_double_digit_t;
-#define KNUTH_DIGIT_BITS (64)
-#define KNUTH_BASE ((knuth_double_digit_t)1 << 64)
-#else /* !__SIZEOF_INT128__ */
-#define HAS_INT128_SUPPORT (0)
-typedef uint32_t knuth_digit_t;
-typedef uint64_t knuth_double_digit_t;
-#define KNUTH_DIGIT_BITS (32)
-#define KNUTH_BASE ((knuth_double_digit_t)1 << 32)
-#endif /* __SIZEOF_INT128__ */
-
-/* CLZ / BSWAP / bit manipulations */
+/*
+ * CLZ / CTZ / BSWAP (GCC/Clang builtins)
+ *
+ * - Requires GCC or Clang
+ * - __builtin_clz/ctz: undefined for 0; explicitly handled
+ * - __builtin_bswap: always reverses byte order
+ *
+ * NOTE:
+ * Fallback implementations exist below but are intentionally disabled
+ * via #error to enforce modern toolchains.
+ */
 #if defined(__GNUC__) || defined(__clang__)
-#define NUMERIC_CLZ64(x) __builtin_clzll(x)
-#define NUMERIC_CTZ64(x) __builtin_ctzll(x)
-#define NUMERIC_CLZ32(x) __builtin_clz(x)
+#define NUMERIC_CLZ64(x) ((x) ? __builtin_clzll(x) : 64)
+#define NUMERIC_CTZ64(x) ((x) ? __builtin_ctzll(x) : 64)
+#define NUMERIC_CLZ32(x) ((x) ? __builtin_clz(x) : 32)
 #if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
 #define NUMERIC_BSWAP64(x) __builtin_bswap64(x)
 #define NUMERIC_BSWAP32(x) __builtin_bswap32(x)
@@ -64,7 +57,8 @@ typedef uint64_t knuth_double_digit_t;
 #define NUMERIC_BSWAP32(x) (x)
 #endif /* OR_BYTE_ORDER */
 #else /* !(__GNUC__ || __clang__) */
-  /* Manual fallbacks for non-GCC/Clang compilers */
+#error "GCC or Clang required"
+/* fallback implementations below are intentionally disabled */
 static inline int
 NUMERIC_CLZ64 (uint64_t x)
 {
@@ -186,11 +180,47 @@ NUMERIC_CLZ32 (uint32_t x)
 #endif /* OR_BYTE_ORDER */
 #endif /* !(__GNUC__ || __clang__) */
 
-#if HAS_INT128_SUPPORT
+/*
+ * 128-bit integer support (required)
+ *
+ * - Required for multi-precision arithmetic
+ * - 32-bit fallback path intentionally disabled
+ */
+#if defined(__SIZEOF_INT128__)
+#define HAS_INT128_SUPPORT (1)
+#ifndef uint128_t
+typedef __uint128_t uint128_t;
+#endif /* uint128_t */
+typedef uint64_t knuth_digit_t;
+typedef uint128_t knuth_double_digit_t;
+#define KNUTH_DIGIT_BITS (64)
+#define KNUTH_BASE ((knuth_double_digit_t)1 << 64)
 #define NUMERIC_CLZ(x) NUMERIC_CLZ64(x)
-#else /* !HAS_INT128_SUPPORT */
+#else /* !__SIZEOF_INT128__ */
+#error "__int128 support is required"
+/* fallback implementations below are intentionally disabled */
+#define HAS_INT128_SUPPORT (0)
+typedef uint32_t knuth_digit_t;
+typedef uint64_t knuth_double_digit_t;
+#define KNUTH_DIGIT_BITS (32)
+#define KNUTH_BASE ((knuth_double_digit_t)1 << 32)
 #define NUMERIC_CLZ(x) NUMERIC_CLZ32(x)
-#endif /* HAS_INT128_SUPPORT */
+#endif /* __SIZEOF_INT128__ */
+
+/*
+ * x86_64 intrinsics
+ *
+ * - Requires x86_64 architecture
+ * - Requires __int128 support
+ */
+#if defined(__x86_64__) && HAS_INT128_SUPPORT
+#define USE_X86_INTRINSICS (1)
+#include <x86intrin.h>
+#else /* !(__x86_64__ && HAS_INT128_SUPPORT) */
+#error "x86_64 architecture required"
+/* fallback implementations below are intentionally disabled */
+#define USE_X86_INTRINSICS (0)
+#endif /* __x86_64__ && HAS_INT128_SUPPORT */
 
 typedef enum
 {

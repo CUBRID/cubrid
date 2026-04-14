@@ -43,13 +43,6 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 
-#if defined(__x86_64__) && defined(HAS_INT128_SUPPORT)
-#define USE_X86_INTRINSICS (1)
-#include <x86intrin.h>
-#else /* !(__x86_64__ && HAS_INT128_SUPPORT) */
-#define USE_X86_INTRINSICS (0)
-#endif /* __x86_64__ && HAS_INT128_SUPPORT */
-
 #if defined (__cplusplus)
 #include <cmath>
 #endif
