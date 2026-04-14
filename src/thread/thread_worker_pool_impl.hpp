@@ -1310,7 +1310,7 @@ namespace cubthread
 	// no; this thread will stop. from this point forward, if a new task is assigned, a new thread must be spawned
 	m_has_thread = false;
 
-	// finish_run; we neet to retire context before another thread uses this worker
+	// we need to retire context before another thread uses this worker
 	finish_run ();
 
 	return false;
