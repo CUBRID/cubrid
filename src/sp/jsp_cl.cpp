@@ -154,7 +154,7 @@ jsp_find_pkg (const char *unique_name, DB_AUTH purpose)
   DB_VALUE value;
   int save, err = NO_ERROR;
 
-  if (!unique_name)
+  if (!unique_name || unique_name[0] == '\0')
     {
       return NULL;
     }
@@ -1112,9 +1112,9 @@ jsp_set_pkg_scode_body (const char *unique_name, const char *scode_body)
   mop = jsp_find_pkg_code (unique_name);
   if (mop == NULL)
     {
-
       if (er_errid() != NO_ERROR)
 	{
+	  err = er_errid();
 	  goto cleanup;
 	}
 
@@ -1234,6 +1234,7 @@ jsp_drop_pkg_body (const char *unique_name)
       {
 	if (er_errid() != NO_ERROR)
 	  {
+	    err = er_errid();
 	    goto cleanup;
 	  }
 	has_scode_body = false;
@@ -1304,8 +1305,6 @@ jsp_drop_pkg_body (const char *unique_name)
 	err = locator_flush_instance (object);
 	if (err != NO_ERROR)
 	  {
-	    assert (er_errid () != NO_ERROR);
-	    err = er_errid ();
 	    goto cleanup;
 	  }
       }
@@ -1352,7 +1351,7 @@ jsp_drop_pkg_member_sp (MOP pkg_mop)
       sp_mop = db_get_object (&sp_elem);
       //pr_clear_value (&sp_elem);
 
-      // NOTE: Package member procedures/functions do not have their records in  _db_stored_procedure_code.
+      // NOTE: Package member procedures/functions do not have their records in _db_stored_procedure_code.
       //       Information about code is stored in _db_package_code for package member procedures/functions
 
       // drop from _db_stored_procedure_args
@@ -1390,7 +1389,7 @@ jsp_drop_pkg_member_sp (MOP pkg_mop)
       pr_clear_value (&sp_elem);
       if (err != NO_ERROR)
 	{
-	  return err;
+	  goto cleanup0;
 	}
     }
 
@@ -1558,8 +1557,6 @@ jsp_drop_pkg_spec (const char *unique_name, MOP pkg_mop, MOP owner)
 	  err = locator_flush_instance (object);
 	  if (err != NO_ERROR)
 	    {
-	      assert (er_errid () != NO_ERROR);
-	      err = er_errid ();
 	      obj_delete (object);
 	      goto cleanup;
 	    }
@@ -1749,8 +1746,6 @@ sp_add_pkg_code (MOP *mop_out, const char *pkg_unique_name, const char *class_na
   err = locator_flush_instance (object);
   if (err != NO_ERROR)
     {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
       obj_delete (object);
       goto error;
     }
@@ -1874,8 +1869,6 @@ sp_add_pkg_sp_arg (MOP *mop_out, const int idx, const cubpl::pkg_sp_arg arg)
   err = locator_flush_instance (object);
   if (err != NO_ERROR)
     {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
       obj_delete (object);
       goto error;
     }
@@ -1895,12 +1888,11 @@ static int
 sp_add_pkg_sp (MOP *mop_out, MOP owner, DB_VALUE &current_datetime,
 	       const char *pkg_unique_name, const char *pkg_name, const cubpl::pkg_sp &sp)
 {
-
   DB_OTMPL *obt;
   DB_OBJECT *object, *sp_arg_obj, *classobj, *arg_classobj;
   DB_VALUE value;
   int err, n, args_cnt;
-  char buffer[4096 + 1];
+  char buffer[SP_ATTR_UNIQUE_NAME_LEN + 1];
   MOP *mop_list;
 
   mop_list = NULL;
@@ -1922,8 +1914,8 @@ sp_add_pkg_sp (MOP *mop_out, MOP owner, DB_VALUE &current_datetime,
     } // side effect 0
 
   // attribute unique_name
-  n = snprintf (buffer, 256, "%s.%s", pkg_unique_name, sp.name.data());
-  if (n >= 256)
+  n = snprintf (buffer, sizeof (buffer), "%s.%s", pkg_unique_name, sp.name.data());
+  if (n >= (int) sizeof (buffer))
     {
       err = ER_PKG_PROC_UNIQ_NAME_TOO_LONG;
       goto cleanup0;
@@ -2153,8 +2145,6 @@ sp_add_pkg_sp (MOP *mop_out, MOP owner, DB_VALUE &current_datetime,
   err = locator_flush_instance (object);
   if (err != NO_ERROR)
     {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
       obj_delete (object);
       goto cleanup1;
     }
@@ -2191,8 +2181,6 @@ sp_add_pkg_sp (MOP *mop_out, MOP owner, DB_VALUE &current_datetime,
       err = locator_flush_instance (sp_arg_obj);
       if (err != NO_ERROR)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  err = er_errid ();
 	  obj_delete (sp_arg_obj);
 	  goto cleanup1;
 	}
@@ -2322,8 +2310,6 @@ sp_add_pkg_var (MOP *mop_out, const char *pkg_unique_name, const cubpl::pkg_var 
   err = locator_flush_instance (object);
   if (err != NO_ERROR)
     {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
       obj_delete (object);
       goto error;
     }
@@ -2406,8 +2392,6 @@ sp_add_pkg_exception (MOP *mop_out, const char *pkg_unique_name,
   err = locator_flush_instance (object);
   if (err != NO_ERROR)
     {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
       obj_delete (object);
       goto error;
     }
@@ -2536,8 +2520,6 @@ sp_add_pkg_cursor (MOP *mop_out, const char *pkg_unique_name, const cubpl::pkg_c
   err = locator_flush_instance (object);
   if (err != NO_ERROR)
     {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
       obj_delete (object);
       goto error;
     }
@@ -2658,8 +2640,6 @@ sp_add_pkg_rec_type (MOP *mop_out, const char *pkg_unique_name,
   err = locator_flush_instance (object);
   if (err != NO_ERROR)
     {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
       obj_delete (object);
       goto error;
     }
@@ -3053,8 +3033,6 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
   err = locator_flush_instance (object);
   if (err != NO_ERROR)
     {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
       obj_delete (object);
       goto cleanup1;
     }
@@ -4350,8 +4328,6 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
   err = locator_flush_instance (object_p);
   if (err != NO_ERROR)
     {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
       obj_delete (object_p);
       goto error;
     }

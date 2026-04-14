@@ -212,6 +212,14 @@ enum index_pkg_record_type_attr
 #define SP_ATTR_CREATED_TIME            "created_time"
 #define SP_ATTR_UPDATED_TIME            "updated_time"
 
+#define SP_ATTR_UNIQUE_NAME_LEN         (255)
+#define SP_ATTR_SP_NAME_LEN             (255)
+#define SP_ATTR_PKG_NAME_LEN            (1024)
+#define SP_ATTR_TARGET_CLASS_LEN        (255)
+#define SP_ATTR_TARGET_METHOD_LEN       (4096)
+#define SP_ATTR_COMMENT_LEN             (1024)
+
+
 enum index_sp_attr
 {
 #define MAP_LIST_ITEM(item)     INDEX_SP_ATTR_##item,
