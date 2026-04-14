@@ -4134,12 +4134,18 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	int i;
 	int net_dim;
 
-	if (data_size < (2 * NET_SIZE_INT))
+	if (data_size < NET_SIZE_INT)
+	  {
+	    return ERROR_INFO_SET (CAS_ER_TYPE_CONVERSION, CAS_ERROR_INDICATOR);
+	  }
 
 	cur_p = (char *) net_value + NET_SIZE_INT;
 	memcpy (&net_dim, cur_p, NET_SIZE_INT);
 	dim = ntohl (net_dim);
-	if (dim < 0 || dim > DB_MAX_VECTOR_DIMENSION || data_size != NET_SIZE_INT + (dim * NET_SIZE_FLOAT))
+	if (dim < 0 || data_size != NET_SIZE_INT + (dim * NET_SIZE_FLOAT))
+	  {
+	    return ERROR_INFO_SET (CAS_ER_TYPE_CONVERSION, CAS_ERROR_INDICATOR);
+	  }
 
 	vector_float.dim = dim;
 	vector_float.float_array = (float *) MALLOC ((dim > 0 ? dim : 1) * NET_SIZE_FLOAT);
@@ -4158,6 +4164,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 
 	err_code = db_make_vector_float (&db_val, &vector_float);
 	coercion_flag = FALSE;
+      }
       break;
 
     case CCI_U_TYPE_USHORT:
