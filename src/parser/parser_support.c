@@ -10693,43 +10693,6 @@ pt_make_default_value_tree_from_default_expr (PARSER_CONTEXT * parser, const DB_
   return default_value;
 }
 
-PT_NODE *
-pt_make_default_value_tree_from_string (PARSER_CONTEXT * parser, const char *str, const int str_size)
-{
-  PT_NODE *default_value = NULL;
-  DB_DEFAULT_EXPR default_expr;
-  classobj_initialize_default_expr (&default_expr);
-
-  if (parser == NULL || str == NULL || str_size < 0)
-    {
-      return NULL;
-    }
-
-  pt_get_default_expression_from_string (parser, str, str_size, &default_expr);
-
-  if (default_expr.default_expr_type != DB_DEFAULT_NONE)
-    {
-      default_value = pt_make_default_value_tree_from_default_expr (parser, &default_expr);
-    }
-  else
-    {
-      default_value = pt_make_string_value (parser, str);
-    }
-
-  if (default_value != NULL)
-    {
-      default_value = pt_semantic_type (parser, default_value, NULL);
-    }
-
-exit:
-  if (default_expr.default_expr_format != NULL)
-    {
-      free_and_init (default_expr.default_expr_format);
-    }
-
-  return default_value;
-}
-
 /*
  * pt_get_default_value_from_attrnode () - get default value from data default node
  * return : error code or NO_ERROR

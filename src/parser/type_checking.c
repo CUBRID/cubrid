@@ -239,10 +239,6 @@ static int pt_coerce_str_to_time_date_utime_datetime (PARSER_CONTEXT * parser, P
 						      PT_TYPE_ENUM * result_type);
 static int pt_coerce_3args (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_NODE * arg3);
 
-
-static int pt_check_row_default_uuid_coercion (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
-					       PT_TYPE_ENUM desired_type, PT_NODE * data_type,
-					       bool check_string_precision);
 static PT_NODE *pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_method_call_type (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg);
@@ -19378,87 +19374,6 @@ pt_coerce_value_explicit (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
   return pt_coerce_value_internal (parser, src, dest, desired_type, data_type, true, false);
 }
 
-static int
-pt_check_row_default_expr_coercion (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
-				    PT_NODE * data_type, DB_DEFAULT_EXPR_TYPE default_expr_type,
-				    bool check_string_precision)
-{
-  if (DB_IS_DEFAULT_UUID_EXPR (default_expr_type))
-    {
-      return pt_check_row_default_uuid_coercion (parser, src, dest, desired_type, data_type, check_string_precision);
-    }
-  else
-    {
-      return ER_FAILED;
-    }
-}
-
-static int
-pt_check_row_default_uuid_coercion (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
-				    PT_NODE * data_type, bool check_string_precision)
-{
-  const int required_string_precision = GUID_STANDARD_BYTES_LENGTH * 2;
-  const int required_bit_precision = GUID_STANDARD_BYTES_LENGTH * 8;
-  PT_NODE *target_data_type = data_type;
-  int precision = TP_FLOATING_PRECISION_VALUE;
-  int err = NO_ERROR;
-
-  assert (src != NULL && dest != NULL);
-  (void) src;
-
-  if (target_data_type == NULL && PT_IS_PARAMETERIZED_TYPE (desired_type))
-    {
-      err = pt_set_default_data_type (parser, desired_type, &target_data_type);
-      if (err < 0)
-	{
-	  return err;
-	}
-    }
-
-  if (target_data_type != NULL)
-    {
-      precision = target_data_type->info.data_type.precision;
-    }
-
-  if (PT_IS_CHAR_STRING_TYPE (desired_type))
-    {
-      if (check_string_precision && precision != TP_FLOATING_PRECISION_VALUE && precision < required_string_precision)
-	{
-	  return ER_IT_DATA_OVERFLOW;
-	}
-    }
-  else if (PT_IS_BIT_STRING_TYPE (desired_type))
-    {
-      if (precision != TP_FLOATING_PRECISION_VALUE && precision < required_bit_precision)
-	{
-	  return ER_IT_DATA_OVERFLOW;
-	}
-    }
-  else
-    {
-      return ER_IT_INCOMPATIBLE_DATATYPE;
-    }
-
-  if (dest->data_type != NULL && dest->data_type != target_data_type)
-    {
-      parser_free_tree (parser, dest->data_type);
-      dest->data_type = NULL;
-    }
-
-  dest->type_enum = desired_type;
-  if (target_data_type != NULL)
-    {
-      dest->data_type = parser_copy_tree_list (parser, target_data_type);
-      if (dest->data_type == NULL)
-	{
-	  err = er_errid ();
-	  return (err != NO_ERROR) ? err : ER_FAILED;
-	}
-    }
-
-  return NO_ERROR;
-}
-
 /*
  * pt_coerce_value_for_default_value () - coerce a DEFAULT value or validate a DEFAULT expression against a target type
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -19478,12 +19393,6 @@ pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NO
   bool implicit_coercion;
 
   assert (src != NULL && dest != NULL);
-
-  if (DB_IS_DEFAULT_EVAL_ONLY_SERVER (default_expr_type))
-    {
-      return pt_check_row_default_expr_coercion (parser, src, dest, desired_type, data_type, default_expr_type,
-						 check_string_precision);
-    }
 
   if (default_expr_type == DB_DEFAULT_NONE && src->node_type == PT_VALUE
       && pt_is_explicit_coerce_allowed_for_default_value (parser, src->type_enum, desired_type))

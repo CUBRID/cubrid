@@ -12668,7 +12668,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  /*
 	   * SYS_GUID(), UUID() in DEFAULT does not evaluate value per statement
 	   *   - use 'qexec_evaluate_row_default_exprs'
-	   * You can prepare things int here
+	   * You can prepare things here
 	   */
 	  break;
 

@@ -708,7 +708,6 @@ extern "C"
 						     DB_DEFAULT_EXPR * default_expr);
   extern PT_NODE *pt_make_default_value_tree_from_default_expr (PARSER_CONTEXT * parser,
 								const DB_DEFAULT_EXPR * default_expr);
-  extern PT_NODE *pt_make_default_value_tree_from_string (PARSER_CONTEXT * parser, const char *str, const int str_size);
   extern PT_NODE *pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
   extern int pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cipher, int ciper_size);

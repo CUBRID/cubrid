@@ -709,6 +709,7 @@ jsp_evaluate_arguments (PARSER_CONTEXT *parser, PT_NODE *statement,
   return NO_ERROR;
 
 exit_on_error:
+
   for (DB_VALUE &val : args)
     {
       db_value_clear (&val);

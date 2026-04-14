@@ -1225,12 +1225,6 @@ extern "C"
 #define DB_IS_DEFAULT_DETERMINE_BY_ROW(c) \
   ( (DB_IS_DEFAULT_UUID_EXPR(c))? true : false )
 
-  /* if default function only be evaluated on server, avoid pre-evaluate on CAS.
-   * if possible, perform coercion check without actual value
-   */
-#define DB_IS_DEFAULT_EVAL_ONLY_SERVER(c) \
-  ( (DB_IS_DEFAULT_UUID_EXPR(c))? true : false )
-
   /* An attribute having valid default expression, must have NULL default value. Currently, we allow simple expressions
    * like SYS_DATE, CURRENT_TIME. Also we allow to_char expression.
    */

@@ -297,9 +297,6 @@ static int check_default_on_update_clause (PARSER_CONTEXT * parser, PT_NODE * at
 static int get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE ** default_value,
 				     const char *classname);
 
-static int coerce_row_default_expr (PARSER_CONTEXT * parser, PT_NODE * expr, DB_DEFAULT_EXPR_TYPE expr_type,
-				    PT_TYPE_ENUM desired_type, PT_NODE * data_type, bool check_string_precision);
-
 static int do_update_new_notnull_cols_without_default (PARSER_CONTEXT * parser, PT_NODE * alter, MOP class_mop);
 
 static int do_update_new_cols_with_default_expression (PARSER_CONTEXT * parser, PT_NODE * alter, MOP class_mop);
@@ -392,28 +389,6 @@ int ib_thread_count = 0;
  * DO functions for alter statement
  *
  */
-
-static int
-coerce_row_default_expr (PARSER_CONTEXT * parser, PT_NODE * expr, DB_DEFAULT_EXPR_TYPE expr_type,
-			 PT_TYPE_ENUM desired_type, PT_NODE * data_type, bool check_string_precision)
-{
-  int error;
-  PT_NODE *dummy;
-
-  dummy = parser_new_node (parser, PT_VALUE);
-  if (dummy == NULL)
-    {
-      pt_report_to_ersys (parser, PT_SEMANTIC);
-      error = er_errid ();
-      return (error != NO_ERROR) ? error : ER_FAILED;
-    }
-
-  error = pt_coerce_value_for_default_value (parser, expr, dummy, desired_type, data_type, expr_type,
-					     check_string_precision);
-  parser_free_node (parser, dummy);
-
-  return error;
-}
 
 /*
  * do_alter_one_clause_with_template() - Executes the operations required by a
@@ -1088,40 +1063,30 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		  break;
 		}
 
-	      if (DB_IS_DEFAULT_UUID_EXPR (d->info.data_default.default_expr_type))
+	      pt_evaluate_tree_having_serial (parser, def_val, &src_val, 1);
+	      if (pt_has_error (parser))
 		{
-		  error =
-		    coerce_row_default_expr (parser, def_val, d->info.data_default.default_expr_type, pt_desired_type,
-					     data_type, true);
-		  db_make_null (&src_val);
+		  parser_free_tree (parser, data_type);
+		  pt_report_to_ersys (parser, PT_SEMANTIC);
+		  error = er_errid ();
+		  break;
 		}
-	      else
+
+	      temp_val = pt_dbval_to_value (parser, &src_val);
+	      if (temp_val == NULL)
 		{
-		  pt_evaluate_tree_having_serial (parser, def_val, &src_val, 1);
-		  if (pt_has_error (parser))
-		    {
-		      parser_free_tree (parser, data_type);
-		      pt_report_to_ersys (parser, PT_SEMANTIC);
-		      error = er_errid ();
-		      break;
-		    }
-
-		  temp_val = pt_dbval_to_value (parser, &src_val);
-		  if (temp_val == NULL)
-		    {
-		      parser_free_tree (parser, data_type);
-		      db_value_clear (&src_val);
-		      pt_report_to_ersys (parser, PT_SEMANTIC);
-		      error = er_errid ();
-		      break;
-		    }
-
-		  error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, pt_desired_type, data_type,
-							     d->info.data_default.default_expr_type, true);
+		  parser_free_tree (parser, data_type);
 		  db_value_clear (&src_val);
-		  temp_val->info.value.db_value_is_in_workspace = 0;
-		  parser_free_node (parser, temp_val);
+		  pt_report_to_ersys (parser, PT_SEMANTIC);
+		  error = er_errid ();
+		  break;
 		}
+
+	      error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, pt_desired_type, data_type,
+							 d->info.data_default.default_expr_type, true);
+	      db_value_clear (&src_val);
+	      temp_val->info.value.db_value_is_in_workspace = 0;
+	      parser_free_node (parser, temp_val);
 	      if (error != NO_ERROR)
 		{
 		  if (pt_has_error (parser))
@@ -13133,34 +13098,25 @@ check_default_on_update_clause (PARSER_CONTEXT * parser, PT_NODE * attribute)
   DB_VALUE on_update_val;
   db_make_null (&on_update_val);
 
-  if (DB_IS_DEFAULT_UUID_EXPR (on_update_expr_type))
+  pt_evaluate_tree_having_serial (parser, on_update_default_expr, &on_update_val, 1);
+  if (pt_has_error (parser))
     {
-      error =
-	coerce_row_default_expr (parser, on_update_default_expr, on_update_expr_type, desired_type,
-				 attribute->data_type, true);
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      error = er_errid ();
     }
   else
     {
-      pt_evaluate_tree_having_serial (parser, on_update_default_expr, &on_update_val, 1);
-      if (pt_has_error (parser))
+      temp_ptval = pt_dbval_to_value (parser, &on_update_val);
+      if (temp_ptval == NULL)
 	{
 	  pt_report_to_ersys (parser, PT_SEMANTIC);
 	  error = er_errid ();
 	}
       else
 	{
-	  temp_ptval = pt_dbval_to_value (parser, &on_update_val);
-	  if (temp_ptval == NULL)
-	    {
-	      pt_report_to_ersys (parser, PT_SEMANTIC);
-	      error = er_errid ();
-	    }
-	  else
-	    {
-	      error =
-		pt_coerce_value_for_default_value (parser, temp_ptval, temp_ptval, desired_type, attribute->data_type,
-						   on_update_expr_type, true);
-	    }
+	  error =
+	    pt_coerce_value_for_default_value (parser, temp_ptval, temp_ptval, desired_type, attribute->data_type,
+					       on_update_expr_type, true);
 	}
     }
 
@@ -13352,36 +13308,30 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	      goto exit;
 	    }
 
-	  if (DB_IS_DEFAULT_UUID_EXPR (def_expr_type))
+
+	  pt_evaluate_tree_having_serial (parser, def_val, &src, 1);
+	  if (pt_has_error (parser))
 	    {
-	      error =
-		coerce_row_default_expr (parser, def_val, def_expr_type, desired_type, attribute->data_type, true);
+	      pt_report_to_ersys (parser, PT_SEMANTIC);
+	      error = er_errid ();
+	      goto exit;
 	    }
-	  else
+
+	  temp_val = pt_dbval_to_value (parser, &src);
+	  if (temp_val == NULL)
 	    {
-	      pt_evaluate_tree_having_serial (parser, def_val, &src, 1);
-	      if (pt_has_error (parser))
-		{
-		  pt_report_to_ersys (parser, PT_SEMANTIC);
-		  error = er_errid ();
-		  goto exit;
-		}
-
-	      temp_val = pt_dbval_to_value (parser, &src);
-	      if (temp_val == NULL)
-		{
-		  db_value_clear (&src);
-		  pt_report_to_ersys (parser, PT_SEMANTIC);
-		  error = er_errid ();
-		  goto exit;
-		}
-
-	      error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, desired_type, attribute->data_type,
-							 def_expr_type, true);
 	      db_value_clear (&src);
-	      temp_val->info.value.db_value_is_in_workspace = 0;
-	      parser_free_node (parser, temp_val);
+	      pt_report_to_ersys (parser, PT_SEMANTIC);
+	      error = er_errid ();
+	      goto exit;
 	    }
+
+	  error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, desired_type, attribute->data_type,
+						     def_expr_type, true);
+	  db_value_clear (&src);
+	  temp_val->info.value.db_value_is_in_workspace = 0;
+	  parser_free_node (parser, temp_val);
+
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_coerce_error;

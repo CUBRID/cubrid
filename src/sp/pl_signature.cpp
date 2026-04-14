@@ -92,14 +92,6 @@ namespace cubpl
       {
 	serializator.pack_int_array (arg_mode, arg_size);
 	serializator.pack_int_array (arg_type, arg_size);
-	serializator.pack_int_array (arg_default_value_size, arg_size);
-	for (int i = 0; i < arg_size; i++)
-	  {
-	    if (arg_default_value_size[i] > 0)
-	      {
-		serializator.pack_c_string (arg_default_value[i], arg_default_value_size[i]);
-	      }
-	  }
       }
   }
 
@@ -118,18 +110,6 @@ namespace cubpl
 
 	deserializator.unpack_int_array (arg_type, cnt);
 	assert (arg_size == cnt);
-
-	deserializator.unpack_int_array (arg_default_value_size, cnt);
-	assert (arg_size == cnt);
-	for (int i = 0; i < arg_size; i++)
-	  {
-	    if (arg_default_value_size[i] > 0)
-	      {
-		cubmem::extensible_block default_value_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
-		deserializator.unpack_string_to_memblock (default_value_blk);
-		arg_default_value[i] = default_value_blk.release_ptr ();
-	      }
-	  }
       }
   }
 
@@ -141,15 +121,6 @@ namespace cubpl
       {
 	size += serializator.get_packed_int_array_size (size, arg_size); // arg_mode
 	size += serializator.get_packed_int_array_size (size, arg_size); // arg_type
-	size += serializator.get_packed_int_array_size (size, arg_size); // arg_default_value_size
-
-	for (int i = 0; i < arg_size; i++)
-	  {
-	    if (arg_default_value_size[i] > 0)
-	      {
-		size += serializator.get_packed_c_string_size (arg_default_value[i], arg_default_value_size[i], size);
-	      }
-	  }
       }
     return size;
   }
