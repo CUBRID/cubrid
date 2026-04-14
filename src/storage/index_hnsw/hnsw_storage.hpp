@@ -300,6 +300,11 @@ namespace cubhnsw
 	m_flat_neighbors.reserve (estimated_nodes * (2 * m_build_params.m + 2));
 	// Level-0 direct cache: one entry per node, indexed by node_idx_of_().
 	m_level0_cache.resize (estimated_nodes, {UINT32_MAX, 0});
+	// Pre-reserve the vector cache so that emplace() never reallocates during build.
+	// ankerl::unordered_dense stores values in a flat std::vector; without a reserve,
+	// any insert that crosses a capacity boundary invalidates ALL cached_vector* pointers
+	// held in resolved_vecs[] during the two-pass seek_on_layer_ cache-hit path.
+	m_vector_cache.reserve (estimated_nodes);
       }
 
       void promote_root (pinned_t &root);
