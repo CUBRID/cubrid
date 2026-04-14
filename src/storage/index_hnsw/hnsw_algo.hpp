@@ -293,6 +293,9 @@ namespace cubhnsw
     context.m_is_perf_tracking = perfmon_is_perf_tracking ();
     context.m_is_debugging = prm_get_integer_value (PRM_ID_VECTOR_INDEX_DEBUG) != 0;
     context.m_i8_prefilter_multiplier = prm_get_float_value (PRM_ID_VECTOR_INDEX_I8_PREFILTER_MULTIPLIER);
+    // Negative multiplier is the sentinel for quantized-only build: skip fp32 entirely,
+    // using i8 as the final distance metric for graph construction.
+    context.m_i8_only_build = (context.m_i8_prefilter_multiplier < 0.0f);
 
     context.clear_candidates();
 
@@ -563,7 +566,17 @@ namespace cubhnsw
     context.clear_candidates();
     prepare_query_i8_ (context, query);
 
-    distance_t radius = compute_distance_from_query_ (context, query, start_slot);
+    distance_t radius;
+    if (context.m_i8_only_build)
+      {
+	const cached_vector *sv =
+		m_storage->get_cached_vector_by_slot_id (context, start_slot, lock_mode::shared);
+	radius = compute_distance_from_query_i8_ (context, *sv);
+      }
+    else
+      {
+	radius = compute_distance_from_query_ (context, query, start_slot);
+      }
 
     next.insert_reserved (candidate_t (-radius, start_slot));
     top.insert_reserved (candidate_t (radius, start_slot));
@@ -635,17 +648,31 @@ namespace cubhnsw
 	      {
 		slot_id_t successor_slot = resolved_slots[i];
 		const cached_vector *successor_vec = resolved_vecs[i];
-		context.m_stats.on_prefilter_checked (context.m_is_perf_tracking, context.m_level);
-		distance_t successor_dist_i8 = compute_distance_from_query_i8_ (context, *successor_vec);
-		if (top.size () >= expansion_limit
-		    && !should_recheck_candidate_fp32_ (context, successor_dist_i8, radius))
+		distance_t successor_dist;
+		if (context.m_i8_only_build)
 		  {
-		    context.m_stats.on_prefilter_rejected (context.m_is_perf_tracking, context.m_level);
-		    stats.on_candidate_prune ();
-		    continue;
+		    // i8 is the final metric; no fp32 refinement needed.
+		    successor_dist = compute_distance_from_query_i8_ (context, *successor_vec);
+		    if (top.size () >= expansion_limit && successor_dist >= radius)
+		      {
+			stats.on_candidate_prune ();
+			continue;
+		      }
 		  }
-		context.m_stats.on_prefilter_passed_to_fp32 (context.m_is_perf_tracking, context.m_level);
-		distance_t successor_dist = compute_distance_from_query_ (context, query, *successor_vec);
+		else
+		  {
+		    context.m_stats.on_prefilter_checked (context.m_is_perf_tracking, context.m_level);
+		    distance_t d_i8 = compute_distance_from_query_i8_ (context, *successor_vec);
+		    if (top.size () >= expansion_limit
+			&& !should_recheck_candidate_fp32_ (context, d_i8, radius))
+		      {
+			context.m_stats.on_prefilter_rejected (context.m_is_perf_tracking, context.m_level);
+			stats.on_candidate_prune ();
+			continue;
+		      }
+		    context.m_stats.on_prefilter_passed_to_fp32 (context.m_is_perf_tracking, context.m_level);
+		    successor_dist = compute_distance_from_query_ (context, query, *successor_vec);
+		  }
 		if (top.size () < expansion_limit || successor_dist < radius)
 		  {
 		    next.insert (candidate_t (-successor_dist, successor_slot));
@@ -682,17 +709,30 @@ namespace cubhnsw
 
 	    const cached_vector *successor_vec =
 		    m_storage->get_cached_vector_by_slot_id (context, successor_slot, lock_mode::shared);
-	    context.m_stats.on_prefilter_checked (context.m_is_perf_tracking, context.m_level);
-	    distance_t successor_dist_i8 = compute_distance_from_query_i8_ (context, *successor_vec);
-	    if (top.size () >= expansion_limit
-		&& !should_recheck_candidate_fp32_ (context, successor_dist_i8, radius))
+	    distance_t successor_dist;
+	    if (context.m_i8_only_build)
 	      {
-		context.m_stats.on_prefilter_rejected (context.m_is_perf_tracking, context.m_level);
-		stats.on_candidate_prune ();
-		continue;
+		successor_dist = compute_distance_from_query_i8_ (context, *successor_vec);
+		if (top.size () >= expansion_limit && successor_dist >= radius)
+		  {
+		    stats.on_candidate_prune ();
+		    continue;
+		  }
 	      }
-	    context.m_stats.on_prefilter_passed_to_fp32 (context.m_is_perf_tracking, context.m_level);
-	    distance_t successor_dist = compute_distance_from_query_ (context, query, *successor_vec);
+	    else
+	      {
+		context.m_stats.on_prefilter_checked (context.m_is_perf_tracking, context.m_level);
+		distance_t d_i8 = compute_distance_from_query_i8_ (context, *successor_vec);
+		if (top.size () >= expansion_limit
+		    && !should_recheck_candidate_fp32_ (context, d_i8, radius))
+		  {
+		    context.m_stats.on_prefilter_rejected (context.m_is_perf_tracking, context.m_level);
+		    stats.on_candidate_prune ();
+		    continue;
+		  }
+		context.m_stats.on_prefilter_passed_to_fp32 (context.m_is_perf_tracking, context.m_level);
+		successor_dist = compute_distance_from_query_ (context, query, *successor_vec);
+	      }
 	    if (top.size () < expansion_limit || successor_dist < radius)
 	      {
 		next.insert (candidate_t (-successor_dist, successor_slot));

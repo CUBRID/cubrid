@@ -309,6 +309,10 @@ namespace cubhnsw
     // i8 prefilter window multiplier (read once from system parameter per add/search)
     float m_i8_prefilter_multiplier {1.0f};
 
+    // When true, skip fp32 distance entirely during build — use i8 as the final metric.
+    // Activated by setting PRM_ID_VECTOR_INDEX_I8_PREFILTER_MULTIPLIER to a negative value.
+    bool m_i8_only_build {false};
+
     // stats
     bool m_is_perf_tracking {false};
     bool m_is_debugging {false};
