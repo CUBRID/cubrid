@@ -894,6 +894,9 @@ function copy_active_log_from_master()
 	# 2. copy all transaction logs from master.
 	echo -ne "\n - 2. copy all transaction logs from master.\n\n"
 	execute "cub_admin copylogdb -L ${repl_log_path} -m async --start-page-id=-1 ${db_name}@${master_host}"
+	if [ $? -ne $SUCCESS ]; then
+		error "Fail to copy transaction logs from master."
+	fi
 }
 
 function show_complete()
