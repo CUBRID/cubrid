@@ -511,6 +511,7 @@ set(STORAGE_SOURCES
   ${INDEX_HNSW_DIR}/hnsw_impl.cpp
   ${INDEX_HNSW_DIR}/hnsw.cpp
   ${INDEX_HNSW_DIR}/hnsw_api.cpp
+  ${INDEX_HNSW_DIR}/hnsw_inmem_block.cpp
   ${INDEX_HNSW_DIR}/hnsw_storage.cpp
   )
 set(STORAGE_HEADERS

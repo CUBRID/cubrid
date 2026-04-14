@@ -23,6 +23,7 @@
 #include "error_manager.h"
 #include "file_manager.h" // FILE_DESCRIPTORS
 #include "slotted_page.h"
+#include "memory_alloc.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -93,8 +94,39 @@ namespace cubhnsw
   slot_id_t
   storage::add_node (algo_context_t &context, const key_id_t &key, const float *vector, const level_t &level)
   {
-    // insert node
     std::size_t bytes = this->node_bytes_ (level, get_dimension(), get_connectivity());
+
+    if (m_inmem.is_active ())
+      {
+	char rec_buf[IO_MAX_PAGE_SIZE];
+	memset (rec_buf, 0, bytes);
+
+	node_t node { reinterpret_cast<byte_t *> (rec_buf) };
+	node.set_key (key);
+	node.set_level (level);
+	node.set_vector (vector, get_dimension());
+
+	int needed = (int) (bytes + DB_WASTED_ALIGN (bytes, HNSW_MAX_ALIGN) + sizeof (SPAGE_SLOT));
+	std::byte *cur = m_inmem.current_page ();
+	if (cur == nullptr || m_inmem.free_space (cur) < needed)
+	  {
+	    m_inmem.alloc_page ();
+	    cur = m_inmem.current_page ();
+	  }
+
+	PGSLOTID slot_id = m_inmem.insert (cur, rec_buf, (int) bytes);
+	assert (slot_id >= 0);
+
+	int pageid = m_inmem.pageid_of (m_inmem.m_current_page_idx);
+	slot_id_t oid = { pageid, slot_id, m_inmem.volid () };
+
+	m_last_node_vpid.pageid = pageid;
+	m_last_node_vpid.volid = m_inmem.volid ();
+
+	return oid;
+      }
+
+    // insert node
     page_guard page_ptr = get_block_to_insert (context, m_vfid, m_last_node_vpid, bytes);
 
     RECDES recdes;
@@ -127,6 +159,19 @@ namespace cubhnsw
   pinned_t
   storage::get_root (algo_context_t &context, lock_mode mode)
   {
+    if (m_inmem.is_active ())
+      {
+	std::byte *page = m_inmem.page_at (0);
+	SPAGE_SLOT *slotp = m_inmem.slot_at (page, 1);
+
+	pinned_t::data_t blk;
+	blk.id = { m_inmem.pageid_of (0), 1, m_inmem.volid () };
+	blk.data = reinterpret_cast<byte_t *> (page + slotp->offset_to_record);
+	blk.size = slotp->record_length;
+	blk.mode = mode;
+	return pinned_t (context.m_thread_p, std::move (blk), nullptr);
+      }
+
     VPID root_vpid = m_root_vpid;
 
     PGBUF_LATCH_MODE pgbuf_mode = PGBUF_LATCH_READ;
@@ -158,6 +203,21 @@ namespace cubhnsw
   pinned_t
   storage::get_node_by_slot_id (algo_context_t &context, const slot_id_t &id, const lock_mode &mode)
   {
+    if (m_inmem.is_active ())
+      {
+	int page_idx = m_inmem.page_idx_of (id.pageid);
+	assert (page_idx >= 0 && (std::size_t) page_idx < m_inmem.used_pages ());
+	std::byte *page = m_inmem.page_at (page_idx);
+	SPAGE_SLOT *slotp = m_inmem.slot_at (page, id.slotid);
+
+	pinned_t::data_t blk;
+	blk.id = id;
+	blk.data = reinterpret_cast<byte_t *> (page + slotp->offset_to_record);
+	blk.size = slotp->record_length;
+	blk.mode = mode;
+	return pinned_t (context.m_thread_p, std::move (blk), nullptr);
+      }
+
     if (OID_ISNULL (&id) || id.volid < 0 || id.pageid <= 0 || id.slotid < 0 || id.pageid > 100000000)
       {
 	er_print_callstack (ARG_FILE_LINE,
@@ -356,4 +416,5 @@ namespace cubhnsw
 
     return NO_ERROR;
   }
+
 }

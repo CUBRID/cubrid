@@ -23,6 +23,7 @@
 #include "hnsw_api.hpp"
 #include "hnsw_graph_base.hpp"
 #include "hnsw_algo_common.hpp"
+#include "hnsw_inmem_block.hpp"
 namespace cubhnsw
 {
   // TODO (refactor) : there are similar objects in page_buffer or lock_manager..
@@ -290,6 +291,11 @@ namespace cubhnsw
 				     level_t level,
 				     std::vector<slot_id_t> neighbors);
 
+      void init_in_memory_block (std::size_t estimated_nodes)
+      {
+	m_inmem.init (estimated_nodes, m_root_vpid.pageid, m_root_vpid.volid);
+      }
+
       void promote_root (pinned_t &root);
 
       const cached_vector *get_cached_vector_by_slot_id (algo_context_t &context,
@@ -376,6 +382,8 @@ namespace cubhnsw
       PAGE_PTR alloc_new_block (cubthread::entry *thread_p, block_group_id_t &vfid, block_id_t &vpid);
 
       static int initialize_new_block (cubthread::entry *thread_p, PAGE_PTR page, void *args);
+
+      hnsw_inmem_block m_inmem;
 
       hnsw_build_params m_build_params;
       index_id_t m_giid; // general index identifier

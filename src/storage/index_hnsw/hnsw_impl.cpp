@@ -490,7 +490,10 @@ int
 hnsw_impl::prepare_to_add (cubthread::entry *thread_p, int n_vectors, const OID *oid,
 			   const float *vector)
 {
-  // do nothing
+  if (n_vectors > 0)
+    {
+      m_storage->init_in_memory_block (static_cast<std::size_t> (n_vectors));
+    }
   return NO_ERROR;
 }
 
