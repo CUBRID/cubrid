@@ -64,19 +64,19 @@
 #include "tcp.h"
 #endif /* WINDOWS */
 
-int tm_Tran_index = NULL_TRAN_INDEX;
-TRAN_ISOLATION tm_Tran_isolation = TRAN_UNKNOWN_ISOLATION;
-bool tm_Tran_async_ws = false;
-int tm_Tran_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
-bool tm_Tran_check_interrupt = true;
-int tm_Tran_ID = -1;
-int tm_Tran_invalidate_snapshot = 1;
-LOCK tm_Tran_rep_read_lock = NULL_LOCK;	/* used in RR transaction locking to not lock twice. */
+CUB_THREAD_LOCAL int tm_Tran_index = NULL_TRAN_INDEX;
+CUB_THREAD_LOCAL TRAN_ISOLATION tm_Tran_isolation = TRAN_UNKNOWN_ISOLATION;
+CUB_THREAD_LOCAL bool tm_Tran_async_ws = false;
+CUB_THREAD_LOCAL int tm_Tran_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
+CUB_THREAD_LOCAL bool tm_Tran_check_interrupt = true;
+CUB_THREAD_LOCAL int tm_Tran_ID = -1;
+CUB_THREAD_LOCAL int tm_Tran_invalidate_snapshot = 1;
+CUB_THREAD_LOCAL LOCK tm_Tran_rep_read_lock = NULL_LOCK;	/* used in RR transaction locking to not lock twice. */
 
 /* read fetch version for current command of transaction
  * must be set before each transaction command.
  */
-LC_FETCH_VERSION_TYPE tm_Tran_read_fetch_instance_version = LC_FETCH_MVCC_VERSION;
+CUB_THREAD_LOCAL LC_FETCH_VERSION_TYPE tm_Tran_read_fetch_instance_version = LC_FETCH_MVCC_VERSION;
 CUB_THREAD_LOCAL int tm_Tran_latest_query_status;
 
 /* Timeout(milli seconds) for queries.

@@ -54,6 +54,7 @@
 #include "object_representation.h"
 #include "db_value_printer.hpp"
 #include "db.h"
+#include "boot_cl.h"
 #include "object_accessor.h"
 #include "locator_cl.h"
 #include "network_cl.h"
@@ -62,6 +63,7 @@
 #include "file_io.h"
 #include "memory_hash.h"
 #include "schema_manager.h"
+#include "transaction_cl.h"
 #include "log_applier_sql_log.h"
 #include "util_func.h"
 #include "dbtype.h"
@@ -330,6 +332,14 @@ struct la_apply_worker
   bool busy;
   LA_WORKER_QUEUE queue;
   LA_APPLY_RESULT_QUEUE result_queue;
+};
+
+typedef struct la_apply_worker_session LA_APPLY_WORKER_SESSION;
+struct la_apply_worker_session
+{
+  bool css_started;
+  bool client_registered;
+  BOOT_SERVER_CREDENTIAL server_credential;
 };
 
 /* Log applier info */
@@ -627,8 +637,12 @@ static int la_reader_commit_apply_info (void);
 static void *la_apply_worker_main (void *arg);
 static void la_apply_worker_init (LA_APPLY_WORKER * worker);
 static void la_apply_worker_destroy (LA_APPLY_WORKER * worker);
-static int la_apply_worker_start_session (void);
-static void la_apply_worker_end_session (bool session_started);
+static void la_init_worker_server_credential (BOOT_SERVER_CREDENTIAL * credential);
+static void la_clear_worker_server_credential (BOOT_SERVER_CREDENTIAL * credential);
+static int la_apply_worker_register_client (LA_APPLY_WORKER_SESSION * session);
+static void la_apply_worker_unregister_client (LA_APPLY_WORKER_SESSION * session);
+static int la_apply_worker_start_session (LA_APPLY_WORKER_SESSION * session);
+static void la_apply_worker_end_session (LA_APPLY_WORKER_SESSION * session);
 static int la_start_apply_workers (void);
 static void la_stop_apply_workers (void);
 static int la_enqueue_apply_task (LA_APPLY_WORKER * worker, const LA_APPLY_TASK * task);
@@ -793,15 +807,119 @@ la_try_dequeue_apply_result (LA_APPLY_WORKER * worker, LA_APPLY_RESULT * result)
   return error;
 }
 
+static void
+la_init_worker_server_credential (BOOT_SERVER_CREDENTIAL * credential)
+{
+  memset (credential, 0, sizeof (*credential));
+
+  credential->process_id = -1;
+  OID_SET_NULL (&credential->root_class_oid);
+  HFID_SET_NULL (&credential->root_class_hfid);
+  credential->page_size = -1;
+  credential->log_page_size = -1;
+  credential->disk_compatibility = 0.0;
+  credential->ha_server_state = HA_SERVER_STATE_NA;
+  memset (credential->server_session_key, 0xFF, SERVER_SESSION_KEY_SIZE);
+  credential->db_charset = INTL_CODESET_NONE;
+}
+
+static void
+la_clear_worker_server_credential (BOOT_SERVER_CREDENTIAL * credential)
+{
+  if (credential->db_full_name != NULL)
+    {
+      db_private_free_and_init (NULL, credential->db_full_name);
+    }
+
+  if (credential->host_name != NULL)
+    {
+      db_private_free_and_init (NULL, credential->host_name);
+    }
+
+  if (credential->lob_path != NULL)
+    {
+      db_private_free_and_init (NULL, credential->lob_path);
+    }
+
+  if (credential->db_lang != NULL)
+    {
+      db_private_free_and_init (NULL, credential->db_lang);
+    }
+
+  la_init_worker_server_credential (credential);
+}
+
 static int
-la_apply_worker_start_session (void)
+la_apply_worker_register_client (LA_APPLY_WORKER_SESSION * session)
+{
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  BOOT_CLIENT_CREDENTIAL client_credential;
+  TRAN_STATE tran_state;
+  TRAN_ISOLATION isolation = TRAN_DEFAULT_ISOLATION_LEVEL ();
+  int tran_index;
+  int lock_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
+
+  /* TODO: keep the Reader restart credential and copy user/login/host for worker registration. */
+  client_credential.client_type = (BOOT_CLIENT_TYPE) db_get_client_type ();
+  client_credential.db_name = la_slave_db_name;
+  client_credential.set_user ("DBA");
+  client_credential.program_name = db_Program_name;
+  client_credential.login_name = db_Program_name;
+  client_credential.host_name = boot_get_host_name ();
+  client_credential.process_id = getpid ();
+
+  tran_index =
+    boot_register_client (&client_credential, lock_wait_msecs, isolation, &tran_state, &session->server_credential);
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      la_clear_worker_server_credential (&session->server_credential);
+      return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+    }
+
+  tran_cache_tran_settings (tran_index, lock_wait_msecs, isolation);
+  session->client_registered = true;
+#endif
+
+  return NO_ERROR;
+}
+
+static void
+la_apply_worker_unregister_client (LA_APPLY_WORKER_SESSION * session)
+{
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  if (session->client_registered)
+    {
+      (void) boot_unregister_client (tm_Tran_index);
+      tm_Tran_index = NULL_TRAN_INDEX;
+      session->client_registered = false;
+    }
+
+  la_clear_worker_server_credential (&session->server_credential);
+#endif
+}
+
+static int
+la_apply_worker_start_session (LA_APPLY_WORKER_SESSION * session)
 {
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
   int error;
 
+  memset (session, 0, sizeof (*session));
+  la_init_worker_server_credential (&session->server_credential);
+
   error = net_client_sub_init ();
   if (error != NO_ERROR)
     {
+      return error;
+    }
+
+  session->css_started = true;
+
+  error = la_apply_worker_register_client (session);
+  if (error != NO_ERROR)
+    {
+      net_client_sub_final ();
+      session->css_started = false;
       return error;
     }
 #endif
@@ -812,16 +930,20 @@ la_apply_worker_start_session (void)
 }
 
 static void
-la_apply_worker_end_session (bool session_started)
+la_apply_worker_end_session (LA_APPLY_WORKER_SESSION * session)
 {
-  if (session_started)
-    {
-      __gv_loc_repl.ws_clear_all_repl_objs ();
-      __gv_loc_repl.ws_clear_all_repl_errors_of_error_link ();
+  __gv_loc_repl.ws_clear_all_repl_objs ();
+  __gv_loc_repl.ws_clear_all_repl_errors_of_error_link ();
+
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  la_apply_worker_unregister_client (session);
+
+  if (session->css_started)
+    {
       net_client_sub_final ();
-#endif
+      session->css_started = false;
     }
+#endif
 }
 
 static int
@@ -859,6 +981,7 @@ static void *
 la_apply_worker_main (void *arg)
 {
   LA_APPLY_WORKER *worker = (LA_APPLY_WORKER *) arg;
+  LA_APPLY_WORKER_SESSION session;
   cuberr::context *er_context_p = NULL;
   bool session_started = false;
   int error = NO_ERROR;
@@ -866,7 +989,7 @@ la_apply_worker_main (void *arg)
   er_context_p = new cuberr::context ();
   er_context_p->register_thread_local ();
 
-  error = la_apply_worker_start_session ();
+  error = la_apply_worker_start_session (&session);
   if (error != NO_ERROR)
     {
       la_applier_need_shutdown = true;
@@ -908,7 +1031,10 @@ la_apply_worker_main (void *arg)
     }
 
 end:
-  la_apply_worker_end_session (session_started);
+  if (session_started)
+    {
+      la_apply_worker_end_session (&session);
+    }
 
   er_context_p->deregister_thread_local ();
   delete er_context_p;
@@ -5796,8 +5922,10 @@ static int
 la_update_query_execute (const char *sql, bool au_disable)
 {
   int res, au_save;
-  DB_QUERY_RESULT *result;
+  int stmt_no = 0;
+  DB_QUERY_RESULT *result = NULL;
   DB_QUERY_ERROR query_error;
+  DB_SESSION *session = NULL;
 
   er_log_debug (ARG_FILE_LINE, "update_query_execute : %s\n", sql);
 
@@ -5807,16 +5935,33 @@ la_update_query_execute (const char *sql, bool au_disable)
       AU_DISABLE (au_save);
     }
 
-  res = db_execute (sql, &result, &query_error);
+  res = db_open_buffer_and_compile_first_statement (sql, &query_error, DB_NO_OIDS, &session, &stmt_no);
+  if (res == NO_ERROR && session != NULL)
+    {
+      res = db_set_statement_auto_commit (session, false);
+    }
+
+  if (res == NO_ERROR && stmt_no > 0)
+    {
+      res = db_execute_statement_local (session, stmt_no, &result);
+    }
   if (res >= 0)
     {
       int error;
 
-      error = db_query_end (result);
-      if (error != NO_ERROR)
+      if (result != NULL)
 	{
-	  res = error;
+	  error = db_query_end (result);
+	  if (error != NO_ERROR)
+	    {
+	      res = error;
+	    }
 	}
+    }
+
+  if (session != NULL)
+    {
+      db_close_session_local (session);
     }
 
   if (au_disable)
@@ -5840,8 +5985,10 @@ static int
 la_update_query_execute_with_values (const char *sql, int arg_count, DB_VALUE * vals, bool au_disable)
 {
   int res, au_save;
-  DB_QUERY_RESULT *result;
+  int stmt_no = 0;
+  DB_QUERY_RESULT *result = NULL;
   DB_QUERY_ERROR query_error;
+  DB_SESSION *session = NULL;
 
   if (au_disable)
     {
@@ -5849,16 +5996,39 @@ la_update_query_execute_with_values (const char *sql, int arg_count, DB_VALUE * 
       AU_DISABLE (au_save);
     }
 
-  res = db_execute_with_values (sql, &result, &query_error, arg_count, vals);
+  res = db_open_buffer_and_compile_first_statement (sql, &query_error, DB_NO_OIDS, &session, &stmt_no);
+  if (res == NO_ERROR && session != NULL && arg_count > 0)
+    {
+      res = db_push_values (session, arg_count, vals);
+    }
+
+  if (res == NO_ERROR && session != NULL)
+    {
+      res = db_set_statement_auto_commit (session, false);
+    }
+
+  if (res == NO_ERROR && stmt_no > 0)
+    {
+      res = db_execute_statement_local (session, stmt_no, &result);
+    }
+
   if (res >= 0)
     {
       int error;
 
-      error = db_query_end (result);
-      if (error != NO_ERROR)
+      if (result != NULL)
 	{
-	  res = error;
+	  error = db_query_end (result);
+	  if (error != NO_ERROR)
+	    {
+	      res = error;
+	    }
 	}
+    }
+
+  if (session != NULL)
+    {
+      db_close_session_local (session);
     }
 
   if (au_disable)
