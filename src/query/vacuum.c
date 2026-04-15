@@ -1693,15 +1693,6 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
       helper.hfid = *hfid;
     }
 
-  /* One-time OOS VFID probe per page: if this heap has an OOS file, cache
-   * the VFID so that per-record OOS cleanup can skip the lookup.  If the
-   * heap has no OOS file, oos_vfid stays NULL and all OOS-related work
-   * (prev_version chain walk, per-record OOS delete) is skipped entirely. */
-  if (VFID_ISNULL (&helper.oos_vfid))
-    {
-      (void) heap_oos_find_vfid (thread_p, &helper.hfid, &helper.oos_vfid, false);
-    }
-
   helper.crt_slotid = -1;
   for (obj_index = 0; obj_index < n_heap_objects; obj_index++)
     {
