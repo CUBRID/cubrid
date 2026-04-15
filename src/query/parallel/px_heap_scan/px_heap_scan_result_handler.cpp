@@ -1354,9 +1354,11 @@ namespace parallel_heap_scan
 
 	      if (orig_agg_p->list_id->tuple_cnt > 0)
 		{
-		  QFILE_LIST_ID *list_id_p = (QFILE_LIST_ID *) db_private_alloc (thread_p, sizeof (QFILE_LIST_ID));
+		  QFILE_LIST_ID *list_id_p = (QFILE_LIST_ID *) malloc (sizeof (QFILE_LIST_ID));
 		  if (list_id_p == nullptr)
 		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			      (size_t) sizeof (QFILE_LIST_ID));
 		      m_err_messages_p->move_top_error_message_to_this ();
 		      m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		      qfile_destroy_list (thread_p, cur_agg_p->list_id);
