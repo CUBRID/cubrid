@@ -1340,8 +1340,8 @@ namespace parallel_heap_scan
 
 	      HL_HEAPID prev_heap_id = db_change_private_heap (thread_p, 0);
 	      int err = qdata_aggregate_accumulator_to_accumulator (thread_p, &orig_agg_p->accumulator,
-			    &orig_agg_p->accumulator_domain, orig_agg_p->function,
-			    orig_agg_p->domain, &cur_agg_p->accumulator);
+			&orig_agg_p->accumulator_domain, orig_agg_p->function,
+			orig_agg_p->domain, &cur_agg_p->accumulator);
 	      db_change_private_heap (thread_p, prev_heap_id);
 	      if (err != NO_ERROR)
 		{
