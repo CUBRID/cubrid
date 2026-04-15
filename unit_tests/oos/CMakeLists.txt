@@ -21,8 +21,9 @@ project(test_oos_project)
 # test_oos
 #
 
-# # Collect all test source files matching test_*.cpp
+# # Collect all test source files matching test_*.cpp (SA_MODE only)
 file(GLOB TEST_CPP_SOURCES test_*.cpp)
+list(FILTER TEST_CPP_SOURCES EXCLUDE REGEX "test_oos_vacuum_server\\.cpp$")
 
 foreach(src ${TEST_CPP_SOURCES})
   # Extract the base name without extension
@@ -96,5 +97,18 @@ set_tests_properties(
 # - Prefer add_test if you want to share global setup/teardown, which speeds up test
 # - Prefer gtest_discover_tests for isolation between tests, at the cost of test speed
 # - Since we do not need isolation here, we use add_test above.
+
+# =============================================================================
+# SERVER_MODE tests (linked to cubrid, in-process server with MVCC/threading)
+# =============================================================================
+add_executable(test_oos_vacuum_server test_oos_vacuum_server.cpp)
+target_link_libraries(test_oos_vacuum_server PRIVATE ${EP_LIBS} cubrid GTest::gtest)
+target_compile_definitions(test_oos_vacuum_server PRIVATE ${COMMON_DEFS} SERVER_MODE)
+target_include_directories(test_oos_vacuum_server PRIVATE ${TEST_INCLUDES})
+
+add_test(NAME test_oos_vacuum_server COMMAND test_oos_vacuum_server)
+set_tests_properties(test_oos_vacuum_server
+  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 60
+)
 
 add_subdirectory(sql)

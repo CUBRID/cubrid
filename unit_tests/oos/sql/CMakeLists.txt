@@ -48,41 +48,4 @@ set_tests_properties(
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 30
 )
 
-# =============================================================================
-# CS_MODE tests (linked to cubridcs, requires running cub_server)
-# =============================================================================
-add_executable(test_oos_sql_reclaim_cs test_oos_sql_reclaim.cpp)
-target_link_libraries(test_oos_sql_reclaim_cs PRIVATE ${EP_LIBS} cubridcs GTest::gtest)
-target_compile_definitions(test_oos_sql_reclaim_cs PRIVATE ${COMMON_DEFS} CS_MODE)
-target_include_directories(test_oos_sql_reclaim_cs PRIVATE ${TEST_INCLUDES} ${CMAKE_CURRENT_SOURCE_DIR})
-
-# CS_MODE fixture: start/stop cub_server around CS tests
-add_test(NAME oos_start_server
-  COMMAND ${CMAKE_COMMAND} -E env
-    "CUBRID=$ENV{CUBRID}"
-    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
-    "PATH=$ENV{PATH}"
-    bash -c "cubrid server start unittestdb 2>/dev/null || true"
-)
-set_tests_properties(oos_start_server PROPERTIES
-  FIXTURES_SETUP OOS_SERVER
-  FIXTURES_REQUIRED OOS_DB
-  TIMEOUT 30
-)
-
-add_test(NAME oos_stop_server
-  COMMAND ${CMAKE_COMMAND} -E env
-    "CUBRID=$ENV{CUBRID}"
-    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
-    "PATH=$ENV{PATH}"
-    bash -c "cubrid server stop unittestdb 2>/dev/null || true"
-)
-set_tests_properties(oos_stop_server PROPERTIES
-  FIXTURES_CLEANUP OOS_SERVER
-  TIMEOUT 30
-)
-
-add_test(NAME test_oos_sql_reclaim_cs COMMAND test_oos_sql_reclaim_cs)
-set_tests_properties(test_oos_sql_reclaim_cs
-  PROPERTIES FIXTURES_REQUIRED "OOS_DB;OOS_SERVER" RUN_SERIAL TRUE TIMEOUT 60
-)
+# CS_MODE tests removed — shell tests cover client-server path adequately.
