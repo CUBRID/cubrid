@@ -75,9 +75,9 @@ namespace parallel_heap_scan
       case PT_VARIANCE:
       case PT_VAR_POP:
       case PT_VAR_SAMP:
-        return true;
+	return true;
       default:
-        return false;
+	return false;
       }
   }
 

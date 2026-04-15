@@ -989,7 +989,7 @@ namespace parallel_heap_scan
 		HL_HEAPID save_heap = db_change_private_heap (thread_p, 0);
 		pr_clear_value (orig_agg_p->accumulator.value);
 		db_change_private_heap (thread_p, save_heap);
-		*(orig_agg_p->accumulator.value) = tmp;
+		* (orig_agg_p->accumulator.value) = tmp;
 	      }
 	    if (orig_agg_p->accumulator.value2 != NULL && !DB_IS_NULL (orig_agg_p->accumulator.value2))
 	      {
@@ -998,7 +998,7 @@ namespace parallel_heap_scan
 		HL_HEAPID save_heap = db_change_private_heap (thread_p, 0);
 		pr_clear_value (orig_agg_p->accumulator.value2);
 		db_change_private_heap (thread_p, save_heap);
-		*(orig_agg_p->accumulator.value2) = tmp;
+		* (orig_agg_p->accumulator.value2) = tmp;
 	      }
 	  }
       }
@@ -1142,52 +1142,52 @@ namespace parallel_heap_scan
 		break;
 
 	      case PT_MIN:
-		{
-		  int coll_id = acc_dom->value_dom->collation_id;
-		  if (acc->curr_cnt < 1
-		      || acc_dom->value_dom->type->cmpval (acc->value, db_value_p, 1, 1, NULL, coll_id) > 0)
-		    {
-		      DB_TYPE type = DB_VALUE_DOMAIN_TYPE (db_value_p);
-		      pr_clear_value (acc->value);
-		      if (TP_DOMAIN_TYPE (acc_dom->value_dom) != type)
-			{
-			  if (db_value_coerce (db_value_p, acc->value, acc_dom->value_dom) != NO_ERROR)
-			    {
-			      return false;
-			    }
-			}
-		      else
-			{
-			  pr_clone_value (db_value_p, acc->value);
-			}
-		    }
-		  acc->curr_cnt++;
-		}
-		break;
+	      {
+		int coll_id = acc_dom->value_dom->collation_id;
+		if (acc->curr_cnt < 1
+		    || acc_dom->value_dom->type->cmpval (acc->value, db_value_p, 1, 1, NULL, coll_id) > 0)
+		  {
+		    DB_TYPE type = DB_VALUE_DOMAIN_TYPE (db_value_p);
+		    pr_clear_value (acc->value);
+		    if (TP_DOMAIN_TYPE (acc_dom->value_dom) != type)
+		      {
+			if (db_value_coerce (db_value_p, acc->value, acc_dom->value_dom) != NO_ERROR)
+			  {
+			    return false;
+			  }
+		      }
+		    else
+		      {
+			pr_clone_value (db_value_p, acc->value);
+		      }
+		  }
+		acc->curr_cnt++;
+	      }
+	      break;
 
 	      case PT_MAX:
-		{
-		  int coll_id = acc_dom->value_dom->collation_id;
-		  if (acc->curr_cnt < 1
-		      || acc_dom->value_dom->type->cmpval (acc->value, db_value_p, 1, 1, NULL, coll_id) < 0)
-		    {
-		      DB_TYPE type = DB_VALUE_DOMAIN_TYPE (db_value_p);
-		      pr_clear_value (acc->value);
-		      if (TP_DOMAIN_TYPE (acc_dom->value_dom) != type)
-			{
-			  if (db_value_coerce (db_value_p, acc->value, acc_dom->value_dom) != NO_ERROR)
-			    {
-			      return false;
-			    }
-			}
-		      else
-			{
-			  pr_clone_value (db_value_p, acc->value);
-			}
-		    }
-		  acc->curr_cnt++;
-		}
-		break;
+	      {
+		int coll_id = acc_dom->value_dom->collation_id;
+		if (acc->curr_cnt < 1
+		    || acc_dom->value_dom->type->cmpval (acc->value, db_value_p, 1, 1, NULL, coll_id) < 0)
+		  {
+		    DB_TYPE type = DB_VALUE_DOMAIN_TYPE (db_value_p);
+		    pr_clear_value (acc->value);
+		    if (TP_DOMAIN_TYPE (acc_dom->value_dom) != type)
+		      {
+			if (db_value_coerce (db_value_p, acc->value, acc_dom->value_dom) != NO_ERROR)
+			  {
+			    return false;
+			  }
+		      }
+		    else
+		      {
+			pr_clone_value (db_value_p, acc->value);
+		      }
+		  }
+		acc->curr_cnt++;
+	      }
+	      break;
 
 	      case PT_SUM:
 	      case PT_AVG:
@@ -1223,50 +1223,50 @@ namespace parallel_heap_scan
 	      case PT_VARIANCE:
 	      case PT_VAR_POP:
 	      case PT_VAR_SAMP:
-		{
-		  DB_VALUE coerced, squared;
-		  db_make_null (&coerced);
-		  db_make_null (&squared);
+	      {
+		DB_VALUE coerced, squared;
+		db_make_null (&coerced);
+		db_make_null (&squared);
 
-		  if (tp_value_coerce (db_value_p, &coerced, acc_dom->value_dom) != DOMAIN_COMPATIBLE)
-		    {
-		      return false;
-		    }
+		if (tp_value_coerce (db_value_p, &coerced, acc_dom->value_dom) != DOMAIN_COMPATIBLE)
+		  {
+		    return false;
+		  }
 
-		  if (qdata_multiply_dbval (&coerced, &coerced, &squared, acc_dom->value2_dom) != NO_ERROR)
-		    {
-		      pr_clear_value (&coerced);
-		      return false;
-		    }
+		if (qdata_multiply_dbval (&coerced, &coerced, &squared, acc_dom->value2_dom) != NO_ERROR)
+		  {
+		    pr_clear_value (&coerced);
+		    return false;
+		  }
 
-		  if (acc->curr_cnt < 1)
-		    {
-		      pr_clear_value (acc->value);
-		      pr_clear_value (acc->value2);
-		      acc_dom->value_dom->type->setval (acc->value, &coerced, true);
-		      acc_dom->value2_dom->type->setval (acc->value2, &squared, true);
-		    }
-		  else
-		    {
-		      if (qdata_add_dbval (acc->value, &coerced, acc->value, acc_dom->value_dom) != NO_ERROR)
-			{
-			  pr_clear_value (&coerced);
-			  pr_clear_value (&squared);
-			  return false;
-			}
-		      if (qdata_add_dbval (acc->value2, &squared, acc->value2, acc_dom->value2_dom) != NO_ERROR)
-			{
-			  pr_clear_value (&coerced);
-			  pr_clear_value (&squared);
-			  return false;
-			}
-		    }
+		if (acc->curr_cnt < 1)
+		  {
+		    pr_clear_value (acc->value);
+		    pr_clear_value (acc->value2);
+		    acc_dom->value_dom->type->setval (acc->value, &coerced, true);
+		    acc_dom->value2_dom->type->setval (acc->value2, &squared, true);
+		  }
+		else
+		  {
+		    if (qdata_add_dbval (acc->value, &coerced, acc->value, acc_dom->value_dom) != NO_ERROR)
+		      {
+			pr_clear_value (&coerced);
+			pr_clear_value (&squared);
+			return false;
+		      }
+		    if (qdata_add_dbval (acc->value2, &squared, acc->value2, acc_dom->value2_dom) != NO_ERROR)
+		      {
+			pr_clear_value (&coerced);
+			pr_clear_value (&squared);
+			return false;
+		      }
+		  }
 
-		  pr_clear_value (&coerced);
-		  pr_clear_value (&squared);
-		  acc->curr_cnt++;
-		}
-		break;
+		pr_clear_value (&coerced);
+		pr_clear_value (&squared);
+		acc->curr_cnt++;
+	      }
+	      break;
 
 	      default:
 		assert (false);
