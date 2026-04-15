@@ -964,16 +964,26 @@ la_reader_commit_apply_info (void)
   int res;
 
   res = la_update_ha_last_applied_info ();
-  if (res < 0)
+  if (res > 0)
     {
-      if (ER_IS_SERVER_DOWN_ERROR (res))
-	{
-	  return ER_NET_CANT_CONNECT_SERVER;
-	}
-      return res;
+      return db_commit_transaction ();
     }
 
-  return db_commit_transaction ();
+  if (res == 0)
+    {
+      la_Info.fail_counter++;
+      er_log_debug (ARG_FILE_LINE, "log applied but cannot update last committed LSA (%d|%d)",
+		    la_Info.committed_lsa.pageid, la_Info.committed_lsa.offset);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "failed to update _db_ha_apply_info");
+      return NO_ERROR;
+    }
+
+  if (ER_IS_SERVER_DOWN_ERROR (res))
+    {
+      return ER_NET_CANT_CONNECT_SERVER;
+    }
+
+  return res;
 }
 
 static void
@@ -6887,7 +6897,6 @@ la_change_state (void)
 static int
 la_log_commit (bool update_commit_time)
 {
-  int res;
   int error = NO_ERROR;
 
   (void) la_find_required_lsa (&la_Info.required_lsa);
@@ -6900,33 +6909,7 @@ la_log_commit (bool update_commit_time)
       la_Info.log_commit_time = time (0);
     }
 
-  error = la_flush_repl_items (true);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  res = la_update_ha_last_applied_info ();
-  if (res > 0)
-    {
-      error = la_commit_transaction ();
-    }
-  else
-    {
-      la_Info.fail_counter++;
-
-      er_log_debug (ARG_FILE_LINE, "log applied but cannot update last committed LSA (%d|%d)",
-		    la_Info.committed_lsa.pageid, la_Info.committed_lsa.offset);
-      if (ER_IS_SERVER_DOWN_ERROR (res))
-	{
-	  error = ER_NET_CANT_CONNECT_SERVER;
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "failed to update _db_ha_apply_info");
-	  error = NO_ERROR;
-	}
-    }
+  error = la_reader_commit_apply_info ();
 
   return error;
 }

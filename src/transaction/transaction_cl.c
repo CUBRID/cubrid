@@ -48,6 +48,7 @@
 #include "log_comm.h"
 #include "log_lsa.hpp"
 #include "db_query.h"
+#include "db_multi_threads_connections.h"
 #include "boot_cl.h"
 #include "virtual_object.h"
 #include "schema_manager.h"
@@ -76,7 +77,7 @@ LOCK tm_Tran_rep_read_lock = NULL_LOCK;	/* used in RR transaction locking to not
  * must be set before each transaction command.
  */
 LC_FETCH_VERSION_TYPE tm_Tran_read_fetch_instance_version = LC_FETCH_MVCC_VERSION;
-int tm_Tran_latest_query_status;
+CUB_THREAD_LOCAL int tm_Tran_latest_query_status;
 
 /* Timeout(milli seconds) for queries.
  *
