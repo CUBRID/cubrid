@@ -6811,7 +6811,8 @@ logpb_checkpoint_trans (LOG_INFO_CHKPT_TRANS * chkpt_entries, log_tdes * tdes, i
       LSA_COPY (&chkpt_entry->savept_lsa, &tdes->savept_lsa);
       LSA_COPY (&chkpt_entry->tail_topresult_lsa, &tdes->tail_topresult_lsa);
       LSA_COPY (&chkpt_entry->start_postpone_lsa, &tdes->rcv.tran_start_postpone_lsa);
-      strncpy (chkpt_entry->user_name, tdes->client.get_db_user (), LOG_USERNAME_MAX);
+      strncpy (chkpt_entry->user_name, tdes->client.get_db_user (), LOG_USERNAME_MAX - 1);
+      chkpt_entry->user_name[LOG_USERNAME_MAX - 1] = '\0';
       ntrans++;
       if (tdes->topops.last >= 0 && (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE))
 	{

@@ -15555,7 +15555,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
   const char *objname = NULL;
 
   CDC_DDL_TYPE ddl_type;
-  CDC_DDL_OBJECT_TYPE objtype;
+  CDC_DDL_OBJECT_TYPE objtype = CDC_TABLE;
   PT_NODE *target = NULL;
   OID *classoid = NULL;
   OID oid_tmp = OID_INITIALIZER;
