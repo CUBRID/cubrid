@@ -972,7 +972,8 @@ namespace parallel_heap_scan
 	if (orig_agg_p->function == PT_COUNT_STAR)
 	  {
 	  }
-	else if (orig_agg_p->option == Q_DISTINCT)
+	else if (orig_agg_p->option == Q_DISTINCT
+		 && orig_agg_p->function != PT_MIN && orig_agg_p->function != PT_MAX)
 	  {
 	  }
 	else if (orig_agg_p->function == PT_COUNT)
@@ -1095,7 +1096,8 @@ namespace parallel_heap_scan
 	    continue;
 	  }
 
-	if (agg_node->option == Q_DISTINCT)
+	if (agg_node->option == Q_DISTINCT
+	    && agg_node->function != PT_MIN && agg_node->function != PT_MAX)
 	  {
 	    for (REGU_VARIABLE_LIST operand = agg_node->operands; operand != NULL; operand = operand->next)
 	      {
@@ -1291,7 +1293,8 @@ namespace parallel_heap_scan
 	      continue;
 	    }
 
-	  if (orig_agg_p->option == Q_DISTINCT)
+	  if (orig_agg_p->option == Q_DISTINCT
+	      && orig_agg_p->function != PT_MIN && orig_agg_p->function != PT_MAX)
 	    {
 	      qfile_close_list (thread_p, cur_agg_p->list_id);
 	      if (cur_agg_p->list_id->tuple_cnt == 0)
@@ -1336,10 +1339,15 @@ namespace parallel_heap_scan
 		}
 
 	      HL_HEAPID prev_heap_id = db_change_private_heap (thread_p, 0);
-	      (void) qdata_aggregate_accumulator_to_accumulator (thread_p, &orig_agg_p->accumulator,
-		  &orig_agg_p->accumulator_domain, orig_agg_p->function,
-		  orig_agg_p->domain, &cur_agg_p->accumulator);
+	      int err = qdata_aggregate_accumulator_to_accumulator (thread_p, &orig_agg_p->accumulator,
+			    &orig_agg_p->accumulator_domain, orig_agg_p->function,
+			    orig_agg_p->domain, &cur_agg_p->accumulator);
 	      db_change_private_heap (thread_p, prev_heap_id);
+	      if (err != NO_ERROR)
+		{
+		  m_err_messages_p->move_top_error_message_to_this ();
+		  m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		}
 
 	      pr_clear_value (cur_agg_p->accumulator.value);
 	      if (cur_agg_p->accumulator.value2 != NULL && !DB_IS_NULL (cur_agg_p->accumulator.value2))
