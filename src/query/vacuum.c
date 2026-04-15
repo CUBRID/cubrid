@@ -2054,8 +2054,7 @@ retry_prepare:
 	  if (!heap_oos_find_vfid (thread_p, &helper->hfid, &helper->oos_vfid, false))
 	    {
 	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
-				   "Failed to find OOS VFID for hfid %d|%d.",
-				   VFID_AS_ARGS (&helper->hfid.vfid));
+				   "Failed to find OOS VFID for hfid %d|%d.", VFID_AS_ARGS (&helper->hfid.vfid));
 	      assert_release (false);
 	      return ER_FAILED;
 	    }
@@ -2176,8 +2175,7 @@ retry_prepare:
 	  if (!heap_oos_find_vfid (thread_p, &helper->hfid, &helper->oos_vfid, false))
 	    {
 	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
-				   "Failed to find OOS VFID for hfid %d|%d.",
-				   VFID_AS_ARGS (&helper->hfid.vfid));
+				   "Failed to find OOS VFID for hfid %d|%d.", VFID_AS_ARGS (&helper->hfid.vfid));
 	      assert_release (false);
 	      return ER_FAILED;
 	    }
