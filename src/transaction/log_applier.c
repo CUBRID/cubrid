@@ -47,6 +47,7 @@
 #include "environment_variable.h"
 #include "message_catalog.h"
 #include "msgcat_set_log.hpp"
+#include "error_context.hpp"
 #include "log_compress.h"
 #include "log_lsa.hpp"
 #include "object_primitive.h"
@@ -743,6 +744,10 @@ static void *
 la_apply_worker_main (void *arg)
 {
   LA_APPLY_WORKER *worker = (LA_APPLY_WORKER *) arg;
+  cuberr::context *er_context_p = NULL;
+
+  er_context_p = new cuberr::context ();
+  er_context_p->register_thread_local ();
 
   while (true)
     {
@@ -789,6 +794,9 @@ la_apply_worker_main (void *arg)
       pthread_cond_broadcast (&worker->idle_cond);
       pthread_mutex_unlock (&worker->mutex);
     }
+
+  er_context_p->deregister_thread_local ();
+  delete er_context_p;
 
   return NULL;
 }
