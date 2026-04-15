@@ -571,6 +571,11 @@ session_control_daemon_execute (cubthread::entry & thread_ref)
 void
 session_control_daemon_init ()
 {
+  if (PRM_TEST_DISABLE_ALL_DAEMONS)
+    {
+      return;
+    }
+
   assert (session_Control_daemon == NULL);
 
   cubthread::looper looper = cubthread::looper (std::chrono::seconds (60));
@@ -578,7 +583,7 @@ session_control_daemon_init ()
     new cubthread::entry_callable_task (std::bind (session_control_daemon_execute, std::placeholders::_1));
 
   // create session control daemon thread
-  session_Control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "session_control");
+  session_Control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "session-control");
 }
 
 /*

@@ -18,10 +18,12 @@
 
 #pragma once
 
+#include <memory>
+
 #include "hnsw_api.hpp"
 #include "hnsw_graph_base.hpp"
 #include "hnsw_algo_common.hpp"
-
+#include "hnsw_inmem_block.hpp"
 namespace cubhnsw
 {
   // TODO (refactor) : there are similar objects in page_buffer or lock_manager..
@@ -38,6 +40,7 @@ namespace cubhnsw
     std::byte   *data{};
     std::size_t  size{};
     lock_mode    mode{lock_mode::none};
+    bool         is_dirty{false};
   };
 
   inline void release_pinned_ (cubthread::entry *thread_p, pinned_block_data &blk, PAGE_PTR page_ptr) noexcept
@@ -49,7 +52,14 @@ namespace cubhnsw
 
     if (blk.mode == lock_mode::exclusive)
       {
-	pgbuf_set_dirty (thread_p, page_ptr, FREE);
+	if (!blk.is_dirty)
+	  {
+	    pgbuf_unfix (thread_p, page_ptr);
+	  }
+	else
+	  {
+	    pgbuf_set_dirty (thread_p, page_ptr, FREE);
+	  }
       }
     else
       {
@@ -144,6 +154,16 @@ namespace cubhnsw
 	return m_valid;
       }
 
+      PAGE_PTR page_ptr () const noexcept
+      {
+	return m_page_ptr;
+      }
+
+      void set_dirty () noexcept
+      {
+	m_blk.is_dirty = true;
+      }
+
     private:
       void invalidate_ () noexcept
       {
@@ -159,6 +179,22 @@ namespace cubhnsw
       data_t m_blk{};
       bool m_valid{false};
   };
+
+  inline void mark_hnsw_root_dirty (cubthread::entry *thread_p, const pinned_block &blk) noexcept
+  {
+    if (!blk || thread_p == nullptr || blk.page_ptr () == nullptr)
+      {
+	return;
+      }
+
+    const auto &data = *blk;
+    if (pgbuf_get_page_ptype (thread_p, blk.page_ptr ()) == PAGE_HNSW
+	&& data.id.slotid == 1
+	&& data.size == root_t::get_size ())
+      {
+	const_cast<pinned_block::data_t &> (data).is_dirty = true;
+      }
+  }
 
   struct page_guard
   {
@@ -227,6 +263,8 @@ namespace cubhnsw
 	, m_vfid (giid.vfid)
 	, m_root_vpid (block_id_t { giid.root_pageid, giid.vfid.volid })
 	, m_last_node_vpid (m_root_vpid)
+	, m_vector_cache_vector_stride_bytes (get_aligned_vector_cache_stride_ ())
+	, m_i8_cache_stride_bytes (get_aligned_i8_cache_stride_ ())
       {}
 
       ~storage () = default;
@@ -242,20 +280,154 @@ namespace cubhnsw
       pinned_t get_root (algo_context_t &context, lock_mode mode);
       pinned_t get_node_by_slot_id (algo_context_t &context, const slot_id_t &slot_id,
 				    const lock_mode &mode);
-      const float *get_vector_by_slot_id (algo_context_t &context, const slot_id_t &slot_id,
-					  const lock_mode &mode);
 
       // neighbors cache helpers (single-thread, in-memory)
-      const std::vector<slot_id_t> *get_neighbors_cached_ids (
+      neighbors_view get_neighbors_cached_ids (
 	      algo_context_t &context,
 	      const slot_id_t &slot_id,
 	      level_t level);
       void set_neighbors_cached_ids (algo_context_t &context,
 				     const slot_id_t &slot_id,
 				     level_t level,
-				     const std::vector<slot_id_t> &neighbors);
+				     const slot_id_t *data,
+				     std::size_t count);
+
+      void init_in_memory_block (std::size_t estimated_nodes)
+      {
+	m_inmem.init (estimated_nodes, m_root_vpid.pageid, m_root_vpid.volid);
+	// Pre-reserve flat neighbor buffer: each node has at most 2*M+1 neighbor slots across
+	// level 0 (2*M) plus one extra level-1 entry; multiply by estimated_nodes for the total.
+	m_flat_neighbors.reserve (estimated_nodes * (2 * m_build_params.m + 2));
+	// Compute the stride for node_idx_of_(): upper bound on nodes per page.
+	// Multiple nodes are packed onto each IO_MAX_PAGE_SIZE page; node_idx_of_() must
+	// incorporate slotid to produce a unique index per node (not just per page).
+	{
+	  const std::size_t node_sz = node_bytes_ (0, get_dimension (), m_build_params.m);
+	  // Divide with +1 to ensure we never underestimate the packing density.
+	  m_level0_slots_per_page =
+		  static_cast<uint32_t> (IO_MAX_PAGE_SIZE / node_sz) + 1;
+	}
+	// Level-0 direct cache: indexed by node_idx_of_(slot) = page_offset * slots_per_page + slotid.
+	// Slotids are 0-based; actual_spp ≈ m_level0_slots_per_page - 1 (the +1 is an overcount).
+	// Max page_offset ≈ ceil(N / (M-1)); max idx ≈ ceil(N/(M-1)) * M + M.
+	// Formula: (N / (M-1) + 3) * M gives adequate headroom.
+	const uint32_t spp_denom = (m_level0_slots_per_page > 1u) ? (m_level0_slots_per_page - 1u) : 1u;
+	const std::size_t cache_size = (estimated_nodes / spp_denom + 3) * m_level0_slots_per_page;
+	m_level0_cache.resize (cache_size, {UINT32_MAX, 0});
+	// Pre-reserve the vector cache so that emplace() never reallocates during build.
+	// ankerl::unordered_dense stores values in a flat std::vector; without a reserve,
+	// any insert that crosses a capacity boundary invalidates ALL cached_vector* pointers
+	// held in resolved_vecs[] during the two-pass seek_on_layer_ cache-hit path.
+	m_vector_cache.reserve (estimated_nodes);
+	// Capture the reserved capacity — used by the capacity guard
+	// in cache_vector_copy_() to ensure pointer stability for m_vector_direct_cache.
+	// ankerl::unordered_dense::map reserves m_values (a std::vector) with this count;
+	// as long as size() stays within the reservation, no reallocation occurs.
+	m_vector_cache_reserved_capacity = estimated_nodes;
+	// Direct-indexed vector cache: O(1) lookup by node_idx_of_(slot).
+	m_vector_direct_cache.resize (cache_size, nullptr);
+	// Epoch-based visited set: O(1) check-and-mark by node_idx_of_(slot).
+	m_visit_epoch.resize (cache_size, 0);
+      }
 
       void promote_root (pinned_t &root);
+
+      const cached_vector *get_cached_vector_by_slot_id (algo_context_t &context,
+							 const slot_id_t &slot_id,
+							 const lock_mode &mode);
+
+      // Direct-indexed vector cache: O(1) lookup for in-memory builds.
+      // Returns nullptr if not in-memory mode, out of range, or not yet populated.
+      inline const cached_vector *get_direct_cached_vector (const slot_id_t &slot) const noexcept
+      {
+	if (!m_inmem.is_active ())
+	  {
+	    return nullptr;
+	  }
+	uint32_t idx = node_idx_of_ (slot);
+	if (idx < static_cast<uint32_t> (m_vector_direct_cache.size ()))
+	  {
+	    return m_vector_direct_cache[idx];
+	  }
+	return nullptr;
+      }
+
+      // Epoch-based visited set: O(1) check-and-mark for in-memory builds.
+      // Returns true if the node was NOT yet visited in this round (newly marked).
+      // Returns false if already visited or not in-memory mode.
+      inline bool visit_check_and_mark (const slot_id_t &slot) noexcept
+      {
+	if (!m_inmem.is_active ())
+	  {
+	    return false;
+	  }
+	uint32_t idx = node_idx_of_ (slot);
+	if (idx >= static_cast<uint32_t> (m_visit_epoch.size ()))
+	  {
+	    return false;
+	  }
+	if (m_visit_epoch[idx] == m_current_epoch)
+	  {
+	    return false;
+	  }
+	m_visit_epoch[idx] = m_current_epoch;
+	return true;
+      }
+
+      // Returns true if the node was already visited in this round.
+      inline bool is_visited (const slot_id_t &slot) const noexcept
+      {
+	if (!m_inmem.is_active ())
+	  {
+	    return false;
+	  }
+	uint32_t idx = node_idx_of_ (slot);
+	if (idx >= static_cast<uint32_t> (m_visit_epoch.size ()))
+	  {
+	    return false;
+	  }
+	return m_visit_epoch[idx] == m_current_epoch;
+      }
+
+      // Advance epoch — invalidates all visited marks without clearing the array.
+      inline void visit_new_round () noexcept
+      {
+	++m_current_epoch;
+      }
+
+      // Whether the fast epoch-based visited path is available.
+      inline bool has_fast_visited () const noexcept
+      {
+	return m_inmem.is_active ();
+      }
+
+      // Fast inline path for neighbors cache lookup: no stats overhead.
+      // Level 0 uses a direct array (no hashing); level > 0 falls through to the hash map.
+      inline neighbors_view try_get_neighbors_cached (const slot_id_t &slot,
+	  level_t level) noexcept
+      {
+	if (level == 0)
+	  {
+	    const uint32_t idx = node_idx_of_ (slot);
+	    if (idx < static_cast<uint32_t> (m_level0_cache.size ()))
+	      {
+		const auto &e = m_level0_cache[idx];
+		if (e.offset != UINT32_MAX)
+		  {
+		    return neighbors_view { m_flat_neighbors.data () + e.offset, e.count };
+		  }
+	      }
+	    return {};
+	  }
+	neighbors_key key { slot, level };
+	auto it = m_neighbors_cache.find (key);
+	if (it == m_neighbors_cache.end ())
+	  {
+	    return {};
+	  }
+	auto [offset, count] = it->second;
+	return neighbors_view { m_flat_neighbors.data () + offset, count };
+      }
 
       short get_max_level () const
       {
@@ -297,11 +469,53 @@ namespace cubhnsw
 
     protected:
 
+      std::size_t get_aligned_vector_cache_stride_ () const noexcept
+      {
+	const std::size_t vector_bytes = get_dimension () * sizeof (float);
+	return ((vector_bytes + VECTOR_CACHE_ALIGNMENT - 1) / VECTOR_CACHE_ALIGNMENT) * VECTOR_CACHE_ALIGNMENT;
+      }
+
+      std::size_t get_aligned_i8_cache_stride_ () const noexcept
+      {
+	const std::size_t i8_bytes = get_dimension () * sizeof (std::int8_t);
+	return ((i8_bytes + VECTOR_CACHE_ALIGNMENT - 1) / VECTOR_CACHE_ALIGNMENT) * VECTOR_CACHE_ALIGNMENT;
+      }
+
+      std::size_t get_initial_vector_cache_block_capacity_ () const noexcept
+      {
+	return std::max<std::size_t> (1, VECTOR_CACHE_TARGET_BLOCK_BYTES / m_vector_cache_vector_stride_bytes);
+      }
+
+      uint64_t make_vector_cache_key_ (const slot_id_t &slot_id) noexcept
+      {
+	return m_oid_encoder.encode_oid (slot_id);
+      }
+
+      // Unique flat index for a node in m_level0_cache.
+      // Multiple HNSW nodes are packed onto the same IO_MAX_PAGE_SIZE page, so pageid alone
+      // is not unique per node.  We combine the page offset from root with the slot id:
+      //   page_offset = slot.pageid - root_pageid   (root page = 0, first node page = 1, ...)
+      //   idx         = page_offset * m_level0_slots_per_page + slotid
+      // Slotids are 0-based in the inmem block: first insert on a page gets slotid 0.
+      // Root lives at (page_offset=0, slotid=1) → idx = 1; dummy at slotid 0 is never a node.
+      // This is injective: different (pageid, slotid) pairs always map to different indices.
+      inline uint32_t node_idx_of_ (const slot_id_t &slot) const noexcept
+      {
+	const uint32_t page_offset = static_cast<uint32_t> (slot.pageid - m_root_vpid.pageid);
+	return page_offset * m_level0_slots_per_page + static_cast<uint32_t> (slot.slotid);
+      }
+
+      const cached_vector *cache_vector_copy_ (const slot_id_t &slot_id, const float *vector);
+      const float *append_vector_copy_ (const float *vector);
+      const std::int8_t *append_i8_copy_ (const std::int8_t *data);
+
       page_guard get_block_to_insert (algo_context_t &context, block_group_id_t &vfid, block_id_t &last_vpid,
 				      std::size_t bytes);
       PAGE_PTR alloc_new_block (cubthread::entry *thread_p, block_group_id_t &vfid, block_id_t &vpid);
 
       static int initialize_new_block (cubthread::entry *thread_p, PAGE_PTR page, void *args);
+
+      hnsw_inmem_block m_inmem;
 
       hnsw_build_params m_build_params;
       index_id_t m_giid; // general index identifier
@@ -313,9 +527,40 @@ namespace cubhnsw
       block_id_t m_last_node_vpid;
       bool m_is_empty = true;
 
-      vector_cache_t m_vector_cache;  // (slot_id_t, vector) cache
+      vector_cache_t m_vector_cache;  // (slot_id_t, cached_vector) cache
+      hnsw_oid_encoder_default m_oid_encoder;
+      std::size_t m_vector_cache_vector_stride_bytes {0};
+      std::unique_ptr<vector_cache_block> m_vector_cache_blocks;
+      vector_cache_block *m_vector_cache_tail {nullptr};
+
+      std::size_t m_i8_cache_stride_bytes {0};
+      std::unique_ptr<i8_cache_block> m_i8_cache_blocks;
+      i8_cache_block *m_i8_cache_tail {nullptr};
+
+      // Swizzled level-0 neighbor cache: indexed by node_idx_of_(slot).
+      // Eliminates hash-map overhead for the dominant (level==0) lookup path.
+      // Entries for level > 0 remain in m_neighbors_cache.
+      struct level0_entry_t
+      {
+	uint32_t offset {UINT32_MAX}; // UINT32_MAX = not yet inserted
+	uint32_t count {0};
+      };
 
       /* TODO: This is not thread-safe. Currently, we are assuming single-threaded access, but we need to make it thread-safe. */
-      neighbors_cache_t m_neighbors_cache;    // (slot_id_t, level) -> neighbors
+      neighbors_cache_t m_neighbors_cache;     // (slot_id_t, level > 0) -> (offset, count) into m_flat_neighbors
+      std::vector<slot_id_t> m_flat_neighbors; // flat contiguous buffer for all neighbor lists
+      std::vector<level0_entry_t> m_level0_cache; // direct-indexed level-0 neighbor cache
+      uint32_t m_level0_slots_per_page {1};    // stride for node_idx_of_(): upper bound on nodes per page
+
+      // Direct-indexed vector cache: indexed by node_idx_of_(slot).
+      // Stores pointers into m_vector_cache entries for O(1) lookup during in-memory builds.
+      // Falls back to hash map when the pointer may be invalid (capacity exceeded).
+      std::vector<const cached_vector *> m_vector_direct_cache;
+      std::size_t m_vector_cache_reserved_capacity {0};
+
+      // Epoch-based visited tracking: indexed by node_idx_of_(slot).
+      // Avoids hash-set overhead in seek_on_layer_ for in-memory builds.
+      std::vector<uint32_t> m_visit_epoch;
+      uint32_t m_current_epoch {0};
   };
 }

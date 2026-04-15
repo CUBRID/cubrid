@@ -325,6 +325,7 @@ namespace cubhnsw
   {
     protected:
       byte_t *tape_ {nullptr};
+      std::size_t capacity_ {0};
 
       static constexpr std::size_t shift (std::size_t i = 0) noexcept
       {
@@ -333,7 +334,7 @@ namespace cubhnsw
 
     public:
 
-      explicit neighbors_ref_t (byte_t *tape) noexcept : tape_ (tape) {}
+      explicit neighbors_ref_t (byte_t *tape, std::size_t capacity = 0) noexcept : tape_ (tape), capacity_ (capacity) {}
       byte_t *tape() const noexcept
       {
 	return tape_;
@@ -341,6 +342,11 @@ namespace cubhnsw
       explicit operator bool() const noexcept
       {
 	return tape_;
+      }
+
+      std::size_t capacity () const noexcept
+      {
+	return capacity_;
       }
 
       neighbors_ref_t() = default;

@@ -133,6 +133,14 @@ set(BASE_SOURCES
   ${BASE_DIR}/unicode_support.c
   ${BASE_DIR}/util_func.c
   ${BASE_DIR}/xml_parser.c
+  ${BASE_DIR}/packet_buffer.cpp
+  ${BASE_DIR}/DMRBMemoryPool.cpp
+  ${BASE_DIR}/ifsys.cpp
+  ${BASE_DIR}/nonblocking.cpp
+  ${BASE_DIR}/epoll.cpp
+  ${BASE_DIR}/filesys_parser.cpp
+  ${BASE_DIR}/cgroup.cpp
+  ${BASE_DIR}/resources.cpp
   )
 set (BASE_HEADERS
   ${BASE_DIR}/compressor.hpp
@@ -174,6 +182,16 @@ set (BASE_HEADERS
   ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/fixed_size_allocator.hpp
+  ${BASE_DIR}/span.hpp
+  ${BASE_DIR}/ifsys.hpp
+  ${BASE_DIR}/packet_buffer.hpp
+  ${BASE_DIR}/DMRB.hpp
+  ${BASE_DIR}/DMRBMemoryPool.hpp
+  ${BASE_DIR}/nonblocking.hpp
+  ${BASE_DIR}/epoll.hpp
+  ${BASE_DIR}/filesys_parser.hpp
+  ${BASE_DIR}/cgroup.hpp
+  ${BASE_DIR}/resources.hpp
   )
 
 set(EXECUTABLE_SOURCES
@@ -190,14 +208,35 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/connection_list_sr.c
   ${CONNECTION_DIR}/connection_globals.c
   ${CONNECTION_DIR}/server_support.c
-  ${CONNECTION_DIR}/connection_support.c
+  ${CONNECTION_DIR}/connection_support.cpp
   ${CONNECTION_DIR}/host_lookup.c
+  ${CONNECTION_DIR}/connection_context.cpp
+  ${CONNECTION_DIR}/master_connector.cpp
+  ${CONNECTION_DIR}/connection_pool.cpp
+  ${CONNECTION_DIR}/connection_worker.cpp
+  ${CONNECTION_DIR}/coordinator.cpp
+  ${CONNECTION_DIR}/receiver.cpp
+  ${CONNECTION_DIR}/transmitter.cpp
+  ${CONNECTION_DIR}/buffer.cpp
+  )
+
+set(CONNECTION_HEADERS
+  ${CONNECTION_DIR}/connection_support.hpp
+  ${CONNECTION_DIR}/connection_context.hpp
+  ${CONNECTION_DIR}/master_connector.hpp
+  ${CONNECTION_DIR}/connection_pool.hpp
+  ${CONNECTION_DIR}/connection_worker.hpp
+  ${CONNECTION_DIR}/coordinator.hpp
+  ${CONNECTION_DIR}/connection_statistics.hpp
+  ${CONNECTION_DIR}/receiver.hpp
+  ${CONNECTION_DIR}/transmitter.hpp
+  ${CONNECTION_DIR}/buffer.hpp
   )
 
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_common.cpp
   ${COMMUNICATION_DIR}/network_callback_sr.cpp
-  ${COMMUNICATION_DIR}/network_interface_sr.c
+  ${COMMUNICATION_DIR}/network_interface_sr.cpp
   ${COMMUNICATION_DIR}/network_sr.c
   )
 
@@ -321,20 +360,22 @@ set(PARALLEL_HASH_JOIN_HEADERS
 )
 
 set(PARALLEL_HEAP_SCAN_SOURCES
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler_single_table.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler_ftabs.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_slot_iterator.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_handler.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_join_info.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_trace_handler.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan.cpp
   )
 
 set(PARALLEL_HEAP_SCAN_HEADERS
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler_single_table.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler_ftabs.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_ftab_set.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_handler.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_type.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_slot_iterator.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_join_info.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_trace_handler.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan.hpp
@@ -470,6 +511,7 @@ set(STORAGE_SOURCES
   ${INDEX_HNSW_DIR}/hnsw_impl.cpp
   ${INDEX_HNSW_DIR}/hnsw.cpp
   ${INDEX_HNSW_DIR}/hnsw_api.cpp
+  ${INDEX_HNSW_DIR}/hnsw_inmem_block.cpp
   ${INDEX_HNSW_DIR}/hnsw_storage.cpp
   )
 set(STORAGE_HEADERS
@@ -483,16 +525,40 @@ set(STORAGE_HEADERS
   ${INDEX_HNSW_DIR}/hnsw_api.hpp
 )
 
+# Select intrinsics implementation based on detected ISA.
+# One file is compiled per build — no runtime dispatch, no #if guards inside.
+if(CXX_AVX512_FOUND)
+  set(VECTOR_INTRINSICS_FILE ${INDEX_HNSW_DIR}/vector_distance_intrinsics_avx512.cpp)
+  set(VECTOR_INTRINSICS_ISA_FLAGS "${CXX_AVX512_FLAGS}")
+elseif(CXX_AVX2_FOUND)
+  set(VECTOR_INTRINSICS_FILE ${INDEX_HNSW_DIR}/vector_distance_intrinsics_avx2.cpp)
+  set(VECTOR_INTRINSICS_ISA_FLAGS "${CXX_AVX2_FLAGS}")
+else()
+  set(VECTOR_INTRINSICS_FILE ${INDEX_HNSW_DIR}/vector_distance_intrinsics_fallback.cpp)
+  set(VECTOR_INTRINSICS_ISA_FLAGS "")
+endif()
+list(APPEND STORAGE_SOURCES ${VECTOR_INTRINSICS_FILE})
+
 if(USE_SIMD_NATIVE)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set_source_files_properties(${QUERY_DIR}/vector_opfunc.cpp ${INDEX_HNSW_DIR}/vector_distance_omp_simd.cpp
         PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-ftree-vectorize;-mprefer-vector-width=512;-fopenmp-simd;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
     )
+    set_source_files_properties(${VECTOR_INTRINSICS_FILE}
+        PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
+    )
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set_source_files_properties(${QUERY_DIR}/vector_opfunc.cpp ${INDEX_HNSW_DIR}/vector_distance_omp_simd.cpp
         PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-fvectorize;-mprefer-vector-width=512;-fopenmp-simd;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
     )
+    set_source_files_properties(${VECTOR_INTRINSICS_FILE}
+        PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
+    )
   endif()
+elseif(VECTOR_INTRINSICS_ISA_FLAGS)
+  set_source_files_properties(${VECTOR_INTRINSICS_FILE}
+      PROPERTIES COMPILE_OPTIONS "${VECTOR_INTRINSICS_ISA_FLAGS};-O3;-ffast-math;-fno-trapping-math;-funroll-loops"
+  )
 endif()
 
 set(SESSION_SOURCES
@@ -636,6 +702,7 @@ set (CUBRID_LIB_HEADERS
   ${QUERY_HEADERS}
   ${STORAGE_HEADERS}
   ${SP_HEADERS}
+  ${CONNECTION_HEADERS}
   ${THREAD_HEADERS}
   ${TRANSACTION_HEADERS}
   ${XASL_HEADERS}

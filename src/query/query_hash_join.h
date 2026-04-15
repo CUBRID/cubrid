@@ -50,10 +50,7 @@
 
 namespace parallel_query
 {
-  namespace hash_join
-  {
-    class worker_pool_manager;
-  }
+  class worker_manager;
 }
 
 struct xasl_node;
@@ -347,7 +344,7 @@ typedef struct hashjoin_manager
   int qlist_flag;
 
   // *INDENT-OFF*
-  parallel_query::hash_join::worker_pool_manager *px_worker_pool_manager;
+  parallel_query::worker_manager *px_worker_manager;
   // *INDENT-ON*
   UINT64 *px_worker_stats;
 

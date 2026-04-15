@@ -23,6 +23,7 @@
 #include "px_heap_scan_trace_handler.hpp"
 #include "perf_monitor.h"
 #include "tsc_timer.h"
+#include "xasl_iteration.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -178,5 +179,45 @@ namespace parallel_heap_scan
 				      "gather", result_type_str);
     json_object_set_new (scan, "parallel heap", parallel_obj);
   }
+
+  void trace_storage_for_sibling_xasl::set_main_xasl_tree (xasl_node *xasl_tree)
+  {
+    m_main_xasl_tree = xasl_tree;
+  }
+
+  void trace_storage_for_sibling_xasl::merge_xasl_tree (xasl_node *xasl_tree)
+  {
+    std::lock_guard<std::mutex> lock (m_mutex);
+    xasl_node *xptr1, *xptr2, *dst_node, *src_node;
+
+    /* for main xasl correlated subquery */
+    for (xptr1 = xasl_tree->dptr_list; xptr1 != nullptr; xptr1 = xptr1->next)
+      {
+	xasl_merge_stats (xptr1, m_main_xasl_tree);
+      }
+
+    dst_node = m_main_xasl_tree;
+    src_node = xasl_tree;
+    if (dst_node->sq_cache != nullptr && src_node->sq_cache != nullptr)
+      {
+	/* for main xasl correlated subquery cache */
+	dst_node->sq_cache->stats.hit += src_node->sq_cache->stats.hit;
+	dst_node->sq_cache->stats.miss += src_node->sq_cache->stats.miss;
+	dst_node->sq_cache->size += src_node->sq_cache->size;
+	dst_node->sq_cache->size_max += src_node->sq_cache->size_max;
+	dst_node->sq_cache->enabled = dst_node->sq_cache->enabled ? true : src_node->sq_cache->enabled;
+      }
+
+    /* for nl join */
+    for (xptr1 = xasl_tree->scan_ptr; xptr1 != nullptr; xptr1 = xptr1->scan_ptr)
+      {
+	xasl_merge_stats (xptr1, m_main_xasl_tree);
+	for (xptr2 = xptr1->dptr_list; xptr2 != nullptr; xptr2 = xptr2->next)
+	  {
+	    xasl_merge_stats (xptr2, m_main_xasl_tree);
+	  }
+      }
+  }
+
 }
 

@@ -73,13 +73,23 @@ run_stage() {
   local start_ts
   local end_ts
   local elapsed_sec
+  local stage_status
 
   log "stage start: $stage_name"
   start_ts="$(date +%s)"
+  set +e
   "$@"
+  stage_status=$?
+  set -e
   end_ts="$(date +%s)"
   elapsed_sec="$((end_ts - start_ts))"
-  log "stage done: $stage_name (${elapsed_sec}s)"
+  if (( stage_status == 0 )); then
+    log "stage done: $stage_name (${elapsed_sec}s)"
+  else
+    log "stage failed: $stage_name (${elapsed_sec}s, exit=$stage_status)"
+  fi
+
+  return "$stage_status"
 }
 
 require_cmd() {
@@ -747,7 +757,7 @@ validate_required_classes() {
         SELECT class_name
           FROM db_class
          WHERE class_name = '${class_name}';
-      " | awk -F'|' 'NF > 0 {print $1; exit}'
+      " | awk -F'|' 'NF > 0 {gsub(/^'\''|'\''$/, "", $1); print $1; exit}'
     )"
 
     if [[ "$found" != "$class_name" ]]; then

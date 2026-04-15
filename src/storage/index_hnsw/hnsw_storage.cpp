@@ -18,8 +18,12 @@
 
 #include "hnsw_storage.hpp"
 
+#include <vector>
+
+#include "error_manager.h"
 #include "file_manager.h" // FILE_DESCRIPTORS
 #include "slotted_page.h"
+#include "memory_alloc.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -90,8 +94,39 @@ namespace cubhnsw
   slot_id_t
   storage::add_node (algo_context_t &context, const key_id_t &key, const float *vector, const level_t &level)
   {
-    // insert node
     std::size_t bytes = this->node_bytes_ (level, get_dimension(), get_connectivity());
+
+    if (m_inmem.is_active ())
+      {
+	char rec_buf[IO_MAX_PAGE_SIZE];
+	memset (rec_buf, 0, bytes);
+
+	node_t node { reinterpret_cast<byte_t *> (rec_buf) };
+	node.set_key (key);
+	node.set_level (level);
+	node.set_vector (vector, get_dimension());
+
+	int needed = (int) (bytes + DB_WASTED_ALIGN (bytes, HNSW_MAX_ALIGN) + sizeof (SPAGE_SLOT));
+	std::byte *cur = m_inmem.current_page ();
+	if (cur == nullptr || m_inmem.free_space (cur) < needed)
+	  {
+	    m_inmem.alloc_page ();
+	    cur = m_inmem.current_page ();
+	  }
+
+	PGSLOTID slot_id = m_inmem.insert (cur, rec_buf, (int) bytes);
+	assert (slot_id >= 0);
+
+	int pageid = m_inmem.pageid_of (m_inmem.m_current_page_idx);
+	slot_id_t oid = { pageid, slot_id, m_inmem.volid () };
+
+	m_last_node_vpid.pageid = pageid;
+	m_last_node_vpid.volid = m_inmem.volid ();
+
+	return oid;
+      }
+
+    // insert node
     page_guard page_ptr = get_block_to_insert (context, m_vfid, m_last_node_vpid, bytes);
 
     RECDES recdes;
@@ -124,6 +159,19 @@ namespace cubhnsw
   pinned_t
   storage::get_root (algo_context_t &context, lock_mode mode)
   {
+    if (m_inmem.is_active ())
+      {
+	std::byte *page = m_inmem.page_at (0);
+	SPAGE_SLOT *slotp = m_inmem.slot_at (page, 1);
+
+	pinned_t::data_t blk;
+	blk.id = { m_inmem.pageid_of (0), 1, m_inmem.volid () };
+	blk.data = reinterpret_cast<byte_t *> (page + slotp->offset_to_record);
+	blk.size = slotp->record_length;
+	blk.mode = mode;
+	return pinned_t (context.m_thread_p, std::move (blk), nullptr);
+      }
+
     VPID root_vpid = m_root_vpid;
 
     PGBUF_LATCH_MODE pgbuf_mode = PGBUF_LATCH_READ;
@@ -155,6 +203,29 @@ namespace cubhnsw
   pinned_t
   storage::get_node_by_slot_id (algo_context_t &context, const slot_id_t &id, const lock_mode &mode)
   {
+    if (m_inmem.is_active ())
+      {
+	int page_idx = m_inmem.page_idx_of (id.pageid);
+	assert (page_idx >= 0 && (std::size_t) page_idx < m_inmem.used_pages ());
+	std::byte *page = m_inmem.page_at (page_idx);
+	SPAGE_SLOT *slotp = m_inmem.slot_at (page, id.slotid);
+
+	pinned_t::data_t blk;
+	blk.id = id;
+	blk.data = reinterpret_cast<byte_t *> (page + slotp->offset_to_record);
+	blk.size = slotp->record_length;
+	blk.mode = mode;
+	return pinned_t (context.m_thread_p, std::move (blk), nullptr);
+      }
+
+    if (OID_ISNULL (&id) || id.volid < 0 || id.pageid <= 0 || id.slotid < 0 || id.pageid > 100000000)
+      {
+	er_print_callstack (ARG_FILE_LINE,
+			    "HNSW get_node_by_slot_id invalid slot: (%d|%d|%d) level=%d\n",
+			    id.volid, id.pageid, id.slotid, (int) context.m_level);
+	abort ();
+      }
+
     VPID vpid = { id.pageid, id.volid };
 
     PGBUF_LATCH_MODE pgbuf_mode = PGBUF_LATCH_READ;
@@ -186,40 +257,113 @@ namespace cubhnsw
 
   }
 
-  const std::vector<slot_id_t> *
+  neighbors_view
   storage::get_neighbors_cached_ids (algo_context_t &context, const slot_id_t &slot, level_t level)
   {
+    if (level == 0)
+      {
+	const uint32_t idx = node_idx_of_ (slot);
+	if (idx < static_cast<uint32_t> (m_level0_cache.size ()))
+	  {
+	    const auto &e = m_level0_cache[idx];
+	    if (e.offset != UINT32_MAX)
+	      {
+		return neighbors_view { m_flat_neighbors.data () + e.offset, e.count };
+	      }
+	  }
+	return {};
+      }
     neighbors_key key { slot, level };
     auto it = m_neighbors_cache.find (key);
-    if (it != m_neighbors_cache.end ())
+    if (it == m_neighbors_cache.end ())
       {
-	return &it->second;
+	return {};
       }
-
-    // Not cached yet: let caller fall back to loading neighbors directly.
-    return nullptr;
+    auto [offset, count] = it->second;
+    return neighbors_view { m_flat_neighbors.data () + offset, count };
   }
 
   void
   storage::set_neighbors_cached_ids (algo_context_t &context,
 				     const slot_id_t &slot,
 				     level_t level,
-				     const std::vector<slot_id_t> &neighbors)
+				     const slot_id_t *data,
+				     std::size_t count)
   {
+    // Each node's neighbor list is pre-allocated with a fixed max capacity so that subsequent
+    // updates (form_reverse_links_ push_back / refine paths) can overwrite in-place without
+    // appending new entries to m_flat_neighbors.  Without this, each update would append the
+    // full neighbor list again, causing O(N * M^2) buffer growth and OOM.
+    const uint32_t max_per_slot = (level == 0)
+				  ? static_cast<uint32_t> (2 * m_build_params.m + 1)
+				  : static_cast<uint32_t> (m_build_params.m + 1);
+
+    if (level == 0)
+      {
+	const uint32_t idx = node_idx_of_ (slot);
+	if (idx >= static_cast<uint32_t> (m_level0_cache.size ()))
+	  {
+	    // Guard against nodes beyond initial estimate (inmem block can grow).
+	    m_level0_cache.resize (idx + 1, {UINT32_MAX, 0});
+	  }
+	auto &e = m_level0_cache[idx];
+	if (e.offset == UINT32_MAX)
+	  {
+	    // First write: allocate max_per_slot contiguous slots and copy count entries.
+	    uint32_t offset = static_cast<uint32_t> (m_flat_neighbors.size ());
+	    m_flat_neighbors.resize (m_flat_neighbors.size () + max_per_slot);
+	    std::copy (data, data + count, m_flat_neighbors.data () + offset);
+	    e = {offset, static_cast<uint32_t> (count)};
+	  }
+	else
+	  {
+	    // Subsequent write: overwrite in-place within the pre-allocated slot.
+	    std::copy (data, data + count, m_flat_neighbors.data () + e.offset);
+	    e.count = static_cast<uint32_t> (count);
+	  }
+	return;
+      }
+
     neighbors_key key { slot, level };
-    m_neighbors_cache[key] = neighbors;
+    auto [it, inserted] = m_neighbors_cache.try_emplace (key, std::make_pair (0u, 0u));
+    if (inserted)
+      {
+	// First write: allocate max_per_slot contiguous slots and copy count entries.
+	uint32_t offset = static_cast<uint32_t> (m_flat_neighbors.size ());
+	m_flat_neighbors.resize (m_flat_neighbors.size () + max_per_slot);
+	std::copy (data, data + count, m_flat_neighbors.data () + offset);
+	it->second = { offset, static_cast<uint32_t> (count) };
+      }
+    else
+      {
+	// Subsequent write: overwrite in-place within the pre-allocated slot.
+	// count must be <= max_per_slot (guaranteed by HNSW neighbor-list invariants).
+	auto [offset, old_count] = it->second;
+	std::copy (data, data + count, m_flat_neighbors.data () + offset);
+	it->second.second = static_cast<uint32_t> (count);
+      }
   }
 
-  const float *
-  storage::get_vector_by_slot_id (algo_context_t &context, const slot_id_t &slot, const lock_mode &mode)
+  const cached_vector *
+  storage::get_cached_vector_by_slot_id (algo_context_t &context, const slot_id_t &slot,
+					  const lock_mode &mode)
   {
     context.m_stats.on_vector_access (context.m_is_perf_tracking, context.m_level);
 
-    auto it = m_vector_cache.find (slot);
+    // Fast path: direct-indexed array lookup (no hashing) for in-memory builds.
+    const cached_vector *direct = get_direct_cached_vector (slot);
+    if (direct != nullptr)
+      {
+	context.m_stats.on_vector_cache_hit (context.m_is_perf_tracking, context.m_level);
+	return direct;
+      }
+
+    const uint64_t cache_key = make_vector_cache_key_ (slot);
+    auto it = m_vector_cache.find (cache_key);
     if (it != m_vector_cache.end ())
       {
 	context.m_stats.on_vector_cache_hit (context.m_is_perf_tracking, context.m_level);
-	return it->second.data ();
+	return &it->second;
       }
 
     context.m_stats.on_vector_cache_miss (context.m_is_perf_tracking, context.m_level);
@@ -228,10 +372,109 @@ namespace cubhnsw
     node_t node { reinterpret_cast<byte_t *> (node_blk->data) };
     const float *vec = node.get_vector ();
 
-    std::vector<float> &cached = m_vector_cache[slot];
-    cached.assign (vec, vec + get_dimension ());
+    return cache_vector_copy_ (slot, vec);
+  }
 
-    return cached.data ();
+  const cached_vector *
+  storage::cache_vector_copy_ (const slot_id_t &slot_id, const float *vector)
+  {
+    const uint64_t cache_key = make_vector_cache_key_ (slot_id);
+    auto it = m_vector_cache.find (cache_key);
+    if (it != m_vector_cache.end ())
+      {
+	return &it->second;
+      }
+
+    const std::size_t dim = get_dimension ();
+
+    // Quantize float vector to int8
+    float max_abs = 0.0f;
+    for (std::size_t i = 0; i < dim; ++i)
+      {
+	const float v = vector[i];
+	if (v > max_abs) max_abs = v;
+	else if (-v > max_abs) max_abs = -v;
+      }
+    const float scale = (max_abs > 0.0f) ? max_abs / 127.0f : 1.0f;
+
+    std::vector<std::int8_t> i8_buf (dim);
+    for (std::size_t i = 0; i < dim; ++i)
+      {
+	float s = vector[i] / scale;
+	if (s > 127.0f) s = 127.0f;
+	else if (s < -127.0f) s = -127.0f;
+	i8_buf[i] = static_cast<std::int8_t> (s + (s >= 0.0f ? 0.5f : -0.5f));
+      }
+
+    const float *float_ptr = append_vector_copy_ (vector);
+    const std::int8_t *i8_ptr = append_i8_copy_ (i8_buf.data ());
+
+    cached_vector cv;
+    cv.values = float_ptr;
+    cv.values_i8.values = i8_ptr;
+    cv.values_i8.scale = scale;
+
+    auto [ins_it, ok] = m_vector_cache.emplace (cache_key, cv);
+    const cached_vector *result = &ins_it->second;
+
+    // Store pointer in direct-indexed cache for O(1) future lookups.
+    // Only safe when m_vector_cache has not reallocated past its initial reservation.
+    if (m_inmem.is_active () && m_vector_cache.size () <= m_vector_cache_reserved_capacity)
+      {
+	uint32_t idx = node_idx_of_ (slot_id);
+	if (idx < static_cast<uint32_t> (m_vector_direct_cache.size ()))
+	  {
+	    m_vector_direct_cache[idx] = result;
+	  }
+      }
+
+    return result;
+  }
+
+  const float *
+  storage::append_vector_copy_ (const float *vector)
+  {
+    if (m_vector_cache_tail == nullptr)
+      {
+	m_vector_cache_blocks =
+		std::make_unique<vector_cache_block> (m_vector_cache_vector_stride_bytes,
+		    get_initial_vector_cache_block_capacity_ ());
+	m_vector_cache_tail = m_vector_cache_blocks.get ();
+      }
+
+    if (!m_vector_cache_tail->has_capacity ())
+      {
+	const std::size_t next_capacity = std::max<std::size_t> (m_vector_cache_tail->m_vector_capacity * 2,
+					  get_initial_vector_cache_block_capacity_ ());
+	m_vector_cache_tail->m_next =
+		std::make_unique<vector_cache_block> (m_vector_cache_vector_stride_bytes, next_capacity);
+	m_vector_cache_tail = m_vector_cache_tail->m_next.get ();
+      }
+
+    return m_vector_cache_tail->append (vector, get_dimension ());
+  }
+
+  const std::int8_t *
+  storage::append_i8_copy_ (const std::int8_t *data)
+  {
+    const std::size_t dim = get_dimension ();
+    const std::size_t initial_capacity = get_initial_vector_cache_block_capacity_ ();
+
+    if (m_i8_cache_tail == nullptr)
+      {
+	m_i8_cache_blocks = std::make_unique<i8_cache_block> (m_i8_cache_stride_bytes, initial_capacity);
+	m_i8_cache_tail = m_i8_cache_blocks.get ();
+      }
+
+    if (!m_i8_cache_tail->has_capacity ())
+      {
+	const std::size_t next_capacity = std::max<std::size_t> (m_i8_cache_tail->m_capacity * 2,
+					  initial_capacity);
+	m_i8_cache_tail->m_next = std::make_unique<i8_cache_block> (m_i8_cache_stride_bytes, next_capacity);
+	m_i8_cache_tail = m_i8_cache_tail->m_next.get ();
+      }
+
+    return m_i8_cache_tail->append (data, dim);
   }
 
   // promote lockmode from shared to exclusive
@@ -257,4 +500,5 @@ namespace cubhnsw
 
     return NO_ERROR;
   }
+
 }

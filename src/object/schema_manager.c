@@ -400,6 +400,7 @@ static char *sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_T
 static int sm_load_online_index (MOP classmop, const char *constraint_name);
 
 static const char *sm_locate_method_file (SM_CLASS * class_, const char *function);
+static MOP find_index_catalog (const char *index_name);
 
 #if defined (WINDOWS)
 static void sm_method_final (void);
@@ -11313,6 +11314,35 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT 
   return NO_ERROR;
 }
 
+static MOP
+find_index_catalog (const char *index_name)
+{
+  assert (index_name != NULL);
+
+  MOP db_index_class = NULL;
+  DB_VALUE value;
+  MOP db_index_inst = NULL;
+  int save;
+
+  AU_DISABLE (save);
+
+  db_index_class = db_find_class (CT_INDEX_NAME);
+  if (db_index_class == NULL)
+    {
+      assert (false);
+      goto end;
+    }
+
+  db_make_string (&value, index_name);
+  db_index_inst = db_find_unique (db_index_class, "index_name", &value);
+
+end:
+  AU_ENABLE (save);
+
+  return db_index_inst;
+}
+
+
 /*
  * allocate_foreign_key() - Allocate index for foreign key
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -11385,6 +11415,19 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT * con,
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
+    }
+
+  if (con->fk_info->index_catalog_of_ref_class == NULL)
+    {
+      SM_CLASS *ref_class = (classop == ref_clsop) ? class_ : (SM_CLASS *) ref_clsop->object;
+
+      pk = classobj_find_cons_primary_key (ref_class->constraints);
+      if (pk == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_REF_CLASS_HAS_NOT_PK, 1, sm_ch_name ((MOBJ) ref_class));
+	  return ER_FK_REF_CLASS_HAS_NOT_PK;
+	}
+      con->fk_info->index_catalog_of_ref_class = find_index_catalog (pk->name);
     }
 
   return NO_ERROR;
@@ -15781,12 +15824,13 @@ int
 sm_truncate_using_destroy_heap (MOP class_mop)
 {
   HFID *insts_hfid = NULL;
+  HFID prev_hfid;
   SM_CLASS *class_ = NULL;
-  int error = NO_ERROR;
-  bool reuse_oid = false;
-  int partition_type = DB_NOT_PARTITIONED_CLASS;
   OID *oid = NULL;
   DB_OBJLIST *subs;
+  bool reuse_oid = false;
+  int partition_type = DB_NOT_PARTITIONED_CLASS;
+  int error = NO_ERROR;
 
   oid = ws_oid (class_mop);
   assert (!OID_ISTEMP (oid));
@@ -15797,7 +15841,8 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   if (error != NO_ERROR || class_ == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      return er_errid ();
+      error = er_errid ();
+      return error;
     }
 
   error = sm_partitioned_class_type (class_mop, &partition_type, NULL, NULL);
@@ -15822,11 +15867,13 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   insts_hfid = sm_ch_heap ((MOBJ) class_);
   assert (!HFID_IS_NULL (insts_hfid));
 
+  prev_hfid = *insts_hfid;
+
   /* Destroy the heap */
   error = heap_destroy_newly_created (insts_hfid, oid, true);
   if (error != NO_ERROR)
     {
-      return error;
+      goto end;
     }
 
   HFID_SET_NULL (insts_hfid);
@@ -15835,19 +15882,27 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   error = locator_flush_class (class_mop);
   if (error != NO_ERROR)
     {
-      return error;
+      goto end;
     }
 
   /* Create a new heap */
   error = heap_create (insts_hfid, oid, reuse_oid);
   if (error != NO_ERROR)
     {
-      return error;
+      goto end;
+    }
+
+  /* Destroy and Create the lob dir if need */
+  error = locator_lob_process_dir (class_, &prev_hfid, insts_hfid);
+  if (error != NO_ERROR)
+    {
+      goto end;
     }
 
   ws_dirty (class_mop);
   error = locator_flush_class (class_mop);
 
+end:
   return error;
 }
 

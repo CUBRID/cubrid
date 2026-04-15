@@ -38,6 +38,10 @@ namespace cubhnsw
     // ===========================
     std::size_t visited_nodes {};
     std::size_t computed_distances {};
+    std::size_t computed_distances_int8 {};
+    std::size_t prefilter_checked {};
+    std::size_t prefilter_passed_to_fp32 {};
+    std::size_t prefilter_rejected {};
     std::size_t computed_distances_in_refines {};
     std::size_t computed_distances_in_reverse_refines {};
 
@@ -58,6 +62,10 @@ namespace cubhnsw
     // ===========================
     std::size_t visited_nodes_l0 {};
     std::size_t computed_distances_l0 {};
+    std::size_t computed_distances_int8_l0 {};
+    std::size_t prefilter_checked_l0 {};
+    std::size_t prefilter_passed_to_fp32_l0 {};
+    std::size_t prefilter_rejected_l0 {};
     std::size_t computed_distances_in_refines_l0 {};
     std::size_t computed_distances_in_reverse_refines_l0 {};
 
@@ -227,12 +235,20 @@ namespace cubhnsw
 
       add_stat_if_positive (PSTAT_HNSW_NUM_VISITED_NODE, visited_nodes);
       add_stat_if_positive (PSTAT_HNSW_NUM_COMPUTED_DISTANCES, computed_distances);
+      add_stat_if_positive (PSTAT_HNSW_NUM_COMPUTED_DISTANCES_INT8, computed_distances_int8);
+      add_stat_if_positive (PSTAT_HNSW_NUM_PREFILTER_CHECKED, prefilter_checked);
+      add_stat_if_positive (PSTAT_HNSW_NUM_PREFILTER_PASSED_TO_FP32, prefilter_passed_to_fp32);
+      add_stat_if_positive (PSTAT_HNSW_NUM_PREFILTER_REJECTED, prefilter_rejected);
       add_stat_if_positive (PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REFINES, computed_distances_in_refines);
       add_stat_if_positive (PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REVERSE_REFINES,
 			    computed_distances_in_reverse_refines);
 
       add_stat_if_positive (PSTAT_HNSW_NUM_VISITED_NODE_L0, visited_nodes_l0);
       add_stat_if_positive (PSTAT_HNSW_NUM_COMPUTED_DISTANCES_L0, computed_distances_l0);
+      add_stat_if_positive (PSTAT_HNSW_NUM_COMPUTED_DISTANCES_INT8_L0, computed_distances_int8_l0);
+      add_stat_if_positive (PSTAT_HNSW_NUM_PREFILTER_CHECKED_L0, prefilter_checked_l0);
+      add_stat_if_positive (PSTAT_HNSW_NUM_PREFILTER_PASSED_TO_FP32_L0, prefilter_passed_to_fp32_l0);
+      add_stat_if_positive (PSTAT_HNSW_NUM_PREFILTER_REJECTED_L0, prefilter_rejected_l0);
       add_stat_if_positive (PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REFINES_L0,
 			    computed_distances_in_refines_l0);
       add_stat_if_positive (PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REVERSE_REFINES_L0,
@@ -270,9 +286,27 @@ namespace cubhnsw
       is_perf_tracking = false;
     }
 
-    inline void on_distance_computed (bool is_perf_tracking, std::int16_t level)
+    inline void on_distance_computed (bool is_perf_tracking, std::int16_t level, bool is_int8 = false)
     {
-      add_stat (is_perf_tracking, level, computed_distances, computed_distances_l0, 1);
+      if (is_int8)
+	add_stat (is_perf_tracking, level, computed_distances_int8, computed_distances_int8_l0, 1);
+      else
+	add_stat (is_perf_tracking, level, computed_distances, computed_distances_l0, 1);
+    }
+
+    inline void on_prefilter_checked (bool is_perf_tracking, std::int16_t level)
+    {
+      add_stat (is_perf_tracking, level, prefilter_checked, prefilter_checked_l0, 1);
+    }
+
+    inline void on_prefilter_passed_to_fp32 (bool is_perf_tracking, std::int16_t level)
+    {
+      add_stat (is_perf_tracking, level, prefilter_passed_to_fp32, prefilter_passed_to_fp32_l0, 1);
+    }
+
+    inline void on_prefilter_rejected (bool is_perf_tracking, std::int16_t level)
+    {
+      add_stat (is_perf_tracking, level, prefilter_rejected, prefilter_rejected_l0, 1);
     }
 
     inline void on_entrypoint_updated (bool is_perf_tracking)

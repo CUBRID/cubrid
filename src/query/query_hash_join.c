@@ -23,6 +23,7 @@
 #include "query_hash_join.h"
 
 #include "dbtype.h"		/* db_make_null */
+#include "error_manager.h"	/* er_errid, NO_ERROR, assert_release_error */
 #include "fetch.h"		/* fetch_val_list */
 #include "list_file.h"		/* qfile_open_list, qfile_close_list */
 #include "memory_alloc.h"	/* CEIL_PTVDIV */
@@ -30,9 +31,11 @@
 #include "perf_monitor.h"	/* perfmon_get_from_statistic, PSTAT_... */
 #include "px_hash_join.hpp"	/* parallel_query::hash_join::... */
 #include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
+#include "px_worker_manager.hpp"	/* parallel_query::worker_manager */
 #include "query_list.h"		/* JOIN_TYPE */
 #include "query_manager.h"	/* QMGR_TEMP_FILE */
 #include "system_parameter.h"	/* prm_get_bigint_value, PRM_ID_... */
+#include "thread_entry.hpp"	/* THREAD_ENTRY */
 #include "xasl.h"		/* XASL_NODE, HASHJOIN_PROC_NODE */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -846,7 +849,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   manager->qlist_flag =
     (manager->qlist_merge_method == HASHJOIN_MERGE_CONNECT) ? QFILE_FLAG_ALL | QFILE_NOT_USE_MEMBUF : QFILE_FLAG_ALL;
 
-  assert (manager->px_worker_pool_manager == NULL);
+  assert (manager->px_worker_manager == NULL);
 
   /* stats_group */
   if (thread_is_on_trace (thread_p))
@@ -924,12 +927,10 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
     }
 
 #if defined (SERVER_MODE)
-  if (manager->px_worker_pool_manager != NULL)
+  if (manager->px_worker_manager != NULL)
     {
-      // *INDENT-OFF*
-      manager->px_worker_pool_manager->~worker_pool_manager();
-      // *INDENT-ON*
-      db_private_free_and_init (thread_p, manager->px_worker_pool_manager);
+      manager->px_worker_manager->release_workers ();
+      manager->px_worker_manager = NULL;
     }
 
   if (manager->px_worker_stats != NULL)
@@ -937,10 +938,10 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
       db_private_free_and_init (thread_p, manager->px_worker_stats);
     }
 
-  THREAD_ENTRY *parent_thread_p = thread_p->m_px_orig_thread_entry;
+  THREAD_ENTRY *main_thread_p = thread_get_main_thread (thread_p);
 
   /* only top-level parent */
-  if (parent_thread_p == NULL || parent_thread_p == thread_p)
+  if (main_thread_p == thread_p)
     {
       if (thread_p->m_px_stats != NULL && !thread_p->m_uses_px_stats)
 	{
@@ -949,7 +950,7 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 	}
     }
 #else
-  assert (manager->px_worker_pool_manager == NULL);
+  assert (manager->px_worker_manager == NULL);
   assert (manager->px_worker_stats == NULL);
   assert (thread_p->m_px_stats == NULL);
 #endif /* defined (SERVER_MODE) */
@@ -1254,15 +1255,13 @@ cleanup:
 
 error_exit:
 #if defined (SERVER_MODE)
-  if (manager->px_worker_pool_manager != NULL)
+  if (manager->px_worker_manager != NULL)
     {
-      // *INDENT-OFF*
-      manager->px_worker_pool_manager->~worker_pool_manager();
-      // *INDENT-ON*
-      db_private_free_and_init (thread_p, manager->px_worker_pool_manager);
+      manager->px_worker_manager->release_workers ();
+      manager->px_worker_manager = NULL;
     }
 #else
-  assert (manager->px_worker_pool_manager == NULL);
+  assert (manager->px_worker_manager == NULL);
 #endif /* defined (SERVER_MODE) */
 
   hjoin_clear_split_info (thread_p, manager, &split_info, true);
@@ -1956,9 +1955,7 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
   QFILE_LIST_ID *outer_list_id, *inner_list_id;
   INT64 min_page_cnt;
 
-  THREAD_ENTRY *main_thread_p = NULL;
-  void *raw_memory = NULL;
-  parallel_query::hash_join::worker_pool_manager * px_worker_pool_manager = NULL;
+  parallel_query::worker_manager * px_worker_manager = NULL;
   UINT64 *px_worker_stats = NULL;
 
   assert (thread_p != NULL);
@@ -1989,85 +1986,66 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
   if (manager->num_parallel_threads < 2)
     {
       /* try single-thread hash join */
-      assert (manager->px_worker_pool_manager == NULL);
+      assert (manager->num_parallel_threads == 0);
+      assert (manager->px_worker_manager == NULL);
       return HASHJOIN_STATUS_PARTITION;
     }
 
   manager->num_parallel_threads = MIN (manager->num_parallel_threads, manager->context_cnt /* part_cnt */ );
 
-  main_thread_p = (thread_p->m_px_orig_thread_entry == NULL) ? thread_p : thread_p->m_px_orig_thread_entry;
-
-  // *INDENT-OFF*
-  raw_memory = db_private_alloc (thread_p, sizeof (parallel_query::hash_join::worker_pool_manager));
-  // *INDENT-ON*
-  if (raw_memory != NULL)
+  px_worker_manager = parallel_query::worker_manager::try_reserve_workers (manager->num_parallel_threads);
+  if (px_worker_manager == NULL)
     {
-      try
-      {
-	/* placement new */
-#undef new
-	// *INDENT-OFF*
-	px_worker_pool_manager = new (raw_memory) parallel_query::hash_join::worker_pool_manager(*main_thread_p);
-	// *INDENT-ON*
-#define new new(__FILE__, __LINE__)
+      goto error_exit;
+    }
 
-	if (!px_worker_pool_manager->try_reserve_workers (manager->num_parallel_threads))
-	  {
-	    throw std::runtime_error ("worker_pool_manager::try_reserve_workers failed");
-	  }
+  /* update to actual reserved workers */
+  manager->num_parallel_threads = px_worker_manager->get_reserved_workers ();
 
-	assert (px_worker_pool_manager->get_worker_pool () != NULL);
+  if (thread_is_on_trace (thread_p))
+    {
+      px_worker_stats = (UINT64 *) db_private_alloc (thread_p, manager->num_parallel_threads * stats_size);
+      if (px_worker_stats == NULL)
+	{
+	  assert_release_error (er_errid () != NO_ERROR);
+	  goto error_exit;
+	}
+      memset (px_worker_stats, 0, manager->num_parallel_threads * stats_size);
 
-	if (thread_is_on_trace (thread_p))
-	  {
-	    px_worker_stats = (UINT64 *) db_private_alloc (thread_p, manager->num_parallel_threads * stats_size);
-	    if (px_worker_stats == NULL)
-	      {
-		assert_release_error (er_errid () != NO_ERROR);
-		throw std::runtime_error ("db_private_alloc failed");
-	      }
-	    memset (px_worker_stats, 0, manager->num_parallel_threads * stats_size);
+      /* only top-level parent */
+      if (thread_p->m_px_stats == NULL)
+	{
+	  thread_p->m_px_stats = perfmon_allocate_values ();
+	  if (thread_p->m_px_stats == NULL)
+	    {
+	      assert_release_error (er_errid () != NO_ERROR);
+	      goto error_exit;
+	    }
+	  memset (thread_p->m_px_stats, 0, stats_size);
+	}
 
-	    /* only top-level parent */
-	    if (thread_p->m_px_stats == NULL)
-	      {
-		thread_p->m_px_stats = perfmon_allocate_values ();
-		if (thread_p->m_px_stats == NULL)
-		  {
-		    assert_release_error (er_errid () != NO_ERROR);
-		    throw std::runtime_error ("malloc failed");
-		  }
-		memset (thread_p->m_px_stats, 0, stats_size);
-	      }
-
-	    manager->px_worker_stats = px_worker_stats;
-	  }
-	else
-	  {
-	    assert (manager->px_worker_stats == NULL);
-	  }
-
-	manager->px_worker_pool_manager = px_worker_pool_manager;
-
-	return HASHJOIN_STATUS_PARALLEL;
-      }
-      catch ( ...)
-      {
-	if (px_worker_pool_manager != NULL)
-	  {
-	    px_worker_pool_manager->~worker_pool_manager ();
-	  }
-	db_private_free_and_init (thread_p, raw_memory);
-
-	if (px_worker_stats != NULL)
-	  {
-	    db_private_free_and_init (thread_p, px_worker_stats);
-	  }
-      }
+      manager->px_worker_stats = px_worker_stats;
     }
   else
     {
-      assert_release_error (er_errid () != NO_ERROR);
+      assert (manager->px_worker_stats == NULL);
+    }
+
+  manager->px_worker_manager = px_worker_manager;
+
+  return HASHJOIN_STATUS_PARALLEL;
+
+error_exit:
+  manager->num_parallel_threads = 0;
+
+  if (px_worker_manager != NULL)
+    {
+      px_worker_manager->release_workers ();
+    }
+
+  if (px_worker_stats != NULL)
+    {
+      db_private_free_and_init (thread_p, px_worker_stats);
     }
 
   if (er_errid () == ER_INTERRUPTED)
@@ -2231,7 +2209,7 @@ hjoin_init_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
   part_cnt = manager->context_cnt;
   assert (part_cnt > 1);
 
-  if (manager->px_worker_pool_manager != NULL)
+  if (manager->px_worker_manager != NULL)
     {
       assert (shared_info->part_mutexes == NULL);
 
@@ -2245,13 +2223,7 @@ hjoin_init_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
       {
 	for (part_index = 0; part_index < part_cnt; part_index++)
 	  {
-	    /* placement new */
-#undef new
-	    // *INDENT-OFF*
-	    new (&shared_info->part_mutexes[part_index]) std::mutex ();
-	    // *INDENT-ON*
-#define new new(__FILE__, __LINE__)
-
+	    placement_new < std::mutex > (&shared_info->part_mutexes[part_index]);
 	    ++init_cnt;
 	  }
       }
@@ -2269,9 +2241,9 @@ error_exit:
     {
       for (part_index = 0; part_index < init_cnt; part_index++)
 	{
-      // *INDENT-OFF*
-      shared_info->part_mutexes[part_index].~mutex ();
-      // *INDENT-ON*
+	  // *INDENT-OFF*
+	  shared_info->part_mutexes[part_index].~mutex ();
+	  // *INDENT-ON*
 	}
       db_private_free_and_init (thread_p, shared_info->part_mutexes);
     }

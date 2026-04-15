@@ -111,6 +111,8 @@
 #define BOOT_FORMAT_MAX_LENGTH	500
 #define BOOTSR_MAX_LINE	 500
 
+#define BOOT_LOB_TEMP_DIR_KEYWORD "ces"
+
 typedef struct boot_dbparm BOOT_DB_PARM;
 struct boot_dbparm
 {
@@ -550,9 +552,9 @@ xboot_add_volume_extension (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * ext_in
 {
   VOLID volid;
 
-  if (disk_add_volume_extension (thread_p, ext_info->purpose, ext_info->max_npages, ext_info->path, ext_info->name,
-				 ext_info->comments, ext_info->max_writesize_in_sec, ext_info->overwrite, &volid)
-      != NO_ERROR)
+  if (disk_add_volume_extension
+      (thread_p, ext_info->purpose, ext_info->voltype, ext_info->max_npages, ext_info->path, ext_info->name,
+       ext_info->comments, ext_info->max_writesize_in_sec, ext_info->overwrite, &volid) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return NULL_VOLID;
@@ -874,8 +876,8 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
 	}
 
       error_code =
-	disk_add_volume_extension (thread_p, ext_purpose, ext_npages, ext_path, ext_name, ext_comments, 0, false,
-				   &volid);
+	disk_add_volume_extension (thread_p, ext_purpose, DB_PERMANENT_VOLTYPE, ext_npages, ext_path, ext_name,
+				   ext_comments, 0, false, &volid);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -2406,8 +2408,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined(SERVER_MODE)
-  pgbuf_daemons_init ();
-  dwb_daemons_init ();
+  if (!PRM_TEST_DISABLE_ALL_DAEMONS)
+    {
+      pgbuf_daemons_init ();
+      dwb_daemons_init ();
+    }
   parallel_query::worker_manager_global::get_manager ().init ();
 #endif /* SERVER_MODE */
 
@@ -2425,9 +2430,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined(SERVER_MODE)
-  BO_ENABLE_FLUSH_DAEMONS ();
-
-  cdc_daemons_init ();
+  if (!PRM_TEST_DISABLE_ALL_DAEMONS)
+    {
+      BO_ENABLE_FLUSH_DAEMONS ();
+      cdc_daemons_init ();
+    }
 #endif /* SERVER_MODE */
 
   // after recovery we can boot vacuum
@@ -2562,6 +2569,15 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   if (boot_Lob_path[0] != '\0')
     {
       error_code = es_init (boot_Lob_path);
+
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      /* remove lob ces temp dir */
+      error_code = fileio_lob_remove_matching_dir (BOOT_LOB_TEMP_DIR_KEYWORD);
+
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -3058,6 +3074,9 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   session_states_finalize (thread_p);
 
   (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
+
+  /* remove lob ces temp dir */
+  (void) fileio_lob_remove_matching_dir (BOOT_LOB_TEMP_DIR_KEYWORD);
 
   // ha delays are registered and logged, and must be stopped before vacuum master
   log_stop_ha_delay_registration ();
@@ -5242,6 +5261,12 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
       boot_server_status (BOOT_SERVER_UP);
       log_final (thread_p);
 
+      /* remove lob ces temp dir */
+      error_code = fileio_lob_remove_matching_dir (BOOT_LOB_TEMP_DIR_KEYWORD);
+      if (error_code != NO_ERROR)
+	{
+	  goto error_rem_allvols;
+	}
     }
 
   /* Now delete the database */

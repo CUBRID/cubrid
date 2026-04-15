@@ -41,7 +41,7 @@
 #include "error_code.h"
 #include "error_manager.h"
 #include "system_parameter.h"
-#include "connection_cl.h"
+#include "client_support.h"
 #include "util_func.h"
 #include "util_support.h"
 
@@ -994,7 +994,7 @@ process_master (int command_type)
     case START:
       {
 	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_MASTER_NAME, PRINT_CMD_START);
-	if (!css_does_master_exist (master_port))
+	if (!__gv_cvar.css_does_master_exist (master_port))
 	  {
 	    const char *args[] = { UTIL_MASTER_NAME, NULL };
 
@@ -1023,7 +1023,7 @@ process_master (int command_type)
 		sleep (1);
 		waited_seconds++;
 
-		status = css_does_master_exist (master_port) ? NO_ERROR : ER_GENERIC_ERROR;
+		status = __gv_cvar.css_does_master_exist (master_port) ? NO_ERROR : ER_GENERIC_ERROR;
 	      }
 
 	    if (status != NO_ERROR)
@@ -1045,12 +1045,12 @@ process_master (int command_type)
       break;
     case STOP:
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_MASTER_NAME, PRINT_CMD_STOP);
-      if (css_does_master_exist (master_port))
+      if (__gv_cvar.css_does_master_exist (master_port))
 	{
 	  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_ALL_STOP, NULL };
 	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
 
-	  status = css_does_master_exist (master_port) ? ER_GENERIC_ERROR : NO_ERROR;
+	  status = __gv_cvar.css_does_master_exist (master_port) ? ER_GENERIC_ERROR : NO_ERROR;
 
 	  print_result (PRINT_MASTER_NAME, status, command_type);
 	}
@@ -1168,7 +1168,7 @@ check_all_services_status (unsigned int sleep_time, UTIL_ALL_SERVICES_STATUS exp
 
   master_port = prm_get_master_port_id ();
   /* check whether cub_master is running */
-  ret = css_does_master_exist (master_port);
+  ret = __gv_cvar.css_does_master_exist (master_port);
   if ((expected_status == ALL_SERVICES_RUNNING && !ret) || (expected_status == ALL_SERVICES_STOPPED && ret))
     {
       return false;
@@ -1394,7 +1394,7 @@ process_service (int command_type, bool process_window_service)
       break;
     case STATUS:
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_MASTER_NAME, PRINT_CMD_STATUS);
-      if (css_does_master_exist (prm_get_master_port_id ()))
+      if (__gv_cvar.css_does_master_exist (prm_get_master_port_id ()))
 	{
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S, PRINT_MASTER_NAME);
 	}
@@ -1564,7 +1564,7 @@ check_server (const char *type, const char *server_name)
 static bool
 is_server_running (const char *type, const char *server_name, int pid)
 {
-  if (!css_does_master_exist (prm_get_master_port_id ()))
+  if (!__gv_cvar.css_does_master_exist (prm_get_master_port_id ()))
     {
       return false;
     }
@@ -1719,7 +1719,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 	}
       else
 	{
-	  if (!css_does_master_exist (master_port))
+	  if (!__gv_cvar.css_does_master_exist (master_port))
 	    {
 	      status = process_master (command_type);
 	      if (status != NO_ERROR)
@@ -1847,7 +1847,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
       break;
     case STATUS:
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_SERVER_NAME, PRINT_CMD_STATUS);
-      if (css_does_master_exist (master_port))
+      if (__gv_cvar.css_does_master_exist (master_port))
 	{
 	  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_SERVER_STATUS, NULL };
 	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
@@ -2979,7 +2979,7 @@ process_pl (int command_type, int argc, const char **argv, bool show_usage, bool
   if (argc == 0)		/* cubrid service command */
     {
       /* get all server names from master request */
-      if (css_does_master_exist (master_port))
+      if (__gv_cvar.css_does_master_exist (master_port))
 	{
 	  const char *server_type = (ha_mode) ? CHECK_HA_SERVER : CHECK_SERVER;
 	  get_server_names (server_type, &buf);
@@ -4561,7 +4561,7 @@ process_heartbeat_start (HA_CONF * ha_conf, int argc, const char **argv)
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HEARTBEAT_NAME, PRINT_CMD_START);
 
   master_port = prm_get_master_port_id ();
-  if (!css_does_master_exist (master_port))
+  if (!__gv_cvar.css_does_master_exist (master_port))
     {
       status = process_master (START);
 
@@ -4571,7 +4571,7 @@ process_heartbeat_start (HA_CONF * ha_conf, int argc, const char **argv)
 	}
     }
 
-  if (css_does_master_exist (master_port))
+  if (__gv_cvar.css_does_master_exist (master_port))
     {
       const char *args[] = {
 	UTIL_COMMDB_NAME, COMMDB_HA_ACTIVATE, NULL
@@ -4660,7 +4660,7 @@ process_heartbeat_stop (HA_CONF * ha_conf, int argc, const char **argv)
     }
 
   master_port = prm_get_master_port_id ();
-  if (remote_host_name[0] != '\0' || css_does_master_exist (master_port) == true)
+  if (remote_host_name[0] != '\0' || __gv_cvar.css_does_master_exist (master_port) == true)
     {
       if (db_name[0] != '\0')
 	{
@@ -4740,7 +4740,7 @@ process_heartbeat_deregister (int argc, const char **argv)
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_HEARTBEAT_NAME, PRINT_CMD_DEREG, pid);
 
   master_port = prm_get_master_port_id ();
-  if (css_does_master_exist (master_port))
+  if (__gv_cvar.css_does_master_exist (master_port))
     {
       const char *commdb_argv[] = {
 	UTIL_COMMDB_NAME, COMMDB_HA_DEREG_BY_PID, pid, NULL
@@ -4827,7 +4827,7 @@ process_heartbeat_status (int argc, const char **argv)
   else
     {
       master_port = prm_get_master_port_id ();
-      if (css_does_master_exist (master_port) == false)
+      if (__gv_cvar.css_does_master_exist (master_port) == false)
 	{
 	  status = ER_GENERIC_ERROR;
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_MASTER_NAME);
@@ -4885,7 +4885,7 @@ process_heartbeat_reload (int argc, const char **argv)
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HEARTBEAT_NAME, PRINT_CMD_RELOAD);
 
   master_port = prm_get_master_port_id ();
-  if (css_does_master_exist (master_port))
+  if (__gv_cvar.css_does_master_exist (master_port))
     {
       const char *args[] = {
 	UTIL_COMMDB_NAME, COMMDB_HA_RELOAD, NULL
@@ -5013,7 +5013,7 @@ process_heartbeat_replication (HA_CONF * ha_conf, int argc, const char **argv)
     }
 
   master_port = prm_get_master_port_id ();
-  if (css_does_master_exist (master_port))
+  if (__gv_cvar.css_does_master_exist (master_port))
     {
       const char *args[] = {
 	UTIL_COMMDB_NAME, COMMDB_HA_ACTIVATE, NULL

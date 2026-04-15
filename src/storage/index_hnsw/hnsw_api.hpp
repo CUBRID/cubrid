@@ -42,7 +42,11 @@ class hnsw_index;
 
 /* Maximum Alignment */
 #define HNSW_MAX_ALIGN INT_ALIGNMENT
-#define HEADER 0
+#define HNSW_HEADER_NUM 0
+
+// Maximum supported M (connectivity) for stack-allocated neighbor buffers.
+// M=64 -> max neighbors per level-0 node = 2*64 = 128.
+static constexpr std::size_t HNSW_MAX_M = 64;
 
 typedef struct hnsw_header HNSW_HEADER;
 

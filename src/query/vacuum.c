@@ -1331,7 +1331,7 @@ vacuum_boot (THREAD_ENTRY * thread_p)
   // create thread pool
   vacuum_Worker_threads =
     thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT),
-					VACUUM_MAX_TASKS_IN_WORKER_POOL, "vacuum workers",
+					VACUUM_MAX_TASKS_IN_WORKER_POOL, "vacuum",
 					vacuum_Worker_context_manager, 1, log_vacuum_worker_pool);
   assert (vacuum_Worker_threads != NULL);
 
@@ -1340,7 +1340,7 @@ vacuum_boot (THREAD_ENTRY * thread_p)
 
   // create vacuum master thread
   vacuum_Master_daemon =
-    thread_manager->create_daemon (looper, new vacuum_master_task (), "vacuum_master", vacuum_Master_context_manager);
+    thread_manager->create_daemon (looper, new vacuum_master_task (), "vacuum-master", vacuum_Master_context_manager);
 
   /* *INDENT-ON* */
 #endif /* SERVER_MODE */
@@ -3735,7 +3735,10 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
   if (vacuum_Finished_job_queue->is_half_full ())
     {
       /* Wakeup master to process finished jobs. */
-      vacuum_Master_daemon->wakeup ();
+      if (vacuum_Master_daemon != NULL)
+	{
+	  vacuum_Master_daemon->wakeup ();
+	}
     }
 #endif /* SERVER_MODE */
 }

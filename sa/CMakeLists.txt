@@ -130,6 +130,10 @@ set(BASE_SOURCES
   ${BASE_DIR}/tz_compile.c
   ${BASE_DIR}/tz_support.c
   ${BASE_DIR}/ddl_log.c
+  ${BASE_DIR}/ifsys.cpp
+  ${BASE_DIR}/filesys_parser.cpp
+  ${BASE_DIR}/cgroup.cpp
+  ${BASE_DIR}/resources.cpp
   )
 set(BASE_HEADERS
   ${BASE_DIR}/compressor.hpp
@@ -166,7 +170,11 @@ set(BASE_HEADERS
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/fixed_size_allocator.hpp
-)
+  ${BASE_DIR}/ifsys.hpp
+  ${BASE_DIR}/filesys_parser.hpp
+  ${BASE_DIR}/cgroup.hpp
+  ${BASE_DIR}/resources.hpp
+  )
 
 set(HEAPLAYER_SOURCES
   ${HEAPLAYERS_DIR}/customheaps.cpp
@@ -174,13 +182,17 @@ set(HEAPLAYER_SOURCES
   )
 
 set(CONNECTION_SOURCES
-  ${CONNECTION_DIR}/connection_less.c
-  ${CONNECTION_DIR}/connection_cl.c
+  ${CONNECTION_DIR}/connection_less.cpp
+  ${CONNECTION_DIR}/connection_cl.cpp
   ${CONNECTION_DIR}/connection_globals.c
-  ${CONNECTION_DIR}/connection_list_cl.c
-  ${CONNECTION_DIR}/client_support.c
-  ${CONNECTION_DIR}/connection_support.c
+  ${CONNECTION_DIR}/connection_list_cl.cpp
+  ${CONNECTION_DIR}/client_support.cpp
+  ${CONNECTION_DIR}/connection_support.cpp
   ${CONNECTION_DIR}/host_lookup.c
+  )
+
+set(CONNECTION_HEADERS
+  ${CONNECTION_DIR}/connection_support.hpp
   )
 
 set(COMMUNICATION_SOURCES
@@ -522,6 +534,7 @@ set(STORAGE_SOURCES
   ${INDEX_HNSW_DIR}/hnsw.cpp
   ${INDEX_HNSW_DIR}/hnsw_api.cpp
   ${INDEX_HNSW_DIR}/hnsw_storage.cpp
+  ${INDEX_HNSW_DIR}/hnsw_inmem_block.cpp
   )
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/btree_unique.hpp
@@ -532,17 +545,40 @@ set(STORAGE_HEADERS
   ${INDEX_HNSW_DIR}/hnsw_api.hpp
 )
 
-if(USE_SIMD_NATIVE)
+# Select intrinsics implementation based on detected ISA.
+# One file is compiled per build — no runtime dispatch, no #if guards inside.
+if(CXX_AVX512_FOUND)
+  set(VECTOR_INTRINSICS_FILE ${INDEX_HNSW_DIR}/vector_distance_intrinsics_avx512.cpp)
+  set(VECTOR_INTRINSICS_ISA_FLAGS "${CXX_AVX512_FLAGS}")
+elseif(CXX_AVX2_FOUND)
+  set(VECTOR_INTRINSICS_FILE ${INDEX_HNSW_DIR}/vector_distance_intrinsics_avx2.cpp)
+  set(VECTOR_INTRINSICS_ISA_FLAGS "${CXX_AVX2_FLAGS}")
+else()
+  set(VECTOR_INTRINSICS_FILE ${INDEX_HNSW_DIR}/vector_distance_intrinsics_fallback.cpp)
+  set(VECTOR_INTRINSICS_ISA_FLAGS "")
+endif()
+list(APPEND STORAGE_SOURCES ${VECTOR_INTRINSICS_FILE})
 
+if(USE_SIMD_NATIVE)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set_source_files_properties(${QUERY_DIR}/vector_opfunc.cpp ${INDEX_HNSW_DIR}/vector_distance_omp_simd.cpp
         PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-ftree-vectorize;-mprefer-vector-width=512;-fopenmp-simd;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
+    )
+    set_source_files_properties(${VECTOR_INTRINSICS_FILE}
+        PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
     )
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set_source_files_properties(${QUERY_DIR}/vector_opfunc.cpp ${INDEX_HNSW_DIR}/vector_distance_omp_simd.cpp
         PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-fvectorize;-mprefer-vector-width=512;-fopenmp-simd;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
     )
+    set_source_files_properties(${VECTOR_INTRINSICS_FILE}
+        PROPERTIES COMPILE_OPTIONS "-march=native;-O3;-ffast-math;-fno-trapping-math;-funroll-loops;-fassociative-math;-fno-signed-zeros"
+    )
   endif()
+elseif(VECTOR_INTRINSICS_ISA_FLAGS)
+  set_source_files_properties(${VECTOR_INTRINSICS_FILE}
+      PROPERTIES COMPILE_OPTIONS "${VECTOR_INTRINSICS_ISA_FLAGS};-O3;-ffast-math;-fno-trapping-math;-funroll-loops"
+  )
 endif()
 
 set(SESSION_SOURCES
@@ -694,6 +730,7 @@ add_library(cubridsa SHARED
   ${COMPAT_SOURCES}
   ${COMPAT_SOURCES_C}
   ${CONNECTION_SOURCES}
+  ${CONNECTION_HEADERS}
   ${CONNECTION_TCP_SOURCE}
   ${DEBUGGING_HEADERS}
   ${ES_SOURCES}

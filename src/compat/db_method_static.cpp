@@ -709,6 +709,7 @@ au_login_method (MOP class_mop, DB_VALUE *returnval, DB_VALUE *user, DB_VALUE *p
   if (error == NO_ERROR)
     {
       user_name = db_get_user_name ();
+      tm_Tran_invalidate_snapshot = 1;
       error = clogin_user (user_name);
 
       if (error == NO_ERROR)

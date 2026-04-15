@@ -79,7 +79,7 @@
 #include "db_date.h"
 #include "fault_injection.h"
 #if defined (SA_MODE)
-#include "connection_support.h"
+#include "connection_support.hpp"
 #endif /* defined (SA_MODE) */
 #include "db_value_printer.hpp"
 #include "mem_block.hpp"
@@ -1376,7 +1376,10 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * As we parallelize the log recovery redo process, this flush operation can also run in multiple threads.
        * To prevent this, daemons performing the flush should be activated to flush the pages in single thread.
        * If recovery is not being performed, these daemons will run after completing the log_initialize () */
-      BO_ENABLE_FLUSH_DAEMONS ();
+      if (!PRM_TEST_DISABLE_ALL_DAEMONS)
+	{
+	  BO_ENABLE_FLUSH_DAEMONS ();
+	}
 #endif /* SERVER_MODE */
       log_recovery (thread_p, ismedia_crash, stopat);
     }
@@ -10407,7 +10410,7 @@ log_checkpoint_daemon_init ()
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (log_checkpoint_execute);
 
   // create checkpoint daemon thread
-  log_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log_checkpoint");
+  log_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log-checkpoint");
 }
 #endif /* SERVER_MODE */
 
@@ -10430,8 +10433,7 @@ log_remove_log_archive_daemon_init ()
   cubthread::looper looper = cubthread::looper (setup_period_function);
 
   // create log archive remover daemon thread
-  log_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                            "log_remove_log_archive");
+  log_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log-rm-archive");
 }
 #endif /* SERVER_MODE */
 
@@ -10447,7 +10449,7 @@ log_clock_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (200));
   log_Clock_daemon =
     cubthread::get_manager ()->create_daemon (looper, new cubthread::entry_callable_task (log_clock_execute),
-                                              "log_clock");
+                                              "log-clock");
 }
 #endif /* SERVER_MODE */
 
@@ -10470,8 +10472,7 @@ log_check_ha_delay_info_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::seconds (1));
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (log_check_ha_delay_info_execute);
 
-  log_Check_ha_delay_info_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                             "log_check_ha_delay_info");
+  log_Check_ha_delay_info_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "ha-delay-check");
 }
 #endif /* SERVER_MODE */
 
@@ -10487,7 +10488,7 @@ log_flush_daemon_init ()
   cubthread::looper looper = cubthread::looper (log_get_log_group_commit_interval);
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (log_flush_execute);
 
-  log_Flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log_flush");
+  log_Flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log-flush");
 }
 #endif /* SERVER_MODE */
 
@@ -10498,6 +10499,11 @@ log_flush_daemon_init ()
 static void
 log_daemons_init ()
 {
+  if (PRM_TEST_DISABLE_ALL_DAEMONS)
+    {
+      return;
+    }
+
   log_remove_log_archive_daemon_init ();
   log_checkpoint_daemon_init ();
   log_check_ha_delay_info_daemon_init ();
@@ -14031,13 +14037,18 @@ cdc_loginfo_producer_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10)); /* 주석 처리  */
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (cdc_loginfo_producer_execute);
 
-  cdc_Loginfo_producer_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "cdc_loginfo_producer"); 
+  cdc_Loginfo_producer_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "cdc-loginfo-producer"); 
   /* *INDENT-ON* */
 }
 
 void
 cdc_daemons_init ()
 {
+  if (PRM_TEST_DISABLE_ALL_DAEMONS)
+    {
+      return;
+    }
+
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 0)
     {
       return;
