@@ -17,35 +17,37 @@
  */
 
 /*
- * px_heap_scan_task.hpp - derived from cubthread::entry_task
+ * px_scan_task.hpp - derived from cubthread::entry_task
  */
 
-#ifndef _PX_HEAP_SCAN_TASK_HPP_
-#define _PX_HEAP_SCAN_TASK_HPP_
+#ifndef _PX_SCAN_TASK_HPP_
+#define _PX_SCAN_TASK_HPP_
 
 #include "query_manager.h"
 #include "query_executor.h"
 #include "thread_entry_task.hpp"
-#include "px_heap_scan_slot_iterator.hpp"
-#include "px_heap_scan_result_handler.hpp"
-#include "px_heap_scan_input_handler_ftabs.hpp"
-#include "px_heap_scan_trace_handler.hpp"
+#include "px_scan_slot_iterator.hpp"
+#include "px_scan_result_handler.hpp"
+#include "px_scan_input_handler_ftabs.hpp"
+#include "px_scan_trace_handler.hpp"
 #include "px_interrupt.hpp"
 #include "px_worker_manager.hpp"
-#include "px_heap_scan_join_info.hpp"
+#include "px_scan_join_info.hpp"
+#include "px_scan_type.hpp"
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
-  template <RESULT_TYPE result_type>
+  template <RESULT_TYPE result_type, SCAN_TYPE ST = SCAN_TYPE::HEAP>
   class task : public cubthread::entry_task
   {
       using interrupt = parallel_query::interrupt;
       using err_messages_with_lock = parallel_query::err_messages_with_lock;
       using worker_manager = parallel_query::worker_manager;
-      using input_handler = parallel_heap_scan::input_handler_ftabs;
+      using input_handler_t = typename scan_traits<ST>::input_handler_type;
+      using slot_iterator_t = typename scan_traits<ST>::slot_iterator_type;
     public:
       task (THREAD_ENTRY *parent_thread_p, QMGR_QUERY_ENTRY *query_entry, result_handler<result_type> *result_handler,
-	    input_handler *input_handler,
+	    input_handler_t *input_handler,
 	    interrupt *interrupt, err_messages_with_lock *err_messages, val_descr *vd, trace_handler *trace_handler,
 	    worker_manager *worker_manager, int xasl_id, HFID hfid, OID cls_oid, bool is_fixed, bool is_grouped,
 	    bool uses_xasl_clone, XASL_NODE *orig_xasl, join_info *join_info)
@@ -103,10 +105,10 @@ namespace parallel_heap_scan
       XASL_NODE *m_xasl;
       SCAN_ID *m_scan_id;
       /* execution info */
-      slot_iterator m_slot_iterator;
+      slot_iterator_t m_slot_iterator;
       result_handler<result_type> *m_result_handler;
       RESULT_TYPE m_result_type;
-      input_handler *m_input_handler;
+      input_handler_t *m_input_handler;
       interrupt *m_interrupt;
       err_messages_with_lock *m_err_messages;
       trace_handler *m_trace_handler;
@@ -133,4 +135,4 @@ namespace parallel_heap_scan
   };
 }
 
-#endif /*_PX_HEAP_SCAN_TASK_HPP_ */
+#endif /*_PX_SCAN_TASK_HPP_ */

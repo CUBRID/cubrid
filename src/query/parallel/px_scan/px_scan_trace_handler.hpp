@@ -17,21 +17,21 @@
  */
 
 /*
- * px_heap_scan_trace_handler.hpp
+ * px_scan_trace_handler.hpp
  */
 
-#ifndef _PX_HEAP_SCAN_TRACE_HANDLER_HPP_
-#define _PX_HEAP_SCAN_TRACE_HANDLER_HPP_
+#ifndef _PX_SCAN_TRACE_HANDLER_HPP_
+#define _PX_SCAN_TRACE_HANDLER_HPP_
 
 #include "system.h"
 #include <vector>
 #include "thread_entry.hpp"
 #include "scan_manager.h"
 #include "jansson.h"
-#include "px_heap_scan_result_type.hpp"
+#include "px_scan_result_type.hpp"
 
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
   struct child_stats
   {
@@ -92,4 +92,4 @@ namespace parallel_heap_scan
   };
 }
 
-#endif /*_PX_HEAP_SCAN_TRACE_HANDLER_HPP_ */
+#endif /*_PX_SCAN_TRACE_HANDLER_HPP_ */

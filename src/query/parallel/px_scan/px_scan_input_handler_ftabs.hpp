@@ -17,17 +17,17 @@
  */
 
 /*
- * px_heap_scan_input_handler_ftabs.hpp
+ * px_scan_input_handler_ftabs.hpp
  */
 
-#ifndef _PX_HEAP_SCAN_INPUT_HANDLER_FTABS_HPP_
-#define _PX_HEAP_SCAN_INPUT_HANDLER_FTABS_HPP_
+#ifndef _PX_SCAN_INPUT_HANDLER_FTABS_HPP_
+#define _PX_SCAN_INPUT_HANDLER_FTABS_HPP_
 
-#include "px_heap_scan_ftab_set.hpp"
+#include "px_scan_ftab_set.hpp"
 #include "px_interrupt.hpp"
 #include "scan_manager.h"
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
   class input_handler_ftabs
   {
@@ -61,4 +61,4 @@ namespace parallel_heap_scan
   };
 }
 
-#endif /*_PX_HEAP_SCAN_INPUT_HANDLER_FTABS_HPP_ */
+#endif /*_PX_SCAN_INPUT_HANDLER_FTABS_HPP_ */

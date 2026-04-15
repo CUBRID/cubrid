@@ -33,7 +33,7 @@
 #include "lock_table.h"		// lock_to_lockmode_string
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
-#include "px_heap_scan_trace_handler.hpp"
+#include "px_scan_trace_handler.hpp"
 #include "px_query_executor.hpp"
 #endif // SERVER_MODE
 #include "xasl.h"

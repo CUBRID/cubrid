@@ -17,11 +17,11 @@
  */
 
 /*
- * px_heap_scan_slot_iterator.hpp
+ * px_scan_slot_iterator.hpp
  */
 
-#ifndef _PX_HEAP_SCAN_SLOT_ITERATOR_HPP_
-#define _PX_HEAP_SCAN_SLOT_ITERATOR_HPP_
+#ifndef _PX_SCAN_SLOT_ITERATOR_HPP_
+#define _PX_SCAN_SLOT_ITERATOR_HPP_
 
 #include "heap_file.h"
 #include "query_executor.h"
@@ -29,7 +29,7 @@
 #include "scan_manager.h"
 #include "xasl.h"
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
   class slot_iterator
   {
@@ -61,4 +61,4 @@ namespace parallel_heap_scan
   };
 }
 
-#endif /*_PX_HEAP_SCAN_SLOT_ITERATOR_HPP_ */
+#endif /*_PX_SCAN_SLOT_ITERATOR_HPP_ */

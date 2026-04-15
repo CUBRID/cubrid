@@ -17,29 +17,30 @@
  */
 
 /*
- * px_heap_scan.hpp
+ * px_scan.hpp
  */
 
-#ifndef _PX_HEAP_SCAN_MANAGER_HPP_
-#define _PX_HEAP_SCAN_MANAGER_HPP_
+#ifndef _PX_SCAN_MANAGER_HPP_
+#define _PX_SCAN_MANAGER_HPP_
 
 #include "xasl.h"
 #include "px_worker_manager.hpp"
-#include "px_heap_scan_result_handler.hpp"
-#include "px_heap_scan_input_handler_ftabs.hpp"
-#include "px_heap_scan_trace_handler.hpp"
-#include "px_heap_scan_result_type.hpp"
+#include "px_scan_result_handler.hpp"
+#include "px_scan_input_handler_ftabs.hpp"
+#include "px_scan_trace_handler.hpp"
+#include "px_scan_result_type.hpp"
 #include "query_manager.h"
-#include "px_heap_scan_join_info.hpp"
+#include "px_scan_join_info.hpp"
+#include "px_scan_type.hpp"
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
-  template <RESULT_TYPE result_type>
+  template <RESULT_TYPE result_type, SCAN_TYPE ST = SCAN_TYPE::HEAP>
   class manager
   {
       using interrupt = parallel_query::interrupt;
       using err_messages_with_lock = parallel_query::err_messages_with_lock;
-      using input_handler = parallel_heap_scan::input_handler_ftabs;
+      using input_handler_t = typename scan_traits<ST>::input_handler_type;
       using atomic_instnum = parallel_query::atomic_instnum;
       using worker_manager = parallel_query::worker_manager;
     public:
@@ -102,7 +103,7 @@ namespace parallel_heap_scan
       OID m_cls_oid;
       val_descr *m_vd;
       val_descr *m_orig_vd;
-      input_handler_ftabs *m_input_handler;
+      input_handler_t *m_input_handler;
       result_handler<result_type> *m_result_handler;
       bool m_on_trace;
       bool m_px_stats_initialized_by_me;
@@ -133,4 +134,4 @@ extern "C"
   extern int scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
 }
 
-#endif /*_PX_HEAP_SCAN_MANAGER_HPP_ */
+#endif /*_PX_SCAN_MANAGER_HPP_ */

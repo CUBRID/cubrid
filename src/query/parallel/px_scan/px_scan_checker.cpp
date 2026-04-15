@@ -17,10 +17,10 @@
  */
 
 /*
- * px_heap_scan_checker.cpp - module that checks whether parallel heap scan is possible.
+ * px_scan_checker.cpp - module that checks whether parallel heap scan is possible.
  */
 
-#include "px_heap_scan_checker.hpp"
+#include "px_scan_checker.hpp"
 
 #include "dbtype_def.h"
 #include "regu_var.hpp"
@@ -34,7 +34,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
   /*
    * Parallel heap scan has two execution modes:
@@ -849,14 +849,14 @@ extern int
 scan_check_parallel_heap_scan_possible (XASL_NODE *xasl)
 {
   // Clear caches to start fresh for each top-level check
-  parallel_heap_scan::xasl_check_cache.clear ();
-  parallel_heap_scan::xasl_processing_set.clear ();
+  parallel_scan::xasl_check_cache.clear ();
+  parallel_scan::xasl_processing_set.clear ();
 
-  parallel_heap_scan::process_xasl_node_recursive (xasl);
+  parallel_scan::process_xasl_node_recursive (xasl);
 
   // Clear caches after processing to free memory
-  parallel_heap_scan::xasl_check_cache.clear ();
-  parallel_heap_scan::xasl_processing_set.clear ();
+  parallel_scan::xasl_check_cache.clear ();
+  parallel_scan::xasl_processing_set.clear ();
 
   return NO_ERROR;
 }

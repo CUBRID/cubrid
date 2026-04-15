@@ -17,10 +17,10 @@
  */
 
 /*
- * px_heap_scan_trace_handler.cpp
+ * px_scan_trace_handler.cpp
  */
 
-#include "px_heap_scan_trace_handler.hpp"
+#include "px_scan_trace_handler.hpp"
 #include "perf_monitor.h"
 #include "tsc_timer.h"
 #include "xasl_iteration.hpp"
@@ -29,7 +29,7 @@
 #include "memory_wrapper.hpp"
 
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
   void trace_handler::add_trace (UINT64 fetches, UINT64 ioreads, UINT64 fetch_time, UINT64 read_rows,
 				 UINT64 qualified_rows,

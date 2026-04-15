@@ -17,10 +17,10 @@
  */
 
 /*
- * px_heap_scan_task.cpp - derived from cubthread::entry_task
+ * px_scan_task.cpp - derived from cubthread::entry_task
  */
 
-#include "px_heap_scan_task.hpp"
+#include "px_scan_task.hpp"
 #include "error_code.h"
 #include "error_manager.h"
 #include "heap_file.h"
@@ -38,10 +38,10 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
-  template <RESULT_TYPE result_type>
-  void task<result_type>::execute (cubthread::entry &thread_ref)
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  void task<result_type, ST>::execute (cubthread::entry &thread_ref)
   {
     int err_code;
     err_code = initialize (thread_ref);
@@ -55,20 +55,20 @@ namespace parallel_heap_scan
     finalize (thread_ref);
   }
 
-  template <RESULT_TYPE result_type>
-  void task<result_type>::retire()
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  void task<result_type, ST>::retire()
   {
     m_worker_manager->pop_task();
     delete this;
   }
 
-  template <RESULT_TYPE result_type>
-  task<result_type>::~task()
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  task<result_type, ST>::~task()
   {
   }
 
-  template <RESULT_TYPE result_type>
-  int task<result_type>::initialize (cubthread::entry &thread_ref)
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  int task<result_type, ST>::initialize (cubthread::entry &thread_ref)
   {
     int err_code = NO_ERROR;
     HEAP_SCAN_ID *hsidp;
@@ -303,8 +303,8 @@ namespace parallel_heap_scan
     return NO_ERROR;
   }
 
-  template <RESULT_TYPE result_type>
-  int task<result_type>::finalize (cubthread::entry &thread_ref)
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  int task<result_type, ST>::finalize (cubthread::entry &thread_ref)
   {
     THREAD_ENTRY *main_thread_p = thread_get_main_thread (m_parent_thread_p);
     xasl_node *xptr;
@@ -435,8 +435,8 @@ namespace parallel_heap_scan
       }
   }
 
-  template <RESULT_TYPE result_type>
-  int task<result_type>::clone_xasl (cubthread::entry &thread_ref)
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  int task<result_type, ST>::clone_xasl (cubthread::entry &thread_ref)
   {
     THREAD_ENTRY *main_thread_p = m_parent_thread_p;
     int err_code = NO_ERROR;
@@ -506,8 +506,8 @@ namespace parallel_heap_scan
     return NO_ERROR;
   }
 
-  template <RESULT_TYPE result_type>
-  void task<result_type>::loop (cubthread::entry &thread_ref)
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  void task<result_type, ST>::loop (cubthread::entry &thread_ref)
   {
     result_handler<result_type> *result_handler_p = m_result_handler;
     SCAN_CODE scan_code, xs_scan;
@@ -669,7 +669,7 @@ namespace parallel_heap_scan
   }
 
   // Explicit template instantiations
-  template class task<RESULT_TYPE::MERGEABLE_LIST>;
-  template class task<RESULT_TYPE::XASL_SNAPSHOT>;
-  template class task<RESULT_TYPE::BUILDVALUE_OPT>;
+  template class task<RESULT_TYPE::MERGEABLE_LIST, SCAN_TYPE::HEAP>;
+  template class task<RESULT_TYPE::XASL_SNAPSHOT, SCAN_TYPE::HEAP>;
+  template class task<RESULT_TYPE::BUILDVALUE_OPT, SCAN_TYPE::HEAP>;
 }

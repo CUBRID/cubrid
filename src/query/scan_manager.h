@@ -120,7 +120,7 @@ struct heap_scan_id
   sampling_info sampling;	/* for sampling statistics */
 };				/* Regular Heap File Scan Identifier */
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
   enum class RESULT_TYPE;
   class accumulative_trace_storage;	// forward declaration
@@ -146,9 +146,9 @@ struct parallel_heap_scan_id
   sampling_info sampling;	/* for sampling statistics */
   // *INDENT-OFF*
   #if !WINDOWS
-  parallel_heap_scan::RESULT_TYPE result_type;
+  parallel_scan::RESULT_TYPE result_type;
   void * manager;
-  parallel_heap_scan::accumulative_trace_storage * trace_storage;
+  parallel_scan::accumulative_trace_storage * trace_storage;
   #endif
   // *INDENT-ON*
 };				/* Heap PARALLEL Scan Identifier */

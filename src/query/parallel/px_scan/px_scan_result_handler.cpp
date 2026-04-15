@@ -17,10 +17,10 @@
  */
 
 /*
- * px_heap_scan_result_handler.cpp
+ * px_scan_result_handler.cpp
  */
 
-#include "px_heap_scan_result_handler.hpp"
+#include "px_scan_result_handler.hpp"
 #include "error_code.h"
 #include "error_manager.h"
 #include "memory_alloc.h"
@@ -39,7 +39,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
   template <RESULT_TYPE result_type>
   thread_local typename result_handler<result_type>::tls result_handler<result_type>::tl;
@@ -844,7 +844,7 @@ namespace parallel_heap_scan
 	int err_code;
 	VPID old_last_vpid;
 	QFILE_LIST_ID *list_id_p;
-	parallel_heap_scan::list_id_header *tl_list_id_header = tl.list_id_header_p;
+	parallel_scan::list_id_header *tl_list_id_header = tl.list_id_header_p;
 	QFILE_TUPLE_RECORD &tl_tpl_buf = tl.tpl_buf;
 	VAL_LIST *input = src;
 

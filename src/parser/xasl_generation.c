@@ -68,7 +68,7 @@
 #include "subquery_cache.h"
 #include "pl_signature.hpp"
 #include "sp_catalog.hpp"
-#include "px_heap_scan_checker.hpp"
+#include "px_scan_checker.hpp"
 #include "px_query_checker.hpp"
 #if defined(WINDOWS)
 #include "wintcp.h"

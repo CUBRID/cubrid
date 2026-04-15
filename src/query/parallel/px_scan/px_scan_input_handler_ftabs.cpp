@@ -17,18 +17,18 @@
  */
 
 /*
- * px_heap_scan_input_handler_ftabs.cpp
+ * px_scan_input_handler_ftabs.cpp
  */
 
 
-#include "px_heap_scan_input_handler_ftabs.hpp"
+#include "px_scan_input_handler_ftabs.hpp"
 #include "error_code.h"
 #include "bit.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
   thread_local HEAP_SCANCACHE *input_handler_ftabs::m_tl_scan_cache = NULL;
   thread_local PGBUF_WATCHER input_handler_ftabs::m_tl_old_page_watcher = {0};

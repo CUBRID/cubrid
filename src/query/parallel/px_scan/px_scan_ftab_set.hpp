@@ -17,16 +17,16 @@
  */
 
 /*
- * px_heap_scan_ftab_set.hpp
+ * px_scan_ftab_set.hpp
  */
 
-#ifndef _PX_HEAP_SCAN_FTAB_SET_HPP_
-#define _PX_HEAP_SCAN_FTAB_SET_HPP_
+#ifndef _PX_SCAN_FTAB_SET_HPP_
+#define _PX_SCAN_FTAB_SET_HPP_
 
 #include "file_manager.h"
 
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
   class ftab_set
   {
@@ -96,4 +96,4 @@ namespace parallel_heap_scan
   };
 }
 
-#endif /*_PX_HEAP_SCAN_FTAB_SET_HPP_ */
+#endif /*_PX_SCAN_FTAB_SET_HPP_ */

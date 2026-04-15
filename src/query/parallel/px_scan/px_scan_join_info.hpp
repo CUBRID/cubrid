@@ -17,11 +17,11 @@
  */
 
 /*
- * px_heap_scan_join_info.hpp
+ * px_scan_join_info.hpp
  */
 
-#ifndef _PX_HEAP_SCAN_JOIN_INFO_HPP_
-#define _PX_HEAP_SCAN_JOIN_INFO_HPP_
+#ifndef _PX_SCAN_JOIN_INFO_HPP_
+#define _PX_SCAN_JOIN_INFO_HPP_
 
 #include "system.h"
 #include "storage_common.h"
@@ -33,7 +33,7 @@
 /* forward declaration */
 struct xasl_node;
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
   struct scan_info
   {
@@ -71,4 +71,4 @@ namespace parallel_heap_scan
   };
 }
 
-#endif /* _PX_HEAP_SCAN_JOIN_INFO_HPP_ */
+#endif /* _PX_SCAN_JOIN_INFO_HPP_ */

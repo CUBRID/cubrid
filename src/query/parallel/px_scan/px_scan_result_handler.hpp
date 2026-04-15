@@ -17,18 +17,18 @@
  */
 
 /*
- * px_heap_scan_result_handler.hpp
+ * px_scan_result_handler.hpp
  */
 
-#ifndef _PX_HEAP_SCAN_RESULT_HANDLER_HPP_
-#define _PX_HEAP_SCAN_RESULT_HANDLER_HPP_
+#ifndef _PX_SCAN_RESULT_HANDLER_HPP_
+#define _PX_SCAN_RESULT_HANDLER_HPP_
 
 #include "query_list.h"
 #include "storage_common.h"
 #include "thread_entry.hpp"
 #include "px_interrupt.hpp"
 #include "xasl.h"
-#include "px_heap_scan_result_type.hpp"
+#include "px_scan_result_type.hpp"
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
@@ -36,7 +36,7 @@
 #include <type_traits>
 #include <vector>
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
   class list_id_header;
   struct read_spec;
@@ -260,4 +260,4 @@ namespace parallel_heap_scan
   };
 }
 
-#endif /*_PX_HEAP_SCAN_RESULT_HANDLER_HPP_ */
+#endif /*_PX_SCAN_RESULT_HANDLER_HPP_ */

@@ -17,10 +17,10 @@
  */
 
 /*
- * px_heap_scan_slot_iterator.cpp
+ * px_scan_slot_iterator.cpp
  */
 
-#include "px_heap_scan_slot_iterator.hpp"
+#include "px_scan_slot_iterator.hpp"
 #include "fetch.h"
 
 #if !defined(NDEBUG)
@@ -31,7 +31,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
   slot_iterator::slot_iterator()
     : m_is_peeking (false),

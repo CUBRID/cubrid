@@ -86,8 +86,8 @@
 
 #if SERVER_MODE && !WINDOWS
 #include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
-#include "px_heap_scan_trace_handler.hpp"
-#include "px_heap_scan.hpp"
+#include "px_scan_trace_handler.hpp"
+#include "px_scan.hpp"
 #endif /* SERVER_MODE && !WINDOWS */
 #include "px_query_executor.hpp"
 #include <vector>
@@ -1946,19 +1946,19 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	    {
 	      if (p->s_id.s.phsid.manager)
 		{
-		  parallel_heap_scan::RESULT_TYPE result_type = p->s_id.s.phsid.result_type;
+		  parallel_scan::RESULT_TYPE result_type = p->s_id.s.phsid.result_type;
 		  switch (result_type)
 		    {
-		    case parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST:
-		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST >
+		    case parallel_scan::RESULT_TYPE::MERGEABLE_LIST:
+		      ((parallel_scan::manager < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::HEAP >
 			*)p->s_id.s.phsid.manager)->close ();
 		      break;
-		    case parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT:
-		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT >
+		    case parallel_scan::RESULT_TYPE::XASL_SNAPSHOT:
+		      ((parallel_scan::manager < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::HEAP >
 			*)p->s_id.s.phsid.manager)->close ();
 		      break;
-		    case parallel_heap_scan::RESULT_TYPE::BUILDVALUE_OPT:
-		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::BUILDVALUE_OPT >
+		    case parallel_scan::RESULT_TYPE::BUILDVALUE_OPT:
+		      ((parallel_scan::manager < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::HEAP >
 			*)p->s_id.s.phsid.manager)->close ();
 		      break;
 		    default:
