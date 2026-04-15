@@ -244,16 +244,16 @@ SM_DESCRIPTOR *sm_Descriptors = NULL;
 
 /* ROOT_CLASS GLOBALS */
 /* Global root class structure */
-ROOT_CLASS sm_Root_class;
+CUB_THREAD_LOCAL ROOT_CLASS sm_Root_class;
 
 /* Global MOP for the root class object.  Used by the locator */
-MOP sm_Root_class_mop = NULL;
+CUB_THREAD_LOCAL MOP sm_Root_class_mop = NULL;
 
 /* Name of the root class */
 const char *sm_Root_class_name = ROOTCLASS_NAME;
 
 /* Heap file identifier for the root class */
-HFID *sm_Root_class_hfid = &sm_Root_class.header.ch_heap;
+CUB_THREAD_LOCAL HFID *sm_Root_class_hfid = &sm_Root_class.header.ch_heap;
 
 static unsigned int local_schema_version = 0;
 static unsigned int global_schema_version = 0;

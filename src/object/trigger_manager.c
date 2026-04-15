@@ -139,30 +139,30 @@ const char *TR_ATT_COMMENT = "comment";
 const char *TR_ATT_CREATED_TIME = "created_time";
 const char *TR_ATT_UPDATED_TIME = "updated_time";
 
-int tr_Current_depth = 0;
-int tr_Maximum_depth = TR_MAX_RECURSION_LEVEL;
-OID tr_Stack[TR_MAX_RECURSION_LEVEL + 1];
+CUB_THREAD_LOCAL int tr_Current_depth = 0;
+CUB_THREAD_LOCAL int tr_Maximum_depth = TR_MAX_RECURSION_LEVEL;
+static CUB_THREAD_LOCAL OID tr_Stack[TR_MAX_RECURSION_LEVEL + 1];
 
-bool tr_Invalid_transaction = false;
-char tr_Invalid_transaction_trigger[SM_MAX_IDENTIFIER_LENGTH + 2];
+CUB_THREAD_LOCAL bool tr_Invalid_transaction = false;
+CUB_THREAD_LOCAL char tr_Invalid_transaction_trigger[SM_MAX_IDENTIFIER_LENGTH + 2];
 
-bool tr_Trace = true;
+CUB_THREAD_LOCAL bool tr_Trace = true;
 
-TR_DEFERRED_CONTEXT *tr_Deferred_activities = NULL;
-TR_DEFERRED_CONTEXT *tr_Deferred_activities_tail = NULL;
+CUB_THREAD_LOCAL TR_DEFERRED_CONTEXT *tr_Deferred_activities = NULL;
+CUB_THREAD_LOCAL TR_DEFERRED_CONTEXT *tr_Deferred_activities_tail = NULL;
 
-static int tr_User_triggers_valid = 0;
-static int tr_User_triggers_modified = 0;
-static TR_TRIGLIST *tr_User_triggers = NULL;
+static CUB_THREAD_LOCAL int tr_User_triggers_valid = 0;
+static CUB_THREAD_LOCAL int tr_User_triggers_modified = 0;
+static CUB_THREAD_LOCAL TR_TRIGLIST *tr_User_triggers = NULL;
 
-static TR_TRIGLIST *tr_Uncommitted_triggers = NULL;
-static TR_SCHEMA_CACHE *tr_Schema_caches = NULL;
+static CUB_THREAD_LOCAL TR_TRIGLIST *tr_Uncommitted_triggers = NULL;
+static CUB_THREAD_LOCAL TR_SCHEMA_CACHE *tr_Schema_caches = NULL;
 
 /*
  * Global trigger firing state flag, used to determine if triggers are fired.
  * This can be modified using tr_set_execution_enabled().
  */
-static bool tr_Execution_enabled = true;
+static CUB_THREAD_LOCAL bool tr_Execution_enabled = true;
 
 /*
  * tr_object_map
@@ -174,7 +174,7 @@ static bool tr_Execution_enabled = true;
  *
  */
 
-static MHT_TABLE *tr_object_map = NULL;
+static CUB_THREAD_LOCAL MHT_TABLE *tr_object_map = NULL;
 
 static const char *time_as_string (DB_TRIGGER_TIME tr_time);
 static char *tr_process_name (const char *name_string);

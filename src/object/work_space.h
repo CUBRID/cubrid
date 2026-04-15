@@ -33,6 +33,7 @@
 #include "quick_fit.h"
 #include "locator.h"
 #include "dbtype_def.h"
+#include "db_multi_threads_connections.h"
 
 #if defined (SERVER_MODE)
 // cppcheck-suppress preprocessorErrorDirective
@@ -454,14 +455,14 @@ struct ws_mop_table_entry
 /*
  * WORKSPACE GLOBALS
  */
-extern WS_MOP_TABLE_ENTRY *ws_Mop_table;
-extern unsigned int ws_Mop_table_size;
-extern DB_OBJLIST *ws_Resident_classes;
-extern MOP ws_Commit_mops;
-extern WS_STATISTICS ws_Stats;
-extern int ws_Num_dirty_mop;
-extern int ws_Error_ignore_list[-ER_LAST_ERROR];
-extern int ws_Error_ignore_count;
+extern CUB_THREAD_LOCAL WS_MOP_TABLE_ENTRY *ws_Mop_table;
+extern CUB_THREAD_LOCAL unsigned int ws_Mop_table_size;
+extern CUB_THREAD_LOCAL DB_OBJLIST *ws_Resident_classes;
+extern CUB_THREAD_LOCAL MOP ws_Commit_mops;
+extern CUB_THREAD_LOCAL WS_STATISTICS ws_Stats;
+extern CUB_THREAD_LOCAL int ws_Num_dirty_mop;
+extern CUB_THREAD_LOCAL int ws_Error_ignore_list[-ER_LAST_ERROR];
+extern CUB_THREAD_LOCAL int ws_Error_ignore_count;
 
 /*
  *  WORKSPACE FUNCTIONS
@@ -695,6 +696,7 @@ public:
   void ws_init_repl_objs (void);
   void ws_clear_all_repl_objs (void);
   void ws_free_repl_obj (WS_REPL_OBJ * obj);
+  int ws_get_repl_obj_count (void) const;
   WS_REPL_OBJ *ws_get_repl_obj_from_list (void);
   void ws_set_repl_error_into_error_link (LC_COPYAREA_ONEOBJ * obj, char *content_ptr);
   WS_REPL_FLUSH_ERR *ws_get_repl_error_from_error_link (void);

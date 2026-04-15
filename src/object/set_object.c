@@ -33,6 +33,7 @@
 #if !defined (SERVER_MODE)
 #include "authenticate.h"
 #endif // not SERVER_MODE
+#include "db_multi_threads_connections.h"
 #include "db_value_printer.hpp"
 #include "dbtype.h"
 #include "error_manager.h"
@@ -95,9 +96,9 @@ static int debug_level = 0;
 static long collection_quick_offset = 0;	/* inited by col_initialize */
 
 /* Area for allocation of set reference structures */
-AREA *Set_Ref_Area = NULL;
+CUB_THREAD_LOCAL AREA *Set_Ref_Area = NULL;
 /* Area for allocation of set object structures */
-AREA *Set_Obj_Area = NULL;
+CUB_THREAD_LOCAL AREA *Set_Obj_Area = NULL;
 
 #define CHECKNULL_ERR(thing) \
   if ((thing) == NULL) \

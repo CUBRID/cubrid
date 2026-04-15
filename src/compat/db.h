@@ -41,6 +41,7 @@
 #include "log_comm.h"
 #include "dbtype_def.h"
 #include "db_admin.h"
+#include "db_multi_threads_connections.h"
 
 /* GLOBAL STATE */
 #define DB_CONNECTION_STATUS_NOT_CONNECTED      0
@@ -48,10 +49,10 @@
 #define DB_CONNECTION_STATUS_RESET              -1
 extern int db_Connect_status;
 
-extern SESSION_ID db_Session_id;
-extern bool db_Keep_session;
+extern CUB_THREAD_LOCAL SESSION_ID db_Session_id;
+extern CUB_THREAD_LOCAL bool db_Keep_session;
 
-extern int db_Row_count;
+extern CUB_THREAD_LOCAL int db_Row_count;
 
 #if !defined(_DB_DISABLE_MODIFICATIONS_)
 #define _DB_DISABLE_MODIFICATIONS_

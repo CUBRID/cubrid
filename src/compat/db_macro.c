@@ -78,10 +78,10 @@ struct valcnv_buffer
   unsigned char *bytes;
 };
 
-SESSION_ID db_Session_id = DB_EMPTY_SESSION;
-bool db_Keep_session = false;
+CUB_THREAD_LOCAL SESSION_ID db_Session_id = DB_EMPTY_SESSION;
+CUB_THREAD_LOCAL bool db_Keep_session = false;
 
-int db_Row_count = DB_ROW_COUNT_NOT_SET;
+CUB_THREAD_LOCAL int db_Row_count = DB_ROW_COUNT_NOT_SET;
 
 static int valcnv_Max_set_elements = 10;
 
