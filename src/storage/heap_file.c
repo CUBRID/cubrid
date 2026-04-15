@@ -24307,6 +24307,43 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	}
     }
 
+  /* For non-MVCC updates (SA_MODE), eagerly delete old OOS records that were replaced.
+   * In MVCC mode (SERVER_MODE), old OOS is preserved for concurrent readers and cleaned
+   * by vacuum via prev_version_lsa chain (vacuum_cleanup_prev_version_oos). */
+  if (!is_mvcc_op && context->home_recdes.type == REC_HOME && heap_recdes_contains_oos (&context->home_recdes))
+    {
+      OID_VECTOR old_oos_oids, new_oos_oids;
+      if (heap_recdes_get_oos_oids (&context->home_recdes, old_oos_oids) == NO_ERROR && old_oos_oids.size () > 0)
+	{
+	  if (heap_recdes_contains_oos (context->recdes_p))
+	    {
+	      (void) heap_recdes_get_oos_oids (context->recdes_p, new_oos_oids);
+	    }
+
+	  VFID oos_vfid;
+	  VFID_SET_NULL (&oos_vfid);
+	  if (heap_oos_find_vfid (thread_p, &context->hfid, &oos_vfid, false))
+	    {
+	      for (size_t i = 0; i < old_oos_oids.size (); i++)
+		{
+		  bool still_referenced = false;
+		  for (size_t j = 0; j < new_oos_oids.size (); j++)
+		    {
+		      if (OID_EQ (&old_oos_oids[i], &new_oos_oids[j]))
+			{
+			  still_referenced = true;
+			  break;
+			}
+		    }
+		  if (!still_referenced)
+		    {
+		      (void) oos_delete (thread_p, oos_vfid, old_oos_oids[i]);
+		    }
+		}
+	    }
+	}
+    }
+
   HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
   /* location did not change */

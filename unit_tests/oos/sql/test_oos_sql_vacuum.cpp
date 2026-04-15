@@ -522,8 +522,9 @@ TEST_F (OosSqlVacuum, RelocationWithOosVacuum)
 // ============================================================================
 // TC-11: UPDATE OOS column + vacuum — verify old OOS version page cleanup
 //
-// After UPDATE, the old OOS record (referenced by prev_version) should be
-// cleaned by vacuum. Verify via page count that the old version is freed.
+// After UPDATE, the old OOS record (referenced by prev_version in undo log)
+// should be cleaned by vacuum via vacuum_cleanup_prev_version_oos().
+// Verify via page count that the old version's OOS space is freed.
 // ============================================================================
 TEST_F (OosSqlVacuum, UpdateOosPageCountCleanup)
 {
@@ -540,7 +541,7 @@ TEST_F (OosSqlVacuum, UpdateOosPageCountCleanup)
   int pages_after_insert = get_oos_page_count ("t_oos_vac");
   ASSERT_GT (pages_after_insert, 0);
 
-  /* Update — creates a new OOS record, old one kept for MVCC */
+  /* Update — creates a new OOS record, old one kept for MVCC in undo log */
   rc = exec_sql ("UPDATE t_oos_vac SET data_col = REPEAT(X'FF', 4096) WHERE id = 1");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
@@ -549,15 +550,79 @@ TEST_F (OosSqlVacuum, UpdateOosPageCountCleanup)
   EXPECT_GE (pages_after_update, pages_after_insert)
       << "UPDATE should create additional OOS record (old version kept for MVCC)";
 
-  /* Vacuum should clean the old OOS version */
+  /* Vacuum should clean the old OOS version from the prev_version chain */
   rc = run_vacuum ();
   ASSERT_EQ (rc, NO_ERROR);
 
   int pages_after_vacuum = get_oos_page_count ("t_oos_vac");
   EXPECT_LE (pages_after_vacuum, pages_after_insert)
-      << "Vacuum should clean old OOS version, page count should return to pre-update level";
+      << "Vacuum should clean old OOS version via prev_version chain, page count should return to pre-update level";
 
   /* Current value should still be readable */
+  int len = 0;
+  rc = fetch_single_int ("SELECT LENGTH(data_col) FROM t_oos_vac WHERE id = 1", &len);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (len, 8192);
+}
+
+// ============================================================================
+// TC-13: Multiple UPDATEs — verify old OOS records are cleaned at UPDATE time
+//
+// In SA_MODE (non-MVCC), UPDATE eagerly deletes replaced OOS records via
+// heap_update_home(). In SERVER_MODE (MVCC), old OOS is deferred to vacuum
+// via prev_version_lsa chain (vacuum_cleanup_prev_version_oos).
+//
+// This test verifies that after multiple UPDATEs, old OOS space is reclaimed
+// by checking that the page count does NOT grow unboundedly.
+// ============================================================================
+TEST_F (OosSqlVacuum, MultiUpdateReclaimsOosSpace)
+{
+  int rc;
+
+  rc = exec_sql ("CREATE TABLE t_oos_vac (id INT PRIMARY KEY, data_col BIT VARYING)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  /* Insert 5 records with OOS data */
+  for (int i = 1; i <= 5; i++)
+    {
+      char sql[256];
+      snprintf (sql, sizeof (sql), "INSERT INTO t_oos_vac VALUES (%d, REPEAT(X'AA', 4096))", i);
+      rc = exec_sql (sql);
+      ASSERT_GE (rc, 0);
+      db_commit_transaction ();
+    }
+
+  int pages_after_insert = get_oos_page_count ("t_oos_vac");
+  ASSERT_GT (pages_after_insert, 0);
+
+  /* UPDATE each record 3 times — old OOS should be cleaned at each UPDATE */
+  const char *patterns[] = { "BB", "CC", "DD" };
+  for (int u = 0; u < 3; u++)
+    {
+      for (int i = 1; i <= 5; i++)
+	{
+	  char sql[256];
+	  snprintf (sql, sizeof (sql), "UPDATE t_oos_vac SET data_col = REPEAT(X'%s', 4096) WHERE id = %d",
+		    patterns[u], i);
+	  rc = exec_sql (sql);
+	  ASSERT_GE (rc, 0);
+	}
+      db_commit_transaction ();
+    }
+
+  /* In SA_MODE, old OOS records are eagerly deleted during UPDATE.
+   * Page count should stay bounded (not accumulate 15 old OOS records). */
+  int pages_after_updates = get_oos_page_count ("t_oos_vac");
+  EXPECT_LE (pages_after_updates, pages_after_insert + 1)
+      << "After 3 UPDATEs per record, old OOS should be reclaimed — pages should not grow unboundedly";
+
+  /* Verify current values are still readable */
+  int count = 0;
+  rc = fetch_single_int ("SELECT COUNT(*) FROM t_oos_vac", &count);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (count, 5);
+
   int len = 0;
   rc = fetch_single_int ("SELECT LENGTH(data_col) FROM t_oos_vac WHERE id = 1", &len);
   ASSERT_EQ (rc, NO_ERROR);

@@ -709,6 +709,7 @@ static void vacuum_cleanup_collected_by_vfid (VACUUM_WORKER * worker, VFID * vfi
 static int vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_mvccid, bool was_interrupted);
 static int vacuum_heap_prepare_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
+static int vacuum_cleanup_prev_version_oos (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, const VFID * vfid);
 static void vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
@@ -2224,6 +2225,15 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
   assert (helper->can_vacuum == VACUUM_RECORD_DELETE_INSID_PREV_VER);
   assert (MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (&helper->mvcc_header));
 
+  /* Clean up OOS records referenced by old versions in undo log before clearing prev_version_lsa.
+   * NOTE: This is only effective in SERVER_MODE where UPDATE uses MVCC versioning
+   * (prev_version_lsa chain). In SA_MODE, UPDATE is non-MVCC (in-place overwrite)
+   * and old OOS records from UPDATE are not tracked via prev_version_lsa. */
+  if (MVCC_IS_HEADER_PREV_VERSION_VALID (&helper->mvcc_header))
+    {
+      (void) vacuum_cleanup_prev_version_oos (thread_p, helper);
+    }
+
   switch (helper->record_type)
     {
     case REC_RELOCATION:
@@ -2367,6 +2377,142 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
   perfmon_inc_stat (thread_p, PSTAT_HEAP_INSID_VACUUMS);
 
   /* Success. */
+  return NO_ERROR;
+}
+
+/*
+ * vacuum_cleanup_prev_version_oos () - Follow prev_version_lsa chain in undo log and delete OOS records
+ *   referenced by old record versions.
+ *
+ * return	 : NO_ERROR (best-effort: errors are logged and skipped).
+ * thread_p (in) : Thread entry.
+ * helper (in)	 : Vacuum heap helper (may populate oos_vfid).
+ *
+ * NOTE: Called BEFORE clearing prev_version_lsa from the current record.
+ *   Reads old versions from undo log, extracts OOS OIDs, and deletes them.
+ *   Best-effort: if log reading fails (e.g., archived), error is logged and skipped.
+ */
+static int
+vacuum_cleanup_prev_version_oos (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
+{
+  LOG_LSA current_lsa;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_PAGE *log_page_p = NULL;
+  char old_rec_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  RECDES old_recdes;
+  MVCC_REC_HEADER old_mvcc_header;
+  char *alloc_buf = NULL;
+
+  LSA_COPY (&current_lsa, &helper->mvcc_header.prev_version_lsa);
+
+  while (!LSA_ISNULL (&current_lsa))
+    {
+      /* Ensure the LSA has been flushed from prior list. */
+      LOG_LSA oldest_prior_lsa = *log_get_append_lsa ();
+      if (LSA_LT (&oldest_prior_lsa, &current_lsa))
+	{
+	  LOG_CS_ENTER (thread_p);
+	  logpb_prior_lsa_append_all_list (thread_p);
+	  LOG_CS_EXIT (thread_p);
+	}
+
+      /* Fetch the log page. */
+      log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+      log_page_p->hdr.logical_pageid = NULL_PAGEID;
+      log_page_p->hdr.offset = NULL_OFFSET;
+
+      if (logpb_fetch_page (thread_p, &current_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+	{
+	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+				 "prev_version OOS cleanup: failed to fetch log page at LSA %lld|%d. Skipping.",
+				 (long long) current_lsa.pageid, (int) current_lsa.offset);
+	  break;
+	}
+
+      /* Prepare recdes buffer. */
+      if (alloc_buf != NULL)
+	{
+	  free_and_init (alloc_buf);
+	}
+      old_recdes.data = PTR_ALIGN (old_rec_buf, MAX_ALIGNMENT);
+      old_recdes.area_size = DB_PAGESIZE;
+      old_recdes.length = 0;
+
+      /* Read the undo record. */
+      SCAN_CODE scan = log_get_undo_record (thread_p, log_page_p, current_lsa, &old_recdes);
+      if (scan == S_DOESNT_FIT)
+	{
+	  int needed = -old_recdes.length;
+	  alloc_buf = (char *) malloc (needed);
+	  if (alloc_buf == NULL)
+	    {
+	      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+				     "prev_version OOS cleanup: malloc(%d) failed. Skipping.", needed);
+	      break;
+	    }
+	  old_recdes.data = alloc_buf;
+	  old_recdes.area_size = needed;
+	  scan = log_get_undo_record (thread_p, log_page_p, current_lsa, &old_recdes);
+	}
+      if (scan != S_SUCCESS)
+	{
+	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+				 "prev_version OOS cleanup: failed to read undo record at LSA %lld|%d (scan=%d). Skipping.",
+				 (long long) current_lsa.pageid, (int) current_lsa.offset, (int) scan);
+	  break;
+	}
+
+      /* Check for OOS in the old version and delete if found. */
+      if (heap_recdes_contains_oos (&old_recdes))
+	{
+	  /* Look up OOS VFID if not yet cached. */
+	  if (VFID_ISNULL (&helper->oos_vfid))
+	    {
+	      if (!heap_oos_find_vfid (thread_p, &helper->hfid, &helper->oos_vfid, false))
+		{
+		  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+					 "prev_version OOS cleanup: OOS VFID not found for hfid %d|%d. Skipping.",
+					 VFID_AS_ARGS (&helper->hfid.vfid));
+		  break;
+		}
+	    }
+
+	  OID_VECTOR oos_oids;
+	  int error_code = heap_recdes_get_oos_oids (&old_recdes, oos_oids);
+	  if (error_code != NO_ERROR)
+	    {
+	      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+				     "prev_version OOS cleanup: failed to extract OOS OIDs at LSA %lld|%d. Skipping.",
+				     (long long) current_lsa.pageid, (int) current_lsa.offset);
+	      break;
+	    }
+
+	for (const OID & oos_oid:oos_oids)
+	    {
+	      error_code = oos_delete (thread_p, helper->oos_vfid, oos_oid);
+	      if (error_code != NO_ERROR)
+		{
+		  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+					 "prev_version OOS cleanup: failed to delete OOS %d|%d|%d. Continuing.",
+					 oos_oid.volid, oos_oid.pageid, oos_oid.slotid);
+		  /* Continue with remaining OIDs — best effort. */
+		}
+	    }
+	}
+
+      /* Follow the chain to the next older version. */
+      if (or_mvcc_get_header (&old_recdes, &old_mvcc_header) != NO_ERROR)
+	{
+	  break;
+	}
+      LSA_COPY (&current_lsa, &MVCC_GET_PREV_VERSION_LSA (&old_mvcc_header));
+    }
+
+  if (alloc_buf != NULL)
+    {
+      free_and_init (alloc_buf);
+    }
+
   return NO_ERROR;
 }
 
