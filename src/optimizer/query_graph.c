@@ -231,7 +231,7 @@ static void qo_discover_partitions (QO_ENV *);
 static void qo_discover_indexes (QO_ENV *);
 static void qo_assign_eq_classes (QO_ENV *);
 static void qo_generate_transitive_join_terms (QO_ENV *);
-static void qo_insert_transitive_join_term (QO_ENV * env, PT_NODE * node);
+static void qo_insert_transitive_join_term (QO_ENV * env, PT_NODE * pt_expr);
 static void qo_sort_edges (QO_ENV * env);
 static void qo_discover_edges (QO_ENV *);
 static void qo_classify_outerjoin_terms (QO_ENV *);
@@ -8208,24 +8208,22 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 }
 
 static void
-qo_insert_transitive_join_term (QO_ENV * env, PT_NODE * node)
+qo_insert_transitive_join_term (QO_ENV * env, PT_NODE * pt_expr)
 {
+  BITSET_ITERATOR bi;
+  QO_NODE *node;
   QO_TERM *term;
-  int i, n;
+  int i, n, member;
+  bool has_i, has_n;
 
   QO_ASSERT (env, env->nterms < env->Nterms);
 
-  node->type_enum = PT_TYPE_LOGICAL;
+  pt_expr->type_enum = PT_TYPE_LOGICAL;
   qo_term_clear (env, env->nterms);
-  term = qo_add_term (node, PREDICATE_TERM, env);
+  term = qo_add_term (pt_expr, PREDICATE_TERM, env);
   if (term == NULL)
     {
       return;
-    }
-
-  if (QO_IS_EDGE_TERM (term))
-    {
-      env->nedges++;
     }
 
   i = 0;
@@ -8242,9 +8240,47 @@ qo_insert_transitive_join_term (QO_ENV * env, PT_NODE * node)
 	  if (i < --n)
 	    {
 	      qo_exchange (QO_ENV_TERM (env, i), QO_ENV_TERM (env, n));
+
+	      int k;
+	      for (k = 0; k < env->nnodes; k++)
+		{
+		  QO_NODE *n_ptr = QO_ENV_NODE (env, k);
+		  has_i = BITSET_MEMBER (QO_NODE_SARGS (n_ptr), i) ? true : false;
+		  has_n = BITSET_MEMBER (QO_NODE_SARGS (n_ptr), n) ? true : false;
+
+		  if (has_n && !has_i)
+		    {
+		      bitset_remove (&QO_NODE_SARGS (n_ptr), n);
+		      bitset_add (&QO_NODE_SARGS (n_ptr), i);
+		    }
+		  else if (!has_n && has_i)
+		    {
+		      bitset_remove (&QO_NODE_SARGS (n_ptr), i);
+		      bitset_add (&QO_NODE_SARGS (n_ptr), n);
+		    }
+		}
+
+	      for (k = 0; k < env->nsubqueries; k++)
+		{
+		  has_i = BITSET_MEMBER (env->subqueries[k].terms, i) ? true : false;
+		  has_n = BITSET_MEMBER (env->subqueries[k].terms, n) ? true : false;
+
+		  if (has_n && !has_i)
+		    {
+		      bitset_remove (&env->subqueries[k].terms, n);
+		      bitset_add (&env->subqueries[k].terms, i);
+		    }
+		  else if (!has_n && has_i)
+		    {
+		      bitset_remove (&env->subqueries[k].terms, i);
+		      bitset_add (&env->subqueries[k].terms, n);
+		    }
+		}
 	    }
 	}
     }
+
+  env->nedges++;
 }
 
 /*
