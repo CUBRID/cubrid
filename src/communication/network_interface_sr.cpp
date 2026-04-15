@@ -81,6 +81,7 @@
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "compile_context.h"
 #include "load_session.hpp"
+#include "copy_session.hpp"
 #include "session.h"
 #include "xasl.h"
 #include "xasl_cache.h"
@@ -12202,4 +12203,168 @@ slob_remove_dir (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
   return;
+}
+
+/*
+ * scopy_from_init () - Initialize a COPY FROM STDIN session
+ *   request format: table_name (string), num_cols (int), col_types (int[])
+ *   reply format: error_code (int)
+ */
+void
+scopy_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *ptr = request;
+  char *table_name = NULL;
+  int num_cols = 0;
+  int error_code = NO_ERROR;
+  DB_TYPE *col_types = NULL;
+
+  /* unpack table name */
+  ptr = or_unpack_string_nocopy (ptr, &table_name);
+  /* unpack num columns */
+  ptr = or_unpack_int (ptr, &num_cols);
+
+  /* unpack column types */
+  col_types = (DB_TYPE *) db_private_alloc (thread_p, num_cols * sizeof (DB_TYPE));
+  if (col_types == NULL)
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto reply;
+    }
+
+  for (int i = 0; i < num_cols; i++)
+    {
+      int type_val;
+      ptr = or_unpack_int (ptr, &type_val);
+      col_types[i] = (DB_TYPE) type_val;
+    }
+
+  /* resolve class OID from table name */
+  {
+    OID class_oid;
+    LC_FIND_CLASSNAME status;
+
+    status = xlocator_find_class_oid (thread_p, table_name, &class_oid, NULL_LOCK);
+    if (status != LC_CLASSNAME_EXIST)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, table_name);
+	error_code = ER_LC_UNKNOWN_CLASSNAME;
+	goto reply;
+      }
+
+    /* create copy session */
+    copy_session *session = new (std::nothrow) copy_session ();
+    if (session == NULL)
+      {
+	error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	goto reply;
+      }
+
+    error_code = session->init (thread_p, &class_oid, col_types, num_cols);
+    if (error_code != NO_ERROR)
+      {
+	delete session;
+	goto reply;
+      }
+
+    error_code = session_set_copy_session (thread_p, session);
+    if (error_code != NO_ERROR)
+      {
+	session->abort (thread_p);
+	delete session;
+	goto reply;
+      }
+  }
+
+reply:
+  if (col_types != NULL)
+    {
+      db_private_free (thread_p, col_types);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * scopy_from_send_data () - Receive binary data chunk for COPY session
+ *   request format: raw binary data
+ *   reply format: error_code (int)
+ */
+void
+scopy_from_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error_code = NO_ERROR;
+
+  copy_session *session = NULL;
+  error_code = session_get_copy_session (thread_p, session);
+  if (error_code != NO_ERROR || session == NULL)
+    {
+      if (error_code == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "No active COPY session");
+	  error_code = ER_DB_UNIMPLEMENTED;
+	}
+      goto reply;
+    }
+
+  error_code = session->receive_data (thread_p, request, reqlen);
+  if (error_code != NO_ERROR)
+    {
+      session->abort (thread_p);
+      delete session;
+      session_set_copy_session (thread_p, NULL);
+    }
+
+reply:
+  {
+    OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+    char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+    or_pack_int (reply, error_code);
+    css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  }
+}
+
+/*
+ * scopy_from_end () - Finalize COPY session and return row count
+ *   request format: (empty)
+ *   reply format: error_code (int), rows_loaded (int)
+ */
+void
+scopy_from_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error_code = NO_ERROR;
+  int rows_loaded = 0;
+
+  copy_session *session = NULL;
+  error_code = session_get_copy_session (thread_p, session);
+  if (error_code != NO_ERROR || session == NULL)
+    {
+      if (error_code == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "No active COPY session");
+	  error_code = ER_DB_UNIMPLEMENTED;
+	}
+      goto reply;
+    }
+
+  error_code = session->finish (thread_p, &rows_loaded);
+
+  delete session;
+  session_set_copy_session (thread_p, NULL);
+
+reply:
+  {
+    OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+    char *reply = OR_ALIGNED_BUF_START (a_reply);
+    char *ptr;
+
+    ptr = or_pack_int (reply, error_code);
+    ptr = or_pack_int (ptr, rows_loaded);
+    css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  }
 }
