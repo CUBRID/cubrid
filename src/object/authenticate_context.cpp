@@ -700,11 +700,11 @@ authenticate_context::set_user (MOP newuser)
 	  if (user_name == nullptr)
 	    {
 	      error = ER_AU_INVALID_USER_NAME;
-              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER_NAME, 1, "");
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER_NAME, 1, "");
 	      return (error);
 	    }
 	  user_cache = caches.make_user_cache (user_name, newuser, false);
-          ws_free_string (user_name);
+	  ws_free_string (user_name);
 	}
 
       if (user_cache)
