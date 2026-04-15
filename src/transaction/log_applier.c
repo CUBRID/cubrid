@@ -307,6 +307,15 @@ struct la_worker_queue
   int count;
 };
 
+typedef struct la_apply_result_queue LA_APPLY_RESULT_QUEUE;
+struct la_apply_result_queue
+{
+  LA_APPLY_RESULT results[LA_APPLY_WORKER_QUEUE_CAPACITY];
+  int head;
+  int tail;
+  int count;
+};
+
 typedef struct la_apply_worker LA_APPLY_WORKER;
 struct la_apply_worker
 {
@@ -319,8 +328,7 @@ struct la_apply_worker
   bool shutdown;
   bool busy;
   LA_WORKER_QUEUE queue;
-  LA_APPLY_RESULT result;
-  bool has_result;
+  LA_APPLY_RESULT_QUEUE result_queue;
 };
 
 /* Log applier info */
@@ -621,7 +629,10 @@ static void la_apply_worker_destroy (LA_APPLY_WORKER * worker);
 static int la_start_apply_workers (void);
 static void la_stop_apply_workers (void);
 static int la_enqueue_apply_task (LA_APPLY_WORKER * worker, const LA_APPLY_TASK * task);
-static int la_wait_apply_result (LA_APPLY_WORKER * worker, LA_APPLY_RESULT * result);
+static int la_dequeue_apply_task (LA_APPLY_WORKER * worker, LA_APPLY_TASK * task);
+static int la_enqueue_apply_result (LA_APPLY_WORKER * worker, const LA_APPLY_RESULT * result);
+static int la_try_dequeue_apply_result (LA_APPLY_WORKER * worker, LA_APPLY_RESULT * result);
+static int la_collect_apply_results (void);
 
 static bool la_need_filter_out (LA_ITEM * item);
 static int la_create_repl_filter (void);
@@ -713,31 +724,101 @@ la_enqueue_apply_task (LA_APPLY_WORKER * worker, const LA_APPLY_TASK * task)
 }
 
 static int
-la_wait_apply_result (LA_APPLY_WORKER * worker, LA_APPLY_RESULT * result)
+la_dequeue_apply_task (LA_APPLY_WORKER * worker, LA_APPLY_TASK * task)
 {
   pthread_mutex_lock (&worker->mutex);
 
-  while (worker->has_result == false && (worker->busy || worker->queue.count > 0) && worker->shutdown == false)
+  while (worker->queue.count == 0 && worker->shutdown == false)
     {
-      pthread_cond_wait (&worker->idle_cond, &worker->mutex);
+      pthread_cond_wait (&worker->cond, &worker->mutex);
     }
 
-  if (worker->has_result)
+  if (worker->shutdown)
     {
-      *result = worker->result;
-      worker->has_result = false;
+      pthread_mutex_unlock (&worker->mutex);
+      return ER_FAILED;
     }
-  else
+
+  *task = worker->queue.tasks[worker->queue.head];
+  worker->queue.head = (worker->queue.head + 1) % LA_APPLY_WORKER_QUEUE_CAPACITY;
+  worker->queue.count--;
+  worker->busy = true;
+
+  pthread_mutex_unlock (&worker->mutex);
+  return NO_ERROR;
+}
+
+static int
+la_enqueue_apply_result (LA_APPLY_WORKER * worker, const LA_APPLY_RESULT * result)
+{
+  pthread_mutex_lock (&worker->mutex);
+
+  if (worker->result_queue.count >= LA_APPLY_WORKER_QUEUE_CAPACITY)
     {
-      result->error = ER_FAILED;
-      result->tranid = NULL_TRANID;
-      result->rectype = LOG_ABORT;
-      LSA_SET_NULL (&result->commit_lsa);
-      result->log_record_time = 0;
+      worker->busy = false;
+      pthread_cond_broadcast (&worker->idle_cond);
+      pthread_mutex_unlock (&worker->mutex);
+      return ER_FAILED;
+    }
+
+  worker->result_queue.results[worker->result_queue.tail] = *result;
+  worker->result_queue.tail = (worker->result_queue.tail + 1) % LA_APPLY_WORKER_QUEUE_CAPACITY;
+  worker->result_queue.count++;
+  worker->busy = false;
+
+  pthread_cond_broadcast (&worker->idle_cond);
+  pthread_mutex_unlock (&worker->mutex);
+  return NO_ERROR;
+}
+
+static int
+la_try_dequeue_apply_result (LA_APPLY_WORKER * worker, LA_APPLY_RESULT * result)
+{
+  int error = ER_FAILED;
+
+  pthread_mutex_lock (&worker->mutex);
+
+  if (worker->result_queue.count > 0)
+    {
+      *result = worker->result_queue.results[worker->result_queue.head];
+      worker->result_queue.head = (worker->result_queue.head + 1) % LA_APPLY_WORKER_QUEUE_CAPACITY;
+      worker->result_queue.count--;
+      error = NO_ERROR;
     }
 
   pthread_mutex_unlock (&worker->mutex);
-  return result->error;
+  return error;
+}
+
+static int
+la_collect_apply_results (void)
+{
+  LA_APPLY_RESULT result;
+  int error = NO_ERROR;
+
+  while (la_try_dequeue_apply_result (&la_apply_Workers[0], &result) == NO_ERROR)
+    {
+      if (result.error != NO_ERROR)
+	{
+	  return result.error;
+	}
+
+      LSA_COPY (&la_Info.committed_lsa, &result.commit_lsa);
+      la_Info.log_record_time = result.log_record_time;
+
+      if (result.rectype == LOG_COMMIT)
+	{
+	  la_Info.commit_counter++;
+	}
+
+      error = la_reader_commit_apply_info ();
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return NO_ERROR;
 }
 
 static void *
@@ -755,23 +836,10 @@ la_apply_worker_main (void *arg)
       LA_APPLY_RESULT result;
       int total_rows = 0;
 
-      pthread_mutex_lock (&worker->mutex);
-      while (worker->queue.count == 0 && worker->shutdown == false)
+      if (la_dequeue_apply_task (worker, &task) != NO_ERROR)
 	{
-	  pthread_cond_wait (&worker->cond, &worker->mutex);
-	}
-
-      if (worker->shutdown)
-	{
-	  pthread_mutex_unlock (&worker->mutex);
 	  break;
 	}
-
-      task = worker->queue.tasks[worker->queue.head];
-      worker->queue.head = (worker->queue.head + 1) % LA_APPLY_WORKER_QUEUE_CAPACITY;
-      worker->queue.count--;
-      worker->busy = true;
-      pthread_mutex_unlock (&worker->mutex);
 
       result.tranid = task.tranid;
       result.rectype = task.rectype;
@@ -787,12 +855,11 @@ la_apply_worker_main (void *arg)
 	  result.error = la_commit_transaction ();
 	}
 
-      pthread_mutex_lock (&worker->mutex);
-      worker->result = result;
-      worker->has_result = true;
-      worker->busy = false;
-      pthread_cond_broadcast (&worker->idle_cond);
-      pthread_mutex_unlock (&worker->mutex);
+      if (la_enqueue_apply_result (worker, &result) != NO_ERROR)
+	{
+	  la_applier_need_shutdown = true;
+	  break;
+	}
     }
 
   er_context_p->deregister_thread_local ();
@@ -6461,7 +6528,6 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
       if (LSA_GT (final, &la_Info.committed_lsa))
 	{
 	  LA_APPLY_TASK task;
-	  LA_APPLY_RESULT result;
 
 	  /* add the repl_list to the commit_list */
 	  if (lrec->type == LOG_SYSOP_END)
@@ -6508,44 +6574,6 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	  if (error != NO_ERROR)
 	    {
 	      la_applier_need_shutdown = true;
-	      return error;
-	    }
-
-	  error = la_wait_apply_result (&la_apply_Workers[0], &result);
-	  if (error == ER_NET_CANT_CONNECT_SERVER)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_COMM_ERROR, 1, "cannot connect with server");
-	      return error;
-	    }
-	  else if (error == ER_HA_LA_EXCEED_MAX_MEM_SIZE)
-	    {
-	      la_applier_need_shutdown = true;
-	      return error;
-	    }
-	  else if (LA_IS_FLUSH_ERROR (error))
-	    {
-	      return error;
-	    }
-	  else if (error == ER_TDE_CIPHER_IS_NOT_LOADED)
-	    {
-	      la_applier_need_shutdown = true;
-	      return error;
-	    }
-	  else if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-
-	  LSA_COPY (&la_Info.committed_lsa, &result.commit_lsa);
-	  if (lrec->type == LOG_COMMIT)
-	    {
-	      la_Info.log_record_time = result.log_record_time;
-	      la_Info.commit_counter++;
-	    }
-
-	  error = la_reader_commit_apply_info ();
-	  if (error != NO_ERROR)
-	    {
 	      return error;
 	    }
 	}
@@ -8539,6 +8567,33 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
       /* start loop for apply */
       while (!LSA_ISNULL (&la_Info.final_lsa) && la_applier_need_shutdown == false)
 	{
+	  error = la_collect_apply_results ();
+	  if (error == ER_NET_CANT_CONNECT_SERVER)
+	    {
+	      la_shutdown ();
+	      return error;
+	    }
+	  else if (error == ER_HA_LA_EXCEED_MAX_MEM_SIZE)
+	    {
+	      la_applier_need_shutdown = true;
+	      break;
+	    }
+	  else if (LA_IS_FLUSH_ERROR (error))
+	    {
+	      la_shutdown ();
+	      return error;
+	    }
+	  else if (error == ER_TDE_CIPHER_IS_NOT_LOADED)
+	    {
+	      la_applier_need_shutdown = true;
+	      break;
+	    }
+	  else if (error != NO_ERROR)
+	    {
+	      la_applier_need_shutdown = true;
+	      break;
+	    }
+
 	  /* release all page buffers */
 	  la_release_all_page_buffers (NULL_PAGEID);
 
@@ -8919,6 +8974,18 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	      continue;
 	    }
 	}			/* while (!LSA_ISNULL (&la_Info.final_lsa) && la_applier_need_shutdown == false) */
+
+      error = la_collect_apply_results ();
+      if (error != NO_ERROR)
+	{
+	  if (ER_IS_SERVER_DOWN_ERROR (error) || LA_IS_FLUSH_ERROR (error))
+	    {
+	      la_shutdown ();
+	      return error;
+	    }
+	  la_applier_need_shutdown = true;
+	  break;
+	}
     }
   while (la_applier_need_shutdown == false);
 
