@@ -1465,7 +1465,11 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1369 Login is disabled for user "%1$s".
 
-1370 Last Error
+1370 COPY FROM is not supported for "%1$s".
+1371 COPY binary format error: %1$s.
+1372 COPY session error: %1$s.
+
+1373 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
