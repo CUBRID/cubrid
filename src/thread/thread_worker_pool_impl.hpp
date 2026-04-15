@@ -663,11 +663,11 @@ namespace cubthread
   {
     if constexpr (Stats)
       {
-	cubperf::stat_value statset[static_cast<std::size_t> (stats::id::type_count)];
+	std::vector<cubperf::stat_value> statset (stats::get_count (), 0);
 	std::stringstream ss;
 
-	std::memset (statset, 0, sizeof (stats));
-	get_stats (statset);
+	std::memset (statset.data (), 0, stats::get_count () * sizeof (cubperf::stat_value));
+	get_stats (statset.data ());
 
 	ss << "Worker pool statistics: " << m_name << std::endl;
 
