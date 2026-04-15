@@ -26,9 +26,7 @@
 #include "query_manager.h"
 #include "query_executor.h"
 #include "thread_entry_task.hpp"
-#include "px_scan_slot_iterator.hpp"
 #include "px_scan_result_handler.hpp"
-#include "px_scan_input_handler_ftabs.hpp"
 #include "px_scan_trace_handler.hpp"
 #include "px_interrupt.hpp"
 #include "px_worker_manager.hpp"
@@ -80,11 +78,6 @@ namespace parallel_scan
       m_uses_xasl_clone (uses_xasl_clone),
       m_worker_manager (worker_manager)
       {
-	m_xasl_cache_entry = nullptr;
-	m_xasl_clone = {NULL, NULL};
-	m_xasl = nullptr;
-	m_scan_id = nullptr;
-	m_vd = nullptr;
       }
       ~task();
       virtual void execute (cubthread::entry &thread_ref) override;

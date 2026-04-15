@@ -20,13 +20,12 @@
  * px_scan.hpp
  */
 
-#ifndef _PX_SCAN_MANAGER_HPP_
-#define _PX_SCAN_MANAGER_HPP_
+#ifndef _PX_SCAN_HPP_
+#define _PX_SCAN_HPP_
 
 #include "xasl.h"
 #include "px_worker_manager.hpp"
 #include "px_scan_result_handler.hpp"
-#include "px_scan_input_handler_ftabs.hpp"
 #include "px_scan_trace_handler.hpp"
 #include "px_scan_result_type.hpp"
 #include "query_manager.h"
@@ -134,4 +133,4 @@ extern "C"
   extern int scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
 }
 
-#endif /*_PX_SCAN_MANAGER_HPP_ */
+#endif /*_PX_SCAN_HPP_ */

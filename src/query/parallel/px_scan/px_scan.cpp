@@ -17,7 +17,7 @@
  */
 
 /*
- * px_scan.cpp - manager for parallel heap scans executed within a single XASL
+ * px_scan.cpp - manager for parallel scans executed within a single XASL
  */
 
 #include "px_scan.hpp"
