@@ -664,7 +664,15 @@ namespace cubhnsw
 		__builtin_prefetch (vec->values, 0, 0);
 		__builtin_prefetch (vec->values + 16, 0, 0);
 		if (vec->values_i8.values)
-		  __builtin_prefetch (vec->values_i8.values, 0, 0);
+		  {
+		    __builtin_prefetch (vec->values_i8.values, 0, 0);
+		    if (m_dimension > 64)
+		      __builtin_prefetch (vec->values_i8.values + 64, 0, 0);
+		    if (m_dimension > 128)
+		      __builtin_prefetch (vec->values_i8.values + 128, 0, 0);
+		    if (m_dimension > 192)
+		      __builtin_prefetch (vec->values_i8.values + 192, 0, 0);
+		  }
 		resolved_vecs[n_resolved] = vec;
 		resolved_slots[n_resolved] = successor_slot;
 		++n_resolved;
@@ -842,7 +850,15 @@ namespace cubhnsw
 		    __builtin_prefetch (vec->values, 0, 0);
 		    __builtin_prefetch (vec->values + 16, 0, 0);
 		    if (vec->values_i8.values)
-		      __builtin_prefetch (vec->values_i8.values, 0, 0);
+		      {
+			__builtin_prefetch (vec->values_i8.values, 0, 0);
+			if (m_dimension > 64)
+			  __builtin_prefetch (vec->values_i8.values + 64, 0, 0);
+			if (m_dimension > 128)
+			  __builtin_prefetch (vec->values_i8.values + 128, 0, 0);
+			if (m_dimension > 192)
+			  __builtin_prefetch (vec->values_i8.values + 192, 0, 0);
+		      }
 		    resolved_vecs[n_resolved] = vec;
 		    resolved_slots[n_resolved] = neighbor_id;
 		    ++n_resolved;
