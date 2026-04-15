@@ -131,6 +131,9 @@ namespace cubthread
       // execution
       virtual void execute_task (task_type *task_p, bool is_temp) = 0;
 
+      // termination
+      virtual bool stop_execution (void) = 0;
+
       // information
       entry_manager &get_entry_manager (void) const
       {
@@ -173,6 +176,9 @@ namespace cubthread
 
       // init
       virtual void initialize () = 0;
+
+      // termination
+      virtual bool stop_execution (void) = 0;
 
       // information
       void set_parent_core (core &parent)
