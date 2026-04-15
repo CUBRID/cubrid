@@ -697,6 +697,11 @@ authenticate_context::set_user (MOP newuser)
       if (!user_cache)
 	{
 	  const char *user_name = au_get_user_name (newuser);
+	  if (user_name == nullptr)
+	    {
+	      error = ER_AU_INVALID_USER_NAME;
+	      return (error);
+	    }
 	  user_cache = caches.make_user_cache (user_name, newuser, false);
 	}
 
