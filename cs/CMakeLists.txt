@@ -574,7 +574,7 @@ add_library(cubridcs SHARED
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
-target_compile_definitions(cubridcs PRIVATE CS_MODE CUBRID_EXPORTING ${COMMON_DEFS})
+target_compile_definitions(cubridcs PRIVATE CS_MODE CUBRID_EXPORTING MULTI_CONN_TO_A_SERVER ${COMMON_DEFS})
 if(WIN32)
   set_source_files_properties(${HEAPLAYERS_DIR}/customheaps.cpp PROPERTIES COMPILE_FLAGS -Od)
   SET_SOURCE_FILES_PROPERTIES(
