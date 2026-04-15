@@ -45,8 +45,11 @@ private:
   HFID m_hfid;
   HEAP_SCANCACHE m_scancache;
   bool m_scancache_started;
+  HEAP_CACHE_ATTRINFO m_attrinfo;
+  bool m_attrinfo_started;
 
   std::vector<DB_TYPE> m_col_types;
+  std::vector<ATTR_ID> m_attr_ids;	/* attribute repr IDs in column order */
   int m_num_cols;
   int m_rows_loaded;
 };
