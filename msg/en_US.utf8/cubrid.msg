@@ -1473,7 +1473,11 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1373 Given scale of %1$d is invalid; it should be greater than or equal to %2$d and no greater than %3$d.
 
-1374 Last Error
+1374 COPY FROM is not supported for "%1$s".
+1375 COPY binary format error: %1$s.
+1376 COPY session error: %1$s.
+
+1377 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

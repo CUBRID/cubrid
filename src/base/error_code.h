@@ -1763,7 +1763,12 @@
 
 #define ER_INVALID_SCALE                            -1373
 
-#define ER_LAST_ERROR                               -1374
+/* COPY FROM STDIN (ported to develop; renumbered from cubvec/tta -1370..-1372) */
+#define ER_COPY_NOT_SUPPORTED                       -1374
+#define ER_COPY_BINARY_FORMAT_ERROR                 -1375
+#define ER_COPY_SESSION_ERROR                       -1376
+
+#define ER_LAST_ERROR                               -1377
 
 
 
