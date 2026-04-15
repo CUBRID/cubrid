@@ -25,9 +25,12 @@
 #include "copy_binary_format.hpp"
 #include "dbtype_function.h"
 #include "error_manager.h"
+#include "intl_support.h"
+#include "language_support.h"
 #include "porting.h"
 
 #include <arpa/inet.h>
+#include <cstdlib>
 #include <cstring>
 
 /* read int16 from buffer in network byte order */
@@ -175,7 +178,7 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
 	DB_VECTOR_FLOAT vf;
 	vf.dim = dim;
 	/* decode float array from network byte order */
-	float *floats = (float *) db_private_alloc (NULL, dim * sizeof (float));
+	float *floats = (float *) malloc (dim * sizeof (float));
 	if (floats == NULL)
 	  {
 	    return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -188,7 +191,7 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
 	vf.float_array = floats;
 	db_make_vector_float (val, &vf);
 	/* db_make_vector_float copies the data, so free our temp buffer */
-	db_private_free (NULL, floats);
+	free (floats);
       }
       break;
 

@@ -24,6 +24,7 @@
 #include "copy_session.hpp"
 #include "copy_binary_decoder.hpp"
 #include "copy_binary_format.hpp"
+#include "btree.h"
 #include "dbtype_function.h"
 #include "error_manager.h"
 #include "heap_file.h"
@@ -129,7 +130,7 @@ copy_session::receive_data (THREAD_ENTRY *thread_p, const char *data, int data_l
 	recdes.type = REC_HOME;
 
 	/* Estimate record size: header + value data */
-	int est_size = OR_HEADER_SIZE;
+	int est_size = OR_INT_SIZE;	/* repid + flags placeholder */
 	for (int i = 0; i < m_num_cols; i++)
 	  {
 	    est_size += or_packed_value_size (&vals[i], 1, 1, 0);
