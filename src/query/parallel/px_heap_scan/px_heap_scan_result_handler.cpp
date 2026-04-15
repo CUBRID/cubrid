@@ -1026,7 +1026,8 @@ namespace parallel_heap_scan
 	  {
 	    agg_node->accumulator.curr_cnt = 0;
 	  }
-	else if (agg_node->option == Q_DISTINCT)
+	else if (agg_node->option == Q_DISTINCT
+		 && agg_node->function != PT_MIN && agg_node->function != PT_MAX)
 	  {
 	    int ls_flag = QFILE_FLAG_DISTINCT | QFILE_NOT_USE_MEMBUF;
 	    QFILE_TUPLE_VALUE_TYPE_LIST type_list;
@@ -1123,7 +1124,12 @@ namespace parallel_heap_scan
 		int dbval_size = pr_data_writeval_disk_size (op_val_p);
 		if (dbval_size > tl_tpl_buf.size)
 		  {
-		    tl_tpl_buf.tpl = (char *) db_private_realloc (thread_p, tl_tpl_buf.tpl, dbval_size);
+		    char *new_tpl = (char *) db_private_realloc (thread_p, tl_tpl_buf.tpl, dbval_size);
+		    if (new_tpl == nullptr)
+		      {
+			return false;
+		      }
+		    tl_tpl_buf.tpl = new_tpl;
 		    tl_tpl_buf.size = dbval_size;
 		  }
 		or_init (&tl_or_buf, tl_tpl_buf.tpl, dbval_size);
