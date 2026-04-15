@@ -7285,7 +7285,8 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 
       /* We expect to update or delete a non MVCC objects via a scan are only _db_serial, _db_ha_apply_info and
        * _db_collation objects. */
-      assert ((scan_op_type != S_DELETE && scan_op_type != S_UPDATE) || oid_is_serial (&ACCESS_SPEC_CLS_OID (curr_spec))
+      assert ((scan_op_type != S_DELETE && scan_op_type != S_UPDATE && scan_op_type != S_UPDATE_NO_KEY)
+	      || oid_is_serial (&ACCESS_SPEC_CLS_OID (curr_spec))
 	      || (oid_check_cached_class_oid (OID_CACHE_HA_APPLY_INFO_CLASS_ID, &ACCESS_SPEC_CLS_OID (curr_spec)))
 	      || (oid_check_cached_class_oid (OID_CACHE_COLLATION_CLASS_ID, &ACCESS_SPEC_CLS_OID (curr_spec))));
     }
@@ -7612,7 +7613,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
       *p_mvcc_select_lock_needed = mvcc_select_lock_needed;
     }
 
-  if (scan_op_type == S_SELECT && curr_spec->pruning_type == DB_PARTITIONED_CLASS && curr_spec->pruned)
+  if (scan_op_type == S_SELECT && curr_spec->pruning_type == DB_PARTITIONED_CLASS && curr_spec->pruned) // 여긴 없어도 되나?
     {
       error_code = qexec_init_next_partition (thread_p, curr_spec, xasl);
       if (error_code != S_SUCCESS)
@@ -8322,7 +8323,7 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	    {
 	      qexec_clear_head_lists (thread_p, xasl->bptr_list);
 	      scan_operation_type =
-		(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? S_UPDATE : S_SELECT;
+		(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? xasl->scan_op_type : S_SELECT;
 	    }
 	  /* evaluate bptr list */
 	  for (xptr = xasl->bptr_list; qualified && xptr != NULL; xptr = xptr->next)
@@ -9216,7 +9217,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	  if (xasl->bptr_list)
 	    {
 	      scan_operation_type =
-		(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? S_UPDATE : S_SELECT;
+		(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? xasl->scan_op_type : S_SELECT;
 	    }
 
 	  /* evaluate bptr list */
@@ -9284,7 +9285,8 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 		  if (xasl->fptr_list)
 		    {
 		      scan_operation_type =
-			(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? S_UPDATE : S_SELECT;
+			(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? xasl->scan_op_type
+			: S_SELECT;
 		    }
 
 		  for (xptr = xasl->fptr_list; qualified && xptr != NULL; xptr = xptr->next)
@@ -10163,6 +10165,33 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
       class_instance_lock_info.instances_locked = false;
       p_class_instance_lock_info = &class_instance_lock_info;
     }
+
+  /* Determine if all updated classes are non-key updates; if so, use S_UPDATE_NO_KEY (WX_LOCK) to allow concurrent FK
+   * existence checks (WS_LOCK) to proceed without deadlock. */
+  {
+    int ci;
+    bool all_no_key = true;
+
+    for (ci = 0; ci < class_oid_cnt && all_no_key; ci++)
+      {
+	UPDDEL_CLASS_INFO *cls = &update->classes[ci];
+
+	if (cls->num_subclasses < 1 || cls->class_oid == NULL)
+	  {
+	    all_no_key = false;
+	    break;
+	  }
+	if (locator_decide_update_lock (thread_p, &cls->class_oid[0], (ATTR_ID *) cls->att_id, cls->num_attrs)
+	    != WX_LOCK)
+	  {
+	    all_no_key = false;
+	  }
+      }
+    if (all_no_key && class_oid_cnt > 0)
+      {
+	aptr->scan_op_type = S_UPDATE_NO_KEY;
+      }
+  }
 
   if (qexec_execute_mainblock (thread_p, aptr, xasl_state, p_class_instance_lock_info) != NO_ERROR)
     {
@@ -13959,7 +13988,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	      /* need to handle reevaluation */
 	      scan_code =
 		locator_lock_and_get_object_with_evaluation (thread_p, &crt_incr_info.m_oid, &crt_incr_info.m_class_oid,
-							     NULL, &scan_cache, COPY, NULL_CHN, p_mvcc_reev_data,
+							     NULL, &scan_cache, X_LOCK, COPY, NULL_CHN, p_mvcc_reev_data,
 							     LOG_WARNING_IF_DELETED);
 	      if (scan_code != S_SUCCESS)
 		{

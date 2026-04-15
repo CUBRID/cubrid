@@ -20346,7 +20346,7 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 
       statement->info.query.q.select.list = parser_copy_tree_list (parser, select_list);
 
-      if (scan_op_type == S_UPDATE)
+      if (scan_op_type == S_UPDATE || scan_op_type == S_UPDATE_NO_KEY)
 	{
 	  /* The system generated select was "SELECT ..., rhs1, rhs2, ... FROM table ...".
 	   * When two different updates set different sets of attrs, generated select was lead to one XASL entry.
@@ -20379,7 +20379,7 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 
       statement->info.query.q.select.where = parser_copy_tree_list (parser, where);
 
-      if (scan_op_type == S_UPDATE && statement->info.query.q.select.from->next != NULL)
+      if ((scan_op_type == S_UPDATE || scan_op_type == S_UPDATE_NO_KEY) && statement->info.query.q.select.from->next != NULL)
 	{
 	  /* this is a multi-table update statement */
 	  for (spec = statement->info.query.q.select.from; spec; spec = spec->next)
@@ -20578,7 +20578,8 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 	}
       statement->info.query.q.select.from = from_temp;
 
-      if (scan_op_type == S_UPDATE && statement->info.query.upd_del_class_cnt == 1
+      if ((scan_op_type == S_UPDATE || scan_op_type == S_UPDATE_NO_KEY)
+	  && statement->info.query.upd_del_class_cnt == 1
 	  && statement->info.query.q.select.from->next != NULL && !pt_has_analytic (parser, statement))
 	{
 

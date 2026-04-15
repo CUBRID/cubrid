@@ -118,7 +118,7 @@ extern SCAN_CODE locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID
 					      int old_chn, NON_EXISTENT_HANDLING non_ex_handling_type);
 extern SCAN_CODE locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
 							      RECDES * recdes, HEAP_SCANCACHE * scan_cache,
-							      int ispeeking, int old_chn,
+							      LOCK lock_mode, int ispeeking, int old_chn,
 							      MVCC_REEV_DATA * mvcc_reev_data,
 							      NON_EXISTENT_HANDLING non_ex_handling_type);
 extern SCAN_CODE locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
@@ -126,6 +126,7 @@ extern SCAN_CODE locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, O
 				     int ispeeking, int chn);
 extern SCAN_OPERATION_TYPE locator_decide_operation_type (LOCK lock_mode, LC_FETCH_VERSION_TYPE fetch_version_type);
 extern LOCK locator_get_lock_mode_from_op_type (SCAN_OPERATION_TYPE op_type);
+extern LOCK locator_decide_update_lock (THREAD_ENTRY * thread_p, OID * class_oid, ATTR_ID * att_id, int n_att_id);
 
 extern int locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * recdes,
 				 int has_index, int op_type, HEAP_SCANCACHE * scan_cache, int *force_count,

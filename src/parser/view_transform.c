@@ -1964,7 +1964,8 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 
   /* select node from UPDATE, DELETE */
   if (pt_is_select (mainquery) &&
-      (mainquery->info.query.scan_op_type == S_DELETE || mainquery->info.query.scan_op_type == S_UPDATE))
+      (mainquery->info.query.scan_op_type == S_DELETE || mainquery->info.query.scan_op_type == S_UPDATE
+       || mainquery->info.query.scan_op_type == S_UPDATE_NO_KEY))
     {
       return NON_PUSHABLE;
     }

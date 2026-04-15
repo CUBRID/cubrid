@@ -6398,8 +6398,9 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   OID_SET_NULL (&find_fk_object.found_oid);
 
 #if defined (SERVER_MODE)
-  /* Use S_LOCK to block found object. */
-  find_fk_object.lock_mode = S_LOCK;
+  /* Use WS_LOCK: FK existence check only needs to verify the row exists,
+   * not prevent non-key updates on the child row. */
+  find_fk_object.lock_mode = WS_LOCK;
 #endif /* SERVER_MODE */
   /* Prepare scan. */
   BTREE_INIT_SCAN (&btree_scan);
@@ -22723,7 +22724,7 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, OI
 	}
     }
 
-  ret_search = xbtree_find_unique (thread_p, &local_btid, S_SELECT_WITH_LOCK, keyval, &part_oid, &unique_oid, true);
+  ret_search = xbtree_find_unique (thread_p, &local_btid, S_SELECT_WITH_KEY_SHARE_LOCK, keyval, &part_oid, &unique_oid, true);
   if (ret_search == BTREE_KEY_NOTFOUND)
     {
       char *val_print = NULL;
@@ -23705,7 +23706,7 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
   PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, PSTAT_BT_FIND_UNIQUE_TRAVERSE);
 
   /* Locking is required. */
-  assert (find_unique_helper->lock_mode >= S_LOCK);
+  assert (find_unique_helper->lock_mode >= WS_LOCK);
 
   /* Assume result is BTREE_KEY_NOTFOUND. It will be set to BTREE_KEY_FOUND if key is found and its first object is
    * successfully locked. */
@@ -23945,7 +23946,7 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
   PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, PSTAT_BT_FIND_UNIQUE_TRAVERSE);
 
   /* Locking is required. */
-  assert (find_unique_helper->lock_mode >= S_LOCK);
+  assert (find_unique_helper->lock_mode >= WS_LOCK);
 
   /* Assume result is BTREE_KEY_NOTFOUND. It will be set to BTREE_KEY_FOUND if key is found and its first object is
    * successfully locked. */
@@ -24272,7 +24273,7 @@ btree_key_lock_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * 
   assert (leaf_page != NULL && *leaf_page != NULL);
   assert (oid != NULL && !OID_ISNULL (oid));
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
-  assert (lock_mode >= S_LOCK);
+  assert (lock_mode >= WS_LOCK);
   assert (search_key != NULL && search_key->result == BTREE_KEY_FOUND);
 
   if (try_cond_lock)
@@ -24694,8 +24695,9 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
 
   /* Assert expected arguments. */
   assert (btid != NULL);
-  assert (scan_op_type == S_SELECT || scan_op_type == S_SELECT_WITH_LOCK || scan_op_type == S_DELETE
-	  || scan_op_type == S_UPDATE);
+  assert (scan_op_type == S_SELECT || scan_op_type == S_SELECT_WITH_LOCK
+	  || scan_op_type == S_SELECT_WITH_KEY_SHARE_LOCK || scan_op_type == S_DELETE || scan_op_type == S_UPDATE
+	  || scan_op_type == S_UPDATE_NO_KEY);
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
   assert (oid != NULL);
 
@@ -24718,7 +24720,8 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
 
 #if defined (SERVER_MODE)
   /* Make sure transaction has intention lock on table. */
-  class_lock = (scan_op_type == S_SELECT || scan_op_type == S_SELECT_WITH_LOCK) ? IS_LOCK : IX_LOCK;
+  class_lock = (scan_op_type == S_SELECT || scan_op_type == S_SELECT_WITH_LOCK
+		|| scan_op_type == S_SELECT_WITH_KEY_SHARE_LOCK) ? IS_LOCK : IX_LOCK;
   lock_result = lock_object (thread_p, class_oid, oid_Root_class_oid, class_lock, LK_UNCOND_LOCK);
   if (lock_result != LK_GRANTED)
     {
@@ -24762,15 +24765,18 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
     }
   else
     {
-      /* S_SELECT_LOCK_DIRTY, S_DELETE, S_UPDATE. */
-      assert (scan_op_type == S_SELECT_WITH_LOCK || scan_op_type == S_DELETE || scan_op_type == S_UPDATE);
+      /* S_SELECT_WITH_LOCK, S_SELECT_WITH_KEY_SHARE_LOCK, S_DELETE, S_UPDATE, S_UPDATE_NO_KEY. */
+      assert (scan_op_type == S_SELECT_WITH_LOCK || scan_op_type == S_SELECT_WITH_KEY_SHARE_LOCK
+	      || scan_op_type == S_DELETE || scan_op_type == S_UPDATE || scan_op_type == S_UPDATE_NO_KEY);
 
       /* First key object must be locked and returned. */
-      find_unique_helper.lock_mode = (scan_op_type == S_SELECT_WITH_LOCK) ? S_LOCK : X_LOCK;
+      find_unique_helper.lock_mode = (scan_op_type == S_SELECT_WITH_KEY_SHARE_LOCK) ? WS_LOCK
+				     : (scan_op_type == S_SELECT_WITH_LOCK) ? S_LOCK
+				     : (scan_op_type == S_UPDATE_NO_KEY) ? WX_LOCK : X_LOCK;
       key_function = btree_key_find_and_lock_unique;
     }
 
-  if (logtb_find_current_isolation (thread_p) >= TRAN_REP_READ || (find_unique_helper.lock_mode >= S_LOCK))
+  if (logtb_find_current_isolation (thread_p) >= TRAN_REP_READ || (find_unique_helper.lock_mode >= WS_LOCK))
     {
       bool need_skip_mvcc_snapshot = false;
 
