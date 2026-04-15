@@ -16318,16 +16318,13 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
       attr_offsets = pt_make_identity_offsets (group_out_list);
 
-      if (buildlist->g_hash_eligible)
+      if (buildlist->g_hash_eligible && attr_offsets)
 	{
 	  int i = 0;
 	  REGU_VARIABLE_LIST reg_var_p_out;
 	  for (reg_var_p_out = xasl->outptr_list->valptrp; reg_var_p_out; reg_var_p_out = reg_var_p_out->next)
 	    {
-	      if (attr_offsets && reg_var_p_out)
-		{
-		  reg_var_p_out->value.vfetch_to = pt_index_value (buildlist->g_val_list, attr_offsets[i]);
-		}
+	      reg_var_p_out->value.vfetch_to = pt_index_value (buildlist->g_val_list, attr_offsets[i]);
 	      i++;
 	    }
 	}
