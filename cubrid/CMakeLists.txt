@@ -601,6 +601,8 @@ set(LOADDB_SOURCES
   ${LOADDB_DIR}/load_server_loader.cpp
   ${LOADDB_DIR}/load_session.cpp
   ${LOADDB_DIR}/load_worker_manager.cpp
+  ${LOADDB_DIR}/copy_binary_decoder.cpp
+  ${LOADDB_DIR}/copy_session.cpp
   )
 
 set(LOADDB_HEADERS
@@ -614,6 +616,9 @@ set(LOADDB_HEADERS
   ${LOADDB_DIR}/load_server_loader.hpp
   ${LOADDB_DIR}/load_session.hpp
   ${LOADDB_DIR}/load_worker_manager.hpp
+  ${LOADDB_DIR}/copy_binary_format.hpp
+  ${LOADDB_DIR}/copy_binary_decoder.hpp
+  ${LOADDB_DIR}/copy_session.hpp
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
