@@ -993,11 +993,16 @@ namespace cubhnsw
 
 	top_for_refine.insert_reserved (candidate_t (dist, new_slot));
 
+	// Hoist close_vec lookup outside the inner loop — close_slot is invariant.
+	const cached_vector *close_vec =
+		m_storage->get_cached_vector_by_slot_id (context, close_slot, lock_mode::shared);
 	std::size_t close_header_size = close_header.size ();
 	for (std::size_t i = 0; i < close_header_size; i++)
 	  {
 	    slot_id_t successor_slot = close_header.at (i);
-	    dist = compute_distance_between (context, close_slot, successor_slot);
+	    const cached_vector *succ_vec =
+		    m_storage->get_cached_vector_by_slot_id (context, successor_slot, lock_mode::shared);
+	    dist = compute_distance_ (context, close_vec->values, succ_vec->values);
 	    top_for_refine.insert_reserved (candidate_t (dist, successor_slot));
 	  }
 
