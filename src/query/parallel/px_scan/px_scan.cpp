@@ -34,6 +34,8 @@
 #include "px_scan_task.hpp"
 #include "px_scan_input_handler_ftabs.hpp"
 #include "px_parallel.hpp"			/* parallel_query::compute_parallel_degree */
+#include "list_file.h"				/* qfile_close_list, qfile_destroy_list */
+#include "heap_file.h"				/* heap_attrinfo_end */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -1113,6 +1115,582 @@ extern "C"
     scan_id->position = S_ON;
     return NO_ERROR;
   }
+
+  SCAN_CODE
+  scan_next_parallel_index_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
+  {
+    switch (scan_id->s.pisid.result_type)
+      {
+      case parallel_scan::RESULT_TYPE::MERGEABLE_LIST:
+      {
+	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::INDEX >;
+	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
+	return manager_p->next();
+      }
+
+      case parallel_scan::RESULT_TYPE::XASL_SNAPSHOT:
+      {
+	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::INDEX >;
+	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
+	return manager_p->next();
+      }
+
+      case parallel_scan::RESULT_TYPE::BUILDVALUE_OPT:
+      {
+	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::INDEX >;
+	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
+	return manager_p->next();
+      }
+
+      default:
+	/* impossible case */
+	assert_release_error (false);
+	return S_ERROR;
+      }
+  }
+
+  int
+  scan_reset_scan_block_parallel_index_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
+  {
+    scan_id->single_fetched = false;
+    scan_id->null_fetched = false;
+    scan_id->qualified_block = false;
+    scan_id->position = (scan_id->direction == S_FORWARD) ? S_BEFORE : S_AFTER;
+
+    using accumulative_trace_storage = parallel_scan::accumulative_trace_storage;
+
+    switch (scan_id->s.pisid.result_type)
+      {
+      case parallel_scan::RESULT_TYPE::MERGEABLE_LIST:
+      {
+	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::INDEX >;
+	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
+
+	manager_p->merge_stats();
+
+	if (thread_p->on_trace)
+	  {
+	    if (scan_id->s.pisid.trace_storage == nullptr)
+	      {
+		size_t alloc_size = sizeof (accumulative_trace_storage);
+		scan_id->s.pisid.trace_storage = (accumulative_trace_storage *) malloc (alloc_size);
+		if (scan_id->s.pisid.trace_storage == nullptr)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+		    manager_p->reset ();
+		    break;
+		  }
+
+		scan_id->s.pisid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pisid.trace_storage,
+						 manager_p->get_result_type());
+		assert (scan_id->s.pisid.trace_storage != nullptr);
+	      }
+
+	    scan_id->s.pisid.trace_storage->add_stats (manager_p->get_trace_handler());
+	  }
+
+	manager_p->reset ();
+	break;
+      }
+
+      case parallel_scan::RESULT_TYPE::XASL_SNAPSHOT:
+      {
+	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::INDEX >;
+	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
+
+	manager_p->merge_stats();
+
+	if (thread_p->on_trace)
+	  {
+	    if (scan_id->s.pisid.trace_storage == nullptr)
+	      {
+		size_t alloc_size = sizeof (accumulative_trace_storage);
+		scan_id->s.pisid.trace_storage = (accumulative_trace_storage *) malloc (alloc_size);
+		if (scan_id->s.pisid.trace_storage == nullptr)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+		    manager_p->reset ();
+		    break;
+		  }
+
+		scan_id->s.pisid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pisid.trace_storage,
+						 manager_p->get_result_type());
+		assert (scan_id->s.pisid.trace_storage != nullptr);
+	      }
+
+	    scan_id->s.pisid.trace_storage->add_stats (manager_p->get_trace_handler());
+	  }
+
+	manager_p->reset ();
+	break;
+      }
+
+      case parallel_scan::RESULT_TYPE::BUILDVALUE_OPT:
+      {
+	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::INDEX >;
+	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
+
+	manager_p->merge_stats();
+
+	if (thread_p->on_trace)
+	  {
+	    if (scan_id->s.pisid.trace_storage == nullptr)
+	      {
+		size_t alloc_size = sizeof (accumulative_trace_storage);
+		scan_id->s.pisid.trace_storage = (accumulative_trace_storage *) malloc (alloc_size);
+		if (scan_id->s.pisid.trace_storage == nullptr)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+		    manager_p->reset ();
+		    break;
+		  }
+
+		scan_id->s.pisid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pisid.trace_storage,
+						 manager_p->get_result_type());
+		assert (scan_id->s.pisid.trace_storage != nullptr);
+	      }
+
+	    scan_id->s.pisid.trace_storage->add_stats (manager_p->get_trace_handler());
+	  }
+
+	manager_p->reset ();
+	break;
+      }
+
+      default:
+	/* impossible case */
+	assert_release_error (false);
+	return er_errid ();
+      }
+
+    return er_errid ();
+  }
+
+  void
+  scan_end_parallel_index_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
+  {
+    if (scan_id->direction == S_FORWARD)
+      {
+	scan_id->direction = S_BACKWARD;
+      }
+    else
+      {
+	scan_id->direction = S_FORWARD;
+      }
+
+    switch (scan_id->s.pisid.result_type)
+      {
+      case parallel_scan::RESULT_TYPE::MERGEABLE_LIST:
+      {
+	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::INDEX >;
+	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
+	manager_p->end();
+	break;
+      }
+
+      case parallel_scan::RESULT_TYPE::XASL_SNAPSHOT:
+      {
+	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::INDEX >;
+	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
+	manager_p->end();
+	break;
+      }
+
+      case parallel_scan::RESULT_TYPE::BUILDVALUE_OPT:
+      {
+	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::INDEX >;
+	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
+	manager_p->end();
+	break;
+      }
+
+      default:
+	/* impossible case */
+	assert_release_error (false);
+	break;
+      }
+  }
+
+  void
+  scan_close_parallel_index_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
+  {
+    using accumulative_trace_storage = parallel_scan::accumulative_trace_storage;
+
+    switch (scan_id->s.pisid.result_type)
+      {
+      case parallel_scan::RESULT_TYPE::MERGEABLE_LIST:
+      {
+	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::INDEX >;
+
+	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
+
+	if (thread_p->on_trace)
+	  {
+	    if (scan_id->s.pisid.trace_storage == nullptr)
+	      {
+		size_t alloc_size = sizeof (accumulative_trace_storage);
+		scan_id->s.pisid.trace_storage = (accumulative_trace_storage *) malloc (alloc_size);
+		if (scan_id->s.pisid.trace_storage == nullptr)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+		    manager_p->close();
+		    break;
+		  }
+
+		scan_id->s.pisid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pisid.trace_storage,
+						 manager_p->get_result_type());
+		assert (scan_id->s.pisid.trace_storage != nullptr);
+	      }
+
+	    scan_id->s.pisid.trace_storage->add_stats (manager_p->get_trace_handler());
+	  }
+
+	manager_p->close();
+	break;
+      }
+
+      case parallel_scan::RESULT_TYPE::XASL_SNAPSHOT:
+      {
+	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::INDEX >;
+
+	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
+
+	if (thread_p->on_trace)
+	  {
+	    if (scan_id->s.pisid.trace_storage == nullptr)
+	      {
+		size_t alloc_size = sizeof (accumulative_trace_storage);
+		scan_id->s.pisid.trace_storage = (accumulative_trace_storage *) malloc (alloc_size);
+		if (scan_id->s.pisid.trace_storage == nullptr)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+		    manager_p->close();
+		    break;
+		  }
+
+		scan_id->s.pisid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pisid.trace_storage,
+						 manager_p->get_result_type());
+		assert (scan_id->s.pisid.trace_storage != nullptr);
+	      }
+
+	    scan_id->s.pisid.trace_storage->add_stats (manager_p->get_trace_handler());
+	  }
+
+	manager_p->close();
+	break;
+      }
+
+      case parallel_scan::RESULT_TYPE::BUILDVALUE_OPT:
+      {
+	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::INDEX >;
+
+	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
+
+	if (thread_p->on_trace)
+	  {
+	    if (scan_id->s.pisid.trace_storage == nullptr)
+	      {
+		size_t alloc_size = sizeof (accumulative_trace_storage);
+		scan_id->s.pisid.trace_storage = (accumulative_trace_storage *) malloc (alloc_size);
+		if (scan_id->s.pisid.trace_storage == nullptr)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+		    manager_p->close();
+		    break;
+		  }
+
+		scan_id->s.pisid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pisid.trace_storage,
+						 manager_p->get_result_type());
+		assert (scan_id->s.pisid.trace_storage != nullptr);
+	      }
+
+	    scan_id->s.pisid.trace_storage->add_stats (manager_p->get_trace_handler());
+	  }
+
+	manager_p->close();
+	break;
+      }
+
+      default:
+	/* impossible case */
+	assert_release_error (false);
+	break;
+      }
+  }
+
+  int
+  scan_open_parallel_index_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
+				  VAL_DESCR *vd, ACCESS_SPEC_TYPE *spec,
+				  OID *class_oid, HFID *class_hfid,
+				  XASL_NODE *xasl, QUERY_ID query_id)
+  {
+    parallel_query::worker_manager *worker_manager_p = nullptr;
+    int num_parallel_threads;
+    int error = NO_ERROR;
+
+    assert (thread_p != nullptr);
+    assert (scan_id != nullptr);
+    assert (spec != nullptr);
+    assert (xasl != nullptr);
+    assert (query_id != NULL_QUERY_ID);
+    assert (vd != nullptr);
+
+    scan_id->type = S_INDX_SCAN;
+
+    if (thread_p->private_heap_id == 0)
+      {
+	/* not main thread; cannot use parallel index scan */
+	return NO_ERROR;
+      }
+
+    /* DML reads val_list directly; parallel scan does not populate it the same way */
+    if (xasl->type == INSERT_PROC || xasl->type == UPDATE_PROC
+	|| xasl->type == DELETE_PROC || xasl->type == MERGE_PROC)
+      {
+	return NO_ERROR;
+      }
+
+    if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_INDEX_SCAN))
+      {
+	return NO_ERROR;
+      }
+
+    assert (spec->num_parallel_threads == -1
+	    || ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS));
+
+    /* Use INT_MAX pages so compute_parallel_degree picks degree from hint/workers, not page count */
+    num_parallel_threads = parallel_query::compute_parallel_degree (parallel_query::parallel_type::HEAP_SCAN,
+				   INT_MAX, spec->num_parallel_threads /* hint */);
+    if (num_parallel_threads < 2)
+      {
+	assert (scan_id->type == S_INDX_SCAN);
+	return NO_ERROR;
+      }
+
+    worker_manager_p = parallel_query::worker_manager::try_reserve_workers (num_parallel_threads);
+    if (worker_manager_p == nullptr)
+      {
+	assert (scan_id->type == S_INDX_SCAN);
+	return NO_ERROR;
+      }
+
+    /* update to actual reserved workers */
+    num_parallel_threads = worker_manager_p->get_reserved_workers ();
+
+    if (xasl->topn_items || XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
+      {
+	ACCESS_SPEC_UNSET_FLAG (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST);
+      }
+
+    /* Determine result type in a LOCAL variable.  Do NOT write to pisid yet —
+     * the pisid union overlaps isid and we need isid intact for fallback. */
+    parallel_scan::RESULT_TYPE local_result_type;
+    if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST))
+      {
+	local_result_type = parallel_scan::RESULT_TYPE::MERGEABLE_LIST;
+      }
+    else if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_BUILDVALUE_OPT))
+      {
+	local_result_type = parallel_scan::RESULT_TYPE::BUILDVALUE_OPT;
+      }
+    else
+      {
+	local_result_type = parallel_scan::RESULT_TYPE::XASL_SNAPSHOT;
+      }
+
+    /* Save indx_info from isid.  init_on_main (called from manager::open) needs the BTID. */
+    INDX_INFO *saved_indx_info = scan_id->s.isid.indx_info;
+
+    /* Allocate and open the manager using a LOCAL pointer.
+     * Do NOT write to scan_id->s.pisid until open() succeeds — this keeps
+     * isid intact so that on failure we can fall back to single-thread S_INDX_SCAN. */
+    void *local_manager = nullptr;
+
+    switch (local_result_type)
+      {
+      case parallel_scan::RESULT_TYPE::MERGEABLE_LIST:
+      {
+	using manager_type =
+		parallel_scan::manager < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::INDEX >;
+
+	local_manager = (void *) db_private_alloc (thread_p, sizeof (manager_type));
+	if (local_manager == nullptr)
+	  {
+	    assert_release_error (er_errid () != NO_ERROR);
+	    error = er_errid ();
+	    break;
+	  }
+
+	local_manager = placement_new ((manager_type *) local_manager,
+				       thread_p, query_id, scan_id, xasl,
+				       num_parallel_threads, *class_hfid, *class_oid, vd,
+				       false, false, worker_manager_p, nullptr, saved_indx_info);
+	assert (local_manager != nullptr);
+
+	error = ((manager_type *) local_manager)->open ();
+	if (error != NO_ERROR)
+	  {
+	    ((manager_type *) local_manager)->~manager ();
+	    db_private_free_and_init (thread_p, local_manager);
+	    worker_manager_p = nullptr;
+
+	    assert_release_error (er_errid () != NO_ERROR);
+	    error = er_errid ();
+	  }
+
+	break;
+      }
+
+      case parallel_scan::RESULT_TYPE::XASL_SNAPSHOT:
+      {
+	using manager_type =
+		parallel_scan::manager < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::INDEX >;
+
+	local_manager = (void *) db_private_alloc (thread_p, sizeof (manager_type));
+	if (local_manager == nullptr)
+	  {
+	    assert_release_error (er_errid () != NO_ERROR);
+	    error = er_errid ();
+	    break;
+	  }
+
+	local_manager = placement_new ((manager_type *) local_manager,
+				       thread_p, query_id, scan_id, xasl,
+				       num_parallel_threads, *class_hfid, *class_oid, vd,
+				       false, false, worker_manager_p, nullptr, saved_indx_info);
+	assert (local_manager != nullptr);
+
+	error = ((manager_type *) local_manager)->open ();
+	if (error != NO_ERROR)
+	  {
+	    ((manager_type *) local_manager)->~manager ();
+	    db_private_free_and_init (thread_p, local_manager);
+	    worker_manager_p = nullptr;
+
+	    assert_release_error (er_errid () != NO_ERROR);
+	    error = er_errid ();
+	  }
+
+	break;
+      }
+
+      case parallel_scan::RESULT_TYPE::BUILDVALUE_OPT:
+      {
+	using manager_type =
+		parallel_scan::manager < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::INDEX >;
+
+	local_manager = (void *) db_private_alloc (thread_p, sizeof (manager_type));
+	if (local_manager == nullptr)
+	  {
+	    assert_release_error (er_errid () != NO_ERROR);
+	    error = er_errid ();
+	    break;
+	  }
+
+	local_manager = placement_new ((manager_type *) local_manager,
+				       thread_p, query_id, scan_id, xasl,
+				       num_parallel_threads, *class_hfid, *class_oid, vd,
+				       false, false, worker_manager_p, nullptr, saved_indx_info);
+	assert (local_manager != nullptr);
+
+	error = ((manager_type *) local_manager)->open ();
+	if (error != NO_ERROR)
+	  {
+	    ((manager_type *) local_manager)->~manager ();
+	    db_private_free_and_init (thread_p, local_manager);
+	    worker_manager_p = nullptr;
+
+	    assert_release_error (er_errid () != NO_ERROR);
+	    error = er_errid ();
+	  }
+
+	break;
+      }
+
+      default:
+	/* impossible case */
+	assert_release_error (false);
+	error = er_errid ();
+	break;
+      }	/* switch (local_result_type) */
+
+    if (error != NO_ERROR)
+      {
+	/* cleanup */
+	if (worker_manager_p != nullptr)
+	  {
+	    worker_manager_p->release_workers ();
+	    worker_manager_p = nullptr;
+	  }
+
+	if (error == ER_INTERRUPTED || er_errid () == ER_INTERRUPTED)
+	  {
+	    ASSERT_ERROR ();
+	    return error;
+	  }
+
+	/* fallback to single-thread index scan — isid is still intact */
+	er_clear ();
+	assert (scan_id->type == S_INDX_SCAN);
+	return NO_ERROR;
+      }
+
+    /* === SUCCESS PATH: manager is open and workers are ready. ===
+     * Now clean up isid resources before overwriting with pisid. */
+
+    /* 1. End heap attr caches while isid is still valid. */
+    {
+      INDX_SCAN_ID *isidp = &scan_id->s.isid;
+      if (isidp->caches_inited)
+	{
+	  if (isidp->range_pred.regu_list != NULL)
+	    {
+	      heap_attrinfo_end (thread_p, isidp->range_attrs.attr_cache);
+	    }
+	  if (isidp->key_pred.regu_list)
+	    {
+	      heap_attrinfo_end (thread_p, isidp->key_attrs.attr_cache);
+	    }
+	  heap_attrinfo_end (thread_p, isidp->pred_attrs.attr_cache);
+	  heap_attrinfo_end (thread_p, isidp->rest_attrs.attr_cache);
+	  isidp->caches_inited = false;
+	}
+    }
+
+    /* 2. Save indx_cov.list_id before scan_close_scan (which does not destroy it).
+     *    Null it out to prevent double-free in qexec_clear_access_spec_list. */
+    QFILE_LIST_ID *saved_indx_cov_list_id = scan_id->s.isid.indx_cov.list_id;
+    scan_id->s.isid.indx_cov.list_id = NULL;
+
+    /* 3. Free scan-specific resources (bt_attr_ids, oid_list, copy_buf, etc.). */
+    scan_close_scan (thread_p, scan_id);
+    scan_id->status = S_OPENED;	/* reset status; scan_close_scan sets it to S_CLOSED */
+
+    /* 4. Properly close and destroy the indx_cov list file to decrement qlist_count. */
+    if (saved_indx_cov_list_id != NULL)
+      {
+	qfile_close_list (thread_p, saved_indx_cov_list_id);
+	qfile_destroy_list (thread_p, saved_indx_cov_list_id);
+      }
+
+    /* 5. Write pisid fields (now safe — isid is fully cleaned up). */
+    scan_id->s.pisid.result_type = local_result_type;
+    scan_id->s.pisid.manager = local_manager;
+    scan_id->s.pisid.trace_storage = nullptr;
+
+    er_log_debug (ARG_FILE_LINE, "parallel index scan started.");
+    scan_id->type = S_PARALLEL_INDEX_SCAN;
+
+    ASSERT_NO_ERROR_OR_INTERRUPTED ();
+    return NO_ERROR;
+  }
+
+  int
+  scan_start_parallel_index_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
+  {
+    scan_id->position = S_ON;
+    return NO_ERROR;
+  }
 }
 
 namespace parallel_scan
@@ -1127,6 +1705,10 @@ namespace parallel_scan
       }
     if (m_input_handler != nullptr)
       {
+	if constexpr (ST == SCAN_TYPE::INDEX)
+	  {
+	    m_input_handler->cleanup_keys (m_thread_p);
+	  }
 	m_input_handler->~input_handler_t();
 	db_private_free (m_thread_p, m_input_handler);
 	m_input_handler = nullptr;
@@ -1219,6 +1801,10 @@ namespace parallel_scan
       if constexpr (ST == SCAN_TYPE::LIST)
 	{
 	  init_err = m_input_handler->init_on_main (m_thread_p, m_list_id, m_parallelism);
+	}
+      else if constexpr (ST == SCAN_TYPE::INDEX)
+	{
+	  init_err = m_input_handler->init_on_main (m_thread_p, m_indx_info, m_parallelism);
 	}
       else
 	{
@@ -1585,6 +2171,10 @@ namespace parallel_scan
       {
 	m_scan_id->s.pllsid_parallel.manager = this;
       }
+    else if constexpr (ST == SCAN_TYPE::INDEX)
+      {
+	m_scan_id->s.pisid.manager = this;
+      }
     else
       {
 	m_scan_id->s.phsid.manager = this;
@@ -1650,6 +2240,10 @@ namespace parallel_scan
       {
 	m_scan_id->s.pllsid_parallel.manager = nullptr;
       }
+    else if constexpr (ST == SCAN_TYPE::INDEX)
+      {
+	m_scan_id->s.pisid.manager = nullptr;
+      }
     else
       {
 	m_scan_id->s.phsid.manager = nullptr;
@@ -1667,4 +2261,8 @@ namespace parallel_scan
   template class manager<RESULT_TYPE::MERGEABLE_LIST, SCAN_TYPE::LIST>;
   template class manager<RESULT_TYPE::XASL_SNAPSHOT, SCAN_TYPE::LIST>;
   template class manager<RESULT_TYPE::BUILDVALUE_OPT, SCAN_TYPE::LIST>;
+
+  template class manager<RESULT_TYPE::MERGEABLE_LIST, SCAN_TYPE::INDEX>;
+  template class manager<RESULT_TYPE::XASL_SNAPSHOT, SCAN_TYPE::INDEX>;
+  template class manager<RESULT_TYPE::BUILDVALUE_OPT, SCAN_TYPE::INDEX>;
 }

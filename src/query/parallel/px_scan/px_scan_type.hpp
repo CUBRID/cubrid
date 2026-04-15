@@ -24,8 +24,10 @@
 #define _PX_SCAN_TYPE_HPP_
 
 #include "px_scan_input_handler_ftabs.hpp"
+#include "px_scan_input_handler_index.hpp"
 #include "px_scan_input_handler_list.hpp"
 #include "px_scan_slot_iterator.hpp"
+#include "px_scan_slot_iterator_index.hpp"
 #include "px_scan_slot_iterator_list.hpp"
 
 namespace parallel_scan
@@ -37,11 +39,6 @@ namespace parallel_scan
     LIST = 1,
     INDEX = 2,
   };
-
-  // Forward declarations for Phase 3 types
-  // (uncomment and include headers when implemented)
-  // class input_handler_index;
-  // class slot_iterator_index;
 
   template <SCAN_TYPE>
   struct scan_traits;
@@ -60,13 +57,12 @@ namespace parallel_scan
     using slot_iterator_type = slot_iterator_list;
   };
 
-  // Phase 3: uncomment when input_handler_index and slot_iterator_index exist
-  // template <>
-  // struct scan_traits<SCAN_TYPE::INDEX>
-  // {
-  //   using input_handler_type = input_handler_index;
-  //   using slot_iterator_type = slot_iterator_index;
-  // };
+  template <>
+  struct scan_traits<SCAN_TYPE::INDEX>
+  {
+    using input_handler_type = input_handler_index;
+    using slot_iterator_type = slot_iterator_index;
+  };
 
 } // namespace parallel_scan
 

@@ -127,6 +127,31 @@ namespace parallel_scan
 		  }
 		err_code = scan_start_scan (&thread_ref, m_scan_id);
 	      }
+	    else if constexpr (ST == SCAN_TYPE::INDEX)
+	      {
+		bool iscan_oid_order = m_scan_id->s.isid.iscan_oid_order;
+		err_code = scan_open_index_scan (&thread_ref, m_scan_id, false, S_SELECT,
+						 m_is_fixed, m_is_grouped, spec->single_fetch, spec->s_dbval,
+						 m_xasl->val_list, m_vd, spec->indexptr, &m_cls_oid, &m_hfid,
+						 cls->cls_regu_list_key, spec->where_key,
+						 cls->cls_regu_list_pred, spec->where_pred,
+						 cls->cls_regu_list_rest, spec->where_range,
+						 cls->cls_regu_list_range, cls->cls_output_val_list,
+						 cls->cls_regu_val_list, cls->num_attrs_key,
+						 cls->attrids_key, cls->cache_key,
+						 cls->num_attrs_pred, cls->attrids_pred, cls->cache_pred,
+						 cls->num_attrs_rest, cls->attrids_rest, cls->cache_rest,
+						 cls->num_attrs_range, cls->attrids_range, cls->cache_range,
+						 iscan_oid_order, m_query_entry->query_id,
+						 ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN));
+		if (err_code != NO_ERROR)
+		  {
+		    return err_code;
+		  }
+		/* CRITICAL: input_handler->initialize() sets curr_keyno=0 AFTER scan_start_scan
+		 * resets it to -1, so the pre-built KEY_VAL_RANGE is used without being overwritten. */
+		err_code = scan_start_scan (&thread_ref, m_scan_id);
+	      }
 	    else
 	      {
 		scan_open_heap_scan (&thread_ref, m_scan_id, false, S_SELECT,
@@ -310,7 +335,7 @@ namespace parallel_scan
 	return err_code;
       }
     m_slot_iterator.initialize (&thread_ref, m_scan_id, m_vd);
-    if constexpr (ST == SCAN_TYPE::LIST)
+    if constexpr (ST == SCAN_TYPE::LIST || ST == SCAN_TYPE::INDEX)
       {
 	m_input_handler->initialize (&thread_ref, nullptr, m_scan_id);
       }
@@ -706,4 +731,8 @@ namespace parallel_scan
   template class task<RESULT_TYPE::MERGEABLE_LIST, SCAN_TYPE::LIST>;
   template class task<RESULT_TYPE::XASL_SNAPSHOT, SCAN_TYPE::LIST>;
   template class task<RESULT_TYPE::BUILDVALUE_OPT, SCAN_TYPE::LIST>;
+
+  template class task<RESULT_TYPE::MERGEABLE_LIST, SCAN_TYPE::INDEX>;
+  template class task<RESULT_TYPE::XASL_SNAPSHOT, SCAN_TYPE::INDEX>;
+  template class task<RESULT_TYPE::BUILDVALUE_OPT, SCAN_TYPE::INDEX>;
 }

@@ -1982,6 +1982,37 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	    }
 	  break;
 
+#if SERVER_MODE
+	case S_PARALLEL_INDEX_SCAN:
+	  /* isid resources (caches, indx_cov, bt_attr_ids, etc.) were already cleaned up
+	   * in scan_open_parallel_index_scan before the pisid overwrite.
+	   * Here we only need to close the parallel manager. */
+	  if (p->s_id.s.pisid.manager)
+	    {
+	      parallel_scan::RESULT_TYPE result_type = p->s_id.s.pisid.result_type;
+	      switch (result_type)
+		{
+		case parallel_scan::RESULT_TYPE::MERGEABLE_LIST:
+		  ((parallel_scan::manager < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::INDEX >
+		    *)p->s_id.s.pisid.manager)->close ();
+		  break;
+		case parallel_scan::RESULT_TYPE::XASL_SNAPSHOT:
+		  ((parallel_scan::manager < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::INDEX >
+		    *)p->s_id.s.pisid.manager)->close ();
+		  break;
+		case parallel_scan::RESULT_TYPE::BUILDVALUE_OPT:
+		  ((parallel_scan::manager < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::INDEX >
+		    *)p->s_id.s.pisid.manager)->close ();
+		  break;
+		default:
+		  assert (false);
+		  break;
+		}
+	      p->s_id.s.pisid.manager = nullptr;
+	    }
+	  break;
+#endif
+
 	case S_INDX_SCAN:
 	  pg_cnt +=
 	    qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.isid.key_pred.regu_list, is_final, for_parallel_aptr);
@@ -7421,6 +7452,17 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 		goto exit_on_error;
 	      }
 
+#if SERVER_MODE && !WINDOWS
+	    error_code = scan_open_parallel_index_scan (thread_p, s_id, vd, curr_spec,
+						       &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
+						       xasl, query_id);
+	    if (error_code != NO_ERROR)
+	      {
+		ASSERT_ERROR ();
+		goto exit_on_error;
+	      }
+#endif /* SERVER_MODE && !WINDOWS */
+
 	    /* monitor */
 	    perfmon_inc_stat (thread_p, PSTAT_QM_NUM_ISCANS);
 	    break;
@@ -9000,6 +9042,16 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 		{
 		  return S_ERROR;
 		}
+
+#if SERVER_MODE && !WINDOWS
+	      error =
+		scan_open_parallel_index_scan (thread_p, &spec->s_id, spec->s_id.vd, spec,
+					       &class_oid, &class_hfid, xasl, query_id);
+	      if (error != NO_ERROR)
+		{
+		  return S_ERROR;
+		}
+#endif /* SERVER_MODE && !WINDOWS */
 
 	      break;
 	    }			/* case ACCESS_METHOD_INDEX */

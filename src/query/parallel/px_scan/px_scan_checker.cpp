@@ -57,6 +57,7 @@ namespace parallel_scan
   const possible_flags CANNOT_PARALLEL_HEAP_SCAN = 0x1 << 0;
   const possible_flags CANNOT_LIST_MERGE = 0x1 << 1;
   const possible_flags CANNOT_BUILDVALUE_OPT = 0x1 << 2;
+  const possible_flags CANNOT_PARALLEL_INDEX_SCAN = 0x1 << 3;
 
   static bool
   is_buildvalue_opt_supported_function (FUNC_CODE function)
@@ -378,9 +379,33 @@ namespace parallel_scan
       }
     if (arg->type == TARGET_CLASS)
       {
-	if (arg->access != ACCESS_METHOD_SEQUENTIAL)
+	if (arg->access == ACCESS_METHOD_SEQUENTIAL)
+	  {
+	    /* heap scan: eligible for parallel; regu_list checks follow below */
+	  }
+	else if (arg->access == ACCESS_METHOD_INDEX)
+	  {
+	    /* index scan: check basic eligibility for parallel index scan */
+	    if (ACCESS_SPEC_IS_FLAGED (arg, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN))
+	      {
+		/* min/max aggregate scan produces no rows; skip parallel */
+		set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+		set_flag (result, CANNOT_PARALLEL_INDEX_SCAN);
+		return result;
+	      }
+	    /* ISS (Index Skip Scan) and ILS (Index Loose Scan) dynamically modify
+	     * curr_keyno and key ranges; they conflict with pre-split key ranges. */
+	    if (arg->indexptr != NULL
+		&& (arg->indexptr->use_iss || arg->indexptr->ils_prefix_len > 0))
+	      {
+		set_flag (result, CANNOT_PARALLEL_INDEX_SCAN);
+	      }
+	    /* otherwise: potentially eligible; regu_list checks follow below */
+	  }
+	else
 	  {
 	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	    set_flag (result, CANNOT_PARALLEL_INDEX_SCAN);
 	    return result;
 	  }
       }
@@ -391,11 +416,13 @@ namespace parallel_scan
     else
       {
 	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	set_flag (result, CANNOT_PARALLEL_INDEX_SCAN);
 	return result;
       }
     if (arg->next)
       {
 	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	set_flag (result, CANNOT_PARALLEL_INDEX_SCAN);
 	return result;
       }
     if (arg->type == TARGET_CLASS)
@@ -403,6 +430,14 @@ namespace parallel_scan
 	result |= check<false> (arg->s.cls_node.cls_regu_list_pred);
 	result |= check<false> (arg->s.cls_node.cls_regu_list_rest);
 	result |= check<false> (arg->where_pred);
+	if (arg->access == ACCESS_METHOD_INDEX)
+	  {
+	    /* Also check index-specific predicate lists for disqualifying constructs */
+	    result |= check<false> (arg->s.cls_node.cls_regu_list_key);
+	    result |= check<false> (arg->where_key);
+	    result |= check<false> (arg->s.cls_node.cls_regu_list_range);
+	    result |= check<false> (arg->where_range);
+	  }
 	if (!arg->s.cls_node.cls_regu_list_pred && !arg->s.cls_node.cls_regu_list_rest)
 	  {
 	    set_flag (result, CANNOT_LIST_MERGE);
@@ -759,11 +794,29 @@ namespace parallel_scan
 	for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
 	  {
 	    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+	    /* Disqualifying constructs (TYPE_CLASSOID, TYPE_SP, TYPE_ORDERBY_NUM, etc.)
+	     * that block parallel heap scan also block parallel index scan. */
+	    if (specp->type == TARGET_CLASS && specp->access == ACCESS_METHOD_INDEX)
+	      {
+		ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_INDEX_SCAN);
+	      }
 	  }
       }
     else
       {
-	/* parallel heap scan is possible */
+	/* Propagate NO_PARALLEL_INDEX_SCAN for index scan specs */
+	for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
+	  {
+	    if (specp->type == TARGET_CLASS && specp->access == ACCESS_METHOD_INDEX)
+	      {
+		if (is_flag_set (result, CANNOT_PARALLEL_INDEX_SCAN))
+		  {
+		    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_INDEX_SCAN);
+		  }
+	      }
+	  }
+
+	/* parallel heap/index scan is possible; determine result type */
 	if (!is_flag_set (result, CANNOT_BUILDVALUE_OPT))
 	  {
 	    /* buildvalue optimization is possible */
@@ -813,6 +866,7 @@ namespace parallel_scan
     for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
       {
 	ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+	ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_INDEX_SCAN);
       }
 
     // Recursively process all child nodes

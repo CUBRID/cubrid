@@ -1,0 +1,66 @@
+/*
+ *
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+/*
+ * px_scan_input_handler_index.hpp
+ */
+
+#ifndef _PX_SCAN_INPUT_HANDLER_INDEX_HPP_
+#define _PX_SCAN_INPUT_HANDLER_INDEX_HPP_
+
+#include "px_interrupt.hpp"
+#include "scan_manager.h"
+#include "btree.h"
+#include <atomic>
+#include <vector>
+
+namespace parallel_scan
+{
+  class input_handler_index
+  {
+      using interrupt = parallel_query::interrupt;
+      using err_messages_with_lock = parallel_query::err_messages_with_lock;
+    public:
+      input_handler_index (interrupt *interrupt_p, err_messages_with_lock *err_messages_p)
+	: m_split_idx (0),
+	  m_interrupt_p (interrupt_p),
+	  m_err_messages_p (err_messages_p)
+      {
+	memset (&m_btid_int, 0, sizeof (m_btid_int));
+	memset (&m_btid, 0, sizeof (m_btid));
+      }
+      int init_on_main (THREAD_ENTRY *thread_p, INDX_INFO *indx_info, int parallelism);
+      SCAN_CODE get_next_vpid_with_fix (THREAD_ENTRY *thread_p, VPID *vpid);
+      int initialize (THREAD_ENTRY *thread_p, HFID *hfid, SCAN_ID *scan_id);
+      int finalize (THREAD_ENTRY *thread_p);
+      void cleanup_keys (THREAD_ENTRY *thread_p);
+
+    private:
+      thread_local static bool m_tl_used;
+
+      std::vector<key_val_range> m_worker_key_vals;  /* one KEY_VAL_RANGE per worker */
+      std::vector<DB_VALUE> m_split_keys;		/* N-1 boundary keys (owned, COPY) */
+      std::atomic_int m_split_idx;
+      BTID_INT m_btid_int;
+      BTID m_btid;
+      interrupt *m_interrupt_p;
+      err_messages_with_lock *m_err_messages_p;
+  };
+}
+
+#endif /* _PX_SCAN_INPUT_HANDLER_INDEX_HPP_ */

@@ -49,7 +49,8 @@ namespace parallel_scan
 	       val_descr *vd,
 	       bool is_fixed, bool is_grouped,
 	       worker_manager *worker_manager,
-	       QFILE_LIST_ID *list_id = nullptr)
+	       QFILE_LIST_ID *list_id = nullptr,
+	       INDX_INFO *indx_info = nullptr)
 	: m_thread_p (thread_p),
 	  m_query_id (query_id),
 	  m_scan_id (scan_id),
@@ -75,7 +76,8 @@ namespace parallel_scan
 	  m_is_grouped (is_grouped),
 	  m_uses_xasl_clone (false),
 	  m_g_agg_domain_resolve_need (false),
-	  m_list_id (list_id)
+	  m_list_id (list_id),
+	  m_indx_info (indx_info)
       {}
       ~manager();
       int open();
@@ -122,6 +124,7 @@ namespace parallel_scan
       bool m_uses_xasl_clone;
       bool m_g_agg_domain_resolve_need;
       QFILE_LIST_ID *m_list_id;
+      INDX_INFO *m_indx_info;
   };
 }
 
@@ -144,6 +147,15 @@ extern "C"
       VAL_DESCR *vd, ACCESS_SPEC_TYPE *spec, QFILE_LIST_ID *list_id,
       XASL_NODE *xasl, QUERY_ID query_id);
   extern int scan_start_parallel_list_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+
+  extern SCAN_CODE scan_next_parallel_index_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+  extern int scan_reset_scan_block_parallel_index_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+  extern void scan_end_parallel_index_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+  extern void scan_close_parallel_index_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+  extern int scan_open_parallel_index_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
+      VAL_DESCR *vd, ACCESS_SPEC_TYPE *spec, OID *class_oid, HFID *class_hfid,
+      XASL_NODE *xasl, QUERY_ID query_id);
+  extern int scan_start_parallel_index_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
 }
 
 #endif /*_PX_SCAN_HPP_ */
