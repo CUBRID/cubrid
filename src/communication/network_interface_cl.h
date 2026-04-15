@@ -409,4 +409,9 @@ extern void tdes_reset_query_start_info (PT_NODE * node);
 extern int lob_create_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length);
 extern int lob_remove_dir (HFID * hfid, int attrid);
 
+/* copy from stdin */
+extern int copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols);
+extern int copy_from_send_data (const char *data, int data_len);
+extern int copy_from_end (int *rows_loaded);
+
 #endif /* _NETWORK_INTERFACE_CL_H_ */
