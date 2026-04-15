@@ -1306,6 +1306,21 @@ namespace parallel_heap_scan
       AGGREGATE_TYPE *orig_agg_p, *cur_agg_p = tl_xasl_p->proc.buildvalue.agg_list;
       for (orig_agg_p = m_orig_agg_list; orig_agg_p != NULL; orig_agg_p = orig_agg_p->next)
 	{
+	  if (m_interrupt_p->get_code () != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+	    {
+	      for (; cur_agg_p != NULL; cur_agg_p = cur_agg_p->next)
+		{
+		  if (cur_agg_p->accumulator.value != NULL)
+		    {
+		      pr_clear_value (cur_agg_p->accumulator.value);
+		    }
+		  if (cur_agg_p->accumulator.value2 != NULL)
+		    {
+		      pr_clear_value (cur_agg_p->accumulator.value2);
+		    }
+		}
+	      break;
+	    }
 	  if (orig_agg_p->function == PT_COUNT_STAR)
 	    {
 	      orig_agg_p->accumulator.curr_cnt += cur_agg_p->accumulator.curr_cnt;
@@ -1330,7 +1345,9 @@ namespace parallel_heap_scan
 		  QFILE_LIST_ID *list_id_p = (QFILE_LIST_ID *) db_private_alloc (thread_p, sizeof (QFILE_LIST_ID));
 		  if (list_id_p == nullptr)
 		    {
-		      qfile_clear_list_id (cur_agg_p->list_id);
+		      m_err_messages_p->move_top_error_message_to_this ();
+		      m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		      qfile_destroy_list (thread_p, cur_agg_p->list_id);
 		      cur_agg_p = cur_agg_p->next;
 		      continue;
 		    }
