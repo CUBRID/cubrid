@@ -1026,6 +1026,7 @@ namespace parallel_heap_scan
     tl_xasl_p = xasl_p;
     tl_tpl_buf.tpl = (char *)db_private_alloc (thread_p, DB_PAGESIZE);
     tl_tpl_buf.size = DB_PAGESIZE;
+    tl_xasl_p->proc.buildvalue.agg_domains_resolved = 0;
     for (AGGREGATE_TYPE *agg_node = tl_xasl_p->proc.buildvalue.agg_list; agg_node != NULL; agg_node = agg_node->next)
       {
 	if (agg_node->function == PT_COUNT_STAR)
