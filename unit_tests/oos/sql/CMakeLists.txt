@@ -38,13 +38,13 @@ add_test(NAME test_oos_sql_delete COMMAND test_oos_sql_delete)
 add_test(NAME test_oos_sql_boundary COMMAND test_oos_sql_boundary)
 add_test(NAME test_oos_sql_update_delete COMMAND test_oos_sql_update_delete)
 add_test(NAME test_oos_sql_txn COMMAND test_oos_sql_txn)
-add_test(NAME test_oos_sql_vacuum COMMAND test_oos_sql_vacuum)
+add_test(NAME test_oos_sql_eager_cleanup COMMAND test_oos_sql_eager_cleanup)
 add_test(NAME test_oos_sql_reclaim COMMAND test_oos_sql_reclaim)
 
 set_tests_properties(
   test_oos_sql_crud test_oos_sql_ddl test_oos_sql_delete
   test_oos_sql_boundary test_oos_sql_update_delete test_oos_sql_txn
-  test_oos_sql_vacuum test_oos_sql_reclaim
+  test_oos_sql_eager_cleanup test_oos_sql_reclaim
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 30
 )
 
