@@ -576,8 +576,9 @@ if(USE_SIMD_NATIVE)
     )
   endif()
 elseif(VECTOR_INTRINSICS_ISA_FLAGS)
+  separate_arguments(VECTOR_ISA_FLAGS_LIST UNIX_COMMAND "${VECTOR_INTRINSICS_ISA_FLAGS}")
   set_source_files_properties(${VECTOR_INTRINSICS_FILE}
-      PROPERTIES COMPILE_OPTIONS "${VECTOR_INTRINSICS_ISA_FLAGS};-O3;-ffast-math;-fno-trapping-math;-funroll-loops"
+      PROPERTIES COMPILE_OPTIONS "${VECTOR_ISA_FLAGS_LIST};-O3;-ffast-math;-fno-trapping-math;-funroll-loops"
   )
 endif()
 
