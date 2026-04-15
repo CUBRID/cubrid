@@ -826,7 +826,6 @@ authenticate_cache::reset_user_cache (void)
       u = nextu;
     }
   user_cache = NULL;
-  cache_depth = 0;
 }
 
 /*
