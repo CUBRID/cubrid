@@ -986,7 +986,10 @@ namespace parallel_heap_scan
 	    if (!DB_IS_NULL (orig_agg_p->accumulator.value))
 	      {
 		db_make_null (&tmp);
-		pr_clone_value (orig_agg_p->accumulator.value, &tmp);
+		if (pr_clone_value (orig_agg_p->accumulator.value, &tmp) != NO_ERROR)
+		  {
+		    return S_ERROR;
+		  }
 		HL_HEAPID save_heap = db_change_private_heap (thread_p, 0);
 		pr_clear_value (orig_agg_p->accumulator.value);
 		db_change_private_heap (thread_p, save_heap);
@@ -995,7 +998,10 @@ namespace parallel_heap_scan
 	    if (orig_agg_p->accumulator.value2 != NULL && !DB_IS_NULL (orig_agg_p->accumulator.value2))
 	      {
 		db_make_null (&tmp);
-		pr_clone_value (orig_agg_p->accumulator.value2, &tmp);
+		if (pr_clone_value (orig_agg_p->accumulator.value2, &tmp) != NO_ERROR)
+		  {
+		    return S_ERROR;
+		  }
 		HL_HEAPID save_heap = db_change_private_heap (thread_p, 0);
 		pr_clear_value (orig_agg_p->accumulator.value2);
 		db_change_private_heap (thread_p, save_heap);
@@ -1165,7 +1171,10 @@ namespace parallel_heap_scan
 		      }
 		    else
 		      {
-			pr_clone_value (db_value_p, acc->value);
+			if (pr_clone_value (db_value_p, acc->value) != NO_ERROR)
+			  {
+			    return false;
+			  }
 		      }
 		  }
 		acc->curr_cnt++;
@@ -1189,7 +1198,10 @@ namespace parallel_heap_scan
 		      }
 		    else
 		      {
-			pr_clone_value (db_value_p, acc->value);
+			if (pr_clone_value (db_value_p, acc->value) != NO_ERROR)
+			  {
+			    return false;
+			  }
 		      }
 		  }
 		acc->curr_cnt++;
@@ -1211,7 +1223,10 @@ namespace parallel_heap_scan
 		      }
 		    else
 		      {
-			pr_clone_value (db_value_p, acc->value);
+			if (pr_clone_value (db_value_p, acc->value) != NO_ERROR)
+			  {
+			    return false;
+			  }
 		      }
 		  }
 		else
