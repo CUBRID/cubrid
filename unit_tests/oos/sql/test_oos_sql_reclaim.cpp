@@ -22,13 +22,8 @@
  * Focused tests for verifying that OOS disk space is properly reclaimed
  * after DELETE and UPDATE operations.
  *
- * Build modes:
- *   SA_MODE  -> linked to cubridsa, boots server in-process, page count verification
- *   CS_MODE  -> linked to cubridcs, connects to running cub_server, data correctness only
- *
- * Reclamation mechanism by mode:
- *   SA_MODE:  non-MVCC UPDATE -> eager old OOS deletion in heap_update_home()
- *   CS_MODE:  MVCC UPDATE -> vacuum follows prev_version_lsa chain (vacuum_cleanup_prev_version_oos)
+ * SA_MODE only — linked to cubridsa, boots server in-process.
+ * Uses page count verification + xvacuum() for deterministic vacuum testing.
  */
 
 #include "test_oos_sql_common.hpp"
@@ -107,9 +102,6 @@ verify_oos_data_readable (int id, int expected_len = 8192)
 
 // ============================================================================
 // TC-R1: INSERT -> DELETE -> vacuum -> OOS space reclaimed
-//
-// SA_MODE:  page count verification (reinsert should reuse freed space)
-// CS_MODE:  vacuum succeeds + data correctness after reinsert
 // ============================================================================
 TEST_F (OosReclaim, DeleteThenVacuumReclaimsSpace)
 {
@@ -142,7 +134,6 @@ TEST_F (OosReclaim, DeleteThenVacuumReclaimsSpace)
       << "DELETE + vacuum should free OOS space — page count should not double";
 #endif
 
-  /* Both modes: verify data correctness */
   verify_record_count (10);
   verify_oos_data_readable (1);
   verify_oos_data_readable (10);
@@ -151,8 +142,7 @@ TEST_F (OosReclaim, DeleteThenVacuumReclaimsSpace)
 // ============================================================================
 // TC-R2: Multiple UPDATEs -> OOS space reclaimed (without DELETE)
 //
-// SA_MODE:  heap_update_home() eagerly deletes old OOS, page count stays bounded
-// CS_MODE:  vacuum cleans prev_version_lsa chain, page count bounded after vacuum
+// heap_update_home() eagerly deletes old OOS, page count stays bounded
 // ============================================================================
 TEST_F (OosReclaim, MultipleUpdatesReclaimSpace)
 {
@@ -175,17 +165,11 @@ TEST_F (OosReclaim, MultipleUpdatesReclaimSpace)
   update_all_oos_records (5, "DD");
 
 #if defined(SA_MODE)
-  /* SA_MODE: old OOS eagerly deleted during UPDATE */
   int pages_after_updates = get_oos_page_count ("t_reclaim");
   EXPECT_LE (pages_after_updates, pages_after_insert + 1)
-      << "SA_MODE: old OOS should be eagerly reclaimed during UPDATE";
-#else
-  /* CS_MODE: vacuum cleans old OOS via prev_version_lsa chain */
-  rc = run_vacuum ();
-  ASSERT_EQ (rc, NO_ERROR);
+      << "Old OOS should be eagerly reclaimed during UPDATE";
 #endif
 
-  /* Both modes: verify data correctness */
   verify_record_count (5);
   verify_oos_data_readable (1);
   verify_oos_data_readable (5);
@@ -195,8 +179,7 @@ TEST_F (OosReclaim, MultipleUpdatesReclaimSpace)
 // TC-R3: Multiple UPDATEs -> DELETE -> vacuum -> ALL OOS reclaimed
 //
 // End-to-end test combining UPDATE and DELETE cleanup.
-// SA_MODE:  UPDATE eagerly cleans old OOS; DELETE+vacuum cleans current
-// CS_MODE:  DELETE+vacuum cleans current OOS + prev_version chain
+// UPDATE eagerly cleans old OOS; DELETE+vacuum cleans current.
 // ============================================================================
 TEST_F (OosReclaim, MultiUpdateThenDeleteVacuumReclaimsAll)
 {
@@ -233,7 +216,6 @@ TEST_F (OosReclaim, MultiUpdateThenDeleteVacuumReclaimsAll)
       << "After UPDATE + DELETE + vacuum, OOS space should be reusable";
 #endif
 
-  /* Both modes: verify data correctness */
   verify_record_count (5);
   verify_oos_data_readable (1);
   verify_oos_data_readable (5);
@@ -267,17 +249,11 @@ TEST_F (OosReclaim, UpdateChurnStressTest)
     }
 
 #if defined(SA_MODE)
-  /* SA_MODE: eager cleanup keeps page count bounded */
   int pages_after_churn = get_oos_page_count ("t_reclaim");
   EXPECT_LE (pages_after_churn, pages_after_insert + 2)
-      << "SA_MODE: 100 old OOS versions should all be eagerly reclaimed";
-#else
-  /* CS_MODE: vacuum cleans prev_version chains */
-  rc = run_vacuum ();
-  ASSERT_EQ (rc, NO_ERROR);
+      << "100 old OOS versions should all be eagerly reclaimed";
 #endif
 
-  /* Both modes: verify data correctness */
   verify_record_count (10);
   verify_oos_data_readable (1);
   verify_oos_data_readable (10);

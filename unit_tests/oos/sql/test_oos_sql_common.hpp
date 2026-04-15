@@ -43,10 +43,6 @@
 #include "vacuum.h"
 #endif /* SA_MODE */
 
-#if defined(CS_MODE)
-#include "network_interface_cl.h"
-#endif /* CS_MODE */
-
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -242,23 +238,13 @@ get_oos_page_count (const char *table_name)
 }
 #endif /* SA_MODE */
 
-// Trigger vacuum.
-// SA_MODE: calls xvacuum() directly (synchronous).
-// CS_MODE: vacuum runs as background server thread. We sleep briefly to
-//          give it a chance to process pending work, then return NO_ERROR.
-//          This is best-effort — CI tests should use SA_MODE for deterministic
-//          vacuum verification. CS_MODE tests verify data correctness only.
+// Trigger vacuum (SA_MODE only: calls xvacuum() directly, synchronous).
 static int
 run_vacuum ()
 {
 #if defined(SA_MODE)
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
   return xvacuum (thread_p);
-#elif defined(CS_MODE)
-  /* In CS_MODE, vacuum runs automatically in the server background.
-   * Sleep to give vacuum daemon time to process. */
-  sleep (2);
-  return NO_ERROR;
 #else
   return NO_ERROR;
 #endif

@@ -48,4 +48,3 @@ set_tests_properties(
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 30
 )
 
-# CS_MODE tests removed — shell tests cover client-server path adequately.
