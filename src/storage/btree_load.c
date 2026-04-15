@@ -4890,10 +4890,8 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 
   // a worker pool is built only of loading is done in parallel
   cubthread::worker_pool *ib_workpool =
-    is_parallel ?
-    thread_get_manager()->create_worker_pool (ib_thread_count, 32, "online-index", &load_context, 1,
-                                              btree_is_worker_pool_logging_true ())
-    : NULL;
+    is_parallel ? thread_create_worker_pool (ib_thread_count, 1, "online-index", load_context) : NULL;
+  // m_log = btree_is_worker_pool_logging_true ()
 
   aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
   p_func_idx_info = func_idx_info.expr ? &func_idx_info : NULL;

@@ -140,7 +140,7 @@ static HA_LOG_APPLIER_STATE_TABLE ha_Log_applier_state[HA_LOG_APPLIER_STATE_TABL
 static int ha_Log_applier_state_num = 0;
 
 // *INDENT-OFF*
-static cubthread::worker_pool *css_Server_request_worker_pool = NULL;
+static cubthread::worker_pool_impl<true> *css_Server_request_worker_pool = NULL;
 
 class css_server_task : public cubthread::entry_task
 {
@@ -579,12 +579,11 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
   // create request worker pool
   css_Server_request_worker_pool =
-    cubthread::get_manager ()->create_worker_pool (task_worker, MAX_TASK_COUNT, "transaction", NULL,
-						   task_group,
-						   cubthread::is_logging_configured
-						   (cubthread::LOG_WORKER_POOL_TRAN_WORKERS),
-						   css_get_server_request_thread_pooling_configuration (),
-						   css_get_server_request_thread_timeout_configuration ());
+    thread_create_stats_worker_pool (task_worker, task_group, "transaction", thread_get_entry_manager (),
+				     css_get_server_request_thread_pooling_configuration (),
+				     css_get_server_request_thread_timeout_configuration ());
+  // m_log = cubthread::is_logging_configured (cubthread::LOG_WORKER_POOL_TRAN_WORKERS)
+
   if (css_Server_request_worker_pool == NULL)
     {
       assert (false);

@@ -1334,10 +1334,9 @@ vacuum_boot (THREAD_ENTRY * thread_p)
     || flag<int>::is_flag_set (prm_get_integer_value (PRM_ID_ER_LOG_VACUUM), VACUUM_ER_LOG_WORKER);
 
   // create thread pool
-  vacuum_Worker_threads =
-    thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT),
-					VACUUM_MAX_TASKS_IN_WORKER_POOL, "vacuum",
-					vacuum_Worker_entry_manager, 1, log_vacuum_worker_pool);
+  vacuum_Worker_threads = thread_create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT), 1, "vacuum", *vacuum_Worker_entry_manager);
+  // m_log = log_vacuum_worker_pool
+
   assert (vacuum_Worker_threads != NULL);
 
   int vacuum_master_wakeup_interval_msec = prm_get_integer_value (PRM_ID_VACUUM_MASTER_WAKEUP_INTERVAL);

@@ -32,6 +32,9 @@
 #include "thread_entry_task.hpp"
 #include "thread_task.hpp"
 #include "thread_waiter.hpp"
+#if defined (SERVER_MODE)
+#include "thread_worker_pool_impl.hpp"
+#endif
 
 // other module includes
 #include "count_registry.hpp"
@@ -101,7 +104,7 @@ namespace cubthread
   //
   //     2. worker_pool -
   //	      REGISTER_WORKERPOOL (name, getter);
-  //          worker_pool *my_workpool = cubthread::get_manager ()->create_worker_pool (MAX_THREADS, MAX_JOBS);
+  //          worker_pool *my_workpool = cubthread::get_manager ()->create_worker_pool<pool_type> (MAX_THREADS, MAX_JOBS);
   //          cubthread::get_manager ()->push_task (my_workpool, entry_task_p);
   //          cubthread::get_manager ()->destroy_worker_pool (my_workpool);
   //
@@ -360,8 +363,8 @@ namespace cubthread
     assert (m_worker_pools.size () <= workerpool_registry_t::count ());
 
     // reserve pool_size entries and add to m_worker_pools
-    workerpool = create_and_track_resource (m_worker_pools, pool_size,
-					    pool_size, core_count, std::forward<CtArgs> (args)...);
+    workerpool = create_and_track_resource<Res> (m_worker_pools, pool_size,
+		 pool_size, core_count, std::forward<CtArgs> (args)...);
     if (workerpool)
       {
 	workerpool->initialize (pool_size, core_count);
@@ -483,12 +486,21 @@ thread_get_entry_manager (void)
   return cubthread::get_manager ()->get_entry_manager ();
 }
 
-inline cubthread::worker_pool *
-thread_create_worker_pool_base (std::size_t pool_size, std::size_t core_count, const char *name,
-				cubthread::entry_manager &entry_mgr, bool pool_threads = false)
+inline cubthread::worker_pool_impl<false> *
+thread_create_worker_pool (std::size_t pool_size, std::size_t core_count, const char *name,
+			   cubthread::entry_manager &entry_mgr, bool pool_threads = false)
 {
-  return cubthread::get_manager ()->create_worker_pool<cubthread::worker_pool> (pool_size, core_count, name, entry_mgr,
-	 pool_threads);
+  return cubthread::get_manager ()->create_worker_pool<cubthread::worker_pool_impl<false>> (pool_size, core_count, name,
+	 entry_mgr, pool_threads);
+}
+
+inline cubthread::worker_pool_impl<true> *
+thread_create_stats_worker_pool (std::size_t pool_size, std::size_t core_count, const char *name,
+				 cubthread::entry_manager &entry_mgr, bool pool_threads = false,
+				 cubthread::wait_seconds idle_timeout = std::chrono::seconds (5))
+{
+  return cubthread::get_manager ()->create_worker_pool<cubthread::worker_pool_impl<true>> (pool_size, core_count, name,
+	 entry_mgr, pool_threads, idle_timeout);
 }
 
 inline std::size_t

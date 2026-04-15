@@ -63,7 +63,7 @@ namespace cubload
   static std::mutex g_wp_mutex;
   static std::condition_variable g_wp_condvar;
   std::set<session *> g_active_sessions;
-  static cubthread::worker_pool *g_worker_pool;
+  static cubthread::worker_pool_impl<true> *g_worker_pool;
   static worker_entry_manager *g_wp_entry_manager;
   static cubthread::worker_pool_task_capper *g_wp_task_capper;
 
@@ -121,8 +121,8 @@ namespace cubload
 	unsigned int pool_size = prm_get_integer_value (PRM_ID_LOADDB_WORKER_COUNT);
 
 	g_wp_entry_manager = new worker_entry_manager (pool_size);
-	g_worker_pool = cubthread::get_manager ()->create_worker_pool (pool_size, 2 * pool_size, "loaddb",
-			g_wp_entry_manager, 1, false, true);
+	g_worker_pool = thread_create_worker_pool (pool_size, 1, "loaddb", *g_wp_entry_manager, true);
+	// m_log = false
 
 	g_wp_task_capper = new cubthread::worker_pool_task_capper (g_worker_pool);
       }
