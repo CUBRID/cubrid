@@ -279,6 +279,7 @@ static PT_NODE *pt_apply_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * p, vo
 static PT_NODE *pt_apply_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_copy (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_sp_body (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
@@ -441,6 +442,7 @@ static PARSER_VARCHAR *pt_print_alter_synonym (PARSER_CONTEXT * parser, PT_NODE 
 static PARSER_VARCHAR *pt_print_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_copy (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_sp_body (PARSER_CONTEXT * parser, PT_NODE * p);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -5143,6 +5145,7 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_CREATE_SYNONYM] = pt_apply_create_synonym;
   pt_apply_func_array[PT_DROP_SYNONYM] = pt_apply_drop_synonym;
   pt_apply_func_array[PT_RENAME_SYNONYM] = pt_apply_rename_synonym;
+  pt_apply_func_array[PT_COPY] = pt_apply_copy;
   pt_apply_func_array[PT_SP_BODY] = pt_apply_sp_body;
 
   pt_apply_f = pt_apply_func_array;
@@ -5278,6 +5281,7 @@ pt_init_init_f (void)
   pt_init_func_array[PT_CREATE_SYNONYM] = pt_init_func_null_function;
   pt_init_func_array[PT_DROP_SYNONYM] = pt_init_func_null_function;
   pt_init_func_array[PT_RENAME_SYNONYM] = pt_init_func_null_function;
+  pt_init_func_array[PT_COPY] = pt_init_func_null_function;
   pt_init_func_array[PT_SP_BODY] = pt_init_func_null_function;
 
   pt_init_f = pt_init_func_array;
@@ -5406,6 +5410,7 @@ pt_init_print_f (void)
   pt_print_func_array[PT_CREATE_SYNONYM] = pt_print_create_synonym;
   pt_print_func_array[PT_DROP_SYNONYM] = pt_print_drop_synonym;
   pt_print_func_array[PT_RENAME_SYNONYM] = pt_print_rename_synonym;
+  pt_print_func_array[PT_COPY] = pt_print_copy;
   pt_print_func_array[PT_SP_BODY] = pt_print_sp_body;
 
   pt_print_f = pt_print_func_array;
@@ -20031,6 +20036,56 @@ pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_varchar (parser, q, r1);
 
   parser->custom_print = save_custom;
+
+  return q;
+}
+
+/*
+ * pt_apply_copy () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ *   arg(in):
+ */
+static PT_NODE *
+pt_apply_copy (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, p->info.copy.table_name, arg);
+  PT_APPLY_WALK (parser, p->info.copy.column_list, arg);
+
+  return p;
+}
+
+/*
+ * pt_print_copy () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ */
+static PARSER_VARCHAR *
+pt_print_copy (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = NULL, *r;
+
+  q = pt_append_nulstring (parser, q, "COPY ");
+
+  r = pt_print_bytes (parser, p->info.copy.table_name);
+  q = pt_append_varchar (parser, q, r);
+
+  if (p->info.copy.column_list)
+    {
+      q = pt_append_nulstring (parser, q, " (");
+      r = pt_print_bytes_l (parser, p->info.copy.column_list);
+      q = pt_append_varchar (parser, q, r);
+      q = pt_append_nulstring (parser, q, ")");
+    }
+
+  if (p->info.copy.direction == 0)
+    {
+      q = pt_append_nulstring (parser, q, " FROM STDIN");
+    }
+
+  q = pt_append_nulstring (parser, q, " WITH (FORMAT BINARY)");
 
   return q;
 }

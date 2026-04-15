@@ -956,6 +956,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> limit_options
 %type <node> opt_upd_del_limit_clause
 %type <node> truncate_stmt
+%type <node> copy_stmt
 %type <node> do_stmt
 %type <node> on_duplicate_key_update
 %type <node> opt_attr_ordering_info
@@ -1166,6 +1167,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token CONSTRAINTS
 %token CONTINUE
 %token CONVERT
+%token COPY_
 %token CORRESPONDING
 %token COUNT
 %token CREATE
@@ -1237,6 +1239,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token FLOAT_
 %token For
 %token FOREIGN
+%token FORMAT_
 %token FOUND
 %token FROM
 %token FULL
@@ -1400,6 +1403,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token SQLSTATE
 %token SQLWARNING
 %token STATISTICS
+%token STDIN_
 %token String
 %token SUBCLASS
 %token SUBSET
@@ -1991,6 +1995,8 @@ stmt_
 	| transaction_stmt
 		{ $$ = $1; }
 	| truncate_stmt
+		{ $$ = $1; }
+	| copy_stmt
 		{ $$ = $1; }
 	| merge_stmt
 		{ $$ = $1; }
@@ -4594,6 +4600,23 @@ opt_owner_clause
 as_or_to
 	: AS
 	| TO
+	;
+
+copy_stmt
+	: COPY_ class_spec_without_server_name opt_attr_list FROM STDIN_ WITH '(' FORMAT_ BINARY ')'
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_COPY);
+			if (node)
+			  {
+			    node->info.copy.table_name = $2;
+			    node->info.copy.column_list = $3;
+			    node->info.copy.direction = 0;  /* FROM */
+			    node->info.copy.format = 0;     /* BINARY */
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
 	;
 
 truncate_stmt
