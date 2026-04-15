@@ -683,7 +683,7 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
   env->terms = NULL;
   if (env->nterms > 0)
     {
-      size = sizeof (QO_TERM) * MAX (env->nnodes, env->nterms);
+      size = sizeof (QO_TERM) * (MAX (env->nnodes, env->nterms) + env->nsegs);
       env->terms = (QO_TERM *) malloc (size);
       if (env->terms == NULL)
 	{
@@ -733,7 +733,7 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
 
   env->Nnodes = env->nnodes;
   env->Nsegs = env->nsegs;
-  env->Nterms = MAX (env->nnodes, env->nterms);
+  env->Nterms = MAX (env->nnodes, env->nterms) + env->nsegs;
   env->Neqclasses = MAX (env->nnodes, env->nterms) + env->nsegs;
 
   env->nnodes = 0;
@@ -8085,12 +8085,6 @@ qo_assign_eq_classes (QO_ENV * env)
  * qo_generate_transitive_join_terms () - Generate implied join terms from
  *   equivalence classes using transitive closure.
  *   env(in):
- *
- * Note: For each equivalence class with N segments on different nodes, this
- *   function generates join terms for all missing (head, tail) node pairs.
- *   It expands the term array, shifts non-edge terms, inserts new edge terms,
- *   fixes internal pointers invalidated by realloc/memmove, and finally sorts
- *   all edge terms by selectivity.
  */
 static void
 qo_generate_transitive_join_terms (QO_ENV * env)
@@ -8121,6 +8115,10 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 	  continue;
 	}
 
+      if (segs_arr != NULL)
+	{
+	  free_and_init (segs_arr);
+	}
       segs_arr = (int *) malloc (sizeof (int) * required_segs);
       if (segs_arr == NULL)
 	{
@@ -8173,6 +8171,10 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 	      if (eq_node == NULL)
 		{
 		  PT_INTERNAL_ERROR (env->parser, "allocate new node");
+		  if (segs_arr != NULL)
+		    {
+		      free_and_init (segs_arr);
+		    }
 		  return;
 		}
 
@@ -8183,6 +8185,10 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 		{
 		  parser_free_tree (env->parser, eq_node);
 		  eq_node = NULL;
+		  if (segs_arr != NULL)
+		    {
+		      free_and_init (segs_arr);
+		    }
 		  return;
 		}
 	      else
@@ -8191,6 +8197,11 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 		}
 	    }
 	}
+    }
+
+  if (segs_arr != NULL)
+    {
+      free_and_init (segs_arr);
     }
 
   qo_sort_edges (env);
