@@ -5225,6 +5225,13 @@ heap_manager_initialize (void)
       return ret;
     }
 
+  /* Initialize OOS best space cache */
+  ret = oos_bestspace_initialize ();
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
   /* Initialize class OID->HFID cache */
   ret = heap_initialize_hfid_table ();
 
@@ -5248,6 +5255,13 @@ heap_manager_finalize (void)
     }
 
   ret = heap_classrepr_finalize_cache ();
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
+  /* Finalize OOS best space cache */
+  ret = oos_bestspace_finalize ();
   if (ret != NO_ERROR)
     {
       return ret;

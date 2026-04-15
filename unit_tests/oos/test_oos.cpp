@@ -37,7 +37,7 @@ const auto_unfix_page_ptr bridge_oos_find_best_page (THREAD_ENTRY *thread_p, con
     VPID &vpid);
 int bridge_oos_get_max_chunk_size_within_page ();
 int bridge_oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args);
-int bridge_oos_get_recently_inserted_oos_vpid (const VFID &oos_vfid, VPID &vpid);
+/* bridge_oos_get_recently_inserted_oos_vpid removed — oos_recently_inserted_oos_vpid_map replaced by bestspace */
 
 TEST (OosTest, OosCreateAndDestroy)
 {
@@ -507,9 +507,8 @@ TEST (OosTest, ShouldInsertIntoDifferentPages)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_debug ("Inserted record oid1: volid=%d, pageid=%d, slotid=%d", oid1.volid, oid1.pageid, oid1.slotid);
 
-  // where the tail chunk of rec_in1 is inserted
-  VPID recent_vpid{};
-  bridge_oos_get_recently_inserted_oos_vpid (oos_vfid, recent_vpid);
+  // Get the page where the head chunk (oid1) was inserted
+  VPID recent_vpid{oid1.pageid, oid1.volid};
 
   // TODO: when inserting large data, the chunks are inserted in reverse order.
   // Currently, recent_vpid points to the page where the last chunk is inserted, which is the head chunk of the total oos record inserted.

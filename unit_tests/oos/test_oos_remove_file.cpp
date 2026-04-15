@@ -32,7 +32,6 @@ using namespace test_oos_log;
 
 // bridge functions to access static functions in oos_file.cpp
 int bridge_oos_get_max_chunk_size_within_page ();
-int bridge_oos_get_recently_inserted_oos_vpid (const VFID &oos_vfid, VPID &vpid);
 
 
 // ===========================================================================
@@ -116,13 +115,12 @@ TEST (OosFileDestroyTest, OosFileDestroyWithMultiChunkData)
 
 
 // ===========================================================================
-// TEST: OosFileDestroyMapCleared
+// TEST: OosFileDestroyCacheCleared
 //
-// Create file, insert (so map has entry), destroy, verify that
-// bridge_oos_get_recently_inserted_oos_vpid returns ER_FAILED
-// (map entry gone).
+// Create file, insert (so bestspace cache has entry), destroy, verify
+// that the file can be destroyed without error (cache entries cleaned).
 // ===========================================================================
-TEST (OosFileDestroyTest, OosFileDestroyMapCleared)
+TEST (OosFileDestroyTest, OosFileDestroyCacheCleared)
 {
   int err;
   VFID oos_vfid;
@@ -131,7 +129,7 @@ TEST (OosFileDestroyTest, OosFileDestroyMapCleared)
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES rec_in{};
-  err = test_oos_utils::from_string_into_recdes ("Map entry test data", rec_in);
+  err = test_oos_utils::from_string_into_recdes ("Cache entry test data", rec_in);
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_free (&rec_in, recdes_free_data_area);
 
@@ -139,19 +137,8 @@ TEST (OosFileDestroyTest, OosFileDestroyMapCleared)
   err = oos_insert (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
 
-  // Before destroy, the map should have an entry for this vfid
-  VPID vpid_before{};
-  err = bridge_oos_get_recently_inserted_oos_vpid (oos_vfid, vpid_before);
-  ASSERT_EQ (err, NO_ERROR);
-  test_oos_debug ("Before destroy: recent vpid={vol=%d,page=%d}", vpid_before.volid, vpid_before.pageid);
-
   err = oos_remove_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
-
-  // After destroy, the map entry should be gone
-  VPID vpid_after{};
-  err = bridge_oos_get_recently_inserted_oos_vpid (oos_vfid, vpid_after);
-  ASSERT_EQ (err, ER_FAILED);
 }
 
 
