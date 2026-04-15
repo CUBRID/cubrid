@@ -1056,7 +1056,6 @@ namespace parallel_heap_scan
 
   bool result_handler<RESULT_TYPE::BUILDVALUE_OPT>::write (THREAD_ENTRY *thread_p)
   {
-    QFILE_TUPLE_RECORD tpl_buf;
     if (!tl_xasl_p->proc.buildvalue.agg_domains_resolved)
       {
 	if (qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_buildvalue_proc (thread_p, tl_xasl_p, tl_vd,
@@ -1232,6 +1231,7 @@ namespace parallel_heap_scan
 
 		if (tp_value_coerce (db_value_p, &coerced, acc_dom->value_dom) != DOMAIN_COMPATIBLE)
 		  {
+		    pr_clear_value (&coerced);
 		    return false;
 		  }
 
@@ -1306,7 +1306,13 @@ namespace parallel_heap_scan
 
 	      if (orig_agg_p->list_id->tuple_cnt > 0)
 		{
-		  QFILE_LIST_ID *list_id_p = (QFILE_LIST_ID *) malloc (sizeof (QFILE_LIST_ID));
+		  QFILE_LIST_ID *list_id_p = (QFILE_LIST_ID *) db_private_alloc (thread_p, sizeof (QFILE_LIST_ID));
+		  if (list_id_p == nullptr)
+		    {
+		      qfile_clear_list_id (cur_agg_p->list_id);
+		      cur_agg_p = cur_agg_p->next;
+		      continue;
+		    }
 		  qfile_copy_list_id (list_id_p, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT);
 		  qfile_connect_list (thread_p, orig_agg_p->list_id, list_id_p);
 		  qfile_clear_list_id (cur_agg_p->list_id);

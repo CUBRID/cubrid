@@ -296,6 +296,10 @@ namespace parallel_heap_scan
       {
 	m_result_handler->write_initialize (&thread_ref, m_xasl->outptr_list, m_xasl, m_vd);
       }
+    if (er_errid () != NO_ERROR)
+      {
+	return er_errid ();
+      }
     return NO_ERROR;
   }
 
