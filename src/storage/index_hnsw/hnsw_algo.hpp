@@ -988,7 +988,8 @@ namespace cubhnsw
 	top_candidates_t &top_for_refine = context.m_top_for_refine;
 	top_for_refine.clear ();
 
-	distance_t dist = compute_distance_from_query_ (context, value, close_slot);
+	// n.distance already holds distance(value, close_slot) from seek_on_layer_/refine_.
+	distance_t dist = n.distance;
 
 	top_for_refine.insert_reserved (candidate_t (dist, new_slot));
 
