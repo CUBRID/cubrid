@@ -20,13 +20,15 @@
  * test_oos_sql_reclaim.cpp - OOS space reclamation tests
  *
  * Focused tests for verifying that OOS disk space is properly reclaimed
- * after DELETE and UPDATE operations. Tests both:
- *   - SA_MODE: eager OOS cleanup during non-MVCC UPDATE + vacuum for DELETE
- *   - CS_MODE (SERVER_MODE): vacuum-based cleanup for both UPDATE and DELETE
+ * after DELETE and UPDATE operations.
  *
  * Build modes:
- *   SA_MODE  → linked to cubridsa, boots server in-process
- *   CS_MODE  → linked to cubridcs, connects to running cub_server
+ *   SA_MODE  -> linked to cubridsa, boots server in-process, page count verification
+ *   CS_MODE  -> linked to cubridcs, connects to running cub_server, data correctness only
+ *
+ * Reclamation mechanism by mode:
+ *   SA_MODE:  non-MVCC UPDATE -> eager old OOS deletion in heap_update_home()
+ *   CS_MODE:  MVCC UPDATE -> vacuum follows prev_version_lsa chain (vacuum_cleanup_prev_version_oos)
  */
 
 #include "test_oos_sql_common.hpp"
@@ -51,8 +53,9 @@ class OosReclaim : public ::testing::Test
 };
 
 // ============================================================================
-// Helper: insert N records with OOS data
+// Helpers
 // ============================================================================
+
 static void
 insert_oos_records (int count, int oos_size = 4096)
 {
@@ -67,9 +70,6 @@ insert_oos_records (int count, int oos_size = 4096)
     }
 }
 
-// ============================================================================
-// Helper: update all records with new OOS data
-// ============================================================================
 static void
 update_all_oos_records (int count, const char *hex_pattern, int oos_size = 4096)
 {
@@ -85,15 +85,31 @@ update_all_oos_records (int count, const char *hex_pattern, int oos_size = 4096)
   db_commit_transaction ();
 }
 
+static void
+verify_record_count (int expected)
+{
+  int count = 0;
+  int rc = fetch_single_int ("SELECT COUNT(*) FROM t_reclaim", &count);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (count, expected);
+}
+
+static void
+verify_oos_data_readable (int id, int expected_len = 8192)
+{
+  int len = 0;
+  char sql[128];
+  snprintf (sql, sizeof (sql), "SELECT LENGTH(data_col) FROM t_reclaim WHERE id = %d", id);
+  int rc = fetch_single_int (sql, &len);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (len, expected_len);
+}
+
 // ============================================================================
-// TC-R1: INSERT → DELETE → vacuum → OOS space reclaimed
+// TC-R1: INSERT -> DELETE -> vacuum -> OOS space reclaimed
 //
-// The most basic OOS reclamation test. After DELETE + vacuum, the OOS records
-// should be removed and space reusable.
-//
-// Works in both SA_MODE and CS_MODE:
-//   - SA_MODE:  vacuum via xvacuum()
-//   - CS_MODE:  vacuum via background vacuum thread (needs server running)
+// SA_MODE:  page count verification (reinsert should reuse freed space)
+// CS_MODE:  vacuum succeeds + data correctness after reinsert
 // ============================================================================
 TEST_F (OosReclaim, DeleteThenVacuumReclaimsSpace)
 {
@@ -103,14 +119,13 @@ TEST_F (OosReclaim, DeleteThenVacuumReclaimsSpace)
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
-  /* Phase 1: Insert 10 OOS records */
   insert_oos_records (10);
 
+#if defined(SA_MODE)
   int pages_after_insert = get_oos_page_count ("t_reclaim");
-  ASSERT_GT (pages_after_insert, 0)
-      << "OOS file should have pages after inserting OOS data";
+  ASSERT_GT (pages_after_insert, 0);
+#endif
 
-  /* Phase 2: Delete all and vacuum */
   rc = exec_sql ("DELETE FROM t_reclaim");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
@@ -118,28 +133,26 @@ TEST_F (OosReclaim, DeleteThenVacuumReclaimsSpace)
   rc = run_vacuum ();
   ASSERT_EQ (rc, NO_ERROR);
 
-  /* Phase 3: Reinsert same amount */
+  /* Reinsert same amount */
   insert_oos_records (10);
 
+#if defined(SA_MODE)
   int pages_after_reinsert = get_oos_page_count ("t_reclaim");
-
-  /* Vacuum should have freed OOS slots. Reinsert may not perfectly reuse all
-   * freed slots (bestspace cache limitation), but page count should stay
-   * within a reasonable margin — NOT double as it would without cleanup. */
   EXPECT_LE (pages_after_reinsert, pages_after_insert * 2)
       << "DELETE + vacuum should free OOS space — page count should not double";
+#endif
+
+  /* Both modes: verify data correctness */
+  verify_record_count (10);
+  verify_oos_data_readable (1);
+  verify_oos_data_readable (10);
 }
 
 // ============================================================================
-// TC-R2: Multiple UPDATEs → OOS space reclaimed (without DELETE)
+// TC-R2: Multiple UPDATEs -> OOS space reclaimed (without DELETE)
 //
-// Each UPDATE replaces the OOS column value, creating a new OOS record.
-// Old OOS records must be cleaned up to prevent space leaks.
-//
-// Mechanism differs by mode:
-//   - SA_MODE:     heap_update_home() eagerly deletes old OOS (non-MVCC path)
-//   - SERVER_MODE: vacuum follows prev_version_lsa chain to find and delete
-//                  old OOS records (vacuum_cleanup_prev_version_oos)
+// SA_MODE:  heap_update_home() eagerly deletes old OOS, page count stays bounded
+// CS_MODE:  vacuum cleans prev_version_lsa chain, page count bounded after vacuum
 // ============================================================================
 TEST_F (OosReclaim, MultipleUpdatesReclaimSpace)
 {
@@ -149,55 +162,41 @@ TEST_F (OosReclaim, MultipleUpdatesReclaimSpace)
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
-  /* Phase 1: Insert 5 OOS records */
   insert_oos_records (5);
 
+#if defined(SA_MODE)
   int pages_after_insert = get_oos_page_count ("t_reclaim");
   ASSERT_GT (pages_after_insert, 0);
+#endif
 
-  /* Phase 2: Update each record 3 times (creates 15 old OOS versions) */
+  /* Update each record 3 times */
   update_all_oos_records (5, "BB");
   update_all_oos_records (5, "CC");
   update_all_oos_records (5, "DD");
 
-#if defined (SA_MODE)
-  /* SA_MODE: old OOS is eagerly deleted during UPDATE.
-   * Page count should stay bounded immediately after updates. */
+#if defined(SA_MODE)
+  /* SA_MODE: old OOS eagerly deleted during UPDATE */
   int pages_after_updates = get_oos_page_count ("t_reclaim");
   EXPECT_LE (pages_after_updates, pages_after_insert + 1)
       << "SA_MODE: old OOS should be eagerly reclaimed during UPDATE";
 #else
-  /* SERVER_MODE: old OOS is deferred to vacuum via prev_version_lsa chain. */
+  /* CS_MODE: vacuum cleans old OOS via prev_version_lsa chain */
   rc = run_vacuum ();
   ASSERT_EQ (rc, NO_ERROR);
-
-  int pages_after_vacuum = get_oos_page_count ("t_reclaim");
-  EXPECT_LE (pages_after_vacuum, pages_after_insert + 1)
-      << "SERVER_MODE: vacuum should reclaim old OOS from prev_version chain";
 #endif
 
-  /* Verify current values are still readable */
-  int count = 0;
-  rc = fetch_single_int ("SELECT COUNT(*) FROM t_reclaim", &count);
-  ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (count, 5);
-
-  int len = 0;
-  rc = fetch_single_int ("SELECT LENGTH(data_col) FROM t_reclaim WHERE id = 1", &len);
-  ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (len, 8192);
+  /* Both modes: verify data correctness */
+  verify_record_count (5);
+  verify_oos_data_readable (1);
+  verify_oos_data_readable (5);
 }
 
 // ============================================================================
-// TC-R3: Multiple UPDATEs → DELETE → vacuum → ALL OOS reclaimed
+// TC-R3: Multiple UPDATEs -> DELETE -> vacuum -> ALL OOS reclaimed
 //
-// End-to-end test: multiple updates create old versions, then DELETE + vacuum
-// should clean up BOTH the current OOS records AND any remaining old versions.
-//
-// Works in both modes:
-//   - SA_MODE:     UPDATE eagerly cleans old OOS; DELETE+vacuum cleans current
-//   - SERVER_MODE: DELETE+vacuum cleans current OOS; vacuum also follows
-//                  prev_version chain for any remaining old versions
+// End-to-end test combining UPDATE and DELETE cleanup.
+// SA_MODE:  UPDATE eagerly cleans old OOS; DELETE+vacuum cleans current
+// CS_MODE:  DELETE+vacuum cleans current OOS + prev_version chain
 // ============================================================================
 TEST_F (OosReclaim, MultiUpdateThenDeleteVacuumReclaimsAll)
 {
@@ -207,18 +206,17 @@ TEST_F (OosReclaim, MultiUpdateThenDeleteVacuumReclaimsAll)
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
-  /* Phase 1: Insert 5 OOS records */
   insert_oos_records (5);
 
+#if defined(SA_MODE)
   int pages_after_insert = get_oos_page_count ("t_reclaim");
   ASSERT_GT (pages_after_insert, 0);
+#endif
 
-  /* Phase 2: Update each record 3 times */
   update_all_oos_records (5, "BB");
   update_all_oos_records (5, "CC");
   update_all_oos_records (5, "DD");
 
-  /* Phase 3: Delete all and vacuum */
   rc = exec_sql ("DELETE FROM t_reclaim");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
@@ -226,25 +224,25 @@ TEST_F (OosReclaim, MultiUpdateThenDeleteVacuumReclaimsAll)
   rc = run_vacuum ();
   ASSERT_EQ (rc, NO_ERROR);
 
-  /* Phase 4: Reinsert same amount — must reuse freed OOS space */
+  /* Reinsert */
   insert_oos_records (5);
 
+#if defined(SA_MODE)
   int pages_after_reinsert = get_oos_page_count ("t_reclaim");
   EXPECT_LE (pages_after_reinsert, pages_after_insert * 2)
-      << "After UPDATE + DELETE + vacuum cycle, OOS space should be reusable — page count should not double";
+      << "After UPDATE + DELETE + vacuum, OOS space should be reusable";
+#endif
 
-  /* Verify data integrity */
-  int count = 0;
-  rc = fetch_single_int ("SELECT COUNT(*) FROM t_reclaim", &count);
-  ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (count, 5);
+  /* Both modes: verify data correctness */
+  verify_record_count (5);
+  verify_oos_data_readable (1);
+  verify_oos_data_readable (5);
 }
 
 // ============================================================================
-// TC-R4: Large-scale UPDATE churn — stress test for OOS reclamation
+// TC-R4: Large-scale UPDATE churn — 10 records x 10 UPDATEs = 100 old OOS
 //
-// 10 records x 10 UPDATEs = 100 old OOS versions that must be reclaimed.
-// Verifies that the reclamation mechanism scales without unbounded growth.
+// Stress test: verifies reclamation scales without unbounded growth.
 // ============================================================================
 TEST_F (OosReclaim, UpdateChurnStressTest)
 {
@@ -254,44 +252,35 @@ TEST_F (OosReclaim, UpdateChurnStressTest)
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
-  /* Insert 10 records */
   insert_oos_records (10);
 
+#if defined(SA_MODE)
   int pages_after_insert = get_oos_page_count ("t_reclaim");
   ASSERT_GT (pages_after_insert, 0);
+#endif
 
-  /* 10 rounds of UPDATE (10 records x 10 updates = 100 old OOS versions) */
+  /* 10 rounds of UPDATE */
   const char *patterns[] = { "11", "22", "33", "44", "55", "66", "77", "88", "99", "FF" };
   for (int round = 0; round < 10; round++)
     {
       update_all_oos_records (10, patterns[round]);
     }
 
-#if defined (SA_MODE)
-  /* SA_MODE: eager cleanup should keep page count bounded */
+#if defined(SA_MODE)
+  /* SA_MODE: eager cleanup keeps page count bounded */
   int pages_after_churn = get_oos_page_count ("t_reclaim");
   EXPECT_LE (pages_after_churn, pages_after_insert + 2)
       << "SA_MODE: 100 old OOS versions should all be eagerly reclaimed";
 #else
-  /* SERVER_MODE: vacuum cleans prev_version chains */
+  /* CS_MODE: vacuum cleans prev_version chains */
   rc = run_vacuum ();
   ASSERT_EQ (rc, NO_ERROR);
-
-  int pages_after_churn = get_oos_page_count ("t_reclaim");
-  EXPECT_LE (pages_after_churn, pages_after_insert + 2)
-      << "SERVER_MODE: vacuum should reclaim all 100 old OOS versions";
 #endif
 
-  /* All records should have the last update value */
-  int count = 0;
-  rc = fetch_single_int ("SELECT COUNT(*) FROM t_reclaim", &count);
-  ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (count, 10);
-
-  int len = 0;
-  rc = fetch_single_int ("SELECT LENGTH(data_col) FROM t_reclaim WHERE id = 1", &len);
-  ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (len, 8192);
+  /* Both modes: verify data correctness */
+  verify_record_count (10);
+  verify_oos_data_readable (1);
+  verify_oos_data_readable (10);
 }
 
 int

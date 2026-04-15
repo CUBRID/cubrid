@@ -71,12 +71,13 @@ add_test(NAME oos_cleanup_db
     "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
     "PATH=$ENV{PATH}"
     bash -c "
+      cubrid server stop unittestdb 2>/dev/null || true
       if grep -q unittestdb \"$ENV{CUBRID_DATABASES}/databases.txt\" 2>/dev/null; then
         cubrid deletedb unittestdb
       fi
     "
 )
-set_tests_properties(oos_cleanup_db PROPERTIES FIXTURES_CLEANUP OOS_DB)
+set_tests_properties(oos_cleanup_db PROPERTIES FIXTURES_CLEANUP OOS_DB TIMEOUT 30)
 
 # Register individual tests one by one.
 add_test(NAME test_oos COMMAND test_oos)
@@ -88,7 +89,7 @@ add_test(NAME test_oos_bestspace COMMAND test_oos_bestspace)
 
 set_tests_properties(
   test_oos test_oos_delete test_oos_remove_file test_oos_bestspace
-  PROPERTIES FIXTURES_REQUIRED OOS_DB
+  PROPERTIES FIXTURES_REQUIRED OOS_DB TIMEOUT 30
 )
 
 # Note: add_test vs. gtest_discover_tests

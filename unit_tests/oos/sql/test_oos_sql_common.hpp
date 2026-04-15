@@ -34,12 +34,18 @@
 #include "dbi.h"
 #include "dbtype_function.h"
 #include "error_manager.h"
-#include "thread_manager.hpp"
 
+#if defined(SA_MODE)
+#include "thread_manager.hpp"
 #include "file_manager.h"
 #include "heap_file.h"
 #include "oos_file.hpp"
 #include "vacuum.h"
+#endif /* SA_MODE */
+
+#if defined(CS_MODE)
+#include "network_interface_cl.h"
+#endif /* CS_MODE */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -55,8 +61,13 @@ class SqlServerEnv : public ::testing::Environment
     {
       printf ("##### Starting Server For OOS SQL Testing #####\n");
       er_init ("./test_oos_sql_log", ER_NEVER_EXIT);
+#if defined(SA_MODE)
       db_set_client_type (DB_CLIENT_TYPE_MAX);
       auto err = db_restart ("unit_test", TRUE, "unittestdb");
+#else
+      db_set_client_type (DB_CLIENT_TYPE_DEFAULT);
+      auto err = db_restart ("unit_test", FALSE, "unittestdb");
+#endif
       printf ("will be written at %s\n", er_get_msglog_filename ());
       if (err != NO_ERROR)
 	{
@@ -176,7 +187,9 @@ exec_sql_commit (const char *sql)
 // OOS file inspection helpers
 // ============================================================================
 
+#if defined(SA_MODE)
 // Get the OOS VFID for a given table name. Returns true on success.
+// SA_MODE only — requires server-side heap/file APIs.
 static bool
 get_oos_vfid_for_table (const char *table_name, VFID *oos_vfid_out)
 {
@@ -206,7 +219,7 @@ get_oos_vfid_for_table (const char *table_name, VFID *oos_vfid_out)
 }
 
 // Get the number of user pages in the OOS file for a given table.
-// Returns -1 on failure.
+// Returns -1 on failure. SA_MODE only.
 static int
 get_oos_page_count (const char *table_name)
 {
@@ -227,13 +240,28 @@ get_oos_page_count (const char *table_name)
 
   return num_pages;
 }
+#endif /* SA_MODE */
 
-// Trigger vacuum in SA_MODE. Returns error code.
+// Trigger vacuum.
+// SA_MODE: calls xvacuum() directly (synchronous).
+// CS_MODE: vacuum runs as background server thread. We sleep briefly to
+//          give it a chance to process pending work, then return NO_ERROR.
+//          This is best-effort — CI tests should use SA_MODE for deterministic
+//          vacuum verification. CS_MODE tests verify data correctness only.
 static int
 run_vacuum ()
 {
+#if defined(SA_MODE)
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
   return xvacuum (thread_p);
+#elif defined(CS_MODE)
+  /* In CS_MODE, vacuum runs automatically in the server background.
+   * Sleep to give vacuum daemon time to process. */
+  sleep (2);
+  return NO_ERROR;
+#else
+  return NO_ERROR;
+#endif
 }
 
 #endif /* _TEST_OOS_SQL_COMMON_HPP_ */
