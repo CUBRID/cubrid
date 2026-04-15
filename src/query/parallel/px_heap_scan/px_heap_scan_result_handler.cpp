@@ -1403,13 +1403,7 @@ namespace parallel_heap_scan
 		  m_err_messages_p->move_top_error_message_to_this ();
 		  m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		}
-
-	      pr_clear_value (cur_agg_p->accumulator.value);
-	      if (cur_agg_p->accumulator.value2 != NULL && !DB_IS_NULL (cur_agg_p->accumulator.value2))
-		{
-		  pr_clear_value (cur_agg_p->accumulator.value2);
-		}
-	      cur_agg_p->accumulator.curr_cnt = 0;
+	      /* cur_agg_p accumulator cleanup is handled by qexec_clear_xasl on the cloned XASL. */
 	    }
 	  cur_agg_p = cur_agg_p->next;
 	}
