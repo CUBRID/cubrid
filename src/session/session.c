@@ -32,6 +32,7 @@
 
 #include "system.h"
 #include "session.h"
+#include "copy_session.hpp"
 
 #include "boot_sr.h"
 #include "jansson.h"
@@ -138,6 +139,7 @@ struct session_state
   int private_lru_index;
 
   load_session *load_session_p;
+  copy_session *copy_session_p;
   PL_SESSION *pl_session_p;
 
   // *INDENT-OFF*
@@ -3255,6 +3257,44 @@ session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_se
   return NO_ERROR;
 }
 
+int
+session_set_copy_session (THREAD_ENTRY * thread_p, copy_session * copy_session_p)
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (copy_session_p != NULL && state_p->copy_session_p != NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY already in progress on this connection");
+      return ER_DB_UNIMPLEMENTED;
+    }
+
+  state_p->copy_session_p = copy_session_p;
+
+  return NO_ERROR;
+}
+
+int
+session_get_copy_session (THREAD_ENTRY * thread_p, REFPTR (copy_session, copy_session_ref_ptr))
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  copy_session_ref_ptr = state_p->copy_session_p;
+
+  return NO_ERROR;
+}
+
 bool
 session_is_pl_session_running (THREAD_ENTRY * thread_p)
 {
@@ -3320,6 +3360,15 @@ session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
 
       delete session->load_session_p;
       session->load_session_p = NULL;
+    }
+
+  // on uninit abort and delete copy session
+  if (session->copy_session_p != NULL)
+    {
+      session->copy_session_p->abort (thread_p);
+
+      delete session->copy_session_p;
+      session->copy_session_p = NULL;
     }
 
   if (session->pl_session_p)
