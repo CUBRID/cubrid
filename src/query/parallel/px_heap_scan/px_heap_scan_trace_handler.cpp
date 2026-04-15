@@ -126,7 +126,7 @@ namespace parallel_heap_scan
     int parallel_workers = m_stats.size();
     const char *result_type_str = m_result_type == RESULT_TYPE::MERGEABLE_LIST ? "mergeable list" :
 				  m_result_type == RESULT_TYPE::XASL_SNAPSHOT ? "row by row" :
-				  m_result_type == RESULT_TYPE::COUNT_DISTINCT ? "count" : "unknown";
+				  m_result_type == RESULT_TYPE::BUILDVALUE_OPT ? "buildvalue" : "unknown";
     for (size_t i = 0; i < m_stats.size(); i++)
       {
 	min_elapsed_scan = std::min (min_elapsed_scan, (UINT64) (TO_MSEC (m_stats[i].elapsed_time)));
@@ -155,7 +155,7 @@ namespace parallel_heap_scan
     int parallel_workers = m_stats.size();
     const char *result_type_str = m_result_type == RESULT_TYPE::MERGEABLE_LIST ? "mergeable list" :
 				  m_result_type == RESULT_TYPE::XASL_SNAPSHOT ? "row by row" :
-				  m_result_type == RESULT_TYPE::COUNT_DISTINCT ? "count" : "unknown";
+				  m_result_type == RESULT_TYPE::BUILDVALUE_OPT ? "buildvalue" : "unknown";
     for (size_t i = 0; i < m_stats.size(); i++)
       {
 	min_elapsed_scan = std::min (min_elapsed_scan, (UINT64) (TO_MSEC (m_stats[i].elapsed_time)));

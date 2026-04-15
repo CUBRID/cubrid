@@ -1957,8 +1957,8 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT >
 			*)p->s_id.s.phsid.manager)->close ();
 		      break;
-		    case parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT:
-		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT >
+		    case parallel_heap_scan::RESULT_TYPE::BUILDVALUE_OPT:
+		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::BUILDVALUE_OPT >
 			*)p->s_id.s.phsid.manager)->close ();
 		      break;
 		    default:
