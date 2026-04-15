@@ -96,7 +96,10 @@ namespace parallel_scan
       {
 	return err_code;
       }
-    hsidp = &m_scan_id->s.hsid;
+    if constexpr (ST != SCAN_TYPE::LIST)
+      {
+	hsidp = &m_scan_id->s.hsid;
+      }
     m_scan_id->vd = m_vd;
     spec = m_xasl->spec_list;
     cls = &spec->s.cls_node;
@@ -107,14 +110,34 @@ namespace parallel_scan
 	spec_ptr = xptr->spec_list;
 	if (level == 0)
 	  {
-	    scan_open_heap_scan (&thread_ref, m_scan_id, false, S_SELECT,
-				 m_is_fixed, m_is_grouped, spec->single_fetch, spec->s_dbval,
-				 m_xasl->val_list, m_vd, &m_cls_oid, &m_hfid,
-				 cls->cls_regu_list_pred, spec->where_pred, cls->cls_regu_list_rest,
-				 cls->num_attrs_pred, cls->attrids_pred, cls->cache_pred,
-				 cls->num_attrs_rest, cls->attrids_rest, cls->cache_rest,
-				 S_HEAP_SCAN, cls->cache_reserved, cls->cls_regu_list_reserved, false);
-	    err_code = scan_start_scan (&thread_ref, m_scan_id);
+	    if constexpr (ST == SCAN_TYPE::LIST)
+	      {
+		LIST_SPEC_TYPE *list_node = &spec->s.list_node;
+		err_code = scan_open_list_scan (&thread_ref, m_scan_id,
+						false, spec->single_fetch, spec->s_dbval,
+						m_xasl->val_list, m_vd,
+						m_input_handler->get_list_id (),
+						list_node->list_regu_list_pred, spec->where_pred,
+						list_node->list_regu_list_rest, list_node->list_regu_list_build,
+						list_node->list_regu_list_probe,
+						list_node->hash_list_scan_yn, false);
+		if (err_code != NO_ERROR)
+		  {
+		    return err_code;
+		  }
+		err_code = scan_start_scan (&thread_ref, m_scan_id);
+	      }
+	    else
+	      {
+		scan_open_heap_scan (&thread_ref, m_scan_id, false, S_SELECT,
+				     m_is_fixed, m_is_grouped, spec->single_fetch, spec->s_dbval,
+				     m_xasl->val_list, m_vd, &m_cls_oid, &m_hfid,
+				     cls->cls_regu_list_pred, spec->where_pred, cls->cls_regu_list_rest,
+				     cls->num_attrs_pred, cls->attrids_pred, cls->cache_pred,
+				     cls->num_attrs_rest, cls->attrids_rest, cls->cache_rest,
+				     S_HEAP_SCAN, cls->cache_reserved, cls->cls_regu_list_reserved, false);
+		err_code = scan_start_scan (&thread_ref, m_scan_id);
+	      }
 	  }
 	else
 	  {
@@ -287,7 +310,14 @@ namespace parallel_scan
 	return err_code;
       }
     m_slot_iterator.initialize (&thread_ref, m_scan_id, m_vd);
-    m_input_handler->initialize (&thread_ref, &hsidp->hfid, m_scan_id);
+    if constexpr (ST == SCAN_TYPE::LIST)
+      {
+	m_input_handler->initialize (&thread_ref, nullptr, m_scan_id);
+      }
+    else
+      {
+	m_input_handler->initialize (&thread_ref, &hsidp->hfid, m_scan_id);
+      }
     if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
       {
 	m_result_handler->write_initialize (&thread_ref, m_xasl->outptr_list, m_xasl->proc.buildvalue.agg_list, m_vd, m_xasl);
@@ -672,4 +702,8 @@ namespace parallel_scan
   template class task<RESULT_TYPE::MERGEABLE_LIST, SCAN_TYPE::HEAP>;
   template class task<RESULT_TYPE::XASL_SNAPSHOT, SCAN_TYPE::HEAP>;
   template class task<RESULT_TYPE::BUILDVALUE_OPT, SCAN_TYPE::HEAP>;
+
+  template class task<RESULT_TYPE::MERGEABLE_LIST, SCAN_TYPE::LIST>;
+  template class task<RESULT_TYPE::XASL_SNAPSHOT, SCAN_TYPE::LIST>;
+  template class task<RESULT_TYPE::BUILDVALUE_OPT, SCAN_TYPE::LIST>;
 }

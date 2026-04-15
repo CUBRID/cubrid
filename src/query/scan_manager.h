@@ -76,6 +76,7 @@ typedef enum
 {
   S_HEAP_SCAN = 1,
   S_PARALLEL_HEAP_SCAN,
+  S_PARALLEL_LIST_SCAN,
   S_CLASS_ATTR_SCAN,
   S_INDX_SCAN,
   S_LIST_SCAN,
@@ -152,6 +153,18 @@ struct parallel_heap_scan_id
   #endif
   // *INDENT-ON*
 };				/* Heap PARALLEL Scan Identifier */
+
+typedef struct parallel_list_scan_id PARALLEL_LIST_SCAN_ID;
+struct parallel_list_scan_id
+{
+  // *INDENT-OFF*
+  #if !WINDOWS
+  parallel_scan::RESULT_TYPE result_type;
+  void * manager;
+  parallel_scan::accumulative_trace_storage * trace_storage;
+  #endif
+  // *INDENT-ON*
+};				/* List PARALLEL Scan Identifier */
 
 typedef struct heap_page_scan_id HEAP_PAGE_SCAN_ID;
 struct heap_page_scan_id
@@ -402,6 +415,7 @@ struct scan_id_struct
     LLIST_SCAN_ID llsid;	/* List File Scan Identifier */
     HEAP_SCAN_ID hsid;		/* Regular Heap File Scan Identifier */
     PARALLEL_HEAP_SCAN_ID phsid;	/* Parallel Heap File Scan Identifier */
+    PARALLEL_LIST_SCAN_ID pllsid_parallel;	/* Parallel List File Scan Identifier */
     HEAP_PAGE_SCAN_ID hpsid;	/* Scan heap pages without going through records */
     INDX_SCAN_ID isid;		/* Indexed Heap File Scan Identifier */
     INDEX_NODE_SCAN_ID insid;	/* Scan b-tree nodes */

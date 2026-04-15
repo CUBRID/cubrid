@@ -7485,28 +7485,52 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
       {
 	/* open a list file scan */
 	QFILE_LIST_ID *list_id = NULL;
+	bool is_connect_by_list = false;
 
 	if (ACCESS_SPEC_XASL_NODE (curr_spec) && ACCESS_SPEC_XASL_NODE (curr_spec)->spec_list == curr_spec)
 	  {
 	    /* if XASL of access spec for list scan is itself then this is for HQ */
 	    list_id = ACCESS_SPEC_CONNECT_BY_LIST_ID (curr_spec);
+	    is_connect_by_list = true;
 	  }
 	else
 	  {
 	    list_id = ACCESS_SPEC_LIST_ID (curr_spec);
 	  }
 
-	error_code =
-	  scan_open_list_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
-			       list_id, curr_spec->s.list_node.list_regu_list_pred,
-			       curr_spec->where_pred, curr_spec->s.list_node.list_regu_list_rest,
-			       curr_spec->s.list_node.list_regu_list_build, curr_spec->s.list_node.list_regu_list_probe,
-			       curr_spec->s.list_node.hash_list_scan_yn, false);
-	if (error_code != NO_ERROR)
+#if SERVER_MODE && !WINDOWS
+	if (!is_connect_by_list)
 	  {
-	    ASSERT_ERROR ();
-	    goto exit_on_error;
+	    error_code =
+	      scan_open_parallel_list_scan (thread_p, s_id, vd, curr_spec, list_id, xasl, query_id);
+	    if (error_code != NO_ERROR)
+	      {
+		ASSERT_ERROR ();
+		goto exit_on_error;
+	      }
 	  }
+
+	if (!is_connect_by_list && s_id->type == S_PARALLEL_LIST_SCAN)
+	  {
+	    assert (s_id->s.pllsid_parallel.manager != nullptr);
+	  }
+	else
+	  {
+#endif /* SERVER_MODE && !WINDOWS */
+	    error_code =
+	      scan_open_list_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
+				   list_id, curr_spec->s.list_node.list_regu_list_pred,
+				   curr_spec->where_pred, curr_spec->s.list_node.list_regu_list_rest,
+				   curr_spec->s.list_node.list_regu_list_build, curr_spec->s.list_node.list_regu_list_probe,
+				   curr_spec->s.list_node.hash_list_scan_yn, false);
+	    if (error_code != NO_ERROR)
+	      {
+		ASSERT_ERROR ();
+		goto exit_on_error;
+	      }
+#if SERVER_MODE && !WINDOWS
+	  }
+#endif /* SERVER_MODE && !WINDOWS */
 
 	break;
       }				/* case TARGET_LIST */

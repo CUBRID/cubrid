@@ -376,7 +376,19 @@ namespace parallel_scan
       {
 	return 0;
       }
-    if (arg->access != ACCESS_METHOD_SEQUENTIAL || arg->type != TARGET_CLASS)
+    if (arg->type == TARGET_CLASS)
+      {
+	if (arg->access != ACCESS_METHOD_SEQUENTIAL)
+	  {
+	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	    return result;
+	  }
+      }
+    else if (arg->type == TARGET_LIST)
+      {
+	/* TARGET_LIST is valid for parallel list scan */
+      }
+    else
       {
 	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
 	return result;
@@ -386,12 +398,25 @@ namespace parallel_scan
 	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
 	return result;
       }
-    result |= check<false> (arg->s.cls_node.cls_regu_list_pred);
-    result |= check<false> (arg->s.cls_node.cls_regu_list_rest);
-    result |= check<false> (arg->where_pred);
-    if (!arg->s.cls_node.cls_regu_list_pred && !arg->s.cls_node.cls_regu_list_rest)
+    if (arg->type == TARGET_CLASS)
       {
-	set_flag (result, CANNOT_LIST_MERGE);
+	result |= check<false> (arg->s.cls_node.cls_regu_list_pred);
+	result |= check<false> (arg->s.cls_node.cls_regu_list_rest);
+	result |= check<false> (arg->where_pred);
+	if (!arg->s.cls_node.cls_regu_list_pred && !arg->s.cls_node.cls_regu_list_rest)
+	  {
+	    set_flag (result, CANNOT_LIST_MERGE);
+	  }
+      }
+    else if (arg->type == TARGET_LIST)
+      {
+	result |= check<false> (arg->s.list_node.list_regu_list_pred);
+	result |= check<false> (arg->s.list_node.list_regu_list_rest);
+	result |= check<false> (arg->where_pred);
+	if (!arg->s.list_node.list_regu_list_pred && !arg->s.list_node.list_regu_list_rest)
+	  {
+	    set_flag (result, CANNOT_LIST_MERGE);
+	  }
       }
     return result;
   }
@@ -859,4 +884,12 @@ scan_check_parallel_heap_scan_possible (XASL_NODE *xasl)
   parallel_scan::xasl_processing_set.clear ();
 
   return NO_ERROR;
+}
+
+extern int
+scan_check_parallel_list_scan_possible (XASL_NODE *xasl)
+{
+  /* Reuses the same check infrastructure as heap scan.
+   * check<false>(ACCESS_SPEC_TYPE*) already handles TARGET_LIST. */
+  return scan_check_parallel_heap_scan_possible (xasl);
 }
