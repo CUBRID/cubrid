@@ -2229,8 +2229,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
    * and old OOS records from UPDATE are not tracked via prev_version_lsa.
    * Skip entirely when this heap has no OOS file — the chain walk is expensive
    * (log page I/O + LOG_CS acquisition per version) and yields nothing for non-OOS tables. */
-  if (MVCC_IS_HEADER_PREV_VERSION_VALID (&helper->mvcc_header)
-      && !VFID_ISNULL (&helper->oos_vfid))
+  if (MVCC_IS_HEADER_PREV_VERSION_VALID (&helper->mvcc_header) && !VFID_ISNULL (&helper->oos_vfid))
     {
       (void) vacuum_cleanup_prev_version_oos (thread_p, helper);
     }
