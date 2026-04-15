@@ -434,7 +434,6 @@ namespace cubthread
       wrapped_task (wrapped_task &&other);
       wrapped_task &operator= (wrapped_task &&other) = delete;
 
-      task_type *get_task (void);
       cubperf::time_point &get_time (void);
 
       // helper
@@ -960,9 +959,9 @@ namespace cubthread
 
     while (!m_task_queue.empty ())
       {
-	wrapped_task &queued_task = m_task_queue.front ();
-	queued_task.get_task ()->retire ();
+	wrapped_task queued_task = std::move (m_task_queue.front ());
 	m_task_queue.pop ();
+	queued_task.retire ();
       }
   }
 
@@ -976,8 +975,6 @@ namespace cubthread
       {
 	wrapped_task queued_task = std::move (m_task_queue.front ());
 	m_task_queue.pop ();
-
-	assert (queued_task.get_task ());
 
 	return std::optional<wrapped_task> (std::in_place, std::move (queued_task));
       }
@@ -1567,6 +1564,7 @@ namespace cubthread
   template <bool Stats>
   worker_pool_impl<Stats>::wrapped_task::~wrapped_task (void)
   {
+    assert (m_inner.task == nullptr);
   }
 
   template <bool Stats>
@@ -1579,13 +1577,6 @@ namespace cubthread
       {
 	m_inner.time = other.m_inner.time;
       }
-  }
-
-  template <bool Stats>
-  typename worker_pool_impl<Stats>::task_type *
-  worker_pool_impl<Stats>::wrapped_task::get_task (void)
-  {
-    return m_inner.task;
   }
 
   template <bool Stats>
