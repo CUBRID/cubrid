@@ -1693,6 +1693,15 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
       helper.hfid = *hfid;
     }
 
+  /* One-time OOS VFID probe per page: if this heap has an OOS file, cache
+   * the VFID so that per-record OOS cleanup can skip the lookup.  If the
+   * heap has no OOS file, oos_vfid stays NULL and all OOS-related work
+   * (prev_version chain walk, per-record OOS delete) is skipped entirely. */
+  if (VFID_ISNULL (&helper.oos_vfid))
+    {
+      (void) heap_oos_find_vfid (thread_p, &helper.hfid, &helper.oos_vfid, false);
+    }
+
   helper.crt_slotid = -1;
   for (obj_index = 0; obj_index < n_heap_objects; obj_index++)
     {
@@ -2226,8 +2235,11 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
   /* Clean up OOS records referenced by old versions in undo log before clearing prev_version_lsa.
    * NOTE: This is only effective in SERVER_MODE where UPDATE uses MVCC versioning
    * (prev_version_lsa chain). In SA_MODE, UPDATE is non-MVCC (in-place overwrite)
-   * and old OOS records from UPDATE are not tracked via prev_version_lsa. */
-  if (MVCC_IS_HEADER_PREV_VERSION_VALID (&helper->mvcc_header))
+   * and old OOS records from UPDATE are not tracked via prev_version_lsa.
+   * Skip entirely when this heap has no OOS file — the chain walk is expensive
+   * (log page I/O + LOG_CS acquisition per version) and yields nothing for non-OOS tables. */
+  if (MVCC_IS_HEADER_PREV_VERSION_VALID (&helper->mvcc_header)
+      && !VFID_ISNULL (&helper->oos_vfid))
     {
       (void) vacuum_cleanup_prev_version_oos (thread_p, helper);
     }
