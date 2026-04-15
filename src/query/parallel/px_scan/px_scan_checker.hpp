@@ -25,6 +25,5 @@
 #include "xasl.h"
 
 extern "C" int scan_check_parallel_heap_scan_possible (XASL_NODE *xasl);
-extern "C" int scan_check_parallel_list_scan_possible (XASL_NODE *xasl);
 
 #endif /*_PX_SCAN_CHECKER_HPP_ */

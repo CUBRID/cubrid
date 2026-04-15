@@ -886,10 +886,3 @@ scan_check_parallel_heap_scan_possible (XASL_NODE *xasl)
   return NO_ERROR;
 }
 
-extern int
-scan_check_parallel_list_scan_possible (XASL_NODE *xasl)
-{
-  /* Reuses the same check infrastructure as heap scan.
-   * check<false>(ACCESS_SPEC_TYPE*) already handles TARGET_LIST. */
-  return scan_check_parallel_heap_scan_possible (xasl);
-}

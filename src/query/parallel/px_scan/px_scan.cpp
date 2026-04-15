@@ -913,6 +913,15 @@ extern "C"
 	return NO_ERROR;
       }
 
+    /* DML (INSERT/UPDATE/DELETE/MERGE) reads val_list directly from scan_id;
+     * parallel scan's result handler does not populate val_list in the way
+     * DML expects, so we must fall back to regular list scan. */
+    if (xasl->type == INSERT_PROC || xasl->type == UPDATE_PROC
+	|| xasl->type == DELETE_PROC || xasl->type == MERGE_PROC)
+      {
+	return NO_ERROR;
+      }
+
     assert (spec->num_parallel_threads == -1
 	    || ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS));
 
