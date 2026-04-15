@@ -115,6 +115,34 @@ TEST (OosFileDestroyTest, OosFileDestroyWithMultiChunkData)
 
 
 // ===========================================================================
+// TEST: OosFileDestroyCacheCleared
+//
+// Create file, insert (so bestspace cache has entry), destroy, verify
+// that the file can be destroyed without error (cache entries cleaned).
+// ===========================================================================
+TEST (OosFileDestroyTest, OosFileDestroyCacheCleared)
+{
+  int err;
+  VFID oos_vfid;
+
+  err = oos_create_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  RECDES rec_in{};
+  err = test_oos_utils::from_string_into_recdes ("Cache entry test data", rec_in);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_free (&rec_in, recdes_free_data_area);
+
+  OID oid = OID_INITIALIZER;
+  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  err = oos_remove_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+}
+
+
+// ===========================================================================
 // TEST: OosPageDestroyBasic
 //
 // Create file, insert to allocate a page, deallocate the page via

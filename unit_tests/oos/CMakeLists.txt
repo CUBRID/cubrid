@@ -82,11 +82,12 @@ set_tests_properties(oos_cleanup_db PROPERTIES FIXTURES_CLEANUP OOS_DB)
 add_test(NAME test_oos COMMAND test_oos)
 add_test(NAME test_oos_delete COMMAND test_oos_delete)
 add_test(NAME test_oos_remove_file COMMAND test_oos_remove_file)
+add_test(NAME test_oos_bestspace COMMAND test_oos_bestspace)
 # add_test(NAME test_oos_persist COMMAND test_oos_persist)
 # add_test(NAME test_oos_record_descriptor COMMAND test_oos_record_descriptor)
 
 set_tests_properties(
-  test_oos test_oos_delete test_oos_remove_file
+  test_oos test_oos_delete test_oos_remove_file test_oos_bestspace
   PROPERTIES FIXTURES_REQUIRED OOS_DB
 )
 

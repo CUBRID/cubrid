@@ -77,7 +77,7 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 
 static constexpr int OOS_ALIGNMENT = MAX_ALIGNMENT;
 
-#define OOS_STATS_ENTRY_MHT_EST_SIZE 1000
+#define OOS_BESTSPACE_CACHE_CAPACITY 1000
 #define OOS_DROP_FREE_SPACE ((int)(DB_PAGESIZE * 0.3))
 #define OOS_BESTSPACE_SYNC_THRESHOLD (0.1f)
 #define BEST_PAGE_SEARCH_MAX_COUNT 100
@@ -156,7 +156,7 @@ oos_stats_entry_free (THREAD_ENTRY *thread_p, void *data, void *args)
 
   if (ent != NULL)
     {
-      if (oos_Bestspace != NULL && oos_Bestspace->free_list_count < OOS_STATS_ENTRY_MHT_EST_SIZE)
+      if (oos_Bestspace->free_list_count < OOS_BESTSPACE_CACHE_CAPACITY)
 	{
 	  ent->next = oos_Bestspace->free_list;
 	  oos_Bestspace->free_list = ent;
@@ -179,33 +179,40 @@ oos_bestspace_initialize (void)
 {
   if (oos_Bestspace != NULL)
     {
+      assert (false);
       (void) oos_bestspace_finalize ();
     }
 
   oos_Bestspace = &oos_Bestspace_cache_area;
 
-  pthread_mutex_init (&oos_Bestspace->bestspace_mutex, NULL);
+  if (pthread_mutex_init (&oos_Bestspace->bestspace_mutex, NULL) != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_INIT, 0);
+      return ER_CSS_PTHREAD_MUTEX_INIT;
+    }
 
   oos_Bestspace->num_stats_entries = 0;
   oos_Bestspace->free_list_count = 0;
   oos_Bestspace->free_list = NULL;
 
   oos_Bestspace->vpid_ht = mht_create ("OOS best-space vpid hash table",
-				       OOS_STATS_ENTRY_MHT_EST_SIZE,
+				       OOS_BESTSPACE_CACHE_CAPACITY,
 				       oos_hash_vpid, oos_compare_vpid);
   if (oos_Bestspace->vpid_ht == NULL)
     {
-      return ER_FAILED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (MHT_TABLE));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   oos_Bestspace->vfid_ht = mht_create ("OOS best-space vfid hash table",
-				       OOS_STATS_ENTRY_MHT_EST_SIZE,
+				       OOS_BESTSPACE_CACHE_CAPACITY,
 				       oos_hash_vfid, oos_compare_vfid);
   if (oos_Bestspace->vfid_ht == NULL)
     {
       mht_destroy (oos_Bestspace->vpid_ht);
       oos_Bestspace->vpid_ht = NULL;
-      return ER_FAILED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (MHT_TABLE));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   return NO_ERROR;
@@ -258,14 +265,10 @@ static OOS_STATS_ENTRY *
 oos_stats_add_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid, VPID *vpid, int freespace)
 {
   OOS_STATS_ENTRY *ent;
-  int rc;
 
-  if (oos_Bestspace == NULL)
-    {
-      return NULL;
-    }
+  assert (oos_Bestspace != NULL);
 
-  rc = pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
 
   ent = (OOS_STATS_ENTRY *) mht_get (oos_Bestspace->vpid_ht, vpid);
   if (ent != NULL)
@@ -275,7 +278,7 @@ oos_stats_add_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid, VPID *vpid, i
       return ent;
     }
 
-  if (oos_Bestspace->num_stats_entries >= OOS_STATS_ENTRY_MHT_EST_SIZE)
+  if (oos_Bestspace->num_stats_entries >= OOS_BESTSPACE_CACHE_CAPACITY)
     {
       pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
       return NULL;
@@ -292,6 +295,7 @@ oos_stats_add_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid, VPID *vpid, i
       ent = (OOS_STATS_ENTRY *) malloc (sizeof (OOS_STATS_ENTRY));
       if (ent == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OOS_STATS_ENTRY));
 	  pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
 	  return NULL;
 	}
@@ -327,14 +331,10 @@ static int
 oos_stats_del_bestspace_by_vpid (THREAD_ENTRY *thread_p, VPID *vpid)
 {
   OOS_STATS_ENTRY *ent;
-  int rc;
 
-  if (oos_Bestspace == NULL)
-    {
-      return NO_ERROR;
-    }
+  assert (oos_Bestspace != NULL);
 
-  rc = pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
 
   ent = (OOS_STATS_ENTRY *) mht_get (oos_Bestspace->vpid_ht, vpid);
   if (ent == NULL)
@@ -357,14 +357,10 @@ static int
 oos_stats_del_bestspace_by_vfid (THREAD_ENTRY *thread_p, const VFID *vfid)
 {
   OOS_STATS_ENTRY *ent;
-  int rc;
 
-  if (oos_Bestspace == NULL)
-    {
-      return NO_ERROR;
-    }
+  assert (oos_Bestspace != NULL);
 
-  rc = pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
 
   while (true)
     {
@@ -448,13 +444,6 @@ oos_stats_get_second_best (OOS_HDR_STATS *oos_hdr, VPID *vpid)
 // OOS Bestspace — find page in bestspace (hash + best[])
 // ****************************************************************************
 
-typedef enum
-{
-  OOS_FINDSPACE_FOUND = 0,
-  OOS_FINDSPACE_NOTFOUND,
-  OOS_FINDSPACE_ERROR
-} OOS_FINDSPACE;
-
 static OOS_FINDSPACE
 oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 				  OOS_BESTSPACE *bestspace, int *idx_badspace,
@@ -467,7 +456,6 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
   int notfound_cnt = 0;
   int old_wait_msecs;
   VPID hdr_vpid;
-  int rc;
 
   *out_pgptr = NULL;
   VPID_SET_NULL (out_vpid);
@@ -489,7 +477,7 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
       /* Phase A: Search global hash table */
       if (oos_Bestspace != NULL)
 	{
-	  rc = pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+	  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
 
 	  while (notfound_cnt < BEST_PAGE_SEARCH_MAX_COUNT)
 	    {
@@ -564,9 +552,11 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 	      found = OOS_FINDSPACE_ERROR;
 	      break;
 	    }
-	  /* Clear error and continue */
+	  /* Clear error and continue — log unexpected errors for diagnostics */
 	  if (err != NO_ERROR)
 	    {
+	      oos_trace ("conditional latch failed for vpid={vol=%d,page=%d}, er_errid=%d — skipping",
+			 candidate_vpid.volid, candidate_vpid.pageid, err);
 	      er_clear ();
 	    }
 	  notfound_cnt++;
@@ -637,13 +627,13 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 static int
 oos_stats_sync_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 			  OOS_HDR_STATS *oos_hdr, VPID *hdr_vpid,
-			  bool scan_all, bool can_cycle)
+			  bool scan_all)
 {
   int num_high_best = 0;
   int num_other_high_best = 0;
   int num_pages = 0;
   int num_recs = 0;
-  int recs_sumlen = 0;
+  float recs_sumlen = 0.0;
   int start_idx = 1; /* Skip page 0 (header page) */
   int max_iterations;
   int total_pages;
@@ -757,15 +747,49 @@ oos_stats_sync_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
       oos_hdr->estimates.full_search_vpid = scan_vpid;
     }
 
-  /* Update estimates */
+  /* On full scan, clear stale best[] entries with freespace below the threshold.
+   * This runs regardless of best_count so that full slots with stale low-freespace
+   * values are cleaned up after a complete scan. */
   if (scan_all)
     {
+      for (int i = 0; i < OOS_NUM_BEST_SPACESTATS; i++)
+	{
+	  if (!VPID_ISNULL (&oos_hdr->estimates.best[i].vpid)
+	      && oos_hdr->estimates.best[i].freespace <= OOS_DROP_FREE_SPACE)
+	    {
+	      VPID_SET_NULL (&oos_hdr->estimates.best[i].vpid);
+	      oos_hdr->estimates.best[i].freespace = 0;
+	    }
+	}
+    }
+
+  /* Update estimates */
+  if (scan_all || oos_hdr->estimates.num_pages <= num_pages)
+    {
+      /* Full scan — reset all statistics */
+      oos_hdr->estimates.num_other_high_best = num_other_high_best;
       oos_hdr->estimates.num_pages = num_pages;
       oos_hdr->estimates.num_recs = num_recs;
-      oos_hdr->estimates.recs_sumlen = (float) recs_sumlen;
+      oos_hdr->estimates.recs_sumlen = recs_sumlen;
+    }
+  else
+    {
+      /* Partial scan — preserve cumulative knowledge (heap pattern) */
+      oos_hdr->estimates.num_other_high_best -= oos_hdr->estimates.num_high_best;
+
+      if (oos_hdr->estimates.num_other_high_best < num_other_high_best)
+	{
+	  oos_hdr->estimates.num_other_high_best = num_other_high_best;
+	}
+
+      if (num_recs > oos_hdr->estimates.num_recs || recs_sumlen > oos_hdr->estimates.recs_sumlen)
+	{
+	  oos_hdr->estimates.num_pages = num_pages;
+	  oos_hdr->estimates.num_recs = num_recs;
+	  oos_hdr->estimates.recs_sumlen = recs_sumlen;
+	}
     }
   oos_hdr->estimates.num_high_best = best_count;
-  oos_hdr->estimates.num_other_high_best = num_other_high_best;
 
   return num_high_best + num_other_high_best;
 }
@@ -775,8 +799,7 @@ oos_stats_sync_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 // ****************************************************************************
 
 static void
-oos_stats_update_internal (THREAD_ENTRY *thread_p, const VFID *vfid,
-			   VPID *hdr_vpid, OOS_HDR_STATS *oos_hdr,
+oos_stats_update_internal (THREAD_ENTRY *thread_p, OOS_HDR_STATS *oos_hdr,
 			   VPID *page_vpid, int freespace)
 {
   int idx;
@@ -858,7 +881,7 @@ oos_stats_update (THREAD_ENTRY *thread_p, PAGE_PTR pgptr, const VFID *vfid, int 
 	{
 	  VPID page_vpid;
 	  pgbuf_get_vpid (pgptr, &page_vpid);
-	  oos_stats_update_internal (thread_p, vfid, &hdr_vpid, oos_hdr, &page_vpid, freespace);
+	  oos_stats_update_internal (thread_p, oos_hdr, &page_vpid, freespace);
 
 	  /* Non-logged update — hints don't need WAL */
 	  LOG_DATA_ADDR addr;
@@ -1183,8 +1206,9 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &re
 
     oos_log_insert_physical (thread_p, page_ptr, const_cast<VFID *> (&oos_vfid), &oid, &oos_rec);
 
-    /* Update bestspace cache after insert */
-    int freespace_after = spage_get_free_space (thread_p, page_ptr);
+    /* Update bestspace cache after insert — use spage_max_space_for_new_record
+     * for consistency with the lookup check in oos_stats_find_page_in_bestspace */
+    int freespace_after = spage_max_space_for_new_record (thread_p, page_ptr);
     (void) oos_stats_add_bestspace (thread_p, &oos_vfid, &vpid, freespace_after);
   }
   assert (oos_rec.data == nullptr); // should be freed by scope_exit
@@ -1443,6 +1467,7 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 	}
       if (result == OOS_FINDSPACE_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  pgbuf_unfix_and_init (thread_p, hdr_page);
 	  return nullptr;
 	}
@@ -1456,7 +1481,42 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 
       if (ratio >= OOS_BESTSPACE_SYNC_THRESHOLD || try_find == 0)
 	{
-	  (void) oos_stats_sync_bestspace (thread_p, &oos_vfid, oos_hdr, &hdr_vpid, false, true);
+	  /* Release header latch before sync scan to reduce contention.
+	   * Sync only updates the global hash cache (not best[]),
+	   * so we don't need the header page during the scan. */
+	  LOG_DATA_ADDR addr;
+	  addr.vfid = NULL;
+	  addr.pgptr = hdr_page;
+	  addr.offset = 0;
+	  log_skip_logging (thread_p, &addr);
+	  pgbuf_set_dirty (thread_p, hdr_page, DONT_FREE);
+	  pgbuf_unfix_and_init (thread_p, hdr_page);
+	  oos_hdr = NULL;
+
+	  /* Sync scan — populates global cache only.
+	   * We pass a temporary OOS_HDR_STATS to collect scan stats,
+	   * and discard the header-specific updates. */
+	  OOS_HDR_STATS tmp_hdr;
+	  memset (&tmp_hdr, 0, sizeof (tmp_hdr));
+	  (void) oos_stats_sync_bestspace (thread_p, &oos_vfid, &tmp_hdr, &hdr_vpid, false);
+
+	  /* Re-acquire header latch after sync */
+	  hdr_page = pgbuf_fix (thread_p, &hdr_vpid, OLD_PAGE,
+				PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  if (hdr_page == NULL)
+	    {
+	      if (er_errid () == ER_INTERRUPTED)
+		{
+		  return nullptr;
+		}
+	      return oos_file_alloc_new (thread_p, oos_vfid, vpid);
+	    }
+	  oos_hdr = oos_get_header_stats_ptr (thread_p, hdr_page);
+	  if (oos_hdr == NULL)
+	    {
+	      pgbuf_unfix_and_init (thread_p, hdr_page);
+	      return oos_file_alloc_new (thread_p, oos_vfid, vpid);
+	    }
 	}
       else
 	{
@@ -1476,22 +1536,45 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
       pgbuf_set_dirty (thread_p, hdr_page, DONT_FREE);
       pgbuf_unfix_and_init (thread_p, hdr_page);
 
-      /* Unfix the page returned by find_page_in_bestspace before re-fixing as auto_unfix */
+      /* Unfix the conditional-latch page and re-fix as auto_unfix with unconditional latch.
+       * Between unfix and re-fix, another thread may fill the page (race window). */
       pgbuf_unfix_and_init (thread_p, found_page);
 
-      return pgbuf_fix_auto_unfix (thread_p, &vpid, OLD_PAGE,
-				   PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      auto result_page = pgbuf_fix_auto_unfix (thread_p, &vpid, OLD_PAGE,
+			 PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (result_page == nullptr)
+	{
+	  /* Re-fix failed — propagate error if it is not a benign latch timeout */
+	  int refix_err = er_errid ();
+	  if (refix_err == ER_INTERRUPTED)
+	    {
+	      return nullptr;
+	    }
+	  /* Fall through to allocate new page */
+	}
+      else
+	{
+	  /* Re-check free space after unconditional re-fix (race window protection) */
+	  int actual_free = spage_max_space_for_new_record (thread_p, result_page.get ());
+	  if (actual_free >= total_space)
+	    {
+	      return result_page;
+	    }
+	  /* Page was filled by another thread — fall through to allocate new */
+	  result_page.reset ();
+	}
     }
 
   /* No existing page found — allocate new */
-  pgbuf_unfix_and_init (thread_p, hdr_page);
+  pgbuf_unfix_and_init_after_check (thread_p, hdr_page);
 
   auto new_page = oos_file_alloc_new (thread_p, oos_vfid, vpid);
 
-  /* Update bestspace cache with the new page */
+  /* Update bestspace cache with the new page — use spage_max_space_for_new_record
+   * for consistency with the lookup check in oos_stats_find_page_in_bestspace */
   if (new_page != nullptr)
     {
-      int free_space = spage_get_free_space (thread_p, new_page.get());
+      int free_space = spage_max_space_for_new_record (thread_p, new_page.get());
       (void) oos_stats_add_bestspace (thread_p, &oos_vfid, &vpid, free_space);
     }
 
@@ -1557,8 +1640,6 @@ oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
   log_append_undoredo_recdes (thread_p, RVOOS_DELETE, &log_addr, recdes_p, NULL);
 }
 
-// TODO: caller connection — heap_update → oos_delete, vacuum → oos_delete are not yet wired.
-//       These will be connected in the upper story.
 // TODO: concurrency — this function assumes the caller holds a row-level lock (e.g., X_LOCK from heap layer)
 //       to prevent concurrent deletion of the same OOS chain. Verify this assumption when wiring callers.
 
@@ -1630,6 +1711,9 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
 	  return error;
 	}
       pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
+
+      /* Update bestspace cache — page now has more free space after delete */
+      oos_stats_update (thread_p, page_ptr, &oos_vfid, 0);
 
       oos_debug ("deleted chunk at oid={vol=%d,page=%d,slot=%d}, next={vol=%d,page=%d,slot=%d}",
 		 OID_AS_ARGS (&current_oid), OID_AS_ARGS (&next_chunk_oid));
@@ -1806,5 +1890,53 @@ bridge_oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const i
 			   VPID &vpid)
 {
   return oos_find_best_page (thread_p, oos_vfid, rec_length, vpid);
+}
+
+OOS_STATS_ENTRY *
+bridge_oos_stats_add_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid, VPID *vpid, int freespace)
+{
+  return oos_stats_add_bestspace (thread_p, vfid, vpid, freespace);
+}
+
+int
+bridge_oos_stats_del_bestspace_by_vpid (THREAD_ENTRY *thread_p, VPID *vpid)
+{
+  return oos_stats_del_bestspace_by_vpid (thread_p, vpid);
+}
+
+OOS_HDR_STATS *
+bridge_oos_get_header_stats_ptr (THREAD_ENTRY *thread_p, PAGE_PTR page_header)
+{
+  return oos_get_header_stats_ptr (thread_p, page_header);
+}
+
+void
+bridge_oos_stats_put_second_best (OOS_HDR_STATS *oos_hdr, VPID *vpid)
+{
+  oos_stats_put_second_best (oos_hdr, vpid);
+}
+
+bool
+bridge_oos_stats_get_second_best (OOS_HDR_STATS *oos_hdr, VPID *vpid)
+{
+  return oos_stats_get_second_best (oos_hdr, vpid);
+}
+
+int
+bridge_oos_stats_sync_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
+				 OOS_HDR_STATS *oos_hdr, VPID *hdr_vpid,
+				 bool scan_all)
+{
+  return oos_stats_sync_bestspace (thread_p, vfid, oos_hdr, hdr_vpid, scan_all);
+}
+
+OOS_FINDSPACE
+bridge_oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
+    OOS_BESTSPACE *bestspace, int *idx_badspace,
+    int needed_space, VPID *out_vpid,
+    PAGE_PTR *out_pgptr)
+{
+  return oos_stats_find_page_in_bestspace (thread_p, vfid, bestspace, idx_badspace,
+	 needed_space, out_vpid, out_pgptr);
 }
 #endif
