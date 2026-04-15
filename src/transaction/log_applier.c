@@ -56,6 +56,7 @@
 #include "db.h"
 #include "object_accessor.h"
 #include "locator_cl.h"
+#include "network_cl.h"
 #include "network_interface_cl.h"
 #include "schema_system_catalog_constants.h"
 #include "file_io.h"
@@ -626,6 +627,8 @@ static int la_reader_commit_apply_info (void);
 static void *la_apply_worker_main (void *arg);
 static void la_apply_worker_init (LA_APPLY_WORKER * worker);
 static void la_apply_worker_destroy (LA_APPLY_WORKER * worker);
+static int la_apply_worker_start_session (void);
+static void la_apply_worker_end_session (bool session_started);
 static int la_start_apply_workers (void);
 static void la_stop_apply_workers (void);
 static int la_enqueue_apply_task (LA_APPLY_WORKER * worker, const LA_APPLY_TASK * task);
@@ -791,6 +794,37 @@ la_try_dequeue_apply_result (LA_APPLY_WORKER * worker, LA_APPLY_RESULT * result)
 }
 
 static int
+la_apply_worker_start_session (void)
+{
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  int error;
+
+  error = net_client_sub_init ();
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+#endif
+
+  __gv_loc_repl.ws_init_repl_objs ();
+
+  return NO_ERROR;
+}
+
+static void
+la_apply_worker_end_session (bool session_started)
+{
+  if (session_started)
+    {
+      __gv_loc_repl.ws_clear_all_repl_objs ();
+      __gv_loc_repl.ws_clear_all_repl_errors_of_error_link ();
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+      net_client_sub_final ();
+#endif
+    }
+}
+
+static int
 la_collect_apply_results (void)
 {
   LA_APPLY_RESULT result;
@@ -826,9 +860,20 @@ la_apply_worker_main (void *arg)
 {
   LA_APPLY_WORKER *worker = (LA_APPLY_WORKER *) arg;
   cuberr::context *er_context_p = NULL;
+  bool session_started = false;
+  int error = NO_ERROR;
 
   er_context_p = new cuberr::context ();
   er_context_p->register_thread_local ();
+
+  error = la_apply_worker_start_session ();
+  if (error != NO_ERROR)
+    {
+      la_applier_need_shutdown = true;
+      goto end;
+    }
+
+  session_started = true;
 
   while (true)
     {
@@ -861,6 +906,9 @@ la_apply_worker_main (void *arg)
 	  break;
 	}
     }
+
+end:
+  la_apply_worker_end_session (session_started);
 
   er_context_p->deregister_thread_local ();
   delete er_context_p;
