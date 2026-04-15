@@ -8190,6 +8190,27 @@ vacuum_init_data_page_with_last_blockid (THREAD_ENTRY * thread_p, VACUUM_DATA_PA
   vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
 }
 
+/*
+ * bridge_vacuum_heap_oos_delete () - Test bridge for vacuum_heap_oos_delete.
+ *
+ * Wraps the static vacuum_heap_oos_delete() so unit tests can exercise the
+ * real vacuum code path: heap_recdes_get_oos_oids() → oos_delete() for each OID.
+ *
+ * return      : Error code.
+ * thread_p(in): Thread entry.
+ * oos_vfid(in): OOS file identifier.
+ * record(in)  : Heap record descriptor containing OOS inline data.
+ */
+int
+bridge_vacuum_heap_oos_delete (THREAD_ENTRY * thread_p, const VFID * oos_vfid, RECDES * record)
+{
+  VACUUM_HEAP_HELPER helper;
+  memset (&helper, 0, sizeof (helper));
+  VFID_COPY (&helper.oos_vfid, oos_vfid);
+  helper.record = *record;
+  return vacuum_heap_oos_delete (thread_p, &helper);
+}
+
 // *INDENT-OFF*
 //
 // C++
