@@ -565,10 +565,10 @@ TEST_F (OosSqlVacuum, UpdateOosPageCountCleanup)
 }
 
 // ============================================================================
-// TC-12: TRUNCATE TABLE cleans OOS records (locator_delete_oos_force path)
+// TC-12: TRUNCATE TABLE + vacuum cleans OOS records
 //
-// TRUNCATE does physical deletes via locator_delete_force_internal, which
-// calls locator_delete_oos_force. This path is separate from vacuum.
+// TRUNCATE does MVCC deletes via locator_delete_force_internal.
+// Vacuum then cleans up the dead heap records and their OOS references.
 // ============================================================================
 TEST_F (OosSqlVacuum, TruncateTableCleansOos)
 {
@@ -590,10 +590,13 @@ TEST_F (OosSqlVacuum, TruncateTableCleansOos)
   int pages_before = get_oos_page_count ("t_oos_vac");
   ASSERT_GT (pages_before, 0);
 
-  /* TRUNCATE should physically delete all records including OOS */
+  /* TRUNCATE deletes all records; vacuum cleans up OOS */
   rc = exec_sql ("TRUNCATE TABLE t_oos_vac");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
+
+  rc = run_vacuum ();
+  ASSERT_EQ (rc, NO_ERROR);
 
   /* Verify table is empty */
   int count = 0;

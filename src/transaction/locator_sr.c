@@ -236,7 +236,6 @@ static DB_LOGICAL locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p
 static int locator_lob_make_dir_path (char *buf, const HFID * hfid, int attrid);
 
 static int locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes);
-static int locator_delete_oos_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, RECDES * recdes);
 
 /*
  * locator_initialize () - Initialize the locator on the server
@@ -6371,16 +6370,6 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
        * Note that we cannot have server deletes on classes.
        */
 
-      /* Delete OOS column data before deleting the heap record */
-      if (isold_object == true && copy_recdes.data != NULL)
-	{
-	  error_code = locator_delete_oos_force (thread_p, hfid, &class_oid, &copy_recdes);
-	  if (error_code != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	}
-
       if (isold_object == true && has_index)
 	{
 	  /* if MVCC then delete before updating index */
@@ -6593,111 +6582,6 @@ error:
       error_code = heap_scancache_end (thread_p, &scan_cache);
     }
 
-  return error_code;
-}
-
-/*
- * locator_delete_oos_force () - Delete all OOS data referenced by the given record
- *
- * return: NO_ERROR if all OK, ER_ status otherwise
- *
- *   thread_p(in):
- *   hfid(in):
- *   class_oid(in):
- *   recdes(in): record descriptor containing OOS OIDs
- */
-static int
-locator_delete_oos_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, RECDES * recdes)
-{
-  HEAP_CACHE_ATTRINFO attr_info;
-  OR_CLASSREP *classrep = NULL;
-  OR_ATTRIBUTE *attrepr = NULL;
-  int offset_size = 0;
-  int offset = 0;
-  int error_code = NO_ERROR;
-
-  assert (recdes != NULL && recdes->data != NULL);
-
-  if (!heap_recdes_contains_oos (recdes))
-    {
-      return NO_ERROR;
-    }
-
-  VFID oos_vfid;
-  if (!heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
-	      hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
-      return ER_FAILED;
-    }
-
-  error_code = heap_attrinfo_start (thread_p, class_oid, -1, NULL, &attr_info);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  classrep = attr_info.last_classrepr;
-  offset_size = OR_GET_OFFSET_SIZE (recdes->data);
-
-  for (int i = 0; i < classrep->n_attributes; i++)
-    {
-      attrepr = &classrep->attributes[i];
-
-      if (attrepr->is_fixed != 0)
-	{
-	  continue;
-	}
-
-      if (OR_VAR_IS_NULL (recdes->data, attrepr->location))
-	{
-	  continue;
-	}
-
-      offset = 0;
-
-      switch (offset_size)
-	{
-	case OR_BYTE_SIZE:
-	  offset = OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data),
-							  attrepr->location, offset_size));
-	  break;
-
-	case OR_SHORT_SIZE:
-	  offset = OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data),
-							   attrepr->location, offset_size));
-	  break;
-
-	case OR_INT_SIZE:
-	  offset = OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data),
-							 attrepr->location, offset_size));
-	  break;
-
-	default:
-	  assert_release (false);
-	  error_code = ER_FAILED;
-	  goto end;
-	}
-
-      if (!OR_IS_OOS (offset))
-	{
-	  continue;
-	}
-
-      /* Read the OOS OID stored at this variable's data position */
-      char *oid_ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location);
-      OID oos_oid;
-      OR_GET_OID (oid_ptr, &oos_oid);
-
-      error_code = oos_delete (thread_p, oos_vfid, oos_oid);
-      if (error_code != NO_ERROR)
-	{
-	  goto end;
-	}
-    }
-
-end:
-  heap_attrinfo_end (thread_p, &attr_info);
   return error_code;
 }
 
