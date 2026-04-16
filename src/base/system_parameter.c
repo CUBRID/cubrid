@@ -797,7 +797,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_VECTOR_INDEX_I8_PREFILTER_MULTIPLIER "hnsw_i8_prefilter_multiplier"
 #define PRM_NAME_VECTOR_INDEX_DEBUG "hnsw_debug"
 
-// #endregion 
+// #endregion
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -996,7 +996,7 @@ static unsigned int prm_vector_index_ef_search_flag = 0;
 
 float PRM_VECTOR_INDEX_I8_PREFILTER_MULTIPLIER = 0.7f;
 static float prm_vector_index_i8_prefilter_multiplier_default = 0.7f;
-static float prm_vector_index_i8_prefilter_multiplier_lower = 0.0f;
+static float prm_vector_index_i8_prefilter_multiplier_lower = -10.0f;
 static float prm_vector_index_i8_prefilter_multiplier_upper = 10.0f;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
@@ -5377,7 +5377,7 @@ static int num_session_parameters = 0;
 #define NUM_SESSION_PRM num_session_parameters
 
 static const int *PARAM_VALUE_SHARE[] = {
-  /*  This mapping table is intended to list other system parameters that need to share the same value 
+  /*  This mapping table is intended to list other system parameters that need to share the same value
    * when a specific system parameter is modified.
    * Rules:
    * 1) The first column of each row represents the number of columns in that row, excluding itself.
@@ -5385,7 +5385,7 @@ static const int *PARAM_VALUE_SHARE[] = {
    * 3) All columns in a row, except the first one, must be sorted in ascending order.
    * 4) The columns from the second onward in each row contain PARAM_ID values.
    * 5) The PARAM_IDs in each row must be consecutive. If they are not, adjust the PARAM_ID enum order and the definition order in prm_Def.
-   * 6) The last row must be NULL.   
+   * 6) The last row must be NULL.
    *
    * For the logic behind these rules, refer to the sysprm_check_id_order() function.
    */
@@ -5875,7 +5875,7 @@ static struct prm_config_files_loaded prm_file_has_been_loaded;
  *   return: none
  *   fp(in): file descriptor to save results
  *   pmarker(in): prefix marker
- *   in_flags(in): combination of bit flags you want to dump 
+ *   in_flags(in): combination of bit flags you want to dump
  *   if_cond(in): dumping condition of including flags (OR, AND)
  *   out_flags(in): combination of bit flags that you want to exclude from the dump
  *   of_cond(in): dumping condition of excluding flags (OR, AND)
@@ -9122,7 +9122,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 
 	if (prm->id == PRM_ID_STORED_PROCEDURE_RETURN_NUMERIC_SIZE)
 	  {
-	    /*  
+	    /*
 	     *  The length of the parameter must be 2
 	     *  Check the valid range
 	     *    precision ( 1 ~ 38 ) and scale (0 ~ 38)
@@ -11909,7 +11909,7 @@ sysprm_print_parameters_for_qry_string (void)
     }
   *ptr = '\0';
 
-  /* TODO: 
+  /* TODO:
    *     If we pass the buffer and its size as arguments,
    *    we can reduce the cost of allocating new memory and copying it here.
    */
