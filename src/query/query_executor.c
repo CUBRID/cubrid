@@ -4664,7 +4664,6 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	    {
 	      pr_clear_value (regu_var_p->value.vfetch_to);
 	    }
-	    }
 
 	  if (REGU_VARIABLE_IS_FLAGED (&regu_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
 	    {
