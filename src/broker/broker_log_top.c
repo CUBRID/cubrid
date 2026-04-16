@@ -1588,7 +1588,7 @@ log_top_query (int argc, char *argv[], int arg_start)
 	      return error;
 	    }
 	}
-	}
+    }
 #else
       error = log_top (fp, filename, start_offset, end_offset);
       fclose (fp);
@@ -2294,8 +2294,7 @@ get_args (int argc, char *argv[])
 getargs_err:
   fprintf (stderr,
 	   "%s [-t] [-F <from date>] [-T <to date>] [-O <merge | split>] <log_file> ...\n"
-	   "or\n"
-	   "%s [-t] [-F <from date>] [-T <to date>] --from-conf\n", argv[0], argv[0]);
+	   "or\n" "%s [-t] [-F <from date>] [-T <to date>] --from-conf\n", argv[0], argv[0]);
   return -1;
 date_format_err:
   fprintf (stderr, "invalid date. valid date format is yy-mm-dd hh:mm:ss.\n");
