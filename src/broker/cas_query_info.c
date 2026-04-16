@@ -59,6 +59,7 @@ static pthread_mutex_t query_info_mutex = PTHREAD_MUTEX_INITIALIZER;
 void
 query_info_mutex_init ()
 {
+}
 #endif
 
 void
