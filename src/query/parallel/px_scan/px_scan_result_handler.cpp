@@ -1027,6 +1027,7 @@ namespace parallel_scan
     tl_xasl_p = xasl_p;
     tl_tpl_buf.tpl = (char *)db_private_alloc (thread_p, DB_PAGESIZE);
     tl_tpl_buf.size = DB_PAGESIZE;
+    tl_xasl_p->proc.buildvalue.agg_domains_resolved = 0;
     for (AGGREGATE_TYPE *agg_node = tl_xasl_p->proc.buildvalue.agg_list; agg_node != NULL; agg_node = agg_node->next)
       {
 	if (agg_node->function == PT_COUNT_STAR)
@@ -1042,6 +1043,8 @@ namespace parallel_scan
 	    type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *));
 	    if (type_list.domp == NULL)
 	      {
+		m_err_messages_p->move_top_error_message_to_this ();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		return;
 	      }
 	    type_list.domp[0] = agg_node->operands->value.domain;
@@ -1049,6 +1052,8 @@ namespace parallel_scan
 	    db_private_free_and_init (thread_p, type_list.domp);
 	    if (agg_node->list_id == nullptr)
 	      {
+		m_err_messages_p->move_top_error_message_to_this ();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		return;
 	      }
 	  }
@@ -1387,6 +1392,28 @@ namespace parallel_scan
       AGGREGATE_TYPE *orig_agg_p, *cur_agg_p = tl_xasl_p->proc.buildvalue.agg_list;
       for (orig_agg_p = m_orig_agg_list; orig_agg_p != NULL; orig_agg_p = orig_agg_p->next)
 	{
+	  if (m_interrupt_p->get_code () != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+	    {
+	      for (; cur_agg_p != NULL; cur_agg_p = cur_agg_p->next)
+		{
+		  if (cur_agg_p->option == Q_DISTINCT
+		      && cur_agg_p->function != PT_MIN && cur_agg_p->function != PT_MAX
+		      && cur_agg_p->list_id != nullptr)
+		    {
+		      qfile_close_list (thread_p, cur_agg_p->list_id);
+		      qfile_destroy_list (thread_p, cur_agg_p->list_id);
+		    }
+		  if (cur_agg_p->accumulator.value != NULL)
+		    {
+		      pr_clear_value (cur_agg_p->accumulator.value);
+		    }
+		  if (cur_agg_p->accumulator.value2 != NULL)
+		    {
+		      pr_clear_value (cur_agg_p->accumulator.value2);
+		    }
+		}
+	      break;
+	    }
 	  if (orig_agg_p->function == PT_COUNT_STAR)
 	    {
 	      orig_agg_p->accumulator.curr_cnt += cur_agg_p->accumulator.curr_cnt;
@@ -1408,10 +1435,14 @@ namespace parallel_scan
 
 	      if (orig_agg_p->list_id->tuple_cnt > 0)
 		{
-		  QFILE_LIST_ID *list_id_p = (QFILE_LIST_ID *) db_private_alloc (thread_p, sizeof (QFILE_LIST_ID));
+		  QFILE_LIST_ID *list_id_p = (QFILE_LIST_ID *) malloc (sizeof (QFILE_LIST_ID));
 		  if (list_id_p == nullptr)
 		    {
-		      qfile_clear_list_id (cur_agg_p->list_id);
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			      (size_t) sizeof (QFILE_LIST_ID));
+		      m_err_messages_p->move_top_error_message_to_this ();
+		      m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		      qfile_destroy_list (thread_p, cur_agg_p->list_id);
 		      cur_agg_p = cur_agg_p->next;
 		      continue;
 		    }
@@ -1456,13 +1487,7 @@ namespace parallel_scan
 		  m_err_messages_p->move_top_error_message_to_this ();
 		  m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		}
-
-	      pr_clear_value (cur_agg_p->accumulator.value);
-	      if (cur_agg_p->accumulator.value2 != NULL && !DB_IS_NULL (cur_agg_p->accumulator.value2))
-		{
-		  pr_clear_value (cur_agg_p->accumulator.value2);
-		}
-	      cur_agg_p->accumulator.curr_cnt = 0;
+	      /* cur_agg_p accumulator cleanup is handled by qexec_clear_xasl on the cloned XASL. */
 	    }
 	  cur_agg_p = cur_agg_p->next;
 	}
