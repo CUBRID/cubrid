@@ -590,7 +590,7 @@ namespace cubload
   {
     int count = 0;
     const int max_vector_size = 2000;
-    float *float_array = (float *) db_private_alloc (NULL, max_vector_size * sizeof (float));
+    float *float_array = db_vector_allocate_float_array (max_vector_size);
     vimkim_log ("db_private_alloc: %p, size = %zu\n", float_array, max_vector_size * sizeof (float));
     if (float_array == NULL)
       {

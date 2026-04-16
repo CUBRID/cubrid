@@ -22,22 +22,51 @@
  */
 
 #include "cubvec_assert.h"
+#include "db_vector.hpp"
 #include "error_code.h"
 
-#include <algorithm>
+#include <cstdint>
 #include <cmath>
 #include <limits>
 #include <sstream>
 #include <iomanip>
 #include <string>
 #include "rapidjson/document.h"
-
-#include "dbtype_def.h"
+#include "memory_alloc.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #define VECTOR_DIM_MAX 2000
+
+float *
+db_vector_allocate_float_array (int dim)
+{
+  if (dim <= 0)
+    {
+      return nullptr;
+    }
+
+  const std::size_t bytes = static_cast<std::size_t> (dim) * sizeof (float);
+  return static_cast<float *> (db_private_aligned_alloc (NULL, DB_VECTOR_ALIGNMENT, bytes));
+}
+
+void
+db_vector_free_float_array (float *vf)
+{
+  if (vf == nullptr)
+    {
+      return;
+    }
+
+  db_private_aligned_free (NULL, vf);
+}
+
+bool
+db_vector_is_aligned (const float *vf)
+{
+  return vf != nullptr && (reinterpret_cast<std::uintptr_t> (vf) % DB_VECTOR_ALIGNMENT) == 0;
+}
 
 int db_string_to_vector (
 	const char *p,

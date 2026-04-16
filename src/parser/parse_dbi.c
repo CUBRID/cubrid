@@ -38,6 +38,7 @@
 #include "memory_alloc.h"
 #include "language_support.h"
 #include "db.h"
+#include "db_vector.hpp"
 #include "schema_manager.h"
 #include "cnv.h"
 #include "string_opfunc.h"
@@ -626,7 +627,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	vimkim_log ("TRACE: pt_dbval_to_value not analyzed.\n");
 	DB_VECTOR_FLOAT dest_vector_float;
 	dest_vector_float.dim = dim;
-	dest_vector_float.float_array = (float *) malloc (dim * sizeof (float));
+	dest_vector_float.float_array = db_vector_allocate_float_array (dim);
 	if (dest_vector_float.float_array == NULL)
 	  {
 	    PT_INTERNAL_ERROR (parser, "Cannot allocate float_array for vector");
