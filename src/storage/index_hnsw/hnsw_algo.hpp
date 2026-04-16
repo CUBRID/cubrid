@@ -295,7 +295,7 @@ namespace cubhnsw
     context.m_is_perf_tracking = perfmon_is_perf_tracking ();
     context.m_is_debugging = prm_get_integer_value (PRM_ID_VECTOR_INDEX_DEBUG) != 0;
     context.m_i8_prefilter_multiplier = prm_get_float_value (PRM_ID_VECTOR_INDEX_I8_PREFILTER_MULTIPLIER);
-    context.m_i8_only_build = (context.m_i8_prefilter_multiplier <= algo_context_t::I8_ONLY_BUILD_SENTINEL);
+    context.m_i8_only_build = prm_get_bool_value (PRM_ID_VECTOR_INDEX_I8_ONLY_BUILD);
 
     context.clear_candidates();
 
@@ -1073,9 +1073,8 @@ namespace cubhnsw
       }
 
     // Loop-invariant: multiplier does not change during refine.
-    // When disabled (multiplier == 0) or sentinel (i8-only build mode), fall back to fp32-only.
-    const bool use_i8_prefilter = (context.m_i8_prefilter_multiplier != 0.0f
-				   && context.m_i8_prefilter_multiplier > algo_context_t::I8_ONLY_BUILD_SENTINEL);
+    // When disabled (multiplier == 0), fall back to fp32-only compute_distance_between().
+    const bool use_i8_prefilter = (context.m_i8_prefilter_multiplier != 0.0f);
 
     constexpr std::size_t MAX_SUBMITTED_CACHE = 128;
     const cached_vector *submitted_vec_cache[MAX_SUBMITTED_CACHE] = {};
