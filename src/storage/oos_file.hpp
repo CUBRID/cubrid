@@ -24,9 +24,9 @@
 
 struct oos_record_header
 {
-  int total_size;
-  int chunk_index;
-  OID next_chunk_oid;
+  int total_data_length;	/* total length of user data across all chunks (excluding OOS headers) */
+  int chunk_index;		/* 0-based index of this chunk in the chain */
+  OID next_chunk_oid;		/* OID of next chunk, or NULL OID if this is the last */
 };
 using OOS_RECORD_HEADER = struct oos_record_header;
 
