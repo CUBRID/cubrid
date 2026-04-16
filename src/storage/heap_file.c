@@ -21741,10 +21741,16 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
   update_mvcc_flags = OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION;
 
-  /* Trust the OOS flag already set by the record transformer (heap_attrinfo_transform_header_to_disk).
-   * Do NOT re-derive it via heap_recdes_check_has_oos (VOT scan) — OR_VAR_BIT_OOS (bit 0)
-   * collides with naturally odd VOT offsets in catalog/non-OOS records, producing false positives. */
-  bool has_oos = (mvcc_flags & OR_MVCC_FLAG_HAS_OOS) != 0;
+  bool has_oos = heap_recdes_contains_oos (update_context->recdes_p);
+
+  if (has_oos)
+    {
+      repid_and_flag_bits |= (OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
+    }
+  else
+    {
+      repid_and_flag_bits &= ~(OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
+    }
 
   OR_PUT_INT (update_context->recdes_p->data, repid_and_flag_bits);
 
