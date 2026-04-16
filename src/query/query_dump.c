@@ -3257,7 +3257,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
       scan = qdump_print_access_spec_stats_json (xasl_p->merge_spec);
     }
 
-  if (xasl_p->memoize_storage)
+  if (xasl_p->memoize_storage && xasl_p->memoize_storage->hit > 0)
     {
       memoize = json_object ();
       json_object_set_new (memoize, "time", json_integer (TO_MSEC (xasl_p->memoize_storage->m_elapsed_time)));
@@ -3280,7 +3280,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 
   qdump_print_stats_json (xasl_p->connect_by_ptr, proc);
 
-  if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_USES_SQ_CACHE))
+  if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_USES_SQ_CACHE) && SQ_CACHE_HIT (xasl_p) > 0)
     {
       sq_cache = json_object ();
       json_object_set_new (sq_cache, "hit", json_integer (SQ_CACHE_HIT (xasl_p)));
@@ -3780,7 +3780,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       qdump_print_access_spec_stats_text (fp, xasl_p->merge_spec, indent);
     }
 
-  if (xasl_p->memoize_storage)
+  if (xasl_p->memoize_storage && xasl_p->memoize_storage->hit > 0)
     {
       fprintf (fp, "%*c", indent, ' ');
       fprintf (fp, "MEMOIZE (time: %d, hit: %lu, miss: %lu, size: %luKB, enabled: %s)\n",
@@ -3792,7 +3792,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   qdump_print_stats_text (fp, xasl_p->scan_ptr, indent);
   qdump_print_stats_text (fp, xasl_p->connect_by_ptr, indent);
 
-  if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_USES_SQ_CACHE))
+  if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_USES_SQ_CACHE) && SQ_CACHE_HIT (xasl_p) > 0)
     {
       fprintf (fp, "%*c", indent, ' ');
       if (SQ_CACHE_ENABLED (xasl_p))

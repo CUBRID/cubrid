@@ -279,9 +279,10 @@ extern BTID *db_constraint_index (DB_CONSTRAINT * constraint, BTID * index);
 
 extern int db_col_optimize (DB_COLLECTION * col);
 
+#if !defined(SERVER_MODE)
 extern int db_get_connect_status (void);
 extern void db_set_connect_status (int status);
-
+#endif
 extern int db_set_otmpl_timestamps (DB_OTMPL * otmpl);
 extern int db_update_otmpl_timestamp (DB_OTMPL * otmpl);
 extern int db_update_obj_timestamp (DB_OBJECT * obj);

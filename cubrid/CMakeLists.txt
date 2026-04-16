@@ -189,6 +189,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/filesys_parser.hpp
   ${BASE_DIR}/cgroup.hpp
   ${BASE_DIR}/resources.hpp
+  ${BASE_DIR}/count_registry.hpp
   )
 
 set(EXECUTABLE_SOURCES
