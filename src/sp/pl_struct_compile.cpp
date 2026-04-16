@@ -19,7 +19,7 @@
 #include "pl_struct_compile.hpp"
 
 #include "byte_order.h"
-#include "connection_support.h"
+#include "connection_support.hpp"
 #include "dbtype.h"		/* db_value_* */
 
 #include "method_struct_value.hpp"

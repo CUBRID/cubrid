@@ -261,7 +261,7 @@ namespace cubpl
   {
 #if defined (SERVER_MODE)
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (1000));
-    m_monitor_helper_daemon = cubthread::get_manager ()->create_daemon (looper, m_server_monitor_task, "pl_monitor");
+    m_monitor_helper_daemon = cubthread::get_manager ()->create_daemon (looper, m_server_monitor_task, "pl-monitor");
 #else
     m_server_monitor_task->do_monitor ();
 #endif

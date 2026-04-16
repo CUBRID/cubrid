@@ -6,7 +6,7 @@ create serial event_no
 	 minvalue 20422
 	 maxvalue 10000000000000000000000000000000000000
 	 nocycle;
-call change_serial_owner ('event_no', 'PUBLIC') on class db_serial;
+call change_serial_owner ('event_no', 'PUBLIC') on class _db_serial;
 
 call find_user('PUBLIC') on class db_user to auser;
 create serial stadium_no
@@ -15,7 +15,7 @@ create serial stadium_no
 	 minvalue 30141
 	 maxvalue 10000000000000000000000000000000000000
 	 nocycle;
-call change_serial_owner ('stadium_no', 'PUBLIC') on class db_serial;
+call change_serial_owner ('stadium_no', 'PUBLIC') on class _db_serial;
 
 CREATE CLASS stadium; 
 call change_owner('stadium', 'PUBLIC') on class db_root;

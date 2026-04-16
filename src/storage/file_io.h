@@ -30,7 +30,6 @@
 #include "config.h"
 #include "dbtype_def.h"
 #include "log_lsa.hpp"
-#include "lz4.h"
 #include "memory_hash.h"
 #include "porting.h"
 #include "porting_inline.hpp"
@@ -631,4 +630,8 @@ extern int fileio_set_page_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_p
 extern int fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * is_page_corrupted);
 extern void fileio_page_hexa_dump (const char *data, int length);
 extern bool fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page);
+
+/* lob_dir */
+extern int fileio_lob_remove_dir (char *lob_path);
+extern int fileio_lob_remove_matching_dir (const char *keyword);
 #endif /* _FILE_IO_H_ */

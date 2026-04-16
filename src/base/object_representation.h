@@ -1108,11 +1108,11 @@ extern char *or_pack_listid (char *ptr, void *listid);
 extern char *or_pack_lock (char *ptr, LOCK lock);
 extern char *or_pack_set_header (char *buf, DB_TYPE stype, DB_TYPE etype, int bound_bits, int size);
 extern char *or_pack_set_node (char *ptr, void *set_node);
+extern char *or_pack_int_array (char *buffer, int count, const int *int_array);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern char *or_pack_elo (char *ptr, void *elo);
 extern char *or_pack_string_array (char *buffer, int count, const char **string_array);
 extern char *or_pack_db_value_array (char *buffer, int count, DB_VALUE * val);
-extern char *or_pack_int_array (char *buffer, int count, int *int_array);
 #endif
 
 /* should be using the or_pack_value family instead ! */

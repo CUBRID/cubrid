@@ -1989,7 +1989,7 @@ pr_clear_value (DB_VALUE * value)
 	  {
 	    vimkim_log ("freeing addr: %p, vf: %s\n", value,
 			db_vector_float_to_string (value->data.vector_float).c_str ());
-	    db_private_free (NULL, value->data.vector_float.float_array);
+	    db_vector_free_float_array (value->data.vector_float.float_array);
 	  }
 	else
 	  {
@@ -7709,7 +7709,7 @@ mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 
 	  DB_VECTOR_FLOAT dest_vf;
 	  dest_vf.dim = src_vf->dim;
-	  dest_vf.float_array = (float *) db_private_alloc (NULL, dim * sizeof (float));
+	  dest_vf.float_array = db_vector_allocate_float_array (dim);
 	  assert (dest_vf.float_array != NULL);
 	  if (dest_vf.float_array == NULL)
 	    {
@@ -7800,7 +7800,7 @@ mr_data_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
   if (copy)
     {
 
-      vector_float.float_array = (float *) db_private_alloc (NULL, vector_float.dim * sizeof (float));
+      vector_float.float_array = db_vector_allocate_float_array (vector_float.dim);
       vimkim_log ("db_private_alloc: %p, size = %lu\n", vector_float.float_array, vector_float.dim * sizeof (float));
       ASSERT_CUBVEC (vector_float.float_array != NULL);
       if (vector_float.float_array == NULL)

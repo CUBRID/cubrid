@@ -4007,7 +4007,6 @@ MVCC_SNAPSHOT *
 logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-  THREAD_ENTRY *parent_thread_p = NULL;
   if (!tdes->is_active_worker_transaction ())
     {
       /* System transactions do not have snapshots */
@@ -4016,19 +4015,12 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 
   assert (tdes != NULL);
 
+  THREAD_ENTRY *main_thread_p = NULL;
+
   if (thread_p->m_px_orig_thread_entry != NULL)
     {
-      parent_thread_p = thread_p->m_px_orig_thread_entry;
-      while (parent_thread_p->m_px_orig_thread_entry != NULL)
-	{
-	  if (parent_thread_p->m_px_orig_thread_entry == parent_thread_p)
-	    {
-	      break;
-	    }
-	  parent_thread_p = parent_thread_p->m_px_orig_thread_entry;
-	  assert (parent_thread_p != thread_p);
-	}
-      pthread_mutex_lock (&parent_thread_p->m_px_lock_mutex);
+      main_thread_p = thread_get_main_thread (thread_p);
+      pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
     }
 
   if (!tdes->mvccinfo.snapshot.valid)
@@ -4036,9 +4028,9 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
       log_Gl.mvcc_table.build_mvcc_info (*tdes);
     }
 
-  if (parent_thread_p != NULL)
+  if (main_thread_p != NULL)
     {
-      pthread_mutex_unlock (&parent_thread_p->m_px_lock_mutex);
+      pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
     }
 
   return &tdes->mvccinfo.snapshot;
@@ -5696,7 +5688,7 @@ logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index)
   logtb_set_tran_index_interrupt (thread_p, tran_index, true);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_SHUTDOWN, 0);
 #if defined (SERVER_MODE)
-  css_shutdown_conn_by_tran_index (tran_index);
+  css_shutdown_conn_by_tran_index (tran_index, LOGTB_RETRY_SLAM_MAX_TIMES);
 #endif // SERVER_MODE
 }
 
@@ -5840,10 +5832,13 @@ xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill
 int
 xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is_dba_group_member, bool interrupt_only)
 {
-  int error;
+#if defined (SERVER_MODE)
+  LOG_TDES *tdes;
+#endif
   bool interrupt, has_authorization;
   bool is_trx_exists;
   KILLSTMT_TYPE kill_type;
+  int error;
   size_t i;
 
   if (tran_index == LOG_SYSTEM_TRAN_INDEX)
@@ -5868,34 +5863,34 @@ xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is_
 	}
     }
 
-  is_trx_exists = logtb_set_tran_index_interrupt (thread_p, tran_index, true);
-
   kill_type = interrupt_only ? KILLSTMT_QUERY : KILLSTMT_TRAN;
   if (kill_type == KILLSTMT_TRAN)
     {
 #if defined (SERVER_MODE)
-      css_shutdown_conn_by_tran_index (tran_index);
-#endif // SERVER_MODE
-    }
-
-  for (i = 0; i < LOGTB_RETRY_SLAM_MAX_TIMES; i++)
-    {
-      thread_sleep_for (std::chrono::seconds (1));
-
-      if (logtb_find_interrupt (tran_index, &interrupt) != NO_ERROR)
+      is_trx_exists = false;
+      if (log_Gl.trantable.area != NULL)
 	{
-	  break;
+	  tdes = LOG_FIND_TDES (tran_index);
+	  if (tdes != NULL && tdes->trid != NULL_TRANID)
+	    {
+	      is_trx_exists = true;
+	    }
 	}
-      if (interrupt == false)
+
+      if (css_shutdown_conn_by_tran_index (tran_index, LOGTB_RETRY_SLAM_MAX_TIMES) != NO_ERROR)
 	{
-	  break;
+	  return ER_FAILED;
 	}
+#else
+      is_trx_exists = logtb_set_tran_index_interrupt (thread_p, tran_index, true);
+#endif
+    }
+  else
+    {
+      is_trx_exists = logtb_set_tran_index_interrupt (thread_p, tran_index, true);
     }
 
-  if (i == LOGTB_RETRY_SLAM_MAX_TIMES)
-    {
-      return ER_FAILED;		/* timeout */
-    }
+  thread_sleep_for (std::chrono::seconds (1));
 
   if (is_trx_exists == false)
     {

@@ -5676,17 +5676,6 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_TO_TIMESTAMP_TZ:
     case PT_CONV_TZ:
       break;
-
-      /* PT_DRAND and PT_DRANDOM are not supported regardless of whether a seed is given or not. because they produce
-       * random numbers of DOUBLE type. DOUBLE type is not allowed on partition expression. */
-    case PT_RAND:
-    case PT_RANDOM:
-      if (expr->info.expr.arg1 == NULL)
-	{
-	  return -1;
-	}
-      break;
-
     default:
       return -1;		/* unsupported expression */
     }
@@ -9803,6 +9792,7 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *temp;
   PT_NODE *name;
+  const char *entity_name;
   DB_OBJECT *db_obj;
   DB_ATTRIBUTE *attributes;
   PT_FLAT_SPEC_INFO info;
@@ -9818,13 +9808,12 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 
       while ((free_node != NULL) && (free_node->node_type == PT_SPEC))
 	{
-	  const char *cls_name;
 	  /* check if class name exists. if not, we remove the corresponding node from spec_list. */
 	  if ((name = free_node->info.spec.entity_name) != NULL && name->node_type == PT_NAME
-	      && (cls_name = name->info.name.original) != NULL)
+	      && (entity_name = name->info.name.original) != NULL)
 	    {
 	      /* We cannot change the schema of a class by using synonym names. */
-	      if (db_find_synonym (cls_name) == NULL)
+	      if (db_find_synonym (entity_name) == NULL)
 		{
 		  ASSERT_ERROR ();
 
@@ -9837,7 +9826,7 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 		      return;
 		    }
 
-		  if ((db_obj = db_find_class_with_purpose (cls_name, true)) != NULL)
+		  if ((db_obj = db_find_class_with_purpose (entity_name, true)) != NULL)
 		    {
 		      prev_node = free_node;
 		      free_node = free_node->next;
@@ -9915,7 +9904,6 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 
       while ((free_node != NULL) && (free_node->node_type == PT_SPEC))
 	{
-
 	  if ((name = free_node->info.spec.entity_name) == NULL)
 	    {
 	      if (free_node == node->info.drop.spec_list)
@@ -9938,29 +9926,19 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 	      free_node = free_node->next;
 	    }
 	}
-
     }
-
-  info.spec_parent = NULL;
-  info.for_update = true;
-  /* Replace each Entity Spec with an Equivalent flat list */
-  parser_walk_tree (parser, node, pt_flat_spec_pre, &info, pt_continue_walk, NULL);
-
-  if (node->info.drop.entity_type != PT_MISC_DUMMY || node->info.drop.is_cascade_constraints)
+  else
     {
-      const char *cls_nam;
-      PT_MISC_TYPE typ = node->info.drop.entity_type;
-
-      /* verify declared class type is correct */
       for (temp = node->info.drop.spec_list; temp && temp->node_type == PT_SPEC; temp = temp->next)
 	{
 	  if ((name = temp->info.spec.entity_name) != NULL && name->node_type == PT_NAME
-	      && (cls_nam = name->info.name.original) != NULL)
+	      && (entity_name = name->info.name.original) != NULL)
 	    {
 	      /* We cannot change the schema of a class by using synonym names. */
-	      if (db_find_synonym (cls_nam) != NULL)
+	      if (db_find_synonym (entity_name) != NULL)
 		{
-		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
+		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST,
+			      entity_name);
 		  return;
 		}
 	      else
@@ -9977,26 +9955,41 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 		      return;
 		    }
 		}
+	    }
+	}
+    }
 
-	      if ((db_obj = db_find_class (cls_nam)) != NULL)
+  info.spec_parent = NULL;
+  info.for_update = true;
+  /* Replace each Entity Spec with an Equivalent flat list */
+  parser_walk_tree (parser, node, pt_flat_spec_pre, &info, pt_continue_walk, NULL);
+
+  if (node->info.drop.entity_type != PT_MISC_DUMMY || node->info.drop.is_cascade_constraints)
+    {
+      PT_MISC_TYPE typ = node->info.drop.entity_type;
+
+      /* verify declared class type is correct */
+      for (temp = node->info.drop.spec_list; temp && temp->node_type == PT_SPEC; temp = temp->next)
+	{
+	  if ((name = temp->info.spec.entity_name) != NULL && name->node_type == PT_NAME
+	      && (entity_name = name->info.name.original) != NULL && (db_obj = db_find_class (entity_name)) != NULL)
+	    {
+	      if (typ != PT_MISC_DUMMY)
 		{
-		  if (typ != PT_MISC_DUMMY)
+		  name->info.name.db_object = db_obj;
+		  pt_check_user_owns_class (parser, name);
+		  if ((typ == PT_CLASS && db_is_class (db_obj) <= 0)
+		      || (typ == PT_VCLASS && db_is_vclass (db_obj) <= 0))
 		    {
-		      name->info.name.db_object = db_obj;
-		      pt_check_user_owns_class (parser, name);
-		      if ((typ == PT_CLASS && db_is_class (db_obj) <= 0)
-			  || (typ == PT_VCLASS && db_is_vclass (db_obj) <= 0))
-			{
-			  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A, cls_nam,
-				       pt_show_misc_type (typ));
-			}
+		      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A, entity_name,
+				   pt_show_misc_type (typ));
 		    }
+		}
 
-		  if (node->info.drop.is_cascade_constraints && db_is_vclass (db_obj) > 0)
-		    {
-		      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-				  MSGCAT_SEMANTIC_VIEW_CASCADE_CONSTRAINTS_NOT_ALLOWED, cls_nam);
-		    }
+	      if (node->info.drop.is_cascade_constraints && db_is_vclass (db_obj) > 0)
+		{
+		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			      MSGCAT_SEMANTIC_VIEW_CASCADE_CONSTRAINTS_NOT_ALLOWED, entity_name);
 		}
 	    }
 	}
@@ -10006,10 +9999,8 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
    * for the attr */
   for (temp = node->info.drop.spec_list; temp && temp->node_type == PT_SPEC; temp = temp->next)
     {
-      const char *cls_nam;
-
       if ((name = temp->info.spec.entity_name) != NULL && name->node_type == PT_NAME
-	  && (cls_nam = name->info.name.original) != NULL && (db_obj = db_find_class (cls_nam)) != NULL)
+	  && (entity_name = name->info.name.original) != NULL && (db_obj = db_find_class (entity_name)) != NULL)
 	{
 	  attributes = db_get_attributes_force (db_obj);
 	  while (attributes)
@@ -14504,6 +14495,12 @@ pt_check_group_by (PARSER_CONTEXT * parser, PT_NODE * node)
       };
       parser_walk_tree (parser, node->info.query.q.select.list, pt_expr_disallow_op_except_agg, disallow_ops,
 			NULL, NULL);
+
+      if (node->info.query.order_by != NULL)
+	{
+	  parser_walk_tree (parser, node->info.query.order_by, pt_expr_disallow_op_except_agg, disallow_ops,
+			    NULL, NULL);
+	}
     }
 
   return error;

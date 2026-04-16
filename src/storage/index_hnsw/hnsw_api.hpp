@@ -42,7 +42,7 @@ class hnsw_index;
 
 /* Maximum Alignment */
 #define HNSW_MAX_ALIGN INT_ALIGNMENT
-#define HEADER 0
+#define HNSW_HEADER_NUM 0
 
 typedef struct hnsw_header HNSW_HEADER;
 
