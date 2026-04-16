@@ -4170,7 +4170,7 @@ static size_t
 thread_stats_count (void)
 {
 #if defined (SERVER_MODE)
-  assert (PERFMON_PORTABLE_WORKER_STAT_COUNT == static_cast<size_t> (cubthread::stats_worker_pool_type::stats::id::type_count));
+  assert (PERFMON_PORTABLE_WORKER_STAT_COUNT == cubthread::stats_worker_pool_type::stats::get_count ());
   static bool check_names = true;
   if (check_names)
     {
