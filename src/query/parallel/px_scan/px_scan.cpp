@@ -114,7 +114,7 @@ extern "C"
 		  }
 
 		scan_id->s.phsid.trace_storage = placement_new (( accumulative_trace_storage *) scan_id->s.phsid.trace_storage,
-						 manager_p->get_result_type());
+						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::HEAP);
 		assert (scan_id->s.phsid.trace_storage != nullptr);
 	      }
 
@@ -145,7 +145,7 @@ extern "C"
 		  }
 
 		scan_id->s.phsid.trace_storage = placement_new (( accumulative_trace_storage *) scan_id->s.phsid.trace_storage,
-						 manager_p->get_result_type());
+						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::HEAP);
 		assert (scan_id->s.phsid.trace_storage != nullptr);
 	      }
 
@@ -176,7 +176,7 @@ extern "C"
 		  }
 
 		scan_id->s.phsid.trace_storage = placement_new (( accumulative_trace_storage *) scan_id->s.phsid.trace_storage,
-						 manager_p->get_result_type());
+						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::HEAP);
 		assert (scan_id->s.phsid.trace_storage != nullptr);
 	      }
 
@@ -267,7 +267,7 @@ extern "C"
 		  }
 
 		scan_id->s.phsid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.phsid.trace_storage,
-						 manager_p->get_result_type());
+						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::HEAP);
 		assert (scan_id->s.phsid.trace_storage != nullptr);
 	      }
 
@@ -298,7 +298,7 @@ extern "C"
 		  }
 
 		scan_id->s.phsid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.phsid.trace_storage,
-						 manager_p->get_result_type());
+						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::HEAP);
 		assert (scan_id->s.phsid.trace_storage != nullptr);
 	      }
 
@@ -329,7 +329,7 @@ extern "C"
 		  }
 
 		scan_id->s.phsid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.phsid.trace_storage,
-						 manager_p->get_result_type());
+						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::HEAP);
 		assert (scan_id->s.phsid.trace_storage != nullptr);
 	      }
 
@@ -385,11 +385,11 @@ extern "C"
 	    || thread_p->private_heap_id == 0)
 	  {
 	    /* parallel-thread heap scan not supported */
-	    ACCESS_SPEC_SET_FLAG (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+	    ACCESS_SPEC_SET_FLAG (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
 	  }
       }
 
-    if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN) || HFID_IS_NULL (class_hfid))
+    if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN) || HFID_IS_NULL (class_hfid))
       {
 	/* try single-thread heap scan */
 	return NO_ERROR;
@@ -577,7 +577,6 @@ extern "C"
 	return NO_ERROR;
       }
 
-    er_log_debug (ARG_FILE_LINE, "parallel heap scan started.");
     scan_id->type = S_PARALLEL_HEAP_SCAN;
 
     ASSERT_NO_ERROR_OR_INTERRUPTED ();
@@ -657,7 +656,7 @@ extern "C"
 		  }
 
 		scan_id->s.pllsid_parallel.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pllsid_parallel.trace_storage,
-						 manager_p->get_result_type());
+						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::LIST);
 		assert (scan_id->s.pllsid_parallel.trace_storage != nullptr);
 	      }
 
@@ -688,7 +687,7 @@ extern "C"
 		  }
 
 		scan_id->s.pllsid_parallel.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pllsid_parallel.trace_storage,
-						 manager_p->get_result_type());
+						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::LIST);
 		assert (scan_id->s.pllsid_parallel.trace_storage != nullptr);
 	      }
 
@@ -719,7 +718,7 @@ extern "C"
 		  }
 
 		scan_id->s.pllsid_parallel.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pllsid_parallel.trace_storage,
-						 manager_p->get_result_type());
+						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::LIST);
 		assert (scan_id->s.pllsid_parallel.trace_storage != nullptr);
 	      }
 
@@ -810,7 +809,7 @@ extern "C"
 		  }
 
 		scan_id->s.pllsid_parallel.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pllsid_parallel.trace_storage,
-						 manager_p->get_result_type());
+						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::LIST);
 		assert (scan_id->s.pllsid_parallel.trace_storage != nullptr);
 	      }
 
@@ -841,7 +840,7 @@ extern "C"
 		  }
 
 		scan_id->s.pllsid_parallel.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pllsid_parallel.trace_storage,
-						 manager_p->get_result_type());
+						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::LIST);
 		assert (scan_id->s.pllsid_parallel.trace_storage != nullptr);
 	      }
 
@@ -872,7 +871,7 @@ extern "C"
 		  }
 
 		scan_id->s.pllsid_parallel.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pllsid_parallel.trace_storage,
-						 manager_p->get_result_type());
+						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::LIST);
 		assert (scan_id->s.pllsid_parallel.trace_storage != nullptr);
 	      }
 
@@ -920,6 +919,12 @@ extern "C"
      * DML expects, so we must fall back to regular list scan. */
     if (xasl->type == INSERT_PROC || xasl->type == UPDATE_PROC
 	|| xasl->type == DELETE_PROC || xasl->type == MERGE_PROC)
+      {
+	return NO_ERROR;
+      }
+
+    /* NO_PARALLEL_SCAN hint blocks parallel list scan */
+    if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN))
       {
 	return NO_ERROR;
       }
@@ -1102,7 +1107,6 @@ extern "C"
 	return NO_ERROR;
       }
 
-    er_log_debug (ARG_FILE_LINE, "parallel list scan started.");
     scan_id->type = S_PARALLEL_LIST_SCAN;
 
     ASSERT_NO_ERROR_OR_INTERRUPTED ();
@@ -1182,7 +1186,7 @@ extern "C"
 		  }
 
 		scan_id->s.pisid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pisid.trace_storage,
-						 manager_p->get_result_type());
+						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::INDEX);
 		assert (scan_id->s.pisid.trace_storage != nullptr);
 	      }
 
@@ -1214,7 +1218,7 @@ extern "C"
 		  }
 
 		scan_id->s.pisid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pisid.trace_storage,
-						 manager_p->get_result_type());
+						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::INDEX);
 		assert (scan_id->s.pisid.trace_storage != nullptr);
 	      }
 
@@ -1246,7 +1250,7 @@ extern "C"
 		  }
 
 		scan_id->s.pisid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pisid.trace_storage,
-						 manager_p->get_result_type());
+						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::INDEX);
 		assert (scan_id->s.pisid.trace_storage != nullptr);
 	      }
 
@@ -1338,7 +1342,7 @@ extern "C"
 		  }
 
 		scan_id->s.pisid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pisid.trace_storage,
-						 manager_p->get_result_type());
+						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::INDEX);
 		assert (scan_id->s.pisid.trace_storage != nullptr);
 	      }
 
@@ -1369,7 +1373,7 @@ extern "C"
 		  }
 
 		scan_id->s.pisid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pisid.trace_storage,
-						 manager_p->get_result_type());
+						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::INDEX);
 		assert (scan_id->s.pisid.trace_storage != nullptr);
 	      }
 
@@ -1400,7 +1404,7 @@ extern "C"
 		  }
 
 		scan_id->s.pisid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pisid.trace_storage,
-						 manager_p->get_result_type());
+						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::INDEX);
 		assert (scan_id->s.pisid.trace_storage != nullptr);
 	      }
 
@@ -1450,9 +1454,8 @@ extern "C"
 	return NO_ERROR;
       }
 
-    if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_INDEX_SCAN))
+    if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN))
       {
-	er_log_debug (ARG_FILE_LINE, "parallel index scan blocked by ACCESS_SPEC_FLAG_NO_PARALLEL_INDEX_SCAN");
 	return NO_ERROR;
       }
 
@@ -1679,7 +1682,6 @@ extern "C"
     scan_id->s.pisid.manager = local_manager;
     scan_id->s.pisid.trace_storage = nullptr;
 
-    er_log_debug (ARG_FILE_LINE, "parallel index scan started.");
     scan_id->type = S_PARALLEL_INDEX_SCAN;
 
     ASSERT_NO_ERROR_OR_INTERRUPTED ();
@@ -2254,7 +2256,7 @@ namespace parallel_scan
     return NO_ERROR;
   }
 
-  // Explicit template instantiations
+  /* Explicit template instantiations */
   template class manager<RESULT_TYPE::MERGEABLE_LIST, SCAN_TYPE::HEAP>;
   template class manager<RESULT_TYPE::XASL_SNAPSHOT, SCAN_TYPE::HEAP>;
   template class manager<RESULT_TYPE::BUILDVALUE_OPT, SCAN_TYPE::HEAP>;

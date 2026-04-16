@@ -384,6 +384,7 @@ set(PARALLEL_SCAN_HEADERS
   ${PARALLEL_SCAN_DIR}/px_scan_task.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_trace_handler.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_type.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_type_enum.hpp
   ${PARALLEL_SCAN_DIR}/px_scan.hpp
   )
 

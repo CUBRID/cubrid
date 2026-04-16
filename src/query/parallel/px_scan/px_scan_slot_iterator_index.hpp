@@ -76,12 +76,12 @@ namespace parallel_scan
       bool m_use_desc_index;            // descending index scan direction (traversal)
       bool m_keys_descending;           // keys arrive in descending natural order
 
-      // Multi-key range support (KEYLIST/RANGELIST)
+      /* Multi-key range support (KEYLIST/RANGELIST) */
       key_val_range *m_key_val_ranges;  // array of converted key ranges
       int m_num_key_ranges;             // number of key ranges
       int m_current_range_idx;          // optimization: track current range for sorted keys
 
-      // Multi-OID per slot: collected OIDs for current slot
+      /* Multi-OID per slot: collected OIDs for current slot */
       std::vector<OID> m_slot_oids;     // OIDs collected from current leaf record
       size_t m_slot_oid_idx;            // current position in m_slot_oids
       DB_VALUE m_slot_key;              // key for current slot (retained while draining OIDs)
@@ -92,7 +92,7 @@ namespace parallel_scan
       int check_key_in_range (DB_VALUE *key, bool *in_range, bool *past_upper);
       SCAN_CODE process_oid (THREAD_ENTRY *thread_p, OID *oid);
 
-      // btree_key_process_objects callback
+      /* btree_key_process_objects callback */
       static int collect_oid_callback (THREAD_ENTRY *thread_p, BTID_INT *btid_int, RECDES *record,
                                        char *object_ptr, OID *oid, OID *class_oid,
                                        BTREE_MVCC_INFO *mvcc_info, bool *stop, void *args);

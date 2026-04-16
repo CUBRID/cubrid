@@ -29,16 +29,10 @@
 #include "px_scan_slot_iterator.hpp"
 #include "px_scan_slot_iterator_index.hpp"
 #include "px_scan_slot_iterator_list.hpp"
+#include "px_scan_type_enum.hpp"
 
 namespace parallel_scan
 {
-
-  enum class SCAN_TYPE
-  {
-    HEAP = 0,
-    LIST = 1,
-    INDEX = 2,
-  };
 
   template <SCAN_TYPE>
   struct scan_traits;

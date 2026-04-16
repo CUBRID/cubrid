@@ -17,13 +17,22 @@
  */
 
 /*
- * px_scan_checker.hpp - module that checks whether parallel scan is possible.
+ * px_scan_type_enum.hpp - SCAN_TYPE enum (lightweight header without scan_traits)
  */
 
-#ifndef _PX_SCAN_CHECKER_HPP_
-#define _PX_SCAN_CHECKER_HPP_
-#include "xasl.h"
+#ifndef _PX_SCAN_TYPE_ENUM_HPP_
+#define _PX_SCAN_TYPE_ENUM_HPP_
 
-extern "C" int scan_check_parallel_scan_possible (XASL_NODE *xasl);
+namespace parallel_scan
+{
 
-#endif /*_PX_SCAN_CHECKER_HPP_ */
+  enum class SCAN_TYPE
+  {
+    HEAP = 0,
+    LIST = 1,
+    INDEX = 2,
+  };
+
+} /* namespace parallel_scan */
+
+#endif /* _PX_SCAN_TYPE_ENUM_HPP_ */

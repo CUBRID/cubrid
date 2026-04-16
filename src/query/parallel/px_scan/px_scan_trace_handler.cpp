@@ -136,8 +136,10 @@ namespace parallel_scan
 	min_qualified_rows = std::min (min_qualified_rows, m_stats[i].qualified_rows);
 	max_qualified_rows = std::max (max_qualified_rows, m_stats[i].qualified_rows);
       }
+    const char *scan_type_str = m_scan_type == SCAN_TYPE::INDEX ? "index" :
+				m_scan_type == SCAN_TYPE::LIST ? "list" : "heap";
     fprintf (fp, "\n%*c(parallel workers: %d", indent, ' ', parallel_workers);
-    fprintf (fp, ", heap time: %lu..%lu", min_elapsed_scan, max_elapsed_scan);
+    fprintf (fp, ", %s time: %lu..%lu", scan_type_str, min_elapsed_scan, max_elapsed_scan);
     fprintf (fp, ", readrows: %lu..%lu", min_read_rows, max_read_rows);
     fprintf (fp, ", rows: %lu..%lu", min_qualified_rows, max_qualified_rows);
     fprintf (fp, ", gather: %s", result_type_str);
@@ -177,7 +179,9 @@ namespace parallel_scan
 				      "readrows", readrows_buf,
 				      "rows", rows_buf,
 				      "gather", result_type_str);
-    json_object_set_new (scan, "parallel heap", parallel_obj);
+    const char *scan_type_label = m_scan_type == SCAN_TYPE::INDEX ? "parallel index" :
+				   m_scan_type == SCAN_TYPE::LIST ? "parallel list" : "parallel heap";
+    json_object_set_new (scan, scan_type_label, parallel_obj);
   }
 
   void trace_storage_for_sibling_xasl::set_main_xasl_tree (xasl_node *xasl_tree)

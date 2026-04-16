@@ -728,7 +728,7 @@ namespace parallel_scan
       }
   }
 
-  // Explicit template instantiations
+  /* Explicit template instantiations */
   template class task<RESULT_TYPE::MERGEABLE_LIST, SCAN_TYPE::HEAP>;
   template class task<RESULT_TYPE::XASL_SNAPSHOT, SCAN_TYPE::HEAP>;
   template class task<RESULT_TYPE::BUILDVALUE_OPT, SCAN_TYPE::HEAP>;

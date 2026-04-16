@@ -29,6 +29,7 @@
 #include "scan_manager.h"
 #include "jansson.h"
 #include "px_scan_result_type.hpp"
+#include "px_scan_type_enum.hpp"
 
 
 namespace parallel_scan
@@ -74,8 +75,9 @@ namespace parallel_scan
   class accumulative_trace_storage
   {
     public:
-      accumulative_trace_storage (RESULT_TYPE result_type)
+      accumulative_trace_storage (RESULT_TYPE result_type, SCAN_TYPE scan_type)
 	: m_result_type (result_type)
+	, m_scan_type (scan_type)
 	, m_is_initialized (false)
       {}
       ~accumulative_trace_storage() = default;
@@ -88,6 +90,7 @@ namespace parallel_scan
       std::vector<child_stats> m_stats;
       child_stats m_stats_last;
       RESULT_TYPE m_result_type;
+      SCAN_TYPE m_scan_type;
       bool m_is_initialized;
   };
 }

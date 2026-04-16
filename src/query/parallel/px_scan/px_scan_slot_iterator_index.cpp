@@ -208,15 +208,15 @@ namespace parallel_scan
                                               isidp, btree_domainp, m_vd, i);
         if (ret != NO_ERROR)
           {
-            // scan_regu_key_to_index_key sets range = NA_NA on failure
+            /* scan_regu_key_to_index_key sets range = NA_NA on failure */
             er_clear ();
             continue;
           }
       }
 
-    // Sort ranges by lower bound in ascending natural order so that
-    // the cursor optimization in check_key_in_range works correctly.
-    // INDX_INFO may provide ranges in arbitrary order (e.g. reverse).
+    /* Sort ranges by lower bound in ascending natural order so that
+     * the cursor optimization in check_key_in_range works correctly.
+     * INDX_INFO may provide ranges in arbitrary order (e.g. reverse). */
     if (m_num_key_ranges > 1)
       {
         TP_DOMAIN *key_domain = m_btid_int->key_type;
@@ -227,7 +227,7 @@ namespace parallel_scan
                 key_val_range *a = &m_key_val_ranges[i];
                 key_val_range *b = &m_key_val_ranges[j];
 
-                // Skip NA_NA ranges (sort them to the end)
+                /* Skip NA_NA ranges (sort them to the end) */
                 if (a->range == NA_NA && b->range != NA_NA)
                   {
                     key_val_range tmp = *a;
@@ -240,7 +240,7 @@ namespace parallel_scan
                     continue;
                   }
 
-                // Compare lower bounds (key1). NULL key1 means -INF (goes first).
+                /* Compare lower bounds (key1). NULL key1 means -INF (goes first). */
                 DB_VALUE *ak = DB_IS_NULL (&a->key1) ? nullptr : &a->key1;
                 DB_VALUE *bk = DB_IS_NULL (&b->key1) ? nullptr : &b->key1;
 
@@ -291,9 +291,9 @@ namespace parallel_scan
 
     if (m_keys_descending)
       {
-        // Keys arrive high-to-low in natural order.
-        // For multi-range, ranges are sorted ascending. We scan ranges from
-        // m_current_range_idx downward.
+        /* Keys arrive high-to-low in natural order.
+         * For multi-range, ranges are sorted ascending. We scan ranges from
+         * m_current_range_idx downward. */
         for (int i = m_current_range_idx; i >= 0; i--)
           {
             key_val_range *kvr = &m_key_val_ranges[i];
@@ -312,8 +312,8 @@ namespace parallel_scan
             DB_VALUE_COMPARE_RESULT cmp;
             int start_col = 0;
 
-            // Check upper bound: if key is above range, this key hasn't
-            // reached the range yet. Return not-in-range without past_upper.
+            /* Check upper bound: if key is above range, this key hasn't
+             * reached the range yet. Return not-in-range without past_upper. */
             bool above_upper = false;
             switch (kvr->range)
               {
@@ -369,14 +369,14 @@ namespace parallel_scan
 
             if (above_upper)
               {
-                // Key is above this range. Since ranges are sorted ascending,
-                // the key is also above all lower-indexed ranges. But future
-                // (smaller) keys may still match this range. Return not-in-range.
+                /* Key is above this range. Since ranges are sorted ascending,
+                 * the key is also above all lower-indexed ranges. But future
+                 * (smaller) keys may still match this range. Return not-in-range. */
                 return NO_ERROR;
               }
 
-            // Check lower bound: if key is below range, this range and
-            // all higher-indexed ranges are passed. Advance cursor.
+            /* Check lower bound: if key is below range, this range and
+             * all higher-indexed ranges are passed. Advance cursor. */
             bool below_lower = false;
             switch (kvr->range)
               {
@@ -417,23 +417,23 @@ namespace parallel_scan
 
             if (below_lower)
               {
-                // Key is below this range. Advance cursor past this range
-                // since future keys (even smaller) won't match it either.
+                /* Key is below this range. Advance cursor past this range
+                 * since future keys (even smaller) won't match it either. */
                 m_current_range_idx = i - 1;
                 continue;
               }
 
-            // Key is within bounds
+            /* Key is within bounds */
             *in_range = true;
             return NO_ERROR;
           }
 
-        // Past all ranges in descending direction
+        /* Past all ranges in descending direction */
         *past_upper = true;
         return NO_ERROR;
       }
 
-    // Keys arrive low-to-high in natural order; iterate ranges forward
+    /* Keys arrive low-to-high in natural order; iterate ranges forward */
     for (int i = m_current_range_idx; i < m_num_key_ranges; i++)
       {
         key_val_range *kvr = &m_key_val_ranges[i];
@@ -567,8 +567,8 @@ namespace parallel_scan
     if (m_input_handler != nullptr && m_btid_int == nullptr)
       {
         m_btid_int = m_input_handler->get_btid_int ();
-        // Determine if keys arrive in descending natural order:
-        // DESC domain XOR desc_index traversal
+        /* Determine if keys arrive in descending natural order:
+         * DESC domain XOR desc_index traversal */
         bool domain_desc = (m_btid_int->key_type != nullptr && m_btid_int->key_type->is_desc);
         m_keys_descending = (domain_desc != m_use_desc_index);
       }
@@ -588,7 +588,7 @@ namespace parallel_scan
         m_page = nullptr;
       }
 
-    // Clear any pending slot OID state
+    /* Clear any pending slot OID state */
     if (m_slot_key_valid && m_slot_clear_key)
       {
         pr_clear_value (&m_slot_key);
@@ -643,7 +643,7 @@ namespace parallel_scan
   {
     INDX_SCAN_ID *isidp = &m_scan_id->s.isid;
 
-    // Heap fetch with MVCC visibility
+    /* Heap fetch with MVCC visibility */
     RECDES heap_recdes = RECDES_INITIALIZER;
     if (m_scan_id->fixed == false)
       {
@@ -668,7 +668,7 @@ namespace parallel_scan
 
     if (m_is_covering)
       {
-        // Covering index path: read output values from the B-tree key
+        /* Covering index path: read output values from the B-tree key */
         HEAP_CACHE_ATTRINFO *attr_info = nullptr;
         REGU_VARIABLE_LIST regu_list = nullptr;
 
@@ -710,6 +710,7 @@ namespace parallel_scan
           }
 
         m_scan_id->scan_stats.data_qualified_rows++;
+        m_scan_id->scan_stats.qualified_rows++;
 
         if (regu_list != nullptr && m_scan_id->val_list != nullptr)
           {
@@ -722,7 +723,7 @@ namespace parallel_scan
         return S_SUCCESS;
       }
 
-    // Non-covering index path: read values from heap record
+    /* Non-covering index path: read values from heap record */
 
     if (isidp->scan_pred.pr_eval_fnc != nullptr && isidp->scan_pred.pred_expr != nullptr)
       {
@@ -747,6 +748,7 @@ namespace parallel_scan
       }
 
     m_scan_id->scan_stats.data_qualified_rows++;
+    m_scan_id->scan_stats.qualified_rows++;
 
     if (isidp->rest_regu_list != nullptr)
       {
@@ -783,7 +785,7 @@ namespace parallel_scan
   {
     INDX_SCAN_ID *isidp = &m_scan_id->s.isid;
 
-    // First, drain any pending OIDs from the current slot
+    /* First, drain any pending OIDs from the current slot */
     while (m_slot_oid_idx < m_slot_oids.size ())
       {
         OID oid = m_slot_oids[m_slot_oid_idx++];
@@ -801,10 +803,10 @@ namespace parallel_scan
               }
             return S_ERROR;
           }
-        // S_END means skip this OID, continue to next
+        /* S_END means skip this OID, continue to next */
       }
 
-    // Clear previous slot's key if any
+    /* Clear previous slot's key if any */
     if (m_slot_key_valid && m_slot_clear_key)
       {
         pr_clear_value (&m_slot_key);
@@ -812,10 +814,10 @@ namespace parallel_scan
     m_slot_key_valid = false;
     m_slot_clear_key = false;
 
-    // Iterate through remaining slots on this page
+    /* Iterate through remaining slots on this page */
     while (m_use_desc_index ? (m_current_slot >= 1) : (m_current_slot <= m_num_keys))
       {
-        // 1. Read B-tree record at current slot
+        /* 1. Read B-tree record at current slot */
         RECDES rec;
         rec.data = nullptr;
         rec.area_size = -1;
@@ -844,7 +846,7 @@ namespace parallel_scan
 
         m_scan_id->scan_stats.read_keys++;
 
-        // 2. Key range check
+        /* 2. Key range check */
         bool in_range = false;
         bool past_upper = false;
         check_key_in_range (&key, &in_range, &past_upper);
@@ -869,7 +871,7 @@ namespace parallel_scan
 
         m_scan_id->scan_stats.qualified_keys++;
 
-        // 3. Key filter predicate (if exists)
+        /* 3. Key filter predicate (if exists) */
         if (isidp->key_pred.pr_eval_fnc != nullptr && isidp->key_pred.pred_expr != nullptr)
           {
             FILTER_INFO key_filter;
@@ -900,13 +902,15 @@ namespace parallel_scan
               }
 
             m_scan_id->scan_stats.key_qualified_rows++;
+            m_scan_id->scan_stats.read_rows++;
           }
         else
           {
             m_scan_id->scan_stats.key_qualified_rows++;
+            m_scan_id->scan_stats.read_rows++;
           }
 
-        // 4. Collect ALL OIDs from this leaf record (including overflow pages)
+        /* 4. Collect ALL OIDs from this leaf record (including overflow pages) */
         m_slot_oids.clear ();
         m_slot_oid_idx = 0;
 
@@ -930,12 +934,12 @@ namespace parallel_scan
             continue;
           }
 
-        // Save the key for use in process_oid (covering index needs it)
+        /* Save the key for use in process_oid (covering index needs it) */
         m_slot_key = key;
         m_slot_key_valid = true;
         m_slot_clear_key = clear_key;
 
-        // 5. Process OIDs one at a time
+        /* 5. Process OIDs one at a time */
         while (m_slot_oid_idx < m_slot_oids.size ())
           {
             OID oid = m_slot_oids[m_slot_oid_idx++];
@@ -959,10 +963,10 @@ namespace parallel_scan
                   }
                 return S_ERROR;
               }
-            // S_END means skip, continue to next OID
+            /* S_END means skip, continue to next OID */
           }
 
-        // All OIDs in this slot were skipped; clean up key and continue to next slot
+        /* All OIDs in this slot were skipped; clean up key and continue to next slot */
         if (m_slot_key_valid && m_slot_clear_key)
           {
             pr_clear_value (&m_slot_key);
@@ -971,7 +975,7 @@ namespace parallel_scan
         m_slot_clear_key = false;
       }
 
-    // Page exhausted
+    /* Page exhausted */
     if (m_page != nullptr)
       {
         pgbuf_unfix (thread_p, m_page);

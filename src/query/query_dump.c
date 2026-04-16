@@ -511,9 +511,9 @@ qdump_print_access_spec (ACCESS_SPEC_TYPE * spec_list_p)
 
   fprintf (foutput, ",%s", qdump_access_method_string (spec_list_p->access));
 
-  if (spec_list_p->flags & ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN)
+  if (spec_list_p->flags & ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN)
     {
-      fprintf (foutput, ",no_parallel_heap_scan");
+      fprintf (foutput, ",no_parallel_scan");
     }
 
   if (IS_ANY_INDEX_ACCESS (spec_list_p->access))

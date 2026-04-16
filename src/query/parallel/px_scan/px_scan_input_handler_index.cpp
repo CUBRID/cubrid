@@ -51,7 +51,6 @@ namespace parallel_scan
   input_handler_index::init_on_main (THREAD_ENTRY *thread_p, INDX_INFO *indx_info, int parallelism)
   {
     assert (indx_info != nullptr);
-    er_log_debug (ARG_FILE_LINE, "input_handler_index::init_on_main called, parallelism=%d", parallelism);
     BTID_COPY (&m_btid, &indx_info->btid);
     m_indx_info = indx_info;
     m_use_desc_index = (indx_info->use_desc_index != 0);
@@ -167,7 +166,6 @@ namespace parallel_scan
 
 fallback:
     /* On any error: return ER_FAILED so the caller falls back to single-thread index scan. */
-    er_log_debug (ARG_FILE_LINE, "input_handler_index::init_on_main FALLBACK");
     er_clear ();
     return ER_FAILED;
   }
@@ -192,7 +190,7 @@ fallback:
 
     VPID ret_vpid = m_current_leaf_vpid;
 
-    // Fix the current leaf page to read next_vpid from its header
+    /* Fix the current leaf page to read next_vpid from its header */
     PAGE_PTR page = pgbuf_fix (thread_p, &ret_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
     if (page == nullptr)
       {
@@ -246,6 +244,6 @@ fallback:
   void
   input_handler_index::cleanup_keys (THREAD_ENTRY *thread_p)
   {
-    // No split keys or worker key values to clean up in the leaf-page cursor design.
+    /* No split keys or worker key values to clean up in the leaf-page cursor design. */
   }
 }
