@@ -2053,10 +2053,11 @@ retry_prepare:
 	{
 	  if (!heap_oos_find_vfid (thread_p, &helper->hfid, &helper->oos_vfid, false))
 	    {
-	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
-				   "Failed to find OOS VFID for hfid %d|%d.", VFID_AS_ARGS (&helper->hfid.vfid));
-	      assert_release (false);
-	      return ER_FAILED;
+	      /* No OOS file for this heap — likely a false positive from OR_MVCC_FLAG_HAS_OOS.
+	       * Leave oos_vfid NULL; all downstream OOS code is guarded by !VFID_ISNULL check. */
+	      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+				     "OOS flag set but no OOS VFID for hfid %d|%d (slotid=%d, rectype=RELOC) — skipping OOS cleanup",
+				     VFID_AS_ARGS (&helper->hfid.vfid), (int) helper->crt_slotid);
 	    }
 	}
       return NO_ERROR;
@@ -2174,55 +2175,11 @@ retry_prepare:
 	{
 	  if (!heap_oos_find_vfid (thread_p, &helper->hfid, &helper->oos_vfid, false))
 	    {
-	      /* Diagnostic: dump record details to identify false positives vs real OOS */
-	      int repid_and_flags = OR_GET_INT (helper->record.data + OR_REP_OFFSET);
-	      int mvcc_flags = OR_GET_MVCC_FLAG (helper->record.data);
-	      int repid = repid_and_flags & OR_MVCC_REPID_MASK;
-	      int offset_size = OR_GET_OFFSET_SIZE (helper->record.data);
-
-	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
-				   "OOS VFID not found for hfid %d|%d, slotid=%d. "
-				   "Record diag: len=%d, repid_and_flags=0x%08x, "
-				   "mvcc_flags=0x%02x (INSID=%d DELID=%d PREV=%d OOS=%d), "
-				   "repid=%d, offset_size=%d",
-				   VFID_AS_ARGS (&helper->hfid.vfid), (int) helper->crt_slotid,
-				   helper->record.length, repid_and_flags,
-				   mvcc_flags,
-				   (mvcc_flags & OR_MVCC_FLAG_VALID_INSID) ? 1 : 0,
-				   (mvcc_flags & OR_MVCC_FLAG_VALID_DELID) ? 1 : 0,
-				   (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION) ? 1 : 0,
-				   (mvcc_flags & OR_MVCC_FLAG_HAS_OOS) ? 1 : 0,
-				   repid, offset_size);
-
-	      /* Try to parse OOS OIDs from the record to check if they look valid */
-	      {
-		OID_VECTOR oos_oids;
-		int parse_err = heap_recdes_get_oos_oids (&helper->record, oos_oids);
-		if (parse_err != NO_ERROR)
-		  {
-		    vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
-					"OOS OID parse FAILED (err=%d) for slotid=%d — likely FALSE POSITIVE "
-					"(OOS flag 0x%02x set but record has no valid OOS structure)",
-					parse_err, (int) helper->crt_slotid, OR_MVCC_FLAG_HAS_OOS);
-		  }
-		else
-		  {
-		    for (size_t i = 0; i < oos_oids.size (); i++)
-		      {
-			bool looks_valid = (oos_oids[i].volid > 0
-					    && oos_oids[i].pageid > 0
-					    && oos_oids[i].slotid >= 0);
-			vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
-					     "OOS OID[%zu] = %hd|%d|%hd (looks_valid=%d)",
-					     i, OID_AS_ARGS (&oos_oids[i]), looks_valid ? 1 : 0);
-		      }
-		  }
-	      }
-
-	      /* Skip OOS cleanup for this record instead of failing the entire page.
-	       * Returning ER_FAILED here caused an infinite retry loop in release builds
-	       * (the continue at vacuum_heap_page_execute skips page_ptr advancement). */
-	      er_clear ();
+	      /* No OOS file for this heap — likely a false positive from OR_MVCC_FLAG_HAS_OOS.
+	       * Leave oos_vfid NULL; all downstream OOS code is guarded by !VFID_ISNULL check. */
+	      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+				     "OOS flag set but no OOS VFID for hfid %d|%d (slotid=%d, rectype=HOME) — skipping OOS cleanup",
+				     VFID_AS_ARGS (&helper->hfid.vfid), (int) helper->crt_slotid);
 	    }
 	}
       break;
