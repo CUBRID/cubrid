@@ -1518,10 +1518,6 @@ log_top_query (int argc, char *argv[], int arg_start)
     {
       use_mt = 1;
     }
-  if (use_mt)
-    {
-      query_info_mutex_init ();
-    }
 #endif
 
 #ifdef MT_MODE

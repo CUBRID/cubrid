@@ -45,10 +45,6 @@ struct t_query_info
   char start_date[DATE_STR_LEN + 1];
 };
 
-#ifdef MT_MODE
-void query_info_mutex_init ();
-#endif
-
 extern void query_info_init (T_QUERY_INFO * query_info);
 extern void query_info_clear (T_QUERY_INFO * qi);
 extern void query_info_reset (void);

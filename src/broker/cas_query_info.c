@@ -55,12 +55,6 @@ static int num_query_info_ne = 0;
 static pthread_mutex_t query_info_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
-#ifdef MT_MODE
-void
-query_info_mutex_init ()
-{
-}
-#endif
 
 void
 query_info_init (T_QUERY_INFO * qi)

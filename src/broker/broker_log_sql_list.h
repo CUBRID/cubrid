@@ -26,8 +26,6 @@
 
 #ident "$Id$"
 
-#include <stdio.h>
-
 typedef struct t_sql_info T_SQL_INFO;
 struct t_sql_info
 {
