@@ -10980,9 +10980,9 @@ file_is_valid_heap_file (THREAD_ENTRY * thread_p, OID * class_oid_p)
       (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
 
       if (heap_get_class_record (thread_p, class_oid_p, &recdes, &scan_cache, PEEK) != S_SUCCESS)
-        {
-          is_valid = false;
-        }
+	{
+	  is_valid = false;
+	}
 
       heap_scancache_end (thread_p, &scan_cache);
     }
@@ -11270,7 +11270,7 @@ file_tracker_item_collect_invalid_file (THREAD_ENTRY * thread_p, PAGE_PTR page_o
   if (is_found)
     {
       VFID vfid;
-      std::pair<std::unordered_map<VFID, FILE_TYPE>::iterator, bool> emplace_result;
+      std::pair < std::unordered_map < VFID, FILE_TYPE >::iterator, bool > emplace_result;
 
       vfid.fileid = item->fileid;
       vfid.volid = item->volid;
@@ -11307,44 +11307,44 @@ file_delete_invalid_file (THREAD_ENTRY * thread_p,
   assert (btree != nullptr);
   assert (btree_ovf != nullptr);
 
-  std::unordered_map<VFID, FILE_TYPE>::const_iterator it;
+  std::unordered_map < VFID, FILE_TYPE >::const_iterator it;
 
   for (it = invalid_files.begin (); it != invalid_files.end (); ++it)
     {
-      const VFID &vfid = it->first;
+      const VFID & vfid = it->first;
       FILE_TYPE file_type = it->second;
 
       log_sysop_start (thread_p);
 
       if (file_destroy (thread_p, &vfid, false) != NO_ERROR)
-        {
+	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  log_sysop_abort (thread_p);
 	  return error_code;
-        }
+	}
 
       log_sysop_commit (thread_p);
 
       switch (file_type)
-        {
-      case FILE_HEAP:
-      case FILE_HEAP_REUSE_SLOTS:
-	++(*heap);
-	break;
-      case FILE_MULTIPAGE_OBJECT_HEAP:
-	++(*heap_ovf);
-	break;
-      case FILE_BTREE:
-	++(*btree);
-	break;
-      case FILE_BTREE_OVERFLOW_KEY:
-	++(*btree_ovf);
-	break;
-      default:
-	assert (false && "Unknown FILE_TYPE");
-	break;
-      }
-  }
+	{
+	case FILE_HEAP:
+	case FILE_HEAP_REUSE_SLOTS:
+	  ++(*heap);
+	  break;
+	case FILE_MULTIPAGE_OBJECT_HEAP:
+	  ++(*heap_ovf);
+	  break;
+	case FILE_BTREE:
+	  ++(*btree);
+	  break;
+	case FILE_BTREE_OVERFLOW_KEY:
+	  ++(*btree_ovf);
+	  break;
+	default:
+	  assert (false && "Unknown FILE_TYPE");
+	  break;
+	}
+    }
 
   return NO_ERROR;
 }
@@ -11426,6 +11426,7 @@ parse_target_vfid (const char *in_vfid_str, VFID * out_vfid)
 
   return true;
 }
+
 /*
  * file_tracker_item_delete_target_file () - delete target file
  *
@@ -11439,7 +11440,7 @@ parse_target_vfid (const char *in_vfid_str, VFID * out_vfid)
  */
 static int
 file_tracker_item_delete_target_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
-				     FILE_EXTENSIBLE_DATA * extdata, int index_item, bool * stop, void *args)
+				      FILE_EXTENSIBLE_DATA * extdata, int index_item, bool * stop, void *args)
 {
   FILE_TRACK_ITEM *item;
   VFID *target_vfid;
