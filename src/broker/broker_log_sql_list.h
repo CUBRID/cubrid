@@ -26,6 +26,8 @@
 
 #ident "$Id$"
 
+#include <stdio.h>
+
 typedef struct t_sql_info T_SQL_INFO;
 struct t_sql_info
 {
@@ -35,6 +37,7 @@ struct t_sql_info
 };
 
 extern int sql_list_make (char *list_file);
+extern void sql_list_reset (void);
 extern int sql_info_write (char *sql_org, char *q_name, FILE * fp);
 
 #endif /* _BROKER_LOG_SQL_LIST_H_ */

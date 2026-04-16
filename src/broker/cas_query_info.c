@@ -33,7 +33,6 @@
 
 #include "cas_common.h"
 #include "cas_query_info.h"
-#include "broker_log_sql_list.h"
 #include "broker_log_top.h"
 
 #define LOG_TOP_RES_FILE	"log_top.res"
@@ -53,14 +52,13 @@ static int num_query_info_ne = 0;
 #endif
 
 #ifdef MT_MODE
-static T_MUTEX query_info_mutex;
+static pthread_mutex_t query_info_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
 #ifdef MT_MODE
 void
 query_info_mutex_init ()
 {
-  MUTEX_INIT (query_info_mutex);
 }
 #endif
 
@@ -82,6 +80,43 @@ query_info_clear (T_QUERY_INFO * qi)
 }
 
 void
+query_info_reset (void)
+{
+  int i;
+#ifdef MT_MODE
+  pthread_mutex_lock (&query_info_mutex);
+#endif
+
+  if (query_info_arr != NULL)
+    {
+      for (i = 0; i < num_query_info; i++)
+	{
+	  query_info_clear (&query_info_arr[i]);
+	}
+      FREE_MEM (query_info_arr);
+      num_query_info = 0;
+    }
+
+#ifdef TEST
+  if (query_info_arr_ne != NULL)
+    {
+      for (i = 0; i < num_query_info_ne; i++)
+	{
+	  query_info_clear (&query_info_arr_ne[i]);
+	}
+      FREE_MEM (query_info_arr_ne);
+      num_query_info_ne = 0;
+    }
+#endif
+
+  sql_list_reset ();
+
+#ifdef MT_MODE
+  pthread_mutex_unlock (&query_info_mutex);
+#endif
+}
+
+void
 query_info_print (void)
 {
   int i;
@@ -94,7 +129,7 @@ query_info_print (void)
   int xml_found;
 
 #ifdef MT_MODE
-  MUTEX_LOCK (query_info_mutex);
+  pthread_mutex_lock (&query_info_mutex);
 #endif
 
   fp_res = fopen (LOG_TOP_RES_FILE, "w");
@@ -184,7 +219,7 @@ query_info_print (void)
 
 query_info_print_end:
 #ifdef MT_MODE
-  MUTEX_UNLOCK (query_info_mutex);
+  pthread_mutex_unlock (&query_info_mutex);
 #endif
   return;
 }
@@ -200,7 +235,7 @@ query_info_add (T_QUERY_INFO * qi, int exec_time, int execute_res, char *filenam
     return 0;
 
 #ifdef MT_MODE
-  MUTEX_LOCK (query_info_mutex);
+  pthread_mutex_lock (&query_info_mutex);
 #endif
 
 #if 0
@@ -264,7 +299,7 @@ query_info_add (T_QUERY_INFO * qi, int exec_time, int execute_res, char *filenam
 query_info_add_end:
 
 #ifdef MT_MODE
-  MUTEX_UNLOCK (query_info_mutex);
+  pthread_mutex_unlock (&query_info_mutex);
 #endif
   return retval;
 }
@@ -286,7 +321,7 @@ query_info_add_ne (T_QUERY_INFO * qi, char *end_date)
     }
 
 #ifdef MT_MODE
-  MUTEX_LOCK (query_info_mutex);
+  pthread_mutex_lock (&query_info_mutex);
 #endif
 
   for (i = 0; i < num_query_info; i++)
@@ -336,7 +371,7 @@ query_info_add_ne (T_QUERY_INFO * qi, char *end_date)
 
 query_info_add_ne_end:
 #ifdef MT_MODE
-  MUTEX_UNLOCK (query_info_mutex);
+  pthread_mutex_unlock (&query_info_mutex);
 #endif
   return retval;
 #endif /* define TEST */

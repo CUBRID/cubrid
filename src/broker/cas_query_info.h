@@ -28,6 +28,7 @@
 
 #include "broker_log_top.h"
 #include "broker_log_util.h"
+#include "broker_log_sql_list.h"
 
 typedef struct t_query_info T_QUERY_INFO;
 struct t_query_info
@@ -50,6 +51,7 @@ void query_info_mutex_init ();
 
 extern void query_info_init (T_QUERY_INFO * query_info);
 extern void query_info_clear (T_QUERY_INFO * qi);
+extern void query_info_reset (void);
 extern int query_info_add (T_QUERY_INFO * qi, int exec_time, int execute_res, char *filename, int lineno,
 			   char *end_date);
 extern int query_info_add_ne (T_QUERY_INFO * qi, char *end_date);

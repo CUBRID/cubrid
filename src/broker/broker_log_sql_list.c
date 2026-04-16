@@ -132,6 +132,29 @@ error:
   return -1;
 }
 
+void
+sql_list_reset (void)
+{
+  int i, j;
+
+  if (sql_list == NULL)
+    {
+      return;
+    }
+
+  for (i = 0; i < num_sql_list; i++)
+    {
+      FREE_MEM (sql_list[i].sql);
+      for (j = 0; j < sql_list[i].num_file; j++)
+	{
+	  FREE_MEM (sql_list[i].filename[j]);
+	}
+      FREE_MEM (sql_list[i].filename);
+    }
+  FREE_MEM (sql_list);
+  num_sql_list = 0;
+}
+
 int
 sql_info_write (char *src_sql, char *q_name, FILE * fp)
 {
