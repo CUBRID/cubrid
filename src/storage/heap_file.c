@@ -27882,19 +27882,37 @@ heap_recdes_contains_oos (const RECDES * record)
   /* Cross-validate MVCC flag against VOT scan to detect false positives.
    * heap_recdes_contains_oos (MVCC flag) and heap_recdes_check_has_oos (VOT scan) must agree. */
   bool vot_has_oos = heap_recdes_check_has_oos (record);
-  if (flag_has_oos && !vot_has_oos)
+  if (flag_has_oos != vot_has_oos)
     {
       /* MVCC flag says OOS but VOT scan finds no OOS entries — this causes vacuum failures.
        * The reverse (flag=0, vot=1) is a known harmless false positive from odd VOT offsets. */
       int repid_and_flags = OR_GET_INT (record->data + OR_REP_OFFSET);
+      int osz = (int) OR_GET_OFFSET_SIZE (record->data);
+      void *vt = OR_GET_OBJECT_VAR_TABLE (record->data);
+      int mvc = (record->length - OR_HEADER_SIZE (record->data)) / osz;
+      char vdump[256];
+      int vpos = 0;
+      for (int vi = 0; vi < mvc && vi < 10 && vpos < 200; vi++)
+	{
+	  int v = (osz == 1) ? OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (vt, vi, osz))
+	    : (osz == 2) ? OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (vt, vi, osz))
+	    : OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (vt, vi, osz));
+	  vpos += snprintf (vdump + vpos, sizeof (vdump) - vpos, "%d ", v);
+	  if (v & OR_VAR_BIT_LAST_ELEMENT)
+	    break;
+	}
       fprintf (stderr,
-	       "[OOS-CONSISTENCY] DANGEROUS MISMATCH: flag_has_oos=%d, vot_has_oos=%d, "
-	       "repid_and_flags=0x%08x, mvcc_flags=0x%02x, rec_len=%d, offset_size=%d\n",
+	       "[OOS-CONSISTENCY] MISMATCH: flag=%d, vot=%d, "
+	       "repid_and_flags=0x%08x, mvcc_flags=0x%02x, rec_len=%d, offset_size=%d, "
+	       "VOT=[%s]\n",
 	       flag_has_oos ? 1 : 0, vot_has_oos ? 1 : 0,
 	       repid_and_flags, (int) OR_GET_MVCC_FLAG (record->data),
-	       record->length, (int) OR_GET_OFFSET_SIZE (record->data));
+	       record->length, osz, vdump);
       fflush (stderr);
-      assert (false && "MVCC flag has OOS but VOT scan finds no OOS — flag was set incorrectly");
+      if (flag_has_oos && !vot_has_oos)
+	{
+	  assert (false && "MVCC flag has OOS but VOT scan finds no OOS");
+	}
     }
 #endif
 
@@ -28011,7 +28029,27 @@ heap_recdes_check_has_oos (const RECDES * recdes)
 
   const int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
   void *var_table = OR_GET_OBJECT_VAR_TABLE (recdes->data);
-  const int max_var_count = (recdes->length - OR_HEADER_SIZE (recdes->data)) / offset_size;
+  const int header_size = OR_HEADER_SIZE (recdes->data);
+  const int max_var_count = (recdes->length - header_size) / offset_size;
+
+  /* Sanity check: validate the first VOT entry is a reasonable offset.
+   * Class/root records have different internal formats — their data area
+   * looks like garbage when interpreted as a VOT. */
+  if (max_var_count > 0)
+    {
+      int first;
+      if (offset_size == OR_BYTE_SIZE)
+	first = OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (var_table, 0, offset_size));
+      else if (offset_size == OR_SHORT_SIZE)
+	first = (unsigned short) OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (var_table, 0, offset_size));
+      else
+	first = OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (var_table, 0, offset_size));
+      int clean = first & ~OR_VAR_FLAG_MASK;
+      if (clean < 0 || clean > recdes->length)
+	{
+	  return false;
+	}
+    }
 
   bool has_oos = false;
 
