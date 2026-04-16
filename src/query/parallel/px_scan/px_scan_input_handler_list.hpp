@@ -23,7 +23,9 @@
 #ifndef _PX_SCAN_INPUT_HANDLER_LIST_HPP_
 #define _PX_SCAN_INPUT_HANDLER_LIST_HPP_
 
+#include "px_scan_ftab_set.hpp"
 #include "px_interrupt.hpp"
+#include "query_manager.h"
 #include "scan_manager.h"
 #include <vector>
 #include <atomic>
@@ -36,10 +38,13 @@ namespace parallel_scan
       using err_messages_with_lock = parallel_query::err_messages_with_lock;
     public:
       input_handler_list (interrupt *interrupt_p, err_messages_with_lock *err_messages_p)
-	: m_split_vpids_idx (0),
+	: m_splited_ftab_set_idx (0),
+	  m_has_membuf (false),
+	  m_membuf_last (-1),
+	  m_tfile_vfid (nullptr),
+	  m_list_id (nullptr),
 	  m_interrupt_p (interrupt_p),
-	  m_err_messages_p (err_messages_p),
-	  m_list_id (nullptr)
+	  m_err_messages_p (err_messages_p)
       {
       }
       int init_on_main (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, int parallelism);
@@ -52,14 +57,27 @@ namespace parallel_scan
       }
 
     private:
-      thread_local static std::vector<VPID> *m_tl_vpid_list;
-      thread_local static int m_tl_vpid_idx;
+      /* Sector-based (ftabs pattern) */
+      ftab_set m_ftab_set;
+      std::vector<ftab_set> m_splited_ftab_set;
+      std::atomic_int m_splited_ftab_set_idx;
 
-      std::vector<std::vector<VPID>> m_split_vpids;
-      std::atomic_int m_split_vpids_idx;
+      /* membuf info */
+      bool m_has_membuf;
+      int m_membuf_last;
+      QMGR_TEMP_FILE *m_tfile_vfid;
+
       QFILE_LIST_ID *m_list_id;
       interrupt *m_interrupt_p;
       err_messages_with_lock *m_err_messages_p;
+
+      /* Thread-local state */
+      thread_local static ftab_set *m_tl_ftab_set;
+      thread_local static VPID m_tl_vpid;
+      thread_local static size_t m_tl_pgoffset;
+      thread_local static FILE_PARTIAL_SECTOR m_tl_ftab;
+      thread_local static bool m_tl_is_membuf_worker;
+      thread_local static int m_tl_membuf_pageid;
   };
 }
 
