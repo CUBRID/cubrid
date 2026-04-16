@@ -27245,7 +27245,7 @@ qexec_build_agg_hkey (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, REGU_VAR
   key->val_count = 0;
   while (regu_list != NULL)
     {
-      if (tpl == NULL && !DB_IS_NULL (regu_list->value.vfetch_to))
+      if (tpl == NULL)
 	{
 	  /* tpl is NULL when called during the processing phase */
 	  key->values[key->val_count] = regu_list->value.vfetch_to;
