@@ -21741,16 +21741,10 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
   update_mvcc_flags = OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION;
 
-  bool has_oos = heap_recdes_check_has_oos (update_context->recdes_p);
-
-  if (has_oos)
-    {
-      repid_and_flag_bits |= (OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
-    }
-  else
-    {
-      repid_and_flag_bits &= ~(OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
-    }
+  /* Trust the OOS flag already set by the record transformer (heap_attrinfo_transform_header_to_disk).
+   * Do NOT re-derive it via heap_recdes_check_has_oos (VOT scan) — OR_VAR_BIT_OOS (bit 0)
+   * collides with naturally odd VOT offsets in catalog/non-OOS records, producing false positives. */
+  bool has_oos = (mvcc_flags & OR_MVCC_FLAG_HAS_OOS) != 0;
 
   OR_PUT_INT (update_context->recdes_p->data, repid_and_flag_bits);
 
@@ -27882,16 +27876,19 @@ heap_recdes_contains_oos (const RECDES * record)
   /* Cross-validate MVCC flag against VOT scan to detect false positives.
    * heap_recdes_contains_oos (MVCC flag) and heap_recdes_check_has_oos (VOT scan) must agree. */
   bool vot_has_oos = heap_recdes_check_has_oos (record);
-  if (flag_has_oos != vot_has_oos)
+  if (flag_has_oos && !vot_has_oos)
     {
+      /* MVCC flag says OOS but VOT scan finds no OOS entries — this causes vacuum failures.
+       * The reverse (flag=0, vot=1) is a known harmless false positive from odd VOT offsets. */
       int repid_and_flags = OR_GET_INT (record->data + OR_REP_OFFSET);
-      _er_log_debug (ARG_FILE_LINE,
-		     "[OOS-CONSISTENCY] MISMATCH: flag_has_oos=%d, vot_has_oos=%d, "
-		     "repid_and_flags=0x%08x, mvcc_flags=0x%02x, rec_len=%d, offset_size=%d\n",
-		     flag_has_oos ? 1 : 0, vot_has_oos ? 1 : 0,
-		     repid_and_flags, (int) OR_GET_MVCC_FLAG (record->data),
-		     record->length, (int) OR_GET_OFFSET_SIZE (record->data));
-      assert (false && "heap_recdes_contains_oos (MVCC flag) vs heap_recdes_check_has_oos (VOT) mismatch");
+      fprintf (stderr,
+	       "[OOS-CONSISTENCY] DANGEROUS MISMATCH: flag_has_oos=%d, vot_has_oos=%d, "
+	       "repid_and_flags=0x%08x, mvcc_flags=0x%02x, rec_len=%d, offset_size=%d\n",
+	       flag_has_oos ? 1 : 0, vot_has_oos ? 1 : 0,
+	       repid_and_flags, (int) OR_GET_MVCC_FLAG (record->data),
+	       record->length, (int) OR_GET_OFFSET_SIZE (record->data));
+      fflush (stderr);
+      assert (false && "MVCC flag has OOS but VOT scan finds no OOS — flag was set incorrectly");
     }
 #endif
 
@@ -28010,14 +28007,10 @@ heap_recdes_check_has_oos (const RECDES * recdes)
   void *var_table = OR_GET_OBJECT_VAR_TABLE (recdes->data);
   const int max_var_count = (recdes->length - OR_HEADER_SIZE (recdes->data)) / offset_size;
 
-  for (int index = 0;; ++index)
-    {
-      if (index == max_var_count)
-	{
-	  assert (false && "LAST_ELEMENT flag not found within record bounds");
-	  return false;
-	}
+  bool has_oos = false;
 
+  for (int index = 0; index < max_var_count; ++index)
+    {
       int offset;
       switch (offset_size)
 	{
@@ -28037,14 +28030,18 @@ heap_recdes_check_has_oos (const RECDES * recdes)
 
       if (OR_IS_OOS (offset))
 	{
-	  return true;
+	  has_oos = true;
 	}
 
       if (OR_IS_LAST_ELEMENT (offset))
 	{
-	  return false;
+	  /* LAST_ELEMENT found — this is an OOS-aware VOT format.
+	   * Trust the OOS detection result. */
+	  return has_oos;
 	}
     }
 
+  /* No LAST_ELEMENT found — old-format VOT without OOS flag support.
+   * Odd offsets in old records would false-positive OR_IS_OOS, so return false. */
   return false;
 }
