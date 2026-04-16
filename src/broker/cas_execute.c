@@ -4148,7 +4148,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	  }
 
 	vector_float.dim = dim;
-	vector_float.float_array = (float *) MALLOC ((dim > 0 ? dim : 1) * NET_SIZE_FLOAT);
+	vector_float.float_array = db_vector_allocate_float_array (dim > 0 ? dim : 1);
 	if (vector_float.float_array == NULL)
 	  {
 	    return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
