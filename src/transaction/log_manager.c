@@ -90,6 +90,7 @@
 #endif
 #include "thread_entry.hpp"
 #include "thread_entry_task.hpp"
+#include "thread_looper.hpp"
 #include "thread_manager.hpp"
 #include "transaction_transient.hpp"
 #include "vacuum.h"

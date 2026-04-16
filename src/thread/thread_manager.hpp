@@ -278,6 +278,17 @@ namespace cubthread
   };
 
   //////////////////////////////////////////////////////////////////////////
+  // alias
+  //////////////////////////////////////////////////////////////////////////
+#if defined (SERVER_MODE)
+  using worker_pool_type = cubthread::worker_pool_impl<false>;
+  using stats_worker_pool_type = cubthread::worker_pool_impl<true>;
+#else
+  using worker_pool_type = cubthread::worker_pool;
+  using stats_worker_pool_type = cubthread::worker_pool;
+#endif
+
+  //////////////////////////////////////////////////////////////////////////
   // thread logging flags
   //
   // TODO: complete thread logging for all modules
@@ -486,20 +497,20 @@ thread_get_entry_manager (void)
   return cubthread::get_manager ()->get_entry_manager ();
 }
 
-inline cubthread::worker_pool_impl<false> *
+inline cubthread::worker_pool_type *
 thread_create_worker_pool (std::size_t pool_size, std::size_t core_count, const char *name,
 			   cubthread::entry_manager &entry_mgr, bool pool_threads = false)
 {
-  return cubthread::get_manager ()->create_worker_pool<cubthread::worker_pool_impl<false>> (pool_size, core_count, name,
+  return cubthread::get_manager ()->create_worker_pool<cubthread::worker_pool_type> (pool_size, core_count, name,
 	 entry_mgr, pool_threads);
 }
 
-inline cubthread::worker_pool_impl<true> *
+inline cubthread::stats_worker_pool_type *
 thread_create_stats_worker_pool (std::size_t pool_size, std::size_t core_count, const char *name,
 				 cubthread::entry_manager &entry_mgr, bool pool_threads = false,
 				 cubthread::wait_seconds idle_timeout = std::chrono::seconds (5))
 {
-  return cubthread::get_manager ()->create_worker_pool<cubthread::worker_pool_impl<true>> (pool_size, core_count, name,
+  return cubthread::get_manager ()->create_worker_pool<cubthread::stats_worker_pool_type> (pool_size, core_count, name,
 	 entry_mgr, pool_threads, idle_timeout);
 }
 

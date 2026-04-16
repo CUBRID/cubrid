@@ -54,7 +54,7 @@
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
 #if defined (SERVER_MODE)
-#include "thread_worker_pool.hpp"
+#include "thread_worker_pool_impl.hpp"
 #include "monitor_vacuum_ovfp_threshold.hpp"
 #endif // SERVER_MODE
 #include "util_func.h"
@@ -934,8 +934,8 @@ static cubthread::daemon *vacuum_Master_daemon = NULL;                       // 
 static vacuum_master_entry_manager *vacuum_Master_entry_manager = NULL;  // entry manager
 
 // vacuum worker globals
-static cubthread::worker_pool *vacuum_Worker_threads = NULL;              // thread pool
-static vacuum_worker_entry_manager *vacuum_Worker_entry_manager = NULL;  // entry manager
+static cubthread::stats_worker_pool_type *vacuum_Worker_threads = NULL;   // thread pool
+static vacuum_worker_entry_manager *vacuum_Worker_entry_manager = NULL;	  // entry manager
 
 /* *INDENT-ON* */
 
