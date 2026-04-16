@@ -996,7 +996,7 @@ static unsigned int prm_vector_index_ef_search_flag = 0;
 
 float PRM_VECTOR_INDEX_I8_PREFILTER_MULTIPLIER = 0.7f;
 static float prm_vector_index_i8_prefilter_multiplier_default = 0.7f;
-static float prm_vector_index_i8_prefilter_multiplier_lower = -10.0f;
+static float prm_vector_index_i8_prefilter_multiplier_lower = -100.0f;
 static float prm_vector_index_i8_prefilter_multiplier_upper = 10.0f;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);

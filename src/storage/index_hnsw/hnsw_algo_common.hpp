@@ -309,8 +309,13 @@ namespace cubhnsw
     // i8 prefilter window multiplier (read once from system parameter per add/search)
     float m_i8_prefilter_multiplier {1.0f};
 
+    // Sentinel value for m_i8_only_build mode.  Any multiplier value <= this
+    // threshold activates i8-only build (skips fp32 entirely).  Negative
+    // multiplier values above this threshold are valid prefilter multipliers.
+    static constexpr float I8_ONLY_BUILD_SENTINEL = -100.0f;
+
     // When true, skip fp32 distance entirely during build — use i8 as the final metric.
-    // Activated by setting PRM_ID_VECTOR_INDEX_I8_PREFILTER_MULTIPLIER to a negative value.
+    // Activated by setting PRM_ID_VECTOR_INDEX_I8_PREFILTER_MULTIPLIER to the sentinel value (-100).
     bool m_i8_only_build {false};
 
     // stats
