@@ -188,10 +188,11 @@ main (int argc, char *argv[])
   else
     {
       volatile int mqerr = 0;
-      if (log_top_fork_tran_query (get_cnt, file_list, 0, &mqerr) == 0)
+      int fret = log_top_fork_tran_query (get_cnt, file_list, 0, &mqerr);
+      if (fret == 0)
 	error = (int) mqerr;
       else
-	error = 0;
+	error = -1;
     }
 
   free_file_list (file_list, file_cnt);
@@ -201,10 +202,11 @@ main (int argc, char *argv[])
   else
     {
       volatile int mqerr = 0;
-      if (log_top_fork_tran_query (argc, argv, arg_start, &mqerr) == 0)
+      int fret = log_top_fork_tran_query (argc, argv, arg_start, &mqerr);
+      if (fret == 0)
 	error = (int) mqerr;
       else
-	error = 0;
+	error = -1;
     }
 #endif
 
