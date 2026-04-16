@@ -10427,21 +10427,27 @@ loaddb_update_stats ()
  * return:
  *
  *   outfp(in):
+ *   invalid_only(in):
  */
 int
-file_dump_file_list (FILE * outfp)
+file_dump_file_list (FILE * outfp, bool invalid_only)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
   int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
 
+  request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
+  (void) or_pack_int (request, (int) invalid_only);
+
   req_error =
-    net_client_request_recv_stream (NET_SERVER_FILEMGR_DUMP_FILE_LIST, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				    NULL, 0, outfp);
+    net_client_request_recv_stream (NET_SERVER_CLEANFILEDB_DUMP_FILE_LIST, request, OR_ALIGNED_BUF_SIZE (a_request),
+				    reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, outfp);
   if (!req_error)
     {
       (void) or_unpack_errcode (reply, &error);
@@ -10453,7 +10459,7 @@ file_dump_file_list (FILE * outfp)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xfile_tracker_dump_file_list (thread_p, outfp);
+  success = xfile_tracker_dump_file_list (thread_p, outfp, invalid_only);
 
   exit_server (*thread_p);
 
@@ -10462,27 +10468,36 @@ file_dump_file_list (FILE * outfp)
 }
 
 /*
- * file_purge_invalid_heap_files -
+ * file_clean_invalid_file -
  *
  * return:
+ *
+ *   heap(out):
+ *   heap_ovf(out):
+ *   btree(out):
+ *   btree_ovf(out):
  */
 int
-file_purge_invalid_heap_files (void)
+file_clean_invalid_file (int *heap, int *heap_ovf, int *btree, int *btree_ovf)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
   int req_error;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
+  char *reply, *ptr;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    net_client_request (NET_SERVER_FILEMGR_PURGE_INVALID_HEAP_FILES, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+    net_client_request (NET_SERVER_CLEANFILEDB_CLEAN_INVALID_FILE, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
 			NULL, 0, NULL, 0);
   if (!req_error)
     {
-      (void) or_unpack_errcode (reply, &error);
+      ptr = or_unpack_errcode (reply, &error);
+      ptr = or_unpack_int (ptr, heap);
+      ptr = or_unpack_int (ptr, heap_ovf);
+      ptr = or_unpack_int (ptr, btree);
+      ptr = or_unpack_int (ptr, btree_ovf);
     }
 
   return error;
@@ -10491,7 +10506,7 @@ file_purge_invalid_heap_files (void)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xfile_tracker_purge_invalid_heap_files (thread_p);
+  success = xfile_tracker_clean_invalid_file (thread_p, heap, heap_ovf, btree, btree_ovf);
 
   exit_server (*thread_p);
 
@@ -10501,12 +10516,12 @@ file_purge_invalid_heap_files (void)
 
 #if !defined(NDEBUG)
 /*
- * file_purge_target_file -
+ * file_delete_target_file -
  *
  * return:
  */
 int
-file_purge_target_file (const char *target_vfid_str)
+file_delete_target_file (const char *target_vfid_str)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
@@ -10528,7 +10543,7 @@ file_purge_target_file (const char *target_vfid_str)
   (void) pack_const_string (request, target_vfid_str);
 
   req_error =
-    net_client_request (NET_SERVER_FILEMGR_PURGE_TARGET_FILE, request, request_size, reply,
+    net_client_request (NET_SERVER_CLEANFILEDB_DELETE_TARGET_FILE, request, request_size, reply,
 			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
@@ -10541,7 +10556,7 @@ file_purge_target_file (const char *target_vfid_str)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xfile_tracker_purge_target_file (thread_p, target_vfid_str);
+  success = xfile_tracker_delete_target_file (thread_p, target_vfid_str);
 
   exit_server (*thread_p);
 

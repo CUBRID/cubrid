@@ -3995,11 +3995,11 @@ error_exit:
 }
 
 /*
- * filemgr() - filemgr main routine
+ * cleanfiledb() - cleanfiledb main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
  */
 int
-filemgr (UTIL_FUNCTION_ARG * arg)
+cleanfiledb (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
@@ -4009,16 +4009,16 @@ filemgr (UTIL_FUNCTION_ARG * arg)
 #endif
   const char *output_file = NULL;
   FILE *outfp = NULL;
-  bool should_dump_file_list;
-  bool should_purge_invalid_heap_files;
+  bool is_dump_file_list;
+  bool is_clean_invalid_file;
 
   db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (db_name == NULL)
     {
-      goto print_filemgr_usage;
+      goto print_cleanfiledb_usage;
     }
 
-  output_file = utility_get_option_string_value (arg_map, FILEMGR_OUTPUT_FILE_S, 0);
+  output_file = utility_get_option_string_value (arg_map, CLEANFILEDB_OUTPUT_FILE_S, 0);
   if (output_file == NULL)
     {
       outfp = stdout;
@@ -4028,21 +4028,22 @@ filemgr (UTIL_FUNCTION_ARG * arg)
       outfp = fopen (output_file, "w");
       if (outfp == NULL)
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FILEMGR, FILEMGR_MSG_BAD_OUTPUT),
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CLEANFILEDB, CLEANFILEDB_MSG_BAD_OUTPUT),
 				 output_file);
 	  goto error_exit;
 	}
     }
 
-  should_dump_file_list = utility_get_option_bool_value (arg_map, FILEMGR_DUMP_FILE_LIST_S);
-  should_purge_invalid_heap_files = utility_get_option_bool_value (arg_map, FILEMGR_PURGE_INVALID_HEAP_S);
+  is_dump_file_list = utility_get_option_bool_value (arg_map, CLEANFILEDB_DUMP_FILE_LIST_S);
+  is_clean_invalid_file = utility_get_option_bool_value (arg_map, CLEANFILEDB_CLEAN_INVALID_FILE_S);
 #if !defined(NDEBUG)
   /*
    * INFO: Hidden option for debugging.
-   * Usage: -t, --force-purge-target-vfid=VFID
+   * Usage: -d, --delete-target-file=VFID
    * Format: "fileid|volid" (e.g., "123|1")
    */
-  target_vfid_str = utility_get_option_string_value (arg_map, FILEMGR_FORCE_PURGE_TARGET_VFID_S, 0);
+  target_vfid_str = utility_get_option_string_value (arg_map, CLEANFILEDB_DELETE_TARGET_FILE_S, 0);
 #endif
 
   if (check_database_name (db_name))
@@ -4068,38 +4069,54 @@ filemgr (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (should_dump_file_list == true)
+  /* Execute with default settings (no command-line options provided) */
+  if (!is_dump_file_list && !is_clean_invalid_file
+#if !defined(NDEBUG)
+      && target_vfid_str == NULL
+#endif
+    )
     {
-      (void) file_dump_file_list (outfp);
+      (void) file_dump_file_list (outfp, true);
 
       fflush (outfp);
     }
-
-  if (should_purge_invalid_heap_files == true)
+  else
     {
-      int heap = 0, heap_ovf = 0, btree = 0, btree_ovf = 0;
-      int total;
-
-      if (file_clean_invalid_file (&heap, &heap_ovf, &btree, &btree_ovf) != NO_ERROR)
+      if (is_dump_file_list)
 	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  db_shutdown ();
-	  goto error_exit;
+	  (void) file_dump_file_list (outfp, false);
+
+	  fflush (outfp);
 	}
 
-      total = heap + heap_ovf + btree + btree_ovf;
+      if (is_clean_invalid_file)
+	{
+	  int heap = 0, heap_ovf = 0, btree = 0, btree_ovf = 0;
+	  int total;
 
-      fprintf (outfp,
-	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CLEANFILEDB, CLEANFILEDB_MSG_CLEAN_SUMMARY),
-	       db_name, heap, heap_ovf, btree, btree_ovf, total);
-    }
+	  if (file_clean_invalid_file (&heap, &heap_ovf, &btree, &btree_ovf) != NO_ERROR)
+	    {
+	      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	      db_shutdown ();
+	      goto error_exit;
+	    }
+
+	  total = heap + heap_ovf + btree + btree_ovf;
+
+	  fprintf (outfp,
+		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CLEANFILEDB, CLEANFILEDB_MSG_CLEAN_SUMMARY),
+		   db_name, heap, heap_ovf, btree, btree_ovf, total);
+
+	  fflush (outfp);
+	}
 
 #if !defined(NDEBUG)
-  if (target_vfid_str != NULL)
-    {
-      (void) file_delete_target_file (target_vfid_str);
-    }
+      else if (target_vfid_str != NULL)
+	{
+	  (void) file_delete_target_file (target_vfid_str);
+	}
 #endif
+    }
 
   db_shutdown ();
 
@@ -4110,8 +4127,8 @@ filemgr (UTIL_FUNCTION_ARG * arg)
 
   return EXIT_SUCCESS;
 
-print_filemgr_usage:
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FILEMGR, FILEMGR_MSG_USAGE),
+print_cleanfiledb_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CLEANFILEDB, CLEANFILEDB_MSG_USAGE),
 	   basename (arg->argv0));
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 

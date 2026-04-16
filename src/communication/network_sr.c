@@ -902,18 +902,18 @@ net_server_init (void)
   req_p->name = "NET_SERVER_VACUUM_DUMP";
 
   /* file manager */
-  req_p = &net_Requests[NET_SERVER_FILEMGR_DUMP_FILE_LIST];
+  req_p = &net_Requests[NET_SERVER_CLEANFILEDB_DUMP_FILE_LIST];
   req_p->processing_function = sfile_tracker_dump_file_list;
-  req_p->name = "NET_SERVER_FILEMGR_DUMP_FILE_LIST";
+  req_p->name = "NET_SERVER_CLEANFILEDB_DUMP_FILE_LIST";
 
-  req_p = &net_Requests[NET_SERVER_FILEMGR_PURGE_INVALID_HEAP_FILES];
-  req_p->processing_function = sfile_tracker_purge_invalid_heap_files;
-  req_p->name = "NET_SERVER_FILEMGR_PURGE_INVALID_HEAP_FILES";
+  req_p = &net_Requests[NET_SERVER_CLEANFILEDB_CLEAN_INVALID_FILE];
+  req_p->processing_function = sfile_tracker_clean_invalid_file;
+  req_p->name = "NET_SERVER_CLEANFILEDB_CLEAN_INVALID_FILE";
 
 #if !defined(NDEBUG)
-  req_p = &net_Requests[NET_SERVER_FILEMGR_PURGE_TARGET_FILE];
-  req_p->processing_function = sfile_tracker_purge_target_file;
-  req_p->name = "NET_SERVER_FILEMGR_PURGE_TARGET_FILE";
+  req_p = &net_Requests[NET_SERVER_CLEANFILEDB_DELETE_TARGET_FILE];
+  req_p->processing_function = sfile_tracker_delete_target_file;
+  req_p->name = "NET_SERVER_CLEANFILEDB_DELETE_TARGET_FILE";
 #endif
 }
 

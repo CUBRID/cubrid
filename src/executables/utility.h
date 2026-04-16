@@ -89,7 +89,7 @@ typedef enum
   MSGCAT_UTIL_SET_VACUUMDB = 55,
   MSGCAT_UTIL_SET_CHECKSUMDB = 56,
   MSGCAT_UTIL_SET_TDE = 57,
-  MSGCAT_UTIL_SET_FILEMGR = 58
+  MSGCAT_UTIL_SET_CLEANFILEDB = 58
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -704,12 +704,13 @@ typedef enum
   TDE_MSG_USAGE = 60
 } MSGCAT_TDE_MSG;
 
-/* Message id in the set MSGCAT_UTIL_SET_FILEMGR */
+/* Message id in the set MSGCAT_UTIL_SET_CLEANFILEDB */
 typedef enum
 {
-  FILEMGR_MSG_BAD_OUTPUT = 10,
-  FILEMGR_MSG_USAGE = 60
-} MSGCAT_FILEMGR_MSG;
+  CLEANFILEDB_MSG_BAD_OUTPUT = 10,
+  CLEANFILEDB_MSG_CLEAN_SUMMARY = 11,
+  CLEANFILEDB_MSG_USAGE = 60
+} MSGCAT_CLEANFILEDB_MSG;
 
 typedef void *DSO_HANDLE;
 
@@ -731,7 +732,7 @@ typedef enum
   OPTIMIZEDB,
   INSTALLDB,
   DIAGDB,
-  FILEMGR,
+  CLEANFILEDB,
   PATCHDB,
   CHECKDB,
   ALTERDBHOST,
@@ -938,7 +939,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_OPTIMIZEDB                  "optimizedb"
 #define UTIL_OPTION_INSTALLDB                   "installdb"
 #define UTIL_OPTION_DIAGDB                      "diagdb"
-#define UTIL_OPTION_FILEMGR                     "filemgr"
+#define UTIL_OPTION_CLEANFILEDB                 "cleanfiledb"
 #define UTIL_OPTION_PATCHDB                     "emergency_patchlog"
 #define UTIL_OPTION_CHECKDB                     "checkdb"
 #define UTIL_OPTION_ALTERDBHOST                 "alterdbhost"
@@ -1161,20 +1162,20 @@ typedef struct _ha_config
 #define DIAG_EMERGENCY_S                        11202
 #define DIAG_EMERGENCY_L                        "emergency"
 
-/* filemgr option list */
-#define FILEMGR_SA_MODE_S                       'S'
-#define FILEMGR_SA_MODE_L                       "SA-mode"
-#define FILEMGR_CS_MODE_S                       'C'
-#define FILEMGR_CS_MODE_L                       "CS-mode"
-#define FILEMGR_OUTPUT_FILE_S                   'o'
-#define FILEMGR_OUTPUT_FILE_L                   "output-file"
-#define FILEMGR_DUMP_FILE_LIST_S                'l'
-#define FILEMGR_DUMP_FILE_LIST_L                "list"
-#define FILEMGR_PURGE_INVALID_HEAP_S            'p'
-#define FILEMGR_PURGE_INVALID_HEAP_L            "purge-invalid-heap-files"
+/* cleanfiledb option list */
+#define CLEANFILEDB_SA_MODE_S                   'S'
+#define CLEANFILEDB_SA_MODE_L                   "SA-mode"
+#define CLEANFILEDB_CS_MODE_S                   'C'
+#define CLEANFILEDB_CS_MODE_L                   "CS-mode"
+#define CLEANFILEDB_OUTPUT_FILE_S               'o'
+#define CLEANFILEDB_OUTPUT_FILE_L               "output-file"
+#define CLEANFILEDB_DUMP_FILE_LIST_S            'l'
+#define CLEANFILEDB_DUMP_FILE_LIST_L            "list"
+#define CLEANFILEDB_CLEAN_INVALID_FILE_S        'c'
+#define CLEANFILEDB_CLEAN_INVALID_FILE_L        "clean-invalid-file"
 #if !defined(NDEBUG)
-#define FILEMGR_FORCE_PURGE_TARGET_VFID_S       't'
-#define FILEMGR_FORCE_PURGE_TARGET_VFID_L       "force-purge-target-vfid"
+#define CLEANFILEDB_DELETE_TARGET_FILE_S        'd'
+#define CLEANFILEDB_DELETE_TARGET_FILE_L        "delete-target-file"
 #endif
 
 /* patch option list */
@@ -1770,7 +1771,7 @@ extern "C"
   extern int copydb (UTIL_FUNCTION_ARG * arg_map);
   extern int optimizedb (UTIL_FUNCTION_ARG * arg_map);
   extern int diagdb (UTIL_FUNCTION_ARG * arg_map);
-  extern int filemgr (UTIL_FUNCTION_ARG * arg_map);
+  extern int cleanfiledb (UTIL_FUNCTION_ARG * arg_map);
   extern int patchdb (UTIL_FUNCTION_ARG * arg_map);
   extern int estimatedb_data (UTIL_FUNCTION_ARG * arg_map);
   extern int estimatedb_index (UTIL_FUNCTION_ARG * arg_map);

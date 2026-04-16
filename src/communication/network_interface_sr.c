@@ -10268,10 +10268,13 @@ sfile_tracker_dump_file_list (THREAD_ENTRY * thread_p, unsigned int rid, char *r
   char *buffer;
   int buffer_size;
   int send_size;
+  int invalid_only;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
 
-  (void) or_unpack_int (request, &buffer_size);
+  ptr = or_unpack_int (request, &buffer_size);
+  ptr = or_unpack_int (ptr, &invalid_only);
 
   buffer = (char *) db_private_alloc (thread_p, buffer_size);
   if (buffer == NULL)
@@ -10289,7 +10292,7 @@ sfile_tracker_dump_file_list (THREAD_ENTRY * thread_p, unsigned int rid, char *r
       return;
     }
 
-  xfile_tracker_dump_file_list (thread_p, outfp);
+  xfile_tracker_dump_file_list (thread_p, outfp, (bool) invalid_only);
   file_size = ftell (outfp);
 
   /*
@@ -10328,7 +10331,7 @@ sfile_tracker_dump_file_list (THREAD_ENTRY * thread_p, unsigned int rid, char *r
 }
 
 /*
- * sfile_tracker_purge_invalid_heap_files -
+ * sfile_tracker_clean_invalid_file -
  *
  * return:
  *
@@ -10339,25 +10342,32 @@ sfile_tracker_dump_file_list (THREAD_ENTRY * thread_p, unsigned int rid, char *r
  * NOTE:
  */
 void
-sfile_tracker_purge_invalid_heap_files (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+sfile_tracker_clean_invalid_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+  int heap = 0, heap_ovf = 0, btree = 0, btree_ovf = 0;
   int error;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
 
-  error = xfile_tracker_purge_invalid_heap_files (thread_p);
+  error = xfile_tracker_clean_invalid_file (thread_p, &heap, &heap_ovf, &btree, &btree_ovf);
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
     }
 
-  (void) or_pack_errcode (reply, error);
+  ptr = or_pack_errcode (reply, error);
+  ptr = or_pack_int (ptr, heap);
+  ptr = or_pack_int (ptr, heap_ovf);
+  ptr = or_pack_int (ptr, btree);
+  ptr = or_pack_int (ptr, btree_ovf);
+
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 #if !defined(NDEBUG)
 /*
- * sfile_tracker_purge_target_file -
+ * sfile_tracker_delete_target_file -
  *
  * return:
  *
@@ -10368,7 +10378,7 @@ sfile_tracker_purge_invalid_heap_files (THREAD_ENTRY * thread_p, unsigned int ri
  * NOTE:
  */
 void
-sfile_tracker_purge_target_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+sfile_tracker_delete_target_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   int error;
   char *target_vfid_str;
@@ -10377,7 +10387,7 @@ sfile_tracker_purge_target_file (THREAD_ENTRY * thread_p, unsigned int rid, char
 
   (void) or_unpack_string_nocopy (request, &target_vfid_str);
 
-  error = xfile_tracker_purge_target_file (thread_p, target_vfid_str);
+  error = xfile_tracker_delete_target_file (thread_p, target_vfid_str);
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);

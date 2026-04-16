@@ -440,10 +440,10 @@ extern int loaddb_destroy ();
 extern int loaddb_interrupt ();
 extern int loaddb_update_stats ();
 
-extern int file_dump_file_list (FILE * outfp);
-extern int file_purge_invalid_heap_files (void);
+extern int file_dump_file_list (FILE * outfp, bool invalid_only);
+extern int file_clean_invalid_file (int *heap, int *heap_ovf, int *btree, int *btree_ovf);
 #if !defined(NDEBUG)
-extern int file_purge_target_file (const char *target_vfid_str);
+extern int file_delete_target_file (const char *target_vfid_str);
 #endif
 
 #endif /* _NETWORK_INTERFACE_CL_H_ */
