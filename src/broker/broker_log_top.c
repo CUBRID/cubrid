@@ -276,7 +276,6 @@ get_file_list (char *list[], int size, int argc, char *argv[], int arg_start)
 
       do
 	{
-	  /* skip directory */
 	  if (index < size && !(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
 	    {
 	      assert (list[index] != NULL);
@@ -384,7 +383,6 @@ log_top_free_heap_files (char **tab, int n)
     }
 }
 
-/* Restore working directory after chdir into a broker output subdirectory. */
 static int
 log_top_restore_cwd (const char *saved_cwd)
 {
@@ -401,10 +399,6 @@ log_top_restore_cwd (const char *saved_cwd)
   return 0;
 }
 
-/*
- * log_top_multi_run 내 dirs[] 배열 해제 — 4곳에서 반복되던 패턴을 통합.
- * is_conf_multi 일 때는 전체 배열, 아니면 dirs[0]만 해제.
- */
 static void
 log_top_free_dirs (char **dirs, int ndirs, int is_conf_multi)
 {
@@ -544,34 +538,38 @@ log_top_is_pattern (const char *s)
   return strchr (s, '*') != NULL || strchr (s, '?') != NULL || strchr (s, '[') != NULL;
 }
 
-/* Returns 0 if basename is not a CAS sql/slow log filename; else suffix length (8, 9, 12, or 13). */
 static size_t
 log_top_cas_log_suffix_len (const char *basename)
 {
+  const char *p;
+  const char *best = NULL;
   size_t elen;
 
   if (basename == NULL)
     {
       return 0;
     }
+
   elen = strlen (basename);
-  if (elen >= 13 && strcmp (basename + elen - 13, ".slow.log.bak") == 0)
+
+  p = strstr (basename, ".sql.log");
+  if (p != NULL && (best == NULL || p < best))
     {
-      return 13;
+      best = p;
     }
-  if (elen >= 12 && strcmp (basename + elen - 12, ".sql.log.bak") == 0)
+
+  p = strstr (basename, ".slow.log");
+  if (p != NULL && (best == NULL || p < best))
     {
-      return 12;
+      best = p;
     }
-  if (elen >= 9 && strcmp (basename + elen - 9, ".slow.log") == 0)
+
+  if (best == NULL)
     {
-      return 9;
+      return 0;
     }
-  if (elen >= 8 && strcmp (basename + elen - 8, ".sql.log") == 0)
-    {
-      return 8;
-    }
-  return 0;
+
+  return elen - (size_t) (best - basename);
 }
 
 #if !defined(WINDOWS)
@@ -614,8 +612,7 @@ log_top_gather_files_exact (const char *broker, const char *dir, char *out_files
 }
 
 static int
-log_top_gather_files_pattern_suffix (const char *pattern, const char *dir, const char *suffix, size_t suffix_len,
-				     char *out_files[], int max_files)
+log_top_gather_files_pattern_all (const char *pattern, const char *dir, char *out_files[], int max_files)
 {
   DIR *d;
   struct dirent *e;
@@ -623,7 +620,7 @@ log_top_gather_files_pattern_suffix (const char *pattern, const char *dir, const
   char broker_prefix[256];
   char *last_underscore;
   int n = 0;
-  size_t elen;
+  size_t elen, suffix_len, copy_len;
 
   d = opendir (dir);
   if (!d)
@@ -632,23 +629,24 @@ log_top_gather_files_pattern_suffix (const char *pattern, const char *dir, const
   while ((e = readdir (d)) != NULL && n < max_files)
     {
       elen = strlen (e->d_name);
-      if (elen <= suffix_len)
+      suffix_len = log_top_cas_log_suffix_len (e->d_name);
+      if (suffix_len == 0)
 	continue;
-      if (strcmp (e->d_name + elen - suffix_len, suffix) != 0)
-	continue;
-      {
-	size_t copy_len = elen - suffix_len;
-	if (copy_len >= sizeof (broker_prefix))
-	  copy_len = sizeof (broker_prefix) - 1;
-	memcpy (broker_prefix, e->d_name, copy_len);
-	broker_prefix[copy_len] = '\0';
-      }
+
+      copy_len = elen - suffix_len;
+      if (copy_len >= sizeof (broker_prefix))
+	copy_len = sizeof (broker_prefix) - 1;
+      memcpy (broker_prefix, e->d_name, copy_len);
+      broker_prefix[copy_len] = '\0';
+
       last_underscore = strrchr (broker_prefix, '_');
       if (!last_underscore)
 	continue;
       *last_underscore = '\0';
+
       if (!log_top_match_pattern (broker_prefix, pattern))
 	continue;
+
       snprintf (path, sizeof (path), "%s/%s", dir, e->d_name);
       out_files[n] = (char *) MALLOC (strlen (path) + 1);
       if (out_files[n] == NULL)
@@ -664,42 +662,6 @@ log_top_gather_files_pattern_suffix (const char *pattern, const char *dir, const
   closedir (d);
   return n;
 }
-
-static int
-log_top_gather_files_pattern_all (const char *pattern, const char *dir, char *out_files[], int max_files)
-{
-  int n = 0;
-  int r;
-
-  r = log_top_gather_files_pattern_suffix (pattern, dir, ".sql.log", 8, out_files, max_files);
-  if (r < 0)
-    {
-      return -1;
-    }
-  n = r;
-  r = log_top_gather_files_pattern_suffix (pattern, dir, ".sql.log.bak", 12, out_files + n, max_files - n);
-  if (r < 0)
-    {
-      log_top_free_heap_files (out_files, n);
-      return -1;
-    }
-  n += r;
-  r = log_top_gather_files_pattern_suffix (pattern, dir, ".slow.log", 9, out_files + n, max_files - n);
-  if (r < 0)
-    {
-      log_top_free_heap_files (out_files, n);
-      return -1;
-    }
-  n += r;
-  r = log_top_gather_files_pattern_suffix (pattern, dir, ".slow.log.bak", 13, out_files + n, max_files - n);
-  if (r < 0)
-    {
-      log_top_free_heap_files (out_files, n);
-      return -1;
-    }
-  n += r;
-  return n;
-}
 #else
 static int
 log_top_gather_files_exact (const char *broker, const char *dir, char *out_files[], int max_files)
@@ -709,7 +671,7 @@ log_top_gather_files_exact (const char *broker, const char *dir, char *out_files
   char pattern[BROKER_LOG_TOP_MAX_PATH];
   char path[BROKER_LOG_TOP_MAX_PATH];
   int n = 0;
-  const char *suffixes[] = { "*.sql.log", "*.sql.log.bak", "*.slow.log", "*.slow.log.bak", NULL };
+  const char *suffixes[] = { "*.sql.log*", "*.slow.log*", NULL };
 
   for (int i = 0; suffixes[i] && n < max_files; i++)
     {
@@ -747,7 +709,7 @@ log_top_gather_files_pattern_all (const char *pattern, const char *dir, char *ou
   char path[BROKER_LOG_TOP_MAX_PATH];
   int n = 0;
   int si;
-  const char *suffixes[] = { "*.sql.log", "*.sql.log.bak", "*.slow.log", "*.slow.log.bak", NULL };
+  const char *suffixes[] = { "*.sql.log*", "*.slow.log*", NULL };
 
   for (si = 0; suffixes[si] && n < max_files; si++)
     {
@@ -789,7 +751,7 @@ log_top_get_brokers_from_dir (const char *dir, char *out_brokers[], int max_brok
   int nseen = 0;
   int n = 0;
   int i;
-  const char *patterns[] = { "*_*.sql.log", "*_*.sql.log.bak", "*_*.slow.log", "*_*.slow.log.bak", NULL };
+  const char *patterns[] = { "*_*.sql.log*", "*_*.slow.log*", NULL };
 
   for (i = 0; patterns[i] && n < max_brokers; i++)
     {
@@ -944,11 +906,6 @@ log_top_fill_parent_out_base (char *parent_out_base, size_t parent_sz)
   return 0;
 }
 
-/*
- * Unix: log_top_tran / log_top_query를 자식 프로세스에서 실행해 SIGSEGV 등으로 힙이 손상된 채
- * 복귀하는 것을 피한다. 반환값: 0 = 정상 완료, 1 = 자식이 시그널로 종료(건너뜀).
- * Windows: 동일 프로세스에서 직접 호출.
- */
 static int
 log_top_fork_tran_query (int argc, char **argv, int arg_start, volatile int *qerr)
 {
@@ -1117,7 +1074,6 @@ log_top_multi_run_one_broker (const char *parent_out_base, const char *subdir_fo
     }
 }
 
-/* log_top_multi_run / log_top_query_split_paths 종료 시 MT 억제 플래그 복원 */
 static int
 log_top_finish_force_single_thread (int val)
 {
@@ -1140,14 +1096,13 @@ log_top_multi_run (void)
   int error = 0;
   struct stat st;
 
-  saved_cwd = getcwd (cwd_buf, sizeof (cwd_buf));
+  saved_cwd = (volatile char *) getcwd (cwd_buf, sizeof (cwd_buf));
   if (saved_cwd == NULL)
     {
       fprintf (stderr, "Error: cannot get current directory\n");
       return -1;
     }
 
-  /* 배치 모드는 안정성이 우선: MT_MODE 사용 시에도 단일 스레드로 실행 */
   broker_log_top_force_single_thread = 1;
 
   if (strcmp (log_top_multi_log_dir, ".") == 0 && log_top_multi_broker_name != NULL)
@@ -1633,6 +1588,7 @@ log_top_query (int argc, char *argv[], int arg_start)
 	      return error;
 	    }
 	}
+	}
 #else
       error = log_top (fp, filename, start_offset, end_offset);
       fclose (fp);
@@ -1684,10 +1640,6 @@ log_top_basename_is_cas_sql_slow_log (const char *basename)
   return log_top_cas_log_suffix_len (basename) != 0;
 }
 
-/*
- * log_top_path_to_basename — 경로에서 basename 부분의 포인터를 반환.
- * '/'(및 Windows '\\'）이후 부분. 구분자가 없으면 path 자체.
- */
 static const char *
 log_top_path_to_basename (const char *path)
 {
@@ -1822,7 +1774,6 @@ log_top_query_split_paths (int nfiles, char **paths)
       return -1;
     }
 
-  /* 배치 split 경로와 동일하게 MT_MODE에서도 단일 스레드로 실행 */
   broker_log_top_force_single_thread = 1;
 
   g_start = 0;
@@ -1917,7 +1868,7 @@ thr_main (void *arg)
 	}
       else
 	{
-	  log_top (work_msg[self_index].fp, work_msg[self_index].filename);
+	  log_top (work_msg[self_index].fp, work_msg[self_index].filename, -1, -1);
 	  fclose (work_msg[self_index].fp);
 	  work_msg[self_index].fp = NULL;
 	  work_msg[self_index].filename = NULL;
@@ -2207,18 +2158,16 @@ get_args (int argc, char *argv[])
 {
   int c;
   int option_index = 0;
-  int from_conf_mode = 0;
 
   log_top_multi_explicit_dirs_flag = 0;
   log_top_out_merge = 1;
 
   static struct option long_options[] = {
-    {"all-broker-log", optional_argument, 0, 'l'},
     {"from-conf", no_argument, 0, 'C'},
     {0, 0, 0, 0}
   };
 
-  while ((c = getopt_long (argc, argv, "tq:h:F:T:O:Cl::", long_options, &option_index)) != EOF)
+  while ((c = getopt_long (argc, argv, "tq:h:F:T:O:C", long_options, &option_index)) != EOF)
     {
       switch (c)
 	{
@@ -2243,31 +2192,7 @@ get_args (int argc, char *argv[])
 	      goto date_format_err;
 	    }
 	  break;
-	case 'l':
-	  if (from_conf_mode)
-	    {
-	      goto getargs_err;
-	    }
-	  if (optarg && optarg[0])
-	    {
-	      log_top_multi_log_dir = optarg;
-	    }
-	  else if (optind < argc && strchr (argv[optind], '/') != NULL)
-	    {
-	      log_top_multi_log_dir = argv[optind];
-	      optind++;
-	    }
-	  else
-	    {
-	      log_top_multi_log_dir = "LOG_DIR";
-	    }
-	  break;
 	case 'C':
-	  if (log_top_multi_log_dir != NULL)
-	    {
-	      goto getargs_err;
-	    }
-	  from_conf_mode = 1;
 	  log_top_multi_log_dir = "LOG_DIR";
 	  break;
 	case 'O':
@@ -2292,7 +2217,6 @@ get_args (int argc, char *argv[])
       log_top_mode = MODE_MAX_HANDLE;
     }
 
-  /* -O split + only directory path(s): same batch layout as --from-conf / --all-broker-log */
   if (!log_top_out_merge && log_top_multi_log_dir == NULL && optind < argc)
     {
       struct stat st;
@@ -2350,7 +2274,7 @@ get_args (int argc, char *argv[])
 	}
     }
 
-  if (from_conf_mode && optind < argc)
+  if (log_top_multi_log_dir != NULL && optind < argc)
     {
       goto getargs_err;
     }
@@ -2370,7 +2294,8 @@ get_args (int argc, char *argv[])
 getargs_err:
   fprintf (stderr,
 	   "%s [-t] [-F <from date>] [-T <to date>] [-O <merge | split>] <log_file> ...\n"
-	   "or\n" "%s [-t] [-F <from date>] [-T <to date>] <--from-conf>\n", argv[0], argv[0]);
+	   "or\n"
+	   "%s [-t] [-F <from date>] [-T <to date>] --from-conf\n", argv[0], argv[0]);
   return -1;
 date_format_err:
   fprintf (stderr, "invalid date. valid date format is yy-mm-dd hh:mm:ss.\n");

@@ -27,6 +27,9 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
+#ifdef MT_MODE
+#include <pthread.h>
+#endif
 
 #include "cas_common.h"
 #include "cas_query_info.h"
@@ -49,7 +52,6 @@ static int num_query_info_ne = 0;
 #endif
 
 #ifdef MT_MODE
-/* Statically initialized so query_info_reset() is safe before query_info_mutex_init(). */
 static pthread_mutex_t query_info_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
@@ -57,8 +59,6 @@ static pthread_mutex_t query_info_mutex = PTHREAD_MUTEX_INITIALIZER;
 void
 query_info_mutex_init ()
 {
-  /* Mutex uses PTHREAD_MUTEX_INITIALIZER; kept for API compatibility. */
-}
 #endif
 
 void
