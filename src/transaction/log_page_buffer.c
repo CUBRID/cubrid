@@ -10481,7 +10481,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
     {
       logpb_finalize_pool (thread_p);
       (void) pgbuf_invalidate_all (thread_p, NULL_VOLID);
-      logtb_undefine_trantable (thread_p);
+      logtb_undefine_trantable (thread_p, LOGTB_DESTROY_PGBUF);
       if (log_Gl.append.vdes != NULL_VOLDES)
 	{
 	  fileio_dismount (thread_p, log_Gl.append.vdes);

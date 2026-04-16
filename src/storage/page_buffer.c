@@ -72,6 +72,9 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "thread_entry.hpp"
+#if defined(LINUX)
+#include <sys/mman.h>
+#endif /* LINUX */
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -747,6 +750,7 @@ struct pgbuf_buffer_pool
 {
   /* total # of buffer frames on the buffer (fixed value: 10 * num_trans) */
   int num_buffers;
+  PGLENGTH page_size;		/* IO_PAGESIZE at init time, for idempotent check */
 
   /* buffer related tables and lists (the essential structures) */
 
@@ -1516,6 +1520,29 @@ pgbuf_initialize (void)
 {
   pgbuf_flags_mask_sanity_check ();
 
+  /* Compute expected num_buffers early for idempotent check */
+  int new_num_buffers = prm_get_integer_value (PRM_ID_PB_NBUFFERS);
+  if (new_num_buffers < PGBUF_MINIMUM_BUFFERS)
+    {
+      new_num_buffers = PGBUF_MINIMUM_BUFFERS;
+    }
+
+  /* Idempotent: if already initialized with same buffer count and same page size, skip.
+   * Both dimensions must match because PGBUF_IOPAGE_BUFFER_SIZE depends on IO_PAGESIZE
+   * (via SIZEOF_IOPAGE_PAGESIZE_AND_GUARD), and PGBUF_FIND_IOPAGE_PTR uses it for
+   * pointer arithmetic. */
+  if (pgbuf_Pool.iopage_table != NULL)
+    {
+      if (pgbuf_Pool.num_buffers == new_num_buffers
+	  && pgbuf_Pool.page_size == IO_PAGESIZE)
+	{
+	  return NO_ERROR;
+	}
+      /* Configuration changed (page size mismatch or buffer count change).
+       * Finalize current pool before re-initializing with new size. */
+      pgbuf_finalize ();
+    }
+
   /* Initialize all members individually */
   pgbuf_Pool.num_buffers = 0;
   pgbuf_Pool.BCB_table = NULL;
@@ -1578,15 +1605,8 @@ pgbuf_initialize (void)
   pgbuf_Pool.show_status_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
-  pgbuf_Pool.num_buffers = prm_get_integer_value (PRM_ID_PB_NBUFFERS);
-  if (pgbuf_Pool.num_buffers < PGBUF_MINIMUM_BUFFERS)
-    {
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "pgbuf_initialize: WARNING Num_buffers = %d is too small. %d was assumed",
-		    pgbuf_Pool.num_buffers, PGBUF_MINIMUM_BUFFERS);
-#endif /* CUBRID_DEBUG */
-      pgbuf_Pool.num_buffers = PGBUF_MINIMUM_BUFFERS;
-    }
+  pgbuf_Pool.num_buffers = new_num_buffers;
+  pgbuf_Pool.page_size = IO_PAGESIZE;
   pgbuf_latch_timeout = prm_get_integer_value (PRM_ID_PAGE_LATCH_TIMEOUT) * 1000;
 #if defined (SERVER_MODE)
 #if defined (NDEBUG)
@@ -1828,6 +1848,7 @@ pgbuf_finalize (void)
 	}
       free_and_init (pgbuf_Pool.BCB_table);
       pgbuf_Pool.num_buffers = 0;
+      pgbuf_Pool.page_size = 0;
     }
 
   if (pgbuf_Pool.iopage_table != NULL)
@@ -5373,6 +5394,16 @@ pgbuf_initialize_bcb_table (void)
 	}
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+
+#if defined(LINUX)
+  /* Hint to kernel to use transparent huge pages for the large iopage buffer.
+   * Reduces page fault count from ~4M (4KB pages) to ~8K (2MB THP).
+   * Advisory-only: silently ignored if THP is disabled. */
+  if (madvise (pgbuf_Pool.iopage_table, (size_t) alloc_size, MADV_HUGEPAGE) != 0)
+    {
+      er_log_debug (ARG_FILE_LINE, "pgbuf_initialize_bcb_table: madvise(MADV_HUGEPAGE) failed for iopage_table");
+    }
+#endif /* LINUX */
 
   /* initialize each entry of the buffer BCB table */
   for (i = 0; i < pgbuf_Pool.num_buffers; i++)
