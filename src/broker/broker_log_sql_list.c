@@ -174,6 +174,7 @@ sql_info_write (char *src_sql, char *q_name, FILE * fp)
     }
   sql_change_comp_form (sql, sql);
 
+  memset (&tmp_sql_info, 0, sizeof (tmp_sql_info));
   tmp_sql_info.sql = sql;
 
   search_p = (T_SQL_INFO *) bsearch (&tmp_sql_info, sql_list, num_sql_list, sizeof (T_SQL_INFO), comp_func);
