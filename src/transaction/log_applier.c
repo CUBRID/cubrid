@@ -508,6 +508,7 @@ static char la_peer_host[CUB_MAXHOSTNAMELEN + 1];
 
 static bool la_enable_sql_logging = false;
 static LA_APPLY_WORKER la_apply_Workers[LA_APPLY_WORKER_COUNT];
+static pthread_mutex_t la_sql_compile_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 #if defined (WINDOWS)
 static void la_shutdown_by_signal (void);
@@ -5700,11 +5701,7 @@ la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
       goto end;
     }
 
-  error = sm_flush_objects (classop);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
+  /* sm_flush_objects removed: repl path uses WS_REPL_OBJ list, not MOP dirty list */
 
   if (item->item_type != RVREPL_DATA_DELETE)
     {
@@ -6230,6 +6227,8 @@ la_update_query_execute (const char *sql, bool au_disable)
       AU_DISABLE (au_save);
     }
 
+  pthread_mutex_lock (&la_sql_compile_mutex);
+
   res = db_open_buffer_and_compile_first_statement (sql, &query_error, DB_NO_OIDS, &session, &stmt_no);
   if (res == NO_ERROR && session != NULL)
     {
@@ -6258,6 +6257,8 @@ la_update_query_execute (const char *sql, bool au_disable)
     {
       db_close_session_local (session);
     }
+
+  pthread_mutex_unlock (&la_sql_compile_mutex);
 
   if (au_disable)
     {
@@ -6290,6 +6291,8 @@ la_update_query_execute_with_values (const char *sql, int arg_count, DB_VALUE * 
       /* in order to update 'db_ha_info', disable authorization temporarily */
       AU_DISABLE (au_save);
     }
+
+  pthread_mutex_lock (&la_sql_compile_mutex);
 
   res = db_open_buffer_and_compile_first_statement (sql, &query_error, DB_NO_OIDS, &session, &stmt_no);
   if (res == NO_ERROR && session != NULL && arg_count > 0)
@@ -6325,6 +6328,8 @@ la_update_query_execute_with_values (const char *sql, int arg_count, DB_VALUE * 
     {
       db_close_session_local (session);
     }
+
+  pthread_mutex_unlock (&la_sql_compile_mutex);
 
   if (au_disable)
     {
@@ -7557,8 +7562,16 @@ la_commit_transaction (unsigned long long applied_item_count)
 
   if ((long unsigned) diff_time >= ws_cull_mops_interval || diff_applied_item >= ws_cull_mops_per_apply)
     {
-      ws_filter_dirty ();
-      ws_cull_mops ();
+      /* ws_intern_instances: flush + decache + cull per class.
+         Cleans up MOPs that repl flush left behind (DONT_DECACHE). */
+      DB_OBJLIST *m;
+      for (m = ws_Resident_classes; m != NULL; m = m->next)
+	{
+	  if (m->op != NULL && m->op != sm_Root_class_mop)
+	    {
+	      ws_intern_instances (m->op);
+	    }
+	}
 
       last_time = curr_time;
       last_applied_item = curr_applied_item;
