@@ -248,42 +248,55 @@ getsize (int pid)
 int
 getsize (int pid)
 {
-  char buf[4096];
-  char *p;
-  int fd;
-  int read_len, i;
-  INT64 psize;
+  char path[256];
+  char line[256];
+  FILE *fp;
+  long total_mem_kb = 0;
+  long rss = 0;
+  long swap = 0;
+  int found_count = 0;
 
   if (pid <= 0)
     {
       return -1;
     }
 
-  sprintf (buf, "/proc/%d/stat", pid);
-  fd = open (buf, O_RDONLY);
-  if (fd < 0)
+  snprintf (path, sizeof (path), "/proc/%d/status", pid);
+  fp = fopen (path, "r");
+  if (fp == NULL)
     {
       return -1;
     }
 
-  read_len = read (fd, buf, sizeof (buf) - 1);
-  close (fd);
-
-  if (read_len < 0 || read_len >= (int) sizeof (buf))
+  while (fgets (line, sizeof (line), fp))
     {
-      return 1;
-    }
-  buf[read_len] = '\0';
+      if (strncmp (line, "VmRSS:", 6) == 0)
+	{
+	  rss = atol (line + 6);
+	  found_count++;
+	}
+      else if (strncmp (line, "VmSwap:", 7) == 0)
+	{
+	  swap = atol (line + 7);
+	  found_count++;
+	}
 
-  p = strchr (buf, ')');
-  p++;
-  for (i = 0; i < 20; i++)
+      if (found_count == 2)
+	{
+	  break;
+	}
+    }
+
+  fclose (fp);
+
+  if (found_count == 0)
     {
-      p = skip_token (p);
+      return -1;
     }
 
-  psize = atoll (p);
-  return (int) (psize / 1024);
+  total_mem_kb = rss + swap;
+
+  return total_mem_kb;
 }
 
 static char *
