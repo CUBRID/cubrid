@@ -4765,12 +4765,12 @@ la_flush_repl_items (bool immediate)
 
   if (la_Info.num_unflushed >= LA_MAX_UNFLUSHED_REPL_ITEMS || immediate == true)
     {
-      error = locator_repl_flush_all ();
+      error = __gv_loc_repl.locator_repl_flush_all ();
       if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
 	{
 	  while (true)
 	    {
-	      flush_err = ws_get_repl_error_from_error_link ();
+	      flush_err = __gv_loc_repl.ws_get_repl_error_from_error_link ();
 	      if (flush_err == NULL)
 		{
 		  break;
@@ -4840,22 +4840,22 @@ la_flush_repl_items (bool immediate)
 
 		  error = ER_LC_PARTIALLY_FAILED_TO_FLUSH;
 
-		  ws_free_repl_flush_error (flush_err);
-		  ws_clear_all_repl_errors_of_error_link ();
+		  __gv_loc_repl.ws_free_repl_flush_error (flush_err);
+		  __gv_loc_repl.ws_clear_all_repl_errors_of_error_link ();
 
 		  return error;
 		}
 
-	      ws_free_repl_flush_error (flush_err);
+	      __gv_loc_repl.ws_free_repl_flush_error (flush_err);
 	    }
 
-	  ws_clear_all_repl_errors_of_error_link ();
+	  __gv_loc_repl.ws_clear_all_repl_errors_of_error_link ();
 	  error = NO_ERROR;
 	}
       else if (error != NO_ERROR)
 	{
 	  la_Info.fail_counter++;
-	  ws_clear_all_repl_errors_of_error_link ();
+	  __gv_loc_repl.ws_clear_all_repl_errors_of_error_link ();
 
 	  er_stack_push ();
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_FAILED_TO_FLUSH_REPL_ITEMS, 1, error);
@@ -4865,7 +4865,7 @@ la_flush_repl_items (bool immediate)
 	}
 
       la_Info.num_unflushed = 0;
-      ws_clear_all_repl_objs ();
+      __gv_loc_repl.ws_clear_all_repl_objs ();
     }
 
   return error;
@@ -4932,8 +4932,9 @@ la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
 
   has_index = classobj_class_has_indexes (class_);
 
-  error = ws_add_to_repl_obj_list (class_oid, item->packed_key_value, item->packed_key_value_length, recdes,
-				   operation, has_index);
+  error =
+    __gv_loc_repl.ws_add_to_repl_obj_list (class_oid, item->packed_key_value, item->packed_key_value_length, recdes,
+					   operation, has_index);
   return error;
 }
 
@@ -6960,7 +6961,7 @@ la_init (const char *log_path, const int max_mem_size)
 
   if (db_get_client_type () == DB_CLIENT_TYPE_LOG_APPLIER)
     {
-      ws_init_repl_objs ();
+      __gv_loc_repl.ws_init_repl_objs ();
     }
 
   la_Info.repl_filter.type = REPL_FILTER_NONE;
@@ -7073,7 +7074,7 @@ la_shutdown (void)
 
   if (db_get_client_type () == DB_CLIENT_TYPE_LOG_APPLIER)
     {
-      ws_clear_all_repl_objs ();
+      __gv_loc_repl.ws_clear_all_repl_objs ();
     }
 
   if (la_recdes_pool.is_initialized == true)

@@ -12270,14 +12270,3 @@ prm_get_bigint_value (PARAM_ID prm_id)
   return PRM_GET_BIGINT_P (prm_get_value (prm_id));
 }
 #endif /* window */
-
-
-#if !defined(NDEBUG) && !defined(MULTI_CONN_TO_A_SERVER)
-pthread_t gv_main_tid;
-
-__attribute__ ((constructor))
-     static void get_main_thread_id ()
-{
-  gv_main_tid = pthread_self ();
-}
-#endif
