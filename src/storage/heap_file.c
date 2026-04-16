@@ -27876,7 +27876,26 @@ bool
 heap_recdes_contains_oos (const RECDES * record)
 {
   int flag = (INT32) OR_GET_MVCC_FLAG (record->data);
-  return flag & OR_MVCC_FLAG_HAS_OOS;
+  bool flag_has_oos = (flag & OR_MVCC_FLAG_HAS_OOS) != 0;
+
+#if !defined (NDEBUG)
+  /* Cross-validate MVCC flag against VOT scan to detect false positives.
+   * heap_recdes_contains_oos (MVCC flag) and heap_recdes_check_has_oos (VOT scan) must agree. */
+  bool vot_has_oos = heap_recdes_check_has_oos (record);
+  if (flag_has_oos != vot_has_oos)
+    {
+      int repid_and_flags = OR_GET_INT (record->data + OR_REP_OFFSET);
+      _er_log_debug (ARG_FILE_LINE,
+		     "[OOS-CONSISTENCY] MISMATCH: flag_has_oos=%d, vot_has_oos=%d, "
+		     "repid_and_flags=0x%08x, mvcc_flags=0x%02x, rec_len=%d, offset_size=%d\n",
+		     flag_has_oos ? 1 : 0, vot_has_oos ? 1 : 0,
+		     repid_and_flags, (int) OR_GET_MVCC_FLAG (record->data),
+		     record->length, (int) OR_GET_OFFSET_SIZE (record->data));
+      assert (false && "heap_recdes_contains_oos (MVCC flag) vs heap_recdes_check_has_oos (VOT) mismatch");
+    }
+#endif
+
+  return flag_has_oos;
 }
 
 int
