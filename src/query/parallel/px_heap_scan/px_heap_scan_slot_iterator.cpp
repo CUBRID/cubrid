@@ -70,7 +70,7 @@ namespace parallel_heap_scan
     m_cur_oid.pageid = NULL_PAGEID;
     m_class_oid = hsidp->cls_oid;
     m_next_oid.pageid = NULL_PAGEID;
-    m_is_peeking = PEEK;
+    m_is_peeking = (scan_id->fixed != 0);
     m_rest_regu_list = hsidp->rest_regu_list;
     m_val_list = scan_id->val_list;
     m_scan_cache = &hsidp->scan_cache;
