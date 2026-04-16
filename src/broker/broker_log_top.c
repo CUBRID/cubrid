@@ -687,7 +687,12 @@ log_top_gather_files_exact (const char *broker, const char *dir, char *out_files
 	  out_files[n] = (char *) MALLOC (strlen (path) + 1);
 	  if (out_files[n] == NULL)
 	    {
+	      int zi;
 	      fprintf (stderr, "Error: out of memory while collecting log file path under %s.\n", dir);
+	      for (zi = 0; zi < n; zi++)
+		{
+		  FREE_MEM (out_files[zi]);
+		}
 	      FindClose (h);
 	      return -1;
 	    }
@@ -727,7 +732,12 @@ log_top_gather_files_pattern_all (const char *pattern, const char *dir, char *ou
 	  out_files[n] = (char *) MALLOC (strlen (path) + 1);
 	  if (out_files[n] == NULL)
 	    {
+	      int zi;
 	      fprintf (stderr, "Error: out of memory while collecting log file path under %s.\n", dir);
+	      for (zi = 0; zi < n; zi++)
+		{
+		  FREE_MEM (out_files[zi]);
+		}
 	      FindClose (h);
 	      return -1;
 	    }
@@ -781,7 +791,12 @@ log_top_get_brokers_from_dir (const char *dir, char *out_brokers[], int max_brok
 	  out_brokers[n] = (char *) MALLOC (strlen (broker) + 1);
 	  if (out_brokers[n] == NULL)
 	    {
+	      int zi;
 	      fprintf (stderr, "Error: out of memory while collecting broker names under %s.\n", dir);
+	      for (zi = 0; zi < n; zi++)
+		{
+		  FREE_MEM (out_brokers[zi]);
+		}
 	      FindClose (h);
 	      return -1;
 	    }
@@ -830,7 +845,12 @@ log_top_get_brokers_from_dir (const char *dir, char *out_brokers[], int max_brok
       out_brokers[n] = (char *) MALLOC (strlen (broker) + 1);
       if (out_brokers[n] == NULL)
 	{
+	  int zi;
 	  fprintf (stderr, "Error: out of memory while collecting broker names under %s.\n", dir);
+	  for (zi = 0; zi < n; zi++)
+	    {
+	      FREE_MEM (out_brokers[zi]);
+	    }
 	  closedir (d);
 	  return -1;
 	}
