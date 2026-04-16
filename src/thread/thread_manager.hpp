@@ -136,8 +136,8 @@ namespace cubthread
       template<typename Res, typename ... CtArgs>
       Res *create_worker_pool (std::size_t pool_size, std::size_t core_count, CtArgs &&... args);
 
-      // destroy worker pool
-      void destroy_worker_pool (worker_pool *&worker_pool_arg);
+      template <typename Res>
+      void destroy_worker_pool (Res *&worker_pool_arg);
 
       // push task to worker pool created with this manager
       // if worker_pool_arg is NULL, the task is executed immediately
@@ -383,6 +383,24 @@ namespace cubthread
     return workerpool;
 #else // not SERVER_MODE = SA_MODE
     return NULL;
+#endif // not SERVER_MODE = SA_MODE
+  }
+
+  template <typename Res>
+  void
+  manager::destroy_worker_pool (Res *&worker_pool_arg)
+  {
+#if defined (SERVER_MODE)
+    if (worker_pool_arg == NULL)
+      {
+	return;
+      }
+    // remove from m_worker_pools and free worker_pool_arg->get_worker_count thread entries
+    worker_pool *base_arg = worker_pool_arg;
+    destroy_and_untrack_resource (m_worker_pools, base_arg, worker_pool_arg->get_worker_count ());
+    worker_pool_arg = NULL;
+#else // not SERVER_MODE = SA_MODE
+    assert (worker_pool_arg == NULL);
 #endif // not SERVER_MODE = SA_MODE
   }
 

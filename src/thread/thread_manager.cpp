@@ -134,7 +134,7 @@ namespace cubthread
 	entry_mgr = &m_daemon_entry_manager;
       }
     // reserve 1 entry and add to m_daemons
-    return create_and_track_resource (m_daemons, 1, looper_arg, entry_mgr, exec_p, daemon_name);
+    return create_and_track_resource<daemon> (m_daemons, 1, looper_arg, entry_mgr, exec_p, daemon_name);
 #else // not SERVER_MODE = SA_MODE
     assert (false);
     return NULL;
@@ -146,25 +146,10 @@ namespace cubthread
   {
 #if defined (SERVER_MODE)
     // reserve no entry and add to m_daemons_without_entries
-    return create_and_track_resource (m_daemons_without_entries, 0, looper_arg, exec_p, daemon_name);
+    return create_and_track_resource<daemon> (m_daemons_without_entries, 0, looper_arg, exec_p, daemon_name);
 #else // not SERVER_MODE = SA_MODE
     assert (false);
     return NULL;
-#endif // not SERVER_MODE = SA_MODE
-  }
-
-  void
-  manager::destroy_worker_pool (worker_pool *&worker_pool_arg)
-  {
-#if defined (SERVER_MODE)
-    if (worker_pool_arg == NULL)
-      {
-	return;
-      }
-    // remove from m_worker_pools and free worker_pool_arg->get_worker_count thread entries
-    return destroy_and_untrack_resource (m_worker_pools, worker_pool_arg, worker_pool_arg->get_worker_count ());
-#else // not SERVER_MODE = SA_MODE
-    assert (worker_pool_arg == NULL);
 #endif // not SERVER_MODE = SA_MODE
   }
 
