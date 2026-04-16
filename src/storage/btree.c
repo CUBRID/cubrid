@@ -522,19 +522,7 @@ typedef int BTREE_PROCESS_KEY_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * btid
 					PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key, bool * restart,
 					void *other_args);
 
-/* BTREE_PROCESS_OBJECT_FUNCTION -
- * btree_record_process_objects internal function called for each object found
- * in b-tree leaf/overflow records. It should process or manipulate object
- * data in record.
- *
- * Functions:
- * btree_record_satisfies_snapshot.
- * btree_select_visible_object_for_range_scan.
- * btree_fk_object_does_exist.
- */
-typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
-					   char *object_ptr, OID * oid, OID * class_oid, BTREE_MVCC_INFO * mvcc_info,
-					   bool * stop, void *args);
+/* BTREE_PROCESS_OBJECT_FUNCTION - see btree.h */
 
 /* Type of b-tree scans. */
 /* Covering index. */
@@ -1494,9 +1482,6 @@ static int btree_key_lock_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 				  bool * was_page_refixed);
 #endif /* SERVER_MODE */
 
-static int btree_key_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record,
-				      int after_key_offset, LEAF_REC * leaf_info, BTREE_PROCESS_OBJECT_FUNCTION * func,
-				      void *args);
 static int btree_record_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_NODE_TYPE node_type,
 					 RECDES * record, int after_key_offset, bool * stop,
 					 BTREE_PROCESS_OBJECT_FUNCTION * func, void *args);
@@ -24489,7 +24474,7 @@ btree_record_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTRE
  * NOTE: Leaf record of objects must be obtained before calling this function.
  * TODO: Consider using write latch for overflow pages.
  */
-static int
+int
 btree_key_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record, int after_key_offset,
 			   LEAF_REC * leaf_info, BTREE_PROCESS_OBJECT_FUNCTION * func, void *args)
 {

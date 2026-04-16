@@ -148,8 +148,8 @@ namespace parallel_scan
 		  {
 		    return err_code;
 		  }
-		/* CRITICAL: input_handler->initialize() sets curr_keyno=0 AFTER scan_start_scan
-		 * resets it to -1, so the pre-built KEY_VAL_RANGE is used without being overwritten. */
+		/* scan_start_scan initializes heap scan caches and attribute info
+		 * needed by slot_iterator_index for direct leaf page processing. */
 		err_code = scan_start_scan (&thread_ref, m_scan_id);
 	      }
 	    else
@@ -335,7 +335,12 @@ namespace parallel_scan
 	return err_code;
       }
     m_slot_iterator.initialize (&thread_ref, m_scan_id, m_vd);
-    if constexpr (ST == SCAN_TYPE::LIST || ST == SCAN_TYPE::INDEX)
+    if constexpr (ST == SCAN_TYPE::INDEX)
+      {
+	m_slot_iterator.set_input_handler (m_input_handler);
+	m_input_handler->initialize (&thread_ref, nullptr, m_scan_id);
+      }
+    else if constexpr (ST == SCAN_TYPE::LIST)
       {
 	m_input_handler->initialize (&thread_ref, nullptr, m_scan_id);
       }

@@ -508,6 +508,10 @@ extern int scan_open_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * sc
 					   /* fields of INDX_SCAN_ID */
 					   indx_info * indx_info, PRED_EXPR * pr, DB_VALUE ** node_info_values,
 					   regu_variable_list_node * node_info_regu_list);
+extern int scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY_VAL_RANGE * key_val_range,
+				       INDX_SCAN_ID * iscan_id, TP_DOMAIN * btree_domainp, VAL_DESCR * vd,
+				       int key_range_idx);
+
 extern int scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */
 				int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,

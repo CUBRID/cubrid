@@ -23,7 +23,9 @@
 #include "px_scan_checker.hpp"
 
 #include "dbtype_def.h"
+#include "error_manager.h"
 #include "regu_var.hpp"
+#include "system_parameter.h"
 #include "storage_common.h"
 #include "xasl_predicate.hpp"
 #include "xasl.h"
@@ -389,17 +391,28 @@ namespace parallel_scan
 	    if (ACCESS_SPEC_IS_FLAGED (arg, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN))
 	      {
 		/* min/max aggregate scan produces no rows; skip parallel */
+		er_log_debug (ARG_FILE_LINE, "px_checker: INDEX blocked by MIN_MAX_SCAN");
 		set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
 		set_flag (result, CANNOT_PARALLEL_INDEX_SCAN);
 		return result;
 	      }
 	    /* ISS (Index Skip Scan) and ILS (Index Loose Scan) dynamically modify
-	     * curr_keyno and key ranges; they conflict with pre-split key ranges. */
+	     * curr_keyno and key ranges; they conflict with leaf-page cursor. */
 	    if (arg->indexptr != NULL
 		&& (arg->indexptr->use_iss || arg->indexptr->ils_prefix_len > 0))
 	      {
+		er_log_debug (ARG_FILE_LINE, "px_checker: INDEX blocked by ISS/ILS (iss=%d ils=%d)",
+			      arg->indexptr->use_iss, arg->indexptr->ils_prefix_len);
 		set_flag (result, CANNOT_PARALLEL_INDEX_SCAN);
 	      }
+	    er_log_debug (ARG_FILE_LINE, "px_checker: INDEX after basic checks result=0x%x (indexptr=%p cov=%d iss=%d ils=%d desc=%d rtype=%d)",
+			  result,
+			  arg->indexptr,
+			  arg->indexptr ? arg->indexptr->coverage : -1,
+			  arg->indexptr ? arg->indexptr->use_iss : -1,
+			  arg->indexptr ? arg->indexptr->ils_prefix_len : -1,
+			  arg->indexptr ? arg->indexptr->use_desc_index : -1,
+			  arg->indexptr ? arg->indexptr->range_type : -1);
 	    /* otherwise: potentially eligible; regu_list checks follow below */
 	  }
 	else
@@ -433,10 +446,30 @@ namespace parallel_scan
 	if (arg->access == ACCESS_METHOD_INDEX)
 	  {
 	    /* Also check index-specific predicate lists for disqualifying constructs */
+	    possible_flags pre_result = result;
 	    result |= check<false> (arg->s.cls_node.cls_regu_list_key);
+	    if (result != pre_result)
+	      {
+		er_log_debug (ARG_FILE_LINE, "px_checker: cls_regu_list_key added flags 0x%x", result & ~pre_result);
+	      }
+	    pre_result = result;
 	    result |= check<false> (arg->where_key);
+	    if (result != pre_result)
+	      {
+		er_log_debug (ARG_FILE_LINE, "px_checker: where_key added flags 0x%x", result & ~pre_result);
+	      }
+	    pre_result = result;
 	    result |= check<false> (arg->s.cls_node.cls_regu_list_range);
+	    if (result != pre_result)
+	      {
+		er_log_debug (ARG_FILE_LINE, "px_checker: cls_regu_list_range added flags 0x%x", result & ~pre_result);
+	      }
+	    pre_result = result;
 	    result |= check<false> (arg->where_range);
+	    if (result != pre_result)
+	      {
+		er_log_debug (ARG_FILE_LINE, "px_checker: where_range added flags 0x%x", result & ~pre_result);
+	      }
 	  }
 	if (!arg->s.cls_node.cls_regu_list_pred && !arg->s.cls_node.cls_regu_list_rest)
 	  {
@@ -789,6 +822,12 @@ namespace parallel_scan
       }
 
     result |= check<false> (arg);
+    er_log_debug (ARG_FILE_LINE, "px_checker: final result=0x%x (HEAP=%d INDEX=%d MERGE=%d BVOPT=%d)",
+		  result,
+		  is_flag_set (result, CANNOT_PARALLEL_HEAP_SCAN),
+		  is_flag_set (result, CANNOT_PARALLEL_INDEX_SCAN),
+		  is_flag_set (result, CANNOT_LIST_MERGE),
+		  is_flag_set (result, CANNOT_BUILDVALUE_OPT));
     if (is_flag_set (result, CANNOT_PARALLEL_HEAP_SCAN))
       {
 	for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)

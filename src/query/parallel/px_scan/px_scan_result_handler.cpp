@@ -35,6 +35,7 @@
 #include "fetch.h"
 #include "query_aggregate.hpp"
 #include "xasl_aggregate.hpp"
+#include "object_domain.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -1148,6 +1149,83 @@ namespace parallel_scan
 	  }
 	else
 	  {
+	    // Resolve accumulator domain on first non-NULL value (mirrors query_executor.c logic)
+	    if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
+	      {
+		switch (agg_node->function)
+		  {
+		  case PT_AGG_BIT_AND:
+		  case PT_AGG_BIT_OR:
+		  case PT_AGG_BIT_XOR:
+		  case PT_MIN:
+		  case PT_MAX:
+		    acc_dom->value_dom = agg_node->domain;
+		    acc_dom->value2_dom = &tp_Null_domain;
+		    break;
+
+		  case PT_AVG:
+		  case PT_SUM:
+		    if (TP_IS_NUMERIC_TYPE (DB_VALUE_DOMAIN_TYPE (db_value_p)))
+		      {
+			if (agg_node->domain != NULL && TP_DOMAIN_TYPE (agg_node->domain) == DB_TYPE_NUMERIC)
+			  {
+			    acc_dom->value_dom =
+			      tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_MAX_NUMERIC_PRECISION,
+						 agg_node->domain->scale, NULL, 0);
+			  }
+			else if (DB_VALUE_DOMAIN_TYPE (db_value_p) == DB_TYPE_NUMERIC)
+			  {
+			    acc_dom->value_dom =
+			      tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_MAX_NUMERIC_PRECISION,
+						 DB_VALUE_SCALE (db_value_p), NULL, 0);
+			  }
+			else if (DB_VALUE_DOMAIN_TYPE (db_value_p) == DB_TYPE_FLOAT)
+			  {
+			    acc_dom->value_dom =
+			      tp_domain_resolve (DB_TYPE_DOUBLE, NULL, DB_DOUBLE_DECIMAL_PRECISION,
+						 DB_VALUE_SCALE (db_value_p), NULL, 0);
+			  }
+			else
+			  {
+			    acc_dom->value_dom = tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (db_value_p));
+			  }
+		      }
+		    else
+		      {
+			acc_dom->value_dom = agg_node->domain;
+		      }
+		    acc_dom->value2_dom = &tp_Null_domain;
+		    break;
+
+		  case PT_STDDEV:
+		  case PT_STDDEV_POP:
+		  case PT_STDDEV_SAMP:
+		  case PT_VARIANCE:
+		  case PT_VAR_POP:
+		  case PT_VAR_SAMP:
+		    acc_dom->value_dom = &tp_Double_domain;
+		    acc_dom->value2_dom = &tp_Double_domain;
+		    break;
+
+		  case PT_GROUP_CONCAT:
+		    acc_dom->value_dom = agg_node->domain;
+		    acc_dom->value2_dom = &tp_Null_domain;
+		    break;
+
+		  default:
+		    if (agg_node->domain != NULL)
+		      {
+			acc_dom->value_dom = agg_node->domain;
+		      }
+		    else
+		      {
+			acc_dom->value_dom = tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (db_value_p));
+		      }
+		    acc_dom->value2_dom = &tp_Null_domain;
+		    break;
+		  }
+	      }
+
 	    switch (agg_node->function)
 	      {
 	      case PT_COUNT:

@@ -26,8 +26,7 @@
 #include "px_interrupt.hpp"
 #include "scan_manager.h"
 #include "btree.h"
-#include <atomic>
-#include <vector>
+#include <mutex>
 
 namespace parallel_scan
 {
@@ -37,12 +36,15 @@ namespace parallel_scan
       using err_messages_with_lock = parallel_query::err_messages_with_lock;
     public:
       input_handler_index (interrupt *interrupt_p, err_messages_with_lock *err_messages_p)
-	: m_split_idx (0),
-	  m_interrupt_p (interrupt_p),
-	  m_err_messages_p (err_messages_p)
+        : m_leaf_ended (true),
+          m_interrupt_p (interrupt_p),
+          m_err_messages_p (err_messages_p),
+          m_indx_info (nullptr),
+          m_use_desc_index (false)
       {
-	memset (&m_btid_int, 0, sizeof (m_btid_int));
-	memset (&m_btid, 0, sizeof (m_btid));
+        memset (&m_btid_int, 0, sizeof (m_btid_int));
+        memset (&m_btid, 0, sizeof (m_btid));
+        VPID_SET_NULL (&m_current_leaf_vpid);
       }
       int init_on_main (THREAD_ENTRY *thread_p, INDX_INFO *indx_info, int parallelism);
       SCAN_CODE get_next_vpid_with_fix (THREAD_ENTRY *thread_p, VPID *vpid);
@@ -50,14 +52,29 @@ namespace parallel_scan
       int finalize (THREAD_ENTRY *thread_p);
       void cleanup_keys (THREAD_ENTRY *thread_p);
 
-    private:
-      thread_local static bool m_tl_used;
+      BTID_INT *get_btid_int ()
+      {
+        return &m_btid_int;
+      }
 
-      std::vector<key_val_range> m_worker_key_vals;  /* one KEY_VAL_RANGE per worker */
-      std::vector<DB_VALUE> m_split_keys;		/* N-1 boundary keys (owned, COPY) */
-      std::atomic_int m_split_idx;
+      INDX_INFO *get_indx_info ()
+      {
+        return m_indx_info;
+      }
+
+      bool is_desc_index () const
+      {
+        return m_use_desc_index;
+      }
+
+    private:
+      VPID m_current_leaf_vpid;         // shared cursor (mutex-protected)
+      bool m_leaf_ended;
+      std::mutex m_leaf_mutex;
       BTID_INT m_btid_int;
       BTID m_btid;
+      INDX_INFO *m_indx_info;          // original INDX_INFO pointer for workers
+      bool m_use_desc_index;
       interrupt *m_interrupt_p;
       err_messages_with_lock *m_err_messages_p;
   };

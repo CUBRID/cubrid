@@ -1452,6 +1452,7 @@ extern "C"
 
     if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_INDEX_SCAN))
       {
+	er_log_debug (ARG_FILE_LINE, "parallel index scan blocked by ACCESS_SPEC_FLAG_NO_PARALLEL_INDEX_SCAN");
 	return NO_ERROR;
       }
 

@@ -829,6 +829,14 @@ extern int xbtree_get_key_type (THREAD_ENTRY * thread_p, BTID btid, TP_DOMAIN **
 
 extern int btree_leaf_get_first_object (BTID_INT * btid, RECDES * recp, OID * oidp, OID * class_oid,
 					BTREE_MVCC_INFO * mvcc_info);
+
+/* Callback function type for btree_key_process_objects. */
+typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
+					   char *object_ptr, OID * oid, OID * class_oid, BTREE_MVCC_INFO * mvcc_info,
+					   bool * stop, void *args);
+extern int btree_key_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record,
+				      int after_key_offset, LEAF_REC * leaf_info,
+				      BTREE_PROCESS_OBJECT_FUNCTION * func, void *args);
 extern void btree_leaf_change_first_object (THREAD_ENTRY * thread_p, RECDES * recp, BTID_INT * btid, OID * oidp,
 					    OID * class_oidp, BTREE_MVCC_INFO * mvcc_info, int *key_offset,
 					    char **rv_undo_data_ptr, char **rv_redo_data_ptr);
