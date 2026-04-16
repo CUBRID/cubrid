@@ -219,13 +219,16 @@ trace_event_file_open (const char *path, char log_type)
     }
 
 #if !defined (WINDOWS) && defined (SERVER_MODE)
-  if (fp != NULL && log_type == 'E' /* event log */ )
+  if (fp != NULL)
     {
-      er_file_create_link_to_current_log_file (path, EVENT_LOG_FILE_SUFFIX);
-    }
-  else
-    {
-      er_file_create_link_to_current_log_file (path, LATEST_SQL_TRACE_FILE);
+      if (log_type == 'E' /* event log */ )
+	{
+	  er_file_create_link_to_current_log_file (path, EVENT_LOG_FILE_SUFFIX);
+	}
+      else
+	{
+	  er_file_create_link_to_current_log_file (path, LATEST_SQL_TRACE_FILE);
+	}
     }
 #endif /* !WINDOWS && SERVER_MODE */
 
@@ -321,18 +324,17 @@ trace_event_log_start (THREAD_ENTRY * thread_p, const char *log_name, const char
 
   if (log_type == 'E')
     {
-      csect = CSECT_EVENT_LOG_FILE;
+      csect_enter (thread_p, csect = CSECT_EVENT_LOG_FILE, INF_WAIT);
       log_Fp = event_Fp;
       log_file_name = event_log_file_path;
     }
   else
     {
-      csect = CSECT_TRACE_LOG_FILE;
+      csect_enter (thread_p, csect = CSECT_TRACE_LOG_FILE, INF_WAIT);
       log_Fp = trace_Fp;
       log_file_name = trace_log_file_path;
     }
 
-  csect_enter (thread_p, csect, INF_WAIT);
   /* If file is not exist, it will recreate *log_fh file. */
   if (log_Fp == NULL || access (log_file_name, F_OK) == -1)
     {
@@ -405,6 +407,7 @@ trace_log_end (THREAD_ENTRY * thread_p)
 
   if (trace_Fp == NULL)
     {
+      csect_exit (thread_p, CSECT_TRACE_LOG_FILE);
       return;
     }
 
@@ -423,6 +426,7 @@ event_log_end (THREAD_ENTRY * thread_p)
 
   if (event_Fp == NULL)
     {
+      csect_exit (thread_p, CSECT_EVENT_LOG_FILE);
       return;
     }
 
