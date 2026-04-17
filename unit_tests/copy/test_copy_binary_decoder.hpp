@@ -32,6 +32,8 @@ namespace test_copy_binary_decoder
   int test_decode_truncated_field (void);
   int test_decode_field_count_mismatch (void);
   int test_decode_int_wrong_size (void);
+  int test_decode_vector (void);
+  int test_decode_int_vector_row (void);
 }
 
 #endif /* _TEST_COPY_BINARY_DECODER_HPP_ */
