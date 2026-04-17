@@ -37,7 +37,7 @@
 #include "list_file.h"				/* qfile_close_list, qfile_destroy_list */
 #include "heap_file.h"				/* heap_attrinfo_end */
 
-/* XXX: SHOULD BE THE LAST INCLUDE HEADER */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 extern "C"

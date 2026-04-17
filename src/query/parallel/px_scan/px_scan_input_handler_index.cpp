@@ -34,7 +34,7 @@
 #include "slotted_page.h"
 #include "storage_common.h"
 
-/* XXX: SHOULD BE THE LAST INCLUDE HEADER */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 namespace parallel_scan
@@ -63,24 +63,24 @@ namespace parallel_scan
     PAGE_PTR root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
     if (root_page == nullptr)
       {
-        goto fallback;
+	goto fallback;
       }
 
     {
       BTREE_ROOT_HEADER *root_header = btree_get_root_header (thread_p, root_page);
       if (root_header == nullptr)
-        {
-          pgbuf_unfix (thread_p, root_page);
-          goto fallback;
-        }
+	{
+	  pgbuf_unfix (thread_p, root_page);
+	  goto fallback;
+	}
 
       int err = btree_glean_root_header_info (thread_p, root_header, &m_btid_int, true);
       pgbuf_unfix (thread_p, root_page);
 
       if (err != NO_ERROR)
-        {
-          goto fallback;
-        }
+	{
+	  goto fallback;
+	}
     }
 
     m_btid_int.sys_btid = &m_btid;
@@ -93,68 +93,68 @@ namespace parallel_scan
 
       PAGE_PTR cur_page = pgbuf_fix (thread_p, &cur_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       if (cur_page == nullptr)
-        {
-          goto fallback;
-        }
+	{
+	  goto fallback;
+	}
 
       BTREE_NODE_HEADER *cur_hdr = btree_get_node_header (thread_p, cur_page);
       if (cur_hdr == nullptr)
-        {
-          pgbuf_unfix (thread_p, cur_page);
-          goto fallback;
-        }
+	{
+	  pgbuf_unfix (thread_p, cur_page);
+	  goto fallback;
+	}
 
       short node_level = cur_hdr->node_level;
 
       while (node_level > 1)
-        {
-          /* Non-leaf page: follow first child (slot 1) for ascending,
-           * or last child (slot key_cnt) for descending. */
-          int key_cnt = btree_node_number_of_keys (thread_p, cur_page);
-          if (key_cnt <= 0)
-            {
-              pgbuf_unfix (thread_p, cur_page);
-              goto fallback;
-            }
+	{
+	  /* Non-leaf page: follow first child (slot 1) for ascending,
+	   * or last child (slot key_cnt) for descending. */
+	  int key_cnt = btree_node_number_of_keys (thread_p, cur_page);
+	  if (key_cnt <= 0)
+	    {
+	      pgbuf_unfix (thread_p, cur_page);
+	      goto fallback;
+	    }
 
-          int slot_to_follow = m_use_desc_index ? key_cnt : 1;
-          RECDES rec;
-          rec.data = nullptr;
-          rec.area_size = -1;
-          if (spage_get_record (thread_p, cur_page, slot_to_follow, &rec, PEEK) != S_SUCCESS)
-            {
-              pgbuf_unfix (thread_p, cur_page);
-              goto fallback;
-            }
+	  int slot_to_follow = m_use_desc_index ? key_cnt : 1;
+	  RECDES rec;
+	  rec.data = nullptr;
+	  rec.area_size = -1;
+	  if (spage_get_record (thread_p, cur_page, slot_to_follow, &rec, PEEK) != S_SUCCESS)
+	    {
+	      pgbuf_unfix (thread_p, cur_page);
+	      goto fallback;
+	    }
 
-          /* Read child VPID from fixed portion of non-leaf record:
-           * bytes 0-3: pageid (INT32), bytes 4-5: volid (INT16) */
-          VPID child_vpid;
-          child_vpid.pageid = OR_GET_INT (rec.data);
-          child_vpid.volid = OR_GET_SHORT (rec.data + OR_INT_SIZE);
-          pgbuf_unfix (thread_p, cur_page);
+	  /* Read child VPID from fixed portion of non-leaf record:
+	   * bytes 0-3: pageid (INT32), bytes 4-5: volid (INT16) */
+	  VPID child_vpid;
+	  child_vpid.pageid = OR_GET_INT (rec.data);
+	  child_vpid.volid = OR_GET_SHORT (rec.data + OR_INT_SIZE);
+	  pgbuf_unfix (thread_p, cur_page);
 
-          if (VPID_ISNULL (&child_vpid))
-            {
-              goto fallback;
-            }
+	  if (VPID_ISNULL (&child_vpid))
+	    {
+	      goto fallback;
+	    }
 
-          cur_page = pgbuf_fix (thread_p, &child_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-          if (cur_page == nullptr)
-            {
-              goto fallback;
-            }
+	  cur_page = pgbuf_fix (thread_p, &child_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	  if (cur_page == nullptr)
+	    {
+	      goto fallback;
+	    }
 
-          cur_hdr = btree_get_node_header (thread_p, cur_page);
-          if (cur_hdr == nullptr)
-            {
-              pgbuf_unfix (thread_p, cur_page);
-              goto fallback;
-            }
+	  cur_hdr = btree_get_node_header (thread_p, cur_page);
+	  if (cur_hdr == nullptr)
+	    {
+	      pgbuf_unfix (thread_p, cur_page);
+	      goto fallback;
+	    }
 
-          cur_vpid = child_vpid;
-          node_level = cur_hdr->node_level;
-        }
+	  cur_vpid = child_vpid;
+	  node_level = cur_hdr->node_level;
+	}
 
       /* cur_page is now the starting leaf page (leftmost for asc, rightmost for desc) */
       m_current_leaf_vpid = cur_vpid;
@@ -187,7 +187,7 @@ fallback:
 
     if (m_leaf_ended)
       {
-        return S_END;
+	return S_END;
       }
 
     VPID ret_vpid = m_current_leaf_vpid;
@@ -196,16 +196,16 @@ fallback:
     PAGE_PTR page = pgbuf_fix (thread_p, &ret_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
     if (page == nullptr)
       {
-        m_leaf_ended = true;
-        return S_END;
+	m_leaf_ended = true;
+	return S_END;
       }
 
     BTREE_NODE_HEADER *hdr = btree_get_node_header (thread_p, page);
     if (hdr == nullptr)
       {
-        pgbuf_unfix (thread_p, page);
-        m_leaf_ended = true;
-        return S_END;
+	pgbuf_unfix (thread_p, page);
+	m_leaf_ended = true;
+	return S_END;
       }
 
     VPID next = m_use_desc_index ? hdr->prev_vpid : hdr->next_vpid;
@@ -213,11 +213,11 @@ fallback:
 
     if (VPID_ISNULL (&next))
       {
-        m_leaf_ended = true;
+	m_leaf_ended = true;
       }
     else
       {
-        m_current_leaf_vpid = next;
+	m_current_leaf_vpid = next;
       }
 
     *vpid = ret_vpid;

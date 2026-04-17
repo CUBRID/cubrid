@@ -39,7 +39,7 @@
 #include "storage_common.h"
 #include "access_spec.hpp"
 
-/* XXX: SHOULD BE THE LAST INCLUDE HEADER */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 namespace parallel_scan

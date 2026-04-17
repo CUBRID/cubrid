@@ -36,15 +36,15 @@ namespace parallel_scan
       using err_messages_with_lock = parallel_query::err_messages_with_lock;
     public:
       input_handler_index (interrupt *interrupt_p, err_messages_with_lock *err_messages_p)
-        : m_leaf_ended (true),
-          m_interrupt_p (interrupt_p),
-          m_err_messages_p (err_messages_p),
-          m_indx_info (nullptr),
-          m_use_desc_index (false)
+	: m_leaf_ended (true),
+	  m_interrupt_p (interrupt_p),
+	  m_err_messages_p (err_messages_p),
+	  m_indx_info (nullptr),
+	  m_use_desc_index (false)
       {
-        memset (&m_btid_int, 0, sizeof (m_btid_int));
-        memset (&m_btid, 0, sizeof (m_btid));
-        VPID_SET_NULL (&m_current_leaf_vpid);
+	memset (&m_btid_int, 0, sizeof (m_btid_int));
+	memset (&m_btid, 0, sizeof (m_btid));
+	VPID_SET_NULL (&m_current_leaf_vpid);
       }
       int init_on_main (THREAD_ENTRY *thread_p, INDX_INFO *indx_info, int parallelism);
       SCAN_CODE get_next_vpid_with_fix (THREAD_ENTRY *thread_p, VPID *vpid);
@@ -54,17 +54,17 @@ namespace parallel_scan
 
       BTID_INT *get_btid_int ()
       {
-        return &m_btid_int;
+	return &m_btid_int;
       }
 
       INDX_INFO *get_indx_info ()
       {
-        return m_indx_info;
+	return m_indx_info;
       }
 
       bool is_desc_index () const
       {
-        return m_use_desc_index;
+	return m_use_desc_index;
       }
 
     private:

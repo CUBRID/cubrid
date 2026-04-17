@@ -33,7 +33,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-/* XXX: SHOULD BE THE LAST INCLUDE HEADER */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 namespace parallel_scan

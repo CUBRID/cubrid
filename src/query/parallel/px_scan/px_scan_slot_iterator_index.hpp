@@ -59,7 +59,7 @@ namespace parallel_scan
 
       void set_input_handler (input_handler_index *handler)
       {
-        m_input_handler = handler;
+	m_input_handler = handler;
       }
 
     private:
@@ -94,8 +94,8 @@ namespace parallel_scan
 
       /* btree_key_process_objects callback */
       static int collect_oid_callback (THREAD_ENTRY *thread_p, BTID_INT *btid_int, RECDES *record,
-                                       char *object_ptr, OID *oid, OID *class_oid,
-                                       BTREE_MVCC_INFO *mvcc_info, bool *stop, void *args);
+				       char *object_ptr, OID *oid, OID *class_oid,
+				       BTREE_MVCC_INFO *mvcc_info, bool *stop, void *args);
   };
 }
 
