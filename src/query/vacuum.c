@@ -2668,9 +2668,18 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
    * records that must be reclaimed before this slot is vacuumed away — otherwise the chain (and
    * with it, any OOS OIDs it references) is lost forever. Affects the UPDATE-then-DELETE pattern
    * where INSID and DELID become all-visible at the same time, so vacuum enters REMOVE without
-   * going through vacuum_heap_record_insid_and_prev_version first. REC_BIGONE is excluded by
-   * invariant (OOS does not coexist with overflow records). */
+   * going through vacuum_heap_record_insid_and_prev_version first.
+   *
+   * Guard on !VFID_ISNULL(oos_vfid): vacuum_heap_prepare_record populates oos_vfid whenever the
+   * CURRENT record carries the OOS flag, which is the common case for UPDATE chains (an OOS column
+   * preserved across updates). Skipping when oos_vfid is NULL avoids paying the log-chain-walk I/O
+   * (logpb_fetch_page + LOG_CS per version) on every MVCC-updated record in OOS-less tables — a
+   * significant partition/catalog workload cost. Known limitation: UPDATEs that drop every OOS
+   * column and are then DELETEd leave no OOS flag on the current record; their prev-version OOS
+   * leak until a full-table rewrite. REC_BIGONE is excluded by invariant (OOS does not coexist
+   * with overflow records). */
   bool need_prev_version_oos_cleanup = (MVCC_IS_HEADER_PREV_VERSION_VALID (&helper->mvcc_header)
+					&& !VFID_ISNULL (&helper->oos_vfid)
 					&& (helper->record_type == REC_HOME
 					    || helper->record_type == REC_RELOCATION));
 
