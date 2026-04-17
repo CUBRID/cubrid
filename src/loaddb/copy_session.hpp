@@ -25,6 +25,7 @@
 #include "dbtype_def.h"
 #include "heap_file.h"
 #include "oid.h"
+#include "record_descriptor.hpp"
 #include "thread_compat.hpp"
 
 #include <vector>
@@ -41,14 +42,18 @@ class copy_session
     void abort (THREAD_ENTRY *thread_p);
 
   private:
+    int flush_batch (THREAD_ENTRY *thread_p);
+
     OID m_class_oid;
     HFID m_hfid;
 
     std::vector<DB_TYPE> m_col_types;
     std::vector<ATTR_ID> m_attr_ids;	/* attribute repr IDs in column order */
     std::vector<char> m_leftover;		/* bytes at the tail of a receive_data
-					   call that form a partial row and need
-					   to be combined with the next chunk */
+						   call that form a partial row and need
+						   to be combined with the next chunk */
+    std::vector<record_descriptor> m_recdes_collected; /* batch of packed rows
+                                                          waiting for insert */
     int m_num_cols;
     int m_rows_loaded;
 };

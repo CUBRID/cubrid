@@ -12244,7 +12244,10 @@ scopy_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
     OID class_oid;
     LC_FIND_CLASSNAME status;
 
-    status = xlocator_find_class_oid (thread_p, table_name, &class_oid, NULL_LOCK);
+    /* Acquire BU_LOCK on the class so the COPY session can use the bulk-insert
+     * fast path (page-image WAL via locator_multi_insert_force). Mirrors loaddb;
+     * the lock is released at transaction commit. */
+    status = xlocator_find_class_oid (thread_p, table_name, &class_oid, BU_LOCK);
     if (status != LC_CLASSNAME_EXIST)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, table_name);
