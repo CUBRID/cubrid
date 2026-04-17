@@ -5349,7 +5349,6 @@ static int
 pgbuf_initialize_bcb_table (void)
 {
   PGBUF_BCB *bufptr;
-  PGBUF_IOPAGE_BUFFER *ioptr;
   PGBUF_ATOMIC_LATCH_IMPL impl;
   int i;
   long long unsigned alloc_size;
@@ -5431,23 +5430,13 @@ pgbuf_initialize_bcb_table (void)
       bufptr->tick_lru3 = 0;
       bufptr->tick_lru_list = 0;
 
-      /* link BCB and iopage buffer */
-      ioptr = PGBUF_FIND_IOPAGE_PTR (i);
-
-      fileio_init_lsa_of_page (&ioptr->iopage, IO_PAGESIZE);
-
-      /* Init Page identifier */
-      ioptr->iopage.prv.pageid = -1;
-      ioptr->iopage.prv.volid = -1;
-
-      ioptr->iopage.prv.ptype = (unsigned char) PAGE_UNKNOWN;
-      ioptr->iopage.prv.pflag = '\0';
-      ioptr->iopage.prv.p_reserve_1 = 0;
-      ioptr->iopage.prv.p_reserve_2 = 0;
-      ioptr->iopage.prv.tde_nonce = 0;
-
-      bufptr->iopage_buffer = ioptr;
-      ioptr->bcb = bufptr;
+      /* link BCB to iopage buffer (writes to BCB_table only).
+       * iopage fields (prv, prv2, bcb back-pointer) are NOT initialized here.
+       * They are deferred to first use: OLD_PAGE overwrites via fileio_read,
+       * NEW_PAGE re-initializes via fileio_init_lsa_of_page.
+       * The bcb back-pointer (ioptr->bcb) is set in pgbuf_get_bcb_from_invalid_list.
+       * This avoids touching the large iopage_table (16GB+) at startup. */
+      bufptr->iopage_buffer = PGBUF_FIND_IOPAGE_PTR (i);
 
 #if defined(CUBRID_DEBUG)
       /* Reinitizalize the buffer */
@@ -8688,6 +8677,10 @@ pgbuf_get_bcb_from_invalid_list (THREAD_ENTRY * thread_p)
 
       PGBUF_BCB_LOCK (bufptr);
       bufptr->next_BCB = NULL;
+
+      /* set the iopage back-pointer to this BCB (deferred from startup init) */
+      bufptr->iopage_buffer->bcb = bufptr;
+
       pgbuf_bcb_change_zone (thread_p, bufptr, 0, PGBUF_VOID_ZONE);
 
       perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_USE_INVALID_BCB);
