@@ -72,9 +72,6 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "thread_entry.hpp"
-#if defined(LINUX)
-#include <sys/mman.h>
-#endif /* LINUX */
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -5394,16 +5391,6 @@ pgbuf_initialize_bcb_table (void)
 	}
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-
-#if defined(LINUX)
-  /* Hint to kernel to use transparent huge pages for the large iopage buffer.
-   * Reduces page fault count from ~4M (4KB pages) to ~8K (2MB THP).
-   * Advisory-only: silently ignored if THP is disabled. */
-  if (madvise (pgbuf_Pool.iopage_table, (size_t) alloc_size, MADV_HUGEPAGE) != 0)
-    {
-      er_log_debug (ARG_FILE_LINE, "pgbuf_initialize_bcb_table: madvise(MADV_HUGEPAGE) failed for iopage_table");
-    }
-#endif /* LINUX */
 
   /* initialize each entry of the buffer BCB table */
   for (i = 0; i < pgbuf_Pool.num_buffers; i++)
