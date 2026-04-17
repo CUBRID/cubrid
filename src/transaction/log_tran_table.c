@@ -370,10 +370,8 @@ logtb_define_trantable (THREAD_ENTRY * thread_p, int num_expected_tran_indices, 
   LOG_CS_ENTER (thread_p);
   TR_TABLE_CS_ENTER (thread_p);
 
-  if (logpb_is_pool_initialized ())
-    {
-      logpb_finalize_pool (thread_p);
-    }
+  /* Skip logpb_finalize_pool on redefine path; logpb_initialize_pool is
+   * idempotent and will skip reallocation if parameters are unchanged. */
 
   (void) logtb_define_trantable_log_latch (thread_p, num_expected_tran_indices);
 

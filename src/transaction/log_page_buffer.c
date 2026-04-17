@@ -558,20 +558,29 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
 
   log_append_init_zip ();
 
-  if (logpb_Initialized == true)
-    {
-      logpb_finalize_pool (thread_p);
-    }
+  {
+    int new_num_buffers = prm_get_integer_value (PRM_ID_LOG_NBUFFERS);
 
-  assert (log_Pb.pages_area == NULL);
-  assert (logpb_Initialized == false);
+    if (logpb_Initialized == true)
+      {
+	if (log_Pb.num_buffers == new_num_buffers)
+	  {
+	    /* Already initialized with same parameters; skip reallocation */
+	    return NO_ERROR;
+	  }
+	logpb_finalize_pool (thread_p);
+      }
 
-  logpb_Logging = prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG);
+    assert (log_Pb.pages_area == NULL);
+    assert (logpb_Initialized == false);
 
-  /*
-   * Create an area to keep the number of desired buffers
-   */
-  log_Pb.num_buffers = prm_get_integer_value (PRM_ID_LOG_NBUFFERS);
+    logpb_Logging = prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG);
+
+    /*
+     * Create an area to keep the number of desired buffers
+     */
+    log_Pb.num_buffers = new_num_buffers;
+  }
 
   /* allocate a pointer array to point to each buffer */
   size = ((size_t) log_Pb.num_buffers * sizeof (*log_Pb.buffers));
@@ -591,8 +600,12 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  /* Initialize every new buffer */
-  memset (log_Pb.pages_area, LOG_PAGE_INIT_VALUE, size);
+  /* Initialize every new buffer.
+   * Skip bulk memset of pages_area to LOG_PAGE_INIT_VALUE (0xff).  Every buffer
+   * page is fully overwritten before use: NEW_PAGE path memsets it to 0xff
+   * (logpb_locate_page), OLD_PAGE path reads from disk.  The per-buffer header
+   * init below marks each slot as unloaded (pageid = NULL_PAGEID), so no code
+   * path can read the uninitialised body. */
   for (i = 0; i < log_Pb.num_buffers; i++)
     {
       logpb_initialize_log_buffer (&log_Pb.buffers[i],
