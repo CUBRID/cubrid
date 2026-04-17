@@ -2240,15 +2240,20 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
    * and old OOS records from UPDATE are not tracked via prev_version_lsa.
    * Skip entirely when this heap has no OOS file — the chain walk is expensive
    * (log page I/O + LOG_CS acquisition per version) and yields nothing for non-OOS tables.
+   * Wrap in a sysop so partial failures roll back atomically (prevents retry livelock where
+   * a second pass tries to re-delete an already-deleted OOS slot).
    * Strict: propagate any failure so vacuum aborts and the error is visible for debugging. */
   if (MVCC_IS_HEADER_PREV_VERSION_VALID (&helper->mvcc_header) && !VFID_ISNULL (&helper->oos_vfid))
     {
+      log_sysop_start (thread_p);
       error_code = vacuum_cleanup_prev_version_oos (thread_p, helper);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
+	  log_sysop_abort (thread_p);
 	  return error_code;
 	}
+      log_sysop_commit (thread_p);
     }
 
   switch (helper->record_type)
@@ -2311,6 +2316,8 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
     case REC_BIGONE:
       /* First overflow page is required. */
       assert (helper->forward_page != NULL);
+      /* Invariant: OOS does not coexist with REC_BIGONE. See matching assert in vacuum_heap_record. */
+      assert (!heap_recdes_contains_oos (&helper->record));
 
       /* Replace current insert MVCCID with MVCCID_ALL_VISIBLE. Header must remain the same size. */
       MVCC_SET_INSID (&helper->mvcc_header, MVCCID_ALL_VISIBLE);
@@ -2404,12 +2411,15 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
  * return	 : Error code. NO_ERROR on success; any failure during chain traversal or OOS deletion
  *                 is propagated so callers can abort vacuum and a debuggable error stack is preserved.
  * thread_p (in) : Thread entry.
- * helper (in)	 : Vacuum heap helper (must have valid oos_vfid; caller guards via VFID_ISNULL).
+ * helper (in)	 : Vacuum heap helper. oos_vfid may be NULL on entry — it is looked up lazily on the
+ *                 first old version that carries OOS. This matters for the REMOVE path, where the
+ *                 current record may have dropped its OOS columns (no current OOS flag) while old
+ *                 versions in the prev_version_lsa chain still carry OOS.
  *
- * NOTE: Called BEFORE clearing prev_version_lsa from the current record. Reads old versions from
- *   the undo log, extracts OOS OIDs, and deletes them. Strict error handling — any failure is an
- *   error (not a warning): `heap_recdes_check_has_oos` is now robust so a mismatch or lookup failure
- *   here indicates real corruption or an environmental fault (log truncated, archived, OOS gone).
+ * NOTE: Caller MUST wrap this call in a log_sysop so partial failures roll back atomically. Without
+ *   the sysop, a failure after one oos_delete committed leaves the heap record's prev_version_lsa
+ *   intact, and the next vacuum pass would try to re-delete an already-deleted OOS slot, leading
+ *   to a permanent error loop on that record. The sysop makes the chain walk fully idempotent.
  */
 static int
 vacuum_cleanup_prev_version_oos (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
@@ -2426,8 +2436,6 @@ vacuum_cleanup_prev_version_oos (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * h
   MVCC_REC_HEADER old_mvcc_header;
   char *alloc_buf = NULL;
   int error_code = NO_ERROR;
-
-  assert (!VFID_ISNULL (&helper->oos_vfid));
 
   LSA_COPY (&current_lsa, &helper->mvcc_header.prev_version_lsa);
 
@@ -2515,6 +2523,23 @@ vacuum_cleanup_prev_version_oos (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * h
       /* Check for OOS in the old version and delete if found. */
       if (heap_recdes_contains_oos (&old_recdes))
 	{
+	  /* Lazy VFID lookup — the current record may have no OOS (REMOVE path after UPDATE that
+	   * dropped an OOS column), but old versions do. */
+	  if (VFID_ISNULL (&helper->oos_vfid))
+	    {
+	      if (!heap_oos_find_vfid (thread_p, &helper->hfid, &helper->oos_vfid, false))
+		{
+		  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
+				       "prev_version OOS cleanup: old version has OOS flag but no OOS VFID"
+				       " found for hfid %d|%d (slotid=%d, LSA %lld|%d) — corruption.",
+				       VFID_AS_ARGS (&helper->hfid.vfid), (int) helper->crt_slotid,
+				       (long long) current_lsa.pageid, (int) current_lsa.offset);
+		  assert_release (false);
+		  error_code = ER_FAILED;
+		  goto cleanup;
+		}
+	    }
+
 	  OID_VECTOR oos_oids;
 	  error_code = heap_recdes_get_oos_oids (&old_recdes, oos_oids);
 	  if (error_code != NO_ERROR)
@@ -2624,10 +2649,21 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 		  && (helper->record_type == REC_HOME || helper->record_type == REC_RELOCATION)
 		  && heap_recdes_contains_oos (&helper->record));
 
-  if (helper->record_type == REC_RELOCATION || helper->record_type == REC_BIGONE || has_oos)
+  /* If the record has a prev_version_lsa chain, old versions in the undo log may still carry OOS
+   * records that must be reclaimed before this slot is vacuumed away — otherwise the chain (and
+   * with it, any OOS OIDs it references) is lost forever. Affects the UPDATE-then-DELETE pattern
+   * where INSID and DELID become all-visible at the same time, so vacuum enters REMOVE without
+   * going through vacuum_heap_record_insid_and_prev_version first. REC_BIGONE is excluded by
+   * invariant (OOS does not coexist with overflow records). */
+  bool need_prev_version_oos_cleanup = (MVCC_IS_HEADER_PREV_VERSION_VALID (&helper->mvcc_header)
+					&& (helper->record_type == REC_HOME
+					    || helper->record_type == REC_RELOCATION));
+
+  if (helper->record_type == REC_RELOCATION || helper->record_type == REC_BIGONE || has_oos
+      || need_prev_version_oos_cleanup)
     {
-      /* Multi-page operations (rel/big/oos) are performed as a single operation: flush all existing vacuumed slots
-       * before starting a system op for current record */
+      /* Multi-page operations (rel/big/oos/prev-version) are performed as a single operation: flush all existing
+       * vacuumed slots before starting a system op for current record */
       vacuum_heap_page_log_and_reset (thread_p, helper, false, false);
       log_sysop_start (thread_p);
     }
@@ -2637,6 +2673,19 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       /* Collect home page changes. */
       helper->slots[helper->n_bulk_vacuumed] = helper->crt_slotid;
       helper->results[helper->n_bulk_vacuumed] = VACUUM_RECORD_REMOVE;
+    }
+
+  /* Walk prev_version_lsa chain and delete OOS records referenced by old versions.
+   * Must run inside the sysop so that a failure here rolls back together with the slot vacuum. */
+  if (need_prev_version_oos_cleanup)
+    {
+      int chain_err = vacuum_cleanup_prev_version_oos (thread_p, helper);
+      if (chain_err != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  log_sysop_abort (thread_p);
+	  return chain_err;
+	}
     }
 
   /* Vacuum REC_HOME/REC_RELOCATION/REC_BIGONE */
@@ -2721,6 +2770,10 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       assert (helper->forward_page != NULL);
       /* Overflow first page is required. */
       assert (!VFID_ISNULL (&helper->overflow_vfid));
+      /* Invariant: OOS does not coexist with REC_BIGONE. If this ever fires, the REMOVE path
+       * needs to reclaim the OOS records attached to the overflow record — add an oos_delete
+       * loop here. Until then, fail loud in debug so the regression is visible. */
+      assert (!heap_recdes_contains_oos (&helper->record));
 
       VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 
@@ -2750,18 +2803,22 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       break;
 
     case REC_HOME:
-      if (has_oos)
+      if (has_oos || need_prev_version_oos_cleanup)
 	{
-	  /* OOS deletion was wrapped in a sysop. Log individually and commit. */
+	  /* Sysop is active (OOS cleanup and/or prev-version chain walk). Log the slot vacuum
+	   * individually inside the sysop and commit. */
 	  pgbuf_set_dirty (thread_p, helper->home_page, DONT_FREE);
 	  vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page, helper->crt_slotid, &helper->record,
 					     helper->reusable);
 
-	  int oos_err = vacuum_heap_oos_delete (thread_p, helper);
-	  if (oos_err != NO_ERROR)
+	  if (has_oos)
 	    {
-	      log_sysop_abort (thread_p);
-	      return oos_err;
+	      int oos_err = vacuum_heap_oos_delete (thread_p, helper);
+	      if (oos_err != NO_ERROR)
+		{
+		  log_sysop_abort (thread_p);
+		  return oos_err;
+		}
 	    }
 
 	  log_sysop_commit (thread_p);
