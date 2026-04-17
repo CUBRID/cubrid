@@ -803,6 +803,14 @@ static int file_tracker_item_dump (THREAD_ENTRY * thread_p, PAGE_PTR page_of_ite
 				   int index_item, bool * stop, void *args);
 static int file_tracker_item_dump_capacity (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
 					    FILE_EXTENSIBLE_DATA * extdata, int index_item, bool * stop, void *args);
+static int file_tracker_item_collect_invalid_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
+						   FILE_EXTENSIBLE_DATA * extdata, int index_item, bool * stop,
+						   void *args);
+#if !defined (NDEBUG)
+static int file_tracker_item_delete_target_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
+						 FILE_EXTENSIBLE_DATA * extdata, int index_item, bool * stop,
+						 void *args);
+#endif
 static int file_tracker_item_dump_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EXTENSIBLE_DATA * extdata,
 					int index_item, bool * stop, void *args);
 static int file_tracker_item_dump_heap_capacity (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
@@ -10611,6 +10619,597 @@ file_tracker_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp)
 
   return NO_ERROR;
 }
+
+#include <unordered_set>
+#include <unordered_map>
+#include <functional>
+
+// *INDENT-OFF*
+/* OID equality operator for std::unordered_set<OID> */
+inline bool operator==(const OID &a, const OID &b)
+{
+  return a.pageid == b.pageid && a.slotid == b.slotid && a.volid == b.volid;
+}
+
+inline bool operator==(const VFID &a, const VFID &b)
+{
+  return a.fileid == b.fileid && a.volid == b.volid;
+}
+
+namespace std
+{
+  template <>
+  struct hash<OID>
+  {
+    size_t operator()(const OID &o) const
+    {
+      return std::hash<int>()(o.pageid) ^ (std::hash<short>()(o.slotid) << 1) ^ (std::hash<short>()(o.volid) << 2);
+    }
+  };
+
+  template <>
+  struct hash<VFID>
+  {
+    size_t operator()(const VFID &v) const
+    {
+      return std::hash<int>()(v.fileid) ^ (std::hash<int>()(v.volid) << 1);
+    }
+  };
+}
+// *INDENT-ON*
+
+bool
+file_is_valid_heap_file (THREAD_ENTRY * thread_p, OID * class_oid_p)
+{
+  bool is_valid = true;
+
+  if (!OID_ISNULL (class_oid_p))
+    {
+      RECDES recdes;
+      HEAP_SCANCACHE scan_cache;
+
+      (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
+
+      if (heap_get_class_record (thread_p, class_oid_p, &recdes, &scan_cache, PEEK) != S_SUCCESS)
+	{
+	  is_valid = false;
+	}
+
+      heap_scancache_end (thread_p, &scan_cache);
+    }
+
+  return is_valid;
+}
+
+/*
+ * file_tracker_item_dump_file () - FILE_TRACK_ITEM_FUNC to dump file info (all or invalid only)
+ *
+ * return            : error code
+ * thread_p (in)     : thread entry
+ * page_of_item (in) : tracker page
+ * extdata (in)      : tracker extensible data
+ * index_item (in)   : item index
+ * stop (in)         : not used
+ * args (in)         : void*[4] = { FILE*, bool*, unordered_set<OID>*, unordered_set<OID>* }
+ */
+static int
+file_tracker_item_dump_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EXTENSIBLE_DATA * extdata,
+			     int index_item, bool * stop, void *args)
+{
+  FILE_TRACK_ITEM *item;
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FILE_HEADER *fhead = NULL;
+// *INDENT-OFF*
+  void **params = static_cast<void **> (args);
+  FILE *fp = static_cast<FILE *> (params[0]);
+  bool invalid_only = *static_cast<bool *> (params[1]);
+  std::unordered_set<OID> *valid_oids = static_cast<std::unordered_set<OID> *> (params[2]);
+  std::unordered_set<OID> *invalid_oids = static_cast<std::unordered_set<OID> *> (params[3]);
+// *INDENT-ON*
+  int error_code = NO_ERROR;
+
+  item = (FILE_TRACK_ITEM *) file_extdata_at (extdata, index_item);
+
+  vpid_fhead.volid = item->volid;
+  vpid_fhead.pageid = item->fileid;
+
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  fhead = (FILE_HEADER *) page_fhead;
+
+  file_header_sanity_check (thread_p, fhead);
+
+  bool need_dump = true;
+
+  if (invalid_only)
+    {
+      OID *class_oid_p = NULL;
+
+      switch (fhead->type)
+	{
+	case FILE_HEAP:
+	case FILE_HEAP_REUSE_SLOTS:
+	  class_oid_p = &fhead->descriptor.heap.class_oid;
+	  break;
+	case FILE_MULTIPAGE_OBJECT_HEAP:
+	  class_oid_p = &fhead->descriptor.heap_overflow.class_oid;
+	  break;
+	case FILE_BTREE:
+	  class_oid_p = &fhead->descriptor.btree.class_oid;
+	  break;
+	case FILE_BTREE_OVERFLOW_KEY:
+	  class_oid_p = &fhead->descriptor.btree_key_overflow.class_oid;
+	  break;
+	default:
+	  break;
+	}
+
+      if (class_oid_p != NULL)
+	{
+	  auto it = valid_oids->find (*class_oid_p);
+	  if (it != valid_oids->end ())
+	    {
+	      need_dump = false;
+	    }
+	  else
+	    {
+	      auto it = invalid_oids->find (*class_oid_p);
+	      if (it == invalid_oids->end ())
+		{
+		  if (file_is_valid_heap_file (thread_p, class_oid_p))
+		    {
+		      need_dump = false;
+
+		      valid_oids->insert (*class_oid_p);
+		    }
+		  else
+		    {
+		      invalid_oids->insert (*class_oid_p);
+		    }
+		}
+	    }
+	}
+      else
+	{
+	  need_dump = false;
+	}
+    }
+
+  if (need_dump)
+    {
+      fprintf (fp, "%4d|%4d %5d  %-22s ", item->volid, item->fileid, fhead->n_page_user,
+	       file_type_to_string (fhead->type));
+      if ((FILE_TYPE) item->type == FILE_HEAP && item->metadata.heap.is_marked_deleted)
+	{
+	  fprintf (fp, "Marked as deleted... ");
+	}
+
+      file_header_dump_descriptor (thread_p, fhead, fp);
+    }
+
+  pgbuf_unfix (thread_p, page_fhead);
+
+  return NO_ERROR;
+}
+
+/*
+ * xfile_tracker_dump_file_list () - dump all files (or invalid files only)
+ *
+ * return            : error code
+ * thread_p (in)     : thread entry
+ * outfp (in)        : FILE stream where to dump the file list
+ * invalid_only (in) : dump only invalid files if set
+ */
+int
+xfile_tracker_dump_file_list (THREAD_ENTRY * thread_p, FILE * outfp, bool invalid_only)
+{
+  int error_code = NO_ERROR;
+  void *args[4];
+// *INDENT-OFF*
+  std::unordered_set<OID> valid_oids;
+  std::unordered_set<OID> invalid_oids;
+// *INDENT-ON*
+
+  if (outfp == NULL)
+    {
+      outfp = stdout;
+    }
+
+// *INDENT-OFF*
+  args[0] = static_cast<void *> (outfp);
+  args[1] = static_cast<void *> (&invalid_only);
+  args[2] = static_cast<void *> (&valid_oids);
+  args[3] = static_cast<void *> (&invalid_oids);
+// *INDENT-ON*
+
+  fprintf (outfp, "    VFID   npages    type             FDES\n");
+  error_code = file_tracker_map (thread_p, PGBUF_LATCH_READ, file_tracker_item_dump_file, (void *) args);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * file_tracker_item_collect_invalid_file () - collect invalid file vfids into a map
+ *
+ * return            : error code
+ * thread_p (in)     : thread entry
+ * page_of_item (in) : tracker page
+ * extdata (in)      : tracker extensible data
+ * index_item (in)   : item index
+ * stop (in)         : not used
+ * args (in)         : void*[3] = { unordered_set<OID>*, unordered_set<OID>*, unordered_map<VFID,FILE_TYPE>* }
+ */
+static int
+file_tracker_item_collect_invalid_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EXTENSIBLE_DATA * extdata,
+					int index_item, bool * stop, void *args)
+{
+  FILE_TRACK_ITEM *item;
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FILE_HEADER *fhead = NULL;
+  int error_code = NO_ERROR;
+// *INDENT-OFF*
+  void **params = static_cast<void **> (args);
+  std::unordered_set<OID> *valid_oids = static_cast<std::unordered_set<OID> *> (params[0]);
+  std::unordered_set<OID> *invalid_oids = static_cast<std::unordered_set<OID> *> (params[1]);
+  std::unordered_map<VFID, FILE_TYPE> *invalid_files = static_cast<std::unordered_map<VFID, FILE_TYPE> *> (params[2]);
+// *INDENT-ON*
+
+  item = (FILE_TRACK_ITEM *) file_extdata_at (extdata, index_item);
+
+  vpid_fhead.volid = item->volid;
+  vpid_fhead.pageid = item->fileid;
+
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  fhead = (FILE_HEADER *) page_fhead;
+
+  file_header_sanity_check (thread_p, fhead);
+
+  OID *class_oid_p = NULL;
+  bool is_found = false;
+
+  switch (fhead->type)
+    {
+    case FILE_HEAP:
+    case FILE_HEAP_REUSE_SLOTS:
+      class_oid_p = &fhead->descriptor.heap.class_oid;
+      break;
+    case FILE_MULTIPAGE_OBJECT_HEAP:
+      class_oid_p = &fhead->descriptor.heap_overflow.class_oid;
+      break;
+    case FILE_BTREE:
+      class_oid_p = &fhead->descriptor.btree.class_oid;
+      break;
+    case FILE_BTREE_OVERFLOW_KEY:
+      class_oid_p = &fhead->descriptor.btree_key_overflow.class_oid;
+      break;
+    default:
+      break;
+    }
+
+  if (class_oid_p != NULL)
+    {
+      auto it = invalid_oids->find (*class_oid_p);
+      if (it != invalid_oids->end ())
+	{
+	  is_found = true;
+	}
+      else
+	{
+	  auto it = valid_oids->find (*class_oid_p);
+	  if (it == valid_oids->end ())
+	    {
+	      if (!file_is_valid_heap_file (thread_p, class_oid_p))
+		{
+		  is_found = true;
+
+		  invalid_oids->insert (*class_oid_p);
+		}
+	      else
+		{
+		  valid_oids->insert (*class_oid_p);
+		}
+	    }
+	}
+    }
+
+  if (is_found)
+    {
+// *INDENT-OFF*
+      /* C++11 compatible: no structured binding */
+      VFID vfid_key = {item->fileid, item->volid};
+      auto result = invalid_files->emplace (vfid_key, fhead->type);
+      assert (result.second && "Duplicate VFID insertion detected");
+// *INDENT-ON*
+    }
+
+  pgbuf_unfix (thread_p, page_fhead);
+
+  return NO_ERROR;
+}
+
+/*
+ * file_delete_invalid_file () - destroy each file in invalid_files map
+ *
+ * return              : error code
+ * thread_p (in)       : thread entry
+ * invalid_files (in)  : map of vfid -> file_type to destroy
+ * heap (out)          : count of heap files destroyed
+ * heap_ovf (out)      : count of heap overflow files destroyed
+ * btree (out)         : count of btree files destroyed
+ * btree_ovf (out)     : count of btree overflow files destroyed
+ */
+// *INDENT-OFF*
+int
+file_delete_invalid_file (THREAD_ENTRY * thread_p,
+			  const std::unordered_map<VFID, FILE_TYPE> &invalid_files,
+			  int *heap, int *heap_ovf, int *btree, int *btree_ovf)
+{
+  int error_code = NO_ERROR;
+  assert (heap != nullptr);
+  assert (heap_ovf != nullptr);
+  assert (btree != nullptr);
+  assert (btree_ovf != nullptr);
+
+  for (const auto &entry : invalid_files)
+    {
+      const VFID &vfid = entry.first;
+      FILE_TYPE file_type = entry.second;
+
+  log_sysop_start (thread_p);
+
+  if (file_destroy (thread_p, &vfid, false) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      log_sysop_abort (thread_p);
+      return error_code;
+    }
+
+  log_sysop_commit (thread_p);
+
+  switch (file_type)
+    {
+    case FILE_HEAP:
+    case FILE_HEAP_REUSE_SLOTS:
+      ++(*heap);
+      break;
+    case FILE_MULTIPAGE_OBJECT_HEAP:
+      ++(*heap_ovf);
+      break;
+    case FILE_BTREE:
+      ++(*btree);
+      break;
+    case FILE_BTREE_OVERFLOW_KEY:
+      ++(*btree_ovf);
+      break;
+    default:
+      assert (false && "Unknown FILE_TYPE");
+      break;
+    }
+}
+
+return NO_ERROR;
+}
+// *INDENT-ON*
+
+/*
+ * xfile_tracker_clean_invalid_file () - collect and destroy all invalid files
+ *
+ * return          : error code
+ * thread_p (in)   : thread entry
+ * heap (out)      : count of heap files destroyed
+ * heap_ovf (out)  : count of heap overflow files destroyed
+ * btree (out)     : count of btree files destroyed
+ * btree_ovf (out) : count of btree overflow files destroyed
+ */
+int
+xfile_tracker_clean_invalid_file (THREAD_ENTRY * thread_p, int *heap, int *heap_ovf, int *btree, int *btree_ovf)
+{
+  void *args[3];
+  int error_code = NO_ERROR;
+// *INDENT-OFF*
+  std::unordered_set<OID> valid_oids;
+  std::unordered_set<OID> invalid_oids;
+  std::unordered_map<VFID, FILE_TYPE> invalid_files;
+
+  args[0] = static_cast<void *> (&valid_oids);
+  args[1] = static_cast<void *> (&invalid_oids);
+  args[2] = static_cast<void *> (&invalid_files);
+// *INDENT-ON*
+
+  error_code = file_tracker_map (thread_p, PGBUF_LATCH_WRITE, file_tracker_item_collect_invalid_file, args);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  if (!invalid_files.empty ())
+    {
+      error_code = file_delete_invalid_file (thread_p, invalid_files, heap, heap_ovf, btree, btree_ovf);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+#if !defined(NDEBUG)
+/*
+ * parse_target_vfid () - Parse vfid string "fileid|volid" (e.g., "123|1")
+ *
+ * return           : true on success, false on failure
+ * in_vfid_str (in) : vfid string
+ * out_vfid (out)   : parsed vfid
+ */
+bool
+parse_target_vfid (const char *in_vfid_str, VFID * out_vfid)
+{
+  char sentinel;
+
+  if (in_vfid_str == NULL || out_vfid == NULL)
+    {
+      return false;
+    }
+
+  for (int i = 0; in_vfid_str[i] != '\0'; i++)
+    {
+      if (!isdigit ((unsigned char) in_vfid_str[i]) && in_vfid_str[i] != '|')
+	{
+	  return false;
+	}
+    }
+
+  if (sscanf (in_vfid_str, "%d|%hd%c", &out_vfid->fileid, &out_vfid->volid, &sentinel) != 2)
+    {
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * file_tracker_item_delete_target_file () - find and destroy a single target file by VFID
+ *
+ * return            : error code
+ * thread_p (in)     : thread entry
+ * page_of_item (in) : tracker page
+ * extdata (in)      : tracker extensible data
+ * index_item (in)   : item index
+ * stop (in)         : not used
+ * args (in)         : VFID* target vfid
+ */
+static int
+file_tracker_item_delete_target_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
+				      FILE_EXTENSIBLE_DATA * extdata, int index_item, bool * stop, void *args)
+{
+  FILE_TRACK_ITEM *item;
+  VFID *target_vfid;
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FILE_HEADER *fhead = NULL;
+  int error_code = NO_ERROR;
+
+  target_vfid = (VFID *) args;
+
+  item = (FILE_TRACK_ITEM *) file_extdata_at (extdata, index_item);
+
+  if (target_vfid->fileid != item->fileid || target_vfid->volid != item->volid)
+    {
+      return NO_ERROR;
+    }
+
+  vpid_fhead.volid = item->volid;
+  vpid_fhead.pageid = item->fileid;
+
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  fhead = (FILE_HEADER *) page_fhead;
+
+  file_header_sanity_check (thread_p, fhead);
+
+  FILE_TYPE file_type = fhead->type;
+
+  if (file_type == FILE_HEAP || file_type == FILE_HEAP_REUSE_SLOTS || file_type == FILE_MULTIPAGE_OBJECT_HEAP
+      || file_type == FILE_BTREE || file_type == FILE_BTREE_OVERFLOW_KEY || file_type == FILE_QUERY_AREA
+      || file_type == FILE_TEMP || file_type == FILE_UNKNOWN_TYPE)
+    {
+      if (page_fhead != NULL)
+	{
+	  pgbuf_unfix (thread_p, page_fhead);
+
+	  page_fhead = NULL;
+	}
+
+      log_sysop_start (thread_p);
+
+      if (file_type == FILE_QUERY_AREA || file_type == FILE_TEMP)
+	{
+	  if (file_destroy (thread_p, target_vfid, true) != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+
+	      log_sysop_abort (thread_p);
+
+	      return error_code;
+	    }
+	}
+      else
+	{
+	  if (file_destroy (thread_p, target_vfid, false) != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+
+	      log_sysop_abort (thread_p);
+
+	      return error_code;
+	    }
+	}
+
+      log_sysop_commit (thread_p);
+    }
+
+  if (page_fhead != NULL)
+    {
+      pgbuf_unfix (thread_p, page_fhead);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * xfile_tracker_delete_target_file () - parse vfid string and destroy the target file
+ *
+ * return                : error code
+ * thread_p (in)         : thread entry
+ * target_vfid_str (in)  : vfid string "fileid|volid"
+ */
+int
+xfile_tracker_delete_target_file (THREAD_ENTRY * thread_p, const char *target_vfid_str)
+{
+  VFID target_vfid = VFID_INITIALIZER;
+  int error_code = NO_ERROR;
+
+  if (parse_target_vfid (target_vfid_str, &target_vfid) != true)
+    {
+      /* TODO: Define error message for release build */
+      return ER_FAILED;
+    }
+
+  error_code = file_tracker_map (thread_p, PGBUF_LATCH_WRITE, file_tracker_item_delete_target_file, &target_vfid);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+#endif
 
 /*
  * file_tracker_item_dump_heap () - FILE_TRACK_ITEM_FUNC to dump heap file

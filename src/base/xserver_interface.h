@@ -282,4 +282,12 @@ extern bool xlogtb_does_active_user_exist (THREAD_ENTRY * thread_p, const char *
 extern int xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK lock, LOCK * ex_lock);
 extern bool xtran_should_connection_reset (THREAD_ENTRY * thread_p, bool has_updated);
 extern int xsession_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit);
+
+extern int xfile_tracker_dump_file_list (THREAD_ENTRY * thread_p, FILE * outfp, bool invalid_only);
+extern int xfile_tracker_clean_invalid_file (THREAD_ENTRY * thread_p, int *heap, int *heap_ovf, int *btree,
+					     int *btree_ovf);
+#if !defined(NDEBUG)
+extern int xfile_tracker_delete_target_file (THREAD_ENTRY * thread_p, const char *target_vfid_str);
+#endif
+
 #endif /* _XSERVER_INTERFACE_H_ */

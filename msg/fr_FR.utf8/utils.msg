@@ -72,6 +72,7 @@ $       52      dump_tz
 $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
+$       57      cleanfiledb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Longueur ou caractère non valide '%1$c' dans le nom de la base de données '%2$s'\n
@@ -1199,3 +1200,29 @@ options valides:\n\
       --resume                     reprendre la calculation des sommes de contrôle\n\
       --schema-only                vérifier seulement la cohérence du schéma\n\
       --cont-on-error              continuer en cas d'erreur de calcul\n
+
+$set 57 MSGCAT_UTIL_SET_CLEANFILEDB
+10 Couldn't open output file '%1$s'\n
+11 \
+*** CUBRID cleanfiledb (Database: %1$s) ***\n\
+  Summary of invalid files cleaned:\n\
+  ======================================================================\n\
+  Type                  Cleaned Count      Status\n\
+  ======================================================================\n\
+  Heap                  %2$d                  Success\n\
+  Heap Overflow         %3$d                  Success\n\
+  B-Tree                %4$d                  Success\n\
+  B-Tree Overflow       %5$d                  Success\n\
+  ----------------------------------------------------------------------\n\
+  Total                 %6$d\n\
+  ======================================================================\n\
+  Cleanup execution finished successfully.\n
+60 \
+cleanfiledb: Delete invalid files and reclaim storage space.\n\
+usage: %1$s cleanfiledb [OPTION] database-name\n\
+valid options:\n\
+    -S, --SA-mode                 stand-alone mode execution\n\
+    -C, --CS-mode                 client-server mode execution\n\
+    -o, --output-file=FILE        redirect output message to FILE; default: none.\n\
+    -l, --list                    list all files\n\
+    -c, --clean-invalid-file      clean invalid files\n

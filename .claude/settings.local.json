@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh pr *)",
+      "Bash(gh api *)",
+      "Bash(python3 -c ' *)",
+      "Bash(ls /home/chijun/workspace/cubrid-10-2/cubrid/src/communication/network_common*)",
+      "Bash(ls /home/chijun/workspace/cubrid-10-2/cubrid/src/communication/*.c)"
+    ]
+  }
+}
