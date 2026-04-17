@@ -33,6 +33,10 @@
 /* bridge functions */
 int bridge_vacuum_heap_oos_delete (THREAD_ENTRY *thread_p, const VFID *oos_vfid, RECDES *record);
 int bridge_oos_get_max_chunk_size_within_page ();
+int bridge_vacuum_cleanup_prev_version_oos (THREAD_ENTRY *thread_p, const HFID *hfid, const VFID *oos_vfid,
+					    const LOG_LSA *prev_lsa);
+void bridge_log_append_undo_for_prev_version_test (THREAD_ENTRY *thread_p, const VFID *vfid,
+						   const RECDES *old_recdes, LOG_LSA *out_lsa);
 
 // ============================================================================
 // Helper: Build heap RECDES with OOS inline data
@@ -643,6 +647,169 @@ TEST_F (OosVacuumCodePathServer, BulkVacuumReclaimAndReuse)
       ASSERT_EQ (err, NO_ERROR);
       ASSERT_EQ (out.length, oos_size + 1);
       recdes_free_data_area (&out);
+    }
+}
+
+// ============================================================================
+// TC-V8 / TC-V9: vacuum_cleanup_prev_version_oos chain-walker tests.
+//
+// These are DISABLED because they expose a test-harness limitation, not a
+// product bug. When the test body calls the bridge, the OOS deletes are logged
+// against the per-test OOS file. Per-test fixture TearDown then destroys that
+// file. Later, ServerModeEnv TearDown issues log_abort on the worker
+// transaction, which walks the sysop-committed oos_delete log records back and
+// calls oos_rv_redo_insert against a page whose file no longer exists, hitting
+// an assertion in the storage layer.
+//
+// Workarounds explored and rejected:
+//   * Committing the test transaction in fixture TearDown: leaves the unittestdb
+//     in a state where subsequent SA_MODE test binaries fail db_restart (-116).
+//   * log_sysop_end_logical_undo(RVES_NOTIFY_VACUUM, …) in the bridge: the
+//     logical-undo path dereferences data pointers we have to pass as NULL and
+//     segfaults.
+//   * Changing ServerModeEnv TearDown to log_commit: same db_restart fallout.
+//
+// The right fix is either:
+//   (a) Make bridge-committed OOS work truly stand-alone by wrapping each test
+//       in its own detached worker transaction that commits before fixture
+//       TearDown, while leaving the outer ServerModeEnv transaction clean.
+//   (b) Write this as a CTest shell test against a started cub_server, driving
+//       INSERT/UPDATE/DELETE via csql and triggering vacuum through the real
+//       vacuum worker (needs a way to force vacuum + advance oldest_active
+//       deterministically — not currently exposed as a DML-reachable control).
+//
+// The bridge functions (bridge_vacuum_cleanup_prev_version_oos,
+// bridge_log_append_undo_for_prev_version_test) remain in vacuum.c so the test
+// infrastructure is preserved for whichever of (a) or (b) is taken next.
+// ============================================================================
+TEST_F (OosVacuumCodePathServer, DISABLED_PrevVersionChainWalkerDeletesOldOos)
+{
+  int err;
+
+  /* Insert OOS_old and OOS_new. */
+  RECDES oos_old_payload {};
+  err = test_oos_utils::from_string_into_recdes ("payload of the OLD version (prev_version_lsa target)",
+						 oos_old_payload);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_old_payload (&oos_old_payload, recdes_free_data_area);
+
+  RECDES oos_new_payload {};
+  err = test_oos_utils::from_string_into_recdes ("payload of the NEW (current) version", oos_new_payload);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_new_payload (&oos_new_payload, recdes_free_data_area);
+
+  OID oos_old_oid = OID_INITIALIZER;
+  err = oos_insert (thread_p, oos_vfid, oos_old_payload, oos_old_oid);
+  ASSERT_EQ (err, NO_ERROR);
+  ASSERT_NE (oos_old_oid.pageid, NULL_PAGEID);
+
+  OID oos_new_oid = OID_INITIALIZER;
+  err = oos_insert (thread_p, oos_vfid, oos_new_payload, oos_new_oid);
+  ASSERT_EQ (err, NO_ERROR);
+  ASSERT_NE (oos_new_oid.pageid, NULL_PAGEID);
+
+  /* Verify both are readable before the test. */
+  {
+    RECDES check {};
+    ASSERT_EQ (oos_read (thread_p, oos_old_oid, check), NO_ERROR);
+    recdes_free_data_area (&check);
+  }
+  {
+    RECDES check {};
+    ASSERT_EQ (oos_read (thread_p, oos_new_oid, check), NO_ERROR);
+    recdes_free_data_area (&check);
+  }
+
+  /* Build an old heap recdes referencing OOS_old and log it as the prev-version undo record. */
+  RECDES old_heap_rec {};
+  err = build_heap_recdes_with_oos ({oos_old_oid}, { (INT64) oos_old_payload.length}, old_heap_rec);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_old_heap (&old_heap_rec, recdes_free_data_area);
+
+  LOG_LSA prev_version_lsa = LSA_INITIALIZER;
+  bridge_log_append_undo_for_prev_version_test (thread_p, &oos_vfid, &old_heap_rec, &prev_version_lsa);
+  ASSERT_FALSE (LSA_ISNULL (&prev_version_lsa));
+
+  /* Invoke the chain walker — this is exactly what the fixed REMOVE path does. */
+  HFID dummy_hfid = HFID_INITIALIZER;
+  err = bridge_vacuum_cleanup_prev_version_oos (thread_p, &dummy_hfid, &oos_vfid, &prev_version_lsa);
+  ASSERT_EQ (err, NO_ERROR);
+
+  /* OOS_old MUST be gone — the dangling-OOS bug would leave it here. */
+  RECDES after_old {};
+  int read_old_err = oos_read (thread_p, oos_old_oid, after_old);
+  EXPECT_NE (read_old_err, NO_ERROR)
+      << "OOS_old was not deleted by prev_version chain walker — dangling-OOS regression";
+  if (after_old.data != nullptr)
+    {
+      recdes_free_data_area (&after_old);
+    }
+
+  /* OOS_new MUST still be readable — chain walker should not touch unrelated OOS. */
+  RECDES after_new {};
+  int read_new_err = oos_read (thread_p, oos_new_oid, after_new);
+  EXPECT_EQ (read_new_err, NO_ERROR) << "OOS_new was incorrectly deleted by chain walker";
+  if (after_new.data != nullptr)
+    {
+      recdes_free_data_area (&after_new);
+    }
+}
+
+// ============================================================================
+// TC-V9: multi-column variant of TC-V8. Also DISABLED — same harness reason.
+// ============================================================================
+TEST_F (OosVacuumCodePathServer, DISABLED_PrevVersionChainWalkerDeletesMultipleOosColumns)
+{
+  int err;
+
+  const int N = 3;
+  OID oos_oids[N];
+  INT64 oos_lens[N];
+  RECDES payloads[N] = {};
+
+  for (int i = 0; i < N; i++)
+    {
+      char buf[64];
+      snprintf (buf, sizeof (buf), "old version column %d payload", i);
+      err = test_oos_utils::from_string_into_recdes (buf, payloads[i]);
+      ASSERT_EQ (err, NO_ERROR);
+
+      oos_oids[i] = OID_INITIALIZER;
+      err = oos_insert (thread_p, oos_vfid, payloads[i], oos_oids[i]);
+      ASSERT_EQ (err, NO_ERROR);
+      oos_lens[i] = payloads[i].length;
+    }
+
+  std::vector<OID> oid_vec (oos_oids, oos_oids + N);
+  std::vector<INT64> len_vec (oos_lens, oos_lens + N);
+  RECDES old_heap_rec {};
+  err = build_heap_recdes_with_oos (oid_vec, len_vec, old_heap_rec);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_old_heap (&old_heap_rec, recdes_free_data_area);
+
+  LOG_LSA prev_version_lsa = LSA_INITIALIZER;
+  bridge_log_append_undo_for_prev_version_test (thread_p, &oos_vfid, &old_heap_rec, &prev_version_lsa);
+  ASSERT_FALSE (LSA_ISNULL (&prev_version_lsa));
+
+  HFID dummy_hfid = HFID_INITIALIZER;
+  err = bridge_vacuum_cleanup_prev_version_oos (thread_p, &dummy_hfid, &oos_vfid, &prev_version_lsa);
+  ASSERT_EQ (err, NO_ERROR);
+
+  /* All N OOS records from the old version must be gone. */
+  for (int i = 0; i < N; i++)
+    {
+      RECDES after {};
+      int read_err = oos_read (thread_p, oos_oids[i], after);
+      EXPECT_NE (read_err, NO_ERROR) << "OOS column " << i << " was not deleted by chain walker";
+      if (after.data != nullptr)
+	{
+	  recdes_free_data_area (&after);
+	}
+    }
+
+  for (int i = 0; i < N; i++)
+    {
+      recdes_free_data_area (&payloads[i]);
     }
 }
 

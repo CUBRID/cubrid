@@ -8322,6 +8322,91 @@ bridge_vacuum_heap_oos_delete (THREAD_ENTRY * thread_p, const VFID * oos_vfid, R
   return vacuum_heap_oos_delete (thread_p, &helper);
 }
 
+/*
+ * bridge_vacuum_cleanup_prev_version_oos () - Test bridge for vacuum_cleanup_prev_version_oos.
+ *
+ * Lets unit tests exercise the prev_version_lsa chain walker with a crafted helper state
+ * (oos_vfid, hfid, and prev_version_lsa filled in). The caller must supply a prev_version_lsa
+ * that resolves to a real undo log record whose undo-data is an OOS-bearing heap recdes
+ * (use bridge_log_append_undo_for_prev_version_test() to build one).
+ *
+ * This bridge wraps the call in a log_sysop, matching the production contract that
+ * vacuum_cleanup_prev_version_oos expects a sysop around it.
+ *
+ * return       : Error code.
+ * thread_p(in) : Thread entry.
+ * hfid(in)     : HFID of the heap; populated into helper->hfid for error messages and
+ *                lazy VFID lookup fallback.
+ * oos_vfid(in) : Pre-populated OOS VFID (skips the lazy lookup path).
+ * prev_lsa(in) : LSA of an undo log record whose undo data is the old heap recdes.
+ */
+int
+bridge_vacuum_cleanup_prev_version_oos (THREAD_ENTRY * thread_p, const HFID * hfid, const VFID * oos_vfid,
+					const LOG_LSA * prev_lsa)
+{
+  VACUUM_HEAP_HELPER helper;
+  int error_code;
+
+  memset (&helper, 0, sizeof (helper));
+  HFID_COPY (&helper.hfid, hfid);
+  VFID_COPY (&helper.oos_vfid, oos_vfid);
+  LSA_COPY (&helper.mvcc_header.prev_version_lsa, prev_lsa);
+  MVCC_SET_FLAG_BITS (&helper.mvcc_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
+
+  log_sysop_start (thread_p);
+  error_code = vacuum_cleanup_prev_version_oos (thread_p, &helper);
+  if (error_code != NO_ERROR)
+    {
+      log_sysop_abort (thread_p);
+      return error_code;
+    }
+  log_sysop_commit (thread_p);
+  return NO_ERROR;
+}
+
+/*
+ * bridge_log_append_undo_for_prev_version_test () - Test helper that appends an undo log
+ *   record carrying a heap recdes and returns the LSA.
+ *
+ * The LSA can then be used as prev_version_lsa in a VACUUM_HEAP_HELPER to simulate an
+ * old MVCC version whose OOS records need reclaiming. The log record is appended as
+ * LOG_MVCC_UNDO_DATA, which is exactly what log_get_undo_record in the chain walker
+ * parses and extracts the undo-data (heap recdes) from.
+ *
+ * Uses RVES_NOTIFY_VACUUM as the recovery index:
+ *   - It is an MVCC operation (LOG_IS_MVCC_OPERATION) so the log record type is LOG_MVCC_UNDO_DATA.
+ *   - Its undo handler is vacuum_rv_es_nop (no-op), so shutdown/rollback of the test transaction
+ *     doesn't try to reverse-apply the hand-crafted recdes against a nonexistent heap page.
+ *   - It accepts a NULL vfid at log-append time, so no bogus heap VFID is needed.
+ *
+ * thread_p(in)   : Thread entry.
+ * old_recdes(in) : Old heap recdes to log (treated as undo data).
+ * out_lsa(out)   : LSA of the appended record.
+ */
+void
+bridge_log_append_undo_for_prev_version_test (THREAD_ENTRY * thread_p, const VFID *, const RECDES * old_recdes,
+					      LOG_LSA * out_lsa)
+{
+  LOG_DATA_ADDR addr;
+  LOG_TDES *tdes;
+
+  addr.vfid = NULL;
+  addr.pgptr = NULL;
+  addr.offset = -1;
+
+  log_append_undo_recdes (thread_p, RVES_NOTIFY_VACUUM, &addr, old_recdes);
+
+  /* Flush the prior list so the just-appended record becomes fetchable by log_get_undo_record
+   * (which asserts process_lsa < append_lsa). */
+  LOG_CS_ENTER (thread_p);
+  logpb_prior_lsa_append_all_list (thread_p);
+  LOG_CS_EXIT (thread_p);
+
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  assert (tdes != NULL);
+  LSA_COPY (out_lsa, &tdes->tail_lsa);
+}
+
 // *INDENT-OFF*
 //
 // C++
