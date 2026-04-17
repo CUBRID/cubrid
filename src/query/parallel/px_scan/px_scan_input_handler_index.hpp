@@ -68,15 +68,15 @@ namespace parallel_scan
       }
 
     private:
-      VPID m_current_leaf_vpid;         // shared cursor (mutex-protected)
+      VPID m_current_leaf_vpid;         /* shared cursor (mutex-protected) */
       bool m_leaf_ended;
       std::mutex m_leaf_mutex;
       BTID_INT m_btid_int;
       BTID m_btid;
-      INDX_INFO *m_indx_info;          // original INDX_INFO pointer for workers
-      bool m_use_desc_index;
       interrupt *m_interrupt_p;
       err_messages_with_lock *m_err_messages_p;
+      INDX_INFO *m_indx_info;          /* original INDX_INFO pointer for workers */
+      bool m_use_desc_index;
   };
 }
 

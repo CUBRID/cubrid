@@ -1946,25 +1946,7 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	    {
 	      if (p->s_id.s.phsid.manager)
 		{
-		  parallel_scan::RESULT_TYPE result_type = p->s_id.s.phsid.result_type;
-		  switch (result_type)
-		    {
-		    case parallel_scan::RESULT_TYPE::MERGEABLE_LIST:
-		      ((parallel_scan::manager < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::HEAP >
-			*)p->s_id.s.phsid.manager)->close ();
-		      break;
-		    case parallel_scan::RESULT_TYPE::XASL_SNAPSHOT:
-		      ((parallel_scan::manager < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::HEAP >
-			*)p->s_id.s.phsid.manager)->close ();
-		      break;
-		    case parallel_scan::RESULT_TYPE::BUILDVALUE_OPT:
-		      ((parallel_scan::manager < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::HEAP >
-			*)p->s_id.s.phsid.manager)->close ();
-		      break;
-		    default:
-		      assert (false);
-		      break;
-		    }
+		  scan_close_parallel_heap_scan (thread_p, &p->s_id);
 		  p->s_id.s.phsid.manager = nullptr;
 		}
 	    }
@@ -1982,38 +1964,8 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	    }
 	  break;
 
-#if SERVER_MODE
-	case S_PARALLEL_INDEX_SCAN:
-	  /* isid resources (caches, indx_cov, bt_attr_ids, etc.) were already cleaned up
-	   * in scan_open_parallel_index_scan before the pisid overwrite.
-	   * Here we only need to close the parallel manager. */
-	  if (p->s_id.s.pisid.manager)
-	    {
-	      parallel_scan::RESULT_TYPE result_type = p->s_id.s.pisid.result_type;
-	      switch (result_type)
-		{
-		case parallel_scan::RESULT_TYPE::MERGEABLE_LIST:
-		  ((parallel_scan::manager < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::INDEX >
-		    *)p->s_id.s.pisid.manager)->close ();
-		  break;
-		case parallel_scan::RESULT_TYPE::XASL_SNAPSHOT:
-		  ((parallel_scan::manager < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::INDEX >
-		    *)p->s_id.s.pisid.manager)->close ();
-		  break;
-		case parallel_scan::RESULT_TYPE::BUILDVALUE_OPT:
-		  ((parallel_scan::manager < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::INDEX >
-		    *)p->s_id.s.pisid.manager)->close ();
-		  break;
-		default:
-		  assert (false);
-		  break;
-		}
-	      p->s_id.s.pisid.manager = nullptr;
-	    }
-	  break;
-#endif
-
 	case S_INDX_SCAN:
+	case S_PARALLEL_INDEX_SCAN:
 	  pg_cnt +=
 	    qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.isid.key_pred.regu_list, is_final, for_parallel_aptr);
 	  pg_cnt +=
@@ -2067,6 +2019,16 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		}
 	      db_private_free_and_init (thread_p, isidp->prebuilt_midxkey_domains);
 	    }
+#if SERVER_MODE
+	  if (p->s_id.type == S_PARALLEL_INDEX_SCAN)
+	    {
+	      if (p->s_id.s.pisid.manager)
+		{
+		  scan_close_parallel_index_scan (thread_p, &p->s_id);
+		  p->s_id.s.pisid.manager = nullptr;
+		}
+	    }
+#endif
 	  break;
 	case S_INDX_KEY_INFO_SCAN:
 	  isidp = &p->s_id.s.isid;
@@ -2095,6 +2057,7 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	    }
 	  break;
 	case S_LIST_SCAN:
+	case S_PARALLEL_LIST_SCAN:
 	  pg_cnt +=
 	    qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.llsid.scan_pred.regu_list, is_final, for_parallel_aptr);
 	  pg_cnt +=
@@ -2105,6 +2068,16 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	  pg_cnt +=
 	    qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.llsid.hlsid.probe_regu_list, is_final,
 				   for_parallel_aptr);
+#if SERVER_MODE
+	  if (p->s_id.type == S_PARALLEL_LIST_SCAN)
+	    {
+	      if (p->s_id.s.pllsid_parallel.manager)
+		{
+		  scan_close_parallel_list_scan (thread_p, &p->s_id);
+		  p->s_id.s.pllsid_parallel.manager = nullptr;
+		}
+	    }
+#endif
 	  break;
 	case S_SET_SCAN:
 	  pg_cnt +=
@@ -7454,8 +7427,8 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 
 #if SERVER_MODE && !WINDOWS
 	    error_code = scan_open_parallel_index_scan (thread_p, s_id, vd, curr_spec,
-						       &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
-						       xasl, query_id);
+							&ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
+							xasl, query_id);
 	    if (error_code != NO_ERROR)
 	      {
 		ASSERT_ERROR ();
@@ -7543,8 +7516,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 #if SERVER_MODE && !WINDOWS
 	if (!is_connect_by_list)
 	  {
-	    error_code =
-	      scan_open_parallel_list_scan (thread_p, s_id, vd, curr_spec, list_id, xasl, query_id);
+	    error_code = scan_open_parallel_list_scan (thread_p, s_id, vd, curr_spec, list_id, xasl, query_id);
 	    if (error_code != NO_ERROR)
 	      {
 		ASSERT_ERROR ();
@@ -7563,7 +7535,8 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	      scan_open_list_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
 				   list_id, curr_spec->s.list_node.list_regu_list_pred,
 				   curr_spec->where_pred, curr_spec->s.list_node.list_regu_list_rest,
-				   curr_spec->s.list_node.list_regu_list_build, curr_spec->s.list_node.list_regu_list_probe,
+				   curr_spec->s.list_node.list_regu_list_build,
+				   curr_spec->s.list_node.list_regu_list_probe,
 				   curr_spec->s.list_node.hash_list_scan_yn, false);
 	    if (error_code != NO_ERROR)
 	      {

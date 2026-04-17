@@ -34,7 +34,7 @@
 #include "slotted_page.h"
 #include "storage_common.h"
 
-// XXX: SHOULD BE THE LAST INCLUDE HEADER
+/* XXX: SHOULD BE THE LAST INCLUDE HEADER */
 #include "memory_wrapper.hpp"
 
 namespace parallel_scan
@@ -165,8 +165,10 @@ namespace parallel_scan
     return NO_ERROR;
 
 fallback:
-    /* On any error: return ER_FAILED so the caller falls back to single-thread index scan. */
+    /* Return ER_FAILED so the caller falls back to single-thread index scan.
+     * Set a generic error so callers that assert er_errid() != NO_ERROR won't crash. */
     er_clear ();
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
     return ER_FAILED;
   }
 

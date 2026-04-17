@@ -37,7 +37,7 @@
 #include "list_file.h"				/* qfile_close_list, qfile_destroy_list */
 #include "heap_file.h"				/* heap_attrinfo_end */
 
-// XXX: SHOULD BE THE LAST INCLUDE HEADER
+/* XXX: SHOULD BE THE LAST INCLUDE HEADER */
 #include "memory_wrapper.hpp"
 
 extern "C"
@@ -49,21 +49,24 @@ extern "C"
       {
       case parallel_scan::RESULT_TYPE::MERGEABLE_LIST:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::HEAP >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::HEAP >;
 	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 	return manager_p->next();
       }
 
       case parallel_scan::RESULT_TYPE::XASL_SNAPSHOT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::HEAP >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::HEAP >;
 	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 	return manager_p->next();
       }
 
       case parallel_scan::RESULT_TYPE::BUILDVALUE_OPT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::HEAP >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::HEAP >;
 	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 	return manager_p->next();
       }
@@ -78,11 +81,8 @@ extern "C"
   int
   scan_reset_scan_block_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
   {
-    /* TODO: cleared by scan_reset_scan_block; redundant? */
     scan_id->single_fetched = false;
     scan_id->null_fetched = false;
-
-    /* TODO: cleared by scan_next_scan_block; redundant? */
     scan_id->qualified_block = false;
 
     /* reset for S_HEAP_SCAN in scan_reset_scan_block */
@@ -95,7 +95,8 @@ extern "C"
       {
       case parallel_scan::RESULT_TYPE::MERGEABLE_LIST:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::HEAP >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::HEAP >;
 	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 
 	manager_p->merge_stats();
@@ -126,7 +127,8 @@ extern "C"
 
       case parallel_scan::RESULT_TYPE::XASL_SNAPSHOT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::HEAP >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::HEAP >;
 	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 
 	manager_p->merge_stats();
@@ -157,7 +159,8 @@ extern "C"
 
       case parallel_scan::RESULT_TYPE::BUILDVALUE_OPT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::HEAP >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::HEAP >;
 	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 
 	manager_p->merge_stats();
@@ -211,7 +214,8 @@ extern "C"
       {
       case parallel_scan::RESULT_TYPE::MERGEABLE_LIST:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::HEAP >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::HEAP >;
 	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 	manager_p->end();
 	break;
@@ -219,7 +223,8 @@ extern "C"
 
       case parallel_scan::RESULT_TYPE::XASL_SNAPSHOT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::HEAP >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::HEAP >;
 	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 	manager_p->end();
 	break;
@@ -227,7 +232,8 @@ extern "C"
 
       case parallel_scan::RESULT_TYPE::BUILDVALUE_OPT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::HEAP >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::HEAP >;
 	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 	manager_p->end();
 	break;
@@ -249,7 +255,8 @@ extern "C"
       {
       case parallel_scan::RESULT_TYPE::MERGEABLE_LIST:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::HEAP >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::HEAP >;
 
 	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 
@@ -280,7 +287,8 @@ extern "C"
 
       case parallel_scan::RESULT_TYPE::XASL_SNAPSHOT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::HEAP >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::HEAP >;
 
 	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 
@@ -311,7 +319,8 @@ extern "C"
 
       case parallel_scan::RESULT_TYPE::BUILDVALUE_OPT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::HEAP >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::HEAP >;
 
 	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 
@@ -597,21 +606,24 @@ extern "C"
       {
       case parallel_scan::RESULT_TYPE::MERGEABLE_LIST:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::LIST >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::LIST >;
 	manager_type *manager_p = (manager_type *) scan_id->s.pllsid_parallel.manager;
 	return manager_p->next();
       }
 
       case parallel_scan::RESULT_TYPE::XASL_SNAPSHOT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::LIST >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::LIST >;
 	manager_type *manager_p = (manager_type *) scan_id->s.pllsid_parallel.manager;
 	return manager_p->next();
       }
 
       case parallel_scan::RESULT_TYPE::BUILDVALUE_OPT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::LIST >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::LIST >;
 	manager_type *manager_p = (manager_type *) scan_id->s.pllsid_parallel.manager;
 	return manager_p->next();
       }
@@ -637,7 +649,8 @@ extern "C"
       {
       case parallel_scan::RESULT_TYPE::MERGEABLE_LIST:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::LIST >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::LIST >;
 	manager_type *manager_p = (manager_type *) scan_id->s.pllsid_parallel.manager;
 
 	manager_p->merge_stats();
@@ -655,8 +668,9 @@ extern "C"
 		    break;
 		  }
 
-		scan_id->s.pllsid_parallel.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pllsid_parallel.trace_storage,
-						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::LIST);
+		scan_id->s.pllsid_parallel.trace_storage = placement_new ((accumulative_trace_storage *)
+		    scan_id->s.pllsid_parallel.trace_storage,
+		    manager_p->get_result_type(), parallel_scan::SCAN_TYPE::LIST);
 		assert (scan_id->s.pllsid_parallel.trace_storage != nullptr);
 	      }
 
@@ -668,7 +682,8 @@ extern "C"
 
       case parallel_scan::RESULT_TYPE::XASL_SNAPSHOT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::LIST >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::LIST >;
 	manager_type *manager_p = (manager_type *) scan_id->s.pllsid_parallel.manager;
 
 	manager_p->merge_stats();
@@ -686,8 +701,9 @@ extern "C"
 		    break;
 		  }
 
-		scan_id->s.pllsid_parallel.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pllsid_parallel.trace_storage,
-						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::LIST);
+		scan_id->s.pllsid_parallel.trace_storage = placement_new ((accumulative_trace_storage *)
+		    scan_id->s.pllsid_parallel.trace_storage,
+		    manager_p->get_result_type(), parallel_scan::SCAN_TYPE::LIST);
 		assert (scan_id->s.pllsid_parallel.trace_storage != nullptr);
 	      }
 
@@ -699,7 +715,8 @@ extern "C"
 
       case parallel_scan::RESULT_TYPE::BUILDVALUE_OPT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::LIST >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::LIST >;
 	manager_type *manager_p = (manager_type *) scan_id->s.pllsid_parallel.manager;
 
 	manager_p->merge_stats();
@@ -717,8 +734,9 @@ extern "C"
 		    break;
 		  }
 
-		scan_id->s.pllsid_parallel.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pllsid_parallel.trace_storage,
-						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::LIST);
+		scan_id->s.pllsid_parallel.trace_storage = placement_new ((accumulative_trace_storage *)
+		    scan_id->s.pllsid_parallel.trace_storage,
+		    manager_p->get_result_type(), parallel_scan::SCAN_TYPE::LIST);
 		assert (scan_id->s.pllsid_parallel.trace_storage != nullptr);
 	      }
 
@@ -753,7 +771,8 @@ extern "C"
       {
       case parallel_scan::RESULT_TYPE::MERGEABLE_LIST:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::LIST >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::LIST >;
 	manager_type *manager_p = (manager_type *) scan_id->s.pllsid_parallel.manager;
 	manager_p->end();
 	break;
@@ -761,7 +780,8 @@ extern "C"
 
       case parallel_scan::RESULT_TYPE::XASL_SNAPSHOT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::LIST >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::LIST >;
 	manager_type *manager_p = (manager_type *) scan_id->s.pllsid_parallel.manager;
 	manager_p->end();
 	break;
@@ -769,7 +789,8 @@ extern "C"
 
       case parallel_scan::RESULT_TYPE::BUILDVALUE_OPT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::LIST >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::LIST >;
 	manager_type *manager_p = (manager_type *) scan_id->s.pllsid_parallel.manager;
 	manager_p->end();
 	break;
@@ -791,7 +812,8 @@ extern "C"
       {
       case parallel_scan::RESULT_TYPE::MERGEABLE_LIST:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::LIST >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::LIST >;
 
 	manager_type *manager_p = (manager_type *) scan_id->s.pllsid_parallel.manager;
 
@@ -808,8 +830,9 @@ extern "C"
 		    break;
 		  }
 
-		scan_id->s.pllsid_parallel.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pllsid_parallel.trace_storage,
-						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::LIST);
+		scan_id->s.pllsid_parallel.trace_storage = placement_new ((accumulative_trace_storage *)
+		    scan_id->s.pllsid_parallel.trace_storage,
+		    manager_p->get_result_type(), parallel_scan::SCAN_TYPE::LIST);
 		assert (scan_id->s.pllsid_parallel.trace_storage != nullptr);
 	      }
 
@@ -822,7 +845,8 @@ extern "C"
 
       case parallel_scan::RESULT_TYPE::XASL_SNAPSHOT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::LIST >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::LIST >;
 
 	manager_type *manager_p = (manager_type *) scan_id->s.pllsid_parallel.manager;
 
@@ -839,8 +863,9 @@ extern "C"
 		    break;
 		  }
 
-		scan_id->s.pllsid_parallel.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pllsid_parallel.trace_storage,
-						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::LIST);
+		scan_id->s.pllsid_parallel.trace_storage = placement_new ((accumulative_trace_storage *)
+		    scan_id->s.pllsid_parallel.trace_storage,
+		    manager_p->get_result_type(), parallel_scan::SCAN_TYPE::LIST);
 		assert (scan_id->s.pllsid_parallel.trace_storage != nullptr);
 	      }
 
@@ -853,7 +878,8 @@ extern "C"
 
       case parallel_scan::RESULT_TYPE::BUILDVALUE_OPT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::LIST >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::LIST >;
 
 	manager_type *manager_p = (manager_type *) scan_id->s.pllsid_parallel.manager;
 
@@ -870,8 +896,9 @@ extern "C"
 		    break;
 		  }
 
-		scan_id->s.pllsid_parallel.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pllsid_parallel.trace_storage,
-						 manager_p->get_result_type(), parallel_scan::SCAN_TYPE::LIST);
+		scan_id->s.pllsid_parallel.trace_storage = placement_new ((accumulative_trace_storage *)
+		    scan_id->s.pllsid_parallel.trace_storage,
+		    manager_p->get_result_type(), parallel_scan::SCAN_TYPE::LIST);
 		assert (scan_id->s.pllsid_parallel.trace_storage != nullptr);
 	      }
 
@@ -926,6 +953,11 @@ extern "C"
     /* NO_PARALLEL_SCAN hint blocks parallel list scan */
     if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN))
       {
+
+      }
+
+    if (xasl->topn_items || XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
+      {
 	return NO_ERROR;
       }
 
@@ -951,11 +983,6 @@ extern "C"
 
     /* update to actual reserved workers */
     num_parallel_threads = worker_manager_p->get_reserved_workers ();
-
-    if (xasl->topn_items || XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
-      {
-	ACCESS_SPEC_UNSET_FLAG (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST);
-      }
 
     if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST))
       {
@@ -994,9 +1021,9 @@ extern "C"
 	  }
 
 	scan_id->s.pllsid_parallel.manager = placement_new ((manager_type *) scan_id->s.pllsid_parallel.manager,
-					   thread_p, query_id, scan_id, xasl,
-					   num_parallel_threads, null_hfid, null_oid, vd,
-					   false, false, worker_manager_p, list_id);
+					     thread_p, query_id, scan_id, xasl,
+					     num_parallel_threads, null_hfid, null_oid, vd,
+					     false, false, worker_manager_p, list_id);
 	assert (scan_id->s.pllsid_parallel.manager != nullptr);
 
 	error = ((manager_type *) scan_id->s.pllsid_parallel.manager)->open ();
@@ -1027,9 +1054,9 @@ extern "C"
 	  }
 
 	scan_id->s.pllsid_parallel.manager = placement_new ((manager_type *) scan_id->s.pllsid_parallel.manager,
-					   thread_p, query_id, scan_id, xasl,
-					   num_parallel_threads, null_hfid, null_oid, vd,
-					   false, false, worker_manager_p, list_id);
+					     thread_p, query_id, scan_id, xasl,
+					     num_parallel_threads, null_hfid, null_oid, vd,
+					     false, false, worker_manager_p, list_id);
 	assert (scan_id->s.pllsid_parallel.manager != nullptr);
 
 	error = ((manager_type *) scan_id->s.pllsid_parallel.manager)->open ();
@@ -1060,9 +1087,9 @@ extern "C"
 	  }
 
 	scan_id->s.pllsid_parallel.manager = placement_new ((manager_type *) scan_id->s.pllsid_parallel.manager,
-					   thread_p, query_id, scan_id, xasl,
-					   num_parallel_threads, null_hfid, null_oid, vd,
-					   false, false, worker_manager_p, list_id);
+					     thread_p, query_id, scan_id, xasl,
+					     num_parallel_threads, null_hfid, null_oid, vd,
+					     false, false, worker_manager_p, list_id);
 	assert (scan_id->s.pllsid_parallel.manager != nullptr);
 
 	error = ((manager_type *) scan_id->s.pllsid_parallel.manager)->open ();
@@ -1127,21 +1154,24 @@ extern "C"
       {
       case parallel_scan::RESULT_TYPE::MERGEABLE_LIST:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::INDEX >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::INDEX >;
 	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
 	return manager_p->next();
       }
 
       case parallel_scan::RESULT_TYPE::XASL_SNAPSHOT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::INDEX >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::INDEX >;
 	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
 	return manager_p->next();
       }
 
       case parallel_scan::RESULT_TYPE::BUILDVALUE_OPT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::INDEX >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::INDEX >;
 	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
 	return manager_p->next();
       }
@@ -1167,7 +1197,8 @@ extern "C"
       {
       case parallel_scan::RESULT_TYPE::MERGEABLE_LIST:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::INDEX >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::INDEX >;
 	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
 
 	manager_p->merge_stats();
@@ -1199,7 +1230,8 @@ extern "C"
 
       case parallel_scan::RESULT_TYPE::XASL_SNAPSHOT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::INDEX >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::INDEX >;
 	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
 
 	manager_p->merge_stats();
@@ -1231,7 +1263,8 @@ extern "C"
 
       case parallel_scan::RESULT_TYPE::BUILDVALUE_OPT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::INDEX >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::INDEX >;
 	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
 
 	manager_p->merge_stats();
@@ -1286,7 +1319,8 @@ extern "C"
       {
       case parallel_scan::RESULT_TYPE::MERGEABLE_LIST:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::INDEX >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::INDEX >;
 	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
 	manager_p->end();
 	break;
@@ -1294,7 +1328,8 @@ extern "C"
 
       case parallel_scan::RESULT_TYPE::XASL_SNAPSHOT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::INDEX >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::INDEX >;
 	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
 	manager_p->end();
 	break;
@@ -1302,7 +1337,8 @@ extern "C"
 
       case parallel_scan::RESULT_TYPE::BUILDVALUE_OPT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::INDEX >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::INDEX >;
 	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
 	manager_p->end();
 	break;
@@ -1324,7 +1360,8 @@ extern "C"
       {
       case parallel_scan::RESULT_TYPE::MERGEABLE_LIST:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::INDEX >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::INDEX >;
 
 	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
 
@@ -1355,7 +1392,8 @@ extern "C"
 
       case parallel_scan::RESULT_TYPE::XASL_SNAPSHOT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::INDEX >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::INDEX >;
 
 	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
 
@@ -1386,7 +1424,8 @@ extern "C"
 
       case parallel_scan::RESULT_TYPE::BUILDVALUE_OPT:
       {
-	using manager_type = parallel_scan::manager < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::INDEX >;
+	using manager_type = parallel_scan::manager
+			     < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::INDEX >;
 
 	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
 
@@ -1424,9 +1463,9 @@ extern "C"
 
   int
   scan_open_parallel_index_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
-				  VAL_DESCR *vd, ACCESS_SPEC_TYPE *spec,
-				  OID *class_oid, HFID *class_hfid,
-				  XASL_NODE *xasl, QUERY_ID query_id)
+				 VAL_DESCR *vd, ACCESS_SPEC_TYPE *spec,
+				 OID *class_oid, HFID *class_hfid,
+				 XASL_NODE *xasl, QUERY_ID query_id)
   {
     parallel_query::worker_manager *worker_manager_p = nullptr;
     int num_parallel_threads;
@@ -1459,12 +1498,26 @@ extern "C"
 	return NO_ERROR;
       }
 
+    /* Partitioned class indexes: each partition has its own B-tree.
+     * The leaf-page cursor design reads a single B-tree, so skip
+     * the partitioned parent class. Individual partitions (DB_PARTITION_CLASS)
+     * will get their own scans via partition_prune_spec. */
+    if (spec->pruning_type == DB_PARTITIONED_CLASS)
+      {
+	return NO_ERROR;
+      }
+
+    if (xasl->topn_items || XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
+      {
+	return NO_ERROR;
+      }
+
     assert (spec->num_parallel_threads == -1
 	    || ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS));
 
     /* Use INT_MAX pages so compute_parallel_degree picks degree from hint/workers, not page count */
     num_parallel_threads = parallel_query::compute_parallel_degree (parallel_query::parallel_type::HEAP_SCAN,
-				   INT_MAX, spec->num_parallel_threads /* hint */);
+			   INT_MAX, spec->num_parallel_threads /* hint */);
     if (num_parallel_threads < 2)
       {
 	assert (scan_id->type == S_INDX_SCAN);
@@ -1480,11 +1533,6 @@ extern "C"
 
     /* update to actual reserved workers */
     num_parallel_threads = worker_manager_p->get_reserved_workers ();
-
-    if (xasl->topn_items || XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
-      {
-	ACCESS_SPEC_UNSET_FLAG (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST);
-      }
 
     /* Determine result type in a LOCAL variable.  Do NOT write to pisid yet —
      * the pisid union overlaps isid and we need isid intact for fallback. */
@@ -1743,8 +1791,6 @@ namespace parallel_scan
   {
     int h;
     VAL_DESCR *new_vd;
-    /* TODO: should check instnum, parse instnum, result type */
-
     m_query_entry = qmgr_get_query_entry (m_thread_p, m_query_id, m_thread_p->tran_index);
     if (m_query_entry == nullptr)
       {
@@ -1782,6 +1828,7 @@ namespace parallel_scan
 	new_vd->dbval_ptr = (DB_VALUE *) db_private_alloc (m_thread_p, sizeof (DB_VALUE) * m_orig_vd->dbval_cnt);
 	if (new_vd->dbval_ptr == nullptr)
 	  {
+	    db_private_free (m_thread_p, new_vd);
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
 	    return ER_FAILED;
 	  }
@@ -2164,8 +2211,11 @@ namespace parallel_scan
     err_code = open ();
     if (err_code != NO_ERROR)
       {
-	m_worker_manager->release_workers ();
-	m_worker_manager=nullptr;
+	if (m_worker_manager != nullptr)
+	  {
+	    m_worker_manager->release_workers ();
+	    m_worker_manager = nullptr;
+	  }
 	return err_code;
       }
 

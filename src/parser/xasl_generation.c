@@ -12448,22 +12448,6 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 					   NULL, where, NULL, NULL, regu_attributes_pred, regu_attributes_rest, NULL,
 					   output_val_list, regu_var_list, NULL, cache_pred, cache_rest,
 					   NULL, NO_SCHEMA, db_values_array_p, regu_attributes_reserved);
-	      if (access_method == ACCESS_METHOD_SEQUENTIAL
-		  && PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NO_PARALLEL_SCAN))
-		{
-		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
-		}
-
-	      if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PARALLEL_THREAD))
-		{
-		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS);
-		  access->num_parallel_threads = spec->info.spec.num_parallel_threads;
-		}
-	      else
-		{
-		  assert (access->num_parallel_threads == -1 /* auto-compute */ );
-		}
-
 	    }
 	  else if (PT_SPEC_SPECIAL_INDEX_SCAN (spec))
 	    {
@@ -12692,6 +12676,23 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      if (spec->info.spec.flag & PT_SPEC_FLAG_FOR_UPDATE_CLAUSE)
 		{
 		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_FOR_UPDATE);
+		}
+
+	      /* Propagate parallel-scan hints (NO_PARALLEL_SCAN / PARALLEL(N)) to both
+	       * heap (ACCESS_METHOD_SEQUENTIAL) and index (ACCESS_METHOD_INDEX) access specs.
+	       * Other access methods (SEQUENTIAL_RECORD_INFO / SAMPLING / PAGE_SCAN / INDEX_KEY_INFO
+	       * / INDEX_NODE_INFO) do not support parallel scan. */
+	      if (access->access == ACCESS_METHOD_SEQUENTIAL || access->access == ACCESS_METHOD_INDEX)
+		{
+		  if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NO_PARALLEL_SCAN))
+		    {
+		      ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+		    }
+		  if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PARALLEL_THREAD))
+		    {
+		      ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS);
+		      access->num_parallel_threads = spec->info.spec.num_parallel_threads;
+		    }
 		}
 
 	      access->next = access_list;

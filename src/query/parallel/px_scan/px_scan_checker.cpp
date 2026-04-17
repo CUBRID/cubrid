@@ -33,7 +33,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-// XXX: SHOULD BE THE LAST INCLUDE HEADER
+/* XXX: SHOULD BE THE LAST INCLUDE HEADER */
 #include "memory_wrapper.hpp"
 
 namespace parallel_scan
@@ -385,13 +385,42 @@ namespace parallel_scan
 		set_flag (result, CANNOT_PARALLEL_INDEX_SCAN);
 		return result;
 	      }
-	    /* ISS (Index Skip Scan) and ILS (Index Loose Scan) dynamically modify
-	     * curr_keyno and key ranges; they conflict with leaf-page cursor. */
-	    if (arg->indexptr != NULL
-		&& (arg->indexptr->use_iss || arg->indexptr->ils_prefix_len > 0))
+	    if (arg->indexptr != NULL)
 	      {
-		set_flag (result, CANNOT_PARALLEL_INDEX_SCAN);
+		/* ISS (Index Skip Scan) and ILS (Index Loose Scan) dynamically modify
+		 * curr_keyno and key ranges; they conflict with leaf-page cursor. */
+		if (arg->indexptr->use_iss || arg->indexptr->ils_prefix_len > 0)
+		  {
+		    set_flag (result, CANNOT_PARALLEL_INDEX_SCAN);
+		  }
+
+		/* keylimit limits how many B-tree keys are traversed globally;
+		 * splitting pages across workers makes global limit impossible. */
+		if (arg->indexptr->key_info.is_user_given_keylimit)
+		  {
+		    set_flag (result, CANNOT_PARALLEL_INDEX_SCAN);
+		  }
+
+		/* orderby_skip / groupby_skip rely on the index delivering rows
+		 * in a specific order that parallel page splitting breaks.
+		 * orderby_desc / groupby_desc indicate DESC ordering that
+		 * also depends on ordered index traversal. */
+		if (arg->indexptr->orderby_skip || arg->indexptr->groupby_skip
+		    || arg->indexptr->orderby_desc || arg->indexptr->groupby_desc)
+		  {
+		    set_flag (result, CANNOT_PARALLEL_INDEX_SCAN);
+		  }
+
+		/* use_desc_index: descending / reverse index traversal.
+		 * Parallel leaf-page cursor distributes pages to workers and
+		 * each worker scans its page independently; the global ordering
+		 * required for DESC scan correctness cannot be guaranteed. */
+		if (arg->indexptr->use_desc_index)
+		  {
+		    set_flag (result, CANNOT_PARALLEL_INDEX_SCAN);
+		  }
 	      }
+
 	    /* otherwise: potentially eligible; regu_list checks follow below */
 	  }
 	else
@@ -680,7 +709,18 @@ namespace parallel_scan
     if (arg->instnum_pred || arg->instnum_val)
       {
 	set_flag (result, CANNOT_LIST_MERGE);
+	/* rownum depends on sequential row numbering; parallel scan workers
+	 * process rows independently so rownum cannot be computed correctly. */
+	set_flag (result, CANNOT_PARALLEL_INDEX_SCAN);
 	buildvalue_opt = false;
+      }
+
+    if (XASL_IS_FLAGED (arg, XASL_ANALYTIC_SKIP_SORT) || XASL_IS_FLAGED (arg, XASL_ANALYTIC_USES_LIMIT_OPT))
+      {
+	/* Analytic skip-sort and limit optimizations rely on the index
+	 * delivering rows in sorted order. Parallel index scan distributes
+	 * leaf pages across workers, breaking the global ordering. */
+	set_flag (result, CANNOT_PARALLEL_INDEX_SCAN);
       }
 
     if (arg->outptr_list)
