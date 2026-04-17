@@ -23,7 +23,7 @@
 #ifndef _PX_SCAN_TYPE_HPP_
 #define _PX_SCAN_TYPE_HPP_
 
-#include "px_scan_input_handler_ftabs.hpp"
+#include "px_scan_input_handler_heap.hpp"
 #include "px_scan_input_handler_index.hpp"
 #include "px_scan_input_handler_list.hpp"
 #include "px_scan_slot_iterator.hpp"
@@ -40,7 +40,7 @@ namespace parallel_scan
   template <>
   struct scan_traits<SCAN_TYPE::HEAP>
   {
-    using input_handler_type = input_handler_ftabs;
+    using input_handler_type = input_handler_heap;
     using slot_iterator_type = slot_iterator;
   };
 

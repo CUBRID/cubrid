@@ -32,7 +32,7 @@
 #include "xasl.h"
 #include "fetch.h"
 #include "px_scan_task.hpp"
-#include "px_scan_input_handler_ftabs.hpp"
+#include "px_scan_input_handler_heap.hpp"
 #include "px_parallel.hpp"			/* parallel_query::compute_parallel_degree */
 #include "list_file.h"				/* qfile_close_list, qfile_destroy_list */
 #include "heap_file.h"				/* heap_attrinfo_end */

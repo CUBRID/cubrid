@@ -357,7 +357,7 @@ set(PARALLEL_HASH_JOIN_HEADERS
 )
 
 set(PARALLEL_SCAN_SOURCES
-  ${PARALLEL_SCAN_DIR}/px_scan_input_handler_ftabs.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_input_handler_heap.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_list.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_index.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator.cpp
@@ -371,7 +371,7 @@ set(PARALLEL_SCAN_SOURCES
   )
 
 set(PARALLEL_SCAN_HEADERS
-  ${PARALLEL_SCAN_DIR}/px_scan_input_handler_ftabs.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_input_handler_heap.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_list.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_index.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_ftab_set.hpp
