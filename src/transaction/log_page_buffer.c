@@ -608,8 +608,15 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
    * path can read the uninitialised body. */
   for (i = 0; i < log_Pb.num_buffers; i++)
     {
-      logpb_initialize_log_buffer (&log_Pb.buffers[i],
-				   (LOG_PAGE *) ((char *) log_Pb.pages_area + (UINT64) i * (LOG_PAGESIZE)));
+      /* Only initialize buffer struct fields (writes to buffers array, ~8MB).
+       * Skip logpage header init (hdr.logical_pageid, hdr.offset, hdr.flags)
+       * to avoid touching pages_area (4GB).  Every buffer page is fully
+       * overwritten before use: NEW_PAGE memsets to 0xff (logpb_locate_page),
+       * OLD_PAGE reads from disk. */
+      log_Pb.buffers[i].pageid = NULL_PAGEID;
+      log_Pb.buffers[i].phy_pageid = NULL_PAGEID;
+      log_Pb.buffers[i].dirty = false;
+      log_Pb.buffers[i].logpage = (LOG_PAGE *) ((char *) log_Pb.pages_area + (UINT64) i * (LOG_PAGESIZE));
     }
 
   size = LOG_PAGESIZE;
