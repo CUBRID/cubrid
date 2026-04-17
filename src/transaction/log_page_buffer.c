@@ -558,20 +558,29 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
 
   log_append_init_zip ();
 
-  if (logpb_Initialized == true)
-    {
-      logpb_finalize_pool (thread_p);
-    }
+  {
+    int new_num_buffers = prm_get_integer_value (PRM_ID_LOG_NBUFFERS);
 
-  assert (log_Pb.pages_area == NULL);
-  assert (logpb_Initialized == false);
+    if (logpb_Initialized == true)
+      {
+	if (log_Pb.num_buffers == new_num_buffers)
+	  {
+	    /* Already initialized with same parameters; skip reallocation */
+	    return NO_ERROR;
+	  }
+	logpb_finalize_pool (thread_p);
+      }
 
-  logpb_Logging = prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG);
+    assert (log_Pb.pages_area == NULL);
+    assert (logpb_Initialized == false);
 
-  /*
-   * Create an area to keep the number of desired buffers
-   */
-  log_Pb.num_buffers = prm_get_integer_value (PRM_ID_LOG_NBUFFERS);
+    logpb_Logging = prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG);
+
+    /*
+     * Create an area to keep the number of desired buffers
+     */
+    log_Pb.num_buffers = new_num_buffers;
+  }
 
   /* allocate a pointer array to point to each buffer */
   size = ((size_t) log_Pb.num_buffers * sizeof (*log_Pb.buffers));
@@ -591,12 +600,23 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  /* Initialize every new buffer */
-  memset (log_Pb.pages_area, LOG_PAGE_INIT_VALUE, size);
+  /* Initialize every new buffer.
+   * Skip bulk memset of pages_area to LOG_PAGE_INIT_VALUE (0xff).  Every buffer
+   * page is fully overwritten before use: NEW_PAGE path memsets it to 0xff
+   * (logpb_locate_page), OLD_PAGE path reads from disk.  The per-buffer header
+   * init below marks each slot as unloaded (pageid = NULL_PAGEID), so no code
+   * path can read the uninitialised body. */
   for (i = 0; i < log_Pb.num_buffers; i++)
     {
-      logpb_initialize_log_buffer (&log_Pb.buffers[i],
-				   (LOG_PAGE *) ((char *) log_Pb.pages_area + (UINT64) i * (LOG_PAGESIZE)));
+      /* Only initialize buffer struct fields (writes to buffers array, ~8MB).
+       * Skip logpage header init (hdr.logical_pageid, hdr.offset, hdr.flags)
+       * to avoid touching pages_area (4GB).  Every buffer page is fully
+       * overwritten before use: NEW_PAGE memsets to 0xff (logpb_locate_page),
+       * OLD_PAGE reads from disk. */
+      log_Pb.buffers[i].pageid = NULL_PAGEID;
+      log_Pb.buffers[i].phy_pageid = NULL_PAGEID;
+      log_Pb.buffers[i].dirty = false;
+      log_Pb.buffers[i].logpage = (LOG_PAGE *) ((char *) log_Pb.pages_area + (UINT64) i * (LOG_PAGESIZE));
     }
 
   size = LOG_PAGESIZE;
@@ -6811,7 +6831,8 @@ logpb_checkpoint_trans (LOG_INFO_CHKPT_TRANS * chkpt_entries, log_tdes * tdes, i
       LSA_COPY (&chkpt_entry->savept_lsa, &tdes->savept_lsa);
       LSA_COPY (&chkpt_entry->tail_topresult_lsa, &tdes->tail_topresult_lsa);
       LSA_COPY (&chkpt_entry->start_postpone_lsa, &tdes->rcv.tran_start_postpone_lsa);
-      strncpy (chkpt_entry->user_name, tdes->client.get_db_user (), LOG_USERNAME_MAX);
+      strncpy (chkpt_entry->user_name, tdes->client.get_db_user (), LOG_USERNAME_MAX - 1);
+      chkpt_entry->user_name[LOG_USERNAME_MAX - 1] = '\0';
       ntrans++;
       if (tdes->topops.last >= 0 && (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE))
 	{
@@ -10480,7 +10501,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
     {
       logpb_finalize_pool (thread_p);
       (void) pgbuf_invalidate_all (thread_p, NULL_VOLID);
-      logtb_undefine_trantable (thread_p);
+      logtb_undefine_trantable (thread_p, LOGTB_DESTROY_PGBUF);
       if (log_Gl.append.vdes != NULL_VOLDES)
 	{
 	  fileio_dismount (thread_p, log_Gl.append.vdes);

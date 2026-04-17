@@ -553,9 +553,9 @@ class sorted_buffer_gt
     {
       std::size_t slot = size_ ? std::lower_bound (elements_, elements_ + size_, element, &less) - elements_ : 0;
 
-      for (std::size_t i = size_; i > slot; --i)
+      if (size_ > slot)
 	{
-	  elements_[i] = std::move (elements_[i - 1]);
+	  std::memmove (elements_ + slot + 1, elements_ + slot, (size_ - slot) * sizeof (element_t));
 	}
 
       elements_[slot] = std::move (element);
@@ -576,10 +576,9 @@ class sorted_buffer_gt
 	  return false;
 	}
       std::size_t to_move = size_ - slot - (size_ == limit);
-      element_t *source = elements_ + size_ - 1 - (size_ == limit);
-      for (; to_move; --to_move, --source)
+      if (to_move > 0)
 	{
-	  source[1] = source[0];
+	  std::memmove (elements_ + slot + 1, elements_ + slot, to_move * sizeof (element_t));
 	}
       elements_[slot] = element;
       size_ += size_ != limit;

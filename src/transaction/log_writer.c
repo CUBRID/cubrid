@@ -1809,8 +1809,15 @@ logwr_reinit_copylog (void)
 
       if (strncmp (archive_log_prefix, dp->d_name, archive_log_prefix_len) == 0)
 	{
-	  sprintf (log_archive_path, "%s%s%s", logwr_Gl.log_path, FILEIO_PATH_SEPARATOR (logwr_Gl.log_path),
-		   dp->d_name);
+#if defined(__GNUC__) && __GNUC__ >= 7
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+#endif
+	  snprintf (log_archive_path, sizeof (log_archive_path), "%s%s%s", logwr_Gl.log_path,
+		    FILEIO_PATH_SEPARATOR (logwr_Gl.log_path), dp->d_name);
+#if defined(__GNUC__) && __GNUC__ >= 7
+#pragma GCC diagnostic pop
+#endif
 	  fileio_unformat (NULL, log_archive_path);
 	}
     }

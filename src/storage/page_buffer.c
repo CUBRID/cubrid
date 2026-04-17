@@ -747,6 +747,7 @@ struct pgbuf_buffer_pool
 {
   /* total # of buffer frames on the buffer (fixed value: 10 * num_trans) */
   int num_buffers;
+  PGLENGTH page_size;		/* IO_PAGESIZE at init time, for idempotent check */
 
   /* buffer related tables and lists (the essential structures) */
 
@@ -1516,6 +1517,29 @@ pgbuf_initialize (void)
 {
   pgbuf_flags_mask_sanity_check ();
 
+  /* Compute expected num_buffers early for idempotent check */
+  int new_num_buffers = prm_get_integer_value (PRM_ID_PB_NBUFFERS);
+  if (new_num_buffers < PGBUF_MINIMUM_BUFFERS)
+    {
+      new_num_buffers = PGBUF_MINIMUM_BUFFERS;
+    }
+
+  /* Idempotent: if already initialized with same buffer count and same page size, skip.
+   * Both dimensions must match because PGBUF_IOPAGE_BUFFER_SIZE depends on IO_PAGESIZE
+   * (via SIZEOF_IOPAGE_PAGESIZE_AND_GUARD), and PGBUF_FIND_IOPAGE_PTR uses it for
+   * pointer arithmetic. */
+  if (pgbuf_Pool.iopage_table != NULL)
+    {
+      if (pgbuf_Pool.num_buffers == new_num_buffers
+	  && pgbuf_Pool.page_size == IO_PAGESIZE)
+	{
+	  return NO_ERROR;
+	}
+      /* Configuration changed (page size mismatch or buffer count change).
+       * Finalize current pool before re-initializing with new size. */
+      pgbuf_finalize ();
+    }
+
   /* Initialize all members individually */
   pgbuf_Pool.num_buffers = 0;
   pgbuf_Pool.BCB_table = NULL;
@@ -1578,15 +1602,8 @@ pgbuf_initialize (void)
   pgbuf_Pool.show_status_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
-  pgbuf_Pool.num_buffers = prm_get_integer_value (PRM_ID_PB_NBUFFERS);
-  if (pgbuf_Pool.num_buffers < PGBUF_MINIMUM_BUFFERS)
-    {
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "pgbuf_initialize: WARNING Num_buffers = %d is too small. %d was assumed",
-		    pgbuf_Pool.num_buffers, PGBUF_MINIMUM_BUFFERS);
-#endif /* CUBRID_DEBUG */
-      pgbuf_Pool.num_buffers = PGBUF_MINIMUM_BUFFERS;
-    }
+  pgbuf_Pool.num_buffers = new_num_buffers;
+  pgbuf_Pool.page_size = IO_PAGESIZE;
   pgbuf_latch_timeout = prm_get_integer_value (PRM_ID_PAGE_LATCH_TIMEOUT) * 1000;
 #if defined (SERVER_MODE)
 #if defined (NDEBUG)
@@ -1828,6 +1845,7 @@ pgbuf_finalize (void)
 	}
       free_and_init (pgbuf_Pool.BCB_table);
       pgbuf_Pool.num_buffers = 0;
+      pgbuf_Pool.page_size = 0;
     }
 
   if (pgbuf_Pool.iopage_table != NULL)
@@ -5331,7 +5349,6 @@ static int
 pgbuf_initialize_bcb_table (void)
 {
   PGBUF_BCB *bufptr;
-  PGBUF_IOPAGE_BUFFER *ioptr;
   PGBUF_ATOMIC_LATCH_IMPL impl;
   int i;
   long long unsigned alloc_size;
@@ -5413,23 +5430,13 @@ pgbuf_initialize_bcb_table (void)
       bufptr->tick_lru3 = 0;
       bufptr->tick_lru_list = 0;
 
-      /* link BCB and iopage buffer */
-      ioptr = PGBUF_FIND_IOPAGE_PTR (i);
-
-      fileio_init_lsa_of_page (&ioptr->iopage, IO_PAGESIZE);
-
-      /* Init Page identifier */
-      ioptr->iopage.prv.pageid = -1;
-      ioptr->iopage.prv.volid = -1;
-
-      ioptr->iopage.prv.ptype = (unsigned char) PAGE_UNKNOWN;
-      ioptr->iopage.prv.pflag = '\0';
-      ioptr->iopage.prv.p_reserve_1 = 0;
-      ioptr->iopage.prv.p_reserve_2 = 0;
-      ioptr->iopage.prv.tde_nonce = 0;
-
-      bufptr->iopage_buffer = ioptr;
-      ioptr->bcb = bufptr;
+      /* link BCB to iopage buffer (writes to BCB_table only).
+       * iopage fields (prv, prv2, bcb back-pointer) are NOT initialized here.
+       * They are deferred to first use: OLD_PAGE overwrites via fileio_read,
+       * NEW_PAGE re-initializes via fileio_init_lsa_of_page.
+       * The bcb back-pointer (ioptr->bcb) is set in pgbuf_get_bcb_from_invalid_list.
+       * This avoids touching the large iopage_table (16GB+) at startup. */
+      bufptr->iopage_buffer = PGBUF_FIND_IOPAGE_PTR (i);
 
 #if defined(CUBRID_DEBUG)
       /* Reinitizalize the buffer */
@@ -8670,6 +8677,10 @@ pgbuf_get_bcb_from_invalid_list (THREAD_ENTRY * thread_p)
 
       PGBUF_BCB_LOCK (bufptr);
       bufptr->next_BCB = NULL;
+
+      /* set the iopage back-pointer to this BCB (deferred from startup init) */
+      bufptr->iopage_buffer->bcb = bufptr;
+
       pgbuf_bcb_change_zone (thread_p, bufptr, 0, PGBUF_VOID_ZONE);
 
       perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_USE_INVALID_BCB);

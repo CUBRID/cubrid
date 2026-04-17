@@ -6264,7 +6264,8 @@ or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB
 	    {
 	      return NULL;
 	    }
-	  strncpy ((*vols)[iter_vol].name, volname, DB_MAX_PATH_LENGTH);
+	  strncpy ((*vols)[iter_vol].name, volname, DB_MAX_PATH_LENGTH - 1);
+	  (*vols)[iter_vol].name[DB_MAX_PATH_LENGTH - 1] = '\0';
 	}
     }
 

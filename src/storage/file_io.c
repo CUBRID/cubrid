@@ -5985,7 +5985,8 @@ fileio_cache (VOLID vol_id, const char *vol_label_p, int vol_fd, FILEIO_LOCKF_TY
       vol_info_p->volid = vol_id;
       vol_info_p->vdes = vol_fd;
       vol_info_p->lockf_type = lockf_type;
-      strncpy (vol_info_p->vlabel, vol_label_p, PATH_MAX);
+      strncpy (vol_info_p->vlabel, vol_label_p, PATH_MAX - 1);
+      vol_info_p->vlabel[PATH_MAX - 1] = '\0';
       /* modify next volume id */
       rv = pthread_mutex_lock (&fileio_Vol_info_header.mutex);
       if (is_permanent_volume)
@@ -8367,7 +8368,8 @@ fileio_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
   file_header_p = (FILEIO_BACKUP_FILE_HEADER *) (&session_p->dbfile.area->iopage);
   file_header_p->volid = session_p->dbfile.volid;
   file_header_p->nbytes = session_p->dbfile.nbytes;
-  strncpy (file_header_p->vlabel, session_p->dbfile.vlabel, PATH_MAX);
+  strncpy (file_header_p->vlabel, session_p->dbfile.vlabel, PATH_MAX - 1);
+  file_header_p->vlabel[PATH_MAX - 1] = '\0';
   nread = FILEIO_BACKUP_FILE_HEADER_PAGE_SIZE;
   if (fileio_write_backup (thread_p, session_p, nread) != NO_ERROR)
     {

@@ -310,7 +310,7 @@ namespace cubhnsw
     float m_i8_prefilter_multiplier {1.0f};
 
     // When true, skip fp32 distance entirely during build — use i8 as the final metric.
-    // Activated by setting PRM_ID_VECTOR_INDEX_I8_PREFILTER_MULTIPLIER to a negative value.
+    // Controlled by PRM_ID_VECTOR_INDEX_I8_ONLY_BUILD (hnsw_i8_only_build).
     bool m_i8_only_build {false};
 
     // stats

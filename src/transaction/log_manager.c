@@ -1347,7 +1347,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 			      &log_Gl.hdr.db_creation) != true)
 	{
 	  /* The log does not belong to the given database */
-	  logtb_undefine_trantable (thread_p);
+	  logtb_undefine_trantable (thread_p, LOGTB_DESTROY_PGBUF);
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_DOESNT_CORRESPOND_TO_DATABASE, 1, log_Name_active);
 	  error_code = ER_LOG_DOESNT_CORRESPOND_TO_DATABASE;
 	  goto error;
@@ -1747,7 +1747,7 @@ log_final (THREAD_ENTRY * thread_p)
 
   if (!logpb_is_pool_initialized ())
     {
-      logtb_undefine_trantable (thread_p);
+      logtb_undefine_trantable (thread_p, LOGTB_DESTROY_PGBUF);
       LOG_CS_EXIT (thread_p);
       return;
     }
@@ -1755,7 +1755,7 @@ log_final (THREAD_ENTRY * thread_p)
   if (log_Gl.append.vdes == NULL_VOLDES)
     {
       logpb_finalize_pool (thread_p);
-      logtb_undefine_trantable (thread_p);
+      logtb_undefine_trantable (thread_p, LOGTB_DESTROY_PGBUF);
       LOG_CS_EXIT (thread_p);
       return;
     }
@@ -1822,7 +1822,7 @@ log_final (THREAD_ENTRY * thread_p)
   /* Undefine page buffer pool and transaction table */
   logpb_finalize_pool (thread_p);
 
-  logtb_undefine_trantable (thread_p);
+  logtb_undefine_trantable (thread_p, LOGTB_DESTROY_PGBUF);
 
   if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
@@ -9186,7 +9186,7 @@ log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flush_data_pages
   /* Undefine log buffer pool and transaction table */
 
   logpb_finalize_pool (thread_p);
-  logtb_undefine_trantable (thread_p);
+  logtb_undefine_trantable (thread_p, LOGTB_DESTROY_PGBUF);
 
   LOG_CS_EXIT (thread_p);
 

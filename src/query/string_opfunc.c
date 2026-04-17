@@ -26809,7 +26809,7 @@ db_inet_aton (DB_VALUE * result_numbered_ip, const DB_VALUE * string)
   const int ipsegmax = 256;
   DB_BIGINT ipbase;
   int slice_count = 0;
-  int cnt;
+  int cnt = 0;
   char *temp_tok;
 
   if (string == NULL || result_numbered_ip == NULL)

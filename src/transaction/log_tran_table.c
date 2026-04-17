@@ -370,10 +370,8 @@ logtb_define_trantable (THREAD_ENTRY * thread_p, int num_expected_tran_indices, 
   LOG_CS_ENTER (thread_p);
   TR_TABLE_CS_ENTER (thread_p);
 
-  if (logpb_is_pool_initialized ())
-    {
-      logpb_finalize_pool (thread_p);
-    }
+  /* Skip logpb_finalize_pool on redefine path; logpb_initialize_pool is
+   * idempotent and will skip reallocation if parameters are unchanged. */
 
   (void) logtb_define_trantable_log_latch (thread_p, num_expected_tran_indices);
 
@@ -418,7 +416,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
   /* If there is an already defined table, free such a table */
   if (log_Gl.trantable.area != NULL)
     {
-      logtb_undefine_trantable (thread_p);
+      logtb_undefine_trantable (thread_p, LOGTB_PRESERVE_PGBUF);
     }
   else
     {
@@ -440,7 +438,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
        */
       if (log_Gl.trantable.area != NULL)
 	{
-	  logtb_undefine_trantable (thread_p);
+	  logtb_undefine_trantable (thread_p, LOGTB_DESTROY_PGBUF);
 	}
 
 #if defined(SERVER_MODE)
@@ -497,7 +495,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
   return error_code;
 
 error:
-  logtb_undefine_trantable (thread_p);
+  logtb_undefine_trantable (thread_p, LOGTB_DESTROY_PGBUF);
   logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_def_trantable");
 
   return error_code;
@@ -569,7 +567,7 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
  * Note: Undefine and free the transaction table space.
  */
 void
-logtb_undefine_trantable (THREAD_ENTRY * thread_p)
+logtb_undefine_trantable (THREAD_ENTRY * thread_p, bool preserve_pgbuf)
 {
   LOG_ADDR_TDESAREA *area;
   LOG_TDES *tdes;		/* Transaction descriptor */
@@ -577,7 +575,10 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 
   log_Gl.mvcc_table.finalize ();
   lock_finalize ();
-  pgbuf_finalize ();
+  if (!preserve_pgbuf)
+    {
+      pgbuf_finalize ();
+    }
   file_manager_final ();
 
   if (log_Gl.trantable.area != NULL)
