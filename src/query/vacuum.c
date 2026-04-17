@@ -1280,6 +1280,11 @@ error:
   return (error_code == NO_ERROR) ? ER_FAILED : error_code;
 }
 
+REGISTER_DAEMON (vacuum);
+// *INDENT-OFF*
+REGISTER_WORKERPOOL (vacuum, []() { return prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT); });
+// *INDENT-ON*
+
 int
 vacuum_boot (THREAD_ENTRY * thread_p)
 {

@@ -50,7 +50,7 @@
 #error Belongs to not server module
 #endif /* !defined (SERVER_MODE) */
 
-class client_support __gv_client_support;
+CUB_THREAD_LOCAL class client_support __gv_client_support;
 
 /*
  * css_internal_server_shutdown() -
@@ -174,14 +174,8 @@ client_support::css_client_init (int sockid, const char *server_name, const char
       if (map == NULL)
 	{
 	  css_free_conn (conn);
-	  error = ER_FAILED;
+	  error = ER_CSS_ALLOC;
 	}
-#if defined(MULTI_CONN_TO_A_SERVER)
-      else
-	{
-	  map->owner_tid = pthread_self ();
-	}
-#endif
     }
   else
     {
@@ -189,7 +183,7 @@ client_support::css_client_init (int sockid, const char *server_name, const char
       error = er_errid ();
       if (error == NO_ERROR)
 	{
-	  error = ER_FAILED;
+	  error = ER_BO_CONNECT_FAILED;
 	}
     }
 
@@ -211,11 +205,7 @@ client_support::css_client_sub_init (const char *server_name, const char *host_n
       if (map == NULL)
 	{
 	  css_free_conn (conn);
-	  error = ER_FAILED;
-	}
-      else
-	{
-	  map->owner_tid = pthread_self ();
+	  error = ER_CSS_ALLOC;
 	}
     }
   else
@@ -224,7 +214,7 @@ client_support::css_client_sub_init (const char *server_name, const char *host_n
       error = er_errid ();
       if (error == NO_ERROR)
 	{
-	  error = ER_FAILED;
+	  error = ER_BO_CONNECT_FAILED;
 	}
     }
 
@@ -799,4 +789,21 @@ HA_SERVER_STATE
 css_ha_server_state (void)
 {
   return boot_change_ha_mode (HA_SERVER_STATE_NA, false, 0);
+}
+
+#if !defined(NDEBUG) || defined(MULTI_CONN_TO_A_SERVER)
+pthread_t gv_main_tid;
+
+__attribute__ ((constructor))
+static void get_main_thread_id ()
+{
+  gv_main_tid = pthread_self ();
+}
+#endif
+
+pthread_t
+css_get_thread_id ()
+{
+  static THREAD_LOCAL pthread_t tid = pthread_self ();
+  return tid;
 }
