@@ -24155,16 +24155,15 @@ heap_update_home_delete_replaced_oos (THREAD_ENTRY * thread_p, HEAP_OPERATION_CO
       er_log_debug (ARG_FILE_LINE,
 		    "SA_MODE eager OOS cleanup: OOS flag set but no OOS VFID found for hfid %d|%d"
 		    " (oid=%d|%d|%d).",
-		    VFID_AS_ARGS (&context->hfid.vfid),
-		    context->oid.volid, context->oid.pageid, context->oid.slotid);
+		    VFID_AS_ARGS (&context->hfid.vfid), context->oid.volid, context->oid.pageid, context->oid.slotid);
       assert_release (false);
       return ER_FAILED;
     }
 
-  for (const OID & old_oid:old_oos_oids)
+for (const OID & old_oid:old_oos_oids)
     {
       bool still_referenced = false;
-      for (const OID & new_oid:new_oos_oids)
+    for (const OID & new_oid:new_oos_oids)
 	{
 	  if (OID_EQ (&old_oid, &new_oid))
 	    {

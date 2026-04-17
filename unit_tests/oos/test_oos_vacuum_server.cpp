@@ -34,9 +34,9 @@
 int bridge_vacuum_heap_oos_delete (THREAD_ENTRY *thread_p, const VFID *oos_vfid, RECDES *record);
 int bridge_oos_get_max_chunk_size_within_page ();
 int bridge_vacuum_cleanup_prev_version_oos (THREAD_ENTRY *thread_p, const HFID *hfid, const VFID *oos_vfid,
-					    const LOG_LSA *prev_lsa);
+    const LOG_LSA *prev_lsa);
 void bridge_log_append_undo_for_prev_version_test (THREAD_ENTRY *thread_p, const VFID *vfid,
-						   const RECDES *old_recdes, LOG_LSA *out_lsa);
+    const RECDES *old_recdes, LOG_LSA *out_lsa);
 
 // ============================================================================
 // Helper: Build heap RECDES with OOS inline data
@@ -689,7 +689,7 @@ TEST_F (OosVacuumCodePathServer, DISABLED_PrevVersionChainWalkerDeletesOldOos)
   /* Insert OOS_old and OOS_new. */
   RECDES oos_old_payload {};
   err = test_oos_utils::from_string_into_recdes ("payload of the OLD version (prev_version_lsa target)",
-						 oos_old_payload);
+	oos_old_payload);
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_old_payload (&oos_old_payload, recdes_free_data_area);
 

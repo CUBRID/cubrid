@@ -2400,8 +2400,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
  *                   which prepare branch hit the failure.
  */
 static int
-vacuum_ensure_oos_vfid_for_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
-					const char *rectype_label)
+vacuum_ensure_oos_vfid_for_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, const char *rectype_label)
 {
   if (!heap_recdes_contains_oos (&helper->record) || !VFID_ISNULL (&helper->oos_vfid))
     {
@@ -2680,8 +2679,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
    * with overflow records). */
   bool need_prev_version_oos_cleanup = (MVCC_IS_HEADER_PREV_VERSION_VALID (&helper->mvcc_header)
 					&& !VFID_ISNULL (&helper->oos_vfid)
-					&& (helper->record_type == REC_HOME
-					    || helper->record_type == REC_RELOCATION));
+					&& (helper->record_type == REC_HOME || helper->record_type == REC_RELOCATION));
 
   if (helper->record_type == REC_RELOCATION || helper->record_type == REC_BIGONE || has_oos
       || need_prev_version_oos_cleanup)
