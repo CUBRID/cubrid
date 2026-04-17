@@ -34,6 +34,18 @@
 #include "thread_entry.hpp"		/* cubthread::entry */
 #include "thread_entry_task.hpp"	/* cubthread::entry_task */
 
+/*
+ * Forward Declarations
+ */
+
+struct qmgr_temp_file;
+
+typedef struct qmgr_temp_file QMGR_TEMP_FILE;
+
+/*
+ * Class Definitions
+ */
+
 namespace parallel_query
 {
   namespace hash_join
@@ -156,6 +168,7 @@ namespace parallel_query
 	int m_sector_index;		/* current sector index in page_map, -1 = need next sector */
 	UINT64 m_current_bitmap;	/* remaining page bits in current sector */
 	VSID m_current_vsid;		/* current sector VSID */
+	QMGR_TEMP_FILE *m_current_tfile;	/* tfile that owns the last returned page */
 
 	PAGE_PTR get_next_page (cubthread::entry &thread_ref);
     };

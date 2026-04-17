@@ -165,6 +165,7 @@ namespace parallel_query
       , m_sector_index (-1)
       , m_current_bitmap (0)
       , m_current_vsid (VSID_INITIALIZER)
+      , m_current_tfile (nullptr)
     {
       assert (m_split_info != nullptr);
       assert (m_split_info->fetch_info != nullptr);
@@ -268,6 +269,7 @@ namespace parallel_query
 	      /* empty page */
 	      continue;
 	    }
+
 	  tuple_index = -1;
 
 	  /* first tuple */
@@ -308,7 +310,9 @@ namespace parallel_query
 
 		  if (overflow_page != page)
 		    {
-		      qmgr_free_old_page_and_init (&thread_ref, overflow_page, list_id->tfile_vfid);
+		      /* overflow continuation pages share the same tfile as the start page
+		       * (see qfile_allocate_new_ovf_page) */
+		      qmgr_free_old_page_and_init (&thread_ref, overflow_page, m_current_tfile);
 		    }
 
 		  if (VPID_ISNULL (&overflow_vpid))
@@ -318,7 +322,7 @@ namespace parallel_query
 		    }
 
 		  /* next overflow page */
-		  overflow_page = qmgr_get_old_page (&thread_ref, &overflow_vpid, list_id->tfile_vfid);
+		  overflow_page = qmgr_get_old_page (&thread_ref, &overflow_vpid, m_current_tfile);
 		  if (overflow_page == nullptr)
 		    {
 		      assert_release_error (er_errid () != NO_ERROR);
@@ -477,7 +481,7 @@ namespace parallel_query
 
 	  if (page != nullptr)
 	    {
-	      qmgr_free_old_page_and_init (&thread_ref, page, list_id->tfile_vfid);
+	      qmgr_free_old_page_and_init (&thread_ref, page, m_current_tfile);
 	    }
 
 	  if (has_error)
@@ -489,7 +493,7 @@ namespace parallel_query
 
       if (page != nullptr)
 	{
-	  qmgr_free_old_page_and_init (&thread_ref, page, list_id->tfile_vfid);
+	  qmgr_free_old_page_and_init (&thread_ref, page, m_current_tfile);
 	}
 
       assert (temp_part_list_id != nullptr);
@@ -580,13 +584,21 @@ namespace parallel_query
 		  vpid.volid = NULL_VOLID;
 		  vpid.pageid = m_membuf_index++;
 
-		  PAGE_PTR page = qmgr_get_old_page (&thread_ref, &vpid, m_split_info->fetch_info->list_id->tfile_vfid);
+		  PAGE_PTR page = qmgr_get_old_page (&thread_ref, &vpid, sector_info->membuf_tfile);
 		  if (page == nullptr)
 		    {
 		      assert_release_error (er_errid () != NO_ERROR);
 		      return nullptr;
 		    }
 
+		  /* skip overflow continuation pages */
+		  if (QFILE_GET_TUPLE_COUNT (page) == QFILE_OVERFLOW_TUPLE_COUNT_FLAG)
+		    {
+		      qmgr_free_old_page_and_init (&thread_ref, page, sector_info->membuf_tfile);
+		      continue;
+		    }
+
+		  m_current_tfile = sector_info->membuf_tfile;
 		  return page;
 		}
 
@@ -630,6 +642,7 @@ namespace parallel_query
 	      vpid.pageid = SECTOR_FIRST_PAGEID (m_current_vsid.sectid) + bit_pos;
 
 	      QMGR_TEMP_FILE *tfile = (QMGR_TEMP_FILE *) tfiles[m_sector_index];
+	      assert (tfile != nullptr);
 
 	      PAGE_PTR page = qmgr_get_old_page (&thread_ref, &vpid, tfile);
 	      if (page == nullptr)
@@ -638,6 +651,15 @@ namespace parallel_query
 		  return nullptr;
 		}
 
+	      /* skip overflow continuation pages — they are followed via VPID chain
+	       * by the worker that owns the overflow start page */
+	      if (QFILE_GET_TUPLE_COUNT (page) == QFILE_OVERFLOW_TUPLE_COUNT_FLAG)
+		{
+		  qmgr_free_old_page_and_init (&thread_ref, page, tfile);
+		  continue;
+		}
+
+	      m_current_tfile = tfile;
 	      return page;
 	    }
 
