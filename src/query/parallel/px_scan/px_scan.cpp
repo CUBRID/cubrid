@@ -1224,8 +1224,7 @@ extern "C"
 	    scan_id->s.pisid.trace_storage->add_stats (manager_p->get_trace_handler());
 	  }
 
-	manager_p->reset ();
-	break;
+	return manager_p->reset ();
       }
 
       case parallel_scan::RESULT_TYPE::XASL_SNAPSHOT:
@@ -1257,8 +1256,7 @@ extern "C"
 	    scan_id->s.pisid.trace_storage->add_stats (manager_p->get_trace_handler());
 	  }
 
-	manager_p->reset ();
-	break;
+	return manager_p->reset ();
       }
 
       case parallel_scan::RESULT_TYPE::BUILDVALUE_OPT:
@@ -1290,8 +1288,7 @@ extern "C"
 	    scan_id->s.pisid.trace_storage->add_stats (manager_p->get_trace_handler());
 	  }
 
-	manager_p->reset ();
-	break;
+	return manager_p->reset ();
       }
 
       default:

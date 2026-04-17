@@ -190,8 +190,14 @@ namespace parallel_scan
 					      isidp, btree_domainp, m_vd, i);
 	if (ret != NO_ERROR)
 	  {
-	    er_clear ();
-	    continue;
+	    for (int j = 0; j <= i; j++)
+	      {
+		pr_clear_value (&m_key_val_ranges[j].key1);
+		pr_clear_value (&m_key_val_ranges[j].key2);
+	      }
+	    db_private_free_and_init (thread_p, m_key_val_ranges);
+	    m_num_key_ranges = 0;
+	    return ret;
 	  }
 
 	/* Prefix index: when key bounds were truncated, make existing bounds
