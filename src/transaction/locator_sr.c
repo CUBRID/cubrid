@@ -25,6 +25,7 @@
 #include "config.h"
 
 #include <algorithm>
+#include <chrono>
 
 #include <stdlib.h>
 #include <string.h>
@@ -13802,6 +13803,22 @@ xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK
 }
 
 // *INDENT-OFF*
+/* probe counters defined in src/loaddb/copy_session.cpp; used here for COPY
+ * diagnostics. Plain long long / int globals, not thread-local (single COPY
+ * worker at a time). */
+extern long long g_copy_probe_ns_alloc_page;
+extern long long g_copy_probe_ns_insert_force;
+extern long long g_copy_probe_ns_log_redo;
+extern int g_copy_probe_pages_allocated;
+extern int g_copy_probe_insert_force_calls;
+
+static inline long long
+locator_probe_now_ns ()
+{
+  return std::chrono::duration_cast<std::chrono::nanoseconds> (
+	   std::chrono::steady_clock::now ().time_since_epoch ()).count ();
+}
+
 int
 locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 			    const std::vector<record_descriptor> &recdes, int has_index, int op_type,
@@ -13861,7 +13878,15 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	      scan_cache->cache_last_fix_page = true;
 
 	      // First alloc a new empty heap page.
-	      error_code = heap_alloc_new_page (thread_p, hfid, *class_oid, &home_hint_p, &new_page_vpid);
+	      {
+		long long ta = locator_probe_now_ns ();
+		// When has_BU_lock is true, copy_session::flush_batch wraps this path in an
+		// atomic outer sysop, so file_alloc can skip its per-page inner sysop.
+		error_code = heap_alloc_new_page (thread_p, hfid, *class_oid, &home_hint_p, &new_page_vpid,
+						  has_BU_lock);
+		g_copy_probe_ns_alloc_page += locator_probe_now_ns () - ta;
+		++g_copy_probe_pages_allocated;
+	      }
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -13870,10 +13895,13 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 
 	      for (size_t j = 0; j < recdes_array.size (); j++)
 		{
+		  long long ti = locator_probe_now_ns ();
 		  error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &recdes_array[j], has_index,
 						     op_type, scan_cache, force_count, pruning_type, pcontext,
 						     func_preds, force_in_place, &home_hint_p, has_BU_lock,
 						     dont_check_fk, true);
+		  g_copy_probe_ns_insert_force += locator_probe_now_ns () - ti;
+		  ++g_copy_probe_insert_force_calls;
 		  if (error_code != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
@@ -13898,7 +13926,11 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 		}
 
 	      // Now log the whole page.
-	      pgbuf_log_redo_new_page (thread_p, home_hint_p.pgptr, DB_PAGESIZE, PAGE_HEAP);
+	      {
+		long long tl = locator_probe_now_ns ();
+		pgbuf_log_redo_new_page (thread_p, home_hint_p.pgptr, DB_PAGESIZE, PAGE_HEAP);
+		g_copy_probe_ns_log_redo += locator_probe_now_ns () - tl;
+	      }
 
 	      // Add the new VPID to the VPID array.
 	      assert (!VPID_ISNULL (&new_page_vpid));
@@ -13925,9 +13957,12 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   for (size_t i = 0; i < recdes_array.size (); i++)
     {
       scan_cache->cache_last_fix_page = false;
+      long long ti = locator_probe_now_ns ();
       error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &recdes_array[i], has_index, op_type,
 					 scan_cache, force_count, pruning_type, pcontext, func_preds, force_in_place,
 					 NULL, has_BU_lock, dont_check_fk, false);
+      g_copy_probe_ns_insert_force += locator_probe_now_ns () - ti;
+      ++g_copy_probe_insert_force_calls;
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

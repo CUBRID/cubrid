@@ -206,6 +206,8 @@ extern int file_init_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page, void *ar
 extern int file_init_temp_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
 extern int file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init, void *f_init_args,
 		       VPID * vpid_out, PAGE_PTR * page_out);
+extern int file_alloc_skip_sysop (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init,
+				  void *f_init_args, VPID * vpid_out, PAGE_PTR * page_out);
 extern int file_alloc_multiple (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init,
 				void *f_init_args, int npages, VPID * vpids_out);
 extern int file_alloc_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init,

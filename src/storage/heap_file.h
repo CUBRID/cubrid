@@ -708,7 +708,7 @@ extern int heap_scan_cache_allocate_area (THREAD_ENTRY * thread_p, HEAP_SCANCACH
 extern bool heap_is_page_header (THREAD_ENTRY * thread_p, PAGE_PTR page);
 
 extern int heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_WATCHER * home_hint_p,
-				VPID * new_page_vpid);
+				VPID * new_page_vpid, bool skip_inner_sysop);
 
 extern int heap_nonheader_page_capacity ();
 

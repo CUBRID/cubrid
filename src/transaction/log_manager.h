@@ -131,6 +131,7 @@ extern void log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * a
 extern void log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr);
 extern LOG_LSA *log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name);
 extern bool log_check_system_op_is_started (THREAD_ENTRY * thread_p);
+extern bool log_check_atomic_sysop_is_started (THREAD_ENTRY * thread_p);
 extern LOG_LSA *log_get_parent_lsa_system_op (THREAD_ENTRY * thread_p, LOG_LSA * parent_lsa);
 extern bool log_is_tran_in_system_op (THREAD_ENTRY * thread_p);
 extern int log_add_to_modified_class_list (THREAD_ENTRY * thread_p, const char *classname, const OID * class_oid);

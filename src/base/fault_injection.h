@@ -66,6 +66,10 @@ typedef enum
 
   /* FILE MANAGER */
   FI_TEST_FILE_MANAGER_UNDO_TRACKER_REGISTER = 200000,	/* unused */
+  FI_TEST_FILE_PERM_EXPAND_AFTER_COMMIT = 200001,	/* fires inside file_perm_expand after log_sysop_commit,
+							 * before file_alloc's parent atomic sysop end. Used to
+							 * verify the parent atomic marker protects RVFL_EXPAND
+							 * against crash-between-expand-commit-and-batch-attach. */
 
   /* BTREE MANAGER */
   FI_TEST_BTREE_MANAGER_RANDOM_EXIT = 300000,

@@ -32,6 +32,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <chrono>
 
 #include "heap_file.h"
 
@@ -26245,7 +26246,7 @@ heap_scancache::get_area_block_allocator ()
 
 int
 heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_WATCHER * home_hint_p,
-		     VPID * new_page_vpid)
+		     VPID * new_page_vpid, bool skip_inner_sysop)
 {
   int error_code = NO_ERROR;
   HEAP_CHAIN new_page_chain;
@@ -26264,8 +26265,18 @@ heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_
 
   VPID_SET_NULL (new_page_vpid);
 
-  // Alloc a new page.
-  error_code = file_alloc (thread_p, &hfid->vfid, heap_vpid_init_new, &new_page_chain, new_page_vpid, &page_ptr);
+  // Alloc a new page. Route through the skip-sysop variant when the caller (e.g. bulk COPY
+  // via locator_multi_insert_force) has an atomic outer sysop and wants to elide per-page
+  // nested sysops.
+  if (skip_inner_sysop)
+    {
+      error_code = file_alloc_skip_sysop (thread_p, &hfid->vfid, heap_vpid_init_new, &new_page_chain, new_page_vpid,
+					  &page_ptr);
+    }
+  else
+    {
+      error_code = file_alloc (thread_p, &hfid->vfid, heap_vpid_init_new, &new_page_chain, new_page_vpid, &page_ptr);
+    }
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -26273,7 +26284,15 @@ heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_
     }
 
   // Need to get the watcher to the new page.
-  pgbuf_attach_watcher (thread_p, page_ptr, PGBUF_LATCH_WRITE, hfid, home_hint_p);
+  {
+    /* probe attach_watcher time — defined in copy_session.cpp */
+    extern long long g_copy_probe_ns_fa_attach_watcher;
+    auto __aw_t0 = std::chrono::steady_clock::now ();
+    pgbuf_attach_watcher (thread_p, page_ptr, PGBUF_LATCH_WRITE, hfid, home_hint_p);
+    g_copy_probe_ns_fa_attach_watcher +=
+      std::chrono::duration_cast<std::chrono::nanoseconds> (
+	std::chrono::steady_clock::now () - __aw_t0).count ();
+  }
 
   // Make sure we have fixed the page.
   assert (pgbuf_is_page_fixed_by_thread (thread_p, new_page_vpid));

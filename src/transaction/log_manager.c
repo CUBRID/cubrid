@@ -4207,6 +4207,42 @@ log_check_system_op_is_started (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * log_check_atomic_sysop_is_started () - Check that an atomic system op marker
+ *   is currently installed on the current transaction. Returns true only when
+ *   tdes->rcv.atomic_sysop_start_lsa is non-NULL, i.e. a surrounding
+ *   log_sysop_start_atomic is active. Used by file_alloc's skip_inner_sysop
+ *   branch to refuse the skip when the outer sysop is not atomic.
+ *
+ * return         : bool (true when atomic sysop is active).
+ * thread_p (in)  : Thread entry.
+ */
+bool
+log_check_atomic_sysop_is_started (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes;
+  int tran_index;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      return false;
+    }
+
+  if (tdes->topops.last < 0)
+    {
+      return false;
+    }
+
+  if (LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa))
+    {
+      return false;
+    }
+
+  return true;
+}
+
+/*
  * log_get_parent_lsa_system_op - Get parent lsa of top operation
  *
  * return: lsa of parent or NULL

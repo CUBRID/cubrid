@@ -29,6 +29,7 @@
 #include <stddef.h>
 #include <string.h>
 #include <time.h>
+#include <chrono>
 
 #include "file_manager.h"
 
@@ -4745,6 +4746,10 @@ exit:
       else
 	{
 	  log_sysop_commit (thread_p);
+	  /* Fault-injection point: exit immediately after the nested expand sysop commits but
+	   * before file_alloc's parent atomic sysop ends. Used to verify that the parent's
+	   * atomic_sysop_start_lsa covers RVFL_EXPAND on crash recovery. */
+	  FI_TEST (thread_p, FI_TEST_FILE_PERM_EXPAND_AFTER_COMMIT, 0);
 	}
     }
   if (vsids_reserved != NULL)
@@ -5397,9 +5402,48 @@ file_init_page_type_internal (THREAD_ENTRY * thread_p, PAGE_PTR page, PAGE_TYPE 
  * vpid_out (out)   : VPID of page.
  * page_out (out)   : if not null, it will output newly allocated page.
  */
+/* COPY diagnostic probes (defined in src/loaddb/copy_session.cpp). */
+extern long long g_copy_probe_ns_fa_fix_header;
+extern long long g_copy_probe_ns_fa_sysop;
+extern long long g_copy_probe_ns_fa_sysop_tail;
+extern long long g_copy_probe_ns_fa_perm_alloc;
+extern long long g_copy_probe_ns_fa_numerable;
+extern long long g_copy_probe_ns_fa_init_page;
+extern long long g_copy_probe_ns_fa_attach_watcher;
+
+static inline long long
+file_alloc_probe_now_ns ()
+{
+  return std::chrono::duration_cast<std::chrono::nanoseconds> (
+	   std::chrono::steady_clock::now ().time_since_epoch ()).count ();
+}
+
+static int file_alloc_internal (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init,
+				void *f_init_args, VPID * vpid_out, PAGE_PTR * page_out, bool skip_inner_sysop);
+
 int
 file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init, void *f_init_args, VPID * vpid_out,
 	    PAGE_PTR * page_out)
+{
+  return file_alloc_internal (thread_p, vfid, f_init, f_init_args, vpid_out, page_out, false);
+}
+
+/*
+ * file_alloc_skip_sysop () - bulk-friendly variant of file_alloc that elides the per-page
+ *   nested atomic sysop. Caller MUST have an atomic system op already started (e.g. via
+ *   log_sysop_start_atomic) — enforced by an always-on runtime guard. Used by
+ *   locator_multi_insert_force when the class holds BU_LOCK.
+ */
+int
+file_alloc_skip_sysop (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init, void *f_init_args,
+		       VPID * vpid_out, PAGE_PTR * page_out)
+{
+  return file_alloc_internal (thread_p, vfid, f_init, f_init_args, vpid_out, page_out, true);
+}
+
+static int
+file_alloc_internal (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init, void *f_init_args,
+		     VPID * vpid_out, PAGE_PTR * page_out, bool skip_inner_sysop)
 {
 #define UNDO_DATA_SIZE (sizeof (VFID) + sizeof (VPID))
   VPID vpid_fhead;
@@ -5422,7 +5466,9 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
 
   /* fix header */
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  long long __fa_t0 = file_alloc_probe_now_ns ();
   page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  g_copy_probe_ns_fa_fix_header += file_alloc_probe_now_ns () - __fa_t0;
   if (page_fhead == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -5447,12 +5493,37 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
     }
   else
     {
-      /* start a nested system operation. we will end it with commit & undo. this must be atomic. */
-      log_sysop_start_atomic (thread_p);
-      is_sysop_started = true;
+      if (skip_inner_sysop)
+	{
+	  /* Always-on runtime guard: refuse the skip in release builds if the caller did not
+	   * install an atomic outer sysop. Without the atomic marker, RVFL_EXPAND emitted by
+	   * file_perm_expand's committed nested sysop is unreachable on crash recovery. */
+	  if (!log_check_atomic_sysop_is_started (thread_p))
+	    {
+	      assert (false);
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
+		      "file_alloc_skip_sysop called without a surrounding atomic sysop");
+	      error_code = ER_FAILED;
+	      goto exit;
+	    }
+	  /* Skip the per-page nested sysop: the outer atomic sysop will cover file_perm_alloc's
+	   * physical undo records and guarantee that file_perm_expand's RVFL_EXPAND (emitted
+	   * inside its own committed nested sysop) is reclaimed on crash via
+	   * atomic_sysop_start_lsa. */
+	}
+      else
+	{
+	  /* start a nested system operation. we will end it with commit & undo. this must be atomic. */
+	  long long __fa_ts = file_alloc_probe_now_ns ();
+	  log_sysop_start_atomic (thread_p);
+	  g_copy_probe_ns_fa_sysop += file_alloc_probe_now_ns () - __fa_ts;
+	  is_sysop_started = true;
+	}
 
       /* allocate page */
+      long long __fa_tp = file_alloc_probe_now_ns ();
       error_code = file_perm_alloc (thread_p, page_fhead, FILE_ALLOC_USER_PAGE, vpid_out);
+      g_copy_probe_ns_fa_perm_alloc += file_alloc_probe_now_ns () - __fa_tp;
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -5469,7 +5540,9 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
   if (FILE_IS_NUMERABLE (fhead))
     {
       /* we also have to add page to user page table */
+      long long __fa_tn = file_alloc_probe_now_ns ();
       error_code = file_numerable_add_page (thread_p, page_fhead, vpid_out);
+      g_copy_probe_ns_fa_numerable += file_alloc_probe_now_ns () - __fa_tn;
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -5480,13 +5553,16 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
   if (f_init)
     {
       /* initialize page */
+      long long __fa_ti = file_alloc_probe_now_ns ();
       PAGE_PTR page_alloc = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_alloc == NULL)
 	{
+	  g_copy_probe_ns_fa_init_page += file_alloc_probe_now_ns () - __fa_ti;
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
       error_code = f_init (thread_p, page_alloc, f_init_args);
+      g_copy_probe_ns_fa_init_page += file_alloc_probe_now_ns () - __fa_ti;
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -5550,7 +5626,9 @@ exit:
       else
 	{
 	  /* commit and undo (to deallocate) */
+	  long long __fa_tail_t0 = file_alloc_probe_now_ns ();
 	  log_sysop_end_logical_undo (thread_p, RVFL_ALLOC, NULL, UNDO_DATA_SIZE, undo_log_data);
+	  g_copy_probe_ns_fa_sysop_tail += file_alloc_probe_now_ns () - __fa_tail_t0;
 	}
     }
 

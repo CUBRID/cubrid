@@ -30,6 +30,22 @@
 
 #include <vector>
 
+/* Diagnostic probes accumulated inside locator_multi_insert_force. Read+reset
+ * from copy_session::flush_batch for per-session breakdown logging. */
+extern long long g_copy_probe_ns_alloc_page;
+extern long long g_copy_probe_ns_insert_force;
+extern long long g_copy_probe_ns_log_redo;
+extern int g_copy_probe_pages_allocated;
+extern int g_copy_probe_insert_force_calls;
+/* sub-breakdown of heap_alloc_new_page / file_alloc */
+extern long long g_copy_probe_ns_fa_fix_header;
+extern long long g_copy_probe_ns_fa_sysop;
+extern long long g_copy_probe_ns_fa_sysop_tail;
+extern long long g_copy_probe_ns_fa_perm_alloc;
+extern long long g_copy_probe_ns_fa_numerable;
+extern long long g_copy_probe_ns_fa_init_page;
+extern long long g_copy_probe_ns_fa_attach_watcher;
+
 class copy_session
 {
   public:
@@ -70,6 +86,24 @@ class copy_session
     long long m_ns_attrinfo_set;
     long long m_ns_transform;
     long long m_ns_flush;
+    /* sub-breakdown of flush_batch */
+    long long m_ns_scancache_start;
+    long long m_ns_multi_insert;
+    long long m_ns_scancache_end;
+    /* sub-breakdown inside locator_multi_insert_force */
+    long long m_ns_alloc_page;
+    long long m_ns_insert_force;
+    long long m_ns_log_redo;
+    int m_pages_allocated;
+    int m_insert_force_calls;
+    /* sub-breakdown inside file_alloc */
+    long long m_ns_fa_fix_header;
+    long long m_ns_fa_sysop;
+    long long m_ns_fa_sysop_tail;
+    long long m_ns_fa_perm_alloc;
+    long long m_ns_fa_numerable;
+    long long m_ns_fa_init_page;
+    long long m_ns_fa_attach_watcher;
 };
 
 #endif /* _COPY_SESSION_HPP_ */
