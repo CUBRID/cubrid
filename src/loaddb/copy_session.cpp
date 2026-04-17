@@ -37,6 +37,7 @@
 #include "record_descriptor.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -54,7 +55,22 @@ copy_session::copy_session ()
   , m_attr_ids ()
   , m_num_cols (0)
   , m_rows_loaded (0)
+  , m_flush_fast_count (0)
+  , m_flush_slow_count (0)
+  , m_flush_fast_rows (0)
+  , m_flush_slow_rows (0)
+  , m_ns_decode (0)
+  , m_ns_attrinfo_set (0)
+  , m_ns_transform (0)
+  , m_ns_flush (0)
 {
+}
+
+static inline long long
+copy_now_ns ()
+{
+  return std::chrono::duration_cast<std::chrono::nanoseconds> (
+	   std::chrono::steady_clock::now ().time_since_epoch ()).count ();
 }
 
 copy_session::~copy_session ()
@@ -174,7 +190,9 @@ copy_session::receive_data (THREAD_ENTRY *thread_p, const char *data, int data_l
   while (pos < buf_len)
     {
       int bytes_consumed = 0;
+      long long t0 = copy_now_ns ();
       error = decode_binary_row (buf + pos, buf_len - pos, m_col_types.data (), m_num_cols, vals, &bytes_consumed);
+      m_ns_decode += copy_now_ns () - t0;
 
       if (error == COPY_DECODE_FOOTER)
 	{
@@ -200,20 +218,26 @@ copy_session::receive_data (THREAD_ENTRY *thread_p, const char *data, int data_l
 
       /* Pack the row into a record_descriptor and queue it for batch insert. */
       {
+	long long t1 = copy_now_ns ();
 	for (int i = 0; i < m_num_cols; i++)
 	  {
 	    error = heap_attrinfo_set (&m_class_oid, m_attr_ids[i], &vals[i], &attrinfo);
 	    if (error != NO_ERROR)
 	      {
+		m_ns_attrinfo_set += copy_now_ns () - t1;
 		goto cleanup;
 	      }
 	  }
+	m_ns_attrinfo_set += copy_now_ns () - t1;
 
 	record_descriptor new_recdes (cubmem::STANDARD_BLOCK_ALLOCATOR);
 	RECDES *old_recdes = NULL;
 
-	if (heap_attrinfo_transform_to_disk_except_lob (thread_p, &attrinfo, old_recdes, &new_recdes)
-	    != S_SUCCESS)
+	long long t2 = copy_now_ns ();
+	SCAN_CODE xform_rc =
+	  heap_attrinfo_transform_to_disk_except_lob (thread_p, &attrinfo, old_recdes, &new_recdes);
+	m_ns_transform += copy_now_ns () - t2;
+	if (xform_rc != S_SUCCESS)
 	  {
 	    error = er_errid ();
 	    if (error == NO_ERROR)
@@ -236,7 +260,9 @@ copy_session::receive_data (THREAD_ENTRY *thread_p, const char *data, int data_l
 
       if (m_recdes_collected.size () >= COPY_FLUSH_BATCH_ROWS)
 	{
+	  long long tf = copy_now_ns ();
 	  error = flush_batch (thread_p);
+	  m_ns_flush += copy_now_ns () - tf;
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -247,7 +273,9 @@ copy_session::receive_data (THREAD_ENTRY *thread_p, const char *data, int data_l
   /* Flush whatever remains in this chunk before releasing the scancache. */
   if (error == NO_ERROR && !m_recdes_collected.empty ())
     {
+      long long tf = copy_now_ns ();
       error = flush_batch (thread_p);
+      m_ns_flush += copy_now_ns () - tf;
     }
 
 cleanup:
@@ -293,6 +321,8 @@ copy_session::flush_batch (THREAD_ENTRY *thread_p)
 
   if (has_BU_lock && HA_DISABLED ())
     {
+      m_flush_fast_count++;
+      m_flush_fast_rows += (int) m_recdes_collected.size ();
       log_sysop_start (thread_p);
       error = locator_multi_insert_force (thread_p, &m_hfid, &m_class_oid, m_recdes_collected, true,
 					  MULTI_ROW_INSERT, &scancache, &force_count, DB_NOT_PARTITIONED_CLASS,
@@ -308,6 +338,8 @@ copy_session::flush_batch (THREAD_ENTRY *thread_p)
     }
   else
     {
+      m_flush_slow_count++;
+      m_flush_slow_rows += (int) m_recdes_collected.size ();
       for (std::size_t i = 0; i < m_recdes_collected.size (); ++i)
 	{
 	  log_sysop_start (thread_p);
@@ -344,6 +376,28 @@ copy_session::finish (THREAD_ENTRY *thread_p, int *rows_loaded)
     {
       error = flush_batch (thread_p);
     }
+
+  /* Diagnostic: branch + per-phase timings. Appended to a known file rather
+   * than stderr (cub_server stderr is redirected to a deleted tmp file by the
+   * service scripts) or er_log_debug (gated by PRM_ID_ER_LOG_DEBUG).
+   *
+   * Timings are cumulative nanoseconds across the whole session. flush time
+   * covers everything inside locator_multi_insert_force (heap + WAL). The
+   * remainder of wall-clock time not accounted for here is roughly chunk
+   * setup, heap_attrinfo_start/end, and wire receive overhead. */
+  {
+    FILE *f = fopen ("/tmp/copy_counter.log", "a");
+    if (f != NULL)
+      {
+	fprintf (f,
+		 "[COPY] rows=%d fast=%d/%d slow=%d/%d | decode=%.3fs attrinfo_set=%.3fs transform=%.3fs flush=%.3fs\n",
+		 m_rows_loaded, m_flush_fast_count, m_flush_fast_rows,
+		 m_flush_slow_count, m_flush_slow_rows,
+		 m_ns_decode / 1e9, m_ns_attrinfo_set / 1e9,
+		 m_ns_transform / 1e9, m_ns_flush / 1e9);
+	fclose (f);
+      }
+  }
 
   *rows_loaded = m_rows_loaded;
   return error;

@@ -56,6 +56,20 @@ class copy_session
                                                           waiting for insert */
     int m_num_cols;
     int m_rows_loaded;
+
+    /* diagnostic counters — which flush_batch branch is hit, and how many rows
+     * each branch accounts for. Logged at finish(). */
+    int m_flush_fast_count;
+    int m_flush_slow_count;
+    int m_flush_fast_rows;
+    int m_flush_slow_rows;
+
+    /* diagnostic timers (nanoseconds) — cumulative wall-clock spent inside each
+     * hot phase so we can see where the 30s actually goes. Logged at finish(). */
+    long long m_ns_decode;
+    long long m_ns_attrinfo_set;
+    long long m_ns_transform;
+    long long m_ns_flush;
 };
 
 #endif /* _COPY_SESSION_HPP_ */
