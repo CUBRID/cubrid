@@ -710,6 +710,8 @@ static int vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID 
 static int vacuum_heap_prepare_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_cleanup_prev_version_oos (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
+static int vacuum_ensure_oos_vfid_for_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
+						   const char *rectype_label);
 static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, const VFID * vfid);
 static void vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
@@ -2053,20 +2055,10 @@ retry_prepare:
 	  return error_code;
 	}
 
-      /* OOS VFID lookup for REC_RELOCATION — needed to delete OOS records during vacuum.
-       * Strict: heap_recdes_contains_oos() is cross-validated against VOT scan (debug) and
-       * heap_recdes_check_has_oos() is robust against false positives, so a missing OOS file
-       * here indicates real corruption (flag set but file missing). */
-      if (heap_recdes_contains_oos (&helper->record) && VFID_ISNULL (&helper->oos_vfid))
+      error_code = vacuum_ensure_oos_vfid_for_heap_record (thread_p, helper, "RELOC");
+      if (error_code != NO_ERROR)
 	{
-	  if (!heap_oos_find_vfid (thread_p, &helper->hfid, &helper->oos_vfid, false))
-	    {
-	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
-				   "OOS flag set but no OOS VFID found for hfid %d|%d (slotid=%d, rectype=RELOC, rec_len=%d).",
-				   VFID_AS_ARGS (&helper->hfid.vfid), (int) helper->crt_slotid, helper->record.length);
-	      assert_release (false);
-	      return ER_FAILED;
-	    }
+	  return error_code;
 	}
       return NO_ERROR;
 
@@ -2178,18 +2170,10 @@ retry_prepare:
 	  return ER_FAILED;
 	}
 
-      /* OOS VFID lookup for REC_HOME — needed to delete OOS records during vacuum.
-       * Strict: see REC_RELOCATION case above. */
-      if (heap_recdes_contains_oos (&helper->record) && VFID_ISNULL (&helper->oos_vfid))
+      error_code = vacuum_ensure_oos_vfid_for_heap_record (thread_p, helper, "HOME");
+      if (error_code != NO_ERROR)
 	{
-	  if (!heap_oos_find_vfid (thread_p, &helper->hfid, &helper->oos_vfid, false))
-	    {
-	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
-				   "OOS flag set but no OOS VFID found for hfid %d|%d (slotid=%d, rectype=HOME, rec_len=%d).",
-				   VFID_AS_ARGS (&helper->hfid.vfid), (int) helper->crt_slotid, helper->record.length);
-	      assert_release (false);
-	      return ER_FAILED;
-	    }
+	  return error_code;
 	}
       break;
 
@@ -2402,6 +2386,37 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 
   /* Success. */
   return NO_ERROR;
+}
+
+/*
+ * vacuum_ensure_oos_vfid_for_heap_record () - Lazy lookup of the heap's OOS VFID when the current
+ *   record carries the OOS flag but the helper has not cached oos_vfid yet.
+ *
+ * heap_recdes_check_has_oos is robust (and cross-validated in debug builds), so a missing OOS file
+ * at this point means real corruption. Strict: log, assert, and fail.
+ *
+ * Parameters:
+ *   rectype_label - short literal ("RELOC", "HOME") used only for the error message to distinguish
+ *                   which prepare branch hit the failure.
+ */
+static int
+vacuum_ensure_oos_vfid_for_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
+					const char *rectype_label)
+{
+  if (!heap_recdes_contains_oos (&helper->record) || !VFID_ISNULL (&helper->oos_vfid))
+    {
+      return NO_ERROR;
+    }
+  if (heap_oos_find_vfid (thread_p, &helper->hfid, &helper->oos_vfid, false))
+    {
+      return NO_ERROR;
+    }
+  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
+		       "OOS flag set but no OOS VFID found for hfid %d|%d (slotid=%d, rectype=%s, rec_len=%d).",
+		       VFID_AS_ARGS (&helper->hfid.vfid), (int) helper->crt_slotid, rectype_label,
+		       helper->record.length);
+  assert_release (false);
+  return ER_FAILED;
 }
 
 /*

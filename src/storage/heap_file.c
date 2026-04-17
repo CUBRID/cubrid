@@ -880,6 +880,7 @@ static void heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, 
 static int heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
 static int heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
 static int heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
+static int heap_update_home_delete_replaced_oos (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 static int heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id, RECDES * recdes_p);
 static void heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p,
 				      RECDES * old_recdes_p, RECDES * new_recdes_p, LOG_RCVINDEX rcvindex);
@@ -24097,6 +24098,102 @@ exit:
 }
 
 /*
+ * heap_update_home_delete_replaced_oos () - Eagerly delete old OOS records replaced by an UPDATE.
+ *
+ * Called from heap_update_home on the SA_MODE (non-MVCC) branch after the in-place overwrite has
+ * succeeded. MVCC mode keeps the old OOS alive for concurrent readers and lets vacuum reclaim it
+ * later; SA_MODE has no readers and no vacuum, so deletion happens here or not at all.
+ *
+ * Compares the OOS OID lists from the pre-update (home) recdes and the new recdes. OIDs present
+ * only in the old list are deleted; OIDs that appear in both (same physical OOS referenced before
+ * and after) are preserved. Caller guards on home_recdes.type == REC_HOME and OOS flag set.
+ *
+ * Strict failure handling: heap_recdes_check_has_oos is robust, so a missing OOS file or a failed
+ * OID extraction at this point indicates real corruption — log and propagate.
+ */
+static int
+heap_update_home_delete_replaced_oos (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
+{
+  OID_VECTOR old_oos_oids, new_oos_oids;
+  VFID oos_vfid;
+  int error_code;
+
+  error_code = heap_recdes_get_oos_oids (&context->home_recdes, old_oos_oids);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      er_log_debug (ARG_FILE_LINE,
+		    "SA_MODE eager OOS cleanup: heap_recdes_get_oos_oids(old) failed"
+		    " (hfid=%d|%d, oid=%d|%d|%d, rec_len=%d).",
+		    VFID_AS_ARGS (&context->hfid.vfid),
+		    context->oid.volid, context->oid.pageid, context->oid.slotid, context->home_recdes.length);
+      return error_code;
+    }
+  if (old_oos_oids.empty ())
+    {
+      return NO_ERROR;
+    }
+
+  if (heap_recdes_contains_oos (context->recdes_p))
+    {
+      error_code = heap_recdes_get_oos_oids (context->recdes_p, new_oos_oids);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  er_log_debug (ARG_FILE_LINE,
+			"SA_MODE eager OOS cleanup: heap_recdes_get_oos_oids(new) failed"
+			" (hfid=%d|%d, oid=%d|%d|%d, new_rec_len=%d).",
+			VFID_AS_ARGS (&context->hfid.vfid),
+			context->oid.volid, context->oid.pageid, context->oid.slotid, context->recdes_p->length);
+	  return error_code;
+	}
+    }
+
+  VFID_SET_NULL (&oos_vfid);
+  if (!heap_oos_find_vfid (thread_p, &context->hfid, &oos_vfid, false))
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "SA_MODE eager OOS cleanup: OOS flag set but no OOS VFID found for hfid %d|%d"
+		    " (oid=%d|%d|%d).",
+		    VFID_AS_ARGS (&context->hfid.vfid),
+		    context->oid.volid, context->oid.pageid, context->oid.slotid);
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  for (const OID & old_oid:old_oos_oids)
+    {
+      bool still_referenced = false;
+      for (const OID & new_oid:new_oos_oids)
+	{
+	  if (OID_EQ (&old_oid, &new_oid))
+	    {
+	      still_referenced = true;
+	      break;
+	    }
+	}
+      if (still_referenced)
+	{
+	  continue;
+	}
+      error_code = oos_delete (thread_p, oos_vfid, old_oid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  er_log_debug (ARG_FILE_LINE,
+			"SA_MODE eager OOS cleanup: oos_delete(oos_vfid=%d|%d, oid=%d|%d|%d) failed"
+			" (hfid=%d|%d, heap_oid=%d|%d|%d).",
+			VFID_AS_ARGS (&oos_vfid), old_oid.volid, old_oid.pageid, old_oid.slotid,
+			VFID_AS_ARGS (&context->hfid.vfid),
+			context->oid.volid, context->oid.pageid, context->oid.slotid);
+	  return error_code;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * heap_update_home () - update a REC_HOME record
  *   thread_p(in): thread entry
  *   context(in): operation context
@@ -24309,85 +24406,14 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
   /* For non-MVCC updates (SA_MODE), eagerly delete old OOS records that were replaced.
    * In MVCC mode (SERVER_MODE), old OOS is preserved for concurrent readers and cleaned
-   * by vacuum via prev_version_lsa chain (vacuum_cleanup_prev_version_oos).
-   * Strict: heap_recdes_check_has_oos is robust, so every failure below is a real error. */
+   * by vacuum via prev_version_lsa chain (vacuum_cleanup_prev_version_oos). */
   if (!is_mvcc_op && context->home_recdes.type == REC_HOME && heap_recdes_contains_oos (&context->home_recdes))
     {
-      OID_VECTOR old_oos_oids, new_oos_oids;
-
-      error_code = heap_recdes_get_oos_oids (&context->home_recdes, old_oos_oids);
+      error_code = heap_update_home_delete_replaced_oos (thread_p, context);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  er_log_debug (ARG_FILE_LINE,
-			"SA_MODE eager OOS cleanup: heap_recdes_get_oos_oids(old) failed"
-			" (hfid=%d|%d, oid=%d|%d|%d, rec_len=%d).",
-			VFID_AS_ARGS (&context->hfid.vfid),
-			context->oid.volid, context->oid.pageid, context->oid.slotid,
-			context->home_recdes.length);
 	  goto exit;
-	}
-
-      if (old_oos_oids.size () > 0)
-	{
-	  if (heap_recdes_contains_oos (context->recdes_p))
-	    {
-	      error_code = heap_recdes_get_oos_oids (context->recdes_p, new_oos_oids);
-	      if (error_code != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  er_log_debug (ARG_FILE_LINE,
-				"SA_MODE eager OOS cleanup: heap_recdes_get_oos_oids(new) failed"
-				" (hfid=%d|%d, oid=%d|%d|%d, new_rec_len=%d).",
-				VFID_AS_ARGS (&context->hfid.vfid),
-				context->oid.volid, context->oid.pageid, context->oid.slotid,
-				context->recdes_p->length);
-		  goto exit;
-		}
-	    }
-
-	  VFID oos_vfid;
-	  VFID_SET_NULL (&oos_vfid);
-	  if (!heap_oos_find_vfid (thread_p, &context->hfid, &oos_vfid, false))
-	    {
-	      er_log_debug (ARG_FILE_LINE,
-			    "SA_MODE eager OOS cleanup: OOS flag set but no OOS VFID found for hfid %d|%d"
-			    " (oid=%d|%d|%d).",
-			    VFID_AS_ARGS (&context->hfid.vfid),
-			    context->oid.volid, context->oid.pageid, context->oid.slotid);
-	      assert_release (false);
-	      error_code = ER_FAILED;
-	      goto exit;
-	    }
-
-	  for (size_t i = 0; i < old_oos_oids.size (); i++)
-	    {
-	      bool still_referenced = false;
-	      for (size_t j = 0; j < new_oos_oids.size (); j++)
-		{
-		  if (OID_EQ (&old_oos_oids[i], &new_oos_oids[j]))
-		    {
-		      still_referenced = true;
-		      break;
-		    }
-		}
-	      if (!still_referenced)
-		{
-		  error_code = oos_delete (thread_p, oos_vfid, old_oos_oids[i]);
-		  if (error_code != NO_ERROR)
-		    {
-		      ASSERT_ERROR ();
-		      er_log_debug (ARG_FILE_LINE,
-				    "SA_MODE eager OOS cleanup: oos_delete(oos_vfid=%d|%d, oid=%d|%d|%d) failed"
-				    " (hfid=%d|%d, heap_oid=%d|%d|%d).",
-				    VFID_AS_ARGS (&oos_vfid),
-				    old_oos_oids[i].volid, old_oos_oids[i].pageid, old_oos_oids[i].slotid,
-				    VFID_AS_ARGS (&context->hfid.vfid),
-				    context->oid.volid, context->oid.pageid, context->oid.slotid);
-		      goto exit;
-		    }
-		}
-	    }
 	}
     }
 
@@ -27919,6 +27945,53 @@ heap_rv_lob_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   return fileio_lob_remove_matching_dir (rcv->data);
 }
 
+#if !defined (NDEBUG)
+/*
+ * heap_recdes_log_oos_consistency_mismatch () - Debug-only: log a MVCC-flag vs VOT-scan mismatch
+ *   detected by heap_recdes_contains_oos. Dumps up to 10 VOT entries and the MVCC header bits via
+ *   the standard server log, then assert()s if the flag claims OOS but the scan finds none.
+ */
+static void
+heap_recdes_log_oos_consistency_mismatch (const RECDES * record, bool flag_has_oos, bool vot_has_oos)
+{
+  int repid_and_flags = OR_GET_INT (record->data + OR_REP_OFFSET);
+  int osz = (int) OR_GET_OFFSET_SIZE (record->data);
+  void *vt = OR_GET_OBJECT_VAR_TABLE (record->data);
+  int mvc = (record->length - OR_HEADER_SIZE (record->data)) / osz;
+  char vdump[256];
+  size_t vpos = 0;
+
+  for (int vi = 0; vi < mvc && vi < 10 && vpos + 1 < sizeof (vdump); vi++)
+    {
+      int v = (osz == 1) ? OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (vt, vi, osz))
+	: (osz == 2) ? OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (vt, vi, osz))
+	: OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (vt, vi, osz));
+      int written = snprintf (vdump + vpos, sizeof (vdump) - vpos, "%d ", v);
+      if (written < 0 || (size_t) written >= sizeof (vdump) - vpos)
+	{
+	  /* Error or truncated — leave buffer as-is and stop. snprintf already null-terminates. */
+	  break;
+	}
+      vpos += (size_t) written;
+      if (v & OR_VAR_BIT_LAST_ELEMENT)
+	{
+	  break;
+	}
+    }
+
+  _er_log_debug (ARG_FILE_LINE,
+		 "[OOS-CONSISTENCY] MISMATCH: flag=%d, vot=%d, "
+		 "repid_and_flags=0x%08x, mvcc_flags=0x%02x, rec_len=%d, offset_size=%d, "
+		 "VOT=[%s]",
+		 flag_has_oos ? 1 : 0, vot_has_oos ? 1 : 0,
+		 repid_and_flags, (int) OR_GET_MVCC_FLAG (record->data), record->length, osz, vdump);
+  if (flag_has_oos && !vot_has_oos)
+    {
+      assert (false && "MVCC flag has OOS but VOT scan finds no OOS");
+    }
+}
+#endif /* !NDEBUG */
+
 bool
 heap_recdes_contains_oos (const RECDES * record)
 {
@@ -27926,51 +27999,11 @@ heap_recdes_contains_oos (const RECDES * record)
   bool flag_has_oos = (flag & OR_MVCC_FLAG_HAS_OOS) != 0;
 
 #if !defined (NDEBUG)
-  /* Cross-validate MVCC flag against VOT scan to detect false positives.
-   * heap_recdes_contains_oos (MVCC flag) and heap_recdes_check_has_oos (VOT scan) must agree.
-   * Output goes through the standard server log (_er_log_debug) so debug builds preserve
-   * traceability when this mismatch fires in CI or production debug runs. */
+  /* Cross-validate MVCC flag against VOT scan. Must agree; if not, dump context + assert. */
   bool vot_has_oos = heap_recdes_check_has_oos (record);
   if (flag_has_oos != vot_has_oos)
     {
-      int repid_and_flags = OR_GET_INT (record->data + OR_REP_OFFSET);
-      int osz = (int) OR_GET_OFFSET_SIZE (record->data);
-      void *vt = OR_GET_OBJECT_VAR_TABLE (record->data);
-      int mvc = (record->length - OR_HEADER_SIZE (record->data)) / osz;
-      char vdump[256];
-      size_t vpos = 0;
-      for (int vi = 0; vi < mvc && vi < 10 && vpos < sizeof (vdump) - 1; vi++)
-	{
-	  int v = (osz == 1) ? OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (vt, vi, osz))
-	    : (osz == 2) ? OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (vt, vi, osz))
-	    : OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (vt, vi, osz));
-	  int written = snprintf (vdump + vpos, sizeof (vdump) - vpos, "%d ", v);
-	  if (written < 0)
-	    {
-	      break;
-	    }
-	  if ((size_t) written >= sizeof (vdump) - vpos)
-	    {
-	      /* Truncated — clamp to buffer end and stop. */
-	      vpos = sizeof (vdump) - 1;
-	      break;
-	    }
-	  vpos += (size_t) written;
-	  if (v & OR_VAR_BIT_LAST_ELEMENT)
-	    break;
-	}
-      vdump[vpos < sizeof (vdump) ? vpos : sizeof (vdump) - 1] = '\0';
-
-      _er_log_debug (ARG_FILE_LINE,
-		     "[OOS-CONSISTENCY] MISMATCH: flag=%d, vot=%d, "
-		     "repid_and_flags=0x%08x, mvcc_flags=0x%02x, rec_len=%d, offset_size=%d, "
-		     "VOT=[%s]",
-		     flag_has_oos ? 1 : 0, vot_has_oos ? 1 : 0,
-		     repid_and_flags, (int) OR_GET_MVCC_FLAG (record->data), record->length, osz, vdump);
-      if (flag_has_oos && !vot_has_oos)
-	{
-	  assert (false && "MVCC flag has OOS but VOT scan finds no OOS");
-	}
+      heap_recdes_log_oos_consistency_mismatch (record, flag_has_oos, vot_has_oos);
     }
 #endif
 
