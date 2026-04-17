@@ -953,7 +953,7 @@ extern "C"
     /* NO_PARALLEL_SCAN hint blocks parallel list scan */
     if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN))
       {
-
+	return NO_ERROR;
       }
 
     if (xasl->topn_items || XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))

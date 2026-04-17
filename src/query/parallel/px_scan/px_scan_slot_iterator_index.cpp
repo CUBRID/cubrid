@@ -888,7 +888,12 @@ namespace parallel_scan
 	      {
 		pr_clear_value (&key);
 	      }
-	    continue;
+	    if (m_page != nullptr)
+	      {
+		pgbuf_unfix (thread_p, m_page);
+		m_page = nullptr;
+	      }
+	    return S_ERROR;
 	  }
 
 	if (m_slot_oids.empty ())
