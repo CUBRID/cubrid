@@ -373,7 +373,7 @@ logwr_read_bgarv_log_header (void)
     }
 
   assert (log_pgptr->hdr.logical_pageid == LOGPB_HEADER_PAGE_ID);
-  assert (log_pgptr->hdr.offset = NULL_OFFSET);
+  assert (log_pgptr->hdr.offset == NULL_OFFSET);
 
   bgarv_header = (LOG_BGARV_HEADER *) log_pgptr->area;
 
