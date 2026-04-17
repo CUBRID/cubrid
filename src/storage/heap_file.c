@@ -27906,8 +27906,7 @@ heap_recdes_contains_oos (const RECDES * record)
 	       "repid_and_flags=0x%08x, mvcc_flags=0x%02x, rec_len=%d, offset_size=%d, "
 	       "VOT=[%s]\n",
 	       flag_has_oos ? 1 : 0, vot_has_oos ? 1 : 0,
-	       repid_and_flags, (int) OR_GET_MVCC_FLAG (record->data),
-	       record->length, osz, vdump);
+	       repid_and_flags, (int) OR_GET_MVCC_FLAG (record->data), record->length, osz, vdump);
       fflush (stderr);
       if (flag_has_oos && !vot_has_oos)
 	{

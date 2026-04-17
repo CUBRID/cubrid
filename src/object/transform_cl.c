@@ -2863,7 +2863,8 @@ query_spec_size (SM_QUERY_SPEC * statement)
 {
   int size;
 
-  size = DB_ALIGN (tf_Metaclass_query_spec.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_query_spec.mc_n_variable), 4);
+  size =
+    DB_ALIGN (tf_Metaclass_query_spec.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_query_spec.mc_n_variable), 4);
   size += DB_ALIGN (string_disk_size (statement->specification), 4);
 
   return (size);
@@ -3292,7 +3293,8 @@ resolution_size (SM_RESOLUTION * res)
 {
   int size;
 
-  size = DB_ALIGN (tf_Metaclass_resolution.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_resolution.mc_n_variable), 4);
+  size =
+    DB_ALIGN (tf_Metaclass_resolution.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_resolution.mc_n_variable), 4);
   size += DB_ALIGN (string_disk_size (res->name), 4);
   size += DB_ALIGN (string_disk_size (res->alias), 4);
 
@@ -3430,7 +3432,8 @@ repattribute_size (SM_REPR_ATTRIBUTE * rat)
 {
   int size;
 
-  size = DB_ALIGN (tf_Metaclass_repattribute.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_repattribute.mc_n_variable), 4);
+  size =
+    DB_ALIGN (tf_Metaclass_repattribute.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_repattribute.mc_n_variable), 4);
 
   size += DB_ALIGN (substructure_set_size ((DB_LIST *) rat->domain, (LSIZER) domain_size), 4);
 
@@ -3489,7 +3492,9 @@ representation_size (SM_REPRESENTATION * rep)
 {
   int size;
 
-  size = DB_ALIGN (tf_Metaclass_representation.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_representation.mc_n_variable), 4);
+  size =
+    DB_ALIGN (tf_Metaclass_representation.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_representation.mc_n_variable),
+	      4);
 
   size += DB_ALIGN (substructure_set_size ((DB_LIST *) rep->attributes, (LSIZER) repattribute_size), 4);
 
