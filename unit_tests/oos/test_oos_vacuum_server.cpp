@@ -419,6 +419,233 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteLarge160KB)
     }
 }
 
+// ============================================================================
+// Helper: get free space on the page containing an OOS OID
+// ============================================================================
+
+static int
+get_free_space_of_oid_page (const OID &oid)
+{
+  VPID vpid = {oid.pageid, oid.volid};
+  PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER,
+				 PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_ptr == nullptr)
+    {
+      return -1;
+    }
+  test_oos_utils::auto_unfixed_page_ptr auto_page { page_ptr, test_oos_utils::page_auto_unfix {thread_p} };
+  return spage_get_free_space (thread_p, page_ptr);
+}
+
+// ============================================================================
+// TC-V8: Multi-update vacuum reclaim — free space increases after each pass
+//
+// Simulates N rounds of MVCC UPDATE:
+//   1. Each round inserts a new OOS (new version) and vacuums the old one
+//   2. Tracks free space on the head page before/after each vacuum pass
+//   3. Verifies free space increases after vacuum cleanup
+//   4. Verifies page count stays bounded (old space is reused)
+// ============================================================================
+TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
+{
+  int err;
+
+  const int N_ROWS = 5;
+  const int UPDATE_ROUNDS = 5;
+  const int oos_size = 4096;
+
+  /* Initial "INSERT": create N OOS records */
+  OID current_oids[N_ROWS];
+  for (int i = 0; i < N_ROWS; i++)
+    {
+      auto data = test_oos_utils::make_repeated_pattern_string (oos_size);
+      RECDES rec {};
+      err = test_oos_utils::from_string_into_recdes (data, rec);
+      ASSERT_EQ (err, NO_ERROR);
+
+      current_oids[i] = OID_INITIALIZER;
+      err = oos_insert (thread_p, oos_vfid, rec, current_oids[i]);
+      ASSERT_EQ (err, NO_ERROR);
+
+      recdes_free_data_area (&rec);
+    }
+
+  int pages_after_insert = -1;
+  err = file_get_num_user_pages (thread_p, &oos_vfid, &pages_after_insert);
+  ASSERT_EQ (err, NO_ERROR);
+  ASSERT_GT (pages_after_insert, 0);
+
+  /* Simulate UPDATE_ROUNDS of UPDATEs with vacuum cleanup */
+  for (int round = 0; round < UPDATE_ROUNDS; round++)
+    {
+      /* Phase 1: vacuum all old OOS records and verify free space increases */
+      for (int i = 0; i < N_ROWS; i++)
+	{
+	  OID old_oid = current_oids[i];
+
+	  int free_before = get_free_space_of_oid_page (old_oid);
+	  ASSERT_GE (free_before, 0);
+
+	  /* Build heap RECDES with old OOS OID and vacuum it */
+	  INT64 oos_len = oos_size + 1;
+	  RECDES heap_rec {};
+	  err = build_heap_recdes_with_oos ({old_oid}, {oos_len}, heap_rec);
+	  ASSERT_EQ (err, NO_ERROR);
+
+	  err = bridge_vacuum_heap_oos_delete (thread_p, &oos_vfid, &heap_rec);
+	  ASSERT_EQ (err, NO_ERROR);
+
+	  recdes_free_data_area (&heap_rec);
+
+	  int free_after = get_free_space_of_oid_page (old_oid);
+	  ASSERT_GE (free_after, 0);
+	  EXPECT_GT (free_after, free_before)
+	      << "Round " << round << ", row " << i
+	      << ": free space must increase after vacuum deletes old OOS";
+
+	  /* Old OOS must be gone */
+	  RECDES stale {};
+	  ASSERT_NE (oos_read (thread_p, old_oid, stale), NO_ERROR);
+	  if (stale.data != nullptr)
+	    {
+	      recdes_free_data_area (&stale);
+	    }
+	}
+
+      /* Phase 2: insert new OOS versions (reuses freed space) */
+      for (int i = 0; i < N_ROWS; i++)
+	{
+	  auto data = test_oos_utils::make_repeated_pattern_string (oos_size);
+	  RECDES rec {};
+	  err = test_oos_utils::from_string_into_recdes (data, rec);
+	  ASSERT_EQ (err, NO_ERROR);
+
+	  OID new_oid = OID_INITIALIZER;
+	  err = oos_insert (thread_p, oos_vfid, rec, new_oid);
+	  ASSERT_EQ (err, NO_ERROR);
+
+	  /* New OOS must be readable */
+	  RECDES check {};
+	  err = oos_read (thread_p, new_oid, check);
+	  ASSERT_EQ (err, NO_ERROR);
+	  recdes_free_data_area (&check);
+
+	  current_oids[i] = new_oid;
+	  recdes_free_data_area (&rec);
+	}
+    }
+
+  /* After 25 update+vacuum cycles, page count should be bounded */
+  int pages_after_churn = -1;
+  err = file_get_num_user_pages (thread_p, &oos_vfid, &pages_after_churn);
+  ASSERT_EQ (err, NO_ERROR);
+  EXPECT_LE (pages_after_churn, pages_after_insert + 2)
+      << "After " << (N_ROWS * UPDATE_ROUNDS) << " update+vacuum cycles, "
+      << "page count should stay bounded (was " << pages_after_insert
+      << ", now " << pages_after_churn << ")";
+
+  /* All current OOS versions must still be readable */
+  for (int i = 0; i < N_ROWS; i++)
+    {
+      RECDES out {};
+      err = oos_read (thread_p, current_oids[i], out);
+      ASSERT_EQ (err, NO_ERROR);
+      recdes_free_data_area (&out);
+    }
+}
+
+// ============================================================================
+// TC-V9: Bulk vacuum reclaim — delete all, verify space reused by reinsert
+//
+// Inserts N OOS records, vacuums all via a single heap RECDES containing
+// N OOS OIDs, then reinserts N records and verifies page count stays bounded.
+// ============================================================================
+TEST_F (OosVacuumCodePathServer, BulkVacuumReclaimAndReuse)
+{
+  int err;
+
+  const int N = 10;
+  const int oos_size = 4096;
+
+  /* Insert N OOS records */
+  OID oids[N];
+  for (int i = 0; i < N; i++)
+    {
+      auto data = test_oos_utils::make_repeated_pattern_string (oos_size);
+      RECDES rec {};
+      err = test_oos_utils::from_string_into_recdes (data, rec);
+      ASSERT_EQ (err, NO_ERROR);
+
+      oids[i] = OID_INITIALIZER;
+      err = oos_insert (thread_p, oos_vfid, rec, oids[i]);
+      ASSERT_EQ (err, NO_ERROR);
+
+      recdes_free_data_area (&rec);
+    }
+
+  int pages_after_insert = -1;
+  err = file_get_num_user_pages (thread_p, &oos_vfid, &pages_after_insert);
+  ASSERT_EQ (err, NO_ERROR);
+  ASSERT_GT (pages_after_insert, 0);
+
+  /* Build one heap RECDES with all N OOS OIDs and vacuum them all at once */
+  std::vector<OID> oid_vec (oids, oids + N);
+  std::vector<INT64> len_vec (N, (INT64) (oos_size + 1));
+  RECDES heap_rec {};
+  err = build_heap_recdes_with_oos (oid_vec, len_vec, heap_rec);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
+
+  err = bridge_vacuum_heap_oos_delete (thread_p, &oos_vfid, &heap_rec);
+  ASSERT_EQ (err, NO_ERROR);
+
+  /* All N OOS records must be gone */
+  for (int i = 0; i < N; i++)
+    {
+      RECDES after {};
+      int read_err = oos_read (thread_p, oids[i], after);
+      ASSERT_NE (read_err, NO_ERROR) << "OOS record " << i << " should be deleted by vacuum";
+      if (after.data != nullptr)
+	{
+	  recdes_free_data_area (&after);
+	}
+    }
+
+  /* Reinsert N records — should reuse freed space */
+  OID new_oids[N];
+  for (int i = 0; i < N; i++)
+    {
+      auto data = test_oos_utils::make_repeated_pattern_string (oos_size);
+      RECDES rec {};
+      err = test_oos_utils::from_string_into_recdes (data, rec);
+      ASSERT_EQ (err, NO_ERROR);
+
+      new_oids[i] = OID_INITIALIZER;
+      err = oos_insert (thread_p, oos_vfid, rec, new_oids[i]);
+      ASSERT_EQ (err, NO_ERROR);
+
+      recdes_free_data_area (&rec);
+    }
+
+  int pages_after_reinsert = -1;
+  err = file_get_num_user_pages (thread_p, &oos_vfid, &pages_after_reinsert);
+  ASSERT_EQ (err, NO_ERROR);
+
+  EXPECT_LE (pages_after_reinsert, pages_after_insert * 2)
+      << "After vacuum + reinsert, page count should stay bounded "
+      << "(insert=" << pages_after_insert << ", reinsert=" << pages_after_reinsert << ")";
+
+  /* All reinserted records must be readable */
+  for (int i = 0; i < N; i++)
+    {
+      RECDES out {};
+      err = oos_read (thread_p, new_oids[i], out);
+      ASSERT_EQ (err, NO_ERROR);
+      ASSERT_EQ (out.length, oos_size + 1);
+      recdes_free_data_area (&out);
+    }
+}
+
 int
 main (int argc, char **argv)
 {
