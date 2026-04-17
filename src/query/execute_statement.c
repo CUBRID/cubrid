@@ -22300,9 +22300,31 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *col;
   DB_TYPE *col_types = NULL;
   int ncols = 0;
+  PT_NODE *entity_spec;
+  PT_NODE *entity;
 
-  /* get table name */
-  table_name = statement->info.copy.table_name->info.name.original;
+  /* table_name is stored as a PT_SPEC from class_spec_without_server_name */
+  entity_spec = statement->info.copy.table_name;
+  if (entity_spec == NULL || entity_spec->node_type != PT_SPEC || entity_spec->info.spec.entity_name == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  entity = entity_spec->info.spec.flat_entity_list;
+  if (entity != NULL)
+    {
+      table_name = entity->info.name.original;
+    }
+  else
+    {
+      /* flat_entity_list may not be populated; use entity_name directly */
+      table_name = entity_spec->info.spec.entity_name->info.name.resolved;
+      if (table_name == NULL)
+	{
+	  table_name = entity_spec->info.spec.entity_name->info.name.original;
+	}
+    }
 
   /* find class */
   class_obj = db_find_class (table_name);

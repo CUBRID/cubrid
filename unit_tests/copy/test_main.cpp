@@ -62,6 +62,8 @@ main ()
   test_module (global_error, test_copy_binary_decoder::test_decode_truncated_field, "decode truncated field");
   test_module (global_error, test_copy_binary_decoder::test_decode_field_count_mismatch, "decode field count mismatch");
   test_module (global_error, test_copy_binary_decoder::test_decode_int_wrong_size, "decode INT wrong size");
+  test_module (global_error, test_copy_binary_decoder::test_decode_vector, "decode VECTOR");
+  test_module (global_error, test_copy_binary_decoder::test_decode_int_vector_row, "decode INT+VECTOR row");
 
   std::cout << std::endl;
   if (global_error == 0)

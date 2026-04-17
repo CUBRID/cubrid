@@ -18,7 +18,7 @@
 #include "test_copy_binary_decoder.hpp"
 #include "copy_binary_decoder.hpp"
 #include "copy_binary_format.hpp"
-#include "dbtype_function.h"
+#include "dbtype.h"
 
 #include <arpa/inet.h>
 #include <cmath>
@@ -435,6 +435,99 @@ namespace test_copy_binary_decoder
     ASSERT_TRUE (rc != 0 && rc != 1, "INT wrong size returns error");
 
     db_value_clear (&vals[0]);
+    return 0;
+  }
+
+  static void
+  write_field_vector (std::vector<char> &buf, const float *floats, int dim)
+  {
+    int32_t field_len = (int32_t) sizeof (int32_t) + dim * (int32_t) sizeof (float);
+    write_int32 (buf, field_len);
+    write_int32 (buf, dim);
+    for (int i = 0; i < dim; i++)
+      {
+	write_float (buf, floats[i]);
+      }
+  }
+
+  int
+  test_decode_vector (void)
+  {
+    std::cout << "test_decode_vector" << std::endl;
+
+    /* VECTOR format: int32 dim, then dim floats in network byte order */
+    int32_t dim = 3;
+    float expected[] = { 1.0f, 2.5f, -3.75f };
+
+    std::vector<char> buf;
+    write_row_header (buf, 1);
+    write_field_vector (buf, expected, dim);
+
+    DB_TYPE types[] = { DB_TYPE_VECTOR };
+    DB_VALUE vals[1];
+    db_make_null (&vals[0]);
+    int consumed = 0;
+
+    int rc = decode_binary_row (buf.data (), (int) buf.size (), types, 1, vals, &consumed);
+    ASSERT_INT_EQ (rc, 0, "decode_binary_row");
+    ASSERT_INT_EQ (consumed, (int) buf.size (), "bytes consumed");
+
+    /* access vector data directly — db_get_vector_float has API_ACTIVE_CHECKS assert(false) */
+    ASSERT_INT_EQ (DB_VALUE_TYPE (&vals[0]), DB_TYPE_VECTOR, "value type is VECTOR");
+    const DB_VECTOR_FLOAT *vf = &vals[0].data.vector_float;
+    ASSERT_INT_EQ (vf->dim, dim, "VECTOR dimension");
+    ASSERT_TRUE (vf->float_array != NULL, "VECTOR float_array not NULL");
+
+    for (int i = 0; i < dim; i++)
+      {
+	ASSERT_TRUE (fabsf (vf->float_array[i] - expected[i]) < 1e-6f, "VECTOR element");
+      }
+
+    db_value_clear (&vals[0]);
+    return 0;
+  }
+
+  int
+  test_decode_int_vector_row (void)
+  {
+    std::cout << "test_decode_int_vector_row" << std::endl;
+
+    /* simulate a row for table (id INT, vec VECTOR(3)) */
+    float vec_data[] = { 1.0f, 2.5f, -3.75f };
+
+    std::vector<char> buf;
+    write_row_header (buf, 2);
+    write_field_int (buf, 42);
+    write_field_vector (buf, vec_data, 3);
+
+    DB_TYPE types[] = { DB_TYPE_INTEGER, DB_TYPE_VECTOR };
+    DB_VALUE vals[2];
+    db_make_null (&vals[0]);
+    db_make_null (&vals[1]);
+    int consumed = 0;
+
+    int rc = decode_binary_row (buf.data (), (int) buf.size (), types, 2, vals, &consumed);
+    ASSERT_INT_EQ (rc, 0, "decode_binary_row");
+    ASSERT_INT_EQ (consumed, (int) buf.size (), "bytes consumed");
+
+    /* verify INT column */
+    ASSERT_INT_EQ (DB_VALUE_TYPE (&vals[0]), DB_TYPE_INTEGER, "col 0 type is INT");
+    ASSERT_INT_EQ (db_get_int (&vals[0]), 42, "INT value");
+
+    /* verify VECTOR column */
+    ASSERT_INT_EQ (DB_VALUE_TYPE (&vals[1]), DB_TYPE_VECTOR, "col 1 type is VECTOR");
+    const DB_VECTOR_FLOAT *vf = &vals[1].data.vector_float;
+    ASSERT_INT_EQ (vf->dim, 3, "VECTOR dimension");
+    ASSERT_TRUE (vf->float_array != NULL, "VECTOR float_array not NULL");
+    for (int i = 0; i < 3; i++)
+      {
+	ASSERT_TRUE (fabsf (vf->float_array[i] - vec_data[i]) < 1e-6f, "VECTOR element");
+      }
+
+    for (int i = 0; i < 2; i++)
+      {
+	db_value_clear (&vals[i]);
+      }
     return 0;
   }
 

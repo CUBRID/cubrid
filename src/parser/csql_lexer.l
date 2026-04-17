@@ -276,6 +276,7 @@ IDL       [a-zA-Z0-9_]
 [cC][oO][nN][sS][tT][rR][aA][iI][nN][tT][sS]				{ begin_token(yytext);   return CONSTRAINTS; }
 [cC][oO][nN][tT][iI][nN][uU][eE]					{ begin_token(yytext);   return CONTINUE; }
 [cC][oO][nN][vV][eE][rR][tT]						{ begin_token(yytext);   return CONVERT; }
+[cC][oO][pP][yY]							{ begin_token(yytext);   return COPY_; }
 [cC][oO][rR][rR][eE][sS][pP][oO][nN][dD][iI][nN][gG]			{ begin_token(yytext);   return CORRESPONDING; }
 [cC][oO][sS][tT]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
@@ -406,6 +407,7 @@ IDL       [a-zA-Z0-9_]
 										csql_yylval.cptr = pt_makename(yytext);
                                                                                 return FORCE; }
 [fF][oO][rR][eE][iI][gG][nN]						{ begin_token(yytext);   return FOREIGN; }
+[fF][oO][rR][mM][aA][tT]						{ begin_token(yytext);   return FORMAT_; }
 [fF][oO][uU][nN][dD]							{ begin_token(yytext);   return FOUND; }
 [fF][rR][oO][mM]							{ begin_token(yytext);   return FROM; }
 [fF][uU][lL][lL]							{ begin_token(yytext);   return FULL; }
@@ -1006,6 +1008,7 @@ IDL       [a-zA-Z0-9_]
 [sS][tT][dD][dD][eE][vV][_][sS][aA][mM][pP]				{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return STDDEV_SAMP; }
+[sS][tT][dD][iI][nN]							{ begin_token(yytext);   return STDIN_; }
 [sS][tT][rR][_][tT][oO][_][dD][aA][tT][eE]				{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return STR_TO_DATE; }
