@@ -619,7 +619,22 @@ namespace parallel_scan
 	      }
 	    break;
 	  }
-	m_slot_iterator.set_page (&thread_ref, &vpid);
+	if (m_slot_iterator.set_page (&thread_ref, &vpid) != NO_ERROR)
+	  {
+	    if (m_interrupt->get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+	      {
+		err_code = m_err_messages->move_top_error_message_to_this();
+		if (err_code == ER_INTERRUPTED)
+		  {
+		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::USER_INTERRUPTED_FROM_WORKER_THREAD);
+		  }
+		else
+		  {
+		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		  }
+	      }
+	    break;
+	  }
 	while (!stop)
 	  {
 	    scan_code = m_slot_iterator.next_qualified_slot_with_peek (&thread_ref);

@@ -530,9 +530,9 @@ namespace parallel_scan
     m_page = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
     if (m_page == nullptr)
       {
-	m_num_keys = 0;
-	m_current_slot = m_use_desc_index ? 0 : 1;
-	return NO_ERROR;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_ABORTED, 2,
+		vpid->volid, vpid->pageid);
+	return ER_FAILED;
       }
 
     m_num_keys = btree_node_number_of_keys (thread_p, m_page);

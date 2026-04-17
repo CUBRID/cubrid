@@ -197,7 +197,7 @@ fallback:
     if (page == nullptr)
       {
 	m_leaf_ended = true;
-	return S_END;
+	return S_ERROR;
       }
 
     BTREE_NODE_HEADER *hdr = btree_get_node_header (thread_p, page);
@@ -205,7 +205,7 @@ fallback:
       {
 	pgbuf_unfix (thread_p, page);
 	m_leaf_ended = true;
-	return S_END;
+	return S_ERROR;
       }
 
     VPID next = m_use_desc_index ? hdr->prev_vpid : hdr->next_vpid;
