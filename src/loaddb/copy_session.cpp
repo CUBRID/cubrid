@@ -43,9 +43,9 @@
 #include "memory_wrapper.hpp"
 
 /* Maximum number of rows buffered in m_recdes_collected before flushing to the
- * heap. Larger batches amortize page-latch / WAL costs but also hold more
- * memory; 1024 rows × ~1 KB ≈ 1 MB matches the client's default flush chunk. */
-static constexpr std::size_t COPY_FLUSH_BATCH_ROWS = 1024;
+ * heap. Larger batches reduce per-flush fixed overhead (scancache open/close,
+ * postpone-log records) at the cost of transient memory. */
+static constexpr std::size_t COPY_FLUSH_BATCH_ROWS = 4096;
 
 copy_session::copy_session ()
   : m_class_oid (OID_INITIALIZER)
@@ -131,9 +131,7 @@ copy_session::receive_data (THREAD_ENTRY *thread_p, const char *data, int data_l
   int error = NO_ERROR;
   int pos = 0;
   HEAP_CACHE_ATTRINFO attrinfo;
-  HEAP_SCANCACHE scancache;
   bool attrinfo_started = false;
-  bool scancache_started = false;
 
   /* If a previous chunk ended mid-row, prepend the leftover bytes so the
    * combined buffer starts at a row boundary. */
@@ -172,15 +170,6 @@ copy_session::receive_data (THREAD_ENTRY *thread_p, const char *data, int data_l
       goto cleanup;
     }
   attrinfo_started = true;
-
-  /* MULTI_ROW_INSERT op_type amortizes the per-page locking and enables the
-   * page-image WAL optimization path inside locator_multi_insert_force. */
-  error = heap_scancache_start_modify (thread_p, &scancache, &m_hfid, &m_class_oid, MULTI_ROW_INSERT, NULL);
-  if (error != NO_ERROR)
-    {
-      goto cleanup;
-    }
-  scancache_started = true;
 
   while (pos < buf_len)
     {
@@ -268,10 +257,6 @@ cleanup:
     }
   db_private_free (thread_p, vals);
 
-  if (scancache_started)
-    {
-      heap_scancache_end_modify (thread_p, &scancache);
-    }
   if (attrinfo_started)
     {
       heap_attrinfo_end (thread_p, &attrinfo);

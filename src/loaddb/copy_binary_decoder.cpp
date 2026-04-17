@@ -177,17 +177,28 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
 
       DB_VECTOR_FLOAT vf;
       vf.dim = dim;
-      /* decode float array from network byte order */
+      /* Wire format for the vector body is little-endian float32 — matches
+       * the on-disk vector representation on little-endian hosts, so the
+       * decoder can memcpy the wire bytes straight into the DB_VALUE buffer
+       * instead of byteswapping 256 floats one at a time. Big-endian hosts
+       * still pay per-element swap. */
       float *floats = db_vector_allocate_float_array (dim);
       if (floats == NULL)
 	{
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       const char *fptr = data + sizeof (int32_t);
+#if defined (__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+      memcpy (floats, fptr, (size_t) dim * sizeof (float));
+#else
       for (int i = 0; i < dim; i++)
 	{
-	  floats[i] = read_float (fptr + i * sizeof (float));
+	  uint32_t raw;
+	  memcpy (&raw, fptr + i * sizeof (float), sizeof (raw));
+	  raw = __builtin_bswap32 (raw);
+	  memcpy (&floats[i], &raw, sizeof (float));
 	}
+#endif
       vf.float_array = floats;
       db_make_vector_float (val, &vf);
       /* db_make_vector_float stores the pointer, not a copy — db_value_clear frees it */
