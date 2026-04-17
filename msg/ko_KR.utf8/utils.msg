@@ -1220,3 +1220,32 @@ operations:\n\
     -n, --generate-new-key        키 파일 (_keys)에 새로운 키를 추가; 최대 갯수: 128\n\
     -d, --delete-key=KEY_INDEX    키 파일 (_keys)의 한 키를 제거\n\
     -c, --change-key=KEY_INDEX    데이터베이스에 등록된 키를 키 파일 (_keys)에 존재하는 다른 키로 변경\n
+
+$set 58 MSGCAT_UTIL_SET_CLEANFILEDB
+10 Couldn't open output file '%1$s'\n
+11 \
+*** CUBRID cleanfiledb (Database: %1$s) ***\n\
+\n\
+  Summary of invalid files cleaned:\n\
+  ======================================================================\n\
+  Type                  Cleaned Count      Status\n\
+  ======================================================================\n\
+  Heap                  %2$d                  Success\n\
+  Heap Overflow         %3$d                  Success\n\
+  B-Tree                %4$d                  Success\n\
+  B-Tree Overflow       %5$d                  Success\n\
+  ----------------------------------------------------------------------\n\
+  Total                 %6$d\n\
+  ======================================================================\n\
+\n\
+  Cleanup execution finished successfully.\n
+60 \
+cleanfiledb: Delete invalid files and reclaim storage space.\n\
+usage: %1$s cleanfiledb [OPTION] database-name\n\
+\n\
+valid options:\n\
+    -S, --SA-mode                 stand-alone mode execution\n\
+    -C, --CS-mode                 client-server mode execution\n\
+    -o, --output-file=FILE        redirect output message to FILE; default: none.\n\
+    -l, --list                    list all files\n\
+    -c, --clean-invalid-file      clean invalid files\n

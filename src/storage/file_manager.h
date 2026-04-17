@@ -258,4 +258,6 @@ extern void file_rv_dump_vfid_and_vpid (FILE * fp, int length, void *data);
 extern void file_rv_dump_extdata_set_next (FILE * fp, int length, void *data);
 extern void file_rv_dump_extdata_add (FILE * fp, int length, void *data);
 extern void file_rv_dump_extdata_remove (FILE * fp, int length, void *data);
+
+extern bool file_is_valid_heap_file (THREAD_ENTRY * thread_p, OID * class_oid_p);
 #endif /* _FILE_MANAGER_H_ */
