@@ -157,6 +157,18 @@ static ARG_MAP_TABLE ua_Diag_map[] = {
   {0, 0}
 };
 
+static ARG_MAP_TABLE ua_cleanfiledb_map[] = {
+  {"-S", "--" CLEANFILEDB_SA_MODE_L},
+  {"-C", "--" CLEANFILEDB_CS_MODE_L},
+  {"-o", "--" CLEANFILEDB_OUTPUT_FILE_L},
+  {"-l", "--" CLEANFILEDB_DUMP_FILE_LIST_L},
+  {"-c", "--" CLEANFILEDB_CLEAN_INVALID_FILE_L},
+#if !defined(NDEBUG)
+  {"-d", "--" CLEANFILEDB_DELETE_TARGET_FILE_L},
+#endif
+  {0, 0}
+};
+
 static ARG_MAP_TABLE ua_Check_map[] = {
   {"-sa", "--" CHECK_SA_MODE_L},
   {"-cs", "--" CHECK_CS_MODE_L},
@@ -288,6 +300,7 @@ UTIL_MAP_TABLE ua_Util_table[] = {
   {"optimizedb", UTIL_OPTION_OPTIMIZEDB, ua_Optimize_map},
   {"installdb", UTIL_OPTION_INSTALLDB, ua_Install_map},
   {"diagdb", UTIL_OPTION_DIAGDB, ua_Diag_map},
+  {"cleanfiledb", UTIL_OPTION_CLEANFILEDB, ua_cleanfiledb_map},
   {"checkdb", UTIL_OPTION_CHECKDB, ua_Check_map},
   {"killtran", UTIL_OPTION_KILLTRAN, ua_Killtran_map},
   {"loaddb", UTIL_OPTION_LOADDB, ua_Load_map},

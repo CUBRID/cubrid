@@ -88,7 +88,8 @@ typedef enum
   MSGCAT_UTIL_SET_RESTORESLAVE = 53,
   MSGCAT_UTIL_SET_DELVOLDB = 54,
   MSGCAT_UTIL_SET_VACUUMDB = 55,
-  MSGCAT_UTIL_SET_CHECKSUMDB = 56
+  MSGCAT_UTIL_SET_CHECKSUMDB = 56,
+  MSGCAT_UTIL_SET_CLEANFILEDB = 57
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -687,6 +688,14 @@ typedef enum
   CHECKSUMDB_MSG_USAGE = 60
 } MSGCAT_CHECKSUMDB_MSG;
 
+/* Message id in the set MSGCAT_UTIL_SET_CLEANFILEDB */
+typedef enum
+{
+  CLEANFILEDB_MSG_BAD_OUTPUT = 10,
+  CLEANFILEDB_MSG_CLEAN_SUMMARY = 11,
+  CLEANFILEDB_MSG_USAGE = 60
+} MSGCAT_CLEANFILEDB_MSG;
+
 typedef void *DSO_HANDLE;
 
 typedef enum
@@ -707,6 +716,7 @@ typedef enum
   OPTIMIZEDB,
   INSTALLDB,
   DIAGDB,
+  CLEANFILEDB,
   PATCHDB,
   CHECKDB,
   ALTERDBHOST,
@@ -932,6 +942,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_RESTORESLAVE                "restoreslave"
 #define UTIL_OPTION_VACUUMDB			"vacuumdb"
 #define UTIL_OPTION_CHECKSUMDB			"checksumdb"
+#define UTIL_OPTION_CLEANFILEDB                 "cleanfiledb"
 
 /* createdb option list */
 #define CREATE_PAGES_S                          'p'
@@ -1120,6 +1131,22 @@ typedef struct _ha_config
 #define DIAG_OUTPUT_FILE_L                      "output-file"
 #define DIAG_EMERGENCY_S                        11202
 #define DIAG_EMERGENCY_L                        "emergency"
+
+/* cleanfiledb option list */
+#define CLEANFILEDB_SA_MODE_S                   'S'
+#define CLEANFILEDB_SA_MODE_L                   "SA-mode"
+#define CLEANFILEDB_CS_MODE_S                   'C'
+#define CLEANFILEDB_CS_MODE_L                   "CS-mode"
+#define CLEANFILEDB_OUTPUT_FILE_S               'o'
+#define CLEANFILEDB_OUTPUT_FILE_L               "output-file"
+#define CLEANFILEDB_DUMP_FILE_LIST_S            'l'
+#define CLEANFILEDB_DUMP_FILE_LIST_L            "list"
+#define CLEANFILEDB_CLEAN_INVALID_FILE_S        'c'
+#define CLEANFILEDB_CLEAN_INVALID_FILE_L        "clean-invalid-file"
+#if !defined(NDEBUG)
+#define CLEANFILEDB_DELETE_TARGET_FILE_S        'd'
+#define CLEANFILEDB_DELETE_TARGET_FILE_L        "delete-target-file"
+#endif
 
 /* patch option list */
 #define PATCH_RECREATE_LOG_S                    'r'
@@ -1681,6 +1708,7 @@ extern "C"
   extern int copydb (UTIL_FUNCTION_ARG * arg_map);
   extern int optimizedb (UTIL_FUNCTION_ARG * arg_map);
   extern int diagdb (UTIL_FUNCTION_ARG * arg_map);
+  extern int cleanfiledb (UTIL_FUNCTION_ARG * arg_map);
   extern int patchdb (UTIL_FUNCTION_ARG * arg_map);
   extern int estimatedb_data (UTIL_FUNCTION_ARG * arg_map);
   extern int estimatedb_index (UTIL_FUNCTION_ARG * arg_map);
