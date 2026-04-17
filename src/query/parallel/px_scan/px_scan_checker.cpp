@@ -771,6 +771,21 @@ namespace parallel_scan
 	  }
 	set_flag (result, CANNOT_PARALLEL_SCAN);
 	break;
+      case MERGELIST_PROC:
+	/* outer_spec_list / inner_spec_list are TARGET_LIST specs that qexec_merge_list_outer
+	 * consumes as ordered list cursors via SCAN_ID->s.llsid.list_id. They scan the already
+	 * materialized list_id from outer_xasl / inner_xasl; promoting them to parallel list
+	 * scan overwrites the llsid union with pllsid_parallel and breaks the merge cursor.
+	 * Child XASL subtrees remain eligible for parallel scan during their own execution. */
+	for (ACCESS_SPEC_TYPE *specp = arg->proc.mergelist.outer_spec_list; specp; specp = specp->next)
+	  {
+	    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+	  }
+	for (ACCESS_SPEC_TYPE *specp = arg->proc.mergelist.inner_spec_list; specp; specp = specp->next)
+	  {
+	    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+	  }
+	break;
       case BUILDLIST_PROC:
       case BUILDVALUE_PROC:
       case HASHJOIN_PROC:
@@ -778,7 +793,6 @@ namespace parallel_scan
       case DIFFERENCE_PROC:
       case INTERSECTION_PROC:
       case INSERT_PROC:
-      case MERGELIST_PROC:
 	break;
       case OBJFETCH_PROC:
       case UPDATE_PROC:
