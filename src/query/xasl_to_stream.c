@@ -4678,6 +4678,8 @@ xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
 
   ptr = or_pack_int (ptr, indx_info->func_idx_col_id);
 
+  ptr = or_pack_int (ptr, indx_info->estimated_leaf_pages);
+
   if (indx_info->cov_list_id == NULL)
     {
       ptr = or_pack_int (ptr, 0);
@@ -6908,6 +6910,7 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
 	   + OR_INT_SIZE	/* use_iss boolean (int) */
 	   + OR_INT_SIZE	/* ils_prefix_len (int) */
 	   + OR_INT_SIZE	/* func_idx_col_id (int) */
+	   + OR_INT_SIZE	/* estimated_leaf_pages (int) */
 	   + OR_INT_SIZE	/* iss_range's range */
 	   + PTR_SIZE);		/* iss_range's key1 */
 

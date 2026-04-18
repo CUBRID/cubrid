@@ -11999,6 +11999,11 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
   /* BTID */
   BTID_COPY (&indx_infop->btid, &index_entryp->constraints->index_btid);
 
+  /* default sentinel: optimizer cost step (qo_to_xasl / plan_generation) will
+   * overwrite this with ceil(selectivity * cum_statsp->leafs). -1 means the
+   * parallel-scan cost gate should be bypassed (not enough info to decide). */
+  indx_infop->estimated_leaf_pages = -1;
+
   /* check for covered index scan */
   indx_infop->coverage = 0;	/* init */
   if (qo_is_index_covering_scan (plan))
