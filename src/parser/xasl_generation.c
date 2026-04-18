@@ -14591,6 +14591,16 @@ ptqo_to_merge_list_proc (PARSER_CONTEXT * parser, XASL_NODE * left, XASL_NODE * 
       xasl->aptr_list = left;
     }
 
+  /* Merge-list inputs are materialized once before the merge cursor opens; they do
+   * not receive per-tuple outer bindings (correlated refs route to dptr_list inside
+   * each input). Mark the MERGELIST_PROC and its inputs uncorrelated so the
+   * parallel-scan checker keeps their subtrees eligible for parallel scan via the
+   * aptr loop. The spec_list cursors of the merge proc itself remain blocked by
+   * px_scan_checker (the SCAN_ID->s.llsid union must not be overwritten). */
+  XASL_SET_FLAG (xasl, XASL_ZERO_CORR_LEVEL);
+  XASL_SET_FLAG (left, XASL_ZERO_CORR_LEVEL);
+  XASL_SET_FLAG (right, XASL_ZERO_CORR_LEVEL);
+
   return xasl;
 }
 
