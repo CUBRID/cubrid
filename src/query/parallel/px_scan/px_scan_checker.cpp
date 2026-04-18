@@ -25,8 +25,10 @@
 #include "dbtype_def.h"
 #include "error_manager.h"
 #include "regu_var.hpp"
+#include "schema_manager.h"
 #include "system_parameter.h"
 #include "storage_common.h"
+#include "work_space.h"
 #include "xasl_predicate.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
@@ -360,6 +362,53 @@ namespace parallel_scan
 	   (arg->case_sensitive);
   }
 
+  /* Detect whether the index referenced by indexptr is a filtered (partial)
+   * or function index. Filtered indexes only contain rows that satisfy the
+   * CREATE INDEX ... WHERE clause, so NULL / filter-excluded keys are absent
+   * in the B-tree. The current parallel index scan distributes leaf pages to
+   * workers without re-applying the index filter on the projected keys, which
+   * causes excluded rows (e.g. NULL keys) to be emitted inconsistently across
+   * worker shards. Function indexes share the same hazard because the indexed
+   * value is a derived expression, not the raw column.
+   *
+   * Detection happens client-side during XASL generation: the checker walks
+   * the schema manager constraint list for the class OID carried on INDX_INFO
+   * and matches by BTID. */
+  static bool
+  is_filtered_or_function_index (const INDX_INFO *indexptr)
+  {
+    if (indexptr == NULL)
+      {
+	return false;
+      }
+    if (indexptr->func_idx_col_id != -1)
+      {
+	return true;
+      }
+    if (OID_ISNULL (&indexptr->class_oid))
+      {
+	return false;
+      }
+    MOP class_mop = ws_mop (&indexptr->class_oid, NULL);
+    if (class_mop == NULL)
+      {
+	return false;
+      }
+    SM_CLASS_CONSTRAINT *cons = sm_class_constraints (class_mop);
+    for (; cons != NULL; cons = cons->next)
+      {
+	if (BTID_IS_EQUAL (&cons->index_btid, &indexptr->btid))
+	  {
+	    if (cons->filter_predicate != NULL || cons->func_index_info != NULL)
+	      {
+		return true;
+	      }
+	    break;
+	  }
+      }
+    return false;
+  }
+
   template <>
   possible_flags check<false> (ACCESS_SPEC_TYPE *arg)
   {
@@ -414,6 +463,16 @@ namespace parallel_scan
 		 * each worker scans its page independently; the global ordering
 		 * required for DESC scan correctness cannot be guaranteed. */
 		if (arg->indexptr->use_desc_index)
+		  {
+		    set_flag (result, CANNOT_PARALLEL_SCAN);
+		  }
+
+		/* Filtered (partial) indexes and function indexes: the B-tree only
+		 * contains rows that satisfy the CREATE INDEX ... WHERE filter, so
+		 * NULL / filter-excluded keys are not projected identically across
+		 * worker leaf-page shards and the parallel result drifts from the
+		 * sequential one. Force sequential index scan in these cases. */
+		if (is_filtered_or_function_index (arg->indexptr))
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
