@@ -203,6 +203,7 @@ extern bool qo_is_index_iss_scan (QO_PLAN * plan);
 extern bool qo_is_index_loose_scan (QO_PLAN * plan);
 extern bool qo_is_index_mro_scan (QO_PLAN * plan);
 extern bool qo_plan_multi_range_opt (QO_PLAN * plan);
+extern int qo_plan_estimated_leaf_pages (QO_PLAN * plan);
 
 /*
  *  QO_XASL support functions
