@@ -5363,6 +5363,10 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    case S_HEAP_SCAN_RECORD_INFO:
 	    case S_HEAP_SAMPLING_SCAN:
 	    case S_LIST_SCAN:
+#if SERVER_MODE && !WINDOWS
+	    case S_PARALLEL_HEAP_SCAN:
+	    case S_PARALLEL_LIST_SCAN:
+#endif /* SERVER_MODE && !WINDOWS */
 	      scan_id->partition_stats->read_rows += scan_id->scan_stats.read_rows - old_scan_stats.read_rows;
 	      scan_id->partition_stats->qualified_rows +=
 		scan_id->scan_stats.qualified_rows - old_scan_stats.qualified_rows;
@@ -5371,6 +5375,9 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      break;
 
 	    case S_INDX_SCAN:
+#if SERVER_MODE && !WINDOWS
+	    case S_PARALLEL_INDEX_SCAN:
+#endif /* SERVER_MODE && !WINDOWS */
 	      scan_id->partition_stats->read_keys += scan_id->scan_stats.read_keys - old_scan_stats.read_keys;
 	      scan_id->partition_stats->qualified_keys +=
 		scan_id->scan_stats.qualified_keys - old_scan_stats.qualified_keys;
