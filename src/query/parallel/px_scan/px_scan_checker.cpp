@@ -859,7 +859,27 @@ namespace parallel_scan
 	    || XASL_IS_FLAGED (arg, XASL_ANALYTIC_SKIP_SORT)
 	    || XASL_IS_FLAGED (arg, XASL_ANALYTIC_USES_LIMIT_OPT);
 
-    if (is_flag_set (result, CANNOT_PARALLEL_SCAN))
+    /* XASL-level constraint that disqualifies parallel scan on ALL specs (TARGET_CLASS
+     * and TARGET_LIST alike):
+     *   - XASL_SKIP_ORDERBY_LIST means the sort step is suppressed because the chosen
+     *     plan (SORT-LIMIT skip-orderby in plan_generation.c, or multi-range-opt in
+     *     query_executor.c) guarantees that the spec delivers tuples in the exact
+     *     orderby order. Parallel heap/index page distribution and parallel list-merge
+     *     gathering do NOT preserve that order: workers consume disjoint page ranges
+     *     or sub-list partitions and the merge step re-interleaves them in arrival
+     *     order, not orderby order. Consuming the resulting list_id with the sort
+     *     omitted produces out-of-order rows and, because downstream iterators reuse
+     *     list_id / ftab state built for ordered delivery, can corrupt cursor state
+     *     across statements (manifests intermittently as error -677 under load).
+     *
+     * We block BOTH TARGET_CLASS and TARGET_LIST specs here. TARGET_LIST is just as
+     * affected: a BUILDLIST_PROC child materializes ordered output that the parent
+     * skip-orderby consumer relies on; promoting its sibling spec to parallel list
+     * scan re-orders the same tuples. Gating only the index shape would leave list
+     * scans under SORT-LIMIT joins exposed (the shape of join_orderby_skip.sql). */
+    const bool block_all_specs = XASL_IS_FLAGED (arg, XASL_SKIP_ORDERBY_LIST);
+
+    if (is_flag_set (result, CANNOT_PARALLEL_SCAN) || block_all_specs)
       {
 	for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
 	  {
