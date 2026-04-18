@@ -14624,6 +14624,18 @@ pt_to_hashjoin_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NODE 
 
   xasl->aptr_list = outer_xasl;
 
+  /* Hash join inputs are materialized once before the join executes; they do not
+   * receive per-tuple outer bindings (correlated refs would have been routed to
+   * dptr_list inside each input). Mark the HASHJOIN_PROC node and its inputs
+   * uncorrelated so the parallel-scan checker treats their subtrees as eligible
+   * for parallel scan. The flag on the HASHJOIN_PROC itself is required because
+   * add_uncorrelated() in plan_generation.c attaches this XASL to the parent's
+   * aptr_list, where the checker's aptr loop force-blocks any child lacking the
+   * flag. */
+  XASL_SET_FLAG (xasl, XASL_ZERO_CORR_LEVEL);
+  XASL_SET_FLAG (outer_xasl, XASL_ZERO_CORR_LEVEL);
+  XASL_SET_FLAG (inner_xasl, XASL_ZERO_CORR_LEVEL);
+
   proc = &xasl->proc.hashjoin;
   proc->outer.xasl = outer_xasl;
   proc->inner.xasl = inner_xasl;
