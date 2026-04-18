@@ -89,7 +89,7 @@ namespace parallel_scan
       bool m_slot_clear_key;            /* whether m_slot_key needs pr_clear_value */
 
       int convert_key_range (THREAD_ENTRY *thread_p);
-      int check_key_in_range (DB_VALUE *key, bool *in_range, bool *past_upper);
+      int check_key_in_range (DB_VALUE *key, bool *in_range, bool *past_upper, int *matched_range_idx);
       SCAN_CODE process_oid (THREAD_ENTRY *thread_p, OID *oid);
 
       /* btree_key_process_objects callback */

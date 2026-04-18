@@ -349,10 +349,14 @@ namespace parallel_scan
    * use_desc_index is blocked by the checker).
    */
   int
-  slot_iterator_index::check_key_in_range (DB_VALUE *key, bool *in_range, bool *past_upper)
+  slot_iterator_index::check_key_in_range (DB_VALUE *key, bool *in_range, bool *past_upper, int *matched_range_idx)
   {
     *in_range = false;
     *past_upper = false;
+    if (matched_range_idx)
+      {
+	*matched_range_idx = -1;
+      }
 
     TP_DOMAIN *key_domain = m_btid_int->key_type;
 
@@ -483,6 +487,10 @@ namespace parallel_scan
 	if (upper_ok)
 	  {
 	    *in_range = true;
+	    if (matched_range_idx)
+	      {
+		*matched_range_idx = i;
+	      }
 	    return NO_ERROR;
 	  }
       }
@@ -813,7 +821,8 @@ namespace parallel_scan
 	/* 2. Key range check */
 	bool in_range = false;
 	bool past_upper = false;
-	check_key_in_range (&key, &in_range, &past_upper);
+	int matched_range_idx = -1;
+	check_key_in_range (&key, &in_range, &past_upper, &matched_range_idx);
 
 	if (!in_range)
 	  {
@@ -831,6 +840,58 @@ namespace parallel_scan
 		return S_END;
 	      }
 	    continue;
+	  }
+
+	/* NULL midxkey rejection — mirror btree_apply_key_range_and_filter's
+	 * need_to_check_null block (btree.c:16549–16614). The B-tree stores NULL
+	 * keys at the leftmost (or rightmost for desc) end of the index, so the
+	 * boundary worker shard receives them and check_key_in_range accepts them
+	 * (NULL sorts below any non-NULL in B-tree order). SQL semantics, however,
+	 * reject NULL for `<`, `<=`, `>`, `>=`, `BETWEEN` predicates because
+	 * `NULL <op> X` evaluates to UNKNOWN. Sequential scan rejects via the
+	 * key_range.num_index_term-th midxkey element NULL test in
+	 * btree_apply_key_range_and_filter; replicate it here so parallel workers
+	 * do not leak NULL-leading-term rows.
+	 *
+	 * ISS / ILS scans are blocked from parallel scan upstream (see
+	 * px_scan_checker.cpp use_iss / ils_prefix_len gate), so the sequential
+	 * code's is_iss + is_desc allow-NULL exception does not apply here. */
+	if (matched_range_idx >= 0 && DB_VALUE_DOMAIN_TYPE (&key) == DB_TYPE_MIDXKEY)
+	  {
+	    key_val_range *kvr = &m_key_val_ranges[matched_range_idx];
+	    if (kvr->num_index_term > 0)
+	      {
+		DB_MIDXKEY *mkey = db_get_midxkey (&key);
+		DB_VALUE ep;
+		if (mkey != nullptr
+		    && pr_midxkey_get_element_nocopy (mkey, kvr->num_index_term - 1, &ep, NULL, NULL) == NO_ERROR)
+		  {
+		    if (DB_IS_NULL (&ep))
+		      {
+			bool allow_null = false;
+			if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) && ep.need_clear)
+			  {
+			    DB_TYPE etype = DB_VALUE_DOMAIN_TYPE (&ep);
+			    if (QSTR_IS_ANY_CHAR_OR_BIT (etype) && ep.data.ch.medium.buf != nullptr)
+			      {
+				allow_null = true;	/* Oracle-style empty string */
+			      }
+			  }
+			if (!allow_null)
+			  {
+			    if (clear_key)
+			      {
+				pr_clear_value (&key);
+			      }
+			    continue;
+			  }
+		      }
+		    if (!DB_IS_NULL (&ep) && ep.need_clear)
+		      {
+			pr_clear_value (&ep);
+		      }
+		  }
+	      }
 	  }
 
 	m_scan_id->scan_stats.qualified_keys++;
