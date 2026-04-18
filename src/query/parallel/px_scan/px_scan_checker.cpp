@@ -1085,6 +1085,21 @@ namespace parallel_scan
 	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.merge.update_xasl);
 	  }
 	break;
+      case MERGELIST_PROC:
+	/* outer_xasl / inner_xasl are already chained in arg->aptr_list by
+	 * ptqo_to_merge_list_proc, so the generic aptr loop above handles their
+	 * force-cannot-parallel propagation. Only the spec_list cursors need the
+	 * explicit ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN to prevent the llsid union
+	 * from being overwritten by pllsid_parallel during merge cursor open. */
+	for (ACCESS_SPEC_TYPE *specp = arg->proc.mergelist.outer_spec_list; specp; specp = specp->next)
+	  {
+	    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+	  }
+	for (ACCESS_SPEC_TYPE *specp = arg->proc.mergelist.inner_spec_list; specp; specp = specp->next)
+	  {
+	    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+	  }
+	break;
       default:
 	break;
       }
