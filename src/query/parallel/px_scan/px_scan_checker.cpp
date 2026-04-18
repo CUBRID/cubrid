@@ -363,27 +363,25 @@ namespace parallel_scan
   }
 
   /* Detect whether the index referenced by indexptr is a filtered (partial)
-   * or function index. Filtered indexes only contain rows that satisfy the
-   * CREATE INDEX ... WHERE clause, so NULL / filter-excluded keys are absent
-   * in the B-tree. The current parallel index scan distributes leaf pages to
-   * workers without re-applying the index filter on the projected keys, which
-   * causes excluded rows (e.g. NULL keys) to be emitted inconsistently across
-   * worker shards. Function indexes share the same hazard because the indexed
-   * value is a derived expression, not the raw column.
+   * index. Filtered indexes only contain rows that satisfy the CREATE INDEX
+   * ... WHERE clause, so filter-excluded keys are absent in the B-tree. The
+   * current parallel index scan distributes leaf pages to workers without
+   * re-applying the index filter on the projected keys, which causes
+   * excluded rows to be emitted inconsistently across worker shards.
+   *
+   * Function indexes are NOT blocked here: the indexed expression is
+   * materialized as a regular key in the B-tree, so parallel leaf-page
+   * distribution preserves its semantics.
    *
    * Detection happens client-side during XASL generation: the checker walks
    * the schema manager constraint list for the class OID carried on INDX_INFO
    * and matches by BTID. */
   static bool
-  is_filtered_or_function_index (const INDX_INFO *indexptr)
+  is_filtered_index (const INDX_INFO *indexptr)
   {
     if (indexptr == NULL)
       {
 	return false;
-      }
-    if (indexptr->func_idx_col_id != -1)
-      {
-	return true;
       }
     if (OID_ISNULL (&indexptr->class_oid))
       {
@@ -399,7 +397,7 @@ namespace parallel_scan
       {
 	if (BTID_IS_EQUAL (&cons->index_btid, &indexptr->btid))
 	  {
-	    if (cons->filter_predicate != NULL || cons->func_index_info != NULL)
+	    if (cons->filter_predicate != NULL)
 	      {
 		return true;
 	      }
@@ -467,12 +465,13 @@ namespace parallel_scan
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
 
-		/* Filtered (partial) indexes and function indexes: the B-tree only
-		 * contains rows that satisfy the CREATE INDEX ... WHERE filter, so
-		 * NULL / filter-excluded keys are not projected identically across
-		 * worker leaf-page shards and the parallel result drifts from the
-		 * sequential one. Force sequential index scan in these cases. */
-		if (is_filtered_or_function_index (arg->indexptr))
+		/* Filtered (partial) indexes: the B-tree only contains rows that
+		 * satisfy the CREATE INDEX ... WHERE filter, so filter-excluded
+		 * keys are not projected identically across worker leaf-page shards
+		 * and the parallel result drifts from the sequential one. Function
+		 * indexes are NOT blocked — the indexed expression is materialized
+		 * as a regular key and parallel distribution is safe. */
+		if (is_filtered_index (arg->indexptr))
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
@@ -742,6 +741,33 @@ namespace parallel_scan
 	for (XASL_NODE *xaslp = arg->scan_ptr; xaslp; xaslp = xaslp->scan_ptr)
 	  {
 	    result |= sibling_check<is_outptr_list> (arg->scan_ptr);
+	  }
+
+	/* Correlated inline-view / derived-table subquery attached to an inner scan_ptr:
+	 * add_subqueries() in plan_generation.c appends such a sub-XASL to the dptr_list
+	 * of the inner scan_ptr that owns the correlating spec. At runtime the parent
+	 * scans it through a TARGET_LIST access spec whose ACCESS_SPEC_LIST_ID must be
+	 * re-materialized per outer tuple by qexec_execute_mainblock on the dptr.
+	 *
+	 * Parallel workers cannot drive that per-tuple re-materialization: join_info::
+	 * capture_join_info snapshots scan_info.list_id on the main thread BEFORE workers
+	 * launch, and workers open list scans on that captured pointer with no hook to
+	 * re-invoke the correlated dptr between outer tuples. They observe an empty /
+	 * stale list_id and silently return zero matches.
+	 *
+	 * XASL_LINK_TO_REGU_VARIABLE distinguishes scalar correlated subqueries (EXISTS,
+	 * IN, SELECT-list) — those are evaluated via fetch_peek_dbval during worker
+	 * write() and are safe. Only non-regu-var dptrs (derived tables) need blocking. */
+	for (XASL_NODE *xp = arg->scan_ptr; xp; xp = xp->scan_ptr)
+	  {
+	    for (XASL_NODE *dp = xp->dptr_list; dp; dp = dp->next)
+	      {
+		if (!XASL_IS_FLAGED (dp, XASL_LINK_TO_REGU_VARIABLE))
+		  {
+		    set_flag (result, CANNOT_PARALLEL_SCAN);
+		    break;
+		  }
+	      }
 	  }
       }
 
