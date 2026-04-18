@@ -8181,7 +8181,7 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       break;
 
     case S_PARALLEL_LIST_SCAN:
-      fprintf (fp, "(list");
+      fprintf (fp, "(temp");
       break;
 
     case S_PARALLEL_INDEX_SCAN:
