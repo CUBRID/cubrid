@@ -5269,6 +5269,14 @@ make_sort_limit_proc (QO_ENV * env, QO_PLAN * plan, PT_NODE * namelist, XASL_NOD
   listfile = gen_outer (env, plan->plan_un.sort.subplan, &EMPTY_SET, NULL, NULL, listfile);
   listfile = add_sort_spec (env, listfile, plan, xasl->ordbynum_val, false);
 
+  /* The SORT-LIMIT listfile is materialized once and consumed via the parent's
+   * skip-orderby spec; it has no per-tuple outer driver. Mark it uncorrelated
+   * so the parallel-scan checker treats its subtree as eligible for parallel. */
+  if (listfile != NULL)
+    {
+      XASL_SET_FLAG (listfile, XASL_ZERO_CORR_LEVEL);
+    }
+
 cleanup:
   if (node_list != NULL)
     {
