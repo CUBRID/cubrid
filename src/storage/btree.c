@@ -1891,6 +1891,26 @@ btree_fix_root_with_info (THREAD_ENTRY * thread_p, BTID * btid, PGBUF_LATCH_MODE
 }
 
 /*
+ * btree_leaf_record_is_fence () - Return whether a leaf record is a fence key.
+ *
+ * return    : True if the record is a fence key.
+ * recp (in) : Leaf record previously obtained via spage_get_record.
+ *
+ * Note: Exposed for parallel index scan which iterates leaf slots
+ *       directly and must skip fence keys just like the non-parallel
+ *       btree range scan does.
+ */
+bool
+btree_leaf_record_is_fence (RECDES * recp)
+{
+  assert (recp != NULL);
+  assert (recp->data != NULL);
+  assert (recp->length >= OR_OID_SIZE);
+
+  return btree_leaf_is_flaged (recp, BTREE_LEAF_RECORD_FENCE);
+}
+
+/*
  * btree_is_fence_key () - Return whether the key is fence or not.
  *
  * return	  : True if key is fence.

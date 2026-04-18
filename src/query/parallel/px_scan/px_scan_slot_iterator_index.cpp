@@ -782,6 +782,16 @@ namespace parallel_scan
 	    continue;
 	  }
 
+	// Skip fence keys. Fence records are boundary markers whose keys
+	// duplicate keys stored in an adjacent leaf page; counting them
+	// would double-count rows across the page boundary, inflating
+	// aggregate / group-by counts in parallel index scan.
+	if (btree_leaf_record_is_fence (&rec))
+	  {
+	    m_use_desc_index ? m_current_slot-- : m_current_slot++;
+	    continue;
+	  }
+
 	DB_VALUE key;
 	db_make_null (&key);
 	LEAF_REC leaf_rec_info;
