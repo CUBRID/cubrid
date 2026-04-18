@@ -809,7 +809,22 @@ namespace parallel_scan
 
     for (XASL_NODE *xaslp = arg->aptr_list; xaslp; xaslp = xaslp->next)
       {
-	process_xasl_node_recursive (xaslp);
+	/* aptr_list without XASL_ZERO_CORR_LEVEL is a correlated subquery
+	 * (e.g. an inline view / derived table that references columns from an
+	 * outer spec). Its regu_vars point into the outer XASL's val_list which
+	 * is populated by the outer (main) thread per tuple. Parallel list-scan
+	 * workers clone the inner XASL and cannot observe that per-tuple binding,
+	 * so they would scan with stale / uninitialized outer values and silently
+	 * produce wrong (often empty) results. Force NO_PARALLEL_SCAN on the
+	 * whole correlated subtree. */
+	if (!XASL_IS_FLAGED (xaslp, XASL_ZERO_CORR_LEVEL))
+	  {
+	    process_xasl_node_recursive_force_cannot_parallel (xaslp);
+	  }
+	else
+	  {
+	    process_xasl_node_recursive (xaslp);
+	  }
       }
     for (XASL_NODE *xaslp = arg->bptr_list; xaslp; xaslp = xaslp->next)
       {
