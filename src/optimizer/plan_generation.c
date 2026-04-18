@@ -2087,6 +2087,13 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	      listfile = add_sort_spec (env, listfile, plan, xasl->ordbynum_val, false);
 	    }
 
+	  /* SORT/listfile subtree is materialized once before the outer is consumed;
+	   * it carries no per-tuple outer binding. Mark it uncorrelated so the
+	   * parallel-scan checker treats its subtree as eligible for parallel. */
+	  if (listfile != NULL)
+	    {
+	      XASL_SET_FLAG (listfile, XASL_ZERO_CORR_LEVEL);
+	    }
 	  xasl = add_uncorrelated (env, xasl, listfile);
 	  xasl = init_list_scan_proc (env, xasl, listfile, namelist, &(plan->sarged_terms), NULL);
 	  if (namelist)
@@ -2833,6 +2840,13 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
       scan = add_scan_proc (env, scan, inner_scans);
       scan = add_fetch_proc (env, scan, fetches);
       scan = add_subqueries (env, scan, &new_subqueries);
+      /* listfile built from the projected segments is materialized once and
+       * re-scanned by the parent; it has no per-tuple outer binding. Mark
+       * uncorrelated so the parallel-scan checker does not block children. */
+      if (listfile != NULL)
+	{
+	  XASL_SET_FLAG (listfile, XASL_ZERO_CORR_LEVEL);
+	}
       scan = add_uncorrelated (env, scan, listfile);
       break;
 
