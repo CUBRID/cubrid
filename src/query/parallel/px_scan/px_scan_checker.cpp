@@ -686,7 +686,12 @@ namespace parallel_scan
       case DIFFERENCE_PROC:
       case INTERSECTION_PROC:
       case INSERT_PROC:
+	break;
       case MERGELIST_PROC:
+	/* The MERGELIST_PROC node itself opens outer_spec_list / inner_spec_list as
+	 * ordered merge cursors and must run on the main thread; only its input
+	 * subtrees (outer_xasl / inner_xasl) are parallel-eligible via aptr. */
+	set_flag (result, CANNOT_PARALLEL_SCAN);
 	break;
       case OBJFETCH_PROC:
       case UPDATE_PROC:
