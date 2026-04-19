@@ -51,6 +51,7 @@
 #include "log_lsa.hpp"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "oos_file.hpp"
 #include "db_value_printer.hpp"
 #include "db.h"
 #include "object_accessor.h"
@@ -257,6 +258,7 @@ struct la_apply
   int tranid;
   int num_items;
   bool is_long_trans;
+  bool is_multi_chunk_oos_pending;
   LOG_LSA start_lsa;
   LOG_LSA last_lsa;
   LA_ITEM *head;
@@ -514,6 +516,7 @@ static int la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgp
 				   char **data, int *d_length);
 static int la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr, unsigned int match_rcvindex,
 				     void **logs, char **rec_type, RECDES * recdes);
+static int la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes);
 static int la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *rcvindex, char *rec_type,
 			  bool is_mvcc_class);
 static void la_log_apply_error (const char *op_name, int err_id, LA_ITEM * item, int error);
@@ -521,9 +524,10 @@ static void la_set_error_sql_log (const char *class_name, DB_VALUE * key_val);
 static int la_write_delete_sql_log (LA_ITEM * item, DB_OBJECT * class_obj);
 static int la_write_update_sql_log (LA_ITEM * item, DB_OBJECT * class_obj, RECDES * recdes);
 static int la_write_insert_sql_log (LA_ITEM * item, DB_OBJECT * class_obj, RECDES * recdes);
+static int la_apply_dummy_oos_log (LA_APPLY * apply, LA_ITEM * item);
 static int la_apply_delete_log (LA_ITEM * item);
 static int la_apply_update_log (LA_ITEM * item);
-static int la_apply_insert_log (LA_ITEM * item);
+static int la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item);
 static int la_update_query_execute (const char *sql, bool au_disable);
 static int la_update_query_execute_with_values (const char *sql, int arg_count, DB_VALUE * vals, bool au_disable);
 static int la_apply_statement_log (LA_ITEM * item);
@@ -2809,6 +2813,7 @@ la_init_repl_lists (bool need_realloc)
       la_Info.repl_lists[i]->tranid = 0;
       la_Info.repl_lists[i]->num_items = 0;
       la_Info.repl_lists[i]->is_long_trans = false;
+      la_Info.repl_lists[i]->is_multi_chunk_oos_pending = false;
       LSA_SET_NULL (&la_Info.repl_lists[i]->start_lsa);
       LSA_SET_NULL (&la_Info.repl_lists[i]->last_lsa);
       la_Info.repl_lists[i]->head = NULL;
@@ -3368,6 +3373,7 @@ la_free_all_repl_items (LA_APPLY * apply)
 
   apply->num_items = 0;
   apply->is_long_trans = false;
+  apply->is_multi_chunk_oos_pending = false;
   apply->head = NULL;
   apply->tail = NULL;
 
@@ -4375,6 +4381,151 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
   return error;
 }
 
+static int
+la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
+{
+  LOG_LSA current_lsa;
+  TRANID trid = NULL_TRANID;
+  int total_size = -1;
+  int error = NO_ERROR;
+  bool found_head = false;
+  const int max_chunk_size = oos_get_max_chunk_size ();
+
+  assert (lsa != NULL);
+  assert (recdes != NULL);
+
+  LSA_COPY (&current_lsa, lsa);
+
+  while (!LSA_ISNULL (&current_lsa))
+    {
+      LOG_LSA next_lsa = NULL_LSA;
+      LOG_PAGE *current_log_page = la_get_page (current_lsa.pageid);
+      LOG_RECORD_HEADER *current_log_record;
+      unsigned int rcvindex = 0;
+      void *log_info = NULL;
+      char *rec_type = NULL;
+      char *chunk_data = NULL;
+      int chunk_length = 0;
+
+      if (current_log_page == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+	}
+
+      current_log_record = LOG_GET_LOG_RECORD_HEADER (current_log_page, &current_lsa);
+      LSA_COPY (&next_lsa, &current_log_record->forw_lsa);
+
+      if (trid == NULL_TRANID)
+	{
+	  trid = current_log_record->trid;
+	}
+
+      if (current_log_record->trid == trid
+	  && (LOG_IS_UNDOREDO_RECORD_TYPE (current_log_record->type)
+	      || LOG_IS_REDO_RECORD_TYPE (current_log_record->type)))
+	{
+	  LOG_LSA temp_lsa;
+	  OOS_RECORD_HEADER oos_header;
+	  int chunk_body_length;
+	  int chunk_offset;
+
+	  LSA_COPY (&temp_lsa, &current_lsa);
+	  error =
+	    la_get_log_data (current_log_record, &temp_lsa, current_log_page, RVOOS_INSERT, &rcvindex, &log_info, &rec_type,
+			     &chunk_data, &chunk_length);
+	  if (error != NO_ERROR)
+	    {
+	      if (chunk_data != NULL)
+		{
+		  free_and_init (chunk_data);
+		}
+	      la_release_page_buffer (current_lsa.pageid);
+	      return error;
+	    }
+
+	  if (log_info != NULL)
+	    {
+	      if (rec_type == NULL || *(INT16 *) rec_type != REC_HOME || chunk_length < OOS_RECORD_HEADER_SIZE)
+		{
+		  if (chunk_data != NULL)
+		    {
+		      free_and_init (chunk_data);
+		    }
+		  la_release_page_buffer (current_lsa.pageid);
+		  return ER_FAILED;
+		}
+
+	      memcpy (&oos_header, chunk_data, sizeof (oos_header));
+
+	      if (total_size < 0)
+		{
+		  OOS_RECORD_HEADER merged_header { oos_header.total_size, 0, OID_INITIALIZER };
+
+		  total_size = oos_header.total_size;
+		  error = la_realloc_recdes_data (recdes, total_size + OOS_RECORD_HEADER_SIZE);
+		  if (error != NO_ERROR)
+		    {
+		      if (chunk_data != NULL)
+			{
+			  free_and_init (chunk_data);
+			}
+		      la_release_page_buffer (current_lsa.pageid);
+		      return error;
+		    }
+
+		  recdes->type = REC_HOME;
+		  recdes->length = total_size + OOS_RECORD_HEADER_SIZE;
+		  memcpy (recdes->data, &merged_header, OOS_RECORD_HEADER_SIZE);
+		  memset (recdes->data + OOS_RECORD_HEADER_SIZE, 0, total_size);
+		}
+	      else if (total_size != oos_header.total_size)
+		{
+		  if (chunk_data != NULL)
+		    {
+		      free_and_init (chunk_data);
+		    }
+		  la_release_page_buffer (current_lsa.pageid);
+		  return ER_FAILED;
+		}
+
+	      chunk_body_length = chunk_length - OOS_RECORD_HEADER_SIZE;
+	      chunk_offset = OOS_RECORD_HEADER_SIZE + oos_header.chunk_index * max_chunk_size;
+	      if (chunk_offset + chunk_body_length > recdes->length)
+		{
+		  if (chunk_data != NULL)
+		    {
+		      free_and_init (chunk_data);
+		    }
+		  la_release_page_buffer (current_lsa.pageid);
+		  return ER_FAILED;
+		}
+
+	      memcpy (recdes->data + chunk_offset, chunk_data + OOS_RECORD_HEADER_SIZE, chunk_body_length);
+	      if (oos_header.chunk_index == 0)
+		{
+		  found_head = true;
+		}
+	    }
+
+	  if (chunk_data != NULL)
+	    {
+	      free_and_init (chunk_data);
+	    }
+	}
+
+      la_release_page_buffer (current_lsa.pageid);
+      if (found_head)
+	{
+	  return NO_ERROR;
+	}
+
+      LSA_COPY (&current_lsa, &next_lsa);
+    }
+
+  return ER_FAILED;
+}
+
 /*
  * la_get_next_update_log() - get the right update log
  *   return: NO_ERROR or error code
@@ -5311,29 +5462,34 @@ end:
  *      . If la_enable_sql_logging(config param is ha_enable_sql_logging) is enabled, the query is written to a file.
  */
 static int
-la_apply_insert_log (LA_ITEM * item)
+la_apply_dummy_oos_log (LA_APPLY * apply, LA_ITEM * item)
+{
+  if (apply->is_multi_chunk_oos_pending)
+    {
+      la_log_apply_error ("apply_dummy_oos", ER_HA_LA_FAILED_TO_APPLY_INSERT, item, ER_FAILED);
+      return ER_FAILED;
+    }
+
+  apply->is_multi_chunk_oos_pending = true;
+  return NO_ERROR;
+}
+
+static int
+la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
 {
   int error = NO_ERROR;
   DB_OBJECT *class_obj;
-  LOG_PAGE *pgptr;
+  LOG_PAGE *pgptr = NULL;
   unsigned int rcvindex;
   RECDES *recdes;
   LOG_PAGEID old_pageid = NULL_PAGEID;
   bool is_mvcc_class;
+  bool is_multi_chunk_oos = item->item_type == RVREPL_OOS_INSERT && apply->is_multi_chunk_oos_pending;
 
   error = la_flush_repl_items (false);
   if (error != NO_ERROR)
     {
       return error;
-    }
-
-  /* get the target log page */
-  old_pageid = item->target_lsa.pageid;
-  pgptr = la_get_page (old_pageid);
-  if (pgptr == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
     }
 
   class_obj = db_find_class (item->class_name);
@@ -5351,11 +5507,34 @@ la_apply_insert_log (LA_ITEM * item)
   recdes = la_assign_recdes_from_pool ();
   is_mvcc_class = la_is_mvcc_class (ws_oid (class_obj));
 
-  /* retrieve the target record description */
-  error = la_get_recdes (&item->target_lsa, pgptr, recdes, &rcvindex, la_Info.rec_type, is_mvcc_class);
-  if (error != NO_ERROR)
+  if (is_multi_chunk_oos)
     {
-      goto end;
+      apply->is_multi_chunk_oos_pending = false;
+      error = la_get_multi_chunk_oos_recdes (&item->target_lsa, recdes);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      rcvindex = RVOOS_INSERT;
+    }
+  else
+    {
+      /* get the target log page */
+      old_pageid = item->target_lsa.pageid;
+      pgptr = la_get_page (old_pageid);
+      if (pgptr == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+
+      /* retrieve the target record description */
+      error = la_get_recdes (&item->target_lsa, pgptr, recdes, &rcvindex, la_Info.rec_type, is_mvcc_class);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
     }
 
   if (recdes->type == REC_ASSIGN_ADDRESS || recdes->type == REC_RELOCATION)
@@ -5400,7 +5579,10 @@ end:
       la_Info.num_unflushed++;
     }
 
-  la_release_page_buffer (old_pageid);
+  if (old_pageid != NULL_PAGEID)
+    {
+      la_release_page_buffer (old_pageid);
+    }
 
   return error;
 }
@@ -5811,7 +5993,11 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 
 		case RVREPL_DATA_INSERT:
 		case RVREPL_OOS_INSERT:
-		  error = la_apply_insert_log (item);
+		  error = la_apply_insert_log (apply, item);
+		  break;
+
+		case RVREPL_DUMMY_OOS_RECORD:
+		  error = la_apply_dummy_oos_log (apply, item);
 		  break;
 
 		case RVREPL_DATA_DELETE:
