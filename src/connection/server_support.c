@@ -121,6 +121,8 @@ static bool ha_Repl_delay_detected = false;
 
 static int ha_Server_num_of_hosts = 0;
 
+#define CSS_HA_APPLIER_WORKER_PROGRAM_SUFFIX " [worker]"
+
 #define HA_LOG_APPLIER_STATE_TABLE_MAX  5
 typedef struct ha_log_applier_state_table HA_LOG_APPLIER_STATE_TABLE;
 struct ha_log_applier_state_table
@@ -201,7 +203,7 @@ static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
 
 static unsigned int css_enqueue_and_notify (cubconn::connection::worker::queue_type type,
 					    cubconn::connection::worker::message &&item, int wait_time = 0);
-
+static bool css_is_ha_log_applier_worker_session (THREAD_ENTRY * thread_p);
 static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
 
@@ -1786,6 +1788,34 @@ css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p, int whence)
   return err;
 }
 
+static bool
+css_is_ha_log_applier_worker_session (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes;
+  const char *program_name;
+  size_t program_name_length;
+  size_t worker_suffix_length;
+
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  if (tdes == NULL || tdes->client.client_type != DB_CLIENT_TYPE_LOG_APPLIER)
+    {
+      return false;
+    }
+
+  program_name = tdes->client.get_program_name ();
+  if (program_name == NULL)
+    {
+      return false;
+    }
+
+  program_name_length = strlen (program_name);
+  worker_suffix_length = strlen (CSS_HA_APPLIER_WORKER_PROGRAM_SUFFIX);
+
+  return (program_name_length >= worker_suffix_length
+          && strcmp (program_name + program_name_length - worker_suffix_length,
+                     CSS_HA_APPLIER_WORKER_PROGRAM_SUFFIX) == 0);
+}
+
 /*
  * css_check_ha_log_applier_done - check all log appliers have done
  *   return: true or false
@@ -2032,6 +2062,11 @@ css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE s
 
   csect_enter (thread_p, CSECT_HA_SERVER_STATE, INF_WAIT);
 
+  if (css_is_ha_log_applier_worker_session (thread_p))
+    {
+      csect_exit (thread_p, CSECT_HA_SERVER_STATE);
+      return NO_ERROR;
+    }
   client_id = css_get_client_id (thread_p);
   er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: client %d state %s\n", client_id,
 		css_ha_applier_state_string (state));
