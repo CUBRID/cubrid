@@ -122,18 +122,19 @@ enum log_rectype
   LOG_DIFF_UNDOREDO_DATA = 43,	/* diff undo redo data */
   LOG_DUMMY_HA_SERVER_STATE = 44,	/* HA server state */
   LOG_DUMMY_OVF_RECORD = 45,	/* indicator of the first part of an overflow record */
+  LOG_DUMMY_OOS_RECORD = 46,	/* indicator of the first part of a multi-chunk OOS record */
 
-  LOG_MVCC_UNDOREDO_DATA = 46,	/* Undoredo for MVCC operations (will require more fields than a regular undo-redo. */
-  LOG_MVCC_UNDO_DATA = 47,	/* Undo for MVCC operations */
-  LOG_MVCC_REDO_DATA = 48,	/* Redo for MVCC operations */
-  LOG_MVCC_DIFF_UNDOREDO_DATA = 49,	/* diff undo redo data for MVCC operations */
-  LOG_SYSOP_ATOMIC_START = 50,	/* Log marker to start atomic operations that need to be rollbacked immediately after
+  LOG_MVCC_UNDOREDO_DATA = 47,	/* Undoredo for MVCC operations (will require more fields than a regular undo-redo. */
+  LOG_MVCC_UNDO_DATA = 48,	/* Undo for MVCC operations */
+  LOG_MVCC_REDO_DATA = 49,	/* Redo for MVCC operations */
+  LOG_MVCC_DIFF_UNDOREDO_DATA = 50,	/* diff undo redo data for MVCC operations */
+  LOG_SYSOP_ATOMIC_START = 51,	/* Log marker to start atomic operations that need to be rollbacked immediately after
 				 * redo phase of recovery and before finishing postpones */
 
-  LOG_DUMMY_GENERIC = 51,	/* used for flush for now. it is ridiculous to create dummy log records for every single
+  LOG_DUMMY_GENERIC = 52,	/* used for flush for now. it is ridiculous to create dummy log records for every single
                                  * case. we should find a different approach */
 
-  LOG_SUPPLEMENTAL_INFO = 52,	/* used for supplemental logs to support CDC interface.
+  LOG_SUPPLEMENTAL_INFO = 53,	/* used for supplemental logs to support CDC interface.
 				 * it contains transaction user info, DDL statement, undo lsa, redo lsa for DML,
 				 * or undo images that never retrieved from the log. */
 
