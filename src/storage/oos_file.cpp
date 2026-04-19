@@ -29,6 +29,9 @@
 #include "scope_exit.hpp"
 #include "slotted_page.h"
 #include "page_buffer_util.hpp"
+#include "log_comm.h"
+#include "log_impl.h"
+#include "log_manager.h"
 #include "xserver_interface.h"
 
 #include "oos_file.hpp"
@@ -64,6 +67,9 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid);
 
 STATIC_INLINE __attribute__ ((ALWAYS_INLINE))
 int oos_get_max_chunk_size_within_page ();
+
+static bool
+oos_should_track_multi_chunk_for_replication (THREAD_ENTRY *thread_p);
 
 static auto_unfix_page_ptr
 oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid, VPID &vpid_out);
@@ -1097,6 +1103,10 @@ static int
 oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &oid)
 {
   int err = NO_ERROR;
+  LOG_TDES *tdes = NULL;
+  LOG_LSA dummy_lsa = NULL_LSA;
+  LOG_LSA first_chunk_lsa = NULL_LSA;
+  bool should_track_multi_chunk = false;
 
   // split the recdes to multiple chunks and insert them one by one
   const int max_chunk_size = oos_get_max_chunk_size_within_page ();
@@ -1109,6 +1119,28 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
 
   int total_inserted_length = 0;
   OID next_chunk_oid = OID_INITIALIZER; // the last chunk has null OID as next_chunk_oid
+
+  should_track_multi_chunk = oos_should_track_multi_chunk_for_replication (thread_p);
+  if (should_track_multi_chunk)
+    {
+      int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+      tdes = LOG_FIND_TDES (tran_index);
+      assert (tdes != NULL);
+
+      log_append_empty_record (thread_p, LOG_DUMMY_OOS_RECORD, NULL);
+      LSA_COPY (&dummy_lsa, &tdes->tail_lsa);
+
+      tdes->suppress_oos_insert_lsa_queueing = true;
+    }
+
+  scope_exit clear_oos_repl_state ([&]()
+  {
+    if (should_track_multi_chunk && tdes != NULL)
+      {
+	tdes->suppress_oos_insert_lsa_queueing = false;
+      }
+  });
+
   // this loop inserts chunks in reverse order so that next_chunk_oid is always known
   for (int i = required_page_nums - 1; i >= 0; --i)
     {
@@ -1140,9 +1172,21 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
 	  return err;
 	}
 
+      if (should_track_multi_chunk && i == required_page_nums - 1)
+	{
+	  LSA_COPY (&first_chunk_lsa, &tdes->tail_lsa);
+	}
+
       next_chunk_oid = current_chunk_oid;
     }
   assert (total_inserted_length == recdes.length);
+
+  if (should_track_multi_chunk)
+    {
+      tdes->oos_insert_lsa_queue.push (dummy_lsa);
+      tdes->oos_insert_lsa_queue.push (first_chunk_lsa);
+      thread_p->oos_oids.push_back (oid_Null_oid);
+    }
 
   // update the out parameter 'oid' to give access to the first slot
   oid = next_chunk_oid;
@@ -1769,6 +1813,12 @@ oos_get_max_chunk_size_within_page ()
   return actual_upper_limit - (int)sizeof (OOS_RECORD_HEADER);
 }
 
+static bool
+oos_should_track_multi_chunk_for_replication (THREAD_ENTRY *thread_p)
+{
+  return !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true;
+}
+
 int
 oos_rv_redo_delete (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
 {
@@ -1866,6 +1916,12 @@ void
 oos_push_oos_oid (THREAD_ENTRY *thread_p, const OID *oid)
 {
   thread_p->oos_oids.push_back (*oid);
+}
+
+int
+oos_get_max_chunk_size (void)
+{
+  return oos_get_max_chunk_size_within_page ();
 }
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
