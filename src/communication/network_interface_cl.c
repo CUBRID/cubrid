@@ -9881,7 +9881,7 @@ int
 oos_get_stats_by_class_oid (const OID * class_oid, struct db_oos_stats *stats)
 {
 #if defined(CS_MODE)
-  OR_ALIGNED_BUF (OR_INT_SIZE * 6 + OR_BIGINT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 8 + OR_BIGINT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   OR_ALIGNED_BUF (OR_OID_SIZE) a_request;
   char *request = OR_ALIGNED_BUF_START (a_request);
