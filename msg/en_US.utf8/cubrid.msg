@@ -1465,12 +1465,14 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1369 Login is disabled for user "%1$s".
 
-1370 HA constraint violation: A replication key candidate (PRIMARY KEY or NOT NULL UNIQUE) is required in HA mode. Otherwise, set the replication option to OFF.
-1371 HA constraint violation: Changing replication option is not allowed in HA mode.
-1372 HA constraint violation: A replication-enabled table cannot define a foreign key referencing a table with replication option OFF in HA mode.
+1370 A class can have only one AUTO_INCREMENT attribute.
+
+1371 HA constraint violation: A replication key candidate (PRIMARY KEY or NOT NULL UNIQUE) is required in HA mode. Otherwise, set the replication option to OFF.
+1372 HA constraint violation: Changing replication option is not allowed in HA mode.
+1373 HA constraint violation: A replication-enabled table cannot define a foreign key referencing a table with replication option OFF in HA mode.
 1373 HA constraint violation: %1$d constraint(s) failed, so HA mode cannot be started. Refer to '%2$s' for more details.
 
-1374 Last Error
+1375 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

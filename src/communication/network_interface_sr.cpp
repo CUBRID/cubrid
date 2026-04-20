@@ -3989,6 +3989,8 @@ sboot_add_volume_extension (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
   ext_info.purpose = (DB_VOLPURPOSE) tmp;
   ptr = or_unpack_int (ptr, &tmp);
   ext_info.overwrite = (bool) tmp;
+  ptr = or_unpack_int (ptr, &tmp);
+  ext_info.voltype = (DB_VOLTYPE) tmp;
 
   volid = xboot_add_volume_extension (thread_p, &ext_info);
 
@@ -12024,21 +12026,14 @@ slob_create_dir (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
 
   ptr = or_unpack_hfid (request, &hfid);
   ptr = or_unpack_int (ptr, &attrid_arr_length);
-  if (ptr == NULL)
-    {
-      error = ER_FAILED;
-      goto end;
-    }
   ptr = or_unpack_int_array (ptr, attrid_arr_length, &attrid_arr);
-  if (ptr == NULL)
-    {
-      error = ER_FAILED;
-      goto end;
-    }
 
   error = xlob_create_dir (thread_p, &hfid, attrid_arr, attrid_arr_length);
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
 
-end:
   db_private_free_and_init (thread_p, attrid_arr);
 
   ptr = or_pack_errcode (reply, error);
@@ -12068,26 +12063,166 @@ slob_remove_dir (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
   int error = NO_ERROR;
 
   ptr = or_unpack_hfid (request, &hfid);
-  assert (ptr != NULL);
-
   ptr = or_unpack_int (ptr, &attrid);
-  if (ptr == NULL)
-    {
-      goto error_end;
-    }
 
   error = xlob_remove_dir (thread_p, &hfid, attrid);
   if (error != NO_ERROR)
     {
-      goto error_end;
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  (void) or_pack_errcode (reply, error);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  return;
+}
+
+/*
+ * sfile_tracker_dump_file_list -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+sfile_tracker_dump_file_list (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  FILE *outfp;
+  int file_size;
+  char *buffer;
+  int buffer_size;
+  int send_size;
+  int invalid_only;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+
+  ptr = or_unpack_int (request, &buffer_size);
+  ptr = or_unpack_int (ptr, &invalid_only);
+
+  buffer = (char *) db_private_alloc (thread_p, buffer_size);
+  if (buffer == NULL)
+    {
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      return;
+    }
+
+  outfp = tmpfile ();
+  if (outfp == NULL)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      db_private_free_and_init (thread_p, buffer);
+      return;
+    }
+
+  xfile_tracker_dump_file_list (thread_p, outfp, (bool) invalid_only);
+  file_size = ftell (outfp);
+
+  /*
+   * Send the file in pieces
+   */
+  rewind (outfp);
+
+  (void) or_pack_int (reply, (int) file_size);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  while (file_size > 0)
+    {
+      if (file_size > buffer_size)
+	{
+	  send_size = buffer_size;
+	}
+      else
+	{
+	  send_size = file_size;
+	}
+
+      file_size -= send_size;
+      if (fread (buffer, 1, send_size, outfp) == 0)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
+	  /*
+	   * Continue sending the stuff that was prmoised to client. In this case
+	   * junk (i.e., whatever it is in the buffers) is sent.
+	   */
+	}
+      css_send_data_to_client (thread_p->conn_entry, rid, buffer, send_size);
+    }
+  fclose (outfp);
+  db_private_free_and_init (thread_p, buffer);
+}
+
+/*
+ * sfile_tracker_clean_invalid_file -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+sfile_tracker_clean_invalid_file (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int heap = 0, heap_ovf = 0, btree = 0, btree_ovf = 0;
+  int error;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+
+  error = xfile_tracker_clean_invalid_file (thread_p, &heap, &heap_ovf, &btree, &btree_ovf);
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_errcode (reply, error);
+  ptr = or_pack_int (ptr, heap);
+  ptr = or_pack_int (ptr, heap_ovf);
+  ptr = or_pack_int (ptr, btree);
+  ptr = or_pack_int (ptr, btree_ovf);
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-  return;
-
-error_end:
-  (void) return_error_to_client (thread_p, rid);
-  return;
 }
+
+#if !defined(NDEBUG)
+/*
+ * sfile_tracker_delete_target_file -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+sfile_tracker_delete_target_file (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error;
+  char *target_vfid_str;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  (void) or_unpack_string_nocopy (request, &target_vfid_str);
+
+  error = xfile_tracker_delete_target_file (thread_p, target_vfid_str);
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  (void) or_pack_errcode (reply, error);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+#endif

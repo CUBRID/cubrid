@@ -50,6 +50,10 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#if defined(CS_MODE)
+#error Belongs to not client module
+#endif
+
 /* TODO */
 #if !defined (SERVER_MODE)
 #define pthread_mutex_init(a, b)

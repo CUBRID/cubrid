@@ -12201,9 +12201,6 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	{
 	  DB_ELO dest_elo, *elo_p;
 	  HFID hfid;
-	  INT32 hpgid;
-	  int32_t fileid;
-	  short volid;
 	  char *save_meta_data, *new_meta_data;
 	  char lob_path_prefix[PATH_MAX];
 	  int ret;
@@ -12231,14 +12228,12 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  save_meta_data = elo_p->meta_data;
 	  elo_p->meta_data = new_meta_data;
 	  ret = db_elo_copy_with_prefix (db_get_elo (dbvalue), lob_path_prefix, &dest_elo);
-
 	  free_and_init (elo_p->meta_data);
+	  elo_p->meta_data = save_meta_data;
 	  if (ret != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
-
-	  elo_p->meta_data = save_meta_data;
 
 	  /* The purpose of HEAP_WRITTEN_LOB_ATTRVALUE is to avoid reenter this branch. In the first pass,
 	   * this branch is entered and elo is copied. When BUFFER_OVERFLOW happens, we need avoid to copy
