@@ -2352,51 +2352,12 @@ jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig
 	  pt_get_default_expression_from_string (parser, sig.arg.arg_default_value[i], sig.arg.arg_default_value_size[i],
 						 &default_expr);
 
-	  // from pt_resolve_default_value
 	  if (default_expr.default_expr_type != DB_DEFAULT_NONE)
 	    {
-	      PT_OP_TYPE op = pt_op_type_from_default_expr_type (default_expr.default_expr_type);
-	      PT_NODE *default_op_value_node = pt_expression_0 (parser, op);
-
-	      if (default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
+	      default_next_node = pt_make_default_value_tree_from_default_expr (parser, &default_expr);
+	      if (default_next_node == NULL)
 		{
-		  default_next_node = default_op_value_node;
-		}
-	      else
-		{
-		  PT_NODE *arg1, *arg2, *arg3;
-		  arg1 = default_op_value_node;
-		  bool has_user_format = default_expr.default_expr_format ? true : false;
-		  arg2 = pt_make_string_value (parser, default_expr.default_expr_format);
-
-		  if (arg2 == NULL)
-		    {
-		      parser_free_tree (parser, default_op_value_node);
-		      return NULL;
-		    }
-
-		  arg3 = parser_new_node (parser, PT_VALUE);
-		  if (arg3 == NULL)
-		    {
-		      parser_free_tree (parser, default_op_value_node);
-		      parser_free_tree (parser, arg2);
-		      return NULL;
-		    }
-
-		  arg3->type_enum = PT_TYPE_INTEGER;
-		  const char *lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
-		  int flag = 0;
-		  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
-		  arg3->info.value.data_value.i = (long) flag;
-
-		  default_next_node = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
-		  if (default_next_node == NULL)
-		    {
-		      parser_free_tree (parser, default_op_value_node);
-		      parser_free_tree (parser, arg2);
-		      parser_free_tree (parser, arg3);
-		      return NULL;
-		    }
+		  return NULL;
 		}
 	    }
 	  else

@@ -26302,7 +26302,9 @@ error:
  * db_uuid_bin() - Generate a UUID and return as BIT(128) value.
  *   return: error code or NO_ERROR
  *   version(in): UUID version (UUID_V4 or UUID_V7)
- *   base_state(out): can be NULL if version = UUID_V4. synchronized with generator(THREAD_ENTRY in server or PARSER_CONTEXT in CAS)
+ *   base_state(out): can be NULL if version = UUID_V4. 
+ *     Use the variable address from the current generator context:
+ *     THREAD_ENTRY on server, PARSER_CONTEXT on CAS.
  *   epoch_ms(in): epoch time in milliseconds (used for UUIDv7, from vd->sys_epochtime)
  *   result(out): BIT(128) DB_VALUE
  * Note:
@@ -26373,7 +26375,9 @@ error:
 /*
  * uuidv7_generate_bytes() - Generate UUIDv7 bytes using per-thread monotonic state.
  *   return: error code or NO_ERROR
- *   base_state(out): synchronized with generator(THREAD_ENTRY in server or PARSER_CONTEXT in CAS)
+ *   base_state(out): can be NULL if version = UUID_V4. 
+ *     Use the variable address from the current generator context:
+ *     THREAD_ENTRY on server, PARSER_CONTEXT on CAS.
  *   new_epoch_ms(in): epoch time in milliseconds
  *   out_bytes(out): 16-byte UUID output buffer
  * Note:

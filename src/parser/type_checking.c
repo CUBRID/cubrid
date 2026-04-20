@@ -19375,7 +19375,7 @@ pt_coerce_value_explicit (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
 }
 
 /*
- * pt_coerce_value_for_default_value () - coerce a DEFAULT value or validate a DEFAULT expression against a target type
+ * pt_coerce_value_for_default_value () - coerce a PT_VALUE of DEFAULT into another PT_VALUE of compatible type
  *   return: NO_ERROR on success, non-zero for ERROR
  *   parser(in):
  *   src(in): a pointer to the original PT_VALUE
