@@ -4384,12 +4384,19 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
 static int
 la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 {
+  typedef struct la_oos_chunk
+  {
+    char *alloc_data;
+    int length;
+  } LA_OOS_CHUNK;
+
   LOG_LSA current_lsa;
   TRANID trid = NULL_TRANID;
   int total_size = -1;
+  int total_chunk_body_length = 0;
   int error = NO_ERROR;
   bool found_head = false;
-  const int max_chunk_size = oos_get_max_chunk_size ();
+  std::vector<LA_OOS_CHUNK> chunks;
 
   assert (lsa != NULL);
   assert (recdes != NULL);
@@ -4428,7 +4435,6 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 	  LOG_LSA temp_lsa;
 	  OOS_RECORD_HEADER oos_header;
 	  int chunk_body_length;
-	  int chunk_offset;
 
 	  LSA_COPY (&temp_lsa, &current_lsa);
 	  error =
@@ -4460,24 +4466,7 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 
 	      if (total_size < 0)
 		{
-		  OOS_RECORD_HEADER merged_header { oos_header.total_size, 0, OID_INITIALIZER };
-
 		  total_size = oos_header.total_size;
-		  error = la_realloc_recdes_data (recdes, total_size + OOS_RECORD_HEADER_SIZE);
-		  if (error != NO_ERROR)
-		    {
-		      if (chunk_data != NULL)
-			{
-			  free_and_init (chunk_data);
-			}
-		      la_release_page_buffer (current_lsa.pageid);
-		      return error;
-		    }
-
-		  recdes->type = REC_HOME;
-		  recdes->length = total_size + OOS_RECORD_HEADER_SIZE;
-		  memcpy (recdes->data, &merged_header, OOS_RECORD_HEADER_SIZE);
-		  memset (recdes->data + OOS_RECORD_HEADER_SIZE, 0, total_size);
 		}
 	      else if (total_size != oos_header.total_size)
 		{
@@ -4490,8 +4479,8 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 		}
 
 	      chunk_body_length = chunk_length - OOS_RECORD_HEADER_SIZE;
-	      chunk_offset = OOS_RECORD_HEADER_SIZE + oos_header.chunk_index * max_chunk_size;
-	      if (chunk_offset + chunk_body_length > recdes->length)
+	      total_chunk_body_length += chunk_body_length;
+	      if (total_chunk_body_length > total_size)
 		{
 		  if (chunk_data != NULL)
 		    {
@@ -4501,7 +4490,8 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 		  return ER_FAILED;
 		}
 
-	      memcpy (recdes->data + chunk_offset, chunk_data + OOS_RECORD_HEADER_SIZE, chunk_body_length);
+	      chunks.push_back ({ chunk_data, chunk_body_length });
+	      chunk_data = NULL;
 	      if (oos_header.chunk_index == 0)
 		{
 		  found_head = true;
@@ -4517,13 +4507,56 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
       la_release_page_buffer (current_lsa.pageid);
       if (found_head)
 	{
+	  int offset = OOS_RECORD_HEADER_SIZE;
+	  OOS_RECORD_HEADER merged_header { total_size, 0, OID_INITIALIZER };
+
+	  if (total_chunk_body_length != total_size)
+	    {
+	      error = ER_FAILED;
+	      break;
+	    }
+
+	  error = la_realloc_recdes_data (recdes, total_size + OOS_RECORD_HEADER_SIZE);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+
+	  recdes->type = REC_HOME;
+	  recdes->length = total_size + OOS_RECORD_HEADER_SIZE;
+	  memcpy (recdes->data, &merged_header, OOS_RECORD_HEADER_SIZE);
+
+	  for (auto it = chunks.rbegin (); it != chunks.rend (); ++it)
+	    {
+	      memcpy (recdes->data + offset, it->alloc_data + OOS_RECORD_HEADER_SIZE, it->length);
+	      offset += it->length;
+	    }
+
+	  for (LA_OOS_CHUNK &chunk : chunks)
+	    {
+	      if (chunk.alloc_data != NULL)
+		{
+		  free_and_init (chunk.alloc_data);
+		}
+	    }
+
 	  return NO_ERROR;
 	}
 
       LSA_COPY (&current_lsa, &next_lsa);
     }
 
-  return ER_FAILED;
+  error = ER_FAILED;
+
+  for (LA_OOS_CHUNK &chunk : chunks)
+    {
+      if (chunk.alloc_data != NULL)
+	{
+	  free_and_init (chunk.alloc_data);
+	}
+    }
+
+  return error;
 }
 
 /*
