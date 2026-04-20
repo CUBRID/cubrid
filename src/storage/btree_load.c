@@ -1081,6 +1081,10 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args, NULL, NULL);
 #endif /* !SERVER_MODE */
 
+#if defined (SERVER_MODE)
+  is_sysop_started = true;
+#endif /* SERVER_MODE */
+
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
       _er_log_debug (ARG_FILE_LINE,
