@@ -79,7 +79,7 @@ namespace test_thread
 
     thread_mgr.init_entries (max_threads);
 
-    auto *dummy_pool = thread_mgr.create_worker_pool (1, 1, NULL, thread_mgr.get_entry_manager ());
+    auto *dummy_pool = thread_create_worker_pool (1, 1, NULL, thread_mgr.get_entry_manager ());
     thread_mgr.destroy_worker_pool (dummy_pool);
 
     auto *daemon = thread_mgr.create_daemon (cubthread::looper (), new dummy_exec ());

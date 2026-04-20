@@ -29,7 +29,6 @@
 
 #include "system.h"
 #include "thread_manager.hpp"
-#include "thread_worker_pool.hpp"
 
 namespace cubload
 {

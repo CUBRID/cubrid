@@ -1157,7 +1157,7 @@ namespace cubthread
     std::lock_guard<std::mutex> ulock (m_temp_workers_mutex);
 
     m_temp_workers.push_back (std::move (w));
-    static_cast<worker_impl *> (m_temp_workers.back ())->assign_task (std::move (task_ref));
+    static_cast<worker_impl *> (m_temp_workers.back ().get ())->assign_task (std::move (task_ref));
   }
 
   //////////////////////////////////////////////////////////////////////////

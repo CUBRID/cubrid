@@ -32,6 +32,9 @@
 #include "thread_entry_task.hpp"
 #include "thread_task.hpp"
 #include "thread_waiter.hpp"
+#if defined (SERVER_MODE)
+#include "thread_worker_pool_impl.hpp"
+#endif
 
 // other module includes
 #include "count_registry.hpp"
@@ -101,7 +104,7 @@ namespace cubthread
   //
   //     2. worker_pool -
   //	      REGISTER_WORKERPOOL (name, getter);
-  //          worker_pool *my_workpool = cubthread::get_manager ()->create_worker_pool (MAX_THREADS, MAX_JOBS);
+  //          worker_pool *my_workpool = cubthread::get_manager ()->create_worker_pool<pool_type> (MAX_THREADS, MAX_JOBS);
   //          cubthread::get_manager ()->push_task (my_workpool, entry_task_p);
   //          cubthread::get_manager ()->destroy_worker_pool (my_workpool);
   //
@@ -133,8 +136,8 @@ namespace cubthread
       template<typename Res, typename ... CtArgs>
       Res *create_worker_pool (std::size_t pool_size, std::size_t core_count, CtArgs &&... args);
 
-      // destroy worker pool
-      void destroy_worker_pool (worker_pool *&worker_pool_arg);
+      template <typename Res>
+      void destroy_worker_pool (Res *&worker_pool_arg);
 
       // push task to worker pool created with this manager
       // if worker_pool_arg is NULL, the task is executed immediately
@@ -275,6 +278,17 @@ namespace cubthread
   };
 
   //////////////////////////////////////////////////////////////////////////
+  // alias
+  //////////////////////////////////////////////////////////////////////////
+#if defined (SERVER_MODE)
+  using worker_pool_type = cubthread::worker_pool_impl<false>;
+  using stats_worker_pool_type = cubthread::worker_pool_impl<true>;
+#else
+  using worker_pool_type = cubthread::worker_pool;
+  using stats_worker_pool_type = cubthread::worker_pool;
+#endif
+
+  //////////////////////////////////////////////////////////////////////////
   // thread logging flags
   //
   // TODO: complete thread logging for all modules
@@ -360,8 +374,8 @@ namespace cubthread
     assert (m_worker_pools.size () <= workerpool_registry_t::count ());
 
     // reserve pool_size entries and add to m_worker_pools
-    workerpool = create_and_track_resource (m_worker_pools, pool_size,
-					    pool_size, core_count, std::forward<CtArgs> (args)...);
+    workerpool = create_and_track_resource<Res> (m_worker_pools, pool_size,
+		 pool_size, core_count, std::forward<CtArgs> (args)...);
     if (workerpool)
       {
 	workerpool->initialize (pool_size, core_count);
@@ -369,6 +383,24 @@ namespace cubthread
     return workerpool;
 #else // not SERVER_MODE = SA_MODE
     return NULL;
+#endif // not SERVER_MODE = SA_MODE
+  }
+
+  template <typename Res>
+  void
+  manager::destroy_worker_pool (Res *&worker_pool_arg)
+  {
+#if defined (SERVER_MODE)
+    if (worker_pool_arg == NULL)
+      {
+	return;
+      }
+    // remove from m_worker_pools and free worker_pool_arg->get_worker_count thread entries
+    worker_pool *base_arg = worker_pool_arg;
+    destroy_and_untrack_resource (m_worker_pools, base_arg, worker_pool_arg->get_worker_count ());
+    worker_pool_arg = NULL;
+#else // not SERVER_MODE = SA_MODE
+    assert (worker_pool_arg == NULL);
 #endif // not SERVER_MODE = SA_MODE
   }
 
@@ -483,12 +515,21 @@ thread_get_entry_manager (void)
   return cubthread::get_manager ()->get_entry_manager ();
 }
 
-inline cubthread::worker_pool *
-thread_create_worker_pool_base (std::size_t pool_size, std::size_t core_count, const char *name,
-				cubthread::entry_manager &entry_mgr, bool pool_threads = false)
+inline cubthread::worker_pool_type *
+thread_create_worker_pool (std::size_t pool_size, std::size_t core_count, const char *name,
+			   cubthread::entry_manager &entry_mgr, bool pool_threads = false)
 {
-  return cubthread::get_manager ()->create_worker_pool<cubthread::worker_pool> (pool_size, core_count, name, entry_mgr,
-	 pool_threads);
+  return cubthread::get_manager ()->create_worker_pool<cubthread::worker_pool_type> (pool_size, core_count, name,
+	 entry_mgr, pool_threads);
+}
+
+inline cubthread::stats_worker_pool_type *
+thread_create_stats_worker_pool (std::size_t pool_size, std::size_t core_count, const char *name,
+				 cubthread::entry_manager &entry_mgr, bool pool_threads = false,
+				 cubthread::wait_seconds idle_timeout = std::chrono::seconds (5))
+{
+  return cubthread::get_manager ()->create_worker_pool<cubthread::stats_worker_pool_type> (pool_size, core_count, name,
+	 entry_mgr, pool_threads, idle_timeout);
 }
 
 inline std::size_t

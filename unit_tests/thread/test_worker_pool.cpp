@@ -28,7 +28,7 @@
 #define SERVER_MODE
 #include "thread_entry_task.hpp"
 #include "thread_task.hpp"
-#include "thread_worker_pool.hpp"
+#include "thread_manager.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -107,7 +107,7 @@ namespace test_thread
   test_one_thread_pool (void)
   {
     test_entry_manager ctx_mgr;
-    cubthread::worker_pool pool (1, 1, ctx_mgr, NULL, 1, false);
+    cubthread::worker_pool_type pool (1, 1, ctx_mgr, NULL, 1, false);
     pool.execute (new test_task ());
     pool.execute (new test_task ());
 
@@ -123,7 +123,7 @@ namespace test_thread
   test_two_threads_pool (void)
   {
     test_entry_manager ctx_mgr;
-    cubthread::worker_pool pool (2, 16, ctx_mgr, NULL, 1, false);
+    cubthread::worker_pool_type pool (2, 16, ctx_mgr, NULL, 1, false);
 
     pool.execute (new start_end_task ());
     pool.execute (new start_end_task ());
@@ -142,7 +142,7 @@ namespace test_thread
 
     nthreads *= 4;
 
-    cubthread::worker_pool workpool (nthreads, nthreads * 16, ctx_mgr, NULL, 1, false);
+    cubthread::worker_pool_type workpool (nthreads, nthreads * 16, ctx_mgr, NULL, 1, false);
 
     auto start_time = std::chrono::high_resolution_clock::now ();
     for (int i = 0; i < 10000; i++)

@@ -54,7 +54,7 @@
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
 #if defined (SERVER_MODE)
-#include "thread_worker_pool.hpp"
+#include "thread_worker_pool_impl.hpp"
 #include "monitor_vacuum_ovfp_threshold.hpp"
 #endif // SERVER_MODE
 #include "util_func.h"
@@ -934,8 +934,8 @@ static cubthread::daemon *vacuum_Master_daemon = NULL;                       // 
 static vacuum_master_entry_manager *vacuum_Master_entry_manager = NULL;  // entry manager
 
 // vacuum worker globals
-static cubthread::worker_pool *vacuum_Worker_threads = NULL;              // thread pool
-static vacuum_worker_entry_manager *vacuum_Worker_entry_manager = NULL;  // entry manager
+static cubthread::stats_worker_pool_type *vacuum_Worker_threads = NULL;   // thread pool
+static vacuum_worker_entry_manager *vacuum_Worker_entry_manager = NULL;	  // entry manager
 
 /* *INDENT-ON* */
 
@@ -1334,10 +1334,9 @@ vacuum_boot (THREAD_ENTRY * thread_p)
     || flag<int>::is_flag_set (prm_get_integer_value (PRM_ID_ER_LOG_VACUUM), VACUUM_ER_LOG_WORKER);
 
   // create thread pool
-  vacuum_Worker_threads =
-    thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT),
-					VACUUM_MAX_TASKS_IN_WORKER_POOL, "vacuum",
-					vacuum_Worker_entry_manager, 1, log_vacuum_worker_pool);
+  vacuum_Worker_threads = thread_create_stats_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT), 1, "vacuum", *vacuum_Worker_entry_manager);
+  // m_log = log_vacuum_worker_pool
+
   assert (vacuum_Worker_threads != NULL);
 
   int vacuum_master_wakeup_interval_msec = prm_get_integer_value (PRM_ID_VACUUM_MASTER_WAKEUP_INTERVAL);
@@ -3078,12 +3077,14 @@ vacuum_master_task::check_shutdown() const
 bool
 vacuum_master_task::is_task_queue_full() const
 {
+  /*
   if (vacuum_Worker_threads->is_full ())
     {
       // stop if worker pool is full
       vacuum_er_log (VACUUM_ER_LOG_MASTER, "%s", "Interrupt iteration: full worker pool");
       return true;
     }
+    */
   return false;
 }
 
