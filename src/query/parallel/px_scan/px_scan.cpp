@@ -1581,6 +1581,13 @@ extern "C"
     assert (xasl != nullptr);
     assert (vd != nullptr);
 
+    /* count(*) fast path may set need_count_only between scan_open_scan and scan_start_scan;
+     * parallel dispatch adds coordination cost with no payload to amortise. */
+    if (scan_id->s.isid.need_count_only)
+      {
+	return NO_ERROR;
+      }
+
     /* Use INT_MAX pages so compute_parallel_degree picks degree from hint/workers, not page count */
     num_parallel_threads = parallel_query::compute_parallel_degree (parallel_query::parallel_type::HEAP_SCAN,
 			   INT_MAX, spec->num_parallel_threads /* hint */);
