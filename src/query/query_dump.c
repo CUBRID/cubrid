@@ -3960,6 +3960,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
   HASHJOIN_PROC_NODE *proc;
   HASHJOIN_STATS_GROUP *stats_group;
+  HASHJOIN_STATUS status;
   HASHJOIN_STATS *stats, *part_stats, *current_stats;
   UINT32 part_cnt, part_index;
 
@@ -3972,14 +3973,12 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
   proc = &xasl_p->proc.hashjoin;
   stats_group = &proc->stats_group;
+  status = stats_group->status;
   stats = &stats_group->stats;
   part_stats = stats_group->context_stats;
   part_cnt = stats_group->context_cnt;
 
-  /* Partition-parallel (serial partitions + PARTITION-parallel build) is the only mode that emits
-   * per-partition stats. PARALLEL_PROBE also sets context_cnt > 1 but shares a single stats line. */
-  const bool is_partition_parallel = (stats_group->status == HASHJOIN_STATUS_PARTITION
-				      || stats_group->status == HASHJOIN_STATUS_PARALLEL);
+  const bool is_partition_parallel = (status == HASHJOIN_STATUS_PARTITION || status == HASHJOIN_STATUS_PARALLEL);
   assert (part_stats == NULL || is_partition_parallel);
 
   outer_xasl = proc->outer.xasl;
@@ -4263,6 +4262,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 
   HASHJOIN_PROC_NODE *proc;
   HASHJOIN_STATS_GROUP *stats_group;
+  HASHJOIN_STATUS status;
   HASHJOIN_STATS *stats, *part_stats, *current_stats;
   UINT32 part_cnt, part_index;
 
@@ -4276,12 +4276,12 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 
   proc = &xasl_p->proc.hashjoin;
   stats_group = &proc->stats_group;
+  status = stats_group->status;
   stats = &stats_group->stats;
   part_stats = stats_group->context_stats;
   part_cnt = stats_group->context_cnt;
 
-  const bool is_partition_parallel = (stats_group->status == HASHJOIN_STATUS_PARTITION
-				      || stats_group->status == HASHJOIN_STATUS_PARALLEL);
+  const bool is_partition_parallel = (status == HASHJOIN_STATUS_PARTITION || status == HASHJOIN_STATUS_PARALLEL);
   assert (part_stats == NULL || is_partition_parallel);
 
   outer_xasl = proc->outer.xasl;
@@ -4390,7 +4390,18 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 	}
 
       probe = json_object ();
-      json_object_set_new (probe, "time", json_integer (TO_MSEC (stats->probe.elapsed_time)));
+      if (stats->num_parallel_threads > 1)
+	{
+	  len =
+	    sprintf (time_str, "%d..%d", TO_MSEC (stats->probe.range_time.min), TO_MSEC (stats->probe.range_time.max));
+	  time_str[len] = '\0';
+
+	  json_object_set_new (probe, "time", json_string (time_str));
+	}
+      else
+	{
+	  json_object_set_new (probe, "time", json_integer (TO_MSEC (stats->probe.elapsed_time)));
+	}
       json_object_set_new (probe, "fetch", json_integer (stats->probe.fetches));
       json_object_set_new (probe, "ioread", json_integer (stats->probe.ioreads));
       json_object_set_new (probe, "readrows", json_integer (stats->probe.read_rows));
