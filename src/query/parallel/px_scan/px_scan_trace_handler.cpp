@@ -137,7 +137,7 @@ namespace parallel_scan
 	max_qualified_rows = std::max (max_qualified_rows, m_stats[i].qualified_rows);
       }
     const char *scan_type_str = m_scan_type == SCAN_TYPE::INDEX ? "index" :
-				m_scan_type == SCAN_TYPE::LIST ? "list" : "heap";
+				m_scan_type == SCAN_TYPE::LIST ? "temp" : "heap";
     fprintf (fp, "\n%*c(parallel workers: %d", indent, ' ', parallel_workers);
     fprintf (fp, ", %s time: %lu..%lu", scan_type_str, min_elapsed_scan, max_elapsed_scan);
     fprintf (fp, ", readrows: %lu..%lu", min_read_rows, max_read_rows);
@@ -180,7 +180,7 @@ namespace parallel_scan
 				      "rows", rows_buf,
 				      "gather", result_type_str);
     const char *scan_type_label = m_scan_type == SCAN_TYPE::INDEX ? "parallel index" :
-				   m_scan_type == SCAN_TYPE::LIST ? "parallel list" : "parallel heap";
+				   m_scan_type == SCAN_TYPE::LIST ? "parallel temp" : "parallel heap";
     json_object_set_new (scan, scan_type_label, parallel_obj);
   }
 
