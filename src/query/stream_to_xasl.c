@@ -4747,8 +4747,6 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr, INDX_INFO * indx_info)
 
   ptr = or_unpack_int (ptr, &indx_info->func_idx_col_id);
 
-  ptr = or_unpack_int (ptr, &indx_info->estimated_leaf_pages);
-
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {

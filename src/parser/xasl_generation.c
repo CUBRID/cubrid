@@ -11999,12 +11999,6 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
   /* BTID */
   BTID_COPY (&indx_infop->btid, &index_entryp->constraints->index_btid);
 
-  /* Cost gate hint: estimate the number of leaf pages this index scan will
-   * read, using the optimizer's selectivity × cum_statsp->leafs.  -1 means
-   * the estimate is unavailable (no statistics, non-iscan plan) and the
-   * parallel-scan cost gate should be bypassed. */
-  indx_infop->estimated_leaf_pages = qo_plan_estimated_leaf_pages (plan);
-
   /* check for covered index scan */
   indx_infop->coverage = 0;	/* init */
   if (qo_is_index_covering_scan (plan))

@@ -26,7 +26,6 @@
 #include "error_manager.h"
 #include "regu_var.hpp"
 #include "schema_manager.h"
-#include "system_parameter.h"
 #include "storage_common.h"
 #include "work_space.h"
 #include "xasl_predicate.hpp"
@@ -473,18 +472,6 @@ namespace parallel_scan
 		 * indexes are NOT blocked — the indexed expression is materialized
 		 * as a regular key and parallel distribution is safe. */
 		if (is_filtered_index (arg->indexptr))
-		  {
-		    set_flag (result, CANNOT_PARALLEL_SCAN);
-		  }
-
-		/* Cost gate: below parallel_index_scan_page_threshold, the worker
-		 * pool spin-up / range distribution / list-merge overhead exceeds
-		 * the benefit of splitting the scan. Fall back to sequential.
-		 * estimated_leaf_pages < 0 means the optimizer could not produce
-		 * an estimate (no statistics, non-iscan plan), in which case we
-		 * bypass the gate (conservative: keep parallel eligible). */
-		const int threshold = prm_get_integer_value (PRM_ID_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD);
-		if (arg->indexptr->estimated_leaf_pages >= 0 && arg->indexptr->estimated_leaf_pages < threshold)
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }

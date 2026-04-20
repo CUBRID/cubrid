@@ -101,7 +101,6 @@ struct indx_info
   int func_idx_col_id;		/* function expression column position, if the index is a function index */
   KEY_RANGE iss_range;		/* placeholder range used for ISS; must be created on the broker */
   int ils_prefix_len;		/* index loose scan prefix length */
-  int estimated_leaf_pages;	/* optimizer estimate: ceil(selectivity * cum_statsp->leafs). -1 = unknown */
 };				/* index information structure */
 
 // TODO - move access specification code here; note - this is supposed to be common to both client and server.
