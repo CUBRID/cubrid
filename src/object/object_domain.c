@@ -7000,6 +7000,116 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 }
 
 /*
+ * vector_literal_to_floats - parse a '[f0, f1, ...]' string literal into a
+ *    heap-allocated float array.
+ *
+ *    Whitespace inside the brackets is ignored. target_dim > 0 requires an
+ *    exact match; target_dim == 0 infers the dimension from the literal
+ *    (capped at DB_MAX_VECTOR_DIMENSION).
+ *
+ *    On success: returns DOMAIN_COMPATIBLE, sets *out_dim and *out_data
+ *    (caller owns *out_data and must free via db_private_free_and_init).
+ *    On parse failure: emits ER_VEC_INVALID_LITERAL or
+ *    ER_VEC_DIMENSION_MISMATCH and returns DOMAIN_INCOMPATIBLE.
+ */
+static TP_DOMAIN_STATUS
+vector_literal_to_floats (const char *str, int str_len, int target_dim, int *out_dim, float **out_data)
+{
+  const char *p = str;
+  const char *end = str + str_len;
+  int alloc_dim = (target_dim > 0) ? target_dim : DB_MAX_VECTOR_DIMENSION;
+  int count = 0;
+  float *data = NULL;
+  char *next = NULL;
+
+  *out_dim = 0;
+  *out_data = NULL;
+
+  while (p < end && isspace ((unsigned char) *p))
+    {
+      ++p;
+    }
+  if (p >= end || *p != '[')
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VEC_INVALID_LITERAL, 1, str ? str : "");
+      return DOMAIN_INCOMPATIBLE;
+    }
+  ++p;
+
+  data = (float *) db_private_alloc (NULL, alloc_dim * sizeof (float));
+  if (data == NULL)
+    {
+      return DOMAIN_ERROR;
+    }
+
+  while (p < end)
+    {
+      while (p < end && isspace ((unsigned char) *p))
+	{
+	  ++p;
+	}
+      if (p < end && *p == ']')
+	{
+	  ++p;
+	  break;
+	}
+      if (count >= alloc_dim)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VEC_DIMENSION_MISMATCH, 2,
+		  (target_dim > 0) ? target_dim : alloc_dim, count + 1);
+	  db_private_free_and_init (NULL, data);
+	  return DOMAIN_INCOMPATIBLE;
+	}
+
+      errno = 0;
+      float val = strtof (p, &next);
+      if (next == p || errno == ERANGE)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VEC_INVALID_LITERAL, 1, str ? str : "");
+	  db_private_free_and_init (NULL, data);
+	  return DOMAIN_INCOMPATIBLE;
+	}
+      data[count++] = val;
+      p = next;
+
+      while (p < end && isspace ((unsigned char) *p))
+	{
+	  ++p;
+	}
+      if (p < end && *p == ',')
+	{
+	  ++p;
+	  continue;
+	}
+      if (p < end && *p == ']')
+	{
+	  ++p;
+	  break;
+	}
+      if (p >= end)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VEC_INVALID_LITERAL, 1, str ? str : "");
+	  db_private_free_and_init (NULL, data);
+	  return DOMAIN_INCOMPATIBLE;
+	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VEC_INVALID_LITERAL, 1, str ? str : "");
+      db_private_free_and_init (NULL, data);
+      return DOMAIN_INCOMPATIBLE;
+    }
+
+  if (target_dim > 0 && count != target_dim)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VEC_DIMENSION_MISMATCH, 2, target_dim, count);
+      db_private_free_and_init (NULL, data);
+      return DOMAIN_INCOMPATIBLE;
+    }
+
+  *out_dim = count;
+  *out_data = data;
+  return DOMAIN_COMPATIBLE;
+}
+
+/*
  * tp_value_coerce_internal - Coerce a value into one of another domain.
  *    return: error code
  *    src(in): source value
@@ -7147,6 +7257,35 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
       original_type = DB_VALUE_TYPE (&src_replacement);
       src = &src_replacement;
+    }
+  else if (desired_type == DB_TYPE_VECTOR
+	   && (original_type == DB_TYPE_STRING || original_type == DB_TYPE_CHAR
+	       || original_type == DB_TYPE_VARCHAR))
+    {
+      /* String -> VECTOR coercion: parse '[f0, f1, ...]' into a DB_VECTOR.
+       * Triggered by both explicit CAST('[...]' AS VECTOR(n)) and implicit
+       * INSERT ... VALUES ('[...]') when the target column is VECTOR(n). */
+      const char *lit = db_get_string (src);
+      int lit_len = db_get_string_size (src);
+      int target_dim = desired_domain->precision;
+      int actual_dim = 0;
+      float *data = NULL;
+      TP_DOMAIN_STATUS parse_status;
+
+      parse_status = vector_literal_to_floats (lit, lit_len, target_dim, &actual_dim, &data);
+      if (parse_status != DOMAIN_COMPATIBLE)
+	{
+	  pr_clear_value (&src_replacement);
+	  return parse_status;
+	}
+
+      if (src == dest)
+	{
+	  pr_clear_value (dest);
+	}
+      db_make_vector (dest, actual_dim, data, true);
+      pr_clear_value (&src_replacement);
+      return status;
     }
 
 
