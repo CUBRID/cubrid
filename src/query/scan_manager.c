@@ -172,7 +172,6 @@ static int scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BI
 static void scan_init_scan_id (SCAN_ID * scan_id, bool force_select_lock, SCAN_OPERATION_TYPE scan_op_type, int fixed,
 			       int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
 			       val_list_node * val_list, VAL_DESCR * vd);
-static DB_VALUE *scan_find_numeric_leaf (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd);
 static int scan_fetch_and_coerce_key_limit_lower (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp,
 						  REGU_VARIABLE * key_limit_l, VAL_DESCR * vd, DB_VALUE ** out_dbvalp);
 static int scan_fetch_and_coerce_key_limit_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp,
@@ -809,44 +808,6 @@ exit_on_error:
   return err;
 }
 
-/*
- * scan_find_numeric_leaf () - Recursively search leftptr of an arith tree for the first NUMERIC-typed leaf.
- *
- *   return       : peeked DB_VALUE of the NUMERIC leaf, or NULL if not found
- *   thread_p(in) : thread entry
- *   regu_var(in) : root of the regu variable arith tree to search
- *   vd(in)       : value descriptor
- */
-static DB_VALUE *
-scan_find_numeric_leaf (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd)
-{
-  ARITH_TYPE *arithptr;
-  DB_VALUE *dbvalp;
-
-  if (regu_var == NULL)
-    {
-      return NULL;
-    }
-
-  if (TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_NUMERIC)
-    {
-      dbvalp = NULL;
-      if (fetch_peek_dbval (thread_p, regu_var, vd, NULL, NULL, NULL, &dbvalp) == NO_ERROR
-	  && dbvalp != NULL && DB_VALUE_DOMAIN_TYPE (dbvalp) == DB_TYPE_NUMERIC)
-	{
-	  return dbvalp;
-	}
-      return NULL;
-    }
-
-  if (regu_var->type == TYPE_INARITH || regu_var->type == TYPE_OUTARITH)
-    {
-      arithptr = regu_var->value.arithptr;
-      return scan_find_numeric_leaf (thread_p, arithptr->leftptr, vd);
-    }
-
-  return NULL;
-}
 
 /*
  * scan_fetch_and_coerce_key_limit_lower () - fetch and coerce lower key limit to BIGINT,
@@ -891,7 +852,7 @@ scan_fetch_and_coerce_key_limit_lower (THREAD_ENTRY * thread_p, INDX_SCAN_ID * i
 	    }
 
 	  /* NUMERIC -> BIGINT overflow during arithmetic: find the NUMERIC operand and check its sign */
-	  tmp_dbvalp = scan_find_numeric_leaf (thread_p, key_limit_l, vd);
+	  tmp_dbvalp = fetch_find_numeric_leaf (thread_p, key_limit_l, vd);
 	  if (tmp_dbvalp == NULL)
 	    {
 	      return ER_FAILED;
@@ -989,7 +950,7 @@ scan_fetch_and_coerce_key_limit_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * i
 	       *   positive NUMERIC -> no upper bound (-1), 
 	       *   negative NUMERIC -> no rows match (0). 
 	       */
-	      tmp_dbvalp = scan_find_numeric_leaf (thread_p, key_limit_u, vd);
+	      tmp_dbvalp = fetch_find_numeric_leaf (thread_p, key_limit_u, vd);
 	      if (tmp_dbvalp == NULL)
 		{
 		  return ER_FAILED;
@@ -1016,6 +977,8 @@ scan_fetch_and_coerce_key_limit_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * i
 	      ARITH_TYPE *arithptr = key_limit_u->value.arithptr;
 	      REGU_VARIABLE *left = arithptr->leftptr;
 	      REGU_VARIABLE *right = arithptr->rightptr;
+	      assert (left && right);
+
 	      bool left_is_inarith = (left->type == TYPE_INARITH || left->type == TYPE_OUTARITH);
 	      bool left_is_numeric = (TP_DOMAIN_TYPE (left->domain) == DB_TYPE_NUMERIC);
 
@@ -1029,22 +992,26 @@ scan_fetch_and_coerce_key_limit_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * i
 		      /* case1 */
 		      isidp->key_limit_upper = db_get_bigint (tmp_dbvalp);
 		    }
-		  else
+		  else if (er_errid () == ER_IT_DATA_OVERFLOW || er_errid () == ER_QPROC_OVERFLOW_SUBTRACTION)
 		    {
 		      /* case3 */
 		      er_clear ();
-		      tmp_dbvalp = scan_find_numeric_leaf (thread_p, left, vd);
+		      tmp_dbvalp = fetch_find_numeric_leaf (thread_p, left, vd);
 		      if (tmp_dbvalp == NULL)
 			{
 			  return ER_FAILED;
 			}
 		      isidp->key_limit_upper = (tmp_dbvalp->data.num.d.buf[0] & NUMERIC_VALUE_SIGN_BIT_MASK) ? 0 : -1;
 		    }
+		  else
+		    {
+		      return ER_FAILED;
+		    }
 		}
 	      else if (left_is_numeric)
 		{
 		  /* case4 */
-		  tmp_dbvalp = scan_find_numeric_leaf (thread_p, left, vd);
+		  tmp_dbvalp = fetch_find_numeric_leaf (thread_p, left, vd);
 		  if (tmp_dbvalp == NULL)
 		    {
 		      return ER_FAILED;

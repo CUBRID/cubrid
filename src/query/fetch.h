@@ -46,4 +46,6 @@ extern void fetch_init_val_list (regu_variable_list_node * regu_list);
 
 extern void fetch_force_not_const_recursive (regu_variable_node & reguvar);
 
+extern DB_VALUE *fetch_find_numeric_leaf (THREAD_ENTRY * thread_p, regu_variable_node * regu_var, val_descr * vd);
+
 #endif /* _FETCH_H_ */

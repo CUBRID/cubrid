@@ -5085,3 +5085,42 @@ fetch_force_not_const_recursive (REGU_VARIABLE & reguvar)
   reguvar.map_regu (map_func);
 }
 // *INDENT-ON*
+
+/*
+ * fetch_find_numeric_leaf () - Recursively search leftptr of an arith tree for the first NUMERIC-typed leaf.
+ *
+ *   return       : peeked DB_VALUE of the NUMERIC leaf, or NULL if not found
+ *   thread_p(in) : thread entry
+ *   regu_var(in) : root of the regu variable arith tree to search
+ *   vd(in)       : value descriptor
+ */
+DB_VALUE *
+fetch_find_numeric_leaf (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd)
+{
+  ARITH_TYPE *arithptr;
+  DB_VALUE *dbvalp;
+
+  if (regu_var == NULL)
+    {
+      return NULL;
+    }
+
+  if (TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_NUMERIC)
+    {
+      dbvalp = NULL;
+      if (fetch_peek_dbval (thread_p, regu_var, vd, NULL, NULL, NULL, &dbvalp) == NO_ERROR
+	  && dbvalp != NULL && DB_VALUE_DOMAIN_TYPE (dbvalp) == DB_TYPE_NUMERIC)
+	{
+	  return dbvalp;
+	}
+      return NULL;
+    }
+
+  if (regu_var->type == TYPE_INARITH || regu_var->type == TYPE_OUTARITH)
+    {
+      arithptr = regu_var->value.arithptr;
+      return fetch_find_numeric_leaf (thread_p, arithptr->leftptr, vd);
+    }
+
+  return NULL;
+}

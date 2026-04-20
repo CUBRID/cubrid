@@ -666,10 +666,8 @@ static int qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGRE
 						  REGU_VARIABLE_LIST regu_list, int *resolved);
 static int query_multi_range_opt_check_set_sort_col (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static ACCESS_SPEC_TYPE *query_multi_range_opt_check_specs (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
-static DB_VALUE *qexec_find_numeric_leaf (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd);
-static int qexec_fetch_and_coerce_instnum_lower (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
-						 XASL_STATE * xasl_state, REGU_VARIABLE * key_limit_l,
-						 DB_VALUE ** out_dbvalp);
+static int qexec_fetch_and_coerce_instnum_lower (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
+						 REGU_VARIABLE * key_limit_l, DB_VALUE * out_val);
 static int qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * xasl_state);
 static int qexec_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list, UPDDEL_CLASS_INFO * query_classes,
 				  int query_classes_count, UPDDEL_CLASS_INFO_INTERNAL * internal_classes);
@@ -14157,44 +14155,6 @@ exit_on_error:
   goto exit;
 }
 
-/*
- * qexec_find_numeric_leaf () - Recursively search leftptr of an arith tree for the first NUMERIC-typed leaf.
- *
- *   return       : peeked DB_VALUE of the NUMERIC leaf, or NULL if not found
- *   thread_p(in) : thread entry
- *   regu_var(in) : root of the regu variable arith tree to search
- *   vd(in)       : value descriptor
- */
-static DB_VALUE *
-qexec_find_numeric_leaf (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd)
-{
-  ARITH_TYPE *arithptr;
-  DB_VALUE *dbvalp;
-
-  if (regu_var == NULL)
-    {
-      return NULL;
-    }
-
-  if (TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_NUMERIC)
-    {
-      dbvalp = NULL;
-      if (fetch_peek_dbval (thread_p, regu_var, vd, NULL, NULL, NULL, &dbvalp) == NO_ERROR
-	  && dbvalp != NULL && DB_VALUE_DOMAIN_TYPE (dbvalp) == DB_TYPE_NUMERIC)
-	{
-	  return dbvalp;
-	}
-      return NULL;
-    }
-
-  if (regu_var->type == TYPE_INARITH || regu_var->type == TYPE_OUTARITH)
-    {
-      arithptr = regu_var->value.arithptr;
-      return qexec_find_numeric_leaf (thread_p, arithptr->leftptr, vd);
-    }
-
-  return NULL;
-}
 
 /*
  * qexec_fetch_and_coerce_instnum_lower () - fetch and coerce lower key limit to BIGINT for instnum
@@ -14202,35 +14162,28 @@ qexec_find_numeric_leaf (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_
  *
  *   return          : NO_ERROR or error code
  *   thread_p (in)   : thread entry
- *   xasl (in/out)   : XASL node — instnum_val is set directly on positive overflow (DB_BIGINT_MAX)
  *   xasl_state (in) : XASL state (provides value descriptor)
  *   key_limit_l (in): regu variable for lower key limit
- *   out_dbvalp (out): set to NULL when overflow is handled (instnum_val already set);
- *                     set to the coerced BIGINT DB_VALUE otherwise (caller clones the value)
- *
- * Note: negative overflow means all rows match — instnum_val stays at its initial 0.
- *       positive overflow means no rows match — instnum_val is set to DB_BIGINT_MAX.
+ *   out_val (out)   : always set to a valid BIGINT DB_VALUE on success;
+ *                     DB_BIGINT_MAX on positive overflow (no rows), 0 on negative overflow (all rows)
  */
 static int
-qexec_fetch_and_coerce_instnum_lower (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
-				      REGU_VARIABLE * key_limit_l, DB_VALUE ** out_dbvalp)
+qexec_fetch_and_coerce_instnum_lower (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
+				      REGU_VARIABLE * key_limit_l, DB_VALUE * out_val)
 {
   TP_DOMAIN *domainp = tp_domain_resolve_default (DB_TYPE_BIGINT);
   TP_DOMAIN_STATUS dom_status;
   DB_VALUE *tmp_dbvalp;
   int error_code;
 
-  assert (xasl != NULL && xasl->instnum_val != NULL);
   assert (key_limit_l != NULL);
   assert (xasl_state != NULL);
-  assert (out_dbvalp != NULL);
-
-  *out_dbvalp = NULL;
+  assert (out_val != NULL);
 
   if (key_limit_l->type == TYPE_INARITH)
     {
       /* rownum >= N or BETWEEN: arithmetic may overflow when N exceeds BIGINT range */
-      error_code = fetch_peek_dbval (thread_p, key_limit_l, &xasl_state->vd, NULL, NULL, NULL, out_dbvalp);
+      error_code = fetch_peek_dbval (thread_p, key_limit_l, &xasl_state->vd, NULL, NULL, NULL, &tmp_dbvalp);
       if (error_code != NO_ERROR)
 	{
 	  if (er_errid () != ER_IT_DATA_OVERFLOW && er_errid () != ER_QPROC_OVERFLOW_SUBTRACTION)
@@ -14239,56 +14192,44 @@ qexec_fetch_and_coerce_instnum_lower (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    }
 
 	  /* NUMERIC -> BIGINT overflow during arithmetic: find the NUMERIC operand and check its sign */
-	  tmp_dbvalp = qexec_find_numeric_leaf (thread_p, key_limit_l, &xasl_state->vd);
+	  tmp_dbvalp = fetch_find_numeric_leaf (thread_p, key_limit_l, &xasl_state->vd);
 	  if (tmp_dbvalp == NULL)
 	    {
 	      return ER_FAILED;
 	    }
 
-	  /* if positive, returns 0 rows (DB_BIGINT_MAX) 
-	   * if negative, all rows are included (instnum_val is already initialized to 0). 
-	   */
-	  if (!(tmp_dbvalp->data.num.d.buf[0] & NUMERIC_VALUE_SIGN_BIT_MASK))
-	    {
-	      db_make_bigint (xasl->instnum_val, DB_BIGINT_MAX);
-	    }
+	  /* positive overflow: no rows match (DB_BIGINT_MAX); negative overflow: all rows match (0) */
+	  db_make_bigint (out_val, (tmp_dbvalp->data.num.d.buf[0] & NUMERIC_VALUE_SIGN_BIT_MASK) ? 0 : DB_BIGINT_MAX);
 	  er_clear ();
-	  /* overflow handled: *out_dbvalp stays NULL */
 	  return NO_ERROR;
 	}
     }
   else
     {
-      if (fetch_peek_dbval (thread_p, key_limit_l, &xasl_state->vd, NULL, NULL, NULL, out_dbvalp) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, key_limit_l, &xasl_state->vd, NULL, NULL, NULL, &tmp_dbvalp) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
     }
 
   /* coerce fetched value to BIGINT */
-  dom_status = tp_value_coerce (*out_dbvalp, *out_dbvalp, domainp);
+  dom_status = tp_value_coerce (tmp_dbvalp, out_val, domainp);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
-      if (dom_status == DOMAIN_OVERFLOW && DB_VALUE_DOMAIN_TYPE (*out_dbvalp) == DB_TYPE_NUMERIC)
+      if (dom_status == DOMAIN_OVERFLOW && DB_VALUE_DOMAIN_TYPE (tmp_dbvalp) == DB_TYPE_NUMERIC)
 	{
 	  /* NUMERIC -> BIGINT coercion overflow: handle by sign
-	   * if positive, returns 0 rows (DB_BIGINT_MAX) 
-	   * if negative, all rows are included (instnum_val is already initialized to 0)
+	   * positive overflow: no rows match (DB_BIGINT_MAX); negative overflow: all rows match (0)
 	   */
-	  if (!((*out_dbvalp)->data.num.d.buf[0] & NUMERIC_VALUE_SIGN_BIT_MASK))
-	    {
-	      db_make_bigint (xasl->instnum_val, DB_BIGINT_MAX);
-	    }
+	  db_make_bigint (out_val, (tmp_dbvalp->data.num.d.buf[0] & NUMERIC_VALUE_SIGN_BIT_MASK) ? 0 : DB_BIGINT_MAX);
 	  er_clear ();
-	  /* overflow handled: *out_dbvalp stays NULL */
-	  *out_dbvalp = NULL;
 	  return NO_ERROR;
 	}
-      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, *out_dbvalp, domainp);
+      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, tmp_dbvalp, domainp);
       return ER_FAILED;
     }
 
-  if (DB_VALUE_DOMAIN_TYPE (*out_dbvalp) != DB_TYPE_BIGINT)
+  if (DB_VALUE_DOMAIN_TYPE (out_val) != DB_TYPE_BIGINT)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
       return ER_FAILED;
@@ -14316,7 +14257,7 @@ static int
 qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
 {
   REGU_VARIABLE *key_limit_l;
-  DB_VALUE *dbvalp;
+  DB_VALUE dbval;
   int error = NO_ERROR;
 
   assert (xasl && xasl->instnum_val);
@@ -14334,23 +14275,20 @@ qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * 
     {
       key_limit_l = xasl->spec_list->indexptr->key_info.key_limit_l;
 
-      error = qexec_fetch_and_coerce_instnum_lower (thread_p, xasl, xasl_state, key_limit_l, &dbvalp);
+      error = qexec_fetch_and_coerce_instnum_lower (thread_p, xasl_state, key_limit_l, &dbval);
       if (error != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
 
-      if (dbvalp != NULL)
+      if (pr_clone_value (&dbval, xasl->instnum_val) != NO_ERROR)
 	{
-	  if (pr_clone_value (dbvalp, xasl->instnum_val) != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
+	  goto exit_on_error;
+	}
 
-	  if (xasl->save_instnum_val && pr_clone_value (dbvalp, xasl->save_instnum_val) != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
+      if (xasl->save_instnum_val && pr_clone_value (&dbval, xasl->save_instnum_val) != NO_ERROR)
+	{
+	  goto exit_on_error;
 	}
     }
 
