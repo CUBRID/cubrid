@@ -2598,14 +2598,11 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 	  vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page, helper->crt_slotid, &helper->record,
 					     helper->reusable);
 
-	  if (has_oos)
+	  int oos_err = vacuum_heap_oos_delete (thread_p, helper);
+	  if (oos_err != NO_ERROR)
 	    {
-	      int oos_err = vacuum_heap_oos_delete (thread_p, helper);
-	      if (oos_err != NO_ERROR)
-		{
-		  log_sysop_abort (thread_p);
-		  return oos_err;
-		}
+	      log_sysop_abort (thread_p);
+	      return oos_err;
 	    }
 
 	  log_sysop_commit (thread_p);
