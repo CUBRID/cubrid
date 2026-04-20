@@ -2438,10 +2438,6 @@ vacuum_ensure_oos_vfid_for_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HEL
 static int
 vacuum_cleanup_prev_version_oos (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 {
-  /* Upper bound for a single undo record. Log records are bounded by a few log pages; anything much
-   * larger than this suggests log corruption. Prevents runaway allocations from bogus length values. */
-  const int MAX_UNDO_RECORD_SIZE = IO_MAX_PAGE_SIZE * 16;
-
   LOG_LSA current_lsa;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_PAGE *log_page_p = NULL;
@@ -2495,12 +2491,12 @@ vacuum_cleanup_prev_version_oos (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * h
       if (scan == S_DOESNT_FIT)
 	{
 	  int needed = -old_recdes.length;
-	  if (needed <= 0 || needed > MAX_UNDO_RECORD_SIZE)
+	  if (needed <= 0)
 	    {
 	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
-				   "prev_version OOS cleanup: undo record size %d out of bounds (max=%d)"
+				   "prev_version OOS cleanup: undo record size %d non-positive"
 				   " at LSA %lld|%d (hfid=%d|%d, slotid=%d) — log may be corrupted.",
-				   needed, MAX_UNDO_RECORD_SIZE,
+				   needed,
 				   (long long) current_lsa.pageid, (int) current_lsa.offset,
 				   VFID_AS_ARGS (&helper->hfid.vfid), (int) helper->crt_slotid);
 	      assert_release (false);
