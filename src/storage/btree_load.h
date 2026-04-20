@@ -42,6 +42,13 @@
 typedef struct pred_expr_with_context PRED_EXPR_WITH_CONTEXT;
 typedef struct xasl_unpack_info XASL_UNPACK_INFO;
 
+/* *INDENT-OFF* */
+namespace parallel_query
+{
+  class ftab_set;
+}
+/* *INDENT-ON* */
+
 /*
  * Constants related to b+tree structure
  */
@@ -264,13 +271,6 @@ struct btree_node
   VPID pageid;			/* Identifier of the page */
 };
 
-/* *INDENT-OFF* */
-namespace parallel_query
-{
-  class ftab_set;
-}
-/* *INDENT-ON* */
-
 typedef struct filter_index_info FILTER_INDEX_INFO;
 struct filter_index_info
 {
@@ -361,7 +361,8 @@ btree_load_filter_pred_function_info (THREAD_ENTRY * thread_p, SORT_ARGS * sort_
 				      PRED_EXPR_WITH_CONTEXT ** filter_pred_p, FILTER_INDEX_INFO * filter_index_info_p,
 				      FUNCTION_INDEX_INFO * func_index_info_p, XASL_UNPACK_INFO ** func_unpack_info_p,
 				      DB_TYPE * single_node_type);
-void bt_load_clear_pred_and_unpack (THREAD_ENTRY * thread_p, SORT_ARGS * args, XASL_UNPACK_INFO * func_unpack_info);
+extern void bt_load_clear_pred_and_unpack (THREAD_ENTRY * thread_p, SORT_ARGS * args,
+					   XASL_UNPACK_INFO * func_unpack_info);
 
 
 /*

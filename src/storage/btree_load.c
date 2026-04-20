@@ -818,7 +818,6 @@ btree_load_filter_pred_function_info (THREAD_ENTRY * thread_p, SORT_ARGS * sort_
 
   if (func_index_info_p && func_index_info_p->expr_stream && func_index_info_p->expr_stream_size > 0)
     {
-      XASL_NODE *xasl_node = NULL;
       if (stx_map_stream_to_func_pred (thread_p, &func_index_info_p->expr, func_index_info_p->expr_stream,
 				       func_index_info_p->expr_stream_size, func_unpack_info_p) != NO_ERROR)
 	{
@@ -1077,8 +1076,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     {
       goto error;
     }
-
-  is_sysop_started = true;
 
 #if !defined (SERVER_MODE)
   bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args, NULL, NULL);
