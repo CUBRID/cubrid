@@ -3975,14 +3975,19 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   stats = &stats_group->stats;
   part_stats = stats_group->context_stats;
   part_cnt = stats_group->context_cnt;
-  assert (part_stats == NULL || part_cnt > 1);
+
+  /* Partition-parallel (serial partitions + PARTITION-parallel build) is the only mode that emits
+   * per-partition stats. PARALLEL_PROBE also sets context_cnt > 1 but shares a single stats line. */
+  const bool is_partition_parallel = (stats_group->status == HASHJOIN_STATUS_PARTITION
+				      || stats_group->status == HASHJOIN_STATUS_PARALLEL);
+  assert (part_stats == NULL || is_partition_parallel);
 
   outer_xasl = proc->outer.xasl;
   inner_xasl = proc->inner.xasl;
   assert (outer_xasl != NULL);
   assert (inner_xasl != NULL);
 
-  if (part_cnt > 1)
+  if (is_partition_parallel)
     {
       len = 0;
       need_separator = false;
@@ -4022,7 +4027,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
   indent += 2;
 
-  if (part_cnt <= 1)
+  if (!is_partition_parallel)
     {
       XASL_NODE *build_xasl, *probe_xasl;
 
@@ -4079,19 +4084,30 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	  qdump_print_stats_text (fp, build_xasl, indent);
 	}
 
-      fprintf (fp,
-	       "%*cPROBE (time: %d, fetch: %ld, ioread: %ld, readrows: %ld, readkeys: %ld, rows: %ld)",
-	       indent, ' ', TO_MSEC (stats->probe.elapsed_time), stats->probe.fetches, stats->probe.ioreads,
-	       stats->probe.read_rows, stats->probe.read_keys, stats->probe.qualified_rows);
-
+      if (stats->num_parallel_threads > 1)
+	{
+	  fprintf (fp,
+		   "%*cPROBE (time: %d..%d, fetch: %ld, ioread: %ld, readrows: %ld, readkeys: %ld, rows: %ld)\n",
+		   indent, ' ',
+		   TO_MSEC (stats->probe.range_time.min), TO_MSEC (stats->probe.range_time.max),
+		   stats->probe.fetches, stats->probe.ioreads,
+		   stats->probe.read_rows, stats->probe.read_keys, stats->probe.qualified_rows);
+	}
+      else
+	{
+	  fprintf (fp,
+		   "%*cPROBE (time: %d, fetch: %ld, ioread: %ld, readrows: %ld, readkeys: %ld, rows: %ld)",
+		   indent, ' ', TO_MSEC (stats->probe.elapsed_time), stats->probe.fetches, stats->probe.ioreads,
+		   stats->probe.read_rows, stats->probe.read_keys, stats->probe.qualified_rows);
 
 #if HASHJOIN_PROFILE_TIME
-      fprintf (fp, ", (F: %d, H: %d, S: %d, M: %d, A: %d)", TO_MSEC (stats->profile.probe.fetch),
-	       TO_MSEC (stats->profile.probe.hash), TO_MSEC (stats->profile.probe.search),
-	       TO_MSEC (stats->profile.probe.match), TO_MSEC (stats->profile.probe.add));
+	  fprintf (fp, ", (F: %d, H: %d, S: %d, M: %d, A: %d)", TO_MSEC (stats->profile.probe.fetch),
+		   TO_MSEC (stats->profile.probe.hash), TO_MSEC (stats->profile.probe.search),
+		   TO_MSEC (stats->profile.probe.match), TO_MSEC (stats->profile.probe.add));
 #endif /* HASHJOIN_PROFILE_TIME */
 
-      fprintf (fp, "\n");
+	  fprintf (fp, "\n");
+	}
 
       /* no parallel subquery */
       if (xasl_p->px_executor == NULL)
@@ -4217,7 +4233,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
     }
 
   /* parallel subquery or partitioned hash join */
-  if (xasl_p->px_executor != NULL || part_cnt > 1)
+  if (xasl_p->px_executor != NULL || is_partition_parallel)
     {
       fprintf (fp, "%*cSUBQUERY (uncorrelated)\n", indent, ' ');
 
@@ -4263,14 +4279,17 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
   stats = &stats_group->stats;
   part_stats = stats_group->context_stats;
   part_cnt = stats_group->context_cnt;
-  assert (part_stats == NULL || part_cnt > 1);
+
+  const bool is_partition_parallel = (stats_group->status == HASHJOIN_STATUS_PARTITION
+				      || stats_group->status == HASHJOIN_STATUS_PARALLEL);
+  assert (part_stats == NULL || is_partition_parallel);
 
   outer_xasl = proc->outer.xasl;
   inner_xasl = proc->inner.xasl;
   assert (outer_xasl != NULL);
   assert (inner_xasl != NULL);
 
-  if (part_cnt > 1)
+  if (is_partition_parallel)
     {
       len = 0;
       need_separator = false;
@@ -4308,7 +4327,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       hash_method_str[len] = '\0';
     }
 
-  if (part_cnt <= 1)
+  if (!is_partition_parallel)
     {
       XASL_NODE *build_xasl, *probe_xasl;
 
@@ -4540,7 +4559,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
     }
 
   /* parallel subquery or partitioned hash join */
-  if (xasl_p->px_executor != NULL || part_cnt > 1)
+  if (xasl_p->px_executor != NULL || is_partition_parallel)
     {
       subquery = json_array ();
 

@@ -41,5 +41,11 @@ namespace parallel_query
      */
 
     int execute_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager);
+
+    /*
+     * probe_partitions
+     */
+
+    int probe_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context);
   } /* namespace hash_join */
 } /* namespace parallel_query */

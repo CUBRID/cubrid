@@ -24,7 +24,8 @@
 #include "px_hash_join_task_manager.hpp"
 
 #include "error_manager.h"		/* er_errid, NO_ERROR, assert_release_error, ASSERT_NO_ERROR_OR_INTERRUPTED */
-#include "list_file.h"		/* qfile_destroy_list, QFILE_FREE_AND_INIT_LIST_ID */
+#include "list_file.h"		/* qfile_destroy_list, QFILE_FREE_AND_INIT_LIST_ID, qfile_connect_list */
+#include "memory_alloc.h"		/* db_private_alloc, db_private_free_and_init */
 #include "storage_common.h"		/* S_BEFORE, VPID_SET_NULL */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -241,5 +242,205 @@ namespace parallel_query
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
       return NO_ERROR;
     }
+
+    /*
+     * probe_partitions
+     */
+
+    int
+    probe_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context)
+    {
+      HASHJOIN_SHARED_PROBE_INFO shared_info;
+      UINT32 task_cnt, task_index;
+      UINT32 initialized_cnt = 0;
+      HASHJOIN_CONTEXT *contexts = nullptr;
+      int error = NO_ERROR;
+
+      HASHJOIN_STATS *stats = context->stats;
+      HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
+      assert (!thread_is_on_trace (&thread_ref) || stats != nullptr);
+
+      assert (manager != nullptr);
+      assert (context != nullptr);
+      assert (context == &manager->single_context);
+      assert (manager->px_worker_manager != nullptr);
+      assert (manager->contexts == nullptr);
+      assert (manager->context_cnt == 0);
+
+      task_cnt = manager->num_parallel_threads;
+      assert (task_cnt >= 2);
+
+      /* Per-task output list array */
+      shared_info.task_list_ids =
+	(QFILE_LIST_ID **) db_private_alloc (&thread_ref, task_cnt * sizeof (QFILE_LIST_ID *));
+      if (shared_info.task_list_ids == nullptr)
+	{
+	  assert_release_error (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+      memset (shared_info.task_list_ids, 0, task_cnt * sizeof (QFILE_LIST_ID *));
+
+      /* Allocate per-worker secondary contexts. Each borrows the primary's hash_table and list_id
+       * pointers but owns its own hash_scan cursor state, temp_keys, and build-side list_scan_id. */
+      contexts = (HASHJOIN_CONTEXT *) db_private_alloc (&thread_ref, task_cnt * sizeof (HASHJOIN_CONTEXT));
+      if (contexts == nullptr)
+	{
+	  db_private_free_and_init (&thread_ref, shared_info.task_list_ids);
+	  assert_release_error (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+      memset (contexts, 0, task_cnt * sizeof (HASHJOIN_CONTEXT));
+
+      for (task_index = 0; task_index < task_cnt; task_index++)
+	{
+	  error = hjoin_init_probe_secondary_context (&thread_ref, manager, context, &contexts[task_index]);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_cleanup;
+	    }
+	  initialized_cnt++;
+	}
+
+      manager->contexts = contexts;
+      manager->context_cnt = task_cnt;
+
+      /* Reflect the real per-worker context count in the dump-facing stats_group. query_dump
+       * relies on stats_group->status (HASHJOIN_STATUS_PARALLEL_PROBE) to keep the single-stats
+       * layout rather than branching into partition output. */
+      if (thread_is_on_trace (&thread_ref) && manager->stats_group != nullptr)
+	{
+	  manager->stats_group->context_cnt = task_cnt;
+	}
+
+      {
+	THREAD_ENTRY *main_thread_p = thread_get_main_thread (&thread_ref);
+	task_manager tm (manager->px_worker_manager, *main_thread_p);
+
+	if (thread_is_on_trace (&thread_ref))
+	  {
+	    hjoin_trace_start (&thread_ref, &start_stats);
+	  }
+
+	for (task_index = 0; task_index < task_cnt; task_index++)
+	  {
+	    probe_task *task =
+	      new probe_task (tm, manager, &contexts[task_index], &shared_info, (int) task_index);
+	    tm.push_task (task);
+	  }
+
+	tm.join ();
+
+	if (thread_is_on_trace (&thread_ref))
+	  {
+	    hjoin_trace_drain_worker_stats (&thread_ref, manager);
+	    hjoin_trace_end (&thread_ref, &stats->probe, &start_stats);
+
+	    stats->probe.range_time.min = shared_info.probe_range_time.min;
+	    stats->probe.range_time.max = shared_info.probe_range_time.max;
+	    stats->num_parallel_threads = task_cnt;
+	  }
+
+	if (tm.has_error ())
+	  {
+	    for (task_index = 0; task_index < task_cnt; task_index++)
+	      {
+		if (shared_info.task_list_ids[task_index] != nullptr)
+		  {
+		    qfile_destroy_list (&thread_ref, shared_info.task_list_ids[task_index]);
+		    QFILE_FREE_AND_INIT_LIST_ID (shared_info.task_list_ids[task_index]);
+		  }
+	      }
+	    db_private_free_and_init (&thread_ref, shared_info.task_list_ids);
+
+	    for (task_index = 0; task_index < initialized_cnt; task_index++)
+	      {
+		hjoin_clear_probe_secondary_context (&thread_ref, &contexts[task_index]);
+	      }
+
+	    tm.clear_interrupt (thread_ref);
+	    assert_release_error (er_errid () != NO_ERROR);
+	    return er_errid ();
+	  }
+      }
+
+      /* Merge per-task lists into primary context->list_id via O(1) pointer chain */
+      for (task_index = 0; task_index < task_cnt; task_index++)
+	{
+	  QFILE_LIST_ID *task_list = shared_info.task_list_ids[task_index];
+	  if (task_list == nullptr || task_list->tuple_cnt == 0)
+	    {
+	      if (task_list != nullptr)
+		{
+		  qfile_destroy_list (&thread_ref, task_list);
+		  QFILE_FREE_AND_INIT_LIST_ID (shared_info.task_list_ids[task_index]);
+		}
+	      continue;
+	    }
+
+	  if (context->list_id == nullptr)
+	    {
+	      context->list_id = task_list;
+	      shared_info.task_list_ids[task_index] = nullptr;
+	    }
+	  else
+	    {
+	      error = qfile_connect_list (&thread_ref, context->list_id, task_list);
+	      if (error != NO_ERROR)
+		{
+		  for (; task_index < task_cnt; task_index++)
+		    {
+		      if (shared_info.task_list_ids[task_index] != nullptr)
+			{
+			  qfile_destroy_list (&thread_ref, shared_info.task_list_ids[task_index]);
+			  QFILE_FREE_AND_INIT_LIST_ID (shared_info.task_list_ids[task_index]);
+			}
+		    }
+		  db_private_free_and_init (&thread_ref, shared_info.task_list_ids);
+
+		  for (task_index = 0; task_index < initialized_cnt; task_index++)
+		    {
+		      hjoin_clear_probe_secondary_context (&thread_ref, &contexts[task_index]);
+		    }
+
+		  assert_release_error (er_errid () != NO_ERROR);
+		  return er_errid ();
+		}
+	      shared_info.task_list_ids[task_index] = nullptr;
+	    }
+	}
+
+      db_private_free_and_init (&thread_ref, shared_info.task_list_ids);
+
+      /* Tear down per-worker context resources. The contexts array itself stays allocated on the
+       * manager so hjoin_clear_manager can free it uniformly; each entry is now a safe no-op for
+       * downstream clear paths (list_ids and hash_table pointers have been nulled). */
+      for (task_index = 0; task_index < initialized_cnt; task_index++)
+	{
+	  hjoin_clear_probe_secondary_context (&thread_ref, &contexts[task_index]);
+	}
+
+      ASSERT_NO_ERROR_OR_INTERRUPTED ();
+      return NO_ERROR;
+
+error_cleanup:
+      for (task_index = 0; task_index < initialized_cnt; task_index++)
+	{
+	  hjoin_clear_probe_secondary_context (&thread_ref, &contexts[task_index]);
+	}
+      if (manager->contexts == nullptr)
+	{
+	  /* contexts array not yet handed to manager; free it here */
+	  db_private_free_and_init (&thread_ref, contexts);
+	}
+      db_private_free_and_init (&thread_ref, shared_info.task_list_ids);
+
+      if (error == NO_ERROR || er_errid () == NO_ERROR)
+	{
+	  assert_release_error (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	}
+      return error;
+    }
+
   } /* namespace hash_join */
 } /* namespace parallel_query */

@@ -71,6 +71,7 @@ typedef enum hashjoin_status
   HASHJOIN_STATUS_SINGLE,
   HASHJOIN_STATUS_PARTITION,
   HASHJOIN_STATUS_PARALLEL,
+  HASHJOIN_STATUS_PARALLEL_PROBE,
   HASHJOIN_STATUS_END,
   HASHJOIN_STATUS_ERROR
 } HASHJOIN_STATUS;
@@ -211,6 +212,11 @@ typedef struct hashjoin_stats
 
 typedef struct hashjoin_stats_group
 {
+  /* Mirror of single_context->status persisted into XASL-lifetime storage so query_dump can
+   * distinguish PARTITION / PARALLEL / PARALLEL_PROBE / SINGLE after the manager is torn down.
+   * Previously, query_dump used (context_cnt > 1) as a proxy for partition-parallel; probe-parallel
+   * also populates context_cnt > 1 so status must be consulted directly. */
+  HASHJOIN_STATUS status;
   HASHJOIN_STATS stats;
   HASHJOIN_STATS *context_stats;
   UINT32 context_cnt;
@@ -293,6 +299,33 @@ typedef struct hashjoin_shared_join_info
   // *INDENT-ON*
 } HASHJOIN_SHARED_JOIN_INFO;
 
+/* HASHJOIN_SHARED_PROBE_INFO */
+typedef struct hashjoin_shared_probe_info
+{
+  // *INDENT-OFF*
+  std::mutex scan_mutex;
+  SCAN_POSITION scan_position;
+  VPID next_vpid;
+
+  /* Per-task output lists; array of task_cnt entries, allocated by probe_partitions. */
+  QFILE_LIST_ID **task_list_ids;
+
+  std::mutex stats_mutex;
+  HASHJOIN_RANGE_TIME_STATS probe_range_time;
+
+  hashjoin_shared_probe_info ()
+    : scan_mutex ()
+    , scan_position (S_BEFORE)
+    , next_vpid (VPID_INITIALIZER)
+    , task_list_ids (nullptr)
+    , stats_mutex ()
+    , probe_range_time (HASHJOIN_RANGE_TIME_STATS_INITIALIZER)
+  {
+    //
+  }
+  // *INDENT-ON*
+} HASHJOIN_SHARED_PROBE_INFO;
+
 /* HASHJOIN_CONTEXT*/
 typedef struct hashjoin_context
 {
@@ -306,6 +339,11 @@ typedef struct hashjoin_context
   HASHJOIN_FETCH_INFO *probe;
 
   HASH_LIST_SCAN hash_scan;
+
+  /* true when hash_scan's hash_table pointer is borrowed from another context (parallel probe
+   * secondary). hjoin_scan_clear skips destroying the hash table in that case. */
+  bool hash_table_is_shared;
+
   PRED_EXPR *during_join_pred;
   VAL_DESCR *val_descr;
 
@@ -398,8 +436,28 @@ int hjoin_init_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
 void hjoin_clear_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 				    HASHJOIN_SHARED_SPLIT_INFO * shared_info);
 
+/* Per-worker secondary context helpers used by parallel probe.
+ *
+ * A secondary context shares the hash_table (already built into the primary context's hash_scan)
+ * and the outer/inner/build/probe list_id pointers. It owns its own temp_key / temp_new_key /
+ * build-side list_scan_id so multiple workers can look up matches concurrently without
+ * interfering with each other.
+ *
+ * Caller contract:
+ *   - primary must have completed hjoin_build (hash_table populated).
+ *   - secondary must be zero-initialized before this call.
+ */
+int hjoin_init_probe_secondary_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
+					HASHJOIN_CONTEXT * primary, HASHJOIN_CONTEXT * secondary);
+void hjoin_clear_probe_secondary_context (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * secondary);
+
 int hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFILE_TUPLE_RECORD * tuple_record,
 		     HASH_SCAN_KEY * key, HASH_SCAN_KEY * compare_key, bool * need_skip_next);
+int hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST_SCAN_ID * list_scan_id,
+		     QFILE_TUPLE_RECORD * tuple_record);
+int hjoin_merge_tuple_to_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
+				  QFILE_TUPLE_RECORD * outer_record, QFILE_TUPLE_RECORD * inner_record,
+				  QFILE_LIST_MERGE_INFO * merge_info, QFILE_TUPLE_RECORD * overflow_record);
 void hjoin_update_tuple_hash_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_record, UINT32 hash_key);
 
 void hjoin_trace_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats);

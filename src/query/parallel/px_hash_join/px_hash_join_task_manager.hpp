@@ -169,5 +169,24 @@ namespace parallel_query
 
 	HASHJOIN_CONTEXT *get_next_context ();
     };
+    /*
+     * probe_task
+     */
+
+    class probe_task: public base_task
+    {
+      public:
+	probe_task (task_manager &task_manager, HASHJOIN_MANAGER *manager,
+		    HASHJOIN_CONTEXT *context, HASHJOIN_SHARED_PROBE_INFO *shared_info, int index);
+	void execute (cubthread::entry &thread_ref) override;
+
+      private:
+	HASHJOIN_CONTEXT *m_context;
+	HASHJOIN_SHARED_PROBE_INFO *m_shared_info;
+
+	void execute_inner (cubthread::entry &thread_ref);
+	void execute_outer (cubthread::entry &thread_ref);
+	PAGE_PTR get_next_page (cubthread::entry &thread_ref);
+    };
   } /* namespace hash_join */
 } /* namespace parallel_query */
