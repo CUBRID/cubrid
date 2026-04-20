@@ -1582,13 +1582,6 @@ extern "C"
     assert (xasl != nullptr);
     assert (vd != nullptr);
 
-    /* count(*) fast path may set need_count_only between scan_open_scan and scan_start_scan;
-     * parallel dispatch adds coordination cost with no payload to amortise. */
-    if (scan_id->s.isid.need_count_only)
-      {
-	return NO_ERROR;
-      }
-
     /* Read the actual btree file size; compute_parallel_degree applies
      * PRM_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD against this. On lookup failure
      * we conservatively skip parallel — the serial path will succeed. */

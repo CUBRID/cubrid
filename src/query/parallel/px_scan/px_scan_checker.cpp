@@ -688,9 +688,6 @@ namespace parallel_scan
       case INSERT_PROC:
 	break;
       case MERGELIST_PROC:
-	/* The MERGELIST_PROC node itself opens outer_spec_list / inner_spec_list as
-	 * ordered merge cursors and must run on the main thread; only its input
-	 * subtrees (outer_xasl / inner_xasl) are parallel-eligible via aptr. */
 	set_flag (result, CANNOT_PARALLEL_SCAN);
 	break;
       case OBJFETCH_PROC:
@@ -722,9 +719,8 @@ namespace parallel_scan
 	  }
 	else
 	  {
-	    result |= check<is_outptr_list> (xaslp);
+	    /* this xasl not belong to current arg */
 	  }
-
       }
 
     if (arg->bptr_list || arg->fptr_list || arg->connect_by_ptr)
@@ -745,34 +741,7 @@ namespace parallel_scan
       {
 	for (XASL_NODE *xaslp = arg->scan_ptr; xaslp; xaslp = xaslp->scan_ptr)
 	  {
-	    result |= sibling_check<is_outptr_list> (arg->scan_ptr);
-	  }
-
-	/* Correlated inline-view / derived-table subquery attached to an inner scan_ptr:
-	 * add_subqueries() in plan_generation.c appends such a sub-XASL to the dptr_list
-	 * of the inner scan_ptr that owns the correlating spec. At runtime the parent
-	 * scans it through a TARGET_LIST access spec whose ACCESS_SPEC_LIST_ID must be
-	 * re-materialized per outer tuple by qexec_execute_mainblock on the dptr.
-	 *
-	 * Parallel workers cannot drive that per-tuple re-materialization: join_info::
-	 * capture_join_info snapshots scan_info.list_id on the main thread BEFORE workers
-	 * launch, and workers open list scans on that captured pointer with no hook to
-	 * re-invoke the correlated dptr between outer tuples. They observe an empty /
-	 * stale list_id and silently return zero matches.
-	 *
-	 * XASL_LINK_TO_REGU_VARIABLE distinguishes scalar correlated subqueries (EXISTS,
-	 * IN, SELECT-list) — those are evaluated via fetch_peek_dbval during worker
-	 * write() and are safe. Only non-regu-var dptrs (derived tables) need blocking. */
-	for (XASL_NODE *xp = arg->scan_ptr; xp; xp = xp->scan_ptr)
-	  {
-	    for (XASL_NODE *dp = xp->dptr_list; dp; dp = dp->next)
-	      {
-		if (!XASL_IS_FLAGED (dp, XASL_LINK_TO_REGU_VARIABLE))
-		  {
-		    set_flag (result, CANNOT_PARALLEL_SCAN);
-		    break;
-		  }
-	      }
+	    result |= sibling_check<is_outptr_list> (xaslp);
 	  }
       }
 
@@ -862,11 +831,6 @@ namespace parallel_scan
 	set_flag (result, CANNOT_PARALLEL_SCAN);
 	break;
       case MERGELIST_PROC:
-	/* outer_spec_list / inner_spec_list are TARGET_LIST specs that qexec_merge_list_outer
-	 * consumes as ordered list cursors via SCAN_ID->s.llsid.list_id. They scan the already
-	 * materialized list_id from outer_xasl / inner_xasl; promoting them to parallel list
-	 * scan overwrites the llsid union with pllsid_parallel and breaks the merge cursor.
-	 * Child XASL subtrees remain eligible for parallel scan during their own execution. */
 	for (ACCESS_SPEC_TYPE *specp = arg->proc.mergelist.outer_spec_list; specp; specp = specp->next)
 	  {
 	    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
@@ -875,11 +839,6 @@ namespace parallel_scan
 	  {
 	    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
 	  }
-	/* outer_xasl / inner_xasl (chained in arg->aptr_list by ptqo_to_merge_list_proc)
-	 * must deliver rows in merge-key order. Parallel index scan and parallel temp
-	 * scan break that ordering; only sequential parallel heap scan preserves it
-	 * (gather assembles list_merge in sort order). Block the disqualifying scans
-	 * here while still allowing the eligibility check to promote the safe ones. */
 	for (XASL_NODE *xaslp = arg->aptr_list; xaslp; xaslp = xaslp->next)
 	  {
 	    block_parallel_index_and_temp_in_subtree (xaslp);
@@ -933,34 +892,11 @@ namespace parallel_scan
 
     result |= check<false> (arg);
 
-    /* XASL-level constraints that disqualify parallel index scan only:
-     *   - rownum (instnum) requires sequential numbering; heap row_by_row mode handles
-     *     this but parallel index scan has no row_by_row fallback.
-     *   - Analytic skip-sort / limit optimizations rely on index-ordered delivery
-     *     which parallel leaf-page distribution breaks. */
     const bool block_index_spec =
 	    (arg->instnum_pred || arg->instnum_val)
 	    || XASL_IS_FLAGED (arg, XASL_ANALYTIC_SKIP_SORT)
 	    || XASL_IS_FLAGED (arg, XASL_ANALYTIC_USES_LIMIT_OPT);
 
-    /* XASL-level constraint that disqualifies parallel scan on ALL specs (TARGET_CLASS
-     * and TARGET_LIST alike):
-     *   - XASL_SKIP_ORDERBY_LIST means the sort step is suppressed because the chosen
-     *     plan (SORT-LIMIT skip-orderby in plan_generation.c, or multi-range-opt in
-     *     query_executor.c) guarantees that the spec delivers tuples in the exact
-     *     orderby order. Parallel heap/index page distribution and parallel list-merge
-     *     gathering do NOT preserve that order: workers consume disjoint page ranges
-     *     or sub-list partitions and the merge step re-interleaves them in arrival
-     *     order, not orderby order. Consuming the resulting list_id with the sort
-     *     omitted produces out-of-order rows and, because downstream iterators reuse
-     *     list_id / ftab state built for ordered delivery, can corrupt cursor state
-     *     across statements (manifests intermittently as error -677 under load).
-     *
-     * We block BOTH TARGET_CLASS and TARGET_LIST specs here. TARGET_LIST is just as
-     * affected: a BUILDLIST_PROC child materializes ordered output that the parent
-     * skip-orderby consumer relies on; promoting its sibling spec to parallel list
-     * scan re-orders the same tuples. Gating only the index shape would leave list
-     * scans under SORT-LIMIT joins exposed (the shape of join_orderby_skip.sql). */
     const bool block_all_specs = XASL_IS_FLAGED (arg, XASL_SKIP_ORDERBY_LIST);
 
     if (is_flag_set (result, CANNOT_PARALLEL_SCAN) || block_all_specs)
@@ -1008,6 +944,11 @@ namespace parallel_scan
 		for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
 		  {
 		    ACCESS_SPEC_UNSET_FLAG (specp, ACCESS_SPEC_FLAG_MERGEABLE_LIST);
+		    if (specp->type == TARGET_LIST
+			|| (specp->type == TARGET_CLASS && specp->access == ACCESS_METHOD_INDEX))
+		      {
+			ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+		      }
 		  }
 	      }
 	  }
@@ -1015,13 +956,6 @@ namespace parallel_scan
 
   }
 
-  /* MERGELIST_PROC consumes outer_xasl / inner_xasl results as ordered list cursors.
-   * Parallel index scan reorders rows across workers and parallel temp scan rewrites
-   * the cursor union, both of which break merge-sort ordering required by the merge join.
-   * Plain parallel heap scan is still safe because list_merge gather preserves the
-   * sort order required by the outer ORDER BY before the merge feeds a temp/list anyway.
-   * Walk the subtree and force NO_PARALLEL_SCAN only on TARGET_LIST and indexed
-   * TARGET_CLASS specs; leave sequential heap specs eligible. */
   void block_parallel_index_and_temp_in_subtree (XASL_NODE *arg)
   {
     if (!arg)

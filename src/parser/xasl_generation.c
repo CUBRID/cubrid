@@ -12678,10 +12678,6 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_FOR_UPDATE);
 		}
 
-	      /* Propagate parallel-scan hints (NO_PARALLEL_SCAN / PARALLEL(N)) to both
-	       * heap (ACCESS_METHOD_SEQUENTIAL) and index (ACCESS_METHOD_INDEX) access specs.
-	       * Other access methods (SEQUENTIAL_RECORD_INFO / SAMPLING / PAGE_SCAN / INDEX_KEY_INFO
-	       * / INDEX_NODE_INFO) do not support parallel scan. */
 	      if (access->access == ACCESS_METHOD_SEQUENTIAL || access->access == ACCESS_METHOD_INDEX)
 		{
 		  if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NO_PARALLEL_SCAN))
@@ -12828,6 +12824,16 @@ pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE
   access =
     pt_make_list_access_spec (subquery_proc, ACCESS_METHOD_SEQUENTIAL, NULL, where, regu_attributes_pred,
 			      regu_attributes_rest, regu_attributes_build, regu_attributes_probe);
+
+  if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NO_PARALLEL_SCAN))
+    {
+      ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+    }
+  if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PARALLEL_THREAD))
+    {
+      ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS);
+      access->num_parallel_threads = spec->info.spec.num_parallel_threads;
+    }
 
   if (access && subquery_proc && (regu_attributes_pred || regu_attributes_rest || !spec->info.spec.as_attr_list))
     {

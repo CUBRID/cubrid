@@ -3550,19 +3550,6 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		  spec->s_id.s.phsid.trace_storage = NULL;
 		}
 	    }
-	  else if (spec->s_id.type == S_PARALLEL_LIST_SCAN)
-	    {
-	      if (spec->s_id.s.pllsid_parallel.trace_storage)
-		{
-		  if (!spec->s_id.scan_stats.noscan)
-		    {
-		      spec->s_id.s.pllsid_parallel.trace_storage->dump_stats_text (fp, multi_spec_indent, class_name);
-		    }
-		  spec->s_id.s.pllsid_parallel.trace_storage->~accumulative_trace_storage ();
-		  free (spec->s_id.s.pllsid_parallel.trace_storage);
-		  spec->s_id.s.pllsid_parallel.trace_storage = NULL;
-		}
-	    }
 	  else if (spec->s_id.type == S_PARALLEL_INDEX_SCAN)
 	    {
 	      if (spec->s_id.s.pisid.trace_storage)
@@ -3680,6 +3667,21 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
       else
 	{
 	  scan_print_stats_text (fp, &spec->s_id);
+#if !WINDOWS
+	  if (spec->s_id.type == S_PARALLEL_LIST_SCAN)
+	    {
+	      if (spec->s_id.s.pllsid_parallel.trace_storage)
+		{
+		  if (!spec->s_id.scan_stats.noscan)
+		    {
+		      spec->s_id.s.pllsid_parallel.trace_storage->dump_stats_text (fp, multi_spec_indent, class_name);
+		    }
+		  spec->s_id.s.pllsid_parallel.trace_storage->~accumulative_trace_storage ();
+		  free (spec->s_id.s.pllsid_parallel.trace_storage);
+		  spec->s_id.s.pllsid_parallel.trace_storage = NULL;
+		}
+	    }
+#endif
 	}
 
       fprintf (fp, "\n");
