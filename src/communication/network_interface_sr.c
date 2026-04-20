@@ -4808,7 +4808,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   TRAN_STATE tran_state;
   bool is_tran_auto_commit;
 
-  trace_level = prm_get_integer_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN);
+  trace_level = prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) ? TRACE_LOG_LEVEL_DETAIL : TRACE_LOG_LEVEL_OFF;
   trace_slow_msec = prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS);
   trace_ioreads = prm_get_integer_value (PRM_ID_SQL_TRACE_IOREADS);
 
