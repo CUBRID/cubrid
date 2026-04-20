@@ -420,7 +420,7 @@ extern "C"
     assert (spec->num_parallel_threads == -1 /* auto-compute */
 	    || ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS));
 
-    num_parallel_threads = parallel_query::compute_parallel_degree (parallel_query::parallel_type::HEAP_SCAN,
+    num_parallel_threads = parallel_query::compute_parallel_degree (parallel_query::parallel_type::SCAN,
 			   num_user_pages, spec->num_parallel_threads /* hint */);
     if (num_parallel_threads < 2)
       {
@@ -965,7 +965,7 @@ extern "C"
     assert (spec->num_parallel_threads == -1
 	    || ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS));
 
-    num_parallel_threads = parallel_query::compute_parallel_degree (parallel_query::parallel_type::HEAP_SCAN,
+    num_parallel_threads = parallel_query::compute_parallel_degree (parallel_query::parallel_type::SCAN,
 			   list_id->page_cnt, spec->num_parallel_threads /* hint */);
     if (num_parallel_threads < 2)
       {
@@ -1583,7 +1583,7 @@ extern "C"
     assert (vd != nullptr);
 
     /* Read the actual btree file size; compute_parallel_degree applies
-     * PRM_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD against this. On lookup failure
+     * PRM_PARALLEL_SCAN_PAGE_THRESHOLD against this. On lookup failure
      * we conservatively skip parallel — the serial path will succeed. */
     int btree_npages = 0;
     if (scan_id->s.isid.indx_info == nullptr
@@ -1593,7 +1593,7 @@ extern "C"
 	return NO_ERROR;
       }
 
-    num_parallel_threads = parallel_query::compute_parallel_degree (parallel_query::parallel_type::INDEX_SCAN,
+    num_parallel_threads = parallel_query::compute_parallel_degree (parallel_query::parallel_type::SCAN,
 			   (UINT64) btree_npages, spec->num_parallel_threads /* hint */);
     if (num_parallel_threads < 2)
       {
