@@ -1652,6 +1652,13 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
       assert (false);
       break;
 
+    case DB_TYPE_VECTOR:
+      /* Default domain without a known dimension; callers that have the
+       * dimension available (e.g., pt_data_type_to_db_domain) build a
+       * domain with the actual precision directly via tp_domain_construct. */
+      retval = tp_domain_construct (domain_type, NULL, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+      break;
+
     default:
       assert (false);
       break;
