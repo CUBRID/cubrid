@@ -42,6 +42,7 @@ namespace parallel_query
     static int heap_scan_page_threshold;
     static int hash_join_page_threshold;
     static int sort_page_threshold;
+    static int index_scan_page_threshold;
 
     // *INDENT-OFF*
     std::call_once(once, [] {
@@ -53,6 +54,7 @@ namespace parallel_query
       heap_scan_page_threshold = prm_get_integer_value (PRM_ID_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD);
       hash_join_page_threshold = prm_get_integer_value (PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD);
       sort_page_threshold = prm_get_integer_value (PRM_ID_PARALLEL_SORT_PAGE_THRESHOLD);
+      index_scan_page_threshold = prm_get_integer_value (PRM_ID_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD);
     });
     // *INDENT-ON*
 
@@ -79,6 +81,10 @@ namespace parallel_query
 
       case parallel_type::SORT:
 	page_threshold = (UINT32) sort_page_threshold;
+	break;
+
+      case parallel_type::INDEX_SCAN:
+	page_threshold = (UINT32) index_scan_page_threshold;
 	break;
 
       case parallel_type::SUBQUERY:

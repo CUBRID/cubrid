@@ -28,10 +28,11 @@ namespace parallel_query
 {
   enum class parallel_type : int
   {
-    HEAP_SCAN = 0,
-    HASH_JOIN = 1,
-    SORT      = 2,
-    SUBQUERY  = 3,
+    HEAP_SCAN  = 0,
+    HASH_JOIN  = 1,
+    SORT       = 2,
+    SUBQUERY   = 3,
+    INDEX_SCAN = 4,
   };
 
   UINT32 compute_parallel_degree (parallel_type type, UINT64 num_pages,
