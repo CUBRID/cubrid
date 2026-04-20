@@ -1859,6 +1859,19 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
     case DB_TYPE_RESULTSET:
     case DB_TYPE_TABLE:
       break;
+    case DB_TYPE_VECTOR:
+      /* VECTOR domains match on dimension (stored in precision). A 0 / floating
+       * precision on dom2 means "any dimension" — used during literal coercion. */
+      if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH || exact == TP_SET_MATCH)
+	{
+	  match = (dom1->precision == dom2->precision);
+	}
+      else
+	{
+	  match = (dom2->precision == 0 || dom2->precision == TP_FLOATING_PRECISION_VALUE
+		   || dom1->precision == dom2->precision);
+	}
+      break;
     case DB_TYPE_ELO:
     default:
       assert (false);
@@ -3446,6 +3459,27 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	case DB_TYPE_MIDXKEY:
 	  break;
 	case DB_TYPE_TABLE:
+	  break;
+	case DB_TYPE_VECTOR:
+	  /* Construct a domain carrying the vector's dimension as precision. */
+	  if (dbuf == NULL)
+	    {
+	      domain = tp_domain_new (value_type);
+	      if (domain == NULL)
+		{
+		  return NULL;
+		}
+	    }
+	  else
+	    {
+	      domain = dbuf;
+	      tp_domain_init (dbuf, value_type);
+	    }
+	  domain->precision = val->data.vec.dimension;
+	  if (dbuf == NULL)
+	    {
+	      domain = tp_domain_cache (domain);
+	    }
 	  break;
 	case DB_TYPE_ELO:
 	default:
