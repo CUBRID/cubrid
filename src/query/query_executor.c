@@ -1563,13 +1563,6 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
 		  /* regu_var->xasl not cleared yet. Clear the values allocated during execution. */
 		  pg_cnt += qexec_clear_xasl (thread_p, regu_var->xasl, is_final, for_parallel_aptr);
 		}
-	      else
-		{
-		  /* xcache clone reuse: XASL already cleared this run (status reset to XASL_INITIALIZED),
-		   * so skip full qexec_clear_xasl. But CCI handles must still be released — safe no-op if
-		   * qexec_clear_xasl already ran qexec_final_close_dblink_specs (stmt_handle = -1 sentinel). */
-		  qexec_final_close_dblink_specs (regu_var->xasl);
-		}
 	    }
 	  else if (regu_var->xasl->status != XASL_CLEARED)
 	    {
@@ -15914,13 +15907,10 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      xasl->executed_parallelism = 0;
 			    }
 			}
-		      /* CBRD-26601: corr DBLink aptr subqueries must not run in parallel threads — bind reads
-		       * outer val_list that could be stale once the outer row advances in another thread. */
-		      if (xasl->px_executor && !IS_CORR_DBLINK_XASL (xptr2))
+		      if (xasl->px_executor)
 			{
 			  if (!xasl->px_executor->add_job (thread_p, xptr2, xasl_state))
 			    {
-			      /* Parallel slot exhausted; fall back to sequential execution. */
 			      if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
 				{
 				  if (tplrec.tpl)

@@ -12716,8 +12716,7 @@ pt_dblink_corr_side_is_outer_ref (PT_NODE * node, UINTPTR dblink_sid)
       node = node->info.expr.arg1;
     }
   return node != NULL && node->node_type == PT_NAME
-    && node->info.name.spec_id != 0 && node->info.name.spec_id != dblink_sid
-    && node->info.name.correlation_level > 0;
+    && node->info.name.spec_id != 0 && node->info.name.spec_id != dblink_sid && node->info.name.correlation_level > 0;
 }
 
 /*
