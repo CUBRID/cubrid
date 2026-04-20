@@ -335,7 +335,7 @@ sp_make_int_sp_value_from_string (SP_VALUE * value_p, char *pos, int length)
     {
       return ER_SP_INVALID_HINT;
     }
-  pos[length] = tmp;
+
   value_p->type = VT_INTEGER;
   return NO_ERROR;
 }
