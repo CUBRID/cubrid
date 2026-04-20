@@ -594,6 +594,7 @@ static KEYWORD_RECORD keywords[] = {
   {VAR_SAMP, "VAR_SAMP", 1},
   {VARYING, "VARYING", 0},
   {VCLASS, "VCLASS", 0},
+  {VECTOR_, "VECTOR", 0},
   {VIEW, "VIEW", 0},
   {VISIBLE, "VISIBLE", 1},
   {VOLUME, "VOLUME", 1},
