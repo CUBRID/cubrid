@@ -3643,8 +3643,14 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	   * HAS_OOS set (only RVHF_UPDATE_NOTIFY_VACUUM and RVHF_MVCC_DELETE_MODIFY_HOME emit such
 	   * undo — see Phase 0 audit), extract and delete the old OOS OIDs here. Zero-byte undo
 	   * paths (RVHF_MVCC_INSERT, RVHF_MVCC_DELETE_REC_HOME, RVHF_MVCC_NO_MODIFY_HOME,
-	   * RVHF_MVCC_REDISTRIBUTE) have no prev-version OOS to reclaim, so the size-guard below
-	   * handles them correctly by skipping. */
+	   * RVHF_MVCC_REDISTRIBUTE) skip via the size guard below.
+	   *
+	   * Safety of reading undo_data across the sysop: heap_recdes_get_oos_oids (called from
+	   * vacuum_forward_walk_delete_oos) copies OIDs out of the recdes into a self-owned
+	   * OID_VECTOR on the first line and never touches undo_data again. The subsequent
+	   * oos_delete loop iterates that vector — so even if oos_delete's RVOOS_DELETE appends
+	   * rotate the log page that undo_data points into, no stale-pointer read occurs. No
+	   * defensive copy required. */
 	  if (undo_data != NULL && undo_data_size > 0)
 	    {
 	      RECDES undo_recdes;
@@ -3655,46 +3661,11 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 
 	      if (heap_recdes_contains_oos (&undo_recdes))
 		{
-		  /* Upper-bound sanity check: no legitimate heap recdes exceeds two pages. A
-		   * larger value indicates a corrupted log record; abort cleanup for this
-		   * record rather than memcpy from potentially unmapped memory. */
-		  if (undo_data_size > 2 * IO_MAX_PAGE_SIZE)
-		    {
-		      assert_release (false);
-		      goto oos_cleanup_done;
-		    }
-
-		  /* Defensive copy of the undo payload BEFORE invoking any log-writing code.
-		   * oos_delete appends RVOOS_DELETE records which may rotate log pages and
-		   * invalidate `undo_data` (which points into the shared log page buffer when
-		   * the record fits on a single page). The copy is cheap (small recdes) and
-		   * avoids a correctness hazard flagged in v2 Risk table. */
-		  char undo_copy_stack[IO_MAX_PAGE_SIZE];
-		  char *undo_copy = undo_copy_stack;
-		  bool undo_copy_on_heap = false;
-
-		  if ((size_t) undo_data_size > sizeof (undo_copy_stack))
-		    {
-		      undo_copy = (char *) db_private_alloc (thread_p, undo_data_size);
-		      if (undo_copy == NULL)
-			{
-			  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
-					       "forward-walk oos cleanup: failed to allocate %d bytes for undo copy",
-					       undo_data_size);
-			  er_clear ();
-			  /* Skip OOS cleanup for this record; vacuum block continues. */
-			  goto oos_cleanup_done;
-			}
-		      undo_copy_on_heap = true;
-		    }
-		  memcpy (undo_copy, undo_data, undo_data_size);
-		  undo_recdes.data = undo_copy;
-
 		  VFID oos_vfid;
 		  if (vacuum_oos_vfid_cache_lookup (thread_p, oos_vfid_cache, &oos_vfid_cache_size,
 						    &log_vacuum.vfid, &oos_vfid))
 		    {
-		      /* Sysop ensures the multi-chunk oos_delete sequence is atomic under recovery. */
+		      /* Sysop makes the multi-chunk oos_delete sequence atomic under recovery. */
 		      log_sysop_start (thread_p);
 
 		      int oos_err = vacuum_forward_walk_delete_oos (thread_p, &undo_recdes, &oos_vfid);
@@ -3713,15 +3684,8 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 			  /* Do not fail the vacuum block; continue processing. */
 			}
 		    }
-
-		  if (undo_copy_on_heap)
-		    {
-		      db_private_free_and_init (thread_p, undo_copy);
-		    }
 		}
 	    }
-	oos_cleanup_done:
-	  ;
 	}
       else if (LOG_IS_MVCC_BTREE_OPERATION (log_record_data.rcvindex))
 	{
