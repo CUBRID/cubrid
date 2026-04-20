@@ -85,6 +85,7 @@
 #include "porting.h"
 #include "log_manager.h"
 #include "catalog_class.h"
+#include "boot_perf_trace.h"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
@@ -2183,6 +2184,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   event_log_init (db_name);
   trace_log_init (db_name);
 
+  /* Initialize tsc-timer early so BOOT_PHASE_* can use it from here on. */
+  tsc_init ();
+  BOOT_PHASE_BEGIN ("01_area_and_type_init");
+#if !defined(SA_MODE)
+  er_log_debug (ARG_FILE_LINE, "boot: phase 1 begin (area/type init)");
+#endif
+
   /* initialize allocations areas for things we need, on the client, most of this is done inside ws_init(). */
   area_init ();
   error_code = set_area_init ();
@@ -2204,10 +2212,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       goto error;
     }
-
-  /* Initialize tsc-timer */
-  tsc_init ();
 #endif /* !SERVER_MODE */
+  BOOT_PHASE_END ("01_area_and_type_init");
+  BOOT_PHASE_BEGIN ("02_thread_init");
 
 #if defined (SA_MODE)
   /* *INDENT-OFF* */
@@ -2222,6 +2229,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
   /* *INDENT-ON* */
+  BOOT_PHASE_END ("02_thread_init");
 
   /*
    * Call pl_server_init() before log_initialize() to avoid potential issues
@@ -2240,17 +2248,23 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
    * 3. To enhance PL server initialization reliability, pl_server_init() is called 
    *    before other modules’ initialization.
    */
+  BOOT_PHASE_BEGIN ("03_pl_server_init");
+#if !defined(SA_MODE)
+  er_log_debug (ARG_FILE_LINE, "boot: phase 3 begin (pl server init)");
+#endif
   error_code = pl_server_init (db_name);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
+  BOOT_PHASE_END ("03_pl_server_init");
 
   pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
 
   /*
    * Compose the full name of the database and find location of logs
    */
+  BOOT_PHASE_BEGIN ("04_log_config_and_trantable");
 
   log_prefix = fileio_get_base_file_name (db_name);
 
@@ -2267,10 +2281,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
+  BOOT_PHASE_END ("04_log_config_and_trantable");
 
   /*
    * How to restart the system ?
    */
+  BOOT_PHASE_BEGIN ("05_restore_if_needed");
   if (from_backup != false)
     {
       /*
@@ -2288,13 +2304,19 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	  goto error;
 	}
     }
+  BOOT_PHASE_END ("05_restore_if_needed");
 
+  BOOT_PHASE_BEGIN ("06_spage_heap_init");
+#if !defined(SA_MODE)
+  er_log_debug (ARG_FILE_LINE, "boot: phase 6 begin (spage/heap init)");
+#endif
   spage_boot (thread_p);
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {
       goto error;
     }
+  BOOT_PHASE_END ("06_spage_heap_init");
 
   /*
    * Now continue the normal restart process. At this point the data volumes
@@ -2302,6 +2324,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
    */
 
   /* Mount the data volume */
+  BOOT_PHASE_BEGIN ("07_mount_and_db_parm");
+#if !defined(SA_MODE)
+  er_log_debug (ARG_FILE_LINE, "boot: phase 7 begin (mount + db parm)");
+#endif
   error_code = boot_mount (thread_p, LOG_DBFIRST_VOLID, boot_Db_full_name, NULL);
   if (error_code != NO_ERROR)
     {
@@ -2338,7 +2364,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       assert_release (false);
       goto error;
     }
+  BOOT_PHASE_END ("07_mount_and_db_parm");
 
+  BOOT_PHASE_BEGIN ("08_charset_find_volumes");
   db_charset_db_header = boot_get_db_charset_from_header (thread_p, log_path, log_prefix);
   if (db_charset_db_header <= INTL_CODESET_NONE || INTL_CODESET_LAST < db_charset_db_header)
     {
@@ -2362,8 +2390,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       goto error;
     }
+  BOOT_PHASE_END ("08_charset_find_volumes");
 
   /* initialize disk manager */
+  BOOT_PHASE_BEGIN ("09_disk_manager_init");
+#if !defined(SA_MODE)
+  er_log_debug (ARG_FILE_LINE, "boot: phase 9 begin (disk manager init)");
+#endif
   error_code = disk_manager_init (thread_p, true);
   if (error_code != NO_ERROR)
     {
@@ -2371,6 +2404,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
+  BOOT_PHASE_END ("09_disk_manager_init");
+
+  BOOT_PHASE_BEGIN ("10_stats_tracker_catalog");
   error_code = logtb_initialize_global_unique_stats_table (thread_p);
   if (error_code != NO_ERROR)
     {
@@ -2384,7 +2420,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
   catalog_initialize (&boot_Db_parm->ctid);
+  BOOT_PHASE_END ("10_stats_tracker_catalog");
 
+  BOOT_PHASE_BEGIN ("11_vacuum_init");
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
     {
       /* We need to load vacuum data and initialize vacuum routine before recovery. */
@@ -2398,15 +2436,19 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
   oid_set_root (&boot_Db_parm->rootclass_oid);
+  BOOT_PHASE_END ("11_vacuum_init");
 
   /* Load and recover data pages before log recovery */
+  BOOT_PHASE_BEGIN ("12_dwb_recover");
   error_code = dwb_load_and_recover_pages (thread_p, log_path, log_prefix);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto error;
     }
+  BOOT_PHASE_END ("12_dwb_recover");
 
+  BOOT_PHASE_BEGIN ("13_daemons_pre_log");
 #if defined(SERVER_MODE)
   if (!PRM_TEST_DISABLE_ALL_DAEMONS)
     {
@@ -2415,10 +2457,15 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
   parallel_query::worker_manager_global::get_manager ().init ();
 #endif /* SERVER_MODE */
+  BOOT_PHASE_END ("13_daemons_pre_log");
 
   /*
    * Now restart the recovery manager and execute any recovery actions
    */
+  BOOT_PHASE_BEGIN ("14_log_initialize");
+#if !defined(SA_MODE)
+  er_log_debug (ARG_FILE_LINE, "boot: phase 14 begin (log init + recovery)");
+#endif
 
   log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, from_backup, r_args);
 
@@ -2428,7 +2475,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       ASSERT_ERROR ();
       goto error;
     }
+  BOOT_PHASE_END ("14_log_initialize");
 
+  BOOT_PHASE_BEGIN ("15_daemons_post_log");
 #if defined(SERVER_MODE)
   if (!PRM_TEST_DISABLE_ALL_DAEMONS)
     {
@@ -2436,8 +2485,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       cdc_daemons_init ();
     }
 #endif /* SERVER_MODE */
+  BOOT_PHASE_END ("15_daemons_post_log");
 
   // after recovery we can boot vacuum
+  BOOT_PHASE_BEGIN ("16_vacuum_boot_xhnsw");
   error_code = vacuum_boot (thread_p);
   if (error_code != NO_ERROR)
     {
@@ -2446,11 +2497,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
   xhnsw_initialize (thread_p);
+  BOOT_PHASE_END ("16_vacuum_boot_xhnsw");
 
   /*
    * Initialize the catalog manager, the query evaluator, and install meta
    * classes
    */
+  BOOT_PHASE_BEGIN ("17_caches_init");
 
   error_code = locator_initialize (thread_p);
   if (error_code != NO_ERROR)
@@ -2490,6 +2543,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       ASSERT_ERROR ();
       goto error;
     }
+  BOOT_PHASE_END ("17_caches_init");
+
+  BOOT_PHASE_BEGIN ("18_lang_tran_and_finalize");
 
   /*
    * Initialize system locale using values from db_root system table
@@ -2702,6 +2758,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
   cfg_free_directory (dir);
+  BOOT_PHASE_END ("18_lang_tran_and_finalize");
 
   if (print_restart)
     {

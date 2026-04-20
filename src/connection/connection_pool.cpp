@@ -40,6 +40,7 @@
 #include "server_support.h"
 #include "system_parameter.h"
 #include "error_manager.h"
+#include "boot_perf_trace.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -64,7 +65,9 @@ namespace cubconn::connection
     (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
     (void) os_set_signal_handler (SIGFPE, SIG_IGN);
 
+    BOOT_PHASE_BEGIN ("20a_topology");
     max_connection_workers = this->initialize_topology (max_connection_workers);
+    BOOT_PHASE_END ("20a_topology");
     if (min_connection_workers > max_connection_workers)
       {
 	min_connection_workers = max_connection_workers;
@@ -72,14 +75,22 @@ namespace cubconn::connection
 
     this->lock_resource ();
 
+    BOOT_PHASE_BEGIN ("20b_freelist");
     this->initialize_freelist (max_connections);
+    BOOT_PHASE_END ("20b_freelist");
+    BOOT_PHASE_BEGIN ("20c_coordinator");
     this->initialize_coordinator (max_connection_workers, min_connection_workers);
+    BOOT_PHASE_END ("20c_coordinator");
+    BOOT_PHASE_BEGIN ("20d_workers");
     this->initialize_workers (max_connection_workers, min_connection_workers);
+    BOOT_PHASE_END ("20d_workers");
 
     this->release_resource ();
 
     /* request to start coordinating */
+    BOOT_PHASE_BEGIN ("20e_start_coord");
     this->start_coordinator ();
+    BOOT_PHASE_END ("20e_start_coord");
 
     m_max_connections = max_connections;
     m_max_connection_workers = max_connection_workers;
@@ -248,7 +259,9 @@ namespace cubconn::connection
 
   std::uint32_t pool::initialize_topology (std::uint32_t max_connection_workers)
   {
+    BOOT_PHASE_BEGIN ("20a1_cpu_effective");
     const auto &ctx = os::resources::cpu::effective ();
+    BOOT_PHASE_END ("20a1_cpu_effective");
 
     if (ctx.adjusted_effective && !ctx.adjusted_effective->empty ())
       {
@@ -257,7 +270,9 @@ namespace cubconn::connection
 		std::next (ctx.adjusted_effective->begin (),
 			   std::min (ctx.adjusted_effective->size (), static_cast<std::size_t> (max_connection_workers)))
 	);
+	BOOT_PHASE_BEGIN ("20a2_map_nic");
 	os::resources::net::map_nic_to_index (cores);
+	BOOT_PHASE_END ("20a2_map_nic");
       }
     return std::min (ctx.adjusted_max, static_cast<std::size_t> (max_connection_workers));
   }

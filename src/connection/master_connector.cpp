@@ -38,6 +38,7 @@
 #include "epoll.hpp"
 #include "span.hpp"
 #include "porting.h"
+#include "boot_perf_trace.h"
 
 #include <tuple>
 #include <cstdint>
@@ -712,6 +713,9 @@ namespace cubconn::master
 
     er_log_debug (__FILE__, __LINE__, "successfully switched to unix domain socket\n");
     m_master_state = master_state::ESTABLISHED;
+
+    BOOT_PHASE_END ("21_master_handshake");
+    BOOT_PHASE_DUMP ();
 
     return true;
   }

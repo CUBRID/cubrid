@@ -72,6 +72,7 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "thread_entry.hpp"
+#include "boot_perf_trace.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -1515,6 +1516,7 @@ pgbuf_compare_vpid (const void *key_vpid1, const void *key_vpid2)
 int
 pgbuf_initialize (void)
 {
+  BOOT_PHASE_BEGIN ("pgbuf_initialize");
   pgbuf_flags_mask_sanity_check ();
 
   /* Compute expected num_buffers early for idempotent check */
@@ -1791,11 +1793,13 @@ pgbuf_initialize (void)
   pthread_mutex_init (&pgbuf_Pool.show_status_mutex, NULL);
 #endif
 
+  BOOT_PHASE_END ("pgbuf_initialize");
   return NO_ERROR;
 
 error:
   /* destroy mutexes and deallocate all the allocated memory */
   pgbuf_finalize ();
+  BOOT_PHASE_END ("pgbuf_initialize");
   return ER_FAILED;
 }
 
@@ -5352,6 +5356,7 @@ pgbuf_initialize_bcb_table (void)
   PGBUF_ATOMIC_LATCH_IMPL impl;
   int i;
   long long unsigned alloc_size;
+  BOOT_PHASE_BEGIN ("pgbuf_initialize_bcb_table");
   impl.impl.latch_mode = PGBUF_LATCH_INVALID;
   impl.impl.waiter_exists = false;
   impl.impl.fcnt = 0;
@@ -5392,6 +5397,7 @@ pgbuf_initialize_bcb_table (void)
     }
 
   /* initialize each entry of the buffer BCB table */
+  BOOT_PHASE_BEGIN ("pgbuf_bcb_init_loop");
   for (i = 0; i < pgbuf_Pool.num_buffers; i++)
     {
       bufptr = PGBUF_FIND_BCB_PTR (i);
@@ -5444,7 +5450,9 @@ pgbuf_initialize_bcb_table (void)
       memcpy (PGBUF_FIND_BUFFER_GUARD (bufptr), pgbuf_Guard, sizeof (pgbuf_Guard));
 #endif /* CUBRID_DEBUG */
     }
+  BOOT_PHASE_END ("pgbuf_bcb_init_loop");
 
+  BOOT_PHASE_END ("pgbuf_initialize_bcb_table");
   return NO_ERROR;
 }
 

@@ -1582,7 +1582,7 @@ is_server_running (const char *type, const char *server_name, int pid)
 	    {
 	      return true;
 	    }
-	  sleep (1);
+	  usleep (100 * 1000);
 
 	  /* A child process is defunct because the SIGCHLD signal ignores. */
 	  /*

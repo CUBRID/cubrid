@@ -84,6 +84,7 @@
 #include "heartbeat.h"
 #endif
 #include "dbtype.h"
+#include "boot_perf_trace.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -574,6 +575,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   min_connection_workers = (int) prm_get_integer_value (PRM_ID_CSS_MIN_CONNECTION_WORKER);
 
   // create request worker pool
+  BOOT_PHASE_BEGIN ("19_request_worker_pool");
   css_Server_request_worker_pool =
     cubthread::get_manager ()->create_worker_pool (task_worker, MAX_TASK_COUNT, "transaction", NULL,
 						   task_group,
@@ -581,6 +583,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 						   (cubthread::LOG_WORKER_POOL_TRAN_WORKERS),
 						   css_get_server_request_thread_pooling_configuration (),
 						   css_get_server_request_thread_timeout_configuration ());
+  BOOT_PHASE_END ("19_request_worker_pool");
   if (css_Server_request_worker_pool == NULL)
     {
       assert (false);
@@ -590,13 +593,16 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
 
   /* initialize epoll worker pool */
+  BOOT_PHASE_BEGIN ("20_connection_pool");
   connections.initialize (MAX_CONNECTIONS, max_connection_workers, min_connection_workers);
+  BOOT_PHASE_END ("20_connection_pool");
 
   /* attach thread entry */
   connector.attach (*thread_p);
   /* attach pool */
   connector.attach (connections);
   /* handshake and dispatch connection */
+  BOOT_PHASE_BEGIN ("21_master_handshake");
   connector.run (port_id, name);
 
 shutdown:

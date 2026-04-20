@@ -798,6 +798,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_VECTOR_INDEX_I8_ONLY_BUILD "hnsw_i8_only_build"
 #define PRM_NAME_VECTOR_INDEX_DEBUG "hnsw_debug"
 
+#define PRM_NAME_BOOT_PERF_TRACE "boot_perf_trace"
+
 // #endregion
 
 /*
@@ -5375,6 +5377,17 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 0}},
    {false, {.i = 1}},
    {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_BOOT_PERF_TRACE,
+   PRM_NAME_BOOT_PERF_TRACE,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false}},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
