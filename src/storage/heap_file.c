@@ -24405,7 +24405,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
   /* For non-MVCC updates (SA_MODE), eagerly delete old OOS records that were replaced.
    * In MVCC mode (SERVER_MODE), old OOS is preserved for concurrent readers and cleaned
-   * by vacuum via prev_version_lsa chain (vacuum_cleanup_prev_version_oos). */
+   * by vacuum via a forward walk of the log block (vacuum_process_log_block). */
   if (!is_mvcc_op && context->home_recdes.type == REC_HOME && heap_recdes_contains_oos (&context->home_recdes))
     {
       error_code = heap_update_home_delete_replaced_oos (thread_p, context);
