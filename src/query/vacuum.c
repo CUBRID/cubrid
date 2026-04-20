@@ -3381,15 +3381,23 @@ vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENT
     }
 
   hfid = file_descriptor.heap.hfid;
-  if (!HFID_IS_NULL (&hfid))
+  if (HFID_IS_NULL (&hfid))
     {
-      if (!heap_oos_find_vfid (thread_p, &hfid, out_oos_vfid, false))
-	{
-	  /* Lookup inconclusive (distinct from "no OOS file" — the call returns true with
-	   * VFID_NULL in that case). Do not cache; retry on next call. */
-	  VFID_SET_NULL (out_oos_vfid);
-	  return false;
-	}
+      /* Unexpected: file_descriptor_get returned a heap descriptor with a NULL HFID. Possible
+       * causes include file tracker corruption, a dropped/reused VFID, or a type mismatch on
+       * the descriptor. Do NOT cache — a cached VFID_NULL would permanently skip OOS cleanup
+       * for every subsequent record in this block that references this heap VFID. Treat as
+       * transient and allow retry on next call. */
+      er_clear ();
+      return false;
+    }
+
+  if (!heap_oos_find_vfid (thread_p, &hfid, out_oos_vfid, false))
+    {
+      /* Lookup inconclusive (distinct from "no OOS file" — the call returns true with
+       * VFID_NULL in that case). Do not cache; retry on next call. */
+      VFID_SET_NULL (out_oos_vfid);
+      return false;
     }
 
   /* Populate cache (drop-oldest if full; count-based, no LRU at size 16). */
