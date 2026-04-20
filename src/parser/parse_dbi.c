@@ -935,6 +935,37 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       result->data_type = NULL;
       break;
 
+    case DB_TYPE_VECTOR:
+      {
+	int dim = val->data.vec.dimension;
+	const float *vec_data = val->data.vec.data;
+	char num_buf[32];
+	PARSER_VARCHAR *vstr = pt_append_nulstring (parser, (PARSER_VARCHAR *) NULL, "[");
+	int i;
+
+	for (i = 0; i < dim; ++i)
+	  {
+	    if (i > 0)
+	      {
+		vstr = pt_append_nulstring (parser, vstr, ", ");
+	      }
+	    snprintf (num_buf, sizeof (num_buf), "%g", (double) vec_data[i]);
+	    vstr = pt_append_nulstring (parser, vstr, num_buf);
+	  }
+	vstr = pt_append_nulstring (parser, vstr, "]");
+	result->info.value.data_value.str = vstr;
+	result->data_type = parser_new_node (parser, PT_DATA_TYPE);
+	if (result->data_type == NULL)
+	  {
+	    parser_free_node (parser, result);
+	    result = NULL;
+	    break;
+	  }
+	result->data_type->type_enum = PT_TYPE_VECTOR;
+	result->data_type->info.data_type.precision = dim;
+      }
+      break;
+
       /* explicitly treat others as an error condition */
     case DB_TYPE_VARIABLE:
     case DB_TYPE_SUB:
