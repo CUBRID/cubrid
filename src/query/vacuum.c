@@ -1105,6 +1105,22 @@ xvacuum (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * vacuum_wakeup_master_daemon () - Wake the vacuum master daemon to force
+ *   an immediate vacuum pass (dev/debug helper for csql ;vacuum).
+ *   No-op in SA_MODE or if the daemon is not yet booted.
+ */
+void
+vacuum_wakeup_master_daemon (void)
+{
+#if defined(SERVER_MODE)
+  if (vacuum_Master_daemon != NULL)
+    {
+      vacuum_Master_daemon->wakeup ();
+    }
+#endif /* SERVER_MODE */
+}
+
+/*
  * xvacuum_dump - Dump the contents of vacuum
  *
  * return: nothing

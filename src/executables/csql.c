@@ -203,7 +203,7 @@ static bool csql_Database_connected = false;
 
 static bool csql_Is_interactive = false;
 static bool csql_Is_sigint_caught = false;
-static bool csql_Is_echo_on = false;
+static bool csql_Is_echo_on = true;
 enum
 { HISTO_OFF, HISTO_ON };
 static int csql_Is_histo_on = HISTO_OFF;
@@ -1215,6 +1215,69 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  fprintf (csql_Output_fp, "Checkpointing is only allowed for" " the csql started with --sysadm\n");
 	}
+      break;
+
+    case S_CMD_VACUUM:
+      if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
+	{
+	  error_code = db_vacuum ();
+	  if (error_code != NO_ERROR)
+	    {
+	      csql_display_csql_err (0, 0);
+	    }
+	  else
+	    {
+	      fprintf (csql_Output_fp, "Vacuum is complete.\n");
+	    }
+	}
+      else
+	{
+	  fprintf (csql_Output_fp, "Running vacuum is only allowed for the csql started with --sysadm\n");
+	}
+      break;
+
+    case S_CMD_OOS_STATS:
+      {
+	DB_OOS_STATS stats;
+	const char *class_name = (argument[0] == '\0') ? NULL : argument;
+
+	if (class_name == NULL)
+	  {
+	    fprintf (csql_Output_fp, "Usage: ;oos_stats <class_name>\n");
+	    break;
+	  }
+
+	error_code = db_oos_stats (class_name, &stats);
+	if (error_code != NO_ERROR)
+	  {
+	    csql_display_csql_err (0, 0);
+	  }
+	else if (!stats.has_oos_file)
+	  {
+	    fprintf (csql_Output_fp, "Class '%s' has no OOS file.\n", class_name);
+	  }
+	else
+	  {
+	    INT64 logical_bytes = stats.recs_sumlen;
+	    INT64 actual_bytes = (INT64) stats.num_user_pages * (INT64) stats.page_size;
+	    INT64 uncleaned_bytes = actual_bytes - logical_bytes;
+	    if (uncleaned_bytes < 0)
+	      {
+		uncleaned_bytes = 0;
+	      }
+	    fprintf (csql_Output_fp, "OOS statistics for class '%s':\n", class_name);
+	    fprintf (csql_Output_fp, "  OOS VFID            : (volid=%d, fileid=%d)\n",
+		     stats.oos_vfid_volid, stats.oos_vfid_fileid);
+	    fprintf (csql_Output_fp, "  Physical pages      : %d\n", stats.num_user_pages);
+	    fprintf (csql_Output_fp, "  Page size           : %d bytes\n", stats.page_size);
+	    fprintf (csql_Output_fp, "  Actual disk size    : %lld bytes\n", (long long) actual_bytes);
+	    fprintf (csql_Output_fp, "  Live OOS records    : %d\n", stats.num_recs);
+	    fprintf (csql_Output_fp, "  Logical data size   : %lld bytes  (sum of live record bodies)\n",
+		     (long long) logical_bytes);
+	    fprintf (csql_Output_fp, "  Uncleaned (slack)   : %lld bytes  (actual - logical; drops after vacuum+page-dealloc)\n",
+		     (long long) uncleaned_bytes);
+	  }
+      }
       break;
 
     case S_CMD_KILLTRAN:
