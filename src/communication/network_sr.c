@@ -764,6 +764,18 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_TDES_RESET_QUERY_START_INFO];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = stdes_reset_query_start_info;
+
+  /* file manager */
+  req_p = &net_Requests[NET_SERVER_CLEANFILEDB_DUMP_FILE_LIST];
+  req_p->processing_function = sfile_tracker_dump_file_list;
+
+  req_p = &net_Requests[NET_SERVER_CLEANFILEDB_CLEAN_INVALID_FILE];
+  req_p->processing_function = sfile_tracker_clean_invalid_file;
+
+#if !defined(NDEBUG)
+  req_p = &net_Requests[NET_SERVER_CLEANFILEDB_DELETE_TARGET_FILE];
+  req_p->processing_function = sfile_tracker_delete_target_file;
+#endif
 }
 
 /*

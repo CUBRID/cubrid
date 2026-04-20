@@ -547,6 +547,10 @@ css_start_shutdown_server ()
  *       server/scheduler is stopped. Please call
  *       css_initialize_server_interfaces before calling this function.
  */
+// *INDENT-OFF*
+REGISTER_WORKERPOOL (transaction, []() { return (int) prm_get_integer_value (PRM_ID_TASK_WORKER); });
+// *INDENT-ON*
+
 int
 css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_id)
 {

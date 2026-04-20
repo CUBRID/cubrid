@@ -38,6 +38,11 @@
 
 namespace test_thread
 {
+  REGISTER_DAEMON (dummy);
+  REGISTER_WORKERPOOL (dummy, []()
+  {
+    return 1;
+  });
 
   class dummy_exec : public cubthread::entry_task
   {
