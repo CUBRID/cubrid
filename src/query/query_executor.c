@@ -25857,7 +25857,8 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 
 	  if (tdes->isolation >= TRAN_REPEATABLE_READ)
 	    {
-	      /* Global unique statistics do not respect MVCC snapshots; fall back to scan for correct results. */
+	      /* COUNT(*) optimization uses global statistics that bypass MVCC visibility;
+	       * fall back to full scan under REPEATABLE_READ or SERIALIZABLE to prevent phantom reads. */
 	      agg_ptr->flag.agg_optimized = false;
 	      *is_scan_needed = true;
 	      continue;
