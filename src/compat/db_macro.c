@@ -162,6 +162,13 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 
   switch (type)
     {
+    case DB_TYPE_VECTOR:
+      /* C1 fix: bypass the unconditional numeric_info.precision byte-truncating assignment above.
+       * VECTOR dimensions (1..2048) do not fit in an unsigned char, so we store them in the
+       * dedicated vector_info.dimension (int) slot instead. */
+      value->domain.vector_info.dimension = precision;
+      break;
+
     case DB_TYPE_NUMERIC:
       if (precision == DB_DEFAULT_PRECISION)
 	{

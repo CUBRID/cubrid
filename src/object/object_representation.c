@@ -628,6 +628,133 @@ or_put_varbit (OR_BUF * buf, const char *string, int bitlen)
   return or_put_varbit_internal (buf, string, bitlen, CHAR_ALIGNMENT);
 }
 
+/*
+ * or_put_vector - write a VECTOR value (dimension + raw float32 payload) to or buffer
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    dimension(in): number of float components
+ *    data(in): pointer to dimension consecutive float values
+ *
+ *  Wire layout: 4-byte dimension (OR_INT_SIZE) followed by dimension * OR_FLOAT_SIZE
+ *  raw bytes. Mirrors the simple length-prefixed-payload shape of or_put_varbit
+ *  without the 1/5-byte variable-length prefix because dimensions always fit in
+ *  an int.
+ */
+int
+or_put_vector (OR_BUF * buf, int dimension, const float *data)
+{
+  int rc;
+
+  if (dimension < 0)
+    {
+      return ER_FAILED;
+    }
+
+  rc = or_put_int (buf, dimension);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  if (dimension == 0)
+    {
+      return NO_ERROR;
+    }
+
+  if (data == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  return or_put_data (buf, (const char *) data, dimension * OR_FLOAT_SIZE);
+}
+
+/*
+ * or_get_vector - read a VECTOR value from or buffer
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    dimension(out): number of float components read
+ *    data(out): newly allocated float array (via db_private_alloc) on success,
+ *               NULL on error or when dimension == 0
+ *
+ *  On success, the caller owns *data and must release it with
+ *  db_private_free_and_init(NULL, *data).
+ */
+int
+or_get_vector (OR_BUF * buf, int *dimension, float **data)
+{
+  int rc = NO_ERROR;
+  int dim;
+  float *payload = NULL;
+
+  if (dimension != NULL)
+    {
+      *dimension = 0;
+    }
+  if (data != NULL)
+    {
+      *data = NULL;
+    }
+
+  dim = or_get_int (buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  if (dim < 0)
+    {
+      return ER_FAILED;
+    }
+
+  if (dim > 0)
+    {
+      payload = (float *) db_private_alloc (NULL, (size_t) dim * sizeof (float));
+      if (payload == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      rc = or_get_data (buf, (char *) payload, dim * OR_FLOAT_SIZE);
+      if (rc != NO_ERROR)
+	{
+	  db_private_free_and_init (NULL, payload);
+	  return rc;
+	}
+    }
+
+  if (dimension != NULL)
+    {
+      *dimension = dim;
+    }
+  if (data != NULL)
+    {
+      *data = payload;
+    }
+  else if (payload != NULL)
+    {
+      /* caller discarded payload; avoid leak */
+      db_private_free_and_init (NULL, payload);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * or_packed_vector_length - packed byte size required for a VECTOR of the given
+ *                           dimension (4-byte header + dim * sizeof(float))
+ *    return: packed byte length
+ *    dimension(in): number of float components
+ */
+int
+or_packed_vector_length (int dimension)
+{
+  if (dimension <= 0)
+    {
+      return OR_INT_SIZE;
+    }
+  return OR_INT_SIZE + dimension * OR_FLOAT_SIZE;
+}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * or_get_varbit - get varbit from or buffer
@@ -2644,6 +2771,11 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	  size += or_packed_json_validator_length (d->json_validator);
 	  break;
 
+	case DB_TYPE_VECTOR:
+	  /* Dimension rides in the precision carrier word, like NUMERIC. */
+	  precision = d->precision;
+	  break;
+
 	default:
 	  break;
 	}
@@ -2872,6 +3004,13 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	      carrier |= OR_DOMAIN_SCHEMA_FLAG;
 	      has_schema = true;
 	    }
+	  break;
+
+	case DB_TYPE_VECTOR:
+	  /* Dimension rides in the precision carrier word. The existing
+	   * "precision >= OR_DOMAIN_PRECISION_MAX -> extended word" path at the
+	   * bottom of this switch handles high-dim vectors (e.g. 2048). */
+	  precision = d->precision;
 	  break;
 
 	default:
@@ -3135,6 +3274,13 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 
 	    case DB_TYPE_JSON:
 	      has_schema = (carrier & OR_DOMAIN_SCHEMA_FLAG) != 0;
+	      break;
+
+	    case DB_TYPE_VECTOR:
+	      /* Dimension is carried as precision, same pack shape as NUMERIC.
+	       * The common "extra precision word" path below handles the large
+	       * dimensions that overflow OR_DOMAIN_PRECISION_MAX. */
+	      precision = (carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
 	      break;
 
 	    default:
@@ -3616,6 +3762,20 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		    }
 		  or_align (buf, OR_INT_SIZE);
 		  assert (er_errid () == NO_ERROR);
+		}
+	      break;
+
+	    case DB_TYPE_VECTOR:
+	      /* Dimension is carried as precision. Read extended word if the
+	       * encoded precision saturated OR_DOMAIN_PRECISION_MAX. */
+	      precision = (carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
+	      if (precision == OR_DOMAIN_PRECISION_MAX)
+		{
+		  precision = or_get_int (buf, &rc);
+		  if (rc != NO_ERROR)
+		    {
+		      goto error;
+		    }
 		}
 	      break;
 

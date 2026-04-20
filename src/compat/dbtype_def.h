@@ -559,6 +559,9 @@ extern "C"
 /* The maximum precision that can be specified for a BIT VARYING domain. */
 #define DB_MAX_VARBIT_PRECISION DB_MAX_BIT_PRECISION
 
+/* The maximum dimension that can be specified for a VECTOR domain. */
+#define DB_MAX_VECTOR_DIMENSION 2048
+
 /* This constant indicates that the system defined default for determining the length of a string is to be used for a DB_VALUE. */
 #define DB_DEFAULT_STRING_LENGTH -1
 
@@ -730,6 +733,7 @@ extern "C"
     DB_TYPE_DATETIMETZ = 38,
     DB_TYPE_DATETIMELTZ = 39,
     DB_TYPE_JSON = 40,
+    DB_TYPE_VECTOR = 41,
 
     /* aliases */
     DB_TYPE_LIST = DB_TYPE_SEQUENCE,
@@ -737,7 +741,7 @@ extern "C"
     DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values */
     DB_TYPE_UTIME = DB_TYPE_TIMESTAMP,	/* SQL TIMESTAMP */
 
-    DB_TYPE_LAST = DB_TYPE_JSON
+    DB_TYPE_LAST = DB_TYPE_VECTOR
   } DB_TYPE;
 
   /* Domain information stored in DB_VALUE structures. */
@@ -763,6 +767,12 @@ extern "C"
       int length;
       int collation_id;
     } char_info;
+    struct vector_info
+    {
+      unsigned char is_null;
+      unsigned char type;
+      int dimension;
+    } vector_info;
   };
 
   /* types used for the representation of bigint values. */
@@ -1058,6 +1068,13 @@ extern "C"
     JSON_DOC *document;
   };
 
+  typedef struct db_vector DB_VECTOR;
+  struct db_vector
+  {
+    int dimension;
+    float *data;
+  };
+
   /* A union of all of the possible basic type values. This is used in the definition of the DB_VALUE which is the fundamental
    * structure used in passing data in and out of the db_ function layer.
    */
@@ -1089,6 +1106,7 @@ extern "C"
     DB_RESULTSET rset;
     DB_ENUM_ELEMENT enumeration;
     DB_JSON json;
+    DB_VECTOR vec;
   };
 
   /* This is the primary structure used for passing values in and out of the db_ function layer. Values are always tagged with

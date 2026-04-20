@@ -1177,6 +1177,11 @@ extern int or_align_length (int length);
 #endif /* ENABLE_UNUSED_FUNCTION */
 extern int or_packed_varbit_length (int bitlen);
 
+/* VECTOR pack/unpack support */
+extern int or_put_vector (OR_BUF * buf, int dimension, const float *data);
+extern int or_get_vector (OR_BUF * buf, int *dimension, float **data);
+extern int or_packed_vector_length (int dimension);
+
 /*
  * to avoid circular dependencies, don't require the definition of QFILE_LIST_ID in
  * this file (it references DB_TYPE)

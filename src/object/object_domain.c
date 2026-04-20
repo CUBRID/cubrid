@@ -325,6 +325,14 @@ TP_DOMAIN tp_Json_domain = { NULL, NULL, &tp_Json, 0, 0,
   DOMAIN_INIT2 (INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY)
 };
 
+/* tp_Vector_domain - built-in default domain for DB_TYPE_VECTOR.
+ *
+ * Default precision is 0 (dimension resolved at runtime). Real attributes
+ * override via tp_domain_construct(DB_TYPE_VECTOR, NULL, n, 0, NULL) to carry
+ * the declared VECTOR(n) dimension through or_put_domain / or_get_domain.
+ * is_parameterized=1 comes from DOMAIN_INIT3 since VECTOR takes a dimension. */
+TP_DOMAIN tp_Vector_domain = { NULL, NULL, &tp_Vector, DOMAIN_INIT3 };
+
 TP_DOMAIN tp_Resultset_domain = { NULL, NULL, &tp_ResultSet, DOMAIN_INIT4 (DB_BIGINT_PRECISION, 0) };
 
 /* These must be in DB_TYPE order */
@@ -381,7 +389,7 @@ static TP_DOMAIN *tp_Domains[] = {
   &tp_Datetimetz_domain,
   &tp_Datetimeltz_domain,
   &tp_Json_domain,
-  &tp_Null_domain,
+  &tp_Vector_domain,		/* DB_TYPE_VECTOR = 41 */
   &tp_Null_domain,
   &tp_Null_domain,
   &tp_Null_domain,
@@ -549,7 +557,8 @@ TP_DOMAIN **tp_Domain_conversion_matrix[] = {
   NULL,				/* DB_TYPE_TIMESTAMPLTZ */
   NULL,				/* DB_TYPE_DATETIMETZ */
   NULL,				/* DB_TYPE_DATETIMELTZ */
-  NULL				/* DB_TYPE_JSON */
+  NULL,				/* DB_TYPE_JSON */
+  NULL				/* DB_TYPE_VECTOR */
 };
 
 #if defined (SERVER_MODE)
@@ -2487,6 +2496,33 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_RESULTSET:
     case DB_TYPE_TABLE:
       break;
+
+    case DB_TYPE_VECTOR:
+      /* VECTOR(n) domains are parameterized by dimension only; match on precision
+       * (dimension) for exact, str, and set modes; otherwise treat a transient
+       * with precision <= cached precision as compatible. */
+      while (domain)
+	{
+	  if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH || exact == TP_SET_MATCH)
+	    {
+	      match = ((domain->precision == transient->precision) && (domain->is_desc == transient->is_desc));
+	    }
+	  else
+	    {
+	      match = ((transient->precision == 0 || transient->precision == TP_FLOATING_PRECISION_VALUE
+			|| domain->precision >= transient->precision) && (domain->is_desc == transient->is_desc));
+	    }
+
+	  if (match)
+	    {
+	      break;
+	    }
+
+	  *ins_pos = domain;
+	  domain = domain->next_list;
+	}
+      break;
+
     case DB_TYPE_ELO:
     default:
       assert (false);
@@ -7157,6 +7193,22 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  pr_clear_value (&src_replacement);
 		  ASSERT_ERROR ();
 		  return DOMAIN_ERROR;
+		}
+	      if (src != dest)
+		{
+		  pr_clone_value (src, dest);
+		}
+	      pr_clear_value (&src_replacement);
+	      return (status);
+	    case DB_TYPE_VECTOR:
+	      /* VECTOR(n) cast: dimensions must match. MVP rejects mismatches
+	       * rather than padding/truncating. A dedicated error code lands in
+	       * PR-3; for now reuse the generic coercion failure. */
+	      if (desired_domain->precision != 0
+		  && desired_domain->precision != src->data.vec.dimension)
+		{
+		  pr_clear_value (&src_replacement);
+		  return DOMAIN_INCOMPATIBLE;
 		}
 	      if (src != dest)
 		{
