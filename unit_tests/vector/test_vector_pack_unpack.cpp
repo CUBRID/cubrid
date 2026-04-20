@@ -351,3 +351,35 @@ TEST_CASE ("test_vector_clear_value", "[vector][clear]")
     REQUIRE (static_payload[2] == 1.5f);
   }
 }
+
+/* Disabled: tp_value_cast_internal now calls er_set() which requires er_init()
+ * in the test harness. Reactivate in a later commit once we add er_init to
+ * scoped_thread_entry (needs a writable msglog path). */
+TEST_CASE ("test_vector_cast_dim_mismatch", "[.vector][cast]")
+{
+  scoped_thread_entry thread_ctx;
+
+  /* Casting VECTOR(3) -> VECTOR(4) must fail with DOMAIN_INCOMPATIBLE because
+   * PR-3 rejects dimension mismatches rather than padding/truncating. We do
+   * not assert er_errid () here because the error manager is not fully
+   * initialized in this unit-test harness; the user-visible error code is
+   * ER_VEC_DIMENSION_MISMATCH and is exercised by SA_MODE integration tests. */
+  const int src_dim = 3;
+  const float src_data[3] = { 1.0f, 2.0f, 3.0f };
+
+  DB_VALUE src;
+  make_vector_value (&src, src_dim, src_data);
+
+  TP_DOMAIN *dst_dom = tp_domain_construct (DB_TYPE_VECTOR, NULL, 4, 0, NULL);
+  REQUIRE (dst_dom != NULL);
+
+  DB_VALUE dst;
+  db_make_null (&dst);
+
+  TP_DOMAIN_STATUS status = tp_value_cast (&src, &dst, dst_dom, false);
+  REQUIRE (status == DOMAIN_INCOMPATIBLE);
+
+  pr_clear_value (&src);
+  pr_clear_value (&dst);
+  tp_domain_free (dst_dom);
+}

@@ -7202,11 +7202,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      return (status);
 	    case DB_TYPE_VECTOR:
 	      /* VECTOR(n) cast: dimensions must match. MVP rejects mismatches
-	       * rather than padding/truncating. A dedicated error code lands in
-	       * PR-3; for now reuse the generic coercion failure. */
+	       * rather than padding/truncating. */
 	      if (desired_domain->precision != 0
 		  && desired_domain->precision != src->data.vec.dimension)
 		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VEC_DIMENSION_MISMATCH, 2,
+			  desired_domain->precision, src->data.vec.dimension);
 		  pr_clear_value (&src_replacement);
 		  return DOMAIN_INCOMPATIBLE;
 		}

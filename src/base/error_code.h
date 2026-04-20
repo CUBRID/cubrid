@@ -1757,7 +1757,15 @@
 
 #define ER_AUTO_INCREMENT_SINGLE_COL_ONLY           -1370
 
-#define ER_LAST_ERROR                               -1371
+#define ER_VEC_DIMENSION_MISMATCH                   -1371
+#define ER_VEC_INVALID_LITERAL                      -1372
+#define ER_VEC_DIM_OUT_OF_RANGE                     -1373
+#define ER_VEC_ZERO_NORM                            -1374
+#define ER_VEC_RESERVED_1                           -1375
+#define ER_VEC_RESERVED_2                           -1376
+#define ER_VEC_RESERVED_3                           -1377
+
+#define ER_LAST_ERROR                               -1378
 
 
 

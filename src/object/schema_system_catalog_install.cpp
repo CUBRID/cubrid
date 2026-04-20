@@ -95,7 +95,8 @@ catcls_add_data_type (DB_OBJECT *class_mop)
     "BIGINT", "DATETIME",
     "BLOB", "CLOB", "ENUM",
     "TIMESTAMPTZ", "TIMESTAMPLTZ", "DATETIMETZ", "DATETIMELTZ",
-    "JSON"
+    "JSON",
+    "VECTOR"
   };
 
   for (i = 0; i < DB_TYPE_LAST; i++)
