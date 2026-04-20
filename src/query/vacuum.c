@@ -2427,7 +2427,7 @@ vacuum_heap_oos_delete (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       return error_code;
     }
 
-  for (const OID & oos_oid : oos_oids)
+for (const OID & oos_oid:oos_oids)
     {
       error_code = oos_delete (thread_p, helper->oos_vfid, oos_oid);
       if (error_code != NO_ERROR)
@@ -3433,7 +3433,7 @@ vacuum_forward_walk_delete_oos (THREAD_ENTRY * thread_p, const RECDES * undo_rec
       return error_code;
     }
 
-  for (const OID & oos_oid : oos_oids)
+for (const OID & oos_oid:oos_oids)
     {
       error_code = oos_delete (thread_p, *oos_vfid, oos_oid);
       if (error_code != NO_ERROR)
@@ -4355,8 +4355,7 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
 
   /* We are here because the file that will be vacuumed is not dropped. */
   if (!LOG_IS_MVCC_BTREE_OPERATION (log_record_data->rcvindex)
-      && !LOG_IS_MVCC_HEAP_OPERATION (log_record_data->rcvindex)
-      && log_record_data->rcvindex != RVES_NOTIFY_VACUUM)
+      && !LOG_IS_MVCC_HEAP_OPERATION (log_record_data->rcvindex) && log_record_data->rcvindex != RVES_NOTIFY_VACUUM)
     {
       /* No need to unpack undo data unless it's BTREE or HEAP MVCC operation or ES */
       return NO_ERROR;
