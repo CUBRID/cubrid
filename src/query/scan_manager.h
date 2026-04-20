@@ -300,6 +300,11 @@ struct indx_scan_id
 				 * vacuumed. Used in checkdb. */
   DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking operation */
   TP_DOMAIN **prebuilt_midxkey_domains;
+  /* Parallel index scan pending state. Set in scan_open_parallel_index_scan when the spec is
+   * parallel-eligible; consumed by scan_start_scan to attempt the promotion after
+   * qexec_evaluate_aggregates_optimize has had a chance to set need_count_only. NULL means
+   * the spec is not eligible for parallel index scan. Owned by the scan_id. */
+  void *parallel_pending;
 };
 
 typedef struct index_node_scan_id INDEX_NODE_SCAN_ID;

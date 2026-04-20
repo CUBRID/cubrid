@@ -156,6 +156,12 @@ extern "C"
       VAL_DESCR *vd, ACCESS_SPEC_TYPE *spec, OID *class_oid, HFID *class_hfid,
       XASL_NODE *xasl, QUERY_ID query_id);
   extern int scan_start_parallel_index_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+
+  /* Attempt to promote scan_id from S_INDX_SCAN to S_PARALLEL_INDEX_SCAN using captures
+   * stashed in scan_id->s.isid.parallel_pending. Always frees parallel_pending. On success
+   * scan_id->type becomes S_PARALLEL_INDEX_SCAN; on failure it stays S_INDX_SCAN. */
+  extern int scan_try_promote_parallel_index_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+  extern void scan_clear_parallel_index_pending (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
 }
 
 #endif /*_PX_SCAN_HPP_ */

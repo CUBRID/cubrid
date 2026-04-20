@@ -1458,16 +1458,34 @@ extern "C"
       }
   }
 
+  /* Captures from scan_open_parallel_index_scan that scan_try_promote_parallel_index_scan
+   * needs to construct the parallel manager. Allocated when the spec passes the cheap
+   * eligibility checks; consumed (and freed) once at the start-scan promotion attempt. */
+  struct parallel_index_scan_pending
+  {
+    ACCESS_SPEC_TYPE *spec;
+    XASL_NODE *xasl;
+    OID class_oid;
+    HFID class_hfid;
+    QUERY_ID query_id;
+  };
+
+  void
+  scan_clear_parallel_index_pending (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
+  {
+    if (scan_id == nullptr || scan_id->s.isid.parallel_pending == nullptr)
+      {
+	return;
+      }
+    db_private_free_and_init (thread_p, scan_id->s.isid.parallel_pending);
+  }
+
   int
   scan_open_parallel_index_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 				 VAL_DESCR *vd, ACCESS_SPEC_TYPE *spec,
 				 OID *class_oid, HFID *class_hfid,
 				 XASL_NODE *xasl, QUERY_ID query_id)
   {
-    parallel_query::worker_manager *worker_manager_p = nullptr;
-    int num_parallel_threads;
-    int error = NO_ERROR;
-
     assert (thread_p != nullptr);
     assert (scan_id != nullptr);
     assert (spec != nullptr);
@@ -1476,6 +1494,10 @@ extern "C"
     assert (vd != nullptr);
 
     scan_id->type = S_INDX_SCAN;
+
+    /* Defensive: clear any stale pending state from a previous open on the same scan_id
+     * (e.g., partition pruning re-open path in qexec_next_scan_block_iterations). */
+    scan_clear_parallel_index_pending (thread_p, scan_id);
 
     if (thread_p->private_heap_id == 0)
       {
@@ -1511,6 +1533,53 @@ extern "C"
 
     assert (spec->num_parallel_threads == -1
 	    || ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS));
+
+    /* Stash captures so scan_start_scan can attempt the promotion after qexec_intprt_fnc
+     * has had a chance to set need_count_only. Worker reservation and manager
+     * construction are deferred to the start-scan path so we do not hold worker pool
+     * resources across an aggregate fast-path that may decide is_scan_needed == false. */
+    parallel_index_scan_pending *pending =
+	    (parallel_index_scan_pending *) db_private_alloc (thread_p, sizeof (parallel_index_scan_pending));
+    if (pending == nullptr)
+      {
+	er_clear ();
+	return NO_ERROR;
+      }
+    pending->spec = spec;
+    pending->xasl = xasl;
+    pending->class_oid = *class_oid;
+    pending->class_hfid = *class_hfid;
+    pending->query_id = query_id;
+    scan_id->s.isid.parallel_pending = pending;
+
+    return NO_ERROR;
+  }
+
+  int
+  scan_try_promote_parallel_index_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
+  {
+    parallel_query::worker_manager *worker_manager_p = nullptr;
+    int num_parallel_threads;
+    int error = NO_ERROR;
+
+    if (scan_id == nullptr || scan_id->s.isid.parallel_pending == nullptr)
+      {
+	return NO_ERROR;
+      }
+
+    parallel_index_scan_pending *pending = (parallel_index_scan_pending *) scan_id->s.isid.parallel_pending;
+    ACCESS_SPEC_TYPE *spec = pending->spec;
+    XASL_NODE *xasl = pending->xasl;
+    OID class_oid = pending->class_oid;
+    HFID class_hfid = pending->class_hfid;
+    QUERY_ID query_id = pending->query_id;
+    VAL_DESCR *vd = scan_id->vd;
+    db_private_free_and_init (thread_p, scan_id->s.isid.parallel_pending);
+
+    assert (scan_id->type == S_INDX_SCAN);
+    assert (spec != nullptr);
+    assert (xasl != nullptr);
+    assert (vd != nullptr);
 
     /* Use INT_MAX pages so compute_parallel_degree picks degree from hint/workers, not page count */
     num_parallel_threads = parallel_query::compute_parallel_degree (parallel_query::parallel_type::HEAP_SCAN,
@@ -1572,7 +1641,7 @@ extern "C"
 
 	local_manager = placement_new ((manager_type *) local_manager,
 				       thread_p, query_id, scan_id, xasl,
-				       num_parallel_threads, *class_hfid, *class_oid, vd,
+				       num_parallel_threads, class_hfid, class_oid, vd,
 				       false, false, worker_manager_p, nullptr, saved_indx_info);
 	assert (local_manager != nullptr);
 
@@ -1605,7 +1674,7 @@ extern "C"
 
 	local_manager = placement_new ((manager_type *) local_manager,
 				       thread_p, query_id, scan_id, xasl,
-				       num_parallel_threads, *class_hfid, *class_oid, vd,
+				       num_parallel_threads, class_hfid, class_oid, vd,
 				       false, false, worker_manager_p, nullptr, saved_indx_info);
 	assert (local_manager != nullptr);
 
@@ -1638,7 +1707,7 @@ extern "C"
 
 	local_manager = placement_new ((manager_type *) local_manager,
 				       thread_p, query_id, scan_id, xasl,
-				       num_parallel_threads, *class_hfid, *class_oid, vd,
+				       num_parallel_threads, class_hfid, class_oid, vd,
 				       false, false, worker_manager_p, nullptr, saved_indx_info);
 	assert (local_manager != nullptr);
 
@@ -1715,11 +1784,13 @@ extern "C"
     scan_close_scan (thread_p, scan_id);
     scan_id->status = S_OPENED;	/* reset status; scan_close_scan sets it to S_CLOSED */
 
-    /* 4. Properly close and destroy the indx_cov list file to decrement qlist_count. */
+    /* 4. Properly close and destroy the indx_cov list file to decrement qlist_count,
+     *    then free the QFILE_LIST_ID struct itself (matches scan_close_index_scan:3608). */
     if (saved_indx_cov_list_id != NULL)
       {
 	qfile_close_list (thread_p, saved_indx_cov_list_id);
 	qfile_destroy_list (thread_p, saved_indx_cov_list_id);
+	QFILE_FREE_AND_INIT_LIST_ID (saved_indx_cov_list_id);
       }
 
     /* 5. Write pisid fields (now safe — isid is fully cleaned up). */

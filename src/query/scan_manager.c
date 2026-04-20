@@ -305,6 +305,7 @@ scan_init_index_scan (INDX_SCAN_ID * isidp, struct btree_iscan_oid_list *oid_lis
   isidp->check_not_vacuumed = false;
   isidp->not_vacuumed_res = DISK_VALID;
   isidp->prebuilt_midxkey_domains = NULL;
+  isidp->parallel_pending = NULL;
 }
 
 /*
@@ -4146,6 +4147,22 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   JSON_TABLE_SCAN_ID *jtidp = NULL;
 
+#if SERVER_MODE && !WINDOWS
+  /* If scan_open_parallel_index_scan stashed pending captures, attempt the parallel
+   * promotion now — qexec_evaluate_aggregates_optimize and need_count_only have been
+   * resolved by this point, and the worker pool reservation only happens for scans
+   * the engine actually drives. Promotion may rewrite scan_id->type to
+   * S_PARALLEL_INDEX_SCAN; the switch below dispatches accordingly. */
+  if (scan_id->type == S_INDX_SCAN && scan_id->s.isid.parallel_pending != NULL)
+    {
+      ret = scan_try_promote_parallel_index_scan (thread_p, scan_id);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+    }
+#endif /* SERVER_MODE && !WINDOWS */
+
   switch (scan_id->type)
     {
     case S_HEAP_SCAN:
@@ -4956,6 +4973,15 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
     case S_INDX_SCAN:
       isidp = &scan_id->s.isid;
+
+#if SERVER_MODE && !WINDOWS
+      /* free any pending parallel-index capture that scan_start_scan never consumed
+       * (e.g., scan was opened then aborted before start_scan ran) */
+      if (isidp->parallel_pending != NULL)
+	{
+	  scan_clear_parallel_index_pending (thread_p, scan_id);
+	}
+#endif /* SERVER_MODE && !WINDOWS */
 
       if (isidp->prebuilt_midxkey_domains != NULL)
 	{
