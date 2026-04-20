@@ -1274,7 +1274,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	    fprintf (csql_Output_fp, "  Live OOS records    : %d\n", stats.num_recs);
 	    fprintf (csql_Output_fp, "  Logical data size   : %lld bytes  (sum of live record bodies)\n",
 		     (long long) logical_bytes);
-	    fprintf (csql_Output_fp, "  Uncleaned (slack)   : %lld bytes  (actual - logical; drops after vacuum+page-dealloc)\n",
+	    fprintf (csql_Output_fp,
+		     "  Uncleaned (slack)   : %lld bytes  (actual - logical; drops after vacuum+page-dealloc)\n",
 		     (long long) uncleaned_bytes);
 	  }
       }
