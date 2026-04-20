@@ -361,6 +361,8 @@ struct la_apply_worker_session
   BOOT_SERVER_CREDENTIAL server_credential;
 };
 
+typedef struct la_apply_worker_context LA_APPLY_WORKER_CONTEXT;
+
 /* 리더 전용 디스패치 순서 FIFO.
  * 모든 접근이 리더 스레드 내부에서만 일어나므로 락이 필요 없다.
  * 워커의 결과 큐는 각 워커 기준으로 FIFO 이지만, 여러 워커 결과를 커밋 LSA 순서대로
@@ -498,6 +500,15 @@ struct la_recdes_pool
   bool is_initialized;
 };
 
+struct la_apply_worker_context
+{
+  int worker_idx;
+  char *rec_type;
+  LOG_ZIP *undo_unzip_ptr;
+  LOG_ZIP *redo_unzip_ptr;
+  LA_RECDES_POOL recdes_pool;
+};
+
 typedef struct la_ha_apply_info LA_HA_APPLY_INFO;
 struct la_ha_apply_info
 {
@@ -525,8 +536,6 @@ struct la_ha_apply_info
 
 /* Global variable for LA */
 LA_INFO la_Info;
-
-LA_RECDES_POOL la_recdes_pool;
 
 static bool la_applier_need_shutdown = false;
 static bool la_applier_shutdown_by_signal = false;
@@ -577,10 +586,10 @@ static int la_delete_ha_apply_info (void);
 static bool la_ignore_on_error (int errid);
 static bool la_retry_on_error (int errid);
 
-static int la_init_recdes_pool (int page_size, int num_recdes);
-static RECDES *la_assign_recdes_from_pool (void);
-static int la_realloc_recdes_data (RECDES * recdes, int data_size);
-static void la_clear_recdes_pool (void);
+static int la_init_recdes_pool (LA_APPLY_WORKER_CONTEXT * context, int page_size, int num_recdes);
+static RECDES *la_assign_recdes_from_pool (LA_APPLY_WORKER_CONTEXT * context);
+static int la_realloc_recdes_data (LA_APPLY_WORKER_CONTEXT * context, RECDES * recdes, int data_size);
+static void la_clear_recdes_pool (LA_APPLY_WORKER_CONTEXT * context);
 
 static LA_CACHE_PB *la_init_cache_pb (void);
 static unsigned int log_pageid_hash (const void *key, unsigned int htsize);
@@ -616,32 +625,35 @@ static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag
 static void la_make_room_for_mvcc_insid (RECDES * recdes);
 static void la_make_room_for_mvcc_delid_and_prev_ver (RECDES * recdes);
 static int la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, DB_VALUE * key);
-static char *la_get_zipped_data (char *undo_data, int undo_length, bool is_diff, bool is_undo_zip, bool is_overflow,
-				 char **rec_type, char **data, int *length);
-static int la_get_undoredo_diff (LOG_PAGE ** pgptr, LOG_PAGEID * pageid, PGLENGTH * offset, bool * is_undo_zip,
-				 char **undo_data, int *undo_length);
-static int la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsigned int match_rcvindex,
-			    unsigned int *rcvindex, void **logs, char **rec_type, char **data, int *d_length);
-static int la_get_overflow_recdes (LOG_RECORD_HEADER * lrec, void *logs, RECDES * recdes, unsigned int rcvindex);
-static int la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **logs, char **rec_type,
-				   char **data, int *d_length);
-static int la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr, unsigned int match_rcvindex,
-				     void **logs, char **rec_type, RECDES * recdes);
-static int la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *rcvindex, char *rec_type,
-			  bool is_mvcc_class);
+static char *la_get_zipped_data (LA_APPLY_WORKER_CONTEXT * context, char *undo_data, int undo_length, bool is_diff,
+				 bool is_undo_zip, bool is_overflow, char **rec_type, char **data, int *length);
+static int la_get_undoredo_diff (LA_APPLY_WORKER_CONTEXT * context, LOG_PAGE ** pgptr, LOG_PAGEID * pageid,
+				 PGLENGTH * offset, bool * is_undo_zip, char **undo_data, int *undo_length);
+static int la_get_log_data (LA_APPLY_WORKER_CONTEXT * context, LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr,
+			    unsigned int match_rcvindex, unsigned int *rcvindex, void **logs, char **rec_type,
+			    char **data, int *d_length);
+static int la_get_overflow_recdes (LA_APPLY_WORKER_CONTEXT * context, LOG_RECORD_HEADER * lrec, void *logs, RECDES * recdes,
+				   unsigned int rcvindex);
+static int la_get_next_update_log (LA_APPLY_WORKER_CONTEXT * context, LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr,
+				   void **logs, char **rec_type, char **data, int *d_length);
+static int la_get_relocation_recdes (LA_APPLY_WORKER_CONTEXT * context, LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr,
+				     unsigned int match_rcvindex, void **logs, char **rec_type, RECDES * recdes);
+static int la_get_recdes (LA_APPLY_WORKER_CONTEXT * context, LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes,
+			  unsigned int *rcvindex, char *rec_type, bool is_mvcc_class);
 static void la_log_apply_error (const char *op_name, int err_id, LA_ITEM * item, int error, LA_APPLY_STATS * stats);
 static void la_set_error_sql_log (const char *class_name, DB_VALUE * key_val);
 static int la_write_delete_sql_log (LA_ITEM * item, DB_OBJECT * class_obj);
 static int la_write_update_sql_log (LA_ITEM * item, DB_OBJECT * class_obj, RECDES * recdes);
 static int la_write_insert_sql_log (LA_ITEM * item, DB_OBJECT * class_obj, RECDES * recdes);
-static int la_apply_delete_log (LA_ITEM * item, LA_APPLY_STATS * stats);
-static int la_apply_update_log (LA_ITEM * item, LA_APPLY_STATS * stats);
-static int la_apply_insert_log (LA_ITEM * item, LA_APPLY_STATS * stats);
+static int la_apply_delete_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_APPLY_STATS * stats);
+static int la_apply_update_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_APPLY_STATS * stats);
+static int la_apply_insert_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_APPLY_STATS * stats);
 static int la_update_query_execute (const char *sql, bool au_disable);
 static int la_update_query_execute_with_values (const char *sql, int arg_count, DB_VALUE * vals, bool au_disable);
 static int la_apply_statement_log (LA_ITEM * item, LA_APPLY_STATS * stats);
-static int la_apply_repl_log (LA_APPLY * apply, int rectype, LOG_LSA * commit_lsa, int *total_rows, LOG_PAGEID final_pageid,
-			      LOG_LSA * committed_rep_lsa, LA_APPLY_STATS * stats);
+static int la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, int rectype, LOG_LSA * commit_lsa,
+			      int *total_rows, LOG_PAGEID final_pageid, LOG_LSA * committed_rep_lsa,
+			      LA_APPLY_STATS * stats);
 static int la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid);
 static void la_free_repl_items_by_tranid (int tranid);
 static void la_free_commit_node_by_tranid (int tranid);
@@ -695,6 +707,8 @@ static int la_apply_worker_start_client_context (LA_APPLY_WORKER_SESSION * sessi
 static void la_apply_worker_end_client_context (LA_APPLY_WORKER_SESSION * session);
 static int la_apply_worker_start_session (LA_APPLY_WORKER_SESSION * session);
 static void la_apply_worker_end_session (LA_APPLY_WORKER_SESSION * session);
+static int la_apply_worker_context_init (LA_APPLY_WORKER_CONTEXT * context, int db_page_size);
+static void la_apply_worker_context_final (LA_APPLY_WORKER_CONTEXT * context);
 static int la_start_apply_workers (void);
 static void la_stop_apply_workers (void);
 static int la_enqueue_apply_task (LA_APPLY_WORKER * worker, const LA_APPLY_TASK * task);
@@ -773,23 +787,36 @@ static int
 la_enqueue_apply_task (LA_APPLY_WORKER * worker, const LA_APPLY_TASK * task)
 {
   int error = NO_ERROR;
+  int worker_idx = (int) (worker - la_apply_Workers);
+  int prev_count = 0;
 
   pthread_mutex_lock (&worker->mutex);
 
   while (worker->queue.count >= LA_APPLY_WORKER_QUEUE_CAPACITY && worker->shutdown == false)
     {
+      er_log_debug (ARG_FILE_LINE,
+		    "reader enqueue_wait worker[%d] trid=%d rectype=%d qcount=%d busy=%d shutdown=%d\n",
+		    worker_idx, task->tranid, task->rectype, worker->queue.count, (int) worker->busy,
+		    (int) worker->shutdown);
       pthread_cond_wait (&worker->idle_cond, &worker->mutex);
     }
 
   if (worker->shutdown)
     {
+      er_log_debug (ARG_FILE_LINE, "reader enqueue_fail worker[%d] trid=%d rectype=%d shutdown=1\n",
+		    worker_idx, task->tranid, task->rectype);
       error = ER_FAILED;
     }
   else
     {
+      prev_count = worker->queue.count;
       worker->queue.tasks[worker->queue.tail] = *task;
       worker->queue.tail = (worker->queue.tail + 1) % LA_APPLY_WORKER_QUEUE_CAPACITY;
       worker->queue.count++;
+      er_log_debug (ARG_FILE_LINE,
+		    "reader enqueued worker[%d] trid=%d rectype=%d commit_lsa=%lld|%d apply=%p qcount=%d->%d\n",
+		    worker_idx, task->tranid, task->rectype, (long long) task->commit_lsa.pageid,
+		    (int) task->commit_lsa.offset, (void *) task->apply, prev_count, worker->queue.count);
       pthread_cond_signal (&worker->cond);
     }
 
@@ -1284,6 +1311,64 @@ la_apply_worker_end_session (LA_APPLY_WORKER_SESSION * session)
 }
 
 static int
+la_apply_worker_context_init (LA_APPLY_WORKER_CONTEXT * context, int db_page_size)
+{
+  memset (context, 0, sizeof (*context));
+  context->worker_idx = -1;
+
+  context->rec_type = (char *) malloc (DB_SIZEOF (INT16));
+  if (context->rec_type == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (INT16));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  context->undo_unzip_ptr = log_zip_alloc (db_page_size);
+  if (context->undo_unzip_ptr == NULL)
+    {
+      free_and_init (context->rec_type);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, db_page_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  context->redo_unzip_ptr = log_zip_alloc (db_page_size);
+  if (context->redo_unzip_ptr == NULL)
+    {
+      log_zip_free (context->undo_unzip_ptr);
+      context->undo_unzip_ptr = NULL;
+      free_and_init (context->rec_type);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, db_page_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  context->recdes_pool.is_initialized = false;
+  return la_init_recdes_pool (context, db_page_size, LA_MAX_UNFLUSHED_REPL_ITEMS);
+}
+
+static void
+la_apply_worker_context_final (LA_APPLY_WORKER_CONTEXT * context)
+{
+  la_clear_recdes_pool (context);
+
+  if (context->rec_type != NULL)
+    {
+      free_and_init (context->rec_type);
+    }
+
+  if (context->undo_unzip_ptr != NULL)
+    {
+      log_zip_free (context->undo_unzip_ptr);
+      context->undo_unzip_ptr = NULL;
+    }
+
+  if (context->redo_unzip_ptr != NULL)
+    {
+      log_zip_free (context->redo_unzip_ptr);
+      context->redo_unzip_ptr = NULL;
+    }
+}
+
+static int
 la_collect_apply_results (void)
 {
   LA_APPLY_RESULT result;
@@ -1353,8 +1438,10 @@ la_apply_worker_main (void *arg)
 {
   LA_APPLY_WORKER *worker = (LA_APPLY_WORKER *) arg;
   LA_APPLY_WORKER_SESSION session;
+  LA_APPLY_WORKER_CONTEXT worker_context;
   cuberr::context *er_context_p = NULL;
   bool session_started = false;
+  bool worker_context_started = false;
   int error = NO_ERROR;
   unsigned long long worker_applied_item_count = 0;
 
@@ -1369,6 +1456,15 @@ la_apply_worker_main (void *arg)
     }
 
   session_started = true;
+  error = la_apply_worker_context_init (&worker_context, la_Info.act_log.db_iopagesize);
+  if (error != NO_ERROR)
+    {
+      la_applier_need_shutdown = true;
+      goto end;
+    }
+
+  worker_context.worker_idx = (int) (worker - la_apply_Workers);
+  worker_context_started = true;
 
   while (true)
     {
@@ -1394,8 +1490,9 @@ la_apply_worker_main (void *arg)
 		    task.rectype, (void *) task.apply, (long long) task.commit_lsa.pageid, (int) task.commit_lsa.offset,
 		    (task.apply ? (void *) task.apply->head : NULL));
       /* task.apply 를 직접 받아 la_find_apply_list 호출을 피한다 (R1/R2 레이스 제거) */
-      result.error = la_apply_repl_log (task.apply, task.rectype, &task.commit_lsa, &total_rows, task.final_pageid,
-					&result.committed_rep_lsa, &result.stats);
+      result.error =
+	la_apply_repl_log (&worker_context, task.apply, task.rectype, &task.commit_lsa, &total_rows,
+			   task.final_pageid, &result.committed_rep_lsa, &result.stats);
       er_log_debug (ARG_FILE_LINE,
 		    "worker[tid=%lu tran=%d] apply_repl_log trid=%d err=%d stats[ins=%d upd=%d del=%d sch=%d fail=%d]\n",
 		    (unsigned long) pthread_self (), tm_Tran_index, task.tranid, result.error,
@@ -1410,9 +1507,17 @@ la_apply_worker_main (void *arg)
 	  applied_item_count =
 	    result.stats.insert_counter + result.stats.update_counter + result.stats.delete_counter + result.stats.fail_counter;
 	  worker_applied_item_count += applied_item_count;
+	  er_log_debug (ARG_FILE_LINE,
+			"worker[tid=%lu idx=%d tran=%d] commit_transaction BEGIN trid=%d applied=%llu total_applied=%llu "
+			"stats[ins=%d upd=%d del=%d fail=%d]\n",
+			(unsigned long) pthread_self (), (int) (worker - la_apply_Workers), tm_Tran_index, task.tranid,
+			applied_item_count, worker_applied_item_count, result.stats.insert_counter,
+			result.stats.update_counter, result.stats.delete_counter, result.stats.fail_counter);
 	  result.error = la_commit_transaction (worker_applied_item_count);
-	  er_log_debug (ARG_FILE_LINE, "worker[tid=%lu tran=%d] commit_transaction trid=%d err=%d\n",
-			(unsigned long) pthread_self (), tm_Tran_index, task.tranid, result.error);
+	  er_log_debug (ARG_FILE_LINE,
+			"worker[tid=%lu idx=%d tran=%d] commit_transaction END trid=%d err=%d total_applied=%llu\n",
+			(unsigned long) pthread_self (), (int) (worker - la_apply_Workers), tm_Tran_index, task.tranid,
+			result.error, worker_applied_item_count);
 	}
 
       if (la_enqueue_apply_result (worker, &result) != NO_ERROR)
@@ -1423,6 +1528,11 @@ la_apply_worker_main (void *arg)
     }
 
 end:
+  if (worker_context_started)
+    {
+      la_apply_worker_context_final (&worker_context);
+    }
+
   if (session_started)
     {
       la_apply_worker_end_session (&session);
@@ -3204,38 +3314,39 @@ la_retry_on_error (int errid)
  *   return: error code
  */
 static void
-la_clear_recdes_pool (void)
+la_clear_recdes_pool (LA_APPLY_WORKER_CONTEXT * context)
 {
+  LA_RECDES_POOL *pool = &context->recdes_pool;
   int i;
   RECDES *recdes;
 
-  if (la_recdes_pool.is_initialized == false)
+  if (pool->is_initialized == false)
     {
       return;
     }
 
-  if (la_recdes_pool.recdes_arr != NULL)
+  if (pool->recdes_arr != NULL)
     {
-      for (i = 0; i < la_recdes_pool.num_recdes; i++)
+      for (i = 0; i < pool->num_recdes; i++)
 	{
-	  recdes = &la_recdes_pool.recdes_arr[i];
-	  if (recdes->area_size > la_recdes_pool.db_page_size)
+	  recdes = &pool->recdes_arr[i];
+	  if (recdes->area_size > pool->db_page_size)
 	    {
 	      free_and_init (recdes->data);
 	    }
 	}
-      free_and_init (la_recdes_pool.recdes_arr);
+      free_and_init (pool->recdes_arr);
     }
 
-  if (la_recdes_pool.area != NULL)
+  if (pool->area != NULL)
     {
-      free_and_init (la_recdes_pool.area);
+      free_and_init (pool->area);
     }
 
-  la_recdes_pool.db_page_size = 0;
-  la_recdes_pool.next_idx = 0;
-  la_recdes_pool.num_recdes = 0;
-  la_recdes_pool.is_initialized = false;
+  pool->db_page_size = 0;
+  pool->next_idx = 0;
+  pool->num_recdes = 0;
+  pool->is_initialized = false;
 
   return;
 }
@@ -3246,16 +3357,18 @@ la_clear_recdes_pool (void)
  *
  */
 static int
-la_realloc_recdes_data (RECDES * recdes, int data_size)
+la_realloc_recdes_data (LA_APPLY_WORKER_CONTEXT * context, RECDES * recdes, int data_size)
 {
-  if (la_recdes_pool.is_initialized == false)
+  LA_RECDES_POOL *pool = &context->recdes_pool;
+
+  if (pool->is_initialized == false)
     {
       return ER_FAILED;
     }
 
   if (recdes->area_size < data_size)
     {
-      if (recdes->area_size > la_recdes_pool.db_page_size)
+      if (recdes->area_size > pool->db_page_size)
 	{
 	  /* recdes->data was realloced by previous operation */
 	  free_and_init (recdes->data);
@@ -3283,30 +3396,31 @@ la_realloc_recdes_data (RECDES * recdes, int data_size)
  * greater than db page size, then it first frees the area.
  */
 static RECDES *
-la_assign_recdes_from_pool (void)
+la_assign_recdes_from_pool (LA_APPLY_WORKER_CONTEXT * context)
 {
+  LA_RECDES_POOL *pool = &context->recdes_pool;
   RECDES *recdes;
 
-  if (la_recdes_pool.is_initialized == false)
+  if (pool->is_initialized == false)
     {
       return NULL;
     }
 
-  recdes = &la_recdes_pool.recdes_arr[la_recdes_pool.next_idx];
+  recdes = &pool->recdes_arr[pool->next_idx];
   assert (recdes != NULL && recdes->data != NULL);
 
-  if (recdes->area_size > la_recdes_pool.db_page_size)
+  if (recdes->area_size > pool->db_page_size)
     {
       /* recdes->data was realloced by previous operation */
       free_and_init (recdes->data);
 
-      recdes->data = la_recdes_pool.area + la_recdes_pool.db_page_size * la_recdes_pool.next_idx;
-      recdes->area_size = la_recdes_pool.db_page_size;
+      recdes->data = pool->area + pool->db_page_size * pool->next_idx;
+      recdes->area_size = pool->db_page_size;
     }
 
   recdes->length = 0;
-  la_recdes_pool.next_idx++;
-  la_recdes_pool.next_idx %= la_recdes_pool.num_recdes;
+  pool->next_idx++;
+  pool->next_idx %= pool->num_recdes;
 
   return recdes;
 }
@@ -3318,34 +3432,35 @@ la_assign_recdes_from_pool (void)
  * Note:
  */
 static int
-la_init_recdes_pool (int page_size, int num_recdes)
+la_init_recdes_pool (LA_APPLY_WORKER_CONTEXT * context, int page_size, int num_recdes)
 {
+  LA_RECDES_POOL *pool = &context->recdes_pool;
   int i;
   char *p;
   RECDES *recdes;
 
   assert (page_size >= IO_MIN_PAGE_SIZE && page_size <= IO_MAX_PAGE_SIZE);
 
-  if (la_recdes_pool.is_initialized == false)
+  if (pool->is_initialized == false)
     {
-      la_recdes_pool.area = (char *) malloc (page_size * num_recdes);
-      if (la_recdes_pool.area == NULL)
+      pool->area = (char *) malloc (page_size * num_recdes);
+      if (pool->area == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, page_size * num_recdes);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
-      la_recdes_pool.recdes_arr = (RECDES *) malloc (sizeof (RECDES) * num_recdes);
-      if (la_recdes_pool.recdes_arr == NULL)
+      pool->recdes_arr = (RECDES *) malloc (sizeof (RECDES) * num_recdes);
+      if (pool->recdes_arr == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (RECDES) * num_recdes);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
-      p = la_recdes_pool.area;
+      p = pool->area;
       for (i = 0; i < num_recdes; i++)
 	{
-	  recdes = &la_recdes_pool.recdes_arr[i];
+	  recdes = &pool->recdes_arr[i];
 
 	  recdes->data = p;
 	  recdes->area_size = page_size;
@@ -3354,17 +3469,17 @@ la_init_recdes_pool (int page_size, int num_recdes)
 	  p += page_size;
 	}
 
-      la_recdes_pool.db_page_size = page_size;
-      la_recdes_pool.num_recdes = num_recdes;
-      la_recdes_pool.is_initialized = true;
+      pool->db_page_size = page_size;
+      pool->num_recdes = num_recdes;
+      pool->is_initialized = true;
     }
-  else if (la_recdes_pool.db_page_size != page_size || la_recdes_pool.num_recdes != num_recdes)
+  else if (pool->db_page_size != page_size || pool->num_recdes != num_recdes)
     {
-      la_clear_recdes_pool ();
-      return la_init_recdes_pool (page_size, num_recdes);
+      la_clear_recdes_pool (context);
+      return la_init_recdes_pool (context, page_size, num_recdes);
     }
 
-  la_recdes_pool.next_idx = 0;
+  pool->next_idx = 0;
 
   return NO_ERROR;
 }
@@ -3598,36 +3713,6 @@ static bool
 la_apply_pre (void)
 {
   LSA_COPY (&la_Info.final_lsa, &la_Info.committed_lsa);
-
-  if (la_Info.rec_type == NULL)
-    {
-      la_Info.rec_type = (char *) malloc (DB_SIZEOF (INT16));
-      if (la_Info.rec_type == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (INT16));
-	  return false;
-	}
-    }
-
-  if (la_Info.undo_unzip_ptr == NULL)
-    {
-      la_Info.undo_unzip_ptr = log_zip_alloc (la_Info.act_log.db_iopagesize);
-      if (la_Info.undo_unzip_ptr == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, la_Info.act_log.db_iopagesize);
-	  return false;
-	}
-    }
-
-  if (la_Info.redo_unzip_ptr == NULL)
-    {
-      la_Info.redo_unzip_ptr = log_zip_alloc (la_Info.act_log.db_iopagesize);
-      if (la_Info.redo_unzip_ptr == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, la_Info.act_log.db_iopagesize);
-	  return false;
-	}
-    }
 
   return true;
 }
@@ -4724,8 +4809,8 @@ la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, DB_VALUE * key)
  *   return: error code
  */
 char *
-la_get_zipped_data (char *undo_data, int undo_length, bool is_diff, bool is_undo_zip, bool is_overflow, char **rec_type,
-		    char **data, int *length)
+la_get_zipped_data (LA_APPLY_WORKER_CONTEXT * context, char *undo_data, int undo_length, bool is_diff,
+		    bool is_undo_zip, bool is_overflow, char **rec_type, char **data, int *length)
 {
   int redo_length = 0;
   int rec_len = 0;
@@ -4733,8 +4818,8 @@ la_get_zipped_data (char *undo_data, int undo_length, bool is_diff, bool is_undo
   LOG_ZIP *undo_unzip_data = NULL;
   LOG_ZIP *redo_unzip_data = NULL;
 
-  undo_unzip_data = la_Info.undo_unzip_ptr;
-  redo_unzip_data = la_Info.redo_unzip_ptr;
+  undo_unzip_data = context->undo_unzip_ptr;
+  redo_unzip_data = context->redo_unzip_ptr;
 
   if (is_diff)
     {
@@ -4784,12 +4869,12 @@ la_get_zipped_data (char *undo_data, int undo_length, bool is_diff, bool is_undo
 
   if (rec_type)
     {
-      memcpy (*rec_type, (la_Info.redo_unzip_ptr)->log_data, rec_len);
-      memcpy (*data, (la_Info.redo_unzip_ptr)->log_data + rec_len, *length);
+      memcpy (*rec_type, context->redo_unzip_ptr->log_data, rec_len);
+      memcpy (*data, context->redo_unzip_ptr->log_data + rec_len, *length);
     }
   else
     {
-      memcpy (*data, (la_Info.redo_unzip_ptr)->log_data, redo_length);
+      memcpy (*data, context->redo_unzip_ptr->log_data, redo_length);
     }
 
   return *data;
@@ -4801,8 +4886,8 @@ la_get_zipped_data (char *undo_data, int undo_length, bool is_diff, bool is_undo
  *   return: next log page pointer
  */
 int
-la_get_undoredo_diff (LOG_PAGE ** pgptr, LOG_PAGEID * pageid, PGLENGTH * offset, bool * is_undo_zip, char **undo_data,
-		      int *undo_length)
+la_get_undoredo_diff (LA_APPLY_WORKER_CONTEXT * context, LOG_PAGE ** pgptr, LOG_PAGEID * pageid, PGLENGTH * offset,
+		      bool * is_undo_zip, char **undo_data, int *undo_length)
 {
   int error = NO_ERROR;
 
@@ -4812,7 +4897,7 @@ la_get_undoredo_diff (LOG_PAGE ** pgptr, LOG_PAGEID * pageid, PGLENGTH * offset,
   LOG_PAGEID temp_pageid;
   PGLENGTH temp_offset;
 
-  undo_unzip_data = la_Info.undo_unzip_ptr;
+  undo_unzip_data = context->undo_unzip_ptr;
 
   temp_pg = *pgptr;
   temp_pageid = *pageid;
@@ -4870,8 +4955,9 @@ la_get_undoredo_diff (LOG_PAGE ** pgptr, LOG_PAGEID * pageid, PGLENGTH * offset,
  *              given log record
  */
 static int
-la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsigned int match_rcvindex,
-		 unsigned int *rcvindex, void **logs, char **rec_type, char **data, int *d_length)
+la_get_log_data (LA_APPLY_WORKER_CONTEXT * context, LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr,
+		 unsigned int match_rcvindex, unsigned int *rcvindex, void **logs, char **rec_type, char **data,
+		 int *d_length)
 {
   LOG_PAGE *pg;
   PGLENGTH offset;
@@ -4973,7 +5059,8 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
 	    {
 	      if (is_diff)
 		{		/* XOR Redo Data */
-		  error = la_get_undoredo_diff (&pg, &pageid, &offset, &is_undo_zip, &undo_data, &undo_length);
+		  error = la_get_undoredo_diff (context, &pg, &pageid, &offset, &is_undo_zip, &undo_data,
+						&undo_length);
 		  if (error != NO_ERROR)
 		    {
 		      if (undo_data != NULL)
@@ -5130,7 +5217,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
 
       if (zip_len != 0)
 	{
-	  if (!log_unzip (la_Info.redo_unzip_ptr, zip_len, *data))
+	  if (!log_unzip (context->redo_unzip_ptr, zip_len, *data))
 	    {
 	      if (undo_data != NULL)
 		{
@@ -5141,7 +5228,9 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
 	    }
 	}
 
-      *data = la_get_zipped_data (undo_data, undo_length, is_diff, is_undo_zip, is_overflow, rec_type, data, &length);
+      *data =
+	la_get_zipped_data (context, undo_data, undo_length, is_diff, is_undo_zip, is_overflow, rec_type, data,
+			   &length);
       if (*data == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -5170,7 +5259,8 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
  *
  */
 static int
-la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * recdes, unsigned int rcvindex)
+la_get_overflow_recdes (LA_APPLY_WORKER_CONTEXT * context, LOG_RECORD_HEADER * log_record, void *logs, RECDES * recdes,
+			unsigned int rcvindex)
 {
   LOG_LSA current_lsa;
   LOG_PAGE *current_log_page;
@@ -5222,8 +5312,8 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
 
 	  memset (ovf_list_data, 0, DB_SIZEOF (LA_OVF_PAGE_LIST));
 	  error =
-	    la_get_log_data (current_log_record, &current_lsa, current_log_page, rcvindex, NULL, &log_info, NULL,
-			     &ovf_list_data->data, &ovf_list_data->length);
+	    la_get_log_data (context, current_log_record, &current_lsa, current_log_page, rcvindex, NULL, &log_info,
+			     NULL, &ovf_list_data->data, &ovf_list_data->length);
 
 	  if (error == NO_ERROR && log_info && ovf_list_data->data)
 	    {
@@ -5255,7 +5345,7 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
 
   assert (recdes != NULL);
 
-  error = la_realloc_recdes_data (recdes, length);
+  error = la_realloc_recdes_data (context, recdes, length);
   if (error != NO_ERROR)
     {
       /* malloc failed: clear linked-list */
@@ -5314,8 +5404,8 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
  *      record, it should fetch the real UPDATE log record to be processed.
  */
 static int
-la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **logs, char **rec_type, char **data,
-			int *d_length)
+la_get_next_update_log (LA_APPLY_WORKER_CONTEXT * context, LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **logs,
+			char **rec_type, char **data, int *d_length)
 {
   LOG_PAGE *pg;
   LOG_LSA lsa;
@@ -5344,7 +5434,7 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
   LSA_COPY (&lsa, &prev_lrec->forw_lsa);
   prev_log = *(LOG_REC_UNDOREDO **) logs;
 
-  redo_unzip_data = la_Info.redo_unzip_ptr;
+  redo_unzip_data = context->redo_unzip_ptr;
 
   while (true)
     {
@@ -5400,7 +5490,8 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
 		      LA_LOG_READ_ADD_ALIGN (error, log_size, offset, pageid, pg);
 		      if (is_diff)
 			{
-			  error = la_get_undoredo_diff (&pg, &pageid, &offset, &is_undo_zip, &undo_data, &undo_length);
+			  error = la_get_undoredo_diff (context, &pg, &pageid, &offset, &is_undo_zip, &undo_data,
+							&undo_length);
 			  if (error != NO_ERROR)
 			    {
 
@@ -5435,8 +5526,8 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
 			    }
 
 			  *data =
-			    la_get_zipped_data (undo_data, undo_length, is_diff, is_undo_zip, false, rec_type, data,
-						&length);
+			    la_get_zipped_data (context, undo_data, undo_length, is_diff, is_undo_zip, false, rec_type,
+						data, &length);
 			  if (*data == NULL)
 			    {
 			      assert (er_errid () != NO_ERROR);
@@ -5473,8 +5564,8 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
 }
 
 static int
-la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr, unsigned int match_rcvindex, void **logs,
-			  char **rec_type, RECDES * recdes)
+la_get_relocation_recdes (LA_APPLY_WORKER_CONTEXT * context, LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr,
+			  unsigned int match_rcvindex, void **logs, char **rec_type, RECDES * recdes)
 {
   LOG_RECORD_HEADER *tmp_lrec;
   unsigned int rcvindex;
@@ -5495,8 +5586,8 @@ la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr, unsigned i
       else
 	{
 	  error =
-	    la_get_log_data (tmp_lrec, &lsa, pg, RVHF_INSERT_NEWHOME, &rcvindex, logs, rec_type, &recdes->data,
-			     &recdes->length);
+	    la_get_log_data (context, tmp_lrec, &lsa, pg, RVHF_INSERT_NEWHOME, &rcvindex, logs, rec_type,
+			     &recdes->data, &recdes->length);
 	}
       la_release_page_buffer (lsa.pageid);
     }
@@ -5525,8 +5616,8 @@ la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr, unsigned i
  *     for the given lsa.
  */
 static int
-la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *rcvindex, char *rec_type,
-	       bool is_mvcc_class)
+la_get_recdes (LA_APPLY_WORKER_CONTEXT * context, LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes,
+	       unsigned int *rcvindex, char *rec_type, bool is_mvcc_class)
 {
   LOG_RECORD_HEADER *lrec;
   LOG_PAGE *pg;
@@ -5536,7 +5627,7 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *r
   pg = pgptr;
   lrec = LOG_GET_LOG_RECORD_HEADER (pg, lsa);
 
-  error = la_get_log_data (lrec, lsa, pg, 0, rcvindex, &logs, &rec_type, &recdes->data, &recdes->length);
+  error = la_get_log_data (context, lrec, lsa, pg, 0, rcvindex, &logs, &rec_type, &recdes->data, &recdes->length);
 
   if (error == NO_ERROR && logs != NULL)
     {
@@ -5559,29 +5650,29 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *r
   if (*rcvindex == RVOVF_CHANGE_LINK)
     {
       /* if overflow page update */
-      error = la_get_overflow_recdes (lrec, logs, recdes, RVOVF_PAGE_UPDATE);
+      error = la_get_overflow_recdes (context, lrec, logs, recdes, RVOVF_PAGE_UPDATE);
       recdes->type = REC_BIGONE;
     }
   else if (recdes->type == REC_BIGONE)
     {
       /* if overflow page insert */
-      error = la_get_overflow_recdes (lrec, logs, recdes, RVOVF_NEWPAGE_INSERT);
+      error = la_get_overflow_recdes (context, lrec, logs, recdes, RVOVF_NEWPAGE_INSERT);
     }
   else if (*rcvindex == RVHF_INSERT && recdes->type == REC_ASSIGN_ADDRESS)
     {
-      error = la_get_next_update_log (lrec, pg, &logs, &rec_type, &recdes->data, &recdes->length);
+      error = la_get_next_update_log (context, lrec, pg, &logs, &rec_type, &recdes->data, &recdes->length);
       if (error == NO_ERROR)
 	{
 	  recdes->type = *(INT16 *) (rec_type);
 	  if (recdes->type == REC_BIGONE)
 	    {
-	      error = la_get_overflow_recdes (lrec, logs, recdes, RVOVF_NEWPAGE_INSERT);
+	      error = la_get_overflow_recdes (context, lrec, logs, recdes, RVOVF_NEWPAGE_INSERT);
 	    }
 	}
     }
   else if ((*rcvindex == RVHF_UPDATE || *rcvindex == RVHF_UPDATE_NOTIFY_VACUUM) && recdes->type == REC_RELOCATION)
     {
-      error = la_get_relocation_recdes (lrec, pg, 0, &logs, &rec_type, recdes);
+      error = la_get_relocation_recdes (context, lrec, pg, 0, &logs, &rec_type, recdes);
       if (error == NO_ERROR)
 	{
 	  recdes->type = *(INT16 *) (rec_type);
@@ -5929,8 +6020,9 @@ la_write_delete_sql_log (LA_ITEM * item, DB_OBJECT * class_obj)
  *      . If la_enable_sql_logging(config param is ha_enable_sql_logging) is enabled, the query is written to a file.
  */
 static int
-la_apply_delete_log (LA_ITEM * item, LA_APPLY_STATS * stats)
+la_apply_delete_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_APPLY_STATS * stats)
 {
+  (void) context;
   DB_OBJECT *class_obj;
 
   int error = la_flush_repl_items (false, stats);
@@ -6039,7 +6131,7 @@ end:
  *      . If la_enable_sql_logging(config param is ha_enable_sql_logging) is enabled, the query is written to a file.
  */
 static int
-la_apply_update_log (LA_ITEM * item, LA_APPLY_STATS * stats)
+la_apply_update_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_APPLY_STATS * stats)
 {
   int error = NO_ERROR;
   unsigned int rcvindex;
@@ -6063,10 +6155,10 @@ la_apply_update_log (LA_ITEM * item, LA_APPLY_STATS * stats)
       return er_errid ();
     }
 
-  recdes = la_assign_recdes_from_pool ();
+  recdes = la_assign_recdes_from_pool (context);
 
   /* retrieve the target record description */
-  error = la_get_recdes (&item->target_lsa, pgptr, recdes, &rcvindex, la_Info.rec_type, false);
+  error = la_get_recdes (context, &item->target_lsa, pgptr, recdes, &rcvindex, context->rec_type, false);
   if (error != NO_ERROR)
     {
       goto end;
@@ -6240,7 +6332,7 @@ end:
  *      . If la_enable_sql_logging(config param is ha_enable_sql_logging) is enabled, the query is written to a file.
  */
 static int
-la_apply_insert_log (LA_ITEM * item, LA_APPLY_STATS * stats)
+la_apply_insert_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_APPLY_STATS * stats)
 {
   int error = NO_ERROR;
   DB_OBJECT *class_obj;
@@ -6254,16 +6346,19 @@ la_apply_insert_log (LA_ITEM * item, LA_APPLY_STATS * stats)
   sb.clear ();
   db_sprint_value (la_get_item_pk_value (item), sb);
   er_log_debug (ARG_FILE_LINE,
-		"apply_insert[tid=%lu] BEGIN class=%s key=%s item_lsa=%lld|%d target_lsa=%lld|%d pending=%d\n",
-		(unsigned long) pthread_self (), item->class_name, sb.get_buffer (), (long long) item->lsa.pageid,
-		(int) item->lsa.offset, (long long) item->target_lsa.pageid, (int) item->target_lsa.offset,
+		"worker[idx=%d tid=%lu tran=%d] insert BEGIN class=%s key=%s item_lsa=%lld|%d target_lsa=%lld|%d "
+		"pending=%d\n",
+		context->worker_idx, (unsigned long) pthread_self (), tm_Tran_index, item->class_name, sb.get_buffer (),
+		(long long) item->lsa.pageid, (int) item->lsa.offset, (long long) item->target_lsa.pageid,
+		(int) item->target_lsa.offset,
 		__gv_loc_repl.ws_get_repl_obj_count ());
 
   error = la_flush_repl_items (false, stats);
   if (error != NO_ERROR)
     {
-      er_log_debug (ARG_FILE_LINE, "apply_insert[tid=%lu] pre_flush error=%d class=%s key=%s\n",
-		    (unsigned long) pthread_self (), error, item->class_name, sb.get_buffer ());
+      er_log_debug (ARG_FILE_LINE, "worker[idx=%d tid=%lu tran=%d] insert pre_flush error=%d class=%s key=%s\n",
+		    context->worker_idx, (unsigned long) pthread_self (), tm_Tran_index, error, item->class_name,
+		    sb.get_buffer ());
       return error;
     }
 
@@ -6288,20 +6383,21 @@ la_apply_insert_log (LA_ITEM * item, LA_APPLY_STATS * stats)
       goto end;
     }
 
-  recdes = la_assign_recdes_from_pool ();
+  recdes = la_assign_recdes_from_pool (context);
   is_mvcc_class = la_is_mvcc_class (ws_oid (class_obj));
 
   /* retrieve the target record description */
-  error = la_get_recdes (&item->target_lsa, pgptr, recdes, &rcvindex, la_Info.rec_type, is_mvcc_class);
+  error = la_get_recdes (context, &item->target_lsa, pgptr, recdes, &rcvindex, context->rec_type, is_mvcc_class);
   if (error != NO_ERROR)
     {
       goto end;
     }
 
   er_log_debug (ARG_FILE_LINE,
-		"apply_insert[tid=%lu] recdes class=%s key=%s rcvindex=%u rec_type=%d mvcc=%d length=%d\n",
-		(unsigned long) pthread_self (), item->class_name, sb.get_buffer (), rcvindex, recdes->type,
-		(int) is_mvcc_class, recdes->length);
+		"worker[idx=%d tid=%lu tran=%d] insert recdes class=%s key=%s rcvindex=%u rec_type=%d mvcc=%d "
+		"length=%d\n",
+		context->worker_idx, (unsigned long) pthread_self (), tm_Tran_index, item->class_name, sb.get_buffer (),
+		rcvindex, recdes->type, (int) is_mvcc_class, recdes->length);
 
   if (recdes->type == REC_ASSIGN_ADDRESS || recdes->type == REC_RELOCATION)
     {
@@ -6333,8 +6429,10 @@ la_apply_insert_log (LA_ITEM * item, LA_APPLY_STATS * stats)
     }
 
   error = la_repl_add_object (class_obj, item, recdes);
-  er_log_debug (ARG_FILE_LINE, "apply_insert[tid=%lu] add_object class=%s key=%s error=%d pending=%d\n",
-		(unsigned long) pthread_self (), item->class_name, sb.get_buffer (), error,
+  er_log_debug (ARG_FILE_LINE,
+		"worker[idx=%d tid=%lu tran=%d] insert add_object class=%s key=%s error=%d pending=%d\n",
+		context->worker_idx, (unsigned long) pthread_self (), tm_Tran_index, item->class_name, sb.get_buffer (),
+		error,
 		__gv_loc_repl.ws_get_repl_obj_count ());
 
 end:
@@ -6349,9 +6447,10 @@ end:
     }
 
   er_log_debug (ARG_FILE_LINE,
-		"apply_insert[tid=%lu] END class=%s key=%s error=%d stats[ins=%lu fail=%lu unflushed=%d]\n",
-		(unsigned long) pthread_self (), item->class_name, sb.get_buffer (), error, stats->insert_counter,
-		stats->fail_counter, stats->num_unflushed);
+		"worker[idx=%d tid=%lu tran=%d] insert END class=%s key=%s error=%d "
+		"stats[ins=%lu fail=%lu unflushed=%d]\n",
+		context->worker_idx, (unsigned long) pthread_self (), tm_Tran_index, item->class_name, sb.get_buffer (),
+		error, stats->insert_counter, stats->fail_counter, stats->num_unflushed);
 
   la_release_page_buffer (old_pageid);
 
@@ -6769,8 +6868,8 @@ la_is_supported_poc_item (LA_ITEM * item)
  *    record.
  */
 static int
-la_apply_repl_log (LA_APPLY * apply, int rectype, LOG_LSA * commit_lsa, int *total_rows, LOG_PAGEID final_pageid,
-		   LOG_LSA * committed_rep_lsa, LA_APPLY_STATS * stats)
+la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, int rectype, LOG_LSA * commit_lsa,
+		   int *total_rows, LOG_PAGEID final_pageid, LOG_LSA * committed_rep_lsa, LA_APPLY_STATS * stats)
 {
   LA_ITEM *item = NULL;
   LA_ITEM *next_item = NULL;
@@ -6826,15 +6925,15 @@ la_apply_repl_log (LA_APPLY * apply, int rectype, LOG_LSA * commit_lsa, int *tot
 		case RVREPL_DATA_UPDATE_START:
 		case RVREPL_DATA_UPDATE_END:
 		case RVREPL_DATA_UPDATE:
-		  error = la_apply_update_log (item, stats);
+		  error = la_apply_update_log (context, item, stats);
 		  break;
 
 		case RVREPL_DATA_INSERT:
-		  error = la_apply_insert_log (item, stats);
+		  error = la_apply_insert_log (context, item, stats);
 		  break;
 
 		case RVREPL_DATA_DELETE:
-		  error = la_apply_delete_log (item, stats);
+		  error = la_apply_delete_log (context, item, stats);
 		  break;
 
 		default:
@@ -6948,17 +7047,27 @@ la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid)
   LA_COMMIT *commit;
   LA_APPLY_STATS stats;
   LOG_LSA committed_rep_lsa;
+  LA_APPLY_WORKER_CONTEXT worker_context;
+  bool worker_context_started = false;
   int error = NO_ERROR;
 
   LSA_SET_NULL (lsa);
   LSA_SET_NULL (&committed_rep_lsa);
   memset (&stats, 0, sizeof (stats));
 
+  error = la_apply_worker_context_init (&worker_context, la_Info.act_log.db_iopagesize);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  worker_context_started = true;
+
   commit = la_Info.commit_head;
   if (commit && (commit->type == LOG_COMMIT || commit->type == LOG_SYSOP_END || commit->type == LOG_ABORT))
     {
       /* la_apply_commit_list 는 현재 호출 경로가 없는 (구) 레거시 함수지만 컴파일 호환을 위해 시그니처만 맞춘다. */
-      error = la_apply_repl_log (la_find_apply_list (commit->tranid), commit->type, &commit->log_lsa,
+      error = la_apply_repl_log (&worker_context, la_find_apply_list (commit->tranid), commit->type, &commit->log_lsa,
 				 &la_Info.total_rows, final_pageid, &committed_rep_lsa, &stats);
       if (error != NO_ERROR)
 	{
@@ -6994,6 +7103,11 @@ la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid)
 	}
 
       free_and_init (commit);
+    }
+
+  if (worker_context_started)
+    {
+      la_apply_worker_context_final (&worker_context);
     }
 
   return error;
@@ -8008,8 +8122,6 @@ la_init (const char *log_path, const int max_mem_size)
 
   la_Info.num_unflushed = 0;
 
-  la_recdes_pool.is_initialized = false;
-
   if (db_get_client_type () == DB_CLIENT_TYPE_LOG_APPLIER)
     {
       __gv_loc_repl.ws_init_repl_objs ();
@@ -8070,22 +8182,6 @@ la_shutdown (void)
 	}
     }
 
-  if (la_Info.rec_type != NULL)
-    {
-      free_and_init (la_Info.rec_type);
-    }
-
-  if (la_Info.undo_unzip_ptr != NULL)
-    {
-      log_zip_free (la_Info.undo_unzip_ptr);
-      la_Info.undo_unzip_ptr = NULL;
-    }
-  if (la_Info.redo_unzip_ptr != NULL)
-    {
-      log_zip_free (la_Info.redo_unzip_ptr);
-      la_Info.redo_unzip_ptr = NULL;
-    }
-
   if (la_Info.cache_pb != NULL)
     {
       if (la_Info.cache_pb->buffer_area != NULL)
@@ -8128,11 +8224,6 @@ la_shutdown (void)
   if (db_get_client_type () == DB_CLIENT_TYPE_LOG_APPLIER)
     {
       __gv_loc_repl.ws_clear_all_repl_objs ();
-    }
-
-  if (la_recdes_pool.is_initialized == true)
-    {
-      la_clear_recdes_pool ();
     }
 
   la_Info.num_unflushed = 0;
@@ -9217,13 +9308,6 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   if (error != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE, "Cannot initialize cache log buffer");
-      return error;
-    }
-
-  error = la_init_recdes_pool (la_Info.act_log.db_iopagesize, LA_MAX_UNFLUSHED_REPL_ITEMS);
-  if (error != NO_ERROR)
-    {
-      er_log_debug (ARG_FILE_LINE, "Cannot initialize recdes pool");
       return error;
     }
 
