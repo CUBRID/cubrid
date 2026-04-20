@@ -344,6 +344,12 @@ namespace os::resources
       int rx_count, tx_count;
       int i, q;
 
+      /* no fan-out needed when there is at most one target core */
+      if (index.size () <= 1)
+	{
+	  return ;
+	}
+
       /* get ifname */
       ifname = cubbase::ifsys::auto_select_primary_iface ();
       if (ifname.empty ())
