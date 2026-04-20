@@ -2772,8 +2772,15 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	  break;
 
 	case DB_TYPE_VECTOR:
-	  /* Dimension rides in the precision carrier word, like NUMERIC. */
-	  precision = d->precision;
+	  /* Dimension rides in the precision carrier word, like NUMERIC.
+	   * TP_FLOATING_PRECISION_VALUE (-1) means "dimension unknown at domain
+	   * construction time" (the actual dimension flows in with each value
+	   * via or_put_vector). Encode that as 0 in the carrier so unpack won't
+	   * interpret a negative precision as OR_DOMAIN_PRECISION_MAX. */
+	  if (d->precision > 0)
+	    {
+	      precision = d->precision;
+	    }
 	  break;
 
 	default:
@@ -3009,8 +3016,16 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	case DB_TYPE_VECTOR:
 	  /* Dimension rides in the precision carrier word. The existing
 	   * "precision >= OR_DOMAIN_PRECISION_MAX -> extended word" path at the
-	   * bottom of this switch handles high-dim vectors (e.g. 2048). */
-	  precision = d->precision;
+	   * bottom of this switch handles high-dim vectors (e.g. 2048).
+	   * Guard against TP_FLOATING_PRECISION_VALUE (-1) which would
+	   * otherwise be written as 0xFFFF in the carrier and trick the
+	   * unpacker into reading a nonexistent extended precision word. The
+	   * actual per-value dimension travels with each DB_VALUE via
+	   * or_put_vector, so dropping the floating marker here is safe. */
+	  if (d->precision > 0)
+	    {
+	      precision = d->precision;
+	    }
 	  break;
 
 	default:
