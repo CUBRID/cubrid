@@ -244,11 +244,11 @@ namespace parallel_query
     }
 
     /*
-     * probe_partitions
+     * probe_execute
      */
 
     int
-    probe_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context)
+    probe_execute (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context)
     {
       HASHJOIN_SHARED_PROBE_INFO shared_info;
       UINT32 task_cnt, task_index;
@@ -272,7 +272,7 @@ namespace parallel_query
 
       /* Per-task output list array */
       shared_info.task_list_ids =
-	(QFILE_LIST_ID **) db_private_alloc (&thread_ref, task_cnt * sizeof (QFILE_LIST_ID *));
+	      (QFILE_LIST_ID **) db_private_alloc (&thread_ref, task_cnt * sizeof (QFILE_LIST_ID *));
       if (shared_info.task_list_ids == nullptr)
 	{
 	  assert_release_error (er_errid () != NO_ERROR);
@@ -324,7 +324,7 @@ namespace parallel_query
 	for (task_index = 0; task_index < task_cnt; task_index++)
 	  {
 	    probe_task *task =
-	      new probe_task (tm, manager, &contexts[task_index], &shared_info, (int) task_index);
+		    new probe_task (tm, manager, &contexts[task_index], &shared_info, (int) task_index);
 	    tm.push_task (task);
 	  }
 
@@ -441,6 +441,5 @@ error_cleanup:
 	}
       return error;
     }
-
   } /* namespace hash_join */
 } /* namespace parallel_query */

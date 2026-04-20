@@ -1120,7 +1120,7 @@ namespace parallel_query
 
 	      local_probe_stats.read_rows++;
 	      local_hash_scan->curr_hash_key = qdata_hash_scan_key (temp_key, UINT_MAX,
-								    local_hash_scan->hash_list_scan_type);
+					       local_hash_scan->hash_list_scan_type);
 	      local_probe_stats.read_keys++;
 
 	      /* reset build tuple so hjoin_probe_key starts at head of chain */
@@ -1266,7 +1266,7 @@ namespace parallel_query
 
       /* cleanup: per-context resources (hash_scan temp keys, build->list_scan_id) stay owned by
        * the secondary context and are released by hjoin_clear_probe_secondary_context when
-       * probe_partitions tears the secondaries down. Spawned per-worker TLS clones must be
+       * probe_execute tears the secondaries down. Spawned per-worker TLS clones must be
        * un-stashed from m_context before destroy_instance so that stale pointers are not left
        * dangling when the worker is reused. */
       if (sm != nullptr)
@@ -1505,7 +1505,7 @@ namespace parallel_query
 
 	      local_probe_stats.read_rows++;
 	      local_hash_scan->curr_hash_key = qdata_hash_scan_key (temp_key, UINT_MAX,
-								    local_hash_scan->hash_list_scan_type);
+					       local_hash_scan->hash_list_scan_type);
 	      local_probe_stats.read_keys++;
 
 	      build_tuple_record.tpl = nullptr;

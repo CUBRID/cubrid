@@ -133,7 +133,7 @@ static void hjoin_destroy_qlist (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * con
 
 /* Hash List Scan */
 static int hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cnt, QFILE_LIST_ID * list_id);
-static void hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, bool is_shared);
+static void hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan);
 
 /* Hash Join Processing */
 static HASHJOIN_STATUS hjoin_check_empty_inputs (HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
@@ -215,10 +215,9 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
 
 	  error = hjoin_execute (thread_p, &manager, single_context);
 
-	  if (thread_is_on_trace (thread_p) && single_context->stats != NULL
-	      && single_context->stats->num_parallel_threads > 1)
+	  if (thread_is_on_trace (thread_p))
 	    {
-	      xasl->executed_parallelism = single_context->stats->num_parallel_threads;
+	      xasl->executed_parallelism = manager.num_parallel_threads;
 	    }
 	  break;
 
@@ -636,12 +635,6 @@ hjoin_execute_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
   outer->list_scan_id.status = S_CLOSED;
   inner->list_scan_id.status = S_CLOSED;
 
-  list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, manager->qlist_flag, NULL);
-  if (list_id == NULL)
-    {
-      goto error_exit;
-    }
-
   error = hjoin_init_context (thread_p, manager, context);
   if (error != NO_ERROR)
     {
@@ -671,64 +664,39 @@ hjoin_execute_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
       goto error_exit;
     }
 
-#if defined (SERVER_MODE) && !defined (WINDOWS)
-  /* parallel_probe promotion is only valid for the single-context (non-partition) path. */
-  if (context == &manager->single_context)
-  {
-    HASHJOIN_STATUS probe_status = hjoin_try_parallel_probe (thread_p, manager, context);
-    if (probe_status == HASHJOIN_STATUS_PARALLEL_PROBE)
-      {
-	context->status = HASHJOIN_STATUS_PARALLEL_PROBE;
-
-	if (thread_is_on_trace (thread_p))
-	  {
-	    assert (context->stats != NULL);
-	    context->stats->num_parallel_threads = manager->num_parallel_threads;
-	  }
-
-	// *INDENT-OFF*
-	error = parallel_query::hash_join::probe_partitions (*thread_p, manager, context);
-	// *INDENT-ON*
-
-	manager->px_worker_manager->release_workers ();
-	manager->px_worker_manager = NULL;
-
-	if (manager->px_worker_stats != NULL)
-	  {
-	    db_private_free_and_init (thread_p, manager->px_worker_stats);
-	  }
-
-	if (error == NO_ERROR)
-	  {
-	    qfile_close_list (thread_p, list_id);
-	    qfile_destroy_list (thread_p, list_id);
-	    QFILE_FREE_AND_INIT_LIST_ID (list_id);
-	    goto cleanup;
-	  }
-	goto error_exit;
-      }
-    else if (probe_status == HASHJOIN_STATUS_ERROR)
-      {
-	goto error_exit;
-      }
-  }
-#endif /* defined (SERVER_MODE) && !defined (WINDOWS) */
-
-  if (IS_OUTER_JOIN_TYPE (manager->join_type))
+  if (context->status == HASHJOIN_STATUS_PARALLEL_PROBE)
     {
-      error = hjoin_outer_probe (thread_p, manager, context, list_id);
+      assert (context == &manager->single_context);
+
+      // *INDENT-OFF*
+      error = parallel_query::hash_join::probe_execute (*thread_p, manager, context);
+      // *INDENT-ON*
     }
   else
     {
-      error = hjoin_probe (thread_p, manager, context, list_id);
+      list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, manager->qlist_flag, NULL);
+      if (list_id == NULL)
+	{
+	  goto error_exit;
+	}
+
+      if (IS_OUTER_JOIN_TYPE (manager->join_type))
+	{
+	  error = hjoin_outer_probe (thread_p, manager, context, list_id);
+	}
+      else
+	{
+	  error = hjoin_probe (thread_p, manager, context, list_id);
+	}
+
+      qfile_close_list (thread_p, list_id);
+      context->list_id = list_id;
     }
+
   if (error != NO_ERROR)
     {
       goto error_exit;
     }
-
-  qfile_close_list (thread_p, list_id);
-  context->list_id = list_id;
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
@@ -738,7 +706,7 @@ cleanup:
 
   hjoin_destroy_qlist (thread_p, context);
 
-  hjoin_scan_clear (thread_p, &context->hash_scan, context->hash_table_is_shared);
+  hjoin_scan_clear (thread_p, &context->hash_scan);
 
   /* Check if qfile_close_list was called */
   assert (list_id == NULL || list_id->last_pgptr == NULL);
@@ -1245,10 +1213,6 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJO
 #if defined (SERVER_MODE) && !defined (WINDOWS)
   status = hjoin_try_parallel (thread_p, manager, single_context);
   single_context->status = status;
-  if (status == HASHJOIN_STATUS_ERROR)
-    {
-      goto error_exit;
-    }
 #endif /* defined (SERVER_MODE) && !defined (WINDOWS) */
 
   switch (status)
@@ -2031,9 +1995,8 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
     (outer_list_id->page_cnt < inner_list_id->page_cnt) ? outer_list_id->page_cnt : inner_list_id->page_cnt;
   assert (min_page_cnt >= 0);
 
-  UINT32 degree =
-    parallel_query::compute_parallel_degree (parallel_query::parallel_type::HASH_JOIN, min_page_cnt,
-					     manager->num_parallel_threads);
+  UINT32 degree = parallel_query::compute_parallel_degree (parallel_query::parallel_type::HASH_JOIN, min_page_cnt,
+							   manager->num_parallel_threads);
   if (degree < 2)
     {
       /* try single-thread hash join */
@@ -2115,8 +2078,8 @@ error_exit:
 /*
  * hjoin_try_parallel_probe() -
  *   return: One of the following HASHJOIN_STATUS values:
- *           - HASHJOIN_STATUS_SINGLE: Parallel execution is not applied or falls back on error.
- *           - HASHJOIN_STATUS_PARALLEL_PROBE: Parallel execution is applied.
+ *           - HASHJOIN_STATUS_SINGLE: Parallel probe is not applied or falls back on error.
+ *           - HASHJOIN_STATUS_PARALLEL_PROBE: Parallel probe is applied.
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
  *   single_context(in): Hash join context for single-threaded execution.
@@ -2127,7 +2090,7 @@ hjoin_try_parallel_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, H
   QFILE_LIST_ID *probe_list_id;
   UINT64 page_cnt;
 
-  parallel_query::worker_manager *px_worker_manager = NULL;
+  parallel_query::worker_manager * px_worker_manager = NULL;
   UINT64 *px_worker_stats = NULL;
 
   assert (thread_p != NULL);
@@ -2149,8 +2112,8 @@ hjoin_try_parallel_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, H
   page_cnt = probe_list_id->page_cnt;
   assert (page_cnt >= 0);
 
-  UINT32 degree =
-    parallel_query::compute_parallel_degree (parallel_query::parallel_type::HASH_JOIN, page_cnt, manager->num_parallel_threads);
+  UINT32 degree = parallel_query::compute_parallel_degree (parallel_query::parallel_type::HASH_JOIN, page_cnt,
+							   manager->num_parallel_threads);
   if (degree < 2)
     {
       /* try single-thread hash join */
@@ -2536,11 +2499,44 @@ hjoin_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
       context->stats->swap_join_inputs = (context->build == outer) ? true : false;
     }
 
+#if defined (SERVER_MODE) && !defined (WINDOWS)
+  if (context == &manager->single_context)
+    {
+      context->status = hjoin_try_parallel_probe (thread_p, manager, context);
+      switch (context->status)
+	{
+	case HASHJOIN_STATUS_SINGLE:
+	  if (thread_is_on_trace (thread_p))
+	    {
+	      assert (context->stats != NULL);
+	      assert (context->stats->num_parallel_threads == 0);
+	    }
+	  break;
+
+	case HASHJOIN_STATUS_PARALLEL_PROBE:
+	  if (thread_is_on_trace (thread_p))
+	    {
+	      assert (context->stats != NULL);
+	      context->stats->num_parallel_threads = manager->num_parallel_threads;
+	    }
+	  break;
+
+	case HASHJOIN_STATUS_ERROR:
+	  goto error_exit;
+
+	default:
+	  /* impossible case */
+	  assert_release_error (false);
+	  goto error_exit;
+	}
+    }
+#endif /* defined (SERVER_MODE) && !defined (WINDOWS) */
+
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 
 error_exit:
-  hjoin_scan_clear (thread_p, &context->hash_scan, context->hash_table_is_shared);
+  hjoin_scan_clear (thread_p, &context->hash_scan);
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
@@ -2600,7 +2596,9 @@ hjoin_clear_context (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context)
  *
  * Shares:
  *   - outer/inner/build/probe->list_id pointers (secondary must not destroy them)
- *   - hash_scan.memory.hash_table / file.hash_table pointer (flagged via hash_table_is_shared)
+ *   - hash_scan.memory.hash_table / file.hash_table pointer (unlinked in
+ *     hjoin_clear_probe_secondary_context before hjoin_scan_clear is invoked so the destroy
+ *     path is skipped)
  *
  * Owns (per-context):
  *   - list_scan_id on the build side (so concurrent hjoin_probe_key lookups don't interfere)
@@ -2671,8 +2669,6 @@ hjoin_init_probe_secondary_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * 
       secondary->hash_scan.file.is_dk_bucket = false;
     }
 
-  secondary->hash_table_is_shared = true;
-
   key_cnt = manager->key_cnt;
   secondary->hash_scan.temp_key = qdata_alloc_hscan_key (thread_p, key_cnt, true);
   if (secondary->hash_scan.temp_key == NULL)
@@ -2738,7 +2734,26 @@ hjoin_clear_probe_secondary_context (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT *
   qfile_close_scan (thread_p, &outer->list_scan_id);
   qfile_close_scan (thread_p, &inner->list_scan_id);
 
-  hjoin_scan_clear (thread_p, &secondary->hash_scan, secondary->hash_table_is_shared);
+  /* hash_table is borrowed from the primary context; unlink before hjoin_scan_clear so the
+   * destroy path (guarded by NULL) is skipped. */
+  switch (secondary->hash_scan.hash_list_scan_type)
+    {
+    case HASH_METH_IN_MEM:
+    case HASH_METH_HYBRID:
+      secondary->hash_scan.memory.hash_table = NULL;
+      secondary->hash_scan.memory.curr_hash_entry = NULL;
+      break;
+
+    case HASH_METH_HASH_FILE:
+      secondary->hash_scan.file.hash_table = NULL;
+      break;
+
+    case HASH_METH_NOT_USE:
+    default:
+      break;
+    }
+
+  hjoin_scan_clear (thread_p, &secondary->hash_scan);
 
   if (outer->tuple_record.tpl != NULL)
     {
@@ -2901,9 +2916,7 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
   return NO_ERROR;
 
 error_exit:
-  /* scan_init failures are always on an owned-scan; the caller populates hash_table_is_shared
-   * separately after this function returns on the primary context path. */
-  hjoin_scan_clear (thread_p, hash_scan, false);
+  hjoin_scan_clear (thread_p, hash_scan);
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
@@ -2919,13 +2932,9 @@ error_exit:
  *   return: None.
  *   thread_p(in): Thread entry.
  *   hash_scan(in): Hash scan structure to clear.
- *   is_shared(in): true if hash_table pointer is borrowed from another context (parallel probe
- *                  secondary). In that case the hash_table is owned elsewhere and must NOT be
- *                  destroyed here; only per-task mutable state (temp_key/temp_new_key, scan_type)
- *                  is released.
  */
 static void
-hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, bool is_shared)
+hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan)
 {
   assert (thread_p != NULL);
   assert (hash_scan != NULL);
@@ -2942,54 +2951,30 @@ hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, bool is_s
       hash_scan->temp_new_key = NULL;
     }
 
-  if (is_shared)
+  switch (hash_scan->hash_list_scan_type)
     {
-      /* hash_table is borrowed from the primary context; clear the pointer without destroying
-       * the underlying structure. */
-      switch (hash_scan->hash_list_scan_type)
+    case HASH_METH_IN_MEM:
+    case HASH_METH_HYBRID:
+      if (hash_scan->memory.hash_table != NULL)
 	{
-	case HASH_METH_IN_MEM:
-	case HASH_METH_HYBRID:
+	  mht_clear_hls (hash_scan->memory.hash_table, qdata_free_hscan_entry, (void *) thread_p);
+	  mht_destroy_hls (hash_scan->memory.hash_table);
 	  hash_scan->memory.hash_table = NULL;
-	  hash_scan->memory.curr_hash_entry = NULL;
-	  break;
-
-	case HASH_METH_HASH_FILE:
-	  hash_scan->file.hash_table = NULL;
-	  break;
-
-	case HASH_METH_NOT_USE:
-	default:
-	  break;
 	}
-    }
-  else
-    {
-      switch (hash_scan->hash_list_scan_type)
+      break;
+
+    case HASH_METH_HASH_FILE:
+      if (hash_scan->file.hash_table != NULL)
 	{
-	case HASH_METH_IN_MEM:
-	case HASH_METH_HYBRID:
-	  if (hash_scan->memory.hash_table != NULL)
-	    {
-	      mht_clear_hls (hash_scan->memory.hash_table, qdata_free_hscan_entry, (void *) thread_p);
-	      mht_destroy_hls (hash_scan->memory.hash_table);
-	      hash_scan->memory.hash_table = NULL;
-	    }
-	  break;
-
-	case HASH_METH_HASH_FILE:
-	  if (hash_scan->file.hash_table != NULL)
-	    {
-	      fhs_destroy (thread_p, hash_scan->file.hash_table);
-	      db_private_free_and_init (thread_p, hash_scan->file.hash_table);
-	    }
-	  break;
-
-	case HASH_METH_NOT_USE:
-	default:
-	  /* Nothing to do */
-	  break;
+	  fhs_destroy (thread_p, hash_scan->file.hash_table);
+	  db_private_free_and_init (thread_p, hash_scan->file.hash_table);
 	}
+      break;
+
+    case HASH_METH_NOT_USE:
+    default:
+      /* Nothing to do */
+      break;
     }
 
   hash_scan->hash_list_scan_type = HASH_METH_NOT_USE;

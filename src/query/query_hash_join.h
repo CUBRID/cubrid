@@ -212,10 +212,6 @@ typedef struct hashjoin_stats
 
 typedef struct hashjoin_stats_group
 {
-  /* Mirror of single_context->status persisted into XASL-lifetime storage so query_dump can
-   * distinguish PARTITION / PARALLEL / PARALLEL_PROBE / SINGLE after the manager is torn down.
-   * Previously, query_dump used (context_cnt > 1) as a proxy for partition-parallel; probe-parallel
-   * also populates context_cnt > 1 so status must be consulted directly. */
   HASHJOIN_STATUS status;
   HASHJOIN_STATS stats;
   HASHJOIN_STATS *context_stats;
@@ -307,7 +303,7 @@ typedef struct hashjoin_shared_probe_info
   SCAN_POSITION scan_position;
   VPID next_vpid;
 
-  /* Per-task output lists; array of task_cnt entries, allocated by probe_partitions. */
+  /* Per-task output lists; array of task_cnt entries, allocated by probe_execute. */
   QFILE_LIST_ID **task_list_ids;
 
   std::mutex stats_mutex;
@@ -339,11 +335,6 @@ typedef struct hashjoin_context
   HASHJOIN_FETCH_INFO *probe;
 
   HASH_LIST_SCAN hash_scan;
-
-  /* true when hash_scan's hash_table pointer is borrowed from another context (parallel probe
-   * secondary). hjoin_scan_clear skips destroying the hash table in that case. */
-  bool hash_table_is_shared;
-
   PRED_EXPR *during_join_pred;
   VAL_DESCR *val_descr;
 
