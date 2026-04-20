@@ -14398,7 +14398,11 @@ const PR_TYPE *tp_Type_json = &tp_Json;
  * has no B-tree index support, so all index_* pointers remain NULL.
  */
 const PR_TYPE tp_Vector = {
-  "vector", DB_TYPE_VECTOR, 1, sizeof (DB_VECTOR), 0, 4,
+  /* Variable-length type: alignment = 1 (same as JSON / String / Char).
+   * XASL offset accounting assumes variable-size types declare 1-byte
+   * alignment; claiming 4 here caused stream-offset drift and SIGABRT
+   * during SELECT on VECTOR columns. */
+  "vector", DB_TYPE_VECTOR, 1, sizeof (DB_VECTOR), 0, 1,
   mr_initmem_vector,
   mr_initval_vector,
   mr_setmem_vector,
