@@ -6249,10 +6249,21 @@ la_apply_insert_log (LA_ITEM * item, LA_APPLY_STATS * stats)
   RECDES *recdes;
   LOG_PAGEID old_pageid = NULL_PAGEID;
   bool is_mvcc_class;
+  string_buffer sb;
+
+  sb.clear ();
+  db_sprint_value (la_get_item_pk_value (item), sb);
+  er_log_debug (ARG_FILE_LINE,
+		"apply_insert[tid=%lu] BEGIN class=%s key=%s item_lsa=%lld|%d target_lsa=%lld|%d pending=%d\n",
+		(unsigned long) pthread_self (), item->class_name, sb.get_buffer (), (long long) item->lsa.pageid,
+		(int) item->lsa.offset, (long long) item->target_lsa.pageid, (int) item->target_lsa.offset,
+		__gv_loc_repl.ws_get_repl_obj_count ());
 
   error = la_flush_repl_items (false, stats);
   if (error != NO_ERROR)
     {
+      er_log_debug (ARG_FILE_LINE, "apply_insert[tid=%lu] pre_flush error=%d class=%s key=%s\n",
+		    (unsigned long) pthread_self (), error, item->class_name, sb.get_buffer ());
       return error;
     }
 
@@ -6287,6 +6298,11 @@ la_apply_insert_log (LA_ITEM * item, LA_APPLY_STATS * stats)
       goto end;
     }
 
+  er_log_debug (ARG_FILE_LINE,
+		"apply_insert[tid=%lu] recdes class=%s key=%s rcvindex=%u rec_type=%d mvcc=%d length=%d\n",
+		(unsigned long) pthread_self (), item->class_name, sb.get_buffer (), rcvindex, recdes->type,
+		(int) is_mvcc_class, recdes->length);
+
   if (recdes->type == REC_ASSIGN_ADDRESS || recdes->type == REC_RELOCATION)
     {
       er_log_debug (ARG_FILE_LINE, "apply_insert : rectype.type = %d\n", recdes->type);
@@ -6317,6 +6333,9 @@ la_apply_insert_log (LA_ITEM * item, LA_APPLY_STATS * stats)
     }
 
   error = la_repl_add_object (class_obj, item, recdes);
+  er_log_debug (ARG_FILE_LINE, "apply_insert[tid=%lu] add_object class=%s key=%s error=%d pending=%d\n",
+		(unsigned long) pthread_self (), item->class_name, sb.get_buffer (), error,
+		__gv_loc_repl.ws_get_repl_obj_count ());
 
 end:
   if (error != NO_ERROR)
@@ -6328,6 +6347,11 @@ end:
       stats->insert_counter++;
       stats->num_unflushed++;
     }
+
+  er_log_debug (ARG_FILE_LINE,
+		"apply_insert[tid=%lu] END class=%s key=%s error=%d stats[ins=%lu fail=%lu unflushed=%d]\n",
+		(unsigned long) pthread_self (), item->class_name, sb.get_buffer (), error, stats->insert_counter,
+		stats->fail_counter, stats->num_unflushed);
 
   la_release_page_buffer (old_pageid);
 
