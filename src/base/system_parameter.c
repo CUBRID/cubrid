@@ -4749,7 +4749,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_sql_trace_execution_plan_default,
    (void *) &PRM_SQL_TRACE_EXECUTION_PLAN,
    (void *) NULL,
-   (char *) NULL,
+   (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
