@@ -348,7 +348,7 @@ trace_event_log_start (THREAD_ENTRY * thread_p, const char *log_name, const char
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  csect_exit (thread_p, csect);
-	  return NULL;
+	  goto clear_and_exit;
 	}
     }
   else if (ftell (log_Fp) > prm_get_integer_value (PRM_ID_ER_LOG_SIZE))
@@ -360,7 +360,7 @@ trace_event_log_start (THREAD_ENTRY * thread_p, const char *log_name, const char
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  csect_exit (thread_p, csect);
-	  return NULL;
+	  goto clear_and_exit;
 	}
     }
 
@@ -384,6 +384,7 @@ trace_event_log_start (THREAD_ENTRY * thread_p, const char *log_name, const char
 
   fprintf (log_Fp, "%s - %s\n", time_array, log_name);
 
+clear_and_exit:
   if (log_type == 'E')
     {
       event_Fp = log_Fp;
