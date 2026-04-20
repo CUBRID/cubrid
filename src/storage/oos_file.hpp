@@ -32,6 +32,10 @@ using OOS_RECORD_HEADER = struct oos_record_header;
 
 #define OOS_RECORD_HEADER_SIZE ((int) sizeof (OOS_RECORD_HEADER))
 
+/* Alias for a RECDES whose first OOS_RECORD_HEADER_SIZE bytes are the OOS header.
+ * Documentation only — no compile-time distinction from RECDES. */
+using OOS_RECDES = RECDES;
+
 #define OOS_NUM_BEST_SPACESTATS 10
 
 #define OOS_STATS_NEXT_BEST_INDEX(i) \

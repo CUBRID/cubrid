@@ -1013,13 +1013,13 @@ oos_remove_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid)
 
 
 static int
-oos_prepend_header (RECDES &user_recdes, const OOS_RECORD_HEADER &oos_header, RECDES &page_recdes)
+oos_prepend_header (const RECDES &recdes, const OOS_RECORD_HEADER &oos_header, OOS_RECDES &oos_recdes)
 {
   // Prepends the OOS header to user data, producing the on-page record.
-  // Allocates a new data area for page_recdes; caller must free it.
+  // Allocates a new data area for oos_recdes; caller must free it.
 
   int err;
-  err = recdes_allocate_data_area (&page_recdes, user_recdes.length + (int)sizeof (OOS_RECORD_HEADER));
+  err = recdes_allocate_data_area (&oos_recdes, recdes.length + (int)sizeof (OOS_RECORD_HEADER));
   if (err != NO_ERROR)
     {
       oos_error ("recdes_allocate_data_area failed in oos_prepend_header");
@@ -1028,24 +1028,24 @@ oos_prepend_header (RECDES &user_recdes, const OOS_RECORD_HEADER &oos_header, RE
       return err;
     }
 
-  page_recdes.type = REC_HOME;
-  page_recdes.length = user_recdes.length + (int)sizeof (OOS_RECORD_HEADER);
-  std::memcpy (page_recdes.data, &oos_header, (int)sizeof (OOS_RECORD_HEADER));
-  std::memcpy (page_recdes.data + (int)sizeof (OOS_RECORD_HEADER), user_recdes.data, user_recdes.length);
+  oos_recdes.type = REC_HOME;
+  oos_recdes.length = recdes.length + (int)sizeof (OOS_RECORD_HEADER);
+  std::memcpy (oos_recdes.data, &oos_header, (int)sizeof (OOS_RECORD_HEADER));
+  std::memcpy (oos_recdes.data + (int)sizeof (OOS_RECORD_HEADER), recdes.data, recdes.length);
 
   return NO_ERROR;
 }
 
 
 static int
-oos_strip_header (RECDES &page_recdes, OOS_RECORD_HEADER &header_out, RECDES &user_recdes)
+oos_strip_header (const OOS_RECDES &oos_recdes, OOS_RECORD_HEADER &header_out, RECDES &recdes)
 {
-  assert (page_recdes.length >= (int)sizeof (OOS_RECORD_HEADER));
-  assert (&page_recdes != &user_recdes);
+  assert (oos_recdes.length >= (int)sizeof (OOS_RECORD_HEADER));
+  assert (&oos_recdes != &recdes);
 
   int err;
 
-  err = recdes_allocate_data_area (&user_recdes, page_recdes.length - (int)sizeof (OOS_RECORD_HEADER));
+  err = recdes_allocate_data_area (&recdes, oos_recdes.length - (int)sizeof (OOS_RECORD_HEADER));
   if (err != NO_ERROR)
     {
       oos_error ("recdes_allocate_data_area failed");
@@ -1054,10 +1054,10 @@ oos_strip_header (RECDES &page_recdes, OOS_RECORD_HEADER &header_out, RECDES &us
       return err;
     }
 
-  user_recdes.type = REC_HOME;
-  user_recdes.length = page_recdes.length - (int)sizeof (OOS_RECORD_HEADER);
-  std::memcpy (&header_out, page_recdes.data, (int)sizeof (OOS_RECORD_HEADER));
-  std::memcpy (user_recdes.data, page_recdes.data + (int)sizeof (OOS_RECORD_HEADER), user_recdes.length);
+  recdes.type = REC_HOME;
+  recdes.length = oos_recdes.length - (int)sizeof (OOS_RECORD_HEADER);
+  std::memcpy (&header_out, oos_recdes.data, (int)sizeof (OOS_RECORD_HEADER));
+  std::memcpy (recdes.data, oos_recdes.data + (int)sizeof (OOS_RECORD_HEADER), recdes.length);
 
   return NO_ERROR;
 }
@@ -1166,9 +1166,9 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &re
 
   auto auto_page_ptr = oos_find_best_page (thread_p, oos_vfid, required_length, vpid);
 
-  RECDES page_recdes{};
+  OOS_RECDES oos_recdes{};
   {
-    err = oos_prepend_header (recdes, header, page_recdes);
+    err = oos_prepend_header (recdes, header, oos_recdes);
     if (err != NO_ERROR)
       {
 	oos_error ("oos_prepend_header failed");
@@ -1177,16 +1177,16 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &re
 	return err;
       }
 
-    // oos_prepend_header allocates data area for page_recdes
+    // oos_prepend_header allocates data area for oos_recdes
     // therefore, we need to free it after use
-    scope_exit defer_page_recdes_free ([&]()
+    scope_exit defer_oos_recdes_free ([&]()
     {
-      recdes_free_data_area (&page_recdes);
+      recdes_free_data_area (&oos_recdes);
     });
 
     PGSLOTID slotid = NULL_SLOTID;
     PAGE_PTR page_ptr = auto_page_ptr.get();
-    int sp_status = spage_insert (thread_p, page_ptr, &page_recdes, &slotid);
+    int sp_status = spage_insert (thread_p, page_ptr, &oos_recdes, &slotid);
     if (sp_status != SP_SUCCESS)
       {
 	oos_error ("spage_insert failed with status %d", sp_status);
@@ -1200,14 +1200,14 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &re
     oid.slotid = slotid;
     oid.volid = vpid.volid;
 
-    oos_log_insert_physical (thread_p, page_ptr, const_cast<VFID *> (&oos_vfid), &oid, &page_recdes);
+    oos_log_insert_physical (thread_p, page_ptr, const_cast<VFID *> (&oos_vfid), &oid, &oos_recdes);
 
     /* Update bestspace cache after insert — use spage_max_space_for_new_record
      * for consistency with the lookup check in oos_stats_find_page_in_bestspace */
     int freespace_after = spage_max_space_for_new_record (thread_p, page_ptr);
     (void) oos_stats_add_bestspace (thread_p, &oos_vfid, &vpid, freespace_after);
   }
-  assert (page_recdes.data == nullptr); // should be freed by scope_exit
+  assert (oos_recdes.data == nullptr); // should be freed by scope_exit
 
   return NO_ERROR;
 }
@@ -1303,8 +1303,8 @@ oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes,
     pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
   });
 
-  RECDES page_recdes;
-  SCAN_CODE code = spage_get_record (thread_p, page_ptr, slotid, &page_recdes, PEEK);
+  OOS_RECDES oos_recdes;
+  SCAN_CODE code = spage_get_record (thread_p, page_ptr, slotid, &oos_recdes, PEEK);
   if (code != S_SUCCESS)
     {
       oos_error ("oos_read_within_page: spage_get_record failed for volid=%d, pageid=%d, slotid=%d",
@@ -1315,7 +1315,7 @@ oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes,
 
   // TODO: Ensure OOS_RECORD_HEADER always fits within a single page
 
-  err = oos_strip_header (page_recdes, header_out, recdes);
+  err = oos_strip_header (oos_recdes, header_out, recdes);
   if (err != NO_ERROR)
     {
       oos_error ("oos_strip_header failed for volid=%d, pageid=%d, slotid=%d",
@@ -1673,8 +1673,8 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
 	pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
       });
 
-      RECDES page_recdes = RECDES_INITIALIZER;
-      SCAN_CODE code = spage_get_record (thread_p, page_ptr, current_oid.slotid, &page_recdes, PEEK);
+      OOS_RECDES oos_recdes = RECDES_INITIALIZER;
+      SCAN_CODE code = spage_get_record (thread_p, page_ptr, current_oid.slotid, &oos_recdes, PEEK);
       if (code != S_SUCCESS)
 	{
 	  ASSERT_ERROR_AND_SET (error);
@@ -1683,20 +1683,20 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
 	  return error;
 	}
 
-      if (page_recdes.length < (int) sizeof (OOS_RECORD_HEADER))
+      if (oos_recdes.length < (int) sizeof (OOS_RECORD_HEADER))
 	{
 	  assert_release (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  oos_error ("OOS record at volid=%d pageid=%d slotid=%d has invalid length %d",
-		     OID_AS_ARGS (&current_oid), page_recdes.length);
+		     OID_AS_ARGS (&current_oid), oos_recdes.length);
 	  return ER_GENERIC_ERROR;
 	}
       OOS_RECORD_HEADER header;
-      std::memcpy (&header, page_recdes.data, sizeof (OOS_RECORD_HEADER));
+      std::memcpy (&header, oos_recdes.data, sizeof (OOS_RECORD_HEADER));
       OID next_chunk_oid = header.next_chunk_oid;
 
       oos_log_delete_physical (thread_p, page_ptr, const_cast<VFID *> (&oos_vfid), current_oid.slotid,
-			       &page_recdes);
+			       &oos_recdes);
 
       PGSLOTID deleted_slotid = spage_delete (thread_p, page_ptr, current_oid.slotid);
       if (deleted_slotid == NULL_SLOTID)
@@ -1843,8 +1843,8 @@ oos_get_length (THREAD_ENTRY *thread_p, const OID &oid)
     pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
   });
 
-  RECDES page_recdes;
-  SCAN_CODE code = spage_get_record (thread_p, page_ptr, slotid, &page_recdes, PEEK);
+  OOS_RECDES oos_recdes;
+  SCAN_CODE code = spage_get_record (thread_p, page_ptr, slotid, &oos_recdes, PEEK);
   if (code != S_SUCCESS)
     {
       oos_error ("oos_get_length: spage_get_record failed for volid=%d, pageid=%d, slotid=%d",
@@ -1853,10 +1853,10 @@ oos_get_length (THREAD_ENTRY *thread_p, const OID &oid)
       return -1;
     }
 
-  assert (page_recdes.length >= OOS_RECORD_HEADER_SIZE);
+  assert (oos_recdes.length >= OOS_RECORD_HEADER_SIZE);
 
   OOS_RECORD_HEADER header;
-  std::memcpy (&header, page_recdes.data, sizeof (OOS_RECORD_HEADER));
+  std::memcpy (&header, oos_recdes.data, sizeof (OOS_RECORD_HEADER));
 
   return header.total_data_length;
 }
