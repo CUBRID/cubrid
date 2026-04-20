@@ -196,6 +196,14 @@ namespace parallel_heap_scan
 	xasl_merge_stats (xptr1, m_main_xasl_tree);
       }
 
+    for (xptr1 = xasl_tree->aptr_list; xptr1 != nullptr; xptr1 = xptr1->next)
+      {
+	if (XASL_IS_FLAGED (xptr1, XASL_LINK_TO_REGU_VARIABLE))
+	  {
+	    xasl_merge_stats (xptr1, m_main_xasl_tree);
+	  }
+      }
+
     dst_node = m_main_xasl_tree;
     src_node = xasl_tree;
     if (dst_node->sq_cache != nullptr && src_node->sq_cache != nullptr)
