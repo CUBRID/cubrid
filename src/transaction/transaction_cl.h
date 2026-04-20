@@ -54,9 +54,9 @@ typedef enum savepoint_type
 } SAVEPOINT_TYPE;
 
 extern CUB_THREAD_LOCAL int tm_Tran_index;
-extern CUB_THREAD_LOCAL TRAN_ISOLATION tm_Tran_isolation;
+extern TRAN_ISOLATION tm_Tran_isolation;
 extern CUB_THREAD_LOCAL bool tm_Tran_async_ws;
-extern CUB_THREAD_LOCAL int tm_Tran_wait_msecs;
+extern int tm_Tran_wait_msecs;
 extern CUB_THREAD_LOCAL int tm_Tran_ID;
 extern CUB_THREAD_LOCAL bool tm_Tran_check_interrupt;
 #if defined(SA_MODE)

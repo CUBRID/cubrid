@@ -79,8 +79,9 @@ struct valcnv_buffer
 };
 
 static const int valcnv_Max_set_elements = 10;
-
+#if !defined(SERVER_MODE)
 CUB_THREAD_LOCAL int db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
+#endif
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 // FIX-ME: fix me for call method 
 // When the method is called, the task must be executed by the same existing thread.

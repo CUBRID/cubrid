@@ -133,6 +133,10 @@ struct
 NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT, TRAN_UNKNOWN_ISOLATION};
 #endif
 
+#if defined(MULTI_CONN_TO_A_SERVER)
+bool gv_share_same_transaction_mode = false;
+#endif
+
 static CUB_THREAD_LOCAL BOOT_SERVER_CREDENTIAL boot_Server_credential = {
   /* db_full_name */ NULL, /* host_name */ NULL, /* lob_path */ NULL,
   /* process_id */ -1,
@@ -602,11 +606,6 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   else
     {
       boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
-#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-      g_main_tran_info.tran_index = tran_index;
-      g_main_tran_info.tran_wait_msecs = tran_lock_wait_msecs;
-      g_main_tran_info.tran_isolation = tran_isolation;
-#endif
 #if defined (CS_MODE)
       /* print version string */
       strncpy_bufsize (format, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_GENERAL,
@@ -1286,6 +1285,11 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       (void) tran_reset_wait_times (tran_lock_wait_msecs * 1000);
     }
 
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  g_main_tran_info.tran_wait_msecs = tran_lock_wait_msecs;
+  g_main_tran_info.tran_isolation = tran_isolation;
+#endif
+
   error_code = showstmt_metadata_init ();
   if (error_code != NO_ERROR)
     {
@@ -1366,24 +1370,11 @@ error:
 
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 int
-boot_restart_client_sub (int sub_index, bool new_transaction)
+boot_restart_client_sub (int sub_index)
 {
   int error_code;
-#ifndef NDEBUG
-  static int is_multi_tran = -1;
 
-  if (is_multi_tran == -1)
-    {
-      is_multi_tran = (new_transaction ? 1 : 0);
-    }
-  else if (new_transaction != (bool) is_multi_tran)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-#endif
-
-  if (!new_transaction)
+  if (gv_share_same_transaction_mode)
     {
       error_code = net_client_sub_init ();
       if (error_code == NO_ERROR)
@@ -1404,21 +1395,6 @@ boot_restart_client_sub (int sub_index, bool new_transaction)
 
   BOOT_CLIENT_CREDENTIAL client_credential;
   char program_name[512];
-
-  static BOOT_SERVER_CREDENTIAL t_boot_Server_credential = {
-    /* db_full_name */ NULL, /* host_name */ NULL, /* lob_path */ NULL,
-    /* process_id */ -1,
-    /* root_class_oid */ {NULL_PAGEID, NULL_SLOTID, NULL_VOLID},
-    /* root_class_hfid */ {{NULL_FILEID, NULL_VOLID}, NULL_PAGEID},
-    /* data page_size */ -1, /* log page_size */ -1,
-    /* disk_compatibility */ 0.0,
-    /* ha_server_state */ HA_SERVER_STATE_NA,
-    /* server_session_key */ {(char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF,
-			      (char) 0xFF,
-			      (char) 0xFF},
-    INTL_CODESET_NONE,
-    NULL
-  };
 
   //lang_init();
   //tz_load();
@@ -1446,7 +1422,7 @@ boot_restart_client_sub (int sub_index, bool new_transaction)
     snprintf (program_name, sizeof (program_name), "%s(%d)", gv_client_credential.get_program_name (), sub_index + 1);
   if (error_code < 0 || error_code >= (int) sizeof (program_name))
     {
-      return error_code;
+      return ER_FAILED;
     }
 
   client_credential = gv_client_credential;
@@ -1520,28 +1496,35 @@ boot_restart_client_sub (int sub_index, bool new_transaction)
       rel_set_disk_compatible (boot_Server_credential.disk_compatibility);
     }
   //============================================  
-#endif //
 
-  //if (sysprm_init_intl_param () != NO_ERROR)
-  //  {
-  //    error_code = er_errid ();
-  //    goto error;
-  //  }
+  if (sysprm_init_intl_param () != NO_ERROR)
+    {
+      error_code = er_errid ();
+      goto error;
+    }
+#endif //
 
   /* Initialize client modules for execution */
   boot_client (tran_index, g_main_tran_info.tran_wait_msecs, g_main_tran_info.tran_isolation);
 
-  // need session? 
-
-  (void) db_find_or_create_session (client_credential.get_db_user (), client_credential.get_program_name ());
-
-
   sm_init (&boot_Server_credential.root_class_oid, &boot_Server_credential.root_class_hfid, true);
 
-  au_login (client_credential.get_db_user (), client_credential.get_db_password (), false);
   au_init ();
-  au_start ();
+  error_code = au_login (client_credential.get_db_user (), client_credential.get_db_password (), false);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+  error_code = au_start ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
+  // need session? 
+  (void) db_find_or_create_session (client_credential.get_db_user (), client_credential.get_program_name ());
+
+#if 0
   //error_code = boot_check_locales (&client_credential);
   //if (error_code != NO_ERROR)
   //  {
@@ -1553,51 +1536,60 @@ boot_restart_client_sub (int sub_index, bool new_transaction)
   //  {
   //    goto error;
   //  }
+#endif
 
   //tr_init ();
 
   //(void) tran_commit (false);
 
-  //error_code = showstmt_metadata_init ();
-  //if (error_code != NO_ERROR)
-  //  {
-  //    goto error;
-  //  }
-  //json_set_alloc_funcs (malloc, free);
 
 
   //boot_get_host_connected
-
-  if (t_boot_Server_credential.db_full_name)
+/*
+  if (boot_Server_credential.db_full_name)
     {
-      db_private_free_and_init (NULL, t_boot_Server_credential.db_full_name);
+      db_private_free_and_init (NULL, boot_Server_credential.db_full_name);
     }
-  if (t_boot_Server_credential.host_name)
+  if (boot_Server_credential.host_name)
     {
-      db_private_free_and_init (NULL, t_boot_Server_credential.host_name);
+      db_private_free_and_init (NULL, boot_Server_credential.host_name);
     }
-  if (t_boot_Server_credential.lob_path)
+  if (boot_Server_credential.lob_path)
     {
-      db_private_free_and_init (NULL, t_boot_Server_credential.lob_path);
+      db_private_free_and_init (NULL, boot_Server_credential.lob_path);
     }
-  if (t_boot_Server_credential.db_lang)
+  if (boot_Server_credential.db_lang)
     {
-      db_private_free_and_init (NULL, t_boot_Server_credential.db_lang);
+      db_private_free_and_init (NULL, boot_Server_credential.db_lang);
     }
-
+*/
   return NO_ERROR;
 
 error:
-  boot_finalize_client_sub (new_transaction);
+  /* Protect against falsely returning NO_ERROR to caller */
+  if (error_code == NO_ERROR)
+    {
+      error_code = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+    }
+
+  boot_finalize_client_sub ();
   return error_code;
 }
 
 void
-boot_finalize_client_sub (bool new_transaction)
+boot_finalize_client_sub ()
 {
   //usleep (1000000);           // ctshim, 디버깅용
 
   net_client_sub_final ();
+
+  if (gv_share_same_transaction_mode)
+    {
+      boot_client (NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT, TRAN_DEFAULT_ISOLATION_LEVEL ());
+      return;
+    }
+
   //showstmt_metadata_final ();
   tran_free_savepoint_list ();
 
@@ -1619,6 +1611,23 @@ boot_finalize_client_sub (bool new_transaction)
   //tz_unload ();
   boot_client (NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT, TRAN_DEFAULT_ISOLATION_LEVEL ());
   //boot_Is_client_all_final = true;
+
+  if (boot_Server_credential.db_full_name)
+    {
+      db_private_free_and_init (NULL, boot_Server_credential.db_full_name);
+    }
+  if (boot_Server_credential.host_name)
+    {
+      db_private_free_and_init (NULL, boot_Server_credential.host_name);
+    }
+  if (boot_Server_credential.lob_path)
+    {
+      db_private_free_and_init (NULL, boot_Server_credential.lob_path);
+    }
+  if (boot_Server_credential.db_lang)
+    {
+      db_private_free_and_init (NULL, boot_Server_credential.db_lang);
+    }
 }
 #endif // #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 

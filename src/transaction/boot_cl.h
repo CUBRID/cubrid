@@ -58,14 +58,18 @@ extern int g_max_trans_multi_conn_to_a_server;
 #endif
 #endif /* CS_MODE */
 
+#if defined(MULTI_CONN_TO_A_SERVER)
+extern bool gv_share_same_transaction_mode;
+#endif
+
 extern int boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info,
 				   bool db_overwrite, const char *file_addmore_vols, DKNPAGES npages,
 				   PGLENGTH db_desired_pagesize, DKNPAGES log_npages, PGLENGTH db_desired_log_page_size,
 				   const char *lang_charset);
 extern int boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential);
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-extern int boot_restart_client_sub (int sub_index, bool new_transaction);
-extern void boot_finalize_client_sub (bool new_transaction);
+extern int boot_restart_client_sub (int sub_index);
+extern void boot_finalize_client_sub ();
 #endif
 extern int boot_shutdown_client (bool is_er_final);
 extern void boot_donot_shutdown_client_at_exit (void);

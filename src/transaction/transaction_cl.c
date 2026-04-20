@@ -64,9 +64,9 @@
 #endif /* WINDOWS */
 
 CUB_THREAD_LOCAL int tm_Tran_index = NULL_TRAN_INDEX;
-CUB_THREAD_LOCAL TRAN_ISOLATION tm_Tran_isolation = TRAN_UNKNOWN_ISOLATION;
+TRAN_ISOLATION tm_Tran_isolation = TRAN_UNKNOWN_ISOLATION;
 CUB_THREAD_LOCAL bool tm_Tran_async_ws = false;
-CUB_THREAD_LOCAL int tm_Tran_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
+int tm_Tran_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
 CUB_THREAD_LOCAL bool tm_Tran_check_interrupt = true;
 CUB_THREAD_LOCAL int tm_Tran_ID = -1;
 CUB_THREAD_LOCAL int tm_Tran_invalidate_snapshot = 1;
@@ -92,16 +92,16 @@ typedef struct
 {
   UINT64 begin;
   int timeout;
-} QUIERY_TIMEOUT_INFO;
+} QUERY_TIMEOUT_INFO;
 
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 // FIX-ME: fix me for call method 
 // When the method is called, the task must be executed by the same existing thread.
-static CUB_THREAD_LOCAL QUIERY_TIMEOUT_INFO tm_Query_timeout_info = { 0, 0 };
+static CUB_THREAD_LOCAL QUERY_TIMEOUT_INFO tm_Query_timeout_info = { 0, 0 };
 
 static CUB_THREAD_LOCAL int tm_libcas_depth = 0;
 #else
-static QUIERY_TIMEOUT_INFO tm_Query_timeout_info = { 0, 0 };
+static QUERY_TIMEOUT_INFO tm_Query_timeout_info = { 0, 0 };
 
 static int tm_libcas_depth = 0;
 #endif
