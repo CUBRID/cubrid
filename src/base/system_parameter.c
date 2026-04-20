@@ -10002,8 +10002,7 @@ prm_tune_parameters (void)
 	  SYSPRM_PARAM *hash_join_page_threshold_prm = GET_PRM (PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD);
 	  SYSPRM_PARAM *sort_page_threshold_prm = GET_PRM (PRM_ID_PARALLEL_SORT_PAGE_THRESHOLD);
 
-	  if (PRM_GET_INT (scan_page_threshold_prm->value) ==
-	      PRM_GET_INT (scan_page_threshold_prm->default_value))
+	  if (PRM_GET_INT (scan_page_threshold_prm->value) == PRM_GET_INT (scan_page_threshold_prm->default_value))
 	    {
 	      sprintf (newval, "%d", 32);	/* TODO: 0 ? */
 	      (void) prm_set (scan_page_threshold_prm, newval, false);
