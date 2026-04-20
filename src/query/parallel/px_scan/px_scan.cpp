@@ -1793,22 +1793,14 @@ extern "C"
 	}
     }
 
-    /* 2. Save indx_cov.list_id before scan_close_scan (which does not destroy it).
-     *    Null it out to prevent double-free in qexec_clear_access_spec_list. */
-    QFILE_LIST_ID *saved_indx_cov_list_id = scan_id->s.isid.indx_cov.list_id;
-    scan_id->s.isid.indx_cov.list_id = NULL;
-
     /* 3. Free scan-specific resources (bt_attr_ids, oid_list, copy_buf, etc.). */
     scan_close_scan (thread_p, scan_id);
     scan_id->status = S_OPENED;	/* reset status; scan_close_scan sets it to S_CLOSED */
 
-    /* 4. Properly close and destroy the indx_cov list file to decrement qlist_count,
-     *    then free the QFILE_LIST_ID struct itself (matches scan_close_index_scan:3608). */
-    if (saved_indx_cov_list_id != NULL)
+    if (scan_id->s.isid.indx_cov.list_id != NULL && scan_id->s.isid.indx_cov.list_id->type_list.type_cnt > 0)
       {
-	qfile_close_list (thread_p, saved_indx_cov_list_id);
-	qfile_destroy_list (thread_p, saved_indx_cov_list_id);
-	QFILE_FREE_AND_INIT_LIST_ID (saved_indx_cov_list_id);
+	qfile_close_list (thread_p, scan_id->s.isid.indx_cov.list_id);
+	qfile_destroy_list (thread_p, scan_id->s.isid.indx_cov.list_id);
       }
 
     /* 5. Write pisid fields (now safe — isid is fully cleaned up). */
