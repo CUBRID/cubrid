@@ -1019,8 +1019,18 @@ process_master (int command_type)
 		      }
 		  }
 
-		/* The master process needs a few seconds to bind port */
-		sleep (1);
+		/* Poll for the master port binding instead of an unconditional 1s sleep. */
+		{
+		  int j;
+		  for (j = 0; j < 100; j++)	/* up to ~1 s total, 10 ms granularity */
+		    {
+		      usleep (10 * 1000);
+		      if (__gv_cvar.css_does_master_exist (master_port))
+			{
+			  break;
+			}
+		    }
+		}
 		waited_seconds++;
 
 		status = __gv_cvar.css_does_master_exist (master_port) ? NO_ERROR : ER_GENERIC_ERROR;
@@ -1582,7 +1592,7 @@ is_server_running (const char *type, const char *server_name, int pid)
 	    {
 	      return true;
 	    }
-	  usleep (100 * 1000);
+	  usleep (20 * 1000);
 
 	  /* A child process is defunct because the SIGCHLD signal ignores. */
 	  /*
