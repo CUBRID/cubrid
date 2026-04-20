@@ -25854,6 +25854,15 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
       if (!*is_scan_needed && agg_ptr->function == PT_COUNT_STAR)
 	{
 	  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+	  if (tdes->isolation >= TRAN_REPEATABLE_READ)
+	    {
+	      /* Global unique statistics do not respect MVCC snapshots; fall back to scan for correct results. */
+	      agg_ptr->flag.agg_optimized = false;
+	      *is_scan_needed = true;
+	      continue;
+	    }
+
 	  LOG_TRAN_CLASS_COS *class_cos = logtb_tran_find_class_cos (thread_p, &ACCESS_SPEC_CLS_OID (spec),
 								     true);
 	  if (class_cos == NULL)
