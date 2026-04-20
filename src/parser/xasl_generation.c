@@ -12702,7 +12702,9 @@ pt_dblink_corr_side_has_spec (PT_NODE * node, UINTPTR spec_id)
 
 /*
  * pt_dblink_corr_side_is_outer_ref () - CBRD-26601: strip an optional CAST wrap and return true
- *   if node is a PT_NAME that belongs to a spec OTHER than the inner DBLink spec (i.e. an outer-query column).
+ *   if node is a PT_NAME that belongs to an outer query block (correlation_level > 0) and is not
+ *   the inner DBLink spec.  Using correlation_level mirrors mq_dblink_corr_classify_side() and
+ *   correctly excludes same-level tables (e.g. a local table joined with DBLink in the same subquery).
  *   A literal or NULL has no spec_id (== 0) and returns false.
  *   An inner-spec column (spec_id == dblink_sid) also returns false.
  */
@@ -12714,7 +12716,8 @@ pt_dblink_corr_side_is_outer_ref (PT_NODE * node, UINTPTR dblink_sid)
       node = node->info.expr.arg1;
     }
   return node != NULL && node->node_type == PT_NAME
-    && node->info.name.spec_id != 0 && node->info.name.spec_id != dblink_sid;
+    && node->info.name.spec_id != 0 && node->info.name.spec_id != dblink_sid
+    && node->info.name.correlation_level > 0;
 }
 
 /*
