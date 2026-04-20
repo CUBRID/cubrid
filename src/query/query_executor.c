@@ -25855,7 +25855,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	{
 	  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
-	  if (tdes->isolation >= TRAN_REPEATABLE_READ)
+	  if (tdes == NULL || tdes->isolation >= TRAN_REPEATABLE_READ)
 	    {
 	      /* COUNT(*) optimization uses global statistics that bypass MVCC visibility;
 	       * fall back to full scan under REPEATABLE_READ or SERIALIZABLE to prevent phantom reads. */
