@@ -383,11 +383,6 @@ trace_event_log_start (THREAD_ENTRY * thread_p, const char *log_name, const char
   fprintf (log_Fp, "%s - %s\n", time_array, log_name);
 
 clear_and_exit:
-  if (log_Fp == NULL)
-    {
-      csect_exit (thread_p, csect);
-    }
-
   if (log_type == 'E')
     {
       event_Fp = log_Fp;
@@ -395,6 +390,11 @@ clear_and_exit:
   else
     {
       trace_Fp = log_Fp;
+    }
+
+  if (log_Fp == NULL)
+    {
+      csect_exit (thread_p, csect);
     }
 
   return log_Fp;
