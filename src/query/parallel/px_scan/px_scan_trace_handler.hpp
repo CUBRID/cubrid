@@ -42,6 +42,18 @@ namespace parallel_scan
     UINT64 read_rows;
     UINT64 qualified_rows;
     struct timeval elapsed_time;
+
+    /* index scan only */
+    UINT64 read_keys;
+    UINT64 qualified_keys;
+    UINT64 key_qualified_rows;
+    UINT64 data_qualified_rows;
+    struct timeval elapsed_lookup;
+    bool covered_index;
+    bool multi_range_opt;
+    bool index_skip_scan;
+    bool loose_index_scan;
+    bool need_count_only;
   };
 
   class trace_storage_for_sibling_xasl
@@ -63,7 +75,7 @@ namespace parallel_scan
       trace_handler() = default;
       ~trace_handler() = default;
 
-      void add_trace (UINT64 fetches, UINT64 ioreads, UINT64 fetch_time, UINT64 read_rows, UINT64 qualified_rows,
+      void add_trace (UINT64 fetches, UINT64 ioreads, UINT64 fetch_time, SCAN_ID *scan_id,
 		      struct timeval elapsed_time);
       void merge_stats (THREAD_ENTRY *thread_p, SCAN_STATS *scan_stats);
       void clear();

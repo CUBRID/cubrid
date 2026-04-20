@@ -391,8 +391,7 @@ namespace parallel_scan
 	m_trace_handler->add_trace (perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_FETCHES),
 				    perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_IOREADS),
 				    perfmon_get_from_statistic (&thread_ref,PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC),
-				    m_scan_id->scan_stats.read_rows,
-				    m_scan_id->scan_stats.qualified_rows,
+				    m_scan_id,
 				    elapsed_time);
 	perfmon_destroy_parallel_stats (&thread_ref);
       }
