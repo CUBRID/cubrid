@@ -832,7 +832,7 @@ static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_numeric (void *mem1, void *mem2, 
 							int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
 						  int total_order, int *start_colp, int collation);
-static inline int mr_get_fixed_numeric_size (const unsigned char *data);
+static inline int mr_get_fixed_numeric_size (const DB_C_NUMERIC data);
 static void mr_initmem_resultset (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_resultset (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_resultset (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -8896,7 +8896,7 @@ mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int to
  *   the MSB or LSB without a traditional byte-by-byte loop.
  */
 static inline int
-mr_get_fixed_numeric_size (const unsigned char *data)
+mr_get_fixed_numeric_size (const DB_C_NUMERIC data)
 {
   uint64_t word_buf[2] = { 0 };
 

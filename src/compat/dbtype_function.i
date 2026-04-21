@@ -1701,13 +1701,9 @@ db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, 
 	  memcpy (value->data.num.d.buf, num, DB_NUMERIC_BUF_SIZE);
 	  break;
 	default:
-	  {
-	    /* header_size == 3 */
-	    int tmp_byte_size = byte_size - 3;
-	    value_num_ptr[0] = 0;
-	    value_num_ptr[1] = 0;
-	    memcpy (value->data.num.d.buf + (DB_NUMERIC_BUF_SIZE - tmp_byte_size), num, tmp_byte_size);
-	  }
+	  /* unreachable: byte_size must be one of {4,8,12,16,DB_NUMERIC_BUF_SIZE(17),20} */
+	  assert_release_error (false);
+	  error = ER_FAILED;
 	  break;
 	}
     }
