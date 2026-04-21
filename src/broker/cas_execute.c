@@ -224,6 +224,9 @@ static void add_res_data_date (T_NET_BUF * net_buf, short yr, short mon, short d
 			       int *net_size);
 static void add_res_data_object (T_NET_BUF * net_buf, T_OBJECT * obj, unsigned char ext_type, int *net_size);
 static void add_res_data_lob_handle (T_NET_BUF * net_buf, T_LOB_HANDLE * lob, unsigned char ext_type, int *net_size);
+static void add_res_data_vector (T_NET_BUF * net_buf, const DB_VECTOR_FLOAT * value, unsigned char ext_type,
+				 int *net_size);
+
 static void trigger_event_str (DB_TRIGGER_EVENT trig_event, char *buf);
 static void trigger_status_str (DB_TRIGGER_STATUS trig_status, char *buf);
 static void trigger_time_str (DB_TRIGGER_TIME trig_time, char *buf);
@@ -4123,6 +4126,47 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
       }
       break;
 
+    case CCI_U_TYPE_VECTOR:
+      {
+	DB_VECTOR_FLOAT vector_float;
+	char *cur_p;
+	int dim;
+	int i;
+	int net_dim;
+
+	if (data_size < NET_SIZE_INT)
+	  {
+	    return ERROR_INFO_SET (CAS_ER_TYPE_CONVERSION, CAS_ERROR_INDICATOR);
+	  }
+
+	cur_p = (char *) net_value + NET_SIZE_INT;
+	memcpy (&net_dim, cur_p, NET_SIZE_INT);
+	dim = ntohl (net_dim);
+	if (dim < 0 || dim > DB_MAX_VECTOR_DIMENSION || data_size != NET_SIZE_INT + (dim * NET_SIZE_FLOAT))
+	  {
+	    return ERROR_INFO_SET (CAS_ER_TYPE_CONVERSION, CAS_ERROR_INDICATOR);
+	  }
+
+	vector_float.dim = dim;
+	vector_float.float_array = db_vector_allocate_float_array (dim > 0 ? dim : 1);
+	if (vector_float.float_array == NULL)
+	  {
+	    return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+	  }
+
+	cur_p += NET_SIZE_INT;
+	for (i = 0; i < dim; i++)
+	  {
+	    float net_float;
+	    memcpy (&net_float, cur_p + (i * NET_SIZE_FLOAT), NET_SIZE_FLOAT);
+	    vector_float.float_array[i] = net_ntohf (net_float);
+	  }
+
+	err_code = db_make_vector_float (&db_val, &vector_float);
+	coercion_flag = FALSE;
+      }
+      break;
+
     case CCI_U_TYPE_USHORT:
     case CCI_U_TYPE_UINT:
     case CCI_U_TYPE_UBIGINT:
@@ -4749,6 +4793,14 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	 * the data is always encoded as string */
 	add_res_data_string (net_buf, str, bytes_size, 0, INTL_CODESET_UTF8, &data_size);
 	db_private_free (NULL, str);
+      }
+      break;
+    case DB_TYPE_VECTOR:
+      {
+	const DB_VECTOR_FLOAT *vector_float;
+
+	vector_float = db_get_vector_float (val);
+	add_res_data_vector (net_buf, vector_float, ext_col_type, &data_size);
       }
       break;
     default:
@@ -6250,6 +6302,55 @@ add_res_data_float (T_NET_BUF * net_buf, float value, unsigned char ext_type, in
   if (net_size)
     {
       *net_size = NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) + NET_SIZE_FLOAT;
+    }
+}
+
+static void
+add_res_data_vector (T_NET_BUF * net_buf, const DB_VECTOR_FLOAT * value, unsigned char ext_type, int *net_size)
+{
+  int i;
+  int payload_size;
+
+  if (value == NULL || value->dim < 0 || (value->dim > 0 && value->float_array == NULL))
+    {
+      if (ext_type)
+	{
+	  net_buf_cp_int (net_buf, NET_BUF_TYPE_SIZE (net_buf), NULL);
+	  net_buf_cp_cas_type_and_charset (net_buf, ext_type, CAS_SCHEMA_DEFAULT_CHARSET);
+	}
+      else
+	{
+	  net_buf_cp_int (net_buf, 0, NULL);
+	}
+
+      if (net_size)
+	{
+	  *net_size = NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0);
+	}
+      return;
+    }
+
+  payload_size = NET_SIZE_INT + (value->dim * NET_SIZE_FLOAT);
+
+  if (ext_type)
+    {
+      net_buf_cp_int (net_buf, NET_BUF_TYPE_SIZE (net_buf) + payload_size, NULL);
+      net_buf_cp_cas_type_and_charset (net_buf, ext_type, CAS_SCHEMA_DEFAULT_CHARSET);
+    }
+  else
+    {
+      net_buf_cp_int (net_buf, payload_size, NULL);
+    }
+
+  net_buf_cp_int (net_buf, value->dim, NULL);
+  for (i = 0; i < value->dim; i++)
+    {
+      net_buf_cp_float (net_buf, value->float_array[i]);
+    }
+
+  if (net_size)
+    {
+      *net_size = NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) + payload_size;
     }
 }
 

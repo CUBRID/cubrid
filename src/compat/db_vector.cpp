@@ -102,9 +102,9 @@ int db_string_to_vector (
       return ER_FAILED;
     }
 
-  if (size > VECTOR_DIM_MAX)
+  if (size > DB_MAX_VECTOR_DIMENSION)
     {
-      vimkim_log ("Parsed vector dim %zu is larger than the limit %d\n", size, VECTOR_DIM_MAX);
+      vimkim_log ("Parsed vector dim %zu is larger than the limit %d\n", size, DB_MAX_VECTOR_DIMENSION);
       return ER_FAILED;
     }
 
