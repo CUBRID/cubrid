@@ -419,13 +419,17 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
 }
 
 int
-hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, int k, OID *rec_oids, float *distances)
+hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, int k, OID *rec_oids, float *distances,
+		     int *result_count)
 {
   assert (btid);
   assert (key_dbvalue);
   assert (rec_oids);
   assert (distances);
+  assert (result_count);
   assert (k > 0);
+
+  *result_count = 0;
 
   hnsw_index *index = index_manager->get_index (btid);
   if (index == nullptr)
@@ -442,7 +446,7 @@ hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, 
   assert (vf != NULL && vf->dim == index->get_dimension());
 
   int ef_search = prm_get_integer_value (PRM_ID_VECTOR_INDEX_EF_SEARCH);
-  return index->search (thread_p, vf->float_array, k, ef_search, rec_oids, distances);
+  return index->search (thread_p, vf->float_array, k, ef_search, rec_oids, distances, result_count);
 }
 
 // =====================================================================

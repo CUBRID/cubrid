@@ -6459,10 +6459,10 @@ scan_next_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  visid->oidp = (OID *) db_private_alloc (thread_p, k * sizeof (OID));
 	  visid->distp = (float *) db_private_alloc (thread_p, k * sizeof (float));
-	  visid->oid_cnt = k;
+	  visid->oid_cnt = 0;
 
-	  if (hnsw_search_element (thread_p, &visid->hnsw_btid, visid->query_dbvalue, k, visid->oidp, visid->distp) !=
-	      NO_ERROR)
+	  if (hnsw_search_element (thread_p, &visid->hnsw_btid, visid->query_dbvalue, k, visid->oidp, visid->distp,
+				   &visid->oid_cnt) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }

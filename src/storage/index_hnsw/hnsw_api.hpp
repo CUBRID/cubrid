@@ -175,7 +175,7 @@ class hnsw_index
     virtual int add (cubthread::entry *thread_p, int n_vectors, const OID *oid, const float *vector)=0;
 
     virtual int search (cubthread::entry *thread_p, const float *query, const int k, const int ef_search, OID *rec_oids,
-			float *distances)=0;
+			float *distances, int *result_count)=0;
     virtual int remove (cubthread::entry *thread_p, const OID *oid)=0;
     virtual int update (cubthread::entry *thread_p, const OID *oid, const float *vector)=0;
 

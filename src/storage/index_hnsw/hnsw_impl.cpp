@@ -130,7 +130,7 @@ class hnsw_impl final:public hnsw_index
     virtual int add (cubthread::entry *thread_p, int n_vectors, const OID *oid,
 		     const float *vector) override;
     virtual int search (cubthread::entry *thread_p, const float *query, const int k, const int ef_search,
-			OID *rec_oids, float *distances) override;
+			OID *rec_oids, float *distances, int *result_count) override;
 
     virtual int remove (cubthread::entry *thread_p, const OID *oid) override;
     virtual int update (cubthread::entry *thread_p, const OID *oid, const float *vector) override;
@@ -635,8 +635,11 @@ hnsw_impl::add_internal (cubthread::entry &thread_ref, hnsw_build_worker_job &jo
 
 int
 hnsw_impl::search (cubthread::entry *thread_p, const float *query, const int k, const int ef_search,
-		   OID *rec_oids, float *distances)
+		   OID *rec_oids, float *distances, int *result_count)
 {
+  assert (result_count != NULL);
+  *result_count = 0;
+
   const bool needs_query_copy =
 	  m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE
 	  || !db_vector_is_aligned (query);
@@ -673,6 +676,7 @@ hnsw_impl::search (cubthread::entry *thread_p, const float *query, const int k, 
       rec_oids[i] = results.oids[i];
       distances[i] = results_view[i].distance;
     }
+  *result_count = (int) results_view.size ();
   return NO_ERROR;
 }
 
