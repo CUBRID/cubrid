@@ -1544,7 +1544,6 @@ extern "C"
 	    qfile_close_list (thread_p, scan_id->s.isid.indx_cov.list_id);
 	    qfile_destroy_list (thread_p, scan_id->s.isid.indx_cov.list_id);
 	  }
-	QFILE_FREE_AND_INIT_LIST_ID (scan_id->s.isid.indx_cov.list_id);
       }
 
     /* Write pisid fields (now safe — isid is fully cleaned up). */
