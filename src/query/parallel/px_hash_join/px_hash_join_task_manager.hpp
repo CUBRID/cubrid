@@ -29,6 +29,7 @@
 #include <mutex>
 
 #include "error_context.hpp"		/* cuberr::context */
+#include "px_hash_join_spawn_manager.hpp"	/* parallel_query::hash_join::spawn_manager */
 #include "px_worker_manager.hpp"	/* parallel_query::worker_manager */
 #include "storage_common.h"		/* NULL_TRAN_INDEX */
 #include "thread_entry.hpp"		/* cubthread::entry */
@@ -108,10 +109,21 @@ namespace parallel_query
 
 	inline ~task_execution_guard ()
 	{
+	  /* Tear down any spawn_manager TLS the task may have obtained via get_spawn_manager().
+	   * Safe no-op when never acquired (NULL-guarded inside). */
+	  spawn_manager::destroy_instance ();
+
 	  m_thread_ref.conn_entry = nullptr;
 	  m_thread_ref.on_trace = false;
 
 	  m_thread_ref.pop_resource_tracks ();
+	}
+
+	/* Lazily obtain the per-worker spawn_manager TLS owned by this guard. Returns nullptr
+	 * on allocation failure (er_errid set). Subsequent calls return the same instance. */
+	inline spawn_manager *get_spawn_manager ()
+	{
+	  return spawn_manager::get_instance (m_thread_ref);
 	}
 
       private:
