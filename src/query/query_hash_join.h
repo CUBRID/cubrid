@@ -97,6 +97,16 @@ typedef enum hashjoin_profile_step
   HASHJOIN_PROFILE_MERGE	/* hjoin_merge_qlist */
 } HASHJOIN_PROFILE_STEP;
 
+typedef enum hashjoin_print_step
+{
+  HASHJOIN_PRINT_NONE = 0,
+  HASHJOIN_PRINT_READ_KEY,
+  HASHJOIN_PRINT_NOT_MATCHED_KEY,
+  HASHJOIN_PRINT_NOT_QUALIFIED_KEY,
+  HASHJOIN_PRINT_QUALIFIED_KEY,
+  HASHJOIN_PRINT_FILL_EMPTY_KEY
+} HASHJOIN_PRINT_STEP;
+
 /*
  * Struct & Typedef Definitions
  */
@@ -408,6 +418,13 @@ typedef struct hashjoin_manager
 #define HJOIN_PROFILE_END(thread_p, stats_p, start_stats_p, step) ((void) 0)
 #define HJOIN_PROFILE_MERGE_END(thread_p, stats_p, start_stats_p, step, rows) ((void) 0)
 #endif /* HASHJOIN_PROFILE_TIME */
+
+#if !defined(NDEBUG) && HASHJOIN_DUMP_PROBE
+#define HJOIN_PRINT_TUPLE(list_scan_id, tuple, step) \
+  hjoin_print_tuple ((list_scan_id), (tuple), (step))
+#else
+#define HJOIN_PRINT_TUPLE(list_scan_id, tuple, step) ((void) 0)
+#endif /* !NDEBUG && HASHJOIN_DUMP_PROBE */
 
 /*
  * Function Declarations

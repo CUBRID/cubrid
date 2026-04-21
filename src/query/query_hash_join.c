@@ -50,19 +50,6 @@
 #define DUMP_HASH_TABLE_LIMIT 100
 #define DUMP_PROBE_LIMIT 20
 
-/*
- * Enum & Typedef Definitions
- */
-
-typedef enum hashjoin_print_step
-{
-  HASHJOIN_PRINT_NONE = 0,
-  HASHJOIN_PRINT_READ_KEY,
-  HASHJOIN_PRINT_NOT_MATCHED_KEY,
-  HASHJOIN_PRINT_NOT_QUALIFIED_KEY,
-  HASHJOIN_PRINT_QUALIFIED_KEY,
-  HASHJOIN_PRINT_FILL_EMPTY_KEY
-} HASHJOIN_PRINT_STEP;
 
 /*
  * Macro Function Declarations
@@ -74,13 +61,6 @@ typedef enum hashjoin_print_step
 #else
 #define HJOIN_DUMP_HASH_TABLE(thread_p, hash_scan_p, list_id_p) ((void) 0)
 #endif /* HASHJOIN_DUMP_HASH_TABLE */
-
-#if !defined(NDEBUG) && HASHJOIN_DUMP_PROBE
-#define HJOIN_PRINT_TUPLE(list_scan_id, tuple, step) \
-  hjoin_print_tuple ((list_scan_id), (tuple), (step))
-#else
-#define HJOIN_PRINT_TUPLE(list_scan_id, tuple, step) ((void) 0)
-#endif /* !NDEBUG && HASHJOIN_DUMP_PROBE */
 
 /*
  * Function Declarations
@@ -658,12 +638,6 @@ hjoin_execute_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
       goto error_exit;
     }
 
-  error = qfile_open_list_scan (probe->list_id, &probe->list_scan_id);
-  if (error != NO_ERROR)
-    {
-      goto error_exit;
-    }
-
   if (context->status == HASHJOIN_STATUS_PARALLEL_PROBE)
     {
       assert (context == &manager->single_context);
@@ -676,6 +650,12 @@ hjoin_execute_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
     {
       list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, manager->qlist_flag, NULL);
       if (list_id == NULL)
+	{
+	  goto error_exit;
+	}
+
+      error = qfile_open_list_scan (probe->list_id, &probe->list_scan_id);
+      if (error != NO_ERROR)
 	{
 	  goto error_exit;
 	}
@@ -927,10 +907,59 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 
       if (single_context->status == HASHJOIN_STATUS_PARALLEL_PROBE)
 	{
-	  /* Secondaries borrow primary's hash_table/list_ids; use the probe-aware tear-down. */
+	  /* Secondaries borrow primary's hash_table and input list_ids; tear down per-context
+	   * state and destroy any leftover worker output list_id. */
 	  for (context_index = 0; context_index < context_cnt; context_index++)
 	    {
-	      parallel_query::hash_join::probe_clear_contexts (*thread_p, &contexts[context_index]);
+	      HASHJOIN_CONTEXT *secondary = &contexts[context_index];
+	      HASHJOIN_FETCH_INFO *s_outer = &secondary->outer;
+	      HASHJOIN_FETCH_INFO *s_inner = &secondary->inner;
+
+	      qfile_close_scan (thread_p, &s_outer->list_scan_id);
+	      qfile_close_scan (thread_p, &s_inner->list_scan_id);
+
+	      /* hash_table pointer is borrowed from the primary; null it so hjoin_scan_clear skips
+	       * the destroy path. */
+	      switch (secondary->hash_scan.hash_list_scan_type)
+		{
+		case HASH_METH_IN_MEM:
+		case HASH_METH_HYBRID:
+		  secondary->hash_scan.memory.hash_table = NULL;
+		  secondary->hash_scan.memory.curr_hash_entry = NULL;
+		  break;
+		case HASH_METH_HASH_FILE:
+		  secondary->hash_scan.file.hash_table = NULL;
+		  break;
+		case HASH_METH_NOT_USE:
+		default:
+		  break;
+		}
+	      hjoin_scan_clear (thread_p, &secondary->hash_scan);
+
+	      if (s_outer->tuple_record.tpl != NULL)
+		{
+		  free_and_init (s_outer->tuple_record.tpl);
+		}
+	      s_outer->tuple_record.size = 0;
+	      if (s_inner->tuple_record.tpl != NULL)
+		{
+		  free_and_init (s_inner->tuple_record.tpl);
+		}
+	      s_inner->tuple_record.size = 0;
+
+	      /* Null borrowed input list_ids / regu_list_pred so they aren't double-freed. */
+	      s_outer->list_id = NULL;
+	      s_inner->list_id = NULL;
+	      s_outer->regu_list_pred = NULL;
+	      s_inner->regu_list_pred = NULL;
+
+	      /* secondary->list_id is worker-owned probe output; destroy any leftover. */
+	      if (secondary->list_id != NULL)
+		{
+		  qfile_close_list (thread_p, secondary->list_id);
+		  qfile_destroy_list (thread_p, secondary->list_id);
+		  QFILE_FREE_AND_INIT_LIST_ID (secondary->list_id);
+		}
 	    }
 	}
       else
