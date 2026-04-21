@@ -529,10 +529,10 @@ set(STORAGE_HEADERS
 # One file is compiled per build — no runtime dispatch, no #if guards inside.
 if(CXX_AVX512_FOUND)
   set(VECTOR_INTRINSICS_FILE ${INDEX_HNSW_DIR}/vector_distance_intrinsics_avx512.cpp)
-  set(VECTOR_INTRINSICS_ISA_FLAGS "${CXX_AVX512_FLAGS}")
+  string(REPLACE " " ";" VECTOR_INTRINSICS_ISA_FLAGS "${CXX_AVX512_FLAGS}")
 elseif(CXX_AVX2_FOUND)
   set(VECTOR_INTRINSICS_FILE ${INDEX_HNSW_DIR}/vector_distance_intrinsics_avx2.cpp)
-  set(VECTOR_INTRINSICS_ISA_FLAGS "${CXX_AVX2_FLAGS}")
+  string(REPLACE " " ";" VECTOR_INTRINSICS_ISA_FLAGS "${CXX_AVX2_FLAGS}")
 else()
   set(VECTOR_INTRINSICS_FILE ${INDEX_HNSW_DIR}/vector_distance_intrinsics_fallback.cpp)
   set(VECTOR_INTRINSICS_ISA_FLAGS "")
