@@ -1371,8 +1371,11 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
       printf ("css_server_task: fd: %d, client_id: %d\n", task_p->get_conn ().fd, task_p->get_conn ().client_id);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
-      css_send_request_error_and_abort (task_p->get_conn (), task_p->get_conn ().request_id, ER_CSS_CLIENTS_EXCEEDED);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
+
+      task_p->get_conn ().start_request ();
+      css_send_request_error_and_abort (task_p->get_conn (), 0, ER_THREAD_STACK);
+      css_shutdown_conn (&task_p->get_conn ());
 
       task_p->retire ();
   };
@@ -1382,8 +1385,9 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
       printf ("css_connection_task: fd: %d, client_id: %d\n", task_p->get_conn ().fd, task_p->get_conn ().client_id);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
-      css_send_request_error_and_abort (task_p->get_conn (), task_p->get_conn ().request_id, ER_CSS_CLIENTS_EXCEEDED);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
+
+      css_shutdown_conn (&task_p->get_conn ());
 
       task_p->retire ();
   };
@@ -3333,8 +3337,10 @@ static cubthread::wait_seconds
 css_get_connection_thread_timeout_configuration (void)
 {
   // todo: need infinite timeout
+//  return
+//    cubthread::wait_seconds (std::chrono::seconds (prm_get_integer_value (PRM_ID_THREAD_CONNECTION_TIMEOUT_SECONDS)));
   return
-    cubthread::wait_seconds (std::chrono::seconds (prm_get_integer_value (PRM_ID_THREAD_CONNECTION_TIMEOUT_SECONDS)));
+    cubthread::wait_seconds (std::chrono::seconds (2000));
 }
 
 static bool
@@ -3353,7 +3359,8 @@ static cubthread::wait_seconds
 css_get_server_request_thread_timeout_configuration (void)
 {
   // todo: need infinite timeout
-  return cubthread::wait_seconds (std::chrono::seconds (prm_get_integer_value (PRM_ID_THREAD_WORKER_TIMEOUT_SECONDS)));
+  //return cubthread::wait_seconds (std::chrono::seconds (prm_get_integer_value (PRM_ID_THREAD_WORKER_TIMEOUT_SECONDS)));
+  return cubthread::wait_seconds (std::chrono::seconds (20));
 }
 
 static void

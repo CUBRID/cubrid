@@ -955,6 +955,7 @@ namespace cubthread
       {
 	// reject task
 	task_p->retire ();
+	finished_task_notification ();
 	return;
       }
 
@@ -970,11 +971,13 @@ namespace cubthread
 	    if (m_parent_pool->get_compensate_func ())
 	      {
 		m_parent_pool->get_compensate_func () (task_p);
+		finished_task_notification ();
 	      }
 	    else
 	      {
 		m_task_queue.push (task_p);
 	      }
+	    become_available (*refp);
 	  }
       }
     else
