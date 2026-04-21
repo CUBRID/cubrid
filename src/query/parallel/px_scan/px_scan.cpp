@@ -195,6 +195,8 @@ extern "C"
 	assert_release_error (false);
 	return er_errid ();
       }
+
+    return er_errid ();
   }
 
   void
@@ -709,6 +711,8 @@ extern "C"
 	assert_release_error (false);
 	return er_errid ();
       }
+
+    return er_errid ();
   }
 
   void
@@ -1137,6 +1141,8 @@ extern "C"
 	assert_release_error (false);
 	return er_errid ();
       }
+
+    return er_errid ();
   }
 
   void
@@ -1654,7 +1660,7 @@ namespace parallel_scan
     new_vd = (VAL_DESCR *) db_private_alloc (m_thread_p, sizeof (VAL_DESCR));
     if (new_vd == nullptr)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (VAL_DESCR));
 	return ER_FAILED;
       }
     memcpy (new_vd, m_orig_vd, sizeof (VAL_DESCR));
@@ -1664,7 +1670,8 @@ namespace parallel_scan
 	if (new_vd->dbval_ptr == nullptr)
 	  {
 	    db_private_free (m_thread_p, new_vd);
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		    sizeof (DB_VALUE) * m_orig_vd->dbval_cnt);
 	    return ER_FAILED;
 	  }
 	for (int i = 0; i < m_orig_vd->dbval_cnt; i++)
@@ -1676,7 +1683,7 @@ namespace parallel_scan
     m_input_handler = (input_handler_t *) db_private_alloc (m_thread_p, sizeof (input_handler_t));
     if (m_input_handler == nullptr)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (input_handler_t));
 	return ER_FAILED;
       }
     m_input_handler = placement_new ((input_handler_t *) m_input_handler, &m_interrupt, &m_err_messages);
@@ -1709,7 +1716,8 @@ namespace parallel_scan
 			   sizeof (result_handler<RESULT_TYPE::MERGEABLE_LIST>));
 	if (m_result_handler == nullptr)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		    sizeof (result_handler<RESULT_TYPE::MERGEABLE_LIST>));
 	    return ER_FAILED;
 	  }
 	if (m_xasl->type == BUILDLIST_PROC && m_xasl->proc.buildlist.g_agg_list != NULL &&
@@ -1726,7 +1734,8 @@ namespace parallel_scan
 			   sizeof (result_handler<RESULT_TYPE::XASL_SNAPSHOT>));
 	if (m_result_handler == nullptr)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		    sizeof (result_handler<RESULT_TYPE::XASL_SNAPSHOT>));
 	    return ER_FAILED;
 	  }
 	m_result_handler = placement_new ((result_handler<RESULT_TYPE::XASL_SNAPSHOT> *) m_result_handler, m_query_id,
@@ -1738,7 +1747,8 @@ namespace parallel_scan
 			   sizeof (result_handler<RESULT_TYPE::BUILDVALUE_OPT>));
 	if (m_result_handler == nullptr)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		    sizeof (result_handler<RESULT_TYPE::BUILDVALUE_OPT>));
 	    return ER_FAILED;
 	  }
 	m_result_handler = placement_new ((result_handler<RESULT_TYPE::BUILDVALUE_OPT> *) m_result_handler, m_query_id,
@@ -1806,7 +1816,7 @@ namespace parallel_scan
 	task<result_type, ST> *task_p = (task<result_type, ST> *) malloc (sizeof (task<result_type, ST>));
 	if (task_p == nullptr)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (task<result_type, ST>));
 	    return ER_FAILED;
 	  }
 	trace_handler *trace_handler_p = m_on_trace ? &m_trace_handler : nullptr;
@@ -1849,7 +1859,7 @@ namespace parallel_scan
 		m_join_info.capture_join_info (m_xasl);
 		for (XASL_NODE *xptr = m_xasl->scan_ptr; xptr; xptr=xptr->scan_ptr)
 		  {
-		    if (xptr->spec_list->type == TARGET_LIST)
+		    if (xptr->spec_list && xptr->spec_list->type == TARGET_LIST)
 		      {
 			scan_end_scan (m_thread_p, &xptr->spec_list->s_id);
 		      }
