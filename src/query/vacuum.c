@@ -827,6 +827,9 @@ class vacuum_master_task : public cubthread::entry_task
     void start_job_on_cursor_entry ();		      // start job on cursor entry
     bool should_force_data_update () const;           // conditions to force a vacuum data update
 
+    void increase_outstanding_job ();
+    void decrease_outstanding_job (int count);
+
     vacuum_job_cursor m_cursor;                       // cursor that iterates through vacuum data entries
     MVCCID m_oldest_visible_mvccid;                   // saved oldest visible mvccid (recomputed on each iteration)
     std::size_t m_outstanding_job_count;	      // in-progress job count
@@ -2999,7 +3002,6 @@ void
 vacuum_master_task::execute (cubthread::entry &thread_ref)
 {
   PERF_UTIME_TRACKER perf_tracker;
-  int mark_finished = 0;
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
@@ -3040,9 +3042,7 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
   pgbuf_flush_if_requested (&thread_ref, (PAGE_PTR) vacuum_Data.first_page);
   pgbuf_flush_if_requested (&thread_ref, (PAGE_PTR) vacuum_Data.last_page);
 
-  mark_finished = m_cursor.force_data_update ();
-  assert (m_outstanding_job_count >= mark_finished);
-  m_outstanding_job_count -= mark_finished;
+  decrease_outstanding_job (m_cursor.force_data_update ());
 
   vacuum_er_log (VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_JOBS, "Start searching jobs at " vacuum_job_cursor_print_format,
                  vacuum_job_cursor_print_args (m_cursor));
@@ -3063,9 +3063,7 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
 
       if (should_force_data_update ())
         {
-	  mark_finished = m_cursor.force_data_update ();
-	  assert (m_outstanding_job_count >= mark_finished);
-	  m_outstanding_job_count -= mark_finished;
+	  decrease_outstanding_job (m_cursor.force_data_update ());
         }
     }
   m_cursor.unload ();
@@ -3160,7 +3158,7 @@ vacuum_master_task::start_job_on_cursor_entry ()
   cubthread::get_manager ()->push_task (vacuum_Worker_threads,
                                         new vacuum_worker_task (m_cursor.get_current_entry ()));
 
-  m_outstanding_job_count++;
+  increase_outstanding_job ();
 }
 
 bool
@@ -3179,6 +3177,30 @@ vacuum_master_task::should_force_data_update () const
 
   return false;
 }
+
+void
+vacuum_master_task::increase_outstanding_job ()
+{
+  ++m_outstanding_job_count;
+}
+
+void
+vacuum_master_task::decrease_outstanding_job (int count)
+{
+  assert (count >= 0);
+
+  if (m_outstanding_job_count < count)
+    {
+      assert (false);
+      vacuum_er_log_error (VACUUM_ER_LOG_MASTER, "%s", "outstanding job count underflow detected");
+      m_outstanding_job_count = 0;
+    }
+  else
+    {
+      m_outstanding_job_count -= static_cast<std::size_t> (count);
+    }
+}
+
 // *INDENT-ON*
 #endif // SERVER_MODE
 
