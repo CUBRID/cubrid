@@ -903,10 +903,8 @@ extern "C"
     scan_id->s.pllsid_parallel.manager = nullptr;	/* init */
     scan_id->s.pllsid_parallel.trace_storage = nullptr;
 
-    HFID null_hfid;
-    HFID_SET_NULL (&null_hfid);
-    OID null_oid;
-    OID_SET_NULL (&null_oid);
+    HFID null_hfid = HFID_INITIALIZER;
+    OID null_oid = OID_INITIALIZER;
 
     switch (scan_id->s.pllsid_parallel.result_type)
       {
