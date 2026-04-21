@@ -4830,7 +4830,7 @@ sbtree_class_test_unique (THREAD_ENTRY *thread_p, unsigned int rid, char *reques
 }
 
 void
-shnsw_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+shnsw_add_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   BTID btid;
   int dimension, hnsw_M, hnsw_efConstruction, metric_type, attr_id;
@@ -4867,7 +4867,7 @@ shnsw_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
 }
 
 void
-shnsw_delete_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+shnsw_delete_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   BTID btid;
   int success;
@@ -4887,7 +4887,7 @@ shnsw_delete_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 }
 
 void
-shnsw_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+shnsw_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   int error = NO_ERROR;
   BTID btid;
