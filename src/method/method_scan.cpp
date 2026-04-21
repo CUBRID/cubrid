@@ -193,6 +193,8 @@ namespace cubscan
 	}
       if (scan_code == S_ERROR)
 	{
+	  m_method_group->reset (false);
+
 	  cubmethod::runtime_context *rctx = cubmethod::get_rctx (m_thread_p);
 	  if (rctx)
 	    {

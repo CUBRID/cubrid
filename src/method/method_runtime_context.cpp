@@ -78,6 +78,7 @@ namespace cubmethod
   runtime_context::~runtime_context ()
   {
     destroy_all_groups ();
+    destroy_all_cursors ();
   }
 
   method_invoke_group *
