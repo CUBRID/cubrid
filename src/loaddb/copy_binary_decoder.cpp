@@ -23,14 +23,14 @@
 
 #include "copy_binary_decoder.hpp"
 #include "copy_binary_format.hpp"
-#include "dbtype_function.h"
+#include "db_vector.hpp"
+#include "dbtype.h"
 #include "error_manager.h"
 #include "intl_support.h"
 #include "language_support.h"
 #include "porting.h"
 
 #include <arpa/inet.h>
-#include <cstdlib>
 #include <cstring>
 
 /* read int16 from buffer in network byte order */
@@ -88,8 +88,8 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
 
   if (buf_remaining < (int) sizeof (int32_t))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: truncated field length");
-      return ER_DB_UNIMPLEMENTED;
+      /* not enough bytes to read field length header — caller should buffer */
+      return COPY_DECODE_NEED_MORE;
     }
 
   field_len = read_int32 (buf);
@@ -109,8 +109,8 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
 
   if (buf_remaining - (int) sizeof (int32_t) < field_len)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: truncated field data");
-      return ER_DB_UNIMPLEMENTED;
+      /* field body split across chunks — caller should buffer and retry */
+      return COPY_DECODE_NEED_MORE;
     }
 
   const char *data = buf + sizeof (int32_t);
@@ -158,42 +158,41 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
       break;
 
     case DB_TYPE_VECTOR:
-      {
-	if (field_len < (int) sizeof (int32_t))
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1,
-		    "COPY binary: VECTOR needs at least 4 bytes for dimension");
-	    return ER_DB_UNIMPLEMENTED;
-	  }
+    {
+      if (field_len < (int) sizeof (int32_t))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1,
+		  "COPY binary: VECTOR needs at least 4 bytes for dimension");
+	  return ER_DB_UNIMPLEMENTED;
+	}
 
-	int32_t dim = read_int32 (data);
-	int expected_len = (int) sizeof (int32_t) + dim * (int) sizeof (float);
-	if (field_len != expected_len)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1,
-		    "COPY binary: VECTOR size mismatch");
-	    return ER_DB_UNIMPLEMENTED;
-	  }
+      int32_t dim = read_int32 (data);
+      int expected_len = (int) sizeof (int32_t) + dim * (int) sizeof (float);
+      if (field_len != expected_len)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1,
+		  "COPY binary: VECTOR size mismatch");
+	  return ER_DB_UNIMPLEMENTED;
+	}
 
-	DB_VECTOR_FLOAT vf;
-	vf.dim = dim;
-	/* decode float array from network byte order */
-	float *floats = (float *) malloc (dim * sizeof (float));
-	if (floats == NULL)
-	  {
-	    return ER_OUT_OF_VIRTUAL_MEMORY;
-	  }
-	const char *fptr = data + sizeof (int32_t);
-	for (int i = 0; i < dim; i++)
-	  {
-	    floats[i] = read_float (fptr + i * sizeof (float));
-	  }
-	vf.float_array = floats;
-	db_make_vector_float (val, &vf);
-	/* db_make_vector_float copies the data, so free our temp buffer */
-	free (floats);
-      }
-      break;
+      DB_VECTOR_FLOAT vf;
+      vf.dim = dim;
+      /* decode float array from network byte order */
+      float *floats = db_vector_allocate_float_array (dim);
+      if (floats == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      const char *fptr = data + sizeof (int32_t);
+      for (int i = 0; i < dim; i++)
+	{
+	  floats[i] = read_float (fptr + i * sizeof (float));
+	}
+      vf.float_array = floats;
+      db_make_vector_float (val, &vf);
+      /* db_make_vector_float stores the pointer, not a copy — db_value_clear frees it */
+    }
+    break;
 
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: unsupported column type");
@@ -214,8 +213,8 @@ decode_binary_row (const char *buf, int buf_len, const DB_TYPE *types, int ncols
   /* read num_fields */
   if (buf_len < (int) sizeof (int16_t))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: truncated row header");
-      return ER_DB_UNIMPLEMENTED;
+      /* not enough bytes even for the row header — caller should buffer */
+      return COPY_DECODE_NEED_MORE;
     }
 
   int16_t num_fields = read_int16 (buf);
@@ -225,7 +224,7 @@ decode_binary_row (const char *buf, int buf_len, const DB_TYPE *types, int ncols
   if (num_fields == COPY_BINARY_FOOTER_SENTINEL)
     {
       *bytes_consumed = pos;
-      return 1;			/* special return: end of data */
+      return COPY_DECODE_FOOTER;
     }
 
   if (num_fields != (int16_t) ncols)
@@ -242,7 +241,7 @@ decode_binary_row (const char *buf, int buf_len, const DB_TYPE *types, int ncols
       error = decode_field (buf + pos, buf_len - pos, types[i], &out_vals[i], &field_consumed);
       if (error != NO_ERROR)
 	{
-	  /* clean up already-decoded values */
+	  /* clean up already-decoded values (NEED_MORE path too) */
 	  for (int j = 0; j < i; j++)
 	    {
 	      db_value_clear (&out_vals[j]);

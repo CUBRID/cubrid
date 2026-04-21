@@ -31,27 +31,26 @@
 
 class copy_session
 {
-public:
-  copy_session ();
-  ~copy_session ();
+  public:
+    copy_session ();
+    ~copy_session ();
 
-  int init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, int num_cols);
-  int receive_data (THREAD_ENTRY *thread_p, const char *data, int data_len);
-  int finish (THREAD_ENTRY *thread_p, int *rows_loaded);
-  void abort (THREAD_ENTRY *thread_p);
+    int init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, int num_cols);
+    int receive_data (THREAD_ENTRY *thread_p, const char *data, int data_len);
+    int finish (THREAD_ENTRY *thread_p, int *rows_loaded);
+    void abort (THREAD_ENTRY *thread_p);
 
-private:
-  OID m_class_oid;
-  HFID m_hfid;
-  HEAP_SCANCACHE m_scancache;
-  bool m_scancache_started;
-  HEAP_CACHE_ATTRINFO m_attrinfo;
-  bool m_attrinfo_started;
+  private:
+    OID m_class_oid;
+    HFID m_hfid;
 
-  std::vector<DB_TYPE> m_col_types;
-  std::vector<ATTR_ID> m_attr_ids;	/* attribute repr IDs in column order */
-  int m_num_cols;
-  int m_rows_loaded;
+    std::vector<DB_TYPE> m_col_types;
+    std::vector<ATTR_ID> m_attr_ids;	/* attribute repr IDs in column order */
+    std::vector<char> m_leftover;		/* bytes at the tail of a receive_data
+					   call that form a partial row and need
+					   to be combined with the next chunk */
+    int m_num_cols;
+    int m_rows_loaded;
 };
 
 #endif /* _COPY_SESSION_HPP_ */

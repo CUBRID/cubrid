@@ -24,9 +24,18 @@
 
 #include "dbtype_def.h"
 
+/* Return-code sentinels used by decode_binary_row (in addition to NO_ERROR
+ * and negative error codes).
+ * COPY_DECODE_FOOTER     — footer sentinel row consumed; end of stream.
+ * COPY_DECODE_NEED_MORE  — buffer ended mid-row; caller should buffer the
+ *                          remaining bytes and combine with the next chunk.
+ */
+#define COPY_DECODE_FOOTER     1
+#define COPY_DECODE_NEED_MORE  2
+
 /*
  * decode_binary_row () - Decode one row from a binary buffer
- *   return: NO_ERROR or error code
+ *   return: NO_ERROR, COPY_DECODE_FOOTER, COPY_DECODE_NEED_MORE, or error code
  *   buf(in): pointer to start of row data
  *   buf_len(in): remaining bytes in buffer
  *   types(in): expected column types
