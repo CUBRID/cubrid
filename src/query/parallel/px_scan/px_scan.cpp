@@ -1418,7 +1418,11 @@ extern "C"
       }
     else
       {
-	local_result_type = parallel_scan::RESULT_TYPE::XASL_SNAPSHOT;
+	/* XASL_SNAPSHOT is not instantiated for SCAN_TYPE::INDEX; fall back to
+	 * single-thread index scan before touching the pisid union. */
+	worker_manager_p->release_workers ();
+	assert (scan_id->type == S_INDX_SCAN);
+	return NO_ERROR;
       }
 
     /* Save indx_info from isid.  init_on_main (called from manager::open) needs the BTID. */
