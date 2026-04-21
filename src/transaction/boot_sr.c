@@ -2270,17 +2270,25 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   /* The database pagesize is set by log_get_io_page_size */
 
+  BOOT_PHASE_BEGIN ("04a_log_get_io_page_size");
   if (log_get_io_page_size (thread_p, boot_Db_full_name, log_path, log_prefix) == -1)
     {
+      BOOT_PHASE_END ("04a_log_get_io_page_size");
       if (from_backup == false || er_errid () == ER_IO_MOUNT_LOCKED)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
 	}
     }
+  else
+    {
+      BOOT_PHASE_END ("04a_log_get_io_page_size");
+    }
 
   /* Initialize the transaction table */
+  BOOT_PHASE_BEGIN ("04b_logtb_define_trantable");
   logtb_define_trantable (thread_p, -1, -1);
+  BOOT_PHASE_END ("04b_logtb_define_trantable");
   BOOT_PHASE_END ("04_log_config_and_trantable");
 
   /*
@@ -2328,27 +2336,36 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #if !defined(SA_MODE)
   er_log_debug (ARG_FILE_LINE, "boot: phase 7 begin (mount + db parm)");
 #endif
+  BOOT_PHASE_BEGIN ("07a_boot_mount");
   error_code = boot_mount (thread_p, LOG_DBFIRST_VOLID, boot_Db_full_name, NULL);
+  BOOT_PHASE_END ("07a_boot_mount");
   if (error_code != NO_ERROR)
     {
       goto error;
     }
 
   /* Find the location of the database parameters and read them */
+  BOOT_PHASE_BEGIN ("07b_disk_get_boot_hfid");
   if (disk_get_boot_hfid (thread_p, LOG_DBFIRST_VOLID, &boot_Db_parm->hfid) == NULL)
     {
+      BOOT_PHASE_END ("07b_disk_get_boot_hfid");
       error_code = ER_FAILED;
       goto error;
     }
+  BOOT_PHASE_END ("07b_disk_get_boot_hfid");
 
+  BOOT_PHASE_BEGIN ("07c_boot_get_db_parm");
   error_code = boot_get_db_parm (thread_p, boot_Db_parm, boot_Db_parm_oid);
+  BOOT_PHASE_END ("07c_boot_get_db_parm");
   if (error_code != NO_ERROR)
     {
       goto error;
     }
 
+  BOOT_PHASE_BEGIN ("07d_tde_cipher_initialize");
   error_code = tde_cipher_initialize (thread_p, &boot_Db_parm->tde_keyinfo_hfid,
 				      r_args == NULL ? NULL : r_args->keys_file_path);
+  BOOT_PHASE_END ("07d_tde_cipher_initialize");
   if (error_code != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_LOAD_FAIL, 0);
@@ -2356,9 +2373,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
   /* we need to manually add root class HFID to cache */
+  BOOT_PHASE_BEGIN ("07e_heap_cache_class_info");
   error_code =
     heap_cache_class_info (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP,
 			   boot_Db_parm->rootclass_name);
+  BOOT_PHASE_END ("07e_heap_cache_class_info");
   if (error_code != NO_ERROR)
     {
       assert_release (false);
