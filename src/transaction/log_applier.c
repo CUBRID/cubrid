@@ -4397,6 +4397,16 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
   int error = NO_ERROR;
   bool found_head = false;
   std::vector<LA_OOS_CHUNK> chunks;
+  auto free_chunks = [&chunks]()
+  {
+    for (LA_OOS_CHUNK &chunk : chunks)
+      {
+	if (chunk.alloc_data != NULL)
+	  {
+	    free_and_init (chunk.alloc_data);
+	  }
+      }
+  };
 
   assert (lsa != NULL);
   assert (recdes != NULL);
@@ -4418,6 +4428,7 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
       if (current_log_page == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
+	  free_chunks ();
 	  return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
 	}
 
@@ -4448,6 +4459,7 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 		  free_and_init (chunk_data);
 		}
 	      la_release_page_buffer (current_lsa.pageid);
+	      free_chunks ();
 	      return error;
 	    }
 
@@ -4460,6 +4472,7 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 		      free_and_init (chunk_data);
 		    }
 		  la_release_page_buffer (current_lsa.pageid);
+		  free_chunks ();
 		  return ER_FAILED;
 		}
 
@@ -4476,6 +4489,7 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 		      free_and_init (chunk_data);
 		    }
 		  la_release_page_buffer (current_lsa.pageid);
+		  free_chunks ();
 		  return ER_FAILED;
 		}
 
@@ -4488,6 +4502,7 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 		      free_and_init (chunk_data);
 		    }
 		  la_release_page_buffer (current_lsa.pageid);
+		  free_chunks ();
 		  return ER_FAILED;
 		}
 
@@ -4533,13 +4548,7 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 	      offset += it->length;
 	    }
 
-	  for (LA_OOS_CHUNK &chunk : chunks)
-	    {
-	      if (chunk.alloc_data != NULL)
-		{
-		  free_and_init (chunk.alloc_data);
-		}
-	    }
+	  free_chunks ();
 
 	  return NO_ERROR;
 	}
@@ -4549,13 +4558,7 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 
   error = ER_FAILED;
 
-  for (LA_OOS_CHUNK &chunk : chunks)
-    {
-      if (chunk.alloc_data != NULL)
-	{
-	  free_and_init (chunk.alloc_data);
-	}
-    }
+  free_chunks ();
 
   return error;
 }
@@ -5543,7 +5546,6 @@ la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
 
   if (is_multi_chunk_oos)
     {
-      apply->is_multi_chunk_oos_pending = false;
       error = la_get_multi_chunk_oos_recdes (&item->target_lsa, recdes);
       if (error != NO_ERROR)
 	{
@@ -5603,6 +5605,11 @@ la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
   error = la_repl_add_object (class_obj, item, recdes);
 
 end:
+  if (error == NO_ERROR && is_multi_chunk_oos)
+    {
+      apply->is_multi_chunk_oos_pending = false;
+    }
+
   if (error != NO_ERROR)
     {
       la_log_apply_error ("apply_insert", ER_HA_LA_FAILED_TO_APPLY_INSERT, item, error);
