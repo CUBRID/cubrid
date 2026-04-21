@@ -43,23 +43,14 @@ namespace parallel_query
     int execute_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager);
 
     /*
-     * probe_init_contexts / probe_clear_contexts
-     *
-     * Per-worker secondary context helpers used by parallel probe. A secondary context shares
-     * the hash_table (already built into the primary's hash_scan) and the outer/inner/build/probe
-     * list_id pointers. It owns its own temp_key / temp_new_key / build-side list_scan_id so
-     * multiple workers can look up matches concurrently without interfering with each other.
-     */
-
-    int probe_init_contexts (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager,
-			     HASHJOIN_CONTEXT *primary, HASHJOIN_CONTEXT *secondary);
-    void probe_clear_contexts (cubthread::entry &thread_ref, HASHJOIN_CONTEXT *secondary);
-
-    /*
-     * probe_prepare / probe_execute
+     * parallel_probe
      */
 
     int probe_prepare (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager);
     int probe_execute (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager);
+
+    int probe_init_contexts (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager,
+			     HASHJOIN_CONTEXT *primary, HASHJOIN_CONTEXT *secondary);
+    void probe_clear_contexts (cubthread::entry &thread_ref, HASHJOIN_CONTEXT *secondary);
   } /* namespace hash_join */
 } /* namespace parallel_query */
