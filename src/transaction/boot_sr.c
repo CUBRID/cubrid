@@ -1267,18 +1267,23 @@ boot_mount (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel, void *igno
   char check_vlabel[PATH_MAX];
   int vdes;
 
+  BOOT_PHASE_BEGIN ("07a1_fileio_mount");
   vdes = fileio_mount (thread_p, boot_Db_full_name, vlabel, volid, false, false);
+  BOOT_PHASE_END ("07a1_fileio_mount");
   if (vdes == NULL_VOLDES)
     {
       return ER_FAILED;
     }
 
   /* Check the label and give a warning if labels are not the same */
+  BOOT_PHASE_BEGIN ("07a2_xdisk_get_fullname");
   if (xdisk_get_fullname (thread_p, volid, check_vlabel) == NULL)
     {
+      BOOT_PHASE_END ("07a2_xdisk_get_fullname");
       fileio_dismount (thread_p, vdes);
       return ER_FAILED;
     }
+  BOOT_PHASE_END ("07a2_xdisk_get_fullname");
 
   if (util_compare_filepath (check_vlabel, vlabel) != 0)
     {
