@@ -4608,7 +4608,7 @@ vacuum_is_work_in_progress (THREAD_ENTRY * thread_p)
 /*
  * vacuum_data_mark_finished () - Mark blocks already vacuumed (or interrupted).
  *
- * return	 : Int.
+ * return	 : The count of jobs marked as finished.
  * thread_p (in) : Thread entry.
  */
 static int
