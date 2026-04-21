@@ -64,9 +64,9 @@
 #endif /* WINDOWS */
 
 CUB_THREAD_LOCAL int tm_Tran_index = NULL_TRAN_INDEX;
-TRAN_ISOLATION tm_Tran_isolation = TRAN_UNKNOWN_ISOLATION;
+CUB_THREAD_LOCAL TRAN_ISOLATION tm_Tran_isolation = TRAN_UNKNOWN_ISOLATION;
 CUB_THREAD_LOCAL bool tm_Tran_async_ws = false;
-int tm_Tran_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
+CUB_THREAD_LOCAL int tm_Tran_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
 CUB_THREAD_LOCAL bool tm_Tran_check_interrupt = true;
 CUB_THREAD_LOCAL int tm_Tran_ID = -1;
 CUB_THREAD_LOCAL int tm_Tran_invalidate_snapshot = 1;
