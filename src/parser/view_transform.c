@@ -23,7 +23,6 @@
 #ident "$Id$"
 
 #include <assert.h>
-#include <ctype.h>
 
 #include "authenticate.h"
 #include "view_transform.h"
@@ -4600,20 +4599,6 @@ mq_is_dblink_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term)
 #define MQ_DBLINK_CORR_SIDE_CONST    4
 
 /*
- * mq_dblink_corr_strip_cast_wrap () - unwrap CAST_WRAP for dblink-style predicates
- */
-static PT_NODE *
-mq_dblink_corr_strip_cast_wrap (PT_NODE * expr)
-{
-  while (expr && expr->node_type == PT_EXPR && expr->info.expr.op == PT_CAST
-	 && PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_WRAP))
-    {
-      expr = expr->info.expr.arg1;
-    }
-  return expr;
-}
-
-/*
  * mq_dblink_corr_dot_to_leaf_name () - rightmost name in a path (a.b.c -> c)
  */
 static PT_NODE *
@@ -4637,7 +4622,6 @@ mq_dblink_corr_classify_side (PT_NODE * expr, UINTPTR dblink_sid)
 {
   PT_NODE *leaf;
 
-  expr = mq_dblink_corr_strip_cast_wrap (expr);
   if (expr == NULL)
     {
       return MQ_DBLINK_CORR_SIDE_ERR;
@@ -4904,13 +4888,13 @@ mq_dblink_corr_get_eq_pair (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE
 	  c2 = mq_dblink_corr_classify_side (term->info.expr.arg2, dblink_sid);
 	  if (c1 == MQ_DBLINK_CORR_SIDE_REMOTE && c2 == MQ_DBLINK_CORR_SIDE_OUTER)
 	    {
-	      *remote_out = mq_dblink_corr_strip_cast_wrap (term->info.expr.arg1);
-	      *outer_out = mq_dblink_corr_strip_cast_wrap (term->info.expr.arg2);
+	      *remote_out = term->info.expr.arg1;
+	      *outer_out = term->info.expr.arg2;
 	    }
 	  else if (c1 == MQ_DBLINK_CORR_SIDE_OUTER && c2 == MQ_DBLINK_CORR_SIDE_REMOTE)
 	    {
-	      *remote_out = mq_dblink_corr_strip_cast_wrap (term->info.expr.arg2);
-	      *outer_out = mq_dblink_corr_strip_cast_wrap (term->info.expr.arg1);
+	      *remote_out = term->info.expr.arg2;
+	      *outer_out = term->info.expr.arg1;
 	    }
 	  else
 	    {

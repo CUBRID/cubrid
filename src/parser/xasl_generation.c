@@ -12687,16 +12687,12 @@ pt_to_showstmt_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * whe
 }
 
 /*
- * pt_dblink_corr_side_has_spec () - CBRD-26601: strip an optional CAST wrap and return true
- *   if node is a PT_NAME that belongs to the given spec (identified by spec_id).
+ * pt_dblink_corr_side_has_spec () - CBRD-26601: return true if node is a PT_NAME
+ *   that belongs to the given spec (identified by spec_id).
  */
 static bool
 pt_dblink_corr_side_has_spec (PT_NODE * node, UINTPTR spec_id)
 {
-  if (node != NULL && node->node_type == PT_EXPR && node->info.expr.op == PT_CAST)
-    {
-      node = node->info.expr.arg1;
-    }
   return node != NULL && node->node_type == PT_NAME && node->info.name.spec_id == spec_id;
 }
 
@@ -12711,10 +12707,6 @@ pt_dblink_corr_side_has_spec (PT_NODE * node, UINTPTR spec_id)
 static bool
 pt_dblink_corr_side_is_outer_ref (PT_NODE * node, UINTPTR dblink_sid)
 {
-  if (node != NULL && node->node_type == PT_EXPR && node->info.expr.op == PT_CAST)
-    {
-      node = node->info.expr.arg1;
-    }
   return node != NULL && node->node_type == PT_NAME
     && node->info.name.spec_id != 0 && node->info.name.spec_id != dblink_sid && node->info.name.correlation_level > 0;
 }
