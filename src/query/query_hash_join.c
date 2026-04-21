@@ -133,7 +133,7 @@ static void hjoin_destroy_qlist (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * con
 
 /* Hash List Scan */
 static int hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cnt, QFILE_LIST_ID * list_id);
-static void hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan);
+void hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan);
 
 /* Hash Join Processing */
 static HASHJOIN_STATUS hjoin_check_empty_inputs (HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
@@ -669,7 +669,7 @@ hjoin_execute_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
       assert (context == &manager->single_context);
 
       // *INDENT-OFF*
-      error = parallel_query::hash_join::probe_execute (*thread_p, manager, context);
+      error = parallel_query::hash_join::probe_execute (*thread_p, manager);
       // *INDENT-ON*
     }
   else
@@ -925,9 +925,20 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
       context_cnt = manager->context_cnt;
       assert (context_cnt > 1);
 
-      for (context_index = 0; context_index < context_cnt; context_index++)
+      if (single_context->status == HASHJOIN_STATUS_PARALLEL_PROBE)
 	{
-	  hjoin_clear_context (thread_p, &contexts[context_index]);
+	  /* Secondaries borrow primary's hash_table/list_ids; use the probe-aware tear-down. */
+	  for (context_index = 0; context_index < context_cnt; context_index++)
+	    {
+	      parallel_query::hash_join::probe_clear_contexts (*thread_p, &contexts[context_index]);
+	    }
+	}
+      else
+	{
+	  for (context_index = 0; context_index < context_cnt; context_index++)
+	    {
+	      hjoin_clear_context (thread_p, &contexts[context_index]);
+	    }
 	}
 
       db_private_free_and_init (thread_p, contexts);
@@ -2587,199 +2598,6 @@ hjoin_clear_context (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context)
 }
 
 /*
- * hjoin_init_probe_secondary_context() -
- *   return: Error code.
- *   thread_p(in): Thread entry.
- *   manager(in): Hash join manager.
- *   primary(in): Primary (single) context whose hash_table and list_ids will be borrowed.
- *   secondary(out): Zero-initialized secondary context to populate for a parallel probe worker.
- *
- * Shares:
- *   - outer/inner/build/probe->list_id pointers (secondary must not destroy them)
- *   - hash_scan.memory.hash_table / file.hash_table pointer (unlinked in
- *     hjoin_clear_probe_secondary_context before hjoin_scan_clear is invoked so the destroy
- *     path is skipped)
- *
- * Owns (per-context):
- *   - list_scan_id on the build side (so concurrent hjoin_probe_key lookups don't interfere)
- *   - hash_scan.temp_key / temp_new_key
- *   - outer/inner tuple_record buffers (allocated on demand during execution)
- */
-int
-hjoin_init_probe_secondary_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
-				    HASHJOIN_CONTEXT * primary, HASHJOIN_CONTEXT * secondary)
-{
-  HASHJOIN_FETCH_INFO *s_outer, *s_inner;
-  int key_cnt;
-  int error = NO_ERROR;
-
-  assert (thread_p != NULL);
-  assert (manager != NULL);
-  assert (primary != NULL);
-  assert (secondary != NULL);
-  assert (primary->hash_scan.hash_list_scan_type != HASH_METH_NOT_USE);
-
-  /* Shallow-copy fetch_info metadata; list_id pointers intentionally shared with primary. */
-  secondary->outer = primary->outer;
-  secondary->inner = primary->inner;
-
-  s_outer = &secondary->outer;
-  s_inner = &secondary->inner;
-
-  /* list_scan_id is per-context; start closed, open build-side below. */
-  s_outer->list_scan_id.status = S_CLOSED;
-  s_inner->list_scan_id.status = S_CLOSED;
-
-  /* Independent tuple_record buffers */
-  s_outer->tuple_record.tpl = NULL;
-  s_outer->tuple_record.size = 0;
-  s_inner->tuple_record.tpl = NULL;
-  s_inner->tuple_record.size = 0;
-
-  /* Re-point fill_record to the secondary's own tuple_record when the primary did so. */
-  if (primary->outer.fill_record == &primary->outer.tuple_record)
-    {
-      s_outer->fill_record = &s_outer->tuple_record;
-    }
-  if (primary->inner.fill_record == &primary->inner.tuple_record)
-    {
-      s_inner->fill_record = &s_inner->tuple_record;
-    }
-
-  /* regu_list_pred is borrowed; spawn_manager will overwrite with per-worker clones at task start
-   * when outer-join residual ON-clause evaluation is needed. */
-
-  /* build/probe pointers relative to secondary's own outer/inner */
-  secondary->build = (primary->build == &primary->outer) ? &secondary->outer : &secondary->inner;
-  secondary->probe = (primary->probe == &primary->outer) ? &secondary->outer : &secondary->inner;
-
-  /* hash_scan: shallow-copy so hash_table pointer is shared. Reset per-task mutable cursor. */
-  secondary->hash_scan = primary->hash_scan;
-  secondary->hash_scan.temp_key = NULL;
-  secondary->hash_scan.temp_new_key = NULL;
-  secondary->hash_scan.curr_hash_key = 0;
-  if (secondary->hash_scan.hash_list_scan_type == HASH_METH_IN_MEM
-      || secondary->hash_scan.hash_list_scan_type == HASH_METH_HYBRID)
-    {
-      secondary->hash_scan.memory.curr_hash_entry = NULL;
-    }
-  else if (secondary->hash_scan.hash_list_scan_type == HASH_METH_HASH_FILE)
-    {
-      secondary->hash_scan.file.curr_oid = OID_INITIALIZER;
-      secondary->hash_scan.file.is_dk_bucket = false;
-    }
-
-  key_cnt = manager->key_cnt;
-  secondary->hash_scan.temp_key = qdata_alloc_hscan_key (thread_p, key_cnt, true);
-  if (secondary->hash_scan.temp_key == NULL)
-    {
-      goto error_exit;
-    }
-  secondary->hash_scan.temp_new_key = qdata_alloc_hscan_key (thread_p, key_cnt, true);
-  if (secondary->hash_scan.temp_new_key == NULL)
-    {
-      goto error_exit;
-    }
-
-  /* Open a per-context build-side scan for concurrent hjoin_probe_key lookups. */
-  error = qfile_open_list_scan (secondary->build->list_id, &secondary->build->list_scan_id);
-  if (error != NO_ERROR)
-    {
-      goto error_exit;
-    }
-
-  /* Secondaries accumulate per-worker perfmon stats via thread_ref.m_px_stats; single-stats
-   * aggregation is done on the primary via hjoin_trace_drain_worker_stats. */
-  secondary->stats = NULL;
-  secondary->list_id = NULL;
-  secondary->status = HASHJOIN_STATUS_PARALLEL_PROBE;
-  secondary->during_join_pred = NULL;
-  secondary->val_descr = NULL;
-
-  ASSERT_NO_ERROR_OR_INTERRUPTED ();
-  return NO_ERROR;
-
-error_exit:
-  hjoin_clear_probe_secondary_context (thread_p, secondary);
-
-  if (error == NO_ERROR || er_errid () == NO_ERROR)
-    {
-      assert_release_error (er_errid () != NO_ERROR);
-      error = er_errid ();
-    }
-  return error;
-}
-
-/*
- * hjoin_clear_probe_secondary_context() -
- *   return: None.
- *   thread_p(in): Thread entry.
- *   secondary(in/out): Secondary context to tear down.
- *
- * Releases per-context resources (list_scan_ids, temp keys, tuple buffers) and nulls out shared
- * pointers so that downstream hjoin_clear_manager / hjoin_clear_context are safe no-ops. The
- * shared hash_table and list_ids remain owned by the primary context.
- */
-void
-hjoin_clear_probe_secondary_context (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * secondary)
-{
-  HASHJOIN_FETCH_INFO *outer, *inner;
-
-  assert (thread_p != NULL);
-  assert (secondary != NULL);
-
-  outer = &secondary->outer;
-  inner = &secondary->inner;
-
-  qfile_close_scan (thread_p, &outer->list_scan_id);
-  qfile_close_scan (thread_p, &inner->list_scan_id);
-
-  /* hash_table is borrowed from the primary context; unlink before hjoin_scan_clear so the
-   * destroy path (guarded by NULL) is skipped. */
-  switch (secondary->hash_scan.hash_list_scan_type)
-    {
-    case HASH_METH_IN_MEM:
-    case HASH_METH_HYBRID:
-      secondary->hash_scan.memory.hash_table = NULL;
-      secondary->hash_scan.memory.curr_hash_entry = NULL;
-      break;
-
-    case HASH_METH_HASH_FILE:
-      secondary->hash_scan.file.hash_table = NULL;
-      break;
-
-    case HASH_METH_NOT_USE:
-    default:
-      break;
-    }
-
-  hjoin_scan_clear (thread_p, &secondary->hash_scan);
-
-  if (outer->tuple_record.tpl != NULL)
-    {
-      free_and_init (outer->tuple_record.tpl);
-    }
-  outer->tuple_record.size = 0;
-  if (inner->tuple_record.tpl != NULL)
-    {
-      free_and_init (inner->tuple_record.tpl);
-    }
-  inner->tuple_record.size = 0;
-
-  /* Null shared pointers so downstream clear paths don't try to destroy primary-owned resources. */
-  outer->list_id = NULL;
-  inner->list_id = NULL;
-  outer->regu_list_pred = NULL;
-  inner->regu_list_pred = NULL;
-
-  secondary->list_id = NULL;
-  secondary->build = NULL;
-  secondary->probe = NULL;
-  secondary->during_join_pred = NULL;
-  secondary->val_descr = NULL;
-}
-
-/*
  * hjoin_destroy_qlist() -
  *   return: None.
  *   thread_p(in): Thread entry.
@@ -2933,7 +2751,7 @@ error_exit:
  *   thread_p(in): Thread entry.
  *   hash_scan(in): Hash scan structure to clear.
  */
-static void
+void
 hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan)
 {
   assert (thread_p != NULL);

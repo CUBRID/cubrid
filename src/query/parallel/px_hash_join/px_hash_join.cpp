@@ -24,9 +24,11 @@
 #include "px_hash_join_task_manager.hpp"
 
 #include "error_manager.h"		/* er_errid, NO_ERROR, assert_release_error, ASSERT_NO_ERROR_OR_INTERRUPTED */
-#include "list_file.h"		/* qfile_destroy_list, QFILE_FREE_AND_INIT_LIST_ID, qfile_connect_list */
+#include "fetch.h"			/* qdata_alloc_hscan_key */
+#include "list_file.h"		/* qfile_destroy_list, QFILE_FREE_AND_INIT_LIST_ID, qfile_connect_list,
+				 * qfile_close_list, qfile_close_scan, qfile_open_list_scan */
 #include "memory_alloc.h"		/* db_private_alloc, db_private_free_and_init */
-#include "storage_common.h"		/* S_BEFORE, VPID_SET_NULL */
+#include "storage_common.h"		/* S_BEFORE, VPID_SET_NULL, S_CLOSED, OID_INITIALIZER */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -244,25 +246,276 @@ namespace parallel_query
     }
 
     /*
+     * probe_init_contexts
+     *
+     * Initializes a single secondary context against the primary (single_context). The secondary
+     * borrows the primary's hash_table and input list_id pointers but owns its own hash_scan
+     * cursor state, temp_keys, build-side list_scan_id, and output list_id.
+     */
+
+    int
+    probe_init_contexts (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager,
+			 HASHJOIN_CONTEXT *primary, HASHJOIN_CONTEXT *secondary)
+    {
+      HASHJOIN_FETCH_INFO *s_outer, *s_inner;
+      int key_cnt;
+      int error = NO_ERROR;
+
+      assert (manager != nullptr);
+      assert (primary != nullptr);
+      assert (secondary != nullptr);
+      assert (primary->hash_scan.hash_list_scan_type != HASH_METH_NOT_USE);
+
+      /* Shallow-copy fetch_info metadata; list_id pointers intentionally shared with primary. */
+      secondary->outer = primary->outer;
+      secondary->inner = primary->inner;
+
+      s_outer = &secondary->outer;
+      s_inner = &secondary->inner;
+
+      /* list_scan_id is per-context; start closed, open build-side below. */
+      s_outer->list_scan_id.status = S_CLOSED;
+      s_inner->list_scan_id.status = S_CLOSED;
+
+      /* Independent tuple_record buffers */
+      s_outer->tuple_record.tpl = NULL;
+      s_outer->tuple_record.size = 0;
+      s_inner->tuple_record.tpl = NULL;
+      s_inner->tuple_record.size = 0;
+
+      /* Re-point fill_record to the secondary's own tuple_record when the primary did so. */
+      if (primary->outer.fill_record == &primary->outer.tuple_record)
+	{
+	  s_outer->fill_record = &s_outer->tuple_record;
+	}
+      if (primary->inner.fill_record == &primary->inner.tuple_record)
+	{
+	  s_inner->fill_record = &s_inner->tuple_record;
+	}
+
+      /* regu_list_pred is borrowed; spawn_manager will overwrite with per-worker clones at task start
+       * when outer-join residual ON-clause evaluation is needed. */
+
+      /* build/probe pointers relative to secondary's own outer/inner */
+      secondary->build = (primary->build == &primary->outer) ? &secondary->outer : &secondary->inner;
+      secondary->probe = (primary->probe == &primary->outer) ? &secondary->outer : &secondary->inner;
+
+      /* hash_scan: shallow-copy so hash_table pointer is shared. Reset per-task mutable cursor. */
+      secondary->hash_scan = primary->hash_scan;
+      secondary->hash_scan.temp_key = NULL;
+      secondary->hash_scan.temp_new_key = NULL;
+      secondary->hash_scan.curr_hash_key = 0;
+      if (secondary->hash_scan.hash_list_scan_type == HASH_METH_IN_MEM
+	  || secondary->hash_scan.hash_list_scan_type == HASH_METH_HYBRID)
+	{
+	  secondary->hash_scan.memory.curr_hash_entry = NULL;
+	}
+      else if (secondary->hash_scan.hash_list_scan_type == HASH_METH_HASH_FILE)
+	{
+	  secondary->hash_scan.file.curr_oid = OID_INITIALIZER;
+	  secondary->hash_scan.file.is_dk_bucket = false;
+	}
+
+      key_cnt = manager->key_cnt;
+      secondary->hash_scan.temp_key = qdata_alloc_hscan_key (&thread_ref, key_cnt, true);
+      if (secondary->hash_scan.temp_key == NULL)
+	{
+	  goto error_exit;
+	}
+      secondary->hash_scan.temp_new_key = qdata_alloc_hscan_key (&thread_ref, key_cnt, true);
+      if (secondary->hash_scan.temp_new_key == NULL)
+	{
+	  goto error_exit;
+	}
+
+      /* Open a per-context build-side scan for concurrent hjoin_probe_key lookups. */
+      error = qfile_open_list_scan (secondary->build->list_id, &secondary->build->list_scan_id);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      /* Secondaries accumulate per-worker perfmon stats via thread_ref.m_px_stats; single-stats
+       * aggregation is done on the primary via hjoin_trace_drain_worker_stats. */
+      secondary->stats = NULL;
+      secondary->list_id = NULL;
+      secondary->status = HASHJOIN_STATUS_PARALLEL_PROBE;
+      secondary->during_join_pred = NULL;
+      secondary->val_descr = NULL;
+
+      ASSERT_NO_ERROR_OR_INTERRUPTED ();
+      return NO_ERROR;
+
+error_exit:
+      probe_clear_contexts (thread_ref, secondary);
+
+      if (error == NO_ERROR || er_errid () == NO_ERROR)
+	{
+	  assert_release_error (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	}
+      return error;
+    }
+
+    /*
+     * probe_clear_contexts
+     *
+     * Releases per-context resources (list_scan_ids, temp keys, tuple buffers), destroys any
+     * leftover worker output list (secondary->list_id), and nulls out borrowed pointers so that
+     * downstream clear paths are safe no-ops. The shared hash_table and input list_ids remain
+     * owned by the primary context.
+     */
+
+    void
+    probe_clear_contexts (cubthread::entry &thread_ref, HASHJOIN_CONTEXT *secondary)
+    {
+      HASHJOIN_FETCH_INFO *outer, *inner;
+
+      assert (secondary != nullptr);
+
+      outer = &secondary->outer;
+      inner = &secondary->inner;
+
+      qfile_close_scan (&thread_ref, &outer->list_scan_id);
+      qfile_close_scan (&thread_ref, &inner->list_scan_id);
+
+      /* hash_table is borrowed from the primary context; unlink before hjoin_scan_clear so the
+       * destroy path (guarded by NULL) is skipped. */
+      switch (secondary->hash_scan.hash_list_scan_type)
+	{
+	case HASH_METH_IN_MEM:
+	case HASH_METH_HYBRID:
+	  secondary->hash_scan.memory.hash_table = NULL;
+	  secondary->hash_scan.memory.curr_hash_entry = NULL;
+	  break;
+
+	case HASH_METH_HASH_FILE:
+	  secondary->hash_scan.file.hash_table = NULL;
+	  break;
+
+	case HASH_METH_NOT_USE:
+	default:
+	  break;
+	}
+
+      hjoin_scan_clear (&thread_ref, &secondary->hash_scan);
+
+      if (outer->tuple_record.tpl != NULL)
+	{
+	  free_and_init (outer->tuple_record.tpl);
+	}
+      outer->tuple_record.size = 0;
+      if (inner->tuple_record.tpl != NULL)
+	{
+	  free_and_init (inner->tuple_record.tpl);
+	}
+      inner->tuple_record.size = 0;
+
+      /* Null shared pointers so downstream clear paths don't try to destroy primary-owned resources. */
+      outer->list_id = NULL;
+      inner->list_id = NULL;
+      outer->regu_list_pred = NULL;
+      inner->regu_list_pred = NULL;
+
+      /* secondary->list_id is worker-owned probe output; destroy any leftover (merge already nulls
+       * the successfully transferred entries). */
+      if (secondary->list_id != NULL)
+	{
+	  qfile_close_list (&thread_ref, secondary->list_id);
+	  qfile_destroy_list (&thread_ref, secondary->list_id);
+	  QFILE_FREE_AND_INIT_LIST_ID (secondary->list_id);
+	}
+
+      secondary->build = NULL;
+      secondary->probe = NULL;
+      secondary->during_join_pred = NULL;
+      secondary->val_descr = NULL;
+    }
+
+    /*
+     * probe_prepare
+     *
+     * Allocates the per-worker secondary context array and initializes each entry against the
+     * primary (single_context). On success manager->contexts is populated with
+     * manager->num_parallel_threads secondary contexts and context_cnt is set. On failure any
+     * partially-initialized secondaries are cleared and the array is freed before returning.
+     */
+
+    int
+    probe_prepare (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager)
+    {
+      HASHJOIN_CONTEXT *primary;
+      HASHJOIN_CONTEXT *contexts = nullptr;
+      UINT32 task_cnt, task_index, initialized_cnt = 0;
+      int error = NO_ERROR;
+
+      assert (manager != nullptr);
+      assert (manager->contexts == nullptr);
+      assert (manager->context_cnt == 0);
+
+      primary = &manager->single_context;
+      task_cnt = manager->num_parallel_threads;
+      assert (task_cnt >= 2);
+
+      contexts = (HASHJOIN_CONTEXT *) db_private_alloc (&thread_ref, task_cnt * sizeof (HASHJOIN_CONTEXT));
+      if (contexts == nullptr)
+	{
+	  goto error_exit;
+	}
+      memset (contexts, 0, task_cnt * sizeof (HASHJOIN_CONTEXT));
+
+      for (task_index = 0; task_index < task_cnt; task_index++)
+	{
+	  error = probe_init_contexts (thread_ref, manager, primary, &contexts[task_index]);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	  initialized_cnt++;
+	}
+
+      manager->contexts = contexts;
+      manager->context_cnt = task_cnt;
+
+      return NO_ERROR;
+
+error_exit:
+      for (task_index = 0; task_index < initialized_cnt; task_index++)
+	{
+	  probe_clear_contexts (thread_ref, &contexts[task_index]);
+	}
+      if (contexts != nullptr)
+	{
+	  db_private_free_and_init (&thread_ref, contexts);
+	}
+
+      if (error == NO_ERROR || er_errid () == NO_ERROR)
+	{
+	  assert_release_error (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	}
+      return error;
+    }
+
+    /*
      * probe_execute
      */
 
     int
-    probe_execute (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context)
+    probe_execute (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager)
     {
       HASHJOIN_SHARED_PROBE_INFO shared_info;
       UINT32 task_cnt, task_index;
-      UINT32 initialized_cnt = 0;
       HASHJOIN_CONTEXT *contexts = nullptr;
       int error = NO_ERROR;
 
-      HASHJOIN_STATS *stats = context->stats;
+      assert (manager != nullptr);
+
+      HASHJOIN_CONTEXT *single_context = &manager->single_context;
+      HASHJOIN_STATS *stats = single_context->stats;
       HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
       assert (!thread_is_on_trace (&thread_ref) || stats != nullptr);
 
-      assert (manager != nullptr);
-      assert (context != nullptr);
-      assert (context == &manager->single_context);
       assert (manager->px_worker_manager != nullptr);
       assert (manager->contexts == nullptr);
       assert (manager->context_cnt == 0);
@@ -270,39 +523,16 @@ namespace parallel_query
       task_cnt = manager->num_parallel_threads;
       assert (task_cnt >= 2);
 
-      /* Per-task output list array */
-      shared_info.task_list_ids =
-	      (QFILE_LIST_ID **) db_private_alloc (&thread_ref, task_cnt * sizeof (QFILE_LIST_ID *));
-      if (shared_info.task_list_ids == nullptr)
+      /* Allocate and initialize per-worker secondary contexts. Each borrows the primary's
+       * hash_table and input list_id pointers but owns its own hash_scan cursor state,
+       * temp_keys, build-side list_scan_id, and output list_id. */
+      error = probe_prepare (thread_ref, manager);
+      if (error != NO_ERROR)
 	{
 	  assert_release_error (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
-      memset (shared_info.task_list_ids, 0, task_cnt * sizeof (QFILE_LIST_ID *));
-
-      /* Allocate per-worker secondary contexts. Each borrows the primary's hash_table and list_id
-       * pointers but owns its own hash_scan cursor state, temp_keys, and build-side list_scan_id. */
-      contexts = (HASHJOIN_CONTEXT *) db_private_alloc (&thread_ref, task_cnt * sizeof (HASHJOIN_CONTEXT));
-      if (contexts == nullptr)
-	{
-	  db_private_free_and_init (&thread_ref, shared_info.task_list_ids);
-	  assert_release_error (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
-      memset (contexts, 0, task_cnt * sizeof (HASHJOIN_CONTEXT));
-
-      for (task_index = 0; task_index < task_cnt; task_index++)
-	{
-	  error = hjoin_init_probe_secondary_context (&thread_ref, manager, context, &contexts[task_index]);
-	  if (error != NO_ERROR)
-	    {
-	      goto error_cleanup;
-	    }
-	  initialized_cnt++;
-	}
-
-      manager->contexts = contexts;
-      manager->context_cnt = task_cnt;
+      contexts = manager->contexts;
 
       /* Reflect the real per-worker context count in the dump-facing stats_group. query_dump
        * relies on stats_group->status (HASHJOIN_STATUS_PARALLEL_PROBE) to keep the single-stats
@@ -342,104 +572,51 @@ namespace parallel_query
 
 	if (tm.has_error ())
 	  {
-	    for (task_index = 0; task_index < task_cnt; task_index++)
-	      {
-		if (shared_info.task_list_ids[task_index] != nullptr)
-		  {
-		    qfile_destroy_list (&thread_ref, shared_info.task_list_ids[task_index]);
-		    QFILE_FREE_AND_INIT_LIST_ID (shared_info.task_list_ids[task_index]);
-		  }
-	      }
-	    db_private_free_and_init (&thread_ref, shared_info.task_list_ids);
-
-	    for (task_index = 0; task_index < initialized_cnt; task_index++)
-	      {
-		hjoin_clear_probe_secondary_context (&thread_ref, &contexts[task_index]);
-	      }
-
+	    /* Leftover per-worker list_ids stay on contexts[i].list_id; hjoin_clear_manager
+	     * destroys them via probe_clear_contexts. */
 	    tm.clear_interrupt (thread_ref);
 	    assert_release_error (er_errid () != NO_ERROR);
 	    return er_errid ();
 	  }
       }
 
-      /* Merge per-task lists into primary context->list_id via O(1) pointer chain */
+      /* Merge per-task lists into primary single_context->list_id via O(1) pointer chain */
       for (task_index = 0; task_index < task_cnt; task_index++)
 	{
-	  QFILE_LIST_ID *task_list = shared_info.task_list_ids[task_index];
+	  QFILE_LIST_ID *task_list = contexts[task_index].list_id;
 	  if (task_list == nullptr || task_list->tuple_cnt == 0)
 	    {
 	      if (task_list != nullptr)
 		{
 		  qfile_destroy_list (&thread_ref, task_list);
-		  QFILE_FREE_AND_INIT_LIST_ID (shared_info.task_list_ids[task_index]);
+		  QFILE_FREE_AND_INIT_LIST_ID (contexts[task_index].list_id);
 		}
 	      continue;
 	    }
 
-	  if (context->list_id == nullptr)
+	  if (single_context->list_id == nullptr)
 	    {
-	      context->list_id = task_list;
-	      shared_info.task_list_ids[task_index] = nullptr;
+	      single_context->list_id = task_list;
+	      contexts[task_index].list_id = nullptr;
 	    }
 	  else
 	    {
-	      error = qfile_connect_list (&thread_ref, context->list_id, task_list);
+	      error = qfile_connect_list (&thread_ref, single_context->list_id, task_list);
 	      if (error != NO_ERROR)
 		{
-		  for (; task_index < task_cnt; task_index++)
-		    {
-		      if (shared_info.task_list_ids[task_index] != nullptr)
-			{
-			  qfile_destroy_list (&thread_ref, shared_info.task_list_ids[task_index]);
-			  QFILE_FREE_AND_INIT_LIST_ID (shared_info.task_list_ids[task_index]);
-			}
-		    }
-		  db_private_free_and_init (&thread_ref, shared_info.task_list_ids);
-
-		  for (task_index = 0; task_index < initialized_cnt; task_index++)
-		    {
-		      hjoin_clear_probe_secondary_context (&thread_ref, &contexts[task_index]);
-		    }
-
+		  /* Remaining contexts[i].list_id entries are destroyed by hjoin_clear_manager. */
 		  assert_release_error (er_errid () != NO_ERROR);
 		  return er_errid ();
 		}
-	      shared_info.task_list_ids[task_index] = nullptr;
+	      contexts[task_index].list_id = nullptr;
 	    }
 	}
 
-      db_private_free_and_init (&thread_ref, shared_info.task_list_ids);
-
-      /* Tear down per-worker context resources. The contexts array itself stays allocated on the
-       * manager so hjoin_clear_manager can free it uniformly; each entry is now a safe no-op for
-       * downstream clear paths (list_ids and hash_table pointers have been nulled). */
-      for (task_index = 0; task_index < initialized_cnt; task_index++)
-	{
-	  hjoin_clear_probe_secondary_context (&thread_ref, &contexts[task_index]);
-	}
+      /* Secondary contexts remain on manager->contexts and are torn down by hjoin_clear_manager
+       * using probe_clear_contexts. */
 
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
       return NO_ERROR;
-
-error_cleanup:
-      for (task_index = 0; task_index < initialized_cnt; task_index++)
-	{
-	  hjoin_clear_probe_secondary_context (&thread_ref, &contexts[task_index]);
-	}
-      if (manager->contexts == nullptr)
-	{
-	  /* contexts array not yet handed to manager; free it here */
-	  db_private_free_and_init (&thread_ref, contexts);
-	}
-      db_private_free_and_init (&thread_ref, shared_info.task_list_ids);
-
-      if (error == NO_ERROR || er_errid () == NO_ERROR)
-	{
-	  assert_release_error (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	}
-      return error;
     }
   } /* namespace hash_join */
 } /* namespace parallel_query */

@@ -852,7 +852,7 @@ namespace parallel_query
       QFILE_LIST_ID *local_list_id = nullptr;
 
       /* hash_scan, temp keys, and the build-side list_scan_id are pre-initialized in m_context
-       * by hjoin_init_probe_secondary_context. hash_table is shared with the primary; cursor
+       * by probe_init_contexts. hash_table is shared with the primary; cursor
        * fields (curr_hash_key, memory.curr_hash_entry, file.curr_oid, is_dk_bucket) are
        * per-context and thus task-local. */
       HASH_LIST_SCAN *local_hash_scan = &m_context->hash_scan;
@@ -1265,7 +1265,7 @@ namespace parallel_query
 	}
 
       /* cleanup: per-context resources (hash_scan temp keys, build->list_scan_id) stay owned by
-       * the secondary context and are released by hjoin_clear_probe_secondary_context when
+       * the secondary context and are released by probe_clear_contexts when
        * probe_execute tears the secondaries down. Spawned per-worker TLS clones must be
        * un-stashed from m_context before destroy_instance so that stale pointers are not left
        * dangling when the worker is reused. */
@@ -1300,8 +1300,9 @@ namespace parallel_query
 	{
 	  qfile_close_list (&thread_ref, local_list_id);
 
-	  /* publish result — stored in shared array indexed by m_index */
-	  m_shared_info->task_list_ids[m_index] = local_list_id;
+	  /* publish result — stored on the secondary context; probe_execute merges it into
+	   * the primary's list_id and probe_clear_contexts destroys any leftover. */
+	  m_context->list_id = local_list_id;
 	}
 
       thread_ref.m_px_stats = nullptr;
@@ -1613,7 +1614,7 @@ namespace parallel_query
       else
 	{
 	  qfile_close_list (&thread_ref, local_list_id);
-	  m_shared_info->task_list_ids[m_index] = local_list_id;
+	  m_context->list_id = local_list_id;
 	}
 
       thread_ref.m_px_stats = nullptr;

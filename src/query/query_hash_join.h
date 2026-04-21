@@ -303,9 +303,6 @@ typedef struct hashjoin_shared_probe_info
   SCAN_POSITION scan_position;
   VPID next_vpid;
 
-  /* Per-task output lists; array of task_cnt entries, allocated by probe_execute. */
-  QFILE_LIST_ID **task_list_ids;
-
   std::mutex stats_mutex;
   HASHJOIN_RANGE_TIME_STATS probe_range_time;
 
@@ -313,7 +310,6 @@ typedef struct hashjoin_shared_probe_info
     : scan_mutex ()
     , scan_position (S_BEFORE)
     , next_vpid (VPID_INITIALIZER)
-    , task_list_ids (nullptr)
     , stats_mutex ()
     , probe_range_time (HASHJOIN_RANGE_TIME_STATS_INITIALIZER)
   {
@@ -427,20 +423,7 @@ int hjoin_init_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
 void hjoin_clear_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 				    HASHJOIN_SHARED_SPLIT_INFO * shared_info);
 
-/* Per-worker secondary context helpers used by parallel probe.
- *
- * A secondary context shares the hash_table (already built into the primary context's hash_scan)
- * and the outer/inner/build/probe list_id pointers. It owns its own temp_key / temp_new_key /
- * build-side list_scan_id so multiple workers can look up matches concurrently without
- * interfering with each other.
- *
- * Caller contract:
- *   - primary must have completed hjoin_build (hash_table populated).
- *   - secondary must be zero-initialized before this call.
- */
-int hjoin_init_probe_secondary_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
-					HASHJOIN_CONTEXT * primary, HASHJOIN_CONTEXT * secondary);
-void hjoin_clear_probe_secondary_context (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * secondary);
+void hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan);
 
 int hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFILE_TUPLE_RECORD * tuple_record,
 		     HASH_SCAN_KEY * key, HASH_SCAN_KEY * compare_key, bool * need_skip_next);
