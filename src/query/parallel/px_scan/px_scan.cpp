@@ -897,7 +897,10 @@ extern "C"
       }
     else
       {
-	scan_id->s.pllsid_parallel.result_type = parallel_scan::RESULT_TYPE::XASL_SNAPSHOT;
+	/* try single-thread list scan */
+	worker_manager_p->release_workers ();
+	assert (scan_id->type == S_LIST_SCAN);
+	return NO_ERROR;
       }
 
     scan_id->s.pllsid_parallel.manager = nullptr;	/* init */
