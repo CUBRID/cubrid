@@ -18,7 +18,6 @@
 
 set(PL_ENGINE_SOURCE_DIR ${CMAKE_SOURCE_DIR}/pl_engine)
 set(PL_ENGINE_BUILD_DIR ${CMAKE_BINARY_DIR}/pl_engine)
-set(PL_ENGINE_GRADLE_USER_HOME ${PL_ENGINE_BUILD_DIR}/.gradle)
 set(JDK_DIR ${CMAKE_BINARY_DIR}/vm)
 
 # Find gradlew
@@ -68,11 +67,8 @@ find_package(Java REQUIRED)
 
 if(UNIX)
 add_custom_command(TARGET pl_build
-  COMMAND ${CMAKE_COMMAND} -E make_directory ${PL_ENGINE_GRADLE_USER_HOME}
   COMMAND ${CMAKE_COMMAND} -E make_directory ${PL_ENGINE_BUILD_DIR}
-  COMMAND ${CMAKE_COMMAND} -E env GRADLE_USER_HOME=${PL_ENGINE_GRADLE_USER_HOME}
-          ${GRADLE_EXECUTABLE} build -x test -p ${PL_ENGINE_SOURCE_DIR} -PbuildDir=${PL_ENGINE_BUILD_DIR}
-          ${LOCAL_JDBC_PATH_COMMAND}
+  COMMAND ${GRADLE_EXECUTABLE} build -x test -p ${PL_ENGINE_SOURCE_DIR} -PbuildDir=${PL_ENGINE_BUILD_DIR} ${LOCAL_JDBC_PATH_COMMAND}
 )
 else(UNIX)
 add_custom_command(TARGET pl_build
@@ -84,10 +80,7 @@ endif(UNIX)
 add_custom_target(pl_unittest)
 if(UNIX)
 add_custom_command(TARGET pl_unittest
-  COMMAND ${CMAKE_COMMAND} -E make_directory ${PL_ENGINE_GRADLE_USER_HOME}
-  COMMAND ${CMAKE_COMMAND} -E env GRADLE_USER_HOME=${PL_ENGINE_GRADLE_USER_HOME}
-          ${GRADLE_EXECUTABLE} cleanTest test -p ${PL_ENGINE_SOURCE_DIR} -DbuildDir=${PL_ENGINE_BUILD_DIR}
-          ${LOCAL_JDBC_PATH_COMMAND}
+  COMMAND ${GRADLE_EXECUTABLE} cleanTest test -p ${PL_ENGINE_SOURCE_DIR} -DbuildDir=${PL_ENGINE_BUILD_DIR} ${LOCAL_JDBC_PATH_COMMAND}
 )
 else(UNIX)
 add_custom_command(TARGET pl_unittest
