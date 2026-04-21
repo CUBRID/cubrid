@@ -2367,6 +2367,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   BOOT_PHASE_END ("07_mount_and_db_parm");
 
   BOOT_PHASE_BEGIN ("08_charset_find_volumes");
+#if !defined(SA_MODE)
+  er_log_debug (ARG_FILE_LINE, "boot: phase 8 begin (charset + mount rest volumes)");
+#endif
   db_charset_db_header = boot_get_db_charset_from_header (thread_p, log_path, log_prefix);
   if (db_charset_db_header <= INTL_CODESET_NONE || INTL_CODESET_LAST < db_charset_db_header)
     {
@@ -2385,11 +2388,17 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   /* Find the rest of the volumes and mount them */
 
+#if !defined(SA_MODE)
+  er_log_debug (ARG_FILE_LINE, "boot: phase 8 calling boot_find_rest_volumes");
+#endif
   error_code = boot_find_rest_volumes (thread_p, from_backup ? r_args : NULL, LOG_DBFIRST_VOLID, boot_mount, NULL);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
+#if !defined(SA_MODE)
+  er_log_debug (ARG_FILE_LINE, "boot: phase 8 end (mount rest volumes done)");
+#endif
   BOOT_PHASE_END ("08_charset_find_volumes");
 
   /* initialize disk manager */

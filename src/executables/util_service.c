@@ -32,6 +32,7 @@
 #include <assert.h>
 #if !defined(WINDOWS)
 #include <sys/wait.h>
+#include <sys/time.h>
 #endif
 #if defined(WINDOWS)
 #include <io.h>
@@ -1780,12 +1781,23 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		{
 		  int pid;
 		  const char *args[] = { UTIL_CUBRID_NAME, token, NULL };
+		  struct timeval start_tv, end_tv;
+		  INT64 elapsed_ms;
+
+		  gettimeofday (&start_tv, NULL);
 		  status = proc_execute (UTIL_CUBRID_NAME, args, false, false, false, &pid);
 
 		  if (status == NO_ERROR && !is_server_running (CHECK_SERVER, token, pid))
 		    {
 		      status = ER_GENERIC_ERROR;
 		    }
+		  gettimeofday (&end_tv, NULL);
+		  elapsed_ms = timeval_diff_in_msec (&end_tv, &start_tv);
+		  fprintf (stdout, "@ %s start took %lld.%03lld sec\n", token,
+			   (long long) (elapsed_ms / 1000), (long long) (elapsed_ms % 1000));
+		  fflush (stdout);
+		  util_log_write_errstr ("%s start took %lld.%03lld sec\n", token,
+					 (long long) (elapsed_ms / 1000), (long long) (elapsed_ms % 1000));
 		  print_result (PRINT_SERVER_NAME, status, command_type);
 		}
 	    }
