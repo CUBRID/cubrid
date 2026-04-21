@@ -25,7 +25,6 @@
 
 #ifdef CCI_XA
 
-#include "config.h"
 #include "dblink_2pc_daemon.h"
 #include "dblink_global_tran_catalog.h"
 #include "schema_system_catalog_constants.h"
@@ -33,12 +32,8 @@
 #include "system_catalog.h"
 #include "heap_file.h"
 #include "locator_sr.h"
-#include "db.h"
 #include "dbtype.h"
-#include "db_date.h"
 #include "error_manager.h"
-#include "memory_alloc.h"
-#include "thread_manager.hpp"
 
 #include <assert.h>
 #include <stddef.h>
@@ -49,7 +44,6 @@
 #include "memory_wrapper.hpp"
 
 /* heap attrid (reverse of column order): gtrid(7), bqual(6), conn_url(5), user(4), password(3), state(2), created_date(1), updated_date(0) */
-#define GLOBAL_TRAN_NUM_ATTRS  8
 #define GLOBAL_TRAN_ATTR_GTRID    7
 #define GLOBAL_TRAN_ATTR_BQUAL    6
 #define GLOBAL_TRAN_ATTR_CONN_URL 5
@@ -157,10 +151,7 @@ dblink_global_tran_insert_row (THREAD_ENTRY * thread_p, int gtrid, int bqual,
       goto cleanup;
     }
 
-  db_sys_datetime (&datetime_val);
-  datetime = db_get_datetime (&datetime_val);
-
-  db_make_datetime (&dbval, datetime);
+  db_sys_datetime (&dbval);
   if (heap_attrinfo_set (&oid, GLOBAL_TRAN_ATTR_CREATED, &dbval, &attr_info) != NO_ERROR)
     {
       error = ER_FAILED;
@@ -250,7 +241,6 @@ dblink_global_tran_update_state (THREAD_ENTRY * thread_p, int gtrid, int bqual, 
   DB_VALUE dbval, datetime_val;
   DB_DATETIME *datetime;
   bool scan_cache_inited = false;
-  bool scan_modify_inited = false;
   bool attr_inited = false;
 
   char state_str[2] = { new_state, '\0' };
@@ -266,7 +256,7 @@ dblink_global_tran_update_state (THREAD_ENTRY * thread_p, int gtrid, int bqual, 
     }
   hfid_p = &cls_info->ci_hfid;
 
-  if (heap_scancache_start (thread_p, &scan, hfid_p, &class_oid, true, NULL) != NO_ERROR)
+  if (heap_scancache_start_modify (thread_p, &scan, hfid_p, &class_oid, SINGLE_ROW_UPDATE, NULL) != NO_ERROR)
     {
       error = ER_FAILED;
       goto cleanup;
@@ -286,16 +276,6 @@ dblink_global_tran_update_state (THREAD_ENTRY * thread_p, int gtrid, int bqual, 
       goto cleanup;
     }
 
-  heap_scancache_end (thread_p, &scan);
-  scan_cache_inited = false;
-
-  if (heap_scancache_start_modify (thread_p, &scan, hfid_p, &class_oid, SINGLE_ROW_UPDATE, NULL) != NO_ERROR)
-    {
-      error = ER_FAILED;
-      goto cleanup;
-    }
-  scan_modify_inited = true;
-
   db_make_string (&dbval, state_str);
   if (heap_attrinfo_set (&oid, GLOBAL_TRAN_ATTR_STATE, &dbval, &attr_info) != NO_ERROR)
     {
@@ -303,10 +283,7 @@ dblink_global_tran_update_state (THREAD_ENTRY * thread_p, int gtrid, int bqual, 
       goto cleanup;
     }
 
-  db_sys_datetime (&datetime_val);
-  datetime = db_get_datetime (&datetime_val);
-
-  db_make_datetime (&dbval, datetime);
+  db_sys_datetime (&dbval);
   if (heap_attrinfo_set (&oid, GLOBAL_TRAN_ATTR_UPDATED, &dbval, &attr_info) != NO_ERROR)
     {
       error = ER_FAILED;
@@ -324,10 +301,6 @@ cleanup:
       heap_attrinfo_end (thread_p, &attr_info);
     }
   if (scan_cache_inited)
-    {
-      heap_scancache_end (thread_p, &scan);
-    }
-  if (scan_modify_inited)
     {
       heap_scancache_end_modify (thread_p, &scan);
     }
@@ -349,7 +322,6 @@ dblink_global_tran_delete_row (THREAD_ENTRY * thread_p, int gtrid, int bqual)
   int force_count = 0;
   int error = NO_ERROR;
   bool scan_cache_inited = false;
-  bool scan_modify_inited = false;
   bool attr_inited = false;
 
   if (xlocator_find_class_oid (thread_p, CT_GLOBAL_TRAN_NAME, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
@@ -363,7 +335,7 @@ dblink_global_tran_delete_row (THREAD_ENTRY * thread_p, int gtrid, int bqual)
     }
   hfid_p = &cls_info->ci_hfid;
 
-  if (heap_scancache_start (thread_p, &scan, hfid_p, &class_oid, true, NULL) != NO_ERROR)
+  if (heap_scancache_start_modify (thread_p, &scan, hfid_p, &class_oid, SINGLE_ROW_DELETE, NULL) != NO_ERROR)
     {
       error = ER_FAILED;
       goto cleanup;
@@ -383,16 +355,6 @@ dblink_global_tran_delete_row (THREAD_ENTRY * thread_p, int gtrid, int bqual)
       goto cleanup;
     }
 
-  heap_scancache_end (thread_p, &scan);
-  scan_cache_inited = false;
-
-  if (heap_scancache_start_modify (thread_p, &scan, hfid_p, &class_oid, SINGLE_ROW_DELETE, NULL) != NO_ERROR)
-    {
-      error = ER_FAILED;
-      goto cleanup;
-    }
-  scan_modify_inited = true;
-
   error = locator_delete_force (thread_p, hfid_p, &oid, true, SINGLE_ROW_DELETE, &scan, &force_count, NULL, false);
 
 cleanup:
@@ -401,10 +363,6 @@ cleanup:
       heap_attrinfo_end (thread_p, &attr_info);
     }
   if (scan_cache_inited)
-    {
-      heap_scancache_end (thread_p, &scan);
-    }
-  if (scan_modify_inited)
     {
       heap_scancache_end_modify (thread_p, &scan);
     }

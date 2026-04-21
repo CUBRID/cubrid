@@ -494,8 +494,7 @@ extern "C"
     DB_OBJECT_SERIAL = 2,	/* SERIAL (_db_serial) */
     DB_OBJECT_SERVER = 3,	/* SERVER (db_server) */
     DB_OBJECT_SYNONYM = 4,	/* SYNONYM (_db_synonym) */
-    DB_OBJECT_PROCEDURE = 5,	/* PROCEDURE, FUNCTION  (_db_stored_procedure) */
-    DB_OBJECT_GLOBAL_TRAN = 6	/* GLOBAL_TRAN (_db_global_tran) */
+    DB_OBJECT_PROCEDURE = 5	/* PROCEDURE, FUNCTION  (_db_stored_procedure) */
   } DB_OBJECT_TYPE;
 
   /* session state id */

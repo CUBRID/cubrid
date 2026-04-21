@@ -569,7 +569,7 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	{
 #ifdef SERVER_MODE
 	  (void) dblink_2pc_daemon_enqueue (tdes->gtrid, new_state, &participants[i]);
-#endif
+#else
 	  /* SA mode: no daemon/queue; run send decision and _db_global_tran delete in a system transaction */
 	  log_sysop_start (thread_p);
 	  error = dblink_2pc_send_decision_one_participant (tdes->gtrid, &participants[i], *decision);
@@ -590,6 +590,7 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	      log_sysop_abort (thread_p);
 	    }
 	}
+#endif
 
       *state =
 	log_complete (thread_p, tdes, complete_type, LOG_NEED_NEWTRID,

@@ -1258,7 +1258,7 @@ namespace cubschema
       {"gtrid", "integer"},
       {"bqual", "integer"},
       {"conn_url", format_varchar (512)},
-      {"user", format_varchar (32)},
+      {"user_name", format_varchar (32)},
       {"password", format_varchar (256)},
       {"state", format_varchar (1)},
       {"created_time", "datetime"},

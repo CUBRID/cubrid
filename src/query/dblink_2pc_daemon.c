@@ -27,7 +27,6 @@
 
 #ifdef CCI_XA
 
-#include "config.h"
 #include "dblink_2pc_daemon.h"
 #include "dblink_2pc.h"
 #include "dblink_global_tran_catalog.h"
@@ -218,51 +217,48 @@ dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
       /* Send decision to this single participant */
       ret = dblink_2pc_send_decision_one_participant (e.gtrid, &e.participant, (send_state == DBLINK_2PC_STATE_COMMIT));
 
-      if (ret == NO_ERROR)
-	{
-	  thread_p = &thread_ref;
-	  /* P5: Crash after (6) send decision, before (7) DELETE - recovery: daemon resends decision then DELETE */
-	  FI_TEST (thread_p, FI_TEST_DBLINK_2PC_CRASH_BETWEEN_6_7, 0);
-	  /* Use a regular (worker) transaction so that delete runs with normal lock/MVCC semantics. */
-	  int tran_index = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, NULL,
-						    TRAN_LOCK_INFINITE_WAIT, TRAN_READ_COMMITTED);
-	  if (tran_index != NULL_TRAN_INDEX)
-	    {
-	      int del_error = dblink_global_tran_delete_row (thread_p, e.gtrid, e.participant.conn_handle);
-	      if (del_error == NO_ERROR)
-		{
-		  TRAN_STATE commit_state = xtran_server_commit (thread_p, false);
-		  if (commit_state == TRAN_UNACTIVE_COMMITTED)
-		    {
-		      logtb_set_to_system_tran_index (thread_p);
-		      logtb_free_tran_index (thread_p, tran_index);
-		      /* success: continue loop */
-		    }
-		  else
-		    {
-		      /* commit failed: transaction may be auto-rolled back */
-		      logtb_free_tran_index (thread_p, tran_index);
-		      ret = ER_FAILED;
-		    }
-		}
-	      else
-		{
-		  (void) xtran_server_abort (thread_p);
-		  logtb_free_tran_index (thread_p, tran_index);
-		  ret = ER_FAILED;
-		}
-	    }
-	  else
-	    {
-	      ret = ER_FAILED;	/* fall through to re-enqueue */
-	    }
-	}
-
       if (ret != NO_ERROR)
 	{
 	  /* Error: re-enqueue this single participant for retry */
 	  (void) dblink_2pc_daemon_enqueue (e.gtrid, send_state, &e.participant);
 	  return;
+	}
+
+      thread_p = &thread_ref;
+      /* P5: Crash after (6) send decision, before (7) DELETE - recovery: daemon resends decision then DELETE */
+      FI_TEST (thread_p, FI_TEST_DBLINK_2PC_CRASH_BETWEEN_6_7, 0);
+      /* Use a regular (worker) transaction so that delete runs with normal lock/MVCC semantics. */
+      int tran_index = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, NULL,
+						TRAN_LOCK_INFINITE_WAIT, TRAN_READ_COMMITTED);
+      if (tran_index != NULL_TRAN_INDEX)
+	{
+	  int del_error = dblink_global_tran_delete_row (thread_p, e.gtrid, e.participant.conn_handle);
+	  if (del_error == NO_ERROR)
+	    {
+	      TRAN_STATE commit_state = xtran_server_commit (thread_p, false);
+
+	      logtb_free_tran_index (thread_p, tran_index);
+
+	      if (commit_state == TRAN_UNACTIVE_COMMITTED)
+		{
+		  /* success: continue loop */
+		}
+	      else
+		{
+		  /* commit failed: transaction may be auto-rolled back */
+		  ret = ER_FAILED;
+		}
+	    }
+	  else
+	    {
+	      (void) xtran_server_abort (thread_p);
+	      logtb_free_tran_index (thread_p, tran_index);
+	      ret = ER_FAILED;
+	    }
+	}
+      else
+	{
+	  ret = ER_FAILED;	/* fall through to re-enqueue */
 	}
     }
 }
@@ -297,10 +293,7 @@ dblink_2pc_daemon_dequeue (GLOBAL_TRAN_QUEUE_ENTRY * e)
 int
 dblink_2pc_daemon_enqueue (int gtrid, char state, const DBLINK_CONN_INFO * participant)
 {
-  if (participant == NULL)
-    {
-      return ER_FAILED;
-    }
+  assert (participant != NULL);
 
   pthread_mutex_lock (&global_tran_queue_mutex);
 
@@ -319,6 +312,7 @@ dblink_2pc_daemon_enqueue (int gtrid, char state, const DBLINK_CONN_INFO * parti
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  (size_t) GLOBAL_TRAN_QUEUE_GROW_SIZE * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
 	  pthread_mutex_unlock (&global_tran_queue_mutex);
+	  assert (false);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
