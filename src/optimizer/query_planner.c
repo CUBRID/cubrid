@@ -2271,6 +2271,7 @@ qo_iscan_cost (QO_PLAN * planp)
 #endif /* TEST_DUMP_PLAN_SCAN_COST */
 }
 
+
 static void
 qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
 {
