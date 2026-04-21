@@ -25,6 +25,7 @@
 
 #include <cstdio>
 #include <cstdarg>
+#include <cstdlib>
 #include <ctime>
 #include <cstring>
 #include <atomic>
@@ -120,13 +121,11 @@ namespace oos_log
     std::vsnprintf (body, sizeof (body), fmt, args);
     va_end (args);
 
-    // stderr
-    std::fputs (header, stderr);
-    std::fputs (body, stderr);
-    std::fputc ('\n', stderr);
-    std::fflush (stderr);
-
-    // file: $CUBRID/log/oos.log
+    // file: $CUBRID/log/oos.log is always the primary sink.  Writing to an
+    // inherited stderr tty corrupts the controlling terminal (cgdb UI, or a
+    // foreground csql/readline session that has switched the tty to raw mode),
+    // so stderr is opt-in via the CUBRID_OOS_LOG_STDERR environment variable
+    // (intended for local development, not for daemonized cub_server).
     FILE *logfp = oos_log_get_file();
     if (logfp != nullptr)
       {
@@ -134,6 +133,15 @@ namespace oos_log
 	std::fputs (body, logfp);
 	std::fputc ('\n', logfp);
 	std::fflush (logfp);
+      }
+
+    static const bool stderr_enabled = (std::getenv ("CUBRID_OOS_LOG_STDERR") != nullptr);
+    if (stderr_enabled)
+      {
+	std::fputs (header, stderr);
+	std::fputs (body, stderr);
+	std::fputc ('\n', stderr);
+	std::fflush (stderr);
       }
   }
 
