@@ -9084,6 +9084,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	{
 	  int error = NO_ERROR;
 	  bool is_scan_needed = false;
+
 	  if (!buildvalue->is_always_false)
 	    {
 	      error =
@@ -15973,8 +15974,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	}
 
       /* process analytic functions */
-      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.a_eval_list
-	  && !XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.a_eval_list)
 	{
 	  ANALYTIC_EVAL_TYPE *eval_list;
 	  bool is_skip_sort = XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT);
@@ -20979,10 +20979,18 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   bool finalized = false;
   int i = 0;
   ANALYTIC_TYPE *func_p = NULL;
-  UINT64 old_sort_pages = 0, old_sort_ioreads = 0, old_ioreads = 0, old_fetches = 0;
+  UINT64 old_sort_pages = 0, old_sort_ioreads = 0;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   bool on_trace = false;
+
+  on_trace = thread_is_on_trace (thread_p);
+  if (on_trace)
+    {
+      tsc_getticks (&start_tick);
+      old_sort_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES);
+      old_sort_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+    }
 
   /* fetch regulist and outlist */
   a_outptr_list = (is_last ? buildlist->a_outptr_list : buildlist->a_outptr_list_interm);
@@ -20997,6 +21005,12 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 				       &list_id->type_list, tplrec) == NULL)
     {
       GOTO_EXIT_ON_ERROR;
+    }
+
+  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+    {
+      analytic_state.state = NO_ERROR;
+      goto wrapup;
     }
 
   if (analytic_state.is_last_run)
@@ -21100,16 +21114,6 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   interm_scan_id.keep_page_on_finish = 1;
   analytic_state.interm_scan = &interm_scan_id;
 
-  on_trace = thread_is_on_trace (thread_p);
-  if (on_trace)
-    {
-      tsc_getticks (&start_tick);
-      old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
-      old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
-      old_sort_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES);
-      old_sort_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
-    }
-
   /*
    * Now load up the sort module and set it off...
    */
@@ -21120,6 +21124,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
+      finalized = true;
       analytic_state.state = NO_ERROR;
       goto wrapup;
     }
@@ -21186,9 +21191,17 @@ wrapup:
       if (new_stat != NULL)
 	{
 	  memset (new_stat, 0, sizeof (ANALYTIC_STATS));
-	  new_stat->run_analytic = true;
+	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+	    {
+	      new_stat->analytic_stopkey = true;
+	      new_stat->analytic_sort = false;
+	    }
+	  else
+	    {
+	      new_stat->analytic_stopkey = false;
+	      new_stat->analytic_sort = !is_skip_sort;
+	    }
 	  TSC_ADD_TIMEVAL (new_stat->analytic_time, tv_diff);
-	  new_stat->analytic_sort = !is_skip_sort;
 
 	  new_stat->analytic_pages =
 	    (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) - old_sort_pages);
@@ -21236,13 +21249,16 @@ wrapup:
 	  analytic_state.input_scan = NULL;
 	}
 
-      /* replace current input with output */
-      qfile_close_list (thread_p, analytic_state.output_file);
-      qfile_destroy_list (thread_p, list_id);
-      qfile_copy_list_id (list_id, analytic_state.output_file, true, QFILE_PROHIBIT_DEPENDENT);
+      if (analytic_state.output_file != NULL)
+	{
+	  /* replace current input with output */
+	  qfile_close_list (thread_p, analytic_state.output_file);
+	  qfile_destroy_list (thread_p, list_id);
+	  qfile_copy_list_id (list_id, analytic_state.output_file, true, QFILE_PROHIBIT_DEPENDENT);
 
-      qfile_free_list_id (analytic_state.output_file);
-      analytic_state.output_file = NULL;
+	  qfile_free_list_id (analytic_state.output_file);
+	  analytic_state.output_file = NULL;
+	}
     }
 
   /* clear internal processing items */
@@ -21574,6 +21590,9 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
   analytic_state->input_tplrec.tpl = 0;
   analytic_state->input_recs = 0;
 
+  analytic_state->func_state_list = NULL;
+  analytic_state->func_count = 0;
+
   analytic_state->curr_sort_page.vpid.pageid = NULL_PAGEID;
   analytic_state->curr_sort_page.vpid.volid = NULL_VOLID;
   analytic_state->curr_sort_page.page_p = NULL;
@@ -21592,6 +21611,11 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
       analytic_state->key_info.use_original = 1;
       analytic_state->key_info.key = NULL;
       analytic_state->key_info.error = NO_ERROR;
+    }
+
+  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+    {
+      goto resolve_domain;
     }
 
   /* build function states */
@@ -21650,6 +21674,7 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
 	}
     }
 
+resolve_domain:
   /* resolve domains in regulist */
   for (regu_list = a_regu_list; regu_list; regu_list = regu_list->next)
     {
@@ -25837,31 +25862,48 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	      *is_scan_needed = true;
 	      continue;
 	    }
-	  if (tdes->mvccinfo.snapshot.valid)
+
+	  /* to check for query like 'select count(*), count(*) ...' */
+	  if (class_cos->count_state != COS_LOADED)
 	    {
-	      if (class_cos->count_state != COS_LOADED)
-		{
-		  agg_ptr->flag.agg_optimized = false;
-		  *is_scan_needed = true;
-		  continue;
-		}
-	    }
-	  else
-	    {
+
+	      class_cos->count_state = COS_TO_LOAD;
 	      if (logtb_tran_find_btid_stats (thread_p, &agg_ptr->btid, true) == NULL)
 		{
 		  agg_ptr->flag.agg_optimized = false;
 		  *is_scan_needed = true;
 		  continue;
 		}
-	      class_cos->count_state = COS_TO_LOAD;
 
-	      if (logtb_get_mvcc_snapshot (thread_p) == NULL)
+	      if (!tdes->mvccinfo.snapshot.valid)
 		{
-		  error = er_errid ();
-		  return (error == NO_ERROR ? ER_FAILED : error);
+		  if (logtb_get_mvcc_snapshot (thread_p) == NULL)
+		    {
+		      error = er_errid ();
+		      return (error == NO_ERROR ? ER_FAILED : error);
+		    }
 		}
 
+	      /* 
+	       * build_mvcc_info() loads stats only for classes already marked COS_TO_LOAD at snapshot time.
+	       * Under parallel UNION execution, the snapshot may have been built by another thread before this
+	       * class was marked COS_TO_LOAD, so its stats were never loaded.  Always retry here if still needed.
+	       */
+	      if (class_cos->count_state != COS_LOADED)
+		{
+		  if (logtb_load_global_statistics_to_tran (thread_p) != NO_ERROR)
+		    {
+		      error = er_errid ();
+		      return (error == NO_ERROR ? ER_FAILED : error);
+		    }
+		}
+
+	      if (class_cos->count_state != COS_LOADED)
+		{
+		  agg_ptr->flag.agg_optimized = false;
+		  *is_scan_needed = true;
+		  continue;
+		}
 	    }
 	}
 

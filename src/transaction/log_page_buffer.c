@@ -71,6 +71,7 @@
 #else /* !SERVER_MODE */
 #include "connection_defs.h"
 #include "connection_sr.h"
+#include "thread_worker_pool.hpp"
 #endif
 #include "critical_section.h"
 #include "page_buffer.h"
@@ -108,6 +109,10 @@
 #include "flashback.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+#if defined(CS_MODE)
+#error "Does not belong to cs module"
+#endif
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -7516,7 +7521,15 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
 }
 
 // *INDENT-OFF*
-cubthread::entry_workpool * g_backup_read_worker_pool = NULL;
+cubthread::worker_pool * g_backup_read_worker_pool = NULL;
+
+REGISTER_WORKERPOOL (backup_read, []() {
+#if defined (SERVER_MODE)
+    return cubthread::system_core_count ();
+#else
+    return 0;
+#endif
+});
 // *INDENT-ON*
 
 void

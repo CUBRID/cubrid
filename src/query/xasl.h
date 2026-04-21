@@ -988,7 +988,7 @@ struct analytic_stat
   UINT64 analytic_pages;
   UINT64 analytic_ioreads;
   int rows;
-  bool run_analytic;
+  bool analytic_stopkey;
   bool analytic_sort;
   struct analytic_stat *next;
 };
