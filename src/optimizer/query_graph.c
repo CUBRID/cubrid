@@ -8232,6 +8232,11 @@ qo_insert_transitive_join_term (QO_ENV * env, PT_NODE * pt_expr)
       return;
     }
 
+  if (QO_IS_EDGE_TERM (term))
+    {
+      env->nedges++;
+    }
+
   i = 0;
   n = env->nterms;
   while (i < n)
@@ -8285,8 +8290,6 @@ qo_insert_transitive_join_term (QO_ENV * env, PT_NODE * pt_expr)
 	    }
 	}
     }
-
-  env->nedges++;
 }
 
 /*
