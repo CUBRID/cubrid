@@ -8167,6 +8167,11 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 		  continue;
 		}
 
+	      if (env->nterms >= env->Nterms)
+		{
+		  goto end_transitive_join_terms;
+		}
+
 	      PT_NODE *eq_node = parser_new_node (env->parser, PT_EXPR);
 	      if (eq_node == NULL)
 		{
@@ -8199,6 +8204,7 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 	}
     }
 
+end_transitive_join_terms:
   if (segs_arr != NULL)
     {
       free_and_init (segs_arr);
