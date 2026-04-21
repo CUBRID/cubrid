@@ -3991,8 +3991,8 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 	    {
 	      ;			/* nothing to do */
 	    }
-#endif
 	  else
+#endif
 	    {
 	      assert (server_credential != NULL);
 	      ptr = or_unpack_string (ptr, &server_credential->db_full_name);
