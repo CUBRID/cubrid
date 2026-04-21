@@ -4410,7 +4410,8 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
       LOG_RECORD_HEADER *current_log_record;
       unsigned int rcvindex = 0;
       void *log_info = NULL;
-      char *rec_type = NULL;
+      char rec_type_area[DB_SIZEOF (INT16)] = { 0 };
+      char *rec_type = rec_type_area;
       char *chunk_data = NULL;
       int chunk_length = 0;
 
