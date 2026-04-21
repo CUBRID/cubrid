@@ -110,9 +110,7 @@ extern "C"
 		scan_id->s.phsid.trace_storage = ( accumulative_trace_storage *) malloc (alloc_size);
 		if (scan_id->s.phsid.trace_storage == nullptr)
 		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
-		    manager_p->reset ();
-		    break;
+		    return manager_p->reset ();
 		  }
 
 		scan_id->s.phsid.trace_storage = placement_new (( accumulative_trace_storage *) scan_id->s.phsid.trace_storage,
@@ -142,9 +140,7 @@ extern "C"
 		scan_id->s.phsid.trace_storage = ( accumulative_trace_storage *) malloc (alloc_size);
 		if (scan_id->s.phsid.trace_storage == nullptr)
 		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
-		    manager_p->reset ();
-		    break;
+		    return manager_p->reset ();
 		  }
 
 		scan_id->s.phsid.trace_storage = placement_new (( accumulative_trace_storage *) scan_id->s.phsid.trace_storage,
@@ -174,9 +170,7 @@ extern "C"
 		scan_id->s.phsid.trace_storage = ( accumulative_trace_storage *) malloc (alloc_size);
 		if (scan_id->s.phsid.trace_storage == nullptr)
 		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
-		    manager_p->reset ();
-		    break;
+		    return manager_p->reset ();
 		  }
 
 		scan_id->s.phsid.trace_storage = placement_new (( accumulative_trace_storage *) scan_id->s.phsid.trace_storage,
@@ -269,7 +263,6 @@ extern "C"
 		scan_id->s.phsid.trace_storage = (accumulative_trace_storage *) malloc (alloc_size);
 		if (scan_id->s.phsid.trace_storage == nullptr)
 		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
 		    manager_p->close();
 		    break;
 		  }
@@ -301,7 +294,6 @@ extern "C"
 		scan_id->s.phsid.trace_storage = ( accumulative_trace_storage *) malloc (alloc_size);
 		if (scan_id->s.phsid.trace_storage == nullptr)
 		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
 		    manager_p->close();
 		    break;
 		  }
@@ -333,7 +325,6 @@ extern "C"
 		scan_id->s.phsid.trace_storage = ( accumulative_trace_storage *) malloc (alloc_size);
 		if (scan_id->s.phsid.trace_storage == nullptr)
 		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
 		    manager_p->close();
 		    break;
 		  }
@@ -656,9 +647,7 @@ extern "C"
 		scan_id->s.pllsid_parallel.trace_storage = (accumulative_trace_storage *) malloc (alloc_size);
 		if (scan_id->s.pllsid_parallel.trace_storage == nullptr)
 		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
-		    manager_p->reset ();
-		    break;
+		    return manager_p->reset ();
 		  }
 
 		scan_id->s.pllsid_parallel.trace_storage = placement_new ((accumulative_trace_storage *)
@@ -689,9 +678,7 @@ extern "C"
 		scan_id->s.pllsid_parallel.trace_storage = (accumulative_trace_storage *) malloc (alloc_size);
 		if (scan_id->s.pllsid_parallel.trace_storage == nullptr)
 		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
-		    manager_p->reset ();
-		    break;
+		    return manager_p->reset ();
 		  }
 
 		scan_id->s.pllsid_parallel.trace_storage = placement_new ((accumulative_trace_storage *)
@@ -776,7 +763,6 @@ extern "C"
 		scan_id->s.pllsid_parallel.trace_storage = (accumulative_trace_storage *) malloc (alloc_size);
 		if (scan_id->s.pllsid_parallel.trace_storage == nullptr)
 		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
 		    manager_p->close();
 		    break;
 		  }
@@ -809,7 +795,6 @@ extern "C"
 		scan_id->s.pllsid_parallel.trace_storage = (accumulative_trace_storage *) malloc (alloc_size);
 		if (scan_id->s.pllsid_parallel.trace_storage == nullptr)
 		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
 		    manager_p->close();
 		    break;
 		  }
@@ -1088,9 +1073,7 @@ extern "C"
 		scan_id->s.pisid.trace_storage = (accumulative_trace_storage *) malloc (alloc_size);
 		if (scan_id->s.pisid.trace_storage == nullptr)
 		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
-		    manager_p->reset ();
-		    break;
+		    return manager_p->reset ();
 		  }
 
 		scan_id->s.pisid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pisid.trace_storage,
@@ -1120,9 +1103,7 @@ extern "C"
 		scan_id->s.pisid.trace_storage = (accumulative_trace_storage *) malloc (alloc_size);
 		if (scan_id->s.pisid.trace_storage == nullptr)
 		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
-		    manager_p->reset ();
-		    break;
+		    return manager_p->reset ();
 		  }
 
 		scan_id->s.pisid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.pisid.trace_storage,
@@ -1206,7 +1187,6 @@ extern "C"
 		scan_id->s.pisid.trace_storage = (accumulative_trace_storage *) malloc (alloc_size);
 		if (scan_id->s.pisid.trace_storage == nullptr)
 		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
 		    manager_p->close();
 		    break;
 		  }
@@ -1238,7 +1218,6 @@ extern "C"
 		scan_id->s.pisid.trace_storage = (accumulative_trace_storage *) malloc (alloc_size);
 		if (scan_id->s.pisid.trace_storage == nullptr)
 		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
 		    manager_p->close();
 		    break;
 		  }
@@ -1560,10 +1539,14 @@ extern "C"
     scan_close_scan (thread_p, scan_id);
     scan_id->status = S_OPENED;	/* reset status; scan_close_scan sets it to S_CLOSED */
 
-    if (scan_id->s.isid.indx_cov.list_id != NULL && scan_id->s.isid.indx_cov.list_id->type_list.type_cnt > 0)
+    if (scan_id->s.isid.indx_cov.list_id != NULL)
       {
-	qfile_close_list (thread_p, scan_id->s.isid.indx_cov.list_id);
-	qfile_destroy_list (thread_p, scan_id->s.isid.indx_cov.list_id);
+	if (scan_id->s.isid.indx_cov.list_id->type_list.type_cnt > 0)
+	  {
+	    qfile_close_list (thread_p, scan_id->s.isid.indx_cov.list_id);
+	    qfile_destroy_list (thread_p, scan_id->s.isid.indx_cov.list_id);
+	  }
+	QFILE_FREE_AND_INIT_LIST_ID (scan_id->s.isid.indx_cov.list_id);
       }
 
     /* Write pisid fields (now safe — isid is fully cleaned up). */
@@ -1841,6 +1824,10 @@ namespace parallel_scan
 	XASL_NODE *xptr;
 	for (xptr = m_xasl; xptr != nullptr; xptr = xptr->scan_ptr)
 	  {
+	    if (xptr->val_list == nullptr)
+	      {
+		continue;
+	      }
 	    QPROC_DB_VALUE_LIST valp = xptr->val_list->valp;
 	    for (int i=0; i<xptr->val_list->val_cnt; i++)
 	      {
@@ -1904,6 +1891,10 @@ namespace parallel_scan
 
 	for (xptr = m_xasl; xptr != nullptr; xptr = xptr->scan_ptr)
 	  {
+	    if (xptr->val_list == nullptr)
+	      {
+		continue;
+	      }
 	    std::vector<DB_VALUE> dbval_container (xptr->val_list->val_cnt);
 	    QPROC_DB_VALUE_LIST valp = xptr->val_list->valp;
 	    for (int i = 0; i < xptr->val_list->val_cnt; i++)
