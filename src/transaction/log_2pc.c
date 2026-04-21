@@ -589,8 +589,8 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	    {
 	      log_sysop_abort (thread_p);
 	    }
-	}
 #endif
+	}
 
       *state =
 	log_complete (thread_p, tdes, complete_type, LOG_NEED_NEWTRID,
