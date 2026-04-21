@@ -348,6 +348,7 @@ namespace cubthread
 
       // start thread for current worker
       void start_thread (void);
+      bool has_thread (void);
 
       // assign task to worker; wake a running thread or start a new one.
       void assign_task (wrapped_task &&task_ref);
@@ -945,11 +946,21 @@ namespace cubthread
   worker_pool_impl<Stats>::core_impl::warmup (void)
   {
     std::lock_guard<std::mutex> lock (m_workers_mutex);
+    worker_impl *w;
 
-    for (auto &it : m_available_workers)
+    for (auto it = m_available_workers.begin (); it != m_available_workers.end (); )
       {
-	assert (dynamic_cast<worker_impl *> (it));
-	static_cast<worker_impl *> (it)->assign_task ();
+	assert (dynamic_cast<worker_impl *> (*it));
+	w = static_cast<worker_impl *> (*it);
+	if (!w->has_thread ())
+	  {
+	    w->assign_task ();
+	    it = m_available_workers.erase (it);
+	  }
+	else
+	  {
+	    ++it;
+	  }
       }
   }
 
@@ -1240,6 +1251,15 @@ namespace cubthread
 
     wp_call_func_throwing_system_error ("starting thread", lambda_create);
     wp_call_func_throwing_system_error ("detaching thread", lambda_detach);
+  }
+
+  template <bool Stats>
+  bool
+  worker_pool_impl<Stats>::core_impl::worker_impl::has_thread (void)
+  {
+    std::unique_lock<std::mutex> ulock (m_task_mutex);
+
+    return m_has_thread;
   }
 
   template <bool Stats>
