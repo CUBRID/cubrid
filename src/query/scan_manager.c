@@ -5142,7 +5142,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     case S_VECTOR_INDEX_SCAN:
       visidp = &scan_id->s.visid;
 
-      if (visidp->oid_cnt > 0)
+      if (visidp->oidp != NULL)
 	{
 	  db_private_free_and_init (thread_p, visidp->oidp);
 	  db_private_free_and_init (thread_p, visidp->distp);
@@ -6466,6 +6466,7 @@ scan_next_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    {
 	      return S_ERROR;
 	    }
+	  er_log_debug (ARG_FILE_LINE, "HNSW search: requested k=%d, returned=%d", k, visid->oid_cnt);
 	}
       else
 	{

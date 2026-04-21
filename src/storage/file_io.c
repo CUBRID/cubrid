@@ -72,6 +72,7 @@
 #include "chartype.h"
 #include "connection_globals.h"
 #include "file_io.h"
+#include "boot_perf_trace.h"
 #include "compressor.hpp"
 #include "storage_common.h"
 #include "memory_alloc.h"
@@ -3002,7 +3003,9 @@ fileio_mount (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *v
 
   /* OPEN THE DISK VOLUME PARTITION OR FILE SIMULATED VOLUME */
 start:
+  BOOT_PHASE_BEGIN ("07a1a_open");
   vol_fd = fileio_open (vol_label_p, O_RDWR | o_sync, 0600);
+  BOOT_PHASE_END ("07a1a_open");
   if (vol_fd == NULL_VOLDES)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, vol_label_p);
@@ -3048,11 +3051,14 @@ start:
 	  break;
 	}
 
+      BOOT_PHASE_BEGIN ("07a1b_posix_fadvise");
       if (posix_fadvise (vol_fd, 0, amount, advise_flag) != 0)
 	{
+	  BOOT_PHASE_END ("07a1b_posix_fadvise");
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, vol_label_p);
 	  return NULL_VOLDES;
 	}
+      BOOT_PHASE_END ("07a1b_posix_fadvise");
     }
 #endif /* _POSIX_C_SOURCE >= 200112L */
 
