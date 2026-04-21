@@ -23,12 +23,10 @@
 #ifndef _PX_SCAN_JOIN_INFO_HPP_
 #define _PX_SCAN_JOIN_INFO_HPP_
 
-#include "system.h"
 #include "storage_common.h"
 #include "xasl.h"
 
 #include <map>
-#include <vector>
 
 /* forward declaration */
 struct xasl_node;
@@ -58,7 +56,7 @@ namespace parallel_scan
       ~join_info() = default;
 
       void capture_join_info (xasl_node *head);
-      inline scan_info get_scan_info (XASL_ID xasl_id)
+      scan_info get_scan_info (XASL_ID xasl_id)
       {
 	return m_scan_infos[xasl_id];
       }

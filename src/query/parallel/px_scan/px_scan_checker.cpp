@@ -91,15 +91,15 @@ namespace parallel_scan
   /* Thread-local set to track XASL_NODEs being processed to prevent infinite recursion in process functions */
   thread_local std::unordered_set<XASL_NODE *> xasl_processing_set;
 
-  inline void set_flag (possible_flags &flags, possible_flags flag)
+  static void set_flag (possible_flags &flags, possible_flags flag)
   {
     flags |= flag;
   }
-  inline void clear_flag (possible_flags &flags, possible_flags flag)
+  static void clear_flag (possible_flags &flags, possible_flags flag)
   {
     flags &= ~flag;
   }
-  inline bool is_flag_set (possible_flags flags, possible_flags flag)
+  static bool is_flag_set (possible_flags flags, possible_flags flag)
   {
     return (flags & flag) != 0;
   }
@@ -306,16 +306,12 @@ namespace parallel_scan
       {
       case T_COMP_EVAL_TERM:
 	return check<is_outptr_list> (&arg->et.et_comp);
-	break;
       case T_ALSM_EVAL_TERM:
 	return check<is_outptr_list> (&arg->et.et_alsm);
-	break;
       case T_LIKE_EVAL_TERM:
 	return check<is_outptr_list> (&arg->et.et_like);
-	break;
       case T_RLIKE_EVAL_TERM:
 	return check<is_outptr_list> (&arg->et.et_rlike);
-	break;
       default:
 	return 0;
       }
@@ -1097,4 +1093,3 @@ scan_check_parallel_scan_possible (XASL_NODE *xasl)
 
   return NO_ERROR;
 }
-

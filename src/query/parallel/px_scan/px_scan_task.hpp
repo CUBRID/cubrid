@@ -35,7 +35,7 @@
 
 namespace parallel_scan
 {
-  template <RESULT_TYPE result_type, SCAN_TYPE ST = SCAN_TYPE::HEAP>
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
   class task : public cubthread::entry_task
   {
       using interrupt = parallel_query::interrupt;
@@ -52,7 +52,7 @@ namespace parallel_scan
 	: m_parent_thread_p (parent_thread_p),
 	  m_query_entry (query_entry),
 	  m_xasl_cache_entry (nullptr),
-	  m_xasl_clone ({NULL, NULL}),
+	  m_xasl_clone ({nullptr, nullptr}),
       m_orig_xasl (orig_xasl),
       m_xasl_tree (nullptr),
       m_xasl_unpack_info (nullptr),
@@ -118,7 +118,6 @@ namespace parallel_scan
 
       /* for thread join */
       worker_manager *m_worker_manager;
-
 
       int initialize (cubthread::entry &thread_ref);
       int finalize (cubthread::entry &thread_ref);

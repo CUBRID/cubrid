@@ -23,7 +23,6 @@
 #include "px_scan_join_info.hpp"
 #include "xasl.h"
 
-
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 

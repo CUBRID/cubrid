@@ -35,7 +35,7 @@
 
 namespace parallel_scan
 {
-  template <RESULT_TYPE result_type, SCAN_TYPE ST = SCAN_TYPE::HEAP>
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
   class manager
   {
       using interrupt = parallel_query::interrupt;

@@ -21,7 +21,6 @@
  */
 
 #include "px_scan_input_handler_list.hpp"
-#include "object_representation.h"
 #include "query_manager.h"
 #include "query_list.h"
 #include "error_code.h"

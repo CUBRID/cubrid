@@ -37,7 +37,6 @@
 #include "scan_manager.h"
 #include "slotted_page.h"
 #include "storage_common.h"
-#include "access_spec.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -247,10 +246,9 @@ namespace parallel_scan
 	      {
 		dom = dom->setdomain;
 	      }
+	    /* Walk to the domain of the last partial-key term. */
 	    for (int k = 1; k < m_key_val_ranges[i].num_index_term && dom != nullptr; k++, dom = dom->next)
-	      {
-		;
-	      }
+	      ;
 	    if (dom != nullptr)
 	      {
 		m_part_key_desc = (dom->is_desc != 0);

@@ -25,7 +25,6 @@
 
 #include "file_manager.h"
 
-
 namespace parallel_scan
 {
   class ftab_set

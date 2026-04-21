@@ -28,7 +28,6 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-
 namespace parallel_scan
 {
   void trace_handler::add_trace (UINT64 fetches, UINT64 ioreads, UINT64 fetch_time, SCAN_ID *scan_id,
@@ -433,4 +432,3 @@ namespace parallel_scan
   }
 
 }
-

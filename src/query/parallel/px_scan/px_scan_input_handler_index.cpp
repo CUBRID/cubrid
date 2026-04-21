@@ -24,11 +24,9 @@
 
 #include "btree.h"
 #include "btree_load.h"
-#include "dbtype.h"
 #include "error_code.h"
 #include "object_representation.h"
 #include "error_manager.h"
-#include "object_primitive.h"
 #include "page_buffer.h"
 #include "scan_manager.h"
 #include "slotted_page.h"
@@ -224,13 +222,7 @@ fallback:
     return S_SUCCESS;
   }
 
-  /*
-   * initialize - called by each worker thread at task start.
-   *
-   * In the leaf-page cursor design, we do not modify the scan_id's key_vals
-   * or curr_keyno. The slot_iterator_index handles leaf page processing
-   * directly, bypassing scan_next_scan/btree_range_scan.
-   */
+  /* No-op: slot_iterator_index drives the leaf-page cursor directly. */
   int
   input_handler_index::initialize (THREAD_ENTRY *thread_p, HFID *hfid, SCAN_ID *scan_id)
   {

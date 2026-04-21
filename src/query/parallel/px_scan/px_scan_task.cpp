@@ -330,10 +330,6 @@ namespace parallel_scan
 	m_scan_func_ptr = nullptr;
       }
 
-    if (err_code != NO_ERROR)
-      {
-	return err_code;
-      }
     m_slot_iterator.initialize (&thread_ref, m_scan_id, m_vd);
     if constexpr (ST == SCAN_TYPE::INDEX)
       {
@@ -425,7 +421,6 @@ namespace parallel_scan
 	scan_close_scan (&thread_ref, m_scan_id);
       }
 
-
     for (int i = 0; i < m_vd->dbval_cnt; i++)
       {
 	pr_clear_value (&m_vd->dbval_ptr[i]);
@@ -454,7 +449,7 @@ namespace parallel_scan
     return NO_ERROR;
   }
 
-  inline void clear_xasl_dptr_list (THREAD_ENTRY *thread_p, XASL_NODE *xasl, bool uses_clones)
+  static void clear_xasl_dptr_list (THREAD_ENTRY *thread_p, XASL_NODE *xasl, bool uses_clones)
   {
     if (xasl->dptr_list)
       {
@@ -748,10 +743,8 @@ namespace parallel_scan
   template class task<RESULT_TYPE::BUILDVALUE_OPT, SCAN_TYPE::HEAP>;
 
   template class task<RESULT_TYPE::MERGEABLE_LIST, SCAN_TYPE::LIST>;
-  template class task<RESULT_TYPE::XASL_SNAPSHOT, SCAN_TYPE::LIST>;
   template class task<RESULT_TYPE::BUILDVALUE_OPT, SCAN_TYPE::LIST>;
 
   template class task<RESULT_TYPE::MERGEABLE_LIST, SCAN_TYPE::INDEX>;
-  template class task<RESULT_TYPE::XASL_SNAPSHOT, SCAN_TYPE::INDEX>;
   template class task<RESULT_TYPE::BUILDVALUE_OPT, SCAN_TYPE::INDEX>;
 }

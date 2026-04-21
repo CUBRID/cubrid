@@ -20,7 +20,6 @@
  * px_scan_input_handler_heap.cpp
  */
 
-
 #include "px_scan_input_handler_heap.hpp"
 #include "error_code.h"
 #include "bit.h"
@@ -36,7 +35,6 @@ namespace parallel_scan
   thread_local VPID input_handler_heap::m_tl_vpid = VPID_INITIALIZER;
   thread_local size_t input_handler_heap::m_tl_pgoffset = 0;
   thread_local FILE_PARTIAL_SECTOR input_handler_heap::m_tl_ftab = FILE_PARTIAL_SECTOR_INITIALIZER;
-
 
   int input_handler_heap::initialize (THREAD_ENTRY *thread_p, HFID *hfid, SCAN_ID *scan_id)
   {

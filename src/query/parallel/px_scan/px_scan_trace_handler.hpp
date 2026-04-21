@@ -31,7 +31,6 @@
 #include "px_scan_result_type.hpp"
 #include "px_scan_type_enum.hpp"
 
-
 namespace parallel_scan
 {
   struct child_stats

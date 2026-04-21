@@ -25,7 +25,6 @@
 #include "error_manager.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
-#include "porting.h"
 #include "query_opfunc.h"
 #include "list_file.h"
 #include "dbtype_def.h"
@@ -78,7 +77,6 @@ namespace parallel_scan
       }
     return NO_ERROR;
   }
-
 
   template <RESULT_TYPE result_type>
   result_handler<result_type>::result_handler (QUERY_ID query_id, interrupt *interrupt_p,
@@ -227,7 +225,6 @@ namespace parallel_scan
 	    {
 	      m_err_messages_p->move_top_error_message_to_this();
 	      m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-	      /* error occurred, return false to stop the writer */
 	      return;
 	    }
 	  list_id = qfile_open_list (thread_p, &type_list, NULL, m_query_id, QFILE_FLAG_ALL|QFILE_NOT_USE_MEMBUF, NULL );
@@ -235,7 +232,6 @@ namespace parallel_scan
 	    {
 	      m_err_messages_p->move_top_error_message_to_this();
 	      m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-	      /* error occurred, return false to stop the writer */
 	      return;
 	    }
 	  m_.writer_results.push_back (list_id);
@@ -252,7 +248,6 @@ namespace parallel_scan
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	    m_err_messages_p->move_top_error_message_to_this();
 	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-	    /* error occurred, return false to stop the writer */
 	    return;
 	  }
 	size = tl.writer_result_p->type_list.type_cnt * sizeof (bool);
@@ -970,14 +965,18 @@ namespace parallel_scan
       }
     for (AGGREGATE_TYPE *orig_agg_p = m_orig_agg_list; orig_agg_p != NULL; orig_agg_p = orig_agg_p->next)
       {
+	/* COUNT_STAR and DISTINCT (non-MIN/MAX) accumulators were already finalized upstream;
+	 * COUNT needs the curr_cnt → BIGINT conversion; everything else needs value cloning. */
 	if (orig_agg_p->function == PT_COUNT_STAR)
 	  {
+	    continue;
 	  }
-	else if (orig_agg_p->option == Q_DISTINCT
-		 && orig_agg_p->function != PT_MIN && orig_agg_p->function != PT_MAX)
+	if (orig_agg_p->option == Q_DISTINCT
+	    && orig_agg_p->function != PT_MIN && orig_agg_p->function != PT_MAX)
 	  {
+	    continue;
 	  }
-	else if (orig_agg_p->function == PT_COUNT)
+	if (orig_agg_p->function == PT_COUNT)
 	  {
 	    db_make_bigint (orig_agg_p->accumulator.value, (INT64) orig_agg_p->accumulator.curr_cnt);
 	  }
@@ -1015,7 +1014,6 @@ namespace parallel_scan
 
   void result_handler<RESULT_TYPE::BUILDVALUE_OPT>::read_finalize (THREAD_ENTRY *thread_p)
   {
-
   }
 
   void result_handler<RESULT_TYPE::BUILDVALUE_OPT>::write_initialize (THREAD_ENTRY *thread_p, OUTPTR_LIST *outptr_list,
@@ -1178,20 +1176,20 @@ namespace parallel_scan
 			if (agg_node->domain != NULL && TP_DOMAIN_TYPE (agg_node->domain) == DB_TYPE_NUMERIC)
 			  {
 			    acc_dom->value_dom =
-			      tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_MAX_NUMERIC_PRECISION,
-						 agg_node->domain->scale, NULL, 0);
+				    tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_MAX_NUMERIC_PRECISION,
+						       agg_node->domain->scale, NULL, 0);
 			  }
 			else if (DB_VALUE_DOMAIN_TYPE (db_value_p) == DB_TYPE_NUMERIC)
 			  {
 			    acc_dom->value_dom =
-			      tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_MAX_NUMERIC_PRECISION,
-						 DB_VALUE_SCALE (db_value_p), NULL, 0);
+				    tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_MAX_NUMERIC_PRECISION,
+						       DB_VALUE_SCALE (db_value_p), NULL, 0);
 			  }
 			else if (DB_VALUE_DOMAIN_TYPE (db_value_p) == DB_TYPE_FLOAT)
 			  {
 			    acc_dom->value_dom =
-			      tp_domain_resolve (DB_TYPE_DOUBLE, NULL, DB_DOUBLE_DECIMAL_PRECISION,
-						 DB_VALUE_SCALE (db_value_p), NULL, 0);
+				    tp_domain_resolve (DB_TYPE_DOUBLE, NULL, DB_DOUBLE_DECIMAL_PRECISION,
+						       DB_VALUE_SCALE (db_value_p), NULL, 0);
 			  }
 			else
 			  {
@@ -1510,8 +1508,7 @@ namespace parallel_scan
     tl_tpl_buf.size = 0;
   }
 
-
-/* Explicit template instantiations */
+  /* Explicit template instantiations */
   template class result_handler<RESULT_TYPE::MERGEABLE_LIST>;
   template class result_handler<RESULT_TYPE::XASL_SNAPSHOT>;
   template class result_handler<RESULT_TYPE::BUILDVALUE_OPT>;
