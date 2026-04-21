@@ -12379,7 +12379,8 @@ cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES 
 
       LSA_COPY (&prev_lsa, &current_log_record->prev_tranlsa);
 
-      if (current_log_record->trid != trid || current_log_record->type == LOG_DUMMY_OVF_RECORD)
+      if (current_log_record->trid != trid || current_log_record->type == LOG_DUMMY_OVF_RECORD
+	  || current_log_record->type == LOG_DUMMY_OOS_RECORD)
 	{
 	  if (!is_redo && current_log_record->type == LOG_DUMMY_OVF_RECORD)
 	    {

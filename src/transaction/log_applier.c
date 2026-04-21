@@ -341,6 +341,7 @@ struct la_info
   bool is_apply_info_updated;	/* whether catalog is partially updated or not */
 
   int num_unflushed;
+  bool has_unflushed_oos_insert;
 
   /* file lock */
   int log_path_lockf_vdes;
@@ -4275,7 +4276,8 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
       current_log_page = la_get_page (current_lsa.pageid);
       current_log_record = LOG_GET_LOG_RECORD_HEADER (current_log_page, &current_lsa);
 
-      if (current_log_record->trid != log_record->trid || current_log_record->type == LOG_DUMMY_OVF_RECORD)
+      if (current_log_record->trid != log_record->trid || current_log_record->type == LOG_DUMMY_OVF_RECORD
+	  || current_log_record->type == LOG_DUMMY_OOS_RECORD)
 	{
 	  la_release_page_buffer (current_lsa.pageid);
 	  break;
@@ -4407,6 +4409,11 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 	  }
       }
   };
+  auto set_multi_chunk_oos_error = [] (const char *message)
+  {
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, message);
+    return ER_HA_GENERIC_ERROR;
+  };
 
   assert (lsa != NULL);
   assert (recdes != NULL);
@@ -4473,7 +4480,7 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 		    }
 		  la_release_page_buffer (current_lsa.pageid);
 		  free_chunks ();
-		  return ER_FAILED;
+		  return set_multi_chunk_oos_error ("invalid multi-chunk OOS log data");
 		}
 
 	      memcpy (&oos_header, chunk_data, sizeof (oos_header));
@@ -4490,7 +4497,7 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 		    }
 		  la_release_page_buffer (current_lsa.pageid);
 		  free_chunks ();
-		  return ER_FAILED;
+		  return set_multi_chunk_oos_error ("mismatched multi-chunk OOS total size");
 		}
 
 	      chunk_body_length = chunk_length - OOS_RECORD_HEADER_SIZE;
@@ -4503,7 +4510,7 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 		    }
 		  la_release_page_buffer (current_lsa.pageid);
 		  free_chunks ();
-		  return ER_FAILED;
+		  return set_multi_chunk_oos_error ("multi-chunk OOS body length exceeds total size");
 		}
 
 	      chunks.push_back ({ chunk_data, chunk_body_length });
@@ -4528,7 +4535,7 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 
 	  if (total_chunk_body_length != total_size)
 	    {
-	      error = ER_FAILED;
+	      error = set_multi_chunk_oos_error ("incomplete multi-chunk OOS record");
 	      break;
 	    }
 
@@ -4556,7 +4563,7 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
       LSA_COPY (&current_lsa, &next_lsa);
     }
 
-  error = ER_FAILED;
+  error = set_multi_chunk_oos_error ("missing first chunk while reading multi-chunk OOS record");
 
   free_chunks ();
 
@@ -4951,6 +4958,11 @@ la_flush_repl_items (bool immediate)
       return NO_ERROR;
     }
 
+  if (immediate == false && la_Info.has_unflushed_oos_insert)
+    {
+      return NO_ERROR;
+    }
+
   if (la_Info.num_unflushed >= LA_MAX_UNFLUSHED_REPL_ITEMS || immediate == true)
     {
       error = __gv_loc_repl.locator_repl_flush_all ();
@@ -5053,6 +5065,7 @@ la_flush_repl_items (bool immediate)
 	}
 
       la_Info.num_unflushed = 0;
+      la_Info.has_unflushed_oos_insert = false;
       __gv_loc_repl.ws_clear_all_repl_objs ();
     }
 
@@ -5226,6 +5239,7 @@ end:
     {
       la_Info.delete_counter++;
       la_Info.num_unflushed++;
+      la_Info.has_unflushed_oos_insert = false;
     }
 
   return error;
@@ -5390,6 +5404,7 @@ end:
     {
       la_Info.update_counter++;
       la_Info.num_unflushed++;
+      la_Info.has_unflushed_oos_insert = false;
     }
 
   la_release_page_buffer (old_pageid);
@@ -5618,6 +5633,7 @@ end:
     {
       la_Info.insert_counter++;
       la_Info.num_unflushed++;
+      la_Info.has_unflushed_oos_insert = (item->item_type == RVREPL_OOS_INSERT);
     }
 
   if (old_pageid != NULL_PAGEID)
@@ -7187,6 +7203,7 @@ la_init (const char *log_path, const int max_mem_size)
   la_Info.db_lockf_vdes = NULL_VOLDES;
 
   la_Info.num_unflushed = 0;
+  la_Info.has_unflushed_oos_insert = false;
 
   la_recdes_pool.is_initialized = false;
 
@@ -7314,6 +7331,7 @@ la_shutdown (void)
     }
 
   la_Info.num_unflushed = 0;
+  la_Info.has_unflushed_oos_insert = false;
 
   la_destroy_repl_filter ();
 

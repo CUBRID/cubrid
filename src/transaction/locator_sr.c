@@ -5282,15 +5282,26 @@ locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * rec
   LOG_TDES *tdes = NULL;
   int tran_index = 0;
 
-  if (heap_get_class_info (thread_p, class_oid, &oos_hfid, NULL, NULL) != NO_ERROR)
+  error_code = heap_get_class_info (thread_p, class_oid, &oos_hfid, NULL, NULL);
+  if (error_code != NO_ERROR)
     {
-      error_code = S_ERROR;
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		  "failed to get class heap information for OOS replication insert");
+	  error_code = er_errid ();
+	}
       goto err;
     }
 
   if (!heap_oos_find_vfid (thread_p, &oos_hfid, &oos_vfid, true))
     {
-      error_code = S_ERROR;
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		  "failed to find or create OOS file for replication insert");
+	}
+      error_code = er_errid ();
       goto err;
     }
 
@@ -5313,9 +5324,15 @@ locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * rec
   recdes->length = recdes->length - OOS_RECORD_HEADER_SIZE;
 
   recdes->type = REC_HOME;
-  if (oos_insert (thread_p, oos_vfid, *recdes, oos_oid) != NO_ERROR)
+  error_code = oos_insert (thread_p, oos_vfid, *recdes, oos_oid);
+  if (error_code != NO_ERROR)
     {
-      error_code = S_ERROR;
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		  "failed to insert OOS record during replication apply");
+	  error_code = er_errid ();
+	}
       goto err;
     }
 
@@ -6883,7 +6900,8 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
       scan_op_type = S_UPDATE;
     }
 
-  if (obj->operation != LC_FLUSH_DELETE)
+  /* OOS records are not heap records; their leading bytes are OOS_RECORD_HEADER, not a representation id. */
+  if (obj->operation != LC_FLUSH_DELETE && obj->operation != LC_FLUSH_INSERT_OOS)
     {
       last_repr_id = heap_get_class_repr_id (thread_p, &obj->class_oid);
       if (last_repr_id == 0)
@@ -14082,7 +14100,12 @@ locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid
   int oos_oid_count = 0;
   int error = NO_ERROR;
 
-  assert (thread_p->oos_oids.size () > 0);
+  if (thread_p->oos_oids.empty ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      "missing OOS OID while applying replicated heap record");
+      return ER_HA_GENERIC_ERROR;
+    }
 
   error = heap_attrinfo_start (thread_p, class_oid, -1, NULL, &attr_info);
   if (error != NO_ERROR)
@@ -14132,7 +14155,14 @@ locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid
 	  continue;
 	}
 
-      assert (oos_oid_count < (int) thread_p->oos_oids.size ());
+      if (oos_oid_count >= (int) thread_p->oos_oids.size ())
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		  "not enough OOS OIDs while applying replicated heap record");
+	  error = ER_HA_GENERIC_ERROR;
+	  goto end;
+	}
+
       oos_oid = thread_p->oos_oids[oos_oid_count];
       oid_ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location);
 

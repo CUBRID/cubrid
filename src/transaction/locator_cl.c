@@ -146,6 +146,7 @@ static int locator_mflush_initialize (LOCATOR_MFLUSH_CACHE * mflush, MOP class_m
 				      bool decache, bool isone_mflush);
 static void locator_mflush_reset (LOCATOR_MFLUSH_CACHE * mflush);
 static int locator_mflush_reallocate_copy_area (LOCATOR_MFLUSH_CACHE * mflush, int minsize);
+static int locator_mflush_grow_copy_area (LOCATOR_MFLUSH_CACHE * mflush, int minsize);
 
 static void locator_mflush_end (LOCATOR_MFLUSH_CACHE * mflush);
 static int locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush);
@@ -3887,6 +3888,42 @@ locator_mflush_reallocate_copy_area (LOCATOR_MFLUSH_CACHE * mflush, int minsize)
 }
 
 /*
+ * locator_mflush_grow_copy_area () - Grow copy area while preserving current mflush contents
+ *
+ * return: NO_ERROR if all OK, ER status otherwise
+ *
+ *   mflush(in): Structure which describes objects to flush
+ *   minsize(in): Minimal size of flushing copy area
+ */
+static int
+locator_mflush_grow_copy_area (LOCATOR_MFLUSH_CACHE * mflush, int minsize)
+{
+  LC_COPYAREA *new_copy_area = NULL;
+  int old_length;
+  int recdes_offset;
+
+  assert (mflush != NULL);
+  assert (mflush->copy_area != NULL);
+
+  old_length = mflush->copy_area->length;
+  recdes_offset = CAST_BUFLEN (mflush->recdes.data - mflush->copy_area->mem);
+
+  new_copy_area = locator_reallocate_copy_area_by_length (mflush->copy_area, minsize);
+  if (new_copy_area == NULL)
+    {
+      return er_errid () != NO_ERROR ? er_errid () : ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  mflush->copy_area = new_copy_area;
+  mflush->mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (mflush->copy_area);
+  mflush->obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs, mflush->mobjs->num_objs);
+  mflush->recdes.data = mflush->copy_area->mem + recdes_offset;
+  mflush->recdes.area_size += mflush->copy_area->length - old_length;
+
+  return NO_ERROR;
+}
+
+/*
  * locator_mflush_end - End the mflush area
  *
  * return: nothing
@@ -6963,6 +7000,7 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
   int required_length;
   int key_length, round_length, wasted_length;
   char *ptr, *obj_start_p;
+  bool has_pending_oos = false;
 
   while (true)
     {
@@ -6992,10 +7030,29 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 	    }
 	  else
 	    {
-	      error = locator_repl_mflush_force (mflush);
-	      if (error != NO_ERROR && error != ER_LC_PARTIALLY_FAILED_TO_FLUSH)
+	      if (has_pending_oos)
 		{
-		  return error;
+		  /*
+		   * OOS insert records must be forced together with the following heap insert/update record.
+		   * The server uses the OID produced by LC_FLUSH_INSERT_OOS to rewrite the OOS placeholder
+		   * in the heap record within the same xlocator_repl_force call.
+		   */
+		  int minsize = mflush->copy_area->length + (required_length - mflush->recdes.area_size) + DB_PAGESIZE;
+
+		  error = locator_mflush_grow_copy_area (mflush, minsize);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+		}
+	      else
+		{
+		  error = locator_repl_mflush_force (mflush);
+		  if (error != NO_ERROR && error != ER_LC_PARTIALLY_FAILED_TO_FLUSH)
+		    {
+		      return error;
+		    }
+		  has_pending_oos = false;
 		}
 	    }
 	}
@@ -7053,6 +7110,7 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
       mflush->recdes.area_size -= round_length + sizeof (*(mflush->obj));
 
       mflush->obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (mflush->obj);
+      has_pending_oos = (repl_obj->operation == LC_FLUSH_INSERT_OOS);
       ws_free_repl_obj (repl_obj);
     }
 
