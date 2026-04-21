@@ -31,7 +31,6 @@
 #include "page_buffer_util.hpp"
 #include "log_comm.h"
 #include "log_impl.h"
-#include "log_manager.h"
 #include "xserver_interface.h"
 
 #include "oos_file.hpp"
@@ -1105,7 +1104,7 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
   int err = NO_ERROR;
   LOG_TDES *tdes = NULL;
   LOG_LSA dummy_lsa = NULL_LSA;
-  LOG_LSA first_chunk_lsa = NULL_LSA;
+  LOG_LSA first_logged_chunk_lsa = NULL_LSA;
   bool should_track_multi_chunk = false;
 
   // split the recdes to multiple chunks and insert them one by one
@@ -1151,12 +1150,7 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
       total_inserted_length += chunk_recdes.length;
       chunk_recdes.data = recdes.data + i * max_chunk_size;
 
-      //  TODO: code review feedback
-      //
-      // - Distinguish between the record header and segment header for clarity.
-      // - 2nd to nth chunks do not need total_data_length in their headers, only the 1st chunk needs it.
-      // - If wanted for debug purposes, use NDEBUG
-      //
+      // Keep total_data_length in each chunk so the log applier can validate all pieces before reassembly.
       OOS_RECORD_HEADER header{total_data_length, i, next_chunk_oid};
 
       OID current_chunk_oid;
@@ -1174,7 +1168,7 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
 
       if (should_track_multi_chunk && i == required_page_nums - 1)
 	{
-	  LSA_COPY (&first_chunk_lsa, &tdes->tail_lsa);
+	  LSA_COPY (&first_logged_chunk_lsa, &tdes->tail_lsa);
 	}
 
       next_chunk_oid = current_chunk_oid;
@@ -1184,7 +1178,7 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
   if (should_track_multi_chunk)
     {
       tdes->oos_insert_lsa_queue.push (dummy_lsa);
-      tdes->oos_insert_lsa_queue.push (first_chunk_lsa);
+      tdes->oos_insert_lsa_queue.push (first_logged_chunk_lsa);
       thread_p->oos_oids.push_back (oid_Null_oid);
     }
 
