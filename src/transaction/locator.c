@@ -178,12 +178,10 @@ locator_initialize_areas (void)
   locator_Keep.lockhint_areas.number = 0;
   locator_Keep.packed_areas.number = 0;
 
-#if defined(SERVER_MODE)
   pthread_mutex_init (&locator_Keep.copy_areas.lock, NULL);
   pthread_mutex_init (&locator_Keep.lockset_areas.lock, NULL);
   pthread_mutex_init (&locator_Keep.lockhint_areas.lock, NULL);
   pthread_mutex_init (&locator_Keep.packed_areas.lock, NULL);
-#endif /* SERVER_MODE */
 
   for (i = 0; i < LOCATOR_NKEEP_LIMIT; i++)
     {
@@ -246,12 +244,10 @@ locator_free_areas (void)
   locator_Keep.lockhint_areas.number = 0;
   locator_Keep.packed_areas.number = 0;
 
-#if defined(SERVER_MODE)
   pthread_mutex_destroy (&locator_Keep.copy_areas.lock);
   pthread_mutex_destroy (&locator_Keep.lockset_areas.lock);
   pthread_mutex_destroy (&locator_Keep.lockhint_areas.lock);
   pthread_mutex_destroy (&locator_Keep.packed_areas.lock);
-#endif /* SERVER_MODE */
 
   locator_Is_initialized = false;
 }
