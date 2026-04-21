@@ -379,8 +379,8 @@ error_exit:
       qfile_close_scan (&thread_ref, &outer->list_scan_id);
       qfile_close_scan (&thread_ref, &inner->list_scan_id);
 
-      /* hash_table is borrowed from the primary context; unlink before hjoin_scan_clear so the
-       * destroy path (guarded by NULL) is skipped. */
+      /* hash_table is borrowed from the primary context; null out so downstream paths skip
+       * destroy. Only the per-context temp_keys (owned by this secondary) need freeing. */
       switch (secondary->hash_scan.hash_list_scan_type)
 	{
 	case HASH_METH_IN_MEM:
@@ -398,7 +398,18 @@ error_exit:
 	  break;
 	}
 
-      hjoin_scan_clear (&thread_ref, &secondary->hash_scan);
+      if (secondary->hash_scan.temp_key != NULL)
+	{
+	  qdata_free_hscan_key (&thread_ref, secondary->hash_scan.temp_key,
+				secondary->hash_scan.temp_key->val_count);
+	  secondary->hash_scan.temp_key = NULL;
+	}
+      if (secondary->hash_scan.temp_new_key != NULL)
+	{
+	  qdata_free_hscan_key (&thread_ref, secondary->hash_scan.temp_new_key,
+				secondary->hash_scan.temp_new_key->val_count);
+	  secondary->hash_scan.temp_new_key = NULL;
+	}
 
       if (outer->tuple_record.tpl != NULL)
 	{
