@@ -32,6 +32,7 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
+#include "network_interface_sr.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -149,6 +150,11 @@ public:
 
   void execute (context_type &thread_ref) override final;
 
+  CSS_CONN_ENTRY &get_conn ()
+    {
+      return m_conn;
+    }
+
   // retire not overwritten; task is automatically deleted
 
 private:
@@ -197,6 +203,11 @@ public:
   }
 
   void execute (context_type & thread_ref) override final;
+
+  CSS_CONN_ENTRY &get_conn ()
+    {
+      return m_conn;
+    }
 
   // retire not overwritten; task is automatically deleted
 
@@ -1297,6 +1308,26 @@ css_start_shutdown_server ()
   css_Server_shutdown_inited = true;
 }
 
+static void
+css_send_request_error_and_abort (CSS_CONN_ENTRY & conn, unsigned short rid, int errid)
+{
+  OR_ALIGNED_BUF (1024) a_buffer;
+  char *buffer = OR_ALIGNED_BUF_START (a_buffer);
+  int length = 1024;
+
+  char *area = er_get_area_error (buffer, &length);
+  unsigned int eid = css_return_eid_from_conn (&conn, rid);
+
+  if (area != NULL)
+    {
+      conn.db_error = errid;
+      (void) css_send_error_to_client (&conn, eid, area, length);
+      conn.db_error = 0;
+    }
+
+  (void) css_send_abort_to_client (&conn, eid);
+}
+
 /*
  * css_init() -
  *   return:
@@ -1334,6 +1365,30 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 #define MAX_TASK_COUNT css_get_max_task_count ()
 #define MAX_CONNECTIONS css_get_max_connections ()
 
+  // *INDENT-OFF*
+  auto tran_compensation = [](cubthread::task<cubthread::entry> *ptr) {
+      css_server_task *task_p = static_cast<css_server_task *> (ptr);
+
+      printf ("css_server_task: fd: %d, client_id: %d\n", task_p->get_conn ().fd, task_p->get_conn ().client_id);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
+      css_send_request_error_and_abort (task_p->get_conn (), task_p->get_conn ().request_id, ER_CSS_CLIENTS_EXCEEDED);
+
+      task_p->retire ();
+  };
+
+  auto css_compensation = [](cubthread::task<cubthread::entry> *ptr) {
+      css_connection_task *task_p = static_cast<css_connection_task *> (ptr);
+
+      printf ("css_connection_task: fd: %d, client_id: %d\n", task_p->get_conn ().fd, task_p->get_conn ().client_id);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
+      css_send_request_error_and_abort (task_p->get_conn (), task_p->get_conn ().request_id, ER_CSS_CLIENTS_EXCEEDED);
+
+      task_p->retire ();
+  };
+  // *INDENT-ON*
+
   // create request worker pool
   css_Server_request_worker_pool =
     cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_TASK_COUNT, "transaction workers", NULL,
@@ -1341,7 +1396,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 						   cubthread::is_logging_configured
 						   (cubthread::LOG_WORKER_POOL_TRAN_WORKERS),
 						   css_get_server_request_thread_pooling_configuration (),
-						   css_get_server_request_thread_timeout_configuration ());
+						   css_get_server_request_thread_timeout_configuration (),
+						   tran_compensation);
   if (css_Server_request_worker_pool == NULL)
     {
       assert (false);
@@ -1356,7 +1412,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 						   cubthread::is_logging_configured
 						   (cubthread::LOG_WORKER_POOL_CONNECTIONS),
 						   css_get_connection_thread_pooling_configuration (),
-						   css_get_connection_thread_timeout_configuration ());
+						   css_get_connection_thread_timeout_configuration (),
+						   css_compensation);
   if (css_Connection_worker_pool == NULL)
     {
       assert (false);
