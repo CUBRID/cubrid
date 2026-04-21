@@ -63,8 +63,6 @@ struct dblink_scan_info
 				 * instead of re-issuing cci_execute;
 				 * dblink_close_scan is skipped per iteration and
 				 * deferred to query teardown (qexec_clear_xasl) */
-  int cci_autocommit_saved;	/* non-zero: cci_autocommit_before is valid; restored in dblink_close_scan */
-  char cci_autocommit_before;	/* CCI autocommit mode before open_scan forced CCI_AUTOCOMMIT_FALSE */
 };
 
 #define MAX_LEN_CONNECTION_URL 512
