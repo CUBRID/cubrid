@@ -14171,71 +14171,7 @@ static int
 qexec_fetch_and_coerce_instnum_lower (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
 				      REGU_VARIABLE * key_limit_l, DB_VALUE * out_val)
 {
-  TP_DOMAIN *domainp = tp_domain_resolve_default (DB_TYPE_BIGINT);
-  TP_DOMAIN_STATUS dom_status;
-  DB_VALUE *tmp_dbvalp;
-  int error_code;
-
-  assert (key_limit_l != NULL);
-  assert (xasl_state != NULL);
-  assert (out_val != NULL);
-
-  if (key_limit_l->type == TYPE_INARITH)
-    {
-      /* rownum >= N or BETWEEN: arithmetic may overflow when N exceeds BIGINT range */
-      error_code = fetch_peek_dbval (thread_p, key_limit_l, &xasl_state->vd, NULL, NULL, NULL, &tmp_dbvalp);
-      if (error_code != NO_ERROR)
-	{
-	  if (er_errid () != ER_IT_DATA_OVERFLOW && er_errid () != ER_QPROC_OVERFLOW_SUBTRACTION)
-	    {
-	      return ER_FAILED;
-	    }
-
-	  /* NUMERIC -> BIGINT overflow during arithmetic: find the NUMERIC operand and check its sign */
-	  tmp_dbvalp = fetch_find_numeric_leaf (thread_p, key_limit_l, &xasl_state->vd);
-	  if (tmp_dbvalp == NULL)
-	    {
-	      return ER_FAILED;
-	    }
-
-	  /* positive overflow: no rows match (DB_BIGINT_MAX); negative overflow: all rows match (0) */
-	  db_make_bigint (out_val, (tmp_dbvalp->data.num.d.buf[0] & NUMERIC_VALUE_SIGN_BIT_MASK) ? 0 : DB_BIGINT_MAX);
-	  er_clear ();
-	  return NO_ERROR;
-	}
-    }
-  else
-    {
-      if (fetch_peek_dbval (thread_p, key_limit_l, &xasl_state->vd, NULL, NULL, NULL, &tmp_dbvalp) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-    }
-
-  /* coerce fetched value to BIGINT */
-  dom_status = tp_value_coerce (tmp_dbvalp, out_val, domainp);
-  if (dom_status != DOMAIN_COMPATIBLE)
-    {
-      if (dom_status == DOMAIN_OVERFLOW && DB_VALUE_DOMAIN_TYPE (tmp_dbvalp) == DB_TYPE_NUMERIC)
-	{
-	  /* NUMERIC -> BIGINT coercion overflow: handle by sign
-	   * positive overflow: no rows match (DB_BIGINT_MAX); negative overflow: all rows match (0)
-	   */
-	  db_make_bigint (out_val, (tmp_dbvalp->data.num.d.buf[0] & NUMERIC_VALUE_SIGN_BIT_MASK) ? 0 : DB_BIGINT_MAX);
-	  er_clear ();
-	  return NO_ERROR;
-	}
-      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, tmp_dbvalp, domainp);
-      return ER_FAILED;
-    }
-
-  if (DB_VALUE_DOMAIN_TYPE (out_val) != DB_TYPE_BIGINT)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
+  return fetch_and_coerce_key_limit_lower (thread_p, key_limit_l, &xasl_state->vd, out_val);
 }
 
 /*
