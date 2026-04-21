@@ -3187,9 +3187,15 @@ vacuum_master_task::increase_outstanding_job ()
 void
 vacuum_master_task::decrease_outstanding_job (int count)
 {
-  assert (count >= 0);
+  if (count < 0)
+    {
+      assert (false);
+      vacuum_er_log_error (VACUUM_ER_LOG_MASTER, "%s", "negative outstanding job decrement detected");
+      m_outstanding_job_count = 0;
+      return;
+    }
 
-  if (m_outstanding_job_count < count)
+  if (m_outstanding_job_count < static_cast<std::size_t> (count))
     {
       assert (false);
       vacuum_er_log_error (VACUUM_ER_LOG_MASTER, "%s", "outstanding job count underflow detected");
