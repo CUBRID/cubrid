@@ -887,13 +887,16 @@ extern "C"
     /* update to actual reserved workers */
     num_parallel_threads = worker_manager_p->get_reserved_workers ();
 
+    /* Determine result type in a LOCAL variable.  Do NOT write to pllsid_parallel yet —
+     * the pllsid_parallel union overlaps llsid and we need llsid intact for fallback. */
+    parallel_scan::RESULT_TYPE local_result_type;
     if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST))
       {
-	scan_id->s.pllsid_parallel.result_type = parallel_scan::RESULT_TYPE::MERGEABLE_LIST;
+	local_result_type = parallel_scan::RESULT_TYPE::MERGEABLE_LIST;
       }
     else if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_BUILDVALUE_OPT))
       {
-	scan_id->s.pllsid_parallel.result_type = parallel_scan::RESULT_TYPE::BUILDVALUE_OPT;
+	local_result_type = parallel_scan::RESULT_TYPE::BUILDVALUE_OPT;
       }
     else
       {
@@ -903,38 +906,40 @@ extern "C"
 	return NO_ERROR;
       }
 
-    scan_id->s.pllsid_parallel.manager = nullptr;	/* init */
-    scan_id->s.pllsid_parallel.trace_storage = nullptr;
-
     HFID null_hfid = HFID_INITIALIZER;
     OID null_oid = OID_INITIALIZER;
 
-    switch (scan_id->s.pllsid_parallel.result_type)
+    /* Allocate and open the manager using a LOCAL pointer.
+     * Do NOT write to scan_id->s.pllsid_parallel until open() succeeds — this keeps
+     * llsid intact so that on failure we can fall back to single-thread S_LIST_SCAN. */
+    void *local_manager = nullptr;
+
+    switch (local_result_type)
       {
       case parallel_scan::RESULT_TYPE::MERGEABLE_LIST:
       {
 	using manager_type =
 		parallel_scan::manager < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::LIST >;
 
-	scan_id->s.pllsid_parallel.manager = (void *) db_private_alloc (thread_p, sizeof (manager_type));
-	if (scan_id->s.pllsid_parallel.manager == nullptr)
+	local_manager = (void *) db_private_alloc (thread_p, sizeof (manager_type));
+	if (local_manager == nullptr)
 	  {
 	    assert_release_error (er_errid () != NO_ERROR);
 	    error = er_errid ();
 	    break;
 	  }
 
-	scan_id->s.pllsid_parallel.manager = placement_new ((manager_type *) scan_id->s.pllsid_parallel.manager,
-					     thread_p, query_id, scan_id, xasl,
-					     num_parallel_threads, null_hfid, null_oid, vd,
-					     false, false, worker_manager_p, list_id);
-	assert (scan_id->s.pllsid_parallel.manager != nullptr);
+	local_manager = placement_new ((manager_type *) local_manager,
+				       thread_p, query_id, scan_id, xasl,
+				       num_parallel_threads, null_hfid, null_oid, vd,
+				       false, false, worker_manager_p, list_id);
+	assert (local_manager != nullptr);
 
-	error = ((manager_type *) scan_id->s.pllsid_parallel.manager)->open ();
+	error = ((manager_type *) local_manager)->open ();
 	if (error != NO_ERROR)
 	  {
-	    ((manager_type *) scan_id->s.pllsid_parallel.manager)->~manager ();
-	    db_private_free_and_init (thread_p, scan_id->s.pllsid_parallel.manager);
+	    ((manager_type *) local_manager)->~manager ();
+	    db_private_free_and_init (thread_p, local_manager);
 	    worker_manager_p = nullptr;
 
 	    assert_release_error (er_errid () != NO_ERROR);
@@ -949,25 +954,25 @@ extern "C"
 	using manager_type =
 		parallel_scan::manager < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::LIST >;
 
-	scan_id->s.pllsid_parallel.manager = (void *) db_private_alloc (thread_p, sizeof (manager_type));
-	if (scan_id->s.pllsid_parallel.manager == nullptr)
+	local_manager = (void *) db_private_alloc (thread_p, sizeof (manager_type));
+	if (local_manager == nullptr)
 	  {
 	    assert_release_error (er_errid () != NO_ERROR);
 	    error = er_errid ();
 	    break;
 	  }
 
-	scan_id->s.pllsid_parallel.manager = placement_new ((manager_type *) scan_id->s.pllsid_parallel.manager,
-					     thread_p, query_id, scan_id, xasl,
-					     num_parallel_threads, null_hfid, null_oid, vd,
-					     false, false, worker_manager_p, list_id);
-	assert (scan_id->s.pllsid_parallel.manager != nullptr);
+	local_manager = placement_new ((manager_type *) local_manager,
+				       thread_p, query_id, scan_id, xasl,
+				       num_parallel_threads, null_hfid, null_oid, vd,
+				       false, false, worker_manager_p, list_id);
+	assert (local_manager != nullptr);
 
-	error = ((manager_type *) scan_id->s.pllsid_parallel.manager)->open ();
+	error = ((manager_type *) local_manager)->open ();
 	if (error != NO_ERROR)
 	  {
-	    ((manager_type *) scan_id->s.pllsid_parallel.manager)->~manager ();
-	    db_private_free_and_init (thread_p, scan_id->s.pllsid_parallel.manager);
+	    ((manager_type *) local_manager)->~manager ();
+	    db_private_free_and_init (thread_p, local_manager);
 	    worker_manager_p = nullptr;
 
 	    assert_release_error (er_errid () != NO_ERROR);
@@ -982,7 +987,7 @@ extern "C"
 	assert_release_error (false);
 	error = er_errid ();
 	break;
-      }	/* switch (s_id->s.pllsid_parallel.result_type) */
+      }	/* switch (local_result_type) */
 
     if (error != NO_ERROR)
       {
@@ -999,11 +1004,17 @@ extern "C"
 	    return error;
 	  }
 
-	/* fallback to single-thread list scan */
+	/* fallback to single-thread list scan — llsid is still intact */
 	er_clear ();
 	assert (scan_id->type == S_LIST_SCAN);
 	return NO_ERROR;
       }
+
+    /* === SUCCESS PATH: manager is open and workers are ready. ===
+     * Write pllsid_parallel fields (now safe — fallback path is no longer possible). */
+    scan_id->s.pllsid_parallel.result_type = local_result_type;
+    scan_id->s.pllsid_parallel.manager = local_manager;
+    scan_id->s.pllsid_parallel.trace_storage = nullptr;
 
     scan_id->type = S_PARALLEL_LIST_SCAN;
 
