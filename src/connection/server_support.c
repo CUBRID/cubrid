@@ -2901,7 +2901,7 @@ css_start_all_threads (void)
 
   if (start_workers)
     {
-      //css_Server_request_worker_pool->start_all_workers ();
+      css_Server_request_worker_pool->warmup ();
     }
 
   clock_type::time_point end_time = clock_type::now ();

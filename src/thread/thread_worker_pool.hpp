@@ -69,6 +69,9 @@ namespace cubthread
       virtual void execute (task_type *work_arg) = 0;
       virtual void execute_on_core (task_type *work_arg, std::size_t core_hash, bool is_temp = false) = 0;
 
+      // pooling related
+      virtual void warmup (void) = 0;
+
       // termination
       virtual void stop_execution (void) = 0;
 
@@ -130,6 +133,9 @@ namespace cubthread
 
       // execution
       virtual void execute_task (task_type *task_p, bool is_temp) = 0;
+
+      // pooling related
+      virtual void warmup (void) = 0;
 
       // termination
       virtual bool stop_execution (void) = 0;

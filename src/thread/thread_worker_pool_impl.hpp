@@ -127,6 +127,10 @@ namespace cubthread
       // execute on give core.
       virtual void execute_on_core (task_type *work_arg, std::size_t core_hash, bool is_temp = false) override;
 
+      // ensure every available worker has a live thread waiting for tasks.
+      // workers currently executing a task are skipped — they already have a thread.
+      void warmup (void) override;
+
       // stop worker pool; stop all running threads; discard any tasks in queue
       void stop_execution (void) override;
 
@@ -270,6 +274,10 @@ namespace cubthread
 
       // execute task
       void execute_task (task_type *task_p, bool is_temp) override;
+
+      // ensure every available worker has a live thread waiting for tasks.
+      // workers currently executing a task are skipped — they already have a thread.
+      void warmup (void) override;
 
       // notify workers to stop; if any of core's workers are still running, returns true
       bool stop_execution (void) override;
@@ -568,6 +576,16 @@ namespace cubthread
   worker_pool_impl<Stats>::is_running (void) const
   {
     return !m_stopped;
+  }
+
+  template <bool Stats>
+  void
+  worker_pool_impl<Stats>::warmup (void)
+  {
+    for (auto &it : m_cores)
+      {
+	it->warmup ();
+      }
   }
 
   template <bool Stats>
@@ -919,6 +937,19 @@ namespace cubthread
 	    // save to queue
 	    m_task_queue.push (std::move (task_ref));
 	  }
+      }
+  }
+
+  template <bool Stats>
+  void
+  worker_pool_impl<Stats>::core_impl::warmup (void)
+  {
+    std::lock_guard<std::mutex> lock (m_workers_mutex);
+
+    for (auto &it : m_available_workers)
+      {
+	assert (dynamic_cast<worker_impl *> (it));
+	static_cast<worker_impl *> (it)->assign_task ();
       }
   }
 
