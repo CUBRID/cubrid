@@ -17,12 +17,10 @@
  */
 
 /*
- * boot_perf_trace.h - Startup phase TSC instrumentation (debug-only).
+ * boot_perf_trace.h - Startup phase TSC instrumentation.
  *
- * The BOOT_PHASE_BEGIN / BOOT_PHASE_END macros collapse to no-ops in
- * release builds (NDEBUG). In debug builds the bodies additionally
- * gate on PRM_ID_BOOT_PERF_TRACE at runtime, so the overhead is zero
- * unless the operator explicitly opts in.
+ * The bodies gate on PRM_ID_BOOT_PERF_TRACE at runtime, so the overhead
+ * is zero unless the operator explicitly opts in.
  */
 
 #ifndef _BOOT_PERF_TRACE_H_
@@ -35,7 +33,6 @@ extern "C"
 {
 #endif
 
-#if !defined(NDEBUG)
   extern void boot_phase_begin_ (const char *name);
   extern void boot_phase_end_ (const char *name);
   extern void boot_phase_dump (void);
@@ -43,11 +40,6 @@ extern "C"
 #define BOOT_PHASE_BEGIN(name)  boot_phase_begin_ (name)
 #define BOOT_PHASE_END(name)    boot_phase_end_ (name)
 #define BOOT_PHASE_DUMP()       boot_phase_dump ()
-#else /* NDEBUG */
-#define BOOT_PHASE_BEGIN(name)  ((void) 0)
-#define BOOT_PHASE_END(name)    ((void) 0)
-#define BOOT_PHASE_DUMP()       ((void) 0)
-#endif /* NDEBUG */
 
 #ifdef __cplusplus
 }

@@ -17,14 +17,12 @@
  */
 
 /*
- * boot_perf_trace.c - Startup phase TSC instrumentation (debug-only).
+ * boot_perf_trace.c - Startup phase TSC instrumentation.
  */
 
 #ident "$Id$"
 
 #include "config.h"
-
-#if !defined(NDEBUG)
 
 #include <stdio.h>
 #include <string.h>
@@ -165,5 +163,3 @@ boot_phase_dump (void)
 		    boot_Perf_phases[idx].name, (unsigned long long) elapsed_us[idx], flag);
     }
 }
-
-#endif /* !NDEBUG */
