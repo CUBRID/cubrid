@@ -1,19 +1,19 @@
 #
 #  Copyright 2008 Search Solution Corporation
 #  Copyright 2016 CUBRID Corporation
-# 
+#
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
 #   You may obtain a copy of the License at
-# 
+#
 #       http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 #   Unless required by applicable law or agreed to in writing, software
 #   distributed under the License is distributed on an "AS IS" BASIS,
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
-# 
+#
 #
 set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/compactdb_cl.c
@@ -27,7 +27,7 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/file_hash.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_object_file.c
-  ${EXECUTABLES_DIR}/unload_schema.c  
+  ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/util_common.c
   ${EXECUTABLES_DIR}/util_cs.c
@@ -36,7 +36,7 @@ set(EXECUTABLE_SOURCES
 set(EXECUTABLE_HEADERS
   ${EXECUTABLES_DIR}/extract_schema.hpp
   )
-  
+
 set(COMPAT_SOURCES
   ${COMPAT_DIR}/cnv.c
   ${COMPAT_DIR}/db_admin.c
@@ -85,6 +85,7 @@ set (COMPAT_HEADERS
 set(BASE_SOURCES
   ${BASE_DIR}/area_alloc.c
   ${BASE_DIR}/base64.c
+  ${BASE_DIR}/boot_perf_trace.c
   ${BASE_DIR}/chartype.c
   ${BASE_DIR}/databases_file.c
   ${BASE_DIR}/dtoa.c
@@ -129,6 +130,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/string_buffer.cpp
   ${BASE_DIR}/system_parameter.c
   ${BASE_DIR}/tsc_timer.c
+  ${BASE_DIR}/boot_perf_trace.c
   ${BASE_DIR}/tz_support.c
   ${BASE_DIR}/uca_support.c
   ${BASE_DIR}/unicode_support.c
