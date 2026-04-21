@@ -1,4 +1,5 @@
 /*
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,6 +33,9 @@
 
 #include <arpa/inet.h>
 #include <cstring>
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* read int16 from buffer in network byte order */
 static inline int16_t
