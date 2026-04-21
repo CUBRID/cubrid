@@ -22008,12 +22008,14 @@ pt_is_allowed_result_cache ()
 
 /*
  * do_copy () - Execute a COPY statement
- *   return: Error code
+ *   return: Error code or number of rows loaded
  *   parser(in): Parser context
  *   statement(in): Parse tree node for COPY statement
  *
- * Note: This is a stub that initializes the COPY session.
- *       Actual data transfer happens via separate network requests.
+ * Note: Initializes the server-side COPY session by resolving the table
+ *       and column types and calling copy_from_init(). Actual binary data
+ *       transfer is handled by the CAS broker via copy_from_send_data()
+ *       and copy_from_end().
  */
 int
 do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
@@ -22025,6 +22027,7 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *col;
   DB_TYPE *col_types = NULL;
   int ncols = 0;
+<<<<<<< HEAD
   PT_NODE *entity_spec;
   PT_NODE *entity;
 
@@ -22050,6 +22053,11 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  table_name = entity_spec->info.spec.entity_name->info.name.original;
 	}
     }
+=======
+
+  /* get table name */
+  table_name = statement->info.copy.table_name->info.name.original;
+>>>>>>> b5df65a81 (feat(copy): add client-side network functions and wire do_copy)
 
   /* find class */
   class_obj = db_find_class (table_name);
