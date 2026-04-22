@@ -3270,8 +3270,8 @@ session_set_copy_session (THREAD_ENTRY * thread_p, copy_session * copy_session_p
 
   if (copy_session_p != NULL && state_p->copy_session_p != NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY already in progress on this connection");
-      return ER_DB_UNIMPLEMENTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_SESSION_ALREADY_ACTIVE, 0);
+      return ER_COPY_SESSION_ALREADY_ACTIVE;
     }
 
   state_p->copy_session_p = copy_session_p;

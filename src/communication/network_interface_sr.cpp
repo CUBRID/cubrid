@@ -12305,8 +12305,8 @@ scopy_from_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, i
     {
       if (error_code == NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "No active COPY session");
-	  error_code = ER_DB_UNIMPLEMENTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_SESSION_NOT_ACTIVE, 0);
+	  error_code = ER_COPY_SESSION_NOT_ACTIVE;
 	}
       goto reply;
     }
@@ -12346,8 +12346,8 @@ scopy_from_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int req
     {
       if (error_code == NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "No active COPY session");
-	  error_code = ER_DB_UNIMPLEMENTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_SESSION_NOT_ACTIVE, 0);
+	  error_code = ER_COPY_SESSION_NOT_ACTIVE;
 	}
       goto reply;
     }

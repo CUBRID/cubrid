@@ -29,6 +29,7 @@
 #include "error_manager.h"
 #include "intl_support.h"
 #include "language_support.h"
+#include "object_representation_constants.h"
 #include "porting.h"
 
 #include <arpa/inet.h>
@@ -107,8 +108,8 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
 
   if (field_len < 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: invalid field length");
-      return ER_DB_UNIMPLEMENTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_PROTOCOL_GENERIC, 1, "invalid field length");
+      return ER_COPY_BINARY_PROTOCOL_GENERIC;
     }
 
   if (buf_remaining - (int) sizeof (int32_t) < field_len)
@@ -122,37 +123,37 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
   switch (type)
     {
     case DB_TYPE_INTEGER:
-      if (field_len != 4)
+      if (field_len != OR_INT_SIZE)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: INT expects 4 bytes");
-	  return ER_DB_UNIMPLEMENTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_PROTOCOL, 2, "INT", OR_INT_SIZE);
+	  return ER_COPY_BINARY_PROTOCOL;
 	}
       db_make_int (val, read_int32 (data));
       break;
 
     case DB_TYPE_BIGINT:
-      if (field_len != 8)
+      if (field_len != OR_BIGINT_SIZE)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: BIGINT expects 8 bytes");
-	  return ER_DB_UNIMPLEMENTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_PROTOCOL, 2, "BIGINT", OR_BIGINT_SIZE);
+	  return ER_COPY_BINARY_PROTOCOL;
 	}
       db_make_bigint (val, read_int64 (data));
       break;
 
     case DB_TYPE_FLOAT:
-      if (field_len != 4)
+      if (field_len != OR_FLOAT_SIZE)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: FLOAT expects 4 bytes");
-	  return ER_DB_UNIMPLEMENTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_PROTOCOL, 2, "FLOAT", OR_FLOAT_SIZE);
+	  return ER_COPY_BINARY_PROTOCOL;
 	}
       db_make_float (val, read_float (data));
       break;
 
     case DB_TYPE_DOUBLE:
-      if (field_len != 8)
+      if (field_len != OR_DOUBLE_SIZE)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: DOUBLE expects 8 bytes");
-	  return ER_DB_UNIMPLEMENTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_PROTOCOL, 2, "DOUBLE", OR_DOUBLE_SIZE);
+	  return ER_COPY_BINARY_PROTOCOL;
 	}
       db_make_double (val, read_double (data));
       break;
@@ -163,20 +164,19 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
 
     case DB_TYPE_VECTOR:
     {
-      if (field_len < (int) sizeof (int32_t))
+      if (field_len < OR_INT_SIZE)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1,
-		  "COPY binary: VECTOR needs at least 4 bytes for dimension");
-	  return ER_DB_UNIMPLEMENTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_PROTOCOL_GENERIC, 1,
+		  "VECTOR needs at least 4 bytes for dimension");
+	  return ER_COPY_BINARY_PROTOCOL_GENERIC;
 	}
 
       int32_t dim = read_int32 (data);
-      int expected_len = (int) sizeof (int32_t) + dim * (int) sizeof (float);
+      int expected_len = OR_INT_SIZE + dim * OR_FLOAT_SIZE;
       if (field_len != expected_len)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1,
-		  "COPY binary: VECTOR size mismatch");
-	  return ER_DB_UNIMPLEMENTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_PROTOCOL, 2, "VECTOR", expected_len);
+	  return ER_COPY_BINARY_PROTOCOL;
 	}
 
       DB_VECTOR_FLOAT vf;
@@ -187,10 +187,10 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
 	{
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-      const char *fptr = data + sizeof (int32_t);
+      const char *fptr = data + OR_INT_SIZE;
       for (int i = 0; i < dim; i++)
 	{
-	  floats[i] = read_float (fptr + i * sizeof (float));
+	  floats[i] = read_float (fptr + i * OR_FLOAT_SIZE);
 	}
       vf.float_array = floats;
       db_make_vector_float (val, &vf);
@@ -199,8 +199,8 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
     break;
 
     default:
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: unsupported column type");
-      return ER_DB_UNIMPLEMENTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_PROTOCOL_GENERIC, 1, "unsupported column type");
+      return ER_COPY_BINARY_PROTOCOL_GENERIC;
     }
 
   *consumed += field_len;
@@ -233,9 +233,9 @@ decode_binary_row (const char *buf, int buf_len, const DB_TYPE *types, int ncols
 
   if (num_fields != (int16_t) ncols)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1,
-	      "COPY binary: field count mismatch");
-      return ER_DB_UNIMPLEMENTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_PROTOCOL_GENERIC, 1,
+	      "field count mismatch");
+      return ER_COPY_BINARY_PROTOCOL_GENERIC;
     }
 
   /* decode each field */
