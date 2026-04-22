@@ -5090,9 +5090,9 @@ fetch_force_not_const_recursive (REGU_VARIABLE & reguvar)
 // *INDENT-ON*
 
 /*
- * fetch_peek_leftmost_numeric_regu () - Recursively search leftptr of an arith tree for the first NUMERIC-typed leaf.
+ * fetch_peek_leftmost_numeric_regu () - Recursively search leftptr of an arith tree for the first NUMERIC-typed node.
  *
- *   return       : peeked DB_VALUE of the NUMERIC leaf, or NULL if not found
+ *   return       : peeked DB_VALUE of the NUMERIC node, or NULL if not found
  *   thread_p(in) : thread entry
  *   regu_var(in) : root of the regu variable arith tree to search
  *   vd(in)       : value descriptor
@@ -5163,11 +5163,18 @@ fetch_and_coerce_key_limit_lower (THREAD_ENTRY * thread_p, REGU_VARIABLE * key_l
 	    }
 
 	  /* NUMERIC -> BIGINT overflow during arithmetic: find the NUMERIC operand and check its sign */
-	  tmp_dbvalp = fetch_peek_leftmost_numeric_regu (thread_p, key_limit_l, vd);
-	  if (tmp_dbvalp == NULL)
-	    {
-	      return ER_FAILED;
-	    }
+	  {
+	    int saved_err = er_errid ();
+	    tmp_dbvalp = fetch_peek_leftmost_numeric_regu (thread_p, key_limit_l, vd);
+	    if (tmp_dbvalp == NULL)
+	      {
+		if (er_errid () != saved_err)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, saved_err, 0);
+		  }
+		return ER_FAILED;
+	      }
+	  }
 
 	  /* positive overflow: no rows match (DB_BIGINT_MAX); negative overflow: all rows match (0) */
 #if 1				/* phase-3: raw sign-bit check; replaced by DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE in phase-4 */

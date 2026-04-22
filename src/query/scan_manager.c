@@ -876,16 +876,21 @@ scan_fetch_and_coerce_key_limit_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * i
       error_code = fetch_peek_dbval (thread_p, key_limit_u, vd, NULL, NULL, NULL, out_dbvalp);
       if (error_code != NO_ERROR)
 	{
-	  if (er_errid () == ER_IT_DATA_OVERFLOW)
+	  int saved_err = er_errid ();
+	  if (saved_err == ER_IT_DATA_OVERFLOW)
 	    {
 	      /* ER_IT_DATA_OVERFLOW: NUMERIC value itself exceeds BIGINT range (e.g. BIGINT < rownum < HUGE).
 	       * find the NUMERIC leaf and check sign:
-	       *   positive NUMERIC -> no upper bound (-1), 
-	       *   negative NUMERIC -> no rows match (0). 
+	       *   positive NUMERIC -> no upper bound (-1),
+	       *   negative NUMERIC -> no rows match (0).
 	       */
 	      tmp_dbvalp = fetch_peek_leftmost_numeric_regu (thread_p, key_limit_u, vd);
 	      if (tmp_dbvalp == NULL)
 		{
+		  if (er_errid () != saved_err)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, saved_err, 0);
+		    }
 		  return ER_FAILED;
 		}
 #if 1				/* phase-3: raw sign-bit check; replaced by DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE in phase-4 */
@@ -894,7 +899,7 @@ scan_fetch_and_coerce_key_limit_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * i
 	      isidp->key_limit_upper = DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (tmp_dbvalp) ? 0 : -1;
 #endif
 	    }
-	  else if (er_errid () == ER_QPROC_OVERFLOW_SUBTRACTION)
+	  else if (saved_err == ER_QPROC_OVERFLOW_SUBTRACTION)
 	    {
 	      /* T_SUB(upper_expr, lower_expr) overflows because a bound contains a huge NUMERIC.
 	       * branch on top-level left/right structure:
@@ -969,6 +974,10 @@ scan_fetch_and_coerce_key_limit_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * i
 		  tmp_dbvalp = fetch_peek_leftmost_numeric_regu (thread_p, left, vd);
 		  if (tmp_dbvalp == NULL)
 		    {
+		      if (er_errid () != saved_err)
+			{
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, saved_err, 0);
+			}
 		      return ER_FAILED;
 		    }
 #if 1				/* phase-3: raw sign-bit check; replaced by DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE in phase-4 */
