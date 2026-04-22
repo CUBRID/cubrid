@@ -3425,11 +3425,10 @@ typedef struct pt_dblink_info
   void *remote_col_list;	/* remote table's column list */
 
   /* [CBRD-26601] correlated equality push-down (single equality: count == 1).
-   * corr_key_remote_cols / outer_refs are non-owning — do NOT add to pt_apply_dblink_table.
+   * corr_key_remote_cols is non-owning — do NOT add to pt_apply_dblink_table.
    * corr_key_col_names: stable copy for SQL; corr_key_outer_copy: owning copy for XASL (parser_copy_tree). */
   int corr_key_count;
   PT_NODE *corr_key_remote_cols[PT_DBLINK_MAX_CORR_KEYS];
-  PT_NODE *corr_key_outer_refs[PT_DBLINK_MAX_CORR_KEYS];
   PT_NODE *corr_key_outer_copy[PT_DBLINK_MAX_CORR_KEYS];
   const char *corr_key_col_names[PT_DBLINK_MAX_CORR_KEYS];
 

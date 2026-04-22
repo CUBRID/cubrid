@@ -4932,7 +4932,6 @@ mq_dblink_clear_corr_keys (PARSER_CONTEXT * parser, PT_DBLINK_INFO * dinfo)
   for (i = 0; i < PT_DBLINK_MAX_CORR_KEYS; i++)
     {
       dinfo->corr_key_remote_cols[i] = NULL;
-      dinfo->corr_key_outer_refs[i] = NULL;
       dinfo->corr_key_col_names[i] = NULL;
     }
 }
@@ -7126,7 +7125,6 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 		  else
 		    {
 		      dinfo->corr_key_remote_cols[0] = remote_expr;
-		      dinfo->corr_key_outer_refs[0] = outer_expr;
 		      dinfo->corr_key_col_names[0] = mq_dblink_extract_col_name (parser, remote_expr);
 		      if (dinfo->corr_key_col_names[0] == NULL)
 			{
