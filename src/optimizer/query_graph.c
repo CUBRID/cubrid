@@ -8250,6 +8250,7 @@ qo_insert_transitive_join_term (QO_ENV * env, PT_NODE * pt_expr)
 	}
 
       env->nedges++;
+      QO_TERM_SET_FLAG (term, QO_TERM_COPY_PT_EXPR);
     }
 
   i = 0;
