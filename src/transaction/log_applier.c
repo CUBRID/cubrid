@@ -100,7 +100,7 @@
 #define LA_QUERY_BUF_SIZE                       2048
 
 #define LA_MAX_REPL_ITEMS                       1000
-#define LA_APPLY_WORKER_COUNT                   4
+#define LA_APPLY_WORKER_COUNT                   10
 #define LA_APPLY_WORKER_QUEUE_CAPACITY          1024
 /* 디스패치된 태스크의 원래 순서를 기억해 두기 위한 FIFO 용량 (워커 큐 합보다 크게 잡는다) */
 #define LA_DISPATCH_ORDER_CAPACITY              (LA_APPLY_WORKER_COUNT * LA_APPLY_WORKER_QUEUE_CAPACITY + 1)
@@ -1688,6 +1688,9 @@ end:
     {
       la_apply_worker_end_session (&session);
     }
+
+  /* Release this worker's thread-local locator cache before exit. */
+  locator_free_areas ();
 
   er_context_p->deregister_thread_local ();
   delete er_context_p;
