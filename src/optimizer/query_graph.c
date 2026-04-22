@@ -8234,6 +8234,21 @@ qo_insert_transitive_join_term (QO_ENV * env, PT_NODE * pt_expr)
 
   if (QO_IS_EDGE_TERM (term))
     {
+      QO_SEGMENT *seg = QO_TERM_NOMINAL_SEG (term);
+      if (seg)
+	{
+	  QO_TERM_EQCLASS (term) = QO_SEG_EQCLASS (seg);
+	}
+      else if (QO_TERM_IS_FLAGED (term, QO_TERM_MERGEABLE_EDGE))
+	{
+	  QO_TERM_EQCLASS (term) = qo_eqclass_new (env);
+	  QO_EQCLASS_TERM (QO_TERM_EQCLASS (term)) = term;
+	}
+      else
+	{
+	  QO_TERM_EQCLASS (term) = QO_UNORDERED;
+	}
+
       env->nedges++;
     }
 
