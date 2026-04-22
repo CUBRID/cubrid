@@ -380,6 +380,12 @@ struct heap_get_context
 
   PGBUF_LATCH_MODE latch_mode;	/* normally, we need READ latch for get_context, but some operations
 				 * (like serial increment) require WRITE mode */
+
+  /* OOS handling: when true (default), inline OOS OID slots are replaced with the actual
+   * variable-attribute bytes so the returned record looks as if OOS had never been used.
+   * Internal consumers that decode the record via heap_attrinfo_read_dbvalues already call
+   * oos_read() per attribute, so they can set this to false to skip the redundant pass. */
+  bool expand_oos;
 };
 
 typedef struct sampling_info SAMPLING_INFO;
@@ -488,8 +494,6 @@ extern int heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * a
 			      HEAP_CACHE_ATTRINFO * attr_info);
 extern SCAN_CODE heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 						  RECDES * old_recdes, record_descriptor * new_recdes);
-extern SCAN_CODE heap_attrinfo_transform_to_disk_develop_ver (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-							      RECDES * old_recdes, record_descriptor * new_recdes);
 extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							     RECDES * old_recdes, record_descriptor * new_recdes);
 
@@ -685,9 +689,19 @@ extern int heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rc
 extern int heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, MVCCID threshold_mvccid);
 extern SCAN_CODE heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 					   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn);
+/* Same as heap_get_visible_version but leaves inline OOS OID slots in place in the returned record.
+ * Use this when the caller decodes the record via heap_attrinfo_read_dbvalues, which handles OOS
+ * per-attribute itself — double-reading the OOS blob is wasted work. */
+extern SCAN_CODE heap_get_visible_version_raw_oos (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
+						   RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
+						   int old_chn);
 extern SCAN_CODE heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
 						RECDES * recdes, RECDES * forward_recdes, HEAP_SCANCACHE * scan_cache,
 						int ispeeking, int old_chn);
+/* Raw-OOS variant of heap_scan_get_visible_version. See heap_get_visible_version_raw_oos. */
+extern SCAN_CODE heap_scan_get_visible_version_raw_oos (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
+							RECDES * recdes, RECDES * forward_recdes,
+							HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn);
 extern SCAN_CODE heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, const OID * oid,

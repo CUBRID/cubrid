@@ -942,8 +942,7 @@ static int heap_update_and_log_header (THREAD_ENTRY * thread_p, const HFID * hfi
 				       const PGBUF_WATCHER heap_header_watcher, HEAP_HDR_STATS * heap_hdr,
 				       const VPID new_next_vpid, const VPID new_last_vpid, const int new_num_pages);
 
-static SCAN_CODE heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p,
-								     HEAP_GET_CONTEXT * context);
+static SCAN_CODE heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -7926,7 +7925,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 	  return scan;
 	}
 
-      return heap_record_replace_oos_oids_with_values_if_exists (thread_p, context);
+      return heap_record_replace_oos_oids (thread_p, context);
 
     case REC_BIGONE:
       return heap_get_bigone_content (thread_p, scan_cache_p, context->ispeeking, &context->forward_oid,
@@ -7948,7 +7947,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 	  return scan;
 	}
 
-      return heap_record_replace_oos_oids_with_values_if_exists (thread_p, context);
+      return heap_record_replace_oos_oids (thread_p, context);
     default:
       break;
     }
@@ -7956,91 +7955,265 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
   return S_ERROR;
 }
 
+/*
+ * heap_record_replace_oos_oids () - Replace inlined OOS OID slots in a heap record with the actual
+ *                                   variable-attribute bytes, producing a record that looks as if
+ *                                   OOS had never been used.
+ *
+ * Reconstruction uses only oos_read() + the on-record variable offset table (VOT). It does NOT
+ * consult the class representation, so it is schema-change safe and much cheaper than the previous
+ * approach that round-tripped through heap_attrinfo_*.
+ *
+ * Output VOT is always written with 4-byte offsets (BIG_VAR_OFFSET_SIZE) so that arbitrarily large
+ * expansions fit without re-examining the offset-size bits of the original record.
+ */
 static SCAN_CODE
-heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
+heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 {
+  RECDES *rec = context->recdes_p;
 
+  if (!context->expand_oos)
+    {
+      /* Caller opted out: they handle OOS themselves (e.g. heap_attrinfo_read_dbvalues). */
+      return S_SUCCESS;
+    }
 
-  // HOTFIX!
-  // todo: this function is buggy. by doing this, we give up unloaddb.
-  return S_SUCCESS;
-
-  if (!heap_recdes_contains_oos (context->recdes_p))
+  if (!heap_recdes_contains_oos (rec))
     {
       return S_SUCCESS;
     }
 
-  HEAP_CACHE_ATTRINFO attr_info;
-  int err;
+  assert (rec != NULL && rec->data != NULL && rec->length > 0);
 
-  if (context->ispeeking == PEEK)
+  /* Snapshot input bytes up front: rec->data may live in a PEEK'd page, and we may reallocate it
+   * via scan_cache below. Either way, we must not rely on rec->data remaining valid once we start
+   * writing the rebuilt record. */
+  // *INDENT-OFF*
+  std::vector<char> src_buf (rec->data, rec->data + rec->length);
+  // *INDENT-ON*
+  const char *src = src_buf.data ();
+  const int src_length = (int) src_buf.size ();
+
+  const int src_offset_size = OR_GET_OFFSET_SIZE (src);
+  const int src_header_size = OR_HEADER_SIZE ((char *) src);
+  const char *src_vot = src + src_header_size;
+  const int src_vot_capacity = (src_length - src_header_size) / src_offset_size;
+
+  /* Walk the VOT and collect each raw offset entry (including flag bits). The loop stops at the
+   * sentinel carrying OR_VAR_BIT_LAST_ELEMENT. */
+  // *INDENT-OFF*
+  std::vector<int> vot_raw;
+  // *INDENT-ON*
+  vot_raw.reserve (src_vot_capacity + 1);
+  int n_var = -1;
+  for (int i = 0; i <= src_vot_capacity; ++i)
     {
-      // TODO: https://github.com/CUBRID/cubrid/pull/6766/changes/BASE..b3d964ce1c83ef31c1da2e556cc539bf1b28ad7a#r2689175730
-      // this function currently assume context->ispeeking == COPY.
-      // handle PEEK case properly or prevent it at higher level.
-      oos_error ("heap_record_replace_oos_oids_with_values_if_exists: PEEK not supported yet");
-      er_dump_call_stack (stderr);
-      assert (false);
+      if (i == src_vot_capacity)
+	{
+	  assert_release (false && "VOT sentinel (LAST_ELEMENT) not found within record bounds");
+	  return S_ERROR;
+	}
+      int raw;
+      const char *ep = src_vot + i * src_offset_size;
+      switch (src_offset_size)
+	{
+	case OR_BYTE_SIZE:
+	  raw = OR_GET_BYTE (ep);
+	  break;
+	case OR_SHORT_SIZE:
+	  raw = OR_GET_SHORT (ep);
+	  break;
+	case OR_INT_SIZE:
+	  raw = OR_GET_INT (ep);
+	  break;
+	default:
+	  assert_release (false);
+	  return S_ERROR;
+	}
+      vot_raw.push_back (raw);
+      if (OR_IS_LAST_ELEMENT (raw))
+	{
+	  n_var = i;
+	  break;
+	}
     }
 
-  err = heap_attrinfo_start (thread_p, context->class_oid_p, -1, nullptr, &attr_info);
-  if (err != NO_ERROR)
+  if (n_var <= 0)
     {
+      /* OR_MVCC_FLAG_HAS_OOS was set but the record has no variable attributes. Corrupt record. */
+      assert_release (false && "OOS flag set without variable attributes");
       return S_ERROR;
     }
 
-      // *INDENT-OFF*
-      auto attr_info_guard = make_scope_exit ([&](){
-					      heap_attrinfo_end (thread_p, &attr_info);
-					      }
-      );
-      // *INDENT-ON*
-
-  err = heap_attrinfo_read_dbvalues (thread_p, context->oid_p, context->recdes_p, &attr_info);
-  if (err != NO_ERROR)
+  /* Read the OOS blob for every OOS-tagged variable index. */
+  // *INDENT-OFF*
+  std::vector<RECDES> oos_recdes (n_var);
+  // *INDENT-ON*
+  for (int i = 0; i < n_var; ++i)
     {
+      oos_recdes[i] = RECDES_INITIALIZER;
+    }
+
+  // *INDENT-OFF*
+  auto oos_cleanup = make_scope_exit ([&]() {
+    for (int i = 0; i < n_var; ++i)
+      {
+        if (oos_recdes[i].data != NULL)
+          {
+            recdes_free_data_area (&oos_recdes[i]);
+          }
+      }
+  });
+  // *INDENT-ON*
+
+  for (int i = 0; i < n_var; ++i)
+    {
+      if (!OR_IS_OOS (vot_raw[i]))
+	{
+	  continue;
+	}
+
+      const int value_offset = src_header_size + OR_GET_VAR_OFFSET (vot_raw[i]);
+      if (value_offset + OR_OOS_INLINE_SIZE > src_length)
+	{
+	  assert_release (false && "OOS inline slot extends past record bounds");
+	  return S_ERROR;
+	}
+
+      OID oos_oid = OID_INITIALIZER;
+      OR_BUF buf;
+      or_init (&buf, (char *) src + value_offset, OR_OID_SIZE);
+      if (or_get_oid (&buf, &oos_oid) != NO_ERROR || OID_ISNULL (&oos_oid))
+	{
+	  assert_release (false && "failed to read OOS OID from inline slot");
+	  return S_ERROR;
+	}
+
+      if (oos_read (thread_p, oos_oid, oos_recdes[i]) != NO_ERROR)
+	{
+	  oos_error ("oos_read failed for OID %d|%d|%d", OID_AS_ARGS (&oos_oid));
+	  return S_ERROR;
+	}
+    }
+
+  /* Lay out the rebuilt record. We always write a 4-byte VOT: OOS blobs can push the record past
+   * whatever the source offset size could encode. */
+  const int dst_offset_size = BIG_VAR_OFFSET_SIZE;
+  const int src_vot_bytes = OR_VAR_TABLE_SIZE_INTERNAL (n_var, src_offset_size);
+  const int dst_vot_bytes = OR_VAR_TABLE_SIZE_INTERNAL (n_var, dst_offset_size);
+
+  /* Space between end-of-VOT and start-of-first-var-value holds fixed attributes and the bound-bit
+   * bitmap; it is copied over unchanged. */
+  const int fixed_bitmap_bytes = OR_GET_VAR_OFFSET (vot_raw[0]) - src_vot_bytes;
+  if (fixed_bitmap_bytes < 0)
+    {
+      assert_release (false);
       return S_ERROR;
     }
 
-#if defined (false)		// TODO: set_external_buffer is buggy. Figure out why.
-  // RECDES recdes = RECDES_INITIALIZER;
-  // record_descriptor build_record;
-  // build_record.set_external_buffer (recdes.data, recdes.area_size);
-#else
-  record_descriptor build_record (cubmem::STANDARD_BLOCK_ALLOCATOR);
-#endif
-
-  // TODO: https://github.com/CUBRID/cubrid/pull/6766#discussion_r2688868239
-  // This function uses `repid_bits = attr_info->last_classrepr->id;`
-  // Potential risk when schema changes (insert -> alter -> insert -> select). Need validation.
-  SCAN_CODE sc = heap_attrinfo_transform_to_disk_develop_ver (thread_p, &attr_info, nullptr, &build_record);
-  if (sc != S_SUCCESS)
+  int new_values_bytes = 0;
+  for (int i = 0; i < n_var; ++i)
     {
-      return sc;
+      const int this_off = OR_GET_VAR_OFFSET (vot_raw[i]);
+      const int next_off = OR_GET_VAR_OFFSET (vot_raw[i + 1]);
+      const int src_val_len = next_off - this_off;
+      if (OR_IS_OOS (vot_raw[i]))
+	{
+	  assert (src_val_len == OR_OOS_INLINE_SIZE);
+	  new_values_bytes += oos_recdes[i].length;
+	}
+      else
+	{
+	  new_values_bytes += src_val_len;
+	}
     }
 
-  // return OOS value-expanded record to caller
-  // TODO: what if OOS-expanded record doesn't fit in original area (2 * DB_PAGESIZE)?
-  if (context->recdes_p->area_size < (int) build_record.get_size ())
+  const int new_length = src_header_size + dst_vot_bytes + fixed_bitmap_bytes + new_values_bytes;
+
+  /* Make sure rec->data points to owned storage big enough for the expansion. If we were PEEK'ing
+   * into a page, we MUST switch to COPY here — we cannot write into the page buffer. */
+  const bool need_realloc = (context->ispeeking == PEEK) || (rec->area_size < new_length);
+  if (need_realloc)
     {
-      return S_DOESNT_FIT;
+      if (context->scan_cache == NULL)
+	{
+	  return S_DOESNT_FIT;
+	}
+      if (heap_scan_cache_allocate_recdes_data (thread_p, context->scan_cache, rec, new_length) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+      context->ispeeking = COPY;
     }
 
-  if (context->ispeeking == PEEK)
-    {
-      oos_error ("heap_record_replace_oos_oids_with_values_if_exists: PEEK not supported yet");
-      abort ();
+  char *dst = rec->data;
 
-      // *context->recdes_p = recdes;
-      // // TODO: check if this ensures context->recdes_p to be freed eventually
-      // context->ispeeking = COPY;
-    }
-  else				// COPY
+  /* Header: copy verbatim, then clear the OOS flag and reset the offset-size bits. */
+  std::memcpy (dst, src, src_header_size);
+  unsigned int repid_bits = (unsigned int) OR_GET_INT (dst + OR_REP_OFFSET);
+  repid_bits &= ~((unsigned int) OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
+  repid_bits &= ~(unsigned int) OR_OFFSET_SIZE_FLAG;
+  if (dst_offset_size == OR_BYTE_SIZE)
     {
-      context->recdes_p->length = build_record.get_size ();
-      std::memcpy (context->recdes_p->data, build_record.get_data (), context->recdes_p->length);
+      repid_bits |= OR_OFFSET_SIZE_1BYTE;
+    }
+  else if (dst_offset_size == OR_SHORT_SIZE)
+    {
+      repid_bits |= OR_OFFSET_SIZE_2BYTE;
+    }
+  else
+    {
+      repid_bits |= OR_OFFSET_SIZE_4BYTE;
+    }
+  OR_PUT_INT (dst + OR_REP_OFFSET, (int) repid_bits);
+
+  /* Rewrite the VOT with new offsets computed from the expanded variable-value area. */
+  const int dst_first_value_rel = dst_vot_bytes + fixed_bitmap_bytes;
+  char *dst_vot = dst + src_header_size;
+  int cumulative = 0;
+  for (int i = 0; i < n_var; ++i)
+    {
+      OR_PUT_INT (dst_vot + i * dst_offset_size, dst_first_value_rel + cumulative);
+      const int val_len = (OR_IS_OOS (vot_raw[i])
+			   ? oos_recdes[i].length
+			   : OR_GET_VAR_OFFSET (vot_raw[i + 1]) - OR_GET_VAR_OFFSET (vot_raw[i]));
+      cumulative += val_len;
+    }
+  OR_PUT_INT (dst_vot + n_var * dst_offset_size, OR_SET_VAR_LAST_ELEMENT (dst_first_value_rel + cumulative));
+
+  /* Zero any alignment padding past the last VOT entry. */
+  const int vot_raw_bytes = (n_var + 1) * dst_offset_size;
+  if (dst_vot_bytes > vot_raw_bytes)
+    {
+      std::memset (dst_vot + vot_raw_bytes, 0, dst_vot_bytes - vot_raw_bytes);
     }
 
+  /* Fixed attributes + bound-bit bitmap: copy unchanged. */
+  if (fixed_bitmap_bytes > 0)
+    {
+      std::memcpy (dst + src_header_size + dst_vot_bytes, src + src_header_size + src_vot_bytes, fixed_bitmap_bytes);
+    }
+
+  /* Variable values: inline the OOS blobs in place of their 16-byte slots. */
+  int dst_pos = src_header_size + dst_vot_bytes + fixed_bitmap_bytes;
+  for (int i = 0; i < n_var; ++i)
+    {
+      if (OR_IS_OOS (vot_raw[i]))
+	{
+	  std::memcpy (dst + dst_pos, oos_recdes[i].data, oos_recdes[i].length);
+	  dst_pos += oos_recdes[i].length;
+	}
+      else
+	{
+	  const int src_off = src_header_size + OR_GET_VAR_OFFSET (vot_raw[i]);
+	  const int len = OR_GET_VAR_OFFSET (vot_raw[i + 1]) - OR_GET_VAR_OFFSET (vot_raw[i]);
+	  std::memcpy (dst + dst_pos, src + src_off, len);
+	  dst_pos += len;
+	}
+    }
+  assert (dst_pos == new_length);
+
+  rec->length = new_length;
   return S_SUCCESS;
 }
 
@@ -13019,399 +13192,6 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   return status;
 }
 
-static SCAN_CODE
-heap_attrinfo_transform_variable_to_disk_develop_ver (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-						      OR_BUF * buf, char **ptr_varvals, int index, int offset_size,
-						      int header_size, int lob_create_flag)
-{
-  HEAP_ATTRVALUE *value;
-  DB_VALUE *dbvalue;
-  ATTR_ID attrid;
-  const PR_TYPE *pr_type;
-
-  value = &attr_info->values[index];
-  attrid = value->attrid;
-  pr_type = value->last_attrepr->domain->type;
-  if (pr_type == NULL)
-    {
-      return S_ERROR;
-    }
-
-  dbvalue = &value->dbvalue;
-
-  /* variable attribute                                             */
-  /*  1) Set the offset to this value in the variable offset table  */
-  /*  2) Set the value in the variable value portion of the disk    */
-  /*     object (Only if the value is bound)                        */
-
-  /* write the offset onto the variable offset table and remember   */
-  /* the current pointer to the variable offset table               */
-
-  if (value->do_increment != 0)
-    {
-      return S_ERROR;
-    }
-
-  buf->ptr = (char *) (OR_VAR_ELEMENT_PTR (buf->buffer, value->last_attrepr->location));
-
-  /* compute the variable offsets relative to the end of the header (beginning of variable table) */
-  if ((buf->ptr + offset_size) > buf->endptr)
-    {
-      return S_DOESNT_FIT;
-    }
-  else
-    {
-      or_put_offset_internal (buf, CAST_BUFLEN (*ptr_varvals - buf->buffer - header_size), offset_size);
-    }
-
-  if (dbvalue != NULL && db_value_is_null (dbvalue) != true)
-    {
-      /* now write the value and remember the current pointer */
-      /* to variable value array for the next element.        */
-      buf->ptr = *ptr_varvals;
-
-      if (lob_create_flag == LOB_FLAG_INCLUDE_LOB && value->state == HEAP_WRITTEN_ATTRVALUE
-	  && TP_IS_LOB_TYPE (pr_type->id))
-	{
-	  DB_ELO dest_elo, *elo_p;
-	  HFID hfid;
-	  char *save_meta_data, *new_meta_data;
-	  char lob_path_prefix[PATH_MAX];
-	  int ret;
-
-	  assert (db_value_type (dbvalue) == DB_TYPE_BLOB || db_value_type (dbvalue) == DB_TYPE_CLOB);
-
-	  elo_p = db_get_elo (dbvalue);
-
-	  if (elo_p == NULL)
-	    {
-	      /* nothing to do here */
-	      return S_SUCCESS;
-	    }
-
-	  if (heap_get_class_name (thread_p, &(attr_info->class_oid), &new_meta_data) != NO_ERROR
-	      || new_meta_data == NULL)
-	    {
-	      return S_ERROR;
-	    }
-
-	  heap_hfid_cache_get (thread_p, &attr_info->class_oid, &hfid, NULL, NULL);
-
-	  snprintf (lob_path_prefix, PATH_MAX, "%d%d%d%d", HFID_AS_ARGS (&hfid), attrid);
-
-	  save_meta_data = elo_p->meta_data;
-	  elo_p->meta_data = new_meta_data;
-	  ret = db_elo_copy_with_prefix (db_get_elo (dbvalue), lob_path_prefix, &dest_elo);
-	  free_and_init (elo_p->meta_data);
-	  elo_p->meta_data = save_meta_data;
-	  if (ret != NO_ERROR)
-	    {
-	      return S_ERROR;
-	    }
-
-	  /* The purpose of HEAP_WRITTEN_LOB_ATTRVALUE is to avoid reenter this branch. In the first pass,
-	   * this branch is entered and elo is copied. When BUFFER_OVERFLOW happens, we need avoid to copy
-	   * elo again. Otherwize it will generate 2 copies. */
-	  value->state = HEAP_WRITTEN_LOB_ATTRVALUE;
-
-	  pr_clear_value (dbvalue);
-	  db_make_elo (dbvalue, pr_type->id, &dest_elo);
-	  dbvalue->need_clear = true;
-	}
-
-      if (buf->ptr + pr_type->get_disk_size_of_value (dbvalue) > buf->endptr)
-	{
-	  return S_DOESNT_FIT;
-	}
-      else
-	{
-	  pr_type->data_writeval (buf, dbvalue);
-	  *ptr_varvals = buf->ptr;
-	}
-    }
-
-  return S_SUCCESS;
-}
-
-static SCAN_CODE
-heap_attrinfo_transform_columns_to_disk_develop_ver (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-						     OR_BUF * buf, std::set < int >*incremented_attrids,
-						     int offset_size, int header_size, size_t mvcc_extra,
-						     int lob_create_flag, size_t * record_size)
-// *INDENT-ON*
-{
-  char *bitmap_bound, *ptr_varvals;
-  SCAN_CODE status;
-  int i;
-
-  bitmap_bound = OR_GET_BOUND_BITS (buf->buffer, attr_info->last_classrepr->n_variable,
-				    attr_info->last_classrepr->fixed_length);
-  ptr_varvals = (bitmap_bound
-		 + OR_BOUND_BIT_BYTES (attr_info->last_classrepr->n_attributes
-				       - attr_info->last_classrepr->n_variable));
-
-  for (i = 0; i < attr_info->num_values; i++)
-    {
-      if (attr_info->values[i].last_attrepr->is_fixed != 0)
-	{
-	  status =
-	    heap_attrinfo_transform_fixed_to_disk (thread_p, attr_info, buf, i, incremented_attrids, bitmap_bound);
-	}
-      else
-	{
-	  status =
-	    heap_attrinfo_transform_variable_to_disk_develop_ver (thread_p, attr_info, buf, &ptr_varvals, i,
-								  offset_size, header_size, lob_create_flag);
-	}
-      if (status != S_SUCCESS)
-	{
-	  return status;
-	}
-    }
-
-  if (attr_info->last_classrepr->n_variable > 0)
-    {
-      /* the last element of the variable offset table points to the end of */
-      /* the object. The variable offset array starts with zero, so we can  */
-      /* just access n_variable...                                          */
-
-      /* write the offset to the end of the variable attributes table */
-      buf->ptr = ((char *) (OR_VAR_ELEMENT_PTR (buf->buffer, attr_info->last_classrepr->n_variable)));
-      if ((buf->ptr + offset_size) > buf->endptr)
-	{
-	  return S_DOESNT_FIT;
-	}
-      else
-	{
-	  const int end_of_vot_offset = CAST_BUFLEN (ptr_varvals - buf->buffer - header_size);
-	  or_put_offset_internal (buf, OR_SET_VAR_LAST_ELEMENT (end_of_vot_offset), offset_size);
-	}
-      buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
-    }
-
-  if (ptr_varvals + mvcc_extra > buf->endptr)
-    {
-      return S_DOESNT_FIT;
-    }
-
-  *record_size = ptr_varvals - buf->buffer;
-
-  return S_SUCCESS;
-}
-
-static int
-heap_attrinfo_get_record_payload_size_develop_ver (HEAP_CACHE_ATTRINFO * attr_info)
-{
-  HEAP_ATTRVALUE *value;
-  int size;
-  int i;
-
-  size = 0;
-  for (i = 0; i < attr_info->num_values; i++)
-    {
-      value = &attr_info->values[i];
-
-      if (value->last_attrepr->is_fixed != 0)
-	{
-	  size += tp_domain_disk_size (value->last_attrepr->domain);
-	}
-      else
-	{
-	  size += pr_data_writeval_disk_size (&value->dbvalue);
-	}
-    }
-
-  return size;
-}
-
-static size_t
-heap_attrinfo_determine_disksize_develop_ver (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class,
-					      size_t * offset_size_ptr)
-{
-  int payload_size, header_size;
-
-  /* calcuate the entire size of columns */
-  payload_size = heap_attrinfo_get_record_payload_size_develop_ver (attr_info);
-  header_size = heap_attrinfo_get_record_header_size (attr_info, payload_size, is_mvcc_class, offset_size_ptr);
-
-  return header_size + payload_size;
-}
-
-static SCAN_CODE
-heap_attrinfo_transform_header_to_disk_develop_ver (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-						    OR_BUF * buf, int offset_size, bool is_mvcc_class, bool is_update)
-{
-  unsigned int repid_bits;
-
-  /* store the representation of the class along with bound bit */
-  /* flag information                                           */
-
-  repid_bits = attr_info->last_classrepr->id;
-
-  /* Do we have fixed value attributes ? */
-  if ((attr_info->last_classrepr->n_attributes - attr_info->last_classrepr->n_variable) != 0)
-    {
-      repid_bits |= OR_BOUND_BIT_FLAG;
-    }
-
-  /* offset size */
-  OR_SET_VAR_OFFSET_SIZE (repid_bits, offset_size);
-
-  /* We must increase the current value by one so that clients      */
-  /* can detect the change in object. That is, clients will need to */
-  /* refetch the object.                                            */
-  attr_info->inst_chn++;
-
-  if (is_mvcc_class)
-    {
-      if (!is_update)
-	{
-	  repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
-	  if ((buf->ptr + OR_MVCC_INSERT_HEADER_SIZE) > buf->endptr)
-	    {
-	      return S_DOESNT_FIT;
-	    }
-	  else
-	    {
-	      or_put_int (buf, repid_bits);
-	      or_put_int (buf, 0);	/* CHN */
-	      or_put_bigint (buf, 0);	/* MVCC insert id */
-	    }
-	}
-      else
-	{
-	  LOG_LSA null_lsa = LSA_INITIALIZER;
-	  repid_bits |= ((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_MVCC_FLAG_SHIFT_BITS);
-	  if ((buf->ptr + OR_MVCC_INSERT_HEADER_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE) > buf->endptr)
-	    {
-	      return S_DOESNT_FIT;
-	    }
-	  else
-	    {
-	      or_put_int (buf, repid_bits);
-	      or_put_int (buf, 0);	/* CHN */
-	      or_put_bigint (buf, 0);	/* MVCC insert id */
-	      assert ((buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE) <= buf->endptr);
-	      or_put_data (buf, (char *) &null_lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);	/* prev version lsa */
-	    }
-	}
-    }
-  else
-    {
-      if ((buf->ptr + OR_NON_MVCC_HEADER_SIZE) > buf->endptr)
-	{
-	  return S_DOESNT_FIT;
-	}
-      else
-	{
-	  or_put_int (buf, repid_bits);
-	  or_put_int (buf, attr_info->inst_chn);
-	}
-    }
-
-  return S_SUCCESS;
-}
-
-static SCAN_CODE
-heap_attrinfo_transform_to_disk_internal_develop_ver (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-						      RECDES * old_recdes, record_descriptor * new_recdes,
-						      int lob_create_flag)
-{
-  OR_BUF buf;
-  size_t expected_size, mvcc_extra;
-  size_t record_size, header_size, offset_size;
-  SCAN_CODE status;
-  bool is_mvcc_class, is_update;
-  // *INDENT-OFF*
-  std::set<int> incremented_attrids;
-  // *INDENT-ON*
-
-  assert (new_recdes != NULL);
-
-  /* check to make sure the attr_info has been used, it should not be empty. */
-  if (attr_info->num_values == -1)
-    {
-      return S_ERROR;
-    }
-
-  /* get any of the values that have not been set/read */
-  if (heap_attrinfo_set_uninitialized (thread_p, &attr_info->inst_oid, old_recdes, attr_info) != NO_ERROR)
-    {
-      return S_ERROR;
-    }
-
-  /* a previous version of the record exists */
-  is_update = old_recdes != NULL;
-
-  /* start transforming the dbvalues into disk values for the object */
-  is_mvcc_class = !mvcc_is_mvcc_disabled_class (&(attr_info->class_oid));
-
-  /* determine the size */
-  expected_size = heap_attrinfo_determine_disksize_develop_ver (attr_info, is_mvcc_class, &offset_size);
-
-  mvcc_extra = 0;
-  header_size = OR_NON_MVCC_HEADER_SIZE;
-  if (is_mvcc_class)
-    {
-      header_size = OR_MVCC_INSERT_HEADER_SIZE;
-      mvcc_extra = OR_MVCC_DELETE_ID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE;
-
-      /* update case, reserve space for previous version LSA. */
-      if (is_update)
-	{
-	  header_size = OR_MVCC_INSERT_HEADER_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE;
-	  mvcc_extra = OR_MVCC_DELETE_ID_SIZE;
-	}
-      expected_size += OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE;
-    }
-
-  record_size = 0;
-  do
-    {
-      /* build record buffer */
-      new_recdes->resize_buffer (expected_size);
-      or_init (&buf, new_recdes->get_data_for_modify (), (int) expected_size);
-
-      /* build header */
-      status =
-	heap_attrinfo_transform_header_to_disk_develop_ver (thread_p, attr_info, &buf, offset_size, is_mvcc_class,
-							    is_update);
-      if (status == S_DOESNT_FIT)
-	{
-	  expected_size += DB_PAGESIZE;
-	  continue;
-	}
-
-      assert (status == S_SUCCESS);
-
-      /* build columns */
-      status =
-	heap_attrinfo_transform_columns_to_disk_develop_ver (thread_p, attr_info, &buf, &incremented_attrids,
-							     offset_size, header_size, mvcc_extra, lob_create_flag,
-							     &record_size);
-      if (status == S_DOESNT_FIT)
-	{
-	  expected_size += DB_PAGESIZE;
-	}
-    }
-  while (status == S_DOESNT_FIT);
-
-  if (status == S_SUCCESS)
-    {
-      /* record the length of the object */
-      new_recdes->set_record_length (record_size);
-    }
-
-  return status;
-}
-
-SCAN_CODE
-heap_attrinfo_transform_to_disk_develop_ver (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-					     RECDES * old_recdes, record_descriptor * new_recdes)
-{
-  return heap_attrinfo_transform_to_disk_internal_develop_ver (thread_p, attr_info, old_recdes, new_recdes,
-							       LOB_FLAG_INCLUDE_LOB);
-}
 
 /*
  * heap_attrinfo_start_refoids () - Initialize an attribute information structure
@@ -26548,6 +26328,23 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
   return scan;
 }
 
+SCAN_CODE
+heap_get_visible_version_raw_oos (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
+				  HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
+{
+  SCAN_CODE scan = S_SUCCESS;
+  HEAP_GET_CONTEXT context;
+
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+  context.expand_oos = false;
+
+  scan = heap_get_visible_version_internal (thread_p, &context, false);
+
+  heap_clean_get_context (thread_p, &context);
+
+  return scan;
+}
+
 /*
 * heap_scan_get_visible_version () - get visible version, mvcc style when snapshot provided, otherwise directly from heap
 *
@@ -26570,28 +26367,34 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
 *		   it was not updated.
 *  Note: this function should be used for heap scan;
 */
-SCAN_CODE
-heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
-			       RECDES * peeked_recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
+static SCAN_CODE
+heap_scan_get_visible_version_impl (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
+				    RECDES * peeked_recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
+				    bool expand_oos)
 {
   SCAN_CODE scan = S_SUCCESS;
   HEAP_GET_CONTEXT context;
 
   /*
-   * The process below should be within heap_get_visible_version_internal(), 
-   * but it's an added shortcut for performance improvement. Under certain specific conditions, 
-   * it allows for skipping the process of initializing and cleaning the context and the 
-   * heap_get_visible_version_internal() function. This brings the current CUBRID's heap scan 
-   * performance closer to the heap scan performance of CUBRID before the introduction of MVCC. 
+   * The process below should be within heap_get_visible_version_internal(),
+   * but it's an added shortcut for performance improvement. Under certain specific conditions,
+   * it allows for skipping the process of initializing and cleaning the context and the
+   * heap_get_visible_version_internal() function. This brings the current CUBRID's heap scan
+   * performance closer to the heap scan performance of CUBRID before the introduction of MVCC.
    * Following is the explanation for the code below.
    * Before fetching a record, check peeked_recdes to see if the record type is REC_HOME,
-   * and it's being PEEKed (meaning there's no need to COPY the record data to a new space). 
+   * and it's being PEEKed (meaning there's no need to COPY the record data to a new space).
    * In this case, we can use peeked_recdes as the record without executing the
    * heap_get_visible_version_internal() function. If the conditions above are not met,
-   * or the mvcc_snapshot does not satisfy, then carry out the necessary steps through 
+   * or the mvcc_snapshot does not satisfy, then carry out the necessary steps through
    * the heap_get_visible_version_internal() function.
+   *
+   * Note: this shortcut returns peeked_recdes as-is, preserving any inline OOS OID slots.
+   * Callers that request OOS expansion (expand_oos == true) must not take this shortcut for
+   * records that contain OOS; they fall through to the normal path which runs the expansion.
    */
-  if (peeked_recdes->type == REC_HOME && ispeeking == PEEK)
+  if (peeked_recdes->type == REC_HOME && ispeeking == PEEK
+      && (!expand_oos || !heap_recdes_contains_oos (peeked_recdes)))
     {
       MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
 
@@ -26637,12 +26440,29 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
     }
 
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+  context.expand_oos = expand_oos;
 
   scan = heap_get_visible_version_internal (thread_p, &context, true);
 
   heap_clean_get_context (thread_p, &context);
 
   return scan;
+}
+
+SCAN_CODE
+heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
+			       RECDES * peeked_recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
+{
+  return heap_scan_get_visible_version_impl (thread_p, oid, class_oid, recdes, peeked_recdes, scan_cache, ispeeking,
+					     old_chn, true);
+}
+
+SCAN_CODE
+heap_scan_get_visible_version_raw_oos (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
+				       RECDES * peeked_recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
+{
+  return heap_scan_get_visible_version_impl (thread_p, oid, class_oid, recdes, peeked_recdes, scan_cache, ispeeking,
+					     old_chn, false);
 }
 
 /*
@@ -27049,6 +26869,7 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
   context->scan_cache = scan_cache;
   context->ispeeking = ispeeking;
   context->old_chn = old_chn;
+  context->expand_oos = true;
   if (scan_cache != NULL && scan_cache->page_latch == X_LOCK)
     {
       context->latch_mode = PGBUF_LATCH_WRITE;
