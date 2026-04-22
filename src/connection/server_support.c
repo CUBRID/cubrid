@@ -1374,8 +1374,9 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
 
       task_p->get_conn ().start_request ();
-      css_send_request_error_and_abort (task_p->get_conn (), 0, ER_THREAD_STACK);
-      css_shutdown_conn (&task_p->get_conn ());
+      css_send_request_error_and_abort (task_p->get_conn (), 1, ER_THREAD_STACK);
+
+      css_end_server_request (&task_p->get_conn ());
 
       task_p->retire ();
   };
@@ -1387,7 +1388,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
 
-      css_shutdown_conn (&task_p->get_conn ());
+      (*css_Connection_error_handler)(&cubthread::get_entry (), &task_p->get_conn ());
 
       task_p->retire ();
   };
