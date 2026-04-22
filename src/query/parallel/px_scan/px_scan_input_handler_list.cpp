@@ -181,11 +181,11 @@ namespace parallel_scan
 		  {
 		    if (bit64_is_set (m_tl_ftab.page_bitmap, (int) m_tl_pgoffset))
 		      {
-		        found = true;
-		        *vpid = m_tl_vpid;
-		        m_tl_pgoffset++;
-		        m_tl_vpid.pageid++;
-		        break;
+			found = true;
+			*vpid = m_tl_vpid;
+			m_tl_pgoffset++;
+			m_tl_vpid.pageid++;
+			break;
 		      }
 		  }
 
