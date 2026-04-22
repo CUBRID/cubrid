@@ -253,7 +253,12 @@ CUB_THREAD_LOCAL MOP sm_Root_class_mop = NULL;
 const char *sm_Root_class_name = ROOTCLASS_NAME;
 
 /* Heap file identifier for the root class */
+#if defined(CS_MODE)
+CUB_THREAD_LOCAL HFID *sm_Root_class_hfid = NULL;
+#else
 CUB_THREAD_LOCAL HFID *sm_Root_class_hfid = &sm_Root_class.header.ch_heap;
+#endif
+
 
 static CUB_THREAD_LOCAL unsigned int local_schema_version = 0;
 static CUB_THREAD_LOCAL unsigned int global_schema_version = 0;

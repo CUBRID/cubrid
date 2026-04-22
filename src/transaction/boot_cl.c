@@ -133,10 +133,6 @@ struct
 NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT, TRAN_UNKNOWN_ISOLATION};
 #endif
 
-#if defined(MULTI_CONN_TO_A_SERVER)
-bool gv_share_same_transaction_mode = false;
-#endif
-
 static CUB_THREAD_LOCAL BOOT_SERVER_CREDENTIAL boot_Server_credential = {
   /* db_full_name */ NULL, /* host_name */ NULL, /* lob_path */ NULL,
   /* process_id */ -1,
@@ -1362,11 +1358,11 @@ error:
 
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 int
-boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
+boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential, bool share_tran_id)
 {
   int error_code;
 
-  if (gv_share_same_transaction_mode)
+  if (share_tran_id)
     {
       error_code = net_client_sub_init ();
       if (error_code == NO_ERROR)
@@ -1558,18 +1554,18 @@ error:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
     }
 
-  boot_finalize_client_sub ();
+  boot_finalize_client_sub (share_tran_id);
   return error_code;
 }
 
 void
-boot_finalize_client_sub ()
+boot_finalize_client_sub (bool share_tran_id)
 {
   //usleep (1000000);           // ctshim, 디버깅용
 
   net_client_sub_final ();
 
-  if (gv_share_same_transaction_mode)
+  if (share_tran_id)
     {
       boot_client (NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT, TRAN_DEFAULT_ISOLATION_LEVEL ());
       return;
