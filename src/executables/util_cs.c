@@ -3620,6 +3620,9 @@ crash_handler (int sig_no)
       return;
     }
 
+#if defined (CS_MODE)
+  la_dump_runtime_state_for_signal (sig_no);
+#endif /* CS_MODE */
   er_print_crash_callstack (sig_no);
 }
 

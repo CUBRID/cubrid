@@ -209,6 +209,19 @@ struct la_cache_pb
   LA_CACHE_BUFFER **log_buffer;	/* buffer pool */
   int num_buffers;		/* # of buffers */
   LA_CACHE_BUFFER_AREA *buffer_area;	/* contignous area of buffers */
+  pthread_mutex_t mutex;	/* shared page cache/hash protection */
+  UINT64 total_access_count;
+  UINT64 cache_hit_count;
+  UINT64 cache_miss_count;
+  UINT64 contention_count;
+  UINT64 wait_usec_total;
+  UINT64 wait_usec_max;
+  UINT64 reader_access_count;
+  UINT64 reader_contention_count;
+  UINT64 reader_wait_usec_total;
+  UINT64 worker_access_count[LA_APPLY_WORKER_COUNT];
+  UINT64 worker_contention_count[LA_APPLY_WORKER_COUNT];
+  UINT64 worker_wait_usec_total[LA_APPLY_WORKER_COUNT];
 };
 
 typedef struct la_repl_filter LA_REPL_FILTER;
@@ -553,6 +566,7 @@ static void la_shutdown_by_signal (void);
 #else /* !WINDOWS */
 static void la_shutdown_by_signal (int);
 #endif /* !WINDOWS */
+static int la_dump_runtime_state_to_buffer (char *buffer, int buffer_size, const char *reason, int sig_no);
 static void la_init_ha_apply_info (LA_HA_APPLY_INFO * ha_apply_info);
 
 static LOG_PHY_PAGEID la_log_phypageid (LOG_PAGEID logical_pageid);
@@ -569,6 +583,10 @@ static LA_CACHE_BUFFER *la_cache_buffer_replace (LA_CACHE_PB * cache_pb, LOG_PAG
 						 int buffer_size);
 static LA_CACHE_BUFFER *la_get_page_buffer (LOG_PAGEID pageid);
 static LOG_PAGE *la_get_page (LOG_PAGEID pageid);
+static int la_get_page_buffer_owner_index (void);
+static void la_cache_pb_record_access (LA_CACHE_PB * cache_pb, int owner_index, bool had_contention, UINT64 wait_usec,
+				       bool cache_hit);
+static void la_log_cache_pb_stats (LA_CACHE_PB * cache_pb, const char *reason);
 static void la_release_page_buffer (LOG_PAGEID pageid);
 static void la_release_all_page_buffers (LOG_PAGEID except_pageid);
 static void la_invalidate_page_buffer (LA_CACHE_BUFFER * cache_buffer);
@@ -749,8 +767,118 @@ la_shutdown_by_signal (void)
 la_shutdown_by_signal (int ignore)
 #endif				/* !WINDOWS */
 {
+  char buffer[2048];
+  int len;
+
+  len = la_dump_runtime_state_to_buffer (buffer, sizeof (buffer), "shutdown_by_signal", ignore);
+  if (len > 0)
+    {
+      er_log_debug (ARG_FILE_LINE, "%s", buffer);
+    }
+
   la_applier_need_shutdown = true;
   la_applier_shutdown_by_signal = true;
+}
+
+static int
+la_dump_runtime_state_to_buffer (char *buffer, int buffer_size, const char *reason, int sig_no)
+{
+  int len = 0;
+  int i, active_tran_count = 0, commit_queue_count = 0;
+  LA_CACHE_PB *cache_pb = la_Info.cache_pb;
+
+  if (buffer == NULL || buffer_size <= 0)
+    {
+      return 0;
+    }
+
+  for (i = 0; i < la_Info.cur_repl; i++)
+    {
+      if (la_Info.repl_lists != NULL && la_Info.repl_lists[i] != NULL && la_Info.repl_lists[i]->tranid > 0)
+	{
+	  active_tran_count++;
+	}
+    }
+
+  for (LA_COMMIT *commit = la_Info.commit_head; commit != NULL; commit = commit->next)
+    {
+      commit_queue_count++;
+    }
+
+  len += snprintf (buffer + len, MAX (buffer_size - len, 0),
+		   "applylogdb runtime state reason=%s sig=%d pid=%d db=%s host=%s apply_state=%s shutdown=%d "
+		   "signal_shutdown=%d committed=%lld|%d committed_rep=%lld|%d final=%lld|%d required=%lld|%d "
+		   "append=%lld|%d eof=%lld|%d active_tran=%d commit_queue=%d dispatch_queue=%d total_rows=%d "
+		   "fail=%lu unflushed=%d required_changed=%d\n",
+		   reason != NULL ? reason : "unknown", sig_no, (int) getpid (),
+		   la_slave_db_name[0] != '\0' ? la_slave_db_name : "(unset)",
+		   la_peer_host[0] != '\0' ? la_peer_host : "(unset)",
+		   css_ha_applier_state_string ((HA_LOG_APPLIER_STATE) la_Info.apply_state), (int) la_applier_need_shutdown,
+		   (int) la_applier_shutdown_by_signal, (long long int) la_Info.committed_lsa.pageid,
+		   (int) la_Info.committed_lsa.offset, (long long int) la_Info.committed_rep_lsa.pageid,
+		   (int) la_Info.committed_rep_lsa.offset, (long long int) la_Info.final_lsa.pageid,
+		   (int) la_Info.final_lsa.offset, (long long int) la_Info.required_lsa.pageid,
+		   (int) la_Info.required_lsa.offset, (long long int) la_Info.append_lsa.pageid,
+		   (int) la_Info.append_lsa.offset, (long long int) la_Info.eof_lsa.pageid, (int) la_Info.eof_lsa.offset,
+		   active_tran_count, commit_queue_count, la_Dispatch_order.count, la_Info.total_rows, la_Info.fail_counter,
+		   la_Info.num_unflushed, (int) la_Info.required_lsa_changed);
+
+  for (i = 0; i < LA_APPLY_WORKER_COUNT && len < buffer_size; i++)
+    {
+      LA_APPLY_WORKER *worker = &la_apply_Workers[i];
+
+      len += snprintf (buffer + len, MAX (buffer_size - len, 0),
+		       "applylogdb worker[%d] tid=%lu initialized=%d started=%d busy=%d shutdown=%d task_q=%d "
+		       "result_q=%d\n", i, (unsigned long) worker->tid, (int) worker->initialized,
+			       (int) worker->started, (int) worker->busy,
+			       (int) worker->shutdown, worker->queue.count, worker->result_queue.count);
+    }
+
+  if (cache_pb != NULL && len < buffer_size)
+    {
+      len += snprintf (buffer + len, MAX (buffer_size - len, 0),
+		       "applylogdb cache_pb total=%llu hit=%llu miss=%llu contention=%llu wait_usec_total=%llu "
+		       "wait_usec_max=%llu reader_access=%llu reader_contention=%llu reader_wait_usec=%llu\n",
+		       (unsigned long long) cache_pb->total_access_count,
+		       (unsigned long long) cache_pb->cache_hit_count,
+		       (unsigned long long) cache_pb->cache_miss_count,
+		       (unsigned long long) cache_pb->contention_count,
+		       (unsigned long long) cache_pb->wait_usec_total,
+		       (unsigned long long) cache_pb->wait_usec_max,
+		       (unsigned long long) cache_pb->reader_access_count,
+		       (unsigned long long) cache_pb->reader_contention_count,
+		       (unsigned long long) cache_pb->reader_wait_usec_total);
+    }
+
+  for (i = 0; cache_pb != NULL && i < LA_APPLY_WORKER_COUNT && len < buffer_size; i++)
+    {
+      len += snprintf (buffer + len, MAX (buffer_size - len, 0),
+		       "applylogdb cache_pb worker[%d] access=%llu contention=%llu wait_usec=%llu\n", i,
+		       (unsigned long long) cache_pb->worker_access_count[i],
+		       (unsigned long long) cache_pb->worker_contention_count[i],
+		       (unsigned long long) cache_pb->worker_wait_usec_total[i]);
+    }
+
+  if (len >= buffer_size)
+    {
+      len = buffer_size - 1;
+      buffer[len] = '\0';
+    }
+
+  return len;
+}
+
+void
+la_dump_runtime_state_for_signal (int sig_no)
+{
+  char buffer[2048];
+  int len;
+
+  len = la_dump_runtime_state_to_buffer (buffer, sizeof (buffer), "fatal_signal", sig_no);
+  if (len > 0)
+    {
+      (void) write (STDERR_FILENO, buffer, len);
+    }
 }
 
 bool
@@ -2311,11 +2439,114 @@ la_cache_buffer_replace (LA_CACHE_PB * cache_pb, LOG_PAGEID pageid, int io_pages
   return NULL;
 }
 
+static int
+la_get_page_buffer_owner_index (void)
+{
+  pthread_t self = pthread_self ();
+  int i;
+
+  for (i = 0; i < LA_APPLY_WORKER_COUNT; i++)
+    {
+      if (la_apply_Workers[i].started && pthread_equal (self, la_apply_Workers[i].tid))
+	{
+	  return i;
+	}
+    }
+
+  return -1;
+}
+
+static void
+la_cache_pb_record_access (LA_CACHE_PB * cache_pb, int owner_index, bool had_contention, UINT64 wait_usec, bool cache_hit)
+{
+  cache_pb->total_access_count++;
+  if (cache_hit)
+    {
+      cache_pb->cache_hit_count++;
+    }
+  else
+    {
+      cache_pb->cache_miss_count++;
+    }
+
+  if (had_contention)
+    {
+      cache_pb->contention_count++;
+      cache_pb->wait_usec_total += wait_usec;
+      cache_pb->wait_usec_max = MAX (cache_pb->wait_usec_max, wait_usec);
+    }
+
+  if (owner_index < 0)
+    {
+      cache_pb->reader_access_count++;
+      if (had_contention)
+	{
+	  cache_pb->reader_contention_count++;
+	  cache_pb->reader_wait_usec_total += wait_usec;
+	}
+    }
+  else
+    {
+      cache_pb->worker_access_count[owner_index]++;
+      if (had_contention)
+	{
+	  cache_pb->worker_contention_count[owner_index]++;
+	  cache_pb->worker_wait_usec_total[owner_index] += wait_usec;
+	}
+    }
+}
+
+static void
+la_log_cache_pb_stats (LA_CACHE_PB * cache_pb, const char *reason)
+{
+  int i;
+
+  if (cache_pb == NULL)
+    {
+      return;
+    }
+
+  er_log_debug (ARG_FILE_LINE,
+		"cache_pb stats reason=%s total=%llu hit=%llu miss=%llu contention=%llu wait_usec_total=%llu "
+		"wait_usec_max=%llu reader_access=%llu reader_contention=%llu reader_wait_usec=%llu\n",
+		reason != NULL ? reason : "unspecified", (unsigned long long) cache_pb->total_access_count,
+		(unsigned long long) cache_pb->cache_hit_count, (unsigned long long) cache_pb->cache_miss_count,
+		(unsigned long long) cache_pb->contention_count, (unsigned long long) cache_pb->wait_usec_total,
+		(unsigned long long) cache_pb->wait_usec_max, (unsigned long long) cache_pb->reader_access_count,
+		(unsigned long long) cache_pb->reader_contention_count,
+		(unsigned long long) cache_pb->reader_wait_usec_total);
+
+  for (i = 0; i < LA_APPLY_WORKER_COUNT; i++)
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "cache_pb stats worker[%d] access=%llu contention=%llu wait_usec=%llu\n", i,
+		    (unsigned long long) cache_pb->worker_access_count[i],
+		    (unsigned long long) cache_pb->worker_contention_count[i],
+		    (unsigned long long) cache_pb->worker_wait_usec_total[i]);
+    }
+}
+
 static LA_CACHE_BUFFER *
 la_get_page_buffer (LOG_PAGEID pageid)
 {
   LA_CACHE_PB *cache_pb = la_Info.cache_pb;
   LA_CACHE_BUFFER *cache_buffer = NULL;
+  int owner_index = -1;
+  bool had_contention = false;
+  bool cache_hit = false;
+  UINT64 wait_usec = 0;
+  struct timeval start_tv, end_tv;
+
+  owner_index = la_get_page_buffer_owner_index ();
+
+  gettimeofday (&start_tv, NULL);
+  if (pthread_mutex_trylock (&cache_pb->mutex) != 0)
+    {
+      had_contention = true;
+      pthread_mutex_lock (&cache_pb->mutex);
+    }
+  gettimeofday (&end_tv, NULL);
+  wait_usec = (UINT64) (end_tv.tv_sec - start_tv.tv_sec) * 1000000ULL + (UINT64) (end_tv.tv_usec - start_tv.tv_usec);
 
   /* find the target page in the cache buffer */
   cache_buffer = (LA_CACHE_BUFFER *) mht_get (cache_pb->hash_table, (void *) &pageid);
@@ -2327,6 +2558,8 @@ la_get_page_buffer (LOG_PAGEID pageid)
 
       if (cache_buffer == NULL || cache_buffer->logpage.hdr.logical_pageid != pageid)
 	{
+	  la_cache_pb_record_access (cache_pb, owner_index, had_contention, wait_usec, false);
+	  pthread_mutex_unlock (&cache_pb->mutex);
 	  return NULL;
 	}
 
@@ -2334,19 +2567,26 @@ la_get_page_buffer (LOG_PAGEID pageid)
 
       if (mht_put (cache_pb->hash_table, &cache_buffer->pageid, cache_buffer) == NULL)
 	{
+	  la_cache_pb_record_access (cache_pb, owner_index, had_contention, wait_usec, false);
+	  pthread_mutex_unlock (&cache_pb->mutex);
 	  return NULL;
 	}
     }
   else
     {
+      cache_hit = true;
       if (cache_buffer->logpage.hdr.logical_pageid != pageid)
 	{
 	  (void) mht_rem (cache_pb->hash_table, &cache_buffer->pageid, NULL, NULL);
+	  la_cache_pb_record_access (cache_pb, owner_index, had_contention, wait_usec, false);
+	  pthread_mutex_unlock (&cache_pb->mutex);
 	  return NULL;
 	}
     }
 
   cache_buffer->fix_count++;
+  la_cache_pb_record_access (cache_pb, owner_index, had_contention, wait_usec, cache_hit);
+  pthread_mutex_unlock (&cache_pb->mutex);
   return cache_buffer;
 }
 
@@ -2384,6 +2624,7 @@ la_release_page_buffer (LOG_PAGEID pageid)
   LA_CACHE_PB *cache_pb = la_Info.cache_pb;
   LA_CACHE_BUFFER *cache_buffer = NULL;
 
+  pthread_mutex_lock (&cache_pb->mutex);
   cache_buffer = (LA_CACHE_BUFFER *) mht_get (cache_pb->hash_table, (void *) &pageid);
   if (cache_buffer != NULL)
     {
@@ -2393,6 +2634,7 @@ la_release_page_buffer (LOG_PAGEID pageid)
 	}
       cache_buffer->recently_free = true;
     }
+  pthread_mutex_unlock (&cache_pb->mutex);
 }
 
 /*
@@ -2408,6 +2650,7 @@ la_release_all_page_buffers (LOG_PAGEID except_pageid)
   LA_CACHE_PB *cache_pb = la_Info.cache_pb;
   LA_CACHE_BUFFER *cache_buffer = NULL;
 
+  pthread_mutex_lock (&cache_pb->mutex);
   /* find unfix or unused buffer */
   for (i = 0; i < cache_pb->num_buffers; i++)
     {
@@ -2423,6 +2666,7 @@ la_release_all_page_buffers (LOG_PAGEID except_pageid)
 	  cache_buffer->recently_free = true;
 	}
     }
+  pthread_mutex_unlock (&cache_pb->mutex);
 }
 
 /*
@@ -2442,6 +2686,7 @@ la_invalidate_page_buffer (LA_CACHE_BUFFER * cache_buffer)
       return;
     }
 
+  pthread_mutex_lock (&cache_pb->mutex);
   if (cache_buffer->pageid != 0)
     {
       (void) mht_rem (cache_pb->hash_table, &cache_buffer->pageid, NULL, NULL);
@@ -2449,6 +2694,7 @@ la_invalidate_page_buffer (LA_CACHE_BUFFER * cache_buffer)
   cache_buffer->fix_count = 0;
   cache_buffer->recently_free = false;
   cache_buffer->pageid = 0;
+  pthread_mutex_unlock (&cache_pb->mutex);
 }
 
 static void
@@ -2458,6 +2704,7 @@ la_decache_page_buffers (LOG_PAGEID from, LOG_PAGEID to)
   LA_CACHE_PB *cache_pb = la_Info.cache_pb;
   LA_CACHE_BUFFER *cache_buffer = NULL;
 
+  pthread_mutex_lock (&cache_pb->mutex);
   for (i = 0; i < cache_pb->num_buffers; i++)
     {
       cache_buffer = cache_pb->log_buffer[i];
@@ -2471,10 +2718,11 @@ la_decache_page_buffers (LOG_PAGEID from, LOG_PAGEID to)
       (void) mht_rem (cache_pb->hash_table, &cache_buffer->pageid, NULL, NULL);
 
       cache_buffer->fix_count = 0;
-      cache_buffer->recently_free = false;
-      cache_buffer->pageid = 0;
-    }
+	      cache_buffer->recently_free = false;
+	      cache_buffer->pageid = 0;
+	    }
 
+  pthread_mutex_unlock (&cache_pb->mutex);
   return;
 }
 
@@ -3509,6 +3757,19 @@ la_init_cache_pb (void)
   cache_pb->log_buffer = NULL;
   cache_pb->num_buffers = 0;
   cache_pb->buffer_area = NULL;
+  pthread_mutex_init (&cache_pb->mutex, NULL);
+  cache_pb->total_access_count = 0;
+  cache_pb->cache_hit_count = 0;
+  cache_pb->cache_miss_count = 0;
+  cache_pb->contention_count = 0;
+  cache_pb->wait_usec_total = 0;
+  cache_pb->wait_usec_max = 0;
+  cache_pb->reader_access_count = 0;
+  cache_pb->reader_contention_count = 0;
+  cache_pb->reader_wait_usec_total = 0;
+  memset (cache_pb->worker_access_count, 0, sizeof (cache_pb->worker_access_count));
+  memset (cache_pb->worker_contention_count, 0, sizeof (cache_pb->worker_contention_count));
+  memset (cache_pb->worker_wait_usec_total, 0, sizeof (cache_pb->worker_wait_usec_total));
 
   return (cache_pb);
 }
@@ -6916,7 +7177,7 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, int rect
       error = NO_ERROR;
 
       /* la_release_all_page_buffers 는 리더 메인 루프가 주기적으로 수행한다.
-       * cache_pb 는 리더 소유 자원이므로 워커에서는 건드리지 않는다. */
+       * 다만 page cache 자체는 reader/worker가 함께 참조하므로 cache_pb->mutex 로 보호한다. */
 
       if (LSA_GT (&item->lsa, &la_Info.last_committed_rep_lsa) && la_need_filter_out (item) == false
 	  && la_is_supported_poc_item (item))
@@ -8187,6 +8448,8 @@ la_shutdown (void)
 
   if (la_Info.cache_pb != NULL)
     {
+      la_log_cache_pb_stats (la_Info.cache_pb, "shutdown");
+
       if (la_Info.cache_pb->buffer_area != NULL)
 	{
 	  free_and_init (la_Info.cache_pb->buffer_area);
@@ -8202,6 +8465,8 @@ la_shutdown (void)
 	  mht_destroy (la_Info.cache_pb->hash_table);
 	  la_Info.cache_pb->hash_table = NULL;
 	}
+
+      pthread_mutex_destroy (&la_Info.cache_pb->mutex);
 
       free_and_init (la_Info.cache_pb);
     }
@@ -9401,48 +9666,48 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	  break;
 	}
 
-      /* start loop for apply */
-      while (!LSA_ISNULL (&la_Info.final_lsa) && la_applier_need_shutdown == false)
-	{
-	  error = la_collect_apply_results ();
-	  if (error == ER_NET_CANT_CONNECT_SERVER)
-	    {
-	      la_shutdown ();
-	      return error;
-	    }
-	  else if (error == ER_HA_LA_EXCEED_MAX_MEM_SIZE)
-	    {
-	      la_applier_need_shutdown = true;
-	      break;
-	    }
-	  else if (LA_IS_FLUSH_ERROR (error))
-	    {
-	      la_shutdown ();
-	      return error;
-	    }
-	  else if (error == ER_TDE_CIPHER_IS_NOT_LOADED)
-	    {
-	      la_applier_need_shutdown = true;
-	      break;
-	    }
-	  else if (error != NO_ERROR)
-	    {
-	      la_applier_need_shutdown = true;
-	      break;
-	    }
+	      /* start loop for apply */
+	      while (!LSA_ISNULL (&la_Info.final_lsa) && la_applier_need_shutdown == false)
+		{
+		  error = la_collect_apply_results ();
+		  if (error == ER_NET_CANT_CONNECT_SERVER)
+		    {
+		      la_shutdown ();
+		      return error;
+		    }
+		  else if (error == ER_HA_LA_EXCEED_MAX_MEM_SIZE)
+		    {
+		      la_applier_need_shutdown = true;
+		      break;
+		    }
+		  else if (LA_IS_FLUSH_ERROR (error))
+		    {
+		      la_shutdown ();
+		      return error;
+		    }
+		  else if (error == ER_TDE_CIPHER_IS_NOT_LOADED)
+		    {
+		      la_applier_need_shutdown = true;
+		      break;
+		    }
+		  else if (error != NO_ERROR)
+		    {
+		      la_applier_need_shutdown = true;
+		      break;
+		    }
 
-	  /* release all page buffers */
-	  la_release_all_page_buffers (NULL_PAGEID);
+		  /* release all page buffers */
+		  la_release_all_page_buffers (NULL_PAGEID);
 
-	  /* we should fetch final log page from disk not cache buffer */
-	  la_decache_page_buffers (la_Info.final_lsa.pageid, LOGPAGEID_MAX);
+		  /* we should fetch final log page from disk not cache buffer */
+		  la_decache_page_buffers (la_Info.final_lsa.pageid, LOGPAGEID_MAX);
 
-	  error = check_reinit_copylog ();
-	  if (error != NO_ERROR)
-	    {
-	      la_applier_need_shutdown = true;
-	      break;
-	    }
+		  error = check_reinit_copylog ();
+		  if (error != NO_ERROR)
+		    {
+		      la_applier_need_shutdown = true;
+		      break;
+		    }
 
 	  if (last_nxarv_num == 0)
 	    {
@@ -9810,7 +10075,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	      usleep (100 * 1000);
 	      continue;
 	    }
-	}			/* while (!LSA_ISNULL (&la_Info.final_lsa) && la_applier_need_shutdown == false) */
+	}		/* while (!LSA_ISNULL (&la_Info.final_lsa) && la_applier_need_shutdown == false) */
 
       error = la_collect_apply_results ();
       if (error != NO_ERROR)
