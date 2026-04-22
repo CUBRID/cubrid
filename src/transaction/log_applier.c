@@ -568,6 +568,12 @@ static LA_APPLY_WORKER la_apply_Workers[LA_APPLY_WORKER_COUNT];
 /* 디스패치 순서 FIFO. 리더 전용. */
 static LA_DISPATCH_ORDER la_Dispatch_order;
 static pthread_mutex_t la_sql_compile_mutex = PTHREAD_MUTEX_INITIALIZER;
+/* Serializes per-worker client context bring-up (net_client_sub_init,
+ * boot_register_client, ws_init, sm_init, au_start, tr_init, ...).
+ * Several of those touch process-wide client globals whose CS-mode
+ * synchronization is no-op'd; without this mutex, N workers starting
+ * concurrently race on e.g. area_List and corrupt the heap. */
+static pthread_mutex_t la_worker_init_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 #if defined (WINDOWS)
 static void la_shutdown_by_signal (void);
@@ -1401,9 +1407,11 @@ la_apply_worker_end_client_context (LA_APPLY_WORKER_SESSION * session)
 static int
 la_apply_worker_start_session (LA_APPLY_WORKER_SESSION * session)
 {
-#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-  int error;
+  int error = NO_ERROR;
 
+  pthread_mutex_lock (&la_worker_init_mutex);
+
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
   memset (session, 0, sizeof (*session));
   la_init_worker_server_credential (&session->server_credential);
 
@@ -1413,7 +1421,7 @@ la_apply_worker_start_session (LA_APPLY_WORKER_SESSION * session)
   error = net_client_sub_init ();
   if (error != NO_ERROR)
     {
-      return error;
+      goto out;
     }
 
   session->css_started = true;
@@ -1423,7 +1431,7 @@ la_apply_worker_start_session (LA_APPLY_WORKER_SESSION * session)
     {
       net_client_sub_final ();
       session->css_started = false;
-      return error;
+      goto out;
     }
 
   boot_set_server_session_key (session->server_credential.server_session_key);
@@ -1434,13 +1442,15 @@ la_apply_worker_start_session (LA_APPLY_WORKER_SESSION * session)
       la_apply_worker_unregister_client (session);
       net_client_sub_final ();
       session->css_started = false;
-      return error;
+      goto out;
     }
 #endif
 
   __gv_loc_repl.ws_init_repl_objs ();
 
-  return NO_ERROR;
+out:
+  pthread_mutex_unlock (&la_worker_init_mutex);
+  return error;
 }
 
 static void
