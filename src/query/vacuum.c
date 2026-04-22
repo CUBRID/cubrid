@@ -4788,7 +4788,7 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 	  assert (false);
 	  vacuum_er_log_error (VACUUM_ER_LOG_VACUUM_DATA, "%s", "Finished blocks not found in vacuum data!!!!");
 	  vacuum_unfix_data_page (thread_p, data_page);
-	  return index;
+	  return n_finished_blocks;
 	}
 
       prev_data_page = data_page;
@@ -4798,7 +4798,7 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 	{
 	  assert_release (false);
 	  vacuum_unfix_data_page (thread_p, prev_data_page);
-	  return index;
+	  return n_finished_blocks;
 	}
       page_start_index = index;
       assert (data_page->index_unvacuumed >= 0);
@@ -4816,7 +4816,7 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
   vacuum_verify_vacuum_data_page_fix_count (thread_p);
 #endif /* !NDEBUG */
 
-  return index;
+  return n_finished_blocks;
 #undef TEMP_BUFFER_SIZE
 }
 
