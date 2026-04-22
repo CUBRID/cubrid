@@ -100,7 +100,7 @@
 #define LA_QUERY_BUF_SIZE                       2048
 
 #define LA_MAX_REPL_ITEMS                       1000
-#define LA_APPLY_WORKER_COUNT                   2
+#define LA_APPLY_WORKER_COUNT                   4
 #define LA_APPLY_WORKER_QUEUE_CAPACITY          1024
 /* 디스패치된 태스크의 원래 순서를 기억해 두기 위한 FIFO 용량 (워커 큐 합보다 크게 잡는다) */
 #define LA_DISPATCH_ORDER_CAPACITY              (LA_APPLY_WORKER_COUNT * LA_APPLY_WORKER_QUEUE_CAPACITY + 1)
@@ -1259,6 +1259,9 @@ la_apply_worker_start_session (LA_APPLY_WORKER_SESSION * session)
   memset (session, 0, sizeof (*session));
   la_init_worker_server_credential (&session->server_credential);
 
+  /* TODO: Initialize a worker-local network target before net_client_sub_init()
+   * so applylogdb workers do not rely on shared client target state.
+   */
   error = net_client_sub_init ();
   if (error != NO_ERROR)
     {
