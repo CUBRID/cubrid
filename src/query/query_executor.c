@@ -4558,6 +4558,19 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       tsc_getticks (&start_tick);
     }
 
+
+  REGU_VARIABLE_LIST regu_var_p = xasl->outptr_list->valptrp;
+  int f_idx = 0;
+  for (int i = 0; i < xasl->outptr_list->valptr_cnt && regu_var_p; i++, regu_var_p = regu_var_p->next)
+    {
+      if (REGU_VARIABLE_IS_FLAGED (&regu_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
+	{
+	  continue;
+	}
+      pr_share_value (tpldesc->f_valp[f_idx], regu_var_p->value.vfetch_to);
+      f_idx++;
+    }
+
   /* build key */
   rc = qexec_build_agg_hkey (thread_p, xasl_state, proc->g_hk_scan_regu_list, NULL, key);
   if (rc != NO_ERROR)
@@ -4631,6 +4644,9 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     }
   else
     {
+      REGU_VARIABLE_LIST regu_var_p;
+      DB_VALUE *tmp;
+
       /* no need to output tuple */
       *output_tuple = false;
 
@@ -4639,7 +4655,30 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       context->tuple_count++;
 
       /* fetch values */
-      rc = fetch_val_list (thread_p, proc->g_scan_regu_list, &xasl_state->vd, NULL, NULL, tplrec->tpl, true);
+      for (regu_var_p = proc->g_scan_regu_list; regu_var_p != NULL; regu_var_p = regu_var_p->next)
+	{
+	  if (REGU_VARIABLE_IS_FLAGED (&regu_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
+	    {
+	      if (regu_var_p->value.vfetch_to && pr_is_set_type (DB_VALUE_DOMAIN_TYPE (regu_var_p->value.vfetch_to)))
+		{
+		  pr_clear_value (regu_var_p->value.vfetch_to);
+		}
+
+	      if (regu_var_p->value.vfetch_to && DB_NEED_CLEAR (regu_var_p->value.vfetch_to))
+		{
+		  pr_clear_value (regu_var_p->value.vfetch_to);
+		}
+
+	      rc = fetch_peek_dbval (thread_p, &regu_var_p->value, &xasl_state->vd, NULL, NULL, tplrec->tpl, &tmp);
+	      if (rc != NO_ERROR)
+		{
+		  pr_clear_value (regu_var_p->value.vfetch_to);
+		  return ER_FAILED;
+		}
+
+	      pr_share_value (tmp, regu_var_p->value.vfetch_to);
+	    }
+	}
 
       /* eval aggregate functions */
       if (rc == NO_ERROR)
@@ -27250,11 +27289,20 @@ qexec_build_agg_hkey (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, REGU_VAR
   key->val_count = 0;
   while (regu_list != NULL)
     {
-      rc =
-	fetch_peek_dbval (thread_p, &regu_list->value, &xasl_state->vd, NULL, NULL, tpl, &key->values[key->val_count]);
-      if (rc != NO_ERROR)
+      if (tpl == NULL)
 	{
-	  return rc;
+	  /* tpl is NULL when called during the processing phase */
+	  key->values[key->val_count] = regu_list->value.vfetch_to;
+	}
+      else
+	{
+	  rc =
+	    fetch_peek_dbval (thread_p, &regu_list->value, &xasl_state->vd, NULL, NULL, tpl,
+			      &key->values[key->val_count]);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
 	}
 
       /* next */
