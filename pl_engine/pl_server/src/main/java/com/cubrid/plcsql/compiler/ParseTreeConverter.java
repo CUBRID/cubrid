@@ -3023,6 +3023,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     for (ColumnInfo ci : sws.selectList) {
                         if (ci.className != null && ci.className.length() > 0) {
                             dataAccessLevel = ServerConstants.SP_SQL_TYPE_READS_SQL_DATA;
+                            break;
                         }
                     }
                     updateDataAccessLevel(dataAccessLevel);

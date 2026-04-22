@@ -96,6 +96,8 @@ public class SqlSemantics {
             for (int i = 0; i < selectListCnt; i++) {
                 selectList.add(new ColumnInfo(unpacker));
             }
+        } else {
+            assert false; // unreachable
         }
 
         int hostVarsCnt = unpacker.unpackInt();
