@@ -428,17 +428,24 @@ is_stmt_based_repl_type (const PT_NODE * node)
 }
 
 /*
- * do_evaluate_default_expr() - evaluates the default expressions, if any, for
- *				the attributes of a given class
+ * do_evaluate_default_expr_by_smclass () - evaluates default expressions for class attributes.
  *   return: Error code
  *   parser(in):
- *   class_name(in):
+ *   smclass(in):
+ *   only_row_determined(in): if true, evaluate only row-determined expressions.
  */
-int
-do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
+typedef enum
+{
+  DEFAULT_EXPR_EVAL_ALL,
+  DEFAULT_EXPR_EVAL_ROW_ONLY,
+  DEFAULT_EXPR_EVAL_NON_ROW_ONLY
+} DEFAULT_EXPR_EVAL_MODE;
+
+static int
+do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass, DEFAULT_EXPR_EVAL_MODE eval_mode,
+				     DB_OTMPL * otemplate)
 {
   SM_ATTRIBUTE *att;
-  SM_CLASS *smclass;
   int error = NO_ERROR;
   TP_DOMAIN_STATUS dom_status;
   char *user_name;
@@ -450,20 +457,30 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
   TP_DOMAIN *result_domain = NULL;
   bool has_user_format;
 
-  assert (class_name->node_type == PT_NAME);
-
-  error = au_fetch_class_force (class_name->info.name.db_object, &smclass, AU_FETCH_READ);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
+  assert (smclass != NULL);
 
   for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
-      if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
+      DB_DEFAULT_EXPR_TYPE default_expr_type = att->default_value.default_expr.default_expr_type;
+
+      if (default_expr_type != DB_DEFAULT_NONE)
 	{
+	  if (eval_mode == DEFAULT_EXPR_EVAL_ROW_ONLY && !DB_IS_DEFAULT_DETERMINE_BY_ROW (default_expr_type))
+	    {
+	      continue;
+	    }
+	  if (eval_mode == DEFAULT_EXPR_EVAL_NON_ROW_ONLY && DB_IS_DEFAULT_DETERMINE_BY_ROW (default_expr_type))
+	    {
+	      continue;
+	    }
+	  if (eval_mode == DEFAULT_EXPR_EVAL_ROW_ONLY && otemplate != NULL && att->order >= 0
+	      && att->order < otemplate->nassigns && otemplate->assignments[att->order] != NULL)
+	    {
+	      continue;
+	    }
+
 	  error = NO_ERROR;
-	  switch (att->default_value.default_expr.default_expr_type)
+	  switch (default_expr_type)
 	    {
 	    case DB_DEFAULT_SYSTIME:
 	      if (DB_IS_NULL (&parser->sys_datetime))
@@ -544,7 +561,7 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 		  tz_get_session_tz_region (&session_tz_region);
 		  error =
 		    tz_conv_tz_datetime_w_region (src_dt, &system_tz_region, &session_tz_region, &dest_dt, NULL, NULL);
-		  if (att->default_value.default_expr.default_expr_type == DB_DEFAULT_CURRENTDATE)
+		  if (default_expr_type == DB_DEFAULT_CURRENTDATE)
 		    {
 		      db_value_put_encoded_date (&default_value, &dest_dt.date);
 		    }
@@ -602,6 +619,8 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 
 	  if (att->default_value.default_expr.default_expr_op == T_TO_CHAR)
 	    {
+	      pr_clear_value (&att->default_value.value);
+
 	      if (att->default_value.default_expr.default_expr_format != NULL)
 		{
 		  has_user_format = 1;
@@ -652,6 +671,7 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 	    }
 	  else
 	    {
+	      pr_clear_value (&att->default_value.value);
 	      pr_clone_value (&default_value, &att->default_value.value);
 	    }
 
@@ -670,6 +690,58 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
     }
 
   return error;
+}
+
+/*
+ * do_evaluate_default_expr() - evaluates the default expressions, if any, for
+ *				the attributes of a given class
+ *   return: Error code
+ *   parser(in):
+ *   class_name(in):
+ */
+int
+do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
+{
+  SM_CLASS *smclass;
+  int error = NO_ERROR;
+
+  assert (class_name->node_type == PT_NAME);
+
+  error = au_fetch_class_force (class_name->info.name.db_object, &smclass, AU_FETCH_READ);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return do_evaluate_default_expr_by_smclass (parser, smclass, DEFAULT_EXPR_EVAL_ALL, NULL);
+}
+
+static int
+do_evaluate_statement_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
+{
+  SM_CLASS *smclass;
+  int error = NO_ERROR;
+
+  assert (class_name->node_type == PT_NAME);
+
+  error = au_fetch_class_force (class_name->info.name.db_object, &smclass, AU_FETCH_READ);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return do_evaluate_default_expr_by_smclass (parser, smclass, DEFAULT_EXPR_EVAL_NON_ROW_ONLY, NULL);
+}
+
+static int
+do_evaluate_row_default_expr_for_otemplate (PARSER_CONTEXT * parser, DB_OTMPL * otemplate)
+{
+  if (otemplate == NULL || otemplate->class_ == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  return do_evaluate_default_expr_by_smclass (parser, otemplate->class_, DEFAULT_EXPR_EVAL_ROW_ONLY, otemplate);
 }
 
 /*
@@ -12803,6 +12875,12 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 	      i++;
 	    }
 
+	  error = do_evaluate_row_default_expr_for_otemplate (parser, *otemplate);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+
 	  /* inserted one more row */
 	  row_count++;
 
@@ -13246,13 +13324,6 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 		      break;
 		    }
 
-		  error = do_evaluate_default_expr (parser, class_);
-		  if (error != NO_ERROR)
-		    {
-		      cnt = error;
-		      goto cleanup;
-		    }
-
 		  /* create an instance of the target class using templates */
 		  otemplate = dbt_create_object_internal (class_->info.name.db_object);
 		  if (otemplate == NULL)
@@ -13306,6 +13377,15 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 			  cnt = er_errid ();
 			  goto cleanup;
 			}
+		    }
+
+		  error = do_evaluate_row_default_expr_for_otemplate (parser, otemplate);
+		  if (error != NO_ERROR)
+		    {
+		      dbt_abort_object (otemplate);
+		      otemplate = NULL;
+		      cnt = error;
+		      goto cleanup;
 		    }
 
 		  if (statement->node_type == PT_INSERT && statement->info.insert.odku_assignments)
@@ -13697,7 +13777,7 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  error = do_evaluate_default_expr (parser, class_);
+  error = do_evaluate_statement_default_expr (parser, class_);
   if (error != NO_ERROR)
     {
       return error;
@@ -17520,7 +17600,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto cleanup;
 	}
 
-      err = do_evaluate_default_expr (parser, flat);
+      err = do_evaluate_statement_default_expr (parser, flat);
       if (err != NO_ERROR)
 	{
 	  goto cleanup;
