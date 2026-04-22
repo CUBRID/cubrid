@@ -1349,7 +1349,7 @@ tran_compensation (cubthread::task<cubthread::entry> *ptr)
     }
   else
     {
-      css_send_request_error_and_abort (conn, rid, ER_THREAD_STACK);
+      (void) css_send_request_error_and_abort (conn, rid, ER_THREAD_STACK);
     }
 
   ptr->retire ();
@@ -1362,7 +1362,8 @@ css_compensation (cubthread::task<cubthread::entry> *ptr)
 
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
 
-  (*css_Connection_error_handler) (&cubthread::get_entry (), &task_p->get_conn ());
+  css_end_server_request (&task_p->get_conn ());
+  css_free_conn (&task_p->get_conn ());
 
   task_p->retire ();
 }
@@ -1780,16 +1781,22 @@ css_send_request_error_and_abort (CSS_CONN_ENTRY * conn, unsigned short rid, int
 {
   OR_ALIGNED_BUF (1024) a_buffer;
   char *buffer = OR_ALIGNED_BUF_START (a_buffer);
+  unsigned int eid;
+  char *area;
   int length = 1024;
+  int err;
 
-  char *area = er_get_area_error (buffer, &length);
-  unsigned int eid = css_return_eid_from_conn (conn, rid);
-
+  area = er_get_area_error (buffer, &length);
+  eid = css_return_eid_from_conn (conn, rid);
   if (area != NULL)
     {
-      conn.db_error = errid;
-      (void) css_send_error_to_client (conn, eid, area, length);
-      conn.db_error = 0;
+      conn->db_error = errid;
+      err = css_send_error_to_client (conn, eid, area, length);
+      if (err != NO_ERRORS)
+	{
+	  return err;
+	}
+      conn->db_error = 0;
     }
 
   return css_send_abort_to_client (conn, eid);
