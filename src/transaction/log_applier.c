@@ -8422,7 +8422,14 @@ la_init (const char *log_path, const int max_mem_size)
   la_Info.is_role_changed = false;
   la_Info.is_apply_info_updated = false;
 
-  la_Info.max_mem_size = max_mem_size;
+  /* PoC: parallel applylogdb workers inflate VSZ with per-thread glibc
+   * arenas (N worker threads * ~64MB arena reservation each). The stock
+   * budget was written for N=1 and trips on virtual-size measurements
+   * even when RSS is small. Force-raise the floor until la_get_mem_size()
+   * is switched to RSS-based accounting; to revert, delete the MAX()
+   * wrapper and reinstate the original assignment below. */
+  /* la_Info.max_mem_size = max_mem_size; */
+  la_Info.max_mem_size = MAX (max_mem_size, 4000);
   /* check vsize when it started */
   if (!start_vsize)
     {
