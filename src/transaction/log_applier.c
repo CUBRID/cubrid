@@ -105,6 +105,12 @@
 /* 디스패치된 태스크의 원래 순서를 기억해 두기 위한 FIFO 용량 (워커 큐 합보다 크게 잡는다) */
 #define LA_DISPATCH_ORDER_CAPACITY              (LA_APPLY_WORKER_COUNT * LA_APPLY_WORKER_QUEUE_CAPACITY + 1)
 
+#if !defined (NDEBUG)
+#define LA_DEBUG_LOG(...) er_log_debug (__VA_ARGS__)
+#else /* !NDEBUG */
+#define LA_DEBUG_LOG(...) ((void) 0)
+#endif /* !NDEBUG */
+
 /* for adaptive commit interval */
 #define LA_NUM_DELAY_HISTORY                    10
 #define LA_MAX_TOLERABLE_DELAY                  2
@@ -210,6 +216,7 @@ struct la_cache_pb
   int num_buffers;		/* # of buffers */
   LA_CACHE_BUFFER_AREA *buffer_area;	/* contignous area of buffers */
   pthread_mutex_t mutex;	/* shared page cache/hash protection */
+#if !defined (NDEBUG)
   UINT64 total_access_count;
   UINT64 cache_hit_count;
   UINT64 cache_miss_count;
@@ -222,6 +229,7 @@ struct la_cache_pb
   UINT64 worker_access_count[LA_APPLY_WORKER_COUNT];
   UINT64 worker_contention_count[LA_APPLY_WORKER_COUNT];
   UINT64 worker_wait_usec_total[LA_APPLY_WORKER_COUNT];
+#endif /* !NDEBUG */
 };
 
 typedef struct la_repl_filter LA_REPL_FILTER;
@@ -566,7 +574,9 @@ static void la_shutdown_by_signal (void);
 #else /* !WINDOWS */
 static void la_shutdown_by_signal (int);
 #endif /* !WINDOWS */
+#if !defined (NDEBUG)
 static int la_dump_runtime_state_to_buffer (char *buffer, int buffer_size, const char *reason, int sig_no);
+#endif /* !NDEBUG */
 static void la_init_ha_apply_info (LA_HA_APPLY_INFO * ha_apply_info);
 
 static LOG_PHY_PAGEID la_log_phypageid (LOG_PAGEID logical_pageid);
@@ -583,10 +593,12 @@ static LA_CACHE_BUFFER *la_cache_buffer_replace (LA_CACHE_PB * cache_pb, LOG_PAG
 						 int buffer_size);
 static LA_CACHE_BUFFER *la_get_page_buffer (LOG_PAGEID pageid);
 static LOG_PAGE *la_get_page (LOG_PAGEID pageid);
+#if !defined (NDEBUG)
 static int la_get_page_buffer_owner_index (void);
 static void la_cache_pb_record_access (LA_CACHE_PB * cache_pb, int owner_index, bool had_contention, UINT64 wait_usec,
 				       bool cache_hit);
 static void la_log_cache_pb_stats (LA_CACHE_PB * cache_pb, const char *reason);
+#endif /* !NDEBUG */
 static void la_release_page_buffer (LOG_PAGEID pageid);
 static void la_release_all_page_buffers (LOG_PAGEID except_pageid);
 static void la_invalidate_page_buffer (LA_CACHE_BUFFER * cache_buffer);
@@ -767,19 +779,22 @@ la_shutdown_by_signal (void)
 la_shutdown_by_signal (int ignore)
 #endif				/* !WINDOWS */
 {
+#if !defined (NDEBUG)
   char buffer[2048];
   int len;
 
   len = la_dump_runtime_state_to_buffer (buffer, sizeof (buffer), "shutdown_by_signal", ignore);
   if (len > 0)
     {
-      er_log_debug (ARG_FILE_LINE, "%s", buffer);
+      LA_DEBUG_LOG (ARG_FILE_LINE, "%s", buffer);
     }
+#endif /* !NDEBUG */
 
   la_applier_need_shutdown = true;
   la_applier_shutdown_by_signal = true;
 }
 
+#if !defined (NDEBUG)
 static int
 la_dump_runtime_state_to_buffer (char *buffer, int buffer_size, const char *reason, int sig_no)
 {
@@ -867,10 +882,12 @@ la_dump_runtime_state_to_buffer (char *buffer, int buffer_size, const char *reas
 
   return len;
 }
+#endif /* !NDEBUG */
 
 void
 la_dump_runtime_state_for_signal (int sig_no)
 {
+#if !defined (NDEBUG)
   char buffer[2048];
   int len;
 
@@ -879,6 +896,9 @@ la_dump_runtime_state_for_signal (int sig_no)
     {
       (void) write (STDERR_FILENO, buffer, len);
     }
+#else /* !NDEBUG */
+  (void) sig_no;
+#endif /* !NDEBUG */
 }
 
 bool
@@ -922,7 +942,7 @@ la_enqueue_apply_task (LA_APPLY_WORKER * worker, const LA_APPLY_TASK * task)
 
   while (worker->queue.count >= LA_APPLY_WORKER_QUEUE_CAPACITY && worker->shutdown == false)
     {
-      er_log_debug (ARG_FILE_LINE,
+      LA_DEBUG_LOG (ARG_FILE_LINE,
 		    "reader enqueue_wait worker[%d] trid=%d rectype=%d qcount=%d busy=%d shutdown=%d\n",
 		    worker_idx, task->tranid, task->rectype, worker->queue.count, (int) worker->busy,
 		    (int) worker->shutdown);
@@ -931,7 +951,7 @@ la_enqueue_apply_task (LA_APPLY_WORKER * worker, const LA_APPLY_TASK * task)
 
   if (worker->shutdown)
     {
-      er_log_debug (ARG_FILE_LINE, "reader enqueue_fail worker[%d] trid=%d rectype=%d shutdown=1\n",
+      LA_DEBUG_LOG (ARG_FILE_LINE, "reader enqueue_fail worker[%d] trid=%d rectype=%d shutdown=1\n",
 		    worker_idx, task->tranid, task->rectype);
       error = ER_FAILED;
     }
@@ -941,7 +961,7 @@ la_enqueue_apply_task (LA_APPLY_WORKER * worker, const LA_APPLY_TASK * task)
       worker->queue.tasks[worker->queue.tail] = *task;
       worker->queue.tail = (worker->queue.tail + 1) % LA_APPLY_WORKER_QUEUE_CAPACITY;
       worker->queue.count++;
-      er_log_debug (ARG_FILE_LINE,
+      LA_DEBUG_LOG (ARG_FILE_LINE,
 		    "reader enqueued worker[%d] trid=%d rectype=%d commit_lsa=%lld|%d apply=%p qcount=%d->%d\n",
 		    worker_idx, task->tranid, task->rectype, (long long) task->commit_lsa.pageid,
 		    (int) task->commit_lsa.offset, (void *) task->apply, prev_count, worker->queue.count);
@@ -1615,7 +1635,7 @@ la_apply_worker_main (void *arg)
       result.commit_lsa = task.commit_lsa;
       LSA_SET_NULL (&result.committed_rep_lsa);
       result.log_record_time = task.log_record_time;
-      er_log_debug (ARG_FILE_LINE,
+      LA_DEBUG_LOG (ARG_FILE_LINE,
 		    "worker[tid=%lu idx=%d tran=%d] dequeued trid=%d rectype=%d apply=%p commit_lsa=%lld|%d head=%p\n",
 		    (unsigned long) pthread_self (), (int) (worker - la_apply_Workers), tm_Tran_index, task.tranid,
 		    task.rectype, (void *) task.apply, (long long) task.commit_lsa.pageid, (int) task.commit_lsa.offset,
@@ -1624,7 +1644,7 @@ la_apply_worker_main (void *arg)
       result.error =
 	la_apply_repl_log (&worker_context, task.apply, task.rectype, &task.commit_lsa, &total_rows,
 			   task.final_pageid, &result.committed_rep_lsa, &result.stats);
-      er_log_debug (ARG_FILE_LINE,
+      LA_DEBUG_LOG (ARG_FILE_LINE,
 		    "worker[tid=%lu tran=%d] apply_repl_log trid=%d err=%d stats[ins=%d upd=%d del=%d sch=%d fail=%d]\n",
 		    (unsigned long) pthread_self (), tm_Tran_index, task.tranid, result.error,
 		    result.stats.insert_counter, result.stats.update_counter, result.stats.delete_counter,
@@ -1638,14 +1658,14 @@ la_apply_worker_main (void *arg)
 	  applied_item_count =
 	    result.stats.insert_counter + result.stats.update_counter + result.stats.delete_counter + result.stats.fail_counter;
 	  worker_applied_item_count += applied_item_count;
-	  er_log_debug (ARG_FILE_LINE,
+	  LA_DEBUG_LOG (ARG_FILE_LINE,
 			"worker[tid=%lu idx=%d tran=%d] commit_transaction BEGIN trid=%d applied=%llu total_applied=%llu "
 			"stats[ins=%d upd=%d del=%d fail=%d]\n",
 			(unsigned long) pthread_self (), (int) (worker - la_apply_Workers), tm_Tran_index, task.tranid,
 			applied_item_count, worker_applied_item_count, result.stats.insert_counter,
 			result.stats.update_counter, result.stats.delete_counter, result.stats.fail_counter);
 	  result.error = la_commit_transaction (worker_applied_item_count);
-	  er_log_debug (ARG_FILE_LINE,
+	  LA_DEBUG_LOG (ARG_FILE_LINE,
 			"worker[tid=%lu idx=%d tran=%d] commit_transaction END trid=%d err=%d total_applied=%llu\n",
 			(unsigned long) pthread_self (), (int) (worker - la_apply_Workers), tm_Tran_index, task.tranid,
 			result.error, worker_applied_item_count);
@@ -2439,6 +2459,7 @@ la_cache_buffer_replace (LA_CACHE_PB * cache_pb, LOG_PAGEID pageid, int io_pages
   return NULL;
 }
 
+#if !defined (NDEBUG)
 static int
 la_get_page_buffer_owner_index (void)
 {
@@ -2525,12 +2546,14 @@ la_log_cache_pb_stats (LA_CACHE_PB * cache_pb, const char *reason)
 		    (unsigned long long) cache_pb->worker_wait_usec_total[i]);
     }
 }
+#endif /* !NDEBUG */
 
 static LA_CACHE_BUFFER *
 la_get_page_buffer (LOG_PAGEID pageid)
 {
   LA_CACHE_PB *cache_pb = la_Info.cache_pb;
   LA_CACHE_BUFFER *cache_buffer = NULL;
+#if !defined (NDEBUG)
   int owner_index = -1;
   bool had_contention = false;
   bool cache_hit = false;
@@ -2547,6 +2570,9 @@ la_get_page_buffer (LOG_PAGEID pageid)
     }
   gettimeofday (&end_tv, NULL);
   wait_usec = (UINT64) (end_tv.tv_sec - start_tv.tv_sec) * 1000000ULL + (UINT64) (end_tv.tv_usec - start_tv.tv_usec);
+#else /* !NDEBUG */
+  pthread_mutex_lock (&cache_pb->mutex);
+#endif /* !NDEBUG */
 
   /* find the target page in the cache buffer */
   cache_buffer = (LA_CACHE_BUFFER *) mht_get (cache_pb->hash_table, (void *) &pageid);
@@ -2558,7 +2584,9 @@ la_get_page_buffer (LOG_PAGEID pageid)
 
       if (cache_buffer == NULL || cache_buffer->logpage.hdr.logical_pageid != pageid)
 	{
+#if !defined (NDEBUG)
 	  la_cache_pb_record_access (cache_pb, owner_index, had_contention, wait_usec, false);
+#endif /* !NDEBUG */
 	  pthread_mutex_unlock (&cache_pb->mutex);
 	  return NULL;
 	}
@@ -2567,25 +2595,33 @@ la_get_page_buffer (LOG_PAGEID pageid)
 
       if (mht_put (cache_pb->hash_table, &cache_buffer->pageid, cache_buffer) == NULL)
 	{
+#if !defined (NDEBUG)
 	  la_cache_pb_record_access (cache_pb, owner_index, had_contention, wait_usec, false);
+#endif /* !NDEBUG */
 	  pthread_mutex_unlock (&cache_pb->mutex);
 	  return NULL;
 	}
     }
   else
     {
+#if !defined (NDEBUG)
       cache_hit = true;
+#endif /* !NDEBUG */
       if (cache_buffer->logpage.hdr.logical_pageid != pageid)
 	{
 	  (void) mht_rem (cache_pb->hash_table, &cache_buffer->pageid, NULL, NULL);
+#if !defined (NDEBUG)
 	  la_cache_pb_record_access (cache_pb, owner_index, had_contention, wait_usec, false);
+#endif /* !NDEBUG */
 	  pthread_mutex_unlock (&cache_pb->mutex);
 	  return NULL;
 	}
     }
 
   cache_buffer->fix_count++;
+#if !defined (NDEBUG)
   la_cache_pb_record_access (cache_pb, owner_index, had_contention, wait_usec, cache_hit);
+#endif /* !NDEBUG */
   pthread_mutex_unlock (&cache_pb->mutex);
   return cache_buffer;
 }
@@ -3758,6 +3794,7 @@ la_init_cache_pb (void)
   cache_pb->num_buffers = 0;
   cache_pb->buffer_area = NULL;
   pthread_mutex_init (&cache_pb->mutex, NULL);
+#if !defined (NDEBUG)
   cache_pb->total_access_count = 0;
   cache_pb->cache_hit_count = 0;
   cache_pb->cache_miss_count = 0;
@@ -3770,6 +3807,7 @@ la_init_cache_pb (void)
   memset (cache_pb->worker_access_count, 0, sizeof (cache_pb->worker_access_count));
   memset (cache_pb->worker_contention_count, 0, sizeof (cache_pb->worker_contention_count));
   memset (cache_pb->worker_wait_usec_total, 0, sizeof (cache_pb->worker_wait_usec_total));
+#endif /* !NDEBUG */
 
   return (cache_pb);
 }
@@ -6609,7 +6647,7 @@ la_apply_insert_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_APPLY
 
   sb.clear ();
   db_sprint_value (la_get_item_pk_value (item), sb);
-  er_log_debug (ARG_FILE_LINE,
+  LA_DEBUG_LOG (ARG_FILE_LINE,
 		"worker[idx=%d tid=%lu tran=%d] insert BEGIN class=%s key=%s item_lsa=%lld|%d target_lsa=%lld|%d "
 		"pending=%d\n",
 		context->worker_idx, (unsigned long) pthread_self (), tm_Tran_index, item->class_name, sb.get_buffer (),
@@ -6620,7 +6658,7 @@ la_apply_insert_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_APPLY
   error = la_flush_repl_items (false, stats);
   if (error != NO_ERROR)
     {
-      er_log_debug (ARG_FILE_LINE, "worker[idx=%d tid=%lu tran=%d] insert pre_flush error=%d class=%s key=%s\n",
+      LA_DEBUG_LOG (ARG_FILE_LINE, "worker[idx=%d tid=%lu tran=%d] insert pre_flush error=%d class=%s key=%s\n",
 		    context->worker_idx, (unsigned long) pthread_self (), tm_Tran_index, error, item->class_name,
 		    sb.get_buffer ());
       return error;
@@ -6657,7 +6695,7 @@ la_apply_insert_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_APPLY
       goto end;
     }
 
-  er_log_debug (ARG_FILE_LINE,
+  LA_DEBUG_LOG (ARG_FILE_LINE,
 		"worker[idx=%d tid=%lu tran=%d] insert recdes class=%s key=%s rcvindex=%u rec_type=%d mvcc=%d "
 		"length=%d\n",
 		context->worker_idx, (unsigned long) pthread_self (), tm_Tran_index, item->class_name, sb.get_buffer (),
@@ -6693,7 +6731,7 @@ la_apply_insert_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_APPLY
     }
 
   error = la_repl_add_object (class_obj, item, recdes);
-  er_log_debug (ARG_FILE_LINE,
+  LA_DEBUG_LOG (ARG_FILE_LINE,
 		"worker[idx=%d tid=%lu tran=%d] insert add_object class=%s key=%s error=%d pending=%d\n",
 		context->worker_idx, (unsigned long) pthread_self (), tm_Tran_index, item->class_name, sb.get_buffer (),
 		error,
@@ -6710,7 +6748,7 @@ end:
       stats->num_unflushed++;
     }
 
-  er_log_debug (ARG_FILE_LINE,
+  LA_DEBUG_LOG (ARG_FILE_LINE,
 		"worker[idx=%d tid=%lu tran=%d] insert END class=%s key=%s error=%d "
 		"stats[ins=%lu fail=%lu unflushed=%d]\n",
 		context->worker_idx, (unsigned long) pthread_self (), tm_Tran_index, item->class_name, sb.get_buffer (),
@@ -6736,7 +6774,7 @@ la_update_query_execute (const char *sql, bool au_disable)
   DB_QUERY_ERROR query_error;
   DB_SESSION *session = NULL;
 
-  er_log_debug (ARG_FILE_LINE, "update_query_execute[tid=%lu] BEGIN : %s\n", (unsigned long) pthread_self (), sql);
+  LA_DEBUG_LOG (ARG_FILE_LINE, "update_query_execute[tid=%lu] BEGIN : %s\n", (unsigned long) pthread_self (), sql);
 
   if (au_disable)
     {
@@ -6747,19 +6785,19 @@ la_update_query_execute (const char *sql, bool au_disable)
   pthread_mutex_lock (&la_sql_compile_mutex);
 
   res = db_open_buffer_and_compile_first_statement (sql, &query_error, DB_NO_OIDS, &session, &stmt_no);
-  er_log_debug (ARG_FILE_LINE, "update_query_execute[tid=%lu] compile res=%d stmt_no=%d session=%p\n",
+  LA_DEBUG_LOG (ARG_FILE_LINE, "update_query_execute[tid=%lu] compile res=%d stmt_no=%d session=%p\n",
 		(unsigned long) pthread_self (), res, stmt_no, (void *) session);
   if (res == NO_ERROR && session != NULL)
     {
       res = db_set_statement_auto_commit (session, false);
-      er_log_debug (ARG_FILE_LINE, "update_query_execute[tid=%lu] set_auto_commit res=%d\n",
+      LA_DEBUG_LOG (ARG_FILE_LINE, "update_query_execute[tid=%lu] set_auto_commit res=%d\n",
 		    (unsigned long) pthread_self (), res);
     }
 
   if (res == NO_ERROR && stmt_no > 0)
     {
       res = db_execute_statement_local (session, stmt_no, &result);
-      er_log_debug (ARG_FILE_LINE, "update_query_execute[tid=%lu] execute res=%d errid=%d\n",
+      LA_DEBUG_LOG (ARG_FILE_LINE, "update_query_execute[tid=%lu] execute res=%d errid=%d\n",
 		    (unsigned long) pthread_self (), res, er_errid ());
     }
   if (res >= 0)
@@ -6782,7 +6820,7 @@ la_update_query_execute (const char *sql, bool au_disable)
     }
 
   pthread_mutex_unlock (&la_sql_compile_mutex);
-  er_log_debug (ARG_FILE_LINE, "update_query_execute[tid=%lu] END res=%d\n",
+  LA_DEBUG_LOG (ARG_FILE_LINE, "update_query_execute[tid=%lu] END res=%d\n",
 		(unsigned long) pthread_self (), res);
 
   if (au_disable)
@@ -7335,7 +7373,7 @@ la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid)
 				 &la_Info.total_rows, final_pageid, &committed_rep_lsa, &stats);
       if (error != NO_ERROR)
 	{
-	  er_log_debug (ARG_FILE_LINE, "apply_commit_list : error %d while apply_repl_log\n", error);
+	  LA_DEBUG_LOG (ARG_FILE_LINE, "apply_commit_list : error %d while apply_repl_log\n", error);
 	}
 
       if (!LSA_ISNULL (&committed_rep_lsa))
@@ -8448,7 +8486,9 @@ la_shutdown (void)
 
   if (la_Info.cache_pb != NULL)
     {
+#if !defined (NDEBUG)
       la_log_cache_pb_stats (la_Info.cache_pb, "shutdown");
+#endif /* !NDEBUG */
 
       if (la_Info.cache_pb->buffer_area != NULL)
 	{

@@ -3620,9 +3620,9 @@ crash_handler (int sig_no)
       return;
     }
 
-#if defined (CS_MODE)
+#if defined (CS_MODE) && !defined (NDEBUG)
   la_dump_runtime_state_for_signal (sig_no);
-#endif /* CS_MODE */
+#endif /* CS_MODE && !NDEBUG */
   er_print_crash_callstack (sig_no);
 }
 
