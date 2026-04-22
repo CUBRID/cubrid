@@ -481,6 +481,7 @@ namespace cubmethod
 		  QMGR_QUERY_ENTRY *query_entry = qmgr_get_query_entry (&thread_ref, qid, NULL_TRAN_INDEX);
 		  if (query_entry)
 		    {
+		      qfile_update_qlist_count (&thread_ref, query_entry->list_id, 1);
 		      qfile_close_list (&thread_ref, query_entry->list_id);
 		    }
 		  xqmgr_end_query (&thread_ref, qid);
