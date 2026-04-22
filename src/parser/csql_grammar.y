@@ -525,7 +525,7 @@ static int g_plcsql_text_pos;
 #if defined(__GNUC__) || defined(__clang__)
   #define BEGIN_SUPPRESS_WARNING_BISON_FLEX             \
     _Pragma("GCC diagnostic push")                      \
-    _Pragma("GCC diagnostic ignored \"-Wimplicit-fallthrough=\"")
+    _Pragma("GCC diagnostic ignored \"-Wimplicit-fallthrough\"")
 
   #define END_SUPPRESS_WARNING_BISON_FLEX               \
     _Pragma("GCC diagnostic pop")
