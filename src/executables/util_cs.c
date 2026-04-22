@@ -614,7 +614,7 @@ util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_na
 	}
 
       OID_SET_NULL (&oids[i]);
-      if (table == NULL || table[0] == '\0')
+      if (table[0] == '\0')
 	{
 	  continue;
 	}

@@ -4408,7 +4408,7 @@ qo_check_terms_for_multiple_range_opt (QO_PLAN * plan, int first_sort_col_idx, b
 	{
 	  for (j = 0; j < index_entryp->nsegs; j++)
 	    {
-	      if ((index_entryp->seg_idxs[j] == QO_SEG_IDX (termp->index_seg[i])))
+	      if (index_entryp->seg_idxs[j] == QO_SEG_IDX (termp->index_seg[i]))
 		{
 		  pos = j;
 		  break;
@@ -4474,7 +4474,7 @@ qo_check_terms_for_multiple_range_opt (QO_PLAN * plan, int first_sort_col_idx, b
 	{
 	  for (j = 0; j < index_entryp->nsegs; j++)
 	    {
-	      if ((index_entryp->seg_idxs[j] == QO_SEG_IDX (termp->index_seg[i])))
+	      if (index_entryp->seg_idxs[j] == QO_SEG_IDX (termp->index_seg[i]))
 		{
 		  pos = j;
 		  break;

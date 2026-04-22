@@ -733,7 +733,7 @@ shard_shm_set_as_client_info_with_db_param (T_PROXY_INFO * proxy_info_p, T_SHM_A
     }
 
   memcpy (&as_info_p->cas_clt_ip[0], &client_info_p->client_ip, sizeof (as_info_p->cas_clt_ip));
-  if (client_info_p->driver_info)
+  if (client_info_p->driver_info[0] != '\0')
     {
       as_info_p->clt_version = CAS_MAKE_PROTO_VER (client_info_p->driver_info);
       memcpy (as_info_p->driver_info, client_info_p->driver_info, SRV_CON_CLIENT_INFO_SIZE);

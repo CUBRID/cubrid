@@ -14453,7 +14453,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
       parser->custom_print |= PT_PRINT_ALIAS;
 
       is_first_list = true;
-      for (temp = temp; temp; temp = temp->next)
+      for (; temp; temp = temp->next)
 	{
 	  if (!is_first_list)
 	    {

@@ -6290,7 +6290,7 @@ filter_user_classes (DB_OBJLIST ** class_list, const char *user)
       name = db_get_class_name (cl->op);
       sm_qualifier_name (name, owner_name, DB_MAX_IDENTIFIER_LENGTH);
 
-      if (owner_name != NULL && strcmp (owner_name, user) == 0)
+      if (strcmp (owner_name, user) == 0)
 	{
 	  prev = cl;
 	}

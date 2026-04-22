@@ -1698,7 +1698,7 @@ qo_add_final_segment (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
       (void) set_seg_node (tree, env, &env->final_segs);
       *continue_walk = PT_LIST_WALK;
     }
-  else if ((tree->node_type == PT_DOT_))
+  else if (tree->node_type == PT_DOT_)
     {
       (void) set_seg_node (tree->info.dot.arg2, env, &env->final_segs);
       *continue_walk = PT_LIST_WALK;

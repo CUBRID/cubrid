@@ -226,7 +226,7 @@ namespace cubpl
 	connection_pool *pool = get_connection_pool ();
 	if (pool)
 	  {
-	    m_session_connections.emplace_back (std::move (pool->claim ()));
+	    m_session_connections.emplace_back (pool->claim ());
 	  }
       }
 

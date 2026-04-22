@@ -917,7 +917,7 @@ exit:
 	const char *c_attr_name = db_attribute_name (attr);
 
 	std::string attr_name_string (c_attr_name? c_attr_name : "");
-	std::string class_name_string (realname? realname : "");
+	std::string class_name_string (realname);
 
 	std::string default_value_string = get_column_default_as_string (attr);
 
