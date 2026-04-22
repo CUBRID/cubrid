@@ -8325,9 +8325,9 @@ qo_sort_edges (QO_ENV * env)
 	      qo_exchange (term1, term2);
 
 	      /* fix eqclass term pointers */
-	      if (term1->eqclass && QO_EQCLASS_TERM (term1->eqclass) != NULL)
+	      if (term1->eqclass && QO_EQCLASS_TERM (term1->eqclass) == term2)
 		QO_EQCLASS_TERM (term1->eqclass) = term1;
-	      if (term2->eqclass && QO_EQCLASS_TERM (term2->eqclass) != NULL)
+	      if (term2->eqclass && QO_EQCLASS_TERM (term2->eqclass) == term1)
 		QO_EQCLASS_TERM (term2->eqclass) = term2;
 
 	      /* fix fake_terms bitset */
