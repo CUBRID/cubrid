@@ -564,34 +564,9 @@ jsp_get_owner (MOP mop_p)
     }
 
   MOP owner = db_get_object (&value);
-  // TODO pr_clear_value(&value) ???
 
   AU_ENABLE (save);
   return owner;
-}
-
-char *
-jsp_get_name (MOP mop_p)
-{
-  int save;
-  DB_VALUE value;
-  char *res = NULL;
-
-  AU_DISABLE (save);
-
-  /* check type */
-  int err = db_get (mop_p, SP_ATTR_SP_NAME, &value);
-  if (err != NO_ERROR)
-    {
-      AU_ENABLE (save);
-      return NULL;
-    }
-
-  res = ws_copy_string (db_get_string (&value));
-  pr_clear_value (&value);
-
-  AU_ENABLE (save);
-  return res;
 }
 
 char *
@@ -1372,7 +1347,6 @@ jsp_drop_pkg_member_sp (MOP pkg_mop)
 	    goto cleanup1;
 	  }
 	args_seq = db_get_set (&args_seq_val);
-	pr_clear_value (&args_seq_val);
 
 	for (int j = 0; j < args_cnt; j++)
 	  {
@@ -1382,9 +1356,12 @@ jsp_drop_pkg_member_sp (MOP pkg_mop)
 	    pr_clear_value (&arg_elem);
 	    if (err != NO_ERROR)
 	      {
+		pr_clear_value (&args_seq_val);
 		goto cleanup1;
 	      }
 	  }
+
+	pr_clear_value (&args_seq_val);
       }
 
       // drop from _db_stored_procedure
@@ -1429,7 +1406,6 @@ jsp_drop_pkg_members (MOP pkg_mop, const char *cnt_attr, const char *members_att
     }
 
   seq = db_get_set (&seq_val);
-  pr_clear_value (&seq_val);
 
   for (i = 0; i < cnt; i++)
     {
@@ -1439,10 +1415,12 @@ jsp_drop_pkg_members (MOP pkg_mop, const char *cnt_attr, const char *members_att
       err = obj_delete (mop);
       if (err != NO_ERROR)
 	{
+	  pr_clear_value (&seq_val);
 	  return err;
 	}
     }
 
+  pr_clear_value (&seq_val);
 
   return NO_ERROR;
 }
