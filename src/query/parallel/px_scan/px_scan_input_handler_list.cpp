@@ -23,6 +23,7 @@
 #include "px_scan_input_handler_list.hpp"
 #include "query_manager.h"
 #include "query_list.h"
+#include "object_representation.h"	/* OR_GET_INT used by QFILE_GET_TUPLE_COUNT */
 #include "error_code.h"
 #include "error_manager.h"
 #include "bit.h"
@@ -150,48 +151,67 @@ namespace parallel_scan
   SCAN_CODE
   input_handler_list::get_next_vpid_with_fix (THREAD_ENTRY *thread_p, VPID *vpid)
   {
-    /* Phase 1: membuf worker processes membuf pages first */
-    if (m_tl_is_membuf_worker && m_tl_membuf_pageid <= m_membuf_last)
+    while (true)
       {
-	vpid->volid = NULL_VOLID;
-	vpid->pageid = m_tl_membuf_pageid++;
+	/* Phase 1: membuf worker processes membuf pages first */
+	if (m_tl_is_membuf_worker && m_tl_membuf_pageid <= m_membuf_last)
+	  {
+	    vpid->volid = NULL_VOLID;
+	    vpid->pageid = m_tl_membuf_pageid++;
+	  }
+	else
+	  {
+	    /* Phase 2: sector-based page iteration */
+	    bool found = false;
+	    while (!found)
+	      {
+		if (VPID_ISNULL (&m_tl_vpid))
+		  {
+		    m_tl_ftab = m_tl_ftab_set->get_next ();
+		    if (VSID_IS_NULL (&m_tl_ftab.vsid))
+		      {
+			return S_END;
+		      }
+		    m_tl_pgoffset = 0;
+		    m_tl_vpid.volid = m_tl_ftab.vsid.volid;
+		    m_tl_vpid.pageid = SECTOR_FIRST_PAGEID (m_tl_ftab.vsid.sectid);
+		  }
+
+		for (; m_tl_pgoffset < DISK_SECTOR_NPAGES; m_tl_pgoffset++, m_tl_vpid.pageid++)
+		  {
+		    if (bit64_is_set (m_tl_ftab.page_bitmap, (int) m_tl_pgoffset))
+		      {
+		        found = true;
+		        *vpid = m_tl_vpid;
+		        m_tl_pgoffset++;
+		        m_tl_vpid.pageid++;
+		        break;
+		      }
+		  }
+
+		if (!found && m_tl_pgoffset >= DISK_SECTOR_NPAGES)
+		  {
+		    VPID_SET_NULL (&m_tl_vpid);
+		  }
+	      }
+	  }
+
+	/* Skip overflow tuple pages (TUPLE_COUNT == -2): the worker that owns the
+	 * first (non-overflow) page of a large tuple walks its overflow chain via
+	 * qfile_get_tuple, so these continuation pages have already been consumed. */
+	PAGE_PTR page_p = qmgr_get_old_page_read_only (thread_p, vpid, m_tfile_vfid);
+	if (page_p == NULL)
+	  {
+	    return S_ERROR;
+	  }
+	int tuple_count = QFILE_GET_TUPLE_COUNT (page_p);
+	qmgr_free_old_page (thread_p, page_p, m_tfile_vfid);
+	if (tuple_count == QFILE_OVERFLOW_TUPLE_COUNT_FLAG)
+	  {
+	    continue;
+	  }
 	return S_SUCCESS;
       }
-
-    /* Phase 2: sector-based page iteration */
-    bool found = false;
-    while (!found)
-      {
-	if (VPID_ISNULL (&m_tl_vpid))
-	  {
-	    m_tl_ftab = m_tl_ftab_set->get_next ();
-	    if (VSID_IS_NULL (&m_tl_ftab.vsid))
-	      {
-		return S_END;
-	      }
-	    m_tl_pgoffset = 0;
-	    m_tl_vpid.volid = m_tl_ftab.vsid.volid;
-	    m_tl_vpid.pageid = SECTOR_FIRST_PAGEID (m_tl_ftab.vsid.sectid);
-	  }
-
-	for (; m_tl_pgoffset < DISK_SECTOR_NPAGES; m_tl_pgoffset++, m_tl_vpid.pageid++)
-	  {
-	    if (bit64_is_set (m_tl_ftab.page_bitmap, (int) m_tl_pgoffset))
-	      {
-		found = true;
-		*vpid = m_tl_vpid;
-		m_tl_pgoffset++;
-		m_tl_vpid.pageid++;
-		return S_SUCCESS;
-	      }
-	  }
-
-	if (m_tl_pgoffset >= DISK_SECTOR_NPAGES)
-	  {
-	    VPID_SET_NULL (&m_tl_vpid);
-	  }
-      }
-    return S_ERROR;	/* unreachable */
   }
 
   int

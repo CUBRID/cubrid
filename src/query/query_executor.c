@@ -9183,6 +9183,12 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 		   * 1. Skip saving data to temporary files.
 		   * 2. Skip iteration for each index keys (no scan ptr only) */
 		  specp->s_id.s.isid.need_count_only = true;
+#if SERVER_MODE && !WINDOWS
+		  /* count(*) fast path is single-pass leaf-only; drop any parallel-index
+		   * promotion stashed by scan_open_parallel_index_scan before scan_start_scan
+		   * consumes it, so the spec stays single-threaded. */
+		  scan_clear_parallel_index_pending (thread_p, &specp->s_id);
+#endif /* SERVER_MODE && !WINDOWS */
 		  if (!is_scan_ptr)
 		    {
 		      count_star_with_iscan_opt = true;

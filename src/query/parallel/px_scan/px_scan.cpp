@@ -1376,19 +1376,9 @@ extern "C"
     assert (xasl != nullptr);
     assert (vd != nullptr);
 
-    /* Read the actual btree file size; compute_parallel_degree applies
-     * PRM_PARALLEL_SCAN_PAGE_THRESHOLD against this. On lookup failure
-     * we conservatively skip parallel — the serial path will succeed. */
-    int btree_npages = 0;
-    if (scan_id->s.isid.indx_info == nullptr
-	|| file_get_num_user_pages (thread_p, &scan_id->s.isid.indx_info->btid.vfid, &btree_npages) != NO_ERROR)
-      {
-	er_clear ();
-	return NO_ERROR;
-      }
-
-    num_parallel_threads = parallel_query::compute_parallel_degree (parallel_query::parallel_type::SCAN,
-			   (UINT64) btree_npages, spec->num_parallel_threads /* hint */);
+    /* Optimizer decided parallel degree client-side and wrote it to
+     * spec->num_parallel_threads; trust it verbatim for index scan. */
+    num_parallel_threads = spec->num_parallel_threads;
     if (num_parallel_threads < 2)
       {
 	assert (scan_id->type == S_INDX_SCAN);

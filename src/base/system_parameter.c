@@ -774,6 +774,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_PARALLELISM "parallelism"
 #define PRM_NAME_MAX_PARALLEL_WORKERS "max_parallel_workers"
 #define PRM_NAME_PARALLEL_SCAN_PAGE_THRESHOLD "parallel_scan_page_threshold"
+#define PRM_NAME_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD "parallel_index_scan_page_threshold"
 #define PRM_NAME_PARALLEL_HASH_JOIN_PAGE_THRESHOLD "parallel_hash_join_page_threshold"
 #define PRM_NAME_PARALLEL_SORT_PAGE_THRESHOLD "parallel_sort_page_threshold"
 
@@ -5100,7 +5101,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_PARALLELISM,
    PRM_NAME_PARALLELISM,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 4}},
@@ -5129,6 +5130,18 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 2048}},
    {false, {.i = 2048}},
+   {false, {.i = INT_MAX}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD,
+   PRM_NAME_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 32}},
+   {false, {.i = 32}},
    {false, {.i = INT_MAX}},
    {false, {.i = 0}},
    (char *) NULL,
