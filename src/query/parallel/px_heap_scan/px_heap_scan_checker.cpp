@@ -116,16 +116,6 @@ namespace parallel_heap_scan
   void process_xasl_node_recursive (XASL_NODE *arg);
   void process_xasl_node_recursive_force_cannot_parallel (XASL_NODE *arg);
 
-  inline bool is_pred_exists (PRED_EXPR *pred_expr)
-  {
-    if (!pred_expr || pred_expr->type != T_EVAL_TERM || pred_expr->pe.m_eval_term.et_type != T_COMP_EVAL_TERM
-	|| pred_expr->pe.m_eval_term.et.et_comp.rel_op != R_EXISTS)
-      {
-	return false;
-      }
-    return true;
-  }
-
   template <bool is_outptr_list>
   possible_flags check (REGU_VARIABLE *arg)
   {
@@ -441,9 +431,10 @@ namespace parallel_heap_scan
 
     if (sibling->if_pred)
       {
-	if (!is_pred_exists (sibling->if_pred))
+	temp = check<is_outptr_list> (sibling->if_pred);
+	if (is_flag_set (temp, CANNOT_PARALLEL_HEAP_SCAN))
 	  {
-	    set_flag (result, CANNOT_LIST_MERGE);
+	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
 	  }
       }
 
@@ -549,7 +540,19 @@ namespace parallel_heap_scan
       }
     for (XASL_NODE *xaslp = arg->aptr_list; xaslp; xaslp = xaslp->next)
       {
-	result |= check<is_outptr_list> (xaslp);
+	if (XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE))
+	  {
+	    temp = sibling_check<false> (xaslp);
+	    if (is_flag_set (temp, CANNOT_PARALLEL_HEAP_SCAN))
+	      {
+		set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	      }
+	  }
+	else
+	  {
+	    result |= check<is_outptr_list> (xaslp);
+	  }
+
       }
 
     if (arg->bptr_list || arg->fptr_list || arg->connect_by_ptr)
@@ -582,7 +585,8 @@ namespace parallel_heap_scan
 
     if (arg->if_pred)
       {
-	if (!is_pred_exists (arg->if_pred))
+	temp = check<is_outptr_list> (arg->if_pred);
+	if (is_flag_set (temp, CANNOT_PARALLEL_HEAP_SCAN))
 	  {
 	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
 	  }

@@ -577,7 +577,7 @@ namespace parallel_heap_scan
 		if (ev_res != V_TRUE)
 		  {
 		    clear_xasl_dptr_list (&thread_ref, m_xasl, uses_clones);
-		    if (ev_res == V_FALSE)
+		    if (ev_res == V_FALSE || ev_res == V_UNKNOWN)
 		      {
 			continue;
 		      }
