@@ -2713,6 +2713,11 @@ float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
       result_prec =
 	float_numeric_add_fast (dbv1_word, dbv2_word, result_word, calc_words, numeric_is_negative (dbv1),
 				numeric_is_negative (dbv2), &result_sign, result_buf);
+      if (result_sign && result_prec == 1 && result_word[calc_words - 1] == 0)
+	{
+	  /* Prevent -0; zero is always treated as positive. */
+	  result_sign = false;
+	}
       db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, result_sign, true);
       return ret;
     }
@@ -2974,6 +2979,11 @@ float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
       result_prec =
 	float_numeric_sub_fast (dbv1_word, dbv2_word, result_word, calc_words, numeric_is_negative (dbv1),
 				numeric_is_negative (dbv2), &result_sign, result_buf);
+      if (result_sign && result_prec == 1 && result_word[calc_words - 1] == 0)
+	{
+	  /* Prevent -0; zero is always treated as positive. */
+	  result_sign = false;
+	}
       db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, result_sign, true);
       return ret;
     }
