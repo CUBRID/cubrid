@@ -90,6 +90,7 @@ namespace cubpl
 	serializator.pack_string (register_stmt);
 	serializator.pack_string (class_name);
 	serializator.pack_string (java_signature);
+	serializator.pack_int (sql_data_access);
 
 	serializator.pack_int (compiled_type);
 	if (compiled_type >= 0)
@@ -123,6 +124,7 @@ namespace cubpl
 	size += serializator.get_packed_string_size (register_stmt, size); // register_stmt
 	size += serializator.get_packed_string_size (class_name, size); // class_name
 	size += serializator.get_packed_string_size (java_signature, size); // java_signature
+	size += serializator.get_packed_int_size (size); // sql_data_access
 
 	size += serializator.get_packed_int_size (size); // compiled_type
 	if (compiled_type >= 0)
@@ -156,6 +158,7 @@ namespace cubpl
 	deserializator.unpack_string (register_stmt);
 	deserializator.unpack_string (class_name);
 	deserializator.unpack_string (java_signature);
+	deserializator.unpack_int (sql_data_access);
 
 	deserializator.unpack_int (compiled_type);
 	if (compiled_type >= 0)
