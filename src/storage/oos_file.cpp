@@ -1098,6 +1098,28 @@ oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &o
 }
 
 
+//
+// Multi-chunk OOS insert with replication boundary tracking:
+//
+//   Layout per multi-chunk record (chunks logged in reverse order: tail first, head last):
+//     LOG_DUMMY_OOS_RECORD    <- boundary marker, does not carry data
+//     RVOOS_INSERT (chunk N-1, tail)
+//     ...
+//     RVOOS_INSERT (chunk 1)
+//     RVOOS_INSERT (chunk 0, head)    <- carries final next_chunk_oid chain
+//
+//   Per-transaction queue/vector invariant (for the slave applier to reassemble):
+//     oos_insert_lsa_queue : [..., dummy_lsa, first_logged_chunk_lsa]
+//     oos_oids             : [..., oid_Null_oid]
+//
+//   The immediate caller (heap_file.c) will push the real head-chunk OID after this
+//   function returns, so the final pairing becomes oos_oids=[..., null, real_oid]
+//   with queue=[..., dummy_lsa, first_logged_chunk_lsa]. The replication path then emits
+//   one RVREPL_DUMMY_OOS_RECORD for the null OID (pops dummy_lsa) followed by one
+//   RVREPL_OOS_INSERT for the real OID (pops first_logged_chunk_lsa). Intermediate
+//   chunks are not enqueued — tdes->suppress_oos_insert_lsa_queueing suppresses the
+//   auto-push in log_append_{undo,}redo_crumbs while this function runs.
+//
 static int
 oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &oid)
 {
