@@ -29,61 +29,47 @@
 #include "error_manager.h"
 #include "intl_support.h"
 #include "language_support.h"
-#include "object_representation_constants.h"
+#include "object_representation.h"
 #include "porting.h"
-
-#include <arpa/inet.h>
-#include <cstring>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-/* read int16 from buffer in network byte order */
+/* thin wrappers over OR_GET_* macros to keep call sites expression-style */
 static inline int16_t
 read_int16 (const char *buf)
 {
-  uint16_t v;
-  memcpy (&v, buf, sizeof (v));
-  return (int16_t) ntohs (v);
+  return (int16_t) OR_GET_SHORT (buf);
 }
 
-/* read int32 from buffer in network byte order */
 static inline int32_t
 read_int32 (const char *buf)
 {
-  uint32_t v;
-  memcpy (&v, buf, sizeof (v));
-  return (int32_t) ntohl (v);
+  return (int32_t) OR_GET_INT (buf);
 }
 
-/* read int64 from buffer in network byte order */
 static inline int64_t
 read_int64 (const char *buf)
 {
-  uint32_t hi, lo;
-  memcpy (&hi, buf, sizeof (hi));
-  memcpy (&lo, buf + 4, sizeof (lo));
-  return ((int64_t) ntohl (hi) << 32) | (uint32_t) ntohl (lo);
+  INT64 v;
+  OR_GET_INT64 (buf, &v);
+  return (int64_t) v;
 }
 
-/* read float from buffer (IEEE 754, same byte order as int32) */
 static inline float
 read_float (const char *buf)
 {
-  int32_t v = read_int32 (buf);
-  float f;
-  memcpy (&f, &v, sizeof (f));
-  return f;
+  float v;
+  OR_GET_FLOAT (buf, &v);
+  return v;
 }
 
-/* read double from buffer (IEEE 754, same byte order as int64) */
 static inline double
 read_double (const char *buf)
 {
-  int64_t v = read_int64 (buf);
-  double d;
-  memcpy (&d, &v, sizeof (d));
-  return d;
+  double v;
+  OR_GET_DOUBLE (buf, &v);
+  return v;
 }
 
 static int
