@@ -236,7 +236,7 @@ static void numeric_mul (DB_C_NUMERIC a1, DB_C_NUMERIC a2, DB_C_NUMERIC answer, 
 static void float_numeric_mul (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint64_t * result_word,
 			       int calc_words, int calc_nbytes);
 static int float_numeric_mul_fast (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint64_t * result_word,
-				   int calc_words, uint8_t * result_buf);
+				   int calc_words, uint8_t * result_buf, int *result_scale);
 static void numeric_long_div (DB_C_NUMERIC a1, DB_C_NUMERIC a2, DB_C_NUMERIC answer, DB_C_NUMERIC remainder,
 			      bool is_long_num);
 static void numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, DB_C_NUMERIC remainder,
@@ -1344,7 +1344,7 @@ float_numeric_mul (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint6
  */
 static int
 float_numeric_mul_fast (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint64_t * result_word, int calc_words,
-			uint8_t * result_buf)
+			uint8_t * result_buf, int *result_scale)
 {
 #if HAS_INT128_SUPPORT
   /* fast path: multiply least significant 64-bit words (word[2]) -> 128-bit result */
@@ -1373,6 +1373,18 @@ float_numeric_mul_fast (const uint64_t * dbv1_word, const uint64_t * dbv2_word, 
   result_word[2] = (temp << 32) | result_low;
   result_word[1] = dbv1_high * dbv2_high + carry + (temp >> 32);
 #endif
+
+  if (*result_scale > DB_MAX_NUMERIC_SCALE)
+    {
+      int scale_overflow = *result_scale - DB_MAX_NUMERIC_SCALE;
+      *result_scale = DB_MAX_NUMERIC_SCALE;
+
+      if (float_numeric_div_normalize (result_word, calc_words, NUMERIC_GET_BYTE_COUNT (calc_words), scale_overflow) >=
+	  ROUND_HALF_UP_DIGIT)
+	{
+	  (void) float_numeric_increment (result_word, calc_words, 1);
+	}
+    }
 
   numeric_words_to_bytes (result_word, calc_words, result_buf);
 
@@ -3192,7 +3204,12 @@ float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   /* fast path */
   if (calc_words == NUMERIC_AS_WORDS && (dbv1_word[0] | dbv1_word[1] | dbv2_word[0] | dbv2_word[1]) == 0)
     {
-      result_prec = float_numeric_mul_fast (dbv1_word, dbv2_word, result_word, calc_words, result_buf);
+      result_prec = float_numeric_mul_fast (dbv1_word, dbv2_word, result_word, calc_words, result_buf, &result_scale);
+      if (result_sign && result_prec == 1 && result_word[calc_words - 1] == 0)
+	{
+	  /* Prevent -0; zero is always treated as positive. */
+	  result_sign = false;
+	}
       db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, result_sign, true);
       return ret;
     }
@@ -3215,6 +3232,12 @@ float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
 	}
     }
   result_prec = float_numeric_get_decimal_digit (result_word, calc_words);
+  if (result_sign && result_prec == 1 && result_word[calc_words - 1] == 0)
+    {
+      /* Prevent -0; zero is always treated as positive. */
+      result_sign = false;
+    }
+
   ret = float_numeric_check_overflow_and_adjust_scale (&result_prec, &result_scale, answer);
   if (ret != NO_ERROR)
     {
