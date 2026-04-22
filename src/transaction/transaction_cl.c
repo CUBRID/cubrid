@@ -89,9 +89,9 @@ CUB_THREAD_LOCAL int tm_Tran_latest_query_status;
  *
  * tm_libcas_depth indicates the depth of callback_xxx functions called by method_callback (SP)
  */
-static UINT64 tm_Query_begin = 0;
-static int tm_Query_timeout = 0;
-static int tm_libcas_depth = 0;
+static CUB_THREAD_LOCAL UINT64 tm_Query_begin = 0;
+static CUB_THREAD_LOCAL int tm_Query_timeout = 0;
+static CUB_THREAD_LOCAL int tm_libcas_depth = 0;
 
 /* this is a local list of user-defined savepoints.  It may be updated upon
  * the following calls:
@@ -100,7 +100,7 @@ static int tm_libcas_depth = 0;
  *    tran_abort()		-> tran_free_savepoint_list()
  *    tran_abort_upto_savepoint() -> tm_free_list_upto_savepoint()
  */
-static DB_NAMELIST *user_savepoint_list = NULL;
+static CUB_THREAD_LOCAL DB_NAMELIST *user_savepoint_list = NULL;
 
 static int tran_add_savepoint (const char *savept_name);
 static void tran_free_list_upto_savepoint (const char *savept_name);
