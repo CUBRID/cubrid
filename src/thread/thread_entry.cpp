@@ -237,16 +237,20 @@ namespace cubthread
 	    adj_ar_free (cnv_adj_buffer[i]);
 	  }
       }
-    if (pthread_mutex_destroy (&tran_index_lock) != 0)
+    int rc;
+    if ((rc = pthread_mutex_destroy (&tran_index_lock)) != 0)
       {
+	printf ("pthread_mutex_destroy failed: %s\n", strerror (rc));
 	assert (false);
       }
-    if (pthread_mutex_destroy (&th_entry_lock) != 0)
+    if ((rc = pthread_mutex_destroy (&th_entry_lock)) != 0)
       {
+	printf ("pthread_mutex_destroy failed: %s\n", strerror (rc));
 	assert (false);
       }
-    if (pthread_cond_destroy (&wakeup_cond) != 0)
+    if ((rc = pthread_cond_destroy (&wakeup_cond)) != 0)
       {
+	printf ("pthread_cond_destroy failed: %s\n", strerror (rc));
 	assert (false);
       }
 

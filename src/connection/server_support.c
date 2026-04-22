@@ -1313,61 +1313,46 @@ css_start_shutdown_server ()
   css_Server_shutdown_inited = true;
 }
 
-static void
-css_send_request_error_and_abort (CSS_CONN_ENTRY & conn, unsigned short rid, int errid)
-{
-  OR_ALIGNED_BUF (1024) a_buffer;
-  char *buffer = OR_ALIGNED_BUF_START (a_buffer);
-  int length = 1024;
-
-  char *area = er_get_area_error (buffer, &length);
-  unsigned int eid = css_return_eid_from_conn (&conn, rid);
-
-  if (area != NULL)
-    {
-      conn.db_error = errid;
-      (void) css_send_error_to_client (&conn, eid, area, length);
-      conn.db_error = 0;
-    }
-
-  (void) css_send_abort_to_client (&conn, eid);
-}
-
 // *INDENT-OFF*
 static void
 tran_compensation (cubthread::task<cubthread::entry> *ptr)
 {
+  CSS_CONN_ENTRY *conn;
+  unsigned short rid;
+  int request, size;
+  int rc;
+
   if (dynamic_cast<css_server_task *> (ptr))
     {
       css_server_task *task_p = static_cast<css_server_task *> (ptr);
+      conn = &task_p->get_conn ();
 
-      printf ("css_server_task: fd: %d, client_id: %d\n", task_p->get_conn ().fd, task_p->get_conn ().client_id);
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
-
+      /* pending_request_count was increased at push_task. offset that. */
       task_p->get_conn ().start_request ();
-      css_send_request_error_and_abort (task_p->get_conn (), 1, ER_THREAD_STACK);
-
-      css_end_server_request (&task_p->get_conn ());
-
-      task_p->retire ();
     }
   else
     {
       assert (dynamic_cast<css_server_external_task *> (ptr));
-
       css_server_external_task *task_p = static_cast<css_server_external_task *> (ptr);
-
-      printf ("css_server_task: fd: %d, client_id: %d\n", task_p->get_conn ()->fd, task_p->get_conn ()->client_id);
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
-
-      css_send_request_error_and_abort (*task_p->get_conn (), 1, ER_THREAD_STACK);
-
-      css_end_server_request (task_p->get_conn ());
-
-      task_p->retire ();
+      conn = task_p->get_conn ();
     }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
+
+  rc = css_receive_request (conn, &rid, &request, &size);
+  if (rc != NO_ERRORS)
+    {
+      /* something was wrong */
+      assert (false);
+      /* shutdown immediately */
+      css_end_server_request (conn);
+    }
+  else
+    {
+      css_send_request_error_and_abort (conn, rid, ER_THREAD_STACK);
+    }
+
+  ptr->retire ();
 }
 
 static void
@@ -1375,14 +1360,13 @@ css_compensation (cubthread::task<cubthread::entry> *ptr)
 {
   css_connection_task *task_p = static_cast<css_connection_task *> (ptr);
 
-  printf ("css_connection_task: fd: %d, client_id: %d\n", task_p->get_conn ().fd, task_p->get_conn ().client_id);
-
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
 
-  (*css_Connection_error_handler)(&cubthread::get_entry (), &task_p->get_conn ());
+  (*css_Connection_error_handler) (&cubthread::get_entry (), &task_p->get_conn ());
 
   task_p->retire ();
 }
+
 // *INDENT-ON*
 
 /*
@@ -1783,6 +1767,32 @@ css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
   rc = css_send_abort_request (conn, CSS_RID_FROM_EID (eid));
 
   return (rc == NO_ERRORS) ? 0 : rc;
+}
+
+/*
+ * css_send_request_error_and_abort () - send an error message and abort message to the client
+ *   return:
+ *   rid(in): request id
+ *   errid(in): error code
+ */
+unsigned int
+css_send_request_error_and_abort (CSS_CONN_ENTRY * conn, unsigned short rid, int errid)
+{
+  OR_ALIGNED_BUF (1024) a_buffer;
+  char *buffer = OR_ALIGNED_BUF_START (a_buffer);
+  int length = 1024;
+
+  char *area = er_get_area_error (buffer, &length);
+  unsigned int eid = css_return_eid_from_conn (conn, rid);
+
+  if (area != NULL)
+    {
+      conn.db_error = errid;
+      (void) css_send_error_to_client (conn, eid, area, length);
+      conn.db_error = 0;
+    }
+
+  return css_send_abort_to_client (conn, eid);
 }
 
 /*

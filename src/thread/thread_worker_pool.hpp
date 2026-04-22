@@ -1307,6 +1307,7 @@ namespace cubthread
 	      {
 		return true;
 	      }
+	    // TODO: need to thread_sleep (100) but this makes the master thread blocked
 	  }
 	// failed to start thread
 	m_has_thread = false;
