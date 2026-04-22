@@ -1337,19 +1337,23 @@ tran_compensation (cubthread::task<cubthread::entry> *ptr)
       conn = task_p->get_conn ();
     }
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
+  if (conn)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
 
-  rc = css_receive_request (conn, &rid, &request, &size);
-  if (rc != NO_ERRORS)
-    {
-      /* something was wrong */
-      assert (false);
-      /* shutdown immediately */
-      css_end_server_request (conn);
-    }
-  else
-    {
-      (void) css_send_request_error_and_abort (conn, rid, ER_THREAD_STACK);
+      rc = css_receive_request (conn, &rid, &request, &size);
+      if (rc != NO_ERRORS)
+	{
+	  /* something was wrong */
+	  assert (false);
+	  /* shutdown immediately */
+	  css_end_server_request (conn);
+	}
+      else
+	{
+	  /* this can block the request for new connection to be connected */
+	  css_send_request_error_and_abort (conn, rid, ER_THREAD_STACK);
+	}
     }
 
   ptr->retire ();
@@ -1776,7 +1780,7 @@ css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
  *   rid(in): request id
  *   errid(in): error code
  */
-unsigned int
+void
 css_send_request_error_and_abort (CSS_CONN_ENTRY * conn, unsigned short rid, int errid)
 {
   OR_ALIGNED_BUF (1024) a_buffer;
@@ -1784,22 +1788,17 @@ css_send_request_error_and_abort (CSS_CONN_ENTRY * conn, unsigned short rid, int
   unsigned int eid;
   char *area;
   int length = 1024;
-  int err;
 
   area = er_get_area_error (buffer, &length);
   eid = css_return_eid_from_conn (conn, rid);
   if (area != NULL)
     {
       conn->db_error = errid;
-      err = css_send_error_to_client (conn, eid, area, length);
-      if (err != NO_ERRORS)
-	{
-	  return err;
-	}
+      (void) css_send_error_to_client (conn, eid, area, length);
       conn->db_error = 0;
     }
 
-  return css_send_abort_to_client (conn, eid);
+  (void) css_send_abort_to_client (conn, eid);
 }
 
 /*
@@ -3383,10 +3382,8 @@ static cubthread::wait_seconds
 css_get_connection_thread_timeout_configuration (void)
 {
   // todo: need infinite timeout
-//  return
-//    cubthread::wait_seconds (std::chrono::seconds (prm_get_integer_value (PRM_ID_THREAD_CONNECTION_TIMEOUT_SECONDS)));
   return
-    cubthread::wait_seconds (std::chrono::seconds (20));
+    cubthread::wait_seconds (std::chrono::seconds (prm_get_integer_value (PRM_ID_THREAD_CONNECTION_TIMEOUT_SECONDS)));
 }
 
 static bool
@@ -3405,8 +3402,7 @@ static cubthread::wait_seconds
 css_get_server_request_thread_timeout_configuration (void)
 {
   // todo: need infinite timeout
-  //return cubthread::wait_seconds (std::chrono::seconds (prm_get_integer_value (PRM_ID_THREAD_WORKER_TIMEOUT_SECONDS)));
-  return cubthread::wait_seconds (std::chrono::seconds (2000));
+  return cubthread::wait_seconds (std::chrono::seconds (prm_get_integer_value (PRM_ID_THREAD_WORKER_TIMEOUT_SECONDS)));
 }
 
 static void

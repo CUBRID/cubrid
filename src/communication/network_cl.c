@@ -152,7 +152,6 @@ set_server_error (int error)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, server_error, 1, "");
 	  return server_error;
 	case ER_THREAD_STACK:
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, server_error, 1, 0);
 	  return server_error;
 	}
       /* FALLTHRU */

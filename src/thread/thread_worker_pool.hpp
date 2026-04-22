@@ -536,11 +536,6 @@ namespace cubthread
   // does not return 0
   std::size_t system_core_count (void);
 
-  // custom worker pool exception handler
-  void wp_handle_system_error (const char *message, const std::system_error &e);
-  template <typename Func>
-  void wp_call_func_throwing_system_error (const char *message, Func &func);
-
   // dump worker pool statistics to error log
   void wp_er_log_stats (const char *header, cubperf::stat_value *statsp);
 
@@ -1338,7 +1333,6 @@ namespace cubthread
       }
     catch (const std::exception &e)
       {
-	//e.code (), e.what ();
 	er_log_debug (ARG_FILE_LINE, "%s\n", e.what ());
 	success = false;
       }
@@ -1619,24 +1613,6 @@ namespace cubthread
     if (ctxp != NULL)
       {
 	func (*ctxp, stop, args...);
-      }
-  }
-
-  //////////////////////////////////////////////////////////////////////////
-  // other functions
-  //////////////////////////////////////////////////////////////////////////
-
-  template <typename Func>
-  void
-  wp_call_func_throwing_system_error (const char *message, Func &func)
-  {
-    try
-      {
-	func ();  // no exception catching on release
-      }
-    catch (const std::system_error &e)
-      {
-	wp_handle_system_error (message, e);
       }
   }
 
