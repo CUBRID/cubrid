@@ -1322,6 +1322,8 @@ tran_compensation (cubthread::task<cubthread::entry> *ptr)
   int request, size;
   int rc;
 
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
+
   if (dynamic_cast<css_server_task *> (ptr))
     {
       css_server_task *task_p = static_cast<css_server_task *> (ptr);
@@ -1329,30 +1331,33 @@ tran_compensation (cubthread::task<cubthread::entry> *ptr)
 
       /* pending_request_count was increased at push_task. offset that. */
       task_p->get_conn ().start_request ();
+
+      if (conn)
+	{
+	  rc = css_receive_request (conn, &rid, &request, &size);
+	  if (rc != NO_ERRORS)
+	    {
+	      /* something was wrong */
+	      assert (false);
+	      /* shutdown immediately */
+	      css_end_server_request (conn);
+	    }
+	  else
+	    {
+	      /* this can block the request for new connection to be connected */
+	      css_send_request_error_and_abort (conn, rid, ER_THREAD_STACK);
+	    }
+	}
     }
   else
     {
       assert (dynamic_cast<css_server_external_task *> (ptr));
       css_server_external_task *task_p = static_cast<css_server_external_task *> (ptr);
       conn = task_p->get_conn ();
-    }
 
-  if (conn)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
-
-      rc = css_receive_request (conn, &rid, &request, &size);
-      if (rc != NO_ERRORS)
+      if (conn)
 	{
-	  /* something was wrong */
-	  assert (false);
-	  /* shutdown immediately */
 	  css_end_server_request (conn);
-	}
-      else
-	{
-	  /* this can block the request for new connection to be connected */
-	  css_send_request_error_and_abort (conn, rid, ER_THREAD_STACK);
 	}
     }
 
