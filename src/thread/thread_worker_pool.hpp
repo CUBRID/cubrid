@@ -968,9 +968,10 @@ namespace cubthread
 	if (!refp->assign_task (task_p, push_time))
 	  {
 	    // failed to start new thread
-	    if (m_parent_pool->get_compensate_func ())
+	    auto func = m_parent_pool->get_compensate_func ();
+	    if (func)
 	      {
-		m_parent_pool->get_compensate_func () (task_p);
+		func (task_p);
 		finished_task_notification ();
 	      }
 	    else
@@ -1325,7 +1326,6 @@ namespace cubthread
   worker_pool<Context>::core::worker::start_thread (void)
   {
     bool success = true;
-    int max_clients;
     std::thread t;
 
     assert (m_has_thread);
@@ -1335,12 +1335,10 @@ namespace cubthread
 	t = std::thread (&worker::run, this);
 	t.detach ();
       }
-    catch (const std::system_error &e)
+    catch (const std::exception &e)
       {
 	//e.code (), e.what ();
-	max_clients = prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS);
-	er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, max_clients);
-
+	er_log_debug (ARG_FILE_LINE, "%s\n", e.what ());
 	success = false;
       }
     return success;

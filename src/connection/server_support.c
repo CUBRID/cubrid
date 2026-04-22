@@ -183,6 +183,11 @@ public:
 
   void execute (context_type &thread_ref) override final;
 
+  CSS_CONN_ENTRY *get_conn ()
+    {
+      return m_conn;
+    }
+
   // retire not overwritten; task is automatically deleted
 
 private:
@@ -1328,6 +1333,58 @@ css_send_request_error_and_abort (CSS_CONN_ENTRY & conn, unsigned short rid, int
   (void) css_send_abort_to_client (&conn, eid);
 }
 
+// *INDENT-OFF*
+static void
+tran_compensation (cubthread::task<cubthread::entry> *ptr)
+{
+  if (dynamic_cast<css_server_task *> (ptr))
+    {
+      css_server_task *task_p = static_cast<css_server_task *> (ptr);
+
+      printf ("css_server_task: fd: %d, client_id: %d\n", task_p->get_conn ().fd, task_p->get_conn ().client_id);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
+
+      task_p->get_conn ().start_request ();
+      css_send_request_error_and_abort (task_p->get_conn (), 1, ER_THREAD_STACK);
+
+      css_end_server_request (&task_p->get_conn ());
+
+      task_p->retire ();
+    }
+  else
+    {
+      assert (dynamic_cast<css_server_external_task *> (ptr));
+
+      css_server_external_task *task_p = static_cast<css_server_external_task *> (ptr);
+
+      printf ("css_server_task: fd: %d, client_id: %d\n", task_p->get_conn ()->fd, task_p->get_conn ()->client_id);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
+
+      css_send_request_error_and_abort (*task_p->get_conn (), 1, ER_THREAD_STACK);
+
+      css_end_server_request (task_p->get_conn ());
+
+      task_p->retire ();
+    }
+}
+
+static void
+css_compensation (cubthread::task<cubthread::entry> *ptr)
+{
+  css_connection_task *task_p = static_cast<css_connection_task *> (ptr);
+
+  printf ("css_connection_task: fd: %d, client_id: %d\n", task_p->get_conn ().fd, task_p->get_conn ().client_id);
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
+
+  (*css_Connection_error_handler)(&cubthread::get_entry (), &task_p->get_conn ());
+
+  task_p->retire ();
+}
+// *INDENT-ON*
+
 /*
  * css_init() -
  *   return:
@@ -1364,35 +1421,6 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 #define MAX_WORKERS css_get_max_workers ()
 #define MAX_TASK_COUNT css_get_max_task_count ()
 #define MAX_CONNECTIONS css_get_max_connections ()
-
-  // *INDENT-OFF*
-  auto tran_compensation = [](cubthread::task<cubthread::entry> *ptr) {
-      css_server_task *task_p = static_cast<css_server_task *> (ptr);
-
-      printf ("css_server_task: fd: %d, client_id: %d\n", task_p->get_conn ().fd, task_p->get_conn ().client_id);
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
-
-      task_p->get_conn ().start_request ();
-      css_send_request_error_and_abort (task_p->get_conn (), 1, ER_THREAD_STACK);
-
-      css_end_server_request (&task_p->get_conn ());
-
-      task_p->retire ();
-  };
-
-  auto css_compensation = [](cubthread::task<cubthread::entry> *ptr) {
-      css_connection_task *task_p = static_cast<css_connection_task *> (ptr);
-
-      printf ("css_connection_task: fd: %d, client_id: %d\n", task_p->get_conn ().fd, task_p->get_conn ().client_id);
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
-
-      (*css_Connection_error_handler)(&cubthread::get_entry (), &task_p->get_conn ());
-
-      task_p->retire ();
-  };
-  // *INDENT-ON*
 
   // create request worker pool
   css_Server_request_worker_pool =
@@ -3341,7 +3369,7 @@ css_get_connection_thread_timeout_configuration (void)
 //  return
 //    cubthread::wait_seconds (std::chrono::seconds (prm_get_integer_value (PRM_ID_THREAD_CONNECTION_TIMEOUT_SECONDS)));
   return
-    cubthread::wait_seconds (std::chrono::seconds (2000));
+    cubthread::wait_seconds (std::chrono::seconds (20));
 }
 
 static bool
@@ -3361,7 +3389,7 @@ css_get_server_request_thread_timeout_configuration (void)
 {
   // todo: need infinite timeout
   //return cubthread::wait_seconds (std::chrono::seconds (prm_get_integer_value (PRM_ID_THREAD_WORKER_TIMEOUT_SECONDS)));
-  return cubthread::wait_seconds (std::chrono::seconds (20));
+  return cubthread::wait_seconds (std::chrono::seconds (2000));
 }
 
 static void
