@@ -186,13 +186,6 @@ jsp_find_pkg (const char *unique_name, DB_AUTH purpose)
   return mop;
 }
 
-static bool
-jsp_pkg_exists (const char *unique_name)
-{
-  MOP mop = jsp_find_pkg (unique_name, DB_AUTH_NONE);
-  return mop != NULL;
-}
-
 /*
  * jsp_is_exist_stored_procedure
  *   return: name is exist then return true

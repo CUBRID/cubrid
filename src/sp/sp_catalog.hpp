@@ -32,7 +32,6 @@
 #include "jsp_cl.h"
 #include "dbi.h"
 #include "sp_constants.hpp"
-#include "pl_struct_compile.hpp"
 
 enum sp_source_code_type
 {

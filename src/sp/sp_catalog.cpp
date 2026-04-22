@@ -38,7 +38,6 @@
 #include "schema_manager.h"
 #include "dbtype.h"
 #include "schema_system_catalog_constants.h"    // for SP_ATTR_TARGET_METHOD_LEN
-#include "pl_struct_compile.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -662,7 +661,6 @@ error:
 
   return (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
 }
-
 
 int
 sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
