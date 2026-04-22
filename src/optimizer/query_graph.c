@@ -8270,23 +8270,6 @@ qo_insert_transitive_join_term (QO_ENV * env, PT_NODE * pt_expr)
 		      bitset_add (&QO_NODE_SARGS (n_ptr), n);
 		    }
 		}
-
-	      for (k = 0; k < env->nsubqueries; k++)
-		{
-		  has_i = BITSET_MEMBER (env->subqueries[k].terms, i) ? true : false;
-		  has_n = BITSET_MEMBER (env->subqueries[k].terms, n) ? true : false;
-
-		  if (has_n && !has_i)
-		    {
-		      bitset_remove (&env->subqueries[k].terms, n);
-		      bitset_add (&env->subqueries[k].terms, i);
-		    }
-		  else if (!has_n && has_i)
-		    {
-		      bitset_remove (&env->subqueries[k].terms, i);
-		      bitset_add (&env->subqueries[k].terms, n);
-		    }
-		}
 	    }
 	}
     }
