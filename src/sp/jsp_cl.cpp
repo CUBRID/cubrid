@@ -1914,6 +1914,7 @@ sp_add_pkg_sp (MOP *mop_out, MOP owner, DB_VALUE &current_datetime,
   if (n >= (int) sizeof (buffer))
     {
       err = ER_PKG_PROC_UNIQ_NAME_TOO_LONG;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
       goto cleanup0;
     }
   db_make_string (&value, buffer);
