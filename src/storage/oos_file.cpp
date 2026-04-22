@@ -1144,9 +1144,13 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
   should_track_multi_chunk = oos_should_track_multi_chunk_for_replication (thread_p);
   if (should_track_multi_chunk)
     {
-      int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+      const int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
       tdes = LOG_FIND_TDES (tran_index);
-      assert (tdes != NULL);
+      if (tdes == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+	  return ER_LOG_UNKNOWN_TRANINDEX;
+	}
 
       log_append_empty_record (thread_p, LOG_DUMMY_OOS_RECORD, NULL);
       LSA_COPY (&dummy_lsa, &tdes->tail_lsa);
