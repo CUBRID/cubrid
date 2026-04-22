@@ -767,6 +767,8 @@ dblink_connect_and_prepare (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, DB
 	{
 	  cci_get_err_msg (ret, err_buf.err_msg, sizeof (err_buf.err_msg));
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  (void) cci_disconnect (scan_info->conn_handle, &err_buf);
+	  scan_info->conn_handle = -1;
 	  return ER_DBLINK;
 	}
     }

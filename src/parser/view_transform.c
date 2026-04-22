@@ -5044,12 +5044,17 @@ mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di)
     {
       return false;
     }
+  base = pt_append_bytes (parser, base, "\"", 1);
+  if (base == NULL)
+    {
+      return false;
+    }
   base = pt_append_nulstring (parser, base, col_name);
   if (base == NULL)
     {
       return false;
     }
-  base = pt_append_bytes (parser, base, " = ?", 4);
+  base = pt_append_bytes (parser, base, "\" = ?", 5);
   if (base == NULL)
     {
       return false;
