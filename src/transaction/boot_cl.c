@@ -680,10 +680,6 @@ error_exit:
   return error_code;
 }
 
-#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-BOOT_CLIENT_CREDENTIAL gv_client_credential;
-#endif
-
 /*
  * boot_restart_client () - restart client
  *
@@ -817,8 +813,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       ASSERT_ERROR ();
       goto error;
     }
-
   ptr = (char *) strstr (client_credential->get_db_name (), "@");
+
   if (ptr == NULL)
     {
       /* Find the location of the database and the log from the database.txt */
@@ -1297,10 +1293,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
   json_set_alloc_funcs (malloc, free);
 
-#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-  gv_client_credential = *client_credential;
-#endif
-
   return error_code;
 
 error:
@@ -1370,7 +1362,7 @@ error:
 
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 int
-boot_restart_client_sub (int sub_index)
+boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
 {
   int error_code;
 
@@ -1384,6 +1376,9 @@ boot_restart_client_sub (int sub_index)
 	    boot_client (g_main_tran_info.tran_index, g_main_tran_info.tran_wait_msecs,
 			 g_main_tran_info.tran_isolation);
 	}
+
+      db_Connect_status =
+	(error_code != NO_ERROR) ? DB_CONNECTION_STATUS_NOT_CONNECTED : DB_CONNECTION_STATUS_CONNECTED;
       return error_code;
     }
 
@@ -1393,8 +1388,6 @@ boot_restart_client_sub (int sub_index)
   int tran_lock_wait_msecs;
   TRAN_STATE transtate;
 
-  BOOT_CLIENT_CREDENTIAL client_credential;
-  char program_name[512];
 
   //lang_init();
   //tz_load();
@@ -1413,20 +1406,10 @@ boot_restart_client_sub (int sub_index)
   //er_clear ();    
 
   /* read only mode? */
-  if (prm_get_bool_value (PRM_ID_READ_ONLY_MODE) || BOOT_READ_ONLY_CLIENT_TYPE (gv_client_credential.client_type))
+  if (prm_get_bool_value (PRM_ID_READ_ONLY_MODE) || BOOT_READ_ONLY_CLIENT_TYPE (client_credential->client_type))
     {
       db_disable_modification ();
     }
-
-  error_code =
-    snprintf (program_name, sizeof (program_name), "%s(%d)", gv_client_credential.get_program_name (), sub_index + 1);
-  if (error_code < 0 || error_code >= (int) sizeof (program_name))
-    {
-      return ER_FAILED;
-    }
-
-  client_credential = gv_client_credential;
-  client_credential.program_name = program_name;
 
   error_code = net_client_sub_init ();
   if (error_code != NO_ERROR)
@@ -1452,7 +1435,7 @@ boot_restart_client_sub (int sub_index)
   tran_isolation = TRAN_DEFAULT_ISOLATION_LEVEL ();
   tran_lock_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
 
-  tran_index = boot_register_client (&client_credential, tran_lock_wait_msecs, tran_isolation, &transtate,
+  tran_index = boot_register_client (client_credential, tran_lock_wait_msecs, tran_isolation, &transtate,
 #if 0
 				     NULL
 #else
@@ -1510,7 +1493,7 @@ boot_restart_client_sub (int sub_index)
   sm_init (&boot_Server_credential.root_class_oid, &boot_Server_credential.root_class_hfid, true);
 
   au_init ();
-  error_code = au_login (client_credential.get_db_user (), client_credential.get_db_password (), false);
+  error_code = au_login (client_credential->get_db_user (), client_credential->get_db_password (), false);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -1522,7 +1505,7 @@ boot_restart_client_sub (int sub_index)
     }
 
   // need session? 
-  (void) db_find_or_create_session (client_credential.get_db_user (), client_credential.get_program_name ());
+  (void) db_find_or_create_session (client_credential->get_db_user (), client_credential->get_program_name ());
 
 #if 0
   //error_code = boot_check_locales (&client_credential);
@@ -1563,6 +1546,8 @@ boot_restart_client_sub (int sub_index)
       db_private_free_and_init (NULL, boot_Server_credential.db_lang);
     }
 */
+
+  db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
   return NO_ERROR;
 
 error:

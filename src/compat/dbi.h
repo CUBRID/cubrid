@@ -71,6 +71,9 @@ extern "C"
 
   extern int db_login (const char *name, const char *password);
   extern int db_restart (const char *program, int print_version, const char *volume);
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  extern int db_restart_sub (int sub_index);
+#endif
   extern int db_restart_ex (const char *program, const char *db_name, const char *db_user, const char *db_password,
 			    const char *preferred_hosts, int client_type);
   extern void db_set_server_session_key (const char *key);
@@ -88,6 +91,9 @@ extern "C"
   extern int db_get_variable (DB_VALUE * name, DB_VALUE * value);
   extern int db_shutdown (void);
   extern void db_shutdown_without_request_to_server (void);
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  extern int db_shutdown_sub ();
+#endif
   extern int db_ping_server (int client_val, int *server_val);
   extern int db_disable_modification (void);
   extern int db_enable_modification (void);

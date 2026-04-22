@@ -68,7 +68,7 @@ extern int boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, B
 				   const char *lang_charset);
 extern int boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential);
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-extern int boot_restart_client_sub (int sub_index);
+extern int boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential);
 extern void boot_finalize_client_sub ();
 #endif
 extern int boot_shutdown_client (bool is_er_final);
