@@ -725,6 +725,16 @@ extern void heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const 
 						 const std::vector<VPID> &heap_pages_array);
 // *INDENT-ON*
 
+// Currently heap_file.c uses GNU indent as formatting tool and it does not support C++,
+// so we need to turn off indent for this part of code.
+// TODO: Rename heap_file.c to heap_file.cpp and enable C++ formatting in indent tool, then we can remove the following lines.
+
+// *INDENT-OFF*
+using OID_VECTOR = std::vector<OID>;
+// *INDENT-ON*
+
+extern int heap_recdes_get_oos_oids (const RECDES * record, OID_VECTOR & oos_oids);
+
 /* lob */
 extern int heap_rv_lob_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 #endif /* _HEAP_FILE_H_ */

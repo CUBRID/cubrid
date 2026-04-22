@@ -16715,7 +16715,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
 		      if (prev == NULL)
 			{
-			  prev = regu_list_new;
 			  regu_list_new->next = buildlist->a_outptr_list_ex->valptrp;
 			  buildlist->a_outptr_list_ex->valptrp = regu_list_new;
 			}
@@ -16724,10 +16723,12 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 			  regu_list_new->next = prev->next;
 			  prev->next = regu_list_new;
 			}
-		      prev = prev->next;
+		      prev = regu_list_new;
 		    }
-
-		  prev = (prev != NULL) ? prev->next : buildlist->a_outptr_list_ex->valptrp;
+		  else
+		    {
+		      prev = (prev != NULL) ? prev->next : buildlist->a_outptr_list_ex->valptrp;
+		    }
 		}
 	    }
 
@@ -16840,14 +16841,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  select_list_ex = NULL;
 
 	  /* register initial outlist */
-	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
-	    {
-	      xasl->outptr_list = buildlist->a_outptr_list;
-	    }
-	  else
-	    {
-	      xasl->outptr_list = buildlist->a_outptr_list_ex;
-	    }
+	  xasl->outptr_list = buildlist->a_outptr_list_ex;
 
 	  /* all done */
 	  goto analytic_exit;
@@ -28374,19 +28368,25 @@ pt_check_analytic_limit_optimization (XASL_NODE * xasl, ANALYTIC_EVAL_TYPE * eva
 {
   ANALYTIC_EVAL_TYPE *eval;
   ANALYTIC_TYPE *a_func_list;
-  bool is_optimizable = false;
+  bool is_optimizable = true;
 
   if (!xasl->instnum_pred && !xasl->instnum_val)
     {
       return NO_ERROR;
     }
 
-  /* NOTE: If eval->sort_list is NULL, eval_list length is always 1.
-   *       If eval_list length >= 2, all eval entries have non-NULL sort_list.
-   *       Since we check sort_list == NULL here, checking only one eval is sufficient. */
+  if (eval_list == NULL)
+    {
+      return NO_ERROR;
+    }
+
   for (eval = eval_list; eval != NULL; eval = eval->next)
     {
-      is_optimizable = !(eval->sort_list) ? true : false;
+      if (!is_optimizable || eval->covered_size != eval->sort_list_size)
+	{
+	  is_optimizable = false;
+	  break;
+	}
 
       for (a_func_list = eval->head; a_func_list && is_optimizable; a_func_list = a_func_list->next)
 	{
@@ -28424,20 +28424,39 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
 				     ANALYTIC_INFO * info)
 {
   SORT_LIST *sort_list;
-  QO_ENV *env;
+  QO_ENV *env = NULL;
   QO_INDEX_ENTRY *index_entry;
   QO_SEGMENT *seg;
   PT_NODE *attr, *node;
   int i, seg_idx, covered_count = 0;
   bool is_desc, is_desc_index;
 
-  if (qo_plan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (qo_plan))
+  switch (qo_plan->plan_type)
     {
-      return pt_count_analytic_covered_sort_list (parser, qo_plan->plan_un.join.outer, eval, info);
-    }
+    case QO_PLANTYPE_SCAN:
+      if (!qo_is_iscan (qo_plan) || (env = (qo_plan->info)->env) == NULL)
+	{
+	  return 0;
+	}
+      break;
 
-  if (!qo_is_iscan (qo_plan) || (env = (qo_plan->info)->env) == NULL)
-    {
+    case QO_PLANTYPE_SORT:
+      if (qo_plan->plan_un.sort.subplan == NULL)
+	{
+	  return 0;
+	}
+      return pt_count_analytic_covered_sort_list (parser, qo_plan->plan_un.sort.subplan, eval, info);
+
+    case QO_PLANTYPE_JOIN:
+      if (!QO_IS_NL_JOIN (qo_plan))
+	{
+	  return 0;
+	}
+      return pt_count_analytic_covered_sort_list (parser, qo_plan->plan_un.join.outer, eval, info);
+
+    case QO_PLANTYPE_FOLLOW:
+    case QO_PLANTYPE_WORST:
+    default:
       return 0;
     }
 

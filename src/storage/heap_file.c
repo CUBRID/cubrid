@@ -707,6 +707,7 @@ static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CA
 static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value,
 				   HEAP_CACHE_ATTRINFO * attr_info);
 static OR_ATTRIBUTE *heap_locate_attribute (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info);
+static int heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att);
 
 static DB_MIDXKEY *heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 					 HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, TP_DOMAIN * func_domain,
@@ -758,15 +759,16 @@ static SCAN_CODE heap_attrinfo_transform_fixed_to_disk (THREAD_ENTRY * thread_p,
 // *INDENT-ON*
 static SCAN_CODE heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							   OR_BUF * buf, char **ptr_varvals, bool is_oos, OID * oos_oid,
-							   int index, int offset_size, int header_size,
-							   int lob_create_flag);
+							   DB_BIGINT oos_length, int index, int offset_size,
+							   int header_size, int lob_create_flag);
 static SCAN_CODE heap_attrinfo_transform_header_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							 OR_BUF * buf, int offset_size, bool is_mvcc_class,
 							 bool is_update, bool has_oos);
 
 // *INDENT-OFF*
-static SCAN_CODE heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, OR_BUF * buf, 
+static SCAN_CODE heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, OR_BUF * buf,
 							  std::vector<bool> * oos_columns, std::vector<OID> * oos_oids,
+							  std::vector<DB_BIGINT> * oos_lengths,
 							  std::set<int> * incremented_attrids, int offset_size, int header_size,
 							  size_t mvcc_extra, int lob_create_flag, size_t * record_size);
 // *INDENT-ON*
@@ -853,6 +855,7 @@ static int heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERA
 					     bool is_mvcc_class);
 static int heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * update_context,
 					     bool is_mvcc_class);
+static bool heap_recdes_check_has_oos (const RECDES * recdes);
 static int heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 static int heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 					       PGBUF_WATCHER * home_hint_p);
@@ -5222,6 +5225,13 @@ heap_manager_initialize (void)
       return ret;
     }
 
+  /* Initialize OOS best space cache */
+  ret = oos_bestspace_initialize ();
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
   /* Initialize class OID->HFID cache */
   ret = heap_initialize_hfid_table ();
 
@@ -5245,6 +5255,13 @@ heap_manager_finalize (void)
     }
 
   ret = heap_classrepr_finalize_cache ();
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
+  /* Finalize OOS best space cache */
+  ret = oos_bestspace_finalize ();
   if (ret != NO_ERROR)
     {
       return ret;
@@ -5915,6 +5932,20 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
       file_postpone_destroy (thread_p, &vfid);
     }
 
+  /* OOS file cleanup */
+  {
+    VFID oos_vfid;
+    if (heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
+      {
+	int error = oos_remove_file (thread_p, oos_vfid);
+	if (error != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    return error;
+	  }
+      }
+  }
+
   file_postpone_destroy (thread_p, &hfid->vfid);
 
   (void) heap_stats_del_bestspace_by_hfid (thread_p, hfid);
@@ -5958,6 +5989,20 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
     {
       file_postpone_destroy (thread_p, &vfid);
     }
+
+  /* OOS file cleanup */
+  {
+    VFID oos_vfid;
+    if (heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
+      {
+	ret = oos_remove_file (thread_p, oos_vfid);
+	if (ret != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    return ret;
+	  }
+      }
+  }
 
   log_append_postpone (thread_p, RVHF_MARK_DELETED, &addr, sizeof (hfid->vfid), &hfid->vfid);
 
@@ -7914,7 +7959,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 static SCAN_CODE
 heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 {
-  using namespace oos_log;
+
 
   if (!heap_recdes_contains_oos (context->recdes_p))
     {
@@ -10841,6 +10886,75 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 }
 
 /*
+ * heap_midxkey_get_oos_extra_size () - If the given attribute in recdes is an OOS value,
+ *   return the actual size of the OOS data. Otherwise return 0.
+ *   This is used to correct midxkey buffer size estimation before allocation
+ *   when recdes->length underestimates the actual OOS value size.
+ *
+ *   return: actual OOS data size, or 0 if not OOS
+ *   recdes(in): record descriptor
+ *   att(in): the OR_ATTRIBUTE to check (must already match the record's representation)
+ */
+static int
+heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att)
+{
+  /* Only variable attributes can be OOS */
+  if (att->is_fixed != 0)
+    {
+      return 0;
+    }
+
+  if (OR_VAR_IS_NULL (recdes->data, att->location))
+    {
+      return 0;
+    }
+
+  /* Read the offset from the variable offset table to check the OOS flag */
+  int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
+  int offset;
+
+  switch (offset_size)
+    {
+    case OR_BYTE_SIZE:
+      offset =
+	OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), att->location, offset_size));
+      break;
+    case OR_SHORT_SIZE:
+      offset =
+	OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), att->location, offset_size));
+      break;
+    case OR_INT_SIZE:
+      offset =
+	OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), att->location, offset_size));
+      break;
+    default:
+      assert_release (false);
+      return 0;
+    }
+
+  if (!OR_IS_OOS (offset))
+    {
+      return 0;
+    }
+
+  /* Extract OOS length from inline data: [OOS OID (8B) + length (8B)] */
+  OR_BUF buf;
+  OID oos_oid;
+  int rc = NO_ERROR;
+
+  buf.ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, att->location);
+  buf.endptr = recdes->data + recdes->length;
+  or_get_oid (&buf, &oos_oid);
+  assert (!OID_ISNULL (&oos_oid));
+
+  /* Read OOS length directly from recdes inline data (no I/O needed) */
+  DB_BIGINT length = or_get_bigint (&buf, &rc);
+  assert (rc == NO_ERROR);
+
+  return (int) length;
+}
+
+/*
  * heap_attrinfo_read_dbvalues () - Find db_values of desired attributes of given
  *                                instance
  *   return: NO_ERROR
@@ -12083,7 +12197,7 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 	  if ((*oos_columns)[i])
 	    {
 	      payload_size -= column_size[i];
-	      payload_size += OR_OID_SIZE;
+	      payload_size += OR_OOS_INLINE_SIZE;
 	      *has_oos = true;
 	    }
 	}
@@ -12138,7 +12252,7 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
 	{
 	  /* START A TOP SYSTEM OPERATION */
 	  log_sysop_start (thread_p);
-	  if (oos_file_create (thread_p, *oos_vfid) != NO_ERROR)
+	  if (oos_create_file (thread_p, *oos_vfid) != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
 	      goto exit_on_error;
@@ -12254,7 +12368,7 @@ heap_attrinfo_dbvalue_to_recdes (THREAD_ENTRY * thread_p, HEAP_ATTRVALUE * value
 
 // *INDENT-OFF*
 static SCAN_CODE
-heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, int lob_create_flag, std::vector<bool> * oos_columns, std::vector<OID> * oos_oids)
+heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, int lob_create_flag, std::vector<bool> * oos_columns, std::vector<OID> * oos_oids, std::vector<DB_BIGINT> * oos_lengths)
 // *INDENT-ON*
 
 {
@@ -12314,6 +12428,7 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
 
 	  thread_p->oos_oids.push_back (oos_oid);	/* for replication log */
 	  (*oos_oids)[i] = oos_oid;
+	  (*oos_lengths)[i] = (DB_BIGINT) recdes.length;
 	  if (recdes.data != PTR_ALIGN (recbuf, MAX_ALIGNMENT))
 	    {
 	      free_and_init (recdes.data);
@@ -12569,8 +12684,8 @@ heap_attrinfo_transform_fixed_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRI
  */
 static SCAN_CODE
 heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, OR_BUF * buf,
-					  char **ptr_varvals, bool is_oos, OID * oos_oid, int index, int offset_size,
-					  int header_size, int lob_create_flag)
+					  char **ptr_varvals, bool is_oos, OID * oos_oid, DB_BIGINT oos_length,
+					  int index, int offset_size, int header_size, int lob_create_flag)
 {
   HEAP_ATTRVALUE *value;
   DB_VALUE *dbvalue;
@@ -12579,6 +12694,8 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   char *save_meta_data, *new_meta_data;
   int length;
   int rv;
+
+  using namespace oos_log;
 
   value = &attr_info->values[index];
   pr_type = value->last_attrepr->domain->type;
@@ -12620,18 +12737,20 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  /* use 2-bit of offset value as flags */
 	  length = OR_SET_VAR_OOS (length);
 	}
+
       or_put_offset_internal (buf, length, offset_size);
     }
 
   if (is_oos)
     {
-      if (buf->ptr + OR_OID_SIZE > buf->endptr)
+      if (buf->ptr + OR_OOS_INLINE_SIZE > buf->endptr)
 	{
 	  return S_DOESNT_FIT;
 	}
 
       buf->ptr = *ptr_varvals;
       or_put_oid (buf, oos_oid);
+      or_put_bigint (buf, oos_length);
       *ptr_varvals = buf->ptr;
     }
   else if (dbvalue != NULL && db_value_is_null (dbvalue) != true)
@@ -12716,6 +12835,7 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 static SCAN_CODE
 heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, OR_BUF * buf,
 					 std::vector<bool> * oos_columns, std::vector<OID> * oos_oids,
+					 std::vector<DB_BIGINT> * oos_lengths,
 					 std::set<int> * incremented_attrids, int offset_size, int header_size,
 					 size_t mvcc_extra, int lob_create_flag, size_t * record_size)
 // *INDENT-ON*
@@ -12743,7 +12863,8 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 
 	  status =
 	    heap_attrinfo_transform_variable_to_disk (thread_p, attr_info, buf, &ptr_varvals, (*oos_columns)[i],
-						      &(*oos_oids)[i], i, offset_size, header_size, lob_create_flag);
+						      &(*oos_oids)[i], (*oos_lengths)[i], i, offset_size, header_size,
+						      lob_create_flag);
 	}
       if (status != S_SUCCESS)
 	{
@@ -12765,8 +12886,10 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 	}
       else
 	{
-	  or_put_offset_internal (buf, CAST_BUFLEN (ptr_varvals - buf->buffer - header_size), offset_size);
+	  const int end_of_vot_offset = CAST_BUFLEN (ptr_varvals - buf->buffer - header_size);
+	  or_put_offset_internal (buf, OR_SET_VAR_LAST_ELEMENT (end_of_vot_offset), offset_size);
 	}
+
       buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
 
@@ -12807,6 +12930,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   // *INDENT-OFF*
   std::vector<bool> oos_columns (attr_info->num_values);
   std::vector<OID> oos_oids (attr_info->num_values);
+  std::vector<DB_BIGINT> oos_lengths (attr_info->num_values, 0);
   std::set<int> incremented_attrids;
   // *INDENT-ON*
 
@@ -12851,7 +12975,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   if (has_oos)
     {
       /* insert big columns to OOS */
-      status = heap_attrinfo_insert_to_oos (thread_p, attr_info, lob_create_flag, &oos_columns, &oos_oids);
+      status =
+	heap_attrinfo_insert_to_oos (thread_p, attr_info, lob_create_flag, &oos_columns, &oos_oids, &oos_lengths);
       if (status != S_SUCCESS)
 	{
 	  return S_ERROR;
@@ -12880,8 +13005,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       /* build columns */
       status =
 	heap_attrinfo_transform_columns_to_disk (thread_p, attr_info, &buf, &oos_columns, &oos_oids,
-						 &incremented_attrids, offset_size, header_size, mvcc_extra,
-						 lob_create_flag, &record_size);
+						 &oos_lengths, &incremented_attrids, offset_size, header_size,
+						 mvcc_extra, lob_create_flag, &record_size);
       if (status == S_DOESNT_FIT)
 	{
 	  expected_size += DB_PAGESIZE;
@@ -12954,9 +13079,6 @@ heap_attrinfo_transform_variable_to_disk_develop_ver (THREAD_ENTRY * thread_p, H
 	{
 	  DB_ELO dest_elo, *elo_p;
 	  HFID hfid;
-	  INT32 hpgid;
-	  int32_t fileid;
-	  short volid;
 	  char *save_meta_data, *new_meta_data;
 	  char lob_path_prefix[PATH_MAX];
 	  int ret;
@@ -12984,14 +13106,12 @@ heap_attrinfo_transform_variable_to_disk_develop_ver (THREAD_ENTRY * thread_p, H
 	  save_meta_data = elo_p->meta_data;
 	  elo_p->meta_data = new_meta_data;
 	  ret = db_elo_copy_with_prefix (db_get_elo (dbvalue), lob_path_prefix, &dest_elo);
-
 	  free_and_init (elo_p->meta_data);
+	  elo_p->meta_data = save_meta_data;
 	  if (ret != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
-
-	  elo_p->meta_data = save_meta_data;
 
 	  /* The purpose of HEAP_WRITTEN_LOB_ATTRVALUE is to avoid reenter this branch. In the first pass,
 	   * this branch is entered and elo is copied. When BUFFER_OVERFLOW happens, we need avoid to copy
@@ -13067,7 +13187,8 @@ heap_attrinfo_transform_columns_to_disk_develop_ver (THREAD_ENTRY * thread_p, HE
 	}
       else
 	{
-	  or_put_offset_internal (buf, CAST_BUFLEN (ptr_varvals - buf->buffer - header_size), offset_size);
+	  const int end_of_vot_offset = CAST_BUFLEN (ptr_varvals - buf->buffer - header_size);
+	  or_put_offset_internal (buf, OR_SET_VAR_LAST_ELEMENT (end_of_vot_offset), offset_size);
 	}
       buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
@@ -14285,6 +14406,35 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 	  midxkey_size += OR_VALUE_ALIGNED_SIZE (fi_res);
 	}
 
+      assert (recdes != NULL && recdes->data != NULL);
+
+      /* Ensure attr_info is recached to the record's representation before OOS scan */
+      if (unlikely ((attr_info->read_classrepr == NULL || attr_info->read_classrepr->id != or_rep_id (recdes))))
+	{
+	  if (heap_attrinfo_recache (thread_p, or_rep_id (recdes), attr_info) != NO_ERROR)
+	    {
+	      return NULL;
+	    }
+	}
+
+      /* If any indexed attribute is OOS, recdes->length underestimates the actual midxkey size.
+       * Pre-scan to add the actual OOS data size so heap allocation is used instead of the stack buffer. */
+      for (int oos_i = 0; oos_i < n_atts; oos_i++)
+	{
+	  if (IS_DEDUPLICATE_KEY_ATTR_ID (att_ids[oos_i]))
+	    {
+	      continue;
+	    }
+
+	  OR_ATTRIBUTE *oos_att = heap_locate_attribute (att_ids[oos_i], attr_info);
+	  if (oos_att != NULL)
+	    {
+	      /* Returns 0 on error or if attribute is not OOS; safe to accumulate. */
+	      midxkey_size += heap_midxkey_get_oos_extra_size (recdes, oos_att);
+	    }
+	  /* else: attribute not found in this representation — skip (uses default value, not OOS) */
+	}
+
       /* Allocate storage for the buf of midxkey */
       if (midxkey_size > DBVAL_BUFSIZE)
 	{
@@ -14453,6 +14603,20 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 	  /* this will allocate more than it is needed to store the key, but there is no decent way to calculate the
 	   * correct size */
 	  midxkey_size += OR_VALUE_ALIGNED_SIZE (fi_res);
+	}
+
+      assert (recdes != NULL && recdes->data != NULL);
+
+      /* If any indexed attribute is OOS, recdes->length underestimates the actual midxkey size.
+       * Pre-scan to add the actual OOS data size so heap allocation is used instead of the stack buffer. */
+      for (int oos_i = 0; oos_i < n_atts; oos_i++)
+	{
+	  if (IS_DEDUPLICATE_KEY_ATTR_ID (index->atts[oos_i]->id))
+	    {
+	      continue;
+	    }
+	  /* Returns 0 on error or if attribute is not OOS; safe to accumulate. */
+	  midxkey_size += heap_midxkey_get_oos_extra_size (recdes, index->atts[oos_i]);
 	}
 
       /* Allocate storage for the buf of midxkey */
@@ -21572,12 +21736,27 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   assert (update_context != NULL);
   assert (update_context->type == HEAP_OPERATION_UPDATE);
   assert (update_context->recdes_p != NULL);
+  /* Root-class records do not use the generic object header layout handled here. */
+  assert (!OID_IS_ROOTOID (&update_context->class_oid));
 
   record_size = update_context->recdes_p->length;
 
   repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (update_context->recdes_p->data);
   mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
   update_mvcc_flags = OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION;
+
+  bool has_oos = heap_recdes_check_has_oos (update_context->recdes_p);
+
+  if (has_oos)
+    {
+      repid_and_flag_bits |= (OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
+    }
+  else
+    {
+      repid_and_flag_bits &= ~(OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
+    }
+
+  OR_PUT_INT (update_context->recdes_p->data, repid_and_flag_bits);
 
   is_mvcc_op = HEAP_UPDATE_IS_MVCC_OP (is_mvcc_class, update_context->update_in_place);
 #if defined (SERVER_MODE)
@@ -21692,6 +21871,15 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 #endif /* SERVER_MODE */
     {
       MVCC_CLEAR_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
+    }
+
+  if (has_oos)
+    {
+      mvcc_rec_header.mvcc_flag |= OR_MVCC_FLAG_HAS_OOS;
+    }
+  else
+    {
+      mvcc_rec_header.mvcc_flag &= ~OR_MVCC_FLAG_HAS_OOS;
     }
 
   if (is_mvcc_class && heap_is_big_length (record_size))
@@ -27656,4 +27844,155 @@ heap_recdes_contains_oos (const RECDES * record)
 {
   int flag = (INT32) OR_GET_MVCC_FLAG (record->data);
   return flag & OR_MVCC_FLAG_HAS_OOS;
+}
+
+int
+heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
+{
+  using namespace oos_log;
+
+  oos_oids.clear ();
+
+  if (!heap_recdes_contains_oos (recdes))
+    {
+      return NO_ERROR;
+    }
+
+  const int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
+  void *var_table = OR_GET_OBJECT_VAR_TABLE (recdes->data);
+  /* NOTE: This upper bound may include VOT alignment padding and fixed-attribute bytes for legacy records
+   * that lack the OR_VAR_BIT_LAST_ELEMENT flag. Such records are not fully supported yet (see PR description). */
+  const int max_var_count = (recdes->length - OR_HEADER_SIZE (recdes->data)) / offset_size;
+
+  for (int index = 0; index <= max_var_count; ++index)
+    {
+      if (index == max_var_count)
+	{
+	  assert_release (false && "LAST_ELEMENT flag not found within record bounds");
+	  return ER_FAILED;
+	}
+
+      int offset;
+      switch (offset_size)
+	{
+	case OR_BYTE_SIZE:
+	  offset = OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
+	  break;
+	case OR_SHORT_SIZE:
+	  offset = OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
+	  break;
+	case OR_INT_SIZE:
+	  offset = OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
+	  break;
+	default:
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+
+      if (OR_IS_OOS (offset))
+	{
+	  OID oid = OID_INITIALIZER;
+	  const char *oid_ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, index);
+	  if (oid_ptr + OR_OID_SIZE > (char *) recdes->data + recdes->length)
+	    {
+	      assert (false && "OID read would exceed record bounds");
+	      return ER_FAILED;
+	    }
+	  OR_BUF buf;
+	  or_init (&buf, (char *) oid_ptr, OR_OID_SIZE);
+	  int err = or_get_oid (&buf, &oid);
+	  if (err != NO_ERROR)
+	    {
+	      assert (false && "or_get_oid failed unexpectedly");
+	      return ER_FAILED;
+	    }
+	  if (OID_ISNULL (&oid))
+	    {
+	      assert (false && "OID read from OOS slot is null — corrupted record?");
+	      return ER_FAILED;
+	    }
+	  oos_debug ("there exists an OOS with OID %hd|%d|%hd at offset %d index %d", OID_AS_ARGS (&oid), offset,
+		     index);
+	  oos_oids.emplace_back (oid);
+	}
+
+      if (OR_IS_LAST_ELEMENT (offset))
+	{
+	  if (oos_oids.empty ())
+	    {
+	      /* heap_recdes_contains_oos() already confirmed OOS flag is set, so finding no OOS OIDs is inconsistent */
+	      assert (false && "heap_recdes_contains_oos() passed but no OOS OIDs found");
+	      return ER_FAILED;
+	    }
+#if !defined (NDEBUG)
+	  {
+	    std::string line = "{";
+	    for (size_t i = 0; i < oos_oids.size (); ++i)
+	      {
+		char oid_buf[32];
+		if (i > 0)
+		  line.append (", ");
+		line.append (oid_to_string (oid_buf, sizeof oid_buf, &oos_oids[i]));
+	      }
+	    line += '}';
+	    oos_debug ("Total %zu found. OOS OIDs: %s", oos_oids.size (), line.c_str ());
+	  }
+#endif
+	  return NO_ERROR;
+	}
+    }
+
+  assert (false && "unreachable: there must be last element");
+  return ER_FAILED;
+}
+
+static bool
+heap_recdes_check_has_oos (const RECDES * recdes)
+{
+  if (recdes == NULL || recdes->data == NULL)
+    {
+      return false;
+    }
+
+  const int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
+  void *var_table = OR_GET_OBJECT_VAR_TABLE (recdes->data);
+  const int max_var_count = (recdes->length - OR_HEADER_SIZE (recdes->data)) / offset_size;
+
+  for (int index = 0;; ++index)
+    {
+      if (index == max_var_count)
+	{
+	  assert (false && "LAST_ELEMENT flag not found within record bounds");
+	  return false;
+	}
+
+      int offset;
+      switch (offset_size)
+	{
+	case OR_BYTE_SIZE:
+	  offset = OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
+	  break;
+	case OR_SHORT_SIZE:
+	  offset = OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
+	  break;
+	case OR_INT_SIZE:
+	  offset = OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
+	  break;
+	default:
+	  assert (false && "unexpected variable offset size");
+	  return false;
+	}
+
+      if (OR_IS_OOS (offset))
+	{
+	  return true;
+	}
+
+      if (OR_IS_LAST_ELEMENT (offset))
+	{
+	  return false;
+	}
+    }
+
+  return false;
 }

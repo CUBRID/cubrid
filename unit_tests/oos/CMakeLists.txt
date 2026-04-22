@@ -47,12 +47,53 @@ foreach(src ${TEST_CPP_SOURCES})
   # Prefer to register tests one by one below.
 endforeach()
 
+# =============================================================================
+# CTest fixture: auto-create unittestdb before OOS tests, delete it after
+# =============================================================================
+add_test(NAME oos_setup_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash -c "
+      if [ ! -f \"$ENV{CUBRID_DATABASES}/databases.txt\" ] || ! grep -q unittestdb \"$ENV{CUBRID_DATABASES}/databases.txt\" 2>/dev/null; then
+        mkdir -p \"$ENV{CUBRID_DATABASES}/unittestdb\" && \
+        cubrid createdb --db-volume-size=20M --log-volume-size=20M unittestdb en_US.utf8 \
+          -F \"$ENV{CUBRID_DATABASES}/unittestdb\"
+      fi
+    "
+)
+set_tests_properties(oos_setup_db PROPERTIES FIXTURES_SETUP OOS_DB)
+
+add_test(NAME oos_cleanup_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash -c "
+      if grep -q unittestdb \"$ENV{CUBRID_DATABASES}/databases.txt\" 2>/dev/null; then
+        cubrid deletedb unittestdb
+      fi
+    "
+)
+set_tests_properties(oos_cleanup_db PROPERTIES FIXTURES_CLEANUP OOS_DB)
+
 # Register individual tests one by one.
 add_test(NAME test_oos COMMAND test_oos)
+add_test(NAME test_oos_delete COMMAND test_oos_delete)
+add_test(NAME test_oos_remove_file COMMAND test_oos_remove_file)
+add_test(NAME test_oos_bestspace COMMAND test_oos_bestspace)
 # add_test(NAME test_oos_persist COMMAND test_oos_persist)
 # add_test(NAME test_oos_record_descriptor COMMAND test_oos_record_descriptor)
+
+set_tests_properties(
+  test_oos test_oos_delete test_oos_remove_file test_oos_bestspace
+  PROPERTIES FIXTURES_REQUIRED OOS_DB
+)
 
 # Note: add_test vs. gtest_discover_tests
 # - Prefer add_test if you want to share global setup/teardown, which speeds up test
 # - Prefer gtest_discover_tests for isolation between tests, at the cost of test speed
 # - Since we do not need isolation here, we use add_test above.
+
+add_subdirectory(sql)

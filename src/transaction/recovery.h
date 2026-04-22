@@ -189,7 +189,8 @@ typedef enum
   RVOOS_DELETE = 131,
   RVREPL_OOS_INSERT = 132,
   RVREPL_OOS_DELETE = 133,
-  RV_LAST_LOGID = RVREPL_OOS_DELETE,
+  RVOOS_NOTIFY_VACUUM = 134,
+  RV_LAST_LOGID = RVOOS_NOTIFY_VACUUM,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;
@@ -280,6 +281,7 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVVAC_NOTIFY_DROPPED_FILE \
    || (idx) == RVPGBUF_DEALLOC \
    || (idx) == RVES_NOTIFY_VACUUM \
+   || (idx) == RVOOS_NOTIFY_VACUUM \
    || (idx) == RVHF_MARK_DELETED \
    || (idx) == RVFL_TRACKER_HEAP_REUSE \
    || (idx) == RVFL_TRACKER_UNREGISTER)

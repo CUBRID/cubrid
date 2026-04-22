@@ -20,12 +20,17 @@
  * oos_log.hpp
  */
 
-#pragma once
+#ifndef _OOS_LOG_HPP_
+#define _OOS_LOG_HPP_
 
 #include <cstdio>
 #include <cstdarg>
 #include <ctime>
+#include <cstring>
 #include <atomic>
+#include <climits>
+
+#include "environment_variable.h"
 
 namespace oos_log
 {
@@ -73,6 +78,21 @@ namespace oos_log
       }
   }
 
+  // C++11 magic static: the standard guarantees that initialization of a
+  // function-local static variable is thread-safe (§6.7/4).  If multiple
+  // threads enter concurrently, exactly one performs the initializer while
+  // the others block until it completes — no explicit mutex or atomic needed.
+  inline FILE *oos_log_get_file()
+  {
+    static FILE *s_fp = []() -> FILE *
+    {
+      char path[PATH_MAX];
+      envvar_logdir_file (path, sizeof (path), "oos.log");
+      return std::fopen (path, "a");
+    }();
+    return s_fp;
+  }
+
   inline void oos_log_internal (OosLogLevel level,
 				const char *file,
 				int line,
@@ -90,33 +110,53 @@ namespace oos_log
     char timebuf[20];
     std::strftime (timebuf, sizeof (timebuf), "%H:%M:%S", &tm);
 
-    std::fprintf (stderr, "[%s] OOS [%s](%s:%d): ",
-		  timebuf, oos_log_get_level_str (level), func, line);
+    char header[512];
+    std::snprintf (header, sizeof (header), "[%s] OOS [%s](%s:%d): ",
+		   timebuf, oos_log_get_level_str (level), func, line);
 
+    char body[2048];
     va_list args;
     va_start (args, fmt);
-    std::vfprintf (stderr, fmt, args);
+    std::vsnprintf (body, sizeof (body), fmt, args);
     va_end (args);
+
+    // stderr
+    std::fputs (header, stderr);
+    std::fputs (body, stderr);
     std::fputc ('\n', stderr);
     std::fflush (stderr);
+
+    // file: $CUBRID/log/oos.log
+    FILE *logfp = oos_log_get_file();
+    if (logfp != nullptr)
+      {
+	std::fputs (header, logfp);
+	std::fputs (body, logfp);
+	std::fputc ('\n', logfp);
+	std::fflush (logfp);
+      }
   }
 
+} // namespace oos_log
+
+
+/* oos_error and oos_warn are always active — they must be visible in release builds
+ * for replication and QA diagnostics.  Lower levels are debug-only. */
+#define oos_error(fmt, ...) \
+    oos_log::oos_log_internal(oos_log::OosLogLevel::ERROR, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
+
+#define oos_warn(fmt, ...) \
+    oos_log::oos_log_internal(oos_log::OosLogLevel::WARN, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
 #if !defined (NDEBUG)
 #define oos_trace(fmt, ...) \
-    oos_log_internal(OosLogLevel::TRACE, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
+    oos_log::oos_log_internal(oos_log::OosLogLevel::TRACE, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
 #define oos_debug(fmt, ...) \
-    oos_log_internal(OosLogLevel::DEBUG, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
+    oos_log::oos_log_internal(oos_log::OosLogLevel::DEBUG, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
 #define oos_info(fmt, ...) \
-    oos_log_internal(OosLogLevel::INFO, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
-
-#define oos_warn(fmt, ...) \
-    oos_log_internal(OosLogLevel::WARN, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
-
-#define oos_error(fmt, ...) \
-    oos_log_internal(OosLogLevel::ERROR, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
+    oos_log::oos_log_internal(oos_log::OosLogLevel::INFO, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 #else
 
 #define oos_trace(...)   do {} while (0)
@@ -125,10 +165,6 @@ namespace oos_log
 
 #define oos_info(...)    do {} while (0)
 
-#define oos_warn(...)    do {} while (0)
-
-#define oos_error(...)   do {} while (0)
-
 #endif
 
-} // namespace oos_log
+#endif /* _OOS_LOG_HPP_ */

@@ -68,11 +68,8 @@
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #include "connection_sr.h"
-#else /* SERVER_MODE */
-#include "connection_cl.h"
 #endif /* SERVER_MODE */
 #include "error_manager.h"
-#include "connection_globals.h"
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "tcp.h"

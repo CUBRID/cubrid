@@ -45,6 +45,11 @@ namespace parallel_query
     destroy();
   }
 
+  REGISTER_WORKERPOOL (parallel_query, []()
+  {
+    return prm_get_integer_value (PRM_ID_MAX_PARALLEL_WORKERS);
+  });
+
   void worker_manager_global::init()
   {
     std::call_once (m_init_flag, [this] ()
@@ -63,7 +68,7 @@ namespace parallel_query
       assert (m_worker_pool == nullptr);
       m_worker_pool = cubthread::get_manager()->create_worker_pool (
 			      pool_size, task_max_count,
-			      "parallel_query_worker_pool", NULL, 1, false);
+			      "parallel-query", NULL, 1, false);
       if (m_worker_pool == nullptr)
 	{
 	  return;

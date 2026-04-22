@@ -54,7 +54,7 @@ class ServerEnv : public ::testing::Environment
 
       // hacky way to detour pl_server_init(), not needed for oos unit tests
       db_set_client_type (DB_CLIENT_TYPE_MAX);
-      auto err = db_restart ("unit_test", TRUE, "testdb");
+      auto err = db_restart ("unit_test", TRUE, "unittestdb");
 
       printf ("will be written at %s\n", er_get_msglog_filename());
       assert (err == NO_ERROR);

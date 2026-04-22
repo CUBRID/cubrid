@@ -3257,7 +3257,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
       scan = qdump_print_access_spec_stats_json (xasl_p->merge_spec);
     }
 
-  if (xasl_p->memoize_storage)
+  if (xasl_p->memoize_storage && xasl_p->memoize_storage->hit > 0)
     {
       memoize = json_object ();
       json_object_set_new (memoize, "time", json_integer (TO_MSEC (xasl_p->memoize_storage->m_elapsed_time)));
@@ -3280,7 +3280,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 
   qdump_print_stats_json (xasl_p->connect_by_ptr, proc);
 
-  if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_USES_SQ_CACHE))
+  if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_USES_SQ_CACHE) && SQ_CACHE_HIT (xasl_p) > 0)
     {
       sq_cache = json_object ();
       json_object_set_new (sq_cache, "hit", json_integer (SQ_CACHE_HIT (xasl_p)));
@@ -3386,7 +3386,16 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 	    }
 	  else
 	    {
-	      json_object_set_new (analytic, "sort", json_string ("skip"));
+	      json_object_set_new (analytic, "sort", json_false ());
+	    }
+
+	  if (curr->analytic_stopkey)
+	    {
+	      json_object_set_new (analytic, "stopkey", json_true ());
+	    }
+	  else
+	    {
+	      json_object_set_new (analytic, "stopkey", json_false ());
 	    }
 
 	  json_object_set_new (analytic, "page", json_integer (curr->analytic_pages));
@@ -3771,7 +3780,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       qdump_print_access_spec_stats_text (fp, xasl_p->merge_spec, indent);
     }
 
-  if (xasl_p->memoize_storage)
+  if (xasl_p->memoize_storage && xasl_p->memoize_storage->hit > 0)
     {
       fprintf (fp, "%*c", indent, ' ');
       fprintf (fp, "MEMOIZE (time: %d, hit: %lu, miss: %lu, size: %luKB, enabled: %s)\n",
@@ -3783,7 +3792,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   qdump_print_stats_text (fp, xasl_p->scan_ptr, indent);
   qdump_print_stats_text (fp, xasl_p->connect_by_ptr, indent);
 
-  if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_USES_SQ_CACHE))
+  if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_USES_SQ_CACHE) && SQ_CACHE_HIT (xasl_p) > 0)
     {
       fprintf (fp, "%*c", indent, ' ');
       if (SQ_CACHE_ENABLED (xasl_p))
@@ -3813,12 +3822,17 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	    }
 	  else
 	    {
-	      fprintf (fp, ", sort: skip");
+	      fprintf (fp, ", sort: false");
 	    }
 
 	  fprintf (fp, ", page: %lld, ioread: %lld", (long long int) curr->analytic_pages,
 		   (long long int) curr->analytic_ioreads);
-	  fprintf (fp, ", rows: %d)\n", curr->rows);
+	  fprintf (fp, ", rows: %d)", curr->rows);
+	  if (curr->analytic_stopkey)
+	    {
+	      fprintf (fp, " (stopkey)");
+	    }
+	  fprintf (fp, "\n");
 	}
     }
 

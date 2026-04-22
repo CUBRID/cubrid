@@ -136,7 +136,6 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #include "unicode_support.h"
 #include "environment_variable.h"
 #include "dbtype.h"
-#include "transaction_cl.h"
 #include "csql_grammar_scan.h"
 #include "system_parameter.h"
 #define JP_MAXNAME 256
