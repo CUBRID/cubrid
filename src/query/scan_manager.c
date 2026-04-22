@@ -927,7 +927,21 @@ scan_fetch_and_coerce_key_limit_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * i
 		      && tmp_dbvalp != NULL)
 		    {
 		      /* case1 */
-		      isidp->key_limit_upper = db_get_bigint (tmp_dbvalp);
+		      switch (DB_VALUE_DOMAIN_TYPE (tmp_dbvalp))
+			{
+			case DB_TYPE_BIGINT:
+			  isidp->key_limit_upper = db_get_bigint (tmp_dbvalp);
+			  break;
+			case DB_TYPE_INTEGER:
+			  isidp->key_limit_upper = db_get_int (tmp_dbvalp);
+			  break;
+			case DB_TYPE_SHORT:
+			  isidp->key_limit_upper = db_get_short (tmp_dbvalp);
+			  break;
+			default:
+			  assert (false);
+			  return ER_FAILED;
+			}
 		    }
 		  else if (er_errid () == ER_IT_DATA_OVERFLOW || er_errid () == ER_QPROC_OVERFLOW_SUBTRACTION)
 		    {
@@ -973,9 +987,22 @@ scan_fetch_and_coerce_key_limit_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * i
 		    {
 		      return ER_FAILED;
 		    }
-		  isidp->key_limit_upper =
-		    (DB_VALUE_DOMAIN_TYPE (tmp_dbvalp) ==
-		     DB_TYPE_BIGINT) ? db_get_bigint (tmp_dbvalp) : db_get_int (tmp_dbvalp);
+
+		  switch (DB_VALUE_DOMAIN_TYPE (tmp_dbvalp))
+		    {
+		    case DB_TYPE_BIGINT:
+		      isidp->key_limit_upper = db_get_bigint (tmp_dbvalp);
+		      break;
+		    case DB_TYPE_INTEGER:
+		      isidp->key_limit_upper = db_get_int (tmp_dbvalp);
+		      break;
+		    case DB_TYPE_SHORT:
+		      isidp->key_limit_upper = db_get_short (tmp_dbvalp);
+		      break;
+		    default:
+		      assert (false);
+		      return ER_FAILED;
+		    }
 		}
 	    }
 	  else
