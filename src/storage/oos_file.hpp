@@ -82,7 +82,6 @@ extern int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &rec
 extern int oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes);
 extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid);
 extern int oos_get_length (THREAD_ENTRY *thread_p, const OID &oid);
-extern int oos_get_max_chunk_size (void);
 
 extern int oos_rv_redo_delete (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
 extern int oos_rv_redo_insert (THREAD_ENTRY *thread_p, LOG_RCV *rcv);

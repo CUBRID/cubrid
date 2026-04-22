@@ -1169,7 +1169,6 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
   // this loop inserts chunks in reverse order so that next_chunk_oid is always known
   for (int i = required_page_nums - 1; i >= 0; --i)
     {
-
       RECDES chunk_recdes{};
       chunk_recdes.type = REC_HOME;
       chunk_recdes.length = std::min (max_chunk_size, total_data_length - i * max_chunk_size);
@@ -1185,7 +1184,6 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
 	{
 	  oos_error ("could not insert chunk index=%d of length %d.", i, chunk_recdes.length);
 	  assert_release_error (er_errid () != NO_ERROR);
-	  assert (false);
 	  // Partially inserted chunks are cleaned up when the caller aborts the transaction
 	  // (individual undo records replay in reverse). The caller MUST NOT continue
 	  // the transaction after this error.
@@ -1936,12 +1934,6 @@ void
 oos_push_oos_oid (THREAD_ENTRY *thread_p, const OID *oid)
 {
   thread_p->oos_oids.push_back (*oid);
-}
-
-int
-oos_get_max_chunk_size (void)
-{
-  return oos_get_max_chunk_size_within_page ();
 }
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)

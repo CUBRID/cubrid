@@ -4383,6 +4383,17 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
   return error;
 }
 
+/*
+ * la_get_multi_chunk_oos_recdes() - rebuild a multi-chunk OOS record from log records
+ *   return: NO_ERROR or error code
+ *   lsa(in): LSA of the first logged OOS chunk
+ *   recdes(out): merged OOS record description
+ *
+ * Note:
+ *   Multi-chunk OOS chunks are logged from tail to head. This function follows
+ *   the log chain from the first logged chunk, validates every OOS chunk, and
+ *   rebuilds a single OOS record for the applier.
+ */
 static int
 la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 {
@@ -4431,6 +4442,18 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
       char *rec_type = rec_type_area;
       char *chunk_data = NULL;
       int chunk_length = 0;
+      auto release_current_log = [&current_log_page, &current_lsa, &chunk_data]()
+      {
+	if (chunk_data != NULL)
+	  {
+	    free_and_init (chunk_data);
+	  }
+	if (current_log_page != NULL)
+	  {
+	    la_release_page_buffer (current_lsa.pageid);
+	    current_log_page = NULL;
+	  }
+      };
 
       if (current_log_page == NULL)
 	{
@@ -4461,11 +4484,7 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 			     &chunk_data, &chunk_length);
 	  if (error != NO_ERROR)
 	    {
-	      if (chunk_data != NULL)
-		{
-		  free_and_init (chunk_data);
-		}
-	      la_release_page_buffer (current_lsa.pageid);
+	      release_current_log ();
 	      free_chunks ();
 	      return error;
 	    }
@@ -4474,11 +4493,7 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 	    {
 	      if (rec_type == NULL || *(INT16 *) rec_type != REC_HOME || chunk_length < OOS_RECORD_HEADER_SIZE)
 		{
-		  if (chunk_data != NULL)
-		    {
-		      free_and_init (chunk_data);
-		    }
-		  la_release_page_buffer (current_lsa.pageid);
+		  release_current_log ();
 		  free_chunks ();
 		  return set_multi_chunk_oos_error ("invalid multi-chunk OOS log data");
 		}
@@ -4491,11 +4506,7 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 		}
 	      else if (total_size != oos_header.total_size)
 		{
-		  if (chunk_data != NULL)
-		    {
-		      free_and_init (chunk_data);
-		    }
-		  la_release_page_buffer (current_lsa.pageid);
+		  release_current_log ();
 		  free_chunks ();
 		  return set_multi_chunk_oos_error ("mismatched multi-chunk OOS total size");
 		}
@@ -4504,11 +4515,7 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 	      total_chunk_body_length += chunk_body_length;
 	      if (total_chunk_body_length > total_size)
 		{
-		  if (chunk_data != NULL)
-		    {
-		      free_and_init (chunk_data);
-		    }
-		  la_release_page_buffer (current_lsa.pageid);
+		  release_current_log ();
 		  free_chunks ();
 		  return set_multi_chunk_oos_error ("multi-chunk OOS body length exceeds total size");
 		}
@@ -4520,14 +4527,10 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 		  found_head = true;
 		}
 	    }
-
-	  if (chunk_data != NULL)
-	    {
-	      free_and_init (chunk_data);
-	    }
 	}
 
-      la_release_page_buffer (current_lsa.pageid);
+      release_current_log ();
+
       if (found_head)
 	{
 	  int offset = OOS_RECORD_HEADER_SIZE;
@@ -4563,7 +4566,10 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
       LSA_COPY (&current_lsa, &next_lsa);
     }
 
-  error = set_multi_chunk_oos_error ("missing first chunk while reading multi-chunk OOS record");
+  if (error == NO_ERROR)
+    {
+      error = set_multi_chunk_oos_error ("missing first chunk while reading multi-chunk OOS record");
+    }
 
   free_chunks ();
 
@@ -5501,17 +5507,14 @@ end:
 }
 
 /*
- * la_apply_insert_log() - apply the insert log to the target slave
+ * la_apply_dummy_oos_log() - mark that the next OOS insert is multi-chunk
  *   return: NO_ERROR or error code
- *   item : replication item
+ *   apply(in/out): apply list state
+ *   item(in): dummy OOS replication item
  *
  * Note:
- *      Apply the insert log to the target slave.
- *      . get the target log page
- *      . get the record description
- *      . fetch the class info
- *      . create a replication object to be flushed and add it to a link
- *      . If la_enable_sql_logging(config param is ha_enable_sql_logging) is enabled, the query is written to a file.
+ *      The dummy item does not carry data. It only marks a boundary so that the
+ *      following RVREPL_OOS_INSERT can be rebuilt from multiple OOS chunks.
  */
 static int
 la_apply_dummy_oos_log (LA_APPLY * apply, LA_ITEM * item)
@@ -5526,6 +5529,20 @@ la_apply_dummy_oos_log (LA_APPLY * apply, LA_ITEM * item)
   return NO_ERROR;
 }
 
+/*
+ * la_apply_insert_log() - apply the insert log to the target slave
+ *   return: NO_ERROR or error code
+ *   apply(in/out): apply list state
+ *   item(in): replication item
+ *
+ * Note:
+ *      Apply the insert log to the target slave.
+ *      . get the target log page
+ *      . get the record description
+ *      . fetch the class info
+ *      . create a replication object to be flushed and add it to a link
+ *      . If la_enable_sql_logging(config param is ha_enable_sql_logging) is enabled, the query is written to a file.
+ */
 static int
 la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
 {
@@ -5633,6 +5650,7 @@ end:
     {
       la_Info.insert_counter++;
       la_Info.num_unflushed++;
+      /* RVREPL_DUMMY_OOS_RECORD is handled by la_apply_dummy_oos_log; only inserts reach here. */
       la_Info.has_unflushed_oos_insert = (item->item_type == RVREPL_OOS_INSERT);
     }
 

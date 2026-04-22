@@ -7052,7 +7052,6 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 		    {
 		      return error;
 		    }
-		  has_pending_oos = false;
 		}
 	    }
 	}
