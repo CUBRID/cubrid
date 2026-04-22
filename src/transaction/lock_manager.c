@@ -512,9 +512,9 @@ static void lock_initialize_resource (LK_RES * res_ptr);
 #endif
 static void lock_initialize_resource_as_allocated (LK_RES * res_ptr, LOCK lock);
 static unsigned int lock_get_hash_value (const OID * oid, int htsize);
-static LK_CONFIG lock_make_runtime_config (const LK_CONFIG * config);
+static LK_CONFIG lock_make_runtime_config (void);
+static int lock_initialize_with_config (const LK_CONFIG * config);
 static int lock_initialize_tran_lock_table (void);
-static void lock_tune_init_config (LK_CONFIG * config);
 static int lock_initialize_object_lock_structures (void);
 static int lock_initialize_deadlock_detection (void);
 static int lock_remove_resource (THREAD_ENTRY * thread_p, LK_RES * res_ptr);
@@ -1063,7 +1063,7 @@ lock_get_hash_value (const OID * oid, int htsize)
 #endif /* SERVER_MODE */
 
 /*
- *  Private Functions Group 1: initialize/finalize major lock-manager structures
+ *  Private Functions Group: initialize/finalize major lock-manager structures
  *
  *   - lock_make_runtime_config()
  *   - lock_initialize_tran_lock_table()
@@ -1172,84 +1172,43 @@ lock_make_default_config (void)
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
-static void
-lock_tune_init_config (LK_CONFIG * config)
-{
-  LK_CONFIG default_config = lock_make_default_config ();
-
-  /* Transaction lock table sizing. */
-  if (config->num_trans <= 0)
-    {
-      config->num_trans = default_config.num_trans;
-    }
-  if (config->tran_local_pool_max_size <= 0)
-    {
-      config->tran_local_pool_max_size = default_config.tran_local_pool_max_size;
-    }
-
-  /* Object lock hash table/freelist sizing. */
-  if (config->initial_object_locks <= 0)
-    {
-      config->initial_object_locks = default_config.initial_object_locks;
-    }
-  if (config->object_res_block_count <= 0)
-    {
-      config->object_res_block_count = default_config.object_res_block_count;
-    }
-
-  if (config->object_entry_block_count <= 0)
-    {
-      config->object_entry_block_count = default_config.object_entry_block_count;
-    }
-
-  /* Deadlock detection sizing. */
-  if (config->max_deadlock_victims <= 0)
-    {
-      config->max_deadlock_victims = default_config.max_deadlock_victims;
-    }
-  if (config->min_twfg_edge_count <= 0)
-    {
-      config->min_twfg_edge_count = default_config.min_twfg_edge_count;
-    }
-  if (config->mid_twfg_edge_count <= config->min_twfg_edge_count)
-    {
-      config->mid_twfg_edge_count = default_config.mid_twfg_edge_count;
-      if (config->mid_twfg_edge_count <= config->min_twfg_edge_count)
-	{
-	  config->mid_twfg_edge_count = config->min_twfg_edge_count + 1;
-	}
-    }
-}
-#endif /* SERVER_MODE */
-
-#if defined(SERVER_MODE)
 /*
- * lock_make_runtime_config - Build derived lock-manager config fields from input config and environment.
+ * lock_make_runtime_config - Build lock-manager runtime config from defaults.
+ *
+ * Note: Organized as three passes over the config value.
+ *   1. Start from defaults.
+ *   2. Derive fields that depend on other fields (sizing based on num_trans etc.).
+ *   3. Enforce invariants required by lock_add_WFG_edge to avoid heap overflow
+ *      during 2-stage TWFG buffer expansion:
+ *        min_twfg_edge_count < mid_twfg_edge_count <= max_twfg_edge_count
+ *   4. Apply environment-variable overrides for diagnostics.
  */
 static LK_CONFIG
-lock_make_runtime_config (const LK_CONFIG * config)
+lock_make_runtime_config (void)
 {
   LK_CONFIG runtime_config = lock_make_default_config ();
   const char *env_value;
 
-  if (config != NULL)
-    {
-      runtime_config = *config;
-    }
-
+  /* Derived sizing. */
   runtime_config.max_twfg_edge_count = runtime_config.num_trans * runtime_config.num_trans;
-  if (runtime_config.max_twfg_edge_count < runtime_config.mid_twfg_edge_count)
-    {
-      runtime_config.max_twfg_edge_count = runtime_config.mid_twfg_edge_count + 1;
-    }
   runtime_config.min_object_locks = runtime_config.num_trans * 300;
-
   runtime_config.object_res_block_size =
     (int) MAX ((runtime_config.initial_object_locks * runtime_config.object_res_ratio) /
 	       runtime_config.object_res_block_count, 1);
   runtime_config.object_entry_block_size =
     (int) MAX ((runtime_config.initial_object_locks * runtime_config.object_entry_ratio), 1);
 
+  /* Enforce TWFG edge count invariants. */
+  if (runtime_config.mid_twfg_edge_count <= runtime_config.min_twfg_edge_count)
+    {
+      runtime_config.mid_twfg_edge_count = runtime_config.min_twfg_edge_count + 1;
+    }
+  if (runtime_config.max_twfg_edge_count < runtime_config.mid_twfg_edge_count)
+    {
+      runtime_config.max_twfg_edge_count = runtime_config.mid_twfg_edge_count + 1;
+    }
+
+  /* Environment overrides for diagnostics. */
 #if defined(CUBRID_DEBUG)
   runtime_config.verbose_mode = true;
 #else /* !CUBRID_DEBUG */
@@ -5773,28 +5732,14 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 }
 #endif /* SERVER_MODE */
 
-/*
- * lock_initialize - Initialize the lock manager
- *
- * return: error code
- *
- *   estimate_nobj_locks(in): estimate_nobj_locks(useless)
- *
- * Note:Initialize the lock manager memory structures.
- */
 #if defined(SERVER_MODE)
 static int
 lock_initialize_with_config (const LK_CONFIG * config)
 {
   int error_code = NO_ERROR;
-  LK_CONFIG local_config = lock_make_default_config ();
 
-  if (config != NULL)
-    {
-      local_config = *config;
-    }
-  lock_tune_init_config (&local_config);
-  lk_Gl.config = lock_make_runtime_config (&local_config);
+  assert (config != NULL);
+  lk_Gl.config = *config;
 
   error_code = lock_initialize_tran_lock_table ();
   if (error_code != NO_ERROR)
@@ -5827,6 +5772,13 @@ error:
 }
 #endif /* SERVER_MODE */
 
+/*
+ * lock_initialize - Initialize the lock manager
+ *
+ * return: error code
+ *
+ * Note:Initialize the lock manager memory structures.
+ */
 int
 lock_initialize (void)
 {
@@ -5834,7 +5786,8 @@ lock_initialize (void)
   lk_Standalone_has_xlock = false;
   return NO_ERROR;
 #else /* !defined(SERVER_MODE) */
-  return lock_initialize_with_config (NULL);
+  LK_CONFIG runtime_config = lock_make_runtime_config ();
+  return lock_initialize_with_config (&runtime_config);
 #endif /* !defined(SERVER_MODE) */
 }
 
