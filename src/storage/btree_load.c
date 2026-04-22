@@ -3247,6 +3247,10 @@ get_next_vpid (THREAD_ENTRY * thread_p, parallel_query::ftab_set & ftab, FILE_PA
 	  if (VSID_IS_NULL (&new_fsector.vsid))
 	    {
 	      /* end */
+	      if (old_pgwatcher->pgptr != NULL)
+		{
+		  pgbuf_ordered_unfix (thread_p, old_pgwatcher);
+		}
 	      return S_END;
 	    }
 	  *fsector = new_fsector;
@@ -3285,6 +3289,10 @@ get_next_vpid (THREAD_ENTRY * thread_p, parallel_query::ftab_set & ftab, FILE_PA
 		  if (error != NO_ERROR && error != ER_PB_BAD_PAGEID)
 		    {
 		      /* non-dealloc error (e.g. ER_INTERRUPTED): propagate */
+		      if (old_pgwatcher->pgptr != NULL)
+			{
+			  pgbuf_ordered_unfix (thread_p, old_pgwatcher);
+			}
 		      return S_ERROR;
 		    }
 		  /* when bitmap is built, that page was valid.
