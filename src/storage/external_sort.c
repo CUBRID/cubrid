@@ -1638,11 +1638,7 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
     }
   else if (sort_param->px_type == SORT_INDEX_LEAF)
     {
-      sort_param->get_fn = &btree_sort_get_next_parallel;
       SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
-
-      sort_args_p->curr_pgoffset = 0;
-      sort_args_p->curr_sec = FILE_PARTIAL_SECTOR_INITIALIZER;
 
       func_index_info.expr_stream = NULL;
       func_index_info.expr_stream_size = 0;
@@ -5054,14 +5050,7 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
   thread_ref.m_px_orig_thread_entry = sort_param->px_orig_thread_p;
   thread_ref.conn_entry = sort_param->px_orig_thread_p->conn_entry;
 
-  /* For SORT_INDEX_LEAF, this function is called on the main thread whose resource tracks are already managed
-   * by xbtree_load_index(). Pushing a nested level here causes a false assertion because btree_construct_leafs
-   * intentionally leaves load_args->current_key alive across this call (freed later by xbtree_load_index). */
-  bool needs_resource_tracking = (thread_p != thread_p->m_px_orig_thread_entry);
-  if (needs_resource_tracking)
-    {
-      thread_p->push_resource_tracks ();
-    }
+  thread_p->push_resource_tracks ();
 
   if (thread_is_on_trace (sort_param->px_orig_thread_p))
     {
@@ -5120,10 +5109,7 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
       thread_set_sort_stats_active (thread_p, false);
       perfmon_destroy_parallel_stats (&thread_ref);
     }
-  if (needs_resource_tracking)
-    {
-      thread_p->pop_resource_tracks ();
-    }
+  thread_p->pop_resource_tracks ();
 
   /* done */
   pthread_mutex_lock (sort_param->px_mtx);
@@ -5282,6 +5268,7 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	    }
 	  memcpy (px_sort_args_p, sort_param->get_arg, sizeof (SORT_ARGS));
 	  px_sort_param[i].get_arg = px_sort_args_p;
+	  px_sort_param[i].get_fn = &btree_sort_get_next_parallel;
 	  px_sort_args_p->ftab_sets = NULL;
 	  px_sort_args_p->curr_sec = FILE_PARTIAL_SECTOR_INITIALIZER;
 	  px_sort_args_p->curr_pgoffset = 0;
