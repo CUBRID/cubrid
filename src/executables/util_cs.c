@@ -367,6 +367,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
   UINT64 volext_size;
   UINT64 volext_max_writesize;
   const char *volext_string_purpose = NULL;
+  const char *volext_string_voltype = NULL;
   const char *volext_npages_string = NULL;
   const char *volext_size_str = NULL;
   const char *volext_max_writesize_in_sec_str = NULL;
@@ -432,12 +433,9 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
   volext_string_purpose = utility_get_option_string_value (arg_map, ADDVOL_PURPOSE_S, 0);
   if (volext_string_purpose == NULL)
     {
-      volext_string_purpose = "generic";
+      ext_info.purpose = DB_PERMANENT_DATA_PURPOSE;
     }
-
-  ext_info.purpose = DB_PERMANENT_DATA_PURPOSE;
-
-  if (strcasecmp (volext_string_purpose, "data") == 0)
+  else if (strcasecmp (volext_string_purpose, "data") == 0)
     {
       ext_info.purpose = DB_PERMANENT_DATA_PURPOSE;
     }
@@ -467,6 +465,48 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
       ext_info.max_writesize_in_sec = 0;
       fprintf (stderr,
 	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ADDVOLDB, ADDVOLDB_INVALID_MAX_WRITESIZE_IN_SEC));
+    }
+
+  volext_string_voltype = utility_get_option_string_value (arg_map, ADDVOL_VOLTYPE_S, 0);
+  if (volext_string_voltype == NULL || strcasecmp (volext_string_voltype, "perm") == 0)
+    {
+      ext_info.voltype = DB_PERMANENT_VOLTYPE;
+    }
+  else if (strcasecmp (volext_string_voltype, "temp") == 0)
+    {
+      if (sa_mode)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ADDVOLDB, ADDVOLDB_VOLTYPE_NOT_SUPPORT_SAMODE));
+	  goto error_exit;
+	}
+
+      if (volext_string_purpose != NULL && ext_info.purpose != DB_TEMPORARY_DATA_PURPOSE)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ADDVOLDB,
+				  ADDVOLDB_VOLTYPE_MUSTBE_TEMP_PURPOSE));
+	  goto error_exit;
+	}
+      else
+	{
+	  ext_info.purpose = DB_TEMPORARY_DATA_PURPOSE;
+	}
+
+      if (ext_info.name != NULL || ext_info.path != NULL)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ADDVOLDB, ADDVOLDB_VOLTYPE_NOT_USED_PATH_NAME));
+	  goto error_exit;
+	}
+
+      ext_info.voltype = DB_TEMPORARY_VOLTYPE;
+    }
+  else
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ADDVOLDB, ADDVOLDB_MSG_BAD_VOLTYPE),
+			     volext_string_voltype);
+      goto error_exit;
     }
 
   /* extra validation */
@@ -4790,4 +4830,148 @@ error_exit:
 	   basename (arg->argv0));
   return EXIT_FAILURE;
 #endif /* !CS_MODE */
+}
+
+/*
+ * cleanfiledb() - cleanfiledb main routine
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int
+cleanfiledb (UTIL_FUNCTION_ARG * arg)
+{
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+  const char *db_name;
+#if !defined(NDEBUG)
+  const char *target_vfid_str = NULL;
+#endif
+  const char *output_file = NULL;
+  FILE *outfp = NULL;
+  bool is_dump_file_list;
+  bool is_clean_invalid_file;
+
+  db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (db_name == NULL)
+    {
+      goto print_cleanfiledb_usage;
+    }
+
+  output_file = utility_get_option_string_value (arg_map, CLEANFILEDB_OUTPUT_FILE_S, 0);
+  if (output_file == NULL)
+    {
+      outfp = stdout;
+    }
+  else
+    {
+      outfp = fopen (output_file, "w");
+      if (outfp == NULL)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CLEANFILEDB, CLEANFILEDB_MSG_BAD_OUTPUT),
+				 output_file);
+	  goto error_exit;
+	}
+    }
+
+  is_dump_file_list = utility_get_option_bool_value (arg_map, CLEANFILEDB_DUMP_FILE_LIST_S);
+  is_clean_invalid_file = utility_get_option_bool_value (arg_map, CLEANFILEDB_CLEAN_INVALID_FILE_S);
+#if !defined(NDEBUG)
+  /*
+   * INFO: Hidden option for debugging.
+   * Usage: -t, --clean-target-file=VFID
+   * Format: "fileid|volid" (e.g., "123|1")
+   */
+  target_vfid_str = utility_get_option_string_value (arg_map, CLEANFILEDB_DELETE_TARGET_FILE_S, 0);
+#endif
+
+  if (check_database_name (db_name))
+    {
+      goto error_exit;
+    }
+
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", db_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  AU_DISABLE_PASSWORDS ();
+
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+
+  db_login ("DBA", NULL);
+
+  if (db_restart (arg->command_name, TRUE, db_name) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
+  // Execute with default settings (no command-line options provided)
+  if (!is_dump_file_list && !is_clean_invalid_file
+#if !defined(NDEBUG)
+      && target_vfid_str == NULL
+#endif
+    )
+    {
+      (void) file_dump_file_list (outfp, true);
+
+      fflush (outfp);
+    }
+  else
+    {
+      if (is_dump_file_list)
+	{
+	  (void) file_dump_file_list (outfp, false);
+
+	  fflush (outfp);
+	}
+
+      if (is_clean_invalid_file)
+	{
+	  int heap = 0, heap_ovf = 0, btree = 0, btree_ovf = 0;
+	  int total;
+
+	  if (file_clean_invalid_file (&heap, &heap_ovf, &btree, &btree_ovf) != NO_ERROR)
+	    {
+	      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	      db_shutdown ();
+	      goto error_exit;
+	    }
+
+	  total = heap + heap_ovf + btree + btree_ovf;
+
+	  fprintf (outfp,
+		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CLEANFILEDB, CLEANFILEDB_MSG_CLEAN_SUMMARY),
+		   db_name, heap, heap_ovf, btree, btree_ovf, total);
+
+	  fflush (outfp);
+	}
+#if !defined(NDEBUG)
+      else if (target_vfid_str != NULL)
+	{
+	  (void) file_delete_target_file (target_vfid_str);
+	}
+#endif
+    }
+
+  db_shutdown ();
+
+  if (output_file != NULL && outfp != NULL && outfp != stdout)
+    {
+      fclose (outfp);
+    }
+
+  return EXIT_SUCCESS;
+
+print_cleanfiledb_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CLEANFILEDB, CLEANFILEDB_MSG_USAGE),
+	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
+error_exit:
+  if (output_file != NULL && outfp != NULL && outfp != stdout)
+    {
+      fclose (outfp);
+    }
+
+  return EXIT_FAILURE;
 }

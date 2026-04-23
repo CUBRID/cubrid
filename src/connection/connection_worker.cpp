@@ -44,6 +44,7 @@
 #include "connection_defs.h"
 #include "connection_worker.hpp"
 #include "buffer.hpp"
+#include "thread_manager.hpp"
 #include "error_manager.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -66,6 +67,11 @@ std::atomic<uint64_t> message_counter (0);
 
 namespace cubconn::connection
 {
+  REGISTER_CONNECTION (connection_worker, []()
+  {
+    return prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
+  });
+
   worker::worker (pool *pool, std::shared_ptr<coordinator> coord, std::shared_ptr<thread_watcher> watcher,
 		  std::size_t core, std::size_t index) :
     m_parent (pool),

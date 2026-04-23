@@ -148,6 +148,34 @@ struct file_tablespace
   int expand_max_size;
 };
 
+/* FILE_ALLOC_BITMAP -
+ * Type used to store allocation bitmap for sectors.  */
+typedef UINT64 FILE_ALLOC_BITMAP;
+#define FILE_FULL_PAGE_BITMAP	    0xFFFFFFFFFFFFFFFF	/* Full allocation bitmap */
+#define FILE_EMPTY_PAGE_BITMAP	    0x0000000000000000	/* Empty allocation bitmap */
+
+#define FILE_ALLOC_BITMAP_NBITS ((int) (sizeof (FILE_ALLOC_BITMAP) * CHAR_BIT))
+
+/* FILE_PARTIAL_SECTOR -
+ * Structure used by partially allocated sectors table. Store sector VSID and its allocation bitmap. */
+typedef struct file_partial_sector FILE_PARTIAL_SECTOR;
+struct file_partial_sector
+{
+  VSID vsid;			/* Important - VSID must be first member of FILE_PARTIAL_SECTOR. Sometimes, the
+				 * FILE_PARTIAL_SECTOR pointers in file table are reinterpreted as VSID. */
+  FILE_ALLOC_BITMAP page_bitmap;
+};
+#define FILE_PARTIAL_SECTOR_INITIALIZER { VSID_INITIALIZER, 0 }
+
+typedef struct file_ftab_collector FILE_FTAB_COLLECTOR;
+struct file_ftab_collector
+{
+  int npages;
+  int nsects;
+  FILE_PARTIAL_SECTOR *partsect_ftab;
+};
+#define FILE_FTAB_COLLECTOR_INITIALIZER { 0, 0, NULL }
+
 typedef int (*FILE_INIT_PAGE_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
 typedef int (*FILE_MAP_PAGE_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool * stop, void *args);
 
@@ -260,4 +288,8 @@ extern void file_rv_dump_vfid_and_vpid (FILE * fp, int length, void *data);
 extern void file_rv_dump_extdata_set_next (FILE * fp, int length, void *data);
 extern void file_rv_dump_extdata_add (FILE * fp, int length, void *data);
 extern void file_rv_dump_extdata_remove (FILE * fp, int length, void *data);
+
+/* partial file scan stuff */
+extern int file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB_COLLECTOR * collector_out);
+
 #endif /* _FILE_MANAGER_H_ */

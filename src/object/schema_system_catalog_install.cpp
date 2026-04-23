@@ -895,23 +895,23 @@ namespace cubschema
 		   CT_STORED_PROC_NAME,
 		   // columns
     {
-      {"unique_name", format_varchar (255)},
-      {"sp_name", format_varchar (255)},
-      {"sp_type", "integer"},
-      {"return_type", "integer"},
-      {"arg_count", "integer"},
-      {"args", format_sequence (CT_STORED_PROC_ARGS_NAME)},
-      {"lang", "integer"},
-      {"pkg_name", format_varchar (255)},
-      {"is_system_generated", "integer"},
-      {"directive", "integer"},
-      {"target_class", format_varchar (1024)},
-      {"target_method", format_varchar (SP_ATTR_TARGET_METHOD_LEN)},
-      {"owner", AU_USER_CLASS_NAME},
+      {SP_ATTR_UNIQUE_NAME, format_varchar (255)},
+      {SP_ATTR_SP_NAME, format_varchar (255)},
+      {SP_ATTR_SP_TYPE, "integer"},
+      {SP_ATTR_RETURN_TYPE, "integer"},
+      {SP_ATTR_ARG_COUNT, "integer"},
+      {SP_ATTR_ARGS, format_sequence (CT_STORED_PROC_ARGS_NAME)},
+      {SP_ATTR_LANG, "integer"},
+      {SP_ATTR_PKG_NAME, format_varchar (255)},
+      {SP_ATTR_IS_SYSTEM_GENERATED, "integer"},
+      {SP_ATTR_DIRECTIVE, "integer"},
+      {SP_ATTR_TARGET_CLASS, format_varchar (1024)},
+      {SP_ATTR_TARGET_METHOD, format_varchar (SP_ATTR_TARGET_METHOD_LEN)},
+      {SP_ATTR_OWNER, AU_USER_CLASS_NAME},
       {SP_ATTR_SQL_DATA_ACCESS, "integer"},
-      {"comment", format_varchar (1024)},
-      {"created_time", "datetime"},
-      {"updated_time", "datetime"},
+      {SP_ATTR_COMMENT, format_varchar (1024)},
+      {SP_ATTR_CREATED_TIME, "datetime"},
+      {SP_ATTR_UPDATED_TIME, "datetime"},
     },
 // constraints
     {
@@ -935,15 +935,15 @@ namespace cubschema
 		   CT_STORED_PROC_ARGS_NAME,
 		   // columns
     {
-      {"sp_of", CT_STORED_PROC_NAME},
-      {"index_of", "integer"},
-      {"is_system_generated", "integer"},
-      {"arg_name", format_varchar (255)},
-      {"data_type", "integer"},
-      {"mode", "integer"},
-      {"default_value", format_varchar (255)}, // TODO: CBRD-25261
-      {"is_optional", "integer"}, // default_value is used only when is_optional is 1
-      {"comment", format_varchar (1024)},
+      {SP_ARG_ATTR_SP_OF, CT_STORED_PROC_NAME},
+      {SP_ARG_ATTR_INDEX_OF, "integer"},
+      {SP_ARG_ATTR_IS_SYSTEM_GENERATED, "integer"},
+      {SP_ARG_ATTR_ARG_NAME, format_varchar (255)},
+      {SP_ARG_ATTR_DATA_TYPE, "integer"},
+      {SP_ARG_ATTR_MODE, "integer"},
+      {SP_ARG_ATTR_DEFAULT_VALUE, format_varchar (255)}, // TODO: CBRD-25261
+      {SP_ARG_ATTR_IS_OPTIONAL, "integer"}, // default_value is used only when is_optional is 1
+      {SP_ARG_ATTR_COMMENT, format_varchar (1024)},
     },
 // constraints
     {
@@ -967,15 +967,15 @@ namespace cubschema
 		   CT_STORED_PROC_CODE_NAME,
 		   // columns
     {
-      {"name", format_varchar (1024)}, // same with [_db_stored_procedure].[target_class]
-      {"created_time", format_varchar (16)},
-      {"owner", AU_USER_CLASS_NAME},
-      {"is_static", "integer"},
-      {"is_system_generated", "integer"},
-      {"stype", "integer"},
-      {"scode", format_varchar (1073741823)},
-      {"otype", "integer"},
-      {"ocode", format_varchar (1073741823)}
+      {SP_CODE_ATTR_NAME, format_varchar (1024)}, // same with [_db_stored_procedure].[target_class]
+      {SP_CODE_ATTR_CREATED_TIME, format_varchar (16)},
+      {SP_CODE_ATTR_OWNER, AU_USER_CLASS_NAME},
+      {SP_CODE_ATTR_IS_STATIC, "integer"},
+      {SP_CODE_ATTR_IS_SYSTEM_GENERATED, "integer"},
+      {SP_CODE_ATTR_STYPE, "integer"},
+      {SP_CODE_ATTR_SCODE, format_varchar (1073741823)},
+      {SP_CODE_ATTR_OTYPE, "integer"},
+      {SP_CODE_ATTR_OCODE, format_varchar (1073741823)}
     },
 // constraints
     {

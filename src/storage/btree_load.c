@@ -4858,6 +4858,9 @@ error:
 }
 
 // *INDENT-OFF*
+// Refer to src/parser/csql_grammar.y:19872
+REGISTER_WORKERPOOL (online_index, []() { return 16; });
+
 static int
 online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids, OID * class_oids, int n_classes,
 		      int *attrids, int n_attrs, FUNCTION_INDEX_INFO func_idx_info,
@@ -4883,12 +4886,12 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 
   std::unique_ptr<index_builder_loader_task> load_task = NULL;
 
+  assert (ib_thread_count <= 16);
+
   // a worker pool is built only of loading is done in parallel
-  cubthread::entry_workpool *ib_workpool =
-    is_parallel ?
-    thread_get_manager()->create_worker_pool (ib_thread_count, 32, "Online index loader pool", &load_context, 1,
-                                              btree_is_worker_pool_logging_true ())
-    : NULL;
+  cubthread::worker_pool_type *ib_workpool =
+    is_parallel ? thread_create_worker_pool (ib_thread_count, 1, "online-index", load_context) : NULL;
+  // m_log = btree_is_worker_pool_logging_true ()
 
   aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
   p_func_idx_info = func_idx_info.expr ? &func_idx_info : NULL;

@@ -28,7 +28,7 @@
 #include "thread_entry_task.hpp"
 #include "px_heap_scan_slot_iterator.hpp"
 #include "px_heap_scan_result_handler.hpp"
-#include "px_heap_scan_input_handler.hpp"
+#include "px_heap_scan_input_handler_ftabs.hpp"
 #include "px_heap_scan_trace_handler.hpp"
 #include "px_interrupt.hpp"
 #include "px_worker_manager.hpp"
@@ -42,7 +42,7 @@ namespace parallel_heap_scan
       using interrupt = parallel_query::interrupt;
       using err_messages_with_lock = parallel_query::err_messages_with_lock;
       using worker_manager = parallel_query::worker_manager;
-      using input_handler = parallel_heap_scan::input_handler;
+      using input_handler = parallel_heap_scan::input_handler_ftabs;
     public:
       task (THREAD_ENTRY *parent_thread_p, QMGR_QUERY_ENTRY *query_entry, result_handler<result_type> *result_handler,
 	    input_handler *input_handler,

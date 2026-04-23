@@ -13,6 +13,9 @@ name: TC Branch Finalize
 on:
   pull_request_target:
     types: [closed]
+    branches:
+      - develop
+      - 'feature/**'
 
 permissions: {} # Least privilege — jobs opt-in below
 
@@ -143,7 +146,7 @@ jobs:
 
           **Cleanup Results:**${CLEANUP_ITEMS}
 
-          TC develop branch is ready for the next PR.
+          TC base branch is ready for the next PR.
           EOF
           )
 

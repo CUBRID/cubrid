@@ -109,6 +109,10 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#if defined(CS_MODE)
+#error "Does not belong to cs module"
+#endif
+
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
 #define pthread_mutex_destroy(a)
@@ -7516,7 +7520,15 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
 }
 
 // *INDENT-OFF*
-cubthread::entry_workpool * g_backup_read_worker_pool = NULL;
+cubthread::worker_pool_type * g_backup_read_worker_pool = NULL;
+
+REGISTER_WORKERPOOL (backup_read, []() {
+#if defined (SERVER_MODE)
+    return cubthread::system_core_count ();
+#else
+    return 0;
+#endif
+});
 // *INDENT-ON*
 
 void
@@ -7529,9 +7541,10 @@ logpb_create_backup_read_worker_pool (size_t thread_count)
     {
       thread_count = 1;
     }
+
   g_backup_read_worker_pool =
-    cubthread::get_manager ()->create_worker_pool (thread_count, thread_count, "backup read workers", NULL,
-						   core_count, false, true);
+    thread_create_worker_pool (thread_count, core_count, "backup-read", thread_get_entry_manager (), true);
+  // m_log = false
 }
 
 void
