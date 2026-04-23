@@ -3743,6 +3743,8 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 
 	net_arg_get_str (&value, &val_size, net_value);
 
+	/* CAS protocol: string payload carries a trailing NUL that is counted in val_size. */
+	assert (val_size > 0 && value[val_size - 1] == '\0');
 	val_size--;
 
 	if (intl_check_string (value, val_size, &invalid_pos, lang_get_client_charset ()) != INTL_UTF8_VALID)

@@ -587,9 +587,6 @@ db_get_bit (const DB_VALUE * value, int *length)
  * db_get_char() -
  * return :
  * value(in):
- *
- * Note: Callers that need the character count should call intl_char_count()
- *       separately with the value's codeset and byte size.
  */
 DB_CONST_C_CHAR
 db_get_char (const DB_VALUE * value)
