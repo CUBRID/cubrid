@@ -23,6 +23,7 @@
 #ifndef _HNSW_ALGO_COMMON_HPP_
 #define _HNSW_ALGO_COMMON_HPP_
 
+#include <array>
 #include <random>
 #include <ankerl/unordered_dense.h>
 
@@ -71,64 +72,33 @@ namespace cubhnsw
     }
   };
 
-  struct oid_hash
+  inline uint64_t encode_oid_key (const OID &o) noexcept
   {
-    inline std::size_t operator() (const OID &o) const noexcept
-    {
-      // bit packing of oid
-      return (uint64_t (uint32_t (o.pageid)) << 32)
-	     | (uint64_t (uint16_t (o.slotid)) << 16)
-	     |  uint64_t (uint16_t (o.volid));
-    }
-  };
-
-  struct oid_equal
-  {
-    inline bool operator() (const OID &a, const OID &b) const noexcept
-    {
-      return a.pageid == b.pageid && a.slotid == b.slotid && a.volid == b.volid;
-    }
-  };
+    return (uint64_t (uint32_t (o.pageid)) << 32)
+	   | (uint64_t (uint16_t (o.slotid)) << 16)
+	   | uint64_t (uint16_t (o.volid));
+  }
 
   struct visit_set_helper
   {
-    using type = ankerl::unordered_dense::set<OID, oid_hash, oid_equal>;
+    using type = ankerl::unordered_dense::set<uint64_t>;
   };
 
   using visited_set_t = visit_set_helper::type;
 
   struct vector_cache_helper
   {
-    using type = ankerl::unordered_dense::map<OID, std::vector<float>, oid_hash, oid_equal>;
+    using type = ankerl::unordered_dense::map<uint64_t, std::vector<float>>;
   };
 
   using vector_cache_t = vector_cache_helper::type;
 
-  struct neighbors_key
-  {
-    slot_id_t slot;
-    level_t level;
+  using neighbors_cache_per_level_t =
+	  ankerl::unordered_dense::map<uint64_t, std::vector<slot_id_t>>;
 
-    bool operator== (const neighbors_key &o) const noexcept
-    {
-      static constexpr oid_equal eq {};
-      return level == o.level && eq (slot, o.slot);
-    }
-  };
-
-  struct neighbors_key_hash
-  {
-    std::size_t operator() (neighbors_key const &k) const noexcept
-    {
-      std::size_t h = oid_hash {} (k.slot);
-      std::size_t x = std::hash<level_t> {} (k.level);
-      h ^= x + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
-      return h;
-    }
-  };
-
-  using neighbors_cache_t =
-	  ankerl::unordered_dense::map<neighbors_key, std::vector<slot_id_t>, neighbors_key_hash>;
+  // One map per level; level is the array index, so the in-map key is just the
+  // encoded slot (uint64_t). Avoids a composite key struct/hash on the hot path.
+  using neighbors_cache_t = std::array<neighbors_cache_per_level_t, MAX_LEVELS>;
 
   using candidates_view_t = std::vector<candidate_t>;
 

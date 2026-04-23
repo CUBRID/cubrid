@@ -189,9 +189,14 @@ namespace cubhnsw
   const std::vector<slot_id_t> *
   storage::get_neighbors_cached_ids (algo_context_t &context, const slot_id_t &slot, level_t level)
   {
-    neighbors_key key { slot, level };
-    auto it = m_neighbors_cache.find (key);
-    if (it != m_neighbors_cache.end ())
+    if (level < 0 || level >= MAX_LEVELS)
+      {
+	assert (false);
+	return nullptr;
+      }
+    auto &per_level = m_neighbors_cache[level];
+    auto it = per_level.find (encode_oid_key (slot));
+    if (it != per_level.end ())
       {
 	return &it->second;
       }
@@ -204,10 +209,10 @@ namespace cubhnsw
   storage::set_neighbors_cached_ids (algo_context_t &context,
 				     const slot_id_t &slot,
 				     level_t level,
-				     const std::vector<slot_id_t> &neighbors)
+				     std::vector<slot_id_t> neighbors)
   {
-    neighbors_key key { slot, level };
-    m_neighbors_cache[key] = neighbors;
+    assert (level >= 0 && level < MAX_LEVELS);
+    m_neighbors_cache[level].insert_or_assign (encode_oid_key (slot), std::move (neighbors));
   }
 
   const float *
@@ -215,7 +220,7 @@ namespace cubhnsw
   {
     context.m_stats.on_vector_access (context.m_is_perf_tracking, context.m_level);
 
-    auto it = m_vector_cache.find (slot);
+    auto it = m_vector_cache.find (encode_oid_key (slot));
     if (it != m_vector_cache.end ())
       {
 	context.m_stats.on_vector_cache_hit (context.m_is_perf_tracking, context.m_level);
@@ -228,7 +233,7 @@ namespace cubhnsw
     node_t node { reinterpret_cast<byte_t *> (node_blk->data) };
     const float *vec = node.get_vector ();
 
-    std::vector<float> &cached = m_vector_cache[slot];
+    std::vector<float> &cached = m_vector_cache[encode_oid_key (slot)];
     cached.assign (vec, vec + get_dimension ());
 
     return cached.data ();
