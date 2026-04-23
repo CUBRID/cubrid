@@ -23,6 +23,9 @@
 #include "hnsw.hpp"
 
 #include <fstream>
+#include <cstring>
+#include <cstdlib>
+#include <vector>
 
 #include "error_manager.h"
 #include "system_parameter.h"
@@ -36,6 +39,8 @@
 #include "vector_distance_enum.h"
 #include "heap_file.h"
 #include "hnsw_api.hpp"
+#include "log_manager.h"
+#include "recovery.h"
 
 #include "slotted_page.h"
 #include "page_buffer.h"
@@ -385,6 +390,119 @@ xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, i
   return NO_ERROR;
 }
 
+// =====================================================================
+// HNSW WAL Logging Structures and Functions
+// =====================================================================
+
+/*
+ * Packed structure for HNSW vector insertion logging
+ * Format: [oid(8)][btid(16)]
+ * Total: 24 bytes - only identification data, no vector payload
+ * 
+ * NOTE: Vector data is NOT stored in log because:
+ * 1. Vectors are immutable (never updated in heap)
+ * 2. Recovery can fetch vector from heap using OID
+ * 3. Index metadata loaded from disk during recovery
+ * This minimizes WAL record size.
+ */
+typedef struct hnsw_insert_log_data
+{
+  OID oid;
+  BTID btid;
+} HNSW_INSERT_LOG_DATA;
+
+/*
+ * Read vector value from heap using OID and BTID metadata.
+ * This is used during REDO to reconstruct add() input.
+ */
+static int
+hnsw_get_vector_by_oid (THREAD_ENTRY *thread_p, const BTID *btid, const OID *oid, std::vector<float> &out_vector)
+{
+  OID class_oid = OID_INITIALIZER;
+  RECDES recdes = RECDES_INITIALIZER;
+  HEAP_CACHE_ATTRINFO attr_info;
+  ATTR_ID *attr_ids = NULL;
+  int num_attrs = 0;
+  int error = NO_ERROR;
+
+  if (heap_get_class_oid (thread_p, oid, &class_oid) != S_SUCCESS)
+    {
+      return ER_FAILED;
+    }
+
+  error = heap_get_indexinfo_of_btid (thread_p, &class_oid, btid, NULL, &num_attrs, &attr_ids, NULL, NULL, NULL);
+  if (error != NO_ERROR || num_attrs <= 0 || attr_ids == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  recdes.data = NULL;
+  if (heap_get_visible_version (thread_p, oid, &class_oid, &recdes, NULL, COPY, NULL_CHN) != S_SUCCESS)
+    {
+      return ER_FAILED;
+    }
+
+  error = heap_attrinfo_start (thread_p, &class_oid, 1, attr_ids, &attr_info);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  error = heap_attrinfo_read_dbvalues (thread_p, oid, &recdes, &attr_info);
+  if (error != NO_ERROR)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+      return error;
+    }
+
+  DB_VALUE *key_dbvalue = &attr_info.values[0].dbvalue;
+  if (db_value_type (key_dbvalue) != DB_TYPE_VECTOR)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+      return ER_FAILED;
+    }
+
+  const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);
+  if (vf == NULL || vf->float_array == NULL || vf->dim <= 0)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+      return ER_FAILED;
+    }
+
+  out_vector.assign (vf->float_array, vf->float_array + vf->dim);
+  heap_attrinfo_end (thread_p, &attr_info);
+  return NO_ERROR;
+}
+
+/*
+ * hnsw_pack_insert_data() - Pack vector insertion record identification into WAL log
+ * 
+ * return      : Total packed size (always sizeof(HNSW_INSERT_LOG_DATA))
+ * buffer(out) : Output buffer (must be pre-allocated)
+ * btid        : B-tree ID identifying the HNSW index
+ * oid         : Object ID of the vector record
+ * 
+ * NOTE: Only stores BTID and OID. Vector data fetched from heap during recovery
+ *       since vectors are immutable.
+ */
+static int
+hnsw_pack_insert_data (char *buffer, int buffer_size, const BTID *btid, const OID *oid)
+{
+  HNSW_INSERT_LOG_DATA *log_data = (HNSW_INSERT_LOG_DATA *)buffer;
+  int total_size = sizeof(HNSW_INSERT_LOG_DATA);
+
+  if (total_size > buffer_size)
+    {
+      return 0;  // Buffer too small
+    }
+
+  /* Pack BTID and OID only */
+  log_data->btid = *btid;
+  log_data->oid = *oid;
+
+  return total_size;
+}
+
 int
 hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, int n_vectors)
 {
@@ -415,7 +533,93 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
       return ER_FAILED;
     }
 
+  if (!log_is_in_crash_recovery ())
+    {
+      // Log physical-level REDO record anchored to HNSW root page.
+      int wal_data_size = sizeof (HNSW_INSERT_LOG_DATA);
+      char *wal_data = static_cast<char *> (malloc (wal_data_size));
+      if (!wal_data)
+        {
+          return ER_FAILED;
+        }
+
+      int packed_size = hnsw_pack_insert_data (wal_data, wal_data_size, btid, oid);
+      if (packed_size != wal_data_size)
+        {
+          free (wal_data);
+          return ER_FAILED;
+        }
+
+      VPID root_vpid;
+      root_vpid.volid = btid->vfid.volid;
+      root_vpid.pageid = btid->root_pageid;
+
+      PAGE_PTR root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (root_page == NULL)
+        {
+          free (wal_data);
+          return ER_FAILED;
+        }
+
+      LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+      addr.vfid = &btid->vfid;
+      addr.pgptr = root_page;
+      addr.offset = 0;
+
+      fprintf (stderr,
+               "[HNSW_DEBUG] WAL logging physical redo: BTID(vfid=%d:%d, pageid=%d), OID(%d:%d:%d), wal_data_size=%d\n",
+               btid->vfid.volid, btid->vfid.fileid, btid->root_pageid,
+               oid->volid, oid->pageid, oid->slotid, wal_data_size);
+      fflush (stderr);
+
+      log_append_redo_data (thread_p, RVHNSW_INSERT_ELEMENT, &addr, wal_data_size, wal_data);
+
+      pgbuf_unfix_and_init (thread_p, root_page);
+      free (wal_data);
+    }
+
   return index->add (thread_p, n_vectors, oid, vector);
+}
+
+/*
+ * hnsw_rv_redo_insert_element() - Recovery function for HNSW vector insertion.
+ *
+ * return      : Error code.
+ * thread_p(in) : Thread entry.
+ * rcv(in)     : Recovery data containing BTID and OID.
+ *
+ * NOTE: This is a REDO-only recovery function following CUBRID patterns.
+ *       
+ *       Recovery flow (to be implemented):
+ *       1. Unpack BTID and OID from log data (24 bytes)
+ *       2. Load HNSW index from disk using BTID (gets dimension and metadata)
+ *       3. Fetch vector from heap using OID (avoids duplicating immutable data)
+ *       4. Re-insert vector into the index
+ */
+int
+hnsw_rv_redo_insert_element (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  (void) thread_p;
+  fprintf (stderr, "[HNSW_DEBUG] REDO stub called. rcv_length=%d (implementation temporarily disabled)\n",
+           (rcv != NULL) ? rcv->length : -1);
+
+  if (rcv != NULL && rcv->data != NULL && rcv->length >= (int) sizeof (HNSW_INSERT_LOG_DATA))
+    {
+      const HNSW_INSERT_LOG_DATA *log_data = (const HNSW_INSERT_LOG_DATA *) rcv->data;
+      fprintf (stderr,
+               "[HNSW_DEBUG] REDO payload BTID(vfid=%d:%d, pageid=%d), OID(%d:%d:%d)\n",
+               log_data->btid.vfid.volid, log_data->btid.vfid.fileid, log_data->btid.root_pageid,
+               log_data->oid.volid, log_data->oid.pageid, log_data->oid.slotid);
+    }
+  else
+    {
+      fprintf (stderr,
+               "[HNSW_DEBUG] REDO payload is too short or null for BTID/OID decode (need=%d, got=%d)\n",
+               (int) sizeof (HNSW_INSERT_LOG_DATA), (rcv != NULL) ? rcv->length : -1);
+    }
+
+  fflush (stderr);
+  return NO_ERROR;
 }
 
 int

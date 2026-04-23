@@ -299,8 +299,8 @@ namespace cubhnsw
       void promote_root (pinned_t &root);
 
       const cached_vector *get_cached_vector_by_slot_id (algo_context_t &context,
-							 const slot_id_t &slot_id,
-							 const lock_mode &mode);
+	  const slot_id_t &slot_id,
+	  const lock_mode &mode);
 
       // Fast inline path for neighbors cache lookup: no stats overhead.
       inline const std::vector<slot_id_t> *try_get_neighbors_cached (const slot_id_t &slot,
