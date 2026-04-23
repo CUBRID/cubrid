@@ -360,7 +360,8 @@ hjoin_execute_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
       HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_MERGE);
       error = hjoin_merge_qlist (thread_p, manager, current_context);
       HJOIN_PROFILE_MERGE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_MERGE,
-			       (manager->single_context.list_id != nullptr) ? manager->single_context.list_id->tuple_cnt : 0);
+			       (manager->single_context.list_id !=
+				nullptr) ? manager->single_context.list_id->tuple_cnt : 0);
 
       if (error != NO_ERROR)
 	{
@@ -866,11 +867,13 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 	{
 	  current_context = &contexts[context_index];
 
+#if defined (SERVER_MODE)
 	  if (current_context->status == HASHJOIN_STATUS_PARALLEL_PROBE)
 	    {
 	      parallel_query::hash_join::clear_context (*thread_p, current_context);
 	    }
 	  else
+#endif /* defined (SERVER_MODE) */
 	    {
 	      hjoin_clear_context (thread_p, current_context);
 	    }
@@ -1156,10 +1159,10 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJO
       goto error_exit;
     }
 
-#if defined (SERVER_MODE) && !defined (WINDOWS)
+#if defined (SERVER_MODE)
   status = hjoin_try_parallel (thread_p, manager, single_context);
   single_context->status = status;
-#endif /* defined (SERVER_MODE) && !defined (WINDOWS) */
+#endif /* defined (SERVER_MODE) */
 
   switch (status)
     {
@@ -2033,9 +2036,6 @@ error_exit:
 static HASHJOIN_STATUS
 hjoin_try_parallel_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * single_context)
 {
-  QFILE_LIST_ID *probe_list_id;
-  UINT64 page_cnt;
-
   parallel_query::worker_manager * px_worker_manager = NULL;
   UINT64 *px_worker_stats = NULL;
 
@@ -2049,17 +2049,13 @@ hjoin_try_parallel_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, H
   assert (false);
 #endif /* defined (SERVER_MODE) */
 
-  probe_list_id = single_context->probe->list_id;
-  assert (probe_list_id != NULL);
-
   /* immutable */
   static const size_t stats_size = perfmon_get_number_of_statistic_values () * sizeof (UINT64);
 
-  page_cnt = probe_list_id->page_cnt;
-  assert (page_cnt >= 0);
-
-  UINT32 degree = parallel_query::compute_parallel_degree (parallel_query::parallel_type::HASH_JOIN, page_cnt,
-							   manager->num_parallel_threads);
+  UINT32 degree =
+    parallel_query::compute_parallel_degree (parallel_query::parallel_type::HASH_JOIN,
+					     single_context->probe->list_id->page_cnt,
+					     manager->num_parallel_threads);
   if (degree < 2)
     {
       /* try single-thread hash join */
@@ -2445,7 +2441,7 @@ hjoin_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
       context->stats->swap_join_inputs = (context->build == outer) ? true : false;
     }
 
-#if defined (SERVER_MODE) && !defined (WINDOWS)
+#if defined (SERVER_MODE)
   if (context == &manager->single_context)
     {
       context->status = hjoin_try_parallel_probe (thread_p, manager, context);
@@ -2476,7 +2472,7 @@ hjoin_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
 	  goto error_exit;
 	}
     }
-#endif /* defined (SERVER_MODE) && !defined (WINDOWS) */
+#endif /* defined (SERVER_MODE) */
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
@@ -3252,7 +3248,7 @@ hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
   assert (context != NULL);
   assert (context->list_id == NULL);
 
-#if defined (SERVER_MODE) && !defined (WINDOWS)
+#if defined (SERVER_MODE)
   if (context->status == HASHJOIN_STATUS_PARALLEL_PROBE)
     {
       assert (context == &manager->single_context);
@@ -3275,7 +3271,7 @@ hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
       // *INDENT-ON*
     }
   else
-#endif /* defined (SERVER_MODE) && !defined (WINDOWS) */
+#endif /* defined (SERVER_MODE) */
     {
       assert (context->status == HASHJOIN_STATUS_TRY);
 
