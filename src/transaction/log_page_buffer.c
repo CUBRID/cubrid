@@ -71,7 +71,6 @@
 #else /* !SERVER_MODE */
 #include "connection_defs.h"
 #include "connection_sr.h"
-#include "thread_worker_pool.hpp"
 #endif
 #include "critical_section.h"
 #include "page_buffer.h"
@@ -7521,7 +7520,7 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
 }
 
 // *INDENT-OFF*
-cubthread::worker_pool * g_backup_read_worker_pool = NULL;
+cubthread::worker_pool_type * g_backup_read_worker_pool = NULL;
 
 REGISTER_WORKERPOOL (backup_read, []() {
 #if defined (SERVER_MODE)
@@ -7542,9 +7541,10 @@ logpb_create_backup_read_worker_pool (size_t thread_count)
     {
       thread_count = 1;
     }
+
   g_backup_read_worker_pool =
-    cubthread::get_manager ()->create_worker_pool (thread_count, thread_count, "backup-read", NULL,
-						   core_count, false, true);
+    thread_create_worker_pool (thread_count, core_count, "backup-read", thread_get_entry_manager (), true);
+  // m_log = false
 }
 
 void

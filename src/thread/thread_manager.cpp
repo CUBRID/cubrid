@@ -122,90 +122,19 @@ namespace cubthread
 #endif // !SERVER_MODE = SA_MODE
   }
 
-  template<typename Res>
-  void manager::destroy_and_untrack_all_resources (std::vector<Res *> &tracker)
-  {
-    assert (tracker.empty ());
-
-#if defined (SERVER_MODE)
-    for (; !tracker.empty ();)
-      {
-	const auto iter = tracker.begin ();
-	(*iter)->stop_execution ();
-	delete *iter;
-	tracker.erase (iter);
-      }
-#endif // SERVER_MODE
-  }
-
-  template<typename Res, typename ... CtArgs>
-  inline Res *manager::create_and_track_resource (std::vector<Res *> &tracker, size_t entries_count, CtArgs &&... args)
-  {
-    check_not_single_thread ();
-
-    std::unique_lock<std::mutex> lock (m_entries_mutex);  // safe-guard
-
-    if (m_available_entries_count < entries_count)
-      {
-	return NULL;
-      }
-    m_available_entries_count -= entries_count;
-
-    Res *new_res = new Res (std::forward<CtArgs> (args)...);
-
-    tracker.push_back (new_res);
-
-    return new_res;
-  }
-
-  worker_pool *
-  manager::create_worker_pool (size_t pool_size, size_t task_max_count, const char *name,
-			       entry_manager *entry_mgr, std::size_t core_count, bool debug_logging,
-			       bool pool_threads, wait_seconds wait_for_task_time)
-  {
-#if defined (SERVER_MODE)
-    if (is_single_thread ())
-      {
-	return NULL;
-      }
-    else
-      {
-	assert (m_worker_pools.size () <= workerpool_registry_t::count ());
-
-	if (entry_mgr == NULL)
-	  {
-	    entry_mgr = &m_entry_manager;
-	  }
-	// reserve pool_size entries and add to m_worker_pools
-	return create_and_track_resource (m_worker_pools, pool_size, pool_size, task_max_count, *entry_mgr,
-					  name, core_count, debug_logging, pool_threads, wait_for_task_time);
-      }
-#else // not SERVER_MODE = SA_MODE
-    return NULL;
-#endif // not SERVER_MODE = SA_MODE
-  }
-
   daemon *
   manager::create_daemon (const looper &looper_arg, entry_task *exec_p,
 			  const char *daemon_name /* = "" */, entry_manager *entry_mgr /* = NULL */)
   {
 #if defined (SERVER_MODE)
-    if (is_single_thread ())
-      {
-	assert (false);
-	return NULL;
-      }
-    else
-      {
-	assert (m_daemons.size () <= daemon_registry_t::count ());
+    assert (m_daemons.size () <= daemon_registry_t::count ());
 
-	if (entry_mgr == NULL)
-	  {
-	    entry_mgr = &m_daemon_entry_manager;
-	  }
-	// reserve 1 entry and add to m_daemons
-	return create_and_track_resource (m_daemons, 1, looper_arg, entry_mgr, exec_p, daemon_name);
+    if (entry_mgr == NULL)
+      {
+	entry_mgr = &m_daemon_entry_manager;
       }
+    // reserve 1 entry and add to m_daemons
+    return create_and_track_resource<daemon> (m_daemons, 1, looper_arg, entry_mgr, exec_p, daemon_name);
 #else // not SERVER_MODE = SA_MODE
     assert (false);
     return NULL;
@@ -216,63 +145,11 @@ namespace cubthread
   manager::create_daemon_without_entry (const looper &looper_arg, task_without_context *exec_p, const char *daemon_name)
   {
 #if defined (SERVER_MODE)
-    if (is_single_thread ())
-      {
-	assert (false);
-	return NULL;
-      }
-    else
-      {
-	// reserve no entry and add to m_daemons_without_entries
-	return create_and_track_resource (m_daemons_without_entries, 0, looper_arg, exec_p, daemon_name);
-      }
+    // reserve no entry and add to m_daemons_without_entries
+    return create_and_track_resource<daemon> (m_daemons_without_entries, 0, looper_arg, exec_p, daemon_name);
 #else // not SERVER_MODE = SA_MODE
     assert (false);
     return NULL;
-#endif // not SERVER_MODE = SA_MODE
-  }
-
-  template<typename Res>
-  inline void
-  manager::destroy_and_untrack_resource (std::vector<Res *> &tracker, Res *&res, std::size_t entries_count)
-  {
-    std::unique_lock<std::mutex> lock (m_entries_mutex);    // safe-guard
-    check_not_single_thread ();
-
-    for (auto iter = tracker.begin (); iter != tracker.end (); ++iter)
-      {
-	if (res == *iter)
-	  {
-	    // remove resource from tracker
-	    (void) tracker.erase (iter);
-
-	    // stop resource and delete
-	    res->stop_execution ();
-	    delete res;
-	    res = NULL;
-
-	    // update available entries
-	    m_available_entries_count += entries_count;
-
-	    return;
-	  }
-      }
-    // resource not found
-    assert (false);
-  }
-
-  void
-  manager::destroy_worker_pool (worker_pool *&worker_pool_arg)
-  {
-#if defined (SERVER_MODE)
-    if (worker_pool_arg == NULL)
-      {
-	return;
-      }
-    // remove from m_worker_pools and free worker_pool_arg->get_max_count thread entries
-    return destroy_and_untrack_resource (m_worker_pools, worker_pool_arg, worker_pool_arg->get_max_count ());
-#else // not SERVER_MODE = SA_MODE
-    assert (worker_pool_arg == NULL);
 #endif // not SERVER_MODE = SA_MODE
   }
 
@@ -321,39 +198,6 @@ namespace cubthread
 	exec_p->retire ();
 #endif // not SERVER_MODE = SA_MODE
       }
-  }
-
-  bool
-  manager::try_task (entry &thread_p, worker_pool *worker_pool_arg, entry_task *exec_p)
-  {
-    if (worker_pool_arg == NULL)
-      {
-	// execute on this thread
-	exec_p->execute (thread_p);
-	exec_p->retire ();
-	return true;
-      }
-    else
-      {
-#if defined (SERVER_MODE)
-	check_not_single_thread ();
-	return worker_pool_arg->try_execute (exec_p);
-#else // not SERVER_MODE = SA_MODE
-	assert (false);
-	return false;
-#endif // not SERVER_MODE = SA_MODE
-      }
-  }
-
-  bool
-  manager::is_pool_full (worker_pool *worker_pool_arg)
-  {
-#if defined (SERVER_MODE)
-    return worker_pool_arg == NULL || worker_pool_arg->is_full ();
-#else // not SERVER_MODE = SA_MODE
-    // on SA_MODE can always push more tasks
-    return false;
-#endif // not SERVER_MODE = SA_MODE
   }
 
   void
