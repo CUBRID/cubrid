@@ -697,6 +697,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> synonym_name_without_dot
 %type <node> synonym_name
 %type <node> package_name_without_dot
+%type <node> package_name_list
 %type <node> procedure_or_function_name_without_dot
 %type <node> procedure_or_function_name
 %type <node> procedure_or_function_name_list
@@ -4692,7 +4693,7 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		}}
-        | DROP PACKAGE opt_body opt_if_exists package_name_without_dot
+        | DROP PACKAGE opt_body opt_if_exists package_name_list
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP_PACKAGE);
@@ -5689,6 +5690,19 @@ package_name_without_dot
 		{
 			$$ = $1;
 		}
+	;
+
+package_name_list
+	: package_name_list ',' package_name_without_dot
+		{{
+			$$ = parser_make_link ($1, $3);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| package_name_without_dot
+		{{
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
 	;
 
 procedure_or_function_name_without_dot
