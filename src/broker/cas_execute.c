@@ -3756,7 +3756,6 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	  }
 
 	if (lang_get_client_charset () == INTL_CODESET_UTF8
-	    && prm_get_bool_value (PRM_ID_UNICODE_INPUT_NORMALIZATION)
 	    && unicode_string_need_compose (value, val_size, &composed_size, lang_get_generic_unicode_norm ()))
 	  {
 	    char *composed = NULL;
@@ -4279,8 +4278,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	    bytes_size = MIN (bytes_size, max_col_size);
 	  }
 
-	if (db_get_string_codeset (val) == INTL_CODESET_UTF8
-	    && prm_get_bool_value (PRM_ID_UNICODE_OUTPUT_NORMALIZATION))
+	if (db_get_string_codeset (val) == INTL_CODESET_UTF8)
 	  {
 	    need_decomp =
 	      unicode_string_need_decompose (str, bytes_size, &decomp_size, lang_get_generic_unicode_norm ());
@@ -4328,7 +4326,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	    bytes_size = MIN (bytes_size, max_col_size);
 	  }
 
-	if (db_get_enum_codeset (val) == INTL_CODESET_UTF8 && prm_get_bool_value (PRM_ID_UNICODE_OUTPUT_NORMALIZATION))
+	if (db_get_enum_codeset (val) == INTL_CODESET_UTF8)
 	  {
 	    need_decomp =
 	      unicode_string_need_decompose (str, bytes_size, &decomp_size, lang_get_generic_unicode_norm ());

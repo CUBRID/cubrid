@@ -245,7 +245,6 @@ csql_help_schema (const char *class_name)
   /* class name may be in Unicode decomposed form, in DB we store only composed form */
   class_name_size = (int) strlen (class_name);
   if (LANG_SYS_CODESET == INTL_CODESET_UTF8
-      && prm_get_bool_value (PRM_ID_UNICODE_INPUT_NORMALIZATION)
       && unicode_string_need_compose (class_name, class_name_size, &composed_size, lang_get_generic_unicode_norm ()))
     {
       bool is_composed = false;
@@ -511,7 +510,6 @@ csql_help_trigger (const char *trigger_name)
       /* trigger name may be in Unicode decomposed form, in DB we store only composed form */
       trigger_name_size = (int) strlen (trigger_name);
       if (LANG_SYS_CODESET == INTL_CODESET_UTF8
-	  && prm_get_bool_value (PRM_ID_UNICODE_INPUT_NORMALIZATION)
 	  && unicode_string_need_compose (trigger_name, trigger_name_size, &composed_size,
 					  lang_get_generic_unicode_norm ()))
 	{

@@ -25105,7 +25105,6 @@ pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str,
     }
 
   if (LANG_SYS_CODESET == INTL_CODESET_UTF8
-      && prm_get_bool_value (PRM_ID_UNICODE_INPUT_NORMALIZATION)
       && unicode_string_need_compose (str, str_size, &composed_size,
 				      lang_get_generic_unicode_norm ()))
     {
@@ -25151,7 +25150,6 @@ pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_t
     }
 
   if (codeset == INTL_CODESET_UTF8
-      && prm_get_bool_value (PRM_ID_UNICODE_INPUT_NORMALIZATION)
       && unicode_string_need_compose (str, str_size, &composed_size,
 				      lang_get_generic_unicode_norm ()))
     {
