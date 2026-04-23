@@ -258,7 +258,7 @@ struct la_apply
   int tranid;
   int num_items;
   bool is_long_trans;
-  bool is_multi_chunk_oos_pending;
+  bool need_oos_rebuild;
   LOG_LSA start_lsa;
   LOG_LSA last_lsa;
   LA_ITEM *head;
@@ -341,7 +341,7 @@ struct la_info
   bool is_apply_info_updated;	/* whether catalog is partially updated or not */
 
   int num_unflushed;
-  bool has_unflushed_oos_insert;
+  bool pending_oos_flush;
 
   /* file lock */
   int log_path_lockf_vdes;
@@ -517,7 +517,7 @@ static int la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgp
 				   char **data, int *d_length);
 static int la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr, unsigned int match_rcvindex,
 				     void **logs, char **rec_type, RECDES * recdes);
-static int la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes);
+static int la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes);
 static int la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *rcvindex, char *rec_type,
 			  bool is_mvcc_class);
 static void la_log_apply_error (const char *op_name, int err_id, LA_ITEM * item, int error);
@@ -2814,7 +2814,7 @@ la_init_repl_lists (bool need_realloc)
       la_Info.repl_lists[i]->tranid = 0;
       la_Info.repl_lists[i]->num_items = 0;
       la_Info.repl_lists[i]->is_long_trans = false;
-      la_Info.repl_lists[i]->is_multi_chunk_oos_pending = false;
+      la_Info.repl_lists[i]->need_oos_rebuild = false;
       LSA_SET_NULL (&la_Info.repl_lists[i]->start_lsa);
       LSA_SET_NULL (&la_Info.repl_lists[i]->last_lsa);
       la_Info.repl_lists[i]->head = NULL;
@@ -3374,7 +3374,7 @@ la_free_all_repl_items (LA_APPLY * apply)
 
   apply->num_items = 0;
   apply->is_long_trans = false;
-  apply->is_multi_chunk_oos_pending = false;
+  apply->need_oos_rebuild = false;
   apply->head = NULL;
   apply->tail = NULL;
 
@@ -4384,7 +4384,7 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
 }
 
 /*
- * la_get_multi_chunk_oos_recdes() - rebuild a multi-chunk OOS record from log records
+ * la_rebuild_oos_recdes() - rebuild a multi-chunk OOS record from log records
  *   return: NO_ERROR or error code
  *   lsa(in): LSA of the first logged OOS chunk
  *   recdes(out): merged OOS record description
@@ -4395,7 +4395,7 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
  *   rebuilds a single OOS record for the applier.
  */
 static int
-la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
+la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 {
   typedef struct la_oos_chunk
   {
@@ -4405,10 +4405,10 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 
   LOG_LSA current_lsa;
   TRANID trid = NULL_TRANID;
-  int total_size = -1;
-  int total_chunk_body_length = 0;
+  int total_data_length = -1;
+  int total_body_length = 0;
   int error = NO_ERROR;
-  bool found_head = false;
+  bool found_head_chunk = false;
   std::vector<LA_OOS_CHUNK> chunks;
   auto free_chunks = [&chunks]()
   {
@@ -4420,7 +4420,7 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 	  }
       }
   };
-  auto set_multi_chunk_oos_error = [] (const char *message)
+  auto set_oos_rebuild_error = [] (const char *message)
   {
     er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, message);
     return ER_HA_GENERIC_ERROR;
@@ -4458,8 +4458,13 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
       if (current_log_page == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	  if (error == NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	    }
 	  free_chunks ();
-	  return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+	  return error;
 	}
 
       current_log_record = LOG_GET_LOG_RECORD_HEADER (current_log_page, &current_lsa);
@@ -4493,63 +4498,66 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 	    {
 	      if (rec_type == NULL || *(INT16 *) rec_type != REC_HOME || chunk_length < OOS_RECORD_HEADER_SIZE)
 		{
+		  error = set_oos_rebuild_error ("invalid multi-chunk OOS log data");
 		  release_current_log ();
 		  free_chunks ();
-		  return set_multi_chunk_oos_error ("invalid multi-chunk OOS log data");
+		  return error;
 		}
 
 	      memcpy (&oos_header, chunk_data, sizeof (oos_header));
 
-	      if (total_size < 0)
+	      if (total_data_length < 0)
 		{
-		  total_size = oos_header.total_size;
+		  total_data_length = oos_header.total_data_length;
 		}
-	      else if (total_size != oos_header.total_size)
+	      else if (total_data_length != oos_header.total_data_length)
 		{
+		  error = set_oos_rebuild_error ("mismatched multi-chunk OOS total size");
 		  release_current_log ();
 		  free_chunks ();
-		  return set_multi_chunk_oos_error ("mismatched multi-chunk OOS total size");
+		  return error;
 		}
 
 	      chunk_body_length = chunk_length - OOS_RECORD_HEADER_SIZE;
-	      total_chunk_body_length += chunk_body_length;
-	      if (total_chunk_body_length > total_size)
+	      total_body_length += chunk_body_length;
+	      if (total_body_length > total_data_length)
 		{
+		  error = set_oos_rebuild_error ("multi-chunk OOS body length exceeds total size");
 		  release_current_log ();
 		  free_chunks ();
-		  return set_multi_chunk_oos_error ("multi-chunk OOS body length exceeds total size");
+		  return error;
 		}
 
 	      chunks.push_back ({ chunk_data, chunk_body_length });
 	      chunk_data = NULL;
 	      if (oos_header.chunk_index == 0)
 		{
-		  found_head = true;
+		  found_head_chunk = true;
 		}
 	    }
 	}
 
       release_current_log ();
 
-      if (found_head)
+      if (found_head_chunk)
 	{
 	  int offset = OOS_RECORD_HEADER_SIZE;
-	  OOS_RECORD_HEADER merged_header { total_size, 0, OID_INITIALIZER };
+	  OOS_RECORD_HEADER merged_header { total_data_length, 0, OID_INITIALIZER };
 
-	  if (total_chunk_body_length != total_size)
+	  if (total_body_length != total_data_length)
 	    {
-	      error = set_multi_chunk_oos_error ("incomplete multi-chunk OOS record");
+	      error = set_oos_rebuild_error ("incomplete multi-chunk OOS record");
 	      break;
 	    }
 
-	  error = la_realloc_recdes_data (recdes, total_size + OOS_RECORD_HEADER_SIZE);
+	  error = la_realloc_recdes_data (recdes, total_data_length + OOS_RECORD_HEADER_SIZE);
 	  if (error != NO_ERROR)
 	    {
 	      break;
 	    }
 
 	  recdes->type = REC_HOME;
-	  recdes->length = total_size + OOS_RECORD_HEADER_SIZE;
+	  recdes->length = total_data_length + OOS_RECORD_HEADER_SIZE;
 	  memcpy (recdes->data, &merged_header, OOS_RECORD_HEADER_SIZE);
 
 	  for (auto it = chunks.rbegin (); it != chunks.rend (); ++it)
@@ -4568,7 +4576,7 @@ la_get_multi_chunk_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 
   if (error == NO_ERROR)
     {
-      error = set_multi_chunk_oos_error ("missing first chunk while reading multi-chunk OOS record");
+      error = set_oos_rebuild_error ("missing first chunk while reading multi-chunk OOS record");
     }
 
   free_chunks ();
@@ -4964,7 +4972,7 @@ la_flush_repl_items (bool immediate)
       return NO_ERROR;
     }
 
-  if (immediate == false && la_Info.has_unflushed_oos_insert)
+  if (immediate == false && la_Info.pending_oos_flush)
     {
       return NO_ERROR;
     }
@@ -5071,7 +5079,7 @@ la_flush_repl_items (bool immediate)
 	}
 
       la_Info.num_unflushed = 0;
-      la_Info.has_unflushed_oos_insert = false;
+      la_Info.pending_oos_flush = false;
       __gv_loc_repl.ws_clear_all_repl_objs ();
     }
 
@@ -5245,7 +5253,7 @@ end:
     {
       la_Info.delete_counter++;
       la_Info.num_unflushed++;
-      la_Info.has_unflushed_oos_insert = false;
+      la_Info.pending_oos_flush = false;
     }
 
   return error;
@@ -5410,7 +5418,7 @@ end:
     {
       la_Info.update_counter++;
       la_Info.num_unflushed++;
-      la_Info.has_unflushed_oos_insert = false;
+      la_Info.pending_oos_flush = false;
     }
 
   la_release_page_buffer (old_pageid);
@@ -5519,13 +5527,13 @@ end:
 static int
 la_apply_dummy_oos_log (LA_APPLY * apply, LA_ITEM * item)
 {
-  if (apply->is_multi_chunk_oos_pending)
+  if (apply->need_oos_rebuild)
     {
       la_log_apply_error ("apply_dummy_oos", ER_HA_LA_FAILED_TO_APPLY_INSERT, item, ER_FAILED);
       return ER_FAILED;
     }
 
-  apply->is_multi_chunk_oos_pending = true;
+  apply->need_oos_rebuild = true;
   return NO_ERROR;
 }
 
@@ -5553,7 +5561,7 @@ la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
   RECDES *recdes;
   LOG_PAGEID old_pageid = NULL_PAGEID;
   bool is_mvcc_class;
-  bool is_multi_chunk_oos = item->item_type == RVREPL_OOS_INSERT && apply->is_multi_chunk_oos_pending;
+  bool rebuild_oos = item->item_type == RVREPL_OOS_INSERT && apply->need_oos_rebuild;
 
   error = la_flush_repl_items (false);
   if (error != NO_ERROR)
@@ -5576,9 +5584,9 @@ la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
   recdes = la_assign_recdes_from_pool ();
   is_mvcc_class = la_is_mvcc_class (ws_oid (class_obj));
 
-  if (is_multi_chunk_oos)
+  if (rebuild_oos)
     {
-      error = la_get_multi_chunk_oos_recdes (&item->target_lsa, recdes);
+      error = la_rebuild_oos_recdes (&item->target_lsa, recdes);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -5594,7 +5602,13 @@ la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
       if (pgptr == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
+	  error = er_errid ();
+	  if (error == NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	    }
+	  old_pageid = NULL_PAGEID;
+	  goto end;
 	}
 
       /* retrieve the target record description */
@@ -5637,9 +5651,9 @@ la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
   error = la_repl_add_object (class_obj, item, recdes);
 
 end:
-  if (error == NO_ERROR && is_multi_chunk_oos)
+  if (error == NO_ERROR && rebuild_oos)
     {
-      apply->is_multi_chunk_oos_pending = false;
+      apply->need_oos_rebuild = false;
     }
 
   if (error != NO_ERROR)
@@ -5651,7 +5665,7 @@ end:
       la_Info.insert_counter++;
       la_Info.num_unflushed++;
       /* RVREPL_DUMMY_OOS_RECORD is handled by la_apply_dummy_oos_log; only inserts reach here. */
-      la_Info.has_unflushed_oos_insert = (item->item_type == RVREPL_OOS_INSERT);
+      la_Info.pending_oos_flush = (item->item_type == RVREPL_OOS_INSERT);
     }
 
   if (old_pageid != NULL_PAGEID)
@@ -7221,7 +7235,7 @@ la_init (const char *log_path, const int max_mem_size)
   la_Info.db_lockf_vdes = NULL_VOLDES;
 
   la_Info.num_unflushed = 0;
-  la_Info.has_unflushed_oos_insert = false;
+  la_Info.pending_oos_flush = false;
 
   la_recdes_pool.is_initialized = false;
 
@@ -7349,7 +7363,7 @@ la_shutdown (void)
     }
 
   la_Info.num_unflushed = 0;
-  la_Info.has_unflushed_oos_insert = false;
+  la_Info.pending_oos_flush = false;
 
   la_destroy_repl_filter ();
 

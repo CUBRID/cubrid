@@ -68,7 +68,7 @@ STATIC_INLINE __attribute__ ((ALWAYS_INLINE))
 int oos_get_max_chunk_size_within_page ();
 
 static bool
-oos_should_track_multi_chunk_for_replication (THREAD_ENTRY *thread_p);
+oos_needs_repl_tracking (THREAD_ENTRY *thread_p);
 
 static auto_unfix_page_ptr
 oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid, VPID &vpid_out);
@@ -1109,25 +1109,25 @@ oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &o
 //     RVOOS_INSERT (chunk 0, head)    <- carries final next_chunk_oid chain
 //
 //   Per-transaction queue/vector invariant (for the slave applier to reassemble):
-//     oos_insert_lsa_queue : [..., dummy_lsa, first_logged_chunk_lsa]
+//     oos_insert_lsa_queue : [..., dummy_lsa, tail_chunk_lsa]
 //     oos_oids             : [..., oid_Null_oid]
 //
 //   The immediate caller (heap_file.c) will push the real head-chunk OID after this
 //   function returns, so the final pairing becomes oos_oids=[..., null, real_oid]
-//   with queue=[..., dummy_lsa, first_logged_chunk_lsa]. The replication path then emits
+//   with queue=[..., dummy_lsa, tail_chunk_lsa]. The replication path then emits
 //   one RVREPL_DUMMY_OOS_RECORD for the null OID (pops dummy_lsa) followed by one
-//   RVREPL_OOS_INSERT for the real OID (pops first_logged_chunk_lsa). Intermediate
+//   RVREPL_OOS_INSERT for the real OID (pops tail_chunk_lsa). Intermediate
 //   chunks are not enqueued; tdes->suppress_oos_insert_lsa_queueing suppresses the
 //   auto-push in log_append_{undo,}redo_crumbs while this function runs.
 //
 static int
 oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &oid)
 {
-  int err = NO_ERROR;
+  int error_code = NO_ERROR;
   LOG_TDES *tdes = NULL;
   LOG_LSA dummy_lsa = NULL_LSA;
-  LOG_LSA first_logged_chunk_lsa = NULL_LSA;
-  bool should_track_multi_chunk = false;
+  LOG_LSA tail_chunk_lsa = NULL_LSA;
+  bool track_repl = false;
 
   // split the recdes to multiple chunks and insert them one by one
   const int max_chunk_size = oos_get_max_chunk_size_within_page ();
@@ -1141,8 +1141,8 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
   int total_inserted_length = 0;
   OID next_chunk_oid = OID_INITIALIZER; // the last chunk has null OID as next_chunk_oid
 
-  should_track_multi_chunk = oos_should_track_multi_chunk_for_replication (thread_p);
-  if (should_track_multi_chunk)
+  track_repl = oos_needs_repl_tracking (thread_p);
+  if (track_repl)
     {
       const int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
       tdes = LOG_FIND_TDES (tran_index);
@@ -1160,7 +1160,7 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
 
   scope_exit clear_oos_repl_state ([&]()
   {
-    if (should_track_multi_chunk && tdes != NULL)
+    if (track_repl && tdes != NULL)
       {
 	tdes->suppress_oos_insert_lsa_queueing = false;
       }
@@ -1179,30 +1179,30 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
       OOS_RECORD_HEADER header{total_data_length, i, next_chunk_oid};
 
       OID current_chunk_oid;
-      err = oos_insert_within_page (thread_p, oos_vfid, chunk_recdes, header, current_chunk_oid);
-      if (err != NO_ERROR)
+      error_code = oos_insert_within_page (thread_p, oos_vfid, chunk_recdes, header, current_chunk_oid);
+      if (error_code != NO_ERROR)
 	{
 	  oos_error ("could not insert chunk index=%d of length %d.", i, chunk_recdes.length);
 	  assert_release_error (er_errid () != NO_ERROR);
 	  // Partially inserted chunks are cleaned up when the caller aborts the transaction
 	  // (individual undo records replay in reverse). The caller MUST NOT continue
 	  // the transaction after this error.
-	  return err;
+	  return error_code;
 	}
 
-      if (should_track_multi_chunk && i == required_page_nums - 1)
+      if (track_repl && i == required_page_nums - 1)
 	{
-	  LSA_COPY (&first_logged_chunk_lsa, &tdes->tail_lsa);
+	  LSA_COPY (&tail_chunk_lsa, &tdes->tail_lsa);
 	}
 
       next_chunk_oid = current_chunk_oid;
     }
   assert (total_inserted_length == recdes.length);
 
-  if (should_track_multi_chunk)
+  if (track_repl)
     {
       tdes->oos_insert_lsa_queue.push (dummy_lsa);
-      tdes->oos_insert_lsa_queue.push (first_logged_chunk_lsa);
+      tdes->oos_insert_lsa_queue.push (tail_chunk_lsa);
       thread_p->oos_oids.push_back (oid_Null_oid);
     }
 
@@ -1832,7 +1832,7 @@ oos_get_max_chunk_size_within_page ()
 }
 
 static bool
-oos_should_track_multi_chunk_for_replication (THREAD_ENTRY *thread_p)
+oos_needs_repl_tracking (THREAD_ENTRY *thread_p)
 {
   return !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true;
 }

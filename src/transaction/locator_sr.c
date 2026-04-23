@@ -8136,12 +8136,13 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	      // insert oos replication log
 	      for (int i = 0; i < (int) thread_p->oos_oids.size (); i++)
 		{
-		  LOG_RCVINDEX repl_rcvindex = OID_ISNULL (&thread_p->oos_oids[i]) ? RVREPL_DUMMY_OOS_RECORD : RVREPL_OOS_INSERT;
+		  LOG_RCVINDEX oos_repl_rcvindex =
+		    OID_ISNULL (&thread_p->oos_oids[i]) ? RVREPL_DUMMY_OOS_RECORD : RVREPL_OOS_INSERT;
 		  error_code = repl_log_insert (thread_p,
 						class_oid,
 						&thread_p->oos_oids[i],
 						LOG_REPLICATION_DATA,
-						repl_rcvindex, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL);
+						oos_repl_rcvindex, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL);
 		  if (error_code != NO_ERROR)
 		    {
 		      assert (er_errid () != NO_ERROR);
@@ -8938,9 +8939,10 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 
 	  for (int i = 0; i < (int) thread_p->oos_oids.size (); i++)
 	    {
-	      LOG_RCVINDEX repl_rcvindex = OID_ISNULL (&thread_p->oos_oids[i]) ? RVREPL_DUMMY_OOS_RECORD : RVREPL_OOS_INSERT;
+	      LOG_RCVINDEX oos_repl_rcvindex =
+		OID_ISNULL (&thread_p->oos_oids[i]) ? RVREPL_DUMMY_OOS_RECORD : RVREPL_OOS_INSERT;
 	      error_code =
-		repl_log_insert (thread_p, class_oid, &thread_p->oos_oids[i], LOG_REPLICATION_DATA, repl_rcvindex,
+		repl_log_insert (thread_p, class_oid, &thread_p->oos_oids[i], LOG_REPLICATION_DATA, oos_repl_rcvindex,
 				 new_key, REPL_INFO_TYPE_RBR_NORMAL);
 	      if (error_code != NO_ERROR)
 		{
