@@ -105,28 +105,29 @@ namespace cubscan
     {
       close_value_array ();
       pr_clear_value_vector (m_arg_vector);
+
       m_arg_vector.clear ();
       m_arg_use_vector.clear ();
       m_arg_dom_vector.clear ();
 
       if (is_final)
-        {
-          std::vector<TP_DOMAIN *>().swap(m_arg_dom_vector);
-          std::vector<DB_VALUE>().swap(m_arg_vector);
-          std::vector<bool>().swap(m_arg_use_vector);
-        }
-
-      if (is_final && m_method_group)
 	{
-	  m_method_group->reset (true);
-	  m_method_group->end ();
+	  std::vector<TP_DOMAIN *>().swap (m_arg_dom_vector);
+	  std::vector<DB_VALUE>().swap (m_arg_vector);
+	  std::vector<bool>().swap (m_arg_use_vector);
 
-	  cubmethod::runtime_context *rctx = cubmethod::get_rctx (m_thread_p);
-	  if (rctx)
+	  if (m_method_group)
 	    {
-	      rctx->pop_stack (m_thread_p, m_method_group);
+	      m_method_group->reset (true);
+	      m_method_group->end ();
+
+	      cubmethod::runtime_context *rctx = cubmethod::get_rctx (m_thread_p);
+	      if (rctx)
+		{
+		  rctx->pop_stack (m_thread_p, m_method_group);
+		}
+	      m_method_group = nullptr; // will be destroyed by cubmethod::runtime_context
 	    }
-	  m_method_group = nullptr; // will be destroyed by cubmethod::runtime_context
 	}
     }
 
