@@ -49,4 +49,8 @@ extern int hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float
 extern int hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, int k, OID *rec_oids,
 				float *distances);
 
+// Forward declaration for recovery
+struct log_rcv;
+extern int hnsw_rv_redo_insert_element (THREAD_ENTRY *thread_p, struct log_rcv *rcv);
+
 #endif
