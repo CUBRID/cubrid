@@ -12294,6 +12294,7 @@ qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, U
 
     default:
       assert (false);
+      qexec_failure_line (__LINE__, xasl_state);
       return ER_FAILED;
     }
 
@@ -12412,6 +12413,7 @@ qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * in
 
       if (attr == NULL)
 	{
+	  qexec_failure_line (__LINE__, xasl_state);
 	  return ER_FAILED;
 	}
 
