@@ -52,6 +52,8 @@
 
 namespace cubconn::connection
 {
+  REGISTER_CONNECTION (coordinator, 1);
+
   coordinator::coordinator (pool *pool, std::shared_ptr<thread_watcher> watcher, std::size_t core,
 			    std::uint32_t max_worker, std::uint32_t min_worker) :
     m_parent (pool),

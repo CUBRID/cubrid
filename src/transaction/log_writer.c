@@ -373,7 +373,7 @@ logwr_read_bgarv_log_header (void)
     }
 
   assert (log_pgptr->hdr.logical_pageid == LOGPB_HEADER_PAGE_ID);
-  assert (log_pgptr->hdr.offset = NULL_OFFSET);
+  assert (log_pgptr->hdr.offset == NULL_OFFSET);
 
   bgarv_header = (LOG_BGARV_HEADER *) log_pgptr->area;
 
@@ -1612,8 +1612,8 @@ logwr_copy_log_header_check (const char *db_name, bool verbose, LOG_LSA * master
   ptr = or_pack_int (ptr, NO_ERROR);
 
   error =
-    net_client_check_log_header (&ctx, request, OR_ALIGNED_BUF_SIZE (a_request), reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				 (char **) &logpg_area, verbose);
+    net_client_check_log_header (&ctx, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+				 OR_ALIGNED_BUF_SIZE (a_reply), (char **) &logpg_area, verbose);
   if (error != NO_ERROR)
     {
       return error;
@@ -1638,8 +1638,8 @@ logwr_copy_log_header_check (const char *db_name, bool verbose, LOG_LSA * master
   ptr = or_pack_int (ptr, ER_GENERIC_ERROR);
 
   error =
-    net_client_check_log_header (&ctx, request, OR_ALIGNED_BUF_SIZE (a_request), reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				 (char **) &logpg_area, verbose);
+    net_client_check_log_header (&ctx, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+				 OR_ALIGNED_BUF_SIZE (a_reply), (char **) &logpg_area, verbose);
   return error;
 }
 #endif /* !WINDOWS */

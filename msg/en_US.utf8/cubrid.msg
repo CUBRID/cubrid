@@ -1465,9 +1465,11 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1369 Login is disabled for user "%1$s".
 
-1370 Invalid UUID format. The argument must be a string of 32 hexadecimal characters, 36 UUID formatted characters, or a 128-bit value.
+1370 A class can have only one AUTO_INCREMENT attribute.
 
-1371 Last Error
+1371 Invalid UUID format. The argument must be a string of 32 hexadecimal characters, 36 UUID formatted characters, or a 128-bit value.
+
+1372 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

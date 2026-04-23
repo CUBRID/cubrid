@@ -58,7 +58,7 @@
 #include "porting.h"
 #include "error_manager.h"
 #include "connection_globals.h"
-#include "connection_cl.h"
+#include "client_support.h"
 #include "system_parameter.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -367,12 +367,12 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer,
 
   css_accept_server_request (conn, SERVER_REQUEST_ACCEPTED);
 
-  if (css_receive_data (conn, rid, &datagram, &datagram_length, -1) == NO_ERRORS)
+  if (__gv_cvar.css_receive_data (conn, rid, &datagram, &datagram_length, -1) == NO_ERRORS)
     {
 
       if (datagram != NULL && css_tcp_master_datagram (datagram, &server_fd))
 	{
-	  datagram_conn = css_make_conn (server_fd);
+	  datagram_conn = __gv_cvar.css_make_conn (server_fd);
 #if defined(DEBUG)
 	  css_Active_server_count++;
 #endif
@@ -472,13 +472,13 @@ css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_
   datagram = NULL;
   datagram_length = 0;
   css_accept_server_request (conn, SERVER_REQUEST_ACCEPTED);
-  if (css_receive_data (conn, rid, &datagram, &datagram_length, -1) == NO_ERRORS)
+  if (__gv_cvar.css_receive_data (conn, rid, &datagram, &datagram_length, -1) == NO_ERRORS)
     {
       if (datagram != NULL && css_tcp_master_datagram (datagram, &server_fd))
 	{
-	  datagram_conn = css_make_conn (server_fd);
+	  datagram_conn = __gv_cvar.css_make_conn (server_fd);
 	  entry->fd = server_fd;
-	  css_free_conn (entry->conn_ptr);
+	  __gv_cvar.css_free_conn (entry->conn_ptr);
 	  entry->conn_ptr = datagram_conn;
 	  length = (int) strlen (server_name) + 1;
 	  if (length < server_name_length)
@@ -519,7 +519,7 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid, bool is_clie
   //  For the first situation, css_register_new_server() receives the server name as data.
   //  For the second situation, css_register_new_server() receives CSS_SERVER_PROC_REGISTER as data.
 
-  if (css_receive_data (conn, rid, &data, &data_length, -1) == NO_ERRORS)
+  if (__gv_cvar.css_receive_data (conn, rid, &data, &data_length, -1) == NO_ERRORS)
     {
       entry = css_return_entry_of_server (data, css_Master_socket_anchor);
       if (entry != NULL)
@@ -557,7 +557,7 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid, bool is_clie
 
 #if !defined(WINDOWS)
   /* WINDOWS wants to keep this conn--it is the main connection */
-  css_free_conn (conn);
+  __gv_cvar.css_free_conn (conn);
 #endif /* ! WINDOWS */
 }
 
@@ -581,7 +581,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
   int server_name_length, length;
 
   /* read server name */
-  if (css_receive_data (conn, rid, &server_name, &name_length, -1) == NO_ERRORS && server_name != NULL)
+  if (__gv_cvar.css_receive_data (conn, rid, &server_name, &name_length, -1) == NO_ERRORS && server_name != NULL)
     {
       entry = css_return_entry_of_server (server_name, css_Master_socket_anchor);
       if (entry != NULL)
@@ -596,7 +596,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 	      /* reject a server with a duplicate name */
 	      css_reject_server_request (conn, SERVER_ALREADY_EXISTS);
 	    }
-	  css_free_conn (conn);
+	  __gv_cvar.css_free_conn (conn);
 	}
       else
 	{
@@ -606,7 +606,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 	  /* accept but make it send us a port id */
 	  css_accept_server_request (conn, SERVER_REQUEST_ACCEPTED_NEW);
 	  name_length = sizeof (buffer);
-	  if (css_net_recv (conn->fd, (char *) &buffer, &name_length, -1) == NO_ERRORS)
+	  if (css_net_recv (conn, (char *) &buffer, &name_length, -1) == NO_ERRORS)
 	    {
 #if defined(DEBUG)
 	      css_Active_server_count++;
@@ -650,18 +650,18 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 		}
 	      else
 		{
-		  css_free_conn (conn);
+		  __gv_cvar.css_free_conn (conn);
 		}
 	    }
 	  else
 	    {
-	      css_free_conn (conn);
+	      __gv_cvar.css_free_conn (conn);
 	    }
 	}
     }
   else
     {
-      css_free_conn (conn);
+      __gv_cvar.css_free_conn (conn);
     }
   if (server_name != NULL)
     {
@@ -712,7 +712,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
   int name_length, buffer;
 
   name_length = 1024;
-  if (css_receive_data (conn, rid, &server_name, &name_length, -1) == NO_ERRORS && server_name != NULL)
+  if (__gv_cvar.css_receive_data (conn, rid, &server_name, &name_length, -1) == NO_ERRORS && server_name != NULL)
     {
       temp = css_return_entry_of_server (server_name, css_Master_socket_anchor);
       if (temp != NULL
@@ -728,7 +728,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
 		{
 		  css_reject_client_request (conn, rid, SERVER_STARTED);
 		  free_and_init (server_name);
-		  css_free_conn (conn);
+		  __gv_cvar.css_free_conn (conn);
 		  return;
 		}
 	      else
@@ -738,14 +738,14 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
 		    {
 		      css_reject_client_request (conn, rid, SERVER_HANG);
 		      free_and_init (server_name);
-		      css_free_conn (conn);
+		      __gv_cvar.css_free_conn (conn);
 		      return;
 		    }
 #endif
 		  if (css_send_new_request_to_server (temp->fd, conn->fd, rid, request))
 		    {
 		      free_and_init (server_name);
-		      css_free_conn (conn);
+		      __gv_cvar.css_free_conn (conn);
 		      return;
 		    }
 		  else if (!temp->ha_mode)
@@ -767,7 +767,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
 		{
 		  css_reject_client_request (conn, rid, SERVER_HANG);
 		  free_and_init (server_name);
-		  css_free_conn (conn);
+		  __gv_cvar.css_free_conn (conn);
 		  return;
 		}
 #endif
@@ -779,7 +779,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
 	}
       css_reject_client_request (conn, rid, SERVER_NOT_FOUND);
     }
-  css_free_conn (conn);
+  __gv_cvar.css_free_conn (conn);
   if (server_name != NULL)
     {
       free_and_init (server_name);
@@ -806,7 +806,7 @@ css_process_new_connection (SOCKET fd)
 
   buffer_size = sizeof (NET_HEADER);
   css_Total_request_count++;
-  conn = css_make_conn (fd);
+  conn = __gv_cvar.css_make_conn (fd);
   if (conn == NULL)
     {
       return;
@@ -814,11 +814,11 @@ css_process_new_connection (SOCKET fd)
 
   if (css_check_magic (conn) != NO_ERRORS)
     {
-      css_free_conn (conn);
+      __gv_cvar.css_free_conn (conn);
       return;
     }
 
-  if (css_receive_request (conn, &rid, &function_code, &buffer_size) == NO_ERRORS)
+  if (__gv_cvar.css_receive_request (conn, &rid, &function_code, &buffer_size) == NO_ERRORS)
     {
       switch (function_code)
 	{
@@ -839,13 +839,13 @@ css_process_new_connection (SOCKET fd)
 	  css_register_new_server2 (conn, rid);
 	  break;
 	default:
-	  css_free_conn (conn);
+	  __gv_cvar.css_free_conn (conn);
 	  break;
 	}
     }
   else
     {
-      css_free_conn (conn);
+      __gv_cvar.css_free_conn (conn);
     }
 }
 
@@ -1257,7 +1257,7 @@ main (int argc, char **argv)
       goto cleanup;
     }
 
-  if (css_does_master_exist (port_id))
+  if (__gv_cvar.css_does_master_exist (port_id))
     {
       msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_DUPLICATE);
       util_log_write_errstr (msg_format, argv[0]);
@@ -1320,10 +1320,10 @@ main (int argc, char **argv)
     }
 #endif
 
-  conn = css_make_conn (css_Master_socket_fd[0]);
+  conn = __gv_cvar.css_make_conn (css_Master_socket_fd[0]);
   css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[0], READ_WRITE, 0,
 				   &css_Master_socket_anchor);
-  conn = css_make_conn (css_Master_socket_fd[1]);
+  conn = __gv_cvar.css_make_conn (css_Master_socket_fd[1]);
   css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[1], READ_WRITE, 0,
 				   &css_Master_socket_anchor);
   css_master_loop ();
@@ -1357,7 +1357,7 @@ css_free_entry (SOCKET_QUEUE_ENTRY * entry_p)
 {
   if (entry_p->conn_ptr)
     {
-      css_free_conn (entry_p->conn_ptr);
+      __gv_cvar.css_free_conn (entry_p->conn_ptr);
     }
 
   if (entry_p->name)

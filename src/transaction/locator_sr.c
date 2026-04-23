@@ -6367,7 +6367,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	}
 
       /* remove query result cache entries which are relevant with this class */
-      if (!QFILE_IS_LIST_CACHE_DISABLED)
+      if (!QFILE_IS_LIST_CACHE_DISABLED && !OID_ISNULL (&class_oid))
 	{
 	  OID superclass_oid;
 	  OID real_class_oid;
@@ -14016,6 +14016,9 @@ static int
 locator_lob_make_dir_path (char *lob_path, const HFID * hfid, int attrid)
 {
   int ret;
+
+  assert (hfid != NULL);
+  assert (lob_path != NULL);
 
   if (attrid == -1)
     {
