@@ -1113,7 +1113,11 @@ namespace parallel_heap_scan
 	    for (REGU_VARIABLE_LIST operand = agg_node->operands; operand != NULL; operand = operand->next)
 	      {
 		DB_VALUE *op_val_p;
-		if (operand->value.type == TYPE_CONSTANT)
+		if (operand == agg_node->operands)
+		  {
+		    op_val_p = db_value_p;
+		  }
+		else if (operand->value.type == TYPE_CONSTANT)
 		  {
 		    op_val_p = operand->value.value.dbvalptr;
 		  }
