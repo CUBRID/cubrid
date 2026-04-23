@@ -1831,6 +1831,18 @@ oos_get_max_chunk_size_within_page ()
   return actual_upper_limit - (int)sizeof (OOS_RECORD_HEADER);
 }
 
+/*
+ * oos_needs_repl_tracking () - check whether OOS replication boundary markers should be logged
+ *
+ * return: true if the master should emit OOS replication markers
+ *
+ *   thread_p(in): thread entry
+ *
+ * Note:
+ *   Only the master writes replication boundary markers. The log applier replays
+ *   OOS inserts on the slave, but it must not generate another dummy OOS record
+ *   while applying replicated data.
+ */
 static bool
 oos_needs_repl_tracking (THREAD_ENTRY *thread_p)
 {

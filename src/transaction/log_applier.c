@@ -258,7 +258,7 @@ struct la_apply
   int tranid;
   int num_items;
   bool is_long_trans;
-  bool need_oos_rebuild;
+  bool need_oos_rebuild;	/* rebuild next OOS insert from chunk logs after dummy OOS repl log */
   LOG_LSA start_lsa;
   LOG_LSA last_lsa;
   LA_ITEM *head;
@@ -341,7 +341,7 @@ struct la_info
   bool is_apply_info_updated;	/* whether catalog is partially updated or not */
 
   int num_unflushed;
-  bool pending_oos_flush;
+  bool pending_oos_flush;	/* delay OOS insert flush until following heap record is buffered */
 
   /* file lock */
   int log_path_lockf_vdes;
@@ -4399,8 +4399,8 @@ la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 {
   typedef struct la_oos_chunk
   {
-    char *alloc_data;
-    int length;
+    char *alloc_data;		/* chunk log data including OOS_RECORD_HEADER */
+    int length;			/* OOS body length excluding OOS_RECORD_HEADER */
   } LA_OOS_CHUNK;
 
   LOG_LSA current_lsa;
