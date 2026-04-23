@@ -2052,10 +2052,9 @@ hjoin_try_parallel_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, H
   /* immutable */
   static const size_t stats_size = perfmon_get_number_of_statistic_values () * sizeof (UINT64);
 
-  UINT32 degree =
-    parallel_query::compute_parallel_degree (parallel_query::parallel_type::HASH_JOIN,
-					     single_context->probe->list_id->page_cnt,
-					     manager->num_parallel_threads);
+  UINT32 degree = parallel_query::compute_parallel_degree (parallel_query::parallel_type::HASH_JOIN,
+							   single_context->probe->list_id->page_cnt,
+							   manager->num_parallel_threads);
   if (degree < 2)
     {
       /* try single-thread hash join */
