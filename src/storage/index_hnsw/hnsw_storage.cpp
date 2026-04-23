@@ -189,7 +189,11 @@ namespace cubhnsw
   const std::vector<slot_id_t> *
   storage::get_neighbors_cached_ids (algo_context_t &context, const slot_id_t &slot, level_t level)
   {
-    assert (level >= 0 && level < MAX_LEVELS);
+    if (level < 0 || level >= MAX_LEVELS)
+      {
+	assert (false);
+	return nullptr;
+      }
     auto &per_level = m_neighbors_cache[level];
     auto it = per_level.find (encode_oid_key (slot));
     if (it != per_level.end ())
