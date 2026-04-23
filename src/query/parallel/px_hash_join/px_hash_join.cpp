@@ -23,13 +23,10 @@
 #include "px_hash_join.hpp"
 #include "px_hash_join_task_manager.hpp"
 
-#include "error_manager.h"		/* er_errid, NO_ERROR, assert_release_error, ASSERT_NO_ERROR_OR_INTERRUPTED */
-#include "list_file.h"		/* qfile_destroy_list, QFILE_FREE_AND_INIT_LIST_ID, qfile_connect_list,
-				 * qfile_close_list, qfile_close_scan, qfile_open_list_scan */
+#include "error_manager.h"		/* assert_release_error, er_errid, NO_ERROR, ... */
+#include "list_file.h"			/* qfile_open_list, qfile_open_list_scan, qfile_close_scan, ... */
 #include "memory_alloc.h"		/* db_private_alloc, db_private_free_and_init */
-#include "query_hash_join.h"
-#include "query_hash_scan.h"
-#include "storage_common.h"		/* S_BEFORE, VPID_SET_NULL, S_CLOSED, OID_INITIALIZER */
+#include "storage_common.h"		/* OID_INITIALIZER, S_CLOSED, VPID_SET_NULL, ... */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
