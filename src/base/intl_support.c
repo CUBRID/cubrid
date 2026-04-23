@@ -1236,7 +1236,8 @@ intl_next_char (const unsigned char *s, INTL_CODESET codeset, int *current_char_
       return intl_nextchar_euc (s, current_char_size);
 
     case INTL_CODESET_UTF8:
-      return intl_nextchar_utf8 (s, current_char_size);
+      *current_char_size = intl_Len_utf8_char[*s];
+      return s + *current_char_size;
 
     default:
       assert (false);
@@ -1286,7 +1287,8 @@ intl_next_char_pseudo_kor (const unsigned char *s, INTL_CODESET codeset, int *cu
       return intl_nextchar_euc (s, current_char_size);
 
     case INTL_CODESET_UTF8:
-      return intl_nextchar_utf8 (s, current_char_size);
+      *current_char_size = intl_Len_utf8_char[*s];
+      return s + *current_char_size;
 
     default:
       assert (false);
@@ -1869,7 +1871,7 @@ intl_reverse_string (const unsigned char *src, unsigned char *dst, int length_in
 	end = src + size_in_bytes;
 	for (; s < end && char_count < length_in_chars; char_count++)
 	  {
-	    intl_nextchar_utf8 (s, &char_size);
+	    char_size = intl_Len_utf8_char[*s];
 
 	    i = char_size;
 	    while (i > 0)
