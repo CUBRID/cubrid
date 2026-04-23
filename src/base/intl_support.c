@@ -4044,6 +4044,23 @@ intl_check_utf8 (const unsigned char *buf, int size, char **pos)
 
   while (p < p_end)
     {
+      /* ASCII fast path : skip 8 bytes while MSB is clear */
+      while (p + 8 <= p_end)
+	{
+	  UINT64 word;
+	  memcpy (&word, p, sizeof (word));
+	  if ((word & UINT64_C (0x8080808080808080)) != 0)
+	    {
+	      break;
+	    }
+	  p += 8;
+	}
+
+      if (p >= p_end)
+	{
+	  break;
+	}
+
       curr_char = p;
 
       if (*p < 0x80)
