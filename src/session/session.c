@@ -48,7 +48,10 @@
 #include "object_primitive.h"
 #include "dbtype.h"
 #include "string_opfunc.h"
+
+#if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
+#endif
 #include "thread_entry_task.hpp"
 #include "thread_lockfree_hash_map.hpp"
 #include "thread_manager.hpp"
@@ -232,10 +235,12 @@ static int session_state_verify_ref_count (THREAD_ENTRY * thread_p, SESSION_STAT
 #endif
 
 // *INDENT-OFF*
+#if defined (SERVER_MODE)
 static cubthread::daemon *session_Control_daemon = NULL;
 
 static void session_control_daemon_init ();
 static void session_control_daemon_destroy ();
+#endif
 
 session_state::session_state ()
 {
