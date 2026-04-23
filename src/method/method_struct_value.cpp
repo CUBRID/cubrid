@@ -532,6 +532,7 @@ namespace cubmethod
 
 	int composed_size;
 	if (lang_get_client_charset () == INTL_CODESET_UTF8
+	    && prm_get_bool_value (PRM_ID_UNICODE_INPUT_NORMALIZATION)
 	    && unicode_string_need_compose (blk.get_ptr (), len, &composed_size, lang_get_generic_unicode_norm ()))
 	  {
 	    cubmem::extensible_block blk_composed { cubmem::PRIVATE_BLOCK_ALLOCATOR };;

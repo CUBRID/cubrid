@@ -1543,7 +1543,8 @@ csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * cs
 
 	str = db_get_char (value);
 	bytes_size = db_get_string_size (value);
-	if (bytes_size > 0 && db_get_string_codeset (value) == INTL_CODESET_UTF8)
+	if (bytes_size > 0 && db_get_string_codeset (value) == INTL_CODESET_UTF8
+	    && prm_get_bool_value (PRM_ID_UNICODE_OUTPUT_NORMALIZATION))
 	  {
 	    need_decomp =
 	      unicode_string_need_decompose (str, bytes_size, &decomp_size, lang_get_generic_unicode_norm ());
@@ -1901,7 +1902,8 @@ csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * cs
 	    str = db_get_enum_string (value);
 	    bytes_size = db_get_enum_string_size (value);
 	  }
-	if (bytes_size > 0 && db_get_enum_codeset (value) == INTL_CODESET_UTF8)
+	if (bytes_size > 0 && db_get_enum_codeset (value) == INTL_CODESET_UTF8
+	    && prm_get_bool_value (PRM_ID_UNICODE_OUTPUT_NORMALIZATION))
 	  {
 	    need_decomp =
 	      unicode_string_need_decompose ((char *) str, bytes_size, &decomp_size, lang_get_generic_unicode_norm ());
