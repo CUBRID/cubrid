@@ -162,7 +162,7 @@ namespace cubload
 	  }
 
 	/* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-	if (thread_ref.conn_entry->client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
+	if (m_session.get_client_type() == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
 	  {
 	    found_again = locate_class_for_all_users (class_name, class_oid);
 	    if (found_again == LC_CLASSNAME_EXIST)
@@ -219,7 +219,8 @@ namespace cubload
     mvcc_snapshot = logtb_get_mvcc_snapshot (&thread_ref);
     if (mvcc_snapshot == NULL)
       {
-	/* TODO: er_set() */
+	ASSERT_ERROR ();
+	heap_attrinfo_end (&thread_ref, &attr_info);
 	return LC_CLASSNAME_ERROR;
       }
 
@@ -241,9 +242,16 @@ namespace cubload
 	if (scan_code == S_SUCCESS)
 	  {
 	    scan_code = heap_get_visible_version (&thread_ref, &inst_oid, oid_User_class_oid, &recdes, &scan_cache, PEEK, NULL_CHN);
-	    if (scan_code != S_SUCCESS)
+	    if (scan_code == S_SNAPSHOT_NOT_SATISFIED || scan_code == S_DOESNT_EXIST)
 	      {
 		continue;
+	      }
+	    else if (scan_code != S_SUCCESS)
+	      {
+		ASSERT_ERROR ();
+		heap_scancache_end (&thread_ref, &scan_cache);
+		heap_attrinfo_end (&thread_ref, &attr_info);
+		return LC_CLASSNAME_ERROR;
 	      }
 
 	    error = heap_attrinfo_read_dbvalues (&thread_ref, &inst_oid, &recdes, &attr_info);
