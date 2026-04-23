@@ -139,7 +139,7 @@ static HA_LOG_APPLIER_STATE_TABLE ha_Log_applier_state[HA_LOG_APPLIER_STATE_TABL
 static int ha_Log_applier_state_num = 0;
 
 // *INDENT-OFF*
-static worker_pool_type<stats_t::on> *css_Server_request_worker_pool = NULL;
+static worker_pool_type<cubthread::stats_t::on, cubthread::pool_t::elastic> *css_Server_request_worker_pool = NULL;
 
 class css_server_task : public cubthread::entry_task
 {
@@ -212,9 +212,11 @@ static void css_stop_all_workers (THREAD_ENTRY & thread_ref, css_thread_stop_typ
 static void css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapper, int &busy_count);
 
 // cubthread::stats_worker_pool_type::core_impl confuses indent
-static void css_wp_core_job_scan_mapper (const worker_pool_type<stats_t::on>::core_impl & wp_core, bool & stop_mapper,
+template <typename WorkerPoolCore>
+static void css_wp_core_job_scan_mapper (const WorkerPoolCore & wp_core, bool & stop_mapper,
                                          THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx, size_t & core_index,
                                          int & error_code);
+
 static void
 css_is_any_thread_not_suspended_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, size_t & count, bool & found);
 static void
@@ -264,7 +266,10 @@ css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** a
     }
 
   size_t core_index = 0;	// core index starts with 0
-  css_Server_request_worker_pool->map_cores (css_wp_core_job_scan_mapper, thread_p, ctx, core_index, error);
+  //*INDENT-OFF*
+  using request_pool_core_t = worker_pool_type<cubthread::stats_t::on, cubthread::pool_t::elastic>::core_impl;
+  css_Server_request_worker_pool->map_cores (&css_wp_core_job_scan_mapper<request_pool_core_t>, thread_p, ctx, core_index, error);
+  //*INDENT-ON*
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -579,9 +584,10 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   // create request worker pool
   //*INDENT-OFF*
   css_Server_request_worker_pool =
-    thread_create_worker_pool<stats_t::on> (task_worker, task_group, "transaction", thread_get_entry_manager (),
-					    css_get_server_request_thread_pooling_configuration (),
-					    css_get_server_request_thread_timeout_configuration ());
+    thread_create_worker_pool<cubthread::stats_t::on, cubthread::pool_t::elastic> (task_worker, task_group, "transaction",
+							     thread_get_entry_manager (),
+							     css_get_server_request_thread_pooling_configuration (),
+							     css_get_server_request_thread_timeout_configuration ());
   //*INDENT-ON*
   // m_log = cubthread::is_logging_configured (cubthread::LOG_WORKER_POOL_TRAN_WORKERS)
 
@@ -2693,8 +2699,9 @@ css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapp
 // core_index (in/out)  : current core index; is incremented on each call
 // error_code (out)     : output error_code if any errors occur
 //
+template <typename WorkerPoolCore>
 static void
-css_wp_core_job_scan_mapper (const worker_pool_type<stats_t::on>::core_impl & wp_core, bool & stop_mapper,
+css_wp_core_job_scan_mapper (const WorkerPoolCore & wp_core, bool & stop_mapper,
                              THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx, size_t & core_index,
                              int & error_code)
 {

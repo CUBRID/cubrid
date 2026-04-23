@@ -939,7 +939,7 @@ static cubthread::daemon *vacuum_Master_daemon = NULL;                       // 
 static vacuum_master_entry_manager *vacuum_Master_entry_manager = NULL;  // entry manager
 
 // vacuum worker globals
-static worker_pool_type<stats_t::on> *vacuum_Worker_threads = NULL;   // thread pool
+static worker_pool_type<cubthread::stats_t::on> *vacuum_Worker_threads = NULL;   // thread pool
 static vacuum_worker_entry_manager *vacuum_Worker_entry_manager = NULL;	  // entry manager
 
 /* *INDENT-ON* */
@@ -1339,7 +1339,7 @@ vacuum_boot (THREAD_ENTRY * thread_p)
     || flag<int>::is_flag_set (prm_get_integer_value (PRM_ID_ER_LOG_VACUUM), VACUUM_ER_LOG_WORKER);
 
   // create thread pool
-  vacuum_Worker_threads = thread_create_worker_pool<stats_t::on> (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT), 1, "vacuum", *vacuum_Worker_entry_manager);
+  vacuum_Worker_threads = thread_create_worker_pool<cubthread::stats_t::on> (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT), 1, "vacuum", *vacuum_Worker_entry_manager);
   // m_log = log_vacuum_worker_pool
 
   assert (vacuum_Worker_threads != NULL);

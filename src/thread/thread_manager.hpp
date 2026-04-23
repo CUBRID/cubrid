@@ -495,19 +495,20 @@ namespace cubthread
 
 #if defined (SERVER_MODE)
 template <
-	stats_t Stats = stats_t::off,
-	pool_t Type = pool_t::basic
+	cubthread::stats_t Stats = cubthread::stats_t::off,
+	cubthread::pool_t Type = cubthread::pool_t::basic
 	>
 using worker_pool_type =
-	std::conditional_t<Type == pool_t::basic, cubthread::worker_pool_impl<Stats>,
-	std::conditional_t<Type == pool_t::elastic, cubthread::worker_pool_elastic<Stats>,
+	std::conditional_t<Type == cubthread::pool_t::basic, cubthread::worker_pool_impl<Stats>,
+	std::conditional_t<Type == cubthread::pool_t::elastic, cubthread::worker_pool_elastic<Stats>,
 	cubthread::worker_pool>>;
 #else
-template <stats_t Stats = stats_t::off, pool_t Type = pool_t::basic>
+template <cubthread::stats_t Stats = cubthread::stats_t::off, cubthread::pool_t Type = cubthread::pool_t::basic>
 using worker_pool_type = cubthread::worker_pool;
 #endif
 
-template <stats_t Stats = stats_t::off, pool_t Type = pool_t::basic, typename ... Args>
+template <cubthread::stats_t Stats = cubthread::stats_t::off, cubthread::pool_t Type = cubthread::pool_t::basic,
+	  typename ... Args>
 worker_pool_type<Stats, Type> *
 thread_create_worker_pool (Args &&... args)
 {

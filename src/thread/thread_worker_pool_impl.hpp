@@ -106,7 +106,6 @@ namespace cubthread
   template <stats_t Stats>
   class worker_pool_impl : public worker_pool
   {
-    public:
       // forward definition for nested core class
       friend class manager;
 

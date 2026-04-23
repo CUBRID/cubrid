@@ -44,9 +44,13 @@ namespace cubthread
   //    worker pool that maintains target concurrency by spawning
   //    additional workers when existing workers enter a known wait
   //    (e.g., blocked on a transaction lock).
+  //
   template <stats_t Stats>
   class worker_pool_elastic : public worker_pool_impl<Stats>
   {
+      // forward definition for nested core class
+      friend class manager;
+
     public:
       // forward definition
       class core_elastic;
@@ -68,6 +72,8 @@ namespace cubthread
   template <stats_t Stats>
   class worker_pool_elastic<Stats>::core_elastic : public worker_pool_impl<Stats>::core_impl
   {
+      friend class worker_pool_elastic;
+
     public:
       ~core_elastic ();
 
@@ -119,4 +125,4 @@ namespace cubthread
 
 }
 
-#endif
+#endif // _THREAD_WORKER_POOL_ELASTIC_HPP_
