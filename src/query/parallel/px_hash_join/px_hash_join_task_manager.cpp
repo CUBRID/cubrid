@@ -831,35 +831,8 @@ namespace parallel_query
       task_execution_guard guard (thread_ref, m_task_manager);
 
       spawn_manager *spawn_manager = nullptr;
-      HASHJOIN_CONTEXT *context = nullptr;
-      int error = NO_ERROR;
 
       TSCTIMEVAL total_probe_time = { 0, 0 };
-
-      m_context->list_id = qfile_open_list (&thread_ref, &m_manager->type_list, nullptr,
-					    m_manager->query_id, m_manager->qlist_flag, nullptr);
-      if (m_context->list_id == nullptr)
-	{
-	  assert_release_error (er_errid () != NO_ERROR);
-	  m_task_manager.handle_error (thread_ref);
-	  return;
-	}
-
-      error = qfile_open_list_scan (m_context->outer.list_id, &m_context->outer.list_scan_id);
-      if (error != NO_ERROR)
-	{
-	  assert_release_error (er_errid () != NO_ERROR);
-	  m_task_manager.handle_error (thread_ref);
-	  return;
-	}
-
-      error = qfile_open_list_scan (m_context->inner.list_id, &m_context->inner.list_scan_id);
-      if (error != NO_ERROR)
-	{
-	  assert_release_error (er_errid () != NO_ERROR);
-	  m_task_manager.handle_error (thread_ref);
-	  return;
-	}
 
       spawn_manager = guard.get_spawn_manager ();
       if (spawn_manager == nullptr)
@@ -879,58 +852,48 @@ namespace parallel_query
 	  assert (thread_ref.m_px_stats == nullptr);
 	}
 
-      do
+      /* reuse TLS variables if already set */
+      m_context->val_descr = spawn_manager->get_val_descr (m_manager->val_descr);
+      m_context->during_join_pred = spawn_manager->get_during_join_pred (m_manager->during_join_pred);
+      m_context->outer.regu_list_pred = spawn_manager->get_outer_regu_list_pred (m_manager->outer->regu_list_pred);
+      m_context->inner.regu_list_pred = spawn_manager->get_inner_regu_list_pred (m_manager->inner->regu_list_pred);
+
+      if (er_errid () != NO_ERROR)
 	{
-	  context = m_context;
-
-	  /* reuse TLS variables if already set */
-	  context->val_descr = spawn_manager->get_val_descr (m_manager->val_descr);
-	  context->during_join_pred = spawn_manager->get_during_join_pred (m_manager->during_join_pred);
-	  context->outer.regu_list_pred = spawn_manager->get_outer_regu_list_pred (m_manager->outer->regu_list_pred);
-	  context->inner.regu_list_pred = spawn_manager->get_inner_regu_list_pred (m_manager->inner->regu_list_pred);
-
-	  if (er_errid () != NO_ERROR)
-	    {
-	      m_task_manager.handle_error (thread_ref);
-	      break;		/* error_exit */
-	    }
-
-	  if (IS_OUTER_JOIN_TYPE (m_manager->join_type))
-	    {
-	      execute_outer (thread_ref);
-	    }
-	  else
-	    {
-	      execute_inner (thread_ref);
-	    }
-
-	  if (thread_is_on_trace (&thread_ref))
-	    {
-	      TSC_ADD_TIMEVAL (total_probe_time, context->stats->probe.elapsed_time);
-	    }
-
-	  /* set to nullptr; cleaned up by clear_spawner after all tasks are done */
-	  context->val_descr = nullptr;
-	  context->during_join_pred = nullptr;
-	  context->outer.regu_list_pred = nullptr;
-	  context->inner.regu_list_pred = nullptr;
-
-	  if (error != NO_ERROR)
-	    {
-	      assert_release_error (er_errid () != NO_ERROR);
-	      m_task_manager.handle_error (thread_ref);
-	      break;		/* error_exit */
-	    }
+	  m_task_manager.handle_error (thread_ref);
+	  goto cleanup;		/* error_exit */
 	}
-      while (false);
+
+      if (IS_OUTER_JOIN_TYPE (m_manager->join_type))
+	{
+	  execute_outer (thread_ref);
+	}
+      else
+	{
+	  execute_inner (thread_ref);
+	}
 
       if (thread_is_on_trace (&thread_ref))
 	{
+	  TSC_ADD_TIMEVAL (total_probe_time, m_context->stats->probe.elapsed_time);
+
 	  std::lock_guard<std::mutex> lock (m_shared_info->stats_mutex);
 
 	  perfmon_update_min_timeval (&m_shared_info->probe_range_time.min, &total_probe_time);
 	  perfmon_update_max_timeval (&m_shared_info->probe_range_time.max, &total_probe_time);
 	}
+
+      if (er_errid () != NO_ERROR)
+	{
+	  m_task_manager.handle_error (thread_ref);
+	}
+
+cleanup:
+      /* set to nullptr; cleaned up by clear_spawner after all tasks are done */
+      m_context->val_descr = nullptr;
+      m_context->during_join_pred = nullptr;
+      m_context->outer.regu_list_pred = nullptr;
+      m_context->inner.regu_list_pred = nullptr;
 
       thread_ref.m_px_stats = nullptr;
       thread_ref.m_uses_px_stats = false;
@@ -1357,9 +1320,8 @@ namespace parallel_query
       QFILE_TUPLE_RECORD overflow_record = { nullptr, 0 };
       int copy_offset, copy_size;
 
-
       HASHJOIN_FETCH_INFO *outer, *inner;
-      HASHJOIN_FETCH_INFO *build = NULL, *probe = NULL;
+      HASHJOIN_FETCH_INFO *build = nullptr, *probe = nullptr;
 
       HASH_LIST_SCAN *hash_scan;
       HASH_METHOD hash_method;
@@ -1375,29 +1337,25 @@ namespace parallel_query
 #if HASHJOIN_PROFILE_TIME
       HASHJOIN_START_STATS profile_start_stats = HASHJOIN_START_STATS_INITIALIZER;
 #endif /* HASHJOIN_PROFILE_TIME */
-      assert (!thread_is_on_trace (&thread_ref) || stats != NULL);
+      assert (!thread_is_on_trace (&thread_ref) || stats != nullptr);
 
       list_id = m_context->list_id;
+      assert (list_id != nullptr);
 
       outer = &m_context->outer;
       inner = &m_context->inner;
-      assert (outer->list_scan_id.status != S_CLOSED); // TODO: close 일수도?
-      assert (inner->list_scan_id.status != S_CLOSED); // TODO: close 일수도?
+      assert (outer->list_scan_id.status != S_CLOSED);
+      assert (inner->list_scan_id.status != S_CLOSED);
 
       build = m_context->build;
       probe = m_context->probe;
-      assert (build != NULL);
-      assert (probe != NULL);
+      assert (build != nullptr);
+      assert (probe != nullptr);
 
       // *INDENT-OFF*
-      probe->tuple_record = { NULL, 0 };
-      build->tuple_record = { NULL, 0 };
+      probe->tuple_record = { nullptr, 0 };
+      build->tuple_record = { nullptr, 0 };
       // *INDENT-ON*
-
-      QFILE_LIST_ID *probe_list_id = probe->list_id; //
-      assert (probe_list_id != nullptr); //
-      QFILE_LIST_SCAN_ID *build_scan_id = &m_context->build->list_scan_id; //
-      assert (build_scan_id->status != S_CLOSED); //
 
       hash_scan = &m_context->hash_scan;
 
@@ -1406,8 +1364,8 @@ namespace parallel_query
 
       key = hash_scan->temp_key;
       found_key = hash_scan->temp_new_key;
-      assert (key != NULL);
-      assert (found_key != NULL);
+      assert (key != nullptr);
+      assert (found_key != nullptr);
 
       if (thread_is_on_trace (&thread_ref))
 	{
@@ -1440,7 +1398,7 @@ namespace parallel_query
 	  if (tuple_cnt == 0)
 	    {
 	      /* empty page */
-	      qmgr_free_old_page_and_init (&thread_ref, page, probe_list_id->tfile_vfid);
+	      qmgr_free_old_page_and_init (&thread_ref, page, probe->list_id->tfile_vfid);
 	      continue;
 	    }
 	  tuple_index = -1;
@@ -1483,7 +1441,7 @@ namespace parallel_query
 
 		  if (overflow_page != page)
 		    {
-		      qmgr_free_old_page_and_init (&thread_ref, overflow_page, probe_list_id->tfile_vfid);
+		      qmgr_free_old_page_and_init (&thread_ref, overflow_page, probe->list_id->tfile_vfid);
 		    }
 
 		  if (VPID_ISNULL (&overflow_vpid))
@@ -1493,7 +1451,7 @@ namespace parallel_query
 		    }
 
 		  /* next overflow page */
-		  overflow_page = qmgr_get_old_page (&thread_ref, &overflow_vpid, probe_list_id->tfile_vfid);
+		  overflow_page = qmgr_get_old_page (&thread_ref, &overflow_vpid, probe->list_id->tfile_vfid);
 		  if (overflow_page == nullptr)
 		    {
 		      assert_release_error (er_errid () != NO_ERROR);
@@ -1562,12 +1520,10 @@ namespace parallel_query
 	      hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
 	      HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
 
-	      build_scan_id->is_read_only = true; // TODO: 외부에서 한 번만 설정하도록 개선
-
 	      do
 		{
 		  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_SEARCH);
-		  error = hjoin_probe_key (&thread_ref, hash_scan, build_scan_id, &build->tuple_record);
+		  error = hjoin_probe_key (&thread_ref, hash_scan, &build->list_scan_id, &build->tuple_record);
 		  HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_SEARCH);
 		  if (error != NO_ERROR)
 		    {
@@ -1633,7 +1589,7 @@ namespace parallel_query
 
 	  if (page != nullptr)
 	    {
-	      qmgr_free_old_page_and_init (&thread_ref, page, probe_list_id->tfile_vfid);
+	      qmgr_free_old_page_and_init (&thread_ref, page, probe->list_id->tfile_vfid);
 	    }
 
 	  if (has_error)
@@ -1645,13 +1601,13 @@ namespace parallel_query
 
       if (page != nullptr)
 	{
-	  qmgr_free_old_page_and_init (&thread_ref, page, probe_list_id->tfile_vfid);
+	  qmgr_free_old_page_and_init (&thread_ref, page, probe->list_id->tfile_vfid);
 	}
 
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_end (&thread_ref, &stats->probe, &start_stats);
-	  stats->probe.read_rows = probe_list_id->tuple_cnt;
+	  stats->probe.read_rows = probe->list_id->tuple_cnt;
 	  stats->probe.qualified_rows = list_id->tuple_cnt;
 	}
 

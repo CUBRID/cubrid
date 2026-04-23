@@ -111,10 +111,6 @@ static int hjoin_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manag
 static void hjoin_clear_context (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context);
 static void hjoin_destroy_qlist (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context);
 
-/* Hash List Scan */
-static int hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cnt, QFILE_LIST_ID * list_id);
-static void hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan);
-
 /* Hash Join Processing */
 static HASHJOIN_STATUS hjoin_check_empty_inputs (HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
 
@@ -124,8 +120,9 @@ static int hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan,
 			    QFILE_LIST_SCAN_ID * list_scan_id, QFILE_TUPLE_RECORD * tuple_record);
 
 /* Probe Phase */
-static int hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
-			QFILE_LIST_ID * list_id);
+static int hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
+static int hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
+			      QFILE_LIST_ID * list_id);
 static int hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
 			      QFILE_LIST_ID * list_id);
 
@@ -596,8 +593,6 @@ error_exit:
 static int
 hjoin_execute_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context)
 {
-  QFILE_LIST_ID *list_id = NULL;
-
   HASHJOIN_FETCH_INFO *outer, *inner;
   HASHJOIN_FETCH_INFO *build = NULL, *probe = NULL;
 
@@ -638,41 +633,13 @@ hjoin_execute_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
       goto error_exit;
     }
 
-  if (context->status == HASHJOIN_STATUS_PARALLEL_PROBE)
+  error = qfile_open_list_scan (probe->list_id, &probe->list_scan_id);
+  if (error != NO_ERROR)
     {
-      assert (context == &manager->single_context);
-
-      // *INDENT-OFF*
-      error = parallel_query::hash_join::probe_execute (*thread_p, manager);
-      // *INDENT-ON*
-    }
-  else
-    {
-      list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, manager->qlist_flag, NULL);
-      if (list_id == NULL)
-	{
-	  goto error_exit;
-	}
-
-      error = qfile_open_list_scan (probe->list_id, &probe->list_scan_id);
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-
-      if (IS_OUTER_JOIN_TYPE (manager->join_type))
-	{
-	  error = hjoin_outer_probe (thread_p, manager, context, list_id);
-	}
-      else
-	{
-	  error = hjoin_probe (thread_p, manager, context, list_id);
-	}
-
-      qfile_close_list (thread_p, list_id);
-      context->list_id = list_id;
+      goto error_exit;
     }
 
+  error = hjoin_probe (thread_p, manager, context);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -688,19 +655,9 @@ cleanup:
 
   hjoin_scan_clear (thread_p, &context->hash_scan);
 
-  /* Check if qfile_close_list was called */
-  assert (list_id == NULL || list_id->last_pgptr == NULL);
-
   return error;
 
 error_exit:
-  if (list_id != NULL)
-    {
-      qfile_close_list (thread_p, list_id);
-      qfile_destroy_list (thread_p, list_id);
-      QFILE_FREE_AND_INIT_LIST_ID (list_id);
-    }
-
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
       assert_release_error (er_errid () != NO_ERROR);
@@ -882,7 +839,7 @@ static void
 hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 {
   HASHJOIN_CONTEXT *single_context;
-  HASHJOIN_CONTEXT *contexts = NULL;
+  HASHJOIN_CONTEXT *contexts = NULL, *current_context;
   UINT32 context_cnt, context_index;
 
   assert (thread_p != NULL);
@@ -905,68 +862,17 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
       context_cnt = manager->context_cnt;
       assert (context_cnt > 1);
 
-      if (single_context->status == HASHJOIN_STATUS_PARALLEL_PROBE)
+      for (context_index = 0; context_index < context_cnt; context_index++)
 	{
-	  /* Secondaries borrow primary's hash_table and input list_ids; tear down per-context
-	   * state and destroy any leftover worker output list_id. */
-	  for (context_index = 0; context_index < context_cnt; context_index++)
+	  current_context = &contexts[context_index];
+
+	  if (current_context->status == HASHJOIN_STATUS_PARALLEL_PROBE)
 	    {
-	      HASHJOIN_CONTEXT *secondary = &contexts[context_index];
-	      HASHJOIN_FETCH_INFO *s_outer = &secondary->outer;
-	      HASHJOIN_FETCH_INFO *s_inner = &secondary->inner;
-
-	      qfile_close_scan (thread_p, &s_outer->list_scan_id);
-	      qfile_close_scan (thread_p, &s_inner->list_scan_id);
-
-	      /* hash_table pointer is borrowed from the primary; null it so hjoin_scan_clear skips
-	       * the destroy path. */
-	      switch (secondary->hash_scan.hash_list_scan_type)
-		{
-		case HASH_METH_IN_MEM:
-		case HASH_METH_HYBRID:
-		  secondary->hash_scan.memory.hash_table = NULL;
-		  secondary->hash_scan.memory.curr_hash_entry = NULL;
-		  break;
-		case HASH_METH_HASH_FILE:
-		  secondary->hash_scan.file.hash_table = NULL;
-		  break;
-		case HASH_METH_NOT_USE:
-		default:
-		  break;
-		}
-	      hjoin_scan_clear (thread_p, &secondary->hash_scan);
-
-	      if (s_outer->tuple_record.tpl != NULL)
-		{
-		  free_and_init (s_outer->tuple_record.tpl);
-		}
-	      s_outer->tuple_record.size = 0;
-	      if (s_inner->tuple_record.tpl != NULL)
-		{
-		  free_and_init (s_inner->tuple_record.tpl);
-		}
-	      s_inner->tuple_record.size = 0;
-
-	      /* Null borrowed input list_ids / regu_list_pred so they aren't double-freed. */
-	      s_outer->list_id = NULL;
-	      s_inner->list_id = NULL;
-	      s_outer->regu_list_pred = NULL;
-	      s_inner->regu_list_pred = NULL;
-
-	      /* secondary->list_id is worker-owned probe output; destroy any leftover. */
-	      if (secondary->list_id != NULL)
-		{
-		  qfile_close_list (thread_p, secondary->list_id);
-		  qfile_destroy_list (thread_p, secondary->list_id);
-		  QFILE_FREE_AND_INIT_LIST_ID (secondary->list_id);
-		}
+	      parallel_query::hash_join::clear_context (*thread_p, current_context);
 	    }
-	}
-      else
-	{
-	  for (context_index = 0; context_index < context_cnt; context_index++)
+	  else
 	    {
-	      hjoin_clear_context (thread_p, &contexts[context_index]);
+	      hjoin_clear_context (thread_p, current_context);
 	    }
 	}
 
@@ -2664,7 +2570,7 @@ hjoin_destroy_qlist (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context)
  *   key_cnt(in): Number of join columns.
  *   list_id(in): List identifier to be used as build input.
  */
-static int
+int
 hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cnt, QFILE_LIST_ID * list_id)
 {
   UINT64 mem_limit;
@@ -2673,7 +2579,7 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
 
   assert (thread_p != NULL);
   assert (hash_scan != NULL);
-  assert (list_id != NULL && list_id->tuple_cnt > 0);
+  assert (list_id == NULL || list_id->tuple_cnt > 0);
   assert (key_cnt > 0);
 
   mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
@@ -2694,66 +2600,74 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
       goto error_exit;
     }
 
-  if ((UINT64) list_id->page_cnt * DB_PAGESIZE <= mem_limit)
+  if (list_id != NULL)
     {
+      if ((UINT64) list_id->page_cnt * DB_PAGESIZE <= mem_limit)
+	{
 #if HASHJOIN_DUMP_BUILD
-      fprintf (stdout, "\nHash Join Method: In Memory\n");
-      fprintf (stdout, "  - Page Count: %d <= %lu\n", list_id->page_cnt, mem_limit / 16344);
+	  fprintf (stdout, "\nHash Join Method: In Memory\n");
+	  fprintf (stdout, "  - Page Count: %d <= %lu\n", list_id->page_cnt, mem_limit / 16344);
 #endif /* HASHJOIN_DUMP_BUILD */
 
-      hash_scan->hash_list_scan_type = HASH_METH_IN_MEM;
+	  hash_scan->hash_list_scan_type = HASH_METH_IN_MEM;
 
-      hash_scan->memory.hash_table = mht_create_hls ("Hash Join", list_id->tuple_cnt, NULL, NULL);
-      if (hash_scan->memory.hash_table == NULL)
-	{
-	  goto error_exit;
+	  hash_scan->memory.hash_table = mht_create_hls ("Hash Join", list_id->tuple_cnt, NULL, NULL);
+	  if (hash_scan->memory.hash_table == NULL)
+	    {
+	      goto error_exit;
+	    }
+
+	  hash_scan->memory.curr_hash_entry = NULL;
 	}
-
-      hash_scan->memory.curr_hash_entry = NULL;
-    }
-  else if ((UINT64) list_id->tuple_cnt * (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)) <= mem_limit)
-    {
+      else if ((UINT64) list_id->tuple_cnt * (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)) <= mem_limit)
+	{
 #if HASHJOIN_DUMP_BUILD
-      fprintf (stdout, "\nHash Join Method: Hybrid\n");
-      fprintf (stdout, "  - Page Count: %d > %lu\n", list_id->page_cnt, mem_limit / 16344);
-      fprintf (stdout, "  - Tuple Count: %ld <= %lu\n", list_id->tuple_cnt,
-	       mem_limit / (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)));
+	  fprintf (stdout, "\nHash Join Method: Hybrid\n");
+	  fprintf (stdout, "  - Page Count: %d > %lu\n", list_id->page_cnt, mem_limit / 16344);
+	  fprintf (stdout, "  - Tuple Count: %ld <= %lu\n", list_id->tuple_cnt,
+		   mem_limit / (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)));
 #endif /* HASHJOIN_DUMP_BUILD */
 
-      hash_scan->hash_list_scan_type = HASH_METH_HYBRID;
+	  hash_scan->hash_list_scan_type = HASH_METH_HYBRID;
 
-      hash_scan->memory.hash_table = mht_create_hls ("Hash Join", list_id->tuple_cnt, NULL, NULL);
-      if (hash_scan->memory.hash_table == NULL)
-	{
-	  goto error_exit;
+	  hash_scan->memory.hash_table = mht_create_hls ("Hash Join", list_id->tuple_cnt, NULL, NULL);
+	  if (hash_scan->memory.hash_table == NULL)
+	    {
+	      goto error_exit;
+	    }
+
+	  hash_scan->memory.curr_hash_entry = NULL;
 	}
+      else
+	{
+#if HASHJOIN_DUMP_BUILD
+	  fprintf (stdout, "\nHash Join Method: File\n");
+	  fprintf (stdout, "  - Page Count: %d > %lu\n", list_id->page_cnt, mem_limit / 16344);
+	  fprintf (stdout, "  - Tuple Count: %ld > %lu\n", list_id->tuple_cnt,
+		   mem_limit / (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)));
+#endif /* HASHJOIN_DUMP_BUILD */
 
-      hash_scan->memory.curr_hash_entry = NULL;
+	  hash_scan->hash_list_scan_type = HASH_METH_HASH_FILE;
+
+	  hash_scan->file.hash_table = (FHSID *) db_private_alloc (thread_p, sizeof (FHSID));
+	  if (hash_scan->file.hash_table == NULL)
+	    {
+	      goto error_exit;
+	    }
+
+	  if (fhs_create (thread_p, hash_scan->file.hash_table, list_id->tuple_cnt) == NULL)
+	    {
+	      goto error_exit;
+	    }
+
+	  hash_scan->file.curr_oid = OID_INITIALIZER;
+	  hash_scan->file.is_dk_bucket = false;
+	}
     }
   else
     {
-#if HASHJOIN_DUMP_BUILD
-      fprintf (stdout, "\nHash Join Method: File\n");
-      fprintf (stdout, "  - Page Count: %d > %lu\n", list_id->page_cnt, mem_limit / 16344);
-      fprintf (stdout, "  - Tuple Count: %ld > %lu\n", list_id->tuple_cnt,
-	       mem_limit / (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)));
-#endif /* HASHJOIN_DUMP_BUILD */
-
-      hash_scan->hash_list_scan_type = HASH_METH_HASH_FILE;
-
-      hash_scan->file.hash_table = (FHSID *) db_private_alloc (thread_p, sizeof (FHSID));
-      if (hash_scan->file.hash_table == NULL)
-	{
-	  goto error_exit;
-	}
-
-      if (fhs_create (thread_p, hash_scan->file.hash_table, list_id->tuple_cnt) == NULL)
-	{
-	  goto error_exit;
-	}
-
-      hash_scan->file.curr_oid = OID_INITIALIZER;
-      hash_scan->file.is_dk_bucket = false;
+      /* skip hash table */
+      hash_scan->hash_list_scan_type = HASH_METH_NOT_USE;
     }
 
   hash_scan->curr_hash_key = 0;
@@ -2780,7 +2694,7 @@ error_exit:
  *   thread_p(in): Thread entry.
  *   hash_scan(in): Hash scan structure to clear.
  */
-static void
+void
 hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan)
 {
   assert (thread_p != NULL);
@@ -3326,10 +3240,98 @@ hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
  *   context(in): Hash join context containing per-partition state.
+ */
+static int
+hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context)
+{
+  QFILE_LIST_ID *list_id = NULL;
+  int error = NO_ERROR;
+
+  assert (thread_p != NULL);
+  assert (manager != NULL);
+  assert (context != NULL);
+  assert (context->list_id == NULL);
+
+#if defined (SERVER_MODE) && !defined (WINDOWS)
+  if (context->status == HASHJOIN_STATUS_PARALLEL_PROBE)
+    {
+      assert (context == &manager->single_context);
+
+      // *INDENT-OFF*
+      error = parallel_query::hash_join::probe_prepare (*thread_p, manager);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      error = parallel_query::hash_join::probe_execute (*thread_p, manager);
+
+      parallel_query::hash_join::probe_end (*thread_p, manager);
+
+     if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+      // *INDENT-ON*
+    }
+  else
+#endif /* defined (SERVER_MODE) && !defined (WINDOWS) */
+    {
+      assert (context->status == HASHJOIN_STATUS_TRY);
+
+      list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, manager->qlist_flag, NULL);
+      if (list_id == NULL)
+	{
+	  goto error_exit;
+	}
+
+      if (IS_OUTER_JOIN_TYPE (manager->join_type))
+	{
+	  error = hjoin_outer_probe (thread_p, manager, context, list_id);
+	}
+      else
+	{
+	  error = hjoin_inner_probe (thread_p, manager, context, list_id);
+	}
+
+      qfile_close_list (thread_p, list_id);
+      context->list_id = list_id;
+    }
+
+cleanup:
+  /* Check if qfile_close_list was called */
+  assert (list_id == NULL || list_id->last_pgptr == NULL);
+
+  return error;
+
+error_exit:
+  if (list_id != NULL)
+    {
+      qfile_close_list (thread_p, list_id);
+      qfile_destroy_list (thread_p, list_id);
+      QFILE_FREE_AND_INIT_LIST_ID (list_id);
+    }
+
+  if (error == NO_ERROR || er_errid () == NO_ERROR)
+    {
+      assert_release_error (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+
+  goto cleanup;
+}
+
+/*
+ * hjoin_inner_probe() -
+ *   return: Error code (NO_ERROR if successful, error code otherwise)
+ *   thread_p(in): Thread entry.
+ *   manager(in): Hash join manager containing shared state.
+ *   context(in): Hash join context containing per-partition state.
  *   list_id(in/out): List identifier containing the join result.
  */
 static int
-hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context, QFILE_LIST_ID * list_id)
+hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
+		   QFILE_LIST_ID * list_id)
 {
   QFILE_TUPLE_RECORD overflow_record = { NULL, 0 };
   SCAN_CODE scan_code;
