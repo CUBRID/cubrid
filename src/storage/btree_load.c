@@ -3234,11 +3234,10 @@ static SCAN_CODE
 get_next_vpid (THREAD_ENTRY * thread_p, parallel_query::ftab_set & ftab, FILE_PARTIAL_SECTOR * fsector, int *offset,
 	       VPID * vpid_out, HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * old_pgwatcher, HFID * hfid)
 {
-  bool found = false;
   int error = NO_ERROR;
   assert (*offset >= 0);
 
-  while (!found)
+  while (true)
     {
       if (fsector == NULL || VSID_IS_NULL (&fsector->vsid))
 	{
@@ -3299,7 +3298,6 @@ get_next_vpid (THREAD_ENTRY * thread_p, parallel_query::ftab_set & ftab, FILE_PA
 		   * but now, it's deallocated in some reasons.
 		   * this is not error, it can be ignored */
 		  er_clear ();
-		  found = false;
 		  continue;
 		}
 
@@ -3312,7 +3310,6 @@ get_next_vpid (THREAD_ENTRY * thread_p, parallel_query::ftab_set & ftab, FILE_PA
 		{
 		  return S_ERROR;
 		}
-	      found = true;
 
 	      return S_SUCCESS;
 	    }
