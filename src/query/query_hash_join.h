@@ -146,10 +146,20 @@ typedef struct hashjoin_range_time_stats
 } HASHJOIN_RANGE_TIME_STATS;
 #define HASHJOIN_RANGE_TIME_STATS_INITIALIZER { { LONG_MAX, 999999 }, { 0, 0 } }
 
+typedef struct hashjoin_range_value_stats
+{
+  UINT64 min;
+  UINT64 max;
+} HASHJOIN_RANGE_ROWS_STATS;
+#define HASHJOIN_RANGE_ROWS_STATS_INITIALIZER { LONG_MAX, 0 }
+
 typedef struct hashjoin_input_stats
 {
   TSCTIMEVAL elapsed_time;
   HASHJOIN_RANGE_TIME_STATS range_time;
+  HASHJOIN_RANGE_ROWS_STATS range_read_rows;
+  HASHJOIN_RANGE_ROWS_STATS range_read_keys;
+  HASHJOIN_RANGE_ROWS_STATS range_qualified_rows;
   UINT64 fetches;
   UINT64 ioreads;
   UINT64 read_rows;
@@ -315,6 +325,9 @@ typedef struct hashjoin_shared_probe_info
 
   std::mutex stats_mutex;
   HASHJOIN_RANGE_TIME_STATS probe_range_time;
+  HASHJOIN_RANGE_ROWS_STATS probe_range_read_rows;
+  HASHJOIN_RANGE_ROWS_STATS probe_range_read_keys;
+  HASHJOIN_RANGE_ROWS_STATS probe_range_qualified_rows;
 
   hashjoin_shared_probe_info ()
     : scan_mutex ()
@@ -322,6 +335,9 @@ typedef struct hashjoin_shared_probe_info
     , next_vpid (VPID_INITIALIZER)
     , stats_mutex ()
     , probe_range_time (HASHJOIN_RANGE_TIME_STATS_INITIALIZER)
+    , probe_range_read_rows (HASHJOIN_RANGE_ROWS_STATS_INITIALIZER)
+    , probe_range_read_keys (HASHJOIN_RANGE_ROWS_STATS_INITIALIZER)
+    , probe_range_qualified_rows (HASHJOIN_RANGE_ROWS_STATS_INITIALIZER)
   {
     //
   }
@@ -458,7 +474,7 @@ int hjoin_merge_tuple_to_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_
 
 void hjoin_trace_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats);
 void hjoin_trace_end (THREAD_ENTRY * thread_p, HASHJOIN_INPUT_STATS * stats, HASHJOIN_START_STATS * start_stats);
-void hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_stats);
+void hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_stats, HASHJOIN_STATUS status);
 
 UINT64 *hjoin_trace_get_worker_stats (HASHJOIN_MANAGER * manager, int index);
 void hjoin_trace_drain_worker_stats (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);

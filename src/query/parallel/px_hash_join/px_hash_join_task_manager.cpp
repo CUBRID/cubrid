@@ -875,12 +875,29 @@ namespace parallel_query
 
       if (thread_is_on_trace (&thread_ref))
 	{
+	  UINT64 total_probe_read_rows = m_context->stats->probe.read_rows;
+	  UINT64 total_probe_read_keys = m_context->stats->probe.read_keys;
+	  UINT64 total_probe_qualified_rows = m_context->stats->probe.qualified_rows;
+
 	  TSC_ADD_TIMEVAL (total_probe_time, m_context->stats->probe.elapsed_time);
 
 	  std::lock_guard<std::mutex> lock (m_shared_info->stats_mutex);
 
 	  perfmon_update_min_timeval (&m_shared_info->probe_range_time.min, &total_probe_time);
 	  perfmon_update_max_timeval (&m_shared_info->probe_range_time.max, &total_probe_time);
+
+	  m_shared_info->probe_range_read_rows.min =
+		  MIN (m_shared_info->probe_range_read_rows.min, total_probe_read_rows);
+	  m_shared_info->probe_range_read_rows.max =
+		  MAX (m_shared_info->probe_range_read_rows.max, total_probe_read_rows);
+	  m_shared_info->probe_range_read_keys.min =
+		  MIN (m_shared_info->probe_range_read_keys.min, total_probe_read_keys);
+	  m_shared_info->probe_range_read_keys.max =
+		  MAX (m_shared_info->probe_range_read_keys.max, total_probe_read_keys);
+	  m_shared_info->probe_range_qualified_rows.min =
+		  MIN (m_shared_info->probe_range_qualified_rows.min, total_probe_qualified_rows);
+	  m_shared_info->probe_range_qualified_rows.max =
+		  MAX (m_shared_info->probe_range_qualified_rows.max, total_probe_qualified_rows);
 	}
 
       if (er_errid () != NO_ERROR)
@@ -1088,6 +1105,11 @@ cleanup:
 
 	      tuple_index++;
 
+	      if (thread_is_on_trace (&thread_ref))
+		{
+		  stats->probe.read_rows++;
+		}
+
 	      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
 	      error = hjoin_fetch_key (&thread_ref, probe, &probe->tuple_record, key,
 				       nullptr /* compare_key */, &need_skip_next);
@@ -1108,7 +1130,6 @@ cleanup:
 		{
 		  /* fall through */
 		}
-
 
 	      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
 	      hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
@@ -1199,7 +1220,6 @@ cleanup:
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_end (&thread_ref, &stats->probe, &start_stats);
-	  stats->probe.read_rows = probe->list_id->tuple_cnt;
 	  stats->probe.qualified_rows = list_id->tuple_cnt;
 	}
 
@@ -1401,6 +1421,11 @@ cleanup:
 
 	      tuple_index++;
 
+	      if (thread_is_on_trace (&thread_ref))
+		{
+		  stats->probe.read_rows++;
+		}
+
 	      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
 	      error = hjoin_fetch_key (&thread_ref, probe, &probe->tuple_record, key,
 				       nullptr /* compare_key */, &need_skip_next);
@@ -1597,7 +1622,6 @@ cleanup:
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_end (&thread_ref, &stats->probe, &start_stats);
-	  stats->probe.read_rows = probe->list_id->tuple_cnt;
 	  stats->probe.qualified_rows = list_id->tuple_cnt;
 	}
 

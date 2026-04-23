@@ -339,7 +339,7 @@ hjoin_execute_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 
       if (thread_is_on_trace (thread_p))
 	{
-	  hjoin_trace_merge_stats (stats, current_context->stats);
+	  hjoin_trace_merge_stats (stats, current_context->stats, manager->single_context.status);
 	}
 
       if (current_context->list_id == NULL)
@@ -4358,7 +4358,7 @@ hjoin_profile_end (THREAD_ENTRY * thread_p, HASHJOIN_PROFILE_STATS * stats,
  *   context_stats(in): Profiling data per-partition.
  */
 void
-hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_stats)
+hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_stats, HASHJOIN_STATUS status)
 {
   assert (stats != NULL);
   assert (context_stats != NULL);
@@ -4370,7 +4370,10 @@ hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_stats)
       return;
     }
 
-  TSC_ADD_TIMEVAL (stats->build.elapsed_time, context_stats->build.elapsed_time);
+  if (status != HASHJOIN_STATUS_PARALLEL)
+    {
+      TSC_ADD_TIMEVAL (stats->build.elapsed_time, context_stats->build.elapsed_time);
+    }
   stats->build.fetches += context_stats->build.fetches;
   stats->build.ioreads += context_stats->build.ioreads;
   stats->build.read_rows += context_stats->build.read_rows;
@@ -4411,7 +4414,10 @@ hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_stats)
       return;
     }
 
-  TSC_ADD_TIMEVAL (stats->probe.elapsed_time, context_stats->probe.elapsed_time);
+  if (status != HASHJOIN_STATUS_PARALLEL && status != HASHJOIN_STATUS_PARALLEL_PROBE)
+    {
+      TSC_ADD_TIMEVAL (stats->probe.elapsed_time, context_stats->probe.elapsed_time);
+    }
   stats->probe.fetches += context_stats->probe.fetches;
   stats->probe.ioreads += context_stats->probe.ioreads;
   stats->probe.read_rows += context_stats->probe.read_rows;

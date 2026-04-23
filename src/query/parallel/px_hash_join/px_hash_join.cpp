@@ -200,7 +200,7 @@ namespace parallel_query
 
 	  if (thread_is_on_trace (&thread_ref))
 	    {
-	      hjoin_trace_merge_stats (stats, current_context->stats);
+	      hjoin_trace_merge_stats (stats, current_context->stats, manager->single_context.status);
 	    }
 
 	  if (current_context->list_id == nullptr)
@@ -560,6 +560,12 @@ error_exit:
 
 	  stats->probe.range_time.min = shared_info.probe_range_time.min;
 	  stats->probe.range_time.max = shared_info.probe_range_time.max;
+	  stats->probe.range_read_rows.min = shared_info.probe_range_read_rows.min;
+	  stats->probe.range_read_rows.max = shared_info.probe_range_read_rows.max;
+	  stats->probe.range_read_keys.min = shared_info.probe_range_read_keys.min;
+	  stats->probe.range_read_keys.max = shared_info.probe_range_read_keys.max;
+	  stats->probe.range_qualified_rows.min = shared_info.probe_range_qualified_rows.min;
+	  stats->probe.range_qualified_rows.max = shared_info.probe_range_qualified_rows.max;
 	}
 
       if (task_manager.has_error ())
@@ -575,7 +581,7 @@ error_exit:
 
 	  if (thread_is_on_trace (&thread_ref))
 	    {
-	      hjoin_trace_merge_stats (stats, current_context->stats);
+	      hjoin_trace_merge_stats (stats, current_context->stats, manager->single_context.status);
 	    }
 
 	  if (current_context->list_id == nullptr)
