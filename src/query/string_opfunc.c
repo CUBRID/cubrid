@@ -26375,7 +26375,7 @@ error:
 /*
  * uuidv7_generate_bytes() - Generate UUIDv7 bytes using per-thread monotonic state.
  *   return: error code or NO_ERROR
- *   base_state(in/out): can be NULL if version = UUID_V4. 
+ *   base_state(in/out): CAN NOT be NULL. 
  *     Use the variable address from the current generator context:
  *     THREAD_ENTRY on server, PARSER_CONTEXT on CAS.
  *   new_epoch_ms(in): epoch time in milliseconds
