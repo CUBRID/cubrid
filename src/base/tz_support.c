@@ -1292,6 +1292,10 @@ tz_str_to_region (const char *tz_str, const int tz_str_size, TZ_REGION * tz_regi
   int reg_zone_id, reg_offset;
   TZ_REGION_TYPE reg_type;
 
+#define TZ_LOG_INVALID_TIMEZONE() \
+  er_log_debug (ARG_FILE_LINE, "tz_str_to_region: invalid timezone input='%.*s' size=%d\n", tz_str_size, tz_str, \
+		tz_str_size)
+
   tz_str_end = tz_str + tz_str_size;
   zone_str = tz_str;
 
@@ -1302,6 +1306,7 @@ tz_str_to_region (const char *tz_str, const int tz_str_size, TZ_REGION * tz_regi
 
   if (zone_str >= tz_str_end)
     {
+      TZ_LOG_INVALID_TIMEZONE ();
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INVALID_TIMEZONE, 0);
       return ER_TZ_INVALID_TIMEZONE;
     }
@@ -1310,6 +1315,7 @@ tz_str_to_region (const char *tz_str, const int tz_str_size, TZ_REGION * tz_regi
     {
       if (tz_str_to_seconds (zone_str, tz_str_end, &reg_offset, &zone_str_end, true) != NO_ERROR)
 	{
+	  TZ_LOG_INVALID_TIMEZONE ();
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INVALID_TIMEZONE, 0);
 	  return ER_TZ_INVALID_TIMEZONE;
 	}
@@ -1321,6 +1327,7 @@ tz_str_to_region (const char *tz_str, const int tz_str_size, TZ_REGION * tz_regi
 
       if (zone_str_end != tz_str_end)
 	{
+	  TZ_LOG_INVALID_TIMEZONE ();
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INVALID_TIMEZONE, 0);
 	  return ER_TZ_INVALID_TIMEZONE;
 	}
@@ -1340,6 +1347,7 @@ tz_str_to_region (const char *tz_str, const int tz_str_size, TZ_REGION * tz_regi
       reg_zone_id = tz_get_zone_id_by_name (zone_str, CAST_BUFLEN (reg_str_end - zone_str));
       if (reg_zone_id == -1)
 	{
+	  TZ_LOG_INVALID_TIMEZONE ();
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INVALID_TIMEZONE, 0);
 	  return ER_TZ_INVALID_TIMEZONE;
 	}
@@ -1360,6 +1368,7 @@ tz_str_to_region (const char *tz_str, const int tz_str_size, TZ_REGION * tz_regi
 	}
     }
 
+#undef TZ_LOG_INVALID_TIMEZONE
   return NO_ERROR;
 }
 

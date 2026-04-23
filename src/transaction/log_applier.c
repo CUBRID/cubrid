@@ -307,6 +307,7 @@ struct la_commit
 typedef struct la_apply_task LA_APPLY_TASK;
 struct la_apply_task
 {
+  UINT64 seq;
   int tranid;
   int rectype;
   LOG_LSA commit_lsa;
@@ -331,6 +332,7 @@ struct la_apply_stats
 typedef struct la_apply_result LA_APPLY_RESULT;
 struct la_apply_result
 {
+  UINT64 seq;
   int tranid;
   int rectype;
   int error;
@@ -391,10 +393,13 @@ typedef struct la_apply_worker_context LA_APPLY_WORKER_CONTEXT;
 typedef struct la_dispatch_order_entry LA_DISPATCH_ORDER_ENTRY;
 struct la_dispatch_order_entry
 {
+  UINT64 seq;
   int worker_idx;
   LA_APPLY *apply;
   int tranid;
   int rectype;
+  bool result_ready;
+  LA_APPLY_RESULT result;
 };
 
 typedef struct la_dispatch_order LA_DISPATCH_ORDER;
@@ -567,6 +572,9 @@ static bool la_enable_sql_logging = false;
 static LA_APPLY_WORKER la_apply_Workers[LA_APPLY_WORKER_COUNT];
 /* 디스패치 순서 FIFO. 리더 전용. */
 static LA_DISPATCH_ORDER la_Dispatch_order;
+/* 리더가 부여하는 단조 증가 시퀀스.
+ * 워커 결과를 out-of-order 로 회수하더라도 retire 는 이 순서대로만 수행한다. */
+static UINT64 la_dispatch_sequence = 0;
 static pthread_mutex_t la_sql_compile_mutex = PTHREAD_MUTEX_INITIALIZER;
 /* Serializes per-worker client context bring-up (net_client_sub_init,
  * boot_register_client, ws_init, sm_init, au_start, tr_init, ...).
@@ -752,10 +760,13 @@ static int la_dequeue_apply_task (LA_APPLY_WORKER * worker, LA_APPLY_TASK * task
 static int la_enqueue_apply_result (LA_APPLY_WORKER * worker, const LA_APPLY_RESULT * result);
 static int la_try_dequeue_apply_result (LA_APPLY_WORKER * worker, LA_APPLY_RESULT * result);
 static int la_collect_apply_results (void);
+static int la_collect_worker_results (void);
+static int la_retire_ready_results (void);
 /* 디스패치 FIFO 헬퍼 (리더 전용, 동기화 불필요) */
 static void la_dispatch_order_init (void);
-static int la_dispatch_order_push (int worker_idx, LA_APPLY * apply, int tranid, int rectype);
-static int la_dispatch_order_peek (LA_DISPATCH_ORDER_ENTRY * out);
+static int la_dispatch_order_push (int worker_idx, LA_APPLY * apply, int tranid, int rectype, UINT64 * seq_out);
+static LA_DISPATCH_ORDER_ENTRY *la_dispatch_order_peek (void);
+static LA_DISPATCH_ORDER_ENTRY *la_dispatch_order_find_by_seq (UINT64 seq);
 static void la_dispatch_order_pop (void);
 
 static bool la_need_filter_out (LA_ITEM * item);
@@ -1055,10 +1066,11 @@ la_dispatch_order_init (void)
   la_Dispatch_order.head = 0;
   la_Dispatch_order.tail = 0;
   la_Dispatch_order.count = 0;
+  la_dispatch_sequence = 0;
 }
 
 static int
-la_dispatch_order_push (int worker_idx, LA_APPLY * apply, int tranid, int rectype)
+la_dispatch_order_push (int worker_idx, LA_APPLY * apply, int tranid, int rectype, UINT64 * seq_out)
 {
   LA_DISPATCH_ORDER_ENTRY *entry;
 
@@ -1070,26 +1082,53 @@ la_dispatch_order_push (int worker_idx, LA_APPLY * apply, int tranid, int rectyp
     }
 
   entry = &la_Dispatch_order.entries[la_Dispatch_order.tail];
+  entry->seq = la_dispatch_sequence++;
   entry->worker_idx = worker_idx;
   entry->apply = apply;
   entry->tranid = tranid;
   entry->rectype = rectype;
+  entry->result_ready = false;
+  memset (&entry->result, 0, sizeof (entry->result));
+
+  if (seq_out != NULL)
+    {
+      *seq_out = entry->seq;
+    }
 
   la_Dispatch_order.tail = (la_Dispatch_order.tail + 1) % LA_DISPATCH_ORDER_CAPACITY;
   la_Dispatch_order.count++;
   return NO_ERROR;
 }
 
-static int
-la_dispatch_order_peek (LA_DISPATCH_ORDER_ENTRY * out)
+static LA_DISPATCH_ORDER_ENTRY *
+la_dispatch_order_peek (void)
 {
   if (la_Dispatch_order.count == 0)
     {
-      return ER_FAILED;
+      return NULL;
     }
 
-  *out = la_Dispatch_order.entries[la_Dispatch_order.head];
-  return NO_ERROR;
+  return &la_Dispatch_order.entries[la_Dispatch_order.head];
+}
+
+static LA_DISPATCH_ORDER_ENTRY *
+la_dispatch_order_find_by_seq (UINT64 seq)
+{
+  int i, idx;
+
+  idx = la_Dispatch_order.head;
+  for (i = 0; i < la_Dispatch_order.count; i++)
+    {
+      LA_DISPATCH_ORDER_ENTRY *entry = &la_Dispatch_order.entries[idx];
+      if (entry->seq == seq)
+	{
+	  return entry;
+	}
+
+      idx = (idx + 1) % LA_DISPATCH_ORDER_CAPACITY;
+    }
+
+  return NULL;
 }
 
 static void
@@ -1532,52 +1571,95 @@ la_apply_worker_context_final (LA_APPLY_WORKER_CONTEXT * context)
 static int
 la_collect_apply_results (void)
 {
-  LA_APPLY_RESULT result;
-  LA_DISPATCH_ORDER_ENTRY entry;
   int error = NO_ERROR;
 
-  /* 디스패치 순서(=커밋 LSA 순서) 대로 결과를 수집한다.
-   * 다음 기대되는 결과가 아직 해당 워커에서 나오지 않았다면 이번 라운드는 종료하고
-   * 다음 호출에서 재시도한다. */
-  while (la_dispatch_order_peek (&entry) == NO_ERROR)
+  error = la_collect_worker_results ();
+  if (error != NO_ERROR)
     {
-      if (la_try_dequeue_apply_result (&la_apply_Workers[entry.worker_idx], &result) != NO_ERROR)
+      return error;
+    }
+
+  return la_retire_ready_results ();
+}
+
+static int
+la_collect_worker_results (void)
+{
+  int i;
+
+  /* 워커가 끝낸 결과는 도착 순서대로 먼저 회수한다.
+   * 다만 전역 committed_lsa/apply_info 반영은 여기서 하지 않고 retire 단계로 미룬다. */
+  for (i = 0; i < LA_APPLY_WORKER_COUNT; i++)
+    {
+      LA_APPLY_RESULT result;
+
+      while (la_try_dequeue_apply_result (&la_apply_Workers[i], &result) == NO_ERROR)
+	{
+	  LA_DISPATCH_ORDER_ENTRY *entry = la_dispatch_order_find_by_seq (result.seq);
+	  if (entry == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "dispatch result seq mismatch");
+	      return ER_FAILED;
+	    }
+
+	  entry->result = result;
+	  entry->result_ready = true;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+static int
+la_retire_ready_results (void)
+{
+  int error = NO_ERROR;
+  LA_DISPATCH_ORDER_ENTRY *entry;
+
+  /* retire 는 dispatch 순서(=커밋 LSA 순서) 를 반드시 지킨다.
+   * head entry 가 아직 완료되지 않았다면 뒤에 더 빨리 끝난 결과가 있어도 여기서는 멈춘다. */
+  while ((entry = la_dispatch_order_peek ()) != NULL)
+    {
+      LA_APPLY_RESULT *result;
+
+      if (entry->result_ready == false)
 	{
 	  break;
 	}
 
-      if (result.error != NO_ERROR)
+      result = &entry->result;
+      if (result->error != NO_ERROR)
 	{
-	  return result.error;
+	  return result->error;
 	}
 
-      la_free_commit_node_by_tranid (result.tranid);
+      la_free_commit_node_by_tranid (result->tranid);
 
-      /* 커밋 완료된 트랜잭션의 repl_list 슬롯은 리더가 반환한다.
-       * 워커는 apply->tranid 를 건드리지 않으므로, 리더의 la_add_apply_list 가
-       * 워커 실행 도중 해당 슬롯을 다른 트랜잭션에 재할당하는 레이스가 생기지 않는다. */
-      if (entry.apply != NULL && entry.rectype != LOG_SYSOP_END)
+      /* 커밋 완료된 트랜잭션의 repl_list 슬롯은 retire 시점에만 반환한다.
+       * worker 가 끝난 즉시 슬롯을 반환하면, 리더가 같은 슬롯을 다른 트랜잭션에 재사용하는
+       * 레이스가 생길 수 있으므로 result 수집과 슬롯 반환 시점을 분리한다. */
+      if (entry->apply != NULL && entry->rectype != LOG_SYSOP_END)
 	{
-	  LSA_SET_NULL (&entry.apply->start_lsa);
-	  LSA_SET_NULL (&entry.apply->last_lsa);
-	  entry.apply->tranid = 0;
+	  LSA_SET_NULL (&entry->apply->start_lsa);
+	  LSA_SET_NULL (&entry->apply->last_lsa);
+	  entry->apply->tranid = 0;
 	}
 
-      LSA_COPY (&la_Info.committed_lsa, &result.commit_lsa);
-      if (!LSA_ISNULL (&result.committed_rep_lsa))
+      LSA_COPY (&la_Info.committed_lsa, &result->commit_lsa);
+      if (!LSA_ISNULL (&result->committed_rep_lsa))
 	{
-	  LSA_COPY (&la_Info.committed_rep_lsa, &result.committed_rep_lsa);
+	  LSA_COPY (&la_Info.committed_rep_lsa, &result->committed_rep_lsa);
 	}
-      la_Info.log_record_time = result.log_record_time;
+      la_Info.log_record_time = result->log_record_time;
 
-      la_Info.insert_counter += result.stats.insert_counter;
-      la_Info.update_counter += result.stats.update_counter;
-      la_Info.delete_counter += result.stats.delete_counter;
-      la_Info.schema_counter += result.stats.schema_counter;
-      la_Info.fail_counter += result.stats.fail_counter;
-      la_Info.num_unflushed += result.stats.num_unflushed;
+      la_Info.insert_counter += result->stats.insert_counter;
+      la_Info.update_counter += result->stats.update_counter;
+      la_Info.delete_counter += result->stats.delete_counter;
+      la_Info.schema_counter += result->stats.schema_counter;
+      la_Info.fail_counter += result->stats.fail_counter;
+      la_Info.num_unflushed += result->stats.num_unflushed;
 
-      if (result.rectype == LOG_COMMIT)
+      if (result->rectype == LOG_COMMIT)
 	{
 	  la_Info.commit_counter++;
 	}
@@ -1640,6 +1722,7 @@ la_apply_worker_main (void *arg)
 	}
 
       memset (&result, 0, sizeof (result));
+      result.seq = task.seq;
       result.tranid = task.tranid;
       result.rectype = task.rectype;
       result.commit_lsa = task.commit_lsa;
@@ -7743,31 +7826,36 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	   * 워커는 이 포인터를 직접 사용해 la_Info.repl_lists 배열 경합을 피한다. */
 	  task.apply = la_find_apply_list (lrec->trid);
 
-	  {
-	    /* 같은 트랜잭션은 항상 같은 워커로 보낸다 (tranid 기반 해시).
-	     * 각 워커가 자기만의 클라이언트 세션/워크스페이스를 가지므로 트랜잭션 단위로 묶여야 한다. */
-	    int worker_idx = ((unsigned int) lrec->trid) % LA_APPLY_WORKER_COUNT;
+		  {
+		    UINT64 dispatch_seq = 0;
+		    /* 같은 트랜잭션은 항상 같은 워커로 보낸다 (tranid 기반 해시).
+		     * 각 워커가 자기만의 클라이언트 세션/워크스페이스를 가지므로 트랜잭션 단위로 묶여야 한다. */
+		    int worker_idx = ((unsigned int) lrec->trid) % LA_APPLY_WORKER_COUNT;
 
-	    er_log_debug (ARG_FILE_LINE,
-			  "reader dispatch trid=%d rectype=%d commit_lsa=%lld|%d apply=%p apply_head=%p -> worker[%d]\n",
-			  lrec->trid, lrec->type, (long long) final->pageid, (int) final->offset,
-			  (void *) task.apply, (task.apply ? (void *) task.apply->head : NULL), worker_idx);
-	    error = la_enqueue_apply_task (&la_apply_Workers[worker_idx], &task);
-	    if (error != NO_ERROR)
-	      {
+		    /* worker 결과를 out-of-order 로 수집하더라도 retire 는 dispatch 순서대로만 하므로,
+		     * 태스크를 큐에 넣기 전에 시퀀스를 부여해 둔다. */
+		    error = la_dispatch_order_push (worker_idx, task.apply, lrec->trid, lrec->type, &dispatch_seq);
+		    if (error != NO_ERROR)
+		      {
+			la_applier_need_shutdown = true;
+			return error;
+		      }
+
+		    task.seq = dispatch_seq;
+		    er_log_debug (ARG_FILE_LINE,
+				  "reader dispatch seq=%llu trid=%d rectype=%d commit_lsa=%lld|%d apply=%p apply_head=%p -> worker[%d]\n",
+				  (unsigned long long) task.seq,
+				  lrec->trid, lrec->type, (long long) final->pageid, (int) final->offset,
+				  (void *) task.apply, (task.apply ? (void *) task.apply->head : NULL), worker_idx);
+		    error = la_enqueue_apply_task (&la_apply_Workers[worker_idx], &task);
+		    if (error != NO_ERROR)
+		      {
 		la_applier_need_shutdown = true;
 		return error;
 	      }
 
-	    /* 결과 수집을 커밋 LSA 순서로 복원하기 위해 디스패치 순서를 기록한다 */
-	    error = la_dispatch_order_push (worker_idx, task.apply, lrec->trid, lrec->type);
-	    if (error != NO_ERROR)
-	      {
-		la_applier_need_shutdown = true;
-		return error;
-	      }
-	  }
-	}
+		  }
+		}
       else
 	{
 	  la_free_repl_items_by_tranid (lrec->trid);
