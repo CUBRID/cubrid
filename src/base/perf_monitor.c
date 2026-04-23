@@ -4170,19 +4170,19 @@ static size_t
 thread_stats_count (void)
 {
 #if defined (SERVER_MODE)
-  assert (PERFMON_PORTABLE_WORKER_STAT_COUNT == cubthread::stats_worker_pool_type::stats::get_count ());
+  assert (PERFMON_PORTABLE_WORKER_STAT_COUNT == worker_pool_type<stats_t::on>::stats::get_count ());
   static bool check_names = true;
   if (check_names)
     {
       for (size_t index = 0; index < PERFMON_PORTABLE_WORKER_STAT_COUNT; index++)
         {
-          if (std::strcmp (perfmon_Portable_worker_stat_names[index], cubthread::stats_worker_pool_type::stats::get_name (index)) != 0)
+          if (std::strcmp (perfmon_Portable_worker_stat_names[index], worker_pool_type<stats_t::on>::stats::get_name (index)) != 0)
             {
               assert (false);
               _er_log_debug (ARG_FILE_LINE,
                              "Warning - Monitoring thread worker statistics; statistics name not matching for %zu\n"
                              "\t\tperfmon name = %s\n" "\t\tdaemon name = %s\n", index,
-                             perfmon_Portable_worker_stat_names[index], cubthread::stats_worker_pool_type::stats::get_name (index));
+                             perfmon_Portable_worker_stat_names[index], worker_pool_type<stats_t::on>::stats::get_name (index));
             }
         }
       check_names = false;

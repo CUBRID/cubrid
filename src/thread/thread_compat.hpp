@@ -29,11 +29,26 @@
 // forward definition for THREAD_ENTRY
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
 #include <thread>
-#ifndef _THREAD_ENTRY_HPP_
 namespace cubthread
 {
   class entry;
+
+  enum class stats : bool
+  {
+    on = true,
+    off = false
+  };
+
+  enum class pool_type
+  {
+    basic,
+    elastic
+  };
+
 } // namespace cubthread
+typedef cubthread::stats stats_t;
+typedef cubthread::pool_type pool_t;
+#ifndef _THREAD_ENTRY_HPP_
 typedef cubthread::entry THREAD_ENTRY;
 typedef std::thread::id thread_id_t;
 #endif // _THREAD_ENTRY_HPP_
@@ -41,6 +56,8 @@ typedef std::thread::id thread_id_t;
 #else // not SERVER_MODE and not SA_MODE-C++
 // client or SA_MODE annoying grammars
 typedef void THREAD_ENTRY;
+typedef bool stats_t;
+typedef unsigned int pool_t;
 typedef unsigned long int thread_id_t;
 #endif // not SERVER_MODE and not SA_MODE
 

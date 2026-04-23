@@ -7520,7 +7520,7 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
 }
 
 // *INDENT-OFF*
-cubthread::worker_pool_type * g_backup_read_worker_pool = NULL;
+worker_pool_type<> *g_backup_read_worker_pool = NULL;
 
 REGISTER_WORKERPOOL (backup_read, []() {
 #if defined (SERVER_MODE)
