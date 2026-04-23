@@ -1757,7 +1757,12 @@
 
 #define ER_AUTO_INCREMENT_SINGLE_COL_ONLY           -1370
 
-#define ER_LAST_ERROR                               -1371
+#define ER_HA_REPLICATION_KEY_REQUIRED              -1371
+#define ER_HA_REPLICATION_OPTION_CHANGE_NOT_ALLOWED     -1372
+#define ER_HA_FK_CONSTRAINT_VIOLATION               -1373
+#define ER_HA_REPLICATION_CONSTRAINT_VIOLATION      -1374
+
+#define ER_LAST_ERROR                               -1375
 
 
 

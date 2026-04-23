@@ -1378,3 +1378,13 @@ valid options:\n\
     -o, --output-file=FILE        redirect output message to FILE; default: none.\n\
     -l, --list                    list all files\n\
     -c, --clean-invalid-file      clean invalid files\n
+
+$set 61 MSGCAT_UTIL_SET_RKCHECK
+60 \
+rkcheck: Checks HA replication key constraint violations.\n\
+usage: %1$s rkcheck [OPTION] database-name\n\
+\n\
+valid option:\n\
+    -r, --rk-check           Check RK(Replication Key) constraint violations\n\
+    -f, --fk-check           Check FK(Foreign Key) constraint violations\n
+    

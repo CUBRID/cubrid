@@ -91,6 +91,10 @@ static const char *Constraint_properties[] = {
   ((int)(sizeof(Constraint_types)/sizeof(Constraint_types[0])))
 #define NUM_CONSTRAINT_PROPERTIES       \
   ((int)(sizeof(Constraint_properties)/sizeof(Constraint_properties[0])))
+#define IS_HA_REPLICATION_KEY_CONSTRAINT(c) \
+  ((c)->type == SM_CONSTRAINT_PRIMARY_KEY || \
+    (SM_IS_CONSTRAINT_UNIQUE_FAMILY((c)->type) && \
+     sm_has_non_null_attribute((c)->attributes)))
 
 static AREA *Template_area = NULL;
 
@@ -531,6 +535,54 @@ classobj_map_constraint_to_property (SM_CONSTRAINT_TYPE constraint)
     }
 
   return property_type;
+}
+
+/*
+ * classobj_copy_pk_unique_constraints() - Copy PK or NOT NULL UNIQUE constraints
+ *    from the source attribute to the destination attribute.
+ *    Previously, only the unique BTID was copied; now each constraint object is
+ *    recreated using classobj_make_constraint() to preserve type information.
+ *
+ *    This is required because later logic performs constraint-type comparisons,
+ *    but the destination (ctemplate) does not yet contain that information.
+ *
+ *    TODO: Consider copying the constraint cache or regenerating it on the
+ *    destination attribute in the future.
+ *          Also, since only the constraint type is required when comparing
+ *          PK and NOT NULL UNIQUE constraints, it may be worth exploring
+ *          an approach that copies only the type information.
+ *
+ * return: NO_ERROR on success, ER_FAILED on error
+ *   src(in): source attribute
+ *   dest(in/out): destination attribute
+ */
+static int
+classobj_copy_pk_and_uk_notnull_constraints (const SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest)
+{
+  SM_CONSTRAINT *src_cons, *dest_new;
+  for (src_cons = src->constraints; src_cons != NULL; src_cons = (SM_CONSTRAINT *) src_cons->next)
+    {
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (src_cons->type) && (src->flags & SM_ATTFLAG_NON_NULL) != 0)
+	{
+	  dest_new =
+	    classobj_make_constraint (src_cons->name, src_cons->type, &src_cons->index, src_cons->has_function);
+	  if (dest_new == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  if (dest->constraints == NULL)
+	    {
+	      dest->constraints = dest_new;
+	    }
+	  else
+	    {
+	      dest_new->next = dest->constraints;
+	      dest->constraints = dest_new;
+	    }
+	}
+    }
+  return NO_ERROR;
 }
 
 /*
@@ -2208,6 +2260,28 @@ classobj_has_class_unique_constraint (SM_CLASS_CONSTRAINT * constraints)
   for (c = constraints; c != NULL; c = c->next)
     {
       if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * classobj_has_class_repl_key_constraint ()
+ *   return: true if a replication key constraint is contained in the constraint list,
+ *           otherwise false.
+ *   constraints(in): constraint list
+ */
+bool
+classobj_has_class_repl_key_constraint (SM_CLASS_CONSTRAINT * constraints)
+{
+  SM_CLASS_CONSTRAINT *c;
+
+  for (c = constraints; c != NULL; c = c->next)
+    {
+      if (IS_HA_REPLICATION_KEY_CONSTRAINT (c))
 	{
 	  return true;
 	}
@@ -3896,6 +3970,27 @@ classobj_find_cons_primary_key (SM_CLASS_CONSTRAINT * cons_list)
 }
 
 /*
+ * classobj_find_cons_replication_key()
+ *   return: constraint
+ *   cons_list(in):
+ */
+SM_CLASS_CONSTRAINT *
+classobj_find_cons_replication_key (SM_CLASS_CONSTRAINT * cons_list)
+{
+  SM_CLASS_CONSTRAINT *cons = NULL;
+
+  for (cons = cons_list; cons; cons = cons->next)
+    {
+      if (IS_HA_REPLICATION_KEY_CONSTRAINT (cons))
+	{
+	  break;
+	}
+    }
+
+  return cons;
+}
+
+/*
  * classobj_find_class_primary_key()
  *   return: constraint
  *   class(in):
@@ -4718,12 +4813,11 @@ classobj_init_attribute (SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest, int copy)
 
       if (src->constraints != NULL)
 	{
-	  /*
-	   *  We used to just copy the unique BTID from the source to the
-	   *  destination.  We might want to copy the src cache to dest, or
-	   *  maybe regenerate the cache for dest since the information is
-	   *  already in its property list.  - JB
-	   */
+	  error = classobj_copy_pk_and_uk_notnull_constraints (src, dest);
+	  if (error != NO_ERROR)
+	    {
+	      goto memory_error;
+	    }
 	}
 
       /* make a copy of the default value */

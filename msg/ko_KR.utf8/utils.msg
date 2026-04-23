@@ -1358,3 +1358,13 @@ valid options:\n\
     -o, --output-file=FILE        출력 메시지를 FILE로 리디렉션합니다. 기본값: 없음.\n\
     -l, --list                    모든 파일 항목 출력\n\
     -c, --clean-invalid-file      유효하지 않은 파일 정리\n
+
+$set 61 MSGCAT_UTIL_SET_RKCHECK
+60 \
+rkcheck: HA 복제 키 제약 조건 준수 여부를 검사합니다.\n\
+사용법: %1$s rkcheck [OPTION] database-name\n\
+\n\
+valid option:\n\
+    -r, --rk-check           RK(Replication Key) 제약사항을 확인합니다.\n\
+    -f, --fk-check           FK(Foreign Key) 제약사항을 확인합니다.\n
+    
