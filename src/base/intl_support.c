@@ -2243,15 +2243,53 @@ static int
 intl_count_utf8_bytes (const unsigned char *s, int length_in_chars)
 {
   int char_count;
-  int char_width;
   int byte_count;
 
   assert (s != NULL);
 
+  /* ASCII fast path: SWAR scan of the per-byte high bit. If every byte is
+   * ASCII (MSB clear) then byte_count == length_in_chars since each ASCII
+   * char occupies exactly one byte.
+   *
+   *   UTF-8 byte patterns:
+   *     0xxxxxxx  ASCII 1-byte char
+   *     110xxxxx  2-byte sequence lead
+   *     1110xxxx  3-byte sequence lead
+   *     11110xxx  4-byte sequence lead
+   *     10xxxxxx  continuation byte
+   *
+   *   Only ASCII has MSB=0, so "(word & 0x80..80) == 0" means 8 ASCII bytes.
+   */
+  {
+    const unsigned char *p = s;
+    const unsigned char *end = s + length_in_chars;
+
+    while (p + 8 <= end)
+      {
+	UINT64 word;
+	memcpy (&word, p, sizeof (word));
+	if ((word & UINT64_C (0x8080808080808080)) != 0)
+	  {
+	    goto slow_path;
+	  }
+	p += 8;
+      }
+    while (p < end)
+      {
+	if (*p >= 0x80)
+	  {
+	    goto slow_path;
+	  }
+	p++;
+      }
+    return length_in_chars;
+  }
+
+slow_path:
+  /* Multi-byte present: use the lead-byte length table to skip per char. */
   for (char_count = 0, byte_count = 0; char_count < length_in_chars; char_count++)
     {
-      s = intl_nextchar_utf8 (s, &char_width);
-      byte_count += char_width;
+      byte_count += intl_Len_utf8_char[s[byte_count]];
     }
 
   return byte_count;
