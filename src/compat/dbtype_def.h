@@ -1213,17 +1213,17 @@ extern "C"
   } DB_DEFAULT_EXPR_TYPE;
 
 #define DB_IS_DEFAULT_UUID_EXPR(c) \
-  ( ((c) == DB_DEFAULT_SYSGUID || (c) == DB_DEFAULT_UUIDV4 || (c) == DB_DEFAULT_UUIDV7 ) ? true : false )
+  ( (c) == DB_DEFAULT_SYSGUID || (c) == DB_DEFAULT_UUIDV4 || (c) == DB_DEFAULT_UUIDV7  )
 
 #define DB_IS_DEFAULT_UUID_TIMEBASE_EXPR(c) \
-  ( ((c) == DB_DEFAULT_UUIDV7 ) )
+  ( (c) == DB_DEFAULT_UUIDV7  )
 
 #define DB_IS_DEFAULT_DETERMINE_BY_STATEMENT(c) \
-  ( ( DB_IS_DATETIME_DEFAULT_EXPR(c) || (c) == DB_DEFAULT_NONE || (c) == DB_DEFAULT_USER || (c) == DB_DEFAULT_CURR_USER \
-  || (c) == DB_DEFAULT_FORMATTED_SYSDATE ) ? true : false )
+  ( DB_IS_DATETIME_DEFAULT_EXPR(c) || (c) == DB_DEFAULT_NONE || (c) == DB_DEFAULT_USER || (c) == DB_DEFAULT_CURR_USER \
+  || (c) == DB_DEFAULT_FORMATTED_SYSDATE )
 
 #define DB_IS_DEFAULT_DETERMINE_BY_ROW(c) \
-  ( (DB_IS_DEFAULT_UUID_EXPR(c))? true : false )
+  ( DB_IS_DEFAULT_UUID_EXPR(c) )
 
   /* An attribute having valid default expression, must have NULL default value. Currently, we allow simple expressions
    * like SYS_DATE, CURRENT_TIME. Also we allow to_char expression.

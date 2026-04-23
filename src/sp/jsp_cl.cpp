@@ -2354,6 +2354,7 @@ jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig
 	      default_next_node = pt_make_default_value_tree_from_default_expr (parser, &default_expr);
 	      if (default_next_node == NULL)
 		{
+		  PT_ERRORm (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 		  return NULL;
 		}
 	    }
