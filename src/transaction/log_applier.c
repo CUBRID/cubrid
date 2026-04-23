@@ -327,6 +327,7 @@ struct la_apply_stats
   unsigned long schema_counter;
   unsigned long fail_counter;
   int num_unflushed;
+  char last_class_name[DB_MAX_IDENTIFIER_LENGTH];
 };
 
 typedef struct la_apply_result LA_APPLY_RESULT;
@@ -1742,25 +1743,46 @@ la_apply_worker_main (void *arg)
 		    (unsigned long) pthread_self (), tm_Tran_index, task.tranid, result.error,
 		    result.stats.insert_counter, result.stats.update_counter, result.stats.delete_counter,
 		    result.stats.schema_counter, result.stats.fail_counter);
-      if (result.error == NO_ERROR)
+      if (result.error == NO_ERROR && task.rectype == LOG_COMMIT)
 	{
+	  LA_DEBUG_LOG (ARG_FILE_LINE,
+			"worker[tid=%lu idx=%d tran=%d] final_flush BEGIN trid=%d rectype=%d class=%s unflushed=%d\n",
+			(unsigned long) pthread_self (), (int) (worker - la_apply_Workers), tm_Tran_index, task.tranid,
+			task.rectype,
+			result.stats.last_class_name[0] != '\0' ? result.stats.last_class_name : "<none>",
+			result.stats.num_unflushed);
 	  result.error = la_flush_repl_items (true, &result.stats);
+	  LA_DEBUG_LOG (ARG_FILE_LINE,
+			"worker[tid=%lu idx=%d tran=%d] final_flush END trid=%d rectype=%d class=%s err=%d unflushed=%d\n",
+			(unsigned long) pthread_self (), (int) (worker - la_apply_Workers), tm_Tran_index, task.tranid,
+			task.rectype,
+			result.stats.last_class_name[0] != '\0' ? result.stats.last_class_name : "<none>",
+			result.error, result.stats.num_unflushed);
 	}
-      if (result.error == NO_ERROR)
+      else if (result.error == NO_ERROR)
+	{
+	  LA_DEBUG_LOG (ARG_FILE_LINE,
+			"worker[tid=%lu idx=%d tran=%d] skip_final_flush_commit trid=%d rectype=%d pending_unflushed=%d\n",
+			(unsigned long) pthread_self (), (int) (worker - la_apply_Workers), tm_Tran_index, task.tranid,
+			task.rectype, result.stats.num_unflushed);
+	}
+      if (result.error == NO_ERROR && task.rectype == LOG_COMMIT)
 	{
 	  applied_item_count =
 	    result.stats.insert_counter + result.stats.update_counter + result.stats.delete_counter + result.stats.fail_counter;
 	  worker_applied_item_count += applied_item_count;
 	  LA_DEBUG_LOG (ARG_FILE_LINE,
-			"worker[tid=%lu idx=%d tran=%d] commit_transaction BEGIN trid=%d applied=%llu total_applied=%llu "
+			"worker[tid=%lu idx=%d tran=%d] commit_transaction BEGIN trid=%d class=%s applied=%llu total_applied=%llu "
 			"stats[ins=%d upd=%d del=%d fail=%d]\n",
 			(unsigned long) pthread_self (), (int) (worker - la_apply_Workers), tm_Tran_index, task.tranid,
+			result.stats.last_class_name[0] != '\0' ? result.stats.last_class_name : "<none>",
 			applied_item_count, worker_applied_item_count, result.stats.insert_counter,
 			result.stats.update_counter, result.stats.delete_counter, result.stats.fail_counter);
 	  result.error = la_commit_transaction (worker_applied_item_count);
 	  LA_DEBUG_LOG (ARG_FILE_LINE,
-			"worker[tid=%lu idx=%d tran=%d] commit_transaction END trid=%d err=%d total_applied=%llu\n",
+			"worker[tid=%lu idx=%d tran=%d] commit_transaction END trid=%d class=%s err=%d total_applied=%llu\n",
 			(unsigned long) pthread_self (), (int) (worker - la_apply_Workers), tm_Tran_index, task.tranid,
+			result.stats.last_class_name[0] != '\0' ? result.stats.last_class_name : "<none>",
 			result.error, worker_applied_item_count);
 	}
 
@@ -6422,12 +6444,7 @@ la_apply_delete_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_APPLY
 {
   (void) context;
   DB_OBJECT *class_obj;
-
-  int error = la_flush_repl_items (false, stats);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
+  int error = NO_ERROR;
 
   /* find out class object by class name */
   class_obj = db_find_class (item->class_name);
@@ -6455,8 +6472,16 @@ end:
     }
   else
     {
+      snprintf (stats->last_class_name, sizeof (stats->last_class_name), "%s", item->class_name);
       stats->delete_counter++;
       stats->num_unflushed++;
+      LA_DEBUG_LOG (ARG_FILE_LINE,
+		    "threshold_flush delete BEGIN class=%s unflushed=%d pending=%d\n",
+		    item->class_name, stats->num_unflushed, __gv_loc_repl.ws_get_repl_obj_count ());
+      error = la_flush_repl_items (false, stats);
+      LA_DEBUG_LOG (ARG_FILE_LINE,
+		    "threshold_flush delete END class=%s err=%d unflushed=%d pending=%d\n",
+		    item->class_name, error, stats->num_unflushed, __gv_loc_repl.ws_get_repl_obj_count ());
     }
 
   return error;
@@ -6538,12 +6563,6 @@ la_apply_update_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_APPLY
   LOG_PAGEID old_pageid = NULL_PAGEID;
   DB_OBJECT *class_obj;
 
-  error = la_flush_repl_items (false, stats);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
   /* get the target log page */
   old_pageid = item->target_lsa.pageid;
   pgptr = la_get_page (old_pageid);
@@ -6619,8 +6638,16 @@ end:
     }
   else
     {
+      snprintf (stats->last_class_name, sizeof (stats->last_class_name), "%s", item->class_name);
       stats->update_counter++;
       stats->num_unflushed++;
+      LA_DEBUG_LOG (ARG_FILE_LINE,
+		    "threshold_flush update BEGIN class=%s unflushed=%d pending=%d\n",
+		    item->class_name, stats->num_unflushed, __gv_loc_repl.ws_get_repl_obj_count ());
+      error = la_flush_repl_items (false, stats);
+      LA_DEBUG_LOG (ARG_FILE_LINE,
+		    "threshold_flush update END class=%s err=%d unflushed=%d pending=%d\n",
+		    item->class_name, error, stats->num_unflushed, __gv_loc_repl.ws_get_repl_obj_count ());
     }
 
   la_release_page_buffer (old_pageid);
@@ -6751,15 +6778,6 @@ la_apply_insert_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_APPLY
 		(int) item->target_lsa.offset,
 		__gv_loc_repl.ws_get_repl_obj_count ());
 
-  error = la_flush_repl_items (false, stats);
-  if (error != NO_ERROR)
-    {
-      LA_DEBUG_LOG (ARG_FILE_LINE, "worker[idx=%d tid=%lu tran=%d] insert pre_flush error=%d class=%s key=%s\n",
-		    context->worker_idx, (unsigned long) pthread_self (), tm_Tran_index, error, item->class_name,
-		    sb.get_buffer ());
-      return error;
-    }
-
   /* get the target log page */
   old_pageid = item->target_lsa.pageid;
   pgptr = la_get_page (old_pageid);
@@ -6840,8 +6858,20 @@ end:
     }
   else
     {
+      snprintf (stats->last_class_name, sizeof (stats->last_class_name), "%s", item->class_name);
       stats->insert_counter++;
       stats->num_unflushed++;
+      LA_DEBUG_LOG (ARG_FILE_LINE,
+		    "worker[idx=%d tid=%lu tran=%d] threshold_flush insert BEGIN class=%s key=%s "
+		    "unflushed=%d pending=%d\n",
+		    context->worker_idx, (unsigned long) pthread_self (), tm_Tran_index, item->class_name,
+		    sb.get_buffer (), stats->num_unflushed, __gv_loc_repl.ws_get_repl_obj_count ());
+      error = la_flush_repl_items (false, stats);
+      LA_DEBUG_LOG (ARG_FILE_LINE,
+		    "worker[idx=%d tid=%lu tran=%d] threshold_flush insert END class=%s key=%s "
+		    "err=%d unflushed=%d pending=%d\n",
+		    context->worker_idx, (unsigned long) pthread_self (), tm_Tran_index, item->class_name,
+		    sb.get_buffer (), error, stats->num_unflushed, __gv_loc_repl.ws_get_repl_obj_count ());
     }
 
   LA_DEBUG_LOG (ARG_FILE_LINE,
@@ -7276,7 +7306,6 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, int rect
   int apply_repl_log_cnt = 0;
   char error_string[1024];
   char buf[256];
-  bool has_more_commit_items = false;
 
   /* apply 는 리더가 미리 매핑해 준 포인터다. 워커에서는 더 이상 la_find_apply_list 를 호출하지 않는다. */
   if (apply == NULL)
@@ -7300,6 +7329,8 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, int rect
       la_free_all_repl_items (apply);
       return NO_ERROR;
     }
+
+  assert (rectype == LOG_COMMIT);
 
   /* la_lock_dbname 은 리더가 기동 시 선행 획득한다. 워커에서는 호출하지 않음. */
 
@@ -7395,36 +7426,14 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, int rect
       next_item = la_get_next_repl_item (item, apply->is_long_trans, &apply->last_lsa);
       la_free_repl_item (apply, item);
       item = next_item;
-
-      if ((item != NULL) && LSA_GT (&item->lsa, commit_lsa))
-	{
-	  assert (rectype == LOG_SYSOP_END);
-	  has_more_commit_items = true;
-	  break;
-	}
     }
 
 end:
   *total_rows += apply_repl_log_cnt;
-
-  if (rectype == LOG_SYSOP_END)
-    {
-      if (has_more_commit_items)
-	{
-	  la_free_and_add_next_repl_item (apply, item, commit_lsa);
-	}
-      else
-	{
-	  la_free_all_repl_items (apply);
-	}
-    }
-  else
-    {
-      /* 기존 la_clear_applied_info 는 apply->tranid = 0 까지 수행해 슬롯을 반환한다.
-       * 워커에서 슬롯을 반환하면 리더가 다른 트랜잭션에 같은 슬롯을 재할당하는 경합이 생기므로
-       * 아이템만 비우고 슬롯 정리는 리더의 la_collect_apply_results 에서 수행한다. */
-      la_free_all_repl_items (apply);
-    }
+  /* 기존 la_clear_applied_info 는 apply->tranid = 0 까지 수행해 슬롯을 반환한다.
+   * 워커에서 슬롯을 반환하면 리더가 다른 트랜잭션에 같은 슬롯을 재할당하는 경합이 생기므로
+   * 아이템만 비우고 슬롯 정리는 리더의 la_collect_apply_results 에서 수행한다. */
+  la_free_all_repl_items (apply);
 
   return error;
 }
@@ -7776,6 +7785,24 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
       break;
 
     case LOG_SYSOP_END:
+      if (LSA_GT (final, &la_Info.committed_lsa))
+	{
+	  LA_APPLY *sysop_apply = la_find_apply_list (lrec->trid);
+	  LA_DEBUG_LOG (ARG_FILE_LINE,
+			"reader defer_sysop_end trid=%d lsa=%lld|%d apply=%p head=%p committed=%lld|%d\n",
+			lrec->trid, (long long) final->pageid, (int) final->offset, (void *) sysop_apply,
+			(sysop_apply ? (void *) sysop_apply->head : NULL), (long long) la_Info.committed_lsa.pageid,
+			(int) la_Info.committed_lsa.offset);
+	}
+      else
+	{
+	  LA_DEBUG_LOG (ARG_FILE_LINE,
+			"reader skip_sysop_end_already_committed trid=%d lsa=%lld|%d committed=%lld|%d\n",
+			lrec->trid, (long long) final->pageid, (int) final->offset,
+			(long long) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset);
+	}
+      break;
+
     case LOG_COMMIT:
       /* apply the replication log to the slave */
       if (LSA_GT (final, &la_Info.committed_lsa))
@@ -7783,14 +7810,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	  LA_APPLY_TASK task;
 
 	  /* add the repl_list to the commit_list */
-	  if (lrec->type == LOG_SYSOP_END)
-	    {
-	      eot_time = 0;
-	    }
-	  else
-	    {
-	      eot_time = la_retrieve_eot_time (pg_ptr, final);
-	    }
+	  eot_time = la_retrieve_eot_time (pg_ptr, final);
 
 	  error = la_add_node_into_la_commit_list (lrec->trid, final, lrec->type, eot_time);
 	  if (error != NO_ERROR)
