@@ -933,7 +933,12 @@ db_string_truncate (DB_VALUE * value, const int precision)
       break;
 
     case DB_TYPE_CHAR:
-      val_str = db_get_char (value, &length);
+      val_str = db_get_char (value);
+      if (val_str != NULL)
+	{
+	  intl_char_count ((unsigned char *) val_str, db_get_string_size (value),
+			   db_get_string_codeset (value), &length);
+	}
       if (val_str != NULL && length > precision)
 	{
 	  intl_char_size ((unsigned char *) val_str, precision, db_get_string_codeset (value), &byte_size);

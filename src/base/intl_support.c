@@ -2900,10 +2900,8 @@ intl_identifier_lower_string_size (const char *src)
 	const ALPHABET_DATA *alphabet = &(locale->ident_alphabet);
 	int s_size = src_size;
 	unsigned int cp;
-	int src_len;
 
 	const unsigned char *usrc = REINTERPRET_CAST (const unsigned char *, src);
-	intl_char_count (usrc, src_size, codeset, &src_len);
 
 	src_lower_size = 0;
 
@@ -3038,9 +3036,6 @@ intl_identifier_upper_string_size (const char *src)
 	const ALPHABET_DATA *alphabet = &(locale->ident_alphabet);
 	int s_size = src_size;
 	unsigned int cp;
-	int src_len;
-
-	intl_char_count (usrc, src_size, codeset, &src_len);
 
 	src_upper_size = 0;
 

@@ -3738,7 +3738,6 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
       {
 	char *value, *invalid_pos = NULL;
 	int val_size;
-	int val_length;
 	bool is_composed = false;
 	int composed_size;
 
@@ -3794,7 +3793,6 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	  }
 	else
 	  {
-	    intl_char_count ((unsigned char *) value, val_size, lang_get_client_charset (), &val_length);
 	    err_code =
 	      db_make_char (&db_val, -1, value, val_size, lang_get_client_charset (), lang_get_client_collation ());
 	    db_string_put_cs_and_collation (&db_val, lang_get_client_charset (), lang_get_client_collation ());
@@ -4266,13 +4264,12 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     case DB_TYPE_CHAR:
       {
 	DB_CONST_C_CHAR str;
-	int dummy = 0;
 	int bytes_size = 0;
 	int decomp_size;
 	char *decomposed = NULL;
 	bool need_decomp = false;
 
-	str = db_get_char (val, &dummy);
+	str = db_get_char (val);
 	bytes_size = db_get_string_size (val);
 	if (max_col_size > 0)
 	  {
@@ -4574,7 +4571,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	DB_DOMAIN *char_domain;
 	DB_VALUE v;
 	const char *str;
-	int len, err;
+	int err;
 	char buf[128];
 
 	char_domain = db_type_to_db_domain (DB_TYPE_VARCHAR);
@@ -4586,7 +4583,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	  }
 	else
 	  {
-	    str = db_get_char (&v, &len);
+	    str = db_get_char (&v);
 	    if (str != NULL)
 	      {
 		strncpy (buf, str, sizeof (buf) - 1);
@@ -9827,14 +9824,14 @@ convert_db_value_to_string (DB_VALUE * value, DB_VALUE * value_string)
 {
   const char *val_str = NULL;
   DB_TYPE val_type;
-  int err, len;
+  int err;
 
   val_type = db_value_type (value);
 
   err = db_value_coerce (value, value_string, db_type_to_db_domain (DB_TYPE_VARCHAR));
   if (err >= 0)
     {
-      val_str = db_get_char (value_string, &len);
+      val_str = db_get_char (value_string);
     }
 
   return val_str;

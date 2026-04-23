@@ -760,7 +760,11 @@ get_key_from_dbval (DB_VALUE * db_val, char **val, int *len)
     {
     case DB_TYPE_CHAR:
       {
-	v = db_get_char (db_val, &sz);
+	v = db_get_char (db_val);
+	if (v != NULL)
+	  {
+	    sz = db_get_string_size (db_val);
+	  }
       }
       break;
 
@@ -769,7 +773,7 @@ get_key_from_dbval (DB_VALUE * db_val, char **val, int *len)
 	v = db_get_string (db_val);
 	if (v != NULL)
 	  {
-	    sz = strlen (v);
+	    sz = db_get_string_size (db_val);
 	  }
       }
       break;
@@ -803,7 +807,11 @@ get_value_from_dbval (DB_VALUE * db_val, char **val, int *len,
     {
     case DB_TYPE_CHAR:
       {
-	v = db_get_char (db_val, &sz);
+	v = db_get_char (db_val);
+	if (v != NULL)
+	  {
+	    sz = db_get_string_size (db_val);
+	  }
 	value_type = VALUE_TYPE_STRING;
       }
       break;
