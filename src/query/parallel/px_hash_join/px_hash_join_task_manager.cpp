@@ -889,6 +889,8 @@ namespace parallel_query
 	}
 
 cleanup:
+      qfile_close_list (&thread_ref, m_context->list_id);
+
       /* set to nullptr; cleaned up by clear_spawner after all tasks are done */
       m_context->val_descr = nullptr;
       m_context->during_join_pred = nullptr;
@@ -1154,14 +1156,12 @@ cleanup:
 
 		  HJOIN_PRINT_TUPLE (&build->list_scan_id, build->tuple_record.tpl, HASHJOIN_PRINT_QUALIFIED_KEY);
 
+		  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
+		  error = hjoin_merge_tuple_to_list_id (&thread_ref, list_id,
+							&outer->tuple_record, &inner->tuple_record,
+							m_manager->merge_info, &overflow_record);
+		  HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 
-		  {
-		    HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
-		    error = hjoin_merge_tuple_to_list_id (&thread_ref, list_id,
-							  &outer->tuple_record, &inner->tuple_record,
-							  m_manager->merge_info, &overflow_record);
-		    HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
-		  }
 		  if (error != NO_ERROR)
 		    {
 		      break;		/* error_exit */

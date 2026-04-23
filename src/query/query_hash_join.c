@@ -3272,8 +3272,6 @@ hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
   else
 #endif /* defined (SERVER_MODE) */
     {
-      assert (context->status == HASHJOIN_STATUS_TRY);
-
       list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, manager->qlist_flag, NULL);
       if (list_id == NULL)
 	{
