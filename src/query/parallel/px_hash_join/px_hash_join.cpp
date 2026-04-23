@@ -230,7 +230,7 @@ namespace parallel_query
 	  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_MERGE);
 	  error = hjoin_merge_qlist (&thread_ref, manager, current_context);
 	  HJOIN_PROFILE_MERGE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_MERGE,
-				   manager->single_context.list_id->tuple_cnt);
+				   (manager->single_context.list_id != nullptr) ? manager->single_context.list_id->tuple_cnt : 0);
 
 	  if (error != NO_ERROR)
 	    {
@@ -605,7 +605,7 @@ error_exit:
 	  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_MERGE);
 	  error = hjoin_merge_qlist (&thread_ref, manager, current_context);
 	  HJOIN_PROFILE_MERGE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_MERGE,
-				   manager->single_context.list_id->tuple_cnt);
+				   (manager->single_context.list_id != nullptr) ? manager->single_context.list_id->tuple_cnt : 0);
 
 	  if (error != NO_ERROR)
 	    {
