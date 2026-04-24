@@ -124,14 +124,6 @@ namespace cubthread
   }
 
   void
-  wp_handle_system_error (const char *message, const std::system_error &e)
-  {
-    er_print_callstack (ARG_FILE_LINE, "%s - throws err = %d: %s\n", message, e.code (), e.what ());
-    assert (false);
-    throw e;
-  }
-
-  void
   wp_er_log_stats (const char *header, cubperf::stat_value *statsp)
   {
     std::stringstream ss;

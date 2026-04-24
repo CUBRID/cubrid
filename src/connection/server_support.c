@@ -33,6 +33,7 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
+#include "network_interface_sr.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -148,6 +149,11 @@ public:
 
   void execute (context_type &thread_ref) override final;
 
+  CSS_CONN_ENTRY &get_conn ()
+    {
+      return m_conn;
+    }
+
   // retire not overwritten; task is automatically deleted
 
 private:
@@ -176,6 +182,11 @@ public:
 
   void execute (context_type &thread_ref) override final;
 
+  CSS_CONN_ENTRY *get_conn ()
+    {
+      return m_conn;
+    }
+
   // retire not overwritten; task is automatically deleted
 
 private:
@@ -196,6 +207,11 @@ public:
   }
 
   void execute (context_type & thread_ref) override final;
+
+  CSS_CONN_ENTRY &get_conn ()
+    {
+      return m_conn;
+    }
 
   // retire not overwritten; task is automatically deleted
 
@@ -1288,6 +1304,72 @@ css_start_shutdown_server ()
   css_Server_shutdown_inited = true;
 }
 
+// *INDENT-OFF*
+static void
+tran_compensation (cubthread::task<cubthread::entry> *ptr)
+{
+  CSS_CONN_ENTRY *conn;
+  unsigned short rid;
+  int request, size;
+  int rc;
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
+
+  if (dynamic_cast<css_server_task *> (ptr))
+    {
+      css_server_task *task_p = static_cast<css_server_task *> (ptr);
+      conn = &task_p->get_conn ();
+
+      /* pending_request_count was increased at push_task. offset that. */
+      task_p->get_conn ().start_request ();
+
+      if (conn)
+	{
+	  rc = css_receive_request (conn, &rid, &request, &size);
+	  if (rc != NO_ERRORS)
+	    {
+	      /* something was wrong */
+	      assert (false);
+	      /* shutdown immediately */
+	      css_end_server_request (conn);
+	    }
+	  else
+	    {
+	      /* this can block the request for new connection to be connected */
+	      css_send_request_error_and_abort (conn, rid, ER_THREAD_STACK);
+	    }
+	}
+    }
+  else
+    {
+      assert (dynamic_cast<css_server_external_task *> (ptr));
+      css_server_external_task *task_p = static_cast<css_server_external_task *> (ptr);
+      conn = task_p->get_conn ();
+
+      if (conn)
+	{
+	  css_end_server_request (conn);
+	}
+    }
+
+  ptr->retire ();
+}
+
+static void
+css_compensation (cubthread::task<cubthread::entry> *ptr)
+{
+  css_connection_task *task_p = static_cast<css_connection_task *> (ptr);
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
+
+  css_end_server_request (&task_p->get_conn ());
+  css_free_conn (&task_p->get_conn ());
+
+  task_p->retire ();
+}
+
+// *INDENT-ON*
+
 /*
  * css_init() -
  *   return:
@@ -1332,7 +1414,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 						   cubthread::is_logging_configured
 						   (cubthread::LOG_WORKER_POOL_TRAN_WORKERS),
 						   css_get_server_request_thread_pooling_configuration (),
-						   css_get_server_request_thread_timeout_configuration ());
+						   css_get_server_request_thread_timeout_configuration (),
+						   tran_compensation);
   if (css_Server_request_worker_pool == NULL)
     {
       assert (false);
@@ -1347,7 +1430,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 						   cubthread::is_logging_configured
 						   (cubthread::LOG_WORKER_POOL_CONNECTIONS),
 						   css_get_connection_thread_pooling_configuration (),
-						   css_get_connection_thread_timeout_configuration ());
+						   css_get_connection_thread_timeout_configuration (),
+						   css_compensation);
   if (css_Connection_worker_pool == NULL)
     {
       assert (false);
@@ -1684,6 +1768,33 @@ css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
   rc = css_send_abort_request (conn, CSS_RID_FROM_EID (eid));
 
   return (rc == NO_ERRORS) ? 0 : rc;
+}
+
+/*
+ * css_send_request_error_and_abort () - send an error message and abort message to the client
+ *   return:
+ *   rid(in): request id
+ *   errid(in): error code
+ */
+void
+css_send_request_error_and_abort (CSS_CONN_ENTRY * conn, unsigned short rid, int errid)
+{
+  OR_ALIGNED_BUF (1024) a_buffer;
+  char *buffer = OR_ALIGNED_BUF_START (a_buffer);
+  unsigned int eid;
+  char *area;
+  int length = 1024;
+
+  area = er_get_area_error (buffer, &length);
+  eid = css_return_eid_from_conn (conn, rid);
+  if (area != NULL)
+    {
+      conn->db_error = errid;
+      (void) css_send_error_to_client (conn, eid, area, length);
+      conn->db_error = 0;
+    }
+
+  (void) css_send_abort_to_client (conn, eid);
 }
 
 /*

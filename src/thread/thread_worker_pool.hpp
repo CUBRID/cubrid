@@ -31,6 +31,8 @@
 // cubrid includes
 #include "perf_def.hpp"
 #include "extensible_array.hpp"
+#include "system_parameter.h"
+#include "error_manager.h"
 
 // system includes
 #include <atomic>
@@ -144,7 +146,8 @@ namespace cubthread
 
       worker_pool (std::size_t pool_size, std::size_t task_max_count, context_manager_type &context_mgr,
 		   const char *name, std::size_t core_count = 1, bool debug_logging = false, bool pool_threads = false,
-		   wait_seconds wait_for_task_time = std::chrono::seconds (5));
+		   wait_seconds wait_for_task_time = std::chrono::seconds (5),
+		   std::function<void (task_type *)> compensate_func = nullptr);
       ~worker_pool ();
 
       // try to execute task; executes only if the maximum number of tasks is not reached.
@@ -177,6 +180,8 @@ namespace cubthread
       std::size_t get_max_count (void) const;
       // get the number of cores
       std::size_t get_core_count (void) const;
+      // get compensate function
+      std::function<void (task_type *)> &get_compensate_func (void);
 
       // get worker pool statistics
       // note: the statistics are collected from all cores and all their workers adding up all local statistics
@@ -261,6 +266,8 @@ namespace cubthread
       wait_seconds m_wait_for_task_time;
 
       std::string m_name;
+
+      std::function<void (task_type *)> m_compensate_func;
   };
 
   // worker_pool<Context>::core
@@ -415,9 +422,9 @@ namespace cubthread
       void init_core (core_type &parent);
 
       // assign task (can be NULL) to running thread or start thread
-      void assign_task (task<Context> *work_p, cubperf::time_point push_time);
+      bool assign_task (task<Context> *work_p, cubperf::time_point push_time);
       // start thread for current worker
-      void start_thread (void);
+      bool start_thread (void);
       // run task on current thread (push_time is provided by core)
       void push_task_on_running_thread (task<Context> *work_p, cubperf::time_point push_time);
       // stop execution; if worker has a thread running, it outputs is_not_stopped = true
@@ -445,6 +452,10 @@ namespace cubthread
       void set_has_thread (void)
       {
 	m_has_thread = true;
+      }
+      void set_has_no_thread (void)
+      {
+	m_has_thread = false;
       }
       void set_push_time_now (void)
       {
@@ -514,11 +525,6 @@ namespace cubthread
   // does not return 0
   std::size_t system_core_count (void);
 
-  // custom worker pool exception handler
-  void wp_handle_system_error (const char *message, const std::system_error &e);
-  template <typename Func>
-  void wp_call_func_throwing_system_error (const char *message, Func &func);
-
   // dump worker pool statistics to error log
   void wp_er_log_stats (const char *header, cubperf::stat_value *statsp);
 
@@ -536,7 +542,7 @@ namespace cubthread
   template <typename Context>
   worker_pool<Context>::worker_pool (std::size_t pool_size, std::size_t task_max_count,
 				     context_manager_type &context_mgr, const char *name, std::size_t core_count,
-				     bool debug_log, bool pool_threads, wait_seconds wait_for_task_time)
+				     bool debug_log, bool pool_threads, wait_seconds wait_for_task_time, std::function<void (task_type *)> compensate_func)
     : m_max_workers (pool_size)
     , m_task_max_count (task_max_count)
     , m_task_count (0)
@@ -549,6 +555,7 @@ namespace cubthread
     , m_pool_threads (pool_threads)
     , m_wait_for_task_time (wait_for_task_time)
     , m_name (name == NULL ? "" : name)
+    , m_compensate_func (compensate_func)
   {
     // initialize cores; we'll try to distribute pool evenly to all cores. if core count is not fully contained in
     // pool size, some cores will have one additional worker
@@ -720,6 +727,13 @@ namespace cubthread
   worker_pool<Context>::get_core_count (void) const
   {
     return m_core_count;
+  }
+
+  template<typename Context>
+  std::function<void (typename worker_pool<Context>::task_type *)> &
+  worker_pool<Context>::get_compensate_func (void)
+  {
+    return m_compensate_func;
   }
 
   template<typename Context>
@@ -910,6 +924,7 @@ namespace cubthread
       {
 	// reject task
 	task_p->retire ();
+	finished_task_notification ();
 	return;
       }
 
@@ -919,7 +934,21 @@ namespace cubthread
 	ulock.unlock ();
 
 	assert (refp != NULL);
-	refp->assign_task (task_p, push_time);
+	if (!refp->assign_task (task_p, push_time))
+	  {
+	    // failed to start new thread
+	    auto func = m_parent_pool->get_compensate_func ();
+	    if (func)
+	      {
+		func (task_p);
+		finished_task_notification ();
+	      }
+	    else
+	      {
+		m_task_queue.push (task_p);
+	      }
+	    become_available (*refp);
+	  }
       }
     else
       {
@@ -1061,7 +1090,11 @@ namespace cubthread
 	    // this thread is already stopped and we can start its thread
 	    refp->set_push_time_now ();
 	    refp->set_has_thread ();
-	    refp->start_thread ();
+	    if (!refp->start_thread ())
+	      {
+		refp->set_has_no_thread ();
+		available_stack.append (&refp, 1);
+	      }
 	  }
       }
 
@@ -1140,9 +1173,11 @@ namespace cubthread
   }
 
   template <typename Context>
-  void
+  bool
   worker_pool<Context>::core::worker::assign_task (task<Context> *work_p, cubperf::time_point push_time)
   {
+    int i = 0;
+
     // save push time
     m_push_time = push_time;
 
@@ -1164,31 +1199,48 @@ namespace cubthread
 
 	assert (m_context_p == NULL);
 
-	start_thread ();
+	// try to start new thread
+	for (i = 0; i < 2; i++)
+	  {
+	    if (start_thread ())
+	      {
+		return true;
+	      }
+	    // TODO: need to thread_sleep (100) but this makes the master thread blocked
+	  }
+	// failed to start thread
+	m_has_thread = false;
+	if (m_task_p)
+	  {
+	    m_task_p = NULL;
+	  }
+
+	return false;
       }
+
+    return true;
   }
 
   template <typename Context>
-  void
+  bool
   worker_pool<Context>::core::worker::start_thread (void)
   {
-    assert (m_has_thread);
-
-    //
-    // the next code tries to help visualizing any system errors that can occur during create or detach in debug
-    // mode
-    //
-    // release will basically be reduced to:
-    // std::thread (&worker::run, this).detach ();
-    //
-
+    bool success = true;
     std::thread t;
 
-    auto lambda_create = [&] (void) -> void { t = std::thread (&worker::run, this); };
-    auto lambda_detach = [&] (void) -> void { t.detach (); };
+    assert (m_has_thread);
 
-    wp_call_func_throwing_system_error ("starting thread", lambda_create);
-    wp_call_func_throwing_system_error ("detaching thread", lambda_detach);
+    try
+      {
+	t = std::thread (&worker::run, this);
+	t.detach ();
+      }
+    catch (const std::exception &e)
+      {
+	er_log_debug (ARG_FILE_LINE, "%s\n", e.what ());
+	success = false;
+      }
+    return success;
   }
 
   template <typename Context>
@@ -1444,33 +1496,6 @@ namespace cubthread
       }
   }
 
-  //////////////////////////////////////////////////////////////////////////
-  // other functions
-  //////////////////////////////////////////////////////////////////////////
-
-  template <typename Func>
-  void
-  wp_call_func_throwing_system_error (const char *message, Func &func)
-  {
-#if !defined (NDEBUG)
-    try
-      {
-#endif // DEBUG
-
-	func ();  // no exception catching on release
-
-#if !defined (NDEBUG)
-      }
-    catch (const std::system_error &e)
-      {
-	wp_handle_system_error (message, e);
-      }
-#endif // DEBUG
-  }
-
 } // namespace cubthread
-
-
-
 
 #endif // _THREAD_WORKER_POOL_HPP_
