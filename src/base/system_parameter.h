@@ -533,8 +533,6 @@ enum param_id
 
   PRM_ID_ENABLE_HEAP_FIXED_SCAN,
 
-  PRM_ID_USE_DBLINK_CORR_PUSHDOWN,
-
   /* change PRM_LAST_ID when adding new system parameters */
   PRM_ID_UPDATE_STATISTICS_UPDATE_HISTOGRAM,
 

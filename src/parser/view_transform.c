@@ -7117,7 +7117,8 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 	  dinfo = &derived_table->info.dblink_table;
 	  mq_dblink_clear_corr_keys (parser, dinfo);
 
-	  if (!hint_no_push && prm_get_bool_value (PRM_ID_USE_DBLINK_CORR_PUSHDOWN))
+	  /* comment out this block to disable correlated push-down */
+	  if (!hint_no_push)
 	    {
 	      ncorr = mq_detect_dblink_corr_eq (parser, node, spec);
 	      if (ncorr == 1)
