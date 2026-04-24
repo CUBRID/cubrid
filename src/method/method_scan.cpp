@@ -117,6 +117,12 @@ namespace cubscan
 	      rctx->pop_stack (m_thread_p, m_method_group);
 	    }
 	  m_method_group = nullptr; // will be destroyed by cubmethod::runtime_context
+
+	  std::vector<TP_DOMAIN *>().swap (m_arg_dom_vector);
+	  std::vector<DB_VALUE>().swap (m_arg_vector);
+	  std::vector<bool>().swap (m_arg_use_vector);
+
+	  m_list_id = nullptr;
 	}
     }
 
