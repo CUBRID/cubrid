@@ -123,6 +123,17 @@ extern unsigned int db_on_server;
      (((codeset) == INTL_CODESET_RAW_BITS) ? ((prec+7)/8) :		    \
       INTL_CODESET_MULT (codeset) * (prec))
 
+/* CHAR variable-length storage header (Step 1: fixed 12-byte header)
+ * Layout: [char_count(4)][byte_size(4)][compressed_byte_size(4)][data+padding]
+ * char_count           = number of chars in the value (actual count, incl. padding for fixed-precision)
+ * byte_size            = stored bytes of data + padding (before compression)
+ * compressed_byte_size = 0 (compression added in Step 2)
+ * All fields are stored in network byte order (OR_PUT_INT/or_put_int).
+ */
+#define OR_CHAR_HEADER_SIZE              (OR_INT_SIZE * 3)
+#define OR_CHAR_HEADER_CHAR_COUNT_OFFSET (0)
+#define OR_CHAR_HEADER_BYTE_SIZE_OFFSET  (OR_INT_SIZE)
+#define OR_CHAR_HEADER_CMP_SIZE_OFFSET   (OR_INT_SIZE * 2)
 
 #define BITS_IN_BYTE			8
 #define BITS_TO_BYTES(bit_cnt)		(((bit_cnt) + 7) / 8)
@@ -250,6 +261,7 @@ static void mr_data_readmem_char (OR_BUF * buf, void *mem, TP_DOMAIN * domain, i
 static void mr_freemem_char (void *memptr);
 static void mr_initval_char (DB_VALUE * value, int precision, int scale);
 static int mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy);
+static int mr_lengthval_char_internal (DB_VALUE * value, int disk, int align);
 static int mr_data_lengthval_char (DB_VALUE * value, int disk);
 static int mr_data_writeval_char (OR_BUF * buf, DB_VALUE * value);
 static int mr_writeval_char_internal (OR_BUF * buf, DB_VALUE * value, int align);
@@ -11233,14 +11245,7 @@ const PR_TYPE *tp_Type_string = &tp_String;
 static void
 mr_initmem_char (void *memptr, TP_DOMAIN * domain)
 {
-#if !defined(NDEBUG)
-  int mem_length;
-
-  assert (!IS_FLOATING_PRECISION (domain->precision));
-
-  mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
-  memset (memptr, 0, mem_length);
-#endif
+  *(char **) memptr = NULL;
 }
 
 
@@ -11262,78 +11267,70 @@ static int
 mr_setmem_char (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 {
   int error = NO_ERROR;
-  char *mem;
+  char *cur, *new_, **mem;
   const char *src;
-  int src_precision, src_length, mem_length, pad;
+  int src_size, src_length, new_size;
 
   assert (!IS_FLOATING_PRECISION (domain->precision));
 
-  if (value == NULL)
+  mem = (char **) memptr;
+  cur = *mem;
+
+  if (value == NULL || (src = db_get_string (value)) == NULL)
     {
-      return NO_ERROR;
-    }
-
-  /* Get information from the value */
-  src = db_get_string (value);
-  src_precision = DB_GET_STRING_PRECISION (value);
-  src_length = db_get_string_size (value);	/* size in bytes */
-
-  if (src == NULL)
-    {
-      return NO_ERROR;
-    }
-
-  /* Check for special NTS flag.  This may not be necessary any more. */
-  if (src_length < 0)
-    {
-      src_length = strlen (src);
-    }
-
-
-  /* The only thing we really care about at this point, is the byte length of the string.  The precision could be
-   * checked here but it really isn't necessary for this operation. Calculate the maximum number of bytes we have
-   * available here. The multiplier is dependent on codeset */
-  mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
-
-  if (mem_length < src_length)
-    {
-      /*
-       * should never get here, this is supposed to be caught during domain
-       * validation, need a better error message.
-       */
-      error = ER_OBJ_DOMAIN_CONFLICT;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "");
-    }
-  else
-    {
-      /* copy the value into memory */
-      mem = (char *) memptr;
-      memcpy (mem, src, src_length);
-
-      /*
-       * Check for space padding, if this were a national string, we would
-       * need to be padding with the appropriate space character !
-       */
-      pad = mem_length - src_length;
-      if (pad)
+      if (cur != NULL)
 	{
-	  int i;
-
-	  for (i = src_length; i < mem_length; i++)
-	    {
-	      mem[i] = ' ';
-	    }
+	  db_private_free_and_init (NULL, cur);
+	  mr_initmem_char (memptr, domain);
 	}
+      return NO_ERROR;
     }
+
+  src_size = db_get_string_size (value);	/* byte size (already padded from cast path) */
+  if (src_size < 0)
+    {
+      src_size = strlen (src);
+    }
+
+  /* compute and cache length directly on value when missing */
+  if (value->data.ch.medium.length == -1)
+    {
+      intl_char_count ((unsigned char *) src, src_size, TP_DOMAIN_CODESET (domain), &value->data.ch.medium.length);
+    }
+  src_length = value->data.ch.medium.length;
+
+  new_size = OR_CHAR_HEADER_SIZE + src_size + 1;	/* +1 for NULL terminator */
+  new_ = (char *) db_private_alloc (NULL, new_size);
+  if (new_ == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  if (cur != NULL)
+    {
+      db_private_free_and_init (NULL, cur);
+    }
+
+  /* write header */
+  OR_PUT_INT (new_ + OR_CHAR_HEADER_CHAR_COUNT_OFFSET, src_length);
+  OR_PUT_INT (new_ + OR_CHAR_HEADER_BYTE_SIZE_OFFSET, src_size);
+  OR_PUT_INT (new_ + OR_CHAR_HEADER_CMP_SIZE_OFFSET, 0);
+
+  /* write data — no extra padding (cast path already padded) */
+  char *data = new_ + OR_CHAR_HEADER_SIZE;
+  memcpy (data, src, src_size);
+  data[src_size] = '\0';
+
+  *mem = new_;
   return error;
 }
-
 
 static int
 mr_getmem_char (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 {
-  int mem_length;
-  char *new_;
+  int src_size, src_length, compressed_size;
+  char *new_, *blk, *data;
 
   assert (!IS_FLOATING_PRECISION (domain->precision));
   if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
@@ -11342,32 +11339,38 @@ mr_getmem_char (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
       return ER_FAILED;
     }
 
-  intl_char_size ((unsigned char *) mem, domain->precision, TP_DOMAIN_CODESET (domain), &mem_length);
-  if (mem_length == 0)
+  blk = *(char **) mem;
+  if (blk == NULL)
     {
-      mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
+      db_value_domain_init (value, DB_TYPE_CHAR, domain->precision, 0);
+      value->need_clear = false;
+      return NO_ERROR;
     }
+
+  /* read header (O(1)): [length][src_size][compressed_size] */
+  src_length = OR_GET_INT (blk + OR_CHAR_HEADER_CHAR_COUNT_OFFSET);
+  src_size = OR_GET_INT (blk + OR_CHAR_HEADER_BYTE_SIZE_OFFSET);
+  compressed_size = OR_GET_INT (blk + OR_CHAR_HEADER_CMP_SIZE_OFFSET);
+  data = blk + OR_CHAR_HEADER_SIZE;
 
   if (!copy)
     {
-      new_ = (char *) mem;
+      db_make_char (value, domain->precision, data, src_size, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+      value->data.ch.medium.length = src_length;
+      value->need_clear = false;
     }
   else
     {
-      new_ = (char *) db_private_alloc (NULL, mem_length + 1);
+      new_ = (char *) db_private_alloc (NULL, src_size + 1);
       if (new_ == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
-      memcpy (new_, (char *) mem, mem_length);
-      /* make sure that all outgoing strings are NULL terminated */
-      new_[mem_length] = '\0';
-    }
-
-  db_make_char (value, domain->precision, new_, mem_length, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
-  if (copy)
-    {
+      memcpy (new_, data, src_size);
+      new_[src_size] = '\0';
+      db_make_char (value, domain->precision, new_, src_size, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+      value->data.ch.medium.length = src_length;
       value->need_clear = true;
     }
 
@@ -11377,107 +11380,147 @@ mr_getmem_char (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 static int
 mr_data_lengthmem_char (void *memptr, TP_DOMAIN * domain, int disk)
 {
-  int mem_length;
+  int src_size;
+  char *blk;
 
   assert (!IS_FLOATING_PRECISION (domain->precision));
 
-  mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
+  if (!disk)
+    {
+      return tp_Char.size;	/* sizeof(char*) */
+    }
 
-  return mem_length;
+  if (memptr == NULL)
+    {
+      return 0;
+    }
+
+  blk = *(char **) memptr;
+  if (blk == NULL)
+    {
+      return 0;
+    }
+
+  src_size = OR_GET_INT (blk + OR_CHAR_HEADER_BYTE_SIZE_OFFSET);
+  return OR_CHAR_HEADER_SIZE + src_size;
 }
 
 static int
 mr_index_lengthmem_char (void *memptr, TP_DOMAIN * domain)
 {
-  int mem_length;
+  int src_size;
 
-  assert (!(IS_FLOATING_PRECISION (domain->precision) && memptr == NULL));
+  assert (memptr != NULL);
 
-  if (IS_FLOATING_PRECISION (domain->precision))
-    {
-      memcpy (&mem_length, memptr, OR_INT_SIZE);
-      mem_length += OR_INT_SIZE;
-    }
-  else
-    {
-      mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
-    }
-
-  return mem_length;
+  /* memptr points directly at the disk image (not a char** pointer),
+   * so read byte size from the header at the fixed offset */
+  src_size = OR_GET_INT ((char *) memptr + OR_CHAR_HEADER_BYTE_SIZE_OFFSET);
+  return OR_CHAR_HEADER_SIZE + src_size;
 }
 
 static void
 mr_data_writemem_char (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
 {
-  int mem_length;
+  int src_size;
+  char *blk;
 
   assert (!IS_FLOATING_PRECISION (domain->precision));
 
-  mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
+  blk = *(char **) mem;
+  if (blk == NULL)
+    {
+      return;
+    }
 
-  /*
-   * We simply dump the memory image to disk, it will already have been padded.
-   * If this were a national character string, at this point, we'd have to
-   * decide now to perform a character set conversion.
-   */
-  or_put_data (buf, (char *) mem, mem_length);
+  src_size = OR_GET_INT (blk + OR_CHAR_HEADER_BYTE_SIZE_OFFSET);
+  /* write header + data (blk already contains the full layout) */
+  or_put_data (buf, blk, OR_CHAR_HEADER_SIZE + src_size);
 }
 
 static void
 mr_data_readmem_char (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 {
-  int mem_length, padding;
+  char **memptr, *new_;
+  int src_size, src_length, compressed_size, rc = NO_ERROR;
+  int padding;
 
   assert (!IS_FLOATING_PRECISION (domain->precision));
 
   if (mem == NULL)
     {
-      /*
-       * If we passed in a size, then use it.  Otherwise, determine the
-       * size from the domain.
-       */
       if (size > 0)
 	{
 	  or_advance (buf, size);
 	}
-      else
-	{
-	  mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
-	  or_advance (buf, mem_length);
-	}
+      return;
     }
-  else
+
+  memptr = (char **) mem;
+
+  if (size == 0)
     {
-      mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
+      *memptr = NULL;
+      return;
+    }
 
-      if (size != -1 && mem_length > size)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-	  assert (false);
-	  return;
-	}
-      or_get_data (buf, (char *) mem, mem_length);
+  /* read header: [length][size][compressed_size] */
+  src_length = or_get_int (buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      return;
+    }
+  src_size = or_get_int (buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      return;
+    }
+  compressed_size = or_get_int (buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      return;
+    }
 
-      /*
-       * We should only see padding if the string is contained within a packed
-       * value that had extra padding to ensure alignment.  If we see these,
-       * just pop them out of the buffer.  This shouldn't ever happen for the
-       * "getmem" function, only for the "getval" function.
-       */
-      if (size != -1)
+  new_ = (char *) db_private_alloc (NULL, OR_CHAR_HEADER_SIZE + src_size + 1);
+  if (new_ == NULL)
+    {
+      return;
+    }
+
+  OR_PUT_INT (new_ + OR_CHAR_HEADER_CHAR_COUNT_OFFSET, src_length);
+  OR_PUT_INT (new_ + OR_CHAR_HEADER_BYTE_SIZE_OFFSET, src_size);
+  OR_PUT_INT (new_ + OR_CHAR_HEADER_CMP_SIZE_OFFSET, compressed_size);
+
+  if (src_size > 0)
+    {
+      or_get_data (buf, new_ + OR_CHAR_HEADER_SIZE, src_size);
+    }
+  new_[OR_CHAR_HEADER_SIZE + src_size] = '\0';
+
+  if (size != -1)
+    {
+      padding = size - (OR_CHAR_HEADER_SIZE + src_size);
+      if (padding > 0)
 	{
-	  padding = size - mem_length;
-	  if (padding > 0)
-	    {
-	      or_advance (buf, padding);
-	    }
+	  or_advance (buf, padding);
 	}
     }
+
+  *memptr = new_;
 }
 
 static void
 mr_freemem_char (void *memptr)
 {
+  char *cur;
+
+  if (memptr != NULL)
+    {
+      cur = *(char **) memptr;
+      if (cur != NULL)
+	{
+	  db_private_free_and_init (NULL, cur);
+	}
+    }
 }
 
 static void
@@ -11490,7 +11533,7 @@ static int
 mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   int error = NO_ERROR;
-  int src_precision, src_length;
+  int src_precision, src_size, src_length;
   char *new_;
   const char *src_string;
 
@@ -11509,26 +11552,28 @@ mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       DB_DOMAIN_INIT_CHAR (dest, src_precision);
       /* Get information from the value */
       src_string = db_get_string (src);
-      src_length = db_get_string_size (src);	/* size in bytes */
+      src_size = db_get_string_size (src);	/* byte size */
+      src_length = src->data.ch.medium.length;
 
       /* shouldn't see a NULL string at this point, treat as NULL */
       if (src_string != NULL)
 	{
 	  if (!copy)
 	    {
-	      db_make_char (dest, src_precision, src_string, src_length, db_get_string_codeset (src),
+	      db_make_char (dest, src_precision, src_string, src_size, db_get_string_codeset (src),
 			    db_get_string_collation (src));
+	      dest->data.ch.medium.length = src_length;
 	    }
 	  else
 	    {
 	      /* Check for NTS marker, may not need to do this any more */
-	      if (src_length < 0)
+	      if (src_size < 0)
 		{
-		  src_length = strlen (src_string);
+		  src_size = strlen (src_string);
 		}
 
 	      /* make sure the copy gets a NULL terminator */
-	      new_ = (char *) db_private_alloc (NULL, src_length + 1);
+	      new_ = (char *) db_private_alloc (NULL, src_size + 1);
 	      if (new_ == NULL)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -11536,14 +11581,14 @@ mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 		}
 	      else
 		{
-		  memcpy (new_, src_string, src_length);
-		  new_[src_length] = '\0';
-		  db_make_char (dest, src_precision, new_, src_length, db_get_string_codeset (src),
+		  memcpy (new_, src_string, src_size);
+		  new_[src_size] = '\0';
+		  db_make_char (dest, src_precision, new_, src_size, db_get_string_codeset (src),
 				db_get_string_collation (src));
+		  dest->data.ch.medium.length = src_length;
 		  dest->need_clear = true;
 		}
 	    }
-	  dest->data.ch.medium.length = src->data.ch.medium.length;
 	}
     }
 
@@ -11551,17 +11596,9 @@ mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_index_lengthval_char (DB_VALUE * value)
+mr_lengthval_char_internal (DB_VALUE * value, int disk, int align)
 {
-  return mr_data_lengthval_char (value, 1);
-}
-
-/*
- */
-static int
-mr_data_lengthval_char (DB_VALUE * value, int disk)
-{
-  int packed_length, src_precision;
+  int packed_length, src_size;
 
   const char *src = db_get_string (value);
   if (src == NULL)
@@ -11569,38 +11606,38 @@ mr_data_lengthval_char (DB_VALUE * value, int disk)
       return 0;
     }
 
-  src_precision = db_value_precision (value);
-  if (!IS_FLOATING_PRECISION (src_precision))
+  /* value arrives padded from cast path; floating precision (literal) needs no padding.
+   * Either way size alone is sufficient — no char_count dependency. */
+  src_size = db_get_string_size (value);
+  if (src_size < 0)
     {
-      packed_length = STR_SIZE (src_precision, db_get_string_codeset (value));
-    }
-  else
-    {
-      /*
-       * Precision is "floating", calculate the effective precision based on the
-       * string length.
-       * Should be rounding this up so it is a proper multiple of the charset
-       * width ?
-       */
-      packed_length = db_get_string_size (value);
-      if (packed_length < 0)
-	{
-	  packed_length = strlen (src);
-	}
-
-      /* add in storage for a size prefix on the packed value. */
-      packed_length += OR_INT_SIZE;
+      src_size = strlen (src);
     }
 
-  /*
-   * NOTE: We do NOT perform padding here, if this is used in the context
-   * of a packed value, the or_put_value() family of functions must handle
-   * their own padding, this is because "lengthval" and "writeval" can be
-   * used to place values into the disk representation of instances and
-   * there can be no padding in there.
-   */
+  packed_length = OR_CHAR_HEADER_SIZE + src_size;
+
+  if (align == INT_ALIGNMENT)
+    {
+      /* NULL terminator + 4-byte alignment padding (same as VARCHAR INT_ALIGNMENT path) */
+      packed_length += OR_BYTE_SIZE;
+      packed_length = DB_ALIGN (packed_length, INT_ALIGNMENT);
+    }
 
   return packed_length;
+}
+
+static int
+mr_index_lengthval_char (DB_VALUE * value)
+{
+  return mr_lengthval_char_internal (value, 1, CHAR_ALIGNMENT);
+}
+
+/*
+ */
+static int
+mr_data_lengthval_char (DB_VALUE * value, int disk)
+{
+  return mr_lengthval_char_internal (value, disk, INT_ALIGNMENT);
 }
 
 
@@ -11622,7 +11659,7 @@ mr_data_writeval_char (OR_BUF * buf, DB_VALUE * value)
 static int
 mr_writeval_char_internal (OR_BUF * buf, DB_VALUE * value, int align)
 {
-  int src_precision, src_length, packed_length, pad;
+  int src_length, src_size;
   const char *src;
   int rc = NO_ERROR;
 
@@ -11632,41 +11669,35 @@ mr_writeval_char_internal (OR_BUF * buf, DB_VALUE * value, int align)
       return rc;
     }
 
-  src_precision = db_value_precision (value);
-
-  if (!IS_FLOATING_PRECISION (src_precision))
+  src_size = db_get_string_size (value);	/* byte size (already padded from cast path, or literal with no padding) */
+  if (src_size < 0)
     {
-      src_length = db_get_string_size (value);	/* size in bytes */
+      src_size = strlen (src);
+    }
 
-      if (src_length < 0)
-	{
-	  src_length = strlen (src);
-	}
+  /* compute and cache char count directly on the value when missing */
+  if (value->data.ch.medium.length == -1)
+    {
+      intl_char_count ((unsigned char *) src, src_size, db_get_string_codeset (value), &value->data.ch.medium.length);
+    }
+  src_length = value->data.ch.medium.length;
 
-      packed_length = STR_SIZE (src_precision, db_get_string_codeset (value));
-
-      if (packed_length < src_length)
+  /* write header: [length][size][compressed_size=0]
+   * Both alignments write in network byte order to match OR_GET_INT / or_get_int
+   * readers in readval, lengthmem, and cmpdisk. */
+  if (align == INT_ALIGNMENT)
+    {
+      rc = or_put_int (buf, src_length);
+      if (rc != NO_ERROR)
 	{
-	  /* should have caught this by now, truncate silently */
-	  rc = or_put_data (buf, src, packed_length);
+	  return rc;
 	}
-      else
+      rc = or_put_int (buf, src_size);
+      if (rc != NO_ERROR)
 	{
-	  rc = or_put_data (buf, src, src_length);
-	  /*
-	   * Check for space padding, if this were a national string, we
-	   * would need to be padding with the appropriate space character !
-	   */
-	  pad = packed_length - src_length;
-	  if (pad)
-	    {
-	      int i;
-	      for (i = src_length; i < packed_length; i++)
-		{
-		  rc = or_put_byte (buf, (int) ' ');
-		}
-	    }
+	  return rc;
 	}
+      rc = or_put_int (buf, 0);
       if (rc != NO_ERROR)
 	{
 	  return rc;
@@ -11674,34 +11705,37 @@ mr_writeval_char_internal (OR_BUF * buf, DB_VALUE * value, int align)
     }
   else
     {
-      /*
-       * This is a "floating" precision value. Pack what we can based on the
-       * string size.  Note that for this to work, this can only be packed as
-       * part of a domain tagged value and we must include a length prefix
-       * after the domain.
-       */
-      packed_length = db_get_string_size (value);
-      if (packed_length < 0)
+      /* CHAR_ALIGNMENT path: write header in network byte order to match OR_GET_INT readers
+       * (mr_index_lengthmem_char, mr_cmpdisk_char_internal, etc.) */
+      OR_PUT_INT (buf->ptr + OR_CHAR_HEADER_CHAR_COUNT_OFFSET, src_length);
+      OR_PUT_INT (buf->ptr + OR_CHAR_HEADER_BYTE_SIZE_OFFSET, src_size);
+      OR_PUT_INT (buf->ptr + OR_CHAR_HEADER_CMP_SIZE_OFFSET, 0);
+      rc = or_advance (buf, OR_CHAR_HEADER_SIZE);
+      if (rc != NO_ERROR)
 	{
-	  packed_length = strlen (src);
-	}
-
-      /* store the size prefix */
-      if (align == INT_ALIGNMENT)
-	{
-	  rc = or_put_int (buf, packed_length);
-	}
-      else
-	{
-	  rc = or_put_data (buf, (char *) (&packed_length), OR_INT_SIZE);
-	}
-      if (rc == NO_ERROR)
-	{
-	  /* store the data */
-	  rc = or_put_data (buf, src, packed_length);
-	  /* there is no blank padding in this case */
+	  return rc;
 	}
     }
+
+  /* write data — no extra padding (cast path already padded; literal needs none) */
+  memcpy (buf->ptr, src, src_size);
+  rc = or_advance (buf, src_size);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  /* INT_ALIGNMENT (heap/disk): add NULL terminator + 4-byte alignment padding */
+  if (align == INT_ALIGNMENT)
+    {
+      rc = or_put_byte (buf, 0);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+      rc = or_put_align32 (buf);
+    }
+
   return rc;
 }
 
@@ -11723,181 +11757,117 @@ static int
 mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int disk_size, bool copy, char *copy_buf,
 			  int copy_buf_len, int align)
 {
-  int mem_length, padding;
-  int str_length, precision;
+  int padding, src_size, src_length, compressed_size, precision;
   char *new_;
   int rc = NO_ERROR;
-  precision = domain->precision;
+
   if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
     {
       assert (false);
       return ER_FAILED;
     }
 
-  if (IS_FLOATING_PRECISION (domain->precision))
+  /* read header: [length][size][compressed_size] */
+  if (align == INT_ALIGNMENT)
     {
-      if (align == INT_ALIGNMENT)
-	{
-	  mem_length = or_get_int (buf, &rc);
-	}
-      else
-	{
-	  rc = or_get_data (buf, (char *) (&mem_length), OR_INT_SIZE);
-	}
+      src_length = or_get_int (buf, &rc);
       if (rc != NO_ERROR)
 	{
 	  return rc;
 	}
-
-      if (value == NULL)
+      src_size = or_get_int (buf, &rc);
+      if (rc != NO_ERROR)
 	{
-	  rc = or_advance (buf, mem_length);
+	  return rc;
 	}
-      else if (!copy)
+      compressed_size = or_get_int (buf, &rc);
+      if (rc != NO_ERROR)
 	{
-	  db_make_char (value, TP_FLOATING_PRECISION_VALUE, buf->ptr, mem_length, TP_DOMAIN_CODESET (domain),
-			TP_DOMAIN_COLLATION (domain));
-	  value->need_clear = false;
-	  rc = or_advance (buf, mem_length);
-	}
-      else
-	{
-	  if (copy_buf && copy_buf_len >= mem_length + 1)
-	    {
-	      /* read buf image into the copy_buf */
-	      new_ = copy_buf;
-	    }
-	  else
-	    {
-	      /* Allocate storage for the string including the kludge NULL terminator */
-	      new_ = (char *) db_private_alloc (NULL, mem_length + 1);
-	    }
-
-	  if (new_ == NULL)
-	    {
-	      /* need to be able to return errors ! */
-	      db_value_domain_init (value, TP_DOMAIN_TYPE (domain), TP_FLOATING_PRECISION_VALUE, 0);
-	      return ER_FAILED;
-	    }
-	  else
-	    {
-	      rc = or_get_data (buf, new_, mem_length);
-	      if (rc != NO_ERROR)
-		{
-		  if (new_ != copy_buf)
-		    {
-		      db_private_free_and_init (NULL, new_);
-		    }
-		  return rc;
-		}
-	      new_[mem_length] = '\0';	/* append the kludge NULL terminator */
-	      db_make_char (value, TP_FLOATING_PRECISION_VALUE, new_, mem_length, TP_DOMAIN_CODESET (domain),
-			    TP_DOMAIN_COLLATION (domain));
-	      value->need_clear = (new_ != copy_buf) ? true : false;
-	    }
+	  return rc;
 	}
     }
   else
     {
-      /*
-       * Normal fixed width char(n) whose size can be determined by looking at
-       * the domain.
-       */
-      mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
+      /* CHAR_ALIGNMENT path: read header in network byte order (matches mr_writeval_char_internal) */
+      src_length = OR_GET_INT (buf->ptr + OR_CHAR_HEADER_CHAR_COUNT_OFFSET);
+      src_size = OR_GET_INT (buf->ptr + OR_CHAR_HEADER_BYTE_SIZE_OFFSET);
+      compressed_size = OR_GET_INT (buf->ptr + OR_CHAR_HEADER_CMP_SIZE_OFFSET);
+      rc = or_advance (buf, OR_CHAR_HEADER_SIZE);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+    }
 
-      if (disk_size != -1 && mem_length > disk_size)
-	{
-	  /*
-	   * If we're low here, we could just read what we have and make a
-	   * smaller value.  Still the domain should match at this point.
-	   */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-	  assert (false);
-	  return ER_FAILED;
-	}
+  precision = domain->precision;
 
-      if (value == NULL)
+  if (value == NULL)
+    {
+      rc = or_advance (buf, src_size);
+    }
+  else if (disk_size == 0)
+    {
+      db_value_domain_init (value, DB_TYPE_CHAR, precision, 0);
+    }
+  else if (!copy)
+    {
+      /* peek path: use buf->ptr directly (zero-copy), size from header (O(1)) */
+      db_make_char (value, precision, buf->ptr, src_size, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+      value->data.ch.medium.length = src_length;
+      value->need_clear = false;
+      rc = or_advance (buf, src_size);
+    }
+  else
+    {
+      if (copy_buf && copy_buf_len >= src_size + 1)
 	{
-	  rc = or_advance (buf, mem_length);
-	}
-      else if (disk_size == 0)
-	{
-	  db_value_domain_init (value, DB_TYPE_CHAR, precision, 0);
-	}
-      else if (!copy)
-	{
-	  intl_char_size ((unsigned char *) buf->ptr, domain->precision, TP_DOMAIN_CODESET (domain), &str_length);
-	  if (str_length == 0)
-	    {
-	      str_length = mem_length;
-	    }
-	  db_make_char (value, precision, buf->ptr, str_length, TP_DOMAIN_CODESET (domain),
-			TP_DOMAIN_COLLATION (domain));
-	  value->need_clear = false;
-	  rc = or_advance (buf, mem_length);
+	  new_ = copy_buf;
 	}
       else
 	{
-	  if (copy_buf && copy_buf_len >= mem_length + 1)
-	    {
-	      /* read buf image into the copy_buf */
-	      new_ = copy_buf;
-	    }
-	  else
-	    {
-	      /*
-	       * Allocate storage for the string including the kludge NULL
-	       * terminator
-	       */
-	      new_ = (char *) db_private_alloc (NULL, mem_length + 1);
-	    }
-	  if (new_ == NULL)
-	    {
-	      /* need to be able to return errors ! */
-	      db_value_domain_init (value, TP_DOMAIN_TYPE (domain), domain->precision, 0);
-	      return ER_FAILED;
-	    }
-	  else
-	    {
-	      int actual_size = 0;
-	      rc = or_get_data (buf, new_, mem_length);
-	      if (rc != NO_ERROR)
-		{
-		  if (new_ != copy_buf)
-		    {
-		      db_private_free_and_init (NULL, new_);
-		    }
-		  return rc;
-		}
-	      intl_char_size ((unsigned char *) new_, domain->precision, TP_DOMAIN_CODESET (domain), &actual_size);
-	      if (actual_size == 0)
-		{
-		  actual_size = mem_length;
-		}
-	      new_[actual_size] = '\0';	/* append the kludge NULL terminator */
-	      db_make_char (value, domain->precision, new_, actual_size, TP_DOMAIN_CODESET (domain),
-			    TP_DOMAIN_COLLATION (domain));
-	      value->need_clear = (new_ != copy_buf) ? true : false;
-	    }
+	  new_ = (char *) db_private_alloc (NULL, src_size + 1);
 	}
-
-      if (rc == NO_ERROR)
+      if (new_ == NULL)
 	{
-	  /*
-	   * We should only see padding if the string is contained within a
-	   * packed value that had extra padding to ensure alignment.  If we
-	   * see these, just pop them out of the buffer.
-	   */
-	  if (disk_size != -1)
+	  db_value_domain_init (value, TP_DOMAIN_TYPE (domain), precision, 0);
+	  return ER_FAILED;
+	}
+      else
+	{
+	  rc = or_get_data (buf, new_, src_size);
+	  if (rc != NO_ERROR)
 	    {
-	      padding = disk_size - mem_length;
-	      if (padding > 0)
+	      if (new_ != copy_buf)
 		{
-		  rc = or_advance (buf, padding);
+		  db_private_free_and_init (NULL, new_);
 		}
+	      return rc;
 	    }
+	  new_[src_size] = '\0';
+	  db_make_char (value, precision, new_, src_size, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	  value->data.ch.medium.length = src_length;
+	  value->need_clear = (new_ != copy_buf) ? true : false;
 	}
     }
+
+  if (rc == NO_ERROR && disk_size != -1)
+    {
+      padding = disk_size - OR_CHAR_HEADER_SIZE - src_size;
+      if (padding > 0)
+	{
+	  rc = or_advance (buf, padding);
+	}
+    }
+  else if (rc == NO_ERROR && align == INT_ALIGNMENT)
+    {
+      /* skip NULL terminator + 4-byte alignment padding written by mr_writeval_char_internal */
+      rc = or_advance (buf, OR_BYTE_SIZE);
+      if (rc == NO_ERROR)
+	{
+	  rc = or_get_align32 (buf);
+	}
+    }
+
   return rc;
 }
 
@@ -11927,31 +11897,12 @@ mr_cmpdisk_char_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
   bool ti = true;
   static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
-  if (IS_FLOATING_PRECISION (domain->precision))
-    {
-      if (align == INT_ALIGNMENT)
-	{
-	  mem_length1 = OR_GET_INT (mem1);
-	  mem_length2 = OR_GET_INT (mem2);
-	}
-      else
-	{
-	  memcpy (&mem_length1, mem1, OR_INT_SIZE);
-	  memcpy (&mem_length2, mem2, OR_INT_SIZE);
-	}
-      mem1 = (char *) mem1 + OR_INT_SIZE;
-      mem2 = (char *) mem2 + OR_INT_SIZE;
-    }
-  else
-    {
-      /*
-       * Normal fixed width char(n) whose size can be determined by looking at
-       * the domain.
-       * Needs NCHAR work here to separate the dependencies on disk_size and
-       * mem_size.
-       */
-      mem_length1 = mem_length2 = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
-    }
+  /* read byte size from header (O(1)); header is stored in network byte order by both alignments */
+  mem_length1 = OR_GET_INT ((char *) mem1 + OR_CHAR_HEADER_BYTE_SIZE_OFFSET);
+  mem_length2 = OR_GET_INT ((char *) mem2 + OR_CHAR_HEADER_BYTE_SIZE_OFFSET);
+
+  mem1 = (char *) mem1 + OR_CHAR_HEADER_SIZE;
+  mem2 = (char *) mem2 + OR_CHAR_HEADER_SIZE;
 
   if (!ignore_trailing_space)
     {
@@ -12060,7 +12011,7 @@ mr_cmpval_char2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coerci
 #endif
 
 const PR_TYPE tp_Char = {
-  "character", DB_TYPE_CHAR, 0, 0, 0, 1,
+  "character", DB_TYPE_CHAR, 1, sizeof (const char *), 0, 1,
   mr_initmem_char,
   mr_initval_char,
   mr_setmem_char,
