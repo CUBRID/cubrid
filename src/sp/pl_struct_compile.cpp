@@ -70,6 +70,7 @@ namespace cubpl
     : err_code (-1)
     , err_line (0)
     , err_column (0)
+    , sql_data_access (SP_SQL_TYPE_UNKNOWN)
   {
     //
   }

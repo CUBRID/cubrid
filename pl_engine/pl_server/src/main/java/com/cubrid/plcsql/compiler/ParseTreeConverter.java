@@ -2376,14 +2376,14 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public StmtCommit visitCommit_statement(Commit_statementContext ctx) {
         connectionRequired = true;
-        updateDataAccessLevel(ServerConstants.SP_SQL_TYPE_CONTAINS_SQL);
+        setDataAccessLevel(ServerConstants.SP_SQL_TYPE_CONTAINS_SQL);
         return new StmtCommit(ctx);
     }
 
     @Override
     public StmtRollback visitRollback_statement(Rollback_statementContext ctx) {
         connectionRequired = true;
-        updateDataAccessLevel(ServerConstants.SP_SQL_TYPE_CONTAINS_SQL);
+        setDataAccessLevel(ServerConstants.SP_SQL_TYPE_CONTAINS_SQL);
         return new StmtRollback(ctx);
     }
 
@@ -2994,7 +2994,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
     }
 
-    private void updateDataAccessLevel(int level) {
+    private void setDataAccessLevel(int level) {
 
         if (level > this.dataAccessLevel) {
             this.dataAccessLevel = level;
@@ -3015,7 +3015,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 case ServerConstants.CUBRID_STMT_DELETE:
                 case ServerConstants.CUBRID_STMT_TRUNCATE:
                 case ServerConstants.CUBRID_STMT_MERGE:
-                    updateDataAccessLevel(ServerConstants.SP_SQL_TYPE_MODIFIES_SQL_DATA);
+                    setDataAccessLevel(ServerConstants.SP_SQL_TYPE_MODIFIES_SQL_DATA);
                     break;
 
                 case ServerConstants.CUBRID_STMT_SELECT:
@@ -3032,7 +3032,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                             }
                         }
                     }
-                    updateDataAccessLevel(dataAccessLevel);
+                    setDataAccessLevel(dataAccessLevel);
                     break;
 
                 default:
