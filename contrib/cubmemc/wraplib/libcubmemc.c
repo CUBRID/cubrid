@@ -80,30 +80,44 @@ typedef enum
 } CUBMEMC_INCDEC_CMD;
 
 static unsigned int string_hash (const char *k1);
-static int check_obj_and_get_attrs (DB_OBJECT * obj, char **name, char **server_list, char **behavior);
+static int check_obj_and_get_attrs (DB_OBJECT * obj, char **name,
+				    char **server_list, char **behavior);
 static void delete_cache_entry_func (void *d);
 static int lazy_init_cache_class_dictionary ();
 
-static int populate_one_server (memcached_st * memc, const char *server, const char *port);
-static int parse_server_list_with_population (const char *server_list, memcached_st * memc);
-static int parse_behavior_with_setting (const char *behavior, memcached_st * mc);
-static int create_and_init_memcached (memcached_st ** memc, const char *server_list, const char *behavior);
+static int populate_one_server (memcached_st * memc, const char *server,
+				const char *port);
+static int parse_server_list_with_population (const char *server_list,
+					      memcached_st * memc);
+static int parse_behavior_with_setting (const char *behavior,
+					memcached_st * mc);
+static int create_and_init_memcached (memcached_st ** memc,
+				      const char *server_list,
+				      const char *behavior);
 #define GET_FLAG_FORCE   0x01
 static int get_cache_entry (const char *name, int flag,
-			    const char *server_list, const char *behavior, CACHE_DICT_ENTRY ** e);
-static METHOD_HOUSEKEEP *method_housekeep_begin (DB_OBJECT * obj, METHOD_HOUSEKEEP * hk);
+			    const char *server_list, const char *behavior,
+			    CACHE_DICT_ENTRY ** e);
+static METHOD_HOUSEKEEP *method_housekeep_begin (DB_OBJECT * obj,
+						 METHOD_HOUSEKEEP * hk);
 static void method_housekeep_end (METHOD_HOUSEKEEP * hk);
 static const char *my_strerror (int error_code);
 static int get_key_from_dbval (DB_VALUE * db_val, char **val, int *len);
-static int get_value_from_dbval (DB_VALUE * db_val, char **val, int *len, CUBMEMC_VALUE_TYPE * type);
+static int get_value_from_dbval (DB_VALUE * db_val, char **val, int *len,
+				 CUBMEMC_VALUE_TYPE * type);
 static int coerce_value_to_dbval (char **value_p, size_t * value_len,
-				  CUBMEMC_VALUE_TYPE value_type, CUBMEMC_VALUE_TYPE target_type, DB_VALUE * db_val);
-static void my_cubmemc_get (DB_OBJECT * obj, DB_VALUE * return_arg, DB_VALUE * key, CUBMEMC_VALUE_TYPE type);
+				  CUBMEMC_VALUE_TYPE value_type,
+				  CUBMEMC_VALUE_TYPE target_type,
+				  DB_VALUE * db_val);
+static void my_cubmemc_get (DB_OBJECT * obj, DB_VALUE * return_arg,
+			    DB_VALUE * key, CUBMEMC_VALUE_TYPE type);
 static void cubmemc_storage_command (CUBMEMC_STORAGE_CMD cmd, DB_OBJECT * obj,
 				     DB_VALUE * return_arg, DB_VALUE * key,
-				     DB_VALUE * value, DB_VALUE * expiration, DB_VALUE * cas);
+				     DB_VALUE * value, DB_VALUE * expiration,
+				     DB_VALUE * cas);
 static void cubmemc_incdec_command (CUBMEMC_INCDEC_CMD cmd, DB_OBJECT * obj,
-				    DB_VALUE * return_arg, DB_VALUE * key, DB_VALUE * offset);
+				    DB_VALUE * return_arg, DB_VALUE * key,
+				    DB_VALUE * offset);
 
 /* Cache dictionary */
 static dict *cache_Class_dictionary = NULL;
@@ -158,7 +172,8 @@ string_hash (const char *k)
  *
  */
 static int
-check_obj_and_get_attrs (DB_OBJECT * obj, char **name, char **server_list, char **behavior)
+check_obj_and_get_attrs (DB_OBJECT * obj, char **name, char **server_list,
+			 char **behavior)
 {
   int ret;
   char *class_name;
@@ -186,26 +201,30 @@ check_obj_and_get_attrs (DB_OBJECT * obj, char **name, char **server_list, char 
 
   /* Check and get the value of server_list attribute */
   server_list_attr = db_get_class_attribute (obj, CACHE_ATTR_SERVER_LIST);
-  if (server_list_attr == NULL || db_attribute_type (server_list_attr) != DB_TYPE_STRING)
+  if (server_list_attr == NULL
+      || db_attribute_type (server_list_attr) != DB_TYPE_STRING)
     {
       return CUBMEMC_ERROR_SERVER_LIST;
     }
 
   val = db_attribute_default (server_list_attr);
-  if (DB_VALUE_TYPE (val) != DB_TYPE_STRING || (server_list_p = db_get_string (val)) == NULL)
+  if (DB_VALUE_TYPE (val) != DB_TYPE_STRING
+      || (server_list_p = db_get_string (val)) == NULL)
     {
       return CUBMEMC_ERROR_SERVER_LIST;
     }
 
   /* Check and get the value of  behavior attribute */
   behavior_attr = db_get_class_attribute (obj, CACHE_ATTR_BEHAVIOR);
-  if (behavior_attr == NULL || db_attribute_type (behavior_attr) != DB_TYPE_STRING)
+  if (behavior_attr == NULL
+      || db_attribute_type (behavior_attr) != DB_TYPE_STRING)
     {
       return CUBMEMC_ERROR_BEHAVIOR;
     }
 
   val = db_attribute_default (behavior_attr);
-  if (DB_VALUE_TYPE (val) != DB_TYPE_STRING || (behavior_p = db_get_string (val)) == NULL)
+  if (DB_VALUE_TYPE (val) != DB_TYPE_STRING
+      || (behavior_p = db_get_string (val)) == NULL)
     {
       return CUBMEMC_ERROR_BEHAVIOR;
     }
@@ -227,7 +246,8 @@ check_obj_and_get_attrs (DB_OBJECT * obj, char **name, char **server_list, char 
  * Note: this function does not check the value of 'server' and 'port' argument
  */
 static int
-populate_one_server (memcached_st * memc, const char *server, const char *port)
+populate_one_server (memcached_st * memc, const char *server,
+		     const char *port)
 {
   memcached_return_t mret;
   int port_id;
@@ -256,7 +276,8 @@ populate_one_server (memcached_st * memc, const char *server, const char *port)
  * Note: parse with simple FSM. Use lex/yacc to be more conservative.
  */
 static int
-parse_server_list_with_population (const char *server_list, memcached_st * memc)
+parse_server_list_with_population (const char *server_list,
+				   memcached_st * memc)
 {
   enum
   { SL_SERVER, SL_PORT } fsm_status;
@@ -327,7 +348,9 @@ parse_server_list_with_population (const char *server_list, memcached_st * memc)
 	}
       else
 	{
-	  if (curr_bufp - bufp > ((fsm_status == SL_SERVER) ? CACHE_ATTR_SERVER_LIST_MAX_LEN : 10))
+	  if (curr_bufp - bufp >
+	      ((fsm_status ==
+		SL_SERVER) ? CACHE_ATTR_SERVER_LIST_MAX_LEN : 10))
 	    {
 	      return CUBMEMC_ERROR_SERVER_LIST_FORMAT;
 	    }
@@ -390,7 +413,8 @@ parse_behavior_with_setting (const char *behavior, memcached_st * mc)
  * behavior: behavior string
  */
 static int
-create_and_init_memcached (memcached_st ** memc, const char *server_list, const char *behavior)
+create_and_init_memcached (memcached_st ** memc, const char *server_list,
+			   const char *behavior)
 {
   int ret = CUBMEMC_OK;
   memcached_st *mc = NULL;
@@ -438,7 +462,8 @@ error:
  * e(out): cache directory entry
  */
 static int
-get_cache_entry (const char *name, int flag, const char *server_list, const char *behavior, CACHE_DICT_ENTRY ** e)
+get_cache_entry (const char *name, int flag, const char *server_list,
+		 const char *behavior, CACHE_DICT_ENTRY ** e)
 {
   CACHE_DICT_ENTRY *entry;
 
@@ -482,11 +507,10 @@ get_cache_entry (const char *name, int flag, const char *server_list, const char
 	    {
 	      free (b);
 	    }
-	  free (entry);
 	  return CUBMEMC_ERROR_OUT_OF_MEMORY;
 	}
 
-      /* create memcached handle and initialize using server_list and
+      /* create memcached handle and initialize using server_list and 
          behavior */
       memc = NULL;
       ret = create_and_init_memcached (&memc, server_list, behavior);
@@ -495,8 +519,6 @@ get_cache_entry (const char *name, int flag, const char *server_list, const char
 	  free (n);
 	  free (s);
 	  free (b);
-	  free (entry);
-	  return ret;
 	}
 
       entry->name = n;
@@ -555,7 +577,8 @@ lazy_init_cache_class_dictionary ()
          key is entry->name, so we do not provide key delete function.
        */
       dct = hashtable_dict_new ((dict_cmp_func) strcmp,
-				(dict_hsh_func) string_hash, NULL, delete_cache_entry_func, 1021);
+				(dict_hsh_func) string_hash, NULL,
+				delete_cache_entry_func, 1021);
       if (dct == NULL)
 	{
 	  return CUBMEMC_ERROR_OUT_OF_MEMORY;
@@ -587,7 +610,8 @@ method_housekeep_begin (DB_OBJECT * obj, METHOD_HOUSEKEEP * hk)
   assert (hk != NULL);
 
   /* Check object and get attributes */
-  ret = check_obj_and_get_attrs (obj, &hk->name, &hk->server_list, &hk->behavior);
+  ret =
+    check_obj_and_get_attrs (obj, &hk->name, &hk->server_list, &hk->behavior);
   if (ret != CUBMEMC_OK)
     {
       hk->error_code = ret;
@@ -604,7 +628,9 @@ method_housekeep_begin (DB_OBJECT * obj, METHOD_HOUSEKEEP * hk)
 
   /* Get cache dictionary entry */
   entry = NULL;
-  ret = get_cache_entry (hk->name, GET_FLAG_FORCE, hk->server_list, hk->behavior, &entry);
+  ret =
+    get_cache_entry (hk->name, GET_FLAG_FORCE, hk->server_list, hk->behavior,
+		     &entry);
   if (ret != CUBMEMC_OK)
     {
       hk->error_code = ret;
@@ -615,7 +641,8 @@ method_housekeep_begin (DB_OBJECT * obj, METHOD_HOUSEKEEP * hk)
   /* Check metadata change */
   if (strncmp (hk->server_list, entry->server_list,
 	       CACHE_ATTR_SERVER_LIST_MAX_LEN) != 0
-      || strncmp (hk->behavior, entry->behavior, CACHE_ATTR_BEHAVIOR_MAX_LEN) != 0)
+      || strncmp (hk->behavior, entry->behavior,
+		  CACHE_ATTR_BEHAVIOR_MAX_LEN) != 0)
     {
       /* remove */
       ret = dict_remove (cache_Class_dictionary, hk->name, 1);
@@ -627,7 +654,9 @@ method_housekeep_begin (DB_OBJECT * obj, METHOD_HOUSEKEEP * hk)
 
       /* force get */
       entry = NULL;
-      ret = get_cache_entry (hk->name, GET_FLAG_FORCE, hk->server_list, hk->behavior, &entry);
+      ret =
+	get_cache_entry (hk->name, GET_FLAG_FORCE, hk->server_list,
+			 hk->behavior, &entry);
       if (ret != CUBMEMC_OK)
 	{
 	  hk->error_code = ret;
@@ -731,11 +760,7 @@ get_key_from_dbval (DB_VALUE * db_val, char **val, int *len)
     {
     case DB_TYPE_CHAR:
       {
-	v = db_get_char (db_val);
-	if (v != NULL)
-	  {
-	    sz = db_get_string_size (db_val);
-	  }
+	v = db_get_char (db_val, &sz);
       }
       break;
 
@@ -744,7 +769,7 @@ get_key_from_dbval (DB_VALUE * db_val, char **val, int *len)
 	v = db_get_string (db_val);
 	if (v != NULL)
 	  {
-	    sz = db_get_string_size (db_val);
+	    sz = strlen (v);
 	  }
       }
       break;
@@ -758,7 +783,8 @@ get_key_from_dbval (DB_VALUE * db_val, char **val, int *len)
 }
 
 static int
-get_value_from_dbval (DB_VALUE * db_val, char **val, int *len, CUBMEMC_VALUE_TYPE * type)
+get_value_from_dbval (DB_VALUE * db_val, char **val, int *len,
+		      CUBMEMC_VALUE_TYPE * type)
 {
   char *v;
   int sz;
@@ -777,11 +803,7 @@ get_value_from_dbval (DB_VALUE * db_val, char **val, int *len, CUBMEMC_VALUE_TYP
     {
     case DB_TYPE_CHAR:
       {
-	v = db_get_char (db_val);
-	if (v != NULL)
-	  {
-	    sz = db_get_string_size (db_val);
-	  }
+	v = db_get_char (db_val, &sz);
 	value_type = VALUE_TYPE_STRING;
       }
       break;
@@ -824,7 +846,8 @@ get_value_from_dbval (DB_VALUE * db_val, char **val, int *len, CUBMEMC_VALUE_TYP
  * error_code(in): error code
  */
 void
-cubmemc_strerror (DB_OBJECT * obj, DB_VALUE * return_arg, DB_VALUE * error_code)
+cubmemc_strerror (DB_OBJECT * obj, DB_VALUE * return_arg,
+		  DB_VALUE * error_code)
 {
   int ret;
   char *msg;
@@ -885,7 +908,8 @@ cubmemc_strerror (DB_OBJECT * obj, DB_VALUE * return_arg, DB_VALUE * error_code)
  */
 static int
 coerce_value_to_dbval (char **value_p, size_t * value_len,
-		       CUBMEMC_VALUE_TYPE value_type, CUBMEMC_VALUE_TYPE target_type, DB_VALUE * db_val)
+		       CUBMEMC_VALUE_TYPE value_type,
+		       CUBMEMC_VALUE_TYPE target_type, DB_VALUE * db_val)
 {
   CUBMEMC_VALUE_TYPE resolved_type;
   char *vp;
@@ -901,7 +925,8 @@ coerce_value_to_dbval (char **value_p, size_t * value_len,
       return CUBMEMC_ERROR_INVALID_VALUE_TYPE;
     }
 
-  if (target_type != VALUE_TYPE_ASIS && target_type != VALUE_TYPE_STRING && target_type != VALUE_TYPE_BINARY)
+  if (target_type != VALUE_TYPE_ASIS && target_type != VALUE_TYPE_STRING &&
+      target_type != VALUE_TYPE_BINARY)
     {
       assert (0);		/* my fault */
       return CUBMEMC_ERROR_INVALID_VALUE_TYPE;
@@ -987,7 +1012,8 @@ coerce_value_to_dbval (char **value_p, size_t * value_len,
  * target_type(in): target return type
  */
 static void
-my_cubmemc_get (DB_OBJECT * obj, DB_VALUE * return_arg, DB_VALUE * key, CUBMEMC_VALUE_TYPE target_type)
+my_cubmemc_get (DB_OBJECT * obj, DB_VALUE * return_arg,
+		DB_VALUE * key, CUBMEMC_VALUE_TYPE target_type)
 {
   METHOD_HOUSEKEEP housekeep, *hk;
   memcached_return_t mret;
@@ -1020,7 +1046,8 @@ my_cubmemc_get (DB_OBJECT * obj, DB_VALUE * return_arg, DB_VALUE * key, CUBMEMC_
   /* Call memcached_get() */
   value_len = 0;
   value_type = VALUE_TYPE_NULL;
-  value_p = memcached_get (hk->entry->memc, key_p, (size_t) key_len, &value_len, &value_type, &mret);
+  value_p = memcached_get (hk->entry->memc, key_p, (size_t) key_len,
+			   &value_len, &value_type, &mret);
 
 
   /*
@@ -1057,7 +1084,9 @@ my_cubmemc_get (DB_OBJECT * obj, DB_VALUE * return_arg, DB_VALUE * key, CUBMEMC_
 	  return;
 	}
 
-      ret = coerce_value_to_dbval (&value_p, &value_len, value_type, target_type, return_arg);
+      ret =
+	coerce_value_to_dbval (&value_p, &value_len, value_type, target_type,
+			       return_arg);
       if (ret != NO_ERROR)
 	{
 	  db_make_error (return_arg, ret);
@@ -1128,7 +1157,9 @@ cubmemc_get_binary (DB_OBJECT * obj, DB_VALUE * return_arg, DB_VALUE * key)
  */
 static void
 cubmemc_storage_command (CUBMEMC_STORAGE_CMD cmd, DB_OBJECT * obj,
-			 DB_VALUE * return_arg, DB_VALUE * key, DB_VALUE * value, DB_VALUE * expiration, DB_VALUE * cas)
+			 DB_VALUE * return_arg, DB_VALUE * key,
+			 DB_VALUE * value, DB_VALUE * expiration,
+			 DB_VALUE * cas)
 {
   METHOD_HOUSEKEEP housekeep, *hk;
   int ret;
@@ -1204,21 +1235,25 @@ cubmemc_storage_command (CUBMEMC_STORAGE_CMD cmd, DB_OBJECT * obj,
     case STORAGE_CMD_REPLACE:
       ret =
 	memcached_replace (hk->entry->memc, key_p, (size_t) key_len,
-			   value_p, (size_t) value_len, (time_t) expiration_i, value_type);
+			   value_p, (size_t) value_len,
+			   (time_t) expiration_i, value_type);
       break;
     case STORAGE_CMD_APPEND:
       ret =
 	memcached_append (hk->entry->memc, key_p, (size_t) key_len, value_p,
-			  (size_t) value_len, (time_t) expiration_i, value_type);
+			  (size_t) value_len, (time_t) expiration_i,
+			  value_type);
       break;
     case STORAGE_CMD_PREPEND:
       ret =
 	memcached_prepend (hk->entry->memc, key_p, (size_t) key_len,
-			   value_p, (size_t) value_len, (time_t) expiration_i, value_type);
+			   value_p, (size_t) value_len,
+			   (time_t) expiration_i, value_type);
       break;
     case STORAGE_CMD_CAS:
       ret = memcached_cas (hk->entry->memc, key_p, (size_t) key_len,
-			   value_p, (size_t) value_len, (time_t) expiration_i, value_type, cas_val);
+			   value_p, (size_t) value_len, (time_t) expiration_i,
+			   value_type, cas_val);
     default:
       assert (0);
       ret = CUBMEMC_ERROR_INTERNAL;
@@ -1246,9 +1281,11 @@ end:
  * See the comment of cubmemc_storage_command function for detailed description.
  */
 void
-cubmemc_set (DB_OBJECT * obj, DB_VALUE * return_arg, DB_VALUE * key, DB_VALUE * value, DB_VALUE * expiration)
+cubmemc_set (DB_OBJECT * obj, DB_VALUE * return_arg,
+	     DB_VALUE * key, DB_VALUE * value, DB_VALUE * expiration)
 {
-  cubmemc_storage_command (STORAGE_CMD_SET, obj, return_arg, key, value, expiration, NULL);
+  cubmemc_storage_command (STORAGE_CMD_SET, obj, return_arg, key, value,
+			   expiration, NULL);
 }
 
 /*
@@ -1263,7 +1300,8 @@ cubmemc_set (DB_OBJECT * obj, DB_VALUE * return_arg, DB_VALUE * key, DB_VALUE * 
  *
  */
 void
-cubmemc_delete (DB_OBJECT * obj, DB_VALUE * return_arg, DB_VALUE * key, DB_VALUE * expiration)
+cubmemc_delete (DB_OBJECT * obj, DB_VALUE * return_arg,
+		DB_VALUE * key, DB_VALUE * expiration)
 {
   METHOD_HOUSEKEEP housekeep, *hk;
   int ret;
@@ -1297,7 +1335,9 @@ cubmemc_delete (DB_OBJECT * obj, DB_VALUE * return_arg, DB_VALUE * key, DB_VALUE
     }
 
   /* call memcached_set () */
-  ret = memcached_delete (hk->entry->memc, key_p, (size_t) key_len, (time_t) expiration_i);
+  ret =
+    memcached_delete (hk->entry->memc, key_p, (size_t) key_len,
+		      (time_t) expiration_i);
 
   if (ret != MEMCACHED_SUCCESS)
     {
@@ -1321,9 +1361,11 @@ end:
  * See the comment of cubmemc_storage_command function for detailed description.
  */
 void
-cubmemc_add (DB_OBJECT * obj, DB_VALUE * return_arg, DB_VALUE * key, DB_VALUE * value, DB_VALUE * expiration)
+cubmemc_add (DB_OBJECT * obj, DB_VALUE * return_arg,
+	     DB_VALUE * key, DB_VALUE * value, DB_VALUE * expiration)
 {
-  cubmemc_storage_command (STORAGE_CMD_ADD, obj, return_arg, key, value, expiration, NULL);
+  cubmemc_storage_command (STORAGE_CMD_ADD, obj, return_arg, key, value,
+			   expiration, NULL);
   return;
 }
 
@@ -1333,9 +1375,11 @@ cubmemc_add (DB_OBJECT * obj, DB_VALUE * return_arg, DB_VALUE * key, DB_VALUE * 
  * See the comment of cubmemc_storage_command function for detailed description.
  */
 void
-cubmemc_replace (DB_OBJECT * obj, DB_VALUE * return_arg, DB_VALUE * key, DB_VALUE * value, DB_VALUE * expiration)
+cubmemc_replace (DB_OBJECT * obj, DB_VALUE * return_arg,
+		 DB_VALUE * key, DB_VALUE * value, DB_VALUE * expiration)
 {
-  cubmemc_storage_command (STORAGE_CMD_REPLACE, obj, return_arg, key, value, expiration, NULL);
+  cubmemc_storage_command (STORAGE_CMD_REPLACE, obj, return_arg, key, value,
+			   expiration, NULL);
   return;
 }
 
@@ -1345,9 +1389,11 @@ cubmemc_replace (DB_OBJECT * obj, DB_VALUE * return_arg, DB_VALUE * key, DB_VALU
  * See the comment of cubmemc_storage_command function for detailed description.
  */
 void
-cubmemc_append (DB_OBJECT * obj, DB_VALUE * return_arg, DB_VALUE * key, DB_VALUE * value, DB_VALUE * expiration)
+cubmemc_append (DB_OBJECT * obj, DB_VALUE * return_arg,
+		DB_VALUE * key, DB_VALUE * value, DB_VALUE * expiration)
 {
-  cubmemc_storage_command (STORAGE_CMD_APPEND, obj, return_arg, key, value, expiration, NULL);
+  cubmemc_storage_command (STORAGE_CMD_APPEND, obj, return_arg, key, value,
+			   expiration, NULL);
   return;
 }
 
@@ -1357,9 +1403,11 @@ cubmemc_append (DB_OBJECT * obj, DB_VALUE * return_arg, DB_VALUE * key, DB_VALUE
  * See the comment of cubmemc_storage_command function for detailed description.
  */
 void
-cubmemc_prepend (DB_OBJECT * obj, DB_VALUE * return_arg, DB_VALUE * key, DB_VALUE * value, DB_VALUE * expiration)
+cubmemc_prepend (DB_OBJECT * obj, DB_VALUE * return_arg,
+		 DB_VALUE * key, DB_VALUE * value, DB_VALUE * expiration)
 {
-  cubmemc_storage_command (STORAGE_CMD_PREPEND, obj, return_arg, key, value, expiration, NULL);
+  cubmemc_storage_command (STORAGE_CMD_PREPEND, obj, return_arg, key, value,
+			   expiration, NULL);
   return;
 }
 
@@ -1371,9 +1419,11 @@ cubmemc_prepend (DB_OBJECT * obj, DB_VALUE * return_arg, DB_VALUE * key, DB_VALU
  */
 void
 cubmemc_cas (DB_OBJECT * obj, DB_VALUE * return_arg,
-	     DB_VALUE * key, DB_VALUE * value, DB_VALUE * expiration, DB_VALUE * cas)
+	     DB_VALUE * key, DB_VALUE * value,
+	     DB_VALUE * expiration, DB_VALUE * cas)
 {
-  cubmemc_storage_command (STORAGE_CMD_CAS, obj, return_arg, key, value, expiration, cas);
+  cubmemc_storage_command (STORAGE_CMD_CAS, obj, return_arg, key, value,
+			   expiration, cas);
   return;
 }
 #endif
@@ -1391,7 +1441,8 @@ cubmemc_cas (DB_OBJECT * obj, DB_VALUE * return_arg,
  */
 static void
 cubmemc_incdec_command (CUBMEMC_INCDEC_CMD cmd, DB_OBJECT * obj,
-			DB_VALUE * return_arg, DB_VALUE * key, DB_VALUE * offset)
+			DB_VALUE * return_arg, DB_VALUE * key,
+			DB_VALUE * offset)
 {
   METHOD_HOUSEKEEP housekeep, *hk;
   int ret;
@@ -1430,10 +1481,14 @@ cubmemc_incdec_command (CUBMEMC_INCDEC_CMD cmd, DB_OBJECT * obj,
   switch (cmd)
     {
     case INCDEC_CMD_INC:
-      ret = memcached_increment (hk->entry->memc, key_p, (size_t) key_len, offset_val, &cas_val);
+      ret =
+	memcached_increment (hk->entry->memc, key_p, (size_t) key_len,
+			     offset_val, &cas_val);
       break;
     case INCDEC_CMD_DEC:
-      ret = memcached_decrement (hk->entry->memc, key_p, (size_t) key_len, offset_val, &cas_val);
+      ret =
+	memcached_decrement (hk->entry->memc, key_p, (size_t) key_len,
+			     offset_val, &cas_val);
       break;
     default:
       assert (0);
@@ -1467,7 +1522,8 @@ end:
  * See the comment of cubmemc_incdec_command function for detailed description
  */
 void
-cubmemc_increment (DB_OBJECT * obj, DB_VALUE * return_arg, DB_VALUE * key, DB_VALUE * offset)
+cubmemc_increment (DB_OBJECT * obj, DB_VALUE * return_arg,
+		   DB_VALUE * key, DB_VALUE * offset)
 {
   cubmemc_incdec_command (INCDEC_CMD_INC, obj, return_arg, key, offset);
   return;
@@ -1479,7 +1535,8 @@ cubmemc_increment (DB_OBJECT * obj, DB_VALUE * return_arg, DB_VALUE * key, DB_VA
  * See the comment of cubmemc_incdec_command function for detailed description
  */
 void
-cubmemc_decrement (DB_OBJECT * obj, DB_VALUE * return_arg, DB_VALUE * key, DB_VALUE * offset)
+cubmemc_decrement (DB_OBJECT * obj, DB_VALUE * return_arg,
+		   DB_VALUE * key, DB_VALUE * offset)
 {
   cubmemc_incdec_command (INCDEC_CMD_DEC, obj, return_arg, key, offset);
   return;
