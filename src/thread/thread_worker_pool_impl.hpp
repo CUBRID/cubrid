@@ -28,6 +28,7 @@
 #endif // not SERVER_MODE
 
 // same module include
+#include "thread_compat.hpp"
 #include "thread_task.hpp"
 #include "thread_entry.hpp"
 #include "thread_worker_pool.hpp"
@@ -102,10 +103,9 @@ namespace cubthread
   //    core manages a number of workers, tracks available resource - free active workers and inactive workers and
   //    queues tasks that could not be executed immediately.
   //
-  template <bool Stats>
+  template <stats_t Stats>
   class worker_pool_impl : public worker_pool
   {
-    public:
       // forward definition for nested core class
       friend class manager;
 
@@ -216,7 +216,7 @@ namespace cubthread
   // description
   //    empty if Stats is false
   //
-  template <bool Stats>
+  template <stats_t Stats>
   class worker_pool_impl<Stats>::stats_base
   {
     public:
@@ -232,7 +232,7 @@ namespace cubthread
   };
 
   template <>
-  class worker_pool_impl<true>::stats_base
+  class worker_pool_impl<stats_t::on>::stats_base
   {
     public:
       stats_base ();
@@ -259,7 +259,7 @@ namespace cubthread
   //    task in: execute_task
   //    task out: execute_task (immediately execute) or get_task_or_become_available (queued task)
   //
-  template <bool Stats>
+  template <stats_t Stats>
   class worker_pool_impl<Stats>::core_impl : public worker_pool::core
   {
       friend class worker_pool_impl;
@@ -335,7 +335,7 @@ namespace cubthread
   //    the worker is a worker pool nested class and represents one instance of execution. its purpose is to store the
   //    context, manage multiple task executions of a single thread and collect statistics.
   //
-  template <bool Stats>
+  template <stats_t Stats>
   class worker_pool_impl<Stats>::core_impl::worker_impl : public worker_pool::core::worker
   {
       friend class core_impl;
@@ -413,7 +413,7 @@ namespace cubthread
   // description
   //    wrapper task for timing.
   //
-  template <bool Stats>
+  template <stats_t Stats>
   class worker_pool_impl<Stats>::wrapped_task
   {
     private:
@@ -431,7 +431,7 @@ namespace cubthread
 	// Other stats might be added here
       };
 
-      using inner_type = typename std::conditional_t<Stats, task_with_stats, task_only>;
+      using inner_type = typename std::conditional_t<Stats == stats_t::on, task_with_stats, task_only>;
 
     public:
       explicit wrapped_task (task_type *task_p);
@@ -457,7 +457,7 @@ namespace cubthread
   // statistics
   //////////////////////////////////////////////////////////////////////////
 
-  template <bool Stats>
+  template <stats_t Stats>
   class worker_pool_impl<Stats>::stats
   {
     public:
@@ -521,7 +521,7 @@ namespace cubthread
   // worker_pool_impl<Stats>
   //////////////////////////////////////////////////////////////////////////
 
-  template <bool Stats>
+  template <stats_t Stats>
   worker_pool_impl<Stats>::worker_pool_impl (std::size_t pool_size, std::size_t core_count, const char *name,
       entry_manager &entry_mgr, bool pool_threads, wait_seconds idle_timeout)
     : worker_pool (name, entry_mgr, pool_threads, idle_timeout)
@@ -540,14 +540,14 @@ namespace cubthread
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   worker_pool_impl<Stats>::~worker_pool_impl ()
   {
     // not safe to destroy running pools
     assert (m_stopped);
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::initialize (std::size_t worker_count, std::size_t core_count)
   {
@@ -555,14 +555,14 @@ namespace cubthread
     assign_workers_to_cores (worker_count);
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::execute (task_type *work_arg)
   {
     execute_on_core (work_arg, get_next_core ());
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::execute_on_core (task_type *work_arg, std::size_t core_hash, bool is_temp)
   {
@@ -572,14 +572,14 @@ namespace cubthread
     m_cores[core_index]->execute_task (work_arg, is_temp);
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   bool
   worker_pool_impl<Stats>::is_running (void) const
   {
     return !m_stopped;
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::warmup (void)
   {
@@ -589,7 +589,7 @@ namespace cubthread
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::stop_execution (void)
   {
@@ -651,21 +651,21 @@ namespace cubthread
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   std::size_t
   worker_pool_impl<Stats>::get_worker_count (void) const
   {
     return m_max_workers;
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   std::size_t
   worker_pool_impl<Stats>::get_core_count (void) const
   {
     return m_cores.size ();
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::get_stats (cubperf::stat_value *stats_out) const
   {
@@ -675,11 +675,11 @@ namespace cubthread
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::er_log_stats (void) const
   {
-    if constexpr (Stats)
+    if constexpr (Stats == stats_t::on)
       {
 	std::vector<cubperf::stat_value> statset (stats::get_count (), 0);
 	std::stringstream ss;
@@ -699,7 +699,7 @@ namespace cubthread
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   template <typename Func, typename ... Args>
   void
   worker_pool_impl<Stats>::map_running_contexts (Func &&func, Args &&... args)
@@ -718,7 +718,7 @@ namespace cubthread
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   template <typename Func, typename ... Args>
   void
   worker_pool_impl<Stats>::map_cores (Func &&func, Args &&... args)
@@ -735,14 +735,14 @@ namespace cubthread
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   std::unique_ptr<typename worker_pool::core>
   worker_pool_impl<Stats>::allocate_core (bool pool_threads)
   {
     return std::unique_ptr<core> (new core_impl (pool_threads));
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::allocate_cores (std::size_t core_count)
   {
@@ -755,7 +755,7 @@ namespace cubthread
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::assign_workers_to_cores (std::size_t worker_count)
   {
@@ -777,14 +777,14 @@ namespace cubthread
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   std::size_t
   worker_pool_impl<Stats>::get_next_core (void)
   {
     return get_round_robin_core_hash ();
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   std::size_t
   worker_pool_impl<Stats>::get_round_robin_core_hash (void)
   {
@@ -830,27 +830,27 @@ namespace cubthread
   //////////////////////////////////////////////////////////////////////////
 
   inline
-  worker_pool_impl<true>::stats_base::stats_base ()
+  worker_pool_impl<stats_t::on>::stats_base::stats_base ()
     : statset (nullptr)
     , time ()
   {
   }
 
   inline
-  worker_pool_impl<true>::stats_base::~stats_base ()
+  worker_pool_impl<stats_t::on>::stats_base::~stats_base ()
   {
   }
 
   inline
-  worker_pool_impl<true>::stats_base::stats_base (stats_base &&other)
+  worker_pool_impl<stats_t::on>::stats_base::stats_base (stats_base &&other)
     : statset (other.statset)
     , time (other.time)
   {
     other.statset = nullptr;
   }
 
-  inline worker_pool_impl<true>::stats_base &
-  worker_pool_impl<true>::stats_base::operator= (stats_base &&other)
+  inline worker_pool_impl<stats_t::on>::stats_base &
+  worker_pool_impl<stats_t::on>::stats_base::operator= (stats_base &&other)
   {
     if (this != &other)
       {
@@ -866,18 +866,18 @@ namespace cubthread
   // worker_pool_impl<Stats>::core_impl
   //////////////////////////////////////////////////////////////////////////
 
-  template <bool Stats>
+  template <stats_t Stats>
   worker_pool_impl<Stats>::core_impl::core_impl (bool pool_threads)
     : worker_pool::core (pool_threads)
   {
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   worker_pool_impl<Stats>::core_impl::~core_impl ()
   {
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::core_impl::initialize (std::size_t worker_count)
   {
@@ -891,7 +891,7 @@ namespace cubthread
     initialize_workers ();
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::core_impl::execute_task (task_type *task_p, bool is_temp)
   {
@@ -941,7 +941,7 @@ namespace cubthread
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::core_impl::warmup (void)
   {
@@ -964,7 +964,7 @@ namespace cubthread
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   bool
   worker_pool_impl<Stats>::core_impl::stop_execution (void)
   {
@@ -993,7 +993,7 @@ namespace cubthread
     return has_running_workers;
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::core_impl::retire_queued_tasks (void)
   {
@@ -1007,7 +1007,7 @@ namespace cubthread
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   std::optional<typename worker_pool_impl<Stats>::wrapped_task>
   worker_pool_impl<Stats>::core_impl::get_task_or_become_available (worker &worker_arg)
   {
@@ -1027,7 +1027,7 @@ namespace cubthread
     return std::nullopt;
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::core_impl::become_available (worker &worker_arg)
   {
@@ -1037,7 +1037,7 @@ namespace cubthread
     assert (m_available_workers.size () <= m_workers.size ());
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::core_impl::check_worker_not_available (const worker &worker_arg)
   {
@@ -1051,14 +1051,14 @@ namespace cubthread
 #endif // DEBUG
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   std::size_t
   worker_pool_impl<Stats>::core_impl::get_worker_count (void) const
   {
     return m_workers.size ();
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::core_impl::register_free_temp_list (worker *w)
   {
@@ -1075,7 +1075,7 @@ namespace cubthread
     m_temp_workers.erase (it);
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::core_impl::free_all_temp_list ()
   {
@@ -1084,7 +1084,7 @@ namespace cubthread
     m_free_temp_workers.clear ();
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::core_impl::get_stats (cubperf::stat_value *stats_out) const
   {
@@ -1107,7 +1107,7 @@ namespace cubthread
     }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   template <typename Func, typename ... Args>
   void
   worker_pool_impl<Stats>::core_impl::map_running_contexts (bool &stop, Func &&func, Args &&... args) const
@@ -1145,14 +1145,14 @@ namespace cubthread
     }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   std::unique_ptr<typename worker_pool::core::worker>
   worker_pool_impl<Stats>::core_impl::allocate_worker (bool is_temp)
   {
     return std::unique_ptr<worker> (new worker_impl (is_temp));
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::core_impl::allocate_workers (std::size_t worker_count)
   {
@@ -1165,7 +1165,7 @@ namespace cubthread
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::core_impl::initialize_workers ()
   {
@@ -1189,7 +1189,7 @@ namespace cubthread
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::core_impl::execute_task_as_temp (wrapped_task &&task_ref)
   {
@@ -1206,7 +1206,7 @@ namespace cubthread
   // worker_pool_impl<Stats>::core_impl::worker_impl
   //////////////////////////////////////////////////////////////////////////
 
-  template <bool Stats>
+  template <stats_t Stats>
   worker_pool_impl<Stats>::core_impl::worker_impl::worker_impl (bool is_temp)
     : worker_pool::core::worker ()
     , m_context_p (nullptr)
@@ -1218,19 +1218,19 @@ namespace cubthread
   {
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   worker_pool_impl<Stats>::core_impl::worker_impl::~worker_impl (void)
   {
     stats::destroy (m_stats);
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::core_impl::worker_impl::initialize (void)
   {
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::core_impl::worker_impl::start_thread (void)
   {
@@ -1253,7 +1253,7 @@ namespace cubthread
     wp_call_func_throwing_system_error ("detaching thread", lambda_detach);
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   bool
   worker_pool_impl<Stats>::core_impl::worker_impl::has_thread (void)
   {
@@ -1262,7 +1262,7 @@ namespace cubthread
     return m_has_thread;
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::core_impl::worker_impl::assign_task (wrapped_task &&task_ref)
   {
@@ -1297,7 +1297,7 @@ namespace cubthread
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::core_impl::worker_impl::assign_task (void)
   {
@@ -1321,7 +1321,7 @@ namespace cubthread
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   bool
   worker_pool_impl<Stats>::core_impl::worker_impl::stop_execution (void)
   {
@@ -1356,14 +1356,14 @@ namespace cubthread
     return has_thread;
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::core_impl::worker_impl::get_stats (cubperf::stat_value *stats_out) const
   {
     stats::accumulate (m_stats, stats_out);
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   template <typename Func, typename ... Args>
   void
   worker_pool_impl<Stats>::core_impl::worker_impl::map_context_if_running (bool &stop, Func &&func, Args &&... args)
@@ -1382,7 +1382,7 @@ namespace cubthread
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::core_impl::worker_impl::run (void)
   {
@@ -1425,7 +1425,7 @@ namespace cubthread
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::core_impl::worker_impl::init_run (void)
   {
@@ -1452,7 +1452,7 @@ namespace cubthread
     stats::time_and_increment (m_stats, stats::id::create_context);
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::core_impl::worker_impl::finish_run (void)
   {
@@ -1474,7 +1474,7 @@ namespace cubthread
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::core_impl::worker_impl::execute_current_task (void)
   {
@@ -1502,7 +1502,7 @@ namespace cubthread
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::core_impl::worker_impl::retire_current_task (void)
   {
@@ -1516,7 +1516,7 @@ namespace cubthread
     stats::time_and_increment (m_stats, stats::id::retire_task);
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   bool
   worker_pool_impl<Stats>::core_impl::worker_impl::get_new_task (void)
   {
@@ -1600,46 +1600,46 @@ namespace cubthread
   // worker_pool_impl<Stats>::wrapped_task
   //////////////////////////////////////////////////////////////////////////
 
-  template <bool Stats>
+  template <stats_t Stats>
   worker_pool_impl<Stats>::wrapped_task::wrapped_task (task_type *task_p)
   {
     assert (task_p != nullptr);
 
     m_inner.task = task_p;
-    if constexpr (Stats)
+    if constexpr (Stats == stats_t::on)
       {
 	m_inner.time = cubperf::clock::now ();
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   worker_pool_impl<Stats>::wrapped_task::~wrapped_task (void)
   {
     assert (m_inner.task == nullptr);
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   worker_pool_impl<Stats>::wrapped_task::wrapped_task (wrapped_task &&other)
   {
     m_inner.task = other.m_inner.task;
     other.m_inner.task = nullptr;
 
-    if constexpr (Stats)
+    if constexpr (Stats == stats_t::on)
       {
 	m_inner.time = other.m_inner.time;
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   cubperf::time_point &
   worker_pool_impl<Stats>::wrapped_task::get_time (void)
   {
-    static_assert (Stats, "get_time() requires Stats == true");
+    static_assert (Stats == stats_t::on, "get_time() requires Stats == stats_t::on");
 
     return m_inner.time;
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::wrapped_task::execute (context_type &thread_ref)
   {
@@ -1648,7 +1648,7 @@ namespace cubthread
     m_inner.task->execute (thread_ref);
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::wrapped_task::retire (void)
   {
@@ -1662,14 +1662,14 @@ namespace cubthread
   // statistics
   //////////////////////////////////////////////////////////////////////////
 
-  template <bool Stats>
+  template <stats_t Stats>
   constexpr cubperf::stat_definition worker_pool_impl<Stats>::stats::make_def (id stat_id,
       cubperf::stat_definition::type stat_type, const char *first_name, const char *second_name)
   {
     return cubperf::stat_definition (static_cast<cubperf::stat_id> (stat_id), stat_type, first_name, second_name);
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   inline const cubperf::statset_definition worker_pool_impl<Stats>::stats::statdef =
   {
     make_def (id::start_thread, cubperf::stat_definition::COUNTER_AND_TIMER,
@@ -1690,13 +1690,13 @@ namespace cubthread
 	      "Counter_retire_context", "Timer_retire_context")
   };
 
-  template <bool Stats>
+  template <stats_t Stats>
   typename worker_pool_impl<Stats>::stats_base
   worker_pool_impl<Stats>::stats::create (void)
   {
     stats_base base;
 
-    if constexpr (Stats)
+    if constexpr (Stats == stats_t::on)
       {
 	base.statset = statdef.create_statset ();
 	base.time = cubperf::clock::now ();
@@ -1704,54 +1704,54 @@ namespace cubthread
     return base;
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::stats::destroy (stats_base &base)
   {
-    if constexpr (Stats)
+    if constexpr (Stats == stats_t::on)
       {
 	delete base.statset;
 	base.statset = nullptr;
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::stats::time_and_increment (stats_base &base, id stat_id)
   {
-    if constexpr (Stats)
+    if constexpr (Stats == stats_t::on)
       {
 	base.statset->m_timept = base.time;
 	statdef.time_and_increment (*base.statset, static_cast<cubperf::stat_id> (stat_id));
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::stats::time_and_increment (stats_base &base, id stat_id, cubperf::duration d)
   {
-    if constexpr (Stats)
+    if constexpr (Stats == stats_t::on)
       {
 	base.statset->m_timept = base.time;
 	statdef.time_and_increment (*base.statset, static_cast<cubperf::stat_id> (stat_id), d);
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   void
   worker_pool_impl<Stats>::stats::accumulate (const stats_base &base, cubperf::stat_value *where)
   {
-    if constexpr (Stats)
+    if constexpr (Stats == stats_t::on)
       {
 	statdef.add_stat_values_with_converted_timers<std::chrono::microseconds> (*base.statset, where);
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   std::size_t
   worker_pool_impl<Stats>::stats::get_count (void)
   {
-    if constexpr (Stats)
+    if constexpr (Stats == stats_t::on)
       {
 	return statdef.get_value_count ();
       }
@@ -1761,11 +1761,11 @@ namespace cubthread
       }
   }
 
-  template <bool Stats>
+  template <stats_t Stats>
   const char *
   worker_pool_impl<Stats>::stats::get_name (std::size_t stat_index)
   {
-    if constexpr (Stats)
+    if constexpr (Stats == stats_t::on)
       {
 	return statdef.get_value_name (stat_index);
       }
