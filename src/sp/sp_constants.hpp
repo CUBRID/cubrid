@@ -16,8 +16,8 @@
  *
  */
 
-#ifndef _SP_CONSTASNTS_HPP_
-#define _SP_CONSTASNTS_HPP_
+#ifndef _SP_CONSTANTS_HPP_
+#define _SP_CONSTANTS_HPP_
 
 #define PKG_ATTR_LIST    \
     MAP_LIST_ITEM(UNIQUE_NAME) \
@@ -423,4 +423,4 @@ enum PKG_FLAGS
 #define METHOD_GROUP_ID uint64_t
 #define METHOD_REQ_ID int
 
-#endif // _SP_CONSTASNTS_HPP_
+#endif // _SP_CONSTANTS_HPP_
