@@ -748,6 +748,8 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
       if (ret < 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "set autocommit mode");
+	  (void) cci_disconnect (scan_info->conn_handle, &err_buf);
+	  scan_info->conn_handle = -1;
 	  return ER_DBLINK;
 	}
 
@@ -758,6 +760,8 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
 					 password, false);
 	  if (ret < 0)
 	    {
+	      (void) cci_disconnect (scan_info->conn_handle, &err_buf);
+	      scan_info->conn_handle = -1;
 	      return ER_DBLINK;
 	    }
 	}
@@ -773,6 +777,8 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
 	{
 	  cci_get_err_msg (ret, err_buf.err_msg, sizeof (err_buf.err_msg));
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  (void) cci_disconnect (scan_info->conn_handle, &err_buf);
+	  scan_info->conn_handle = -1;
 	  return ER_DBLINK;
 	}
     }
@@ -814,6 +820,11 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "unknown error");
 	  (void) cci_close_req_handle (scan_info->stmt_handle);
 	  scan_info->stmt_handle = -1;
+	  if (auto_commit && scan_info->conn_handle >= 0)
+	    {
+	      (void) cci_disconnect (scan_info->conn_handle, &err_buf);
+	      scan_info->conn_handle = -1;
+	    }
 	  return ER_DBLINK;
 	}
       scan_info->cursor = CCI_CURSOR_FIRST;
