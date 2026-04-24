@@ -122,7 +122,7 @@ namespace cubscan
 	  std::vector<DB_VALUE>().swap (m_arg_vector);
 	  std::vector<bool>().swap (m_arg_use_vector);
 
-          m_list_id = nullptr;
+	  m_list_id = nullptr;
 	}
     }
 
