@@ -330,36 +330,9 @@ namespace parallel_query
 	{
 	  goto error_exit;
 	}
-
-      /* share hash table */
       context->build->list_scan_id.is_read_only = true;
 
-      error = hjoin_scan_init (&thread_ref, &context->hash_scan, manager->key_cnt, nullptr /* skip hash table */ );
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-
-      switch (single_context->hash_scan.hash_list_scan_type)
-	{
-	case HASH_METH_IN_MEM:
-	case HASH_METH_HYBRID:
-	  context->hash_scan.memory.hash_table = single_context->hash_scan.memory.hash_table;
-	  context->hash_scan.memory.curr_hash_entry = nullptr;
-	  break;
-
-	case HASH_METH_HASH_FILE:
-	  context->hash_scan.file.hash_table = single_context->hash_scan.file.hash_table;
-	  context->hash_scan.file.curr_oid = OID_INITIALIZER;
-	  context->hash_scan.file.is_dk_bucket = false;
-	  break;
-
-	default:
-	  /* impossible case */
-	  assert_release_error (false);
-	  goto error_exit;
-	}
-      context->hash_scan.hash_list_scan_type = single_context->hash_scan.hash_list_scan_type;
+      context->hash_scan.hash_list_scan_type = HASH_METH_NOT_USE;
 
       context->during_join_pred = single_context->during_join_pred;
       context->val_descr = single_context->val_descr;
@@ -396,10 +369,7 @@ error_exit:
       qfile_close_scan (&thread_ref, &context->outer.list_scan_id);
       qfile_close_scan (&thread_ref, &context->inner.list_scan_id);
 
-      /* skip hash table */
-      context->hash_scan.hash_list_scan_type = HASH_METH_NOT_USE;
-
-      hjoin_scan_clear (&thread_ref, &context->hash_scan);
+      assert (context->hash_scan.hash_list_scan_type == HASH_METH_NOT_USE);
     }
 
     int
@@ -515,6 +485,7 @@ error_exit:
       int error = NO_ERROR;
 
       assert (manager != nullptr);
+      assert (manager->single_context.status == HASHJOIN_STATUS_PARALLEL_PROBE);
       assert (manager->px_worker_manager != nullptr);
 
       HASHJOIN_STATS *stats = manager->single_context.stats;
@@ -627,26 +598,19 @@ error_exit:
     void
     probe_end (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager)
     {
-      HASHJOIN_CONTEXT *contexts = nullptr, *current_context;
+      HASHJOIN_CONTEXT *contexts = nullptr;
       UINT32 context_index;
 
       assert (manager != nullptr);
+      assert (manager->single_context.status == HASHJOIN_STATUS_PARALLEL_PROBE);
 
       contexts = manager->contexts;
-
       if (contexts != nullptr)
 	{
 	  for (context_index = 0; context_index < manager->context_cnt; context_index++)
 	    {
-	      current_context = &contexts[context_index];
-
-	      qfile_close_scan (&thread_ref, &current_context->outer.list_scan_id);
-	      qfile_close_scan (&thread_ref, &current_context->inner.list_scan_id);
-
-	      /* skip hash table */
-	      current_context->hash_scan.hash_list_scan_type = HASH_METH_NOT_USE;
-
-	      hjoin_scan_clear (&thread_ref, &current_context->hash_scan);
+	      qfile_close_scan (&thread_ref, &contexts[context_index].outer.list_scan_id);
+	      qfile_close_scan (&thread_ref, &contexts[context_index].inner.list_scan_id);
 	    }
 	}
     }

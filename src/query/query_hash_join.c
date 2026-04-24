@@ -2728,6 +2728,7 @@ hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan)
       break;
 
     case HASH_METH_NOT_USE:
+      /* fall through */
     default:
       /* Nothing to do */
       break;
@@ -4011,7 +4012,7 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       break;			/* HASH_METH_HASH_FILE */
 
     case HASH_METH_NOT_USE:
-      [[fallthrough]];
+      /* fall through */
     default:
       /* impossible case */
       assert_release_error (false);
