@@ -30,6 +30,8 @@
 #include "object_representation.h"	/* QFILE_GET_NEXT_VPID, QFILE_GET_TUPLE_COUNT */
 #include "perf_monitor.h"		/* perfmon_update_max_timeval, perfmon_update_min_timeval */
 #include "query_evaluator.h"		/* eval_pred, V_ERROR, V_TRUE */
+#include "query_hash_join.h"
+#include "query_hash_scan.h"
 #include "query_manager.h"		/* qmgr_get_old_page, qmgr_free_old_page_and_init, ... */
 #include "storage_common.h"		/* OID_INITIALIZER, S_CLOSED, VPID_SET_NULL, ... */
 
@@ -831,6 +833,9 @@ namespace parallel_query
       task_execution_guard guard (thread_ref, m_task_manager);
 
       spawn_manager *spawn_manager = nullptr;
+      HASHJOIN_CONTEXT *single_context;
+      HASH_METHOD hash_method;
+      int error = NO_ERROR;
 
       TSCTIMEVAL total_probe_time = { 0, 0 };
 
@@ -863,6 +868,38 @@ namespace parallel_query
 	  m_task_manager.handle_error (thread_ref);
 	  goto cleanup;		/* error_exit */
 	}
+
+      error = hjoin_scan_init (&thread_ref, &m_context->hash_scan, m_manager->key_cnt, nullptr /* skip hash table */ );
+      if (error != NO_ERROR)
+	{
+	  m_task_manager.handle_error (thread_ref);
+	  goto cleanup;		/* error_exit */
+	}
+
+      single_context = &m_manager->single_context;
+      switch (single_context->hash_scan.hash_list_scan_type)
+	{
+	case HASH_METH_IN_MEM:
+	case HASH_METH_HYBRID:
+	  m_context->hash_scan.memory.hash_table = single_context->hash_scan.memory.hash_table;
+	  m_context->hash_scan.memory.curr_hash_entry = nullptr;
+	  break;
+
+	case HASH_METH_HASH_FILE:
+	  m_context->hash_scan.file.hash_table = single_context->hash_scan.file.hash_table;
+	  m_context->hash_scan.file.curr_oid = OID_INITIALIZER;
+	  m_context->hash_scan.file.is_dk_bucket = false;
+	  break;
+
+	case HASH_METH_NOT_USE:
+	/* fall through */
+	default:
+	  /* impossible case */
+	  assert_release_error (false);
+	  m_task_manager.handle_error (thread_ref);
+	  goto cleanup;		/* error_exit */
+	}
+      m_context->hash_scan.hash_list_scan_type = single_context->hash_scan.hash_list_scan_type;
 
       if (IS_OUTER_JOIN_TYPE (m_manager->join_type))
 	{
@@ -907,6 +944,10 @@ namespace parallel_query
 
 cleanup:
       qfile_close_list (&thread_ref, m_context->list_id);
+
+      /* skip hash table */
+      m_context->hash_scan.hash_list_scan_type = HASH_METH_NOT_USE;
+      hjoin_scan_clear (&thread_ref, &m_context->hash_scan);
 
       /* set to nullptr; cleaned up by clear_spawner after all tasks are done */
       m_context->val_descr = nullptr;
