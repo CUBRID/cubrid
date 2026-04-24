@@ -138,6 +138,9 @@
 	    } \
 	} \
     } while (0)
+
+#define DEFAULT_EQUIJOIN_SELECTIVITY 0.001
+
 typedef enum
 {
   QO_BUILD_ENTITY = 0x01,	/* 0000 0001 */
@@ -149,6 +152,14 @@ struct walk_info
 {
   QO_ENV *env;
   QO_TERM *term;
+};
+
+typedef struct qo_transitive_join_spec QO_TRANSITIVE_JOIN_SPEC;
+struct qo_transitive_join_spec
+{
+  QO_SEGMENT *head_seg;
+  QO_SEGMENT *tail_seg;
+  QO_EQCLASS *eqclass;
 };
 
 double QO_INFINITY = 0.0;
@@ -231,8 +242,12 @@ static void qo_discover_partitions (QO_ENV *);
 static void qo_discover_indexes (QO_ENV *);
 static void qo_assign_eq_classes (QO_ENV *);
 static void qo_generate_transitive_join_terms (QO_ENV *);
-static void qo_insert_transitive_join_term (QO_ENV * env, PT_NODE * pt_expr);
+static int qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs_p, int *count_p,
+					     int *cap_p);
+static void qo_adjust_bitset_indices (QO_ENV * env, BITSET * bs, int old_nedges, int extra);
+static int qo_segment_cardinality (QO_SEGMENT * seg);
 static void qo_sort_edges (QO_ENV * env);
+static void qo_insert_transitive_join_terms (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC * specs, int count, int start_idx);
 static void qo_discover_edges (QO_ENV *);
 static void qo_classify_outerjoin_terms (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
@@ -683,7 +698,7 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
   env->terms = NULL;
   if (env->nterms > 0)
     {
-      size = sizeof (QO_TERM) * (MAX (env->nnodes, env->nterms) + env->nsegs);
+      size = sizeof (QO_TERM) * env->nterms;
       env->terms = (QO_TERM *) malloc (size);
       if (env->terms == NULL)
 	{
@@ -733,7 +748,7 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
 
   env->Nnodes = env->nnodes;
   env->Nsegs = env->nsegs;
-  env->Nterms = MAX (env->nnodes, env->nterms) + env->nsegs;
+  env->Nterms = env->nterms;
   env->Neqclasses = MAX (env->nnodes, env->nterms) + env->nsegs;
 
   env->nnodes = 0;
@@ -5981,7 +5996,7 @@ qo_env_free (QO_ENV * env)
 
       if (env->terms)
 	{
-	  for (i = 0; i < env->nterms; ++i)
+	  for (i = 0; i < env->Nterms; ++i)
 	    {
 	      qo_term_free (QO_ENV_TERM (env, i));
 	    }
@@ -8085,21 +8100,154 @@ qo_assign_eq_classes (QO_ENV * env)
  * qo_generate_transitive_join_terms () - Generate implied join terms from
  *   equivalence classes using transitive closure.
  *   env(in):
+ *
+ * Note: For each equivalence class with N segments on different nodes, this
+ *   function generates join terms for all missing (head, tail) node pairs.
+ *   It expands the term array, shifts non-edge terms, inserts new edge terms,
+ *   fixes internal pointers invalidated by realloc/memmove, and finally sorts
+ *   all edge terms by selectivity.
  */
 static void
 qo_generate_transitive_join_terms (QO_ENV * env)
 {
-  BITSET_ITERATOR iter_t;
+  int i, q, extra, old_nedges, old_terms;
+  QO_TRANSITIVE_JOIN_SPEC *specs = NULL;
+  int specs_count = 0, specs_cap = 0;
+  size_t new_size;
+  QO_TERM *new_arr;
+  int *term_idx_backup = NULL;
+
+  if (qo_collect_transitive_join_specs (env, &specs, &specs_count, &specs_cap) != 0 || specs_count == 0)
+    {
+      if (specs)
+	{
+	  free_and_init (specs);
+	}
+      return;
+    }
+
+  extra = specs_count;
+  old_nedges = env->nedges;
+  old_terms = env->nterms;
+
+  /* Backup current term indices for eqclass. */
+  term_idx_backup = (int *) malloc (sizeof (int) * env->neqclasses);
+
+  if (term_idx_backup == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * env->neqclasses);
+      free_and_init (specs);
+      return;
+    }
+
+  for (i = 0; i < env->neqclasses; i++)
+    {
+      QO_EQCLASS *eqc = QO_ENV_EQCLASS (env, i);
+      term_idx_backup[i] = (eqc->term != NULL) ? QO_TERM_IDX (eqc->term) : -1;
+    }
+
+  new_size = sizeof (QO_TERM) * (env->Nterms + extra);
+  new_arr = (QO_TERM *) realloc (env->terms, new_size);
+
+  if (new_arr == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, new_size);
+      free_and_init (specs);
+      free_and_init (term_idx_backup);
+      return;
+    }
+
+  env->terms = new_arr;
+  env->Nterms += extra;
+
+  if (old_terms > old_nedges)
+    {
+      memmove (&env->terms[old_nedges + extra], &env->terms[old_nedges], sizeof (QO_TERM) * (old_terms - old_nedges));
+
+      for (i = old_nedges; i < old_terms; i++)
+	{
+	  QO_TERM *term = QO_ENV_TERM (env, i + extra);
+	  QO_TERM_IDX (term) = i + extra;
+	}
+    }
+
+  /* Reset internal bitset pointers that may have been invalidated by realloc */
+  for (i = 0; i < env->Nterms; i++)
+    {
+      QO_TERM *term = QO_ENV_TERM (env, i);
+      if (term->nodes.nwords <= NWORDS)
+	term->nodes.setp = term->nodes.set.word;
+      if (term->segments.nwords <= NWORDS)
+	term->segments.setp = term->segments.set.word;
+      if (term->subqueries.nwords <= NWORDS)
+	term->subqueries.setp = term->subqueries.set.word;
+    }
+
+  /* Adjust term indices in all related structures to reflect the shift */
+  for (i = 0; i < env->nnodes; i++)
+    {
+      qo_adjust_bitset_indices (env, &QO_NODE_SARGS (QO_ENV_NODE (env, i)), old_nedges, extra);
+    }
+
+  qo_adjust_bitset_indices (env, &env->fake_terms, old_nedges, extra);
+
+  for (q = 0; q < env->nsubqueries; q++)
+    {
+      qo_adjust_bitset_indices (env, &env->subqueries[q].terms, old_nedges, extra);
+    }
+
+  /* Insert new transitive joins into the vacancies created at the end of join edges */
+  qo_insert_transitive_join_terms (env, specs, specs_count, old_nedges);
+
+  /* Restore equivalence class terms using the backed-up indices */
+  for (i = 0; i < env->neqclasses; i++)
+    {
+      QO_EQCLASS *eqc = QO_ENV_EQCLASS (env, i);
+      if (term_idx_backup[i] != -1)
+	{
+	  int old_idx = term_idx_backup[i];
+	  int new_idx = (old_idx >= old_nedges) ? (old_idx + extra) : old_idx;
+	  eqc->term = QO_ENV_TERM (env, new_idx);
+	}
+    }
+
+  env->nedges += extra;
+  env->nterms += extra;
+
+  qo_sort_edges (env);
+
+  free_and_init (specs);
+  free_and_init (term_idx_backup);
+}
+
+/*
+ * qo_collect_transitive_join_specs () - Collect candidate transitive join
+ *   specifications from equivalence classes.
+ *   return: 0 on success, -1 on memory allocation failure
+ *   env(in): 
+ *   specs_p(in/out): Pointer to the dynamically growing specs array
+ *   count_p(in/out): Pointer to the current number of collected specs
+ *   cap_p(in/out): Pointer to the current capacity of the specs array
+ *
+ * Note: Iterates over all equivalence classes and enumerates segment pairs
+ *   belonging to different nodes. For each pair that does not already have
+ *   an edge term (or is blocked by an outer join), a QO_TRANSITIVE_JOIN_SPEC
+ *   is appended to the output array.
+ */
+static int
+qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs_p, int *count_p, int *cap_p)
+{
+  BITSET_ITERATOR bi;
   QO_EQCLASS *eqclass;
-  QO_SEGMENT *seg1, *seg2;
-  QO_NODE *node1, *node2;
+  QO_SEGMENT *seg1, *seg2, *head_seg, *tail_seg;
+  QO_NODE *node1, *node2, *head_node, *tail_node;
   QO_TERM *term;
   int *segs_arr = NULL;
   int segs_arr_cap = 0;
-  int nsegs, s, i, j, k;
+  int nsegs;
   bool eqclass_has_outer_join, already_has_term;
 
-  for (i = 0; i < env->neqclasses; i++)
+  for (int i = 0; i < env->neqclasses; i++)
     {
       int required_segs;
 
@@ -8115,180 +8263,201 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 	  continue;
 	}
 
-      if (segs_arr != NULL)
+      if (required_segs > segs_arr_cap)
 	{
-	  free_and_init (segs_arr);
-	}
-      segs_arr = (int *) malloc (sizeof (int) * required_segs);
-      if (segs_arr == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * required_segs);
-	  return;
+	  int *np = (int *) realloc (segs_arr, sizeof (int) * required_segs);
+	  if (np == NULL)
+	    {
+	      if (segs_arr)
+		{
+		  free_and_init (segs_arr);
+		}
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * required_segs);
+	      return -1;
+	    }
+	  segs_arr = np;
+	  segs_arr_cap = required_segs;
 	}
 
       nsegs = 0;
-      for (s = bitset_iterate (&QO_EQCLASS_SEGS (eqclass), &iter_t); s != -1; s = bitset_next_member (&iter_t))
+      for (int s = bitset_iterate (&QO_EQCLASS_SEGS (eqclass), &bi); s != -1; s = bitset_next_member (&bi))
 	{
 	  segs_arr[nsegs++] = s;
 	}
 
-      for (j = 0; j < nsegs; j++)
+      /* Check if any term in this eqclass is an outer join; if so, skip all pairs. */
+      eqclass_has_outer_join = false;
+      for (int e = 0; e < env->nedges; e++)
 	{
-	  for (k = j + 1; k < nsegs; k++)
+	  term = QO_ENV_TERM (env, e);
+	  if (QO_TERM_EQCLASS (term) == eqclass && IS_OUTER_JOIN_TYPE (QO_TERM_JOIN_TYPE (term)))
+	    {
+	      eqclass_has_outer_join = true;
+	      break;
+	    }
+	}
+      if (eqclass_has_outer_join)
+	{
+	  continue;
+	}
+
+      for (int j = 0; j < nsegs; j++)
+	{
+	  for (int k = j + 1; k < nsegs; k++)
 	    {
 	      seg1 = QO_ENV_SEG (env, segs_arr[j]);
 	      seg2 = QO_ENV_SEG (env, segs_arr[k]);
 	      node1 = QO_SEG_HEAD (seg1);
 	      node2 = QO_SEG_HEAD (seg2);
 
-	      eqclass_has_outer_join = false;
-	      already_has_term = false;
+	      if (QO_NODE_IDX (node1) == QO_NODE_IDX (node2))
+		continue;
 
+	      if (QO_NODE_IDX (node1) < QO_NODE_IDX (node2))
+		{
+		  head_seg = seg1;
+		  tail_seg = seg2;
+		  head_node = node1;
+		  tail_node = node2;
+		}
+	      else
+		{
+		  head_seg = seg2;
+		  tail_seg = seg1;
+		  head_node = node2;
+		  tail_node = node1;
+		}
+
+	      already_has_term = false;
 	      for (int e = 0; e < env->nedges; e++)
 		{
 		  term = QO_ENV_TERM (env, e);
-		  if (QO_TERM_EQCLASS (term) == eqclass && IS_OUTER_JOIN_TYPE (QO_TERM_JOIN_TYPE (term)))
-		    {
-		      eqclass_has_outer_join = true;
-		      break;
-		    }
-
 		  if (QO_TERM_EQCLASS (term) == eqclass
-		      && ((QO_TERM_HEAD (term) == node1 && QO_TERM_TAIL (term) == node2)
-			  || (QO_TERM_HEAD (term) == node2 && QO_TERM_TAIL (term) == node1)))
+		      && ((QO_TERM_HEAD (term) == head_node && QO_TERM_TAIL (term) == tail_node)
+			  || (QO_TERM_HEAD (term) == tail_node && QO_TERM_TAIL (term) == head_node)))
 		    {
 		      already_has_term = true;
 		      break;
 		    }
 		}
 
-	      if (eqclass_has_outer_join || already_has_term)
+	      if (already_has_term)
 		{
 		  continue;
 		}
 
-	      if (env->nterms >= env->Nterms)
+	      if (*count_p >= *cap_p)
 		{
-		  goto end_transitive_join_terms;
+		  int new_cap = (*cap_p == 0) ? 8 : (*cap_p * 2);
+		  QO_TRANSITIVE_JOIN_SPEC *np =
+		    (QO_TRANSITIVE_JOIN_SPEC *) realloc (*specs_p, sizeof (QO_TRANSITIVE_JOIN_SPEC) * new_cap);
+
+		  if (np == NULL)
+		    {
+		      if (segs_arr)
+			{
+			  free_and_init (segs_arr);
+			}
+		      return -1;
+		    }
+
+		  *specs_p = np;
+		  *cap_p = new_cap;
 		}
 
-	      PT_NODE *eq_node = parser_new_node (env->parser, PT_EXPR);
-	      if (eq_node == NULL)
-		{
-		  PT_INTERNAL_ERROR (env->parser, "allocate new node");
-		  if (segs_arr != NULL)
-		    {
-		      free_and_init (segs_arr);
-		    }
-		  return;
-		}
-
-	      eq_node->info.expr.op = PT_EQ;
-	      eq_node->info.expr.arg1 = parser_copy_tree (env->parser, QO_SEG_PT_NODE (seg1));
-	      eq_node->info.expr.arg2 = parser_copy_tree (env->parser, QO_SEG_PT_NODE (seg2));
-	      if (eq_node->info.expr.arg1 == NULL || eq_node->info.expr.arg2 == NULL)
-		{
-		  parser_free_tree (env->parser, eq_node);
-		  eq_node = NULL;
-		  if (segs_arr != NULL)
-		    {
-		      free_and_init (segs_arr);
-		    }
-		  return;
-		}
-	      else
-		{
-		  qo_insert_transitive_join_term (env, eq_node);
-		}
+	      (*specs_p)[*count_p].head_seg = head_seg;
+	      (*specs_p)[*count_p].tail_seg = tail_seg;
+	      (*specs_p)[*count_p].eqclass = eqclass;
+	      (*count_p)++;
 	    }
 	}
     }
 
-end_transitive_join_terms:
-  if (segs_arr != NULL)
+  if (segs_arr)
     {
       free_and_init (segs_arr);
     }
 
-  qo_sort_edges (env);
+  return 0;
 }
 
+/*
+ * qo_adjust_bitset_indices () - Shift term indices in a bitset after new edge
+ *   terms have been inserted.
+ *   return: 
+ *   env(in): 
+ *   bs(in/out): Bitset whose member indices are to be shifted
+ *   old_nedges(in): The original number of edge terms before insertion
+ *   extra(in): The number of newly inserted edge terms
+ *
+ * Note: All members in the bitset that are >= old_nedges are shifted right
+ *   by 'extra' positions to accommodate newly inserted edge terms.
+ */
 static void
-qo_insert_transitive_join_term (QO_ENV * env, PT_NODE * pt_expr)
+qo_adjust_bitset_indices (QO_ENV * env, BITSET * bs, int old_nedges, int extra)
 {
+  int member;
   BITSET_ITERATOR bi;
-  QO_NODE *node;
-  QO_TERM *term;
-  int i, n, member;
-  bool has_i, has_n;
+  BITSET to_remove, to_add;
 
-  QO_ASSERT (env, env->nterms < env->Nterms);
+  bitset_init (&to_remove, env);
+  bitset_init (&to_add, env);
 
-  pt_expr->type_enum = PT_TYPE_LOGICAL;
-  qo_term_clear (env, env->nterms);
-  term = qo_add_term (pt_expr, PREDICATE_TERM, env);
-  if (term == NULL)
+  for (member = bitset_iterate (bs, &bi); member != -1; member = bitset_next_member (&bi))
     {
-      return;
+      if (member >= old_nedges)
+	{
+	  bitset_add (&to_remove, member);
+	  bitset_add (&to_add, member + extra);
+	}
     }
 
-  if (QO_IS_EDGE_TERM (term))
+  for (member = bitset_iterate (&to_remove, &bi); member != -1; member = bitset_next_member (&bi))
     {
-      QO_SEGMENT *seg = QO_TERM_NOMINAL_SEG (term);
-      if (seg)
-	{
-	  QO_TERM_EQCLASS (term) = QO_SEG_EQCLASS (seg);
-	}
-      else if (QO_TERM_IS_FLAGED (term, QO_TERM_MERGEABLE_EDGE))
-	{
-	  QO_TERM_EQCLASS (term) = qo_eqclass_new (env);
-	  QO_EQCLASS_TERM (QO_TERM_EQCLASS (term)) = term;
-	}
-      else
-	{
-	  QO_TERM_EQCLASS (term) = QO_UNORDERED;
-	}
-
-      env->nedges++;
-      QO_TERM_SET_FLAG (term, QO_TERM_COPY_PT_EXPR);
+      bitset_remove (bs, member);
+    }
+  for (member = bitset_iterate (&to_add, &bi); member != -1; member = bitset_next_member (&bi))
+    {
+      bitset_add (bs, member);
     }
 
-  i = 0;
-  n = env->nterms;
-  while (i < n)
+  bitset_delset (&to_remove);
+  bitset_delset (&to_add);
+}
+
+/*
+ * qo_segment_cardinality () - Determine the cardinality (number of distinct
+ *   values) of a segment using its attribute statistics.
+ *   return: cardinality of the segment if available, otherwise 0
+ *   seg(in): Pointer to the segment for which we want the cardinality
+ *
+ * Note: If NDV (Number of Distinct Values) statistics are available, they are
+ *   used. When an index also exists on the segment, the minimum of NDV and
+ *   the first partial-key cardinality (pkeys[0]) is chosen for a tighter
+ *   estimate. If only index statistics exist, pkeys[0] is returned directly.
+ */
+static int
+qo_segment_cardinality (QO_SEGMENT * seg)
+{
+  QO_ATTR_INFO *info = QO_SEG_INFO (seg);
+  int icard = 0;
+
+  if (info)
     {
-      term = QO_ENV_TERM (env, i);
-      if (QO_IS_EDGE_TERM (term))
+      if (info->ndv > 0)
 	{
-	  i++;
-	}
-      else
-	{
-	  if (i < --n)
+	  icard = (info->ndv > INT_MAX) ? INT_MAX : info->ndv;
+	  if (info->cum_stats.is_indexed && info->cum_stats.pkeys != NULL && info->cum_stats.pkeys[0] > 0)
 	    {
-	      qo_exchange (QO_ENV_TERM (env, i), QO_ENV_TERM (env, n));
-
-	      int k;
-	      for (k = 0; k < env->nnodes; k++)
-		{
-		  QO_NODE *n_ptr = QO_ENV_NODE (env, k);
-		  has_i = BITSET_MEMBER (QO_NODE_SARGS (n_ptr), i) ? true : false;
-		  has_n = BITSET_MEMBER (QO_NODE_SARGS (n_ptr), n) ? true : false;
-
-		  if (has_n && !has_i)
-		    {
-		      bitset_remove (&QO_NODE_SARGS (n_ptr), n);
-		      bitset_add (&QO_NODE_SARGS (n_ptr), i);
-		    }
-		  else if (!has_n && has_i)
-		    {
-		      bitset_remove (&QO_NODE_SARGS (n_ptr), i);
-		      bitset_add (&QO_NODE_SARGS (n_ptr), n);
-		    }
-		}
+	      icard = MIN (icard, info->cum_stats.pkeys[0]);
 	    }
 	}
+      else if (info->cum_stats.is_indexed && info->cum_stats.pkeys != NULL && info->cum_stats.pkeys[0] > 0)
+	{
+	  icard = info->cum_stats.pkeys[0];
+	}
     }
+  return icard;
 }
 
 /*
@@ -8324,9 +8493,9 @@ qo_sort_edges (QO_ENV * env)
 	      qo_exchange (term1, term2);
 
 	      /* fix eqclass term pointers */
-	      if (term1->eqclass && QO_EQCLASS_TERM (term1->eqclass) == term2)
+	      if (term1->eqclass && QO_EQCLASS_TERM (term1->eqclass) != NULL)
 		QO_EQCLASS_TERM (term1->eqclass) = term1;
-	      if (term2->eqclass && QO_EQCLASS_TERM (term2->eqclass) == term1)
+	      if (term2->eqclass && QO_EQCLASS_TERM (term2->eqclass) != NULL)
 		QO_EQCLASS_TERM (term2->eqclass) = term2;
 
 	      /* fix fake_terms bitset */
@@ -8342,6 +8511,99 @@ qo_sort_edges (QO_ENV * env)
 		}
 	    }
 	}
+    }
+}
+
+/*
+ * qo_insert_transitive_join_terms () - Initialize new QO_TERM entries for
+ *   the collected transitive join specifications.
+ *   return: 
+ *   env(in): Pointer to the optimizer environment
+ *   specs(in): Array of transitive join specifications
+ *   count(in): Number of specifications in the array
+ *   start_idx(in): Starting index in env->terms where new terms are placed
+ *
+ * Note: For each spec, a new edge term is initialized via qo_term_clear()
+ *   and configured as a QO_TC_JOIN / JOIN_INNER term. Selectivity is computed
+ *   from the segment cardinality. A synthetic PT_EXPR (A = B) node is created
+ *   for EXPLAIN output.
+ */
+static void
+qo_insert_transitive_join_terms (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC * specs, int count, int start_idx)
+{
+  int i;
+  QO_TERM *term;
+  QO_SEGMENT *head_seg, *tail_seg;
+  QO_NODE *head_node, *tail_node;
+  QO_EQCLASS *eqclass;
+  int head_icard, tail_icard, icard;
+
+  for (i = 0; i < count; i++)
+    {
+      int new_idx = start_idx + i;
+      head_seg = specs[i].head_seg;
+      tail_seg = specs[i].tail_seg;
+      head_node = QO_SEG_HEAD (head_seg);
+      tail_node = QO_SEG_HEAD (tail_seg);
+      eqclass = specs[i].eqclass;
+      qo_term_clear (env, new_idx);
+      term = QO_ENV_TERM (env, new_idx);
+
+      QO_TERM_CLASS (term) = QO_TC_JOIN;
+      QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
+
+      head_icard = qo_segment_cardinality (head_seg);
+      tail_icard = qo_segment_cardinality (tail_seg);
+      icard = MAX (head_icard, tail_icard);
+
+      if (icard != 0)
+	{
+	  QO_TERM_SELECTIVITY (term) = (1.0 / icard);
+	}
+      else
+	{
+	  QO_TERM_SELECTIVITY (term) = DEFAULT_EQUIJOIN_SELECTIVITY;
+	}
+
+      QO_TERM_SET_FLAG (term, QO_TERM_MERGEABLE_EDGE);
+      QO_TERM_SET_FLAG (term, QO_TERM_EQUAL_OP);
+      QO_TERM_SET_FLAG (term, QO_TERM_SINGLE_PRED);
+
+      if (env->parser)
+	{
+	  PT_NODE *eq_node = parser_new_node (env->parser, PT_EXPR);
+	  if (eq_node != NULL)
+	    {
+	      eq_node->info.expr.op = PT_EQ;
+	      eq_node->info.expr.arg1 = parser_copy_tree_list (env->parser, QO_SEG_PT_NODE (head_seg));
+	      eq_node->info.expr.arg2 = parser_copy_tree_list (env->parser, QO_SEG_PT_NODE (tail_seg));
+	      if (eq_node->info.expr.arg1 == NULL || eq_node->info.expr.arg2 == NULL)
+		{
+		  parser_free_tree (env->parser, eq_node);
+		  eq_node = NULL;
+		}
+	      else
+		{
+		  eq_node->type_enum = PT_TYPE_LOGICAL;
+		  QO_TERM_PT_EXPR (term) = eq_node;
+		  QO_TERM_SET_FLAG (term, QO_TERM_COPY_PT_EXPR);
+		}
+	    }
+	}
+
+      QO_TERM_EQCLASS (term) = eqclass;
+      QO_TERM_NOMINAL_SEG (term) = head_seg;
+      QO_TERM_HEAD (term) = head_node;
+      QO_TERM_TAIL (term) = tail_node;
+      QO_TERM_SEG (term) = head_seg;
+      QO_TERM_OID_SEG (term) = tail_seg;
+      bitset_add (&QO_TERM_NODES (term), QO_NODE_IDX (head_node));
+      bitset_add (&QO_TERM_NODES (term), QO_NODE_IDX (tail_node));
+      bitset_add (&QO_TERM_SEGS (term), QO_SEG_IDX (head_seg));
+      bitset_add (&QO_TERM_SEGS (term), QO_SEG_IDX (tail_seg));
+      term->index_seg[0] = head_seg;
+      term->index_seg[1] = tail_seg;
+      QO_TERM_CAN_USE_INDEX (term) = 2;
     }
 }
 
