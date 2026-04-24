@@ -211,7 +211,7 @@ static bool css_is_log_writer (const THREAD_ENTRY & thread_arg);
 static void css_stop_all_workers (THREAD_ENTRY & thread_ref, css_thread_stop_type stop_phase);
 static void css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapper, int &busy_count);
 
-// cubthread::stats_worker_pool_type::core_impl confuses indent
+// WorkerPoolCore template parameter confuses indent
 template <typename WorkerPoolCore>
 static void css_wp_core_job_scan_mapper (const WorkerPoolCore & wp_core, bool & stop_mapper,
                                          THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx, size_t & core_index,
