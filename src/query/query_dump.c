@@ -3979,7 +3979,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   part_cnt = stats_group->context_cnt;
 
   const bool is_partition_parallel = (status == HASHJOIN_STATUS_PARTITION || status == HASHJOIN_STATUS_PARALLEL);
-  assert (part_stats == NULL || is_partition_parallel);
+  assert (part_stats == NULL || is_partition_parallel || status == HASHJOIN_STATUS_PARALLEL_PROBE);
 
   outer_xasl = proc->outer.xasl;
   inner_xasl = proc->inner.xasl;
@@ -4292,7 +4292,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
   part_cnt = stats_group->context_cnt;
 
   const bool is_partition_parallel = (status == HASHJOIN_STATUS_PARTITION || status == HASHJOIN_STATUS_PARALLEL);
-  assert (part_stats == NULL || is_partition_parallel);
+  assert (part_stats == NULL || is_partition_parallel || status == HASHJOIN_STATUS_PARALLEL_PROBE);
 
   outer_xasl = proc->outer.xasl;
   inner_xasl = proc->inner.xasl;
