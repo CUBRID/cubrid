@@ -7875,6 +7875,8 @@ file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb, char **table_arr
 {
   int i;
   int error_code = NO_ERROR;
+  *table_sizes_p = NULL;
+  *actual_count_p = 0;
 
   if (spacedb != NULL)
   {
@@ -7903,10 +7905,7 @@ file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb, char **table_arr
       }
   }
 
-  *table_sizes_p = NULL;
-  *actual_count_p = 0;
-
-  if (table_array_length == 1 && strcmp (table_array[0], "*") == 0)
+  if (table_array_length == 1 && strcmp (table_array[0], "*") == 0) /* collect all */
     {
       OID *user_class_oids = NULL;
       int user_class_count = 0;
@@ -7952,6 +7951,57 @@ file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb, char **table_arr
       *actual_count_p = user_class_count;
       free_and_init (user_class_oids);
     }
+  else if (table_array_length == 1 && table_array[0][strlen (table_array[0]) - 1] == '*') /* trailing-wildcard pattern */
+    {
+      OID *matched_oids = NULL;
+      int matched_count = 0;
+
+      error_code = locator_find_class_oids_by_pattern (thread_p, table_array[0],
+						       &matched_oids, &matched_count);
+      if (error_code != NO_ERROR || matched_count == 0)
+        {
+          *actual_count_p = 0;
+          return error_code;
+        }
+
+      *table_sizes_p = (SPACEDB_TABLE_SIZES_HEADER *) malloc (matched_count * sizeof (SPACEDB_TABLE_SIZES_HEADER));
+      if (*table_sizes_p == NULL)
+        {
+          free_and_init (matched_oids);
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+                  (size_t) matched_count * sizeof (SPACEDB_TABLE_SIZES_HEADER));
+          return ER_OUT_OF_VIRTUAL_MEMORY;
+        }
+
+      for (int i = 0; i < matched_count; i++)
+        {
+          char *class_name = NULL;
+
+          error_code = heap_get_class_name (thread_p, &matched_oids[i], &class_name);
+          if (error_code != NO_ERROR || class_name == NULL)
+            {
+              free_and_init (matched_oids);
+              file_spacedb_free_table_sizes (*table_sizes_p, i);
+              *table_sizes_p = NULL;
+              return error_code != NO_ERROR ? error_code : ER_FAILED;
+            }
+
+          error_code = file_spacedb_fill_one_table (thread_p, &matched_oids[i], class_name,
+                                                    &(*table_sizes_p)[i]);
+          free_and_init (class_name);
+          if (error_code != NO_ERROR)
+            {
+              free_and_init (matched_oids);
+              file_spacedb_free_table_sizes (*table_sizes_p, i);
+              *table_sizes_p = NULL;
+              return error_code;
+            }
+        }
+
+      *actual_count_p = matched_count;
+      free_and_init (matched_oids);
+    }
+#if !defined (NDEBUG)
   else
     {
       *table_sizes_p = (SPACEDB_TABLE_SIZES_HEADER *) malloc (table_array_length * sizeof (SPACEDB_TABLE_SIZES_HEADER));
@@ -7961,6 +8011,7 @@ file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb, char **table_arr
                   (size_t) table_array_length * sizeof (SPACEDB_TABLE_SIZES_HEADER));
           return ER_OUT_OF_VIRTUAL_MEMORY;
         }
+      memset (*table_sizes_p, 0, table_array_length * sizeof (SPACEDB_TABLE_SIZES_HEADER));
 
       *actual_count_p = 0;
       for (int table_num = 0; table_num < table_array_length; table_num++)
@@ -7972,13 +8023,14 @@ file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb, char **table_arr
           if (OID_ISNULL (&class_oid))
             {
               er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, table_array[table_num]);
+              free_and_init (*table_sizes_p);
               return ER_LC_UNKNOWN_CLASSNAME;
             }
 
           error_code = file_spacedb_fill_one_table (thread_p, &class_oid, table_array[table_num], &(*table_sizes_p)[table_num]);
           if (error_code != NO_ERROR)
             {
-              file_spacedb_free_table_sizes (*table_sizes_p, table_num);
+              file_spacedb_free_table_sizes (*table_sizes_p, table_num + 1);
               *table_sizes_p = NULL;
               return error_code;
             }
@@ -7986,6 +8038,7 @@ file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb, char **table_arr
           *actual_count_p = table_num + 1;
         }
     }
+#endif /* !NDEBUG */
 
   return NO_ERROR;
 }
@@ -8009,7 +8062,7 @@ file_spacedb_free_table_sizes (SPACEDB_TABLE_SIZES_HEADER * table_sizes, int cou
     {
       if (table_sizes[i].header != NULL)
         {
-          db_private_free_and_init (NULL, table_sizes[i].header);
+          free_and_init (table_sizes[i].header);
         }
     }
 
@@ -8054,13 +8107,13 @@ file_spacedb_fill_one_table (THREAD_ENTRY * thread_p, const OID * class_oid,
     }
 
   entry->file_count = class_rep->n_indexes + 1;
-  entry->header = (SPACEDB_TABLE_SIZES *) db_private_alloc (thread_p,
-                                                          sizeof (SPACEDB_TABLE_SIZES) * entry->file_count);
+  entry->header = (SPACEDB_TABLE_SIZES *) malloc (sizeof (SPACEDB_TABLE_SIZES) * entry->file_count);
   if (entry->header == NULL)
     {
-      ASSERT_ERROR_AND_SET (error_code);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (SPACEDB_TABLE_SIZES) * entry->file_count);
       heap_classrepr_free_and_init (class_rep, &idx_incache);
-      return error_code;
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   memset (entry->header, 0, sizeof (SPACEDB_TABLE_SIZES) * entry->file_count);
 
