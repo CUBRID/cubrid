@@ -924,7 +924,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   const char *size_unit;
   T_SPACEDB_SIZE_UNIT size_unit_type;
 
-  bool summarize, purpose, table_size;
+  bool summarize, purpose;
   FILE *outfp = NULL;
   char io_size_str[64], log_size_str[64];
 
@@ -963,23 +963,15 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   size_unit = utility_get_option_string_value (arg_map, SPACE_SIZE_UNIT_S, 0);
   summarize = utility_get_option_bool_value (arg_map, SPACE_SUMMARIZE_S);
   purpose = utility_get_option_bool_value (arg_map, SPACE_PURPOSE_S);
-  table_size = utility_get_option_bool_value (arg_map, SPACE_TABLE_SIZE_S);
   table_name = utility_get_option_string_value (arg_map, SPACE_TABLE_NAME_S, 0);
   table_array_file = utility_get_option_string_value (arg_map, SPACE_INPUT_FILE_S, 0);
 
   size_unit_type = SPACEDB_SIZE_UNIT_HUMAN_READABLE;
 
-  if (table_size)
+  if (table_name && table_array_file)
     {
-      if (table_name && table_array_file)
-        {
-          fprintf (stderr, "The -n and -i options cannot be used together.\n");
-          goto error_exit;
-        }
-      if (table_name == NULL && table_array_file == NULL)
-        {
-          goto print_space_usage;
-        }
+      fprintf (stderr, "The -n and -i options cannot be used together.\n");
+      goto error_exit;
     }
 
   if (size_unit != NULL)
@@ -1058,74 +1050,70 @@ spacedb (UTIL_FUNCTION_ARG * arg)
       /* we need detailed space info for file usage. set filesp to non-NULL value */
       filesp = files;
     }
-  if (table_size)
+  if (table_name != NULL)
     {
-      if (table_name != NULL)
-        {          
-          only_table[0] = (char *) table_name;
-          table_array = only_table;
-          table_array_length = 1;
-        }
-      else if (table_array_file != NULL)
-        {
-          FILE *infp = NULL;
-          char input_table[SM_MAX_IDENTIFIER_LENGTH];
-          int capacity = 16;
+      only_table[0] = (char *) table_name;
+      table_array = only_table;
+      table_array_length = 1;
+    }
+  else if (table_array_file != NULL)
+    {
+      FILE *infp = NULL;
+      char input_table[SM_MAX_IDENTIFIER_LENGTH];
+      int capacity = 16;
 
-          infp = fopen (table_array_file, "r");
-          if (infp == NULL)
-            {
-              perror (table_array_file);
-              goto error_exit;
-            }
+      infp = fopen (table_array_file, "r");
+      if (infp == NULL)
+	{
+	  perror (table_array_file);
+	  goto error_exit;
+	}
 
-          table_array = (char **) malloc (capacity * sizeof (char *));
-          if (table_array == NULL)
-            {
-              fclose (infp);
-              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-                      (size_t) capacity * sizeof (char *));
-              goto error_exit;
-            }
+      table_array = (char **) malloc (capacity * sizeof (char *));
+      if (table_array == NULL)
+	{
+	  fclose (infp);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  (size_t) capacity * sizeof (char *));
+	  goto error_exit;
+	}
 
-          while (fgets (input_table, sizeof (input_table), infp) != NULL)
-            {
-              char **new_table_array = NULL;
+      while (fgets (input_table, sizeof (input_table), infp) != NULL)
+	{
+	  char **new_table_array = NULL;
 
-              trim (input_table);
-              if (strlen (input_table) == 0)
-                {
-                  continue;
-                }
+	  trim (input_table);
+	  if (strlen (input_table) == 0)
+	    {
+	      continue;
+	    }
 
-              if (table_array_length >= capacity)
-                {
-                  capacity *= 2;
-                  new_table_array = (char **) realloc (table_array, capacity * sizeof (char *));
-                  if (new_table_array == NULL)
-                    {
-                      fclose (infp);
-                      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-                              (size_t) capacity * sizeof (char *));
-                      goto error_exit;
-                    }
-                  table_array = new_table_array;
-                }
+	  if (table_array_length >= capacity)
+	    {
+	      capacity *= 2;
+	      new_table_array = (char **) realloc (table_array, capacity * sizeof (char *));
+	      if (new_table_array == NULL)
+		{
+		  fclose (infp);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  (size_t) capacity * sizeof (char *));
+		  goto error_exit;
+		}
+	      table_array = new_table_array;
+	    }
 
-              table_array[table_array_length] = strdup (input_table);
-              if (table_array[table_array_length] == NULL)
-                {
-                  fclose (infp);
-                  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (input_table) + 1);
-                  goto error_exit;
-                }
+	  table_array[table_array_length] = strdup (input_table);
+	  if (table_array[table_array_length] == NULL)
+	    {
+	      fclose (infp);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (input_table) + 1);
+	      goto error_exit;
+	    }
 
-              table_array_length++;
-            }
+	  table_array_length++;
+	}
 
-          fclose (infp);
-        }
-      
+      fclose (infp);
     }
 
   spacedb_error = netcl_spacedb (all, volsp, filesp, &table_sizes, &actual_table_count, table_array, table_array_length);
@@ -1248,7 +1236,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
     }
 
   /* print table_size */
-  if (table_size)
+  if (table_array_length > 0)
     {
       for (int table_num = 0; table_num < actual_table_count; table_num++)
         {
