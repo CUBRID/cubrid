@@ -80,9 +80,12 @@ namespace
   {
     ~deferred_flush_guard ()
     {
-      if (!tran_is_in_libcas ())
+      cubmethod::callback_handler *h = cubmethod::get_callback_handler ();
+      /* fast path: skip the libcas-depth check and the flush call entirely
+         when no PL callback pushed anything to the queue. */
+      if (h->has_deferred_query_handler () && !tran_is_in_libcas ())
         {
-          cubmethod::get_callback_handler ()->free_deferred_query_handler ();
+          h->free_deferred_query_handler ();
         }
     }
   };
