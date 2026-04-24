@@ -482,10 +482,11 @@ get_cache_entry (const char *name, int flag, const char *server_list, const char
 	    {
 	      free (b);
 	    }
+	  free (entry);
 	  return CUBMEMC_ERROR_OUT_OF_MEMORY;
 	}
 
-      /* create memcached handle and initialize using server_list and 
+      /* create memcached handle and initialize using server_list and
          behavior */
       memc = NULL;
       ret = create_and_init_memcached (&memc, server_list, behavior);
@@ -494,6 +495,8 @@ get_cache_entry (const char *name, int flag, const char *server_list, const char
 	  free (n);
 	  free (s);
 	  free (b);
+	  free (entry);
+	  return ret;
 	}
 
       entry->name = n;
