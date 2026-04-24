@@ -70,6 +70,7 @@
 #include "object_representation.h"
 #include "connection_cl.h"
 #include "db_set_function.h"
+#include "db_vector.hpp"
 #include "dbi.h"
 #include "parse_tree.h"
 #include "dbtype.h"
