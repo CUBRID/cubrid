@@ -28,18 +28,21 @@
 #endif // not SERVER_MODE and not SA_MODE
 
 // same module includes
+#include "thread_compat.hpp"
 #include "thread_entry.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_task.hpp"
 #include "thread_waiter.hpp"
 #if defined (SERVER_MODE)
 #include "thread_worker_pool_impl.hpp"
+#include "thread_worker_pool_elastic.hpp"
 #endif
 
 // other module includes
 #include "count_registry.hpp"
 #include "base_flag.hpp"
 
+#include <type_traits>
 #include <mutex>
 #include <vector>
 
@@ -278,17 +281,6 @@ namespace cubthread
   };
 
   //////////////////////////////////////////////////////////////////////////
-  // alias
-  //////////////////////////////////////////////////////////////////////////
-#if defined (SERVER_MODE)
-  using worker_pool_type = cubthread::worker_pool_impl<false>;
-  using stats_worker_pool_type = cubthread::worker_pool_impl<true>;
-#else
-  using worker_pool_type = cubthread::worker_pool;
-  using stats_worker_pool_type = cubthread::worker_pool;
-#endif
-
-  //////////////////////////////////////////////////////////////////////////
   // thread logging flags
   //
   // TODO: complete thread logging for all modules
@@ -498,6 +490,32 @@ namespace cubthread
 #define REGISTER_DAEMON(name) static cubthread::manager::daemon_registry_t _gl_reg_daemon_##name (#name, 1)
 
 //////////////////////////////////////////////////////////////////////////
+// alias
+//////////////////////////////////////////////////////////////////////////
+
+#if defined (SERVER_MODE)
+template <
+	cubthread::stats_t Stats = cubthread::stats_t::off,
+	cubthread::pool_t Type = cubthread::pool_t::basic
+	>
+using worker_pool_type =
+	std::conditional_t<Type == cubthread::pool_t::basic, cubthread::worker_pool_impl<Stats>,
+	std::conditional_t<Type == cubthread::pool_t::elastic, cubthread::worker_pool_elastic<Stats>,
+	cubthread::worker_pool>>;
+#else
+template <cubthread::stats_t Stats = cubthread::stats_t::off, cubthread::pool_t Type = cubthread::pool_t::basic>
+using worker_pool_type = cubthread::worker_pool;
+#endif
+
+template <cubthread::stats_t Stats = cubthread::stats_t::off, cubthread::pool_t Type = cubthread::pool_t::basic,
+	  typename ... Args>
+worker_pool_type<Stats, Type> *
+thread_create_worker_pool (Args &&... args)
+{
+  return cubthread::get_manager ()->create_worker_pool<worker_pool_type<Stats, Type>> (std::forward<Args> (args)...);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // alias functions to be used in C legacy code
 //
 // use inline functions instead of definitions
@@ -513,23 +531,6 @@ inline cubthread::entry_manager &
 thread_get_entry_manager (void)
 {
   return cubthread::get_manager ()->get_entry_manager ();
-}
-
-inline cubthread::worker_pool_type *
-thread_create_worker_pool (std::size_t pool_size, std::size_t core_count, const char *name,
-			   cubthread::entry_manager &entry_mgr, bool pool_threads = false)
-{
-  return cubthread::get_manager ()->create_worker_pool<cubthread::worker_pool_type> (pool_size, core_count, name,
-	 entry_mgr, pool_threads);
-}
-
-inline cubthread::stats_worker_pool_type *
-thread_create_stats_worker_pool (std::size_t pool_size, std::size_t core_count, const char *name,
-				 cubthread::entry_manager &entry_mgr, bool pool_threads = false,
-				 cubthread::wait_seconds idle_timeout = std::chrono::seconds (5))
-{
-  return cubthread::get_manager ()->create_worker_pool<cubthread::stats_worker_pool_type> (pool_size, core_count, name,
-	 entry_mgr, pool_threads, idle_timeout);
 }
 
 inline std::size_t
