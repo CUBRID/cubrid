@@ -142,7 +142,6 @@ static int jsp_check_param_type_supported  (DB_TYPE type, int mode);
 static int jsp_drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type);
 static int jsp_drop_stored_procedure_code (const char *name);
 
-static int jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &out);
 static int jsp_check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type);
 
 extern bool ssl_client;
