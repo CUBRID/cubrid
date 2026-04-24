@@ -2406,7 +2406,10 @@ ws_init (bool is_sub)
   return NO_ERROR;
 
 error:
-  db_destroy_workspace_heap ();
+  if (!is_sub)
+    {
+      db_destroy_workspace_heap ();
+    }
 
   ws_area_final ();
   pr_area_final ();
@@ -2450,9 +2453,9 @@ ws_final (bool is_sub)
   if (!is_sub)
     {
       dk_deduplicate_key_attribute_finalized ();
-    }
 
-  tr_final ();
+      tr_final ();
+    }
 
   if (prm_get_bool_value (PRM_ID_WS_MEMORY_REPORT))
     {
