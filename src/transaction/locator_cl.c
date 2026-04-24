@@ -7028,7 +7028,8 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 	{
 	  if (mflush->mobjs->num_objs == 0)
 	    {
-	      error_code = locator_mflush_reallocate_copy_area (mflush, required_length + DB_SIZEOF (LC_COPYAREA_MANYOBJS));
+	      error_code =
+		locator_mflush_reallocate_copy_area (mflush, required_length + DB_SIZEOF (LC_COPYAREA_MANYOBJS));
 	      if (error_code != NO_ERROR)
 		{
 		  return error_code;

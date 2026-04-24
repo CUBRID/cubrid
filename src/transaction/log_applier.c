@@ -4383,6 +4383,92 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
   return error;
 }
 
+typedef struct la_oos_chunk LA_OOS_CHUNK;
+struct la_oos_chunk
+{
+  char *alloc_data;		/* chunk log data including OOS_RECORD_HEADER */
+  int length;			/* OOS body length excluding OOS_RECORD_HEADER */
+};
+
+static void
+la_free_oos_chunks (LA_OOS_CHUNK * chunks, int chunk_count)
+{
+  int i;
+
+  if (chunks == NULL)
+    {
+      return;
+    }
+
+  for (i = 0; i < chunk_count; i++)
+    {
+      if (chunks[i].alloc_data != NULL)
+	{
+	  free_and_init (chunks[i].alloc_data);
+	}
+    }
+
+  free_and_init (chunks);
+}
+
+static void
+la_release_oos_log_data (LOG_PAGE ** log_page, LOG_LSA * lsa, char **chunk_data)
+{
+  if (*chunk_data != NULL)
+    {
+      free_and_init (*chunk_data);
+    }
+
+  if (*log_page != NULL)
+    {
+      la_release_page_buffer (lsa->pageid);
+      *log_page = NULL;
+    }
+}
+
+static int
+la_set_oos_rebuild_error (const char *message)
+{
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, message);
+  return ER_HA_GENERIC_ERROR;
+}
+
+static int
+la_append_oos_chunk (LA_OOS_CHUNK ** chunks, int *chunk_count, int *chunk_capacity, char **chunk_data,
+		     int chunk_body_length)
+{
+  LA_OOS_CHUNK *new_chunks = NULL;
+  int new_capacity;
+  int new_size;
+
+  assert (chunks != NULL);
+  assert (chunk_count != NULL);
+  assert (chunk_capacity != NULL);
+  assert (chunk_data != NULL);
+
+  if (*chunk_count >= *chunk_capacity)
+    {
+      new_capacity = (*chunk_capacity == 0) ? 4 : (*chunk_capacity * 2);
+      new_size = DB_SIZEOF (LA_OOS_CHUNK) * new_capacity;
+      new_chunks = (LA_OOS_CHUNK *) realloc (*chunks, new_size);
+      if (new_chunks == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, new_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      *chunks = new_chunks;
+      *chunk_capacity = new_capacity;
+    }
+
+  (*chunks)[*chunk_count].alloc_data = *chunk_data;
+  (*chunks)[*chunk_count].length = chunk_body_length;
+  *chunk_data = NULL;
+  (*chunk_count)++;
+
+  return NO_ERROR;
+}
+
 /*
  * la_rebuild_oos_recdes() - rebuild a multi-chunk OOS record from log records
  *   return: NO_ERROR or error code
@@ -4397,34 +4483,15 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
 static int
 la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 {
-  typedef struct la_oos_chunk
-  {
-    char *alloc_data;		/* chunk log data including OOS_RECORD_HEADER */
-    int length;			/* OOS body length excluding OOS_RECORD_HEADER */
-  } LA_OOS_CHUNK;
-
   LOG_LSA current_lsa;
   TRANID trid = NULL_TRANID;
   int total_data_length = -1;
   int total_body_length = 0;
   int error = NO_ERROR;
   bool found_head_chunk = false;
-  std::vector<LA_OOS_CHUNK> chunks;
-  auto free_chunks = [&chunks]()
-  {
-    for (LA_OOS_CHUNK &chunk : chunks)
-      {
-	if (chunk.alloc_data != NULL)
-	  {
-	    free_and_init (chunk.alloc_data);
-	  }
-      }
-  };
-  auto set_oos_rebuild_error = [] (const char *message)
-  {
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, message);
-    return ER_HA_GENERIC_ERROR;
-  };
+  LA_OOS_CHUNK *chunks = NULL;
+  int chunk_count = 0;
+  int chunk_capacity = 0;
 
   assert (lsa != NULL);
   assert (recdes != NULL);
@@ -4442,18 +4509,6 @@ la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
       char *rec_type = rec_type_area;
       char *chunk_data = NULL;
       int chunk_length = 0;
-      auto release_current_log = [&current_log_page, &current_lsa, &chunk_data]()
-      {
-	if (chunk_data != NULL)
-	  {
-	    free_and_init (chunk_data);
-	  }
-	if (current_log_page != NULL)
-	  {
-	    la_release_page_buffer (current_lsa.pageid);
-	    current_log_page = NULL;
-	  }
-      };
 
       if (current_log_page == NULL)
 	{
@@ -4463,7 +4518,7 @@ la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 	    {
 	      error = ER_FAILED;
 	    }
-	  free_chunks ();
+	  la_free_oos_chunks (chunks, chunk_count);
 	  return error;
 	}
 
@@ -4485,12 +4540,12 @@ la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 
 	  LSA_COPY (&temp_lsa, &current_lsa);
 	  error =
-	    la_get_log_data (current_log_record, &temp_lsa, current_log_page, RVOOS_INSERT, &rcvindex, &log_info, &rec_type,
-			     &chunk_data, &chunk_length);
+	    la_get_log_data (current_log_record, &temp_lsa, current_log_page, RVOOS_INSERT, &rcvindex, &log_info,
+			     &rec_type, &chunk_data, &chunk_length);
 	  if (error != NO_ERROR)
 	    {
-	      release_current_log ();
-	      free_chunks ();
+	      la_release_oos_log_data (&current_log_page, &current_lsa, &chunk_data);
+	      la_free_oos_chunks (chunks, chunk_count);
 	      return error;
 	    }
 
@@ -4498,9 +4553,9 @@ la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 	    {
 	      if (rec_type == NULL || *(INT16 *) rec_type != REC_HOME || chunk_length < OOS_RECORD_HEADER_SIZE)
 		{
-		  error = set_oos_rebuild_error ("invalid multi-chunk OOS log data");
-		  release_current_log ();
-		  free_chunks ();
+		  error = la_set_oos_rebuild_error ("invalid multi-chunk OOS log data");
+		  la_release_oos_log_data (&current_log_page, &current_lsa, &chunk_data);
+		  la_free_oos_chunks (chunks, chunk_count);
 		  return error;
 		}
 
@@ -4512,9 +4567,9 @@ la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 		}
 	      else if (total_data_length != oos_header.total_data_length)
 		{
-		  error = set_oos_rebuild_error ("mismatched multi-chunk OOS total size");
-		  release_current_log ();
-		  free_chunks ();
+		  error = la_set_oos_rebuild_error ("mismatched multi-chunk OOS total size");
+		  la_release_oos_log_data (&current_log_page, &current_lsa, &chunk_data);
+		  la_free_oos_chunks (chunks, chunk_count);
 		  return error;
 		}
 
@@ -4522,14 +4577,20 @@ la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 	      total_body_length += chunk_body_length;
 	      if (total_body_length > total_data_length)
 		{
-		  error = set_oos_rebuild_error ("multi-chunk OOS body length exceeds total size");
-		  release_current_log ();
-		  free_chunks ();
+		  error = la_set_oos_rebuild_error ("multi-chunk OOS body length exceeds total size");
+		  la_release_oos_log_data (&current_log_page, &current_lsa, &chunk_data);
+		  la_free_oos_chunks (chunks, chunk_count);
 		  return error;
 		}
 
-	      chunks.push_back ({ chunk_data, chunk_body_length });
-	      chunk_data = NULL;
+	      error = la_append_oos_chunk (&chunks, &chunk_count, &chunk_capacity, &chunk_data, chunk_body_length);
+	      if (error != NO_ERROR)
+		{
+		  la_release_oos_log_data (&current_log_page, &current_lsa, &chunk_data);
+		  la_free_oos_chunks (chunks, chunk_count);
+		  return error;
+		}
+
 	      if (oos_header.chunk_index == 0)
 		{
 		  found_head_chunk = true;
@@ -4537,16 +4598,17 @@ la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 	    }
 	}
 
-      release_current_log ();
+      la_release_oos_log_data (&current_log_page, &current_lsa, &chunk_data);
 
       if (found_head_chunk)
 	{
 	  int offset = OOS_RECORD_HEADER_SIZE;
-	  OOS_RECORD_HEADER merged_header { total_data_length, 0, OID_INITIALIZER };
+	  OOS_RECORD_HEADER merged_header = { total_data_length, 0, OID_INITIALIZER };
+	  int chunk_index;
 
 	  if (total_body_length != total_data_length)
 	    {
-	      error = set_oos_rebuild_error ("incomplete multi-chunk OOS record");
+	      error = la_set_oos_rebuild_error ("incomplete multi-chunk OOS record");
 	      break;
 	    }
 
@@ -4560,13 +4622,14 @@ la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 	  recdes->length = total_data_length + OOS_RECORD_HEADER_SIZE;
 	  memcpy (recdes->data, &merged_header, OOS_RECORD_HEADER_SIZE);
 
-	  for (auto it = chunks.rbegin (); it != chunks.rend (); ++it)
+	  for (chunk_index = chunk_count - 1; chunk_index >= 0; chunk_index--)
 	    {
-	      memcpy (recdes->data + offset, it->alloc_data + OOS_RECORD_HEADER_SIZE, it->length);
-	      offset += it->length;
+	      memcpy (recdes->data + offset, chunks[chunk_index].alloc_data + OOS_RECORD_HEADER_SIZE,
+		      chunks[chunk_index].length);
+	      offset += chunks[chunk_index].length;
 	    }
 
-	  free_chunks ();
+	  la_free_oos_chunks (chunks, chunk_count);
 
 	  return NO_ERROR;
 	}
@@ -4576,10 +4639,10 @@ la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 
   if (error == NO_ERROR)
     {
-      error = set_oos_rebuild_error ("missing first chunk while reading multi-chunk OOS record");
+      error = la_set_oos_rebuild_error ("missing first chunk while reading multi-chunk OOS record");
     }
 
-  free_chunks ();
+  la_free_oos_chunks (chunks, chunk_count);
 
   return error;
 }
