@@ -64,6 +64,28 @@
 #include "network_histogram.hpp"
 
 /*
+ * CBRD-26745: RAII guard that flushes callback_handler's deferred
+ * query_handler list whenever the enclosing RPC helper exits, covering
+ * every early return path (socket errors, allocation failures, etc).
+ * Without this guard, stale query_handler* entries persisted in the
+ * process-wide singleton queue across client sessions and were deleted
+ * later by an unrelated client's RPC, double-freeing host_variables.
+ */
+namespace
+{
+  struct deferred_flush_guard
+  {
+    ~deferred_flush_guard ()
+    {
+      if (!tran_is_in_libcas ())
+        {
+          cubmethod::get_callback_handler ()->free_deferred_query_handler ();
+        }
+    }
+  };
+}
+
+/*
  * To check for errors from the comm system. Note that if we get any error
  * other than RECORD_TRUNCATED or CANT_ALLOC_BUFFER, we will call it a
  * SERVER_CRASHED error.  Also note that CANT_ALLOC_BUFFER allows the
@@ -1142,6 +1164,9 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				  int *replydatasize_listid, char **replydata_page, int *replydatasize_page,
 				  char **replydata_plan, int *replydatasize_plan)
 {
+  /* CBRD-26745: flush deferred query_handler queue on every return path */
+  deferred_flush_guard _flush_guard;
+
   unsigned int rc;
   int size, error;
   int reply_datasize_listid, reply_datasize_page, reply_datasize_plan, remaining_size;
@@ -1717,15 +1742,6 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 	}
       while (server_request != END_CALLBACK && server_request != QUERY_END);
 
-      /*
-       * delete deferred query handlers during PL execution
-       * TODO: move it to proper place
-       */
-      if (!tran_is_in_libcas ())
-	{
-	  cubmethod::get_callback_handler ()->free_deferred_query_handler ();
-	}
-
       if (histo_is_collecting ())
 	{
 	  int recevied = replysize
@@ -1742,6 +1758,9 @@ int
 net_client_request_method_callback (int request, char *argbuf, int argsize, char *replybuf, int replysize,
 				    char **replydata_ptr, int *replydatasize_ptr)
 {
+  /* CBRD-26745: flush deferred query_handler queue on every return path */
+  deferred_flush_guard _flush_guard;
+
   unsigned int rc;
   int error;
   QUERY_SERVER_REQUEST server_request;
@@ -1909,15 +1928,6 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 		  {
 		    COMPARE_AND_FREE_BUFFER (replydata, reply);
 		    free_and_init (replydata);
-		    /* CBRD-26745: flush the deferred query_handler queue on the
-		       error path too, otherwise stale handlers persist in the
-		       callback_handler singleton across sessions and the next
-		       client's execute crashes in mspace_free via
-		       pr_clear_value on a freed host_variables buffer. */
-		    if (!tran_is_in_libcas ())
-		      {
-		        cubmethod::get_callback_handler ()->free_deferred_query_handler ();
-		      }
 		    return set_server_error (error);
 		  }
 		else
@@ -1944,15 +1954,6 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 	}
     }
   while (server_request != END_CALLBACK);
-
-  /*
-   * delete deferred query handlers during PL execution
-   * TODO: move it to proper place
-   */
-  if (!tran_is_in_libcas ())
-    {
-      cubmethod::get_callback_handler ()->free_deferred_query_handler ();
-    }
 
   if (histo_is_collecting ())
     {
