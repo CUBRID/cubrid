@@ -567,45 +567,63 @@ tf_is_catalog_class (OID * class_oid)
 void
 tf_compile_meta_classes ()
 {
-  META_CLASS *class_;
-  META_ATTRIBUTE *att;
-  TP_DOMAIN *domain;
-  int c, i;
-
-  for (c = 0; Meta_classes[c] != NULL; c++)
+#if defined(CS_MODE) && defined(MULTITHREADED_MODE)
+  static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
+  static bool initialized = false;
+  if (initialized == false)
     {
-      class_ = Meta_classes[c];
-
-      class_->mc_n_variable = class_->mc_fixed_size = 0;
-
-      for (i = 0; class_->mc_atts[i].ma_name != NULL; i++)
+#if defined(CS_MODE) && defined(MULTITHREADED_MODE)
+      pthread_mutex_lock (&mutex);
+#endif
+      if (initialized == false)
 	{
-	  att = &class_->mc_atts[i];
-	  att->ma_id = i;
+	  META_CLASS *class_;
+	  META_ATTRIBUTE *att;
+	  TP_DOMAIN *domain;
+	  int c, i;
 
-	  if (pr_is_variable_type (att->ma_type))
+	  for (c = 0; Meta_classes[c] != NULL; c++)
 	    {
-	      class_->mc_n_variable++;
+	      class_ = Meta_classes[c];
+
+	      class_->mc_n_variable = class_->mc_fixed_size = 0;
+
+	      for (i = 0; class_->mc_atts[i].ma_name != NULL; i++)
+		{
+		  att = &class_->mc_atts[i];
+		  att->ma_id = i;
+
+		  if (pr_is_variable_type (att->ma_type))
+		    {
+		      class_->mc_n_variable++;
+		    }
+		  else if (class_->mc_n_variable)
+		    {
+		      /*
+		       * can't have fixed width attributes AFTER variable width
+		       * attributes
+		       */
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_INVALID_METACLASS, 0);
+		    }
+		  else
+		    {
+		      /*
+		       * need a domain for size calculations, since we don't use
+		       * any parameterized types this isn't necessary but we still must
+		       * have it to call tp_domain_isk_size().
+		       */
+		      domain = tp_domain_resolve_default (att->ma_type);
+		      class_->mc_fixed_size += tp_domain_disk_size (domain);
+		    }
+		}
 	    }
-	  else if (class_->mc_n_variable)
-	    {
-	      /*
-	       * can't have fixed width attributes AFTER variable width
-	       * attributes
-	       */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_INVALID_METACLASS, 0);
-	    }
-	  else
-	    {
-	      /*
-	       * need a domain for size calculations, since we don't use
-	       * any parameterized types this isn't necessary but we still must
-	       * have it to call tp_domain_isk_size().
-	       */
-	      domain = tp_domain_resolve_default (att->ma_type);
-	      class_->mc_fixed_size += tp_domain_disk_size (domain);
-	    }
+
+	  initialized = true;
 	}
+#if defined(CS_MODE) && defined(MULTITHREADED_MODE)
+      pthread_mutex_unlock (&mutex);
+#endif
     }
 }
 

@@ -2591,10 +2591,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   tran_index = NULL_TRAN_INDEX;
   logtb_set_to_system_tran_index (thread_p);
 
-  if (!tf_Metaclass_class.mc_n_variable)
-    {
-      tf_compile_meta_classes ();
-    }
+  tf_compile_meta_classes ();
 
   if (skip_to_check_ct_classes_for_rebuild == false)
     {

@@ -2086,10 +2086,8 @@ boot_build_catalog_classes (const char *dbname)
 	  /* mark catalog class/view as a system class */
 	  sm_mark_system_class_for_catalog ();
 
-	  if (!tf_Metaclass_class.n_variable)
-	    {
-	      tf_compile_meta_classes ();
-	    }
+	  tf_compile_meta_classes ();
+
 	  if (catcls_Enable != true)
 	    {
 	      error_code = catcls_compile_catalog_classes (NULL);
