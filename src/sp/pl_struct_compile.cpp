@@ -58,7 +58,7 @@ namespace cubpl
   size_t
   plcsql_compile_request::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_int_size (start_offset);
+    size_t size = serializator.get_packed_int_size (start_offset);      // type
 
     switch (type)
       {
@@ -104,14 +104,33 @@ namespace cubpl
   void
   plcsql_compile_response::pack (cubpacking::packer &serializator) const
   {
-    assert (false);     // unreachable
+    serializator.pack_int (err_code);
+
+    if (err_code < 0)
+      {
+	serializator.pack_all (err_line, err_column, err_msg);
+      }
+    else
+      {
+	assert (false);       // currently, plcsql_compile_repsonse::pack() is called only for an error case
+      }
   }
 
   size_t
   plcsql_compile_response::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    assert (false);     // unreachable
-    return 0;
+    size_t size = serializator.get_packed_int_size (start_offset); // err_code
+
+    if (err_code < 0)
+      {
+	size += serializator.get_all_packed_size_starting_offset (size, err_line, err_column, err_msg);
+      }
+    else
+      {
+	assert (false);       // currently, plcsql_compile_repsonse::pack() is called only for an error case
+      }
+
+    return size;
   }
 
   void

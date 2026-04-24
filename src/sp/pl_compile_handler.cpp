@@ -77,8 +77,15 @@ namespace cubpl
   void
   compile_handler::create_error_response (cubmem::extensible_block &res, int error_code)
   {
+    assert (error_code < 0);
+
     plcsql_compile_response compile_response;
+
     compile_response.err_code = (er_errid () != NO_ERROR) ? er_errid () : error_code;
+    if (compile_response.err_code >= 0)
+      {
+	compile_response.err_code = ER_FAILED;  // defensive code
+      }
     compile_response.err_msg = er_msg ()? er_msg () : "unknown error";
     compile_response.err_line = -1;
     compile_response.err_column = -1;
@@ -140,6 +147,8 @@ namespace cubpl
 		  }
 		else
 		  {
+		    error_code = ER_SP_NETWORK_ERROR;
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, code);
 		    create_error_response (out_blk, error_code);
 		  }
 	      }
