@@ -807,7 +807,7 @@ pthread_t
 css_get_thread_id ()
 {
   static THREAD_LOCAL pthread_t tid = pthread_self ();
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) || defined(MULTI_CONN_TO_A_SERVER)
   gv_current_tid = tid;
 #endif
   return tid;
