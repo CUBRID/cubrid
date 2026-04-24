@@ -1492,7 +1492,7 @@ jsp_drop_pkg_spec (const char *unique_name, MOP pkg_mop, MOP owner)
 	    {
 	      assert (er_errid() != NO_ERROR);
 	      err = er_errid();
-	      goto cleanup1;
+	      goto cleanup0;
 	    }
 
 	  // set null to all the attributes except for pkg_unique_name and scode_body
