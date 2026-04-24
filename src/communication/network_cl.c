@@ -1888,10 +1888,36 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 
 		css_queue_receive_data_buffer (rc, replydata, replydata_size);
 		error = css_receive_data_from_server (rc, &reply, &size);
+		/* CBRD-26745 fault injection: every Nth pl_call force the early
+		   return path so a stale query_handler is left in the deferred
+		   queue. Set env CBRD26745_INJECT_EVERY=N to enable. */
+		{
+		  const char *_inj_env = getenv ("CBRD26745_INJECT_EVERY");
+		  if (_inj_env != NULL)
+		    {
+		      static int _inj_count = 0;
+		      int _inj_n = atoi (_inj_env);
+		      if (_inj_n > 0 && (++_inj_count % _inj_n) == 0)
+		        {
+		          fprintf (stderr, "[CBRD26745 inject] early-return @ call #%d\n", _inj_count);
+		          error = ER_NET_SERVER_DATA_RECEIVE;
+		          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+		        }
+		    }
+		}
 		if (error != NO_ERROR)
 		  {
 		    COMPARE_AND_FREE_BUFFER (replydata, reply);
 		    free_and_init (replydata);
+		    /* CBRD-26745: flush the deferred query_handler queue on the
+		       error path too, otherwise stale handlers persist in the
+		       callback_handler singleton across sessions and the next
+		       client's execute crashes in mspace_free via
+		       pr_clear_value on a freed host_variables buffer. */
+		    if (!tran_is_in_libcas ())
+		      {
+		        cubmethod::get_callback_handler ()->free_deferred_query_handler ();
+		      }
 		    return set_server_error (error);
 		  }
 		else
