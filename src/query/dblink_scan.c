@@ -877,6 +877,7 @@ dblink_close_scan (DBLINK_SCAN_INFO * scan_info, bool is_final)
     {
       cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      scan_info->stmt_handle = -1;
       if (auto_commit)
 	{
 	  (void) cci_disconnect (scan_info->conn_handle, &err_buf);
