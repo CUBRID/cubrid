@@ -673,7 +673,6 @@ error_exit:
   return ER_DBLINK;
 }
 
-
 /*
  * dblink_open_scan () - open the scan for dblink
  *   return: int

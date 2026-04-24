@@ -3394,7 +3394,6 @@ qexec_clear_head_lists_with_truncate (THREAD_ENTRY * thread_p, XASL_NODE * xasl_
     }
 }
 
-
 /*
  * qexec_clear_head_lists () -
  *   return:
