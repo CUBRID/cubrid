@@ -99,6 +99,7 @@ namespace cubpl
 
     int idx;
     int sql_type;
+    int has_table_access;
     std::string rewritten_query;
 
     std::vector <cubmethod::column_info> columns;

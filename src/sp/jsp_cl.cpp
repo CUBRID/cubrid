@@ -1158,6 +1158,8 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       decl = (const char *) PT_NODE_SP_JAVA_METHOD (statement);
     }
 
+  sp_info.sql_data_access = (SP_SQL_DATA_ACCESS_TYPE) compile_response.sql_data_access;
+
   if (decl)
     {
       std::string target = decl;

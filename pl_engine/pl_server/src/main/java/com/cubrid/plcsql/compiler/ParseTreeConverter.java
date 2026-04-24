@@ -3019,20 +3019,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     break;
 
                 case ServerConstants.CUBRID_STMT_SELECT:
-                    int dataAccessLevel = ServerConstants.SP_SQL_TYPE_CONTAINS_SQL;
-                    if (sws.selectList == null) {
-                        // SELECT list must have at least one column by CUBRID SQL syntax
-                        assert false;
+                    if (sws.hasTableAccess) {
+                        setDataAccessLevel(ServerConstants.SP_SQL_TYPE_READS_SQL_DATA);
                     } else {
-                        for (ColumnInfo ci : sws.selectList) {
-                            if (ci.className != null && ci.className.length() > 0) {
-                                // found a data read from a table
-                                dataAccessLevel = ServerConstants.SP_SQL_TYPE_READS_SQL_DATA;
-                                break;
-                            }
-                        }
+                        setDataAccessLevel(ServerConstants.SP_SQL_TYPE_CONTAINS_SQL);
                     }
-                    setDataAccessLevel(dataAccessLevel);
                     break;
 
                 default:
@@ -3067,6 +3058,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         if (sws.kind == ServerConstants.CUBRID_STMT_SELECT) {
+
+            assert sws.selectList != null;
 
             // convert select list
             selectList = new ArrayList<>();

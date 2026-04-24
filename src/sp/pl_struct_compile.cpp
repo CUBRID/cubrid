@@ -223,6 +223,7 @@ namespace cubpl
   {
     serializator.pack_int (idx);
     serializator.pack_int (sql_type);
+    serializator.pack_int (has_table_access);
     serializator.pack_string (rewritten_query);
 
     if (sql_type >= 0)
@@ -258,6 +259,7 @@ namespace cubpl
   {
     size_t size = serializator.get_packed_int_size (start_offset); // idx
     size += serializator.get_packed_int_size (size); // sql_type
+    size += serializator.get_packed_int_size (size); // has_table_access
     size += serializator.get_packed_string_size (rewritten_query, size); // rewritten_query
 
     if (sql_type >= 0)
@@ -305,8 +307,12 @@ namespace cubpl
   void
   sql_semantics::unpack (cubpacking::unpacker &deserializator)
   {
+    assert (false);     // unreachable
+
     deserializator.unpack_int (idx);
     deserializator.unpack_int (sql_type);
+    deserializator.unpack_int (has_table_access);
+    deserializator.unpack_string (rewritten_query);
 
     if (sql_type >= 0)
       {
