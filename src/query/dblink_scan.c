@@ -696,7 +696,7 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
   char *password = spec->s.dblink_node.conn_password;
   char *sql_text = spec->s.dblink_node.conn_sql;
 
-  /* CBRD-26640 invariant: a non-reuse open must arrive without an active stmt_handle.
+  /* Invariant: a non-reuse open must arrive without an active stmt_handle.
    * CCI handles are positive integers; 0 = zero-initialized (never opened), -1 = sentinel
    * set by dblink_close_scan after successful close.  Both mean "no active statement".
    * conn_handle is intentionally excluded: when auto_commit=false the connection is
@@ -765,7 +765,7 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
     }
 
   /* Force autocommit OFF for the duration of this scan.
-   * cursor_rewind (CBRD-26640) requires the CCI cursor to stay alive across outer rows;
+   * cursor_rewind requires the CCI cursor to stay alive across outer rows;
    * this is only necessary when auto_commit is true (false connections are already OFF). */
   if (auto_commit)
     {

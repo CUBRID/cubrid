@@ -58,7 +58,7 @@ struct dblink_scan_info
   int col_cnt;			/* column count of dblink query result */
   char cursor;			/* cursor position T_CCI_CURSOR_POS */
   void *col_info;		/* column information T_CCI_COL_INFO */
-  int cursor_rewind;		/* set from XASL_DBLINK_CURSOR_REWIND flag (CBRD-26640):
+  int cursor_rewind;		/* set from XASL_DBLINK_CURSOR_REWIND flag:
 				 * on each outer-row open, rewind CCI cursor to FIRST
 				 * instead of re-issuing cci_execute;
 				 * dblink_close_scan is skipped per iteration and

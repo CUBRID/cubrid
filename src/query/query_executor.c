@@ -2407,9 +2407,14 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
     }
 
 
+  /* Final teardown of correlated DBLink CCI handles — runs for all proc types so that inner
+   * DBLink XASLs (BUILDVALUE_PROC wrappers included) are covered regardless of which branch follows. */
   qexec_final_close_dblink_specs (xasl);
 
 #if !defined(NDEBUG)
+  /* Invariant: after final teardown every DBLink spec must have released its handles.
+   * If either assertion fires here, qexec_final_close_dblink_specs did not reach this spec —
+   * i.e., the setter (cursor_rewind=1) was applied but the unsetter (is_final close) was not. */
   {
     ACCESS_SPEC_TYPE *dbg_spec;
     for (dbg_spec = xasl->spec_list; dbg_spec != NULL; dbg_spec = dbg_spec->next)
@@ -2892,7 +2897,7 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
       qfile_clear_list_id (xasl->list_id);
     }
 
-  /* CBRD-26640: final teardown of correlated DBLink CCI handles (parallel aptr path). */
+  /* Final teardown of correlated DBLink CCI handles (parallel aptr path). */
   qexec_final_close_dblink_specs (xasl);
 
   /* clear the body node */
@@ -3482,7 +3487,7 @@ qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
 }
 
 /*
- * qexec_final_close_dblink_specs () - CBRD-26640: Walk spec_list and merge_spec of one XASL node and call
+ * qexec_final_close_dblink_specs () - Walk spec_list and merge_spec of one XASL node and call
  * dblink_close_scan(is_final=true) for every TARGET_DBLINK spec whose CCI handles are still open.
  *
  * Called from qexec_clear_xasl / qexec_clear_xasl_for_parallel_aptr before the proc-type switch so that

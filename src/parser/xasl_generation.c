@@ -18131,11 +18131,10 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * qu
 	  XASL_SET_FLAG (xasl, XASL_ZERO_CORR_LEVEL);
 	}
 
-      /* correlated subquery with DBLink: rewind CCI cursor instead of re-issuing cci_execute per outer row
-       * (CBRD-26640).
+      /* correlated subquery with DBLink: rewind CCI cursor instead of re-issuing cci_execute per outer row.
        * Assumption: conn_sql is invariant across outer rows — mq_copypush never modifies conn_sql for
        * correlated terms (they are always pushed to access_pred only).
-       * NOTE: if a future optimization (e.g. CBRD-26601 join push-down) places per-row host variables into
+       * NOTE: if a future optimization (e.g. join push-down) places per-row host variables into
        * conn_sql, this flag must NOT be set for that case; re-bind + re-execute would be required instead. */
       if (PT_IS_QUERY (node) && node->info.query.correlation_level != 0 && pt_xasl_spec_has_dblink (xasl))
 	{
