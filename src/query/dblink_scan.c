@@ -769,8 +769,9 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
 
   /* Force autocommit OFF for the duration of this scan.
    * cursor_rewind requires the CCI cursor to stay alive across outer rows;
-   * this is only necessary when auto_commit is true (false connections are already OFF). */
-  if (auto_commit)
+   * this is only necessary when cursor_rewind is set and auto_commit is true
+   * (false connections are already OFF). */
+  if (scan_info->cursor_rewind && auto_commit)
     {
       ret = cci_set_autocommit (scan_info->conn_handle, CCI_AUTOCOMMIT_FALSE);
       if (ret < 0)
@@ -867,7 +868,7 @@ dblink_close_scan (DBLINK_SCAN_INFO * scan_info, bool is_final)
     }
 
   /* sentinel: already closed (set below on success) */
-  if (scan_info->stmt_handle < 0)
+  if (scan_info->stmt_handle <= 0)
     {
       return NO_ERROR;
     }
