@@ -934,11 +934,11 @@ db_string_truncate (DB_VALUE * value, const int precision)
 
     case DB_TYPE_CHAR:
       val_str = db_get_char (value);
-      if (val_str != NULL)
+      if (val_str != NULL && db_get_string_size (value) > precision)
 	{
+	  /* char_count <= byte_count in every codeset, so byte_size <= precision guarantees no truncation */
 	  intl_char_count ((unsigned char *) val_str, db_get_string_size (value),
 			   db_get_string_codeset (value), &length);
-
 	  if (length > precision)
 	    {
 	      intl_char_size ((unsigned char *) val_str, precision, db_get_string_codeset (value), &byte_size);
