@@ -892,6 +892,7 @@ dblink_close_scan (DBLINK_SCAN_INFO * scan_info, bool is_final)
       if ((error = cci_disconnect (scan_info->conn_handle, &err_buf)) < 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  scan_info->conn_handle = -1;
 	  return S_ERROR;
 	}
       scan_info->conn_handle = -1;
