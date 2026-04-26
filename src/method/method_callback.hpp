@@ -73,6 +73,15 @@ namespace cubmethod
       void free_query_handle (int id, bool is_free);
       void free_query_handle_all (bool is_free);
       void free_deferred_query_handler ();
+      bool has_deferred_query_handler () const
+      {
+	return !m_deferred_query_free_handler.empty ();
+      }
+
+      /* CBRD-26745: drop every query_handler and its DB_SESSION before the
+         workspace heap is torn down. Called from method_callback_final(),
+         which boot_client_all_finalize() invokes prior to ws_final(). */
+      void clear_all_query_handlers ();
 
       /* find query handler */
       query_handler *get_query_handler_by_id (const int id);
@@ -131,5 +140,8 @@ namespace cubmethod
   EXPORT_IMPORT callback_handler *get_callback_handler (void);
 
 } // namespace cubmethod
+
+// C declarations
+extern void method_callback_final (void);
 
 #endif // _METHOD_CALLBACK_HPP_
