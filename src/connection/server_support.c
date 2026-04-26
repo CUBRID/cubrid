@@ -583,11 +583,14 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
   // create request worker pool
   //*INDENT-OFF*
-  css_Server_request_worker_pool =
-    thread_create_worker_pool<cubthread::stats_t::on, cubthread::pool_t::elastic> (task_worker, task_group, "transaction",
-							     thread_get_entry_manager (),
-							     css_get_server_request_thread_pooling_configuration (),
-							     css_get_server_request_thread_timeout_configuration ());
+  css_Server_request_worker_pool = thread_create_worker_pool<cubthread::stats_t::on, cubthread::pool_t::elastic> (
+      task_worker,
+      task_group,
+      "transaction",
+      thread_get_entry_manager (),
+      css_get_server_request_thread_pooling_configuration (),
+      css_get_server_request_thread_timeout_configuration ()
+      );
   //*INDENT-ON*
   // m_log = cubthread::is_logging_configured (cubthread::LOG_WORKER_POOL_TRAN_WORKERS)
 
