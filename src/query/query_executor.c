@@ -25797,7 +25797,7 @@ qexec_evaluate_partition_aggregates (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE *
 	{
 	  agg_ptr->flag.agg_optimized = false;
 	  *is_scan_needed = true;
-	  error = NO_ERROR;
+	  goto cleanup;
 	}
       i++;
     }
