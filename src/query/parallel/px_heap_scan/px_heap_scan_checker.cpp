@@ -43,20 +43,43 @@ namespace parallel_heap_scan
    *
    * When list_merge is not possible, row_by_row is always available as a fallback.
    *
-   * Count optimization (count_opt) can be applied when:
-   *   - The select list contains only count() aggregate functions
-   *   - list_merge mode: count_opt is always possible
-   *   - row_by_row mode: count_opt may not be possible due to constraints like ROWNUM
+   * Buildvalue optimization (buildvalue_opt) can be applied when:
+   *   - The select list contains only aggregate functions suitable for buildvalue optimization
+   *   - list_merge mode: buildvalue_opt is always possible
+   *   - row_by_row mode: buildvalue_opt may not be possible due to constraints like ROWNUM
    *
-   * The COUNT_OPT_POSSIBLE flag specifically checks:
-   *   1. Whether the select list consists solely of count() functions
-   *   2. Whether row_by_row constraints (e.g., ROWNUM usage) prevent count optimization
+   * The BUILDVALUE_OPT_POSSIBLE flag specifically checks:
+   *   1. Whether the select list consists solely of suitable aggregate functions
+   *   2. Whether row_by_row constraints (e.g., ROWNUM usage) prevent buildvalue optimization
    */
 
   using possible_flags = uint32_t;
   const possible_flags CANNOT_PARALLEL_HEAP_SCAN = 0x1 << 0;
   const possible_flags CANNOT_LIST_MERGE = 0x1 << 1;
-  const possible_flags CANNOT_COUNT_OPT = 0x1 << 2;
+  const possible_flags CANNOT_BUILDVALUE_OPT = 0x1 << 2;
+
+  static bool
+  is_buildvalue_opt_supported_function (FUNC_CODE function)
+  {
+    switch (function)
+      {
+      case PT_COUNT_STAR:
+      case PT_COUNT:
+      case PT_MIN:
+      case PT_MAX:
+      case PT_SUM:
+      case PT_AVG:
+      case PT_STDDEV:
+      case PT_STDDEV_POP:
+      case PT_STDDEV_SAMP:
+      case PT_VARIANCE:
+      case PT_VAR_POP:
+      case PT_VAR_SAMP:
+	return true;
+      default:
+	return false;
+      }
+  }
 
   // Thread-local map to cache check results for XASL_NODE and prevent infinite recursion
   // This is used to detect circular references in XASL structures and reuse computed results
@@ -471,7 +494,7 @@ namespace parallel_heap_scan
     xasl_check_cache[arg] = 0;
 
     possible_flags result = 0, temp = 0;
-    bool count_opt = false;
+    bool buildvalue_opt = false;
     switch (arg->type)
       {
       case BUILDLIST_PROC:
@@ -480,28 +503,28 @@ namespace parallel_heap_scan
 	if (arg->proc.buildvalue.agg_list)
 	  {
 	    set_flag (result, CANNOT_LIST_MERGE);
-	    count_opt = true;
+	    buildvalue_opt = true;
 	    AGGREGATE_TYPE *agg_it = arg->proc.buildvalue.agg_list;
 	    int agg_cnt = 0;
 	    temp = 0;
 	    for (; agg_it; agg_it = agg_it->next)
 	      {
 		agg_cnt++;
-		if (agg_it->function != PT_COUNT_STAR && agg_it->function != PT_COUNT)
+		if (!is_buildvalue_opt_supported_function (agg_it->function))
 		  {
-		    count_opt = false;
+		    buildvalue_opt = false;
 		    break;
 		  }
 		temp |= check<false> (agg_it->operands);
 		if (is_flag_set (temp, CANNOT_PARALLEL_HEAP_SCAN))
 		  {
-		    count_opt = false;
+		    buildvalue_opt = false;
 		    break;
 		  }
 	      }
 	    if (agg_cnt != arg->outptr_list->valptr_cnt)
 	      {
-		count_opt = false;
+		buildvalue_opt = false;
 	      }
 	  }
 	break;
@@ -580,7 +603,7 @@ namespace parallel_heap_scan
     if (arg->connect_by_ptr)
       {
 	set_flag (result, CANNOT_LIST_MERGE);
-	count_opt = false;
+	buildvalue_opt = false;
       }
 
     if (arg->if_pred)
@@ -595,7 +618,7 @@ namespace parallel_heap_scan
     if (arg->instnum_pred || arg->instnum_val)
       {
 	set_flag (result, CANNOT_LIST_MERGE);
-	count_opt = false;
+	buildvalue_opt = false;
       }
 
     if (arg->outptr_list)
@@ -612,9 +635,9 @@ namespace parallel_heap_scan
 	result |= check<false> (specp);
       }
 
-    if (!count_opt)
+    if (!buildvalue_opt)
       {
-	set_flag (result, CANNOT_COUNT_OPT);
+	set_flag (result, CANNOT_BUILDVALUE_OPT);
       }
 
     // Update cache with computed result
@@ -720,12 +743,12 @@ namespace parallel_heap_scan
     else
       {
 	/* parallel heap scan is possible */
-	if (!is_flag_set (result, CANNOT_COUNT_OPT))
+	if (!is_flag_set (result, CANNOT_BUILDVALUE_OPT))
 	  {
-	    /* count optimization is possible */
+	    /* buildvalue optimization is possible */
 	    for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
 	      {
-		ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_COUNT_DISTINCT);
+		ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_BUILDVALUE_OPT);
 	      }
 	  }
 	else
