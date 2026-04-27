@@ -133,7 +133,6 @@ static CUB_THREAD_LOCAL int db_Row_count = DB_ROW_COUNT_NOT_SET;
 
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 static BOOT_CLIENT_CREDENTIAL gv_client_credential;
-bool db_share_same_transaction_mode = false;
 #endif
 
 /*
@@ -1001,7 +1000,7 @@ db_restart_sub (int sub_index)
 
   db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 
-  error = boot_restart_client_sub (&client_credential, db_share_same_transaction_mode);
+  error = boot_restart_client_sub (&client_credential);
   if (error != NO_ERROR)
     {
       db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
@@ -1092,7 +1091,7 @@ db_shutdown_sub ()
   (void) db_end_session ();
   // db_free_execution_plan ();
 
-  boot_finalize_client_sub (db_share_same_transaction_mode);
+  boot_finalize_client_sub ();
   db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
 
   return NO_ERROR;

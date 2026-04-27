@@ -1358,25 +1358,9 @@ error:
 
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 int
-boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential, bool share_tran_id)
+boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
 {
   int error_code;
-
-  if (share_tran_id)
-    {
-      error_code = net_client_sub_init ();
-      if (error_code == NO_ERROR)
-	{
-	  /* Initialize client modules for execution */
-	  error_code =
-	    boot_client (g_main_tran_info.tran_index, g_main_tran_info.tran_wait_msecs,
-			 g_main_tran_info.tran_isolation);
-	}
-
-      db_Connect_status =
-	(error_code != NO_ERROR) ? DB_CONNECTION_STATUS_NOT_CONNECTED : DB_CONNECTION_STATUS_CONNECTED;
-      return error_code;
-    }
 
   /* **************************************************************** */
   int tran_index;
@@ -1554,22 +1538,14 @@ error:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
     }
 
-  boot_finalize_client_sub (share_tran_id);
+  boot_finalize_client_sub ();
   return error_code;
 }
 
 void
-boot_finalize_client_sub (bool share_tran_id)
+boot_finalize_client_sub ()
 {
-  //usleep (1000000);           // ctshim, 디버깅용
-
   net_client_sub_final ();
-
-  if (share_tran_id)
-    {
-      boot_client (NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT, TRAN_DEFAULT_ISOLATION_LEVEL ());
-      return;
-    }
 
   //showstmt_metadata_final ();
   tran_free_savepoint_list ();

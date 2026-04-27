@@ -61,7 +61,6 @@ extern "C"
 
   extern int g_open_buffer_control_flags;
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-  extern bool db_share_same_transaction_mode;
 #endif
 
 /* Memory reclamation functions */
