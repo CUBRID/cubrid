@@ -64,8 +64,7 @@ dblink_global_tran_insert_row (THREAD_ENTRY * thread_p, int gtrid, int bqual,
   HEAP_CACHE_ATTRINFO attr_info;
   int force_count = 0;
   int error = NO_ERROR;
-  DB_VALUE dbval, datetime_val;
-  DB_DATETIME *datetime;
+  DB_VALUE dbval;
   bool scan_cache_inited = false;
   bool attr_inited = false;
 
@@ -238,8 +237,7 @@ dblink_global_tran_update_state (THREAD_ENTRY * thread_p, int gtrid, int bqual, 
   HEAP_CACHE_ATTRINFO attr_info;
   int force_count = 0;
   int error = NO_ERROR;
-  DB_VALUE dbval, datetime_val;
-  DB_DATETIME *datetime;
+  DB_VALUE dbval;
   bool scan_cache_inited = false;
   bool attr_inited = false;
 

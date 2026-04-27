@@ -533,8 +533,7 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	  error = dblink_global_tran_update_state (thread_p, tdes->gtrid, participants[i].conn_handle, new_state);
 	  if (error != NO_ERROR)
 	    {
-	      (void) log_abort_local (thread_p, tdes, false);
-	      *state = tdes->state;
+	      *state = log_abort_local (thread_p, tdes, false);
 	      return error;
 	    }
 	}
@@ -547,7 +546,6 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	  *state = log_commit_local (thread_p, tdes, false, true);
 	  if (*state != TRAN_UNACTIVE_COMMITTED)
 	    {
-	      *state = tdes->state;
 	      return ER_FAILED;
 	    }
 	}

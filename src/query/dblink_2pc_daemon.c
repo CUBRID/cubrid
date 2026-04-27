@@ -48,9 +48,6 @@
 #include <string.h>
 #include <time.h>
 
-#if defined(WINDOWS)
-#include "porting.h"
-#endif
 #include <pthread.h>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -235,30 +232,14 @@ dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
 	  int del_error = dblink_global_tran_delete_row (thread_p, e.gtrid, e.participant.conn_handle);
 	  if (del_error == NO_ERROR)
 	    {
-	      TRAN_STATE commit_state = xtran_server_commit (thread_p, false);
-
+	      xtran_server_commit (thread_p, false);
 	      logtb_free_tran_index (thread_p, tran_index);
-
-	      if (commit_state == TRAN_UNACTIVE_COMMITTED)
-		{
-		  /* success: continue loop */
-		}
-	      else
-		{
-		  /* commit failed: transaction may be auto-rolled back */
-		  ret = ER_FAILED;
-		}
 	    }
 	  else
 	    {
 	      (void) xtran_server_abort (thread_p);
 	      logtb_free_tran_index (thread_p, tran_index);
-	      ret = ER_FAILED;
 	    }
-	}
-      else
-	{
-	  ret = ER_FAILED;	/* fall through to re-enqueue */
 	}
     }
 }
