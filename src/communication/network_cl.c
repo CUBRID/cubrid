@@ -77,13 +77,13 @@ namespace
   {
     ~deferred_flush_guard ()
     {
-      cubmethod::callback_handler *h = cubmethod::get_callback_handler ();
+      cubmethod::callback_handler * h = cubmethod::get_callback_handler ();
       /* fast path: skip the libcas-depth check and the flush call entirely
          when no PL callback pushed anything to the queue. */
       if (h->has_deferred_query_handler () && !tran_is_in_libcas ())
-        {
-          h->free_deferred_query_handler ();
-        }
+	{
+	  h->free_deferred_query_handler ();
+	}
     }
   };
 }
@@ -1920,11 +1920,11 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 		      static int _inj_count = 0;
 		      int _inj_n = atoi (_inj_env);
 		      if (_inj_n > 0 && (++_inj_count % _inj_n) == 0)
-		        {
-		          fprintf (stderr, "[CBRD26745 inject] early-return @ call #%d\n", _inj_count);
-		          error = ER_NET_SERVER_DATA_RECEIVE;
-		          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-		        }
+			{
+			  fprintf (stderr, "[CBRD26745 inject] early-return @ call #%d\n", _inj_count);
+			  error = ER_NET_SERVER_DATA_RECEIVE;
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+			}
 		    }
 		}
 		if (error != NO_ERROR)
