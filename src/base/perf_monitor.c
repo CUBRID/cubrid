@@ -648,10 +648,10 @@ static const char *perfmon_stat_thread_stat_name (size_t index);
 STATIC_INLINE void perfmon_get_peek_stats (UINT64 * stats) __attribute__ ((ALWAYS_INLINE));
 
 #if defined(CS_MODE) || defined(SA_MODE)
-static bool perfmon_Iscollecting_stats = false;
+static CUB_THREAD_LOCAL bool perfmon_Iscollecting_stats = false;
 
 /* Client execution statistics */
-static PERFMON_CLIENT_STAT_INFO perfmon_Stat_info;
+static CUB_THREAD_LOCAL PERFMON_CLIENT_STAT_INFO perfmon_Stat_info;
 
 void
 disable_perfmon_start_stats ()
