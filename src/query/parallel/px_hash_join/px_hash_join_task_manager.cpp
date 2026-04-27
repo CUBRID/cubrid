@@ -507,6 +507,53 @@ namespace parallel_query
       assert (temp_part_list_id != nullptr);
       assert (temp_key != nullptr);
 
+      if (!has_error)
+	{
+	  for (part_index = 0; part_index < part_cnt; part_index++)
+	    {
+	      if (temp_part_list_id[part_index] == nullptr)
+		{
+		  continue;
+		}
+
+	      qfile_close_list (&thread_ref, temp_part_list_id[part_index]);	/* may be meaningless since only memory buffer is used */
+
+	      if (temp_part_list_id[part_index]->tuple_cnt > 0)
+		{
+		  std::unique_lock lock (m_shared_info->part_mutexes[part_index]);
+
+		  assert (part_list_id[part_index]->last_pgptr == nullptr);
+
+		  if (part_list_id[part_index]->tuple_cnt > 0)
+		    {
+		      error = qfile_append_list (&thread_ref, part_list_id[part_index], temp_part_list_id[part_index]);
+		      if (error != NO_ERROR)
+			{
+			  assert_release_error (er_errid () != NO_ERROR);
+			  m_task_manager.handle_error (thread_ref);
+			  has_error = true;
+			  break;
+			}
+
+		      qfile_destroy_list (&thread_ref, temp_part_list_id[part_index]);
+		    }
+		  else
+		    {
+		      qfile_destroy_list (&thread_ref, part_list_id[part_index]);
+		      qfile_copy_list_id (part_list_id[part_index], temp_part_list_id[part_index], false, QFILE_PROHIBIT_DEPENDENT);
+		    }
+		}
+	      else
+		{
+		  qfile_destroy_list (&thread_ref, temp_part_list_id[part_index]);
+		}
+
+	      QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_index]);
+	    }
+	}
+
+      /* must be a separate `if`, not an `else` of the block above:
+       * the merge loop above may set has_error = true via break, and that case still needs this cleanup to run. */
       if (has_error)
 	{
 	  for (part_index = 0; part_index < part_cnt; part_index++)
@@ -515,50 +562,6 @@ namespace parallel_query
 		{
 		  qfile_close_list (&thread_ref, temp_part_list_id[part_index]);
 		  qfile_destroy_list (&thread_ref, temp_part_list_id[part_index]);
-		  QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_index]);
-		}
-	    }
-	}
-      else
-	{
-	  for (part_index = 0; part_index < part_cnt; part_index++)
-	    {
-	      if (temp_part_list_id[part_index] != nullptr)
-		{
-		  qfile_close_list  (&thread_ref,
-				     temp_part_list_id[part_index]);	/* may be meaningless since only memory buffer is used */
-
-		  if (temp_part_list_id[part_index]->tuple_cnt > 0)
-		    {
-		      std::unique_lock lock (m_shared_info->part_mutexes[part_index]);
-
-		      assert (part_list_id[part_index]->last_pgptr == nullptr);
-
-		      if (part_list_id[part_index]->tuple_cnt > 0)
-			{
-			  error = qfile_append_list (&thread_ref, part_list_id[part_index], temp_part_list_id[part_index]);
-			  if (error != NO_ERROR)
-			    {
-			      assert_release_error (er_errid () != NO_ERROR);
-			      m_task_manager.handle_error (thread_ref);
-			      has_error = true;
-			      break;
-			    }
-
-			  qfile_destroy_list (&thread_ref, temp_part_list_id[part_index]);
-			}
-		      else
-			{
-			  qfile_destroy_list (&thread_ref, part_list_id[part_index]);
-			  qfile_copy_list_id (part_list_id[part_index], temp_part_list_id[part_index], false, QFILE_PROHIBIT_DEPENDENT);
-			}
-
-		    }
-		  else
-		    {
-		      qfile_destroy_list (&thread_ref, temp_part_list_id[part_index]);
-		    }
-
 		  QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_index]);
 		}
 	    }
