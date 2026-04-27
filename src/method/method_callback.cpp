@@ -561,7 +561,6 @@ namespace cubmethod
 	if (error == NO_ERROR && m_error_ctx.has_error () == false)
 	  {
 	    bool has_table_access;
-
 	    DB_SESSION *db_session = handler->get_db_session ();
 	    const prepare_info &info = handler->get_prepare_info ();
 

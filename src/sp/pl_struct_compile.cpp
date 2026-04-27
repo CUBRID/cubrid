@@ -308,59 +308,6 @@ namespace cubpl
   sql_semantics::unpack (cubpacking::unpacker &deserializator)
   {
     assert (false);     // unreachable
-
-    deserializator.unpack_int (idx);
-    deserializator.unpack_int (sql_type);
-    deserializator.unpack_int (has_table_access);
-    deserializator.unpack_string (rewritten_query);
-
-    if (sql_type >= 0)
-      {
-	int column_size = 0;
-	deserializator.unpack_int (column_size);
-
-	if (column_size > 0)
-	  {
-	    columns.resize (column_size);
-	    for (int i = 0; i < (int) column_size; i++)
-	      {
-		columns[i].unpack (deserializator);
-	      }
-	  }
-
-	int hv_size = 0;
-	deserializator.unpack_int (hv_size);
-
-	if (hv_size > 0)
-	  {
-	    hvs.resize (hv_size);
-	    for (int i = 0; i < (int) hv_size; i++)
-	      {
-		hvs[i].unpack (deserializator);
-	      }
-	  }
-
-	std::string s;
-	int into_vars_size = 0;
-	deserializator.unpack_int (into_vars_size);
-	for (int i = 0; i < into_vars_size; i++)
-	  {
-	    deserializator.unpack_string (s);
-	    into_vars.push_back (s);
-	  }
-
-	int dependencies_size = 0;
-	deserializator.unpack_int (dependencies_size);
-
-	if (dependencies_size > 0)
-	  {
-	    dependencies.resize (dependencies_size);
-	    for (int i = 0; i < (int) dependencies_size; i++)
-	      {
-		dependencies[i].unpack (deserializator);
-	      }
-	  }
-      }
   }
 
   sql_semantics_request::sql_semantics_request ()
