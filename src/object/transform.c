@@ -567,13 +567,13 @@ tf_is_catalog_class (OID * class_oid)
 void
 tf_compile_meta_classes ()
 {
-#if defined(CS_MODE) && defined(MULTITHREADED_MODE)
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
   static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
   static bool initialized = false;
   if (initialized == false)
     {
-#if defined(CS_MODE) && defined(MULTITHREADED_MODE)
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
       pthread_mutex_lock (&mutex);
 #endif
       if (initialized == false)
@@ -621,7 +621,7 @@ tf_compile_meta_classes ()
 
 	  initialized = true;
 	}
-#if defined(CS_MODE) && defined(MULTITHREADED_MODE)
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
       pthread_mutex_unlock (&mutex);
 #endif
     }
