@@ -1949,7 +1949,7 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		  scan_close_parallel_heap_scan (thread_p, &p->s_id);
 		  p->s_id.s.phsid.manager = nullptr;
 		}
-	      if (p->s_id.s.phsid.trace_storage != nullptr)
+	      if (!for_parallel_aptr && p->s_id.s.phsid.trace_storage != nullptr)
 		{
 		  p->s_id.s.phsid.trace_storage->~accumulative_trace_storage ();
 		  free (p->s_id.s.phsid.trace_storage);
@@ -2033,7 +2033,7 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		  scan_close_parallel_index_scan (thread_p, &p->s_id);
 		  p->s_id.s.pisid.manager = nullptr;
 		}
-	      if (p->s_id.s.pisid.trace_storage != nullptr)
+	      if (!for_parallel_aptr && p->s_id.s.pisid.trace_storage != nullptr)
 		{
 		  p->s_id.s.pisid.trace_storage->~accumulative_trace_storage ();
 		  free (p->s_id.s.pisid.trace_storage);
@@ -2088,7 +2088,7 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		  scan_close_parallel_list_scan (thread_p, &p->s_id);
 		  p->s_id.s.pllsid_parallel.manager = nullptr;
 		}
-	      if (p->s_id.s.pllsid_parallel.trace_storage != nullptr)
+	      if (!for_parallel_aptr && p->s_id.s.pllsid_parallel.trace_storage != nullptr)
 		{
 		  p->s_id.s.pllsid_parallel.trace_storage->~accumulative_trace_storage ();
 		  free (p->s_id.s.pllsid_parallel.trace_storage);
