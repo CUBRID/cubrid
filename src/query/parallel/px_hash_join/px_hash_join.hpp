@@ -51,6 +51,5 @@ namespace parallel_query
 
     int probe_prepare (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager);
     int probe_execute (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager);
-    void probe_end (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager);
   } /* namespace hash_join */
 } /* namespace parallel_query */

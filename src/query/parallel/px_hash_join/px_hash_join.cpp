@@ -319,19 +319,6 @@ namespace parallel_query
 	  goto error_exit;
 	}
 
-      error = qfile_open_list_scan (context->outer.list_id, &context->outer.list_scan_id);
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-
-      error = qfile_open_list_scan (context->inner.list_id, &context->inner.list_scan_id);
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-      context->build->list_scan_id.is_read_only = true;
-
       context->hash_scan.hash_list_scan_type = HASH_METH_NOT_USE;
 
       context->during_join_pred = single_context->during_join_pred;
@@ -366,8 +353,8 @@ error_exit:
 	  QFILE_FREE_AND_INIT_LIST_ID (context->list_id);
 	}
 
-      qfile_close_scan (&thread_ref, &context->outer.list_scan_id);
-      qfile_close_scan (&thread_ref, &context->inner.list_scan_id);
+      assert (context->outer.list_scan_id.curr_pgptr == nullptr);
+      assert (context->inner.list_scan_id.curr_pgptr == nullptr);
 
       assert (context->hash_scan.hash_list_scan_type == HASH_METH_NOT_USE);
     }
@@ -595,24 +582,5 @@ error_exit:
       return NO_ERROR;
     }
 
-    void
-    probe_end (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager)
-    {
-      HASHJOIN_CONTEXT *contexts = nullptr;
-      UINT32 context_index;
-
-      assert (manager != nullptr);
-      assert (manager->single_context.status == HASHJOIN_STATUS_PARALLEL_PROBE);
-
-      contexts = manager->contexts;
-      if (contexts != nullptr)
-	{
-	  for (context_index = 0; context_index < manager->context_cnt; context_index++)
-	    {
-	      qfile_close_scan (&thread_ref, &contexts[context_index].outer.list_scan_id);
-	      qfile_close_scan (&thread_ref, &contexts[context_index].inner.list_scan_id);
-	    }
-	}
-    }
   } /* namespace hash_join */
 } /* namespace parallel_query */

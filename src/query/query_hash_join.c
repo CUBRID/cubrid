@@ -3261,10 +3261,7 @@ hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
 	}
 
       error = parallel_query::hash_join::probe_execute (*thread_p, manager);
-
-      parallel_query::hash_join::probe_end (*thread_p, manager);
-
-     if (error != NO_ERROR)
+      if (error != NO_ERROR)
 	{
 	  goto error_exit;
 	}

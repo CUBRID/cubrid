@@ -834,10 +834,14 @@ namespace parallel_query
 
       spawn_manager *spawn_manager = nullptr;
       HASHJOIN_CONTEXT *single_context;
-      HASH_METHOD hash_method;
       int error = NO_ERROR;
 
       TSCTIMEVAL total_probe_time = { 0, 0 };
+
+      assert (m_context->outer.list_scan_id.status == S_CLOSED);
+      assert (m_context->inner.list_scan_id.status == S_CLOSED);
+      assert (m_context->outer.list_scan_id.curr_pgptr == nullptr);
+      assert (m_context->inner.list_scan_id.curr_pgptr == nullptr);
 
       spawn_manager = guard.get_spawn_manager ();
       if (spawn_manager == nullptr)
@@ -868,6 +872,21 @@ namespace parallel_query
 	  m_task_manager.handle_error (thread_ref);
 	  goto cleanup;		/* error_exit */
 	}
+
+      error = qfile_open_list_scan (m_context->outer.list_id, &m_context->outer.list_scan_id);
+      if (error != NO_ERROR)
+	{
+	  m_task_manager.handle_error (thread_ref);
+	  goto cleanup;		/* error_exit */
+	}
+
+      error = qfile_open_list_scan (m_context->inner.list_id, &m_context->inner.list_scan_id);
+      if (error != NO_ERROR)
+	{
+	  m_task_manager.handle_error (thread_ref);
+	  goto cleanup;		/* error_exit */
+	}
+      m_context->build->list_scan_id.is_read_only = true;
 
       error = hjoin_scan_init (&thread_ref, &m_context->hash_scan, m_manager->key_cnt, nullptr /* skip hash table */ );
       if (error != NO_ERROR)
@@ -944,6 +963,9 @@ namespace parallel_query
 
 cleanup:
       qfile_close_list (&thread_ref, m_context->list_id);
+
+      qfile_close_scan (&thread_ref, &m_context->outer.list_scan_id);
+      qfile_close_scan (&thread_ref, &m_context->inner.list_scan_id);
 
       /* skip hash table */
       m_context->hash_scan.hash_list_scan_type = HASH_METH_NOT_USE;
