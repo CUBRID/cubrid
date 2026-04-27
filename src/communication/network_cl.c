@@ -85,7 +85,17 @@ namespace
          when no PL callback pushed anything to the queue. */
       if (h->has_deferred_query_handler () && !tran_is_in_libcas ())
 	{
+	  /* CBRD-26745: free_deferred_query_handler() walks query_handler dtors
+	     that may invoke db_query_end_internal()/db_close_session_local(),
+	     which call er_set() (e.g. ER_OBJ_NO_CONNECT when disconnected).
+	     Without isolation, that would clobber the caller's error (typically
+	     ER_NET_SERVER_CRASHED set by set_server_error() right before this
+	     destructor runs), so csql would lose the "Server no longer
+	     responding" message on disconnect paths. Wrap the flush with
+	     er_stack_push/pop to restore the outer error on exit. */
+	  er_stack_push ();
 	  h->free_deferred_query_handler ();
+	  er_stack_pop ();
 	}
     }
   };
