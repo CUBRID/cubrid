@@ -12224,6 +12224,14 @@ scopy_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
   /* unpack num columns */
   ptr = or_unpack_int (ptr, &num_cols);
 
+  if (num_cols <= 0
+      || (size_t) num_cols > (size_t) (reqlen - (ptr - request)) / OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_PROTOCOL_GENERIC, 1, "invalid num_cols");
+      error_code = ER_COPY_BINARY_PROTOCOL_GENERIC;
+      goto reply;
+    }
+
   /* unpack column types */
   col_types = (DB_TYPE *) db_private_alloc (thread_p, num_cols * sizeof (DB_TYPE));
   if (col_types == NULL)
@@ -12353,6 +12361,10 @@ scopy_from_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int req
     }
 
   error_code = session->finish (thread_p, &rows_loaded);
+  if (error_code != NO_ERROR)
+    {
+      session->abort (thread_p);
+    }
 
   delete session;
   session_set_copy_session (thread_p, NULL);
