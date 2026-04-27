@@ -2350,8 +2350,8 @@ jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig
 	  DB_DEFAULT_EXPR default_expr;
 	  pt_get_default_expression_from_string (parser, sig.arg.arg_default_value[i], sig.arg.arg_default_value_size[i],
 						 &default_expr);
-	  if (!flag_si_datetime && DB_IS_DEFAULT_DATETIME_EXPR (default_expr.default_expr_type)
-	      || DB_IS_DEFAULT_UUID_TIMEBASE_EXPR (default_expr.default_expr_type))
+	  if (!flag_si_datetime && (DB_IS_DEFAULT_DATETIME_EXPR (default_expr.default_expr_type)
+				    || DB_IS_DEFAULT_UUID_TIMEBASE_EXPR (default_expr.default_expr_type)))
 	    {
 	      flag_si_datetime = true;
 	    }
