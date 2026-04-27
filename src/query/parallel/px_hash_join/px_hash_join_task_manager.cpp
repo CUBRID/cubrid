@@ -435,7 +435,15 @@ namespace parallel_query
 
 		    if (part_list_id[part_id]->tuple_cnt > 0)
 		      {
-			qfile_append_list (&thread_ref, part_list_id[part_id], temp_part_list_id[part_id]);
+			error = qfile_append_list (&thread_ref, part_list_id[part_id], temp_part_list_id[part_id]);
+			if (error != NO_ERROR)
+			  {
+			    assert_release_error (er_errid () != NO_ERROR);
+			    m_task_manager.handle_error (thread_ref);
+			    has_error = true;
+			    break;
+			  }
+
 			error = qfile_truncate_list (&thread_ref, temp_part_list_id[part_id]);
 			if (error != NO_ERROR)
 			  {
@@ -528,7 +536,15 @@ namespace parallel_query
 
 		      if (part_list_id[part_index]->tuple_cnt > 0)
 			{
-			  qfile_append_list (&thread_ref, part_list_id[part_index], temp_part_list_id[part_index]);
+			  error = qfile_append_list (&thread_ref, part_list_id[part_index], temp_part_list_id[part_index]);
+			  if (error != NO_ERROR)
+			    {
+			      assert_release_error (er_errid () != NO_ERROR);
+			      m_task_manager.handle_error (thread_ref);
+			      has_error = true;
+			      break;
+			    }
+
 			  qfile_destroy_list (&thread_ref, temp_part_list_id[part_index]);
 			}
 		      else
