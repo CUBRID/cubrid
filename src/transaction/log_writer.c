@@ -2870,10 +2870,15 @@ logwr_get_min_copied_fpageid (void)
 
 #if defined(CS_MODE)
 void
-logwr_dump_logwr_gl (void)
+logwr_dump_logwr_gl (FILE * out)
 {
-  FILE *out = stdout;
   int indent = 2;
+  LOG_PAGE *loghdr_pgptr = logwr_Gl.loghdr_pgptr;
+
+  if (out == NULL)
+    {
+      out = stdout;
+    }
 
   fprintf (out, "%*slogwr_global : {\n", indent, "");
 
@@ -2882,7 +2887,7 @@ logwr_dump_logwr_gl (void)
   fprintf (out, ",\n\n");
 
   /* dump log page header */
-  logwr_dump_log_page_hdr (out, &logwr_Gl.loghdr_pgptr->hdr, indent + 2);
+  logwr_dump_log_page_hdr (out, loghdr_pgptr != NULL ? &loghdr_pgptr->hdr : NULL, indent + 2);
   fprintf (out, ",\n\n");
 
   /* top-level fields */
@@ -2896,6 +2901,12 @@ logwr_dump_logwr_gl (void)
 void
 logwr_dump_log_lsa (FILE * out, const LOG_LSA * lsa, int indent)
 {
+  if (lsa == NULL)
+    {
+      fprintf (out, "NULL");
+      return;
+    }
+
   fprintf (out, "{\n");
   fprintf (out, "%*spageid: %lld,\n", indent + 2, "", (long long) lsa->pageid);
   fprintf (out, "%*soffset: %lld\n", indent + 2, "", (long long) lsa->offset);
@@ -2906,6 +2917,13 @@ void
 logwr_dump_log_header (FILE * out, const LOG_HEADER * hdr, int indent)
 {
   const char *ha_file_status = NULL;
+
+  if (hdr == NULL)
+    {
+      fprintf (out, "%*slog_header: NULL", indent, "");
+      return;
+    }
+
   switch (hdr->ha_file_status)
     {
     case LOG_HA_FILESTAT_CLEAR:
@@ -3035,7 +3053,7 @@ logwr_dump_log_arv_header (FILE * out, const LOG_ARV_HEADER * arv_hdr, int inden
 {
   if (arv_hdr == NULL)
     {
-      fprintf (out, "%*slog_arv_header: NULL\n", indent, "");
+      fprintf (out, "%*slog_arv_header: NULL", indent, "");
       return;
     }
   fprintf (out, "%*slog_arv_header: {\n", indent, "");
@@ -3053,7 +3071,7 @@ logwr_dump_log_page_hdr (FILE * out, const LOG_HDRPAGE * p, int indent)
 {
   if (p == NULL)
     {
-      fprintf (out, "%*slog_page_hdr: NULL\n", indent, "");
+      fprintf (out, "%*slog_page_hdr: NULL", indent, "");
       return;
     }
   fprintf (out, "%*slog_page_hdr : {\n", indent, "");

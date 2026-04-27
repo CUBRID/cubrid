@@ -211,7 +211,7 @@ extern LOG_PAGEID logwr_get_min_copied_fpageid (void);
 #endif /* SERVER_MODE */
 
 #if defined(CS_MODE)
-extern void logwr_dump_logwr_gl (void);
+extern void logwr_dump_logwr_gl (FILE * out);
 extern void logwr_dump_log_lsa (FILE * out, const LOG_LSA * lsa, int indent);
 extern void logwr_dump_log_header (FILE * out, const LOG_HEADER * log_hdr, int indent);
 extern void logwr_dump_log_arv_header (FILE * out, const LOG_ARV_HEADER * log_arv_hdr, int indent);

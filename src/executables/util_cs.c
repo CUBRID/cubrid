@@ -32,6 +32,10 @@
 #include <signal.h>
 #include <errno.h>
 #include <assert.h>
+#if !defined(WINDOWS)
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 #include "utility.h"
 #include "error_manager.h"
@@ -104,10 +108,18 @@ typedef enum
   SORT_COLUMN_TYPE_STR,
 } SORT_COLUMN_TYPE;
 
-#if defined(CS_MODE)
+#if defined(CS_MODE) && !defined(WINDOWS)
 static volatile sig_atomic_t sigusr1_running = 0;
+static volatile sig_atomic_t sigusr1_pipe_write_fd = -1;
+static bool sigusr1_started = false;
+static bool sigusr1_old_action_saved = false;
 static pthread_t sigusr1_tid;
-#endif /* CS_MODE */
+static struct sigaction sigusr1_old_action;
+static int sigusr1_pipe_fds[2] = { -1, -1 };
+
+static int sigusr1_saved_stdout_fd = -1;
+static FILE *sigusr1_dump_outfp = NULL;
+#endif /* CS_MODE && !WINDOWS */
 
 static int tranlist_Sort_column = 0;
 static bool tranlist_Sort_desc = false;
@@ -2732,45 +2744,86 @@ error_exit:
 #endif /* !WINDOWS */
 }
 
-#if defined (CS_MODE)
+#if defined (CS_MODE) && !defined(WINDOWS)
 /*
- * Thread function that waits for SIGUSR1 and dumps information
+ * sigusr1_signal_handler () - wake the monitor thread on SIGUSR1
+ *   return: none
+ *   sig_no(in): signal number
+ *
+ * The actual dump uses fprintf-heavy routines, so keep the signal handler
+ * async-signal-safe and delegate work to the monitor thread through a pipe.
+ */
+static void
+sigusr1_signal_handler (int sig_no)
+{
+  int saved_errno = errno;
+  int fd = (int) sigusr1_pipe_write_fd;
+
+  if (sig_no == SIGUSR1 && fd != -1)
+    {
+      char wakeup = 1;
+
+      (void) write (fd, &wakeup, sizeof (wakeup));
+    }
+
+  errno = saved_errno;
+}
+
+/*
+ * sigusr1_dump () - dump information for copylogdb/applylogdb
+ *   return: none
+ *   util_index(in): utility index
+ *   out(in): dump output stream
+ */
+static void
+sigusr1_dump (int util_index, FILE * out)
+{
+  switch (util_index)
+    {
+    case COPYLOGDB:
+      logwr_dump_logwr_gl (out);
+      break;
+    case APPLYLOGDB:
+      la_dump_la_info (out);
+      break;
+    default:
+      break;
+    }
+}
+
+/*
+ * Thread function that waits for SIGUSR1 requests and dumps information
  * depending on which utility (COPYLOGDB or APPLYLOGDB) is running.
  */
 static void *
 sigusr1_monitor_thread (void *arg)
 {
   int util_index = (int) (intptr_t) arg;
-  sigset_t set;
-  int sig;
+  FILE *out = sigusr1_dump_outfp != NULL ? sigusr1_dump_outfp : stdout;
 
-  /* Prepare a signal set containing only SIGUSR1 */
-  sigemptyset (&set);
-  sigaddset (&set, SIGUSR1);
-
-  /* Loop until running flag is cleared */
   while (sigusr1_running)
     {
-      /* Wait synchronously for SIGUSR1 */
-      if (sigwait (&set, &sig) == 0 && sig == SIGUSR1)
+      char buffer[64];
+      ssize_t nread = read (sigusr1_pipe_fds[0], buffer, sizeof (buffer));
+
+      if (nread > 0)
 	{
-	  /* If running was turned off, break out to exit */
 	  if (!sigusr1_running)
 	    {
 	      break;
 	    }
-	  /* Dispatch the appropriate dump function */
-	  switch (util_index)
+
+	  sigusr1_dump (util_index, out);
+	  fflush (out);
+	}
+      else if (nread == -1)
+	{
+	  if (errno == EINTR)
 	    {
-	    case COPYLOGDB:
-	      logwr_dump_logwr_gl ();
-	      break;
-	    case APPLYLOGDB:
-	      la_dump_la_info ();
-	      break;
-	    default:
-	      break;
+	      continue;
 	    }
+
+	  break;
 	}
     }
 
@@ -2778,43 +2831,227 @@ sigusr1_monitor_thread (void *arg)
 }
 
 /*
- * Start the SIGUSR1 monitor thread.
- * Blocks SIGUSR1 in the calling thread, then spawns a joinable
- * monitor thread that will handle SIGUSR1.
+ * sigusr1_save_stdout () - keep the original stdout as the diagnostic dump target
+ *   return: none
+ *
+ * Note: copylogdb/applylogdb redirect stdout to /dev/null in NDEBUG builds.
+ * Save the descriptor before that redirection so SIGUSR1 diagnostics still go
+ * to the caller-visible stdout requested by CBRD-26062.
  */
-void
+static void
+sigusr1_save_stdout (void)
+{
+  if (sigusr1_saved_stdout_fd == -1)
+    {
+      sigusr1_saved_stdout_fd = dup (STDOUT_FILENO);
+    }
+}
+
+/*
+ * sigusr1_close_dump_output () - close diagnostic output descriptors
+ *   return: none
+ */
+static void
+sigusr1_close_dump_output (void)
+{
+  if (sigusr1_dump_outfp != NULL)
+    {
+      fclose (sigusr1_dump_outfp);
+      sigusr1_dump_outfp = NULL;
+    }
+
+  if (sigusr1_saved_stdout_fd != -1)
+    {
+      close (sigusr1_saved_stdout_fd);
+      sigusr1_saved_stdout_fd = -1;
+    }
+}
+
+/*
+ * sigusr1_close_pipe () - close the monitor wakeup pipe
+ *   return: none
+ */
+static void
+sigusr1_close_pipe (void)
+{
+  sigusr1_pipe_write_fd = -1;
+
+  if (sigusr1_pipe_fds[0] != -1)
+    {
+      close (sigusr1_pipe_fds[0]);
+      sigusr1_pipe_fds[0] = -1;
+    }
+
+  if (sigusr1_pipe_fds[1] != -1)
+    {
+      close (sigusr1_pipe_fds[1]);
+      sigusr1_pipe_fds[1] = -1;
+    }
+}
+
+/*
+ * sigusr1_create_pipe () - create the monitor wakeup pipe
+ *   return: NO_ERROR or error code
+ */
+static int
+sigusr1_create_pipe (void)
+{
+  int flags;
+
+  if (pipe (sigusr1_pipe_fds) != 0)
+    {
+      er_log_debug (ARG_FILE_LINE, "failed to create SIGUSR1 monitor pipe: %d\n", errno);
+      return ER_FAILED;
+    }
+
+  flags = fcntl (sigusr1_pipe_fds[1], F_GETFL, 0);
+  if (flags == -1 || fcntl (sigusr1_pipe_fds[1], F_SETFL, flags | O_NONBLOCK) == -1)
+    {
+      er_log_debug (ARG_FILE_LINE, "failed to set SIGUSR1 monitor pipe nonblocking: %d\n", errno);
+      sigusr1_close_pipe ();
+      return ER_FAILED;
+    }
+
+  sigusr1_pipe_write_fd = sigusr1_pipe_fds[1];
+  return NO_ERROR;
+}
+
+/*
+ * sigusr1_install_signal_handler () - install the SIGUSR1 wakeup handler
+ *   return: NO_ERROR or error code
+ */
+static int
+sigusr1_install_signal_handler (void)
+{
+  struct sigaction action;
+
+  sigemptyset (&action.sa_mask);
+  action.sa_handler = sigusr1_signal_handler;
+  action.sa_flags = SA_RESTART;
+
+  if (sigaction (SIGUSR1, &action, &sigusr1_old_action) != 0)
+    {
+      er_log_debug (ARG_FILE_LINE, "failed to install SIGUSR1 handler: %d\n", errno);
+      return ER_FAILED;
+    }
+
+  sigusr1_old_action_saved = true;
+  return NO_ERROR;
+}
+
+/*
+ * sigusr1_restore_signal_handler () - restore previous SIGUSR1 disposition
+ *   return: none
+ */
+static void
+sigusr1_restore_signal_handler (void)
+{
+  if (sigusr1_old_action_saved)
+    {
+      (void) sigaction (SIGUSR1, &sigusr1_old_action, NULL);
+      sigusr1_old_action_saved = false;
+    }
+}
+
+/*
+ * Start the SIGUSR1 monitor thread.
+ * Installs an async-signal-safe handler that wakes a joinable monitor
+ * thread to print diagnostics.
+ */
+static void
 start_sigusr1_monitor (int util_index)
 {
-  sigset_t set;
+  int error;
 
-  /* Block SIGUSR1 in this (main) thread so it can be handled only by our monitor thread */
-  sigemptyset (&set);
-  sigaddset (&set, SIGUSR1);
-  pthread_sigmask (SIG_BLOCK, &set, NULL);
+  if (sigusr1_started)
+    {
+      return;
+    }
+
+  sigusr1_save_stdout ();
+  if (sigusr1_saved_stdout_fd != -1)
+    {
+      int dump_fd = dup (sigusr1_saved_stdout_fd);
+      if (dump_fd != -1)
+	{
+	  sigusr1_dump_outfp = fdopen (dump_fd, "a");
+	  if (sigusr1_dump_outfp == NULL)
+	    {
+	      close (dump_fd);
+	    }
+	  else
+	    {
+	      setvbuf (sigusr1_dump_outfp, NULL, _IOLBF, 0);
+	    }
+	}
+    }
+
+  if (sigusr1_create_pipe () != NO_ERROR)
+    {
+      sigusr1_close_dump_output ();
+      return;
+    }
+
+  if (sigusr1_install_signal_handler () != NO_ERROR)
+    {
+      sigusr1_close_pipe ();
+      sigusr1_close_dump_output ();
+      return;
+    }
 
   /* Set running flag and create the monitor thread (joinable) */
   sigusr1_running = true;
-  pthread_create (&sigusr1_tid, NULL, sigusr1_monitor_thread, (void *) (intptr_t) util_index);
+  error = pthread_create (&sigusr1_tid, NULL, sigusr1_monitor_thread, (void *) (intptr_t) util_index);
+  if (error != 0)
+    {
+      er_log_debug (ARG_FILE_LINE, "failed to create SIGUSR1 monitor thread: %d\n", error);
+      sigusr1_running = false;
+      sigusr1_restore_signal_handler ();
+      sigusr1_close_pipe ();
+      sigusr1_close_dump_output ();
+      return;
+    }
+
+  sigusr1_started = true;
 }
 
 /*
  * Stop the SIGUSR1 monitor thread.
- * Clears the running flag, sends SIGUSR1 to wake up sigwait(),
- * and then joins the thread to clean up.
+ * Clears the running flag, wakes the monitor through the pipe, and then joins
+ * the thread to clean up.
  */
-void
+static void
 stop_sigusr1_monitor (void)
 {
+  if (!sigusr1_started)
+    {
+      sigusr1_running = false;
+      sigusr1_restore_signal_handler ();
+      sigusr1_close_pipe ();
+      sigusr1_close_dump_output ();
+      return;
+    }
+
   /* Clear the running flag so thread will exit on next wakeup */
   sigusr1_running = false;
 
-  /* Send SIGUSR1 to the monitor thread to wake it from sigwait() */
-  pthread_kill (sigusr1_tid, SIGUSR1);
+  /* Wake the monitor thread from read(). */
+  if (sigusr1_pipe_fds[1] != -1)
+    {
+      char wakeup = 1;
+
+      (void) write (sigusr1_pipe_fds[1], &wakeup, sizeof (wakeup));
+    }
 
   /* Wait for the monitor thread to terminate and reclaim resources */
-  pthread_join (sigusr1_tid, NULL);
+  (void) pthread_join (sigusr1_tid, NULL);
+
+  sigusr1_started = false;
+  sigusr1_restore_signal_handler ();
+  sigusr1_close_pipe ();
+  sigusr1_close_dump_output ();
 }
-#endif
+#endif /* CS_MODE && !WINDOWS */
 
 /*
  * copylogdb() - copylogdb main routine
@@ -2898,6 +3135,8 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
     }
 
   start_pageid = utility_get_option_bigint_value (arg_map, COPYLOG_START_PAGEID_S);
+
+  sigusr1_save_stdout ();
 
 #if defined(NDEBUG)
   util_redirect_stdout_to_null ();
@@ -3119,6 +3358,8 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
     {
       goto print_applylog_usage;
     }
+
+  sigusr1_save_stdout ();
 
 #if defined(NDEBUG)
   util_redirect_stdout_to_null ();

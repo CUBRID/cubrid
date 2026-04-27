@@ -8739,11 +8739,15 @@ la_delay_replica (time_t eot_time)
 
 #if defined(CS_MODE)
 void
-la_dump_la_info (void)
+la_dump_la_info (FILE * out)
 {
-  FILE *out = stdout;
   int indent = 2;
   LA_INFO *info = &la_Info;
+
+  if (out == NULL)
+    {
+      out = stdout;
+    }
 
   /* apply_state */
   const char *apply_state = NULL;
@@ -8948,17 +8952,19 @@ void
 la_dump_la_act_log (FILE * out, int indent)
 {
   LA_ACT_LOG *a = &la_Info.act_log;
+  LOG_PAGE *hdr_page = a->hdr_page;
+  LOG_HEADER *log_hdr = a->log_hdr;
 
   fprintf (out, "%*sla_act_log: {\n", indent, "");
   fprintf (out, "%*spath: %s,\n", indent + 2, "", a->path);
   fprintf (out, "%*slog_vdes: %d,\n", indent + 2, "", a->log_vdes);
 
   /* hdr_page */
-  logwr_dump_log_page_hdr (out, &a->hdr_page->hdr, indent + 2);
+  logwr_dump_log_page_hdr (out, hdr_page != NULL ? &hdr_page->hdr : NULL, indent + 2);
   fprintf (out, ",\n\n");
 
   /* log_hdr */
-  logwr_dump_log_header (out, a->log_hdr, indent + 2);
+  logwr_dump_log_header (out, log_hdr, indent + 2);
   fprintf (out, ",\n\n");
 
   fprintf (out, "%*sdb_iopagesize: %d,\n", indent + 2, "", a->db_iopagesize);
@@ -8971,8 +8977,10 @@ void
 la_dump_la_arv_log (FILE * out, int indent)
 {
   LA_ARV_LOG *r = &la_Info.arv_log;
+  LOG_PAGE *hdr_page = r->hdr_page;
+  LOG_ARV_HEADER *log_hdr = r->log_hdr;
 
-  if (r == NULL || r->log_vdes <= 0)
+  if (r->log_vdes == NULL_VOLDES)
     {
       fprintf (out, "%*sla_arv_log: NULL\n", indent, "");
       return;
@@ -8983,11 +8991,11 @@ la_dump_la_arv_log (FILE * out, int indent)
   fprintf (out, "%*slog_vdes: %d,\n", indent + 2, "", r->log_vdes);
 
   fprintf (out, "%*s", indent + 2, "");
-  logwr_dump_log_page_hdr (out, &r->hdr_page->hdr, indent + 4);
+  logwr_dump_log_page_hdr (out, hdr_page != NULL ? &hdr_page->hdr : NULL, indent + 4);
   fprintf (out, ",\n\n");
 
   fprintf (out, "%*s", indent + 2, "");
-  logwr_dump_log_arv_header (out, r->log_hdr, indent + 4);
+  logwr_dump_log_arv_header (out, log_hdr, indent + 4);
   fprintf (out, ",\n\n");
 
   fprintf (out, "%*sarv_num: %d\n", indent + 2, "", r->arv_num);
@@ -8999,7 +9007,7 @@ la_dump_la_apply_list (FILE * out, int indent)
 {
   if (la_Info.repl_lists == NULL)
     {
-      fprintf (out, "%*srepl_lists: NULL\n", indent, "");
+      fprintf (out, "%*srepl_lists: NULL", indent, "");
       return;
     }
 
@@ -9015,6 +9023,12 @@ la_dump_la_apply_list (FILE * out, int indent)
 void
 la_dump_la_apply (FILE * out, int idx, int indent)
 {
+  if (idx < 0 || la_Info.repl_lists == NULL || idx >= la_Info.repl_cnt)
+    {
+      fprintf (out, "%*sNULL\n", indent, "");
+      return;
+    }
+
   LA_APPLY *apply = la_Info.repl_lists[idx];
   if (apply == NULL)
     {
