@@ -6745,7 +6745,7 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
   REGU_VARIABLE *regu = NULL;
   REGU_VARIABLE_LIST args;
   SP_TYPE *sp = NULL;
-  bool flag_si_datetime;	// dummy
+  bool flag_si_datetime = true;	// dummy
 
   regu_alloc (regu);
   if (!regu)

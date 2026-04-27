@@ -746,12 +746,12 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   /* call sp */
   std::vector <std::reference_wrapper <DB_VALUE>> args;
   cubpl::pl_signature sig;
-  bool flag_si_datetime;
+  bool flag_si_datetime = false;
   error = jsp_make_pl_signature (parser, statement, NULL, sig);
   if (error == NO_ERROR)
     {
       PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, sig, flag_si_datetime);
-      if (default_next_node_list != NULL)
+      if (default_next_node_list != NULL && flag_si_datetime)
 	{
 	  // consider using 'db_calculate_current_server_time' in db_vdb.c for less server communication
 	  error = qp_get_server_info (parser, SI_SYS_DATETIME);
