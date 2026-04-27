@@ -3090,6 +3090,12 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
       skip_size = 1;
       if (astring[i] == '.')
 	{
+	  if (decimal_part)
+	    {
+	      /* reject strings with more than one decimal point */
+	      ret = DOMAIN_INCOMPATIBLE;
+	      break;
+	    }
 	  leading_zeroes = false;
 	  decimal_part = true;
 	  scale = astring_length - (i + 1);
