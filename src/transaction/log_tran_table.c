@@ -4401,53 +4401,28 @@ logtb_create_unique_stats_from_repr (THREAD_ENTRY * thread_p, OID * class_oid)
 
   for (idx = classrepr->n_indexes - 1; idx >= 0; idx--)
     {
-      if (btree_is_unique_type (classrepr->indexes[idx].type))
+      unique_stats = logtb_tran_find_btid_stats (thread_p, &classrepr->indexes[idx].btid, true);
+      if (unique_stats == NULL)
 	{
-	  unique_stats = logtb_tran_find_btid_stats (thread_p, &classrepr->indexes[idx].btid, true);
-	  if (unique_stats == NULL)
-	    {
-	      error_code = ER_FAILED;
-	      goto exit_on_error;
-	    }
-	  error_code =
-	    logtb_get_global_unique_stats (thread_p, &unique_stats->btid, &unique_stats->global_stats.num_oids,
-					   &unique_stats->global_stats.num_nulls, &unique_stats->global_stats.num_keys);
-	  if (error_code != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
+	  error_code = ER_FAILED;
+	  goto exit_on_error;
 	}
-      else
+
+      error_code =
+	logtb_get_global_unique_stats (thread_p, &unique_stats->btid, &unique_stats->global_stats.num_oids,
+				       &unique_stats->global_stats.num_nulls, &unique_stats->global_stats.num_keys);
+      if (error_code != NO_ERROR)
 	{
-	  long long g_oid = -1, g_null = -1, g_key = -1;
-
-	  /* Non-unique indexes that track OID statistics (new format); legacy headers skip. */
-	  if (btree_get_unique_statistics (thread_p, &classrepr->indexes[idx].btid,
-					   &g_oid, &g_null, &g_key) != NO_ERROR)
-	    {
-	      if (er_errid () != NO_ERROR)
-		{
-		  error_code = er_errid ();
-		  goto exit_on_error;
-		}
-
-	      continue;
-	    }
-
-	  unique_stats = logtb_tran_find_btid_stats (thread_p, &classrepr->indexes[idx].btid, true);
-	  if (unique_stats == NULL)
-	    {
-	      error_code = ER_FAILED;
-	      goto exit_on_error;
-	    }
-
-	  error_code =
-	    logtb_get_global_unique_stats (thread_p, &unique_stats->btid, &unique_stats->global_stats.num_oids,
-					   &unique_stats->global_stats.num_nulls, &unique_stats->global_stats.num_keys);
-	  if (error_code != NO_ERROR)
+	  if (btree_is_unique_type (classrepr->indexes[idx].type))
 	    {
 	      goto exit_on_error;
 	    }
+	  /* Non-unique legacy index (num_oids == -1): btree_get_unique_statistics inside
+	   * logtb_get_global_unique_stats_entry already detected and returned error.
+	   * Mark entry deleted so it is invisible to COUNT(*) and commit delta flush. */
+	  unique_stats->deleted = true;
+	  er_clear ();
+	  error_code = NO_ERROR;
 	}
     }
 

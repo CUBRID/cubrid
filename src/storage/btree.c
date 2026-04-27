@@ -6604,9 +6604,12 @@ btree_get_unique_statistics_for_count (THREAD_ENTRY * thread_p, BTID * btid, lon
 {
   LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = NULL;
 
-  unique_stats = logtb_tran_find_btid_stats (thread_p, btid, true);
-  if (unique_stats == NULL)
+  /* Use false (do not create): logtb_create_unique_stats_from_repr must have been called before reaching here.
+   * Creating a fresh {0,0,0} entry for a btree whose global stats were never loaded would return a wrong count. */
+  unique_stats = logtb_tran_find_btid_stats (thread_p, btid, false);
+  if (unique_stats == NULL || unique_stats->deleted)
     {
+      /* Entry missing (stats not loaded) or legacy non-unique (deleted flag): fall back to heap scan. */
       return ER_FAILED;
     }
   *oid_cnt = unique_stats->tran_stats.num_oids + unique_stats->global_stats.num_oids;
