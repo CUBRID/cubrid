@@ -26,7 +26,9 @@
 
 #ident "$Id$"
 
+#ifdef __cplusplus
 #include <atomic>
+#endif
 
 #include "storage_common.h"
 #include "object_domain.h"
@@ -530,6 +532,7 @@ enum
 #define QFILE_IS_FLAG_SET(var, flag)       ((var) & (flag))
 #define QFILE_IS_FLAG_SET_BOTH(var, flag1, flag2) (((var) & (flag1)) && ((var) & (flag2)))
 
+#ifdef __cplusplus
 /* Sector-based data page info for QFILE_LIST_ID.
  * membuf_tfile: membuf exists only in the first list_id (not in dependent_list_id).
  * sectors/tfiles: parallel arrays, one entry per disk sector across all dependent list_ids. */
@@ -550,9 +553,12 @@ struct qfile_list_sector_info
   {
     //
   }
+
   // *INDENT-ON*
 };
+#endif /*  __cplusplus */
 
+#ifdef __cplusplus
 /* Sector-based parallel page scan distribution state.
  * Wraps QFILE_LIST_SECTOR_INFO with the atomic cursors workers use to coordinate. */
 typedef struct qfile_list_sector_scan_info QFILE_LIST_SECTOR_SCAN_INFO;
@@ -572,6 +578,7 @@ struct qfile_list_sector_scan_info
   }
   // *INDENT-ON*
 };
+#endif /*  __cplusplus */
 
 /* SORTING RELATED DEFINITIONS */
 
