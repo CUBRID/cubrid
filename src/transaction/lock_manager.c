@@ -63,7 +63,9 @@
 #include "server_support.h"
 #include "storage_common.h"
 #include "system_parameter.h"
+#if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
+#endif
 #include "thread_entry_task.hpp"
 #include "thread_lockfree_hash_map.hpp"
 #include "thread_manager.hpp"
