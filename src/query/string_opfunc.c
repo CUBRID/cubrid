@@ -26238,7 +26238,7 @@ error:
 }
 
 /*
- * db_uuidv4() - Generate a type 4 (randomly generated) UUID.
+ * db_uuidv4() - Generate a type 4 (randomly generated) UUID String.
  *   return: error code or NO_ERROR
  *   result(out): HEX encoded UUID string(32-character uppercase hexadecimal)
  * Note:
@@ -26301,18 +26301,16 @@ error:
 /*
  * db_uuid_bin() - Generate a UUID and return as BIT(128) value.
  *   return: error code or NO_ERROR
- *   version(in): UUID version (UUID_V4 or UUID_V7)
- *   base_state(in/out): can be NULL if version = UUID_V4. 
+ *   version(in): UUID version
+ *   base_state(in/out): Required if the version belongs to timebased UUID (UUID_V7). 
  *     Use the variable address from the current generator context:
  *     THREAD_ENTRY on server, PARSER_CONTEXT on CAS.
- *   epoch_ms(in): epoch time in milliseconds (used for UUIDv7, from vd->sys_epochtime)
+ *   epoch_ms(in): Required if the version belongs to timebased UUID (UUID_V7).
+ *     Epoch time in milliseconds compares with base_state.
  *   result(out): BIT(128) DB_VALUE
- * Note:
- *   For UUIDv7, epoch_ms calculated from val_descr as:
- *   epoch_ms = (uint64_t)vd->sys_epochtime * 1000 + (uint64_t)vd->sys_datetime.time % 1000
  */
 int
-db_uuid_bin (UUID_VERSION version, UUID_STATE * uuid_state, uint64_t epoch_ms, DB_VALUE * result)
+db_uuid_bin (UUID_VERSION version, UUID_STATE * base_state, uint64_t epoch_ms, DB_VALUE * result)
 {
   int error_code = NO_ERROR;
   char *guid_bytes = NULL;
@@ -26339,7 +26337,7 @@ db_uuid_bin (UUID_VERSION version, UUID_STATE * uuid_state, uint64_t epoch_ms, D
       error_code = uuidv4_generate_bytes ((unsigned char *) guid_bytes);
       break;
     case UUID_V7:
-      error_code = uuidv7_generate_bytes (uuid_state, epoch_ms, (unsigned char *) guid_bytes);
+      error_code = uuidv7_generate_bytes (base_state, epoch_ms, (unsigned char *) guid_bytes);
       break;
     case UUID_UNSUPPORTED:
     default:
@@ -26392,7 +26390,7 @@ error:
  *   - Octets 8-15 (bits 66 ~ 127): random_b
  *
  *   This implementation uses per-thread state for monotonic ordering within a thread.
- *   The epoch_ms comes from the query's xasl_state.vd for efficiency and
+ *   The epoch_ms comes from the (query's xasl_state.vd) or (parser's sys_datetime and sys_epochtime) for efficiency and
  *   consistency within a single query execution.
  */
 static int
