@@ -341,7 +341,35 @@ struct la_apply_result
   LOG_LSA committed_rep_lsa;
   time_t log_record_time;
   LA_APPLY_STATS stats;
+#if !defined (NDEBUG)
+  struct timeval result_enqueue_time;
+#endif /* !NDEBUG */
 };
+
+#if !defined (NDEBUG)
+typedef enum
+{
+  LA_WORKER_STAGE_IDLE = 0,
+  LA_WORKER_STAGE_APPLY,
+  LA_WORKER_STAGE_FINAL_FLUSH,
+  LA_WORKER_STAGE_COMMIT,
+  LA_WORKER_STAGE_ENQUEUE_RESULT
+} LA_WORKER_DEBUG_STAGE;
+
+typedef enum
+{
+  LA_HEAD_BLOCKER_STATE_NONE = 0,
+  LA_HEAD_BLOCKER_STATE_READY,
+  LA_HEAD_BLOCKER_STATE_WORKER_QUEUE,
+  LA_HEAD_BLOCKER_STATE_APPLY,
+  LA_HEAD_BLOCKER_STATE_FINAL_FLUSH,
+  LA_HEAD_BLOCKER_STATE_COMMIT,
+  LA_HEAD_BLOCKER_STATE_ENQUEUE_RESULT,
+  LA_HEAD_BLOCKER_STATE_WORKER_RESULT_QUEUE,
+  LA_HEAD_BLOCKER_STATE_PENDING_UNKNOWN,
+  LA_HEAD_BLOCKER_STATE_COUNT
+} LA_HEAD_BLOCKER_DEBUG_STATE;
+#endif /* !NDEBUG */
 
 typedef struct la_worker_queue LA_WORKER_QUEUE;
 struct la_worker_queue
@@ -401,6 +429,9 @@ struct la_dispatch_order_entry
   int rectype;
   bool result_ready;
   LA_APPLY_RESULT result;
+#if !defined (NDEBUG)
+  struct timeval dispatch_time;
+#endif /* !NDEBUG */
 };
 
 typedef struct la_dispatch_order LA_DISPATCH_ORDER;
@@ -622,6 +653,8 @@ struct la_debug_progress_stats
   UINT64 commit_dispatch_order_usec_total;
   UINT64 reader_collect_results_usec_total;
   UINT64 reader_retire_usec_total;
+  UINT64 reader_commit_apply_info_usec_total;
+  UINT64 reader_commit_apply_info_count_total;
   UINT64 reader_collect_calls_total;
   UINT64 reader_enqueue_wait_usec_total;
   UINT64 worker_dequeue_total[LA_APPLY_WORKER_COUNT];
@@ -630,16 +663,36 @@ struct la_debug_progress_stats
   UINT64 worker_flush_usec_total[LA_APPLY_WORKER_COUNT];
   UINT64 worker_busy_usec_total[LA_APPLY_WORKER_COUNT];
   UINT64 worker_apply_usec_total[LA_APPLY_WORKER_COUNT];
+  UINT64 worker_commit_usec_total[LA_APPLY_WORKER_COUNT];
+  UINT64 worker_db_commit_usec_total[LA_APPLY_WORKER_COUNT];
+  UINT64 worker_post_commit_cleanup_usec_total[LA_APPLY_WORKER_COUNT];
   UINT64 worker_disk_fetch_usec_total[LA_APPLY_WORKER_COUNT];
   UINT64 worker_queue_wait_usec_total[LA_APPLY_WORKER_COUNT];
+  UINT64 worker_result_enqueue_wait_usec_total[LA_APPLY_WORKER_COUNT];
+  UINT64 worker_result_queue_dwell_usec_total[LA_APPLY_WORKER_COUNT];
+  UINT64 worker_queue_depth_max[LA_APPLY_WORKER_COUNT];
+  UINT64 worker_result_queue_depth_max[LA_APPLY_WORKER_COUNT];
+  UINT64 worker_empty_commit_count_total[LA_APPLY_WORKER_COUNT];
+  UINT64 worker_empty_commit_usec_total[LA_APPLY_WORKER_COUNT];
+  UINT64 worker_nonempty_commit_count_total[LA_APPLY_WORKER_COUNT];
+  UINT64 worker_nonempty_commit_usec_total[LA_APPLY_WORKER_COUNT];
   UINT64 last_worker_dequeue_total[LA_APPLY_WORKER_COUNT];
   UINT64 last_worker_complete_total[LA_APPLY_WORKER_COUNT];
   UINT64 last_worker_flush_count_total[LA_APPLY_WORKER_COUNT];
   UINT64 last_worker_flush_usec_total[LA_APPLY_WORKER_COUNT];
   UINT64 last_worker_busy_usec_total[LA_APPLY_WORKER_COUNT];
   UINT64 last_worker_apply_usec_total[LA_APPLY_WORKER_COUNT];
+  UINT64 last_worker_commit_usec_total[LA_APPLY_WORKER_COUNT];
+  UINT64 last_worker_db_commit_usec_total[LA_APPLY_WORKER_COUNT];
+  UINT64 last_worker_post_commit_cleanup_usec_total[LA_APPLY_WORKER_COUNT];
   UINT64 last_worker_disk_fetch_usec_total[LA_APPLY_WORKER_COUNT];
   UINT64 last_worker_queue_wait_usec_total[LA_APPLY_WORKER_COUNT];
+  UINT64 last_worker_result_enqueue_wait_usec_total[LA_APPLY_WORKER_COUNT];
+  UINT64 last_worker_result_queue_dwell_usec_total[LA_APPLY_WORKER_COUNT];
+  UINT64 last_worker_empty_commit_count_total[LA_APPLY_WORKER_COUNT];
+  UINT64 last_worker_empty_commit_usec_total[LA_APPLY_WORKER_COUNT];
+  UINT64 last_worker_nonempty_commit_count_total[LA_APPLY_WORKER_COUNT];
+  UINT64 last_worker_nonempty_commit_usec_total[LA_APPLY_WORKER_COUNT];
   UINT64 last_repl_items_seen_total;
   UINT64 last_commits_seen_total;
   UINT64 last_dispatch_total;
@@ -659,11 +712,24 @@ struct la_debug_progress_stats
   UINT64 last_commit_dispatch_order_usec_total;
   UINT64 last_reader_collect_results_usec_total;
   UINT64 last_reader_retire_usec_total;
+  UINT64 last_reader_commit_apply_info_usec_total;
+  UINT64 last_reader_commit_apply_info_count_total;
   UINT64 last_reader_collect_calls_total;
   UINT64 last_reader_enqueue_wait_usec_total;
+  UINT64 head_blocked_progress_count_total;
+  UINT64 head_blocked_usec_total;
+  UINT64 head_blocker_count_total[LA_HEAD_BLOCKER_STATE_COUNT];
+  UINT64 head_blocker_usec_total[LA_HEAD_BLOCKER_STATE_COUNT];
+  UINT64 last_head_blocked_progress_count_total;
+  UINT64 last_head_blocked_usec_total;
+  UINT64 last_head_blocker_count_total[LA_HEAD_BLOCKER_STATE_COUNT];
+  UINT64 last_head_blocker_usec_total[LA_HEAD_BLOCKER_STATE_COUNT];
 };
 
 static LA_DEBUG_PROGRESS_STATS la_Debug_progress;
+static UINT64 la_Debug_worker_current_seq[LA_APPLY_WORKER_COUNT];
+static int la_Debug_worker_current_tranid[LA_APPLY_WORKER_COUNT];
+static LA_WORKER_DEBUG_STAGE la_Debug_worker_current_stage[LA_APPLY_WORKER_COUNT];
 #endif /* !NDEBUG */
 static pthread_mutex_t la_sql_compile_mutex = PTHREAD_MUTEX_INITIALIZER;
 /* Serializes per-worker client context bring-up (net_client_sub_init,
@@ -812,7 +878,8 @@ static LA_ITEM *la_get_next_repl_item (LA_ITEM * item, bool is_long_trans, LOG_L
 static LA_ITEM *la_get_next_repl_item_from_list (LA_ITEM * item);
 static LA_ITEM *la_get_next_repl_item_from_log (LA_ITEM * item, LOG_LSA * last_lsa);
 
-static int la_commit_transaction (unsigned long long applied_item_count);
+static int la_commit_transaction (unsigned long long applied_item_count, UINT64 *db_commit_usec,
+				  UINT64 *post_commit_cleanup_usec);
 static int la_find_last_deleted_arv_num (void);
 
 static bool la_restart_on_bulk_flush_error (int errid);
@@ -869,6 +936,11 @@ static int la_dispatch_order_push (int worker_idx, LA_APPLY * apply, int tranid,
 static LA_DISPATCH_ORDER_ENTRY *la_dispatch_order_peek (void);
 static LA_DISPATCH_ORDER_ENTRY *la_dispatch_order_find_by_seq (UINT64 seq);
 static void la_dispatch_order_pop (void);
+#if !defined (NDEBUG)
+static const char *la_debug_worker_stage_string (LA_WORKER_DEBUG_STAGE stage);
+static bool la_debug_worker_queue_contains_seq (LA_APPLY_WORKER * worker, UINT64 seq);
+static bool la_debug_worker_result_queue_contains_seq (LA_APPLY_WORKER * worker, UINT64 seq);
+#endif /* !NDEBUG */
 
 static bool la_need_filter_out (LA_ITEM * item);
 static int la_create_repl_filter (void);
@@ -1086,6 +1158,12 @@ la_enqueue_apply_task (LA_APPLY_WORKER * worker, const LA_APPLY_TASK * task)
       worker->queue.tasks[worker->queue.tail] = *task;
       worker->queue.tail = (worker->queue.tail + 1) % LA_APPLY_WORKER_QUEUE_CAPACITY;
       worker->queue.count++;
+#if !defined (NDEBUG)
+      if ((UINT64) worker->queue.count > la_Debug_progress.worker_queue_depth_max[worker_idx])
+	{
+	  la_Debug_progress.worker_queue_depth_max[worker_idx] = (UINT64) worker->queue.count;
+	}
+#endif /* !NDEBUG */
       LA_DEBUG_LOG (ARG_FILE_LINE,
 		    "reader enqueued worker[%d] trid=%d rectype=%d commit_lsa=%lld|%d apply=%p qcount=%d->%d\n",
 		    worker_idx, task->tranid, task->rectype, (long long) task->commit_lsa.pageid,
@@ -1137,6 +1215,8 @@ la_dequeue_apply_task (LA_APPLY_WORKER * worker, LA_APPLY_TASK * task)
 static int
 la_enqueue_apply_result (LA_APPLY_WORKER * worker, const LA_APPLY_RESULT * result)
 {
+  int worker_idx = (int) (worker - la_apply_Workers);
+
   pthread_mutex_lock (&worker->mutex);
 
   if (worker->result_queue.count >= LA_APPLY_WORKER_QUEUE_CAPACITY)
@@ -1150,12 +1230,18 @@ la_enqueue_apply_result (LA_APPLY_WORKER * worker, const LA_APPLY_RESULT * resul
   worker->result_queue.results[worker->result_queue.tail] = *result;
   worker->result_queue.tail = (worker->result_queue.tail + 1) % LA_APPLY_WORKER_QUEUE_CAPACITY;
   worker->result_queue.count++;
+#if !defined (NDEBUG)
+  if ((UINT64) worker->result_queue.count > la_Debug_progress.worker_result_queue_depth_max[worker_idx])
+    {
+      la_Debug_progress.worker_result_queue_depth_max[worker_idx] = (UINT64) worker->result_queue.count;
+    }
+#endif /* !NDEBUG */
   worker->busy = false;
 
   pthread_cond_broadcast (&worker->idle_cond);
   pthread_mutex_unlock (&worker->mutex);
 #if !defined (NDEBUG)
-  ATOMIC_INC_64 (&la_Debug_progress.worker_complete_total[(int) (worker - la_apply_Workers)], 1);
+  ATOMIC_INC_64 (&la_Debug_progress.worker_complete_total[worker_idx], 1);
 #endif /* !NDEBUG */
   return NO_ERROR;
 }
@@ -1212,6 +1298,9 @@ la_dispatch_order_push (int worker_idx, LA_APPLY * apply, int tranid, int rectyp
   entry->rectype = rectype;
   entry->result_ready = false;
   memset (&entry->result, 0, sizeof (entry->result));
+#if !defined (NDEBUG)
+  gettimeofday (&entry->dispatch_time, NULL);
+#endif /* !NDEBUG */
 
   if (seq_out != NULL)
     {
@@ -1265,6 +1354,119 @@ la_dispatch_order_pop (void)
   la_Dispatch_order.head = (la_Dispatch_order.head + 1) % LA_DISPATCH_ORDER_CAPACITY;
   la_Dispatch_order.count--;
 }
+
+#if !defined (NDEBUG)
+static const char *
+la_debug_worker_stage_string (LA_WORKER_DEBUG_STAGE stage)
+{
+  switch (stage)
+    {
+    case LA_WORKER_STAGE_IDLE:
+      return "idle";
+    case LA_WORKER_STAGE_APPLY:
+      return "apply";
+    case LA_WORKER_STAGE_FINAL_FLUSH:
+      return "final_flush";
+    case LA_WORKER_STAGE_COMMIT:
+      return "commit";
+    case LA_WORKER_STAGE_ENQUEUE_RESULT:
+      return "enqueue_result";
+    default:
+      return "unknown";
+    }
+}
+
+static LA_HEAD_BLOCKER_DEBUG_STATE
+la_debug_head_blocker_state_from_worker_stage (LA_WORKER_DEBUG_STAGE stage)
+{
+  switch (stage)
+    {
+    case LA_WORKER_STAGE_APPLY:
+      return LA_HEAD_BLOCKER_STATE_APPLY;
+    case LA_WORKER_STAGE_FINAL_FLUSH:
+      return LA_HEAD_BLOCKER_STATE_FINAL_FLUSH;
+    case LA_WORKER_STAGE_COMMIT:
+      return LA_HEAD_BLOCKER_STATE_COMMIT;
+    case LA_WORKER_STAGE_ENQUEUE_RESULT:
+      return LA_HEAD_BLOCKER_STATE_ENQUEUE_RESULT;
+    case LA_WORKER_STAGE_IDLE:
+    default:
+      return LA_HEAD_BLOCKER_STATE_PENDING_UNKNOWN;
+    }
+}
+
+static const char *
+la_debug_head_blocker_state_string (LA_HEAD_BLOCKER_DEBUG_STATE state)
+{
+  switch (state)
+    {
+    case LA_HEAD_BLOCKER_STATE_NONE:
+      return "none";
+    case LA_HEAD_BLOCKER_STATE_READY:
+      return "ready";
+    case LA_HEAD_BLOCKER_STATE_WORKER_QUEUE:
+      return "worker_queue";
+    case LA_HEAD_BLOCKER_STATE_APPLY:
+      return "apply";
+    case LA_HEAD_BLOCKER_STATE_FINAL_FLUSH:
+      return "final_flush";
+    case LA_HEAD_BLOCKER_STATE_COMMIT:
+      return "commit";
+    case LA_HEAD_BLOCKER_STATE_ENQUEUE_RESULT:
+      return "enqueue_result";
+    case LA_HEAD_BLOCKER_STATE_WORKER_RESULT_QUEUE:
+      return "worker_result_queue";
+    case LA_HEAD_BLOCKER_STATE_PENDING_UNKNOWN:
+      return "pending_unknown";
+    default:
+      return "invalid";
+    }
+}
+
+static bool
+la_debug_worker_queue_contains_seq (LA_APPLY_WORKER * worker, UINT64 seq)
+{
+  bool found = false;
+  int i, idx;
+
+  pthread_mutex_lock (&worker->mutex);
+  idx = worker->queue.head;
+  for (i = 0; i < worker->queue.count; i++)
+    {
+      if (worker->queue.tasks[idx].seq == seq)
+	{
+	  found = true;
+	  break;
+	}
+      idx = (idx + 1) % LA_APPLY_WORKER_QUEUE_CAPACITY;
+    }
+  pthread_mutex_unlock (&worker->mutex);
+
+  return found;
+}
+
+static bool
+la_debug_worker_result_queue_contains_seq (LA_APPLY_WORKER * worker, UINT64 seq)
+{
+  bool found = false;
+  int i, idx;
+
+  pthread_mutex_lock (&worker->mutex);
+  idx = worker->result_queue.head;
+  for (i = 0; i < worker->result_queue.count; i++)
+    {
+      if (worker->result_queue.results[idx].seq == seq)
+	{
+	  found = true;
+	  break;
+	}
+      idx = (idx + 1) % LA_APPLY_WORKER_QUEUE_CAPACITY;
+    }
+  pthread_mutex_unlock (&worker->mutex);
+
+  return found;
+}
+#endif /* !NDEBUG */
 
 static void
 la_init_worker_server_credential (BOOT_SERVER_CREDENTIAL * credential)
@@ -1734,6 +1936,16 @@ la_collect_worker_results (void)
 
       while (la_try_dequeue_apply_result (&la_apply_Workers[i], &result) == NO_ERROR)
 	{
+#if !defined (NDEBUG)
+	  struct timeval now_tv;
+	  UINT64 dwell_usec;
+
+	  gettimeofday (&now_tv, NULL);
+	  dwell_usec =
+	    (UINT64) (((INT64) now_tv.tv_sec - (INT64) result.result_enqueue_time.tv_sec) * 1000000LL
+		      + ((INT64) now_tv.tv_usec - (INT64) result.result_enqueue_time.tv_usec));
+	  la_Debug_progress.worker_result_queue_dwell_usec_total[i] += dwell_usec;
+#endif /* !NDEBUG */
 	  LA_DISPATCH_ORDER_ENTRY *entry = la_dispatch_order_find_by_seq (result.seq);
 	  if (entry == NULL)
 	    {
@@ -1809,7 +2021,18 @@ la_retire_ready_results (void)
 
       la_dispatch_order_pop ();
 
-      error = la_reader_commit_apply_info ();
+#if !defined (NDEBUG)
+      struct timeval _commit_apply_info_begin;
+      LA_TIME_BEGIN (_commit_apply_info_begin);
+#endif /* !NDEBUG */
+      /* POC: skip only _db_ha_apply_info update for bottleneck verification.
+       * Keep reader-side commit so client/session cleanup still runs. */
+      /* error = la_reader_commit_apply_info (); */
+      error = db_commit_transaction ();
+#if !defined (NDEBUG)
+      LA_TIME_ACCUM_USEC (_commit_apply_info_begin, la_Debug_progress.reader_commit_apply_info_usec_total);
+      la_Debug_progress.reader_commit_apply_info_count_total++;
+#endif /* !NDEBUG */
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -2005,10 +2228,102 @@ la_debug_maybe_log_progress (void)
     la_Debug_progress.reader_collect_results_usec_total - la_Debug_progress.last_reader_collect_results_usec_total;
   UINT64 retire_delta =
     la_Debug_progress.reader_retire_usec_total - la_Debug_progress.last_reader_retire_usec_total;
+  UINT64 commit_apply_info_delta =
+    la_Debug_progress.reader_commit_apply_info_usec_total - la_Debug_progress.last_reader_commit_apply_info_usec_total;
+  UINT64 commit_apply_info_count_delta =
+    la_Debug_progress.reader_commit_apply_info_count_total - la_Debug_progress.last_reader_commit_apply_info_count_total;
   UINT64 collect_calls_delta =
     la_Debug_progress.reader_collect_calls_total - la_Debug_progress.last_reader_collect_calls_total;
   UINT64 enqueue_wait_delta =
     la_Debug_progress.reader_enqueue_wait_usec_total - la_Debug_progress.last_reader_enqueue_wait_usec_total;
+  UINT64 head_blocked_progress_delta =
+    la_Debug_progress.head_blocked_progress_count_total - la_Debug_progress.last_head_blocked_progress_count_total;
+  UINT64 head_blocked_usec_delta =
+    la_Debug_progress.head_blocked_usec_total - la_Debug_progress.last_head_blocked_usec_total;
+  UINT64 head_blocker_count_delta[LA_HEAD_BLOCKER_STATE_COUNT];
+  UINT64 head_blocker_usec_delta[LA_HEAD_BLOCKER_STATE_COUNT];
+  int ready_result_count = 0;
+  UINT64 head_seq = 0;
+  int head_worker_idx = -1;
+  int head_tranid = 0;
+  int head_rectype = -1;
+  LA_HEAD_BLOCKER_DEBUG_STATE head_state_enum = LA_HEAD_BLOCKER_STATE_NONE;
+  const char *head_state = "none";
+  UINT64 head_age_usec = 0;
+  LA_DISPATCH_ORDER_ENTRY *head_entry = la_dispatch_order_peek ();
+
+  for (i = 0; i < LA_HEAD_BLOCKER_STATE_COUNT; i++)
+    {
+      head_blocker_count_delta[i] =
+	la_Debug_progress.head_blocker_count_total[i] - la_Debug_progress.last_head_blocker_count_total[i];
+      head_blocker_usec_delta[i] =
+	la_Debug_progress.head_blocker_usec_total[i] - la_Debug_progress.last_head_blocker_usec_total[i];
+    }
+
+  if (head_entry != NULL)
+    {
+      int idx;
+      struct timeval now_tv;
+
+      head_seq = head_entry->seq;
+      head_worker_idx = head_entry->worker_idx;
+      head_tranid = head_entry->tranid;
+      head_rectype = head_entry->rectype;
+      gettimeofday (&now_tv, NULL);
+      head_age_usec =
+	(UINT64) (((INT64) now_tv.tv_sec - (INT64) head_entry->dispatch_time.tv_sec) * 1000000LL
+		  + ((INT64) now_tv.tv_usec - (INT64) head_entry->dispatch_time.tv_usec));
+
+      idx = la_Dispatch_order.head;
+      for (i = 0; i < la_Dispatch_order.count; i++)
+	{
+	  LA_DISPATCH_ORDER_ENTRY *entry = &la_Dispatch_order.entries[idx];
+	  if (entry->result_ready)
+	    {
+	      ready_result_count++;
+	    }
+	  idx = (idx + 1) % LA_DISPATCH_ORDER_CAPACITY;
+	}
+
+      if (head_entry->result_ready)
+	{
+	  head_state_enum = LA_HEAD_BLOCKER_STATE_READY;
+	}
+      else if (head_worker_idx >= 0 && head_worker_idx < LA_APPLY_WORKER_COUNT
+	       && la_Debug_worker_current_seq[head_worker_idx] == head_seq)
+	{
+	  head_state_enum =
+	    la_debug_head_blocker_state_from_worker_stage (la_Debug_worker_current_stage[head_worker_idx]);
+	  la_Debug_progress.head_blocked_progress_count_total++;
+	  la_Debug_progress.head_blocked_usec_total += head_age_usec;
+	  head_blocked_progress_delta++;
+	  head_blocked_usec_delta += head_age_usec;
+	}
+      else if (head_worker_idx >= 0 && head_worker_idx < LA_APPLY_WORKER_COUNT
+	       && la_debug_worker_result_queue_contains_seq (&la_apply_Workers[head_worker_idx], head_seq))
+	{
+	  head_state_enum = LA_HEAD_BLOCKER_STATE_WORKER_RESULT_QUEUE;
+	}
+      else if (head_worker_idx >= 0 && head_worker_idx < LA_APPLY_WORKER_COUNT
+	       && la_debug_worker_queue_contains_seq (&la_apply_Workers[head_worker_idx], head_seq))
+	{
+	  head_state_enum = LA_HEAD_BLOCKER_STATE_WORKER_QUEUE;
+	}
+      else
+	{
+	  head_state_enum = LA_HEAD_BLOCKER_STATE_PENDING_UNKNOWN;
+	}
+
+      if (head_state_enum != LA_HEAD_BLOCKER_STATE_NONE && head_state_enum != LA_HEAD_BLOCKER_STATE_READY)
+	{
+	  la_Debug_progress.head_blocker_count_total[head_state_enum]++;
+	  la_Debug_progress.head_blocker_usec_total[head_state_enum] += head_age_usec;
+	  head_blocker_count_delta[head_state_enum]++;
+	  head_blocker_usec_delta[head_state_enum] += head_age_usec;
+	}
+    }
+
+  head_state = la_debug_head_blocker_state_string (head_state_enum);
 
   er_log_debug (ARG_FILE_LINE,
 		"reader_progress elapsed_msec=%lld final=%lld|%d committed=%lld|%d repl_items=%llu commits_seen=%llu "
@@ -2017,7 +2332,17 @@ la_debug_maybe_log_progress (void)
 		"record_proc_usec=%llu repl_data_usec=%llu repl_data_cnt=%llu "
 		"commit_usec=%llu commit_cnt=%llu abort_sysop_usec=%llu abort_sysop_cnt=%llu "
 		"other_lrec_usec=%llu other_lrec_cnt=%llu commit_addnode_usec=%llu commit_ordpush_usec=%llu "
-		"collect_results_usec=%llu retire_usec=%llu collect_calls=%llu enqueue_wait_usec=%llu\n",
+		"collect_results_usec=%llu retire_usec=%llu commit_apply_info_usec=%llu commit_apply_info_cnt=%llu "
+		"collect_calls=%llu enqueue_wait_usec=%llu "
+		"ready_results=%d head_seq=%llu head_worker=%d head_tran=%d head_rectype=%d head_state=%s "
+		"head_age_usec=%llu head_blocked_progress=%llu head_blocked_usec=%llu "
+		"head_block_worker_queue_cnt=%llu head_block_worker_queue_usec=%llu "
+		"head_block_apply_cnt=%llu head_block_apply_usec=%llu "
+		"head_block_final_flush_cnt=%llu head_block_final_flush_usec=%llu "
+		"head_block_commit_cnt=%llu head_block_commit_usec=%llu "
+		"head_block_enqueue_result_cnt=%llu head_block_enqueue_result_usec=%llu "
+		"head_block_worker_result_queue_cnt=%llu head_block_worker_result_queue_usec=%llu "
+		"head_block_unknown_cnt=%llu head_block_unknown_usec=%llu\n",
 		(long long) elapsed_msec, (long long) la_Info.final_lsa.pageid, (int) la_Info.final_lsa.offset,
 		(long long) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset,
 		(unsigned long long) repl_delta, (unsigned long long) commit_delta, (unsigned long long) dispatch_delta,
@@ -2032,7 +2357,25 @@ la_debug_maybe_log_progress (void)
 		(unsigned long long) other_lrec_usec_delta, (unsigned long long) other_lrec_count_delta,
 		(unsigned long long) commit_addnode_delta, (unsigned long long) commit_ordpush_delta,
 		(unsigned long long) collect_results_delta, (unsigned long long) retire_delta,
-		(unsigned long long) collect_calls_delta, (unsigned long long) enqueue_wait_delta);
+		(unsigned long long) commit_apply_info_delta, (unsigned long long) commit_apply_info_count_delta,
+		(unsigned long long) collect_calls_delta, (unsigned long long) enqueue_wait_delta,
+		ready_result_count, (unsigned long long) head_seq, head_worker_idx, head_tranid, head_rectype, head_state,
+		(unsigned long long) head_age_usec, (unsigned long long) head_blocked_progress_delta,
+		(unsigned long long) head_blocked_usec_delta,
+		(unsigned long long) head_blocker_count_delta[LA_HEAD_BLOCKER_STATE_WORKER_QUEUE],
+		(unsigned long long) head_blocker_usec_delta[LA_HEAD_BLOCKER_STATE_WORKER_QUEUE],
+		(unsigned long long) head_blocker_count_delta[LA_HEAD_BLOCKER_STATE_APPLY],
+		(unsigned long long) head_blocker_usec_delta[LA_HEAD_BLOCKER_STATE_APPLY],
+		(unsigned long long) head_blocker_count_delta[LA_HEAD_BLOCKER_STATE_FINAL_FLUSH],
+		(unsigned long long) head_blocker_usec_delta[LA_HEAD_BLOCKER_STATE_FINAL_FLUSH],
+		(unsigned long long) head_blocker_count_delta[LA_HEAD_BLOCKER_STATE_COMMIT],
+		(unsigned long long) head_blocker_usec_delta[LA_HEAD_BLOCKER_STATE_COMMIT],
+		(unsigned long long) head_blocker_count_delta[LA_HEAD_BLOCKER_STATE_ENQUEUE_RESULT],
+		(unsigned long long) head_blocker_usec_delta[LA_HEAD_BLOCKER_STATE_ENQUEUE_RESULT],
+		(unsigned long long) head_blocker_count_delta[LA_HEAD_BLOCKER_STATE_WORKER_RESULT_QUEUE],
+		(unsigned long long) head_blocker_usec_delta[LA_HEAD_BLOCKER_STATE_WORKER_RESULT_QUEUE],
+		(unsigned long long) head_blocker_count_delta[LA_HEAD_BLOCKER_STATE_PENDING_UNKNOWN],
+		(unsigned long long) head_blocker_usec_delta[LA_HEAD_BLOCKER_STATE_PENDING_UNKNOWN]);
 
   for (i = 0; i < LA_APPLY_WORKER_COUNT; i++)
     {
@@ -2047,28 +2390,68 @@ la_debug_maybe_log_progress (void)
 	la_Debug_progress.worker_busy_usec_total[i] - la_Debug_progress.last_worker_busy_usec_total[i];
       UINT64 apply_usec_delta =
 	la_Debug_progress.worker_apply_usec_total[i] - la_Debug_progress.last_worker_apply_usec_total[i];
+      UINT64 commit_worker_usec_delta =
+	la_Debug_progress.worker_commit_usec_total[i] - la_Debug_progress.last_worker_commit_usec_total[i];
+      UINT64 db_commit_worker_usec_delta =
+	la_Debug_progress.worker_db_commit_usec_total[i] - la_Debug_progress.last_worker_db_commit_usec_total[i];
+      UINT64 post_commit_cleanup_worker_usec_delta =
+	la_Debug_progress.worker_post_commit_cleanup_usec_total[i]
+	- la_Debug_progress.last_worker_post_commit_cleanup_usec_total[i];
       UINT64 disk_fetch_usec_delta =
 	la_Debug_progress.worker_disk_fetch_usec_total[i] - la_Debug_progress.last_worker_disk_fetch_usec_total[i];
       UINT64 queue_wait_usec_delta =
 	la_Debug_progress.worker_queue_wait_usec_total[i] - la_Debug_progress.last_worker_queue_wait_usec_total[i];
+      UINT64 result_enqueue_wait_usec_delta =
+	la_Debug_progress.worker_result_enqueue_wait_usec_total[i]
+	- la_Debug_progress.last_worker_result_enqueue_wait_usec_total[i];
+      UINT64 result_queue_dwell_usec_delta =
+	la_Debug_progress.worker_result_queue_dwell_usec_total[i]
+	- la_Debug_progress.last_worker_result_queue_dwell_usec_total[i];
+      UINT64 empty_commit_count_delta =
+	la_Debug_progress.worker_empty_commit_count_total[i] - la_Debug_progress.last_worker_empty_commit_count_total[i];
+      UINT64 empty_commit_usec_delta =
+	la_Debug_progress.worker_empty_commit_usec_total[i] - la_Debug_progress.last_worker_empty_commit_usec_total[i];
+      UINT64 nonempty_commit_count_delta =
+	la_Debug_progress.worker_nonempty_commit_count_total[i]
+	- la_Debug_progress.last_worker_nonempty_commit_count_total[i];
+      UINT64 nonempty_commit_usec_delta =
+	la_Debug_progress.worker_nonempty_commit_usec_total[i]
+	- la_Debug_progress.last_worker_nonempty_commit_usec_total[i];
       LA_APPLY_WORKER *worker = &la_apply_Workers[i];
       int qdepth, result_qdepth, busy;
+      UINT64 max_qdepth, max_result_qdepth;
 
       pthread_mutex_lock (&worker->mutex);
       qdepth = worker->queue.count;
       result_qdepth = worker->result_queue.count;
       busy = (int) worker->busy;
+      max_qdepth = la_Debug_progress.worker_queue_depth_max[i];
+      max_result_qdepth = la_Debug_progress.worker_result_queue_depth_max[i];
       pthread_mutex_unlock (&worker->mutex);
 
       er_log_debug (ARG_FILE_LINE,
-		    "worker_progress idx=%d qdepth=%d result_qdepth=%d busy=%d dequeued=%llu completed=%llu "
-		    "flush_count=%llu flush_usec=%llu busy_usec=%llu apply_usec=%llu disk_fetch_usec=%llu "
-		    "queue_wait_usec=%llu\n",
-		    i, qdepth, result_qdepth, busy, (unsigned long long) dequeue_delta,
+		    "worker_progress idx=%d qdepth=%d max_qdepth=%llu result_qdepth=%d max_result_qdepth=%llu "
+		    "busy=%d dequeued=%llu completed=%llu "
+		    "flush_count=%llu flush_usec=%llu busy_usec=%llu apply_usec=%llu commit_usec=%llu "
+		    "db_commit_usec=%llu post_commit_cleanup_usec=%llu "
+		    "disk_fetch_usec=%llu queue_wait_usec=%llu result_enqueue_wait_usec=%llu "
+		    "result_queue_dwell_usec=%llu empty_commit_cnt=%llu empty_commit_usec=%llu "
+		    "nonempty_commit_cnt=%llu nonempty_commit_usec=%llu "
+		    "current_seq=%llu current_tran=%d stage=%s\n",
+		    i, qdepth, (unsigned long long) max_qdepth, result_qdepth,
+		    (unsigned long long) max_result_qdepth, busy, (unsigned long long) dequeue_delta,
 		    (unsigned long long) complete_delta, (unsigned long long) flush_count_delta,
 		    (unsigned long long) flush_usec_delta, (unsigned long long) busy_usec_delta,
-		    (unsigned long long) apply_usec_delta, (unsigned long long) disk_fetch_usec_delta,
-		    (unsigned long long) queue_wait_usec_delta);
+		    (unsigned long long) apply_usec_delta, (unsigned long long) commit_worker_usec_delta,
+		    (unsigned long long) db_commit_worker_usec_delta,
+		    (unsigned long long) post_commit_cleanup_worker_usec_delta,
+		    (unsigned long long) disk_fetch_usec_delta, (unsigned long long) queue_wait_usec_delta,
+		    (unsigned long long) result_enqueue_wait_usec_delta,
+		    (unsigned long long) result_queue_dwell_usec_delta,
+		    (unsigned long long) empty_commit_count_delta, (unsigned long long) empty_commit_usec_delta,
+		    (unsigned long long) nonempty_commit_count_delta, (unsigned long long) nonempty_commit_usec_delta,
+		    (unsigned long long) la_Debug_worker_current_seq[i], la_Debug_worker_current_tranid[i],
+		    la_debug_worker_stage_string (la_Debug_worker_current_stage[i]));
 
       la_Debug_progress.last_worker_dequeue_total[i] = la_Debug_progress.worker_dequeue_total[i];
       la_Debug_progress.last_worker_complete_total[i] = la_Debug_progress.worker_complete_total[i];
@@ -2076,8 +2459,22 @@ la_debug_maybe_log_progress (void)
       la_Debug_progress.last_worker_flush_usec_total[i] = la_Debug_progress.worker_flush_usec_total[i];
       la_Debug_progress.last_worker_busy_usec_total[i] = la_Debug_progress.worker_busy_usec_total[i];
       la_Debug_progress.last_worker_apply_usec_total[i] = la_Debug_progress.worker_apply_usec_total[i];
+      la_Debug_progress.last_worker_commit_usec_total[i] = la_Debug_progress.worker_commit_usec_total[i];
+      la_Debug_progress.last_worker_db_commit_usec_total[i] = la_Debug_progress.worker_db_commit_usec_total[i];
+      la_Debug_progress.last_worker_post_commit_cleanup_usec_total[i] =
+	la_Debug_progress.worker_post_commit_cleanup_usec_total[i];
       la_Debug_progress.last_worker_disk_fetch_usec_total[i] = la_Debug_progress.worker_disk_fetch_usec_total[i];
       la_Debug_progress.last_worker_queue_wait_usec_total[i] = la_Debug_progress.worker_queue_wait_usec_total[i];
+      la_Debug_progress.last_worker_result_enqueue_wait_usec_total[i] =
+	la_Debug_progress.worker_result_enqueue_wait_usec_total[i];
+      la_Debug_progress.last_worker_result_queue_dwell_usec_total[i] =
+	la_Debug_progress.worker_result_queue_dwell_usec_total[i];
+      la_Debug_progress.last_worker_empty_commit_count_total[i] = la_Debug_progress.worker_empty_commit_count_total[i];
+      la_Debug_progress.last_worker_empty_commit_usec_total[i] = la_Debug_progress.worker_empty_commit_usec_total[i];
+      la_Debug_progress.last_worker_nonempty_commit_count_total[i] =
+	la_Debug_progress.worker_nonempty_commit_count_total[i];
+      la_Debug_progress.last_worker_nonempty_commit_usec_total[i] =
+	la_Debug_progress.worker_nonempty_commit_usec_total[i];
     }
 
   la_Debug_progress.last_reader_io_usec_total = la_Debug_progress.reader_io_usec_total;
@@ -2096,8 +2493,17 @@ la_debug_maybe_log_progress (void)
   la_Debug_progress.last_commit_dispatch_order_usec_total = la_Debug_progress.commit_dispatch_order_usec_total;
   la_Debug_progress.last_reader_collect_results_usec_total = la_Debug_progress.reader_collect_results_usec_total;
   la_Debug_progress.last_reader_retire_usec_total = la_Debug_progress.reader_retire_usec_total;
+  la_Debug_progress.last_reader_commit_apply_info_usec_total = la_Debug_progress.reader_commit_apply_info_usec_total;
+  la_Debug_progress.last_reader_commit_apply_info_count_total = la_Debug_progress.reader_commit_apply_info_count_total;
   la_Debug_progress.last_reader_collect_calls_total = la_Debug_progress.reader_collect_calls_total;
   la_Debug_progress.last_reader_enqueue_wait_usec_total = la_Debug_progress.reader_enqueue_wait_usec_total;
+  la_Debug_progress.last_head_blocked_progress_count_total = la_Debug_progress.head_blocked_progress_count_total;
+  la_Debug_progress.last_head_blocked_usec_total = la_Debug_progress.head_blocked_usec_total;
+  for (i = 0; i < LA_HEAD_BLOCKER_STATE_COUNT; i++)
+    {
+      la_Debug_progress.last_head_blocker_count_total[i] = la_Debug_progress.head_blocker_count_total[i];
+      la_Debug_progress.last_head_blocker_usec_total[i] = la_Debug_progress.head_blocker_usec_total[i];
+    }
   la_Debug_progress.last_repl_items_seen_total = la_Debug_progress.repl_items_seen_total;
   la_Debug_progress.last_commits_seen_total = la_Debug_progress.commits_seen_total;
   la_Debug_progress.last_dispatch_total = la_Debug_progress.dispatch_total;
@@ -2179,8 +2585,11 @@ la_apply_worker_main (void *arg)
 	}
 
 #if !defined (NDEBUG)
-      struct timeval _busy_begin, _apply_begin;
+      struct timeval _busy_begin, _apply_begin, _commit_begin, _result_enqueue_begin;
       LA_TIME_BEGIN (_busy_begin);
+      la_Debug_worker_current_seq[worker_context.worker_idx] = task.seq;
+      la_Debug_worker_current_tranid[worker_context.worker_idx] = task.tranid;
+      la_Debug_worker_current_stage[worker_context.worker_idx] = LA_WORKER_STAGE_APPLY;
 #endif /* !NDEBUG */
 
       memset (&result, 0, sizeof (result));
@@ -2212,6 +2621,9 @@ la_apply_worker_main (void *arg)
 		    result.stats.schema_counter, result.stats.fail_counter);
       if (result.error == NO_ERROR && task.rectype == LOG_COMMIT)
 	{
+#if !defined (NDEBUG)
+	  la_Debug_worker_current_stage[worker_context.worker_idx] = LA_WORKER_STAGE_FINAL_FLUSH;
+#endif /* !NDEBUG */
 	  LA_DEBUG_LOG (ARG_FILE_LINE,
 			"worker[tid=%lu idx=%d tran=%d] final_flush BEGIN trid=%d rectype=%d class=%s unflushed=%d\n",
 			(unsigned long) pthread_self (), (int) (worker - la_apply_Workers), tm_Tran_index, task.tranid,
@@ -2235,9 +2647,16 @@ la_apply_worker_main (void *arg)
 	}
       if (result.error == NO_ERROR && task.rectype == LOG_COMMIT)
 	{
+	  UINT64 db_commit_usec = 0;
+	  UINT64 post_commit_cleanup_usec = 0;
+
 	  applied_item_count =
 	    result.stats.insert_counter + result.stats.update_counter + result.stats.delete_counter + result.stats.fail_counter;
 	  worker_applied_item_count += applied_item_count;
+#if !defined (NDEBUG)
+	  LA_TIME_BEGIN (_commit_begin);
+	  la_Debug_worker_current_stage[worker_context.worker_idx] = LA_WORKER_STAGE_COMMIT;
+#endif /* !NDEBUG */
 	  LA_DEBUG_LOG (ARG_FILE_LINE,
 			"worker[tid=%lu idx=%d tran=%d] commit_transaction BEGIN trid=%d class=%s applied=%llu total_applied=%llu "
 			"stats[ins=%d upd=%d del=%d fail=%d]\n",
@@ -2245,7 +2664,24 @@ la_apply_worker_main (void *arg)
 			result.stats.last_class_name[0] != '\0' ? result.stats.last_class_name : "<none>",
 			applied_item_count, worker_applied_item_count, result.stats.insert_counter,
 			result.stats.update_counter, result.stats.delete_counter, result.stats.fail_counter);
-	  result.error = la_commit_transaction (worker_applied_item_count);
+	  result.error = la_commit_transaction (worker_applied_item_count, &db_commit_usec, &post_commit_cleanup_usec);
+#if !defined (NDEBUG)
+	  LA_TIME_ACCUM_USEC (_commit_begin, la_Debug_progress.worker_commit_usec_total[worker_context.worker_idx]);
+	  la_Debug_progress.worker_db_commit_usec_total[worker_context.worker_idx] += db_commit_usec;
+	  la_Debug_progress.worker_post_commit_cleanup_usec_total[worker_context.worker_idx] += post_commit_cleanup_usec;
+	  if (applied_item_count == 0)
+	    {
+	      la_Debug_progress.worker_empty_commit_count_total[worker_context.worker_idx]++;
+	      la_Debug_progress.worker_empty_commit_usec_total[worker_context.worker_idx] +=
+		db_commit_usec + post_commit_cleanup_usec;
+	    }
+	  else
+	    {
+	      la_Debug_progress.worker_nonempty_commit_count_total[worker_context.worker_idx]++;
+	      la_Debug_progress.worker_nonempty_commit_usec_total[worker_context.worker_idx] +=
+		db_commit_usec + post_commit_cleanup_usec;
+	    }
+#endif /* !NDEBUG */
 	  LA_DEBUG_LOG (ARG_FILE_LINE,
 			"worker[tid=%lu idx=%d tran=%d] commit_transaction END trid=%d class=%s err=%d total_applied=%llu\n",
 			(unsigned long) pthread_self (), (int) (worker - la_apply_Workers), tm_Tran_index, task.tranid,
@@ -2255,12 +2691,22 @@ la_apply_worker_main (void *arg)
 
 #if !defined (NDEBUG)
       LA_TIME_ACCUM_USEC (_busy_begin, la_Debug_progress.worker_busy_usec_total[worker_context.worker_idx]);
+      LA_TIME_BEGIN (_result_enqueue_begin);
+      la_Debug_worker_current_stage[worker_context.worker_idx] = LA_WORKER_STAGE_ENQUEUE_RESULT;
+      gettimeofday (&result.result_enqueue_time, NULL);
 #endif /* !NDEBUG */
       if (la_enqueue_apply_result (worker, &result) != NO_ERROR)
 	{
 	  la_applier_need_shutdown = true;
 	  break;
 	}
+#if !defined (NDEBUG)
+      LA_TIME_ACCUM_USEC (_result_enqueue_begin,
+			  la_Debug_progress.worker_result_enqueue_wait_usec_total[worker_context.worker_idx]);
+      la_Debug_worker_current_seq[worker_context.worker_idx] = 0;
+      la_Debug_worker_current_tranid[worker_context.worker_idx] = 0;
+      la_Debug_worker_current_stage[worker_context.worker_idx] = LA_WORKER_STAGE_IDLE;
+#endif /* !NDEBUG */
     }
 
 end:
@@ -2332,6 +2778,26 @@ static int
 la_reader_commit_apply_info (void)
 {
   int res;
+#if !defined (NDEBUG)
+  static int skip_apply_info_update = -1;
+
+  if (skip_apply_info_update < 0)
+    {
+      const char *env = getenv ("LA_SKIP_READER_COMMIT_APPLY_INFO");
+      skip_apply_info_update = (env != NULL && env[0] != '\0' && strcmp (env, "0") != 0) ? 1 : 0;
+      if (skip_apply_info_update != 0)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"reader_commit_apply_info skipped by LA_SKIP_READER_COMMIT_APPLY_INFO; "
+			"_db_ha_apply_info will not be updated");
+	}
+    }
+
+  if (skip_apply_info_update != 0)
+    {
+      return NO_ERROR;
+    }
+#endif /* !NDEBUG */
 
   res = la_update_ha_last_applied_info ();
   if (res > 0)
@@ -8755,7 +9221,7 @@ la_check_mem_size (void)
 }
 
 int
-la_commit_transaction (unsigned long long applied_item_count)
+la_commit_transaction (unsigned long long applied_item_count, UINT64 *db_commit_usec, UINT64 *post_commit_cleanup_usec)
 {
   int error = NO_ERROR;
   static CUB_THREAD_LOCAL int last_time = 0;
@@ -8767,6 +9233,19 @@ la_commit_transaction (unsigned long long applied_item_count)
   unsigned long ws_cull_mops_interval;
   unsigned long ws_cull_mops_per_apply;
   int start_time;
+#if !defined (NDEBUG)
+  struct timeval timer_begin;
+#endif /* !NDEBUG */
+
+  if (db_commit_usec != NULL)
+    {
+      *db_commit_usec = 0;
+    }
+
+  if (post_commit_cleanup_usec != NULL)
+    {
+      *post_commit_cleanup_usec = 0;
+    }
 
   if (last_time == 0)
     {
@@ -8778,7 +9257,16 @@ la_commit_transaction (unsigned long long applied_item_count)
       last_applied_item = applied_item_count;
     }
 
+#if !defined (NDEBUG)
+  LA_TIME_BEGIN (timer_begin);
+#endif /* !NDEBUG */
   error = db_commit_transaction ();
+#if !defined (NDEBUG)
+  if (db_commit_usec != NULL)
+    {
+      LA_TIME_ACCUM_USEC (timer_begin, *db_commit_usec);
+    }
+#endif /* !NDEBUG */
   if (error != NO_ERROR)
     {
       return error;
@@ -8807,6 +9295,12 @@ la_commit_transaction (unsigned long long applied_item_count)
       /* ws_intern_instances: flush + decache + cull per class.
          Cleans up MOPs that repl flush left behind (DONT_DECACHE). */
       DB_OBJLIST *m;
+#if !defined (NDEBUG)
+      if (post_commit_cleanup_usec != NULL)
+	{
+	  LA_TIME_BEGIN (timer_begin);
+	}
+#endif /* !NDEBUG */
       for (m = ws_Resident_classes; m != NULL; m = m->next)
 	{
 	  if (m->op != NULL && m->op != sm_Root_class_mop)
@@ -8814,6 +9308,12 @@ la_commit_transaction (unsigned long long applied_item_count)
 	      ws_intern_instances (m->op);
 	    }
 	}
+#if !defined (NDEBUG)
+      if (post_commit_cleanup_usec != NULL)
+	{
+	  LA_TIME_ACCUM_USEC (timer_begin, *post_commit_cleanup_usec);
+	}
+#endif /* !NDEBUG */
 
       last_time = curr_time;
       last_applied_item = curr_applied_item;
