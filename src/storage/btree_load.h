@@ -38,6 +38,17 @@
 #include "object_domain.h"
 #include "slotted_page.h"
 
+/* Forward declarations for filter predicate and XASL unpack types */
+typedef struct pred_expr_with_context PRED_EXPR_WITH_CONTEXT;
+typedef struct xasl_unpack_info XASL_UNPACK_INFO;
+
+/* *INDENT-OFF* */
+namespace parallel_query
+{
+  class ftab_set;
+}
+/* *INDENT-ON* */
+
 /*
  * Constants related to b+tree structure
  */
@@ -260,6 +271,55 @@ struct btree_node
   VPID pageid;			/* Identifier of the page */
 };
 
+typedef struct filter_index_info FILTER_INDEX_INFO;
+struct filter_index_info
+{
+  char *pred_stream;
+  int pred_stream_size;
+};
+
+typedef struct sort_args SORT_ARGS;
+struct sort_args
+{				/* Collection of information required for "sr_index_sort" */
+  int unique_pk;
+  int not_null_flag;
+  HFID *hfids;			/* Array of HFIDs for the class(es) */
+  OID *class_ids;		/* Array of class OIDs */
+  OID cur_oid;			/* Identifier of the current object */
+  RECDES in_recdes;		/* Input record descriptor */
+  int n_attrs;			/* Number of attribute ID's */
+  ATTR_ID *attr_ids;		/* Specification of the attribute(s) to sort on */
+  int *attrs_prefix_length;	/* prefix length */
+  TP_DOMAIN *key_type;
+  HEAP_SCANCACHE hfscan_cache;	/* A heap scan cache */
+  HEAP_CACHE_ATTRINFO attr_info;	/* Attribute information */
+  int n_nulls;			/* Number of NULLs */
+  int n_oids;			/* Number of OIDs */
+  int n_classes;		/* cardinality of the hfids, the class_ids, and (with n_attrs) the attr_ids arrays */
+  int cur_class;		/* index into the hfids, class_ids, and attr_ids arrays */
+  bool scancache_inited;
+  bool attrinfo_inited;
+
+  BTID_INT *btid;
+
+  OID *fk_refcls_oid;
+  BTID *fk_refcls_pk_btid;
+  const char *fk_name;
+  struct pred_expr_with_context *filter;
+  PR_EVAL_FNC filter_eval_func;
+  FILTER_INDEX_INFO *filter_index_info;
+  FUNCTION_INDEX_INFO *func_index_info;
+
+  MVCCID oldest_visible_mvccid;
+
+  /* for parallel processing */
+  /* *INDENT-OFF* */
+  std::vector<parallel_query::ftab_set> *ftab_sets;
+  FILE_PARTIAL_SECTOR curr_sec;
+  int curr_pgoffset;
+  /* *INDENT-ON* */
+};
+
 /* Recovery routines */
 extern void btree_rv_nodehdr_dump (FILE * fp, int length, void *data);
 extern void btree_rv_mvcc_save_increments (const BTID * btid, long long key_delta, long long oid_delta,
@@ -291,6 +351,19 @@ extern int btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * k
 				       TP_DOMAIN * key_domain);
 
 extern int btree_get_asc_desc (THREAD_ENTRY * thread_p, BTID * btid, int col_idx, int *asc_desc);
+extern int bt_load_heap_scancache_start_for_attrinfo (THREAD_ENTRY * thread_p, SORT_ARGS * args,
+						      HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info,
+						      int save_cache_last_fix_page);
+extern void bt_load_heap_scancache_end_for_attrinfo (THREAD_ENTRY * thread_p, SORT_ARGS * args,
+						     HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info);
+extern int
+btree_load_filter_pred_function_info (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args,
+				      PRED_EXPR_WITH_CONTEXT ** filter_pred_p, FILTER_INDEX_INFO * filter_index_info_p,
+				      FUNCTION_INDEX_INFO * func_index_info_p, XASL_UNPACK_INFO ** func_unpack_info_p,
+				      DB_TYPE * single_node_type);
+extern void bt_load_clear_pred_and_unpack (THREAD_ENTRY * thread_p, SORT_ARGS * args,
+					   XASL_UNPACK_INFO * func_unpack_info);
+
 
 /*
  * btree_clear_key_value () -
