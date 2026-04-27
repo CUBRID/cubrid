@@ -972,6 +972,11 @@ db_restart (const char *program, int print_version, const char *volume)
 #endif /* !WINDOWS */
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 	  gv_client_credential = client_credential;
+	  /* Note: 
+	   * This function is executed in a single-threaded context before thread contention occurs.
+	   * However, to ensure a strict "happens-before" relationship and preemptively address potential memory ordering issues, 
+	   * explicit ordering constraints are added.
+	   */
 	  std::atomic_thread_fence (std::memory_order_release);
 	  g_ready_to_sub = true;
 #endif
