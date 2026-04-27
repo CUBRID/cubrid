@@ -159,6 +159,39 @@ namespace parallel_query
     };
 
     /*
+     * sector_page_iterator
+     *
+     * Per-thread sector-based page iterator over a list_id's data pages.
+     * Phase 1: one worker (the CAS winner of membuf_claimed) iterates the
+     *          membuf region sequentially.
+     * Phase 2: all workers split disk pages by atomically claiming sectors
+     *          via next_sector_index and walking each sector's bitmap.
+     */
+
+    class sector_page_iterator
+    {
+      public:
+	sector_page_iterator ();
+
+	PAGE_PTR get_next_page (cubthread::entry &thread_ref, QFILE_LIST_SECTOR_SCAN_INFO &sector_scan);
+
+	QMGR_TEMP_FILE *current_tfile () const
+	{
+	  return m_current_tfile;
+	}
+
+      private:
+	/* per-thread membuf iteration state: -1 = not owner, (>= 0) = current membuf page index */
+	int m_membuf_index;
+
+	/* per-thread sector iteration state */
+	int m_sector_index;		/* current sector index in page_map, -1 = need next sector */
+	UINT64 m_current_bitmap;	/* remaining page bits in current sector */
+	VSID m_current_vsid;		/* current sector VSID */
+	QMGR_TEMP_FILE *m_current_tfile;	/* tfile that owns the last returned page */
+    };
+
+    /*
      * split_task
      */
 
@@ -173,16 +206,7 @@ namespace parallel_query
 	HASHJOIN_INPUT_SPLIT_INFO *m_split_info;
 	HASHJOIN_SHARED_SPLIT_INFO *m_shared_info;
 
-	/* per-thread membuf iteration state: -1 = not owner, (>= 0) = current membuf page index */
-	int m_membuf_index;
-
-	/* per-thread sector iteration state */
-	int m_sector_index;		/* current sector index in page_map, -1 = need next sector */
-	UINT64 m_current_bitmap;	/* remaining page bits in current sector */
-	VSID m_current_vsid;		/* current sector VSID */
-	QMGR_TEMP_FILE *m_current_tfile;	/* tfile that owns the last returned page */
-
-	PAGE_PTR get_next_page (cubthread::entry &thread_ref);
+	sector_page_iterator m_page_iter;
     };
 
     /*
@@ -217,9 +241,10 @@ namespace parallel_query
 	HASHJOIN_CONTEXT *m_context;
 	HASHJOIN_SHARED_PROBE_INFO *m_shared_info;
 
+	sector_page_iterator m_page_iter;
+
 	void execute_inner (cubthread::entry &thread_ref);
 	void execute_outer (cubthread::entry &thread_ref);
-	PAGE_PTR get_next_page (cubthread::entry &thread_ref);
     };
   } /* namespace hash_join */
 } /* namespace parallel_query */

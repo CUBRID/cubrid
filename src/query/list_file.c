@@ -7196,3 +7196,51 @@ qfile_free_list_sector_info (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_INFO * s
   sector_info->membuf_tfile = NULL;
   sector_info->sector_cnt = 0;
 }
+
+/*
+ * qfile_open_list_sector_scan () - Begin a sector-based parallel page scan: collect data
+ *   page sectors from list_id and reset the per-pass atomic cursors.
+ *
+ *   return: error code
+ *   thread_p (in)  : thread entry
+ *   list_id (in)   : source list_id whose data pages drive this pass
+ *   sector_scan (out): sector scan distribution state (caller must release
+ *                    via qfile_close_list_sector_scan)
+ */
+int
+qfile_open_list_sector_scan (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
+			     QFILE_LIST_SECTOR_SCAN_INFO * sector_scan)
+{
+  int error = NO_ERROR;
+
+  assert (thread_p != NULL);
+  assert (list_id != NULL);
+  assert (sector_scan != NULL);
+
+  error = qfile_collect_list_sector_info (thread_p, list_id, &sector_scan->sector_info);
+  if (error != NO_ERROR)
+    {
+      assert_release_error (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  sector_scan->membuf_claimed.store (false, std::memory_order_relaxed);
+  sector_scan->next_sector_index.store (0, std::memory_order_relaxed);
+
+  return NO_ERROR;
+}
+
+/*
+ * qfile_close_list_sector_scan () - Release a sector scan opened by qfile_open_list_sector_scan.
+ *
+ * thread_p (in)  : thread entry
+ * sector_scan (in) : sector scan distribution state to release
+ */
+void
+qfile_close_list_sector_scan (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_SCAN_INFO * sector_scan)
+{
+  assert (thread_p != NULL);
+  assert (sector_scan != NULL);
+
+  qfile_free_list_sector_info (thread_p, &sector_scan->sector_info);
+}

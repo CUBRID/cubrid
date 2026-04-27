@@ -246,5 +246,8 @@ extern bool qfile_has_no_cache_entries ();
 extern int qfile_collect_list_sector_info (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
 					   QFILE_LIST_SECTOR_INFO * sector_info);
 extern void qfile_free_list_sector_info (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_INFO * sector_info);
+extern int qfile_open_list_sector_scan (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
+					QFILE_LIST_SECTOR_SCAN_INFO * sector_scan);
+extern void qfile_close_list_sector_scan (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_SCAN_INFO * sector_scan);
 
 #endif /* _LIST_FILE_H_ */

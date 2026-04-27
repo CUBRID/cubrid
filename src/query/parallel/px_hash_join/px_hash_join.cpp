@@ -46,6 +46,7 @@ namespace parallel_query
       HASHJOIN_INPUT_SPLIT_INFO *outer, *inner;
       HASHJOIN_SHARED_SPLIT_INFO shared_info;
       UINT32 task_cnt, task_index;
+      int error = NO_ERROR;
 
       assert (manager != nullptr);
       assert (split_info != nullptr);
@@ -59,15 +60,15 @@ namespace parallel_query
 
       task_cnt = manager->num_parallel_threads;
 
-      if (hjoin_init_shared_split_info (&thread_ref, manager, &shared_info) != NO_ERROR)
-	{
-	  assert_release_error (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
-
       THREAD_ENTRY *main_thread_p = thread_get_main_thread (&thread_ref);
       task_manager task_manager (manager->px_worker_manager, *main_thread_p);
       split_task *task = nullptr;
+
+      error = hjoin_init_shared_split_info (&thread_ref, manager, &shared_info);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
 
       if (thread_is_on_trace (&thread_ref))
 	{
@@ -75,13 +76,11 @@ namespace parallel_query
 	}
 
       /* collect data page sectors for outer relation */
-      if (qfile_collect_list_sector_info (&thread_ref, outer->fetch_info->list_id, &shared_info.sector_info) != NO_ERROR)
+      error = qfile_open_list_sector_scan (&thread_ref, outer->fetch_info->list_id, &shared_info.sector_scan);
+      if (error != NO_ERROR)
 	{
-	  hjoin_clear_shared_split_info (&thread_ref, manager, &shared_info);
-	  return er_errid ();
+	  goto error_exit;
 	}
-      shared_info.membuf_claimed.store (false, std::memory_order_relaxed);
-      shared_info.next_sector_index.store (0, std::memory_order_relaxed);
 
       for (task_index = 0; task_index < task_cnt; task_index++)
 	{
@@ -99,12 +98,7 @@ namespace parallel_query
 
       if (task_manager.has_error ())
 	{
-	  /* cleanup */
-	  hjoin_clear_shared_split_info (&thread_ref, manager, &shared_info);
-
-	  assert_release_error (er_errid () != NO_ERROR);
-	  task_manager.clear_interrupt (thread_ref);
-	  return er_errid ();
+	  goto error_exit;
 	}
 
       if (thread_is_on_trace (&thread_ref))
@@ -114,13 +108,11 @@ namespace parallel_query
 
       /* collect data page sectors for inner relation
        * (outer's sector_info is freed internally by qfile_collect_list_sector_info) */
-      if (qfile_collect_list_sector_info (&thread_ref, inner->fetch_info->list_id, &shared_info.sector_info) != NO_ERROR)
+      error = qfile_open_list_sector_scan (&thread_ref, inner->fetch_info->list_id, &shared_info.sector_scan);
+      if (error != NO_ERROR)
 	{
-	  hjoin_clear_shared_split_info (&thread_ref, manager, &shared_info);
-	  return er_errid ();
+	  goto error_exit;
 	}
-      shared_info.membuf_claimed.store (false, std::memory_order_relaxed);
-      shared_info.next_sector_index.store (0, std::memory_order_relaxed);
 
       for (task_index = 0; task_index < task_cnt; task_index++)
 	{
@@ -136,18 +128,28 @@ namespace parallel_query
 	  hjoin_trace_end (&thread_ref, &stats->split, &start_stats);
 	}
 
-      /* cleanup */
-      hjoin_clear_shared_split_info (&thread_ref, manager, &shared_info);
-
       if (task_manager.has_error ())
 	{
-	  assert_release_error (er_errid () != NO_ERROR);
-	  task_manager.clear_interrupt (thread_ref);
-	  return er_errid ();
+	  goto error_exit;
 	}
 
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
-      return NO_ERROR;
+
+cleanup:
+      hjoin_clear_shared_split_info (&thread_ref, manager, &shared_info);
+
+      return error;
+
+error_exit:
+      task_manager.clear_interrupt (thread_ref);
+
+      if (error == NO_ERROR || er_errid () == NO_ERROR)
+	{
+	  assert_release_error (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	}
+
+      goto cleanup;
     }
 
     /*
@@ -506,17 +508,16 @@ error_exit:
       task_manager task_manager (manager->px_worker_manager, *main_thread_p);
       probe_task *task = nullptr;
 
-      /* Reflect the real per-worker context count in the dump-facing stats_group. query_dump
-       * relies on stats_group->status (HASHJOIN_STATUS_PARALLEL_PROBE) to keep the single-stats
-       * layout rather than branching into partition output. */
-      if (thread_is_on_trace (&thread_ref) && manager->stats_group != nullptr)
-	{
-	  manager->stats_group->context_cnt = task_cnt;
-	}
-
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_start (&thread_ref, &start_stats);
+	}
+
+      /* collect data page sectors for probe relation */
+      error = qfile_open_list_sector_scan (&thread_ref, manager->single_context.probe->list_id, &shared_info.sector_scan);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
 	}
 
       for (task_index = 0; task_index < task_cnt; task_index++)
@@ -544,9 +545,7 @@ error_exit:
 
       if (task_manager.has_error ())
 	{
-	  assert_release_error (er_errid () != NO_ERROR);
-	  task_manager.clear_interrupt (thread_ref);
-	  return er_errid ();
+	  goto error_exit;
 	}
 
       for (context_index = 0; context_index < manager->context_cnt; context_index++)
@@ -563,7 +562,7 @@ error_exit:
 	      error = er_errid ();
 	      if (error != NO_ERROR)
 		{
-		  return error;
+		  goto error_exit;
 		}
 	      else
 		{
@@ -589,13 +588,27 @@ error_exit:
 
 	  if (error != NO_ERROR)
 	    {
-	      assert_release_error (er_errid () != NO_ERROR);
-	      return er_errid ();
+	      goto error_exit;
 	    }
 	}
 
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
-      return NO_ERROR;
+
+cleanup:
+      qfile_close_list_sector_scan (&thread_ref, &shared_info.sector_scan);
+
+      return error;
+
+error_exit:
+      task_manager.clear_interrupt (thread_ref);
+
+      if (error == NO_ERROR || er_errid () == NO_ERROR)
+	{
+	  assert_release_error (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	}
+
+      goto cleanup;
     }
 
   } /* namespace hash_join */

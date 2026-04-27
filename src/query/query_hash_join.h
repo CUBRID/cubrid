@@ -274,21 +274,43 @@ typedef struct hashjoin_split_info
 typedef struct hashjoin_shared_split_info
 {
   // *INDENT-OFF*
-  QFILE_LIST_SECTOR_INFO sector_info;	/* sector-based page distribution (from qfile_collect_list_sector_info) */
-  std::atomic<bool> membuf_claimed;	/* atomic flag: one worker claims all membuf pages */
-  std::atomic<int> next_sector_index;	/* atomic index for sector distribution */
+  QFILE_LIST_SECTOR_SCAN_INFO sector_scan;
+
   std::mutex *part_mutexes;
 
   hashjoin_shared_split_info ()
-    : sector_info (QFILE_LIST_SECTOR_INFO_INITIALIZER)
-    , membuf_claimed (false)
-    , next_sector_index (0)
+    : sector_scan ()
     , part_mutexes (nullptr)
   {
     //
   }
   // *INDENT-ON*
 } HASHJOIN_SHARED_SPLIT_INFO;
+
+/* HASHJOIN_SHARED_PROBE_INFO */
+typedef struct hashjoin_shared_probe_info
+{
+  // *INDENT-OFF*
+  QFILE_LIST_SECTOR_SCAN_INFO sector_scan;
+
+  std::mutex stats_mutex;
+  HASHJOIN_RANGE_TIME_STATS probe_range_time;
+  HASHJOIN_RANGE_ROWS_STATS probe_range_read_rows;
+  HASHJOIN_RANGE_ROWS_STATS probe_range_read_keys;
+  HASHJOIN_RANGE_ROWS_STATS probe_range_qualified_rows;
+
+  hashjoin_shared_probe_info ()
+    : sector_scan ()
+    , stats_mutex ()
+    , probe_range_time (HASHJOIN_RANGE_TIME_STATS_INITIALIZER)
+    , probe_range_read_rows (HASHJOIN_RANGE_ROWS_STATS_INITIALIZER)
+    , probe_range_read_keys (HASHJOIN_RANGE_ROWS_STATS_INITIALIZER)
+    , probe_range_qualified_rows (HASHJOIN_RANGE_ROWS_STATS_INITIALIZER)
+  {
+    //
+  }
+  // *INDENT-ON*
+} HASHJOIN_SHARED_PROBE_INFO;
 
 /* HASHJOIN_SHARED_JOIN_INFO */
 typedef struct hashjoin_shared_join_info
@@ -314,35 +336,6 @@ typedef struct hashjoin_shared_join_info
   }
   // *INDENT-ON*
 } HASHJOIN_SHARED_JOIN_INFO;
-
-/* HASHJOIN_SHARED_PROBE_INFO */
-typedef struct hashjoin_shared_probe_info
-{
-  // *INDENT-OFF*
-  std::mutex scan_mutex;
-  SCAN_POSITION scan_position;
-  VPID next_vpid;
-
-  std::mutex stats_mutex;
-  HASHJOIN_RANGE_TIME_STATS probe_range_time;
-  HASHJOIN_RANGE_ROWS_STATS probe_range_read_rows;
-  HASHJOIN_RANGE_ROWS_STATS probe_range_read_keys;
-  HASHJOIN_RANGE_ROWS_STATS probe_range_qualified_rows;
-
-  hashjoin_shared_probe_info ()
-    : scan_mutex ()
-    , scan_position (S_BEFORE)
-    , next_vpid (VPID_INITIALIZER)
-    , stats_mutex ()
-    , probe_range_time (HASHJOIN_RANGE_TIME_STATS_INITIALIZER)
-    , probe_range_read_rows (HASHJOIN_RANGE_ROWS_STATS_INITIALIZER)
-    , probe_range_read_keys (HASHJOIN_RANGE_ROWS_STATS_INITIALIZER)
-    , probe_range_qualified_rows (HASHJOIN_RANGE_ROWS_STATS_INITIALIZER)
-  {
-    //
-  }
-  // *INDENT-ON*
-} HASHJOIN_SHARED_PROBE_INFO;
 
 /* HASHJOIN_CONTEXT*/
 typedef struct hashjoin_context

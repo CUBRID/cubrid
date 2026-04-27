@@ -2316,9 +2316,6 @@ hjoin_init_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
       }
     }
 
-  assert (shared_info->membuf_claimed.load () == false);
-  assert (shared_info->next_sector_index.load () == 0);
-
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 
@@ -2358,7 +2355,7 @@ hjoin_clear_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manag
   /* NOTE: sector_info must be freed BEFORE the early-return below.
    * Do not move this call into the (part_cnt > 1) branch — doing so would leak
    * sectors/tfiles arrays when part_cnt <= 1. */
-  qfile_free_list_sector_info (thread_p, &shared_info->sector_info);
+  qfile_close_list_sector_scan (thread_p, &shared_info->sector_scan);
 
   part_cnt = manager->context_cnt;
   if (part_cnt <= 1)
