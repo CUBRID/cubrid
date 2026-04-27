@@ -971,13 +971,11 @@ db_restart (const char *program, int print_version, const char *volume)
 #endif /* SA_MODE && (LINUX||X86_SOLARIS) */
 #endif /* !WINDOWS */
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+	  gv_client_credential = client_credential;
+	  std::atomic_thread_fence (std::memory_order_release);
 	  g_ready_to_sub = true;
 #endif
 	}
-
-#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-      gv_client_credential = client_credential;
-#endif
     }
 
   return (error);
