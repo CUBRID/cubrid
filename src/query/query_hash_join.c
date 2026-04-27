@@ -1734,16 +1734,24 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
 	  if (part_list_id[part_id]->tuple_cnt > 0)
 	    {
-	      qfile_append_list (thread_p, part_list_id[part_id], temp_part_list_id[part_id]);
-	      qfile_destroy_list (thread_p, temp_part_list_id[part_id]);
+	      error = qfile_append_list (thread_p, part_list_id[part_id], temp_part_list_id[part_id]);
+	      if (error != NO_ERROR)
+		{
+		  break;	/* error_exit */
+		}
+
+	      error = qfile_truncate_list (thread_p, temp_part_list_id[part_id]);
+	      if (error != NO_ERROR)
+		{
+		  break;	/* error_exit */
+		}
 	    }
 	  else
 	    {
 	      qfile_destroy_list (thread_p, part_list_id[part_id]);
 	      qfile_copy_list_id (part_list_id[part_id], temp_part_list_id[part_id], false, QFILE_PROHIBIT_DEPENDENT);
+	      QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_id]);
 	    }
-
-	  QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_id]);
 	}
 
       if (temp_part_list_id[part_id] == NULL)
@@ -1781,7 +1789,12 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
 	      if (part_list_id[part_index]->tuple_cnt > 0)
 		{
-		  qfile_append_list (thread_p, part_list_id[part_index], temp_part_list_id[part_index]);
+		  error = qfile_append_list (thread_p, part_list_id[part_index], temp_part_list_id[part_index]);
+		  if (error != NO_ERROR)
+		    {
+		      break;	/* error_exit */
+		    }
+
 		  qfile_destroy_list (thread_p, temp_part_list_id[part_index]);
 		}
 	      else
@@ -2233,6 +2246,9 @@ hjoin_init_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
       }
     }
 
+  assert (shared_info->membuf_claimed.load () == false);
+  assert (shared_info->next_sector_index.load () == 0);
+
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 
@@ -2269,11 +2285,16 @@ hjoin_clear_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manag
   assert (manager != NULL);
   assert (shared_info != NULL);
 
+  /* NOTE: sector_info must be freed BEFORE the early-return below.
+   * Do not move this call into the (part_cnt > 1) branch — doing so would leak
+   * sectors/tfiles arrays when part_cnt <= 1. */
+  qfile_free_list_sector_info (thread_p, &shared_info->sector_info);
+
   part_cnt = manager->context_cnt;
   if (part_cnt <= 1)
     {
       assert (shared_info->part_mutexes == NULL);
-      return;			/* nothing to do */
+      return;			/* nothing more to do */
     }
 
   if (shared_info->part_mutexes != NULL)
