@@ -118,7 +118,7 @@ namespace parallel_heap_scan
 	  }
 	else
 	  {
-	    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::COUNT_DISTINCT)
+	    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
 	      {
 		scan_info scan_info = m_join_info->get_scan_info (xptr->header.id);
 		ACCESS_SPEC_TYPE *specp = xptr->curr_spec? xptr->curr_spec : xptr->spec_list;
@@ -288,13 +288,17 @@ namespace parallel_heap_scan
       }
     m_slot_iterator.initialize (&thread_ref, m_scan_id, m_vd);
     m_input_handler->initialize (&thread_ref, &hsidp->hfid, m_scan_id);
-    if constexpr (result_type == RESULT_TYPE::COUNT_DISTINCT)
+    if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
       {
 	m_result_handler->write_initialize (&thread_ref, m_xasl->outptr_list, m_xasl->proc.buildvalue.agg_list, m_vd, m_xasl);
       }
     else
       {
 	m_result_handler->write_initialize (&thread_ref, m_xasl->outptr_list, m_xasl, m_vd);
+      }
+    if (er_errid () != NO_ERROR)
+      {
+	return er_errid ();
       }
     return NO_ERROR;
   }
@@ -304,7 +308,7 @@ namespace parallel_heap_scan
   {
     THREAD_ENTRY *main_thread_p = thread_get_main_thread (m_parent_thread_p);
     xasl_node *xptr;
-    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::COUNT_DISTINCT)
+    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
       {
 	if (m_scan_func_ptr != nullptr)
 	  {
@@ -320,7 +324,7 @@ namespace parallel_heap_scan
 	tsc_getticks (&end_tick);
 	tsc_elapsed_time_usec (&tv_diff, end_tick, m_start_tick);
 	TSC_ADD_TIMEVAL (elapsed_time, tv_diff);
-	if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::COUNT_DISTINCT)
+	if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
 	  {
 	    m_trace_handler->m_trace_storage_for_sibling_xasl.merge_xasl_tree (m_xasl);
 	  }
@@ -336,7 +340,7 @@ namespace parallel_heap_scan
     m_input_handler->finalize (&thread_ref);
     m_slot_iterator.finalize (&thread_ref);
 
-    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::COUNT_DISTINCT)
+    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
       {
 	for (xptr = m_xasl; xptr != NULL; xptr = xptr->scan_ptr)
 	  {
@@ -590,7 +594,7 @@ namespace parallel_heap_scan
 		      }
 		  }
 	      }
-	    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::COUNT_DISTINCT)
+	    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
 	      {
 		if (m_xasl->scan_ptr)
 		  {
@@ -617,7 +621,7 @@ namespace parallel_heap_scan
 			  {
 			    result_handler_p->write (&thread_ref, m_xasl->outptr_list);
 			  }
-			else if constexpr (result_type == RESULT_TYPE::COUNT_DISTINCT)
+			else if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
 			  {
 			    result_handler_p->write (&thread_ref);
 			  }
@@ -637,7 +641,7 @@ namespace parallel_heap_scan
 		      {
 			result_handler_p->write (&thread_ref, m_xasl->outptr_list);
 		      }
-		    else if constexpr (result_type == RESULT_TYPE::COUNT_DISTINCT)
+		    else if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
 		      {
 			result_handler_p->write (&thread_ref);
 		      }
@@ -667,5 +671,5 @@ namespace parallel_heap_scan
   // Explicit template instantiations
   template class task<RESULT_TYPE::MERGEABLE_LIST>;
   template class task<RESULT_TYPE::XASL_SNAPSHOT>;
-  template class task<RESULT_TYPE::COUNT_DISTINCT>;
+  template class task<RESULT_TYPE::BUILDVALUE_OPT>;
 }
