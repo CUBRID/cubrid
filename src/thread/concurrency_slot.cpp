@@ -88,10 +88,6 @@ namespace cubthread
       {
 	assert_release (false);
       }
-
-    assert (!m_subscribers.empty ());
-
-    trigger (false);
   }
 
   void
@@ -111,8 +107,6 @@ namespace cubthread
 	      {
 		m_subscribers.erase (identifier);
 	      }
-
-	    trigger (m_subscribers.empty ());
 	    return;
 	  }
       }
@@ -240,11 +234,22 @@ namespace cubthread
   concurrency_slot_daemon::concurrency_slot_daemon ()
     : m_daemon (nullptr)
   {
-
   }
 
   concurrency_slot_daemon::~concurrency_slot_daemon ()
   {
+  }
+
+  void
+  concurrency_slot_daemon::initialize ()
+  {
+    get_instance ().create_daemon ();
+  }
+
+  void
+  concurrency_slot_daemon::finalize ()
+  {
+    get_instance ().destroy_daemon ();
   }
 
   concurrency_slot_publisher *
@@ -262,22 +267,12 @@ namespace cubthread
   }
 
   void
-  concurrency_slot_daemon::trigger (bool empty)
-  {
-    if (!empty && !m_daemon)
-      {
-	create_daemon ();
-      }
-    else if (empty && m_daemon)
-      {
-	destroy_daemon ();
-      }
-  }
-
-  void
   concurrency_slot_daemon::create_daemon ()
   {
-    assert (!m_daemon);
+    if (m_daemon)
+      {
+	return;
+      }
 
     looper loop = looper (std::chrono::milliseconds (1000));
     concurrency_slot_daemon_task *daemon_task = new concurrency_slot_daemon_task ();
@@ -288,7 +283,10 @@ namespace cubthread
   void
   concurrency_slot_daemon::destroy_daemon ()
   {
-    assert (m_daemon);
+    if (!m_daemon)
+      {
+	return;
+      }
 
     cubthread::get_manager ()->destroy_daemon (m_daemon);
   }

@@ -67,8 +67,6 @@ namespace cubthread
       concurrency_slot_publisher ();
       ~concurrency_slot_publisher ();
 
-      virtual void trigger (bool empty) = 0;
-
     private:
       void subscribe (void *identifier, concurrency_slot_subscriber *sub);
       void unsubscribe (void *identifier, concurrency_slot_subscriber *sub);
@@ -136,6 +134,9 @@ namespace cubthread
   class concurrency_slot_daemon : public concurrency_slot_publisher
   {
     public:
+      static void initialize ();
+      static void finalize ();
+
       static concurrency_slot_publisher *get_publisher ();
 
     private:
@@ -143,8 +144,6 @@ namespace cubthread
       ~concurrency_slot_daemon ();
 
       static concurrency_slot_daemon &get_instance ();
-
-      void trigger (bool empty) override;
 
       void create_daemon ();
       void destroy_daemon ();
