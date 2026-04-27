@@ -60,7 +60,6 @@
 #include "fault_injection.h"
 #include "vacuum.h"
 #include "dbtype.h"
-#include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
 #include "double_write_buffer.hpp"

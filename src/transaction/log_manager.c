@@ -85,9 +85,12 @@
 #include "mem_block.hpp"
 #include "string_buffer.hpp"
 #include "boot_sr.h"
+#if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
+#endif
 #include "thread_entry.hpp"
 #include "thread_entry_task.hpp"
+#include "thread_looper.hpp"
 #include "thread_manager.hpp"
 #include "transaction_transient.hpp"
 #include "vacuum.h"

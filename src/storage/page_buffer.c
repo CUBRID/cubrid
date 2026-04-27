@@ -48,7 +48,10 @@
 #include "perf_monitor.h"
 #include "porting_inline.hpp"
 #include "environment_variable.h"
+#include "thread_looper.hpp"
+#if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
+#endif
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
 #include "list_file.h"

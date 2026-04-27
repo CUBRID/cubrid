@@ -116,7 +116,7 @@
 #include "tsc_timer.h"
 
 #if defined (SERVER_MODE)
-#include "thread_worker_pool.hpp"	// for system_core_count
+#include "thread_worker_pool_impl.hpp"	// for system_core_count
 #include "server_support.h"
 #endif // SERVER_MODE
 #if defined (SERVER_MODE)
