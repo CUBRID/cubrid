@@ -17314,6 +17314,9 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  }
 	else if (version == 7)
 	  {
+	    assert (!DB_IS_NULL (&parser->sys_epochtime));
+	    assert (!DB_IS_NULL (&parser->sys_datetime));
+
 	    uuid_state.last_ms = &parser->uuidv7_last_ms;
 	    uuid_state.seq = &parser->uuidv7_seq;
 	    epoch_ms = ((UINT64) (*db_get_timestamp (&parser->sys_epochtime)) * 1000ULL)

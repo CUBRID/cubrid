@@ -436,9 +436,8 @@ is_stmt_based_repl_type (const PT_NODE * node)
  */
 typedef enum
 {
-  DEFAULT_EXPR_EVAL_ALL,
-  DEFAULT_EXPR_EVAL_ROW_ONLY,
-  DEFAULT_EXPR_EVAL_NON_ROW_ONLY
+  DEFAULT_EXPR_EVAL_BY_ROW_ONLY,
+  DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY
 } DEFAULT_EXPR_EVAL_MODE;
 
 static int
@@ -458,6 +457,10 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
   bool has_user_format;
 
   assert (smclass != NULL);
+  if (eval_mode == DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY)
+    {
+      assert (otemplate != NULL);
+    }
 
   for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
@@ -465,16 +468,12 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
 
       if (default_expr_type != DB_DEFAULT_NONE)
 	{
-	  if (eval_mode == DEFAULT_EXPR_EVAL_ROW_ONLY && !DB_IS_DEFAULT_DETERMINE_BY_ROW (default_expr_type))
+	  /* DB_IS_DEFAULT_DETERMINE_BY_STATEMENT same as !DB_IS_DEFAULT_DETERMINE_BY_ROW */
+	  if (eval_mode == DEFAULT_EXPR_EVAL_BY_ROW_ONLY && !DB_IS_DEFAULT_DETERMINE_BY_ROW (default_expr_type))
 	    {
 	      continue;
 	    }
-	  if (eval_mode == DEFAULT_EXPR_EVAL_NON_ROW_ONLY && DB_IS_DEFAULT_DETERMINE_BY_ROW (default_expr_type))
-	    {
-	      continue;
-	    }
-	  if (eval_mode == DEFAULT_EXPR_EVAL_ROW_ONLY && otemplate != NULL && att->order >= 0
-	      && att->order < otemplate->nassigns && otemplate->assignments[att->order] != NULL)
+	  if (eval_mode == DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY && DB_IS_DEFAULT_DETERMINE_BY_ROW (default_expr_type))
 	    {
 	      continue;
 	    }
@@ -599,20 +598,15 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
 	    case DB_DEFAULT_UUIDV7:
 	      {
 		UUID_STATE uuid_state;
+		assert (!DB_IS_NULL (&parser->sys_epochtime));
+		assert (!DB_IS_NULL (&parser->sys_datetime));
 
-		if (DB_IS_NULL (&parser->sys_datetime) || DB_IS_NULL (&parser->sys_epochtime))
-		  {
-		    db_make_null (&default_value);
-		  }
-		else
-		  {
-		    uuid_state.last_ms = &parser->uuidv7_last_ms;
-		    uuid_state.seq = &parser->uuidv7_seq;
-		    error =
-		      db_uuid_bin (UUID_V7, &uuid_state,
-				   ((UINT64) (*db_get_timestamp (&parser->sys_epochtime)) * 1000ULL)
-				   + (UINT64) (db_get_datetime (&parser->sys_datetime)->time % 1000), &default_value);
-		  }
+		uuid_state.last_ms = &parser->uuidv7_last_ms;
+		uuid_state.seq = &parser->uuidv7_seq;
+		error =
+		  db_uuid_bin (UUID_V7, &uuid_state,
+			       ((UINT64) (*db_get_timestamp (&parser->sys_epochtime)) * 1000ULL)
+			       + (UINT64) (db_get_datetime (&parser->sys_datetime)->time % 1000), &default_value);
 	      }
 	      break;
 	    default:
@@ -700,29 +694,12 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
 }
 
 /*
- * do_evaluate_default_expr() - evaluates the default expressions, if any, for
+ * do_evaluate_statement_default_expr() - evaluates the default expressions determined by statement, if any, for
  *				the attributes of a given class
  *   return: Error code
  *   parser(in):
  *   class_name(in):
  */
-int
-do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
-{
-  SM_CLASS *smclass;
-  int error = NO_ERROR;
-
-  assert (class_name->node_type == PT_NAME);
-
-  error = au_fetch_class_force (class_name->info.name.db_object, &smclass, AU_FETCH_READ);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  return do_evaluate_default_expr_by_smclass (parser, smclass, DEFAULT_EXPR_EVAL_ALL, NULL);
-}
-
 static int
 do_evaluate_statement_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 {
@@ -737,16 +714,23 @@ do_evaluate_statement_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_nam
       return error;
     }
 
-  return do_evaluate_default_expr_by_smclass (parser, smclass, DEFAULT_EXPR_EVAL_NON_ROW_ONLY, NULL);
+  return do_evaluate_default_expr_by_smclass (parser, smclass, DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY, NULL);
 }
 
+/*
+ * do_evaluate_row_default_expr_for_otemplate() - evaluates the default expressions determined by row, if any, for
+ *				the attributes of a given class's object template
+ *   return: Error code
+ *   parser(in):
+ *   class_name(in):
+ */
 static int
 do_evaluate_row_default_expr_for_otemplate (PARSER_CONTEXT * parser, DB_OTMPL * otemplate)
 {
   assert (otemplate != NULL);
   assert (otemplate->class_ != NULL);
 
-  return do_evaluate_default_expr_by_smclass (parser, otemplate->class_, DEFAULT_EXPR_EVAL_ROW_ONLY, otemplate);
+  return do_evaluate_default_expr_by_smclass (parser, otemplate->class_, DEFAULT_EXPR_EVAL_BY_ROW_ONLY, otemplate);
 }
 
 /*
