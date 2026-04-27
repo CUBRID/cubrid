@@ -375,7 +375,6 @@ set(PARALLEL_SCAN_HEADERS
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_heap.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_list.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_index.hpp
-  ${PARALLEL_SCAN_DIR}/px_scan_ftab_set.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_result_handler.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_result_type.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator.hpp
@@ -406,6 +405,7 @@ set(PARALLEL_QUERY_HEADERS
   ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.hpp
   ${PARALLEL_QUERY_DIR}/px_interrupt.hpp
   ${PARALLEL_QUERY_DIR}/px_parallel.hpp
+  ${PARALLEL_QUERY_DIR}/px_ftab_set.hpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_SOURCES
