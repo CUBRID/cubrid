@@ -1117,7 +1117,7 @@ oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &o
 //   with queue=[..., dummy_lsa, tail_chunk_lsa]. The replication path then emits
 //   one RVREPL_DUMMY_OOS_RECORD for the null OID (pops dummy_lsa) followed by one
 //   RVREPL_OOS_INSERT for the real OID (pops tail_chunk_lsa). Intermediate
-//   chunks are not enqueued; tdes->suppress_oos_insert_lsa_queueing suppresses the
+//   chunks are not enqueued; tdes->oos_suppress_insert_lsa_queueing suppresses the
 //   auto-push in log_append_{undo,}redo_crumbs while this function runs.
 //
 static int
@@ -1155,14 +1155,14 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
       log_append_empty_record (thread_p, LOG_DUMMY_OOS_RECORD, NULL);
       LSA_COPY (&dummy_lsa, &tdes->tail_lsa);
 
-      tdes->suppress_oos_insert_lsa_queueing = true;
+      tdes->oos_suppress_insert_lsa_queueing = true;
     }
 
   scope_exit clear_oos_repl_state ([&]()
   {
     if (track_repl && tdes != NULL)
       {
-	tdes->suppress_oos_insert_lsa_queueing = false;
+	tdes->oos_suppress_insert_lsa_queueing = false;
       }
   });
 

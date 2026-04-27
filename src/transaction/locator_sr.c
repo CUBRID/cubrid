@@ -5291,7 +5291,7 @@ locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * rec
 		  "failed to get class heap information for OOS replication insert");
 	  error_code = er_errid ();
 	}
-      goto err;
+      return error_code;
     }
 
   if (!heap_oos_find_vfid (thread_p, &oos_hfid, &oos_vfid, true))
@@ -5302,7 +5302,7 @@ locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * rec
 		  "failed to find or create OOS file for replication insert");
 	}
       error_code = er_errid ();
-      goto err;
+      return error_code;
     }
 
   /* Find transaction descriptor for current logging transaction */
@@ -5333,12 +5333,11 @@ locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * rec
 		  "failed to insert OOS record during replication apply");
 	  error_code = er_errid ();
 	}
-      goto err;
+      return error_code;
     }
 
   oos_push_oos_oid (thread_p, &oos_oid);
 
-err:
   return error_code;
 }
 

@@ -876,7 +876,7 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL,
    NULL,
-   repl_data_insert_log_dump},
+   repl_data_insert_log_dump}
 };
 
 /*

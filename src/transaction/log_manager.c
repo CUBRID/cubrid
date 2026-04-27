@@ -2207,7 +2207,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
 	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
 	  assert (tdes->is_active_worker_transaction ());
 	}
-      else if (rcvindex == RVOOS_INSERT && !tdes->suppress_oos_insert_lsa_queueing)
+      else if (rcvindex == RVOOS_INSERT && !tdes->oos_suppress_insert_lsa_queueing)
 	{
 	  tdes->oos_insert_lsa_queue.push (tdes->tail_lsa);
 	  assert (tdes->is_active_worker_transaction ());
@@ -2476,7 +2476,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
 	  assert (tdes->is_active_worker_transaction ());
 	}
-      else if (rcvindex == RVOOS_INSERT && !tdes->suppress_oos_insert_lsa_queueing)
+      else if (rcvindex == RVOOS_INSERT && !tdes->oos_suppress_insert_lsa_queueing)
 	{
 	  tdes->oos_insert_lsa_queue.push (tdes->tail_lsa);
 	  assert (tdes->is_active_worker_transaction ());
@@ -12383,6 +12383,11 @@ cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES 
       if (current_log_record->trid != trid || current_log_record->type == LOG_DUMMY_OVF_RECORD
 	  || current_log_record->type == LOG_DUMMY_OOS_RECORD)
 	{
+	  if (current_log_record->type == LOG_DUMMY_OOS_RECORD)
+	    {
+	      /* TODO: add CDC support for rebuilding multi-chunk OOS records after this marker. */
+	    }
+
 	  if (!is_redo && current_log_record->type == LOG_DUMMY_OVF_RECORD)
 	    {
 	      /*get one more */
