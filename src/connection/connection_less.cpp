@@ -33,14 +33,6 @@
 #error Does not belong to server module
 #endif
 
-#if defined(MULTI_CONN_TO_A_SERVER)
-#define CS_LOCK()   pthread_mutex_lock(&m_css_map_entry_lock)
-#define CS_UnLOCK() pthread_mutex_unlock(&m_css_map_entry_lock)
-#else
-#define CS_LOCK()
-#define CS_UnLOCK()
-#endif
-
 connection_less::connection_less ()
 {
   m_entry_id = 0;
@@ -76,16 +68,13 @@ connection_less::css_return_entry_from_eid (unsigned int eid)
   unsigned short entry_id;
 
   entry_id = CSS_ENTRYID_FROM_EID (eid);
-  CS_LOCK();
   for (map_entry_p = m_css_map_entry; map_entry_p; map_entry_p = map_entry_p->next)
     {
       if (map_entry_p->id == entry_id)
 	{
-	  CS_UnLOCK();
 	  return (map_entry_p);
 	}
     }
-  CS_UnLOCK();
   return (NULL);
 }
 
@@ -99,10 +88,6 @@ connection_less::css_make_entry_id ()
 {
   CSS_MAP_ENTRY *map_entry_p;
   unsigned short old_value;
-
-  /* Notice)
-   * Call CS_LOCK() to hold the mutex before calling this function if MULTI_CONN_TO_A_SERVER is enabled.
-   */
 
   old_value = m_entry_id++;
   if (!m_entry_id)
@@ -160,11 +145,9 @@ connection_less::css_queue_connection (CSS_CONN_ENTRY *conn, const char *host)
 	}
 
       map_entry_p->conn = conn;
-      CS_LOCK();
       map_entry_p->next = m_css_map_entry;
       map_entry_p->id = css_make_entry_id ();
       m_css_map_entry = map_entry_p;
-      CS_UnLOCK();
 
       return (map_entry_p);
     }
@@ -182,22 +165,12 @@ CSS_MAP_ENTRY *
 connection_less::css_get_queued_entry (char *host)
 {
   CSS_MAP_ENTRY *map_entry_p;
-#if defined(MULTI_CONN_TO_A_SERVER)
-  pthread_t tid = pthread_self ();
-#endif
 
   for (map_entry_p = m_css_map_entry; map_entry_p; map_entry_p = map_entry_p->next)
     {
       if (strcmp (host, map_entry_p->key) == 0)
 	{
-#if defined(MULTI_CONN_TO_A_SERVER)
-	  if (map_entry_p->owner_tid == tid)
-	    {
-	      return (map_entry_p);
-	    }
-#else
 	  return (map_entry_p);
-#endif
 	}
     }
 

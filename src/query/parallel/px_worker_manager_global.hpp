@@ -54,7 +54,7 @@ namespace parallel_query
       friend class worker_manager;
 
       /* member variables (ordered by size for alignment) */
-      cubthread::worker_pool *m_worker_pool;
+      cubthread::worker_pool_type *m_worker_pool;
       std::once_flag m_init_flag;
       std::atomic<int> m_available;
       int m_capacity;
