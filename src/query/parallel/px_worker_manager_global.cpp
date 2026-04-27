@@ -63,12 +63,12 @@ namespace parallel_query
 	}
 
       int pool_size = max_parallel_workers;
-      int task_max_count = max_parallel_workers * TASK_QUEUE_SIZE_PER_CORE;
 
       assert (m_worker_pool == nullptr);
-      m_worker_pool = cubthread::get_manager()->create_worker_pool (
-			      pool_size, task_max_count,
-			      "parallel-query", NULL, 1, false);
+
+      m_worker_pool = thread_create_worker_pool (pool_size, 1, "parallel-query", thread_get_entry_manager ());
+      // m_log = false
+
       if (m_worker_pool == nullptr)
 	{
 	  return;

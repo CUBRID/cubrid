@@ -23,9 +23,12 @@
 #ifndef _LOAD_WORKER_MANAGER_HPP_
 #define _LOAD_WORKER_MANAGER_HPP_
 
+#if !defined (SERVER_MODE)
+#error Wrong module
+#endif // not SERVER_MODE
+
 #include "system.h"
 #include "thread_manager.hpp"
-#include "thread_worker_pool.hpp"
 
 namespace cubload
 {

@@ -16317,6 +16317,18 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	}
 
       attr_offsets = pt_make_identity_offsets (group_out_list);
+      if (buildlist->g_hash_eligible && attr_offsets)
+	{
+	  REGU_VARIABLE_LIST reg_var_p_out;
+	  int i = 0;
+	  int group_out_list_len = pt_length_of_list (group_out_list);
+	  for (reg_var_p_out = xasl->outptr_list->valptrp; reg_var_p_out && i < group_out_list_len;
+	       reg_var_p_out = reg_var_p_out->next)
+	    {
+	      reg_var_p_out->value.vfetch_to = pt_index_value (buildlist->g_val_list, attr_offsets[i]);
+	      i++;
+	    }
+	}
 
       /* set up hash aggregate lists */
       if (buildlist->g_hash_eligible)
@@ -27336,14 +27348,15 @@ pt_aggregate_info_update_value_and_reguvar_lists (AGGREGATE_INFO * info, VAL_LIS
 
   pt_merge_regu_var_lists (&info->regu_list, regu_position_list);
 
-  pt_merge_regu_var_lists (&info->out_list->valptrp, regu_constant_list);
-
   // also increment list count
   int regu_constant_list_size = 0;
 
   for (REGU_VARIABLE_LIST ptr = regu_constant_list; ptr != NULL; ptr = ptr->next, regu_constant_list_size++)
-    ;
+    {
+      ptr->value.vfetch_to = pt_index_value (value_list, regu_constant_list_size);
+    }
 
+  pt_merge_regu_var_lists (&info->out_list->valptrp, regu_constant_list);
   info->out_list->valptr_cnt += regu_constant_list_size;
 }
 
