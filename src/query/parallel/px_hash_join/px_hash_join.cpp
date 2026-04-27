@@ -25,6 +25,7 @@
 
 #include "error_manager.h"		/* assert_release_error, er_errid, NO_ERROR, ... */
 #include "list_file.h"			/* qfile_open_list, qfile_open_list_scan, qfile_close_scan, ... */
+#include "query_manager.h"		/* QMGR_TEMP_FILE (qmgr_temp_file) */
 #include "memory_alloc.h"		/* db_private_alloc, db_private_free_and_init */
 #include "storage_common.h"		/* OID_INITIALIZER, S_CLOSED, VPID_SET_NULL, ... */
 
@@ -73,6 +74,15 @@ namespace parallel_query
 	  hjoin_trace_start (&thread_ref, &start_stats);
 	}
 
+      /* collect data page sectors for outer relation */
+      if (qfile_collect_list_sector_info (&thread_ref, outer->fetch_info->list_id, &shared_info.sector_info) != NO_ERROR)
+	{
+	  hjoin_clear_shared_split_info (&thread_ref, manager, &shared_info);
+	  return er_errid ();
+	}
+      shared_info.membuf_claimed.store (false, std::memory_order_relaxed);
+      shared_info.next_sector_index.store (0, std::memory_order_relaxed);
+
       for (task_index = 0; task_index < task_cnt; task_index++)
 	{
 	  task = new split_task (task_manager, manager, outer, &shared_info, task_index);
@@ -97,14 +107,20 @@ namespace parallel_query
 	  return er_errid ();
 	}
 
-      /* init */
-      shared_info.scan_position = S_BEFORE;
-      VPID_SET_NULL (&shared_info.next_vpid);
-
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_start (&thread_ref, &start_stats);
 	}
+
+      /* collect data page sectors for inner relation
+       * (outer's sector_info is freed internally by qfile_collect_list_sector_info) */
+      if (qfile_collect_list_sector_info (&thread_ref, inner->fetch_info->list_id, &shared_info.sector_info) != NO_ERROR)
+	{
+	  hjoin_clear_shared_split_info (&thread_ref, manager, &shared_info);
+	  return er_errid ();
+	}
+      shared_info.membuf_claimed.store (false, std::memory_order_relaxed);
+      shared_info.next_sector_index.store (0, std::memory_order_relaxed);
 
       for (task_index = 0; task_index < task_cnt; task_index++)
 	{
