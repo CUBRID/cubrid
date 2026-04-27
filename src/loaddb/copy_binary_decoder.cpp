@@ -158,6 +158,14 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
 	}
 
       int32_t dim = read_int32 (data);
+      /* validate dim before any arithmetic to avoid signed overflow UB and
+       * negative-size allocation downstream. */
+      if (dim < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_PROTOCOL_GENERIC, 1,
+		  "VECTOR dimension must not be negative");
+	  return ER_COPY_BINARY_PROTOCOL_GENERIC;
+	}
       int expected_len = OR_INT_SIZE + dim * OR_FLOAT_SIZE;
       if (field_len != expected_len)
 	{

@@ -104,8 +104,19 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE 
       return attrs[a].def_order < attrs[b].def_order;
     });
 
+    /* reject mismatched column count: client claims more columns than the
+     * table actually has → leftover m_attr_ids would default to 0 and
+     * silently target the wrong attribute. */
+    if (num_cols > n_attrs)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_PROTOCOL_GENERIC, 1,
+		"num_cols exceeds table attribute count");
+	heap_attrinfo_end (thread_p, &attrinfo);
+	return ER_COPY_BINARY_PROTOCOL_GENERIC;
+      }
+
     m_attr_ids.resize (num_cols);
-    for (int i = 0; i < num_cols && i < n_attrs; i++)
+    for (int i = 0; i < num_cols; i++)
       {
 	m_attr_ids[i] = attrs[order[i]].id;
       }
