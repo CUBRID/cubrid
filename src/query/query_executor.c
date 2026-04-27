@@ -1971,7 +1971,6 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	  break;
 
 	case S_INDX_SCAN:
-	case S_PARALLEL_INDEX_SCAN:
 	  pg_cnt +=
 	    qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.isid.key_pred.regu_list, is_final, for_parallel_aptr);
 	  pg_cnt +=
@@ -2025,6 +2024,8 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		}
 	      db_private_free_and_init (thread_p, isidp->prebuilt_midxkey_domains);
 	    }
+	  break;
+	case S_PARALLEL_INDEX_SCAN:
 #if SERVER_MODE
 	  if (p->s_id.type == S_PARALLEL_INDEX_SCAN)
 	    {
@@ -2069,7 +2070,6 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	    }
 	  break;
 	case S_LIST_SCAN:
-	case S_PARALLEL_LIST_SCAN:
 	  pg_cnt +=
 	    qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.llsid.scan_pred.regu_list, is_final, for_parallel_aptr);
 	  pg_cnt +=
@@ -2080,6 +2080,8 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	  pg_cnt +=
 	    qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.llsid.hlsid.probe_regu_list, is_final,
 				   for_parallel_aptr);
+	  break;
+	case S_PARALLEL_LIST_SCAN:
 #if SERVER_MODE
 	  if (p->s_id.type == S_PARALLEL_LIST_SCAN)
 	    {
