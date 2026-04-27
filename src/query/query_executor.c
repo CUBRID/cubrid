@@ -12272,7 +12272,6 @@ qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, U
   assert (DB_IS_DEFAULT_DETERMINE_BY_ROW (expr_type));
 
   pr_clear_value (out_val);
-  db_make_null (out_val);
   db_make_null (&new_val);
 
   switch (expr_type)

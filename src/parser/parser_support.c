@@ -10608,10 +10608,8 @@ pt_make_default_value_tree_from_default_expr (PARSER_CONTEXT * parser, const DB_
 {
   PT_NODE *default_value = NULL;
 
-  if (parser == NULL || default_expr == NULL || default_expr->default_expr_type == DB_DEFAULT_NONE)
-    {
-      return NULL;
-    }
+  assert (default_expr != NULL);
+  assert (default_expr->default_expr_type != DB_DEFAULT_NONE);
 
   default_value = pt_make_expression_default_expr (parser, NULL, default_expr->default_expr_type);
   if (default_value == NULL)
@@ -12446,9 +12444,11 @@ extern PT_NODE *
 pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr)
 {
   PT_NODE *node = parser_new_node (parser, PT_DATA_DEFAULT);
+
   if (node)
     {
       PT_NODE *def;
+
       node->info.data_default.default_value = expr;
       node->info.data_default.shared = PT_DEFAULT;
 
@@ -12523,19 +12523,30 @@ pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr)
 		  {
 		    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
 		  }
-		else if (uuid_arg->node_type == PT_VALUE
-			 && PT_IS_NUMERIC_TYPE (uuid_arg->type_enum) && uuid_arg->info.value.data_value.i == 4)
+		else if (uuid_arg->node_type == PT_VALUE && PT_IS_NUMERIC_TYPE (uuid_arg->type_enum))
 		  {
-		    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
-		  }
-		else if (uuid_arg->node_type == PT_VALUE
-			 && PT_IS_NUMERIC_TYPE (uuid_arg->type_enum) && uuid_arg->info.value.data_value.i == 7)
-		  {
-		    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV7;
+		    if (pt_coerce_value (parser, uuid_arg, uuid_arg, PT_TYPE_INTEGER, NULL) == NO_ERROR)
+		      {
+			if (uuid_arg->info.value.data_value.i == 4)
+			  {
+			    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
+			  }
+			else if (uuid_arg->info.value.data_value.i == 7)
+			  {
+			    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV7;
+			  }
+			else
+			  {
+			    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
+			    PT_ERROR (parser, node, "DEFAULT UUID only supports UUID(), UUID(4), or UUID(7)");
+			  }
+		      }
 		  }
 		else
 		  {
 		    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
+		    PT_ERROR (parser, node, "DEFAULT UUID only supports UUID(), UUID(4), or UUID(7).\n"
+			      "Only literal arguments 4 or 7 are allowed; nested expressions in DEFAULT are not supported");
 		  }
 	      }
 	      break;

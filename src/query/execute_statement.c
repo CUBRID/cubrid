@@ -600,12 +600,19 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
 	      {
 		UUID_STATE uuid_state;
 
-		uuid_state.last_ms = &parser->uuidv7_last_ms;
-		uuid_state.seq = &parser->uuidv7_seq;
-		error =
-		  db_uuid_bin (UUID_V7, &uuid_state,
-			       ((UINT64) (*db_get_timestamp (&parser->sys_epochtime)) * 1000ULL)
-			       + (UINT64) (db_get_datetime (&parser->sys_datetime)->time % 1000), &default_value);
+		if (DB_IS_NULL (&parser->sys_datetime) || DB_IS_NULL (&parser->sys_epochtime))
+		  {
+		    db_make_null (&default_value);
+		  }
+		else
+		  {
+		    uuid_state.last_ms = &parser->uuidv7_last_ms;
+		    uuid_state.seq = &parser->uuidv7_seq;
+		    error =
+		      db_uuid_bin (UUID_V7, &uuid_state,
+				   ((UINT64) (*db_get_timestamp (&parser->sys_epochtime)) * 1000ULL)
+				   + (UINT64) (db_get_datetime (&parser->sys_datetime)->time % 1000), &default_value);
+		  }
 	      }
 	      break;
 	    default:
@@ -736,10 +743,8 @@ do_evaluate_statement_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_nam
 static int
 do_evaluate_row_default_expr_for_otemplate (PARSER_CONTEXT * parser, DB_OTMPL * otemplate)
 {
-  if (otemplate == NULL || otemplate->class_ == NULL)
-    {
-      return ER_FAILED;
-    }
+  assert (otemplate != NULL);
+  assert (otemplate->class_ != NULL);
 
   return do_evaluate_default_expr_by_smclass (parser, otemplate->class_, DEFAULT_EXPR_EVAL_ROW_ONLY, otemplate);
 }
