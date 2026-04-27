@@ -3076,6 +3076,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
   bool pad_character_zero = false;
   bool trailing_spaces = false;
   bool decimal_part = false;
+  bool dot_found = false;
   int ret = NO_ERROR;
   int skip_size = 1;
   TP_DOMAIN *domain;
@@ -3088,8 +3089,13 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
       skip_size = 1;
       if (astring[i] == '.')
 	{
+	  if (!leading_zeroes && decimal_part && dot_found)
+	    {
+	      ret = DOMAIN_INCOMPATIBLE;
+	    }
 	  leading_zeroes = false;
 	  decimal_part = true;
+	  dot_found = true;
 	  scale = astring_length - (i + 1);
 	}
       else if (leading_zeroes)
