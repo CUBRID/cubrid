@@ -702,18 +702,8 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
    * pool-managed (qmgr_dblink_*) and conn_handle legitimately remains >= 0 after close. */
   assert (scan_info->cursor_rewind || scan_info->stmt_handle <= 0);
 
-  char *find = strstr (spec->s.dblink_node.conn_url, ":?");
-  if (find)
-    {
-      snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", spec->s.dblink_node.conn_url, "&__gateway=true");
-    }
-  else
-    {
-      snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", spec->s.dblink_node.conn_url, "?__gateway=true");
-    }
-
   /* correlated reuse mode: CCI connection/stmt already open; reposition remote cursor to first row.
-   * Check > 0: CCI handles are positive integers; 0 is the uninitialized/zero-init value. */
+   * conn/stmt handles are valid only from the second outer row onwards; first call falls through to open. */
   if (scan_info->cursor_rewind && scan_info->conn_handle > 0 && scan_info->stmt_handle > 0)
     {
       ret = cci_cursor (scan_info->stmt_handle, 1, CCI_CURSOR_FIRST, &err_buf);
@@ -725,6 +715,16 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
 	}
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
       return ER_DBLINK;
+    }
+
+  char *find = strstr (spec->s.dblink_node.conn_url, ":?");
+  if (find)
+    {
+      snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", spec->s.dblink_node.conn_url, "&__gateway=true");
+    }
+  else
+    {
+      snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", spec->s.dblink_node.conn_url, "?__gateway=true");
     }
 
   scan_info->conn_handle = -1;

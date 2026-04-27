@@ -18136,7 +18136,7 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * qu
        * correlated terms (they are always pushed to access_pred only).
        * NOTE: if a future optimization (e.g. join push-down) places per-row host variables into
        * conn_sql, this flag must NOT be set for that case; re-bind + re-execute would be required instead. */
-      if (PT_IS_QUERY (node) && node->info.query.correlation_level != 0 && pt_xasl_spec_has_dblink (xasl))
+      if (PT_IS_QUERY (node) && node->info.query.correlation_level > 0 && pt_xasl_spec_has_dblink (xasl))
 	{
 	  XASL_SET_FLAG (xasl, XASL_DBLINK_CURSOR_REWIND);
 	}
