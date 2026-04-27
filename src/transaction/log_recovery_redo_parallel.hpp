@@ -25,7 +25,6 @@
 
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"
-#include "thread_worker_pool.hpp"
 #include "vpid_utilities.hpp"
 
 #include <atomic>
@@ -194,7 +193,7 @@ namespace cublog
        */
       task_active_state_bookkeeping m_task_state_bookkeeping;
 
-      cubthread::worker_pool *m_worker_pool;
+      cubthread::worker_pool_type *m_worker_pool;
       /* tasks have owner-controlled life-time in order to be able to
        * collect post-execution perf stats from them
        */

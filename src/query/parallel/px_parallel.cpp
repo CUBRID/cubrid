@@ -26,7 +26,7 @@
 
 #include "system.h"		/* UINT32, UINT64 */
 #include "system_parameter.h"	/* sysprm_get_range, PRM_ID_PARALLELISM */
-#include "thread_worker_pool.hpp"	/* cubthread::system_core_count */
+#include "thread_manager.hpp"	/* cubthread::system_core_count */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
