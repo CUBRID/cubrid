@@ -1,0 +1,150 @@
+#
+# TC Merge Gate — Block engine PR merge until TC PRs are merged or closed
+#
+# Trigger: pull_request_target (opened, synchronize, reopened, labeled, ready_for_review)
+#          workflow_dispatch (manual re-run after TC PRs are handled)
+#
+# Register as Required Status Check in Branch Protection Rules:
+#   Settings → Branches → develop → Require status checks → "TC Merge Gate / Check TC PRs"
+#
+# Pass conditions (per TC repo):
+#   - No open TC PR found for tc/pr-<N>  →  pass  (TC creation was skipped or TC PR was merged/closed)
+#   - TC PR state is MERGED or CLOSED    →  pass
+#
+# Fail condition:
+#   - TC PR is OPEN (including draft)    →  fail  (merge blocked)
+#
+# After TC PRs are merged/closed, re-run this check via:
+#   GitHub Actions UI → "Re-run failed jobs"
+#
+
+name: TC Merge Gate
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - develop
+      - 'feature/**'
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Engine PR number to check (required for workflow_dispatch)'
+        required: true
+        type: string
+
+permissions: {} # Least privilege — job opts in below
+
+concurrency:
+  group: tc-merge-gate-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: true
+
+env:
+  OWNER: CUBRID
+
+jobs:
+  check-tc-prs:
+    name: Check TC PRs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.TC_APP_ID }}
+          private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
+          repositories: cubrid-testcases,cubrid-testcases-private-ex
+          owner: ${{ env.OWNER }}
+
+      - name: Check TC PRs
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          ENGINE_REPO: ${{ github.repository }}
+          OWNER: ${{ env.OWNER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${PR_NUMBER}" ] || ! [[ "${PR_NUMBER}" =~ ^[0-9]+$ ]]; then
+            echo "::error::PR_NUMBER is empty or not a valid number: '${PR_NUMBER}'"
+            exit 1
+          fi
+
+          TC_REPOS=("cubrid-testcases" "cubrid-testcases-private-ex")
+          BRANCH_NAME="tc/pr-${PR_NUMBER}"
+          OVERALL_PASS=true
+          TC_TEXT_BLOCK=""
+
+          for TC_REPO in "${TC_REPOS[@]}"; do
+            OPEN_PR=$(gh pr list \
+              --repo "${OWNER}/${TC_REPO}" \
+              --head "${BRANCH_NAME}" \
+              --state open \
+              --limit 1 \
+              --json url,isDraft \
+              --jq '.[0] // empty')
+
+            if [ -z "${OPEN_PR}" ]; then
+              echo "::notice::${TC_REPO}: No open TC PR for '${BRANCH_NAME}' — pass"
+              TC_TEXT_BLOCK+="- ✅ **${TC_REPO}**: No open TC PR (merged, closed, or not created)"$'\n'
+            else
+              IS_DRAFT=$(echo "${OPEN_PR}" | jq -r '.isDraft')
+              URL=$(echo "${OPEN_PR}" | jq -r '.url')
+              STATE_DISPLAY=$( [ "${IS_DRAFT}" == "true" ] && echo "open (draft)" || echo "open" )
+
+              echo "::error::${TC_REPO}: TC PR is ${STATE_DISPLAY}: ${URL}"
+              TC_TEXT_BLOCK+="- ❌ **${TC_REPO}**: TC PR [\`${BRANCH_NAME}\`](${URL}) is ${STATE_DISPLAY} — must be merged or closed first"$'\n'
+              OVERALL_PASS=false
+            fi
+          done
+
+          if [ "${OVERALL_PASS}" == "false" ]; then
+            COMMENT_BODY=$(cat <<EOF
+          ## ❌ TC Merge Gate — Merge Blocked
+
+          One or more TC PRs are still open. Please merge or close them before merging this PR.
+
+          **TC Repositories & Branches:**
+          ${TC_TEXT_BLOCK}
+          **Steps to unblock:**
+          1. Merge or close all TC PRs listed above.
+          2. Re-run this check: **Actions tab → TC Merge Gate → Re-run failed jobs**
+          EOF
+          )
+          else
+            COMMENT_BODY=$(cat <<EOF
+          ## ✅ TC Merge Gate — Merge Allowed
+
+          All TC PRs are merged, closed, or not present.
+
+          **TC Repositories & Branches:**
+          ${TC_TEXT_BLOCK}
+          EOF
+          )
+          fi
+
+          # Post or update comment on engine PR (best-effort — does not affect check result)
+          {
+            COMMENT_ID=$(GH_TOKEN="${GITHUB_TOKEN}" gh api "repos/${ENGINE_REPO}/issues/${PR_NUMBER}/comments" \
+              --jq '.[] | select(.user.login=="github-actions[bot]" and (.body | contains("TC Merge Gate"))) | .id' \
+              | tail -n 1)
+
+            if [ -n "${COMMENT_ID}" ]; then
+              GH_TOKEN="${GITHUB_TOKEN}" gh api -X PATCH "repos/${ENGINE_REPO}/issues/comments/${COMMENT_ID}" \
+                -f body="${COMMENT_BODY}" > /dev/null
+            else
+              GH_TOKEN="${GITHUB_TOKEN}" gh pr comment "${PR_NUMBER}" --repo "${ENGINE_REPO}" --body "${COMMENT_BODY}"
+            fi
+          } || echo "::warning::Failed to post PR comment — check result is unaffected"
+
+          if [ "${OVERALL_PASS}" == "false" ]; then
+            echo "TC Merge Gate FAILED: One or more TC PRs are still open."
+            exit 1
+          fi
+
+          echo "TC Merge Gate PASSED: All TC PRs are merged, closed, or not present."
