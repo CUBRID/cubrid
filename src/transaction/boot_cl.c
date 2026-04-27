@@ -1368,7 +1368,6 @@ boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
   int tran_lock_wait_msecs;
   TRAN_STATE transtate;
 
-
   //lang_init();
   //tz_load();
   //msgcat_init();

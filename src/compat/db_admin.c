@@ -133,6 +133,7 @@ static CUB_THREAD_LOCAL int db_Row_count = DB_ROW_COUNT_NOT_SET;
 
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 static BOOT_CLIENT_CREDENTIAL gv_client_credential;
+bool g_ready_to_sub = false;
 #endif
 
 /*
@@ -969,6 +970,9 @@ db_restart (const char *program, int print_version, const char *volume)
 	  prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
 #endif /* SA_MODE && (LINUX||X86_SOLARIS) */
 #endif /* !WINDOWS */
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+	  g_ready_to_sub = true;
+#endif
 	}
 
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
@@ -987,6 +991,12 @@ db_restart_sub (int sub_index)
   BOOT_CLIENT_CREDENTIAL client_credential;
   char program_name[512];
 
+  if (g_ready_to_sub == false)
+    {
+      // TODO: Assign independent error codes.
+      return ER_FAILED;
+    }
+
   error =
     snprintf (program_name, sizeof (program_name), "%s(%d)", gv_client_credential.get_program_name (), sub_index + 1);
   if (error < 0 || error >= (int) sizeof (program_name))
@@ -996,7 +1006,6 @@ db_restart_sub (int sub_index)
 
   client_credential = gv_client_credential;
   client_credential.program_name = program_name;
-
 
   db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 
@@ -1074,6 +1083,9 @@ db_shutdown (void)
   db_Disable_modifications = 0;
 
   db_free_execution_plan ();
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  g_ready_to_sub = false;
+#endif
 
   return (error);
 }
@@ -1089,6 +1101,8 @@ int
 db_shutdown_sub ()
 {
   (void) db_end_session ();
+  db_Disable_modifications = 0;
+
   // db_free_execution_plan ();
 
   boot_finalize_client_sub ();
