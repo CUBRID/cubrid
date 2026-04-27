@@ -34,6 +34,7 @@
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 #endif /* !WINDOWNS */
 #include <signal.h>
+#include <time.h>
 
 #include "log_writer.h"
 
@@ -2973,6 +2974,7 @@ logwr_dump_log_header (FILE * out, const LOG_HEADER * hdr, int indent)
     }
 
   fprintf (out, "%*slog_header : {\n", indent, "");
+  fprintf (out, "%*smagic: %s,\n", indent + 2, "", hdr->magic);
   fprintf (out, "%*sdb_creation: %lld,\n", indent + 2, "", (long long) hdr->db_creation);
   fprintf (out, "%*svol_creation: %lld,\n", indent + 2, "", (long long) hdr->vol_creation);
   fprintf (out, "%*sdb_release: %s,\n", indent + 2, "", hdr->db_release);
@@ -3004,6 +3006,19 @@ logwr_dump_log_header (FILE * out, const LOG_HEADER * hdr, int indent)
   fprintf (out, "%*snxarv_num: %d,\n", indent + 2, "", hdr->nxarv_num);
   fprintf (out, "%*slast_arv_num_for_syscrashes: %d,\n", indent + 2, "", hdr->last_arv_num_for_syscrashes);
   fprintf (out, "%*slast_deleted_arv_num: %d,\n", indent + 2, "", hdr->last_deleted_arv_num);
+
+  /* backup lsa */
+  fprintf (out, "%*sbkup_level0_lsa: ", indent + 2, "");
+  logwr_dump_log_lsa (out, &hdr->bkup_level0_lsa, indent + 4);
+  fprintf (out, ",\n");
+
+  fprintf (out, "%*sbkup_level1_lsa: ", indent + 2, "");
+  logwr_dump_log_lsa (out, &hdr->bkup_level1_lsa, indent + 4);
+  fprintf (out, ",\n");
+
+  fprintf (out, "%*sbkup_level2_lsa: ", indent + 2, "");
+  logwr_dump_log_lsa (out, &hdr->bkup_level2_lsa, indent + 4);
+  fprintf (out, ",\n\n");
 
   /* bkinfo array */
   fprintf (out, "%*sbkinfo: [\n", indent + 2, "");
@@ -3044,7 +3059,12 @@ logwr_dump_log_header (FILE * out, const LOG_HEADER * hdr, int indent)
   fprintf (out, ",\n\n");
 
   fprintf (out, "%*soldest_visible_mvccid: %llu,\n", indent + 2, "", (unsigned long long) hdr->oldest_visible_mvccid);
-  fprintf (out, "%*snewest_block_mvccid: %llu\n", indent + 2, "", (unsigned long long) hdr->newest_block_mvccid);
+  fprintf (out, "%*snewest_block_mvccid: %llu,\n", indent + 2, "", (unsigned long long) hdr->newest_block_mvccid);
+  fprintf (out, "%*sha_promotion_time: %lld,\n", indent + 2, "", (long long) hdr->ha_promotion_time);
+  fprintf (out, "%*sdb_restore_time: %lld,\n", indent + 2, "", (long long) hdr->db_restore_time);
+  fprintf (out, "%*smark_will_del: %s,\n", indent + 2, "", hdr->mark_will_del ? "true" : "false");
+  fprintf (out, "%*sdoes_block_need_vacuum: %s,\n", indent + 2, "", hdr->does_block_need_vacuum ? "true" : "false");
+  fprintf (out, "%*swas_active_log_reset: %s\n", indent + 2, "", hdr->was_active_log_reset ? "true" : "false");
   fprintf (out, "%*s}", indent, "");
 }
 
@@ -3082,10 +3102,58 @@ logwr_dump_log_page_hdr (FILE * out, const LOG_HDRPAGE * p, int indent)
   fprintf (out, "%*s}", indent, "");
 }
 
+static void
+logwr_dump_logwr_action (FILE * out, LOGWR_ACTION action)
+{
+  LOGWR_ACTION known_actions =
+    (LOGWR_ACTION) (LOGWR_ACTION_DELAYED_WRITE | LOGWR_ACTION_ASYNC_WRITE | LOGWR_ACTION_HDR_WRITE
+		    | LOGWR_ACTION_ARCHIVING);
+  const char *separator = "";
+
+  fprintf (out, "[");
+  if (action == LOGWR_ACTION_NONE)
+    {
+      fprintf (out, "LOGWR_ACTION_NONE");
+    }
+  else
+    {
+      if (action & LOGWR_ACTION_DELAYED_WRITE)
+	{
+	  fprintf (out, "%sLOGWR_ACTION_DELAYED_WRITE", separator);
+	  separator = ", ";
+	}
+      if (action & LOGWR_ACTION_ASYNC_WRITE)
+	{
+	  fprintf (out, "%sLOGWR_ACTION_ASYNC_WRITE", separator);
+	  separator = ", ";
+	}
+      if (action & LOGWR_ACTION_HDR_WRITE)
+	{
+	  fprintf (out, "%sLOGWR_ACTION_HDR_WRITE", separator);
+	  separator = ", ";
+	}
+      if (action & LOGWR_ACTION_ARCHIVING)
+	{
+	  fprintf (out, "%sLOGWR_ACTION_ARCHIVING", separator);
+	  separator = ", ";
+	}
+      if (action & ~known_actions)
+	{
+	  fprintf (out, "%sUNKNOWN_BITS(0x%x)", separator, (unsigned int) (action & ~known_actions));
+	}
+    }
+  fprintf (out, "]");
+}
+
 void
 logwr_dump_logwr_gl_topfields (FILE * out, int indent)
 {
-  const char *mode, *action;
+  const char *mode;
+  long long copy_gap_pages;
+  long long archive_gap_pages;
+  long long last_arv_page_count;
+  time_t now = time (NULL);
+
   switch (logwr_Gl.mode)
     {
     case LOGWR_MODE_ASYNC:
@@ -3101,27 +3169,26 @@ logwr_dump_logwr_gl_topfields (FILE * out, int indent)
       mode = "LOGWR_MODE_UNKNOWN";
       break;
     }
-  switch (logwr_Gl.action)
-    {
-    case LOGWR_ACTION_NONE:
-      action = "LOGWR_ACTION_NONE";
-      break;
-    case LOGWR_ACTION_DELAYED_WRITE:
-      action = "LOGWR_ACTION_DELAYED_WRITE";
-      break;
-    case LOGWR_ACTION_ASYNC_WRITE:
-      action = "LOGWR_ACTION_ASYNC_WRITE";
-      break;
-    case LOGWR_ACTION_HDR_WRITE:
-      action = "LOGWR_ACTION_HDR_WRITE";
-      break;
-    case LOGWR_ACTION_ARCHIVING:
-      action = "LOGWR_ACTION_ARCHIVING";
-      break;
-    default:
-      action = "LOGWR_ACTION_UNKNOWN";
-      break;
-    }
+
+  copy_gap_pages =
+    (logwr_Gl.hdr.eof_lsa.pageid != NULL_PAGEID && logwr_Gl.last_recv_pageid != NULL_PAGEID)
+    ? (long long) (logwr_Gl.hdr.eof_lsa.pageid - logwr_Gl.last_recv_pageid) : -1;
+  archive_gap_pages =
+    (logwr_Gl.hdr.nxarv_pageid != NULL_PAGEID && logwr_Gl.last_arv_fpageid != NULL_PAGEID)
+    ? (long long) (logwr_Gl.hdr.nxarv_pageid - logwr_Gl.last_arv_fpageid) : -1;
+  last_arv_page_count =
+    (logwr_Gl.last_arv_fpageid != NULL_PAGEID && logwr_Gl.last_arv_lpageid >= logwr_Gl.last_arv_fpageid)
+    ? (long long) (logwr_Gl.last_arv_lpageid - logwr_Gl.last_arv_fpageid + 1) : 0;
+
+  fprintf (out, "%*ssupport_summary: {\n", indent, "");
+  fprintf (out, "%*sdump_time: %ld,\n", indent + 2, "", (long) now);
+  fprintf (out, "%*scopy_gap_pages: %lld,\n", indent + 2, "", copy_gap_pages);
+  fprintf (out, "%*spending_flush_pages: %d,\n", indent + 2, "", logwr_Gl.num_toflush);
+  fprintf (out, "%*sarchive_gap_pages: %lld,\n", indent + 2, "", archive_gap_pages);
+  fprintf (out, "%*saction: ", indent + 2, "");
+  logwr_dump_logwr_action (out, logwr_Gl.action);
+  fprintf (out, "\n");
+  fprintf (out, "%*s},\n\n", indent, "");
 
   fprintf (out, "%*sdb_name: \"%s\",\n", indent, "", logwr_Gl.db_name);
   fprintf (out, "%*shostname: \"%s\",\n", indent, "", logwr_Gl.hostname ? logwr_Gl.hostname : "");
@@ -3135,7 +3202,9 @@ logwr_dump_logwr_gl_topfields (FILE * out, int indent)
   fprintf (out, "%*smax_toflush: %d,\n", indent, "", logwr_Gl.max_toflush);
   fprintf (out, "%*snum_toflush: %d,\n", indent, "", logwr_Gl.num_toflush);
   fprintf (out, "%*smode: %s,\n", indent, "", mode);
-  fprintf (out, "%*saction: %s,\n", indent, "", action);
+  fprintf (out, "%*saction: ", indent, "");
+  logwr_dump_logwr_action (out, logwr_Gl.action);
+  fprintf (out, ",\n");
 
   fprintf (out, "%*slast_chkpt_pageid: %lld,\n", indent, "", (long long) logwr_Gl.last_chkpt_pageid);
   fprintf (out, "%*slast_recv_pageid: %lld,\n", indent, "", (long long) logwr_Gl.last_recv_pageid);
@@ -3143,7 +3212,8 @@ logwr_dump_logwr_gl_topfields (FILE * out, int indent)
   fprintf (out, "%*slast_arv_page_range: {\n", indent, "");
   fprintf (out, "%*sfrom: %lld,\n", indent + 2, "", (long long) logwr_Gl.last_arv_fpageid);
   fprintf (out, "%*sto:   %lld,\n", indent + 2, "", (long long) logwr_Gl.last_arv_lpageid);
-  fprintf (out, "%*scount: %d\n", indent + 2, "", logwr_Gl.last_arv_num);
+  fprintf (out, "%*scount: %lld,\n", indent + 2, "", last_arv_page_count);
+  fprintf (out, "%*sarchive_num: %d\n", indent + 2, "", logwr_Gl.last_arv_num);
   fprintf (out, "%*s},\n\n", indent, "");
 
   fprintf (out, "%*sforce_flush: %s,\n", indent, "", logwr_Gl.force_flush ? "true" : "false");

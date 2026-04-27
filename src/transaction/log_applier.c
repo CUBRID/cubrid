@@ -8738,16 +8738,126 @@ la_delay_replica (time_t eot_time)
 }
 
 #if defined(CS_MODE)
+static const char *
+la_repl_filter_type_string (REPL_FILTER_TYPE type)
+{
+  switch (type)
+    {
+    case REPL_FILTER_NONE:
+      return "REPL_FILTER_NONE";
+    case REPL_FILTER_INCLUDE_TBL:
+      return "REPL_FILTER_INCLUDE_TBL";
+    case REPL_FILTER_EXCLUDE_TBL:
+      return "REPL_FILTER_EXCLUDE_TBL";
+    default:
+      return "UNKNOWN";
+    }
+}
+
+static void
+la_count_repl_lists (const LA_INFO * info, int *active_repl_count, int *long_repl_count, int *active_repl_item_count)
+{
+  *active_repl_count = 0;
+  *long_repl_count = 0;
+  *active_repl_item_count = 0;
+
+  if (info->repl_lists == NULL || info->repl_cnt <= 0)
+    {
+      return;
+    }
+
+  for (int i = 0; i < info->repl_cnt; i++)
+    {
+      LA_APPLY *apply = info->repl_lists[i];
+
+      if (apply == NULL)
+	{
+	  continue;
+	}
+
+      if (apply->tranid != 0 || apply->num_items > 0)
+	{
+	  (*active_repl_count)++;
+	  *active_repl_item_count += apply->num_items;
+	}
+
+      if (apply->is_long_trans)
+	{
+	  (*long_repl_count)++;
+	}
+    }
+}
+
+static void
+la_dump_repl_filter (FILE * out, const LA_REPL_FILTER * filter, int indent)
+{
+  int filter_count;
+
+  if (filter == NULL)
+    {
+      fprintf (out, "%*srepl_filter: NULL", indent, "");
+      return;
+    }
+
+  filter_count = filter->num_filters;
+  if (filter_count < 0)
+    {
+      filter_count = 0;
+    }
+  if (filter->list_size >= 0 && filter_count > filter->list_size)
+    {
+      filter_count = filter->list_size;
+    }
+  if (filter->list == NULL)
+    {
+      filter_count = 0;
+    }
+
+  fprintf (out, "%*srepl_filter: {\n", indent, "");
+  fprintf (out, "%*stype: %s,\n", indent + 2, "", la_repl_filter_type_string (filter->type));
+  fprintf (out, "%*slist_size: %d,\n", indent + 2, "", filter->list_size);
+  fprintf (out, "%*snum_filters: %d,\n", indent + 2, "", filter->num_filters);
+  fprintf (out, "%*sfilters: [\n", indent + 2, "");
+  for (int i = 0; i < filter_count; i++)
+    {
+      fprintf (out, "%*s\"%s\"%s\n", indent + 4, "", filter->list[i] != NULL ? filter->list[i] : "",
+	       (i + 1 < filter_count) ? "," : "");
+    }
+  fprintf (out, "%*s]\n", indent + 2, "");
+  fprintf (out, "%*s}", indent, "");
+}
+
 void
 la_dump_la_info (FILE * out)
 {
   int indent = 2;
   LA_INFO *info = &la_Info;
+  time_t now = time (NULL);
+  long delay_seconds;
+  long long apply_gap_pages;
+  long long commit_gap_pages;
+  long long required_gap_pages;
+  int active_repl_count;
+  int long_repl_count;
+  int active_repl_item_count;
 
   if (out == NULL)
     {
       out = stdout;
     }
+
+  delay_seconds =
+    (info->log_record_time > 0 && now >= info->log_record_time) ? (long) (now - info->log_record_time) : -1;
+  apply_gap_pages =
+    (info->append_lsa.pageid != NULL_PAGEID && info->final_lsa.pageid != NULL_PAGEID)
+    ? (long long) (info->append_lsa.pageid - info->final_lsa.pageid) : -1;
+  commit_gap_pages =
+    (info->final_lsa.pageid != NULL_PAGEID && info->committed_lsa.pageid != NULL_PAGEID)
+    ? (long long) (info->final_lsa.pageid - info->committed_lsa.pageid) : -1;
+  required_gap_pages =
+    (info->append_lsa.pageid != NULL_PAGEID && info->required_lsa.pageid != NULL_PAGEID)
+    ? (long long) (info->append_lsa.pageid - info->required_lsa.pageid) : -1;
+  la_count_repl_lists (info, &active_repl_count, &long_repl_count, &active_repl_item_count);
 
   /* apply_state */
   const char *apply_state = NULL;
@@ -8844,6 +8954,25 @@ la_dump_la_info (FILE * out)
   fprintf (out, "%*slog_path: %s,\n", indent, "", info->log_path);
   fprintf (out, "%*sloginf_path: %s,\n", indent, "", info->loginf_path);
 
+  fprintf (out, "%*ssupport_summary: {\n", indent, "");
+  fprintf (out, "%*sdump_time: %ld,\n", indent + 2, "", (long) now);
+  fprintf (out, "%*sdelay_seconds: %ld,\n", indent + 2, "", delay_seconds);
+  fprintf (out, "%*sapply_gap_pages: %lld,\n", indent + 2, "", apply_gap_pages);
+  fprintf (out, "%*scommit_gap_pages: %lld,\n", indent + 2, "", commit_gap_pages);
+  fprintf (out, "%*srequired_gap_pages: %lld,\n", indent + 2, "", required_gap_pages);
+  fprintf (out, "%*scur_repl: %d,\n", indent + 2, "", info->cur_repl);
+  fprintf (out, "%*sactive_repl_count: %d,\n", indent + 2, "", active_repl_count);
+  fprintf (out, "%*slong_repl_count: %d,\n", indent + 2, "", long_repl_count);
+  fprintf (out, "%*sactive_repl_item_count: %d,\n", indent + 2, "", active_repl_item_count);
+  fprintf (out, "%*stotal_rows: %d,\n", indent + 2, "", info->total_rows);
+  fprintf (out, "%*sprev_total_rows: %d,\n", indent + 2, "", info->prev_total_rows);
+  fprintf (out, "%*slog_record_time: %ld,\n", indent + 2, "", (long) info->log_record_time);
+  fprintf (out, "%*slog_commit_time: %ld,\n", indent + 2, "", (long) info->log_commit_time);
+  fprintf (out, "%*snum_unflushed: %d,\n", indent + 2, "", info->num_unflushed);
+  fprintf (out, "%*sapply_state: %s,\n", indent + 2, "", apply_state);
+  fprintf (out, "%*sstatus: %s\n", indent + 2, "", la_status);
+  fprintf (out, "%*s},\n\n", indent, "");
+
   la_dump_la_act_log (out, indent);
   fprintf (out, ",\n\n");
 
@@ -8853,6 +8982,7 @@ la_dump_la_info (FILE * out)
   fprintf (out, "%*slast_file_state: %s,\n", indent, "", last_file_state);
   fprintf (out, "%*sstart_vsize: %lu,\n", indent, "", info->start_vsize);
   fprintf (out, "%*sstart_time: %ld,\n", indent, "", (long) info->start_time);
+  fprintf (out, "%*slog_record_time: %ld,\n", indent, "", (long) info->log_record_time);
 
   /* lsa */
   fprintf (out, "%*sfinal_lsa: ", indent, "");
@@ -8877,6 +9007,12 @@ la_dump_la_info (FILE * out)
 
   /* replication lists */
   fprintf (out, "%*srepl_cnt: %d,\n", indent, "", info->repl_cnt);
+  fprintf (out, "%*scur_repl: %d,\n", indent, "", info->cur_repl);
+  fprintf (out, "%*sactive_repl_count: %d,\n", indent, "", active_repl_count);
+  fprintf (out, "%*slong_repl_count: %d,\n", indent, "", long_repl_count);
+  fprintf (out, "%*sactive_repl_item_count: %d,\n", indent, "", active_repl_item_count);
+  fprintf (out, "%*stotal_rows: %d,\n", indent, "", info->total_rows);
+  fprintf (out, "%*sprev_total_rows: %d,\n", indent, "", info->prev_total_rows);
   la_dump_la_apply_list (out, indent);
   fprintf (out, ",\n\n");
 
@@ -8938,7 +9074,8 @@ la_dump_la_info (FILE * out)
   fprintf (out, "%*sdb_lockf_vdes: %d,\n", indent, "", info->db_lockf_vdes);
 
   /* repl_filter */
-  fprintf (out, "%*srepl_filter: %p,\n", indent, "", (void *) &info->repl_filter);
+  la_dump_repl_filter (out, &info->repl_filter, indent);
+  fprintf (out, ",\n");
 
   fprintf (out, "%*sreinit_copylog: %s,\n", indent, "", info->reinit_copylog ? "true" : "false");
   fprintf (out, "%*smaxslotted_reclength: %d\n", indent, "", info->maxslotted_reclength);
