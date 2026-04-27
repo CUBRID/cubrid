@@ -4276,9 +4276,16 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
       current_log_page = la_get_page (current_lsa.pageid);
       current_log_record = LOG_GET_LOG_RECORD_HEADER (current_log_page, &current_lsa);
 
-      if (current_log_record->trid != log_record->trid || current_log_record->type == LOG_DUMMY_OVF_RECORD
-	  || current_log_record->type == LOG_DUMMY_OOS_RECORD)
+      if (current_log_record->trid != log_record->trid || current_log_record->type == LOG_DUMMY_OVF_RECORD)
 	{
+	  la_release_page_buffer (current_lsa.pageid);
+	  break;
+	}
+
+      if (current_log_record->type == LOG_DUMMY_OOS_RECORD)
+	{
+	  /* OOS dummy markers must be handled by the OOS rebuild path, not by overflow recovery. */
+	  assert (false);
 	  la_release_page_buffer (current_lsa.pageid);
 	  break;
 	}
@@ -4479,6 +4486,8 @@ la_append_oos_chunk (LA_OOS_CHUNK ** chunks, int *chunk_count, int *chunk_capaci
  *   Multi-chunk OOS chunks are logged from tail to head. This function follows
  *   the log chain from the first logged chunk, validates every OOS chunk, and
  *   rebuilds a single OOS record for the applier.
+ *   On error, recdes may be partially initialized and must not be consumed by
+ *   the caller.
  */
 static int
 la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
@@ -5714,13 +5723,14 @@ la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
   error = la_repl_add_object (class_obj, item, recdes);
 
 end:
-  if (error == NO_ERROR && rebuild_oos)
+  if (rebuild_oos)
     {
       apply->need_oos_rebuild = false;
     }
 
   if (error != NO_ERROR)
     {
+      la_Info.pending_oos_flush = false;
       la_log_apply_error ("apply_insert", ER_HA_LA_FAILED_TO_APPLY_INSERT, item, error);
     }
   else
