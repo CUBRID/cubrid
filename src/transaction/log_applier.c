@@ -258,6 +258,11 @@ struct la_oos_sql_log_cache_entry
 {
   LA_OOS_SQL_LOG_CACHE_ENTRY *next;
 
+  /* Owning transaction id.  Resolves cross-transaction OID collisions when the
+   * master rapidly reuses the same OOS slot inside a SYSOP_END boundary that
+   * keeps the cache alive across mini-batches. */
+  int tranid;
+
   OID chunk_oid;
   OID next_chunk_oid;
   int length;
@@ -439,6 +444,12 @@ LA_RECDES_POOL la_recdes_pool;
 
 static LA_OOS_SQL_LOG_CACHE_ENTRY *la_Oos_sql_log_cache_head = NULL;
 static LA_OOS_SQL_LOG_CACHE_ENTRY *la_Oos_sql_log_cache_tail = NULL;
+
+/* Tranid currently being processed by la_apply_repl_log; scopes OOS sql.log
+ * cache lookups to the current transaction so that a stale entry surviving
+ * across LOG_SYSOP_END boundaries cannot be matched by a different transaction
+ * that happens to land on the same chunk OID. */
+static int la_Oos_sql_log_current_tranid = NULL_TRAN_INDEX;
 
 static bool la_applier_need_shutdown = false;
 static bool la_applier_shutdown_by_signal = false;
@@ -3590,6 +3601,13 @@ la_get_raw_offset_internal (OR_BUF * buf, int *error, int offset_size)
     }
 }
 
+/*
+ * la_find_oos_sql_log_cache_entry () - Look up a cached OOS chunk by
+ *   (current tranid, OID).  Filtering on tranid prevents a stale entry from a
+ *   previous transaction (which can survive across LOG_SYSOP_END mini-batches
+ *   that intentionally keep the cache alive) from masquerading as the current
+ *   transaction's chunk when the master rapidly recycles the same OOS slot OID.
+ */
 static LA_OOS_SQL_LOG_CACHE_ENTRY *
 la_find_oos_sql_log_cache_entry (const OID * chunk_oid)
 {
@@ -3602,7 +3620,7 @@ la_find_oos_sql_log_cache_entry (const OID * chunk_oid)
 
   while (entry != NULL)
     {
-      if (OID_EQ (&entry->chunk_oid, chunk_oid))
+      if (entry->tranid == la_Oos_sql_log_current_tranid && OID_EQ (&entry->chunk_oid, chunk_oid))
 	{
 	  return entry;
 	}
@@ -3799,8 +3817,7 @@ la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes)
   if (entry == NULL)
     {
       db_private_free_and_init (NULL, payload_data);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (LA_OOS_SQL_LOG_CACHE_ENTRY));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LA_OOS_SQL_LOG_CACHE_ENTRY));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -3809,6 +3826,7 @@ la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes)
       db_private_free_and_init (NULL, entry->data);
     }
 
+  entry->tranid = la_Oos_sql_log_current_tranid;
   entry->chunk_oid = chunk_oid;
   entry->next_chunk_oid = oos_header.next_chunk_oid;
   entry->length = payload_length;
@@ -6612,6 +6630,12 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
     {
       return NO_ERROR;
     }
+
+  /* Scope subsequent OOS sql.log cache lookups (la_cache_*, la_find_*, la_resolve_*)
+   * to this transaction.  The cache itself may legitimately survive across
+   * LOG_SYSOP_END mini-batches, but a stale entry from a previous transaction
+   * with the same chunk OID must not be matched by the current one. */
+  la_Oos_sql_log_current_tranid = tranid;
 
   if (rectype == LOG_ABORT)
     {
