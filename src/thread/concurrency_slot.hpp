@@ -56,7 +56,7 @@ namespace cubthread
 
     private:
       concurrency_slot_publisher *m_publisher;
-      void *m_identifier;
+      void *m_identifier; // currently used only as a worker_pool type
   };
 
   class concurrency_slot_publisher
