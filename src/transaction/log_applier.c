@@ -59,6 +59,7 @@
 #include "network_interface_cl.h"
 #include "schema_system_catalog_constants.h"
 #include "file_io.h"
+#include "memory_alloc.h"
 #include "memory_hash.h"
 #include "schema_manager.h"
 #include "log_applier_sql_log.h"
@@ -252,6 +253,21 @@ struct la_item
   LOG_LSA target_lsa;		/* the LSA of the target log record */
 };
 
+typedef struct la_oos_sql_log_cache_entry LA_OOS_SQL_LOG_CACHE_ENTRY;
+struct la_oos_sql_log_cache_entry
+{
+  LA_OOS_SQL_LOG_CACHE_ENTRY *next;
+
+  char *class_name;
+  int packed_key_value_length;
+  char *packed_key_value;
+
+  int length;
+  char *data;
+  int total_size;
+  int chunk_index;
+};
+
 typedef struct la_apply LA_APPLY;
 struct la_apply
 {
@@ -423,6 +439,9 @@ LA_INFO la_Info;
 
 LA_RECDES_POOL la_recdes_pool;
 
+static LA_OOS_SQL_LOG_CACHE_ENTRY *la_Oos_sql_log_cache_head = NULL;
+static LA_OOS_SQL_LOG_CACHE_ENTRY *la_Oos_sql_log_cache_tail = NULL;
+
 static bool la_applier_need_shutdown = false;
 static bool la_applier_shutdown_by_signal = false;
 static char la_slave_db_name[DB_MAX_IDENTIFIER_LENGTH + 1];
@@ -501,6 +520,8 @@ static void la_clear_all_repl_and_commit_list (void);
 static int la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa);
 static int la_add_node_into_la_commit_list (int tranid, LOG_LSA * lsa, int type, time_t eot_time);
 static time_t la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa);
+static int la_cache_oos_sql_log_recdes (LA_ITEM * item, RECDES * recdes);
+static void la_clear_oos_sql_log_cache (void);
 static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, DB_VALUE * key,
 			   int offset_size);
 static void la_make_room_for_mvcc_insid (RECDES * recdes);
@@ -3550,6 +3571,109 @@ la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa)
   return donetime->at_time;
 }
 
+static void
+la_free_oos_sql_log_cache_entry (LA_OOS_SQL_LOG_CACHE_ENTRY * entry)
+{
+  if (entry == NULL)
+    {
+      return;
+    }
+
+  if (entry->class_name != NULL)
+    {
+      free_and_init (entry->class_name);
+    }
+  if (entry->packed_key_value != NULL)
+    {
+      free_and_init (entry->packed_key_value);
+    }
+  if (entry->data != NULL)
+    {
+      db_private_free_and_init (NULL, entry->data);
+    }
+
+  free_and_init (entry);
+}
+
+static void
+la_clear_oos_sql_log_cache (void)
+{
+  LA_OOS_SQL_LOG_CACHE_ENTRY *entry = la_Oos_sql_log_cache_head;
+  LA_OOS_SQL_LOG_CACHE_ENTRY *next_entry = NULL;
+
+  while (entry != NULL)
+    {
+      next_entry = entry->next;
+      la_free_oos_sql_log_cache_entry (entry);
+      entry = next_entry;
+    }
+
+  la_Oos_sql_log_cache_head = NULL;
+  la_Oos_sql_log_cache_tail = NULL;
+}
+
+static int
+la_cache_oos_sql_log_recdes (LA_ITEM * item, RECDES * recdes)
+{
+  LA_OOS_SQL_LOG_CACHE_ENTRY *entry = NULL;
+  OOS_RECORD_HEADER oos_header;
+  size_t class_name_length;
+  int payload_length;
+
+  if (item == NULL || item->class_name == NULL || item->packed_key_value == NULL || recdes == NULL
+      || recdes->data == NULL || recdes->length <= OOS_RECORD_HEADER_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "invalid OOS record for SQL log");
+      return ER_FAILED;
+    }
+
+  memcpy (&oos_header, recdes->data, OOS_RECORD_HEADER_SIZE);
+
+  entry = (LA_OOS_SQL_LOG_CACHE_ENTRY *) malloc (sizeof (LA_OOS_SQL_LOG_CACHE_ENTRY));
+  if (entry == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (LA_OOS_SQL_LOG_CACHE_ENTRY));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memset (entry, 0, sizeof (LA_OOS_SQL_LOG_CACHE_ENTRY));
+
+  class_name_length = strlen (item->class_name) + 1;
+  entry->class_name = (char *) malloc (class_name_length);
+  entry->packed_key_value = (char *) malloc (item->packed_key_value_length);
+  payload_length = recdes->length - OOS_RECORD_HEADER_SIZE;
+  entry->data = (char *) db_private_alloc (NULL, payload_length);
+
+  if (entry->class_name == NULL || entry->packed_key_value == NULL || entry->data == NULL)
+    {
+      la_free_oos_sql_log_cache_entry (entry);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      class_name_length + item->packed_key_value_length + payload_length);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  memcpy (entry->class_name, item->class_name, class_name_length);
+  entry->packed_key_value_length = item->packed_key_value_length;
+  memcpy (entry->packed_key_value, item->packed_key_value, item->packed_key_value_length);
+  entry->length = payload_length;
+  memcpy (entry->data, recdes->data + OOS_RECORD_HEADER_SIZE, payload_length);
+  entry->total_size = oos_header.total_size;
+  entry->chunk_index = oos_header.chunk_index;
+
+  if (la_Oos_sql_log_cache_tail == NULL)
+    {
+      la_Oos_sql_log_cache_head = entry;
+      la_Oos_sql_log_cache_tail = entry;
+    }
+  else
+    {
+      la_Oos_sql_log_cache_tail->next = entry;
+      la_Oos_sql_log_cache_tail = entry;
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * la_get_current()
  *   return: NO_ERROR or error code
@@ -5721,7 +5845,14 @@ la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
       int ret;
 
       er_stack_push ();
-      ret = la_write_insert_sql_log (item, class_obj, recdes);
+      if (item->item_type == RVREPL_OOS_INSERT)
+	{
+	  ret = la_cache_oos_sql_log_recdes (item, recdes);
+	}
+      else
+	{
+	  ret = la_write_insert_sql_log (item, class_obj, recdes);
+	}
       er_stack_pop ();
       if (ret != NO_ERROR)
 	{
@@ -6114,6 +6245,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 
   if (rectype == LOG_ABORT)
     {
+      la_clear_oos_sql_log_cache ();
       la_clear_applied_info (apply);
       return NO_ERROR;
     }
@@ -6129,6 +6261,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 	  la_clear_applied_info (apply);
 	}
 
+      la_clear_oos_sql_log_cache ();
       return NO_ERROR;
     }
 
@@ -6262,6 +6395,11 @@ end:
   else
     {
       la_clear_applied_info (apply);
+    }
+
+  if (!(rectype == LOG_SYSOP_END && has_more_commit_items))
+    {
+      la_clear_oos_sql_log_cache ();
     }
 
   return error;
