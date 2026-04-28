@@ -520,13 +520,16 @@ static void la_clear_all_repl_and_commit_list (void);
 static int la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa);
 static int la_add_node_into_la_commit_list (int tranid, LOG_LSA * lsa, int type, time_t eot_time);
 static time_t la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa);
+static int la_get_raw_offset_internal (OR_BUF * buf, int *error, int offset_size);
 static int la_cache_oos_sql_log_recdes (LA_ITEM * item, RECDES * recdes);
+static int la_consume_oos_sql_log_recdes (LA_ITEM * item, RECDES * recdes, int *total_size, int *chunk_index);
 static void la_clear_oos_sql_log_cache (void);
-static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, DB_VALUE * key,
+static int la_make_synthetic_oos_sql_log_value (DB_VALUE * value, SM_ATTRIBUTE * att, DB_BIGINT oos_length);
+static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, LA_ITEM * item,
 			   int offset_size);
 static void la_make_room_for_mvcc_insid (RECDES * recdes);
 static void la_make_room_for_mvcc_delid_and_prev_ver (RECDES * recdes);
-static int la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, DB_VALUE * key);
+static int la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, LA_ITEM * item);
 static char *la_get_zipped_data (char *undo_data, int undo_length, bool is_diff, bool is_undo_zip, bool is_overflow,
 				 char **rec_type, char **data, int *length);
 static int la_get_undoredo_diff (LOG_PAGE ** pgptr, LOG_PAGEID * pageid, PGLENGTH * offset, bool * is_undo_zip,
@@ -3571,6 +3574,39 @@ la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa)
   return donetime->at_time;
 }
 
+static int
+la_get_raw_offset_internal (OR_BUF * buf, int *error, int offset_size)
+{
+  if (offset_size == OR_BYTE_SIZE)
+    {
+      return or_get_byte (buf, error);
+    }
+  else if (offset_size == OR_SHORT_SIZE)
+    {
+      return or_get_short (buf, error);
+    }
+  else
+    {
+      assert (offset_size == OR_INT_SIZE);
+      return or_get_int (buf, error);
+    }
+}
+
+static bool
+la_oos_sql_log_cache_entry_matches (LA_OOS_SQL_LOG_CACHE_ENTRY * entry, LA_ITEM * item)
+{
+  assert (entry != NULL);
+
+  if (item == NULL || item->class_name == NULL || item->packed_key_value == NULL)
+    {
+      return false;
+    }
+
+  return entry->packed_key_value_length == item->packed_key_value_length
+    && strcmp (entry->class_name, item->class_name) == 0
+    && memcmp (entry->packed_key_value, item->packed_key_value, item->packed_key_value_length) == 0;
+}
+
 static void
 la_free_oos_sql_log_cache_entry (LA_OOS_SQL_LOG_CACHE_ENTRY * entry)
 {
@@ -3674,6 +3710,104 @@ la_cache_oos_sql_log_recdes (LA_ITEM * item, RECDES * recdes)
   return NO_ERROR;
 }
 
+static int
+la_consume_oos_sql_log_recdes (LA_ITEM * item, RECDES * recdes, int *total_size, int *chunk_index)
+{
+  LA_OOS_SQL_LOG_CACHE_ENTRY *entry = la_Oos_sql_log_cache_head;
+  LA_OOS_SQL_LOG_CACHE_ENTRY *prev_entry = NULL;
+
+  while (entry != NULL && !la_oos_sql_log_cache_entry_matches (entry, item))
+    {
+      prev_entry = entry;
+      entry = entry->next;
+    }
+
+  if (entry == NULL)
+    {
+      entry = la_Oos_sql_log_cache_head;
+      prev_entry = NULL;
+    }
+
+  if (entry == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "cannot find OOS data for SQL log");
+      return ER_FAILED;
+    }
+
+  if (prev_entry == NULL)
+    {
+      la_Oos_sql_log_cache_head = entry->next;
+    }
+  else
+    {
+      prev_entry->next = entry->next;
+    }
+
+  if (la_Oos_sql_log_cache_tail == entry)
+    {
+      la_Oos_sql_log_cache_tail = prev_entry;
+    }
+
+  recdes->area_size = entry->length;
+  recdes->length = entry->length;
+  recdes->type = REC_HOME;
+  recdes->data = entry->data;
+  *total_size = entry->total_size;
+  *chunk_index = entry->chunk_index;
+  entry->data = NULL;
+
+  la_free_oos_sql_log_cache_entry (entry);
+  return NO_ERROR;
+}
+
+static int
+la_make_synthetic_oos_sql_log_value (DB_VALUE * value, SM_ATTRIBUTE * att, DB_BIGINT oos_length)
+{
+  DB_TYPE type;
+  int string_length;
+  int precision;
+  char *string = NULL;
+
+  assert (value != NULL && att != NULL);
+
+  type = TP_DOMAIN_TYPE (att->domain);
+  if (type != DB_TYPE_STRING)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      "cannot synthesize non-string OOS data for SQL log");
+      return ER_FAILED;
+    }
+
+  if (oos_length <= 0 || oos_length > INT_MAX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "invalid OOS data length for SQL log");
+      return ER_FAILED;
+    }
+
+  string_length = (int) oos_length;
+  precision = att->domain != NULL ? att->domain->precision : DB_MAX_VARCHAR_PRECISION;
+  if (precision > 0 && precision < string_length)
+    {
+      string_length = precision;
+    }
+
+  string = (char *) db_private_alloc (NULL, string_length + 1);
+  if (string == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, string_length + 1);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  memset (string, ' ', string_length);
+  string[string_length] = '\0';
+
+  db_make_varchar (value, precision, string, string_length, TP_DOMAIN_CODESET (att->domain),
+		   TP_DOMAIN_COLLATION (att->domain));
+  value->need_clear = true;
+
+  return NO_ERROR;
+}
+
 /*
  * la_get_current()
  *   return: NO_ERROR or error code
@@ -3683,11 +3817,14 @@ la_cache_oos_sql_log_recdes (LA_ITEM * item, RECDES * recdes)
  *     call dbt_put_internal() for update...
  */
 static int
-la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, DB_VALUE * key, int offset_size)
+la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, LA_ITEM * item,
+		int offset_size)
 {
   SM_ATTRIBUTE *att;
   int *vars = NULL;
+  bool *vars_oos = NULL;
   int i, j, offset, offset2, pad;
+  int raw_offset, raw_offset2;
   char *bits, *start, *v_start;
   int rc = NO_ERROR;
   DB_VALUE value;
@@ -3702,12 +3839,26 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
 		  DB_SIZEOF (int) * sm_class->variable_count);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-      offset = or_get_offset_internal (buf, &rc, offset_size);
+
+      vars_oos = (bool *) malloc (DB_SIZEOF (bool) * sm_class->variable_count);
+      if (vars_oos == NULL)
+	{
+	  free_and_init (vars);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  DB_SIZEOF (bool) * sm_class->variable_count);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      raw_offset = la_get_raw_offset_internal (buf, &rc, offset_size);
+      offset = OR_GET_VAR_OFFSET (raw_offset);
       for (i = 0; i < sm_class->variable_count; i++)
 	{
-	  offset2 = or_get_offset_internal (buf, &rc, offset_size);
+	  raw_offset2 = la_get_raw_offset_internal (buf, &rc, offset_size);
+	  offset2 = OR_GET_VAR_OFFSET (raw_offset2);
 	  vars[i] = offset2 - offset;
+	  vars_oos[i] = OR_IS_OOS (raw_offset);
 	  offset = offset2;
+	  raw_offset = raw_offset2;
 	}
       buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
@@ -3746,6 +3897,10 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
 	    {
 	      free_and_init (vars);
 	    }
+	  if (vars_oos != NULL)
+	    {
+	      free_and_init (vars_oos);
+	    }
 	  return error;
 	}
     }
@@ -3768,7 +3923,70 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
   for (i = sm_class->fixed_count, j = 0; i < sm_class->att_count && j < sm_class->variable_count;
        i++, j++, att = (SM_ATTRIBUTE *) att->header.next)
     {
-      att->type->data_readval (buf, &value, att->domain, vars[j], true, NULL, 0);
+      if (vars_oos[j])
+	{
+	  RECDES oos_recdes = { -1, -1, REC_HOME, NULL };
+	  OR_BUF oos_buf;
+	  OR_BUF inline_buf;
+	  OID oos_oid;
+	  DB_BIGINT oos_length = 0;
+	  int oos_total_size = 0;
+	  int oos_chunk_index = 0;
+
+	  if (vars[j] >= OR_OOS_INLINE_SIZE)
+	    {
+	      or_init (&inline_buf, buf->ptr, vars[j]);
+	      or_get_oid (&inline_buf, &oos_oid);
+	      oos_length = or_get_bigint (&inline_buf, &error);
+	      if (error != NO_ERROR)
+		{
+		  free_and_init (vars);
+		  free_and_init (vars_oos);
+		  return error;
+		}
+	    }
+
+	  error = la_consume_oos_sql_log_recdes (item, &oos_recdes, &oos_total_size, &oos_chunk_index);
+	  if (error != NO_ERROR)
+	    {
+	      free_and_init (vars);
+	      free_and_init (vars_oos);
+	      return error;
+	    }
+
+	  if (oos_chunk_index == 0 && oos_recdes.length == oos_total_size)
+	    {
+	      or_init (&oos_buf, oos_recdes.data, oos_recdes.length);
+	      error = att->type->data_readval (&oos_buf, &value, att->domain, oos_recdes.length, true, NULL, 0);
+	    }
+	  else
+	    {
+	      /* RVREPL_OOS_INSERT may point to one physical OOS chunk instead of the complete disk value.
+	       * Keep SQL log sizing/rotation consistent with the original large string using the inline OOS length. */
+	      if (oos_length <= 0)
+		{
+		  oos_length = oos_total_size;
+		}
+	      error = la_make_synthetic_oos_sql_log_value (&value, att, oos_length);
+	    }
+	  recdes_free_data_area (&oos_recdes);
+	  if (error != NO_ERROR)
+	    {
+	      free_and_init (vars);
+	      free_and_init (vars_oos);
+	      return error;
+	    }
+	}
+      else
+	{
+	  error = att->type->data_readval (buf, &value, att->domain, vars[j], true, NULL, 0);
+	  if (error != NO_ERROR)
+	    {
+	      free_and_init (vars);
+	      free_and_init (vars_oos);
+	      return error;
+	    }
+	}
       v_start += vars[j];
       buf->ptr = v_start;
 
@@ -3778,6 +3996,7 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
       if (error != NO_ERROR)
 	{
 	  free_and_init (vars);
+	  free_and_init (vars_oos);
 	  return error;
 	}
     }
@@ -3785,6 +4004,10 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
   if (vars != NULL)
     {
       free_and_init (vars);
+    }
+  if (vars_oos != NULL)
+    {
+      free_and_init (vars_oos);
     }
 
   return error;
@@ -3860,7 +4083,7 @@ la_make_room_for_mvcc_delid_and_prev_ver (RECDES * recdes)
  *     call dbt_put_internal() for update...
  */
 static int
-la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, DB_VALUE * key)
+la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, LA_ITEM * item)
 {
   OR_BUF orep, *buf;
   SM_CLASS *sm_class;
@@ -3916,7 +4139,7 @@ la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, DB_VALUE * key)
 
   bound_bit_flag = repid_bits & OR_BOUND_BIT_FLAG;
 
-  error = la_get_current (buf, sm_class, bound_bit_flag, def, key, offset_size);
+  error = la_get_current (buf, sm_class, bound_bit_flag, def, item, offset_size);
 
   if (error == NO_ERROR && buf->ptr > buf->endptr)
     {
@@ -5490,7 +5713,7 @@ la_write_update_sql_log (LA_ITEM * item, DB_OBJECT * class_obj, RECDES * recdes)
 
   key = la_get_item_pk_value (item);
 
-  if (la_disk_to_obj (mclass, recdes, inst_tp, key) != NO_ERROR)
+  if (la_disk_to_obj (mclass, recdes, inst_tp, item) != NO_ERROR)
     {
       ret = ER_FAILED;
       goto end;
@@ -5692,7 +5915,7 @@ la_write_insert_sql_log (LA_ITEM * item, DB_OBJECT * class_obj, RECDES * recdes)
   key = la_get_item_pk_value (item);
 
   /* make object using the record description */
-  if (la_disk_to_obj (mclass, recdes, inst_tp, key) != NO_ERROR)
+  if (la_disk_to_obj (mclass, recdes, inst_tp, item) != NO_ERROR)
     {
       ret = ER_FAILED;
       goto end;
