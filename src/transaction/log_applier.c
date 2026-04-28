@@ -523,11 +523,11 @@ static int la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES
 static int la_resolve_oos_sql_log_recdes (const OID * head_oid, int total_size, RECDES * recdes);
 static void la_clear_oos_sql_log_cache (void);
 static int la_make_synthetic_oos_sql_log_value (DB_VALUE * value, SM_ATTRIBUTE * att, DB_BIGINT oos_length);
-static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, LA_ITEM * item,
+static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, DB_VALUE * key,
 			   int offset_size);
 static void la_make_room_for_mvcc_insid (RECDES * recdes);
 static void la_make_room_for_mvcc_delid_and_prev_ver (RECDES * recdes);
-static int la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, LA_ITEM * item);
+static int la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, DB_VALUE * key);
 static char *la_get_zipped_data (char *undo_data, int undo_length, bool is_diff, bool is_undo_zip, bool is_overflow,
 				 char **rec_type, char **data, int *length);
 static int la_get_undoredo_diff (LOG_PAGE ** pgptr, LOG_PAGEID * pageid, PGLENGTH * offset, bool * is_undo_zip,
@@ -3917,8 +3917,7 @@ la_make_synthetic_oos_sql_log_value (DB_VALUE * value, SM_ATTRIBUTE * att, DB_BI
  *     call dbt_put_internal() for update...
  */
 static int
-la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, LA_ITEM * item,
-		int offset_size)
+la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, DB_VALUE * key, int offset_size)
 {
   SM_ATTRIBUTE *att;
   int *vars = NULL;
@@ -3929,8 +3928,6 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
   int rc = NO_ERROR;
   DB_VALUE value;
   int error = NO_ERROR;
-
-  (void) item;
 
   if (sm_class->variable_count)
     {
@@ -4184,7 +4181,7 @@ la_make_room_for_mvcc_delid_and_prev_ver (RECDES * recdes)
  *     call dbt_put_internal() for update...
  */
 static int
-la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, LA_ITEM * item)
+la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, DB_VALUE * key)
 {
   OR_BUF orep, *buf;
   SM_CLASS *sm_class;
@@ -4240,7 +4237,7 @@ la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, LA_ITEM * item)
 
   bound_bit_flag = repid_bits & OR_BOUND_BIT_FLAG;
 
-  error = la_get_current (buf, sm_class, bound_bit_flag, def, item, offset_size);
+  error = la_get_current (buf, sm_class, bound_bit_flag, def, key, offset_size);
 
   if (error == NO_ERROR && buf->ptr > buf->endptr)
     {
@@ -5814,7 +5811,7 @@ la_write_update_sql_log (LA_ITEM * item, DB_OBJECT * class_obj, RECDES * recdes)
 
   key = la_get_item_pk_value (item);
 
-  if (la_disk_to_obj (mclass, recdes, inst_tp, item) != NO_ERROR)
+  if (la_disk_to_obj (mclass, recdes, inst_tp, key) != NO_ERROR)
     {
       ret = ER_FAILED;
       goto end;
@@ -6016,7 +6013,7 @@ la_write_insert_sql_log (LA_ITEM * item, DB_OBJECT * class_obj, RECDES * recdes)
   key = la_get_item_pk_value (item);
 
   /* make object using the record description */
-  if (la_disk_to_obj (mclass, recdes, inst_tp, item) != NO_ERROR)
+  if (la_disk_to_obj (mclass, recdes, inst_tp, key) != NO_ERROR)
     {
       ret = ER_FAILED;
       goto end;
