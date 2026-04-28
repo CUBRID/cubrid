@@ -37,9 +37,7 @@ namespace parallel_scan
       using interrupt = parallel_query::interrupt;
       using err_messages_with_lock = parallel_query::err_messages_with_lock;
 
-      /* Per-worker slice into the shared m_sector_info arrays.
-       * [start, end) is the exclusive range of sector indices assigned to this worker;
-       * iter advances from start toward end as sectors are consumed. */
+      /* [start, end) into m_sector_info; iter advances as sectors are consumed. */
       struct worker_slice
       {
 	int start;
@@ -58,14 +56,16 @@ namespace parallel_scan
       }
 
       int init_on_main (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, int parallelism);
-      SCAN_CODE get_next_vpid_with_fix (THREAD_ENTRY *thread_p, VPID *vpid);
+
+      /* Single READ-latch fix; ownership of out_page transfers to caller on S_SUCCESS. */
+      SCAN_CODE get_next_page_with_fix (THREAD_ENTRY *thread_p,
+					PAGE_PTR &out_page,
+					QMGR_TEMP_FILE *&out_tfile);
+
       int initialize (THREAD_ENTRY *thread_p, HFID *hfid, SCAN_ID *scan_id);
       int finalize (THREAD_ENTRY *thread_p);
 
-      /* Release sector_info storage owned by this handler.  Must be called by
-       * the owning manager before destruction (see px_scan.cpp ~manager()),
-       * because the implicit destructor cannot pass THREAD_ENTRY to the
-       * underlying db_private_free path.  Idempotent. */
+      /* Manager must call before destruction (implicit dtor lacks THREAD_ENTRY). Idempotent. */
       void cleanup_on_main (THREAD_ENTRY *thread_p);
 
       QFILE_LIST_ID *get_list_id ()
@@ -73,22 +73,8 @@ namespace parallel_scan
 	return m_list_id;
       }
 
-      /* Returns the tfile that owns the page most recently handed out by
-       * get_next_vpid_with_fix().  Callers (e.g. px_scan_task) must pass
-       * this to slot_iterator_list::set_page() so that page fix/free
-       * always uses the correct per-page tfile. */
-      QMGR_TEMP_FILE *get_current_tfile () const
-      {
-	return m_tl_current_tfile;
-      }
-
     private:
-      /* Shared sector data collected in init_on_main (one entry per sector
-       * across the base list and all dependent_list_id chains). */
       QFILE_LIST_SECTOR_INFO m_sector_info;
-
-      /* Worker slices: m_worker_slices[i] holds the [start,end) sector range
-       * assigned to worker i. */
       std::vector<worker_slice> m_worker_slices;
       std::atomic_int m_worker_slice_idx;
 
@@ -96,7 +82,6 @@ namespace parallel_scan
       interrupt *m_interrupt_p;
       err_messages_with_lock *m_err_messages_p;
 
-      /* Thread-local state — one copy per OS thread that calls initialize(). */
       thread_local static worker_slice *m_tl_slice;
       thread_local static UINT64 m_tl_bitmap;
       thread_local static VSID m_tl_vsid;

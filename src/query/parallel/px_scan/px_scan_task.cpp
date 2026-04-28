@@ -592,7 +592,17 @@ namespace parallel_scan
 	      }
 	    break;
 	  }
-	scan_code = m_input_handler->get_next_vpid_with_fix (&thread_ref, &vpid);
+	/* LIST: single-fix (READ) — handler hands page to iterator. HEAP/INDEX: vpid + caller fixes. */
+	PAGE_PTR list_page = nullptr;
+	QMGR_TEMP_FILE *list_tfile = nullptr;
+	if constexpr (ST == SCAN_TYPE::LIST)
+	  {
+	    scan_code = m_input_handler->get_next_page_with_fix (&thread_ref, list_page, list_tfile);
+	  }
+	else
+	  {
+	    scan_code = m_input_handler->get_next_vpid_with_fix (&thread_ref, &vpid);
+	  }
 	if (scan_code == S_END)
 	  {
 	    m_xasl->curr_spec->s_id.position = S_AFTER;
@@ -617,7 +627,7 @@ namespace parallel_scan
 
 	if constexpr (ST == SCAN_TYPE::LIST)
 	  {
-	    set_page_err = m_slot_iterator.set_page (&thread_ref, &vpid, m_input_handler->get_current_tfile ());
+	    set_page_err = m_slot_iterator.set_page (&thread_ref, list_page, list_tfile);
 	  }
 	else
 	  {

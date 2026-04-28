@@ -63,7 +63,7 @@ namespace parallel_scan
     m_rest_regu_list = llsidp->rest_regu_list;
     m_tplrecp = llsidp->tplrecp;
     m_list_id = llsidp->list_id;
-    m_curr_tfile = nullptr;   /* set on first set_page call, not here */
+    m_curr_tfile = nullptr;
     m_val_list = scan_id->val_list;
     m_vd = vd;
     m_scan_stats = &scan_id->scan_stats;
@@ -92,23 +92,17 @@ namespace parallel_scan
   }
 
   int
-  slot_iterator_list::set_page (THREAD_ENTRY *thread_p, VPID *vpid, QMGR_TEMP_FILE *tfile)
+  slot_iterator_list::set_page (THREAD_ENTRY *thread_p, PAGE_PTR page, QMGR_TEMP_FILE *tfile)
   {
+    /* Free previous page with its own tfile, then adopt the new fix. */
     if (m_curr_pgptr != nullptr)
       {
 	qmgr_free_old_page (thread_p, m_curr_pgptr, m_curr_tfile);
 	m_curr_pgptr = nullptr;
       }
 
+    m_curr_pgptr = page;
     m_curr_tfile = tfile;
-
-    /* Fix new page */
-    m_curr_pgptr = qmgr_get_old_page (thread_p, vpid, m_curr_tfile);
-    if (m_curr_pgptr == nullptr)
-      {
-	return ER_FAILED;
-      }
-
     m_curr_tpl = (char *) m_curr_pgptr + QFILE_PAGE_HEADER_SIZE;
     m_curr_tplno = 0;
     m_tuple_count = QFILE_GET_TUPLE_COUNT (m_curr_pgptr);
@@ -125,7 +119,6 @@ namespace parallel_scan
       {
 	QFILE_TUPLE tpl;
 
-	/* Handle overflow tuples: if page has an overflow page, use qfile_get_tuple */
 	if (has_overflow_page)
 	  {
 	    if (qfile_get_tuple (thread_p, m_curr_pgptr, m_curr_tpl, &m_tplrec, m_list_id) != NO_ERROR)
@@ -139,11 +132,9 @@ namespace parallel_scan
 	    tpl = m_curr_tpl;
 	  }
 
-	/* Advance tuple pointer for next call */
 	m_curr_tpl += QFILE_GET_TUPLE_LENGTH (m_curr_tpl);
 	m_curr_tplno++;
 
-	/* Fetch predicate values from tuple */
 	if (m_val_list)
 	  {
 	    if (fetch_val_list (thread_p, m_scan_pred.regu_list, m_vd, nullptr, nullptr, tpl, PEEK) != NO_ERROR)
@@ -157,7 +148,6 @@ namespace parallel_scan
 	    m_scan_stats->read_rows++;
 	  }
 
-	/* Evaluate predicate */
 	ev_res = V_TRUE;
 	if (m_scan_pred.pr_eval_fnc && m_scan_pred.pred_expr)
 	  {
@@ -178,7 +168,6 @@ namespace parallel_scan
 	    m_scan_stats->qualified_rows++;
 	  }
 
-	/* Fetch rest values */
 	if (m_val_list && m_rest_regu_list)
 	  {
 	    if (fetch_val_list (thread_p, m_rest_regu_list, m_vd, nullptr, nullptr, tpl, PEEK) != NO_ERROR)
@@ -187,7 +176,6 @@ namespace parallel_scan
 	      }
 	  }
 
-	/* Set output tplrec pointer */
 	if (m_tplrecp)
 	  {
 	    m_tplrecp->tpl = tpl;

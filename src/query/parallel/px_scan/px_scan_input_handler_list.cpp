@@ -34,11 +34,8 @@
 
 namespace parallel_scan
 {
-  /* Thread-local definitions — one copy per OS thread. */
   thread_local input_handler_list::worker_slice *input_handler_list::m_tl_slice = nullptr;
   thread_local UINT64 input_handler_list::m_tl_bitmap = 0;
-  /* Brace-init keeps every VSID member explicit; if VSID gains fields later,
-   * the compiler flags this site so we don't silently leave them uninitialised. */
   thread_local VSID input_handler_list::m_tl_vsid = {NULL_SECTID, NULL_VOLID};
   thread_local QMGR_TEMP_FILE *input_handler_list::m_tl_current_tfile = nullptr;
   thread_local bool input_handler_list::m_tl_is_membuf_worker = false;
@@ -47,10 +44,7 @@ namespace parallel_scan
   int
   input_handler_list::init_on_main (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, int parallelism)
   {
-    /* Trivial cases: nothing to distribute.  Free any previous sector info
-     * (qfile_free_list_sector_info is idempotent) and return empty slices.
-     * Leave m_list_id untouched so callers that probed a previous list_id do
-     * not observe a half-updated state. */
+    /* Trivial: free + empty slices; leave m_list_id untouched. */
     if (parallelism <= 0 || list_id == nullptr || VPID_ISNULL (&list_id->first_vpid))
       {
 	qfile_free_list_sector_info (thread_p, &m_sector_info);
@@ -60,15 +54,9 @@ namespace parallel_scan
 	return NO_ERROR;
       }
 
-    /* Free any leftover data from a previous call before collecting fresh
-     * sector info (qfile_collect_list_sector_info also calls free at entry,
-     * so this is double-safe). */
     qfile_free_list_sector_info (thread_p, &m_sector_info);
 
-    /* Collect membuf + sector arrays for the base list and all dependent
-     * lists.  On failure the helper performs internal cleanup; we defer
-     * publishing m_list_id until after success so a failed init does not
-     * leave a stale pointer behind. */
+    /* Defer publishing m_list_id until collect succeeds. */
     int error_code = qfile_collect_list_sector_info (thread_p, list_id, &m_sector_info);
     if (error_code != NO_ERROR)
       {
@@ -78,8 +66,6 @@ namespace parallel_scan
 
     m_list_id = list_id;
 
-    /* Past the trivial-case guard above, parallelism > 0 holds, so the
-     * division/modulo below are well-defined. */
     int n = m_sector_info.sector_cnt;
     int per = n / parallelism;
     int rem = n % parallelism;
@@ -123,22 +109,29 @@ namespace parallel_scan
   }
 
   SCAN_CODE
-  input_handler_list::get_next_vpid_with_fix (THREAD_ENTRY *thread_p, VPID *vpid)
+  input_handler_list::get_next_page_with_fix (THREAD_ENTRY *thread_p,
+					      PAGE_PTR &out_page,
+					      QMGR_TEMP_FILE *&out_tfile)
   {
+    out_page = nullptr;
+    out_tfile = nullptr;
+
     while (true)
       {
+	VPID vpid;
+
+	/* Phase 1: worker 0 drains membuf pages (NULL_VOLID, sequential pageid). */
 	if (m_tl_is_membuf_worker
 	    && m_sector_info.membuf_tfile != nullptr
 	    && m_tl_membuf_pageid <= m_sector_info.membuf_tfile->membuf_last)
 	  {
-	    vpid->volid = NULL_VOLID;
-	    vpid->pageid = m_tl_membuf_pageid++;
+	    vpid.volid = NULL_VOLID;
+	    vpid.pageid = m_tl_membuf_pageid++;
 	    m_tl_current_tfile = m_sector_info.membuf_tfile;
 	  }
 	else
 	  {
-	    /* Phase 2: bitmap-based iteration over the worker's sector slice.
-	     * Refill the bitmap when the current sector is exhausted. */
+	    /* Phase 2: refill bitmap from next sector when exhausted. */
 	    if (m_tl_bitmap == 0)
 	      {
 		int sidx = m_tl_slice->iter++;
@@ -151,7 +144,7 @@ namespace parallel_scan
 		m_tl_current_tfile = (QMGR_TEMP_FILE *) m_sector_info.tfiles[sidx];
 		if (m_tl_bitmap == 0)
 		  {
-		    continue;
+		    continue;	/* defensive: empty sector */
 		  }
 	      }
 
@@ -162,24 +155,27 @@ namespace parallel_scan
 #endif
 	    m_tl_bitmap &= m_tl_bitmap - 1;	/* clear lowest set bit */
 
-	    vpid->volid = m_tl_vsid.volid;
-	    vpid->pageid = SECTOR_FIRST_PAGEID (m_tl_vsid.sectid) + bit_pos;
+	    vpid.volid = m_tl_vsid.volid;
+	    vpid.pageid = SECTOR_FIRST_PAGEID (m_tl_vsid.sectid) + bit_pos;
 	  }
 
-	PAGE_PTR page_p = qmgr_get_old_page_read_only (thread_p, vpid, m_tl_current_tfile);
+	/* Single READ-latch fix; transfer ownership to caller on S_SUCCESS. */
+	PAGE_PTR page_p = qmgr_get_old_page_read_only (thread_p, &vpid, m_tl_current_tfile);
 	if (page_p == nullptr)
 	  {
-	    /* qmgr_get_old_page_read_only must have set an error before failing —
-	     * mirror the hash-join pattern (px_hash_join_task_manager.cpp:608). */
 	    assert_release_error (er_errid () != NO_ERROR);
 	    return S_ERROR;
 	  }
-	int tuple_count = QFILE_GET_TUPLE_COUNT (page_p);
-	qmgr_free_old_page (thread_p, page_p, m_tl_current_tfile);
-	if (tuple_count == QFILE_OVERFLOW_TUPLE_COUNT_FLAG)
+
+	/* Overflow continuations: the start-page owner walks the chain via qfile_get_tuple. */
+	if (QFILE_GET_TUPLE_COUNT (page_p) == QFILE_OVERFLOW_TUPLE_COUNT_FLAG)
 	  {
+	    qmgr_free_old_page (thread_p, page_p, m_tl_current_tfile);
 	    continue;
 	  }
+
+	out_page = page_p;
+	out_tfile = m_tl_current_tfile;
 	return S_SUCCESS;
       }
   }
@@ -199,9 +195,6 @@ namespace parallel_scan
   void
   input_handler_list::cleanup_on_main (THREAD_ENTRY *thread_p)
   {
-    /* Release the sector arrays acquired in init_on_main.  The implicit
-     * destructor cannot run this because db_private_free needs THREAD_ENTRY,
-     * so the owning manager must invoke us before destruction.  Idempotent. */
     qfile_free_list_sector_info (thread_p, &m_sector_info);
     m_worker_slices.clear ();
     m_worker_slice_idx.store (0);
