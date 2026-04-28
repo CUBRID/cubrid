@@ -10453,16 +10453,14 @@ netsr_spacedb (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
   SPACEDB_ALL all[SPACEDB_ALL_COUNT];
   SPACEDB_ONEVOL *vols = NULL;
   SPACEDB_FILES files[SPACEDB_FILE_COUNT];
-
-  int get_vols = 0;
-  int get_files = 0;
   SPACEDB_ONEVOL **volsp = NULL;
   SPACEDB_FILES *filesp = NULL;
   SPACEDB_TABLE_SIZES_HEADER *table_sizes = NULL;
-
   OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *data_reply = NULL;
+  int get_vols = 0;
+  int get_files = 0;
   int data_reply_length = 0;
   int table_array_length = 0;
   int actual_table_count = 0;

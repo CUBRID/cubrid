@@ -6349,7 +6349,6 @@ or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB
 char *
 or_unpack_spacedb_table_sizes (char *ptr, SPACEDB_TABLE_SIZES_HEADER *table_sizes, int array_length)
 {
-  // THREAD_ENTRY thread_p = thread_get_thread_entry_info ();
   char *temp_name = NULL;
 
   if (table_sizes == NULL || array_length <= 0)
@@ -6366,8 +6365,9 @@ or_unpack_spacedb_table_sizes (char *ptr, SPACEDB_TABLE_SIZES_HEADER *table_size
           table_sizes[table_num].header = 
             (SPACEDB_TABLE_SIZES *) malloc (sizeof (SPACEDB_TABLE_SIZES) * table_sizes[table_num].file_count);
         }
-      else /* Is it correct to assign NULL when count <= 0? */
+      else
         {
+          assert (table_sizes[table_num].file_count == 0);
           table_sizes[table_num].header = NULL;
         }
 

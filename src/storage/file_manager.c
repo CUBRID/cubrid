@@ -8193,9 +8193,9 @@ file_spacedb_fill_one_table (THREAD_ENTRY * thread_p, const OID * class_oid,
                             const char *class_name, SPACEDB_TABLE_SIZES_HEADER * entry)
 {
   OR_CLASSREP *class_rep = NULL;
-  int idx_incache = -1;
   HFID hfid = HFID_INITIALIZER;
   size_t alloc_size = 0;
+  int idx_incache = -1;
   int error_code = NO_ERROR;
 
   entry->file_count = 0;

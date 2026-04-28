@@ -10421,16 +10421,17 @@ int
 netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILES * spacefiles, SPACEDB_TABLE_SIZES_HEADER ** table_sizes_p, int *actual_count_p, char ** table_array, int table_array_length)
 {
 #if defined (CS_MODE)
-  int error_code = NO_ERROR;
   OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_request;
   char *request = NULL;
-  int request_size = 0;
   char request_local[2 * OR_INT_SIZE + SM_MAX_IDENTIFIER_LENGTH];
   OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
   char *reply;
   char *data_reply = NULL;
-  int data_reply_size = 0;
   char *ptr;
+  int request_size = 0;
+  int data_reply_size = 0;
+  int actual_table_count = 0;
+  int error_code = NO_ERROR;
 
   *table_sizes_p = NULL;
   *actual_count_p = 0;
@@ -10486,7 +10487,6 @@ netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILE
       return error_code;
     }
 
-  int actual_table_count = 0;
   ptr = or_unpack_int (ptr, &actual_table_count);
 
   if (actual_table_count > 0)
