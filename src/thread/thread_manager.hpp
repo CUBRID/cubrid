@@ -147,7 +147,7 @@ namespace cubthread
       void push_task (worker_pool *worker_pool_arg, entry_task *exec_p);
       // push task on the given core of entry worker pool.
       // read cubthread::worker_pool::execute_on_core for details.
-      void push_task_on_core (worker_pool *worker_pool_arg, entry_task *exec_p, std::size_t core_hash, bool method_mode);
+      void push_task_on_core (worker_pool *worker_pool_arg, entry_task *exec_p, std::size_t core_hash);
 
       //////////////////////////////////////////////////////////////////////////
       // daemon management

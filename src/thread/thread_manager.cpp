@@ -177,8 +177,7 @@ namespace cubthread
   }
 
   void
-  manager::push_task_on_core (worker_pool *worker_pool_arg, entry_task *exec_p, std::size_t core_hash,
-			      bool method_mode = false)
+  manager::push_task_on_core (worker_pool *worker_pool_arg, entry_task *exec_p, std::size_t core_hash)
   {
     if (worker_pool_arg == NULL)
       {
@@ -190,7 +189,7 @@ namespace cubthread
       {
 #if defined (SERVER_MODE)
 	check_not_single_thread ();
-	worker_pool_arg->execute_on_core (exec_p, core_hash, method_mode);
+	worker_pool_arg->execute_on_core (exec_p, core_hash);
 #else // not SERVER_MODE = SA_MODE
 	assert (false);
 	// execute on this thread
