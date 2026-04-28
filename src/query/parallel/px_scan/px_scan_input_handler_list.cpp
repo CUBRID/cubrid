@@ -110,8 +110,8 @@ namespace parallel_scan
 
   SCAN_CODE
   input_handler_list::get_next_page_with_fix (THREAD_ENTRY *thread_p,
-					      PAGE_PTR &out_page,
-					      QMGR_TEMP_FILE *&out_tfile)
+      PAGE_PTR &out_page,
+      QMGR_TEMP_FILE *&out_tfile)
   {
     out_page = nullptr;
     out_tfile = nullptr;
