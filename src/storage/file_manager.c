@@ -7866,12 +7866,14 @@ file_user_page_table_item_dump (THREAD_ENTRY * thread_p, const void *data, int i
 /*
  * file_spacedb () - get space usage information
  *
- * return        : error code
- * thread_p (in) : thread entry
- * spacedb (out) : output space usage information
- * table_array (in) : TODO: write this comment
- * table_array_length (in) : TODO: write this comment
- * file_sizes (out) : TODO: write this comment
+ * return                  : error code
+ * thread_p (in)           : thread entry
+ * spacedb (out)           : if not NULL, output detailed file space usage information
+ * table_array (in)        : table-size request list. "*" collects all user tables; a single trailing-wildcard
+ *                           pattern collects matched tables; explicit table names are supported in debug builds.
+ * table_array_length (in) : number of entries in table_array
+ * table_sizes_p (out)     : table-size information for matched tables
+ * actual_count_p (out)    : number of entries filled in table_sizes_p
  */
 int
 file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb, char **table_array, int table_array_length, SPACEDB_TABLE_SIZES_HEADER ** table_sizes_p, int *actual_count_p)
