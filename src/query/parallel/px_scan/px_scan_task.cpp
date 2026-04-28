@@ -573,6 +573,9 @@ namespace parallel_scan
     DB_LOGICAL ev_res;
     bool uses_clones = xcache_uses_clones ();
     int set_page_err;
+    PAGE_PTR list_page = nullptr;
+    QMGR_TEMP_FILE *list_tfile = nullptr;
+    PAGE_PTR index_page = nullptr;
 
     while (!stop)
       {
@@ -592,12 +595,18 @@ namespace parallel_scan
 	      }
 	    break;
 	  }
-	/* LIST: single-fix (READ) — handler hands page to iterator. HEAP/INDEX: vpid + caller fixes. */
-	PAGE_PTR list_page = nullptr;
-	QMGR_TEMP_FILE *list_tfile = nullptr;
+	/* LIST/INDEX: handler hands fixed page to iterator. HEAP: vpid; page lives in scan_cache->page_watcher. */
+
 	if constexpr (ST == SCAN_TYPE::LIST)
 	  {
+	    list_page = nullptr;
+	    list_tfile = nullptr;
 	    scan_code = m_input_handler->get_next_page_with_fix (&thread_ref, list_page, list_tfile);
+	  }
+	else if constexpr (ST == SCAN_TYPE::INDEX)
+	  {
+	    index_page = nullptr;
+	    scan_code = m_input_handler->get_next_page_with_fix (&thread_ref, index_page);
 	  }
 	else
 	  {
@@ -628,6 +637,10 @@ namespace parallel_scan
 	if constexpr (ST == SCAN_TYPE::LIST)
 	  {
 	    set_page_err = m_slot_iterator.set_page (&thread_ref, list_page, list_tfile);
+	  }
+	else if constexpr (ST == SCAN_TYPE::INDEX)
+	  {
+	    set_page_err = m_slot_iterator.set_page (&thread_ref, index_page);
 	  }
 	else
 	  {

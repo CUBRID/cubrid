@@ -497,12 +497,12 @@ namespace parallel_scan
     return NO_ERROR;
   }
 
-  /*
-   * set_page - Fix the leaf page for iteration.
-   */
+  /* Adopt pre-fixed leaf page; on early-fail path the caller's fix must be released here. */
   int
-  slot_iterator_index::set_page (THREAD_ENTRY *thread_p, VPID *vpid)
+  slot_iterator_index::set_page (THREAD_ENTRY *thread_p, PAGE_PTR page)
   {
+    assert (page != nullptr);
+
     if (m_input_handler != nullptr && m_btid_int == nullptr)
       {
 	m_btid_int = m_input_handler->get_btid_int ();
@@ -513,6 +513,7 @@ namespace parallel_scan
 	int err = convert_key_range (thread_p);
 	if (err != NO_ERROR)
 	  {
+	    pgbuf_unfix (thread_p, page);
 	    return err;
 	  }
       }
@@ -523,7 +524,6 @@ namespace parallel_scan
 	m_page = nullptr;
       }
 
-    /* Clear any pending slot OID state */
     if (m_slot_key_valid && m_slot_clear_key)
       {
 	pr_clear_value (&m_slot_key);
@@ -533,13 +533,7 @@ namespace parallel_scan
     m_slot_oids.clear ();
     m_slot_oid_idx = 0;
 
-    m_page = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-    if (m_page == nullptr)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_ABORTED, 2,
-		vpid->volid, vpid->pageid);
-	return ER_FAILED;
-      }
+    m_page = page;
 
     m_num_keys = btree_node_number_of_keys (thread_p, m_page);
     m_current_slot = m_use_desc_index ? m_num_keys : 1;

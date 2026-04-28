@@ -54,7 +54,9 @@ namespace parallel_scan
       ~slot_iterator_index ();
       int initialize (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, val_descr *vd);
       int finalize (THREAD_ENTRY *thread_p);
-      int set_page (THREAD_ENTRY *thread_p, VPID *vpid);
+
+      /* Adopts a pre-fixed leaf page (READ); never re-fixes. */
+      int set_page (THREAD_ENTRY *thread_p, PAGE_PTR page);
       SCAN_CODE next_qualified_slot_with_peek (THREAD_ENTRY *thread_p);
 
       void set_input_handler (input_handler_index *handler)

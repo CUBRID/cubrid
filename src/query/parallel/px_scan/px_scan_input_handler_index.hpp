@@ -47,7 +47,9 @@ namespace parallel_scan
 	VPID_SET_NULL (&m_current_leaf_vpid);
       }
       int init_on_main (THREAD_ENTRY *thread_p, INDX_INFO *indx_info, int parallelism);
-      SCAN_CODE get_next_vpid_with_fix (THREAD_ENTRY *thread_p, VPID *vpid);
+
+      /* Single READ-latch fix; ownership of out_page transfers on S_SUCCESS. */
+      SCAN_CODE get_next_page_with_fix (THREAD_ENTRY *thread_p, PAGE_PTR &out_page);
       int initialize (THREAD_ENTRY *thread_p, HFID *hfid, SCAN_ID *scan_id);
       int finalize (THREAD_ENTRY *thread_p);
       void cleanup_keys (THREAD_ENTRY *thread_p);

@@ -170,17 +170,12 @@ fallback:
     return ER_FAILED;
   }
 
-  /*
-   * get_next_vpid_with_fix - mutex-protected leaf page cursor.
-   *
-   * Returns the current leaf VPID and advances the cursor to the next leaf
-   * page by reading next_vpid (ascending) or prev_vpid (descending) from
-   * the page header. Each call returns one leaf page VPID until the chain
-   * is exhausted.
-   */
+  /* Mutex-protected leaf cursor; advances via header next/prev_vpid then hands off the fix. */
   SCAN_CODE
-  input_handler_index::get_next_vpid_with_fix (THREAD_ENTRY *thread_p, VPID *vpid)
+  input_handler_index::get_next_page_with_fix (THREAD_ENTRY *thread_p, PAGE_PTR &out_page)
   {
+    out_page = nullptr;
+
     std::unique_lock<std::mutex> lock (m_leaf_mutex);
 
     if (m_leaf_ended)
@@ -190,7 +185,6 @@ fallback:
 
     VPID ret_vpid = m_current_leaf_vpid;
 
-    /* Fix the current leaf page to read next_vpid from its header */
     PAGE_PTR page = pgbuf_fix (thread_p, &ret_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
     if (page == nullptr)
       {
@@ -207,7 +201,6 @@ fallback:
       }
 
     VPID next = m_use_desc_index ? hdr->prev_vpid : hdr->next_vpid;
-    pgbuf_unfix (thread_p, page);
 
     if (VPID_ISNULL (&next))
       {
@@ -218,7 +211,7 @@ fallback:
 	m_current_leaf_vpid = next;
       }
 
-    *vpid = ret_vpid;
+    out_page = page;
     return S_SUCCESS;
   }
 
