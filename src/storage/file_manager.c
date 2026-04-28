@@ -688,6 +688,9 @@ static int file_compare_track_items (const void *first, const void *second);
 
 static void file_print_name_of_class (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p);
 
+static int file_spacedb_get_file_page_count (THREAD_ENTRY * thread_p, const VFID * vfid, int *used_page_p,
+					     int *alloced_page_p);
+static int file_spacedb_get_btree_ovf_vfid (THREAD_ENTRY * thread_p, const BTID * btid, VFID * ovf_vfid_p);
 static int file_spacedb_fill_one_table (THREAD_ENTRY * thread_p, const OID * class_oid,
                             const char *class_name, SPACEDB_TABLE_SIZES_HEADER * entry);
 static void file_spacedb_free_table_sizes (SPACEDB_TABLE_SIZES_HEADER * table_sizes, int count);
@@ -8070,6 +8073,86 @@ file_spacedb_free_table_sizes (SPACEDB_TABLE_SIZES_HEADER * table_sizes, int cou
 }
 
 /*
+  * file_spacedb_get_file_page_count () - Get used and allocated page counts from a file header.
+  *
+  * return          : error code
+  * thread_p (in)   : thread entry
+  * vfid (in)       : file identifier
+  * used_page_p(out): used page count
+  * alloced_page_p(out): allocated page count
+  */
+static int
+file_spacedb_get_file_page_count (THREAD_ENTRY * thread_p, const VFID * vfid, int *used_page_p, int *alloced_page_p)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FILE_HEADER *fhead = NULL;
+  int error_code = NO_ERROR;
+
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  fhead = (FILE_HEADER *) page_fhead;
+  *used_page_p = fhead->n_page_user + fhead->n_page_ftab;
+  *alloced_page_p = fhead->n_page_total;
+
+  pgbuf_unfix_and_init (thread_p, page_fhead);
+  return NO_ERROR;
+}
+
+/*
+  * file_spacedb_get_btree_ovf_vfid () - Get overflow file identifier from a btree root page.
+  *
+  * return           : error code
+  * thread_p (in)    : thread entry
+  * btid (in)        : btree identifier
+  * ovf_vfid_p (out) : overflow file identifier
+  */
+static int
+file_spacedb_get_btree_ovf_vfid (THREAD_ENTRY * thread_p, const BTID * btid, VFID * ovf_vfid_p)
+{
+  VPID root_vpid;
+  PAGE_PTR root_page = NULL;
+  BTREE_ROOT_HEADER *root_header = NULL;
+  int error_code = NO_ERROR;
+
+  VFID_SET_NULL (ovf_vfid_p);
+
+  root_vpid.volid = btid->vfid.volid;
+  root_vpid.pageid = btid->root_pageid;
+
+  root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (root_page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+#if !defined (NDEBUG)
+  (void) pgbuf_check_page_ptype (thread_p, root_page, PAGE_BTREE);
+#endif /* !NDEBUG */
+
+  root_header = btree_get_root_header (thread_p, root_page);
+  if (root_header == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      pgbuf_unfix_and_init (thread_p, root_page);
+      return error_code;
+    }
+
+  VFID_COPY (ovf_vfid_p, &root_header->ovfid);
+
+  pgbuf_unfix_and_init (thread_p, root_page);
+  return NO_ERROR;
+}
+
+/*
   * file_spacedb_fill_one_table () - Fill space usage info for a single table.
   *
   * return        : error code
@@ -8084,114 +8167,112 @@ file_spacedb_fill_one_table (THREAD_ENTRY * thread_p, const OID * class_oid,
 {
   OR_CLASSREP *class_rep = NULL;
   int idx_incache = -1;
-  HFID hfid;
-  VFID ovf_vfid;
-  VPID vpid_fhead;
-  VPID ovf_vpid;
-  PAGE_PTR page_fhead = NULL;
-  PAGE_PTR page_ovf_fhead = NULL;
-  FILE_HEADER *fhead;
-  FILE_HEADER *ovfhead;
+  HFID hfid = HFID_INITIALIZER;
+  size_t alloc_size = 0;
   int error_code = NO_ERROR;
 
-  HFID_SET_NULL (&hfid);
-  VFID_SET_NULL (&ovf_vfid);
+  entry->file_count = 0;
+  entry->header = NULL;
 
-  heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL);
+  error_code = heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL);
+  if (error_code != NO_ERROR)
+    {
+      goto exit;
+    }
 
   class_rep = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &idx_incache);
   if (class_rep == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
-      return error_code;
+      goto exit;
     }
 
   entry->file_count = class_rep->n_indexes + 1;
-  entry->header = (SPACEDB_TABLE_SIZES *) malloc (sizeof (SPACEDB_TABLE_SIZES) * entry->file_count);
+  alloc_size = (size_t) entry->file_count * sizeof (*entry->header);
+  entry->header = (SPACEDB_TABLE_SIZES *) malloc (alloc_size);
   if (entry->header == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (SPACEDB_TABLE_SIZES) * entry->file_count);
-      heap_classrepr_free_and_init (class_rep, &idx_incache);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit;
     }
-  memset (entry->header, 0, sizeof (SPACEDB_TABLE_SIZES) * entry->file_count);
+  memset (entry->header, 0, alloc_size);
 
-  snprintf (entry->header[0].name, DB_MAX_IDENTIFIER_LENGTH, "%s", class_name);
-  entry->header[0].ftype = FILE_HEAP;
+  {
+    SPACEDB_TABLE_SIZES *table_size = &entry->header[0];
+    VFID ovf_vfid = VFID_INITIALIZER;
 
-  vpid_fhead.volid = hfid.vfid.volid;
-  vpid_fhead.pageid = hfid.vfid.fileid;
-  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_fhead == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error_code);
-      heap_classrepr_free_and_init (class_rep, &idx_incache);
-      return error_code;
-    }
-  fhead = (FILE_HEADER *) page_fhead;
+    snprintf (table_size->name, DB_MAX_IDENTIFIER_LENGTH, "%s", class_name);
+    table_size->ftype = FILE_HEAP;
 
-  entry->header[0].data_used_page = fhead->n_page_user + fhead->n_page_ftab;
-  entry->header[0].data_alloced_page = fhead->n_page_total;
-
-  heap_ovf_find_vfid (thread_p, &hfid, &ovf_vfid, false, PGBUF_UNCONDITIONAL_LATCH);
-  if (!VFID_ISNULL (&ovf_vfid))
-    {
-      ovf_vpid.volid = ovf_vfid.volid;
-      ovf_vpid.pageid = ovf_vfid.fileid;
-      page_ovf_fhead = pgbuf_fix (thread_p, &ovf_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-      if (page_ovf_fhead == NULL)
+    error_code =
+      file_spacedb_get_file_page_count (thread_p, &hfid.vfid, &table_size->data_used_page,
+					&table_size->data_alloced_page);
+    if (error_code != NO_ERROR)
       {
-        ASSERT_ERROR_AND_SET (error_code);
-        pgbuf_unfix_and_init (thread_p, page_fhead);
-        heap_classrepr_free_and_init (class_rep, &idx_incache);
-        return error_code;
+	goto exit;
       }
 
-      ovfhead = (FILE_HEADER *) page_ovf_fhead;
-      entry->header[0].ovf_free_size = ovfhead->n_page_user + ovfhead->n_page_ftab;
-      entry->header[0].ovf_alloced_page = ovfhead->n_page_total;
-      pgbuf_unfix_and_init (thread_p, page_ovf_fhead);
-    }
+    if (heap_ovf_find_vfid (thread_p, &hfid, &ovf_vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
+      {
+	error_code =
+	  file_spacedb_get_file_page_count (thread_p, &ovf_vfid, &table_size->ovf_free_size,
+					    &table_size->ovf_alloced_page);
+	if (error_code != NO_ERROR)
+	  {
+	    goto exit;
+	  }
+      }
+  }
 
   for (int index_num = 0; index_num < class_rep->n_indexes; index_num++)
     {
-      VPID vpid_btree_fhead;
-      PAGE_PTR page_btree_fhead;
-      FILE_HEADER *btree_fhead;
-      BTREE_CAPACITY idx_cpc;
+      OR_INDEX *index_p = &class_rep->indexes[index_num];
+      SPACEDB_TABLE_SIZES *table_size = &entry->header[index_num + 1];
+      VFID ovf_vfid = VFID_INITIALIZER;
 
-      snprintf (entry->header[index_num + 1].name, DB_MAX_IDENTIFIER_LENGTH, "%s",
-              class_rep->indexes[index_num].btname);
-      entry->header[index_num + 1].ftype = FILE_BTREE;
+      snprintf (table_size->name, DB_MAX_IDENTIFIER_LENGTH, "%s", index_p->btname);
+      table_size->ftype = FILE_BTREE;
 
-      vpid_btree_fhead.volid = class_rep->indexes[index_num].btid.vfid.volid;
-      vpid_btree_fhead.pageid = class_rep->indexes[index_num].btid.vfid.fileid;
-      page_btree_fhead = pgbuf_fix (thread_p, &vpid_btree_fhead, OLD_PAGE, PGBUF_LATCH_READ,
-                                  PGBUF_UNCONDITIONAL_LATCH);
-      if (page_btree_fhead == NULL)
-      {
-        ASSERT_ERROR_AND_SET (error_code);
-        pgbuf_unfix_and_init (thread_p, page_fhead);
-        heap_classrepr_free_and_init (class_rep, &idx_incache);
-        return error_code;
-      }
+      error_code =
+	file_spacedb_get_file_page_count (thread_p, &index_p->btid.vfid, &table_size->data_used_page,
+					  &table_size->data_alloced_page);
+      if (error_code != NO_ERROR)
+	{
+	  goto exit;
+	}
 
-      btree_fhead = (FILE_HEADER *) page_btree_fhead;
-      entry->header[index_num + 1].data_used_page = btree_fhead->n_page_user + btree_fhead->n_page_ftab;
-      entry->header[index_num + 1].data_alloced_page = btree_fhead->n_page_total;
+      error_code = file_spacedb_get_btree_ovf_vfid (thread_p, &index_p->btid, &ovf_vfid);
+      if (error_code != NO_ERROR)
+	{
+	  goto exit;
+	}
 
-      btree_index_capacity (thread_p, &class_rep->indexes[index_num].btid, &idx_cpc);
-      entry->header[index_num + 1].ovf_free_size = idx_cpc.ovfl_oid_pg.tot_free_space;
-      entry->header[index_num + 1].ovf_alloced_page = idx_cpc.ovfl_oid_pg.tot_pg_cnt;
-
-      pgbuf_unfix_and_init (thread_p, page_btree_fhead);
+      if (!VFID_ISNULL (&ovf_vfid))
+	{
+	  error_code =
+	    file_spacedb_get_file_page_count (thread_p, &ovf_vfid, &table_size->ovf_free_size,
+					      &table_size->ovf_alloced_page);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
     }
 
-  pgbuf_unfix_and_init (thread_p, page_fhead);
-  heap_classrepr_free_and_init (class_rep, &idx_incache);
+exit:
+  if (class_rep != NULL)
+    {
+      heap_classrepr_free_and_init (class_rep, &idx_incache);
+    }
 
-  return NO_ERROR;
+  if (error_code != NO_ERROR && entry->header != NULL)
+    {
+      free_and_init (entry->header);
+      entry->file_count = 0;
+    }
+
+  return error_code;
 }
 
 /************************************************************************/
