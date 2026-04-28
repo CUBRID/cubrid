@@ -139,11 +139,6 @@ enum remove_temp_vol_action
 { REMOVE_TEMP_VOL_DEFAULT_ACTION, ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION };
 typedef enum remove_temp_vol_action REMOVE_TEMP_VOL_ACTION;
 
-#if defined(SA_MODE)
-extern void boot_client_all_finalize (int final_level);
-#endif /* SA_MODE */
-
-
 BOOT_SERVER_STATUS boot_Server_status = BOOT_SERVER_DOWN;
 
 #if defined(SERVER_MODE)
