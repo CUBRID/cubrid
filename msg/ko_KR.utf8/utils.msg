@@ -746,10 +746,10 @@ $set 19 MSGCAT_UTIL_SET_SPACEDB
 42 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
 43 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
 50 [CLASS NAME: %1$s]\n
-51 NAME                             TYPE         USED_SIZE      ALLOC_SIZE    USED_USE%%\n
-52 NAME                             TYPE         USED_PAGE      ALLOC_PAGE    USED_USE%%\n
+51 NAME                             TYPE             USED_SIZE    ALLOC_SIZE   USED_USE%%\n
+52 NAME                             TYPE             USED_PAGE    ALLOC_PAGE   USED_USE%%\n
 53 %1$-32s %2$-12s %3$13s %4$13s %5$10s%%\n
-54 TOTAL                                       %1$13s %2$13s %3$10s%%\n
+54 TOTAL                                         %1$13s %2$13s %3$10s%%\n
 59 -----------------------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: 데이터베이스 디스크 공간 정보 출력\n\
