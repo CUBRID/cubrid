@@ -7905,6 +7905,7 @@ file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb, char **table_arr
 {
   int i;
   int error_code = NO_ERROR;
+
   *table_sizes_p = NULL;
   *actual_count_p = 0;
 
@@ -8031,7 +8032,6 @@ file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb, char **table_arr
       *actual_count_p = matched_count;
       free_and_init (matched_oids);
     }
-#if !defined (NDEBUG)
   else
     {
       *table_sizes_p = (SPACEDB_TABLE_SIZES_HEADER *) malloc (table_array_length * sizeof (SPACEDB_TABLE_SIZES_HEADER));
@@ -8068,7 +8068,6 @@ file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb, char **table_arr
           *actual_count_p = table_num + 1;
         }
     }
-#endif /* !NDEBUG */
 
   return NO_ERROR;
 }
