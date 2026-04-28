@@ -114,17 +114,11 @@ struct locator_return_nxobj
   int area_offset;		/* Relative offset to recdes->data in the communication area */
 };
 
-typedef struct locator_user_class_collect_ctx LOCATOR_USER_CLASS_COLLECT_CTX;
-struct locator_user_class_collect_ctx
+/* prefix == NULL means "match all user classes" (no prefix filter). */
+typedef struct locator_class_collect_ctx LOCATOR_CLASS_COLLECT_CTX;
+struct locator_class_collect_ctx
 {
-  OID *oids;
-  int count;
-};
-
-typedef struct locator_wildcard_collect_ctx LOCATOR_WILDCARD_COLLECT_CTX;
-struct locator_wildcard_collect_ctx
-{
-  const char *prefix;		/* null-terminated substring before trailing '*' */
+  const char *prefix;		/* NULL = no filter; otherwise trailing-'*' prefix */
   int prefix_len;
   OID *oids;
   int count;
@@ -143,11 +137,9 @@ static INT32 locator_Pseudo_pageid_crt = -2;
 
 static int locator_permoid_class_name (THREAD_ENTRY * thread_p, const char *classname, const OID * class_oid);
 static bool locator_is_user_class_entry (const LOCATOR_CLASSNAME_ENTRY * entry);
-static int locator_count_user_class_oid_func (THREAD_ENTRY * thread_p, void *data, void *args);
-static int locator_collect_user_class_oid_func (THREAD_ENTRY * thread_p, void *data, void *args);
-static bool locator_wildcard_name_matches (const LOCATOR_WILDCARD_COLLECT_CTX * ctx, const char *name);
-static int locator_count_wildcard_class_func (THREAD_ENTRY * thread_p, void *data, void *args);
-static int locator_collect_wildcard_class_func (THREAD_ENTRY * thread_p, void *data, void *args);
+static bool locator_wildcard_name_matches (const LOCATOR_CLASS_COLLECT_CTX * ctx, const char *name);
+static int locator_count_class_func (THREAD_ENTRY * thread_p, void *data, void *args);
+static int locator_collect_class_func (THREAD_ENTRY * thread_p, void *data, void *args);
 static int locator_defence_drop_class_name_entry (const void *name, void *ent, void *args);
 static int locator_force_drop_class_name_entry (const void *name, void *ent, void *args);
 static int locator_drop_class_name_entry (THREAD_ENTRY * thread_p, const char *classname, LOG_LSA * savep_lsa);
@@ -1219,32 +1211,48 @@ locator_is_user_class_entry (const LOCATOR_CLASSNAME_ENTRY * entry)
   return true;
 }
 
+/*
+ * locator_wildcard_name_matches () - Check if a class name starts with the wildcard prefix.
+ *
+ * return    : true if name starts with ctx->prefix
+ * ctx  (in) : class collect context
+ * name (in) : class name to test
+ *
+ * Note: Only trailing '*' patterns are supported (e.g. "dba.*").
+ *       ctx->prefix is a null-terminated string of exactly the prefix part.
+ */
+static bool
+locator_wildcard_name_matches (const LOCATOR_CLASS_COLLECT_CTX * ctx, const char *name)
+{
+  return strncmp (name, ctx->prefix, ctx->prefix_len) == 0;
+}
+
 static int
-locator_count_user_class_oid_func (THREAD_ENTRY * thread_p, void *data, void *args)
+locator_count_class_func (THREAD_ENTRY * thread_p, void *data, void *args)
 {
   LOCATOR_CLASSNAME_ENTRY *entry = (LOCATOR_CLASSNAME_ENTRY *) data;
-  int *count_p = (int *) args;
+  LOCATOR_CLASS_COLLECT_CTX *ctx = (LOCATOR_CLASS_COLLECT_CTX *) args;
 
-  if (locator_is_user_class_entry (entry))
+  if (locator_is_user_class_entry (entry)
+      && (ctx->prefix == NULL || locator_wildcard_name_matches (ctx, entry->e_name)))
     {
-      (*count_p)++;
+      ctx->count++;
     }
-
   return NO_ERROR;
 }
 
 static int
-locator_collect_user_class_oid_func (THREAD_ENTRY * thread_p, void *data, void *args)
+locator_collect_class_func (THREAD_ENTRY * thread_p, void *data, void *args)
 {
   LOCATOR_CLASSNAME_ENTRY *entry = (LOCATOR_CLASSNAME_ENTRY *) data;
-  struct locator_user_class_collect_ctx *ctx = (struct locator_user_class_collect_ctx *) args;
+  LOCATOR_CLASS_COLLECT_CTX *ctx = (LOCATOR_CLASS_COLLECT_CTX *) args;
 
-  if (locator_is_user_class_entry (entry))
+  if (locator_is_user_class_entry (entry)
+      && (ctx->prefix == NULL || locator_wildcard_name_matches (ctx, entry->e_name)))
     {
       COPY_OID (&ctx->oids[ctx->count], &entry->e_current.oid);
       ctx->count++;
     }
-
   return NO_ERROR;
 }
 
@@ -1264,8 +1272,8 @@ locator_collect_user_class_oid_func (THREAD_ENTRY * thread_p, void *data, void *
 int
 locator_get_user_class_oids (THREAD_ENTRY * thread_p, OID ** oids_p, int *count_p)
 {
-  struct locator_user_class_collect_ctx ctx;
-  int user_class_count = 0;
+  LOCATOR_CLASS_COLLECT_CTX ctx = { NULL, 0, NULL, 0 };	/* prefix=NULL: no filter */
+  int total;
   int error_code = NO_ERROR;
 
   assert (oids_p != NULL && count_p != NULL);
@@ -1280,26 +1288,26 @@ locator_get_user_class_oids (THREAD_ENTRY * thread_p, OID ** oids_p, int *count_
     }
 
   /* Pass 1: count user classes exactly */
-  error_code =
-    mht_map_no_key (thread_p, locator_Mht_classnames, locator_count_user_class_oid_func, &user_class_count);
-  if (error_code != NO_ERROR || user_class_count == 0)
+  error_code = mht_map_no_key (thread_p, locator_Mht_classnames, locator_count_class_func, &ctx);
+  if (error_code != NO_ERROR || ctx.count == 0)
     {
       csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
       return error_code;
     }
 
-  ctx.oids = (OID *) malloc (user_class_count * sizeof (OID));
+  total = ctx.count;
+  ctx.count = 0;
+
+  ctx.oids = (OID *) malloc (total * sizeof (OID));
   if (ctx.oids == NULL)
     {
       csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) user_class_count * sizeof (OID));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) total * sizeof (OID));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-  ctx.count = 0; /* why ctx.count = 0? */
 
   /* Pass 2: collect OIDs — reader lock is still held, table cannot change */
-  error_code =
-    mht_map_no_key (thread_p, locator_Mht_classnames, locator_collect_user_class_oid_func, &ctx);
+  error_code = mht_map_no_key (thread_p, locator_Mht_classnames, locator_collect_class_func, &ctx);
 
   csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
@@ -1309,52 +1317,11 @@ locator_get_user_class_oids (THREAD_ENTRY * thread_p, OID ** oids_p, int *count_
       return error_code;
     }
 
+  assert (total == ctx.count);
+
   *oids_p = ctx.oids;
   *count_p = ctx.count;
 
-  return NO_ERROR;
-}
-
-/*
- * locator_wildcard_name_matches () - Check if a class name starts with the wildcard prefix.
- *
- * return    : true if name starts with ctx->prefix
- * ctx  (in) : wildcard collect context
- * name (in) : class name to test
- *
- * Note: Only trailing '*' patterns are supported (e.g. "dba.*").
- *       ctx->prefix is a null-terminated string of exactly the prefix part.
- */
-static bool
-locator_wildcard_name_matches (const LOCATOR_WILDCARD_COLLECT_CTX * ctx, const char *name)
-{
-  return strncmp (name, ctx->prefix, ctx->prefix_len) == 0;
-}
-
-static int
-locator_count_wildcard_class_func (THREAD_ENTRY * thread_p, void *data, void *args)
-{
-  LOCATOR_CLASSNAME_ENTRY *entry = (LOCATOR_CLASSNAME_ENTRY *) data;
-  LOCATOR_WILDCARD_COLLECT_CTX *ctx = (LOCATOR_WILDCARD_COLLECT_CTX *) args;
-
-  if (locator_is_user_class_entry (entry) && locator_wildcard_name_matches (ctx, entry->e_name))
-    {
-      ctx->count++;
-    }
-  return NO_ERROR;
-}
-
-static int
-locator_collect_wildcard_class_func (THREAD_ENTRY * thread_p, void *data, void *args)
-{
-  LOCATOR_CLASSNAME_ENTRY *entry = (LOCATOR_CLASSNAME_ENTRY *) data;
-  LOCATOR_WILDCARD_COLLECT_CTX *ctx = (LOCATOR_WILDCARD_COLLECT_CTX *) args;
-
-  if (locator_is_user_class_entry (entry) && locator_wildcard_name_matches (ctx, entry->e_name))
-    {
-      COPY_OID (&ctx->oids[ctx->count], &entry->e_current.oid);
-      ctx->count++;
-    }
   return NO_ERROR;
 }
 
@@ -1377,7 +1344,7 @@ int
 locator_find_class_oids_by_pattern (THREAD_ENTRY * thread_p, const char *pattern,
 				    OID ** oids_p, int *count_p)
 {
-  LOCATOR_WILDCARD_COLLECT_CTX ctx;
+  LOCATOR_CLASS_COLLECT_CTX ctx;
   char prefix_buf[DB_MAX_IDENTIFIER_LENGTH + 1];
   int prefix_len;
   int matched_count = 0;
@@ -1406,7 +1373,7 @@ locator_find_class_oids_by_pattern (THREAD_ENTRY * thread_p, const char *pattern
     }
 
   /* Pass 1: count matching entries */
-  error_code = mht_map_no_key (thread_p, locator_Mht_classnames, locator_count_wildcard_class_func, &ctx);
+  error_code = mht_map_no_key (thread_p, locator_Mht_classnames, locator_count_class_func, &ctx);
   if (error_code != NO_ERROR || ctx.count == 0)
     {
       csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
@@ -1426,7 +1393,7 @@ locator_find_class_oids_by_pattern (THREAD_ENTRY * thread_p, const char *pattern
     }
 
   /* Pass 2: collect OIDs — reader lock still held, table cannot change */
-  error_code = mht_map_no_key (thread_p, locator_Mht_classnames, locator_collect_wildcard_class_func, &ctx);
+  error_code = mht_map_no_key (thread_p, locator_Mht_classnames, locator_collect_class_func, &ctx);
 
   csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
