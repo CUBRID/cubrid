@@ -1178,8 +1178,8 @@ scan_fetch_and_coerce_key_limit_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * i
       if (dom_status == DOMAIN_OVERFLOW && DB_VALUE_DOMAIN_TYPE (*out_dbvalp) == DB_TYPE_NUMERIC)
 	{
 	  /* NUMERIC -> BIGINT coercion overflow: handle by sign
-	   * if negative, all rows are returned (full scan from the beginning) 
-	   * if positive, returns 0 rows. 
+	   * if positive, no upper bound applies (-1; full scan, all rows)
+	   * if negative, no rows match (0; upper bound is unreachable)
 	   */
 #if 1				/* phase-3: raw sign-bit check; replaced by DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE in phase-4 */
 	  isidp->key_limit_upper = ((*out_dbvalp)->data.num.d.buf[0] & NUMERIC_VALUE_SIGN_BIT_MASK) ? 0 : -1;
