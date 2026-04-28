@@ -1048,9 +1048,11 @@ scan_handle_overflow_subtraction_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * 
   else if (left_is_numeric)
     {
       /* case4 */
+      assert (right->type == TYPE_INARITH || right->type == TYPE_OUTARITH);
       if (is_user_given_keylimit)
 	{
 	  /* rownum < -HUGE USING INDEX .. KEYLIMIT HUGE */
+	  assert (right->value.arithptr != NULL && right->value.arithptr->leftptr != NULL);
 	  error_code = scan_check_user_given_keylimit_overflow (thread_p, right->value.arithptr->leftptr, vd);
 	  if (error_code != NO_ERROR)
 	    {
@@ -1077,6 +1079,7 @@ scan_handle_overflow_subtraction_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * 
       if (is_user_given_keylimit)
 	{
 	  /* rownum < -HUGE USING INDEX .. KEYLIMIT BIGINT */
+	  assert (right->value.arithptr != NULL && right->value.arithptr->leftptr != NULL);
 	  error_code = scan_check_user_given_keylimit_overflow (thread_p, right->value.arithptr->leftptr, vd);
 	  if (error_code != NO_ERROR)
 	    {
