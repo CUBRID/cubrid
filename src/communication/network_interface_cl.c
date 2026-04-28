@@ -10451,6 +10451,11 @@ netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILE
     {
       request_size = 2 * OR_INT_SIZE + table_array_length * SM_MAX_IDENTIFIER_LENGTH;
       request = (char *) malloc (request_size);
+      if (request == NULL)
+        {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+          return ER_OUT_OF_VIRTUAL_MEMORY;
+        }
     }
 
   reply = OR_ALIGNED_BUF_START (a_reply);
