@@ -945,7 +945,9 @@ namespace cubthread
 	      }
 	    else
 	      {
+		ulock.lock ();
 		m_task_queue.push (task_p);
+		ulock.unlock ();
 	      }
 	    become_available (*refp);
 	  }
