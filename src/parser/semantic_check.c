@@ -12931,7 +12931,7 @@ pt_check_group_by (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   /* do not allow GROUP BY ... WITH ROLLUP and GROUPBY_NUM () */
-  if (node->info.query.q.select.group_by != NULL && node->info.query.q.select.group_by->flag.with_rollup)
+  if (node->info.query.q.select.group_by != NULL && node->info.query.q.select.group_by->with_rollup)
     {
       bool has_gbynum = false;
       (void) parser_walk_tree (parser, node->info.query.q.select.having, pt_check_groupbynum_pre, NULL,
