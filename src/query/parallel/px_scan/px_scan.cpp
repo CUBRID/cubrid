@@ -1589,6 +1589,12 @@ namespace parallel_scan
 	  {
 	    m_input_handler->cleanup_keys (m_thread_p);
 	  }
+	else if constexpr (ST == SCAN_TYPE::LIST)
+	  {
+	    /* Release sector arrays before destruction; the implicit destructor
+	     * cannot pass THREAD_ENTRY to db_private_free. */
+	    m_input_handler->cleanup_on_main (m_thread_p);
+	  }
 	m_input_handler->~input_handler_t();
 	db_private_free (m_thread_p, m_input_handler);
 	m_input_handler = nullptr;
@@ -2018,6 +2024,12 @@ namespace parallel_scan
     /* Clean up input handler */
     if (m_input_handler != nullptr)
       {
+	if constexpr (ST == SCAN_TYPE::LIST)
+	  {
+	    /* Release sector arrays before destruction; the implicit destructor
+	     * cannot pass THREAD_ENTRY to db_private_free. */
+	    m_input_handler->cleanup_on_main (m_thread_p);
+	  }
 	m_input_handler->~input_handler_t ();
 	db_private_free (m_thread_p, m_input_handler);
 	m_input_handler = nullptr;

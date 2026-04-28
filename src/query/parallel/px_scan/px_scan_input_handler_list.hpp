@@ -23,63 +23,87 @@
 #ifndef _PX_SCAN_INPUT_HANDLER_LIST_HPP_
 #define _PX_SCAN_INPUT_HANDLER_LIST_HPP_
 
-#include "px_ftab_set.hpp"
 #include "px_interrupt.hpp"
+#include "query_list.h"
 #include "query_manager.h"
 #include "scan_manager.h"
-#include <vector>
 #include <atomic>
+#include <vector>
 
 namespace parallel_scan
 {
-  using ftab_set = parallel_query::ftab_set;
   class input_handler_list
   {
       using interrupt = parallel_query::interrupt;
       using err_messages_with_lock = parallel_query::err_messages_with_lock;
+
+      /* Per-worker slice into the shared m_sector_info arrays.
+       * [start, end) is the exclusive range of sector indices assigned to this worker;
+       * iter advances from start toward end as sectors are consumed. */
+      struct worker_slice
+      {
+	int start;
+	int end;
+	int iter;
+      };
+
     public:
       input_handler_list (interrupt *interrupt_p, err_messages_with_lock *err_messages_p)
-	: m_splited_ftab_set_idx (0),
-	  m_has_membuf (false),
-	  m_membuf_last (-1),
-	  m_tfile_vfid (nullptr),
+	: m_sector_info (QFILE_LIST_SECTOR_INFO_INITIALIZER),
+	  m_worker_slice_idx (0),
 	  m_list_id (nullptr),
 	  m_interrupt_p (interrupt_p),
 	  m_err_messages_p (err_messages_p)
       {
       }
+
       int init_on_main (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, int parallelism);
       SCAN_CODE get_next_vpid_with_fix (THREAD_ENTRY *thread_p, VPID *vpid);
       int initialize (THREAD_ENTRY *thread_p, HFID *hfid, SCAN_ID *scan_id);
       int finalize (THREAD_ENTRY *thread_p);
+
+      /* Release sector_info storage owned by this handler.  Must be called by
+       * the owning manager before destruction (see px_scan.cpp ~manager()),
+       * because the implicit destructor cannot pass THREAD_ENTRY to the
+       * underlying db_private_free path.  Idempotent. */
+      void cleanup_on_main (THREAD_ENTRY *thread_p);
+
       QFILE_LIST_ID *get_list_id ()
       {
 	return m_list_id;
       }
 
-    private:
-      /* Sector-based (ftabs pattern) */
-      ftab_set m_ftab_set;
-      std::vector<ftab_set> m_splited_ftab_set;
-      std::atomic_int m_splited_ftab_set_idx;
+      /* Returns the tfile that owns the page most recently handed out by
+       * get_next_vpid_with_fix().  Callers (e.g. px_scan_task) must pass
+       * this to slot_iterator_list::set_page() so that page fix/free
+       * always uses the correct per-page tfile. */
+      QMGR_TEMP_FILE *get_current_tfile () const
+      {
+	return m_tl_current_tfile;
+      }
 
-      /* membuf info */
-      bool m_has_membuf;
-      int m_membuf_last;
-      QMGR_TEMP_FILE *m_tfile_vfid;
+    private:
+      /* Shared sector data collected in init_on_main (one entry per sector
+       * across the base list and all dependent_list_id chains). */
+      QFILE_LIST_SECTOR_INFO m_sector_info;
+
+      /* Worker slices: m_worker_slices[i] holds the [start,end) sector range
+       * assigned to worker i. */
+      std::vector<worker_slice> m_worker_slices;
+      std::atomic_int m_worker_slice_idx;
 
       QFILE_LIST_ID *m_list_id;
       interrupt *m_interrupt_p;
       err_messages_with_lock *m_err_messages_p;
 
-      /* Thread-local state */
-      thread_local static ftab_set *m_tl_ftab_set;
-      thread_local static VPID m_tl_vpid;
-      thread_local static size_t m_tl_pgoffset;
-      thread_local static FILE_PARTIAL_SECTOR m_tl_ftab;
+      /* Thread-local state — one copy per OS thread that calls initialize(). */
+      thread_local static worker_slice *m_tl_slice;
+      thread_local static UINT64 m_tl_bitmap;
+      thread_local static VSID m_tl_vsid;
+      thread_local static QMGR_TEMP_FILE *m_tl_current_tfile;
       thread_local static bool m_tl_is_membuf_worker;
       thread_local static int m_tl_membuf_pageid;
   };
 }
 
-#endif /*_PX_SCAN_INPUT_HANDLER_LIST_HPP_ */
+#endif /* _PX_SCAN_INPUT_HANDLER_LIST_HPP_ */

@@ -37,7 +37,7 @@ namespace parallel_scan
       m_curr_tpl (nullptr),
       m_curr_tplno (0),
       m_tuple_count (0),
-      m_tfile_vfidp (nullptr),
+      m_curr_tfile (nullptr),
       m_list_id (nullptr),
       m_rest_regu_list (nullptr),
       m_tplrecp (nullptr),
@@ -63,7 +63,7 @@ namespace parallel_scan
     m_rest_regu_list = llsidp->rest_regu_list;
     m_tplrecp = llsidp->tplrecp;
     m_list_id = llsidp->list_id;
-    m_tfile_vfidp = llsidp->list_id->tfile_vfid;
+    m_curr_tfile = nullptr;   /* set on first set_page call, not here */
     m_val_list = scan_id->val_list;
     m_vd = vd;
     m_scan_stats = &scan_id->scan_stats;
@@ -80,7 +80,7 @@ namespace parallel_scan
   {
     if (m_curr_pgptr != nullptr)
       {
-	qmgr_free_old_page (thread_p, m_curr_pgptr, m_tfile_vfidp);
+	qmgr_free_old_page (thread_p, m_curr_pgptr, m_curr_tfile);
 	m_curr_pgptr = nullptr;
       }
     if (m_tplrec.tpl != nullptr)
@@ -92,17 +92,18 @@ namespace parallel_scan
   }
 
   int
-  slot_iterator_list::set_page (THREAD_ENTRY *thread_p, VPID *vpid)
+  slot_iterator_list::set_page (THREAD_ENTRY *thread_p, VPID *vpid, QMGR_TEMP_FILE *tfile)
   {
-    /* Free previous page */
     if (m_curr_pgptr != nullptr)
       {
-	qmgr_free_old_page (thread_p, m_curr_pgptr, m_tfile_vfidp);
+	qmgr_free_old_page (thread_p, m_curr_pgptr, m_curr_tfile);
 	m_curr_pgptr = nullptr;
       }
 
+    m_curr_tfile = tfile;
+
     /* Fix new page */
-    m_curr_pgptr = qmgr_get_old_page (thread_p, vpid, m_tfile_vfidp);
+    m_curr_pgptr = qmgr_get_old_page (thread_p, vpid, m_curr_tfile);
     if (m_curr_pgptr == nullptr)
       {
 	return ER_FAILED;

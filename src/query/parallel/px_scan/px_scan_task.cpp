@@ -572,6 +572,7 @@ namespace parallel_scan
     bool dummy = false;
     DB_LOGICAL ev_res;
     bool uses_clones = xcache_uses_clones ();
+    int set_page_err;
 
     while (!stop)
       {
@@ -613,7 +614,16 @@ namespace parallel_scan
 	      }
 	    break;
 	  }
-	if (m_slot_iterator.set_page (&thread_ref, &vpid) != NO_ERROR)
+
+	if constexpr (ST == SCAN_TYPE::LIST)
+	  {
+	    set_page_err = m_slot_iterator.set_page (&thread_ref, &vpid, m_input_handler->get_current_tfile ());
+	  }
+	else
+	  {
+	    set_page_err = m_slot_iterator.set_page (&thread_ref, &vpid);
+	  }
+	if (set_page_err != NO_ERROR)
 	  {
 	    if (m_interrupt->get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
 	      {

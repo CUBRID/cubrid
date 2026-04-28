@@ -38,7 +38,7 @@ namespace parallel_scan
       ~slot_iterator_list ();
       int initialize (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, val_descr *vd);
       int finalize (THREAD_ENTRY *thread_p);
-      int set_page (THREAD_ENTRY *thread_p, VPID *vpid);
+      int set_page (THREAD_ENTRY *thread_p, VPID *vpid, QMGR_TEMP_FILE *tfile);
       SCAN_CODE next_qualified_slot_with_peek (THREAD_ENTRY *thread_p);
 
     private:
@@ -46,7 +46,7 @@ namespace parallel_scan
       QFILE_TUPLE m_curr_tpl;
       int m_curr_tplno;
       int m_tuple_count;
-      QMGR_TEMP_FILE *m_tfile_vfidp;
+      QMGR_TEMP_FILE *m_curr_tfile;
       QFILE_LIST_ID *m_list_id;
       SCAN_PRED m_scan_pred;
       regu_variable_list_node *m_rest_regu_list;

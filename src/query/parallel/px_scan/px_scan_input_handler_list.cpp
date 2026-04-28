@@ -21,128 +21,102 @@
  */
 
 #include "px_scan_input_handler_list.hpp"
-#include "query_manager.h"
-#include "query_list.h"
-#include "object_representation.h"	/* OR_GET_INT used by QFILE_GET_TUPLE_COUNT */
+#include "bit.h"
 #include "error_code.h"
 #include "error_manager.h"
-#include "bit.h"
+#include "list_file.h"
+#include "object_representation.h"	/* OR_GET_INT used by QFILE_GET_TUPLE_COUNT */
+#include "query_list.h"
+#include "query_manager.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 namespace parallel_scan
 {
-  thread_local ftab_set *input_handler_list::m_tl_ftab_set = nullptr;
-  thread_local VPID input_handler_list::m_tl_vpid = VPID_INITIALIZER;
-  thread_local size_t input_handler_list::m_tl_pgoffset = 0;
-  thread_local FILE_PARTIAL_SECTOR input_handler_list::m_tl_ftab = FILE_PARTIAL_SECTOR_INITIALIZER;
+  /* Thread-local definitions — one copy per OS thread. */
+  thread_local input_handler_list::worker_slice *input_handler_list::m_tl_slice = nullptr;
+  thread_local UINT64 input_handler_list::m_tl_bitmap = 0;
+  /* Brace-init keeps every VSID member explicit; if VSID gains fields later,
+   * the compiler flags this site so we don't silently leave them uninitialised. */
+  thread_local VSID input_handler_list::m_tl_vsid = {NULL_SECTID, NULL_VOLID};
+  thread_local QMGR_TEMP_FILE *input_handler_list::m_tl_current_tfile = nullptr;
   thread_local bool input_handler_list::m_tl_is_membuf_worker = false;
   thread_local int input_handler_list::m_tl_membuf_pageid = 0;
 
   int
   input_handler_list::init_on_main (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, int parallelism)
   {
-    m_list_id = list_id;
-
+    /* Trivial cases: nothing to distribute.  Free any previous sector info
+     * (qfile_free_list_sector_info is idempotent) and return empty slices.
+     * Leave m_list_id untouched so callers that probed a previous list_id do
+     * not observe a half-updated state. */
     if (parallelism <= 0 || list_id == nullptr || VPID_ISNULL (&list_id->first_vpid))
       {
-	m_splited_ftab_set.clear ();
-	m_splited_ftab_set.resize (parallelism > 0 ? parallelism : 0);
-	m_splited_ftab_set_idx.store (0);
-	m_has_membuf = false;
-	m_membuf_last = -1;
-	m_tfile_vfid = nullptr;
+	qfile_free_list_sector_info (thread_p, &m_sector_info);
+	m_worker_slices.clear ();
+	m_worker_slices.resize (parallelism > 0 ? parallelism : 0);
+	m_worker_slice_idx.store (0);
 	return NO_ERROR;
       }
 
-    /* Check for membuf */
-    m_tfile_vfid = list_id->tfile_vfid;
-    m_has_membuf = (m_tfile_vfid != NULL
-		    && m_tfile_vfid->membuf != NULL
-		    && m_tfile_vfid->membuf_last >= 0);
-    if (m_has_membuf)
-      {
-	m_membuf_last = m_tfile_vfid->membuf_last;
-      }
-    else
-      {
-	m_membuf_last = -1;
-      }
+    /* Free any leftover data from a previous call before collecting fresh
+     * sector info (qfile_collect_list_sector_info also calls free at entry,
+     * so this is double-safe). */
+    qfile_free_list_sector_info (thread_p, &m_sector_info);
 
-    /* Collect sectors from the base file */
-    if (m_tfile_vfid != NULL && !VFID_ISNULL (&m_tfile_vfid->temp_vfid))
+    /* Collect membuf + sector arrays for the base list and all dependent
+     * lists.  On failure the helper performs internal cleanup; we defer
+     * publishing m_list_id until after success so a failed init does not
+     * leave a stale pointer behind. */
+    int error_code = qfile_collect_list_sector_info (thread_p, list_id, &m_sector_info);
+    if (error_code != NO_ERROR)
       {
-	FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
-	int error_code;
-
-	error_code = file_get_all_data_sectors (thread_p, &m_tfile_vfid->temp_vfid, &collector);
-	if (error_code != NO_ERROR)
-	  {
-	    if (collector.partsect_ftab != NULL)
-	      {
-		db_private_free_and_init (thread_p, collector.partsect_ftab);
-	      }
-	    return error_code;
-	  }
-	m_ftab_set.convert (&collector);
-	if (collector.partsect_ftab != NULL)
-	  {
-	    db_private_free_and_init (thread_p, collector.partsect_ftab);
-	  }
+	m_list_id = nullptr;
+	return error_code;
       }
 
-    /* Collect sectors from dependent files */
-    for (QFILE_LIST_ID *dep = list_id->dependent_list_id; dep != NULL; dep = dep->dependent_list_id)
+    m_list_id = list_id;
+
+    /* Past the trivial-case guard above, parallelism > 0 holds, so the
+     * division/modulo below are well-defined. */
+    int n = m_sector_info.sector_cnt;
+    int per = n / parallelism;
+    int rem = n % parallelism;
+
+    m_worker_slices.clear ();
+    m_worker_slices.resize (parallelism);
+
+    int cur = 0;
+    for (int i = 0; i < parallelism; i++)
       {
-	if (dep->tfile_vfid == NULL || VFID_ISNULL (&dep->tfile_vfid->temp_vfid))
-	  {
-	    continue;
-	  }
-
-	FILE_FTAB_COLLECTOR dep_collector = FILE_FTAB_COLLECTOR_INITIALIZER;
-	int error_code;
-
-	error_code = file_get_all_data_sectors (thread_p, &dep->tfile_vfid->temp_vfid, &dep_collector);
-	if (error_code != NO_ERROR)
-	  {
-	    if (dep_collector.partsect_ftab != NULL)
-	      {
-		db_private_free_and_init (thread_p, dep_collector.partsect_ftab);
-	      }
-	    return error_code;
-	  }
-	m_ftab_set.append_from_collector (&dep_collector);
-	if (dep_collector.partsect_ftab != NULL)
-	  {
-	    db_private_free_and_init (thread_p, dep_collector.partsect_ftab);
-	  }
+	int sz = per + (i < rem ? 1 : 0);
+	m_worker_slices[i].start = cur;
+	m_worker_slices[i].end = cur + sz;
+	m_worker_slices[i].iter = cur;
+	cur += sz;
       }
 
-    /* Split sectors among workers */
-    m_splited_ftab_set = m_ftab_set.split (parallelism);
-    m_splited_ftab_set_idx.store (0);
-    m_ftab_set.clear ();
-
+    m_worker_slice_idx.store (0);
     return NO_ERROR;
   }
 
   int
   input_handler_list::initialize (THREAD_ENTRY *thread_p, HFID *hfid, SCAN_ID *scan_id)
   {
-    int idx = m_splited_ftab_set_idx.fetch_add (1);
-    if (idx < 0 || (size_t) idx >= m_splited_ftab_set.size ())
+    int idx = m_worker_slice_idx.fetch_add (1);
+    if (idx < 0 || (size_t) idx >= m_worker_slices.size ())
       {
 	assert_release (false);
 	return ER_FAILED;
       }
-    m_tl_ftab_set = &m_splited_ftab_set[idx];
-    m_tl_vpid = VPID_INITIALIZER;
-    m_tl_pgoffset = 0;
-    m_tl_ftab = FILE_PARTIAL_SECTOR_INITIALIZER;
 
-    /* Worker 0 handles membuf pages first */
-    m_tl_is_membuf_worker = (idx == 0 && m_has_membuf);
+    m_tl_slice = &m_worker_slices[idx];
+    m_tl_bitmap = 0;
+    VSID_SET_NULL (&m_tl_vsid);
+    m_tl_current_tfile = nullptr;
+
+    m_tl_is_membuf_worker = (idx == 0 && m_sector_info.membuf_tfile != nullptr);
     m_tl_membuf_pageid = 0;
 
     return NO_ERROR;
@@ -153,59 +127,55 @@ namespace parallel_scan
   {
     while (true)
       {
-	/* Phase 1: membuf worker processes membuf pages first */
-	if (m_tl_is_membuf_worker && m_tl_membuf_pageid <= m_membuf_last)
+	if (m_tl_is_membuf_worker
+	    && m_sector_info.membuf_tfile != nullptr
+	    && m_tl_membuf_pageid <= m_sector_info.membuf_tfile->membuf_last)
 	  {
 	    vpid->volid = NULL_VOLID;
 	    vpid->pageid = m_tl_membuf_pageid++;
+	    m_tl_current_tfile = m_sector_info.membuf_tfile;
 	  }
 	else
 	  {
-	    /* Phase 2: sector-based page iteration */
-	    bool found = false;
-	    while (!found)
+	    /* Phase 2: bitmap-based iteration over the worker's sector slice.
+	     * Refill the bitmap when the current sector is exhausted. */
+	    if (m_tl_bitmap == 0)
 	      {
-		if (VPID_ISNULL (&m_tl_vpid))
+		int sidx = m_tl_slice->iter++;
+		if (sidx >= m_tl_slice->end)
 		  {
-		    m_tl_ftab = m_tl_ftab_set->get_next ();
-		    if (VSID_IS_NULL (&m_tl_ftab.vsid))
-		      {
-			return S_END;
-		      }
-		    m_tl_pgoffset = 0;
-		    m_tl_vpid.volid = m_tl_ftab.vsid.volid;
-		    m_tl_vpid.pageid = SECTOR_FIRST_PAGEID (m_tl_ftab.vsid.sectid);
+		    return S_END;
 		  }
-
-		for (; m_tl_pgoffset < DISK_SECTOR_NPAGES; m_tl_pgoffset++, m_tl_vpid.pageid++)
+		m_tl_vsid = m_sector_info.sectors[sidx].vsid;
+		m_tl_bitmap = m_sector_info.sectors[sidx].page_bitmap;
+		m_tl_current_tfile = (QMGR_TEMP_FILE *) m_sector_info.tfiles[sidx];
+		if (m_tl_bitmap == 0)
 		  {
-		    if (bit64_is_set (m_tl_ftab.page_bitmap, (int) m_tl_pgoffset))
-		      {
-			found = true;
-			*vpid = m_tl_vpid;
-			m_tl_pgoffset++;
-			m_tl_vpid.pageid++;
-			break;
-		      }
-		  }
-
-		if (!found && m_tl_pgoffset >= DISK_SECTOR_NPAGES)
-		  {
-		    VPID_SET_NULL (&m_tl_vpid);
+		    continue;
 		  }
 	      }
+
+#if defined(__GNUC__) || defined(__clang__)
+	    int bit_pos = __builtin_ctzll (m_tl_bitmap);
+#else
+	    int bit_pos = bit64_count_trailing_zeros (m_tl_bitmap);
+#endif
+	    m_tl_bitmap &= m_tl_bitmap - 1;	/* clear lowest set bit */
+
+	    vpid->volid = m_tl_vsid.volid;
+	    vpid->pageid = SECTOR_FIRST_PAGEID (m_tl_vsid.sectid) + bit_pos;
 	  }
 
-	/* Skip overflow tuple pages (TUPLE_COUNT == -2): the worker that owns the
-	 * first (non-overflow) page of a large tuple walks its overflow chain via
-	 * qfile_get_tuple, so these continuation pages have already been consumed. */
-	PAGE_PTR page_p = qmgr_get_old_page_read_only (thread_p, vpid, m_tfile_vfid);
-	if (page_p == NULL)
+	PAGE_PTR page_p = qmgr_get_old_page_read_only (thread_p, vpid, m_tl_current_tfile);
+	if (page_p == nullptr)
 	  {
+	    /* qmgr_get_old_page_read_only must have set an error before failing —
+	     * mirror the hash-join pattern (px_hash_join_task_manager.cpp:608). */
+	    assert_release_error (er_errid () != NO_ERROR);
 	    return S_ERROR;
 	  }
 	int tuple_count = QFILE_GET_TUPLE_COUNT (page_p);
-	qmgr_free_old_page (thread_p, page_p, m_tfile_vfid);
+	qmgr_free_old_page (thread_p, page_p, m_tl_current_tfile);
 	if (tuple_count == QFILE_OVERFLOW_TUPLE_COUNT_FLAG)
 	  {
 	    continue;
@@ -217,12 +187,24 @@ namespace parallel_scan
   int
   input_handler_list::finalize (THREAD_ENTRY *thread_p)
   {
-    m_tl_ftab_set = nullptr;
-    VPID_SET_NULL (&m_tl_vpid);
-    m_tl_pgoffset = 0;
-    m_tl_ftab = FILE_PARTIAL_SECTOR_INITIALIZER;
+    m_tl_slice = nullptr;
+    m_tl_bitmap = 0;
+    VSID_SET_NULL (&m_tl_vsid);
+    m_tl_current_tfile = nullptr;
     m_tl_is_membuf_worker = false;
     m_tl_membuf_pageid = 0;
     return NO_ERROR;
+  }
+
+  void
+  input_handler_list::cleanup_on_main (THREAD_ENTRY *thread_p)
+  {
+    /* Release the sector arrays acquired in init_on_main.  The implicit
+     * destructor cannot run this because db_private_free needs THREAD_ENTRY,
+     * so the owning manager must invoke us before destruction.  Idempotent. */
+    qfile_free_list_sector_info (thread_p, &m_sector_info);
+    m_worker_slices.clear ();
+    m_worker_slice_idx.store (0);
+    m_list_id = nullptr;
   }
 }
