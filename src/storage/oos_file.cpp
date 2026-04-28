@@ -29,6 +29,8 @@
 #include "scope_exit.hpp"
 #include "slotted_page.h"
 #include "page_buffer_util.hpp"
+#include "log_comm.h"
+#include "log_impl.h"
 #include "xserver_interface.h"
 
 #include "oos_file.hpp"
@@ -64,6 +66,9 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid);
 
 STATIC_INLINE __attribute__ ((ALWAYS_INLINE))
 int oos_get_max_chunk_size_within_page ();
+
+static bool
+oos_needs_repl_tracking (THREAD_ENTRY *thread_p);
 
 static auto_unfix_page_ptr
 oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid, VPID &vpid_out);
@@ -1093,10 +1098,36 @@ oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &o
 }
 
 
+//
+// Multi-chunk OOS insert with replication boundary tracking:
+//
+//   Layout per multi-chunk record (chunks logged in reverse order: tail first, head last):
+//     LOG_DUMMY_OOS_RECORD    <- boundary marker, does not carry data
+//     RVOOS_INSERT (chunk N-1, tail)
+//     ...
+//     RVOOS_INSERT (chunk 1)
+//     RVOOS_INSERT (chunk 0, head)    <- carries final next_chunk_oid chain
+//
+//   Per-transaction queue/vector invariant (for the slave applier to reassemble):
+//     oos_insert_lsa_queue : [..., dummy_lsa, tail_chunk_lsa]
+//     oos_oids             : [..., oid_Null_oid]
+//
+//   The immediate caller (heap_file.c) will push the real head-chunk OID after this
+//   function returns, so the final pairing becomes oos_oids=[..., null, real_oid]
+//   with queue=[..., dummy_lsa, tail_chunk_lsa]. The replication path then emits
+//   one RVREPL_DUMMY_OOS_RECORD for the null OID (pops dummy_lsa) followed by one
+//   RVREPL_OOS_INSERT for the real OID (pops tail_chunk_lsa). Intermediate
+//   chunks are not enqueued; tdes->oos_suppress_insert_lsa_queueing suppresses the
+//   auto-push in log_append_{undo,}redo_crumbs while this function runs.
+//
 static int
 oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &oid)
 {
-  int err = NO_ERROR;
+  int error_code = NO_ERROR;
+  LOG_TDES *tdes = NULL;
+  LOG_LSA dummy_lsa = NULL_LSA;
+  LOG_LSA tail_chunk_lsa = NULL_LSA;
+  bool track_repl = false;
 
   // split the recdes to multiple chunks and insert them one by one
   const int max_chunk_size = oos_get_max_chunk_size_within_page ();
@@ -1109,40 +1140,71 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
 
   int total_inserted_length = 0;
   OID next_chunk_oid = OID_INITIALIZER; // the last chunk has null OID as next_chunk_oid
+
+  track_repl = oos_needs_repl_tracking (thread_p);
+  if (track_repl)
+    {
+      const int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+      tdes = LOG_FIND_TDES (tran_index);
+      if (tdes == NULL)
+	{
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+	  return ER_LOG_UNKNOWN_TRANINDEX;
+	}
+
+      log_append_empty_record (thread_p, LOG_DUMMY_OOS_RECORD, NULL);
+      LSA_COPY (&dummy_lsa, &tdes->tail_lsa);
+
+      tdes->oos_suppress_insert_lsa_queueing = true;
+    }
+
+  scope_exit clear_oos_repl_state ([&]()
+  {
+    if (track_repl && tdes != NULL)
+      {
+	tdes->oos_suppress_insert_lsa_queueing = false;
+      }
+  });
+
   // this loop inserts chunks in reverse order so that next_chunk_oid is always known
   for (int i = required_page_nums - 1; i >= 0; --i)
     {
-
       RECDES chunk_recdes{};
       chunk_recdes.type = REC_HOME;
       chunk_recdes.length = std::min (max_chunk_size, total_data_length - i * max_chunk_size);
       total_inserted_length += chunk_recdes.length;
       chunk_recdes.data = recdes.data + i * max_chunk_size;
 
-      //  TODO: code review feedback
-      //
-      // - Distinguish between the record header and segment header for clarity.
-      // - 2nd to nth chunks do not need total_data_length in their headers, only the 1st chunk needs it.
-      // - If wanted for debug purposes, use NDEBUG
-      //
+      // Keep total_data_length in each chunk so the log applier can validate all pieces before reassembly.
       OOS_RECORD_HEADER header{total_data_length, i, next_chunk_oid};
 
       OID current_chunk_oid;
-      err = oos_insert_within_page (thread_p, oos_vfid, chunk_recdes, header, current_chunk_oid);
-      if (err != NO_ERROR)
+      error_code = oos_insert_within_page (thread_p, oos_vfid, chunk_recdes, header, current_chunk_oid);
+      if (error_code != NO_ERROR)
 	{
 	  oos_error ("could not insert chunk index=%d of length %d.", i, chunk_recdes.length);
 	  assert_release_error (er_errid () != NO_ERROR);
-	  assert (false);
 	  // Partially inserted chunks are cleaned up when the caller aborts the transaction
 	  // (individual undo records replay in reverse). The caller MUST NOT continue
 	  // the transaction after this error.
-	  return err;
+	  return error_code;
+	}
+
+      if (track_repl && i == required_page_nums - 1)
+	{
+	  LSA_COPY (&tail_chunk_lsa, &tdes->tail_lsa);
 	}
 
       next_chunk_oid = current_chunk_oid;
     }
   assert (total_inserted_length == recdes.length);
+
+  if (track_repl)
+    {
+      tdes->oos_insert_lsa_queue.push (dummy_lsa);
+      tdes->oos_insert_lsa_queue.push (tail_chunk_lsa);
+      thread_p->oos_oids.push_back (oid_Null_oid);
+    }
 
   // update the out parameter 'oid' to give access to the first slot
   oid = next_chunk_oid;
@@ -1767,6 +1829,24 @@ oos_get_max_chunk_size_within_page ()
   const int actual_upper_limit = DB_ALIGN_BELOW (spage_max_record_size (), OOS_ALIGNMENT);
 
   return actual_upper_limit - (int)sizeof (OOS_RECORD_HEADER);
+}
+
+/*
+ * oos_needs_repl_tracking () - check whether OOS replication boundary markers should be logged
+ *
+ * return: true if the master should emit OOS replication markers
+ *
+ *   thread_p(in): thread entry
+ *
+ * Note:
+ *   Only the master writes replication boundary markers. The log applier replays
+ *   OOS inserts on the slave, but it must not generate another dummy OOS record
+ *   while applying replicated data.
+ */
+static bool
+oos_needs_repl_tracking (THREAD_ENTRY *thread_p)
+{
+  return !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true;
 }
 
 int
