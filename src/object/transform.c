@@ -567,64 +567,58 @@ tf_is_catalog_class (OID * class_oid)
 void
 tf_compile_meta_classes ()
 {
-#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-  static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-#endif
-  static bool initialized = false;
-  if (initialized == false)
-    {
-#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-      pthread_mutex_lock (&mutex);
-#endif
-      if (initialized == false)
-	{
-	  META_CLASS *class_;
-	  META_ATTRIBUTE *att;
-	  TP_DOMAIN *domain;
-	  int c, i;
+  static bool is_initialized =[](){
+    META_CLASS * class_;
+    META_ATTRIBUTE *att;
+    TP_DOMAIN *domain;
+    int c, i;
 
-	  for (c = 0; Meta_classes[c] != NULL; c++)
-	    {
-	      class_ = Meta_classes[c];
+    for (c = 0; Meta_classes[c] != NULL; c++)
+      {
+	class_ = Meta_classes[c];
 
-	      class_->mc_n_variable = class_->mc_fixed_size = 0;
+	class_->mc_n_variable = class_->mc_fixed_size = 0;
 
-	      for (i = 0; class_->mc_atts[i].ma_name != NULL; i++)
-		{
-		  att = &class_->mc_atts[i];
-		  att->ma_id = i;
+	for (i = 0; class_->mc_atts[i].ma_name != NULL; i++)
+	  {
+	    att = &class_->mc_atts[i];
+	    att->ma_id = i;
 
-		  if (pr_is_variable_type (att->ma_type))
-		    {
-		      class_->mc_n_variable++;
-		    }
-		  else if (class_->mc_n_variable)
-		    {
-		      /*
-		       * can't have fixed width attributes AFTER variable width
-		       * attributes
-		       */
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_INVALID_METACLASS, 0);
-		    }
-		  else
-		    {
-		      /*
-		       * need a domain for size calculations, since we don't use
-		       * any parameterized types this isn't necessary but we still must
-		       * have it to call tp_domain_isk_size().
-		       */
-		      domain = tp_domain_resolve_default (att->ma_type);
-		      class_->mc_fixed_size += tp_domain_disk_size (domain);
-		    }
-		}
-	    }
+	    if (pr_is_variable_type (att->ma_type))
+	      {
+		class_->mc_n_variable++;
+	      }
+	    else if (class_->mc_n_variable)
+	      {
+		/*
+		 * can't have fixed width attributes AFTER variable width
+		 * attributes
+		 */
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_INVALID_METACLASS, 0);
+	      }
+	    else
+	      {
+		/*
+		 * need a domain for size calculations, since we don't use
+		 * any parameterized types this isn't necessary but we still must
+		 * have it to call tp_domain_isk_size().
+		 */
+		domain = tp_domain_resolve_default (att->ma_type);
+		class_->mc_fixed_size += tp_domain_disk_size (domain);
+	      }
+	  }
+      }
 
-	  initialized = true;
-	}
-#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-      pthread_mutex_unlock (&mutex);
-#endif
-    }
+    return true;
+  }
+  ();
+
+/* Notice:
+   * This ensures the variable is not optimized away, even though it does not change the functional logic of the code
+   * Please do not delete the following two lines.
+   */
+  (void) is_initialized;	// Dummy Reference  
+  *(volatile bool *) &is_initialized;
 }
 
 #if !defined(CS_MODE)

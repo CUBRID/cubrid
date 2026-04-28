@@ -122,15 +122,6 @@
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 #define MAX_TRANS_MULTI_CONN_TO_A_SERVER (10)
 int g_max_trans_multi_conn_to_a_server = MAX_TRANS_MULTI_CONN_TO_A_SERVER;
-
-struct
-{
-  int tran_index;
-  int tran_wait_msecs;
-  TRAN_ISOLATION tran_isolation;
-} g_main_tran_info =
-{
-NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT, TRAN_UNKNOWN_ISOLATION};
 #endif
 
 static CUB_THREAD_LOCAL BOOT_SERVER_CREDENTIAL boot_Server_credential = {
@@ -184,7 +175,7 @@ static int boot_check_locales (BOOT_CLIENT_CREDENTIAL * client_credential);
 static int boot_check_timezone_checksum (BOOT_CLIENT_CREDENTIAL * client_credential);
 #endif
 static int boot_client_find_and_cache_class_oids (void);
-
+static int reset_isolation_and_wait_times (void);
 /*
  * boot_client () -
  *
@@ -675,6 +666,38 @@ error_exit:
 
   return error_code;
 }
+
+static int
+reset_isolation_and_wait_times (void)
+{
+  TRAN_ISOLATION tran_isolation;
+  int tran_lock_wait_msecs;
+  int error_code;
+
+  /*
+   * If there is a need to change the isolation level and the lock wait,
+   * do it at this moment
+   */
+
+  tran_isolation = (TRAN_ISOLATION) prm_get_integer_value (PRM_ID_LOG_ISOLATION_LEVEL);
+  tran_lock_wait_msecs = prm_get_integer_value (PRM_ID_LK_TIMEOUT_SECS);
+  if (tran_isolation != TRAN_DEFAULT_ISOLATION_LEVEL ())
+    {
+      error_code = tran_reset_isolation (tran_isolation, TM_TRAN_ASYNC_WS ());
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+  if (tran_lock_wait_msecs >= 0)
+    {
+      (void) tran_reset_wait_times (tran_lock_wait_msecs * 1000);
+    }
+
+  return NO_ERROR;
+}
+
+
 
 /*
  * boot_restart_client () - restart client
@@ -1199,11 +1222,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
   /* Initialize client modules for execution */
   boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
-#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-  g_main_tran_info.tran_index = tran_index;
-  g_main_tran_info.tran_wait_msecs = tran_lock_wait_msecs;
-  g_main_tran_info.tran_isolation = tran_isolation;
-#endif
 
   oid_set_root (&boot_Server_credential.root_class_oid);
   OID_INIT_TEMPID ();
@@ -1257,30 +1275,11 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   /* Does not care if was committed/aborted .. */
   (void) tran_commit (false);
 
-  /*
-   * If there is a need to change the isolation level and the lock wait,
-   * do it at this moment
-   */
-
-  tran_isolation = (TRAN_ISOLATION) prm_get_integer_value (PRM_ID_LOG_ISOLATION_LEVEL);
-  tran_lock_wait_msecs = prm_get_integer_value (PRM_ID_LK_TIMEOUT_SECS);
-  if (tran_isolation != TRAN_DEFAULT_ISOLATION_LEVEL ())
+  error_code = reset_isolation_and_wait_times ();
+  if (error_code != NO_ERROR)
     {
-      error_code = tran_reset_isolation (tran_isolation, TM_TRAN_ASYNC_WS ());
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
+      goto error;
     }
-  if (tran_lock_wait_msecs >= 0)
-    {
-      (void) tran_reset_wait_times (tran_lock_wait_msecs * 1000);
-    }
-
-#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-  g_main_tran_info.tran_wait_msecs = tran_lock_wait_msecs;
-  g_main_tran_info.tran_isolation = tran_isolation;
-#endif
 
   error_code = showstmt_metadata_init ();
   if (error_code != NO_ERROR)
@@ -1467,7 +1466,7 @@ boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
 #endif //
 
   /* Initialize client modules for execution */
-  boot_client (tran_index, g_main_tran_info.tran_wait_msecs, g_main_tran_info.tran_isolation);
+  boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
 
   sm_init (&boot_Server_credential.root_class_oid, &boot_Server_credential.root_class_hfid, true);
 
@@ -1526,7 +1525,12 @@ boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
 */
 
-  db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
+  error_code = reset_isolation_and_wait_times ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   return NO_ERROR;
 
 error:
@@ -1722,11 +1726,6 @@ boot_server_die_or_changed (void)
       (void) tran_abort_only_client (true);
       boot_client (NULL_TRAN_INDEX, TM_TRAN_WAIT_MSECS (), TM_TRAN_ISOLATION ());
       boot_Is_client_all_final = false;
-#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-      g_main_tran_info.tran_index = NULL_TRAN_INDEX;
-      g_main_tran_info.tran_wait_msecs = TM_TRAN_WAIT_MSECS ();
-      g_main_tran_info.tran_isolation = TM_TRAN_ISOLATION ();
-#endif
 #if defined(CS_MODE)
       net_client_final (true);
 #endif /* !CS_MODE */
@@ -1822,11 +1821,6 @@ boot_client_all_finalize (int final_level)
 
       boot_client (NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT, TRAN_DEFAULT_ISOLATION_LEVEL ());
       boot_Is_client_all_final = true;
-#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-      g_main_tran_info.tran_index = NULL_TRAN_INDEX;
-      g_main_tran_info.tran_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
-      g_main_tran_info.tran_isolation = TRAN_DEFAULT_ISOLATION_LEVEL ();
-#endif
 
       /* restore the signals that was blocked, when the function started. */
       signal (SIGTERM, sigterm_handler);
