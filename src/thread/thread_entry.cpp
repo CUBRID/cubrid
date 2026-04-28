@@ -95,6 +95,9 @@ namespace cubthread
     , wakeup_cond ()
     , private_heap_id (0)
     , conn_entry (NULL)
+#if defined (SERVER_MODE)
+    , slot (nullptr)
+#endif
     , xasl_unpack_info_ptr (NULL)
     , xasl_errcode (0)
     , xasl_recursion_depth (0)

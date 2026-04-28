@@ -420,7 +420,7 @@ namespace cubthread
   {
     check_not_single_thread ();
 
-    std::lock_guard<std::mutex> lock (m_entries_mutex);
+    std::unique_lock<std::mutex> ulock (m_entries_mutex);
 
     if (m_available_entries_count < entries_count)
       {
@@ -428,7 +428,12 @@ namespace cubthread
       }
     m_available_entries_count -= entries_count;
 
+    ulock.unlock ();
+
+    // this doesn't need to hold the lock
     Res *new_res = new Res (std::forward<CtArgs> (args)...);
+
+    ulock.lock ();
 
     tracker.push_back (new_res);
 
@@ -441,7 +446,7 @@ namespace cubthread
   {
     check_not_single_thread ();
 
-    std::lock_guard<std::mutex> lock (m_entries_mutex);
+    std::unique_lock<std::mutex> ulock (m_entries_mutex);
 
     for (auto iter = tracker.begin (); iter != tracker.end (); ++iter)
       {
@@ -450,10 +455,14 @@ namespace cubthread
 	    // remove resource from tracker
 	    (void) tracker.erase (iter);
 
+	    ulock.unlock ();
+
 	    // stop resource and delete
 	    res->stop_execution ();
 	    delete res;
 	    res = NULL;
+
+	    ulock.lock ();
 
 	    // update available entries
 	    m_available_entries_count += entries_count;
@@ -510,8 +519,11 @@ template <cubthread::stats_t Stats = cubthread::stats_t::off, cubthread::pool_t 
 using worker_pool_type = cubthread::worker_pool;
 #endif
 
-template <cubthread::stats_t Stats = cubthread::stats_t::off, cubthread::pool_t Type = cubthread::pool_t::basic,
-	  typename ... Args>
+template <
+	cubthread::stats_t Stats = cubthread::stats_t::off,
+	cubthread::pool_t Type = cubthread::pool_t::basic,
+	typename ... Args
+	>
 worker_pool_type<Stats, Type> *
 thread_create_worker_pool (Args &&... args)
 {
