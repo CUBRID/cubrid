@@ -3199,12 +3199,30 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
       goto exit_on_error;
     }
 
-  if (prec == 0 && pad_character_zero)
+  if (prec == 0)
     {
-      prec = 1;
-      num_string[0] = '0';
-      num_string[prec] = '\0';
-      numeric_coerce_dec_str_to_num (num_string, num);
+      if (pad_character_zero)
+	{
+	  prec = 1;
+	  num_string[0] = '0';
+	  num_string[prec] = '\0';
+	  numeric_coerce_dec_str_to_num (num_string, num);
+	}
+      else
+	{
+	  /*
+	   * no valid digit was found in input.
+	   * reject strings that do not contain any numeric digit.
+	   *
+	   * examples:
+	   *   '+', '-'                  (sign only)
+	   *   '.', ' . ', '   .   '     (decimal point only)
+	   *   ' ', '    '               (whitespace only)
+	   *   '+.', '-.', ' + . '       (sign + non-digit combinations)
+	   */
+	  ret = DOMAIN_INCOMPATIBLE;
+	  goto exit_on_error;
+	}
     }
   else
     {
