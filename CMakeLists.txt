@@ -133,7 +133,7 @@ set(WITH_LIBEDIT_URL "https://github.com/CUBRID/libedit/archive/refs/tags/libedi
 set(WITH_RAPIDJSON_URL "https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz")
 
 # openssl library sources URL
-set(WITH_LIBOPENSSL_URL "https://www.openssl.org/source/old/1.1.1/openssl-1.1.1f.tar.gz")
+set(WITH_LIBOPENSSL_URL "https://github.com/openssl/openssl/releases/download/OpenSSL_1_1_1f/openssl-1.1.1f.tar.gz")
 
 set(WITH_EXTERNAL_PREFIX "EXTERNAL" CACHE STRING "External library prefix (default: EXTERNAL)")
 set(WITH_BUNDLED_PREFIX "BUNDLED" CACHE STRING "Bundled library prefix (default: BUNDLED)")
