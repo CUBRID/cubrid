@@ -51,6 +51,7 @@
 #include "log_lsa.hpp"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "oid.h"
 #include "oos_file.hpp"
 #include "db_value_printer.hpp"
 #include "db.h"
@@ -444,6 +445,15 @@ LA_RECDES_POOL la_recdes_pool;
 
 static LA_OOS_SQL_LOG_CACHE_ENTRY *la_Oos_sql_log_cache_head = NULL;
 static LA_OOS_SQL_LOG_CACHE_ENTRY *la_Oos_sql_log_cache_tail = NULL;
+
+/* Hash accelerator for la_find_oos_sql_log_cache_entry().  The linked list
+ * remains the canonical owner of entries (used for ordered teardown in
+ * la_clear_oos_sql_log_cache()).  The hash maps chunk_oid -> latest cached
+ * entry, turning chain reassembly from O(N^2) to O(N) for OOS columns whose
+ * value spans many physical chunks (e.g. several MB strings).  Lazily
+ * allocated on first cache insert; freed/recreated on cache clear. */
+#define LA_OOS_SQL_LOG_CACHE_HASH_SIZE 257
+static MHT_TABLE *la_Oos_sql_log_cache_hash = NULL;
 
 /* Tranid currently being processed by la_apply_repl_log; scopes OOS sql.log
  * cache lookups to the current transaction so that a stale entry surviving
@@ -3603,31 +3613,30 @@ la_get_raw_offset_internal (OR_BUF * buf, int *error, int offset_size)
 
 /*
  * la_find_oos_sql_log_cache_entry () - Look up a cached OOS chunk by
- *   (current tranid, OID).  Filtering on tranid prevents a stale entry from a
- *   previous transaction (which can survive across LOG_SYSOP_END mini-batches
- *   that intentionally keep the cache alive) from masquerading as the current
- *   transaction's chunk when the master rapidly recycles the same OOS slot OID.
+ *   (current tranid, OID).  Uses la_Oos_sql_log_cache_hash for O(1) probe;
+ *   the tranid match prevents a stale entry surviving across LOG_SYSOP_END
+ *   mini-batches from being matched by a different transaction that lands on
+ *   the same recycled OOS slot OID.  Returns NULL when the hash is not yet
+ *   allocated, the OID is null/invalid, the entry is missing, or the entry's
+ *   tranid does not match the current transaction.
  */
 static LA_OOS_SQL_LOG_CACHE_ENTRY *
 la_find_oos_sql_log_cache_entry (const OID * chunk_oid)
 {
-  LA_OOS_SQL_LOG_CACHE_ENTRY *entry = la_Oos_sql_log_cache_head;
+  LA_OOS_SQL_LOG_CACHE_ENTRY *entry;
 
-  if (chunk_oid == NULL || OID_ISNULL (chunk_oid))
+  if (chunk_oid == NULL || OID_ISNULL (chunk_oid) || la_Oos_sql_log_cache_hash == NULL)
     {
       return NULL;
     }
 
-  while (entry != NULL)
+  entry = (LA_OOS_SQL_LOG_CACHE_ENTRY *) mht_get (la_Oos_sql_log_cache_hash, chunk_oid);
+  if (entry == NULL || entry->tranid != la_Oos_sql_log_current_tranid)
     {
-      if (entry->tranid == la_Oos_sql_log_current_tranid && OID_EQ (&entry->chunk_oid, chunk_oid))
-	{
-	  return entry;
-	}
-      entry = entry->next;
+      return NULL;
     }
 
-  return NULL;
+  return entry;
 }
 
 static void
@@ -3651,6 +3660,14 @@ la_clear_oos_sql_log_cache (void)
 {
   LA_OOS_SQL_LOG_CACHE_ENTRY *entry = la_Oos_sql_log_cache_head;
   LA_OOS_SQL_LOG_CACHE_ENTRY *next_entry = NULL;
+
+  /* Tear down the hash first; entries themselves are owned by the linked list
+   * walked just below, so the hash teardown only releases the bucket array. */
+  if (la_Oos_sql_log_cache_hash != NULL)
+    {
+      mht_destroy (la_Oos_sql_log_cache_hash);
+      la_Oos_sql_log_cache_hash = NULL;
+    }
 
   while (entry != NULL)
     {
@@ -3793,6 +3810,17 @@ la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes)
       return NO_ERROR;
     }
 
+  if (la_Oos_sql_log_cache_hash == NULL)
+    {
+      la_Oos_sql_log_cache_hash =
+	mht_create ("OOS sql.log cache", LA_OOS_SQL_LOG_CACHE_HASH_SIZE, oid_hash, oid_compare_equals);
+      if (la_Oos_sql_log_cache_hash == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (MHT_TABLE));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
+
   memcpy (&oos_header, recdes->data, OOS_RECORD_HEADER_SIZE);
   payload_length = recdes->length - OOS_RECORD_HEADER_SIZE;
 
@@ -3836,6 +3864,20 @@ la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes)
 
   if (is_new_entry)
     {
+      /* Hash key is &entry->chunk_oid (entry-owned, stable for entry lifetime).
+       * mht_put overwrites any prior hash mapping for the same OID, which is the
+       * desired behavior for cross-transaction OID reuse: the previous owner's
+       * entry remains in the linked list (until next cache clear) but is no
+       * longer reachable via lookup.  mht_put failure is treated as an alloc
+       * failure since lookups would silently miss otherwise. */
+      if (mht_put (la_Oos_sql_log_cache_hash, &entry->chunk_oid, entry) == NULL)
+	{
+	  free_and_init (entry);
+	  db_private_free_and_init (NULL, payload_data);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LA_OOS_SQL_LOG_CACHE_ENTRY));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
       if (la_Oos_sql_log_cache_tail == NULL)
 	{
 	  la_Oos_sql_log_cache_head = entry;
