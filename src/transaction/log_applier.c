@@ -3645,16 +3645,24 @@ la_clear_oos_sql_log_cache (void)
   la_Oos_sql_log_cache_tail = NULL;
 }
 
+/*
+ * la_get_oos_sql_log_chunk_oid () - Peek the LOG_DATA at item->target_lsa
+ *   directly from the in-memory page and extract the OID where the OOS chunk
+ *   was inserted on the master.  Unlike la_get_log_data(), this does not
+ *   allocate/decompress the redo body — only the small fixed-size log record
+ *   header struct is read.  The chunk_oid is filled only when the recovery
+ *   index is RVOOS_INSERT; otherwise it stays OID_NULL and NO_ERROR is
+ *   returned, leaving the caller to fall back gracefully.
+ */
 static int
 la_get_oos_sql_log_chunk_oid (LA_ITEM * item, LOG_PAGE * pgptr, OID * chunk_oid)
 {
   LOG_RECORD_HEADER *lrec;
-  unsigned int rcvindex = 0;
-  void *logs = NULL;
-  char rec_type_storage[DB_SIZEOF (INT16)] = { 0 };
-  char *rec_type = rec_type_storage;
-  char *data = NULL;
-  int length = 0;
+  LOG_PAGE *pg;
+  PGLENGTH offset;
+  LOG_PAGEID pageid;
+  LOG_DATA *logdata = NULL;
+  int log_size = 0;
   int error = NO_ERROR;
 
   if (chunk_oid == NULL)
@@ -3669,20 +3677,13 @@ la_get_oos_sql_log_chunk_oid (LA_ITEM * item, LOG_PAGE * pgptr, OID * chunk_oid)
       return NO_ERROR;
     }
 
-  lrec = LOG_GET_LOG_RECORD_HEADER (pgptr, &item->target_lsa);
-  error =
-    la_get_log_data (lrec, &item->target_lsa, pgptr, RVOOS_INSERT, &rcvindex, &logs, &rec_type, &data, &length);
-  if (data != NULL)
-    {
-      free_and_init (data);
-    }
+  pg = pgptr;
+  lrec = LOG_GET_LOG_RECORD_HEADER (pg, &item->target_lsa);
+  offset = DB_SIZEOF (LOG_RECORD_HEADER) + item->target_lsa.offset;
+  pageid = item->target_lsa.pageid;
 
+  LA_LOG_READ_ALIGN (error, offset, pageid, pg);
   if (error != NO_ERROR)
-    {
-      return error == ER_OUT_OF_VIRTUAL_MEMORY ? error : NO_ERROR;
-    }
-
-  if (logs == NULL || rcvindex != RVOOS_INSERT)
     {
       return NO_ERROR;
     }
@@ -3691,30 +3692,58 @@ la_get_oos_sql_log_chunk_oid (LA_ITEM * item, LOG_PAGE * pgptr, OID * chunk_oid)
     {
     case LOG_UNDOREDO_DATA:
     case LOG_DIFF_UNDOREDO_DATA:
+      log_size = DB_SIZEOF (LOG_REC_UNDOREDO);
+      LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset, pageid, pg);
+      if (error != NO_ERROR)
+	{
+	  return NO_ERROR;
+	}
+      logdata = &((LOG_REC_UNDOREDO *) ((char *) pg->area + offset))->data;
+      break;
+
     case LOG_MVCC_UNDOREDO_DATA:
     case LOG_MVCC_DIFF_UNDOREDO_DATA:
-      {
-	LOG_REC_UNDOREDO *undoredo = (LOG_REC_UNDOREDO *) logs;
-	chunk_oid->volid = undoredo->data.volid;
-	chunk_oid->pageid = undoredo->data.pageid;
-	chunk_oid->slotid = undoredo->data.offset;
-	break;
-      }
+      log_size = DB_SIZEOF (LOG_REC_MVCC_UNDOREDO);
+      LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset, pageid, pg);
+      if (error != NO_ERROR)
+	{
+	  return NO_ERROR;
+	}
+      logdata = &((LOG_REC_MVCC_UNDOREDO *) ((char *) pg->area + offset))->undoredo.data;
+      break;
 
     case LOG_REDO_DATA:
+      log_size = DB_SIZEOF (LOG_REC_REDO);
+      LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset, pageid, pg);
+      if (error != NO_ERROR)
+	{
+	  return NO_ERROR;
+	}
+      logdata = &((LOG_REC_REDO *) ((char *) pg->area + offset))->data;
+      break;
+
     case LOG_MVCC_REDO_DATA:
-      {
-	LOG_REC_REDO *redo = (LOG_REC_REDO *) logs;
-	chunk_oid->volid = redo->data.volid;
-	chunk_oid->pageid = redo->data.pageid;
-	chunk_oid->slotid = redo->data.offset;
-	break;
-      }
+      log_size = DB_SIZEOF (LOG_REC_MVCC_REDO);
+      LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset, pageid, pg);
+      if (error != NO_ERROR)
+	{
+	  return NO_ERROR;
+	}
+      logdata = &((LOG_REC_MVCC_REDO *) ((char *) pg->area + offset))->redo.data;
+      break;
 
     default:
-      break;
+      return NO_ERROR;
     }
 
+  if (logdata == NULL || logdata->rcvindex != RVOOS_INSERT)
+    {
+      return NO_ERROR;
+    }
+
+  chunk_oid->volid = logdata->volid;
+  chunk_oid->pageid = logdata->pageid;
+  chunk_oid->slotid = logdata->offset;
   return NO_ERROR;
 }
 
