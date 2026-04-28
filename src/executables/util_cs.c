@@ -902,6 +902,12 @@ error_exit:
 }
 
 
+static double
+calc_used_pct (INT64 used, INT64 alloc)
+{
+  return (alloc > 0) ? ((double) used / (double) alloc) * 100.0 : 0.0;
+}
+
 /*
  * spacedb() - spacedb main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
@@ -1249,38 +1255,39 @@ spacedb (UTIL_FUNCTION_ARG * arg)
       for (int table_num = 0; table_num < actual_table_count; table_num++)
         {
 
-          const char *class_name = (table_sizes[table_num].file_count > 0)
-                                   ? table_sizes[table_num].header[0].name
-                                   : "";
+          if (table_sizes[table_num].file_count == 0)
+            {
+              continue;
+            }
+
+          const char *class_name = table_sizes[table_num].header[0].name;
           INT64 total_used_npage = 0;
           INT64 total_alloc_npage = 0;
           char total_used_pct_str[32];
 
           fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_FILES_TABLE_SIZE_CLASS_NAME), class_name);
           fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_END_UNDERLINE));
-          fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, (size_unit_type == SPACEDB_SIZE_UNIT_PAGE ? SPACEDB_MSG_FILES_TABLE_SIZE_PAGE : SPACEDB_MSG_FILES_TABLE_SIZE_SIZE)));
+          fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB,
+					  (size_unit_type == SPACEDB_SIZE_UNIT_PAGE
+					   ? SPACEDB_MSG_FILES_TABLE_SIZE_PAGE
+					   : SPACEDB_MSG_FILES_TABLE_SIZE_SIZE)));
           fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_END_UNDERLINE));
 
           for (int file_num = 0; file_num < table_sizes[table_num].file_count; file_num++)
             {
-              SPACEDB_TABLE_SIZES table_size_cp = table_sizes[table_num].header[file_num];
-              char *name = table_size_cp.name;
+              const SPACEDB_TABLE_SIZES *ts = &table_sizes[table_num].header[file_num];
               char used_pct_str[32];
               int used_npage;
               int alloc_npage;
               const char *ftype_str;
-              int ftype = table_size_cp.ftype;
-              double used_pct;
 
-              used_npage = table_size_cp.data_used_page + table_size_cp.ovf_alloced_page;
-              alloc_npage = table_size_cp.data_alloced_page + table_size_cp.ovf_alloced_page;
-              used_pct = (alloc_npage > 0) ? ((double) used_npage / (double) alloc_npage) * 100.0 : 0.0;
-
-              ftype_str = (ftype == 1) ? "HEAP" : (ftype == 4) ? "BTREE" : "UNKNOWN";
-              snprintf (used_pct_str, sizeof (used_pct_str), "%.1f", used_pct);
+              used_npage = ts->data_used_page + ts->ovf_alloced_page;
+              alloc_npage = ts->data_alloced_page + ts->ovf_alloced_page;
+              ftype_str = (ts->ftype == 1) ? "HEAP" : (ts->ftype == 4) ? "BTREE" : "UNKNOWN";
+              snprintf (used_pct_str, sizeof (used_pct_str), "%.1f", calc_used_pct (used_npage, alloc_npage));
 
               fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_FILES_TABLE_SIZE_FORMAT),
-                       name, ftype_str, SPACEDB_TO_SIZE_ARG (1, used_npage), SPACEDB_TO_SIZE_ARG (2, alloc_npage), used_pct_str);
+                       ts->name, ftype_str, SPACEDB_TO_SIZE_ARG (1, used_npage), SPACEDB_TO_SIZE_ARG (2, alloc_npage), used_pct_str);
 
               total_used_npage += used_npage;
               total_alloc_npage += alloc_npage;
@@ -1288,7 +1295,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 
           fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_END_UNDERLINE));
           snprintf (total_used_pct_str, sizeof (total_used_pct_str), "%.1f",
-		    (total_alloc_npage > 0) ? ((double) total_used_npage / (double) total_alloc_npage) * 100.0 : 0.0);
+		    calc_used_pct (total_used_npage, total_alloc_npage));
           fprintf (outfp,
 		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_FILES_TABLE_SIZE_TOTAL),
 		   SPACEDB_TO_SIZE_ARG (1, total_used_npage),
