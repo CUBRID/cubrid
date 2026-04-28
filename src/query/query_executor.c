@@ -666,8 +666,6 @@ static int qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGRE
 						  REGU_VARIABLE_LIST regu_list, int *resolved);
 static int query_multi_range_opt_check_set_sort_col (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static ACCESS_SPEC_TYPE *query_multi_range_opt_check_specs (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
-static int qexec_fetch_and_coerce_instnum_lower (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
-						 REGU_VARIABLE * key_limit_l, DB_VALUE * out_val);
 static int qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * xasl_state);
 static int qexec_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list, UPDDEL_CLASS_INFO * query_classes,
 				  int query_classes_count, UPDDEL_CLASS_INFO_INTERNAL * internal_classes);
@@ -14157,24 +14155,6 @@ exit_on_error:
 
 
 /*
- * qexec_fetch_and_coerce_instnum_lower () - fetch and coerce lower key limit to BIGINT for instnum
- *                                           initialization, handling NUMERIC-to-BIGINT overflow.
- *
- *   return          : NO_ERROR or error code
- *   thread_p (in)   : thread entry
- *   xasl_state (in) : XASL state (provides value descriptor)
- *   key_limit_l (in): regu variable for lower key limit
- *   out_val (out)   : always set to a valid BIGINT DB_VALUE on success;
- *                     DB_BIGINT_MAX on positive overflow (no rows), 0 on negative overflow (all rows)
- */
-static int
-qexec_fetch_and_coerce_instnum_lower (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
-				      REGU_VARIABLE * key_limit_l, DB_VALUE * out_val)
-{
-  return fetch_and_coerce_key_limit_lower (thread_p, key_limit_l, &xasl_state->vd, out_val);
-}
-
-/*
  * qexec_init_instnum_val () -
  *   return: NO_ERROR, or ER_code
  *   xasl(in)   : XASL Tree pointer
@@ -14211,7 +14191,7 @@ qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * 
     {
       key_limit_l = xasl->spec_list->indexptr->key_info.key_limit_l;
 
-      error = qexec_fetch_and_coerce_instnum_lower (thread_p, xasl_state, key_limit_l, &dbval);
+      error = fetch_and_coerce_key_limit_lower (thread_p, key_limit_l, &xasl_state->vd, &dbval);
       if (error != NO_ERROR)
 	{
 	  goto exit_on_error;
