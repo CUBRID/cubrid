@@ -32,6 +32,7 @@
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
 
+#include <memory>
 #include <atomic>
 #include <thread>
 
@@ -39,6 +40,11 @@
 
 // forward definitions
 
+// from concurrency_slot.hpp
+namespace cubthread
+{
+  class concurrency_slot;
+};
 // from connection_defs.h
 struct css_conn_entry;
 // from connection_defs.h
@@ -237,6 +243,11 @@ namespace cubthread
       HL_HEAPID private_heap_id;	/* id of thread private memory allocator */
 
       css_conn_entry *conn_entry;	/* conn entry ptr */
+
+#if defined (SERVER_MODE)
+      /* concurrency slot held by this entry; only set for workers from an elastic worker pool */
+      std::unique_ptr<cubthread::concurrency_slot> slot;
+#endif
 
       xasl_unpack_info *xasl_unpack_info_ptr;     /* XASL_UNPACK_INFO * */
       int xasl_errcode;		/* xasl errorcode */

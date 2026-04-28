@@ -42,6 +42,7 @@ set (COMPAT_HEADERS
   )
 
 set(THREAD_SOURCES
+  ${THREAD_DIR}/concurrency_slot.cpp
   ${THREAD_DIR}/critical_section.c
   ${THREAD_DIR}/critical_section_tracker.cpp
   ${THREAD_DIR}/thread_daemon.cpp
@@ -55,6 +56,7 @@ set(THREAD_SOURCES
   ${THREAD_DIR}/thread_worker_pool_taskcap.cpp
   )
 set(THREAD_HEADERS
+  ${THREAD_DIR}/concurrency_slot.hpp
   ${THREAD_DIR}/critical_section_tracker.hpp
   ${THREAD_DIR}/thread_compat.hpp
   ${THREAD_DIR}/thread_daemon.hpp
