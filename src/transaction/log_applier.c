@@ -3927,8 +3927,28 @@ la_make_synthetic_oos_sql_log_value (DB_VALUE * value, SM_ATTRIBUTE * att, DB_BI
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  memset (string, ' ', string_length);
-  string[string_length] = '\0';
+  /* Embed an explicit sentinel at the value head so an operator who later inspects
+   * the sql.log can tell that the column body was synthesized (cache miss) rather
+   * than the actual OOS payload from the master.  Marker contains no SQL meta
+   * characters (quotes/backslash) so it remains safe inside a quoted varchar
+   * literal.  Remaining bytes are filled with spaces to keep the inline OOS length
+   * intact for sql.log size accounting / rotation. */
+  {
+    static const char OOS_MISSING_MARKER[] = "<<OOS_CHUNK_MISSING>>";
+    int marker_len = (int) (sizeof (OOS_MISSING_MARKER) - 1);
+
+    if (marker_len > string_length)
+      {
+	marker_len = string_length;
+      }
+    memcpy (string, OOS_MISSING_MARKER, marker_len);
+    memset (string + marker_len, ' ', string_length - marker_len);
+    string[string_length] = '\0';
+  }
+
+  er_log_debug (ARG_FILE_LINE,
+		"la_make_synthetic_oos_sql_log_value: OOS chunk(s) missing from SQL log cache; "
+		"synthesizing %d-byte placeholder for column", string_length);
 
   db_make_varchar (value, precision, string, string_length, TP_DOMAIN_CODESET (att->domain),
 		   TP_DOMAIN_COLLATION (att->domain));
