@@ -4286,8 +4286,17 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
 	{
 	  /* OOS dummy markers must be handled by the OOS rebuild path, not by overflow recovery. */
 	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		  "unexpected LOG_DUMMY_OOS_RECORD encountered during overflow record reconstruction");
+	  while (ovf_list_head)
+	    {
+	      ovf_list_data = ovf_list_head;
+	      ovf_list_head = ovf_list_head->next;
+	      free_and_init (ovf_list_data->data);
+	      free_and_init (ovf_list_data);
+	    }
 	  la_release_page_buffer (current_lsa.pageid);
-	  break;
+	  return ER_HA_GENERIC_ERROR;
 	}
       else if (LOG_IS_REDO_RECORD_TYPE (current_log_record->type) == true)
 	{
