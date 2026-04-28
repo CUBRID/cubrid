@@ -258,10 +258,8 @@ struct la_oos_sql_log_cache_entry
 {
   LA_OOS_SQL_LOG_CACHE_ENTRY *next;
 
-  char *class_name;
-  int packed_key_value_length;
-  char *packed_key_value;
-
+  OID chunk_oid;
+  OID next_chunk_oid;
   int length;
   char *data;
   int total_size;
@@ -521,8 +519,8 @@ static int la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_
 static int la_add_node_into_la_commit_list (int tranid, LOG_LSA * lsa, int type, time_t eot_time);
 static time_t la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa);
 static int la_get_raw_offset_internal (OR_BUF * buf, int *error, int offset_size);
-static int la_cache_oos_sql_log_recdes (LA_ITEM * item, RECDES * recdes);
-static int la_consume_oos_sql_log_recdes (LA_ITEM * item, RECDES * recdes, int *total_size, int *chunk_index);
+static int la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes);
+static int la_resolve_oos_sql_log_recdes (const OID * head_oid, int total_size, RECDES * recdes);
 static void la_clear_oos_sql_log_cache (void);
 static int la_make_synthetic_oos_sql_log_value (DB_VALUE * value, SM_ATTRIBUTE * att, DB_BIGINT oos_length);
 static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, LA_ITEM * item,
@@ -3592,19 +3590,26 @@ la_get_raw_offset_internal (OR_BUF * buf, int *error, int offset_size)
     }
 }
 
-static bool
-la_oos_sql_log_cache_entry_matches (LA_OOS_SQL_LOG_CACHE_ENTRY * entry, LA_ITEM * item)
+static LA_OOS_SQL_LOG_CACHE_ENTRY *
+la_find_oos_sql_log_cache_entry (const OID * chunk_oid)
 {
-  assert (entry != NULL);
+  LA_OOS_SQL_LOG_CACHE_ENTRY *entry = la_Oos_sql_log_cache_head;
 
-  if (item == NULL || item->class_name == NULL || item->packed_key_value == NULL)
+  if (chunk_oid == NULL || OID_ISNULL (chunk_oid))
     {
-      return false;
+      return NULL;
     }
 
-  return entry->packed_key_value_length == item->packed_key_value_length
-    && strcmp (entry->class_name, item->class_name) == 0
-    && memcmp (entry->packed_key_value, item->packed_key_value, item->packed_key_value_length) == 0;
+  while (entry != NULL)
+    {
+      if (OID_EQ (&entry->chunk_oid, chunk_oid))
+	{
+	  return entry;
+	}
+      entry = entry->next;
+    }
+
+  return NULL;
 }
 
 static void
@@ -3615,14 +3620,6 @@ la_free_oos_sql_log_cache_entry (LA_OOS_SQL_LOG_CACHE_ENTRY * entry)
       return;
     }
 
-  if (entry->class_name != NULL)
-    {
-      free_and_init (entry->class_name);
-    }
-  if (entry->packed_key_value != NULL)
-    {
-      free_and_init (entry->packed_key_value);
-    }
   if (entry->data != NULL)
     {
       db_private_free_and_init (NULL, entry->data);
@@ -3649,114 +3646,217 @@ la_clear_oos_sql_log_cache (void)
 }
 
 static int
-la_cache_oos_sql_log_recdes (LA_ITEM * item, RECDES * recdes)
+la_get_oos_sql_log_chunk_oid (LA_ITEM * item, LOG_PAGE * pgptr, OID * chunk_oid)
 {
-  LA_OOS_SQL_LOG_CACHE_ENTRY *entry = NULL;
-  OOS_RECORD_HEADER oos_header;
-  size_t class_name_length;
-  int payload_length;
+  LOG_RECORD_HEADER *lrec;
+  unsigned int rcvindex = 0;
+  void *logs = NULL;
+  char rec_type_storage[DB_SIZEOF (INT16)] = { 0 };
+  char *rec_type = rec_type_storage;
+  char *data = NULL;
+  int length = 0;
+  int error = NO_ERROR;
 
-  if (item == NULL || item->class_name == NULL || item->packed_key_value == NULL || recdes == NULL
-      || recdes->data == NULL || recdes->length <= OOS_RECORD_HEADER_SIZE)
+  if (chunk_oid == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "invalid OOS record for SQL log");
       return ER_FAILED;
     }
 
-  memcpy (&oos_header, recdes->data, OOS_RECORD_HEADER_SIZE);
+  OID_SET_NULL (chunk_oid);
 
-  entry = (LA_OOS_SQL_LOG_CACHE_ENTRY *) malloc (sizeof (LA_OOS_SQL_LOG_CACHE_ENTRY));
-  if (entry == NULL)
+  if (item == NULL || pgptr == NULL || LSA_ISNULL (&item->target_lsa))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (LA_OOS_SQL_LOG_CACHE_ENTRY));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  memset (entry, 0, sizeof (LA_OOS_SQL_LOG_CACHE_ENTRY));
-
-  class_name_length = strlen (item->class_name) + 1;
-  entry->class_name = (char *) malloc (class_name_length);
-  entry->packed_key_value = (char *) malloc (item->packed_key_value_length);
-  payload_length = recdes->length - OOS_RECORD_HEADER_SIZE;
-  entry->data = (char *) db_private_alloc (NULL, payload_length);
-
-  if (entry->class_name == NULL || entry->packed_key_value == NULL || entry->data == NULL)
-    {
-      la_free_oos_sql_log_cache_entry (entry);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      class_name_length + item->packed_key_value_length + payload_length);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      return NO_ERROR;
     }
 
-  memcpy (entry->class_name, item->class_name, class_name_length);
-  entry->packed_key_value_length = item->packed_key_value_length;
-  memcpy (entry->packed_key_value, item->packed_key_value, item->packed_key_value_length);
-  entry->length = payload_length;
-  memcpy (entry->data, recdes->data + OOS_RECORD_HEADER_SIZE, payload_length);
-  entry->total_size = oos_header.total_size;
-  entry->chunk_index = oos_header.chunk_index;
-
-  if (la_Oos_sql_log_cache_tail == NULL)
+  lrec = LOG_GET_LOG_RECORD_HEADER (pgptr, &item->target_lsa);
+  error =
+    la_get_log_data (lrec, &item->target_lsa, pgptr, RVOOS_INSERT, &rcvindex, &logs, &rec_type, &data, &length);
+  if (data != NULL)
     {
-      la_Oos_sql_log_cache_head = entry;
-      la_Oos_sql_log_cache_tail = entry;
+      free_and_init (data);
     }
-  else
+
+  if (error != NO_ERROR)
     {
-      la_Oos_sql_log_cache_tail->next = entry;
-      la_Oos_sql_log_cache_tail = entry;
+      return error == ER_OUT_OF_VIRTUAL_MEMORY ? error : NO_ERROR;
+    }
+
+  if (logs == NULL || rcvindex != RVOOS_INSERT)
+    {
+      return NO_ERROR;
+    }
+
+  switch (lrec->type)
+    {
+    case LOG_UNDOREDO_DATA:
+    case LOG_DIFF_UNDOREDO_DATA:
+    case LOG_MVCC_UNDOREDO_DATA:
+    case LOG_MVCC_DIFF_UNDOREDO_DATA:
+      {
+	LOG_REC_UNDOREDO *undoredo = (LOG_REC_UNDOREDO *) logs;
+	chunk_oid->volid = undoredo->data.volid;
+	chunk_oid->pageid = undoredo->data.pageid;
+	chunk_oid->slotid = undoredo->data.offset;
+	break;
+      }
+
+    case LOG_REDO_DATA:
+    case LOG_MVCC_REDO_DATA:
+      {
+	LOG_REC_REDO *redo = (LOG_REC_REDO *) logs;
+	chunk_oid->volid = redo->data.volid;
+	chunk_oid->pageid = redo->data.pageid;
+	chunk_oid->slotid = redo->data.offset;
+	break;
+      }
+
+    default:
+      break;
     }
 
   return NO_ERROR;
 }
 
 static int
-la_consume_oos_sql_log_recdes (LA_ITEM * item, RECDES * recdes, int *total_size, int *chunk_index)
+la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes)
 {
-  LA_OOS_SQL_LOG_CACHE_ENTRY *entry = la_Oos_sql_log_cache_head;
-  LA_OOS_SQL_LOG_CACHE_ENTRY *prev_entry = NULL;
+  LA_OOS_SQL_LOG_CACHE_ENTRY *entry = NULL;
+  OOS_RECORD_HEADER oos_header;
+  OID chunk_oid = OID_INITIALIZER;
+  char *payload_data = NULL;
+  int payload_length;
+  int error = NO_ERROR;
+  bool is_new_entry = false;
 
-  while (entry != NULL && !la_oos_sql_log_cache_entry_matches (entry, item))
+  if (recdes == NULL || recdes->data == NULL || recdes->length <= OOS_RECORD_HEADER_SIZE)
     {
-      prev_entry = entry;
-      entry = entry->next;
-    }
-
-  if (entry == NULL)
-    {
-      entry = la_Oos_sql_log_cache_head;
-      prev_entry = NULL;
-    }
-
-  if (entry == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "cannot find OOS data for SQL log");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "invalid OOS record for SQL log");
       return ER_FAILED;
     }
 
-  if (prev_entry == NULL)
+  error = la_get_oos_sql_log_chunk_oid (item, pgptr, &chunk_oid);
+  if (error != NO_ERROR)
     {
-      la_Oos_sql_log_cache_head = entry->next;
-    }
-  else
-    {
-      prev_entry->next = entry->next;
+      return error;
     }
 
-  if (la_Oos_sql_log_cache_tail == entry)
+  if (OID_ISNULL (&chunk_oid))
     {
-      la_Oos_sql_log_cache_tail = prev_entry;
+      return NO_ERROR;
     }
 
-  recdes->area_size = entry->length;
-  recdes->length = entry->length;
+  memcpy (&oos_header, recdes->data, OOS_RECORD_HEADER_SIZE);
+  payload_length = recdes->length - OOS_RECORD_HEADER_SIZE;
+
+  payload_data = (char *) db_private_alloc (NULL, payload_length);
+  if (payload_data == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, payload_length);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memcpy (payload_data, recdes->data + OOS_RECORD_HEADER_SIZE, payload_length);
+
+  entry = la_find_oos_sql_log_cache_entry (&chunk_oid);
+  if (entry == NULL)
+    {
+      entry = (LA_OOS_SQL_LOG_CACHE_ENTRY *) malloc (sizeof (LA_OOS_SQL_LOG_CACHE_ENTRY));
+      is_new_entry = true;
+      if (entry != NULL)
+	{
+	  memset (entry, 0, sizeof (LA_OOS_SQL_LOG_CACHE_ENTRY));
+	}
+    }
+  if (entry == NULL)
+    {
+      db_private_free_and_init (NULL, payload_data);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (LA_OOS_SQL_LOG_CACHE_ENTRY));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  if (entry->data != NULL)
+    {
+      db_private_free_and_init (NULL, entry->data);
+    }
+
+  entry->chunk_oid = chunk_oid;
+  entry->next_chunk_oid = oos_header.next_chunk_oid;
+  entry->length = payload_length;
+  entry->data = payload_data;
+  entry->total_size = oos_header.total_size;
+  entry->chunk_index = oos_header.chunk_index;
+
+  if (is_new_entry)
+    {
+      if (la_Oos_sql_log_cache_tail == NULL)
+	{
+	  la_Oos_sql_log_cache_head = entry;
+	  la_Oos_sql_log_cache_tail = entry;
+	}
+      else
+	{
+	  la_Oos_sql_log_cache_tail->next = entry;
+	  la_Oos_sql_log_cache_tail = entry;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+static int
+la_resolve_oos_sql_log_recdes (const OID * head_oid, int total_size, RECDES * recdes)
+{
+  OID current_oid;
+  char *data = NULL;
+  int copied_size = 0;
+  int expected_chunk_index = 0;
+  int max_iterations;
+  int iterations = 0;
+
+  if (head_oid == NULL || OID_ISNULL (head_oid) || total_size <= 0 || recdes == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  data = (char *) db_private_alloc (NULL, total_size);
+  if (data == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, total_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  current_oid = *head_oid;
+  max_iterations = total_size > INT_MAX - 16 ? INT_MAX : total_size + 16;
+
+  while (!OID_ISNULL (&current_oid) && copied_size < total_size && iterations++ < max_iterations)
+    {
+      LA_OOS_SQL_LOG_CACHE_ENTRY *entry = la_find_oos_sql_log_cache_entry (&current_oid);
+
+      if (entry == NULL || entry->chunk_index != expected_chunk_index || entry->total_size != total_size
+	  || entry->length < 0 || entry->length > total_size - copied_size)
+	{
+	  db_private_free_and_init (NULL, data);
+	  return ER_FAILED;
+	}
+
+      memcpy (data + copied_size, entry->data, entry->length);
+      copied_size += entry->length;
+      expected_chunk_index++;
+      current_oid = entry->next_chunk_oid;
+    }
+
+  if (copied_size != total_size || !OID_ISNULL (&current_oid))
+    {
+      db_private_free_and_init (NULL, data);
+      return ER_FAILED;
+    }
+
+  recdes->area_size = total_size;
+  recdes->length = total_size;
   recdes->type = REC_HOME;
-  recdes->data = entry->data;
-  *total_size = entry->total_size;
-  *chunk_index = entry->chunk_index;
-  entry->data = NULL;
+  recdes->data = data;
 
-  la_free_oos_sql_log_cache_entry (entry);
   return NO_ERROR;
 }
 
@@ -3829,6 +3929,8 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
   int rc = NO_ERROR;
   DB_VALUE value;
   int error = NO_ERROR;
+
+  (void) item;
 
   if (sm_class->variable_count)
     {
@@ -3928,10 +4030,8 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
 	  RECDES oos_recdes = { -1, -1, REC_HOME, NULL };
 	  OR_BUF oos_buf;
 	  OR_BUF inline_buf;
-	  OID oos_oid;
+	  OID oos_oid = OID_INITIALIZER;
 	  DB_BIGINT oos_length = 0;
-	  int oos_total_size = 0;
-	  int oos_chunk_index = 0;
 
 	  if (vars[j] >= OR_OOS_INLINE_SIZE)
 	    {
@@ -3946,30 +4046,31 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
 		}
 	    }
 
-	  error = la_consume_oos_sql_log_recdes (item, &oos_recdes, &oos_total_size, &oos_chunk_index);
-	  if (error != NO_ERROR)
+	  if (!OID_ISNULL (&oos_oid) && oos_length > 0 && oos_length <= (DB_BIGINT) INT_MAX)
 	    {
-	      free_and_init (vars);
-	      free_and_init (vars_oos);
-	      return error;
+	      error = la_resolve_oos_sql_log_recdes (&oos_oid, (int) oos_length, &oos_recdes);
 	    }
 
-	  if (oos_chunk_index == 0 && oos_recdes.length == oos_total_size)
+	  if (error == NO_ERROR && oos_recdes.data != NULL)
 	    {
 	      or_init (&oos_buf, oos_recdes.data, oos_recdes.length);
 	      error = att->type->data_readval (&oos_buf, &value, att->domain, oos_recdes.length, true, NULL, 0);
+	      recdes_free_data_area (&oos_recdes);
 	    }
 	  else
 	    {
-	      /* RVREPL_OOS_INSERT may point to one physical OOS chunk instead of the complete disk value.
-	       * Keep SQL log sizing/rotation consistent with the original large string using the inline OOS length. */
-	      if (oos_length <= 0)
+	      if (error == ER_OUT_OF_VIRTUAL_MEMORY)
 		{
-		  oos_length = oos_total_size;
+		  free_and_init (vars);
+		  free_and_init (vars_oos);
+		  return error;
 		}
+
+	      /* Prefer exact OID-chain reconstruction.  If any chunk is missing from the replication
+	       * cache, preserve sql.log sizing/rotation for large strings using the inline OOS length. */
 	      error = la_make_synthetic_oos_sql_log_value (&value, att, oos_length);
 	    }
-	  recdes_free_data_area (&oos_recdes);
+
 	  if (error != NO_ERROR)
 	    {
 	      free_and_init (vars);
@@ -6070,7 +6171,7 @@ la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
       er_stack_push ();
       if (item->item_type == RVREPL_OOS_INSERT)
 	{
-	  ret = la_cache_oos_sql_log_recdes (item, recdes);
+	  ret = la_cache_oos_sql_log_recdes (item, pgptr, recdes);
 	}
       else
 	{
