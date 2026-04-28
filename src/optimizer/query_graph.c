@@ -8160,6 +8160,17 @@ qo_generate_transitive_join_terms (QO_ENV * env)
   env->terms = new_arr;
   env->Nterms += extra;
 
+  /* Initialize new capacity slots added by realloc; they are raw uninitialized
+   * memory and qo_env_free (which iterates Nterms) would crash calling
+   * bitset_delset on garbage setp values if we leave them untouched.
+   * memmove below may overwrite some of these slots with valid pre-cleared
+   * data, which is fine — the setp-fix loop that follows will correct any
+   * stale setp pointers introduced by memmove. */
+  for (i = old_terms; i < env->Nterms; i++)
+    {
+      qo_term_clear (env, i);
+    }
+
   if (old_terms > old_nedges)
     {
       memmove (&env->terms[old_nedges + extra], &env->terms[old_nedges], sizeof (QO_TERM) * (old_terms - old_nedges));
