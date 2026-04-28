@@ -881,6 +881,7 @@ scan_check_user_given_keylimit_overflow (THREAD_ENTRY * thread_p, REGU_VARIABLE 
 {
   DB_VALUE *dbvalp = NULL;
 
+  assert (numeric_operand != NULL);
   assert (TP_DOMAIN_TYPE (numeric_operand->domain) == DB_TYPE_NUMERIC);
 
   if (fetch_peek_dbval (thread_p, numeric_operand, vd, NULL, NULL, NULL, &dbvalp) != NO_ERROR || dbvalp == NULL)
@@ -923,9 +924,13 @@ scan_handle_it_data_overflow_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isid
 {
   DB_VALUE *tmp_dbvalp;
 
+  assert (key_limit_u != NULL);
+  assert (key_limit_u->value.arithptr != NULL);
+
   if (is_user_given_keylimit)
     {
       /* rownum <= -HUGE USING INDEX .. KEYLIMIT BIGINT or HUGE */
+      assert (key_limit_u->value.arithptr->rightptr != NULL);
       int error_code = scan_check_user_given_keylimit_overflow (thread_p,
 								key_limit_u->value.arithptr->rightptr, vd);
       if (error_code != NO_ERROR)
@@ -978,14 +983,20 @@ static int
 scan_handle_overflow_subtraction_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, REGU_VARIABLE * key_limit_u,
 					VAL_DESCR * vd, bool is_user_given_keylimit)
 {
-  ARITH_TYPE *arithptr = key_limit_u->value.arithptr;
-  REGU_VARIABLE *left = arithptr->leftptr;
-  REGU_VARIABLE *right = arithptr->rightptr;
+  ARITH_TYPE *arithptr;
+  REGU_VARIABLE *left;
+  REGU_VARIABLE *right;
   DB_VALUE *tmp_dbvalp;
   int error_code;
   bool left_is_inarith;
   bool left_is_numeric;
 
+  assert (key_limit_u != NULL);
+  assert (key_limit_u->value.arithptr != NULL);
+
+  arithptr = key_limit_u->value.arithptr;
+  left = arithptr->leftptr;
+  right = arithptr->rightptr;
   assert (left && right);
 
   left_is_inarith = (left->type == TYPE_INARITH || left->type == TYPE_OUTARITH);
