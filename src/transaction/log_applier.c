@@ -268,7 +268,7 @@ struct la_oos_sql_log_cache_entry
   OID next_chunk_oid;
   int length;
   char *data;
-  int total_size;
+  int total_data_length;
   int chunk_index;
 };
 
@@ -541,7 +541,7 @@ static int la_add_node_into_la_commit_list (int tranid, LOG_LSA * lsa, int type,
 static time_t la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa);
 static int la_get_raw_offset_internal (OR_BUF * buf, int *error, int offset_size);
 static int la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes);
-static int la_resolve_oos_sql_log_recdes (const OID * head_oid, int total_size, RECDES * recdes);
+static int la_resolve_oos_sql_log_recdes (const OID * head_oid, int total_data_length, RECDES * recdes);
 static void la_clear_oos_sql_log_cache (void);
 static int la_make_synthetic_oos_sql_log_value (DB_VALUE * value, SM_ATTRIBUTE * att, DB_BIGINT oos_length);
 static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, DB_VALUE * key,
@@ -3859,7 +3859,7 @@ la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes)
   entry->next_chunk_oid = oos_header.next_chunk_oid;
   entry->length = payload_length;
   entry->data = payload_data;
-  entry->total_size = oos_header.total_size;
+  entry->total_data_length = oos_header.total_data_length;
   entry->chunk_index = oos_header.chunk_index;
 
   if (is_new_entry)
@@ -3894,7 +3894,7 @@ la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes)
 }
 
 static int
-la_resolve_oos_sql_log_recdes (const OID * head_oid, int total_size, RECDES * recdes)
+la_resolve_oos_sql_log_recdes (const OID * head_oid, int total_data_length, RECDES * recdes)
 {
   OID current_oid;
   char *data = NULL;
@@ -3903,27 +3903,28 @@ la_resolve_oos_sql_log_recdes (const OID * head_oid, int total_size, RECDES * re
   int max_iterations;
   int iterations = 0;
 
-  if (head_oid == NULL || OID_ISNULL (head_oid) || total_size <= 0 || recdes == NULL)
+  if (head_oid == NULL || OID_ISNULL (head_oid) || total_data_length <= 0 || recdes == NULL)
     {
       return ER_FAILED;
     }
 
-  data = (char *) db_private_alloc (NULL, total_size);
+  data = (char *) db_private_alloc (NULL, total_data_length);
   if (data == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, total_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, total_data_length);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   current_oid = *head_oid;
-  max_iterations = total_size > INT_MAX - 16 ? INT_MAX : total_size + 16;
+  max_iterations = total_data_length > INT_MAX - 16 ? INT_MAX : total_data_length + 16;
 
-  while (!OID_ISNULL (&current_oid) && copied_size < total_size && iterations++ < max_iterations)
+  while (!OID_ISNULL (&current_oid) && copied_size < total_data_length && iterations++ < max_iterations)
     {
       LA_OOS_SQL_LOG_CACHE_ENTRY *entry = la_find_oos_sql_log_cache_entry (&current_oid);
 
-      if (entry == NULL || entry->chunk_index != expected_chunk_index || entry->total_size != total_size
-	  || entry->length < 0 || entry->length > total_size - copied_size)
+      if (entry == NULL || entry->chunk_index != expected_chunk_index
+	  || entry->total_data_length != total_data_length
+	  || entry->length < 0 || entry->length > total_data_length - copied_size)
 	{
 	  db_private_free_and_init (NULL, data);
 	  return ER_FAILED;
@@ -3935,14 +3936,14 @@ la_resolve_oos_sql_log_recdes (const OID * head_oid, int total_size, RECDES * re
       current_oid = entry->next_chunk_oid;
     }
 
-  if (copied_size != total_size || !OID_ISNULL (&current_oid))
+  if (copied_size != total_data_length || !OID_ISNULL (&current_oid))
     {
       db_private_free_and_init (NULL, data);
       return ER_FAILED;
     }
 
-  recdes->area_size = total_size;
-  recdes->length = total_size;
+  recdes->area_size = total_data_length;
+  recdes->length = total_data_length;
   recdes->type = REC_HOME;
   recdes->data = data;
 
