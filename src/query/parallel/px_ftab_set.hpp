@@ -17,16 +17,16 @@
  */
 
 /*
- * px_heap_scan_ftab_set.hpp
+ * px_ftab_set.hpp
  */
 
-#ifndef _PX_HEAP_SCAN_FTAB_SET_HPP_
-#define _PX_HEAP_SCAN_FTAB_SET_HPP_
+#ifndef _PX_FTAB_SET_HPP_
+#define _PX_FTAB_SET_HPP_
 
 #include "file_manager.h"
 
 
-namespace parallel_heap_scan
+namespace parallel_query
 {
   class ftab_set
   {
@@ -39,6 +39,57 @@ namespace parallel_heap_scan
 	:m_ftab_set(),
 	 iterator (0)
       {}
+
+      ~ftab_set()
+      {
+	m_ftab_set.clear();
+      }
+
+
+      ftab_set (const ftab_set &other)
+	:m_ftab_set (other.m_ftab_set),
+	 iterator (other.iterator)
+      {}
+
+      ftab_set (ftab_set &&other)
+	:m_ftab_set (std::move (other.m_ftab_set)),
+	 iterator (other.iterator)
+      {
+	other.iterator = 0;
+      }
+
+      ftab_set &operator= (const ftab_set &other)
+      {
+	if (this != &other)
+	  {
+	    m_ftab_set = other.m_ftab_set;
+	    iterator = other.iterator;
+	  }
+	return *this;
+      }
+
+      ftab_set &operator= (ftab_set &&other)
+      {
+	if (this != &other)
+	  {
+	    m_ftab_set = std::move (other.m_ftab_set);
+	    iterator = other.iterator;
+	    other.iterator = 0;
+	  }
+	return *this;
+      }
+
+      void append (const ftab_set &other)
+      {
+	m_ftab_set.insert (m_ftab_set.end (), other.m_ftab_set.begin (), other.m_ftab_set.end ());
+      }
+
+      void move_from (ftab_set &other)
+      {
+	m_ftab_set = std::move (other.m_ftab_set);
+	iterator = other.iterator;
+	other.iterator = 0;
+      }
 
       void convert (FILE_FTAB_COLLECTOR *ftab_collector)
       {
@@ -88,6 +139,11 @@ namespace parallel_heap_scan
 	return ftab;
       }
 
+      size_t size() const
+      {
+	return m_ftab_set.size();
+      }
+
       void clear()
       {
 	m_ftab_set.clear();
@@ -96,4 +152,4 @@ namespace parallel_heap_scan
   };
 }
 
-#endif /*_PX_HEAP_SCAN_FTAB_SET_HPP_ */
+#endif /*_PX_FTAB_SET_HPP_ */

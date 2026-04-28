@@ -1957,8 +1957,8 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT >
 			*)p->s_id.s.phsid.manager)->close ();
 		      break;
-		    case parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT:
-		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT >
+		    case parallel_heap_scan::RESULT_TYPE::BUILDVALUE_OPT:
+		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::BUILDVALUE_OPT >
 			*)p->s_id.s.phsid.manager)->close ();
 		      break;
 		    default:
@@ -4558,6 +4558,19 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       tsc_getticks (&start_tick);
     }
 
+
+  REGU_VARIABLE_LIST regu_var_p = xasl->outptr_list->valptrp;
+  int f_idx = 0;
+  for (int i = 0; i < xasl->outptr_list->valptr_cnt && regu_var_p; i++, regu_var_p = regu_var_p->next)
+    {
+      if (REGU_VARIABLE_IS_FLAGED (&regu_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
+	{
+	  continue;
+	}
+      pr_share_value (tpldesc->f_valp[f_idx], regu_var_p->value.vfetch_to);
+      f_idx++;
+    }
+
   /* build key */
   rc = qexec_build_agg_hkey (thread_p, xasl_state, proc->g_hk_scan_regu_list, NULL, key);
   if (rc != NO_ERROR)
@@ -4631,6 +4644,9 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     }
   else
     {
+      REGU_VARIABLE_LIST regu_var_p;
+      DB_VALUE *tmp;
+
       /* no need to output tuple */
       *output_tuple = false;
 
@@ -4639,7 +4655,30 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       context->tuple_count++;
 
       /* fetch values */
-      rc = fetch_val_list (thread_p, proc->g_scan_regu_list, &xasl_state->vd, NULL, NULL, tplrec->tpl, true);
+      for (regu_var_p = proc->g_scan_regu_list; regu_var_p != NULL; regu_var_p = regu_var_p->next)
+	{
+	  if (REGU_VARIABLE_IS_FLAGED (&regu_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
+	    {
+	      if (regu_var_p->value.vfetch_to && pr_is_set_type (DB_VALUE_DOMAIN_TYPE (regu_var_p->value.vfetch_to)))
+		{
+		  pr_clear_value (regu_var_p->value.vfetch_to);
+		}
+
+	      if (regu_var_p->value.vfetch_to && DB_NEED_CLEAR (regu_var_p->value.vfetch_to))
+		{
+		  pr_clear_value (regu_var_p->value.vfetch_to);
+		}
+
+	      rc = fetch_peek_dbval (thread_p, &regu_var_p->value, &xasl_state->vd, NULL, NULL, tplrec->tpl, &tmp);
+	      if (rc != NO_ERROR)
+		{
+		  pr_clear_value (regu_var_p->value.vfetch_to);
+		  return ER_FAILED;
+		}
+
+	      pr_share_value (tmp, regu_var_p->value.vfetch_to);
+	    }
+	}
 
       /* eval aggregate functions */
       if (rc == NO_ERROR)
@@ -9084,6 +9123,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	{
 	  int error = NO_ERROR;
 	  bool is_scan_needed = false;
+
 	  if (!buildvalue->is_always_false)
 	    {
 	      error =
@@ -25861,31 +25901,48 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	      *is_scan_needed = true;
 	      continue;
 	    }
-	  if (tdes->mvccinfo.snapshot.valid)
+
+	  /* to check for query like 'select count(*), count(*) ...' */
+	  if (class_cos->count_state != COS_LOADED)
 	    {
-	      if (class_cos->count_state != COS_LOADED)
-		{
-		  agg_ptr->flag.agg_optimized = false;
-		  *is_scan_needed = true;
-		  continue;
-		}
-	    }
-	  else
-	    {
+
+	      class_cos->count_state = COS_TO_LOAD;
 	      if (logtb_tran_find_btid_stats (thread_p, &agg_ptr->btid, true) == NULL)
 		{
 		  agg_ptr->flag.agg_optimized = false;
 		  *is_scan_needed = true;
 		  continue;
 		}
-	      class_cos->count_state = COS_TO_LOAD;
 
-	      if (logtb_get_mvcc_snapshot (thread_p) == NULL)
+	      if (!tdes->mvccinfo.snapshot.valid)
 		{
-		  error = er_errid ();
-		  return (error == NO_ERROR ? ER_FAILED : error);
+		  if (logtb_get_mvcc_snapshot (thread_p) == NULL)
+		    {
+		      error = er_errid ();
+		      return (error == NO_ERROR ? ER_FAILED : error);
+		    }
 		}
 
+	      /* 
+	       * build_mvcc_info() loads stats only for classes already marked COS_TO_LOAD at snapshot time.
+	       * Under parallel UNION execution, the snapshot may have been built by another thread before this
+	       * class was marked COS_TO_LOAD, so its stats were never loaded.  Always retry here if still needed.
+	       */
+	      if (class_cos->count_state != COS_LOADED)
+		{
+		  if (logtb_load_global_statistics_to_tran (thread_p) != NO_ERROR)
+		    {
+		      error = er_errid ();
+		      return (error == NO_ERROR ? ER_FAILED : error);
+		    }
+		}
+
+	      if (class_cos->count_state != COS_LOADED)
+		{
+		  agg_ptr->flag.agg_optimized = false;
+		  *is_scan_needed = true;
+		  continue;
+		}
 	    }
 	}
 
@@ -27232,11 +27289,20 @@ qexec_build_agg_hkey (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, REGU_VAR
   key->val_count = 0;
   while (regu_list != NULL)
     {
-      rc =
-	fetch_peek_dbval (thread_p, &regu_list->value, &xasl_state->vd, NULL, NULL, tpl, &key->values[key->val_count]);
-      if (rc != NO_ERROR)
+      if (tpl == NULL)
 	{
-	  return rc;
+	  /* tpl is NULL when called during the processing phase */
+	  key->values[key->val_count] = regu_list->value.vfetch_to;
+	}
+      else
+	{
+	  rc =
+	    fetch_peek_dbval (thread_p, &regu_list->value, &xasl_state->vd, NULL, NULL, tpl,
+			      &key->values[key->val_count]);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
 	}
 
       /* next */

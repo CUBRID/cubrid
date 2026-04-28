@@ -10720,6 +10720,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	      PT_NODE *name = node->info.expr.arg1;
 
 	      original_name = name->info.name.original;
+	      resolved_name = name->info.name.resolved;
 	    }
 	  else
 	    {
@@ -10875,6 +10876,26 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
           || (node->node_type == PT_EXPR && PT_IS_SERIAL (node->info.expr.op)));
   // *INDENT-ON*
   assert (original_name && original_name[0] != '\0');
+
+  /* DBLink remote SQL: do not merge current schema into SERIAL names that were unqualified in SQL.
+   * path_id_list (owner.serial.nextval) is PT_DOT_ without USER_SPECIFIED — still explicit; do not strip here.
+   * object_name sets resolved (qualifier) but may not set USER_SPECIFIED — do not strip when resolved is set.
+   * pt_compile/name binding has not run yet, so unqualified identifiers still have resolved == NULL. */
+  if (parser->flag.dblink_skip_implicit_serial_qualifier && node->node_type == PT_EXPR
+      && PT_IS_SERIAL (node->info.expr.op))
+    {
+      if (PT_IS_NAME_NODE (node->info.expr.arg1))
+	{
+	  PT_NODE *nm = node->info.expr.arg1;
+
+	  if (!PT_NAME_INFO_IS_FLAGED (nm, PT_NAME_INFO_USER_SPECIFIED)
+	      && (nm->info.name.resolved == NULL || nm->info.name.resolved[0] == '\0'))
+	    {
+	      nm->info.name.resolved = NULL;
+	      return node;
+	    }
+	}
+    }
 
   if (strchr (original_name, '.'))
     {
@@ -12249,6 +12270,7 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
   SERVER_NAME_LIST snl;
 
   memset (&snl, 0x00, sizeof (SERVER_NAME_LIST));
+  parser->flag.dblink_skip_implicit_serial_qualifier = 0;
 
   parser_walk_tree (parser, stmt, pt_set_print_in_value_for_dblink, NULL, NULL, NULL);
 
@@ -12307,10 +12329,20 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
     case PT_CREATE_ENTITY:
     case PT_ALTER:
       parser_walk_tree (parser, stmt, NULL, NULL, pt_convert_select, &snl);
+      if (snl.has_dblink_query || snl.server_node_cnt > 0)
+	{
+	  parser->flag.dblink_skip_implicit_serial_qualifier = 1;
+	}
+
       return;
     default:
       /* no action */
       return;
+    }
+
+  if (snl.has_dblink_query || snl.server_node_cnt > 0)
+    {
+      parser->flag.dblink_skip_implicit_serial_qualifier = 1;
     }
 
   switch (stmt->node_type)
