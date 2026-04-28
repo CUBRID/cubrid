@@ -133,7 +133,9 @@ static CUB_THREAD_LOCAL int db_Row_count = DB_ROW_COUNT_NOT_SET;
 
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 static BOOT_CLIENT_CREDENTIAL gv_client_credential;
-bool g_ready_to_sub = false;
+static
+  std::atomic <
+bool > g_ready_to_sub = false;
 #endif
 
 /*
@@ -972,13 +974,7 @@ db_restart (const char *program, int print_version, const char *volume)
 #endif /* !WINDOWS */
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 	  gv_client_credential = client_credential;
-	  /* Note: 
-	   * This function is executed in a single-threaded context before thread contention occurs.
-	   * However, to ensure a strict "happens-before" relationship and preemptively address potential memory ordering issues, 
-	   * explicit ordering constraints are added.
-	   */
-	  std::atomic_thread_fence (std::memory_order_release);
-	  g_ready_to_sub = true;
+	  (void) g_ready_to_sub.store (true, std::memory_order_release);
 #endif
 	}
     }
@@ -994,7 +990,7 @@ db_restart_sub (int sub_index)
   BOOT_CLIENT_CREDENTIAL client_credential;
   char program_name[512];
 
-  if (g_ready_to_sub == false)
+  if (g_ready_to_sub.load (std::memory_order_acquire) == false)
     {
       // TODO: Assign independent error codes.
       return ER_FAILED;
@@ -1087,7 +1083,7 @@ db_shutdown (void)
 
   db_free_execution_plan ();
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-  g_ready_to_sub = false;
+  (void) g_ready_to_sub.store (false, std::memory_order_release);
 #endif
 
   return (error);
