@@ -112,19 +112,12 @@
 /* [10^n][multi-precision buffer (uint64_t words, MSB-first, each word in host endianness)] */
 static uint64_t powers_of_10[POW10_MAX_INDEX + 1][POW10_BUF_WORDS];
 
-#if !defined(SERVER_MODE)
-static bool initialized_10 = false;
-#endif
-
 static const double numeric_Pow_of_10[10] = {
   1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9
 };
 
 /* look-up table : containing pre-calculated 4-byte ASCII representations for numbers 0000-9999. */
 static uint32_t _gv_digits4_ascii_lut[10000];
-#if !defined(SERVER_MODE)
-static bool initialized_digits4_ascii = false;
-#endif
 
 /*
  * _gv_numeric_precision_to_bytes_lookup
@@ -193,23 +186,24 @@ typedef enum fp_value_type
 }
 FP_VALUE_TYPE;
 
-static bool numeric_is_negative (const DB_VALUE * value);
+typedef enum
+{
+  NUMERIC_MAG_ZERO,		/* all bytes are zero */
+  NUMERIC_MAG_INT,		/* magnitude fits in int range */
+  NUMERIC_MAG_BIGINT,		/* magnitude fits in DB_BIGINT range */
+  NUMERIC_MAG_NUMERIC		/* magnitude exceeds DB_BIGINT range */
+} numeric_magnitude_t;
+
+static inline bool numeric_is_negative (const DB_VALUE * value);
 static void numeric_copy (DB_C_NUMERIC dest, DB_C_NUMERIC source);
 static void numeric_copy_long (DB_C_NUMERIC dest, DB_C_NUMERIC source, bool is_long_num);
 static void numeric_increase (DB_C_NUMERIC answer);
 static void numeric_increase_long (DB_C_NUMERIC answer, bool is_long_num);
 static void numeric_zero (DB_C_NUMERIC answer, int size);
 static void numeric_init_pow_of_10_helper (void);
-#if defined(SERVER_MODE)
-static void numeric_init_pow_of_10 (void);
-#endif
 static void numeric_get_pow_of_10 (int exp, uint8_t * result);
 static void numeric_init_digits4_ascii_helper (void);
-#if defined(SERVER_MODE)
-static void numeric_init_digits4_ascii (void);
-#endif
 static inline uint32_t numeric_get_digits4_ascii (uint32_t val);
-static inline void float_numeric_init_pow10_table (void);
 static int float_numeric_find_first_nz_idx_msb (const uint64_t * word_buf, int calc_words);
 static int float_numeric_get_decimal_digit (const uint64_t * word_buf, int calc_words);
 static void numeric_double_shift_bit (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, int numbits, DB_C_NUMERIC lsb,
@@ -217,8 +211,7 @@ static void numeric_double_shift_bit (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, int 
 static int numeric_compare_pos (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2);
 static void numeric_shift_byte (DB_C_NUMERIC arg, int numbytes, DB_C_NUMERIC answer, int length);
 static bool numeric_is_zero (DB_C_NUMERIC arg);
-static bool numeric_is_long (DB_C_NUMERIC arg, bool is_value_negative);
-static bool numeric_is_bigint (DB_C_NUMERIC arg, bool is_value_negative);
+static numeric_magnitude_t numeric_classify_magnitude (DB_C_NUMERIC arg, bool is_value_negative);
 static bool numeric_overflow (DB_C_NUMERIC arg, int exp);
 static void numeric_add (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, int size);
 static void float_numeric_add (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint64_t * result_word,
@@ -243,9 +236,9 @@ static void numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answ
 			 bool arg1_value_is_negative, bool arg2_value_is_negative);
 static int float_numeric_div_fast (uint64_t dividend_val, uint64_t divisor_val, int prec1, int scale1, int prec2,
 				   int scale2, int exponent_diff, uint8_t * result_buf, int *result_prec_out,
-				   int *result_scale_out);
+				   int *result_scale_out, bool * result_sign);
 static int float_numeric_mod_fast (uint64_t dividend_val, uint64_t divisor_val, uint8_t * result_buf,
-				   int *result_prec_out, int *result_scale_out);
+				   int *result_prec_out, int *result_scale_out, bool * result_sign);
 static int knuth_find_first_nz_idx (const knuth_digit_t * digit_buf, int total_digits);
 static unsigned int knuth_count_leading_zero_bits (knuth_digit_t value);
 static void knuth_normalize_left_shift_msb (knuth_digit_t * buffer, int buffer_size, unsigned int k_bit);
@@ -314,7 +307,7 @@ static void numeric_words_to_bytes (const uint64_t * src, int src_words, uint8_t
  *   return: true, false
  *   arg(in) : DB_VALUE value
  */
-static bool
+static inline bool
 numeric_is_negative (const DB_VALUE * value)
 {
   assert (value);
@@ -437,8 +430,8 @@ numeric_zero (DB_C_NUMERIC answer, int size)
  * propagation across words, and the number of significant words
  * is tracked for optimization.
  */
-static void
-numeric_init_pow_of_10_helper (void)
+__attribute__ ((constructor))
+     static void numeric_init_pow_of_10_helper (void)
 {
   int i, j;
   uint64_t carry;
@@ -477,18 +470,6 @@ numeric_init_pow_of_10_helper (void)
     }
 }
 
-#if defined(SERVER_MODE)
-/*
- * numeric_init_pow_of_10 () -
- *   return:
- */
-static void
-numeric_init_pow_of_10 (void)
-{
-  numeric_init_pow_of_10_helper ();
-}
-#endif
-
 /*
  * numeric_get_pow_of_10()
  *
@@ -505,15 +486,6 @@ static void
 numeric_get_pow_of_10 (int exp, uint8_t * result)
 {
   assert (exp >= 0 && exp <= POW10_MAX_INDEX);
-
-#if !defined(SERVER_MODE)
-  /* If this is the first time to call this routine, initialize */
-  if (!initialized_10)
-    {
-      numeric_init_pow_of_10_helper ();
-      initialized_10 = true;
-    }
-#endif
 
   /* convert word-based (host-endian) powers_of_10 into
    * 17-byte big-endian NUMERIC format */
@@ -533,8 +505,8 @@ numeric_get_pow_of_10 (int exp, uint8_t * result)
  * numeric_init_digits4_ascii_helper () -
  *   return:
  */
-static void
-numeric_init_digits4_ascii_helper (void)
+__attribute__ ((constructor))
+     static void numeric_init_digits4_ascii_helper (void)
 {
   int i;
   uint8_t digit[4];
@@ -551,18 +523,6 @@ numeric_init_digits4_ascii_helper (void)
     }
 }
 
-#if defined(SERVER_MODE)
-/*
- * numeric_init_digits4_ascii () -
- *   return:
- */
-static void
-numeric_init_digits4_ascii (void)
-{
-  numeric_init_digits4_ascii_helper ();
-}
-#endif
-
 /*
  * numeric_get_digits4_ascii () - returns pre-calculated ASCII value for a 4-digit number
  *   return : uint32_t containing 4 ASCII bytes
@@ -575,40 +535,7 @@ static inline uint32_t
 numeric_get_digits4_ascii (uint32_t val)
 {
   assert (val < 10000);
-#if !defined(SERVER_MODE)
-  if (!initialized_digits4_ascii)
-    {
-      numeric_init_digits4_ascii_helper ();
-      initialized_digits4_ascii = true;
-    }
-#endif
   return _gv_digits4_ascii_lut[val];
-}
-
-#if defined(SERVER_MODE)
-/*
- * numeric_init_power_value_string () -
- *   return:
- */
-void
-numeric_init_power_value_string (void)
-{
-  numeric_init_pow_of_10 ();
-  numeric_init_digits4_ascii ();
-}
-#endif
-
-static void
-float_numeric_init_pow10_table (void)
-{
-#if !defined(SERVER_MODE)
-  /* If this is the first time to call this routine, initialize */
-  if (!initialized_10)
-    {
-      numeric_init_pow_of_10_helper ();
-      initialized_10 = true;
-    }
-#endif
 }
 
 /*
@@ -650,11 +577,6 @@ float_numeric_find_first_nz_idx_msb (const uint64_t * word_buf, int calc_words)
 static inline int
 float_numeric_get_decimal_digit (const uint64_t * word_buf, int calc_words)
 {
-#if !defined(SERVER_MODE)
-  /* initialize powers_of_10 table once */
-  float_numeric_init_pow10_table ();
-#endif
-
   /* 1. find first non-zero word (MSB side) */
   int first_nz_idx = float_numeric_find_first_nz_idx_msb (word_buf, calc_words);
   if (first_nz_idx == calc_words)
@@ -850,73 +772,80 @@ numeric_is_zero (DB_C_NUMERIC arg)
 }
 
 /*
- * numeric_is_long () -
- *   return: bool
- *   arg(in)    : DB_C_NUMERIC
- *   is_value_negative(in) : sign of the value
- *
- * Note: This routine checks if -2**31 <= arg <= 2**31-1
- */
-static bool
-numeric_is_long (DB_C_NUMERIC arg, bool is_value_negative)
-{
-  unsigned int digit;
-  uint32_t magnitude;
-
-  /* arg[0] ~ arg[12] (13 bytes) must be 0 */
-  for (digit = 0; digit < DB_NUMERIC_BUF_SIZE - sizeof (int); digit++)
-    {
-      if (arg[digit] != 0)
-	return false;
-    }
-
-  /* arg[13] ~ arg[16] (4 bytes) is the magnitude */
-  magnitude = ((uint32_t) arg[DB_NUMERIC_BUF_SIZE - 1]) +
-    (((uint32_t) arg[DB_NUMERIC_BUF_SIZE - 2]) << 8) +
-    (((uint32_t) arg[DB_NUMERIC_BUF_SIZE - 3]) << 16) + (((uint32_t) arg[DB_NUMERIC_BUF_SIZE - 4]) << 24);
-
-  /* positive: 0 ~ 2^31-1 (0x7FFFFFFFU)
-   * negative: 0 ~ 2^31 (0x80000000U)
-   */
-  return magnitude <= (is_value_negative ? 0x80000000U : 0x7FFFFFFFU);
-}
-
-/*
- * numeric_is_bigint () -
- *   return: bool
+ * numeric_classify_magnitude () -
+ *   return: magnitude category of arg
  *   arg(in)    : DB_C_NUMERIC
  *   is_value_negative(in): sign of the value
  *
- * Note: This routine checks if -2**63 <= arg <= 2**63-1
+ * Note: Single 17-byte scan locates the most-significant non-zero byte and
+ *       classifies the magnitude into ZERO / INT / BIGINT / NUMERIC.
+ *       The first non-zero index alone determines the category in most
+ *       regions; only the boundary indices (13 for INT, 9 for BIGINT) need
+ *       a one-byte threshold check, plus a corner-case check for exactly
+ *       -2^31 / -2^63 (magnitude == 0x80...0, negative sign).
  */
-static bool
-numeric_is_bigint (DB_C_NUMERIC arg, bool is_value_negative)
+static numeric_magnitude_t
+numeric_classify_magnitude (DB_C_NUMERIC arg, bool is_value_negative)
 {
-  unsigned int digit;
-  uint64_t magnitude;
+  int i;
 
-  /* arg[0] ~ arg[8] (9 bytes) must be 0 */
-  for (digit = 0; digit < DB_NUMERIC_BUF_SIZE - sizeof (DB_BIGINT); digit++)
+  for (i = 0; i < DB_NUMERIC_BUF_SIZE; i++)
     {
-      if (arg[digit] != 0)
+      if (arg[i] != 0)
 	{
-	  return false;
+	  break;
 	}
     }
 
-  /* arg[9] ~ arg[16] (8 bytes) is the magnitude */
-  magnitude = ((uint64_t) arg[DB_NUMERIC_BUF_SIZE - 1]) +
-    (((uint64_t) arg[DB_NUMERIC_BUF_SIZE - 2]) << 8) +
-    (((uint64_t) arg[DB_NUMERIC_BUF_SIZE - 3]) << 16) +
-    (((uint64_t) arg[DB_NUMERIC_BUF_SIZE - 4]) << 24) +
-    (((uint64_t) arg[DB_NUMERIC_BUF_SIZE - 5]) << 32) +
-    (((uint64_t) arg[DB_NUMERIC_BUF_SIZE - 6]) << 40) +
-    (((uint64_t) arg[DB_NUMERIC_BUF_SIZE - 7]) << 48) + (((uint64_t) arg[DB_NUMERIC_BUF_SIZE - 8]) << 56);
+  if (i == DB_NUMERIC_BUF_SIZE)
+    {
+      return NUMERIC_MAG_ZERO;
+    }
 
-  /* positive: 0 ~ 2^63-1 (0x7FFFFFFFFFFFFFFFULL)
-   * negative: 0 ~ 2^63 (0x8000000000000000ULL)
-   */
-  return magnitude <= (is_value_negative ? 0x8000000000000000ULL : 0x7FFFFFFFFFFFFFFFULL);
+  /* INT region: top 13 bytes are zero (i >= 13) */
+  if (i > 13)
+    {
+      /* magnitude < 0x01000000, well within int range */
+      return NUMERIC_MAG_INT;
+    }
+  if (i == 13)
+    {
+      if (arg[13] < 0x80)
+	{
+	  /* magnitude <= 0x7FFFFFFF */
+	  return NUMERIC_MAG_INT;
+	}
+      if (arg[13] == 0x80 && is_value_negative && arg[14] == 0 && arg[15] == 0 && arg[16] == 0)
+	{
+	  /* exactly -2^31 */
+	  return NUMERIC_MAG_INT;
+	}
+      /* exceeds int range, but top 13 bytes are zero so it fits in 8 bytes */
+      return NUMERIC_MAG_BIGINT;
+    }
+
+  /* BIGINT region: top 9 bytes are zero (i >= 9) */
+  if (i > 9)
+    {
+      return NUMERIC_MAG_BIGINT;
+    }
+  if (i == 9)
+    {
+      if (arg[9] < 0x80)
+	{
+	  return NUMERIC_MAG_BIGINT;
+	}
+      if (arg[9] == 0x80 && is_value_negative
+	  && arg[10] == 0 && arg[11] == 0 && arg[12] == 0
+	  && arg[13] == 0 && arg[14] == 0 && arg[15] == 0 && arg[16] == 0)
+	{
+	  /* exactly -2^63 */
+	  return NUMERIC_MAG_BIGINT;
+	}
+      return NUMERIC_MAG_NUMERIC;
+    }
+
+  return NUMERIC_MAG_NUMERIC;
 }
 
 /*
@@ -1475,32 +1404,40 @@ static void
 numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, DB_C_NUMERIC remainder,
 	     bool arg1_value_is_negative, bool arg2_value_is_negative)
 {
+  numeric_magnitude_t divisor_mag = numeric_classify_magnitude (arg2, arg2_value_is_negative);
+
   /* Case 1 - arg2 = 0 */
-  if (numeric_is_zero (arg2))
+  if (divisor_mag == NUMERIC_MAG_ZERO)
     {
       /* SIGFPE ??, +/- MAX_NUM_DATA ?? */
+      return;
     }
 
+  numeric_magnitude_t dividend_mag = numeric_classify_magnitude (arg1, arg1_value_is_negative);
+
   /* Case 2 - arg1 = 0.  Set answer and remainder to 0.  */
-  else if (numeric_is_zero (arg1))
+  if (dividend_mag == NUMERIC_MAG_ZERO)
     {
       numeric_coerce_int_to_num (0, remainder, NULL);
       numeric_coerce_int_to_num (0, answer, NULL);
     }
 
   /* Case 3 - arg1, arg2 are long ints. Do machine divide */
-  else if (numeric_is_long (arg1, arg1_value_is_negative) && numeric_is_long (arg2, arg2_value_is_negative))
+  else if (dividend_mag == NUMERIC_MAG_INT && divisor_mag == NUMERIC_MAG_INT)
     {
-      int long_arg1, long_arg2;
+      int int_arg1, int_arg2;
 
-      numeric_coerce_num_to_int (arg1, &long_arg1, arg1_value_is_negative);
-      numeric_coerce_num_to_int (arg2, &long_arg2, arg2_value_is_negative);
-      numeric_coerce_int_to_num ((long_arg1 / long_arg2), answer, NULL);
-      numeric_coerce_int_to_num ((long_arg1 % long_arg2), remainder, NULL);
+      numeric_coerce_num_to_int (arg1, &int_arg1, arg1_value_is_negative);
+      numeric_coerce_num_to_int (arg2, &int_arg2, arg2_value_is_negative);
+      numeric_coerce_int_to_num ((int_arg1 / int_arg2), answer, NULL);
+      numeric_coerce_int_to_num ((int_arg1 % int_arg2), remainder, NULL);
     }
 
-  /* Case 4 - arg1, arg2 are bigints. Do machine divide */
-  else if (numeric_is_bigint (arg1, arg1_value_is_negative) && numeric_is_bigint (arg2, arg2_value_is_negative))
+  /* Case 4 - arg1, arg2 fit in DB_BIGINT. Do machine divide.
+   * ZERO is already handled above; INT range is a subset of BIGINT range,
+   * so any (INT|BIGINT) x (INT|BIGINT) combination fits in DB_BIGINT and
+   * only NUMERIC needs to be excluded. */
+  else if (dividend_mag != NUMERIC_MAG_NUMERIC && divisor_mag != NUMERIC_MAG_NUMERIC)
     {
       DB_BIGINT bi_arg1, bi_arg2;
 
@@ -1536,7 +1473,8 @@ numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, DB_C_NUM
 static int
 float_numeric_div_fast (uint64_t dividend_val, uint64_t divisor_val,
 			int prec1, int scale1, int prec2, int scale2,
-			int exponent_diff, uint8_t * result_buf, int *result_prec_out, int *result_scale_out)
+			int exponent_diff, uint8_t * result_buf, int *result_prec_out, int *result_scale_out,
+			bool * result_sign)
 {
   int ret = NO_ERROR;
 
@@ -1610,6 +1548,11 @@ float_numeric_div_fast (uint64_t dividend_val, uint64_t divisor_val,
 
   /* 6) round and pack to DB_NUMERIC_BUF_SIZE bytes */
   result_prec = float_numeric_get_decimal_digit (quotient_word, word_count);
+  if (*result_sign && result_prec == 1 && quotient_word[word_count - 1] == 0)
+    {
+      /* Prevent -0; zero is always treated as positive. */
+      *result_sign = false;
+    }
   float_numeric_round_and_pack (quotient_word, word_count, word_bytes, result_buf, &result_prec, &result_scale);
   *result_prec_out = result_prec;
   *result_scale_out = result_scale;
@@ -1635,7 +1578,7 @@ float_numeric_div_fast (uint64_t dividend_val, uint64_t divisor_val,
  */
 static int
 float_numeric_mod_fast (uint64_t dividend_val, uint64_t divisor_val,
-			uint8_t * result_buf, int *result_prec_out, int *result_scale_out)
+			uint8_t * result_buf, int *result_prec_out, int *result_scale_out, bool * result_sign)
 {
 #if HAS_INT128_SUPPORT
   assert (divisor_val != 0);
@@ -1651,10 +1594,15 @@ float_numeric_mod_fast (uint64_t dividend_val, uint64_t divisor_val,
    * due to numeric_words_to_bytes() mapping, the least significant
    * 8 bytes correspond to word[2], so the remainder is placed there.
    */
-  uint64_t result_words[NUMERIC_AS_WORDS] = { 0, 0, remainder };
+  uint64_t result_word[NUMERIC_AS_WORDS] = { 0, 0, remainder };
 
-  int result_prec = float_numeric_get_decimal_digit (result_words, NUMERIC_AS_WORDS);
-  float_numeric_round_and_pack (result_words, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES,
+  int result_prec = float_numeric_get_decimal_digit (result_word, NUMERIC_AS_WORDS);
+  if (*result_sign && result_prec == 1 && result_word[NUMERIC_AS_WORDS - 1] == 0)
+    {
+      /* Prevent -0; zero is always treated as positive. */
+      *result_sign = false;
+    }
+  float_numeric_round_and_pack (result_word, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES,
 				result_buf, &result_prec, &result_scale);
   *result_prec_out = result_prec;
   *result_scale_out = result_scale;
@@ -3511,7 +3459,7 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
     {
       ret = float_numeric_div_fast (dbv1_word[2], dbv2_word[2],
 				    prec1, scale1, prec2, scale2,
-				    exponent_diff, result_buf, &result_prec, &result_scale);
+				    exponent_diff, result_buf, &result_prec, &result_scale, &result_sign);
       if (ret == NO_ERROR)
 	{
 	  ret = float_numeric_check_overflow_and_adjust_scale (&result_prec, &result_scale, answer);
@@ -3594,6 +3542,11 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
    * precision to 40 or less. result_prec must not exceed 40 after division.
    */
   assert (result_prec <= DB_MAX_NUMERIC_PRECISION);
+  if (result_sign && result_prec == 1 && quotient_work[calc_words - 1] == 0)
+    {
+      /* Prevent -0; zero is always treated as positive. */
+      result_sign = false;
+    }
   ret = float_numeric_check_overflow_and_adjust_scale (&result_prec, &result_scale, answer);
   if (ret != NO_ERROR)
     {
@@ -4300,7 +4253,9 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
   /* fast path */
   if (calc_words == NUMERIC_AS_WORDS && (dividend_work[0] | dividend_work[1] | divisor_work[0] | divisor_work[1]) == 0)
     {
-      ret = float_numeric_mod_fast (dividend_work[2], divisor_work[2], result_buf, &result_prec, &result_scale);
+      ret =
+	float_numeric_mod_fast (dividend_work[2], divisor_work[2], result_buf, &result_prec, &result_scale,
+				&result_sign);
       if (ret == NO_ERROR)
 	{
 	  ret = float_numeric_check_overflow_and_adjust_scale (&result_prec, &result_scale, result);
@@ -4324,6 +4279,11 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
 
   /* 7) check and recalculate precision/scale of the remainder result */
   result_prec = float_numeric_get_decimal_digit (remainder_work, calc_words);
+  if (result_sign && result_prec == 1 && remainder_work[calc_words - 1] == 0)
+    {
+      /* Prevent -0; zero is always treated as positive. */
+      result_sign = false;
+    }
   ret = float_numeric_check_overflow_and_adjust_scale (&result_prec, &result_scale, result);
   if (ret != NO_ERROR)
     {
@@ -4774,15 +4734,17 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
     }
   else if (!has_digit && int_count == 0 && frac_count == 0)
     {
-      /* NULL case handling (only spaces):
-       * '' : has_digit(f), int_count(0), frac_count(0)
-       * '   ' : has_digit(f), int_count(0), frac_count(0)
-       * '.  ' : has_digit(f), int_count(0), frac_count(0)
+      /*
+       * no valid digit was found in input.
+       * reject strings that do not contain any numeric digit.
+       *
+       * examples:
+       *   '+', '-'                  (sign only)
+       *   '.', ' . ', '   .   '     (decimal point only)
+       *   '', ' ', '    '               (whitespace only)
+       *   '+.', '-.', ' + . '       (sign + non-digit combinations)
        */
-      int_digits[0] = '\0';
-      frac_digits[0] = '\0';
-      *int_len = 0;
-      *frac_len = 0;
+      return DOMAIN_INCOMPATIBLE;
     }
   else
     {
@@ -5006,7 +4968,8 @@ determine_round (char *out_str, int *out_prec, int *out_scale, int tmp_int_len, 
       else
 	{
 	  // Underflow case: 0.000...0001 (prec 1, scale 253) -> 0.000...0000 (prec 1, scale 252)
-	  out_str[0] = '\0';
+	  out_str[0] = '0';
+	  out_str[1] = '\0';
 	  frac_zero_cnt--;
 	  prec = 1;
 	  digit_pos = 0;
@@ -5116,15 +5079,8 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
       goto exit_on_error;
     }
 
-  if (int_len == 0 && frac_len == 0)
-    {
-      /* NULL case */
-      prec = 0;
-      scale = 0;
-      num_string[0] = '\0';
-      negate_value = false;
-    }
-  else if (is_zero)
+  assert (int_len > 0 || frac_len > 0);
+  if (is_zero)
     {
       /* Zero case */
       prec = 1;

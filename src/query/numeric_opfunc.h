@@ -271,10 +271,6 @@ typedef enum
     (value)->data.num.header.scale = 0; \
   } while(0)
 
-#if defined(SERVER_MODE)
-extern void numeric_init_power_value_string (void);
-#endif
-
 /* Arithmetic routines */
 extern int numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);

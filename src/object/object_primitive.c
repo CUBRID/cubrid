@@ -8368,6 +8368,7 @@ mr_setmem_numeric (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 
 	  if (is_float_numeric)
 	    {
+	      assert (precision >= 0 && precision <= DB_MAX_NUMERIC_PRECISION);
 	      byte_size = _gv_mr_float_numeric_precision_to_size[precision];
 	    }
 	  else
@@ -8656,6 +8657,7 @@ mr_data_lengthval_numeric (DB_VALUE * value, int disk)
       precision = db_get_numeric_precision (value, &is_float_numeric);
       if (is_float_numeric)
 	{
+	  assert (precision >= 0 && precision <= DB_MAX_NUMERIC_PRECISION);
 	  len = _gv_mr_float_numeric_precision_to_size[precision];
 	}
       else
