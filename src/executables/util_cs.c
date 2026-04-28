@@ -1281,6 +1281,8 @@ spacedb (UTIL_FUNCTION_ARG * arg)
               int alloc_npage;
               const char *ftype_str;
 
+              /* Overflow files always use every allocated page, so ovf_alloced_page
+               * counts as both used and allocated. */
               used_npage = ts->data_used_page + ts->ovf_alloced_page;
               alloc_npage = ts->data_alloced_page + ts->ovf_alloced_page;
               ftype_str = (ts->ftype == 1) ? "HEAP" : (ts->ftype == 4) ? "BTREE" : "UNKNOWN";
