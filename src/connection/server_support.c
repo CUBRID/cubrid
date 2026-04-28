@@ -562,6 +562,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   cubconn::connection::pool connections;
   std::size_t task_group, task_worker;
   std::size_t max_connection_workers, min_connection_workers;
+  std::size_t max_connections;
   std::string name;
   int status = NO_ERROR;
 
@@ -571,23 +572,27 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
   name = std::string (server_name, name_length);
 
-  // initialize worker pool for server requests
-#define MAX_WORKERS css_get_max_workers ()
-#define MAX_TASK_COUNT css_get_max_task_count ()
-#define MAX_CONNECTIONS css_get_max_connections ()
-
   task_group = (int) prm_get_integer_value (PRM_ID_TASK_GROUP);
   task_worker = (int) prm_get_integer_value (PRM_ID_TASK_WORKER);
+
   max_connection_workers = (int) prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
   min_connection_workers = (int) prm_get_integer_value (PRM_ID_CSS_MIN_CONNECTION_WORKER);
 
+  max_connections = css_get_max_connections ();
+
+  // initialize the concurrency slot daemon
+  cubthread::concurrency_slot_daemon::initialize ();
+
   // create request worker pool
   //*INDENT-OFF*
-  css_Server_request_worker_pool =
-    thread_create_worker_pool<cubthread::stats_t::on, cubthread::pool_t::elastic> (task_worker, task_group, "transaction",
-							     thread_get_entry_manager (),
-							     css_get_server_request_thread_pooling_configuration (),
-							     css_get_server_request_thread_timeout_configuration ());
+  css_Server_request_worker_pool = thread_create_worker_pool<cubthread::stats_t::on, cubthread::pool_t::elastic> (
+      task_worker,
+      task_group,
+      "transaction",
+      thread_get_entry_manager (),
+      css_get_server_request_thread_pooling_configuration (),
+      css_get_server_request_thread_timeout_configuration ()
+      );
   //*INDENT-ON*
   // m_log = cubthread::is_logging_configured (cubthread::LOG_WORKER_POOL_TRAN_WORKERS)
 
@@ -600,7 +605,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
 
   /* initialize epoll worker pool */
-  connections.initialize (MAX_CONNECTIONS, max_connection_workers, min_connection_workers);
+  connections.initialize (max_connections, max_connection_workers, min_connection_workers);
 
   /* attach thread entry */
   connector.attach (*thread_p);
@@ -621,6 +626,9 @@ shutdown:
   // stop threads; in first phase we need to stop active workers, but keep log writers for a while longer to make sure
   // all log is transfered
   css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
+
+  // finalize the concurrency slot daemon
+  cubthread::concurrency_slot_daemon::finalize ();
 
   /* stop vacuum threads. */
   vacuum_stop_workers (thread_p);
