@@ -918,7 +918,9 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   char **table_array = NULL;
   const char *output_file = NULL;
   const char *table_name = NULL;
+#if !defined (NDEBUG)
   const char *table_array_file = NULL;
+#endif /* !NDEBUG */
   int i;
   int table_array_length = 0;
   const char *size_unit;
@@ -964,15 +966,19 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   summarize = utility_get_option_bool_value (arg_map, SPACE_SUMMARIZE_S);
   purpose = utility_get_option_bool_value (arg_map, SPACE_PURPOSE_S);
   table_name = utility_get_option_string_value (arg_map, SPACE_TABLE_NAME_S, 0);
+#if !defined (NDEBUG)
   table_array_file = utility_get_option_string_value (arg_map, SPACE_INPUT_FILE_S, 0);
+#endif /* !NDEBUG */
 
   size_unit_type = SPACEDB_SIZE_UNIT_HUMAN_READABLE;
 
+#if !defined (NDEBUG)
   if (table_name && table_array_file)
     {
       fprintf (stderr, "The -n and -i options cannot be used together.\n");
       goto error_exit;
     }
+#endif /* !NDEBUG */
 
   if (size_unit != NULL)
     {
@@ -1056,11 +1062,12 @@ spacedb (UTIL_FUNCTION_ARG * arg)
       table_array = only_table;
       table_array_length = 1;
     }
+#if !defined (NDEBUG)
   else if (table_array_file != NULL)
     {
       FILE *infp = NULL;
       char input_table[SM_MAX_IDENTIFIER_LENGTH];
-      int capacity = 16;
+      int capacity = 16;	/* initial capacity, doubled on overflow */
 
       infp = fopen (table_array_file, "r");
       if (infp == NULL)
@@ -1115,6 +1122,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 
       fclose (infp);
     }
+#endif /* !NDEBUG */
 
   spacedb_error = netcl_spacedb (all, volsp, filesp, &table_sizes, &actual_table_count, table_array, table_array_length);
   if (spacedb_error != NO_ERROR && actual_table_count == 0)
