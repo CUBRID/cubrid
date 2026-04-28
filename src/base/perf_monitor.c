@@ -87,15 +87,13 @@
 #include "connection_error.h"
 #endif
 
-#if !defined (HAVE_ATOMIC_BUILTINS)
-#if !defined(SERVER_MODE) && !(defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
+#if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
 #define pthread_mutex_destroy(a)
 #define pthread_mutex_lock(a)	0
 #define pthread_mutex_unlock(a)
 #endif /* SERVER_MODE */
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
-#endif
 
 #if !defined (SERVER_MODE)
 #include "network_interface_cl.h"

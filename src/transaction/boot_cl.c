@@ -1413,13 +1413,8 @@ boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
   tran_isolation = TRAN_DEFAULT_ISOLATION_LEVEL ();
   tran_lock_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
 
-  tran_index = boot_register_client (client_credential, tran_lock_wait_msecs, tran_isolation, &transtate,
-#if 0
-				     NULL
-#else
-				     &boot_Server_credential
-#endif
-    );
+  tran_index =
+    boot_register_client (client_credential, tran_lock_wait_msecs, tran_isolation, &transtate, &boot_Server_credential);
 
   if (tran_index == NULL_TRAN_INDEX)
     {
