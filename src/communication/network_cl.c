@@ -66,14 +66,10 @@
 #error Does not belong to cs module
 #endif /* !defined (CS_MODE) */
 
-/*
- * CBRD-26745: RAII guard that flushes callback_handler's deferred
- * query_handler list whenever the enclosing RPC helper exits, covering
- * every early return path (socket errors, allocation failures, etc).
- * Without this guard, stale query_handler* entries persisted in the
- * process-wide singleton queue across client sessions and were deleted
- * later by an unrelated client's RPC, double-freeing host_variables.
- */
+/* RAII guard: flush callback_handler's deferred query_handler queue on every return
+   path of method callback helpers. PL/SP execution pushes handlers into the process-wide
+   singleton; early-return paths would otherwise leak stale handlers that a later client
+   request frees. er_stack_push/pop keeps handler dtor er_set()s from clobbering the outer error. */
 namespace
 {
   struct deferred_flush_guard
@@ -81,18 +77,8 @@ namespace
     ~deferred_flush_guard ()
     {
       cubmethod::callback_handler * h = cubmethod::get_callback_handler ();
-      /* fast path: skip the libcas-depth check and the flush call entirely
-         when no PL callback pushed anything to the queue. */
       if (h->has_deferred_query_handler () && !tran_is_in_libcas ())
 	{
-	  /* CBRD-26745: free_deferred_query_handler() walks query_handler dtors
-	     that may invoke db_query_end_internal()/db_close_session_local(),
-	     which call er_set() (e.g. ER_OBJ_NO_CONNECT when disconnected).
-	     Without isolation, that would clobber the caller's error (typically
-	     ER_NET_SERVER_CRASHED set by set_server_error() right before this
-	     destructor runs), so csql would lose the "Server no longer
-	     responding" message on disconnect paths. Wrap the flush with
-	     er_stack_push/pop to restore the outer error on exit. */
 	  er_stack_push ();
 	  h->free_deferred_query_handler ();
 	  er_stack_pop ();
@@ -1169,7 +1155,6 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				  char **replydata_listid, int *replydatasize_listid, char **replydata_page,
 				  int *replydatasize_page, char **replydata_plan, int *replydatasize_plan)
 {
-  /* CBRD-26745: flush deferred query_handler queue on every return path */
   deferred_flush_guard _flush_guard;
 
   unsigned int rc;
@@ -1764,7 +1749,6 @@ int
 net_client_request_method_callback (int request, char *argbuf, int argsize, char *replybuf, int replysize,
 				    char **replydata_ptr, int *replydatasize_ptr)
 {
-  /* CBRD-26745: flush deferred query_handler queue on every return path */
   deferred_flush_guard _flush_guard;
 
   unsigned int rc;
@@ -1913,25 +1897,6 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 
 		__gv_cvar.css_queue_receive_data_buffer (rc, replydata, replydata_size);
 		error = __gv_cvar.css_receive_data_from_server (rc, &reply, &size);
-
-		/* (WILL REMOVE) CBRD-26745 fault injection: every Nth pl_call force the early
-		   return path so a stale query_handler is left in the deferred
-		   queue. Set env CBRD26745_INJECT_EVERY=N to enable. */
-		{
-		  const char *_inj_env = getenv ("CBRD26745_INJECT_EVERY");
-		  if (_inj_env != NULL)
-		    {
-		      static int _inj_count = 0;
-		      int _inj_n = atoi (_inj_env);
-		      if (_inj_n > 0 && (++_inj_count % _inj_n) == 0)
-			{
-			  fprintf (stderr, "[CBRD26745 inject] early-return @ call #%d\n", _inj_count);
-			  error = ER_NET_SERVER_DATA_RECEIVE;
-			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-			}
-		    }
-		}
-
 		if (error != NO_ERROR)
 		  {
 		    COMPARE_AND_FREE_BUFFER (replydata, reply);

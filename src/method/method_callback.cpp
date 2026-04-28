@@ -1132,21 +1132,13 @@ exit:
   void
   callback_handler::clear_all_query_handlers ()
   {
-    /* CBRD-26745: drain every query_handler before ws_final() destroys the
-       workspace heap. Each query_handler owns a DB_SESSION whose parser and
-       host_variables[] are allocated from ws_heap; if a handler outlives
-       ws_final(), its dtor's db_close_session_local() walks freed mspace
-       memory and aborts. Called via method_callback_final() from
-       boot_client_all_finalize() right before ws_final(). */
-
-    /* drain deferred queue */
+    /* must run before ws_final(); query_handler dtor walks ws_heap-allocated host_variables */
     for (auto it = m_deferred_query_free_handler.begin (); it != m_deferred_query_free_handler.end (); it++)
       {
 	delete *it;
       }
     m_deferred_query_free_handler.clear ();
 
-    /* free live cached handlers */
     for (size_t i = 0; i < m_query_handlers.size (); i++)
       {
 	if (m_query_handlers[i] != nullptr)
@@ -1157,7 +1149,6 @@ exit:
       }
     m_query_handlers.clear ();
 
-    /* clear lookup maps that referenced the handler ids above */
     m_sql_handler_map.clear ();
     m_qid_handler_map.clear ();
   }
@@ -1210,11 +1201,7 @@ exit:
   }
 }
 
-/*
- * CBRD-26745: Invoked from boot_client_all_finalize() in
- * boot_cl.c (before ws_final()). Drains the singleton callback_handler so
- * no query_handler outlives the workspace heap.
- */
+/* called from boot_client_all_finalize() before ws_final() */
 void
 method_callback_final (void)
 {
