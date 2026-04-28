@@ -2,7 +2,7 @@
 
 CUBRID is a DBMS supported by an active community of open source developers 
 and provides better performance and features necessary for Web services.
-
+ 
 Below you will see the brief list of sections to guide you to easily get started.
 
 ## Download CUBRID
