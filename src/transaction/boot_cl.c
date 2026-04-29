@@ -1568,10 +1568,10 @@ boot_client_all_finalize (int final_level)
 
     }
 
-    /* restore the signals that was blocked, when the function started. */
-    signal (SIGTERM, sigterm_handler);
-    signal (SIGABRT, sigabrt_handler);
-    signal (SIGINT, sigint_handler);
+  /* restore the signals that was blocked, when the function started. */
+  signal (SIGTERM, sigterm_handler);
+  signal (SIGABRT, sigabrt_handler);
+  signal (SIGINT, sigint_handler);
 }
 
 #if defined(CS_MODE)
