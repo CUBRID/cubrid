@@ -254,10 +254,10 @@ struct la_item
   LOG_LSA target_lsa;		/* the LSA of the target log record */
 };
 
-typedef struct la_oos_sql_log_cache_entry LA_OOS_SQL_LOG_CACHE_ENTRY;
-struct la_oos_sql_log_cache_entry
+typedef struct la_oos_cache_entry LA_OOS_CACHE_ENTRY;
+struct la_oos_cache_entry
 {
-  LA_OOS_SQL_LOG_CACHE_ENTRY *next;
+  LA_OOS_CACHE_ENTRY *next;
 
   /* Owning transaction id.  Resolves cross-transaction OID collisions when the
    * master rapidly reuses the same OOS slot inside a SYSOP_END boundary that
@@ -443,12 +443,12 @@ LA_INFO la_Info;
 
 LA_RECDES_POOL la_recdes_pool;
 
-static LA_OOS_SQL_LOG_CACHE_ENTRY *la_Oos_sql_log_cache_head = NULL;
-static LA_OOS_SQL_LOG_CACHE_ENTRY *la_Oos_sql_log_cache_tail = NULL;
+static LA_OOS_CACHE_ENTRY *la_oos_cache_head = NULL;
+static LA_OOS_CACHE_ENTRY *la_oos_cache_tail = NULL;
 
-/* Hash accelerator for la_find_oos_sql_log_cache_entry().  The linked list
+/* Hash accelerator for la_find_oos_cache_entry().  The linked list
  * remains the canonical owner of entries (used for ordered teardown in
- * la_clear_oos_sql_log_cache()).  The hash maps chunk_oid -> latest cached
+ * la_clear_oos_cache()).  The hash maps chunk_oid -> latest cached
  * entry, turning chain reassembly from O(N^2) to O(N) for OOS columns whose
  * value spans many physical chunks (e.g. several MB strings).
  *
@@ -459,8 +459,8 @@ static LA_OOS_SQL_LOG_CACHE_ENTRY *la_Oos_sql_log_cache_tail = NULL;
  * heavy workloads in the order of ~8K chunks (e.g. ~32MB OOS column with the
  * smallest legal chunk payload).  Smaller workloads pay only the bucket
  * array cost (one MHT_TABLE allocation, ~8KB on a 64-bit platform). */
-#define LA_OOS_SQL_LOG_CACHE_HASH_SIZE 1024
-static MHT_TABLE *la_Oos_sql_log_cache_hash = NULL;
+#define LA_OOS_CACHE_HASH_SIZE 1024
+static MHT_TABLE *la_oos_cache_hash = NULL;
 
 /* Lower bound on a single OOS chunk's payload size.  Used purely as a
  * defensive divisor when bounding the iteration count of the chunk-chain
@@ -481,7 +481,7 @@ static MHT_TABLE *la_Oos_sql_log_cache_hash = NULL;
  * cache lookups to the current transaction so that a stale entry surviving
  * across LOG_SYSOP_END boundaries cannot be matched by a different transaction
  * that happens to land on the same chunk OID. */
-static int la_Oos_sql_log_current_tranid = NULL_TRAN_INDEX;
+static int la_oos_current_tranid = NULL_TRAN_INDEX;
 
 static bool la_applier_need_shutdown = false;
 static bool la_applier_shutdown_by_signal = false;
@@ -562,11 +562,11 @@ static int la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_
 static int la_add_node_into_la_commit_list (int tranid, LOG_LSA * lsa, int type, time_t eot_time);
 static time_t la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa);
 static int la_get_raw_offset_internal (OR_BUF * buf, int *error, int offset_size);
-static int la_register_new_oos_sql_log_cache_entry (LA_OOS_SQL_LOG_CACHE_ENTRY * entry);
-static int la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes);
-static int la_resolve_oos_sql_log_recdes (const OID * head_oid, int total_data_length, RECDES * recdes);
-static void la_clear_oos_sql_log_cache (void);
-static int la_make_synthetic_oos_sql_log_value (DB_VALUE * value, SM_ATTRIBUTE * att, DB_BIGINT oos_length);
+static int la_register_oos_cache_entry (LA_OOS_CACHE_ENTRY * entry);
+static int la_cache_oos_chunk (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes);
+static int la_resolve_oos_recdes (const OID * head_oid, int total_data_length, RECDES * recdes);
+static void la_clear_oos_cache (void);
+static int la_make_oos_placeholder (DB_VALUE * value, SM_ATTRIBUTE * att, DB_BIGINT oos_length);
 static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, DB_VALUE * key,
 			   int offset_size);
 static void la_make_room_for_mvcc_insid (RECDES * recdes);
@@ -3635,26 +3635,26 @@ la_get_raw_offset_internal (OR_BUF * buf, int *error, int offset_size)
 }
 
 /*
- * la_find_oos_sql_log_cache_entry () - Look up a cached OOS chunk by
- *   (current tranid, OID).  Uses la_Oos_sql_log_cache_hash for O(1) probe;
+ * la_find_oos_cache_entry () - Look up a cached OOS chunk by
+ *   (current tranid, OID).  Uses la_oos_cache_hash for O(1) probe;
  *   the tranid match prevents a stale entry surviving across LOG_SYSOP_END
  *   mini-batches from being matched by a different transaction that lands on
  *   the same recycled OOS slot OID.  Returns NULL when the hash is not yet
  *   allocated, the OID is null/invalid, the entry is missing, or the entry's
  *   tranid does not match the current transaction.
  */
-static LA_OOS_SQL_LOG_CACHE_ENTRY *
-la_find_oos_sql_log_cache_entry (const OID * chunk_oid)
+static LA_OOS_CACHE_ENTRY *
+la_find_oos_cache_entry (const OID * chunk_oid)
 {
-  LA_OOS_SQL_LOG_CACHE_ENTRY *entry;
+  LA_OOS_CACHE_ENTRY *entry;
 
-  if (chunk_oid == NULL || OID_ISNULL (chunk_oid) || la_Oos_sql_log_cache_hash == NULL)
+  if (chunk_oid == NULL || OID_ISNULL (chunk_oid) || la_oos_cache_hash == NULL)
     {
       return NULL;
     }
 
-  entry = (LA_OOS_SQL_LOG_CACHE_ENTRY *) mht_get (la_Oos_sql_log_cache_hash, chunk_oid);
-  if (entry == NULL || entry->tranid != la_Oos_sql_log_current_tranid)
+  entry = (LA_OOS_CACHE_ENTRY *) mht_get (la_oos_cache_hash, chunk_oid);
+  if (entry == NULL || entry->tranid != la_oos_current_tranid)
     {
       return NULL;
     }
@@ -3663,7 +3663,7 @@ la_find_oos_sql_log_cache_entry (const OID * chunk_oid)
 }
 
 static void
-la_free_oos_sql_log_cache_entry (LA_OOS_SQL_LOG_CACHE_ENTRY * entry)
+la_free_oos_cache_entry (LA_OOS_CACHE_ENTRY * entry)
 {
   if (entry == NULL)
     {
@@ -3679,33 +3679,33 @@ la_free_oos_sql_log_cache_entry (LA_OOS_SQL_LOG_CACHE_ENTRY * entry)
 }
 
 static void
-la_clear_oos_sql_log_cache (void)
+la_clear_oos_cache (void)
 {
-  LA_OOS_SQL_LOG_CACHE_ENTRY *entry = la_Oos_sql_log_cache_head;
-  LA_OOS_SQL_LOG_CACHE_ENTRY *next_entry = NULL;
+  LA_OOS_CACHE_ENTRY *entry = la_oos_cache_head;
+  LA_OOS_CACHE_ENTRY *next_entry = NULL;
 
   /* Drop the hash bucket entries (rem_func == NULL — entries are not owned
    * by the hash, the linked list below frees them).  Keep the MHT_TABLE
    * itself alive so successive transactions reuse the same bucket array
    * instead of paying mht_destroy + mht_create on every commit/abort. */
-  if (la_Oos_sql_log_cache_hash != NULL)
+  if (la_oos_cache_hash != NULL)
     {
-      (void) mht_clear (la_Oos_sql_log_cache_hash, NULL, NULL);
+      (void) mht_clear (la_oos_cache_hash, NULL, NULL);
     }
 
   while (entry != NULL)
     {
       next_entry = entry->next;
-      la_free_oos_sql_log_cache_entry (entry);
+      la_free_oos_cache_entry (entry);
       entry = next_entry;
     }
 
-  la_Oos_sql_log_cache_head = NULL;
-  la_Oos_sql_log_cache_tail = NULL;
+  la_oos_cache_head = NULL;
+  la_oos_cache_tail = NULL;
 }
 
 /*
- * la_get_oos_sql_log_chunk_oid () - Peek the LOG_DATA at item->target_lsa
+ * la_get_oos_chunk_oid () - Peek the LOG_DATA at item->target_lsa
  *   directly from the in-memory page and extract the OID where the OOS chunk
  *   was inserted on the master.  Unlike la_get_log_data(), this does not
  *   allocate/decompress the redo body — only the small fixed-size log record
@@ -3714,7 +3714,7 @@ la_clear_oos_sql_log_cache (void)
  *   returned, leaving the caller to fall back gracefully.
  */
 static int
-la_get_oos_sql_log_chunk_oid (LA_ITEM * item, LOG_PAGE * pgptr, OID * chunk_oid)
+la_get_oos_chunk_oid (LA_ITEM * item, LOG_PAGE * pgptr, OID * chunk_oid)
 {
   LOG_RECORD_HEADER *lrec;
   LOG_PAGE *pg;
@@ -3810,7 +3810,7 @@ la_get_oos_sql_log_chunk_oid (LA_ITEM * item, LOG_PAGE * pgptr, OID * chunk_oid)
 }
 
 /*
- * la_register_new_oos_sql_log_cache_entry () - Publish a freshly allocated
+ * la_register_oos_cache_entry () - Publish a freshly allocated
  *   cache entry: insert into the OID -> entry hash accelerator, then append
  *   to the linked list owner.  Hash key is &entry->chunk_oid (entry-owned,
  *   stable for entry lifetime).  mht_put overwrites any prior hash mapping
@@ -3820,30 +3820,30 @@ la_get_oos_sql_log_chunk_oid (LA_ITEM * item, LOG_PAGE * pgptr, OID * chunk_oid)
  *   ER_OUT_OF_VIRTUAL_MEMORY on hash insert failure.
  */
 static int
-la_register_new_oos_sql_log_cache_entry (LA_OOS_SQL_LOG_CACHE_ENTRY * entry)
+la_register_oos_cache_entry (LA_OOS_CACHE_ENTRY * entry)
 {
-  if (mht_put (la_Oos_sql_log_cache_hash, &entry->chunk_oid, entry) == NULL)
+  if (mht_put (la_oos_cache_hash, &entry->chunk_oid, entry) == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  if (la_Oos_sql_log_cache_tail == NULL)
+  if (la_oos_cache_tail == NULL)
     {
-      la_Oos_sql_log_cache_head = entry;
-      la_Oos_sql_log_cache_tail = entry;
+      la_oos_cache_head = entry;
+      la_oos_cache_tail = entry;
     }
   else
     {
-      la_Oos_sql_log_cache_tail->next = entry;
-      la_Oos_sql_log_cache_tail = entry;
+      la_oos_cache_tail->next = entry;
+      la_oos_cache_tail = entry;
     }
   return NO_ERROR;
 }
 
 static int
-la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes)
+la_cache_oos_chunk (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes)
 {
-  LA_OOS_SQL_LOG_CACHE_ENTRY *entry = NULL;
+  LA_OOS_CACHE_ENTRY *entry = NULL;
   OOS_RECORD_HEADER oos_header;
   OID chunk_oid = OID_INITIALIZER;
   char *payload_data = NULL;
@@ -3857,7 +3857,7 @@ la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes)
       return ER_FAILED;
     }
 
-  error = la_get_oos_sql_log_chunk_oid (item, pgptr, &chunk_oid);
+  error = la_get_oos_chunk_oid (item, pgptr, &chunk_oid);
   if (error != NO_ERROR)
     {
       return error;
@@ -3868,11 +3868,10 @@ la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes)
       return NO_ERROR;
     }
 
-  if (la_Oos_sql_log_cache_hash == NULL)
+  if (la_oos_cache_hash == NULL)
     {
-      la_Oos_sql_log_cache_hash =
-	mht_create ("OOS sql.log cache", LA_OOS_SQL_LOG_CACHE_HASH_SIZE, oid_hash, oid_compare_equals);
-      if (la_Oos_sql_log_cache_hash == NULL)
+      la_oos_cache_hash = mht_create ("OOS cache", LA_OOS_CACHE_HASH_SIZE, oid_hash, oid_compare_equals);
+      if (la_oos_cache_hash == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (MHT_TABLE));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -3890,17 +3889,17 @@ la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes)
     }
   memcpy (payload_data, recdes->data + OOS_RECORD_HEADER_SIZE, payload_length);
 
-  entry = la_find_oos_sql_log_cache_entry (&chunk_oid);
+  entry = la_find_oos_cache_entry (&chunk_oid);
   if (entry == NULL)
     {
-      entry = (LA_OOS_SQL_LOG_CACHE_ENTRY *) malloc (sizeof (LA_OOS_SQL_LOG_CACHE_ENTRY));
+      entry = (LA_OOS_CACHE_ENTRY *) malloc (sizeof (LA_OOS_CACHE_ENTRY));
       if (entry == NULL)
 	{
 	  db_private_free_and_init (NULL, payload_data);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LA_OOS_SQL_LOG_CACHE_ENTRY));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LA_OOS_CACHE_ENTRY));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-      memset (entry, 0, sizeof (LA_OOS_SQL_LOG_CACHE_ENTRY));
+      memset (entry, 0, sizeof (LA_OOS_CACHE_ENTRY));
       is_new_entry = true;
     }
   else if (entry->data != NULL)
@@ -3910,7 +3909,7 @@ la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes)
       db_private_free_and_init (NULL, entry->data);
     }
 
-  entry->tranid = la_Oos_sql_log_current_tranid;
+  entry->tranid = la_oos_current_tranid;
   entry->chunk_oid = chunk_oid;
   entry->next_chunk_oid = oos_header.next_chunk_oid;
   entry->length = payload_length;
@@ -3920,13 +3919,13 @@ la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes)
 
   if (is_new_entry)
     {
-      error = la_register_new_oos_sql_log_cache_entry (entry);
+      error = la_register_oos_cache_entry (entry);
       if (error != NO_ERROR)
 	{
 	  /* hash insert failed.  entry->data points at payload_data — let the
 	   * canonical entry destructor free both at once. */
-	  la_free_oos_sql_log_cache_entry (entry);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LA_OOS_SQL_LOG_CACHE_ENTRY));
+	  la_free_oos_cache_entry (entry);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LA_OOS_CACHE_ENTRY));
 	  return error;
 	}
     }
@@ -3935,12 +3934,12 @@ la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes)
 }
 
 /*
- * la_resolve_oos_sql_log_recdes () - Reassemble a single OOS column value from
+ * la_resolve_oos_recdes () - Reassemble a single OOS column value from
  *   the per-transaction chunk cache and return it as a contiguous RECDES.
  *
  *   Note on ordering: the master logs OOS chunks in *reverse* order
  *   (last-chunk-first) so each chunk record can carry the next chunk's OID
- *   in its OOS_RECORD_HEADER.  As a result la_cache_oos_sql_log_recdes()
+ *   in its OOS_RECORD_HEADER.  As a result la_cache_oos_chunk()
  *   populates this cache tail-first.  The hash accelerator however gives
  *   random access by OID, so this resolver walks *forward* from the head OID
  *   passed in (taken from the heap recdes inline OOS metadata) by following
@@ -3949,7 +3948,7 @@ la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes)
  *   irrelevant at resolution time.
  *
  *   Validation (any failure returns ER_FAILED, leaving the caller to fall
- *   back to la_make_synthetic_oos_sql_log_value()):
+ *   back to la_make_oos_placeholder()):
  *     - chunk_index strictly monotone increasing from 0
  *     - total_data_length identical on every chunk in the chain
  *     - each chunk's body fits the remaining buffer
@@ -3960,7 +3959,7 @@ la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes)
  *   db_private_free_and_init() / recdes_free_data_area().
  */
 static int
-la_resolve_oos_sql_log_recdes (const OID * head_oid, int total_data_length, RECDES * recdes)
+la_resolve_oos_recdes (const OID * head_oid, int total_data_length, RECDES * recdes)
 {
   OID current_oid;
   char *data = NULL;
@@ -3995,7 +3994,7 @@ la_resolve_oos_sql_log_recdes (const OID * head_oid, int total_data_length, RECD
 
   while (!OID_ISNULL (&current_oid) && copied_size < total_data_length && iterations++ < max_iterations)
     {
-      LA_OOS_SQL_LOG_CACHE_ENTRY *entry = la_find_oos_sql_log_cache_entry (&current_oid);
+      LA_OOS_CACHE_ENTRY *entry = la_find_oos_cache_entry (&current_oid);
 
       if (entry == NULL || entry->chunk_index != expected_chunk_index
 	  || entry->total_data_length != total_data_length
@@ -4026,7 +4025,7 @@ la_resolve_oos_sql_log_recdes (const OID * head_oid, int total_data_length, RECD
 }
 
 /*
- * la_make_synthetic_oos_sql_log_value () - Last-resort fallback when the
+ * la_make_oos_placeholder () - Last-resort fallback when the
  *   chunk chain cannot be reassembled (cache miss, integrity check failure,
  *   etc.).  Produces a varchar of the inline OOS length filled with spaces
  *   except for the LA_OOS_MISSING_MARKER sentinel at the head, so:
@@ -4046,7 +4045,7 @@ la_resolve_oos_sql_log_recdes (const OID * head_oid, int total_data_length, RECD
  *   occurrence in the applylogdb error log alongside the source location.
  */
 static int
-la_make_synthetic_oos_sql_log_value (DB_VALUE * value, SM_ATTRIBUTE * att, DB_BIGINT oos_length)
+la_make_oos_placeholder (DB_VALUE * value, SM_ATTRIBUTE * att, DB_BIGINT oos_length)
 {
   DB_TYPE type;
   int string_length;
@@ -4099,7 +4098,7 @@ la_make_synthetic_oos_sql_log_value (DB_VALUE * value, SM_ATTRIBUTE * att, DB_BI
   string[string_length] = '\0';
 
   er_log_debug (ARG_FILE_LINE,
-		"la_make_synthetic_oos_sql_log_value: OOS chunk(s) missing from SQL log cache; "
+		"la_make_oos_placeholder: OOS chunk(s) missing from SQL log cache; "
 		"synthesizing %d-byte placeholder for column", string_length);
 
   db_make_varchar (value, precision, string, string_length, TP_DOMAIN_CODESET (att->domain),
@@ -4246,7 +4245,7 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
 
 	  if (!OID_ISNULL (&oos_oid) && oos_length > 0 && oos_length <= (DB_BIGINT) INT_MAX)
 	    {
-	      error = la_resolve_oos_sql_log_recdes (&oos_oid, (int) oos_length, &oos_recdes);
+	      error = la_resolve_oos_recdes (&oos_oid, (int) oos_length, &oos_recdes);
 	    }
 
 	  if (error == NO_ERROR && oos_recdes.data != NULL)
@@ -4266,7 +4265,7 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
 
 	      /* Prefer exact OID-chain reconstruction.  If any chunk is missing from the replication
 	       * cache, preserve sql.log sizing/rotation for large strings using the inline OOS length. */
-	      error = la_make_synthetic_oos_sql_log_value (&value, att, oos_length);
+	      error = la_make_oos_placeholder (&value, att, oos_length);
 	    }
 
 	  if (error != NO_ERROR)
@@ -6374,9 +6373,9 @@ la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
       if (item->item_type == RVREPL_OOS_INSERT)
 	{
 	  /* OOS chunk record — body is not a user INSERT, just stash it in the
-	   * per-transaction cache for la_resolve_oos_sql_log_recdes() to pick
+	   * per-transaction cache for la_resolve_oos_recdes() to pick
 	   * up when the heap INSERT arrives.  No sql.log line is emitted. */
-	  ret = la_cache_oos_sql_log_recdes (item, pgptr, recdes);
+	  ret = la_cache_oos_chunk (item, pgptr, recdes);
 	}
       else
 	{
@@ -6776,11 +6775,11 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
    * to this transaction.  The cache itself may legitimately survive across
    * LOG_SYSOP_END mini-batches, but a stale entry from a previous transaction
    * with the same chunk OID must not be matched by the current one. */
-  la_Oos_sql_log_current_tranid = tranid;
+  la_oos_current_tranid = tranid;
 
   if (rectype == LOG_ABORT)
     {
-      la_clear_oos_sql_log_cache ();
+      la_clear_oos_cache ();
       la_clear_applied_info (apply);
       return NO_ERROR;
     }
@@ -6796,7 +6795,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 	  la_clear_applied_info (apply);
 	}
 
-      la_clear_oos_sql_log_cache ();
+      la_clear_oos_cache ();
       return NO_ERROR;
     }
 
@@ -6934,7 +6933,7 @@ end:
 
   if (!(rectype == LOG_SYSOP_END && has_more_commit_items))
     {
-      la_clear_oos_sql_log_cache ();
+      la_clear_oos_cache ();
     }
 
   return error;
