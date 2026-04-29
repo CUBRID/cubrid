@@ -120,13 +120,13 @@ namespace cubthread
       virtual ~worker_pool_impl ();
 
       // init
-      virtual void initialize (std::size_t worker_count, std::size_t core_count) override;
+      void initialize (std::size_t worker_count, std::size_t core_count) override;
 
       // execute task; execution is guaranteed, even if maximum number of tasks is reached.
       void execute (task_type *work_arg) override;
 
       // execute on give core.
-      virtual void execute_on_core (task_type *work_arg, std::size_t core_hash) override;
+      void execute_on_core (task_type *work_arg, std::size_t core_hash) override;
 
       // ensure every available worker has a live thread waiting for tasks.
       // workers currently executing a task are skipped — they already have a thread.
@@ -271,7 +271,7 @@ namespace cubthread
 
       virtual ~core_impl (void);
 
-      virtual void initialize (std::size_t worker_count) override;
+      void initialize (std::size_t worker_count) override;
 
       // execute task
       void execute_task (task_type *task_p) override;
@@ -376,11 +376,11 @@ namespace cubthread
       void finish_run (void);
 
       // execute m_wrapped_task
-      void execute_current_task (void);
+      virtual void execute_current_task (void);
       // retire m_wrapped_task
-      void retire_current_task (void);
+      virtual void retire_current_task (void);
       // get new task from 1. worker pool task queue or 2. wait for incoming tasks
-      bool get_new_task (void);
+      virtual bool get_new_task (void);
 
       context_type *m_context_p;		    // execution context (same lifetime as spawned thread)
       std::optional<wrapped_task> m_wrapped_task;   // current task and metadata
