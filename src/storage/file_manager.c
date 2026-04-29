@@ -7991,15 +7991,26 @@ file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb, char **table_arr
       *actual_count_p = 0;
       for (int table_num = 0; table_num < table_array_length; table_num++)
         {
+          LC_FIND_CLASSNAME find_result;
           OID class_oid;
 
           OID_SET_NULL (&class_oid);
-          xlocator_find_class_oid (thread_p, table_array[table_num], &class_oid, S_LOCK);
+          find_result = xlocator_find_class_oid (thread_p, table_array[table_num], &class_oid, S_LOCK);
+          if (find_result == LC_CLASSNAME_ERROR)
+            {
+              ASSERT_ERROR_AND_SET (error_code);
+              file_spacedb_free_table_sizes (*table_sizes_p, table_num);
+              *table_sizes_p = NULL;
+              return error_code;
+            }
+
           if (OID_ISNULL (&class_oid))
             {
               er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, table_array[table_num]);
-              free_and_init (*table_sizes_p);
-              return ER_LC_UNKNOWN_CLASSNAME;
+              file_spacedb_free_table_sizes (*table_sizes_p, table_num);
+              *table_sizes_p = NULL;
+              error_code = ER_LC_UNKNOWN_CLASSNAME;
+              return error_code;
             }
 
           error_code = file_spacedb_fill_one_table (thread_p, &class_oid, table_array[table_num], &(*table_sizes_p)[table_num]);
