@@ -3684,12 +3684,13 @@ la_clear_oos_sql_log_cache (void)
   LA_OOS_SQL_LOG_CACHE_ENTRY *entry = la_Oos_sql_log_cache_head;
   LA_OOS_SQL_LOG_CACHE_ENTRY *next_entry = NULL;
 
-  /* Tear down the hash first; entries themselves are owned by the linked list
-   * walked just below, so the hash teardown only releases the bucket array. */
+  /* Drop the hash bucket entries (rem_func == NULL — entries are not owned
+   * by the hash, the linked list below frees them).  Keep the MHT_TABLE
+   * itself alive so successive transactions reuse the same bucket array
+   * instead of paying mht_destroy + mht_create on every commit/abort. */
   if (la_Oos_sql_log_cache_hash != NULL)
     {
-      mht_destroy (la_Oos_sql_log_cache_hash);
-      la_Oos_sql_log_cache_hash = NULL;
+      (void) mht_clear (la_Oos_sql_log_cache_hash, NULL, NULL);
     }
 
   while (entry != NULL)
