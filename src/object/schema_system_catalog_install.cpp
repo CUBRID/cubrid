@@ -1819,8 +1819,7 @@ namespace cubschema
       {"target", format_varchar (4096)},
       {"owner", format_varchar (DB_MAX_USER_LENGTH)},
       {"code", format_varchar (1073741823)},
-// TODO: implement sql_data_access
-//       {"sql_data_access", format_varchar (17)},
+      {"sql_data_access", format_varchar (17)},
       {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"},
