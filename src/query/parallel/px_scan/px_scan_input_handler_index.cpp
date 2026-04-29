@@ -37,14 +37,7 @@
 
 namespace parallel_scan
 {
-  /*
-   * init_on_main - called by main thread during manager::open().
-   *
-   * Descends from the B-tree root to the leftmost (ascending) or rightmost
-   * (descending) leaf page and stores it as the starting point for the shared
-   * leaf-page cursor. Workers will grab one leaf page at a time via
-   * get_next_vpid_with_fix().
-   */
+  /* defer descent until first worker — VPID-only republish would race a concurrent split */
   int
   input_handler_index::init_on_main (THREAD_ENTRY *thread_p, INDX_INFO *indx_info, int parallelism)
   {
@@ -53,124 +46,124 @@ namespace parallel_scan
     m_indx_info = indx_info;
     m_use_desc_index = (indx_info->use_desc_index != 0);
 
-    /* Initialize btid_int from root page */
-    VPID root_vpid;
-    root_vpid.pageid = m_btid.root_pageid;
-    root_vpid.volid = m_btid.vfid.volid;
+    VPID_SET_NULL (&m_current_leaf_vpid);
+    m_leaf_ended = false;
+    m_descent_done = false;
+    return NO_ERROR;
+  }
 
-    PAGE_PTR root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-    if (root_page == nullptr)
+  /* latch-coupled root→leaf descent; out_leaf hands back the leaf latch on S_SUCCESS (cf. btree_find_AR_sampling_leaf) */
+  SCAN_CODE
+  input_handler_index::descend_to_first_leaf (THREAD_ENTRY *thread_p, PAGE_PTR &out_leaf)
+  {
+    PAGE_PTR P_page = NULL;
+    PAGE_PTR C_page = NULL;
+    VPID P_vpid;
+    VPID C_vpid;
+
+    out_leaf = nullptr;
+
+    P_vpid.volid = m_btid.vfid.volid;
+    P_vpid.pageid = m_btid.root_pageid;
+    P_page = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+    if (P_page == NULL)
       {
 	goto fallback;
       }
 
+    (void) pgbuf_check_page_ptype (thread_p, P_page, PAGE_BTREE);
+
     {
-      BTREE_ROOT_HEADER *root_header = btree_get_root_header (thread_p, root_page);
-      if (root_header == nullptr)
-	{
-	  pgbuf_unfix (thread_p, root_page);
-	  goto fallback;
-	}
-
-      int err = btree_glean_root_header_info (thread_p, root_header, &m_btid_int, true);
-      pgbuf_unfix (thread_p, root_page);
-
-      if (err != NO_ERROR)
-	{
-	  goto fallback;
-	}
-    }
-
-    m_btid_int.sys_btid = &m_btid;
-
-    /* Navigate from root to the leftmost (ascending) or rightmost (descending) leaf page */
-    {
-      VPID cur_vpid;
-      cur_vpid.pageid = m_btid.root_pageid;
-      cur_vpid.volid = m_btid.vfid.volid;
-
-      PAGE_PTR cur_page = pgbuf_fix (thread_p, &cur_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-      if (cur_page == nullptr)
+      BTREE_ROOT_HEADER *root_header = btree_get_root_header (thread_p, P_page);
+      if (root_header == NULL)
 	{
 	  goto fallback;
 	}
 
-      BTREE_NODE_HEADER *cur_hdr = btree_get_node_header (thread_p, cur_page);
-      if (cur_hdr == nullptr)
+      if (btree_glean_root_header_info (thread_p, root_header, &m_btid_int, true) != NO_ERROR)
 	{
-	  pgbuf_unfix (thread_p, cur_page);
 	  goto fallback;
 	}
 
-      short node_level = cur_hdr->node_level;
+      m_btid_int.sys_btid = &m_btid;
 
+      short node_level = root_header->node.node_level;
+
+      /* invariant: P_page latched throughout descent */
       while (node_level > 1)
 	{
-	  /* Non-leaf page: follow first child (slot 1) for ascending,
-	   * or last child (slot key_cnt) for descending. */
-	  int key_cnt = btree_node_number_of_keys (thread_p, cur_page);
+	  int key_cnt = btree_node_number_of_keys (thread_p, P_page);
 	  if (key_cnt <= 0)
 	    {
-	      pgbuf_unfix (thread_p, cur_page);
 	      goto fallback;
 	    }
 
+	  /* asc → slot 1, desc → slot key_cnt */
 	  int slot_to_follow = m_use_desc_index ? key_cnt : 1;
 	  RECDES rec;
-	  rec.data = nullptr;
+	  rec.data = NULL;
 	  rec.area_size = -1;
-	  if (spage_get_record (thread_p, cur_page, slot_to_follow, &rec, PEEK) != S_SUCCESS)
-	    {
-	      pgbuf_unfix (thread_p, cur_page);
-	      goto fallback;
-	    }
-
-	  /* Read child VPID from fixed portion of non-leaf record:
-	   * bytes 0-3: pageid (INT32), bytes 4-5: volid (INT16) */
-	  VPID child_vpid;
-	  child_vpid.pageid = OR_GET_INT (rec.data);
-	  child_vpid.volid = OR_GET_SHORT (rec.data + OR_INT_SIZE);
-	  pgbuf_unfix (thread_p, cur_page);
-
-	  if (VPID_ISNULL (&child_vpid))
+	  if (spage_get_record (thread_p, P_page, slot_to_follow, &rec, PEEK) != S_SUCCESS)
 	    {
 	      goto fallback;
 	    }
 
-	  cur_page = pgbuf_fix (thread_p, &child_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-	  if (cur_page == nullptr)
+	  /* unpack VPID inline; btree_read_fixed_portion_of_non_leaf_record is btree.c-internal */
+	  C_vpid.pageid = OR_GET_INT (rec.data);
+	  C_vpid.volid = OR_GET_SHORT (rec.data + OR_INT_SIZE);
+
+	  if (VPID_ISNULL (&C_vpid))
 	    {
 	      goto fallback;
 	    }
 
-	  cur_hdr = btree_get_node_header (thread_p, cur_page);
-	  if (cur_hdr == nullptr)
+	  /* fix child before unfixing parent — blocks concurrent split */
+	  C_page = pgbuf_fix (thread_p, &C_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	  if (C_page == NULL)
 	    {
-	      pgbuf_unfix (thread_p, cur_page);
 	      goto fallback;
 	    }
 
-	  cur_vpid = child_vpid;
-	  node_level = cur_hdr->node_level;
+	  (void) pgbuf_check_page_ptype (thread_p, C_page, PAGE_BTREE);
+
+	  pgbuf_unfix_and_init (thread_p, P_page);
+
+	  BTREE_NODE_HEADER *child_hdr = btree_get_node_header (thread_p, C_page);
+	  if (child_hdr == NULL)
+	    {
+	      P_page = C_page;
+	      C_page = NULL;
+	      P_vpid = C_vpid;
+	      goto fallback;
+	    }
+
+	  P_page = C_page;
+	  C_page = NULL;
+	  P_vpid = C_vpid;
+	  node_level = child_hdr->node_level;
 	}
-
-      /* cur_page is now the starting leaf page (leftmost for asc, rightmost for desc) */
-      m_current_leaf_vpid = cur_vpid;
-      m_leaf_ended = false;
-      pgbuf_unfix (thread_p, cur_page);
     }
 
-    return NO_ERROR;
+    /* hand the leaf latch to the caller */
+    out_leaf = P_page;
+    return S_SUCCESS;
 
 fallback:
-    /* Return ER_FAILED so the caller falls back to single-thread index scan.
-     * Set a generic error so callers that assert er_errid() != NO_ERROR won't crash. */
+    if (C_page != NULL)
+      {
+	pgbuf_unfix_and_init (thread_p, C_page);
+      }
+    if (P_page != NULL)
+      {
+	pgbuf_unfix_and_init (thread_p, P_page);
+      }
+    /* generic error so ASSERT_NO_ERROR callers don't trip on the fallback */
     er_clear ();
     er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-    return ER_FAILED;
+    return S_ERROR;
   }
 
-  /* Mutex-protected leaf cursor; advances via header next/prev_vpid then hands off the fix. */
+  /* mutex-protected leaf cursor; first call descends + hands off, later calls fix m_current_leaf_vpid */
   SCAN_CODE
   input_handler_index::get_next_page_with_fix (THREAD_ENTRY *thread_p, PAGE_PTR &out_page)
   {
@@ -183,13 +176,27 @@ fallback:
 	return S_END;
       }
 
-    VPID ret_vpid = m_current_leaf_vpid;
+    PAGE_PTR page = nullptr;
 
-    PAGE_PTR page = pgbuf_fix (thread_p, &ret_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-    if (page == nullptr)
+    if (!m_descent_done)
       {
-	m_leaf_ended = true;
-	return S_ERROR;
+	SCAN_CODE sc = descend_to_first_leaf (thread_p, page);
+	if (sc != S_SUCCESS)
+	  {
+	    m_leaf_ended = true;
+	    return sc;
+	  }
+	m_descent_done = true;
+      }
+    else
+      {
+	VPID ret_vpid = m_current_leaf_vpid;
+	page = pgbuf_fix (thread_p, &ret_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	if (page == nullptr)
+	  {
+	    m_leaf_ended = true;
+	    return S_ERROR;
+	  }
       }
 
     BTREE_NODE_HEADER *hdr = btree_get_node_header (thread_p, page);

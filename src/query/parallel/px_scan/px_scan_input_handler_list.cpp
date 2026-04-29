@@ -51,6 +51,7 @@ namespace parallel_scan
 	m_worker_slices.clear ();
 	m_worker_slices.resize (parallelism > 0 ? parallelism : 0);
 	m_worker_slice_idx.store (0);
+	m_membuf_claimed.store (false);
 	return NO_ERROR;
       }
 
@@ -84,6 +85,7 @@ namespace parallel_scan
       }
 
     m_worker_slice_idx.store (0);
+    m_membuf_claimed.store (false);
     return NO_ERROR;
   }
 
@@ -102,8 +104,17 @@ namespace parallel_scan
     VSID_SET_NULL (&m_tl_vsid);
     m_tl_current_tfile = nullptr;
 
-    m_tl_is_membuf_worker = (idx == 0 && m_sector_info.membuf_tfile != nullptr);
+    /* first live worker wins membuf — cf. split_task::get_next_page (px_hash_join_task_manager.cpp:629) */
+    m_tl_is_membuf_worker = false;
     m_tl_membuf_pageid = 0;
+    if (m_sector_info.membuf_tfile != nullptr)
+      {
+	bool expected = false;
+	if (m_membuf_claimed.compare_exchange_strong (expected, true, std::memory_order_acq_rel))
+	  {
+	    m_tl_is_membuf_worker = true;
+	  }
+      }
 
     return NO_ERROR;
   }

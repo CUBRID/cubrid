@@ -1975,20 +1975,21 @@ namespace parallel_scan
 	  case parallel_query::interrupt::interrupt_code::USER_INTERRUPTED_FROM_MAIN_THREAD:
 	    break;
 	  case parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD:
-	  {
-	    std::lock_guard<std::mutex> lock (m_err_messages.m_mutex);
-	    cuberr::context::get_thread_local_error().swap (*m_err_messages.m_error_messages[0]);
-	    return S_ERROR;
-	  }
-	  break;
 	  case parallel_query::interrupt::interrupt_code::USER_INTERRUPTED_FROM_WORKER_THREAD:
 	  {
+	    /* drain workers so every err_messages.push_back is visible before reading [0] */
+	    if (m_worker_manager != nullptr)
+	      {
+		m_worker_manager->wait_workers ();
+	      }
 	    std::lock_guard<std::mutex> lock (m_err_messages.m_mutex);
-	    cuberr::context::get_thread_local_error().swap (*m_err_messages.m_error_messages[0]);
+	    if (!m_err_messages.m_error_messages.empty ())
+	      {
+		cuberr::context::get_thread_local_error().swap (*m_err_messages.m_error_messages[0]);
+	      }
 	    return S_ERROR;
 	  }
 	  break;
-	  case parallel_query::interrupt::interrupt_code::INST_NUM_SATISFIED:
 	  case parallel_query::interrupt::interrupt_code::JOB_ENDED:
 	  {
 	    return S_END;

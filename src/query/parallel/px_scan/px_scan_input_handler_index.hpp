@@ -37,6 +37,7 @@ namespace parallel_scan
     public:
       input_handler_index (interrupt *interrupt_p, err_messages_with_lock *err_messages_p)
 	: m_leaf_ended (true),
+	  m_descent_done (false),
 	  m_interrupt_p (interrupt_p),
 	  m_err_messages_p (err_messages_p),
 	  m_indx_info (nullptr),
@@ -48,7 +49,7 @@ namespace parallel_scan
       }
       int init_on_main (THREAD_ENTRY *thread_p, INDX_INFO *indx_info, int parallelism);
 
-      /* Single READ-latch fix; ownership of out_page transfers on S_SUCCESS. */
+      /* single READ-latch fix; out_page ownership transfers on S_SUCCESS, first call descends from root with latch coupling */
       SCAN_CODE get_next_page_with_fix (THREAD_ENTRY *thread_p, PAGE_PTR &out_page);
       int initialize (THREAD_ENTRY *thread_p, HFID *hfid, SCAN_ID *scan_id);
       int finalize (THREAD_ENTRY *thread_p);
@@ -70,8 +71,12 @@ namespace parallel_scan
       }
 
     private:
-      VPID m_current_leaf_vpid;         /* shared cursor (mutex-protected) */
+      /* requires m_leaf_mutex; on S_SUCCESS out_leaf is READ-latched and m_btid_int is populated */
+      SCAN_CODE descend_to_first_leaf (THREAD_ENTRY *thread_p, PAGE_PTR &out_leaf);
+
+      VPID m_current_leaf_vpid;         /* next leaf to fix (mutex-protected) */
       bool m_leaf_ended;
+      bool m_descent_done;              /* first worker has descended to a leaf */
       std::mutex m_leaf_mutex;
       BTID_INT m_btid_int;
       BTID m_btid;

@@ -41,7 +41,6 @@ namespace parallel_scan
       using interrupt = parallel_query::interrupt;
       using err_messages_with_lock = parallel_query::err_messages_with_lock;
       using input_handler_t = typename scan_traits<ST>::input_handler_type;
-      using atomic_instnum = parallel_query::atomic_instnum;
       using worker_manager = parallel_query::worker_manager;
     public:
       manager (THREAD_ENTRY *thread_p, QUERY_ID query_id, SCAN_ID *scan_id, xasl_node *xasl, int parallelism, HFID hfid,
@@ -69,7 +68,6 @@ namespace parallel_scan
 	  m_task_started (false),
 	  m_trace_handler (),
 	  m_interrupt (),
-	  m_atomic_instnum (),
 	  m_err_messages (),
 	  m_worker_manager (worker_manager),
 	  m_is_fixed (is_fixed),
@@ -115,7 +113,6 @@ namespace parallel_scan
       bool m_task_started;
       trace_handler m_trace_handler;
       interrupt m_interrupt;
-      atomic_instnum m_atomic_instnum;
       err_messages_with_lock m_err_messages;
       worker_manager *m_worker_manager;
       join_info m_join_info;

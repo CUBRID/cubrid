@@ -49,6 +49,7 @@ namespace parallel_scan
       input_handler_list (interrupt *interrupt_p, err_messages_with_lock *err_messages_p)
 	: m_sector_info (QFILE_LIST_SECTOR_INFO_INITIALIZER),
 	  m_worker_slice_idx (0),
+	  m_membuf_claimed (false),
 	  m_list_id (nullptr),
 	  m_interrupt_p (interrupt_p),
 	  m_err_messages_p (err_messages_p)
@@ -77,6 +78,8 @@ namespace parallel_scan
       QFILE_LIST_SECTOR_INFO m_sector_info;
       std::vector<worker_slice> m_worker_slices;
       std::atomic_int m_worker_slice_idx;
+      /* CAS membuf ownership — idx==0 failure cannot strand the membuf */
+      std::atomic<bool> m_membuf_claimed;
 
       QFILE_LIST_ID *m_list_id;
       interrupt *m_interrupt_p;
