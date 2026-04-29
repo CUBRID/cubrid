@@ -6244,10 +6244,10 @@ or_pack_spacedb_table_sizes (char *ptr, const SPACEDB_TABLE_SIZES_HEADER *table_
         {
           ptr = or_pack_string (ptr, table_sizes[table_num].header[file_num].name);
           ptr = or_pack_int (ptr, table_sizes[table_num].header[file_num].ftype);
-          ptr = or_pack_int (ptr, (int) table_sizes[table_num].header[file_num].data_used_page);
-          ptr = or_pack_int (ptr, (int) table_sizes[table_num].header[file_num].data_alloced_page);
-          ptr = or_pack_int (ptr, table_sizes[table_num].header[file_num].ovf_free_size);
-          ptr = or_pack_int (ptr, (int) table_sizes[table_num].header[file_num].ovf_alloced_page);
+          ptr = or_pack_int (ptr, table_sizes[table_num].header[file_num].data_used_page);
+          ptr = or_pack_int (ptr, table_sizes[table_num].header[file_num].data_alloced_page);
+          ptr = or_pack_int (ptr, table_sizes[table_num].header[file_num].ovf_used_page);
+          ptr = or_pack_int (ptr, table_sizes[table_num].header[file_num].ovf_alloced_page);
         }
     }
 
@@ -6362,34 +6362,48 @@ or_unpack_spacedb_table_sizes (char *ptr, SPACEDB_TABLE_SIZES_HEADER *table_size
 
       if (table_sizes[table_num].file_count > 0)
         {
-          table_sizes[table_num].header = 
+          table_sizes[table_num].header =
             (SPACEDB_TABLE_SIZES *) malloc (sizeof (SPACEDB_TABLE_SIZES) * table_sizes[table_num].file_count);
+          if (table_sizes[table_num].header == NULL)
+            {
+              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+                      sizeof (SPACEDB_TABLE_SIZES) * table_sizes[table_num].file_count);
+              return NULL;
+            }
         }
       else
         {
-          assert (table_sizes[table_num].file_count == 0);
+          if (table_sizes[table_num].file_count < 0)
+            {
+              /* protocol violation: corrupted packet */
+              assert (false);
+              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+              return NULL;
+            }
           table_sizes[table_num].header = NULL;
         }
 
       for (int file_num = 0; file_num < table_sizes[table_num].file_count; file_num++)
         {
           ptr = or_unpack_string (ptr, &temp_name);
-          if (temp_name != NULL)
+          if (temp_name == NULL)
             {
-              strncpy (table_sizes[table_num].header[file_num].name, temp_name, DB_MAX_IDENTIFIER_LENGTH - 1);
-              table_sizes[table_num].header[file_num].name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';
-              db_private_free_and_init (NULL, temp_name);
+              /* or_unpack_string failure (malloc error or protocol violation).
+               * Malloc failure already called er_set inside or_unpack_string. */
+              if (er_errid () == NO_ERROR)
+                {
+                  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+                }
+              return NULL;
             }
-          else
-            {
-              /* error case. name can never be NULL */
-              table_sizes[table_num].header[file_num].name[0] = '\0';
-            }
+          strncpy (table_sizes[table_num].header[file_num].name, temp_name, DB_MAX_IDENTIFIER_LENGTH - 1);
+          table_sizes[table_num].header[file_num].name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';
+          db_private_free_and_init (NULL, temp_name);
 
           ptr = or_unpack_int (ptr, &table_sizes[table_num].header[file_num].ftype);
           ptr = or_unpack_int (ptr, &table_sizes[table_num].header[file_num].data_used_page);
           ptr = or_unpack_int (ptr, &table_sizes[table_num].header[file_num].data_alloced_page);
-          ptr = or_unpack_int (ptr, &table_sizes[table_num].header[file_num].ovf_free_size);
+          ptr = or_unpack_int (ptr, &table_sizes[table_num].header[file_num].ovf_used_page);
           ptr = or_unpack_int (ptr, &table_sizes[table_num].header[file_num].ovf_alloced_page);
         }
     }

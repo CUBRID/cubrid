@@ -10432,6 +10432,7 @@ netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILE
   int data_reply_size = 0;
   int actual_table_count = 0;
   int error_code = NO_ERROR;
+  bool request_alloced = false;
 
   *table_sizes_p = NULL;
   *actual_count_p = 0;
@@ -10456,6 +10457,7 @@ netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILE
           er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
           return ER_OUT_OF_VIRTUAL_MEMORY;
         }
+      request_alloced = true;
     }
 
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -10469,7 +10471,7 @@ netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILE
   if (error_code != NO_ERROR)
     {
       assert (data_reply == NULL);
-      return error_code;
+      goto cleanup;
     }
   ptr = or_unpack_int (reply, &data_reply_size);
   ptr = or_unpack_int (ptr, &error_code);
@@ -10478,18 +10480,19 @@ netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILE
     {
       /* error */
       ASSERT_ERROR ();
-      return error_code;
+      goto cleanup;
     }
   if (data_reply == NULL)
     {
       assert_release (false);
-      return ER_FAILED;
+      error_code = ER_FAILED;
+      goto cleanup;
     }
   ptr = or_unpack_spacedb (data_reply, spaceall, spacevols, spacefiles);
   if (ptr == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
-      return error_code;
+      goto cleanup;
     }
 
   ptr = or_unpack_int (ptr, &actual_table_count);
@@ -10499,28 +10502,41 @@ netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILE
       *table_sizes_p = (SPACEDB_TABLE_SIZES_HEADER *) malloc (actual_table_count * sizeof (SPACEDB_TABLE_SIZES_HEADER));
       if (*table_sizes_p == NULL)
 	{
-	  free_and_init (data_reply);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  (size_t) actual_table_count * sizeof (SPACEDB_TABLE_SIZES_HEADER));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto cleanup;
 	}
+      memset (*table_sizes_p, 0, actual_table_count * sizeof (SPACEDB_TABLE_SIZES_HEADER));
       ptr = or_unpack_spacedb_table_sizes (ptr, *table_sizes_p, actual_table_count);
-    }
-  else
-    {
-      *table_sizes_p = NULL;
+      if (ptr == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  for (int i = 0; i < actual_table_count; i++)
+	    {
+	      if ((*table_sizes_p)[i].header != NULL)
+		{
+		  free_and_init ((*table_sizes_p)[i].header);
+		}
+	    }
+	  free_and_init (*table_sizes_p);
+	  goto cleanup;
+	}
     }
 
   *actual_count_p = actual_table_count;
   assert ((ptr - data_reply) == data_reply_size);
 
-  free_and_init (data_reply);
-  if (error_code != NO_ERROR)
+cleanup:
+  if (request_alloced)
     {
-      ASSERT_ERROR ();
-      return error_code;
+      free_and_init (request);
     }
-  return NO_ERROR;
+  if (data_reply != NULL)
+    {
+      free_and_init (data_reply);
+    }
+  return error_code;
 
 #else	/* !CS_MODE */	       /* SA_MODE */
   int error_code = ER_FAILED;
