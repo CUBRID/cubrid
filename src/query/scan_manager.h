@@ -357,38 +357,30 @@ struct parallel_index_scan_id
   // *INDENT-ON*
 };				/* Index PARALLEL Scan Identifier */
 
+// *INDENT-OFF*
 /* pin pisid/isid layout — drift fails build; offsetof on non-standard-layout is well-defined on GCC */
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert (offsetof (INDX_SCAN_ID, indx_info) == offsetof (PARALLEL_INDEX_SCAN_ID, indx_info),
-	       "pisid mirror: indx_info");
-static_assert (offsetof (INDX_SCAN_ID, bt_scan) == offsetof (PARALLEL_INDEX_SCAN_ID, bt_scan), "pisid mirror: bt_scan");
-static_assert (offsetof (INDX_SCAN_ID, scan_cache) == offsetof (PARALLEL_INDEX_SCAN_ID, scan_cache),
-	       "pisid mirror: scan_cache");
-static_assert (offsetof (INDX_SCAN_ID, caches_inited) == offsetof (PARALLEL_INDEX_SCAN_ID, caches_inited),
-	       "pisid mirror: caches_inited");
-static_assert (offsetof (INDX_SCAN_ID, scancache_inited) == offsetof (PARALLEL_INDEX_SCAN_ID, scancache_inited),
-	       "pisid mirror: scancache_inited");
-static_assert (offsetof (INDX_SCAN_ID, indx_cov) == offsetof (PARALLEL_INDEX_SCAN_ID, indx_cov),
-	       "pisid mirror: indx_cov");
-static_assert (offsetof (INDX_SCAN_ID, multi_range_opt) == offsetof (PARALLEL_INDEX_SCAN_ID, multi_range_opt),
-	       "pisid mirror: multi_range_opt");
-static_assert (offsetof (INDX_SCAN_ID, iss) == offsetof (PARALLEL_INDEX_SCAN_ID, iss), "pisid mirror: iss");
-static_assert (offsetof (INDX_SCAN_ID, iscan_oid_order) == offsetof (PARALLEL_INDEX_SCAN_ID, iscan_oid_order),
-	       "pisid mirror: iscan_oid_order");
-static_assert (offsetof (INDX_SCAN_ID, parallel_pending) == offsetof (PARALLEL_INDEX_SCAN_ID, parallel_pending),
-// *INDENT-OFF*
+static_assert (offsetof (INDX_SCAN_ID, indx_info)        == offsetof (PARALLEL_INDEX_SCAN_ID, indx_info),        "pisid mirror: indx_info");
+static_assert (offsetof (INDX_SCAN_ID, bt_scan)          == offsetof (PARALLEL_INDEX_SCAN_ID, bt_scan),          "pisid mirror: bt_scan");
+static_assert (offsetof (INDX_SCAN_ID, scan_cache)       == offsetof (PARALLEL_INDEX_SCAN_ID, scan_cache),       "pisid mirror: scan_cache");
+static_assert (offsetof (INDX_SCAN_ID, caches_inited)    == offsetof (PARALLEL_INDEX_SCAN_ID, caches_inited),    "pisid mirror: caches_inited");
+static_assert (offsetof (INDX_SCAN_ID, scancache_inited) == offsetof (PARALLEL_INDEX_SCAN_ID, scancache_inited), "pisid mirror: scancache_inited");
+static_assert (offsetof (INDX_SCAN_ID, indx_cov)         == offsetof (PARALLEL_INDEX_SCAN_ID, indx_cov),         "pisid mirror: indx_cov");
+static_assert (offsetof (INDX_SCAN_ID, multi_range_opt)  == offsetof (PARALLEL_INDEX_SCAN_ID, multi_range_opt),  "pisid mirror: multi_range_opt");
+static_assert (offsetof (INDX_SCAN_ID, iss)              == offsetof (PARALLEL_INDEX_SCAN_ID, iss),              "pisid mirror: iss");
+static_assert (offsetof (INDX_SCAN_ID, iscan_oid_order)  == offsetof (PARALLEL_INDEX_SCAN_ID, iscan_oid_order),  "pisid mirror: iscan_oid_order");
+static_assert (offsetof (INDX_SCAN_ID, parallel_pending) == offsetof (PARALLEL_INDEX_SCAN_ID, parallel_pending), "pisid mirror: parallel_pending");
 #if !WINDOWS
 static_assert (offsetof (PARALLEL_INDEX_SCAN_ID, result_type) >= sizeof (INDX_SCAN_ID),
 	       "pisid parallel-only fields must follow all isid fields");
 #endif
-// *INDENT-ON*
-	       "pisid mirror: parallel_pending");
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
+// *INDENT-ON*
 
 typedef struct index_node_scan_id INDEX_NODE_SCAN_ID;
 struct index_node_scan_id
