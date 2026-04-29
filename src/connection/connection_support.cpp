@@ -391,6 +391,34 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
   do
     {
 #if !defined (WINDOWS)
+      /* Try recv first without poll - optimization for loopback/fast connections
+       * where data is typically already available in the kernel buffer. */
+      n = recv (fd, ptr, nleft, MSG_DONTWAIT);
+      if (n > 0)
+	{
+	  /* Data was immediately available, skip poll overhead */
+	  nleft -= n;
+	  ptr += n;
+	  continue;
+	}
+      else if (n == 0)
+	{
+	  break;		/* connection closed */
+	}
+      else if (errno != EAGAIN && errno != EWOULDBLOCK)
+	{
+	  if (errno == EINTR)
+	    {
+	      continue;		/* retry on signal interrupt */
+	    }
+#if !defined (SERVER_MODE)
+	  css_set_networking_error (fd);
+#endif /* !SERVER_MODE */
+	  er_log_debug (ARG_FILE_LINE, "css_readn: returning error n %d, errno %s\n", n, strerror (errno));
+	  return n;		/* real error */
+	}
+
+      /* No data available yet (EAGAIN/EWOULDBLOCK), fall back to poll with timeout */
       po[0].fd = fd;
       po[0].events = POLLIN;
       po[0].revents = 0;
@@ -938,37 +966,8 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
 
   while (true)
     {
-      po[0].fd = fd;
-      po[0].events = POLLOUT;
-      po[0].revents = 0;
-      n = poll (po, 1, timeout);
-      if (n < 0)
-	{
-	  if (errno == EINTR)
-	    {
-	      continue;
-	    }
-
-	  er_log_debug (ARG_FILE_LINE, "css_vector_send: EINTR %s\n", strerror (errno));
-	  return -1;
-	}
-      else if (n == 0)
-	{
-	  /* 0 means it timed out and no fd is changed. */
-	  errno = ETIMEDOUT;
-	  return -1;
-	}
-      else
-	{
-	  if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
-	    {
-	      errno = EINVAL;
-	      er_log_debug (ARG_FILE_LINE, "css_vector_send: %s %s\n",
-			    (po[0].revents & POLLERR ? "POLLERR" : "POLLHUP"), strerror (errno));
-	      return -1;
-	    }
-	}
-
+      /* Try writev first without poll - optimization for loopback/fast connections
+       * where the send buffer is typically available. */
 write_again:
       n = writev (fd, *vec, *len);
       if (n > 0)
@@ -987,7 +986,33 @@ write_again:
 	    }
 	  if (errno == EAGAIN)
 	    {
-	      continue;
+	      /* Send buffer full, fall back to poll before retry */
+	      po[0].fd = fd;
+	      po[0].events = POLLOUT;
+	      po[0].revents = 0;
+	      n = poll (po, 1, timeout);
+	      if (n < 0)
+		{
+		  if (errno == EINTR)
+		    {
+		      continue;
+		    }
+		  er_log_debug (ARG_FILE_LINE, "css_vector_send: poll error %s\n", strerror (errno));
+		  return -1;
+		}
+	      else if (n == 0)
+		{
+		  errno = ETIMEDOUT;
+		  return -1;
+		}
+	      else if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
+		{
+		  errno = EINVAL;
+		  er_log_debug (ARG_FILE_LINE, "css_vector_send: %s %s\n",
+				(po[0].revents & POLLERR ? "POLLERR" : "POLLHUP"), strerror (errno));
+		  return -1;
+		}
+	      goto write_again;
 	    }
 #if !defined (SERVER_MODE)
 	  css_set_networking_error (fd);
