@@ -7956,7 +7956,9 @@ file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb, char **table_arr
           return error_code;
         }
     }
-  else if (table_array_length == 1 && table_array[0][strlen (table_array[0]) - 1] == '*') /* trailing-wildcard pattern */
+  else if (table_array_length == 1
+           && table_array[0][0] != '\0' /* guard empty string */
+           && table_array[0][strlen (table_array[0]) - 1] == '*') /* trailing-wildcard pattern */
     {
       OID *matched_oids = NULL;
 

@@ -2095,10 +2095,9 @@ or_unpack_string (char *ptr, char **string)
   else
     {
       new_ = (char *) db_private_alloc (NULL, length);
-      /* need to handle allocation errors */
       if (new_ == NULL)
 	{
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (length * sizeof (char))); /* new handling code */
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (length * sizeof (char)));
 	  ptr += length;
 	}
       else

@@ -1351,10 +1351,18 @@ locator_find_class_oids_by_pattern (THREAD_ENTRY * thread_p, const char *pattern
   int error_code = NO_ERROR;
 
   assert (pattern != NULL && oids_p != NULL && count_p != NULL);
+  assert (pattern[0] != '\0');
   assert (pattern[strlen (pattern) - 1] == '*');
 
   *oids_p = NULL;
   *count_p = 0;
+
+  if (pattern[0] == '\0')
+    {
+      /* Defense in depth: empty pattern would underflow strlen() - 1.
+       * Caller must validate, but guard here in case of future misuse. */
+      return NO_ERROR;
+    }
 
   prefix_len = (int) strlen (pattern) - 1; /* exclude trailing '*' */
   assert (prefix_len < DB_MAX_IDENTIFIER_LENGTH);
