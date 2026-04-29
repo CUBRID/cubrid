@@ -450,10 +450,32 @@ static LA_OOS_SQL_LOG_CACHE_ENTRY *la_Oos_sql_log_cache_tail = NULL;
  * remains the canonical owner of entries (used for ordered teardown in
  * la_clear_oos_sql_log_cache()).  The hash maps chunk_oid -> latest cached
  * entry, turning chain reassembly from O(N^2) to O(N) for OOS columns whose
- * value spans many physical chunks (e.g. several MB strings).  Lazily
- * allocated on first cache insert; freed/recreated on cache clear. */
-#define LA_OOS_SQL_LOG_CACHE_HASH_SIZE 257
+ * value spans many physical chunks (e.g. several MB strings).
+ *
+ * Lazily allocated on first cache insert; cleared (not destroyed) on
+ * transaction boundaries so the bucket array survives across transactions.
+ *
+ * Bucket count: ~1024.  Sized to keep the chain length below ~8 even for
+ * heavy workloads in the order of ~8K chunks (e.g. ~32MB OOS column with the
+ * smallest legal chunk payload).  Smaller workloads pay only the bucket
+ * array cost (one MHT_TABLE allocation, ~8KB on a 64-bit platform). */
+#define LA_OOS_SQL_LOG_CACHE_HASH_SIZE 1024
 static MHT_TABLE *la_Oos_sql_log_cache_hash = NULL;
+
+/* Lower bound on a single OOS chunk's payload size.  Used purely as a
+ * defensive divisor when bounding the iteration count of the chunk-chain
+ * walker — real chunks are page-size (KB) based, so 256 bytes is a
+ * conservative pathological floor. */
+#define LA_OOS_MIN_CHUNK_PAYLOAD       256
+/* Slack on top of (total_data_length / LA_OOS_MIN_CHUNK_PAYLOAD) to absorb
+ * head/tail rounding and never trip on a legitimate chain. */
+#define LA_OOS_RESOLVE_ITERATION_SLACK 16
+
+/* Sentinel embedded at the head of synthetic placeholders so an operator
+ * inspecting sql.log can immediately tell that the value was synthesized
+ * (cache miss) rather than the master's real payload.  Contains no SQL meta
+ * characters so it is safe inside a quoted varchar literal. */
+#define LA_OOS_MISSING_MARKER          "<<OOS_CHUNK_MISSING>>"
 
 /* Tranid currently being processed by la_apply_repl_log; scopes OOS sql.log
  * cache lookups to the current transaction so that a stale entry surviving
@@ -540,6 +562,7 @@ static int la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_
 static int la_add_node_into_la_commit_list (int tranid, LOG_LSA * lsa, int type, time_t eot_time);
 static time_t la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa);
 static int la_get_raw_offset_internal (OR_BUF * buf, int *error, int offset_size);
+static int la_register_new_oos_sql_log_cache_entry (LA_OOS_SQL_LOG_CACHE_ENTRY * entry);
 static int la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes);
 static int la_resolve_oos_sql_log_recdes (const OID * head_oid, int total_data_length, RECDES * recdes);
 static void la_clear_oos_sql_log_cache (void);
@@ -3723,55 +3746,58 @@ la_get_oos_sql_log_chunk_oid (LA_ITEM * item, LOG_PAGE * pgptr, OID * chunk_oid)
       return NO_ERROR;
     }
 
+  /* Two-pass over lrec->type: first pick the on-disk record size so we can
+   * advance/spill a single page boundary, then re-cast and grab the embedded
+   * LOG_DATA pointer.  Splitting the switch keeps the fit-check and error
+   * handling unduplicated. */
   switch (lrec->type)
     {
     case LOG_UNDOREDO_DATA:
     case LOG_DIFF_UNDOREDO_DATA:
       log_size = DB_SIZEOF (LOG_REC_UNDOREDO);
-      LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset, pageid, pg);
-      if (error != NO_ERROR)
-	{
-	  return NO_ERROR;
-	}
-      logdata = &((LOG_REC_UNDOREDO *) ((char *) pg->area + offset))->data;
       break;
-
     case LOG_MVCC_UNDOREDO_DATA:
     case LOG_MVCC_DIFF_UNDOREDO_DATA:
       log_size = DB_SIZEOF (LOG_REC_MVCC_UNDOREDO);
-      LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset, pageid, pg);
-      if (error != NO_ERROR)
-	{
-	  return NO_ERROR;
-	}
-      logdata = &((LOG_REC_MVCC_UNDOREDO *) ((char *) pg->area + offset))->undoredo.data;
       break;
-
     case LOG_REDO_DATA:
       log_size = DB_SIZEOF (LOG_REC_REDO);
-      LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset, pageid, pg);
-      if (error != NO_ERROR)
-	{
-	  return NO_ERROR;
-	}
-      logdata = &((LOG_REC_REDO *) ((char *) pg->area + offset))->data;
       break;
-
     case LOG_MVCC_REDO_DATA:
       log_size = DB_SIZEOF (LOG_REC_MVCC_REDO);
-      LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset, pageid, pg);
-      if (error != NO_ERROR)
-	{
-	  return NO_ERROR;
-	}
-      logdata = &((LOG_REC_MVCC_REDO *) ((char *) pg->area + offset))->redo.data;
       break;
-
     default:
       return NO_ERROR;
     }
 
-  if (logdata == NULL || logdata->rcvindex != RVOOS_INSERT)
+  LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset, pageid, pg);
+  if (error != NO_ERROR)
+    {
+      return NO_ERROR;
+    }
+
+  switch (lrec->type)
+    {
+    case LOG_UNDOREDO_DATA:
+    case LOG_DIFF_UNDOREDO_DATA:
+      logdata = &((LOG_REC_UNDOREDO *) ((char *) pg->area + offset))->data;
+      break;
+    case LOG_MVCC_UNDOREDO_DATA:
+    case LOG_MVCC_DIFF_UNDOREDO_DATA:
+      logdata = &((LOG_REC_MVCC_UNDOREDO *) ((char *) pg->area + offset))->undoredo.data;
+      break;
+    case LOG_REDO_DATA:
+      logdata = &((LOG_REC_REDO *) ((char *) pg->area + offset))->data;
+      break;
+    case LOG_MVCC_REDO_DATA:
+      logdata = &((LOG_REC_MVCC_REDO *) ((char *) pg->area + offset))->redo.data;
+      break;
+    default:
+      /* unreachable — first switch already handled this. */
+      return NO_ERROR;
+    }
+
+  if (logdata->rcvindex != RVOOS_INSERT)
     {
       return NO_ERROR;
     }
@@ -3779,6 +3805,37 @@ la_get_oos_sql_log_chunk_oid (LA_ITEM * item, LOG_PAGE * pgptr, OID * chunk_oid)
   chunk_oid->volid = logdata->volid;
   chunk_oid->pageid = logdata->pageid;
   chunk_oid->slotid = logdata->offset;
+  return NO_ERROR;
+}
+
+/*
+ * la_register_new_oos_sql_log_cache_entry () - Publish a freshly allocated
+ *   cache entry: insert into the OID -> entry hash accelerator, then append
+ *   to the linked list owner.  Hash key is &entry->chunk_oid (entry-owned,
+ *   stable for entry lifetime).  mht_put overwrites any prior hash mapping
+ *   for the same OID, which is the desired behavior for cross-transaction
+ *   OID reuse: the previous owner's entry remains in the linked list (until
+ *   next cache clear) but is no longer reachable via lookup.  Returns
+ *   ER_OUT_OF_VIRTUAL_MEMORY on hash insert failure.
+ */
+static int
+la_register_new_oos_sql_log_cache_entry (LA_OOS_SQL_LOG_CACHE_ENTRY * entry)
+{
+  if (mht_put (la_Oos_sql_log_cache_hash, &entry->chunk_oid, entry) == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  if (la_Oos_sql_log_cache_tail == NULL)
+    {
+      la_Oos_sql_log_cache_head = entry;
+      la_Oos_sql_log_cache_tail = entry;
+    }
+  else
+    {
+      la_Oos_sql_log_cache_tail->next = entry;
+      la_Oos_sql_log_cache_tail = entry;
+    }
   return NO_ERROR;
 }
 
@@ -3836,21 +3893,19 @@ la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes)
   if (entry == NULL)
     {
       entry = (LA_OOS_SQL_LOG_CACHE_ENTRY *) malloc (sizeof (LA_OOS_SQL_LOG_CACHE_ENTRY));
-      is_new_entry = true;
-      if (entry != NULL)
+      if (entry == NULL)
 	{
-	  memset (entry, 0, sizeof (LA_OOS_SQL_LOG_CACHE_ENTRY));
+	  db_private_free_and_init (NULL, payload_data);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LA_OOS_SQL_LOG_CACHE_ENTRY));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
+      memset (entry, 0, sizeof (LA_OOS_SQL_LOG_CACHE_ENTRY));
+      is_new_entry = true;
     }
-  if (entry == NULL)
+  else if (entry->data != NULL)
     {
-      db_private_free_and_init (NULL, payload_data);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LA_OOS_SQL_LOG_CACHE_ENTRY));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  if (entry->data != NULL)
-    {
+      /* Existing entry — drop stale payload before overwriting (same chunk
+       * resent / replay scenarios). */
       db_private_free_and_init (NULL, entry->data);
     }
 
@@ -3864,29 +3919,14 @@ la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes)
 
   if (is_new_entry)
     {
-      /* Hash key is &entry->chunk_oid (entry-owned, stable for entry lifetime).
-       * mht_put overwrites any prior hash mapping for the same OID, which is the
-       * desired behavior for cross-transaction OID reuse: the previous owner's
-       * entry remains in the linked list (until next cache clear) but is no
-       * longer reachable via lookup.  mht_put failure is treated as an alloc
-       * failure since lookups would silently miss otherwise. */
-      if (mht_put (la_Oos_sql_log_cache_hash, &entry->chunk_oid, entry) == NULL)
+      error = la_register_new_oos_sql_log_cache_entry (entry);
+      if (error != NO_ERROR)
 	{
-	  free_and_init (entry);
-	  db_private_free_and_init (NULL, payload_data);
+	  /* hash insert failed.  entry->data points at payload_data — let the
+	   * canonical entry destructor free both at once. */
+	  la_free_oos_sql_log_cache_entry (entry);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LA_OOS_SQL_LOG_CACHE_ENTRY));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-
-      if (la_Oos_sql_log_cache_tail == NULL)
-	{
-	  la_Oos_sql_log_cache_head = entry;
-	  la_Oos_sql_log_cache_tail = entry;
-	}
-      else
-	{
-	  la_Oos_sql_log_cache_tail->next = entry;
-	  la_Oos_sql_log_cache_tail = entry;
+	  return error;
 	}
     }
 
@@ -3916,7 +3956,16 @@ la_resolve_oos_sql_log_recdes (const OID * head_oid, int total_data_length, RECD
     }
 
   current_oid = *head_oid;
-  max_iterations = total_data_length > INT_MAX - 16 ? INT_MAX : total_data_length + 16;
+  /* Bound the chain walk by the worst-case chunk count: total length divided
+   * by the smallest legal chunk payload, plus a small slack.  Real chunks are
+   * page-size based (KB), so this is a defensive ceiling rather than a tight
+   * bound.  Saturate to INT_MAX on multiplicative overflow. */
+  {
+    int max_chunks = total_data_length / LA_OOS_MIN_CHUNK_PAYLOAD;
+
+    max_iterations =
+      (max_chunks > INT_MAX - LA_OOS_RESOLVE_ITERATION_SLACK) ? INT_MAX : max_chunks + LA_OOS_RESOLVE_ITERATION_SLACK;
+  }
 
   while (!OID_ISNULL (&current_oid) && copied_size < total_data_length && iterations++ < max_iterations)
     {
@@ -3956,6 +4005,7 @@ la_make_synthetic_oos_sql_log_value (DB_VALUE * value, SM_ATTRIBUTE * att, DB_BI
   DB_TYPE type;
   int string_length;
   int precision;
+  int marker_len;
   char *string = NULL;
 
   assert (value != NULL && att != NULL);
@@ -3988,24 +4038,19 @@ la_make_synthetic_oos_sql_log_value (DB_VALUE * value, SM_ATTRIBUTE * att, DB_BI
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  /* Embed an explicit sentinel at the value head so an operator who later inspects
-   * the sql.log can tell that the column body was synthesized (cache miss) rather
-   * than the actual OOS payload from the master.  Marker contains no SQL meta
-   * characters (quotes/backslash) so it remains safe inside a quoted varchar
-   * literal.  Remaining bytes are filled with spaces to keep the inline OOS length
-   * intact for sql.log size accounting / rotation. */
-  {
-    static const char OOS_MISSING_MARKER[] = "<<OOS_CHUNK_MISSING>>";
-    int marker_len = (int) (sizeof (OOS_MISSING_MARKER) - 1);
-
-    if (marker_len > string_length)
-      {
-	marker_len = string_length;
-      }
-    memcpy (string, OOS_MISSING_MARKER, marker_len);
-    memset (string + marker_len, ' ', string_length - marker_len);
-    string[string_length] = '\0';
-  }
+  /* Embed the file-level sentinel at the value head so an operator inspecting
+   * the sql.log can tell that the column body was synthesized (cache miss)
+   * rather than the actual OOS payload from the master.  Remaining bytes are
+   * spaces to keep the inline OOS length intact for sql.log size accounting
+   * / rotation. */
+  marker_len = (int) (sizeof (LA_OOS_MISSING_MARKER) - 1);
+  if (marker_len > string_length)
+    {
+      marker_len = string_length;
+    }
+  memcpy (string, LA_OOS_MISSING_MARKER, marker_len);
+  memset (string + marker_len, ' ', string_length - marker_len);
+  string[string_length] = '\0';
 
   er_log_debug (ARG_FILE_LINE,
 		"la_make_synthetic_oos_sql_log_value: OOS chunk(s) missing from SQL log cache; "
