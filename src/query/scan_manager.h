@@ -30,6 +30,7 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
+#include <cstddef>		/* offsetof for paired pisid/isid layout asserts */
 #include <time.h>
 #if defined(SERVER_MODE)
 #include "jansson.h"
@@ -168,16 +169,12 @@ struct parallel_list_scan_id
 };				/* List PARALLEL Scan Identifier */
 
 typedef struct parallel_index_scan_id PARALLEL_INDEX_SCAN_ID;
-struct parallel_index_scan_id
-{
-  // *INDENT-OFF*
-  #if !WINDOWS
-  parallel_scan::RESULT_TYPE result_type;
-  void * manager;
-  parallel_scan::accumulative_trace_storage * trace_storage;
-  #endif
-  // *INDENT-ON*
-};				/* Index PARALLEL Scan Identifier */
+/* Superset of INDX_SCAN_ID: all isid fields mirrored at identical offsets so SCAN_ID::s union
+ * flips between isid and pisid stay layout-safe across partition reopen. Pattern matches
+ * PARALLEL_HEAP_SCAN_ID superset of HEAP_SCAN_ID. Paired static_asserts after the struct pin
+ * the invariant — adding/reordering fields in INDX_SCAN_ID without mirroring here will fail
+ * the build. Defined after indx_scan_id so dependent types (INDX_COV / MULTI_RANGE_OPT /
+ * INDEX_SKIP_SCAN) are complete. */
 
 typedef struct heap_page_scan_id HEAP_PAGE_SCAN_ID;
 struct heap_page_scan_id
@@ -306,6 +303,102 @@ struct indx_scan_id
    * the spec is not eligible for parallel index scan. Owned by the scan_id. */
   void *parallel_pending;
 };
+
+struct parallel_index_scan_id
+{
+  /* === MIRROR of INDX_SCAN_ID at identical offsets — DO NOT REORDER without mirroring isid === */
+  INDX_INFO *indx_info;		/* index information */
+  BTREE_TYPE bt_type;		/* index type */
+  int bt_num_attrs;		/* num of attributes of the index key */
+  ATTR_ID *bt_attr_ids;		/* attr id array of the index key */
+  int *bt_attrs_prefix_length;	/* attr prefix length */
+  ATTR_ID *vstr_ids;		/* attr id array of variable string */
+  int num_vstr;			/* num of variable string attrs */
+  BTREE_SCAN bt_scan;		/* index scan info. structure */
+  bool one_range;		/* a single range? */
+  int curr_keyno;		/* current key number */
+  int curr_oidno;		/* current oid number */
+  OID *curr_oidp;		/* current oid pointer */
+  char *copy_buf;		/* index key copy_buf pointer info */
+  BTREE_ISCAN_OID_LIST *oid_list;	/* list of object OID's */
+  int oids_count;		/* Generic value of OID count that should be common for all index scan types. */
+  OID cls_oid;			/* class object identifier */
+  int copy_buf_len;		/* index key copy_buf length info */
+  HFID hfid;			/* heap file identifier */
+  HEAP_SCANCACHE scan_cache;	/* heap file scan_cache */
+  SCAN_PRED key_pred;		/* key predicates(filters) */
+  SCAN_ATTRS key_attrs;		/* attr info from key filter */
+  SCAN_PRED scan_pred;		/* scan predicates(filters) */
+  SCAN_ATTRS pred_attrs;	/* attr info from predicates */
+  SCAN_PRED range_pred;		/* range predicates */
+  SCAN_ATTRS range_attrs;	/* attr info from range predicates */
+  regu_variable_list_node *rest_regu_list;	/* regulator variable list */
+  SCAN_ATTRS rest_attrs;	/* attr info from other than preds */
+  key_val_range *key_vals;	/* for eliminating duplicate ranges */
+  int key_cnt;			/* number of valid ranges */
+  bool iscan_oid_order;		/* index_scan_oid_order flag */
+  bool need_count_only;		/* get count only, no OIDs are copied */
+  bool caches_inited;		/* are the caches initialized?? */
+  bool scancache_inited;
+  DB_BIGINT key_limit_lower;	/* lower key limit */
+  DB_BIGINT key_limit_upper;	/* upper key limit */
+  INDX_COV indx_cov;		/* index covering information */
+  MULTI_RANGE_OPT multi_range_opt;	/* optimization for multiple range search */
+  INDEX_SKIP_SCAN iss;		/* index skip scan structure */
+  DB_VALUE **key_info_values;	/* Used for index key info scan */
+  regu_variable_list_node *key_info_regu_list;	/* regulator variable list */
+  bool check_not_vacuumed;	/* if true then during index scan, the entries will be checked if they should've been
+				 * vacuumed. Used in checkdb. */
+  DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking operation */
+  TP_DOMAIN **prebuilt_midxkey_domains;
+  void *parallel_pending;	/* mirror of INDX_SCAN_ID::parallel_pending */
+  /* === Parallel-only fields (after all isid fields) === */
+  // *INDENT-OFF*
+  #if !WINDOWS
+  parallel_scan::RESULT_TYPE result_type;
+  void * manager;
+  parallel_scan::accumulative_trace_storage * trace_storage;
+  #endif
+  // *INDENT-ON*
+};				/* Index PARALLEL Scan Identifier */
+
+/* Pin the pisid/isid layout invariant. Adding/reordering fields in INDX_SCAN_ID without
+ * mirroring in PARALLEL_INDEX_SCAN_ID will fail to compile. offsetof on these types is
+ * "non-standard-layout" per GCC because of nested SCAN_PRED/SCAN_ATTRS — silence the
+ * conditionally-supported warning for the assert block; behavior is well-defined on GCC. */
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
+#endif
+static_assert (offsetof (INDX_SCAN_ID, indx_info) == offsetof (PARALLEL_INDEX_SCAN_ID, indx_info),
+	       "pisid mirror: indx_info");
+static_assert (offsetof (INDX_SCAN_ID, bt_scan) == offsetof (PARALLEL_INDEX_SCAN_ID, bt_scan),
+	       "pisid mirror: bt_scan");
+static_assert (offsetof (INDX_SCAN_ID, scan_cache) == offsetof (PARALLEL_INDEX_SCAN_ID, scan_cache),
+	       "pisid mirror: scan_cache");
+static_assert (offsetof (INDX_SCAN_ID, caches_inited) == offsetof (PARALLEL_INDEX_SCAN_ID, caches_inited),
+	       "pisid mirror: caches_inited");
+static_assert (offsetof (INDX_SCAN_ID, scancache_inited) == offsetof (PARALLEL_INDEX_SCAN_ID, scancache_inited),
+	       "pisid mirror: scancache_inited");
+static_assert (offsetof (INDX_SCAN_ID, indx_cov) == offsetof (PARALLEL_INDEX_SCAN_ID, indx_cov),
+	       "pisid mirror: indx_cov");
+static_assert (offsetof (INDX_SCAN_ID, multi_range_opt) == offsetof (PARALLEL_INDEX_SCAN_ID, multi_range_opt),
+	       "pisid mirror: multi_range_opt");
+static_assert (offsetof (INDX_SCAN_ID, iss) == offsetof (PARALLEL_INDEX_SCAN_ID, iss),
+	       "pisid mirror: iss");
+static_assert (offsetof (INDX_SCAN_ID, iscan_oid_order) == offsetof (PARALLEL_INDEX_SCAN_ID, iscan_oid_order),
+	       "pisid mirror: iscan_oid_order");
+static_assert (offsetof (INDX_SCAN_ID, parallel_pending) == offsetof (PARALLEL_INDEX_SCAN_ID, parallel_pending),
+	       "pisid mirror: parallel_pending");
+// *INDENT-OFF*
+#if !WINDOWS
+static_assert (offsetof (PARALLEL_INDEX_SCAN_ID, result_type) >= sizeof (INDX_SCAN_ID),
+	       "pisid parallel-only fields must follow all isid fields");
+#endif
+// *INDENT-ON*
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 typedef struct index_node_scan_id INDEX_NODE_SCAN_ID;
 struct index_node_scan_id

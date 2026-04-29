@@ -1418,9 +1418,9 @@ extern "C"
     /* Save indx_info from isid.  init_on_main (called from manager::open) needs the BTID. */
     INDX_INFO *saved_indx_info = scan_id->s.isid.indx_info;
 
-    /* Allocate and open the manager using a LOCAL pointer.
-     * Do NOT write to scan_id->s.pisid until open() succeeds — this keeps
-     * isid intact so that on failure we can fall back to single-thread S_INDX_SCAN. */
+    /* pisid superset of isid: shared storage by design. Promote-fail still safely falls back
+     * to S_INDX_SCAN because parallel-only fields (result_type/manager/trace_storage) live
+     * AFTER all isid fields, so isid view stays valid until line ~1558 explicitly writes them. */
     void *local_manager = nullptr;
 
     switch (local_result_type)
