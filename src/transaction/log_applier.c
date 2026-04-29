@@ -3934,6 +3934,31 @@ la_cache_oos_sql_log_recdes (LA_ITEM * item, LOG_PAGE * pgptr, RECDES * recdes)
   return NO_ERROR;
 }
 
+/*
+ * la_resolve_oos_sql_log_recdes () - Reassemble a single OOS column value from
+ *   the per-transaction chunk cache and return it as a contiguous RECDES.
+ *
+ *   Note on ordering: the master logs OOS chunks in *reverse* order
+ *   (last-chunk-first) so each chunk record can carry the next chunk's OID
+ *   in its OOS_RECORD_HEADER.  As a result la_cache_oos_sql_log_recdes()
+ *   populates this cache tail-first.  The hash accelerator however gives
+ *   random access by OID, so this resolver walks *forward* from the head OID
+ *   passed in (taken from the heap recdes inline OOS metadata) by following
+ *   entry->next_chunk_oid until total_data_length bytes are reassembled or
+ *   the chain terminates with a NULL OID.  Arrival order is therefore
+ *   irrelevant at resolution time.
+ *
+ *   Validation (any failure returns ER_FAILED, leaving the caller to fall
+ *   back to la_make_synthetic_oos_sql_log_value()):
+ *     - chunk_index strictly monotone increasing from 0
+ *     - total_data_length identical on every chunk in the chain
+ *     - each chunk's body fits the remaining buffer
+ *     - the chain terminates exactly at total_data_length and a NULL OID
+ *     - max_iterations guard against pathological / self-referential chains
+ *
+ *   On success, recdes->data is owned by the caller and must be freed with
+ *   db_private_free_and_init() / recdes_free_data_area().
+ */
 static int
 la_resolve_oos_sql_log_recdes (const OID * head_oid, int total_data_length, RECDES * recdes)
 {
@@ -4000,6 +4025,26 @@ la_resolve_oos_sql_log_recdes (const OID * head_oid, int total_data_length, RECD
   return NO_ERROR;
 }
 
+/*
+ * la_make_synthetic_oos_sql_log_value () - Last-resort fallback when the
+ *   chunk chain cannot be reassembled (cache miss, integrity check failure,
+ *   etc.).  Produces a varchar of the inline OOS length filled with spaces
+ *   except for the LA_OOS_MISSING_MARKER sentinel at the head, so:
+ *     - the sql.log line still has the correct length for size accounting /
+ *       rotation,
+ *     - an operator running grep on sql.log can immediately spot which rows
+ *       were synthesized rather than reproduced from the master,
+ *     - the marker contains no SQL meta characters (quotes, backslash) so
+ *       it is safe inside a quoted varchar literal.
+ *
+ *   Currently OOS columns are only used for variable-length string types
+ *   (VARCHAR/VARNCHAR).  Non-string types fall through to ER_FAILED
+ *   (loud failure, no synthesis) which propagates and aborts sql.log
+ *   writing for that row — a clear signal in the error log.
+ *
+ *   Also emits er_log_debug() so the operator can find every fallback
+ *   occurrence in the applylogdb error log alongside the source location.
+ */
 static int
 la_make_synthetic_oos_sql_log_value (DB_VALUE * value, SM_ATTRIBUTE * att, DB_BIGINT oos_length)
 {
@@ -6321,9 +6366,16 @@ la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
     {
       int ret;
 
+      /* sql.log is an audit/debug artifact; an error here (cache OOM, mht_put
+       * failure, etc.) must not abort replication of the row itself.  Stash
+       * the current error stack across the call so any failure is recorded
+       * via la_set_error_sql_log() instead of bubbling up. */
       er_stack_push ();
       if (item->item_type == RVREPL_OOS_INSERT)
 	{
+	  /* OOS chunk record — body is not a user INSERT, just stash it in the
+	   * per-transaction cache for la_resolve_oos_sql_log_recdes() to pick
+	   * up when the heap INSERT arrives.  No sql.log line is emitted. */
 	  ret = la_cache_oos_sql_log_recdes (item, pgptr, recdes);
 	}
       else
