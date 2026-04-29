@@ -10421,9 +10421,9 @@ int
 netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILES * spacefiles, SPACEDB_TABLE_SIZES_HEADER ** table_sizes_p, int *actual_count_p, char ** table_array, int table_array_length)
 {
 #if defined (CS_MODE)
-  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_request;
+  OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_request;
   char *request = NULL;
-  char request_local[2 * OR_INT_SIZE + SM_MAX_IDENTIFIER_LENGTH];
+  char request_local[3 * OR_INT_SIZE + 2 * OR_INT_SIZE + SM_MAX_IDENTIFIER_LENGTH];
   OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
   char *reply;
   char *data_reply = NULL;
@@ -10450,7 +10450,7 @@ netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILE
     }
   else
     {
-      request_size = 2 * OR_INT_SIZE + table_array_length * SM_MAX_IDENTIFIER_LENGTH;
+      request_size = 3 * OR_INT_SIZE + table_array_length * (2 * OR_INT_SIZE + SM_MAX_IDENTIFIER_LENGTH);
       request = (char *) malloc (request_size);
       if (request == NULL)
         {
