@@ -234,11 +234,11 @@ static void numeric_long_div (DB_C_NUMERIC a1, DB_C_NUMERIC a2, DB_C_NUMERIC ans
 			      bool is_long_num);
 static void numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, DB_C_NUMERIC remainder,
 			 bool arg1_value_is_negative, bool arg2_value_is_negative);
-static int float_numeric_div_fast (uint64_t dividend_val, uint64_t divisor_val, int prec1, int scale1, int prec2,
-				   int scale2, int exponent_diff, uint8_t * result_buf, int *result_prec_out,
-				   int *result_scale_out, bool * result_sign);
-static int float_numeric_mod_fast (uint64_t dividend_val, uint64_t divisor_val, uint8_t * result_buf,
-				   int *result_prec_out, int *result_scale_out, bool * result_sign);
+static void float_numeric_div_fast (uint64_t dividend_val, uint64_t divisor_val, int prec1, int scale1, int prec2,
+				    int scale2, int exponent_diff, uint8_t * result_buf, int *result_prec_out,
+				    int *result_scale_out, bool * result_sign);
+static void float_numeric_mod_fast (uint64_t dividend_val, uint64_t divisor_val, uint8_t * result_buf,
+				    int *result_prec_out, int *result_scale_out, bool * result_sign);
 static int knuth_find_first_nz_idx (const knuth_digit_t * digit_buf, int total_digits);
 static unsigned int knuth_count_leading_zero_bits (knuth_digit_t value);
 static void knuth_normalize_left_shift_msb (knuth_digit_t * buffer, int buffer_size, unsigned int k_bit);
@@ -289,11 +289,6 @@ static int float_numeric_div_normalize (uint64_t * dbv_buf, int calc_words, int 
 static void float_numeric_increment (uint64_t * calc_buf, int calc_words, uint64_t val);
 static int numeric_operation_compare (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, int calc_bytes);
 static int float_numeric_operation_compare (const uint64_t * arg1_word, const uint64_t * arg2_word, int calc_words);
-#if !HAS_INT128_SUPPORT
-static int knuth_operation_compare (const knuth_digit_t * arg1_buf, const knuth_digit_t * arg2_buf, int calc_words);
-static void knuth_div_unpacked (uint64_t * dividend_work, uint64_t * divisor_work, uint64_t * quotient_work,
-				uint64_t * remainder_work, int calc_words);
-#endif
 static int float_numeric_check_overflow_and_adjust_scale (int *result_prec, int *result_scale, DB_VALUE * answer);
 static void float_numeric_round_and_pack (uint64_t * word_buf, int calc_words, int calc_nbytes,
 					  uint8_t * result_buf, int *result_prec, int *result_scale);
@@ -440,11 +435,7 @@ __attribute__ ((constructor))
 {
   int i, j;
   uint64_t carry;
-#if HAS_INT128_SUPPORT
   uint128_t temp;
-#else
-  uint64_t low, high, res_low, res_high;
-#endif
 
   memset (powers_of_10, 0, (POW10_MAX_INDEX + 1) * POW10_BUF_WORDS * sizeof (uint64_t));
 
@@ -457,20 +448,9 @@ __attribute__ ((constructor))
       carry = 0;
       for (j = POW10_BUF_WORDS - 1; j >= 0; j--)
 	{
-#if HAS_INT128_SUPPORT
 	  temp = (uint128_t) powers_of_10[i - 1][j] * 10 + carry;
 	  powers_of_10[i][j] = (uint64_t) (temp & 0xFFFFFFFFFFFFFFFFULL);
 	  carry = (uint64_t) (temp >> 64);
-#else
-	  low = powers_of_10[i - 1][j] & 0xFFFFFFFFULL;
-	  high = powers_of_10[i - 1][j] >> 32;
-	  res_low = low * 10 + carry;
-	  res_high = high * 10 + (res_low >> 32);
-
-	  /* recombine into 64-bit word and extract carry for the next word */
-	  powers_of_10[i][j] = (res_high << 32) | (res_low & 0xFFFFFFFFULL);
-	  carry = res_high >> 32;
-#endif
 	}
     }
 }
@@ -911,23 +891,13 @@ float_numeric_add (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint6
 {
   uint64_t carry = 0;
   int digit;
-#if HAS_INT128_SUPPORT
   uint128_t sum;
-#else
-  uint64_t sum;
-#endif
 
   for (digit = calc_words - 1; digit >= 0; digit--)
     {
-#if HAS_INT128_SUPPORT
       sum = (uint128_t) dbv1_word[digit] + dbv2_word[digit] + carry;
       result_word[digit] = (uint64_t) sum;
       carry = (uint64_t) (sum >> 64);
-#else
-      sum = dbv1_word[digit] + dbv2_word[digit] + carry;
-      carry = (sum < dbv1_word[digit]) | (carry & (sum <= dbv1_word[digit]));
-      result_word[digit] = sum;
-#endif
     }
 }
 
@@ -957,38 +927,20 @@ float_numeric_add_fast (const uint64_t * dbv1_word, const uint64_t * dbv2_word, 
   if (dbv1_sign == dbv2_sign)
     {
       *result_sign = dbv1_sign;
-#if USE_X86_INTRINSICS
       uint64_t sum = _addcarry_u64 (0, dbv1_word[2], dbv2_word[2], (unsigned long long *) &result_word[2]);
       result_word[1] = sum;
-#elif HAS_INT128_SUPPORT
-      uint128_t sum = (uint128_t) dbv1_word[2] + dbv2_word[2];
-      result_word[2] = (uint64_t) sum;
-      result_word[1] = (uint64_t) (sum >> 64);
-#else
-      uint64_t sum = dbv1_word[2] + dbv2_word[2];
-      result_word[2] = sum;
-      result_word[1] = (sum < dbv1_word[2]) ? 1 : 0;
-#endif
     }
   else
     {
       if (dbv1_word[2] >= dbv2_word[2])
 	{
 	  *result_sign = dbv1_sign;
-#if USE_X86_INTRINSICS
 	  (void) _subborrow_u64 (0, dbv1_word[2], dbv2_word[2], (unsigned long long *) &result_word[2]);
-#else
-	  result_word[2] = dbv1_word[2] - dbv2_word[2];
-#endif
 	}
       else
 	{
 	  *result_sign = dbv2_sign;
-#if USE_X86_INTRINSICS
 	  (void) _subborrow_u64 (0, dbv2_word[2], dbv1_word[2], (unsigned long long *) &result_word[2]);
-#else
-	  result_word[2] = dbv2_word[2] - dbv1_word[2];
-#endif
 	}
     }
 
@@ -1041,23 +993,13 @@ float_numeric_sub (const uint64_t * arg1_word, const uint64_t * arg2_word, uint6
 {
   uint64_t borrow = 0;
   int digit;
-#if HAS_INT128_SUPPORT
   uint128_t diff;
-#else
-  uint64_t diff;
-#endif
 
   for (digit = calc_words - 1; digit >= 0; digit--)
     {
-#if HAS_INT128_SUPPORT
       diff = (uint128_t) arg1_word[digit] - arg2_word[digit] - borrow;
       result_word[digit] = (uint64_t) diff;
       borrow = (diff >> 64) ? 1 : 0;
-#else
-      diff = arg1_word[digit] - arg2_word[digit] - borrow;
-      borrow = (arg1_word[digit] < arg2_word[digit]) | (diff > arg1_word[digit]);
-      result_word[digit] = diff;
-#endif
     }
 }
 
@@ -1173,7 +1115,6 @@ static void
 float_numeric_mul (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint64_t * result_word, int calc_words,
 		   int calc_nbytes)
 {
-#if HAS_INT128_SUPPORT
   int outer_idx, inner_idx, result_idx, carry_idx;
   int inner_min;
   uint64_t carry;
@@ -1213,72 +1154,6 @@ float_numeric_mul (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint6
 	    }
 	}
     }
-#else
-  int outer_idx, inner_idx, result_idx, carry_idx;
-  int inner_min;
-  uint64_t carry, product, sum;
-  int i;
-
-  /* Unpack 64-bit words into 32-bit halves so schoolbook multiplication
-   * operates on values (not memory bytes), making it host-endian independent.
-   * The caller passes a zero-initialized result_word; we accumulate into
-   * res_half and repack into result_word at the end. */
-  int total_halves = calc_words * 2;
-  uint32_t arg1_half[total_halves];
-  uint32_t arg2_half[total_halves];
-  uint32_t res_half[total_halves];
-
-  memset (res_half, 0, sizeof (res_half));
-  for (i = 0; i < calc_words; i++)
-    {
-      arg1_half[2 * i] = (uint32_t) (dbv1_word[i] >> 32);
-      arg1_half[2 * i + 1] = (uint32_t) dbv1_word[i];
-      arg2_half[2 * i] = (uint32_t) (dbv2_word[i] >> 32);
-      arg2_half[2 * i + 1] = (uint32_t) dbv2_word[i];
-    }
-
-  const int last = total_halves - 1;
-  for (outer_idx = last; outer_idx >= 0; outer_idx--)
-    {
-      if (arg1_half[outer_idx] == 0)
-	{
-	  continue;
-	}
-
-      carry = 0;
-      inner_min = last - outer_idx;
-      /* accumulate partial products */
-      for (inner_idx = last; inner_idx >= inner_min; inner_idx--)
-	{
-	  result_idx = outer_idx + inner_idx - last;
-
-	  product = (uint64_t) arg1_half[outer_idx] * arg2_half[inner_idx];
-	  sum = (uint64_t) res_half[result_idx] + (uint32_t) product + carry;
-
-	  res_half[result_idx] = (uint32_t) sum;
-	  carry = (sum >> 32) + (product >> 32);
-	}
-
-      /* propagate carry */
-      if (carry)
-	{
-	  carry_idx = (outer_idx + inner_min - last) - 1;
-	  while (carry && carry_idx >= 0)
-	    {
-	      sum = (uint64_t) res_half[carry_idx] + carry;
-	      res_half[carry_idx] = (uint32_t) sum;
-	      carry = sum >> 32;
-	      --carry_idx;
-	    }
-	}
-    }
-
-  /* repack 32-bit halves back to 64-bit words */
-  for (i = 0; i < calc_words; i++)
-    {
-      result_word[i] = ((uint64_t) res_half[2 * i] << 32) | res_half[2 * i + 1];
-    }
-#endif
 }
 
 /*
@@ -1299,33 +1174,11 @@ static int
 float_numeric_mul_fast (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint64_t * result_word, int calc_words,
 			uint8_t * result_buf, int *result_scale)
 {
-#if HAS_INT128_SUPPORT
   /* fast path: multiply least significant 64-bit words (word[2]) -> 128-bit result */
   uint128_t prod = (uint128_t) dbv1_word[2] * dbv2_word[2];
 
   result_word[2] = (uint64_t) prod;
   result_word[1] = (uint64_t) (prod >> 64);
-#else
-  /* fallback: emulate 64-bit multiplication using 32-bit halves */
-  uint64_t temp, carry, result_low, result_mid;
-
-  uint64_t dbv1_high = dbv1_word[2] >> 32;
-  uint64_t dbv1_low = dbv1_word[2] & 0xFFFFFFFFULL;	// 1111 1111
-  uint64_t dbv2_high = dbv2_word[2] >> 32;
-  uint64_t dbv2_low = dbv2_word[2] & 0xFFFFFFFFULL;
-
-  temp = dbv1_low * dbv2_low;
-  result_low = temp & 0xFFFFFFFFULL;
-  carry = temp >> 32;
-  temp = dbv1_high * dbv2_low + carry;
-
-  result_mid = temp & 0xFFFFFFFFULL;
-  carry = temp >> 32;
-  temp = dbv1_low * dbv2_high + result_mid;
-
-  result_word[2] = (temp << 32) | result_low;
-  result_word[1] = dbv1_high * dbv2_high + carry + (temp >> 32);
-#endif
 
   if (*result_scale > DB_MAX_NUMERIC_SCALE)
     {
@@ -1480,7 +1333,6 @@ numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, DB_C_NUM
 
 /*
  * float_numeric_div_fast () -
- *   return: NO_ERROR or error code
  *   dividend_val(in)     : 64-bit dividend
  *   divisor_val(in)      : 64-bit divisor
  *   prec1, scale1(in)    : precision/scale of dividend
@@ -1490,19 +1342,16 @@ numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, DB_C_NUM
  *   result_prec_out(out) : resulting precision
  *   result_scale_out(out): resulting scale
  *
- * Note: Fast division path (requires HAS_INT128_SUPPORT).
+ * Note: Fast division path using __int128.
  *       Uses 64-bit mantissa with multi-precision scaling.
  *       The process consists of normalization, MSW-first division, and rounding.
  */
-static int
+static void
 float_numeric_div_fast (uint64_t dividend_val, uint64_t divisor_val,
 			int prec1, int scale1, int prec2, int scale2,
 			int exponent_diff, uint8_t * result_buf, int *result_prec_out, int *result_scale_out,
 			bool * result_sign)
 {
-  int ret = NO_ERROR;
-
-#if HAS_INT128_SUPPORT
   int i;
   int result_prec, result_scale, result_digits, exponent10;
   int word_count = NUMERIC_AS_WORDS + 1;
@@ -1580,31 +1429,24 @@ float_numeric_div_fast (uint64_t dividend_val, uint64_t divisor_val,
   float_numeric_round_and_pack (quotient_word, word_count, word_bytes, result_buf, &result_prec, &result_scale);
   *result_prec_out = result_prec;
   *result_scale_out = result_scale;
-
-  return ret;
-#else
-  return ER_FAILED;
-#endif
 }
 
 /*
  * float_numeric_mod_fast () -
- *   return: NO_ERROR or error code
  *   dividend_val(in)     : 64-bit dividend
  *   divisor_val(in)      : 64-bit divisor
  *   result_buf(out)      : result in 17-byte NUMERIC format
  *   result_prec_out(out) : resulting precision
  *   result_scale_out(in/out): scale (preserved)
  *
- * Note: Fast modulo path (requires HAS_INT128_SUPPORT).
+ * Note: Fast modulo path using __int128.
  *       Computes remainder using 64-bit arithmetic and stores it
  *       in NUMERIC format.
  */
-static int
+static void
 float_numeric_mod_fast (uint64_t dividend_val, uint64_t divisor_val,
 			uint8_t * result_buf, int *result_prec_out, int *result_scale_out, bool * result_sign)
 {
-#if HAS_INT128_SUPPORT
   assert (divisor_val != 0);
 
   int result_scale = *result_scale_out;
@@ -1630,10 +1472,6 @@ float_numeric_mod_fast (uint64_t dividend_val, uint64_t divisor_val,
 				result_buf, &result_prec, &result_scale);
   *result_prec_out = result_prec;
   *result_scale_out = result_scale;
-  return NO_ERROR;
-#else
-  return ER_FAILED;
-#endif
 }
 
 /*
@@ -1933,20 +1771,13 @@ float_numeric_knuth_div (knuth_digit_t * dbv1_buf, knuth_digit_t * dbv2_buf, knu
    * early exit: if dividend < divisor -> quotient = 0, remainder = dividend
    * - First compare by significant byte length
    * - If equal, compare the same-length region with the appropriate compare helper
-   *   (float_numeric_operation_compare in int128 builds, knuth_operation_compare otherwise)
+   *   with float_numeric_operation_compare()
    */
   len_diff = dividend_words - divisor_words;
-#if HAS_INT128_SUPPORT
   if (len_diff < 0
       || (len_diff == 0
 	  && float_numeric_operation_compare (dbv1_buf + dividend_first_nz_index, dbv2_buf + divisor_first_nz_index,
 					      divisor_words) < 0))
-#else
-  if (len_diff < 0
-      || (len_diff == 0
-	  && knuth_operation_compare (dbv1_buf + dividend_first_nz_index, dbv2_buf + divisor_first_nz_index,
-				      divisor_words) < 0))
-#endif
     {
       /* quo_buf is already zero-initialized outside */
       memcpy (rem_buf, dbv1_buf, calc_words * sizeof (knuth_digit_t));
@@ -2010,54 +1841,6 @@ float_numeric_knuth_div (knuth_digit_t * dbv1_buf, knuth_digit_t * dbv2_buf, knu
       rem_buf[out_rem_idx + i] = u_work[quo_total_word_count + i];
     }
 }
-
-#if !HAS_INT128_SUPPORT
-/*
- * knuth_div_unpacked() - Non-int128 wrapper for float_numeric_knuth_div()
- *   dividend_work(in)  : uint64_t MSB-first dividend buffer (calc_words words)
- *   divisor_work(in)   : uint64_t MSB-first divisor buffer
- *   quotient_work(out) : uint64_t MSB-first quotient buffer
- *   remainder_work(out): uint64_t MSB-first remainder buffer
- *   calc_words(in)     : number of uint64_t words in each buffer
- *
- * Note: In non-int128 builds knuth_digit_t == uint32_t. The caller's uint64_t
- *       buffers cannot be reinterpret-cast to knuth_digit_t* directly because
- *       (1) calc_words would refer to half the data and (2) host-endian word
- *       layout would corrupt MSB-first ordering. This helper unpacks each
- *       uint64_t into two MSB-first 32-bit halves via shifts (endian-
- *       independent), runs the knuth division on the doubled buffer, and
- *       repacks the result into the caller's uint64_t buffers.
- */
-static void
-knuth_div_unpacked (uint64_t * dividend_work, uint64_t * divisor_work, uint64_t * quotient_work,
-		    uint64_t * remainder_work, int calc_words)
-{
-  int total_halves = calc_words * 2;
-  knuth_digit_t dividend_half[total_halves];
-  knuth_digit_t divisor_half[total_halves];
-  knuth_digit_t quotient_half[total_halves];
-  knuth_digit_t remainder_half[total_halves];
-  int i;
-
-  for (i = 0; i < calc_words; i++)
-    {
-      dividend_half[2 * i] = (knuth_digit_t) (dividend_work[i] >> 32);
-      dividend_half[2 * i + 1] = (knuth_digit_t) dividend_work[i];
-      divisor_half[2 * i] = (knuth_digit_t) (divisor_work[i] >> 32);
-      divisor_half[2 * i + 1] = (knuth_digit_t) divisor_work[i];
-    }
-  memset (quotient_half, 0, sizeof (quotient_half));
-  memset (remainder_half, 0, sizeof (remainder_half));
-
-  float_numeric_knuth_div (dividend_half, divisor_half, quotient_half, remainder_half, total_halves);
-
-  for (i = 0; i < calc_words; i++)
-    {
-      quotient_work[i] = ((uint64_t) quotient_half[2 * i] << 32) | quotient_half[2 * i + 1];
-      remainder_work[i] = ((uint64_t) remainder_half[2 * i] << 32) | remainder_half[2 * i + 1];
-    }
-}
-#endif
 
 /*
  * numeric_is_longnum_value ()
@@ -3533,30 +3316,20 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   int divisor_exponent = (prec2 - 1) - scale2;
   int exponent_diff = dividend_exponent - divisor_exponent;
 
-#if HAS_INT128_SUPPORT
   /* fast path */
   if (prec1 <= 19 && prec2 <= 19)
     {
-      ret = float_numeric_div_fast (dbv1_word[2], dbv2_word[2],
-				    prec1, scale1, prec2, scale2,
-				    exponent_diff, result_buf, &result_prec, &result_scale, &result_sign);
+      float_numeric_div_fast (dbv1_word[2], dbv2_word[2],
+			      prec1, scale1, prec2, scale2,
+			      exponent_diff, result_buf, &result_prec, &result_scale, &result_sign);
+
+      ret = float_numeric_check_overflow_and_adjust_scale (&result_prec, &result_scale, answer);
       if (ret == NO_ERROR)
 	{
-	  ret = float_numeric_check_overflow_and_adjust_scale (&result_prec, &result_scale, answer);
-	  if (ret == NO_ERROR)
-	    {
-	      db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, result_sign, true);
-	    }
-	  return ret;
+	  db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, result_sign, true);
 	}
-
-      /* the fast path is disabled at compile time by HAS_INT128_SUPPORT,
-       * but this check defensively prevents any unintended entry.
-       * if triggered, the fast path is skipped and Knuth division is used instead.
-       */
-      ret = NO_ERROR;
+      return ret;
     }
-#endif
 
   /* 4) compare mantissa */
   int mantissa_compare =
@@ -3606,12 +3379,8 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
     }
 
   /* 8) division */
-#if HAS_INT128_SUPPORT
   float_numeric_knuth_div ((knuth_digit_t *) dividend_work, (knuth_digit_t *) divisor_work,
 			   (knuth_digit_t *) quotient_work, (knuth_digit_t *) remainder_work, calc_words);
-#else
-  knuth_div_unpacked (dividend_work, divisor_work, quotient_work, remainder_work, calc_words);
-#endif
 
   /* 9) round up if necessary */
   if (float_numeric_compare_rem_round_up (remainder_work, divisor_work, calc_words) >= 0)
@@ -4127,13 +3896,8 @@ float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int prec
        */
       int i, step;
       uint64_t divisor, rem;
-#if HAS_INT128_SUPPORT
       static const int scale_steps[] = { 19, 8, 4, 2, 1 };
       static const int lookup_idx[] = { 18, 7, 3, 1, 0 };
-#else
-      static const int scale_steps[] = { 16, 8, 4, 2, 1 };
-      static const int lookup_idx[] = { 15, 7, 3, 1, 0 };
-#endif
       const int num_steps = 5;
       uint64_t backup_word[NUMERIC_AS_WORDS] = { 0 };
 
@@ -4333,37 +4097,20 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
       float_numeric_mul_normalize (divisor_work, calc_words, calc_nbytes, divisor_exponent);
     }
 
-#if HAS_INT128_SUPPORT
   /* fast path */
   if (calc_words == NUMERIC_AS_WORDS && (dividend_work[0] | dividend_work[1] | divisor_work[0] | divisor_work[1]) == 0)
     {
-      ret =
-	float_numeric_mod_fast (dividend_work[2], divisor_work[2], result_buf, &result_prec, &result_scale,
-				&result_sign);
+      float_numeric_mod_fast (dividend_work[2], divisor_work[2], result_buf, &result_prec, &result_scale, &result_sign);
+      ret = float_numeric_check_overflow_and_adjust_scale (&result_prec, &result_scale, result);
       if (ret == NO_ERROR)
 	{
-	  ret = float_numeric_check_overflow_and_adjust_scale (&result_prec, &result_scale, result);
-	  if (ret == NO_ERROR)
-	    {
-	      db_make_numeric (result, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, result_sign, true);
-	    }
-	  return ret;
+	  db_make_numeric (result, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, result_sign, true);
 	}
-
-      /* the fast path is disabled at compile time by HAS_INT128_SUPPORT,
-       * but this check defensively prevents any unintended entry.
-       * if triggered, the fast path is skipped and Knuth division is used instead.
-       */
-      ret = NO_ERROR;
+      return ret;
     }
-#endif
 
-#if HAS_INT128_SUPPORT
   float_numeric_knuth_div ((knuth_digit_t *) dividend_work, (knuth_digit_t *) divisor_work,
 			   (knuth_digit_t *) quotient_work, (knuth_digit_t *) remainder_work, calc_words);
-#else
-  knuth_div_unpacked (dividend_work, divisor_work, quotient_work, remainder_work, calc_words);
-#endif
 
   /* 7) check and recalculate precision/scale of the remainder result */
   result_prec = float_numeric_get_decimal_digit (remainder_work, calc_words);
@@ -5351,15 +5098,12 @@ get_significant_digit (DB_BIGINT i)
  * Note:
  *   - Used for scale adjustment by shifting the decimal position right.
  *   - The multiplier must be a power of 10 that fits in a uint64_t.
- *   - Logic varies based on __int128 support:
- *     1) With __int128: Processes in 64-bit word chunks for high performance.
- *     2) Without __int128: Falls back to byte-by-byte (base-256) multiplication.
+ *   - Processes in 64-bit word chunks using __int128 for high performance.
  *   - Expects no overflow after multiplication (assert(carry == 0)).
  */
 static void
 float_numeric_mul_pow10 (uint64_t * dbv_buf, int calc_words, int calc_bytes, uint64_t multiplier)
 {
-#if HAS_INT128_SUPPORT
   int i = 0;
   uint128_t res = 0;
   uint128_t carry = 0;
@@ -5373,34 +5117,6 @@ float_numeric_mul_pow10 (uint64_t * dbv_buf, int calc_words, int calc_bytes, uin
     }
 
   assert (carry == 0);
-#else
-  int i = 0;
-  uint64_t temp = 0;
-  uint64_t carry = 0;
-
-  /* Align word-internal byte order to big-endian for byte-wise carry
-   * propagation. NUMERIC_BSWAP64 is a no-op on big-endian systems. */
-  for (i = 0; i < calc_words; i++)
-    {
-      dbv_buf[i] = NUMERIC_BSWAP64 (dbv_buf[i]);
-    }
-
-  uint8_t *buf = (uint8_t *) dbv_buf;
-  for (i = calc_bytes - 1; i >= 0; i--)
-    {
-      temp = (uint64_t) buf[i] * multiplier + carry;
-      buf[i] = (uint8_t) (temp & 0xFF);
-      carry = temp >> 8;
-    }
-
-  /* Restore host-endian word layout */
-  for (i = 0; i < calc_words; i++)
-    {
-      dbv_buf[i] = NUMERIC_BSWAP64 (dbv_buf[i]);
-    }
-
-  assert (carry == 0);
-#endif
 }
 
 /*
@@ -5416,13 +5132,7 @@ float_numeric_mul_pow10 (uint64_t * dbv_buf, int calc_words, int calc_bytes, uin
  *  - the exponent is processed in chunks to prevent internal arithmetic overflow.
  *
  * Reason:
- *   - Case 1: Without __int128 (8-bit byte-wise multiplication)
- *     Temp = (byte * 10^k) + carry must fit in uint64_t (~1.84 * 10^19).
- *     - If k=16: Max temp ~ 256 * 10^16 ~ 2.56 * 10^18 -> SAFE.
- *     - If k=17: Max temp ~ 256 * 10^17 ~ 2.56 * 10^19 -> Potential overflow.
- *     ==> Safe chunk size is 16.
- *
- *   - Case 2: With __int128 (64-bit word-wise multiplication)
+ *   - 64-bit word-wise multiplication using __int128:
  *     Temp = (word * 10^k) + carry must fit in uint128_t (~3.4 * 10^38).
  *     - If k=19: Max temp ~ 2^64 * 10^19 ~ 1.84 * 10^38 -> SAFE.
  *     - If k=20: Max temp ~ 2^64 * 10^20 ~ 1.84 * 10^39 -> Potential overflow.
@@ -5438,11 +5148,7 @@ float_numeric_mul_normalize (uint64_t * dbv_buf, int calc_words, int calc_bytes,
 
   while (exponent > 0)
     {
-#if HAS_INT128_SUPPORT
       step = (exponent > 19) ? 19 : exponent;
-#else
-      step = (exponent > 16) ? 16 : exponent;
-#endif
       multiplier = _gv_mul_normalize_pow10_lookup[step - 1];	// 10^step
 
       float_numeric_mul_pow10 (dbv_buf, calc_words, calc_bytes, multiplier);
@@ -5456,9 +5162,7 @@ float_numeric_mul_normalize (uint64_t * dbv_buf, int calc_words, int calc_bytes,
  * Note:
  *   - Used for scale reduction, rounding, and normalization.
  *   - The divisor must be a power of 10 that fits in a uint64_t.
- *   - Logic varies based on __int128 support:
- *     1) With __int128: Processes in 64-bit word chunks (high performance).
- *     2) Without __int128: Falls back to byte-by-byte (base-256) division.
+ *   - Processes in 64-bit word chunks using __int128 for high performance.
  */
 static uint64_t
 float_numeric_div_pow10 (uint64_t * dbv_buf, int calc_words, int calc_bytes, uint64_t divisor)
@@ -5466,7 +5170,6 @@ float_numeric_div_pow10 (uint64_t * dbv_buf, int calc_words, int calc_bytes, uin
   uint64_t rem10 = 0;
   int i = 0;
 
-#if HAS_INT128_SUPPORT
   uint128_t temp = 0;
   uint64_t *word_ptr = dbv_buf;
 
@@ -5476,31 +5179,7 @@ float_numeric_div_pow10 (uint64_t * dbv_buf, int calc_words, int calc_bytes, uin
       word_ptr[i] = (uint64_t) (temp / divisor);
       rem10 = (uint64_t) (temp % divisor);
     }
-#else
-  uint64_t temp = 0;
 
-  /* Align word-internal byte order to big-endian for byte-wise division.
-   * NUMERIC_BSWAP64 is a no-op on big-endian systems. */
-  for (i = 0; i < calc_words; i++)
-    {
-      dbv_buf[i] = NUMERIC_BSWAP64 (dbv_buf[i]);
-    }
-
-  uint8_t *byte_ptr = (uint8_t *) dbv_buf;
-
-  for (i = 0; i < calc_bytes; i++)
-    {
-      temp = (rem10 << 8) | byte_ptr[i];
-      byte_ptr[i] = (uint8_t) (temp / divisor);
-      rem10 = (uint64_t) (temp % divisor);
-    }
-
-  /* Restore host-endian word layout */
-  for (i = 0; i < calc_words; i++)
-    {
-      dbv_buf[i] = NUMERIC_BSWAP64 (dbv_buf[i]);
-    }
-#endif
   return rem10;
 }
 
@@ -5523,7 +5202,7 @@ float_numeric_div_pow10 (uint64_t * dbv_buf, int calc_words, int calc_bytes, uin
  *    (i.e., the 44th digit) for rounding decision.
  *
  * Note:
- *   - Processes the exponent in chunks (16 or 19 digits) to prevent overflow, 
+ *   - Processes the exponent in chunks (19 digits) to prevent overflow,
  *     consistent with float_numeric_mul_normalize().
  */
 static int
@@ -5538,11 +5217,7 @@ float_numeric_div_normalize (uint64_t * dbv_buf, int calc_words, int calc_bytes,
 
   while (exponent > 0)
     {
-#if HAS_INT128_SUPPORT
       step = exponent > 19 ? 19 : exponent;
-#else
-      step = exponent > 16 ? 16 : exponent;
-#endif
       divisor = _gv_mul_normalize_pow10_lookup[step - 1];
 
       last_rem = float_numeric_div_pow10 (dbv_buf, calc_words, calc_bytes, divisor);
@@ -5627,38 +5302,6 @@ float_numeric_operation_compare (const uint64_t * arg1_word, const uint64_t * ar
     }
   return 0;
 }
-
-#if !HAS_INT128_SUPPORT
-/*
- * knuth_operation_compare() - Compare two knuth-digit buffers (MSB-first)
- *   return        : 1 if arg1 > arg2, -1 if arg1 < arg2, 0 if equal
- *   arg1_buf(in)  : First knuth-digit buffer (MSB-first)
- *   arg2_buf(in)  : Second knuth-digit buffer (MSB-first)
- *   calc_words(in): Number of knuth digits to compare
- *
- * Note: Used only in non-int128 builds where knuth_digit_t == uint32_t.
- *       In int128 builds knuth_digit_t == uint64_t and
- *       float_numeric_operation_compare is used directly.
- */
-static int
-knuth_operation_compare (const knuth_digit_t * arg1_buf, const knuth_digit_t * arg2_buf, int calc_words)
-{
-  int digit;
-
-  for (digit = 0; digit < calc_words; digit++)
-    {
-      if (arg1_buf[digit] > arg2_buf[digit])
-	{
-	  return 1;
-	}
-      else if (arg1_buf[digit] < arg2_buf[digit])
-	{
-	  return -1;
-	}
-    }
-  return 0;
-}
-#endif
 
 /*
  * float_numeric_check_overflow_and_adjust_scale() - Check precision overflow and adjust scale
