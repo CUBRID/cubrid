@@ -8185,7 +8185,7 @@ file_spacedb_fill_one_table (THREAD_ENTRY * thread_p, const OID * class_oid,
     if (heap_ovf_find_vfid (thread_p, &hfid, &ovf_vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
       {
 	error_code =
-	  file_spacedb_get_file_page_count (thread_p, &ovf_vfid, &table_size->ovf_free_size,
+	  file_spacedb_get_file_page_count (thread_p, &ovf_vfid, &table_size->ovf_used_page,
 					    &table_size->ovf_alloced_page);
 	if (error_code != NO_ERROR)
 	  {
@@ -8220,7 +8220,7 @@ file_spacedb_fill_one_table (THREAD_ENTRY * thread_p, const OID * class_oid,
       if (!VFID_ISNULL (&ovf_vfid))
 	{
 	  error_code =
-	    file_spacedb_get_file_page_count (thread_p, &ovf_vfid, &table_size->ovf_free_size,
+	    file_spacedb_get_file_page_count (thread_p, &ovf_vfid, &table_size->ovf_used_page,
 					      &table_size->ovf_alloced_page);
 	  if (error_code != NO_ERROR)
 	    {

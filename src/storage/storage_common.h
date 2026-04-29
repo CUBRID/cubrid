@@ -605,7 +605,7 @@ struct spacedb_table_sizes
   int ftype; /* FILE_TYPE */
   int data_used_page;
   int data_alloced_page;
-  int ovf_free_size;
+  int ovf_used_page;
   int ovf_alloced_page;
 };
 
