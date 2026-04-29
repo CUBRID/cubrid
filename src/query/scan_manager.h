@@ -169,12 +169,7 @@ struct parallel_list_scan_id
 };				/* List PARALLEL Scan Identifier */
 
 typedef struct parallel_index_scan_id PARALLEL_INDEX_SCAN_ID;
-/* Superset of INDX_SCAN_ID: all isid fields mirrored at identical offsets so SCAN_ID::s union
- * flips between isid and pisid stay layout-safe across partition reopen. Pattern matches
- * PARALLEL_HEAP_SCAN_ID superset of HEAP_SCAN_ID. Paired static_asserts after the struct pin
- * the invariant — adding/reordering fields in INDX_SCAN_ID without mirroring here will fail
- * the build. Defined after indx_scan_id so dependent types (INDX_COV / MULTI_RANGE_OPT /
- * INDEX_SKIP_SCAN) are complete. */
+/* INDX_SCAN_ID superset (mirrors PARALLEL_HEAP_SCAN_ID pattern); paired static_asserts pin layout */
 
 typedef struct heap_page_scan_id HEAP_PAGE_SCAN_ID;
 struct heap_page_scan_id
@@ -306,7 +301,7 @@ struct indx_scan_id
 
 struct parallel_index_scan_id
 {
-  /* === MIRROR of INDX_SCAN_ID at identical offsets — DO NOT REORDER without mirroring isid === */
+  /* mirror of INDX_SCAN_ID — keep in sync */
   INDX_INFO *indx_info;		/* index information */
   BTREE_TYPE bt_type;		/* index type */
   int bt_num_attrs;		/* num of attributes of the index key */
@@ -352,7 +347,7 @@ struct parallel_index_scan_id
   DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking operation */
   TP_DOMAIN **prebuilt_midxkey_domains;
   void *parallel_pending;	/* mirror of INDX_SCAN_ID::parallel_pending */
-  /* === Parallel-only fields (after all isid fields) === */
+  /* parallel-only fields (must follow all isid fields) */
   // *INDENT-OFF*
   #if !WINDOWS
   parallel_scan::RESULT_TYPE result_type;
@@ -362,18 +357,14 @@ struct parallel_index_scan_id
   // *INDENT-ON*
 };				/* Index PARALLEL Scan Identifier */
 
-/* Pin the pisid/isid layout invariant. Adding/reordering fields in INDX_SCAN_ID without
- * mirroring in PARALLEL_INDEX_SCAN_ID will fail to compile. offsetof on these types is
- * "non-standard-layout" per GCC because of nested SCAN_PRED/SCAN_ATTRS — silence the
- * conditionally-supported warning for the assert block; behavior is well-defined on GCC. */
+/* pin pisid/isid layout — drift fails build; offsetof on non-standard-layout is well-defined on GCC */
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static_assert (offsetof (INDX_SCAN_ID, indx_info) == offsetof (PARALLEL_INDEX_SCAN_ID, indx_info),
 	       "pisid mirror: indx_info");
-static_assert (offsetof (INDX_SCAN_ID, bt_scan) == offsetof (PARALLEL_INDEX_SCAN_ID, bt_scan),
-	       "pisid mirror: bt_scan");
+static_assert (offsetof (INDX_SCAN_ID, bt_scan) == offsetof (PARALLEL_INDEX_SCAN_ID, bt_scan), "pisid mirror: bt_scan");
 static_assert (offsetof (INDX_SCAN_ID, scan_cache) == offsetof (PARALLEL_INDEX_SCAN_ID, scan_cache),
 	       "pisid mirror: scan_cache");
 static_assert (offsetof (INDX_SCAN_ID, caches_inited) == offsetof (PARALLEL_INDEX_SCAN_ID, caches_inited),
@@ -384,18 +375,17 @@ static_assert (offsetof (INDX_SCAN_ID, indx_cov) == offsetof (PARALLEL_INDEX_SCA
 	       "pisid mirror: indx_cov");
 static_assert (offsetof (INDX_SCAN_ID, multi_range_opt) == offsetof (PARALLEL_INDEX_SCAN_ID, multi_range_opt),
 	       "pisid mirror: multi_range_opt");
-static_assert (offsetof (INDX_SCAN_ID, iss) == offsetof (PARALLEL_INDEX_SCAN_ID, iss),
-	       "pisid mirror: iss");
+static_assert (offsetof (INDX_SCAN_ID, iss) == offsetof (PARALLEL_INDEX_SCAN_ID, iss), "pisid mirror: iss");
 static_assert (offsetof (INDX_SCAN_ID, iscan_oid_order) == offsetof (PARALLEL_INDEX_SCAN_ID, iscan_oid_order),
 	       "pisid mirror: iscan_oid_order");
 static_assert (offsetof (INDX_SCAN_ID, parallel_pending) == offsetof (PARALLEL_INDEX_SCAN_ID, parallel_pending),
-	       "pisid mirror: parallel_pending");
 // *INDENT-OFF*
 #if !WINDOWS
 static_assert (offsetof (PARALLEL_INDEX_SCAN_ID, result_type) >= sizeof (INDX_SCAN_ID),
 	       "pisid parallel-only fields must follow all isid fields");
 #endif
 // *INDENT-ON*
+	       "pisid mirror: parallel_pending");
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif

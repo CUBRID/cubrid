@@ -3092,8 +3092,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 	}
       else if (spec->s_id.type == S_PARALLEL_INDEX_SCAN || spec->s_id.type == S_INDX_SCAN)
 	{
-	  /* trace_storage may persist on S_INDX_SCAN after partition iteration rolls type back
-	   * via parent-class scan_open_index_scan; pisid superset of isid keeps the field valid. */
+	  /* type rolls back to S_INDX_SCAN on parent-class re-open; pisid superset preserves trace_storage */
 	  if (spec->s_id.s.pisid.trace_storage != NULL)
 	    {
 	      if (!spec->s_id.scan_stats.noscan)
@@ -3554,7 +3553,6 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 	    }
 	  else if (spec->s_id.type == S_PARALLEL_INDEX_SCAN || spec->s_id.type == S_INDX_SCAN)
 	    {
-	      /* see partition-aware comment in dump_stats_json branch above */
 	      if (spec->s_id.s.pisid.trace_storage)
 		{
 		  if (!spec->s_id.scan_stats.noscan)

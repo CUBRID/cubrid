@@ -1312,9 +1312,7 @@ extern "C"
 	return NO_ERROR;
       }
 
-    /* Skip the parent partitioned class (curent==NULL signals first call before
-     * qexec_init_next_partition has selected a child). Per-partition reopens carry
-     * pruning_type=DB_PARTITION_CLASS via partition_prune_spec and flow through. */
+    /* parent partitioned class only (curent==NULL); per-partition reopens flow through */
     if (spec->curent == nullptr && spec->pruning_type == DB_PARTITIONED_CLASS)
       {
 	return NO_ERROR;
@@ -1417,9 +1415,7 @@ extern "C"
     /* Save indx_info from isid.  init_on_main (called from manager::open) needs the BTID. */
     INDX_INFO *saved_indx_info = scan_id->s.isid.indx_info;
 
-    /* pisid superset of isid: shared storage by design. Promote-fail still safely falls back
-     * to S_INDX_SCAN because parallel-only fields (result_type/manager/trace_storage) live
-     * AFTER all isid fields, so isid view stays valid until line ~1558 explicitly writes them. */
+    /* pisid is isid superset — promote-fail safe (parallel-only fields live after isid) */
     void *local_manager = nullptr;
 
     switch (local_result_type)
@@ -1553,10 +1549,9 @@ extern "C"
 	  }
       }
 
-    /* Write pisid fields (now safe — isid is fully cleaned up). */
+    /* keep trace_storage across promotes — it accumulates per-partition worker stats */
     scan_id->s.pisid.result_type = local_result_type;
     scan_id->s.pisid.manager = local_manager;
-    scan_id->s.pisid.trace_storage = nullptr;
 
     scan_id->type = S_PARALLEL_INDEX_SCAN;
 

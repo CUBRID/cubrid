@@ -129,10 +129,7 @@ namespace parallel_scan
 	      }
 	    else if constexpr (ST == SCAN_TYPE::INDEX)
 	      {
-		/* Restore partition's BTID into cloned indexptr: clone_xasl re-deserializes
-		 * indexptr from the XASL stream (parent class's compile-time BTID), so
-		 * per-partition BTID updates in qexec_init_next_partition do not propagate.
-		 * Use the manager's input_handler indx_info captured at promote time. */
+		/* clone_xasl restores parent compile-time BTID from XASL stream; override with partition BTID */
 		if (spec->indexptr != nullptr && m_input_handler != nullptr)
 		  {
 		    INDX_INFO *part_indx_info = m_input_handler->get_indx_info ();
