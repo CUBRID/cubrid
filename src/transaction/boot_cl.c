@@ -1564,7 +1564,7 @@ boot_client_all_finalize (int final_level)
       boot_client (NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT, TRAN_DEFAULT_ISOLATION_LEVEL ());
       boot_Is_client_all_final = true;
     }
-  /* restore the signals that was blocked, when the function started. */
+  /* restore the signals that was blocked, when the function ended. */
   signal (SIGTERM, sigterm_handler);
   signal (SIGABRT, sigabrt_handler);
   signal (SIGINT, sigint_handler);
