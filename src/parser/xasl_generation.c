@@ -430,6 +430,7 @@ static OUTPTR_LIST *pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list,
 static void pt_to_fetch_proc_list_recurse (PARSER_CONTEXT * parser, PT_NODE * spec, XASL_NODE * root);
 static void pt_to_fetch_proc_list (PARSER_CONTEXT * parser, PT_NODE * spec, XASL_NODE * root);
 static XASL_NODE *pt_to_scan_proc_list (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * root);
+static void pt_apply_heap_fixed_scan_flag (XASL_NODE * xasl);
 static XASL_NODE *pt_gen_optimized_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * plan,
 					 XASL_NODE * xasl);
 static XASL_NODE *pt_gen_simple_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * plan, XASL_NODE * xasl);
@@ -14703,6 +14704,34 @@ pt_to_scan_proc_list (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * root)
 }
 
 /*
+ * pt_apply_heap_fixed_scan_flag () - Set ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN on all TARGET_CLASS sequential scan specs
+ *   in the XASL scan chain when the enable_heap_fixed_scan system parameter is true.
+ *   xasl(in): top-level XASL node
+ */
+static void
+pt_apply_heap_fixed_scan_flag (XASL_NODE * xasl)
+{
+  XASL_NODE *xptr;
+  ACCESS_SPEC_TYPE *specp;
+
+  if (!prm_get_bool_value (PRM_ID_ENABLE_HEAP_FIXED_SCAN))
+    {
+      return;
+    }
+
+  for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
+    {
+      for (specp = xptr->spec_list; specp; specp = specp->next)
+	{
+	  if (specp->type == TARGET_CLASS)
+	    {
+	      ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN);
+	    }
+	}
+    }
+}
+
+/*
  * pt_gen_optimized_plan () - Translate a PT_SELECT node to a XASL plan
  *   return:
  *   parser(in):
@@ -16962,6 +16991,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       qo_plan = NULL;
     }
 
+  pt_apply_heap_fixed_scan_flag (xasl);
+
   if (xasl->outptr_list)
     {
       if (qo_plan)
@@ -17328,6 +17359,8 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 	}
       buildvalue = &xasl->proc.buildvalue;
     }
+
+  pt_apply_heap_fixed_scan_flag (xasl);
 
   /* set access spec for aggregation */
   if (xasl->spec_list)
