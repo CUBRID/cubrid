@@ -289,6 +289,11 @@ static int float_numeric_div_normalize (uint64_t * dbv_buf, int calc_words, int 
 static void float_numeric_increment (uint64_t * calc_buf, int calc_words, uint64_t val);
 static int numeric_operation_compare (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, int calc_bytes);
 static int float_numeric_operation_compare (const uint64_t * arg1_word, const uint64_t * arg2_word, int calc_words);
+#if !HAS_INT128_SUPPORT
+static int knuth_operation_compare (const knuth_digit_t * arg1_buf, const knuth_digit_t * arg2_buf, int calc_words);
+static void knuth_div_unpacked (uint64_t * dividend_work, uint64_t * divisor_work, uint64_t * quotient_work,
+				uint64_t * remainder_work, int calc_words);
+#endif
 static int float_numeric_check_overflow_and_adjust_scale (int *result_prec, int *result_scale, DB_VALUE * answer);
 static void float_numeric_round_and_pack (uint64_t * word_buf, int calc_words, int calc_nbytes,
 					  uint8_t * result_buf, int *result_prec, int *result_scale);
@@ -1211,18 +1216,31 @@ float_numeric_mul (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint6
 #else
   int outer_idx, inner_idx, result_idx, carry_idx;
   int inner_min;
-  uint16_t carry;
-  uint32_t product, sum;
+  uint64_t carry, product, sum;
+  int i;
 
-  uint8_t *res_buf = (uint8_t *) result_word;
-  const uint8_t *arg1_buf = (const uint8_t *) dbv1_word;
-  const uint8_t *arg2_buf = (const uint8_t *) dbv2_word;
-  const int last = calc_nbytes - 1;
+  /* Unpack 64-bit words into 32-bit halves so schoolbook multiplication
+   * operates on values (not memory bytes), making it host-endian independent.
+   * The caller passes a zero-initialized result_word; we accumulate into
+   * res_half and repack into result_word at the end. */
+  int total_halves = calc_words * 2;
+  uint32_t arg1_half[total_halves];
+  uint32_t arg2_half[total_halves];
+  uint32_t res_half[total_halves];
 
-  /* byte-wise multiplication (fallback path) */
+  memset (res_half, 0, sizeof (res_half));
+  for (i = 0; i < calc_words; i++)
+    {
+      arg1_half[2 * i] = (uint32_t) (dbv1_word[i] >> 32);
+      arg1_half[2 * i + 1] = (uint32_t) dbv1_word[i];
+      arg2_half[2 * i] = (uint32_t) (dbv2_word[i] >> 32);
+      arg2_half[2 * i + 1] = (uint32_t) dbv2_word[i];
+    }
+
+  const int last = total_halves - 1;
   for (outer_idx = last; outer_idx >= 0; outer_idx--)
     {
-      if (arg1_buf[outer_idx] == 0)
+      if (arg1_half[outer_idx] == 0)
 	{
 	  continue;
 	}
@@ -1234,11 +1252,11 @@ float_numeric_mul (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint6
 	{
 	  result_idx = outer_idx + inner_idx - last;
 
-	  product = (uint32_t) arg1_buf[outer_idx] * (uint32_t) arg2_buf[inner_idx];
-	  sum = (uint32_t) res_buf[result_idx] + product + carry;
+	  product = (uint64_t) arg1_half[outer_idx] * arg2_half[inner_idx];
+	  sum = (uint64_t) res_half[result_idx] + (uint32_t) product + carry;
 
-	  res_buf[result_idx] = (uint8_t) (sum & 0xFF);
-	  carry = (uint16_t) (sum >> 8);
+	  res_half[result_idx] = (uint32_t) sum;
+	  carry = (sum >> 32) + (product >> 32);
 	}
 
       /* propagate carry */
@@ -1247,12 +1265,18 @@ float_numeric_mul (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint6
 	  carry_idx = (outer_idx + inner_min - last) - 1;
 	  while (carry && carry_idx >= 0)
 	    {
-	      sum = (uint32_t) res_buf[carry_idx] + carry;
-	      res_buf[carry_idx] = (uint8_t) (sum & 0xFF);
-	      carry = (uint16_t) (sum >> 8);
+	      sum = (uint64_t) res_half[carry_idx] + carry;
+	      res_half[carry_idx] = (uint32_t) sum;
+	      carry = sum >> 32;
 	      --carry_idx;
 	    }
 	}
+    }
+
+  /* repack 32-bit halves back to 64-bit words */
+  for (i = 0; i < calc_words; i++)
+    {
+      result_word[i] = ((uint64_t) res_half[2 * i] << 32) | res_half[2 * i + 1];
     }
 #endif
 }
@@ -1908,13 +1932,21 @@ float_numeric_knuth_div (knuth_digit_t * dbv1_buf, knuth_digit_t * dbv2_buf, knu
   /*
    * early exit: if dividend < divisor -> quotient = 0, remainder = dividend
    * - First compare by significant byte length
-   * - If equal, compare the same-length region with float_numeric_operation_compare()
+   * - If equal, compare the same-length region with the appropriate compare helper
+   *   (float_numeric_operation_compare in int128 builds, knuth_operation_compare otherwise)
    */
   len_diff = dividend_words - divisor_words;
+#if HAS_INT128_SUPPORT
   if (len_diff < 0
       || (len_diff == 0
 	  && float_numeric_operation_compare (dbv1_buf + dividend_first_nz_index, dbv2_buf + divisor_first_nz_index,
 					      divisor_words) < 0))
+#else
+  if (len_diff < 0
+      || (len_diff == 0
+	  && knuth_operation_compare (dbv1_buf + dividend_first_nz_index, dbv2_buf + divisor_first_nz_index,
+				      divisor_words) < 0))
+#endif
     {
       /* quo_buf is already zero-initialized outside */
       memcpy (rem_buf, dbv1_buf, calc_words * sizeof (knuth_digit_t));
@@ -1978,6 +2010,54 @@ float_numeric_knuth_div (knuth_digit_t * dbv1_buf, knuth_digit_t * dbv2_buf, knu
       rem_buf[out_rem_idx + i] = u_work[quo_total_word_count + i];
     }
 }
+
+#if !HAS_INT128_SUPPORT
+/*
+ * knuth_div_unpacked() - Non-int128 wrapper for float_numeric_knuth_div()
+ *   dividend_work(in)  : uint64_t MSB-first dividend buffer (calc_words words)
+ *   divisor_work(in)   : uint64_t MSB-first divisor buffer
+ *   quotient_work(out) : uint64_t MSB-first quotient buffer
+ *   remainder_work(out): uint64_t MSB-first remainder buffer
+ *   calc_words(in)     : number of uint64_t words in each buffer
+ *
+ * Note: In non-int128 builds knuth_digit_t == uint32_t. The caller's uint64_t
+ *       buffers cannot be reinterpret-cast to knuth_digit_t* directly because
+ *       (1) calc_words would refer to half the data and (2) host-endian word
+ *       layout would corrupt MSB-first ordering. This helper unpacks each
+ *       uint64_t into two MSB-first 32-bit halves via shifts (endian-
+ *       independent), runs the knuth division on the doubled buffer, and
+ *       repacks the result into the caller's uint64_t buffers.
+ */
+static void
+knuth_div_unpacked (uint64_t * dividend_work, uint64_t * divisor_work, uint64_t * quotient_work,
+		    uint64_t * remainder_work, int calc_words)
+{
+  int total_halves = calc_words * 2;
+  knuth_digit_t dividend_half[total_halves];
+  knuth_digit_t divisor_half[total_halves];
+  knuth_digit_t quotient_half[total_halves];
+  knuth_digit_t remainder_half[total_halves];
+  int i;
+
+  for (i = 0; i < calc_words; i++)
+    {
+      dividend_half[2 * i] = (knuth_digit_t) (dividend_work[i] >> 32);
+      dividend_half[2 * i + 1] = (knuth_digit_t) dividend_work[i];
+      divisor_half[2 * i] = (knuth_digit_t) (divisor_work[i] >> 32);
+      divisor_half[2 * i + 1] = (knuth_digit_t) divisor_work[i];
+    }
+  memset (quotient_half, 0, sizeof (quotient_half));
+  memset (remainder_half, 0, sizeof (remainder_half));
+
+  float_numeric_knuth_div (dividend_half, divisor_half, quotient_half, remainder_half, total_halves);
+
+  for (i = 0; i < calc_words; i++)
+    {
+      quotient_work[i] = ((uint64_t) quotient_half[2 * i] << 32) | quotient_half[2 * i + 1];
+      remainder_work[i] = ((uint64_t) remainder_half[2 * i] << 32) | remainder_half[2 * i + 1];
+    }
+}
+#endif
 
 /*
  * numeric_is_longnum_value ()
@@ -3526,8 +3606,12 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
     }
 
   /* 8) division */
+#if HAS_INT128_SUPPORT
   float_numeric_knuth_div ((knuth_digit_t *) dividend_work, (knuth_digit_t *) divisor_work,
 			   (knuth_digit_t *) quotient_work, (knuth_digit_t *) remainder_work, calc_words);
+#else
+  knuth_div_unpacked (dividend_work, divisor_work, quotient_work, remainder_work, calc_words);
+#endif
 
   /* 9) round up if necessary */
   if (float_numeric_compare_rem_round_up (remainder_work, divisor_work, calc_words) >= 0)
@@ -4274,8 +4358,12 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
     }
 #endif
 
+#if HAS_INT128_SUPPORT
   float_numeric_knuth_div ((knuth_digit_t *) dividend_work, (knuth_digit_t *) divisor_work,
 			   (knuth_digit_t *) quotient_work, (knuth_digit_t *) remainder_work, calc_words);
+#else
+  knuth_div_unpacked (dividend_work, divisor_work, quotient_work, remainder_work, calc_words);
+#endif
 
   /* 7) check and recalculate precision/scale of the remainder result */
   result_prec = float_numeric_get_decimal_digit (remainder_work, calc_words);
@@ -5167,8 +5255,6 @@ numeric_coerce_num_to_num (const DB_VALUE * src_value, int src_prec, int src_sca
     }
 
   uint64_t result_word[NUMERIC_AS_WORDS] = { 0 };
-  uint8_t *result_ptr = (uint8_t *) result_word;
-
   int scale_diff = dest_scale - src_scale;
   int required_prec = src_actual_prec + scale_diff;
 
@@ -5292,12 +5378,25 @@ float_numeric_mul_pow10 (uint64_t * dbv_buf, int calc_words, int calc_bytes, uin
   uint64_t temp = 0;
   uint64_t carry = 0;
 
+  /* Align word-internal byte order to big-endian for byte-wise carry
+   * propagation. NUMERIC_BSWAP64 is a no-op on big-endian systems. */
+  for (i = 0; i < calc_words; i++)
+    {
+      dbv_buf[i] = NUMERIC_BSWAP64 (dbv_buf[i]);
+    }
+
   uint8_t *buf = (uint8_t *) dbv_buf;
   for (i = calc_bytes - 1; i >= 0; i--)
     {
       temp = (uint64_t) buf[i] * multiplier + carry;
       buf[i] = (uint8_t) (temp & 0xFF);
       carry = temp >> 8;
+    }
+
+  /* Restore host-endian word layout */
+  for (i = 0; i < calc_words; i++)
+    {
+      dbv_buf[i] = NUMERIC_BSWAP64 (dbv_buf[i]);
     }
 
   assert (carry == 0);
@@ -5379,6 +5478,14 @@ float_numeric_div_pow10 (uint64_t * dbv_buf, int calc_words, int calc_bytes, uin
     }
 #else
   uint64_t temp = 0;
+
+  /* Align word-internal byte order to big-endian for byte-wise division.
+   * NUMERIC_BSWAP64 is a no-op on big-endian systems. */
+  for (i = 0; i < calc_words; i++)
+    {
+      dbv_buf[i] = NUMERIC_BSWAP64 (dbv_buf[i]);
+    }
+
   uint8_t *byte_ptr = (uint8_t *) dbv_buf;
 
   for (i = 0; i < calc_bytes; i++)
@@ -5386,6 +5493,12 @@ float_numeric_div_pow10 (uint64_t * dbv_buf, int calc_words, int calc_bytes, uin
       temp = (rem10 << 8) | byte_ptr[i];
       byte_ptr[i] = (uint8_t) (temp / divisor);
       rem10 = (uint64_t) (temp % divisor);
+    }
+
+  /* Restore host-endian word layout */
+  for (i = 0; i < calc_words; i++)
+    {
+      dbv_buf[i] = NUMERIC_BSWAP64 (dbv_buf[i]);
     }
 #endif
   return rem10;
@@ -5515,6 +5628,38 @@ float_numeric_operation_compare (const uint64_t * arg1_word, const uint64_t * ar
   return 0;
 }
 
+#if !HAS_INT128_SUPPORT
+/*
+ * knuth_operation_compare() - Compare two knuth-digit buffers (MSB-first)
+ *   return        : 1 if arg1 > arg2, -1 if arg1 < arg2, 0 if equal
+ *   arg1_buf(in)  : First knuth-digit buffer (MSB-first)
+ *   arg2_buf(in)  : Second knuth-digit buffer (MSB-first)
+ *   calc_words(in): Number of knuth digits to compare
+ *
+ * Note: Used only in non-int128 builds where knuth_digit_t == uint32_t.
+ *       In int128 builds knuth_digit_t == uint64_t and
+ *       float_numeric_operation_compare is used directly.
+ */
+static int
+knuth_operation_compare (const knuth_digit_t * arg1_buf, const knuth_digit_t * arg2_buf, int calc_words)
+{
+  int digit;
+
+  for (digit = 0; digit < calc_words; digit++)
+    {
+      if (arg1_buf[digit] > arg2_buf[digit])
+	{
+	  return 1;
+	}
+      else if (arg1_buf[digit] < arg2_buf[digit])
+	{
+	  return -1;
+	}
+    }
+  return 0;
+}
+#endif
+
 /*
  * float_numeric_check_overflow_and_adjust_scale() - Check precision overflow and adjust scale
  *
@@ -5577,7 +5722,6 @@ float_numeric_round_and_pack (uint64_t * word_buf, int calc_words, int calc_nbyt
   int last_digit = 0;
   int drop = 0;
   int round_prec = 0;
-  uint8_t *buf_ptr = (uint8_t *) word_buf;
 
   drop = *result_prec - DB_MAX_NUMERIC_PRECISION;
   if (drop <= 0)
