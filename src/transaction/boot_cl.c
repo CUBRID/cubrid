@@ -84,6 +84,7 @@
 #include "show_meta.h"
 #include "tz_support.h"
 #include "dbtype.h"
+#include "method_callback.hpp"
 #include "object_primitive.h"
 #include "connection_globals.h"
 #include "host_lookup.h"
@@ -1530,6 +1531,7 @@ boot_client_all_finalize (int final_level)
 	  tr_final ();
 	  au_final ();
 	  sm_final ();
+	  method_callback_final ();
 	  ws_final ();
 	  es_final ();
 	  tp_final ();
