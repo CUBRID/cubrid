@@ -8161,6 +8161,11 @@ file_spacedb_fill_one_table (THREAD_ENTRY * thread_p, const OID * class_oid,
     {
       goto exit;
     }
+  if (HFID_IS_NULL (&hfid))
+    {
+      /* VCLASS (view): no hfid, but error_code==NO_ERROR */
+      goto exit;
+    }
 
   class_rep = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &idx_incache);
   if (class_rep == NULL)
