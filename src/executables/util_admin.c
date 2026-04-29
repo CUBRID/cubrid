@@ -253,7 +253,9 @@ static UTIL_ARG_MAP ua_Space_Option_Map[] = {
   {SPACE_SUMMARIZE_S, {ARG_BOOLEAN}, {0}},
   {SPACE_PURPOSE_S, {ARG_BOOLEAN}, {0}},
   {SPACE_TABLE_NAME_S, {ARG_STRING}, {0}},
+#if !defined (NDEBUG)
   {SPACE_INPUT_FILE_S, {ARG_STRING}, {0}},
+#endif /* !NDEBUG */
   {0, {0}, {0}}
 };
 
@@ -265,7 +267,9 @@ static GETOPT_LONG ua_Space_Option[] = {
   {SPACE_SUMMARIZE_L, 0, 0, SPACE_SUMMARIZE_S},
   {SPACE_PURPOSE_L, 0, 0, SPACE_PURPOSE_S},
   {SPACE_TABLE_NAME_L, 1, 0, SPACE_TABLE_NAME_S},
+#if !defined (NDEBUG)
   {SPACE_INPUT_FILE_L, 1, 0, SPACE_INPUT_FILE_S},
+#endif /* !NDEBUG */
   {0, 0, 0, 0}
 };
 
