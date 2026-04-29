@@ -10490,10 +10490,9 @@ netsr_spacedb (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
     {
       ASSERT_ERROR ();
     }
-
-  /* get info from file manager */
-  if (get_files || table_array_length > 0)
+  else if (get_files || table_array_length > 0)
     {
+      /* get info from file manager */
       error_code = file_spacedb (thread_p, filesp, table_array, table_array_length,
                                  &table_sizes, &actual_table_count);
       if (error_code != NO_ERROR)
@@ -10508,10 +10507,20 @@ netsr_spacedb (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
       data_reply_length += OR_INT_SIZE;	/* actual_table_count */
       data_reply_length += or_packed_spacedb_table_sizes_size (table_sizes, actual_table_count);
       data_reply = (char *) malloc (data_reply_length);
-      ptr = or_pack_spacedb (data_reply, all, vols, filesp);
-      ptr = or_pack_int (ptr, actual_table_count);
-      ptr = or_pack_spacedb_table_sizes (ptr, table_sizes, actual_table_count);
-      assert (ptr - data_reply == data_reply_length);
+      if (data_reply == NULL)
+        {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) data_reply_length);
+          error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+          data_reply_length = 0;
+          (void) return_error_to_client (thread_p, rid);
+        }
+      else
+        {
+          ptr = or_pack_spacedb (data_reply, all, vols, filesp);
+          ptr = or_pack_int (ptr, actual_table_count);
+          ptr = or_pack_spacedb_table_sizes (ptr, table_sizes, actual_table_count);
+          assert (ptr - data_reply == data_reply_length);
+        }
     }
   else
     {
