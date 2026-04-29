@@ -263,7 +263,6 @@ struct la_oos_cache_entry
    * master rapidly reuses the same OOS slot inside a SYSOP_END boundary that
    * keeps the cache alive across mini-batches. */
   int tranid;
-
   OID chunk_oid;
   OID next_chunk_oid;
   int length;
