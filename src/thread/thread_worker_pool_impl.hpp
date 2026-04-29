@@ -36,6 +36,7 @@
 // cubrid includes
 #include "perf.hpp"
 #include "resources.hpp"
+#include "system_parameter.h"
 #include "error_manager.h"
 
 // system includes
@@ -309,6 +310,8 @@ namespace cubthread
       virtual void allocate_workers (std::size_t worker_count);
       virtual void initialize_workers ();
 
+      virtual worker *get_available_worker ();
+
       std::vector<std::unique_ptr<worker>> m_workers;
       std::vector<worker *> m_available_workers;
       std::queue<wrapped_task> m_task_queue;
@@ -334,13 +337,13 @@ namespace cubthread
       void initialize () override;
 
       // start thread for current worker
-      void start_thread (void);
+      bool start_thread (void);
       bool has_thread (void);
 
       // assign task to worker; wake a running thread or start a new one.
-      void assign_task (wrapped_task &&task_ref);
+      std::optional<wrapped_task> assign_task (wrapped_task &&task_ref);
       // [optional] used only to prestart pooled threads.
-      void assign_task (void);
+      bool assign_task (void);
 
       // stop execution; if worker has a thread running, returns true
       bool stop_execution (void) override;
@@ -489,11 +492,6 @@ namespace cubthread
   // use it as core count if the task execution must be highly tuned.
   // does not return 0
   std::size_t system_core_count (void);
-
-  // custom worker pool exception handler
-  void wp_handle_system_error (const char *message, const std::system_error &e);
-  template <typename Func>
-  void wp_call_func_throwing_system_error (const char *message, Func &func);
 
   bool wp_is_thread_always_alive_forced ();
   void wp_set_force_thread_always_alive ();
@@ -887,7 +885,7 @@ namespace cubthread
 
     assert (task_p != nullptr);
 
-    worker_impl *refp = nullptr;
+    worker_impl *worker_p = nullptr;
 
     if (!m_parent_pool->is_running ())
       {
@@ -899,15 +897,23 @@ namespace cubthread
     wrapped_task task_ref (task_p);
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
 
-    if (!m_available_workers.empty ())
+    worker_p = static_cast<worker_impl *> (get_available_worker ());
+    if (worker_p)
       {
-	refp = static_cast<worker_impl *> (m_available_workers.back ());
-	m_available_workers.pop_back ();
 	ulock.unlock ();
 
-	assert (refp != nullptr);
+	std::optional<wrapped_task> unexecuted_task = worker_p->assign_task (std::move (task_ref));
+	if (unexecuted_task.has_value ())
+	  {
+	    // failed to start new thread
+	    ulock.lock ();
 
-	refp->assign_task (std::move (task_ref));
+	    // save to queue
+	    m_task_queue.push (std::move (*unexecuted_task));
+
+	    // return the worker back
+	    m_available_workers.push_back (worker_p);
+	  }
       }
     else
       {
@@ -929,8 +935,14 @@ namespace cubthread
 	w = static_cast<worker_impl *> (*it);
 	if (!w->has_thread ())
 	  {
-	    w->assign_task ();
-	    it = m_available_workers.erase (it);
+	    if (w->assign_task ())
+	      {
+		it = m_available_workers.erase (it);
+	      }
+	    else
+	      {
+		++it;
+	      }
 	  }
 	else
 	  {
@@ -1087,7 +1099,11 @@ namespace cubthread
 
 	    // assign task / start thread
 	    // it will add itself to available workers
-	    static_cast<worker_impl *> (worker.get ())->assign_task ();
+	    if (!static_cast<worker_impl *> (worker.get ())->assign_task ())
+	      {
+		// add to available workers
+		m_available_workers.push_back (worker.get ());
+	      }
 	  }
 	else
 	  {
@@ -1095,6 +1111,37 @@ namespace cubthread
 	    m_available_workers.push_back (worker.get ());
 	  }
       }
+  }
+
+  template <stats_t Stats>
+  typename worker_pool::core::worker *
+  worker_pool_impl<Stats>::core_impl::get_available_worker ()
+  {
+    // must be called holding m_workers_mutex.
+    // internally acquires m_task_mutex via has_thread () — caller must NOT hold m_task_mutex.
+
+    worker *worker_p;
+
+    if (m_available_workers.empty ())
+      {
+	return nullptr;
+      }
+
+    for (auto it = m_available_workers.begin (); it != m_available_workers.end (); it++)
+      {
+	if (static_cast<worker_impl *> (*it)->has_thread ())
+	  {
+	    worker_p = *it;
+	    m_available_workers.erase (it);
+
+	    return worker_p;
+	  }
+      }
+
+    worker_p = m_available_workers.back ();
+    m_available_workers.pop_back ();
+
+    return worker_p;
   }
 
   //////////////////////////////////////////////////////////////////////////
@@ -1125,26 +1172,25 @@ namespace cubthread
   }
 
   template <stats_t Stats>
-  void
+  bool
   worker_pool_impl<Stats>::core_impl::worker_impl::start_thread (void)
   {
+    std::thread thread;
+
     assert (m_has_thread);
 
-    //
-    // the next code tries to help visualizing any system errors that can occur during create or detach in debug
-    // mode
-    //
-    // release will basically be reduced to:
-    // std::thread (&worker::run, this).detach ();
-    //
-
-    std::thread t;
-
-    auto lambda_create = [&] (void) -> void { t = std::thread (&worker_impl::run, this); };
-    auto lambda_detach = [&] (void) -> void { t.detach (); };
-
-    wp_call_func_throwing_system_error ("starting thread", lambda_create);
-    wp_call_func_throwing_system_error ("detaching thread", lambda_detach);
+    try
+      {
+	thread = std::thread (&worker_impl::run, this);
+	thread.detach ();
+      }
+    catch (const std::system_error &e)
+      {
+	// er_set ( ... )
+	er_log_debug (ARG_FILE_LINE, "failed to start the thread: %s\n", e.what ());
+	return false;
+      }
+    return true;
   }
 
   template <stats_t Stats>
@@ -1157,7 +1203,7 @@ namespace cubthread
   }
 
   template <stats_t Stats>
-  void
+  std::optional<typename worker_pool_impl<Stats>::wrapped_task>
   worker_pool_impl<Stats>::core_impl::worker_impl::assign_task (wrapped_task &&task_ref)
   {
     std::unique_lock<std::mutex> ulock (m_task_mutex);
@@ -1169,42 +1215,63 @@ namespace cubthread
 
     if (m_has_thread)
       {
-	// notify waiting thread
-	ulock.unlock (); // mutex is not needed for notify
-	m_task_cv.notify_one ();
-      }
-    else
-      {
-	m_has_thread = true;
 	ulock.unlock ();
 
-	assert (m_context_p == nullptr);
+	// notify waiting thread
+	m_task_cv.notify_one ();
 
-	start_thread ();
+	return std::nullopt;
       }
+
+    assert (!m_has_thread);
+
+    m_has_thread = true;
+
+    ulock.unlock ();
+
+    assert (m_context_p == nullptr);
+
+    if (!start_thread ())
+      {
+	ulock.lock ();
+
+	std::optional<wrapped_task> unexecuted_task (std::in_place, std::move (*m_wrapped_task));
+	m_wrapped_task = std::nullopt;
+
+	m_has_thread = false;
+
+	return unexecuted_task;
+      }
+    return std::nullopt;
   }
 
   template <stats_t Stats>
-  void
+  bool
   worker_pool_impl<Stats>::core_impl::worker_impl::assign_task (void)
   {
     std::unique_lock<std::mutex> ulock (m_task_mutex);
 
     assert (!m_wrapped_task.has_value ());
 
-    if (m_has_thread)
-      {
-	ulock.unlock ();
-      }
-    else
+    if (!m_has_thread)
       {
 	m_has_thread = true;
+
 	ulock.unlock ();
 
 	assert (m_context_p == nullptr);
 
-	start_thread ();
+	if (!start_thread ())
+	  {
+	    ulock.lock ();
+
+	    m_has_thread = false;
+
+	    return false;
+	  }
       }
+
+    return true;
   }
 
   template <stats_t Stats>
@@ -1629,28 +1696,6 @@ namespace cubthread
       {
 	return nullptr;
       }
-  }
-
-  //////////////////////////////////////////////////////////////////////////
-  // base functions
-  //////////////////////////////////////////////////////////////////////////
-
-  template <typename Func>
-  void
-  wp_call_func_throwing_system_error (const char *message, Func &func)
-  {
-#if !defined (NDEBUG)
-    try
-      {
-#endif
-	func ();  // no exception catching on release
-#if !defined (NDEBUG)
-      }
-    catch (const std::system_error &e)
-      {
-	wp_handle_system_error (message, e);
-      }
-#endif
   }
 
 } // namespace cubthread
