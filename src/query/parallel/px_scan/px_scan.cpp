@@ -1312,11 +1312,10 @@ extern "C"
 	return NO_ERROR;
       }
 
-    /* Partitioned class indexes: each partition has its own B-tree.
-     * The leaf-page cursor design reads a single B-tree, so skip
-     * the partitioned parent class. Individual partitions (DB_PARTITION_CLASS)
-     * will get their own scans via partition_prune_spec. */
-    if (spec->pruning_type == DB_PARTITIONED_CLASS)
+    /* Skip the parent partitioned class (curent==NULL signals first call before
+     * qexec_init_next_partition has selected a child). Per-partition reopens carry
+     * pruning_type=DB_PARTITION_CLASS via partition_prune_spec and flow through. */
+    if (spec->curent == nullptr && spec->pruning_type == DB_PARTITIONED_CLASS)
       {
 	return NO_ERROR;
       }
