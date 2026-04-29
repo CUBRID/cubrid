@@ -1227,6 +1227,15 @@ locator_wildcard_name_matches (const LOCATOR_CLASS_COLLECT_CTX * ctx, const char
   return strncmp (name, ctx->prefix, ctx->prefix_len) == 0;
 }
 
+/*
+ * locator_count_class_func () - mht_map_no_key callback that counts user
+ *                               classes matching the optional wildcard prefix.
+ *
+ * return        : always NO_ERROR
+ * thread_p (in) : thread entry (unused)
+ * data (in)     : LOCATOR_CLASSNAME_ENTRY *
+ * args (in/out) : LOCATOR_CLASS_COLLECT_CTX * — ctx->count is incremented per match
+ */
 static int
 locator_count_class_func (THREAD_ENTRY * thread_p, void *data, void *args)
 {
@@ -1241,6 +1250,18 @@ locator_count_class_func (THREAD_ENTRY * thread_p, void *data, void *args)
   return NO_ERROR;
 }
 
+/*
+ * locator_collect_class_func () - mht_map_no_key callback that copies the OID
+ *                                 of each matching user class into ctx->oids.
+ *
+ * return        : always NO_ERROR
+ * thread_p (in) : thread entry (unused)
+ * data (in)     : LOCATOR_CLASSNAME_ENTRY *
+ * args (in/out) : LOCATOR_CLASS_COLLECT_CTX * — ctx->oids must be pre-allocated
+ *                 large enough to hold all matches; ctx->count is the next slot
+ *
+ * Note: Pair with locator_count_class_func — first pass counts, second pass collects.
+ */
 static int
 locator_collect_class_func (THREAD_ENTRY * thread_p, void *data, void *args)
 {

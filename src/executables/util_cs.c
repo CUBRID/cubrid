@@ -902,6 +902,13 @@ error_exit:
 }
 
 
+/*
+ * calc_used_pct () - compute used / alloc as a percentage, guarding division by zero.
+ *
+ * return     : (used / alloc) * 100, or 0.0 if alloc == 0
+ * used (in)  : used count (e.g. pages)
+ * alloc (in) : total allocated count
+ */
 static double
 calc_used_pct (INT64 used, INT64 alloc)
 {

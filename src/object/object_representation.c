@@ -6187,12 +6187,12 @@ or_pack_spacedb (char *ptr, const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols
 }
 
 /*
- * or_pack_spacedb () - TODO: write this comment
+ * or_packed_spacedb_table_sizes_size () - compute the byte size needed to pack
+ *                                         a SPACEDB_TABLE_SIZES_HEADER array.
  *
- * return     : new pointer after packed spacedb_table_size
- * ptr (in)   : TODO
- * table_sizes (in)   : TODO
- * array_length (in)  : TODO
+ * return              : packed size in bytes (0 if input is empty)
+ * table_sizes (in)    : array of per-table size headers
+ * array_length (in)   : number of entries in table_sizes
  */
 int
 or_packed_spacedb_table_sizes_size (const SPACEDB_TABLE_SIZES_HEADER *table_sizes, int array_length)
@@ -6220,12 +6220,13 @@ or_packed_spacedb_table_sizes_size (const SPACEDB_TABLE_SIZES_HEADER *table_size
 }
 
 /*
- * or_pack_spacedb_table_sizes () - TODO: write this comment
+ * or_pack_spacedb_table_sizes () - pack a SPACEDB_TABLE_SIZES_HEADER array
+ *                                  into the wire buffer.
  *
- * return     : new pointer after packed spacedb_table_size
- * ptr (in)   : TODO
- * table_sizes (in)   : TODO
- * array_length (in)  : TODO
+ * return              : new pointer after the packed payload
+ * ptr (in)            : destination buffer pointer
+ * table_sizes (in)    : array of per-table size headers to pack
+ * array_length (in)   : number of entries in table_sizes
  */
 char *
 or_pack_spacedb_table_sizes (char *ptr, const SPACEDB_TABLE_SIZES_HEADER *table_sizes, int array_length)
@@ -6338,12 +6339,18 @@ or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB
 }
 
 /*
- * or_unpack_spacedb_table_sizes () - TODO: write this comment
+ * or_unpack_spacedb_table_sizes () - unpack a SPACEDB_TABLE_SIZES_HEADER array
+ *                                    from the wire buffer.
  *
- * return : TODO
- * ptr (in) : TODO
- * table_sizes (in) : TODO
- * array_length (in) : TODO
+ * return              : new pointer after the unpacked payload, or NULL on error
+ * ptr (in)            : source buffer pointer
+ * table_sizes (out)   : caller-allocated array filled by this function;
+ *                       on success, each entry's `header` is malloc'd and must
+ *                       be freed by the caller. On NULL return, the caller is
+ *                       responsible for freeing any partial allocations.
+ * array_length (in)   : number of entries in table_sizes
+ *
+ * Note: Sets er_set on malloc failure or protocol violation.
  */
 char *
 or_unpack_spacedb_table_sizes (char *ptr, SPACEDB_TABLE_SIZES_HEADER *table_sizes, int array_length)
