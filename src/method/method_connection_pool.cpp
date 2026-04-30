@@ -108,6 +108,33 @@ namespace cubmethod
       }
   }
 
+  void
+  connection_pool::invalidate_idle ()
+  {
+    // Drain the queue under the pool mutex, then close+delete outside.
+    // Under interrupt the rctx is being torn down, so we do not return
+    // these connections to the pool -- closing them now ensures javasp
+    // ExecuteThreads on the peer side terminate (RST via SO_LINGER {1,0})
+    // instead of waiting for ~runtime_context, which may be pinned by a
+    // stuck wait_for_interrupt() drain.
+    std::queue<connection *> drained;
+    {
+      std::unique_lock<std::mutex> ulock (m_mutex);
+      std::swap (drained, m_queue);
+    }
+
+    while (!drained.empty ())
+      {
+	connection *conn = drained.front ();
+	drained.pop ();
+	if (conn != nullptr)
+	  {
+	    conn->invalidate ();
+	    delete conn;
+	  }
+      }
+  }
+
   int
   connection_pool::max_size () const
   {
