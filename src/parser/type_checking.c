@@ -12943,7 +12943,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    db_get_numeric_precision_and_scale (arg1, &precision, &scale, &is_float_numeric);
 
 	    bool is_value_negative = !arg1->domain.numeric_info.is_value_negative;
-	    if (is_value_negative && precision == 1 && arg1->data.num.d.buf[DB_NUMERIC_BUF_SIZE - 1] == 0)
+	    if (is_value_negative && numeric_db_value_is_zero (arg1))
 	      {
 		/* Prevent -0; zero is always treated as positive. */
 		is_value_negative = false;
