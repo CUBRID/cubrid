@@ -12065,13 +12065,33 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
    * without this, "t1@srv1 t1" would be printed as "t1 t1" after server name suppression */
   {
     PT_NODE *s;
-    PT_NODE *spec_list = upd_spec ? upd_spec : into_spec;
+    PT_NODE *spec_list;
+    const char *a_name, *e_name;
+
+    /* for update incuding merge node */
+    spec_list = upd_spec;
     for (s = spec_list; s; s = s->next)
       {
 	if (s->info.spec.range_var && s->info.spec.entity_name && s->info.spec.remote_server_name)
 	  {
-	    const char *a_name = s->info.spec.range_var->info.name.original;
-	    if (a_name && strcasecmp (a_name, s->info.spec.entity_name->info.name.original) == 0)
+	    a_name = s->info.spec.range_var->info.name.original;
+	    e_name = s->info.spec.entity_name->info.name.original;
+	    if (a_name && e_name && strcasecmp (a_name, e_name) == 0)
+	      {
+		s->info.spec.range_var = NULL;
+	      }
+	  }
+      }
+
+    /* for insert incuding merge node */
+    spec_list = into_spec;
+    for (s = spec_list; s; s = s->next)
+      {
+	if (s->info.spec.range_var && s->info.spec.entity_name && s->info.spec.remote_server_name)
+	  {
+	    a_name = s->info.spec.range_var->info.name.original;
+	    e_name = s->info.spec.entity_name->info.name.original;
+	    if (a_name && e_name && strcasecmp (a_name, e_name) == 0)
 	      {
 		s->info.spec.range_var = NULL;
 	      }
