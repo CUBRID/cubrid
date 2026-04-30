@@ -82,30 +82,20 @@ namespace cubmethod
 	return;
       }
 
-    // test connection
-    if (kill == false && claimed->is_valid () == true)
+    // Push back to pool only if reusable: caller did not request kill,
+    // socket is still valid, and pool has room.
+    if (!kill && claimed->is_valid () && (int) m_queue.size () < m_pool_size)
       {
-	if ((int) m_queue.size () < m_pool_size)
-	  {
-	    m_queue.push (claimed);
-	    return;
-	  }
-	else
-	  {
-	    // overflow
-	    kill = true;
-	  }
+	m_queue.push (claimed);
+	return;
       }
 
-    if (kill)
-      {
-	assert (claimed != nullptr);
-	if (claimed)
-	  {
-	    delete claimed;
-	    claimed = nullptr;
-	  }
-      }
+    // Otherwise destroy. Covers kill=true, an already-invalidated
+    // connection (e.g. concurrent set_interrupt closed it), and pool
+    // overflow. The previous shape fell through silently when
+    // kill=false && !is_valid(), leaking the connection object.
+    delete claimed;
+    claimed = nullptr;
   }
 
   void
