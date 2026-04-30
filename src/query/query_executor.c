@@ -2485,10 +2485,8 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 
 	if (xasl->curr_spec)
 	  {
-	    SCAN_ID *s_id = &xasl->curr_spec->s_id;
-
-	    scan_end_scan (thread_p, s_id);
-	    scan_close_scan (thread_p, s_id);
+	    scan_end_scan (thread_p, &xasl->curr_spec->s_id);
+	    scan_close_scan (thread_p, &xasl->curr_spec->s_id);
 	  }
 	if (xasl->merge_spec)
 	  {
