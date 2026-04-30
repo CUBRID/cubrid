@@ -1930,7 +1930,7 @@ static HASHJOIN_STATUS
 hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * single_context)
 {
   QFILE_LIST_ID *outer_list_id, *inner_list_id;
-  INT64 min_page_cnt;
+  INT64 max_page_cnt;
 
   parallel_query::worker_manager * px_worker_manager = NULL;
   UINT64 *px_worker_stats = NULL;
@@ -1953,11 +1953,11 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
   static const size_t stats_size = perfmon_get_number_of_statistic_values () * sizeof (UINT64);
 
   /* check if pages are enough for parallel-thread hash join */
-  min_page_cnt =
-    (outer_list_id->page_cnt < inner_list_id->page_cnt) ? outer_list_id->page_cnt : inner_list_id->page_cnt;
-  assert (min_page_cnt >= 0);
+  max_page_cnt =
+    (outer_list_id->page_cnt > inner_list_id->page_cnt) ? outer_list_id->page_cnt : inner_list_id->page_cnt;
+  assert (max_page_cnt >= 0);
 
-  UINT32 degree = parallel_query::compute_parallel_degree (parallel_query::parallel_type::HASH_JOIN, min_page_cnt,
+  UINT32 degree = parallel_query::compute_parallel_degree (parallel_query::parallel_type::HASH_JOIN, max_page_cnt,
 							   manager->num_parallel_threads);
   if (degree < 2)
     {
