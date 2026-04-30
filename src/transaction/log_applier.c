@@ -687,6 +687,21 @@ struct la_debug_progress_stats
   UINT64 worker_empty_commit_usec_total[LA_APPLY_WORKER_COUNT];
   UINT64 worker_nonempty_commit_count_total[LA_APPLY_WORKER_COUNT];
   UINT64 worker_nonempty_commit_usec_total[LA_APPLY_WORKER_COUNT];
+  /* Per-worker count of replication items applied (insert+update+delete). Used to
+   * compute reader-vs-worker throughput leg-by-leg in the progress log. */
+  UINT64 worker_items_applied_total[LA_APPLY_WORKER_COUNT];
+  /* WAL record type histogram observed at reader. Indexed by LOG_RECTYPE; helps
+   * verify what fraction of WAL the reader actually pays parsing/dispatch cost on. */
+  UINT64 reader_rectype_count_total[LOG_LARGER_LOGREC_TYPE];
+  UINT64 reader_rectype_usec_total[LOG_LARGER_LOGREC_TYPE];
+  /* Per-worker last dispatch wall-clock timestamp. Lets us emit elapsed_since_last
+   * at every dispatch, so the empirical 14-sec inter-dispatch cadence is directly
+   * visible without post-hoc grepping. */
+  struct timeval reader_last_dispatch_tv[LA_APPLY_WORKER_COUNT];
+  /* Reader page boundary count + last snapshot for progress-window deltas. */
+  UINT64 reader_page_boundary_total;
+  UINT64 last_reader_page_boundary_total;
+  UINT64 last_worker_items_applied_total[LA_APPLY_WORKER_COUNT];
   UINT64 last_worker_dequeue_total[LA_APPLY_WORKER_COUNT];
   UINT64 last_worker_complete_total[LA_APPLY_WORKER_COUNT];
   UINT64 last_worker_flush_count_total[LA_APPLY_WORKER_COUNT];
@@ -929,6 +944,7 @@ static void la_debug_note_commit_seen (int tranid, LOG_LSA * commit_lsa, int wor
 static void la_debug_note_flush_end (int worker_idx, int tranid, int num_repl_objs, INT64 elapsed_msec, int error,
 				     LA_WORKER_DEBUG_STAGE flush_stage);
 static void la_debug_note_retire_done (const LA_APPLY_RESULT * result);
+static void la_debug_note_worker_apply_item (int worker_idx);
 static void la_debug_maybe_log_progress (void);
 #endif /* !NDEBUG */
 static void *la_apply_worker_main (void *arg);
@@ -1194,6 +1210,31 @@ la_enqueue_apply_task (LA_APPLY_WORKER * worker, const LA_APPLY_TASK * task)
 		    "reader enqueued worker[%d] trid=%d rectype=%d commit_lsa=%lld|%d apply=%p qcount=%d->%d\n",
 		    worker_idx, task->tranid, task->rectype, (long long) task->commit_lsa.pageid,
 		    (int) task->commit_lsa.offset, (void *) task->apply, prev_count, worker->queue.count);
+#if !defined (NDEBUG)
+      {
+	/* Inter-dispatch interval per worker (E): elapsed_since_last per worker tells us
+	 * directly how long this worker waited between consecutive dispatches. The
+	 * empirical 14-sec cadence is then visible in the log without post-hoc grepping. */
+	struct timeval _disp_now;
+	UINT64 _gap_usec = 0;
+	gettimeofday (&_disp_now, NULL);
+	if (la_Debug_progress.reader_last_dispatch_tv[worker_idx].tv_sec != 0
+	    || la_Debug_progress.reader_last_dispatch_tv[worker_idx].tv_usec != 0)
+	  {
+	    _gap_usec =
+	      (UINT64) (((INT64) _disp_now.tv_sec
+			 - (INT64) la_Debug_progress.reader_last_dispatch_tv[worker_idx].tv_sec) * 1000000LL
+			+ ((INT64) _disp_now.tv_usec
+			   - (INT64) la_Debug_progress.reader_last_dispatch_tv[worker_idx].tv_usec));
+	  }
+	er_log_debug (ARG_FILE_LINE,
+		      "reader_dispatch_to_worker worker[%d] trid=%d rectype=%d commit_lsa=%lld|%d "
+		      "elapsed_since_last_usec=%llu new_qcount=%d prev_qcount=%d\n",
+		      worker_idx, task->tranid, task->rectype, (long long) task->commit_lsa.pageid,
+		      (int) task->commit_lsa.offset, (unsigned long long) _gap_usec, worker->queue.count, prev_count);
+	la_Debug_progress.reader_last_dispatch_tv[worker_idx] = _disp_now;
+      }
+#endif /* !NDEBUG */
       pthread_cond_signal (&worker->cond);
     }
 
@@ -2220,6 +2261,51 @@ la_debug_note_retire_done (const LA_APPLY_RESULT * result)
 		result->stats.delete_counter, result->stats.fail_counter);
 }
 
+/*
+ * la_debug_note_worker_apply_item - per-worker apply rate accounting (J / L).
+ * Called from la_apply_insert_log/update_log/delete_log success path. Increments
+ * the worker's applied-item counter and emits a rate checkpoint every N items so
+ * that reader rate (la_set_repl_log) and worker rate are directly comparable.
+ */
+static void
+la_debug_note_worker_apply_item (int worker_idx)
+{
+  if (worker_idx < 0 || worker_idx >= LA_APPLY_WORKER_COUNT)
+    {
+      return;
+    }
+
+  ATOMIC_INC_64 (&la_Debug_progress.worker_items_applied_total[worker_idx], 1);
+
+  static UINT64 la_worker_rate_count_at_last_ckpt[LA_APPLY_WORKER_COUNT] = { 0 };
+  static struct timeval la_worker_rate_tv_at_last_ckpt[LA_APPLY_WORKER_COUNT] = { { 0, 0 } };
+  const UINT64 LA_WORKER_RATE_CHECKPOINT_INTERVAL = 10000;
+
+  UINT64 cur = la_Debug_progress.worker_items_applied_total[worker_idx];
+  if ((cur % LA_WORKER_RATE_CHECKPOINT_INTERVAL) == 0)
+    {
+      struct timeval _now;
+      gettimeofday (&_now, NULL);
+      UINT64 _elapsed_usec = 0;
+      if (la_worker_rate_tv_at_last_ckpt[worker_idx].tv_sec != 0
+	  || la_worker_rate_tv_at_last_ckpt[worker_idx].tv_usec != 0)
+	{
+	  _elapsed_usec =
+	    (UINT64) (((INT64) _now.tv_sec
+		       - (INT64) la_worker_rate_tv_at_last_ckpt[worker_idx].tv_sec) * 1000000LL
+		      + ((INT64) _now.tv_usec - (INT64) la_worker_rate_tv_at_last_ckpt[worker_idx].tv_usec));
+	}
+      UINT64 _delta = cur - la_worker_rate_count_at_last_ckpt[worker_idx];
+      UINT64 _rate = (_elapsed_usec > 0) ? (_delta * 1000000ULL / _elapsed_usec) : 0;
+      er_log_debug (ARG_FILE_LINE,
+		    "worker_rate_checkpoint worker[%d] items=%llu delta=%llu elapsed_usec=%llu rate_per_sec=%llu\n",
+		    worker_idx, (unsigned long long) cur, (unsigned long long) _delta,
+		    (unsigned long long) _elapsed_usec, (unsigned long long) _rate);
+      la_worker_rate_count_at_last_ckpt[worker_idx] = cur;
+      la_worker_rate_tv_at_last_ckpt[worker_idx] = _now;
+    }
+}
+
 static void
 la_debug_maybe_log_progress (void)
 {
@@ -2434,6 +2520,74 @@ la_debug_maybe_log_progress (void)
 		(unsigned long long) head_blocker_count_delta[LA_HEAD_BLOCKER_STATE_PENDING_UNKNOWN],
 		(unsigned long long) head_blocker_usec_delta[LA_HEAD_BLOCKER_STATE_PENDING_UNKNOWN]);
 
+  /* Reader vs worker lead/lag (L). Compares reader's cumulative item production against
+   * the sum of all workers' applied-item counts in the same window. Positive lead means
+   * reader is ahead (workers behind). Negative means reader is the bottleneck. The
+   * inflection point of this number across the run is the cleanest single signal for
+   * "did parallelizing the reader change the bottleneck". */
+  {
+    UINT64 reader_items_total = la_Debug_progress.repl_items_seen_total;
+    UINT64 last_reader_items_total = la_Debug_progress.last_repl_items_seen_total;
+    UINT64 worker_items_total = 0;
+    UINT64 last_worker_items_total = 0;
+    for (i = 0; i < LA_APPLY_WORKER_COUNT; i++)
+      {
+	worker_items_total += la_Debug_progress.worker_items_applied_total[i];
+	last_worker_items_total += la_Debug_progress.last_worker_items_applied_total[i];
+      }
+    UINT64 reader_delta = reader_items_total - last_reader_items_total;
+    UINT64 worker_delta = worker_items_total - last_worker_items_total;
+    UINT64 reader_rate =
+      (elapsed_msec > 0) ? ((reader_delta * 1000ULL) / (UINT64) elapsed_msec) : 0;
+    UINT64 worker_rate =
+      (elapsed_msec > 0) ? ((worker_delta * 1000ULL) / (UINT64) elapsed_msec) : 0;
+    INT64 reader_lead_items = (INT64) reader_items_total - (INT64) worker_items_total;
+    INT64 reader_lead_msec = (worker_rate > 0) ? (reader_lead_items * 1000LL / (INT64) worker_rate) : 0;
+    er_log_debug (ARG_FILE_LINE,
+		  "reader_vs_worker reader_items=%llu reader_delta=%llu reader_rate_per_sec=%llu "
+		  "worker_items_total=%llu worker_delta=%llu worker_rate_per_sec=%llu "
+		  "reader_lead_items=%lld reader_lead_msec=%lld\n",
+		  (unsigned long long) reader_items_total, (unsigned long long) reader_delta,
+		  (unsigned long long) reader_rate, (unsigned long long) worker_items_total,
+		  (unsigned long long) worker_delta, (unsigned long long) worker_rate,
+		  (long long) reader_lead_items, (long long) reader_lead_msec);
+  }
+
+  /* Rectype histogram dump (C). Cumulative counts and usec per LOG_RECTYPE. Volume kept
+   * low by emitting only types whose count grew this window. */
+  {
+    int _rt;
+    char _buf[1024];
+    int _used = 0;
+    bool _any = false;
+    for (_rt = 0; _rt < LOG_LARGER_LOGREC_TYPE; _rt++)
+      {
+	UINT64 _cnt = la_Debug_progress.reader_rectype_count_total[_rt];
+	UINT64 _usec = la_Debug_progress.reader_rectype_usec_total[_rt];
+	if (_cnt == 0)
+	  {
+	    continue;
+	  }
+	int _written =
+	  snprintf (_buf + _used, (_used < (int) sizeof (_buf)) ? (sizeof (_buf) - _used) : 0,
+		    "%s%d:%llu/%lluus", _any ? "," : "", _rt, (unsigned long long) _cnt,
+		    (unsigned long long) _usec);
+	if (_written > 0)
+	  {
+	    _used += _written;
+	    if (_used >= (int) sizeof (_buf) - 1)
+	      {
+		break;
+	      }
+	  }
+	_any = true;
+      }
+    if (_any)
+      {
+	er_log_debug (ARG_FILE_LINE, "reader_rectype_dist (cumulative type:count/usec) %s\n", _buf);
+      }
+  }
+
   for (i = 0; i < LA_APPLY_WORKER_COUNT; i++)
     {
       UINT64 dequeue_delta = la_Debug_progress.worker_dequeue_total[i] - la_Debug_progress.last_worker_dequeue_total[i];
@@ -2567,6 +2721,7 @@ la_debug_maybe_log_progress (void)
 	la_Debug_progress.worker_nonempty_commit_count_total[i];
       la_Debug_progress.last_worker_nonempty_commit_usec_total[i] =
 	la_Debug_progress.worker_nonempty_commit_usec_total[i];
+      la_Debug_progress.last_worker_items_applied_total[i] = la_Debug_progress.worker_items_applied_total[i];
     }
 
   la_Debug_progress.last_reader_io_usec_total = la_Debug_progress.reader_io_usec_total;
@@ -5891,6 +6046,40 @@ la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa)
 
   la_add_repl_item (apply, item);
 
+#if !defined (NDEBUG)
+  /* Reader rate checkpoint (J): every N items added, emit one line with the rate
+   * since the last checkpoint. Compared against worker_rate_checkpoint of each
+   * active worker, this directly answers whether reader or worker is the bottleneck. */
+  {
+    static UINT64 la_reader_rate_count_at_last_ckpt = 0;
+    static struct timeval la_reader_rate_tv_at_last_ckpt = { 0, 0 };
+    static UINT64 la_reader_rate_count = 0;
+    const UINT64 LA_READER_RATE_CHECKPOINT_INTERVAL = 10000;
+
+    la_reader_rate_count++;
+    if ((la_reader_rate_count % LA_READER_RATE_CHECKPOINT_INTERVAL) == 0)
+      {
+	struct timeval _now;
+	gettimeofday (&_now, NULL);
+	UINT64 _elapsed_usec = 0;
+	if (la_reader_rate_tv_at_last_ckpt.tv_sec != 0 || la_reader_rate_tv_at_last_ckpt.tv_usec != 0)
+	  {
+	    _elapsed_usec =
+	      (UINT64) (((INT64) _now.tv_sec - (INT64) la_reader_rate_tv_at_last_ckpt.tv_sec) * 1000000LL
+			+ ((INT64) _now.tv_usec - (INT64) la_reader_rate_tv_at_last_ckpt.tv_usec));
+	  }
+	UINT64 _delta_count = la_reader_rate_count - la_reader_rate_count_at_last_ckpt;
+	UINT64 _rate_per_sec = (_elapsed_usec > 0) ? (_delta_count * 1000000ULL / _elapsed_usec) : 0;
+	er_log_debug (ARG_FILE_LINE,
+		      "reader_rate_checkpoint items=%llu delta=%llu elapsed_usec=%llu rate_per_sec=%llu\n",
+		      (unsigned long long) la_reader_rate_count, (unsigned long long) _delta_count,
+		      (unsigned long long) _elapsed_usec, (unsigned long long) _rate_per_sec);
+	la_reader_rate_count_at_last_ckpt = la_reader_rate_count;
+	la_reader_rate_tv_at_last_ckpt = _now;
+      }
+  }
+#endif /* !NDEBUG */
+
   return NO_ERROR;
 }
 
@@ -7514,6 +7703,9 @@ end:
       snprintf (stats->last_class_name, sizeof (stats->last_class_name), "%s", item->class_name);
       stats->delete_counter++;
       stats->num_unflushed++;
+#if !defined (NDEBUG)
+      la_debug_note_worker_apply_item (context->worker_idx);
+#endif /* !NDEBUG */
       LA_DEBUG_LOG (ARG_FILE_LINE,
 		    "threshold_flush delete BEGIN class=%s unflushed=%d pending=%d\n",
 		    item->class_name, stats->num_unflushed, __gv_loc_repl.ws_get_repl_obj_count ());
@@ -7704,6 +7896,9 @@ end:
       snprintf (stats->last_class_name, sizeof (stats->last_class_name), "%s", item->class_name);
       stats->update_counter++;
       stats->num_unflushed++;
+#if !defined (NDEBUG)
+      la_debug_note_worker_apply_item (context->worker_idx);
+#endif /* !NDEBUG */
       LA_DEBUG_LOG (ARG_FILE_LINE,
 		    "threshold_flush update BEGIN class=%s unflushed=%d pending=%d\n",
 		    item->class_name, stats->num_unflushed, __gv_loc_repl.ws_get_repl_obj_count ());
@@ -7954,6 +8149,9 @@ end:
       snprintf (stats->last_class_name, sizeof (stats->last_class_name), "%s", item->class_name);
       stats->insert_counter++;
       stats->num_unflushed++;
+#if !defined (NDEBUG)
+      la_debug_note_worker_apply_item (context->worker_idx);
+#endif /* !NDEBUG */
       LA_DEBUG_LOG (ARG_FILE_LINE,
 		    "worker[idx=%d tid=%lu tran=%d] threshold_flush insert BEGIN class=%s key=%s "
 		    "unflushed=%d pending=%d\n",
@@ -8847,6 +9045,120 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
   LOG_REC_HA_SERVER_STATE *ha_server_state;
   char buffer[256];
   time_t eot_time;
+
+#if !defined (NDEBUG)
+  /* Per-trid run length trace. Emits one line whenever the trid the reader is currently
+   * scanning changes, with the previous run's record count and start LSA. Lets us see
+   * directly whether master WAL clusters records per transaction (large run counts) or
+   * interleaves them at record grain (small run counts). */
+  static int la_trid_trace_last_trid = NULL_TRANID;
+  static UINT64 la_trid_trace_run_count = 0;
+  static LOG_LSA la_trid_trace_run_first_lsa = LSA_INITIALIZER;
+
+  if (lrec->trid != la_trid_trace_last_trid)
+    {
+      if (la_trid_trace_run_count > 0)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"reader_trid_run prev_trid=%d count=%llu first_lsa=%lld|%d -> next_trid=%d at_lsa=%lld|%d rectype=%d\n",
+			la_trid_trace_last_trid, (unsigned long long) la_trid_trace_run_count,
+			(long long) la_trid_trace_run_first_lsa.pageid, (int) la_trid_trace_run_first_lsa.offset,
+			lrec->trid, (long long) final->pageid, (int) final->offset, lrec->type);
+	}
+      la_trid_trace_last_trid = lrec->trid;
+      la_trid_trace_run_count = 1;
+      LSA_COPY (&la_trid_trace_run_first_lsa, final);
+    }
+  else
+    {
+      la_trid_trace_run_count++;
+    }
+
+  /* Per-page boundary trace (A) + per-page trid distribution (I).
+   * Tracks unique trids and dominant trid share within each WAL page the reader scans.
+   * On pageid change, dump the previous page's distribution and reset. */
+#define LA_PAGE_TRID_TRACE_SLOTS 16
+  static LOG_PAGEID la_page_trace_pageid = NULL_PAGEID;
+  static int la_page_trace_unique_trids[LA_PAGE_TRID_TRACE_SLOTS];
+  static UINT64 la_page_trace_unique_counts[LA_PAGE_TRID_TRACE_SLOTS];
+  static int la_page_trace_unique_n = 0;
+  static UINT64 la_page_trace_total = 0;
+  static bool la_page_trace_overflow = false;
+
+  if (final->pageid != la_page_trace_pageid)
+    {
+      if (la_page_trace_pageid != NULL_PAGEID)
+	{
+	  int dominant_idx = 0;
+	  for (int _i = 1; _i < la_page_trace_unique_n; _i++)
+	    {
+	      if (la_page_trace_unique_counts[_i] > la_page_trace_unique_counts[dominant_idx])
+		{
+		  dominant_idx = _i;
+		}
+	    }
+	  unsigned int dominant_share_pct =
+	    (la_page_trace_total > 0)
+	    ? (unsigned int) ((la_page_trace_unique_counts[dominant_idx] * 100ULL) / la_page_trace_total) : 0;
+	  er_log_debug (ARG_FILE_LINE,
+			"reader_page_done pageid=%lld unique_trids=%d records=%llu dominant_trid=%d dominant_share=%u%% overflow=%d\n",
+			(long long) la_page_trace_pageid, la_page_trace_unique_n,
+			(unsigned long long) la_page_trace_total,
+			(la_page_trace_unique_n > 0) ? la_page_trace_unique_trids[dominant_idx] : NULL_TRANID,
+			dominant_share_pct, (int) la_page_trace_overflow);
+	}
+      la_page_trace_pageid = final->pageid;
+      la_page_trace_unique_n = 0;
+      la_page_trace_total = 0;
+      la_page_trace_overflow = false;
+      ATOMIC_INC_64 (&la_Debug_progress.reader_page_boundary_total, 1);
+      er_log_debug (ARG_FILE_LINE,
+		    "reader_page_enter pageid=%lld trid=%d rectype=%d page_boundary_total=%llu\n",
+		    (long long) final->pageid, lrec->trid, lrec->type,
+		    (unsigned long long) la_Debug_progress.reader_page_boundary_total);
+    }
+
+  /* per-page trid bookkeeping */
+  {
+    int _slot = -1;
+    for (int _i = 0; _i < la_page_trace_unique_n; _i++)
+      {
+	if (la_page_trace_unique_trids[_i] == lrec->trid)
+	  {
+	    _slot = _i;
+	    break;
+	  }
+      }
+    if (_slot < 0)
+      {
+	if (la_page_trace_unique_n < LA_PAGE_TRID_TRACE_SLOTS)
+	  {
+	    la_page_trace_unique_trids[la_page_trace_unique_n] = lrec->trid;
+	    la_page_trace_unique_counts[la_page_trace_unique_n] = 1;
+	    la_page_trace_unique_n++;
+	  }
+	else
+	  {
+	    /* Out-of-slot trid: ignore for distribution but mark overflow so the
+	     * dump line is honest about underestimating uniqueness. */
+	    la_page_trace_overflow = true;
+	  }
+      }
+    else
+      {
+	la_page_trace_unique_counts[_slot]++;
+      }
+    la_page_trace_total++;
+  }
+
+  /* Rectype histogram (C). Per-rectype usec (D) is accumulated by the caller's
+   * timing block at the call site, since this function has many early returns
+   * that would otherwise be missed. */
+  if (lrec->type >= 0 && lrec->type < LOG_LARGER_LOGREC_TYPE)
+    {
+      ATOMIC_INC_64 (&la_Debug_progress.reader_rectype_count_total[lrec->type], 1);
+    }
+#endif /* !NDEBUG */
 
   if (lrec->trid == NULL_TRANID || LSA_GT (&lrec->prev_tranlsa, final) || LSA_GT (&lrec->back_lsa, final))
     {
@@ -11373,6 +11685,10 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		_lrec_elapsed = (UINT64) (((INT64) _lrec_end.tv_sec - (INT64) _lrec_begin.tv_sec) * 1000000LL
 					  + ((INT64) _lrec_end.tv_usec - (INT64) _lrec_begin.tv_usec));
 		la_Debug_progress.reader_record_proc_usec_total += _lrec_elapsed;
+		if (_lrec_type >= 0 && _lrec_type < LOG_LARGER_LOGREC_TYPE)
+		  {
+		    la_Debug_progress.reader_rectype_usec_total[_lrec_type] += _lrec_elapsed;
+		  }
 		switch (_lrec_type)
 		  {
 		  case LOG_REPLICATION_DATA:
