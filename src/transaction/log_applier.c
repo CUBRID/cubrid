@@ -7920,6 +7920,17 @@ la_shutdown (void)
       free_and_init (la_Info.cache_pb);
     }
 
+  /* OOS sql.log cache: drop entries via la_clear_oos_cache (mht_clear keeps
+   * the bucket array alive across transactions) and then release the table
+   * itself.  Without this destroy path, the bucket array would leak ~8KB on
+   * applier shutdown / HA failover. */
+  la_clear_oos_cache ();
+  if (la_oos_cache_hash != NULL)
+    {
+      mht_destroy (la_oos_cache_hash);
+      la_oos_cache_hash = NULL;
+    }
+
   if (la_Info.repl_lists)
     {
       for (i = 0; i < la_Info.repl_cnt; i++)
