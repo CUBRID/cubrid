@@ -439,9 +439,10 @@ LA_RECDES_POOL la_recdes_pool;
  * head OID (chunk_index=0).  Linked list owns memory; hash gives O(1) lookup.
  * Lazily allocated; cleared (not destroyed) on tx boundaries so the bucket
  * array survives.  Single-threaded — see CBRD-26618 TODO below for parallel
- * applylogdb migration plan. */
+ * applylogdb migration plan.  Cache miss is treated as an invariant
+ * violation: la_resolve_oos_value_for_sql_log returns ER_FAILED so the
+ * operator sees a loud error rather than a silently synthesized placeholder. */
 #define LA_OOS_CACHE_HASH_SIZE  1024
-#define LA_OOS_MISSING_MARKER   "<<OOS_CHUNK_MISSING>>"
 
 /* TODO(CBRD-26618): when parallel applylogdb is introduced, migrate these
  * globals to per-LA_APPLY (or per-worker) state.  The tranid filter alone is
@@ -535,7 +536,6 @@ static int la_get_raw_offset_internal (OR_BUF * buf, int *error, int offset_size
 static int la_cache_oos_value (const OID * head_oid, const char *payload, int payload_length);
 static LA_OOS_CACHE_ENTRY *la_lookup_oos_value (const OID * head_oid);
 static void la_clear_oos_cache (void);
-static int la_make_oos_placeholder (DB_VALUE * value, SM_ATTRIBUTE * att, DB_BIGINT oos_length);
 static int la_resolve_oos_value_for_sql_log (const OID * head_oid, DB_BIGINT oos_length, SM_ATTRIBUTE * att,
 					     DB_VALUE * value);
 static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, DB_VALUE * key,
@@ -3825,79 +3825,14 @@ la_cache_oos_value (const OID * head_oid, const char *payload, int payload_lengt
 }
 
 /*
- * la_make_oos_placeholder () - Last-resort fallback when the OOS value is
- *   missing from the cache.  Produces a varchar of the inline OOS length
- *   prefixed with LA_OOS_MISSING_MARKER (visible in operator grep) and
- *   space-padded so sql.log size accounting / rotation stays correct.
- *
- *   Refuses (ER_FAILED) when (a) attribute is non-string — OOS is currently
- *   string-only, so non-string here means corruption — or (b) length is
- *   shorter than the marker (a partial marker defeats grep visibility).
- */
-static int
-la_make_oos_placeholder (DB_VALUE * value, SM_ATTRIBUTE * att, DB_BIGINT oos_length)
-{
-  DB_TYPE type;
-  int string_length;
-  int precision;
-  int marker_len = (int) (sizeof (LA_OOS_MISSING_MARKER) - 1);
-  char *string;
-
-  assert (value != NULL && att != NULL);
-
-  type = TP_DOMAIN_TYPE (att->domain);
-  if (type != DB_TYPE_STRING)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
-	      "cannot synthesize non-string OOS data for SQL log");
-      return ER_FAILED;
-    }
-
-  if (oos_length <= 0 || oos_length > INT_MAX)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "invalid OOS data length for SQL log");
-      return ER_FAILED;
-    }
-
-  string_length = (int) oos_length;
-  precision = (att->domain != NULL) ? att->domain->precision : DB_MAX_VARCHAR_PRECISION;
-  if (precision > 0 && precision < string_length)
-    {
-      string_length = precision;
-    }
-
-  if (string_length < marker_len)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
-	      "OOS placeholder shorter than missing-marker sentinel");
-      return ER_FAILED;
-    }
-
-  string = (char *) db_private_alloc (NULL, string_length + 1);
-  if (string == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, string_length + 1);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  memcpy (string, LA_OOS_MISSING_MARKER, marker_len);
-  memset (string + marker_len, ' ', string_length - marker_len);
-  string[string_length] = '\0';
-
-  er_log_debug (ARG_FILE_LINE,
-		"la_make_oos_placeholder: OOS value missing from SQL log cache; "
-		"synthesized %d-byte placeholder", string_length);
-
-  db_make_varchar (value, precision, string, string_length, TP_DOMAIN_CODESET (att->domain),
-		   TP_DOMAIN_COLLATION (att->domain));
-  value->need_clear = true;
-  return NO_ERROR;
-}
-
-/*
- * la_resolve_oos_value_for_sql_log () - Cache lookup → readval, with
- *   placeholder synthesis on miss.  Used by la_get_current() for each OOS
- *   column when emitting INSERT/UPDATE sql.log lines.
+ * la_resolve_oos_value_for_sql_log () - Cache lookup → readval.  Used by
+ *   la_get_current() for each OOS column when emitting INSERT/UPDATE sql.log
+ *   lines.  A miss is treated as an invariant violation (eager assembly +
+ *   tranid scope make a hit guaranteed in normal operation) and surfaces as
+ *   ER_FAILED so an operator sees a loud signal in the error log instead of
+ *   silently synthesized data.  The caller (la_apply_insert_log) already
+ *   isolates this error from row replication via er_stack_push / pop +
+ *   la_set_error_sql_log.
  */
 static int
 la_resolve_oos_value_for_sql_log (const OID * head_oid, DB_BIGINT oos_length, SM_ATTRIBUTE * att, DB_VALUE * value)
@@ -3906,13 +3841,21 @@ la_resolve_oos_value_for_sql_log (const OID * head_oid, DB_BIGINT oos_length, SM
   OR_BUF buf;
 
   entry = la_lookup_oos_value (head_oid);
-  if (entry != NULL)
+  if (entry == NULL)
     {
-      or_init (&buf, entry->data, entry->length);
-      return att->type->data_readval (&buf, value, att->domain, entry->length, true, NULL, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "OOS value missing from SQL log cache");
+      return ER_FAILED;
     }
 
-  return la_make_oos_placeholder (value, att, oos_length);
+  if ((DB_BIGINT) entry->length != oos_length)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      "OOS cached value length mismatches inline length");
+      return ER_FAILED;
+    }
+
+  or_init (&buf, entry->data, entry->length);
+  return att->type->data_readval (&buf, value, att->domain, entry->length, true, NULL, 0);
 }
 
 /*
