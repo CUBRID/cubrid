@@ -456,8 +456,12 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
   TP_DOMAIN *result_domain = NULL;
   bool has_user_format;
 
+  // The default expression must be evaluated only after server information (SI_SYS_DATETIME) is received
+  assert (!DB_IS_NULL (&parser->sys_epochtime));
+  assert (!DB_IS_NULL (&parser->sys_datetime));
+
   assert (smclass != NULL);
-  if (eval_mode == DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY)
+  if (eval_mode == DEFAULT_EXPR_EVAL_BY_ROW_ONLY)
     {
       assert (otemplate != NULL);
     }
@@ -482,47 +486,26 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
 	  switch (default_expr_type)
 	    {
 	    case DB_DEFAULT_SYSTIME:
-	      if (DB_IS_NULL (&parser->sys_datetime))
-		{
-		  db_make_null (&default_value);
-		}
-	      else
-		{
-		  db_datetime_decode ((DB_DATETIME *) db_get_datetime (&parser->sys_datetime), &month, &day, &year,
-				      &hour, &minute, &second, &millisecond);
-		  db_make_time (&default_value, hour, minute, second);
-		}
+	      db_datetime_decode ((DB_DATETIME *) db_get_datetime (&parser->sys_datetime), &month, &day, &year,
+				  &hour, &minute, &second, &millisecond);
+	      db_make_time (&default_value, hour, minute, second);
 	      break;
 	    case DB_DEFAULT_CURRENTTIME:
-	      if (DB_IS_NULL (&parser->sys_datetime))
-		{
-		  db_make_null (&default_value);
-		}
-	      else
-		{
-		  DB_TIME cur_time, db_time;
-		  const char *t_source, *t_dest;
-		  DB_DATETIME *datetime;
+	      DB_TIME cur_time, db_time;
+	      const char *t_source, *t_dest;
+	      DB_DATETIME *datetime;
 
-		  datetime = db_get_datetime (&parser->sys_datetime);
-		  t_source = tz_get_system_timezone ();
-		  t_dest = tz_get_session_local_timezone ();
-		  db_time = datetime->time / 1000;
-		  error = tz_conv_tz_time_w_zone_name (&db_time, t_source, strlen (t_source), t_dest,
-						       strlen (t_dest), &cur_time);
-		  db_value_put_encoded_time (&default_value, &cur_time);
-		}
+	      datetime = db_get_datetime (&parser->sys_datetime);
+	      t_source = tz_get_system_timezone ();
+	      t_dest = tz_get_session_local_timezone ();
+	      db_time = datetime->time / 1000;
+	      error = tz_conv_tz_time_w_zone_name (&db_time, t_source, strlen (t_source), t_dest,
+						   strlen (t_dest), &cur_time);
+	      db_value_put_encoded_time (&default_value, &cur_time);
 	      break;
 	    case DB_DEFAULT_SYSDATE:
-	      if (DB_IS_NULL (&parser->sys_datetime))
-		{
-		  db_make_null (&default_value);
-		}
-	      else
-		{
-		  datetime = db_get_datetime (&parser->sys_datetime);
-		  error = db_value_put_encoded_date (&default_value, &datetime->date);
-		}
+	      datetime = db_get_datetime (&parser->sys_datetime);
+	      error = db_value_put_encoded_date (&default_value, &datetime->date);
 	      break;
 	    case DB_DEFAULT_SYSDATETIME:
 	      error = pr_clone_value (&parser->sys_datetime, &default_value);
@@ -545,49 +528,35 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
 	      break;
 	    case DB_DEFAULT_CURRENTDATE:
 	    case DB_DEFAULT_CURRENTDATETIME:
-	      if (DB_IS_NULL (&parser->sys_datetime))
+	      TZ_REGION system_tz_region, session_tz_region;
+	      DB_DATETIME dest_dt;
+	      DB_DATETIME *src_dt;
+
+	      src_dt = db_get_datetime (&parser->sys_datetime);
+	      tz_get_system_tz_region (&system_tz_region);
+	      tz_get_session_tz_region (&session_tz_region);
+	      error =
+		tz_conv_tz_datetime_w_region (src_dt, &system_tz_region, &session_tz_region, &dest_dt, NULL, NULL);
+	      if (default_expr_type == DB_DEFAULT_CURRENTDATE)
 		{
-		  db_make_null (&default_value);
+		  db_value_put_encoded_date (&default_value, &dest_dt.date);
 		}
 	      else
 		{
-		  TZ_REGION system_tz_region, session_tz_region;
-		  DB_DATETIME dest_dt;
-		  DB_DATETIME *src_dt;
-
-		  src_dt = db_get_datetime (&parser->sys_datetime);
-		  tz_get_system_tz_region (&system_tz_region);
-		  tz_get_session_tz_region (&session_tz_region);
-		  error =
-		    tz_conv_tz_datetime_w_region (src_dt, &system_tz_region, &session_tz_region, &dest_dt, NULL, NULL);
-		  if (default_expr_type == DB_DEFAULT_CURRENTDATE)
-		    {
-		      db_value_put_encoded_date (&default_value, &dest_dt.date);
-		    }
-		  else
-		    {
-		      db_make_datetime (&default_value, &dest_dt);
-		    }
+		  db_make_datetime (&default_value, &dest_dt);
 		}
 	      break;
 	    case DB_DEFAULT_CURRENTTIMESTAMP:
-	      if (DB_IS_NULL (&parser->sys_datetime))
-		{
-		  db_make_null (&default_value);
-		}
-	      else
-		{
-		  DB_DATE tmp_date;
-		  DB_TIME tmp_time;
-		  DB_TIMESTAMP tmp_timestamp;
-		  DB_DATETIME *sys_datetime;
+	      DB_DATE tmp_date;
+	      DB_TIME tmp_time;
+	      DB_TIMESTAMP tmp_timestamp;
+	      DB_DATETIME *sys_datetime;
 
-		  sys_datetime = db_get_datetime (&parser->sys_datetime);
-		  tmp_date = sys_datetime->date;
-		  tmp_time = sys_datetime->time / 1000;
-		  db_timestamp_encode_sys (&tmp_date, &tmp_time, &tmp_timestamp, NULL);
-		  db_make_timestamp (&default_value, tmp_timestamp);
-		}
+	      sys_datetime = db_get_datetime (&parser->sys_datetime);
+	      tmp_date = sys_datetime->date;
+	      tmp_time = sys_datetime->time / 1000;
+	      db_timestamp_encode_sys (&tmp_date, &tmp_time, &tmp_timestamp, NULL);
+	      db_make_timestamp (&default_value, tmp_timestamp);
 	      break;
 	    case DB_DEFAULT_SYSGUID:
 	      error = db_uuidv4 (&default_value);
@@ -596,18 +565,14 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
 	      error = db_uuid_bin (UUID_V4, NULL, 0, &default_value);
 	      break;
 	    case DB_DEFAULT_UUIDV7:
-	      {
-		UUID_STATE uuid_state;
-		assert (!DB_IS_NULL (&parser->sys_epochtime));
-		assert (!DB_IS_NULL (&parser->sys_datetime));
+	      UUID_STATE uuid_state;
 
-		uuid_state.last_ms = &parser->uuidv7_last_ms;
-		uuid_state.seq = &parser->uuidv7_seq;
-		error =
-		  db_uuid_bin (UUID_V7, &uuid_state,
-			       ((UINT64) (*db_get_timestamp (&parser->sys_epochtime)) * 1000ULL)
-			       + (UINT64) (db_get_datetime (&parser->sys_datetime)->time % 1000), &default_value);
-	      }
+	      uuid_state.last_ms = &parser->uuidv7_last_ms;
+	      uuid_state.seq = &parser->uuidv7_seq;
+	      error =
+		db_uuid_bin (UUID_V7, &uuid_state,
+			     ((UINT64) (*db_get_timestamp (&parser->sys_epochtime)) * 1000ULL)
+			     + (UINT64) (db_get_datetime (&parser->sys_datetime)->time % 1000), &default_value);
 	      break;
 	    default:
 	      break;
@@ -17589,12 +17554,6 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto cleanup;
 	}
 
-      err = do_evaluate_statement_default_expr (parser, flat);
-      if (err != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-
       /* check update part */
       if (statement->info.merge.update.assignment && !insert_only)
 	{
@@ -18218,6 +18177,12 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  PT_NODE *save_list;
 	  PT_MISC_TYPE save_type;
+
+	  err = do_evaluate_statement_default_expr (parser, flat);
+	  if (err != NO_ERROR)
+	    {
+	      goto exit;
+	    }
 
 	  /* save node list */
 	  save_type = values_list->info.node_list.list_type;
