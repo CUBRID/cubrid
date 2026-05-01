@@ -2228,6 +2228,8 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
       break;
 
     case DB_TYPE_VARCHAR:
+    case DB_TYPE_CHAR:
+      /* CHAR shares the VARCHAR branch after Step 1 changed CHAR storage from fixed to variable-length. */
       while (domain)
 	{
 	  if (exact == TP_EXACT_MATCH || exact == TP_SET_MATCH)
@@ -2365,47 +2367,6 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	  *ins_pos = domain;
 	  domain = domain->next_list;
 	}
-      break;
-
-    case DB_TYPE_CHAR:
-      while (domain)
-	{
-	  if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH || exact == TP_SET_MATCH)
-	    {
-	      if (domain->precision > transient->precision)
-		{
-		  break;
-		}
-
-	      match = ((domain->precision == transient->precision) && (domain->collation_id == transient->collation_id)
-		       && (domain->codeset == transient->codeset)
-		       && (domain->is_desc == transient->is_desc)
-		       && (domain->collation_flag == transient->collation_flag));
-	    }
-	  else
-	    {
-	      /*
-	       * see discussion of special domain precision values
-	       * in the DB_TYPE_CHAR case above.
-	       */
-	      match = ((domain->collation_id == transient->collation_id)
-		       && (domain->codeset == transient->codeset)
-		       && (transient->precision == 0 || (transient->precision == TP_FLOATING_PRECISION_VALUE)
-			   || domain->precision >= transient->precision)
-		       && (domain->is_desc == transient->is_desc)
-		       && (domain->collation_flag == transient->collation_flag));
-	    }
-
-	  if (match)
-	    {
-	      assert (domain->codeset == transient->codeset);
-	      break;
-	    }
-
-	  *ins_pos = domain;
-	  domain = domain->next_list;
-	}
-
       break;
 
     case DB_TYPE_NUMERIC:
@@ -2630,7 +2591,8 @@ tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id, unsigned ch
    */
   assert (type == DB_TYPE_CHAR || type == DB_TYPE_VARCHAR || type == DB_TYPE_BIT || type == DB_TYPE_VARBIT);
 
-  if (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARBIT)
+  /* CHAR included here after Step 1 changed CHAR storage from fixed to variable-length. */
+  if (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARBIT || type == DB_TYPE_CHAR)
     {
       /* search the list for a domain that matches */
       for (dom = tp_domain_get_list (type, NULL); dom != NULL; dom = dom->next_list)
@@ -4570,9 +4532,11 @@ tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain)
   switch (desired_type)
     {
     case DB_TYPE_CHAR:
+      /* compressed_buf NULL check dropped after Step 1: CHAR storage is variable-length,
+       * no STR_SIZE(precision) padding on serialization, so a cached compressed result stays valid
+       * across in-place domain slam (src == dest). */
       return (desired_precision == original_length
-	      && (original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR)
-	      && DB_GET_COMPRESSED_STRING (val) == NULL);
+	      && (original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR));
     case DB_TYPE_VARCHAR:
       return (desired_precision >= original_length
 	      && (original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR));

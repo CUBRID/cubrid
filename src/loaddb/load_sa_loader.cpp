@@ -2707,10 +2707,12 @@ ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE
   int err;
   DB_VALUE val;
   int char_count = 0;
+  int medium_length;
 
   precision = att->domain->precision;
 
   intl_char_count ((unsigned char *) str, (int) len, (INTL_CODESET) att->domain->codeset, &char_count);
+  medium_length = char_count;
 
   if (char_count > precision)
     {
@@ -2736,6 +2738,7 @@ ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE
       if (safe)
 	{
 	  len = truncate_size;
+	  medium_length = -1;	/* truncated: let setmem recompute on the new buffer */
 	}
       else
 	{
@@ -2753,12 +2756,15 @@ ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE
   val.data.ch.info.is_max_string = false;
   val.data.ch.info.compressed_need_clear = false;
   val.data.ch.medium.size = (int) len;
+  val.data.ch.medium.length = medium_length;
   val.data.ch.medium.buf = (char *) str;
   val.data.ch.medium.compressed_buf = NULL;
   val.data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
   mem = context->mobj + att->offset;
   CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
-  OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
+  /* CHAR is variable_p=1 since Step 1; bound bits belong to fixed-precision
+   * attributes only, so no OBJ_SET_BOUND_BIT here. (See ldr_null_db_generic
+   * for the variable_p-aware pattern in other paths.) */
 
 error_exit:
   return err;
@@ -2780,9 +2786,11 @@ ldr_str_db_varchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIB
   int err;
   DB_VALUE val;
   int char_count = 0;
+  int medium_length;
 
   precision = att->domain->precision;
   intl_char_count ((unsigned char *) str, (int) len, (INTL_CODESET) att->domain->codeset, &char_count);
+  medium_length = char_count;
 
   if (char_count > precision)
     {
@@ -2807,6 +2815,7 @@ ldr_str_db_varchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIB
       if (safe)
 	{
 	  len = truncate_size;
+	  medium_length = -1;	/* truncated: let setmem recompute on the new buffer */
 	}
       else
 	{
@@ -2821,6 +2830,7 @@ ldr_str_db_varchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIB
   val.domain = ldr_varchar_tmpl.domain;
   val.domain.char_info.length = char_count;
   val.data.ch.medium.size = (int) len;
+  val.data.ch.medium.length = medium_length;
   val.data.ch.medium.buf = (char *) str;
   val.data.ch.info.style = MEDIUM_STRING;
   val.data.ch.info.is_max_string = false;

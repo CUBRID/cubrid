@@ -600,7 +600,7 @@ pt_associate_label_with_value_check_reference (const char *label, DB_VALUE * val
       return ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED;
     }
 
-  if (val->domain.general_info.type == DB_TYPE_STRING)
+  if (val->domain.general_info.type == DB_TYPE_STRING || val->domain.general_info.type == DB_TYPE_CHAR)
     {
       if (pr_Enable_string_compression)
 	{
