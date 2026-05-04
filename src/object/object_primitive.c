@@ -8487,6 +8487,17 @@ mr_data_readmem_numeric (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int siz
   /* if stored size is unknown, the domain precision must be set correctly */
   if (size < 0)
     {
+      /* guard: the leading size byte must be within buffer bounds */
+      if (buf->ptr + OR_BYTE_SIZE > buf->endptr)
+	{
+	  if (memptr != NULL)
+	    {
+	      *((char **) memptr) = NULL;
+	    }
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
+	  assert (false);
+	  return;
+	}
       size = OR_GET_BYTE (buf->ptr) & 0x7F;
     }
 
@@ -8501,9 +8512,23 @@ mr_data_readmem_numeric (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int siz
     {
       mem = (char **) memptr;
       cur = *mem;
+      /* should we be checking for existing numerics ? */
+#if 0
+      if (cur != NULL)
+	db_private_free_and_init (NULL, cur);
+#endif
 
       if (size)
 	{
+	  /* guard: declared disk_size must fit in buffer (covers the size byte and the payload read below) */
+	  if (buf->ptr + size > buf->endptr)
+	    {
+	      *mem = NULL;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
+	      assert (false);
+	      return;
+	    }
+
 	  /* calculate expected size and verify it matches the provided size */
 	  calc_size = OR_GET_BYTE (buf->ptr) & 0x7F;
 
@@ -8526,13 +8551,7 @@ mr_data_readmem_numeric (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int siz
 	  /* read data from buffer into allocated memory */
 	  or_get_data (buf, new_, size);
 
-	  /* free old memory if exists */
-	  if (cur != NULL)
-	    {
-	      db_private_free_and_init (NULL, cur);
-	    }
-
-	  /* update pointer */
+	  /* update pointer (caller is responsible for releasing the prior numeric, matching readmem_string/varbit) */
 	  *mem = new_;
 	}
     }
@@ -8583,11 +8602,6 @@ mr_data_lengthmem_numeric (void *memptr, TP_DOMAIN * domain, int disk)
 	  len = OR_GET_BYTE (cur) & 0x7F;
 	}
     }
-  else
-    {
-      /* memptr is NULL, return default size */
-      len = tp_Numeric.size;
-    }
 
   return len;
 }
@@ -8618,7 +8632,7 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 
       src_numeric = (DB_C_NUMERIC) db_get_numeric (src);
 
-      if (DB_IS_NULL (src) || src_numeric == NULL)
+      if (src_numeric == NULL)
 	{
 	  db_value_domain_init (dest, DB_TYPE_NUMERIC, precision, scale);
 	}
@@ -8750,6 +8764,11 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
    */
   if (size == -1 || size == 1)
     {
+      /* guard: the leading size byte must be within buffer bounds */
+      if (buf->ptr + OR_BYTE_SIZE > buf->endptr)
+	{
+	  return ER_FAILED;
+	}
       size = OR_GET_BYTE (buf->ptr) & 0x7F;
     }
 
@@ -8787,10 +8806,21 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
       unsigned char *header;
       int precision, scale;
       bool is_float_numeric = (domain->precision == DB_DEFAULT_NUMERIC_PRECISION);
+      /* guard: NUMERIC_HEADER_SIZE bytes must be readable before parsing the header */
+      if (buf->ptr + NUMERIC_HEADER_SIZE > buf->endptr)
+	{
+	  return ER_FAILED;
+	}
 
       header = (unsigned char *) buf->ptr;
-
       size = (header[0] & 0x7F);
+
+      /* guard: declared disk_size must fit in buffer; check before further parsing to fail fast */
+      if (buf->ptr + size > buf->endptr)
+	{
+	  return ER_FAILED;
+	}
+
       bool is_value_negative = (header[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
       precision = (header[1] & 0x7F);
       bool is_negative_scale = (header[1] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) != 0;
