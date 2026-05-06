@@ -1015,7 +1015,8 @@ int hnsw_index_manager::load_index (THREAD_ENTRY *thread_p, const BTID *btid, hn
 {
   if (is_index_loaded (btid))
     {
-      return NO_ERROR;
+      index_out = get_index (btid);
+      return index_out == NULL ? ER_FAILED : NO_ERROR;
     }
 
   hnsw_index_meta meta;
