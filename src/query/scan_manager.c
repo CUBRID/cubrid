@@ -31,6 +31,7 @@
 
 #include "error_manager.h"
 #include "heap_file.h"
+#include "ftab_set.hpp"
 #include "fetch.h"
 #include "list_file.h"
 #include "set_scan.h"
@@ -2897,17 +2898,24 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   hsidp->cache_recordinfo = cache_recordinfo;
   hsidp->recordinfo_regu_list = regu_list_recordinfo;
 
-  /* for scampling statistics. */
-  if (scan_type == S_HEAP_SAMPLING_SCAN && !is_partition_table)
+  /* sampling pre-pick: re-open via qexec_init_next_partition may already hold a buffer */
+  if (scan_type == S_HEAP_SAMPLING_SCAN && hfid->vfid.fileid >= 0)
     {
       int total_pages = 0;
-      if (file_get_num_total_user_pages (thread_p, cls_oid, &total_pages) != NO_ERROR)
+
+      if (hsidp->sampling.picked_vpids != NULL)
+	{
+	  db_private_free_and_init (thread_p, hsidp->sampling.picked_vpids);
+	}
+
+      if (collect_strided_vpids (thread_p, hfid, NUMBER_OF_SAMPLING_PAGES,
+				 &hsidp->sampling.picked_vpids,
+				 &hsidp->sampling.picked_count, &total_pages) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
-
-      /* sampling_weight = total_page / sampling_page */
-      hsidp->sampling.weight = MAX ((total_pages / NUMBER_OF_SAMPLING_PAGES), 1);
+      hsidp->sampling.picked_cursor = 0;
+      hsidp->sampling.weight = MAX (total_pages / MAX (hsidp->sampling.picked_count, 1), 1);
     }
 
   return NO_ERROR;
@@ -4464,6 +4472,11 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	}
       break;
 
+    case S_HEAP_SAMPLING_SCAN:
+      /* preserve picked_vpids buffer; only rewind the cursor */
+      s_id->s.hsid.sampling.picked_cursor = 0;
+      break;
+
 #if SERVER_MODE && !WINDOWS
     case S_PARALLEL_HEAP_SCAN:
       if (scan_reset_scan_block_parallel_heap_scan (thread_p, s_id) != NO_ERROR)
@@ -4892,12 +4905,20 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   switch (scan_id->type)
     {
+    case S_HEAP_SAMPLING_SCAN:
+      if (scan_id->s.hsid.sampling.picked_vpids != NULL)
+	{
+	  db_private_free_and_init (thread_p, scan_id->s.hsid.sampling.picked_vpids);
+	}
+      scan_id->s.hsid.sampling.picked_count = 0;
+      scan_id->s.hsid.sampling.picked_cursor = 0;
+      break;
+
     case S_HEAP_SCAN:
     case S_HEAP_SCAN_RECORD_INFO:
     case S_HEAP_PAGE_SCAN:
     case S_CLASS_ATTR_SCAN:
     case S_VALUES_SCAN:
-    case S_HEAP_SAMPLING_SCAN:
       break;
 
     case S_PARALLEL_HEAP_SCAN:
