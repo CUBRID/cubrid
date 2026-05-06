@@ -493,6 +493,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/external_sort.c
   ${STORAGE_DIR}/file_io.c
   ${STORAGE_DIR}/file_manager.c
+  ${STORAGE_DIR}/ftab_set.cpp
   ${STORAGE_DIR}/heap_file.c
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/overflow_file.c
