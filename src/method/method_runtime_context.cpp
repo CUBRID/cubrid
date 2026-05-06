@@ -388,8 +388,10 @@ namespace cubmethod
     // stuck one, and destroying group memory while a worker is still unwinding
     // would be a use-after-free. If the drain never completes, the session
     // owning this rctx remains pinned -- prefer that to a crash.
+#if !defined(NDEBUG)
     auto wait_started = steady_clock::now ();
     auto last_log = wait_started;
+#endif
 
     while (!pred ())
       {
@@ -398,19 +400,19 @@ namespace cubmethod
 	  {
 	    m_cond_var.notify_all ();
 
+#if !defined(NDEBUG)
 	    auto now = steady_clock::now ();
 	    if (now - last_log >= seconds (10))
 	      {
 		auto elapsed = duration_cast<seconds> (now - wait_started).count ();
-		char msg[256];
-		snprintf (msg, sizeof (msg),
-			  "method runtime_context: drain pending for %llds "
-			  "(group_stack=%zu, deferred=%zu, interrupt_id=%d)",
-			  (long long) elapsed, m_group_stack.size (),
-			  m_deferred_free_stack.size (), m_interrupt_id);
-		er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, msg);
+		er_log_debug (ARG_FILE_LINE,
+			      "method runtime_context: drain pending for %llds "
+			      "(group_stack=%zu, deferred=%zu, interrupt_id=%d)\n",
+			      (long long) elapsed, m_group_stack.size (),
+			      m_deferred_free_stack.size (), m_interrupt_id);
 		last_log = now;
 	      }
+#endif
 	  }
       }
   }
