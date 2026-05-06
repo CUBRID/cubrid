@@ -98,8 +98,6 @@ class hnsw_index_manager
     // index management on disk
     int save_index (THREAD_ENTRY *thread_p, hnsw_index *index);
     int load_index (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index *&index);
-    int load_or_create_index_for_recovery (THREAD_ENTRY *thread_p, const BTID *btid,
-					   const hnsw_build_params &params, hnsw_index *&index);
     int save_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, const hnsw_index_meta &meta);
     int load_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index_meta &meta);
     int save_all_indices (THREAD_ENTRY *thread_p);
@@ -727,7 +725,7 @@ hnsw_rv_redo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
     }
 
   hnsw_index *index = NULL;
-  error = index_manager->load_or_create_index_for_recovery (thread_p, btid, params, index);
+  error = index_manager->load_index (thread_p, btid, index);
   if (error != NO_ERROR || index == NULL)
     {
       return error == NO_ERROR ? ER_FAILED : error;
@@ -1050,32 +1048,6 @@ int hnsw_index_manager::load_index (THREAD_ENTRY *thread_p, const BTID *btid, hn
     }
   add_index (btid, index_out);
   return NO_ERROR;
-}
-
-int
-hnsw_index_manager::load_or_create_index_for_recovery (THREAD_ENTRY *thread_p, const BTID *btid,
-    const hnsw_build_params & /* params */,
-    hnsw_index *&index_out)
-{
-  index_out = get_index (btid);
-  if (index_out != NULL)
-    {
-      return NO_ERROR;
-    }
-
-  hnsw_index_backend *backend = get_backend ();
-  if (backend == nullptr)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  if (log_is_in_crash_recovery ())
-    {
-      return load_index (thread_p, btid, index_out);
-    }
-
-  return load_index (thread_p, btid, index_out);
 }
 
 int hnsw_index_manager::delete_index_on_disk (THREAD_ENTRY *thread_p, const std::string &prefix, const BTID *btid)
