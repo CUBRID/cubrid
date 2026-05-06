@@ -456,10 +456,6 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
   TP_DOMAIN *result_domain = NULL;
   bool has_user_format;
 
-  // The default expression must be evaluated only after server information (SI_SYS_DATETIME) is received
-  assert (!DB_IS_NULL (&parser->sys_epochtime));
-  assert (!DB_IS_NULL (&parser->sys_datetime));
-
   assert (smclass != NULL);
   if (eval_mode == DEFAULT_EXPR_EVAL_BY_ROW_ONLY)
     {
@@ -486,11 +482,16 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
 	  switch (default_expr_type)
 	    {
 	    case DB_DEFAULT_SYSTIME:
+	      // The default expression must be evaluated only after server information (SI_SYS_DATETIME) is received
+	      assert (!DB_IS_NULL (&parser->sys_epochtime));
+	      assert (!DB_IS_NULL (&parser->sys_datetime));
 	      db_datetime_decode ((DB_DATETIME *) db_get_datetime (&parser->sys_datetime), &month, &day, &year,
 				  &hour, &minute, &second, &millisecond);
 	      db_make_time (&default_value, hour, minute, second);
 	      break;
 	    case DB_DEFAULT_CURRENTTIME:
+	      assert (!DB_IS_NULL (&parser->sys_epochtime));
+	      assert (!DB_IS_NULL (&parser->sys_datetime));
 	      DB_TIME cur_time, db_time;
 	      const char *t_source, *t_dest;
 	      DB_DATETIME *datetime;
@@ -504,16 +505,24 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
 	      db_value_put_encoded_time (&default_value, &cur_time);
 	      break;
 	    case DB_DEFAULT_SYSDATE:
+	      assert (!DB_IS_NULL (&parser->sys_epochtime));
+	      assert (!DB_IS_NULL (&parser->sys_datetime));
 	      datetime = db_get_datetime (&parser->sys_datetime);
 	      error = db_value_put_encoded_date (&default_value, &datetime->date);
 	      break;
 	    case DB_DEFAULT_SYSDATETIME:
+	      assert (!DB_IS_NULL (&parser->sys_epochtime));
+	      assert (!DB_IS_NULL (&parser->sys_datetime));
 	      error = pr_clone_value (&parser->sys_datetime, &default_value);
 	      break;
 	    case DB_DEFAULT_SYSTIMESTAMP:
+	      assert (!DB_IS_NULL (&parser->sys_epochtime));
+	      assert (!DB_IS_NULL (&parser->sys_datetime));
 	      error = db_datetime_to_timestamp (&parser->sys_datetime, &default_value);
 	      break;
 	    case DB_DEFAULT_UNIX_TIMESTAMP:
+	      assert (!DB_IS_NULL (&parser->sys_epochtime));
+	      assert (!DB_IS_NULL (&parser->sys_datetime));
 	      error = db_unix_timestamp (&parser->sys_datetime, &default_value);
 	      break;
 	    case DB_DEFAULT_USER:
@@ -528,6 +537,8 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
 	      break;
 	    case DB_DEFAULT_CURRENTDATE:
 	    case DB_DEFAULT_CURRENTDATETIME:
+	      assert (!DB_IS_NULL (&parser->sys_epochtime));
+	      assert (!DB_IS_NULL (&parser->sys_datetime));
 	      TZ_REGION system_tz_region, session_tz_region;
 	      DB_DATETIME dest_dt;
 	      DB_DATETIME *src_dt;
@@ -547,6 +558,8 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
 		}
 	      break;
 	    case DB_DEFAULT_CURRENTTIMESTAMP:
+	      assert (!DB_IS_NULL (&parser->sys_epochtime));
+	      assert (!DB_IS_NULL (&parser->sys_datetime));
 	      DB_DATE tmp_date;
 	      DB_TIME tmp_time;
 	      DB_TIMESTAMP tmp_timestamp;
@@ -565,6 +578,8 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
 	      error = db_uuid_bin (UUID_V4, NULL, 0, &default_value);
 	      break;
 	    case DB_DEFAULT_UUIDV7:
+	      assert (!DB_IS_NULL (&parser->sys_epochtime));
+	      assert (!DB_IS_NULL (&parser->sys_datetime));
 	      UUID_STATE uuid_state;
 
 	      uuid_state.last_ms = &parser->uuidv7_last_ms;
