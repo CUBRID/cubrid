@@ -10813,17 +10813,36 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
   raw->data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location));
   if (OR_IS_OOS (offset))
     {
+      int rc = NO_ERROR;
+      DB_BIGINT oos_len;
+
       buf.ptr = raw->data;
       buf.endptr = recdes->data + recdes->length;
       or_get_oid (&buf, &oos_oid);
 
       assert (!OID_ISNULL (&oos_oid));
 
+      /* Inline OOS layout in the heap record is [OID (8B) | full_length (8B bigint)] (M2).
+       * The caller now preallocates the buffer so oos_read only has to copy. */
+      oos_len = or_get_bigint (&buf, &rc);
+      assert (rc == NO_ERROR);
+      assert (oos_len > 0);
+
       THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
       assert (thread_p);
+
+      if (recdes_allocate_data_area (raw, (int) oos_len) != NO_ERROR)
+	{
+	  assert_release (false);
+	  raw->data = NULL;
+	  return;
+	}
+
       if (oos_read (thread_p, oos_oid, *raw) != NO_ERROR)
 	{
 	  assert_release (false);
+	  recdes_free_data_area (raw);
+	  return;
 	}
       *is_oos = true;
     }
