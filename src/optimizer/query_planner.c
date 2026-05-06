@@ -6771,26 +6771,6 @@ qo_examine_correlated_index (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * oute
       return 0;
     }
 
-  /* When sort-limit is active and the inner node is the sort-limit candidate,
-   * do not create an idx-join driven by a transitive (derived) term if the outer
-   * plan does not already carry sort-limit.  Such a plan would allow a small outer
-   * table to probe the sort-limit node as inner, bypassing the sort-limit benefit
-   * that depends on keeping the sort-limit node as the outer. */
-  if (QO_ENV_USE_SORT_LIMIT (info->env) == QO_SL_USE
-      && QO_NODE_SORT_LIMIT_CANDIDATE (nodep) && !outer_plan->has_sort_limit)
-    {
-      QO_TERM *term_check;
-      BITSET_ITERATOR iter_check;
-      for (t = bitset_iterate (sarged_terms, &iter_check); t != -1; t = bitset_next_member (&iter_check))
-	{
-	  term_check = QO_ENV_TERM (info->env, t);
-	  if (QO_TERM_IS_FLAGED (term_check, QO_TERM_TRANSITIVE))
-	    {
-	      return 0;
-	    }
-	}
-    }
-
   bitset_init (&indexable_terms, info->env);
 
   /* We're interested in all of the terms so combine 'join_term' and 'sarged_terms' together. */
