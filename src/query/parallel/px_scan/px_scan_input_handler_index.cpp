@@ -96,8 +96,16 @@ namespace parallel_scan
       {
 	return;
       }
-    /* asc needs key1; desc needs key2 */
-    if (m_use_desc_index ? (kr->key2 == nullptr) : (kr->key1 == nullptr))
+    /* DESC index stores keys with reversed compare order: leftmost storage = largest semantic.
+     * Effective scan direction = storage_desc XOR use_desc_index. */
+    TP_DOMAIN *first_col_dom = m_btid_int.key_type;
+    if (first_col_dom != nullptr && TP_DOMAIN_TYPE (first_col_dom) == DB_TYPE_MIDXKEY)
+      {
+	first_col_dom = first_col_dom->setdomain;
+      }
+    bool storage_desc = (first_col_dom != nullptr && first_col_dom->is_desc);
+    bool use_upper_bound = storage_desc ^ m_use_desc_index;
+    if (use_upper_bound ? (kr->key2 == nullptr) : (kr->key1 == nullptr))
       {
 	return;
       }
@@ -167,7 +175,14 @@ namespace parallel_scan
       DB_VALUE *descent_key = nullptr;
       if (m_descent_key_valid)
 	{
-	  descent_key = m_use_desc_index ? &m_descent_key_range.key2 : &m_descent_key_range.key1;
+	  TP_DOMAIN *first_col_dom = m_btid_int.key_type;
+	  if (first_col_dom != nullptr && TP_DOMAIN_TYPE (first_col_dom) == DB_TYPE_MIDXKEY)
+	    {
+	      first_col_dom = first_col_dom->setdomain;
+	    }
+	  bool storage_desc = (first_col_dom != nullptr && first_col_dom->is_desc);
+	  bool use_upper_bound = storage_desc ^ m_use_desc_index;
+	  descent_key = use_upper_bound ? &m_descent_key_range.key2 : &m_descent_key_range.key1;
 	  if (DB_IS_NULL (descent_key))
 	    {
 	      descent_key = nullptr;
