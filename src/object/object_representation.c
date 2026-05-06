@@ -248,9 +248,10 @@ or_class_name (RECDES * record)
 
   offset = OR_VAR_OFFSET (record->data, 0);
 
-  /* Unified 12-byte LARGE header (Step 2/3): or_get_varchar_compression_lengths parses
-   * the header and leaves buffer.ptr at the start of the data bytes. Class names are
-   * short and stored uncompressed, so we return the raw pointer directly. */
+  /* or_get_varchar_compression_lengths parses the type_header-dispatched header
+   * (SMALL / MEDIUM_UNCOMPRESSED / MEDIUM_COMPRESSED / LARGE) and leaves buffer.ptr
+   * at the start of the data bytes. Class names are short and stored uncompressed,
+   * so we return the raw pointer directly. */
   or_init (&buffer, &record->data[offset], -1);
   rc = or_get_varchar_compression_lengths (&buffer, &compressed_length, &decompressed_length);
   if (rc != NO_ERROR)
@@ -823,7 +824,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int size, int length, int a
 	}
     }
 
-  /* unified string header (Step 2: LARGE 12-byte; Step 4: tier dispatch inside or_put_string_header). */
+  /* Unified string header — or_put_string_header dispatches type_header (SMALL / MEDIUM_* / LARGE). */
   rc = or_put_string_header (buf, length, size, compressed_length);
   if (rc != NO_ERROR)
     {
@@ -972,15 +973,17 @@ or_packed_put_varchar (OR_BUF * buf, char *string, int size, int length)
 }
 
 /*
- * or_packed_varchar_length - returns length of place holder that can contain
- * package varchar length. Also ajust length up to 4 byte boundary.
- *    return: length of placeholder that can contain packed varchar length
- *    charlen(in): varchar length
+ * or_packed_varchar_length - byte count of a packed varchar (header + data + NUL + pad).
+ *
+ *   return              : header bytes + data bytes + trailing NUL + INT_ALIGNMENT pad
+ *   length(in)          : character count
+ *   size(in)            : decompressed byte count
+ *   compressed_size(in) : LZ4-compressed byte count; 0 when stored uncompressed
  */
 int
-or_packed_varchar_length (int charlen)
+or_packed_varchar_length (int length, int size, int compressed_size)
 {
-  return or_varchar_length_internal (charlen, INT_ALIGNMENT);
+  return or_varchar_length_internal (length, size, compressed_size, INT_ALIGNMENT);
 }
 
 int

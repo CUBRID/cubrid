@@ -247,7 +247,7 @@ static int mr_cmpval_char2 (DB_VALUE * value1, DB_VALUE * value2, int length, in
 			    int *start_colp);
 #endif
 
-/* CHAR/VARCHAR shared common bodies (Step 2/3).
+/* CHAR/VARCHAR shared common bodies.
  * Type-agnostic where possible; type-specific differences (db_make_*, is_max_string,
  * trailing-space comparison, etc.) are handled either by passing DB_TYPE or in the
  * thin wrappers (mr_*_char / mr_*_string) that call into these. */
@@ -10667,7 +10667,7 @@ const PR_TYPE tp_Char = {
 const PR_TYPE *tp_Type_char = &tp_Char;
 
 /*
- * TYPE CHAR/VARCHAR shared common bodies (Step 2/3).
+ * TYPE CHAR/VARCHAR shared common bodies.
  */
 
 static void
@@ -10685,25 +10685,24 @@ mr_initmem_char_type_common (void *mem, TP_DOMAIN * domain)
  *   type(in)      : DB_TYPE_CHAR or DB_TYPE_VARCHAR (selects mr_initmem_*)
  *
  * CHAR/VARCHAR in-memory layout (NOT CLOB/BLOB; differs from the disk image):
- *   [4: type_header(2bit) | length(30bit)] [4: size] [data] [NUL]
+ *   [variable-size header (1 / 4 / 8 byte)] [data] [NUL]
  *
  * Notes:
  *   - mem path never carries compressed bytes (no compressed_size slot).
  *     val→disk path is the only place that may emit compressed images
  *     (see mr_writeval_char_type_common / pr_do_db_value_string_compression).
- *   - The 2-bit type_header is reserved for Step 4 tier dispatch
- *     (SMALL / MEDIUM_UNCOMPRESSED / MEDIUM_COMPRESSED / LARGE). Step 2
- *     stamps every mem header with OR_STRING_TYPE_HEADER_LARGE so the
- *     reader logic stays uniform; Step 4 will repurpose these bits to
- *     select an even shorter mem header for short strings.
+ *   - Mem header is type_header-aware: SMALL (1 byte) / MEDIUM_UNCOMPRESSED
+ *     (4 byte) / LARGE (8 byte). MEDIUM_COMPRESSED (disk-only) is never
+ *     emitted on the mem path. Use or_put_mem_string_header /
+ *     or_get_mem_string_header / or_mem_string_header_size to manipulate
+ *     the mem header — these dispatch via or_mem_string_pick_type_header.
  */
 static int
 mr_setmem_char_type_common (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, DB_TYPE type)
 {
   char *cur, *new_, **mem;
   const char *src;
-  int src_size, src_length, new_size;
-  unsigned int header_lead;
+  int src_size, src_length, new_size, header_size;
 
   assert (type == DB_TYPE_CHAR || type == DB_TYPE_VARCHAR);
 
@@ -10739,7 +10738,9 @@ mr_setmem_char_type_common (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, 
     }
   src_length = value->data.ch.medium.length;
 
-  new_size = OR_MEM_STRING_HEADER_SIZE + src_size + 1;	/* [length][size][data] + NUL */
+  /* Mem layout: [type_header-dispatched header][data][NUL]. Header size depends on type_header. */
+  header_size = or_mem_string_header_size (src_length, src_size);
+  new_size = header_size + src_size + 1;
   new_ = (char *) db_private_alloc (NULL, new_size);
   if (new_ == NULL)
     {
@@ -10752,15 +10753,17 @@ mr_setmem_char_type_common (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, 
       db_private_free_and_init (NULL, cur);
     }
 
-  /* header: 2-bit type_header (LARGE in Step 2) | 30-bit length, then size. */
-  header_lead = (OR_STRING_TYPE_HEADER_LARGE << OR_STRING_TYPE_HEADER_SHIFT_IN_INT)
-    | ((unsigned int) src_length & OR_STRING_LENGTH_MASK_LARGE);
-  OR_PUT_INT (new_, (int) header_lead);
-  OR_PUT_INT (new_ + OR_MEM_STRING_SIZE_OFFSET, src_size);
+  if (or_put_mem_string_header (new_, src_length, src_size) != NO_ERROR)
+    {
+      db_private_free_and_init (NULL, new_);
+      *mem = NULL;
+      assert (false);
+      return ER_FAILED;
+    }
 
   /* data: passed bytes as-is (no prec padding, no truncation) */
-  memcpy (new_ + OR_MEM_STRING_HEADER_SIZE, src, src_size);
-  new_[OR_MEM_STRING_HEADER_SIZE + src_size] = '\0';
+  memcpy (new_ + header_size, src, src_size);
+  new_[header_size + src_size] = '\0';
 
   *mem = new_;
 
@@ -10777,11 +10780,9 @@ mr_setmem_char_type_common (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, 
  *                   true  = allocate + memcpy + NUL terminator
  *   type(in)      : DB_TYPE_CHAR or DB_TYPE_VARCHAR (selects db_make_*)
  *
- * Mirrors mr_setmem_char_type_common. CHAR/VARCHAR mem layout (NOT CLOB/BLOB):
- *   [4: type_header(2bit) | length(30bit)] [4: size] [data] [NUL]
- *
- * length is masked to drop the type_header bits (Step 2 stamps LARGE; Step 4
- * will dispatch tier here once mem layouts diverge).
+ * Mirrors mr_setmem_char_type_common. CHAR/VARCHAR mem layout uses the
+ * type_header-aware mem header (SMALL / MEDIUM_UNCOMPRESSED / LARGE — see
+ * or_get_mem_string_header). data follows the header; trailing NUL after data.
  */
 static int
 mr_getmem_char_type_common (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy, DB_TYPE type)
@@ -10812,10 +10813,13 @@ mr_getmem_char_type_common (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, 
       return NO_ERROR;
     }
 
-  /* mem header: [type_header(2bit) | length(30bit)] [size]; data follows */
-  src_length = (int) ((unsigned int) OR_GET_INT (cur) & OR_STRING_LENGTH_MASK_LARGE);
-  src_size = OR_GET_INT (cur + OR_MEM_STRING_SIZE_OFFSET);
-  data = cur + OR_MEM_STRING_HEADER_SIZE;
+  /* Tier-aware mem header parse; data start = cur + header bytes. */
+  if (or_get_mem_string_header (cur, &src_length, &src_size) != NO_ERROR)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+  data = cur + or_mem_string_header_size (src_length, src_size);
 
   if (!copy)
     {
@@ -10892,13 +10896,22 @@ mr_data_lengthmem_char_type_common (void *memptr, TP_DOMAIN * domain, int disk)
       cur = *mem;
       if (cur != NULL)
 	{
-	  len = OR_GET_INT (cur + OR_MEM_STRING_SIZE_OFFSET);
-	  if (len >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+	  int char_count = 0, raw_size = 0, csize = 0;
+
+	  if (or_get_mem_string_header (cur, &char_count, &raw_size) == NO_ERROR)
 	    {
-	      /* Compression simulation — disk image will hold the compressed bytes. */
-	      len = pr_get_compression_length (cur + OR_MEM_STRING_HEADER_SIZE, len);
+	      if (raw_size >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+		{
+		  /* Compression simulation — disk image will hold the compressed bytes. */
+		  char *data = cur + or_mem_string_header_size (char_count, raw_size);
+		  csize = pr_get_compression_length (data, raw_size);
+		}
+	      len = or_packed_varchar_length (char_count, raw_size, csize);
 	    }
-	  len = or_packed_varchar_length (len);
+	  else
+	    {
+	      assert (false);
+	    }
 	}
     }
 
@@ -10911,38 +10924,29 @@ mr_data_lengthmem_char_type_common (void *memptr, TP_DOMAIN * domain, int disk)
  *   memptr(in): pointer that targets the disk image directly (NOT a char**)
  *   domain(in): column domain (unused; kept for signature parity)
  *
- * Index-key memory is laid out the same as the disk image. The first 4-byte
- * word's top 2 bits dispatch by tier (Step 2: writer always emits LARGE).
- *
- * Mirrors the legacy mr_index_lengthmem_string short/long branch:
- *   - SMALL / MEDIUM_UNCOMPRESSED → no compressed_size slot, return raw size
- *   - MEDIUM_COMPRESSED / LARGE   → consult compressed_size (compressed when > 0)
+ * Index-key memory is laid out the same as the disk image; the first byte's top
+ * 2 bits select the type_header. Wrap memptr in an OR_BUF and delegate to
+ * or_get_string_header so all four type_headers (SMALL / MEDIUM_UNCOMPRESSED /
+ * MEDIUM_COMPRESSED / LARGE) are handled by the single type_header-aware parser.
  */
 static int
 mr_index_lengthmem_char_type_common (void *memptr, TP_DOMAIN * domain)
 {
-  unsigned int header_lead, type_header;
-  int src_size, compressed_size, charlen;
+  OR_BUF buf;
+  int char_count = 0, raw_size = 0, csize = 0;
+  int rc;
 
   assert (memptr != NULL);
 
-  header_lead = (unsigned int) OR_GET_INT ((char *) memptr);
-  type_header = header_lead >> OR_STRING_TYPE_HEADER_SHIFT_IN_INT;
-
-  if (type_header != OR_STRING_TYPE_HEADER_LARGE)
+  or_init (&buf, (char *) memptr, 0);	/* infinite endptr — header parser bounds itself */
+  rc = or_get_string_header (&buf, &char_count, &raw_size, &csize);
+  if (rc != NO_ERROR)
     {
-      /* Step 2: writer always emits LARGE.
-       * Step 4 will add SMALL / MEDIUM_UNCOMPRESSED (raw-size return, no compressed_size)
-       * and MEDIUM_COMPRESSED (compressed_size-aware) cases here. */
       assert (false);
       return 0;
     }
 
-  src_size = OR_GET_INT ((char *) memptr + OR_DISK_STRING_LARGE_SIZE_OFFSET);
-  compressed_size = OR_GET_INT ((char *) memptr + OR_DISK_STRING_LARGE_COMPRESSED_SIZE_OFFSET);
-
-  charlen = (compressed_size > 0) ? compressed_size : src_size;
-  return or_varchar_length (charlen);
+  return or_varchar_length (char_count, raw_size, csize);
 }
 
 /*
@@ -10962,18 +10966,19 @@ static void
 mr_data_writemem_char_type_common (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 {
   char **mem, *cur;
-  unsigned int header_lead;
-  int src_length, src_size;
+  int src_length = 0, src_size = 0;
 
   mem = (char **) memptr;
   cur = *mem;
   if (cur != NULL)
     {
-      header_lead = (unsigned int) OR_GET_INT (cur);
-      src_length = (int) (header_lead & OR_STRING_LENGTH_MASK_LARGE);
-      src_size = OR_GET_INT (cur + OR_MEM_STRING_SIZE_OFFSET);
-      cur += OR_MEM_STRING_HEADER_SIZE;
-      or_packed_put_varchar (buf, cur, src_size, src_length);
+      /* Tier-aware mem header parse; data start = cur + header bytes. */
+      if (or_get_mem_string_header (cur, &src_length, &src_size) != NO_ERROR)
+	{
+	  assert (false);
+	  return;
+	}
+      or_packed_put_varchar (buf, cur + or_mem_string_header_size (src_length, src_size), src_size, src_length);
     }
 }
 
@@ -10999,7 +11004,6 @@ mr_data_readmem_char_type_common (OR_BUF * buf, void *memptr, TP_DOMAIN * domain
   int src_length = 0, src_size = 0, compressed_size = 0;
   int mem_length, pad;
   char *start;
-  unsigned int header_lead;
   int rc = NO_ERROR;
 
   /*
@@ -11034,39 +11038,42 @@ mr_data_readmem_char_type_common (OR_BUF * buf, void *memptr, TP_DOMAIN * domain
 	  return;
 	}
 
-      /* Allocate mem blob: [length][size][raw data][NUL]. */
-      mem_length = OR_MEM_STRING_HEADER_SIZE + src_size + 1;
-      new_ = (char *) db_private_alloc (NULL, mem_length);
-      if (new_ == NULL)
-	{
-	  *mem = NULL;
-	  return;
-	}
-      else
-	{
-	  /* mem header: type_header (LARGE in Step 2) | length, then size. */
-	  header_lead = (OR_STRING_TYPE_HEADER_LARGE << OR_STRING_TYPE_HEADER_SHIFT_IN_INT)
-	    | ((unsigned int) src_length & OR_STRING_LENGTH_MASK_LARGE);
-	  OR_PUT_INT (new_, (int) header_lead);
-	  OR_PUT_INT (new_ + OR_MEM_STRING_SIZE_OFFSET, src_size);
+      /* Allocate mem blob: [type_header-dispatched header][raw data][NUL]. */
+      {
+	int header_size = or_mem_string_header_size (src_length, src_size);
 
-	  cur = new_ + OR_MEM_STRING_HEADER_SIZE;
+	mem_length = header_size + src_size + 1;
+	new_ = (char *) db_private_alloc (NULL, mem_length);
+	if (new_ == NULL)
+	  {
+	    *mem = NULL;
+	    return;
+	  }
 
-	  /* decompress (or copy raw) disk bytes into mem; helper writes the NUL terminator.
-	   * NOTE: when compressed_size > 0 the helper does NOT advance buf->ptr — the trailing
-	   * padding accounting below absorbs the compressed bytes via the (start..buf->ptr) delta. */
-	  rc = pr_get_compressed_data_from_buffer (buf, cur, compressed_size, src_size);
-	  if (rc != NO_ERROR)
-	    {
-	      db_private_free (NULL, new_);
-	      *mem = NULL;
-	      ASSERT_ERROR ();
-	      return;
-	    }
+	if (or_put_mem_string_header (new_, src_length, src_size) != NO_ERROR)
+	  {
+	    db_private_free_and_init (NULL, new_);
+	    *mem = NULL;
+	    assert (false);
+	    return;
+	  }
+	cur = new_ + header_size;
 
-	  /* align like or_get_varchar */
-	  or_get_align32 (buf);
-	}
+	/* decompress (or copy raw) disk bytes into mem; helper writes the NUL terminator.
+	 * NOTE: when compressed_size > 0 the helper does NOT advance buf->ptr — the trailing
+	 * padding accounting below absorbs the compressed bytes via the (start..buf->ptr) delta. */
+	rc = pr_get_compressed_data_from_buffer (buf, cur, compressed_size, src_size);
+	if (rc != NO_ERROR)
+	  {
+	    db_private_free (NULL, new_);
+	    *mem = NULL;
+	    ASSERT_ERROR ();
+	    return;
+	  }
+
+	/* align like or_get_varchar */
+	or_get_align32 (buf);
+      }
 
       /* If we were given a size, check to see if for some reason this is larger than the already word aligned
        * string that we have now extracted.  This shouldn't be the case but since we've got a length, we may as
@@ -11239,7 +11246,7 @@ mr_setval_char_type_common (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB
 static int
 mr_lengthval_char_type_common (DB_VALUE * value, int disk, int align)
 {
-  int src_size, compressed_size, disk_size;
+  int src_size, compressed_size;
   int rc = NO_ERROR;
   const char *src;
 
@@ -11252,19 +11259,7 @@ mr_lengthval_char_type_common (DB_VALUE * value, int disk, int align)
   src_size = db_get_string_size (value);
   if (!src)
     {
-      /* in-memory size for a NULL buf is 0 (legacy VARCHAR lengthval behavior preserved) */
-      if (disk == 0)
-	{
-	  return 0;
-	}
-      /* Disk-side: writeval's CBRD-26240 fast path emits an empty unified header
-       * via pr_write_uncompressed_string_to_buffer(buf, "", 0, 0, align) for src==NULL
-       * (e.g. is_max_string with no buf). Mirror it here so the sizeof/pack pair stays
-       * consistent — otherwise xts_save_regu_variable's buffer overflows.
-       * Step 3 tier dispatch: or_*_varchar_length(0) routes through or_string_header_size()
-       * and follows the tier automatically. */
-      src = "";
-      src_size = 0;
+      return 0;
     }
   if (src_size < 0)
     {
@@ -11275,24 +11270,34 @@ mr_lengthval_char_type_common (DB_VALUE * value, int disk, int align)
     {
       return src_size;
     }
-
-  if (!DB_TRIED_COMPRESSION (value))
+  else
     {
-      rc = pr_do_db_value_string_compression (value);
-      if (rc != NO_ERROR)
+      int char_count;
+
+      if (!DB_TRIED_COMPRESSION (value))
 	{
-	  return 0;
+	  rc = pr_do_db_value_string_compression (value);
+	  if (rc != NO_ERROR)
+	    {
+	      return 0;
+	    }
 	}
-    }
-  compressed_size = db_get_compressed_size (value);
 
-  /* disk-side data byte count: compressed bytes if compression succeeded, raw size otherwise. */
-  disk_size = (compressed_size > 0) ? compressed_size : src_size;
-  if (align == INT_ALIGNMENT)
-    {
-      return or_packed_varchar_length (disk_size);
+      compressed_size = db_get_compressed_size (value);
+
+      /* Char count from DB_VALUE; if not yet computed (lazy -1), fall back to src_size
+       * which is a safe upper bound for type_header dispatch (UTF-8 length <= size always). */
+      char_count = db_get_string_length (value);
+      if (char_count < 0)
+	{
+	  char_count = src_size;
+	}
+      if (align == INT_ALIGNMENT)
+	{
+	  return or_packed_varchar_length (char_count, src_size, compressed_size);
+	}
+      return or_varchar_length (char_count, src_size, compressed_size);
     }
-  return or_varchar_length (disk_size);
 }
 
 /*
@@ -11302,14 +11307,13 @@ mr_lengthval_char_type_common (DB_VALUE * value, int disk, int align)
  *   value(in)   : source DB_VALUE
  *   align(in)   : INT_ALIGNMENT or CHAR_ALIGNMENT
  *
- * Emits the shared 12-byte LARGE header followed by data bytes. Compression is
- * attempted once via pr_do_db_value_string_compression(); the resulting
- * compressed_buf is retained on the DB_VALUE so a paired lengthval call can
- * share the same compressed result.
- *
- * Step 4 (TODO): tier-specific dispatch (small/medium-u/medium-c/large) is
- * encapsulated inside or_put_string_header(); this common body stays
- * tier-agnostic and only decides "compress or not".
+ * Emits the unified string header (SMALL / MEDIUM_UNCOMPRESSED /
+ * MEDIUM_COMPRESSED / LARGE — selected inside or_put_string_header) followed
+ * by data bytes. Compression is attempted once via
+ * pr_do_db_value_string_compression(); the resulting compressed_buf is
+ * retained on the DB_VALUE so a paired lengthval call can share the same
+ * compressed result. This common body stays type_header-agnostic and only
+ * decides "compress or not".
  */
 static int
 mr_writeval_char_type_common (OR_BUF * buf, DB_VALUE * value, int align)
@@ -11577,17 +11581,23 @@ mr_cmpdisk_char_type_common (void *mem1, void *mem2, TP_DOMAIN * domain, int do_
   char *decompressed1 = NULL, *decompressed2 = NULL;
   bool is_trailing_space_ignored;
   static bool system_ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+  OR_BUF hdr_buf1, hdr_buf2;
 
   assert (type == DB_TYPE_CHAR || type == DB_TYPE_VARCHAR);
 
-  /* read header fields from the unified 12-byte LARGE layout */
-  mem_length1 = OR_GET_INT ((char *) mem1 + OR_DISK_STRING_LARGE_SIZE_OFFSET);
-  mem_length2 = OR_GET_INT ((char *) mem2 + OR_DISK_STRING_LARGE_SIZE_OFFSET);
-  cmp_size1 = OR_GET_INT ((char *) mem1 + OR_DISK_STRING_LARGE_COMPRESSED_SIZE_OFFSET);
-  cmp_size2 = OR_GET_INT ((char *) mem2 + OR_DISK_STRING_LARGE_COMPRESSED_SIZE_OFFSET);
-
-  data1 = (char *) mem1 + OR_DISK_STRING_LARGE_HEADER_SIZE;
-  data2 = (char *) mem2 + OR_DISK_STRING_LARGE_HEADER_SIZE;
+  /* Tier-aware header parse: or_get_string_header advances buf->ptr past the header,
+   * so the resulting buf->ptr is the data start regardless of type_header (1 / 4 / 6 / 12).
+   * Byte-level compare doesn't need char count → pass NULL to skip length. */
+  or_init (&hdr_buf1, (char *) mem1, 0);
+  or_init (&hdr_buf2, (char *) mem2, 0);
+  if (or_get_string_header (&hdr_buf1, NULL, &mem_length1, &cmp_size1) != NO_ERROR
+      || or_get_string_header (&hdr_buf2, NULL, &mem_length2, &cmp_size2) != NO_ERROR)
+    {
+      assert (false);
+      return DB_UNK;
+    }
+  data1 = hdr_buf1.ptr;
+  data2 = hdr_buf2.ptr;
 
   /* decompress side 1 if needed */
   if (cmp_size1 > 0)
@@ -13470,8 +13480,9 @@ cleanup:
   return length;
 }
 
-/* pr_write_compressed_string_to_buffer()	  : Emits the unified string header (Step 2: LARGE 12-byte;
- *						    Step 4: tier dispatch) followed by data + NUL+align.
+/* pr_write_compressed_string_to_buffer()	  : Emits the unified string header
+ *						    (type_header-dispatched inside or_put_string_header)
+ *						    followed by data + NUL+align.
  *
  * buf(in/out)					  : Buffer to be written.
  * string(in)					  : The bytes to write — compressed bytes when
@@ -13520,7 +13531,7 @@ pr_write_compressed_string_to_buffer (OR_BUF * buf, const char *string, int comp
 
 /*
  * pr_write_uncompressed_string_to_buffer()   :- Emits the unified string header
- *						 (Step 2: LARGE 12-byte; Step 4: tier dispatch)
+ *						 (type_header-dispatched inside or_put_string_header)
  *						 with compressed_size = 0, then data + NUL+align.
  *
  * return				      :- NO_ERROR or error code.
