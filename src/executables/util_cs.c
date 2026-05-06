@@ -1261,7 +1261,6 @@ spacedb (UTIL_FUNCTION_ARG * arg)
     {
       for (int table_num = 0; table_num < actual_table_count; table_num++)
         {
-
           if (table_sizes[table_num].file_count == 0)
             {
               continue;
@@ -1288,9 +1287,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
               int alloc_npage;
               const char *ftype_str;
 
-              /* Overflow files always use every allocated page, so ovf_alloced_page
-               * counts as both used and allocated. */
-              used_npage = ts->data_used_page + ts->ovf_alloced_page;
+              used_npage = ts->data_used_page + ts->ovf_used_page;
               alloc_npage = ts->data_alloced_page + ts->ovf_alloced_page;
               ftype_str = (ts->ftype == 1) ? "HEAP" : (ts->ftype == 4) ? "BTREE" : "UNKNOWN";
               snprintf (used_pct_str, sizeof (used_pct_str), "%.1f", calc_used_pct (used_npage, alloc_npage));
