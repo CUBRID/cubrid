@@ -457,6 +457,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	}
       break;
     case RVREPL_OOS_INSERT:
+    case RVREPL_DUMMY_OOS_RECORD:
       if (!tdes->oos_insert_lsa_queue.is_empty ())
 	{
 	  LOG_LSA oos_lsa = tdes->oos_insert_lsa_queue.pop ();

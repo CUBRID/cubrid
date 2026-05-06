@@ -23,6 +23,10 @@
 #ifndef _THREAD_DAEMON_HPP_
 #define _THREAD_DAEMON_HPP_
 
+#if !defined (SERVER_MODE)
+#error Wrong module
+#endif // not SERVER_MODE
+
 #include "thread_entry_task.hpp"
 #include "thread_looper.hpp"
 #include "thread_task.hpp"

@@ -138,7 +138,8 @@ typedef struct tde_mk_file_item
    || (rcvindex) == RVOOS_INSERT \
    || (rcvindex) == RVOOS_DELETE \
    || (rcvindex) == RVREPL_OOS_INSERT \
-   || (rcvindex) == RVREPL_OOS_DELETE)
+   || (rcvindex) == RVREPL_OOS_DELETE \
+   || (rcvindex) == RVREPL_DUMMY_OOS_RECORD)
 
 #define tde_er_log(...) if (prm_get_bool_value (PRM_ID_ER_LOG_TDE)) _er_log_debug (ARG_FILE_LINE, "TDE: " __VA_ARGS__)
 

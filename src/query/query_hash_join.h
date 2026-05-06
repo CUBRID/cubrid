@@ -252,15 +252,15 @@ typedef struct hashjoin_split_info
 typedef struct hashjoin_shared_split_info
 {
   // *INDENT-OFF*
-  std::mutex scan_mutex;
-  SCAN_POSITION scan_position;
-  VPID next_vpid;
+  QFILE_LIST_SECTOR_INFO sector_info;	/* sector-based page distribution (from qfile_collect_list_sector_info) */
+  std::atomic<bool> membuf_claimed;	/* atomic flag: one worker claims all membuf pages */
+  std::atomic<int> next_sector_index;	/* atomic index for sector distribution */
   std::mutex *part_mutexes;
 
   hashjoin_shared_split_info ()
-    : scan_mutex ()
-    , scan_position (S_BEFORE)
-    , next_vpid (VPID_INITIALIZER)
+    : sector_info (QFILE_LIST_SECTOR_INFO_INITIALIZER)
+    , membuf_claimed (false)
+    , next_sector_index (0)
     , part_mutexes (nullptr)
   {
     //
