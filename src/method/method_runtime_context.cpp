@@ -402,11 +402,13 @@ namespace cubmethod
 	    if (now - last_log >= seconds (10))
 	      {
 		auto elapsed = duration_cast<seconds> (now - wait_started).count ();
-		er_log_debug (ARG_FILE_LINE,
-			      "method runtime_context: drain pending for %llds "
-			      "(group_stack=%zu, deferred=%zu, interrupt_id=%d)\n",
-			      (long long) elapsed, m_group_stack.size (),
-			      m_deferred_free_stack.size (), m_interrupt_id);
+		char msg[256];
+		snprintf (msg, sizeof (msg),
+			  "method runtime_context: drain pending for %llds "
+			  "(group_stack=%zu, deferred=%zu, interrupt_id=%d)",
+			  (long long) elapsed, m_group_stack.size (),
+			  m_deferred_free_stack.size (), m_interrupt_id);
+		er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, msg);
 		last_log = now;
 	      }
 	  }
