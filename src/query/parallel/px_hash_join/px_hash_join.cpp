@@ -199,10 +199,10 @@ error_exit:
 	  hjoin_trace_drain_worker_stats (&thread_ref, manager);
 	  hjoin_trace_end (&thread_ref, &stats->parallel, &start_stats);
 
-	  stats->build.range_time.min = shared_info.build_range_time.min;
-	  stats->build.range_time.max = shared_info.build_range_time.max;
-	  stats->probe.range_time.min = shared_info.probe_range_time.min;
-	  stats->probe.range_time.max = shared_info.probe_range_time.max;
+	  stats->build.range_elapsed_time.min = shared_info.build_range_time.min;
+	  stats->build.range_elapsed_time.max = shared_info.build_range_time.max;
+	  stats->probe.range.elapsed_time.min = shared_info.probe_range_time.min;
+	  stats->probe.range.elapsed_time.max = shared_info.probe_range_time.max;
 	}
 
       if (task_manager.has_error ())
@@ -533,14 +533,14 @@ error_exit:
 	  hjoin_trace_drain_worker_stats (&thread_ref, manager);
 	  hjoin_trace_end (&thread_ref, &stats->probe, &start_stats);
 
-	  stats->probe.range_time.min = shared_info.probe_range_time.min;
-	  stats->probe.range_time.max = shared_info.probe_range_time.max;
-	  stats->probe.range_read_rows.min = shared_info.probe_range_read_rows.min;
-	  stats->probe.range_read_rows.max = shared_info.probe_range_read_rows.max;
-	  stats->probe.range_read_keys.min = shared_info.probe_range_read_keys.min;
-	  stats->probe.range_read_keys.max = shared_info.probe_range_read_keys.max;
-	  stats->probe.range_qualified_rows.min = shared_info.probe_range_qualified_rows.min;
-	  stats->probe.range_qualified_rows.max = shared_info.probe_range_qualified_rows.max;
+	  stats->probe.range.elapsed_time.min = shared_info.probe_range.elapsed_time.min;
+	  stats->probe.range.elapsed_time.max = shared_info.probe_range.elapsed_time.max;
+	  stats->probe.range.read_rows.min = shared_info.probe_range.read_rows.min;
+	  stats->probe.range.read_rows.max = shared_info.probe_range.read_rows.max;
+	  stats->probe.range.read_keys.min = shared_info.probe_range.read_keys.min;
+	  stats->probe.range.read_keys.max = shared_info.probe_range.read_keys.max;
+	  stats->probe.range.qualified_rows.min = shared_info.probe_range.qualified_rows.min;
+	  stats->probe.range.qualified_rows.max = shared_info.probe_range.qualified_rows.max;
 	}
 
       if (task_manager.has_error ())

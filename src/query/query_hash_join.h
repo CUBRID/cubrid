@@ -156,16 +156,39 @@ typedef struct hashjoin_range_value_stats
 typedef struct hashjoin_input_stats
 {
   TSCTIMEVAL elapsed_time;
-  HASHJOIN_RANGE_TIME_STATS range_time;
-  HASHJOIN_RANGE_ROWS_STATS range_read_rows;
-  HASHJOIN_RANGE_ROWS_STATS range_read_keys;
-  HASHJOIN_RANGE_ROWS_STATS range_qualified_rows;
   UINT64 fetches;
   UINT64 ioreads;
   UINT64 read_rows;
   UINT64 read_keys;
   UINT64 qualified_rows;
 } HASHJOIN_INPUT_STATS;
+
+typedef struct hashjoin_range_stats
+{
+  HASHJOIN_RANGE_TIME_STATS elapsed_time;
+  HASHJOIN_RANGE_ROWS_STATS read_rows;
+  HASHJOIN_RANGE_ROWS_STATS read_keys;
+  HASHJOIN_RANGE_ROWS_STATS qualified_rows;
+} HASHJOIN_RANGE_STATS;
+#define HASHJOIN_RANGE_STATS_INITIALIZER \
+  { HASHJOIN_RANGE_TIME_STATS_INITIALIZER, \
+    HASHJOIN_RANGE_ROWS_STATS_INITIALIZER, \
+    HASHJOIN_RANGE_ROWS_STATS_INITIALIZER, \
+    HASHJOIN_RANGE_ROWS_STATS_INITIALIZER }
+
+// *INDENT-OFF*
+typedef struct hashjoin_build_stats : hashjoin_input_stats
+{
+  HASHJOIN_RANGE_TIME_STATS range_elapsed_time;
+} HASHJOIN_BUILD_STATS;
+// *INDENT-ON*
+
+// *INDENT-OFF*
+typedef struct hashjoin_probe_stats : hashjoin_input_stats
+{
+  HASHJOIN_RANGE_STATS range;
+} HASHJOIN_PROBE_STATS;
+// *INDENT-ON*
 
 #if HASHJOIN_PROFILE_TIME
 typedef struct hashjoin_profile_stats
@@ -221,8 +244,8 @@ typedef struct hashjoin_stats
 
   HASHJOIN_INPUT_STATS split;
   HASHJOIN_INPUT_STATS parallel;
-  HASHJOIN_INPUT_STATS build;
-  HASHJOIN_INPUT_STATS probe;
+  HASHJOIN_BUILD_STATS build;
+  HASHJOIN_PROBE_STATS probe;
 
 #if HASHJOIN_PROFILE_TIME
   HASHJOIN_INPUT_STATS merge;
@@ -294,18 +317,12 @@ typedef struct hashjoin_shared_probe_info
   QFILE_LIST_SECTOR_SCAN_INFO sector_scan;
 
   std::mutex stats_mutex;
-  HASHJOIN_RANGE_TIME_STATS probe_range_time;
-  HASHJOIN_RANGE_ROWS_STATS probe_range_read_rows;
-  HASHJOIN_RANGE_ROWS_STATS probe_range_read_keys;
-  HASHJOIN_RANGE_ROWS_STATS probe_range_qualified_rows;
+  HASHJOIN_RANGE_STATS probe_range;
 
   hashjoin_shared_probe_info ()
     : sector_scan ()
     , stats_mutex ()
-    , probe_range_time (HASHJOIN_RANGE_TIME_STATS_INITIALIZER)
-    , probe_range_read_rows (HASHJOIN_RANGE_ROWS_STATS_INITIALIZER)
-    , probe_range_read_keys (HASHJOIN_RANGE_ROWS_STATS_INITIALIZER)
-    , probe_range_qualified_rows (HASHJOIN_RANGE_ROWS_STATS_INITIALIZER)
+    , probe_range HASHJOIN_RANGE_STATS_INITIALIZER
   {
     //
   }
@@ -329,8 +346,8 @@ typedef struct hashjoin_shared_join_info
     , scan_position (S_BEFORE)
     , next_index (0)
     , stats_mutex ()
-    , build_range_time (HASHJOIN_RANGE_TIME_STATS_INITIALIZER)
-    , probe_range_time (HASHJOIN_RANGE_TIME_STATS_INITIALIZER)
+    , build_range_time HASHJOIN_RANGE_TIME_STATS_INITIALIZER
+    , probe_range_time HASHJOIN_RANGE_TIME_STATS_INITIALIZER
   {
     //
   }
