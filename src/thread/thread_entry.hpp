@@ -112,6 +112,7 @@ struct event_stat
   struct timeval cs_waits;
   struct timeval lock_waits;
   struct timeval latch_waits;
+  struct timeval slot_waits;
 
   /* volume expand stats */
   struct timeval extend_time;
@@ -237,11 +238,6 @@ namespace cubthread
 
       css_conn_entry *conn_entry;	/* conn entry ptr */
 
-#if defined (SERVER_MODE)
-      /* concurrency slot held by this entry; only set for workers from an elastic worker pool */
-      std::unique_ptr<cubthread::concurrency_slot> slot;
-#endif
-
       xasl_unpack_info *xasl_unpack_info_ptr;     /* XASL_UNPACK_INFO * */
       int xasl_errcode;		/* xasl errorcode */
       int xasl_recursion_depth;
@@ -322,6 +318,11 @@ namespace cubthread
       bool m_is_private_lru_enabled;
       struct pgbuf_holder_anchor *m_holder_anchor;
 
+#if defined (SERVER_MODE)
+      /* concurrency slot held by the entry; only set for workers from an elastic worker pool */
+      std::unique_ptr<cubthread::concurrency_slot> m_slot;
+#endif
+
       thread_id_t get_id ();
       pthread_t get_posix_id ();
       void register_id ();
@@ -375,6 +376,11 @@ namespace cubthread
       void assign_lf_tran_index (lockfree::tran::index idx);
       lockfree::tran::index pull_lf_tran_index ();
       lockfree::tran::index get_lf_tran_index ();
+
+#if defined (SERVER_MODE)
+      void start_waiting ();
+      void stop_waiting ();
+#endif
 
     private:
       void clear_resources (void);

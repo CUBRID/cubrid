@@ -64,7 +64,7 @@ namespace cubthread
       using unique_slot = std::unique_ptr<concurrency_slot>;
       using stats = typename worker_pool_impl<Stats>::stats;
 
-      // forward definition
+      // forward declaration
       class core_elastic;
 
       ~worker_pool_elastic ();
@@ -87,7 +87,7 @@ namespace cubthread
       friend class worker_pool_elastic;
 
     public:
-      // forward definition
+      // forward declaration
       class worker_elastic;
 
       ~core_elastic ();
@@ -98,10 +98,10 @@ namespace cubthread
       void execute_task (task_type *task_p) override;
 
       // concurrency slot management
-      unique_slot try_acquire_slot ();
-      unique_slot acquire_slot ();
+      unique_slot try_acquire_slot (bool has_mutex = true);
+      unique_slot acquire_slot (bool has_mutex = true);
 
-      void release_slot (unique_slot slot);
+      void release_slot (unique_slot slot, bool has_mutex = true);
 
       std::optional<std::pair<wrapped_task, unique_slot>> get_task_and_slot_or_become_available (worker &worker_arg);
 
@@ -112,13 +112,15 @@ namespace cubthread
 
       worker *get_or_make_available_worker ();
 
+      void execute_task_with_slot (worker_elastic *worker_p, wrapped_task &&task_ref, unique_slot slot);
+
       concurrency_slot_pool m_slots;
   };
 
   // worker_pool_elastic<Stats>::core_elastic::worker_elastic
   //
   // description
-  //    elastic worker-pool core with a per-core slot pool that limits runnable concurrency.
+  //    worker implementation that carries a task together with a concurrency slot.
   //
   template <stats_t Stats>
   class worker_pool_elastic<Stats>::core_elastic::worker_elastic final
@@ -129,7 +131,7 @@ namespace cubthread
     public:
       ~worker_elastic ();
 
-      // assign task to worker; wake a running thread or start a new one.
+      // assign a task to the worker; wake a running thread or start a new one
       std::optional<std::pair<wrapped_task, unique_slot>> assign_task (wrapped_task &&task_ref, unique_slot slot);
 
     private:
@@ -138,7 +140,7 @@ namespace cubthread
       // execute m_wrapped_task
       void execute_current_task (void) override;
 
-      // get new task with slot
+      // get a new task and slot
       bool get_new_task (void) override;
 
       // guarded by m_task_mutex
@@ -179,6 +181,7 @@ namespace cubthread
   template <stats_t Stats>
   worker_pool_elastic<Stats>::core_elastic::core_elastic (bool pool_threads)
     : worker_pool_impl<Stats>::core_impl (pool_threads)
+    , m_slots (this->m_core_mutex)
   {
   }
 
@@ -200,14 +203,8 @@ namespace cubthread
   void
   worker_pool_elastic<Stats>::core_elastic::execute_task (task_type *task_p)
   {
-    // find an available worker
-    // 1. one already active is preferable
-    // 2. inactive will do too
-    // 3. if no workers, enqueue the task
-
     assert (task_p != nullptr);
 
-    std::unique_lock<std::mutex> ulock (this->m_workers_mutex, std::defer_lock);
     worker_elastic *worker_p = nullptr;
 
     if (!this->m_parent_pool->is_running ())
@@ -218,95 +215,88 @@ namespace cubthread
       }
 
     wrapped_task task_ref (task_p);
+    std::unique_lock<std::mutex> ulock (this->m_core_mutex);
 
     unique_slot slot = try_acquire_slot ();
-    // hold the mutex here
-    ulock.lock ();
     if (slot)
       {
 	worker_p = static_cast<worker_elastic *> (get_or_make_available_worker ());
 	assert (worker_p);
 
-	ulock.unlock ();
-
-	std::optional<std::pair<wrapped_task, unique_slot>> unexecuted =
-		    worker_p->assign_task (std::move (task_ref), std::move (slot));
-	if (!unexecuted.has_value ())
+	// preserve FIFO order when queued tasks already exist
+	if (!this->m_task_queue.empty ())
 	  {
-	    /* successfully assign the task */
-	    return;
+	    // enqueue the new task behind existing work
+	    this->m_task_queue.push_back (std::move (task_ref));
+
+	    // dispatch the oldest queued task first
+	    wrapped_task queued_task = std::move (this->m_task_queue.front ());
+	    this->m_task_queue.pop_front ();
+
+	    ulock.unlock ();
+
+	    execute_task_with_slot (worker_p, std::move (queued_task), std::move (slot));
 	  }
+	else
+	  {
+	    ulock.unlock ();
 
-	// failed to start new thread
-	// return the slot to the pool
-	m_slots.release_slot (std::move (unexecuted->second));
-
-	ulock.lock ();
-
-	// save to queue
-	this->m_task_queue.push (std::move (unexecuted->first));
-	// return the worker
-	this->m_available_workers.push_back (worker_p);
+	    execute_task_with_slot (worker_p, std::move (task_ref), std::move (slot));
+	  }
       }
     else
       {
-	// save to queue
-	this->m_task_queue.push (std::move (task_ref));
+	// enqueue the task until a slot is available
+	this->m_task_queue.push_back (std::move (task_ref));
       }
   }
 
   template <stats_t Stats>
   typename worker_pool_elastic<Stats>::unique_slot
-  worker_pool_elastic<Stats>::core_elastic::try_acquire_slot ()
+  worker_pool_elastic<Stats>::core_elastic::try_acquire_slot (bool has_mutex)
   {
-    return m_slots.try_acquire_slot ();
+    auto slot = m_slots.try_acquire_slot (has_mutex);
+    assert (!slot || (slot->get_owner_pool () && slot->get_holder_pool ()));
+
+    return slot;
   }
 
   template <stats_t Stats>
   typename worker_pool_elastic<Stats>::unique_slot
-  worker_pool_elastic<Stats>::core_elastic::acquire_slot ()
+  worker_pool_elastic<Stats>::core_elastic::acquire_slot (bool has_mutex)
   {
-    return m_slots.acquire_slot ();
+    auto slot = m_slots.acquire_slot (has_mutex);
+    assert (slot->get_owner_pool () && slot->get_holder_pool ());
+
+    return slot;
   }
 
   template <stats_t Stats>
   void
-  worker_pool_elastic<Stats>::core_elastic::release_slot (unique_slot slot)
+  worker_pool_elastic<Stats>::core_elastic::release_slot (unique_slot slot, bool has_mutex)
   {
-    m_slots.release_slot (std::move (slot));
+    m_slots.release_slot (std::move (slot), has_mutex);
   }
 
   template <stats_t Stats>
   std::optional<std::pair<typename worker_pool_elastic<Stats>::wrapped_task, typename worker_pool_elastic<Stats>::unique_slot>>
       worker_pool_elastic<Stats>::core_elastic::get_task_and_slot_or_become_available (worker &worker_arg)
   {
-    std::unique_lock<std::mutex> ulock (this->m_workers_mutex, std::defer_lock);
+    std::lock_guard<std::mutex> lock (this->m_core_mutex);
 
-    unique_slot slot = try_acquire_slot ();
-    ulock.lock ();
-    if (slot)
+    if (!this->m_task_queue.empty ())
       {
-	if (!this->m_task_queue.empty ())
+	unique_slot slot = try_acquire_slot ();
+	if (slot)
 	  {
 	    wrapped_task queued_task = std::move (this->m_task_queue.front ());
-	    this->m_task_queue.pop ();
+	    this->m_task_queue.pop_front ();
 
 	    return std::optional<std::pair<wrapped_task, unique_slot>> (std::in_place, std::move (queued_task), std::move (slot));
 	  }
-
-	// insert this worker into available list
-	this->m_available_workers.push_back (&worker_arg);
-	assert (this->m_available_workers.size () <= this->m_workers.size ());
-
-	ulock.unlock ();
-
-	// return the slot
-	release_slot (std::move (slot));
-
-	return std::nullopt;
       }
 
-    // insert this worker into available list
+    // add this worker to the available list
     this->m_available_workers.push_back (&worker_arg);
     assert (this->m_available_workers.size () <= this->m_workers.size ());
 
@@ -329,13 +319,32 @@ namespace cubthread
     worker_p = this->get_available_worker ();
     if (!worker_p)
       {
-	// make a new worker
+	// create a worker when none is available
 	std::unique_ptr<worker> w = this->allocate_worker ();
 	w->set_parent_core (*this);
 	worker_p = w.get ();
 	this->m_workers.push_back (std::move (w));
       }
     return worker_p;
+  }
+
+  template <stats_t Stats>
+  void
+  worker_pool_elastic<Stats>::core_elastic::execute_task_with_slot (worker_elastic *worker_p, wrapped_task &&task_ref,
+      unique_slot slot)
+  {
+    auto unexecuted = worker_p->assign_task (std::move (task_ref), std::move (slot));
+    if (unexecuted.has_value ())
+      {
+	// could not start a new thread; put the task and slot back
+	std::lock_guard<std::mutex> lock (this->m_core_mutex);
+	// requeue the task at the front to preserve FIFO order
+	this->m_task_queue.push_front (std::move (unexecuted->first));
+	// release the slot
+	release_slot (std::move (unexecuted->second));
+	// return the worker to the available list
+	this->m_available_workers.push_back (worker_p);
+      }
   }
 
   template <stats_t Stats>
@@ -357,9 +366,9 @@ namespace cubthread
 
     assert (!this->m_wrapped_task.has_value ());
 
-    // give the task
+    // assign the task
     this->m_wrapped_task.emplace (std::move (task_ref));
-    // give the slot
+    // assign the slot
     m_slot = std::move (slot);
 
     if (this->m_has_thread)
@@ -420,15 +429,14 @@ namespace cubthread
 	    return true;
 	  }
 
-	// wait for task
+	// wait for a task
 	ulock.lock ();
 
 	assert ((!this->m_wrapped_task.has_value () && !m_slot) || (this->m_wrapped_task.has_value () && m_slot));
 
 	if ((!this->m_wrapped_task.has_value () && !m_slot) && !this->m_stop)
 	  {
-	    // wait until a task is received or stopped ...
-	    // ... or time out
+	    // wait for a task, a stop request, or idle timeout
 	    condvar_wait (this->m_task_cv, ulock, this->m_parent_core->get_parent_pool ()->get_idle_timeout (),
 			  [this] () -> bool { return (this->m_wrapped_task.has_value () && m_slot) || this->m_stop; });
 	  }
@@ -439,7 +447,7 @@ namespace cubthread
       }
     else
       {
-	// we need to add to available list
+	// keep this worker visible to the core while it is stopping
 	static_cast<core_elastic *> (this->m_parent_core)->become_available (*this);
 
 	ulock.lock ();
@@ -447,29 +455,29 @@ namespace cubthread
 
     assert ((!this->m_wrapped_task.has_value () && !m_slot) || (this->m_wrapped_task.has_value () && m_slot));
 
-    // does this worker have a task with slot ?
+    // does this worker have both a task and a slot ?
     if (!this->m_wrapped_task.has_value () && !m_slot)
       {
-	// no; this thread will stop. from this point forward, if a new task is assigned, a new thread must be spawned
+	// no task is available; future assignments must start a new thread
 	this->m_has_thread = false;
 
-	// we need to retire context before another thread uses this worker
+	// retire the context before another thread reuses this worker
 	this->finish_run ();
 
 	return false;
       }
     else
       {
-	// unlock mutex
+	// unlock the worker mutex
 	ulock.unlock ();
 
-	// safe-guard - threads should no longer be available
+	// sanity check: this worker should no longer be available
 	static_cast<core_elastic *> (this->m_parent_core)->check_worker_not_available (*this);
 
 	// stats: wake up with task
 	stats::time_and_increment (this->m_stats, stats::id::wakeup_with_task);
 
-	// found task
+	// found a task
 	return true;
       }
   }
@@ -480,16 +488,16 @@ namespace cubthread
   {
     assert (dynamic_cast<core_elastic *> (this->m_parent_core));
     assert (this->m_wrapped_task.has_value () && m_slot);
-    assert (!this->m_context_p->slot);
+    assert (!this->m_context_p->m_slot);
 
-    // give the slot to the entry
-    this->m_context_p->slot = std::move (m_slot);
-    // execute task
+    // move the slot to the thread entry for task execution
+    this->m_context_p->m_slot = std::move (m_slot);
+    // execute the task
     this->m_wrapped_task->execute (*this->m_context_p);
 
     // return the slot to the pool
-    static_cast<core_elastic *> (this->m_parent_core)->release_slot (std::move (this->m_context_p->slot));
-    this->m_context_p->slot = nullptr;
+    static_cast<core_elastic *> (this->m_parent_core)->release_slot (std::move (this->m_context_p->m_slot), false);
+    this->m_context_p->m_slot = nullptr;
 
     // stats: execute task
     stats::time_and_increment (this->m_stats, stats::id::execute_task);

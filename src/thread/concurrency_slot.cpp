@@ -120,6 +120,7 @@ namespace cubthread
 
   concurrency_slot::concurrency_slot (concurrency_slot_pool *owner_pool)
     : m_owner_pool (owner_pool)
+    , m_holder_pool (nullptr)
     , m_wait (false)
     , m_wait_since ()
   {
@@ -129,16 +130,47 @@ namespace cubthread
   {
   }
 
+  concurrency_slot_pool *
+  concurrency_slot::get_owner_pool ()
+  {
+    return m_owner_pool;
+  }
+
+  void
+  concurrency_slot::set_holder_pool (concurrency_slot_pool *holder_pool)
+  {
+    m_holder_pool = holder_pool;
+  }
+
+  concurrency_slot_pool *
+  concurrency_slot::get_holder_pool ()
+  {
+    return m_holder_pool;
+  }
+
+  void
+  concurrency_slot::start_waiting ()
+  {
+    m_wait = true;
+    m_wait_since = std::chrono::steady_clock::now ();
+  }
+
+  void
+  concurrency_slot::stop_waiting ()
+  {
+    m_wait = false;
+  }
+
   //////////////////////////////////////////////////////////////////////////
   // concurrency_slot_pool
   //////////////////////////////////////////////////////////////////////////
 
-  concurrency_slot_pool::concurrency_slot_pool ()
+  concurrency_slot_pool::concurrency_slot_pool (std::mutex &mtx)
     : concurrency_slot_subscriber (concurrency_slot_daemon::get_publisher ())
     , m_available_slots ()
     , m_surplus_since ()
     , m_wait_queue ()
-    , m_mutex ()
+    , m_mutex (&mtx)
   {
   }
 
@@ -149,7 +181,6 @@ namespace cubthread
   void
   concurrency_slot_pool::initialize (void *identifier, std::size_t slot_count)
   {
-    std::unique_lock<std::mutex> ulock (m_mutex);
     std::size_t i;
 
     for (i = 0; i < slot_count; i++)
@@ -157,16 +188,19 @@ namespace cubthread
 	m_available_slots.emplace (std::unique_ptr<concurrency_slot> (new concurrency_slot (this)));
       }
 
-    ulock.unlock ();
-
     // attach to the daemon
     concurrency_slot_subscriber::activate (identifier);
   }
 
   std::unique_ptr<concurrency_slot>
-  concurrency_slot_pool::try_acquire_slot ()
+  concurrency_slot_pool::try_acquire_slot (bool has_mutex)
   {
-    std::lock_guard<std::mutex> lock (m_mutex);
+    std::unique_lock<std::mutex> ulock (*m_mutex, std::defer_lock);
+
+    if (!has_mutex)
+      {
+	ulock.lock ();
+      }
 
     if (m_available_slots.empty ())
       {
@@ -180,20 +214,32 @@ namespace cubthread
   }
 
   std::unique_ptr<concurrency_slot>
-  concurrency_slot_pool::acquire_slot ()
+  concurrency_slot_pool::acquire_slot (bool has_mutex)
   {
+    std::unique_lock<std::mutex> ulock (*m_mutex, std::defer_lock);
+
+    if (!has_mutex)
+      {
+	ulock.lock ();
+      }
+
     return nullptr;
   }
 
   void
-  concurrency_slot_pool::release_slot (std::unique_ptr<concurrency_slot> slot)
+  concurrency_slot_pool::release_slot (std::unique_ptr<concurrency_slot> slot, bool has_mutex)
   {
+    std::unique_lock<std::mutex> ulock (*m_mutex, std::defer_lock);
+
     if (slot == nullptr)
       {
 	return;
       }
 
-    std::lock_guard<std::mutex> lock (m_mutex);
+    if (!has_mutex)
+      {
+	ulock.lock ();
+      }
 
     m_available_slots.emplace (std::move (slot));
   }
