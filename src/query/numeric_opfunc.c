@@ -3088,9 +3088,9 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
       skip_size = 1;
       if (astring[i] == '.')
 	{
-	  if (decimal_part)
+	  if (decimal_part || trailing_spaces)
 	    {
-	      /* reject strings with more than one decimal point */
+	      /* reject duplicate decimal points and decimal points after trailing spaces (e.g. '1   .') */
 	      ret = DOMAIN_INCOMPATIBLE;
 	      break;
 	    }
@@ -3111,17 +3111,18 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 	    }
 	  else if (astring[i] == '+' || astring[i] == '-')
 	    {			/* sign found */
-	      if (!sign_found)
+	      /* Sign is only allowed before any digit (rejects duplicates and signs after a leading zero, e.g. '0-1') */
+	      if (sign_found || pad_character_zero)
+		{
+		  ret = DOMAIN_INCOMPATIBLE;
+		}
+	      else
 		{
 		  sign_found = true;
 		  if (astring[i] == '-')
 		    {
 		      negate_value = true;
 		    }
-		}
-	      else
-		{		/* Duplicate sign characters */
-		  ret = DOMAIN_INCOMPATIBLE;
 		}
 	    }
 	  else if (astring[i] == '0')
@@ -3131,8 +3132,18 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 	    }
 	  else if (intl_is_space (astring + i, NULL, codeset, &skip_size))
 	    {
-	      /* Just skip this.  OK to have leading spaces */
-	      ;
+	      /* Leading spaces are allowed, but a space after a sign is not (e.g. '-   1') */
+	      if (sign_found && !pad_character_zero)
+		{
+		  ret = DOMAIN_INCOMPATIBLE;
+		  break;
+		}
+	      /* A space after a leading zero ends the leading phase (e.g. '0   1' is invalid). */
+	      if (pad_character_zero)
+		{
+		  leading_zeroes = false;
+		  trailing_spaces = true;
+		}
 	    }
 	  else
 	    {
