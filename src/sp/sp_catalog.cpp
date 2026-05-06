@@ -966,7 +966,6 @@ sp_edit_stored_procedure_code (MOP code_mop, SP_CODE_INFO &info)
     {
       assert (er_errid () != NO_ERROR);
       err = er_errid ();
-      obj_delete (object_p);    // TODO is this correct?
       goto error;
     }
 
