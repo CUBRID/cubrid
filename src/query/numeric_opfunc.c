@@ -4443,23 +4443,32 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
 	}
       else if (current_char == '+' || current_char == '-')
 	{
-	  if (!sign_found)
+	  /* Sign is only allowed before any digit (rejects duplicates and signs after a leading zero, e.g. '0-1') */
+	  if (sign_found || pad_character_zero)
 	    {
-	      sign_found = true;
-	      if (current_char == '-')
-		{
-		  *negate_value = true;
-		}
-	      parse_pos++;
-	      continue;
-	    }
-	  else
-	    {			/* Duplicate sign characters */
 	      return DOMAIN_INCOMPATIBLE;
 	    }
+	  sign_found = true;
+	  if (current_char == '-')
+	    {
+	      *negate_value = true;
+	    }
+	  parse_pos++;
+	  continue;
 	}
       else if (intl_is_space (astring + parse_pos, NULL, codeset, &skip))
 	{
+	  /* A space after a sign without any digit is invalid (e.g. '-   1'). */
+	  if (sign_found && !pad_character_zero)
+	    {
+	      return DOMAIN_INCOMPATIBLE;
+	    }
+	  /* A space after a leading zero ends the leading phase (e.g. '0   1' is invalid). */
+	  if (pad_character_zero)
+	    {
+	      trailing_spaces = true;
+	      break;
+	    }
 	  parse_pos += skip;	/* Skip spaces */
 	  continue;
 	}
@@ -4483,8 +4492,9 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
 	  parse_pos++;
 	  continue;
 	}
-      else if (current_char == '.')
+      else if (current_char == '.' && !trailing_spaces)
 	{
+	  /* '.' is only allowed immediately after a digit, not after trailing spaces (e.g. '1   .' is invalid) */
 	  parse_pos++;
 	  break;
 	}
