@@ -128,6 +128,11 @@ extern void manage_cubrid_conf (T_CMD_CUBRID_CONF command);
 #define REMOVE_CUBRID_CONF 	manage_cubrid_conf (CMD_STOP)
 #define ENABLE_CUBRID_CONF_ENV	manage_cubrid_conf (CMD_ON)
 #define DISABLE_CUBRID_CONF_ENV	manage_cubrid_conf (CMD_OFF)
+#else
+#define COPY_CUBRID_CONF	((void)0)
+#define REMOVE_CUBRID_CONF	((void)0)
+#define ENABLE_CUBRID_CONF_ENV	((void)0)
+#define DISABLE_CUBRID_CONF_ENV	((void)0)
 #endif
 
 #endif /* _BROKER_FILENAME_H_ */
