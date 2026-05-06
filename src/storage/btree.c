@@ -1244,9 +1244,7 @@ static int btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTI
 						    DB_VALUE * key, void *rec_header, BTREE_NODE_TYPE node_type,
 						    bool * clear_key, int *offset, int copy);
 static PAGE_PTR btree_get_new_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, VPID * near_vpid);
-/* exposed for parallel index scan key-comparison descent */
-int btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key,
-			       INT16 * slot_id, VPID * child_vpid, page_key_boundary * page_bounds);
+/* btree_search_nonleaf_page declared in btree.h (parallel index scan needs it) */
 static int btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key,
 				   BTREE_SEARCH_KEY_HELPER * search_key);
 static int btree_leaf_is_key_between_min_max (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR leaf,
