@@ -8312,13 +8312,7 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 	  continue;
 	}
 
-      /* Skip eqclasses where all existing edges are DUMMY_JOIN.
-       * When every edge was downgraded to QO_TC_DUMMY_JOIN by qo_discover_edges
-       * (all nodes are sargable with constant values), any transitive term we
-       * would generate is also trivially true.  Because qo_discover_edges has
-       * already finished, the new term would escape the DUMMY_JOIN check and be
-       * treated as a real join predicate, changing a cross join into an inner
-       * join incorrectly. */
+      /* Skip eqclasses where all existing edges are DUMMY_JOIN. */
       {
 	bool eqclass_all_dummy = true;
 	for (int e = 0; e < env->nedges; e++)
@@ -10225,9 +10219,7 @@ qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
 
       if (QO_TERM_IS_FLAGED (term, QO_TERM_TRANSITIVE))
 	{
-	  /* Transitive terms are derived from existing join terms and do not
-	   * add independent constraints on pk_node; skip them so they do not
-	   * falsely invalidate the PK-FK full-join relationship. */
+	  /* skip transitive terms; they add no independent constraints and must not falsely invalidate the PK-FK full-join */
 	  continue;
 	}
 
