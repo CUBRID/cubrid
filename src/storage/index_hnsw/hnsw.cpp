@@ -628,7 +628,7 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
       root_vpid.volid = btid->vfid.volid;
       root_vpid.pageid = btid->root_pageid;
 
-      PAGE_PTR root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      PAGE_PTR root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (root_page == NULL)
 	{
 	  return ER_FAILED;
@@ -668,7 +668,8 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
 	  free (wal_data);
 	}
 
-      pgbuf_unfix_and_init (thread_p, root_page);
+      pgbuf_set_dirty (thread_p, root_page, FREE);
+      root_page = NULL;
     }
 
   return index->add (thread_p, n_vectors, oid, vector);
@@ -689,7 +690,7 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
  *       3. Re-insert vector into the index
  */
 int
-hnsw_rv_redo_insert_element (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+hnsw_rv_redo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
 {
   fprintf (stderr, "[HNSW_DEBUG] REDO called. rcv_length=%d\n", (rcv != NULL) ? rcv->length : -1);
 
@@ -765,9 +766,9 @@ hnsw_rv_redo_insert_element (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
 
   fprintf (stderr,
-           "[HNSW_DEBUG] REDO payload BTID(vfid=%d:%d, pageid=%d), OID(%d:%d:%d), dimension=%d\n",
-           btid->vfid.volid, btid->vfid.fileid, btid->root_pageid,
-           oid->volid, oid->pageid, oid->slotid, (int) vector_data.size ());
+	   "[HNSW_DEBUG] REDO payload BTID(vfid=%d:%d, pageid=%d), OID(%d:%d:%d), dimension=%d\n",
+	   btid->vfid.volid, btid->vfid.fileid, btid->root_pageid,
+	   oid->volid, oid->pageid, oid->slotid, (int) vector_data.size ());
 
   if (index_manager == nullptr && xhnsw_initialize (thread_p) != NO_ERROR)
     {
@@ -796,8 +797,8 @@ hnsw_rv_redo_insert_element (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   if (error != NO_ERROR)
     {
       fprintf (stderr,
-               "[HNSW_DEBUG] REDO failed to add element for OID(%d:%d:%d), error=%d\n",
-               oid->volid, oid->pageid, oid->slotid, error);
+	       "[HNSW_DEBUG] REDO failed to add element for OID(%d:%d:%d), error=%d\n",
+	       oid->volid, oid->pageid, oid->slotid, error);
       fflush (stderr);
       return error;
     }
@@ -808,7 +809,7 @@ hnsw_rv_redo_insert_element (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
 
   fprintf (stderr, "[HNSW_DEBUG] REDO succeeded for OID(%d:%d:%d)\n",
-           oid->volid, oid->pageid, oid->slotid);
+	   oid->volid, oid->pageid, oid->slotid);
   fflush (stderr);
   return NO_ERROR;
 }
@@ -1096,7 +1097,7 @@ int hnsw_index_manager::load_index (THREAD_ENTRY *thread_p, const BTID *btid, hn
       return ER_FAILED;
     }
 
-  index_out = backend->create_index (thread_p, btid, meta.backend_id, meta.build_params);
+  index_out = backend->load_index (thread_p, btid, meta.backend_id, meta.build_params);
   if (!index_out)
     {
       return ER_FAILED;
@@ -1112,8 +1113,8 @@ int hnsw_index_manager::load_index (THREAD_ENTRY *thread_p, const BTID *btid, hn
 
 int
 hnsw_index_manager::load_or_create_index_for_recovery (THREAD_ENTRY *thread_p, const BTID *btid,
-						       const hnsw_build_params &params,
-						       hnsw_index *&index_out)
+    const hnsw_build_params &params,
+    hnsw_index *&index_out)
 {
   index_out = get_index (btid);
   if (index_out != NULL)

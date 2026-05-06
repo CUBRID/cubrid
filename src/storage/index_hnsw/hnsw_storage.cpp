@@ -38,6 +38,9 @@ namespace cubhnsw
   storage::init_root (std::byte *root_block, std::size_t &root_size)
   {
     root_t root { reinterpret_cast<byte_t *> (root_block) };
+    root.set_params (m_build_params);
+    root.set_level (0);
+    root.set_entry (OID_INITIALIZER);
     root_size = root.get_size();
   }
 
