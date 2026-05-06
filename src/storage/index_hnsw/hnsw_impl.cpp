@@ -38,6 +38,7 @@
 #include "slotted_page.h"
 
 #include "db_vector.hpp"	// db_vector_is_all_zeros
+#include "log_manager.h"
 #if defined (SERVER_MODE)
 #include "thread_worker_pool.hpp"
 #include "thread_worker_pool_taskcap.hpp"
@@ -124,6 +125,7 @@ class hnsw_impl final:public hnsw_index
     ~hnsw_impl () override;
 
     int init (cubthread::entry *thread_p, PAGE_PTR page_ptr, RECDES &rec);
+    int init_for_recovery ();
 
     virtual int prepare_to_add (cubthread::entry *thread_p, int n_vectors, const OID *oid,
 				const float *vector) override;
@@ -335,6 +337,19 @@ hnsw_impl_backend::create_index (THREAD_ENTRY *thread_p,
 				 const std::string &name,
 				 const hnsw_build_params &build_params)
 {
+  hnsw_impl *index =
+	  new hnsw_impl (*this, *btid, name, build_params);
+
+  if (log_is_in_crash_recovery ())
+    {
+      if (index->init_for_recovery () != NO_ERROR)
+	{
+	  delete index;
+	  return NULL;
+	}
+      return index;
+    }
+
   VPID root_vpid = { btid->root_pageid, btid->vfid.volid };
   PAGE_PTR page_ptr =
 	  pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
@@ -350,12 +365,10 @@ hnsw_impl_backend::create_index (THREAD_ENTRY *thread_p,
   {
     DB_PAGESIZE, 0, REC_HOME, PTR_ALIGN (rec_buf, INT_ALIGNMENT)};
 
-  hnsw_impl *index =
-	  new hnsw_impl (*this, *btid, name, build_params);
-
   if (index->init (thread_p, page_ptr, rec) != NO_ERROR)
     {
       ASSERT_ERROR ();
+      delete index;
       return NULL;
     }
 
@@ -403,6 +416,14 @@ hnsw_impl::init (cubthread::entry *thread_p, PAGE_PTR page_ptr, RECDES &rec)
 
   init_worker_pool ();
 
+  return NO_ERROR;
+}
+
+int
+hnsw_impl::init_for_recovery ()
+{
+  m_algo->set_storage (m_storage.get ());
+  init_worker_pool ();
   return NO_ERROR;
 }
 

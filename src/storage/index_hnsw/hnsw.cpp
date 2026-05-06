@@ -97,6 +97,8 @@ class hnsw_index_manager
     // index management on disk
     int save_index (THREAD_ENTRY *thread_p, hnsw_index *index);
     int load_index (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index *&index);
+    int load_or_create_index_for_recovery (THREAD_ENTRY *thread_p, const BTID *btid,
+					   const hnsw_build_params &params, hnsw_index *&index);
     int save_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, const hnsw_index_meta &meta);
     int load_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index_meta &meta);
     int save_all_indices (THREAD_ENTRY *thread_p);
@@ -141,8 +143,6 @@ static hnsw_index_manager *index_manager = nullptr;
 int
 xhnsw_initialize (THREAD_ENTRY *thread_p)
 {
-  assert (index_manager == nullptr);
-
   if (index_manager == nullptr)
     {
       index_manager = &hnsw_index_manager::instance();
@@ -395,110 +395,48 @@ xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, i
 // =====================================================================
 
 /*
- * Packed structure for HNSW vector insertion logging
- * Format: [oid(8)][btid(16)]
- * Total: 24 bytes - only identification data, no vector payload
- * 
- * NOTE: Vector data is NOT stored in log because:
- * 1. Vectors are immutable (never updated in heap)
- * 2. Recovery can fetch vector from heap using OID
- * 3. Index metadata loaded from disk during recovery
- * This minimizes WAL record size.
+ * Packed structure for HNSW vector insertion logging.
+ * Format: [oid][btid][dimension][float vector payload]
  */
 typedef struct hnsw_insert_log_data
 {
   OID oid;
   BTID btid;
+  int dimension;
+  int m;
+  int ef_construction;
+  int metric;
 } HNSW_INSERT_LOG_DATA;
 
 /*
- * Read vector value from heap using OID and BTID metadata.
- * This is used during REDO to reconstruct add() input.
- */
-static int
-hnsw_get_vector_by_oid (THREAD_ENTRY *thread_p, const BTID *btid, const OID *oid, std::vector<float> &out_vector)
-{
-  OID class_oid = OID_INITIALIZER;
-  RECDES recdes = RECDES_INITIALIZER;
-  HEAP_CACHE_ATTRINFO attr_info;
-  ATTR_ID *attr_ids = NULL;
-  int num_attrs = 0;
-  int error = NO_ERROR;
-
-  if (heap_get_class_oid (thread_p, oid, &class_oid) != S_SUCCESS)
-    {
-      return ER_FAILED;
-    }
-
-  error = heap_get_indexinfo_of_btid (thread_p, &class_oid, btid, NULL, &num_attrs, &attr_ids, NULL, NULL, NULL);
-  if (error != NO_ERROR || num_attrs <= 0 || attr_ids == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  recdes.data = NULL;
-  if (heap_get_visible_version (thread_p, oid, &class_oid, &recdes, NULL, COPY, NULL_CHN) != S_SUCCESS)
-    {
-      return ER_FAILED;
-    }
-
-  error = heap_attrinfo_start (thread_p, &class_oid, 1, attr_ids, &attr_info);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  error = heap_attrinfo_read_dbvalues (thread_p, oid, &recdes, &attr_info);
-  if (error != NO_ERROR)
-    {
-      heap_attrinfo_end (thread_p, &attr_info);
-      return error;
-    }
-
-  DB_VALUE *key_dbvalue = &attr_info.values[0].dbvalue;
-  if (db_value_type (key_dbvalue) != DB_TYPE_VECTOR)
-    {
-      heap_attrinfo_end (thread_p, &attr_info);
-      return ER_FAILED;
-    }
-
-  const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);
-  if (vf == NULL || vf->float_array == NULL || vf->dim <= 0)
-    {
-      heap_attrinfo_end (thread_p, &attr_info);
-      return ER_FAILED;
-    }
-
-  out_vector.assign (vf->float_array, vf->float_array + vf->dim);
-  heap_attrinfo_end (thread_p, &attr_info);
-  return NO_ERROR;
-}
-
-/*
- * hnsw_pack_insert_data() - Pack vector insertion record identification into WAL log
+ * hnsw_pack_insert_data() - Pack vector insertion record into WAL log
  * 
- * return      : Total packed size (always sizeof(HNSW_INSERT_LOG_DATA))
+ * return      : Total packed size
  * buffer(out) : Output buffer (must be pre-allocated)
  * btid        : B-tree ID identifying the HNSW index
  * oid         : Object ID of the vector record
- * 
- * NOTE: Only stores BTID and OID. Vector data fetched from heap during recovery
- *       since vectors are immutable.
+ * vector      : Vector payload
+ * params      : HNSW build parameters
  */
 static int
-hnsw_pack_insert_data (char *buffer, int buffer_size, const BTID *btid, const OID *oid)
+hnsw_pack_insert_data (char *buffer, int buffer_size, const BTID *btid, const OID *oid,
+		       const float *vector, const hnsw_build_params &params)
 {
   HNSW_INSERT_LOG_DATA *log_data = (HNSW_INSERT_LOG_DATA *)buffer;
-  int total_size = sizeof(HNSW_INSERT_LOG_DATA);
+  int total_size = (int) sizeof (HNSW_INSERT_LOG_DATA) + params.dimension * (int) sizeof (float);
 
-  if (total_size > buffer_size)
+  if (params.dimension <= 0 || total_size > buffer_size)
     {
       return 0;  // Buffer too small
     }
 
-  /* Pack BTID and OID only */
   log_data->btid = *btid;
   log_data->oid = *oid;
+  log_data->dimension = params.dimension;
+  log_data->m = params.m;
+  log_data->ef_construction = params.ef_construction;
+  log_data->metric = static_cast<int> (params.metric);
+  memcpy (buffer + sizeof (HNSW_INSERT_LOG_DATA), vector, params.dimension * sizeof (float));
 
   return total_size;
 }
@@ -511,6 +449,12 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
   assert (n_vectors > 0);
 
   if (!btid)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (index_manager == nullptr && xhnsw_initialize (thread_p) != NO_ERROR)
     {
       assert (false);
       return ER_FAILED;
@@ -536,19 +480,9 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
   if (!log_is_in_crash_recovery ())
     {
       // Log physical-level REDO record anchored to HNSW root page.
-      int wal_data_size = sizeof (HNSW_INSERT_LOG_DATA);
-      char *wal_data = static_cast<char *> (malloc (wal_data_size));
-      if (!wal_data)
-        {
-          return ER_FAILED;
-        }
-
-      int packed_size = hnsw_pack_insert_data (wal_data, wal_data_size, btid, oid);
-      if (packed_size != wal_data_size)
-        {
-          free (wal_data);
-          return ER_FAILED;
-        }
+      const hnsw_build_params &params = index->get_build_params ();
+      int dimension = params.dimension;
+      int wal_data_size = (int) sizeof (HNSW_INSERT_LOG_DATA) + dimension * (int) sizeof (float);
 
       VPID root_vpid;
       root_vpid.volid = btid->vfid.volid;
@@ -557,7 +491,6 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
       PAGE_PTR root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       if (root_page == NULL)
         {
-          free (wal_data);
           return ER_FAILED;
         }
 
@@ -566,16 +499,37 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
       addr.pgptr = root_page;
       addr.offset = 0;
 
-      fprintf (stderr,
-               "[HNSW_DEBUG] WAL logging physical redo: BTID(vfid=%d:%d, pageid=%d), OID(%d:%d:%d), wal_data_size=%d\n",
-               btid->vfid.volid, btid->vfid.fileid, btid->root_pageid,
-               oid->volid, oid->pageid, oid->slotid, wal_data_size);
-      fflush (stderr);
+      for (int idx = 0; idx < n_vectors; idx++)
+	{
+	  char *wal_data = static_cast<char *> (malloc (wal_data_size));
+	  if (wal_data == NULL)
+	    {
+	      pgbuf_unfix_and_init (thread_p, root_page);
+	      return ER_FAILED;
+	    }
 
-      log_append_redo_data (thread_p, RVHNSW_INSERT_ELEMENT, &addr, wal_data_size, wal_data);
+	  const OID *cur_oid = &oid[idx];
+	  const float *cur_vector = vector + (size_t) idx * (size_t) dimension;
+	  int packed_size = hnsw_pack_insert_data (wal_data, wal_data_size, btid, cur_oid, cur_vector, params);
+	  if (packed_size != wal_data_size)
+	    {
+	      free (wal_data);
+	      pgbuf_unfix_and_init (thread_p, root_page);
+	      return ER_FAILED;
+	    }
+
+	  fprintf (stderr,
+		   "[HNSW_DEBUG] WAL logging physical redo: BTID(vfid=%d:%d, pageid=%d), "
+		   "OID(%d:%d:%d), dimension=%d, wal_data_size=%d\n",
+		   btid->vfid.volid, btid->vfid.fileid, btid->root_pageid,
+		   cur_oid->volid, cur_oid->pageid, cur_oid->slotid, dimension, wal_data_size);
+	  fflush (stderr);
+
+	  log_append_redo_data (thread_p, RVHNSW_INSERT_ELEMENT, &addr, wal_data_size, wal_data);
+	  free (wal_data);
+	}
 
       pgbuf_unfix_and_init (thread_p, root_page);
-      free (wal_data);
     }
 
   return index->add (thread_p, n_vectors, oid, vector);
@@ -591,33 +545,94 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
  * NOTE: This is a REDO-only recovery function following CUBRID patterns.
  *       
  *       Recovery flow (to be implemented):
- *       1. Unpack BTID and OID from log data (24 bytes)
- *       2. Load HNSW index from disk using BTID (gets dimension and metadata)
- *       3. Fetch vector from heap using OID (avoids duplicating immutable data)
- *       4. Re-insert vector into the index
+ *       1. Unpack BTID, OID, and vector from log data
+ *       2. Re-insert vector into the index
  */
 int
 hnsw_rv_redo_insert_element (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  (void) thread_p;
-  fprintf (stderr, "[HNSW_DEBUG] REDO stub called. rcv_length=%d (implementation temporarily disabled)\n",
-           (rcv != NULL) ? rcv->length : -1);
+  fprintf (stderr, "[HNSW_DEBUG] REDO called. rcv_length=%d\n", (rcv != NULL) ? rcv->length : -1);
 
-  if (rcv != NULL && rcv->data != NULL && rcv->length >= (int) sizeof (HNSW_INSERT_LOG_DATA))
+  if (rcv == NULL || rcv->data == NULL)
+    {
+      fprintf (stderr, "[HNSW_DEBUG] REDO payload invalid (got=%d)\n", (rcv != NULL) ? rcv->length : -1);
+      fflush (stderr);
+      return ER_FAILED;
+    }
+
+  const BTID *btid = NULL;
+  const OID *oid = NULL;
+  hnsw_build_params params;
+  std::vector<float> vector_data;
+
+  if (rcv->length >= (int) sizeof (HNSW_INSERT_LOG_DATA))
     {
       const HNSW_INSERT_LOG_DATA *log_data = (const HNSW_INSERT_LOG_DATA *) rcv->data;
-      fprintf (stderr,
-               "[HNSW_DEBUG] REDO payload BTID(vfid=%d:%d, pageid=%d), OID(%d:%d:%d)\n",
-               log_data->btid.vfid.volid, log_data->btid.vfid.fileid, log_data->btid.root_pageid,
-               log_data->oid.volid, log_data->oid.pageid, log_data->oid.slotid);
-    }
-  else
-    {
-      fprintf (stderr,
-               "[HNSW_DEBUG] REDO payload is too short or null for BTID/OID decode (need=%d, got=%d)\n",
-               (int) sizeof (HNSW_INSERT_LOG_DATA), (rcv != NULL) ? rcv->length : -1);
+      int expected_size = (int) sizeof (HNSW_INSERT_LOG_DATA) + log_data->dimension * (int) sizeof (float);
+      if (log_data->dimension > 0 && rcv->length == expected_size)
+	{
+	  btid = &log_data->btid;
+	  oid = &log_data->oid;
+	  params = hnsw_build_params (log_data->dimension, log_data->m, log_data->ef_construction,
+				      static_cast<DB_VECTOR_DISTANCE_METRIC> (log_data->metric));
+	  vector_data.resize (log_data->dimension);
+	  memcpy (vector_data.data (), rcv->data + sizeof (HNSW_INSERT_LOG_DATA),
+		  log_data->dimension * sizeof (float));
+	}
     }
 
+  if (btid == NULL || oid == NULL || vector_data.empty ())
+    {
+      fprintf (stderr, "[HNSW_DEBUG] REDO payload invalid for vector decode (got=%d)\n", rcv->length);
+      fflush (stderr);
+      return ER_FAILED;
+    }
+
+  fprintf (stderr,
+           "[HNSW_DEBUG] REDO payload BTID(vfid=%d:%d, pageid=%d), OID(%d:%d:%d), dimension=%d\n",
+           btid->vfid.volid, btid->vfid.fileid, btid->root_pageid,
+           oid->volid, oid->pageid, oid->slotid, (int) vector_data.size ());
+
+  if (index_manager == nullptr && xhnsw_initialize (thread_p) != NO_ERROR)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  hnsw_index *index = NULL;
+  int error = index_manager->load_or_create_index_for_recovery (thread_p, btid, params, index);
+  if (error != NO_ERROR || index == NULL)
+    {
+      fprintf (stderr,
+	       "[HNSW_DEBUG] REDO failed to load/create index for BTID(vfid=%d:%d, pageid=%d), error=%d\n",
+	       btid->vfid.volid, btid->vfid.fileid, btid->root_pageid, error);
+      fflush (stderr);
+      return error == NO_ERROR ? ER_FAILED : error;
+    }
+
+  if (index->prepare_to_add (thread_p, 1, oid, vector_data.data ()) != NO_ERROR)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  error = index->add (thread_p, 1, oid, vector_data.data ());
+  if (error != NO_ERROR)
+    {
+      fprintf (stderr,
+               "[HNSW_DEBUG] REDO failed to add element for OID(%d:%d:%d), error=%d\n",
+               oid->volid, oid->pageid, oid->slotid, error);
+      fflush (stderr);
+      return error;
+    }
+
+  if (rcv->pgptr != NULL)
+    {
+      pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+    }
+
+  fprintf (stderr, "[HNSW_DEBUG] REDO succeeded for OID(%d:%d:%d)\n",
+           oid->volid, oid->pageid, oid->slotid);
   fflush (stderr);
   return NO_ERROR;
 }
@@ -630,6 +645,12 @@ hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, 
   assert (rec_oids);
   assert (distances);
   assert (k > 0);
+
+  if (index_manager == nullptr && xhnsw_initialize (thread_p) != NO_ERROR)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
 
   hnsw_index *index = index_manager->get_index (btid);
   if (index == nullptr)
@@ -820,8 +841,35 @@ hnsw_index_manager::load_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, h
       meta = temp_meta;
       return NO_ERROR;
     }
-  // Could not find or read any meta file
-  return ER_FAILED;
+  hnsw_index_backend *backend = get_backend ();
+  if (backend == nullptr)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  VPID root_vpid;
+  root_vpid.volid = btid->vfid.volid;
+  root_vpid.pageid = btid->root_pageid;
+
+  PAGE_PTR root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (root_page == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  HNSW_HEADER *header = hnsw_get_header (thread_p, root_page);
+  if (header == NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, root_page);
+      return ER_FAILED;
+    }
+
+  meta.backend_id = backend->get_id ();
+  meta.build_params = hnsw_build_params (header->dimension, header->hnsw_M, header->hnsw_efConstruction,
+					 static_cast<DB_VECTOR_DISTANCE_METRIC> (header->metric));
+  pgbuf_unfix_and_init (thread_p, root_page);
+  return NO_ERROR;
 }
 
 int
@@ -877,12 +925,50 @@ int hnsw_index_manager::load_index (THREAD_ENTRY *thread_p, const BTID *btid, hn
     {
       return ER_FAILED;
     }
-  if (index_out->load (thread_p, get_index_file_path (meta.backend_id, btid).string()) != NO_ERROR)
+  if (is_index_file_exists (meta.backend_id, btid)
+      && index_out->load (thread_p, get_index_file_path (meta.backend_id, btid).string()) != NO_ERROR)
     {
       return ER_FAILED;
     }
   add_index (btid, index_out);
   return NO_ERROR;
+}
+
+int
+hnsw_index_manager::load_or_create_index_for_recovery (THREAD_ENTRY *thread_p, const BTID *btid,
+						       const hnsw_build_params &params,
+						       hnsw_index *&index_out)
+{
+  index_out = get_index (btid);
+  if (index_out != NULL)
+    {
+      return NO_ERROR;
+    }
+
+  hnsw_index_backend *backend = get_backend ();
+  if (backend == nullptr)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  std::string backend_id = backend->get_id ();
+  if (is_index_meta_file_exists (backend_id, btid) || is_index_file_exists (backend_id, btid))
+    {
+      int error = load_index (thread_p, btid, index_out);
+      if (error == NO_ERROR)
+	{
+	  return NO_ERROR;
+	}
+    }
+
+  index_out = backend->create_index (thread_p, btid, backend_id, params);
+  if (index_out == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  return add_index (btid, index_out);
 }
 
 int hnsw_index_manager::delete_index_on_disk (THREAD_ENTRY *thread_p, const std::string &prefix, const BTID *btid)
