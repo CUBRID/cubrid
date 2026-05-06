@@ -8071,7 +8071,6 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
     case S_LIST_SCAN:
     case S_PARALLEL_HEAP_SCAN:
     case S_PARALLEL_LIST_SCAN:
-    case S_PARALLEL_INDEX_SCAN:
       json_object_set_new (scan, "readrows", json_integer (scan_id->scan_stats.read_rows));
       json_object_set_new (scan, "rows", json_integer (scan_id->scan_stats.qualified_rows));
 
@@ -8126,6 +8125,7 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
       break;
 
     case S_INDX_SCAN:
+    case S_PARALLEL_INDEX_SCAN:
       json_object_set_new (scan, "readkeys", json_integer (scan_id->scan_stats.read_keys));
       json_object_set_new (scan, "filteredkeys", json_integer (scan_id->scan_stats.qualified_keys));
       json_object_set_new (scan, "rows", json_integer (scan_id->scan_stats.key_qualified_rows));
@@ -8278,7 +8278,6 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     case S_HEAP_SCAN:
     case S_PARALLEL_HEAP_SCAN:
     case S_PARALLEL_LIST_SCAN:
-    case S_PARALLEL_INDEX_SCAN:
     case S_LIST_SCAN:
     case S_HEAP_SAMPLING_SCAN:
       fprintf (fp, ", readrows: %llu, rows: %llu", (unsigned long long int) scan_id->scan_stats.read_rows,
@@ -8301,6 +8300,7 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       break;
 
     case S_INDX_SCAN:
+    case S_PARALLEL_INDEX_SCAN:
       fprintf (fp, ", readkeys: %llu, filteredkeys: %llu, rows: %llu",
 	       (unsigned long long int) scan_id->scan_stats.read_keys,
 	       (unsigned long long int) scan_id->scan_stats.qualified_keys,
