@@ -6771,6 +6771,26 @@ qo_examine_correlated_index (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * oute
       return 0;
     }
 
+  /* When sort-limit is active and the inner node is the sort-limit candidate,
+   * do not create an idx-join driven by a transitive (derived) term if the outer
+   * plan does not already carry sort-limit.  Such a plan would allow a small outer
+   * table to probe the sort-limit node as inner, bypassing the sort-limit benefit
+   * that depends on keeping the sort-limit node as the outer. */
+  if (QO_ENV_USE_SORT_LIMIT (info->env) == QO_SL_USE
+      && QO_NODE_SORT_LIMIT_CANDIDATE (nodep) && !outer_plan->has_sort_limit)
+    {
+      QO_TERM *term_check;
+      BITSET_ITERATOR iter_check;
+      for (t = bitset_iterate (sarged_terms, &iter_check); t != -1; t = bitset_next_member (&iter_check))
+	{
+	  term_check = QO_ENV_TERM (info->env, t);
+	  if (QO_TERM_IS_FLAGED (term_check, QO_TERM_TRANSITIVE))
+	    {
+	      return 0;
+	    }
+	}
+    }
+
   bitset_init (&indexable_terms, info->env);
 
   /* We're interested in all of the terms so combine 'join_term' and 'sarged_terms' together. */
@@ -7642,6 +7662,21 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		break;
 
 	      case QO_TC_JOIN:
+		/* Skip transitive join terms that would create a node set partially
+		 * overlapping sort_limit_nodes without completing it.  Allowing such
+		 * joins creates a "shortcut" path that bypasses the sort-limit
+		 * checkpoint (info->nodes == sort_limit_nodes), preventing SORT_LIMIT
+		 * from ever being generated. */
+		if (QO_TERM_IS_FLAGED (term, QO_TERM_TRANSITIVE)
+		    && QO_ENV_USE_SORT_LIMIT (planner->env)
+		    && !bitset_is_empty (&QO_ENV_SORT_LIMIT_NODES (planner->env))
+		    && bitset_intersects (visited_nodes, &QO_ENV_SORT_LIMIT_NODES (planner->env))
+		    && !bitset_subset (visited_nodes, &QO_ENV_SORT_LIMIT_NODES (planner->env)))
+		  {
+		    edge_cnt--;
+		    continue;
+		  }
+
 		/* check for term which is already logically evaluated. */
 		if (QO_TERM_NOMINAL_SEG (term))
 		  {
