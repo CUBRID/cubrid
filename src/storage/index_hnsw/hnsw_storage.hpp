@@ -293,6 +293,10 @@ namespace cubhnsw
 
       void init_in_memory_block (std::size_t estimated_nodes)
       {
+	if (m_inmem.is_active ())
+	  {
+	    return;
+	  }
 	m_inmem.init (estimated_nodes, m_root_vpid.pageid, m_root_vpid.volid);
       }
 
