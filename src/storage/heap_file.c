@@ -8052,6 +8052,8 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		      if (sampling)
 			{
 			  /* consume next pre-picked VPID */
+			  assert (sampling->picked_cursor <= sampling->picked_count);
+			  assert (sampling->picked_vpids != NULL || sampling->picked_count == 0);
 			  if (sampling->picked_cursor >= sampling->picked_count)
 			    {
 			      VPID_SET_NULL (&vpid);

@@ -2916,6 +2916,8 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	}
       hsidp->sampling.picked_cursor = 0;
       hsidp->sampling.weight = MAX (total_pages / MAX (hsidp->sampling.picked_count, 1), 1);
+      assert (hsidp->sampling.picked_count >= 0 && hsidp->sampling.picked_cursor == 0);
+      assert (hsidp->sampling.picked_vpids != NULL || hsidp->sampling.picked_count == 0);
     }
 
   return NO_ERROR;
@@ -4474,6 +4476,7 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 
     case S_HEAP_SAMPLING_SCAN:
       /* preserve picked_vpids buffer; only rewind the cursor */
+      assert (s_id->s.hsid.sampling.picked_vpids != NULL || s_id->s.hsid.sampling.picked_count == 0);
       s_id->s.hsid.sampling.picked_cursor = 0;
       break;
 
@@ -4906,6 +4909,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   switch (scan_id->type)
     {
     case S_HEAP_SAMPLING_SCAN:
+      assert (scan_id->s.hsid.sampling.picked_vpids != NULL || scan_id->s.hsid.sampling.picked_count == 0);
       if (scan_id->s.hsid.sampling.picked_vpids != NULL)
 	{
 	  db_private_free_and_init (thread_p, scan_id->s.hsid.sampling.picked_vpids);
