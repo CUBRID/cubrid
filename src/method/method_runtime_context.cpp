@@ -94,7 +94,7 @@ namespace cubmethod
       }
     else
       {
-	set_interrupt (er_errid ());
+	set_interrupt (ulock, er_errid ());
       }
     return group;
   }
@@ -290,6 +290,14 @@ namespace cubmethod
     // pop_stack worker can call clear_interrupt() between our flag write and
     // our re-read of m_is_interrupted, silently losing the interrupt.
     std::unique_lock<std::mutex> ulock (m_mutex);
+    set_interrupt (ulock, reason, msg);
+  }
+
+  void
+  runtime_context::set_interrupt (std::unique_lock<std::mutex> &lock, int reason, std::string msg)
+  {
+    assert (lock.owns_lock () && lock.mutex () == &m_mutex);
+    (void) lock;
 
     if (m_is_interrupted)
       {

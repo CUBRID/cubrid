@@ -31,6 +31,7 @@
 #include <unordered_set>
 #include <deque>
 #include <condition_variable>
+#include <mutex>
 #include <string>
 
 #include "method_connection_pool.hpp"
@@ -82,6 +83,8 @@ namespace cubmethod
       method_invoke_group *top_stack ();
 
       void set_interrupt (int reason, std::string msg = "");
+      // Locked overload: caller must already own m_mutex.
+      void set_interrupt (std::unique_lock<std::mutex> &lock, int reason, std::string msg = "");
       bool is_interrupted ();
       int get_interrupt_id ();
       std::string get_interrupt_msg ();
