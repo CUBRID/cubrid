@@ -528,6 +528,7 @@ set(STORAGE_SOURCES
   )
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/btree_unique.hpp
+  ${STORAGE_DIR}/ftab_set.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
 )
 

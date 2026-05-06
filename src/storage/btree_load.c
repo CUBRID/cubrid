@@ -54,7 +54,7 @@
 #include "xserver_interface.h"
 #include "xasl.h"
 #include "xasl_unpack_info.hpp"
-#include "px_ftab_set.hpp"
+#include "ftab_set.hpp"
 #include "bit.h"
 #ifndef NDEBUG
 #include "db_value_printer.hpp"
@@ -3231,7 +3231,7 @@ btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args, SORT_PUT_FUNC 
 }
 
 static SCAN_CODE
-get_next_vpid (THREAD_ENTRY * thread_p, parallel_query::ftab_set & ftab, FILE_PARTIAL_SECTOR * fsector, int *offset,
+get_next_vpid (THREAD_ENTRY * thread_p, ftab_set & ftab, FILE_PARTIAL_SECTOR * fsector, int *offset,
 	       VPID * vpid_out, HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * old_pgwatcher, HFID * hfid)
 {
   int error = NO_ERROR;
