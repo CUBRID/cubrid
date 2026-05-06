@@ -358,12 +358,12 @@ namespace parallel_scan
 	   (arg->case_sensitive);
   }
 
-  /* Detect whether the index referenced by indexptr is a filtered (partial)
-   * index. Filtered indexes only contain rows that satisfy the CREATE INDEX
-   * ... WHERE clause, so filter-excluded keys are absent in the B-tree. The
-   * current parallel index scan distributes leaf pages to workers without
-   * re-applying the index filter on the projected keys, which causes
-   * excluded rows to be emitted inconsistently across worker shards.
+  /* Filtered (partial) indexes are intentionally blocked from parallel
+   * scan. Allowing them broadens the surface area of MVCC / dropped-key
+   * edge cases (filter predicate vs. delete-but-still-visible interaction)
+   * across worker leaf-page shards, and the feature is rarely used in
+   * practice — so we route them to the serial scan path rather than
+   * harden every shard against the long tail of regressions.
    *
    * Function indexes are NOT blocked here: the indexed expression is
    * materialized as a regular key in the B-tree, so parallel leaf-page

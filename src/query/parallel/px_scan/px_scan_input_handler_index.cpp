@@ -24,7 +24,9 @@
 
 #include "btree.h"
 #include "btree_load.h"
+#include "dbtype.h"
 #include "error_code.h"
+#include "object_primitive.h"
 #include "object_representation.h"
 #include "error_manager.h"
 #include "page_buffer.h"
@@ -39,20 +41,93 @@ namespace parallel_scan
 {
   /* defer descent until first worker — VPID-only republish would race a concurrent split */
   int
-  input_handler_index::init_on_main (THREAD_ENTRY *thread_p, INDX_INFO *indx_info, int parallelism)
+  input_handler_index::init_on_main (THREAD_ENTRY *thread_p, INDX_INFO *indx_info, SCAN_ID *scan_id, val_descr *vd,
+				     int parallelism)
   {
     assert (indx_info != nullptr);
     BTID_COPY (&m_btid, &indx_info->btid);
     m_indx_info = indx_info;
     m_use_desc_index = (indx_info->use_desc_index != 0);
+    m_scan_id = scan_id;
+    m_vd = vd;
 
     VPID_SET_NULL (&m_current_leaf_vpid);
     m_leaf_ended = false;
     m_descent_done = false;
+    m_descent_key_initialized = false;
+    m_descent_key_valid = false;
+    db_make_null (&m_descent_key_range.key1);
+    db_make_null (&m_descent_key_range.key2);
+    m_descent_key_range.range = NA_NA;
+    m_descent_key_range.is_truncated = false;
+    m_descent_key_range.num_index_term = 0;
     return NO_ERROR;
   }
 
-  /* latch-coupled root→leaf descent; out_leaf hands back the leaf latch on S_SUCCESS (cf. btree_find_AR_sampling_leaf) */
+  /* Evaluate the single-range descent bound (asc → key1, desc → key2) once
+   * m_btid_int.key_type is known. Multi-range / unbounded scans skip this and
+   * fall back to endmost-slot descent. Caller holds m_leaf_mutex. */
+  void
+  input_handler_index::try_prepare_descent_key (THREAD_ENTRY *thread_p)
+  {
+    if (m_descent_key_initialized)
+      {
+	return;
+      }
+    m_descent_key_initialized = true;
+
+    if (m_indx_info == nullptr || m_scan_id == nullptr || m_vd == nullptr)
+      {
+	return;
+      }
+    if (m_indx_info->key_info.key_cnt != 1)
+      {
+	/* would need MIN(key1) for asc / MAX(key2) for desc across all ranges */
+	return;
+      }
+
+    KEY_RANGE *kr = &m_indx_info->key_info.key_ranges[0];
+    if (kr->range == NA_NA || kr->range == INF_INF)
+      {
+	return;
+      }
+    /* scan_regu_key_to_index_key asserts at least one of key1/key2 is non-NULL */
+    if (kr->key1 == nullptr && kr->key2 == nullptr)
+      {
+	return;
+      }
+    /* asc needs key1; desc needs key2 */
+    if (m_use_desc_index ? (kr->key2 == nullptr) : (kr->key1 == nullptr))
+      {
+	return;
+      }
+
+    m_descent_key_range.range = kr->range;
+    m_descent_key_range.is_truncated = false;
+    m_descent_key_range.num_index_term = 0;
+    db_make_null (&m_descent_key_range.key1);
+    db_make_null (&m_descent_key_range.key2);
+
+    INDX_SCAN_ID *isidp = &m_scan_id->s.isid;
+    int ret = scan_regu_key_to_index_key (thread_p, kr, &m_descent_key_range, isidp,
+					  m_btid_int.key_type, m_vd, 0);
+    if (ret != NO_ERROR)
+      {
+	pr_clear_value (&m_descent_key_range.key1);
+	pr_clear_value (&m_descent_key_range.key2);
+	db_make_null (&m_descent_key_range.key1);
+	db_make_null (&m_descent_key_range.key2);
+	m_descent_key_range.range = NA_NA;
+	er_clear ();
+	return;
+      }
+
+    m_descent_key_valid = true;
+  }
+
+  /* latch-coupled root→leaf descent; out_leaf hands back the leaf latch on S_SUCCESS (cf. btree_find_AR_sampling_leaf).
+   * Uses btree_search_nonleaf_page when a single-range descent key is available; otherwise falls back to
+   * endmost-slot descent (asc→leftmost, desc→rightmost). */
   SCAN_CODE
   input_handler_index::descend_to_first_leaf (THREAD_ENTRY *thread_p, PAGE_PTR &out_leaf)
   {
@@ -87,35 +162,66 @@ namespace parallel_scan
 
       m_btid_int.sys_btid = &m_btid;
 
+      try_prepare_descent_key (thread_p);
+
+      DB_VALUE *descent_key = nullptr;
+      if (m_descent_key_valid)
+	{
+	  descent_key = m_use_desc_index ? &m_descent_key_range.key2 : &m_descent_key_range.key1;
+	  if (DB_IS_NULL (descent_key))
+	    {
+	      descent_key = nullptr;
+	    }
+	}
+
       short node_level = root_header->node.node_level;
 
       /* invariant: P_page latched throughout descent */
       while (node_level > 1)
 	{
-	  int key_cnt = btree_node_number_of_keys (thread_p, P_page);
-	  if (key_cnt <= 0)
+	  VPID child_vpid;
+	  VPID_SET_NULL (&child_vpid);
+
+	  if (descent_key != nullptr)
 	    {
-	      goto fallback;
+	      INT16 slot_id = NULL_SLOTID;
+	      int err = btree_search_nonleaf_page (thread_p, &m_btid_int, P_page, descent_key,
+						   &slot_id, &child_vpid, NULL);
+	      if (err != NO_ERROR || VPID_ISNULL (&child_vpid))
+		{
+		  /* abort rather than mid-descent slot fallback (would land in wrong subtree) */
+		  goto fallback;
+		}
+	    }
+	  else
+	    {
+	      int key_cnt = btree_node_number_of_keys (thread_p, P_page);
+	      if (key_cnt <= 0)
+		{
+		  goto fallback;
+		}
+
+	      /* asc → slot 1, desc → slot key_cnt */
+	      int slot_to_follow = m_use_desc_index ? key_cnt : 1;
+	      RECDES rec;
+	      rec.data = NULL;
+	      rec.area_size = -1;
+	      if (spage_get_record (thread_p, P_page, slot_to_follow, &rec, PEEK) != S_SUCCESS)
+		{
+		  goto fallback;
+		}
+
+	      /* unpack VPID inline; btree_read_fixed_portion_of_non_leaf_record is btree.c-internal */
+	      child_vpid.pageid = OR_GET_INT (rec.data);
+	      child_vpid.volid = OR_GET_SHORT (rec.data + OR_INT_SIZE);
+
+	      if (VPID_ISNULL (&child_vpid))
+		{
+		  goto fallback;
+		}
 	    }
 
-	  /* asc → slot 1, desc → slot key_cnt */
-	  int slot_to_follow = m_use_desc_index ? key_cnt : 1;
-	  RECDES rec;
-	  rec.data = NULL;
-	  rec.area_size = -1;
-	  if (spage_get_record (thread_p, P_page, slot_to_follow, &rec, PEEK) != S_SUCCESS)
-	    {
-	      goto fallback;
-	    }
-
-	  /* unpack VPID inline; btree_read_fixed_portion_of_non_leaf_record is btree.c-internal */
-	  C_vpid.pageid = OR_GET_INT (rec.data);
-	  C_vpid.volid = OR_GET_SHORT (rec.data + OR_INT_SIZE);
-
-	  if (VPID_ISNULL (&C_vpid))
-	    {
-	      goto fallback;
-	    }
+	  C_vpid = child_vpid;
 
 	  /* fix child before unfixing parent — blocks concurrent split */
 	  C_page = pgbuf_fix (thread_p, &C_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
@@ -232,6 +338,15 @@ fallback:
   int
   input_handler_index::finalize (THREAD_ENTRY *thread_p)
   {
+    if (m_descent_key_valid)
+      {
+	pr_clear_value (&m_descent_key_range.key1);
+	pr_clear_value (&m_descent_key_range.key2);
+	db_make_null (&m_descent_key_range.key1);
+	db_make_null (&m_descent_key_range.key2);
+	m_descent_key_valid = false;
+      }
+    m_descent_key_initialized = false;
     return NO_ERROR;
   }
 

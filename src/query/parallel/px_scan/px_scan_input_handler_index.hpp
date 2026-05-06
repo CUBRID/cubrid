@@ -25,7 +25,9 @@
 
 #include "px_interrupt.hpp"
 #include "scan_manager.h"
+#include "access_spec.hpp"
 #include "btree.h"
+#include "dbtype.h"
 #include <mutex>
 
 namespace parallel_scan
@@ -41,13 +43,20 @@ namespace parallel_scan
 	  m_interrupt_p (interrupt_p),
 	  m_err_messages_p (err_messages_p),
 	  m_indx_info (nullptr),
-	  m_use_desc_index (false)
+	  m_use_desc_index (false),
+	  m_scan_id (nullptr),
+	  m_vd (nullptr),
+	  m_descent_key_valid (false),
+	  m_descent_key_initialized (false)
       {
 	memset (&m_btid_int, 0, sizeof (m_btid_int));
 	memset (&m_btid, 0, sizeof (m_btid));
+	memset (&m_descent_key_range, 0, sizeof (m_descent_key_range));
+	db_make_null (&m_descent_key_range.key1);
+	db_make_null (&m_descent_key_range.key2);
 	VPID_SET_NULL (&m_current_leaf_vpid);
       }
-      int init_on_main (THREAD_ENTRY *thread_p, INDX_INFO *indx_info, int parallelism);
+      int init_on_main (THREAD_ENTRY *thread_p, INDX_INFO *indx_info, SCAN_ID *scan_id, val_descr *vd, int parallelism);
 
       /* single READ-latch fix; out_page ownership transfers on S_SUCCESS, first call descends from root with latch coupling */
       SCAN_CODE get_next_page_with_fix (THREAD_ENTRY *thread_p, PAGE_PTR &out_page);
@@ -73,6 +82,8 @@ namespace parallel_scan
     private:
       /* requires m_leaf_mutex; on S_SUCCESS out_leaf is READ-latched and m_btid_int is populated */
       SCAN_CODE descend_to_first_leaf (THREAD_ENTRY *thread_p, PAGE_PTR &out_leaf);
+      /* one-shot evaluation of a single-range descent key from m_indx_info */
+      void try_prepare_descent_key (THREAD_ENTRY *thread_p);
 
       VPID m_current_leaf_vpid;         /* next leaf to fix (mutex-protected) */
       bool m_leaf_ended;
@@ -84,6 +95,12 @@ namespace parallel_scan
       err_messages_with_lock *m_err_messages_p;
       INDX_INFO *m_indx_info;          /* original INDX_INFO pointer for workers */
       bool m_use_desc_index;
+
+      SCAN_ID *m_scan_id;              /* needed by scan_regu_key_to_index_key */
+      val_descr *m_vd;                 /* needed by scan_regu_key_to_index_key */
+      KEY_VAL_RANGE m_descent_key_range;
+      bool m_descent_key_valid;        /* true → key-compare descent; false → endmost-slot descent */
+      bool m_descent_key_initialized;  /* one-shot guard for try_prepare_descent_key */
   };
 }
 
