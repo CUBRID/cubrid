@@ -1993,12 +1993,71 @@ pt_expr_disallow_op_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   int *op_list = (int *) arg;
   int i;
 
+  if (*continue_walk == PT_STOP_WALK)
+    {
+      return node;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
   if (!PT_IS_EXPR_NODE (node))
     {
       return node;
     }
 
+  assert (op_list != NULL);
+
+  for (i = 1; i <= op_list[0]; i++)
+    {
+      if (op_list[i] == node->info.expr.op)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
+		      pt_show_binopcode (node->info.expr.op));
+	}
+    }
+  return node;
+}
+
+/*
+ * pt_expr_disallow_op_except_agg () - looks if the expression op is in the list
+ *				       given as argument and throws an error if
+ *				       found except aggregate function
+ *
+ * return: node
+ * parser(in):
+ * node(in):
+ * arg(in): integer list with forbidden operators. arg[0] keeps the number of
+ *	    operators
+ * continue_wals (in/out):
+ */
+PT_NODE *
+pt_expr_disallow_op_except_agg (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  int *op_list = (int *) arg;
+  int i;
+
   if (*continue_walk == PT_STOP_WALK)
+    {
+      return node;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (node->node_type) || pt_is_aggregate_function (parser, node))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  if (!PT_IS_EXPR_NODE (node))
     {
       return node;
     }

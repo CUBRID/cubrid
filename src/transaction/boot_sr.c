@@ -71,6 +71,7 @@
 #include "xserver_interface.h"
 #include "session.h"
 #include "event_log.h"
+#include "trace_log.h"
 #include "tz_support.h"
 #include "filter_pred_cache.h"
 #include "scan_manager.h"
@@ -558,9 +559,9 @@ xboot_add_volume_extension (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * ext_in
 {
   VOLID volid;
 
-  if (disk_add_volume_extension (thread_p, ext_info->purpose, ext_info->max_npages, ext_info->path, ext_info->name,
-				 ext_info->comments, ext_info->max_writesize_in_sec, ext_info->overwrite, &volid)
-      != NO_ERROR)
+  if (disk_add_volume_extension
+      (thread_p, ext_info->purpose, ext_info->voltype, ext_info->max_npages, ext_info->path, ext_info->name,
+       ext_info->comments, ext_info->max_writesize_in_sec, ext_info->overwrite, &volid) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return NULL_VOLID;
@@ -882,8 +883,8 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
 	}
 
       error_code =
-	disk_add_volume_extension (thread_p, ext_purpose, ext_npages, ext_path, ext_name, ext_comments, 0, false,
-				   &volid);
+	disk_add_volume_extension (thread_p, ext_purpose, DB_PERMANENT_VOLTYPE, ext_npages, ext_path, ext_name,
+				   ext_comments, 0, false, &volid);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -2264,6 +2265,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   er_clear ();
 
   event_log_init (db_name);
+  trace_log_init (db_name);
 
   /* initialize allocations areas for things we need, on the client, most of this is done inside ws_init(). */
   area_init ();
@@ -3946,6 +3948,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
 #if defined(SERVER_MODE)
   css_free_accessible_ip_info ();
   event_log_final ();
+  trace_log_final ();
 #endif
 }
 
@@ -6006,8 +6009,10 @@ boot_client_type_to_string (BOOT_CLIENT_TYPE type)
       return "SKIP_VACUUM_ADMIN_CSQL";
     case DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS:
       return "ADMIN_COMPACTDB_WOS";
-    case DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT:
-      return "ADMIN_LOADDB_COMPAT";
+    case DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2:
+      return "ADMIN_LOADDB_COMPAT_UNDER_11_2";
+    case DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4:
+      return "ADMIN_LOADDB_COMPAT_UNDER_11_4";
     case DB_CLIENT_TYPE_LOADDB_UTILITY:
       return "LOADDB_UTILITY";
     case DB_CLIENT_TYPE_UNKNOWN:
