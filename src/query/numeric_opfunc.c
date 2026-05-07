@@ -3088,6 +3088,12 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
       skip_size = 1;
       if (astring[i] == '.')
 	{
+	  if (decimal_part || trailing_spaces)
+	    {
+	      /* reject duplicate decimal points and decimal points after trailing spaces (e.g. '1   .') */
+	      ret = DOMAIN_INCOMPATIBLE;
+	      break;
+	    }
 	  leading_zeroes = false;
 	  decimal_part = true;
 	  scale = astring_length - (i + 1);
@@ -3105,17 +3111,18 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 	    }
 	  else if (astring[i] == '+' || astring[i] == '-')
 	    {			/* sign found */
-	      if (!sign_found)
+	      /* Sign is only allowed before any digit (rejects duplicates and signs after a leading zero, e.g. '0-1') */
+	      if (sign_found || pad_character_zero)
+		{
+		  ret = DOMAIN_INCOMPATIBLE;
+		}
+	      else
 		{
 		  sign_found = true;
 		  if (astring[i] == '-')
 		    {
 		      negate_value = true;
 		    }
-		}
-	      else
-		{		/* Duplicate sign characters */
-		  ret = DOMAIN_INCOMPATIBLE;
 		}
 	    }
 	  else if (astring[i] == '0')
@@ -3125,8 +3132,18 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 	    }
 	  else if (intl_is_space (astring + i, NULL, codeset, &skip_size))
 	    {
-	      /* Just skip this.  OK to have leading spaces */
-	      ;
+	      /* A space after a sign without any digit is invalid (e.g. '-   1'). */
+	      if (sign_found && !pad_character_zero)
+		{
+		  ret = DOMAIN_INCOMPATIBLE;
+		  break;
+		}
+	      /* A space after a leading zero ends the leading phase (e.g. '0   1' is invalid). */
+	      if (pad_character_zero)
+		{
+		  leading_zeroes = false;
+		  trailing_spaces = true;
+		}
 	    }
 	  else
 	    {
@@ -3193,12 +3210,30 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
       goto exit_on_error;
     }
 
-  if (prec == 0 && pad_character_zero)
+  if (prec == 0)
     {
-      prec = 1;
-      num_string[0] = '0';
-      num_string[prec] = '\0';
-      numeric_coerce_dec_str_to_num (num_string, num);
+      if (pad_character_zero)
+	{
+	  prec = 1;
+	  num_string[0] = '0';
+	  num_string[prec] = '\0';
+	  numeric_coerce_dec_str_to_num (num_string, num);
+	}
+      else
+	{
+	  /*
+	   * no valid digit was found in input.
+	   * reject strings that do not contain any numeric digit.
+	   *
+	   * examples:
+	   *   '+', '-'                  (sign only)
+	   *   '.', ' . ', '   .   '     (decimal point only)
+	   *   ' ', '    '               (whitespace only)
+	   *   '+.', '-.', ' + . '       (sign + non-digit combinations)
+	   */
+	  ret = DOMAIN_INCOMPATIBLE;
+	  goto exit_on_error;
+	}
     }
   else
     {
