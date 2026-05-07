@@ -7642,21 +7642,6 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		break;
 
 	      case QO_TC_JOIN:
-		/* Skip transitive join terms that would create a node set partially
-		 * overlapping sort_limit_nodes without completing it.  Allowing such
-		 * joins creates a "shortcut" path that bypasses the sort-limit
-		 * checkpoint (info->nodes == sort_limit_nodes), preventing SORT_LIMIT
-		 * from ever being generated. */
-		if (QO_TERM_IS_FLAGED (term, QO_TERM_TRANSITIVE)
-		    && QO_ENV_USE_SORT_LIMIT (planner->env)
-		    && !bitset_is_empty (&QO_ENV_SORT_LIMIT_NODES (planner->env))
-		    && bitset_intersects (visited_nodes, &QO_ENV_SORT_LIMIT_NODES (planner->env))
-		    && !bitset_subset (visited_nodes, &QO_ENV_SORT_LIMIT_NODES (planner->env)))
-		  {
-		    edge_cnt--;
-		    continue;
-		  }
-
 		/* check for term which is already logically evaluated. */
 		if (QO_TERM_NOMINAL_SEG (term))
 		  {
