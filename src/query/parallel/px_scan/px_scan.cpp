@@ -380,9 +380,7 @@ extern "C"
 
 	if (oid_is_system_class (class_oid)
 	    || mvcc_is_mvcc_disabled_class (class_oid) || mvcc_select_lock_needed
-	    /* Why thread_p->private_heap_id != 0 ?
-	     * Because, if it is 0, it means that the scan is not executed in main thread.
-	     * So, we can't use parallel heap scan. */
+	    /* private_heap_id==0 means not main thread; parallel heap scan requires main thread. */
 	    || thread_p->private_heap_id == 0)
 	  {
 	    /* parallel-thread heap scan not supported */
@@ -396,9 +394,7 @@ extern "C"
 	return NO_ERROR;
       }
 
-    /*
-     * try parallel-thread heap scan
-     */
+    /* try parallel-thread heap scan */
 
     /* check if pages are enough for parallel-thread heap scan */
     error = file_get_num_user_pages (thread_p, &class_hfid->vfid, &num_user_pages);
@@ -844,9 +840,7 @@ extern "C"
 	return NO_ERROR;
       }
 
-    /* DML (INSERT/UPDATE/DELETE/MERGE) reads val_list directly from scan_id;
-     * parallel scan's result handler does not populate val_list in the way
-     * DML expects, so we must fall back to regular list scan. */
+    /* DML reads val_list directly from scan_id; result handler does not populate it as DML expects. */
     if (xasl->type == INSERT_PROC || xasl->type == UPDATE_PROC
 	|| xasl->type == DELETE_PROC || xasl->type == MERGE_PROC)
       {
@@ -887,8 +881,7 @@ extern "C"
     /* update to actual reserved workers */
     num_parallel_threads = worker_manager_p->get_reserved_workers ();
 
-    /* Determine result type in a LOCAL variable.  Do NOT write to pllsid_parallel yet —
-     * the pllsid_parallel union overlaps llsid and we need llsid intact for fallback. */
+    /* local result type: pllsid_parallel overlaps llsid; keep llsid intact until open() succeeds. */
     parallel_scan::RESULT_TYPE local_result_type;
     if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST))
       {
@@ -909,9 +902,7 @@ extern "C"
     HFID null_hfid = HFID_INITIALIZER;
     OID null_oid = OID_INITIALIZER;
 
-    /* Allocate and open the manager using a LOCAL pointer.
-     * Do NOT write to scan_id->s.pllsid_parallel until open() succeeds — this keeps
-     * llsid intact so that on failure we can fall back to single-thread S_LIST_SCAN. */
+    /* local manager ptr: pllsid_parallel written only after open() succeeds; llsid stays intact for fallback. */
     void *local_manager = nullptr;
 
     switch (local_result_type)
@@ -1010,8 +1001,7 @@ extern "C"
 	return NO_ERROR;
       }
 
-    /* === SUCCESS PATH: manager is open and workers are ready. ===
-     * Write pllsid_parallel fields (now safe — fallback path is no longer possible). */
+    /* success: manager open, workers ready — safe to overwrite pllsid_parallel. */
     scan_id->s.pllsid_parallel.result_type = local_result_type;
     scan_id->s.pllsid_parallel.manager = local_manager;
     scan_id->s.pllsid_parallel.trace_storage = nullptr;
@@ -1253,9 +1243,7 @@ extern "C"
       }
   }
 
-  /* Captures from scan_open_parallel_index_scan that scan_try_promote_parallel_index_scan
-   * needs to construct the parallel manager. Allocated when the spec passes the cheap
-   * eligibility checks; consumed (and freed) once at the start-scan promotion attempt. */
+  /* open-phase captures needed by scan_try_promote_parallel_index_scan to build the manager; freed on promotion attempt. */
   struct parallel_index_scan_pending
   {
     ACCESS_SPEC_TYPE *spec;
@@ -1290,8 +1278,7 @@ extern "C"
 
     scan_id->type = S_INDX_SCAN;
 
-    /* Defensive: clear any stale pending state from a previous open on the same scan_id
-     * (e.g., partition pruning re-open path in qexec_next_scan_block_iterations). */
+    /* clear stale pending from previous open (e.g., partition pruning re-open in qexec_next_scan_block_iterations). */
     scan_clear_parallel_index_pending (thread_p, scan_id);
 
     if (thread_p->private_heap_id == 0)
@@ -1326,10 +1313,7 @@ extern "C"
     assert (spec->num_parallel_threads == -1
 	    || ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS));
 
-    /* Stash captures so scan_start_scan can attempt the promotion after qexec_intprt_fnc
-     * has had a chance to set need_count_only. Worker reservation and manager
-     * construction are deferred to the start-scan path so we do not hold worker pool
-     * resources across an aggregate fast-path that may decide is_scan_needed == false. */
+    /* defer worker reservation to start-scan: qexec_intprt_fnc may set need_count_only and skip the scan entirely. */
     parallel_index_scan_pending *pending =
 	    (parallel_index_scan_pending *) db_private_alloc (thread_p, sizeof (parallel_index_scan_pending));
     if (pending == nullptr)
@@ -1373,8 +1357,7 @@ extern "C"
     assert (xasl != nullptr);
     assert (vd != nullptr);
 
-    /* Optimizer decided parallel degree client-side and wrote it to
-     * spec->num_parallel_threads; trust it verbatim for index scan. */
+    /* index scan degree set client-side by optimizer; trust spec->num_parallel_threads verbatim. */
     num_parallel_threads = spec->num_parallel_threads;
     if (num_parallel_threads < 2)
       {
@@ -1392,8 +1375,7 @@ extern "C"
     /* update to actual reserved workers */
     num_parallel_threads = worker_manager_p->get_reserved_workers ();
 
-    /* Determine result type in a LOCAL variable.  Do NOT write to pisid yet —
-     * the pisid union overlaps isid and we need isid intact for fallback. */
+    /* local result type: pisid overlaps isid; keep isid intact until open() succeeds. */
     parallel_scan::RESULT_TYPE local_result_type;
     if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST))
       {
@@ -1405,8 +1387,7 @@ extern "C"
       }
     else
       {
-	/* XASL_SNAPSHOT is not instantiated for SCAN_TYPE::INDEX; fall back to
-	 * single-thread index scan before touching the pisid union. */
+	/* XASL_SNAPSHOT not supported for INDEX scan; fall back before touching pisid union. */
 	worker_manager_p->release_workers ();
 	assert (scan_id->type == S_INDX_SCAN);
 	return NO_ERROR;
@@ -1514,8 +1495,7 @@ extern "C"
 	return NO_ERROR;
       }
 
-    /* === SUCCESS PATH: manager is open and workers are ready. ===
-     * Now clean up isid resources before overwriting with pisid. */
+    /* success: manager open, workers ready — clean up isid resources before overwriting with pisid. */
 
     /* End heap attr caches while isid is still valid. */
     {

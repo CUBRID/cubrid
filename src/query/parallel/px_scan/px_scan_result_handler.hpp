@@ -68,14 +68,12 @@ namespace parallel_scan
 
     private:
       void get_valid_read_spec ();
-      /* common */
       int m_parallelism;
       std::mutex m_result_mutex;
       std::condition_variable m_result_cv;
       QUERY_ID m_query_id;
-      interrupt *m_interrupt_p; /* for interrupt */
-      err_messages_with_lock *m_err_messages_p; /* for error messages */
-      /* specific */
+      interrupt *m_interrupt_p;
+      err_messages_with_lock *m_err_messages_p;
       variables m_;
       thread_local static tls tl;
   };
@@ -247,8 +245,8 @@ namespace parallel_scan
       std::condition_variable m_result_cv;
       int m_result_completed;
       QUERY_ID m_query_id;
-      interrupt *m_interrupt_p; /* for interrupt */
-      err_messages_with_lock *m_err_messages_p; /* for error messages */
+      interrupt *m_interrupt_p;
+      err_messages_with_lock *m_err_messages_p;
       AGGREGATE_TYPE *m_orig_agg_list;
       std::mutex writer_results_mutex;
       thread_local static AGGREGATE_TYPE *tl_agg_p;

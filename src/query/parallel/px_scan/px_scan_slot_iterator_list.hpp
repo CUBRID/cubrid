@@ -38,7 +38,7 @@ namespace parallel_scan
       ~slot_iterator_list ();
       int initialize (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, val_descr *vd);
       int finalize (THREAD_ENTRY *thread_p);
-      /* Adopt a page already fixed by input_handler_list (no re-fix). */
+      /* adopts page pre-fixed by input_handler_list (no re-fix). */
       int set_page (THREAD_ENTRY *thread_p, PAGE_PTR page, QMGR_TEMP_FILE *tfile);
       SCAN_CODE next_qualified_slot_with_peek (THREAD_ENTRY *thread_p);
 

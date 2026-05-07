@@ -17,7 +17,7 @@
  */
 
 /*
- * px_scan_checker.hpp - module that checks whether parallel scan is possible.
+ * px_scan_checker.hpp
  */
 
 #ifndef _PX_SCAN_CHECKER_HPP_

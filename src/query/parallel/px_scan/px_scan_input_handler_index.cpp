@@ -64,10 +64,7 @@ namespace parallel_scan
     return NO_ERROR;
   }
 
-  /* one-shot conversion of indx_info->key_info.key_ranges into m_key_val_ranges.
-   * Mirrors slot_iterator_index::convert_key_range layout (truncated-range adjust,
-   * part_key_desc swap, sort-by-key1) so input_handler and slot_iterator share a
-   * single canonical view. Caller holds m_leaf_mutex via descend_to_first_leaf. */
+  /* idempotent; caller holds m_leaf_mutex via descend_to_first_leaf. */
   int
   input_handler_index::convert_all_key_ranges (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id)
   {
@@ -89,9 +86,7 @@ namespace parallel_scan
 	return NO_ERROR;
       }
 
-    /* worker_scan_id (per-task) is the only INDX_SCAN_ID with prebuilt_midxkey_domains
-     * initialized by scan_open_index_scan; the coordinator scan_id never goes through
-     * that path. scan_dbvals_to_midxkey would NULL-deref on F_MIDXKEY operands otherwise. */
+    /* coordinator scan_id lacks prebuilt_midxkey_domains; scan_dbvals_to_midxkey NULL-derefs on F_MIDXKEY without per-task isid. */
     if (worker_scan_id == nullptr)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
@@ -173,9 +168,7 @@ namespace parallel_scan
 	  }
       }
 
-    /* part_key_desc swap (matches btree_prepare_bts). use_desc_index is always
-     * false for parallel scan (blocked by checker), so swap fires only when
-     * part_key_desc is true. */
+    /* part_key_desc swap mirrors btree_prepare_bts; use_desc_index always false here (blocked by checker). */
     if (m_part_key_desc && !m_use_desc_index)
       {
 	for (int i = 0; i < static_cast<int> (m_key_val_ranges.size ()); i++)
@@ -191,8 +184,7 @@ namespace parallel_scan
 	  }
       }
 
-    /* Sort ranges by key1 in B-tree storage order so leaf-chain forward
-     * traversal walks ranges in cursor-friendly order. */
+    /* sort by key1 in B-tree storage order for cursor-friendly leaf-chain traversal. */
     if (static_cast<int> (m_key_val_ranges.size ()) > 1)
       {
 	TP_DOMAIN *key_domain = m_btid_int.key_type;
@@ -247,12 +239,7 @@ namespace parallel_scan
     return NO_ERROR;
   }
 
-  /* latch-coupled root→leaf descent for the requested range (cf. btree_find_AR_sampling_leaf).
-   * Closed-bound range → btree_search_nonleaf_page. Open-bound range (NULL on the descent side)
-   * → leftmost (asc) or rightmost (desc) slot at every nonleaf level, mirroring the
-   * single-thread btree_find_boundary_leaf path (btree.c:15077-15168). On S_SUCCESS out_leaf
-   * holds the READ latch; on S_ERROR all latches are released and the original er_set state
-   * (from btree.c / page_buffer / scan_manager) is preserved for the caller. */
+  /* latch-coupled root→leaf descent; closed-bound via btree_search_nonleaf_page, open-bound via boundary-leaf path (btree.c:15077). */
   SCAN_CODE
   input_handler_index::descend_to_first_leaf (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, int range_idx,
       PAGE_PTR &out_leaf)
@@ -281,8 +268,7 @@ namespace parallel_scan
 	return S_ERROR;
       }
 
-    /* btid_int is populated once on first descent; convert_all_key_ranges is
-     * idempotent and exits early on subsequent calls. */
+    /* btid_int populated once on first descent; convert_all_key_ranges is idempotent. */
     if (btree_glean_root_header_info (thread_p, root_header, &m_btid_int, true) != NO_ERROR)
       {
 	pgbuf_unfix_and_init (thread_p, P_page);
@@ -297,9 +283,7 @@ namespace parallel_scan
 	return S_ERROR;
       }
 
-    /* m_key_val_ranges is in B-tree storage order; kvr->key1 is the storage-leftmost
-     * lower bound. Closed-bound: btree_search_nonleaf_page descent. Open-bound: NULL
-     * descent_key falls through to the leftmost/rightmost slot vertical path. */
+    /* key1 = storage-leftmost lower bound; NULL descent_key → open-bound vertical path. */
     DB_VALUE *descent_key = nullptr;
     bool closed_bound = false;
     if (range_idx >= 0 && range_idx < static_cast<int> (m_key_val_ranges.size ()))
@@ -337,9 +321,7 @@ namespace parallel_scan
 	  }
 	else
 	  {
-	    /* open-bound vertical descent: NULL bound → asc=slot 1, desc=slot key_cnt.
-	     * Mirrors btree_find_boundary_leaf (btree.c:15077-15168). closed-bound must
-	     * never reach this branch — that would land in the wrong subtree. */
+	    /* open-bound: asc→slot 1, desc→slot key_cnt; mirrors btree_find_boundary_leaf (btree.c:15077). */
 	    assert (!closed_bound);
 	    if (closed_bound)
 	      {
@@ -409,9 +391,7 @@ namespace parallel_scan
     return S_SUCCESS;
   }
 
-  /* mutex-protected leaf cursor. Blocks while another worker is driving an
-   * advance-to-next-range descent. On S_SUCCESS m_active_workers is incremented;
-   * the caller MUST pair with release_leaf_and_maybe_advance when done. */
+  /* blocks while another worker drives advance-descent; S_SUCCESS increments m_active_workers — must pair with release_leaf_and_maybe_advance. */
   SCAN_CODE
   input_handler_index::get_next_page_with_fix (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, PAGE_PTR &out_page)
   {
@@ -419,8 +399,7 @@ namespace parallel_scan
 
     std::unique_lock<std::mutex> lock (m_leaf_mutex);
 
-    /* serialize fetch with advance: a fetcher must not see a stale m_current_leaf_vpid
-     * while another worker is mid-descent for the next range. */
+    /* wait for any in-progress advance-descent to complete before reading m_current_leaf_vpid. */
     m_advance_cv.wait (lock, [this] ()
     {
       return !m_advance_in_progress;
@@ -482,24 +461,7 @@ namespace parallel_scan
     return S_SUCCESS;
   }
 
-  /* Concurrency-safe range advance.
-   *
-   * Worker invariant: every leaf returned by get_next_page_with_fix MUST be
-   * paired with exactly one release_leaf_and_maybe_advance call when done.
-   * local_advance_target is the slot_iterator's m_current_range_idx after
-   * processing this leaf (= how many ranges this worker has finished with).
-   *
-   * The first releasing worker that detects local_advance_target > m_current_range_idx
-   * acquires the drive lock (m_advance_in_progress=true), waits on m_advance_cv
-   * until all other workers release their leaves (m_active_workers==0), then
-   * performs root→leaf descent for the new range and updates m_current_leaf_vpid.
-   * Other releasers and new fetchers wait on the cv until the drive completes.
-   * This guarantees no worker holds an old-range leaf when the cursor jumps. */
-  /* Concurrency-safe range advance. Decrements m_active_workers; if the caller's
-   * local_advance_target signals "past every range" (>= num_ranges), drains every
-   * other worker via cv.wait and then sets leaf_ended atomically so the cursor
-   * does not advance past the last useful leaf. Mid-range descent jumps are not
-   * implemented in this iteration; range-to-range transitions ride the leaf chain. */
+  /* decrements m_active_workers; first worker with local_advance_target > m_current_range_idx drives descent to next range under m_advance_in_progress. */
   void
   input_handler_index::release_leaf_and_maybe_advance (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id,
       int local_advance_target)
@@ -557,14 +519,7 @@ namespace parallel_scan
   int
   input_handler_index::finalize (THREAD_ENTRY *thread_p)
   {
-    /* DO NOT clear m_key_val_ranges here. Each worker's task::finalize calls this method,
-     * but slot_iterator workers continue to read m_key_val_ranges via check_key_in_range
-     * even after some sibling task has finished and called finalize. Clearing the shared
-     * vector mid-scan would race with active readers and silently truncate filtering
-     * (slot_iterator falls through to past_upper, dropping qualifying keys). The vector
-     * storage is reclaimed by the input_handler destructor when the scan ends; the
-     * DB_VALUE content (allocated via db_private_alloc inside scan_regu_key_to_index_key)
-     * is reclaimed by the alloc'ing worker's private heap teardown. */
+    /* do NOT clear m_key_val_ranges: sibling slot_iterators still read it via check_key_in_range; dtor reclaims vector, private heap reclaims DB_VALUEs. */
     return NO_ERROR;
   }
 

@@ -17,7 +17,7 @@
  */
 
 /*
- * px_scan_task.hpp - derived from cubthread::entry_task
+ * px_scan_task.hpp
  */
 
 #ifndef _PX_SCAN_TASK_HPP_
@@ -84,12 +84,11 @@ namespace parallel_scan
       virtual void retire () override;
 
     private:
-      /* XASL clone info */
       THREAD_ENTRY *m_parent_thread_p;
       QMGR_QUERY_ENTRY *m_query_entry;
       XASL_CACHE_ENTRY *m_xasl_cache_entry;
       XASL_CLONE m_xasl_clone;
-      XASL_NODE *m_orig_xasl; /* for dptr trace */
+      XASL_NODE *m_orig_xasl;		/* for dptr trace. */
       XASL_NODE *m_xasl_tree;
       XASL_UNPACK_INFO *m_xasl_unpack_info;
       int m_xasl_id;
@@ -97,7 +96,6 @@ namespace parallel_scan
       OID m_cls_oid;
       XASL_NODE *m_xasl;
       SCAN_ID *m_scan_id;
-      /* execution info */
       slot_iterator_t m_slot_iterator;
       result_handler<result_type> *m_result_handler;
       RESULT_TYPE m_result_type;
@@ -113,10 +111,8 @@ namespace parallel_scan
       bool m_is_fixed;
       bool m_is_grouped;
       bool m_uses_xasl_clone;
-      /* for trace */
       TSC_TICKS m_start_tick;
 
-      /* for thread join */
       worker_manager *m_worker_manager;
 
       int initialize (cubthread::entry &thread_ref);

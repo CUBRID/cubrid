@@ -134,9 +134,7 @@ namespace parallel_scan
 			m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 			return S_ERROR;
 		      }
-		    /* when bitmap is built, that page was valid.
-		     * but now, it's deallocated in some reasons.
-		     * this is not error, it can be ignored */
+		    /* page valid at bitmap build time but deallocated since; ignorable. */
 		    if (m_tl_old_page_watcher.pgptr != NULL)
 		      {
 			pgbuf_ordered_unfix (thread_p, &m_tl_old_page_watcher);

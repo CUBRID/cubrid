@@ -105,17 +105,7 @@ namespace parallel_scan
     return NO_ERROR;
   }
 
-  /*
-   * check_key_in_range - Check if a key falls within any of the query's key ranges.
-   *
-   * All comparisons use btree_compare_key in B-tree storage order (which
-   * already accounts for DESC domains per-column). Key bounds have been
-   * swapped for part_key_desc in convert_key_range, matching the non-parallel
-   * btree_prepare_bts + btree_apply_key_range_and_filter logic.
-   *
-   * Keys always arrive in ascending B-tree order (left-to-right leaf traversal,
-   * use_desc_index is blocked by the checker).
-   */
+  /* mirrors btree_apply_key_range_and_filter on storage-order keys (part_key_desc swap done in convert_all_key_ranges). */
   int
   slot_iterator_index::check_key_in_range (DB_VALUE *key, bool *in_range, bool *past_upper, int *matched_range_idx)
   {
@@ -149,8 +139,6 @@ namespace parallel_scan
 	DB_VALUE_COMPARE_RESULT c;
 	int start_col = 0;
 
-	/* Lower bound check: key1 is the lower bound in B-tree order.
-	 * btree_compare_key(cur_key, lower_key): GT or EQ means cur >= lower */
 	bool lower_ok = true;
 	switch (kvr->range)
 	  {
@@ -191,15 +179,10 @@ namespace parallel_scan
 
 	if (!lower_ok)
 	  {
-	    /* cur_key has not reached this range's lower bound yet.
-	     * Since ranges are sorted ascending and keys arrive ascending,
-	     * the key might reach this range later. Don't advance cursor. */
+	    /* below this range's lower; ascending sort permits later match — keep cursor. */
 	    return NO_ERROR;
 	  }
 
-	/* Upper bound check: key2 is the upper bound in B-tree order.
-	 * btree_compare_key(upper_key, cur_key): GT means upper > cur (in range).
-	 * This matches btree_apply_key_range_and_filter logic exactly. */
 	bool upper_ok = true;
 	switch (kvr->range)
 	  {
@@ -305,27 +288,13 @@ namespace parallel_scan
     return NO_ERROR;
   }
 
-  /*
-   * collect_oid_helper - helper struct for collect_oid_callback.
-   * Carries both the output OID vector and the MVCC snapshot used
-   * to filter out B-tree entries whose delete is already visible.
-   */
   struct collect_oid_helper
   {
     std::vector<OID> *oid_vec;
     MVCC_SNAPSHOT *snapshot;
   };
 
-  /*
-   * collect_oid_callback - btree_key_process_objects callback.
-   *
-   * Checks MVCC visibility of each OID using the snapshot and
-   * collects only visible OIDs into the vector.  Without this
-   * check, deleted B-tree entries (e.g. from MVCC-updated rows
-   * in a filtered index) would be collected, and
-   * heap_get_visible_version would return the updated version
-   * that may no longer satisfy the filter condition.
-   */
+  /* MVCC pre-filter; without it filtered-index updated versions leak into heap_get_visible_version. */
   int
   slot_iterator_index::collect_oid_callback (THREAD_ENTRY *thread_p, BTID_INT *btid_int, RECDES *record,
       char *object_ptr, OID *oid, OID *class_oid,
@@ -347,13 +316,6 @@ namespace parallel_scan
     return NO_ERROR;
   }
 
-  /*
-   * process_oid - Process a single OID: heap fetch, predicate evaluation,
-   * and val_list fill.
-   *
-   * Returns S_SUCCESS if the OID qualifies, S_END if it should be skipped,
-   * S_ERROR on error.
-   */
   SCAN_CODE
   slot_iterator_index::process_oid (THREAD_ENTRY *thread_p, OID *oid)
   {
@@ -361,9 +323,7 @@ namespace parallel_scan
 
     if (m_is_covering)
       {
-	/* Covering index path: read output values from the B-tree key without
-	 * a heap lookup. MVCC visibility has already been enforced by the
-	 * snapshot check inside collect_oid_callback. */
+	/* MVCC pre-filtered in collect_oid_callback. */
 	HEAP_CACHE_ATTRINFO *attr_info = nullptr;
 	REGU_VARIABLE_LIST regu_list = nullptr;
 
@@ -487,11 +447,6 @@ namespace parallel_scan
   }
 
   /*
-   * next_qualified_slot_with_peek - Core algorithm: iterate through leaf page
-   * slots, read each key, check key range, collect ALL OIDs from qualifying
-   * slots, then process OIDs one at a time (heap fetch, predicate eval, fill
-   * val_list).
-   *
    * Returns S_SUCCESS when a qualified row is available,
    *         S_END when the current page is exhausted,
    *         S_ERROR on error.
@@ -545,10 +500,7 @@ namespace parallel_scan
 	    continue;
 	  }
 
-	// Skip fence keys. Fence records are boundary markers whose keys
-	// duplicate keys stored in an adjacent leaf page; counting them
-	// would double-count rows across the page boundary, inflating
-	// aggregate / group-by counts in parallel index scan.
+	/* fence keys duplicate adjacent-leaf keys; counting them double-inflates aggregate / group-by. */
 	if (btree_leaf_record_is_fence (&rec))
 	  {
 	    m_use_desc_index ? m_current_slot-- : m_current_slot++;
@@ -598,20 +550,7 @@ namespace parallel_scan
 	    continue;
 	  }
 
-	/* NULL midxkey rejection — mirror btree_apply_key_range_and_filter's
-	 * need_to_check_null block (btree.c:16549–16614). The B-tree stores NULL
-	 * keys at the leftmost (or rightmost for desc) end of the index, so the
-	 * boundary worker shard receives them and check_key_in_range accepts them
-	 * (NULL sorts below any non-NULL in B-tree order). SQL semantics, however,
-	 * reject NULL for `<`, `<=`, `>`, `>=`, `BETWEEN` predicates because
-	 * `NULL <op> X` evaluates to UNKNOWN. Sequential scan rejects via the
-	 * key_range.num_index_term-th midxkey element NULL test in
-	 * btree_apply_key_range_and_filter; replicate it here so parallel workers
-	 * do not leak NULL-leading-term rows.
-	 *
-	 * ISS / ILS scans are blocked from parallel scan upstream (see
-	 * px_scan_checker.cpp use_iss / ils_prefix_len gate), so the sequential
-	 * code's is_iss + is_desc allow-NULL exception does not apply here. */
+	/* mirrors btree_apply_key_range_and_filter need_to_check_null (btree.c:16549–16614); ISS/ILS gated upstream. */
 	if (matched_range_idx >= 0 && DB_VALUE_DOMAIN_TYPE (&key) == DB_TYPE_MIDXKEY)
 	  {
 	    key_val_range *kvr = &m_input_handler->get_key_val_ranges ()[matched_range_idx];
@@ -688,13 +627,6 @@ namespace parallel_scan
 		continue;
 	      }
 
-	    m_scan_id->scan_stats.key_qualified_rows++;
-	    m_scan_id->scan_stats.read_rows++;
-	  }
-	else
-	  {
-	    m_scan_id->scan_stats.key_qualified_rows++;
-	    m_scan_id->scan_stats.read_rows++;
 	  }
 
 	/* 4. Collect visible OIDs from this leaf record (including overflow pages).
@@ -733,6 +665,10 @@ namespace parallel_scan
 	      }
 	    continue;
 	  }
+
+	/* match serial granularity at scan_manager.c:6279 — per visible OID. */
+	m_scan_id->scan_stats.key_qualified_rows += m_slot_oids.size ();
+	m_scan_id->scan_stats.read_rows += m_slot_oids.size ();
 
 	/* Save the key for use in process_oid (covering index needs it) */
 	m_slot_key = key;

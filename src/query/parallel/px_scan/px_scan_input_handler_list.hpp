@@ -58,7 +58,7 @@ namespace parallel_scan
 
       int init_on_main (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, int parallelism);
 
-      /* Single READ-latch fix; ownership of out_page transfers to caller on S_SUCCESS. */
+      /* single READ-latch fix; out_page ownership transfers to caller on S_SUCCESS. */
       SCAN_CODE get_next_page_with_fix (THREAD_ENTRY *thread_p,
 					PAGE_PTR &out_page,
 					QMGR_TEMP_FILE *&out_tfile);
@@ -66,7 +66,7 @@ namespace parallel_scan
       int initialize (THREAD_ENTRY *thread_p, HFID *hfid, SCAN_ID *scan_id);
       int finalize (THREAD_ENTRY *thread_p);
 
-      /* Manager must call before destruction (implicit dtor lacks THREAD_ENTRY). Idempotent. */
+      /* manager must call before destruction (implicit dtor lacks THREAD_ENTRY); idempotent. */
       void cleanup_on_main (THREAD_ENTRY *thread_p);
 
       QFILE_LIST_ID *get_list_id ()
@@ -78,7 +78,7 @@ namespace parallel_scan
       QFILE_LIST_SECTOR_INFO m_sector_info;
       std::vector<worker_slice> m_worker_slices;
       std::atomic_int m_worker_slice_idx;
-      /* CAS membuf ownership — idx==0 failure cannot strand the membuf */
+      /* CAS membuf ownership — idx==0 failure cannot strand the membuf. */
       std::atomic<bool> m_membuf_claimed;
 
       QFILE_LIST_ID *m_list_id;

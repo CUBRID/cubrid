@@ -28,23 +28,21 @@
 
 #include <map>
 
-/* forward declaration */
 struct xasl_node;
 
 namespace parallel_scan
 {
   struct scan_info
   {
-    /* read-only section */
-    OID oid;			/* class oid */
-    HFID hfid;			/* class hfid */
-    BTID btid;			/* index id */
-    QFILE_LIST_ID *list_id;	/* list file identifier */
+    OID oid;
+    HFID hfid;
+    BTID btid;
+    QFILE_LIST_ID *list_id;
     TARGET_TYPE target_type;
     ACCESS_METHOD access_method;
-    /* writable section (mutex needed) */
+    /* status / qualified_block: mutex-guarded. */
     SCAN_STATUS status;
-    bool qualified_block;	/* qualified block? */
+    bool qualified_block;
   };
 
   using XASL_ID = int;

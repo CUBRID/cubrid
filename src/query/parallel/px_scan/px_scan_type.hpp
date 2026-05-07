@@ -58,6 +58,6 @@ namespace parallel_scan
     using slot_iterator_type = slot_iterator_index;
   };
 
-} // namespace parallel_scan
+} /* namespace parallel_scan */
 
 #endif /*_PX_SCAN_TYPE_HPP_ */

@@ -39,22 +39,7 @@
 
 namespace parallel_scan
 {
-  /*
-   * Parallel heap scan has two execution modes:
-   *   1. list_merge: Fast mode that merges sorted partial results from workers
-   *   2. row_by_row: Slower mode that processes rows individually, but covers all cases
-   *
-   * When list_merge is not possible, row_by_row is always available as a fallback.
-   *
-   * Buildvalue optimization (buildvalue_opt) can be applied when:
-   *   - The select list contains only aggregate functions suitable for buildvalue optimization
-   *   - list_merge mode: buildvalue_opt is always possible
-   *   - row_by_row mode: buildvalue_opt may not be possible due to constraints like ROWNUM
-   *
-   * The BUILDVALUE_OPT_POSSIBLE flag specifically checks:
-   *   1. Whether the select list consists solely of suitable aggregate functions
-   *   2. Whether row_by_row constraints (e.g., ROWNUM usage) prevent buildvalue optimization
-   */
+  /* modes: list_merge (fast, workers merge partial lists) | row_by_row (fallback) | buildvalue_opt (agg-only selects; blocked by ROWNUM in row_by_row). */
 
   using possible_flags = uint32_t;
   const possible_flags CANNOT_PARALLEL_SCAN = 0x1 << 0;
@@ -84,8 +69,7 @@ namespace parallel_scan
       }
   }
 
-  /* Thread-local map to cache check results for XASL_NODE and prevent infinite recursion.
-   * This is used to detect circular references in XASL structures and reuse computed results. */
+  /* thread-local cache: memoizes check results and breaks circular XASL refs. */
   thread_local std::unordered_map<XASL_NODE *, possible_flags> xasl_check_cache;
 
   /* Thread-local set to track XASL_NODEs being processed to prevent infinite recursion in process functions */
@@ -358,20 +342,7 @@ namespace parallel_scan
 	   (arg->case_sensitive);
   }
 
-  /* Filtered (partial) indexes are intentionally blocked from parallel
-   * scan. Allowing them broadens the surface area of MVCC / dropped-key
-   * edge cases (filter predicate vs. delete-but-still-visible interaction)
-   * across worker leaf-page shards, and the feature is rarely used in
-   * practice — so we route them to the serial scan path rather than
-   * harden every shard against the long tail of regressions.
-   *
-   * Function indexes are NOT blocked here: the indexed expression is
-   * materialized as a regular key in the B-tree, so parallel leaf-page
-   * distribution preserves its semantics.
-   *
-   * Detection happens client-side during XASL generation: the checker walks
-   * the schema manager constraint list for the class OID carried on INDX_INFO
-   * and matches by BTID. */
+  /* filtered (partial) indexes → serial: MVCC/dropped-key edge cases across leaf shards; function indexes are plain B-tree keys, not blocked. */
   static bool
   is_filtered_index (const INDX_INFO *indexptr)
   {
@@ -428,45 +399,32 @@ namespace parallel_scan
 	      }
 	    if (arg->indexptr != NULL)
 	      {
-		/* ISS (Index Skip Scan) and ILS (Index Loose Scan) dynamically modify
-		 * curr_keyno and key ranges; they conflict with leaf-page cursor. */
+		/* ISS/ILS dynamically modify curr_keyno/key-ranges; conflict with leaf-page cursor. */
 		if (arg->indexptr->use_iss || arg->indexptr->ils_prefix_len > 0)
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
 
-		/* keylimit limits how many B-tree keys are traversed globally;
-		 * splitting pages across workers makes global limit impossible. */
+		/* keylimit: global key cap incompatible with per-worker page split. */
 		if (arg->indexptr->key_info.is_user_given_keylimit)
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
 
-		/* orderby_skip / groupby_skip rely on the index delivering rows
-		 * in a specific order that parallel page splitting breaks.
-		 * orderby_desc / groupby_desc indicate DESC ordering that
-		 * also depends on ordered index traversal. */
+		/* orderby/groupby skip+desc require globally ordered traversal; page split breaks it. */
 		if (arg->indexptr->orderby_skip || arg->indexptr->groupby_skip
 		    || arg->indexptr->orderby_desc || arg->indexptr->groupby_desc)
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
 
-		/* use_desc_index: descending / reverse index traversal.
-		 * Parallel leaf-page cursor distributes pages to workers and
-		 * each worker scans its page independently; the global ordering
-		 * required for DESC scan correctness cannot be guaranteed. */
+		/* use_desc_index: DESC requires globally ordered traversal; workers scan pages independently. */
 		if (arg->indexptr->use_desc_index)
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
 
-		/* Filtered (partial) indexes: the B-tree only contains rows that
-		 * satisfy the CREATE INDEX ... WHERE filter, so filter-excluded
-		 * keys are not projected identically across worker leaf-page shards
-		 * and the parallel result drifts from the sequential one. Function
-		 * indexes are NOT blocked — the indexed expression is materialized
-		 * as a regular key and parallel distribution is safe. */
+		/* filtered index: excluded keys unevenly distributed across shards → result drift; function indexes are plain keys, safe. */
 		if (is_filtered_index (arg->indexptr))
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
@@ -1058,11 +1016,7 @@ namespace parallel_scan
 	  }
 	break;
       case MERGELIST_PROC:
-	/* outer_xasl / inner_xasl are already chained in arg->aptr_list by
-	 * ptqo_to_merge_list_proc, so the generic aptr loop above handles their
-	 * force-cannot-parallel propagation. Only the spec_list cursors need the
-	 * explicit ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN to prevent the llsid union
-	 * from being overwritten by pllsid_parallel during merge cursor open. */
+	/* outer/inner xasl chained via aptr_list; only spec_list cursors need NO_PARALLEL_SCAN to guard llsid union from pllsid_parallel overwrite. */
 	for (ACCESS_SPEC_TYPE *specp = arg->proc.mergelist.outer_spec_list; specp; specp = specp->next)
 	  {
 	    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);

@@ -34,19 +34,6 @@ namespace parallel_scan
 {
   class input_handler_index;
 
-  /*
-   * slot_iterator_index - directly reads B-tree leaf pages and processes
-   * records (key + OID extraction, heap fetch, predicate evaluation).
-   *
-   * The input_handler_index provides real leaf page VPIDs via a shared
-   * mutex-protected cursor. This iterator fixes the leaf page, reads each
-   * slot's key/OID, applies key range filtering, fetches the heap record,
-   * evaluates data predicates, and fills the val_list for output.
-   *
-   * Each leaf record slot may contain multiple OIDs (non-unique indexes).
-   * OIDs are collected via btree_key_process_objects and processed one
-   * at a time through the next_qualified_slot_with_peek interface.
-   */
   class slot_iterator_index
   {
     public:
@@ -55,7 +42,7 @@ namespace parallel_scan
       int initialize (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, val_descr *vd);
       int finalize (THREAD_ENTRY *thread_p);
 
-      /* Adopts a pre-fixed leaf page (READ); never re-fixes. */
+      /* adopts pre-fixed READ leaf; never re-fixes. */
       int set_page (THREAD_ENTRY *thread_p, PAGE_PTR page);
       SCAN_CODE next_qualified_slot_with_peek (THREAD_ENTRY *thread_p);
 
@@ -67,29 +54,28 @@ namespace parallel_scan
     private:
       SCAN_ID *m_scan_id;
       val_descr *m_vd;
-      BTID_INT *m_btid_int;            /* from input_handler (shared, read-only) */
+      BTID_INT *m_btid_int;             /* shared, read-only — from input_handler. */
       input_handler_index *m_input_handler;
-      PAGE_PTR m_page;                  /* current leaf page (fixed in set_page) */
-      int m_num_keys;                   /* keys on current page */
-      int m_current_slot;               /* 1-indexed current position */
-      FILTER_INFO m_data_filter;        /* data filter for heap predicate eval */
-      bool m_is_covering;               /* covering index: read output from key, not heap */
-      bool m_use_desc_index;            /* descending index scan direction (traversal) */
+      PAGE_PTR m_page;
+      int m_num_keys;
+      int m_current_slot;               /* 1-indexed. */
+      FILTER_INFO m_data_filter;
+      bool m_is_covering;
+      bool m_use_desc_index;
 
-      /* Per-leaf range cursor; m_key_val_ranges is owned by input_handler. */
+      /* m_key_val_ranges owned by input_handler. */
       int m_current_range_idx;
 
-      /* Multi-OID per slot: collected OIDs for current slot */
-      std::vector<OID> m_slot_oids;     /* OIDs collected from current leaf record */
-      size_t m_slot_oid_idx;             /* current position in m_slot_oids */
-      DB_VALUE m_slot_key;              /* key for current slot (retained while draining OIDs) */
-      bool m_slot_key_valid;            /* whether m_slot_key is active */
-      bool m_slot_clear_key;            /* whether m_slot_key needs pr_clear_value */
+      std::vector<OID> m_slot_oids;
+      size_t m_slot_oid_idx;
+      DB_VALUE m_slot_key;              /* retained across OID drain. */
+      bool m_slot_key_valid;
+      bool m_slot_clear_key;             /* needs pr_clear_value. */
 
       int check_key_in_range (DB_VALUE *key, bool *in_range, bool *past_upper, int *matched_range_idx);
       SCAN_CODE process_oid (THREAD_ENTRY *thread_p, OID *oid);
 
-      /* btree_key_process_objects callback */
+      /* btree_key_process_objects callback. */
       static int collect_oid_callback (THREAD_ENTRY *thread_p, BTID_INT *btid_int, RECDES *record,
 				       char *object_ptr, OID *oid, OID *class_oid,
 				       BTREE_MVCC_INFO *mvcc_info, bool *stop, void *args);

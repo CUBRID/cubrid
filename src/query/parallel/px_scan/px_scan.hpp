@@ -154,9 +154,7 @@ extern "C"
       XASL_NODE *xasl, QUERY_ID query_id);
   extern int scan_start_parallel_index_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
 
-  /* Attempt to promote scan_id from S_INDX_SCAN to S_PARALLEL_INDEX_SCAN using captures
-   * stashed in scan_id->s.isid.parallel_pending. Always frees parallel_pending. On success
-   * scan_id->type becomes S_PARALLEL_INDEX_SCAN; on failure it stays S_INDX_SCAN. */
+  /* promote S_INDX_SCAN → S_PARALLEL_INDEX_SCAN via parallel_pending captures; always frees them. */
   extern int scan_try_promote_parallel_index_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
   extern void scan_clear_parallel_index_pending (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
 }

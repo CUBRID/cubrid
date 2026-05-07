@@ -319,8 +319,7 @@ namespace parallel_scan
 	      {
 		m_err_messages_p->move_top_error_message_to_this();
 		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		/* for prevent data corruption at m_.hgby_results;
-		 * context->part_list_id will be destroyed in thread's qexec_clear_xasl */
+		/* skip append: part_list_id freed by qexec_clear_xasl; touching m_.hgby_results would corrupt it. */
 		hash_aggregate_append = false;
 	      }
 	    if (context->part_list_id != NULL)
@@ -588,8 +587,7 @@ namespace parallel_scan
 	  {
 	    BUILDLIST_PROC_NODE *buildlist_proc = &m_.orig_xasl->proc.buildlist;
 	    merge_list_ids (thread_p, buildlist_proc->agg_hash_context->part_list_id, m_.hgby_results);
-	    /* Using HS_REJECT_ALL to force 'hash: partial' in trace during hash group by with part list IDs.
-	     * Refer to gstats in qdump_print_stats_text(). */
+	    /* HS_REJECT_ALL forces 'hash: partial' trace for hgby with part list IDs (cf. qdump_print_stats_text). */
 	    m_.orig_xasl->groupby_stats.groupby_hash = HS_REJECT_ALL;
 	  }
 
@@ -965,8 +963,7 @@ namespace parallel_scan
       }
     for (AGGREGATE_TYPE *orig_agg_p = m_orig_agg_list; orig_agg_p != NULL; orig_agg_p = orig_agg_p->next)
       {
-	/* COUNT_STAR and DISTINCT (non-MIN/MAX) accumulators were already finalized upstream;
-	 * COUNT needs the curr_cnt → BIGINT conversion; everything else needs value cloning. */
+	/* COUNT_STAR/DISTINCT already finalized upstream; COUNT needs curr_cnt→BIGINT, others need value clone. */
 	if (orig_agg_p->function == PT_COUNT_STAR)
 	  {
 	    continue;
@@ -1057,8 +1054,7 @@ namespace parallel_scan
 	  }
 	else
 	  {
-	    /* Non-DISTINCT: init curr_cnt for all types.
-	     * value/value2 initialization happens on first row in write() via curr_cnt < 1 check. */
+	    /* Non-DISTINCT: curr_cnt init; value/value2 set on first write() row via curr_cnt < 1. */
 	    agg_node->accumulator.curr_cnt = 0;
 	  }
       }
@@ -1156,10 +1152,7 @@ namespace parallel_scan
 	  }
 	else
 	  {
-	    /* Resolve accumulator domain on first non-NULL value.
-	     * qexec_resolve_domains_for_aggregation (called above) may fail to resolve domains
-	     * for covering index scans where fetch_peek_dbval returns NULL for some aggregates.
-	     * This per-row fallback catches those cases using the actual fetched DB_VALUE. */
+	    /* per-row domain fallback: qexec_resolve_domains_for_aggregation may leave NULL domain for covering index NULL values. */
 	    if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
 	      {
 		switch (agg_node->function)
