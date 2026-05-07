@@ -1531,7 +1531,7 @@ make_pred_from_bitset (QO_ENV * env, BITSET * predset, ELIGIBILITY_FN safe)
 	    }
 
 	  if (cmp == 0)
-	    {
+	    {			/* same selectivity, re-compare rank */
 	      cmp = curr->info.pointer.rank - pointer->info.pointer.rank;
 	    }
 
@@ -1539,7 +1539,7 @@ make_pred_from_bitset (QO_ENV * env, BITSET * predset, ELIGIBILITY_FN safe)
 	    {
 	      pointer->next = curr;
 	      if (prev == NULL)
-		{
+		{		/* very the first */
 		  pred_list = pointer;
 		}
 	      else
@@ -1557,12 +1557,12 @@ make_pred_from_bitset (QO_ENV * env, BITSET * predset, ELIGIBILITY_FN safe)
       if (found == false)
 	{
 	  if (prev == NULL)
-	    {
+	    {			/* very the first */
 	      pointer->next = pred_list;
 	      pred_list = pointer;
 	    }
 	  else
-	    {
+	    {			/* very the last */
 	      prev->next = pointer;
 	    }
 	}

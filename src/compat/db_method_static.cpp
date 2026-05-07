@@ -71,7 +71,7 @@ static void dbmeth_print (DB_OBJECT *self, DB_VALUE *result, DB_VALUE *msg);
 /*
  * qo_set_cost
  *
- * This function is exported by the optimizer query planner modules, and provides a backdoor that
+ * This function is exported by optimizer/query_planner.c, and provides a backdoor that
  * allows us some gross manipulation capabilities for the query
  * optimizer.  By adding it to the list of method implementations that
  * are statically linked we make it easy for us to add a method to an

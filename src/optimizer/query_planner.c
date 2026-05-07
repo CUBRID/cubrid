@@ -587,6 +587,32 @@ qo_term_string (QO_TERM * term, char *buf)
   return p;
 }
 
+/*
+ * qo_estimate_ngroups () -
+ *   return:
+ *   plan(in):
+ *
+ * GROUP BY cardinality estimation:
+ *
+ * - Single table without filters:
+ *   The number of groups is estimated as the NDV of the GROUP BY column.
+ *   e.g. GROUP BY col2 -> Ngroups = NDV(col2)
+ *
+ * - Multiple GROUP BY columns:
+ *   Columns are assumed to be independent.
+ *   Ngroups = NDV(col1) * NDV(col2)
+ *   This may overestimate the actual number of groups.
+ *
+ * - With filters:
+ *   NDV after filtering is estimated using:
+ *     n * (1 - ((N - p) / N)^(N / n))
+ *   where n = NDV, N = total rows, p = filtered rows.
+ *
+ * - With joins:
+ *   The same formula is applied.
+ *   N is the estimated row count after join conditions,
+ *   and p is the estimated row count after applying all predicates.
+ */
 static void
 qo_estimate_ngroups (QO_PLAN * plan, SORT_TYPE sort_type)
 {
@@ -634,6 +660,11 @@ qo_estimate_ndv (double N, double p, double n)
   return n * (1.0 - pow (ratio, exponent));
 }
 
+/*
+ * qo_get_group_ndv () -
+ *   return:
+ *   plan(in):
+ */
 static int
 qo_get_group_ndv (QO_PLAN * plan, SORT_TYPE sort_type)
 {
@@ -676,6 +707,11 @@ qo_get_group_ndv (QO_PLAN * plan, SORT_TYPE sort_type)
   return ndv_info.total_ndv;
 }
 
+/*
+ * qo_plan_compute_cost () -
+ *   return:
+ *   plan(in):
+ */
 static void
 qo_plan_compute_cost (QO_PLAN * plan)
 {
@@ -723,6 +759,13 @@ qo_plan_compute_cost (QO_PLAN * plan)
     }
 }
 
+/*
+ * qo_plan_compute_subquery_cost () -
+ *   return:
+ *   subquery(in):
+ *   subq_cpu_cost(in):
+ *   subq_io_cost(in):
+ */
 static void
 qo_plan_compute_subquery_cost (PT_NODE * subquery, double *subq_cpu_cost, double *subq_io_cost)
 {
@@ -2030,6 +2073,11 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
   return plan;
 }
 
+/*
+ * qo_iscan_cost () -
+ *   return:
+ *   planp(in):
+ */
 static void
 qo_iscan_cost (QO_PLAN * planp)
 {
@@ -2227,6 +2275,7 @@ qo_iscan_cost (QO_PLAN * planp)
   fprintf (stdout, "\n");
 #endif /* TEST_DUMP_PLAN_SCAN_COST */
 }
+
 
 static void
 qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
@@ -2645,6 +2694,11 @@ qo_sort_info (QO_PLAN * plan, FILE * f, int howfar)
   qo_plan_lite_print (plan->plan_un.sort.subplan, f, howfar);
 }
 
+/*
+ * qo_sort_cost () -
+ *   return:
+ *   planp(in):
+ */
 static void
 qo_sort_cost (QO_PLAN * planp)
 {
@@ -3175,6 +3229,7 @@ qo_join_info (QO_PLAN * plan, FILE * f, int howfar)
   qo_plan_lite_print (plan->plan_un.join.inner, f, howfar + INDENT_INCR);
 }
 
+
 /*
  * qo_can_apply_limit_card () -
  *   return: true if limit-based cardinality can be applied for guessed_result_cardinality, false otherwise
@@ -3188,7 +3243,6 @@ qo_join_info (QO_PLAN * plan, FILE * f, int howfar)
  * 5. Aggregate functions (scalar or with GROUP BY)
  * 6. Window / Recursive CTE / Hierarchical Query (CONNECT BY)
  */
-
 static bool
 qo_can_apply_limit_card (QO_ENV * env)
 {
@@ -3435,7 +3489,6 @@ qo_nljoin_cost (QO_PLAN * planp)
     {
       guessed_result_cardinality = (outer->info)->cardinality;
     }
-
   inner_cpu_cost = guessed_result_cardinality * inner->variable_cpu_cost;
 
   /* inner side IO cost of nested-loop block join */
@@ -3534,6 +3587,11 @@ qo_nljoin_cost (QO_PLAN * planp)
 #endif /* TEST_DUMP_PLAN_JOIN_COST */
 }
 
+/*
+ * qo_mjoin_cost () -
+ *   return:
+ *   planp(in):
+ */
 static void
 qo_mjoin_cost (QO_PLAN * planp)
 {
@@ -3608,6 +3666,11 @@ qo_mjoin_cost (QO_PLAN * planp)
 #endif /* TEST_DUMP_PLAN_JOIN_COST */
 }
 
+/*
+ * qo_hjoin_cost () -
+ *   return:
+ *   planp(in):
+ */
 static void
 qo_hjoin_cost (QO_PLAN * plan_p)
 {
@@ -3893,6 +3956,11 @@ qo_follow_info (QO_PLAN * plan, FILE * f, int howfar)
   qo_plan_lite_print (plan->plan_un.follow.head, f, howfar + INDENT_INCR);
 }
 
+/*
+ * qo_follow_cost () -
+ *   return:
+ *   planp(in):
+ */
 static void
 qo_follow_cost (QO_PLAN * planp)
 {
@@ -3954,6 +4022,7 @@ qo_follow_cost (QO_PLAN * planp)
   fprintf (stdout, "\n");
 #endif /* TEST_DUMP_PLAN_FOLLOW_COST */
 }
+
 
 /*
  * qo_cp_new () -
@@ -4042,6 +4111,11 @@ qo_worst_info (QO_PLAN * plan, FILE * f, int howfar)
   fprintf (f, "\n%*c%s", (int) howfar, ' ', (plan->vtbl)->info_string);
 }
 
+/*
+ * qo_worst_cost () -
+ *   return:
+ *   planp(in):
+ */
 static void
 qo_worst_cost (QO_PLAN * planp)
 {
@@ -4052,6 +4126,12 @@ qo_worst_cost (QO_PLAN * planp)
   planp->use_iscan_descending = false;
 }
 
+
+/*
+ * qo_zero_cost () -
+ *   return:
+ *   planp(in):
+ */
 static void
 qo_zero_cost (QO_PLAN * planp)
 {
@@ -4211,6 +4291,7 @@ qo_apply_mcv_hotkey_join_guard (QO_TERM * term, QO_INFO * head_info, QO_INFO * t
   double head_card, tail_card, small_card, large_card;
   bool head_small, tail_small;
   double risk_fanout, risk_card, risk_sel;
+  double max_selectivity_multiplier;
 
   if (term == NULL || head_info == NULL || tail_info == NULL)
     {
@@ -4251,15 +4332,6 @@ qo_apply_mcv_hotkey_join_guard (QO_TERM * term, QO_INFO * head_info, QO_INFO * t
   effective_mcv_max_frequency =
     head_small ? QO_TERM_TAIL_MCV_MAX_FREQUENCY (term) : QO_TERM_HEAD_MCV_MAX_FREQUENCY (term);
 
-  /*
-   * For heavy fanout joins (e.g. movie_id chains), a hot key can still be meaningful
-   * even when MCV max frequency is below the historical guard threshold.
-   */
-  if (effective_mcv_max_frequency < mcv_freq_floor)
-    {
-      return term_sel;
-    }
-
   base_cardinality = MAX (1.0, base_cardinality);
 
   /*
@@ -4267,6 +4339,11 @@ qo_apply_mcv_hotkey_join_guard (QO_TERM * term, QO_INFO * head_info, QO_INFO * t
    * frequency on the large side is the direct upper-risk fanout signal.
    */
   risk_fanout = large_card * effective_mcv_max_frequency;
+  if (effective_mcv_max_frequency < mcv_freq_floor && risk_fanout < QO_MCV_GUARD_MIN_RISK_FANOUT)
+    {
+      return term_sel;
+    }
+
   risk_card = small_card * risk_fanout;
 
   if (risk_card <= 1.0)
@@ -4275,7 +4352,10 @@ qo_apply_mcv_hotkey_join_guard (QO_TERM * term, QO_INFO * head_info, QO_INFO * t
     }
 
   risk_sel = risk_card / base_cardinality;
-  risk_sel = MIN (risk_sel, term_sel * QO_MCV_GUARD_MAX_SELECTIVITY_MULTIPLIER);
+  max_selectivity_multiplier =
+    (effective_mcv_max_frequency < mcv_freq_floor)
+    ? QO_MCV_GUARD_COLD_FANOUT_SELECTIVITY_MULTIPLIER : QO_MCV_GUARD_MAX_SELECTIVITY_MULTIPLIER;
+  risk_sel = MIN (risk_sel, term_sel * max_selectivity_multiplier);
 
   if (risk_sel < term_sel)
     {

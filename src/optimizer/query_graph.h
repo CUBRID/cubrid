@@ -639,7 +639,7 @@ struct qo_term
   QO_TERMCLASS term_class;
 
   /*
-   * The rank of this term. used for the same selectivity : TODO DELETE THIS
+   * The rank of this term. used for the same selectivity
    */
   int rank;
 

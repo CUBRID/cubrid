@@ -6,7 +6,7 @@ Client-side (`#if !defined(SERVER_MODE)`).
 
 | File | Role |
 |------|------|
-| `query_planner.c`, `query_planner_selectivity.c` | Core planner modules: generate and cost QO_PLAN trees from QO_ENV |
+| `query_planner.c` | Core planner: generates QO_PLAN tree from QO_ENV |
 | `query_graph.c` | Query graph construction (nodes = tables, edges = joins) |
 | `plan_generation.c` | Plan enumeration and cost-based selection |
 | `query_bitset.c` | Bitset operations for plan enumeration |
@@ -55,4 +55,4 @@ parser/ (PT_NODE tree) → optimizer/ (QO_PLAN tree) → parser/xasl_generation.
 - Optimizer runs **client-side** — statistics fetched from server, planning done locally
 - Small module but high complexity — plan enumeration is exponential in join count
 - Cost model accuracy depends on up-to-date statistics — stale stats = bad plans
-- The query planner modules handle both simple queries and complex multi-way joins
+- `query_planner.c` handles both simple queries and complex multi-way joins
