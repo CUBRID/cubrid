@@ -172,6 +172,7 @@ static void qo_apply_scan_term_cpu_overhead (QO_PLAN *);
 static void qo_iscan_cost (QO_PLAN *);
 static void qo_sort_cost (QO_PLAN *);
 static bool qo_can_apply_limit_card (QO_ENV *);
+static double qo_estimate_ndv (double N, double p, double n);
 static double qo_get_join_term_cost_weight (QO_TERM *);
 static double qo_sum_join_term_cost_weights (QO_ENV *, BITSET *);
 static double qo_get_nljoin_term_cpu_overhead (QO_PLAN *, double);
@@ -4183,463 +4184,6 @@ qo_plan_order_by (QO_PLAN * plan, QO_EQCLASS * order)
     }
 }
 
-static double
-qo_get_term_cost_weight (QO_TERM * term)
-{
-  PT_NODE *expr;
-  PT_NODE *node;
-  double total_weight = 0.0;
-
-  if (term == NULL)
-    {
-      return QO_COST_WEIGHT_PRED_DEFAULT;
-    }
-
-  expr = QO_TERM_PT_EXPR (term);
-  if (expr == NULL || expr->node_type != PT_EXPR)
-    {
-      return QO_COST_WEIGHT_PRED_DEFAULT;
-    }
-
-  for (node = expr; node != NULL; node = node->or_next)
-    {
-      double weight = QO_COST_WEIGHT_PRED_DEFAULT;
-
-      if (node->node_type != PT_EXPR)
-	{
-	  continue;
-	}
-
-      switch (node->info.expr.op)
-	{
-	case PT_EQ:
-	case PT_NE:
-	  {
-	    PT_NODE *lhs = node->info.expr.arg1;
-
-	    if (lhs != NULL && (lhs->type_enum == PT_TYPE_CHAR || lhs->type_enum == PT_TYPE_VARCHAR))
-	      {
-		weight = QO_COST_WEIGHT_STRING_EQUAL;
-	      }
-	    else
-	      {
-		weight = QO_COST_WEIGHT_NUMERIC_COMPARE;
-	      }
-	    break;
-	  }
-
-	case PT_LT:
-	case PT_LE:
-	case PT_GT:
-	case PT_GE:
-	  {
-	    PT_NODE *lhs = node->info.expr.arg1;
-	    if (lhs != NULL && (lhs->type_enum == PT_TYPE_CHAR || lhs->type_enum == PT_TYPE_VARCHAR))
-	      {
-		weight = QO_COST_WEIGHT_STRING_RANGE;
-	      }
-	    else
-	      {
-		weight = QO_COST_WEIGHT_NUMERIC_COMPARE;
-	      }
-	    break;
-	  }
-
-	case PT_LIKE:
-	case PT_NOT_LIKE:
-	  {
-	    PT_NODE *rhs = node->info.expr.arg2;
-
-	    if (rhs != NULL && rhs->node_type == PT_VALUE)
-	      {
-		const char *pat = db_get_string (&rhs->info.value.db_value);
-		if (pat != NULL)
-		  {
-		    const char *pct = strchr (pat, '%');
-		    const char *und = strchr (pat, '_');
-
-		    if (pct != NULL && pct[1] == '\0' && und == NULL && pct != pat)
-		      {
-			weight = QO_COST_WEIGHT_LIKE_PREFIX;
-		      }
-		    else if (pat[0] == '%' || und != NULL)
-		      {
-			weight = QO_COST_WEIGHT_LIKE_CONTAINS;
-		      }
-		    else
-		      {
-			weight = QO_COST_WEIGHT_LIKE_COMPLEX;
-		      }
-		  }
-		else
-		  {
-		    weight = QO_COST_WEIGHT_LIKE_COMPLEX;
-		  }
-	      }
-	    else
-	      {
-		weight = QO_COST_WEIGHT_LIKE_COMPLEX;
-	      }
-	    break;
-	  }
-
-	case PT_LIKE_ESCAPE:
-	  weight = QO_COST_WEIGHT_LIKE_COMPLEX;
-	  break;
-
-	default:
-	  weight = QO_COST_WEIGHT_PRED_DEFAULT;
-	  break;
-	}
-
-      total_weight += weight;
-    }
-
-  if (total_weight <= 0.0)
-    {
-      return QO_COST_WEIGHT_PRED_DEFAULT;
-    }
-
-  return total_weight;
-}
-
-static bool
-qo_info_is_small_filtered_side (QO_INFO * info)
-{
-  if (info == NULL)
-    {
-      return false;
-    }
-
-  if (info->cardinality <= QO_MCV_GUARD_SMALL_CARD_ABS)
-    {
-      return true;
-    }
-
-  if (info->total_rows > 0.0 && info->cardinality / info->total_rows <= QO_MCV_GUARD_SMALL_CARD_RATIO)
-    {
-      return true;
-    }
-
-  return false;
-}
-
-static double
-qo_apply_mcv_hotkey_join_guard (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info,
-				double base_cardinality, double term_sel)
-{
-  const double mcv_freq_floor = QO_MCV_GUARD_MIN_FREQUENCY;
-  double effective_mcv_max_frequency;
-  double head_card, tail_card, small_card, large_card;
-  bool head_small, tail_small;
-  double risk_fanout, risk_card, risk_sel;
-  double max_selectivity_multiplier;
-
-  if (term == NULL || head_info == NULL || tail_info == NULL)
-    {
-      return term_sel;
-    }
-
-  if (!QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
-    {
-      return term_sel;
-    }
-
-  /*
-   * Broad join terms are not the hot-key problem this guard is meant to fix.
-   * Penalizing them can hide good plans that start from filtered dimension tables.
-   */
-  if (term_sel >= QO_MCV_GUARD_MAX_BASE_SELECTIVITY)
-    {
-      return term_sel;
-    }
-
-  head_card = MAX (1.0, head_info->cardinality);
-  tail_card = MAX (1.0, tail_info->cardinality);
-
-  head_small = qo_info_is_small_filtered_side (head_info);
-  tail_small = qo_info_is_small_filtered_side (tail_info);
-
-  /*
-   * Apply only when exactly one side is small.
-   * This protects against broad joins and symmetric small-small joins.
-   */
-  if (head_small == tail_small)
-    {
-      return term_sel;
-    }
-
-  small_card = head_small ? head_card : tail_card;
-  large_card = head_small ? tail_card : head_card;
-  effective_mcv_max_frequency =
-    head_small ? QO_TERM_TAIL_MCV_MAX_FREQUENCY (term) : QO_TERM_HEAD_MCV_MAX_FREQUENCY (term);
-
-  base_cardinality = MAX (1.0, base_cardinality);
-
-  /*
-   * If the small side joins through one hot key, the largest single MCV
-   * frequency on the large side is the direct upper-risk fanout signal.
-   */
-  risk_fanout = large_card * effective_mcv_max_frequency;
-  if (effective_mcv_max_frequency < mcv_freq_floor && risk_fanout < QO_MCV_GUARD_MIN_RISK_FANOUT)
-    {
-      return term_sel;
-    }
-
-  risk_card = small_card * risk_fanout;
-
-  if (risk_card <= 1.0)
-    {
-      return term_sel;
-    }
-
-  risk_sel = risk_card / base_cardinality;
-  max_selectivity_multiplier =
-    (effective_mcv_max_frequency < mcv_freq_floor)
-    ? QO_MCV_GUARD_COLD_FANOUT_SELECTIVITY_MULTIPLIER : QO_MCV_GUARD_MAX_SELECTIVITY_MULTIPLIER;
-  risk_sel = MIN (risk_sel, term_sel * max_selectivity_multiplier);
-
-  if (risk_sel < term_sel)
-    {
-      risk_sel = MAX (risk_sel, term_sel * QO_MCV_GUARD_MIN_SELECTIVITY_MULTIPLIER);
-    }
-
-  term_sel = risk_sel;
-  term_sel = MIN (term_sel, 1.0);
-
-  return term_sel;
-}
-
-static double
-qo_get_delayed_sarg_lookup_penalty (QO_PLAN * planp, double guessed_outer_cardinality)
-{
-  QO_PLAN *inner;
-  double residual_filter_weight;
-  double join_term_weight;
-  double delayed_component;
-  double read_before_filter_component;
-  double bridge_fanout_component;
-  double read_before_filter_ratio;
-  double capped_component;
-  double penalty;
-  bool strong_bridge_fanout;
-
-  if (planp == NULL || planp->plan_type != QO_PLANTYPE_JOIN)
-    {
-      return 1.0;
-    }
-
-  if (!QO_IS_NL_JOIN (planp))
-    {
-      return 1.0;
-    }
-
-  inner = planp->plan_un.join.inner;
-  if (inner == NULL || inner->info == NULL || inner->info->env == NULL)
-    {
-      return 1.0;
-    }
-
-  /*
-   * Only repeated index lookups are targeted.
-   * This is intended for cases like:
-   *   outer has many rows
-   *   inner is PK/index lookup
-   *   inner still has data filters, e.g. n.name LIKE 'B%'
-   */
-  if (!qo_is_iscan (inner))
-    {
-      return 1.0;
-    }
-
-  residual_filter_weight = qo_sum_bitset_term_cost_weights (inner->info->env, &inner->sarged_terms);
-  if (residual_filter_weight <= 0.0)
-    {
-      return 1.0;
-    }
-
-  /*
-   * Penalize repeated lookup with late data filters.
-   *
-   * Examples:
-   * - n.id = ci.person_id via PK lookup
-   * - n.name LIKE 'B%' remains as a sarg/data filter
-   * - outer cardinality is large
-   */
-  delayed_component =
-    residual_filter_weight * log10 (MAX (10.0, guessed_outer_cardinality)) * QO_DELAYED_SARG_PENALTY_FACTOR;
-  delayed_component = MIN (QO_DELAYED_SARG_PENALTY_MAX, delayed_component);
-
-  read_before_filter_component = 0.0;
-  read_before_filter_ratio = 1.0;
-  if (inner->info->cardinality > 0.0)
-    {
-      read_before_filter_ratio = inner->info->total_rows / inner->info->cardinality;
-      read_before_filter_ratio = MAX (1.0, read_before_filter_ratio);
-    }
-  strong_bridge_fanout = (read_before_filter_ratio > QO_BRIDGE_FANOUT_RATIO_FLOOR);
-
-  /*
-   * Keep threshold behavior for tiny outers only when there is no strong
-   * fanout signal from the inner side.
-   */
-  if (guessed_outer_cardinality < QO_DELAYED_SARG_OUTER_CARD_THRESHOLD && !strong_bridge_fanout)
-    {
-      return 1.0;
-    }
-
-  /*
-   * Penalize bridge-like fanout where a large amount is read before residual
-   * filter terms can discard rows.
-   */
-  if (read_before_filter_ratio > QO_READ_BEFORE_FILTER_RATIO_FLOOR)
-    {
-      read_before_filter_component =
-	residual_filter_weight * log10 (read_before_filter_ratio) * QO_READ_BEFORE_FILTER_PENALTY_FACTOR;
-      read_before_filter_component = MIN (QO_READ_BEFORE_FILTER_PENALTY_MAX, read_before_filter_component);
-    }
-
-  bridge_fanout_component = 0.0;
-  if (read_before_filter_ratio > QO_BRIDGE_FANOUT_RATIO_FLOOR)
-    {
-      join_term_weight = 0.0;
-
-      if (BITSET_IS_VALID (&(planp->plan_un.join.join_terms)))
-	{
-	  join_term_weight += qo_sum_join_term_cost_weights (planp->info->env, &(planp->plan_un.join.join_terms));
-	}
-      if (BITSET_IS_VALID (&(planp->plan_un.join.during_join_terms)))
-	{
-	  join_term_weight +=
-	    qo_sum_join_term_cost_weights (planp->info->env, &(planp->plan_un.join.during_join_terms));
-	}
-
-      join_term_weight = MAX (1.0, join_term_weight);
-      bridge_fanout_component = log10 (read_before_filter_ratio) * join_term_weight * QO_BRIDGE_FANOUT_PENALTY_FACTOR;
-      bridge_fanout_component = MIN (QO_BRIDGE_FANOUT_PENALTY_MAX, bridge_fanout_component);
-    }
-
-  capped_component =
-    MIN (QO_DELAYED_SARG_PENALTY_MAX + QO_READ_BEFORE_FILTER_PENALTY_MAX + QO_BRIDGE_FANOUT_PENALTY_MAX,
-	 delayed_component + read_before_filter_component + bridge_fanout_component);
-  penalty = 1.0 + capped_component;
-
-  return penalty;
-}
-
-static double
-qo_get_skew_uncertainty_lookup_penalty (QO_PLAN * planp)
-{
-  BITSET_ITERATOR iter;
-  int t;
-  double component = 0.0;
-
-  if (planp == NULL || planp->plan_type != QO_PLANTYPE_JOIN)
-    {
-      return 1.0;
-    }
-
-  if (!QO_IS_NL_JOIN (planp) || !BITSET_IS_VALID (&(planp->plan_un.join.join_terms)))
-    {
-      return 1.0;
-    }
-
-  if (planp->plan_un.join.outer == NULL || planp->plan_un.join.inner == NULL)
-    {
-      return 1.0;
-    }
-  if (planp->plan_un.join.outer->info == NULL || planp->plan_un.join.inner->info == NULL)
-    {
-      return 1.0;
-    }
-
-  /*
-   * Do not penalize the first dimension-to-fact lookup itself.  Queries such as
-   * JOB 1a intentionally start from a selective dimension value.  The risk this
-   * models is the repeated lookup work after a skewed FK-like result has already
-   * entered a join prefix.
-   */
-  if (bitset_cardinality (&(planp->plan_un.join.outer->info->nodes)) <= 1)
-    {
-      return 1.0;
-    }
-
-  for (t = bitset_iterate (&(planp->plan_un.join.join_terms), &iter); t != -1; t = bitset_next_member (&iter))
-    {
-      QO_TERM *term = QO_ENV_TERM (planp->info->env, t);
-      QO_INFO *head_info, *tail_info;
-      double head_card, tail_card, small_card;
-      double large_mcv_freq;
-      double avg_freq;
-      double skew_ratio;
-      bool head_small, tail_small;
-
-      if (term == NULL || !QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
-	{
-	  continue;
-	}
-
-      if (QO_TERM_HEAD (term) == NULL || QO_TERM_TAIL (term) == NULL)
-	{
-	  continue;
-	}
-
-      if (BITSET_MEMBER (planp->plan_un.join.outer->info->nodes, QO_NODE_IDX (QO_TERM_HEAD (term))))
-	{
-	  head_info = planp->plan_un.join.outer->info;
-	  tail_info = planp->plan_un.join.inner->info;
-	}
-      else
-	{
-	  head_info = planp->plan_un.join.inner->info;
-	  tail_info = planp->plan_un.join.outer->info;
-	}
-
-      if (head_info == NULL || tail_info == NULL)
-	{
-	  continue;
-	}
-
-      head_card = MAX (1.0, head_info->cardinality);
-      tail_card = MAX (1.0, tail_info->cardinality);
-      head_small = qo_info_is_small_filtered_side (head_info);
-      tail_small = qo_info_is_small_filtered_side (tail_info);
-
-      if (head_small == tail_small)
-	{
-	  continue;
-	}
-
-      small_card = head_small ? head_card : tail_card;
-      if (small_card > QO_MCV_GUARD_SMALL_CARD_ABS)
-	{
-	  continue;
-	}
-
-      large_mcv_freq = head_small ? QO_TERM_TAIL_MCV_MAX_FREQUENCY (term) : QO_TERM_HEAD_MCV_MAX_FREQUENCY (term);
-      avg_freq = QO_TERM_SELECTIVITY (term);
-      if (large_mcv_freq <= 0.0 || avg_freq <= 0.0)
-	{
-	  continue;
-	}
-
-      skew_ratio = large_mcv_freq / avg_freq;
-      if (skew_ratio > QO_SKEW_UNCERTAINTY_RATIO_FLOOR)
-	{
-	  component += log10 (skew_ratio) * QO_SKEW_UNCERTAINTY_PENALTY_FACTOR;
-	}
-    }
-
-  component = MIN (component, QO_SKEW_UNCERTAINTY_PENALTY_MAX);
-  if (component <= 0.0)
-    {
-      return 1.0;
-    }
-
-  return 1.0 + component;
-}
-
-
 /*
  * qo_plan_cmp_prefer_covering_index () - TODO
  *   return: one of {PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_GT}
@@ -7209,17 +6753,17 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   /* A query using a predicate for an oid is rewritten as a path join query.  The path join query is executed
    * as a left outer join, so if the path join query is not executed with a follow plan, results with NULL values
    * are retrieved even if the join predicate is not satisfied.
-   * 
+   *
    *   e.g. drop table if exists t;
    *        create table t (c int) dont_reuse_oid;
    *        insert into t values (1);
    *        select dual into :dummy_oid from dual limit 1;
-   * 
+   *
    *        select * from t where t = :dummy_oid;
    *
    *        -- rewritten query
    *        select dt_1.da_2.t.c from table({:dummy_oid}) dt_1 (da_2)
-   * 
+   *
    *        -- Query plan: follow
    *        There are no results.
    *        0 row selected.
@@ -7227,7 +6771,7 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
    *        -- Query plan: hash-join (left outer join)
    *        c1: NULL
    *        1 row selected.
-   * 
+   *
    * This code prevents the path join query from being executed as a hash join plan rather than as a follow plan.
    */
   for (bitset_index = bitset_iterate (hash_join_terms, &bitset_iter); bitset_index != -1;
@@ -10921,6 +10465,463 @@ qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int 
 
   return tree;
 }
+
+static double
+qo_get_term_cost_weight (QO_TERM * term)
+{
+  PT_NODE *expr;
+  PT_NODE *node;
+  double total_weight = 0.0;
+
+  if (term == NULL)
+    {
+      return QO_COST_WEIGHT_PRED_DEFAULT;
+    }
+
+  expr = QO_TERM_PT_EXPR (term);
+  if (expr == NULL || expr->node_type != PT_EXPR)
+    {
+      return QO_COST_WEIGHT_PRED_DEFAULT;
+    }
+
+  for (node = expr; node != NULL; node = node->or_next)
+    {
+      double weight = QO_COST_WEIGHT_PRED_DEFAULT;
+
+      if (node->node_type != PT_EXPR)
+	{
+	  continue;
+	}
+
+      switch (node->info.expr.op)
+	{
+	case PT_EQ:
+	case PT_NE:
+	  {
+	    PT_NODE *lhs = node->info.expr.arg1;
+
+	    if (lhs != NULL && (lhs->type_enum == PT_TYPE_CHAR || lhs->type_enum == PT_TYPE_VARCHAR))
+	      {
+		weight = QO_COST_WEIGHT_STRING_EQUAL;
+	      }
+	    else
+	      {
+		weight = QO_COST_WEIGHT_NUMERIC_COMPARE;
+	      }
+	    break;
+	  }
+
+	case PT_LT:
+	case PT_LE:
+	case PT_GT:
+	case PT_GE:
+	  {
+	    PT_NODE *lhs = node->info.expr.arg1;
+	    if (lhs != NULL && (lhs->type_enum == PT_TYPE_CHAR || lhs->type_enum == PT_TYPE_VARCHAR))
+	      {
+		weight = QO_COST_WEIGHT_STRING_RANGE;
+	      }
+	    else
+	      {
+		weight = QO_COST_WEIGHT_NUMERIC_COMPARE;
+	      }
+	    break;
+	  }
+
+	case PT_LIKE:
+	case PT_NOT_LIKE:
+	  {
+	    PT_NODE *rhs = node->info.expr.arg2;
+
+	    if (rhs != NULL && rhs->node_type == PT_VALUE)
+	      {
+		const char *pat = db_get_string (&rhs->info.value.db_value);
+		if (pat != NULL)
+		  {
+		    const char *pct = strchr (pat, '%');
+		    const char *und = strchr (pat, '_');
+
+		    if (pct != NULL && pct[1] == '\0' && und == NULL && pct != pat)
+		      {
+			weight = QO_COST_WEIGHT_LIKE_PREFIX;
+		      }
+		    else if (pat[0] == '%' || und != NULL)
+		      {
+			weight = QO_COST_WEIGHT_LIKE_CONTAINS;
+		      }
+		    else
+		      {
+			weight = QO_COST_WEIGHT_LIKE_COMPLEX;
+		      }
+		  }
+		else
+		  {
+		    weight = QO_COST_WEIGHT_LIKE_COMPLEX;
+		  }
+	      }
+	    else
+	      {
+		weight = QO_COST_WEIGHT_LIKE_COMPLEX;
+	      }
+	    break;
+	  }
+
+	case PT_LIKE_ESCAPE:
+	  weight = QO_COST_WEIGHT_LIKE_COMPLEX;
+	  break;
+
+	default:
+	  weight = QO_COST_WEIGHT_PRED_DEFAULT;
+	  break;
+	}
+
+      total_weight += weight;
+    }
+
+  if (total_weight <= 0.0)
+    {
+      return QO_COST_WEIGHT_PRED_DEFAULT;
+    }
+
+  return total_weight;
+}
+
+static bool
+qo_info_is_small_filtered_side (QO_INFO * info)
+{
+  if (info == NULL)
+    {
+      return false;
+    }
+
+  if (info->cardinality <= QO_MCV_GUARD_SMALL_CARD_ABS)
+    {
+      return true;
+    }
+
+  if (info->total_rows > 0.0 && info->cardinality / info->total_rows <= QO_MCV_GUARD_SMALL_CARD_RATIO)
+    {
+      return true;
+    }
+
+  return false;
+}
+
+static double
+qo_apply_mcv_hotkey_join_guard (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info,
+				double base_cardinality, double term_sel)
+{
+  const double mcv_freq_floor = QO_MCV_GUARD_MIN_FREQUENCY;
+  double effective_mcv_max_frequency;
+  double head_card, tail_card, small_card, large_card;
+  bool head_small, tail_small;
+  double risk_fanout, risk_card, risk_sel;
+  double max_selectivity_multiplier;
+
+  if (term == NULL || head_info == NULL || tail_info == NULL)
+    {
+      return term_sel;
+    }
+
+  if (!QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
+    {
+      return term_sel;
+    }
+
+  /*
+   * Broad join terms are not the hot-key problem this guard is meant to fix.
+   * Penalizing them can hide good plans that start from filtered dimension tables.
+   */
+  if (term_sel >= QO_MCV_GUARD_MAX_BASE_SELECTIVITY)
+    {
+      return term_sel;
+    }
+
+  head_card = MAX (1.0, head_info->cardinality);
+  tail_card = MAX (1.0, tail_info->cardinality);
+
+  head_small = qo_info_is_small_filtered_side (head_info);
+  tail_small = qo_info_is_small_filtered_side (tail_info);
+
+  /*
+   * Apply only when exactly one side is small.
+   * This protects against broad joins and symmetric small-small joins.
+   */
+  if (head_small == tail_small)
+    {
+      return term_sel;
+    }
+
+  small_card = head_small ? head_card : tail_card;
+  large_card = head_small ? tail_card : head_card;
+  effective_mcv_max_frequency =
+    head_small ? QO_TERM_TAIL_MCV_MAX_FREQUENCY (term) : QO_TERM_HEAD_MCV_MAX_FREQUENCY (term);
+
+  base_cardinality = MAX (1.0, base_cardinality);
+
+  /*
+   * If the small side joins through one hot key, the largest single MCV
+   * frequency on the large side is the direct upper-risk fanout signal.
+   */
+  risk_fanout = large_card * effective_mcv_max_frequency;
+  if (effective_mcv_max_frequency < mcv_freq_floor && risk_fanout < QO_MCV_GUARD_MIN_RISK_FANOUT)
+    {
+      return term_sel;
+    }
+
+  risk_card = small_card * risk_fanout;
+
+  if (risk_card <= 1.0)
+    {
+      return term_sel;
+    }
+
+  risk_sel = risk_card / base_cardinality;
+  max_selectivity_multiplier =
+    (effective_mcv_max_frequency < mcv_freq_floor)
+    ? QO_MCV_GUARD_COLD_FANOUT_SELECTIVITY_MULTIPLIER : QO_MCV_GUARD_MAX_SELECTIVITY_MULTIPLIER;
+  risk_sel = MIN (risk_sel, term_sel * max_selectivity_multiplier);
+
+  if (risk_sel < term_sel)
+    {
+      risk_sel = MAX (risk_sel, term_sel * QO_MCV_GUARD_MIN_SELECTIVITY_MULTIPLIER);
+    }
+
+  term_sel = risk_sel;
+  term_sel = MIN (term_sel, 1.0);
+
+  return term_sel;
+}
+
+static double
+qo_get_delayed_sarg_lookup_penalty (QO_PLAN * planp, double guessed_outer_cardinality)
+{
+  QO_PLAN *inner;
+  double residual_filter_weight;
+  double join_term_weight;
+  double delayed_component;
+  double read_before_filter_component;
+  double bridge_fanout_component;
+  double read_before_filter_ratio;
+  double capped_component;
+  double penalty;
+  bool strong_bridge_fanout;
+
+  if (planp == NULL || planp->plan_type != QO_PLANTYPE_JOIN)
+    {
+      return 1.0;
+    }
+
+  if (!QO_IS_NL_JOIN (planp))
+    {
+      return 1.0;
+    }
+
+  inner = planp->plan_un.join.inner;
+  if (inner == NULL || inner->info == NULL || inner->info->env == NULL)
+    {
+      return 1.0;
+    }
+
+  /*
+   * Only repeated index lookups are targeted.
+   * This is intended for cases like:
+   *   outer has many rows
+   *   inner is PK/index lookup
+   *   inner still has data filters, e.g. n.name LIKE 'B%'
+   */
+  if (!qo_is_iscan (inner))
+    {
+      return 1.0;
+    }
+
+  residual_filter_weight = qo_sum_bitset_term_cost_weights (inner->info->env, &inner->sarged_terms);
+  if (residual_filter_weight <= 0.0)
+    {
+      return 1.0;
+    }
+
+  /*
+   * Penalize repeated lookup with late data filters.
+   *
+   * Examples:
+   * - n.id = ci.person_id via PK lookup
+   * - n.name LIKE 'B%' remains as a sarg/data filter
+   * - outer cardinality is large
+   */
+  delayed_component =
+    residual_filter_weight * log10 (MAX (10.0, guessed_outer_cardinality)) * QO_DELAYED_SARG_PENALTY_FACTOR;
+  delayed_component = MIN (QO_DELAYED_SARG_PENALTY_MAX, delayed_component);
+
+  read_before_filter_component = 0.0;
+  read_before_filter_ratio = 1.0;
+  if (inner->info->cardinality > 0.0)
+    {
+      read_before_filter_ratio = inner->info->total_rows / inner->info->cardinality;
+      read_before_filter_ratio = MAX (1.0, read_before_filter_ratio);
+    }
+  strong_bridge_fanout = (read_before_filter_ratio > QO_BRIDGE_FANOUT_RATIO_FLOOR);
+
+  /*
+   * Keep threshold behavior for tiny outers only when there is no strong
+   * fanout signal from the inner side.
+   */
+  if (guessed_outer_cardinality < QO_DELAYED_SARG_OUTER_CARD_THRESHOLD && !strong_bridge_fanout)
+    {
+      return 1.0;
+    }
+
+  /*
+   * Penalize bridge-like fanout where a large amount is read before residual
+   * filter terms can discard rows.
+   */
+  if (read_before_filter_ratio > QO_READ_BEFORE_FILTER_RATIO_FLOOR)
+    {
+      read_before_filter_component =
+	residual_filter_weight * log10 (read_before_filter_ratio) * QO_READ_BEFORE_FILTER_PENALTY_FACTOR;
+      read_before_filter_component = MIN (QO_READ_BEFORE_FILTER_PENALTY_MAX, read_before_filter_component);
+    }
+
+  bridge_fanout_component = 0.0;
+  if (read_before_filter_ratio > QO_BRIDGE_FANOUT_RATIO_FLOOR)
+    {
+      join_term_weight = 0.0;
+
+      if (BITSET_IS_VALID (&(planp->plan_un.join.join_terms)))
+	{
+	  join_term_weight += qo_sum_join_term_cost_weights (planp->info->env, &(planp->plan_un.join.join_terms));
+	}
+      if (BITSET_IS_VALID (&(planp->plan_un.join.during_join_terms)))
+	{
+	  join_term_weight +=
+	    qo_sum_join_term_cost_weights (planp->info->env, &(planp->plan_un.join.during_join_terms));
+	}
+
+      join_term_weight = MAX (1.0, join_term_weight);
+      bridge_fanout_component = log10 (read_before_filter_ratio) * join_term_weight * QO_BRIDGE_FANOUT_PENALTY_FACTOR;
+      bridge_fanout_component = MIN (QO_BRIDGE_FANOUT_PENALTY_MAX, bridge_fanout_component);
+    }
+
+  capped_component =
+    MIN (QO_DELAYED_SARG_PENALTY_MAX + QO_READ_BEFORE_FILTER_PENALTY_MAX + QO_BRIDGE_FANOUT_PENALTY_MAX,
+	 delayed_component + read_before_filter_component + bridge_fanout_component);
+  penalty = 1.0 + capped_component;
+
+  return penalty;
+}
+
+static double
+qo_get_skew_uncertainty_lookup_penalty (QO_PLAN * planp)
+{
+  BITSET_ITERATOR iter;
+  int t;
+  double component = 0.0;
+
+  if (planp == NULL || planp->plan_type != QO_PLANTYPE_JOIN)
+    {
+      return 1.0;
+    }
+
+  if (!QO_IS_NL_JOIN (planp) || !BITSET_IS_VALID (&(planp->plan_un.join.join_terms)))
+    {
+      return 1.0;
+    }
+
+  if (planp->plan_un.join.outer == NULL || planp->plan_un.join.inner == NULL)
+    {
+      return 1.0;
+    }
+  if (planp->plan_un.join.outer->info == NULL || planp->plan_un.join.inner->info == NULL)
+    {
+      return 1.0;
+    }
+
+  /*
+   * Do not penalize the first dimension-to-fact lookup itself.  Queries such as
+   * JOB 1a intentionally start from a selective dimension value.  The risk this
+   * models is the repeated lookup work after a skewed FK-like result has already
+   * entered a join prefix.
+   */
+  if (bitset_cardinality (&(planp->plan_un.join.outer->info->nodes)) <= 1)
+    {
+      return 1.0;
+    }
+
+  for (t = bitset_iterate (&(planp->plan_un.join.join_terms), &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      QO_TERM *term = QO_ENV_TERM (planp->info->env, t);
+      QO_INFO *head_info, *tail_info;
+      double head_card, tail_card, small_card;
+      double large_mcv_freq;
+      double avg_freq;
+      double skew_ratio;
+      bool head_small, tail_small;
+
+      if (term == NULL || !QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
+	{
+	  continue;
+	}
+
+      if (QO_TERM_HEAD (term) == NULL || QO_TERM_TAIL (term) == NULL)
+	{
+	  continue;
+	}
+
+      if (BITSET_MEMBER (planp->plan_un.join.outer->info->nodes, QO_NODE_IDX (QO_TERM_HEAD (term))))
+	{
+	  head_info = planp->plan_un.join.outer->info;
+	  tail_info = planp->plan_un.join.inner->info;
+	}
+      else
+	{
+	  head_info = planp->plan_un.join.inner->info;
+	  tail_info = planp->plan_un.join.outer->info;
+	}
+
+      if (head_info == NULL || tail_info == NULL)
+	{
+	  continue;
+	}
+
+      head_card = MAX (1.0, head_info->cardinality);
+      tail_card = MAX (1.0, tail_info->cardinality);
+      head_small = qo_info_is_small_filtered_side (head_info);
+      tail_small = qo_info_is_small_filtered_side (tail_info);
+
+      if (head_small == tail_small)
+	{
+	  continue;
+	}
+
+      small_card = head_small ? head_card : tail_card;
+      if (small_card > QO_MCV_GUARD_SMALL_CARD_ABS)
+	{
+	  continue;
+	}
+
+      large_mcv_freq = head_small ? QO_TERM_TAIL_MCV_MAX_FREQUENCY (term) : QO_TERM_HEAD_MCV_MAX_FREQUENCY (term);
+      avg_freq = QO_TERM_SELECTIVITY (term);
+      if (large_mcv_freq <= 0.0 || avg_freq <= 0.0)
+	{
+	  continue;
+	}
+
+      skew_ratio = large_mcv_freq / avg_freq;
+      if (skew_ratio > QO_SKEW_UNCERTAINTY_RATIO_FLOOR)
+	{
+	  component += log10 (skew_ratio) * QO_SKEW_UNCERTAINTY_PENALTY_FACTOR;
+	}
+    }
+
+  component = MIN (component, QO_SKEW_UNCERTAINTY_PENALTY_MAX);
+  if (component <= 0.0)
+    {
+      return 1.0;
+    }
+
+  return 1.0 + component;
+}
+
 
 /*
  * qo_plan_iscan_terms_cmp () - compare 2 index scan plans with terms
