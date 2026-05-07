@@ -10643,15 +10643,19 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
       DB_BIGINT oos_len;
       int rc = NO_ERROR;
 
-      /* Inline OOS layout in the heap record (since M2): [OID (8B) | full_length (8B bigint)]. */
+      /* Inline OOS layout in the heap record (since M2): [OID (8B) | full_length (8B bigint)].
+       * Validate the buffer holds both fields before reading either of them. */
       buf.ptr = raw->data;
       buf.endptr = recdes->data + recdes->length;
+      assert (buf.endptr - buf.ptr >= OR_OID_SIZE + OR_BIGINT_SIZE);
+
       or_get_oid (&buf, &oos_oid);
       oos_len = or_get_bigint (&buf, &rc);
 
       assert (!OID_ISNULL (&oos_oid));
       assert (rc == NO_ERROR);
-      assert (oos_len > 0 && oos_len <= INT_MAX);
+      /* recdes/oos_read APIs use int for sizes, so clamp the bigint to int range. */
+      assert (oos_len > 0 && oos_len <= (DB_BIGINT) INT_MAX);
 
       THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
       assert (thread_p);
