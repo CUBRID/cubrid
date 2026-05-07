@@ -450,7 +450,7 @@ copy_cubrid_conf (const char *dest)
       goto error;
     }
 
-  if (sendfile (dest_fd, src_fd, NULL, stat_buf.st_size) == -1)
+  if (sendfile (dest_fd, src_fd, NULL, stat_buf.st_size) != (ssize_t) stat_buf.st_size)
     {
       error_code = -4;
       goto error;
