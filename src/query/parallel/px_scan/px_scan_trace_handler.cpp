@@ -33,7 +33,6 @@ namespace parallel_scan
   void trace_handler::add_trace (UINT64 fetches, UINT64 ioreads, UINT64 fetch_time, SCAN_ID *scan_id,
 				 struct timeval elapsed_time)
   {
-    std::lock_guard<std::mutex> lock (m_stats_mutex);
     child_stats cs = {};
     cs.fetches = fetches;
     cs.ioreads = ioreads;
@@ -54,6 +53,7 @@ namespace parallel_scan
 	cs.loose_index_scan = scan_id->scan_stats.loose_index_scan;
 	cs.need_count_only = scan_id->s.isid.need_count_only;
       }
+    std::lock_guard<std::mutex> lock (m_stats_mutex);
     m_stats.push_back (cs);
   }
 

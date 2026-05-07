@@ -100,6 +100,7 @@ extern "C"
 			     < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::HEAP >;
 	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 
+	manager_p->wait_for_workers();
 	manager_p->merge_stats();
 
 	if (thread_p->on_trace)
@@ -130,6 +131,7 @@ extern "C"
 			     < parallel_scan::RESULT_TYPE::XASL_SNAPSHOT, parallel_scan::SCAN_TYPE::HEAP >;
 	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 
+	manager_p->wait_for_workers();
 	manager_p->merge_stats();
 
 	if (thread_p->on_trace)
@@ -160,6 +162,7 @@ extern "C"
 			     < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::HEAP >;
 	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 
+	manager_p->wait_for_workers();
 	manager_p->merge_stats();
 
 	if (thread_p->on_trace)
@@ -633,6 +636,7 @@ extern "C"
 			     < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::LIST >;
 	manager_type *manager_p = (manager_type *) scan_id->s.pllsid_parallel.manager;
 
+	manager_p->wait_for_workers();
 	manager_p->merge_stats();
 
 	if (thread_p->on_trace)
@@ -664,6 +668,7 @@ extern "C"
 			     < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::LIST >;
 	manager_type *manager_p = (manager_type *) scan_id->s.pllsid_parallel.manager;
 
+	manager_p->wait_for_workers();
 	manager_p->merge_stats();
 
 	if (thread_p->on_trace)
@@ -1065,6 +1070,7 @@ extern "C"
 			     < parallel_scan::RESULT_TYPE::MERGEABLE_LIST, parallel_scan::SCAN_TYPE::INDEX >;
 	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
 
+	manager_p->wait_for_workers();
 	manager_p->merge_stats();
 
 	if (thread_p->on_trace)
@@ -1095,6 +1101,7 @@ extern "C"
 			     < parallel_scan::RESULT_TYPE::BUILDVALUE_OPT, parallel_scan::SCAN_TYPE::INDEX >;
 	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
 
+	manager_p->wait_for_workers();
 	manager_p->merge_stats();
 
 	if (thread_p->on_trace)
@@ -1977,21 +1984,25 @@ namespace parallel_scan
   }
 
   template <RESULT_TYPE result_type, SCAN_TYPE ST>
-  int manager<result_type, ST>::reset ()
+  void manager<result_type, ST>::wait_for_workers ()
   {
-    int err_code = NO_ERROR;
-
+    /* signal JOB_ENDED + drain workers; idempotent */
     if (m_interrupt.get_code() != parallel_query::interrupt::interrupt_code::JOB_ENDED)
       {
 	m_interrupt.set_code (parallel_query::interrupt::interrupt_code::JOB_ENDED);
       }
-
-    /* Release worker manager */
     if (m_worker_manager != nullptr)
       {
 	m_worker_manager->wait_workers ();
       }
+  }
 
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  int manager<result_type, ST>::reset ()
+  {
+    int err_code = NO_ERROR;
+
+    /* callers must drain workers via wait_for_workers() before merge_stats / add_stats; reset is finalize-only */
     m_result_handler->read_finalize (m_thread_p);
 
     /* Clean up input handler */

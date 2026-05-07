@@ -82,6 +82,7 @@ namespace parallel_scan
       int start_tasks();
       SCAN_CODE next();
       int reset ();
+      void wait_for_workers ();
       int merge_stats();
       int end();
       int close();
