@@ -71,7 +71,7 @@ namespace cubthread
       ~worker_pool_elastic ();
 
     private:
-      worker_pool_elastic (std::size_t max_concurrency, std::size_t max_threads, std::size_t core_count, const char *name,
+      worker_pool_elastic (std::size_t max_concurrency, std::size_t core_count, std::size_t max_threads, const char *name,
 			   entry_manager &entry_mgr, bool pool_threads = false, wait_seconds idle_timeout = std::chrono::seconds (5));
 
       std::unique_ptr<worker_pool::core> allocate_core (bool pool_threads) override;
@@ -116,7 +116,7 @@ namespace cubthread
 
       worker *get_or_make_available_worker ();
 
-      void execute_task_with_slot (worker_elastic *worker_p, wrapped_task &&task_ref, unique_slot slot);
+      void try_execute_task_with_slot (worker_elastic *worker_p, wrapped_task &&task_ref, unique_slot slot);
 
       concurrency_slot_pool m_slots;
   };
@@ -160,8 +160,8 @@ namespace cubthread
   //////////////////////////////////////////////////////////////////////////
 
   template <stats_t Stats>
-  worker_pool_elastic<Stats>::worker_pool_elastic (std::size_t max_concurrency, std::size_t max_threads,
-      std::size_t core_count, const char *name, entry_manager &entry_mgr, bool pool_threads, wait_seconds idle_timeout)
+  worker_pool_elastic<Stats>::worker_pool_elastic (std::size_t max_concurrency, std::size_t core_count,
+      std::size_t max_threads, const char *name, entry_manager &entry_mgr, bool pool_threads, wait_seconds idle_timeout)
     : worker_pool_impl<Stats> (max_concurrency, core_count, name, entry_mgr, pool_threads, idle_timeout)
     , m_current_threads (0)
     , m_max_threads (max_threads)
@@ -241,13 +241,13 @@ namespace cubthread
 
 	    ulock.unlock ();
 
-	    execute_task_with_slot (worker_p, std::move (queued_task), std::move (slot));
+	    try_execute_task_with_slot (worker_p, std::move (queued_task), std::move (slot));
 	  }
 	else
 	  {
 	    ulock.unlock ();
 
-	    execute_task_with_slot (worker_p, std::move (task_ref), std::move (slot));
+	    try_execute_task_with_slot (worker_p, std::move (task_ref), std::move (slot));
 	  }
       }
     else
@@ -336,7 +336,7 @@ namespace cubthread
 
   template <stats_t Stats>
   void
-  worker_pool_elastic<Stats>::core_elastic::execute_task_with_slot (worker_elastic *worker_p, wrapped_task &&task_ref,
+  worker_pool_elastic<Stats>::core_elastic::try_execute_task_with_slot (worker_elastic *worker_p, wrapped_task &&task_ref,
       unique_slot slot)
   {
     auto unexecuted = worker_p->assign_task (std::move (task_ref), std::move (slot));
@@ -443,8 +443,16 @@ namespace cubthread
 	if ((!this->m_wrapped_task.has_value () && !m_slot) && !this->m_stop)
 	  {
 	    // wait for a task, a stop request, or idle timeout
-	    condvar_wait (this->m_task_cv, ulock, this->m_parent_core->get_parent_pool ()->get_idle_timeout (),
-			  [this] () -> bool { return (this->m_wrapped_task.has_value () && m_slot) || this->m_stop; });
+	    if (this->m_persistent)
+	      {
+		condvar_wait (this->m_task_cv, ulock, cubthread::wait_seconds (),
+			      [this] () -> bool { return (this->m_wrapped_task.has_value () && m_slot) || this->m_stop; });
+	      }
+	    else
+	      {
+		condvar_wait (this->m_task_cv, ulock, this->m_parent_core->get_parent_pool ()->get_idle_timeout (),
+			      [this] () -> bool { return (this->m_wrapped_task.has_value () && m_slot) || this->m_stop; });
+	      }
 	  }
 	else
 	  {

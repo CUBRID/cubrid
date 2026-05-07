@@ -587,8 +587,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   //*INDENT-OFF*
   css_Server_request_worker_pool = thread_create_worker_pool<cubthread::stats_t::on, cubthread::pool_t::elastic> (
       max_transaction_concurrency,
-      max_transaction_threads,
       cubthread::system_core_count (),
+      max_transaction_threads,
       "transaction",
       thread_get_entry_manager (),
       css_get_server_request_thread_pooling_configuration (),

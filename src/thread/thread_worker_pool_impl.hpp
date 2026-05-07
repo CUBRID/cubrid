@@ -310,7 +310,11 @@ namespace cubthread
       virtual void allocate_workers (std::size_t worker_count);
       virtual void initialize_workers ();
 
+      virtual void initialize_persistent_worker (worker *w);
+
       virtual worker *get_available_worker ();
+
+      void try_execute_task (worker_impl *worker_p, wrapped_task &&task_ref);
 
       std::vector<std::unique_ptr<worker>> m_workers;
       std::vector<worker *> m_available_workers;
@@ -336,6 +340,9 @@ namespace cubthread
 
       // init
       void initialize () override;
+
+      // persistent worker
+      void set_persistent ();
 
       // start thread for current worker
       bool start_thread (void);
@@ -392,6 +399,7 @@ namespace cubthread
       std::mutex m_task_mutex;			    // mutex to protect waiting task condition
 
       bool m_stop;				    // stop execution (set to true when worker pool is stopped)
+      bool m_persistent;			    // this worker always has the own thread
       bool m_has_thread;			    // true if worker has a thread running
 
       stats_base m_stats;			    // bool if Stats is false
@@ -901,19 +909,25 @@ namespace cubthread
     worker_p = static_cast<worker_impl *> (get_available_worker ());
     if (worker_p)
       {
-	ulock.unlock ();
-
-	std::optional<wrapped_task> unexecuted_task = worker_p->assign_task (std::move (task_ref));
-	if (unexecuted_task.has_value ())
+	// preserve FIFO order when queued tasks already exist
+	if (!m_task_queue.empty ())
 	  {
-	    // failed to start new thread
-	    ulock.lock ();
+	    // enqueue the new task behind existing work
+	    m_task_queue.push_back (std::move (task_ref));
 
-	    // save to queue
-	    m_task_queue.push_back (std::move (*unexecuted_task));
+	    // dispatch the oldest queued task first
+	    wrapped_task queued_task = std::move (m_task_queue.front ());
+	    m_task_queue.pop_front ();
 
-	    // return the worker back
-	    m_available_workers.push_back (worker_p);
+	    ulock.unlock ();
+
+	    try_execute_task (worker_p, std::move (queued_task));
+	  }
+	else
+	  {
+	    ulock.unlock ();
+
+	    try_execute_task (worker_p, std::move (task_ref));
 	  }
       }
     else
@@ -1090,27 +1104,47 @@ namespace cubthread
   void
   worker_pool_impl<Stats>::core_impl::initialize_workers ()
   {
-    for (const auto &worker : m_workers)
+    std::lock_guard<std::mutex> lock (m_core_mutex);
+
+    assert (m_workers.begin () != m_workers.end ());
+
+    initialize_persistent_worker (m_workers.begin ()->get ());
+
+    for (auto it = ++m_workers.begin (); it != m_workers.end (); it++)
       {
-	worker->set_parent_core (*this);
+	(*it)->set_parent_core (*this);
 
 	if (m_pool_threads)
 	  {
-	    assert (dynamic_cast<worker_impl *> (worker.get ()));
+	    assert (dynamic_cast<worker_impl *> (it->get ()));
 
 	    // assign task / start thread
 	    // it will add itself to available workers
-	    if (!static_cast<worker_impl *> (worker.get ())->assign_task ())
+	    if (!static_cast<worker_impl *> (it->get ())->assign_task ())
 	      {
 		// add to available workers
-		m_available_workers.push_back (worker.get ());
+		m_available_workers.push_back (it->get ());
 	      }
 	  }
 	else
 	  {
 	    // add to available workers
-	    m_available_workers.push_back (worker.get ());
+	    m_available_workers.push_back (it->get ());
 	  }
+      }
+  }
+
+  template <stats_t Stats>
+  void
+  worker_pool_impl<Stats>::core_impl::initialize_persistent_worker (worker *w)
+  {
+    // at least one worker must have active thread
+    static_cast<worker_impl *> (w)->set_parent_core (*this);
+    static_cast<worker_impl *> (w)->set_persistent ();
+    if (!static_cast<worker_impl *> (w)->assign_task ())
+      {
+	// add to available workers
+	m_available_workers.push_back (w);
       }
   }
 
@@ -1145,6 +1179,22 @@ namespace cubthread
     return worker_p;
   }
 
+  template <stats_t Stats>
+  void
+  worker_pool_impl<Stats>::core_impl::try_execute_task (worker_impl *worker_p, wrapped_task &&task_ref)
+  {
+    std::optional<wrapped_task> unexecuted_task = worker_p->assign_task (std::move (task_ref));
+    if (unexecuted_task.has_value ())
+      {
+	// failed to start new thread
+	std::lock_guard<std::mutex> lock (this->m_core_mutex);
+	// requeue the task at the front to preserve FIFO order
+	m_task_queue.push_front (std::move (*unexecuted_task));
+	// return the worker back
+	m_available_workers.push_back (worker_p);
+      }
+  }
+
   //////////////////////////////////////////////////////////////////////////
   // worker_pool_impl<Stats>::core_impl::worker_impl
   //////////////////////////////////////////////////////////////////////////
@@ -1155,6 +1205,7 @@ namespace cubthread
     , m_context_p (nullptr)
     , m_wrapped_task (std::nullopt)
     , m_stop (false)
+    , m_persistent (false)
     , m_has_thread (false)
     , m_stats (stats::create ())
   {
@@ -1170,6 +1221,13 @@ namespace cubthread
   void
   worker_pool_impl<Stats>::core_impl::worker_impl::initialize (void)
   {
+  }
+
+  template <stats_t Stats>
+  void
+  worker_pool_impl<Stats>::core_impl::worker_impl::set_persistent ()
+  {
+    m_persistent = true;
   }
 
   template <stats_t Stats>
@@ -1475,10 +1533,18 @@ namespace cubthread
 	ulock.lock ();
 	if (!m_wrapped_task.has_value () && !m_stop)
 	  {
-	    // wait until a task is received or stopped ...
-	    // ... or time out
-	    condvar_wait (m_task_cv, ulock, m_parent_core->get_parent_pool ()->get_idle_timeout (),
-			  [this] () -> bool { return m_wrapped_task.has_value () || m_stop; });
+	    if (m_persistent)
+	      {
+		// wait until a task is received or stopped
+		condvar_wait (m_task_cv, ulock, cubthread::wait_seconds (),
+			      [this] () -> bool { return m_wrapped_task.has_value () || m_stop; });
+	      }
+	    else
+	      {
+		// or time out
+		condvar_wait (m_task_cv, ulock, m_parent_core->get_parent_pool ()->get_idle_timeout (),
+			      [this] () -> bool { return m_wrapped_task.has_value () || m_stop; });
+	      }
 	  }
 	else
 	  {
