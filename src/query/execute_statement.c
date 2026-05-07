@@ -14389,6 +14389,12 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
 	    }
 	  statement->etc = list_id;
 
+	  /* mark use_query_cache flag if the result came from list cache */
+	  if (list_id != NULL && list_id->is_result_cached)
+	    {
+	      statement->flag.use_query_cache = 1;
+	    }
+
 	  /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
 	  if (stream.buffer)
 	    {
@@ -15177,6 +15183,20 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (statement->info.query.flag.do_cache == 1)
     {
       query_flag |= RESULT_CACHE_REQUIRED;
+
+      /* encode TTL and policy into query_flag upper bits */
+      if (statement->info.query.cache_ttl > 0)
+	{
+	  query_flag |= RESULT_CACHE_TTL_ENCODE (statement->info.query.cache_ttl);
+	}
+      if (statement->info.query.cache_policy > 0)
+	{
+	  query_flag |= RESULT_CACHE_POLICY_ENCODE (statement->info.query.cache_policy);
+	}
+      if (statement->info.query.cache_queue_slots > 1)
+	{
+	  query_flag |= RESULT_CACHE_QUEUE_ENCODE (statement->info.query.cache_queue_slots);
+	}
     }
 
   if (statement->info.query.flag.do_not_cache == 1 || statement->info.query.oids_included)
@@ -15273,6 +15293,12 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* save the returned QFILE_LIST_ID into 'statement->etc' */
   statement->etc = (void *) list_id;
+
+  /* mark use_query_cache flag if the result came from list cache */
+  if (list_id != NULL && list_id->is_result_cached)
+    {
+      statement->flag.use_query_cache = 1;
+    }
 
   if (err < NO_ERROR)
     {

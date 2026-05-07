@@ -1553,6 +1553,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	  goto exit_on_error;	/* maybe, memory allocation error */
 	}
       list_id_p->last_pgptr = NULL;
+      list_id_p->is_result_cached = true;	/* mark as cache hit for SQL LOG */
 
       /* mark that the query is completed */
       qmgr_mark_query_as_completed (query_p);
@@ -1630,6 +1631,20 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	  list_cache_entry_p =
 	    qfile_update_list_cache_entry (thread_p, xasl_cache_entry_p->list_ht_no, &params, list_id_p,
 					   xasl_cache_entry_p);
+
+	  /* set TTL and policy if specified in query_flag */
+	  if (list_cache_entry_p != NULL)
+	    {
+	      if (RESULT_CACHE_HAS_TTL (*flag_p))
+		{
+		  list_cache_entry_p->ttl_seconds = RESULT_CACHE_TTL_DECODE (*flag_p);
+		}
+	      list_cache_entry_p->cache_policy = RESULT_CACHE_POLICY_DECODE (*flag_p);
+	      if (RESULT_CACHE_HAS_QUEUE (*flag_p))
+		{
+		  list_cache_entry_p->queue_slots = RESULT_CACHE_QUEUE_DECODE (*flag_p);
+		}
+	    }
 
 	  if (list_cache_entry_p == NULL)
 	    {

@@ -2844,6 +2844,9 @@ struct pt_query_info
   PT_NODE *orderby_for;		/* PT_EXPR (list) */
   PT_NODE *into_list;		/* PT_VALUE (list) */
   PT_NODE *qcache_hint;		/* enable/disable query cache */
+  int cache_ttl;		/* QUERY_CACHE TTL in seconds (0 = invalidate on DML commit) */
+  int cache_policy;		/* 0=default, 1=TTL */
+  int cache_queue_slots;	/* number of cache queue slots (1=single, 2=double-buffering) */
   PT_NODE *limit;		/* PT_VALUE (list) limit clause parameter(s) */
   void *xasl;			/* xasl proc pointer */
   XASL_ID *sub_xasl_id;		/* xasl_id for cached subquery */
