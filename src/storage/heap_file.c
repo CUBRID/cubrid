@@ -10638,35 +10638,63 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
   raw->data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location));
   if (OR_IS_OOS (offset))
     {
+      /* OOS branch contract.
+       *
+       * Heap-record inline OOS layout (since M2): [OID (8B) | full_length (8B bigint)].
+       * On success: raw->data points to a freshly allocated buffer (owned by raw)
+       *             holding the full reassembled OOS value of length oos_len.
+       * On failure: raw->data is NULL so consumers of (raw, *is_oos) observe
+       *             absence of data even if assert_release is compiled out.
+       */
       OR_BUF buf;
       OID oos_oid;
       DB_BIGINT oos_len;
       int rc = NO_ERROR;
 
-      /* Inline OOS layout in the heap record (since M2): [OID (8B) | full_length (8B bigint)].
-       * Validate the buffer holds both fields before reading either of them. */
       buf.ptr = raw->data;
       buf.endptr = recdes->data + recdes->length;
-      assert (buf.endptr - buf.ptr >= OR_OID_SIZE + OR_BIGINT_SIZE);
+      if (buf.endptr - buf.ptr < OR_OID_SIZE + OR_BIGINT_SIZE)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  raw->data = NULL;
+	  assert_release_error (er_errid () != NO_ERROR);
+	  *is_oos = true;
+	  return;
+	}
 
       or_get_oid (&buf, &oos_oid);
       oos_len = or_get_bigint (&buf, &rc);
 
-      assert (!OID_ISNULL (&oos_oid));
-      assert (rc == NO_ERROR);
-      /* recdes/oos_read APIs use int for sizes, so clamp the bigint to int range. */
-      assert (oos_len > 0 && oos_len <= (DB_BIGINT) INT_MAX);
+      if (rc != NO_ERROR || OID_ISNULL (&oos_oid))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  raw->data = NULL;
+	  assert_release_error (er_errid () != NO_ERROR);
+	  *is_oos = true;
+	  return;
+	}
+      /* recdes/oos_read APIs use int for sizes; the inline length must fit. An
+       * out-of-range bigint here is on-disk corruption, not a programmer bug. */
+      if (oos_len <= 0 || oos_len > (DB_BIGINT) INT_MAX)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  raw->data = NULL;
+	  assert_release_error (er_errid () != NO_ERROR);
+	  *is_oos = true;
+	  return;
+	}
 
       THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
       assert (thread_p);
 
-      /* Preallocate the buffer using the inline length so oos_read only has to copy.
-       * oos_read uses raw->area_size as the authoritative expected length and validates
-       * the OOS header's total_data_length against it. On failure, null raw->data so
-       * any downstream consumer of (raw, is_oos) sees absence of data even if
-       * assert_release is compiled out. */
-      if (recdes_allocate_data_area (raw, (int) oos_len) != NO_ERROR || oos_read (thread_p, oos_oid, *raw) != NO_ERROR)
+      if (recdes_allocate_data_area (raw, (int) oos_len) != NO_ERROR)
 	{
+	  raw->data = NULL;
+	  assert_release (false);
+	}
+      else if (oos_read (thread_p, oos_oid, *raw) != NO_ERROR)
+	{
+	  recdes_free_data_area (raw);
 	  raw->data = NULL;
 	  assert_release (false);
 	}

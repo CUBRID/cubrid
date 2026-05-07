@@ -1259,6 +1259,7 @@ oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, char *buf_out, int
   PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == nullptr)
     {
+      oos_error ("pgbuf_fix failed at oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
       assert_release_error (er_errid () != NO_ERROR);
       return er_errid ();
     }
@@ -1271,7 +1272,7 @@ oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, char *buf_out, int
   SCAN_CODE code = spage_get_record (thread_p, page_ptr, slotid, &oos_recdes, PEEK);
   if (code != S_SUCCESS)
     {
-      oos_error ("spage_get_record failed (code=%d) at oid={%d,%d,%d}", (int) code, OID_AS_ARGS (&oid));
+      oos_error ("spage_get_record failed (code=%d) at oid={vol=%d,page=%d,slot=%d}", (int) code, OID_AS_ARGS (&oid));
       /* Some SCAN_CODE failures leave er_errid()==NO_ERROR; ensure caller observes an error. */
       if (er_errid () == NO_ERROR)
 	{
@@ -1282,7 +1283,8 @@ oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, char *buf_out, int
 
   if (oos_recdes.length < OOS_RECORD_HEADER_SIZE)
     {
-      oos_error ("OOS slot smaller than header (len=%d) at oid={%d,%d,%d}", oos_recdes.length, OID_AS_ARGS (&oid));
+      oos_error ("OOS slot smaller than header (len=%d) at oid={vol=%d,page=%d,slot=%d}",
+		 oos_recdes.length, OID_AS_ARGS (&oid));
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_GENERIC_ERROR;
     }
@@ -1292,7 +1294,7 @@ oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, char *buf_out, int
   const int payload_len = oos_recdes.length - OOS_RECORD_HEADER_SIZE;
   if (payload_len > buf_cap)
     {
-      oos_error ("OOS chunk overflows caller buffer (payload=%d, cap=%d) at oid={%d,%d,%d}",
+      oos_error ("OOS chunk overflows caller buffer (payload=%d, cap=%d) at oid={vol=%d,page=%d,slot=%d}",
 		 payload_len, buf_cap, OID_AS_ARGS (&oid));
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_GENERIC_ERROR;
@@ -1327,12 +1329,12 @@ oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &next_oid,
       assert (idx == header.chunk_index);
       assert (header.total_data_length == total_data_length);
 
-      /* A 0-byte chunk would not advance bytes_written; combined with a corrupt
-       * cyclic next_chunk_oid it would loop forever. Production never produces
-       * empty chunks, so an empty chunk implies on-disk corruption. */
+      /* Empty-chunk guard: a 0-byte chunk does not advance bytes_written, so a
+       * corrupt cyclic next_chunk_oid would loop forever. Production never
+       * emits empty chunks; treat as on-disk corruption. */
       if (chunk_bytes == 0)
 	{
-	  oos_error ("OOS empty chunk at idx=%d", idx);
+	  oos_error ("OOS empty chunk at idx=%d, oid={vol=%d,page=%d,slot=%d}", idx, OID_AS_ARGS (&current));
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return ER_GENERIC_ERROR;
 	}
@@ -1352,20 +1354,12 @@ oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &next_oid,
 }
 
 
-/* oos_read -
+/* oos_read - Read an OOS value into a caller-preallocated buffer.
  *
- * Read an OOS value into a caller-preallocated buffer.
- *
- *   oid(in):        first-chunk OOS OID
- *   recdes(in/out): caller owns recdes.data and sets recdes.area_size to the
- *                   expected full length (from the inline 8B length stored in
- *                   the heap record since M2). On success, recdes.length is set
- *                   to that same value.
- *
- * The caller-provided length (recdes.area_size) is the source of truth. The
- * on-disk OOS header's total_data_length is checked against it only as a
- * cross-validation; a mismatch indicates corruption and is reported as an
- * error.
+ * Caller owns recdes.data; recdes.area_size is the authoritative expected
+ * length (sourced from the inline length in the heap record since M2). On
+ * success, recdes.length is set to that same value. The on-disk OOS header's
+ * total_data_length is cross-validated; disagreement is treated as corruption.
  */
 int
 oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
@@ -1391,7 +1385,7 @@ oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
    * on-disk corruption. */
   if (first_header.total_data_length != expected_length)
     {
-      oos_error ("OOS length mismatch: caller=%d header=%d at oid={%d,%d,%d}",
+      oos_error ("OOS length mismatch: caller=%d header=%d at oid={vol=%d,page=%d,slot=%d}",
 		 expected_length, first_header.total_data_length, OID_AS_ARGS (&oid));
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_GENERIC_ERROR;
@@ -1407,7 +1401,13 @@ oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
 	}
     }
 
-  assert (bytes_written == expected_length);
+  if (bytes_written != expected_length)
+    {
+      oos_error ("OOS final length mismatch: written=%d expected=%d at oid={vol=%d,page=%d,slot=%d}",
+		 bytes_written, expected_length, OID_AS_ARGS (&oid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
   recdes.length = expected_length;
   return NO_ERROR;
 }
