@@ -260,6 +260,7 @@ extern "C"
 
 	if (thread_p->on_trace)
 	  {
+	    manager_p->wait_for_workers();
 	    if (scan_id->s.phsid.trace_storage == nullptr)
 	      {
 		size_t alloc_size = sizeof (accumulative_trace_storage);
@@ -291,6 +292,7 @@ extern "C"
 
 	if (thread_p->on_trace)
 	  {
+	    manager_p->wait_for_workers();
 	    if (scan_id->s.phsid.trace_storage == nullptr)
 	      {
 		size_t alloc_size = sizeof (accumulative_trace_storage);
@@ -322,6 +324,7 @@ extern "C"
 
 	if (thread_p->on_trace)
 	  {
+	    manager_p->wait_for_workers();
 	    if (scan_id->s.phsid.trace_storage == nullptr)
 	      {
 		size_t alloc_size = sizeof (accumulative_trace_storage);
@@ -758,6 +761,7 @@ extern "C"
 
 	if (thread_p->on_trace)
 	  {
+	    manager_p->wait_for_workers();
 	    if (scan_id->s.pllsid_parallel.trace_storage == nullptr)
 	      {
 		size_t alloc_size = sizeof (accumulative_trace_storage);
@@ -790,6 +794,7 @@ extern "C"
 
 	if (thread_p->on_trace)
 	  {
+	    manager_p->wait_for_workers();
 	    if (scan_id->s.pllsid_parallel.trace_storage == nullptr)
 	      {
 		size_t alloc_size = sizeof (accumulative_trace_storage);
@@ -1190,6 +1195,7 @@ extern "C"
 
 	if (thread_p->on_trace)
 	  {
+	    manager_p->wait_for_workers();
 	    if (scan_id->s.pisid.trace_storage == nullptr)
 	      {
 		size_t alloc_size = sizeof (accumulative_trace_storage);
@@ -1221,6 +1227,7 @@ extern "C"
 
 	if (thread_p->on_trace)
 	  {
+	    manager_p->wait_for_workers();
 	    if (scan_id->s.pisid.trace_storage == nullptr)
 	      {
 		size_t alloc_size = sizeof (accumulative_trace_storage);
