@@ -189,7 +189,6 @@ static double qo_get_skew_uncertainty_lookup_penalty (QO_PLAN *);
 
 static void qo_estimate_ngroups (QO_PLAN *, SORT_TYPE);
 static int qo_get_group_ndv (QO_PLAN *, SORT_TYPE);
-static double qo_estimate_ndv (double N, double p, double n);
 
 static QO_PLAN *qo_top_plan_new (QO_PLAN *);
 
@@ -646,7 +645,18 @@ qo_estimate_ngroups (QO_PLAN * plan, SORT_TYPE sort_type)
     }
 }
 
-static double
+/*
+ * qo_estimate_ndv () - NDV estimation formula derived from extracted data volume
+ *   return:  estimated ndv
+ *
+ * formula:
+ *   n * (1 - ((N - p) / N)^(N / n))
+ *
+ * N: total_nrows
+ * p: expected_nrows
+ * n: NDV of group columns
+ */
+double
 qo_estimate_ndv (double N, double p, double n)
 {
   if (N <= 0.0 || n <= 0.0)
@@ -1684,7 +1694,11 @@ qo_seq_scan_new (QO_INFO * info, QO_NODE * node)
   return plan;
 }
 
-
+/*
+ * qo_sscan_cost () -
+ *   return:
+ *   planp(in):
+ */
 static void
 qo_sscan_cost (QO_PLAN * planp)
 {
@@ -3422,6 +3436,11 @@ qo_get_nljoin_term_cpu_overhead (QO_PLAN * planp, double guessed_result_cardinal
   return guessed_result_cardinality * QO_CPU_WEIGHT * 0.5 * join_term_weight_sum;
 }
 
+/*
+ * qo_nljoin_cost () -
+ *   return:
+ *   planp(in):
+ */
 static void
 qo_nljoin_cost (QO_PLAN * planp)
 {
