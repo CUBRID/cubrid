@@ -552,7 +552,7 @@ css_start_shutdown_server ()
  *       css_initialize_server_interfaces before calling this function.
  */
 // *INDENT-OFF*
-REGISTER_WORKERPOOL (transaction, []() { return (int) prm_get_integer_value (PRM_ID_TASK_WORKER); });
+REGISTER_WORKERPOOL (transaction, []() { return (int) prm_get_integer_value (PRM_ID_MAX_TRANSACTION_WORKERS); });
 // *INDENT-ON*
 
 int
@@ -560,7 +560,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 {
   cubconn::master::connector connector;
   cubconn::connection::pool connections;
-  std::size_t task_group, task_worker;
+  std::size_t max_transaction_concurrency, max_transaction_threads;
   std::size_t max_connection_workers, min_connection_workers;
   std::size_t max_connections;
   std::string name;
@@ -572,11 +572,11 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
   name = std::string (server_name, name_length);
 
-  task_group = (int) prm_get_integer_value (PRM_ID_TASK_GROUP);
-  task_worker = (int) prm_get_integer_value (PRM_ID_TASK_WORKER);
+  max_transaction_concurrency = prm_get_integer_value (PRM_ID_MAX_TRANSACTION_CONCURRENCY);
+  max_transaction_threads = prm_get_integer_value (PRM_ID_MAX_TRANSACTION_WORKERS);
 
-  max_connection_workers = (int) prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
-  min_connection_workers = (int) prm_get_integer_value (PRM_ID_CSS_MIN_CONNECTION_WORKER);
+  max_connection_workers = prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
+  min_connection_workers = prm_get_integer_value (PRM_ID_CSS_MIN_CONNECTION_WORKER);
 
   max_connections = css_get_max_connections ();
 
@@ -586,8 +586,9 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   // create request worker pool
   //*INDENT-OFF*
   css_Server_request_worker_pool = thread_create_worker_pool<cubthread::stats_t::on, cubthread::pool_t::elastic> (
-      task_worker,
-      task_group,
+      max_transaction_concurrency,
+      max_transaction_threads,
+      cubthread::system_core_count (),
       "transaction",
       thread_get_entry_manager (),
       css_get_server_request_thread_pooling_configuration (),

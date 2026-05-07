@@ -37,6 +37,7 @@
 
 // system includes
 #include <chrono>
+#include <atomic>
 #include <memory>
 #include <algorithm>
 
@@ -70,10 +71,13 @@ namespace cubthread
       ~worker_pool_elastic ();
 
     private:
-      worker_pool_elastic (std::size_t pool_size, std::size_t core_count, const char *name, entry_manager &entry_mgr,
-			   bool pool_threads = false, wait_seconds idle_timeout = std::chrono::seconds (5));
+      worker_pool_elastic (std::size_t max_concurrency, std::size_t max_threads, std::size_t core_count, const char *name,
+			   entry_manager &entry_mgr, bool pool_threads = false, wait_seconds idle_timeout = std::chrono::seconds (5));
 
       std::unique_ptr<worker_pool::core> allocate_core (bool pool_threads) override;
+
+      std::atomic<std::size_t> m_current_threads;
+      const std::size_t m_max_threads;
   };
 
   // worker_pool_elastic<Stats>::core_elastic
@@ -156,9 +160,11 @@ namespace cubthread
   //////////////////////////////////////////////////////////////////////////
 
   template <stats_t Stats>
-  worker_pool_elastic<Stats>::worker_pool_elastic (std::size_t pool_size, std::size_t core_count, const char *name,
-      entry_manager &entry_mgr, bool pool_threads, wait_seconds idle_timeout)
-    : worker_pool_impl<Stats> (pool_size, core_count, name, entry_mgr, pool_threads, idle_timeout)
+  worker_pool_elastic<Stats>::worker_pool_elastic (std::size_t max_concurrency, std::size_t max_threads,
+      std::size_t core_count, const char *name, entry_manager &entry_mgr, bool pool_threads, wait_seconds idle_timeout)
+    : worker_pool_impl<Stats> (max_concurrency, core_count, name, entry_mgr, pool_threads, idle_timeout)
+    , m_current_threads (0)
+    , m_max_threads (max_threads)
   {
   }
 

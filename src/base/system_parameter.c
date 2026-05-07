@@ -781,7 +781,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_TCP_KEEPALIVE_INTERVAL "tcp_keepalive_interval"
 #define PRM_NAME_TCP_KEEPALIVE_COUNT "tcp_keepalive_count"
 
-#define PRM_NAME_TASK_WORKER "task_worker"
+#define PRM_NAME_MAX_TRANSACTION_WORKERS "max_transaction_workers"
+#define PRM_NAME_MAX_TRANSACTION_CONCURRENCY "max_transaction_concurrency"
 
 #define PRM_NAME_CSS_MAX_CONNECTION_WORKER "max_connection_worker"
 #define PRM_NAME_CSS_MIN_CONNECTION_WORKER "min_connection_worker"
@@ -4732,18 +4733,12 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_TASK_GROUP,
    PRM_NAME_TASK_GROUP,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_DEPRECATED),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-#if defined (SERVER_MODE)
-   {false, {.i = (int) cubthread::system_core_count ()}},
-   {false, {.i = (int) cubthread::system_core_count ()}},
-   {false, {.i = (int) cubthread::system_core_count ()}},
-#else
    {false, {.i = 1}},
    {false, {.i = 1}},
    NULL_SYSPRM_PARAM_VALUE,
-#endif
    {false, {.i = 1}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -5194,15 +5189,41 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_TASK_WORKER,
-   PRM_NAME_TASK_WORKER,
+  {PRM_ID_MAX_TRANSACTION_WORKERS,
+   PRM_NAME_MAX_TRANSACTION_WORKERS,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = -1}},
-   {false, {.i = -1}},
-   {false, {.i = 1048576}},
+#if defined (SERVER_MODE)
+   {false, {.i = (int) cubthread::system_core_count () * 9}},
+   {false, {.i = (int) cubthread::system_core_count () * 9}},
+   NULL_SYSPRM_PARAM_VALUE,
+   {false, {.i = (int) cubthread::system_core_count ()}},
+#else
    {false, {.i = 1}},
+   {false, {.i = 1}},
+   {false, {.i = 1}},
+   {false, {.i = 1}},
+#endif
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_MAX_TRANSACTION_CONCURRENCY,
+   PRM_NAME_MAX_TRANSACTION_CONCURRENCY,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+#if defined (SERVER_MODE)
+   {false, {.i = (int) cubthread::system_core_count () * 3}},
+   {false, {.i = (int) cubthread::system_core_count () * 3}},
+   NULL_SYSPRM_PARAM_VALUE,
+   {false, {.i = (int) cubthread::system_core_count ()}},
+#else
+   {false, {.i = 1}},
+   {false, {.i = 1}},
+   {false, {.i = 1}},
+   {false, {.i = 1}},
+#endif
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -9880,18 +9901,17 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *call_stack_dump_activation_prm;
   SYSPRM_PARAM *test_mode_prm;
   SYSPRM_PARAM *tz_leap_second_support_prm;
-  SYSPRM_PARAM *task_worker_prm;
-  SYSPRM_PARAM *task_group_prm;
+  SYSPRM_PARAM *max_transaction_threads_prm;
+  SYSPRM_PARAM *max_transaction_concurrency_prm;
 #if defined (SERVER_MODE)
   SYSPRM_PARAM *max_parallel_workers_prm;
   SYSPRM_PARAM *parallelism_prm;
   SYSPRM_PARAM *max_connection_workers_prm;
   SYSPRM_PARAM *min_connection_workers_prm;
+  int system_cpu_count;
 #endif
   char newval[LINE_MAX];
   char host_name[CUB_MAXHOSTNAMELEN];
-  int system_cpu_count;
-  int task_worker;
   int max_clients;
 
   /* Find the parameters that require tuning */
@@ -9939,33 +9959,29 @@ prm_tune_parameters (void)
 
 #if defined (SERVER_MODE)
       system_cpu_count = cubthread::system_core_count ();
-      task_worker = css_get_max_connections ();
-#else
-      system_cpu_count = 1;
-      task_worker = system_cpu_count * 6;
-#endif
 
-      task_worker_prm = GET_PRM (PRM_ID_TASK_WORKER);
-      if (PRM_GET_INT (task_worker_prm->value) < 0)
+      max_transaction_threads_prm = GET_PRM (PRM_ID_MAX_TRANSACTION_WORKERS);
+      max_transaction_concurrency_prm = GET_PRM (PRM_ID_MAX_TRANSACTION_CONCURRENCY);
+
+      if (PRM_GET_INT (max_transaction_threads_prm->value) > PRM_GET_INT (max_clients_prm->value))
 	{
-	  /* the value of task worker is default. */
-	  sprintf (newval, "%d", task_worker);
-	  (void) prm_set (task_worker_prm, newval, false);
+	  sprintf (newval, "%d", PRM_GET_INT (max_clients_prm->value));
+	  if (prm_set (max_transaction_threads_prm, newval, false) != PRM_ERR_NO_ERROR)
+	    {
+	      sprintf (newval, "%d", system_cpu_count);
+	      (void) prm_set (max_transaction_threads_prm, newval, false);
+	    }
+	}
+      if (PRM_GET_INT (max_transaction_concurrency_prm->value) > PRM_GET_INT (max_transaction_threads_prm->value))
+	{
+	  sprintf (newval, "%d", PRM_GET_INT (max_transaction_threads_prm->value));
+	  if (prm_set (max_transaction_concurrency_prm, newval, false))
+	    {
+	      sprintf (newval, "%d", system_cpu_count);
+	      (void) prm_set (max_transaction_concurrency_prm, newval, false);
+	    }
 	}
 
-      task_group_prm = GET_PRM (PRM_ID_TASK_GROUP);
-      if (PRM_GET_INT (task_group_prm->value) > system_cpu_count)
-	{
-	  sprintf (newval, "%d", system_cpu_count);
-	  (void) prm_set (task_group_prm, newval, false);
-	}
-      if (PRM_GET_INT (task_group_prm->value) > PRM_GET_INT (task_worker_prm->value))
-	{
-	  sprintf (newval, "%d", PRM_GET_INT (task_worker_prm->value));
-	  (void) prm_set (task_group_prm, newval, false);
-	}
-
-#if defined (SERVER_MODE)
       max_connection_workers_prm = GET_PRM (PRM_ID_CSS_MAX_CONNECTION_WORKER);
       min_connection_workers_prm = GET_PRM (PRM_ID_CSS_MIN_CONNECTION_WORKER);
 
