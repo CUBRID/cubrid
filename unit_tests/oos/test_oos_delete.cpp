@@ -149,7 +149,7 @@ TEST (OosDeleteTest, OosDeleteThenReadFails)
 
   // Reading a deleted slot should fail
   RECDES rec_out{};
-  int read_err = oos_read (thread_p, oid, rec_out);
+  int read_err = test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_out);
   ASSERT_NE (read_err, NO_ERROR);
 
   // rec_out data area should not have been allocated if read failed
@@ -264,7 +264,7 @@ TEST (OosDeleteTest, OosUpdatePattern)
 
   // New record must still be readable and unchanged
   RECDES rec_out{};
-  err = oos_read (thread_p, new_oid, rec_out);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, new_oid, rec_out);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_EQ (rec_out.length, rec_new.length);
   ASSERT_STREQ (rec_out.data, new_data.c_str());
@@ -272,7 +272,7 @@ TEST (OosDeleteTest, OosUpdatePattern)
 
   // Old OID must no longer be readable
   RECDES stale_out{};
-  int stale_err = oos_read (thread_p, old_oid, stale_out);
+  int stale_err = test_oos_utils::oos_read_with_alloc (thread_p, old_oid, stale_out);
   ASSERT_NE (stale_err, NO_ERROR);
   if (stale_out.data != nullptr)
     {
@@ -371,7 +371,7 @@ TEST (OosDeleteTest, OosDeleteLarge160KBMultiChunk)
 
   // Verify it can be read before deletion
   RECDES rec_check{};
-  err = oos_read (thread_p, oid, rec_check);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_check);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_STREQ (rec_check.data, rec_in.data);
   recdes_free_data_area (&rec_check);
@@ -382,7 +382,7 @@ TEST (OosDeleteTest, OosDeleteLarge160KBMultiChunk)
 
   // Reading any chunk from the head OID must now fail
   RECDES rec_after{};
-  int read_err = oos_read (thread_p, oid, rec_after);
+  int read_err = test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_after);
   ASSERT_NE (read_err, NO_ERROR);
   if (rec_after.data != nullptr)
     {

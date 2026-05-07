@@ -217,7 +217,7 @@ TEST (OosFileDestroyTest, OosFileDestroyMultipleFiles)
 
   // File 2 should still be readable
   RECDES rec_out{};
-  err = oos_read (thread_p, oid2, rec_out);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oid2, rec_out);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_STREQ (rec_out.data, "File 2 data");
   recdes_free_data_area (&rec_out);

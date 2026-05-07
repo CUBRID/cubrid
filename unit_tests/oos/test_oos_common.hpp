@@ -24,8 +24,10 @@
 #include "dbi.h"
 #include "error_manager.h"
 #include "record_descriptor.hpp"
+#include "storage_common.h"
 #include "thread_manager.hpp"
 #include "page_buffer.h"
+#include "oos_file.hpp"
 
 static cubthread::entry *thread_p;
 
@@ -93,6 +95,30 @@ namespace test_oos_utils
       }
 
     return large_data;
+  }
+
+  /* Test-side wrapper for the caller-preallocated oos_read API. Production
+   * callers know the OOS length from the inline 8B field in the heap record;
+   * tests don't have that record, so we read the length via oos_get_length. */
+  inline int oos_read_with_alloc (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
+  {
+    recdes = RECDES{};
+    int len = oos_get_length (thread_p, oid);
+    if (len < 0)
+      {
+	return er_errid ();
+      }
+    int err = recdes_allocate_data_area (&recdes, len);
+    if (err != NO_ERROR)
+      {
+	return err;
+      }
+    err = oos_read (thread_p, oid, recdes);
+    if (err != NO_ERROR)
+      {
+	recdes_free_data_area (&recdes);
+      }
+    return err;
   }
 
   inline int from_string_into_recdes (const std::string &large_data, RECDES &rec)

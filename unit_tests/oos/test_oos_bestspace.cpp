@@ -124,7 +124,7 @@ TEST (OosBestspaceTest, BestspaceReuseAfterDelete)
 
   // Verify the data is correct
   RECDES rec_out{};
-  err = oos_read (thread_p, oid2, rec_out);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oid2, rec_out);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_STREQ (rec_out.data, data.c_str());
   recdes_free_data_area (&rec_out);
@@ -251,7 +251,7 @@ TEST (OosBestspaceTest, BestspaceMultipleFilesIsolation)
 
   // Verify file 2 data is correct
   RECDES rec_out{};
-  err = oos_read (thread_p, oid2b, rec_out);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oid2b, rec_out);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_STREQ (rec_out.data, data.c_str());
   recdes_free_data_area (&rec_out);
@@ -311,7 +311,7 @@ TEST (OosBestspaceTest, BestspaceManySmallInsertsConsolidate)
   for (int i = 0; i < num_inserts; i++)
     {
       RECDES rec_out{};
-      err = oos_read (thread_p, oids[i], rec_out);
+      err = test_oos_utils::oos_read_with_alloc (thread_p, oids[i], rec_out);
       ASSERT_EQ (err, NO_ERROR);
 
       std::string expected = "small record #" + std::to_string (i);
@@ -359,7 +359,7 @@ TEST (OosBestspaceTest, BestspaceInsertDeleteCycle)
 
       // Verify readable
       RECDES rec_out{};
-      err = oos_read (thread_p, oid, rec_out);
+      err = test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_out);
       ASSERT_EQ (err, NO_ERROR);
       ASSERT_STREQ (rec_out.data, data.c_str ());
       recdes_free_data_area (&rec_out);
@@ -582,7 +582,7 @@ TEST (OosBestspaceTest, BestspaceMultiChunkDeleteReuse)
 
   // Verify data
   RECDES rec_out{};
-  err = oos_read (thread_p, oid_small, rec_out);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oid_small, rec_out);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_STREQ (rec_out.data, "small after multi-chunk delete");
   recdes_free_data_area (&rec_out);
@@ -640,7 +640,7 @@ TEST (OosBestspaceTest, BestspaceCacheCleanedOnFileRemove)
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES rec_out{};
-  err = oos_read (thread_p, oid, rec_out);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_out);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_STREQ (rec_out.data, "after cleanup insert");
   recdes_free_data_area (&rec_out);
@@ -732,7 +732,7 @@ TEST (OosBestspaceTest, BestspaceBulkInsertDeleteReinsert)
   for (int i = 0; i < num_records; i++)
     {
       RECDES rec_out{};
-      err = oos_read (thread_p, oids[i], rec_out);
+      err = test_oos_utils::oos_read_with_alloc (thread_p, oids[i], rec_out);
       ASSERT_EQ (err, NO_ERROR);
       ASSERT_EQ ((int) strlen (rec_out.data), record_size);
       recdes_free_data_area (&rec_out);
@@ -1220,13 +1220,13 @@ TEST (OosBestspaceTest, BestspaceExactMaxChunkBoundary)
 
   // Verify both records are readable
   RECDES rec_out{};
-  err = oos_read (thread_p, oid_exact, rec_out);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oid_exact, rec_out);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_EQ ((int) strlen (rec_out.data), max_chunk);
   recdes_free_data_area (&rec_out);
 
   RECDES rec_out2{};
-  err = oos_read (thread_p, oid_exact2, rec_out2);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oid_exact2, rec_out2);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_EQ ((int) strlen (rec_out2.data), max_chunk);
   recdes_free_data_area (&rec_out2);
@@ -1304,7 +1304,7 @@ TEST (OosBestspaceTest, DeleteUpdatesBestspaceCacheDirectly)
 
   // Verify data
   RECDES rec_out{};
-  err = oos_read (thread_p, oid_medium, rec_out);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oid_medium, rec_out);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_EQ ((int) strlen (rec_out.data), 2000);
   recdes_free_data_area (&rec_out);
