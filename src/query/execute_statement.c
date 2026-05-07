@@ -14566,7 +14566,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   COMPILE_CONTEXT *contextp;
   XASL_STREAM stream;
-  XASL_NODE_HEADER xasl_header;
+  XASL_NODE_HEADER xasl_header = { 0, 0 };
 
   contextp = &parser->context;
 
