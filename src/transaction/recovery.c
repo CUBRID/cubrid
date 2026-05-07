@@ -871,6 +871,12 @@ struct rvfun RV_fun[] = {
    vacuum_rv_es_nop,
    vacuum_rv_es_nop,
    NULL, NULL},
+  {RVREPL_DUMMY_OOS_RECORD,
+   "RVREPL_DUMMY_OOS_RECORD",
+   NULL,
+   NULL,
+   NULL,
+   repl_data_insert_log_dump}
 };
 
 /*

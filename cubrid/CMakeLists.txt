@@ -51,7 +51,7 @@ set(THREAD_SOURCES
   ${THREAD_DIR}/thread_looper.cpp
   ${THREAD_DIR}/thread_manager.cpp
   ${THREAD_DIR}/thread_waiter.cpp
-  ${THREAD_DIR}/thread_worker_pool.cpp
+  ${THREAD_DIR}/thread_worker_pool_impl.cpp
   ${THREAD_DIR}/thread_worker_pool_taskcap.cpp
   )
 set(THREAD_HEADERS
@@ -66,6 +66,7 @@ set(THREAD_HEADERS
   ${THREAD_DIR}/thread_task.hpp
   ${THREAD_DIR}/thread_waiter.hpp
   ${THREAD_DIR}/thread_worker_pool.hpp
+  ${THREAD_DIR}/thread_worker_pool_impl.hpp
   ${THREAD_DIR}/thread_worker_pool_taskcap.hpp
   )
 
@@ -368,7 +369,6 @@ set(PARALLEL_HEAP_SCAN_SOURCES
 
 set(PARALLEL_HEAP_SCAN_HEADERS
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler_ftabs.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_ftab_set.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_handler.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_type.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_slot_iterator.hpp
@@ -395,6 +395,7 @@ set(PARALLEL_QUERY_HEADERS
   ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.hpp
   ${PARALLEL_QUERY_DIR}/px_interrupt.hpp
   ${PARALLEL_QUERY_DIR}/px_parallel.hpp
+  ${PARALLEL_QUERY_DIR}/px_ftab_set.hpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_SOURCES
