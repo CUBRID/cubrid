@@ -52,6 +52,9 @@ namespace cubpl
       case PLCSQL_COMPILE_TYPE_PKG_BODY:
 	serializator.pack_all (body_code, owner, mode);
 	break;
+      default:
+	assert (false);
+	break;
       }
   }
 
@@ -70,6 +73,9 @@ namespace cubpl
 	break;
       case PLCSQL_COMPILE_TYPE_PKG_BODY:
 	size += serializator.get_all_packed_size_starting_offset (size, body_code, owner, mode);
+	break;
+      default:
+	assert (false);
 	break;
       }
 
@@ -91,6 +97,9 @@ namespace cubpl
 	break;
       case PLCSQL_COMPILE_TYPE_PKG_BODY:
 	deserializator.unpack_all (body_code, owner, mode);
+	break;
+      default:
+	assert (false);
 	break;
       }
   }
@@ -246,6 +255,8 @@ namespace cubpl
 	  case PLCSQL_COMPILE_TYPE_PKG_BODY:
 	    // no values to unpack: error_code = 0 is the only relevant information in this case
 	    break;
+	  default:
+	    assert (false);
 	  }
       }
   }
