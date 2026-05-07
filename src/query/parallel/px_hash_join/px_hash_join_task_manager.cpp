@@ -23,6 +23,7 @@
 #include "px_hash_join_spawn_manager.hpp"
 #include "px_hash_join_task_manager.hpp"
 
+#include "bit.h"			/* bit64_count_trailing_zeros */
 #include "error_manager.h"		/* er_errid, er_set, NO_ERROR, assert_release_error */
 #include "log_impl.h"			/* logtb_set_tran_index_interrupt, logtb_get_check_interrupt, logtb_is_interrupted_tran */
 #include "memory_alloc.h"		/* db_private_alloc, db_private_free_and_init */
@@ -160,6 +161,11 @@ namespace parallel_query
       : base_task (task_manager, manager, index)
       , m_split_info (split_info)
       , m_shared_info (shared_info)
+      , m_membuf_index (-1)
+      , m_sector_index (-1)
+      , m_current_bitmap (0)
+      , m_current_vsid (VSID_INITIALIZER)
+      , m_current_tfile (nullptr)
     {
       assert (m_split_info != nullptr);
       assert (m_split_info->fetch_info != nullptr);
@@ -263,6 +269,7 @@ namespace parallel_query
 	      /* empty page */
 	      continue;
 	    }
+
 	  tuple_index = -1;
 
 	  /* first tuple */
@@ -303,7 +310,9 @@ namespace parallel_query
 
 		  if (overflow_page != page)
 		    {
-		      qmgr_free_old_page_and_init (&thread_ref, overflow_page, list_id->tfile_vfid);
+		      /* overflow continuation pages share the same tfile as the start page
+		       * (see qfile_allocate_new_ovf_page) */
+		      qmgr_free_old_page_and_init (&thread_ref, overflow_page, m_current_tfile);
 		    }
 
 		  if (VPID_ISNULL (&overflow_vpid))
@@ -313,7 +322,7 @@ namespace parallel_query
 		    }
 
 		  /* next overflow page */
-		  overflow_page = qmgr_get_old_page (&thread_ref, &overflow_vpid, list_id->tfile_vfid);
+		  overflow_page = qmgr_get_old_page (&thread_ref, &overflow_vpid, m_current_tfile);
 		  if (overflow_page == nullptr)
 		    {
 		      assert_release_error (er_errid () != NO_ERROR);
@@ -426,17 +435,31 @@ namespace parallel_query
 
 		    if (part_list_id[part_id]->tuple_cnt > 0)
 		      {
-			qfile_append_list (&thread_ref, part_list_id[part_id], temp_part_list_id[part_id]);
-			qfile_destroy_list (&thread_ref, temp_part_list_id[part_id]);
+			error = qfile_append_list (&thread_ref, part_list_id[part_id], temp_part_list_id[part_id]);
+			if (error != NO_ERROR)
+			  {
+			    assert_release_error (er_errid () != NO_ERROR);
+			    m_task_manager.handle_error (thread_ref);
+			    has_error = true;
+			    break;
+			  }
+
+			error = qfile_truncate_list (&thread_ref, temp_part_list_id[part_id]);
+			if (error != NO_ERROR)
+			  {
+			    assert_release_error (er_errid () != NO_ERROR);
+			    m_task_manager.handle_error (thread_ref);
+			    has_error = true;
+			    break;
+			  }
 		      }
 		    else
 		      {
 			qfile_destroy_list (&thread_ref, part_list_id[part_id]);
 			qfile_copy_list_id (part_list_id[part_id], temp_part_list_id[part_id], false, QFILE_PROHIBIT_DEPENDENT);
+			QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_id]);
 		      }
 		  }
-
-		  QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_id]);
 		}
 
 	      if (temp_part_list_id[part_id] == nullptr)
@@ -466,7 +489,7 @@ namespace parallel_query
 
 	  if (page != nullptr)
 	    {
-	      qmgr_free_old_page_and_init (&thread_ref, page, list_id->tfile_vfid);
+	      qmgr_free_old_page_and_init (&thread_ref, page, m_current_tfile);
 	    }
 
 	  if (has_error)
@@ -478,12 +501,59 @@ namespace parallel_query
 
       if (page != nullptr)
 	{
-	  qmgr_free_old_page_and_init (&thread_ref, page, list_id->tfile_vfid);
+	  qmgr_free_old_page_and_init (&thread_ref, page, m_current_tfile);
 	}
 
       assert (temp_part_list_id != nullptr);
       assert (temp_key != nullptr);
 
+      if (!has_error)
+	{
+	  for (part_index = 0; part_index < part_cnt; part_index++)
+	    {
+	      if (temp_part_list_id[part_index] == nullptr)
+		{
+		  continue;
+		}
+
+	      qfile_close_list (&thread_ref, temp_part_list_id[part_index]);	/* may be meaningless since only memory buffer is used */
+
+	      if (temp_part_list_id[part_index]->tuple_cnt > 0)
+		{
+		  std::unique_lock lock (m_shared_info->part_mutexes[part_index]);
+
+		  assert (part_list_id[part_index]->last_pgptr == nullptr);
+
+		  if (part_list_id[part_index]->tuple_cnt > 0)
+		    {
+		      error = qfile_append_list (&thread_ref, part_list_id[part_index], temp_part_list_id[part_index]);
+		      if (error != NO_ERROR)
+			{
+			  assert_release_error (er_errid () != NO_ERROR);
+			  m_task_manager.handle_error (thread_ref);
+			  has_error = true;
+			  break;
+			}
+
+		      qfile_destroy_list (&thread_ref, temp_part_list_id[part_index]);
+		    }
+		  else
+		    {
+		      qfile_destroy_list (&thread_ref, part_list_id[part_index]);
+		      qfile_copy_list_id (part_list_id[part_index], temp_part_list_id[part_index], false, QFILE_PROHIBIT_DEPENDENT);
+		    }
+		}
+	      else
+		{
+		  qfile_destroy_list (&thread_ref, temp_part_list_id[part_index]);
+		}
+
+	      QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_index]);
+	    }
+	}
+
+      /* must be a separate `if`, not an `else` of the block above:
+       * the merge loop above may set has_error = true via break, and that case still needs this cleanup to run. */
       if (has_error)
 	{
 	  for (part_index = 0; part_index < part_cnt; part_index++)
@@ -492,42 +562,6 @@ namespace parallel_query
 		{
 		  qfile_close_list (&thread_ref, temp_part_list_id[part_index]);
 		  qfile_destroy_list (&thread_ref, temp_part_list_id[part_index]);
-		  QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_index]);
-		}
-	    }
-	}
-      else
-	{
-	  for (part_index = 0; part_index < part_cnt; part_index++)
-	    {
-	      if (temp_part_list_id[part_index] != nullptr)
-		{
-		  qfile_close_list  (&thread_ref,
-				     temp_part_list_id[part_index]);	/* may be meaningless since only memory buffer is used */
-
-		  if (temp_part_list_id[part_index]->tuple_cnt > 0)
-		    {
-		      std::unique_lock lock (m_shared_info->part_mutexes[part_index]);
-
-		      assert (part_list_id[part_index]->last_pgptr == nullptr);
-
-		      if (part_list_id[part_index]->tuple_cnt > 0)
-			{
-			  qfile_append_list (&thread_ref, part_list_id[part_index], temp_part_list_id[part_index]);
-			  qfile_destroy_list (&thread_ref, temp_part_list_id[part_index]);
-			}
-		      else
-			{
-			  qfile_destroy_list (&thread_ref, part_list_id[part_index]);
-			  qfile_copy_list_id (part_list_id[part_index], temp_part_list_id[part_index], false, QFILE_PROHIBIT_DEPENDENT);
-			}
-
-		    }
-		  else
-		    {
-		      qfile_destroy_list (&thread_ref, temp_part_list_id[part_index]);
-		    }
-
 		  QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_index]);
 		}
 	    }
@@ -550,83 +584,115 @@ namespace parallel_query
     PAGE_PTR
     split_task::get_next_page (cubthread::entry &thread_ref)
     {
-      /* Do not perform NULL checks;
-      * validation is expected to be handled by the constructor */
-      QFILE_LIST_ID *list_id = m_split_info->fetch_info->list_id;
-      PAGE_PTR page = nullptr;
+      QFILE_LIST_SECTOR_INFO *sector_info = &m_shared_info->sector_info;
+      FILE_PARTIAL_SECTOR *sectors = sector_info->sectors;
+      void **tfiles = sector_info->tfiles;
+      int sector_index;
 
-      std::lock_guard<std::mutex> lock (m_shared_info->scan_mutex);
-
-      switch (m_shared_info->scan_position)
+      /* Phase 1: membuf pages — the CAS winner claims the entire membuf region
+       *                          and iterates it sequentially. Non-owners fall
+       *                          through to Phase 2 directly. */
+      while (true)
 	{
-	case S_BEFORE:
-	  if (VPID_ISNULL (&m_shared_info->next_vpid))
+	  if (m_membuf_index >= 0)
 	    {
-	      page = qmgr_get_old_page (&thread_ref, &list_id->first_vpid, list_id->tfile_vfid);
-	      if (page == nullptr)
+	      /* this worker is the membuf owner */
+	      if (m_membuf_index <= sector_info->membuf_tfile->membuf_last)
 		{
-		  assert_release_error (er_errid () != NO_ERROR);
-		  return nullptr;
+		  VPID vpid;
+		  vpid.volid = NULL_VOLID;
+		  vpid.pageid = m_membuf_index++;
+
+		  PAGE_PTR page = qmgr_get_old_page (&thread_ref, &vpid, sector_info->membuf_tfile);
+		  if (page == nullptr)
+		    {
+		      assert_release_error (er_errid () != NO_ERROR);
+		      return nullptr;
+		    }
+
+		  /* skip overflow continuation pages */
+		  if (QFILE_GET_TUPLE_COUNT (page) == QFILE_OVERFLOW_TUPLE_COUNT_FLAG)
+		    {
+		      qmgr_free_old_page_and_init (&thread_ref, page, sector_info->membuf_tfile);
+		      continue;
+		    }
+
+		  m_current_tfile = sector_info->membuf_tfile;
+		  return page;
 		}
 
-	      if (qfile_has_next_page (page))
-		{
-		  m_shared_info->scan_position = S_ON;
-		  QFILE_GET_NEXT_VPID (&m_shared_info->next_vpid, page);
-		}
-	      else
-		{
-		  m_shared_info->scan_position = S_AFTER;
-		}
+	      /* membuf exhausted — fall through to Phase 2 */
+	      m_membuf_index = -1;
+	      break;
 	    }
-	  else
+
+	  if (m_sector_index == -1 && sector_info->membuf_tfile != nullptr)
 	    {
-	      /* impossible case */
-	      assert_release_error (false);
-	      return nullptr;
+	      /* first call: try to claim membuf (exactly one winner) */
+	      bool expected = false;
+
+	      if (m_shared_info->membuf_claimed.compare_exchange_strong (expected, true, std::memory_order_acq_rel))
+		{
+		  assert (m_membuf_index == -1);
+		  m_membuf_index = 0;
+		  continue;		/* re-enter Phase 1 as the owner */
+		}
 	    }
+
+	  /* not the owner — proceed to Phase 2 */
 	  break;
-
-	case S_ON:
-	  if (!VPID_ISNULL (&m_shared_info->next_vpid))
-	    {
-	      page = qmgr_get_old_page (&thread_ref, &m_shared_info->next_vpid, list_id->tfile_vfid);
-	      if (page == nullptr)
-		{
-		  assert_release_error (er_errid () != NO_ERROR);
-		  return nullptr;
-		}
-
-	      if (qfile_has_next_page (page))
-		{
-		  QFILE_GET_NEXT_VPID (&m_shared_info->next_vpid, page);
-		}
-	      else
-		{
-		  m_shared_info->scan_position = S_AFTER;
-		  VPID_SET_NULL (&m_shared_info->next_vpid);
-		}
-	    }
-	  else
-	    {
-	      /* impossible case */
-	      assert_release_error (false);
-	      return nullptr;
-	    }
-	  break;
-
-	case S_AFTER:
-	  /* nothing to do */
-	  assert (VPID_ISNULL (&m_shared_info->next_vpid));
-	  return nullptr;
-
-	default:
-	  /* impossible case */
-	  assert_release_error (false);
-	  return nullptr;
 	}
 
-      return page;
+      /* Phase 2: sector-based disk pages */
+      while (true)
+	{
+	  /* find next set bit in current sector bitmap */
+	  while (m_current_bitmap != 0)
+	    {
+#if defined(__GNUC__) || defined(__clang__)
+	      int bit_pos = __builtin_ctzll (m_current_bitmap);
+#else
+	      int bit_pos = bit64_count_trailing_zeros (m_current_bitmap);
+#endif
+	      m_current_bitmap &= m_current_bitmap - 1;	/* clear lowest set bit */
+
+	      VPID vpid;
+	      vpid.volid = m_current_vsid.volid;
+	      vpid.pageid = SECTOR_FIRST_PAGEID (m_current_vsid.sectid) + bit_pos;
+
+	      QMGR_TEMP_FILE *tfile = (QMGR_TEMP_FILE *) tfiles[m_sector_index];
+	      assert (tfile != nullptr);
+
+	      PAGE_PTR page = qmgr_get_old_page (&thread_ref, &vpid, tfile);
+	      if (page == nullptr)
+		{
+		  assert_release_error (er_errid () != NO_ERROR);
+		  return nullptr;
+		}
+
+	      /* skip overflow continuation pages — they are followed via VPID chain
+	       * by the worker that owns the overflow start page */
+	      if (QFILE_GET_TUPLE_COUNT (page) == QFILE_OVERFLOW_TUPLE_COUNT_FLAG)
+		{
+		  qmgr_free_old_page_and_init (&thread_ref, page, tfile);
+		  continue;
+		}
+
+	      m_current_tfile = tfile;
+	      return page;
+	    }
+
+	  /* current sector exhausted — grab next sector atomically */
+	  sector_index = m_shared_info->next_sector_index.fetch_add (1, std::memory_order_relaxed);
+	  if (sector_index >= sector_info->sector_cnt)
+	    {
+	      return nullptr;		/* all sectors distributed */
+	    }
+
+	  m_sector_index = sector_index;
+	  m_current_vsid = sectors[sector_index].vsid;
+	  m_current_bitmap = sectors[sector_index].page_bitmap;
+	}
     }
 
     /*

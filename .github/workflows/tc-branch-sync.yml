@@ -9,6 +9,9 @@ name: TC Branch Sync
 on:
   pull_request_target:
     types: [opened, reopened]
+    branches:
+      - develop
+      - 'feature/**'
 
 permissions: {} # Least privilege — jobs opt-in below
 
@@ -94,11 +97,13 @@ jobs:
         run: echo "::add-mask::${APP_TOKEN}"
 
       - name: Create TC branch from develop
+        id: create-tc-branch
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           TC_REPO: ${{ matrix.tc-repo }}
           OWNER: ${{ env.OWNER }}
+          ENGINE_BASE_REF: ${{ github.event.pull_request.base.ref }}
         shell: bash
         run: |
           set -euo pipefail
@@ -106,14 +111,28 @@ jobs:
 
           if gh api "repos/${OWNER}/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" > /dev/null 2>&1; then
             echo "::notice::Branch '${BRANCH_NAME}' already exists in ${TC_REPO}. Skipping branch creation."
+            TC_BASE_REF="${ENGINE_BASE_REF}"
+            echo "tc_base_ref=${TC_BASE_REF}" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
 
-          DEVELOP_SHA=$(gh api "repos/${OWNER}/${TC_REPO}/git/refs/heads/develop" --jq '.object.sha')
+          TC_BASE_REF="${ENGINE_BASE_REF}"
+          API_RESPONSE=$(gh api "repos/${OWNER}/${TC_REPO}/git/refs/heads/${TC_BASE_REF}" 2>&1) || {
+            if echo "${API_RESPONSE}" | grep -q "Not Found\|404"; then
+              echo "::notice::Branch '${TC_BASE_REF}' not found in ${TC_REPO}. Falling back to develop."
+              TC_BASE_REF="develop"
+              API_RESPONSE=$(gh api "repos/${OWNER}/${TC_REPO}/git/refs/heads/${TC_BASE_REF}")
+            else
+              echo "::error::Failed to check branch '${TC_BASE_REF}' in ${TC_REPO}: ${API_RESPONSE}"
+              exit 1
+            fi
+          }
+
+          BASE_SHA=$(echo "${API_RESPONSE}" | jq -r '.object.sha')
           gh api "repos/${OWNER}/${TC_REPO}/git/refs" \
             --method POST \
             --field ref="refs/heads/${BRANCH_NAME}" \
-            --field sha="${DEVELOP_SHA}"
+            --field sha="${BASE_SHA}"
 
           git clone --branch "${BRANCH_NAME}" --single-branch \
             "https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${TC_REPO}.git" \
@@ -126,6 +145,8 @@ jobs:
             git push origin "${BRANCH_NAME}" --force-with-lease
           fi
 
+          echo "tc_base_ref=${TC_BASE_REF}" >> "${GITHUB_OUTPUT}"
+
       - name: Create draft PR in TC repo
         id: create-draft-pr
         env:
@@ -135,6 +156,7 @@ jobs:
           TC_REPO: ${{ matrix.tc-repo }}
           ENGINE_REPO: ${{ github.repository }}
           OWNER: ${{ env.OWNER }}
+          TC_BASE_REF: ${{ steps.create-tc-branch.outputs.tc_base_ref }}
         shell: bash
         run: |
           set -euo pipefail
@@ -152,7 +174,7 @@ jobs:
           PR_URL=$(gh pr create \
             --repo "${OWNER}/${TC_REPO}" \
             --head "${BRANCH_NAME}" \
-            --base develop \
+            --base "${TC_BASE_REF}" \
             --title "${DRAFT_TITLE}" \
             --body "This is a draft PR for testing TC changes.
 
@@ -283,6 +305,7 @@ jobs:
           TC_REPO: ${{ matrix.tc-repo }}
           OWNER: ${{ env.OWNER }}
           ENGINE_REPO: ${{ github.repository }}
+          ENGINE_BASE_REF: ${{ github.event.pull_request.base.ref }}
         shell: bash
         run: |
           set -euo pipefail
@@ -302,14 +325,26 @@ jobs:
             exit 0
           fi
 
+          TC_BASE_REF="${ENGINE_BASE_REF}"
+          CHECK_OUTPUT=$(gh api "repos/${OWNER}/${TC_REPO}/git/refs/heads/${TC_BASE_REF}" 2>&1) || {
+            if echo "${CHECK_OUTPUT}" | grep -q "404\|Not Found"; then
+              echo "::notice::Branch '${TC_BASE_REF}' not found in ${TC_REPO}, falling back to develop"
+              TC_BASE_REF="develop"
+            else
+              echo "::error::Failed to check branch '${TC_BASE_REF}' in ${TC_REPO}: ${CHECK_OUTPUT}"
+              exit 1
+            fi
+          }
+          echo "tc_base_ref=${TC_BASE_REF}" >> "${GITHUB_OUTPUT}"
+
           TARGET_BRANCH="tc/pr-${PR_NUMBER}"
 
           git clone --filter=blob:none "https://x-access-token:${APP_TOKEN}@github.com/${OWNER}/${TC_REPO}.git" tc-repo
           cd tc-repo
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin develop
-          git checkout -B "${TARGET_BRANCH}" origin/develop
+          git fetch origin "${TC_BASE_REF}"
+          git checkout -B "${TARGET_BRANCH}" origin/"${TC_BASE_REF}"
 
           if ! git revert --no-edit "${MERGE_COMMIT}" 2>/dev/null; then
             git revert --abort 2>/dev/null || true
@@ -337,6 +372,7 @@ jobs:
           TC_REPO: ${{ matrix.tc-repo }}
           ENGINE_REPO: ${{ github.repository }}
           TARGET_BRANCH: ${{ steps.revert-tc-commit.outputs.tc_revert_branch }}
+          TC_BASE_REF: ${{ steps.revert-tc-commit.outputs.tc_base_ref }}
           OWNER: ${{ env.OWNER }}
         shell: bash
         run: |
@@ -357,7 +393,7 @@ jobs:
 
           **Please merge this PR FIRST, then merge the engine revert PR.**"
           
-          gh pr create --repo "${OWNER}/${TC_REPO}" --head "${TARGET_BRANCH}" --base develop --title "${PR_TITLE}" --body "${PR_BODY}"
+          gh pr create --repo "${OWNER}/${TC_REPO}" --head "${TARGET_BRANCH}" --base "${TC_BASE_REF}" --title "${PR_TITLE}" --body "${PR_BODY}"
 
   # Comment TC info on engine PR (revert PR)
   comment-on-engine-pr-revert:

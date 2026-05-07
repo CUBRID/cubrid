@@ -27,8 +27,9 @@
 #include "log_record.hpp"
 #include "mem_block.hpp"
 #include "storage_common.h"
+#include "system_parameter.h"
 
-#include <array>
+#include <vector>
 
 // forward declarations
 struct log_tdes;
@@ -50,8 +51,9 @@ class log_postpone_cache
       : m_redo_data_buf ()
       , m_redo_data_offset (0)
       , m_is_redo_data_buf_full (false)
+      , m_max_cache_entries (static_cast<std::size_t> (prm_get_integer_value (PRM_ID_LOG_POSTPONE_CACHE_SIZE)))
       , m_cursor (0)
-      , m_cache_entries ()
+      , m_cache_entries (m_max_cache_entries)
     {
     }
 
@@ -65,13 +67,13 @@ class log_postpone_cache
 
     void copy_to (log_postpone_cache &dest) const;
     void reset ();
+    void reset_from (std::size_t cursor);
 
     void add_redo_data (const log_prior_node &node);
     void add_lsa (const log_lsa &lsa);
     bool do_postpone (cubthread::entry &thread_ref, const log_lsa &start_postpone_lsa);
 
   private:
-    static const std::size_t MAX_CACHE_ENTRIES = 512;
     static const std::size_t REDO_DATA_MAX_SIZE = 100 * 1024;   // 100k
     static const std::size_t BUFFER_RESET_SIZE = 1024;
 
@@ -93,8 +95,9 @@ class log_postpone_cache
     std::size_t m_redo_data_offset;
     bool m_is_redo_data_buf_full;
 
+    std::size_t m_max_cache_entries;
     std::size_t m_cursor;
-    std::array<cache_entry, MAX_CACHE_ENTRIES> m_cache_entries;
+    std::vector<cache_entry> m_cache_entries;
 
     bool is_full () const;
 };

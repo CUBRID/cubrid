@@ -761,17 +761,17 @@ namespace cubmethod
 	      DB_OBJECT *arg_mop_p = db_get_object (&temp);
 	      if (arg_mop_p)
 		{
-		  if (db_get (arg_mop_p, SP_ATTR_MODE, &mode) == NO_ERROR)
+		  if (db_get (arg_mop_p, SP_ARG_ATTR_MODE, &mode) == NO_ERROR)
 		    {
 		      param_info.mode = db_get_int (&mode);
 		    }
 
-		  if (db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type) == NO_ERROR)
+		  if (db_get (arg_mop_p, SP_ARG_ATTR_DATA_TYPE, &arg_type) == NO_ERROR)
 		    {
 		      param_info.type = db_get_int (&arg_type);
 		    }
 
-		  if (db_get (arg_mop_p, SP_ATTR_DEFAULT_VALUE, &has_default) == NO_ERROR)
+		  if (db_get (arg_mop_p, SP_ARG_ATTR_DEFAULT_VALUE, &has_default) == NO_ERROR)
 		    {
 		      param_info.has_default = DB_IS_NULL (&has_default) ? 0 : 1;
 		    }
@@ -1129,6 +1129,30 @@ exit:
     m_deferred_query_free_handler.clear();
   }
 
+  void
+  callback_handler::clear_all_query_handlers ()
+  {
+    /* must run before ws_final(); query_handler dtor walks ws_heap-allocated host_variables */
+    for (auto it = m_deferred_query_free_handler.begin (); it != m_deferred_query_free_handler.end (); it++)
+      {
+	delete *it;
+      }
+    m_deferred_query_free_handler.clear ();
+
+    for (size_t i = 0; i < m_query_handlers.size (); i++)
+      {
+	if (m_query_handlers[i] != nullptr)
+	  {
+	    delete m_query_handlers[i];
+	    m_query_handlers[i] = nullptr;
+	  }
+      }
+    m_query_handlers.clear ();
+
+    m_sql_handler_map.clear ();
+    m_qid_handler_map.clear ();
+  }
+
   query_handler *
   callback_handler::get_query_handler_by_query_id (const uint64_t qid)
   {
@@ -1175,4 +1199,15 @@ exit:
   {
     return &handler;
   }
+}
+
+/* called from boot_client_all_finalize() before ws_final() */
+void
+method_callback_final (void)
+{
+  cubmethod::callback_handler *h = cubmethod::get_callback_handler ();
+  if (h != NULL)
+    {
+      h->clear_all_query_handlers ();
+    }
 }

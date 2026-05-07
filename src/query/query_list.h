@@ -528,6 +528,29 @@ enum
 #define QFILE_IS_FLAG_SET(var, flag)       ((var) & (flag))
 #define QFILE_IS_FLAG_SET_BOTH(var, flag1, flag2) (((var) & (flag1)) && ((var) & (flag2)))
 
+/* Sector-based data page info for QFILE_LIST_ID.
+ * membuf_tfile: membuf exists only in the first list_id (not in dependent_list_id).
+ * sectors/tfiles: parallel arrays, one entry per disk sector across all dependent list_ids. */
+typedef struct qfile_list_sector_info QFILE_LIST_SECTOR_INFO;
+struct qfile_list_sector_info
+{
+  struct qmgr_temp_file *membuf_tfile;	/* tfile owning membuf pages (NULL = none) */
+  struct file_partial_sector *sectors;	/* data page sectors (FTAB excluded) */
+  void **tfiles;		/* parallel array: tfile per sector */
+  int sector_cnt;
+};
+#define QFILE_LIST_SECTOR_INFO_INITIALIZER { NULL, NULL, NULL, 0 }
+
+#define QFILE_INIT_LIST_SECTOR_INFO(info) \
+  do \
+    { \
+      (info)->membuf_tfile = NULL; \
+      (info)->sectors = NULL; \
+      (info)->tfiles = NULL; \
+      (info)->sector_cnt = 0; \
+    } \
+  while (0)
+
 /* SORTING RELATED DEFINITIONS */
 
 /* Sorted list identifier */

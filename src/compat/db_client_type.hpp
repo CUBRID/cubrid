@@ -52,6 +52,9 @@ enum db_client_type
    *   - default: DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2
    *   - if source version >= 11.2: switch to DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4
    *   - if source version >= 11.4: switch to DB_CLIENT_TYPE_LOADDB_UTILITY (compat off)
+   *
+   * NOTE: These three values must remain in ascending order.
+   *   ldr_server_load() uses MAX() to track the highest compat level.
    */
   DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2 = 19,
   DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4 = 20,
