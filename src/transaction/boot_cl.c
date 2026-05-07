@@ -770,7 +770,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 #if defined (CS_MODE)
   if (BOOT_BROKER_CLIENT_TYPE (client_credential->client_type))
     {
-      conf_file = envvar_get ("CONF_FOR_BROKER");
+      conf_file = getenv ("CUBRID_CONF_FOR_BROKER");
       if (conf_file && access (conf_file, R_OK | F_OK) != 0)
 	{
 	  conf_file = NULL;

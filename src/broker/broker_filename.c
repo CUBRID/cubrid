@@ -435,18 +435,24 @@ copy_cubrid_conf (const char *dest)
       error_code = -1;
       goto error;
     }
-  fstat (src_fd, &stat_buf);
 
-  dest_fd = open (dest, O_WRONLY | O_CREAT | O_TRUNC, 0400);
-  if (dest_fd < 0)
+  if (fstat (src_fd, &stat_buf) < 0)
     {
       error_code = -2;
       goto error;
     }
 
-  if (sendfile (dest_fd, src_fd, NULL, stat_buf.st_size) == -1)
+  unlink (dest);
+  dest_fd = open (dest, O_WRONLY | O_CREAT | O_TRUNC, 0400);
+  if (dest_fd < 0)
     {
       error_code = -3;
+      goto error;
+    }
+
+  if (sendfile (dest_fd, src_fd, NULL, stat_buf.st_size) == -1)
+    {
+      error_code = -4;
       goto error;
     }
 
@@ -474,15 +480,20 @@ void
 manage_cubrid_conf (T_CMD_CUBRID_CONF command)
 {
   char cubrid_conf[BROKER_PATH_MAX];
+  int error_code = 0;
 
   get_cubrid_file (FID_COPIED_CUBRID_CONF, cubrid_conf, BROKER_PATH_MAX);
 
   switch (command)
     {
     case CMD_START:
-      if (copy_cubrid_conf (cubrid_conf) == 0)
+      if ((error_code = copy_cubrid_conf (cubrid_conf)) == 0)
 	{
 	  setenv (CUBRID_CONF_FOR_BROKER, cubrid_conf, 1);
+	}
+      else
+	{
+	  _er_log_debug (ARG_FILE_LINE, "fail of copy_cubrid_conf : %d\n", error_code);
 	}
       break;
     case CMD_STOP:
