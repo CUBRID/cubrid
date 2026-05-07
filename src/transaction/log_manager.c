@@ -6259,12 +6259,13 @@ log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 	   "     Next_archive_num = %d, Last_archiv_num_for_syscrashes = %d,\n"
 	   "     Last_deleted_arv_num = %d, has_logging_been_skipped = %d,\n"
 	   "     bkup_lsa: level0 = %lld|%d, level1 = %lld|%d, level2 = %lld|%d,\n"
-	   "     Log_prefix = %s\n",
+	   "     Log_prefix = %s,\n"
+	   "     System_metadata_version = %d\n",
 	   (long long int) log_header_p->nxarv_pageid, log_header_p->nxarv_phy_pageid, log_header_p->nxarv_num,
 	   log_header_p->last_arv_num_for_syscrashes, log_header_p->last_deleted_arv_num,
 	   log_header_p->has_logging_been_skipped, LSA_AS_ARGS (&log_header_p->bkup_level0_lsa),
 	   LSA_AS_ARGS (&log_header_p->bkup_level1_lsa), LSA_AS_ARGS (&log_header_p->bkup_level2_lsa),
-	   log_header_p->prefix_name);
+	   log_header_p->prefix_name, (int) log_header_p->sysmeta_version);
 }
 
 static LOG_PAGE *
@@ -9557,6 +9558,9 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
     {
       db_make_bigint (out_values[idx], header->newest_block_mvccid);
     }
+  idx++;
+
+  db_make_int (out_values[idx], (int) header->sysmeta_version);
   idx++;
 
   assert (idx == out_cnt);
