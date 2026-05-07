@@ -119,6 +119,37 @@
 #define LK_MSG_LOCK_DEMOTE(entry) \
   LK_MSG_LOCK_HELPER(entry, MSGCAT_LK_OID_LOCK_DEMOTE)
 
+typedef struct lk_config LK_CONFIG;
+struct lk_config
+{
+  /* Transaction lock table sizing. */
+  int num_trans;
+  int tran_local_pool_max_size;
+
+  /* Object lock hash table/freelist sizing. */
+  int initial_object_locks;
+  int object_res_block_count;
+  int object_entry_block_count;
+  int min_object_locks;
+  float object_res_ratio;
+  float object_entry_ratio;
+  int object_res_block_size;
+  int object_entry_block_size;
+
+  /* Deadlock detector resources and daemon control. */
+  bool start_deadlock_detector;
+  int max_deadlock_victims;
+  int min_twfg_edge_count;
+  int mid_twfg_edge_count;
+  int max_twfg_edge_count;
+
+  /* Optional diagnostics toggled at initialization time. */
+  bool verbose_mode;
+#if defined(LK_DUMP)
+  int dump_level;
+#endif				/* LK_DUMP */
+};
+
 #define EXPAND_WAIT_FOR_ARRAY_IF_NEEDED() \
   do \
     { \
@@ -347,8 +378,25 @@ struct lk_tran_lock
   /* locking on manual duration */
   bool is_instant_duration;
 };
-/* Max size of transaction local pool of lock entries. */
-#define LOCK_TRAN_LOCAL_POOL_MAX_SIZE 10
+
+typedef struct lk_init_state LK_INIT_STATE;
+struct lk_init_state
+{
+  bool tran_lock_table_initialized;
+  int tran_lock_table_initialized_count;
+  bool object_lock_structures_initialized;
+  bool deadlock_detection_initialized;
+
+  // *INDENT-OFF*
+  lk_init_state ()
+    : tran_lock_table_initialized (false)
+    , tran_lock_table_initialized_count (0)
+    , object_lock_structures_initialized (false)
+    , deadlock_detection_initialized (false)
+  {
+  }
+  // *INDENT-ON*
+};
 
 /*
  * Lock Manager Global Data Structure
@@ -361,14 +409,14 @@ using lk_hashmap_iterator = lk_hashmap_type::iterator;
 typedef struct lk_global_data LK_GLOBAL_DATA;
 struct lk_global_data
 {
-  /* object lock table including hash table */
-  int max_obj_locks;		/* max # of object locks */
+  LK_CONFIG config;
+  LK_INIT_STATE init_state;
 
+  /* object lock table including hash table */
   lk_hashmap_type m_obj_hash_table;
   LF_FREELIST obj_free_entry_list;
 
   /* transaction lock table */
-  int num_trans;		/* # of transactions */
   LK_TRAN_LOCK *tran_lock_table;	/* transaction lock hold table */
 
   /* deadlock detection related fields */
@@ -376,40 +424,36 @@ struct lk_global_data
   struct timeval last_deadlock_run;	/* last deadlock detection time */
   LK_WFG_NODE *TWFG_node;	/* transaction WFG node */
   LK_WFG_EDGE *TWFG_edge;	/* transaction WFG edge */
+  LK_WFG_EDGE *TWFG_edge_storage;	/* reusable WFG edge storage */
+  LK_DEADLOCK_VICTIM *victims;	/* deadlock victims selected in current detection */
   int max_TWFG_edge;
   int TWFG_free_edge_idx;
   int global_edge_seq_num;
 
   /* miscellaneous things */
   short no_victim_case_count;
-  bool verbose_mode;
   // *INDENT-OFF*
   std::atomic_int deadlock_and_timeout_detector;
   // *INDENT-ON*
-#if defined(LK_DUMP)
-  bool dump_level;
-#endif				/* LK_DUMP */
 
   // *INDENT-OFF*
   lk_global_data ()
-    : max_obj_locks (0)
+    : config {}
+    , init_state {}
     , m_obj_hash_table {}
     , obj_free_entry_list LF_FREELIST_INITIALIZER
-    , num_trans (0)
     , tran_lock_table (NULL)
     , DL_detection_mutex PTHREAD_MUTEX_INITIALIZER
     , last_deadlock_run { 0, 0 }
     , TWFG_node (NULL)
     , TWFG_edge (NULL)
+    , TWFG_edge_storage (NULL)
+    , victims (NULL)
     , max_TWFG_edge (0)
     , TWFG_free_edge_idx (0)
     , global_edge_seq_num (0)
     , no_victim_case_count (0)
-    , verbose_mode (false)
     , deadlock_and_timeout_detector { 0 }
-#if defined(LK_DUMP)
-    , dump_level (0)
-#endif
   {
   }
   // *INDENT-ON*
@@ -419,6 +463,7 @@ LK_GLOBAL_DATA lk_Gl;
 
 /* size of each data structure */
 static const int SIZEOF_LK_LOCKINFO = sizeof (LK_LOCKINFO);
+static const int SIZEOF_LK_DEADLOCK_VICTIM = sizeof (LK_DEADLOCK_VICTIM);
 static const int SIZEOF_LK_WFG_NODE = sizeof (LK_WFG_NODE);
 static const int SIZEOF_LK_WFG_EDGE = sizeof (LK_WFG_EDGE);
 static const int SIZEOF_LK_TRAN_LOCK = sizeof (LK_TRAN_LOCK);
@@ -428,40 +473,14 @@ static const int SIZEOF_LK_ENTRY_BLOCK = sizeof (LK_ENTRY_BLOCK);
 static const int SIZEOF_LK_RES_BLOCK = sizeof (LK_RES_BLOCK);
 static const int SIZEOF_LK_ACQOBJ_LOCK = sizeof (LK_ACQOBJ_LOCK);
 
-/* minimum # of locks that are required */
-/* TODO : change const */
-#define LK_MIN_OBJECT_LOCKS  (MAX_NTRANS * 300)
-
-/* the ratio in the number of lock entries for each entry type */
-static const float LK_RES_RATIO = 0.1f;
-static const float LK_ENTRY_RATIO = 0.1f;
-
-/* the lock entry expansion count */
-/* TODO : change const */
-#define LK_MORE_RES_COUNT  (MAX_NTRANS * 20 * LK_RES_RATIO)
-#define LK_MORE_ENTRY_COUNT (MAX_NTRANS * 20 * LK_ENTRY_RATIO)
-
 /* miscellaneous constants */
 static const int LK_SLEEP_MAX_COUNT = 3;
 #define LK_LOCKINFO_FIXED_COUNT	30
-/* TODO : change const */
-#define LK_MAX_VICTIM_COUNT  300
-
-/* transaction WFG edge related constants */
-static const int LK_MIN_TWFG_EDGE_COUNT = 200;
-/* TODO : change const */
-#define LK_MID_TWFG_EDGE_COUNT 1000
-/* TODO : change const */
-#define LK_MAX_TWFG_EDGE_COUNT (MAX_NTRANS * MAX_NTRANS)
-
 #define DEFAULT_WAIT_USERS	10
 static const int LK_COMPOSITE_LOCK_OID_INCREMENT = 100;
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
-
-static LK_WFG_EDGE TWFG_edge_block[LK_MID_TWFG_EDGE_COUNT];
-static LK_DEADLOCK_VICTIM victims[LK_MAX_VICTIM_COUNT];
 static int victim_count;
 #else /* !SERVER_MODE */
 static int lk_Standalone_has_xlock = 0;
@@ -481,6 +500,10 @@ using tran_lock_waiters_array_type = std::array<THREAD_ENTRY *, DEFAULT_LOCK_WAI
 // *INDENT-ON*
 
 #if defined(SERVER_MODE)
+static LK_CONFIG lock_make_default_config (void);
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
 static void lock_initialize_entry (LK_ENTRY * entry_ptr);
 static void lock_initialize_entry_as_granted (LK_ENTRY * entry_ptr, int tran_index, LK_RES * res, LOCK lock);
 static void lock_initialize_entry_as_blocked (LK_ENTRY * entry_ptr, THREAD_ENTRY * thread_p, int tran_index,
@@ -491,12 +514,15 @@ static void lock_initialize_resource (LK_RES * res_ptr);
 #endif
 static void lock_initialize_resource_as_allocated (LK_RES * res_ptr, LOCK lock);
 static unsigned int lock_get_hash_value (const OID * oid, int htsize);
+static LK_CONFIG lock_make_runtime_config (void);
+static int lock_initialize_with_config (const LK_CONFIG * config);
 static int lock_initialize_tran_lock_table (void);
-static void lock_initialize_object_hash_table (void);
-static int lock_initialize_object_lock_entry_list (void);
+static int lock_initialize_object_lock_structures (void);
 static int lock_initialize_deadlock_detection (void);
 static int lock_remove_resource (THREAD_ENTRY * thread_p, LK_RES * res_ptr);
 static void lock_finalize_tran_lock_table (void);
+static void lock_finalize_object_lock_structures (void);
+static void lock_finalize_deadlock_detection (void);
 static void lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index);
 static int lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index);
 static void lock_insert_into_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index);
@@ -1039,13 +1065,15 @@ lock_get_hash_value (const OID * oid, int htsize)
 #endif /* SERVER_MODE */
 
 /*
- *  Private Functions Group 1: initalize and finalize major structures
+ *  Private Functions Group: initialize/finalize major lock-manager structures
  *
- *   - lock_init_tran_lock_table()
- *   - lock_init_object_hash_table()
- *   - lock_init_object_lock_res_list()
- *   - lock_init_object_lock_entry_list()
- *   - lock_init_deadlock_detection()
+ *   - lock_make_runtime_config()
+ *   - lock_initialize_tran_lock_table()
+ *   - lock_initialize_object_lock_structures()
+ *   - lock_initialize_deadlock_detection()
+ *   - lock_finalize_tran_lock_table()
+ *   - lock_finalize_object_lock_structures()
+ *   - lock_finalize_deadlock_detection()
  */
 
 #if defined(SERVER_MODE)
@@ -1061,35 +1089,29 @@ static int
 lock_initialize_tran_lock_table (void)
 {
   LK_TRAN_LOCK *tran_lock;	/* pointer to transaction hold entry */
-  int num_trans;		/* max transaction */
   int i, j;			/* loop variable */
   LK_ENTRY *entry = NULL;
 
-  /* initialize the number of transactions */
-  num_trans = MAX_NTRANS;
-  lk_Gl.num_trans = 0;
-
   /* allocate memory space for transaction lock table */
-  lk_Gl.tran_lock_table = (LK_TRAN_LOCK *) malloc (SIZEOF_LK_TRAN_LOCK * num_trans);
+  lk_Gl.tran_lock_table = (LK_TRAN_LOCK *) malloc (SIZEOF_LK_TRAN_LOCK * lk_Gl.config.num_trans);
   if (lk_Gl.tran_lock_table == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (size_t) (SIZEOF_LK_TRAN_LOCK * num_trans));
+	      (size_t) (SIZEOF_LK_TRAN_LOCK * lk_Gl.config.num_trans));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+  lk_Gl.init_state.tran_lock_table_initialized = true;
 
   /* initialize all the entries of transaction lock table */
-  memset (lk_Gl.tran_lock_table, 0, SIZEOF_LK_TRAN_LOCK * num_trans);
-  for (i = 0; i < num_trans; i++)
+  memset (lk_Gl.tran_lock_table, 0, SIZEOF_LK_TRAN_LOCK * lk_Gl.config.num_trans);
+  for (i = 0; i < lk_Gl.config.num_trans; i++)
     {
-      /* increasing number of initialized transaction */
-      ++lk_Gl.num_trans;
-
       tran_lock = &lk_Gl.tran_lock_table[i];
       pthread_mutex_init (&tran_lock->hold_mutex, NULL);
       pthread_mutex_init (&tran_lock->non2pl_mutex, NULL);
+      lk_Gl.init_state.tran_lock_table_initialized_count++;
 
-      for (j = 0; j < LOCK_TRAN_LOCAL_POOL_MAX_SIZE; j++)
+      for (j = 0; j < lk_Gl.config.tran_local_pool_max_size; j++)
 	{
 	  entry = (LK_ENTRY *) malloc (sizeof (LK_ENTRY));
 	  if (entry == NULL)
@@ -1102,7 +1124,7 @@ lock_initialize_tran_lock_table (void)
 	  entry->next = tran_lock->lk_entry_pool;
 	  tran_lock->lk_entry_pool = entry;
 	}
-      tran_lock->lk_entry_pool_count = LOCK_TRAN_LOCAL_POOL_MAX_SIZE;
+      tran_lock->lk_entry_pool_count = lk_Gl.config.tran_local_pool_max_size;
     }
 
   return NO_ERROR;
@@ -1110,59 +1132,135 @@ lock_initialize_tran_lock_table (void)
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
-/*
- * lock_initialize_object_hash_table - Initializes the object lock hash table
- *
- * return: error code
- *
- * Note:This function initializes an object lock hash table.
- */
-static void
-lock_initialize_object_hash_table (void)
+static LK_CONFIG
+lock_make_default_config (void)
 {
-#define LK_INITIAL_OBJECT_LOCK_TABLE_SIZE       10000
+  static const int DEFAULT_TRAN_LOCAL_POOL_MAX_SIZE = 10;
+  LK_CONFIG config
+  {
+  };
 
-  lk_Gl.max_obj_locks = LK_INITIAL_OBJECT_LOCK_TABLE_SIZE;
+  /* Transaction lock table sizing. */
+  config.num_trans = MAX_NTRANS;
+  config.tran_local_pool_max_size = DEFAULT_TRAN_LOCAL_POOL_MAX_SIZE;
 
-  const int obj_hash_size = MAX (lk_Gl.max_obj_locks, LK_MIN_OBJECT_LOCKS);
+  /* Object lock hash table/freelist sizing. */
+  config.initial_object_locks = 10000;
+  config.object_res_block_count = 2;
+  config.object_entry_block_count = 1;
+  config.min_object_locks = MAX_NTRANS * 300;
+  config.object_res_ratio = 0.1f;
+  config.object_entry_ratio = 0.1f;
 
-  const int block_count = 2;
-  const int block_size = (int) MAX ((lk_Gl.max_obj_locks * LK_RES_RATIO) / block_count, 1);
-  lk_Obj_lock_res_desc.max_alloc_cnt = prm_get_integer_value (PRM_ID_LK_ESCALATION_AT);
+  /* Deadlock detector resources and daemon control. */
+  config.start_deadlock_detector = true;
+  config.max_deadlock_victims = 300;
+  config.min_twfg_edge_count = 200;
+  config.mid_twfg_edge_count = 1000;
+  config.max_twfg_edge_count = MAX_NTRANS * MAX_NTRANS;
 
-  /* initialize object hash table */
-  lk_Gl.m_obj_hash_table.init (obj_lock_res_Ts, THREAD_TS_OBJ_LOCK_RES, obj_hash_size, block_size, block_count,
-			       lk_Obj_lock_res_desc);
+  /* Optional diagnostics toggled at initialization time. */
+#if defined(CUBRID_DEBUG)
+  config.verbose_mode = true;
+#else
+  config.verbose_mode = false;
+#endif
+#if defined(LK_DUMP)
+  config.dump_level = 0;
+#endif
+
+  return config;
 }
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
 /*
- * lock_initialize_object_lock_entry_list - Initializes the object lock entry list
+ * lock_make_runtime_config - Build lock-manager runtime config from defaults.
+ *
+ * Note: Organized as three passes over the config value.
+ *   1. Start from defaults.
+ *   2. Derive fields that depend on other fields (sizing based on num_trans etc.).
+ *   3. Enforce invariants required by lock_add_WFG_edge to avoid heap overflow
+ *      during 2-stage TWFG buffer expansion:
+ *        min_twfg_edge_count < mid_twfg_edge_count <= max_twfg_edge_count
+ *   4. Apply environment-variable overrides for diagnostics.
+ */
+static LK_CONFIG
+lock_make_runtime_config (void)
+{
+  LK_CONFIG runtime_config = lock_make_default_config ();
+  const char *env_value;
+
+  /* Derived sizing. */
+  runtime_config.max_twfg_edge_count = runtime_config.num_trans * runtime_config.num_trans;
+  runtime_config.min_object_locks = runtime_config.num_trans * 300;
+  runtime_config.object_res_block_size =
+    (int) MAX ((runtime_config.initial_object_locks * runtime_config.object_res_ratio) /
+	       runtime_config.object_res_block_count, 1);
+  runtime_config.object_entry_block_size =
+    (int) MAX ((runtime_config.initial_object_locks * runtime_config.object_entry_ratio), 1);
+
+  /* Enforce TWFG edge count invariants. */
+  if (runtime_config.mid_twfg_edge_count <= runtime_config.min_twfg_edge_count)
+    {
+      runtime_config.mid_twfg_edge_count = runtime_config.min_twfg_edge_count + 1;
+    }
+  if (runtime_config.max_twfg_edge_count < runtime_config.mid_twfg_edge_count)
+    {
+      runtime_config.max_twfg_edge_count = runtime_config.mid_twfg_edge_count + 1;
+    }
+
+  /* Environment overrides for diagnostics. */
+#if defined(CUBRID_DEBUG)
+  runtime_config.verbose_mode = true;
+#else /* !CUBRID_DEBUG */
+  env_value = envvar_get ("LK_VERBOSE_SUSPENDED");
+  if (env_value != NULL)
+    {
+      runtime_config.verbose_mode = (bool) atoi (env_value);
+    }
+#endif /* !CUBRID_DEBUG */
+
+#if defined(LK_DUMP)
+  env_value = envvar_get ("LK_DUMP_LEVEL");
+  if (env_value != NULL)
+    {
+      runtime_config.dump_level = atoi (env_value);
+      if (runtime_config.dump_level < 0 || runtime_config.dump_level > 3)
+	{
+	  runtime_config.dump_level = 0;
+	}
+    }
+#endif /* LK_DUMP */
+
+  return runtime_config;
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_initialize_object_lock_structures - Initialize object lock hash table and entry freelist.
  *
  * return: error code
- *
- * Note:
- *     This function initializes following two lists.
- *     1. a list of object lock entry block
- *        => each node has object lock entry block.
- *     2. a list of freed object lock entries.
  */
 static int
-lock_initialize_object_lock_entry_list (void)
+lock_initialize_object_lock_structures (void)
 {
-  int block_count, block_size, ret;
+  const int obj_hash_size = MAX (lk_Gl.config.initial_object_locks, lk_Gl.config.min_object_locks);
 
-  /* initialize the entry freelist */
-  block_count = 1;
-  block_size = (int) MAX ((lk_Gl.max_obj_locks * LK_ENTRY_RATIO), 1);
+  lk_Obj_lock_res_desc.max_alloc_cnt = prm_get_integer_value (PRM_ID_LK_ESCALATION_AT);
+  lk_Gl.m_obj_hash_table.init (obj_lock_res_Ts, THREAD_TS_OBJ_LOCK_RES, obj_hash_size,
+			       lk_Gl.config.object_res_block_size, lk_Gl.config.object_res_block_count,
+			       lk_Obj_lock_res_desc);
+
   obj_lock_entry_desc.max_alloc_cnt = prm_get_integer_value (PRM_ID_LK_ESCALATION_AT);
-
-  ret = lf_freelist_init (&lk_Gl.obj_free_entry_list, block_count, block_size, &obj_lock_entry_desc, &obj_lock_ent_Ts);
-  if (ret != NO_ERROR)
+  if (lf_freelist_init (&lk_Gl.obj_free_entry_list, lk_Gl.config.object_entry_block_count,
+			lk_Gl.config.object_entry_block_size, &obj_lock_entry_desc, &obj_lock_ent_Ts) != NO_ERROR)
     {
+      lk_Gl.m_obj_hash_table.destroy ();
       return ER_FAILED;
     }
+  lk_Gl.init_state.object_lock_structures_initialized = true;
 
   return NO_ERROR;
 }
@@ -1182,23 +1280,44 @@ lock_initialize_deadlock_detection (void)
   int i;
 
   pthread_mutex_init (&lk_Gl.DL_detection_mutex, NULL);
+  lk_Gl.init_state.deadlock_detection_initialized = true;
   gettimeofday (&lk_Gl.last_deadlock_run, NULL);
 
   /* allocate transaction WFG node table */
-  lk_Gl.TWFG_node = (LK_WFG_NODE *) malloc (SIZEOF_LK_WFG_NODE * lk_Gl.num_trans);
+  lk_Gl.TWFG_node = (LK_WFG_NODE *) malloc (SIZEOF_LK_WFG_NODE * lk_Gl.config.num_trans);
   if (lk_Gl.TWFG_node == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (size_t) (SIZEOF_LK_WFG_NODE * lk_Gl.num_trans));
+	      (size_t) (SIZEOF_LK_WFG_NODE * lk_Gl.config.num_trans));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   /* initialize transaction WFG node table */
-  for (i = 0; i < lk_Gl.num_trans; i++)
+  for (i = 0; i < lk_Gl.config.num_trans; i++)
     {
       lk_Gl.TWFG_node[i].DL_victim = false;
       lk_Gl.TWFG_node[i].checked_by_deadlock_detector = false;
       lk_Gl.TWFG_node[i].thrd_wait_stime = 0;
     }
+
+  lk_Gl.TWFG_edge_storage = (LK_WFG_EDGE *) malloc (SIZEOF_LK_WFG_EDGE * lk_Gl.config.mid_twfg_edge_count);
+  if (lk_Gl.TWFG_edge_storage == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) (SIZEOF_LK_WFG_EDGE * lk_Gl.config.mid_twfg_edge_count));
+      free_and_init (lk_Gl.TWFG_node);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  lk_Gl.victims = (LK_DEADLOCK_VICTIM *) malloc (SIZEOF_LK_DEADLOCK_VICTIM * lk_Gl.config.max_deadlock_victims);
+  if (lk_Gl.victims == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) (SIZEOF_LK_DEADLOCK_VICTIM * lk_Gl.config.max_deadlock_victims));
+      free_and_init (lk_Gl.TWFG_edge_storage);
+      free_and_init (lk_Gl.TWFG_node);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memset (lk_Gl.victims, 0, SIZEOF_LK_DEADLOCK_VICTIM * lk_Gl.config.max_deadlock_victims);
 
   /* initialize other related fields */
   lk_Gl.TWFG_edge = NULL;
@@ -2160,7 +2279,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
 
   /* The caller is holding the thread entry mutex */
 
-  if (lk_Gl.verbose_mode)
+  if (lk_Gl.config.verbose_mode)
     {
       const char *__client_prog_name;	/* Client program name for transaction */
       const char *__client_user_name;	/* Client user name for transaction */
@@ -2339,7 +2458,7 @@ lock_resume (LK_ENTRY * entry_ptr, int state)
 {
   /* The caller is holding the thread entry mutex */
   /* The caller has identified the fact that lockwait is not NULL. that is, the thread is suspended. */
-  if (lk_Gl.verbose_mode == true)
+  if (lk_Gl.config.verbose_mode == true)
     {
       const char *__client_prog_name;	/* Client program name for transaction */
       const char *__client_user_name;	/* Client user name for transaction */
@@ -3095,7 +3214,7 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
   int compat1, compat2;
 
 #if defined(LK_DUMP)
-  if (lk_Gl.dump_level >= 1)
+  if (lk_Gl.config.dump_level >= 1)
     {
       fprintf (stderr,
 	       "LK_DUMP::lk_internal_lock_object_instant()\n"
@@ -3282,7 +3401,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
 
   new_mode = group_mode = old_mode = NULL_LOCK;
 #if defined(LK_DUMP)
-  if (lk_Gl.dump_level >= 1)
+  if (lk_Gl.config.dump_level >= 1)
     {
       fprintf (stderr,
 	       "LK_DUMP::lk_internal_lock_object()\n"
@@ -3955,7 +4074,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
   int rv;
 
 #if defined(LK_DUMP)
-  if (lk_Gl.dump_level >= 1)
+  if (lk_Gl.config.dump_level >= 1)
     {
       fprintf (stderr,
 	       "LK_DUMP::lk_internal_unlock_object()\n"
@@ -4235,7 +4354,7 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
   assert (NULL_LOCK < to_be_lock && to_be_lock != U_LOCK && to_be_lock < holder->granted_mode);
 
 #if defined(LK_DUMP)
-  if (lk_Gl.dump_level >= 1)
+  if (lk_Gl.config.dump_level >= 1)
     {
       fprintf (stderr, "LK_DUMP::lk_demote_class_lock ()\n"
 	       "  tran(%2d) : oid(%d|%d|%d), class_oid(%d|%d|%d), LOCK(%7s -> %7s)\n", entry_ptr->tran_index,
@@ -4731,21 +4850,21 @@ lock_add_WFG_edge (int from_tran_index, int to_tran_index, int holder_flag, INT6
 
   if (lk_Gl.TWFG_free_edge_idx == -1)
     {				/* too many WFG edges */
-      if (lk_Gl.max_TWFG_edge == LK_MIN_TWFG_EDGE_COUNT)
+      if (lk_Gl.max_TWFG_edge == lk_Gl.config.min_twfg_edge_count)
 	{
-	  lk_Gl.max_TWFG_edge = LK_MID_TWFG_EDGE_COUNT;
-	  for (i = LK_MIN_TWFG_EDGE_COUNT; i < lk_Gl.max_TWFG_edge; i++)
+	  lk_Gl.max_TWFG_edge = lk_Gl.config.mid_twfg_edge_count;
+	  for (i = lk_Gl.config.min_twfg_edge_count; i < lk_Gl.max_TWFG_edge; i++)
 	    {
 	      lk_Gl.TWFG_edge[i].to_tran_index = -1;
 	      lk_Gl.TWFG_edge[i].next = (i + 1);
 	    }
 	  lk_Gl.TWFG_edge[lk_Gl.max_TWFG_edge - 1].next = -1;
-	  lk_Gl.TWFG_free_edge_idx = LK_MIN_TWFG_EDGE_COUNT;
+	  lk_Gl.TWFG_free_edge_idx = lk_Gl.config.min_twfg_edge_count;
 	}
-      else if (lk_Gl.max_TWFG_edge == LK_MID_TWFG_EDGE_COUNT)
+      else if (lk_Gl.max_TWFG_edge == lk_Gl.config.mid_twfg_edge_count)
 	{
 	  temp_ptr = (char *) lk_Gl.TWFG_edge;
-	  lk_Gl.max_TWFG_edge = LK_MAX_TWFG_EDGE_COUNT;
+	  lk_Gl.max_TWFG_edge = lk_Gl.config.max_twfg_edge_count;
 	  lk_Gl.TWFG_edge = (LK_WFG_EDGE *) malloc (SIZEOF_LK_WFG_EDGE * lk_Gl.max_TWFG_edge);
 	  if (lk_Gl.TWFG_edge == NULL)
 	    {
@@ -4753,14 +4872,14 @@ lock_add_WFG_edge (int from_tran_index, int to_tran_index, int holder_flag, INT6
 		      (size_t) (SIZEOF_LK_WFG_EDGE * lk_Gl.max_TWFG_edge));
 	      return ER_OUT_OF_VIRTUAL_MEMORY;	/* no method */
 	    }
-	  (void) memcpy ((char *) lk_Gl.TWFG_edge, temp_ptr, (SIZEOF_LK_WFG_EDGE * LK_MID_TWFG_EDGE_COUNT));
-	  for (i = LK_MID_TWFG_EDGE_COUNT; i < lk_Gl.max_TWFG_edge; i++)
+	  (void) memcpy ((char *) lk_Gl.TWFG_edge, temp_ptr, (SIZEOF_LK_WFG_EDGE * lk_Gl.config.mid_twfg_edge_count));
+	  for (i = lk_Gl.config.mid_twfg_edge_count; i < lk_Gl.max_TWFG_edge; i++)
 	    {
 	      lk_Gl.TWFG_edge[i].to_tran_index = -1;
 	      lk_Gl.TWFG_edge[i].next = (i + 1);
 	    }
 	  lk_Gl.TWFG_edge[lk_Gl.max_TWFG_edge - 1].next = -1;
-	  lk_Gl.TWFG_free_edge_idx = LK_MID_TWFG_EDGE_COUNT;
+	  lk_Gl.TWFG_free_edge_idx = lk_Gl.config.mid_twfg_edge_count;
 	}
       else
 	{
@@ -4952,7 +5071,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
       tranid = logtb_find_tranid (t);
       if (logtb_is_active (thread_p, tranid) == false)
 	{
-	  victims[victim_count].tran_index = NULL_TRAN_INDEX;
+	  lk_Gl.victims[victim_count].tran_index = NULL_TRAN_INDEX;
 	  inact_trans_found = true;
 #if defined(CUBRID_DEBUG)
 	  er_log_debug (ARG_FILE_LINE,
@@ -4964,15 +5083,15 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	}
       else
 	{
-	  victims[victim_count].tran_index = t;
-	  victims[victim_count].tranid = tranid;
-	  victims[victim_count].can_timeout = LK_CAN_TIMEOUT (logtb_find_wait_msecs (t));
+	  lk_Gl.victims[victim_count].tran_index = t;
+	  lk_Gl.victims[victim_count].tranid = tranid;
+	  lk_Gl.victims[victim_count].can_timeout = LK_CAN_TIMEOUT (logtb_find_wait_msecs (t));
 	  lock_holder_found = true;
 	}
     }
   else
     {
-      victims[victim_count].tran_index = NULL_TRAN_INDEX;
+      lk_Gl.victims[victim_count].tran_index = NULL_TRAN_INDEX;
 #if defined(CUBRID_DEBUG)
       tran_index_set[WFG_nidx] = t;
       WFG_nidx += 1;
@@ -5025,7 +5144,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
       if (TWFG_node[v].candidate == true)
 	{
 	  tranid = logtb_find_tranid (v);
-	  victim_tran_index = victims[victim_count].tran_index;
+	  victim_tran_index = lk_Gl.victims[victim_count].tran_index;
 	  if (logtb_is_active (thread_p, tranid) == false)	/* Must be active transaction. */
 	    {
 	      inact_trans_found = true;
@@ -5074,9 +5193,9 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 		       *  Prefer a transaction with a closer timeout.
 		       *  Prefer the youngest transaction.
 		       */
-		      if ((victims[victim_count].can_timeout == false && can_timeout == true)
-			  || (victims[victim_count].can_timeout == can_timeout
-			      && (LK_ISYOUNGER (tranid, victims[victim_count].tranid))))
+		      if ((lk_Gl.victims[victim_count].can_timeout == false && can_timeout == true)
+			  || (lk_Gl.victims[victim_count].can_timeout == can_timeout
+			      && (LK_ISYOUNGER (tranid, lk_Gl.victims[victim_count].tranid))))
 			{
 			  victim_tranid = tranid;
 			}
@@ -5085,9 +5204,9 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 
 	      if (victim_tranid != NULL_TRANID)
 		{
-		  victims[victim_count].tran_index = v;
-		  victims[victim_count].tranid = victim_tranid;
-		  victims[victim_count].can_timeout = can_timeout;
+		  lk_Gl.victims[victim_count].tran_index = v;
+		  lk_Gl.victims[victim_count].tranid = victim_tranid;
+		  lk_Gl.victims[victim_count].can_timeout = can_timeout;
 		}
 	    }
 	}
@@ -5101,23 +5220,24 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
       v = TWFG_node[v].ancestor;
     }
 
-  if (victims[victim_count].tran_index != NULL_TRAN_INDEX)
+  if (lk_Gl.victims[victim_count].tran_index != NULL_TRAN_INDEX)
     {
 #if defined(CUBRID_DEBUG)
-      if (TWFG_node[victims[victim_count].tran_index].checked_by_deadlock_detector == false)
+      if (TWFG_node[lk_Gl.victims[victim_count].tran_index].checked_by_deadlock_detector == false)
 	{
-	  er_log_debug (ARG_FILE_LINE, "victim(index=%d) is old in deadlock cycle\n", victims[victim_count].tran_index);
+	  er_log_debug (ARG_FILE_LINE, "victim(index=%d) is old in deadlock cycle\n",
+			lk_Gl.victims[victim_count].tran_index);
 	}
 #endif /* CUBRID_DEBUG */
 
-      victims[victim_count].log_trunc = false;
+      lk_Gl.victims[victim_count].log_trunc = false;
 
       log_max_entries = num_tran_in_cycle * 2;
       if (log_max_entries > MAX_NUM_LOCKS_DUMP_TO_EVENT_LOG)
 	{
 	  log_max_entries =
 	    MAX_NUM_LOCKS_DUMP_TO_EVENT_LOG % 2 ? MAX_NUM_LOCKS_DUMP_TO_EVENT_LOG - 1 : MAX_NUM_LOCKS_DUMP_TO_EVENT_LOG;
-	  victims[victim_count].log_trunc = true;
+	  lk_Gl.victims[victim_count].log_trunc = true;
 	}
 
       log_num_entries = 0;
@@ -5144,10 +5264,10 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	  assert (log_num_entries == log_max_entries);
 	}
 
-      victims[victim_count].log_num_entries = log_num_entries;
-      victims[victim_count].log_entries = log_entries;
+      lk_Gl.victims[victim_count].log_num_entries = log_num_entries;
+      lk_Gl.victims[victim_count].log_entries = log_entries;
 
-      TWFG_node[victims[victim_count].tran_index].current = -1;
+      TWFG_node[lk_Gl.victims[victim_count].tran_index].current = -1;
       victim_count++;
     }
   else
@@ -5230,10 +5350,10 @@ lock_dump_deadlock_victims (THREAD_ENTRY * thread_p, FILE * outfile)
   count = 0;
   for (k = 0; k < victim_count; k++)
     {
-      if (!victims[k].can_timeout)
+      if (!lk_Gl.victims[k].can_timeout)
 	{
 	  fprintf (outfile, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DEADLOCK_ABORT),
-		   victims[k].tran_index);
+		   lk_Gl.victims[k].tran_index);
 	  if ((count % 10) == 9)
 	    {
 	      fprintf (outfile, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
@@ -5247,10 +5367,10 @@ lock_dump_deadlock_victims (THREAD_ENTRY * thread_p, FILE * outfile)
   count = 0;
   for (k = 0; k < victim_count; k++)
     {
-      if (victims[k].can_timeout)
+      if (lk_Gl.victims[k].can_timeout)
 	{
 	  fprintf (outfile, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DEADLOCK_TIMEOUT),
-		   victims[k].tran_index);
+		   lk_Gl.victims[k].tran_index);
 	  if ((count % 10) == 9)
 	    {
 	      fprintf (outfile, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
@@ -5614,32 +5734,21 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 }
 #endif /* SERVER_MODE */
 
-/*
- * lock_initialize - Initialize the lock manager
- *
- * return: error code
- *
- *   estimate_nobj_locks(in): estimate_nobj_locks(useless)
- *
- * Note:Initialize the lock manager memory structures.
- */
-int
-lock_initialize (void)
+#if defined(SERVER_MODE)
+static int
+lock_initialize_with_config (const LK_CONFIG * config)
 {
-#if !defined (SERVER_MODE)
-  lk_Standalone_has_xlock = false;
-  return NO_ERROR;
-#else /* !SERVER_MODE */
-  const char *env_value;
   int error_code = NO_ERROR;
+
+  assert (config != NULL);
+  lk_Gl.config = *config;
 
   error_code = lock_initialize_tran_lock_table ();
   if (error_code != NO_ERROR)
     {
       goto error;
     }
-  lock_initialize_object_hash_table ();
-  error_code = lock_initialize_object_lock_entry_list ();
+  error_code = lock_initialize_object_lock_structures ();
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -5650,44 +5759,38 @@ lock_initialize (void)
       goto error;
     }
 
-  /* initialize some parameters */
-#if defined(CUBRID_DEBUG)
-  lk_Gl.verbose_mode = true;
   lk_Gl.no_victim_case_count = 0;
-#else /* !CUBRID_DEBUG */
-  env_value = envvar_get ("LK_VERBOSE_SUSPENDED");
-  if (env_value != NULL)
-    {
-      lk_Gl.verbose_mode = (bool) atoi (env_value);
-      if (lk_Gl.verbose_mode != false)
-	{
-	  lk_Gl.verbose_mode = true;
-	}
-    }
-  lk_Gl.no_victim_case_count = 0;
-#endif /* !CUBRID_DEBUG */
 
-#if defined(LK_DUMP)
-  lk_Gl.dump_level = 0;
-  env_value = envvar_get ("LK_DUMP_LEVEL");
-  if (env_value != NULL)
+  if (lk_Gl.config.start_deadlock_detector)
     {
-      lk_Gl.dump_level = atoi (env_value);
-      if (lk_Gl.dump_level < 0 || lk_Gl.dump_level > 3)
-	{
-	  lk_Gl.dump_level = 0;
-	}
+      lock_deadlock_detect_daemon_init ();
     }
-#endif /* LK_DUMP */
-
-  lock_deadlock_detect_daemon_init ();
 
   return error_code;
 
 error:
   (void) lock_finalize ();
   return error_code;
-#endif /* !SERVER_MODE */
+}
+#endif /* SERVER_MODE */
+
+/*
+ * lock_initialize - Initialize the lock manager
+ *
+ * return: error code
+ *
+ * Note:Initialize the lock manager memory structures.
+ */
+int
+lock_initialize (void)
+{
+#if !defined(SERVER_MODE)
+  lk_Standalone_has_xlock = false;
+  return NO_ERROR;
+#else /* !defined(SERVER_MODE) */
+  LK_CONFIG runtime_config = lock_make_runtime_config ();
+  return lock_initialize_with_config (&runtime_config);
+#endif /* !defined(SERVER_MODE) */
 }
 
 #if defined(SERVER_MODE)
@@ -5705,9 +5808,9 @@ lock_finalize_tran_lock_table (void)
   int i;
 
   /* remove resources */
-  if (lk_Gl.tran_lock_table != NULL)
+  if (lk_Gl.init_state.tran_lock_table_initialized)
     {
-      for (i = 0; i < lk_Gl.num_trans; i++)
+      for (i = 0; i < lk_Gl.init_state.tran_lock_table_initialized_count; i++)
 	{
 	  tran_lock = &lk_Gl.tran_lock_table[i];
 	  pthread_mutex_destroy (&tran_lock->hold_mutex);
@@ -5721,9 +5824,54 @@ lock_finalize_tran_lock_table (void)
 	}
       free_and_init (lk_Gl.tran_lock_table);
     }
+  lk_Gl.init_state.tran_lock_table_initialized = false;
+  lk_Gl.init_state.tran_lock_table_initialized_count = 0;
+}
+#endif /* SERVER_MODE */
 
-  /* reset the number of transactions */
-  lk_Gl.num_trans = 0;
+#if defined(SERVER_MODE)
+static void
+lock_finalize_object_lock_structures (void)
+{
+  if (lk_Gl.init_state.object_lock_structures_initialized)
+    {
+      lk_Gl.m_obj_hash_table.destroy ();
+      lf_freelist_destroy (&lk_Gl.obj_free_entry_list);
+      lk_Gl.init_state.object_lock_structures_initialized = false;
+    }
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+static void
+lock_finalize_deadlock_detection (void)
+{
+  if (lk_Gl.victims != NULL)
+    {
+      free_and_init (lk_Gl.victims);
+    }
+  if (lk_Gl.TWFG_edge != NULL && lk_Gl.TWFG_edge != lk_Gl.TWFG_edge_storage)
+    {
+      free_and_init (lk_Gl.TWFG_edge);
+    }
+  else
+    {
+      lk_Gl.TWFG_edge = NULL;
+    }
+  if (lk_Gl.TWFG_edge_storage != NULL)
+    {
+      free_and_init (lk_Gl.TWFG_edge_storage);
+    }
+  lk_Gl.TWFG_edge = NULL;
+  if (lk_Gl.TWFG_node != NULL)
+    {
+      free_and_init (lk_Gl.TWFG_node);
+    }
+  if (lk_Gl.init_state.deadlock_detection_initialized)
+    {
+      pthread_mutex_destroy (&lk_Gl.DL_detection_mutex);
+      lk_Gl.init_state.deadlock_detection_initialized = false;
+    }
 }
 #endif /* SERVER_MODE */
 
@@ -5829,6 +5977,7 @@ void
 lock_deadlock_detect_daemon_destroy ()
 {
   cubthread::get_manager ()->destroy_daemon (lock_Deadlock_detect_daemon);
+  lock_Deadlock_detect_daemon = NULL;
 }
 #endif /* SERVER_MODE */
 
@@ -5853,7 +6002,7 @@ lock_deadlock_detect_daemon_get_stats (UINT64 * statsp)
  * return: nothing
  *
  * Note:This function finalize the lock manager.
- *     Memory structures of the lock manager are deallocated.
+ *     Lock-manager owned structures are deallocated in reverse initialization order.
  */
 void
 lock_finalize (void)
@@ -5861,27 +6010,17 @@ lock_finalize (void)
 #if !defined (SERVER_MODE)
   lk_Standalone_has_xlock = false;
 #else /* !SERVER_MODE */
-  /* Release all the locks and awake all transactions */
-  /* TODO: Why ? */
-  /* transaction deadlock information table */
-  /* deallocate memory space for the transaction deadlock info. */
-  if (lk_Gl.TWFG_node != NULL)
+  if (lock_Deadlock_detect_daemon != NULL)
     {
-      free_and_init (lk_Gl.TWFG_node);
+      lock_deadlock_detect_daemon_destroy ();
     }
-
-  /* transaction lock information table */
+  lock_finalize_deadlock_detection ();
+  lock_finalize_object_lock_structures ();
   lock_finalize_tran_lock_table ();
-  pthread_mutex_destroy (&lk_Gl.DL_detection_mutex);
-
-  /* reset max number of object locks */
-  lk_Gl.max_obj_locks = 0;
-
-  /* destroy hash table and freelists */
-  lk_Gl.m_obj_hash_table.destroy ();
-  lf_freelist_destroy (&lk_Gl.obj_free_entry_list);
-
-  lock_deadlock_detect_daemon_destroy ();
+  lk_Gl.config = lock_make_default_config ();
+  lk_Gl.init_state = LK_INIT_STATE
+  {
+  };
 #endif /* !SERVER_MODE */
 }
 
@@ -7712,7 +7851,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
   /* initialize transaction WFG node table.. The current transaction might be old deadlock victim. And, the transaction
    * may have not been aborted, until now. Even if the transaction(old deadlock victim) has not been aborted, set
    * checked_by_deadlock_detector of the transaction to true. */
-  for (i = 1; i < lk_Gl.num_trans; i++)
+  for (i = 1; i < lk_Gl.config.num_trans; i++)
     {
       lk_Gl.TWFG_node[i].first_edge = -1;
       lk_Gl.TWFG_node[i].tran_edge_seq_num = 0;
@@ -7720,9 +7859,9 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
     }
 
   /* initialize transaction WFG edge table */
-  lk_Gl.TWFG_edge = &TWFG_edge_block[0];
-  lk_Gl.max_TWFG_edge = LK_MIN_TWFG_EDGE_COUNT;	/* initial value */
-  for (i = 0; i < LK_MIN_TWFG_EDGE_COUNT; i++)
+  lk_Gl.TWFG_edge = lk_Gl.TWFG_edge_storage;
+  lk_Gl.max_TWFG_edge = lk_Gl.config.min_twfg_edge_count;	/* initial value */
+  for (i = 0; i < lk_Gl.config.min_twfg_edge_count; i++)
     {
       lk_Gl.TWFG_edge[i].to_tran_index = -1;
       lk_Gl.TWFG_edge[i].next = (i + 1);
@@ -7856,12 +7995,12 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
    * deadlock detection and victim selection
    */
 
-  for (k = 1; k < lk_Gl.num_trans; k++)
+  for (k = 1; k < lk_Gl.config.num_trans; k++)
     {
       TWFG_node[k].current = TWFG_node[k].first_edge;
       TWFG_node[k].ancestor = -1;
     }
-  for (k = 1; k < lk_Gl.num_trans; k++)
+  for (k = 1; k < lk_Gl.config.num_trans; k++)
     {
       if (TWFG_node[k].current == -1)
 	{
@@ -7931,7 +8070,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 	    {
 	      /* A deadlock cycle is found */
 	      lock_select_deadlock_victim (thread_p, s, t);
-	      if (victim_count >= LK_MAX_VICTIM_COUNT)
+	      if (victim_count >= lk_Gl.config.max_deadlock_victims)
 		{
 		  goto final_;
 		}
@@ -7982,34 +8121,34 @@ final_:
       log_fp = event_log_start (thread_p, "DEADLOCK");
       if (log_fp != NULL)
 	{
-	  if (victims[k].log_entries == NULL)
+	  if (lk_Gl.victims[k].log_entries == NULL)
 	    {
 	      event_log_end (thread_p);
 	      continue;
 	    }
-	  lock_event_log_deadlock_locks (thread_p, log_fp, victims[k].tran_index, victims[k].log_trunc,
-					 victims[k].log_num_entries, victims[k].log_entries);
+	  lock_event_log_deadlock_locks (thread_p, log_fp, lk_Gl.victims[k].tran_index, lk_Gl.victims[k].log_trunc,
+					 lk_Gl.victims[k].log_num_entries, lk_Gl.victims[k].log_entries);
 	  event_log_end (thread_p);
 	}
 
-      free_and_init (victims[k].log_entries);
+      free_and_init (lk_Gl.victims[k].log_entries);
     }
 
   /* Now solve the deadlocks (cycles) by executing the cycle resolution function (e.g., aborting victim) */
   for (k = 0; k < victim_count; k++)
     {
-      if (victims[k].can_timeout)
+      if (lk_Gl.victims[k].can_timeout)
 	{
-	  (void) lock_wakeup_deadlock_victim_timeout (victims[k].tran_index);
+	  (void) lock_wakeup_deadlock_victim_timeout (lk_Gl.victims[k].tran_index);
 	}
       else
 	{
-	  (void) lock_wakeup_deadlock_victim_aborted (victims[k].tran_index);
+	  (void) lock_wakeup_deadlock_victim_aborted (lk_Gl.victims[k].tran_index);
 	}
     }
 
   /* deallocate memory space used for deadlock detection */
-  if (lk_Gl.max_TWFG_edge > LK_MID_TWFG_EDGE_COUNT)
+  if (lk_Gl.TWFG_edge != lk_Gl.TWFG_edge_storage)
     {
       free_and_init (lk_Gl.TWFG_edge);
     }
@@ -8466,7 +8605,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
 
   /* Dump some information about all transactions */
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
-  for (tran_index = 0; tran_index < lk_Gl.num_trans; tran_index++)
+  for (tran_index = 0; tran_index < lk_Gl.config.num_trans; tran_index++)
     {
       if (logtb_find_client_name_host_pid (tran_index, &client_prog_name, &client_user_name, &client_host_name,
 					   &client_pid) != NO_ERROR)
@@ -9810,10 +9949,11 @@ lock_free_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freel
 {
   LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[tran_index];
 
-  assert (tran_lock->lk_entry_pool_count >= 0 && tran_lock->lk_entry_pool_count <= LOCK_TRAN_LOCAL_POOL_MAX_SIZE);
+  assert (tran_lock->lk_entry_pool_count >= 0
+	  && tran_lock->lk_entry_pool_count <= lk_Gl.config.tran_local_pool_max_size);
 
   /* "Free" entry to local pool or shared list. */
-  if (tran_lock->lk_entry_pool_count < LOCK_TRAN_LOCAL_POOL_MAX_SIZE)
+  if (tran_lock->lk_entry_pool_count < lk_Gl.config.tran_local_pool_max_size)
     {
       lock_uninit_entry (lock_entry);
       lock_entry->next = tran_lock->lk_entry_pool;

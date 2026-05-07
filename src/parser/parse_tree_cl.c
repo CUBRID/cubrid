@@ -20080,7 +20080,7 @@ pt_print_drop_package (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, "body ");
     }
 
-  r1 = pt_print_bytes (parser, p->info.pkg.name);
+  r1 = pt_print_bytes_l (parser, p->info.pkg.name);
   q = pt_append_varchar (parser, q, r1);
 
   return q;
