@@ -722,6 +722,9 @@ static bool vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VF
 					  const VFID * heap_vfid, VFID * out_oos_vfid);
 static int vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 						 const char *rectype_label);
+static int vacuum_forward_walk_delete_old_oos (THREAD_ENTRY * thread_p, const VFID * oos_vfid,
+					       const OID_VECTOR & oos_oids);
+static int vacuum_heap_record_remove_oos_inline (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, const VFID * vfid);
 static void vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
@@ -2445,6 +2448,42 @@ for (const OID & oos_oid:oos_oids)
 }
 
 /*
+ * vacuum_heap_record_remove_oos_inline () - Remove an OOS-bearing REC_HOME slot inline (not via bulk vacuum).
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * helper (in)	 : Vacuum heap helper. Must be on the REC_HOME path with a valid oos_vfid and the slot
+ *		   already cleared by spage_vacuum_slot. The enclosing sysop must be open; this helper
+ *		   commits or aborts it.
+ *
+ * OOS-bearing REC_HOME slots are vacuumed individually instead of via bulk vacuum so the heap-slot
+ * removal and the dependent OOS chunk deletes (RVOOS_DELETE per chunk inside oos_delete) form one
+ * atomic sysop. If we let the bulk path log this slot at end of page (vacuum_heap_page_log_and_reset),
+ * the OOS deletes would land inside this sysop while the heap-slot vacuum log lands outside it — a
+ * crash between the sysop commit and the bulk log would then leave the OOS chunks gone but the heap
+ * slot still pointing at them, and the next vacuum pass would re-enter vacuum_heap_oos_delete and
+ * trip oos_delete_chain's S_DOESNT_EXIST assert. Inline-logging the slot vacuum keeps both sides
+ * bound to the same sysop boundary.
+ */
+static int
+vacuum_heap_record_remove_oos_inline (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
+{
+  pgbuf_set_dirty (thread_p, helper->home_page, DONT_FREE);
+  vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page, helper->crt_slotid, &helper->record,
+				     helper->reusable);
+
+  int oos_err = vacuum_heap_oos_delete (thread_p, helper);
+  if (oos_err != NO_ERROR)
+    {
+      log_sysop_abort (thread_p);
+      return oos_err;
+    }
+
+  log_sysop_commit (thread_p);
+  return NO_ERROR;
+}
+
+/*
  * vacuum_heap_record () - Vacuum heap record.
  *
  * return	 : Error code.
@@ -2596,27 +2635,11 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
     case REC_HOME:
       if (has_oos)
 	{
-	  /* OOS-bearing REC_HOME slots are vacuumed individually instead of via bulk vacuum so the
-	   * heap-slot removal and the dependent OOS chunk deletes (RVOOS_DELETE per chunk inside
-	   * oos_delete) form one atomic sysop. If we let the bulk path log this slot at end of page
-	   * (vacuum_heap_page_log_and_reset), the OOS deletes would land inside this sysop while the
-	   * heap-slot vacuum log lands outside it — a crash between the sysop commit and the bulk
-	   * log would then leave the OOS chunks gone but the heap slot still pointing at them, and
-	   * the next vacuum pass would re-enter vacuum_heap_oos_delete and trip oos_delete_chain's
-	   * S_DOESNT_EXIST assert. Inline-logging the slot vacuum keeps both sides bound to the
-	   * same sysop boundary. */
-	  pgbuf_set_dirty (thread_p, helper->home_page, DONT_FREE);
-	  vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page, helper->crt_slotid, &helper->record,
-					     helper->reusable);
-
-	  int oos_err = vacuum_heap_oos_delete (thread_p, helper);
+	  int oos_err = vacuum_heap_record_remove_oos_inline (thread_p, helper);
 	  if (oos_err != NO_ERROR)
 	    {
-	      log_sysop_abort (thread_p);
 	      return oos_err;
 	    }
-
-	  log_sysop_commit (thread_p);
 	}
       else
 	{
@@ -3452,6 +3475,61 @@ vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENT
 }
 
 /*
+ * vacuum_forward_walk_delete_old_oos () - Delete OOS records referenced by an UPDATE pre-image
+ *					   discovered during forward-walk log replay.
+ *
+ * return	   : Error code.
+ * thread_p (in)   : Thread entry.
+ * oos_vfid (in)   : OOS file identifier resolved from the heap VFID for this log record.
+ * oos_oids (in)   : OIDs extracted from the pre-image recdes; must be self-owned (callers extract
+ *		     via heap_recdes_get_oos_oids on a single pass before invoking this helper, so
+ *		     subsequent oos_delete log appends cannot invalidate the underlying buffer).
+ *
+ * Forward-walk OOS reclamation: only UPDATE_NOTIFY_VACUUM carries a true pre-image with OOS OIDs
+ * that nothing else will reclaim. heap_attrinfo_insert_to_oos always allocates fresh OIDs per
+ * transform, so an UPDATE's pre-image OIDs never collide with the live post-image and forward-walk
+ * is the only path that can reach them.
+ *
+ * Other LOG_IS_MVCC_HEAP_OPERATION rcvindexes are excluded:
+ *   - RVHF_MVCC_DELETE_MODIFY_HOME logs the original OOS-bearing recdes as undo, but the
+ *     post-DELETE heap slot (REC_HOME / REC_RELOCATION→REC_NEWHOME / REC_BIGONE) still references
+ *     the same OOS OIDs and vacuum_heap_record's REMOVE path will reclaim them via
+ *     vacuum_heap_oos_delete. Running forward-walk too would double-delete and trip
+ *     oos_delete_chain's S_DOESNT_EXIST assert.
+ *   - RVHF_MVCC_DELETE_REC_HOME / RVHF_MVCC_NO_MODIFY_HOME / RVHF_MVCC_INSERT carry no pre-image
+ *     recdes in undo data.
+ *
+ * The OID vector is copied out by the caller before this helper opens the sysop, so oos_delete's
+ * RVOOS_DELETE log appends — which may rotate the log page that the original undo_data pointed
+ * into — cannot invalidate it. The sysop makes the multi-chunk oos_delete sequence atomic under
+ * recovery.
+ */
+static int
+vacuum_forward_walk_delete_old_oos (THREAD_ENTRY * thread_p, const VFID * oos_vfid, const OID_VECTOR & oos_oids)
+{
+  int error_code = NO_ERROR;
+
+  log_sysop_start (thread_p);
+for (const OID & oid:oos_oids)
+    {
+      error_code = oos_delete (thread_p, *oos_vfid, oid);
+      if (error_code != NO_ERROR)
+	{
+	  break;
+	}
+    }
+  if (error_code == NO_ERROR)
+    {
+      log_sysop_commit (thread_p);
+    }
+  else
+    {
+      log_sysop_abort (thread_p);
+    }
+  return error_code;
+}
+
+/*
  * vacuum_process_log_block () - Vacuum heap and b-tree entries using log information found in a block of pages.
  *
  * return		      : Error code.
@@ -3645,24 +3723,9 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 			 "collected oid %d|%d|%d, in file %d|%d, based on %lld|%d", OID_AS_ARGS (&heap_object_oid),
 			 VFID_AS_ARGS (&log_vacuum.vfid), LSA_AS_ARGS (&rcv_lsa));
 
-	  /* Forward-walk OOS reclamation: only UPDATE_NOTIFY_VACUUM carries a true pre-image with
-	   * OOS OIDs that nothing else will reclaim. heap_attrinfo_insert_to_oos always allocates
-	   * fresh OIDs per transform, so an UPDATE's pre-image OIDs never collide with the live
-	   * post-image and forward-walk is the only path that can reach them.
-	   *
-	   * Other LOG_IS_MVCC_HEAP_OPERATION rcvindexes are excluded:
-	   *   - RVHF_MVCC_DELETE_MODIFY_HOME logs the original OOS-bearing recdes as undo, but the
-	   *     post-DELETE heap slot (REC_HOME / REC_RELOCATION→REC_NEWHOME / REC_BIGONE) still
-	   *     references the same OOS OIDs and vacuum_heap_record's REMOVE path will reclaim
-	   *     them via vacuum_heap_oos_delete. Running forward-walk too would double-delete and
-	   *     trip oos_delete_chain's S_DOESNT_EXIST assert.
-	   *   - RVHF_MVCC_DELETE_REC_HOME / RVHF_MVCC_NO_MODIFY_HOME / RVHF_MVCC_INSERT carry no
-	   *     pre-image recdes in undo data.
-	   *
-	   * Safe to read undo_data inside the sysop even though oos_delete's RVOOS_DELETE appends
-	   * may rotate the log page it points into: heap_recdes_get_oos_oids copies OIDs out into
-	   * a self-owned OID_VECTOR on a single pass and the subsequent oos_delete loop touches
-	   * only that vector, never undo_data. No defensive copy required. */
+	  /* Forward-walk OOS reclamation: see vacuum_forward_walk_delete_old_oos for the full
+	   * rationale (why only RVHF_UPDATE_NOTIFY_VACUUM, why other rcvindexes are excluded, and
+	   * why no defensive copy of undo_data is required). */
 	  if (log_record_data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM && undo_data != NULL && undo_data_size > 0)
 	    {
 	      RECDES undo_recdes;
@@ -3679,22 +3742,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 
 		  if (oos_err == NO_ERROR)
 		    {
-		      /* Sysop makes the multi-chunk oos_delete sequence atomic under recovery. */
-		      log_sysop_start (thread_p);
-		    for (const OID & oid:oos_oids)
-			{
-			  oos_err = oos_delete (thread_p, oos_vfid, oid);
-			  if (oos_err != NO_ERROR)
-			    break;
-			}
-		      if (oos_err == NO_ERROR)
-			{
-			  log_sysop_commit (thread_p);
-			}
-		      else
-			{
-			  log_sysop_abort (thread_p);
-			}
+		      oos_err = vacuum_forward_walk_delete_old_oos (thread_p, &oos_vfid, oos_oids);
 		    }
 
 		  if (oos_err != NO_ERROR)

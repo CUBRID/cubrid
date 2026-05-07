@@ -24098,6 +24098,22 @@ exit:
 }
 
 /*
+ * heap_oos_oid_in_vector () - True if oid appears in oids (linear scan; vector is small by design).
+ */
+static bool
+heap_oos_oid_in_vector (const OID_VECTOR & oids, const OID * oid)
+{
+for (const OID & candidate:oids)
+    {
+      if (OID_EQ (&candidate, oid))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
  * heap_update_home_delete_replaced_oos () - Eagerly delete old OOS records replaced by an UPDATE.
  *
  * Called from heap_update_home on the SA_MODE (non-MVCC) branch after the in-place overwrite has
@@ -24162,17 +24178,9 @@ heap_update_home_delete_replaced_oos (THREAD_ENTRY * thread_p, HEAP_OPERATION_CO
 
 for (const OID & old_oid:old_oos_oids)
     {
-      bool still_referenced = false;
-    for (const OID & new_oid:new_oos_oids)
+      if (heap_oos_oid_in_vector (new_oos_oids, &old_oid))
 	{
-	  if (OID_EQ (&old_oid, &new_oid))
-	    {
-	      still_referenced = true;
-	      break;
-	    }
-	}
-      if (still_referenced)
-	{
+	  /* Same physical OOS referenced by both old and new recdes; keep it. */
 	  continue;
 	}
       error_code = oos_delete (thread_p, oos_vfid, old_oid);
