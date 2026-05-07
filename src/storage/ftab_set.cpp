@@ -54,8 +54,9 @@ collect_strided_vpids (THREAD_ENTRY *thread_p, const HFID *hfid, int target_coun
       goto cleanup;
     }
 
-  // collector.npages is the total user page count for this heap file
-  *out_total_data_pages = collector.npages;
+  // collector.npages includes the heap header page (hpgid); the pick loop skips it,
+  // so the total-axis must exclude it too — otherwise weight = total/picked is off-by-one.
+  *out_total_data_pages = collector.npages > 0 ? collector.npages - 1 : 0;
 
   picked = (VPID *) db_private_alloc (thread_p, target_count * sizeof (VPID));
   if (picked == NULL)
@@ -69,7 +70,7 @@ collect_strided_vpids (THREAD_ENTRY *thread_p, const HFID *hfid, int target_coun
     ftab_set bitmap_set;
     bitmap_set.convert (&collector);
 
-    int stride = collector.npages / target_count;
+    int stride = *out_total_data_pages / target_count;
     if (stride < 1)
       {
 	stride = 1;
