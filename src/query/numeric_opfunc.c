@@ -3597,10 +3597,20 @@ numeric_coerce_num_to_int (DB_C_NUMERIC arg, int *answer, const bool is_value_ne
   memcpy (&digit, arg + (DB_NUMERIC_BUF_SIZE - sizeof (int)), sizeof (digit));
   *answer = (int) NUMERIC_BSWAP32 (digit);
 
-  /* Apply sign */
+  /* Apply sign
+   *  Negating INT_MIN (-2147483648) is signed-overflow UB in C.
+   *  When the magnitude is exactly 0x80000000 and the value is negative,
+   *  the result must be INT_MIN, so skip the negation for that case. */
   if (is_value_negative)
     {
-      *answer = -(*answer);
+      if ((uint32_t) (*answer) == 0x80000000U)
+	{
+	  *answer = INT_MIN;
+	}
+      else
+	{
+	  *answer = -(*answer);
+	}
     }
 }
 
@@ -3663,11 +3673,25 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer, c
       return ER_IT_DATA_OVERFLOW;
     }
 
-  /* 6. form final signed BIGINT result */
-  *answer = (DB_BIGINT) magnitude;
+  /* 6. form final signed BIGINT result
+   *    INT64_MIN (magnitude == 0x8000000000000000) is a special case:
+   *    negating (DB_BIGINT)INT64_MIN is signed-overflow UB in C.
+   *    Since the stored value is already the absolute magnitude,
+   *    we can produce the correct two's-complement INT64_MIN directly. */
   if (is_value_negative)
     {
-      *answer = -(*answer);
+      if (magnitude == 0x8000000000000000ULL)
+	{
+	  *answer = INT64_MIN;
+	}
+      else
+	{
+	  *answer = -(DB_BIGINT) magnitude;
+	}
+    }
+  else
+    {
+      *answer = (DB_BIGINT) magnitude;
     }
 
   return NO_ERROR;
