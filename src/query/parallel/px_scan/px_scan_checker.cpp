@@ -72,7 +72,7 @@ namespace parallel_scan
   /* thread-local cache: memoizes check results and breaks circular XASL refs. */
   thread_local std::unordered_map<XASL_NODE *, possible_flags> xasl_check_cache;
 
-  /* Thread-local set to track XASL_NODEs being processed to prevent infinite recursion in process functions */
+  /* cycle guard for the process_* recursion. */
   thread_local std::unordered_set<XASL_NODE *> xasl_processing_set;
 
   static void set_flag (possible_flags &flags, possible_flags flag)
@@ -161,12 +161,10 @@ namespace parallel_scan
       case TYPE_POSITION:
       case TYPE_POS_VALUE:
       case TYPE_LIST_ID:
-	/* can execute with constants */
 	break;
       case TYPE_ORDERBY_NUM:
       case TYPE_CLASSOID:
       case TYPE_REGUVAL_LIST:
-	/* cannot execute with this regu-variable */
 	set_flag (result, CANNOT_PARALLEL_SCAN);
 	break;
       case TYPE_INARITH:
@@ -176,7 +174,7 @@ namespace parallel_scan
 	break;
       case TYPE_SP:
 	result |= check<is_outptr_list> (arg->value.sp_ptr->args);
-	/* cannot execute sp in child threads */
+	/* SP not executable in child threads. */
 	if (is_outptr_list)
 	  {
 	    set_flag (result, CANNOT_LIST_MERGE);
@@ -342,7 +340,7 @@ namespace parallel_scan
 	   (arg->case_sensitive);
   }
 
-  /* filtered (partial) indexes → serial: MVCC/dropped-key edge cases across leaf shards; function indexes are plain B-tree keys, not blocked. */
+  /* filtered index → serial: bug-prone + low usage, excluded as a constraint. function indexes are plain B-tree keys, not blocked. */
   static bool
   is_filtered_index (const INDX_INFO *indexptr)
   {
@@ -386,52 +384,48 @@ namespace parallel_scan
       {
 	if (arg->access == ACCESS_METHOD_SEQUENTIAL)
 	  {
-	    /* heap scan: eligible for parallel; regu_list checks follow below */
 	  }
 	else if (arg->access == ACCESS_METHOD_INDEX)
 	  {
-	    /* index scan: check basic eligibility for parallel index scan */
 	    if (ACCESS_SPEC_IS_FLAGED (arg, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN))
 	      {
-		/* min/max aggregate scan produces no rows; skip parallel */
+		/* min/max agg scan emits no rows. */
 		set_flag (result, CANNOT_PARALLEL_SCAN);
 		return result;
 	      }
 	    if (arg->indexptr != NULL)
 	      {
-		/* ISS/ILS dynamically modify curr_keyno/key-ranges; conflict with leaf-page cursor. */
+		/* ISS/ILS dynamically rewrites curr_keyno/key-ranges; conflicts with leaf-page cursor. */
 		if (arg->indexptr->use_iss || arg->indexptr->ils_prefix_len > 0)
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
 
-		/* keylimit: global key cap incompatible with per-worker page split. */
+		/* keylimit: global cap incompatible with per-worker page split. */
 		if (arg->indexptr->key_info.is_user_given_keylimit)
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
 
-		/* orderby/groupby skip+desc require globally ordered traversal; page split breaks it. */
+		/* orderby/groupby skip+desc need globally ordered traversal. */
 		if (arg->indexptr->orderby_skip || arg->indexptr->groupby_skip
 		    || arg->indexptr->orderby_desc || arg->indexptr->groupby_desc)
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
 
-		/* use_desc_index: DESC requires globally ordered traversal; workers scan pages independently. */
+		/* use_desc_index needs globally ordered traversal. */
 		if (arg->indexptr->use_desc_index)
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
 
-		/* filtered index: excluded keys unevenly distributed across shards → result drift; function indexes are plain keys, safe. */
+		/* filtered index: bug-prone + low usage, excluded. */
 		if (is_filtered_index (arg->indexptr))
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
 	      }
-
-	    /* otherwise: potentially eligible; regu_list checks follow below */
 	  }
 	else
 	  {
@@ -441,7 +435,6 @@ namespace parallel_scan
       }
     else if (arg->type == TARGET_LIST)
       {
-	/* TARGET_LIST is valid for parallel list scan */
       }
     else
       {
@@ -460,7 +453,6 @@ namespace parallel_scan
 	result |= check<false> (arg->where_pred);
 	if (arg->access == ACCESS_METHOD_INDEX)
 	  {
-	    /* Also check index-specific predicate lists for disqualifying constructs */
 	    result |= check<false> (arg->s.cls_node.cls_regu_list_key);
 	    result |= check<false> (arg->where_key);
 	    result |= check<false> (arg->s.cls_node.cls_regu_list_range);
@@ -580,15 +572,13 @@ namespace parallel_scan
 	return 0;
       }
 
-    /* Check if this XASL_NODE has already been checked */
     auto it = xasl_check_cache.find (arg);
     if (it != xasl_check_cache.end ())
       {
-	/* Return cached result */
 	return it->second;
       }
 
-    /* Mark as being visited (with temporary result 0) to prevent infinite recursion */
+    /* mark visited (sentinel 0) before recursing — breaks XASL ref cycles. */
     xasl_check_cache[arg] = 0;
 
     possible_flags result = 0, temp = 0;
@@ -752,7 +742,6 @@ namespace parallel_scan
 	return;
       }
 
-    /* Check if this XASL_NODE is already being processed to prevent infinite recursion */
     if (xasl_processing_set.find (arg) != xasl_processing_set.end ())
       {
 	return;
@@ -873,10 +862,8 @@ namespace parallel_scan
 	      }
 	  }
 
-	/* parallel heap/index scan is possible; determine result type */
 	if (!is_flag_set (result, CANNOT_BUILDVALUE_OPT))
 	  {
-	    /* buildvalue optimization is possible */
 	    for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
 	      {
 		ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_BUILDVALUE_OPT);
@@ -886,7 +873,6 @@ namespace parallel_scan
 	  {
 	    if (!is_flag_set (result, CANNOT_LIST_MERGE))
 	      {
-		/* list merge is possible */
 		for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
 		  {
 		    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_MERGEABLE_LIST);
@@ -894,7 +880,7 @@ namespace parallel_scan
 	      }
 	    else
 	      {
-		/* list merge is not possible, try row by row mode */
+		/* list merge blocked → row-by-row fallback. */
 		for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
 		  {
 		    ACCESS_SPEC_UNSET_FLAG (specp, ACCESS_SPEC_FLAG_MERGEABLE_LIST);
@@ -953,20 +939,17 @@ namespace parallel_scan
 	return;
       }
 
-    /* Check if this XASL_NODE is already being processed to prevent infinite recursion */
     if (xasl_processing_set.find (arg) != xasl_processing_set.end ())
       {
 	return;
       }
     xasl_processing_set.insert (arg);
 
-    /* Mark all access specs as cannot parallel */
     for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
       {
 	ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
       }
 
-    /* Recursively process all child nodes */
     for (XASL_NODE *xaslp = arg->aptr_list; xaslp; xaslp = xaslp->next)
       {
 	process_xasl_node_recursive_force_cannot_parallel (xaslp);
@@ -992,7 +975,6 @@ namespace parallel_scan
 	process_xasl_node_recursive_force_cannot_parallel (xaslp);
       }
 
-    /* Process special node types */
     switch (arg->type)
       {
       case CTE_PROC:
@@ -1016,7 +998,7 @@ namespace parallel_scan
 	  }
 	break;
       case MERGELIST_PROC:
-	/* outer/inner xasl chained via aptr_list; only spec_list cursors need NO_PARALLEL_SCAN to guard llsid union from pllsid_parallel overwrite. */
+	/* guard llsid union from pllsid_parallel overwrite via outer/inner spec_list. */
 	for (ACCESS_SPEC_TYPE *specp = arg->proc.mergelist.outer_spec_list; specp; specp = specp->next)
 	  {
 	    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
@@ -1035,13 +1017,11 @@ namespace parallel_scan
 extern int
 scan_check_parallel_scan_possible (XASL_NODE *xasl)
 {
-  /* Clear caches to start fresh for each top-level check */
   parallel_scan::xasl_check_cache.clear ();
   parallel_scan::xasl_processing_set.clear ();
 
   parallel_scan::process_xasl_node_recursive (xasl);
 
-  /* Clear caches after processing to free memory */
   parallel_scan::xasl_check_cache.clear ();
   parallel_scan::xasl_processing_set.clear ();
 
