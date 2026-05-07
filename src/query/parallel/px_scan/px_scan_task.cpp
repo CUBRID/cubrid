@@ -615,7 +615,7 @@ namespace parallel_scan
 	else if constexpr (ST == SCAN_TYPE::INDEX)
 	  {
 	    index_page = nullptr;
-	    scan_code = m_input_handler->get_next_page_with_fix (&thread_ref, index_page);
+	    scan_code = m_input_handler->get_next_page_with_fix (&thread_ref, m_scan_id, index_page);
 	  }
 	else
 	  {

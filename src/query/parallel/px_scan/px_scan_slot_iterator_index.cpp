@@ -52,12 +52,8 @@ namespace parallel_scan
       m_num_keys (0),
       m_current_slot (1),
       m_data_filter (),
-      m_key_range_converted (false),
       m_is_covering (false),
       m_use_desc_index (false),
-      m_part_key_desc (false),
-      m_key_val_ranges (nullptr),
-      m_num_key_ranges (0),
       m_current_range_idx (0),
       m_slot_oid_idx (0),
       m_slot_key_valid (false),
@@ -76,7 +72,6 @@ namespace parallel_scan
   {
     m_scan_id = scan_id;
     m_vd = vd;
-    m_key_range_converted = false;
 
     INDX_INFO *indx_info = scan_id->s.isid.indx_info;
     m_is_covering = (indx_info != nullptr && indx_info->coverage != 0);
@@ -94,18 +89,6 @@ namespace parallel_scan
 	m_page = nullptr;
       }
 
-    if (m_key_val_ranges != nullptr)
-      {
-	for (int i = 0; i < m_num_key_ranges; i++)
-	  {
-	    pr_clear_value (&m_key_val_ranges[i].key1);
-	    pr_clear_value (&m_key_val_ranges[i].key2);
-	  }
-	db_private_free_and_init (thread_p, m_key_val_ranges);
-	m_num_key_ranges = 0;
-      }
-    m_key_range_converted = false;
-
     if (m_slot_key_valid && m_slot_clear_key)
       {
 	pr_clear_value (&m_slot_key);
@@ -119,219 +102,6 @@ namespace parallel_scan
     m_vd = nullptr;
     m_btid_int = nullptr;
     m_input_handler = nullptr;
-    return NO_ERROR;
-  }
-
-  /*
-   * convert_key_range - Convert KEY_RANGE regu variables to DB_VALUE bounds.
-   *
-   * Converts ALL key ranges from the INDX_INFO into an array of key_val_range
-   * structures. Each key range's regu variables (key1, key2) are evaluated
-   * into DB_VALUE using fetch_copy_dbval.
-   *
-   * When part_key_desc is set (last partial-key domain is DESC), the key
-   * bounds and range type are swapped to match B-tree storage order, exactly
-   * as btree_prepare_bts does for the non-parallel scan path.
-   */
-  int
-  slot_iterator_index::convert_key_range (THREAD_ENTRY *thread_p)
-  {
-    INDX_INFO *indx_info = m_scan_id->s.isid.indx_info;
-    int key_cnt = (indx_info != nullptr) ? indx_info->key_info.key_cnt : 0;
-
-    if (key_cnt <= 0)
-      {
-	m_num_key_ranges = 1;
-	m_key_val_ranges = (key_val_range *) db_private_alloc (thread_p, sizeof (key_val_range));
-	if (m_key_val_ranges == nullptr)
-	  {
-	    return ER_FAILED;
-	  }
-	m_key_val_ranges[0].range = INF_INF;
-	m_key_val_ranges[0].is_truncated = false;
-	m_key_val_ranges[0].num_index_term = 0;
-	db_make_null (&m_key_val_ranges[0].key1);
-	db_make_null (&m_key_val_ranges[0].key2);
-	m_key_range_converted = true;
-	return NO_ERROR;
-      }
-
-    INDX_SCAN_ID *isidp = &m_scan_id->s.isid;
-    TP_DOMAIN *btree_domainp = m_btid_int->key_type;
-
-    /* Compute part_key_desc the same way btree_prepare_bts does:
-     * find the domain of the last partial-key element. */
-    m_part_key_desc = false;
-
-    m_num_key_ranges = key_cnt;
-    m_key_val_ranges = (key_val_range *) db_private_alloc (thread_p, sizeof (key_val_range) * key_cnt);
-    if (m_key_val_ranges == nullptr)
-      {
-	return ER_FAILED;
-      }
-
-    for (int i = 0; i < key_cnt; i++)
-      {
-	KEY_RANGE *kr = &indx_info->key_info.key_ranges[i];
-
-	db_make_null (&m_key_val_ranges[i].key1);
-	db_make_null (&m_key_val_ranges[i].key2);
-	m_key_val_ranges[i].range = kr->range;
-	m_key_val_ranges[i].is_truncated = false;
-	m_key_val_ranges[i].num_index_term = 0;
-
-	if (kr->range == NA_NA || kr->range == INF_INF)
-	  {
-	    continue;
-	  }
-
-	int ret = scan_regu_key_to_index_key (thread_p, kr, &m_key_val_ranges[i],
-					      isidp, btree_domainp, m_vd, i);
-	if (ret != NO_ERROR)
-	  {
-	    for (int j = 0; j <= i; j++)
-	      {
-		pr_clear_value (&m_key_val_ranges[j].key1);
-		pr_clear_value (&m_key_val_ranges[j].key2);
-	      }
-	    db_private_free_and_init (thread_p, m_key_val_ranges);
-	    m_num_key_ranges = 0;
-	    return ret;
-	  }
-
-	/* Prefix index: when key bounds were truncated, make existing bounds
-	 * inclusive (GT->GE, LT->LE) without closing open (INF) ends.
-	 * The truncated key is shorter than the search key, so strict
-	 * comparisons must become inclusive to avoid missing matches.
-	 * The data filter on the heap record handles exact re-checking. */
-	if (m_key_val_ranges[i].is_truncated)
-	  {
-	    switch (m_key_val_ranges[i].range)
-	      {
-	      case GT_INF:
-		m_key_val_ranges[i].range = GE_INF;
-		break;
-	      case GT_LE:
-		m_key_val_ranges[i].range = GE_LE;
-		break;
-	      case GT_LT:
-		m_key_val_ranges[i].range = GE_LE;
-		break;
-	      case GE_LT:
-		m_key_val_ranges[i].range = GE_LE;
-		break;
-	      case INF_LT:
-		m_key_val_ranges[i].range = INF_LE;
-		break;
-	      case GE_INF: /* already inclusive lower */
-		break;
-	      case INF_LE: /* already inclusive upper */
-		break;
-	      case GE_LE:  /* already inclusive both */
-		break;
-	      default:
-		break;
-	      }
-	  }
-      }
-
-    /* Compute part_key_desc from the first valid range's num_index_term,
-     * matching btree_prepare_bts logic. */
-    for (int i = 0; i < m_num_key_ranges; i++)
-      {
-	if (m_key_val_ranges[i].range != NA_NA && m_key_val_ranges[i].num_index_term > 0)
-	  {
-	    TP_DOMAIN *dom = btree_domainp;
-	    if (TP_DOMAIN_TYPE (dom) == DB_TYPE_MIDXKEY)
-	      {
-		dom = dom->setdomain;
-	      }
-	    /* Walk to the domain of the last partial-key term. */
-	    for (int k = 1; k < m_key_val_ranges[i].num_index_term && dom != nullptr; k++, dom = dom->next)
-	      ;
-	    if (dom != nullptr)
-	      {
-		m_part_key_desc = (dom->is_desc != 0);
-	      }
-	    break;
-	  }
-      }
-
-    /* When part_key_desc is set and use_desc_index is false, the B-tree
-     * stores keys in reverse order for the partial-key domain. Swap key
-     * bounds and reverse range type to match B-tree order, exactly as
-     * btree_prepare_bts does. use_desc_index is always false for parallel
-     * scan (blocked by the checker). */
-    if (m_part_key_desc && !m_use_desc_index)
-      {
-	for (int i = 0; i < m_num_key_ranges; i++)
-	  {
-	    if (m_key_val_ranges[i].range == NA_NA || m_key_val_ranges[i].range == INF_INF)
-	      {
-		continue;
-	      }
-	    range_reverse (m_key_val_ranges[i].range);
-	    DB_VALUE tmp_key = m_key_val_ranges[i].key1;
-	    m_key_val_ranges[i].key1 = m_key_val_ranges[i].key2;
-	    m_key_val_ranges[i].key2 = tmp_key;
-	  }
-      }
-
-    /* Sort ranges by lower bound (key1) in ascending B-tree order so that
-     * the cursor optimization in check_key_in_range works correctly.
-     * INDX_INFO may provide ranges in arbitrary order. */
-    if (m_num_key_ranges > 1)
-      {
-	TP_DOMAIN *key_domain = m_btid_int->key_type;
-	for (int i = 0; i < m_num_key_ranges - 1; i++)
-	  {
-	    for (int j = i + 1; j < m_num_key_ranges; j++)
-	      {
-		key_val_range *a = &m_key_val_ranges[i];
-		key_val_range *b = &m_key_val_ranges[j];
-
-		if (a->range == NA_NA && b->range != NA_NA)
-		  {
-		    key_val_range tmp = *a;
-		    *a = *b;
-		    *b = tmp;
-		    continue;
-		  }
-		if (b->range == NA_NA)
-		  {
-		    continue;
-		  }
-
-		DB_VALUE *ak = DB_IS_NULL (&a->key1) ? nullptr : &a->key1;
-		DB_VALUE *bk = DB_IS_NULL (&b->key1) ? nullptr : &b->key1;
-
-		if (ak == nullptr && bk != nullptr)
-		  {
-		    continue;
-		  }
-		if (ak != nullptr && bk == nullptr)
-		  {
-		    key_val_range tmp = *a;
-		    *a = *b;
-		    *b = tmp;
-		    continue;
-		  }
-		if (ak != nullptr && bk != nullptr)
-		  {
-		    int start_col = 0;
-		    DB_VALUE_COMPARE_RESULT cmp = btree_compare_key (ak, bk, key_domain, 1, 1, &start_col);
-		    if (cmp == DB_GT)
-		      {
-			key_val_range tmp = *a;
-			*a = *b;
-			*b = tmp;
-		      }
-		  }
-	      }
-	  }
-      }
-
-    m_key_range_converted = true;
     return NO_ERROR;
   }
 
@@ -357,11 +127,13 @@ namespace parallel_scan
       }
 
     TP_DOMAIN *key_domain = m_btid_int->key_type;
+    key_val_range *ranges = m_input_handler->get_key_val_ranges ();
+    int num_ranges = m_input_handler->get_num_key_ranges ();
 
     /* Keys arrive in ascending B-tree order; iterate ranges forward */
-    for (int i = m_current_range_idx; i < m_num_key_ranges; i++)
+    for (int i = m_current_range_idx; i < num_ranges; i++)
       {
-	key_val_range *kvr = &m_key_val_ranges[i];
+	key_val_range *kvr = &ranges[i];
 
 	if (kvr->range == NA_NA)
 	  {
@@ -506,16 +278,6 @@ namespace parallel_scan
     if (m_input_handler != nullptr && m_btid_int == nullptr)
       {
 	m_btid_int = m_input_handler->get_btid_int ();
-      }
-
-    if (!m_key_range_converted)
-      {
-	int err = convert_key_range (thread_p);
-	if (err != NO_ERROR)
-	  {
-	    pgbuf_unfix (thread_p, page);
-	    return err;
-	  }
       }
 
     if (m_page != nullptr)
@@ -755,6 +517,7 @@ namespace parallel_scan
 		pgbuf_unfix (thread_p, m_page);
 		m_page = nullptr;
 	      }
+	    m_input_handler->release_leaf_and_maybe_advance (thread_p, m_scan_id, m_current_range_idx);
 	    return S_ERROR;
 	  }
 	/* S_END means skip this OID, continue to next */
@@ -829,6 +592,7 @@ namespace parallel_scan
 		    pgbuf_unfix (thread_p, m_page);
 		    m_page = nullptr;
 		  }
+		m_input_handler->release_leaf_and_maybe_advance (thread_p, m_scan_id, m_current_range_idx);
 		return S_END;
 	      }
 	    continue;
@@ -850,7 +614,7 @@ namespace parallel_scan
 	 * code's is_iss + is_desc allow-NULL exception does not apply here. */
 	if (matched_range_idx >= 0 && DB_VALUE_DOMAIN_TYPE (&key) == DB_TYPE_MIDXKEY)
 	  {
-	    key_val_range *kvr = &m_key_val_ranges[matched_range_idx];
+	    key_val_range *kvr = &m_input_handler->get_key_val_ranges ()[matched_range_idx];
 	    if (kvr->num_index_term > 0)
 	      {
 		DB_MIDXKEY *mkey = db_get_midxkey (&key);
@@ -918,6 +682,7 @@ namespace parallel_scan
 			pgbuf_unfix (thread_p, m_page);
 			m_page = nullptr;
 		      }
+		    m_input_handler->release_leaf_and_maybe_advance (thread_p, m_scan_id, m_current_range_idx);
 		    return S_ERROR;
 		  }
 		continue;
@@ -956,6 +721,7 @@ namespace parallel_scan
 		pgbuf_unfix (thread_p, m_page);
 		m_page = nullptr;
 	      }
+	    m_input_handler->release_leaf_and_maybe_advance (thread_p, m_scan_id, m_current_range_idx);
 	    return S_ERROR;
 	  }
 
@@ -995,6 +761,7 @@ namespace parallel_scan
 		    pgbuf_unfix (thread_p, m_page);
 		    m_page = nullptr;
 		  }
+		m_input_handler->release_leaf_and_maybe_advance (thread_p, m_scan_id, m_current_range_idx);
 		return S_ERROR;
 	      }
 	    /* S_END means skip, continue to next OID */
@@ -1015,6 +782,7 @@ namespace parallel_scan
 	pgbuf_unfix (thread_p, m_page);
 	m_page = nullptr;
       }
+    m_input_handler->release_leaf_and_maybe_advance (thread_p, m_scan_id, m_current_range_idx);
     return S_END;
   }
 }

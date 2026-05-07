@@ -73,24 +73,19 @@ namespace parallel_scan
       int m_num_keys;                   /* keys on current page */
       int m_current_slot;               /* 1-indexed current position */
       FILTER_INFO m_data_filter;        /* data filter for heap predicate eval */
-      bool m_key_range_converted;       /* whether key range has been converted */
       bool m_is_covering;               /* covering index: read output from key, not heap */
       bool m_use_desc_index;            /* descending index scan direction (traversal) */
-      bool m_part_key_desc;             /* last partial-key domain is desc (from btid_int) */
 
-      /* Multi-key range support (KEYLIST/RANGELIST) */
-      key_val_range *m_key_val_ranges;  /* array of converted key ranges */
-      int m_num_key_ranges;             /* number of key ranges */
-      int m_current_range_idx;          /* optimization: track current range for sorted keys */
+      /* Per-leaf range cursor; m_key_val_ranges is owned by input_handler. */
+      int m_current_range_idx;
 
       /* Multi-OID per slot: collected OIDs for current slot */
       std::vector<OID> m_slot_oids;     /* OIDs collected from current leaf record */
-      size_t m_slot_oid_idx;            /* current position in m_slot_oids */
+      size_t m_slot_oid_idx;             /* current position in m_slot_oids */
       DB_VALUE m_slot_key;              /* key for current slot (retained while draining OIDs) */
       bool m_slot_key_valid;            /* whether m_slot_key is active */
       bool m_slot_clear_key;            /* whether m_slot_key needs pr_clear_value */
 
-      int convert_key_range (THREAD_ENTRY *thread_p);
       int check_key_in_range (DB_VALUE *key, bool *in_range, bool *past_upper, int *matched_range_idx);
       SCAN_CODE process_oid (THREAD_ENTRY *thread_p, OID *oid);
 

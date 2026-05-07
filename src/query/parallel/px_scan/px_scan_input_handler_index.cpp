@@ -29,6 +29,7 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "error_manager.h"
+#include "memory_alloc.h"
 #include "page_buffer.h"
 #include "scan_manager.h"
 #include "slotted_page.h"
@@ -54,90 +55,207 @@ namespace parallel_scan
     VPID_SET_NULL (&m_current_leaf_vpid);
     m_leaf_ended = false;
     m_descent_done = false;
-    m_descent_key_initialized = false;
-    m_descent_key_valid = false;
-    db_make_null (&m_descent_key_range.key1);
-    db_make_null (&m_descent_key_range.key2);
-    m_descent_key_range.range = NA_NA;
-    m_descent_key_range.is_truncated = false;
-    m_descent_key_range.num_index_term = 0;
+    m_key_val_ranges.clear ();
+    m_part_key_desc = false;
+    m_current_range_idx = 0;
+    m_active_workers = 0;
+    m_pending_advance_idx = -1;
+    m_advance_in_progress = false;
     return NO_ERROR;
   }
 
-  /* Evaluate the single-range descent bound (asc → key1, desc → key2) once
-   * m_btid_int.key_type is known. Multi-range / unbounded scans skip this and
-   * fall back to endmost-slot descent. Caller holds m_leaf_mutex. */
-  void
-  input_handler_index::try_prepare_descent_key (THREAD_ENTRY *thread_p)
+  /* one-shot conversion of indx_info->key_info.key_ranges into m_key_val_ranges.
+   * Mirrors slot_iterator_index::convert_key_range layout (truncated-range adjust,
+   * part_key_desc swap, sort-by-key1) so input_handler and slot_iterator share a
+   * single canonical view. Caller holds m_leaf_mutex via descend_to_first_leaf. */
+  int
+  input_handler_index::convert_all_key_ranges (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id)
   {
-    if (m_descent_key_initialized)
+    if (!m_key_val_ranges.empty ())
       {
-	return;
-      }
-    m_descent_key_initialized = true;
-
-    if (m_indx_info == nullptr || m_scan_id == nullptr || m_vd == nullptr)
-      {
-	return;
-      }
-    if (m_indx_info->key_info.key_cnt != 1)
-      {
-	/* would need MIN(key1) for asc / MAX(key2) for desc across all ranges */
-	return;
+	return NO_ERROR;
       }
 
-    KEY_RANGE *kr = &m_indx_info->key_info.key_ranges[0];
-    if (kr->range == NA_NA || kr->range == INF_INF)
+    int key_cnt = (m_indx_info != nullptr) ? m_indx_info->key_info.key_cnt : 0;
+
+    if (key_cnt <= 0)
       {
-	return;
-      }
-    /* scan_regu_key_to_index_key asserts at least one of key1/key2 is non-NULL */
-    if (kr->key1 == nullptr && kr->key2 == nullptr)
-      {
-	return;
-      }
-    /* DESC index stores keys with reversed compare order: leftmost storage = largest semantic.
-     * Effective scan direction = storage_desc XOR use_desc_index. */
-    TP_DOMAIN *first_col_dom = m_btid_int.key_type;
-    if (first_col_dom != nullptr && TP_DOMAIN_TYPE (first_col_dom) == DB_TYPE_MIDXKEY)
-      {
-	first_col_dom = first_col_dom->setdomain;
-      }
-    bool storage_desc = (first_col_dom != nullptr && first_col_dom->is_desc);
-    bool use_upper_bound = storage_desc ^ m_use_desc_index;
-    if (use_upper_bound ? (kr->key2 == nullptr) : (kr->key1 == nullptr))
-      {
-	return;
+	m_key_val_ranges.resize (1);
+	m_key_val_ranges[0].range = INF_INF;
+	m_key_val_ranges[0].is_truncated = false;
+	m_key_val_ranges[0].num_index_term = 0;
+	db_make_null (&m_key_val_ranges[0].key1);
+	db_make_null (&m_key_val_ranges[0].key2);
+	return NO_ERROR;
       }
 
-    m_descent_key_range.range = kr->range;
-    m_descent_key_range.is_truncated = false;
-    m_descent_key_range.num_index_term = 0;
-    db_make_null (&m_descent_key_range.key1);
-    db_make_null (&m_descent_key_range.key2);
-
-    INDX_SCAN_ID *isidp = &m_scan_id->s.isid;
-    int ret = scan_regu_key_to_index_key (thread_p, kr, &m_descent_key_range, isidp,
-					  m_btid_int.key_type, m_vd, 0);
-    if (ret != NO_ERROR)
+    /* worker_scan_id (per-task) is the only INDX_SCAN_ID with prebuilt_midxkey_domains
+     * initialized by scan_open_index_scan; the coordinator scan_id never goes through
+     * that path. scan_dbvals_to_midxkey would NULL-deref on F_MIDXKEY operands otherwise. */
+    if (worker_scan_id == nullptr)
       {
-	pr_clear_value (&m_descent_key_range.key1);
-	pr_clear_value (&m_descent_key_range.key2);
-	db_make_null (&m_descent_key_range.key1);
-	db_make_null (&m_descent_key_range.key2);
-	m_descent_key_range.range = NA_NA;
-	er_clear ();
-	return;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	return ER_FAILED;
+      }
+    INDX_SCAN_ID *isidp = &worker_scan_id->s.isid;
+    TP_DOMAIN *btree_domainp = m_btid_int.key_type;
+
+    m_part_key_desc = false;
+    m_key_val_ranges.resize (key_cnt);
+
+    for (int i = 0; i < key_cnt; i++)
+      {
+	KEY_RANGE *kr = &m_indx_info->key_info.key_ranges[i];
+
+	db_make_null (&m_key_val_ranges[i].key1);
+	db_make_null (&m_key_val_ranges[i].key2);
+	m_key_val_ranges[i].range = kr->range;
+	m_key_val_ranges[i].is_truncated = false;
+	m_key_val_ranges[i].num_index_term = 0;
+
+	if (kr->range == NA_NA || kr->range == INF_INF)
+	  {
+	    continue;
+	  }
+
+	int ret = scan_regu_key_to_index_key (thread_p, kr, &m_key_val_ranges[i],
+					      isidp, btree_domainp, m_vd, i);
+	if (ret != NO_ERROR)
+	  {
+	    for (int j = 0; j <= i; j++)
+	      {
+		pr_clear_value (&m_key_val_ranges[j].key1);
+		pr_clear_value (&m_key_val_ranges[j].key2);
+	      }
+	    m_key_val_ranges.clear ();
+	    return ret;
+	  }
+
+	/* Prefix index: truncated bounds become inclusive (GT->GE, LT->LE). */
+	if (m_key_val_ranges[i].is_truncated)
+	  {
+	    switch (m_key_val_ranges[i].range)
+	      {
+	      case GT_INF:
+		m_key_val_ranges[i].range = GE_INF;
+		break;
+	      case GT_LE:
+	      case GT_LT:
+	      case GE_LT:
+		m_key_val_ranges[i].range = GE_LE;
+		break;
+	      case INF_LT:
+		m_key_val_ranges[i].range = INF_LE;
+		break;
+	      default:
+		break;
+	      }
+	  }
       }
 
-    m_descent_key_valid = true;
+    /* part_key_desc detection from first valid range — matches btree_prepare_bts. */
+    for (int i = 0; i < static_cast<int> (m_key_val_ranges.size ()); i++)
+      {
+	if (m_key_val_ranges[i].range != NA_NA && m_key_val_ranges[i].num_index_term > 0)
+	  {
+	    TP_DOMAIN *dom = btree_domainp;
+	    if (dom != nullptr && TP_DOMAIN_TYPE (dom) == DB_TYPE_MIDXKEY)
+	      {
+		dom = dom->setdomain;
+	      }
+	    for (int k = 1; k < m_key_val_ranges[i].num_index_term && dom != nullptr; k++, dom = dom->next)
+	      ;
+	    if (dom != nullptr)
+	      {
+		m_part_key_desc = (dom->is_desc != 0);
+	      }
+	    break;
+	  }
+      }
+
+    /* part_key_desc swap (matches btree_prepare_bts). use_desc_index is always
+     * false for parallel scan (blocked by checker), so swap fires only when
+     * part_key_desc is true. */
+    if (m_part_key_desc && !m_use_desc_index)
+      {
+	for (int i = 0; i < static_cast<int> (m_key_val_ranges.size ()); i++)
+	  {
+	    if (m_key_val_ranges[i].range == NA_NA || m_key_val_ranges[i].range == INF_INF)
+	      {
+		continue;
+	      }
+	    range_reverse (m_key_val_ranges[i].range);
+	    DB_VALUE tmp_key = m_key_val_ranges[i].key1;
+	    m_key_val_ranges[i].key1 = m_key_val_ranges[i].key2;
+	    m_key_val_ranges[i].key2 = tmp_key;
+	  }
+      }
+
+    /* Sort ranges by key1 in B-tree storage order so leaf-chain forward
+     * traversal walks ranges in cursor-friendly order. */
+    if (static_cast<int> (m_key_val_ranges.size ()) > 1)
+      {
+	TP_DOMAIN *key_domain = m_btid_int.key_type;
+	for (int i = 0; i < static_cast<int> (m_key_val_ranges.size ()) - 1; i++)
+	  {
+	    for (int j = i + 1; j < static_cast<int> (m_key_val_ranges.size ()); j++)
+	      {
+		key_val_range *a = &m_key_val_ranges[i];
+		key_val_range *b = &m_key_val_ranges[j];
+
+		if (a->range == NA_NA && b->range != NA_NA)
+		  {
+		    key_val_range tmp = *a;
+		    *a = *b;
+		    *b = tmp;
+		    continue;
+		  }
+		if (b->range == NA_NA)
+		  {
+		    continue;
+		  }
+
+		DB_VALUE *ak = DB_IS_NULL (&a->key1) ? nullptr : &a->key1;
+		DB_VALUE *bk = DB_IS_NULL (&b->key1) ? nullptr : &b->key1;
+
+		if (ak == nullptr && bk != nullptr)
+		  {
+		    continue;
+		  }
+		if (ak != nullptr && bk == nullptr)
+		  {
+		    key_val_range tmp = *a;
+		    *a = *b;
+		    *b = tmp;
+		    continue;
+		  }
+		if (ak != nullptr && bk != nullptr)
+		  {
+		    int start_col = 0;
+		    DB_VALUE_COMPARE_RESULT cmp = btree_compare_key (ak, bk, key_domain, 1, 1, &start_col);
+		    if (cmp == DB_GT)
+		      {
+			key_val_range tmp = *a;
+			*a = *b;
+			*b = tmp;
+		      }
+		  }
+	      }
+	  }
+      }
+
+    return NO_ERROR;
   }
 
-  /* latch-coupled root→leaf descent; out_leaf hands back the leaf latch on S_SUCCESS (cf. btree_find_AR_sampling_leaf).
-   * Uses btree_search_nonleaf_page when a single-range descent key is available; otherwise falls back to
-   * endmost-slot descent (asc→leftmost, desc→rightmost). */
+  /* latch-coupled root→leaf descent for the requested range (cf. btree_find_AR_sampling_leaf).
+   * Closed-bound range → btree_search_nonleaf_page. Open-bound range (NULL on the descent side)
+   * → leftmost (asc) or rightmost (desc) slot at every nonleaf level, mirroring the
+   * single-thread btree_find_boundary_leaf path (btree.c:15077-15168). On S_SUCCESS out_leaf
+   * holds the READ latch; on S_ERROR all latches are released and the original er_set state
+   * (from btree.c / page_buffer / scan_manager) is preserved for the caller. */
   SCAN_CODE
-  input_handler_index::descend_to_first_leaf (THREAD_ENTRY *thread_p, PAGE_PTR &out_leaf)
+  input_handler_index::descend_to_first_leaf (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, int range_idx,
+      PAGE_PTR &out_leaf)
   {
     PAGE_PTR P_page = NULL;
     PAGE_PTR C_page = NULL;
@@ -151,146 +269,162 @@ namespace parallel_scan
     P_page = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
     if (P_page == NULL)
       {
-	goto fallback;
+	return S_ERROR;
       }
 
     (void) pgbuf_check_page_ptype (thread_p, P_page, PAGE_BTREE);
 
-    {
-      BTREE_ROOT_HEADER *root_header = btree_get_root_header (thread_p, P_page);
-      if (root_header == NULL)
-	{
-	  goto fallback;
-	}
+    BTREE_ROOT_HEADER *root_header = btree_get_root_header (thread_p, P_page);
+    if (root_header == NULL)
+      {
+	pgbuf_unfix_and_init (thread_p, P_page);
+	return S_ERROR;
+      }
 
-      if (btree_glean_root_header_info (thread_p, root_header, &m_btid_int, true) != NO_ERROR)
-	{
-	  goto fallback;
-	}
+    /* btid_int is populated once on first descent; convert_all_key_ranges is
+     * idempotent and exits early on subsequent calls. */
+    if (btree_glean_root_header_info (thread_p, root_header, &m_btid_int, true) != NO_ERROR)
+      {
+	pgbuf_unfix_and_init (thread_p, P_page);
+	return S_ERROR;
+      }
+    m_btid_int.sys_btid = &m_btid;
 
-      m_btid_int.sys_btid = &m_btid;
+    int conv_err = convert_all_key_ranges (thread_p, worker_scan_id);
+    if (conv_err != NO_ERROR)
+      {
+	pgbuf_unfix_and_init (thread_p, P_page);
+	return S_ERROR;
+      }
 
-      try_prepare_descent_key (thread_p);
+    /* m_key_val_ranges is in B-tree storage order; kvr->key1 is the storage-leftmost
+     * lower bound. Closed-bound: btree_search_nonleaf_page descent. Open-bound: NULL
+     * descent_key falls through to the leftmost/rightmost slot vertical path. */
+    DB_VALUE *descent_key = nullptr;
+    bool closed_bound = false;
+    if (range_idx >= 0 && range_idx < static_cast<int> (m_key_val_ranges.size ()))
+      {
+	key_val_range *kvr = &m_key_val_ranges[range_idx];
+	if (kvr->range != NA_NA && kvr->range != INF_INF && !DB_IS_NULL (&kvr->key1))
+	  {
+	    descent_key = &kvr->key1;
+	    closed_bound = true;
+	  }
+      }
 
-      DB_VALUE *descent_key = nullptr;
-      if (m_descent_key_valid)
-	{
-	  TP_DOMAIN *first_col_dom = m_btid_int.key_type;
-	  if (first_col_dom != nullptr && TP_DOMAIN_TYPE (first_col_dom) == DB_TYPE_MIDXKEY)
-	    {
-	      first_col_dom = first_col_dom->setdomain;
-	    }
-	  bool storage_desc = (first_col_dom != nullptr && first_col_dom->is_desc);
-	  bool use_upper_bound = storage_desc ^ m_use_desc_index;
-	  descent_key = use_upper_bound ? &m_descent_key_range.key2 : &m_descent_key_range.key1;
-	  if (DB_IS_NULL (descent_key))
-	    {
-	      descent_key = nullptr;
-	    }
-	}
+    short node_level = root_header->node.node_level;
 
-      short node_level = root_header->node.node_level;
+    /* invariant: P_page latched throughout descent */
+    while (node_level > 1)
+      {
+	VPID child_vpid;
+	VPID_SET_NULL (&child_vpid);
 
-      /* invariant: P_page latched throughout descent */
-      while (node_level > 1)
-	{
-	  VPID child_vpid;
-	  VPID_SET_NULL (&child_vpid);
+	if (descent_key != nullptr)
+	  {
+	    INT16 slot_id = NULL_SLOTID;
+	    int err = btree_search_nonleaf_page (thread_p, &m_btid_int, P_page, descent_key,
+						 &slot_id, &child_vpid, NULL);
+	    if (err != NO_ERROR || VPID_ISNULL (&child_vpid))
+	      {
+		pgbuf_unfix_and_init (thread_p, P_page);
+		if (err == NO_ERROR && er_errid () == NO_ERROR)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+		  }
+		return S_ERROR;
+	      }
+	  }
+	else
+	  {
+	    /* open-bound vertical descent: NULL bound → asc=slot 1, desc=slot key_cnt.
+	     * Mirrors btree_find_boundary_leaf (btree.c:15077-15168). closed-bound must
+	     * never reach this branch — that would land in the wrong subtree. */
+	    assert (!closed_bound);
+	    if (closed_bound)
+	      {
+		pgbuf_unfix_and_init (thread_p, P_page);
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+		return S_ERROR;
+	      }
+	    int key_cnt = btree_node_number_of_keys (thread_p, P_page);
+	    if (key_cnt <= 0)
+	      {
+		pgbuf_unfix_and_init (thread_p, P_page);
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+		return S_ERROR;
+	      }
 
-	  if (descent_key != nullptr)
-	    {
-	      INT16 slot_id = NULL_SLOTID;
-	      int err = btree_search_nonleaf_page (thread_p, &m_btid_int, P_page, descent_key,
-						   &slot_id, &child_vpid, NULL);
-	      if (err != NO_ERROR || VPID_ISNULL (&child_vpid))
-		{
-		  /* abort rather than mid-descent slot fallback (would land in wrong subtree) */
-		  goto fallback;
-		}
-	    }
-	  else
-	    {
-	      int key_cnt = btree_node_number_of_keys (thread_p, P_page);
-	      if (key_cnt <= 0)
-		{
-		  goto fallback;
-		}
+	    int slot_to_follow = m_use_desc_index ? key_cnt : 1;
+	    RECDES rec;
+	    rec.data = NULL;
+	    rec.area_size = -1;
+	    if (spage_get_record (thread_p, P_page, slot_to_follow, &rec, PEEK) != S_SUCCESS)
+	      {
+		pgbuf_unfix_and_init (thread_p, P_page);
+		return S_ERROR;
+	      }
 
-	      /* asc → slot 1, desc → slot key_cnt */
-	      int slot_to_follow = m_use_desc_index ? key_cnt : 1;
-	      RECDES rec;
-	      rec.data = NULL;
-	      rec.area_size = -1;
-	      if (spage_get_record (thread_p, P_page, slot_to_follow, &rec, PEEK) != S_SUCCESS)
-		{
-		  goto fallback;
-		}
+	    /* btree_read_fixed_portion_of_non_leaf_record is btree.c-internal; unpack inline. */
+	    child_vpid.pageid = OR_GET_INT (rec.data);
+	    child_vpid.volid = OR_GET_SHORT (rec.data + OR_INT_SIZE);
 
-	      /* unpack VPID inline; btree_read_fixed_portion_of_non_leaf_record is btree.c-internal */
-	      child_vpid.pageid = OR_GET_INT (rec.data);
-	      child_vpid.volid = OR_GET_SHORT (rec.data + OR_INT_SIZE);
+	    if (VPID_ISNULL (&child_vpid))
+	      {
+		pgbuf_unfix_and_init (thread_p, P_page);
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+		return S_ERROR;
+	      }
+	  }
 
-	      if (VPID_ISNULL (&child_vpid))
-		{
-		  goto fallback;
-		}
-	    }
+	C_vpid = child_vpid;
 
-	  C_vpid = child_vpid;
+	/* fix child before unfixing parent — blocks concurrent split */
+	C_page = pgbuf_fix (thread_p, &C_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	if (C_page == NULL)
+	  {
+	    pgbuf_unfix_and_init (thread_p, P_page);
+	    return S_ERROR;
+	  }
 
-	  /* fix child before unfixing parent — blocks concurrent split */
-	  C_page = pgbuf_fix (thread_p, &C_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-	  if (C_page == NULL)
-	    {
-	      goto fallback;
-	    }
+	(void) pgbuf_check_page_ptype (thread_p, C_page, PAGE_BTREE);
 
-	  (void) pgbuf_check_page_ptype (thread_p, C_page, PAGE_BTREE);
+	pgbuf_unfix_and_init (thread_p, P_page);
 
-	  pgbuf_unfix_and_init (thread_p, P_page);
+	BTREE_NODE_HEADER *child_hdr = btree_get_node_header (thread_p, C_page);
+	if (child_hdr == NULL)
+	  {
+	    pgbuf_unfix_and_init (thread_p, C_page);
+	    return S_ERROR;
+	  }
 
-	  BTREE_NODE_HEADER *child_hdr = btree_get_node_header (thread_p, C_page);
-	  if (child_hdr == NULL)
-	    {
-	      P_page = C_page;
-	      C_page = NULL;
-	      P_vpid = C_vpid;
-	      goto fallback;
-	    }
-
-	  P_page = C_page;
-	  C_page = NULL;
-	  P_vpid = C_vpid;
-	  node_level = child_hdr->node_level;
-	}
-    }
+	P_page = C_page;
+	C_page = NULL;
+	P_vpid = C_vpid;
+	node_level = child_hdr->node_level;
+      }
 
     /* hand the leaf latch to the caller */
     out_leaf = P_page;
     return S_SUCCESS;
-
-fallback:
-    if (C_page != NULL)
-      {
-	pgbuf_unfix_and_init (thread_p, C_page);
-      }
-    if (P_page != NULL)
-      {
-	pgbuf_unfix_and_init (thread_p, P_page);
-      }
-    /* generic error so ASSERT_NO_ERROR callers don't trip on the fallback */
-    er_clear ();
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-    return S_ERROR;
   }
 
-  /* mutex-protected leaf cursor; first call descends + hands off, later calls fix m_current_leaf_vpid */
+  /* mutex-protected leaf cursor. Blocks while another worker is driving an
+   * advance-to-next-range descent. On S_SUCCESS m_active_workers is incremented;
+   * the caller MUST pair with release_leaf_and_maybe_advance when done. */
   SCAN_CODE
-  input_handler_index::get_next_page_with_fix (THREAD_ENTRY *thread_p, PAGE_PTR &out_page)
+  input_handler_index::get_next_page_with_fix (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, PAGE_PTR &out_page)
   {
     out_page = nullptr;
 
     std::unique_lock<std::mutex> lock (m_leaf_mutex);
+
+    /* serialize fetch with advance: a fetcher must not see a stale m_current_leaf_vpid
+     * while another worker is mid-descent for the next range. */
+    m_advance_cv.wait (lock, [this] ()
+    {
+      return !m_advance_in_progress;
+    });
 
     if (m_leaf_ended)
       {
@@ -301,13 +435,15 @@ fallback:
 
     if (!m_descent_done)
       {
-	SCAN_CODE sc = descend_to_first_leaf (thread_p, page);
+	SCAN_CODE sc = descend_to_first_leaf (thread_p, worker_scan_id, 0, page);
 	if (sc != S_SUCCESS)
 	  {
 	    m_leaf_ended = true;
+	    m_advance_cv.notify_all ();
 	    return sc;
 	  }
 	m_descent_done = true;
+	m_current_range_idx = 0;
       }
     else
       {
@@ -316,6 +452,7 @@ fallback:
 	if (page == nullptr)
 	  {
 	    m_leaf_ended = true;
+	    m_advance_cv.notify_all ();
 	    return S_ERROR;
 	  }
       }
@@ -325,6 +462,7 @@ fallback:
       {
 	pgbuf_unfix (thread_p, page);
 	m_leaf_ended = true;
+	m_advance_cv.notify_all ();
 	return S_ERROR;
       }
 
@@ -339,8 +477,74 @@ fallback:
 	m_current_leaf_vpid = next;
       }
 
+    m_active_workers++;
     out_page = page;
     return S_SUCCESS;
+  }
+
+  /* Concurrency-safe range advance.
+   *
+   * Worker invariant: every leaf returned by get_next_page_with_fix MUST be
+   * paired with exactly one release_leaf_and_maybe_advance call when done.
+   * local_advance_target is the slot_iterator's m_current_range_idx after
+   * processing this leaf (= how many ranges this worker has finished with).
+   *
+   * The first releasing worker that detects local_advance_target > m_current_range_idx
+   * acquires the drive lock (m_advance_in_progress=true), waits on m_advance_cv
+   * until all other workers release their leaves (m_active_workers==0), then
+   * performs root→leaf descent for the new range and updates m_current_leaf_vpid.
+   * Other releasers and new fetchers wait on the cv until the drive completes.
+   * This guarantees no worker holds an old-range leaf when the cursor jumps. */
+  /* Concurrency-safe range advance. Decrements m_active_workers; if the caller's
+   * local_advance_target signals "past every range" (>= num_ranges), drains every
+   * other worker via cv.wait and then sets leaf_ended atomically so the cursor
+   * does not advance past the last useful leaf. Mid-range descent jumps are not
+   * implemented in this iteration; range-to-range transitions ride the leaf chain. */
+  void
+  input_handler_index::release_leaf_and_maybe_advance (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id,
+      int local_advance_target)
+  {
+    (void) worker_scan_id;
+    std::unique_lock<std::mutex> lock (m_leaf_mutex);
+
+    assert (m_active_workers > 0);
+    m_active_workers--;
+
+    if (local_advance_target > m_pending_advance_idx)
+      {
+	m_pending_advance_idx = local_advance_target;
+      }
+
+    bool drive = false;
+    if (m_pending_advance_idx >= static_cast<int> (m_key_val_ranges.size ())
+	&& !m_advance_in_progress && !m_leaf_ended)
+      {
+	m_advance_in_progress = true;
+	drive = true;
+      }
+
+    if (!drive)
+      {
+	m_advance_cv.notify_all ();
+	return;
+      }
+
+    m_advance_cv.wait (lock, [this] ()
+    {
+      return m_active_workers == 0;
+    });
+
+    int target = m_pending_advance_idx;
+    m_pending_advance_idx = -1;
+
+    if (target >= static_cast<int> (m_key_val_ranges.size ()))
+      {
+	m_current_range_idx = target;
+	m_leaf_ended = true;
+      }
+
+    m_advance_in_progress = false;
+    m_advance_cv.notify_all ();
   }
 
   /* No-op: slot_iterator_index drives the leaf-page cursor directly. */
@@ -353,15 +557,14 @@ fallback:
   int
   input_handler_index::finalize (THREAD_ENTRY *thread_p)
   {
-    if (m_descent_key_valid)
-      {
-	pr_clear_value (&m_descent_key_range.key1);
-	pr_clear_value (&m_descent_key_range.key2);
-	db_make_null (&m_descent_key_range.key1);
-	db_make_null (&m_descent_key_range.key2);
-	m_descent_key_valid = false;
-      }
-    m_descent_key_initialized = false;
+    /* DO NOT clear m_key_val_ranges here. Each worker's task::finalize calls this method,
+     * but slot_iterator workers continue to read m_key_val_ranges via check_key_in_range
+     * even after some sibling task has finished and called finalize. Clearing the shared
+     * vector mid-scan would race with active readers and silently truncate filtering
+     * (slot_iterator falls through to past_upper, dropping qualifying keys). The vector
+     * storage is reclaimed by the input_handler destructor when the scan ends; the
+     * DB_VALUE content (allocated via db_private_alloc inside scan_regu_key_to_index_key)
+     * is reclaimed by the alloc'ing worker's private heap teardown. */
     return NO_ERROR;
   }
 
