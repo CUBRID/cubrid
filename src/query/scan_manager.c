@@ -2912,6 +2912,8 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				 &hsidp->sampling.picked_vpids,
 				 &hsidp->sampling.picked_count, &total_pages) != NO_ERROR)
 	{
+	  /* collect contract zeros picked_count on failure; sync cursor to keep cursor<=count invariant */
+	  hsidp->sampling.picked_cursor = 0;
 	  return ER_FAILED;
 	}
       hsidp->sampling.picked_cursor = 0;
@@ -4475,9 +4477,10 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       break;
 
     case S_HEAP_SAMPLING_SCAN:
-      /* preserve picked_vpids buffer; only rewind the cursor */
+      /* preserve picked_vpids buffer; rewind cursor and curr_oid so heap_next restarts from picked_vpids[0] */
       assert (s_id->s.hsid.sampling.picked_vpids != NULL || s_id->s.hsid.sampling.picked_count == 0);
       s_id->s.hsid.sampling.picked_cursor = 0;
+      UT_CAST_TO_NULL_HEAP_OID (&s_id->s.hsid.hfid, &s_id->s.hsid.curr_oid);
       break;
 
 #if SERVER_MODE && !WINDOWS
