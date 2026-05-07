@@ -211,7 +211,7 @@ namespace cubmethod
       // condition to check
       // Wake on interrupt so we can drain even if XASL ordering never makes
       // claimed reach the top of m_group_stack.
-      return m_group_stack.empty () || m_group_stack.back() == claimed->get_id () || m_is_interrupted;
+      return m_group_stack.back() == claimed->get_id () || m_is_interrupted;
     };
 
     // Guaranteed to be removed from the topmost element
