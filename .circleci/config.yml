@@ -46,9 +46,20 @@ jobs:
             echo "RUN_SHELL_TEST: $RUN_SHELL_TEST"
             echo "RUN_ALL_TEST: $RUN_ALL_TEST"
             echo "BASELINE: $BASELINE"
-                        
-            TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git feature/system-catalog-update | cut -f1)
-            echo "sha value from tc repository.(only from feature/system-catalog-update branch)"
+
+            if [[ "$CIRCLE_BRANCH" == pull/* ]]; then
+              TC_BRANCH="tc/pr-${CIRCLE_BRANCH//[^0-9]/}"
+            else
+              TC_BRANCH="develop"
+            fi
+            
+            TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git ${TC_BRANCH} | cut -f1)
+            [ -z "$TC_SHA" ] && TC_BRANCH="develop" && TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git develop | cut -f1)           
+            
+            CACHE_KEY_BRANCH="${TC_BRANCH//\//-}"
+            
+            echo "TC_BRANCH: $TC_BRANCH"
+            echo "sha value from tc repository.(from $TC_BRANCH branch)"
             echo "TC_SHA: $TC_SHA"
             echo "CACHE_KEY_BRANCH: $CACHE_KEY_BRANCH"
 
