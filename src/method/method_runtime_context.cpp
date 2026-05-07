@@ -18,6 +18,8 @@
 
 #include "method_runtime_context.hpp"
 
+#include <algorithm>
+
 #include "method_query_cursor.hpp"
 #include "query_manager.h"
 #include "session.h"
@@ -92,7 +94,7 @@ namespace cubmethod
       }
     else
       {
-	set_interrupt (er_errid ());
+	set_interrupt (ulock, er_errid ());
       }
     return group;
   }
@@ -132,41 +134,106 @@ namespace cubmethod
   {
     std::unique_lock<std::mutex> ulock (m_mutex);
 
-    if (claimed->is_for_scan () && m_group_stack.back() != claimed->get_id ())
+    // Drain any deferred id matching the current group stack top.
+    // Back-only match can stall when nested method_scan leaves the orders mismatched.
+    auto drain_deferred = [&] ()
+    {
+      bool changed = true;
+      while (changed && !m_group_stack.empty () && !m_deferred_free_stack.empty ())
+	{
+	  changed = false;
+	  METHOD_GROUP_ID top = m_group_stack.back ();
+	  for (auto it = m_deferred_free_stack.begin (); it != m_deferred_free_stack.end (); ++it)
+	    {
+	      if (*it == top)
+		{
+		  destroy_group (top);
+		  m_group_stack.pop_back ();
+		  m_deferred_free_stack.erase (it);
+		  changed = true;
+		  break;
+		}
+	    }
+	}
+    };
+
+    // Interrupt drain path. Under interrupt no other worker will satisfy the
+    // normal "back == claimed" predicate (XASL clear ordering is abandoned),
+    // so we cannot block on m_cond_var or we deadlock wait_for_interrupt().
+    // The connection that backed claimed was already retired by
+    // method_invoke_group::end() before we got here, and method_scan's caller
+    // nulls its pointer right after pop_stack -- so it is safe to remove
+    // claimed's id from both stacks and destroy it now.
+    auto handle_interrupt_pop = [&] ()
+    {
+      METHOD_GROUP_ID id = claimed->get_id ();
+      auto stack_end = std::remove (m_group_stack.begin (), m_group_stack.end (), id);
+      m_group_stack.erase (stack_end, m_group_stack.end ());
+      auto def_end = std::remove (m_deferred_free_stack.begin (), m_deferred_free_stack.end (), id);
+      m_deferred_free_stack.erase (def_end, m_deferred_free_stack.end ());
+
+      destroy_group (id);
+
+      if (m_group_stack.empty ())
+	{
+	  m_is_running = false;
+	}
+      m_cond_var.notify_all ();
+    };
+
+    if (m_is_interrupted)
+      {
+	handle_interrupt_pop ();
+	return;
+      }
+
+    if (claimed->is_for_scan () && m_group_stack.back () != claimed->get_id ())
       {
 	// push deferred
 	// When beginning method_invoke_group with method scan, method_invoke_group belonging to child node in XASL is pushed first (postorder)
 	// When method_invoke_group is ended while clearing XASL by qexec_clear_xasl(), method_invoke_group belonging to the parent node in XASL is poped first (preorder)
 	// Because of these differences, I've introduced the m_deferred_free_stack structure to follow the order of clearing according to the XASL structure when clearing method_invoke_groups from the m_group_stack.
 	m_deferred_free_stack.push_back (claimed->get_id ());
+
+	// drain in case the new top is already deferred.
+	drain_deferred ();
+	if (m_group_stack.empty ())
+	  {
+	    m_is_running = false;
+	    clear_interrupt ();
+	  }
+	m_cond_var.notify_all ();
 	return;
       }
 
     auto pred = [&] () -> bool
     {
       // condition to check
-      return m_group_stack.empty () || m_group_stack.back() == claimed->get_id ();
+      // Wake on interrupt so we can drain even if XASL ordering never makes
+      // claimed reach the top of m_group_stack.
+      return m_group_stack.back() == claimed->get_id () || m_is_interrupted;
     };
 
     // Guaranteed to be removed from the topmost element
     m_cond_var.wait (ulock, pred);
 
-    if (pred ())
+    // If we woke because of interrupt, take the same drain path as on entry.
+    if (m_is_interrupted)
       {
-	if (!m_group_stack.empty())
-	  {
-	    destroy_group (m_group_stack.back ());
-	    m_group_stack.pop_back ();
-	  }
+	handle_interrupt_pop ();
+	return;
       }
 
-    // should be freed for all XASL structure
-    while (m_deferred_free_stack.empty () == false && m_deferred_free_stack.back () == m_group_stack.back())
+    // m_cond_var.wait(lock, pred) only returns when pred() is true, so the
+    // outer pred() guard would always be true here -- drop it.
+    if (!m_group_stack.empty ())
       {
 	destroy_group (m_group_stack.back ());
 	m_group_stack.pop_back ();
-	m_deferred_free_stack.pop_back ();
       }
+
+    // should be freed for all XASL structure
+    drain_deferred ();
 
     if (m_group_stack.empty())
       {
@@ -218,6 +285,20 @@ namespace cubmethod
   void
   runtime_context::set_interrupt (int reason, std::string msg)
   {
+    // Hold m_mutex for the whole operation so the flag set, the connection
+    // teardown and the notify_all all observe the same state. Otherwise a
+    // pop_stack worker can call clear_interrupt() between our flag write and
+    // our re-read of m_is_interrupted, silently losing the interrupt.
+    std::unique_lock<std::mutex> ulock (m_mutex);
+    set_interrupt (ulock, reason, msg);
+  }
+
+  void
+  runtime_context::set_interrupt (std::unique_lock<std::mutex> &lock, int reason, std::string msg)
+  {
+    assert (lock.owns_lock () && lock.mutex () == &m_mutex);
+    (void) lock;
+
     if (m_is_interrupted)
       {
 	// do not overwrite interrupt
@@ -252,7 +333,6 @@ namespace cubmethod
 
     if (m_is_interrupted)
       {
-	std::unique_lock<std::mutex> ulock (m_mutex);
 	for (auto &it : m_group_map)
 	  {
 	    connection *conn = it.second->get_connection ();
@@ -261,6 +341,17 @@ namespace cubmethod
 		conn->invalidate ();
 	      }
 	  }
+	// Also tear down idle connections that were retired back to the pool
+	// before the interrupt fired. Without this, sockets to javasp leak
+	// until ~runtime_context runs -- which may never happen if a worker
+	// is stuck in pop_stack's wait. (Lock order: rctx mutex -> pool mutex.)
+	m_conn_pool.invalidate_idle ();
+
+	// Wake any worker parked in pop_stack's m_cond_var.wait so it can
+	// take the interrupt drain path. set_interrupt without notify_all
+	// would leave wait_for_interrupt() blocked forever even after the
+	// sockets are closed, because cond_var has no fd-close coupling.
+	m_cond_var.notify_all ();
       }
   }
 
@@ -298,9 +389,39 @@ namespace cubmethod
     };
 
     std::unique_lock<std::mutex> ulock (m_mutex);
-    while (m_cond_var.wait_for (ulock, std::chrono::milliseconds (100), pred) == false)
+
+    using namespace std::chrono;
+    // Wait until the runtime drains. We intentionally do NOT impose a deadline:
+    // a time-based force-drain cannot tell "slow but live" worker from a truly
+    // stuck one, and destroying group memory while a worker is still unwinding
+    // would be a use-after-free. If the drain never completes, the session
+    // owning this rctx remains pinned -- prefer that to a crash.
+#if !defined(NDEBUG)
+    auto wait_started = steady_clock::now ();
+    auto last_log = wait_started;
+#endif
+
+    while (!pred ())
       {
-	m_cond_var.notify_all ();
+	m_cond_var.wait_for (ulock, milliseconds (100), pred);
+	if (!pred ())
+	  {
+	    m_cond_var.notify_all ();
+
+#if !defined(NDEBUG)
+	    auto now = steady_clock::now ();
+	    if (now - last_log >= seconds (10))
+	      {
+		auto elapsed = duration_cast<seconds> (now - wait_started).count ();
+		er_log_debug (ARG_FILE_LINE,
+			      "method runtime_context: drain pending for %llds "
+			      "(group_stack=%zu, deferred=%zu, interrupt_id=%d)\n",
+			      (long long) elapsed, m_group_stack.size (),
+			      m_deferred_free_stack.size (), m_interrupt_id);
+		last_log = now;
+	      }
+#endif
+	  }
       }
   }
 

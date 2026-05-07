@@ -54,6 +54,11 @@ namespace cubmethod
       connection *claim ();
       void retire (connection *&claimed, bool kill);
 
+      // Tear down every idle (retired) connection in the queue.
+      // Caller must guarantee no claim()/retire() races (e.g., invoked under
+      // the owning rctx's interrupt path before the rctx is destroyed).
+      void invalidate_idle ();
+
       int max_size () const;
 
     private:

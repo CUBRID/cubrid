@@ -110,9 +110,18 @@ jsp_disconnect_server (SOCKET & sockfd)
       linger_buffer.l_onoff = 1;
       linger_buffer.l_linger = 0;
       setsockopt (sockfd, SOL_SOCKET, SO_LINGER, (char *) &linger_buffer, sizeof (linger_buffer));
+
+      // Force the peer (javasp ExecuteThread) to wake from blocking recv/poll
+      // immediately. SO_LINGER {1,0} alone relies on the kernel sending RST,
+      // which can be suppressed by send-buffer state, firewalls, or socket
+      // options. shutdown(SHUT_RDWR) guarantees the peer observes EOF on the
+      // read side regardless, so server-side interrupt does not depend on
+      // RST delivery to free javasp threads.
 #if defined(WINDOWS)
+      shutdown (sockfd, SD_BOTH);
       closesocket (sockfd);
 #else /* not WINDOWS */
+      shutdown (sockfd, SHUT_RDWR);
       close (sockfd);
 #endif /* not WINDOWS */
       sockfd = INVALID_SOCKET;
