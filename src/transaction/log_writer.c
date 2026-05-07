@@ -3234,7 +3234,5 @@ logwr_dump_logwr_gl_topfields (FILE * out, int indent)
   fprintf (out, "%*sori_nxarv_pageid: %lld,\n", indent, "", (long long) logwr_Gl.ori_nxarv_pageid);
   fprintf (out, "%*sstart_pageid: %lld,\n", indent, "", (long long) logwr_Gl.start_pageid);
   fprintf (out, "%*sreinit_copylog: %s\n", indent, "", logwr_Gl.reinit_copylog ? "true" : "false");
-
-  fprintf (out, "%*s}\n", indent, "");
 }
 #endif
