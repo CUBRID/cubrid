@@ -1398,6 +1398,7 @@ namespace cubschema
       {"domain_class_name", format_varchar (255)},
       {"domain_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"default_value", format_varchar (255)},
+      {"is_partition_key", format_varchar (3)},
       {"is_nullable", format_varchar (3)},
       {"is_invisible", format_varchar (3)},
       {"comment", format_varchar (1024)},

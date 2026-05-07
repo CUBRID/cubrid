@@ -21,6 +21,7 @@
  * schema_system_catalog_install_query_spec.cpp
  */
 
+#include "dbtype_def.h"
 #include "schema_system_catalog_install.hpp"
 
 #include "authenticate.h"
@@ -313,7 +314,8 @@ sm_define_view_attribute_spec (void)
 	    ") AS [collation], "
 	  "[d].[class_of].[class_name] AS [domain_class_name], "
 	  "[d].[class_of].[owner].[name] AS [domain_owner_name], "
-	  "[a].[default_value] AS [default_value], "
+	  "CASE WHEN ([a].[flags] & %d) = %d THEN 'AUTO_INCREMENT' ELSE [a].[default_value] END AS [default_value], "
+	  "CASE WHEN ([a].[flags] & %d) = %d THEN 'YES' ELSE 'NO' END AS [is_partition_key], "
 	  "CASE WHEN [a].[is_nullable] = 1 THEN 'YES' ELSE 'NO' END AS [is_nullable], "
 	  "CASE WHEN ([a].[flags] & %d) = %d THEN 'YES' ELSE 'NO' END AS [is_invisible], "
 	  "[a].[comment] AS [comment] "
@@ -370,6 +372,10 @@ sm_define_view_attribute_spec (void)
 	    ")",
 	CT_CHARSET_NAME,
 	CT_COLLATION_NAME,
+	DB_ATTOPT_AUTO_INCREMENT,
+	DB_ATTOPT_AUTO_INCREMENT,
+	DB_ATTOPT_PARTITION_KEY,
+	DB_ATTOPT_PARTITION_KEY,
 	DB_ATTOPT_INVISIBLE_COLUMN,
 	DB_ATTOPT_INVISIBLE_COLUMN,
 	CT_CLASS_NAME,
