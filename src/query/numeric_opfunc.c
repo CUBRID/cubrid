@@ -1019,7 +1019,7 @@ float_numeric_sub (const uint64_t * arg1_word, const uint64_t * arg2_word, uint6
  *       A - B is transformed into A + (-B) by flipping the sign of
  *       the second operand.
  */
-int
+static int
 float_numeric_sub_fast (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint64_t * result_word, int calc_words,
 			bool dbv1_sign, bool dbv2_sign, bool * result_sign, uint8_t * result_buf)
 {
