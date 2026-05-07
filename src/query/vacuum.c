@@ -3671,9 +3671,22 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 			 "collected oid %d|%d|%d, in file %d|%d, based on %lld|%d", OID_AS_ARGS (&heap_object_oid),
 			 VFID_AS_ARGS (&log_vacuum.vfid), LSA_AS_ARGS (&rcv_lsa));
 
-	  /* Forward-walk OOS reclamation: see vacuum_forward_walk_delete_old_oos for the full
-	   * rationale (why only RVHF_UPDATE_NOTIFY_VACUUM, why other rcvindexes are excluded, and
-	   * why no defensive copy of undo_data is required). */
+	  /* Forward-walk OOS reclamation. Admit ONLY RVHF_UPDATE_NOTIFY_VACUUM:
+	   *
+	   *   - UPDATE: heap_attrinfo_insert_to_oos allocates fresh OOS OIDs per transform, so the
+	   *     pre-image OIDs in undo are disjoint from the live post-image. The post-UPDATE slot
+	   *     references only the new OIDs; vacuum's REMOVE path can never reach the old ones.
+	   *     Forward-walk on the undo recdes is the only path that can reclaim them.
+	   *
+	   *   - RVHF_MVCC_DELETE_MODIFY_HOME also carries an OOS-bearing pre-image in undo, but a
+	   *     logical DELETE leaves the slot's recdes contents intact (only delete_mvccid changes).
+	   *     The post-DELETE slot still references the SAME OIDs, and vacuum's REMOVE path will
+	   *     reclaim them. Running forward-walk too would double-delete and trip oos_delete_chain's
+	   *     S_DOESNT_EXIST assert. The rcvindex gate below is load-bearing for this exclusion.
+	   *
+	   *   - RVHF_MVCC_INSERT, RVHF_MVCC_DELETE_REC_HOME, RVHF_MVCC_NO_MODIFY_HOME, and
+	   *     RVHF_MVCC_REDISTRIBUTE log no pre-image recdes in undo, so undo_data_size > 0 below
+	   *     filters them naturally; no rcvindex check needed for those. */
 	  if (log_record_data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM && undo_data != NULL && undo_data_size > 0)
 	    {
 	      RECDES undo_recdes;
