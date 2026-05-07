@@ -1467,7 +1467,11 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1370 A class can have only one AUTO_INCREMENT attribute.
 
-1371 Last Error
+1371 System metadata upgrade is required. Run 'cubrid upgradedb' to upgrade.
+1372 System metadata version is newer than the current CUBRID version supports; downgrade is not supported.
+1373 Upgrade script validation failed.
+
+1374 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
