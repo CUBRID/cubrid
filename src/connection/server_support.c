@@ -552,7 +552,9 @@ css_start_shutdown_server ()
  *       css_initialize_server_interfaces before calling this function.
  */
 // *INDENT-OFF*
-REGISTER_WORKERPOOL (transaction, []() { return (int) prm_get_integer_value (PRM_ID_MAX_TRANSACTION_WORKERS); });
+REGISTER_WORKERPOOL (transaction, []() {
+    return (int) (prm_get_integer_value (PRM_ID_MAX_TRANSACTION_CONCURRENCY) * prm_get_float_value (PRM_ID_WORKER_OVERCOMMIT_RATIO)) + 1;
+});
 // *INDENT-ON*
 
 int
@@ -560,7 +562,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 {
   cubconn::master::connector connector;
   cubconn::connection::pool connections;
-  std::size_t max_transaction_concurrency, max_transaction_threads;
+  std::size_t max_transaction_concurrency;
+  float worker_overcommit_ratio;
   std::size_t max_connection_workers, min_connection_workers;
   std::size_t max_connections;
   std::string name;
@@ -573,7 +576,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   name = std::string (server_name, name_length);
 
   max_transaction_concurrency = prm_get_integer_value (PRM_ID_MAX_TRANSACTION_CONCURRENCY);
-  max_transaction_threads = prm_get_integer_value (PRM_ID_MAX_TRANSACTION_WORKERS);
+  worker_overcommit_ratio = prm_get_float_value (PRM_ID_WORKER_OVERCOMMIT_RATIO);
 
   max_connection_workers = prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
   min_connection_workers = prm_get_integer_value (PRM_ID_CSS_MIN_CONNECTION_WORKER);
@@ -588,7 +591,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   css_Server_request_worker_pool = thread_create_worker_pool<cubthread::stats_t::on, cubthread::pool_t::elastic> (
       max_transaction_concurrency,
       cubthread::system_core_count (),
-      max_transaction_threads,
+      worker_overcommit_ratio,
       "transaction",
       thread_get_entry_manager (),
       css_get_server_request_thread_pooling_configuration (),
@@ -2672,7 +2675,7 @@ css_get_task_stats (UINT64 *stats_out)
 size_t
 css_get_num_request_workers (void)
 {
-  return css_Server_request_worker_pool->get_worker_count ();
+  return css_Server_request_worker_pool->get_pool_size ();
 }
 
 //
@@ -2783,7 +2786,7 @@ css_are_all_request_handlers_suspended (void)
       return false;
     }
 
-  if (checked_threads_count == css_Server_request_worker_pool->get_worker_count ())
+  if (checked_threads_count == css_Server_request_worker_pool->get_pool_size ())
     {
       // all threads are suspended
       return true;

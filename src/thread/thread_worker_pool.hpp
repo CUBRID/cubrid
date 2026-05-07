@@ -93,7 +93,7 @@ namespace cubthread
 	return m_idle_timeout;
       }
 
-      virtual std::size_t get_worker_count (void) const = 0;
+      virtual std::size_t get_pool_size (void) const = 0;
       virtual std::size_t get_core_count (void) const = 0;
 
       // stats

@@ -179,11 +179,11 @@ namespace cubthread
   }
 
   void
-  concurrency_slot_pool::initialize (void *identifier, std::size_t slot_count)
+  concurrency_slot_pool::initialize (void *identifier, std::size_t concurrency)
   {
     std::size_t i;
 
-    for (i = 0; i < slot_count; i++)
+    for (i = 0; i < concurrency; i++)
       {
 	m_available_slots.emplace (std::unique_ptr<concurrency_slot> (new concurrency_slot (this)));
       }

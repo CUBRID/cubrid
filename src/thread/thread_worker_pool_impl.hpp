@@ -139,7 +139,7 @@ namespace cubthread
       bool is_running (void) const override;
 
       // get maximum number of threads that can run concurrently in this worker pool
-      std::size_t get_worker_count (void) const override;
+      std::size_t get_pool_size (void) const override;
       // get the number of cores
       std::size_t get_core_count (void) const override;
 
@@ -202,8 +202,8 @@ namespace cubthread
       // core variables
       std::vector<std::unique_ptr<core>> m_cores;
 
-      // maximum number of concurrent workers
-      std::size_t m_max_workers;
+      // the number of workers
+      std::size_t m_pool_size;
 
       // set to true when stopped
       std::atomic<bool> m_stopped;
@@ -517,7 +517,7 @@ namespace cubthread
   worker_pool_impl<Stats>::worker_pool_impl (std::size_t pool_size, std::size_t core_count, const char *name,
       entry_manager &entry_mgr, bool pool_threads, wait_seconds idle_timeout)
     : worker_pool (name, entry_mgr, pool_threads, idle_timeout)
-    , m_max_workers (pool_size)
+    , m_pool_size (pool_size)
     , m_stopped (false)
     , m_round_robin_counter (0)
   {
@@ -645,9 +645,9 @@ namespace cubthread
 
   template <stats_t Stats>
   std::size_t
-  worker_pool_impl<Stats>::get_worker_count (void) const
+  worker_pool_impl<Stats>::get_pool_size (void) const
   {
-    return m_max_workers;
+    return m_pool_size;
   }
 
   template <stats_t Stats>
@@ -802,7 +802,7 @@ namespace cubthread
 	index = m_round_robin_counter;
 
 	next_index = index + 1;
-	if (next_index == m_max_workers)
+	if (next_index == m_pool_size)
 	  {
 	    next_index = 0;
 	  }
