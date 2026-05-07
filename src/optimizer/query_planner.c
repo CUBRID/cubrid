@@ -4141,6 +4141,29 @@ qo_zero_cost (QO_PLAN * planp)
   planp->variable_io_cost = 0.0;
 }
 
+/*
+ * qo_plan_order_by () -
+ *   return:
+ *   plan(in):
+ *   order(in):
+ */
+static QO_PLAN *
+qo_plan_order_by (QO_PLAN * plan, QO_EQCLASS * order)
+{
+  if (plan == NULL || order == QO_UNORDERED || plan->order == order)
+    {
+      return plan;
+    }
+  else if (BITSET_MEMBER ((plan->info)->eqclasses, QO_EQCLASS_IDX (order)))
+    {
+      return qo_sort_new (plan, order, SORT_TEMP);
+    }
+  else
+    {
+      return (QO_PLAN *) NULL;
+    }
+}
+
 static double
 qo_get_term_cost_weight (QO_TERM * term)
 {
@@ -4597,28 +4620,6 @@ qo_get_skew_uncertainty_lookup_penalty (QO_PLAN * planp)
   return 1.0 + component;
 }
 
-/*
- * qo_plan_order_by () -
- *   return:
- *   plan(in):
- *   order(in):
- */
-static QO_PLAN *
-qo_plan_order_by (QO_PLAN * plan, QO_EQCLASS * order)
-{
-  if (plan == NULL || order == QO_UNORDERED || plan->order == order)
-    {
-      return plan;
-    }
-  else if (BITSET_MEMBER ((plan->info)->eqclasses, QO_EQCLASS_IDX (order)))
-    {
-      return qo_sort_new (plan, order, SORT_TEMP);
-    }
-  else
-    {
-      return (QO_PLAN *) NULL;
-    }
-}
 
 /*
  * qo_plan_cmp_prefer_covering_index () - TODO
