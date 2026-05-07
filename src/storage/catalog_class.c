@@ -3194,6 +3194,21 @@ catcls_expand_or_value_by_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p)
 }
 
 /*
+ * catcls_align_var_data_to_4 () - Pad buf_p so the next variable-data offset is 4-byte aligned.
+ *   OR_GET_VAR_OFFSET() masks off the low 2 bits, so unaligned offsets would lose precision.
+ */
+static void
+catcls_align_var_data_to_4 (OR_BUF * buf_p, int header_size)
+{
+  int current = (int) (buf_p->ptr - buf_p->buffer - header_size);
+  int aligned = DB_ALIGN (current, 4);
+  if (aligned > current)
+    {
+      or_pad (buf_p, aligned - current);
+    }
+}
+
+/*
  * catcls_put_or_value_into_buffer () -
  *   return:
  *   value(in):
@@ -3295,16 +3310,7 @@ catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p, OI
   var_attrs = &attrs[n_fixed];
   for (i = 0; i < n_variable; i++)
     {
-      /* Align variable data position to 4 bytes — OR_GET_VAR_OFFSET() masks off
-       * the low 2 bits, so unaligned offsets would lose precision. */
-      {
-	int current = (int) (buf_p->ptr - buf_p->buffer - header_size);
-	int aligned = DB_ALIGN (current, 4);
-	if (aligned > current)
-	  {
-	    or_pad (buf_p, aligned - current);
-	  }
-      }
+      catcls_align_var_data_to_4 (buf_p, header_size);
 
       /* the variable offsets are relative to end of the class record header */
       offset = (int) (buf_p->ptr - buf_p->buffer - header_size);
@@ -3317,14 +3323,7 @@ catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p, OI
     }
 
   /* put last offset */
-  {
-    int current = (int) (buf_p->ptr - buf_p->buffer - header_size);
-    int aligned = DB_ALIGN (current, 4);
-    if (aligned > current)
-      {
-	or_pad (buf_p, aligned - current);
-      }
-  }
+  catcls_align_var_data_to_4 (buf_p, header_size);
   offset = (int) (buf_p->ptr - buf_p->buffer - header_size);
   OR_PUT_LAST_VAR_OFFSET (offset_p, offset);
 

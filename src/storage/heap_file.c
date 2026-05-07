@@ -24165,7 +24165,6 @@ heap_update_home_delete_replaced_oos (THREAD_ENTRY * thread_p, HEAP_OPERATION_CO
 	}
     }
 
-  VFID_SET_NULL (&oos_vfid);
   if (!heap_oos_find_vfid (thread_p, &context->hfid, &oos_vfid, false))
     {
       er_log_debug (ARG_FILE_LINE,
@@ -28002,7 +28001,7 @@ heap_recdes_log_oos_consistency_mismatch (const RECDES * record, bool flag_has_o
 bool
 heap_recdes_contains_oos (const RECDES * record)
 {
-  int flag = (INT32) OR_GET_MVCC_FLAG (record->data);
+  int flag = OR_GET_MVCC_FLAG (record->data);
   bool flag_has_oos = (flag & OR_MVCC_FLAG_HAS_OOS) != 0;
 
 #if !defined (NDEBUG)
