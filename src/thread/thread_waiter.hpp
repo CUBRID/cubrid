@@ -125,6 +125,8 @@ namespace cubthread
     {
       m_duration = duration;
       m_infinite = false;
+
+      return *this;
     }
 
     void set_infinite_wait ();
