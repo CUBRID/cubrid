@@ -5129,6 +5129,13 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
       int sector_base = 0;
       int membuf_remainder = total_membuf_pages % parallel_num;
 
+      /* null out get_arg/put_arg so cleanup skips workers not yet initialized */
+      for (int i = 0; i < parallel_num; i++)
+	{
+	  px_sort_param[i].get_arg = NULL;
+	  px_sort_param[i].put_arg = NULL;
+	}
+
       for (int i = 0; i < parallel_num; i++)
 	{
 	  /* sort_copy_sort_param did a shallow memcpy, so put_arg still points to the main
