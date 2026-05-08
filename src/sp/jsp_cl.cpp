@@ -3254,93 +3254,111 @@ jsp_alter_package (PARSER_CONTEXT *parser, PT_NODE *statement)
 int
 jsp_drop_package (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
-  int err;
-  const char *unique_name;
+  int err = NO_ERROR;
   char owner_name[DB_MAX_USER_LENGTH];
   MOP owner_mop, pkg_mop;
-
-  err = NO_ERROR;
-  owner_name[0] = '\0';
+  bool has_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
   assert (!prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT));  // unreachable here if it is true
 
-  // get unique_name, owner_name, and owner
-  {
-    unique_name = PT_NODE_PKG_NAME (statement);
-    if (sm_qualifier_name (unique_name, owner_name, DB_MAX_USER_LENGTH) == NULL)
-      {
-	ASSERT_ERROR ();
-	goto error_exit;
-      }
-    assert (owner_name[0]);     // package name has its owner name at this point of execution
-    owner_mop = db_find_user (owner_name);
-    if (owner_mop == NULL)
-      {
-	// for safeguard: it is already checked in pt_check_create_stored_procedure ()
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER_NAME, 1, owner_name);
-	goto error_exit;
-      }
-  }
-
-  // only the owner or a dba group member can drop it
-  if (!ws_is_same_object (owner_mop, Au_user) && !au_is_dba_group_member (Au_user))
+  // validate all packages before setting a savepoint
+  for (PT_NODE *name_node = statement->info.pkg.name; name_node != NULL; name_node = name_node->next)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PKG_DDL_NOT_ALLOWED_PRIVILEGES, 1, "drop");
-      err = er_errid ();
-      goto error_exit;
+      const char *unique_name = name_node->info.name.original;
+
+      // check for duplicate names in the list
+      for (PT_NODE *prev_node = statement->info.pkg.name; prev_node != name_node; prev_node = prev_node->next)
+	{
+	  if (intl_identifier_casecmp (unique_name, prev_node->info.name.original) == 0)
+	    {
+	      err = ER_PKG_DUPLICATE_NAME;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, unique_name);
+	      goto error_exit;
+	    }
+	}
+
+      owner_name[0] = '\0';
+
+      if (sm_qualifier_name (unique_name, owner_name, DB_MAX_USER_LENGTH) == NULL)
+	{
+	  ASSERT_ERROR ();
+	  goto error_exit;
+	}
+      assert (owner_name[0]);     // package name has its owner name at this point of execution
+
+      owner_mop = db_find_user (owner_name);
+      if (owner_mop == NULL)
+	{
+	  // for safeguard: it is already checked in pt_check_create_stored_procedure ()
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER_NAME, 1, owner_name);
+	  goto error_exit;
+	}
+
+      // only the owner or a dba group member can drop it
+      if (!ws_is_same_object (owner_mop, Au_user) && !au_is_dba_group_member (Au_user))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PKG_DDL_NOT_ALLOWED_PRIVILEGES, 1, "drop");
+	  err = er_errid ();
+	  goto error_exit;
+	}
+
+      // check if it is system generated
+      pkg_mop = jsp_find_pkg (unique_name, DB_AUTH_NONE);
+      if (pkg_mop)
+	{
+	  DB_VALUE value;
+
+	  err = db_get (pkg_mop, PKG_ATTR_FLAGS, &value);
+	  if (err != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+
+	  int flags = db_get_int (&value);
+	  if (flags & PKG_FLAGS_SYSTEM_GENERATED)
+	    {
+	      err = ER_PKG_DROP_NOT_ALLOWED_SYSTEM_GENERATED;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+	      goto error_exit;
+	    }
+	}
+      else
+	{
+	  if (!statement->info.pkg.for_body)    // if it is dropping the spec
+	    {
+	      err = ER_PKG_NOT_EXIST;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, unique_name);
+	      goto error_exit;
+	    }
+	}
     }
-
-  // check if it is system generated
-  {
-    DB_VALUE value;
-
-    pkg_mop = jsp_find_pkg (unique_name, DB_AUTH_NONE);
-    if (pkg_mop)
-      {
-	err = db_get (pkg_mop, PKG_ATTR_FLAGS, &value);
-	if (err != NO_ERROR)
-	  {
-	    goto error_exit;
-	  }
-
-	int flags = db_get_int (&value);
-	if (flags & PKG_FLAGS_SYSTEM_GENERATED)
-	  {
-	    err = ER_PKG_DROP_NOT_ALLOWED_SYSTEM_GENERATED;
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-	    goto error_exit;
-	  }
-      }
-    else
-      {
-	if (!statement->info.pkg.for_body)    // if it is dropping the spec
-	  {
-	    err = ER_PKG_NOT_EXIST;
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-	    goto error_exit;
-	  }
-      }
-  }
-
 
   err = tran_system_savepoint (SAVEPOINT_DROP_PACKAGE);
   if (err != NO_ERROR)
     {
       goto error_exit;
     }
+  has_savepoint = true;
 
-  if (statement->info.pkg.for_body)
+  // drop all packages; rollback everything if any one fails
+  for (PT_NODE *name_node = statement->info.pkg.name; name_node != NULL; name_node = name_node->next)
     {
-      err = jsp_drop_pkg_body (unique_name);
-      if (err != NO_ERROR)
+      const char *unique_name = name_node->info.name.original;
+
+      if (statement->info.pkg.for_body)
 	{
-	  goto rollback;
+	  err = jsp_drop_pkg_body (unique_name);
 	}
-    }
-  else
-    {
-      err = jsp_drop_pkg_spec (unique_name, pkg_mop, owner_mop);
+      else
+	{
+	  owner_name[0] = '\0';
+	  sm_qualifier_name (unique_name, owner_name, DB_MAX_USER_LENGTH);
+	  owner_mop = db_find_user (owner_name);
+	  pkg_mop = jsp_find_pkg (unique_name, DB_AUTH_NONE);
+	  err = jsp_drop_pkg_spec (unique_name, pkg_mop, owner_mop);
+	}
+
       if (err != NO_ERROR)
 	{
 	  goto rollback;

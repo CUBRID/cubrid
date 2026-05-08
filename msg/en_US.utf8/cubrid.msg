@@ -1474,8 +1474,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1376 The owner or a member of DBA group can %1$s a package.
 1377 Dropping a system generated package is not allowed.
 1378 Package Procedure's unique name exceeds 255 characters.
+1379 Duplicate package name '%1$s' in the name list.
 
-1379 Last Error
+1380 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

@@ -1764,8 +1764,9 @@
 #define ER_PKG_DDL_NOT_ALLOWED_PRIVILEGES           -1376
 #define ER_PKG_DROP_NOT_ALLOWED_SYSTEM_GENERATED    -1377
 #define ER_PKG_PROC_UNIQ_NAME_TOO_LONG              -1378
+#define ER_PKG_DUPLICATE_NAME                       -1379
 
-#define ER_LAST_ERROR                               -1379
+#define ER_LAST_ERROR                               -1380
 
 
 /*
