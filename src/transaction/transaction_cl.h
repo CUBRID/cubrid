@@ -37,6 +37,7 @@
 #include "locator.h"
 #include "storage_common.h"
 #include "log_comm.h"
+#include "db_multi_threads_connections.h"
 
 #define TM_TRAN_INDEX()      (tm_Tran_index)
 #define TM_TRAN_ISOLATION()  (tm_Tran_isolation)
@@ -52,16 +53,16 @@ typedef enum savepoint_type
   SYSTEM_SAVEPOINT = 2
 } SAVEPOINT_TYPE;
 
-extern int tm_Tran_index;
-extern TRAN_ISOLATION tm_Tran_isolation;
-extern bool tm_Tran_async_ws;
-extern int tm_Tran_wait_msecs;
-extern int tm_Tran_ID;
-extern bool tm_Tran_check_interrupt;
+extern CUB_THREAD_LOCAL int tm_Tran_index;
+extern CUB_THREAD_LOCAL TRAN_ISOLATION tm_Tran_isolation;
+extern CUB_THREAD_LOCAL bool tm_Tran_async_ws;
+extern CUB_THREAD_LOCAL int tm_Tran_wait_msecs;
+extern CUB_THREAD_LOCAL int tm_Tran_ID;
+extern CUB_THREAD_LOCAL bool tm_Tran_check_interrupt;
 extern bool tm_Use_OID_preflush;
-extern LOCK tm_Tran_rep_read_lock;
-extern LC_FETCH_VERSION_TYPE tm_Tran_read_fetch_instance_version;
-extern int tm_Tran_invalidate_snapshot;
+extern CUB_THREAD_LOCAL LOCK tm_Tran_rep_read_lock;
+extern CUB_THREAD_LOCAL LC_FETCH_VERSION_TYPE tm_Tran_read_fetch_instance_version;
+extern CUB_THREAD_LOCAL int tm_Tran_invalidate_snapshot;
 
 extern void tran_cache_tran_settings (int tran_index, int lock_timeout, TRAN_ISOLATION tran_isolation);
 extern void tran_get_tran_settings (int *lock_timeout_in_msecs, TRAN_ISOLATION * tran_isolation, bool * async_ws);

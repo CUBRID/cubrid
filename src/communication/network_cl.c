@@ -112,9 +112,9 @@ namespace
 
 #if defined(CS_MODE)
 #if !defined(MULTI_CONN_TO_A_SERVER)
-unsigned short method_request_id;	// TODO: dive into class connection_cl // ctshim
+CUB_THREAD_LOCAL unsigned short method_request_id;	// TODO: dive into class connection_cl // ctshim
 #else
-unsigned short method_request_id;
+CUB_THREAD_LOCAL unsigned short method_request_id;
 #endif
 #endif /* CS_MODE */
 
@@ -3704,6 +3704,10 @@ end:
 int
 net_client_sub_init ()
 {
+  /* TODO: MULTI_CONN_TO_A_SERVER worker connections should not depend on the
+   * shared net_Server_name/net_Server_host target. Pass explicit db/host
+   * target per worker/sub-connection instead of reusing process-global state.
+   */
   return __gv_cvar.css_client_sub_init (net_Server_name, net_Server_host);
 }
 

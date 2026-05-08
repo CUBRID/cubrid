@@ -1246,7 +1246,7 @@ bool
 connection_cl::css_is_valid_request_id (CSS_CONN_ENTRY *conn, unsigned short request_id)
 {
 #if defined(CS_MODE)
-  extern unsigned short method_request_id;
+  extern CUB_THREAD_LOCAL unsigned short method_request_id;
 
   if (method_request_id == request_id)
     {

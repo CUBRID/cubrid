@@ -72,7 +72,7 @@ extern unsigned int db_on_server;
  *    Linked list of mops to be reset at commit/abort.
  */
 
-MOP ws_Commit_mops = NULL;
+CUB_THREAD_LOCAL MOP ws_Commit_mops = NULL;
 
 /*
  * ws_Mop_table
@@ -81,14 +81,14 @@ MOP ws_Commit_mops = NULL;
  *    transaction manager.
  */
 
-WS_MOP_TABLE_ENTRY *ws_Mop_table = NULL;
+CUB_THREAD_LOCAL WS_MOP_TABLE_ENTRY *ws_Mop_table = NULL;
 
 /*
  * ws_Mop_table_size
  *    Records the current size of the OID to MOP hash table.
  */
 
-unsigned int ws_Mop_table_size = 0;
+CUB_THREAD_LOCAL unsigned int ws_Mop_table_size = 0;
 
 /*
  * ws_Resident_classes
@@ -99,7 +99,7 @@ unsigned int ws_Mop_table_size = 0;
  *    list.
  */
 
-DB_OBJLIST *ws_Resident_classes = NULL;
+CUB_THREAD_LOCAL DB_OBJLIST *ws_Resident_classes = NULL;
 
 /*
  * ws_Stats
@@ -107,9 +107,9 @@ DB_OBJLIST *ws_Resident_classes = NULL;
  *    This contains random information about the state of the workspace.
  */
 
-WS_STATISTICS ws_Stats = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+CUB_THREAD_LOCAL WS_STATISTICS ws_Stats = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-int ws_Num_dirty_mop = 0;
+CUB_THREAD_LOCAL int ws_Num_dirty_mop = 0;
 
 /*
  * We used to keep a global dirty list here. But for more efficient traversals
@@ -118,7 +118,7 @@ int ws_Num_dirty_mop = 0;
  * and visit each class' dirty list. The dirty flag here is consulted by
  * ws_has_updated to determine if there are dirty objects in this workspace.
  */
-static bool Ws_dirty;
+static CUB_THREAD_LOCAL bool Ws_dirty;
 
 /*
  * Null_object
@@ -130,7 +130,7 @@ static bool Ws_dirty;
  *    avoids having to keep an extra bit in the MOP structre.
  */
 
-static MOP Null_object;
+static CUB_THREAD_LOCAL MOP Null_object;
 
 /*
  * Classname_cache
@@ -139,14 +139,14 @@ static MOP Null_object;
  *    find class OIDs.
  */
 
-static MHT_TABLE *Classname_cache = NULL;
+static CUB_THREAD_LOCAL MHT_TABLE *Classname_cache = NULL;
 
 
 /*
  * Objlist_area
  *    Area for allocating external object list links.
  */
-static AREA *Objlist_area = NULL;
+static CUB_THREAD_LOCAL AREA *Objlist_area = NULL;
 
 /* When MVCC is enabled, fetched objects are not locked. Which means next
  * fetch call would go to server and check if object was changed. However,
@@ -154,7 +154,7 @@ static AREA *Objlist_area = NULL;
  * checking on server, mark fetched object with the snapshot version and
  * don't re-fetch until snapshot version is changed.
  */
-static unsigned int ws_MVCC_snapshot_version = 0;
+static CUB_THREAD_LOCAL unsigned int ws_MVCC_snapshot_version = 0;
 
 /*
  * ws_area_init
@@ -162,8 +162,8 @@ static unsigned int ws_MVCC_snapshot_version = 0;
  *
  */
 
-int ws_Error_ignore_list[-ER_LAST_ERROR];
-int ws_Error_ignore_count = 0;
+CUB_THREAD_LOCAL int ws_Error_ignore_list[-ER_LAST_ERROR];
+CUB_THREAD_LOCAL int ws_Error_ignore_count = 0;
 
 #define OBJLIST_AREA_COUNT 4096
 
@@ -5277,6 +5277,16 @@ ws_repl::ws_init_repl_objs (void)
   m_Repl_objs.head = NULL;
   m_Repl_objs.tail = NULL;
   m_Repl_objs.num_items = 0;
+}
+
+/*
+ * ws_get_repl_obj_count() -
+ *    return: number of pending replication objects
+ */
+int
+ws_repl::ws_get_repl_obj_count (void) const
+{
+  return m_Repl_objs.num_items;
 }
 
 /*

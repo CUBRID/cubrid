@@ -54,13 +54,14 @@ typedef enum
 
 #if defined (CS_MODE)
 int la_get_applied_log_info (const char *database_name, const char *log_path, bool check_replica_info,
-			     bool verbose, LOG_LSA * applied_final_lsa);
+				     bool verbose, LOG_LSA * applied_final_lsa);
 int la_get_copied_log_info (const char *database_name, const char *log_path, INT64 page_num, bool verbose,
 			    LOG_LSA * copied_eof_lsa, LOG_LSA * copied_append_lsa);
 int la_apply_log_file (const char *database_name, const char *log_path, const int max_mem_size);
 void la_print_log_header (const char *database_name, LOG_HEADER * hdr, bool verbose);
 void la_print_log_arv_header (const char *database_name, LOG_ARV_HEADER * hdr, bool verbose);
 void la_print_delay_info (LOG_LSA working_lsa, LOG_LSA target_lsa, float process_rate);
+void la_dump_runtime_state_for_signal (int sig_no);
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 extern int la_start_dk_sharing ();
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */

@@ -120,7 +120,7 @@
 #define BOOT_NO_OPT_CAP                 0
 #define BOOT_CHECK_HA_DELAY_CAP         NET_CAP_HA_REPL_DELAY
 
-static BOOT_SERVER_CREDENTIAL boot_Server_credential = {
+static CUB_THREAD_LOCAL BOOT_SERVER_CREDENTIAL boot_Server_credential = {
   /* db_full_name */ NULL, /* host_name */ NULL, /* lob_path */ NULL,
   /* process_id */ -1,
   /* root_class_oid */ {NULL_PAGEID, NULL_SLOTID, NULL_VOLID},

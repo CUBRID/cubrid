@@ -48,6 +48,7 @@
 #include "log_comm.h"
 #include "log_lsa.hpp"
 #include "db_query.h"
+#include "db_multi_threads_connections.h"
 #include "boot_cl.h"
 #include "virtual_object.h"
 #include "schema_manager.h"
@@ -63,20 +64,20 @@
 #include "tcp.h"
 #endif /* WINDOWS */
 
-int tm_Tran_index = NULL_TRAN_INDEX;
-TRAN_ISOLATION tm_Tran_isolation = TRAN_UNKNOWN_ISOLATION;
-bool tm_Tran_async_ws = false;
-int tm_Tran_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
-bool tm_Tran_check_interrupt = true;
-int tm_Tran_ID = -1;
-int tm_Tran_invalidate_snapshot = 1;
-LOCK tm_Tran_rep_read_lock = NULL_LOCK;	/* used in RR transaction locking to not lock twice. */
+CUB_THREAD_LOCAL int tm_Tran_index = NULL_TRAN_INDEX;
+CUB_THREAD_LOCAL TRAN_ISOLATION tm_Tran_isolation = TRAN_UNKNOWN_ISOLATION;
+CUB_THREAD_LOCAL bool tm_Tran_async_ws = false;
+CUB_THREAD_LOCAL int tm_Tran_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
+CUB_THREAD_LOCAL bool tm_Tran_check_interrupt = true;
+CUB_THREAD_LOCAL int tm_Tran_ID = -1;
+CUB_THREAD_LOCAL int tm_Tran_invalidate_snapshot = 1;
+CUB_THREAD_LOCAL LOCK tm_Tran_rep_read_lock = NULL_LOCK;	/* used in RR transaction locking to not lock twice. */
 
 /* read fetch version for current command of transaction
  * must be set before each transaction command.
  */
-LC_FETCH_VERSION_TYPE tm_Tran_read_fetch_instance_version = LC_FETCH_MVCC_VERSION;
-int tm_Tran_latest_query_status;
+CUB_THREAD_LOCAL LC_FETCH_VERSION_TYPE tm_Tran_read_fetch_instance_version = LC_FETCH_MVCC_VERSION;
+CUB_THREAD_LOCAL int tm_Tran_latest_query_status;
 
 /* Timeout(milli seconds) for queries.
  *
@@ -88,9 +89,9 @@ int tm_Tran_latest_query_status;
  *
  * tm_libcas_depth indicates the depth of callback_xxx functions called by method_callback (SP)
  */
-static UINT64 tm_Query_begin = 0;
-static int tm_Query_timeout = 0;
-static int tm_libcas_depth = 0;
+static CUB_THREAD_LOCAL UINT64 tm_Query_begin = 0;
+static CUB_THREAD_LOCAL int tm_Query_timeout = 0;
+static CUB_THREAD_LOCAL int tm_libcas_depth = 0;
 
 /* this is a local list of user-defined savepoints.  It may be updated upon
  * the following calls:
@@ -99,7 +100,7 @@ static int tm_libcas_depth = 0;
  *    tran_abort()		-> tran_free_savepoint_list()
  *    tran_abort_upto_savepoint() -> tm_free_list_upto_savepoint()
  */
-static DB_NAMELIST *user_savepoint_list = NULL;
+static CUB_THREAD_LOCAL DB_NAMELIST *user_savepoint_list = NULL;
 
 static int tran_add_savepoint (const char *savept_name);
 static void tran_free_list_upto_savepoint (const char *savept_name);

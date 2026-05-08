@@ -46,13 +46,6 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-#if !defined (SERVER_MODE)
-#define pthread_mutex_init(a, b)
-#define pthread_mutex_destroy(a)
-#define pthread_mutex_lock(a)	0
-#define pthread_mutex_unlock(a)
-#endif
-
 #if !defined (NDEBUG)
 /* The size of the prefix containing allocation status, if we're
    on a machine that requires double allignment of structures, we
@@ -70,9 +63,10 @@ enum
  * Area_list - Global list of areas
  */
 static AREA *area_List = NULL;
-#if defined (SERVER_MODE)
-pthread_mutex_t area_List_lock = PTHREAD_MUTEX_INITIALIZER;
-#endif
+/* Always protect the global area list: CS_MODE applylogdb spins up
+ * multiple worker threads that each run ws_init()/area_create() during
+ * startup, so the list must be real-mutex guarded in every build mode. */
+static pthread_mutex_t area_List_lock = PTHREAD_MUTEX_INITIALIZER;
 
 #if defined (SERVER_MODE)
 #define LF_AREA_BITMAP_USAGE_RATIO LF_BITMAP_95PERCENTILE_USAGE_RATIO
