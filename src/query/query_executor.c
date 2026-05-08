@@ -14153,6 +14153,7 @@ exit_on_error:
   goto exit;
 }
 
+
 /*
  * qexec_init_instnum_val () -
  *   return: NO_ERROR, or ER_code
@@ -14171,12 +14172,9 @@ exit_on_error:
 static int
 qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
 {
-  TP_DOMAIN *domainp = tp_domain_resolve_default (DB_TYPE_BIGINT);
-  DB_TYPE orig_type;
   REGU_VARIABLE *key_limit_l;
-  DB_VALUE *dbvalp;
+  DB_VALUE dbval;
   int error = NO_ERROR;
-  TP_DOMAIN_STATUS dom_status;
 
   assert (xasl && xasl->instnum_val);
   db_make_bigint (xasl->instnum_val, 0);
@@ -14192,36 +14190,19 @@ qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * 
       && xasl->spec_list->indexptr->key_info.key_limit_l)
     {
       key_limit_l = xasl->spec_list->indexptr->key_info.key_limit_l;
-      if (fetch_peek_dbval (thread_p, key_limit_l, &xasl_state->vd, NULL, NULL, NULL, &dbvalp) != NO_ERROR)
+
+      error = fetch_and_coerce_key_limit_lower (thread_p, key_limit_l, &xasl_state->vd, &dbval);
+      if (error != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
 
-      orig_type = DB_VALUE_DOMAIN_TYPE (dbvalp);
-      if (orig_type != DB_TYPE_BIGINT)
-	{
-	  dom_status = tp_value_coerce (dbvalp, dbvalp, domainp);
-	  if (dom_status != DOMAIN_COMPATIBLE)
-	    {
-	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbvalp, domainp);
-	      assert_release (error != NO_ERROR);
-
-	      goto exit_on_error;
-	    }
-
-	  if (DB_VALUE_DOMAIN_TYPE (dbvalp) != DB_TYPE_BIGINT)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-	      goto exit_on_error;
-	    }
-	}
-
-      if (pr_clone_value (dbvalp, xasl->instnum_val) != NO_ERROR)
+      if (pr_clone_value (&dbval, xasl->instnum_val) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
 
-      if (xasl->save_instnum_val && pr_clone_value (dbvalp, xasl->save_instnum_val) != NO_ERROR)
+      if (xasl->save_instnum_val && pr_clone_value (&dbval, xasl->save_instnum_val) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
