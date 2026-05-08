@@ -79,7 +79,9 @@
 #include "string_buffer.hpp"
 #include "tde.h"
 
+#include <algorithm>
 #include <set>
+#include <utility>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -12182,21 +12184,40 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
   mvcc_extra = is_mvcc_class ? OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE : 0;
 
   /* TODO: change the statistics */
-  /* make columns go to OOS */
-  if (header_size + payload_size + mvcc_extra > DB_PAGESIZE / 8)
+  /* push the largest variable column to OOS one by one until the heap record
+   * fits within DB_PAGESIZE/4 (PG TOAST style), instead of pushing every column > 512B */
+  if (header_size + payload_size + mvcc_extra > DB_PAGESIZE / 4)
     {
-      /* re-calculate the payload size */
+      // *INDENT-OFF*
+      std::vector<std::pair<int, int>> oos_candidates;	/* {column_size, attr index} */
+      // *INDENT-ON*
+
       for (i = 0; i < attr_info->num_values; i++)
 	{
-	  /* only variable value can be oos column */
-	  (*oos_columns)[i] = !attr_info->values[i].last_attrepr->is_fixed && column_size[i] > 512 /* 512 B */ ;
-	  if ((*oos_columns)[i])
+	  /* only variable column above 512B is OOS-eligible */
+	  if (!attr_info->values[i].last_attrepr->is_fixed && column_size[i] > 512 /* 512 B */ )
 	    {
-	      payload_size -= column_size[i];
-	      payload_size += OR_OOS_INLINE_SIZE;
-	      *has_oos = true;
+	      oos_candidates.emplace_back (column_size[i], i);
 	    }
 	}
+
+      // *INDENT-OFF*
+      std::sort (oos_candidates.begin (), oos_candidates.end (), std::greater<std::pair<int, int>> ());
+      // *INDENT-ON*
+
+      // *INDENT-OFF*
+      for (auto & cand : oos_candidates)
+	// *INDENT-ON*
+      {
+	if (header_size + payload_size + mvcc_extra <= DB_PAGESIZE / 4)
+	  {
+	    break;
+	  }
+	(*oos_columns)[cand.second] = true;
+	payload_size -= cand.first;
+	payload_size += OR_OOS_INLINE_SIZE;
+	*has_oos = true;
+      }
 
       /* re-calculate the header size */
       header_size = heap_attrinfo_get_record_header_size (attr_info, payload_size, is_mvcc_class, offset_size_ptr);
