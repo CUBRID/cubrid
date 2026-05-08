@@ -5235,8 +5235,7 @@ upgradedb_rebuild_catalog (void)
 {
   if (catcls_compile_catalog_classes (NULL) != NO_ERROR
       || sm_force_write_all_classes () != NO_ERROR
-      || au_force_write_new_auth () != NO_ERROR
-      || sm_update_all_catalog_statistics (STATS_WITH_FULLSCAN) != NO_ERROR)
+      || au_force_write_new_auth () != NO_ERROR || sm_update_all_catalog_statistics (STATS_WITH_FULLSCAN) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return er_errid ();
@@ -5274,10 +5273,8 @@ upgradedb_process (const UPGRADEDB_OPTIONS * opts, int current_version, int targ
 
   if (current_version == 0 || current_version > target_version)
     {
-      int msg_id = (current_version == 0) ? UPGRADEDB_MSG_NOT_UPGRADABLE
-					  : UPGRADEDB_MSG_DOWNGRADE_NOT_SUPPORTED;
-      PRINT_AND_LOG_ERR_MSG ("%s",
-			     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB, msg_id));
+      int msg_id = (current_version == 0) ? UPGRADEDB_MSG_NOT_UPGRADABLE : UPGRADEDB_MSG_DOWNGRADE_NOT_SUPPORTED;
+      PRINT_AND_LOG_ERR_MSG ("%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB, msg_id));
       return ER_FAILED;
     }
 
@@ -5304,8 +5301,7 @@ upgradedb_process (const UPGRADEDB_OPTIONS * opts, int current_version, int targ
     {
       char yn[2] = { 0, 0 };
 
-      fprintf (stdout,
-	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB, UPGRADEDB_MSG_PROMPT_CONTINUE));
+      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB, UPGRADEDB_MSG_PROMPT_CONTINUE));
       scanf ("%1s", yn);
       if (yn[0] != 'y')
 	{

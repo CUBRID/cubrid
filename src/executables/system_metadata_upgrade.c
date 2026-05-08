@@ -41,7 +41,7 @@
 #define UPGRADE_SCRIPT_FORMAT   "v%d_to_v%d.sql.enc"
 
 static void sysmeta_upgrade_script_path (int from_v, int to_v, char *out, size_t outsize);
-static int sysmeta_load_decoded_script (int from_v, int to_v, char **out_buf, size_t *out_len);
+static int sysmeta_load_decoded_script (int from_v, int to_v, char **out_buf, size_t * out_len);
 static int sysmeta_execute_sql_buffer (char *buf, size_t len);
 
 static void
@@ -54,7 +54,7 @@ sysmeta_upgrade_script_path (int from_v, int to_v, char *out, size_t outsize)
 }
 
 static int
-sysmeta_load_decoded_script (int from_v, int to_v, char **out_buf, size_t *out_len)
+sysmeta_load_decoded_script (int from_v, int to_v, char **out_buf, size_t * out_len)
 {
   char script_path[PATH_MAX];
   const char *expected_sha256 = UPGRADE_SCRIPT_SHA256S[from_v];
