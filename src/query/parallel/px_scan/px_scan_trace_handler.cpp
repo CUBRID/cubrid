@@ -127,7 +127,8 @@ namespace parallel_scan
 	      }
 	  }
 	m_stats_last = {};
-	for (size_t i = 0; i < m_stats.size(); i++)
+	/* partition workers may shrink; bound by current size to avoid OOB. */
+	for (size_t i = 0; i < trace_handler.m_stats.size(); i++)
 	  {
 	    m_stats[i].fetches += trace_handler.m_stats[i].fetches;
 	    m_stats[i].ioreads += trace_handler.m_stats[i].ioreads;
