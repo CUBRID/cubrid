@@ -598,10 +598,9 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
 	      break;
 	    }
 
+    pr_clear_value (&att->default_value.value);
 	  if (att->default_value.default_expr.default_expr_op == T_TO_CHAR)
 	    {
-	      pr_clear_value (&att->default_value.value);
-
 	      if (att->default_value.default_expr.default_expr_format != NULL)
 		{
 		  has_user_format = 1;
@@ -652,7 +651,6 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
 	    }
 	  else
 	    {
-	      pr_clear_value (&att->default_value.value);
 	      pr_clone_value (&default_value, &att->default_value.value);
 	    }
 
