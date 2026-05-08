@@ -1079,7 +1079,6 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
   int data_length;
   CSS_SERVER_PROC_REGISTER proc_register = CSS_SERVER_PROC_REGISTER_INITIALIZER;
 
-  css_Service_id = master_port_id;
   if (GETHOSTNAME (hname, CUB_MAXHOSTNAMELEN) != 0)
     {
       return NULL;
@@ -1439,7 +1438,7 @@ css_read_header (CSS_CONN_ENTRY * conn, const NET_HEADER * local_header)
       return CONNECTION_CLOSED;
     }
 
-  rc = css_net_read_header (conn->fd, (char *) local_header, &buffer_size, -1);
+  rc = css_net_read_header (conn, (char *) local_header, &buffer_size, -1);
   if (rc == NO_ERRORS && ntohl (local_header->type) == CLOSE_TYPE)
     {
       return CONNECTION_CLOSED;
@@ -2211,7 +2210,7 @@ css_queue_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
   /* receive data into buffer and queue data if there's no waiting thread */
   if (buffer != NULL)
     {
-      rc = css_net_recv (conn->fd, buffer, &size, -1);
+      rc = css_net_recv (conn, buffer, &size, -1);
       if (rc == NO_ERRORS || rc == RECORD_TRUNCATED)
 	{
 	  if (!css_is_request_aborted (conn, request_id))
@@ -2240,7 +2239,7 @@ css_queue_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
   else
     {
       rc = CANT_ALLOC_BUFFER;
-      css_read_remaining_bytes (conn->fd, sizeof (int) + size);
+      css_read_remaining_bytes (conn, sizeof (int) + size);
       if (!css_is_request_aborted (conn, request_id))
 	{
 	  if (data_wait == NULL)
@@ -2280,7 +2279,7 @@ css_queue_error_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, const 
 
   if (buffer != NULL)
     {
-      rc = css_net_recv (conn->fd, buffer, &size, -1);
+      rc = css_net_recv (conn, buffer, &size, -1);
       if (rc == NO_ERRORS || rc == RECORD_TRUNCATED)
 	{
 	  if (!css_is_request_aborted (conn, request_id))
@@ -2296,7 +2295,7 @@ css_queue_error_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, const 
   else
     {
       rc = CANT_ALLOC_BUFFER;
-      css_read_remaining_bytes (conn->fd, sizeof (int) + size);
+      css_read_remaining_bytes (conn, sizeof (int) + size);
       if (!css_is_request_aborted (conn, request_id))
 	{
 	  css_add_queue_entry (conn, &conn->error_queue, request_id, NULL, 0,

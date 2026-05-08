@@ -49,6 +49,8 @@ extern int xes_posix_delete_file (const char *path);
 extern int xes_posix_copy_file (const char *src_path, char *metaname, char *new_path);
 extern int xes_posix_copy_file_with_prefix (const char *src_path, char *metaname, const char *prefix, char *new_path);
 extern int xes_posix_rename_file (const char *src_path, const char *metaname, char *new_path);
+extern int xes_posix_move_file_with_prefix (const char *src_path, const char *metaname, const char *prefix,
+					    char *new_path);
 extern off_t xes_posix_get_file_size (const char *path);
 #endif /* SA_MODE || SERVER_MODE */
 
