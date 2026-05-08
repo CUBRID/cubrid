@@ -1457,7 +1457,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1365 Only DBA and the owner can grant the %1$s privilege.
 
-1366 String representation of a default value of a Stored procedure/function parameter may not exceed %d characters.
+1366 String representation of a default value of a Stored procedure/function parameter may not exceed %1$d characters.
 
 1367 DBLINK Transaction ABORTED: %1$s
 
@@ -1971,7 +1971,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 328 Only trailing default parameter is allowed: invalid at '%1$s'.
 329 Grant option is not allowed for %1$s.
 
-330 String representation of a default value of a Stored procedure/function parameter may not exceed %d characters.
+330 String representation of a default value of a Stored procedure/function parameter may not exceed %1$d characters.
 331 A host expression in a Static SQL must be a variable or record field: '%1$s'.
 332 Stored Procedures can be invoked only through CALL statements.
 333 CALL statements invoking a Stored Procedure may not have an INTO clause.
