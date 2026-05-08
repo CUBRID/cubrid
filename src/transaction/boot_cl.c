@@ -708,8 +708,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   bool check_capabilities;
   bool skip_preferred_hosts = false;
   bool skip_db_info = false;
-  const char *conf_file = NULL;
 #endif /* CS_MODE */
+  const char *conf_file = NULL;
 
   assert (client_credential != NULL);
 
@@ -777,11 +777,9 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	}
       _er_log_debug (ARG_FILE_LINE, "conf_for_broker = %s\n", conf_file ? conf_file : "unknown");
     }
+#endif
 
   if (sysprm_load_and_init_client (client_credential->get_db_name (), conf_file) != NO_ERROR)
-#else
-  if (sysprm_load_and_init_client (client_credential->get_db_name (), NULL) != NO_ERROR)
-#endif
     {
       error_code = ER_BO_CANT_LOAD_SYSPRM;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
