@@ -888,11 +888,8 @@ scan_check_user_given_keylimit_overflow (THREAD_ENTRY * thread_p, REGU_VARIABLE 
     {
       return ER_FAILED;
     }
-#if 1				/* phase-3: raw sign-bit check; replaced by DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE in phase-4 */
-  if (dbvalp->data.num.d.buf[0] & NUMERIC_VALUE_SIGN_BIT_MASK)
-#else
+
   if (DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (dbvalp))
-#endif
     {
       /* We don't allow users to give us a bad keylimit bound */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
@@ -944,11 +941,7 @@ scan_handle_it_data_overflow_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isid
     {
       return ER_FAILED;
     }
-#if 1				/* phase-3: raw sign-bit check; replaced by DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE in phase-4 */
-  isidp->key_limit_upper = (tmp_dbvalp->data.num.d.buf[0] & NUMERIC_VALUE_SIGN_BIT_MASK) ? 0 : -1;
-#else
   isidp->key_limit_upper = DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (tmp_dbvalp) ? 0 : -1;
-#endif
   return NO_ERROR;
 }
 
@@ -1034,11 +1027,7 @@ scan_handle_overflow_subtraction_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * 
 	    {
 	      return ER_FAILED;
 	    }
-#if 1				/* phase-3: raw sign-bit check; replaced by DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE in phase-4 */
-	  isidp->key_limit_upper = (tmp_dbvalp->data.num.d.buf[0] & NUMERIC_VALUE_SIGN_BIT_MASK) ? 0 : -1;
-#else
 	  isidp->key_limit_upper = DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (tmp_dbvalp) ? 0 : -1;
-#endif
 	}
       else
 	{
@@ -1065,11 +1054,7 @@ scan_handle_overflow_subtraction_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * 
 	{
 	  return ER_FAILED;
 	}
-#if 1				/* phase-3: raw sign-bit check; replaced by DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE in phase-4 */
-      isidp->key_limit_upper = (tmp_dbvalp->data.num.d.buf[0] & NUMERIC_VALUE_SIGN_BIT_MASK) ? 0 : -1;
-#else
       isidp->key_limit_upper = DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (tmp_dbvalp) ? 0 : -1;
-#endif
     }
   else
     {
@@ -1195,11 +1180,7 @@ scan_fetch_and_coerce_key_limit_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * i
 	   * if positive, no upper bound applies (-1; full scan, all rows)
 	   * if negative, no rows match (0; upper bound is unreachable)
 	   */
-#if 1				/* phase-3: raw sign-bit check; replaced by DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE in phase-4 */
-	  isidp->key_limit_upper = ((*out_dbvalp)->data.num.d.buf[0] & NUMERIC_VALUE_SIGN_BIT_MASK) ? 0 : -1;
-#else
 	  isidp->key_limit_upper = DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE ((*out_dbvalp)) ? 0 : -1;
-#endif
 	  er_clear ();
 	  /* overflow handled: *out_dbvalp stays NULL */
 	  *out_dbvalp = NULL;
