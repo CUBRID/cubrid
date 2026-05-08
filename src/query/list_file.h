@@ -254,23 +254,23 @@ extern void qfile_free_list_sector_info (THREAD_ENTRY * thread_p, QFILE_LIST_SEC
 struct sort_px_list_state
 {
   /* disk sector slice for this worker (from qfile_collect_list_sector_info) */
-  std::vector<FILE_PARTIAL_SECTOR> sectors;		/* sectors assigned to this worker */
-  std::vector<struct qmgr_temp_file *> sector_tfiles;	/* owning tfile per sector */
-  int sector_idx;			/* current index into sectors[] */
-  int curr_pgoffset;			/* page offset within the current sector */
+  std::vector < FILE_PARTIAL_SECTOR > sectors;	/* sectors assigned to this worker */
+  std::vector < struct qmgr_temp_file *>sector_tfiles;	/* owning tfile per sector */
+  int sector_idx;		/* current index into sectors[] */
+  int curr_pgoffset;		/* page offset within the current sector */
   /* membuf slice for this worker */
   struct qmgr_temp_file *membuf_tfile;	/* tfile that owns membuf pages (NULL = none) */
-  int membuf_start;			/* first membuf page index for this worker */
-  int membuf_cur;			/* current membuf page index */
-  int membuf_end;			/* one-past-last membuf page for this worker */
+  int membuf_start;		/* first membuf page index for this worker */
+  int membuf_cur;		/* current membuf page index */
+  int membuf_end;		/* one-past-last membuf page for this worker */
   /* current active page — set when we fix a page, cleared when the page is exhausted */
-  PAGE_PTR curr_page;			/* fixed disk page or membuf page pointer */
-  bool curr_is_membuf;			/* true iff curr_page comes from membuf */
+  PAGE_PTR curr_page;		/* fixed disk page or membuf page pointer */
+  bool curr_is_membuf;		/* true iff curr_page comes from membuf */
   struct qmgr_temp_file *curr_tfile;	/* tfile for curr_page when !curr_is_membuf */
-  VPID curr_vpid;			/* VPID of curr_page (used for sort key pageid/volid) */
-  int curr_tplno;			/* tuple index within curr_page */
-  int curr_offset;			/* byte offset of current tuple in curr_page */
-  QFILE_TUPLE_RECORD tplrec;		/* buffer for assembling overflow tuples */
+  VPID curr_vpid;		/* VPID of curr_page (used for sort key pageid/volid) */
+  int curr_tplno;		/* tuple index within curr_page */
+  int curr_offset;		/* byte offset of current tuple in curr_page */
+  QFILE_TUPLE_RECORD tplrec;	/* buffer for assembling overflow tuples */
 };
 
 extern SORT_STATUS qfile_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * recdes_p, void *arg);

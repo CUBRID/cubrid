@@ -5151,7 +5151,7 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	      return ER_FAILED;
 	    }
 	  memcpy (worker_info_p, sort_param->get_arg, sizeof (SORT_INFO));
-	  worker_info_p->s_id = NULL;		/* not used by qfile_sort_get_next_parallel */
+	  worker_info_p->s_id = NULL;	/* not used by qfile_sort_get_next_parallel */
 	  worker_info_p->output_file = NULL;
 	  worker_info_p->input_file = NULL;	/* set below */
 	  worker_info_p->px_state = NULL;	/* set below */
@@ -5169,8 +5169,7 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 
 	  /* assign this worker's slice of disk sectors */
 	  int nsectors = sectors_per_worker + (i < sector_remainder ? 1 : 0);
-	  state->sectors.assign (sector_info.sectors + sector_base,
-				 sector_info.sectors + sector_base + nsectors);
+	  state->sectors.assign (sector_info.sectors + sector_base, sector_info.sectors + sector_base + nsectors);
 	  state->sector_tfiles.assign ((QMGR_TEMP_FILE **) sector_info.tfiles + sector_base,
 				       (QMGR_TEMP_FILE **) sector_info.tfiles + sector_base + nsectors);
 	  sector_base += nsectors;
