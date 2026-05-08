@@ -38,7 +38,7 @@ namespace cubthread
     , m_mutex ()
     , m_cond_var ()
   {
-    m_tasks_available = m_max_tasks = worker_pool->get_max_count ();
+    m_tasks_available = m_max_tasks = worker_pool->get_worker_count ();
   }
 
   bool

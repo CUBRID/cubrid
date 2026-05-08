@@ -729,7 +729,7 @@ exit:
 int
 au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const char *unique_name)
 {
-  int error = NO_ERROR, save, len, i = 0;
+  int error = NO_ERROR, save, i = 0;
   const char *auth_type_char;
   DB_AUTH db_auth = DB_AUTH_NONE;
   MOP grantee_mop = NULL, object_of_mop = NULL;
@@ -863,7 +863,7 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
 	      goto exit;
 	    }
 
-	  auth_type_char = db_get_char (&auth_type_value, &len);
+	  auth_type_char = db_get_char (&auth_type_value);
 
 	  switch (auth_type_char[0])
 	    {
@@ -956,7 +956,7 @@ exit:
 int
 au_user_revoke_all_privileges (MOP user_mop)
 {
-  int error = NO_ERROR, save, len;
+  int error = NO_ERROR, save;
   int object_type = 0;
   DB_OBJECT_TYPE obj_type = DB_OBJECT_UNKNOWN;
   const char *auth_type_char;
@@ -1097,7 +1097,7 @@ au_user_revoke_all_privileges (MOP user_mop)
 	      goto exit;
 	    }
 
-	  auth_type_char = db_get_char (&auth_type_value, &len);
+	  auth_type_char = db_get_char (&auth_type_value);
 
 	  switch (auth_type_char[0])
 	    {
@@ -1521,7 +1521,6 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
   DB_VALUE val, db_auth_object_value, grantor_value, grantee_value, object_of_value, auth_type_value, is_grantable_value;
   MOP db_auth_object_mop = NULL, grantor_mop = NULL, grantee_mop = NULL, object_of_mop = NULL;
   const char *auth_type_char;
-  int len;
   DB_AUTH db_auth = DB_AUTH_NONE;
   int is_grantable = -1;
   MOP auth;
@@ -1655,7 +1654,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
 	      goto exit;
 	    }
 
-	  auth_type_char = db_get_char (&auth_type_value, &len);
+	  auth_type_char = db_get_char (&auth_type_value);
 
 	  switch (auth_type_char[0])
 	    {
