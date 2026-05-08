@@ -25,6 +25,8 @@
 #include <inttypes.h>
 #endif
 
+#include <algorithm>
+
 #include "system.h"
 #include "vacuum.h"
 
@@ -3457,8 +3459,17 @@ vacuum_forward_walk_delete_old_oos (THREAD_ENTRY * thread_p, const VFID * oos_vf
 {
   int error_code = NO_ERROR;
 
+  /* Sort OIDs by (volid, pageid, slotid) so successive oos_delete calls hit the OOS file's
+   * pages in page-locality order; mirrors the heap's VFID+OID-sorted access pattern that
+   * keeps the buffer pool warm. Caller passes a const reference, so copy locally. */
+  OID_VECTOR sorted_oos_oids (oos_oids);
+  // *INDENT-OFF*
+  std::sort (sorted_oos_oids.begin (), sorted_oos_oids.end (),
+	     [] (const OID & a, const OID & b) { return oid_compare (&a, &b) < 0; });
+  // *INDENT-ON*
+
   log_sysop_start (thread_p);
-for (const OID & oid:oos_oids)
+for (const OID & oid:sorted_oos_oids)
     {
       error_code = oos_delete (thread_p, *oos_vfid, oid);
       if (error_code != NO_ERROR)

@@ -3201,7 +3201,7 @@ static void
 catcls_align_var_data_to_4 (OR_BUF * buf_p, int header_size)
 {
   int current = (int) (buf_p->ptr - buf_p->buffer - header_size);
-  int aligned = DB_ALIGN (current, 4);
+  int aligned = DB_ALIGN (current, INT_ALIGNMENT);
   if (aligned > current)
     {
       or_pad (buf_p, aligned - current);
