@@ -841,6 +841,12 @@ struct rvfun RV_fun[] = {
    heap_rv_lob_remove_dir,
    NULL,
    NULL},
+  {RVLOG_SYSMETA_VERSION_UPDATE,
+   "RVLOG_SYSMETA_VERSION_UPDATE",
+   log_rv_undo_sysmeta_version,
+   log_rv_redo_sysmeta_version,
+   NULL,
+   NULL},
 };
 
 /*

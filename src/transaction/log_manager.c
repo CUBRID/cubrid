@@ -6258,7 +6258,8 @@ log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 	   "     Next_archive_pageid = %lld at active_phy_pageid = %d,\n"
 	   "     Next_archive_num = %d, Last_archiv_num_for_syscrashes = %d,\n"
 	   "     Last_deleted_arv_num = %d, has_logging_been_skipped = %d,\n"
-	   "     bkup_lsa: level0 = %lld|%d, level1 = %lld|%d, level2 = %lld|%d,\n     Log_prefix = %s\n",
+	   "     bkup_lsa: level0 = %lld|%d, level1 = %lld|%d, level2 = %lld|%d,\n"
+	   "     Log_prefix = %s\n",
 	   (long long int) log_header_p->nxarv_pageid, log_header_p->nxarv_phy_pageid, log_header_p->nxarv_num,
 	   log_header_p->last_arv_num_for_syscrashes, log_header_p->last_deleted_arv_num,
 	   log_header_p->has_logging_been_skipped, LSA_AS_ARGS (&log_header_p->bkup_level0_lsa),
@@ -9143,6 +9144,36 @@ log_rv_dump_hexa (FILE * fp, int length, void *data)
 int
 log_rv_outside_noop_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
+  return NO_ERROR;
+}
+
+/*
+ * The on-disk log header page is persisted by the next checkpoint or normal
+ * shutdown; recovery only restores the in-memory value.
+ */
+int
+log_rv_redo_sysmeta_version (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  UINT16 new_version;
+
+  assert (rcv->length == (int) sizeof (UINT16));
+  memcpy (&new_version, rcv->data, sizeof (UINT16));
+
+  log_Gl.hdr.sysmeta_version = new_version;
+
+  return NO_ERROR;
+}
+
+int
+log_rv_undo_sysmeta_version (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  UINT16 old_version;
+
+  assert (rcv->length == (int) sizeof (UINT16));
+  memcpy (&old_version, rcv->data, sizeof (UINT16));
+
+  log_Gl.hdr.sysmeta_version = old_version;
+
   return NO_ERROR;
 }
 
