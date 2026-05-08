@@ -4206,7 +4206,7 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
 	      SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
 	      if (sort_info_p->px_state != NULL)
 		{
-		  qfile_sort_px_state_free ((sort_px_list_state *) sort_info_p->px_state);
+		  qfile_sort_px_state_free (thread_p, (sort_px_list_state *) sort_info_p->px_state);
 		  sort_info_p->px_state = NULL;
 		}
 	      if (sort_info_p->input_file)
@@ -5165,7 +5165,14 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	      return ER_FAILED;
 	    }
 
-	  sort_px_list_state *state = new sort_px_list_state ();
+	  sort_px_list_state *state =
+	    (sort_px_list_state *) db_private_alloc (thread_p, sizeof (sort_px_list_state));
+	  if (state == NULL)
+	    {
+	      qfile_free_list_sector_info (thread_p, &sector_info);
+	      return ER_FAILED;
+	    }
+	  placement_new (state);
 
 	  /* assign this worker's slice of disk sectors */
 	  int nsectors = sectors_per_worker + (i < sector_remainder ? 1 : 0);

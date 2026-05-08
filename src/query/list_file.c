@@ -3714,10 +3714,10 @@ qfile_generate_sort_tuple (SORTKEY_INFO * key_info_p, SORT_REC * sort_record_p, 
 
 #if defined (SERVER_MODE)
 /*
- * qfile_sort_px_state_free () - free a sort_px_list_state created with new
+ * qfile_sort_px_state_free () - free a sort_px_list_state allocated with db_private_alloc
  */
 void
-qfile_sort_px_state_free (sort_px_list_state * state)
+qfile_sort_px_state_free (THREAD_ENTRY * thread_p, sort_px_list_state * state)
 {
   if (state == NULL)
     {
@@ -3727,7 +3727,8 @@ qfile_sort_px_state_free (sort_px_list_state * state)
     {
       db_private_free_and_init (NULL, state->tplrec.tpl);
     }
-  delete state;
+  state->~sort_px_list_state ();
+  db_private_free_and_init (thread_p, state);
 }
 
 /*

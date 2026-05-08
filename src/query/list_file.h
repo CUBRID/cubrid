@@ -274,7 +274,7 @@ struct sort_px_list_state
 };
 
 extern SORT_STATUS qfile_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * recdes_p, void *arg);
-extern void qfile_sort_px_state_free (sort_px_list_state * state);
+extern void qfile_sort_px_state_free (THREAD_ENTRY * thread_p, sort_px_list_state * state);
 #endif /* SERVER_MODE */
 
 #endif /* _LIST_FILE_H_ */
