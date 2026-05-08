@@ -151,6 +151,7 @@ install_static_methods (void)
   db_install_static_methods ();	/* Authorization classes */
 }
 
+#if defined(SA_MODE)
 /*
  * db_init() - This will create a database file and associated log files and
  *    install the authorization objects and other required system objects.
@@ -309,6 +310,7 @@ db_init (const char *program, int print_version, const char *dbname, const char 
 
   return (error);
 }
+#endif /* SA_MODE */
 
 /*
  * db_add_volume() - Add a volume extension to the database. The addition of
@@ -983,6 +985,11 @@ db_restart (const char *program, int print_version, const char *volume)
 }
 
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+/*
+ * db_restart_sub() - restart a sub-client
+ * return : error code
+ * sub_index(in) : the index of the sub-client
+ */
 int
 db_restart_sub (int sub_index)
 {
@@ -1005,6 +1012,12 @@ db_restart_sub (int sub_index)
 
   client_credential = gv_client_credential;
   client_credential.program_name = program_name;
+
+  error = au_login (client_credential.get_db_user (), client_credential.get_db_password (), false);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
 
   db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 
@@ -1107,6 +1120,8 @@ db_shutdown_sub ()
   boot_finalize_client_sub ();
   db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
 
+  extern void au_ctx_destructor (void);
+  au_ctx_destructor ();
   return NO_ERROR;
 }
 #endif
@@ -1124,18 +1139,19 @@ db_ping_server (int client_val, int *server_val)
   return error;
 }
 
+#if !defined(SERVER_MODE)
 /*
  * db_disable_modification - Disable database modification operation
  *   return: error code
  *
  * NOTE: This function will change 'db_Disable_modifications'.
  */
-int
+void
 db_disable_modification (void)
 {
   /* CHECK_CONNECT_ERROR (); */
+  assert (db_Disable_modifications >= 0);
   db_Disable_modifications++;
-  return NO_ERROR;
 }
 
 /*
@@ -1144,13 +1160,14 @@ db_disable_modification (void)
  *
  * NOTE: This function will change 'db_Disable_modifications'.
  */
-int
+void
 db_enable_modification (void)
 {
   /* CHECK_CONNECT_ERROR (); */
   db_Disable_modifications--;
-  return NO_ERROR;
+  assert (db_Disable_modifications >= 0);
 }
+#endif
 
 /*
  * db_end_session - end current session

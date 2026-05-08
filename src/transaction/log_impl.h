@@ -203,11 +203,7 @@ const int LOG_SYSTEM_WORKER_INCR_TRANID = -1;
 
 #if !defined(_DB_DISABLE_MODIFICATIONS_)
 #define _DB_DISABLE_MODIFICATIONS_
-#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-extern CUB_THREAD_LOCAL int db_Disable_modifications;
-#else
 extern int db_Disable_modifications;
-#endif
 #endif /* _DB_DISABLE_MODIFICATIONS_ */
 
 #ifndef CHECK_MODIFICATION_NO_RETURN

@@ -5380,7 +5380,7 @@ static const int *PARAM_VALUE_SHARE[] = {
  * loaded from cubrid.conf file. When a new client connects to CAS, it should
  * reload these parameters (because some may be changed by previous clients)
  */
-SESSION_PARAM *cached_session_parameters = NULL;
+/* CUB_THREAD_LOCAL */ SESSION_PARAM *cached_session_parameters = NULL;
 #endif /* CS_MODE */
 
 /*

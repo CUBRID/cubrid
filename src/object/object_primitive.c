@@ -876,7 +876,7 @@ static DB_VALUE_COMPARE_RESULT mr_cmpval_json (DB_VALUE * value1, DB_VALUE * val
 static CUB_THREAD_LOCAL AREA *Value_area = NULL;
 
 #if !defined (SERVER_MODE)
-int pr_Inhibit_oid_promotion = PR_INHIBIT_OID_PROMOTION_DEFAULT;
+CUB_THREAD_LOCAL int pr_Inhibit_oid_promotion = PR_INHIBIT_OID_PROMOTION_DEFAULT;
 #endif
 
 int pr_Enable_string_compression = true;

@@ -55,11 +55,7 @@ extern CUB_THREAD_LOCAL SESSION_ID db_Session_id;
 
 #if !defined(_DB_DISABLE_MODIFICATIONS_)
 #define _DB_DISABLE_MODIFICATIONS_
-#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 extern CUB_THREAD_LOCAL int db_Disable_modifications;
-#else
-extern int db_Disable_modifications;
-#endif
 #endif /* _DB_DISABLE_MODIFICATIONS_ */
 
 #if !defined(SERVER_MODE)
@@ -220,11 +216,13 @@ extern char db_Program_name[];
 #define CHECK_1ARG_UNKNOWN(obj1)        \
   CHECK_1ARG_RETURN_EXPR(obj1, DB_TYPE_UNKNOWN)
 
+#if defined(SA_MODE)
 extern int db_init (const char *program, int print_version, const char *dbname, const char *db_path,
 		    const char *vol_path, const char *log_path, const char *lob_path,
 		    const char *host_name, const bool overwrite, const char *comments, const char *addmore_vols_file,
 		    int npages, int desired_pagesize, int log_npages, int desired_log_page_size,
 		    const char *lang_charset);
+#endif
 
 extern int db_parse_one_statement (DB_SESSION * session);
 #ifdef __cplusplus

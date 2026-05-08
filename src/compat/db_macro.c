@@ -82,14 +82,20 @@ static const int valcnv_Max_set_elements = 10;
 #if !defined(SERVER_MODE)
 CUB_THREAD_LOCAL int db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
 #endif
-#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-// FIX-ME: fix me for call method 
-// When the method is called, the task must be executed by the same existing thread.
-CUB_THREAD_LOCAL int db_Disable_modifications = 0;
-#else
-int db_Disable_modifications = 0;	// for read only mode, 
-#endif
 
+/* db_Disable_modifications?
+ * 1) Purpose: This is used to indicate whether the system is in READ_ONLY_MODE.
+ *           Initialized to 0; toggled to 1 if the READ_ONLY_MODE parameter is enabled or the client type is identified as a read-only boot type.
+ * 2) CS/SA Modes: In CS or SA modes, it is used within the method_invoke_builtin_internal() function. 
+ *           By leveraging db_disable_modification() and db_enable_modification(), 
+ *          it ensures that DML operations are prohibited during the execution of the task.
+ * 3) SERVER_MODE: In Server Mode, the value can be toggled using logtb_disable_update() and logtb_enable_update() 
+ *          at the moment of an HA (High Availability) failover.
+ *           While general operations are checked via tdes->disable_modifications on a per-thread (transactional) basis, 
+ *          some entry-point APIs directly reference db_Disable_modifications.
+ *           This may cause certain APIs to fail during an HA transition; however, this is considered a minor issue.
+ */
+CUB_THREAD_LOCAL int db_Disable_modifications = 0;	// for read only mode, 
 
 static int coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen);
 
