@@ -957,7 +957,8 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, bool &is_null, 
 	      if (db_get_string_size (value) > DB_MAX_DEFAULT_EXPR_LENGTH)
 		{
 		  pt_reset_error (parser);
-		  PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_PARAM_DEFAULT_STR_TOO_BIG, DB_MAX_DEFAULT_EXPR_LENGTH);
+		  PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_PARAM_DEFAULT_STR_TOO_BIG,
+			      DB_MAX_DEFAULT_EXPR_LENGTH);
 		  return ER_SP_PARAM_DEFAULT_STR_TOO_BIG;
 		}
 
