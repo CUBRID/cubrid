@@ -223,6 +223,7 @@ clientids::unpack (cubpacking::unpacker &deserializator)
 boot_client_credential::boot_client_credential ()
   : clientids ()
   , db_name {}
+  , db_password {}
   , preferred_hosts (NULL)
   , connect_order (0)
 {
@@ -243,7 +244,7 @@ boot_client_credential::get_db_name () const
 //
 
 #define BOOTCLCRED_PACKER_ARGS \
-  db_name
+  db_name, db_password
 
 size_t
 boot_client_credential::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
