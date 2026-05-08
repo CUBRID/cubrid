@@ -8828,10 +8828,10 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 
       num = (DB_C_NUMERIC) (buf->ptr + NUMERIC_HEADER_SIZE);
 
-      (void) db_make_numeric (value, num, precision, scale, size, is_value_negative, is_float_numeric);
+      rc = db_make_numeric (value, num, precision, scale, size, is_value_negative, is_float_numeric);
 
       value->need_clear = false;
-      rc = or_advance (buf, size);
+      or_advance (buf, size);
     }
 
   return rc;
