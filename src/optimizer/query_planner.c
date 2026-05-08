@@ -184,6 +184,7 @@ static void qo_worst_cost (QO_PLAN *);
 static void qo_zero_cost (QO_PLAN *);
 static double qo_get_term_cost_weight (QO_TERM *);
 static bool qo_info_is_small_filtered_side (QO_INFO *);
+static bool qo_term_has_unique_equality_side (QO_TERM *);
 static double qo_apply_mcv_hotkey_join_guard (QO_TERM *, QO_INFO *, QO_INFO *, double, double);
 static double qo_get_delayed_sarg_lookup_penalty (QO_PLAN *, double);
 static double qo_get_skew_uncertainty_lookup_penalty (QO_PLAN *);
@@ -9943,6 +9944,76 @@ qo_index_cardinality (QO_ENV * env, PT_NODE * attr)
 }
 
 /*
+ * qo_unique_index_cardinality () - Return class cardinality when attr is the
+ * only column of a normal unique-family index; otherwise 0.
+ */
+static int
+qo_unique_index_cardinality (QO_ENV * env, PT_NODE * attr)
+{
+  PT_NODE *dummy;
+  QO_NODE *nodep;
+  QO_SEGMENT *segp;
+  const char *attr_name;
+  int i;
+
+  if (attr->node_type == PT_DOT_)
+    {
+      attr = attr->info.dot.arg2;
+    }
+
+  QO_ASSERT (env, (attr->node_type == PT_NAME || pt_is_function_index_expression (attr)));
+
+  nodep = lookup_node (attr, env, &dummy);
+  if (nodep == NULL)
+    {
+      return 0;
+    }
+
+  segp = lookup_seg (nodep, attr, env);
+  if (segp == NULL || attr->info.name.meta_class == PT_RESERVED)
+    {
+      return 0;
+    }
+  attr_name = QO_SEG_NAME (segp);
+
+  if (QO_NODE_INFO (nodep) == NULL)
+    {
+      return 0;
+    }
+
+  for (i = 0; i < QO_NODE_INFO_N (nodep); i++)
+    {
+      QO_CLASS_INFO_ENTRY *class_info_entryp = &QO_NODE_INFO (nodep)->info[i];
+      SM_CLASS_CONSTRAINT *constraint;
+
+      if (class_info_entryp->smclass == NULL)
+	{
+	  continue;
+	}
+
+      for (constraint = class_info_entryp->smclass->constraints; constraint != NULL; constraint = constraint->next)
+	{
+	  int attr_id;
+
+	  if (constraint->index_status != SM_NORMAL_INDEX || !SM_IS_CONSTRAINT_UNIQUE_FAMILY (constraint->type)
+	      || constraint->attributes == NULL || constraint->attributes[0] == NULL
+	      || constraint->attributes[1] != NULL)
+	    {
+	      continue;
+	    }
+
+	  attr_id = sm_att_id (class_info_entryp->mop, attr_name);
+	  if (attr_id >= 0 && constraint->attributes[0]->id == attr_id)
+	    {
+	      return (QO_NODE_NCARD (nodep) > INT_MAX) ? INT_MAX : (int) QO_NODE_NCARD (nodep);
+	    }
+	}
+    }
+
+  return 0;
+}
+
+/*
  * qo_index_cardinality_with_dedup () - Determine if the attribute has an index with duplicate column checking
  *   return: cardinality of the index if the index exists, otherwise return 0
  *   env(in): optimizer environment
@@ -10587,6 +10658,35 @@ qo_get_term_cost_weight (QO_TERM * term)
 }
 
 static bool
+qo_term_has_unique_equality_side (QO_TERM * term)
+{
+  PT_NODE *expr;
+  PT_NODE *lhs;
+  PT_NODE *rhs;
+
+  if (term == NULL || !QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
+    {
+      return false;
+    }
+
+  expr = QO_TERM_PT_EXPR (term);
+  if (expr == NULL || expr->node_type != PT_EXPR || expr->info.expr.op != PT_EQ)
+    {
+      return false;
+    }
+
+  lhs = expr->info.expr.arg1;
+  rhs = expr->info.expr.arg2;
+  if (lhs == NULL || rhs == NULL || qo_classify (lhs) != PC_ATTR || qo_classify (rhs) != PC_ATTR)
+    {
+      return false;
+    }
+
+  return qo_unique_index_cardinality (QO_TERM_ENV (term), lhs) > 0
+    || qo_unique_index_cardinality (QO_TERM_ENV (term), rhs) > 0;
+}
+
+static bool
 qo_info_is_small_filtered_side (QO_INFO * info)
 {
   if (info == NULL)
@@ -10624,6 +10724,15 @@ qo_apply_mcv_hotkey_join_guard (QO_TERM * term, QO_INFO * head_info, QO_INFO * t
     }
 
   if (!QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
+    {
+      return term_sel;
+    }
+
+  /*
+   * Unique/PK equality already has a hard 0/1 lookup bound in the base
+   * selectivity.  Do not inflate it again with hot-key/fanout guards.
+   */
+  if (qo_term_has_unique_equality_side (term))
     {
       return term_sel;
     }
