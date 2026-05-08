@@ -70,6 +70,13 @@
 #define HA_COPYLOGDB_FORMAT_STRING " HA-copylogdb %s (rel %s, pid %d)\n"
 #define HA_APPLYLOGDB_FORMAT_STRING " HA-applylogdb %s (rel %s, pid %d)\n"
 
+// TODO: Unless multi-threading is involved, variables may be declared separately for independent operation
+#if 0
+extern class client_support __gv_client_support_local;	// refered to in master.c
+#undef __gv_cvar
+#define __gv_cvar (__gv_client_support_local)
+#endif
+
 static void css_send_command_to_server (const SOCKET_QUEUE_ENTRY * sock_entry, int command);
 static void css_send_message_to_server (const SOCKET_QUEUE_ENTRY * sock_entry, const char *message);
 static void css_cleanup_info_connection (CSS_CONN_ENTRY * conn);

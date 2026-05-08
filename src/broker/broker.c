@@ -342,6 +342,13 @@ static T_MAX_HEAP_NODE *session_request_q;
 
 static int hold_job = 0;
 
+// TODO: Unless multi-threading is involved, variables may be declared separately for independent operation
+#if 0
+class client_support __gv_client_support_local;
+#undef __gv_cvar
+#define __gv_cvar (__gv_client_support_local)
+#endif
+
 static bool
 broker_add_new_cas (void)
 {

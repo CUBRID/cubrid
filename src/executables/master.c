@@ -132,6 +132,13 @@ pthread_mutex_t css_Master_er_log_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t css_Master_er_log_enable_lock = PTHREAD_MUTEX_INITIALIZER;
 bool css_Master_er_log_enabled = true;
 
+// TODO: Unless multi-threading is involved, variables may be declared separately for independent operation
+#if 0
+class client_support __gv_client_support_local;
+#undef __gv_cvar
+#define __gv_cvar (__gv_client_support_local)
+#endif
+
 /*
  * css_master_error() - print error message to syslog or console
  *   return: none
