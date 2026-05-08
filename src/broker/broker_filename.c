@@ -442,8 +442,7 @@ copy_cubrid_conf (const char *dest)
       goto error;
     }
 
-  unlink (dest);
-  dest_fd = open (dest, O_WRONLY | O_CREAT | O_TRUNC, 0400);
+  dest_fd = open (dest, O_WRONLY | O_CREAT | O_TRUNC, 0600);
   if (dest_fd < 0)
     {
       error_code = -3;
@@ -453,6 +452,12 @@ copy_cubrid_conf (const char *dest)
   if (sendfile (dest_fd, src_fd, NULL, stat_buf.st_size) != (ssize_t) stat_buf.st_size)
     {
       error_code = -4;
+      goto error;
+    }
+
+  if (fchmod (dest_fd, 0400) < 0)
+    {
+      error_code = -5;
       goto error;
     }
 
