@@ -2778,17 +2778,17 @@ wrapup:
 	  bool success2 = false;
 	  histogram_get_max_mcv_frequency (pt_expr->info.expr.arg1, &lhs_mcv_max_frequency, &success1);
 	  histogram_get_max_mcv_frequency (pt_expr->info.expr.arg2, &rhs_mcv_max_frequency, &success2);
-	  if (success1 && success2)
+	  if (success1 || success2)
 	    {
 	      if (head_node != NULL && BITSET_MEMBER (lhs_nodes, QO_NODE_IDX (head_node)))
 		{
-		  QO_TERM_HEAD_MCV_MAX_FREQUENCY (term) = lhs_mcv_max_frequency;
-		  QO_TERM_TAIL_MCV_MAX_FREQUENCY (term) = rhs_mcv_max_frequency;
+		  QO_TERM_HEAD_MCV_MAX_FREQUENCY (term) = success1 ? lhs_mcv_max_frequency : 0.0;
+		  QO_TERM_TAIL_MCV_MAX_FREQUENCY (term) = success2 ? rhs_mcv_max_frequency : 0.0;
 		}
 	      else
 		{
-		  QO_TERM_HEAD_MCV_MAX_FREQUENCY (term) = rhs_mcv_max_frequency;
-		  QO_TERM_TAIL_MCV_MAX_FREQUENCY (term) = lhs_mcv_max_frequency;
+		  QO_TERM_HEAD_MCV_MAX_FREQUENCY (term) = success2 ? rhs_mcv_max_frequency : 0.0;
+		  QO_TERM_TAIL_MCV_MAX_FREQUENCY (term) = success1 ? lhs_mcv_max_frequency : 0.0;
 		}
 	    }
 	  else

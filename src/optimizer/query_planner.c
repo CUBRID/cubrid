@@ -184,7 +184,7 @@ static void qo_worst_cost (QO_PLAN *);
 static void qo_zero_cost (QO_PLAN *);
 static double qo_get_term_cost_weight (QO_TERM *);
 static bool qo_info_is_small_filtered_side (QO_INFO *);
-static bool qo_term_has_unique_equality_side (QO_TERM *);
+static bool qo_term_unique_side_is_large (QO_TERM *, QO_INFO *, QO_INFO *);
 static double qo_apply_mcv_hotkey_join_guard (QO_TERM *, QO_INFO *, QO_INFO *, double, double);
 static double qo_get_delayed_sarg_lookup_penalty (QO_PLAN *, double);
 static double qo_get_skew_uncertainty_lookup_penalty (QO_PLAN *);
@@ -10658,13 +10658,20 @@ qo_get_term_cost_weight (QO_TERM * term)
 }
 
 static bool
-qo_term_has_unique_equality_side (QO_TERM * term)
+qo_term_unique_side_is_large (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info)
 {
   PT_NODE *expr;
   PT_NODE *lhs;
   PT_NODE *rhs;
+  QO_NODE *lhs_node;
+  QO_NODE *rhs_node;
+  PT_NODE *dummy;
+  bool lhs_unique;
+  bool rhs_unique;
+  bool head_small;
+  bool tail_small;
 
-  if (term == NULL || !QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
+  if (term == NULL || head_info == NULL || tail_info == NULL || !QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
     {
       return false;
     }
@@ -10682,8 +10689,50 @@ qo_term_has_unique_equality_side (QO_TERM * term)
       return false;
     }
 
-  return qo_unique_index_cardinality (QO_TERM_ENV (term), lhs) > 0
-    || qo_unique_index_cardinality (QO_TERM_ENV (term), rhs) > 0;
+  lhs_unique = qo_unique_index_cardinality (QO_TERM_ENV (term), lhs) > 0;
+  rhs_unique = qo_unique_index_cardinality (QO_TERM_ENV (term), rhs) > 0;
+  if (!lhs_unique && !rhs_unique)
+    {
+      return false;
+    }
+
+  lhs_node = lookup_node (lhs, QO_TERM_ENV (term), &dummy);
+  rhs_node = lookup_node (rhs, QO_TERM_ENV (term), &dummy);
+  if (lhs_node == NULL || rhs_node == NULL)
+    {
+      return false;
+    }
+
+  head_small = qo_info_is_small_filtered_side (head_info);
+  tail_small = qo_info_is_small_filtered_side (tail_info);
+  if (head_small == tail_small)
+    {
+      return false;
+    }
+
+  /*
+   * Skip the hot-key guard only when the large side itself is unique/PK.
+   * A small dimension PK joined to a non-unique fact column can still fan out
+   * badly for hot values such as movie_info_idx.info_type_id = 'votes'.
+   */
+  if (!head_small && lhs_unique && BITSET_MEMBER (head_info->nodes, QO_NODE_IDX (lhs_node)))
+    {
+      return true;
+    }
+  if (!head_small && rhs_unique && BITSET_MEMBER (head_info->nodes, QO_NODE_IDX (rhs_node)))
+    {
+      return true;
+    }
+  if (!tail_small && lhs_unique && BITSET_MEMBER (tail_info->nodes, QO_NODE_IDX (lhs_node)))
+    {
+      return true;
+    }
+  if (!tail_small && rhs_unique && BITSET_MEMBER (tail_info->nodes, QO_NODE_IDX (rhs_node)))
+    {
+      return true;
+    }
+
+  return false;
 }
 
 static bool
@@ -10729,15 +10778,6 @@ qo_apply_mcv_hotkey_join_guard (QO_TERM * term, QO_INFO * head_info, QO_INFO * t
     }
 
   /*
-   * Unique/PK equality already has a hard 0/1 lookup bound in the base
-   * selectivity.  Do not inflate it again with hot-key/fanout guards.
-   */
-  if (qo_term_has_unique_equality_side (term))
-    {
-      return term_sel;
-    }
-
-  /*
    * Broad join terms are not the hot-key problem this guard is meant to fix.
    * Penalizing them can hide good plans that start from filtered dimension tables.
    */
@@ -10757,6 +10797,16 @@ qo_apply_mcv_hotkey_join_guard (QO_TERM * term, QO_INFO * head_info, QO_INFO * t
    * This protects against broad joins and symmetric small-small joins.
    */
   if (head_small == tail_small)
+    {
+      return term_sel;
+    }
+
+  /*
+   * Unique/PK equality has a hard 0/1 lookup bound only when the large side is
+   * unique.  If the unique side is the filtered dimension and the large side is
+   * a non-unique fact column, keep the hot-key guard active.
+   */
+  if (qo_term_unique_side_is_large (term, head_info, tail_info))
     {
       return term_sel;
     }
