@@ -1010,7 +1010,7 @@ jsp_find_pkg_code (const char *unique_name)
   DB_VALUE value;
   int save;
 
-  if (!unique_name)
+  if (!unique_name || !*unique_name)
     {
       return NULL;
     }
