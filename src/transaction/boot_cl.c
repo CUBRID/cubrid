@@ -775,7 +775,9 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	{
 	  conf_file = NULL;
 	}
+#if !defined (NDEBUG)
       _er_log_debug (ARG_FILE_LINE, "conf_for_broker = %s\n", conf_file ? conf_file : "unknown");
+#endif
     }
 #endif
 
