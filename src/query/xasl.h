@@ -161,6 +161,7 @@ using PRED_EXPR = cubxasl::pred_expr;
 // *INDENT-ON*
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
+typedef struct analytic_stat ANALYTIC_STATS;
 typedef struct groupby_stat GROUPBY_STATS;
 typedef struct orderby_stat ORDERBY_STATS;
 typedef struct xasl_stat XASL_STATS;
@@ -329,6 +330,7 @@ struct buildlist_proc_node
   REGU_VARIABLE_LIST g_scan_regu_list;	/* group_by regulist during scan */
   ANALYTIC_EVAL_TYPE *a_eval_list;	/* analytic functions evaluation groups */
   REGU_VARIABLE_LIST a_regu_list;	/* analytic regu list */
+  REGU_VARIABLE_LIST a_scan_regu_list;	/* analytic regulist during scan */
   OUTPTR_LIST *a_outptr_list;	/* analytic output ptr list */
   OUTPTR_LIST *a_outptr_list_ex;	/* ext output ptr list */
   OUTPTR_LIST *a_outptr_list_interm;	/* intermediate output list */
@@ -510,12 +512,13 @@ struct cte_proc_node
 #define XASL_DECACHE_CLONE	       (0x1 << 12)	/* decache clone */
 #define XASL_RETURN_GENERATED_KEYS     (0x1 << 13)	/* return generated keys */
 #define XASL_NO_FIXED_SCAN	       (0x1 << 14)	/* disable fixed scan for this proc */
-#define XASL_FLAG_RESERVED_1	       (0x1 << 15)	/* reserved for future use */
+#define XASL_NEED_SINGLE_TUPLE_SCAN    (0x1 << 15)	/* for exists operation */
 #define XASL_INCLUDES_TDE_CLASS	       (0x1 << 16)	/* is any tde class related */
 #define XASL_SAMPLING_SCAN	       (0x1 << 17)	/* is sampling scan */
 #define XASL_USES_SQ_CACHE	       (0x1 << 18)	/* subquery uses result cache */
 #define XASL_NO_PARALLEL_SUBQUERY       (0x1 << 19)	/* disable parallel subquery */
-#define XASL_MEMOIZE_STORAGE	       (0x1 << 20)	/* enable memoize storage */
+#define XASL_ANALYTIC_USES_LIMIT_OPT (0x1 << 20)	/* analytic uses limit optimization */
+#define XASL_ANALYTIC_SKIP_SORT (0x1 << 21)	/* analytic skip sort optimization */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
@@ -765,8 +768,14 @@ typedef enum
   ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN = 0x1 << 1,	/* used with parallel heap scan. */
   ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS = 0x1 << 2,	/* used with parallel heap scan. */
   ACCESS_SPEC_FLAG_MERGEABLE_LIST = 0x1 << 3,	/* used with parallel heap scan. */
-  ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x1 << 4	/* used with min/max aggregate. */
+  ACCESS_SPEC_FLAG_BUILDVALUE_OPT = 0x1 << 4,	/* used with parallel heap scan buildvalue aggregate optimization. */
+  ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x1 << 5,	/* used with min/max aggregate. */
+  ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN = 0x1 << 6	/* used with keep page hint. */
 } ACCESS_SPEC_FLAG;
+
+#define ACCESS_SPEC_IS_FLAGED(spec, f)		((ACCESS_SPEC_FLAGS(spec) & (int) (f)) != 0)
+#define ACCESS_SPEC_SET_FLAG(spec, f)		(ACCESS_SPEC_FLAGS(spec) |= (int) (f))
+#define ACCESS_SPEC_UNSET_FLAG(spec, f)		(ACCESS_SPEC_FLAGS(spec) &= (int) ~(f))
 
 struct cls_spec_node
 {
@@ -942,6 +951,9 @@ union hybrid_node
 #define ACCESS_SPEC_DBLINK_LIST_ID(ptr) \
 	(ACCESS_SPEC_DBLINK_XASL_NODE(ptr)->list_id)
 
+#define ACCESS_SPEC_FLAGS(ptr) \
+	((ptr)->flags)
+
 #if defined (SERVER_MODE) || defined (SA_MODE)
 struct orderby_stat
 {
@@ -968,6 +980,17 @@ struct groupby_stat
   AGGREGATE_HASH_STATE groupby_hash;
   bool run_groupby;
   bool groupby_sort;
+};
+
+struct analytic_stat
+{
+  struct timeval analytic_time;
+  UINT64 analytic_pages;
+  UINT64 analytic_ioreads;
+  int rows;
+  bool analytic_stopkey;
+  bool analytic_sort;
+  struct analytic_stat *next;
 };
 
 struct xasl_stat
@@ -1027,7 +1050,7 @@ struct access_spec_node
   DB_VALUE *s_dbval;		/* single fetch mode db_value */
   ACCESS_SPEC_TYPE *next;	/* next access specification */
   int pruning_type;		/* how pruning should be performed on this access spec performed */
-  ACCESS_SPEC_FLAG flags;	/* flags from ACCESS_SPEC_FLAG enum */
+  int flags;			/* flags from ACCESS_SPEC_FLAG enum */
   int num_parallel_threads;	/* number of parallel threads for this spec */
 #if defined (SERVER_MODE) || defined (SA_MODE)
   SCAN_ID s_id;			/* scan identifier */
@@ -1152,6 +1175,7 @@ struct xasl_node
 #if defined (SERVER_MODE) || defined (SA_MODE)
   ORDERBY_STATS orderby_stats;
   GROUPBY_STATS groupby_stats;
+  ANALYTIC_STATS *analytic_stats;
   XASL_STATS xasl_stats;
   FUNC_STATS func_stats;
 

@@ -576,7 +576,8 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 
 	      /* if arg2 is derived alias col, get its corresponding constant column from derived-table */
 	      if (spec && spec->info.spec.derived_table_type == PT_IS_SUBQUERY
-		  && (derived_table = spec->info.spec.derived_table) && derived_table->node_type == PT_SELECT)
+		  && (derived_table = spec->info.spec.derived_table) && derived_table->node_type == PT_SELECT
+		  && !derived_table->info.query.q.select.single_table_opt)
 		{
 		  /* traverse as_attr_list */
 		  for (attr = spec->info.spec.as_attr_list, idx = 0; attr; attr = attr->next, idx++)
@@ -1447,6 +1448,7 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** whe
   DB_VALUE value;
   bool found;
   PT_NODE *node_prior, *sibling_prior;
+  PT_NODE *spec = NULL;
 
   /* traverse CNF list and keep track of the pointer to previous node */
   prev = NULL;
@@ -1535,7 +1537,23 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** whe
 	}
       else
 	{
-	  if (node->info.expr.op == PT_IS_NOT_NULL && pt_check_not_null_constraint (parser, from, node_prior))
+	  spec = NULL;
+	  if (PT_IS_EXPR_NODE_WITH_OPERATOR (node_prior, PT_CAST))
+	    {
+	      node_prior = node_prior->info.expr.arg1;
+	    }
+	  else
+	    {
+	      node_prior = pt_get_end_path_node (node_prior);
+	    }
+
+	  if (PT_IS_NAME_NODE (node_prior))
+	    {
+	      spec = pt_find_entity (parser, from, node_prior->info.name.spec_id);
+	    }
+
+	  if (node->info.expr.op == PT_IS_NOT_NULL && spec && !mq_is_outer_join_spec (parser, spec)
+	      && pt_check_not_null_constraint (parser, from, node_prior))
 	    {
 	      db_make_int (&value, true);
 	    }

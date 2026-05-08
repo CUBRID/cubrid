@@ -23,11 +23,18 @@
 #ifndef _PX_HEAP_SCAN_RESULT_HANDLER_HPP_
 #define _PX_HEAP_SCAN_RESULT_HANDLER_HPP_
 
+#include "query_list.h"
 #include "storage_common.h"
 #include "thread_entry.hpp"
 #include "px_interrupt.hpp"
 #include "xasl.h"
 #include "px_heap_scan_result_type.hpp"
+#include <atomic>
+#include <condition_variable>
+#include <cstdint>
+#include <mutex>
+#include <type_traits>
+#include <vector>
 
 namespace parallel_heap_scan
 {
@@ -51,11 +58,11 @@ namespace parallel_heap_scan
       using tls = std::conditional_t<result_type == RESULT_TYPE::MERGEABLE_LIST, mergeable_list_tls, xasl_snapshot_tls>;
     public:
       result_handler (QUERY_ID query_id, interrupt *interrupt_p, err_messages_with_lock *err_messages_p, int parallelism,
-		      bool g_agg_domain_resolve_need, VAL_LIST *orig_val_list_for_agg_domain_resolve);
+		      bool g_agg_domain_resolve_need, XASL_NODE *orig_xasl_tree_for_domain_resolve);
       void read_initialize (THREAD_ENTRY *thread_p);
       SCAN_CODE read (THREAD_ENTRY *thread_p, read_dest_type *dest);
       void read_finalize (THREAD_ENTRY *thread_p);
-      void write_initialize (THREAD_ENTRY *thread_p, OUTPTR_LIST *outptr_list, VAL_LIST *val_list, VAL_DESCR *vd);
+      void write_initialize (THREAD_ENTRY *thread_p, OUTPTR_LIST *outptr_list, XASL_NODE *curr_xasl, VAL_DESCR *vd);
       bool write (THREAD_ENTRY *thread_p, write_dest_type *src);
       void write_finalize (THREAD_ENTRY *thread_p);
 
@@ -77,19 +84,17 @@ namespace parallel_heap_scan
   {
     public:
       mergeable_list_variables()
-	: result_p (nullptr),
-	  orig_val_list_for_agg_domain_resolve (nullptr),
+	: orig_xasl (nullptr),
 	  active_results (0),
-	  g_agg_domain_resolve_need (false),
 	  is_list_id_domain_resolved (false) {}
       ~mergeable_list_variables() = default;
       std::vector<QFILE_LIST_ID *> writer_results;
       std::mutex writer_results_mutex;
-      QFILE_LIST_ID *result_p;
-      VAL_LIST *orig_val_list_for_agg_domain_resolve;
+      XASL_NODE *orig_xasl;
       int active_results;
-      bool g_agg_domain_resolve_need;
       bool is_list_id_domain_resolved;
+      std::vector<QFILE_LIST_ID *> hgby_results;
+      bool g_hash_eligible;
   };
 
   class xasl_snapshot_variables
@@ -111,13 +116,19 @@ namespace parallel_heap_scan
       mergeable_list_tls()
 	: writer_result_p (nullptr),
 	  vd (nullptr),
-	  val_list_for_agg_domain_resolve (nullptr) {}
+	  xasl (nullptr),
+	  val_list_domain_resolved (false),
+	  agg_hash_state (HS_NONE),
+	  g_agg_domains_resolved (TRUE) {}
       ~mergeable_list_tls() = default;
       QFILE_LIST_ID *writer_result_p;
       QFILE_TUPLE_RECORD tpl_buf;
       VAL_DESCR *vd;
-      VAL_LIST *val_list_for_agg_domain_resolve;
-      std::vector<DB_VALUE> dbvals_for_agg_domain_resolve;
+      XASL_NODE *xasl;
+      std::vector<DB_VALUE> dbvals_for_domain_resolve;
+      bool val_list_domain_resolved;
+      AGGREGATE_HASH_STATE agg_hash_state;
+      int g_agg_domains_resolved;
   };
 
   class xasl_snapshot_tls
@@ -211,6 +222,41 @@ namespace parallel_heap_scan
     bool read_ended;
     bool list_scan_id_opened;
     QFILE_LIST_SCAN_ID list_scan_id;
+  };
+
+  template <>
+  class result_handler <RESULT_TYPE::BUILDVALUE_OPT>
+  {
+      using interrupt = parallel_query::interrupt;
+      using err_messages_with_lock = parallel_query::err_messages_with_lock;
+      using read_dest_type = AGGREGATE_TYPE;
+      using write_dest_type = AGGREGATE_TYPE;
+    public:
+      result_handler (QUERY_ID query_id, interrupt *interrupt_p, err_messages_with_lock *err_messages_p, int parallelism,
+		      AGGREGATE_TYPE *orig_agg_list);
+      void read_initialize (THREAD_ENTRY *thread_p);
+      SCAN_CODE read (THREAD_ENTRY *thread_p, read_dest_type *dest);
+      void read_finalize (THREAD_ENTRY *thread_p);
+      void write_initialize (THREAD_ENTRY *thread_p, OUTPTR_LIST *outptr_list, write_dest_type *agg_list, VAL_DESCR *vd,
+			     xasl_node *xasl_p);
+      bool write (THREAD_ENTRY *thread_p);
+      void write_finalize (THREAD_ENTRY *thread_p);
+    private:
+      int m_parallelism;
+      std::mutex m_result_mutex;
+      std::condition_variable m_result_cv;
+      int m_result_completed;
+      QUERY_ID m_query_id;
+      interrupt *m_interrupt_p; /* for interrupt */
+      err_messages_with_lock *m_err_messages_p; /* for error messages */
+      AGGREGATE_TYPE *m_orig_agg_list;
+      std::mutex writer_results_mutex;
+      thread_local static AGGREGATE_TYPE *tl_agg_p;
+      thread_local static OUTPTR_LIST *tl_outptr_list_p;
+      thread_local static VAL_DESCR *tl_vd;
+      thread_local static xasl_node *tl_xasl_p;
+      thread_local static QFILE_TUPLE_RECORD tl_tpl_buf;
+      thread_local static OR_BUF tl_or_buf;
   };
 }
 

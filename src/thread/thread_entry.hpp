@@ -53,6 +53,8 @@ struct log_zip;
 struct vacuum_worker;
 // from xasl_unpack_info.hpp
 struct xasl_unpack_info;
+// from page_buffer.h
+struct pgbuf_holder_anchor;
 
 // forward resource trackers
 namespace cubbase
@@ -306,7 +308,8 @@ namespace cubthread
       entry *m_px_orig_thread_entry;
       bool m_uses_px_stats;
 
-      bool m_skip_end_resource_tracks_in_recycle;
+      bool m_is_private_lru_enabled;
+      struct pgbuf_holder_anchor *m_holder_anchor;
 
       thread_id_t get_id ();
       pthread_t get_posix_id ();
@@ -315,6 +318,8 @@ namespace cubthread
       bool is_on_current_thread () const;
 
       void return_lock_free_transaction_entries (void);
+
+      void release_packet (void *buffer);
 
       void lock (void);
       void unlock (void);
@@ -468,6 +473,42 @@ thread_set_sort_stats_active (cubthread::entry *thread_p, bool new_flag)
   return old_flag;
 }
 
+inline cubthread::entry *
+thread_get_main_thread (cubthread::entry *thread_p)
+{
+  assert (thread_p != nullptr);
+
+  cubthread::entry *current = thread_p;
+
+  // Safety limit to prevent infinite traversal in case of corrupted hierarchy
+  constexpr int MAX_DEPTH = 8;
+
+  for (int i = 0; i < MAX_DEPTH; ++i)
+    {
+      cubthread::entry *parent = current->m_px_orig_thread_entry;
+
+      // Found root (nullptr) or a self-referencing main thread
+      if (parent == nullptr || parent == current)
+	{
+
+	  return current;
+	}
+
+      // Detect logical cycles (looping back to the starting thread)
+      if ( unlikely (parent == thread_p))
+	{
+	  assert (false && "Cycle detected in thread hierarchy");
+	  return thread_p;
+	}
+
+      current = parent;
+    }
+
+  // Fallback for unexpectedly deep chains or undetected complex cycles
+  assert (false && "Thread hierarchy depth exceeded limit");
+  return thread_p;
+}
+
 inline void
 thread_lock_entry (cubthread::entry *thread_p)
 {
@@ -480,23 +521,12 @@ thread_unlock_entry (cubthread::entry *thread_p)
   thread_p->unlock ();
 }
 
-void thread_suspend (cubthread::entry *p, thread_resume_suspend_status suspended_reason);
-int thread_timed_suspend (cubthread::entry *p, struct timespec *t,
-			  thread_resume_suspend_status suspended_reason);
+void thread_suspend_wakeup_and_unlock_entry (cubthread::entry *p, thread_resume_suspend_status suspended_reason);
+int thread_suspend_timeout_wakeup_and_unlock_entry (cubthread::entry *p, struct timespec *t,
+    thread_resume_suspend_status suspended_reason);
 void thread_wakeup (cubthread::entry *p, thread_resume_suspend_status resume_reason);
 void thread_check_suspend_reason_and_wakeup (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason,
     thread_resume_suspend_status suspend_reason);
-#define thread_suspend_and_unlock_entry(thread_p,suspended_reason) \
-  ({ \
-    thread_suspend((thread_p), (suspended_reason)); \
-    thread_unlock_entry((thread_p)); \
-  })
-#define thread_timed_suspend_and_unlock_entry(thread_p, t, suspended_reason) \
-  ({ \
-    int __r = thread_timed_suspend((thread_p), (t), (suspended_reason)); \
-    thread_unlock_entry((thread_p)); \
-    __r; \
-  })
 void thread_wakeup_already_had_mutex (cubthread::entry *p, thread_resume_suspend_status resume_reason);
 int thread_suspend_with_other_mutex (cubthread::entry *p, pthread_mutex_t *mutexp, int timeout, struct timespec *to,
 				     thread_resume_suspend_status suspended_reason);

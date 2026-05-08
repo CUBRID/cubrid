@@ -1543,10 +1543,11 @@ static int
 smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type, const char *constraint_name,
 				SM_ATTRIBUTE ** atts, const int *asc_desc, const int *attr_prefix_length,
 				SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name, SM_PREDICATE_INFO * filter_index,
-				SM_FUNCTION_INFO * function_index, const char *comment, SM_INDEX_STATUS index_status)
+				SM_FUNCTION_INFO * function_index, int options, const char *comment,
+				SM_INDEX_STATUS index_status)
 {
   int error = NO_ERROR;
-  DB_VALUE cnstr_val;
+  DB_VALUE cnstr_val, current_datetime;
   const char *constraint = classobj_map_constraint_to_property (type);
 
   db_make_null (&cnstr_val);
@@ -1555,6 +1556,12 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
    *  Check if the constraint already exists. Skip it if we have an online index building done.
    */
   if (classobj_find_prop_constraint (template_->properties, constraint, constraint_name, &cnstr_val))
+    {
+      ERROR1 (error, ER_SM_CONSTRAINT_EXISTS, constraint_name);
+      goto end;
+    }
+
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
     {
       ERROR1 (error, ER_SM_CONSTRAINT_EXISTS, constraint_name);
       goto end;
@@ -1575,6 +1582,8 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
   con.index_btid = BTID_INITIALIZER;
   con.fk_info = NULL;
   con.shared_cons_name = NULL;
+  con.index_type = SM_BTREE_TYPE;
+  con.options = options;
 
   if (classobj_put_index (&template_->properties, &con, NULL, fk_info, shared_cons_name, true) != NO_ERROR)
     {
@@ -1583,6 +1592,7 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
 
 end:
   pr_clear_value (&cnstr_val);
+  pr_clear_value (&current_datetime);
 
   return error;
 }
@@ -1640,7 +1650,7 @@ smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_
   SM_ATTRIBUTE *tmp_attr, *ref_attr;
   int n_ref_atts, i, j;
   bool found;
-  const char *tmp, *ref_cls_name = NULL;
+  const char *tmp = NULL;
 
   if (template_->op == NULL && intl_identifier_casecmp (template_->name, fk_info->ref_class) == 0)
     {
@@ -1659,7 +1669,6 @@ smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_
 
       OID_SET_NULL (&fk_info->ref_class_oid);
       BTID_SET_NULL (&fk_info->ref_class_pk_btid);
-      ref_cls_name = template_->name;
     }
   else
     {
@@ -1686,7 +1695,6 @@ smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_
 
       fk_info->ref_class_oid = *(ws_oid (ref_clsop));
       fk_info->ref_class_pk_btid = pk->index_btid;
-      ref_cls_name = sm_ch_name ((MOBJ) ref_cls);
     }
 
   /* check pk'size and fk's size */
@@ -1993,6 +2001,8 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
   bool has_nulls = false;
   bool is_secondary_index = false;
   int deduplicate_key_col_pos = -1;
+  int options = 0;
+  int deduplicate_key_level = 0;
 
   assert (template_ != NULL);
 
@@ -2014,6 +2024,8 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 	  if (IS_DEDUPLICATE_KEY_ATTR_NAME (att_names[n_atts]))
 	    {
 	      deduplicate_key_col_pos = n_atts;
+	      GET_DEDUPLICATE_KEY_ATTR_LEVEL_FROM_NAME (att_names[n_atts], deduplicate_key_level);
+	      SET_OPTION_DEDUPLICATE (options, deduplicate_key_level);
 	    }
 	  n_atts++;
 	}
@@ -2220,7 +2232,8 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
       /* Add the constraint. */
       error = smt_add_constraint_to_property (template_, SM_MAP_INDEX_ATTFLAG_TO_CONSTRAINT (constraint),
 					      constraint_name, atts, asc_desc, attrs_prefix_length, fk_info,
-					      shared_cons_name, filter_index, function_index, comment, index_status);
+					      shared_cons_name, filter_index, function_index, options, comment,
+					      index_status);
       if (error != NO_ERROR)
 	{
 	  goto error_return;
@@ -3118,21 +3131,16 @@ smt_change_constraint_comment (SM_TEMPLATE * ctemplate, const char *index_name, 
   error = change_constraints_comment_partitioned_class (ctemplate->op, index_name, comment);
   if (error != NO_ERROR)
     {
-      goto error_exit;
+      return error;
     }
 
   error = classobj_change_constraint_comment (ctemplate->properties, cons, comment);
   if (error != NO_ERROR)
     {
-      goto error_exit;
+      return error;
     }
 
-end:
-  return error;
-
-  /* in order to show explicitly the error */
-error_exit:
-  goto end;
+  return NO_ERROR;
 }
 
 /* TEMPLATE DELETION FUNCTIONS */

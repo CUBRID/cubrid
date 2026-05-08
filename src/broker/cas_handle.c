@@ -35,29 +35,24 @@
 #include <unistd.h>
 #endif /* WINDOWS */
 
-#include "cas_db_inc.h"
-#include "cas_execute.h"
-
-#include "cas.h"
-#include "cas_common.h"
-#include "cas_handle.h"
 #include "cas_log.h"
+#include "dbtype.h"
+#include "cas_common_execute.h"
 
 #define SRV_HANDLE_ALLOC_SIZE		256
 
 static void srv_handle_content_free (T_SRV_HANDLE * srv_handle);
 static void col_update_info_free (T_QUERY_RESULT * q_result);
 static void srv_handle_rm_tmp_file (int h_id, T_SRV_HANDLE * srv_handle);
+extern bool tran_is_in_libcas (void);
 
 static T_SRV_HANDLE **srv_handle_table = NULL;
 static int max_srv_handle = 0;
 static int max_handle_id = 0;
 static int current_handle_count = 0;
-
-/* implemented in transaction_cl.c */
-extern bool tran_is_in_libcas (void);
-
 static int current_handle_id = -1;	/* it is used for javasp */
+static bool is_cgw_mode = false;
+static cgw_free_stmt_func_t cgw_free_stmt_func = NULL;
 
 int
 hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
@@ -113,12 +108,13 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   srv_handle->is_from_current_transaction = true;
   srv_handle->is_pooled = as_info->cur_statement_pooling;
 
-#if defined (CAS_FOR_CGW)
-  srv_handle->cgw_handle = NULL;
-  srv_handle->total_tuple_count = 0;
-  srv_handle->stmt_type = CUBRID_STMT_NONE;
-  srv_handle->is_cursor_open = false;
-#endif /* CAS_FOR_CGW */
+  if (is_cgw_mode)
+    {
+      srv_handle->cgw_handle = NULL;
+      srv_handle->total_tuple_count = 0;
+      srv_handle->stmt_type = CUBRID_STMT_NONE;
+      srv_handle->is_cursor_open = false;
+    }
 
   *new_handle = srv_handle;
   srv_handle_table[new_handle_id - 1] = srv_handle;
@@ -165,9 +161,10 @@ hm_srv_handle_free (int h_id)
   FREE_MEM (srv_handle->classes);
   FREE_MEM (srv_handle->classes_chn);
 
-#if defined (CAS_FOR_CGW)
-  ux_cgw_free_stmt (srv_handle);
-#endif
+  if (is_cgw_mode && cgw_free_stmt_func != NULL)
+    {
+      cgw_free_stmt_func (srv_handle);
+    }
 
   FREE_MEM (srv_handle);
   srv_handle_table[h_id - 1] = NULL;
@@ -197,9 +194,15 @@ hm_srv_handle_free_all (bool free_holdable)
 
       srv_handle_content_free (srv_handle);
       srv_handle_rm_tmp_file (i + 1, srv_handle);
-#if defined (CAS_FOR_CGW)
-      srv_handle->cgw_handle = NULL;
-#endif /* CAS_FOR_CGW */
+
+      if (is_cgw_mode && cgw_free_stmt_func != NULL)
+	{
+	  cgw_free_stmt_func (srv_handle);
+	}
+      if (is_cgw_mode)
+	{
+	  srv_handle->cgw_handle = NULL;
+	}
       FREE_MEM (srv_handle);
       srv_handle_table[i] = NULL;
       current_handle_count--;
@@ -310,7 +313,7 @@ hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag)
 	{
 	  if (q_result[i].copied != TRUE && q_result[i].result)
 	    {
-	      ux_free_result (q_result[i].result);
+	      hm_free_result (q_result[i].result);
 
 	      if (q_result[i].is_holdable == true)
 		{
@@ -370,42 +373,67 @@ static void
 srv_handle_content_free (T_SRV_HANDLE * srv_handle)
 {
   FREE_MEM (srv_handle->sql_stmt);
-  ux_prepare_call_info_free (srv_handle->prepare_call_info);
+  if (!is_cgw_mode)
+    {
+      hm_prepare_call_info_free (srv_handle->prepare_call_info);
 
-  if (srv_handle->schema_type < 0 || srv_handle->schema_type == CCI_SCH_CLASS
-      || srv_handle->schema_type == CCI_SCH_VCLASS || srv_handle->schema_type == CCI_SCH_ATTRIBUTE
-      || srv_handle->schema_type == CCI_SCH_CLASS_ATTRIBUTE || srv_handle->schema_type == CCI_SCH_QUERY_SPEC
-      || srv_handle->schema_type == CCI_SCH_DIRECT_SUPER_CLASS || srv_handle->schema_type == CCI_SCH_PRIMARY_KEY
-      || srv_handle->schema_type == CCI_SCH_ATTR_WITH_SYNONYM)
-    {
-      hm_qresult_end (srv_handle, TRUE);
-      hm_session_free (srv_handle);
-    }
-  else if (srv_handle->schema_type == CCI_SCH_CLASS_PRIVILEGE || srv_handle->schema_type == CCI_SCH_ATTR_PRIVILEGE
-	   || srv_handle->schema_type == CCI_SCH_SUPERCLASS || srv_handle->schema_type == CCI_SCH_SUBCLASS)
-    {
-      FREE_MEM (srv_handle->session);
-      srv_handle->cur_result = NULL;
-    }
-  else if (srv_handle->schema_type == CCI_SCH_TRIGGER)
-    {
-      if (srv_handle->session)
+      switch (srv_handle->schema_type)
 	{
-	  db_objlist_free ((DB_OBJLIST *) (srv_handle->session));
-	}
-      srv_handle->cur_result = NULL;
-    }
-  else if (srv_handle->schema_type == CCI_SCH_IMPORTED_KEYS || srv_handle->schema_type == CCI_SCH_EXPORTED_KEYS
-	   || srv_handle->schema_type == CCI_SCH_CROSS_REFERENCE)
-    {
-      T_FK_INFO_RESULT *fk_res = (T_FK_INFO_RESULT *) srv_handle->session;
+	case CCI_SCH_CLASS:
+	case CCI_SCH_VCLASS:
+	case CCI_SCH_ATTRIBUTE:
+	case CCI_SCH_CLASS_ATTRIBUTE:
+	case CCI_SCH_QUERY_SPEC:
+	case CCI_SCH_DIRECT_SUPER_CLASS:
+	case CCI_SCH_PRIMARY_KEY:
+	case CCI_SCH_ATTR_WITH_SYNONYM:
+	  hm_qresult_end (srv_handle, TRUE);
+	  hm_session_free (srv_handle);
+	  break;
 
-      if (fk_res != NULL)
-	{
-	  release_all_fk_info_results (fk_res);
-	  srv_handle->session = NULL;
+	case CCI_SCH_CLASS_PRIVILEGE:
+	case CCI_SCH_ATTR_PRIVILEGE:
+	case CCI_SCH_SUPERCLASS:
+	case CCI_SCH_SUBCLASS:
+	  FREE_MEM (srv_handle->session);
+	  srv_handle->cur_result = NULL;
+	  break;
+
+	case CCI_SCH_TRIGGER:
+	  if (srv_handle->session)
+	    {
+	      db_objlist_free ((DB_OBJLIST *) (srv_handle->session));
+	    }
+	  srv_handle->cur_result = NULL;
+	  break;
+
+	case CCI_SCH_IMPORTED_KEYS:
+	case CCI_SCH_EXPORTED_KEYS:
+	case CCI_SCH_CROSS_REFERENCE:
+	  {
+	    T_FK_INFO_RESULT *fk_res = (T_FK_INFO_RESULT *) srv_handle->session;
+
+	    if (fk_res != NULL)
+	      {
+		release_all_fk_info_results (fk_res);
+		srv_handle->session = NULL;
+	      }
+	    srv_handle->cur_result = NULL;
+	  }
+	  break;
+
+	default:
+	  if (srv_handle->schema_type < 0)
+	    {
+	      hm_qresult_end (srv_handle, TRUE);
+	      hm_session_free (srv_handle);
+	    }
+	  break;
 	}
-      srv_handle->cur_result = NULL;
+    }
+  else
+    {
+      srv_handle->session = NULL;
     }
 }
 
@@ -459,4 +487,94 @@ hm_set_current_srv_handle (int h_id)
     {
       current_handle_id = h_id;
     }
+}
+
+static void
+prepare_call_info_dbval_clear (T_PREPARE_CALL_INFO * call_info)
+{
+  DB_VALUE **args;
+  int i = 0;
+
+  if (call_info)
+    {
+      if (call_info->dbval_ret)
+	{
+	  db_value_clear ((DB_VALUE *) call_info->dbval_ret);
+	  db_make_null ((DB_VALUE *) call_info->dbval_ret);
+	}
+
+      args = (DB_VALUE **) call_info->dbval_args;
+
+      if (call_info->is_first_out)
+	{
+	  db_value_clear (args[0]);
+	  i++;
+	}
+
+      for (; i < call_info->num_args; i++)
+	{
+	  if (args[i])
+	    {
+	      db_make_null (args[i]);
+	    }
+	}
+    }
+}
+
+void
+hm_free_result (void *res)
+{
+  db_query_end ((DB_QUERY_RESULT *) res);
+}
+
+void
+hm_prepare_call_info_free (T_PREPARE_CALL_INFO * call_info)
+{
+  if (call_info)
+    {
+      int i;
+
+      prepare_call_info_dbval_clear (call_info);
+      FREE_MEM (call_info->dbval_ret);
+      for (i = 0; i < call_info->num_args; i++)
+	{
+	  FREE_MEM (((DB_VALUE **) call_info->dbval_args)[i]);
+	}
+      FREE_MEM (call_info->dbval_args);
+      FREE_MEM (call_info->param_mode);
+      FREE_MEM (call_info);
+    }
+}
+
+void
+release_all_fk_info_results (T_FK_INFO_RESULT * fk_res)
+{
+  T_FK_INFO_RESULT *fk, *fk_release;
+
+  fk = fk_res;
+  while (fk != NULL)
+    {
+      fk_release = fk;
+      fk = fk->next;
+
+      FREE_MEM (fk_release->pktable_name);
+      FREE_MEM (fk_release->pkcolumn_name);
+      FREE_MEM (fk_release->fktable_name);
+      FREE_MEM (fk_release->fkcolumn_name);
+      FREE_MEM (fk_release->fk_name);
+      FREE_MEM (fk_release->pk_name);
+      FREE_MEM (fk_release);
+    }
+}
+
+void
+hm_set_cgw_mode (bool enabled)
+{
+  is_cgw_mode = enabled;
+}
+
+void
+hm_set_cgw_free_stmt_func (cgw_free_stmt_func_t func)
+{
+  cgw_free_stmt_func = func;
 }

@@ -538,7 +538,7 @@ extern "C"
   extern int pt_statement_line_number (const PT_NODE * stmt);
 
   extern const char *pt_get_select_from_name (PARSER_CONTEXT * parser, const PT_NODE * spec);
-  extern const char *pt_get_proxy_spec_name (const char *qspec);
+  extern const char *pt_get_proxy_spec_name (PARSER_CONTEXT * parser, const char *qspec);
   extern const char *pt_get_spec_name (PARSER_CONTEXT * parser, const PT_NODE * selqry);
   extern const char *pt_get_name (PT_NODE * nam);
   extern PT_NODE *pt_get_cursor (const PT_HOST_VARS * hv);
@@ -551,6 +551,7 @@ extern "C"
   extern bool pt_has_inst_num (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_expr_of_inst_in_sel_list (PARSER_CONTEXT * parser, PT_NODE * select_list);
   extern bool pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern bool pt_has_having_with_predicate (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_inst_or_orderby_num_in_where (PARSER_CONTEXT * parser, PT_NODE * node);
   extern void pt_set_correlation_level (PARSER_CONTEXT * parser, PT_NODE * subquery, int level);
   extern void pt_set_pred_order (PARSER_CONTEXT * parser, PT_NODE * pre_pred, int pre_order);
@@ -651,6 +652,7 @@ extern "C"
 				      PT_NODE * assign, PT_NODE *** old_links);
 
   extern bool pt_is_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool report_error);
+  extern bool pt_expr_keep_uniqueness (const PT_NODE * expr);
   extern PT_NODE *pt_function_index_skip_expr (PT_NODE * node);
   extern PT_NODE *pt_expr_to_sort_spec (PARSER_CONTEXT * parser, PT_NODE * expr);
   extern bool pt_is_join_expr (PT_NODE * expr, UINTPTR * spec_id);
@@ -718,6 +720,7 @@ extern "C"
 
   extern void pt_free_dblink_remote_cols (PARSER_CONTEXT * parser);
   extern int pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink);
+  extern PT_NODE *pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 #ifdef __cplusplus
 }
 #endif

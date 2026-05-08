@@ -49,14 +49,12 @@
 #include "msgcat_set_log.hpp"
 #include "log_compress.h"
 #include "log_lsa.hpp"
-#include "parser.h"
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "db_value_printer.hpp"
 #include "db.h"
 #include "object_accessor.h"
 #include "locator_cl.h"
-#include "connection_cl.h"
 #include "network_interface_cl.h"
 #include "schema_system_catalog_constants.h"
 #include "file_io.h"
@@ -325,7 +323,7 @@ struct la_info
   int last_server_state;
   bool is_role_changed;
 
-  /* db_ha_apply_info */
+  /* _db_ha_apply_info */
   LOG_LSA append_lsa;		/* append lsa of active log header */
   LOG_LSA eof_lsa;		/* eof lsa of active log header */
   LOG_LSA required_lsa;		/* start lsa of the first transaction to be applied */
@@ -1930,7 +1928,7 @@ la_update_ha_apply_info_log_record_time (time_t new_time)
   res = la_update_query_execute_with_values (query_buf, in_value_idx, &in_value[0], true);
   if (res == 0)
     {
-      /* it means db_ha_apply_info was deleted */
+      /* it means _db_ha_apply_info was deleted */
       DB_DATETIME log_db_creation_time;
 
       db_localdatetime (&la_Info.act_log.log_hdr->db_creation, &log_db_creation_time);
@@ -2065,7 +2063,7 @@ la_get_last_ha_applied_info (void)
 }
 
 /*
- * la_update_ha_last_applied_info() - update db_ha_apply_info table
+ * la_update_ha_last_applied_info() - update _db_ha_apply_info table
  *   returns  : error code, if execution failed
  *              number of affected objects, if a success
  *
@@ -2195,7 +2193,7 @@ la_update_ha_last_applied_info (void)
   res = la_update_query_execute_with_values (query_buf, in_value_idx, &in_value[0], true);
   if (res == 0)
     {
-      /* it means db_ha_apply_info was deleted */
+      /* it means _db_ha_apply_info was deleted */
       DB_DATETIME log_db_creation_time;
 
       db_localdatetime (&la_Info.act_log.log_hdr->db_creation, &log_db_creation_time);
@@ -4767,12 +4765,12 @@ la_flush_repl_items (bool immediate)
 
   if (la_Info.num_unflushed >= LA_MAX_UNFLUSHED_REPL_ITEMS || immediate == true)
     {
-      error = locator_repl_flush_all ();
+      error = __gv_loc_repl.locator_repl_flush_all ();
       if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
 	{
 	  while (true)
 	    {
-	      flush_err = ws_get_repl_error_from_error_link ();
+	      flush_err = __gv_loc_repl.ws_get_repl_error_from_error_link ();
 	      if (flush_err == NULL)
 		{
 		  break;
@@ -4842,22 +4840,22 @@ la_flush_repl_items (bool immediate)
 
 		  error = ER_LC_PARTIALLY_FAILED_TO_FLUSH;
 
-		  ws_free_repl_flush_error (flush_err);
-		  ws_clear_all_repl_errors_of_error_link ();
+		  __gv_loc_repl.ws_free_repl_flush_error (flush_err);
+		  __gv_loc_repl.ws_clear_all_repl_errors_of_error_link ();
 
 		  return error;
 		}
 
-	      ws_free_repl_flush_error (flush_err);
+	      __gv_loc_repl.ws_free_repl_flush_error (flush_err);
 	    }
 
-	  ws_clear_all_repl_errors_of_error_link ();
+	  __gv_loc_repl.ws_clear_all_repl_errors_of_error_link ();
 	  error = NO_ERROR;
 	}
       else if (error != NO_ERROR)
 	{
 	  la_Info.fail_counter++;
-	  ws_clear_all_repl_errors_of_error_link ();
+	  __gv_loc_repl.ws_clear_all_repl_errors_of_error_link ();
 
 	  er_stack_push ();
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_FAILED_TO_FLUSH_REPL_ITEMS, 1, error);
@@ -4867,7 +4865,7 @@ la_flush_repl_items (bool immediate)
 	}
 
       la_Info.num_unflushed = 0;
-      ws_clear_all_repl_objs ();
+      __gv_loc_repl.ws_clear_all_repl_objs ();
     }
 
   return error;
@@ -4934,8 +4932,9 @@ la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
 
   has_index = classobj_class_has_indexes (class_);
 
-  error = ws_add_to_repl_obj_list (class_oid, item->packed_key_value, item->packed_key_value_length, recdes,
-				   operation, has_index);
+  error =
+    __gv_loc_repl.ws_add_to_repl_obj_list (class_oid, item->packed_key_value, item->packed_key_value_length, recdes,
+					   operation, has_index);
   return error;
 }
 
@@ -6212,7 +6211,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 		}
 	    }
 
-	  /* make db_ha_apply_info.status busy */
+	  /* make _db_ha_apply_info.status busy */
 	  if (la_Info.status == LA_STATUS_IDLE)
 	    {
 	      la_Info.status = LA_STATUS_BUSY;
@@ -6567,7 +6566,7 @@ la_log_commit (bool update_commit_time)
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "failed to update db_ha_apply_info");
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "failed to update _db_ha_apply_info");
 	  error = NO_ERROR;
 	}
     }
@@ -6750,10 +6749,10 @@ la_check_time_commit (struct timeval *time_commit, unsigned int threshold)
       if (ha_mode == HA_MODE_REPLICA && la_Info.act_log.log_hdr->ha_server_state == HA_SERVER_STATE_STANDBY)
 	{
 	  /*
-	   * 'db_ha_apply_info' catalog is updated by la_log_commit, and the HA service uses the updated
-	   * information (db_ha_apply_info) to obtain delay information.
+	   * '_db_ha_apply_info' catalog is updated by la_log_commit, and the HA service uses the updated
+	   * information (_db_ha_apply_info) to obtain delay information.
 	   * However, during the process of applying logs replicated from the standby,
-	   * the db_ha_apply_info is not updated. Therefore, it needs to be updated periodically here.
+	   * the _db_ha_apply_info is not updated. Therefore, it needs to be updated periodically here.
 	   *
 	   * NOTE:
 	   * 1. The logs replicated from the 'standby' server do not contain replication logs.
@@ -6784,7 +6783,7 @@ la_check_time_commit (struct timeval *time_commit, unsigned int threshold)
 	{
 	  if (la_Info.status == LA_STATUS_BUSY)
 	    {
-	      /* make db_ha_apply_info.status idle */
+	      /* make _db_ha_apply_info.status idle */
 	      la_Info.status = LA_STATUS_IDLE;
 	    }
 	}
@@ -6962,7 +6961,7 @@ la_init (const char *log_path, const int max_mem_size)
 
   if (db_get_client_type () == DB_CLIENT_TYPE_LOG_APPLIER)
     {
-      ws_init_repl_objs ();
+      __gv_loc_repl.ws_init_repl_objs ();
     }
 
   la_Info.repl_filter.type = REPL_FILTER_NONE;
@@ -7075,7 +7074,7 @@ la_shutdown (void)
 
   if (db_get_client_type () == DB_CLIENT_TYPE_LOG_APPLIER)
     {
-      ws_clear_all_repl_objs ();
+      __gv_loc_repl.ws_clear_all_repl_objs ();
     }
 
   if (la_recdes_pool.is_initialized == true)
@@ -8185,7 +8184,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   if (error != NO_ERROR)
     {
       er_stack_push ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Failed to initialize db_ha_apply_info");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Failed to initialize _db_ha_apply_info");
       er_stack_pop ();
       return error;
     }

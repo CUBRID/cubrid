@@ -89,6 +89,7 @@ static const char *csect_Names[] = {
   "ACL",
   "PARTITION_CACHE",
   "EVENT_LOG_FILE",
+  "TRACE_LOG_FILE",
   "LOG_ARCHIVE",
   "ACCESS_STATUS"
 };

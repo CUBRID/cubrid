@@ -1866,10 +1866,7 @@ err:
  *       structures which are in place that provide a list of B-tree IDs
  *       associated with an attribute in each attribute structure
  *       (OR_ATTRIBUTE).
- *       { [attrID, asc_desc]+,
- *         {fk_info} or {key prefix length} or {function index} or {filter index}+,
- *         comment
- *       }
+ *       For constraint structure details, see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 static void
 or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, int seq_size, BTREE_TYPE type,
@@ -1892,7 +1889,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 
   index = &(rep->indexes[rep->n_indexes]);
 
-  att_cnt = (seq_size - 3) / 2;
+  att_cnt = get_class_constraint_att_count (seq_size);
 
   index->atts = (OR_ATTRIBUTE **) malloc (sizeof (OR_ATTRIBUTE *) * att_cnt);
   if (index->atts == NULL)
@@ -1964,20 +1961,23 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
     }
   index->btname = strdup (cons_name);
 
-  /* Get the index status. */
-  set_get_element_nocopy (constraint_seq, seq_size - 2, &stat_val);
+  set_get_element_nocopy (constraint_seq, get_class_constraint_index (seq_size, SM_CONSTRAINT_STATUS_INDEX), &stat_val);
   index->index_status = (OR_INDEX_STATUS) (db_get_int (&stat_val));
 
   if (type == BTREE_FOREIGN_KEY)
     {
-      if (set_get_element_nocopy (constraint_seq, seq_size - 3, &att_val) == NO_ERROR)
+      if (set_get_element_nocopy
+	  (constraint_seq, get_class_constraint_index (seq_size, SM_CONSTRAINT_OPTIONAL_INFO_INDEX),
+	   &att_val) == NO_ERROR)
 	{
 	  or_install_btids_foreign_key (cons_name, db_get_set (&att_val), index);
 	}
     }
   else if (type == BTREE_PRIMARY_KEY)
     {
-      if (set_get_element_nocopy (constraint_seq, seq_size - 3, &att_val) == NO_ERROR)
+      if (set_get_element_nocopy
+	  (constraint_seq, get_class_constraint_index (seq_size, SM_CONSTRAINT_OPTIONAL_INFO_INDEX),
+	   &att_val) == NO_ERROR)
 	{
 	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_SEQUENCE)
 	    {
@@ -1987,7 +1987,9 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
     }
   else
     {
-      if (set_get_element_nocopy (constraint_seq, seq_size - 3, &att_val) == NO_ERROR)
+      if (set_get_element_nocopy
+	  (constraint_seq, get_class_constraint_index (seq_size, SM_CONSTRAINT_OPTIONAL_INFO_INDEX),
+	   &att_val) == NO_ERROR)
 	{
 	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_SEQUENCE)
 	    {
@@ -2005,12 +2007,12 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 		      DB_VALUE avalue;
 		      DB_SET *child_seq = db_get_set (&val);
 		      int seq_size = set_size (seq);
-		      int flag;
+		      SM_INDEX_FLAG index_flag;
+		      const char *index_flag_str;
 
 		      j = 0;
 		      while (true)
 			{
-			  flag = 0;
 			  if (set_get_element_nocopy (child_seq, 0, &avalue) != NO_ERROR)
 			    {
 			      goto next_child;
@@ -2021,17 +2023,22 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 			      goto next_child;
 			    }
 
-			  if (strcmp (db_get_string (&avalue), SM_FILTER_INDEX_ID) == 0)
+			  index_flag_str = db_get_string (&avalue);
+			  if (strcmp (index_flag_str, SM_FILTER_INDEX_ID) == 0)
 			    {
-			      flag = 0x01;
+			      index_flag = SM_INDEX_FLAG_FILTER;
 			    }
-			  else if (strcmp (db_get_string (&avalue), SM_FUNCTION_INDEX_ID) == 0)
+			  else if (strcmp (index_flag_str, SM_FUNCTION_INDEX_ID) == 0)
 			    {
-			      flag = 0x02;
+			      index_flag = SM_INDEX_FLAG_FUNCTION;
 			    }
-			  else if (strcmp (db_get_string (&avalue), SM_PREFIX_INDEX_ID) == 0)
+			  else if (strcmp (index_flag_str, SM_PREFIX_INDEX_ID) == 0)
 			    {
-			      flag = 0x03;
+			      index_flag = SM_INDEX_FLAG_PREFIX;
+			    }
+			  else
+			    {
+			      index_flag = SM_INDEX_FLAG_NONE;
 			    }
 
 			  if (set_get_element_nocopy (child_seq, 1, &avalue) != NO_ERROR)
@@ -2044,17 +2051,17 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 			      goto next_child;
 			    }
 
-			  switch (flag)
+			  switch (index_flag)
 			    {
-			    case 0x01:
+			    case SM_INDEX_FLAG_FILTER:
 			      or_install_btids_filter_pred (db_get_set (&avalue), index);
 			      break;
 
-			    case 0x02:
+			    case SM_INDEX_FLAG_FUNCTION:
 			      or_install_btids_function_info (db_get_set (&avalue), index);
 			      break;
 
-			    case 0x03:
+			    case SM_INDEX_FLAG_PREFIX:
 			      or_install_btids_prefix_length (db_get_set (&avalue), index, att_cnt);
 			      break;
 
@@ -2201,9 +2208,7 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
  *   cons_name(in):
  *
  * Note: The constraint may be associated with multiple attributes.
- *       The form of the constraint is:
- *
- *       {btid, [attribute_ID, asc_desc]+ {fk_info}, comment}
+ *       For constraint structure details, see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 static void
 or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_TYPE type, const char *cons_name)
@@ -2214,8 +2219,6 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
   BTID id;
   DB_VALUE id_val, att_val;
 
-  /* Extract the first element of the sequence which is the encoded B-tree ID */
-  /* { btid, [attrID, asc_desc]+, {fk_info} or {key prefix length}, status, comment} */
   seq_size = set_size (constraint_seq);
 
   if (set_get_element_nocopy (constraint_seq, 0, &id_val) != NO_ERROR)
@@ -2254,14 +2257,15 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
 	{
           // *INDENT-OFF* 
 	  /* To reach this point, the inside of the set must have at least the following structure.
-	   *     0         1                    2      [  3        4  ] *x           5 + x          6 + x   7 + x
-	   * { btid, dedup_key_attrID, asc_desc, [attrID, asc_desc]+, {fk_info} or {prefix length}, status, comment}
-	   * That is, the size of this constraint_seq set must be 8 or more, and the 3rd position will be attrID.
+	   *     0         1                2      [  3        4  ] *x         5 + x               6 + x
+	   * { btid, dedup_key_attrID, asc_desc, [attrID, asc_desc]+, {fk_info} or {prefix length}, ...}
+           * For constraint structure details, see comment on SM_CLASS_CONSTRAINT in class_object.h.
+	   * That is, the size of this constraint_seq set must be 10 or more, and the 3rd position will be attrID.
 	   * The position 1 is deduplicate_key_attrID, which is virtual information, 
 	   * the position 3 value must be read to obtain actual column information.           
 	   */
           // *INDENT-ON*
-	  assert (seq_size >= 8);
+	  assert (seq_size >= 10);
 	  i = 3;		// index of attrID (for first real column)
 	  if (set_get_element_nocopy (constraint_seq, i, &att_val) == NO_ERROR)
 	    {
@@ -3499,6 +3503,7 @@ or_class_get_partition_info (RECDES * record, OR_PARTITION * partition_info, REP
  *       It's up to the caller to free the returned pointer.
  *       If the given constraint/index name does not exist for current
  *       representation, NULL is returned.
+ *       For constraint structure details, see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 const char *
 or_get_constraint_comment (RECDES * record, const char *constraint_name)
@@ -3554,9 +3559,6 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	  goto error_exit;
 	}
 
-      /* this sequence is an alternating pair of constraint name & info sequence, as by: { name, { BTID, [att_name,
-       * asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, comment}, name, { BTID, [att_name, asc_dsc],
-       * {fk_info | pk_info | prefix_length}, filter_predicate, comment}, ... } */
       props = db_get_set (&value);
       len = set_size (props);
       for (j = 0; j < len; j += 2)
@@ -3586,7 +3588,9 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	  info = db_get_set (&uvalue);
 	  info_len = set_size (info);
 
-	  if (set_get_element_nocopy (info, info_len - 1, &cvalue) || DB_IS_NULL (&cvalue))
+	  if (set_get_element_nocopy
+	      (info, get_class_constraint_index (info_len, SM_CONSTRAINT_COMMENT_INDEX), &cvalue)
+	      || DB_IS_NULL (&cvalue))
 	    {
 	      /* if not exists, set comment to null */
 	      comment = NULL;

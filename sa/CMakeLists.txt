@@ -129,6 +129,10 @@ set(BASE_SOURCES
   ${BASE_DIR}/tz_compile.c
   ${BASE_DIR}/tz_support.c
   ${BASE_DIR}/ddl_log.c
+  ${BASE_DIR}/ifsys.cpp
+  ${BASE_DIR}/filesys_parser.cpp
+  ${BASE_DIR}/cgroup.cpp
+  ${BASE_DIR}/resources.cpp
   )
 set(BASE_HEADERS
   ${BASE_DIR}/compressor.hpp
@@ -165,7 +169,11 @@ set(BASE_HEADERS
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/fixed_size_allocator.hpp
-)
+  ${BASE_DIR}/ifsys.hpp
+  ${BASE_DIR}/filesys_parser.hpp
+  ${BASE_DIR}/cgroup.hpp
+  ${BASE_DIR}/resources.hpp
+  )
 
 set(HEAPLAYER_SOURCES
   ${HEAPLAYERS_DIR}/customheaps.cpp
@@ -173,13 +181,17 @@ set(HEAPLAYER_SOURCES
   )
 
 set(CONNECTION_SOURCES
-  ${CONNECTION_DIR}/connection_less.c
-  ${CONNECTION_DIR}/connection_cl.c
+  ${CONNECTION_DIR}/connection_less.cpp
+  ${CONNECTION_DIR}/connection_cl.cpp
   ${CONNECTION_DIR}/connection_globals.c
-  ${CONNECTION_DIR}/connection_list_cl.c
-  ${CONNECTION_DIR}/client_support.c
-  ${CONNECTION_DIR}/connection_support.c
+  ${CONNECTION_DIR}/connection_list_cl.cpp
+  ${CONNECTION_DIR}/client_support.cpp
+  ${CONNECTION_DIR}/connection_support.cpp
   ${CONNECTION_DIR}/host_lookup.c
+  )
+
+set(CONNECTION_HEADERS
+  ${CONNECTION_DIR}/connection_support.hpp
   )
 
 set(COMMUNICATION_SOURCES
@@ -267,6 +279,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
   ${QUERY_DIR}/dblink_scan.c
+  ${QUERY_DIR}/dblink_2pc.c
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/partition.c
   ${QUERY_DIR}/query_aggregate.cpp
@@ -665,6 +678,7 @@ add_library(cubridsa SHARED
   ${COMPAT_SOURCES}
   ${COMPAT_SOURCES_C}
   ${CONNECTION_SOURCES}
+  ${CONNECTION_HEADERS}
   ${CONNECTION_TCP_SOURCE}
   ${DEBUGGING_HEADERS}
   ${ES_SOURCES}
@@ -719,38 +733,31 @@ if(WIN32)
 endif(WIN32)
 
 # include target_external_dependencies function
-include (expand_dependency)
+include(expand_dependency)
 
-if(UNIX)
-target_external_dependencies(cubridsa
-  LIBNCURSES
-  LIBEDIT
+target_include_directories(cubridsa
+  PRIVATE
+    ${FLEX_INCLUDE_DIRS}
+    ${EP_INCLUDES}
   )
-endif(UNIX)
-target_external_dependencies(cubridsa
-  LIBEXPAT
-  LIBJANSSON
-  LIBEDIT
-  LIBOPENSSL
-  LZ4
-  RAPIDJSON
-  RE2
-  )
-target_include_directories(cubridsa PRIVATE
-  ${FLEX_INCLUDE_DIRS}
-  )
-if(UNIX)
-  # find out what this means:
-  # target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
-  target_link_libraries(cubridsa LINK_PUBLIC ${CMAKE_DL_LIBS})
-  target_link_libraries(cubridsa PUBLIC stdc++fs)
-  target_link_libraries(cubridsa PUBLIC rt)
-endif(UNIX)
-# for dblink
-target_link_libraries(cubridsa PUBLIC cascci)
 
-add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
-#add_dependencies(cubridsa ${EP_TARGETS})
+target_link_libraries(cubridsa
+  PRIVATE
+    ${EP_LIBS}
+  PUBLIC
+    ${CMAKE_DL_LIBS}
+    stdc++fs
+    rt
+    cascci
+  )
+
+add_dependencies(cubridsa
+  gen_csql_grammar
+  gen_csql_lexer
+  gen_loader_grammar
+  gen_loader_lexer
+  ${EP_TARGETS}
+  )
 
 if(ENABLE_SYSTEMTAP)
   target_include_directories(cubridsa PRIVATE ${CMAKE_BINARY_DIR})

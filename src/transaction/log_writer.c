@@ -42,7 +42,7 @@
 #include "msgcat_set_log.hpp"
 #include "object_representation.h"
 #include "system_parameter.h"
-#include "connection_support.h"
+#include "connection_support.hpp"
 #include "log_applier.h"
 #include "log_storage.hpp"
 #include "log_volids.hpp"
@@ -373,7 +373,7 @@ logwr_read_bgarv_log_header (void)
     }
 
   assert (log_pgptr->hdr.logical_pageid == LOGPB_HEADER_PAGE_ID);
-  assert (log_pgptr->hdr.offset = NULL_OFFSET);
+  assert (log_pgptr->hdr.offset == NULL_OFFSET);
 
   bgarv_header = (LOG_BGARV_HEADER *) log_pgptr->area;
 
@@ -1107,7 +1107,7 @@ logwr_flush_all_append_pages (void)
    * Make sure that all of the above log writes are synchronized with any
    * future log writes. That is, the pages should be stored on physical disk.
    */
-  if (need_sync == true && fileio_synchronize (NULL, logwr_Gl.append_vdes, logwr_Gl.active_name) == NULL_VOLDES)
+  if (need_sync == true && fileio_synchronize (NULL, logwr_Gl.append_vdes, logwr_Gl.active_name, false) == NULL_VOLDES)
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
@@ -1116,7 +1116,7 @@ logwr_flush_all_append_pages (void)
   /* It's for dual write. */
   if (need_sync == true && prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
-      if (fileio_synchronize (NULL, logwr_Gl.bg_archive_info.vdes, logwr_Gl.bg_archive_name) == NULL_VOLDES)
+      if (fileio_synchronize (NULL, logwr_Gl.bg_archive_info.vdes, logwr_Gl.bg_archive_name, false) == NULL_VOLDES)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -1177,7 +1177,7 @@ logwr_flush_bgarv_header_page (void)
 
   if (fileio_write (NULL, bg_arv_info->vdes, log_pgptr, phy_pageid, LOG_PAGESIZE,
 		    FILEIO_WRITE_NO_COMPENSATE_WRITE) == NULL
-      || fileio_synchronize (NULL, bg_arv_info->vdes, logwr_Gl.bg_archive_name) == NULL_VOLDES)
+      || fileio_synchronize (NULL, bg_arv_info->vdes, logwr_Gl.bg_archive_name, false) == NULL_VOLDES)
     {
       if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
 	{
@@ -1230,7 +1230,7 @@ logwr_flush_header_page (void)
   /* logwr_Gl.append_vdes is only changed while starting or finishing or recovering server. So, log cs is not needed. */
   if (fileio_write (NULL, logwr_Gl.append_vdes, logwr_Gl.loghdr_pgptr, phy_pageid, LOG_PAGESIZE,
 		    FILEIO_WRITE_NO_COMPENSATE_WRITE) == NULL
-      || fileio_synchronize (NULL, logwr_Gl.append_vdes, logwr_Gl.active_name) == NULL_VOLDES)
+      || fileio_synchronize (NULL, logwr_Gl.append_vdes, logwr_Gl.active_name, false) == NULL_VOLDES)
     {
 
       if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
@@ -1612,8 +1612,8 @@ logwr_copy_log_header_check (const char *db_name, bool verbose, LOG_LSA * master
   ptr = or_pack_int (ptr, NO_ERROR);
 
   error =
-    net_client_check_log_header (&ctx, request, OR_ALIGNED_BUF_SIZE (a_request), reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				 (char **) &logpg_area, verbose);
+    net_client_check_log_header (&ctx, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+				 OR_ALIGNED_BUF_SIZE (a_reply), (char **) &logpg_area, verbose);
   if (error != NO_ERROR)
     {
       return error;
@@ -1638,8 +1638,8 @@ logwr_copy_log_header_check (const char *db_name, bool verbose, LOG_LSA * master
   ptr = or_pack_int (ptr, ER_GENERIC_ERROR);
 
   error =
-    net_client_check_log_header (&ctx, request, OR_ALIGNED_BUF_SIZE (a_request), reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				 (char **) &logpg_area, verbose);
+    net_client_check_log_header (&ctx, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+				 OR_ALIGNED_BUF_SIZE (a_reply), (char **) &logpg_area, verbose);
   return error;
 }
 #endif /* !WINDOWS */
@@ -2589,7 +2589,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
   bool copy_from_first_phy_page = false;
 
   logpg_used_size = 0;
-  logpg_area = (char *) db_private_alloc (thread_p, (LOGWR_COPY_LOG_BUFFER_NPAGES * LOG_PAGESIZE));
+  logpg_area = (char *) malloc (LOGWR_COPY_LOG_BUFFER_NPAGES * LOG_PAGESIZE);
   if (logpg_area == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -2759,6 +2759,8 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
 	  need_cs_exit_after_send = false;
 	}
 
+      /* the transmission is performed asynchronously, but waits for a response immediately below. */
+      /* so it behaves essentially the same as sync. therefore, the log page will not be overwritten. */
       error_code = xlog_send_log_pages_to_client (thread_p, logpg_area, logpg_used_size, mode);
       if (error_code != NO_ERROR)
 	{
@@ -2809,8 +2811,6 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
 	}
     }
 
-  db_private_free_and_init (thread_p, logpg_area);
-
   assert_release (false);
   return ER_FAILED;
 
@@ -2821,7 +2821,7 @@ error:
   logwr_cs_exit (thread_p, &check_cs_own);
   logwr_write_end (thread_p, writer_info, entry, status);
 
-  db_private_free_and_init (thread_p, logpg_area);
+  free_and_init (logpg_area);
 
   return error_code;
 }

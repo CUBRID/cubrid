@@ -778,7 +778,6 @@ struct json_t;
 #define PT_NAME_ORIGINAL(n)		(PT_NAME_ASSERT ((n)), (n)->info.name.original)
 #define PT_NAME_RESOLVED(n)		(PT_NAME_ASSERT ((n)), (n)->info.name.resolved)
 #define PT_NAME_DB_OBJECT(n)		(PT_NAME_ASSERT ((n)), (n)->info.name.db_object)
-#define PT_NAME_ORIGINAL(n)             (PT_NAME_ASSERT ((n)), (n)->info.name.original)
 
 /* PT_CREATE_ENTITY */
 #define PT_CREATE_ENTITY_ASSERT(n)	(PT_ASSERT_NODE_TYPE ((n), PT_CREATE_ENTITY))
@@ -826,6 +825,7 @@ struct json_t;
 #define PT_METHOD_ARG_LIST(n)           ((n)->info.method_call.arg_list)
 #define PT_METHOD_CALL_AUTH_ID(n)	((n)->info.method_call.auth_id)
 #define PT_METHOD_CALL_AUTH_NAME(n)	((n)->info.method_call.auth_name)
+#define PT_METHOD_CALL_ON_CALL_TARGET(n)	((n)->info.method_call.on_call_target)
 
 /* Check node_type of PT_NODE */
 #define PT_NODE_IS_EXPR(n)		(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_EXPR)
@@ -1240,10 +1240,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_MATERIALIZE_CTE		(1ULL << 43)	/* materialize CTE */
 #define  PT_HINT_NO_PARALLEL_SUBQUERY		(1ULL << 44)	/* disable parallel subquery */
 #define  PT_HINT_NO_PARALLEL_HASH_JOIN		(1ULL << 45)	/* disable parallel hash join */
-
-/* Parallel query execution threads limits */
-#define  PT_MAX_PARALLEL_THREADS  64
-#define  PT_MIN_PARALLEL_THREADS  0
+#define  PT_HINT_NLJ_KEEP_HEAP_PAGE_PINNED	(1ULL << 46)	/* keep page fixed on nl join first table heap scan */
 
 /* Codes for error messages */
 typedef enum
@@ -3239,7 +3236,6 @@ struct pt_stored_proc_body_info
   int lang;
   PT_NODE *decl;		/* PT_VALUE */
   PT_NODE *impl;		/* PT_VALUE */
-  bool direct;			/* whether the body has implementation (direct) or points to a implementation file (indirect) */
 };
 
 struct pt_stored_proc_info
@@ -3870,9 +3866,10 @@ struct parser_context
     unsigned is_system_generated_stmt:1;
     unsigned is_auto_commit:1;	/* set to true, if auto commit. */
     unsigned is_parsing_static_sql:1;	/* For PL/CSQL's static SQL: parameterize PL/CSQL variable symbols (to host variable) */
-    unsigned is_parsing_unload_schema:1;	/* Parsing in unload: used to parse the scode (original query) of PL/CSQL to remove the owner. */
+    unsigned is_unloading_plcsql_def:1;
     unsigned is_parsing_trigger:1;
     unsigned is_skip_auto_parameterize:1;	/* set to 1 when skip auto parameterize, now only used for merge xasl generation */
+    unsigned dblink_skip_implicit_serial_qualifier:1;	/* DBLink: do not merge current schema into unqualified SERIAL names */
   } flag;
 };
 

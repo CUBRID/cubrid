@@ -35,6 +35,7 @@ struct double_write_slot
   FILEIO_PAGE *io_page;		/* The contained page or NULL. */
   VPID vpid;			/* The page identifier. */
   LOG_LSA lsa;			/* The page LSA */
+  bool ensure_metadata;		/* Include metadata when syncing */
   unsigned int position_in_block;	/* The position in block. */
   unsigned int block_no;	/* The number of the block where the slot reside. */
 };
@@ -49,8 +50,9 @@ extern char *dwb_get_volume_name (void);
 extern int dwb_flush_force (THREAD_ENTRY *thread_p, bool *all_sync);
 extern int dwb_read_page (THREAD_ENTRY *thread_p, const VPID *vpid, void *io_page, bool *success);
 extern int dwb_set_data_on_next_slot (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_page_p, bool can_wait,
-				      DWB_SLOT **p_dwb_slot);
-extern int dwb_add_page (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_page_p, VPID *vpid, DWB_SLOT **p_dwb_slot);
+				      bool ensure_metadata, DWB_SLOT **p_dwb_slot);
+extern int dwb_add_page (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_page_p, VPID *vpid, bool ensure_metadata,
+			 DWB_SLOT **p_dwb_slot);
 
 extern int dwb_synchronize (THREAD_ENTRY *thread_p, int vol_fd, const char *vlabel);
 

@@ -51,7 +51,7 @@
 #define FORMERBYTE(x)   ((UX_CHAR)(((unsigned)(x) & 0xff00) >> 8))
 #define LATTERBYTE(x)   ((UX_CHAR)((x) & 0xff))
 
-#define COMMAS_OFFSET(COND, N)   (COND == TRUE ? (N / 3) : 0)
+#define COMMAS_OFFSET(COND, N)   ((COND) == TRUE ? ((N) / 3) : 0)
 
 #define TIME_STRING_MAX         20
 
@@ -347,31 +347,39 @@ add_commas (char *string)
   if (num_of_commas)
     {
       char *temp;
-      int l1, l2;
+      int src_idx, dest_idx;
 
-      l1 = string_len;
-      l2 = string_len + num_of_commas;
+      src_idx = string_len;
+      dest_idx = string_len + num_of_commas;
 
       temp = string;
 
-      do
-	{
-	  temp[l2--] = string[l1--];
-	}
-      while (string[l1] != '.');
+      temp[dest_idx--] = '\0';
+      src_idx--;
 
-      temp[l2--] = string[l1--];
+      /* Checks for a decimal point to avoid double-free core dumps in the scenarios described below
+       *  select cast(23421.234 as numeric(7,0));  
+       */
+      if (string[last_digit + 1] == '.')
+	{
+	  do
+	    {
+	      temp[dest_idx--] = string[src_idx--];
+	    }
+	  while (string[src_idx] != '.');
+	  temp[dest_idx--] = string[src_idx--];
+	}
 
       for (i = 0; num_of_commas; i++)
 	{
 	  if (i && !(i % 3) && num_of_commas)
 	    {
-	      temp[l2--] = COMMA_CHAR;
+	      temp[dest_idx--] = COMMA_CHAR;
 	      --num_of_commas;
 	    }
-	  if (l1 && l2)
+	  if (src_idx && dest_idx)
 	    {
-	      temp[l2--] = string[l1--];
+	      temp[dest_idx--] = string[src_idx--];
 	    }
 	}
     }
@@ -905,30 +913,36 @@ numeric_to_string (DB_VALUE * value, bool commas)
 {
   char str_buf[NUMERIC_MAX_STRING_SIZE];
   char *return_string;
-  int prec;
-  int comma_length;
-  int max_length;
+  int comma_length = 0;
+  int str_length = 0;
 
-  /*
-   * Allocate string length based on precision plus the commas plus a
-   * character for each of the sign, decimal point, and NULL terminator.
-   */
-  prec = DB_VALUE_PRECISION (value);
-  comma_length = COMMAS_OFFSET (commas, prec);
-  max_length = prec + comma_length + 3;
-  return_string = (char *) malloc (max_length);
+  do
+    {
+      /* Force-disable commas to preserve legacy behavior.
+       * TODO: Once the comma display requirement is finalized, update default_numeric_profile.commas and delete this block.
+       */
+      commas = false;
+    }
+  while (0);
+
+  numeric_db_value_print (value, str_buf);
+
+  comma_length = COMMAS_OFFSET (commas, DB_VALUE_PRECISION (value));
+  str_length = strlen (str_buf) + 1;	// include '\0'
+
+
+  return_string = (char *) malloc (str_length + comma_length + 1);
   if (return_string == NULL)
     {
       return (NULL);
     }
 
-  numeric_db_value_print (value, str_buf);
-  if (strlen (str_buf) > max_length - 1)
+  memcpy (return_string, str_buf, str_length);
+
+  if (commas == true)
     {
-      free_and_init (return_string);
-      return (duplicate_string ("NUM OVERFLOW"));
+      add_commas (return_string);
     }
-  strcpy (return_string, str_buf);
 
   return return_string;
 }

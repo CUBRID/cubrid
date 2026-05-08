@@ -33,26 +33,26 @@
 
 #include "porting.h"
 #include "chartype.h"
+
 #define makestring1(x) #x
 #define makestring(x) makestring1(x)
 
-#define MAX_SERVER_H_ID                 256
-#define MAX_BIND_VALUE                  10240
-#define MAX_QUERY_LEN                   100000
+#define MAX_SERVER_H_ID                 (256)
+#define MAX_BIND_VALUE                  (10240)
+#define MAX_QUERY_LEN                   (100000)
 #define CAS_RUNNER_CONF                 "cas_runner.conf"
 #define CAS_RUNNER_CONF_ENV             "CAS_RUNNER_CONF"
-#define CAS_USE_DEFAULT_DB_PARAM        -2
+#define CAS_USE_DEFAULT_DB_PARAM        (-2)
 
-#define ON	1
-#define OFF	0
+#define ON	(1)
+#define OFF	(0)
 
-#define ALLOW	1
-#define DENY	0
+#define ALLOW	(1)
+#define DENY	(0)
 
-#define TRUE	1
-#define FALSE	0
+#define INT_STR_LEN      (16)
 
-#define INT_STR_LEN     16
+#define DEFAULT_CHECK_INTERVAL  (1)
 
 #define MALLOC(SIZE)            malloc(SIZE)
 #define REALLOC(PTR, SIZE)      \
@@ -149,6 +149,9 @@ typedef size_t T_SOCKLEN;
 typedef socklen_t T_SOCKLEN;
 #endif
 
+/* default charset for JDBC : ISO8859-1 */
+#define CAS_SCHEMA_DEFAULT_CHARSET (lang_charset())
+
 enum
 {
   FN_STATUS_NONE = -2,
@@ -158,8 +161,6 @@ enum
   FN_STATUS_DONE = 2
 };
 
-/* default charset for JDBC : ISO8859-1 */
-#define CAS_SCHEMA_DEFAULT_CHARSET (lang_charset())
 
 extern int uts_key_check_local_host (void);
 

@@ -444,9 +444,9 @@ static void pt_metadomain_build_comp_graph (ANALYTIC_KEY_METADOMAIN * af_meta, i
 static SORT_LIST *pt_sort_list_from_metadomain (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * meta,
 						PT_NODE ** sort_list_index, PT_NODE * select_list);
 static void pt_metadomain_adjust_key_prefix (ANALYTIC_KEY_METADOMAIN * meta);
-static ANALYTIC_EVAL_TYPE *pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * meta,
-							ANALYTIC_EVAL_TYPE * eval, PT_NODE ** sort_list_index,
-							ANALYTIC_INFO * info);
+static ANALYTIC_EVAL_TYPE *pt_build_analytic_eval_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
+							ANALYTIC_KEY_METADOMAIN * meta, ANALYTIC_EVAL_TYPE * eval,
+							PT_NODE ** sort_list_index, ANALYTIC_INFO * info);
 static XASL_NODE *pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type);
 static XASL_NODE *pt_plan_set_query (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type);
 static XASL_NODE *pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node);
@@ -638,6 +638,10 @@ static PT_NODE *pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parse
 							  int *continue_walk);
 static PT_NODE *pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_list,
 				    VAL_LIST * vallist);
+
+static int pt_check_analytic_limit_optimization (XASL_NODE * xasl, ANALYTIC_EVAL_TYPE * eval_list);
+static int pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, ANALYTIC_EVAL_TYPE * eval,
+						ANALYTIC_INFO * info);
 
 static void
 pt_init_xasl_supp_info ()
@@ -1671,7 +1675,18 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 
 	    case PT_EXISTS:
 	      regu_var1 = pt_to_regu_variable (parser, node->info.expr.arg1, UNBOX_AS_TABLE);
+	      if (regu_var1->xasl && pt_prepare_corr_subquery_hash_result_cache
+		  (parser, (PT_NODE *) node->info.expr.arg1, regu_var1->xasl))
+		{
+		  XASL_SET_FLAG (regu_var1->xasl, XASL_USES_SQ_CACHE);
+		}
 	      pred = pt_make_pred_term_comp (regu_var1, NULL, R_EXISTS, data_type);
+
+	      /* exists op must fetch one tuple */
+	      if (!pt_has_having_with_predicate (parser, node->info.expr.arg1) && regu_var1 && regu_var1->xasl)
+		{
+		  XASL_SET_FLAG (regu_var1->xasl, XASL_NEED_SINGLE_TUPLE_SCAN);
+		}
 	      break;
 
 	    case PT_IS_NULL:
@@ -4519,7 +4534,7 @@ pt_set_access_spec_for_aggregation (PARSER_CONTEXT * parser, AGGREGATE_TYPE * ag
     }
   if (min_max_only_scan && min_max_scan)
     {
-      access_spec->flags = (ACCESS_SPEC_FLAG) (access_spec->flags | ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN);
+      ACCESS_SPEC_SET_FLAG (access_spec, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN);
     }
 }
 
@@ -7676,7 +7691,6 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    {
 		      PT_ERRORc (parser, node, er_msg ());
 		    }
-		  return regu;
 		}
 	      break;
 
@@ -12437,13 +12451,17 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      if (access_method == ACCESS_METHOD_SEQUENTIAL
 		  && PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN))
 		{
-		  access->flags = (ACCESS_SPEC_FLAG) (access->flags | ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
 		}
 
 	      if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PARALLEL_THREAD))
 		{
-		  access->flags = (ACCESS_SPEC_FLAG) (access->flags | ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS);
+		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS);
 		  access->num_parallel_threads = spec->info.spec.num_parallel_threads;
+		}
+	      else
+		{
+		  assert (access->num_parallel_threads == -1 /* auto-compute */ );
 		}
 
 	    }
@@ -12673,7 +12691,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	    {
 	      if (spec->info.spec.flag & PT_SPEC_FLAG_FOR_UPDATE_CLAUSE)
 		{
-		  access->flags = (ACCESS_SPEC_FLAG) (access->flags | ACCESS_SPEC_FLAG_FOR_UPDATE);
+		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_FOR_UPDATE);
 		}
 
 	      access->next = access_list;
@@ -14769,6 +14787,14 @@ pt_gen_optimized_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 		    }
 		}
 	    }
+
+	  if (select_node->info.query.q.select.hint & PT_HINT_NLJ_KEEP_HEAP_PAGE_PINNED)
+	    {
+	      if (xasl->spec_list)
+		{
+		  ACCESS_SPEC_SET_FLAG (xasl->spec_list, ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN);
+		}
+	    }
 	}
     }
 
@@ -15530,8 +15556,8 @@ pt_metadomain_adjust_key_prefix (ANALYTIC_KEY_METADOMAIN * meta)
  *   info(in): analytic info structure
  */
 static ANALYTIC_EVAL_TYPE *
-pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * meta, ANALYTIC_EVAL_TYPE * eval,
-			     PT_NODE ** sort_list_index, ANALYTIC_INFO * info)
+pt_build_analytic_eval_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, ANALYTIC_KEY_METADOMAIN * meta,
+			     ANALYTIC_EVAL_TYPE * eval, PT_NODE ** sort_list_index, ANALYTIC_INFO * info)
 {
   ANALYTIC_EVAL_TYPE *newa = NULL, *new2 = NULL, *tail;
   ANALYTIC_TYPE *func_p;
@@ -15557,17 +15583,19 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 		  /* error was already set */
 		  return NULL;
 		}
+	      eval->sort_list_size = meta->key_size;
+	      eval->covered_size = pt_count_analytic_covered_sort_list (parser, qo_plan, eval, info);
 	    }
 
 	  /* this is the case of a perfect match where both children can be evaluated together */
-	  eval = pt_build_analytic_eval_list (parser, meta->children[0], eval, sort_list_index, info);
+	  eval = pt_build_analytic_eval_list (parser, qo_plan, meta->children[0], eval, sort_list_index, info);
 	  if (eval == NULL)
 	    {
 	      /* error was already set */
 	      return NULL;
 	    }
 
-	  eval = pt_build_analytic_eval_list (parser, meta->children[1], eval, sort_list_index, info);
+	  eval = pt_build_analytic_eval_list (parser, qo_plan, meta->children[1], eval, sort_list_index, info);
 	  if (eval == NULL)
 	    {
 	      /* error was already set */
@@ -15578,14 +15606,14 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 	{
 	  if (meta->level >= meta->children[0]->level)
 	    {
-	      eval = pt_build_analytic_eval_list (parser, meta->children[0], eval, sort_list_index, info);
+	      eval = pt_build_analytic_eval_list (parser, qo_plan, meta->children[0], eval, sort_list_index, info);
 	      if (eval == NULL)
 		{
 		  /* error was already set */
 		  return NULL;
 		}
 
-	      newa = pt_build_analytic_eval_list (parser, meta->children[1], NULL, sort_list_index, info);
+	      newa = pt_build_analytic_eval_list (parser, qo_plan, meta->children[1], NULL, sort_list_index, info);
 	      if (newa == NULL)
 		{
 		  /* error was already set */
@@ -15594,14 +15622,14 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 	    }
 	  else if (meta->level >= meta->children[1]->level)
 	    {
-	      eval = pt_build_analytic_eval_list (parser, meta->children[1], eval, sort_list_index, info);
+	      eval = pt_build_analytic_eval_list (parser, qo_plan, meta->children[1], eval, sort_list_index, info);
 	      if (eval == NULL)
 		{
 		  /* error was already set */
 		  return NULL;
 		}
 
-	      newa = pt_build_analytic_eval_list (parser, meta->children[0], NULL, sort_list_index, info);
+	      newa = pt_build_analytic_eval_list (parser, qo_plan, meta->children[0], NULL, sort_list_index, info);
 	      if (newa == NULL)
 		{
 		  /* error was already set */
@@ -15610,14 +15638,14 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 	    }
 	  else
 	    {
-	      newa = pt_build_analytic_eval_list (parser, meta->children[0], NULL, sort_list_index, info);
+	      newa = pt_build_analytic_eval_list (parser, qo_plan, meta->children[0], NULL, sort_list_index, info);
 	      if (newa == NULL)
 		{
 		  /* error was already set */
 		  return NULL;
 		}
 
-	      new2 = pt_build_analytic_eval_list (parser, meta->children[1], NULL, sort_list_index, info);
+	      new2 = pt_build_analytic_eval_list (parser, qo_plan, meta->children[1], NULL, sort_list_index, info);
 	      if (new2 == NULL)
 		{
 		  /* error was already set */
@@ -15627,6 +15655,12 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 
 	  if (newa != NULL && new2 != NULL)
 	    {
+	      if (newa->covered_size < new2->covered_size)
+		{
+		  ANALYTIC_EVAL_TYPE *tmp = newa;
+		  newa = new2;
+		  new2 = tmp;
+		}
 	      /* link new to new2 */
 	      tail = newa;
 	      while (tail->next != NULL)
@@ -15642,6 +15676,12 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 	    }
 	  else
 	    {
+	      if (eval->covered_size < newa->covered_size)
+		{
+		  ANALYTIC_EVAL_TYPE *tmp = eval;
+		  eval = newa;
+		  newa = tmp;
+		}
 	      /* link eval to new */
 	      tail = eval;
 	      while (tail->next != NULL)
@@ -15671,6 +15711,8 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 	      /* error was already set */
 	      return NULL;
 	    }
+	  eval->sort_list_size = meta->key_size;
+	  eval->covered_size = pt_count_analytic_covered_sort_list (parser, qo_plan, eval, info);
 	}
 
       meta->source->next = NULL;
@@ -15834,7 +15876,7 @@ pt_generate_simple_analytic_eval_type (PARSER_CONTEXT * parser, ANALYTIC_INFO * 
  * that share the same window.
  */
 static ANALYTIC_EVAL_TYPE *
-pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info, bool * no_optimization)
+pt_optimize_analytic_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, ANALYTIC_INFO * info, bool * no_optimization)
 {
   ANALYTIC_EVAL_TYPE *ret = NULL;
   ANALYTIC_TYPE *func_p;
@@ -16047,7 +16089,7 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info, bool *
 	}
 
       /* build new list */
-      newa = pt_build_analytic_eval_list (parser, &af_meta[i], NULL, sc_index, info);
+      newa = pt_build_analytic_eval_list (parser, qo_plan, &af_meta[i], NULL, sc_index, info);
       if (newa == NULL)
 	{
 	  /* error has already been set */
@@ -16062,6 +16104,12 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info, bool *
 	}
       else
 	{
+	  if (ret->covered_size < newa->covered_size)
+	    {
+	      ANALYTIC_EVAL_TYPE *tmp = ret;
+	      ret = newa;
+	      newa = tmp;
+	    }
 	  /* locate list tail */
 	  tail = ret;
 	  while (tail->next != NULL)
@@ -16269,6 +16317,18 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	}
 
       attr_offsets = pt_make_identity_offsets (group_out_list);
+      if (buildlist->g_hash_eligible && attr_offsets)
+	{
+	  REGU_VARIABLE_LIST reg_var_p_out;
+	  int i = 0;
+	  int group_out_list_len = pt_length_of_list (group_out_list);
+	  for (reg_var_p_out = xasl->outptr_list->valptrp; reg_var_p_out && i < group_out_list_len;
+	       reg_var_p_out = reg_var_p_out->next)
+	    {
+	      reg_var_p_out->value.vfetch_to = pt_index_value (buildlist->g_val_list, attr_offsets[i]);
+	      i++;
+	    }
+	}
 
       /* set up hash aggregate lists */
       if (buildlist->g_hash_eligible)
@@ -16580,6 +16640,17 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	      goto analytic_exit_on_error;
 	    }
 
+	  int *attr_offsets;
+	  attr_offsets = pt_make_identity_offsets (select_list_ex);
+
+	  buildlist->a_scan_regu_list =
+	    pt_to_regu_variable_list (parser, select_list_ex, UNBOX_AS_VALUE, buildlist->a_val_list, attr_offsets);
+
+	  if (attr_offsets != NULL)
+	    {
+	      free_and_init (attr_offsets);
+	    }
+
 	  /* generate regu list (identity fetching from temp tuple) */
 	  buildlist->a_regu_list =
 	    pt_to_position_regu_variable_list (parser, select_list_ex, buildlist->a_val_list, NULL);
@@ -16623,7 +16694,55 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 
 	  /* optimize analytic function list */
-	  xasl->proc.buildlist.a_eval_list = pt_optimize_analytic_list (parser, &analytic_info, &no_optimization_done);
+	  xasl->proc.buildlist.a_eval_list =
+	    pt_optimize_analytic_list (parser, qo_plan, &analytic_info, &no_optimization_done);
+
+	  if (pt_check_analytic_limit_optimization (xasl, xasl->proc.buildlist.a_eval_list) != NO_ERROR)
+	    {
+	      PT_ERRORm (parser, select_list_ex, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      goto analytic_exit_on_error;
+	    }
+
+
+	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+	    {
+	      PT_NODE *final_node = NULL;
+	      REGU_VARIABLE_LIST regu_list_new, prev = NULL;
+	      REGU_VARIABLE *regu_var_temp;
+
+	      for (final_node = select_list_final; final_node != NULL; final_node = final_node->next)
+		{
+		  if (pt_is_instnum (final_node))
+		    {
+		      buildlist->a_outptr_list_ex->valptr_cnt++;
+
+		      regu_alloc (regu_list_new);
+		      if (regu_list_new == NULL)
+			{
+			  goto analytic_exit_on_error;
+			}
+
+		      regu_var_temp = pt_make_regu_numbering (parser, final_node);
+		      regu_list_new->value = *regu_var_temp;
+
+		      if (prev == NULL)
+			{
+			  regu_list_new->next = buildlist->a_outptr_list_ex->valptrp;
+			  buildlist->a_outptr_list_ex->valptrp = regu_list_new;
+			}
+		      else
+			{
+			  regu_list_new->next = prev->next;
+			  prev->next = regu_list_new;
+			}
+		      prev = regu_list_new;
+		    }
+		  else
+		    {
+		      prev = (prev != NULL) ? prev->next : buildlist->a_outptr_list_ex->valptrp;
+		    }
+		}
+	    }
 
 	  /* FIXME - Fix it with pt_build_analytic_eval_list (). */
 	  if (no_optimization_done == true)
@@ -16641,6 +16760,16 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    {
 	      /* register the eval list in the plan for printing purposes */
 	      qo_plan->analytic_eval_list = xasl->proc.buildlist.a_eval_list;
+	    }
+
+	  if (xasl->proc.buildlist.a_eval_list->covered_size == xasl->proc.buildlist.a_eval_list->sort_list_size
+	      && xasl->proc.buildlist.a_eval_list->covered_size != 0)
+	    {
+	      /* Sorting can be skipped only if a_eval_list->sort_list matches a leading prefix
+	       * of the index sort order (including the full index key).
+	       *
+	       * For example, index (c1, c2, c3) can satisfy sort_list (c1), (c1, c2), (c1, c2, c3), but not (c1, c3). */
+	      XASL_SET_FLAG (xasl, XASL_ANALYTIC_SKIP_SORT);
 	    }
 
 	  /* substitute references of analytic arguments */
@@ -16793,7 +16922,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
     }
   else
     {
-      xasl->parallelism = -1;
+      xasl->parallelism = -1;	/* auto-compute */
     }
 
   if (select_node->info.query.q.select.hint & PT_HINT_NO_PARALLEL_SUBQUERY)
@@ -16920,7 +17049,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	}
 
       if ((xasl->instnum_pred != NULL || xasl->instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)
-	  && pt_has_analytic (parser, select_node))
+	  && pt_has_analytic (parser, select_node) && !XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
 	{
 	  /* we have an inst_num() which should not get evaluated in the initial fetch(processing stage)
 	   * qexec_execute_analytic(post-processing stage) will use it in the final sort */
@@ -17161,7 +17290,7 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
     }
   else
     {
-      xasl->parallelism = -1;
+      xasl->parallelism = -1;	/* auto-compute */
     }
 
   if (select_node->info.query.q.select.hint & PT_HINT_NO_PARALLEL_SUBQUERY)
@@ -17388,7 +17517,6 @@ pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type)
 	    }
 	  xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	}
-      xasl->parallelism = -1;
     }				/* end xasl */
   else
     {
@@ -18132,7 +18260,7 @@ pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, O
 		  index = (int) (oid_ptr - o_list);
 
 		  /* Merge existing lock with IS_LOCK/IX_LOCK. */
-		  lck_list[index] = lock_Conv[lck_list[index]][lock];
+		  lck_list[index] = lock_conv ((LOCK) lck_list[index], (LOCK) lock);
 		}
 
 	      if (o_num >= o_size)
@@ -24414,6 +24542,11 @@ pt_to_analytic_final_node (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE ** e
       return NULL;
     }
 
+  if (PT_IS_VALUE_NODE (tree))
+    {
+      return tree;
+    }
+
   if (PT_IS_ANALYTIC_NODE (tree))
     {
       /* select ntile(select stddev(...)...)... from ... is allowed */
@@ -25033,6 +25166,11 @@ pt_substitute_analytic_references (PARSER_CONTEXT * parser, PT_NODE * node, PT_N
   if (node == NULL)
     {
       /* nothing to do */
+      return node;
+    }
+
+  if (PT_IS_VALUE_NODE (node))
+    {
       return node;
     }
 
@@ -25916,6 +26054,8 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_n
 
   /* set TDE flag */
   XASL_SET_FLAG (xasl, xptr->flag & XASL_INCLUDES_TDE_CLASS);
+
+  scan_check_parallel_heap_scan_possible (xasl);
 
   return xasl;
 }
@@ -27208,14 +27348,15 @@ pt_aggregate_info_update_value_and_reguvar_lists (AGGREGATE_INFO * info, VAL_LIS
 
   pt_merge_regu_var_lists (&info->regu_list, regu_position_list);
 
-  pt_merge_regu_var_lists (&info->out_list->valptrp, regu_constant_list);
-
   // also increment list count
   int regu_constant_list_size = 0;
 
   for (REGU_VARIABLE_LIST ptr = regu_constant_list; ptr != NULL; ptr = ptr->next, regu_constant_list_size++)
-    ;
+    {
+      ptr->value.vfetch_to = pt_index_value (value_list, regu_constant_list_size);
+    }
 
+  pt_merge_regu_var_lists (&info->out_list->valptrp, regu_constant_list);
   info->out_list->valptr_cnt += regu_constant_list_size;
 }
 
@@ -28224,4 +28365,158 @@ pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_l
     }
 
   return new_node;
+}
+
+/*
+ * pt_check_analytic_limit_optimization () -
+ *   Check if analytic functions are optimizable for limit optimization.
+ *   If optimizable, set the XASL_ANALYTIC_USES_LIMIT_OPT flag.
+ * 
+ * return :
+ * xasl (in)  :
+ * eval_list (in) :
+ */
+static int
+pt_check_analytic_limit_optimization (XASL_NODE * xasl, ANALYTIC_EVAL_TYPE * eval_list)
+{
+  ANALYTIC_EVAL_TYPE *eval;
+  ANALYTIC_TYPE *a_func_list;
+  bool is_optimizable = true;
+
+  if (!xasl->instnum_pred && !xasl->instnum_val)
+    {
+      return NO_ERROR;
+    }
+
+  if (eval_list == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  for (eval = eval_list; eval != NULL; eval = eval->next)
+    {
+      if (!is_optimizable || eval->covered_size != eval->sort_list_size)
+	{
+	  is_optimizable = false;
+	  break;
+	}
+
+      for (a_func_list = eval->head; a_func_list && is_optimizable; a_func_list = a_func_list->next)
+	{
+	  switch (a_func_list->function)
+	    {
+	    case PT_FIRST_VALUE:
+	      if (a_func_list->ignore_nulls)
+		{
+		  is_optimizable = false;
+		  break;
+		}
+
+	    case PT_ROW_NUMBER:
+	    case PT_RANK:
+	    case PT_DENSE_RANK:
+	      break;
+
+	    default:
+	      is_optimizable = false;
+	      break;
+	    }
+	}
+    }
+
+  if (is_optimizable)
+    {
+      XASL_SET_FLAG (xasl, XASL_ANALYTIC_USES_LIMIT_OPT);
+    }
+
+  return NO_ERROR;
+}
+
+static int
+pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, ANALYTIC_EVAL_TYPE * eval,
+				     ANALYTIC_INFO * info)
+{
+  SORT_LIST *sort_list;
+  QO_ENV *env = NULL;
+  QO_INDEX_ENTRY *index_entry;
+  QO_SEGMENT *seg;
+  PT_NODE *attr, *node;
+  int i, seg_idx, covered_count = 0;
+  bool is_desc, is_desc_index;
+
+  switch (qo_plan->plan_type)
+    {
+    case QO_PLANTYPE_SCAN:
+      if (!qo_is_iscan (qo_plan) || (env = (qo_plan->info)->env) == NULL)
+	{
+	  return 0;
+	}
+      break;
+
+    case QO_PLANTYPE_SORT:
+      if (qo_plan->plan_un.sort.subplan == NULL)
+	{
+	  return 0;
+	}
+      return pt_count_analytic_covered_sort_list (parser, qo_plan->plan_un.sort.subplan, eval, info);
+
+    case QO_PLANTYPE_JOIN:
+      if (!QO_IS_NL_JOIN (qo_plan))
+	{
+	  return 0;
+	}
+      return pt_count_analytic_covered_sort_list (parser, qo_plan->plan_un.join.outer, eval, info);
+
+    case QO_PLANTYPE_FOLLOW:
+    case QO_PLANTYPE_WORST:
+    default:
+      return 0;
+    }
+
+  assert (qo_plan->plan_un.scan.index->head);
+  index_entry = qo_plan->plan_un.scan.index->head;
+
+  is_desc_index = qo_plan->info->env->pt_tree->info.query.q.select.hint & PT_HINT_USE_IDX_DESC;
+
+  sort_list = eval->sort_list;
+  for (i = 0; i < index_entry->nsegs && sort_list; i++)
+    {
+      seg_idx = (index_entry->seg_idxs[i]);
+      if (seg_idx == -1)
+	{			/* not exist in query */
+	  break;
+	}
+
+      seg = QO_ENV_SEG (env, seg_idx);
+      if (QO_SEG_FUNC_INDEX (seg) == true)
+	{
+	  is_desc = index_entry->constraints->func_index_info->fi_domain->is_desc;
+	}
+      else
+	{
+	  is_desc = index_entry->constraints->asc_desc[i];
+	}
+
+      if (is_desc_index)
+	{
+	  is_desc = !is_desc;
+	}
+
+      node = QO_SEG_PT_NODE (seg);
+      attr = pt_get_node_from_list (info->select_list, sort_list->pos_descr.pos_no);
+
+      if (((sort_list->s_order == S_ASC && !is_desc) || (sort_list->s_order == S_DESC && is_desc))
+	  && pt_check_path_eq (parser, attr, node) == 0)
+	{
+	  covered_count++;
+	}
+      else
+	{
+	  return covered_count;
+	}
+
+      sort_list = sort_list->next;
+    }
+
+  return covered_count;
 }

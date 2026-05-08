@@ -38,8 +38,6 @@
 #include "xasl_generation.h"
 #include "xasl_predicate.hpp"
 
-#define MEMOIZE_NDV_RATIO_THRESHOLD (double) 2
-
 typedef int (*ELIGIBILITY_FN) (QO_TERM *);
 
 static XASL_NODE *make_scan_proc (QO_ENV * env);
@@ -1962,16 +1960,12 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
   QO_PLAN *outer, *inner;
   JOIN_TYPE join_type = NO_JOIN;
   QO_TERM *term;
-  int i, i2;
-  BITSET_ITERATOR bi, bi2;
+  int i;
+  BITSET_ITERATOR bi;
   BITSET new_subqueries;
   BITSET fake_subqueries;
   BITSET predset;
   BITSET taj_terms;
-  double join_outer_table_terms_duplicate_ratio = 1.0;
-  BITSET temp_segs_set;
-  QO_SEGMENT *seg;
-  bool join_term_exists = false;
 
   if (env == NULL)
     {
@@ -1988,7 +1982,6 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
   bitset_init (&fake_subqueries, env);
   bitset_init (&predset, env);
   bitset_init (&taj_terms, env);
-  bitset_init (&temp_segs_set, env);
 
   /* set subqueries */
   bitset_assign (&new_subqueries, subqueries);
@@ -2127,41 +2120,12 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    }
 	  [[fallthrough]];
 	case QO_JOINMETHOD_IDX_JOIN:
-	  if (outer != NULL && outer->plan_un.scan.node != NULL)
-	    {
-	      join_outer_table_terms_duplicate_ratio *= outer->plan_un.scan.node->ncard;
-	    }
-
 	  for (i = bitset_iterate (&(plan->plan_un.join.join_terms), &bi); i != -1; i = bitset_next_member (&bi))
 	    {
 	      term = QO_ENV_TERM (env, i);
 	      if (QO_IS_FAKE_TERM (term))
 		{
 		  bitset_union (&fake_subqueries, &(QO_TERM_SUBQUERIES (term)));
-		}
-
-	      if (term->segments.nwords > 0)
-		{
-		  bitset_assign (&temp_segs_set, &QO_TERM_SEGS (term));
-
-		  for (i2 = bitset_iterate (&temp_segs_set, &bi2); i2 != -1; i2 = bitset_next_member (&bi2))
-		    {
-		      seg = QO_ENV_SEG (env, i2);
-		      if ((seg != NULL && seg->head != NULL && seg->info != NULL && outer != NULL
-			   && outer->plan_un.scan.node != NULL) && seg->head->idx == outer->plan_un.scan.node->idx)
-			{
-			  if (seg->info->ndv != 0)
-			    {
-			      join_outer_table_terms_duplicate_ratio /= (double) seg->info->ndv;
-			      join_term_exists = true;
-			    }
-			  else
-			    {
-			      join_outer_table_terms_duplicate_ratio = 1.0;
-			      break;
-			    }
-			}
-		    }
 		}
 	    }
 
@@ -2238,10 +2202,6 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	      if (IS_OUTER_JOIN_TYPE (join_type))
 		{
 		  mark_access_as_outer_join (parser, scan);
-		}
-	      if (join_term_exists && join_outer_table_terms_duplicate_ratio > MEMOIZE_NDV_RATIO_THRESHOLD)
-		{
-		  XASL_SET_FLAG (scan, XASL_MEMOIZE_STORAGE);
 		}
 	    }
 	  bitset_assign (&new_subqueries, &fake_subqueries);
@@ -2328,7 +2288,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 			  }
 		      }
 
-		    if (pt_is_expr_node (left) || pt_is_function (left))
+		    if (!pt_is_name_node (left))
 		      {
 			/* append to the expr list */
 			left_elist = parser_append_node (pt_point (parser, left), left_elist);
@@ -2339,7 +2299,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 			bitset_union (&plan_segs, &(QO_TERM_SEGS (term)));
 		      }
 
-		    if (pt_is_expr_node (rght) || pt_is_function (rght))
+		    if (!pt_is_name_node (rght))
 		      {
 			/* append to the expr list */
 			rght_elist = parser_append_node (pt_point (parser, rght), rght_elist);
@@ -2685,7 +2645,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
       break;
 
     case PLAN_PARALLEL_OPT_CAN_USE:
-      parallelism = -1;		/* default */
+      parallelism = -1;		/* auto-compute */
       break;
 
     default:
@@ -2914,7 +2874,7 @@ preserve_info (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
 	  summary->fixed_io_cost = plan->fixed_io_cost;
 	  summary->variable_cpu_cost = plan->variable_cpu_cost;
 	  summary->variable_io_cost = plan->variable_io_cost;
-	  summary->cardinality = (plan->info)->cardinality;
+	  summary->cardinality = (plan->info)->group_rows;
 	  summary->xasl = xasl;
 	  select->info.query.q.select.qo_summary = summary;
 	}
@@ -2927,7 +2887,8 @@ preserve_info (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
       if (plan != NULL && xasl != NULL)
 	{
 	  xasl->projected_size = (plan->info)->projected_size;
-	  xasl->cardinality = (plan->info)->cardinality;
+	  /* If no aggregate function, group_rows is the same as cardinality. */
+	  xasl->cardinality = (plan->info)->group_rows;
 	}
     }
 
@@ -5610,13 +5571,13 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
 	      goto error_exit;
 	    }
 
-	  if (pt_is_expr_node (outer_part) || pt_is_function (outer_part))
+	  if (!pt_is_name_node (outer_part))
 	    {
 	      outer_info->expr_list = parser_append_node (pt_point (parser, outer_part), outer_info->expr_list);
 	      bitset_add (&outer_info->exprs_set, term_index);
 	    }
 
-	  if (pt_is_expr_node (inner_part) || pt_is_function (inner_part))
+	  if (!pt_is_name_node (inner_part))
 	    {
 	      inner_info->expr_list = parser_append_node (pt_point (parser, inner_part), inner_info->expr_list);
 	      bitset_add (&inner_info->exprs_set, term_index);

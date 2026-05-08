@@ -50,10 +50,7 @@
 
 namespace parallel_query
 {
-  namespace hash_join
-  {
-    class worker_pool_manager;
-  }
+  class worker_manager;
 }
 
 struct xasl_node;
@@ -189,7 +186,7 @@ typedef struct hashjoin_start_stats
 
 typedef struct hashjoin_stats
 {
-  UINT32 max_parallel_workers;
+  UINT32 num_parallel_threads;
 
   HASH_METHOD hash_method;
   bool use_hash_memory;
@@ -255,15 +252,15 @@ typedef struct hashjoin_split_info
 typedef struct hashjoin_shared_split_info
 {
   // *INDENT-OFF*
-  std::mutex scan_mutex;
-  SCAN_POSITION scan_position;
-  VPID next_vpid;
+  QFILE_LIST_SECTOR_INFO sector_info;	/* sector-based page distribution (from qfile_collect_list_sector_info) */
+  std::atomic<bool> membuf_claimed;	/* atomic flag: one worker claims all membuf pages */
+  std::atomic<int> next_sector_index;	/* atomic index for sector distribution */
   std::mutex *part_mutexes;
 
   hashjoin_shared_split_info ()
-    : scan_mutex ()
-    , scan_position (S_BEFORE)
-    , next_vpid (VPID_INITIALIZER)
+    : sector_info (QFILE_LIST_SECTOR_INFO_INITIALIZER)
+    , membuf_claimed (false)
+    , next_sector_index (0)
     , part_mutexes (nullptr)
   {
     //
@@ -332,7 +329,7 @@ typedef struct hashjoin_manager
 
   /* Pointer to a member of XASL_NODE. */
   PRED_EXPR *during_join_pred;
-  int max_parallel_workers;
+  int num_parallel_threads;
 
   /* Pointer to a member of XASL_STATE. */
   QUERY_ID query_id;
@@ -347,7 +344,7 @@ typedef struct hashjoin_manager
   int qlist_flag;
 
   // *INDENT-OFF*
-  parallel_query::hash_join::worker_pool_manager *px_worker_pool_manager;
+  parallel_query::worker_manager *px_worker_manager;
   // *INDENT-ON*
   UINT64 *px_worker_stats;
 

@@ -109,6 +109,10 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#if defined(CS_MODE)
+#error "Does not belong to cs module"
+#endif
+
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
 #define pthread_mutex_destroy(a)
@@ -2961,7 +2965,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
   if ((bg_arv_info->current_page_id - bg_arv_info->last_sync_pageid) > prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
     {
       /* System volume. No need to sync DWB. */
-      fileio_synchronize (thread_p, bg_arv_info->vdes, log_Name_bg_archive);
+      fileio_synchronize (thread_p, bg_arv_info->vdes, log_Name_bg_archive, false);
       bg_arv_info->last_sync_pageid = bg_arv_info->current_page_id;
     }
 }
@@ -3708,7 +3712,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  || (log_Stat.total_sync_count % prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0))
 	{
 	  /* System volume. No need to sync DWB. */
-	  if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active) == NULL_VOLDES)
+	  if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active, false) == NULL_VOLDES)
 	    {
 	      error_code = ER_FAILED;
 	      goto error;
@@ -3771,7 +3775,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	}
 
       /* we need to also sync again */
-      if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active) == NULL_VOLDES)
+      if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active, false) == NULL_VOLDES)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -5828,7 +5832,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
        * Make sure that the whole log archive is in physical storage at this
        * moment. System volume. No need to sync DWB.
        */
-      if (fileio_synchronize (thread_p, vdes, arv_name) == NULL_VOLDES)
+      if (fileio_synchronize (thread_p, vdes, arv_name, false) == NULL_VOLDES)
 	{
 	  goto error;
 	}
@@ -7516,7 +7520,15 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
 }
 
 // *INDENT-OFF*
-cubthread::entry_workpool * g_backup_read_worker_pool = NULL;
+cubthread::worker_pool_type * g_backup_read_worker_pool = NULL;
+
+REGISTER_WORKERPOOL (backup_read, []() {
+#if defined (SERVER_MODE)
+    return cubthread::system_core_count ();
+#else
+    return 0;
+#endif
+});
 // *INDENT-ON*
 
 void
@@ -7529,9 +7541,10 @@ logpb_create_backup_read_worker_pool (size_t thread_count)
     {
       thread_count = 1;
     }
+
   g_backup_read_worker_pool =
-    cubthread::get_manager ()->create_worker_pool (thread_count, thread_count, "backup read workers", NULL,
-						   core_count, false, true);
+    thread_create_worker_pool (thread_count, core_count, "backup-read", thread_get_entry_manager (), true);
+  // m_log = false
 }
 
 void

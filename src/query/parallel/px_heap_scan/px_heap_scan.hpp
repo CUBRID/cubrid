@@ -26,12 +26,11 @@
 #include "xasl.h"
 #include "px_worker_manager.hpp"
 #include "px_heap_scan_result_handler.hpp"
-#include "px_heap_scan_input_handler.hpp"
+#include "px_heap_scan_input_handler_ftabs.hpp"
 #include "px_heap_scan_trace_handler.hpp"
 #include "px_heap_scan_result_type.hpp"
 #include "query_manager.h"
-
-#define PARALLEL_HEAP_SCAN_MIN_USER_PAGES ((int)32)
+#include "px_heap_scan_join_info.hpp"
 
 namespace parallel_heap_scan
 {
@@ -40,7 +39,7 @@ namespace parallel_heap_scan
   {
       using interrupt = parallel_query::interrupt;
       using err_messages_with_lock = parallel_query::err_messages_with_lock;
-      using input_handler = parallel_heap_scan::input_handler;
+      using input_handler = parallel_heap_scan::input_handler_ftabs;
       using atomic_instnum = parallel_query::atomic_instnum;
       using worker_manager = parallel_query::worker_manager;
     public:
@@ -57,7 +56,8 @@ namespace parallel_heap_scan
 	  m_parallelism (parallelism),
 	  m_hfid (hfid),
 	  m_cls_oid (cls_oid),
-	  m_vd (vd),
+	  m_vd (nullptr),
+	  m_orig_vd (vd),
 	  m_input_handler (nullptr),
 	  m_result_handler (nullptr),
 	  m_on_trace (false),
@@ -78,7 +78,8 @@ namespace parallel_heap_scan
       int open();
       int start_tasks();
       SCAN_CODE next();
-      int reset();
+      int reset ();
+      int merge_stats();
       int end();
       int close();
       trace_handler &get_trace_handler()
@@ -100,7 +101,8 @@ namespace parallel_heap_scan
       HFID m_hfid;
       OID m_cls_oid;
       val_descr *m_vd;
-      input_handler *m_input_handler;
+      val_descr *m_orig_vd;
+      input_handler_ftabs *m_input_handler;
       result_handler<result_type> *m_result_handler;
       bool m_on_trace;
       bool m_px_stats_initialized_by_me;
@@ -111,6 +113,7 @@ namespace parallel_heap_scan
       atomic_instnum m_atomic_instnum;
       err_messages_with_lock m_err_messages;
       worker_manager *m_worker_manager;
+      join_info m_join_info;
       bool m_is_fixed;
       bool m_is_grouped;
       bool m_uses_xasl_clone;
@@ -120,30 +123,14 @@ namespace parallel_heap_scan
 
 extern "C"
 {
-  extern SCAN_CODE
-  scan_next_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
-  extern int
-  scan_reset_scan_block_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
-  extern void
-  scan_end_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
-  extern void
-  scan_close_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
-  extern   int
-  scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
-				/* fields of SCAN_ID */
-				bool mvcc_select_lock_needed, SCAN_OPERATION_TYPE scan_op_type, int fixed,
-				int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE *join_dbval,
-				val_list_node *val_list, VAL_DESCR *vd,
-				/* fields of HEAP_SCAN_ID */
-				OID *cls_oid, HFID *hfid, regu_variable_list_node *regu_list_pred,
-				PRED_EXPR *pr, regu_variable_list_node *regu_list_rest, int num_attrs_pred,
-				ATTR_ID *attrids_pred, HEAP_CACHE_ATTRINFO *cache_pred, int num_attrs_rest,
-				ATTR_ID *attrids_rest, HEAP_CACHE_ATTRINFO *cache_rest, SCAN_TYPE scan_type,
-				DB_VALUE **cache_recordinfo, regu_variable_list_node *regu_list_recordinfo,
-				bool is_partition_table, QUERY_ID query_id, int num_parallel_threads, parallel_heap_scan::RESULT_TYPE result_type,
-				XASL_NODE *xasl);
-  extern int
-  scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+  extern SCAN_CODE scan_next_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+  extern int scan_reset_scan_block_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+  extern void scan_end_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+  extern void scan_close_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+  extern int scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, bool mvcc_select_lock_needed,
+      int fixed_scan, int grouped_scan, VAL_DESCR *vd, ACCESS_SPEC_TYPE *spec, OID *class_oid, HFID *class_hfid,
+      XASL_NODE *xasl, QUERY_ID query_id);
+  extern int scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
 }
 
 #endif /*_PX_HEAP_SCAN_MANAGER_HPP_ */

@@ -28,6 +28,7 @@
 #include "thread_entry.hpp"
 #include "scan_manager.h"
 #include "jansson.h"
+#include "px_heap_scan_result_type.hpp"
 
 
 namespace parallel_heap_scan
@@ -41,6 +42,20 @@ namespace parallel_heap_scan
     UINT64 qualified_rows;
     struct timeval elapsed_time;
   };
+
+  class trace_storage_for_sibling_xasl
+  {
+    public:
+      trace_storage_for_sibling_xasl() = default;
+      ~trace_storage_for_sibling_xasl() = default;
+
+      void set_main_xasl_tree (xasl_node *xasl_tree);
+      void merge_xasl_tree (xasl_node *xasl_tree);
+    private:
+      xasl_node *m_main_xasl_tree;
+      std::mutex m_mutex;
+  };
+
   class trace_handler
   {
     public:
@@ -50,15 +65,17 @@ namespace parallel_heap_scan
       void add_trace (UINT64 fetches, UINT64 ioreads, UINT64 fetch_time, UINT64 read_rows, UINT64 qualified_rows,
 		      struct timeval elapsed_time);
       void merge_stats (THREAD_ENTRY *thread_p, SCAN_STATS *scan_stats);
+      void clear();
       std::vector<child_stats> m_stats;
       std::mutex m_stats_mutex;
+      trace_storage_for_sibling_xasl m_trace_storage_for_sibling_xasl;
   };
 
   class accumulative_trace_storage
   {
     public:
-      accumulative_trace_storage (bool is_list_merge)
-	: m_is_list_merge (is_list_merge)
+      accumulative_trace_storage (RESULT_TYPE result_type)
+	: m_result_type (result_type)
 	, m_is_initialized (false)
       {}
       ~accumulative_trace_storage() = default;
@@ -70,7 +87,7 @@ namespace parallel_heap_scan
     private:
       std::vector<child_stats> m_stats;
       child_stats m_stats_last;
-      bool m_is_list_merge;
+      RESULT_TYPE m_result_type;
       bool m_is_initialized;
   };
 }

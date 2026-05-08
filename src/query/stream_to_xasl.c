@@ -2367,6 +2367,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   memset (&xasl->groupby_stats, 0, sizeof (xasl->groupby_stats));
   memset (&xasl->xasl_stats, 0, sizeof (xasl->xasl_stats));
   memset (&xasl->func_stats, 0, sizeof (xasl->func_stats));
+  xasl->analytic_stats = NULL;
   xasl->max_iterations = -1;
   xasl->px_executor = NULL;
   xasl->memoize_storage = NULL;
@@ -2942,6 +2943,21 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
       stx_build_list_proc->a_regu_list =
 	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
       if (stx_build_list_proc->a_regu_list == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      stx_build_list_proc->a_scan_regu_list = NULL;
+    }
+  else
+    {
+      stx_build_list_proc->a_scan_regu_list =
+	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (stx_build_list_proc->a_scan_regu_list == NULL)
 	{
 	  goto error;
 	}
@@ -4684,7 +4700,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
     }
 
   ptr = or_unpack_int (ptr, &val);
-  access_spec->flags = (ACCESS_SPEC_FLAG) val;
+  access_spec->flags = val;
 
   ptr = or_unpack_int (ptr, &val);
   access_spec->num_parallel_threads = val;
@@ -6312,7 +6328,7 @@ error:
 static char *
 stx_build_analytic_eval_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_EVAL_TYPE * analytic_eval)
 {
-  int offset;
+  int offset, tmp_i;
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
@@ -6352,6 +6368,11 @@ stx_build_analytic_eval_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_EVAL_
 	  goto error;
 	}
     }
+
+  ptr = or_unpack_int (ptr, &tmp_i);
+  analytic_eval->sort_list_size = tmp_i;
+
+  analytic_eval->covered_size = 0;	/* not serialized; only used at XASL build time */
 
   return ptr;
 

@@ -3506,7 +3506,7 @@ partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_
   clear_dbvalues = true;
 
   error =
-    fetch_peek_dbval (pinfo->thread_p, pinfo->partition_pred->func_regu, pinfo->vd, (OID *) class_oid,
+    fetch_peek_dbval (pinfo->thread_p, pinfo->partition_pred->func_regu, NULL, (OID *) class_oid,
 		      &pinfo->attr_info.inst_oid, NULL, &result);
   if (error != NO_ERROR)
     {

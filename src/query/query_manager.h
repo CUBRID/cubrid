@@ -47,10 +47,10 @@ struct xasl_cache_ent;
     } \
   while (0)
 
-#define qmgr_free_old_page_ro_and_init(thread_p, page_p, tfile_vfidp) \
+#define qmgr_free_old_page_simple_fix_and_init(thread_p, page_p, tfile_vfidp) \
   do \
     { \
-      qmgr_free_old_page_read_only ((thread_p), (page_p), (tfile_vfidp)); \
+      qmgr_free_old_page_simple_fix ((thread_p), (page_p), (tfile_vfidp)); \
       (page_p) = NULL; \
     } \
   while (0)
@@ -164,7 +164,8 @@ extern void qmgr_add_modified_class (THREAD_ENTRY * thread_p, const OID * class_
 extern PAGE_PTR qmgr_get_old_page (THREAD_ENTRY * thread_p, VPID * vpidp, QMGR_TEMP_FILE * tfile_vfidp);
 extern void qmgr_free_old_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, QMGR_TEMP_FILE * tfile_vfidp);
 extern PAGE_PTR qmgr_get_old_page_read_only (THREAD_ENTRY * thread_p, VPID * vpidp, QMGR_TEMP_FILE * tfile_vfidp);
-extern void qmgr_free_old_page_read_only (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, QMGR_TEMP_FILE * tfile_vfidp);
+extern PAGE_PTR qmgr_get_old_page_simple_fix (THREAD_ENTRY * thread_p, VPID * vpidp, QMGR_TEMP_FILE * tfile_vfidp);
+extern void qmgr_free_old_page_simple_fix (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, QMGR_TEMP_FILE * tfile_vfidp);
 extern void qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, int free_page, LOG_DATA_ADDR * addrp,
 				 QMGR_TEMP_FILE * tfile_vfidp);
 extern PAGE_PTR qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpidp, QMGR_TEMP_FILE * tfile_vfidp);
@@ -187,8 +188,10 @@ extern struct drand48_data *qmgr_get_rand_buf (THREAD_ENTRY * thread_p);
 extern QUERY_ID qmgr_get_current_query_id (THREAD_ENTRY * thread_p);
 extern char *qmgr_get_query_sql_user_text (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_index);
 extern QMGR_TRAN_STATUS qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, bool is_abort);
-extern int qmgr_dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url, char *user_name, char *password);
+extern int qmgr_dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url, char *user_name, char *password,
+					 bool set_participant);
 extern int qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *conn_url, char *user_name,
-					char *password);
-
+					char *password, bool set_participant);
+extern DBLINK_CONN_ENTRY *qmgr_dblink_get_conn_entry (THREAD_ENTRY * thread_p);
+extern void qmgr_dblink_clear_conn_entry (THREAD_ENTRY * thread_p);
 #endif /* _QUERY_MANAGER_H_ */

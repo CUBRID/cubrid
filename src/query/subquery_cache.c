@@ -114,7 +114,14 @@ sq_make_val (THREAD_ENTRY * thread_p, REGU_VARIABLE * val)
       break;
 
     case TYPE_LIST_ID:
-      /* should be implemented later. */
+      if (val->value.srlist_id->list_id->tuple_cnt > 0)
+	{
+	  ret->val.exists = true;
+	}
+      else
+	{
+	  ret->val.exists = false;
+	}
       break;
 
     default:
@@ -161,7 +168,7 @@ sq_free_val (THREAD_ENTRY * thread_p, SQ_VAL * v)
       break;
 
     case TYPE_LIST_ID:
-      /* should be implemented later.. */
+      /* nothing to do */
       break;
 
     default:
@@ -198,18 +205,7 @@ sq_unpack_val (SQ_VAL * v, REGU_VARIABLE * retp)
       break;
 
     case TYPE_LIST_ID:
-
-      if (retp->value.srlist_id)
-	{
-	  qfile_copy_list_id (retp->value.srlist_id->list_id, v->val.srlist_id->list_id, true,
-			      QFILE_PROHIBIT_DEPENDENT);
-	  retp->value.srlist_id->sorted = v->val.srlist_id->sorted;
-	}
-      else
-	{
-	  retp->value.srlist_id->list_id =
-	    qfile_clone_list_id (v->val.srlist_id->list_id, true, QFILE_PROHIBIT_DEPENDENT);
-	}
+      retp->value.srlist_id->list_id->tuple_cnt = v->val.exists ? 1 : 0;
       break;
 
     default:
@@ -236,7 +232,8 @@ sq_hash_func (const void *key, unsigned int ht_size)
 
   for (i = 0; i < k->n_elements; i++)
     {
-      h ^= mht_valhash (k->dbv_array[i], ht_size);
+      h = ROTL32 (h, 13);
+      h ^= mht_get_hash_number (ht_size, k->dbv_array[i]);
     }
   return h % ht_size;
 }
@@ -370,6 +367,10 @@ sq_put (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
       new_entry_size += (UINT64) or_db_value_size (val->val.dbvalptr) + sizeof (SQ_VAL);
       break;
 
+    case TYPE_LIST_ID:
+      new_entry_size += sizeof (SQ_VAL);
+      break;
+
     default:
       break;
     }
@@ -414,8 +415,7 @@ sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
          maximum, it evaluates the hit-to-miss ratio to decide whether continuing caching 
          is beneficial. This approach optimizes cache usage and performance by dynamically 
          adapting to the effectiveness of the cache. */
-      UINT64 sq_cache_miss_max = SQ_CACHE_SIZE_MAX (xasl) / SQ_CACHE_EXPECTED_ENTRY_SIZE;
-      if (SQ_CACHE_MISS (xasl) >= (int) sq_cache_miss_max)
+      if ((double) SQ_CACHE_SIZE (xasl) > (double) SQ_CACHE_SIZE_MAX (xasl) * 0.6)
 	{
 	  if (SQ_CACHE_HIT (xasl) / SQ_CACHE_MISS (xasl) < SQ_CACHE_MIN_HIT_RATIO)
 	    {

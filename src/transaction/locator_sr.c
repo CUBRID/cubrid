@@ -65,11 +65,10 @@
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "transaction_transient.hpp"
 #include "xserver_interface.h"
+#include "catalog_class.h"
+#include "es_posix.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-
-/* TODO : remove */
-extern bool catcls_Enable;
 
 static const int LOCATOR_GUESS_NUM_NESTED_REFERENCES = 100;
 #define LOCATOR_GUESS_HT_SIZE    LOCATOR_GUESS_NUM_NESTED_REFERENCES * 2
@@ -83,12 +82,6 @@ typedef enum
   FOR_MOVE			/* It is an update statement on partitioned table, move a record from one partition to
 				 * another */
 } LOCATOR_INDEX_ACTION_FLAG;
-
-extern int catcls_insert_catalog_classes (THREAD_ENTRY * thread_p, RECDES * record);
-extern int catcls_delete_catalog_classes (THREAD_ENTRY * thread_p, const char *name, OID * class_oid);
-extern int catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *name, RECDES * record, OID * class_oid_p,
-					  UPDATE_INPLACE_STYLE force_in_place);
-extern int catcls_remove_entry (THREAD_ENTRY * thread_p, OID * class_oid);
 
 typedef struct locator_classname_action LOCATOR_CLASSNAME_ACTION;
 struct locator_classname_action
@@ -237,6 +230,9 @@ static DB_LOGICAL locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p
 							 MVCC_REEV_DATA * mvcc_reev_data_p,
 							 MVCC_REC_HEADER * mvcc_header_p,
 							 const OID * curr_row_version_oid_p, RECDES * recdes);
+
+/* lob */
+static int locator_lob_make_dir_path (char *buf, const HFID * hfid, int attrid);
 
 /*
  * locator_initialize () - Initialize the locator on the server
@@ -6371,7 +6367,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	}
 
       /* remove query result cache entries which are relevant with this class */
-      if (!QFILE_IS_LIST_CACHE_DISABLED)
+      if (!QFILE_IS_LIST_CACHE_DISABLED && !OID_ISNULL (&class_oid))
 	{
 	  OID superclass_oid;
 	  OID real_class_oid;
@@ -10978,8 +10974,8 @@ locator_guess_sub_classes (THREAD_ENTRY * thread_p, LC_LOCKHINT ** lockhint_subc
 		       */
 
 		      /* May be lock change */
-		      lockhint->classes[j].lock = lock_Conv[lockhint->classes[j].lock][lockhint->classes[ref_num].lock];
-		      assert (lockhint->classes[j].lock != NA_LOCK);
+		      lockhint->classes[j].lock =
+			lock_conv (lockhint->classes[j].lock, lockhint->classes[ref_num].lock);
 
 		      /* Make sure that subclasses are obtained */
 		      lockhint->classes[j].need_subclasses = 1;
@@ -10991,8 +10987,7 @@ locator_guess_sub_classes (THREAD_ENTRY * thread_p, LC_LOCKHINT ** lockhint_subc
 		       * revisit if a lock conversion is needed as a result of
 		       * several super classes
 		       */
-		      lock = lock_Conv[lockhint->classes[j].lock][lockhint->classes[ref_num].lock];
-		      assert (lock != NA_LOCK);
+		      lock = lock_conv (lockhint->classes[j].lock, lockhint->classes[ref_num].lock);
 
 		      if (lockhint->classes[j].lock != lock)
 			{
@@ -11297,8 +11292,7 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes, con
 	    {
 	      /* Duplicate class, merge the lock and the subclass entry */
 	      assert ((*hlock)->classes[i].lock >= NULL_LOCK && (*hlock)->classes[j].lock >= NULL_LOCK);
-	      (*hlock)->classes[i].lock = lock_Conv[(*hlock)->classes[i].lock][(*hlock)->classes[j].lock];
-	      assert ((*hlock)->classes[i].lock != NA_LOCK);
+	      (*hlock)->classes[i].lock = lock_conv ((*hlock)->classes[i].lock, (*hlock)->classes[j].lock);
 
 	      if ((*hlock)->classes[i].need_subclasses == 0)
 		{
@@ -13937,4 +13931,108 @@ void
 xsynonym_remove_xasl_by_oid (THREAD_ENTRY * thread_p, OID * oidp)
 {
   xcache_remove_by_oid (thread_p, oidp);
+}
+
+/*
+ * xlob_create_dir () - create lob dir
+ *
+ * thread_p (in) : thread_entry.
+ * hfid (in) : hfid(in): When creating the LOB directory, use each table's HFID as the directory name to distinguish them
+ * attrid_arr (in): An array that stores LOB attribute ids of the table.
+                    When creating the LOB directory, each LOB attribute is distinguished by its id
+ * attrid_arr_length (in)	 : Length of the attrid_arr array
+ */
+int
+xlob_create_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attrid_arr_length)
+{
+  char rv_path[PATH_MAX];
+  int ret = NO_ERROR;
+  LOG_DATA_ADDR addr;
+  addr.offset = -1;
+  addr.pgptr = NULL;
+  addr.vfid = NULL;
+
+  for (int i = 0; i < attrid_arr_length; i++)
+    {
+      ret = locator_lob_make_dir_path (rv_path, hfid, attrid_arr[i]);
+      if (ret != NO_ERROR)
+	{
+	  return ret;
+	}
+
+      log_append_undo_data (thread_p, RVHF_LOB_REMOVE_DIR, &addr, (strlen (rv_path) + 1), &rv_path);
+
+      ret = es_make_dirs (rv_path, NULL);
+      if (ret != NO_ERROR)
+	{
+	  return ret;
+	}
+    }
+
+  return ret;
+}
+
+/*
+ * xlob_remove_dir () - remove a lob directory
+ *
+ * thread_p (in) : thread_entry
+ * hfid (in) : Used to identify the table when removing the LOB directory
+ * attrid (in) : Used to identify the table's LOB attribute when removing the LOB directory.
+ *
+ * NOTE: A LOB directory is created immediately,
+ *       whereas deletion is deferred using the log_append_postpone() function and executed at commit time.
+ */
+int
+xlob_remove_dir (THREAD_ENTRY * thread_p, HFID * hfid, int attrid)
+{
+  char rv_path[PATH_MAX];
+  int ret = NO_ERROR;
+  LOG_DATA_ADDR addr;
+  addr.offset = -1;
+  addr.pgptr = NULL;
+  addr.vfid = NULL;
+
+  ret = locator_lob_make_dir_path (rv_path, hfid, attrid);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
+  log_append_postpone (thread_p, RVHF_LOB_REMOVE_DIR, &addr, (strlen (rv_path) + 1), rv_path);
+
+  return ret;
+}
+
+/*
+ * locator_lob_make_dir_path () - Construct the directory path for the LOB directory.
+ *
+ * lob_path (in) : A buffer that stores the LOB path to be constructed and returned.
+ * hfid (in) : Used to construct the LOB directory.
+ * attrid (in) : Used to construct the LOB directory.
+ *               If attrid is -1, it represents all LOB directories for the table.
+ *               In this case, the path is constructed using the hfid as a prefix.
+ */
+static int
+locator_lob_make_dir_path (char *lob_path, const HFID * hfid, int attrid)
+{
+  int ret;
+
+  assert (hfid != NULL);
+  assert (lob_path != NULL);
+
+  if (attrid == -1)
+    {
+      ret = snprintf (lob_path, PATH_MAX, "%d%d%d", HFID_AS_ARGS (hfid));
+    }
+  else
+    {
+      ret = snprintf (lob_path, PATH_MAX, "%d%d%d%d", HFID_AS_ARGS (hfid), attrid);
+    }
+
+  if (ret < 0 || ret >= PATH_MAX)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
 }

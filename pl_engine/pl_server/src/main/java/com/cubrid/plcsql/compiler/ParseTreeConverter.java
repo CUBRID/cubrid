@@ -35,6 +35,7 @@ import static com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsParser.*;
 
 import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.jsp.data.DBType;
+import com.cubrid.jsp.data.Dependency;
 import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.plcsql.compiler.antlrgen.PlcParser.Create_routineContext;
 import com.cubrid.plcsql.compiler.antlrgen.PlcParserBaseVisitor;
@@ -54,6 +55,7 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
@@ -70,6 +72,7 @@ import org.antlr.v4.runtime.tree.*;
 public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     public final SymbolStack symbolStack = new SymbolStack();
+    public final Set<Dependency> dependenciesOfStaticSql = new HashSet<>();
 
     public ParseTreeConverter(InstanceStore iStore, String spOwner, String spRevision) {
         this.iStore = iStore;
@@ -2849,13 +2852,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 // SP being defined
 
                 assert scopeLevel == SymbolStack.LEVEL_MAIN;
+                if (ctx.routine_uniq_name().owner != null) {
+                    String owner = Misc.getNormalizedText(ctx.routine_uniq_name().owner);
+                    assert owner.equals(spOwner);
+                }
                 spName = name;
                 isSpFunc = (ctx.PROCEDURE() == null);
-            }
-
-            if (ctx.routine_uniq_name().owner != null) {
-                String owner = Misc.getNormalizedText(ctx.routine_uniq_name().owner);
-                assert owner.equals(spOwner);
             }
 
             // push a temporary symbol table, in order not to corrupt the current symbol table with
@@ -3341,6 +3343,15 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     private SqlSemantics getSqlSemanticsFromServer(Static_sqlContext ctx) {
+
+        List<TerminalNode> bindParamTokens = ctx.SS_BIND_PARAM();
+        if (bindParamTokens != null && bindParamTokens.size() > 0) {
+            TerminalNode token = bindParamTokens.get(0);
+            throw new SemanticError(
+                    Misc.getLineColumnOf(token),
+                    "Static SQL statements cannot have a bind parameter");
+        }
+
         String text = expandRecordIfAny(ctx);
         return getSqlSemanticsFromServer(text, ctx);
     }
@@ -3352,11 +3363,15 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         assert sqlSemantics.size() == 1;
 
         SqlSemantics ss = sqlSemantics.get(0);
-        if (ss.errCode == 0) {
-            return ss;
-        } else {
+        if (ss.errCode != 0) {
             throw new SemanticError(Misc.getLineColumnOf(ctx), ss.errMsg); // s435
         }
+
+        if (ss.dependencies != null) {
+            dependenciesOfStaticSql.addAll(ss.dependencies);
+        }
+
+        return ss;
     }
 
     private static class SyntaxErrorIndicator extends BaseErrorListener {

@@ -71,6 +71,6 @@ extern int tf_pack_set (DB_SET * set, char *buffer, int buffer_size, int *actual
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /* temporary integration kludge */
-extern int tf_Allow_fixups;
+extern const int tf_Allow_fixups;
 
 #endif /* _TRANSFORM_CL_H_ */

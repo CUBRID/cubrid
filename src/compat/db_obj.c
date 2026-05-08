@@ -1937,3 +1937,58 @@ db_find_procedure (const char *name)
 
   return retval;
 }
+
+int
+db_set_otmpl_timestamps (DB_OTMPL * otmpl)
+{
+  DB_VALUE current_datetime;
+
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (dbt_put_internal (otmpl, "created_time", &current_datetime) != NO_ERROR ||
+      dbt_put_internal (otmpl, "updated_time", &current_datetime) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+int
+db_update_otmpl_timestamp (DB_OTMPL * otmpl)
+{
+  DB_VALUE current_datetime;
+
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (dbt_put_internal (otmpl, "updated_time", &current_datetime) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+int
+db_update_obj_timestamp (DB_OBJECT * obj)
+{
+  DB_VALUE current_datetime;
+
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (db_put (obj, "updated_time", &current_datetime) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}

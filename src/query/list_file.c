@@ -37,6 +37,7 @@
 #include "db_value_printer.hpp"
 #include "dbtype.h"
 #include "error_manager.h"
+#include "file_manager.h"
 #include "log_append.hpp"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -50,6 +51,10 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#if defined(CS_MODE)
+#error Belongs to not client module
+#endif
+
 /* TODO */
 #if !defined (SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -61,7 +66,8 @@ static int rv;
 #define thread_sleep(a)
 #endif /* not SERVER_MODE */
 
-#define QFILE_CHECK_LIST_FILE_IS_CLOSED(list_id)
+#define QFILE_CHECK_LIST_FILE_IS_CLOSED(list_id) \
+  assert (list_id != NULL &&(!VPID_ISNULL(&list_id->last_vpid) ? (list_id->last_pgptr != NULL) : true))
 
 #define QFILE_DEFAULT_PAGES 4
 
@@ -3200,6 +3206,49 @@ error_exit:
   return er_errid ();
 }
 
+int
+qfile_truncate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id)
+{
+  int error_code = NO_ERROR;
+  int i;
+  PAGE_PTR page_p;
+  QMGR_TEMP_FILE *tfile_vfid_p = list_id->tfile_vfid;
+  if (list_id->last_pgptr != NULL)
+    {
+      qfile_close_list (thread_p, list_id);
+    }
+
+  list_id->tuple_cnt = 0;
+  list_id->page_cnt = 0;
+  list_id->first_vpid.pageid = NULL_PAGEID;
+  list_id->first_vpid.volid = NULL_VOLID;
+  list_id->last_vpid.pageid = NULL_PAGEID;
+  list_id->last_vpid.volid = NULL_VOLID;
+  list_id->last_pgptr = NULL;
+  list_id->last_offset = QFILE_NULL_PAGE_OFFSET;
+  list_id->lasttpl_len = 0;
+  if (tfile_vfid_p != NULL)
+    {
+      switch (tfile_vfid_p->membuf_type)
+	{
+	case TEMP_FILE_MEMBUF_NONE:
+	  break;
+	case TEMP_FILE_MEMBUF_KEY_BUFFER:
+	case TEMP_FILE_MEMBUF_NORMAL:
+	  {
+	    tfile_vfid_p->membuf_last = -1;
+	  }
+	  break;
+	default:
+	  assert (false);
+	  break;
+	}
+
+      error_code = file_temp_truncate (thread_p, &tfile_vfid_p->temp_vfid);
+    }
+  return error_code;
+}
+
 /*
  * qfile_copy_tuple_descr_to_tuple () - generate a tuple into a tuple record
  *                                      structure from a tuple descriptor
@@ -3768,7 +3817,7 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 	      sort_info_p->fixed_page = page_p;
 	    }
 #else /* not SortCache */
-	  page_p = qmgr_get_old_page_read_only (thread_p, &vpid, list_id_p->tfile_vfid);
+	  page_p = qmgr_get_old_page_simple_fix (thread_p, &vpid, list_id_p->tfile_vfid);
 	  if (page_p == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -3798,7 +3847,7 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 	      error = qfile_add_overflow_tuple_to_list (thread_p, sort_info_p->output_file, page_p, list_id_p);
 	    }
 #if 1				/* not SortCache */
-	  qmgr_free_old_page_ro_and_init (thread_p, page_p, list_id_p->tfile_vfid);
+	  qmgr_free_old_page_simple_fix_and_init (thread_p, page_p, list_id_p->tfile_vfid);
 #endif /* not SortCache */
 	}
       else
@@ -4719,7 +4768,15 @@ qfile_scan_next (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p)
     {
       if (scan_id_p->list_id.tuple_cnt > 0)
 	{
-	  page_p = qmgr_get_old_page (thread_p, &scan_id_p->list_id.first_vpid, scan_id_p->list_id.tfile_vfid);
+	  if (scan_id_p->is_read_only)
+	    {
+	      page_p =
+		qmgr_get_old_page_read_only (thread_p, &scan_id_p->list_id.first_vpid, scan_id_p->list_id.tfile_vfid);
+	    }
+	  else
+	    {
+	      page_p = qmgr_get_old_page (thread_p, &scan_id_p->list_id.first_vpid, scan_id_p->list_id.tfile_vfid);
+	    }
 	  if (page_p == NULL)
 	    {
 	      return S_ERROR;
@@ -4750,7 +4807,14 @@ qfile_scan_next (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p)
       else if (qfile_has_next_page (scan_id_p->curr_pgptr))
 	{
 	  QFILE_GET_NEXT_VPID (&next_vpid, scan_id_p->curr_pgptr);
-	  next_page_p = qmgr_get_old_page (thread_p, &next_vpid, scan_id_p->list_id.tfile_vfid);
+	  if (scan_id_p->is_read_only)
+	    {
+	      next_page_p = qmgr_get_old_page_read_only (thread_p, &next_vpid, scan_id_p->list_id.tfile_vfid);
+	    }
+	  else
+	    {
+	      next_page_p = qmgr_get_old_page (thread_p, &next_vpid, scan_id_p->list_id.tfile_vfid);
+	    }
 	  if (next_page_p == NULL)
 	    {
 	      return S_ERROR;
@@ -4819,7 +4883,14 @@ qfile_scan_prev (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p)
       else if (QFILE_GET_PREV_PAGE_ID (scan_id_p->curr_pgptr) != NULL_PAGEID)
 	{
 	  QFILE_GET_PREV_VPID (&prev_vpid, scan_id_p->curr_pgptr);
-	  prev_page_p = qmgr_get_old_page (thread_p, &prev_vpid, scan_id_p->list_id.tfile_vfid);
+	  if (scan_id_p->is_read_only)
+	    {
+	      prev_page_p = qmgr_get_old_page_read_only (thread_p, &prev_vpid, scan_id_p->list_id.tfile_vfid);
+	    }
+	  else
+	    {
+	      prev_page_p = qmgr_get_old_page (thread_p, &prev_vpid, scan_id_p->list_id.tfile_vfid);
+	    }
 	  if (prev_page_p == NULL)
 	    {
 	      return S_ERROR;
@@ -4848,7 +4919,14 @@ qfile_scan_prev (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p)
 	{
 	  return S_END;
 	}
-      page_p = qmgr_get_old_page (thread_p, &scan_id_p->list_id.last_vpid, scan_id_p->list_id.tfile_vfid);
+      if (scan_id_p->is_read_only)
+	{
+	  page_p = qmgr_get_old_page_read_only (thread_p, &scan_id_p->list_id.last_vpid, scan_id_p->list_id.tfile_vfid);
+	}
+      else
+	{
+	  page_p = qmgr_get_old_page (thread_p, &scan_id_p->list_id.last_vpid, scan_id_p->list_id.tfile_vfid);
+	}
       if (page_p == NULL)
 	{
 	  return S_ERROR;
@@ -4964,7 +5042,15 @@ qfile_jump_scan_tuple_position (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * sc
 	  if (scan_id_p->curr_vpid.pageid != tuple_position_p->vpid.pageid
 	      || scan_id_p->curr_vpid.volid != tuple_position_p->vpid.volid)
 	    {
-	      page_p = qmgr_get_old_page (thread_p, &tuple_position_p->vpid, scan_id_p->list_id.tfile_vfid);
+	      if (scan_id_p->is_read_only)
+		{
+		  page_p =
+		    qmgr_get_old_page_read_only (thread_p, &tuple_position_p->vpid, scan_id_p->list_id.tfile_vfid);
+		}
+	      else
+		{
+		  page_p = qmgr_get_old_page (thread_p, &tuple_position_p->vpid, scan_id_p->list_id.tfile_vfid);
+		}
 	      if (page_p == NULL)
 		{
 		  return S_ERROR;
@@ -4978,7 +5064,14 @@ qfile_jump_scan_tuple_position (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * sc
 	}
       else
 	{
-	  page_p = qmgr_get_old_page (thread_p, &tuple_position_p->vpid, scan_id_p->list_id.tfile_vfid);
+	  if (scan_id_p->is_read_only)
+	    {
+	      page_p = qmgr_get_old_page_read_only (thread_p, &tuple_position_p->vpid, scan_id_p->list_id.tfile_vfid);
+	    }
+	  else
+	    {
+	      page_p = qmgr_get_old_page (thread_p, &tuple_position_p->vpid, scan_id_p->list_id.tfile_vfid);
+	    }
 	  if (page_p == NULL)
 	    {
 	      return S_ERROR;
@@ -5032,7 +5125,15 @@ qfile_start_scan_fix (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p)
 {
   if (scan_id_p->position == S_ON && !scan_id_p->curr_pgptr)
     {
-      scan_id_p->curr_pgptr = qmgr_get_old_page (thread_p, &scan_id_p->curr_vpid, scan_id_p->list_id.tfile_vfid);
+      if (scan_id_p->is_read_only)
+	{
+	  scan_id_p->curr_pgptr =
+	    qmgr_get_old_page_read_only (thread_p, &scan_id_p->curr_vpid, scan_id_p->list_id.tfile_vfid);
+	}
+      else
+	{
+	  scan_id_p->curr_pgptr = qmgr_get_old_page (thread_p, &scan_id_p->curr_vpid, scan_id_p->list_id.tfile_vfid);
+	}
       if (scan_id_p->curr_pgptr == NULL)
 	{
 	  return ER_FAILED;
@@ -5063,6 +5164,7 @@ qfile_open_list_scan (QFILE_LIST_ID * list_id_p, QFILE_LIST_SCAN_ID * scan_id_p)
   scan_id_p->status = S_OPENED;
   scan_id_p->position = S_BEFORE;
   scan_id_p->keep_page_on_finish = 0;
+  scan_id_p->is_read_only = false;
   scan_id_p->curr_vpid.pageid = NULL_PAGEID;
   scan_id_p->curr_vpid.volid = NULL_VOLID;
   QFILE_CLEAR_LIST_ID (&scan_id_p->list_id);
@@ -6944,22 +7046,13 @@ qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_ID * list_p,
       return;
     }
 
-  THREAD_ENTRY *target_thread_p = thread_p;
-  while (target_thread_p->m_px_orig_thread_entry != NULL)
-    {
-      if (target_thread_p->m_px_orig_thread_entry == target_thread_p)
-	{
-	  break;
-	}
-      target_thread_p = target_thread_p->m_px_orig_thread_entry;
-    }
-
-  target_thread_p->m_qlist_count.fetch_add (inc);
+  THREAD_ENTRY *main_thread_p = thread_get_main_thread (thread_p);
+  main_thread_p->m_qlist_count.fetch_add (inc);
 
   if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
     {
-      er_print_callstack (ARG_FILE_LINE, "update qlist_count by %d to %d\n", inc,
-			  target_thread_p->m_qlist_count.load ());
+      er_print_callstack (ARG_FILE_LINE, "[thread %d with tran index %d] update qlist_count by %d to %d\n",
+			  main_thread_p->index, main_thread_p->tran_index, inc, main_thread_p->m_qlist_count.load ());
     }
 #endif // SERVER_MODE
 }
@@ -6976,4 +7069,130 @@ bool
 qfile_has_no_cache_entries ()
 {
   return (qfile_List_cache.n_entries == 0);
+}
+
+/*
+ * qfile_collect_list_sector_info () - Collect data page sectors from list_id and all dependent list files.
+ *   membuf exists only in the first list_id (not in dependent_list_id).
+ *   Disk sectors are collected via file_get_all_data_sectors for each dependent list_id.
+ *
+ * return          : error code
+ * thread_p (in)   : thread entry
+ * list_id (in)    : list file identifier (may have dependent_list_id chain)
+ * sector_info (out) : output sector info (caller must free with qfile_free_list_sector_info)
+ */
+int
+qfile_collect_list_sector_info (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_LIST_SECTOR_INFO * sector_info)
+{
+  QFILE_LIST_ID *current;
+  FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
+  int error = NO_ERROR;
+
+  assert (thread_p != NULL);
+  assert (list_id != NULL);
+  assert (list_id->tfile_vfid != NULL);
+  assert (sector_info != NULL);
+
+  /* reset sector_info */
+  qfile_free_list_sector_info (thread_p, sector_info);
+
+  /* membuf exists only in the first list_id */
+  if (list_id->tfile_vfid->membuf != NULL && list_id->tfile_vfid->membuf_last >= 0)
+    {
+      assert (list_id->tfile_vfid->membuf_npages > 0);
+      sector_info->membuf_tfile = list_id->tfile_vfid;
+    }
+
+  for (current = list_id; current != NULL; current = current->dependent_list_id)
+    {
+      assert (current->tfile_vfid != NULL);
+
+      if (VFID_ISNULL (&current->tfile_vfid->temp_vfid))
+	{
+	  continue;
+	}
+
+      error = file_get_all_data_sectors (thread_p, &current->tfile_vfid->temp_vfid, &collector);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      if (collector.nsects > 0)
+	{
+	  int old_cnt = sector_info->sector_cnt;
+	  int new_cnt = old_cnt + collector.nsects;
+
+	  FILE_PARTIAL_SECTOR *merged_sectors =
+	    (FILE_PARTIAL_SECTOR *) db_private_realloc (thread_p, sector_info->sectors,
+							new_cnt * sizeof (FILE_PARTIAL_SECTOR));
+	  if (merged_sectors == NULL)
+	    {
+	      goto error_exit;
+	    }
+	  sector_info->sectors = merged_sectors;
+
+	  void **merged_tfiles =
+	    (void **) db_private_realloc (thread_p, sector_info->tfiles, new_cnt * sizeof (void *));
+	  if (merged_tfiles == NULL)
+	    {
+	      goto error_exit;
+	    }
+	  sector_info->tfiles = merged_tfiles;
+
+	  memcpy (sector_info->sectors + old_cnt, collector.partsect_ftab,
+		  collector.nsects * sizeof (FILE_PARTIAL_SECTOR));
+
+	  for (int i = 0; i < collector.nsects; i++)
+	    {
+	      sector_info->tfiles[old_cnt + i] = (void *) current->tfile_vfid;
+	    }
+
+	  sector_info->sector_cnt = new_cnt;
+	}
+
+      if (collector.partsect_ftab != NULL)
+	{
+	  db_private_free_and_init (thread_p, collector.partsect_ftab);
+	}
+    }
+
+  return NO_ERROR;
+
+error_exit:
+  if (collector.partsect_ftab != NULL)
+    {
+      db_private_free_and_init (thread_p, collector.partsect_ftab);
+    }
+
+  qfile_free_list_sector_info (thread_p, sector_info);
+
+  assert_release_error (er_errid () != NO_ERROR);
+  return er_errid ();
+}
+
+/*
+ * qfile_free_list_sector_info () - Free sector info allocated by qfile_collect_list_sector_info.
+ *
+ * thread_p (in)     : thread entry
+ * sector_info (in)  : sector info to free
+ */
+void
+qfile_free_list_sector_info (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_INFO * sector_info)
+{
+  assert (thread_p != NULL);
+  assert (sector_info != NULL);
+
+  if (sector_info->sectors != NULL)
+    {
+      db_private_free_and_init (thread_p, sector_info->sectors);
+    }
+
+  if (sector_info->tfiles != NULL)
+    {
+      db_private_free_and_init (thread_p, sector_info->tfiles);
+    }
+
+  sector_info->membuf_tfile = NULL;
+  sector_info->sector_cnt = 0;
 }

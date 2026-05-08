@@ -30,7 +30,8 @@ namespace parallel_heap_scan
     NONE = 0x0,
     MERGEABLE_LIST = 0x1, /* (fast) list-per-thread return, and merge (set dependent) it. */
     XASL_SNAPSHOT = 0x2, /* (slow) xasl snapshot return (row-by-row) */
-    /* should we handle COUNT(*) ?*/
+    BUILDVALUE_OPT = 0x3, /* (fast) buildvalue proc aggregate optimization */
+
   };
 }
 

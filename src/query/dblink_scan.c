@@ -547,7 +547,7 @@ dblink_end_tran (DBLINK_CONN_ENTRY * dblink, bool is_abort)
 
   while (dblink)
     {
-      rc = cci_end_tran (dblink->conn_handle, is_abort ? CCI_TRAN_ROLLBACK : CCI_TRAN_COMMIT, &err_buf);
+      rc = cci_end_tran (dblink->conn_info.conn_handle, is_abort ? CCI_TRAN_ROLLBACK : CCI_TRAN_COMMIT, &err_buf);
       if (rc < 0 && tran_error == NO_ERROR)
 	{
 	  is_abort = true;
@@ -555,7 +555,7 @@ dblink_end_tran (DBLINK_CONN_ENTRY * dblink, bool is_abort)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1, err_buf.err_msg);
 	}
 
-      rc = cci_disconnect (dblink->conn_handle, &err_buf);
+      rc = cci_disconnect (dblink->conn_info.conn_handle, &err_buf);
       if (rc < 0 && tran_error == NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
@@ -598,7 +598,7 @@ dblink_execute_query (THREAD_ENTRY * thread_p, struct access_spec_node *spec, VA
 
   if (!auto_commit)
     {
-      conn_handle = qmgr_dblink_find_conn_handle (thread_p, spec->s.dblink_node.conn_url, user_name, password);
+      conn_handle = qmgr_dblink_find_conn_handle (thread_p, spec->s.dblink_node.conn_url, user_name, password, true);
     }
 
   if (conn_handle < 0)
@@ -619,7 +619,9 @@ dblink_execute_query (THREAD_ENTRY * thread_p, struct access_spec_node *spec, VA
 
       if (!auto_commit)
 	{
-	  ret = qmgr_dblink_add_conn_handle (thread_p, conn_handle, spec->s.dblink_node.conn_url, user_name, password);
+	  ret =
+	    qmgr_dblink_add_conn_handle (thread_p, conn_handle, spec->s.dblink_node.conn_url, user_name, password,
+					 true);
 	  if (ret < 0)
 	    {
 	      /* malloc error */
@@ -708,7 +710,7 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
   if (!auto_commit)
     {
       scan_info->conn_handle =
-	qmgr_dblink_find_conn_handle (thread_p, spec->s.dblink_node.conn_url, user_name, password);
+	qmgr_dblink_find_conn_handle (thread_p, spec->s.dblink_node.conn_url, user_name, password, false);
     }
 
   if (scan_info->conn_handle < 0)
@@ -731,7 +733,7 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
 	{
 	  ret =
 	    qmgr_dblink_add_conn_handle (thread_p, scan_info->conn_handle, spec->s.dblink_node.conn_url, user_name,
-					 password);
+					 password, false);
 	  if (ret < 0)
 	    {
 	      return ER_DBLINK;

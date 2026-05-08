@@ -33,12 +33,8 @@
 #include <sys/time.h>
 #endif
 
-#include "cas_common.h"
-#include "dbi.h"
-#include "cas_execute.h"
 #include "cas_sql_log2.h"
 #include "broker_filename.h"
-#include "broker_util.h"
 
 #if !defined(WINDOWS)
 static char sql_log2_file[256] = "";

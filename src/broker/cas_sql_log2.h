@@ -26,6 +26,8 @@
 
 #ident "$Id$"
 
+#include "cas_optimization.h"
+
 #define SQL_LOG2_NONE		0
 #define SQL_LOG2_PLAN		1
 #define SQL_LOG2_HISTO		2	/* obsolete */
@@ -84,5 +86,6 @@ extern void sql_log2_end (bool reset_filename_flag);
 extern void sql_log2_flush (void);
 extern void sql_log2_write (const char *fmt, ...);
 extern void sql_log2_append_file (char *file_name);
+
 
 #endif /* _CAS_SQL_LOG2_H_ */

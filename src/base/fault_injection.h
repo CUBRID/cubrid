@@ -111,6 +111,6 @@ extern int fi_test (THREAD_ENTRY * thread_p, FI_TEST_CODE code, void *arg, int s
 extern int fi_state (THREAD_ENTRY * thread_p, FI_TEST_CODE code);
 extern bool fi_test_on (FI_TEST_CODE code);
 
-extern FI_TEST_CODE *fi_Groups[FI_GROUP_MAX + 1];
+extern const FI_TEST_CODE *const fi_Groups[FI_GROUP_MAX + 1];
 
 #endif /* _FAULT_INJECTION_H_ */

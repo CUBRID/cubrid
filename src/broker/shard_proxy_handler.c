@@ -34,6 +34,7 @@
 #include "broker_shm.h"
 #include "shard_proxy_common.h"
 #include "cas_protocol.h"
+#include "cas_error.h"
 #include "shard_shm.h"
 
 #include "shard_proxy_handler.h"
