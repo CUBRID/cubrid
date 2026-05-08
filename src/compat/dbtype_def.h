@@ -538,9 +538,16 @@ extern "C"
  * 2. PL/CSQL
  *   - This limit is directly enforced for PL/CSQL arguments.
  *     affect CREATE PROCEDURE/FUNCTION statements.
+ *
+ * Other EXPR_LENGTH
+ *   - PARTITION
+ *     - DB_MAX_PARTITION_EXPR_LENGTH 2048
+ *     - 'db_partition' : partition_expr (2048)
+ *     - '_db_partition' : pexpr (2048)
+ *   - INDEX
+ *     - 'db_index' : filter_expression (1073741823)
  */
-
-#define DB_MAX_DEFAULT_EXPR_LENGTH 1024
+#define DB_MAX_DEFAULT_EXPR_LENGTH 2048
 
 /* Maximum allowable user name.*/
 #define DB_MAX_USER_LENGTH 32
