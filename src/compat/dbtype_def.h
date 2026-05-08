@@ -526,6 +526,22 @@ extern "C"
    */
 #define DB_MAX_IDENTIFIER_LENGTH 255
 
+/* 
+ * Maximum allowable default expression length
+ * 
+ * Notes:
+ * 1. TABLE COLUMN
+ *   - This limit does NOT apply directly to table column definitions.
+ *   - It affects the maximum length of the 'default_value' column
+ *     in system tables such as 'db_attribute' and '_db_attribute'.
+ *
+ * 2. PL/CSQL
+ *   - This limit is directly enforced for PL/CSQL arguments.
+ *     affect CREATE PROCEDURE/FUNCTION statements.
+ */
+
+#define DB_MAX_DEFAULT_EXPR_LENGTH 1024
+
 /* Maximum allowable user name.*/
 #define DB_MAX_USER_LENGTH 32
 

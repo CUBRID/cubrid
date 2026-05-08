@@ -1594,7 +1594,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   pr_clear_value (&default_expr);
   pr_clear_value (&val);
   attr_val_p->need_clear = true;
-  db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
+  db_string_truncate (attr_val_p, DB_MAX_DEFAULT_EXPR_LENGTH);
 
   /* comment */
   attr_val_p = &attrs[11].value;
