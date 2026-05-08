@@ -336,19 +336,20 @@ extern int pr_complete_enum_value (DB_VALUE * value, struct tp_domain *domain);
 extern int pr_get_compression_length (const char *string, int str_length);
 extern int pr_get_compressed_data_from_buffer (struct or_buf *buf, char *data, int compressed_size,
 					       int expected_decompressed_size);
+#if defined(ENABLE_UNUSED_FUNCTION)	// Unused — temporarily preserved to minimize review diff; will be removed in a follow-up PR
+extern int pr_get_size_and_write_string_to_buffer (struct or_buf *buf, char *val_p, DB_VALUE * value, int *val_size,
+						   int align);
+#endif /* ENABLE_UNUSED_FUNCTION */
 extern int pr_data_compress_string (const char *string, int str_length, char *compressed_string,
 				    int compress_buffer_size, int *compressed_length);
 
 extern int pr_clear_compressed_string (DB_VALUE * value);
 extern int pr_do_db_value_string_compression (DB_VALUE * value);
 
-/* Legacy hack — was used to push charlen past the 1-byte short-form threshold so
- * or_varchar_length() would return the long-form (9-byte) header size; the caller
- * then subtracted PRIM_TEMPORARY_DISK_SIZE again to get the true value. Obsolete
- * under the LARGE-only single-tier layout (and irrelevant once Step 4's tier
- * dispatch lands), since or_varchar_length() no longer branches on charlen. */
+#if defined(ENABLE_UNUSED_FUNCTION)	// Unused macro — temporarily preserved to minimize review diff; will be removed in a follow-up PR
 #define PRIM_TEMPORARY_DISK_SIZE 256
 #define PRIM_COMPRESSION_LENGTH_OFFSET 4
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 extern int pr_Enable_string_compression;
 
