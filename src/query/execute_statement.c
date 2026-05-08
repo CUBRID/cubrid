@@ -22061,6 +22061,16 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
       return (error != NO_ERROR) ? error : ER_FAILED;
     }
 
+  /* check INSERT authorization on the target table; the COPY path bypasses
+   * the object-template machinery used by INSERT, so the permission check
+   * implicit in dbt_create_object_internal -> au_fetch_class is not reached. */
+  error = db_check_authorization (class_obj, DB_AUTH_INSERT);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+
   if (statement->info.copy.column_list != NULL)
     {
       /* count specified columns */

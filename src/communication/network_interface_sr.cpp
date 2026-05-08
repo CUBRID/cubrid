@@ -12218,6 +12218,28 @@ scopy_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
   int num_cols = 0;
   int error_code = NO_ERROR;
   DB_TYPE *col_types = NULL;
+  int str_len = 0;
+
+  /* Minimum request: a length-prefixed string (>= OR_INT_SIZE) plus num_cols
+   * (OR_INT_SIZE). Validate before any unpack call so a truncated packet
+   * cannot trigger an OOB read inside or_unpack_string_nocopy / or_unpack_int. */
+  if (reqlen < 2 * OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_PROTOCOL_GENERIC, 1, "request too short");
+      error_code = ER_COPY_BINARY_PROTOCOL_GENERIC;
+      goto reply;
+    }
+
+  /* Validate the length prefix of the table-name string against reqlen
+   * before letting or_unpack_string_nocopy advance the pointer past the
+   * end of the request buffer. */
+  str_len = OR_GET_INT (ptr);
+  if (str_len < -1 || str_len > reqlen - 2 * OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_PROTOCOL_GENERIC, 1, "invalid table_name length");
+      error_code = ER_COPY_BINARY_PROTOCOL_GENERIC;
+      goto reply;
+    }
 
   /* unpack table name */
   ptr = or_unpack_string_nocopy (ptr, &table_name);
