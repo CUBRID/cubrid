@@ -698,10 +698,11 @@ static size_t heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_in
 
 static void heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
 					RECDES * raw);
+static void heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw);
 static void heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
-					   RECDES * raw, bool * is_oos);
+					   RECDES * raw, bool * oos_owned_buffer);
 static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
-						bool is_oos);
+						bool oos_owned_buffer);
 static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info);
 
 static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value,
@@ -10589,19 +10590,91 @@ heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR
 }
 
 /*
+ * heap_attrvalue_read_oos_inline () - Resolve an inline-OOS variable attribute.
+ *
+ *   recdes(in): heap record holding the inline OOS header
+ *   raw(in/out): on entry, raw->data points at the inline [OID (8B) | full_length (8B)]
+ *                inside recdes; on success, raw->data is replaced with a freshly
+ *                allocated buffer holding the full reassembled OOS value of
+ *                length oos_len, and raw owns that buffer (caller must free).
+ *                On failure, raw->data is set to NULL so consumers observe
+ *                absence of data even if assert_release is compiled out.
+ *
+ * Inline OOS layout (since M2): [OID (8B) | full_length (8B bigint)].
+ */
+static void
+heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw)
+{
+  OR_BUF buf;
+  OID oos_oid;
+  DB_BIGINT oos_len;
+  int rc = NO_ERROR;
+  THREAD_ENTRY *thread_p;
+
+  buf.ptr = raw->data;
+  buf.endptr = recdes->data + recdes->length;
+  if (buf.endptr - buf.ptr < OR_OID_SIZE + OR_BIGINT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      raw->data = NULL;
+      assert_release_error (er_errid () != NO_ERROR);
+      return;
+    }
+
+  or_get_oid (&buf, &oos_oid);
+  oos_len = or_get_bigint (&buf, &rc);
+
+  if (rc != NO_ERROR || OID_ISNULL (&oos_oid))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      raw->data = NULL;
+      assert_release_error (er_errid () != NO_ERROR);
+      return;
+    }
+  /* recdes/oos_read APIs use int for sizes; the inline length must fit. An
+   * out-of-range bigint here is on-disk corruption, not a programmer bug. */
+  if (oos_len <= 0 || oos_len > (DB_BIGINT) INT_MAX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      raw->data = NULL;
+      assert_release_error (er_errid () != NO_ERROR);
+      return;
+    }
+
+  thread_p = thread_get_thread_entry_info ();
+  assert (thread_p);
+
+  if (recdes_allocate_data_area (raw, (int) oos_len) != NO_ERROR)
+    {
+      raw->data = NULL;
+      assert_release (false);
+      return;
+    }
+  if (oos_read (thread_p, oos_oid, *raw) != NO_ERROR)
+    {
+      recdes_free_data_area (raw);
+      raw->data = NULL;
+      assert_release (false);
+      return;
+    }
+}
+
+/*
  * heap_attrvalue_point_variable () -
  *
  *   return: NO_ERROR
  *   recdes(in): Record
  *   attr_info(in): The attribute information structure
  *   attrepr(in): The attribute structure
- *   data(out): Disk value pointer
- *   length(out): Disk value length
- *
+ *   raw(out): Disk value pointer + length
+ *   oos_owned_buffer(out): set to true iff this attribute is stored OOS. The
+ *                          caller then (a) owns raw->data and must call
+ *                          recdes_free_data_area, and (b) must request COPY
+ *                          mode in data_readval (PEEK would dangle).
  */
 static void
 heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr, RECDES * raw,
-			       bool * is_oos)
+			       bool * oos_owned_buffer)
 {
   int offset;
   int offset_size;
@@ -10638,67 +10711,10 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
   raw->data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location));
   if (OR_IS_OOS (offset))
     {
-      /* OOS branch contract.
-       *
-       * Heap-record inline OOS layout (since M2): [OID (8B) | full_length (8B bigint)].
-       * On success: raw->data points to a freshly allocated buffer (owned by raw)
-       *             holding the full reassembled OOS value of length oos_len.
-       * On failure: raw->data is NULL so consumers of (raw, *is_oos) observe
-       *             absence of data even if assert_release is compiled out.
-       */
-      OR_BUF buf;
-      OID oos_oid;
-      DB_BIGINT oos_len;
-      int rc = NO_ERROR;
-
-      buf.ptr = raw->data;
-      buf.endptr = recdes->data + recdes->length;
-      if (buf.endptr - buf.ptr < OR_OID_SIZE + OR_BIGINT_SIZE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  raw->data = NULL;
-	  assert_release_error (er_errid () != NO_ERROR);
-	  *is_oos = true;
-	  return;
-	}
-
-      or_get_oid (&buf, &oos_oid);
-      oos_len = or_get_bigint (&buf, &rc);
-
-      if (rc != NO_ERROR || OID_ISNULL (&oos_oid))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  raw->data = NULL;
-	  assert_release_error (er_errid () != NO_ERROR);
-	  *is_oos = true;
-	  return;
-	}
-      /* recdes/oos_read APIs use int for sizes; the inline length must fit. An
-       * out-of-range bigint here is on-disk corruption, not a programmer bug. */
-      if (oos_len <= 0 || oos_len > (DB_BIGINT) INT_MAX)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  raw->data = NULL;
-	  assert_release_error (er_errid () != NO_ERROR);
-	  *is_oos = true;
-	  return;
-	}
-
-      THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-      assert (thread_p);
-
-      if (recdes_allocate_data_area (raw, (int) oos_len) != NO_ERROR)
-	{
-	  raw->data = NULL;
-	  assert_release (false);
-	}
-      else if (oos_read (thread_p, oos_oid, *raw) != NO_ERROR)
-	{
-	  recdes_free_data_area (raw);
-	  raw->data = NULL;
-	  assert_release (false);
-	}
-      *is_oos = true;
+      /* Set the contract flag up-front so every helper exit (success or
+       * failure) uniformly leaves the caller in the OOS-owned-buffer state. */
+      *oos_owned_buffer = true;
+      heap_attrvalue_read_oos_inline (recdes, raw);
     }
   else
     {
@@ -10728,7 +10744,8 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
  *
  */
 static int
-heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw, bool is_oos)
+heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
+				     bool oos_owned_buffer)
 {
   const PR_TYPE *pr_type;
   OR_BUF buf;
@@ -10761,7 +10778,8 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
       pr_type = pr_type_from_id (attrepr->type);
       if (pr_type)
 	{
-	  rv = pr_type->data_readval (&buf, &value->dbvalue, attrepr->domain, raw->length, is_oos, NULL, 0);
+	  /* OOS-owned buffer ⇒ COPY (PEEK would dangle once the caller frees it). */
+	  rv = pr_type->data_readval (&buf, &value->dbvalue, attrepr->domain, raw->length, oos_owned_buffer, NULL, 0);
 	}
       value->state = HEAP_READ_ATTRVALUE;
       if (rv != NO_ERROR)
@@ -10791,7 +10809,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 {
   OR_ATTRIBUTE *attrepr;
   RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
-  bool is_oos = false;
+  bool oos_owned_buffer = false;
   int error;
 
   if (unlikely (IS_DEDUPLICATE_KEY_ATTR_ID (value->attrid)))
@@ -10826,20 +10844,18 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	}
       else
 	{
-	  heap_attrvalue_point_variable (recdes, attr_info, attrepr, &raw, &is_oos);
+	  heap_attrvalue_point_variable (recdes, attr_info, attrepr, &raw, &oos_owned_buffer);
 	}
     }
 
   /* the data pointer will point to either a current value in recdes or a default one in attrepr */
-  error = heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw, is_oos);
+  error = heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw, oos_owned_buffer);
   // TODO: heap_attrvalue_transform_to_dbvalue() used to PEEK &raw when creating value (dbvalue),
-  // but oos_insert() makes &raw point to newly allocated memory.
-  // Thus,
-  // 1) we need to free &raw only when is_oos is true.
-  // 2) we need to create dbvalue with mr_data_readval...(...COPY).
-  // This can be refactored later when dbvalue supports zero-copy to OOS data.
-  // oos_insert(OID) must be refactored to oos_read(PAGE_PTR, slotid, PEEK/COPY) and allow PEEK mode.
-  if (is_oos)
+  // but oos_insert() makes &raw point to newly allocated memory. Thus we must free
+  // &raw and request COPY in data_readval. Both decisions are gated by oos_owned_buffer.
+  // Revisit once dbvalue supports zero-copy to OOS data and oos_insert(OID) is refactored
+  // to oos_read(PAGE_PTR, slotid, PEEK/COPY) so PEEK mode becomes available.
+  if (oos_owned_buffer)
     {
       recdes_free_data_area (&raw);
     }
@@ -10859,7 +10875,7 @@ static int
 heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, HEAP_CACHE_ATTRINFO * attr_info)
 {
   RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
-  bool is_oos = false;
+  bool oos_owned_buffer = false;
   bool found = true;		/* Does attribute(att) exist in this disk representation? */
   int i;
 
@@ -10901,7 +10917,7 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 	    }
 	  else
 	    {			/* A variable attribute */
-	      heap_attrvalue_point_variable (recdes, attr_info, att, &raw, &is_oos);
+	      heap_attrvalue_point_variable (recdes, attr_info, att, &raw, &oos_owned_buffer);
 	    }
 	}
     }
@@ -10916,10 +10932,11 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
       OR_BUF buf;
 
       or_init (&buf, raw.data, raw.length);
-      att->domain->type->data_readval (&buf, value, att->domain, raw.length, is_oos, NULL, 0);
+      /* OOS-owned buffer ⇒ COPY (PEEK would dangle once we free it below). */
+      att->domain->type->data_readval (&buf, value, att->domain, raw.length, oos_owned_buffer, NULL, 0);
     }
 
-  if (is_oos)
+  if (oos_owned_buffer)
     {
       recdes_free_data_area (&raw);
     }
