@@ -69,8 +69,12 @@
 #include "dbtype.h"
 #include "thread_manager.hpp"
 #include "log_volids.hpp"
+#include "log_impl.h"
+#include "log_manager.h"
 #include "schema_system_catalog.hpp"
 #include "catalog_class.h"
+#include "system_metadata_version.h"
+#include "system_metadata_upgrade.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -113,6 +117,17 @@ static int insert_ha_apply_info (char *database_name, char *master_host_name, IN
 static int delete_all_slave_ha_apply_info (char *database_name, char *master_host_name);
 
 static bool check_ha_db_and_node_list (char *database_name, char *source_host_name);
+
+typedef struct
+{
+  const char *db_name;
+  bool check_only;
+  bool dry_run;
+  bool force;
+} UPGRADEDB_OPTIONS;
+
+static int upgradedb_rebuild_catalog (void);
+static void upgradedb_update_and_log_version (int target_version);
 
 
 /*
@@ -5177,4 +5192,196 @@ print_dump_tz_usage:
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DUMP_TZ, DUMP_TZ_MSG_USAGE),
 	   basename (arg->argv0));
   return err_status;
+}
+
+static int
+upgradedb_parse_options (UTIL_ARG_MAP * arg_map, UPGRADEDB_OPTIONS * opts)
+{
+  int flag_count;
+
+  if (utility_get_option_string_table_size (arg_map) != 1)
+    {
+      return ER_FAILED;
+    }
+
+  opts->db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (opts->db_name == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  opts->check_only = utility_get_option_bool_value (arg_map, UPGRADE_CHECK_S);
+  opts->dry_run = utility_get_option_bool_value (arg_map, UPGRADE_DRY_RUN_S);
+  opts->force = utility_get_option_bool_value (arg_map, UPGRADE_FORCE_S);
+
+  flag_count = opts->check_only + opts->dry_run + opts->force;
+  if (flag_count > 1)
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB,
+			      UPGRADEDB_MSG_MUTUALLY_EXCLUSIVE_OPTIONS));
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * Catcls is uninitialized because boot ran with boot_set_skip_check_ct_classes(true);
+ * compile it before flushing class/auth metadata.
+ */
+static int
+upgradedb_rebuild_catalog (void)
+{
+  if (catcls_compile_catalog_classes (NULL) != NO_ERROR
+      || sm_force_write_all_classes () != NO_ERROR
+      || au_force_write_new_auth () != NO_ERROR
+      || sm_update_all_catalog_statistics (STATS_WITH_FULLSCAN) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
+
+  return NO_ERROR;
+}
+
+static void
+upgradedb_update_and_log_version (int target_version)
+{
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+  UINT16 old_version = log_Gl.hdr.sysmeta_version;
+  UINT16 new_version = (UINT16) target_version;
+
+  log_Gl.hdr.sysmeta_version = new_version;
+  log_append_undoredo_data (NULL, RVLOG_SYSMETA_VERSION_UPDATE, &addr,
+			    sizeof (UINT16), sizeof (UINT16), &old_version, &new_version);
+}
+
+static int
+upgradedb_process (const UPGRADEDB_OPTIONS * opts, int current_version, int target_version)
+{
+  int error;
+
+  if (current_version == target_version)
+    {
+      return NO_ERROR;
+    }
+
+  if (opts->check_only)
+    {
+      return ER_FAILED;
+    }
+
+  if (current_version == 0 || current_version > target_version)
+    {
+      int msg_id = (current_version == 0) ? UPGRADEDB_MSG_NOT_UPGRADABLE
+					  : UPGRADEDB_MSG_DOWNGRADE_NOT_SUPPORTED;
+      PRINT_AND_LOG_ERR_MSG ("%s",
+			     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB, msg_id));
+      return ER_FAILED;
+    }
+
+  error = sysmeta_validate_upgrade_scripts (current_version, target_version);
+  if (error != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      return error;
+    }
+
+  error = sysmeta_print_upgrade_scripts (current_version, target_version);
+  if (error != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      return error;
+    }
+
+  if (opts->dry_run)
+    {
+      return NO_ERROR;
+    }
+
+  if (!opts->force)
+    {
+      char yn[2] = { 0, 0 };
+
+      fprintf (stdout,
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB, UPGRADEDB_MSG_PROMPT_CONTINUE));
+      scanf ("%1s", yn);
+      if (yn[0] != 'y')
+	{
+	  return NO_ERROR;
+	}
+    }
+
+  error = sysmeta_execute_upgrade_scripts (current_version, target_version);
+  if (error != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      db_abort_transaction ();
+      return error;
+    }
+
+  error = upgradedb_rebuild_catalog ();
+  if (error != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      db_abort_transaction ();
+      return error;
+    }
+
+  upgradedb_update_and_log_version (target_version);
+  error = db_commit_transaction ();
+  if (error != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      return error;
+    }
+
+  return NO_ERROR;
+}
+
+int
+upgradedb (UTIL_FUNCTION_ARG * arg)
+{
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+  UPGRADEDB_OPTIONS opts;
+  int current_version;
+  int target_version = SYSTEM_METADATA_VERSION;
+  int error;
+
+  if (upgradedb_parse_options (arg_map, &opts) != NO_ERROR)
+    {
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB, UPGRADEDB_MSG_USAGE),
+	       basename (arg->argv0));
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      return EXIT_FAILURE;
+    }
+
+  if (check_database_name (opts.db_name))
+    {
+      return EXIT_FAILURE;
+    }
+
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", opts.db_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  db_login ("DBA", NULL);
+
+  /* Bypass the boot-time sysmeta version check; this utility is the upgrade path itself. */
+  boot_set_skip_check_ct_classes (true);
+
+  if (db_restart (arg->command_name, TRUE, opts.db_name) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      return EXIT_FAILURE;
+    }
+
+  current_version = (int) log_Gl.hdr.sysmeta_version;
+  error = upgradedb_process (&opts, current_version, target_version);
+
+  db_shutdown ();
+  return (error != NO_ERROR) ? EXIT_FAILURE : EXIT_SUCCESS;
 }

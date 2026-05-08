@@ -963,6 +963,21 @@ static GETOPT_LONG ua_Memmon_Option[] = {
   {0, 0, 0, 0}
 };
 
+static UTIL_ARG_MAP ua_Upgradedb_Option_Map[] = {
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {UPGRADE_CHECK_S, {ARG_BOOLEAN}, {0}},
+  {UPGRADE_DRY_RUN_S, {ARG_BOOLEAN}, {0}},
+  {UPGRADE_FORCE_S, {ARG_BOOLEAN}, {0}},
+  {0, {0}, {0}}
+};
+
+static GETOPT_LONG ua_Upgradedb_Option[] = {
+  {UPGRADE_CHECK_L, 0, 0, UPGRADE_CHECK_S},
+  {UPGRADE_DRY_RUN_L, 0, 0, UPGRADE_DRY_RUN_S},
+  {UPGRADE_FORCE_L, 0, 0, UPGRADE_FORCE_S},
+  {0, 0, 0, 0}
+};
+
 static UTIL_MAP ua_Utility_Map[] = {
   {CREATEDB, SA_ONLY, 2, UTIL_OPTION_CREATEDB, "createdb", ua_Create_Option, ua_Create_Option_Map},
   {RENAMEDB, SA_ONLY, 2, UTIL_OPTION_RENAMEDB, "renamedb", ua_Rename_Option, ua_Rename_Option_Map},
@@ -1007,6 +1022,7 @@ static UTIL_MAP ua_Utility_Map[] = {
   {TDE, SA_CS, 1, UTIL_OPTION_TDE, "tde", ua_Tde_Option, ua_Tde_Option_Map},
   {FLASHBACK, CS_ONLY, 2, UTIL_OPTION_FLASHBACK, "flashback", ua_Flashback_Option, ua_Flashback_Option_Map},
   {MEMMON, CS_ONLY, 1, UTIL_OPTION_MEMMON, "memmon", ua_Memmon_Option, ua_Memmon_Option_Map},
+  {UPGRADEDB, SA_ONLY, 1, UTIL_OPTION_UPGRADEDB, "upgradedb", ua_Upgradedb_Option, ua_Upgradedb_Option_Map},
   {-1, -1, 0, 0, 0, 0, 0}
 };
 
