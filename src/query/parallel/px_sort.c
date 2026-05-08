@@ -70,6 +70,7 @@ sort_copy_sort_info (THREAD_ENTRY * thread_p, SORT_INFO ** dest_sort_info, SORT_
 
   sort_info->output_file = NULL;
   sort_info->input_file = NULL;
+  sort_info->px_state = NULL;
 
 end:
   if (error != NO_ERROR)

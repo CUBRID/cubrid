@@ -155,6 +155,7 @@ struct SORT_INFO
   int flag;			/* to open output list file */
   int parallelism;
   void *orderby_stats;
+  void *px_state;		/* per-worker sector scan state (ORDER_BY parallel only) */
 };
 
 extern int sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GET_FUNC * get_fn,

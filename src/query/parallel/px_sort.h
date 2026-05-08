@@ -106,8 +106,6 @@ typedef struct sort_param SORT_PARAM;
 void sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param);
 int sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param, int parallel_num);
 int sort_copy_sort_info (THREAD_ENTRY * thread_p, SORT_INFO ** dest_sort_info, SORT_INFO * src_sort_info);
-int sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param,
-				int parallel_num);
 int sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param,
 				 int parallel_num);
 int sort_merge_nruns (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
