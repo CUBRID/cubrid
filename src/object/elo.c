@@ -352,32 +352,34 @@ error_return:
 }
 
 /*
- * elo_copy_with_prefix () - Similar to the LOB_PERMANENT_CREATED case in elo_copy(),
-                             but called when adding a prefix to the destination path during copy.
+ * elo_copy_with_prefix () - Relocate an ELO to a new path with a given prefix.
  * return: error code
- * elo(in): DB_ELO structure that represents the original source file
- * prefix(in): prefix that will be added to the destination path when copying
- * dest(out): DB_ELO structure that represents the copied file
+ * src_elo(in): DB_ELO structure representing the original source file.
+ * prefix(in): Path prefix to be added to the destination location.
+ * dest_elo(out): DB_ELO structure representing the relocated file.
  *
- * Note: CUBRID supports only the ES_POSIX type, so only the ES_POSIX case is handled.
+ * Note: This function operates similarly to elo_copy (), but with the following differences:
+ * 1. It adds a prefix to the destination path.
+ * 2. In LOB_TRANSIENT_CREATED or LOB_PERMANENT_DELETED states, it performs a rename followed by a move operation.
+ * 3. Currently, CUBRID supports only the ES_POSIX type, so only the ES_POSIX case is handled.
  */
 int
-elo_copy_with_prefix (DB_ELO * elo, const char *prefix, DB_ELO * dest)
+elo_copy_with_prefix (DB_ELO * src_elo, const char *prefix, DB_ELO * dest_elo)
 {
   int ret = NO_ERROR;
   ES_URI out_uri;
   char *locator = NULL;
   char *meta_data = NULL;
 
-  assert (elo != NULL);
-  assert (dest != NULL);
-  assert (elo->type == ELO_FBO);
-  assert (elo->locator != NULL);
+  assert (src_elo != NULL);
+  assert (prefix != NULL);
+  assert (dest_elo != NULL);
+  assert (src_elo->type == ELO_FBO);
+  assert (src_elo->locator != NULL);
 
-  /* create elo instance and copy file */
-  if (elo->meta_data != NULL)
+  if (src_elo->meta_data != NULL)
     {
-      meta_data = db_private_strdup (NULL, elo->meta_data);
+      meta_data = db_private_strdup (NULL, src_elo->meta_data);
       if (meta_data == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -386,37 +388,107 @@ elo_copy_with_prefix (DB_ELO * elo, const char *prefix, DB_ELO * dest)
 	  goto error_return;
 	}
     }
-  /* CUBRID supports only the ES_POSIX type, so the ELO_NEEDS_TRANSACTION() check is not performed. */
 
-  /* if it uses external storage, do transaction work */
-  elo->es_type = es_get_type (elo->locator);
-  if (elo->es_type == ES_POSIX)
+  src_elo->es_type = es_get_type (src_elo->locator);
+  /* CUBRID supports only the ES_POSIX type, so the ELO_NEEDS_TRANSACTION() check is not performed. */
+  if (src_elo->es_type == ES_POSIX)
     {
-      ret = es_copy_file_with_prefix (elo->locator, elo->meta_data, prefix, out_uri);
-      if (ret != NO_ERROR)
+      LOB_LOCATOR_STATE state;
+      ES_URI real_locator;
+
+      state = lob_locator_find (src_elo->locator, real_locator);
+      switch (state)
 	{
+	case LOB_TRANSIENT_CREATED:
+	case LOB_PERMANENT_DELETED:
+	  {
+	    ret = es_move_file_with_prefix (real_locator, src_elo->meta_data, prefix, out_uri);
+	    if (ret != NO_ERROR)
+	      {
+		goto error_return;
+	      }
+
+	    locator = db_private_strdup (NULL, out_uri);
+	    if (locator == NULL)
+	      {
+		assert (er_errid () != NO_ERROR);
+		ret = er_errid ();
+		es_delete_file (out_uri);
+		goto error_return;
+	      }
+
+	    ret = lob_locator_change_state (src_elo->locator, locator, LOB_PERMANENT_CREATED);
+	    if (ret != NO_ERROR)
+	      {
+		es_delete_file (out_uri);
+		goto error_return;
+	      }
+	  }
+	  break;
+
+	case LOB_TRANSIENT_DELETED:
+	  {
+	    locator = db_private_strdup (NULL, src_elo->locator);
+	    if (locator == NULL)
+	      {
+		assert (er_errid () != NO_ERROR);
+		ret = er_errid ();
+		goto error_return;
+	      }
+	    ret = lob_locator_drop (src_elo->locator);
+	    if (ret != NO_ERROR)
+	      {
+		goto error_return;
+	      }
+	  }
+	  break;
+
+	case LOB_PERMANENT_CREATED:
+	case LOB_NOT_FOUND:
+	  {
+	    ret = es_copy_file_with_prefix (real_locator, src_elo->meta_data, prefix, out_uri);
+	    if (ret != NO_ERROR)
+	      {
+		goto error_return;
+	      }
+	    locator = db_private_strdup (NULL, out_uri);
+	    if (locator == NULL)
+	      {
+		assert (er_errid () != NO_ERROR);
+		ret = er_errid ();
+		es_delete_file (out_uri);
+		goto error_return;
+	      }
+	    ret = lob_locator_add (locator, LOB_PERMANENT_CREATED);
+	    if (ret != NO_ERROR)
+	      {
+		es_delete_file (out_uri);
+		goto error_return;
+	      }
+	  }
+	  break;
+
+	case LOB_UNKNOWN:
+	  assert (er_errid () != NO_ERROR);
+	  ret = er_errid ();
 	  goto error_return;
-	}
-      locator = db_private_strdup (NULL, out_uri);
-      if (locator == NULL)
-	{
-	  es_delete_file (out_uri);
-	  goto error_return;
-	}
-      ret = lob_locator_add (locator, LOB_PERMANENT_CREATED);
-      if (ret != NO_ERROR)
-	{
+
+	default:
+	  assert (false);
+	  ret = ER_FAILED;
 	  goto error_return;
 	}
     }
   else
     {
+      assert (false);
+      ret = ER_ES_GENERAL;
       goto error_return;
     }
 
-  *dest = *elo;
-  dest->locator = locator;
-  dest->meta_data = meta_data;
+  *dest_elo = *src_elo;
+  dest_elo->locator = locator;
+  dest_elo->meta_data = meta_data;
 
   return NO_ERROR;
 

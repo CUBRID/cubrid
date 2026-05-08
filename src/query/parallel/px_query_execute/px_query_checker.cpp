@@ -21,6 +21,7 @@
  */
 
 #include "px_query_checker.hpp"
+#include "xasl_analytic.hpp"
 #include "xasl_predicate.hpp"
 #include <set>
 
@@ -47,6 +48,7 @@ namespace parallel_query_execute
       void check_like_eval_term (LIKE_EVAL_TERM *like_eval_term);
       void check_rlike_eval_term (RLIKE_EVAL_TERM *rlike_eval_term);
       void check_regu_var_list (REGU_VARIABLE_LIST regu_var_list);
+      void check_analytic_eval_list (ANALYTIC_EVAL_TYPE *a_eval_list);
       void check_xasl_node (XASL_NODE *xasl);
       void check_access_spec_type (ACCESS_SPEC_TYPE *access_spec_type);
       std::set<XASL_NODE *> get_child_xasl_set_recursive (XASL_NODE *xasl);
@@ -289,6 +291,21 @@ namespace parallel_query_execute
       }
   }
 
+  void xasl_checker::check_analytic_eval_list (ANALYTIC_EVAL_TYPE *a_eval_list)
+  {
+    for (ANALYTIC_EVAL_TYPE *eval = a_eval_list; eval != nullptr; eval = eval->next)
+      {
+	for (ANALYTIC_TYPE *node = eval->head; node != nullptr; node = node->next)
+	  {
+	    check_regu_var (&node->operand);
+	    if (node->function == PT_PERCENTILE_CONT || node->function == PT_PERCENTILE_DISC)
+	      {
+		check_regu_var (node->info.percentile.percentile_reguvar);
+	      }
+	  }
+      }
+  }
+
   void xasl_checker::check_xasl_node (XASL_NODE *xasl)
   {
     if (!xasl)
@@ -316,7 +333,34 @@ namespace parallel_query_execute
     check_pred_expr (xasl->instnum_pred);
     check_regu_var (xasl->limit_offset);
     check_regu_var (xasl->limit_row_count);
-
+    if (xasl->type == BUILDLIST_PROC)
+      {
+	if (xasl->proc.buildlist.a_outptr_list)
+	  {
+	    check_regu_var_list (xasl->proc.buildlist.a_outptr_list->valptrp);
+	  }
+	if (xasl->proc.buildlist.a_outptr_list_ex)
+	  {
+	    check_regu_var_list (xasl->proc.buildlist.a_outptr_list_ex->valptrp);
+	  }
+	if (xasl->proc.buildlist.a_outptr_list_interm)
+	  {
+	    check_regu_var_list (xasl->proc.buildlist.a_outptr_list_interm->valptrp);
+	  }
+	if (xasl->proc.buildlist.g_outptr_list)
+	  {
+	    check_regu_var_list (xasl->proc.buildlist.g_outptr_list->valptrp);
+	  }
+	check_regu_var_list (xasl->proc.buildlist.a_regu_list);
+	check_regu_var_list (xasl->proc.buildlist.a_scan_regu_list);
+	check_regu_var_list (xasl->proc.buildlist.g_regu_list);
+	check_regu_var_list (xasl->proc.buildlist.g_hk_scan_regu_list);
+	check_regu_var_list (xasl->proc.buildlist.g_hk_sort_regu_list);
+	check_regu_var_list (xasl->proc.buildlist.g_scan_regu_list);
+	check_pred_expr (xasl->proc.buildlist.g_having_pred);
+	check_pred_expr (xasl->proc.buildlist.g_grbynum_pred);
+	check_analytic_eval_list (xasl->proc.buildlist.a_eval_list);
+      }
   }
 
   void xasl_checker::check_access_spec_type (ACCESS_SPEC_TYPE *access_spec_type)
