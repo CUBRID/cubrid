@@ -1218,7 +1218,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_VACUUM:
-      if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
+      if (au_is_dba_group_member (Au_user))
 	{
 	  error_code = db_vacuum ();
 	  if (error_code != NO_ERROR)
@@ -1232,7 +1232,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
       else
 	{
-	  fprintf (csql_Output_fp, "Running vacuum is only allowed for the csql started with --sysadm\n");
+	  fprintf (csql_Output_fp, "Running vacuum is only allowed for users in the DBA group\n");
 	}
       break;
 
