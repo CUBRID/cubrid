@@ -24,13 +24,17 @@
 
 struct oos_record_header
 {
-  int total_size;
-  int chunk_index;
-  OID next_chunk_oid;
+  int total_data_length;	/* total length of user data across all chunks (excluding OOS headers) */
+  int chunk_index;		/* 0-based index of this chunk in the chain */
+  OID next_chunk_oid;		/* OID of next chunk, or NULL OID if this is the last */
 };
 using OOS_RECORD_HEADER = struct oos_record_header;
 
 #define OOS_RECORD_HEADER_SIZE ((int) sizeof (OOS_RECORD_HEADER))
+
+/* Alias for a RECDES whose first OOS_RECORD_HEADER_SIZE bytes are the OOS header.
+ * Documentation only — no compile-time distinction from RECDES. */
+using OOS_RECDES = RECDES;
 
 #define OOS_NUM_BEST_SPACESTATS 10
 

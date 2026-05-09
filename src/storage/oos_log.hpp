@@ -25,6 +25,7 @@
 
 #include <cstdio>
 #include <cstdarg>
+#include <cstdlib>
 #include <ctime>
 #include <cstring>
 #include <atomic>
@@ -120,20 +121,42 @@ namespace oos_log
     std::vsnprintf (body, sizeof (body), fmt, args);
     va_end (args);
 
-    // stderr
-    std::fputs (header, stderr);
-    std::fputs (body, stderr);
-    std::fputc ('\n', stderr);
-    std::fflush (stderr);
-
-    // file: $CUBRID/log/oos.log
+    // file: $CUBRID/log/oos.log is always the primary sink.  Writing to an
+    // inherited stderr tty corrupts the controlling terminal (cgdb UI, or a
+    // foreground csql/readline session that has switched the tty to raw mode),
+    // so stderr is opt-in via the CUBRID_OOS_LOG_STDERR environment variable
+    // (intended for local development, not for daemonized cub_server).
     FILE *logfp = oos_log_get_file();
+    bool file_written = false;
     if (logfp != nullptr)
       {
 	std::fputs (header, logfp);
 	std::fputs (body, logfp);
 	std::fputc ('\n', logfp);
 	std::fflush (logfp);
+	file_written = true;
+      }
+
+    // Presence-only check: any value including "0"/"false"/"" enables stderr.
+    // To disable, the variable must be unset.  This matches the documented
+    // opt-in contract (PR description) and avoids bike-shedding over truthy
+    // string parsing.
+    static const bool stderr_enabled = (std::getenv ("CUBRID_OOS_LOG_STDERR") != nullptr);
+
+    // Fallback: if the file sink is unavailable (e.g. $CUBRID unset, log dir
+    // unwritable, fopen failed) AND the message is ERROR/WARN, force stderr
+    // so that release-build diagnostics are never silently dropped — this
+    // preserves the contract documented at the bottom of this header
+    // ("oos_error and oos_warn are always active").
+    const bool force_stderr_fallback =
+	    !file_written && static_cast<int> (level) >= static_cast<int> (OosLogLevel::WARN);
+
+    if (stderr_enabled || force_stderr_fallback)
+      {
+	std::fputs (header, stderr);
+	std::fputs (body, stderr);
+	std::fputc ('\n', stderr);
+	std::fflush (stderr);
       }
   }
 
