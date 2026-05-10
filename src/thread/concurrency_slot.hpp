@@ -23,6 +23,10 @@
 #ifndef _CONCURRENCY_SLOT_HPP_
 #define _CONCURRENCY_SLOT_HPP_
 
+#if !defined (SERVER_MODE)
+#error Wrong module
+#endif // not SERVER_MODE
+
 #include "thread_entry.hpp"
 #include "thread_daemon.hpp"
 
@@ -89,28 +93,39 @@ namespace cubthread
     public:
       ~concurrency_slot ();
 
+      concurrency_slot_pool *get_owner_pool ();
+
+      void set_holder_pool (concurrency_slot_pool *holder_pool);
+      concurrency_slot_pool *get_holder_pool ();
+
+      void start_waiting ();
+      void stop_waiting ();
+
     private:
       concurrency_slot (concurrency_slot_pool *owner_pool);
 
       concurrency_slot_pool *const m_owner_pool;
+      concurrency_slot_pool *m_holder_pool;
 
       bool m_wait; // soft wait
       std::chrono::time_point<std::chrono::steady_clock> m_wait_since;
+
+      // guarded by the holder pool mutex (core mutex)
   };
 
   class concurrency_slot_pool : public concurrency_slot_subscriber
   {
     public:
-      concurrency_slot_pool ();
+      concurrency_slot_pool (std::mutex &mtx);
       ~concurrency_slot_pool ();
 
       virtual void initialize (void *identifier, std::size_t concurrency);
 
       // for worker
-      std::unique_ptr<concurrency_slot> try_acquire_slot ();
-      std::unique_ptr<concurrency_slot> acquire_slot ();
+      std::unique_ptr<concurrency_slot> try_acquire_slot (bool has_mutex = true);
+      std::unique_ptr<concurrency_slot> acquire_slot (bool has_mutex = true);
 
-      void release_slot (std::unique_ptr<concurrency_slot> slot);
+      void release_slot (std::unique_ptr<concurrency_slot> slot, bool has_mutex = true);
 
       // called by the daemon to borrow surplus slots in batches of SLOT_SURPLUS_THRESHOLD.
       bool borrow_surplus_slots ();
@@ -123,7 +138,8 @@ namespace cubthread
 
       std::list<entry *> m_wait_queue; // list of entries waiting to acquire a slot
 
-      std::mutex m_mutex; // guard for m_available_slots, m_surplus_since and m_wait_queue
+      // slot pool state is guarded by the owning core mutex
+      std::mutex *m_mutex;
   };
 
   // concurrency_slot_daemon
