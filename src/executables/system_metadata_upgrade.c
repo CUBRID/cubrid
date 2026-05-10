@@ -43,7 +43,6 @@
 
 static void sysmeta_upgrade_script_path (int from_v, int to_v, char *out, size_t outsize);
 static int sysmeta_load_decoded_script (int from_v, int to_v, char **out_buf, size_t * out_len);
-static int sysmeta_execute_sql_buffer (char *buf, size_t len);
 
 static void
 sysmeta_upgrade_script_path (int from_v, int to_v, char *out, size_t outsize)
@@ -174,7 +173,7 @@ sysmeta_print_upgrade_scripts (int from_version, int to_version)
   return NO_ERROR;
 }
 
-static int
+int
 sysmeta_execute_sql_buffer (char *buf, size_t len)
 {
   FILE *fp = NULL;

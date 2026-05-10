@@ -24,8 +24,11 @@
 #ifndef _SYSTEM_METADATA_UPGRADE_H_
 #define _SYSTEM_METADATA_UPGRADE_H_
 
+#include <stddef.h>
+
 extern int sysmeta_validate_upgrade_scripts (int from_version, int to_version);
 extern int sysmeta_print_upgrade_scripts (int from_version, int to_version);
 extern int sysmeta_execute_upgrade_scripts (int from_version, int to_version);
+extern int sysmeta_execute_sql_buffer (char *buf, size_t len);
 
 #endif /* _SYSTEM_METADATA_UPGRADE_H_ */

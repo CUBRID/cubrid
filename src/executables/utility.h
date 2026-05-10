@@ -1811,6 +1811,9 @@ typedef struct _ha_config
 #define UPGRADE_DRY_RUN_L                       "dry-run"
 #define UPGRADE_FORCE_S                         'f'
 #define UPGRADE_FORCE_L                         "force"
+/* QA-only: read internal/ script names from a list file. Not advertised in usage. */
+#define UPGRADE_APPLY_SCRIPT_LIST_S             14202
+#define UPGRADE_APPLY_SCRIPT_LIST_L             "apply-script-list"
 
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
