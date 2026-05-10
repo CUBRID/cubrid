@@ -42,14 +42,6 @@ namespace cubthread
     return os::resources::cpu::effective ().adjusted_max;
   }
 
-  void
-  wp_handle_system_error (const char *message, const std::system_error &e)
-  {
-    er_print_callstack (ARG_FILE_LINE, "%s - throws err = %d: %s\n", message, e.code().value(), e.what ());
-    assert (false);
-    throw e;
-  }
-
   //////////////////////////////////////////////////////////////////////////
   // [optional] useful when using perf
   //////////////////////////////////////////////////////////////////////////

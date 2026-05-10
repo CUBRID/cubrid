@@ -34,6 +34,9 @@
 #include "memory_alloc.h"
 #include "page_buffer.h"
 #include "resource_tracker.hpp"
+#if defined (SERVER_MODE)
+#include "concurrency_slot.hpp"
+#endif
 
 #include <cstring>
 #include <sstream>
@@ -95,9 +98,6 @@ namespace cubthread
     , wakeup_cond ()
     , private_heap_id (0)
     , conn_entry (NULL)
-#if defined (SERVER_MODE)
-    , slot (nullptr)
-#endif
     , xasl_unpack_info_ptr (NULL)
     , xasl_errcode (0)
     , xasl_recursion_depth (0)
@@ -151,6 +151,9 @@ namespace cubthread
     , m_holder_anchor (NULL)
     , uuidv7_last_ms (0)
     , uuidv7_seq (0)
+#if defined (SERVER_MODE)
+    , m_slot (nullptr)
+#endif
       // private:
     , m_id ()
     , m_error ()
@@ -467,6 +470,20 @@ namespace cubthread
     return m_lf_tran_index;
   }
 
+#if defined (SERVER_MODE)
+  void
+  entry::start_waiting ()
+  {
+    m_slot->start_waiting ();
+  }
+
+  void
+  entry::stop_waiting ()
+  {
+    m_slot->stop_waiting ();
+  }
+#endif
+
 } // namespace cubthread
 
 //////////////////////////////////////////////////////////////////////////
@@ -475,6 +492,10 @@ namespace cubthread
 
 using thread_clock_type = std::chrono::system_clock;
 
+static void thread_prepare_suspension (cubthread::entry *thread_p, cubthread::entry::status &status,
+				       thread_resume_suspend_status suspended_reason, thread_clock_type::time_point &start_time, void *&holder);
+static void thread_prepare_resumption (cubthread::entry *thread_p, cubthread::entry::status status,
+				       thread_resume_suspend_status suspended_reason, thread_clock_type::time_point start_time, void *holder);
 static void thread_wakeup_internal (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason,
 				    bool had_mutex);
 static void thread_check_suspend_reason_and_wakeup_internal (cubthread::entry *thread_p,
@@ -496,51 +517,31 @@ thread_timeval_add_usec (const std::chrono::microseconds &usec, struct timeval &
 }
 
 /*
- * thread_suspend_wakeup_and_unlock_entry() -
+ * thread_suspend_wakeup_and_unlock_entry ()
  *   return:
  *   thread_p(in):
  *   suspended_reason(in):
  *
- * Note: this function must be called by current thread also, the lock must have already been acquired.
+ * Note: this function must be called by the current thread with th_entry_lock already acquired.
  */
 void
 thread_suspend_wakeup_and_unlock_entry (cubthread::entry *thread_p, thread_resume_suspend_status suspended_reason)
 {
-  cubthread::entry::status old_status;
+  thread_clock_type::time_point start_time;
+  cubthread::entry::status status;
+  void *holder = nullptr;
 
-  thread_clock_type::time_point start_time_pt;
-  std::chrono::microseconds usecs;
+  thread_prepare_suspension (thread_p, status, suspended_reason, start_time, holder);
 
-  assert (thread_p->m_status == cubthread::entry::status::TS_RUN
-	  || thread_p->m_status == cubthread::entry::status::TS_CHECK);
-  old_status = thread_p->m_status;
-  thread_p->m_status = cubthread::entry::status::TS_WAIT;
-
-  thread_p->resume_status = suspended_reason;
-
-  if (thread_p->event_stats.trace_slow_query == true)
+  // wait until the wakeup predicate is true
+  while (thread_p->resume_status == suspended_reason)
     {
-      start_time_pt = thread_clock_type::now ();
+      pthread_cond_wait (&thread_p->wakeup_cond, &thread_p->th_entry_lock);
     }
 
-  pthread_cond_wait (&thread_p->wakeup_cond, &thread_p->th_entry_lock);
+  thread_prepare_resumption (thread_p, status, suspended_reason, start_time, holder);
 
-  if (thread_p->event_stats.trace_slow_query == true)
-    {
-      usecs = std::chrono::duration_cast<std::chrono::microseconds> (thread_clock_type::now () - start_time_pt);
-
-      if (suspended_reason == THREAD_LOCK_SUSPENDED)
-	{
-	  thread_timeval_add_usec (usecs, thread_p->event_stats.lock_waits);
-	}
-      else if (suspended_reason == THREAD_PGBUF_SUSPENDED)
-	{
-	  thread_timeval_add_usec (usecs, thread_p->event_stats.latch_waits);
-	}
-    }
-
-  thread_p->m_status = old_status;
-
+  // unlock the th_entry_lock
   pthread_mutex_unlock (&thread_p->th_entry_lock);
 }
 
@@ -555,49 +556,171 @@ int
 thread_suspend_timeout_wakeup_and_unlock_entry (cubthread::entry *thread_p, struct timespec *time_p,
     thread_resume_suspend_status suspended_reason)
 {
-  int r;
-  cubthread::entry::status old_status;
-  thread_clock_type::time_point start_time_pt;
-  std::chrono::microseconds usecs;
+  thread_clock_type::time_point start_time;
+  cubthread::entry::status status;
+  void *holder = nullptr;
   int error = NO_ERROR;
+  int r;
 
-  assert (thread_p->m_status == cubthread::entry::status::TS_RUN
-	  || thread_p->m_status == cubthread::entry::status::TS_CHECK);
-  old_status = thread_p->m_status;
-  thread_p->m_status = cubthread::entry::status::TS_WAIT;
+  // TODO: there may be no need to call the start_waiting when the steal threshold is shorter than time_p
+  thread_prepare_suspension (thread_p, status, suspended_reason, start_time, holder);
 
-  thread_p->resume_status = suspended_reason;
-
-  if (thread_p->event_stats.trace_slow_query == true && suspended_reason == THREAD_PGBUF_SUSPENDED)
+  // wait until timeout or the wakeup predicate changes
+  while (thread_p->resume_status == suspended_reason)
     {
-      start_time_pt = thread_clock_type::now ();
+      r = pthread_cond_timedwait (&thread_p->wakeup_cond, &thread_p->th_entry_lock, time_p);
+      if (r != 0 && r != ETIMEDOUT)
+	{
+	  // preserve existing behavior: leave th_entry_lock held on pthread error
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_TIMEDWAIT, 0);
+	  return ER_CSS_PTHREAD_COND_TIMEDWAIT;
+	}
+      if (r == ETIMEDOUT)
+	{
+	  error = ER_CSS_PTHREAD_COND_TIMEDOUT;
+	  break;
+	}
     }
 
-  r = pthread_cond_timedwait (&thread_p->wakeup_cond, &thread_p->th_entry_lock, time_p);
+  thread_prepare_resumption (thread_p, status, suspended_reason, start_time, holder);
 
-  if (thread_p->event_stats.trace_slow_query == true && suspended_reason == THREAD_PGBUF_SUSPENDED)
-    {
-      usecs = std::chrono::duration_cast < std::chrono::microseconds > (thread_clock_type::now () - start_time_pt);
-
-      thread_timeval_add_usec (usecs, thread_p->event_stats.latch_waits);
-    }
-
-  if (r != 0 && r != ETIMEDOUT)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_TIMEDWAIT, 0);
-      return ER_CSS_PTHREAD_COND_TIMEDWAIT;
-    }
-
-  if (r == ETIMEDOUT)
-    {
-      error = ER_CSS_PTHREAD_COND_TIMEDOUT;
-    }
-
-  thread_p->m_status = old_status;
-
+  // unlock the th_entry_lock
   pthread_mutex_unlock (&thread_p->th_entry_lock);
 
   return error;
+}
+
+/*
+ * thread_prepare_suspension ()
+ *   return:
+ *   thread_p(in):
+ *   suspended_reason(in):
+ */
+static void
+thread_prepare_suspension (cubthread::entry *thread_p, cubthread::entry::status &status,
+			   thread_resume_suspend_status suspended_reason, thread_clock_type::time_point &start_time, void *&holder)
+{
+  assert (thread_p->m_status == cubthread::entry::status::TS_RUN
+	  || thread_p->m_status == cubthread::entry::status::TS_CHECK);
+  status = thread_p->m_status;
+  thread_p->m_status = cubthread::entry::status::TS_WAIT;
+  thread_p->resume_status = suspended_reason;
+
+#if defined (SERVER_MODE)
+  // concurrency control
+  if (thread_p->m_slot)
+    {
+      switch (suspended_reason)
+	{
+	case THREAD_CSS_QUEUE_SUSPENDED:
+	case THREAD_LOCK_SUSPENDED:
+	  // this entry belongs to an elastic worker pool
+	  holder = static_cast<void *> (thread_p->m_slot->get_holder_pool ());
+	  assert (holder);
+	  thread_p->start_waiting ();
+	  break;
+
+	default:
+	  break;
+	}
+    }
+#endif
+
+  // trace
+  if (thread_p->event_stats.trace_slow_query == true)
+    {
+      switch (suspended_reason)
+	{
+	case THREAD_LOCK_SUSPENDED:
+	case THREAD_PGBUF_SUSPENDED:
+	  start_time = thread_clock_type::now ();
+	  break;
+
+	default:
+	  break;
+	}
+    }
+}
+
+/*
+ * thread_prepare_resumption ()
+ *   return:
+ *   thread_p(in):
+ *   suspended_reason(in):
+ */
+static void
+thread_prepare_resumption (cubthread::entry *thread_p, cubthread::entry::status status,
+			   thread_resume_suspend_status suspended_reason, thread_clock_type::time_point start_time, void *holder)
+{
+#if defined (SERVER_MODE)
+  std::unique_ptr<cubthread::concurrency_slot> slot;
+#endif
+  std::chrono::microseconds usecs;
+
+  // trace
+  if (thread_p->event_stats.trace_slow_query == true)
+    {
+      usecs = std::chrono::duration_cast<std::chrono::microseconds> (thread_clock_type::now () - start_time);
+      switch (suspended_reason)
+	{
+	case THREAD_LOCK_SUSPENDED:
+	  thread_timeval_add_usec (usecs, thread_p->event_stats.lock_waits);
+	  break;
+
+	case THREAD_PGBUF_SUSPENDED:
+	  thread_timeval_add_usec (usecs, thread_p->event_stats.latch_waits);
+	  break;
+
+	default:
+	  break;
+	}
+    }
+
+#if defined (SERVER_MODE)
+  // concurrency control
+  if (holder)
+    {
+      switch (suspended_reason)
+	{
+	case THREAD_CSS_QUEUE_SUSPENDED:
+	case THREAD_LOCK_SUSPENDED:
+	  // this thread is managed by concurrency-slot control
+	  if (thread_p->m_slot)
+	    {
+	      // 1. the entry still holds its slot (wait time < threshold)
+	      thread_p->stop_waiting ();
+	    }
+	  else
+	    {
+	      // 2. wait until the slot is acquired (wait time >= threshold)
+	      pthread_mutex_unlock (&thread_p->th_entry_lock);
+
+	      if (thread_p->event_stats.trace_slow_query == true)
+		{
+		  start_time = thread_clock_type::now ();
+		}
+
+	      slot = static_cast<cubthread::concurrency_slot_pool *> (holder)->acquire_slot (false);
+
+	      pthread_mutex_lock (&thread_p->th_entry_lock);
+
+	      if (thread_p->event_stats.trace_slow_query == true)
+		{
+		  usecs = std::chrono::duration_cast<std::chrono::microseconds> (thread_clock_type::now () - start_time);
+		  thread_timeval_add_usec (usecs, thread_p->event_stats.slot_waits);
+		}
+
+	      thread_p->m_slot = std::move (slot);
+	    }
+	  break;
+
+	default:
+	  break;
+	}
+    }
+#endif
+
+  thread_p->m_status = status;
 }
 
 /*
