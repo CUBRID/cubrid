@@ -5252,6 +5252,7 @@ upgradedb_rebuild_catalog (void)
   return NO_ERROR;
 }
 
+/* Header flush is lazy. */
 static void
 upgradedb_update_and_log_version (int target_version)
 {
