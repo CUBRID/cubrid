@@ -86,9 +86,8 @@ struct boot_client_credential : public clientids
 {
   std::string db_name;		/* DB_MAX_IDENTIFIER_LENGTH */
   /*
-   * FIX-ME: Since db_password is always an empty string and never used, it’s a dead variable.
-   * But because removing it might trigger runtime issues during Rolling Upgrades,
-   * we’ll keep it in the structure for now to ensure backward compatibility
+   * FIXME: The db_password remains an empty string after initialization; it is never assigned a functional value.
+   * But, We are preserving it in the schema to avoid potential runtime failures during rolling upgrades and to maintain backward compatibility
   */
   std::string db_password;	/* DB_MAX_PASSWORD_LENGTH */
   char *preferred_hosts;	/* LINE_MAX */
