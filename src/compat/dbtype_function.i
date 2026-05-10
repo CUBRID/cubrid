@@ -127,6 +127,9 @@ STATIC_INLINE int db_make_date (DB_VALUE * value, const int month, const int day
 STATIC_INLINE int db_make_json (DB_VALUE * value, JSON_DOC * json_document, bool need_clear)
   __attribute__ ((ALWAYS_INLINE));
 
+STATIC_INLINE int db_make_vector (DB_VALUE * value, int dimension, float *data, bool need_clear)
+  __attribute__ ((ALWAYS_INLINE));
+
 STATIC_INLINE int db_get_compressed_size (DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
 					     int compressed_size, bool compressed_need_clear)
@@ -2038,6 +2041,29 @@ db_make_json (DB_VALUE * value, JSON_DOC * json_document, bool need_clear)
   value->domain.general_info.is_null = 0;
   value->data.json.document = json_document;
   value->data.json.schema_raw = NULL;
+  value->need_clear = need_clear;
+
+  return NO_ERROR;
+}
+
+int
+db_make_vector (DB_VALUE * value, int dimension, float *data, bool need_clear)
+{
+#if defined (API_ACTIVE_CHECKS)
+  CHECK_1ARG_ERROR (value);
+#else
+  if (value == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+#endif
+
+  value->domain.general_info.type = DB_TYPE_VECTOR;
+  value->domain.general_info.is_null = 0;
+  value->domain.vector_info.dimension = dimension;
+  value->data.vec.dimension = dimension;
+  value->data.vec.data = data;
   value->need_clear = need_clear;
 
   return NO_ERROR;

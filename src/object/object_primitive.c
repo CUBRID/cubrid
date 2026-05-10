@@ -870,6 +870,24 @@ static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_json (void *mem1, void *mem2, TP_
 						     int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
 					       int *start_colp, int collation);
+
+static void mr_initmem_vector (void *mem, TP_DOMAIN * domain);
+static int mr_setmem_vector (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
+static int mr_getmem_vector (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
+static int mr_data_lengthmem_vector (void *memptr, TP_DOMAIN * domain, int disk);
+static void mr_data_writemem_vector (OR_BUF * buf, void *memptr, TP_DOMAIN * domain);
+static void mr_data_readmem_vector (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size);
+static void mr_freemem_vector (void *memptr);
+static void mr_initval_vector (DB_VALUE * value, int precision, int scale);
+static int mr_setval_vector (DB_VALUE * dest, const DB_VALUE * src, bool copy);
+static int mr_data_lengthval_vector (DB_VALUE * value, int disk);
+static int mr_data_writeval_vector (OR_BUF * buf, DB_VALUE * value);
+static int mr_data_readval_vector (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+				   char *copy_buf, int copy_buf_len);
+static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_vector (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
+						       int total_order, int *start_colp);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_vector (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
+						 int total_order, int *start_colp, int collation);
 /*
  * Value_area
  *    Area used for allocation of value containers that may be given out
@@ -1730,6 +1748,7 @@ const PR_TYPE *tp_Type_id_map[] = {
   &tp_Datetimetz,
   &tp_Datetimeltz,
   &tp_Json,
+  &tp_Vector,
 };
 
 const PR_TYPE tp_ResultSet = {
@@ -1910,6 +1929,15 @@ pr_clear_value (DB_VALUE * value)
 	  value->data.json.document = NULL;
 	  value->data.json.schema_raw = NULL;
 	}
+      break;
+
+    case DB_TYPE_VECTOR:
+      if (value->need_clear && value->data.vec.data != NULL)
+	{
+	  db_private_free_and_init (NULL, value->data.vec.data);
+	}
+      value->data.vec.data = NULL;
+      value->data.vec.dimension = 0;
       break;
 
     case DB_TYPE_OBJECT:
@@ -14361,6 +14389,43 @@ const PR_TYPE tp_Json = {
 
 const PR_TYPE *tp_Type_json = &tp_Json;
 
+/*
+ * tp_Vector - PR_TYPE for DB_TYPE_VECTOR.
+ *
+ * Populated by PR-1 commit 3. VECTOR is a variable-size type like JSON: the
+ * in-memory form is a DB_VECTOR (int dimension + heap-owned float *data) and
+ * the disk form is or_put_vector()'s length-prefixed float32 payload. VECTOR
+ * has no B-tree index support, so all index_* pointers remain NULL.
+ */
+const PR_TYPE tp_Vector = {
+  /* Variable-length type: alignment = 1 (same as JSON / String / Char).
+   * XASL offset accounting assumes variable-size types declare 1-byte
+   * alignment; claiming 4 here caused stream-offset drift and SIGABRT
+   * during SELECT on VECTOR columns. */
+  "vector", DB_TYPE_VECTOR, 1, sizeof (DB_VECTOR), 0, 1,
+  mr_initmem_vector,
+  mr_initval_vector,
+  mr_setmem_vector,
+  mr_getmem_vector,
+  mr_setval_vector,
+  mr_data_lengthmem_vector,
+  mr_data_lengthval_vector,
+  mr_data_writemem_vector,
+  mr_data_readmem_vector,
+  mr_data_writeval_vector,
+  mr_data_readval_vector,
+  NULL,				/* index_lengthmem */
+  NULL,				/* index_lengthval */
+  NULL,				/* index_writeval */
+  NULL,				/* index_readval */
+  NULL,				/* index_cmpdisk */
+  mr_freemem_vector,
+  mr_data_cmpdisk_vector,
+  mr_cmpval_vector
+};
+
+const PR_TYPE *tp_Type_vector = &tp_Vector;
+
 static void
 mr_initmem_json (void *mem, TP_DOMAIN * domain)
 {
@@ -14815,4 +14880,470 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   pr_clear_value (&scalar_value1);
   pr_clear_value (&scalar_value2);
   return cmp_result;
+}
+
+/*
+ * mr_*_vector - PR_TYPE implementations for DB_TYPE_VECTOR.
+ *
+ *   Mirrors the JSON family above. VECTOR memory representation is DB_VECTOR
+ *   (int dimension + heap-owned float *data). Disk representation is the
+ *   length-prefixed float32 payload produced by or_put_vector / or_get_vector.
+ */
+
+static void
+mr_initmem_vector (void *mem, TP_DOMAIN * domain)
+{
+  DB_VECTOR *vec = (DB_VECTOR *) mem;
+
+  if (vec != NULL)
+    {
+      vec->dimension = 0;
+      vec->data = NULL;
+    }
+  else
+    {
+      assert (false);
+    }
+}
+
+static void
+mr_initval_vector (DB_VALUE * value, int precision, int scale)
+{
+  db_value_domain_init (value, DB_TYPE_VECTOR, precision, scale);
+  value->data.vec.dimension = 0;
+  value->data.vec.data = NULL;
+  value->need_clear = false;
+}
+
+static int
+mr_setmem_vector (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
+{
+  DB_VECTOR *vec = (DB_VECTOR *) memptr;
+  int dim;
+  float *copy = NULL;
+
+  if (vec == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  /* release any pre-existing data */
+  mr_freemem_vector (memptr);
+
+  if (value == NULL || DB_IS_NULL (value))
+    {
+      return NO_ERROR;
+    }
+
+  dim = value->data.vec.dimension;
+  if (dim < 0)
+    {
+      return ER_FAILED;
+    }
+  if (dim == 0 || value->data.vec.data == NULL)
+    {
+      vec->dimension = dim;
+      vec->data = NULL;
+      return NO_ERROR;
+    }
+
+  copy = (float *) db_private_alloc (NULL, (size_t) dim * sizeof (float));
+  if (copy == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memcpy (copy, value->data.vec.data, (size_t) dim * sizeof (float));
+
+  vec->dimension = dim;
+  vec->data = copy;
+  return NO_ERROR;
+}
+
+static int
+mr_getmem_vector (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+{
+  DB_VECTOR *vec = (DB_VECTOR *) memptr;
+  float *payload = NULL;
+  int dim;
+
+  db_make_null (value);
+
+  if (vec == NULL)
+    {
+      db_value_domain_init (value, DB_TYPE_VECTOR, domain ? domain->precision : 0, 0);
+      value->need_clear = false;
+      return NO_ERROR;
+    }
+
+  dim = vec->dimension;
+
+  if (!copy || vec->data == NULL || dim == 0)
+    {
+      payload = vec->data;
+      db_value_domain_init (value, DB_TYPE_VECTOR, dim, 0);
+      value->domain.general_info.is_null = 0;
+      value->data.vec.dimension = dim;
+      value->data.vec.data = payload;
+      value->need_clear = false;
+    }
+  else
+    {
+      payload = (float *) db_private_alloc (NULL, (size_t) dim * sizeof (float));
+      if (payload == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      memcpy (payload, vec->data, (size_t) dim * sizeof (float));
+      db_value_domain_init (value, DB_TYPE_VECTOR, dim, 0);
+      value->domain.general_info.is_null = 0;
+      value->data.vec.dimension = dim;
+      value->data.vec.data = payload;
+      value->need_clear = true;
+    }
+
+  return NO_ERROR;
+}
+
+static int
+mr_data_lengthmem_vector (void *memptr, TP_DOMAIN * domain, int disk)
+{
+  DB_VECTOR *vec;
+
+  if (!disk)
+    {
+      return tp_Vector.size;
+    }
+  if (memptr == NULL)
+    {
+      return 0;
+    }
+  vec = (DB_VECTOR *) memptr;
+  return or_packed_vector_length (vec->dimension);
+}
+
+static int
+mr_data_lengthval_vector (DB_VALUE * value, int disk)
+{
+  if (!disk)
+    {
+      return tp_Vector.size;
+    }
+  if (value == NULL || DB_IS_NULL (value))
+    {
+      return 0;
+    }
+  return or_packed_vector_length (value->data.vec.dimension);
+}
+
+static void
+mr_data_writemem_vector (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
+{
+  DB_VECTOR *vec = (DB_VECTOR *) memptr;
+  int rc;
+
+  if (vec == NULL)
+    {
+      /* nothing to write */
+      return;
+    }
+
+  rc = or_put_vector (buf, vec->dimension, vec->data);
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+}
+
+static void
+mr_data_readmem_vector (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
+{
+  DB_VECTOR *vec = (DB_VECTOR *) memptr;
+  int rc;
+  int dim = 0;
+  float *data = NULL;
+
+  if (vec == NULL)
+    {
+      /* caller does not want the data, just skip the bytes */
+      if (size > 0)
+	{
+	  if (or_advance (buf, size) != NO_ERROR)
+	    {
+	      assert (false);
+	    }
+	}
+      return;
+    }
+
+  /* release any pre-existing payload */
+  mr_freemem_vector (memptr);
+
+  if (size == 0)
+    {
+      vec->dimension = 0;
+      vec->data = NULL;
+      return;
+    }
+
+  rc = or_get_vector (buf, &dim, &data);
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      vec->dimension = 0;
+      vec->data = NULL;
+      return;
+    }
+
+  vec->dimension = dim;
+  vec->data = data;
+}
+
+static int
+mr_data_writeval_vector (OR_BUF * buf, DB_VALUE * value)
+{
+  int rc;
+
+  if (value == NULL || DB_IS_NULL (value))
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  rc = or_put_vector (buf, value->data.vec.dimension, value->data.vec.data);
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+  return rc;
+}
+
+static int
+mr_data_readval_vector (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+			int copy_buf_len)
+{
+  int rc;
+  int dim = 0;
+  float *data = NULL;
+
+  /* Deviation from plan: copy_buf shortcut is not used for VECTOR. We always
+   * allocate via db_private_alloc inside or_get_vector. MVP simplification;
+   * revisit if VECTOR appears in performance-critical scan paths. */
+  (void) copy_buf;
+  (void) copy_buf_len;
+
+  if (value == NULL)
+    {
+      if (size > 0)
+	{
+	  if (or_advance (buf, size) != NO_ERROR)
+	    {
+	      assert (false);
+	    }
+	}
+      return NO_ERROR;
+    }
+
+  db_make_null (value);
+
+  if (size == 0)
+    {
+      /* NULL vector on disk */
+      return NO_ERROR;
+    }
+
+  rc = or_get_vector (buf, &dim, &data);
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return rc;
+    }
+
+  db_value_domain_init (value, DB_TYPE_VECTOR, dim, 0);
+  value->domain.general_info.is_null = 0;
+  value->data.vec.dimension = dim;
+  value->data.vec.data = data;
+  value->need_clear = copy;
+
+  if (!copy && data != NULL)
+    {
+      /* caller asked for shared ownership but or_get_vector always allocates.
+       * We cannot honor the !copy contract in this MVP — convert to owned. */
+      value->need_clear = true;
+    }
+
+  return NO_ERROR;
+}
+
+static void
+mr_freemem_vector (void *memptr)
+{
+  DB_VECTOR *vec = (DB_VECTOR *) memptr;
+
+  if (vec == NULL)
+    {
+      return;
+    }
+  if (vec->data != NULL)
+    {
+      db_private_free_and_init (NULL, vec->data);
+    }
+  vec->dimension = 0;
+  vec->data = NULL;
+}
+
+static int
+mr_setval_vector (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+{
+  int dim;
+  float *payload = NULL;
+
+  if (dest == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (src == NULL || DB_IS_NULL (src))
+    {
+      return db_value_domain_init (dest, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, 0);
+    }
+
+  dim = src->data.vec.dimension;
+
+  if (copy && dim > 0 && src->data.vec.data != NULL)
+    {
+      payload = (float *) db_private_alloc (NULL, (size_t) dim * sizeof (float));
+      if (payload == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      memcpy (payload, src->data.vec.data, (size_t) dim * sizeof (float));
+    }
+  else
+    {
+      payload = src->data.vec.data;
+    }
+
+  db_value_domain_init (dest, DB_TYPE_VECTOR, dim, 0);
+  dest->domain.general_info.is_null = 0;
+  dest->data.vec.dimension = dim;
+  dest->data.vec.data = payload;
+  dest->need_clear = (copy && payload != NULL && payload != src->data.vec.data);
+
+  return NO_ERROR;
+}
+
+static DB_VALUE_COMPARE_RESULT
+mr_cmpval_vector (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
+		  int collation)
+{
+  int dim1, dim2;
+  const float *d1, *d2;
+  int i;
+
+  if (value1 == NULL || value2 == NULL || DB_IS_NULL (value1) || DB_IS_NULL (value2))
+    {
+      if (!total_order)
+	{
+	  return DB_UNK;
+	}
+      if (DB_IS_NULL (value1) && DB_IS_NULL (value2))
+	{
+	  return DB_EQ;
+	}
+      return DB_IS_NULL (value1) ? DB_LT : DB_GT;
+    }
+
+  dim1 = value1->data.vec.dimension;
+  dim2 = value2->data.vec.dimension;
+
+  /* Different dimensions: for MVP treat as incomparable unless total_order
+   * forces a deterministic ordering (shorter vector first). */
+  if (dim1 != dim2)
+    {
+      if (!total_order)
+	{
+	  return DB_UNK;
+	}
+      return (dim1 < dim2) ? DB_LT : DB_GT;
+    }
+
+  d1 = value1->data.vec.data;
+  d2 = value2->data.vec.data;
+
+  if (d1 == NULL || d2 == NULL)
+    {
+      if (d1 == d2)
+	{
+	  return DB_EQ;
+	}
+      return total_order ? (d1 == NULL ? DB_LT : DB_GT) : DB_UNK;
+    }
+
+  /* lexicographic float comparison — NOT a similarity metric */
+  for (i = 0; i < dim1; ++i)
+    {
+      if (d1[i] < d2[i])
+	{
+	  return DB_LT;
+	}
+      if (d1[i] > d2[i])
+	{
+	  return DB_GT;
+	}
+    }
+
+  return DB_EQ;
+}
+
+static DB_VALUE_COMPARE_RESULT
+mr_data_cmpdisk_vector (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+{
+  OR_BUF buf1, buf2;
+  int dim1 = 0, dim2 = 0;
+  float *data1 = NULL, *data2 = NULL;
+  DB_VALUE v1, v2;
+  DB_VALUE_COMPARE_RESULT res = DB_UNK;
+  int rc;
+
+  or_init (&buf1, (char *) mem1, 0);
+  or_init (&buf2, (char *) mem2, 0);
+
+  rc = or_get_vector (&buf1, &dim1, &data1);
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return DB_UNK;
+    }
+  rc = or_get_vector (&buf2, &dim2, &data2);
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      if (data1 != NULL)
+	{
+	  db_private_free_and_init (NULL, data1);
+	}
+      return DB_UNK;
+    }
+
+  db_make_null (&v1);
+  db_make_null (&v2);
+  db_value_domain_init (&v1, DB_TYPE_VECTOR, dim1, 0);
+  db_value_domain_init (&v2, DB_TYPE_VECTOR, dim2, 0);
+  v1.domain.general_info.is_null = 0;
+  v2.domain.general_info.is_null = 0;
+  v1.data.vec.dimension = dim1;
+  v2.data.vec.dimension = dim2;
+  v1.data.vec.data = data1;
+  v2.data.vec.data = data2;
+  v1.need_clear = true;
+  v2.need_clear = true;
+
+  res = mr_cmpval_vector (&v1, &v2, do_coercion, total_order, start_colp, 0);
+
+  pr_clear_value (&v1);
+  pr_clear_value (&v2);
+
+  return res;
 }

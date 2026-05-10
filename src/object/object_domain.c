@@ -325,6 +325,14 @@ TP_DOMAIN tp_Json_domain = { NULL, NULL, &tp_Json, 0, 0,
   DOMAIN_INIT2 (INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY)
 };
 
+/* tp_Vector_domain - built-in default domain for DB_TYPE_VECTOR.
+ *
+ * Default precision is 0 (dimension resolved at runtime). Real attributes
+ * override via tp_domain_construct(DB_TYPE_VECTOR, NULL, n, 0, NULL) to carry
+ * the declared VECTOR(n) dimension through or_put_domain / or_get_domain.
+ * is_parameterized=1 comes from DOMAIN_INIT3 since VECTOR takes a dimension. */
+TP_DOMAIN tp_Vector_domain = { NULL, NULL, &tp_Vector, DOMAIN_INIT3 };
+
 TP_DOMAIN tp_Resultset_domain = { NULL, NULL, &tp_ResultSet, DOMAIN_INIT4 (DB_BIGINT_PRECISION, 0) };
 
 /* These must be in DB_TYPE order */
@@ -381,7 +389,7 @@ static TP_DOMAIN *tp_Domains[] = {
   &tp_Datetimetz_domain,
   &tp_Datetimeltz_domain,
   &tp_Json_domain,
-  &tp_Null_domain,
+  &tp_Vector_domain,		/* DB_TYPE_VECTOR = 41 */
   &tp_Null_domain,
   &tp_Null_domain,
   &tp_Null_domain,
@@ -549,7 +557,8 @@ TP_DOMAIN **tp_Domain_conversion_matrix[] = {
   NULL,				/* DB_TYPE_TIMESTAMPLTZ */
   NULL,				/* DB_TYPE_DATETIMETZ */
   NULL,				/* DB_TYPE_DATETIMELTZ */
-  NULL				/* DB_TYPE_JSON */
+  NULL,				/* DB_TYPE_JSON */
+  NULL				/* DB_TYPE_VECTOR */
 };
 
 #if defined (SERVER_MODE)
@@ -1850,6 +1859,19 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
     case DB_TYPE_RESULTSET:
     case DB_TYPE_TABLE:
       break;
+    case DB_TYPE_VECTOR:
+      /* VECTOR domains match on dimension (stored in precision). A 0 / floating
+       * precision on dom2 means "any dimension" — used during literal coercion. */
+      if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH || exact == TP_SET_MATCH)
+	{
+	  match = (dom1->precision == dom2->precision);
+	}
+      else
+	{
+	  match = (dom2->precision == 0 || dom2->precision == TP_FLOATING_PRECISION_VALUE
+		   || dom1->precision == dom2->precision);
+	}
+      break;
     case DB_TYPE_ELO:
     default:
       assert (false);
@@ -2487,6 +2509,33 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_RESULTSET:
     case DB_TYPE_TABLE:
       break;
+
+    case DB_TYPE_VECTOR:
+      /* VECTOR(n) domains are parameterized by dimension only; match on precision
+       * (dimension) for exact, str, and set modes; otherwise treat a transient
+       * with precision <= cached precision as compatible. */
+      while (domain)
+	{
+	  if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH || exact == TP_SET_MATCH)
+	    {
+	      match = ((domain->precision == transient->precision) && (domain->is_desc == transient->is_desc));
+	    }
+	  else
+	    {
+	      match = ((transient->precision == 0 || transient->precision == TP_FLOATING_PRECISION_VALUE
+			|| domain->precision >= transient->precision) && (domain->is_desc == transient->is_desc));
+	    }
+
+	  if (match)
+	    {
+	      break;
+	    }
+
+	  *ins_pos = domain;
+	  domain = domain->next_list;
+	}
+      break;
+
     case DB_TYPE_ELO:
     default:
       assert (false);
@@ -3410,6 +3459,27 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	case DB_TYPE_MIDXKEY:
 	  break;
 	case DB_TYPE_TABLE:
+	  break;
+	case DB_TYPE_VECTOR:
+	  /* Construct a domain carrying the vector's dimension as precision. */
+	  if (dbuf == NULL)
+	    {
+	      domain = tp_domain_new (value_type);
+	      if (domain == NULL)
+		{
+		  return NULL;
+		}
+	    }
+	  else
+	    {
+	      domain = dbuf;
+	      tp_domain_init (dbuf, value_type);
+	    }
+	  domain->precision = val->data.vec.dimension;
+	  if (dbuf == NULL)
+	    {
+	      domain = tp_domain_cache (domain);
+	    }
 	  break;
 	case DB_TYPE_ELO:
 	default:
@@ -6964,6 +7034,116 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 }
 
 /*
+ * vector_literal_to_floats - parse a '[f0, f1, ...]' string literal into a
+ *    heap-allocated float array.
+ *
+ *    Whitespace inside the brackets is ignored. target_dim > 0 requires an
+ *    exact match; target_dim == 0 infers the dimension from the literal
+ *    (capped at DB_MAX_VECTOR_DIMENSION).
+ *
+ *    On success: returns DOMAIN_COMPATIBLE, sets *out_dim and *out_data
+ *    (caller owns *out_data and must free via db_private_free_and_init).
+ *    On parse failure: emits ER_VEC_INVALID_LITERAL or
+ *    ER_VEC_DIMENSION_MISMATCH and returns DOMAIN_INCOMPATIBLE.
+ */
+static TP_DOMAIN_STATUS
+vector_literal_to_floats (const char *str, int str_len, int target_dim, int *out_dim, float **out_data)
+{
+  const char *p = str;
+  const char *end = str + str_len;
+  int alloc_dim = (target_dim > 0) ? target_dim : DB_MAX_VECTOR_DIMENSION;
+  int count = 0;
+  float *data = NULL;
+  char *next = NULL;
+
+  *out_dim = 0;
+  *out_data = NULL;
+
+  while (p < end && isspace ((unsigned char) *p))
+    {
+      ++p;
+    }
+  if (p >= end || *p != '[')
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VEC_INVALID_LITERAL, 1, str ? str : "");
+      return DOMAIN_INCOMPATIBLE;
+    }
+  ++p;
+
+  data = (float *) db_private_alloc (NULL, alloc_dim * sizeof (float));
+  if (data == NULL)
+    {
+      return DOMAIN_ERROR;
+    }
+
+  while (p < end)
+    {
+      while (p < end && isspace ((unsigned char) *p))
+	{
+	  ++p;
+	}
+      if (p < end && *p == ']')
+	{
+	  ++p;
+	  break;
+	}
+      if (count >= alloc_dim)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VEC_DIMENSION_MISMATCH, 2,
+		  (target_dim > 0) ? target_dim : alloc_dim, count + 1);
+	  db_private_free_and_init (NULL, data);
+	  return DOMAIN_INCOMPATIBLE;
+	}
+
+      errno = 0;
+      float val = strtof (p, &next);
+      if (next == p || errno == ERANGE)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VEC_INVALID_LITERAL, 1, str ? str : "");
+	  db_private_free_and_init (NULL, data);
+	  return DOMAIN_INCOMPATIBLE;
+	}
+      data[count++] = val;
+      p = next;
+
+      while (p < end && isspace ((unsigned char) *p))
+	{
+	  ++p;
+	}
+      if (p < end && *p == ',')
+	{
+	  ++p;
+	  continue;
+	}
+      if (p < end && *p == ']')
+	{
+	  ++p;
+	  break;
+	}
+      if (p >= end)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VEC_INVALID_LITERAL, 1, str ? str : "");
+	  db_private_free_and_init (NULL, data);
+	  return DOMAIN_INCOMPATIBLE;
+	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VEC_INVALID_LITERAL, 1, str ? str : "");
+      db_private_free_and_init (NULL, data);
+      return DOMAIN_INCOMPATIBLE;
+    }
+
+  if (target_dim > 0 && count != target_dim)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VEC_DIMENSION_MISMATCH, 2, target_dim, count);
+      db_private_free_and_init (NULL, data);
+      return DOMAIN_INCOMPATIBLE;
+    }
+
+  *out_dim = count;
+  *out_data = data;
+  return DOMAIN_COMPATIBLE;
+}
+
+/*
  * tp_value_coerce_internal - Coerce a value into one of another domain.
  *    return: error code
  *    src(in): source value
@@ -7112,6 +7292,35 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       original_type = DB_VALUE_TYPE (&src_replacement);
       src = &src_replacement;
     }
+  else if (desired_type == DB_TYPE_VECTOR
+	   && (original_type == DB_TYPE_STRING || original_type == DB_TYPE_CHAR
+	       || original_type == DB_TYPE_VARCHAR))
+    {
+      /* String -> VECTOR coercion: parse '[f0, f1, ...]' into a DB_VECTOR.
+       * Triggered by both explicit CAST('[...]' AS VECTOR(n)) and implicit
+       * INSERT ... VALUES ('[...]') when the target column is VECTOR(n). */
+      const char *lit = db_get_string (src);
+      int lit_len = db_get_string_size (src);
+      int target_dim = desired_domain->precision;
+      int actual_dim = 0;
+      float *data = NULL;
+      TP_DOMAIN_STATUS parse_status;
+
+      parse_status = vector_literal_to_floats (lit, lit_len, target_dim, &actual_dim, &data);
+      if (parse_status != DOMAIN_COMPATIBLE)
+	{
+	  pr_clear_value (&src_replacement);
+	  return parse_status;
+	}
+
+      if (src == dest)
+	{
+	  pr_clear_value (dest);
+	}
+      db_make_vector (dest, actual_dim, data, true);
+      pr_clear_value (&src_replacement);
+      return status;
+    }
 
 
   if (desired_type == original_type)
@@ -7157,6 +7366,23 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  pr_clear_value (&src_replacement);
 		  ASSERT_ERROR ();
 		  return DOMAIN_ERROR;
+		}
+	      if (src != dest)
+		{
+		  pr_clone_value (src, dest);
+		}
+	      pr_clear_value (&src_replacement);
+	      return (status);
+	    case DB_TYPE_VECTOR:
+	      /* VECTOR(n) cast: dimensions must match. MVP rejects mismatches
+	       * rather than padding/truncating. */
+	      if (desired_domain->precision != 0
+		  && desired_domain->precision != src->data.vec.dimension)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VEC_DIMENSION_MISMATCH, 2,
+			  desired_domain->precision, src->data.vec.dimension);
+		  pr_clear_value (&src_replacement);
+		  return DOMAIN_INCOMPATIBLE;
 		}
 	      if (src != dest)
 		{

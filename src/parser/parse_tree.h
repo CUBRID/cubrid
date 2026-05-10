@@ -230,7 +230,11 @@ struct json_t;
 	  ((t) == PT_TYPE_CHAR)     || \
 	  ((t) == PT_TYPE_VARBIT)   || \
 	  ((t) == PT_TYPE_BIT)	    || \
-	  ((t) == PT_TYPE_ENUMERATION))
+	  ((t) == PT_TYPE_ENUMERATION) || \
+	  ((t) == PT_TYPE_VECTOR))
+
+#define PT_IS_VECTOR_TYPE(t) \
+        ((t) == PT_TYPE_VECTOR)
 
 #define PT_IS_LOB_TYPE(t) \
         ( ((t) == PT_TYPE_BLOB)  || \
@@ -1123,6 +1127,7 @@ enum pt_type_enum
   PT_TYPE_LOGICAL,
   PT_TYPE_MAYBE,
   PT_TYPE_JSON,
+  PT_TYPE_VECTOR,
 
   /* special values */
   PT_TYPE_NA,			/* in SELECT NA */

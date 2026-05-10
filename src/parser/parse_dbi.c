@@ -935,6 +935,37 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       result->data_type = NULL;
       break;
 
+    case DB_TYPE_VECTOR:
+      {
+	int dim = val->data.vec.dimension;
+	const float *vec_data = val->data.vec.data;
+	char num_buf[32];
+	PARSER_VARCHAR *vstr = pt_append_nulstring (parser, (PARSER_VARCHAR *) NULL, "[");
+	int i;
+
+	for (i = 0; i < dim; ++i)
+	  {
+	    if (i > 0)
+	      {
+		vstr = pt_append_nulstring (parser, vstr, ", ");
+	      }
+	    snprintf (num_buf, sizeof (num_buf), "%g", (double) vec_data[i]);
+	    vstr = pt_append_nulstring (parser, vstr, num_buf);
+	  }
+	vstr = pt_append_nulstring (parser, vstr, "]");
+	result->info.value.data_value.str = vstr;
+	result->data_type = parser_new_node (parser, PT_DATA_TYPE);
+	if (result->data_type == NULL)
+	  {
+	    parser_free_node (parser, result);
+	    result = NULL;
+	    break;
+	  }
+	result->data_type->type_enum = PT_TYPE_VECTOR;
+	result->data_type->info.data_type.precision = dim;
+      }
+      break;
+
       /* explicitly treat others as an error condition */
     case DB_TYPE_VARIABLE:
     case DB_TYPE_SUB:
@@ -1621,6 +1652,13 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
       assert (false);
       break;
 
+    case DB_TYPE_VECTOR:
+      /* Default domain without a known dimension; callers that have the
+       * dimension available (e.g., pt_data_type_to_db_domain) build a
+       * domain with the actual precision directly via tp_domain_construct. */
+      retval = tp_domain_construct (domain_type, NULL, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+      break;
+
     default:
       assert (false);
       break;
@@ -1895,6 +1933,10 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
       codeset = dt->info.data_type.units;
       break;
 
+    case DB_TYPE_VECTOR:
+      precision = dt->info.data_type.precision;
+      break;
+
     case DB_TYPE_NUMERIC:
       precision = dt->info.data_type.precision;
       scale = dt->info.data_type.dec_precision;
@@ -2113,6 +2155,10 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
       codeset = dt->info.data_type.units;
       collation_id = dt->info.data_type.collation_id;
       collation_flag = dt->info.data_type.collation_flag;
+      break;
+
+    case DB_TYPE_VECTOR:
+      precision = dt->info.data_type.precision;
       break;
 
     case DB_TYPE_NUMERIC:
@@ -2413,6 +2459,10 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
       db_type = DB_TYPE_ENUMERATION;
       break;
 
+    case PT_TYPE_VECTOR:
+      db_type = DB_TYPE_VECTOR;
+      break;
+
     default:
       db_type = DB_TYPE_NULL;
       break;
@@ -2682,6 +2732,9 @@ pt_db_to_type_enum (const DB_TYPE t)
       break;
     case DB_TYPE_JSON:
       pt_type = PT_TYPE_JSON;
+      break;
+    case DB_TYPE_VECTOR:
+      pt_type = PT_TYPE_VECTOR;
       break;
 
       /* these guys should not get encountered */

@@ -383,6 +383,8 @@ extern "C"
 
   extern int db_make_json (DB_VALUE * value, JSON_DOC * json_document, bool need_clear);
 
+  extern int db_make_vector (DB_VALUE * value, int dimension, float *data, bool need_clear);
+
 #ifdef __cplusplus
 }
 #endif				/* C++ */

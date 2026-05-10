@@ -253,6 +253,9 @@ void db_value_printer::describe_type (const db_value *value)
 	case DB_TYPE_JSON:
 	  m_buf ("JSON");
 	  break;
+	case DB_TYPE_VECTOR:
+	  m_buf ("VECTOR");
+	  break;
 	default:
 	  m_buf ("UNKNOWN");
 	  break;
@@ -528,6 +531,37 @@ void db_value_printer::describe_data (const db_value *value)
       json_body = db_get_json_raw_body (value);
       m_buf ("%s", json_body);
       db_private_free (NULL, json_body);
+      break;
+
+    case DB_TYPE_VECTOR:
+      {
+	const DB_VECTOR *vec = &value->data.vec;
+	const int truncate_limit = 16;
+	m_buf ("[");
+	if (vec->data != NULL && vec->dimension > 0)
+	  {
+	    int limit = vec->dimension;
+	    bool truncated = false;
+	    if (limit > truncate_limit)
+	      {
+		limit = truncate_limit;
+		truncated = true;
+	      }
+	    for (int i = 0; i < limit; i++)
+	      {
+		if (i > 0)
+		  {
+		    m_buf (", ");
+		  }
+		m_buf ("%g", (double) vec->data[i]);
+	      }
+	    if (truncated)
+	      {
+		m_buf (", ... (%d dims)", vec->dimension);
+	      }
+	  }
+	m_buf ("]");
+      }
       break;
 
     case DB_TYPE_MIDXKEY:

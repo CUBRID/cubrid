@@ -24362,6 +24362,8 @@ qexec_schema_get_type_name_from_id (DB_TYPE id)
       return "ENUM";
     case DB_TYPE_JSON:
       return "JSON";
+    case DB_TYPE_VECTOR:
+      return "VECTOR";
     default:
       return "UNKNOWN DATA_TYPE";
     }
@@ -24433,6 +24435,9 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       break;
     case DB_TYPE_JSON:
       validator = domain->json_validator;
+      break;
+    case DB_TYPE_VECTOR:
+      precision = domain->precision;
       break;
     default:
       break;

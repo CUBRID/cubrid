@@ -1439,6 +1439,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token VARIABLE_
 %token VARYING
 %token VCLASS
+%token VECTOR_
 %token VIEW
 %token WHEN
 %token WHENEVER
@@ -19121,6 +19122,33 @@ primitive_type
 				}
 
 			$$ = ctn;
+		}}
+	| VECTOR_ '(' unsigned_integer ')'
+		{{
+			container_2 ctn;
+			PT_TYPE_ENUM typ = PT_TYPE_VECTOR;
+			PT_NODE *len = $3;
+			PT_NODE *dt = NULL;
+			int dim = len ? len->info.value.data_value.i : 0;
+
+			if (dim < 1 || dim > DB_MAX_VECTOR_DIMENSION)
+			  {
+			    PT_ERRORmf3 (this_parser, len, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INV_PREC,
+					 dim, 1, DB_MAX_VECTOR_DIMENSION);
+			  }
+
+			dt = parser_new_node (this_parser, PT_DATA_TYPE);
+			if (dt)
+			  {
+			    dt->type_enum = typ;
+			    dt->info.data_type.precision = dim;
+			  }
+
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
+			$$ = ctn;
+
+			if (len)
+			  parser_free_node (this_parser, len);
 		}}
 	| OBJECT
 		{{

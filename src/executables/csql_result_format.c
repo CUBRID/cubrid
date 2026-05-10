@@ -1627,6 +1627,50 @@ csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * cs
 	  len = strlen (result);
 	}
       break;
+    case DB_TYPE_VECTOR:
+      {
+	const int truncate_limit = 16;
+	const DB_VECTOR *vec = &value->data.vec;
+	/* Upper bound: "[" + dim * ("-1.234567e+38, ") + ", ... (NNNN dims)]" + NUL. */
+	size_t bufsize = 64 + (size_t) (vec->dimension > 0 ? vec->dimension : 0) * 24;
+	char *buf = (char *) malloc (bufsize);
+	if (buf != NULL)
+	  {
+	    size_t pos = 0;
+	    int i;
+	    int limit = vec->dimension;
+	    bool truncated = false;
+	    if (limit > truncate_limit)
+	      {
+		limit = truncate_limit;
+		truncated = true;
+	      }
+	    pos += snprintf (buf + pos, bufsize - pos, "[");
+	    if (vec->data != NULL)
+	      {
+		for (i = 0; i < limit && pos < bufsize; i++)
+		  {
+		    pos += snprintf (buf + pos, bufsize - pos, "%s%g", (i == 0 ? "" : ", "),
+				     (double) vec->data[i]);
+		  }
+		if (truncated && pos < bufsize)
+		  {
+		    pos += snprintf (buf + pos, bufsize - pos, ", ... (%d dims)", vec->dimension);
+		  }
+	      }
+	    if (pos < bufsize)
+	      {
+		snprintf (buf + pos, bufsize - pos, "]");
+	      }
+	    result = duplicate_string (buf);
+	    free (buf);
+	  }
+	if (result)
+	  {
+	    len = strlen (result);
+	  }
+      }
+      break;
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
