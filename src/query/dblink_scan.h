@@ -58,6 +58,11 @@ struct dblink_scan_info
   int col_cnt;			/* column count of dblink query result */
   char cursor;			/* cursor position T_CCI_CURSOR_POS */
   void *col_info;		/* column information T_CCI_COL_INFO */
+  int cursor_rewind;		/* set from XASL_DBLINK_CURSOR_REWIND flag:
+				 * on each outer-row open, rewind CCI cursor to FIRST
+				 * instead of re-issuing cci_execute;
+				 * dblink_close_scan is skipped per iteration and
+				 * deferred to query teardown (qexec_clear_xasl) */
 };
 
 #define MAX_LEN_CONNECTION_URL 512
@@ -91,7 +96,7 @@ extern int dblink_execute_query (THREAD_ENTRY * thread_p, struct access_spec_nod
 				 DBLINK_HOST_VARS * host_vars);
 extern int dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
 			     VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars);
-extern int dblink_close_scan (DBLINK_SCAN_INFO * scan_info);
+extern int dblink_close_scan (DBLINK_SCAN_INFO * scan_info, bool is_final);
 extern SCAN_CODE dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list);
 extern SCAN_CODE dblink_scan_reset (DBLINK_SCAN_INFO * scan_info);
 
