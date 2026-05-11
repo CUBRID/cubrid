@@ -145,6 +145,11 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
       break;
 
     case DB_TYPE_VARCHAR:
+      /* TODO: charset and collation should be derived from the target column's
+       * domain (via HEAP_CACHE_ATTRINFO or passed explicitly) rather than
+       * hardcoded to UTF-8/binary. Hardcoding causes incorrect on-disk metadata
+       * when the table column uses a different charset or collation, leading to
+       * silent data corruption and wrong index lookups. */
       db_make_varchar (val, field_len, data, field_len, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
       break;
 
