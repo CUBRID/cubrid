@@ -593,7 +593,7 @@ configure_file(cmake/config.h.cmake config.h)
 # TODO: merge version.h into config.h ?
 configure_file(cmake/version.h.cmake version.h)
 
-add_definitions(-DMULTI_CONN_TO_A_SERVER)
+#add_definitions(-DMULTI_CONN_TO_A_SERVER)
 
 # platform specifie configurations
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")

@@ -227,9 +227,7 @@ typedef enum
 #endif /* !CS_MODE */
 
 /* This fills in misc information missing from the static definitions */
-#if !defined(MULTITHREADED_MODE)
 extern void tf_compile_meta_classes (void);
-#endif
 extern bool tf_is_catalog_class (OID * class_oid);
 
 /* This is available only on the server for catalog initialization */
