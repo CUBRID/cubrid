@@ -10438,6 +10438,21 @@ netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILE
   *actual_count_p = 0;
 
   assert (table_array_length >= 0);
+  /* Validate per-element length: or_pack_string writes strlen+1+pad bytes,
+     but request_local / the malloc path both reserve only
+     SM_MAX_IDENTIFIER_LENGTH bytes per slot.  Reject before allocation so we
+     do not leak the malloc'd request buffer. */
+  for (int i = 0; i < table_array_length; i++)
+    {
+      if (table_array[i] == NULL
+          || strlen (table_array[i]) >= SM_MAX_IDENTIFIER_LENGTH)
+        {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_NAME, 1,
+                  table_array[i] != NULL ? table_array[i] : "(null)");
+          return ER_SM_INVALID_NAME;
+        }
+    }
+
   if (table_array_length == 0)
     {
       request = OR_ALIGNED_BUF_START (a_request);
