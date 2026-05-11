@@ -799,7 +799,7 @@ dblink_connect_and_prepare (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, DB
 }
 
 /*
- * dblink_corr_prepare () - CBRD-26601: one-time connect + cci_prepare for corr push-down.
+ * dblink_corr_prepare () - one-time connect + cci_prepare for correlated equality push-down.
  *   Per-outer-row bind + cci_execute is handled by dblink_corr_execute ().
  */
 int
@@ -817,7 +817,7 @@ dblink_corr_prepare (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, DBLINK_SC
 }
 
 /*
- * dblink_corr_execute () - CBRD-26601: per outer row — bind corr keys + cci_execute + result metadata.
+ * dblink_corr_execute () - per outer row: bind corr keys + cci_execute + result metadata.
  *   NULL corr key — skip cci_execute and set corr_skip_result_fetch; dblink_scan_next returns S_END (scalar NULL).
  */
 int
@@ -887,7 +887,7 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
   int ret;
   T_CCI_ERROR err_buf;
 
-  /* CBRD-26601: corr push-down path — dblink_corr_prepare/execute already ran; skip re-prepare/re-execute. */
+  /* Correlated push-down path: dblink_corr_prepare/execute already ran; skip re-prepare/re-execute. */
   if (spec->s.dblink_node.corr_key_count > 0 && scan_info->stmt_handle > 0)
     {
       return NO_ERROR;
@@ -975,7 +975,7 @@ dblink_close_scan (DBLINK_SCAN_INFO * scan_info, bool is_final)
       scan_info->cursor_rewind = 0;
     }
 
-  /* CBRD-26601: keep CCI stmt/conn across outer-row iterations (per-row execute is in dblink_corr_execute). */
+  /* Keep CCI stmt/conn across outer-row iterations (per-row execute is in dblink_corr_execute). */
   if (!is_final && scan_info->corr_key_count > 0)
     {
       return NO_ERROR;

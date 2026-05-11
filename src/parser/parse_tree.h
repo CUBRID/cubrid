@@ -1244,7 +1244,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_NO_PARALLEL_SUBQUERY		(1ULL << 44)	/* disable parallel subquery */
 #define  PT_HINT_NO_PARALLEL_HASH_JOIN		(1ULL << 45)	/* disable parallel hash join */
 #define  PT_HINT_NLJ_KEEP_HEAP_PAGE_PINNED	(1ULL << 46)	/* keep page fixed on nl join first table heap scan */
-#define  PT_HINT_DBLINK_NO_PUSH_DOWN_SUBQ	(1ULL << 47)	/* disable correlated push-down for DBLink remote SQL (CBRD-26601) */
+#define  PT_HINT_DBLINK_NO_PUSH_DOWN_SUBQ	(1ULL << 47)	/* disable correlated push-down for DBLink remote SQL */
 
 /* Codes for error messages */
 typedef enum
@@ -3424,7 +3424,7 @@ typedef struct pt_dblink_info
 
   void *remote_col_list;	/* remote table's column list */
 
-  /* [CBRD-26601] correlated equality push-down (single equality: count == 1).
+  /* Correlated equality push-down (single equality: count == 1).
    * corr_key_col_names: stable copy for SQL; corr_key_outer_copy: owning copy for XASL (parser_copy_tree). */
   int corr_key_count;
   PT_NODE *corr_key_outer_copy[PT_DBLINK_MAX_CORR_KEYS];

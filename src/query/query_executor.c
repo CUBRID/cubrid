@@ -15149,7 +15149,7 @@ qexec_clear_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 }
 
 /*
- * qexec_prep_exec_corr_dblink () - CBRD-26601: cci_prepare once + cci_execute per outer row before the DBLink aptr
+ * qexec_prep_exec_corr_dblink () - cci_prepare once + cci_execute per outer row before the DBLink aptr
  *   mainblock (open_scan then skips re-prepare when stmt_handle is already valid).
  */
 static int
@@ -15502,7 +15502,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	}
     }
 
-  /* CBRD-26601: corr DBLink aptr — bind outer-row keys and re-execute before opening the scan.
+  /* Correlated DBLink aptr: bind outer-row keys and re-execute before opening the scan.
    * xasl_state->vd already reflects the current outer row at every entry to this function. */
   if (IS_CORR_DBLINK_XASL (xasl))
     {

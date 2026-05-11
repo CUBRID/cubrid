@@ -4189,7 +4189,7 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 
       query->info.dblink_table.rewritten = rewritten;
 
-      /* CBRD-26601: both view-level push (pt_copypush_terms) and corr push-down are active;
+      /* Both view-level push (pt_copypush_terms) and corr push-down are active;
        * rewritten already has "WHERE pushed_pred" — append corr pred as AND. */
       if (query->info.dblink_table.corr_key_count > 0 && query->info.dblink_table.corr_key_col_names[0] != NULL)
 	{
@@ -4590,7 +4590,7 @@ mq_is_dblink_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term)
     }
 }
 
-/* mq_detect_dblink_corr_eq helpers (CBRD-26601) */
+/* mq_detect_dblink_corr_eq helpers — correlated DBLink equality push-down */
 #define MQ_DBLINK_CORR_SIDE_ERR     (-1)
 #define MQ_DBLINK_CORR_SIDE_OTHER    0
 #define MQ_DBLINK_CORR_SIDE_REMOTE   1

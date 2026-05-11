@@ -67,9 +67,9 @@ struct dblink_scan_info
 				 * instead of re-issuing cci_execute;
 				 * dblink_close_scan is skipped per iteration and
 				 * deferred to query teardown (qexec_clear_xasl) */
-  int corr_key_count;		/* CBRD-26601: copy of spec->s.dblink_node.corr_key_count */
-  struct regu_variable_list_node *corr_key_regu_list;	/* CBRD-26601: non-owning; same chain as in access spec */
-  char corr_skip_result_fetch;	/* CBRD-26601: corr key NULL — no cci_execute; scan_next returns S_END */
+  int corr_key_count;		/* copy of spec->s.dblink_node.corr_key_count */
+  struct regu_variable_list_node *corr_key_regu_list;	/* non-owning; same chain as in access spec */
+  char corr_skip_result_fetch;	/* corr key NULL — no cci_execute; scan_next returns S_END */
 };
 
 #define MAX_LEN_CONNECTION_URL 512
