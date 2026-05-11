@@ -4804,6 +4804,8 @@ mq_detect_dblink_corr_eq (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE *
 
   for (term = where; term; term = term->next)
     {
+      PT_NODE *save_next;
+
       if (term->node_type == PT_EXPR && term->info.expr.location > 0)
 	{
 	  continue;
@@ -4813,18 +4815,29 @@ mq_detect_dblink_corr_eq (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE *
 	  continue;
 	}
 
+      /* Temporarily unlink ->next so parser_walk_tree does not spill into sibling terms. */
+      save_next = term->next;
+      term->next = NULL;
+
       forbidden = false;
       parser_walk_tree (parser, term, mq_dblink_corr_forbidden_pre, &forbidden, NULL, NULL);
-      if (forbidden)
+
+      if (!forbidden)
 	{
-	  return -1;
+	  if (mq_dblink_corr_is_correlated_eq_term (parser, term, dblink_sid))
+	    {
+	      corr_eq_count++;
+	    }
+	  else if (mq_dblink_corr_term_has_outer_ref (parser, term))
+	    {
+	      term->next = save_next;
+	      return -1;
+	    }
 	}
 
-      if (mq_dblink_corr_is_correlated_eq_term (parser, term, dblink_sid))
-	{
-	  corr_eq_count++;
-	}
-      else if (mq_dblink_corr_term_has_outer_ref (parser, term))
+      term->next = save_next;
+
+      if (forbidden)
 	{
 	  return -1;
 	}
@@ -4867,6 +4880,8 @@ mq_dblink_corr_get_eq_pair (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE
 
   for (term = where; term; term = term->next)
     {
+      PT_NODE *save_next;
+
       if (term->node_type == PT_EXPR && term->info.expr.location > 0)
 	{
 	  continue;
@@ -4876,14 +4891,14 @@ mq_dblink_corr_get_eq_pair (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE
 	  continue;
 	}
 
+      /* Temporarily unlink ->next so parser_walk_tree does not spill into sibling terms. */
+      save_next = term->next;
+      term->next = NULL;
+
       forbidden = false;
       parser_walk_tree (parser, term, mq_dblink_corr_forbidden_pre, &forbidden, NULL, NULL);
-      if (forbidden)
-	{
-	  return false;
-	}
 
-      if (mq_dblink_corr_is_correlated_eq_term (parser, term, dblink_sid))
+      if (!forbidden && mq_dblink_corr_is_correlated_eq_term (parser, term, dblink_sid))
 	{
 	  c1 = mq_dblink_corr_classify_side (term->info.expr.arg1, dblink_sid);
 	  c2 = mq_dblink_corr_classify_side (term->info.expr.arg2, dblink_sid);
@@ -4899,11 +4914,20 @@ mq_dblink_corr_get_eq_pair (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE
 	    }
 	  else
 	    {
+	      term->next = save_next;
 	      return false;
 	    }
 	  found++;
 	}
-      else if (mq_dblink_corr_term_has_outer_ref (parser, term))
+      else if (!forbidden && mq_dblink_corr_term_has_outer_ref (parser, term))
+	{
+	  term->next = save_next;
+	  return false;
+	}
+
+      term->next = save_next;
+
+      if (forbidden)
 	{
 	  return false;
 	}
