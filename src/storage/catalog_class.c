@@ -3295,6 +3295,17 @@ catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p, OI
   var_attrs = &attrs[n_fixed];
   for (i = 0; i < n_variable; i++)
     {
+      /* Align variable data position to 4 bytes — OR_GET_VAR_OFFSET() masks off
+       * the low 2 bits, so unaligned offsets would lose precision. */
+      {
+	int current = (int) (buf_p->ptr - buf_p->buffer - header_size);
+	int aligned = DB_ALIGN (current, INT_ALIGNMENT);
+	if (aligned > current)
+	  {
+	    or_pad (buf_p, aligned - current);
+	  }
+      }
+
       /* the variable offsets are relative to end of the class record header */
       offset = (int) (buf_p->ptr - buf_p->buffer - header_size);
 
@@ -3306,6 +3317,14 @@ catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p, OI
     }
 
   /* put last offset */
+  {
+    int current = (int) (buf_p->ptr - buf_p->buffer - header_size);
+    int aligned = DB_ALIGN (current, INT_ALIGNMENT);
+    if (aligned > current)
+      {
+	or_pad (buf_p, aligned - current);
+      }
+  }
   offset = (int) (buf_p->ptr - buf_p->buffer - header_size);
   OR_PUT_OFFSET (offset_p, offset);
 
