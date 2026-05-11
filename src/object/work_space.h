@@ -455,12 +455,8 @@ struct ws_mop_table_entry
 /*
  * WORKSPACE GLOBALS
  */
-//extern CUB_THREAD_LOCAL WS_MOP_TABLE_ENTRY *ws_Mop_table;
-//extern CUB_THREAD_LOCAL unsigned int ws_Mop_table_size;
 extern CUB_THREAD_LOCAL DB_OBJLIST *ws_Resident_classes;
 extern CUB_THREAD_LOCAL MOP ws_Commit_mops;
-//extern CUB_THREAD_LOCAL WS_STATISTICS ws_Stats;
-//extern CUB_THREAD_LOCAL int ws_Num_dirty_mop;
 extern int ws_Error_ignore_list[-ER_LAST_ERROR];
 extern int ws_Error_ignore_count;
 

@@ -78,14 +78,14 @@ CUB_THREAD_LOCAL MOP ws_Commit_mops = NULL;
  *    transaction manager.
  */
 
-CUB_THREAD_LOCAL WS_MOP_TABLE_ENTRY *ws_Mop_table = NULL;
+static CUB_THREAD_LOCAL WS_MOP_TABLE_ENTRY *ws_Mop_table = NULL;
 
 /*
  * ws_Mop_table_size
  *    Records the current size of the OID to MOP hash table.
  */
 
-CUB_THREAD_LOCAL unsigned int ws_Mop_table_size = 0;
+static CUB_THREAD_LOCAL unsigned int ws_Mop_table_size = 0;
 
 /*
  * ws_Resident_classes
@@ -104,9 +104,9 @@ CUB_THREAD_LOCAL DB_OBJLIST *ws_Resident_classes = NULL;
  *    This contains random information about the state of the workspace.
  */
 
-CUB_THREAD_LOCAL WS_STATISTICS ws_Stats = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+static CUB_THREAD_LOCAL WS_STATISTICS ws_Stats = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-CUB_THREAD_LOCAL int ws_Num_dirty_mop = 0;
+static CUB_THREAD_LOCAL int ws_Num_dirty_mop = 0;
 
 /*
  * We used to keep a global dirty list here. But for more efficient traversals
