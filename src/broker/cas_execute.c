@@ -10303,6 +10303,7 @@ ux_copy_end (T_NET_BUF * net_buf)
       return err_code;
     }
 
+  net_buf_cp_int (net_buf, 0, NULL);	/* result code */
   net_buf_cp_int (net_buf, rows_loaded, NULL);
   return 0;
 }
