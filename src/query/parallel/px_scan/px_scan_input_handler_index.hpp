@@ -82,7 +82,7 @@ namespace parallel_scan
 	return m_use_desc_index;
       }
 
-      /* valid after first descend_to_first_leaf populates m_btid_int. */
+      /* valid after init_on_main: m_btid_int populated, key ranges converted on main thread. */
       key_val_range *get_key_val_ranges ()
       {
 	return m_key_val_ranges.empty () ? nullptr : m_key_val_ranges.data ();

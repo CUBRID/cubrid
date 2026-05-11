@@ -40,7 +40,9 @@
 
 namespace parallel_scan
 {
-  /* defer descent until first worker — VPID-only republish would race a concurrent split */
+  /* Main-thread setup: glean btid_int + evaluate regu-var key ranges before workers spawn.
+   * Key-range evaluation MUST run here (not a worker) so the resulting buffers live in the
+   * main thread's private heap — the same heap that owns XASL cleanup. */
   int
   input_handler_index::init_on_main (THREAD_ENTRY *thread_p, INDX_INFO *indx_info, SCAN_ID *scan_id, val_descr *vd,
 				     int parallelism)
@@ -61,6 +63,45 @@ namespace parallel_scan
     m_active_workers = 0;
     m_pending_advance_idx = -1;
     m_advance_in_progress = false;
+
+    /* Evaluate regu-var key ranges (incl. T_LIKE_LOWER/UPPER_BOUND arith) on the main thread.
+     * Deferring to a worker thread would allocate the arithptr->value buffer and the
+     * key_val_range key1/key2 buffers from the worker's private heap; XASL cleanup runs on
+     * main thread and pr_clear_value would abort in mspace_free with a heap mismatch. */
+    VPID root_vpid;
+    root_vpid.volid = m_btid.vfid.volid;
+    root_vpid.pageid = m_btid.root_pageid;
+    PAGE_PTR root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+    if (root_page == NULL)
+      {
+	ASSERT_ERROR ();
+	return ER_FAILED;
+      }
+
+    (void) pgbuf_check_page_ptype (thread_p, root_page, PAGE_BTREE);
+
+    BTREE_ROOT_HEADER *root_header = btree_get_root_header (thread_p, root_page);
+    if (root_header == NULL)
+      {
+	pgbuf_unfix_and_init (thread_p, root_page);
+	return ER_FAILED;
+      }
+
+    if (btree_glean_root_header_info (thread_p, root_header, &m_btid_int, true) != NO_ERROR)
+      {
+	pgbuf_unfix_and_init (thread_p, root_page);
+	return ER_FAILED;
+      }
+    m_btid_int.sys_btid = &m_btid;
+
+    pgbuf_unfix_and_init (thread_p, root_page);
+
+    int conv_err = convert_all_key_ranges (thread_p, scan_id);
+    if (conv_err != NO_ERROR)
+      {
+	return conv_err;
+      }
+
     return NO_ERROR;
   }
 
@@ -86,7 +127,8 @@ namespace parallel_scan
 	return NO_ERROR;
       }
 
-    /* coordinator scan_id lacks prebuilt_midxkey_domains; scan_dbvals_to_midxkey NULL-derefs on F_MIDXKEY without per-task isid. */
+    /* scan_id must carry prebuilt_midxkey_domains (allocated by scan_open_index_scan on the coordinator).
+     * scan_dbvals_to_midxkey NULL-derefs on F_MIDXKEY without it. */
     if (worker_scan_id == nullptr)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
@@ -268,20 +310,8 @@ namespace parallel_scan
 	return S_ERROR;
       }
 
-    /* btid_int populated once on first descent; convert_all_key_ranges is idempotent. */
-    if (btree_glean_root_header_info (thread_p, root_header, &m_btid_int, true) != NO_ERROR)
-      {
-	pgbuf_unfix_and_init (thread_p, P_page);
-	return S_ERROR;
-      }
-    m_btid_int.sys_btid = &m_btid;
-
-    int conv_err = convert_all_key_ranges (thread_p, worker_scan_id);
-    if (conv_err != NO_ERROR)
-      {
-	pgbuf_unfix_and_init (thread_p, P_page);
-	return S_ERROR;
-      }
+    /* m_btid_int and m_key_val_ranges are populated by init_on_main on the main thread —
+     * re-gleaning here would leak the main-heap key_type and rebind it to worker-heap memory. */
 
     /* key1 = storage-leftmost lower bound; NULL descent_key → open-bound vertical path. */
     DB_VALUE *descent_key = nullptr;
