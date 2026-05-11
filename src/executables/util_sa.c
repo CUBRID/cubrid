@@ -30,6 +30,9 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <assert.h>
+#include <limits.h>
+#include <unistd.h>
+#include <openssl/sha.h>
 #if defined(WINDOWS)
 #include <io.h>
 #include <direct.h>
@@ -75,7 +78,9 @@
 #include "schema_system_catalog.hpp"
 #include "catalog_class.h"
 #include "system_metadata_version.h"
-#include "system_metadata_upgrade.h"
+#include "crypt_opfunc.h"
+#include "string_opfunc.h"
+#include "upgrade_checksums.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -119,6 +124,8 @@ static int delete_all_slave_ha_apply_info (char *database_name, char *master_hos
 
 static bool check_ha_db_and_node_list (char *database_name, char *source_host_name);
 
+#define UPGRADEDB_SCRIPT_FORMAT   "v%d_to_v%d.sql.enc"
+
 typedef struct
 {
   const char *db_name;
@@ -126,17 +133,25 @@ typedef struct
   bool dry_run;
   bool force;
 #if !defined(NDEBUG)
-  const char *apply_script_list;	/* debug-only: internal/ scripts not installed in release */
+  const char *apply_script_list;	/* internal/ scripts not installed in release */
 #endif
 } UPGRADEDB_OPTIONS;
 
 static int upgradedb_rebuild_catalog (void);
 static void upgradedb_update_and_log_version (int target_version);
 static bool upgradedb_user_confirmed (const UPGRADEDB_OPTIONS * opts);
+static void upgradedb_upgrade_script_path (int from_v, int to_v, char *out, size_t outsize);
+static int upgradedb_load_decoded_script (int from_v, int to_v, char **out_buf, size_t * out_len);
+static int upgradedb_print_upgrade_scripts (int from_version, int to_version);
+static int upgradedb_execute_sql_buffer (char *buf, size_t len);
+static int upgradedb_execute_upgrade_scripts (int from_version, int to_version);
+static int upgradedb_parse_options (UTIL_ARG_MAP * arg_map, UPGRADEDB_OPTIONS * opts);
+static int upgradedb_process (const UPGRADEDB_OPTIONS * opts);
 #if !defined(NDEBUG)
 static int upgradedb_apply_script_list (const UPGRADEDB_OPTIONS * opts);
 static int upgradedb_load_internal_script (const char *name, char **out_buf, size_t * out_len);
-static int upgradedb_read_script_list (const char *list_path, char ***out_names, int *out_count);
+static int upgradedb_print_upgrade_internal_scripts (const char *list_path);
+static int upgradedb_execute_upgrade_internal_scripts (const char *list_path);
 #endif
 
 
@@ -5204,42 +5219,6 @@ print_dump_tz_usage:
   return err_status;
 }
 
-static int
-upgradedb_parse_options (UTIL_ARG_MAP * arg_map, UPGRADEDB_OPTIONS * opts)
-{
-  int flag_count;
-
-  if (utility_get_option_string_table_size (arg_map) != 1)
-    {
-      return ER_FAILED;
-    }
-
-  opts->db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
-  if (opts->db_name == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  opts->check_only = utility_get_option_bool_value (arg_map, UPGRADE_CHECK_S);
-  opts->dry_run = utility_get_option_bool_value (arg_map, UPGRADE_DRY_RUN_S);
-  opts->force = utility_get_option_bool_value (arg_map, UPGRADE_FORCE_S);
-
-  flag_count = opts->check_only + opts->dry_run + opts->force;
-  if (flag_count > 1)
-    {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB,
-			      UPGRADEDB_MSG_MUTUALLY_EXCLUSIVE_OPTIONS));
-      return ER_FAILED;
-    }
-
-#if !defined(NDEBUG)
-  opts->apply_script_list = utility_get_option_string_value (arg_map, UPGRADE_APPLY_SCRIPT_LIST_S, 0);
-#endif
-
-  return NO_ERROR;
-}
-
 /*
  * Catcls is uninitialized because boot ran with boot_set_skip_check_ct_classes(true);
  * compile it before flushing class/auth metadata.
@@ -5285,248 +5264,252 @@ upgradedb_user_confirmed (const UPGRADEDB_OPTIONS * opts)
   return yn[0] == 'y';
 }
 
-#if !defined(NDEBUG)
-/*
- * Read an internal/ ad-hoc script into memory. Rejects names with path separators
- * or `..` so the lookup cannot escape the install directory.
- */
-static int
-upgradedb_load_internal_script (const char *name, char **out_buf, size_t * out_len)
+static void
+upgradedb_upgrade_script_path (int from_v, int to_v, char *out, size_t outsize)
 {
-  char path[PATH_MAX];
   char filename[NAME_MAX];
+
+  snprintf (filename, sizeof (filename), UPGRADEDB_SCRIPT_FORMAT, from_v, to_v);
+  envvar_upgradedir_file (out, outsize, filename);
+}
+
+static int
+upgradedb_load_decoded_script (int from_v, int to_v, char **out_buf, size_t * out_len)
+{
+  char script_path[PATH_MAX];
+  const char *expected_sha256 = UPGRADE_SCRIPT_SHA256S[from_v];
   struct stat st;
   FILE *fp = NULL;
   char *buf = NULL;
-
-  if (strchr (name, '/') != NULL || strstr (name, "..") != NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, name);
-      return ER_FILE_UNKNOWN_FILE;
-    }
-
-  snprintf (filename, sizeof (filename), "internal/%s", name);
-  envvar_upgradedir_file (path, sizeof (path), filename);
-
-  if (stat (path, &st) != 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, path);
-      return ER_FILE_UNKNOWN_FILE;
-    }
-
-  fp = fopen (path, "r");
-  if (fp == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, path);
-      return ER_FILE_UNKNOWN_FILE;
-    }
-
-  buf = (char *) malloc ((size_t) st.st_size);
-  if (buf == NULL)
-    {
-      fclose (fp);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) st.st_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  if ((long) fread (buf, 1, (size_t) st.st_size, fp) != st.st_size)
-    {
-      free_and_init (buf);
-      fclose (fp);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, path);
-      return ER_FILE_UNKNOWN_FILE;
-    }
-  fclose (fp);
-
-  *out_buf = buf;
-  *out_len = (size_t) st.st_size;
-  return NO_ERROR;
-}
-
-/*
- * Read a list file of internal/ script names. One name per line; blank lines
- * and lines starting with `#` are skipped. Leading/trailing whitespace is
- * trimmed. Returns a NULL-terminated array of strdup'd names plus the count.
- * Caller frees with util_free_string_array().
- */
-static int
-upgradedb_read_script_list (const char *list_path, char ***out_names, int *out_count)
-{
-  FILE *fp = NULL;
-  char **names = NULL;
-  int count = 0;
-  int capacity = 0;
-  char line[PATH_MAX];
-
-  fp = fopen (list_path, "r");
-  if (fp == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, list_path);
-      return ER_FILE_UNKNOWN_FILE;
-    }
-
-  while (fgets (line, sizeof (line), fp) != NULL)
-    {
-      char *start = line;
-      char *end;
-
-      while (*start == ' ' || *start == '\t')
-	{
-	  start++;
-	}
-
-      end = start + strlen (start);
-      while (end > start && (end[-1] == '\n' || end[-1] == '\r' || end[-1] == ' ' || end[-1] == '\t'))
-	{
-	  end--;
-	}
-      *end = '\0';
-
-      if (*start == '\0' || *start == '#')
-	{
-	  continue;
-	}
-
-      if (count >= capacity)
-	{
-	  int new_capacity = (capacity == 0) ? 4 : capacity * 2;
-	  char **tmp = (char **) realloc (names, sizeof (char *) * (new_capacity + 1));
-	  if (tmp == NULL)
-	    {
-	      fclose (fp);
-	      if (names != NULL)
-		{
-		  names[count] = NULL;
-		  util_free_string_array (names);
-		}
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      sizeof (char *) * (new_capacity + 1));
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-	  names = tmp;
-	  capacity = new_capacity;
-	}
-
-      names[count] = strdup (start);
-      if (names[count] == NULL)
-	{
-	  fclose (fp);
-	  names[count] = NULL;
-	  util_free_string_array (names);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (start) + 1);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      count++;
-    }
-  fclose (fp);
-
-  if (names != NULL)
-    {
-      names[count] = NULL;
-    }
-
-  *out_names = names;
-  *out_count = count;
-  return NO_ERROR;
-}
-
-/*
- * Apply a QA-supplied list of internal/ scripts. Stream pattern: load + action
- * + free per script (bounded memory regardless of script count). A load
- * failure mid-list leaves a partial preview on stdout.
- *
- * Independent of the chain flow: no version stamping, ignores --dry-run,
- * --check-only, version-mismatch checks (those are pre-checked by the caller).
- */
-static int
-upgradedb_apply_script_list (const UPGRADEDB_OPTIONS * opts)
-{
-  char **names = NULL;
-  int count = 0;
+  long file_size = 0;
+  SHA256_CTX sha_ctx;
+  unsigned char digest[SHA256_DIGEST_LENGTH];
+  char actual_sha256[SHA256_DIGEST_LENGTH * 2 + 1];
   int error = NO_ERROR;
 
-  error = upgradedb_read_script_list (opts->apply_script_list, &names, &count);
-  if (error != NO_ERROR)
+  upgradedb_upgrade_script_path (from_v, to_v, script_path, sizeof (script_path));
+
+  if (stat (script_path, &st) != 0)
     {
-      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-      return error;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, script_path);
+      error = ER_FILE_UNKNOWN_FILE;
+      goto exit;
+    }
+  file_size = st.st_size;
+
+  fp = fopen (script_path, "rb");
+  if (fp == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, script_path);
+      error = ER_FILE_UNKNOWN_FILE;
+      goto exit;
     }
 
-  if (count == 0)
+  /* Migration scripts are bounded and one-shot; load whole file. */
+  buf = (char *) malloc ((size_t) file_size + 1);
+  if (buf == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, opts->apply_script_list);
-      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-      if (names != NULL)
-	{
-	  util_free_string_array (names);
-	}
-      return ER_FILE_UNKNOWN_FILE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) file_size + 1);
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit;
     }
 
-  /* preview pass */
-  for (int i = 0; i < count; i++)
+  if ((long) fread (buf, 1, (size_t) file_size, fp) != file_size)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, script_path);
+      error = ER_FILE_UNKNOWN_FILE;
+      goto exit;
+    }
+  buf[file_size] = '\0';
+
+  if (qstr_hex_to_bin (buf, (int) (file_size / 2), buf, (int) file_size) != (int) file_size)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SYSMETA_UPGRADE_TAMPERED, 0);
+      error = ER_SYSMETA_UPGRADE_TAMPERED;
+      goto exit;
+    }
+
+  SHA256_Init (&sha_ctx);
+  SHA256_Update (&sha_ctx, buf, (size_t) file_size / 2);
+  SHA256_Final (digest, &sha_ctx);
+  str_to_hex_prealloced ((const char *) digest, SHA256_DIGEST_LENGTH,
+			 actual_sha256, sizeof (actual_sha256), HEX_LOWERCASE);
+
+  if (strcmp (actual_sha256, expected_sha256) != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SYSMETA_UPGRADE_TAMPERED, 0);
+      error = ER_SYSMETA_UPGRADE_TAMPERED;
+      goto exit;
+    }
+
+  *out_buf = buf;
+  *out_len = (size_t) file_size / 2;
+  buf = NULL;			/* ownership transferred — exit must not free */
+
+exit:
+  if (fp != NULL)
+    {
+      fclose (fp);
+    }
+  if (buf != NULL)
+    {
+      free_and_init (buf);
+    }
+  return error;
+}
+
+static int
+upgradedb_print_upgrade_scripts (int from_version, int to_version)
+{
+  for (int v = from_version; v < to_version; v++)
     {
       char *buf = NULL;
       size_t len = 0;
-
-      error = upgradedb_load_internal_script (names[i], &buf, &len);
+      int error = upgradedb_load_decoded_script (v, v + 1, &buf, &len);
       if (error != NO_ERROR)
 	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  goto cleanup;
+	  return error;
 	}
       fwrite (buf, 1, len, stdout);
       free_and_init (buf);
     }
+  return NO_ERROR;
+}
 
-  if (!upgradedb_user_confirmed (opts))
+static int
+upgradedb_execute_sql_buffer (char *buf, size_t len)
+{
+  FILE *fp = NULL;
+  DB_SESSION *session = NULL;
+  int error = NO_ERROR;
+
+  fp = fmemopen (buf, len, "r");
+  if (fp == NULL)
     {
-      goto cleanup;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, "(memory buffer)");
+      error = ER_FILE_UNKNOWN_FILE;
+      goto exit;
     }
 
-  /* execute pass */
-  for (int i = 0; i < count; i++)
+  session = db_make_session_for_one_statement_execution (fp);
+  if (session == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto exit;
+    }
+
+  while (true)
+    {
+      int stmt_cnt = db_parse_one_statement (session);
+      if (stmt_cnt <= 0)
+	{
+	  break;
+	}
+
+      int stmt_id = db_compile_statement (session);
+      if (stmt_id < 0)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  break;
+	}
+      if (stmt_id == 0)
+	{
+	  break;
+	}
+
+      DB_QUERY_RESULT *res = NULL;
+      error = db_execute_statement (session, stmt_id, &res);
+      if (res != NULL)
+	{
+	  db_query_end (res);
+	}
+      if (error < 0)
+	{
+	  break;
+	}
+      error = NO_ERROR;
+    }
+
+  if (error == NO_ERROR && db_get_errors (session) != NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	}
+    }
+
+exit:
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+  if (fp != NULL)
+    {
+      fclose (fp);
+    }
+  return error;
+}
+
+static int
+upgradedb_execute_upgrade_scripts (int from_version, int to_version)
+{
+  for (int v = from_version; v < to_version; v++)
     {
       char *buf = NULL;
       size_t len = 0;
-
-      error = upgradedb_load_internal_script (names[i], &buf, &len);
+      int error = upgradedb_load_decoded_script (v, v + 1, &buf, &len);
       if (error != NO_ERROR)
 	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  db_abort_transaction ();
-	  goto cleanup;
+	  return error;
 	}
-      error = sysmeta_execute_sql_buffer (buf, len);
+
+      error = upgradedb_execute_sql_buffer (buf, len);
       free_and_init (buf);
+
       if (error != NO_ERROR)
 	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  db_abort_transaction ();
-	  goto cleanup;
+	  return error;
 	}
     }
-
-  error = upgradedb_rebuild_catalog ();
-  if (error != NO_ERROR)
-    {
-      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-      db_abort_transaction ();
-      goto cleanup;
-    }
-
-  error = db_commit_transaction ();
-  if (error != NO_ERROR)
-    {
-      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-      db_abort_transaction ();
-    }
-
-cleanup:
-  util_free_string_array (names);
-  return error;
+  return NO_ERROR;
 }
+
+static int
+upgradedb_parse_options (UTIL_ARG_MAP * arg_map, UPGRADEDB_OPTIONS * opts)
+{
+  int flag_count;
+
+  if (utility_get_option_string_table_size (arg_map) != 1)
+    {
+      return ER_FAILED;
+    }
+
+  opts->db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (opts->db_name == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  opts->check_only = utility_get_option_bool_value (arg_map, UPGRADE_CHECK_S);
+  opts->dry_run = utility_get_option_bool_value (arg_map, UPGRADE_DRY_RUN_S);
+  opts->force = utility_get_option_bool_value (arg_map, UPGRADE_FORCE_S);
+
+  flag_count = opts->check_only + opts->dry_run + opts->force;
+  if (flag_count > 1)
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB,
+			      UPGRADEDB_MSG_MUTUALLY_EXCLUSIVE_OPTIONS));
+      return ER_FAILED;
+    }
+
+#if !defined(NDEBUG)
+  opts->apply_script_list = utility_get_option_string_value (arg_map, UPGRADE_APPLY_SCRIPT_LIST_S, 0);
 #endif
+
+  return NO_ERROR;
+}
 
 static int
 upgradedb_process (const UPGRADEDB_OPTIONS * opts)
@@ -5561,7 +5544,7 @@ upgradedb_process (const UPGRADEDB_OPTIONS * opts)
       return ER_FAILED;
     }
 
-  error = sysmeta_print_upgrade_scripts (current_version, target_version);
+  error = upgradedb_print_upgrade_scripts (current_version, target_version);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -5578,7 +5561,7 @@ upgradedb_process (const UPGRADEDB_OPTIONS * opts)
     }
 
   is_executed = true;
-  error = sysmeta_execute_upgrade_scripts (current_version, target_version);
+  error = upgradedb_execute_upgrade_scripts (current_version, target_version);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -5650,3 +5633,182 @@ upgradedb (UTIL_FUNCTION_ARG * arg)
   db_shutdown ();
   return (error != NO_ERROR) ? EXIT_FAILURE : EXIT_SUCCESS;
 }
+
+#if !defined(NDEBUG)
+static int
+upgradedb_apply_script_list (const UPGRADEDB_OPTIONS * opts)
+{
+  bool is_executed = false;
+  int error = NO_ERROR;
+
+  error = upgradedb_print_upgrade_internal_scripts (opts->apply_script_list);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  if (!upgradedb_user_confirmed (opts))
+    {
+      return NO_ERROR;
+    }
+
+  is_executed = true;
+
+  error = upgradedb_execute_upgrade_internal_scripts (opts->apply_script_list);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error = upgradedb_rebuild_catalog ();
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error = db_commit_transaction ();
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  return NO_ERROR;
+
+error_exit:
+  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+  if (is_executed)
+    {
+      db_abort_transaction ();
+    }
+  return error;
+}
+
+static int
+upgradedb_load_internal_script (const char *name, char **out_buf, size_t * out_len)
+{
+  char path[PATH_MAX];
+  char filename[NAME_MAX];
+  struct stat st;
+  FILE *fp = NULL;
+  char *buf = NULL;
+
+  snprintf (filename, sizeof (filename), "internal/%s", name);
+  envvar_upgradedir_file (path, sizeof (path), filename);
+
+  if (stat (path, &st) != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, path);
+      return ER_FILE_UNKNOWN_FILE;
+    }
+
+  fp = fopen (path, "r");
+  if (fp == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, path);
+      return ER_FILE_UNKNOWN_FILE;
+    }
+
+  buf = (char *) malloc ((size_t) st.st_size);
+  if (buf == NULL)
+    {
+      fclose (fp);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) st.st_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  if ((long) fread (buf, 1, (size_t) st.st_size, fp) != st.st_size)
+    {
+      free_and_init (buf);
+      fclose (fp);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, path);
+      return ER_FILE_UNKNOWN_FILE;
+    }
+  fclose (fp);
+
+  *out_buf = buf;
+  *out_len = (size_t) st.st_size;
+  return NO_ERROR;
+}
+
+static int
+upgradedb_print_upgrade_internal_scripts (const char *list_path)
+{
+  FILE *fp = NULL;
+  char line[PATH_MAX];
+
+  fp = fopen (list_path, "r");
+  if (fp == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, list_path);
+      return ER_FILE_UNKNOWN_FILE;
+    }
+
+  while (fgets (line, sizeof (line), fp) != NULL)
+    {
+      char *buf = NULL;
+      size_t len = 0;
+      int error;
+
+      trim (line);
+      if (line[0] == '\0')
+	{
+	  continue;
+	}
+
+      error = upgradedb_load_internal_script (line, &buf, &len);
+      if (error != NO_ERROR)
+	{
+	  fclose (fp);
+	  return error;
+	}
+      fwrite (buf, 1, len, stdout);
+      free_and_init (buf);
+    }
+  fclose (fp);
+  return NO_ERROR;
+}
+
+static int
+upgradedb_execute_upgrade_internal_scripts (const char *list_path)
+{
+  FILE *fp = NULL;
+  char line[PATH_MAX];
+
+  fp = fopen (list_path, "r");
+  if (fp == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, list_path);
+      return ER_FILE_UNKNOWN_FILE;
+    }
+
+  while (fgets (line, sizeof (line), fp) != NULL)
+    {
+      char *buf = NULL;
+      size_t len = 0;
+      int error;
+
+      trim (line);
+      if (line[0] == '\0')
+	{
+	  continue;
+	}
+
+      error = upgradedb_load_internal_script (line, &buf, &len);
+      if (error != NO_ERROR)
+	{
+	  fclose (fp);
+	  return error;
+	}
+
+      error = upgradedb_execute_sql_buffer (buf, len);
+      free_and_init (buf);
+      if (error != NO_ERROR)
+	{
+	  fclose (fp);
+	  return error;
+	}
+    }
+  fclose (fp);
+  return NO_ERROR;
+}
+#endif

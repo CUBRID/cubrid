@@ -32,7 +32,6 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/unload_object_file.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/file_hash.c
-  ${EXECUTABLES_DIR}/system_metadata_upgrade.c
   )
 
 set(EXECUTABLE_HEADERS
@@ -618,7 +617,6 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/unload_object_file.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/file_hash.c
-  ${EXECUTABLES_DIR}/system_metadata_upgrade.c
   ${COMPAT_SOURCES}
   ${BASE_SOURCES}
   ${HEAPLAYER_SOURCES}
