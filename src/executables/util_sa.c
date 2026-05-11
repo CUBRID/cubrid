@@ -125,15 +125,19 @@ typedef struct
   bool check_only;
   bool dry_run;
   bool force;
+#if !defined(NDEBUG)
   const char *apply_script_list;	/* debug-only: internal/ scripts not installed in release */
+#endif
 } UPGRADEDB_OPTIONS;
 
 static int upgradedb_rebuild_catalog (void);
 static void upgradedb_update_and_log_version (int target_version);
 static bool upgradedb_user_confirmed (const UPGRADEDB_OPTIONS * opts);
+#if !defined(NDEBUG)
 static int upgradedb_apply_script_list (const UPGRADEDB_OPTIONS * opts);
 static int upgradedb_load_internal_script (const char *name, char **out_buf, size_t * out_len);
 static int upgradedb_read_script_list (const char *list_path, char ***out_names, int *out_count);
+#endif
 
 
 /*
@@ -5229,7 +5233,9 @@ upgradedb_parse_options (UTIL_ARG_MAP * arg_map, UPGRADEDB_OPTIONS * opts)
       return ER_FAILED;
     }
 
+#if !defined(NDEBUG)
   opts->apply_script_list = utility_get_option_string_value (arg_map, UPGRADE_APPLY_SCRIPT_LIST_S, 0);
+#endif
 
   return NO_ERROR;
 }
@@ -5279,6 +5285,7 @@ upgradedb_user_confirmed (const UPGRADEDB_OPTIONS * opts)
   return yn[0] == 'y';
 }
 
+#if !defined(NDEBUG)
 /*
  * Read an internal/ ad-hoc script into memory. Rejects names with path separators
  * or `..` so the lookup cannot escape the install directory.
@@ -5519,6 +5526,7 @@ cleanup:
   util_free_string_array (names);
   return error;
 }
+#endif
 
 static int
 upgradedb_process (const UPGRADEDB_OPTIONS * opts)
@@ -5535,11 +5543,13 @@ upgradedb_process (const UPGRADEDB_OPTIONS * opts)
       return ER_FAILED;
     }
 
+#if !defined(NDEBUG)
   /* For internal use. */
   if (opts->apply_script_list != NULL)
     {
       return upgradedb_apply_script_list (opts);
     }
+#endif
 
   if (current_version == target_version)
     {
