@@ -125,6 +125,7 @@
 
 #define DB_VALUE_NUMERIC_HEADER_PRECISION(value)       ((value)->data.num.header.precision)
 #define DB_VALUE_NUMERIC_HEADER_SCALE(value)           ((value)->data.num.header.scale)
+#define DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE(value)      ((value)->domain.numeric_info.is_value_negative)
 
 #define DB_GET_NUMERIC_PRECISION(value, is_float_numeric) \
   db_get_numeric_precision(value, is_float_numeric)

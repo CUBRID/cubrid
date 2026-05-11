@@ -55,9 +55,6 @@
 #include "thread_entry.hpp"
 #include "subquery_cache.h"
 #include "pl_executor.hpp"
-#if 1				/* This is a temporary measure to allow the use of the NUMERIC_VALUE_SIGN_BIT_MASK macro in Phase-3. */
-#include "numeric_opfunc.h"
-#endif
 
 #include "dbtype.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -5170,11 +5167,7 @@ fetch_and_coerce_key_limit_lower (THREAD_ENTRY * thread_p, REGU_VARIABLE * key_l
 	    }
 
 	  /* positive overflow: no rows match (DB_BIGINT_MAX); negative overflow: all rows match (0) */
-#if 1				/* phase-3: raw sign-bit check; replaced by DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE in phase-4 */
-	  db_make_bigint (out_val, (tmp_dbvalp->data.num.d.buf[0] & NUMERIC_VALUE_SIGN_BIT_MASK) ? 0 : DB_BIGINT_MAX);
-#else
 	  db_make_bigint (out_val, DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (tmp_dbvalp) ? 0 : DB_BIGINT_MAX);
-#endif
 	  er_clear ();
 	  return NO_ERROR;
 	}
@@ -5194,11 +5187,7 @@ fetch_and_coerce_key_limit_lower (THREAD_ENTRY * thread_p, REGU_VARIABLE * key_l
       if (dom_status == DOMAIN_OVERFLOW && DB_VALUE_DOMAIN_TYPE (tmp_dbvalp) == DB_TYPE_NUMERIC)
 	{
 	  /* positive overflow: no rows match (DB_BIGINT_MAX); negative overflow: all rows match (0) */
-#if 1				/* phase-3: raw sign-bit check; replaced by DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE in phase-4 */
-	  db_make_bigint (out_val, (tmp_dbvalp->data.num.d.buf[0] & NUMERIC_VALUE_SIGN_BIT_MASK) ? 0 : DB_BIGINT_MAX);
-#else
 	  db_make_bigint (out_val, DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (tmp_dbvalp) ? 0 : DB_BIGINT_MAX);
-#endif
 	  er_clear ();
 	  return NO_ERROR;
 	}

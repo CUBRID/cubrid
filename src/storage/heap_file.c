@@ -17954,7 +17954,7 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 		   * For float numeric, precision must be calculated accurately from the actual value.
 		   */
 		  value->dbvalue.data.num.header.precision =
-		    float_numeric_get_precision_digits (value->dbvalue.data.num.d.buf, DB_NUMERIC_BUF_SIZE);
+		    numeric_get_precision_digits (value->dbvalue.data.num.d.buf);
 		  value->dbvalue.data.num.header.scale = src_scale;
 		  can_skip_cast = true;
 		}

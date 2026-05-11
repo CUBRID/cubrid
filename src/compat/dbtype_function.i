@@ -97,7 +97,8 @@ STATIC_INLINE int db_make_method_error (DB_VALUE * value, const int errcode, con
 STATIC_INLINE int db_make_short (DB_VALUE * value, const DB_C_SHORT num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_bigint (DB_VALUE * value, const DB_BIGINT num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale,
-				   const int byte_size, const bool is_float_numeric) __attribute__ ((ALWAYS_INLINE));
+				   const int byte_size, const bool is_value_negative, const bool is_float_numeric)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_bit (DB_VALUE * value, const int bit_length, DB_CONST_C_BIT bit_str,
 			       const int bit_str_bit_size) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_varbit (DB_VALUE * value, const int max_bit_length, DB_CONST_C_BIT bit_str,
@@ -1642,7 +1643,7 @@ db_make_bigint (DB_VALUE * value, const DB_BIGINT num)
  */
 int
 db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale, const int byte_size,
-		 const bool is_float_numeric)
+		 const bool is_value_negative, const bool is_float_numeric)
 {
   int error = NO_ERROR;
 
@@ -1659,14 +1660,49 @@ db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, 
   if (num)
     {
       value->domain.general_info.is_null = 0;
+      value->domain.numeric_info.is_value_negative = is_value_negative;
       if (is_float_numeric)
 	{
-	  value->data.num.header.precision = DB_VALUE_PRECISION (value);
-	  value->data.num.header.scale = DB_VALUE_SCALE (value);
+	  value->data.num.header.precision = precision;
+	  value->data.num.header.scale = scale;
 	  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
 	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
 	}
-      memcpy (value->data.num.d.buf + (DB_NUMERIC_BUF_SIZE - byte_size), num, byte_size);
+
+      switch (byte_size)
+	{
+	case 4:
+	  /* value_size (1) = byte_size(4) - header_size(3) */
+	  memset (value->data.num.d.buf, 0, 16);
+	  memcpy (value->data.num.d.buf + 16, num, 1);
+	  break;
+	case 8:
+	  /* value_size (5) = byte_size(8) - header_size(3) */
+	  memset (value->data.num.d.buf, 0, 12);
+	  memcpy (value->data.num.d.buf + 12, num, 5);
+	  break;
+	case 12:
+	  /* value_size (9) = byte_size(12) - header_size(3) */
+	  memset (value->data.num.d.buf, 0, 8);
+	  memcpy (value->data.num.d.buf + 8, num, 9);
+	  break;
+	case 16:
+	  /* value_size (13) = byte_size(16) - header_size(3) */
+	  memset (value->data.num.d.buf, 0, 4);
+	  memcpy (value->data.num.d.buf + 4, num, 13);
+	  break;
+	case DB_NUMERIC_BUF_SIZE:
+	  /* reached via call paths other than mr_data_*val_numeric() or mr_data_*mem_numeric(). */
+	case 20:
+	  /* value_size (17) = byte_size(20) - header_size(3) */
+	  memcpy (value->data.num.d.buf, num, DB_NUMERIC_BUF_SIZE);
+	  break;
+	default:
+	  /* unreachable: byte_size must be one of {4,8,12,16,DB_NUMERIC_BUF_SIZE(17),20} */
+	  assert_release_error (false);
+	  error = ER_FAILED;
+	  break;
+	}
     }
   else
     {

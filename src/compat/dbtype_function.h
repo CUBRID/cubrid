@@ -144,8 +144,8 @@
 
 #define DB_MAKE_SHORT DB_MAKE_SMALLINT
 
-#define DB_MAKE_NUMERIC(value, num, precision, scale) \
-        db_make_numeric(value, num, precision, scale, DB_NUMERIC_BUF_SIZE, false)
+#define DB_MAKE_NUMERIC(value, num, precision, scale, is_value_negative, is_float_numeric) \
+        db_make_numeric(value, num, precision, scale, DB_NUMERIC_BUF_SIZE, is_value_negative, is_float_numeric)
 
 #define DB_MAKE_BIT(value, bit_length, bit_str, bit_str_bit_size) \
         db_make_bit(value, bit_length, bit_str, bit_str_bit_size)
@@ -354,7 +354,7 @@ extern "C"
   extern int db_make_short (DB_VALUE * value, const DB_C_SHORT num);
   extern int db_make_bigint (DB_VALUE * value, const DB_BIGINT num);
   extern int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale,
-			      const int byte_size, const bool is_float_numeric);
+			      const int byte_size, const bool is_value_negative, const bool is_float_numeric);
   extern int db_make_bit (DB_VALUE * value, const int bit_length, DB_CONST_C_BIT bit_str, const int bit_str_bit_size);
   extern int db_make_varbit (DB_VALUE * value, const int max_bit_length, DB_CONST_C_BIT bit_str,
 			     const int bit_str_bit_size);

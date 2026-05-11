@@ -778,6 +778,7 @@ extern "C"
       unsigned char type;
       unsigned char precision;
       int scale;
+      bool is_value_negative;
     } numeric_info;
     struct char_info
     {

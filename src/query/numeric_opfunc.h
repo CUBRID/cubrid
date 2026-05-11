@@ -32,6 +32,60 @@
 #include "intl_support.h"
 #include "dbtype_def.h"
 #include "error_manager.h"
+#include "byte_order.h"
+
+/*
+ * Build requirements (enforced via #error)
+ *
+ * - GCC or Clang: required for __builtin_clz/ctz/bswap intrinsics
+ * - __int128: required for multi-precision arithmetic
+ * - x86_64: required for x86 intrinsics (_addcarry_u64, _subborrow_u64)
+ *
+ * Fallback paths for unsupported toolchains/architectures have been
+ * removed. If a build environment trips one of the #error directives
+ * below, the policy decision should be revisited rather than re-adding
+ * the fallback.
+ */
+#if !(defined(__GNUC__) || defined(__clang__))
+#error "GCC or Clang required"
+#endif
+
+#if !defined(__SIZEOF_INT128__)
+#error "__int128 support is required"
+#endif
+
+#if !defined(__x86_64__)
+#error "x86_64 architecture required"
+#endif
+
+#include <x86intrin.h>
+
+/*
+ * CLZ / CTZ / BSWAP (GCC/Clang builtins)
+ *
+ * - __builtin_clz/ctz: undefined for 0; explicitly handled
+ * - __builtin_bswap: always reverses byte order
+ */
+#define NUMERIC_CLZ64(x) ((x) ? __builtin_clzll(x) : 64)
+#define NUMERIC_CTZ64(x) ((x) ? __builtin_ctzll(x) : 64)
+#define NUMERIC_CLZ32(x) ((x) ? __builtin_clz(x) : 32)
+#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
+#define NUMERIC_BSWAP64(x) __builtin_bswap64(x)
+#define NUMERIC_BSWAP32(x) __builtin_bswap32(x)
+#else /* OR_BYTE_ORDER == OR_BIG_ENDIAN */
+#define NUMERIC_BSWAP64(x) (x)
+#define NUMERIC_BSWAP32(x) (x)
+#endif /* OR_BYTE_ORDER */
+
+/*
+ * 128-bit integer support
+ */
+typedef __uint128_t uint128_t;
+typedef uint64_t knuth_digit_t;
+typedef uint128_t knuth_double_digit_t;
+#define KNUTH_DIGIT_BITS (64)
+#define KNUTH_BASE ((knuth_double_digit_t)1 << 64)
+#define NUMERIC_CLZ(x) NUMERIC_CLZ64(x)
 
 typedef enum
 {
@@ -82,52 +136,34 @@ typedef enum
     (value)->data.num.header.scale = 0; \
   } while(0)
 
-/*
- * Lookup table for converting precision value to byte count
- *
- * Precision range: Pre-calculated for 1 to 40 digits
- * Conversion formula: bytes = ceil(precision / log10(256))
- * Note: log10(256) = 2.40824
- */
-extern const int _gv_numeric_precision_to_bytes_lookup[DB_MAX_NUMERIC_PRECISION + 1];
-
-#if defined(SERVER_MODE)
-extern void numeric_init_power_value_string (void);
-#endif
-
 /* Arithmetic routines */
 extern int numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
-extern int numeric_db_value_negate (DB_VALUE * answer);
-extern void numeric_db_value_abs (DB_C_NUMERIC src_num, DB_C_NUMERIC dest_num);
-extern int numeric_db_value_increase (DB_VALUE * arg);
 
 /* Comparison routines */
 extern int numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 
 /* Coercion routines */
-extern void numeric_coerce_int_to_num (int arg, DB_C_NUMERIC answer);
-extern void numeric_coerce_bigint_to_num (DB_BIGINT arg, DB_C_NUMERIC answer);
-extern void numeric_coerce_num_to_int (DB_C_NUMERIC arg, int *answer);
-extern int numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer);
+extern void numeric_coerce_int_to_num (int arg, DB_C_NUMERIC answer, bool * is_value_negative);
+extern void numeric_coerce_bigint_to_num (DB_BIGINT arg, DB_C_NUMERIC answer, bool * is_value_negative);
+extern void numeric_coerce_num_to_int (DB_C_NUMERIC arg, int *answer, const bool is_value_negative);
+extern int numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer, const bool is_value_negative);
 
-extern void numeric_coerce_dec_str_to_num (const char *dec_str, DB_C_NUMERIC result);
-extern void numeric_coerce_num_to_dec_str (DB_C_NUMERIC num, char *dec_str);
+extern void numeric_coerce_dec_str_to_num (const char *dec_str, DB_C_NUMERIC result, bool * is_value_negative);
+extern void numeric_coerce_num_to_dec_str (const DB_VALUE * num_value, char *dec_str);
 
-extern void numeric_coerce_num_to_double (DB_C_NUMERIC num, int scale, double *adouble);
-extern int numeric_internal_double_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale);
-extern int numeric_internal_float_to_num (float afloat, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale);
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern int numeric_coerce_double_to_num (double adouble, DB_C_NUMERIC num, int *prec, int *scale);
-#endif
+extern void numeric_coerce_num_to_double (const DB_VALUE * num_value, int scale, double *adouble);
+extern int numeric_internal_double_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
+					   bool * is_value_negative);
+extern int numeric_internal_float_to_num (float afloat, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
+					  bool * is_value_negative);
 
 extern int numeric_coerce_string_to_num (const char *astring, int astring_len, INTL_CODESET codeset, DB_VALUE * num);
 
-extern int numeric_coerce_num_to_num (DB_C_NUMERIC src_num, int src_prec, int src_scale, int dest_prec, int dest_scale,
-				      DB_C_NUMERIC dest_num);
+extern int numeric_coerce_num_to_num (const DB_VALUE * src_value, int src_prec, int src_scale, int dest_prec,
+				      int dest_scale, DB_C_NUMERIC dest_num, bool * dest_num_is_negative);
 
 extern int numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_stat);
 extern int numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_stat);
@@ -135,7 +171,7 @@ extern int numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * d
 extern char *numeric_db_value_print (const DB_VALUE * val, char *buf);
 
 /* Floating-Point NUMERIC */
-extern int float_numeric_get_precision_digits (uint8_t * calc_buf, int calc_bytes);
+extern int numeric_get_precision_digits (uint8_t * calc_buf);
 extern int float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);

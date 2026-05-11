@@ -1476,7 +1476,8 @@ session_set_cur_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value, bool
     {
       need_coercion = true;
     }
-  else if (DB_VALUE_PRECISION (value) != DB_MAX_FIXED_NUMERIC_PRECISION || DB_VALUE_SCALE (value) != 0)
+  else if (DB_VALUE_PRECISION (value) != DB_DEFAULT_NUMERIC_PRECISION
+	   || DB_VALUE_SCALE (value) != DB_DEFAULT_NUMERIC_SCALE)
     {
       need_coercion = true;
     }

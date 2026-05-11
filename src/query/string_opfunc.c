@@ -56,7 +56,6 @@
 #include "string_regex.hpp"
 #include "tz_support.h"
 #include "util_func.h"
-#include "dbtype_def.h"
 
 #include <algorithm>
 #include <string>
@@ -1258,7 +1257,7 @@ db_string_chr (DB_VALUE * res, DB_VALUE * dbval1, DB_VALUE * dbval2)
       dtmp = db_get_double (dbval1);
       break;
     case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double (db_locate_numeric (dbval1), db_get_numeric_scale (dbval1, NULL), &dtmp);
+      numeric_coerce_num_to_double (dbval1, db_get_numeric_scale (dbval1, NULL), &dtmp);
       break;
     case DB_TYPE_MONETARY:
       dtmp = (db_get_monetary (dbval1))->amount;
@@ -11231,7 +11230,7 @@ db_round_dbvalue_to_int (const DB_VALUE * src, int *result)
     case DB_TYPE_NUMERIC:
       {
 	double x = 0;
-	numeric_coerce_num_to_double (db_locate_numeric ((DB_VALUE *) src), db_get_numeric_scale (src, NULL), &x);
+	numeric_coerce_num_to_double (src, db_get_numeric_scale (src, NULL), &x);
 	*result = (int) ((x) > 0 ? ((x) + .5) : ((x) - .5));
 	return NO_ERROR;
       }
@@ -11734,8 +11733,7 @@ db_timestamp (const DB_VALUE * src_datetime1, const DB_VALUE * src_time2, DB_VAL
       break;
 
     case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double ((DB_C_NUMERIC) db_locate_numeric (src_time2),
-				    db_get_numeric_scale (src_time2, NULL), &amount_d);
+      numeric_coerce_num_to_double (src_time2, db_get_numeric_scale (src_time2, NULL), &amount_d);
       break;
 
     default:
