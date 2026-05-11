@@ -5263,7 +5263,8 @@ upgradedb_user_confirmed (const UPGRADEDB_OPTIONS * opts)
     {
       return true;
     }
-  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB, UPGRADEDB_MSG_PROMPT_CONTINUE));
+  fprintf (stdout, "%s",
+	   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB, UPGRADEDB_MSG_PROMPT_CONTINUE));
   scanf ("%1s", yn);
   return yn[0] == 'y';
 }
