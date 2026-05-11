@@ -126,6 +126,12 @@ static bool check_ha_db_and_node_list (char *database_name, char *source_host_na
 
 #define UPGRADEDB_SCRIPT_FORMAT   "v%d_to_v%d.sql.enc"
 
+typedef enum
+{
+  UPGRADEDB_OP_PRINT,
+  UPGRADEDB_OP_EXECUTE
+} UPGRADEDB_SCRIPT_OP;
+
 typedef struct
 {
   const char *db_name;
@@ -142,16 +148,14 @@ static void upgradedb_update_and_log_version (int target_version);
 static bool upgradedb_user_confirmed (const UPGRADEDB_OPTIONS * opts);
 static void upgradedb_upgrade_script_path (int from_v, int to_v, char *out, size_t outsize);
 static int upgradedb_load_decoded_script (int from_v, int to_v, char **out_buf, size_t * out_len);
-static int upgradedb_print_upgrade_scripts (int from_version, int to_version);
+static int upgradedb_process_upgrade_scripts (int from_version, int to_version, UPGRADEDB_SCRIPT_OP op);
 static int upgradedb_execute_sql_buffer (char *buf, size_t len);
-static int upgradedb_execute_upgrade_scripts (int from_version, int to_version);
 static int upgradedb_parse_options (UTIL_ARG_MAP * arg_map, UPGRADEDB_OPTIONS * opts);
-static int upgradedb_process (const UPGRADEDB_OPTIONS * opts);
+static int upgradedb_run (const UPGRADEDB_OPTIONS * opts);
 #if !defined(NDEBUG)
 static int upgradedb_apply_script_list (const UPGRADEDB_OPTIONS * opts);
 static int upgradedb_load_internal_script (const char *name, char **out_buf, size_t * out_len);
-static int upgradedb_print_upgrade_internal_scripts (const char *list_path);
-static int upgradedb_execute_upgrade_internal_scripts (const char *list_path);
+static int upgradedb_process_upgrade_internal_scripts (const char *list_path, UPGRADEDB_SCRIPT_OP op);
 #endif
 
 
@@ -5359,7 +5363,7 @@ exit:
 }
 
 static int
-upgradedb_print_upgrade_scripts (int from_version, int to_version)
+upgradedb_process_upgrade_scripts (int from_version, int to_version, UPGRADEDB_SCRIPT_OP op)
 {
   for (int v = from_version; v < to_version; v++)
     {
@@ -5370,8 +5374,20 @@ upgradedb_print_upgrade_scripts (int from_version, int to_version)
 	{
 	  return error;
 	}
-      fwrite (buf, 1, len, stdout);
+
+      if (op == UPGRADEDB_OP_PRINT)
+	{
+	  fwrite (buf, 1, len, stdout);
+	}
+      else
+	{
+	  error = upgradedb_execute_sql_buffer (buf, len);
+	}
       free_and_init (buf);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
   return NO_ERROR;
 }
@@ -5452,30 +5468,6 @@ exit:
 }
 
 static int
-upgradedb_execute_upgrade_scripts (int from_version, int to_version)
-{
-  for (int v = from_version; v < to_version; v++)
-    {
-      char *buf = NULL;
-      size_t len = 0;
-      int error = upgradedb_load_decoded_script (v, v + 1, &buf, &len);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-
-      error = upgradedb_execute_sql_buffer (buf, len);
-      free_and_init (buf);
-
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
-  return NO_ERROR;
-}
-
-static int
 upgradedb_parse_options (UTIL_ARG_MAP * arg_map, UPGRADEDB_OPTIONS * opts)
 {
   int flag_count;
@@ -5512,7 +5504,7 @@ upgradedb_parse_options (UTIL_ARG_MAP * arg_map, UPGRADEDB_OPTIONS * opts)
 }
 
 static int
-upgradedb_process (const UPGRADEDB_OPTIONS * opts)
+upgradedb_run (const UPGRADEDB_OPTIONS * opts)
 {
   int current_version = (int) log_Gl.hdr.sysmeta_version;
   int target_version = SYSTEM_METADATA_VERSION;
@@ -5544,7 +5536,7 @@ upgradedb_process (const UPGRADEDB_OPTIONS * opts)
       return ER_FAILED;
     }
 
-  error = upgradedb_print_upgrade_scripts (current_version, target_version);
+  error = upgradedb_process_upgrade_scripts (current_version, target_version, UPGRADEDB_OP_PRINT);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -5561,7 +5553,7 @@ upgradedb_process (const UPGRADEDB_OPTIONS * opts)
     }
 
   is_executed = true;
-  error = upgradedb_execute_upgrade_scripts (current_version, target_version);
+  error = upgradedb_process_upgrade_scripts (current_version, target_version, UPGRADEDB_OP_EXECUTE);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -5628,7 +5620,7 @@ upgradedb (UTIL_FUNCTION_ARG * arg)
       return EXIT_FAILURE;
     }
 
-  error = upgradedb_process (&opts);
+  error = upgradedb_run (&opts);
 
   db_shutdown ();
   return (error != NO_ERROR) ? EXIT_FAILURE : EXIT_SUCCESS;
@@ -5641,7 +5633,7 @@ upgradedb_apply_script_list (const UPGRADEDB_OPTIONS * opts)
   bool is_executed = false;
   int error = NO_ERROR;
 
-  error = upgradedb_print_upgrade_internal_scripts (opts->apply_script_list);
+  error = upgradedb_process_upgrade_internal_scripts (opts->apply_script_list, UPGRADEDB_OP_PRINT);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -5653,8 +5645,7 @@ upgradedb_apply_script_list (const UPGRADEDB_OPTIONS * opts)
     }
 
   is_executed = true;
-
-  error = upgradedb_execute_upgrade_internal_scripts (opts->apply_script_list);
+  error = upgradedb_process_upgrade_internal_scripts (opts->apply_script_list, UPGRADEDB_OP_EXECUTE);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -5731,10 +5722,11 @@ upgradedb_load_internal_script (const char *name, char **out_buf, size_t * out_l
 }
 
 static int
-upgradedb_print_upgrade_internal_scripts (const char *list_path)
+upgradedb_process_upgrade_internal_scripts (const char *list_path, UPGRADEDB_SCRIPT_OP op)
 {
   FILE *fp = NULL;
   char line[PATH_MAX];
+  int error = NO_ERROR;
 
   fp = fopen (list_path, "r");
   if (fp == NULL)
@@ -5747,7 +5739,6 @@ upgradedb_print_upgrade_internal_scripts (const char *list_path)
     {
       char *buf = NULL;
       size_t len = 0;
-      int error;
 
       trim (line);
       if (line[0] == '\0')
@@ -5758,57 +5749,26 @@ upgradedb_print_upgrade_internal_scripts (const char *list_path)
       error = upgradedb_load_internal_script (line, &buf, &len);
       if (error != NO_ERROR)
 	{
-	  fclose (fp);
-	  return error;
+	  goto exit;
 	}
-      fwrite (buf, 1, len, stdout);
-      free_and_init (buf);
-    }
-  fclose (fp);
-  return NO_ERROR;
-}
 
-static int
-upgradedb_execute_upgrade_internal_scripts (const char *list_path)
-{
-  FILE *fp = NULL;
-  char line[PATH_MAX];
-
-  fp = fopen (list_path, "r");
-  if (fp == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, list_path);
-      return ER_FILE_UNKNOWN_FILE;
-    }
-
-  while (fgets (line, sizeof (line), fp) != NULL)
-    {
-      char *buf = NULL;
-      size_t len = 0;
-      int error;
-
-      trim (line);
-      if (line[0] == '\0')
+      if (op == UPGRADEDB_OP_PRINT)
 	{
-	  continue;
+	  fwrite (buf, 1, len, stdout);
 	}
-
-      error = upgradedb_load_internal_script (line, &buf, &len);
-      if (error != NO_ERROR)
+      else
 	{
-	  fclose (fp);
-	  return error;
+	  error = upgradedb_execute_sql_buffer (buf, len);
 	}
-
-      error = upgradedb_execute_sql_buffer (buf, len);
       free_and_init (buf);
       if (error != NO_ERROR)
 	{
-	  fclose (fp);
-	  return error;
+	  goto exit;
 	}
     }
+
+exit:
   fclose (fp);
-  return NO_ERROR;
+  return error;
 }
 #endif
