@@ -4191,7 +4191,7 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 
       /* Mixed path (non-corr + corr both active): pt_copypush_terms just built rewritten with
        * "SELECT * FROM (...) cublink WHERE non_corr_pred".  Append corr pred as "AND col = ?".
-       * Pure-corr path (no non-corr terms): handled later in pt_to_dblink_table_spec_list. */
+       * Pure-corr path (no non-corr terms): handled in mq_copypush_sargable_terms_helper. */
       if (query->info.dblink_table.corr_key_count > 0 && query->info.dblink_table.corr_key_col_names[0] != NULL)
 	{
 	  if (!mq_dblink_append_corr_pred_sql (parser, &query->info.dblink_table))
@@ -5008,7 +5008,7 @@ mq_dblink_build_rewritten_base_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di
 /* Append corr pred ("col = ?") to di->rewritten.  Called from two sites:
  *  (1) pt_copypush_terms [mixed path]: non-corr terms were pushed, rewritten != NULL
  *      → appends "AND col = ?" to the already-present WHERE clause.
- *  (2) pt_to_dblink_table_spec_list [pure-corr path]: no non-corr terms, rewritten == NULL
+ *  (2) mq_copypush_sargable_terms_helper [pure-corr path]: no non-corr terms pushed
  *      → builds "SELECT * FROM (...) cublink WHERE col = ?" from scratch.
  * di->rewritten != NULL → appends AND.  di->rewritten == NULL → builds base SQL + WHERE. */
 bool
@@ -5224,6 +5224,17 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 
       /* free alloced */
       parser_free_tree (parser, push_term_list);
+    }
+  /* Pure-corr DBLink: no non-corr pushable terms found, but corr push-down is active.
+   * Finalize conn_sql here so pt_to_dblink_table_spec_list only reads the completed string. */
+  else if (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE
+	   && subquery != NULL && subquery->node_type == PT_DBLINK_TABLE
+	   && subquery->info.dblink_table.corr_key_count > 0 && !subquery->info.dblink_table.corr_sql_built)
+    {
+      if (!mq_dblink_append_corr_pred_sql (parser, &subquery->info.dblink_table))
+	{
+	  mq_dblink_clear_corr_keys (parser, &subquery->info.dblink_table);
+	}
     }
 
   return push_cnt;
