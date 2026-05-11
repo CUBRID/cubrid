@@ -31,7 +31,7 @@
 package com.cubrid.plcsql.compiler;
 
 import com.cubrid.jsp.Server;
-import com.cubrid.jsp.data.CompileInfo;
+import com.cubrid.jsp.data.CompileResponse;
 import com.cubrid.plcsql.compiler.antlrgen.PlcParser;
 import com.cubrid.plcsql.compiler.ast.Unit;
 import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
@@ -52,12 +52,12 @@ public class PlcsqlCompilerMain {
     // temporary code - the owner and revision strings will come from the server
     private static int revision = 1;
 
-    public static CompileInfo compilePLCSQL(String in, String owner, boolean verbose) {
+    public static CompileResponse compilePLCSQL(String in, String owner, boolean verbose) {
         return compilePLCSQL(in, verbose, owner, Integer.toString(revision++));
     }
     // end of temporary code
 
-    public static CompileInfo compilePLCSQL(
+    public static CompileResponse compilePLCSQL(
             String in, boolean verbose, String owner, String revision) {
 
         // System.out.println("[TEMP] text to the compiler");
@@ -68,14 +68,14 @@ public class PlcsqlCompilerMain {
         try {
             return compileInner(new InstanceStore(), input, optionFlags, owner, revision);
         } catch (SyntaxError e) {
-            CompileInfo err = new CompileInfo(-1, e.line, e.column, e.getMessage());
+            CompileResponse err = new CompileResponse(-1, e.line, e.column, e.getMessage());
             return err;
         } catch (SemanticError e) {
-            CompileInfo err = new CompileInfo(-1, e.line, e.column, e.getMessage());
+            CompileResponse err = new CompileResponse(-1, e.line, e.column, e.getMessage());
             return err;
         } catch (Throwable e) {
             Server.log(e);
-            CompileInfo err = new CompileInfo(-1, 0, 0, "internal error");
+            CompileResponse err = new CompileResponse(-1, 0, 0, "internal error");
             return err;
         }
     }
@@ -168,7 +168,7 @@ public class PlcsqlCompilerMain {
         return t;
     }
 
-    private static CompileInfo compileInner(
+    private static CompileResponse compileInner(
             InstanceStore iStore,
             CharStream input,
             int optionFlags,
@@ -266,8 +266,8 @@ public class PlcsqlCompilerMain {
         }
 
         String javaSig = unit.getJavaSignature();
-        CompileInfo info =
-                new CompileInfo(
+        CompileResponse info =
+                new CompileResponse(
                         javaCode,
                         sqlTemplate[0] + String.format(" '%s';", javaSig),
                         unit.getClassName(),

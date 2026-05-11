@@ -2932,15 +2932,18 @@ create_stmt
 	  opt_or_replace               		        /* 2 */
 	  PACKAGE					/* 3 */
           opt_body                                      /* 4 */
-                {
+                {                                       /* 5 */
 		  PT_NODE *node = parser_new_node (this_parser, PT_CREATE_PACKAGE);
 		  parser_push_hint_node (node);
                   expecting_plcsql_text = 1;
+		  push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PACKAGE);
                 }
 	  package_name_without_dot                      /* 6 */
 	  is_or_as plcsql_text                          /* 7, 8 */
 	  opt_comment_spec				/* 9 */
 		{{
+                        pop_msg();
+
                         PT_NODE *node = parser_pop_hint_node ();
                         assert (node);
 

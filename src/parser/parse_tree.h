@@ -3979,7 +3979,8 @@ enum cdc_ddl_object_type
   CDC_FUNCTION,
   CDC_PROCEDURE,
   CDC_TRIGGER,
-  CDC_USER
+  CDC_USER,
+  CDC_PACKAGE
 };
 typedef enum cdc_ddl_object_type CDC_DDL_OBJECT_TYPE;
 

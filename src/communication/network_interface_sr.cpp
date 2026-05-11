@@ -11755,7 +11755,7 @@ css_send_error:
 
 
 void
-splcsql_transfer_file (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+splcsql_compile (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   int error = ER_FAILED;
   PLCSQL_COMPILE_REQUEST compile_request;

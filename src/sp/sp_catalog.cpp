@@ -339,10 +339,12 @@ sp_add_stored_procedure (SP_INFO &info)
   return sp_add_stored_procedure_internal (info, true);
 }
 
+#define SAVEPOINT_ADD_STORED_PROC "ADDSTOREDPROC"
+
 static int
 sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 {
-  DB_OBJECT *classobj_p, *object_p, *sp_args_obj;
+  DB_OBJECT *classobj_p, *object_p, *sp_arg_obj;
   DB_OTMPL *obt_p = NULL;
   DB_VALUE value;
   DB_SET *param = NULL;
@@ -352,7 +354,7 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
   AU_DISABLE (save);
 
   {
-    classobj_p = db_find_class (SP_CLASS_NAME);
+    classobj_p = db_find_class (CT_STORED_PROC_NAME);
     if (classobj_p == NULL)
       {
 	assert (er_errid () != NO_ERROR);
@@ -614,8 +616,8 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	    goto error;
 	  }
 
-	sp_args_obj = dbt_finish_object (obt_p);
-	if (!sp_args_obj)
+	sp_arg_obj = dbt_finish_object (obt_p);
+	if (!sp_arg_obj)
 	  {
 	    assert (er_errid () != NO_ERROR);
 	    err = er_errid ();
@@ -623,12 +625,12 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	  }
 	obt_p = NULL;
 
-	err = locator_flush_instance (sp_args_obj);
+	err = locator_flush_instance (sp_arg_obj);
 	if (err != NO_ERROR)
 	  {
 	    assert (er_errid () != NO_ERROR);
 	    err = er_errid ();
-	    obj_delete (sp_args_obj);
+	    obj_delete (sp_arg_obj);
 	    goto error;
 	  }
       }
@@ -672,7 +674,7 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
   db_make_null (&value);
   AU_DISABLE (save);
 
-  classobj_p = db_find_class (SP_ARG_CLASS_NAME);
+  classobj_p = db_find_class (CT_STORED_PROC_ARGS_NAME);
   if (classobj_p == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -797,7 +799,7 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
 
   AU_DISABLE (save);
 
-  classobj_p = db_find_class (SP_CODE_CLASS_NAME);
+  classobj_p = db_find_class (CT_STORED_PROC_CODE_NAME);
   if (classobj_p == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -964,7 +966,6 @@ sp_edit_stored_procedure_code (MOP code_mop, SP_CODE_INFO &info)
     {
       assert (er_errid () != NO_ERROR);
       err = er_errid ();
-      obj_delete (object_p);
       goto error;
     }
 

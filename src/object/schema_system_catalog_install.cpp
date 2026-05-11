@@ -901,27 +901,27 @@ namespace cubschema
 		   CT_STORED_PROC_NAME,
 		   // columns
     {
-      {SP_ATTR_UNIQUE_NAME, format_varchar (255)},
-      {SP_ATTR_SP_NAME, format_varchar (255)},
+      {SP_ATTR_UNIQUE_NAME, format_varchar (SP_ATTR_UNIQUE_NAME_LEN)},
+      {SP_ATTR_SP_NAME, format_varchar (SP_ATTR_SP_NAME_LEN)},
       {SP_ATTR_SP_TYPE, "integer"},
       {SP_ATTR_RETURN_TYPE, "integer"},
       {SP_ATTR_ARG_COUNT, "integer"},
       {SP_ATTR_ARGS, format_sequence (CT_STORED_PROC_ARGS_NAME)},
       {SP_ATTR_LANG, "integer"},
-      {SP_ATTR_PKG_NAME, format_varchar (255)},
+      {SP_ATTR_PKG_NAME, format_varchar (SP_ATTR_PKG_NAME_LEN)},
       {SP_ATTR_IS_SYSTEM_GENERATED, "integer"},
       {SP_ATTR_DIRECTIVE, "integer"},
-      {SP_ATTR_TARGET_CLASS, format_varchar (1024)},
+      {SP_ATTR_TARGET_CLASS, format_varchar (SP_ATTR_TARGET_CLASS_LEN)},
       {SP_ATTR_TARGET_METHOD, format_varchar (SP_ATTR_TARGET_METHOD_LEN)},
       {SP_ATTR_OWNER, AU_USER_CLASS_NAME},
       {SP_ATTR_SQL_DATA_ACCESS, "integer"},
-      {SP_ATTR_COMMENT, format_varchar (1024)},
+      {SP_ATTR_COMMENT, format_varchar (SP_ATTR_COMMENT_LEN)},
       {SP_ATTR_CREATED_TIME, "datetime"},
       {SP_ATTR_UPDATED_TIME, "datetime"},
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "pk_db_stored_procedure_unique_name", {"unique_name", nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "pk_db_stored_procedure_unique_name", {SP_ATTR_UNIQUE_NAME, nullptr}, false}
     },
 // authorization
     {
@@ -953,7 +953,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_INDEX, "", {"sp_of", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {SP_ARG_ATTR_SP_OF, nullptr}, false},
     },
 // authorization
     {
@@ -985,7 +985,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"name", nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {SP_CODE_ATTR_NAME, nullptr}, false}
     },
 // authorization
     {
@@ -1260,23 +1260,28 @@ namespace cubschema
 		   CT_PACKAGE_NAME,
 		   // columns
     {
-      {"unique_name", format_varchar (255)},
-      {"pkg_name", format_varchar (255)},
-      {"code_name", "string"},
-      {"flags", "integer"}, // bit0: system pkg or not, bit1~: reserved
-      {"owner", AU_USER_CLASS_NAME},
-      {"variables", format_sequence (CT_PACKAGE_VAR_NAME)},
-      {"exceptions", format_sequence (CT_PACKAGE_EXCEPTION_NAME)},
-      {"cursors", format_sequence (CT_PACKAGE_CURSOR_NAME)},
-      {"procedures", format_sequence (CT_STORED_PROC_NAME)},
-      {"record_types", format_sequence (CT_PACKAGE_RECORD_TYPE_NAME)},
-      {"comment", format_varchar (1024)},
-      {"created_time", "datetime"},
-      {"updated_time", "datetime"}
+      {PKG_ATTR_UNIQUE_NAME, format_varchar (255)},
+      {PKG_ATTR_PKG_NAME, format_varchar (255)},
+      {PKG_ATTR_FLAGS, "integer"}, // bit0: system pkg or not, bit1~: reserved
+      {PKG_ATTR_OWNER, AU_USER_CLASS_NAME},
+      {PKG_ATTR_CODE, CT_PACKAGE_CODE_NAME},
+      {PKG_ATTR_PROCEDURES_CNT, "integer"},
+      {PKG_ATTR_PROCEDURES, format_sequence (CT_STORED_PROC_NAME)},
+      {PKG_ATTR_VARIABLES_CNT, "integer"},
+      {PKG_ATTR_VARIABLES, format_sequence (CT_PACKAGE_VAR_NAME)},
+      {PKG_ATTR_EXCEPTIONS_CNT, "integer"},
+      {PKG_ATTR_EXCEPTIONS, format_sequence (CT_PACKAGE_EXCEPTION_NAME)},
+      {PKG_ATTR_CURSORS_CNT, "integer"},
+      {PKG_ATTR_CURSORS, format_sequence (CT_PACKAGE_CURSOR_NAME)},
+      {PKG_ATTR_RECORD_TYPES_CNT, "integer"},
+      {PKG_ATTR_RECORD_TYPES, format_sequence (CT_PACKAGE_RECORD_TYPE_NAME)},
+      {PKG_ATTR_COMMENT, format_varchar (1024)},
+      {PKG_ATTR_CREATED_TIME, "datetime"},
+      {PKG_ATTR_UPDATED_TIME, "datetime"}
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"unique_name", nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {PKG_ATTR_UNIQUE_NAME, nullptr}, false}
     },
 // authorization
     {
@@ -1296,16 +1301,17 @@ namespace cubschema
 		   CT_PACKAGE_CODE_NAME,
 		   // columns
     {
-      {"code_name", "string"},
-      {"stype", "integer"},
-      {"scode_spec", "string"},
-      {"scode_body", "string"},
-      {"otype", "integer"},
-      {"ocode", "string"}
+      {PKG_CODE_ATTR_PKG_UNIQUE_NAME, format_varchar (255)},
+      {PKG_CODE_ATTR_NAME, "string"},
+      {PKG_CODE_ATTR_STYPE, "integer"},
+      {PKG_CODE_ATTR_SCODE_SPEC, "string"},
+      {PKG_CODE_ATTR_SCODE_BODY, "string"},
+      {PKG_CODE_ATTR_OTYPE, "integer"},
+      {PKG_CODE_ATTR_OCODE, "string"}
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"code_name", nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {PKG_CODE_ATTR_PKG_UNIQUE_NAME, nullptr}, false}
     },
 // authorization
     {
@@ -1325,16 +1331,18 @@ namespace cubschema
 		   CT_PACKAGE_VAR_NAME,
 		   // columns
     {
-      {"pkg_of", CT_PACKAGE_NAME},
-      {"var_name", format_varchar (255)},
-      {"var_type", "integer"},
-      {"init_value", "string"},
-      {"flags", "integer"},     // bit0: constant or not, bit1: not null or nullable, bit2~: reserved
-      {"comment", format_varchar (1024)}
+      {PKG_VAR_ATTR_PKG_UNIQUE_NAME, format_varchar (255)},
+      {PKG_VAR_ATTR_NAME, format_varchar (255)},
+      {PKG_VAR_ATTR_DATA_TYPE, "integer"},
+      {PKG_VAR_ATTR_PREC, "integer"},
+      {PKG_VAR_ATTR_SCALE, "integer"},
+      {PKG_VAR_ATTR_INIT_VALUE, "string"},
+      {PKG_VAR_ATTR_FLAGS, "integer"},     // bit0: constant or not, bit1: not null or nullable, bit2~: reserved
+      {PKG_VAR_ATTR_COMMENT, format_varchar (1024)}
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"pkg_of", "var_name", nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {PKG_VAR_ATTR_PKG_UNIQUE_NAME, PKG_VAR_ATTR_NAME, nullptr}, false}
     },
 // authorization
     {
@@ -1354,13 +1362,13 @@ namespace cubschema
 		   CT_PACKAGE_EXCEPTION_NAME,
 		   // columns
     {
-      {"pkg_of", CT_PACKAGE_NAME},
-      {"exception_name", format_varchar (255)},
-      {"comment", format_varchar (1024)}
+      {PKG_EXCEPTION_ATTR_PKG_UNIQUE_NAME, format_varchar (255)},
+      {PKG_EXCEPTION_ATTR_NAME, format_varchar (255)},
+      {PKG_EXCEPTION_ATTR_COMMENT, format_varchar (1024)}
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"pkg_of", "exception_name", nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {PKG_EXCEPTION_ATTR_PKG_UNIQUE_NAME, PKG_EXCEPTION_ATTR_NAME, nullptr}, false}
     },
 // authorization
     {
@@ -1380,15 +1388,15 @@ namespace cubschema
 		   CT_PACKAGE_CURSOR_NAME,
 		   // columns
     {
-      {"pkg_of", CT_PACKAGE_NAME},
-      {"cursor_name", format_varchar (255)},
-      {"record_type", "string"},
-      {"parameters", format_sequence ("string")}, // sequence of 'name:type' strings
-      {"comment", format_varchar (1024)}
+      {PKG_CURSOR_ATTR_PKG_UNIQUE_NAME, format_varchar (255)},
+      {PKG_CURSOR_ATTR_NAME, format_varchar (255)},
+      {PKG_CURSOR_ATTR_RECORD_TYPE, "string"},
+      {PKG_CURSOR_ATTR_PARAMETERS, format_sequence ("string")}, // sequence of 'name:type' strings
+      {PKG_CURSOR_ATTR_COMMENT, format_varchar (1024)}
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"pkg_of", "cursor_name", nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {PKG_CURSOR_ATTR_PKG_UNIQUE_NAME, PKG_CURSOR_ATTR_NAME, nullptr}, false}
     },
 // authorization
     {
@@ -1408,14 +1416,14 @@ namespace cubschema
 		   CT_PACKAGE_RECORD_TYPE_NAME,
 		   // columns
     {
-      {"pkg_of", CT_PACKAGE_NAME},
-      {"record_type_name", format_varchar (255)},
-      {"fields", format_sequence ("string")}, // sequence of 'name:type:not-null-or-nullable:init-expr' strings
-      {"comment", format_varchar (1024)}
+      {PKG_RECORD_TYPE_ATTR_PKG_UNIQUE_NAME, format_varchar (255)},
+      {PKG_RECORD_TYPE_ATTR_NAME, format_varchar (255)},
+      {PKG_RECORD_TYPE_ATTR_FIELDS, format_sequence ("string")}, // sequence of 'name:type:not-null-or-nullable:init-expr' strings
+      {PKG_RECORD_TYPE_ATTR_COMMENT, format_varchar (1024)}
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"pkg_of", "record_type_name", nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {PKG_RECORD_TYPE_ATTR_PKG_UNIQUE_NAME, PKG_RECORD_TYPE_ATTR_NAME, nullptr}, false}
     },
 // authorization
     {

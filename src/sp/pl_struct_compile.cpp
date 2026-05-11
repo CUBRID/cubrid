@@ -31,147 +31,232 @@
 namespace cubpl
 {
 //////////////////////////////////////////////////////////////////////////
-// compile info
+// plcsql_compile_request
 //////////////////////////////////////////////////////////////////////////
 
-#define COMPILE_REQUEST_PACKER_ARGS() \
-  code, owner, mode
-
-  compile_request::compile_request ()
-    : code {}
-    , owner {}
-    , mode {}
-  {
-    //
-  }
+  plcsql_compile_request::plcsql_compile_request () {};
 
   void
-  compile_request::pack (cubpacking::packer &serializator) const
+  plcsql_compile_request::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_all (COMPILE_REQUEST_PACKER_ARGS ());
-  }
+    serializator.pack_int (type);
 
-  size_t
-  compile_request::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
-  {
-    return serializator.get_all_packed_size_starting_offset (start_offset,
-	   COMPILE_REQUEST_PACKER_ARGS ());
-  }
-
-  void
-  compile_request::unpack (cubpacking::unpacker &deserializator)
-  {
-    deserializator.unpack_all (COMPILE_REQUEST_PACKER_ARGS ());
-  }
-
-//
-
-  compile_response::compile_response ()
-    : err_code (-1)
-    , err_line (0)
-    , err_column (0)
-  {
-    //
-  }
-
-  void
-  compile_response::pack (cubpacking::packer &serializator) const
-  {
-    serializator.pack_int (err_code);
-    if (err_code < 0)
+    switch (type)
       {
-	serializator.pack_int (err_line);
-	serializator.pack_int (err_column);
-	serializator.pack_string (err_msg);
-      }
-    else
-      {
-	serializator.pack_string (translated_code);
-	serializator.pack_string (register_stmt);
-	serializator.pack_string (class_name);
-	serializator.pack_string (java_signature);
-
-	serializator.pack_int (compiled_type);
-	if (compiled_type >= 0)
-	  {
-	    serializator.pack_string (compiled_code);
-	  }
-
-	int dependencies_size = (int) dependencies.size();
-	serializator.pack_int (dependencies_size);
-	for (int i = 0; i < dependencies_size; i++)
-	  {
-	    dependencies[i].pack (serializator);
-	  }
+      case PLCSQL_COMPILE_TYPE_SP:
+	serializator.pack_all (code, owner, mode);
+	break;
+      case PLCSQL_COMPILE_TYPE_PKG_SPEC:
+	serializator.pack_all (code, body_code, owner, mode);
+	break;
+      case PLCSQL_COMPILE_TYPE_PKG_BODY:
+	serializator.pack_all (body_code, owner, mode);
+	break;
+      default:
+	assert (false);
+	break;
       }
   }
 
   size_t
-  compile_response::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  plcsql_compile_request::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_int_size (start_offset); // err_code
+    size_t size = serializator.get_packed_int_size (start_offset);      // type
 
-    if (err_code < 0)
+    switch (type)
       {
-	size += serializator.get_packed_int_size (size); // err_line
-	size += serializator.get_packed_int_size (size); // err_column
-	size += serializator.get_packed_string_size (err_msg, size); // err_msg
-      }
-    else
-      {
-	size += serializator.get_packed_string_size (translated_code, size); // translated_code
-	size += serializator.get_packed_string_size (register_stmt, size); // register_stmt
-	size += serializator.get_packed_string_size (class_name, size); // class_name
-	size += serializator.get_packed_string_size (java_signature, size); // java_signature
-
-	size += serializator.get_packed_int_size (size); // compiled_type
-	if (compiled_type >= 0)
-	  {
-	    size += serializator.get_packed_string_size (compiled_code, size); // compiled_code
-	  }
-
-	size += serializator.get_packed_int_size (size); // size of dependencies
-	for (int i = 0; i < (int) dependencies.size(); i++)
-	  {
-	    dependencies[i].get_packed_size (serializator, size);
-	  }
+      case PLCSQL_COMPILE_TYPE_SP:
+	size += serializator.get_all_packed_size_starting_offset (size, code, owner, mode);
+	break;
+      case PLCSQL_COMPILE_TYPE_PKG_SPEC:
+	size += serializator.get_all_packed_size_starting_offset (size, code, body_code, owner, mode);
+	break;
+      case PLCSQL_COMPILE_TYPE_PKG_BODY:
+	size += serializator.get_all_packed_size_starting_offset (size, body_code, owner, mode);
+	break;
+      default:
+	assert (false);
+	break;
       }
 
     return size;
   }
 
   void
-  compile_response::unpack (cubpacking::unpacker &deserializator)
+  plcsql_compile_request::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_int (type);
+
+    switch (type)
+      {
+      case PLCSQL_COMPILE_TYPE_SP:
+	deserializator.unpack_all (code, owner, mode);
+	break;
+      case PLCSQL_COMPILE_TYPE_PKG_SPEC:
+	deserializator.unpack_all (code, body_code, owner, mode);
+	break;
+      case PLCSQL_COMPILE_TYPE_PKG_BODY:
+	deserializator.unpack_all (body_code, owner, mode);
+	break;
+      default:
+	assert (false);
+	break;
+      }
+  }
+
+//////////////////////////////////////////////////////////////////////////
+// plcsql_compile_response
+//////////////////////////////////////////////////////////////////////////
+
+  plcsql_compile_response::plcsql_compile_response () : err_code (-1) {} ;
+
+  void
+  plcsql_compile_response::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_int (err_code);
+
+    if (err_code < 0)
+      {
+	serializator.pack_all (err_line, err_column, err_msg);
+      }
+    else
+      {
+	assert (false);       // currently, plcsql_compile_repsonse::pack() is called only for an error case
+      }
+  }
+
+  size_t
+  plcsql_compile_response::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    size_t size = serializator.get_packed_int_size (start_offset); // err_code
+
+    if (err_code < 0)
+      {
+	size += serializator.get_all_packed_size_starting_offset (size, err_line, err_column, err_msg);
+      }
+    else
+      {
+	assert (false);       // currently, plcsql_compile_repsonse::pack() is called only for an error case
+      }
+
+    return size;
+  }
+
+  void
+  plcsql_compile_response::unpack (cubpacking::unpacker &deserializator)
   {
     deserializator.unpack_int (err_code);
     if (err_code < 0)
       {
-	deserializator.unpack_int (err_line);
-	deserializator.unpack_int (err_column);
-	deserializator.unpack_string (err_msg);
+	deserializator.unpack_all (err_line, err_column, err_msg);
       }
     else
       {
-	deserializator.unpack_string (translated_code);
-	deserializator.unpack_string (register_stmt);
-	deserializator.unpack_string (class_name);
-	deserializator.unpack_string (java_signature);
+	deserializator.unpack_int (type);
 
-	deserializator.unpack_int (compiled_type);
-	if (compiled_type >= 0)
+	switch (type)
 	  {
-	    deserializator.unpack_string (compiled_code);
+	  case PLCSQL_COMPILE_TYPE_SP:
+	  {
+	    deserializator.unpack_all (translated_code, class_name, compiled_code, create_stmt, java_signature);
+
+	    int dependencies_size = 0;
+	    deserializator.unpack_int (dependencies_size);
+	    if (dependencies_size > 0)
+	      {
+		dependencies.resize (dependencies_size);
+		for (int i = 0; i < dependencies_size; i++)
+		  {
+		    dependencies[i].unpack (deserializator);
+		  }
+	      }
+	  }
+	  break;
+
+	  case PLCSQL_COMPILE_TYPE_PKG_SPEC:
+	  {
+	    deserializator.unpack_all (translated_code, class_name, compiled_code);
+
+	    // dependencies
+	    int dependencies_size = 0;
+	    deserializator.unpack_int (dependencies_size);
+	    if (dependencies_size > 0)
+	      {
+		dependencies.resize (dependencies_size);
+		for (int i = 0; i < dependencies_size; i++)
+		  {
+		    dependencies[i].unpack (deserializator);
+		  }
+	      }
+
+	    // sp
+	    int sp_size = 0;
+	    deserializator.unpack_int (sp_size);
+	    if (sp_size > 0)
+	      {
+		sp.resize (sp_size);
+		for (int i = 0; i < sp_size; i++)
+		  {
+		    sp[i].unpack (deserializator);
+		  }
+	      }
+
+	    // var
+	    int var_size = 0;
+	    deserializator.unpack_int (var_size);
+	    if (var_size > 0)
+	      {
+		var.resize (var_size);
+		for (int i = 0; i < var_size; i++)
+		  {
+		    var[i].unpack (deserializator);
+		  }
+	      }
+
+	    // exception
+	    int exception_size = 0;
+	    deserializator.unpack_int (exception_size);
+	    if (exception_size > 0)
+	      {
+		exception.resize (exception_size);
+		for (int i = 0; i < exception_size; i++)
+		  {
+		    exception[i].unpack (deserializator);
+		  }
+	      }
+
+	    // cursor
+	    int cursor_size = 0;
+	    deserializator.unpack_int (cursor_size);
+	    if (cursor_size > 0)
+	      {
+		cursor.resize (cursor_size);
+		for (int i = 0; i < cursor_size; i++)
+		  {
+		    cursor[i].unpack (deserializator);
+		  }
+	      }
+
+	    // rec_type
+	    int rec_type_size = 0;
+	    deserializator.unpack_int (rec_type_size);
+	    if (rec_type_size > 0)
+	      {
+		rec_type.resize (rec_type_size);
+		for (int i = 0; i < rec_type_size; i++)
+		  {
+		    rec_type[i].unpack (deserializator);
+		  }
+	      }
 	  }
 
-	int dependencies_size = 0;
-	deserializator.unpack_int (dependencies_size);
-	if (dependencies_size > 0)
-	  {
-	    dependencies.resize (dependencies_size);
-	    for (int i = 0; i < dependencies_size; i++)
-	      {
-		dependencies[i].unpack (deserializator);
-	      }
+	  break;
+
+	  case PLCSQL_COMPILE_TYPE_PKG_BODY:
+	    // no values to unpack: error_code = 0 is the only relevant information in this case
+	    break;
+	  default:
+	    assert (false);
 	  }
       }
   }
@@ -180,21 +265,19 @@ namespace cubpl
 // plcsql_dependency
 //////////////////////////////////////////////////////////////////////////
 
-  plcsql_dependency::plcsql_dependency () { }
+  plcsql_dependency::plcsql_dependency () {};
 
   void
   plcsql_dependency::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_int (obj_type);
-    serializator.pack_string (obj_uniq_name);
+    assert (false);     // unreachable
   }
 
   size_t
   plcsql_dependency::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_int_size (start_offset); // obj_type
-    size += serializator.get_packed_string_size (obj_uniq_name, size); // obj_uniq_name
-    return size;
+    assert (false);     // unreachable
+    return 0;
   }
 
   void
@@ -205,14 +288,10 @@ namespace cubpl
   }
 
 //////////////////////////////////////////////////////////////////////////
-// sql semantics
+// sql_semantics
 //////////////////////////////////////////////////////////////////////////
 
-
-  sql_semantics::sql_semantics ()
-  {
-    //
-  }
+  sql_semantics::sql_semantics () {};
 
   void
   sql_semantics::pack (cubpacking::packer &serializator) const
@@ -353,6 +432,10 @@ namespace cubpl
       }
   }
 
+//////////////////////////////////////////////////////////////////////////
+// sql_semantics_request
+//////////////////////////////////////////////////////////////////////////
+
   sql_semantics_request::sql_semantics_request ()
   {
     code = METHOD_CALLBACK_GET_SQL_SEMANTICS;
@@ -402,6 +485,10 @@ namespace cubpl
       }
   }
 
+//////////////////////////////////////////////////////////////////////////
+// sql_semantics_response
+//////////////////////////////////////////////////////////////////////////
+
   void
   sql_semantics_response::pack (cubpacking::packer &serializator) const
   {
@@ -427,8 +514,12 @@ namespace cubpl
   void
   sql_semantics_response::unpack (cubpacking::unpacker &deserializator)
   {
-    //
+    assert (false);     // unreachable
   }
+
+//////////////////////////////////////////////////////////////////////////
+// pl_parameter_info
+//////////////////////////////////////////////////////////////////////////
 
   pl_parameter_info::pl_parameter_info ()
     : mode (0)
@@ -527,7 +618,7 @@ namespace cubpl
   }
 
 //////////////////////////////////////////////////////////////////////////
-// global semantics
+// global_semantics_question
 //////////////////////////////////////////////////////////////////////////
 
 #define GLOBAL_SEMANTICS_QUESTION_PACKER_ARGS() \
@@ -553,6 +644,10 @@ namespace cubpl
   {
     deserializator.unpack_all (GLOBAL_SEMANTICS_QUESTION_PACKER_ARGS ());
   }
+
+//////////////////////////////////////////////////////////////////////////
+// global_semantics_request
+//////////////////////////////////////////////////////////////////////////
 
   void
   global_semantics_request::pack (cubpacking::packer &serializator) const
@@ -580,6 +675,10 @@ namespace cubpl
   {
     deserializator.unpack_all (GLOBAL_SEMANTICS_REQUEST_PACKER_ARGS ());
   }
+
+//////////////////////////////////////////////////////////////////////////
+// global_semantics_response_common
+//////////////////////////////////////////////////////////////////////////
 
 #define GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS() \
   idx, err_id, err_msg
@@ -626,6 +725,10 @@ namespace cubpl
     //
   }
 
+//////////////////////////////////////////////////////////////////////////
+// global_semantics_response_udpf
+//////////////////////////////////////////////////////////////////////////
+
   void
   global_semantics_response_udpf::pack (cubpacking::packer &serializator) const
   {
@@ -645,6 +748,10 @@ namespace cubpl
     deserializator.unpack_all (GLOBAL_SEMANTICS_RESPONSE_UDPF_PACKER_ARGS ());
   }
 
+//////////////////////////////////////////////////////////////////////////
+// global_semantics_responses_serial
+//////////////////////////////////////////////////////////////////////////
+
   void
   global_semantics_response_serial::pack (cubpacking::packer &serializator) const
   {
@@ -662,6 +769,10 @@ namespace cubpl
   {
     deserializator.unpack_all (GLOBAL_SEMANTICS_RESPONSE_SERIAL_PACKER_ARGS ());
   }
+
+//////////////////////////////////////////////////////////////////////////
+// global_semantics_responses_column
+//////////////////////////////////////////////////////////////////////////
 
   global_semantics_response_column::global_semantics_response_column ()
     : c_info ()
@@ -686,6 +797,10 @@ namespace cubpl
   {
     deserializator.unpack_all (GLOBAL_SEMANTICS_RESPONSE_COLUMN_PACKER_ARGS ());
   }
+
+//////////////////////////////////////////////////////////////////////////
+// global_semantics_response
+//////////////////////////////////////////////////////////////////////////
 
   void
   global_semantics_response::pack (cubpacking::packer &serializator) const
@@ -714,7 +829,182 @@ namespace cubpl
   void
   global_semantics_response::unpack (cubpacking::unpacker &deserializator)
   {
-    //
     assert (false);
   }
+
+//////////////////////////////////////////////////////////////////////////
+// package related
+//////////////////////////////////////////////////////////////////////////
+
+  pkg_sp_arg::pkg_sp_arg()
+  {
+  }
+
+  void
+  pkg_sp_arg::pack (cubpacking::packer &serializator) const
+  {
+    assert (false); // unreachable
+  }
+
+  size_t
+  pkg_sp_arg::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    assert (false); // unreachable
+    return 0;
+  }
+
+  void
+  pkg_sp_arg::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_all (name, data_type, mode, default_value, comment);
+  }
+
+  pkg_sp::pkg_sp()
+  {
+  }
+
+  void
+  pkg_sp::pack (cubpacking::packer &serializator) const
+  {
+    assert (false); // unreachable
+  }
+
+  size_t
+  pkg_sp::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    assert (false); // unreachable
+    return 0;
+  }
+
+  void
+  pkg_sp::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_all (java_signature, name, type, return_type, directive, sql_data_access, comment);
+
+    int args_size = 0;
+    deserializator.unpack_int (args_size);
+    if (args_size > 0)
+      {
+	args.resize (args_size);
+	for (int i = 0; i < args_size; i++)
+	  {
+	    args[i].unpack (deserializator);
+	  }
+      }
+  }
+
+  pkg_var::pkg_var()
+  {
+  }
+
+  void
+  pkg_var::pack (cubpacking::packer &serializator) const
+  {
+    assert (false); // unreachable
+  }
+
+  size_t
+  pkg_var::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    assert (false); // unreachable
+    return 0;
+  }
+
+  void
+  pkg_var::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_all (data_type, prec, scale, flags, name, init_value, comment);
+  }
+
+  pkg_exception::pkg_exception()
+  {
+  }
+
+  void
+  pkg_exception::pack (cubpacking::packer &serializator) const
+  {
+    assert (false); // unreachable
+  }
+
+  size_t
+  pkg_exception::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    assert (false); // unreachable
+    return 0;
+  }
+
+  void
+  pkg_exception::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_all (name, comment);
+  }
+
+  pkg_cursor::pkg_cursor()
+  {
+  }
+
+  void
+  pkg_cursor::pack (cubpacking::packer &serializator) const
+  {
+    assert (false); // unreachable
+  }
+
+  size_t
+  pkg_cursor::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    assert (false); // unreachable
+    return 0;
+  }
+
+  void
+  pkg_cursor::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_all (name, record_type, comment);
+    int parameters_size = 0;
+    deserializator.unpack_int (parameters_size);
+    if (parameters_size > 0)
+      {
+	std::string s;
+	for (int i = 0; i < parameters_size; i++)
+	  {
+	    deserializator.unpack_string (s);
+	    parameters.push_back (s);
+	  }
+      }
+  }
+
+  pkg_rec_type::pkg_rec_type()
+  {
+  }
+
+  void
+  pkg_rec_type::pack (cubpacking::packer &serializator) const
+  {
+    assert (false); // unreachable
+  }
+
+  size_t
+  pkg_rec_type::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    assert (false); // unreachable
+    return 0;
+  }
+
+  void
+  pkg_rec_type::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_all (name, comment);
+    int fields_size = 0;
+    deserializator.unpack_int (fields_size);
+    if (fields_size > 0)
+      {
+	std::string s;
+	for (int i = 0; i < fields_size; i++)
+	  {
+	    deserializator.unpack_string (s);
+	    fields.push_back (s);
+	  }
+      }
+  }
+
 }

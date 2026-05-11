@@ -33,59 +33,82 @@
 #include <algorithm>
 #include <memory>
 
+#define PLCSQL_COMPILE_TYPE_SP          (1)
+#define PLCSQL_COMPILE_TYPE_PKG_SPEC    (2)
+#define PLCSQL_COMPILE_TYPE_PKG_BODY    (3)
+
+// Stored Procedure related
 namespace cubpl
 {
+  using namespace std;
+
+  struct pkg_var;           // package variable
+  struct pkg_exception;     // package exception
+  struct pkg_cursor;        // package cursor
+  struct pkg_sp;            // package stored procedure
+  struct pkg_rec_type;      // package record type
+
   struct pl_parameter_info;
   struct plcsql_dependency;
 
-  struct EXPORT_IMPORT compile_request : public cubpacking::packable_object
+  struct EXPORT_IMPORT plcsql_compile_request : public cubpacking::packable_object
   {
-    compile_request ();
+    plcsql_compile_request ();
 
-    std::string code;
-    std::string owner;
-    std::string mode; /* for debugging : compile configs such as verbose */
+    int type;   // PLCSQL_COMPILE_TYPE_...
+    string code;
+    string body_code;
+    string owner;
+    string mode; /* for debugging : compile configs such as verbose */
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+    size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
   };
 
-  struct EXPORT_IMPORT compile_response : public cubpacking::packable_object
+  struct EXPORT_IMPORT plcsql_compile_response : public cubpacking::packable_object
   {
-    compile_response ();
+    plcsql_compile_response ();
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+    size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
 
     int err_code;
     int err_line;
     int err_column;
-    std::string err_msg;
+    string err_msg;
 
-    std::string translated_code;
-    std::string register_stmt;
-    std::string class_name;
-    std::string java_signature;
+    int type;   // PLCSQL_COMPILE_TYPE_...
 
-    int compiled_type;
-    std::string compiled_code;
+    // common to sp and package spec
+    string translated_code;
+    string class_name;
+    string compiled_code;
+    vector <plcsql_dependency> dependencies;
 
-    std::vector <plcsql_dependency> dependencies;
+    // only for package spec
+    vector <pkg_sp> sp;
+    vector <pkg_var> var;
+    vector <pkg_exception> exception;
+    vector <pkg_cursor> cursor;
+    vector <pkg_rec_type> rec_type;
+
+    // only for sp
+    string create_stmt;
+    string java_signature;
   };
 
   struct EXPORT_IMPORT plcsql_dependency: public cubpacking::packable_object
   {
-
     plcsql_dependency ();
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+    size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
 
     int obj_type;       // TODO: use predefined enum
-    std::string obj_uniq_name;
+    string obj_uniq_name;
   };
 
   struct EXPORT_IMPORT sql_semantics : public cubpacking::packable_object
@@ -94,16 +117,16 @@ namespace cubpl
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+    size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
 
     int idx;
     int sql_type;
-    std::string rewritten_query;
+    string rewritten_query;
 
-    std::vector <cubmethod::column_info> columns;
-    std::vector <pl_parameter_info> hvs;
-    std::vector <std::string> into_vars;
-    std::vector <plcsql_dependency> dependencies;
+    vector <cubmethod::column_info> columns;
+    vector <pl_parameter_info> hvs;
+    vector <string> into_vars;
+    vector <plcsql_dependency> dependencies;
   };
 
   struct EXPORT_IMPORT sql_semantics_request : public cubpacking::packable_object
@@ -112,10 +135,10 @@ namespace cubpl
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+    size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
 
     int code;
-    std::vector <std::string> sqls;
+    vector <string> sqls;
   };
 
   struct EXPORT_IMPORT sql_semantics_response : public cubpacking::packable_object
@@ -124,9 +147,9 @@ namespace cubpl
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+    size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
 
-    std::vector <sql_semantics> semantics;
+    vector <sql_semantics> semantics;
   };
 
   struct EXPORT_IMPORT pl_parameter_info : public cubpacking::packable_object
@@ -136,10 +159,10 @@ namespace cubpl
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+    size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
 
     int mode; // TODO: 0 - Unknown, 1 - IN, 2 - OUT, 3 - IN/OUT
-    std::string name;
+    string name;
 
     int type;
     int precision;
@@ -156,10 +179,10 @@ namespace cubpl
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+    size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
 
     int type;
-    std::string name; // procedure, function, serial, column
+    string name; // procedure, function, serial, column
   };
 
   struct EXPORT_IMPORT global_semantics_request : public cubpacking::packable_object
@@ -168,10 +191,10 @@ namespace cubpl
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+    size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
 
     int code;
-    std::vector <global_semantics_question> qsqs;
+    vector <global_semantics_question> qsqs;
   };
 
   struct EXPORT_IMPORT global_semantics_response_common : public cubpacking::packable_object
@@ -180,11 +203,11 @@ namespace cubpl
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+    size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
 
     int idx;
     int err_id;
-    std::string err_msg;
+    string err_msg;
   };
 
   struct EXPORT_IMPORT global_semantics_response_udpf : public global_semantics_response_common
@@ -193,17 +216,17 @@ namespace cubpl
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+    size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
 
     pl_parameter_info ret;
-    std::vector <pl_parameter_info> args;
+    vector <pl_parameter_info> args;
   };
 
   struct EXPORT_IMPORT global_semantics_response_serial : public global_semantics_response_common
   {
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+    size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
   };
 
   struct EXPORT_IMPORT global_semantics_response_column : public global_semantics_response_common
@@ -212,7 +235,7 @@ namespace cubpl
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+    size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
 
     cubmethod::column_info c_info;
   };
@@ -221,13 +244,104 @@ namespace cubpl
   {
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+    size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
 
-    std::vector <std::shared_ptr<global_semantics_response_common>> qs;
+    vector <shared_ptr<global_semantics_response_common>> qs;
+  };
+
+// Package related
+
+  struct EXPORT_IMPORT pkg_sp_arg : public cubpacking::packable_object
+  {
+    pkg_sp_arg ();
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
+
+    string name;
+    int data_type;  // NOTE: no prec and scale. SP parameters cannot have prec and scale
+    int mode;
+    string default_value;
+    string comment;
+  };
+
+  struct EXPORT_IMPORT pkg_sp : public cubpacking::packable_object
+  {
+    pkg_sp ();
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
+
+    string java_signature;
+    string name;
+    int type;   // procedure or function
+    int return_type;  // NOTE: no prec and scale. SP return types cannot have prec and scale
+    int directive;
+    int sql_data_access;
+    string comment;
+    vector <pkg_sp_arg> args;
+  };
+
+  struct EXPORT_IMPORT pkg_var : public cubpacking::packable_object
+  {
+    pkg_var ();
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
+
+    int data_type;
+    int prec;
+    int scale;
+    int flags;
+    string name;
+    string init_value;
+    string comment;
+  };
+
+  struct EXPORT_IMPORT pkg_exception : public cubpacking::packable_object
+  {
+    pkg_exception ();
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
+
+    string name;
+    string comment;
+  };
+
+  struct EXPORT_IMPORT pkg_cursor : public cubpacking::packable_object
+  {
+    pkg_cursor ();
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
+
+    string name;
+    string record_type;
+    string comment;
+    vector <string> parameters;
+  };
+
+  struct EXPORT_IMPORT pkg_rec_type : public cubpacking::packable_object
+  {
+    pkg_rec_type ();
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
+
+    string name;
+    string comment;
+    vector <string> fields;
   };
 }
 
-using PLCSQL_COMPILE_REQUEST = cubpl::compile_request;
-using PLCSQL_COMPILE_RESPONSE = cubpl::compile_response;
+using PLCSQL_COMPILE_REQUEST = cubpl::plcsql_compile_request;
+using PLCSQL_COMPILE_RESPONSE = cubpl::plcsql_compile_response;
 
 #endif //_PL_STRUCT_COMPILE_HPP_

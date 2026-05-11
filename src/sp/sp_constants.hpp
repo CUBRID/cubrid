@@ -16,12 +16,164 @@
  *
  */
 
-#ifndef _SP_CONSTASNTS_HPP_
-#define _SP_CONSTASNTS_HPP_
+#ifndef _SP_CONSTANTS_HPP_
+#define _SP_CONSTANTS_HPP_
 
-#define SP_CLASS_NAME           "_db_stored_procedure"
-#define SP_ARG_CLASS_NAME       "_db_stored_procedure_args"
-#define SP_CODE_CLASS_NAME      "_db_stored_procedure_code"
+#define PKG_ATTR_LIST    \
+    MAP_LIST_ITEM(UNIQUE_NAME) \
+    MAP_LIST_ITEM(PKG_NAME) \
+    MAP_LIST_ITEM(FLAGS) \
+    MAP_LIST_ITEM(OWNER) \
+    MAP_LIST_ITEM(CODE) \
+    MAP_LIST_ITEM(PROCEDURES_CNT) \
+    MAP_LIST_ITEM(PROCEDURES) \
+    MAP_LIST_ITEM(VARIABLES_CNT) \
+    MAP_LIST_ITEM(VARIABLES) \
+    MAP_LIST_ITEM(EXCEPTIONS_CNT) \
+    MAP_LIST_ITEM(EXCEPTIONS) \
+    MAP_LIST_ITEM(CURSORS_CNT) \
+    MAP_LIST_ITEM(CURSORS) \
+    MAP_LIST_ITEM(RECORD_TYPES_CNT) \
+    MAP_LIST_ITEM(RECORD_TYPES) \
+    MAP_LIST_ITEM(COMMENT) \
+    MAP_LIST_ITEM(CREATED_TIME) \
+    MAP_LIST_ITEM(UPDATED_TIME)
+
+#define PKG_ATTR_UNIQUE_NAME         "unique_name"
+#define PKG_ATTR_PKG_NAME            "pkg_name"
+#define PKG_ATTR_FLAGS               "flags"
+#define PKG_ATTR_OWNER               "owner"
+#define PKG_ATTR_CODE                "code"
+#define PKG_ATTR_PROCEDURES_CNT      "procedures_cnt"
+#define PKG_ATTR_PROCEDURES          "procedures"
+#define PKG_ATTR_VARIABLES_CNT       "variables_cnt"
+#define PKG_ATTR_VARIABLES           "variables"
+#define PKG_ATTR_EXCEPTIONS_CNT      "exceptions_cnt"
+#define PKG_ATTR_EXCEPTIONS          "exceptions"
+#define PKG_ATTR_CURSORS_CNT         "cursors_cnt"
+#define PKG_ATTR_CURSORS             "cursors"
+#define PKG_ATTR_RECORD_TYPES_CNT    "record_types_cnt"
+#define PKG_ATTR_RECORD_TYPES        "record_types"
+#define PKG_ATTR_COMMENT             "comment"
+#define PKG_ATTR_CREATED_TIME        "created_time"
+#define PKG_ATTR_UPDATED_TIME        "updated_time"
+
+enum index_pkg_attr
+{
+#define MAP_LIST_ITEM(item)     INDEX_PKG_ATTR_##item,
+  PKG_ATTR_LIST
+#undef MAP_LIST_ITEM
+  NUM_PKG_ATTR
+};
+
+#define PKG_CODE_ATTR_LIST    \
+    MAP_LIST_ITEM(PKG_UNIQUE_NAME) \
+    MAP_LIST_ITEM(NAME) \
+    MAP_LIST_ITEM(STYPE) \
+    MAP_LIST_ITEM(SCODE_SPEC) \
+    MAP_LIST_ITEM(SCODE_BODY) \
+    MAP_LIST_ITEM(OTYPE) \
+    MAP_LIST_ITEM(OCODE)
+
+#define PKG_CODE_ATTR_PKG_UNIQUE_NAME       "pkg_unique_name"
+#define PKG_CODE_ATTR_NAME        	"name"
+#define PKG_CODE_ATTR_STYPE       	"stype"
+#define PKG_CODE_ATTR_SCODE_SPEC  	"scode_spec"
+#define PKG_CODE_ATTR_SCODE_BODY  	"scode_body"
+#define PKG_CODE_ATTR_OTYPE       	"otype"
+#define PKG_CODE_ATTR_OCODE      	"ocode"
+
+enum index_pkg_code_attr
+{
+#define MAP_LIST_ITEM(item)     INDEX_PKG_CODE_ATTR_##item,
+  PKG_CODE_ATTR_LIST
+#undef MAP_LIST_ITEM
+  NUM_PKG_CODE_ATTR
+};
+
+#define PKG_VAR_ATTR_LIST    \
+    MAP_LIST_ITEM(PKG_UNIQUE_NAME) \
+    MAP_LIST_ITEM(NAME) \
+    MAP_LIST_ITEM(DATA_TYPE) \
+    MAP_LIST_ITEM(PREC) \
+    MAP_LIST_ITEM(SCALE) \
+    MAP_LIST_ITEM(INIT_VALUE) \
+    MAP_LIST_ITEM(FLAGS) \
+    MAP_LIST_ITEM(COMMENT)
+
+#define PKG_VAR_ATTR_PKG_UNIQUE_NAME                "pkg_unique_name"
+#define PKG_VAR_ATTR_NAME                           "name"
+#define PKG_VAR_ATTR_DATA_TYPE                      "data_type"
+#define PKG_VAR_ATTR_PREC                           "prec"
+#define PKG_VAR_ATTR_SCALE                          "scale"
+#define PKG_VAR_ATTR_INIT_VALUE                     "init_value"
+#define PKG_VAR_ATTR_FLAGS                          "flags"
+#define PKG_VAR_ATTR_COMMENT                        "comment"
+
+enum index_pkg_var_attr
+{
+#define MAP_LIST_ITEM(item)     INDEX_PKG_VAR_ATTR_##item,
+  PKG_VAR_ATTR_LIST
+#undef MAP_LIST_ITEM
+  NUM_PKG_VAR_ATTR
+};
+
+#define PKG_EXCEPTION_ATTR_LIST    \
+    MAP_LIST_ITEM(PKG_UNIQUE_NAME) \
+    MAP_LIST_ITEM(NAME) \
+    MAP_LIST_ITEM(COMMENT)
+
+#define PKG_EXCEPTION_ATTR_PKG_UNIQUE_NAME          "pkg_unique_name"
+#define PKG_EXCEPTION_ATTR_NAME                     "name"
+#define PKG_EXCEPTION_ATTR_COMMENT                  "comment"
+
+enum index_pkg_exception_attr
+{
+#define MAP_LIST_ITEM(item)     INDEX_PKG_EXCEPTION_ATTR_##item,
+  PKG_EXCEPTION_ATTR_LIST
+#undef MAP_LIST_ITEM
+  NUM_PKG_EXCEPTION_ATTR
+};
+
+#define PKG_CURSOR_ATTR_LIST    \
+    MAP_LIST_ITEM(PKG_UNIQUE_NAME) \
+    MAP_LIST_ITEM(NAME) \
+    MAP_LIST_ITEM(RECORD_TYPE) \
+    MAP_LIST_ITEM(PARAMETERS) \
+    MAP_LIST_ITEM(COMMENT)
+
+#define PKG_CURSOR_ATTR_PKG_UNIQUE_NAME             "pkg_unique_name"
+#define PKG_CURSOR_ATTR_NAME                        "name"
+#define PKG_CURSOR_ATTR_RECORD_TYPE                 "record_type"
+#define PKG_CURSOR_ATTR_PARAMETERS                  "parameters"
+#define PKG_CURSOR_ATTR_COMMENT                     "comment"
+
+enum index_pkg_cursor_attr
+{
+#define MAP_LIST_ITEM(item)     INDEX_PKG_CURSOR_ATTR_##item,
+  PKG_CURSOR_ATTR_LIST
+#undef MAP_LIST_ITEM
+  NUM_PKG_CURSOR_ATTR
+};
+
+#define PKG_RECORD_TYPE_ATTR_LIST    \
+    MAP_LIST_ITEM(PKG_UNIQUE_NAME) \
+    MAP_LIST_ITEM(NAME) \
+    MAP_LIST_ITEM(FIELDS) \
+    MAP_LIST_ITEM(COMMENT)
+
+#define PKG_RECORD_TYPE_ATTR_PKG_UNIQUE_NAME        "pkg_unique_name"
+#define PKG_RECORD_TYPE_ATTR_NAME                   "name"
+#define PKG_RECORD_TYPE_ATTR_FIELDS                 "fields"
+#define PKG_RECORD_TYPE_ATTR_COMMENT                "comment"
+
+enum index_pkg_record_type_attr
+{
+#define MAP_LIST_ITEM(item)     INDEX_PKG_RECORD_TYPE_ATTR_##item,
+  PKG_RECORD_TYPE_ATTR_LIST
+#undef MAP_LIST_ITEM
+  NUM_PKG_RECORD_TYPE_ATTR
+};
 
 #define SP_ATTR_LIST    \
     MAP_LIST_ITEM(UNIQUE_NAME) \
@@ -59,6 +211,14 @@
 #define SP_ATTR_COMMENT                 "comment"
 #define SP_ATTR_CREATED_TIME            "created_time"
 #define SP_ATTR_UPDATED_TIME            "updated_time"
+
+#define SP_ATTR_UNIQUE_NAME_LEN         (255)
+#define SP_ATTR_SP_NAME_LEN             (255)
+#define SP_ATTR_PKG_NAME_LEN            (1024)
+#define SP_ATTR_TARGET_CLASS_LEN        (255)
+#define SP_ATTR_TARGET_METHOD_LEN       (4096)
+#define SP_ATTR_COMMENT_LEN             (1024)
+
 
 enum index_sp_attr
 {
@@ -254,8 +414,13 @@ enum METHOD_ARG_MODE
   METHOD_ARG_MODE_INOUT
 };
 
+enum PKG_FLAGS
+{
+  PKG_FLAGS_SYSTEM_GENERATED = (1 << 0)
+};
+
+
 #define METHOD_GROUP_ID uint64_t
 #define METHOD_REQ_ID int
 
-
-#endif // _SP_CONSTASNTS_HPP_
+#endif // _SP_CONSTANTS_HPP_

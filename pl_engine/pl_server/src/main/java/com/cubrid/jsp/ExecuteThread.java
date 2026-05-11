@@ -40,8 +40,8 @@ import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
-import com.cubrid.jsp.data.CompileInfo;
 import com.cubrid.jsp.data.CompileRequest;
+import com.cubrid.jsp.data.CompileResponse;
 import com.cubrid.jsp.data.DataUtilities;
 import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
@@ -66,6 +66,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.SQLException;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -400,6 +401,67 @@ public class ExecuteThread extends Thread {
 
         CompileRequest request = new CompileRequest(unpacker);
 
+        CompileResponse response = null;
+
+        // temporary code
+        if (request.type != CompileRequest.PLCSQL_COMPILE_TYPE_SP) {
+            if (request.type == CompileRequest.PLCSQL_COMPILE_TYPE_PKG_SPEC) {
+                response = new CompileResponse("translated", "Poo", null);
+                response.compiledCode = "compiled".getBytes();
+
+                CompileResponse.PkgSp sp1 =
+                        new CompileResponse.PkgSp(
+                                "Poo.sp1(java.lang.Integer[], java.lang.String)",
+                                "xyz", // name
+                                1, // type
+                                0, // return type
+                                0, // directive
+                                0, // sql data access
+                                "xyz hello");
+                sp1.addArg("sp1a1", 1, 3, "", "sp1a1 comment");
+                sp1.addArg("sp1a2", 4, 1, "'a'", "sp1a2 comment");
+                response.addPkgSp(sp1);
+
+                CompileResponse.PkgSp sp2 =
+                        new CompileResponse.PkgSp(
+                                "Poo.sp2(java.lang.String[], java.lang.Integer) return java.lang.Integer",
+                                "zyx", // name
+                                2, // type
+                                1, // return type
+                                3, // directive
+                                2, // sql data access
+                                "zyx hello");
+                sp2.addArg("sp2a1", 4, 2, "", "sp2a1 comment");
+                sp2.addArg("sp2a2", 1, 1, "7", "sp2a2 comment");
+                response.addPkgSp(sp2);
+
+                response.addPkgVar(1, 1, 1, 1, "name1", "init value1", "comment1");
+                response.addPkgVar(2, 2, 2, 2, "name2", "init value2", "comment2");
+                response.addPkgException("name1", "comment1");
+                response.addPkgException("name2", "comment2");
+                response.addPkgCursor(
+                        "name1", "recordtype1", "comment1", Arrays.asList("p1:int", "p2:char"));
+                response.addPkgCursor(
+                        "name2", "recordtype2", "comment2", Arrays.asList("p1:int", "p2:char"));
+                response.addPkgRecType(
+                        "name1", "comment1", Arrays.asList("f1:int:1:0", "f2:char:0:'c'"));
+                response.addPkgRecType(
+                        "name2", "comment2", Arrays.asList("f1:char:1:'b'", "f2:int:0:7"));
+            } else if (request.type == CompileRequest.PLCSQL_COMPILE_TYPE_PKG_BODY) {
+                response = new CompileResponse();
+            } else {
+                assert false;
+            }
+
+            CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
+
+            response.pack(packer);
+            Context.getCurrentExecuteThread().sendCommand(RequestCode.COMPILE, packer.getBuffer());
+
+            return;
+        }
+        // end of temporary code
+
         // TODO: Pass CompileRequest directly to compilePLCSQL ()
         boolean verbose = false;
         if (request.mode.contains("v")) {
@@ -408,12 +470,11 @@ public class ExecuteThread extends Thread {
         String inSource = request.code;
         String owner = request.owner;
 
-        CompileInfo info = null;
         try {
-            info = PlcsqlCompilerMain.compilePLCSQL(inSource, owner, verbose);
-            if (info.errCode == 0) {
+            response = PlcsqlCompilerMain.compilePLCSQL(inSource, owner, verbose);
+            if (response.errCode == 0) {
                 MemoryJavaCompiler compiler = new MemoryJavaCompiler();
-                SourceCode sCode = new SourceCode(info.className, info.translated);
+                SourceCode sCode = new SourceCode(response.className, response.translated);
 
                 // dump translated code into $CUBRID_TMP
                 if (Context.getSystemParameterBool(SysParam.STORED_PROCEDURE_DUMP_ICODE)) {
@@ -423,8 +484,8 @@ public class ExecuteThread extends Thread {
                         Files.createDirectories(dirPath);
                     }
 
-                    Path path = dirPath.resolve(info.className + ".java");
-                    Files.write(path, info.translated.getBytes(Context.getSessionCharset()));
+                    Path path = dirPath.resolve(response.className + ".java");
+                    Files.write(path, response.translated.getBytes(Context.getSessionCharset()));
                 }
 
                 CompiledCodeSet codeSet = compiler.compile(sCode);
@@ -435,7 +496,8 @@ public class ExecuteThread extends Thread {
                 // write to persistent
                 if (mode == 0) {
                     Path jarPath =
-                            ClassLoaderManager.getDynamicPath().resolve(info.className + ".jar");
+                            ClassLoaderManager.getDynamicPath()
+                                    .resolve(response.className + ".jar");
                     OutputStream jarStream = Files.newOutputStream(jarPath);
                     writeJar(codeSet, jarStream);
                     data = Files.readAllBytes(jarPath);
@@ -446,13 +508,12 @@ public class ExecuteThread extends Thread {
                     data = baos.toByteArray();
                 }
 
-                info.compiledType = 1; // TODO: always jar
-                info.compiledCode = Base64.getEncoder().encode(data);
+                response.compiledCode = Base64.getEncoder().encode(data);
             }
         } catch (Exception e) {
             boolean hasExceptionMessage = (e.getMessage() != null && !e.getMessage().isEmpty());
-            info =
-                    new CompileInfo(
+            response =
+                    new CompileResponse(
                             -1,
                             0,
                             0,
@@ -460,7 +521,7 @@ public class ExecuteThread extends Thread {
         } finally {
             CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
 
-            info.pack(packer);
+            response.pack(packer);
             Context.getCurrentExecuteThread().sendCommand(RequestCode.COMPILE, packer.getBuffer());
         }
     }

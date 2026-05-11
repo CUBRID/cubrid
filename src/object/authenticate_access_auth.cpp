@@ -588,10 +588,13 @@ au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char 
   switch (obj_type)
     {
     case DB_OBJECT_CLASS:
-      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl] WHERE [unique_name] = ?");
+      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME " [cl] WHERE [unique_name] = ?");
       break;
     case DB_OBJECT_PROCEDURE:
-      sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
+      sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME " [sp] WHERE [unique_name] = ?");
+      break;
+    case DB_OBJECT_PACKAGE:
+      sprintf (obj_fetch_query, sql_query, "SELECT [pkg] FROM " CT_PACKAGE_NAME " [pkg] WHERE [unique_name] = ?");
       break;
     default:
       assert (false);
@@ -761,10 +764,13 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
   switch (obj_type)
     {
     case DB_OBJECT_CLASS:
-      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl] WHERE [unique_name] = ?");
+      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME " [cl] WHERE [unique_name] = ?");
       break;
     case DB_OBJECT_PROCEDURE:
-      sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
+      sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME " [sp] WHERE [unique_name] = ?");
+      break;
+    case DB_OBJECT_PACKAGE:
+      sprintf (obj_fetch_query, sql_query, "SELECT [pkg] FROM " CT_PACKAGE_NAME " [pkg] WHERE [unique_name] = ?");
       break;
     default:
       assert (false);

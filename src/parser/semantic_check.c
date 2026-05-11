@@ -200,6 +200,9 @@ static void pt_check_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_create_synonym (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node);
+static void pt_check_create_package (PARSER_CONTEXT * parser, PT_NODE * node);
+static void pt_check_drop_package (PARSER_CONTEXT * parser, PT_NODE * node);
+static void pt_check_alter_package (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -9648,6 +9651,42 @@ pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_N
 }
 
 /*
+ * pt_check_create_package ()
+ *   return:  none
+ *   parser(in): the parser context used to derive the statement
+ *   node(in): a statement
+ */
+static void
+pt_check_create_package (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  // TODO package
+}
+
+/*
+ * pt_check_drop_package ()
+ *   return:  none
+ *   parser(in): the parser context used to derive the statement
+ *   node(in): a statement
+ */
+static void
+pt_check_drop_package (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  // TODO package
+}
+
+/*
+ * pt_check_alter_package ()
+ *   return:  none
+ *   parser(in): the parser context used to derive the statement
+ *   node(in): a statement
+ */
+static void
+pt_check_alter_package (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  // TODO package
+}
+
+/*
  * pt_check_create_stored_procedure () - do semantic checks on the create procedure/function statement
  *   return:  none
  *   parser(in): the parser context used to derive the statement
@@ -12441,10 +12480,15 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
       break;
 
     case PT_CREATE_PACKAGE:
+      pt_check_create_package (parser, node);
+      break;
+
     case PT_DROP_PACKAGE:
+      pt_check_drop_package (parser, node);
+      break;
+
     case PT_ALTER_PACKAGE:
-      PT_ERRORmf2 (parser, node, MSGCAT_SET_ERROR, -(ER_PT_SEMANTIC),
-		   "package related statements are not implemented yet -", parser_print_tree (parser, node));
+      pt_check_alter_package (parser, node);
       break;
 
     default:

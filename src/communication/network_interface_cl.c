@@ -11138,7 +11138,7 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
 }
 
 int
-plcsql_transfer_file (const PLCSQL_COMPILE_REQUEST & compile_request, PLCSQL_COMPILE_RESPONSE & compile_response)
+plcsql_compile (const PLCSQL_COMPILE_REQUEST & compile_request, PLCSQL_COMPILE_RESPONSE & compile_response)
 {
   int req_error = NO_ERROR;
 #if defined(CS_MODE)
@@ -11153,7 +11153,7 @@ plcsql_transfer_file (const PLCSQL_COMPILE_REQUEST & compile_request, PLCSQL_COM
 
   OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  req_error = net_client_request_method_callback (NET_SERVER_PLCSQL_TRANSFER_FILE, eb.get_ptr (),
+  req_error = net_client_request_method_callback (NET_SERVER_PLCSQL_COMPILE, eb.get_ptr (),
 						  (int) packer.get_current_size (),
 						  reply, OR_ALIGNED_BUF_SIZE (a_reply), &data_reply, &data_reply_size);
   if (req_error != NO_ERROR)

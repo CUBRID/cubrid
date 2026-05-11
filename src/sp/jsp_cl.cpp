@@ -69,6 +69,14 @@
 #include "db_value_printer.hpp"
 #include "execute_statement.h"
 
+#define PT_NODE_PKG_COMMENT(node) \
+  (((node)->info.pkg.comment == NULL) ? "" : \
+   (char *) (node)->info.pkg.comment->info.value.data_value.str->bytes)
+
+#define PT_NODE_PKG_NAME(node) \
+  (((node)->info.pkg.name == NULL) ? "" : \
+   (node)->info.pkg.name->info.name.original)
+
 #define PT_NODE_SP_NAME(node) \
   (((node)->info.sp.name == NULL) ? "" : \
    (node)->info.sp.name->info.name.original)
@@ -131,13 +139,51 @@ static int jsp_check_overflow_args (PARSER_CONTEXT *parser, PT_NODE *node, int n
 static int jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mode);
 static int jsp_check_param_type_supported  (DB_TYPE type, int mode);
 
-static int drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type);
-static int drop_stored_procedure_code (const char *name);
+static int jsp_drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type);
+static int jsp_drop_stored_procedure_code (const char *name);
 
-static int jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &out);
-static int check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type);
+static int jsp_check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type);
 
 extern bool ssl_client;
+
+static MOP
+jsp_find_pkg (const char *unique_name, DB_AUTH purpose)
+{
+  MOP mop = NULL;
+  DB_VALUE value;
+  int save, err = NO_ERROR;
+
+  if (!unique_name || unique_name[0] == '\0')
+    {
+      return NULL;
+    }
+
+  AU_DISABLE (save);
+
+  db_make_string (&value, unique_name);
+  mop = db_find_unique (db_find_class (CT_PACKAGE_NAME), PKG_ATTR_UNIQUE_NAME, &value);
+
+  if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+    {
+      er_clear ();
+      AU_ENABLE (save);
+      return NULL;
+    }
+
+  if (mop)
+    {
+      err = jsp_check_execute_authorization (mop, purpose);
+    }
+
+  if (err != NO_ERROR)
+    {
+      mop = NULL;
+    }
+
+  AU_ENABLE (save);
+
+  return mop;
+}
 
 /*
  * jsp_is_exist_stored_procedure
@@ -151,11 +197,8 @@ extern bool ssl_client;
 int
 jsp_is_exist_stored_procedure (const char *name)
 {
-  MOP mop = NULL;
-
-  mop = jsp_find_stored_procedure (name, DB_AUTH_NONE);
+  MOP mop = jsp_find_stored_procedure (name, DB_AUTH_NONE);
   er_clear ();
-
   return mop != NULL;
 }
 
@@ -185,7 +228,7 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
 
   checked_name = jsp_check_stored_procedure_name (name);
   db_make_string (&value, checked_name);
-  mop = db_find_unique (db_find_class (SP_CLASS_NAME), SP_ATTR_UNIQUE_NAME, &value);
+  mop = db_find_unique (db_find_class (CT_STORED_PROC_NAME), SP_ATTR_UNIQUE_NAME, &value);
 
   if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
     {
@@ -205,7 +248,7 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
 
   if (mop)
     {
-      err = check_execute_authorization (mop, purpose);
+      err = jsp_check_execute_authorization (mop, purpose);
     }
 
   if (err != NO_ERROR)
@@ -242,7 +285,7 @@ jsp_find_stored_procedure_code (const char *name)
   AU_DISABLE (save);
 
   db_make_string (&value, name);
-  mop = db_find_unique (db_find_class (SP_CODE_CLASS_NAME), SP_CODE_ATTR_NAME, &value);
+  mop = db_find_unique (db_find_class (CT_STORED_PROC_CODE_NAME), SP_CODE_ATTR_NAME, &value);
 
   if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
     {
@@ -287,7 +330,7 @@ jsp_find_sp_of_another_owner (const char *name, MOP *return_mop)
 	}
 
       db_make_string (&value, other_class_name);
-      *return_mop = db_find_unique (db_find_class (SP_CLASS_NAME), SP_ATTR_UNIQUE_NAME, &value);
+      *return_mop = db_find_unique (db_find_class (CT_STORED_PROC_NAME), SP_ATTR_UNIQUE_NAME, &value);
       if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
 	{
 	  error = ER_SP_NOT_EXIST;
@@ -523,30 +566,6 @@ jsp_get_owner (MOP mop_p)
 
   AU_ENABLE (save);
   return owner;
-}
-
-char *
-jsp_get_name (MOP mop_p)
-{
-  int save;
-  DB_VALUE value;
-  char *res = NULL;
-
-  AU_DISABLE (save);
-
-  /* check type */
-  int err = db_get (mop_p, SP_ATTR_SP_NAME, &value);
-  if (err != NO_ERROR)
-    {
-      AU_ENABLE (save);
-      return NULL;
-    }
-
-  res = ws_copy_string (db_get_string (&value));
-  pr_clear_value (&value);
-
-  AU_ENABLE (save);
-  return res;
 }
 
 char *
@@ -861,7 +880,7 @@ jsp_drop_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	  return er_errid ();
 	}
 
-      err = drop_stored_procedure (name, jsp_map_pt_misc_to_sp_type (type));
+      err = jsp_drop_stored_procedure (name, jsp_map_pt_misc_to_sp_type (type));
       if (err != NO_ERROR)
 	{
 	  break;
@@ -984,6 +1003,2377 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, bool &is_null, 
   return error;
 }
 
+static MOP
+jsp_find_pkg_code (const char *unique_name)
+{
+  MOP mop;
+  DB_VALUE value;
+  int save;
+
+  if (!unique_name || !*unique_name)
+    {
+      return NULL;
+    }
+
+  AU_DISABLE (save);
+
+  db_make_string (&value, unique_name);
+  mop = db_find_unique (db_find_class (CT_PACKAGE_CODE_NAME), PKG_CODE_ATTR_PKG_UNIQUE_NAME, &value);
+  pr_clear_value (&value);
+  if (mop == NULL)
+    {
+      if (er_errid() == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  er_clear();
+	}
+    }
+
+  AU_ENABLE (save);
+
+  return mop;
+}
+
+static int
+jsp_get_pkg_scode_body (const char *unique_name, DB_VALUE *value)
+{
+  int err;
+  MOP mop;
+  const char *ret;
+  int save;
+
+  err = NO_ERROR;
+
+  mop = jsp_find_pkg_code (unique_name);
+  if (mop == NULL)
+    {
+      if (er_errid() != NO_ERROR)
+	{
+	  return er_errid();
+	}
+      db_make_null (value);
+      return NO_ERROR;
+    }
+
+  AU_DISABLE (save);
+  err = db_get (mop, PKG_CODE_ATTR_SCODE_BODY, value);
+  AU_ENABLE (save);
+
+  return err;
+}
+
+static int
+jsp_set_pkg_scode_body (const char *unique_name, const char *scode_body)
+{
+  int err;
+  int save;
+  MOP mop;
+  DB_OTMPL *obt;
+  DB_VALUE value;
+  DB_OBJECT *object;
+
+  err = NO_ERROR;
+  obt = NULL;
+
+  AU_DISABLE (save);    // side effect 0
+
+  mop = jsp_find_pkg_code (unique_name);
+  if (mop == NULL)
+    {
+      if (er_errid() != NO_ERROR)
+	{
+	  err = er_errid();
+	  goto cleanup0;
+	}
+
+      // insert a new record and set
+
+      DB_OBJECT *classobj;
+
+      classobj = db_find_class (CT_PACKAGE_CODE_NAME);
+      if (classobj == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (err);
+	  goto cleanup0;
+	}
+
+      obt = dbt_create_object_internal (classobj);      // side effect 1
+      if (obt == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (err);
+	  goto cleanup0;
+	}
+
+      // set the unque_name of the new record
+      db_make_string (&value, unique_name);
+      err = dbt_put_internal (obt, PKG_CODE_ATTR_PKG_UNIQUE_NAME, &value);
+      pr_clear_value (&value);
+      if (err != NO_ERROR)
+	{
+	  goto cleanup1;
+	}
+
+    }
+  else
+    {
+
+      // set in the existing record
+
+      obt = dbt_edit_object (mop);      // side effect 1
+      if (obt == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (err);
+	  goto cleanup0;
+	}
+    }
+
+  db_make_string (&value, scode_body);
+  err = dbt_put_internal (obt, PKG_CODE_ATTR_SCODE_BODY, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup1;
+    }
+
+  object = dbt_finish_object (obt);
+  if (!object)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto cleanup1;
+    }
+  obt = NULL;   // side effect 1 cleaned
+
+  err = locator_flush_instance (object);
+  if (err != NO_ERROR)
+    {
+      obj_delete (object);
+      goto cleanup0;
+    }
+
+  AU_ENABLE (save);
+  return NO_ERROR;
+
+cleanup1:
+  assert (obt);
+  dbt_abort_object (obt);
+
+cleanup0:
+  AU_ENABLE (save);
+
+  return err;
+}
+
+static int
+jsp_drop_pkg_body (const char *unique_name)
+{
+  int err;
+  MOP pkg_code_mop;
+  DB_VALUE value;
+  DB_OTMPL *obt;
+  int save;
+
+  err = NO_ERROR;
+  obt = NULL;
+  pkg_code_mop = NULL;
+
+  AU_DISABLE (save);    // side effect 0
+
+  // check if scode_body has been set
+  {
+    bool has_scode_body;
+
+    pkg_code_mop = jsp_find_pkg_code (unique_name);
+    if (pkg_code_mop)
+      {
+	err = db_get (pkg_code_mop, PKG_CODE_ATTR_SCODE_BODY, &value);
+	if (err != NO_ERROR)
+	  {
+	    goto cleanup0;
+	  }
+
+	if (DB_IS_NULL (&value))
+	  {
+	    has_scode_body = false;
+	  }
+	else
+	  {
+	    has_scode_body = true;
+	    pr_clear_value (&value);
+	  }
+      }
+    else
+      {
+	if (er_errid() != NO_ERROR)
+	  {
+	    err = er_errid();
+	    goto cleanup0;
+	  }
+	has_scode_body = false;
+      }
+
+    if (!has_scode_body)
+      {
+	err = ER_PKG_BODY_NOT_EXIST;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, unique_name);
+	goto cleanup0;
+      }
+  }
+
+  assert (pkg_code_mop);
+
+  // if the scode_spec has also been set
+  //  . then set scode_body to NULL
+  //  . else drop the record
+  {
+    err = db_get (pkg_code_mop, PKG_CODE_ATTR_SCODE_SPEC, &value);
+    if (err != NO_ERROR)
+      {
+	goto cleanup0;
+      }
+
+    if (DB_IS_NULL (&value))
+      {
+	// scode_spec is null. drop the record.
+
+	err = obj_delete (pkg_code_mop);
+	if (err != NO_ERROR)
+	  {
+	    goto cleanup0;
+	  }
+      }
+    else
+      {
+	// scode_spec is not null. only clear the scode_body.
+
+	DB_OBJECT *object;
+
+	pr_clear_value (&value);
+
+	obt = dbt_edit_object (pkg_code_mop);
+	if (obt == NULL)
+	  {
+	    ASSERT_ERROR_AND_SET (err);
+	    goto cleanup0;
+	  }     // side effect 1
+
+	db_make_null (&value);
+	err = dbt_put_internal (obt, PKG_CODE_ATTR_SCODE_BODY, &value);
+	if (err != NO_ERROR)
+	  {
+	    goto cleanup1;
+	  }
+
+	object = dbt_finish_object (obt);
+	if (!object)
+	  {
+	    ASSERT_ERROR_AND_SET (err);
+	    goto cleanup1;
+	  }
+	obt = NULL;     // side effect 1 cleaned
+
+	err = locator_flush_instance (object);
+	if (err != NO_ERROR)
+	  {
+	    obj_delete (object);
+	    goto cleanup0;
+	  }
+      }
+  }
+
+  AU_ENABLE (save);
+  return NO_ERROR;
+
+cleanup1:
+  assert (obt);
+  dbt_abort_object (obt);
+
+cleanup0:
+  AU_ENABLE (save);
+
+  return err;
+}
+
+static int
+jsp_drop_pkg_member_sp (MOP pkg_mop)
+{
+
+  int err, args_cnt, proc_cnt;
+  DB_VALUE args_cnt_val, proc_cnt_val, args_seq_val, procs_val, sp_elem, arg_elem;
+  DB_SET *procs, *args_seq;
+  MOP sp_mop, sp_code_mop, sp_arg_mop;
+
+  err = db_get (pkg_mop, PKG_ATTR_PROCEDURES_CNT, &proc_cnt_val);
+  if (err != NO_ERROR)
+    {
+      goto return_;
+    }
+  proc_cnt = db_get_int (&proc_cnt_val);
+
+  err = db_get (pkg_mop, PKG_ATTR_PROCEDURES, &procs_val);
+  if (err != NO_ERROR)
+    {
+      goto return_;
+    }
+  procs = db_get_set (&procs_val);  // side effect 0
+
+  db_make_null (&sp_elem);
+  for (int i = 0; i < proc_cnt; i++)
+    {
+      // find sp
+      set_get_element (procs, i, &sp_elem);       // side effect 1
+      sp_mop = db_get_object (&sp_elem);
+
+      // NOTE: Package member procedures/functions do not have their records in _db_stored_procedure_code.
+      //       Information about code is stored in _db_package_code for package member procedures/functions
+
+      // drop from _db_stored_procedure_args
+      {
+	err = db_get (sp_mop, SP_ATTR_ARG_COUNT, &args_cnt_val);
+	if (err != NO_ERROR)
+	  {
+	    goto cleanup1;
+	  }
+	args_cnt = db_get_int (&args_cnt_val);
+
+	err = db_get (sp_mop, SP_ATTR_ARGS, &args_seq_val);
+	if (err != NO_ERROR)
+	  {
+	    goto cleanup1;
+	  }
+	args_seq = db_get_set (&args_seq_val);
+
+	for (int j = 0; j < args_cnt; j++)
+	  {
+	    set_get_element (args_seq, j, &arg_elem);
+	    sp_arg_mop = db_get_object (&arg_elem);
+	    err = obj_delete (sp_arg_mop);
+	    pr_clear_value (&arg_elem);
+	    if (err != NO_ERROR)
+	      {
+		pr_clear_value (&args_seq_val);
+		goto cleanup1;
+	      }
+	  }
+
+	pr_clear_value (&args_seq_val);
+      }
+
+      // drop from _db_stored_procedure
+      err = obj_delete (sp_mop);
+      pr_clear_value (&sp_elem);
+      if (err != NO_ERROR)
+	{
+	  goto cleanup0;
+	}
+    }
+
+cleanup1:
+  pr_clear_value (&sp_elem);
+
+cleanup0:
+  pr_clear_value (&procs_val);
+
+return_:
+  return err;
+}
+
+static int
+jsp_drop_pkg_members (MOP pkg_mop, const char *cnt_attr, const char *members_attr)
+{
+
+  int err, cnt, i;
+  DB_VALUE cnt_val, seq_val, elem;
+  DB_SET *seq;
+  MOP mop;
+
+  err = db_get (pkg_mop, cnt_attr, &cnt_val);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  cnt = db_get_int (&cnt_val);
+
+  err = db_get (pkg_mop, members_attr, &seq_val);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  seq = db_get_set (&seq_val);
+
+  for (i = 0; i < cnt; i++)
+    {
+      set_get_element (seq, i, &elem);
+      mop = db_get_object (&elem);
+      pr_clear_value (&elem);
+      err = obj_delete (mop);
+      if (err != NO_ERROR)
+	{
+	  pr_clear_value (&seq_val);
+	  return err;
+	}
+    }
+
+  pr_clear_value (&seq_val);
+
+  return NO_ERROR;
+}
+
+static int
+jsp_drop_pkg_spec (const char *unique_name, MOP pkg_mop, MOP owner)
+{
+  MOP mop;
+  int err, save;
+  DB_OTMPL *obt;
+
+  err = NO_ERROR;
+
+  AU_DISABLE (save);    // side effect 0
+
+  // clear authorization settings of the dropped package
+  {
+    MOP save_user;
+
+    save_user = Au_user;
+    if (AU_SET_USER (owner) == NO_ERROR)
+      {
+	err = au_object_revoke_all_privileges (DB_OBJECT_PACKAGE, owner, unique_name);
+	if (err != NO_ERROR)
+	  {
+	    AU_SET_USER (save_user);
+	    goto cleanup0;
+	  }
+      }
+
+    AU_SET_USER (save_user);
+
+    err = au_delete_auth_of_dropping_database_object (DB_OBJECT_PACKAGE, unique_name);
+    if (err != NO_ERROR)
+      {
+	goto cleanup0;
+      }
+  }
+
+  // clear the record in _db_package_code
+  mop = jsp_find_pkg_code (unique_name);
+  if (mop)
+    {
+      DB_VALUE scode_body;
+
+      err = db_get (mop, PKG_CODE_ATTR_SCODE_BODY, &scode_body);
+      if (err != NO_ERROR)
+	{
+	  goto cleanup0;
+	}
+
+      if (DB_IS_NULL (&scode_body))
+	{
+
+	  err = obj_delete (mop);
+	  if (err != NO_ERROR)
+	    {
+	      goto cleanup0;
+	    }
+	}
+      else
+	{
+	  DB_OBJECT *object;
+	  DB_VALUE null_value;
+
+	  pr_clear_value (&scode_body);
+
+	  obt = dbt_edit_object (mop);  // side effect 1
+	  if (!obt)
+	    {
+	      ASSERT_ERROR_AND_SET (err);
+	      goto cleanup0;
+	    }
+
+	  // set null to all the attributes except for pkg_unique_name and scode_body
+	  db_make_null (&null_value);
+	  err = dbt_put_internal (obt, PKG_CODE_ATTR_NAME, &null_value);
+	  if (err != NO_ERROR)
+	    {
+	      goto cleanup1;
+	    }
+	  err = dbt_put_internal (obt, PKG_CODE_ATTR_STYPE, &null_value);
+	  if (err != NO_ERROR)
+	    {
+	      goto cleanup1;
+	    }
+	  err = dbt_put_internal (obt, PKG_CODE_ATTR_SCODE_SPEC, &null_value);
+	  if (err != NO_ERROR)
+	    {
+	      goto cleanup1;
+	    }
+	  err = dbt_put_internal (obt, PKG_CODE_ATTR_OTYPE, &null_value);
+	  if (err != NO_ERROR)
+	    {
+	      goto cleanup1;
+	    }
+	  err = dbt_put_internal (obt, PKG_CODE_ATTR_OCODE, &null_value);
+	  if (err != NO_ERROR)
+	    {
+	      goto cleanup1;
+	    }
+
+	  object = dbt_finish_object (obt);
+	  if (!object)
+	    {
+	      ASSERT_ERROR_AND_SET (err);
+	      goto cleanup1;
+	    }
+	  obt = NULL;   // side effect 1 cleaned
+
+	  // flush instance
+	  err = locator_flush_instance (object);
+	  if (err != NO_ERROR)
+	    {
+	      obj_delete (object);
+	      goto cleanup0;
+	    }
+	}
+    }
+  else
+    {
+      if (er_errid () != NO_ERROR)
+	{
+	  err = er_errid ();
+	  goto cleanup0;
+	}
+      // _db_package exists but _db_package_code doesn't - abnormal state
+      assert (false);
+      err = ER_FAILED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto cleanup0;
+    }
+
+  // drop the records in _db_stored_procedure
+  err = jsp_drop_pkg_member_sp (pkg_mop);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // drop the records in _db_package_var
+  err = jsp_drop_pkg_members (pkg_mop, PKG_ATTR_VARIABLES_CNT, PKG_ATTR_VARIABLES);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // drop the records in _db_package_exception
+  err = jsp_drop_pkg_members (pkg_mop, PKG_ATTR_EXCEPTIONS_CNT, PKG_ATTR_EXCEPTIONS);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // drop the records in _db_package_cursor
+  err = jsp_drop_pkg_members (pkg_mop, PKG_ATTR_CURSORS_CNT, PKG_ATTR_CURSORS);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // drop the records in _db_package_record_type
+  err = jsp_drop_pkg_members (pkg_mop, PKG_ATTR_RECORD_TYPES_CNT, PKG_ATTR_RECORD_TYPES);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // drop the record in _db_package
+  err = obj_delete (pkg_mop);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  AU_ENABLE (save);
+  return NO_ERROR;
+
+cleanup1:
+  assert (obt);
+  dbt_abort_object (obt);
+
+cleanup0:
+  AU_ENABLE (save);
+
+  return err;
+}
+
+static int
+sp_add_pkg_code (MOP *mop_out, const char *pkg_unique_name, const char *class_name,
+		 const char *scode_spec, const char *scode_body, const char *ocode)
+{
+
+  MOP mop;
+  DB_OTMPL *obt;
+  DB_OBJECT *object, *classobj;
+  DB_VALUE value;
+  int err;
+
+  // get object template to edit
+  {
+    DB_OBJECT *classobj;
+
+    mop = jsp_find_pkg_code (pkg_unique_name);
+    if (mop)
+      {
+	// it can exist because package body can have already been created
+	obt = dbt_edit_object (mop);
+	if (!obt)
+	  {
+	    ASSERT_ERROR_AND_SET (err);
+	    goto error;
+	  }
+      }
+    else
+      {
+	if (er_errid() != NO_ERROR)
+	  {
+	    err = er_errid();
+	    goto error;
+	  }
+
+	classobj = db_find_class (CT_PACKAGE_CODE_NAME);
+	if (classobj == NULL)
+	  {
+	    ASSERT_ERROR_AND_SET (err);
+	    goto error;
+	  }
+
+	obt = dbt_create_object_internal (classobj);
+	if (!obt)
+	  {
+	    ASSERT_ERROR_AND_SET (err);
+	    goto error;
+	  } // side effect 0
+      }
+  }
+
+  // attribute pkg_unique_name
+  db_make_string (&value, pkg_unique_name);
+  err = dbt_put_internal (obt, PKG_CODE_ATTR_PKG_UNIQUE_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute name
+  db_make_string (&value, class_name);
+  err = dbt_put_internal (obt, PKG_CODE_ATTR_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute stype
+  db_make_int (&value, SPSC_PLCSQL);  // currently, PLCSQL only
+  err = dbt_put_internal (obt, PKG_CODE_ATTR_STYPE, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute scode_spec
+  db_make_string (&value, scode_spec);
+  err = dbt_put_internal (obt, PKG_CODE_ATTR_SCODE_SPEC, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute scode_body (NOTE: scode_body is optional)
+  if (scode_body && scode_body[0])
+    {
+      db_make_string (&value, scode_body);
+      err = dbt_put_internal (obt, PKG_CODE_ATTR_SCODE_BODY, &value);
+      pr_clear_value (&value);
+      if (err != NO_ERROR)
+	{
+	  goto cleanup0;
+	}
+    }
+
+  // attribute otype
+  db_make_int (&value, SPOC_JAVA_JAR);  // currently, Java Jar only
+  err = dbt_put_internal (obt, PKG_CODE_ATTR_OTYPE, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute ocode
+  db_make_string (&value, ocode);
+  err = dbt_put_internal (obt, PKG_CODE_ATTR_OCODE, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // finish object
+  object = dbt_finish_object (obt);
+  if (!object)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto cleanup0;
+    }
+  obt = NULL;
+
+  // flush instance
+  err = locator_flush_instance (object);
+  if (err != NO_ERROR)
+    {
+      obj_delete (object);
+      goto error;
+    }
+
+  *mop_out = object;
+  return NO_ERROR;
+
+cleanup0:
+  assert (obt);
+  dbt_abort_object (obt);
+
+error:
+  return err;
+}
+
+static int
+sp_add_pkg_sp_arg (MOP *mop_out, const int idx, const cubpl::pkg_sp_arg arg)
+{
+
+  DB_OTMPL *obt;
+  DB_OBJECT *object, *classobj;
+  DB_VALUE value;
+  int err;
+
+  classobj = db_find_class (CT_STORED_PROC_ARGS_NAME);
+  if (classobj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto error;
+    }
+
+  obt = dbt_create_object_internal (classobj);
+  if (!obt)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto error;
+    } // side effect 0
+
+  // attribute sp_of is set later
+
+  // attribute index_of
+  db_make_int (&value, idx);
+  err = dbt_put_internal (obt, SP_ARG_ATTR_INDEX_OF, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute is_system_generated
+  db_make_int (&value, 0);	// 0: hardcoded false
+  err = dbt_put_internal (obt, SP_ARG_ATTR_IS_SYSTEM_GENERATED, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute arg_name
+  db_make_string (&value, arg.name.data());
+  err = dbt_put_internal (obt, SP_ARG_ATTR_ARG_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute data_type
+  db_make_int (&value, arg.data_type);
+  err = dbt_put_internal (obt, SP_ARG_ATTR_DATA_TYPE, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute mode
+  db_make_int (&value, arg.mode);
+  err = dbt_put_internal (obt, SP_ARG_ATTR_MODE, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute default_value
+  db_make_string (&value, arg.default_value.data());
+  err = dbt_put_internal (obt, SP_ARG_ATTR_DEFAULT_VALUE, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute is_optional
+  db_make_int (&value, arg.default_value.empty() ? 0 : 1);
+  err = dbt_put_internal (obt, SP_ARG_ATTR_IS_OPTIONAL, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute comment
+  db_make_string (&value, arg.comment.data());
+  err = dbt_put_internal (obt, SP_ARG_ATTR_COMMENT, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // finish object
+  object = dbt_finish_object (obt);
+  if (!object)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto cleanup0;
+    }
+  obt = NULL;
+
+  // flush instance
+  err = locator_flush_instance (object);
+  if (err != NO_ERROR)
+    {
+      obj_delete (object);
+      goto error;
+    }
+
+  *mop_out = object;
+  return NO_ERROR;
+
+cleanup0:
+  assert (obt);
+  dbt_abort_object (obt);
+
+error:
+  return err;
+}
+
+static int
+sp_add_pkg_sp (MOP *mop_out, MOP owner, DB_VALUE &current_datetime,
+	       const char *pkg_unique_name, const char *pkg_name, const cubpl::pkg_sp &sp)
+{
+  DB_OTMPL *obt;
+  DB_OBJECT *object, *sp_arg_obj, *classobj, *arg_classobj;
+  DB_VALUE value;
+  int err, n, args_cnt;
+  char buffer[SP_ATTR_UNIQUE_NAME_LEN + 1];
+  MOP *mop_list;
+
+  mop_list = NULL;
+
+  classobj = db_find_class (CT_STORED_PROC_NAME);
+  if (classobj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto error;
+    }
+
+  obt = dbt_create_object_internal (classobj);
+  if (!obt)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto error;
+    } // side effect 0
+
+  // attribute unique_name
+  n = snprintf (buffer, sizeof (buffer), "%s.%s", pkg_unique_name, sp.name.data());
+  if (n >= (int) sizeof (buffer))
+    {
+      err = ER_PKG_PROC_UNIQ_NAME_TOO_LONG;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto cleanup0;
+    }
+  db_make_string (&value, buffer);
+  err = dbt_put_internal (obt, SP_ATTR_UNIQUE_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute sp_name
+  db_make_string (&value, sp.name.data());
+  err = dbt_put_internal (obt, SP_ATTR_SP_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute sp_type
+  db_make_int (&value, sp.type);
+  err = dbt_put_internal (obt, SP_ATTR_SP_TYPE, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute return_type
+  db_make_int (&value, sp.return_type);
+  err = dbt_put_internal (obt, SP_ATTR_RETURN_TYPE, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute lang
+  db_make_int (&value, SP_LANG_PLCSQL);
+  err = dbt_put_internal (obt, SP_ATTR_LANG, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute pkg_name
+  db_make_string (&value, pkg_name);
+  err = dbt_put_internal (obt, SP_ATTR_PKG_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute is_system_generated
+  db_make_int (&value, 0);      // 0: hardcoded false
+  err = dbt_put_internal (obt, SP_ATTR_IS_SYSTEM_GENERATED, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute directive
+  db_make_int (&value, sp.directive);
+  err = dbt_put_internal (obt, SP_ATTR_DIRECTIVE, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute target_class and target_method
+  {
+    std::string target_class, target_method;
+    sp_split_target_signature (sp.java_signature, target_class, target_method);
+
+    db_make_string (&value, target_class.data());
+    err = dbt_put_internal (obt, SP_ATTR_TARGET_CLASS, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto cleanup0;
+      }
+
+    db_make_string (&value, target_method.data());
+    err = dbt_put_internal (obt, SP_ATTR_TARGET_METHOD, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto cleanup0;
+      }
+  }
+
+  // attribute owner
+  db_make_object (&value, owner);
+  err = dbt_put_internal (obt, SP_ATTR_OWNER, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute sql_data_access
+  db_make_int (&value, sp.sql_data_access);
+  err = dbt_put_internal (obt, SP_ATTR_SQL_DATA_ACCESS, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute comment
+  db_make_string (&value, sp.comment.data());
+  err = dbt_put_internal (obt, SP_ATTR_COMMENT, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute created_time
+  err = dbt_put_internal (obt, SP_ATTR_CREATED_TIME, &current_datetime);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute updated_time
+  err = dbt_put_internal (obt, SP_ATTR_UPDATED_TIME, &current_datetime);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute arg_count
+  args_cnt = sp.args.size();
+  db_make_int (&value, args_cnt);
+  err = dbt_put_internal (obt, SP_ATTR_ARG_COUNT, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  if (args_cnt > 0)
+    {
+
+      // attribute args
+      mop_list = (MOP *) malloc (args_cnt * sizeof (MOP));	// side effect 1
+      if (!mop_list)
+	{
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, args_cnt * sizeof (MOP));
+	  goto cleanup0;
+	}
+
+      DB_SET *seq;
+      int i;
+      DB_VALUE v;
+
+      seq = set_create_sequence (0);
+      if (!seq)
+	{
+	  ASSERT_ERROR_AND_SET (err);
+	  goto cleanup1;
+	}
+
+      i = 0;
+      for (const cubpl::pkg_sp_arg &a: sp.args)
+	{
+	  err = sp_add_pkg_sp_arg (&mop_list[i], i, a);
+	  if (err != NO_ERROR)
+	    {
+	      set_free (seq);
+	      goto cleanup1;
+	    }
+
+	  db_make_object (&v, mop_list[i]);
+	  err = set_put_element (seq, i, &v);
+	  pr_clear_value (&v);
+	  if (err != NO_ERROR)
+	    {
+	      set_free (seq);
+	      goto cleanup1;
+	    }
+
+	  i++;
+	}
+
+      db_make_sequence (&value, seq);
+      err = dbt_put_internal (obt, SP_ATTR_ARGS, &value);
+      pr_clear_value (&value);
+      if (err != NO_ERROR)
+	{
+	  goto cleanup1;
+	}
+    }
+  else
+    {
+
+      DB_SET *seq = set_create_sequence (0);
+      if (!seq)
+	{
+	  ASSERT_ERROR_AND_SET (err);
+	  goto cleanup0;
+	}
+
+      db_make_sequence (&value, seq);
+      err = dbt_put_internal (obt, SP_ATTR_ARGS, &value);
+      pr_clear_value (&value);
+      if (err != NO_ERROR)
+	{
+	  goto cleanup0;
+	}
+    }
+
+  // finish object
+  object = dbt_finish_object (obt);
+  if (!object)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto cleanup1;
+    }
+  obt = NULL;
+
+  // flush instance
+  err = locator_flush_instance (object);
+  if (err != NO_ERROR)
+    {
+      obj_delete (object);
+      goto cleanup1;
+    }
+
+  // update _db_stored_procedure_code.sp_of of sp arguments
+  for (int i = 0; i < args_cnt; i++)
+    {
+
+      obt = dbt_edit_object (mop_list[i]);
+      if (!obt)
+	{
+	  ASSERT_ERROR_AND_SET (err);
+	  goto cleanup1;
+	}
+
+      db_make_object (&value, object);
+      err = dbt_put_internal (obt, SP_ARG_ATTR_SP_OF, &value);
+      pr_clear_value (&value);
+      if (err != NO_ERROR)
+	{
+	  goto cleanup1;
+	}
+
+      sp_arg_obj = dbt_finish_object (obt);
+      if (!sp_arg_obj)
+	{
+	  ASSERT_ERROR_AND_SET (err);
+	  goto cleanup1;
+	}
+      obt = NULL;
+
+      err = locator_flush_instance (sp_arg_obj);
+      if (err != NO_ERROR)
+	{
+	  obj_delete (sp_arg_obj);
+	  goto cleanup1;
+	}
+    }
+  free (mop_list);
+
+  *mop_out = object;
+  return NO_ERROR;
+
+cleanup1:
+  free (mop_list);
+
+cleanup0:
+  if (obt)
+    {
+      dbt_abort_object (obt);
+    }
+
+error:
+  return err;
+}
+
+static int
+sp_add_pkg_var (MOP *mop_out, const char *pkg_unique_name, const cubpl::pkg_var &var)
+{
+
+  DB_OTMPL *obt;
+  DB_OBJECT *object, *classobj;
+  DB_VALUE value;
+  int err;
+
+  classobj = db_find_class (CT_PACKAGE_VAR_NAME);
+  if (classobj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto error;
+    }
+
+  obt = dbt_create_object_internal (classobj);
+  if (!obt)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto error;
+    } // side effect 0
+
+  // attribute pkg_unique_name
+  db_make_string (&value, pkg_unique_name);
+  err = dbt_put_internal (obt, PKG_VAR_ATTR_PKG_UNIQUE_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute name
+  db_make_string (&value, var.name.data());
+  err = dbt_put_internal (obt, PKG_VAR_ATTR_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute data_type
+  db_make_int (&value, var.data_type);
+  err = dbt_put_internal (obt, PKG_VAR_ATTR_DATA_TYPE, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute prec
+  db_make_int (&value, var.prec);
+  err = dbt_put_internal (obt, PKG_VAR_ATTR_PREC, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute scale
+  db_make_int (&value, var.scale);
+  err = dbt_put_internal (obt, PKG_VAR_ATTR_SCALE, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute init_value
+  db_make_string (&value, var.init_value.data());
+  err = dbt_put_internal (obt, PKG_VAR_ATTR_INIT_VALUE, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute flags
+  db_make_int (&value, var.flags);
+  err = dbt_put_internal (obt, PKG_VAR_ATTR_FLAGS, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute comment
+  db_make_string (&value, var.comment.data());
+  err = dbt_put_internal (obt, PKG_VAR_ATTR_COMMENT, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // finish object
+  object = dbt_finish_object (obt);
+  if (!object)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto cleanup0;
+    }
+  obt = NULL;
+
+  // flush instance
+  err = locator_flush_instance (object);
+  if (err != NO_ERROR)
+    {
+      obj_delete (object);
+      goto error;
+    }
+
+  *mop_out = object;
+  return NO_ERROR;
+
+cleanup0:
+  assert (obt);
+  dbt_abort_object (obt);
+
+error:
+  return err;
+}
+
+static int
+sp_add_pkg_exception (MOP *mop_out, const char *pkg_unique_name,
+		      const cubpl::pkg_exception &exception)
+{
+
+  DB_OTMPL *obt;
+  DB_OBJECT *object, *classobj;
+  DB_VALUE value;
+  int err;
+
+  classobj = db_find_class (CT_PACKAGE_EXCEPTION_NAME);
+  if (classobj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto error;
+    }
+
+  obt = dbt_create_object_internal (classobj);
+  if (!obt)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto error;
+    } // side effect 0
+
+  // attribute pkg_unique_name
+  db_make_string (&value, pkg_unique_name);
+  err = dbt_put_internal (obt, PKG_EXCEPTION_ATTR_PKG_UNIQUE_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute name
+  db_make_string (&value, exception.name.data());
+  err = dbt_put_internal (obt, PKG_EXCEPTION_ATTR_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute comment
+  db_make_string (&value, exception.comment.data());
+  err = dbt_put_internal (obt, PKG_EXCEPTION_ATTR_COMMENT, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // finish object
+  object = dbt_finish_object (obt);
+  if (!object)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto cleanup0;
+    }
+  obt = NULL;
+
+  // flush instance
+  err = locator_flush_instance (object);
+  if (err != NO_ERROR)
+    {
+      obj_delete (object);
+      goto error;
+    }
+
+  *mop_out = object;
+  return NO_ERROR;
+
+cleanup0:
+  assert (obt);
+  dbt_abort_object (obt);
+
+error:
+  return err;
+}
+
+static int
+sp_add_pkg_cursor (MOP *mop_out, const char *pkg_unique_name, const cubpl::pkg_cursor &cursor)
+{
+
+  DB_OTMPL *obt;
+  DB_OBJECT *object, *classobj;
+  DB_VALUE value;
+  int err;
+
+  classobj = db_find_class (CT_PACKAGE_CURSOR_NAME);
+  if (classobj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto error;
+    }
+
+  obt = dbt_create_object_internal (classobj);
+  if (!obt)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto error;
+    } // side effect 0
+
+  // attribute pkg_unique_name
+  db_make_string (&value, pkg_unique_name);
+  err = dbt_put_internal (obt, PKG_CURSOR_ATTR_PKG_UNIQUE_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute name
+  db_make_string (&value, cursor.name.data());
+  err = dbt_put_internal (obt, PKG_CURSOR_ATTR_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute record_type
+  db_make_string (&value, cursor.record_type.data());
+  err = dbt_put_internal (obt, PKG_CURSOR_ATTR_RECORD_TYPE, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute parameters
+  {
+    DB_SET *seq;
+    int i;
+    DB_VALUE v;
+
+    seq = set_create_sequence (0);
+    if (!seq)
+      {
+	ASSERT_ERROR_AND_SET (err);
+	goto cleanup0;
+      }
+
+    i = 0;
+    for (const std::string &p: cursor.parameters)
+      {
+
+	db_make_string (&v, p.data());
+	err = set_put_element (seq, i, &v);
+	pr_clear_value (&v);
+	if (err != NO_ERROR)
+	  {
+	    set_free (seq);
+	    goto cleanup0;
+	  }
+
+	i++;
+      }
+    db_make_sequence (&value, seq);
+    err = dbt_put_internal (obt, PKG_CURSOR_ATTR_PARAMETERS, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto cleanup0;
+      }
+  }
+
+  // attribute comment
+  db_make_string (&value, cursor.comment.data());
+  err = dbt_put_internal (obt, PKG_CURSOR_ATTR_COMMENT, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // finish object
+  object = dbt_finish_object (obt);
+  if (!object)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto cleanup0;
+    }
+  obt = NULL;
+
+  // flush instance
+  err = locator_flush_instance (object);
+  if (err != NO_ERROR)
+    {
+      obj_delete (object);
+      goto error;
+    }
+
+  *mop_out = object;
+  return NO_ERROR;
+
+cleanup0:
+  assert (obt);
+  dbt_abort_object (obt);
+
+error:
+  return err;
+}
+
+static int
+sp_add_pkg_rec_type (MOP *mop_out, const char *pkg_unique_name,
+		     const cubpl::pkg_rec_type &rec_type)
+{
+
+  DB_OTMPL *obt;
+  DB_OBJECT *object, *classobj;
+  DB_VALUE value;
+  int err;
+
+  classobj = db_find_class (CT_PACKAGE_RECORD_TYPE_NAME);
+  if (classobj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto error;
+    }
+
+  obt = dbt_create_object_internal (classobj);
+  if (!obt)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto error;
+    } // side effect 0
+
+  // attribute pkg_unique_name
+  db_make_string (&value, pkg_unique_name);
+  err = dbt_put_internal (obt, PKG_RECORD_TYPE_ATTR_PKG_UNIQUE_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute name
+  db_make_string (&value, rec_type.name.data());
+  err = dbt_put_internal (obt, PKG_RECORD_TYPE_ATTR_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute fields
+  {
+    DB_SET *seq;
+    int i;
+    DB_VALUE v;
+
+    seq = set_create_sequence (0);
+    if (!seq)
+      {
+	ASSERT_ERROR_AND_SET (err);
+	goto cleanup0;
+      }
+
+    i = 0;
+    for (const std::string &f: rec_type.fields)
+      {
+
+	db_make_string (&v, f.data());
+	err = set_put_element (seq, i, &v);
+	pr_clear_value (&v);
+	if (err != NO_ERROR)
+	  {
+	    set_free (seq);
+	    goto cleanup0;
+	  }
+
+	i++;
+      }
+    db_make_sequence (&value, seq);
+    err = dbt_put_internal (obt, PKG_RECORD_TYPE_ATTR_FIELDS, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto cleanup0;
+      }
+  }
+
+  // attribute comment
+  db_make_string (&value, rec_type.comment.data());
+  err = dbt_put_internal (obt, PKG_RECORD_TYPE_ATTR_COMMENT, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // finish object
+  object = dbt_finish_object (obt);
+  if (!object)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto cleanup0;
+    }
+  obt = NULL;
+
+  // flush instance
+  err = locator_flush_instance (object);
+  if (err != NO_ERROR)
+    {
+      obj_delete (object);
+      goto error;
+    }
+
+  *mop_out = object;
+  return NO_ERROR;
+
+cleanup0:
+  assert (obt);
+  dbt_abort_object (obt);
+
+error:
+  return err;
+}
+
+static int
+sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP owner,
+			const char *class_name, const char *scode_spec, const char *scode_body, const char *comment,
+			const PLCSQL_COMPILE_RESPONSE &pkg_compile_response)
+{
+  DB_OBJECT *classobj, *object;
+  DB_OTMPL *obt;
+  DB_VALUE value, current_datetime, v;
+  int save, err, size, i;
+  const char *pkg_name;
+  DB_SET *seq;
+  MOP mop;
+
+  err = NO_ERROR;
+  obt = NULL;
+  pkg_name = unique_name + strlen (owner_name) + 1;	// +1: dot in <user>.<package>
+
+  err = db_sys_datetime (&current_datetime);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  AU_DISABLE (save);    // side effect 1
+
+  classobj = db_find_class (CT_PACKAGE_NAME);
+  if (classobj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto cleanup1;
+    }
+
+  obt = dbt_create_object_internal (classobj);
+  if (!obt)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto cleanup1;
+    } // side effect 2
+
+  // attribute unique_name
+  db_make_string (&value, unique_name);
+  err = dbt_put_internal (obt, PKG_ATTR_UNIQUE_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup2;
+    }
+
+  // attribute pkg_name
+  db_make_string (&value, pkg_name);
+  err = dbt_put_internal (obt, PKG_ATTR_PKG_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup2;
+    }
+
+  // attribute flags
+  db_make_int (&value, 0);  // bit0 == 0: not a system generated package
+  err = dbt_put_internal (obt, PKG_ATTR_FLAGS, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup2;
+    }
+
+  // attribute owner
+  db_make_object (&value, owner);
+  err = dbt_put_internal (obt, PKG_ATTR_OWNER, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup2;
+    }
+
+  // insert into _db_package_code
+  {
+    err = sp_add_pkg_code (&mop, unique_name, class_name, scode_spec, scode_body,
+			   pkg_compile_response.compiled_code.data());
+    if (err != NO_ERROR)
+      {
+	goto cleanup2;
+      }
+
+    db_make_object (&v, mop);
+    err = dbt_put_internal (obt, PKG_ATTR_CODE, &v);
+    pr_clear_value (&v);
+    if (err != NO_ERROR)
+      {
+	goto cleanup2;
+      }
+  }
+
+  // insert into _db_stored_procedure and _db_stored_procedure_args (NOTE: but not into _db_stored_procedure_code)
+  {
+    seq = set_create_sequence (0);
+    if (!seq)
+      {
+	ASSERT_ERROR_AND_SET (err);
+	goto cleanup2;
+      }
+
+    i = 0;
+    for (const cubpl::pkg_sp &sp: pkg_compile_response.sp)
+      {
+	err = sp_add_pkg_sp (&mop, owner, current_datetime, unique_name, pkg_name, sp);
+	if (err != NO_ERROR)
+	  {
+	    set_free (seq);
+	    goto cleanup2;
+	  }
+
+	db_make_object (&v, mop);
+	err = set_put_element (seq, i, &v);
+	pr_clear_value (&v);
+	if (err != NO_ERROR)
+	  {
+	    set_free (seq);
+	    goto cleanup2;
+	  }
+
+	i++;
+      }
+    db_make_sequence (&value, seq);
+    err = dbt_put_internal (obt, PKG_ATTR_PROCEDURES, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto cleanup2;
+      }
+
+    db_make_int (&value, i);
+    err = dbt_put_internal (obt, PKG_ATTR_PROCEDURES_CNT, &value);
+    if (err != NO_ERROR)
+      {
+	goto cleanup2;
+      }
+  }
+
+  // insert into _db_package_var
+  {
+    seq = set_create_sequence (0);
+    if (!seq)
+      {
+	ASSERT_ERROR_AND_SET (err);
+	goto cleanup2;
+      }
+
+    i = 0;
+    for (const cubpl::pkg_var &var: pkg_compile_response.var)
+      {
+
+	err = sp_add_pkg_var (&mop, unique_name, var);
+	if (err != NO_ERROR)
+	  {
+	    set_free (seq);
+	    goto cleanup2;
+	  }
+
+	db_make_object (&v, mop);
+	err = set_put_element (seq, i, &v);
+	pr_clear_value (&v);
+	if (err != NO_ERROR)
+	  {
+	    set_free (seq);
+	    goto cleanup2;
+	  }
+
+	i++;
+      }
+    db_make_sequence (&value, seq);
+    err = dbt_put_internal (obt, PKG_ATTR_VARIABLES, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto cleanup2;
+      }
+
+    db_make_int (&value, i);
+    err = dbt_put_internal (obt, PKG_ATTR_VARIABLES_CNT, &value);
+    if (err != NO_ERROR)
+      {
+	goto cleanup2;
+      }
+  }
+
+  // insert into _db_package_exception
+  {
+    seq = set_create_sequence (0);
+    if (!seq)
+      {
+	ASSERT_ERROR_AND_SET (err);
+	goto cleanup2;
+      }
+
+    i = 0;
+    for (const cubpl::pkg_exception &exc: pkg_compile_response.exception)
+      {
+
+	err = sp_add_pkg_exception (&mop, unique_name, exc);
+	if (err != NO_ERROR)
+	  {
+	    set_free (seq);
+	    goto cleanup2;
+	  }
+
+	db_make_object (&v, mop);
+	err = set_put_element (seq, i, &v);
+	pr_clear_value (&v);
+	if (err != NO_ERROR)
+	  {
+	    set_free (seq);
+	    goto cleanup2;
+	  }
+
+	i++;
+      }
+    db_make_sequence (&value, seq);
+    err = dbt_put_internal (obt, PKG_ATTR_EXCEPTIONS, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto cleanup2;
+      }
+
+    db_make_int (&value, i);
+    err = dbt_put_internal (obt, PKG_ATTR_EXCEPTIONS_CNT, &value);
+    if (err != NO_ERROR)
+      {
+	goto cleanup2;
+      }
+  }
+
+  // insert into _db_package_cursor
+  {
+    seq = set_create_sequence (0);
+    if (!seq)
+      {
+	ASSERT_ERROR_AND_SET (err);
+	goto cleanup2;
+      }
+
+    i = 0;
+    for (const cubpl::pkg_cursor &cr: pkg_compile_response.cursor)
+      {
+
+	err = sp_add_pkg_cursor (&mop, unique_name, cr);
+	if (err != NO_ERROR)
+	  {
+	    set_free (seq);
+	    goto cleanup2;
+	  }
+
+	db_make_object (&v, mop);
+	err = set_put_element (seq, i, &v);
+	pr_clear_value (&v);
+	if (err != NO_ERROR)
+	  {
+	    set_free (seq);
+	    goto cleanup2;
+	  }
+
+	i++;
+      }
+    db_make_sequence (&value, seq);
+    err = dbt_put_internal (obt, PKG_ATTR_CURSORS, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto cleanup2;
+      }
+
+    db_make_int (&value, i);
+    err = dbt_put_internal (obt, PKG_ATTR_CURSORS_CNT, &value);
+    if (err != NO_ERROR)
+      {
+	goto cleanup2;
+      }
+  }
+
+  // insert into _db_package_record_type
+  {
+    seq = set_create_sequence (0);
+    if (!seq)
+      {
+	ASSERT_ERROR_AND_SET (err);
+	goto cleanup2;
+      }
+
+    i = 0;
+    for (const cubpl::pkg_rec_type &rt: pkg_compile_response.rec_type)
+      {
+
+	err = sp_add_pkg_rec_type (&mop, unique_name, rt);
+	if (err != NO_ERROR)
+	  {
+	    set_free (seq);
+	    goto cleanup2;
+	  }
+
+	db_make_object (&v, mop);
+	err = set_put_element (seq, i, &v);
+	pr_clear_value (&v);
+	if (err != NO_ERROR)
+	  {
+	    set_free (seq);
+	    goto cleanup2;
+	  }
+
+	i++;
+      }
+    db_make_sequence (&value, seq);
+    err = dbt_put_internal (obt, PKG_ATTR_RECORD_TYPES, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto cleanup2;
+      }
+
+    db_make_int (&value, i);
+    err = dbt_put_internal (obt, PKG_ATTR_RECORD_TYPES_CNT, &value);
+    if (err != NO_ERROR)
+      {
+	goto cleanup2;
+      }
+  }
+
+  // attribute comment
+  if (comment && comment[0])
+    {
+      db_make_string (&value, comment);
+    }
+  else
+    {
+      db_make_null (&value);
+    }
+  err = dbt_put_internal (obt, PKG_ATTR_COMMENT, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup2;
+    }
+
+  // attribute created_time
+  err = dbt_put_internal (obt, PKG_ATTR_CREATED_TIME, &current_datetime);
+  if (err != NO_ERROR)
+    {
+      goto cleanup2;
+    }
+
+  // attribute updated_time
+  err = dbt_put_internal (obt, PKG_ATTR_UPDATED_TIME, &current_datetime);
+  if (err != NO_ERROR)
+    {
+      goto cleanup2;
+    }
+
+  // finish object
+  object = dbt_finish_object (obt);
+  if (!object)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto cleanup2;
+    }
+  obt = NULL;
+
+  // flush instance
+  err = locator_flush_instance (object);
+  if (err != NO_ERROR)
+    {
+      obj_delete (object);
+      goto cleanup1;
+    }
+
+cleanup2:
+  if (obt)
+    {
+      dbt_abort_object (obt);
+    }
+
+cleanup1:
+
+  AU_ENABLE (save);
+  pr_clear_value (&current_datetime);
+
+  return err;
+}
+
+static int
+jsp_create_pkg_body (PARSER_CONTEXT *parser, PT_NODE *statement, const char *unique_name, const char *owner_name,
+		     MOP owner)
+{
+  int err;
+  PLCSQL_COMPILE_REQUEST pkg_compile_request;
+  PLCSQL_COMPILE_RESPONSE pkg_compile_response;
+  DB_VALUE value;
+
+  // does it already exist?
+  err = jsp_get_pkg_scode_body (unique_name, &value);
+  if (err != NO_ERROR)
+    {
+      goto error_exit;
+    }
+  if (!DB_IS_NULL (&value))
+    {
+      pr_clear_value (&value);
+      if (statement->info.pkg.or_replace)
+	{
+	  // OK. it will be overwritten
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PKG_BODY_ALREADY_EXIST, 1, unique_name);
+	  goto error_exit;
+	}
+    }
+
+  // send package compile request with only body code set to PL server and receive the response
+  assert (statement->sql_user_text && statement->sql_user_text_len);
+  pkg_compile_request.type = PLCSQL_COMPILE_TYPE_PKG_BODY;
+  pkg_compile_request.body_code.assign (statement->sql_user_text, statement->sql_user_text_len);
+  pkg_compile_request.owner.assign (owner_name);
+
+  au_perform_push_user (owner);
+  err = plcsql_compile (pkg_compile_request, pkg_compile_response);
+  au_perform_pop_user ();
+
+  if (err == NO_ERROR && pkg_compile_response.err_code == NO_ERROR)
+    {
+      err = jsp_set_pkg_scode_body (unique_name, pkg_compile_request.body_code.data());
+      if (err != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+  else
+    {
+      err = ER_PKG_COMPILE_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, pkg_compile_response.err_msg.c_str ());
+      pt_record_error (parser, parser->statement_number, pkg_compile_response.err_line, pkg_compile_response.err_column,
+		       er_msg (),
+		       NULL);
+      goto error_exit;
+    }
+
+  return NO_ERROR;
+
+error_exit:
+
+  return (err == NO_ERROR) ? er_errid () : err;
+}
+
+static int
+jsp_create_pkg_spec (PARSER_CONTEXT *parser, PT_NODE *statement, const char *unique_name, const char *owner_name,
+		     MOP owner_mop,
+		     const char *comment)
+{
+  int err;
+  PLCSQL_COMPILE_REQUEST pkg_compile_request;
+  PLCSQL_COMPILE_RESPONSE pkg_compile_response;
+  DB_VALUE value;
+  MOP pkg_mop;
+
+  err = NO_ERROR;
+
+  // does it already exist?
+  pkg_mop = jsp_find_pkg (unique_name, DB_AUTH_NONE);
+  if (pkg_mop)
+    {
+      if (statement->info.pkg.or_replace)
+	{
+	  // drop existing stored procedure
+	  err = jsp_drop_pkg_spec (unique_name, pkg_mop, owner_mop);
+	  if (err != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PKG_ALREADY_EXIST, 1, unique_name);
+	  goto error_exit;
+	}
+    }
+
+  // send package compile request to PL server and receive the response
+
+  assert (statement->sql_user_text && statement->sql_user_text_len);
+  pkg_compile_request.type = PLCSQL_COMPILE_TYPE_PKG_SPEC;
+  pkg_compile_request.code.assign (statement->sql_user_text, statement->sql_user_text_len);
+  pkg_compile_request.owner.assign (owner_name);
+  err = jsp_get_pkg_scode_body (unique_name, &value);
+  if (err != NO_ERROR)
+    {
+      goto error_exit;
+    }
+  if (!DB_IS_NULL (&value))
+    {
+      pkg_compile_request.body_code.assign (db_get_string (&value));
+      pr_clear_value (&value);
+    }
+
+  au_perform_push_user (owner_mop);
+  err = plcsql_compile (pkg_compile_request, pkg_compile_response);
+  au_perform_pop_user ();
+
+  if (err == NO_ERROR && pkg_compile_response.err_code == NO_ERROR)
+    {
+      err = sp_add_pkg_and_related (unique_name, owner_name, owner_mop, pkg_compile_response.class_name.data(),
+				    pkg_compile_request.code.data(), pkg_compile_request.body_code.data(), comment, pkg_compile_response);
+      if (err != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+  else
+    {
+      err = ER_PKG_COMPILE_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, pkg_compile_response.err_msg.c_str ());
+      pt_record_error (parser, parser->statement_number, pkg_compile_response.err_line, pkg_compile_response.err_column,
+		       er_msg (), NULL);
+      goto error_exit;
+    }
+
+  return NO_ERROR;
+
+error_exit:
+  return (err == NO_ERROR) ? er_errid () : err;
+}
+
+/*
+ * jsp_create_package
+ *   return: if failed return error code else execute jsp_add_stored_procedure
+ *           function
+ *   parser(in/out): parser environment
+ *   statement(in): a statement node
+ *
+ * Note:
+ */
+
+#define SAVEPOINT_CREATE_PACKAGE "CREATEPACKAGE"
+
+int
+jsp_create_package (PARSER_CONTEXT *parser, PT_NODE *statement)
+{
+  int err;
+  const char *unique_name;
+  char owner_name[DB_MAX_USER_LENGTH];
+  MOP owner;
+
+  err = NO_ERROR;
+  owner_name[0] = '\0';
+
+  CHECK_MODIFICATION_ERROR ();
+  assert (!prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT));  // unreachable here if it is true
+
+  // get unique_name, owner_name, and owner
+  {
+    unique_name = PT_NODE_PKG_NAME (statement);
+    if (sm_qualifier_name (unique_name, owner_name, DB_MAX_USER_LENGTH) == NULL)
+      {
+	ASSERT_ERROR ();
+	goto error_exit;
+      }
+    assert (owner_name[0]);     // package name has its owner name at this point of execution
+    owner = db_find_user (owner_name);
+    if (owner == NULL)
+      {
+	// for safeguard: it is already checked in pt_check_create_stored_procedure ()
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER_NAME, 1, owner_name);
+	goto error_exit;
+      }
+  }
+
+  err = tran_system_savepoint (SAVEPOINT_CREATE_PACKAGE);
+  if (err != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  if (statement->info.pkg.for_body)
+    {
+      err = jsp_create_pkg_body (parser, statement, unique_name, owner_name, owner);
+      if (err != NO_ERROR)
+	{
+	  goto rollback;
+	}
+    }
+  else
+    {
+      const char *comment = PT_NODE_PKG_COMMENT (statement);
+      err = jsp_create_pkg_spec (parser, statement, unique_name, owner_name, owner, comment);
+      if (err != NO_ERROR)
+	{
+	  goto rollback;
+	}
+    }
+
+  return NO_ERROR;
+
+rollback:
+  tran_abort_upto_system_savepoint (SAVEPOINT_CREATE_PACKAGE);
+
+error_exit:
+  return (err == NO_ERROR) ? er_errid () : err;
+}
+
+/*
+ * jsp_alter_package
+ *   return: if failed return error code else execute jsp_add_stored_procedure
+ *           function
+ *   parser(in/out): parser environment
+ *   statement(in): a statement node
+ *
+ * Note:
+ */
+
+int
+jsp_alter_package (PARSER_CONTEXT *parser, PT_NODE *statement)
+{
+  // TODO package
+  return NO_ERROR;
+}
+
+/*
+ * jsp_drop_package
+ *   return: if failed return error code else execute jsp_add_stored_procedure
+ *           function
+ *   parser(in/out): parser environment
+ *   statement(in): a statement node
+ *
+ * Note:
+ */
+
+#define SAVEPOINT_DROP_PACKAGE "DROPPACKAGE"
+
+int
+jsp_drop_package (PARSER_CONTEXT *parser, PT_NODE *statement)
+{
+  int err = NO_ERROR;
+  char owner_name[DB_MAX_USER_LENGTH];
+  MOP owner_mop, pkg_mop;
+  bool has_savepoint = false;
+
+  CHECK_MODIFICATION_ERROR ();
+  assert (!prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT));  // unreachable here if it is true
+
+  // validate all packages before setting a savepoint
+  for (PT_NODE *name_node = statement->info.pkg.name; name_node != NULL; name_node = name_node->next)
+    {
+      const char *unique_name = name_node->info.name.original;
+
+      // check for duplicate names in the list
+      for (PT_NODE *prev_node = statement->info.pkg.name; prev_node != name_node; prev_node = prev_node->next)
+	{
+	  if (intl_identifier_casecmp (unique_name, prev_node->info.name.original) == 0)
+	    {
+	      err = ER_PKG_DUPLICATE_NAME;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, unique_name);
+	      goto error_exit;
+	    }
+	}
+
+      owner_name[0] = '\0';
+
+      if (sm_qualifier_name (unique_name, owner_name, DB_MAX_USER_LENGTH) == NULL)
+	{
+	  ASSERT_ERROR ();
+	  goto error_exit;
+	}
+      assert (owner_name[0]);     // package name has its owner name at this point of execution
+
+      owner_mop = db_find_user (owner_name);
+      if (owner_mop == NULL)
+	{
+	  // for safeguard: it is already checked in pt_check_create_stored_procedure ()
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER_NAME, 1, owner_name);
+	  goto error_exit;
+	}
+
+      // only the owner or a dba group member can drop it
+      if (!ws_is_same_object (owner_mop, Au_user) && !au_is_dba_group_member (Au_user))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PKG_DDL_NOT_ALLOWED_PRIVILEGES, 1, "drop");
+	  err = er_errid ();
+	  goto error_exit;
+	}
+
+      // check if it is system generated
+      pkg_mop = jsp_find_pkg (unique_name, DB_AUTH_NONE);
+      if (pkg_mop)
+	{
+	  DB_VALUE value;
+
+	  err = db_get (pkg_mop, PKG_ATTR_FLAGS, &value);
+	  if (err != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+
+	  int flags = db_get_int (&value);
+	  if (flags & PKG_FLAGS_SYSTEM_GENERATED)
+	    {
+	      err = ER_PKG_DROP_NOT_ALLOWED_SYSTEM_GENERATED;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+	      goto error_exit;
+	    }
+	}
+      else
+	{
+	  if (!statement->info.pkg.for_body)    // if it is dropping the spec
+	    {
+	      err = ER_PKG_NOT_EXIST;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, unique_name);
+	      goto error_exit;
+	    }
+	}
+    }
+
+  err = tran_system_savepoint (SAVEPOINT_DROP_PACKAGE);
+  if (err != NO_ERROR)
+    {
+      goto error_exit;
+    }
+  has_savepoint = true;
+
+  // drop all packages; rollback everything if any one fails
+  for (PT_NODE *name_node = statement->info.pkg.name; name_node != NULL; name_node = name_node->next)
+    {
+      const char *unique_name = name_node->info.name.original;
+
+      if (statement->info.pkg.for_body)
+	{
+	  err = jsp_drop_pkg_body (unique_name);
+	}
+      else
+	{
+	  owner_name[0] = '\0';
+	  sm_qualifier_name (unique_name, owner_name, DB_MAX_USER_LENGTH);
+	  owner_mop = db_find_user (owner_name);
+	  pkg_mop = jsp_find_pkg (unique_name, DB_AUTH_NONE);
+	  err = jsp_drop_pkg_spec (unique_name, pkg_mop, owner_mop);
+	}
+
+      if (err != NO_ERROR)
+	{
+	  goto rollback;
+	}
+    }
+
+  return NO_ERROR;
+
+rollback:
+  tran_abort_upto_system_savepoint (SAVEPOINT_DROP_PACKAGE);
+
+error_exit:
+  return (err == NO_ERROR) ? er_errid () : err;
+}
+
 /*
  * jsp_create_stored_procedure
  *   return: if failed return error code else execute jsp_add_stored_procedure
@@ -993,6 +3383,8 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, bool &is_null, 
  *
  * Note:
  */
+
+#define SAVEPOINT_CREATE_STORED_PROC "CREATESTOREDPROC"
 
 int
 jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
@@ -1007,20 +3399,15 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   int err = NO_ERROR;
   bool has_savepoint = false;
 
-  PLCSQL_COMPILE_REQUEST compile_request;
-  PLCSQL_COMPILE_RESPONSE compile_response;
+  PLCSQL_COMPILE_REQUEST pl_sp_compile_request;
+  PLCSQL_COMPILE_RESPONSE pl_sp_compile_response;
 
   SP_INFO sp_info;
   char *temp;
   DB_VALUE current_datetime;
 
   CHECK_MODIFICATION_ERROR ();
-
-  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
-      return ER_BLOCK_DDL_STMT;
-    }
+  assert (!prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT));    // unreachable here if it is true
 
   // check PL/CSQL's AUTHID with CURRENT_USER
   sp_info.directive = jsp_map_pt_to_sp_authid (PT_NODE_SP_AUTHID (statement));
@@ -1121,7 +3508,8 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       goto error_exit;
     }
 
-  sp_info.owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
+  assert (owner_name[0]);       // package name has its owner name at this point of execution
+  sp_info.owner = db_find_user (owner_name);
   if (sp_info.owner == NULL)
     {
       // for safeguard: it is already checked in pt_check_create_stored_procedure ()
@@ -1132,23 +3520,25 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   if (sp_info.lang == SP_LANG_PLCSQL)
     {
       assert (statement->sql_user_text && statement->sql_user_text_len);
-      compile_request.code.assign (statement->sql_user_text, statement->sql_user_text_len);
-      compile_request.owner.assign ((owner_name[0] == '\0') ? au_get_current_user_name () : owner_name);
+      pl_sp_compile_request.type = PLCSQL_COMPILE_TYPE_SP;
+      pl_sp_compile_request.code.assign (statement->sql_user_text, statement->sql_user_text_len);
+      pl_sp_compile_request.owner.assign ((owner_name[0] == '\0') ? au_get_current_user_name () : owner_name);
 
       // TODO: Only the owner's rights is supported for PL/CSQL
       au_perform_push_user (sp_info.owner);
-      err = plcsql_transfer_file (compile_request, compile_response);
+      err = plcsql_compile (pl_sp_compile_request, pl_sp_compile_response);
       au_perform_pop_user ();
 
-      if (err == NO_ERROR && compile_response.err_code == NO_ERROR)
+      if (err == NO_ERROR && pl_sp_compile_response.err_code == NO_ERROR)
 	{
-	  decl = compile_response.java_signature.c_str ();
+	  decl = pl_sp_compile_response.java_signature.c_str ();
 	}
       else
 	{
 	  err = ER_SP_COMPILE_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 1, compile_response.err_msg.c_str ());
-	  pt_record_error (parser, parser->statement_number, compile_response.err_line, compile_response.err_column, er_msg (),
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 1, pl_sp_compile_response.err_msg.c_str ());
+	  pt_record_error (parser, parser->statement_number, pl_sp_compile_response.err_line, pl_sp_compile_response.err_column,
+			   er_msg (),
 			   NULL);
 	  goto error_exit;
 	}
@@ -1186,7 +3576,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	    }
 	  has_savepoint = true;
 
-	  err = drop_stored_procedure (sp_info.unique_name.data (), sp_info.sp_type);
+	  err = jsp_drop_stored_procedure (sp_info.unique_name.data (), sp_info.sp_type);
 	  if (err != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -1205,7 +3595,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       goto error_exit;
     }
 
-  if (!compile_request.code.empty ())
+  if (!pl_sp_compile_request.code.empty ())
     {
       assert (sp_info.lang == SP_LANG_PLCSQL);
       SP_CODE_INFO code_info;
@@ -1233,8 +3623,8 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       code_info.created_time = stm.str ();
       code_info.stype = SPSC_PLCSQL;
       code_info.scode.assign (rewritten_code, strlen (rewritten_code));
-      code_info.otype = compile_response.compiled_type;
-      code_info.ocode = compile_response.compiled_code;
+      code_info.otype = SPOC_JAVA_JAR;
+      code_info.ocode = pl_sp_compile_response.compiled_code;
       code_info.owner = sp_info.owner;
 
       err = sp_add_stored_procedure_code (code_info);
@@ -1319,8 +3709,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   sp_mop = jsp_find_stored_procedure (name_str, DB_AUTH_SELECT);
   if (sp_mop == NULL)
     {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
+      ASSERT_ERROR_AND_SET (err);
       goto error;
     }
 
@@ -1364,6 +3753,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   if (owner_mop == NULL)
     {
       err = ER_FAILED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
       goto error;
     }
 
@@ -1533,7 +3923,7 @@ jsp_check_stored_procedure_name (const char *str)
 }
 
 /*
- * drop_stored_procedure -
+ * jsp_drop_stored_procedure -
  *   return: Error code
  *   name(in): jsp name
  *   expected_type(in):
@@ -1542,7 +3932,7 @@ jsp_check_stored_procedure_name (const char *str)
  */
 
 static int
-drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
+jsp_drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 {
   MOP sp_mop, arg_mop, owner, save_user;
   DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, generated_val, target_cls_val, lang_val, temp;
@@ -1563,8 +3953,7 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
   sp_mop = jsp_find_stored_procedure (name, DB_AUTH_SELECT);
   if (sp_mop == NULL)
     {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
+      ASSERT_ERROR_AND_SET (err);
       goto error;
     }
 
@@ -1606,7 +3995,6 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_TYPE, 2, name,
 	      real_type == SP_TYPE_FUNCTION ? "FUNCTION" : "PROCEDURE");
-
       err = er_errid ();
       goto error;
     }
@@ -1629,7 +4017,7 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 	}
 
       target_cls = db_get_string (&target_cls_val);
-      err = drop_stored_procedure_code (target_cls);
+      err = jsp_drop_stored_procedure_code (target_cls);
       if (err != NO_ERROR)
 	{
 	  goto error;
@@ -1701,7 +4089,7 @@ error:
 }
 
 /*
- * drop_stored_procedure_code -
+ * jsp_drop_stored_procedure_code -
  *   return: Error code
  *   name(in): jsp name
  *
@@ -1709,7 +4097,7 @@ error:
  */
 
 static int
-drop_stored_procedure_code (const char *name)
+jsp_drop_stored_procedure_code (const char *name)
 {
   MOP code_mop, owner;
   DB_VALUE owner_val, generated_val;
@@ -1723,8 +4111,7 @@ drop_stored_procedure_code (const char *name)
   code_mop = jsp_find_stored_procedure_code (name);
   if (code_mop == NULL)
     {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
+      ASSERT_ERROR_AND_SET (err);
       goto error;
     }
 
@@ -1782,8 +4169,8 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
   int scode_len, save, err;
   MOP code_mop;
   DB_VALUE scode_val, value;
-  PLCSQL_COMPILE_REQUEST compile_request;
-  PLCSQL_COMPILE_RESPONSE compile_response;
+  PLCSQL_COMPILE_REQUEST pl_sp_compile_request;
+  PLCSQL_COMPILE_RESPONSE pl_sp_compile_response;
   SP_INFO sp_info;
   SP_CODE_INFO code_info;
   DB_OBJECT *object_p;
@@ -1797,8 +4184,7 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
   code_mop = jsp_find_stored_procedure_code (name);
   if (code_mop == NULL)
     {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
+      ASSERT_ERROR_AND_SET (err);
       goto error;
     }
 
@@ -1814,33 +4200,28 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
   sp_info.owner = db_find_user (owner_str);
 
   assert (scode && scode_len);
-  compile_request.code.assign (scode, scode_len);
-  compile_request.owner.assign (owner_str);
+  pl_sp_compile_request.type = PLCSQL_COMPILE_TYPE_SP;
+  pl_sp_compile_request.code.assign (scode, scode_len);
+  pl_sp_compile_request.owner.assign (owner_str);
   pr_clear_value (&scode_val);
 
   // TODO: Only the owner's rights is supported for PL/CSQL
   au_perform_push_user (sp_info.owner);
-  err = plcsql_transfer_file (compile_request, compile_response);
+  err = plcsql_compile (pl_sp_compile_request, pl_sp_compile_response);
   au_perform_pop_user ();
 
-  if (err == NO_ERROR && compile_response.err_code == NO_ERROR)
+  if (err == NO_ERROR && pl_sp_compile_response.err_code == NO_ERROR)
     {
-      decl = compile_response.java_signature.c_str ();
+      decl = pl_sp_compile_response.java_signature.c_str ();
     }
   else
     {
-      if (err == NO_ERROR && compile_response.err_code == NO_ERROR)
-	{
-	  decl = compile_response.java_signature.c_str ();
-	}
-      else
-	{
-	  err = ER_SP_COMPILE_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 1, compile_response.err_msg.c_str ());
-	  pt_record_error (parser, parser->statement_number, compile_response.err_line, compile_response.err_column, er_msg (),
-			   NULL);
-	  goto error;
-	}
+      err = ER_SP_COMPILE_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 1, pl_sp_compile_response.err_msg.c_str ());
+      pt_record_error (parser, parser->statement_number, pl_sp_compile_response.err_line, pl_sp_compile_response.err_column,
+		       er_msg (),
+		       NULL);
+      goto error;
     }
 
   if (decl)
@@ -1850,7 +4231,7 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
     }
 
   code_info.name = sp_info.target_class;
-  code_info.ocode = compile_response.compiled_code;
+  code_info.ocode = pl_sp_compile_response.compiled_code;
 
   if (sp_recompile == 1)
     {
@@ -1873,8 +4254,7 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
   obt_p = dbt_edit_object (sp_mop);
   if (obt_p == NULL)
     {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
+      ASSERT_ERROR_AND_SET (err);
       goto error;
     }
 
@@ -1903,8 +4283,7 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
   object_p = dbt_finish_object (obt_p);
   if (!object_p)
     {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
+      ASSERT_ERROR_AND_SET (err);
       goto error;
     }
   obt_p = NULL;
@@ -1912,8 +4291,6 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
   err = locator_flush_instance (object_p);
   if (err != NO_ERROR)
     {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
       obj_delete (object_p);
       goto error;
     }
@@ -2303,7 +4680,7 @@ exit_on_error:
 }
 
 static int
-check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
+jsp_check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
 {
   int error = NO_ERROR;
   MOP owner_mop = NULL;
