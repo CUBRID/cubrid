@@ -555,7 +555,17 @@ namespace parallel_scan
 
 	if (rerr != NO_ERROR)
 	  {
-	    continue;
+	    if (clear_key)
+	      {
+		pr_clear_value (&key);
+	      }
+	    if (m_page != nullptr)
+	      {
+		pgbuf_unfix (thread_p, m_page);
+		m_page = nullptr;
+	      }
+	    m_input_handler->release_leaf_and_maybe_advance (thread_p, m_scan_id, m_current_range_idx);
+	    return S_ERROR;
 	  }
 
 	m_scan_id->scan_stats.read_keys++;
