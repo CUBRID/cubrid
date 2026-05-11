@@ -59,8 +59,9 @@ endforeach()
 list(LENGTH UPGRADE_SQL_FILES UPGRADE_SCRIPT_COUNT_VAL)
 
 if(UPGRADE_SCRIPT_COUNT_VAL EQUAL 0)
-  # GCC -Werror=array-bounds rejects indexing a zero-length array; keep one placeholder so the array has a slot.
-  set(UPGRADE_CHECKSUM_ENTRIES "  NULL,\n")
+  # GCC -Werror=array-bounds rejects indexing a zero-length array, and -Werror=nonnull
+  # rejects a NULL placeholder reaching strcmp; use empty string as a benign placeholder.
+  set(UPGRADE_CHECKSUM_ENTRIES "  \"\",\n")
 endif()
 
 configure_file(upgrade_checksums.h.cmake ${CMAKE_BINARY_DIR}/upgrade_checksums.h @ONLY)
