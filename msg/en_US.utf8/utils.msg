@@ -1394,5 +1394,4 @@ usage: %1$s upgradedb [OPTION] database-name\n\
 valid options:\n\
       --check                  exit 1 if upgrade is required, 0 otherwise\n\
       --dry-run                print upgrade scripts that would be applied; do not modify the database\n\
-  -f, --force                  apply the upgrade without prompting for confirmation\n\
-\n
+  -f, --force                  apply the upgrade without prompting for confirmation\n
