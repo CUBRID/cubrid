@@ -568,10 +568,7 @@ msgcat_message (int cat_id, int set_id, int msg_id)
   if (msgcat_System[cat_id].msg_catd == NULL)
     {
       /* TODO: 
-       *  "msgcat_System[cat_id].msg_catd" should only be NULL if it failed during the msgcat_init() stage.
-       * Are there any other scenarios where it could become NULL? 
-       * Ideally, this code should never be executed; however, if such a case exists, concurrency control is required.
-       *  Please consider introducing a lock object for thread safety.
+       * To ensure safety in a multi-threaded environment, access to msgcat_System[x].msg_catd must be protected using a lock.
        */
       assert (false);
 
