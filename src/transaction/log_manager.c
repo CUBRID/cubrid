@@ -9148,10 +9148,6 @@ log_rv_outside_noop_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   return NO_ERROR;
 }
 
-/*
- * The on-disk log header page is persisted by the next checkpoint or normal
- * shutdown; recovery only restores the in-memory value.
- */
 int
 log_rv_redo_sysmeta_version (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {

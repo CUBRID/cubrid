@@ -139,7 +139,7 @@ typedef struct
   bool dry_run;
   bool force;
 #if !defined(NDEBUG)
-  const char *apply_script_list;	/* internal/ scripts not installed in release */
+  const char *apply_script_list;
 #endif
 } UPGRADEDB_OPTIONS;
 
