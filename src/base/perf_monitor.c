@@ -1942,7 +1942,8 @@ perfmon_server_calc_stats (UINT64 * stats, bool need_pgbuf_stat)
     UINT64 fix_time = stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset];
     UINT64 hold_time = stats[pstat_Metadata[PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC].start_offset];
     UINT64 lock_time = stats[pstat_Metadata[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC].start_offset];
-    UINT64 alloc_time = (fix_time > hold_time + lock_time) ? (fix_time - hold_time - lock_time) : 0;
+    UINT64 alloc_time = (hold_time <= fix_time && lock_time <= fix_time - hold_time)
+      ? (fix_time - hold_time - lock_time) : 0;
     stats[pstat_Metadata[PSTAT_PB_PAGE_ALLOCATE_TIME_RATIO].start_offset] = SAFE_DIV (alloc_time * 100 * 100, fix_time);
   }
 
