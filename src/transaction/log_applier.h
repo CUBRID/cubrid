@@ -61,6 +61,11 @@ int la_apply_log_file (const char *database_name, const char *log_path, const in
 void la_print_log_header (const char *database_name, LOG_HEADER * hdr, bool verbose);
 void la_print_log_arv_header (const char *database_name, LOG_ARV_HEADER * hdr, bool verbose);
 void la_print_delay_info (LOG_LSA working_lsa, LOG_LSA target_lsa, float process_rate);
+extern void la_dump_la_info (FILE * out);
+extern void la_dump_la_act_log (FILE * out, int indent);
+extern void la_dump_la_arv_log (FILE * out, int indent);
+extern void la_dump_la_apply_list (FILE * out, int indent);
+extern void la_dump_la_apply (FILE * out, int i, int indent);
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 extern int la_start_dk_sharing ();
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */

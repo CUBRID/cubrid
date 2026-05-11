@@ -354,43 +354,46 @@ namespace cubload
   int
   to_db_generic_char (DB_TYPE type, const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
-    int char_count = 0;
     int str_len = (int) str_size;
     int error = NO_ERROR;
     const tp_domain &domain = attr->get_domain ();
     int precision = domain.precision;
     INTL_CODESET codeset = (INTL_CODESET) domain.codeset;
 
-    intl_char_count ((unsigned char *) str, str_len, codeset, &char_count);
-
-    if (char_count > precision)
+    /* char_count <= byte_count in every codeset, so byte_size <= precision guarantees no truncation */
+    if (str_len > precision)
       {
-	/*
-	 * May be a violation, but first we have to check for trailing pad
-	 * characters that might allow us to successfully truncate the
-	 * thing.
-	 */
-	const char *p;
-	int truncate_size;
-
-	intl_char_size ((unsigned char *) str, precision, codeset, &truncate_size);
-
-	p = intl_skip_spaces (&str[truncate_size],  &str[str_len], codeset);
-	if (p >= &str[str_len])
-	  {
-	    str_len = truncate_size;
-	  }
-	else
+	int char_count = 0;
+	intl_char_count ((unsigned char *) str, str_len, codeset, &char_count);
+	if (char_count > precision)
 	  {
 	    /*
-	     * It's a genuine violation; raise an error.
+	     * May be a violation, but first we have to check for trailing pad
+	     * characters that might allow us to successfully truncate the
+	     * thing.
 	     */
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (type));
-	    return ER_IT_DATA_OVERFLOW;
+	    const char *p;
+	    int truncate_size;
+
+	    intl_char_size ((unsigned char *) str, precision, codeset, &truncate_size);
+
+	    p = intl_skip_spaces (&str[truncate_size], &str[str_len], codeset);
+	    if (p >= &str[str_len])
+	      {
+		str_len = truncate_size;
+	      }
+	    else
+	      {
+		/*
+		 * It's a genuine violation; raise an error.
+		 */
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (type));
+		return ER_IT_DATA_OVERFLOW;
+	      }
 	  }
       }
 
-    error = db_value_domain_init (val, type, char_count, 0);
+    error = db_value_domain_init (val, type, precision, 0);
     if (error == NO_ERROR)
       {
 	error = db_make_db_char (val, codeset, domain.collation_id, str, str_len);
