@@ -4189,8 +4189,9 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 
       query->info.dblink_table.rewritten = rewritten;
 
-      /* Both view-level push (pt_copypush_terms) and corr push-down are active;
-       * rewritten already has "WHERE pushed_pred" — append corr pred as AND. */
+      /* Mixed path (non-corr + corr both active): pt_copypush_terms just built rewritten with
+       * "SELECT * FROM (...) cublink WHERE non_corr_pred".  Append corr pred as "AND col = ?".
+       * Pure-corr path (no non-corr terms): handled later in pt_to_dblink_table_spec_list. */
       if (query->info.dblink_table.corr_key_count > 0 && query->info.dblink_table.corr_key_col_names[0] != NULL)
 	{
 	  if (!mq_dblink_append_corr_pred_sql (parser, &query->info.dblink_table))
@@ -5003,11 +5004,12 @@ mq_dblink_build_rewritten_base_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di
   return v;
 }
 
-/* Append corr pred to di->rewritten.
- * di->rewritten != NULL: pt_copypush_terms already built "SELECT * FROM (...) cublink WHERE pushed_pred"
- *   (both view-level push and corr push-down active) — always append AND.
- * di->rewritten == NULL: mq_dblink_build_rewritten_base_sql always produces
- *   "SELECT * FROM (...) cublink" (no WHERE, pure corr push-down) — always append WHERE. */
+/* Append corr pred ("col = ?") to di->rewritten.  Called from two sites:
+ *  (1) pt_copypush_terms [mixed path]: non-corr terms were pushed, rewritten != NULL
+ *      → appends "AND col = ?" to the already-present WHERE clause.
+ *  (2) pt_to_dblink_table_spec_list [pure-corr path]: no non-corr terms, rewritten == NULL
+ *      → builds "SELECT * FROM (...) cublink WHERE col = ?" from scratch.
+ * di->rewritten != NULL → appends AND.  di->rewritten == NULL → builds base SQL + WHERE. */
 bool
 mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di)
 {
