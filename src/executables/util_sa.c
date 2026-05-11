@@ -5295,33 +5295,32 @@ upgradedb_load_decoded_script (int from_v, int to_v, char **out_buf, size_t * ou
 
   if (stat (script_path, &st) != 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, script_path);
-      error = ER_FILE_UNKNOWN_FILE;
-      goto exit;
+      PRINT_AND_LOG_ERR_MSG (utility_get_generic_message (MSGCAT_UTIL_GENERIC_FILEOPEN_ERROR), script_path);
+      return ER_FAILED;
     }
   file_size = st.st_size;
 
   fp = fopen (script_path, "rb");
   if (fp == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, script_path);
-      error = ER_FILE_UNKNOWN_FILE;
-      goto exit;
+      PRINT_AND_LOG_ERR_MSG (utility_get_generic_message (MSGCAT_UTIL_GENERIC_FILEOPEN_ERROR), script_path);
+      return ER_FAILED;
     }
 
-  /* Migration scripts are bounded and one-shot; load whole file. */
   buf = (char *) malloc ((size_t) file_size + 1);
   if (buf == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) file_size + 1);
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      PRINT_AND_LOG_ERR_MSG ("%s", utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM));
+      error = ER_FAILED;
       goto exit;
     }
 
   if ((long) fread (buf, 1, (size_t) file_size, fp) != file_size)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, script_path);
-      error = ER_FILE_UNKNOWN_FILE;
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB, UPGRADEDB_MSG_SCRIPT_READ_FAILED),
+			     script_path);
+      error = ER_FAILED;
       goto exit;
     }
   buf[file_size] = '\0';
@@ -5355,10 +5354,7 @@ upgradedb_load_decoded_script (int from_v, int to_v, char **out_buf, size_t * ou
   buf = NULL;			/* ownership transferred — exit must not free */
 
 exit:
-  if (fp != NULL)
-    {
-      fclose (fp);
-    }
+  fclose (fp);
   if (buf != NULL)
     {
       free_and_init (buf);
@@ -5406,9 +5402,8 @@ upgradedb_execute_sql_buffer (char *buf, size_t len)
   fp = fmemopen (buf, len, "r");
   if (fp == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, "(memory buffer)");
-      error = ER_FILE_UNKNOWN_FILE;
-      goto exit;
+      PRINT_AND_LOG_ERR_MSG ("%s", utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM));
+      return ER_FAILED;
     }
 
   session = db_make_session_for_one_statement_execution (fp);
@@ -5464,10 +5459,7 @@ exit:
     {
       db_close_session (session);
     }
-  if (fp != NULL)
-    {
-      fclose (fp);
-    }
+  fclose (fp);
   return error;
 }
 
@@ -5494,9 +5486,9 @@ upgradedb_parse_options (UTIL_ARG_MAP * arg_map, UPGRADEDB_OPTIONS * opts)
   flag_count = opts->check_only + opts->dry_run + opts->force;
   if (flag_count > 1)
     {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB,
-			      UPGRADEDB_MSG_MUTUALLY_EXCLUSIVE_OPTIONS));
+      PRINT_AND_LOG_ERR_MSG ("%s",
+			     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB,
+					     UPGRADEDB_MSG_MUTUALLY_EXCLUSIVE_OPTIONS));
       return ER_FAILED;
     }
 
@@ -5692,31 +5684,32 @@ upgradedb_load_internal_script (const char *name, char **out_buf, size_t * out_l
 
   if (stat (path, &st) != 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, path);
-      return ER_FILE_UNKNOWN_FILE;
+      PRINT_AND_LOG_ERR_MSG (utility_get_generic_message (MSGCAT_UTIL_GENERIC_FILEOPEN_ERROR), path);
+      return ER_FAILED;
     }
 
   fp = fopen (path, "r");
   if (fp == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, path);
-      return ER_FILE_UNKNOWN_FILE;
+      PRINT_AND_LOG_ERR_MSG (utility_get_generic_message (MSGCAT_UTIL_GENERIC_FILEOPEN_ERROR), path);
+      return ER_FAILED;
     }
 
   buf = (char *) malloc ((size_t) st.st_size);
   if (buf == NULL)
     {
       fclose (fp);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) st.st_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      PRINT_AND_LOG_ERR_MSG ("%s", utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM));
+      return ER_FAILED;
     }
 
   if ((long) fread (buf, 1, (size_t) st.st_size, fp) != st.st_size)
     {
       free_and_init (buf);
       fclose (fp);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, path);
-      return ER_FILE_UNKNOWN_FILE;
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB, UPGRADEDB_MSG_SCRIPT_READ_FAILED), path);
+      return ER_FAILED;
     }
   fclose (fp);
 
@@ -5735,8 +5728,8 @@ upgradedb_process_upgrade_internal_scripts (const char *list_path, UPGRADEDB_SCR
   fp = fopen (list_path, "r");
   if (fp == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_FILE, 1, list_path);
-      return ER_FILE_UNKNOWN_FILE;
+      PRINT_AND_LOG_ERR_MSG (utility_get_generic_message (MSGCAT_UTIL_GENERIC_FILEOPEN_ERROR), list_path);
+      return ER_FAILED;
     }
 
   while (fgets (line, sizeof (line), fp) != NULL)

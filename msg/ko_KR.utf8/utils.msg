@@ -1366,6 +1366,7 @@ $set 61 MSGCAT_UTIL_SET_UPGRADEDB
 4 --check, --dry-run, --force 옵션은 동시에 사용할 수 없습니다.\n
 5 업그레이드 스크립트 디코딩 실패.\n
 6 업그레이드 스크립트 검증 실패.\n
+7 업그레이드 스크립트 읽기 실패: %1$s\n
 60 \
 upgradedb: 시스템 메타데이터를 현재 CUBRID 버전에 맞게 업그레이드합니다.\n\
 usage: %1$s upgradedb [옵션] database-name\n\

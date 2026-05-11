@@ -1386,6 +1386,7 @@ $set 61 MSGCAT_UTIL_SET_UPGRADEDB
 4 options --check, --dry-run, and --force are mutually exclusive.\n
 5 Upgrade script decoding failed.\n
 6 Upgrade script validation failed.\n
+7 Failed to read upgrade script: %1$s\n
 60 \
 upgradedb: upgrade system metadata to match the current CUBRID version.\n\
 usage: %1$s upgradedb [OPTION] database-name\n\
