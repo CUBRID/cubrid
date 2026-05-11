@@ -289,7 +289,9 @@ namespace parallel_scan
     if (range_idx >= 0 && range_idx < static_cast<int> (m_key_val_ranges.size ()))
       {
 	key_val_range *kvr = &m_key_val_ranges[range_idx];
-	if (kvr->range != NA_NA && kvr->range != INF_INF && !DB_IS_NULL (&kvr->key1))
+	/* mirrors btree_prepare_bts: midxkey of all-NULL elements is semantically open-bound, not a usable descent key. */
+	if (kvr->range != NA_NA && kvr->range != INF_INF
+	    && !DB_IS_NULL (&kvr->key1) && !btree_multicol_key_is_null (&kvr->key1))
 	  {
 	    descent_key = &kvr->key1;
 	    closed_bound = true;

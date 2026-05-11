@@ -149,6 +149,10 @@ namespace parallel_scan
 	      {
 		start_col = 0;
 		c = btree_compare_key (key, &kvr->key1, key_domain, 1, 1, &start_col);
+		if (c == DB_UNK)
+		  {
+		    return ER_FAILED;
+		  }
 		if (c == DB_LT)
 		  {
 		    lower_ok = false;
@@ -162,6 +166,10 @@ namespace parallel_scan
 	      {
 		start_col = 0;
 		c = btree_compare_key (key, &kvr->key1, key_domain, 1, 1, &start_col);
+		if (c == DB_UNK)
+		  {
+		    return ER_FAILED;
+		  }
 		if (c == DB_LT || c == DB_EQ)
 		  {
 		    lower_ok = false;
@@ -171,7 +179,22 @@ namespace parallel_scan
 	  case INF_LE:
 	  case INF_LT:
 	  case INF_INF:
+	    break;
 	  case EQ_NA:
+	    /* EQ requires key == kvr->key1 — lower bound is the same value; below it must yield to next slot. */
+	    if (!DB_IS_NULL (&kvr->key1))
+	      {
+		start_col = 0;
+		c = btree_compare_key (key, &kvr->key1, key_domain, 1, 1, &start_col);
+		if (c == DB_UNK)
+		  {
+		    return ER_FAILED;
+		  }
+		if (c == DB_LT)
+		  {
+		    lower_ok = false;
+		  }
+	      }
 	    break;
 	  default:
 	    break;
@@ -193,6 +216,10 @@ namespace parallel_scan
 	      {
 		start_col = 0;
 		c = btree_compare_key (&kvr->key2, key, key_domain, 1, 1, &start_col);
+		if (c == DB_UNK)
+		  {
+		    return ER_FAILED;
+		  }
 		if (c == DB_LT)
 		  {
 		    upper_ok = false;
@@ -207,6 +234,10 @@ namespace parallel_scan
 	      {
 		start_col = 0;
 		c = btree_compare_key (&kvr->key2, key, key_domain, 1, 1, &start_col);
+		if (c == DB_UNK)
+		  {
+		    return ER_FAILED;
+		  }
 		if (c == DB_LT || c == DB_EQ)
 		  {
 		    upper_ok = false;
@@ -223,6 +254,10 @@ namespace parallel_scan
 	      {
 		start_col = 0;
 		c = btree_compare_key (key, &kvr->key1, key_domain, 1, 1, &start_col);
+		if (c == DB_UNK)
+		  {
+		    return ER_FAILED;
+		  }
 		if (c != DB_EQ)
 		  {
 		    upper_ok = false;
@@ -529,7 +564,21 @@ namespace parallel_scan
 	bool in_range = false;
 	bool past_upper = false;
 	int matched_range_idx = -1;
-	check_key_in_range (&key, &in_range, &past_upper, &matched_range_idx);
+	int kr_err = check_key_in_range (&key, &in_range, &past_upper, &matched_range_idx);
+	if (kr_err != NO_ERROR)
+	  {
+	    if (clear_key)
+	      {
+		pr_clear_value (&key);
+	      }
+	    if (m_page != nullptr)
+	      {
+		pgbuf_unfix (thread_p, m_page);
+		m_page = nullptr;
+	      }
+	    m_input_handler->release_leaf_and_maybe_advance (thread_p, m_scan_id, m_current_range_idx);
+	    return S_ERROR;
+	  }
 
 	if (!in_range)
 	  {
