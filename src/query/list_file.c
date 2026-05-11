@@ -3788,6 +3788,12 @@ qfile_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * recdes_p, void *
 	      input_file->tfile_vfid = state->curr_tfile ? state->curr_tfile : state->membuf_tfile;
 	      if (qfile_get_tuple (thread_p, state->curr_page, tuple_p, &state->tplrec, input_file) != NO_ERROR)
 		{
+		  if (!state->curr_is_membuf)
+		    {
+		      qmgr_free_old_page_and_init (thread_p, state->curr_page, state->curr_tfile);
+		    }
+		  state->curr_page = NULL;
+		  state->curr_tfile = NULL;
 		  return SORT_ERROR_OCCURRED;
 		}
 	      tpl = state->tplrec.tpl;
