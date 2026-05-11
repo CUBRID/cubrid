@@ -1315,12 +1315,12 @@ jsp_drop_pkg_member_sp (MOP pkg_mop)
     }
   procs = db_get_set (&procs_val);  // side effect 0
 
+  db_make_null (&sp_elem);
   for (int i = 0; i < proc_cnt; i++)
     {
       // find sp
       set_get_element (procs, i, &sp_elem);       // side effect 1
       sp_mop = db_get_object (&sp_elem);
-      //pr_clear_value (&sp_elem);
 
       // NOTE: Package member procedures/functions do not have their records in _db_stored_procedure_code.
       //       Information about code is stored in _db_package_code for package member procedures/functions
