@@ -1227,7 +1227,13 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	    }
 	  else
 	    {
+#if defined(CS_MODE)
+	      /* svacuum only wakes the vacuum master daemon and returns immediately;
+	       * vacuum runs asynchronously in the background. */
+	      fprintf (csql_Output_fp, "Vacuum master daemon has been signaled. (vacuum runs asynchronously)\n");
+#else /* SA_MODE */
 	      fprintf (csql_Output_fp, "Vacuum is complete.\n");
+#endif
 	    }
 	}
       else
