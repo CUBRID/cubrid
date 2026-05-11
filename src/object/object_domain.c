@@ -5380,9 +5380,35 @@ tp_ftoa (DB_VALUE const *src, DB_VALUE * result)
   switch (DB_VALUE_DOMAIN_TYPE (result))
     {
     case DB_TYPE_CHAR:
-      db_make_char (result, DB_VALUE_PRECISION (result), str_float, strlen (str_float), db_get_string_codeset (result),
-		    db_get_string_collation (result));
-      result->need_clear = true;
+      {
+	int prec = DB_VALUE_PRECISION (result);
+	int data_size = strlen (str_float);
+	char *padded;
+
+	if (prec == TP_FLOATING_PRECISION_VALUE)
+	  {
+	    prec = data_size;
+	  }
+	else if (data_size > prec)
+	  {
+	    data_size = prec;
+	  }
+
+	padded = (char *) db_private_alloc (NULL, prec + 1);
+	if (padded == NULL)
+	  {
+	    db_private_free_and_init (NULL, str_float);
+	    db_make_null (result);
+	    return;
+	  }
+	memset (padded, ' ', prec);
+	memcpy (padded, str_float, data_size);
+	padded[prec] = '\0';
+
+	db_private_free_and_init (NULL, str_float);
+	db_make_char (result, prec, padded, prec, db_get_string_codeset (result), db_get_string_collation (result));
+	result->need_clear = true;
+      }
       break;
 
     case DB_TYPE_VARCHAR:
@@ -5437,9 +5463,35 @@ tp_dtoa (DB_VALUE const *src, DB_VALUE * result)
   switch (DB_VALUE_DOMAIN_TYPE (result))
     {
     case DB_TYPE_CHAR:
-      db_make_char (result, DB_VALUE_PRECISION (result), str_double, strlen (str_double),
-		    db_get_string_codeset (result), db_get_string_collation (result));
-      result->need_clear = true;
+      {
+	int prec = DB_VALUE_PRECISION (result);
+	int data_size = strlen (str_double);
+	char *padded;
+
+	if (prec == TP_FLOATING_PRECISION_VALUE)
+	  {
+	    prec = data_size;
+	  }
+	else if (data_size > prec)
+	  {
+	    data_size = prec;
+	  }
+
+	padded = (char *) db_private_alloc (NULL, prec + 1);
+	if (padded == NULL)
+	  {
+	    db_private_free_and_init (NULL, str_double);
+	    db_make_null (result);
+	    return;
+	  }
+	memset (padded, ' ', prec);
+	memcpy (padded, str_double, data_size);
+	padded[prec] = '\0';
+
+	db_private_free_and_init (NULL, str_double);
+	db_make_char (result, prec, padded, prec, db_get_string_codeset (result), db_get_string_collation (result));
+	result->need_clear = true;
+      }
       break;
 
     case DB_TYPE_VARCHAR:

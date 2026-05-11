@@ -11927,13 +11927,11 @@ mr_lengthval_char_type_common (DB_VALUE * value, int disk, int align)
 
       compressed_size = db_get_compressed_size (value);
 
-      /* Char count from DB_VALUE; if not yet computed (lazy -1), fall back to src_size
-       * which is a safe upper bound for type_header dispatch (UTF-8 length <= size always). */
+      /* db_get_string_length() always returns >= 0 for CHAR/VARCHAR — on cache miss
+       * (medium.length == -1) it computes char count via intl_char_count internally
+       * (string_opfunc.c:7788-7795). assert guards against future invariant breakage. */
       char_count = db_get_string_length (value);
-      if (char_count < 0)
-	{
-	  char_count = src_size;
-	}
+      assert (char_count >= 0);
       if (align == INT_ALIGNMENT)
 	{
 	  return or_packed_varchar_length (char_count, src_size, compressed_size);
