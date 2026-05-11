@@ -5172,8 +5172,7 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	      return ER_FAILED;
 	    }
 
-	  sort_px_list_state *state =
-	    (sort_px_list_state *) db_private_alloc (thread_p, sizeof (sort_px_list_state));
+	  sort_px_list_state *state = (sort_px_list_state *) db_private_alloc (thread_p, sizeof (sort_px_list_state));
 	  if (state == NULL)
 	    {
 	      qfile_free_list_sector_info (thread_p, &sector_info);
