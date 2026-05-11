@@ -37,7 +37,6 @@
 
 // system includes
 #include <chrono>
-#include <atomic>
 #include <memory>
 #include <algorithm>
 
@@ -70,8 +69,12 @@ namespace cubthread
 
       ~worker_pool_elastic ();
 
+      // pre-calculation
+      static std::size_t calculate_maximum_pool_size (std::size_t max_concurrency, std::size_t core_count,
+	  float worker_overcommit_ratio);
+
       // init
-      void initialize (std::size_t worker_count, std::size_t core_count) override;
+      void initialize (std::size_t max_concurrency, std::size_t core_count) override;
 
       // runtime variable parameter
       void adjust_runtime_parameter (std::size_t max_concurrency, float worker_overcommit_ratio);
@@ -83,9 +86,12 @@ namespace cubthread
 
       std::unique_ptr<worker_pool::core> allocate_core (bool pool_threads) override;
 
-      // total
-      std::size_t m_max_concurrency;
+      // variant worker pool (m_pool_size <= the number of workers <= m_max_pool_size)
+      std::size_t m_max_pool_size;
       float m_worker_overcommit_ratio;
+
+      // this may not be needed
+      std::mutex m_variant_mutex;
   };
 
   // worker_pool_elastic<Stats>::core_elastic
@@ -108,7 +114,7 @@ namespace cubthread
       void initialize (std::size_t concurrency) override;
 
       // runtime variable parameter
-      void adjust_runtime_parameter (std::size_t max_concurrency, float worker_overcommit_ratio);
+      void adjust_runtime_parameter (std::size_t max_concurrency, std::size_t max_workers);
 
       // execute task
       void execute_task (task_type *task_p) override;
@@ -121,6 +127,8 @@ namespace cubthread
 
       std::optional<std::pair<wrapped_task, unique_slot>> get_task_and_slot_or_become_available (worker &worker_arg);
 
+      std::unique_ptr<worker> get_retire_if_excess (worker_elastic *w);
+
     private:
       core_elastic (bool pool_threads);
 
@@ -132,10 +140,11 @@ namespace cubthread
 
       concurrency_slot_pool m_slots;
 
-      // per core
-      // max_concurrency <= worker <= max_concurrency * worker_overcommit_ratio
+      // max_concurrency <= the number of workers <= m_max_workers
       std::size_t m_max_concurrency;
-      float m_worker_overcommit_ratio;
+      std::size_t m_max_workers;
+
+      std::size_t m_retire_threshold;
   };
 
   // worker_pool_elastic<Stats>::core_elastic::worker_elastic
@@ -180,7 +189,7 @@ namespace cubthread
   worker_pool_elastic<Stats>::worker_pool_elastic (std::size_t max_concurrency, std::size_t core_count,
       float worker_overcommit_ratio, const char *name, entry_manager &entry_mgr, bool pool_threads, wait_seconds idle_timeout)
     : worker_pool_impl<Stats> (max_concurrency, core_count, name, entry_mgr, pool_threads, idle_timeout)
-    , m_max_concurrency (max_concurrency)
+    , m_max_pool_size (0)
     , m_worker_overcommit_ratio (worker_overcommit_ratio)
   {
   }
@@ -191,19 +200,47 @@ namespace cubthread
   }
 
   template <stats_t Stats>
-  void
-  worker_pool_elastic<Stats>::initialize (std::size_t worker_count, std::size_t core_count)
+  std::size_t
+  worker_pool_elastic<Stats>::calculate_maximum_pool_size (std::size_t max_concurrency, std::size_t core_count,
+      float worker_overcommit_ratio)
   {
-    worker_pool_impl<Stats>::initialize (worker_count, core_count);
+    std::size_t max_pool_size = 0;
+    std::size_t quotient, remainder;
+    std::size_t it;
 
-    // set the parameters in each core
-    adjust_runtime_parameter (m_max_concurrency, m_worker_overcommit_ratio);
+    quotient = max_concurrency / core_count;
+    remainder = max_concurrency % core_count;
+
+    for (it = 0; it < remainder; it++)
+      {
+	max_pool_size += static_cast<std::size_t> ((quotient + 1) * worker_overcommit_ratio);
+      }
+    for (; it < core_count; it++)
+      {
+	max_pool_size += static_cast<std::size_t> (quotient * worker_overcommit_ratio);
+      }
+
+    return max_pool_size;
+  }
+
+  template <stats_t Stats>
+  void
+  worker_pool_elastic<Stats>::initialize (std::size_t max_concurrency, std::size_t core_count)
+  {
+    assert (this->m_pool_size == max_concurrency);
+
+    // initialize the base worker pool as worker is max_concurrency and core is core_count
+    worker_pool_impl<Stats>::initialize (max_concurrency, core_count);
+
+    // set the overcommit parameters in each core
+    adjust_runtime_parameter (max_concurrency, m_worker_overcommit_ratio);
   }
 
   template <stats_t Stats>
   void
   worker_pool_elastic<Stats>::adjust_runtime_parameter (std::size_t max_concurrency, float worker_overcommit_ratio)
   {
+    std::size_t max_pool_size = 0;
     std::size_t quotient, remainder;
     std::size_t it;
 
@@ -212,17 +249,25 @@ namespace cubthread
 
     for (it = 0; it < remainder; it++)
       {
-	assert (dynamic_cast<core_elastic *> (this->m_cores[it]));
+	assert (dynamic_cast<core_elastic *> (this->m_cores[it].get ()));
 
-	static_cast<core_elastic *> (this->m_cores[it].get ())->adjust_runtime_parameter (quotient + 1,
-	    worker_overcommit_ratio);
+	std::size_t max_workers = static_cast<std::size_t> ((quotient + 1) * worker_overcommit_ratio);
+	static_cast<core_elastic *> (this->m_cores[it].get ())->adjust_runtime_parameter (quotient + 1, max_workers);
+	max_pool_size += max_workers;
       }
     for (; it < this->m_cores.size (); it++)
       {
-	assert (dynamic_cast<core_elastic *> (this->m_cores[it]));
+	assert (dynamic_cast<core_elastic *> (this->m_cores[it].get ()));
 
-	static_cast<core_elastic *> (this->m_cores[it].get ())->adjust_runtime_parameter (quotient, worker_overcommit_ratio);
+	std::size_t max_workers = static_cast<std::size_t> (quotient * worker_overcommit_ratio);
+	static_cast<core_elastic *> (this->m_cores[it].get ())->adjust_runtime_parameter (quotient, max_workers);
+	max_pool_size += max_workers;
       }
+
+    std::lock_guard<std::mutex> lock (m_variant_mutex);
+
+    m_max_pool_size = max_pool_size;
+    m_worker_overcommit_ratio = worker_overcommit_ratio;
   }
 
   template <stats_t Stats>
@@ -240,6 +285,9 @@ namespace cubthread
   worker_pool_elastic<Stats>::core_elastic::core_elastic (bool pool_threads)
     : worker_pool_impl<Stats>::core_impl (pool_threads)
     , m_slots (this->m_core_mutex)
+    , m_max_concurrency (0)
+    , m_max_workers (0)
+    , m_retire_threshold (0)
   {
   }
 
@@ -260,12 +308,13 @@ namespace cubthread
   template <stats_t Stats>
   void
   worker_pool_elastic<Stats>::core_elastic::adjust_runtime_parameter (std::size_t max_concurrency,
-      float worker_overcommit_ratio)
+      std::size_t max_workers)
   {
     std::lock_guard<std::mutex> lock (this->m_core_mutex);
 
     m_max_concurrency = max_concurrency;
-    m_worker_overcommit_ratio = worker_overcommit_ratio;
+    m_max_workers = max_workers;
+    m_retire_threshold = std::max ((max_concurrency + max_workers) / 2, max_concurrency);
   }
 
   template <stats_t Stats>
@@ -373,6 +422,38 @@ namespace cubthread
   }
 
   template <stats_t Stats>
+  std::unique_ptr<worker_pool::core::worker>
+  worker_pool_elastic<Stats>::core_elastic::get_retire_if_excess (worker_elastic *w)
+  {
+    std::lock_guard<std::mutex> lock (this->m_core_mutex);
+    std::unique_ptr<worker> ptr = nullptr;
+
+    if (this->m_workers.size () >= m_retire_threshold)
+      {
+	auto it = std::find (this->m_available_workers.begin (), this->m_available_workers.end (), w);
+	if (it != this->m_available_workers.end ())
+	  {
+	    // not selected yet
+	    this->m_available_workers.erase (it);
+
+	    auto it = std::find_if (this->m_workers.begin (), this->m_workers.end (),
+				    [w] (const std::unique_ptr<worker> &ptr)
+	    {
+	      return ptr.get () == w;
+	    });
+	    assert (it != this->m_workers.end ());
+	    ptr = std::move (*it);
+	    this->m_workers.erase (it);
+
+	    (void) w->m_stats;
+
+	    //TOOD get m_stats and archive it
+	  }
+      }
+    return ptr;
+  }
+
+  template <stats_t Stats>
   std::unique_ptr<typename worker_pool::core::worker>
   worker_pool_elastic<Stats>::core_elastic::allocate_worker ()
   {
@@ -386,7 +467,7 @@ namespace cubthread
     worker *worker_p;
 
     worker_p = this->get_available_worker ();
-    if (!worker_p)
+    if (!worker_p && this->m_workers.size () < m_max_workers)
       {
 	// create a worker when none is available
 	std::unique_ptr<worker> w = this->allocate_worker ();
@@ -540,6 +621,12 @@ namespace cubthread
 
 	// retire the context before another thread reuses this worker
 	this->finish_run ();
+
+	// unlock the worker mutex
+	ulock.unlock ();
+
+	// removed or not
+	auto ownership = static_cast<core_elastic *> (this->m_parent_core)->get_retire_if_excess (this);
 
 	return false;
       }

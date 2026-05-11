@@ -5195,15 +5195,15 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_FLOAT,
    PRM_CLEAR_DYNAMIC_FLAG,
 #if defined (SERVER_MODE)
-   {false, {.f = 2}},
-   {false, {.f = 2}},
+   {false, {.f = 2.0f}},
+   {false, {.f = 2.0f}},
    NULL_SYSPRM_PARAM_VALUE,
-   {false, {.f = 1}},
+   {false, {.f = 1.0f}},
 #else
-   {false, {.i = 1}},
-   {false, {.i = 1}},
-   {false, {.i = 1}},
-   {false, {.i = 1}},
+   {false, {.f = 1.0f}},
+   {false, {.f = 1.0f}},
+   {false, {.f = 1.0f}},
+   {false, {.f = 1.0f}},
 #endif
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

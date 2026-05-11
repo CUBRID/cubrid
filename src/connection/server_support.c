@@ -139,7 +139,8 @@ static HA_LOG_APPLIER_STATE_TABLE ha_Log_applier_state[HA_LOG_APPLIER_STATE_TABL
 static int ha_Log_applier_state_num = 0;
 
 // *INDENT-OFF*
-static worker_pool_type<cubthread::stats_t::on, cubthread::pool_t::elastic> *css_Server_request_worker_pool = NULL;
+using css_request_worker_pool_t = worker_pool_type<cubthread::stats_t::on, cubthread::pool_t::elastic>;
+static css_request_worker_pool_t *css_Server_request_worker_pool = NULL;
 
 class css_server_task : public cubthread::entry_task
 {
@@ -267,7 +268,7 @@ css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** a
 
   size_t core_index = 0;	// core index starts with 0
   //*INDENT-OFF*
-  using request_pool_core_t = worker_pool_type<cubthread::stats_t::on, cubthread::pool_t::elastic>::core_impl;
+  using request_pool_core_t = css_request_worker_pool_t::core_impl;
   css_Server_request_worker_pool->map_cores (&css_wp_core_job_scan_mapper<request_pool_core_t>, thread_p, ctx, core_index, error);
   //*INDENT-ON*
   if (error != NO_ERROR)
@@ -553,7 +554,10 @@ css_start_shutdown_server ()
  */
 // *INDENT-OFF*
 REGISTER_WORKERPOOL (transaction, []() {
-    return (int) (prm_get_integer_value (PRM_ID_MAX_TRANSACTION_CONCURRENCY) * prm_get_float_value (PRM_ID_WORKER_OVERCOMMIT_RATIO)) + 1;
+    return css_request_worker_pool_t::calculate_maximum_pool_size (
+      prm_get_integer_value (PRM_ID_MAX_TRANSACTION_CONCURRENCY),
+      cubthread::system_core_count (),
+      prm_get_float_value (PRM_ID_WORKER_OVERCOMMIT_RATIO));
 });
 // *INDENT-ON*
 

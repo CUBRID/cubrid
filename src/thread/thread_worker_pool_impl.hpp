@@ -138,7 +138,7 @@ namespace cubthread
       // worker is stopped after stop_execution () is called
       bool is_running (void) const override;
 
-      // get maximum number of threads that can run concurrently in this worker pool
+      // get the number of threads that can run concurrently in this worker pool
       std::size_t get_pool_size (void) const override;
       // get the number of cores
       std::size_t get_core_count (void) const override;
