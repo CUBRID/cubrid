@@ -15162,31 +15162,33 @@ qexec_prep_exec_corr_dblink (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STA
     {
       return NO_ERROR;
     }
-  spec = aptr->spec_list;
-  if (spec == NULL || spec->type != TARGET_DBLINK)
+  for (spec = aptr->spec_list; spec != NULL; spec = spec->next)
     {
-      return NO_ERROR;
-    }
-  {
-    DBLINK_SCAN_INFO *scan_info = &spec->s_id.s.dblid.scan_info;
+      DBLINK_SCAN_INFO *scan_info;
 
-    if (scan_info->stmt_handle <= 0)
-      {
-	err = dblink_corr_prepare (thread_p, spec, scan_info);
-	if (err != NO_ERROR)
-	  {
-	    return err;
-	  }
-      }
+      if (spec->type != TARGET_DBLINK)
+	{
+	  continue;
+	}
+      scan_info = &spec->s_id.s.dblid.scan_info;
+      if (scan_info->stmt_handle <= 0)
+	{
+	  err = dblink_corr_prepare (thread_p, spec, scan_info);
+	  if (err != NO_ERROR)
+	    {
+	      return err;
+	    }
+	}
 #if !defined (NDEBUG)
-    assert (scan_info->stmt_handle > 0);
+      assert (scan_info->stmt_handle > 0);
 #endif
-    err = dblink_corr_execute (thread_p, scan_info, &xasl_state->vd);
-    if (err != NO_ERROR)
-      {
-	return err;
-      }
-  }
+      err = dblink_corr_execute (thread_p, scan_info, &xasl_state->vd);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+      return NO_ERROR;		/* corr DBLink XASL has exactly one TARGET_DBLINK spec */
+    }
   return NO_ERROR;
 }
 

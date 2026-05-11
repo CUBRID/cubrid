@@ -757,10 +757,11 @@ dblink_connect_and_prepare (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, DB
 	}
     }
 
-  /* Force autocommit OFF for the duration of this scan.
-   * cursor_rewind (CBRD-26640) requires the CCI cursor to stay alive across outer rows;
-   * this is only necessary when auto_commit is true (false connections are already OFF). */
-  if (auto_commit)
+  /* Force autocommit OFF only for cursor_rewind: the same cci_execute result must
+   * survive across outer rows, so the server-side cursor must not be closed by an
+   * implicit commit.  Correlated push-down re-executes per outer row and does not
+   * require cursor survival between iterations. */
+  if (auto_commit && scan_info->cursor_rewind)
     {
       ret = cci_set_autocommit (scan_info->conn_handle, CCI_AUTOCOMMIT_FALSE);
       if (ret < 0)
@@ -792,6 +793,11 @@ dblink_connect_and_prepare (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, DB
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "unknown error");
       (void) cci_close_req_handle (scan_info->stmt_handle);
       scan_info->stmt_handle = -1;
+      if (auto_commit)
+	{
+	  (void) cci_disconnect (scan_info->conn_handle, &err_buf);
+	  scan_info->conn_handle = -1;
+	}
       return ER_DBLINK;
     }
 
@@ -896,7 +902,7 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
   scan_info->corr_key_count = spec->s.dblink_node.corr_key_count;
   scan_info->corr_key_regu_list = spec->s.dblink_node.corr_key_regu_list;
 
-  /* CBRD-26640 invariant: a non-reuse open must arrive without an active stmt_handle.
+  /* A non-reuse open must arrive without an active stmt_handle.
    * CCI handles are positive integers; 0 = zero-initialized (never opened), -1 = sentinel
    * set by dblink_close_scan after successful close.  Both mean "no active statement".
    * conn_handle is intentionally excluded: when auto_commit=false the connection is

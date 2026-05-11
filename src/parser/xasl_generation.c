@@ -500,7 +500,7 @@ static int pt_split_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_
 static int pt_split_hash_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE * pred,
 				PT_NODE ** build_attrs, PT_NODE ** probe_attrs);
 
-static void pt_fill_dblink_corr_for_spec (PARSER_CONTEXT * parser, PT_DBLINK_INFO * pdblink, ACCESS_SPEC_TYPE * access,
+static bool pt_fill_dblink_corr_for_spec (PARSER_CONTEXT * parser, PT_DBLINK_INFO * pdblink, ACCESS_SPEC_TYPE * access,
 					  REGU_VARIABLE * corr_regu);
 
 static int pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** build_attrs,
@@ -13029,7 +13029,7 @@ pt_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * term_list, void *arg, int
  * pt_fill_dblink_corr_for_spec () - copy correlated outer bind regs into TARGET_DBLINK spec.
  *   corr_regu must come from pt_to_regu_variable (parser, pdblink->corr_key_outer_copy[0], ...).
  */
-static void
+static bool
 pt_fill_dblink_corr_for_spec (PARSER_CONTEXT * parser, PT_DBLINK_INFO * pdblink, ACCESS_SPEC_TYPE * access,
 			      REGU_VARIABLE * corr_regu)
 {
@@ -13039,22 +13039,23 @@ pt_fill_dblink_corr_for_spec (PARSER_CONTEXT * parser, PT_DBLINK_INFO * pdblink,
 
   if (access == NULL || access->type != TARGET_DBLINK)
     {
-      return;
+      return true;
     }
   if (corr_regu == NULL || pdblink->corr_key_count <= 0)
     {
-      return;
+      return true;
     }
 
   regu_alloc (rlist);
   if (rlist == NULL)
     {
-      return;
+      return false;
     }
   rlist->value = *corr_regu;
   rlist->next = NULL;
   access->s.dblink_node.corr_key_count = pdblink->corr_key_count;
   access->s.dblink_node.corr_key_regu_list = rlist;
+  return true;
 }
 
 static ACCESS_SPEC_TYPE *
@@ -13153,7 +13154,10 @@ pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE *
 
   if (access)
     {
-      pt_fill_dblink_corr_for_spec (parser, pdblink, access, corr_regu);
+      if (!pt_fill_dblink_corr_for_spec (parser, pdblink, access, corr_regu))
+	{
+	  return NULL;
+	}
     }
 
   return access;
