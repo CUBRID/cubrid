@@ -10483,21 +10483,50 @@ netsr_spacedb (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
       filesp = files;
     }
   ptr = or_unpack_string_array (ptr, &table_array, &table_array_length);
-
-  /* get info from disk manager */
-  error_code = disk_spacedb (thread_p, all, volsp);
-  if (error_code != NO_ERROR)
+  if (table_array_length > 0)
     {
-      ASSERT_ERROR ();
+      if (table_array == NULL)
+        {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+                  sizeof (char *) * table_array_length);
+          error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+        }
+      else
+        {
+          for (int i = 0; i < table_array_length; i++)
+            {
+              if (table_array[i] == NULL)
+                {
+                  ASSERT_ERROR_AND_SET (error_code);
+                  if (error_code == NO_ERROR)
+                    {
+                      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
+                              "spacedb: NULL table name in request");
+                      error_code = ER_GENERIC_ERROR;
+                    }
+                  break;
+                }
+            }
+        }
     }
-  else if (get_files || table_array_length > 0)
+
+  if (error_code == NO_ERROR)
     {
-      /* get info from file manager */
-      error_code = file_spacedb (thread_p, filesp, table_array, table_array_length,
-                                 &table_sizes, &actual_table_count);
+      /* get info from disk manager */
+      error_code = disk_spacedb (thread_p, all, volsp);
       if (error_code != NO_ERROR)
         {
           ASSERT_ERROR ();
+        }
+      else if (get_files || table_array_length > 0)
+        {
+          /* get info from file manager */
+          error_code = file_spacedb (thread_p, filesp, table_array, table_array_length,
+                                     &table_sizes, &actual_table_count);
+          if (error_code != NO_ERROR)
+            {
+              ASSERT_ERROR ();
+            }
         }
     }
 
@@ -10545,11 +10574,14 @@ netsr_spacedb (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
       free_and_init (vols);
     }
 
-  for (int i = 0; i < table_array_length; i++)
+  if (table_array != NULL)
     {
-      db_private_free_and_init (thread_p, table_array[i]);
+      for (int i = 0; i < table_array_length; i++)
+        {
+          db_private_free_and_init (thread_p, table_array[i]);
+        }
+      db_private_free_and_init (thread_p, table_array);
     }
-  db_private_free_and_init (thread_p, table_array);
   for (int i = 0; i < actual_table_count; i++)
     {
       free_and_init (table_sizes[i].header);
