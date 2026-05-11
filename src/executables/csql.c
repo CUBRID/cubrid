@@ -203,7 +203,7 @@ static bool csql_Database_connected = false;
 
 static bool csql_Is_interactive = false;
 static bool csql_Is_sigint_caught = false;
-static bool csql_Is_echo_on = true;
+static bool csql_Is_echo_on = false;
 enum
 { HISTO_OFF, HISTO_ON };
 static int csql_Is_histo_on = HISTO_OFF;

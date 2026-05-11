@@ -1999,7 +1999,11 @@ xoos_get_stats_by_class_oid (THREAD_ENTRY *thread_p, const OID *class_oid, OOS_S
    * so for accurate live counts we walk every page and sum spage statistics. */
   VPID hdr_vpid;
   VPID_SET_NULL (&hdr_vpid);
-  (void) file_get_sticky_first_page (thread_p, &oos_vfid, &hdr_vpid);
+  if (file_get_sticky_first_page (thread_p, &oos_vfid, &hdr_vpid) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
 
   INT64 total_recs = 0;
   INT64 total_sumlen = 0;

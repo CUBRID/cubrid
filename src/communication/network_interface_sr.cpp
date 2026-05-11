@@ -9928,7 +9928,7 @@ svacuum (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 
 /*
  * soos_stats - Server handler for OOS stats session command (dev/debug).
- *   Request : class name (string)
+ *   Request : class OID (OR_OID_SIZE bytes)
  *   Reply   : err (int) + has_oos (int) + vfid_volid (int) + vfid_fileid (int)
  *             + num_user_pages (int) + page_size (int) + num_recs (int)
  *             + recs_sumlen (bigint)
