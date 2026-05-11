@@ -139,23 +139,6 @@ exit:
 }
 
 int
-sysmeta_validate_upgrade_scripts (int from_version, int to_version)
-{
-  for (int v = from_version; v < to_version; v++)
-    {
-      char *buf = NULL;
-      size_t len = 0;
-      int error = sysmeta_load_decoded_script (v, v + 1, &buf, &len);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-      free_and_init (buf);
-    }
-  return NO_ERROR;
-}
-
-int
 sysmeta_print_upgrade_scripts (int from_version, int to_version)
 {
   for (int v = from_version; v < to_version; v++)

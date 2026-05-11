@@ -5551,12 +5551,6 @@ upgradedb_process (const UPGRADEDB_OPTIONS * opts)
       return ER_FAILED;
     }
 
-  error = sysmeta_validate_upgrade_scripts (current_version, target_version);
-  if (error != NO_ERROR)
-    {
-      goto error_exit;
-    }
-
   error = sysmeta_print_upgrade_scripts (current_version, target_version);
   if (error != NO_ERROR)
     {
