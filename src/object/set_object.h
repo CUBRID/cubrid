@@ -186,8 +186,6 @@ extern "C"
 #endif
 /* shut down */
 
-extern void set_final (void);
-
 /* hack for post-sorting collections with temporary OIDs */
 
 extern int set_optimize (DB_COLLECTION * ref);

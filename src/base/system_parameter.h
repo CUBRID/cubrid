@@ -35,6 +35,7 @@
 #include "porting.h"
 #include "porting_inline.hpp"
 #include "chartype.h"
+//#include "db_multi_threads_connections.h"
 
 typedef enum
 {
@@ -728,7 +729,7 @@ extern "C"
 /* when system parameters are loaded, session parameters need to be cached for
  * future clients that connect to broker
  */
-  extern SESSION_PARAM *cached_session_parameters;
+  extern /* CUB_THREAD_LOCAL */ SESSION_PARAM *cached_session_parameters;
 #endif				/* CS_MODE */
 
   extern const char *prm_get_name (PARAM_ID prm_id);

@@ -484,7 +484,7 @@ struct msgcat_def
   const char *name;
   MSG_CATD msg_catd;
 };
-struct msgcat_def msgcat_System[] = {
+static struct msgcat_def msgcat_System[] = {
   {MSGCAT_CATALOG_CUBRID /* 0 */ , "cubrid.cat", NULL},
   {MSGCAT_CATALOG_CSQL /* 1 */ , "csql.cat", NULL},
   {MSGCAT_CATALOG_UTILS /* 2 */ , "utils.cat", NULL}
@@ -567,6 +567,11 @@ msgcat_message (int cat_id, int set_id, int msg_id)
 
   if (msgcat_System[cat_id].msg_catd == NULL)
     {
+      /* TODO: 
+       * To ensure safety in a multi-threaded environment, access to msgcat_System[x].msg_catd must be protected using a lock.
+       */
+      assert (false);
+
       msgcat_System[cat_id].msg_catd = msgcat_open (msgcat_System[cat_id].name);
       if (msgcat_System[cat_id].msg_catd == NULL)
 	{

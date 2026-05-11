@@ -139,11 +139,6 @@ enum remove_temp_vol_action
 { REMOVE_TEMP_VOL_DEFAULT_ACTION, ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION };
 typedef enum remove_temp_vol_action REMOVE_TEMP_VOL_ACTION;
 
-#if defined(SA_MODE)
-extern void boot_client_all_finalize (int final_level);
-#endif /* SA_MODE */
-
-
 BOOT_SERVER_STATUS boot_Server_status = BOOT_SERVER_DOWN;
 
 #if defined(SERVER_MODE)
@@ -2591,10 +2586,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   tran_index = NULL_TRAN_INDEX;
   logtb_set_to_system_tran_index (thread_p);
 
-  if (!tf_Metaclass_class.mc_n_variable)
-    {
-      tf_compile_meta_classes ();
-    }
+  tf_compile_meta_classes ();
 
   if (skip_to_check_ct_classes_for_rebuild == false)
     {
@@ -3871,7 +3863,6 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
       es_final ();
       tp_final ();
       locator_free_areas ();
-      set_final ();
       sysprm_final ();
       area_final ();
       msgcat_final ();

@@ -240,23 +240,28 @@ const char TEXT_CONSTRAINT_PREFIX[] = "#text_";
  *    doubly linked list for faster removal.
 */
 
-SM_DESCRIPTOR *sm_Descriptors = NULL;
+static CUB_THREAD_LOCAL SM_DESCRIPTOR *sm_Descriptors = NULL;
 
 /* ROOT_CLASS GLOBALS */
 /* Global root class structure */
-ROOT_CLASS sm_Root_class;
+CUB_THREAD_LOCAL ROOT_CLASS sm_Root_class;
 
 /* Global MOP for the root class object.  Used by the locator */
-MOP sm_Root_class_mop = NULL;
+CUB_THREAD_LOCAL MOP sm_Root_class_mop = NULL;
 
 /* Name of the root class */
 const char *sm_Root_class_name = ROOTCLASS_NAME;
 
 /* Heap file identifier for the root class */
-HFID *sm_Root_class_hfid = &sm_Root_class.header.ch_heap;
+#if defined(CS_MODE)
+CUB_THREAD_LOCAL HFID *sm_Root_class_hfid = NULL;
+#else
+CUB_THREAD_LOCAL HFID *sm_Root_class_hfid = &sm_Root_class.header.ch_heap;
+#endif
 
-static unsigned int local_schema_version = 0;
-static unsigned int global_schema_version = 0;
+
+static CUB_THREAD_LOCAL unsigned int local_schema_version = 0;
+static CUB_THREAD_LOCAL unsigned int global_schema_version = 0;
 
 static int domain_search (MOP dclass_mop, MOP class_mop);
 static int annotate_method_files (MOP classmop, SM_CLASS * class_);
@@ -2005,11 +2010,14 @@ sm_get_method_source_file (MOP obj, const char *name)
  */
 
 void
-sm_init (OID * rootclass_oid, HFID * rootclass_hfid)
+sm_init (OID * rootclass_oid, HFID * rootclass_hfid, bool is_sub)
 {
   sm_Root_class_mop = ws_mop (rootclass_oid, NULL);
 
-  COPY_OID (oid_Root_class_oid, ws_oid (sm_Root_class_mop));
+  if (!is_sub)
+    {
+      COPY_OID (oid_Root_class_oid, ws_oid (sm_Root_class_mop));
+    }
 
   OID_SET_NULL (&(sm_Root_class.header.ch_rep_dir));	/* is dummy */
 

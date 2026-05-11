@@ -30,7 +30,7 @@
 #include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
-static int stx_Xasl_errcode = NO_ERROR;
+static CUB_THREAD_LOCAL int stx_Xasl_errcode = NO_ERROR;
 #endif /* !SERVER_MODE */
 
 /*

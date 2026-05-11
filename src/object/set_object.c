@@ -89,15 +89,16 @@ typedef struct collect_block
 typedef int (*SETOBJ_SORT_CMP_FUNC) (const void *, const void *);
 typedef int (*SETOBJ_OP) (COL * set1, COL * set2, COL * result);
 
-static long col_init = 0;
+#if defined(CUBRID_DEBUG)
+static int debug_level = 1;
+#else
 static int debug_level = 0;
-
-static long collection_quick_offset = 0;	/* inited by col_initialize */
+#endif
 
 /* Area for allocation of set reference structures */
-AREA *Set_Ref_Area = NULL;
+static CUB_THREAD_LOCAL AREA *Set_Ref_Area = NULL;
 /* Area for allocation of set object structures */
-AREA *Set_Obj_Area = NULL;
+static CUB_THREAD_LOCAL AREA *Set_Obj_Area = NULL;
 
 #define CHECKNULL_ERR(thing) \
   if ((thing) == NULL) \
@@ -107,7 +108,7 @@ AREA *Set_Obj_Area = NULL;
     }
 
 static void col_debug (COL * col);
-static void col_initialize (void);
+static long calc_collection_quick_offset (void);
 
 static DB_VALUE *new_block (long n);
 static DB_VALUE *realloc_block (DB_VALUE * in_block, long n);
@@ -170,9 +171,6 @@ set_area_init (void)
 	  goto error;
 	}
     }
-
-  col_initialize ();
-
   return NO_ERROR;
 
 error:
@@ -287,18 +285,6 @@ set_free_block (DB_VALUE * in_block)
       freeblock = BLOCK_START (in_block);
       db_private_free_and_init (NULL, freeblock);
     }
-}
-
-/*
- * set_final() -
- *      return: none
- *
- */
-
-void
-set_final (void)
-{
-  col_init = 0;
 }
 
 /*
@@ -689,6 +675,7 @@ col_expand_blocks (COL * col, long blockindex, long blockoffset)
   DB_VALUE *block;
   int err;
   long topfullblock;
+  static const long collection_quick_offset = calc_collection_quick_offset ();
 
   err = col_expand_array (col, blockindex);
   if (err < 0)
@@ -1331,37 +1318,22 @@ col_put (COL * col, long colindex, DB_VALUE * val)
   return error;
 }
 
-/*
- * col_initialize() -
- *      return: none
- *
- */
 
-static void
-col_initialize (void)
+static long
+calc_collection_quick_offset (void)
 {
-  if (col_init)
-    {
-      return;
-    }
-
-#if defined(CUBRID_DEBUG)
-  debug_level = 1;
-#endif
-
-  /* Calculate the largest collect_block offset that will fit in the workspace "quick" size. */
+/* Calculate the largest collect_block offset that will fit in the workspace "quick" size. */
 #define WS_MAX_QUICK_SIZE       1024
 
-  collection_quick_offset = 1 + (WS_MAX_QUICK_SIZE - (sizeof (struct collect_block))) / sizeof (DB_VALUE);
+  long val = 1 + (WS_MAX_QUICK_SIZE - (sizeof (struct collect_block))) / sizeof (DB_VALUE);
 
-  /* make sure that collection quick offset is smaller than COL_BLOCK_SIZE. Otherwise, it will disable the more
-   * efficient block handling. */
-  if (collection_quick_offset >= COL_BLOCK_SIZE)
+/* make sure that collection quick offset is smaller than COL_BLOCK_SIZE. 
+ * Otherwise, it will disable the more efficient block handling. */
+  if (val >= COL_BLOCK_SIZE)
     {
-      collection_quick_offset = COL_BLOCK_SIZE / 2;
+      val = COL_BLOCK_SIZE / 2;
     }
-
-  col_init = 1;
+  return val;
 }
 
 /*
@@ -1386,12 +1358,6 @@ col_insert (COL * col, long colindex, DB_VALUE * val)
 {
   long offset, blockindex, topblock, topblockcount, topoffset, fillblock;
   int error;
-
-  if (!col_init)
-    {
-      col_initialize ();
-    }
-
   if (!col || colindex < 0 || !val)
     {
       error = ER_GENERIC_ERROR;
@@ -1487,11 +1453,6 @@ col_delete (COL * col, long colindex)
 {
   long offset, blockindex, topblock, topblockcount, topoffset, fillblock;
   int error = NO_ERROR;
-
-  if (!col_init)
-    {
-      col_initialize ();
-    }
 
   if (!col || colindex < 0)
     {

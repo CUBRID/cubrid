@@ -193,6 +193,7 @@ static void perfmon_peek_thread_daemon_stats (UINT64 * stats);
 
 PSTAT_GLOBAL pstat_Global;
 
+// TODO: Is pstat_Metadata still used meaningfully even in CS_MODE?
 PSTAT_METADATA pstat_Metadata[] = {
   /* Execution statistics for the file io */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_FILE_NUM_CREATES, "Num_file_creates"),
@@ -644,10 +645,16 @@ static const char *perfmon_stat_thread_stat_name (size_t index);
 STATIC_INLINE void perfmon_get_peek_stats (UINT64 * stats) __attribute__ ((ALWAYS_INLINE));
 
 #if defined(CS_MODE) || defined(SA_MODE)
-bool perfmon_Iscollecting_stats = false;
+static CUB_THREAD_LOCAL bool perfmon_Iscollecting_stats = false;
 
 /* Client execution statistics */
-static PERFMON_CLIENT_STAT_INFO perfmon_Stat_info;
+static CUB_THREAD_LOCAL PERFMON_CLIENT_STAT_INFO perfmon_Stat_info;
+
+void
+disable_perfmon_start_stats ()
+{
+  perfmon_Iscollecting_stats = false;
+}
 
 /*
  * perfmon_start_stats - Start collecting client execution statistics

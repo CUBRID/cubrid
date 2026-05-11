@@ -4379,11 +4379,7 @@ tf_disk_to_class (OID * oid, RECDES * record)
 
   assert (oid != NULL && !OID_ISNULL (oid));
 
-  /* should we assume this ? */
-  if (!tf_Metaclass_class.mc_n_variable)
-    {
-      tf_compile_meta_classes ();
-    }
+  tf_compile_meta_classes ();
 
   class_ = NULL;
 
@@ -4456,11 +4452,7 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
   int prop_free = 0;
   int repid;
 
-  /* should we assume this ? */
-  if (!tf_Metaclass_class.mc_n_variable)
-    {
-      tf_compile_meta_classes ();
-    }
+  tf_compile_meta_classes ();
 
   /*
    * don't worry about deferred fixup for classes, we don't usually have
