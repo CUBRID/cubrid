@@ -777,7 +777,7 @@ dblink_connect_and_prepare (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, DB
   if (scan_info->stmt_handle < 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-      if (auto_commit && scan_info->conn_handle >= 0)
+      if (auto_commit)
 	{
 	  (void) cci_disconnect (scan_info->conn_handle, &err_buf);
 	  scan_info->conn_handle = -1;
