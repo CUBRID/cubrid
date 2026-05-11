@@ -1200,9 +1200,9 @@ locator_is_user_class_entry (const LOCATOR_CLASSNAME_ENTRY * entry)
     }
 
   /*
-    * Name-based filter: catches system classes/vclasses whose OIDs are NOT
-    * in oid_Cache (e.g. "dual", "_db_resolution", "db_class", "db_vclass", ...).
-    */
+   * Name-based filter: catches system classes/vclasses whose OIDs are NOT
+   * in oid_Cache (e.g. "dual", "_db_resolution", "db_class", "db_vclass", ...).
+   */
   if (sm_is_system_class (entry->e_name) || sm_is_system_vclass (entry->e_name))
     {
       return false;
@@ -1362,8 +1362,7 @@ locator_get_user_class_oids (THREAD_ENTRY * thread_p, OID ** oids_p, int *count_
  *       by the caller via heap_get_class_name() after this function returns.
  */
 int
-locator_find_class_oids_by_pattern (THREAD_ENTRY * thread_p, const char *pattern,
-				    OID ** oids_p, int *count_p)
+locator_find_class_oids_by_pattern (THREAD_ENTRY * thread_p, const char *pattern, OID ** oids_p, int *count_p)
 {
   LOCATOR_CLASS_COLLECT_CTX ctx;
   char prefix_buf[DB_MAX_IDENTIFIER_LENGTH + 1];
@@ -1385,7 +1384,7 @@ locator_find_class_oids_by_pattern (THREAD_ENTRY * thread_p, const char *pattern
       return NO_ERROR;
     }
 
-  prefix_len = (int) strlen (pattern) - 1; /* exclude trailing '*' */
+  prefix_len = (int) strlen (pattern) - 1;	/* exclude trailing '*' */
   assert (prefix_len < DB_MAX_IDENTIFIER_LENGTH);
   memcpy (prefix_buf, pattern, prefix_len);
   prefix_buf[prefix_len] = '\0';
@@ -1416,8 +1415,7 @@ locator_find_class_oids_by_pattern (THREAD_ENTRY * thread_p, const char *pattern
   if (ctx.oids == NULL)
     {
       csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (size_t) matched_count * sizeof (OID));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) matched_count * sizeof (OID));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 

@@ -10418,7 +10418,9 @@ locator_redistribute_partition_data (OID * class_oid, int no_oids, OID * oid_lis
  * table_array_length (in) : number of entries in table_array
  */
 int
-netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILES * spacefiles, SPACEDB_TABLE_SIZES_HEADER ** table_sizes_p, int *actual_count_p, char ** table_array, int table_array_length)
+netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILES * spacefiles,
+	       SPACEDB_TABLE_SIZES_HEADER ** table_sizes_p, int *actual_count_p, char **table_array,
+	       int table_array_length)
 {
 #if defined (CS_MODE)
   OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_request;
@@ -10444,13 +10446,12 @@ netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILE
      do not leak the malloc'd request buffer. */
   for (int i = 0; i < table_array_length; i++)
     {
-      if (table_array[i] == NULL
-          || strlen (table_array[i]) >= SM_MAX_IDENTIFIER_LENGTH)
-        {
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_NAME, 1,
-                  table_array[i] != NULL ? table_array[i] : "(null)");
-          return ER_SM_INVALID_NAME;
-        }
+      if (table_array[i] == NULL || strlen (table_array[i]) >= SM_MAX_IDENTIFIER_LENGTH)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_NAME, 1,
+		  table_array[i] != NULL ? table_array[i] : "(null)");
+	  return ER_SM_INVALID_NAME;
+	}
     }
 
   if (table_array_length == 0)
@@ -10468,10 +10469,10 @@ netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILE
       request_size = 3 * OR_INT_SIZE + table_array_length * (2 * OR_INT_SIZE + SM_MAX_IDENTIFIER_LENGTH);
       request = (char *) malloc (request_size);
       if (request == NULL)
-        {
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-          return ER_OUT_OF_VIRTUAL_MEMORY;
-        }
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
       request_alloced = true;
     }
 
