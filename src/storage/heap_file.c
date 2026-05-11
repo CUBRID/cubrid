@@ -27952,7 +27952,27 @@ heap_recdes_check_has_oos (const RECDES * recdes)
 
   const int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
   void *var_table = OR_GET_OBJECT_VAR_TABLE (recdes->data);
-  const int max_var_count = (recdes->length - OR_HEADER_SIZE (recdes->data)) / offset_size;
+  const int header_size = OR_HEADER_SIZE (recdes->data);
+  const int max_var_count = (recdes->length - header_size) / offset_size;
+
+  /* Sanity check: validate the first VOT entry is a reasonable offset.
+   * Class/root records have different internal formats — their data area
+   * looks like garbage when interpreted as a VOT. */
+  if (max_var_count > 0)
+    {
+      int first;
+      if (offset_size == OR_BYTE_SIZE)
+	first = OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (var_table, 0, offset_size));
+      else if (offset_size == OR_SHORT_SIZE)
+	first = (unsigned short) OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (var_table, 0, offset_size));
+      else
+	first = OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (var_table, 0, offset_size));
+      int clean = first & ~OR_VAR_FLAG_MASK;
+      if (clean < 0 || clean > recdes->length)
+	{
+	  return false;
+	}
+    }
 
   for (int index = 0;; ++index)
     {
