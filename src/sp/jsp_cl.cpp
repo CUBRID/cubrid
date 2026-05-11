@@ -1213,7 +1213,7 @@ jsp_drop_pkg_body (const char *unique_name)
     if (!has_scode_body)
       {
 	err = ER_PKG_BODY_NOT_EXIST;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, unique_name);
 	goto cleanup0;
       }
   }
