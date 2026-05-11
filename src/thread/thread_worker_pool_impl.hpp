@@ -376,7 +376,7 @@ namespace cubthread
       worker_impl ();
 
       // run function invoked by spawned thread
-      void run (void);
+      virtual void run (void);
 
       // run initialization (creating execution context)
       void init_run (void);
@@ -484,6 +484,7 @@ namespace cubthread
       static void time_and_increment (stats_base &base, id stat_id);
       static void time_and_increment (stats_base &base, id stat_id, cubperf::duration d);
       static void accumulate (const stats_base &base, cubperf::stat_value *where);
+      static void accumulate (const stats_base &base, stats_base &where);
 
       static std::size_t get_count (void);
       static const char *get_name (std::size_t stat_index);
@@ -1734,6 +1735,16 @@ namespace cubthread
     if constexpr (Stats == stats_t::on)
       {
 	statdef.add_stat_values_with_converted_timers<std::chrono::microseconds> (*base.statset, where);
+      }
+  }
+
+  template <stats_t Stats>
+  void
+  worker_pool_impl<Stats>::stats::accumulate (const stats_base &base, stats_base &where)
+  {
+    if constexpr (Stats == stats_t::on)
+      {
+	statdef.add_stat_values (*base.statset, where.statset->m_values);
       }
   }
 

@@ -554,10 +554,7 @@ css_start_shutdown_server ()
  */
 // *INDENT-OFF*
 REGISTER_WORKERPOOL (transaction, []() {
-    return css_request_worker_pool_t::calculate_maximum_pool_size (
-      prm_get_integer_value (PRM_ID_MAX_TRANSACTION_CONCURRENCY),
-      cubthread::system_core_count (),
-      prm_get_float_value (PRM_ID_WORKER_OVERCOMMIT_RATIO));
+    return css_get_max_connections ();
 });
 // *INDENT-ON*
 
@@ -2883,14 +2880,6 @@ css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int tran_index, i
   return count;
 }
 
-size_t css_get_max_workers ()
-{
-  return css_get_max_conn () + 1; // = css_Num_max_conn in connection_sr.c
-}
-size_t css_get_max_task_count ()
-{
-  return 2 * css_get_max_workers ();	// not that it matters...
-}
 size_t css_get_max_connections ()
 {
   return css_get_max_conn () + 1;

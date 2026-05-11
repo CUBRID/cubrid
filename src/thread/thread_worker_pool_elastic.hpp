@@ -70,10 +70,6 @@ namespace cubthread
 
       ~worker_pool_elastic ();
 
-      // pre-calculation
-      static std::size_t calculate_maximum_pool_size (std::size_t max_concurrency, std::size_t core_count,
-	  float worker_overcommit_ratio);
-
       // init
       void initialize (std::size_t max_concurrency, std::size_t core_count) override;
 
@@ -91,7 +87,6 @@ namespace cubthread
       std::size_t m_max_pool_size;
       float m_worker_overcommit_ratio;
 
-      // this may not be needed
       std::mutex m_variant_mutex;
   };
 
@@ -128,7 +123,7 @@ namespace cubthread
 
       std::optional<std::pair<wrapped_task, unique_slot>> get_task_and_slot_or_become_available (worker &worker_arg);
 
-      std::unique_ptr<worker> get_retire_if_excess (worker_elastic *w);
+      void get_retire_if_excess (worker_elastic *w);
 
       // stats
       void get_stats (cubperf::stat_value *stats_out) const override;
@@ -144,7 +139,7 @@ namespace cubthread
 
       concurrency_slot_pool m_slots;
 
-      // max_concurrency <= the number of workers <= m_max_workers
+      // m_max_concurrency <= the number of workers <= m_max_workers
       std::size_t m_max_concurrency;
       std::size_t m_max_workers;
 
@@ -172,6 +167,9 @@ namespace cubthread
 
     private:
       worker_elastic ();
+
+      // run function invoked by spawned thread
+      void run (void) override;
 
       // execute m_wrapped_task
       void execute_current_task (void) override;
@@ -203,30 +201,6 @@ namespace cubthread
   template <stats_t Stats>
   worker_pool_elastic<Stats>::~worker_pool_elastic ()
   {
-  }
-
-  template <stats_t Stats>
-  std::size_t
-  worker_pool_elastic<Stats>::calculate_maximum_pool_size (std::size_t max_concurrency, std::size_t core_count,
-      float worker_overcommit_ratio)
-  {
-    std::size_t max_pool_size = 0;
-    std::size_t quotient, remainder;
-    std::size_t it;
-
-    quotient = max_concurrency / core_count;
-    remainder = max_concurrency % core_count;
-
-    for (it = 0; it < remainder; it++)
-      {
-	max_pool_size += static_cast<std::size_t> ((quotient + 1) * worker_overcommit_ratio);
-      }
-    for (; it < core_count; it++)
-      {
-	max_pool_size += static_cast<std::size_t> (quotient * worker_overcommit_ratio);
-      }
-
-    return max_pool_size;
   }
 
   template <stats_t Stats>
@@ -347,34 +321,40 @@ namespace cubthread
     if (slot)
       {
 	worker_p = static_cast<worker_elastic *> (get_or_make_available_worker ());
-	assert (worker_p);
 
-	// preserve FIFO order when queued tasks already exist
-	if (!this->m_task_queue.empty ())
+	if (worker_p)
 	  {
-	    // enqueue the new task behind existing work
-	    this->m_task_queue.push_back (std::move (task_ref));
+	    // preserve FIFO order when queued tasks already exist
+	    if (!this->m_task_queue.empty ())
+	      {
+		// enqueue the new task behind existing work
+		this->m_task_queue.push_back (std::move (task_ref));
 
-	    // dispatch the oldest queued task first
-	    wrapped_task queued_task = std::move (this->m_task_queue.front ());
-	    this->m_task_queue.pop_front ();
+		// dispatch the oldest queued task first
+		wrapped_task queued_task = std::move (this->m_task_queue.front ());
+		this->m_task_queue.pop_front ();
 
-	    ulock.unlock ();
+		ulock.unlock ();
 
-	    try_execute_task_with_slot (worker_p, std::move (queued_task), std::move (slot));
+		try_execute_task_with_slot (worker_p, std::move (queued_task), std::move (slot));
+	      }
+	    else
+	      {
+		ulock.unlock ();
+
+		try_execute_task_with_slot (worker_p, std::move (task_ref), std::move (slot));
+	      }
+
+	    // successfully execute the task
+	    return;
 	  }
-	else
-	  {
-	    ulock.unlock ();
 
-	    try_execute_task_with_slot (worker_p, std::move (task_ref), std::move (slot));
-	  }
+	// release the slot
+	release_slot (std::move (slot));
       }
-    else
-      {
-	// enqueue the task until a slot is available
-	this->m_task_queue.push_back (std::move (task_ref));
-      }
+
+    // enqueue the task until a slot is available
+    this->m_task_queue.push_back (std::move (task_ref));
   }
 
   template <stats_t Stats>
@@ -430,36 +410,33 @@ namespace cubthread
   }
 
   template <stats_t Stats>
-  std::unique_ptr<worker_pool::core::worker>
+  void
   worker_pool_elastic<Stats>::core_elastic::get_retire_if_excess (worker_elastic *w)
   {
     std::lock_guard<std::mutex> lock (this->m_core_mutex);
-    std::unique_ptr<worker> ptr = nullptr;
 
     if (this->m_workers.size () >= m_retire_threshold)
       {
-	auto it = std::find (this->m_available_workers.begin (), this->m_available_workers.end (), w);
-	if (it != this->m_available_workers.end ())
+	auto available_it = std::find (this->m_available_workers.begin (), this->m_available_workers.end (), w);
+	if (available_it != this->m_available_workers.end ())
 	  {
 	    // not selected yet
-	    this->m_available_workers.erase (it);
+	    this->m_available_workers.erase (available_it);
 
-	    auto it = std::find_if (this->m_workers.begin (), this->m_workers.end (),
-				    [w] (const std::unique_ptr<worker> &ptr)
+	    auto worker_it = std::find_if (this->m_workers.begin (), this->m_workers.end (),
+					   [w] (const std::unique_ptr<worker> &ptr)
 	    {
 	      return ptr.get () == w;
 	    });
-	    assert (it != this->m_workers.end ());
+	    assert (worker_it != this->m_workers.end ());
 
 	    // collect the stats from the worker to be removed
-	    stats::accumulate (w->m_stats, w->m_retired_stats);
+	    stats::accumulate (w->m_stats, m_retired_stats);
 
-	    // hand over
-	    ptr = std::move (*it);
-	    this->m_workers.erase (it);
+	    // remove
+	    this->m_workers.erase (worker_it);
 	  }
       }
-    return ptr;
   }
 
   template <stats_t Stats>
@@ -645,12 +622,6 @@ namespace cubthread
 	// retire the context before another thread reuses this worker
 	this->finish_run ();
 
-	// unlock the worker mutex
-	ulock.unlock ();
-
-	// removed or not
-	auto ownership = static_cast<core_elastic *> (this->m_parent_core)->get_retire_if_excess (this);
-
 	return false;
       }
     else
@@ -667,6 +638,16 @@ namespace cubthread
 	// found a task
 	return true;
       }
+  }
+
+  template <stats_t Stats>
+  void
+  worker_pool_elastic<Stats>::core_elastic::worker_elastic::run (void)
+  {
+    worker_pool_impl<Stats>::core_impl::worker_impl::run ();
+
+    // removed or not
+    static_cast<core_elastic *> (this->m_parent_core)->get_retire_if_excess (this);
   }
 
   template <stats_t Stats>
