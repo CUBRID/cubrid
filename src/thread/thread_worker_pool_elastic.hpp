@@ -62,6 +62,7 @@ namespace cubthread
       using wrapped_task = typename worker_pool_impl<Stats>::wrapped_task;
 
       using unique_slot = std::unique_ptr<concurrency_slot>;
+      using stats_base = typename worker_pool_impl<Stats>::stats_base;
       using stats = typename worker_pool_impl<Stats>::stats;
 
       // forward declaration
@@ -129,6 +130,9 @@ namespace cubthread
 
       std::unique_ptr<worker> get_retire_if_excess (worker_elastic *w);
 
+      // stats
+      void get_stats (cubperf::stat_value *stats_out) const override;
+
     private:
       core_elastic (bool pool_threads);
 
@@ -145,6 +149,8 @@ namespace cubthread
       std::size_t m_max_workers;
 
       std::size_t m_retire_threshold;
+
+      stats_base m_retired_stats;
   };
 
   // worker_pool_elastic<Stats>::core_elastic::worker_elastic
@@ -288,12 +294,14 @@ namespace cubthread
     , m_max_concurrency (0)
     , m_max_workers (0)
     , m_retire_threshold (0)
+    , m_retired_stats (stats::create ())
   {
   }
 
   template <stats_t Stats>
   worker_pool_elastic<Stats>::core_elastic::~core_elastic ()
   {
+    stats::destroy (m_retired_stats);
   }
 
   template <stats_t Stats>
@@ -442,15 +450,30 @@ namespace cubthread
 	      return ptr.get () == w;
 	    });
 	    assert (it != this->m_workers.end ());
+
+	    // collect the stats from the worker to be removed
+	    stats::accumulate (w->m_stats, w->m_retired_stats);
+
+	    // hand over
 	    ptr = std::move (*it);
 	    this->m_workers.erase (it);
-
-	    (void) w->m_stats;
-
-	    //TOOD get m_stats and archive it
 	  }
       }
     return ptr;
+  }
+
+  template <stats_t Stats>
+  void
+  worker_pool_elastic<Stats>::core_elastic::get_stats (cubperf::stat_value *stats_out) const
+  {
+    std::lock_guard<std::mutex> lock (this->m_core_mutex);
+
+    for (const auto &it : this->m_workers)
+      {
+	it->get_stats (stats_out);
+      }
+
+    stats::accumulate (m_retired_stats, stats_out);
   }
 
   template <stats_t Stats>

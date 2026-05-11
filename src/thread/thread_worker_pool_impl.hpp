@@ -1052,7 +1052,7 @@ namespace cubthread
   void
   worker_pool_impl<Stats>::core_impl::get_stats (cubperf::stat_value *stats_out) const
   {
-    std::unique_lock<std::mutex> ulock (m_core_mutex);
+    std::lock_guard<std::mutex> lock (m_core_mutex);
 
     for (const auto &it : m_workers)
       {
