@@ -789,7 +789,9 @@ namespace cubload
       }
     else
       {
-	log_sysop_start (m_thread_ref);
+	/* Atomic outer sysop: locator_multi_insert_force derives has_BU_lock from the class and
+	 * routes page allocation to file_alloc_skip_sysop, whose guard requires an atomic sysop. */
+	log_sysop_start_atomic (m_thread_ref);
 	int error_code = locator_multi_insert_force (m_thread_ref, &m_scancache.node.hfid, &m_scancache.node.class_oid,
 			 m_recdes_collected, true, op_type, &m_scancache, &force_count, pruning_type, NULL, NULL,
 			 UPDATE_INPLACE_NONE, true);

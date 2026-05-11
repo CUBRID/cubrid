@@ -3232,6 +3232,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_DROP_SERVER:
 	case PT_RENAME_SERVER:
 	case PT_ALTER_SERVER:
+	case PT_COPY:
 
 	  /* Need to get dirty version when fetch the instance. That's because we are in an update command. */
 	  db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
@@ -3502,6 +3503,10 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = do_alter_server (parser, statement);
 	  break;
 
+	case PT_COPY:
+	  error = do_copy (parser, statement);
+	  break;
+
 	default:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_UNKNOWN_STATEMENT, 1, statement->node_type);
 	  break;
@@ -3664,7 +3669,7 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
       return stmt;
 
     case PT_SELECT:
-      /* 
+      /*
        * SYSDATE, SERIAL related functions and other queries that should not be cached
        * The parser sets the do_not_cache flag for these queries.
        */
@@ -3697,7 +3702,7 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
        || stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY) && stmt->info.query.correlation_level == 0
       && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
     {
-      /* 
+      /*
        * This condition is identical to the one used in parser_print_tree.
        * Both functions must maintain the same condition to ensure consistency.
        * Be careful not to modify only one of them.
@@ -3956,6 +3961,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_CREATE_SYNONYM:
     case PT_DROP_SYNONYM:
     case PT_RENAME_SYNONYM:
+    case PT_COPY:
       /* Need to get dirty version when fetch the instance. That's because we are in an update command. */
       db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
       break;
@@ -4185,6 +4191,9 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_RENAME_SYNONYM:
       err = do_rename_synonym (parser, statement);
+      break;
+    case PT_COPY:
+      err = do_copy (parser, statement);
       break;
 
     default:
@@ -14956,7 +14965,7 @@ err_exit:
  * return : Error code
  * parser (in)	 : parser context
  * num_query : the number of subqueries
- * info (in) : prepare info. for subquery 
+ * info (in) : prepare info. for subquery
  */
 int
 do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_query, DB_PREPARE_SUBQUERY_INFO * info)
@@ -15624,7 +15633,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	    const char *old_name = current_rename->info.rename.old_name->info.name.original;
 	    int length = 0;
 
-	    /* Bug : statement->info.rename.entity_type always has PT_CLASS 
+	    /* Bug : statement->info.rename.entity_type always has PT_CLASS
 	     * when rename view1 as view2 or rename table1 as table2. So, objtype can not be classified with entity_type */
 	    if (do_find_object_type (PT_MISC_DUMMY, new_name, &objtype) != NO_ERROR)
 	      {
@@ -16374,9 +16383,9 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (statement->node_type == PT_CREATE_SERVER || statement->node_type == PT_ALTER_SERVER)
 	{
 	  /* In the HA process, the original text information is transmitted to the DDL syntax.
-	   * In the CREATE SERVER statement and the ALTER SEVER statement, 
+	   * In the CREATE SERVER statement and the ALTER SEVER statement,
 	   * it is necessary to prevent exposure when a password to access another DBMS is passed.
-	   * For this reason, we change the original information.            
+	   * For this reason, we change the original information.
 	   */
 	  PARSER_VARCHAR *dblink_str = pt_print_bytes (parser, statement);
 	  repl_stmt.stmt_text = (char *) pt_get_varchar_bytes (dblink_str);
@@ -20981,10 +20990,10 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* DBNAME */
   assert (create_server->dbname->node_type == PT_NAME || create_server->dbname->node_type == PT_VALUE);
-  // *INDENT-OFF* 
+  // *INDENT-OFF*
   attr_val[2] = (create_server->dbname->node_type == PT_NAME) ? (char *) create_server->dbname->info.name.original
                                                               : (char *) PT_VALUE_GET_BYTES (create_server->dbname);
-  // *INDENT-ON* 
+  // *INDENT-ON*
   if (attr_val[2] == NULL)
     {
       error = ER_FAILED;
@@ -20993,10 +21002,10 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* USER */
   assert (create_server->user->node_type == PT_NAME || create_server->user->node_type == PT_VALUE);
-  // *INDENT-OFF* 
+  // *INDENT-OFF*
   attr_val[3] = (create_server->user->node_type == PT_NAME) ? (char *) create_server->user->info.name.original
                                                             : (char *) PT_VALUE_GET_BYTES (create_server->user);
-  // *INDENT-ON* 
+  // *INDENT-ON*
   if (attr_val[3] == NULL)
     {
       error = ER_FAILED;
@@ -21082,7 +21091,7 @@ do_rename_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 
   // If rename_server->owner_name is not specified, the owner information of the existing server must be maintained.
-  // e.g; If u1.srv and u1.test exist and "rename server test as srv" is performed in the dba account, 
+  // e.g; If u1.srv and u1.test exist and "rename server test as srv" is performed in the dba account,
   //      it is necessary to check whether "u1.srv" exists. It is not to check with "dba.srv" or "srv"
   PT_NODE *owner_node = rename_server->owner_name;
   if (rename_server->owner_name == NULL)
@@ -21583,8 +21592,8 @@ get_dblink_owner_name_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_n
  * passwd(in)             : Password entered by user(or parser)
  * cipher_buf(out)	  : Encrypted password
  * ciper_buf_size(in)	  : Size of cipher_buf
- * 
- * Remark: 
+ *
+ * Remark:
  *     Checks whether the entered password is a raw password or an encrypted password,
  *     if it is a raw password, encrypt it.
  *     The length of the raw password is shorter than DBLINK_PASSWORD_MAX_LENGTH.
@@ -21620,7 +21629,7 @@ pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cip
 
   if (length <= DBLINK_PASSWORD_MAX_LENGTH)
     {
-      // The raw password entered by the user.  
+      // The raw password entered by the user.
       err = get_dblink_password_encrypt (passwd, &val);
       if (err == NO_ERROR)
 	{
@@ -21653,7 +21662,7 @@ pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cip
       err = get_dblink_password_decrypt (passwd, &val);
       if (err == NO_ERROR)
 	{
-	  // A encrypted password from the raw password.      
+	  // A encrypted password from the raw password.
 	  strcpy (cipher_buf, passwd);
 	}
       else
@@ -21693,9 +21702,9 @@ ret_pos:
  * return		  : NO_ERROR or error code.
  * passwd(in)             : Raw password
  * encrypt_val(out)	  : Encrypted password
- * 
- * Remark: 
- *      
+ *
+ * Remark:
+ *
  */
 static int
 get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val)
@@ -21747,7 +21756,7 @@ get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val)
 				 (long) check_time.tv_usec);
       if (err == NO_ERROR)
 	{
-	  // byte stream to hex string   
+	  // byte stream to hex string
 	  err = db_make_string_copy (encrypt_val, newpwd);
 	}
     }
@@ -21762,9 +21771,9 @@ get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val)
  * parser(in)		  : Parser context.
  * passwd_cipher(in)      : Encrypted password
  * decrypt_val(out)	  : Raw password
- * 
- * Remark: 
- *      
+ *
+ * Remark:
+ *
  */
 static int
 get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
@@ -21790,7 +21799,7 @@ get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
       return ER_DBLINK_PASSWORD_INVALID_LENGTH;
     }
 
-  // hex string  to byte stream 
+  // hex string  to byte stream
   err = crypt_dblink_str_to_bin (passwd_cipher, length, cipher, &new_length, private_key);
   if (err != NO_ERROR)
     {
@@ -21817,10 +21826,10 @@ get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
  *
  * return		  : Record object or NULL
  * node_server(in)	  : PT_NODE* for server name.
- * node_owner(in)         : PT_NODE* for owner name. 
- * 
- * Remark: 
- *      
+ * node_owner(in)         : PT_NODE* for owner name.
+ *
+ * Remark:
+ *
  */
 static MOP
 server_find (PT_NODE * node_server, PT_NODE * node_owner)
@@ -21995,4 +22004,126 @@ pt_is_allowed_result_cache ()
     }
 
   return true;
+}
+
+/*
+ * do_copy () - Execute a COPY statement
+ *   return: Error code or number of rows loaded
+ *   parser(in): Parser context
+ *   statement(in): Parse tree node for COPY statement
+ *
+ * Note: Initializes the server-side COPY session by resolving the table
+ *       and column types and calling copy_from_init(). Actual binary data
+ *       transfer is handled by the CAS broker via copy_from_send_data()
+ *       and copy_from_end().
+ */
+int
+do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int error = NO_ERROR;
+  const char *table_name;
+  DB_OBJECT *class_obj;
+  DB_ATTRIBUTE *attr;
+  PT_NODE *col;
+  DB_TYPE *col_types = NULL;
+  int ncols = 0;
+  PT_NODE *entity_spec;
+  PT_NODE *entity;
+
+  /* table_name is stored as a PT_SPEC from class_spec_without_server_name */
+  entity_spec = statement->info.copy.table_name;
+  if (entity_spec == NULL || entity_spec->node_type != PT_SPEC || entity_spec->info.spec.entity_name == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  entity = entity_spec->info.spec.flat_entity_list;
+  if (entity != NULL)
+    {
+      table_name = entity->info.name.original;
+    }
+  else
+    {
+      /* flat_entity_list may not be populated; use entity_name directly */
+      table_name = entity_spec->info.spec.entity_name->info.name.resolved;
+      if (table_name == NULL)
+	{
+	  table_name = entity_spec->info.spec.entity_name->info.name.original;
+	}
+    }
+
+  /* find class */
+  class_obj = db_find_class (table_name);
+  if (class_obj == NULL)
+    {
+      error = er_errid ();
+      return (error != NO_ERROR) ? error : ER_FAILED;
+    }
+
+  /* check INSERT authorization on the target table; the COPY path bypasses
+   * the object-template machinery used by INSERT, so the permission check
+   * implicit in dbt_create_object_internal -> au_fetch_class is not reached. */
+  error = db_check_authorization (class_obj, DB_AUTH_INSERT);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+
+  if (statement->info.copy.column_list != NULL)
+    {
+      /* count specified columns */
+      for (col = statement->info.copy.column_list; col != NULL; col = col->next)
+	{
+	  ncols++;
+	}
+
+      col_types = (DB_TYPE *) malloc (ncols * sizeof (DB_TYPE));
+      if (col_types == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (ncols * sizeof (DB_TYPE)));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      int i = 0;
+      for (col = statement->info.copy.column_list; col != NULL; col = col->next)
+	{
+	  attr = db_get_attribute (class_obj, col->info.name.original);
+	  if (attr == NULL)
+	    {
+	      error = er_errid ();
+	      free_and_init (col_types);
+	      return (error != NO_ERROR) ? error : ER_FAILED;
+	    }
+	  col_types[i++] = db_attribute_type (attr);
+	}
+    }
+  else
+    {
+      /* use all columns in schema order */
+      for (attr = db_get_attributes (class_obj); attr != NULL; attr = db_attribute_next (attr))
+	{
+	  ncols++;
+	}
+
+      col_types = (DB_TYPE *) malloc (ncols * sizeof (DB_TYPE));
+      if (col_types == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (ncols * sizeof (DB_TYPE)));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      int i = 0;
+      for (attr = db_get_attributes (class_obj); attr != NULL; attr = db_attribute_next (attr))
+	{
+	  col_types[i++] = db_attribute_type (attr);
+	}
+    }
+
+  error = copy_from_init (table_name, col_types, ncols);
+
+  free_and_init (col_types);
+
+  return error;
 }

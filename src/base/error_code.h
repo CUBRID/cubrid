@@ -1755,7 +1755,12 @@
 
 #define ER_AU_LOGIN_DISABLED                        -1369
 
-#define ER_LAST_ERROR                               -1370
+#define ER_COPY_SESSION_ALREADY_ACTIVE              -1370
+#define ER_COPY_SESSION_NOT_ACTIVE                  -1371
+#define ER_COPY_BINARY_PROTOCOL                     -1372
+#define ER_COPY_BINARY_PROTOCOL_GENERIC             -1373
+
+#define ER_LAST_ERROR                               -1374
 
 
 
