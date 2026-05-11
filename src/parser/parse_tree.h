@@ -3430,6 +3430,11 @@ typedef struct pt_dblink_info
   PT_NODE *corr_key_outer_copy[PT_DBLINK_MAX_CORR_KEYS];
   const char *corr_key_col_names[PT_DBLINK_MAX_CORR_KEYS];
 
+  /* true once mq_dblink_append_corr_pred_sql has written "col = ?" into rewritten.
+   * Replaces the rewritten==NULL sentinel so the pure-corr check in
+   * pt_to_dblink_table_spec_list does not depend on rewritten's NULL-ness. */
+  bool corr_sql_built;
+
   /* true when pt_copypush_terms successfully appended " WHERE pushed_pred" to rewritten.
    * mq_dblink_append_corr_pred_sql uses this to decide AND vs WHERE. */
   bool rewritten_has_where;

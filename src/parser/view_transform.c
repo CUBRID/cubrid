@@ -4934,6 +4934,7 @@ mq_dblink_clear_corr_keys (PARSER_CONTEXT * parser, PT_DBLINK_INFO * dinfo)
     {
       dinfo->corr_key_col_names[i] = NULL;
     }
+  dinfo->corr_sql_built = false;
 }
 
 /* Extract column name string from remote_col (PT_NAME / PT_DOT_). */
@@ -5057,6 +5058,7 @@ mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di)
       return false;
     }
   di->rewritten = base;
+  di->corr_sql_built = true;
   return true;
 }
 

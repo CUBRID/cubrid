@@ -13068,10 +13068,10 @@ pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE *
   int count = 0;
   REGU_VARIABLE *corr_regu = NULL;
 
-  /* Pure-corr path: no non-corr pushable terms existed so pt_copypush_terms was never called
-   * and rewritten is still NULL.  Build "SELECT * FROM (...) cublink WHERE col = ?" here.
-   * Mixed path (non-corr + corr): rewritten was already completed in pt_copypush_terms. */
-  if (pdblink->rewritten == NULL && pdblink->corr_key_count > 0 && pdblink->corr_key_col_names[0] != NULL)
+  /* Pure-corr path: no non-corr pushable terms existed so pt_copypush_terms was never called.
+   * corr_sql_built is false, so build "SELECT * FROM (...) cublink WHERE col = ?" here.
+   * Mixed path (non-corr + corr): corr_sql_built is already true from pt_copypush_terms. */
+  if (!pdblink->corr_sql_built && pdblink->corr_key_count > 0 && pdblink->corr_key_col_names[0] != NULL)
     {
       if (!mq_dblink_append_corr_pred_sql (parser, pdblink))
 	{
