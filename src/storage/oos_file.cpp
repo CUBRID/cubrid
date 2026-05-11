@@ -2013,6 +2013,7 @@ xoos_get_stats_by_class_oid (THREAD_ENTRY *thread_p, const OID *class_oid, OOS_S
       if (file_numerable_find_nth (thread_p, &oos_vfid, i, false, NULL, NULL, &scan_vpid) != NO_ERROR
 	  || VPID_ISNULL (&scan_vpid))
 	{
+	  er_clear ();
 	  continue;
 	}
       if (!VPID_ISNULL (&hdr_vpid) && VPID_EQ (&scan_vpid, &hdr_vpid))

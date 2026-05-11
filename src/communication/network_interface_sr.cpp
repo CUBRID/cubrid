@@ -9911,14 +9911,14 @@ svacuum (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 #if defined(SERVER_MODE)
   /* In SERVER_MODE xvacuum is disabled — wake the vacuum master daemon instead.
    * This gives dev/debug users (;vacuum in csql) a way to force vacuum passes. */
-  vacuum_wakeup_master_daemon ();
+  err = vacuum_wakeup_master_daemon ();
 #else /* SA_MODE */
   err = xvacuum (thread_p);
+#endif
   if (err != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
     }
-#endif
 
   /* Send error code as reply */
   (void) or_pack_int (reply, err);
