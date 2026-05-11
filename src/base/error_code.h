@@ -1759,9 +1759,8 @@
 
 #define ER_SYSMETA_UPGRADE_REQUIRED                 -1371
 #define ER_SYSMETA_DOWNGRADE_NOT_SUPPORTED          -1372
-#define ER_SYSMETA_UPGRADE_TAMPERED                 -1373
 
-#define ER_LAST_ERROR                               -1374
+#define ER_LAST_ERROR                               -1373
 
 
 

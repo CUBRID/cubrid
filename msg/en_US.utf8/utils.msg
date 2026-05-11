@@ -1384,6 +1384,8 @@ $set 61 MSGCAT_UTIL_SET_UPGRADEDB
 2 Database system metadata is newer than the current CUBRID version; downgrade is not supported.\n
 3 Apply system metadata upgrade scripts? (y/n)\n
 4 options --check, --dry-run, and --force are mutually exclusive.\n
+5 Upgrade script decoding failed.\n
+6 Upgrade script validation failed.\n
 60 \
 upgradedb: upgrade system metadata to match the current CUBRID version.\n\
 usage: %1$s upgradedb [OPTION] database-name\n\

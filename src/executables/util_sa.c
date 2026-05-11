@@ -5328,8 +5328,10 @@ upgradedb_load_decoded_script (int from_v, int to_v, char **out_buf, size_t * ou
 
   if (qstr_hex_to_bin (buf, (int) (file_size / 2), buf, (int) file_size) != (int) file_size)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SYSMETA_UPGRADE_TAMPERED, 0);
-      error = ER_SYSMETA_UPGRADE_TAMPERED;
+      PRINT_AND_LOG_ERR_MSG ("%s",
+			     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB,
+					     UPGRADEDB_MSG_DECODE_FAILED));
+      error = ER_FAILED;
       goto exit;
     }
 
@@ -5341,8 +5343,10 @@ upgradedb_load_decoded_script (int from_v, int to_v, char **out_buf, size_t * ou
 
   if (strcmp (actual_sha256, expected_sha256) != 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SYSMETA_UPGRADE_TAMPERED, 0);
-      error = ER_SYSMETA_UPGRADE_TAMPERED;
+      PRINT_AND_LOG_ERR_MSG ("%s",
+			     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB,
+					     UPGRADEDB_MSG_VALIDATION_FAILED));
+      error = ER_FAILED;
       goto exit;
     }
 
