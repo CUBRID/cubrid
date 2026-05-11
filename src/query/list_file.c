@@ -3723,10 +3723,7 @@ qfile_sort_px_state_free (THREAD_ENTRY * thread_p, sort_px_list_state * state)
     {
       return;
     }
-  if (state->tplrec.tpl != NULL)
-    {
-      db_private_free_and_init (NULL, state->tplrec.tpl);
-    }
+  /* tplrec.tpl is freed by the worker thread in sort_listfile_execute */
   state->~sort_px_list_state ();
   db_private_free_and_init (thread_p, state);
 }

@@ -1695,6 +1695,21 @@ cleanup:
 	  sort_param->orderby_stats.orderby_pages += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES));
 	  sort_param->orderby_stats.orderby_ioreads += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES));
 	}
+
+      /* tplrec.tpl is allocated from the worker thread's private heap via db_private_alloc(NULL, ...).
+       * Free it here while still on the worker thread; the main thread cannot free it correctly. */
+      if (sort_param->get_arg != NULL)
+	{
+	  SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
+	  if (sort_info_p->px_state != NULL)
+	    {
+	      sort_px_list_state *state = (sort_px_list_state *) sort_info_p->px_state;
+	      if (state->tplrec.tpl != NULL)
+		{
+		  db_private_free_and_init (thread_p, state->tplrec.tpl);
+		}
+	    }
+	}
     }
   else if (sort_param->px_type == SORT_INDEX_LEAF)
     {
