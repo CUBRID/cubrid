@@ -26830,8 +26830,9 @@ db_inet_aton (DB_VALUE * result_numbered_ip, const DB_VALUE * string)
       goto error;
     }
 
-  /* there is no need to check db_get_string_length or db_get_string_size or cnt, we control ip format by ourselves */
-  ip_string = db_get_char (string, &cnt);
+  /* ip format is controlled internally; use byte size directly */
+  ip_string = db_get_char (string);
+  cnt = db_get_string_size (string);
   local_ipstring = (char *) db_private_alloc (NULL, cnt + 1);
   if (local_ipstring == NULL)
     {
