@@ -8484,21 +8484,10 @@ mr_data_readmem_numeric (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int siz
   char **mem, *cur, *new_;
   int calc_size = 0;
 
-  /* if stored size is unknown, the domain precision must be set correctly */
+  /* Must have an explicit size here - can't be determined from the domain */
   if (size < 0)
     {
-      /* guard: the leading size byte must be within buffer bounds */
-      if (buf->ptr + OR_BYTE_SIZE > buf->endptr)
-	{
-	  if (memptr != NULL)
-	    {
-	      *((char **) memptr) = NULL;
-	    }
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-	  assert (false);
-	  return;
-	}
-      size = OR_GET_BYTE (buf->ptr) & 0x7F;
+      return;
     }
 
   if (memptr == NULL)
@@ -8518,6 +8507,7 @@ mr_data_readmem_numeric (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int siz
 	db_private_free_and_init (NULL, cur);
 #endif
 
+      new_ = NULL;
       if (size)
 	{
 	  /* guard: declared disk_size must fit in buffer (covers the size byte and the payload read below) */
@@ -8529,7 +8519,7 @@ mr_data_readmem_numeric (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int siz
 	      return;
 	    }
 
-	  /* calculate expected size and verify it matches the provided size */
+	  /* caller-supplied size must match the in-band header byte */
 	  calc_size = OR_GET_BYTE (buf->ptr) & 0x7F;
 
 	  if (size != calc_size)
@@ -8550,10 +8540,10 @@ mr_data_readmem_numeric (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int siz
 
 	  /* read data from buffer into allocated memory */
 	  or_get_data (buf, new_, size);
-
-	  /* update pointer (caller is responsible for releasing the prior numeric, matching readmem_string/varbit) */
-	  *mem = new_;
 	}
+
+      /* update pointer (caller is responsible for releasing the prior numeric, matching readmem_string/varbit) */
+      *mem = new_;
     }
 }
 
