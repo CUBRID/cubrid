@@ -771,7 +771,12 @@ valid options:\n\
       --size-unit={PAGE|M|G|T|H}\n\
                                set the display unit (page, mega, giga, tera, human readable); default: H\n\
   -s, --summarize              display only a summary for each volume purpose\n\
-  -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n
+  -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n\
+  -n, --table-name=NAME        display per-table space usage;\n\
+                               NAME formats:\n\
+                                 <table>     a specific table\n\
+                                 *           all user tables\n\
+                                 prefix*     tables matching the prefix\n
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
 15 Estimated Number of Pages = %1$d\n
