@@ -265,6 +265,10 @@ namespace cubthread
   {
       friend class worker_pool_impl;
 
+    protected:
+      // forward definition
+      class snapshot_guard;
+
     public:
       // forward definition of nested class worker
       class worker_impl;
@@ -307,21 +311,55 @@ namespace cubthread
       // override this if want to change worker type
       virtual std::unique_ptr<worker> allocate_worker ();
 
+      // initialize
       virtual void allocate_workers (std::size_t worker_count);
       virtual void initialize_workers ();
 
       virtual void initialize_persistent_worker (worker *w);
 
+      // snapshot
+      std::vector<worker *> fix_workers_snapshot () const;
+      void release_workers_snapshot () const;
+      bool has_workers_snapshot_readers () const;
+
       virtual worker *get_available_worker ();
 
       void try_execute_task (worker_impl *worker_p, wrapped_task &&task_ref);
 
+      // support reading from snapshot
       std::vector<std::unique_ptr<worker>> m_workers;
+      mutable std::size_t m_workers_readers;
+
       std::vector<worker *> m_available_workers;
       std::deque<wrapped_task> m_task_queue;
 
       // guards the members in core
       mutable std::mutex m_core_mutex;
+  };
+
+  // worker_pool_impl<Stats>::core_impl::snapshot
+  //
+  // description
+  //    workers snapshot helper
+  //
+  template <stats_t Stats>
+  class worker_pool_impl<Stats>::core_impl::snapshot_guard
+  {
+    public:
+      explicit snapshot_guard (const core_impl *core);
+      ~snapshot_guard ();
+
+      snapshot_guard (const snapshot_guard &) = delete;
+      snapshot_guard &operator= (const snapshot_guard &) = delete;
+
+      snapshot_guard (snapshot_guard &&) = delete;
+      snapshot_guard &operator= (snapshot_guard &&) = delete;
+
+      const std::vector<worker *> &get_snapshot ();
+
+    private:
+      const core_impl *m_core;
+      std::vector<worker *> m_snapshot;
   };
 
   // worker_pool_impl<Stats>::core_impl::worker_impl
@@ -862,6 +900,7 @@ namespace cubthread
   template <stats_t Stats>
   worker_pool_impl<Stats>::core_impl::core_impl (bool pool_threads)
     : worker_pool::core (pool_threads)
+    , m_workers_readers (0)
   {
   }
 
@@ -973,10 +1012,10 @@ namespace cubthread
   {
     bool has_running_workers = false;
 
-    // tell all workers to stop
-    std::unique_lock<std::mutex> ulock (m_core_mutex);
+    snapshot_guard snapshot (this);
 
-    for (const auto &it : m_workers)
+    // tell all workers to stop
+    for (const auto &it : snapshot.get_snapshot ())
       {
 	has_running_workers |= it->stop_execution ();
       }
@@ -1053,9 +1092,9 @@ namespace cubthread
   void
   worker_pool_impl<Stats>::core_impl::get_stats (cubperf::stat_value *stats_out) const
   {
-    std::lock_guard<std::mutex> lock (m_core_mutex);
+    snapshot_guard snapshot (this);
 
-    for (const auto &it : m_workers)
+    for (const auto &it : snapshot.get_snapshot ())
       {
 	it->get_stats (stats_out);
       }
@@ -1066,13 +1105,13 @@ namespace cubthread
   void
   worker_pool_impl<Stats>::core_impl::map_running_contexts (bool &stop, Func &&func, Args &&... args) const
   {
-    std::unique_lock<std::mutex> ulock (m_core_mutex);
+    snapshot_guard snapshot (this);
 
-    for (const auto &worker : m_workers)
+    for (const auto &it : snapshot.get_snapshot ())
       {
-	assert (dynamic_cast<worker_impl *> (worker.get ()));
+	assert (dynamic_cast<worker_impl *> (it));
 
-	static_cast<worker_impl *> (worker.get ())->map_context_if_running (stop, func, args...);
+	static_cast<worker_impl *> (it)->map_context_if_running (stop, func, args...);
 	if (stop)
 	  {
 	    // stop mapping
@@ -1150,7 +1189,45 @@ namespace cubthread
   }
 
   template <stats_t Stats>
-  typename worker_pool::core::worker *
+  std::vector<worker_pool::core::worker *>
+  worker_pool_impl<Stats>::core_impl::fix_workers_snapshot () const
+  {
+    std::vector<worker *> snapshot;
+
+    std::lock_guard<std::mutex> lock (m_core_mutex);
+
+    snapshot.reserve (m_workers.size ());
+    // fix
+    ++m_workers_readers;
+    // copy
+    for (auto &it : m_workers)
+      {
+	snapshot.push_back (it.get ());
+      }
+
+    return snapshot;
+  }
+
+  template <stats_t Stats>
+  void
+  worker_pool_impl<Stats>::core_impl::release_workers_snapshot () const
+  {
+    std::lock_guard<std::mutex> lock (m_core_mutex);
+
+    assert (m_workers_readers > 0);
+    --m_workers_readers;
+  }
+
+  template <stats_t Stats>
+  bool
+  worker_pool_impl<Stats>::core_impl::has_workers_snapshot_readers () const
+  {
+    // should hold m_core_mutex in caller scope
+    return m_workers_readers > 0;
+  }
+
+  template <stats_t Stats>
+  worker_pool::core::worker *
   worker_pool_impl<Stats>::core_impl::get_available_worker ()
   {
     // must be called holding m_core_mutex.
@@ -1194,6 +1271,33 @@ namespace cubthread
 	// return the worker back
 	m_available_workers.push_back (worker_p);
       }
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // worker_pool_impl<Stats>::core_impl::snapshot
+  //////////////////////////////////////////////////////////////////////////
+
+
+  template <stats_t Stats>
+  worker_pool_impl<Stats>::core_impl::snapshot_guard::snapshot_guard (const core_impl *core)
+    : m_core (core)
+  {
+    assert (m_core);
+
+    m_snapshot = m_core->fix_workers_snapshot ();
+  }
+
+  template <stats_t Stats>
+  worker_pool_impl<Stats>::core_impl::snapshot_guard::~snapshot_guard ()
+  {
+    m_core->release_workers_snapshot ();
+  }
+
+  template <stats_t Stats>
+  const std::vector<worker_pool::core::worker *> &
+  worker_pool_impl<Stats>::core_impl::snapshot_guard::get_snapshot ()
+  {
+    return m_snapshot;
   }
 
   //////////////////////////////////////////////////////////////////////////

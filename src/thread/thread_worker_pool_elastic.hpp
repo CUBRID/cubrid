@@ -133,6 +133,8 @@ namespace cubthread
       void get_stats (cubperf::stat_value *stats_out) const override;
 
     private:
+      using snapshot_guard = typename worker_pool_impl<Stats>::core_impl::snapshot_guard;
+
       core_elastic (bool pool_threads);
 
       std::unique_ptr<worker> allocate_worker () override;
@@ -444,7 +446,7 @@ namespace cubthread
   {
     std::lock_guard<std::mutex> lock (this->m_core_mutex);
 
-    if (this->m_workers.size () >= m_retire_threshold)
+    if (this->m_workers.size () >= m_retire_threshold && !this->has_workers_snapshot_readers ())
       {
 	auto available_it = std::find (this->m_available_workers.begin (), this->m_available_workers.end (), w);
 	if (available_it != this->m_available_workers.end ())
@@ -472,12 +474,16 @@ namespace cubthread
   void
   worker_pool_elastic<Stats>::core_elastic::get_stats (cubperf::stat_value *stats_out) const
   {
-    std::lock_guard<std::mutex> lock (this->m_core_mutex);
+    {
+      snapshot_guard snapshot (this);
 
-    for (const auto &it : this->m_workers)
-      {
-	it->get_stats (stats_out);
-      }
+      for (const auto &it : snapshot.get_snapshot ())
+	{
+	  it->get_stats (stats_out);
+	}
+    }
+
+    std::lock_guard<std::mutex> lock (this->m_core_mutex);
 
     stats::accumulate (m_retired_stats, stats_out);
   }
