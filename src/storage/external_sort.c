@@ -4228,14 +4228,6 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
 		{
 		  qfile_free_list_id (sort_info_p->input_file);
 		}
-	      if (sort_info_p->s_id != NULL)
-		{
-		  if (sort_info_p->s_id->s_id != NULL)
-		    {
-		      db_private_free_and_init (thread_p, sort_info_p->s_id->s_id);
-		    }
-		  db_private_free_and_init (thread_p, sort_info_p->s_id);
-		}
 	      db_private_free_and_init (thread_p, sort_param->get_arg);
 	    }
 	  if (sort_param->put_arg != NULL)
@@ -4246,12 +4238,12 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
 		{
 		  qfile_free_list_id (sort_info_p->output_file);
 		}
-	      if (sort_info_p->s_id->s_id != NULL)
-		{
-		  db_private_free_and_init (thread_p, sort_info_p->s_id->s_id);
-		}
 	      if (sort_info_p->s_id != NULL)
 		{
+		  if (sort_info_p->s_id->s_id != NULL)
+		    {
+		      db_private_free_and_init (thread_p, sort_info_p->s_id->s_id);
+		    }
 		  db_private_free_and_init (thread_p, sort_info_p->s_id);
 		}
 	      db_private_free_and_init (thread_p, sort_param->put_arg);
