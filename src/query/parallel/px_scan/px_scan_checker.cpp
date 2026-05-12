@@ -672,10 +672,35 @@ namespace parallel_scan
 	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
 
-    for (XASL_NODE *xaslp = arg->dptr_list; xaslp; xaslp = xaslp->next)
+    std::unordered_set<XASL_NODE *> dptrs;
+    for (XASL_NODE *xaslp1 = arg; xaslp1; xaslp1 = xaslp1->scan_ptr)
+      {
+	for (XASL_NODE *xaslp2 = xaslp1->dptr_list; xaslp2; xaslp2 = xaslp2->next)
+	  {
+	    dptrs.insert (xaslp2);
+	  }
+      }
+
+    for (XASL_NODE *xaslp : dptrs)
       {
 	temp = sibling_check<false> (xaslp);
 	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
+	  {
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
+	  }
+      }
+
+    if (dptrs.size() > 0)
+      {
+	std::unordered_set<XASL_NODE *> dptrs2 (dptrs);
+	for (XASL_NODE *xaslp : dptrs2)
+	  {
+	    if (XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE))
+	      {
+		dptrs.erase (xaslp);
+	      }
+	  }
+	if (dptrs.size() > 0)
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
@@ -810,7 +835,14 @@ namespace parallel_scan
 
     for (XASL_NODE *xaslp = arg->aptr_list; xaslp; xaslp = xaslp->next)
       {
-	process_xasl_node_recursive (xaslp);
+	if (XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE))
+	  {
+	    process_xasl_node_recursive_force_cannot_parallel (xaslp);
+	  }
+	else
+	  {
+	    process_xasl_node_recursive (xaslp);
+	  }
       }
     for (XASL_NODE *xaslp = arg->bptr_list; xaslp; xaslp = xaslp->next)
       {
