@@ -87,7 +87,7 @@ namespace cubthread
 
       std::unique_ptr<worker_pool::core> allocate_core (bool pool_threads) override;
 
-      // variant worker pool (m_pool_size <= the number of workers <= m_max_pool_size)
+      // variant worker pool (m_max_concurrency <= the number of workers <= m_max_worker)
       std::size_t m_max_concurrency;
       std::size_t m_max_worker;
 
@@ -225,6 +225,9 @@ namespace cubthread
   void
   worker_pool_elastic<Stats>::adjust_runtime_parameter (std::size_t max_concurrency, std::size_t max_worker)
   {
+    assert (max_concurrency > 0);
+    assert (max_worker >= max_concurrency);
+
     std::size_t concurrency_quotient, concurrency_remainder;
     std::size_t worker_quotient, worker_remainder;
     std::size_t c, w;
@@ -311,6 +314,9 @@ namespace cubthread
   worker_pool_elastic<Stats>::core_elastic::adjust_runtime_parameter (std::size_t max_concurrency,
       std::size_t max_worker)
   {
+    assert (max_concurrency > 0);
+    assert (max_worker >= max_concurrency);
+
     std::lock_guard<std::mutex> lock (this->m_core_mutex);
 
     m_max_concurrency = max_concurrency;
