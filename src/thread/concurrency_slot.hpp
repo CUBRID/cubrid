@@ -123,7 +123,7 @@ namespace cubthread
 
       // for worker
       std::unique_ptr<concurrency_slot> try_acquire_slot (bool has_mutex = true);
-      std::unique_ptr<concurrency_slot> acquire_slot (bool has_mutex = true);
+      std::unique_ptr<concurrency_slot> acquire_slot (cubthread::entry *thread_p, bool has_mutex = true);
 
       void release_slot (std::unique_ptr<concurrency_slot> slot, bool has_mutex = true);
 

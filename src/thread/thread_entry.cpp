@@ -535,7 +535,7 @@ thread_suspend_wakeup_and_unlock_entry (cubthread::entry *thread_p, thread_resum
   thread_prepare_resumption (thread_p, status, suspended_reason, start_time, holder);
 
   // unlock the th_entry_lock
-  pthread_mutex_unlock (&thread_p->th_entry_lock);
+  thread_p->unlock ();
 }
 
 /*
@@ -578,7 +578,7 @@ thread_suspend_timeout_wakeup_and_unlock_entry (cubthread::entry *thread_p, stru
   thread_prepare_resumption (thread_p, status, suspended_reason, start_time, holder);
 
   // unlock the th_entry_lock
-  pthread_mutex_unlock (&thread_p->th_entry_lock);
+  thread_p->unlock ();
 
   return error;
 }
@@ -673,11 +673,29 @@ thread_prepare_resumption (cubthread::entry *thread_p, cubthread::entry::status 
   // concurrency control
   if (holder)
     {
-      switch (suspended_reason)
+      // this thread is managed by concurrency-slot control
+      // if a new resume status is added, verify that the termination path executes promptly
+      assert (suspended_reason == THREAD_CSS_QUEUE_SUSPENDED ||
+	      suspended_reason == THREAD_LOCK_SUSPENDED);
+
+      if (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT ||
+	  thread_p->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN)
 	{
-	case THREAD_CSS_QUEUE_SUSPENDED:
-	case THREAD_LOCK_SUSPENDED:
-	  // this thread is managed by concurrency-slot control
+	  if (thread_p->m_slot)
+	    {
+	      // 1. the entry still holds its slot (wait time < threshold)
+	      thread_p->stop_waiting ();
+	      slot = std::move (thread_p->m_slot);
+
+	      thread_p->unlock ();
+
+	      static_cast<cubthread::concurrency_slot_pool *> (holder)->release_slot (std::move (slot), false);
+
+	      thread_p->lock ();
+	    }
+	}
+      else
+	{
 	  if (thread_p->m_slot)
 	    {
 	      // 1. the entry still holds its slot (wait time < threshold)
@@ -686,16 +704,16 @@ thread_prepare_resumption (cubthread::entry *thread_p, cubthread::entry::status 
 	  else
 	    {
 	      // 2. wait until the slot is acquired (wait time >= threshold)
-	      pthread_mutex_unlock (&thread_p->th_entry_lock);
+	      thread_p->unlock ();
 
 	      if (thread_p->event_stats.trace_slow_query == true)
 		{
 		  start_time = thread_clock_type::now ();
 		}
 
-	      slot = static_cast<cubthread::concurrency_slot_pool *> (holder)->acquire_slot (false);
+	      slot = static_cast<cubthread::concurrency_slot_pool *> (holder)->acquire_slot (thread_p, false);
 
-	      pthread_mutex_lock (&thread_p->th_entry_lock);
+	      thread_p->lock ();
 
 	      if (thread_p->event_stats.trace_slow_query == true)
 		{
@@ -705,10 +723,7 @@ thread_prepare_resumption (cubthread::entry *thread_p, cubthread::entry::status 
 
 	      thread_p->m_slot = std::move (slot);
 	    }
-	  break;
-
-	default:
-	  break;
+	  assert (thread_p->m_slot);
 	}
     }
 #endif

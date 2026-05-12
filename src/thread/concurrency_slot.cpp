@@ -214,14 +214,30 @@ namespace cubthread
   }
 
   std::unique_ptr<concurrency_slot>
-  concurrency_slot_pool::acquire_slot (bool has_mutex)
+  concurrency_slot_pool::acquire_slot (cubthread::entry *thread_p, bool has_mutex)
   {
+    assert (thread_p);
+    assert (!thread_p->m_slot);
+
     std::unique_lock<std::mutex> ulock (*m_mutex, std::defer_lock);
+    std::unique_ptr<concurrency_slot> slot;
 
     if (!has_mutex)
       {
 	ulock.lock ();
       }
+
+    if (!m_available_slots.empty ())
+      {
+	slot = std::move (m_available_slots.front ());
+	m_available_slots.pop ();
+
+	assert (slot);
+	return slot;
+      }
+
+
+
 
     return nullptr;
   }
@@ -229,12 +245,9 @@ namespace cubthread
   void
   concurrency_slot_pool::release_slot (std::unique_ptr<concurrency_slot> slot, bool has_mutex)
   {
-    std::unique_lock<std::mutex> ulock (*m_mutex, std::defer_lock);
+    assert (slot);
 
-    if (slot == nullptr)
-      {
-	return;
-      }
+    std::unique_lock<std::mutex> ulock (*m_mutex, std::defer_lock);
 
     if (!has_mutex)
       {

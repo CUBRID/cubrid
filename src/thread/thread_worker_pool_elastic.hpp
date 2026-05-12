@@ -121,7 +121,7 @@ namespace cubthread
 
       // concurrency slot management
       unique_slot try_acquire_slot (bool has_mutex = true);
-      unique_slot acquire_slot (bool has_mutex = true);
+      unique_slot acquire_slot (cubthread::entry *thread_p, bool has_mutex = true);
 
       void release_slot (unique_slot slot, bool has_mutex = true);
 
@@ -394,9 +394,11 @@ namespace cubthread
 
   template <stats_t Stats>
   typename worker_pool_elastic<Stats>::unique_slot
-  worker_pool_elastic<Stats>::core_elastic::acquire_slot (bool has_mutex)
+  worker_pool_elastic<Stats>::core_elastic::acquire_slot (cubthread::entry *thread_p, bool has_mutex)
   {
-    auto slot = m_slots.acquire_slot (has_mutex);
+    assert (thread_p);
+
+    auto slot = m_slots.acquire_slot (thread_p, has_mutex);
     assert (slot->get_owner_pool () && slot->get_holder_pool ());
 
     return slot;
@@ -406,6 +408,8 @@ namespace cubthread
   void
   worker_pool_elastic<Stats>::core_elastic::release_slot (unique_slot slot, bool has_mutex)
   {
+    assert (slot);
+
     m_slots.release_slot (std::move (slot), has_mutex);
   }
 
@@ -689,8 +693,11 @@ namespace cubthread
     this->m_wrapped_task->execute (*this->m_context_p);
 
     // return the slot to the pool
-    static_cast<core_elastic *> (this->m_parent_core)->release_slot (std::move (this->m_context_p->m_slot), false);
-    this->m_context_p->m_slot = nullptr;
+    if (this->m_context_p->m_slot)
+      {
+	static_cast<core_elastic *> (this->m_parent_core)->release_slot (std::move (this->m_context_p->m_slot), false);
+	this->m_context_p->m_slot = nullptr;
+      }
 
     // stats: execute task
     stats::time_and_increment (this->m_stats, stats::id::execute_task);
