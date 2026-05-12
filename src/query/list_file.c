@@ -3952,8 +3952,6 @@ qfile_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * recdes_p, void *
 		    }
 
 		  VPID vpid = { cand_pageid, cand_volid };
-		  state->curr_pgoffset++;	/* advance so next call continues past this page */
-
 		  PAGE_PTR page_p = qmgr_get_old_page (thread_p, &vpid, sec_tfile);
 		  if (page_p == NULL)
 		    {
@@ -3964,9 +3962,10 @@ qfile_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * recdes_p, void *
 		  if (tpl_cnt == QFILE_OVERFLOW_TUPLE_COUNT_FLAG || tpl_cnt == 0)
 		    {
 		      qmgr_free_old_page_and_init (thread_p, page_p, sec_tfile);
-		      continue;
+		      continue;	/* for-loop increment handles curr_pgoffset advance */
 		    }
 
+		  state->curr_pgoffset++;	/* advance past this page; break skips for-loop increment */
 		  state->curr_page = page_p;
 		  state->curr_is_membuf = false;
 		  state->curr_tfile = sec_tfile;
