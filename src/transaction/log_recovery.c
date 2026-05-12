@@ -559,9 +559,6 @@ log_rv_need_sync_redo (const vpid & a_rcv_vpid, LOG_RCVINDEX a_rcvindex)
     case RVDK_UNRESERVE_SECTORS:
       // Sector reservation is handled synchronously for better control; may be changed to async
       return true;
-    case RVHNSW_INSERT_ELEMENT:
-      // HNSW redo rebuilds side structures and must not race page/file recovery.
-      return true;
     default:
       return false;
     }
