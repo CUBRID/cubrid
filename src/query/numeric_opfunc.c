@@ -4431,6 +4431,8 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
 			char *int_digits, int *int_len, char *frac_digits, int *frac_len, int *frac_first_sig_digit,
 			int *frac_last_sig_digit, bool * is_zero)
 {
+  const int int_buf_max = (DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE);	/* 254 */
+  const int frac_buf_max = DB_MAX_NUMERIC_SCALE;	/* 252, excludes leading "0." */
   int int_count = 0;
   int frac_count = 0;
   int parse_pos = 0;
@@ -4512,6 +4514,10 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
 	{
 	  pad_character_zero = false;
 	  has_digit = true;	/* Case: "0.0000" */
+	  if (int_count >= int_buf_max)	/* overflow when integer part exceeds the storable digit bound */
+	    {
+	      return ER_IT_DATA_OVERFLOW;
+	    }
 	  int_digits[int_count++] = current_char;
 	  parse_pos++;
 	  continue;
@@ -4555,18 +4561,27 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
       if (current_char >= '0' && current_char <= '9' && !trailing_spaces)
 	{
 	  has_digit = true;	/* Case: "0.0000" */
-	  frac_digits[frac_count] = current_char;
-	  /* Track non-zero digits */
-	  if (current_char != '0' || *frac_first_sig_digit >= 0)
+	  if (frac_count <= frac_buf_max)	/* accept one extra digit beyond the storable bound, reserved for the round-decision */
 	    {
-	      if (*frac_first_sig_digit < 0)
+	      frac_digits[frac_count] = current_char;
+	      /* Track non-zero digits */
+	      if (current_char != '0' || *frac_first_sig_digit >= 0)
 		{
-		  *frac_first_sig_digit = frac_count;
-		  pad_character_zero = false;
+		  if (*frac_first_sig_digit < 0)
+		    {
+		      *frac_first_sig_digit = frac_count;
+		      pad_character_zero = false;
+		    }
+		  *frac_last_sig_digit = frac_count;
 		}
-	      *frac_last_sig_digit = frac_count;
+	      frac_count++;
 	    }
-	  frac_count++;
+	  else if (*frac_first_sig_digit < 0)
+	    {
+	      /* fractional underflow: no significant digit found within representable bound → zero */
+	      pad_character_zero = true;
+	    }
+	  /* else: sig already found beyond bound — simply truncated; determine_prec_scale handles round/ovf */
 	  parse_pos++;
 	  continue;
 	}
@@ -4929,8 +4944,8 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
   int prec, scale;
   int int_len, frac_len;
   int frac_first_sig_digit, frac_last_sig_digit;
-  char int_digits[astring_length + 1];	/* Integer part valid digits */
-  char frac_digits[astring_length + 1];	/* Fractional part valid digits */
+  char int_digits[NUMERIC_MAX_STRING_SIZE];	/* Integer part valid digits */
+  char frac_digits[NUMERIC_MAX_STRING_SIZE];	/* Fractional part valid digits */
   int ret = NO_ERROR;
   TP_DOMAIN *domain;
 

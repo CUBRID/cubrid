@@ -128,13 +128,13 @@ db_value_put_null (DB_VALUE * value)
  * the new interface for db_make_* functions will set the value to null, which is wrong.
  * We need to investigate if this set to 0 will work or not.
  */
-inline bool
+static inline bool
 IS_INVALID_PRECISION (int p, int m)
 {
   return (p != DB_DEFAULT_PRECISION) && ((p < 0) || (p > m));
 }
 
-inline bool
+static inline bool
 IS_INVALID_NUMERIC_SCALE (int s, int min, int max)
 {
   return (s != DB_DEFAULT_SCALE) && ((s < min) || (s > max));
