@@ -535,17 +535,14 @@ namespace parallel_scan
 	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
 
-    /* Sibling-level mirror of the narrowed gate in check<>(): only the dptr -> aptr (with
-     * scan_ptr) shape exhibits the cbrd_23696 race. cbrd_23696's E materialization hangs off
-     * F's SCAN_PROC dptr_list, and E's body has its own multi-table inner select via aptr. */
+    /* Sibling-level mirror of the dptr->aptr / dptr->scan_ptr gate in check<>(). cbrd_23696's
+     * E materialization hangs off F's SCAN_PROC dptr_list — sibling_check needs the same
+     * narrow detection so simple correlated subqueries (cbrd_25447) stay parallelizable. */
     for (XASL_NODE *xaslp = sibling->dptr_list; xaslp; xaslp = xaslp->next)
       {
-	for (XASL_NODE *aptrp = xaslp->aptr_list; aptrp; aptrp = aptrp->next)
+	if (xaslp->aptr_list != nullptr || xaslp->scan_ptr != nullptr)
 	  {
-	    if (aptrp->scan_ptr != nullptr)
-	      {
-		set_flag (result, CANNOT_PARALLEL_SCAN);
-	      }
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
 	temp = sibling_check<false> (xaslp);
 	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
@@ -689,19 +686,16 @@ namespace parallel_scan
 	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
 
-    /* Block outer parallel only when a dptr's body itself materializes a multi-table inline
-     * view (dptr -> aptr with scan_ptr, i.e. the dptr's aptr scans more than one table).
-     * Workers race on the per-(R,F) inner-view materialization in that exact shape
-     * (cbrd_23696: 4 rows -> 0). Flat correlated subqueries and uncorrelated subqueries with
-     * extra aptr layers (cbrd_25447) stay parallelizable. */
+    /* Block outer parallel only when a dptr has its OWN nested aptr or scan_ptr chain
+     * (dptr->aptr / dptr->scan_ptr). Workers race on the inner materialization in that pattern
+     * (cbrd_23696: outer R parallel + correlated inline view E with GROUP BY → 4 rows drop
+     * to 0). A flat correlated dptr (single subquery body, no nested aptr/scan_ptr — e.g.
+     * cbrd_25447's `where col < (subquery)` patterns) is safe and stays parallelizable. */
     for (XASL_NODE *xaslp = arg->dptr_list; xaslp; xaslp = xaslp->next)
       {
-	for (XASL_NODE *aptrp = xaslp->aptr_list; aptrp; aptrp = aptrp->next)
+	if (xaslp->aptr_list != nullptr || xaslp->scan_ptr != nullptr)
 	  {
-	    if (aptrp->scan_ptr != nullptr)
-	      {
-		set_flag (result, CANNOT_PARALLEL_SCAN);
-	      }
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
 	temp = sibling_check<false> (xaslp);
 	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
