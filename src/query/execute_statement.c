@@ -427,22 +427,21 @@ is_stmt_based_repl_type (const PT_NODE * node)
   return false;
 }
 
-/*
- * do_evaluate_default_expr_by_smclass () - evaluates default expressions for class attributes.
- *   return: Error code
- *   parser(in):
- *   smclass(in):
- *   only_row_determined(in): if true, evaluate only row-determined expressions.
- */
 typedef enum
 {
   DEFAULT_EXPR_EVAL_BY_ROW_ONLY,
   DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY
 } DEFAULT_EXPR_EVAL_MODE;
 
+/*
+ * do_evaluate_default_expr_by_smclass () - evaluates default expressions for class attributes.
+ *   return: Error code
+ *   parser(in):
+ *   smclass(in):
+ *   eval_mode(in): 
+ */
 static int
-do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass, DEFAULT_EXPR_EVAL_MODE eval_mode,
-				     DB_OTMPL * otemplate)
+do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass, DEFAULT_EXPR_EVAL_MODE eval_mode)
 {
   SM_ATTRIBUTE *att;
   int error = NO_ERROR;
@@ -457,10 +456,6 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
   bool has_user_format;
 
   assert (smclass != NULL);
-  if (eval_mode == DEFAULT_EXPR_EVAL_BY_ROW_ONLY)
-    {
-      assert (otemplate != NULL);
-    }
 
   for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
@@ -718,7 +713,7 @@ do_evaluate_statement_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_nam
       return error;
     }
 
-  return do_evaluate_default_expr_by_smclass (parser, smclass, DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY, NULL);
+  return do_evaluate_default_expr_by_smclass (parser, smclass, DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY);
 }
 
 /*
@@ -734,7 +729,7 @@ do_evaluate_row_default_expr_for_otemplate (PARSER_CONTEXT * parser, DB_OTMPL * 
   assert (otemplate != NULL);
   assert (otemplate->class_ != NULL);
 
-  return do_evaluate_default_expr_by_smclass (parser, otemplate->class_, DEFAULT_EXPR_EVAL_BY_ROW_ONLY, otemplate);
+  return do_evaluate_default_expr_by_smclass (parser, otemplate->class_, DEFAULT_EXPR_EVAL_BY_ROW_ONLY);
 }
 
 /*
