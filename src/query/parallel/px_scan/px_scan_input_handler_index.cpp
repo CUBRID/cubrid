@@ -551,13 +551,19 @@ namespace parallel_scan
   int
   input_handler_index::finalize (THREAD_ENTRY *thread_p)
   {
-    /* do NOT clear m_key_val_ranges: sibling slot_iterators still read it via check_key_in_range; dtor reclaims vector, private heap reclaims DB_VALUEs. */
+    /* no-op per worker: siblings still scan m_key_val_ranges; freed in cleanup_keys on main thread. */
     return NO_ERROR;
   }
 
   void
   input_handler_index::cleanup_keys (THREAD_ENTRY *thread_p)
   {
-    /* No split keys or worker key values to clean up in the leaf-page cursor design. */
+    /* main thread post worker-release: pr_clear matches db_private_alloc mspace from convert_all_key_ranges. */
+    for (auto &kvr : m_key_val_ranges)
+      {
+	pr_clear_value (&kvr.key1);
+	pr_clear_value (&kvr.key2);
+      }
+    m_key_val_ranges.clear ();
   }
 }
