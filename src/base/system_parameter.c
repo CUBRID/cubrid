@@ -781,7 +781,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_TCP_KEEPALIVE_INTERVAL "tcp_keepalive_interval"
 #define PRM_NAME_TCP_KEEPALIVE_COUNT "tcp_keepalive_count"
 
-#define PRM_NAME_WORKER_OVERCOMMIT_RATIO "worker_overcommit_ratio"
+#define PRM_NAME_MAX_TRANSACTION_WORKER "max_transaction_worker"
 #define PRM_NAME_MAX_TRANSACTION_CONCURRENCY "max_transaction_concurrency"
 
 #define PRM_NAME_CSS_MAX_CONNECTION_WORKER "max_connection_worker"
@@ -5189,21 +5189,21 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_WORKER_OVERCOMMIT_RATIO,
-   PRM_NAME_WORKER_OVERCOMMIT_RATIO,
+  {PRM_ID_MAX_TRANSACTION_WORKER,
+   PRM_NAME_MAX_TRANSACTION_WORKER,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
-   PRM_FLOAT,
+   PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
 #if defined (SERVER_MODE)
-   {false, {.f = 2.0f}},
-   {false, {.f = 2.0f}},
+   {false, {.i = (int) cubthread::system_core_count () * 6}},
+   {false, {.i = (int) cubthread::system_core_count () * 6}},
    NULL_SYSPRM_PARAM_VALUE,
-   {false, {.f = 1.0f}},
+   {false, {.i = (int) cubthread::system_core_count ()}},
 #else
-   {false, {.f = 1.0f}},
-   {false, {.f = 1.0f}},
-   {false, {.f = 1.0f}},
-   {false, {.f = 1.0f}},
+   {false, {.i = 1}},
+   {false, {.i = 1}},
+   {false, {.i = 1}},
+   {false, {.i = 1}},
 #endif
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -9902,6 +9902,7 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *test_mode_prm;
   SYSPRM_PARAM *tz_leap_second_support_prm;
 #if defined (SERVER_MODE)
+  SYSPRM_PARAM *max_transaction_worker_prm;
   SYSPRM_PARAM *max_transaction_concurrency_prm;
   SYSPRM_PARAM *max_parallel_workers_prm;
   SYSPRM_PARAM *parallelism_prm;
@@ -9959,11 +9960,22 @@ prm_tune_parameters (void)
 #if defined (SERVER_MODE)
       system_cpu_count = cubthread::system_core_count ();
 
+      max_transaction_worker_prm = GET_PRM (PRM_ID_MAX_TRANSACTION_WORKER);
       max_transaction_concurrency_prm = GET_PRM (PRM_ID_MAX_TRANSACTION_CONCURRENCY);
 
-      if (PRM_GET_INT (max_transaction_concurrency_prm->value) > PRM_GET_INT (max_clients_prm->value))
+      if (PRM_GET_INT (max_transaction_worker_prm->value) > PRM_GET_INT (max_clients_prm->value))
 	{
 	  sprintf (newval, "%d", PRM_GET_INT (max_clients_prm->value));
+	  if (prm_set (max_transaction_worker_prm, newval, false) != PRM_ERR_NO_ERROR)
+	    {
+	      sprintf (newval, "%d", system_cpu_count);
+	      (void) prm_set (max_transaction_worker_prm, newval, false);
+	    }
+	}
+
+      if (PRM_GET_INT (max_transaction_concurrency_prm->value) > PRM_GET_INT (max_transaction_worker_prm->value))
+	{
+	  sprintf (newval, "%d", PRM_GET_INT (max_transaction_worker_prm->value));
 	  if (prm_set (max_transaction_concurrency_prm, newval, false) != PRM_ERR_NO_ERROR)
 	    {
 	      sprintf (newval, "%d", system_cpu_count);
