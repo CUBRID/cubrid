@@ -3914,6 +3914,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
   PT_NODE *pointer = NULL;
   PT_NODE *pt_val = NULL;
   PT_NODE *percentile = NULL;
+  PT_NODE *arg_list = NULL;
 
   // it contains a list of positions
   REGU_VARIABLE_LIST regu_position_list = NULL;
@@ -4030,11 +4031,38 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	{
 	  if (aggregate_list->function != PT_CUME_DIST && aggregate_list->function != PT_PERCENT_RANK)
 	    {
-	      regu_constant_list = pt_to_regu_variable_list (parser, tree->info.function.arg_list, UNBOX_AS_VALUE,
-							     NULL, NULL);
+	      PT_NODE *node, *node2, *new_node;
+	      for (node = tree->info.function.arg_list; node; node = node->next)
+		{
+		  new_node = NULL;
 
-	      scan_regu_constant_list = pt_to_regu_variable_list (parser, tree->info.function.arg_list, UNBOX_AS_VALUE,
-								  NULL, NULL);
+		  int i = 0;
+
+		  for (node2 = info->out_names; node2; node2 = node2->next)
+		    {
+		      if (pt_check_path_eq (parser, node, node2) == 0)
+			{
+			  new_node = pt_point_ref (parser, node);
+			  new_node->etc = pt_index_value (info->value_list, i);
+			}
+		      i++;
+		    }
+
+		  if (new_node == NULL)
+		    {
+		      parser_free_tree (parser, arg_list);
+		      arg_list = NULL;
+		      break;
+		    }
+
+		  arg_list = parser_append_node (new_node, arg_list);
+		}
+
+	      regu_constant_list =
+		pt_to_regu_variable_list (parser, tree->info.function.arg_list, UNBOX_AS_VALUE, NULL, NULL);
+
+	      scan_regu_constant_list =
+		pt_to_regu_variable_list (parser, tree->info.function.arg_list, UNBOX_AS_VALUE, NULL, NULL);
 
 	      if (!regu_constant_list || !scan_regu_constant_list)
 		{
@@ -4124,49 +4152,57 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	       * value_list Note: cume_dist() and percent_rank() also need special operations. */
 	      if (aggregate_list->function != PT_CUME_DIST && aggregate_list->function != PT_PERCENT_RANK)
 		{
-		  // add dummy output name nodes, one for each argument
-		  for (PT_NODE * it_args = tree->info.function.arg_list; it_args != NULL; it_args = it_args->next)
+
+		  if (arg_list)
 		    {
-		      pt_val = parser_new_node (parser, PT_VALUE);
-		      if (pt_val == NULL)
+		      parser_append_node (pt_val, info->out_names);
+		      aggregate_list->operands =
+			pt_to_regu_variable_list (parser, arg_list, UNBOX_AS_VALUE, NULL, NULL);
+		    }
+		  else
+		    {
+		      for (PT_NODE * it_args = tree->info.function.arg_list; it_args != NULL; it_args = it_args->next)
 			{
-			  PT_INTERNAL_ERROR (parser, "allocate new node");
+			  pt_val = parser_copy_tree (parser, it_args);
+			  if (pt_val == NULL)
+			    {
+			      PT_INTERNAL_ERROR (parser, "allocate new node");
+			      return NULL;
+			    }
+
+			  parser_append_node (pt_val, info->out_names);
+			}
+
+		      // for each element from arg_list we create a corresponding node in the value_list and regu_list
+		      if (pt_node_list_to_value_and_reguvar_list (parser, tree->info.function.arg_list,
+								  &value_list, &regu_position_list) == NULL)
+			{
+			  PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+								  MSGCAT_SEMANTIC_OUT_OF_MEMORY));
 			  return NULL;
 			}
 
-		      pt_val->type_enum = PT_TYPE_INTEGER;
-		      pt_val->info.value.data_value.i = 0;
-		      parser_append_node (pt_val, info->out_names);
+		      error_code =
+			pt_make_constant_regu_list_from_val_list (parser, value_list, &aggregate_list->operands);
+		      if (error_code != NO_ERROR)
+			{
+			  PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+								  MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+			  return NULL;
+			}
+
+		      // this regu_list has the TYPE_POSITION type so we need to set the corresponding indexes for elements
+		      pt_set_regu_list_pos_descr_from_idx (regu_position_list, info->out_list->valptr_cnt);
+
+		      // until now we have constructed the value_list, regu_list and out_list
+		      // they are based on the current aggregate node information and we need to append them to the global
+		      // information, i.e in info
+		      pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list,
+									regu_constant_list);
+
+		      // also we need to update the scan_regu_list from info
+		      pt_aggregate_info_update_scan_regu_list (info, scan_regu_constant_list);
 		    }
-
-		  // for each element from arg_list we create a corresponding node in the value_list and regu_list
-		  if (pt_node_list_to_value_and_reguvar_list (parser, tree->info.function.arg_list,
-							      &value_list, &regu_position_list) == NULL)
-		    {
-		      PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
-							      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
-		      return NULL;
-		    }
-
-		  error_code = pt_make_constant_regu_list_from_val_list (parser, value_list, &aggregate_list->operands);
-		  if (error_code != NO_ERROR)
-		    {
-		      PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
-							      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
-		      return NULL;
-		    }
-
-		  // this regu_list has the TYPE_POSITION type so we need to set the corresponding indexes for elements
-		  pt_set_regu_list_pos_descr_from_idx (regu_position_list, info->out_list->valptr_cnt);
-
-		  // until now we have constructed the value_list, regu_list and out_list
-		  // they are based on the current aggregate node information and we need to append them to the global
-		  // information, i.e in info
-		  pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list,
-								    regu_constant_list);
-
-		  // also we need to update the scan_regu_list from info
-		  pt_aggregate_info_update_scan_regu_list (info, scan_regu_constant_list);
 		}
 	      else
 		{
@@ -27402,7 +27438,41 @@ pt_node_list_to_value_and_reguvar_list (PARSER_CONTEXT * parser, PT_NODE * node,
 {
   assert (node != NULL && value_list != NULL);
 
-  *value_list = pt_make_val_list (parser, node);
+  QPROC_DB_VALUE_LIST dbval_list;
+  QPROC_DB_VALUE_LIST *dbval_list_tail;
+  PT_NODE *attribute;
+
+  regu_alloc (*value_list);
+  if (*value_list == NULL)
+    {
+      return NULL;
+    }
+
+  (*value_list)->val_cnt = 0;
+  (*value_list)->valp = NULL;
+  dbval_list_tail = &(*value_list)->valp;
+
+  for (attribute = node; attribute != NULL; attribute = attribute->next)
+    {
+      regu_alloc (dbval_list);
+
+      if (PT_IS_POINTER_REF_NODE (attribute) && attribute->etc != NULL)
+	{
+	  dbval_list->val = (DB_VALUE *) attribute->etc;
+	}
+      else
+	{
+	  regu_alloc (dbval_list->val);
+	  pt_data_type_init_value (attribute, dbval_list->val);
+	}
+      dbval_list->dom = pt_xasl_node_to_domain (parser, attribute);
+
+      (*value_list)->val_cnt++;
+      (*dbval_list_tail) = dbval_list;
+      dbval_list_tail = &dbval_list->next;
+      dbval_list->next = NULL;
+    }
+
 
   if (*value_list == NULL)
     {
