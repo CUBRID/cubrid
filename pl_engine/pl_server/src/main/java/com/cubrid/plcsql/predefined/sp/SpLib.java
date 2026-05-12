@@ -212,6 +212,19 @@ public class SpLib {
         assert scale >= NumericValue.DB_MIN_NUMERIC_SCALE
                 && scale <= NumericValue.DB_MAX_NUMERIC_SCALE;
 
+        // Float numeric (prec == DB_DEFAULT_NUMERIC_PRECISION): preserve the value's
+        // natural scale and only normalize into the float numeric range.
+        // User-declared fixed numeric is limited to prec 1~38, so prec == 40 here is
+        // exclusively the compiler-default float numeric marker.
+        if (prec == NumericValue.DB_DEFAULT_NUMERIC_PRECISION) {
+            BigDecimal adjusted = NumericValue.adjustPrecisionScale(val);
+            if (adjusted == null) {
+                throw new VALUE_ERROR(
+                        "numeric value does not fit in the target type's precision and scale");
+            }
+            return adjusted;
+        }
+
         if (val.scale() != scale) {
             val = val.setScale(scale, RoundingMode.HALF_UP);
         }
