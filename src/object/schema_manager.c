@@ -16700,3 +16700,17 @@ sm_domain_copy (SM_DOMAIN * ptr)
 
   return new_ptr;
 }
+
+/*
+ * sm_is_catalog_rebuild () - True during a catalog rebuild (catcls_Enable == false).
+ */
+bool
+sm_is_catalog_rebuild (void)
+{
+#if defined(SA_MODE)
+  extern bool catcls_Enable;
+  return !catcls_Enable;
+#else
+  return false;
+#endif
+}
