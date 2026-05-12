@@ -23,7 +23,7 @@
 #ifndef _THREAD_WORKER_POOL_TASKCAP_HPP_
 #define _THREAD_WORKER_POOL_TASKCAP_HPP_
 
-#include "thread_worker_pool.hpp"
+#include "thread_manager.hpp"
 
 namespace cubthread
 {

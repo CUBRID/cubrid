@@ -438,6 +438,7 @@ static void qexec_clear_head_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_li
 static void qexec_clear_head_lists_with_truncate (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static void qexec_clear_scan_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static void qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
+static void qexec_final_close_dblink_specs (XASL_NODE * xasl);
 static int qexec_clear_update_assignment (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, UPDATE_ASSIGNMENT * assignment,
 					  bool is_final);
 static DB_LOGICAL qexec_eval_ordbynum_pred (THREAD_ENTRY * thread_p, ORDBYNUM_INFO * ordby_info);
@@ -1558,6 +1559,13 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
 		  /* regu_var->xasl not cleared yet. Clear the values allocated during execution. */
 		  pg_cnt += qexec_clear_xasl (thread_p, regu_var->xasl, is_final, for_parallel_aptr);
 		}
+	      else
+		{
+		  /* xcache clone reuse: XASL already cleared this run (status reset to XASL_INITIALIZED),
+		   * so skip full qexec_clear_xasl. But CCI handles must still be released — safe no-op if
+		   * qexec_clear_xasl already ran qexec_final_close_dblink_specs (stmt_handle = -1 sentinel). */
+		  qexec_final_close_dblink_specs (regu_var->xasl);
+		}
 	    }
 	  else if (regu_var->xasl->status != XASL_CLEARED)
 	    {
@@ -1957,8 +1965,8 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT >
 			*)p->s_id.s.phsid.manager)->close ();
 		      break;
-		    case parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT:
-		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT >
+		    case parallel_heap_scan::RESULT_TYPE::BUILDVALUE_OPT:
+		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::BUILDVALUE_OPT >
 			*)p->s_id.s.phsid.manager)->close ();
 		      break;
 		    default:
@@ -2398,6 +2406,35 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
       sq_cache_destroy (thread_p, xasl->sq_cache);
     }
 
+
+  /* Final teardown of correlated DBLink CCI handles — runs for all proc types so that inner
+   * DBLink XASLs (BUILDVALUE_PROC wrappers included) are covered regardless of which branch follows. */
+  qexec_final_close_dblink_specs (xasl);
+
+#if !defined(NDEBUG)
+  /* Invariant: after final teardown every DBLink spec must have released its handles.
+   * If either assertion fires here, qexec_final_close_dblink_specs did not reach this spec —
+   * i.e., the setter (cursor_rewind=1) was applied but the unsetter (is_final close) was not. */
+  {
+    ACCESS_SPEC_TYPE *dbg_spec;
+    for (dbg_spec = xasl->spec_list; dbg_spec != NULL; dbg_spec = dbg_spec->next)
+      {
+	if (dbg_spec->type == TARGET_DBLINK)
+	  {
+	    assert (dbg_spec->s_id.s.dblid.scan_info.stmt_handle <= 0);
+	    assert (dbg_spec->s_id.s.dblid.scan_info.cursor_rewind == 0);
+	  }
+      }
+    for (dbg_spec = xasl->merge_spec; dbg_spec != NULL; dbg_spec = dbg_spec->next)
+      {
+	if (dbg_spec->type == TARGET_DBLINK)
+	  {
+	    assert (dbg_spec->s_id.s.dblid.scan_info.stmt_handle <= 0);
+	    assert (dbg_spec->s_id.s.dblid.scan_info.cursor_rewind == 0);
+	  }
+      }
+  }
+#endif /* !defined(NDEBUG) */
 
   switch (xasl->type)
     {
@@ -2858,6 +2895,9 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
       qfile_clear_list_id (xasl->list_id);
     }
 
+  /* Final teardown of correlated DBLink CCI handles (parallel aptr path). */
+  qexec_final_close_dblink_specs (xasl);
+
   /* clear the body node */
   /* not clear aptr nodes has px_executor; it will be cleared by other threads. */
   if (xasl->aptr_list)
@@ -3313,8 +3353,6 @@ qexec_clear_head_lists_with_truncate (THREAD_ENTRY * thread_p, XASL_NODE * xasl_
 	  /* skip out zero correlation-level uncorrelated subquery */
 	  continue;
 	}
-
-
       if (xasl->list_id && !xasl->list_id->is_result_cached)
 	{
 	  qfile_truncate_list (thread_p, xasl->list_id);
@@ -3441,6 +3479,41 @@ qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
       if (xasl->scan_ptr)
 	{
 	  qexec_clear_scan_all_lists (thread_p, xasl->scan_ptr);
+	}
+    }
+}
+
+/*
+ * qexec_final_close_dblink_specs () - Walk spec_list and merge_spec of one XASL node and call
+ * dblink_close_scan(is_final=true) for every TARGET_DBLINK spec whose CCI handles are still open.
+ *
+ * Called from qexec_clear_xasl / qexec_clear_xasl_for_parallel_aptr before the proc-type switch so that
+ * the teardown runs regardless of XASL proc type (BUILDLIST, BUILDVALUE, etc.).
+ *
+ * Safe to call multiple times: dblink_close_scan sets stmt_handle = -1 on success, so subsequent calls
+ * return immediately via the stmt_handle < 0 sentinel.
+ */
+static void
+qexec_final_close_dblink_specs (XASL_NODE * xasl)
+{
+  ACCESS_SPEC_TYPE *spec;
+
+  if (xasl == NULL)
+    {
+      return;
+    }
+  for (spec = xasl->spec_list; spec != NULL; spec = spec->next)
+    {
+      if (spec->type == TARGET_DBLINK)
+	{
+	  (void) dblink_close_scan (&spec->s_id.s.dblid.scan_info, true);
+	}
+    }
+  for (spec = xasl->merge_spec; spec != NULL; spec = spec->next)
+    {
+      if (spec->type == TARGET_DBLINK)
+	{
+	  (void) dblink_close_scan (&spec->s_id.s.dblid.scan_info, true);
 	}
     }
 }
@@ -4558,6 +4631,19 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       tsc_getticks (&start_tick);
     }
 
+
+  REGU_VARIABLE_LIST regu_var_p = xasl->outptr_list->valptrp;
+  int f_idx = 0;
+  for (int i = 0; i < xasl->outptr_list->valptr_cnt && regu_var_p; i++, regu_var_p = regu_var_p->next)
+    {
+      if (REGU_VARIABLE_IS_FLAGED (&regu_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
+	{
+	  continue;
+	}
+      pr_share_value (tpldesc->f_valp[f_idx], regu_var_p->value.vfetch_to);
+      f_idx++;
+    }
+
   /* build key */
   rc = qexec_build_agg_hkey (thread_p, xasl_state, proc->g_hk_scan_regu_list, NULL, key);
   if (rc != NO_ERROR)
@@ -4631,6 +4717,9 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     }
   else
     {
+      REGU_VARIABLE_LIST regu_var_p;
+      DB_VALUE *tmp;
+
       /* no need to output tuple */
       *output_tuple = false;
 
@@ -4639,7 +4728,30 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       context->tuple_count++;
 
       /* fetch values */
-      rc = fetch_val_list (thread_p, proc->g_scan_regu_list, &xasl_state->vd, NULL, NULL, tplrec->tpl, true);
+      for (regu_var_p = proc->g_scan_regu_list; regu_var_p != NULL; regu_var_p = regu_var_p->next)
+	{
+	  if (REGU_VARIABLE_IS_FLAGED (&regu_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
+	    {
+	      if (regu_var_p->value.vfetch_to && pr_is_set_type (DB_VALUE_DOMAIN_TYPE (regu_var_p->value.vfetch_to)))
+		{
+		  pr_clear_value (regu_var_p->value.vfetch_to);
+		}
+
+	      if (regu_var_p->value.vfetch_to && DB_NEED_CLEAR (regu_var_p->value.vfetch_to))
+		{
+		  pr_clear_value (regu_var_p->value.vfetch_to);
+		}
+
+	      rc = fetch_peek_dbval (thread_p, &regu_var_p->value, &xasl_state->vd, NULL, NULL, tplrec->tpl, &tmp);
+	      if (rc != NO_ERROR)
+		{
+		  pr_clear_value (regu_var_p->value.vfetch_to);
+		  return ER_FAILED;
+		}
+
+	      pr_share_value (tmp, regu_var_p->value.vfetch_to);
+	    }
+	}
 
       /* eval aggregate functions */
       if (rc == NO_ERROR)
@@ -7578,6 +7690,10 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 
 	host_vars.count = curr_spec->s.dblink_node.host_var_count;
 	host_vars.index = curr_spec->s.dblink_node.host_var_index;
+
+	/* inject reuse flag before open: scan_init_scan_id does not touch s.dblid.scan_info,
+	 * so the flag survives across open/close cycles. */
+	s_id->s.dblid.scan_info.cursor_rewind = IS_DBLINK_CURSOR_REWIND_XASL (xasl) ? 1 : 0;
 
 	error_code = scan_open_dblink_scan (thread_p, s_id, curr_spec, vd, val_list, &host_vars);
 	if (error_code != NO_ERROR)
@@ -27260,11 +27376,20 @@ qexec_build_agg_hkey (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, REGU_VAR
   key->val_count = 0;
   while (regu_list != NULL)
     {
-      rc =
-	fetch_peek_dbval (thread_p, &regu_list->value, &xasl_state->vd, NULL, NULL, tpl, &key->values[key->val_count]);
-      if (rc != NO_ERROR)
+      if (tpl == NULL)
 	{
-	  return rc;
+	  /* tpl is NULL when called during the processing phase */
+	  key->values[key->val_count] = regu_list->value.vfetch_to;
+	}
+      else
+	{
+	  rc =
+	    fetch_peek_dbval (thread_p, &regu_list->value, &xasl_state->vd, NULL, NULL, tpl,
+			      &key->values[key->val_count]);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
 	}
 
       /* next */

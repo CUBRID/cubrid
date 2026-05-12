@@ -37,6 +37,7 @@
 #include "db_value_printer.hpp"
 #include "dbtype.h"
 #include "error_manager.h"
+#include "file_manager.h"
 #include "log_append.hpp"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -7068,4 +7069,130 @@ bool
 qfile_has_no_cache_entries ()
 {
   return (qfile_List_cache.n_entries == 0);
+}
+
+/*
+ * qfile_collect_list_sector_info () - Collect data page sectors from list_id and all dependent list files.
+ *   membuf exists only in the first list_id (not in dependent_list_id).
+ *   Disk sectors are collected via file_get_all_data_sectors for each dependent list_id.
+ *
+ * return          : error code
+ * thread_p (in)   : thread entry
+ * list_id (in)    : list file identifier (may have dependent_list_id chain)
+ * sector_info (out) : output sector info (caller must free with qfile_free_list_sector_info)
+ */
+int
+qfile_collect_list_sector_info (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_LIST_SECTOR_INFO * sector_info)
+{
+  QFILE_LIST_ID *current;
+  FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
+  int error = NO_ERROR;
+
+  assert (thread_p != NULL);
+  assert (list_id != NULL);
+  assert (list_id->tfile_vfid != NULL);
+  assert (sector_info != NULL);
+
+  /* reset sector_info */
+  qfile_free_list_sector_info (thread_p, sector_info);
+
+  /* membuf exists only in the first list_id */
+  if (list_id->tfile_vfid->membuf != NULL && list_id->tfile_vfid->membuf_last >= 0)
+    {
+      assert (list_id->tfile_vfid->membuf_npages > 0);
+      sector_info->membuf_tfile = list_id->tfile_vfid;
+    }
+
+  for (current = list_id; current != NULL; current = current->dependent_list_id)
+    {
+      assert (current->tfile_vfid != NULL);
+
+      if (VFID_ISNULL (&current->tfile_vfid->temp_vfid))
+	{
+	  continue;
+	}
+
+      error = file_get_all_data_sectors (thread_p, &current->tfile_vfid->temp_vfid, &collector);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      if (collector.nsects > 0)
+	{
+	  int old_cnt = sector_info->sector_cnt;
+	  int new_cnt = old_cnt + collector.nsects;
+
+	  FILE_PARTIAL_SECTOR *merged_sectors =
+	    (FILE_PARTIAL_SECTOR *) db_private_realloc (thread_p, sector_info->sectors,
+							new_cnt * sizeof (FILE_PARTIAL_SECTOR));
+	  if (merged_sectors == NULL)
+	    {
+	      goto error_exit;
+	    }
+	  sector_info->sectors = merged_sectors;
+
+	  void **merged_tfiles =
+	    (void **) db_private_realloc (thread_p, sector_info->tfiles, new_cnt * sizeof (void *));
+	  if (merged_tfiles == NULL)
+	    {
+	      goto error_exit;
+	    }
+	  sector_info->tfiles = merged_tfiles;
+
+	  memcpy (sector_info->sectors + old_cnt, collector.partsect_ftab,
+		  collector.nsects * sizeof (FILE_PARTIAL_SECTOR));
+
+	  for (int i = 0; i < collector.nsects; i++)
+	    {
+	      sector_info->tfiles[old_cnt + i] = (void *) current->tfile_vfid;
+	    }
+
+	  sector_info->sector_cnt = new_cnt;
+	}
+
+      if (collector.partsect_ftab != NULL)
+	{
+	  db_private_free_and_init (thread_p, collector.partsect_ftab);
+	}
+    }
+
+  return NO_ERROR;
+
+error_exit:
+  if (collector.partsect_ftab != NULL)
+    {
+      db_private_free_and_init (thread_p, collector.partsect_ftab);
+    }
+
+  qfile_free_list_sector_info (thread_p, sector_info);
+
+  assert_release_error (er_errid () != NO_ERROR);
+  return er_errid ();
+}
+
+/*
+ * qfile_free_list_sector_info () - Free sector info allocated by qfile_collect_list_sector_info.
+ *
+ * thread_p (in)     : thread entry
+ * sector_info (in)  : sector info to free
+ */
+void
+qfile_free_list_sector_info (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_INFO * sector_info)
+{
+  assert (thread_p != NULL);
+  assert (sector_info != NULL);
+
+  if (sector_info->sectors != NULL)
+    {
+      db_private_free_and_init (thread_p, sector_info->sectors);
+    }
+
+  if (sector_info->tfiles != NULL)
+    {
+      db_private_free_and_init (thread_p, sector_info->tfiles);
+    }
+
+  sector_info->membuf_tfile = NULL;
+  sector_info->sector_cnt = 0;
 }

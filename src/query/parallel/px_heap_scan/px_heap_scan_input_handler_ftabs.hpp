@@ -23,12 +23,13 @@
 #ifndef _PX_HEAP_SCAN_INPUT_HANDLER_FTABS_HPP_
 #define _PX_HEAP_SCAN_INPUT_HANDLER_FTABS_HPP_
 
-#include "px_heap_scan_ftab_set.hpp"
+#include "px_ftab_set.hpp"
 #include "px_interrupt.hpp"
 #include "scan_manager.h"
 
 namespace parallel_heap_scan
 {
+  using ftab_set = parallel_query::ftab_set;
   class input_handler_ftabs
   {
       using interrupt = parallel_query::interrupt;

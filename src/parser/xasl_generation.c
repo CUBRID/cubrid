@@ -452,6 +452,7 @@ static XASL_NODE *pt_plan_set_query (PARSER_CONTEXT * parser, PT_NODE * node, PR
 static XASL_NODE *pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node);
 static XASL_NODE *pt_plan_schema (PARSER_CONTEXT * parser, PT_NODE * select_node);
 static XASL_NODE *parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * query_list);
+static bool pt_xasl_spec_has_dblink (XASL_NODE * xasl);
 static PT_NODE *parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static int pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, OID ** oid_listp,
 					   int **lock_listp, int **tcard_listp, int *nump, int *sizep,
@@ -16317,6 +16318,18 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	}
 
       attr_offsets = pt_make_identity_offsets (group_out_list);
+      if (buildlist->g_hash_eligible && attr_offsets)
+	{
+	  REGU_VARIABLE_LIST reg_var_p_out;
+	  int i = 0;
+	  int group_out_list_len = pt_length_of_list (group_out_list);
+	  for (reg_var_p_out = xasl->outptr_list->valptrp; reg_var_p_out && i < group_out_list_len;
+	       reg_var_p_out = reg_var_p_out->next)
+	    {
+	      reg_var_p_out->value.vfetch_to = pt_index_value (buildlist->g_val_list, attr_offsets[i]);
+	      i++;
+	    }
+	}
 
       /* set up hash aggregate lists */
       if (buildlist->g_hash_eligible)
@@ -17929,6 +17942,32 @@ exit:
   return xasl;
 }
 
+/*
+ * pt_xasl_spec_has_dblink () - true if any scan in the xasl chain has a TARGET_DBLINK access spec
+ */
+static bool
+pt_xasl_spec_has_dblink (XASL_NODE * xasl)
+{
+  XASL_NODE *scan;
+  ACCESS_SPEC_TYPE *spec;
+
+  if (xasl == NULL)
+    {
+      return false;
+    }
+
+  for (scan = xasl; scan != NULL; scan = scan->scan_ptr)
+    {
+      for (spec = scan->spec_list; spec != NULL; spec = spec->next)
+	{
+	  if (spec->type == TARGET_DBLINK)
+	    {
+	      return true;
+	    }
+	}
+    }
+  return false;
+}
 
 /*
  * parser_generate_xasl_proc () - Creates xasl proc for parse tree.
@@ -18090,6 +18129,16 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * qu
       if ((PT_IS_QUERY (node) && node->info.query.correlation_level == 0) || node->node_type == PT_CTE)
 	{
 	  XASL_SET_FLAG (xasl, XASL_ZERO_CORR_LEVEL);
+	}
+
+      /* correlated subquery with DBLink: rewind CCI cursor instead of re-issuing cci_execute per outer row.
+       * Assumption: conn_sql is invariant across outer rows — mq_copypush never modifies conn_sql for
+       * correlated terms (they are always pushed to access_pred only).
+       * NOTE: if a future optimization (e.g. join push-down) places per-row host variables into
+       * conn_sql, this flag must NOT be set for that case; re-bind + re-execute would be required instead. */
+      if (PT_IS_QUERY (node) && node->info.query.correlation_level > 0 && pt_xasl_spec_has_dblink (xasl))
+	{
+	  XASL_SET_FLAG (xasl, XASL_DBLINK_CURSOR_REWIND);
 	}
 
 /* BUG FIX - COMMENT OUT: DO NOT REMOVE ME FOR USE IN THE FUTURE */
@@ -27336,14 +27385,15 @@ pt_aggregate_info_update_value_and_reguvar_lists (AGGREGATE_INFO * info, VAL_LIS
 
   pt_merge_regu_var_lists (&info->regu_list, regu_position_list);
 
-  pt_merge_regu_var_lists (&info->out_list->valptrp, regu_constant_list);
-
   // also increment list count
   int regu_constant_list_size = 0;
 
   for (REGU_VARIABLE_LIST ptr = regu_constant_list; ptr != NULL; ptr = ptr->next, regu_constant_list_size++)
-    ;
+    {
+      ptr->value.vfetch_to = pt_index_value (value_list, regu_constant_list_size);
+    }
 
+  pt_merge_regu_var_lists (&info->out_list->valptrp, regu_constant_list);
   info->out_list->valptr_cnt += regu_constant_list_size;
 }
 
