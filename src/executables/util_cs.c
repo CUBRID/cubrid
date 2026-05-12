@@ -56,6 +56,7 @@
 #include "locator_cl.h"
 #include "dynamic_array.h"
 #include "util_func.h"
+#include "intl_support.h"
 #include "xasl.h"
 #include "log_volids.hpp"
 #include "tde.h"
@@ -927,6 +928,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   char *only_table[1];
+  char lower_table_name[SM_MAX_IDENTIFIER_LENGTH];
   const char *database_name;
   char **table_array = NULL;
   const char *output_file = NULL;
@@ -1077,7 +1079,8 @@ spacedb (UTIL_FUNCTION_ARG * arg)
     }
   if (table_name != NULL)
     {
-      only_table[0] = (char *) table_name;
+      intl_identifier_lower (table_name, lower_table_name);
+      only_table[0] = lower_table_name;
       table_array = only_table;
       table_array_length = 1;
     }
