@@ -1308,7 +1308,8 @@ oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, char *buf_out, int
 
 static int
 oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &next_oid,
-		       int total_data_length, RECDES &recdes, int &bytes_written)
+		       int total_data_length, RECDES &recdes,
+		       int &remaining, int &bytes_written)
 {
   assert (recdes.data != nullptr && recdes.area_size >= total_data_length);
 
@@ -1319,7 +1320,6 @@ oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &next_oid,
       OOS_RECORD_HEADER header;
       int chunk_bytes = 0;
       char *dest = recdes.data + bytes_written;
-      int remaining = total_data_length - bytes_written;
 
       int err = oos_read_within_page (thread_p, current, dest, remaining, header, chunk_bytes);
       if (err != NO_ERROR)
@@ -1340,6 +1340,7 @@ oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &next_oid,
 	}
 
       bytes_written += chunk_bytes;
+      remaining -= chunk_bytes;
       current = header.next_chunk_oid;
       idx++;
     }
@@ -1370,13 +1371,18 @@ oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
 
   OOS_RECORD_HEADER first_header;
   int bytes_written = 0;
+  /* buf_cap semantics = remaining buffer capacity at the write offset; track
+   * it explicitly so first-chunk and subsequent-chunk reads use the same
+   * "remaining" contract. */
+  int remaining = expected_length;
 
-  int err = oos_read_within_page (thread_p, oid, recdes.data, expected_length,
+  int err = oos_read_within_page (thread_p, oid, recdes.data, remaining,
 				  first_header, bytes_written);
   if (err != NO_ERROR)
     {
       return err;
     }
+  remaining -= bytes_written;
 
   assert (first_header.chunk_index == 0);
 
@@ -1394,7 +1400,7 @@ oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
   if (!OID_ISNULL (&first_header.next_chunk_oid))
     {
       err = oos_read_across_pages (thread_p, first_header.next_chunk_oid,
-				   expected_length, recdes, bytes_written);
+				   expected_length, recdes, remaining, bytes_written);
       if (err != NO_ERROR)
 	{
 	  return err;

@@ -10619,27 +10619,15 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch
 
   buf.ptr = raw->data;
   buf.endptr = recdes->data + recdes->length;
-  if (buf.endptr - buf.ptr < OR_OID_SIZE + OR_BIGINT_SIZE)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      raw->data = NULL;
-      assert_release_error (er_errid () != NO_ERROR);
-      return;
-    }
+  /* OOS attribute layout is a writer-side invariant: the raw region always
+   * begins with [OID | bigint]. A shorter region indicates a programmer bug,
+   * not on-disk corruption. */
+  assert (buf.endptr - buf.ptr >= OR_OID_SIZE + OR_BIGINT_SIZE);
 
   or_get_oid (&buf, &oos_oid);
   oos_len = or_get_bigint (&buf, &rc);
 
-  if (rc != NO_ERROR || OID_ISNULL (&oos_oid))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      raw->data = NULL;
-      assert_release_error (er_errid () != NO_ERROR);
-      return;
-    }
-  /* recdes/oos_read APIs use int for sizes; the inline length must fit. An
-   * out-of-range bigint here is on-disk corruption, not a programmer bug. */
-  if (oos_len <= 0 || oos_len > (DB_BIGINT) INT_MAX)
+  if (rc != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       raw->data = NULL;
@@ -10647,8 +10635,12 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch
       return;
     }
 
+  /* OOS writer invariants: never emits a NULL OID for the inline marker and
+   * always writes a length that fits int (recdes/oos_read sizes are int). */
+  assert (!OID_ISNULL (&oos_oid));
+  assert (oos_len > 0 && oos_len <= (DB_BIGINT) INT_MAX);
+
   thread_p = thread_get_thread_entry_info ();
-  assert (thread_p);
 
   /* Fast path: when the inline length fits the caller-provided scratch, skip
    * the per-row heap allocation. Caller must avoid freeing scratch-backed
@@ -10666,6 +10658,7 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch
       assert_release (false);
       return;
     }
+
   if (oos_read (thread_p, oos_oid, *raw) != NO_ERROR)
     {
       if (raw->data != oos_scratch)
