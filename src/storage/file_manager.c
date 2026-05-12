@@ -691,6 +691,7 @@ static void file_print_name_of_class (THREAD_ENTRY * thread_p, FILE * fp, const 
 static int file_spacedb_get_file_page_count (THREAD_ENTRY * thread_p, const VFID * vfid, int *used_page_p,
 					     int *alloced_page_p);
 static int file_spacedb_get_btree_ovf_vfid (THREAD_ENTRY * thread_p, const BTID * btid, VFID * ovf_vfid_p);
+static int file_spacedb_get_heap_ovf_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid_p);
 static int file_spacedb_fill_one_table (THREAD_ENTRY * thread_p, const OID * class_oid,
 					const char *class_name, SPACEDB_TABLE_SIZES_HEADER * entry);
 static int file_spacedb_fill_tables_from_oids (THREAD_ENTRY * thread_p, const OID * class_oids, int oid_count,
@@ -8135,6 +8136,35 @@ file_spacedb_get_btree_ovf_vfid (THREAD_ENTRY * thread_p, const BTID * btid, VFI
 }
 
 /*
+ * file_spacedb_get_heap_ovf_vfid () - Get overflow VFID for a heap file,
+ *                                     distinguishing "no overflow" from I/O error.
+ *
+ * return           : error code (NO_ERROR if no overflow file exists)
+ * thread_p (in)    : thread entry
+ * hfid (in)        : heap file identifier
+ * ovf_vfid_p (out) : overflow file identifier (VFID_ISNULL if absent)
+ *
+ * Note: heap_ovf_find_vfid() returns NULL for both "no overflow file" and
+ *       I/O errors. We disambiguate via er_errid().
+ */
+static int
+file_spacedb_get_heap_ovf_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid_p)
+{
+  VFID_SET_NULL (ovf_vfid_p);
+
+  if (heap_ovf_find_vfid (thread_p, hfid, ovf_vfid_p, false, PGBUF_UNCONDITIONAL_LATCH) == NULL)
+    {
+      int error_code = er_errid ();
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+      VFID_SET_NULL (ovf_vfid_p);
+    }
+  return NO_ERROR;
+}
+
+/*
   * file_spacedb_fill_one_table () - Fill space usage info for a single table.
   *
   * return        : error code
@@ -8200,7 +8230,12 @@ file_spacedb_fill_one_table (THREAD_ENTRY * thread_p, const OID * class_oid,
 	goto exit;
       }
 
-    if (heap_ovf_find_vfid (thread_p, &hfid, &ovf_vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
+    error_code = file_spacedb_get_heap_ovf_vfid (thread_p, &hfid, &ovf_vfid);
+    if (error_code != NO_ERROR)
+      {
+	goto exit;
+      }
+    if (!VFID_ISNULL (&ovf_vfid))
       {
 	error_code =
 	  file_spacedb_get_file_page_count (thread_p, &ovf_vfid, &table_size->ovf_used_page,
