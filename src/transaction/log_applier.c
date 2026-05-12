@@ -8738,6 +8738,486 @@ la_delay_replica (time_t eot_time)
   return NO_ERROR;
 }
 
+#if defined(CS_MODE)
+static const char *
+la_repl_filter_type_string (REPL_FILTER_TYPE type)
+{
+  switch (type)
+    {
+    case REPL_FILTER_NONE:
+      return "REPL_FILTER_NONE";
+    case REPL_FILTER_INCLUDE_TBL:
+      return "REPL_FILTER_INCLUDE_TBL";
+    case REPL_FILTER_EXCLUDE_TBL:
+      return "REPL_FILTER_EXCLUDE_TBL";
+    default:
+      return "UNKNOWN";
+    }
+}
+
+static void
+la_count_repl_lists (const LA_INFO * info, int *active_repl_count, int *long_repl_count, int *active_repl_item_count)
+{
+  *active_repl_count = 0;
+  *long_repl_count = 0;
+  *active_repl_item_count = 0;
+
+  if (info->repl_lists == NULL || info->repl_cnt <= 0)
+    {
+      return;
+    }
+
+  for (int i = 0; i < info->repl_cnt; i++)
+    {
+      LA_APPLY *apply = info->repl_lists[i];
+
+      if (apply == NULL)
+	{
+	  continue;
+	}
+
+      if (apply->tranid != 0 || apply->num_items > 0)
+	{
+	  (*active_repl_count)++;
+	  *active_repl_item_count += apply->num_items;
+	}
+
+      if (apply->is_long_trans)
+	{
+	  (*long_repl_count)++;
+	}
+    }
+}
+
+static void
+la_dump_repl_filter (FILE * out, const LA_REPL_FILTER * filter, int indent)
+{
+  int filter_count;
+
+  if (filter == NULL)
+    {
+      fprintf (out, "%*s\"repl_filter\": null", indent, "");
+      return;
+    }
+
+  filter_count = filter->num_filters;
+  if (filter_count < 0)
+    {
+      filter_count = 0;
+    }
+  if (filter->list_size >= 0 && filter_count > filter->list_size)
+    {
+      filter_count = filter->list_size;
+    }
+  if (filter->list == NULL)
+    {
+      filter_count = 0;
+    }
+
+  fprintf (out, "%*s\"repl_filter\": {\n", indent, "");
+  fprintf (out, "%*s\"type\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, la_repl_filter_type_string (filter->type));
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"list_size\": %d,\n", indent + 2, "", filter->list_size);
+  fprintf (out, "%*s\"num_filters\": %d,\n", indent + 2, "", filter->num_filters);
+  fprintf (out, "%*s\"filters\": [\n", indent + 2, "");
+  for (int i = 0; i < filter_count; i++)
+    {
+      fprintf (out, "%*s", indent + 4, "");
+      logwr_dump_json_string_value (out, filter->list[i]);
+      fprintf (out, "%s\n", (i + 1 < filter_count) ? "," : "");
+    }
+  fprintf (out, "%*s]\n", indent + 2, "");
+  fprintf (out, "%*s}", indent, "");
+}
+
+void
+la_dump_la_info (FILE * out)
+{
+  int indent = 2;
+  LA_INFO *info = &la_Info;
+  time_t now = time (NULL);
+  long delay_seconds;
+  long long apply_gap_pages;
+  long long commit_gap_pages;
+  long long required_gap_pages;
+  int active_repl_count;
+  int long_repl_count;
+  int active_repl_item_count;
+
+  if (out == NULL)
+    {
+      out = stdout;
+    }
+
+  delay_seconds =
+    (info->log_record_time > 0 && now >= info->log_record_time) ? (long) (now - info->log_record_time) : -1;
+  apply_gap_pages =
+    (info->append_lsa.pageid != NULL_PAGEID && info->final_lsa.pageid != NULL_PAGEID)
+    ? (long long) (info->append_lsa.pageid - info->final_lsa.pageid) : -1;
+  commit_gap_pages =
+    (info->final_lsa.pageid != NULL_PAGEID && info->committed_lsa.pageid != NULL_PAGEID)
+    ? (long long) (info->final_lsa.pageid - info->committed_lsa.pageid) : -1;
+  required_gap_pages =
+    (info->append_lsa.pageid != NULL_PAGEID && info->required_lsa.pageid != NULL_PAGEID)
+    ? (long long) (info->append_lsa.pageid - info->required_lsa.pageid) : -1;
+  la_count_repl_lists (info, &active_repl_count, &long_repl_count, &active_repl_item_count);
+
+  const char *apply_state = NULL;
+  switch (info->apply_state)
+    {
+    case HA_LOG_APPLIER_STATE_NA:
+      apply_state = "HA_LOG_APPLIER_STATE_NA";
+      break;
+    case HA_LOG_APPLIER_STATE_UNREGISTERED:
+      apply_state = "HA_LOG_APPLIER_STATE_UNREGISTERED";
+      break;
+    case HA_LOG_APPLIER_STATE_RECOVERING:
+      apply_state = "HA_LOG_APPLIER_STATE_RECOVERING";
+      break;
+    case HA_LOG_APPLIER_STATE_WORKING:
+      apply_state = "HA_LOG_APPLIER_STATE_WORKING";
+      break;
+    case HA_LOG_APPLIER_STATE_DONE:
+      apply_state = "HA_LOG_APPLIER_STATE_DONE";
+      break;
+    case HA_LOG_APPLIER_STATE_ERROR:
+      apply_state = "HA_LOG_APPLIER_STATE_ERROR";
+      break;
+    default:
+      apply_state = "UNKNOWN";
+    }
+
+  const char *last_file_state = NULL;
+  switch (info->last_file_state)
+    {
+    case LOG_HA_FILESTAT_CLEAR:
+      last_file_state = "LOG_HA_FILESTAT_CLEAR";
+      break;
+    case LOG_HA_FILESTAT_ARCHIVED:
+      last_file_state = "LOG_HA_FILESTAT_ARCHIVED";
+      break;
+    case LOG_HA_FILESTAT_SYNCHRONIZED:
+      last_file_state = "LOG_HA_FILESTAT_SYNCHRONIZED";
+      break;
+    default:
+      last_file_state = "UNKNOWN";
+    }
+
+  const char *last_server_state = NULL;
+  switch (info->last_server_state)
+    {
+    case HA_SERVER_STATE_NA:
+      last_server_state = "HA_SERVER_STATE_NA";
+      break;
+    case HA_SERVER_STATE_IDLE:
+      last_server_state = "HA_SERVER_STATE_IDLE";
+      break;
+    case HA_SERVER_STATE_ACTIVE:
+      last_server_state = "HA_SERVER_STATE_ACTIVE";
+      break;
+    case HA_SERVER_STATE_TO_BE_ACTIVE:
+      last_server_state = "HA_SERVER_STATE_TO_BE_ACTIVE";
+      break;
+    case HA_SERVER_STATE_STANDBY:
+      last_server_state = "HA_SERVER_STATE_STANDBY";
+      break;
+    case HA_SERVER_STATE_TO_BE_STANDBY:
+      last_server_state = "HA_SERVER_STATE_TO_BE_STANDBY";
+      break;
+    case HA_SERVER_STATE_MAINTENANCE:
+      last_server_state = "HA_SERVER_STATE_MAINTENANCE";
+      break;
+    case HA_SERVER_STATE_DEAD:
+      last_server_state = "HA_SERVER_STATE_DEAD";
+      break;
+    default:
+      last_server_state = "UNKNOWN";
+    }
+
+  const char *la_status = NULL;
+  switch (info->status)
+    {
+    case LA_STATUS_BUSY:
+      la_status = "LA_STATUS_BUSY";
+      break;
+    case LA_STATUS_IDLE:
+      la_status = "LA_STATUS_IDLE";
+      break;
+    default:
+      la_status = "UNKNOWN";
+    }
+
+  fprintf (out, "{\n");
+  fprintf (out, "%*s\"la_info\": {\n", indent, "");
+
+  fprintf (out, "%*s\"log_path\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, info->log_path);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"loginf_path\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, info->loginf_path);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"support_summary\": {\n", indent + 2, "");
+  fprintf (out, "%*s\"dump_time\": %ld,\n", indent + 4, "", (long) now);
+  fprintf (out, "%*s\"delay_seconds\": %ld,\n", indent + 4, "", delay_seconds);
+  fprintf (out, "%*s\"apply_gap_pages\": %lld,\n", indent + 4, "", apply_gap_pages);
+  fprintf (out, "%*s\"commit_gap_pages\": %lld,\n", indent + 4, "", commit_gap_pages);
+  fprintf (out, "%*s\"required_gap_pages\": %lld,\n", indent + 4, "", required_gap_pages);
+  fprintf (out, "%*s\"cur_repl\": %d,\n", indent + 4, "", info->cur_repl);
+  fprintf (out, "%*s\"active_repl_count\": %d,\n", indent + 4, "", active_repl_count);
+  fprintf (out, "%*s\"long_repl_count\": %d,\n", indent + 4, "", long_repl_count);
+  fprintf (out, "%*s\"active_repl_item_count\": %d,\n", indent + 4, "", active_repl_item_count);
+  fprintf (out, "%*s\"total_rows\": %d,\n", indent + 4, "", info->total_rows);
+  fprintf (out, "%*s\"prev_total_rows\": %d,\n", indent + 4, "", info->prev_total_rows);
+  fprintf (out, "%*s\"log_record_time\": %ld,\n", indent + 4, "", (long) info->log_record_time);
+  fprintf (out, "%*s\"log_commit_time\": %ld,\n", indent + 4, "", (long) info->log_commit_time);
+  fprintf (out, "%*s\"num_unflushed\": %d,\n", indent + 4, "", info->num_unflushed);
+  fprintf (out, "%*s\"apply_state\": ", indent + 4, "");
+  logwr_dump_json_string_value (out, apply_state);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"status\": ", indent + 4, "");
+  logwr_dump_json_string_value (out, la_status);
+  fprintf (out, "\n");
+  fprintf (out, "%*s},\n\n", indent + 2, "");
+
+  la_dump_la_act_log (out, indent + 2);
+  fprintf (out, ",\n\n");
+
+  la_dump_la_arv_log (out, indent + 2);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"last_file_state\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, last_file_state);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"start_vsize\": %lu,\n", indent + 2, "", info->start_vsize);
+  fprintf (out, "%*s\"start_time\": %ld,\n", indent + 2, "", (long) info->start_time);
+  fprintf (out, "%*s\"log_record_time\": %ld,\n", indent + 2, "", (long) info->log_record_time);
+
+  fprintf (out, "%*s\"final_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->final_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"committed_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->committed_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"committed_rep_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->committed_rep_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"last_committed_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->last_committed_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"last_committed_rep_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->last_committed_rep_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"repl_cnt\": %d,\n", indent + 2, "", info->repl_cnt);
+  fprintf (out, "%*s\"cur_repl\": %d,\n", indent + 2, "", info->cur_repl);
+  fprintf (out, "%*s\"active_repl_count\": %d,\n", indent + 2, "", active_repl_count);
+  fprintf (out, "%*s\"long_repl_count\": %d,\n", indent + 2, "", long_repl_count);
+  fprintf (out, "%*s\"active_repl_item_count\": %d,\n", indent + 2, "", active_repl_item_count);
+  fprintf (out, "%*s\"total_rows\": %d,\n", indent + 2, "", info->total_rows);
+  fprintf (out, "%*s\"prev_total_rows\": %d,\n", indent + 2, "", info->prev_total_rows);
+  la_dump_la_apply_list (out, indent + 2);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"commit_head\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, info->commit_head);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"commit_tail\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, info->commit_tail);
+  fprintf (out, ",\n");
+
+  fprintf (out, "%*s\"last_deleted_archive_num\": %d,\n", indent + 2, "", info->last_deleted_archive_num);
+  fprintf (out, "%*s\"last_time_archive_deleted\": %ld,\n", indent + 2, "", (long) info->last_time_archive_deleted);
+
+  fprintf (out, "%*s\"log_data\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, info->log_data);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"rec_type\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, info->rec_type);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"undo_unzip_ptr\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, info->undo_unzip_ptr);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"redo_unzip_ptr\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, info->redo_unzip_ptr);
+  fprintf (out, ",\n");
+
+  fprintf (out, "%*s\"apply_state\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, apply_state);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"max_mem_size\": %d,\n", indent + 2, "", info->max_mem_size);
+
+  fprintf (out, "%*s\"cache_pb\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, info->cache_pb);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"cache_buffer_size\": %d,\n", indent + 2, "", info->cache_buffer_size);
+  fprintf (out, "%*s\"last_is_end_of_record\": %s,\n", indent + 2, "", info->last_is_end_of_record ? "true" : "false");
+  fprintf (out, "%*s\"is_end_of_record\": %s,\n", indent + 2, "", info->is_end_of_record ? "true" : "false");
+  fprintf (out, "%*s\"last_server_state\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, last_server_state);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"is_role_changed\": %s,\n", indent + 2, "", info->is_role_changed ? "true" : "false");
+
+  fprintf (out, "%*s\"append_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->append_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"eof_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->eof_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"required_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->required_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"insert_counter\": %lu,\n", indent + 2, "", info->insert_counter);
+  fprintf (out, "%*s\"update_counter\": %lu,\n", indent + 2, "", info->update_counter);
+  fprintf (out, "%*s\"delete_counter\": %lu,\n", indent + 2, "", info->delete_counter);
+  fprintf (out, "%*s\"schema_counter\": %lu,\n", indent + 2, "", info->schema_counter);
+  fprintf (out, "%*s\"commit_counter\": %lu,\n", indent + 2, "", info->commit_counter);
+  fprintf (out, "%*s\"fail_counter\": %lu,\n", indent + 2, "", info->fail_counter);
+  fprintf (out, "%*s\"log_commit_time\": %ld,\n", indent + 2, "", (long) info->log_commit_time);
+  fprintf (out, "%*s\"required_lsa_changed\": %s,\n", indent + 2, "", info->required_lsa_changed ? "true" : "false");
+  fprintf (out, "%*s\"status\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, la_status);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"is_apply_info_updated\": %s,\n", indent + 2, "", info->is_apply_info_updated ? "true" : "false");
+  fprintf (out, "%*s\"num_unflushed\": %d,\n", indent + 2, "", info->num_unflushed);
+
+  fprintf (out, "%*s\"log_path_lockf_vdes\": %d,\n", indent + 2, "", info->log_path_lockf_vdes);
+  fprintf (out, "%*s\"db_lockf_vdes\": %d,\n", indent + 2, "", info->db_lockf_vdes);
+
+  la_dump_repl_filter (out, &info->repl_filter, indent + 2);
+  fprintf (out, ",\n");
+
+  fprintf (out, "%*s\"reinit_copylog\": %s,\n", indent + 2, "", info->reinit_copylog ? "true" : "false");
+  fprintf (out, "%*s\"maxslotted_reclength\": %d\n", indent + 2, "", info->maxslotted_reclength);
+
+  fprintf (out, "%*s}\n", indent, "");
+  fprintf (out, "}\n");
+
+  fflush (out);
+}
+
+void
+la_dump_la_act_log (FILE * out, int indent)
+{
+  LA_ACT_LOG *a = &la_Info.act_log;
+  LOG_PAGE *hdr_page = a->hdr_page;
+  LOG_HEADER *log_hdr = a->log_hdr;
+
+  fprintf (out, "%*s\"la_act_log\": {\n", indent, "");
+  fprintf (out, "%*s\"path\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, a->path);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"log_vdes\": %d,\n", indent + 2, "", a->log_vdes);
+
+  logwr_dump_log_page_hdr (out, hdr_page != NULL ? &hdr_page->hdr : NULL, indent + 2);
+  fprintf (out, ",\n\n");
+
+  logwr_dump_log_header (out, log_hdr, indent + 2);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"db_iopagesize\": %d,\n", indent + 2, "", a->db_iopagesize);
+  fprintf (out, "%*s\"db_logpagesize\": %d\n", indent + 2, "", a->db_logpagesize);
+
+  fprintf (out, "%*s}", indent, "");
+}
+
+void
+la_dump_la_arv_log (FILE * out, int indent)
+{
+  LA_ARV_LOG *r = &la_Info.arv_log;
+  LOG_PAGE *hdr_page = r->hdr_page;
+  LOG_ARV_HEADER *log_hdr = r->log_hdr;
+
+  if (r->log_vdes == NULL_VOLDES)
+    {
+      fprintf (out, "%*s\"la_arv_log\": null", indent, "");
+      return;
+    }
+
+  fprintf (out, "%*s\"la_arv_log\": {\n", indent, "");
+  fprintf (out, "%*s\"path\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, r->path);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"log_vdes\": %d,\n", indent + 2, "", r->log_vdes);
+
+  logwr_dump_log_page_hdr (out, hdr_page != NULL ? &hdr_page->hdr : NULL, indent + 2);
+  fprintf (out, ",\n\n");
+
+  logwr_dump_log_arv_header (out, log_hdr, indent + 2);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"arv_num\": %d\n", indent + 2, "", r->arv_num);
+  fprintf (out, "%*s}", indent, "");
+}
+
+void
+la_dump_la_apply_list (FILE * out, int indent)
+{
+  if (la_Info.repl_lists == NULL)
+    {
+      fprintf (out, "%*s\"repl_lists\": null", indent, "");
+      return;
+    }
+
+  fprintf (out, "%*s\"repl_lists\": [\n", indent, "");
+  for (int i = 0; i < la_Info.repl_cnt; i++)
+    {
+      la_dump_la_apply (out, i, indent + 2);
+      fprintf (out, "%s\n", (i + 1 < la_Info.repl_cnt) ? "," : "");
+    }
+  fprintf (out, "%*s]", indent, "");
+}
+
+void
+la_dump_la_apply (FILE * out, int idx, int indent)
+{
+  if (idx < 0 || la_Info.repl_lists == NULL || idx >= la_Info.repl_cnt)
+    {
+      fprintf (out, "%*snull", indent, "");
+      return;
+    }
+
+  LA_APPLY *apply = la_Info.repl_lists[idx];
+  if (apply == NULL)
+    {
+      fprintf (out, "%*snull", indent, "");
+      return;
+    }
+
+  fprintf (out, "%*s{\n", indent, "");
+  fprintf (out, "%*s\"index\": %d,\n", indent + 2, "", idx);
+  fprintf (out, "%*s\"tranid\": %d,\n", indent + 2, "", apply->tranid);
+  fprintf (out, "%*s\"num_items\": %d,\n", indent + 2, "", apply->num_items);
+  fprintf (out, "%*s\"is_long_trans\": %s,\n", indent + 2, "", apply->is_long_trans ? "true" : "false");
+
+  fprintf (out, "%*s\"start_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &apply->start_lsa, indent + 4);
+  fprintf (out, ",\n");
+
+  fprintf (out, "%*s\"last_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &apply->last_lsa, indent + 4);
+  fprintf (out, ",\n");
+
+  fprintf (out, "%*s\"head\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, apply->head);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"tail\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, apply->tail);
+  fprintf (out, "\n");
+
+  fprintf (out, "%*s}", indent, "");
+}
+
+#endif /* CS_MODE */
+
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 int
 la_start_dk_sharing (void)

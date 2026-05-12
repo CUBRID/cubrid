@@ -86,9 +86,6 @@
 #define DB_GET_COMPRESSED_STRING(v) \
       ((DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARCHAR) ? NULL : (v)->data.ch.medium.compressed_buf)
 
-#define DB_GET_STRING_PRECISION(v) \
-    ((v)->domain.char_info.length)
-
 #define DB_GET_ENUMERATION(v) \
       ((v)->data.enumeration)
 #define DB_GET_ENUM_ELEM_SHORT(elem) \
