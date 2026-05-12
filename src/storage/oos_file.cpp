@@ -1282,6 +1282,10 @@ oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, char *buf_out, int
       return er_errid ();
     }
 
+  /* Writer-side invariant: every OOS slot carries at least the chain header.
+   * A shorter slot indicates a writer bug; keep the runtime guard for release
+   * builds to catch genuine on-disk corruption safely. */
+  assert (oos_recdes.length >= OOS_RECORD_HEADER_SIZE);
   if (oos_recdes.length < OOS_RECORD_HEADER_SIZE)
     {
       oos_error ("OOS slot smaller than header (len=%d) at oid={vol=%d,page=%d,slot=%d}",
