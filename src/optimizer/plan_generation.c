@@ -3037,7 +3037,12 @@ qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
     degree = (x <= 1) ? 2 : ((63 - __builtin_clzll (x)) + 2);
   }
   cap = prm_get_integer_value (PRM_ID_PARALLELISM);
-  if (cap > 0 && degree > cap)
+  if (cap <= 0)
+    {
+      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
+      return;
+    }
+  if (degree > cap)
     {
       degree = cap;
     }
