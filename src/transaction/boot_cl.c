@@ -84,6 +84,7 @@
 #include "show_meta.h"
 #include "tz_support.h"
 #include "dbtype.h"
+#include "method_callback.hpp"
 #include "object_primitive.h"
 #include "connection_globals.h"
 #include "host_lookup.h"
@@ -709,6 +710,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   bool skip_preferred_hosts = false;
   bool skip_db_info = false;
 #endif /* CS_MODE */
+  const char *conf_file = NULL;
 
   assert (client_credential != NULL);
 
@@ -766,7 +768,21 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
 
   /* initialize system parameters */
-  if (sysprm_load_and_init_client (client_credential->get_db_name (), NULL) != NO_ERROR)
+#if defined (CS_MODE)
+  if (BOOT_BROKER_CLIENT_TYPE (client_credential->client_type))
+    {
+      conf_file = getenv ("CUBRID_CONF_FOR_BROKER");
+      if (conf_file && access (conf_file, R_OK | F_OK) != 0)
+	{
+	  conf_file = NULL;
+	}
+#if !defined (NDEBUG)
+      _er_log_debug (ARG_FILE_LINE, "conf_for_broker = %s\n", conf_file ? conf_file : "unknown");
+#endif
+    }
+#endif
+
+  if (sysprm_load_and_init_client (client_credential->get_db_name (), conf_file) != NO_ERROR)
     {
       error_code = ER_BO_CANT_LOAD_SYSPRM;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
@@ -1530,6 +1546,7 @@ boot_client_all_finalize (int final_level)
 	  tr_final ();
 	  au_final ();
 	  sm_final ();
+	  method_callback_final ();
 	  ws_final ();
 	  es_final ();
 	  tp_final ();
@@ -1561,12 +1578,11 @@ boot_client_all_finalize (int final_level)
 
       boot_client (NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT, TRAN_DEFAULT_ISOLATION_LEVEL ());
       boot_Is_client_all_final = true;
-
-      /* restore the signals that was blocked, when the function started. */
-      signal (SIGTERM, sigterm_handler);
-      signal (SIGABRT, sigabrt_handler);
-      signal (SIGINT, sigint_handler);
     }
+  /* restore the signals that was blocked, when the function ended. */
+  signal (SIGTERM, sigterm_handler);
+  signal (SIGABRT, sigabrt_handler);
+  signal (SIGINT, sigint_handler);
 }
 
 #if defined(CS_MODE)
