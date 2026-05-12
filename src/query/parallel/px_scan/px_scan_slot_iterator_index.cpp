@@ -119,6 +119,8 @@ namespace parallel_scan
     TP_DOMAIN *key_domain = m_btid_int->key_type;
     key_val_range *ranges = m_input_handler->get_key_val_ranges ();
     int num_ranges = m_input_handler->get_num_key_ranges ();
+    /* gap-eager trigger compares post-advance m_current_range_idx against this entry snapshot — strictly thread-local, no mutex needed. */
+    int entry_range_idx = m_current_range_idx;
 
     /* Keys arrive in ascending B-tree order; iterate ranges forward */
     for (int i = m_current_range_idx; i < num_ranges; i++)
@@ -281,15 +283,23 @@ namespace parallel_scan
 	      }
 	    return NO_ERROR;
 	  }
+
+	/* (vpid, range_idx) 처리 단위 invariant: mid-leaf advance 발생 시 즉시 stop + signal.
+	 * 이 worker 는 entry_range_idx 의 slots 만 처리. 다음 range 의 slots 는 descent worker 가 처리. */
+	if (m_current_range_idx > entry_range_idx)
+	  {
+	    *past_upper = true;
+	    return NO_ERROR;
+	  }
       }
 
     *past_upper = true;
     return NO_ERROR;
   }
 
-  /* Adopt pre-fixed leaf page; on early-fail path the caller's fix must be released here. */
+  /* slot_hint positions iterator at descent's leaf-slot to skip pre-range keys. */
   int
-  slot_iterator_index::set_page (THREAD_ENTRY *thread_p, PAGE_PTR page)
+  slot_iterator_index::set_page (THREAD_ENTRY *thread_p, PAGE_PTR page, INT16 slot_hint)
   {
     assert (page != nullptr);
 
@@ -316,10 +326,19 @@ namespace parallel_scan
     m_page = page;
 
     m_num_keys = btree_node_number_of_keys (thread_p, m_page);
-    m_current_slot = m_use_desc_index ? m_num_keys : 1;
 
-    m_current_range_idx = 0;
+    /* slot_hint > m_num_keys (BTREE_KEY_BIGGER) keeps loop entry-guard false → immediate leaf-chain advance. */
+    if (slot_hint != NULL_SLOTID && slot_hint >= 1)
+      {
+	m_current_slot = slot_hint;
+      }
+    else
+      {
+	m_current_slot = m_use_desc_index ? m_num_keys : 1;
+      }
 
+    /* m_current_range_idx is NOT reset here — Synthesis S1 invariant: set_range_idx is the sole resetter,
+     * called by task wiring only when fetch returns a fresh range_idx (descent branch, ≥ 0). */
     return NO_ERROR;
   }
 
@@ -507,7 +526,7 @@ namespace parallel_scan
 		pgbuf_unfix (thread_p, m_page);
 		m_page = nullptr;
 	      }
-	    m_input_handler->release_leaf_and_maybe_advance (thread_p, m_scan_id, m_current_range_idx);
+	    m_input_handler->signal_chain_ended (m_current_range_idx);
 	    return S_ERROR;
 	  }
 	/* S_END means skip this OID, continue to next */
@@ -564,7 +583,7 @@ namespace parallel_scan
 		pgbuf_unfix (thread_p, m_page);
 		m_page = nullptr;
 	      }
-	    m_input_handler->release_leaf_and_maybe_advance (thread_p, m_scan_id, m_current_range_idx);
+	    m_input_handler->signal_chain_ended (m_current_range_idx);
 	    return S_ERROR;
 	  }
 
@@ -586,7 +605,7 @@ namespace parallel_scan
 		pgbuf_unfix (thread_p, m_page);
 		m_page = nullptr;
 	      }
-	    m_input_handler->release_leaf_and_maybe_advance (thread_p, m_scan_id, m_current_range_idx);
+	    m_input_handler->signal_chain_ended (m_current_range_idx);
 	    return S_ERROR;
 	  }
 
@@ -603,7 +622,7 @@ namespace parallel_scan
 		    pgbuf_unfix (thread_p, m_page);
 		    m_page = nullptr;
 		  }
-		m_input_handler->release_leaf_and_maybe_advance (thread_p, m_scan_id, m_current_range_idx);
+		m_input_handler->signal_chain_ended (m_current_range_idx);
 		return S_END;
 	      }
 	    continue;
@@ -680,7 +699,7 @@ namespace parallel_scan
 			pgbuf_unfix (thread_p, m_page);
 			m_page = nullptr;
 		      }
-		    m_input_handler->release_leaf_and_maybe_advance (thread_p, m_scan_id, m_current_range_idx);
+		    m_input_handler->signal_chain_ended (m_current_range_idx);
 		    return S_ERROR;
 		  }
 		continue;
@@ -712,7 +731,7 @@ namespace parallel_scan
 		pgbuf_unfix (thread_p, m_page);
 		m_page = nullptr;
 	      }
-	    m_input_handler->release_leaf_and_maybe_advance (thread_p, m_scan_id, m_current_range_idx);
+	    m_input_handler->signal_chain_ended (m_current_range_idx);
 	    return S_ERROR;
 	  }
 
@@ -756,7 +775,7 @@ namespace parallel_scan
 		    pgbuf_unfix (thread_p, m_page);
 		    m_page = nullptr;
 		  }
-		m_input_handler->release_leaf_and_maybe_advance (thread_p, m_scan_id, m_current_range_idx);
+		m_input_handler->signal_chain_ended (m_current_range_idx);
 		return S_ERROR;
 	      }
 	    /* S_END means skip, continue to next OID */
@@ -771,13 +790,12 @@ namespace parallel_scan
 	m_slot_clear_key = false;
       }
 
-    /* Page exhausted */
+    /* Page exhausted; chain-walk naturally — do NOT signal chain_ended (m_leaf_ended stays false so next fetch fixes m_current_leaf_vpid). */
     if (m_page != nullptr)
       {
 	pgbuf_unfix (thread_p, m_page);
 	m_page = nullptr;
       }
-    m_input_handler->release_leaf_and_maybe_advance (thread_p, m_scan_id, m_current_range_idx);
     return S_END;
   }
 }

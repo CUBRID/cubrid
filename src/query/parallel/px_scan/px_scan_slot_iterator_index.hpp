@@ -42,13 +42,19 @@ namespace parallel_scan
       int initialize (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, val_descr *vd);
       int finalize (THREAD_ENTRY *thread_p);
 
-      /* adopts pre-fixed READ leaf; never re-fixes. */
-      int set_page (THREAD_ENTRY *thread_p, PAGE_PTR page);
+      /* adopts pre-fixed READ leaf; slot_hint = descent's leaf-slot or NULL_SLOTID (default 1 asc / m_num_keys desc). */
+      int set_page (THREAD_ENTRY *thread_p, PAGE_PTR page, INT16 slot_hint = NULL_SLOTID);
       SCAN_CODE next_qualified_slot_with_peek (THREAD_ENTRY *thread_p);
 
       void set_input_handler (input_handler_index *handler)
       {
 	m_input_handler = handler;
+      }
+
+      /* Sole resetter of m_current_range_idx — called by task wiring only when fetch returns range_idx >= 0 (descent branch). */
+      void set_range_idx (int idx)
+      {
+	m_current_range_idx = idx;
       }
 
     private:

@@ -591,6 +591,8 @@ namespace parallel_scan
     QMGR_TEMP_FILE *list_tfile = nullptr;
     PAGE_PTR index_page = nullptr;
 
+    INT16 index_slot_hint = NULL_SLOTID;
+    int index_range_idx = -1;
     while (!stop)
       {
 	if (m_interrupt->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
@@ -620,7 +622,10 @@ namespace parallel_scan
 	else if constexpr (ST == SCAN_TYPE::INDEX)
 	  {
 	    index_page = nullptr;
-	    scan_code = m_input_handler->get_next_page_with_fix (&thread_ref, m_scan_id, index_page);
+	    index_slot_hint = NULL_SLOTID;
+	    index_range_idx = -1;
+	    scan_code = m_input_handler->get_next_page_with_fix (&thread_ref, m_scan_id, index_page, &index_slot_hint,
+			&index_range_idx);
 	  }
 	else
 	  {
@@ -654,7 +659,13 @@ namespace parallel_scan
 	  }
 	else if constexpr (ST == SCAN_TYPE::INDEX)
 	  {
-	    set_page_err = m_slot_iterator.set_page (&thread_ref, index_page);
+	    /* Hard contract: only refresh slot_iterator's range_idx when fetch performed a descent (range_idx >= 0).
+	     * Sentinel -1 means chain-walk; keep slot_iterator's local m_current_range_idx untouched. */
+	    if (index_range_idx >= 0)
+	      {
+		m_slot_iterator.set_range_idx (index_range_idx);
+	      }
+	    set_page_err = m_slot_iterator.set_page (&thread_ref, index_page, index_slot_hint);
 	  }
 	else
 	  {
