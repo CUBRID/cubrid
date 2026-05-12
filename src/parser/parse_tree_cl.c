@@ -4054,6 +4054,14 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "blob_length";
     case PT_CLOB_LENGTH:
       return "clob_length";
+    case PT_BFILE_TO_BLOB:
+      return "bfile_to_blob";
+    case PT_BLOB_TO_BFILE:
+      return "blob_to_bfile";
+    case PT_CFILE_TO_CLOB:
+      return "cfile_to_clob";
+    case PT_CLOB_TO_CFILE:
+      return "clob_to_cfile";
     case PT_TYPEOF:
       return "typeof ";
     case PT_INDEX_CARDINALITY:

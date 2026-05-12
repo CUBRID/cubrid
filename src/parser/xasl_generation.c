@@ -8118,7 +8118,9 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_BFILE_LENGTH || node->info.expr.op == PT_CHAR_TO_CFILE
 		       || node->info.expr.op == PT_CFILE_LENGTH || node->info.expr.op == PT_BIT_TO_BLOB
 		       || node->info.expr.op == PT_CHAR_TO_BLOB || node->info.expr.op == PT_BLOB_LENGTH
-		       || node->info.expr.op == PT_CHAR_TO_CLOB || node->info.expr.op == PT_CLOB_LENGTH)
+		       || node->info.expr.op == PT_CHAR_TO_CLOB || node->info.expr.op == PT_CLOB_LENGTH
+		       || node->info.expr.op == PT_BFILE_TO_BLOB || node->info.expr.op == PT_BLOB_TO_BFILE
+		       || node->info.expr.op == PT_CFILE_TO_CLOB || node->info.expr.op == PT_CLOB_TO_CFILE)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
 		  r2 = NULL;
@@ -9398,6 +9400,34 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  domain = pt_xasl_data_type_to_domain (parser, data_type);
 
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_CLOB_TO_CHAR, domain);
+		  break;
+
+		case PT_BFILE_TO_BLOB:
+		  data_type = pt_make_prim_data_type (parser, PT_TYPE_BLOB);
+		  domain = pt_xasl_data_type_to_domain (parser, data_type);
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_BFILE_TO_BLOB, domain);
+		  parser_free_tree (parser, data_type);
+		  break;
+
+		case PT_BLOB_TO_BFILE:
+		  data_type = pt_make_prim_data_type (parser, PT_TYPE_BFILE);
+		  domain = pt_xasl_data_type_to_domain (parser, data_type);
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_BLOB_TO_BFILE, domain);
+		  parser_free_tree (parser, data_type);
+		  break;
+
+		case PT_CFILE_TO_CLOB:
+		  data_type = pt_make_prim_data_type (parser, PT_TYPE_CLOB);
+		  domain = pt_xasl_data_type_to_domain (parser, data_type);
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_CFILE_TO_CLOB, domain);
+		  parser_free_tree (parser, data_type);
+		  break;
+
+		case PT_CLOB_TO_CFILE:
+		  data_type = pt_make_prim_data_type (parser, PT_TYPE_CFILE);
+		  domain = pt_xasl_data_type_to_domain (parser, data_type);
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_CLOB_TO_CFILE, domain);
+		  parser_free_tree (parser, data_type);
 		  break;
 
 		case PT_BLOB_LENGTH:

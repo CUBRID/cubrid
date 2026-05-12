@@ -25735,6 +25735,150 @@ db_clob_length (const DB_VALUE * src_value, DB_VALUE * result_value)
   return error_status;
 }
 
+/*
+ * db_bfile_to_blob - convert external BFILE value to internal BLOB value
+ *   return: NO_ERROR or error code
+ *   src_value(in): bfile value
+ *   result_value(out): blob value
+ *
+ *   Reads the bytes from the BFILE-backed external storage and stores them
+ *   inline as a BLOB. Mirrors db_blob_from_file (), which first builds a
+ *   BFILE then folds it into a BLOB.
+ */
+int
+db_bfile_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
+{
+  int error_status = NO_ERROR;
+
+  assert (src_value != NULL && result_value != NULL);
+
+  if (DB_VALUE_DOMAIN_TYPE (src_value) == DB_TYPE_NULL)
+    {
+      db_make_null (result_value);
+      return NO_ERROR;
+    }
+
+  error_status = db_bfile_to_bit (src_value, NULL, result_value);
+  if (error_status != NO_ERROR)
+    {
+      return error_status;
+    }
+
+  result_value->domain.general_info.type = DB_TYPE_BLOB;
+
+  return error_status;
+}
+
+/*
+ * db_blob_to_bfile - convert internal BLOB value to external BFILE value
+ *   return: NO_ERROR or error code
+ *   src_value(in): blob value
+ *   result_value(out): bfile value
+ *
+ *   Writes the inline BLOB bytes to a freshly allocated external storage
+ *   file and returns a BFILE handle. Composed from db_blob_to_bit ()
+ *   followed by db_bit_to_bfile ().
+ */
+int
+db_blob_to_bfile (const DB_VALUE * src_value, DB_VALUE * result_value)
+{
+  int error_status = NO_ERROR;
+  DB_VALUE bit_value;
+
+  assert (src_value != NULL && result_value != NULL);
+
+  db_make_null (&bit_value);
+
+  if (DB_VALUE_DOMAIN_TYPE (src_value) == DB_TYPE_NULL)
+    {
+      db_make_null (result_value);
+      return NO_ERROR;
+    }
+
+  error_status = db_blob_to_bit (src_value, NULL, &bit_value);
+  if (error_status != NO_ERROR)
+    {
+      return error_status;
+    }
+
+  error_status = db_bit_to_bfile (&bit_value, result_value);
+
+  pr_clear_value (&bit_value);
+  return error_status;
+}
+
+/*
+ * db_cfile_to_clob - convert external CFILE value to internal CLOB value
+ *   return: NO_ERROR or error code
+ *   src_value(in): cfile value
+ *   result_value(out): clob value
+ *
+ *   Reads the characters from the CFILE-backed external storage and stores
+ *   them inline as a CLOB. Mirrors db_clob_from_file (), which first builds
+ *   a CFILE then folds it into a CLOB.
+ */
+int
+db_cfile_to_clob (const DB_VALUE * src_value, DB_VALUE * result_value)
+{
+  int error_status = NO_ERROR;
+
+  assert (src_value != NULL && result_value != NULL);
+
+  if (DB_VALUE_DOMAIN_TYPE (src_value) == DB_TYPE_NULL)
+    {
+      db_make_null (result_value);
+      return NO_ERROR;
+    }
+
+  error_status = db_cfile_to_char (src_value, NULL, result_value);
+  if (error_status != NO_ERROR)
+    {
+      return error_status;
+    }
+
+  result_value->domain.general_info.type = DB_TYPE_CLOB;
+
+  return error_status;
+}
+
+/*
+ * db_clob_to_cfile - convert internal CLOB value to external CFILE value
+ *   return: NO_ERROR or error code
+ *   src_value(in): clob value
+ *   result_value(out): cfile value
+ *
+ *   Writes the inline CLOB characters to a freshly allocated external
+ *   storage file and returns a CFILE handle. Composed from db_clob_to_char ()
+ *   followed by db_char_to_cfile ().
+ */
+int
+db_clob_to_cfile (const DB_VALUE * src_value, DB_VALUE * result_value)
+{
+  int error_status = NO_ERROR;
+  DB_VALUE char_value;
+
+  assert (src_value != NULL && result_value != NULL);
+
+  db_make_null (&char_value);
+
+  if (DB_VALUE_DOMAIN_TYPE (src_value) == DB_TYPE_NULL)
+    {
+      db_make_null (result_value);
+      return NO_ERROR;
+    }
+
+  error_status = db_clob_to_char (src_value, NULL, &char_value);
+  if (error_status != NO_ERROR)
+    {
+      return error_status;
+    }
+
+  error_status = db_char_to_cfile (&char_value, result_value);
+
+  pr_clear_value (&char_value);
+  return error_status;
+}
+
 
 /*
  * db_get_datetime_from_dbvalue () - splits a generic DB_VALUE to

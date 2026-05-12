@@ -27275,6 +27275,10 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_CFILE_LENGTH:
     case PT_BLOB_LENGTH:
     case PT_CLOB_LENGTH:
+    case PT_BFILE_TO_BLOB:
+    case PT_BLOB_TO_BFILE:
+    case PT_CFILE_TO_CLOB:
+    case PT_CLOB_TO_CFILE:
       if (c != 1)
 	{
 	  return NULL;
