@@ -589,8 +589,9 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   // create request worker pool
   //*INDENT-OFF*
   css_Server_request_worker_pool = thread_create_worker_pool<cubthread::stats_t::on, cubthread::pool_t::elastic> (
-      max_transaction_concurrency,
+      css_get_max_connections (),
       cubthread::system_core_count (),
+      max_transaction_concurrency,
       max_transaction_worker,
       "transaction",
       thread_get_entry_manager (),
@@ -2670,12 +2671,12 @@ css_get_task_stats (UINT64 *stats_out)
 }
 
 //
-// css_get_num_request_workers () - get number of workers executing server requests
+// css_get_num_request_workers () - get max number of workers executing server requests
 //
 size_t
 css_get_num_request_workers (void)
 {
-  return css_Server_request_worker_pool->get_pool_size ();
+  return css_Server_request_worker_pool->get_max_worker ();
 }
 
 //
@@ -2786,7 +2787,7 @@ css_are_all_request_handlers_suspended (void)
       return false;
     }
 
-  if (checked_threads_count == css_Server_request_worker_pool->get_pool_size ())
+  if (checked_threads_count == css_Server_request_worker_pool->get_max_concurrency ())
     {
       // all threads are suspended
       return true;
