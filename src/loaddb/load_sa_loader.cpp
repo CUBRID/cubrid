@@ -2766,9 +2766,8 @@ ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE
   val.data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
   mem = context->mobj + att->offset;
   CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
-  /* CHAR is variable_p=1 since Step 1; bound bits belong to fixed-precision
-   * attributes only, so no OBJ_SET_BOUND_BIT here. (See ldr_null_db_generic
-   * for the variable_p-aware pattern in other paths.) */
+  /* CHAR is now stored in the variable-length attribute region (no bound bit
+   * slot exists for variable attributes), so OBJ_SET_BOUND_BIT does not apply here. */
 
 error_exit:
   return err;
