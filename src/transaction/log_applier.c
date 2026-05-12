@@ -565,7 +565,8 @@ static int la_write_insert_sql_log (LA_ITEM * item, DB_OBJECT * class_obj, RECDE
 static int la_apply_dummy_oos_log (LA_APPLY * apply, LA_ITEM * item);
 static int la_apply_delete_log (LA_ITEM * item);
 static int la_apply_update_log (LA_ITEM * item);
-static int la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item);
+static int la_apply_insert_log (LA_ITEM * item);
+static int la_apply_oos_insert_log (LA_APPLY * apply, LA_ITEM * item);
 static int la_update_query_execute (const char *sql, bool au_disable);
 static int la_update_query_execute_with_values (const char *sql, int arg_count, DB_VALUE * vals, bool au_disable);
 static int la_apply_statement_log (LA_ITEM * item);
@@ -3668,7 +3669,6 @@ static int
 la_get_oos_chunk_oid (LA_ITEM * item, LOG_PAGE * pgptr, OID * chunk_oid)
 {
   LOG_RECORD_HEADER *lrec;
-  LOG_PAGE *pg;
   PGLENGTH offset;
   LOG_PAGEID pageid;
   LOG_DATA *logdata = NULL;
@@ -3687,12 +3687,11 @@ la_get_oos_chunk_oid (LA_ITEM * item, LOG_PAGE * pgptr, OID * chunk_oid)
       return NO_ERROR;
     }
 
-  pg = pgptr;
-  lrec = LOG_GET_LOG_RECORD_HEADER (pg, &item->target_lsa);
+  lrec = LOG_GET_LOG_RECORD_HEADER (pgptr, &item->target_lsa);
   offset = DB_SIZEOF (LOG_RECORD_HEADER) + item->target_lsa.offset;
   pageid = item->target_lsa.pageid;
 
-  LA_LOG_READ_ALIGN (error, offset, pageid, pg);
+  LA_LOG_READ_ALIGN (error, offset, pageid, pgptr);
   if (error != NO_ERROR)
     {
       return NO_ERROR;
@@ -3700,7 +3699,7 @@ la_get_oos_chunk_oid (LA_ITEM * item, LOG_PAGE * pgptr, OID * chunk_oid)
 
   /* First switch picks record size for the page-boundary fit check; second
    * switch (after the advance) casts to the type-specific struct.  Cannot
-   * be merged because LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT may shift pg. */
+   * be merged because LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT may shift pgptr. */
   switch (lrec->type)
     {
     case LOG_UNDOREDO_DATA:
@@ -3721,7 +3720,7 @@ la_get_oos_chunk_oid (LA_ITEM * item, LOG_PAGE * pgptr, OID * chunk_oid)
       return NO_ERROR;
     }
 
-  LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset, pageid, pg);
+  LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset, pageid, pgptr);
   if (error != NO_ERROR)
     {
       return NO_ERROR;
@@ -3731,17 +3730,17 @@ la_get_oos_chunk_oid (LA_ITEM * item, LOG_PAGE * pgptr, OID * chunk_oid)
     {
     case LOG_UNDOREDO_DATA:
     case LOG_DIFF_UNDOREDO_DATA:
-      logdata = &((LOG_REC_UNDOREDO *) ((char *) pg->area + offset))->data;
+      logdata = &((LOG_REC_UNDOREDO *) ((char *) pgptr->area + offset))->data;
       break;
     case LOG_MVCC_UNDOREDO_DATA:
     case LOG_MVCC_DIFF_UNDOREDO_DATA:
-      logdata = &((LOG_REC_MVCC_UNDOREDO *) ((char *) pg->area + offset))->undoredo.data;
+      logdata = &((LOG_REC_MVCC_UNDOREDO *) ((char *) pgptr->area + offset))->undoredo.data;
       break;
     case LOG_REDO_DATA:
-      logdata = &((LOG_REC_REDO *) ((char *) pg->area + offset))->data;
+      logdata = &((LOG_REC_REDO *) ((char *) pgptr->area + offset))->data;
       break;
     case LOG_MVCC_REDO_DATA:
-      logdata = &((LOG_REC_MVCC_REDO *) ((char *) pg->area + offset))->redo.data;
+      logdata = &((LOG_REC_MVCC_REDO *) ((char *) pgptr->area + offset))->redo.data;
       break;
     default:
       return NO_ERROR;		/* unreachable — handled above */
@@ -3830,8 +3829,8 @@ la_cache_oos_value (const OID * head_oid, const char *payload, int payload_lengt
  *   lines.  A miss is treated as an invariant violation (eager assembly +
  *   tranid scope make a hit guaranteed in normal operation) and surfaces as
  *   ER_FAILED so an operator sees a loud signal in the error log instead of
- *   silently synthesized data.  The caller (la_apply_insert_log) already
- *   isolates this error from row replication via er_stack_push / pop +
+ *   silently synthesized data.  The heap-row sql.log callers already isolate
+ *   this error from row replication via er_stack_push / pop +
  *   la_set_error_sql_log.
  */
 static int
@@ -6028,30 +6027,27 @@ la_apply_dummy_oos_log (LA_APPLY * apply, LA_ITEM * item)
 }
 
 /*
- * la_apply_insert_log() - apply the insert log to the target slave
+ * la_apply_oos_insert_log() - apply an OOS insert log to the target slave
  *   return: NO_ERROR or error code
  *   apply(in/out): apply list state
- *   item(in): replication item
+ *   item(in): OOS replication item
  *
  * Note:
- *      Apply the insert log to the target slave.
- *      . get the target log page
- *      . get the record description
- *      . fetch the class info
- *      . create a replication object to be flushed and add it to a link
- *      . If la_enable_sql_logging(config param is ha_enable_sql_logging) is enabled, the query is written to a file.
+ *      OOS INSERT and UPDATE both emit RVREPL_OOS_INSERT items before the
+ *      heap row item.  This function applies the OOS chunk record and, when
+ *      sql logging is enabled, caches the assembled OOS value so the later
+ *      heap INSERT/UPDATE sql.log path can reconstruct the column value.
  */
 static int
-la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
+la_apply_oos_insert_log (LA_APPLY * apply, LA_ITEM * item)
 {
   int error = NO_ERROR;
   DB_OBJECT *class_obj;
   LOG_PAGE *pgptr = NULL;
-  unsigned int rcvindex;
+  unsigned int rcvindex = 0;
   RECDES *recdes;
   LOG_PAGEID old_pageid = NULL_PAGEID;
-  bool is_mvcc_class;
-  bool rebuild_oos = item->item_type == RVREPL_OOS_INSERT && apply->need_oos_rebuild;
+  bool rebuild_oos = apply->need_oos_rebuild;
   OID oos_head_oid = OID_INITIALIZER;	/* master's chunk_index=0 OID — sql.log cache key */
 
   error = la_flush_repl_items (false);
@@ -6073,7 +6069,6 @@ la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
     }
 
   recdes = la_assign_recdes_from_pool ();
-  is_mvcc_class = la_is_mvcc_class (ws_oid (class_obj));
 
   if (rebuild_oos)
     {
@@ -6103,15 +6098,15 @@ la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
 	  goto end;
 	}
 
-      /* retrieve the target record description */
-      error = la_get_recdes (&item->target_lsa, pgptr, recdes, &rcvindex, la_Info.rec_type, is_mvcc_class);
+      /* retrieve the target OOS record description */
+      error = la_get_recdes (&item->target_lsa, pgptr, recdes, &rcvindex, la_Info.rec_type, false);
       if (error != NO_ERROR)
 	{
 	  goto end;
 	}
 
       /* Single-chunk: target_lsa already points at the only/head chunk. */
-      if (item->item_type == RVREPL_OOS_INSERT && la_enable_sql_logging)
+      if (la_enable_sql_logging)
 	{
 	  (void) la_get_oos_chunk_oid (item, pgptr, &oos_head_oid);
 	}
@@ -6125,7 +6120,7 @@ la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
       goto end;
     }
 
-  if (rcvindex != RVHF_INSERT && rcvindex != RVHF_MVCC_INSERT && rcvindex != RVOOS_INSERT)
+  if (rcvindex != RVOOS_INSERT)
     {
       er_log_debug (ARG_FILE_LINE, "apply_insert : rcvindex = %d\n", rcvindex);
       error = ER_FAILED;
@@ -6141,21 +6136,16 @@ la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
        * not abort row replication.  er_stack_push/pop isolates the error so
        * la_set_error_sql_log records it without propagation. */
       er_stack_push ();
-      if (item->item_type == RVREPL_OOS_INSERT)
+
+      /* OOS chunk: stash the assembled value keyed by master's head OID;
+       * la_get_current() will pick it up at heap-row sql.log time.
+       * No sql.log line is emitted for the chunk record itself. */
+      if (!OID_ISNULL (&oos_head_oid) && recdes->length > OOS_RECORD_HEADER_SIZE)
 	{
-	  /* OOS chunk: stash the assembled value keyed by master's head OID;
-	   * la_get_current() will pick it up at heap-row sql.log time.
-	   * No sql.log line is emitted for the chunk record itself. */
-	  if (!OID_ISNULL (&oos_head_oid) && recdes->length > OOS_RECORD_HEADER_SIZE)
-	    {
-	      ret = la_cache_oos_value (&oos_head_oid,
-					recdes->data + OOS_RECORD_HEADER_SIZE, recdes->length - OOS_RECORD_HEADER_SIZE);
-	    }
+	  ret = la_cache_oos_value (&oos_head_oid, recdes->data + OOS_RECORD_HEADER_SIZE,
+				    recdes->length - OOS_RECORD_HEADER_SIZE);
 	}
-      else
-	{
-	  ret = la_write_insert_sql_log (item, class_obj, recdes);
-	}
+
       er_stack_pop ();
       if (ret != NO_ERROR)
 	{
@@ -6180,8 +6170,126 @@ end:
     {
       la_Info.insert_counter++;
       la_Info.num_unflushed++;
-      /* RVREPL_DUMMY_OOS_RECORD is handled by la_apply_dummy_oos_log; only inserts reach here. */
-      la_Info.pending_oos_flush = (item->item_type == RVREPL_OOS_INSERT);
+      la_Info.pending_oos_flush = true;
+    }
+
+  if (old_pageid != NULL_PAGEID)
+    {
+      la_release_page_buffer (old_pageid);
+    }
+
+  return error;
+}
+
+/*
+ * la_apply_insert_log() - apply the insert log to the target slave
+ *   return: NO_ERROR or error code
+ *   item(in): replication item
+ *
+ * Note:
+ *      Apply the insert log to the target slave.
+ *      . get the target log page
+ *      . get the record description
+ *      . fetch the class info
+ *      . create a replication object to be flushed and add it to a link
+ *      . If la_enable_sql_logging(config param is ha_enable_sql_logging) is enabled, the query is written to a file.
+ */
+static int
+la_apply_insert_log (LA_ITEM * item)
+{
+  int error = NO_ERROR;
+  DB_OBJECT *class_obj;
+  LOG_PAGE *pgptr = NULL;
+  unsigned int rcvindex;
+  RECDES *recdes;
+  LOG_PAGEID old_pageid = NULL_PAGEID;
+  bool is_mvcc_class;
+
+  error = la_flush_repl_items (false);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  class_obj = db_find_class (item->class_name);
+  if (class_obj == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      if (er_errid () == NO_ERROR)
+	{
+	  error = ER_FAILED;
+	}
+
+      goto end;
+    }
+
+  recdes = la_assign_recdes_from_pool ();
+  is_mvcc_class = la_is_mvcc_class (ws_oid (class_obj));
+
+  /* get the target log page */
+  old_pageid = item->target_lsa.pageid;
+  pgptr = la_get_page (old_pageid);
+  if (pgptr == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_FAILED;
+	}
+      old_pageid = NULL_PAGEID;
+      goto end;
+    }
+
+  /* retrieve the target record description */
+  error = la_get_recdes (&item->target_lsa, pgptr, recdes, &rcvindex, la_Info.rec_type, is_mvcc_class);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  if (recdes->type == REC_ASSIGN_ADDRESS || recdes->type == REC_RELOCATION)
+    {
+      er_log_debug (ARG_FILE_LINE, "apply_insert : rectype.type = %d\n", recdes->type);
+      error = ER_FAILED;
+
+      goto end;
+    }
+
+  if (rcvindex != RVHF_INSERT && rcvindex != RVHF_MVCC_INSERT)
+    {
+      er_log_debug (ARG_FILE_LINE, "apply_insert : rcvindex = %d\n", rcvindex);
+      error = ER_FAILED;
+
+      goto end;
+    }
+
+  if (la_enable_sql_logging)
+    {
+      int ret;
+
+      er_stack_push ();
+      ret = la_write_insert_sql_log (item, class_obj, recdes);
+      er_stack_pop ();
+      if (ret != NO_ERROR)
+	{
+	  la_set_error_sql_log (item->class_name, la_get_item_pk_value (item));
+	}
+    }
+
+  error = la_repl_add_object (class_obj, item, recdes);
+
+end:
+  if (error != NO_ERROR)
+    {
+      la_Info.pending_oos_flush = false;
+      la_log_apply_error ("apply_insert", ER_HA_LA_FAILED_TO_APPLY_INSERT, item, error);
+    }
+  else
+    {
+      la_Info.insert_counter++;
+      la_Info.num_unflushed++;
+      la_Info.pending_oos_flush = false;
     }
 
   if (old_pageid != NULL_PAGEID)
@@ -6605,8 +6713,11 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 		  break;
 
 		case RVREPL_DATA_INSERT:
+		  error = la_apply_insert_log (item);
+		  break;
+
 		case RVREPL_OOS_INSERT:
-		  error = la_apply_insert_log (apply, item);
+		  error = la_apply_oos_insert_log (apply, item);
 		  break;
 
 		case RVREPL_DUMMY_OOS_RECORD:
