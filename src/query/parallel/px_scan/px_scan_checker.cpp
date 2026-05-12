@@ -72,15 +72,8 @@ namespace parallel_scan
   /* thread-local cache: memoizes check results and breaks circular XASL refs. */
   thread_local std::unordered_map<XASL_NODE *, possible_flags> xasl_check_cache;
 
-  /* cycle guard for the normal process_xasl_node_recursive path. */
+  /* cycle guard for the process_* recursion. */
   thread_local std::unordered_set<XASL_NODE *> xasl_processing_set;
-
-  /* cycle guard for the force-cannot-parallel recursion. SEPARATE from the normal-path set
-   * so a force_cannot caller re-applies NO_PARALLEL flags on subtrees already visited by the
-   * normal path (e.g. an XASL reachable from BOTH parent->aptr_list AND a sibling's
-   * parent->dptr_list — sharing one set would let the normal-path visit suppress the
-   * force_cannot flag-set, leaving inner specs parallelizable inside a correlated context). */
-  thread_local std::unordered_set<XASL_NODE *> xasl_force_cannot_set;
 
   static void set_flag (possible_flags &flags, possible_flags flag)
   {
@@ -535,11 +528,6 @@ namespace parallel_scan
 	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
 
-    /* nested correlated subquery — same race as the top-level dptr block in check<>(). */
-    if (sibling->dptr_list != nullptr)
-      {
-	set_flag (result, CANNOT_PARALLEL_SCAN);
-      }
     for (XASL_NODE *xaslp = sibling->dptr_list; xaslp; xaslp = xaslp->next)
       {
 	temp = sibling_check<false> (xaslp);
@@ -684,14 +672,6 @@ namespace parallel_scan
 	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
 
-    /* dptr_list = correlated subqueries. Workers parallelizing the outer scan would race on the
-     * shared regu_var / val_list cells that feed the dptr — the inner subquery sees inconsistent
-     * outer values across worker iterations. Block outer parallel whenever a correlated subquery
-     * hangs off this XASL. */
-    if (arg->dptr_list != nullptr)
-      {
-	set_flag (result, CANNOT_PARALLEL_SCAN);
-      }
     for (XASL_NODE *xaslp = arg->dptr_list; xaslp; xaslp = xaslp->next)
       {
 	temp = sibling_check<false> (xaslp);
@@ -959,11 +939,11 @@ namespace parallel_scan
 	return;
       }
 
-    if (xasl_force_cannot_set.find (arg) != xasl_force_cannot_set.end ())
+    if (xasl_processing_set.find (arg) != xasl_processing_set.end ())
       {
 	return;
       }
-    xasl_force_cannot_set.insert (arg);
+    xasl_processing_set.insert (arg);
 
     for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
       {
@@ -1039,13 +1019,11 @@ scan_check_parallel_scan_possible (XASL_NODE *xasl)
 {
   parallel_scan::xasl_check_cache.clear ();
   parallel_scan::xasl_processing_set.clear ();
-  parallel_scan::xasl_force_cannot_set.clear ();
 
   parallel_scan::process_xasl_node_recursive (xasl);
 
   parallel_scan::xasl_check_cache.clear ();
   parallel_scan::xasl_processing_set.clear ();
-  parallel_scan::xasl_force_cannot_set.clear ();
 
   return NO_ERROR;
 }
