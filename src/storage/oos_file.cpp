@@ -56,7 +56,8 @@ oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, char *buf_out, int
 		      OOS_RECORD_HEADER &header_out, int &chunk_bytes_out);
 static int
 oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &next_oid,
-		       int total_data_length, RECDES &recdes, int &bytes_written);
+		       int total_data_length, RECDES &recdes,
+		       int &remaining, int &bytes_written);
 static void
 oos_log_insert_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, OID *oid_p, RECDES *recdes_p);
 static void
