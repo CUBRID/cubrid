@@ -5584,6 +5584,7 @@ upgradedb (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   UPGRADEDB_OPTIONS opts;
   int error;
+  int save;
 
   if (upgradedb_parse_options (arg_map, &opts) != NO_ERROR)
     {
@@ -5614,7 +5615,9 @@ upgradedb (UTIL_FUNCTION_ARG * arg)
       return EXIT_FAILURE;
     }
 
+  AU_DISABLE (save);
   error = upgradedb_run (&opts);
+  AU_ENABLE (save);
 
   db_shutdown ();
   return (error != NO_ERROR) ? EXIT_FAILURE : EXIT_SUCCESS;
