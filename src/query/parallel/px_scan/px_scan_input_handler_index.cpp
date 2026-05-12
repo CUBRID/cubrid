@@ -40,9 +40,7 @@
 
 namespace parallel_scan
 {
-  /* Main-thread setup: glean btid_int + evaluate regu-var key ranges before workers spawn.
-   * Key-range evaluation MUST run here (not a worker) so the resulting buffers live in the
-   * main thread's private heap — the same heap that owns XASL cleanup. */
+  /* key buffers live on main heap so XASL cleanup's pr_clear_value matches mspace. */
   int
   input_handler_index::init_on_main (THREAD_ENTRY *thread_p, INDX_INFO *indx_info, SCAN_ID *scan_id, val_descr *vd,
 				     int parallelism)
@@ -61,10 +59,6 @@ namespace parallel_scan
     m_part_key_desc = false;
     m_current_range_idx = 0;
 
-    /* Evaluate regu-var key ranges (incl. T_LIKE_LOWER/UPPER_BOUND arith) on the main thread.
-     * Deferring to a worker thread would allocate the arithptr->value buffer and the
-     * key_val_range key1/key2 buffers from the worker's private heap; XASL cleanup runs on
-     * main thread and pr_clear_value would abort in mspace_free with a heap mismatch. */
     VPID root_vpid;
     root_vpid.volid = m_btid.vfid.volid;
     root_vpid.pageid = m_btid.root_pageid;
@@ -473,9 +467,7 @@ namespace parallel_scan
 
     std::unique_lock<std::mutex> lock (m_leaf_mutex);
 
-    /* Descent branch: first descent or chain-ended (past_upper or VPID_ISNULL).
-     * m_current_range_idx = last-completed range; target = next range to process.
-     * First descent (m_descent_done=false): target=0. */
+    /* target = m_current_range_idx + 1, or 0 on first descent. */
     if (!m_descent_done || m_leaf_ended)
       {
 	int target = m_descent_done ? (m_current_range_idx + 1) : 0;
@@ -554,9 +546,7 @@ namespace parallel_scan
       }
 
     out_page = page;
-    /* chain-walk: propagate current authoritative range_idx so worker's thread-local matches.
-     * Without this, chain-walk worker's stale entry_range_idx would trigger spurious mid-leaf advance
-     * on the first slot of a new-range leaf, dropping valid OIDs (C1/I6/I9 covering multi-range loss). */
+    /* sync worker range_idx; stale value drops OIDs at new-range leaf boundary. */
     if (out_range_idx != nullptr)
       {
 	*out_range_idx = m_current_range_idx;
@@ -564,17 +554,8 @@ namespace parallel_scan
     return S_SUCCESS;
   }
 
-  /* past_upper signal from slot_iterator: this leaf chain is done. last_local_idx = slot_iterator's
-   * post-advance m_current_range_idx (next-to-process); convert to last-completed (=last_local_idx-1)
-   * and merge via monotonic max so fetch's next descent target = m_current_range_idx + 1 is correct.
-   *
-   * Stale-signal discard: a chain-walk worker fetched (page, range_idx=R) at time t1 may detect
-   * past_upper after another worker performed a descent at time t2 > t1 advancing the handler to
-   * R+1 (with m_leaf_ended=false and m_current_leaf_vpid pointing into R+1's chain). The late
-   * past_upper carries completed=R, but R is already in the past — accepting it would set
-   * m_leaf_ended=true and cause the next fetch to skip directly to R+2's descent, silently
-   * dropping the in-progress R+1 chain. Discard signals whose completed lags the authoritative
-   * cursor. */
+  /* completed = last_local_idx - 1; monotonic max so next fetch target = idx + 1. */
+  /* discard stale past_upper that lags authoritative cursor; otherwise skips in-progress chain. */
   void
   input_handler_index::signal_chain_ended (int last_local_idx)
   {
