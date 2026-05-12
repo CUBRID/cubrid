@@ -5199,7 +5199,6 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	  /* assign this worker's membuf page range */
 	  state->membuf_tfile = sector_info.membuf_tfile;
 	  int membuf_pages = total_membuf_pages / parallel_num + (i < membuf_remainder ? 1 : 0);
-	  state->membuf_start = membuf_base;
 	  state->membuf_cur = membuf_base;
 	  state->membuf_end = membuf_base + membuf_pages;
 	  membuf_base += membuf_pages;

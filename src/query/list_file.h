@@ -127,7 +127,6 @@ struct sort_px_list_state
   int curr_pgoffset;		/* page offset within the current sector */
   /* membuf slice for this worker */
   struct qmgr_temp_file *membuf_tfile;	/* tfile that owns membuf pages (NULL = none) */
-  int membuf_start;		/* first membuf page index for this worker */
   int membuf_cur;		/* current membuf page index */
   int membuf_end;		/* one-past-last membuf page for this worker */
   /* current active page — set when we fix a page, cleared when the page is exhausted */

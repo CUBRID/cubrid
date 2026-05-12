@@ -87,6 +87,7 @@ end:
 	      db_private_free_and_init (thread_p, sort_info->s_id);
 	    }
 	  db_private_free_and_init (thread_p, sort_info);
+	  *dest_sort_info = NULL;
 	}
     }
 
