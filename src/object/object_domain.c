@@ -5383,30 +5383,31 @@ tp_ftoa (DB_VALUE const *src, DB_VALUE * result)
       {
 	int prec = DB_VALUE_PRECISION (result);
 	int data_size = strlen (str_float);
-	char *padded;
 
-	if (prec == TP_FLOATING_PRECISION_VALUE)
+	if (prec != TP_FLOATING_PRECISION_VALUE && data_size < prec)
 	  {
-	    prec = data_size;
-	  }
-	else if (data_size > prec)
-	  {
-	    data_size = prec;
-	  }
+	    /* Pad with trailing spaces to CHAR(n) precision. */
+	    char *padded = (char *) db_private_alloc (NULL, prec + 1);
+	    if (padded == NULL)
+	      {
+		db_private_free_and_init (NULL, str_float);
+		db_make_null (result);
+		return;
+	      }
+	    memset (padded, ' ', prec);
+	    memcpy (padded, str_float, data_size);
+	    padded[prec] = '\0';
 
-	padded = (char *) db_private_alloc (NULL, prec + 1);
-	if (padded == NULL)
-	  {
 	    db_private_free_and_init (NULL, str_float);
-	    db_make_null (result);
-	    return;
+	    db_make_char (result, prec, padded, prec, db_get_string_codeset (result), db_get_string_collation (result));
 	  }
-	memset (padded, ' ', prec);
-	memcpy (padded, str_float, data_size);
-	padded[prec] = '\0';
-
-	db_private_free_and_init (NULL, str_float);
-	db_make_char (result, prec, padded, prec, db_get_string_codeset (result), db_get_string_collation (result));
+	else
+	  {
+	    /* No padding: data_size == prec (exact) or > prec (caller detects overflow
+	     * via db_get_string_length > precision check) or floating precision. */
+	    db_make_char (result, (prec == TP_FLOATING_PRECISION_VALUE) ? data_size : prec,
+			  str_float, data_size, db_get_string_codeset (result), db_get_string_collation (result));
+	  }
 	result->need_clear = true;
       }
       break;
@@ -5466,30 +5467,31 @@ tp_dtoa (DB_VALUE const *src, DB_VALUE * result)
       {
 	int prec = DB_VALUE_PRECISION (result);
 	int data_size = strlen (str_double);
-	char *padded;
 
-	if (prec == TP_FLOATING_PRECISION_VALUE)
+	if (prec != TP_FLOATING_PRECISION_VALUE && data_size < prec)
 	  {
-	    prec = data_size;
-	  }
-	else if (data_size > prec)
-	  {
-	    data_size = prec;
-	  }
+	    /* Pad with trailing spaces to CHAR(n) precision. */
+	    char *padded = (char *) db_private_alloc (NULL, prec + 1);
+	    if (padded == NULL)
+	      {
+		db_private_free_and_init (NULL, str_double);
+		db_make_null (result);
+		return;
+	      }
+	    memset (padded, ' ', prec);
+	    memcpy (padded, str_double, data_size);
+	    padded[prec] = '\0';
 
-	padded = (char *) db_private_alloc (NULL, prec + 1);
-	if (padded == NULL)
-	  {
 	    db_private_free_and_init (NULL, str_double);
-	    db_make_null (result);
-	    return;
+	    db_make_char (result, prec, padded, prec, db_get_string_codeset (result), db_get_string_collation (result));
 	  }
-	memset (padded, ' ', prec);
-	memcpy (padded, str_double, data_size);
-	padded[prec] = '\0';
-
-	db_private_free_and_init (NULL, str_double);
-	db_make_char (result, prec, padded, prec, db_get_string_codeset (result), db_get_string_collation (result));
+	else
+	  {
+	    /* No padding: data_size == prec (exact) or > prec (caller detects overflow
+	     * via db_get_string_length > precision check) or floating precision. */
+	    db_make_char (result, (prec == TP_FLOATING_PRECISION_VALUE) ? data_size : prec,
+			  str_double, data_size, db_get_string_codeset (result), db_get_string_collation (result));
+	  }
 	result->need_clear = true;
       }
       break;
