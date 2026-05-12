@@ -6027,9 +6027,6 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
   int num_session_prms;
 #endif
 
-  /* TODO: conf_file is always NULL. Therefore, you need to decide whether to keep this argument. */
-  assert (conf_file == NULL);
-
 #ifndef NDEBUG
   sysprm_check_id_order ();
 #endif
