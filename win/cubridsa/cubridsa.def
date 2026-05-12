@@ -105,6 +105,7 @@ EXPORTS
     smt_quit
     smt_set_attribute_default
     sysprm_load_and_init
+    sysprm_reload_and_init
     sysprm_set_to_default
     sysprm_set_force
     sysprm_obtain_parameters
