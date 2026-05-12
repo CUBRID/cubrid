@@ -182,6 +182,10 @@ hnsw_impl_backend::create_index (THREAD_ENTRY *thread_p,
 {
   hnsw_impl *index =
 	  new hnsw_impl (*this, *btid, name, build_params);
+  if (index == NULL)
+    {
+      return NULL;
+    }
 
   if (log_is_in_crash_recovery ())
     {
@@ -230,6 +234,11 @@ hnsw_impl_backend::load_index (THREAD_ENTRY *thread_p,
 {
   hnsw_impl *index =
 	  new hnsw_impl (*this, *btid, name, build_params);
+
+  if (index == NULL)
+    {
+      return NULL;
+    }
 
   if (index->init_for_load () != NO_ERROR)
     {
