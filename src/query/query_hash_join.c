@@ -2091,6 +2091,7 @@ hjoin_try_parallel_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, H
       px_worker_stats = (UINT64 *) db_private_alloc (thread_p, degree * stats_size);
       if (px_worker_stats == NULL)
 	{
+	  assert_release_error (er_errid () != NO_ERROR);
 	  goto error_exit;
 	}
       memset (px_worker_stats, 0, degree * stats_size);
@@ -4386,7 +4387,7 @@ hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_stats,
       return;
     }
 
-  if (status != HASHJOIN_STATUS_PARALLEL)
+  if (status != HASHJOIN_STATUS_PARALLEL && status != HASHJOIN_STATUS_PARALLEL_PROBE)
     {
       TSC_ADD_TIMEVAL (stats->build.elapsed_time, context_stats->build.elapsed_time);
     }

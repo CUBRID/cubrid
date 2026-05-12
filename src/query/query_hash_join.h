@@ -146,7 +146,7 @@ typedef struct hashjoin_range_time_stats
 } HASHJOIN_RANGE_TIME_STATS;
 #define HASHJOIN_RANGE_TIME_STATS_INITIALIZER { { LONG_MAX, 999999 }, { 0, 0 } }
 
-typedef struct hashjoin_range_value_stats
+typedef struct hashjoin_range_rows_stats
 {
   UINT64 min;
   UINT64 max;
