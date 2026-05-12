@@ -10506,6 +10506,13 @@ netsr_spacedb (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
 		    }
 		  break;
 		}
+	      if (strlen (table_array[i]) >= SM_MAX_IDENTIFIER_LENGTH)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
+			  "spacedb: table name exceeds maximum identifier length");
+		  error_code = ER_GENERIC_ERROR;
+		  break;
+		}
 	    }
 	}
     }
