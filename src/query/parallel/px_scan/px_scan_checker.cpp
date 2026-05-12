@@ -535,7 +535,10 @@ namespace parallel_scan
 	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
 
-    /* nested correlated subquery — same race as the top-level dptr block in check<>(). */
+    /* Same conservative gate as check<>(). Sibling XASLs along the outer scan_ptr chain
+     * (e.g. inner-table SCAN_PROCs) can host a correlated dptr that materializes per outer
+     * row. Without blocking here the outer remains parallelizable; workers then race on the
+     * shared regu_var feeding the dptr. cbrd_23696's F scan_ptr carries the E materialization. */
     if (sibling->dptr_list != nullptr)
       {
 	set_flag (result, CANNOT_PARALLEL_SCAN);
@@ -684,10 +687,11 @@ namespace parallel_scan
 	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
 
-    /* dptr_list = correlated subqueries. Workers parallelizing the outer scan would race on the
-     * shared regu_var / val_list cells that feed the dptr — the inner subquery sees inconsistent
-     * outer values across worker iterations. Block outer parallel whenever a correlated subquery
-     * hangs off this XASL. */
+    /* Conservative gate: any dptr at this level => block outer parallel for this XASL's specs.
+     * Spec ideal is "outer parallel even with correlated dptr"; current worker plumbing produces
+     * empty inner-materialization reads when workers iterate the outer in parallel (cbrd_23696
+     * regression: 4 -> 0 rows). Re-enable when the dptr->aptr materialization is reliably
+     * isolated per worker. */
     if (arg->dptr_list != nullptr)
       {
 	set_flag (result, CANNOT_PARALLEL_SCAN);
