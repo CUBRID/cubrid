@@ -120,8 +120,6 @@ extern int css_check_conn (CSS_CONN_ENTRY * p);
 
 extern int css_check_accessibility (SOCKET new_fd);
 
-extern size_t css_get_max_workers ();
-extern size_t css_get_max_task_count ();
 extern size_t css_get_max_connections ();
 
 #if defined (SERVER_MODE)

@@ -392,7 +392,7 @@ namespace cubthread
       }
     // remove from m_worker_pools and free worker_pool_arg->get_worker_count thread entries
     worker_pool *base_arg = worker_pool_arg;
-    destroy_and_untrack_resource (m_worker_pools, base_arg, worker_pool_arg->get_worker_count ());
+    destroy_and_untrack_resource (m_worker_pools, base_arg, worker_pool_arg->get_pool_size ());
     worker_pool_arg = NULL;
 #else // not SERVER_MODE = SA_MODE
     assert (worker_pool_arg == NULL);
