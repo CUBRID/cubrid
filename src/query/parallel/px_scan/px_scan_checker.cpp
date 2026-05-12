@@ -535,16 +535,15 @@ namespace parallel_scan
 	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
 
-    /* Same conservative gate as check<>(). Sibling XASLs along the outer scan_ptr chain
-     * (e.g. inner-table SCAN_PROCs) can host a correlated dptr that materializes per outer
-     * row. Without blocking here the outer remains parallelizable; workers then race on the
-     * shared regu_var feeding the dptr. cbrd_23696's F scan_ptr carries the E materialization. */
-    if (sibling->dptr_list != nullptr)
-      {
-	set_flag (result, CANNOT_PARALLEL_SCAN);
-      }
+    /* Sibling-level mirror of the dptr->aptr / dptr->scan_ptr gate in check<>(). cbrd_23696's
+     * E materialization hangs off F's SCAN_PROC dptr_list — sibling_check needs the same
+     * narrow detection so simple correlated subqueries (cbrd_25447) stay parallelizable. */
     for (XASL_NODE *xaslp = sibling->dptr_list; xaslp; xaslp = xaslp->next)
       {
+	if (xaslp->aptr_list != nullptr || xaslp->scan_ptr != nullptr)
+	  {
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
+	  }
 	temp = sibling_check<false> (xaslp);
 	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	  {
@@ -687,17 +686,17 @@ namespace parallel_scan
 	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
 
-    /* Conservative gate: any dptr at this level => block outer parallel for this XASL's specs.
-     * Spec ideal is "outer parallel even with correlated dptr"; current worker plumbing produces
-     * empty inner-materialization reads when workers iterate the outer in parallel (cbrd_23696
-     * regression: 4 -> 0 rows). Re-enable when the dptr->aptr materialization is reliably
-     * isolated per worker. */
-    if (arg->dptr_list != nullptr)
-      {
-	set_flag (result, CANNOT_PARALLEL_SCAN);
-      }
+    /* Block outer parallel only when a dptr has its OWN nested aptr or scan_ptr chain
+     * (dptr->aptr / dptr->scan_ptr). Workers race on the inner materialization in that pattern
+     * (cbrd_23696: outer R parallel + correlated inline view E with GROUP BY → 4 rows drop
+     * to 0). A flat correlated dptr (single subquery body, no nested aptr/scan_ptr — e.g.
+     * cbrd_25447's `where col < (subquery)` patterns) is safe and stays parallelizable. */
     for (XASL_NODE *xaslp = arg->dptr_list; xaslp; xaslp = xaslp->next)
       {
+	if (xaslp->aptr_list != nullptr || xaslp->scan_ptr != nullptr)
+	  {
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
+	  }
 	temp = sibling_check<false> (xaslp);
 	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	  {
