@@ -147,7 +147,7 @@ namespace cubconn::connection
     m_scaling_statistics.previous_scale = m_max_worker;
 
     /* task statistics */
-    m_task_statistics.workers = static_cast<std::size_t> (prm_get_integer_value (PRM_ID_TASK_WORKER));
+    m_task_statistics.workers = static_cast<std::size_t> (prm_get_integer_value (PRM_ID_MAX_TRANSACTION_CONCURRENCY));
     m_task_statistics.time_ns = get_monotonic_ns ();
     m_task_statistics.requested = { 0, 0 };
     m_task_statistics.started = { 0, 0 };

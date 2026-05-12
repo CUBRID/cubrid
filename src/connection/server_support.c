@@ -141,7 +141,8 @@ static HA_LOG_APPLIER_STATE_TABLE ha_Log_applier_state[HA_LOG_APPLIER_STATE_TABL
 static int ha_Log_applier_state_num = 0;
 
 // *INDENT-OFF*
-static worker_pool_type<cubthread::stats_t::on, cubthread::pool_t::elastic> *css_Server_request_worker_pool = NULL;
+using css_request_worker_pool_t = worker_pool_type<cubthread::stats_t::on, cubthread::pool_t::elastic>;
+static css_request_worker_pool_t *css_Server_request_worker_pool = NULL;
 
 class css_server_task : public cubthread::entry_task
 {
@@ -266,7 +267,7 @@ css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** a
 
   size_t core_index = 0;	// core index starts with 0
   //*INDENT-OFF*
-  using request_pool_core_t = worker_pool_type<cubthread::stats_t::on, cubthread::pool_t::elastic>::core_impl;
+  using request_pool_core_t = css_request_worker_pool_t::core_impl;
   css_Server_request_worker_pool->map_cores (&css_wp_core_job_scan_mapper<request_pool_core_t>, thread_p, ctx, core_index, error);
   //*INDENT-ON*
   if (error != NO_ERROR)
@@ -551,7 +552,9 @@ css_start_shutdown_server ()
  *       css_initialize_server_interfaces before calling this function.
  */
 // *INDENT-OFF*
-REGISTER_WORKERPOOL (transaction, []() { return (int) prm_get_integer_value (PRM_ID_TASK_WORKER); });
+REGISTER_WORKERPOOL (transaction, []() {
+    return css_get_max_connections ();
+});
 // *INDENT-ON*
 
 int
@@ -559,7 +562,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 {
   cubconn::master::connector connector;
   cubconn::connection::pool connections;
-  std::size_t task_group, task_worker;
+  std::size_t max_transaction_concurrency, max_transaction_worker;
   std::size_t max_connection_workers, min_connection_workers;
   std::size_t max_connections;
   std::string name;
@@ -571,11 +574,11 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
   name = std::string (server_name, name_length);
 
-  task_group = (int) prm_get_integer_value (PRM_ID_TASK_GROUP);
-  task_worker = (int) prm_get_integer_value (PRM_ID_TASK_WORKER);
+  max_transaction_concurrency = prm_get_integer_value (PRM_ID_MAX_TRANSACTION_CONCURRENCY);
+  max_transaction_worker = prm_get_integer_value (PRM_ID_MAX_TRANSACTION_WORKER);
 
-  max_connection_workers = (int) prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
-  min_connection_workers = (int) prm_get_integer_value (PRM_ID_CSS_MIN_CONNECTION_WORKER);
+  max_connection_workers = prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
+  min_connection_workers = prm_get_integer_value (PRM_ID_CSS_MIN_CONNECTION_WORKER);
 
   max_connections = css_get_max_connections ();
 
@@ -585,8 +588,10 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   // create request worker pool
   //*INDENT-OFF*
   css_Server_request_worker_pool = thread_create_worker_pool<cubthread::stats_t::on, cubthread::pool_t::elastic> (
-      task_worker,
-      task_group,
+      css_get_max_connections (),
+      cubthread::system_core_count (),
+      max_transaction_concurrency,
+      max_transaction_worker,
       "transaction",
       thread_get_entry_manager (),
       css_get_server_request_thread_pooling_configuration (),
@@ -2360,12 +2365,12 @@ css_get_task_stats (UINT64 *stats_out)
 }
 
 //
-// css_get_num_request_workers () - get number of workers executing server requests
+// css_get_num_request_workers () - get max number of workers executing server requests
 //
 size_t
 css_get_num_request_workers (void)
 {
-  return css_Server_request_worker_pool->get_worker_count ();
+  return css_Server_request_worker_pool->get_max_worker ();
 }
 
 //
@@ -2476,7 +2481,7 @@ css_are_all_request_handlers_suspended (void)
       return false;
     }
 
-  if (checked_threads_count == css_Server_request_worker_pool->get_worker_count ())
+  if (checked_threads_count == css_Server_request_worker_pool->get_max_concurrency ())
     {
       // all threads are suspended
       return true;
@@ -2569,14 +2574,6 @@ css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int tran_index, i
   return count;
 }
 
-size_t css_get_max_workers ()
-{
-  return css_get_max_conn () + 1; // = css_Num_max_conn in connection_sr.c
-}
-size_t css_get_max_task_count ()
-{
-  return 2 * css_get_max_workers ();	// not that it matters...
-}
 size_t css_get_max_connections ()
 {
   return css_get_max_conn () + 1;
