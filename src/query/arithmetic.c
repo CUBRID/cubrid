@@ -1021,8 +1021,7 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	numeric_coerce_num_to_double (value2, scale, &d2);
 	if (d2 == 0)
 	  {
-	    db_make_numeric (result, db_locate_numeric (value1), DB_VALUE_PRECISION (value1), DB_VALUE_SCALE (value1),
-			     DB_NUMERIC_BUF_SIZE, DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value1), false);
+	    (void) numeric_db_value_coerce_to_num (value1, result, &data_stat);
 	  }
 	else
 	  {
@@ -1173,8 +1172,7 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	numeric_coerce_num_to_double (value2, scale, &d2);
 	if (d2 == 0)
 	  {
-	    db_make_numeric (result, db_locate_numeric (value1), DB_VALUE_PRECISION (value1), DB_VALUE_SCALE (value1),
-			     DB_NUMERIC_BUF_SIZE, DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value1), false);
+	    (void) numeric_db_value_coerce_to_num (value1, result, &data_stat);
 	  }
 	else
 	  {
@@ -1325,8 +1323,7 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	numeric_coerce_num_to_double (value2, scale, &d2);
 	if (d2 == 0)
 	  {
-	    db_make_numeric (result, db_locate_numeric (value1), DB_VALUE_PRECISION (value1), DB_VALUE_SCALE (value1),
-			     DB_NUMERIC_BUF_SIZE, DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value1), false);
+	    (void) numeric_db_value_coerce_to_num (value1, result, &data_stat);
 	  }
 	else
 	  {
