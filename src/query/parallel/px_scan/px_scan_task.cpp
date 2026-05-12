@@ -457,42 +457,48 @@ namespace parallel_scan
     return NO_ERROR;
   }
 
+  static void clear_xasl_dptr_node (THREAD_ENTRY *thread_p, XASL_NODE *xaslp, bool uses_clones)
+  {
+    if (uses_clones)
+      {
+	if (XASL_IS_FLAGED (xaslp, XASL_DECACHE_CLONE))
+	  {
+	    xaslp->status = XASL_CLEARED;
+	  }
+	else
+	  {
+	    /* The values allocated during execution will be cleared and the xasl is reused. */
+	    xaslp->status = XASL_INITIALIZED;
+	  }
+      }
+    else
+      {
+	xaslp->status = XASL_CLEARED;
+      }
+    if (xaslp->list_id->tuple_cnt > 0)
+      {
+	qfile_truncate_list (thread_p, xaslp->list_id);
+      }
+    if (xaslp->single_tuple)
+      {
+	QPROC_DB_VALUE_LIST value_list;
+	int i;
+	for (value_list = xaslp->single_tuple->valp, i = 0; i < xaslp->single_tuple->val_cnt;
+	     value_list = value_list->next, i++)
+	  {
+	    pr_clear_value (value_list->val);
+	  }
+      }
+  }
+
+  /* walk the full scan_ptr chain; mainline qexec_clear_scan_all_lists does the same. */
   static void clear_xasl_dptr_list (THREAD_ENTRY *thread_p, XASL_NODE *xasl, bool uses_clones)
   {
-    if (xasl->dptr_list)
+    for (XASL_NODE *scan_xasl = xasl; scan_xasl != nullptr; scan_xasl = scan_xasl->scan_ptr)
       {
-	for (XASL_NODE *xaslp = xasl->dptr_list; xaslp; xaslp = xaslp->next)
+	for (XASL_NODE *xaslp = scan_xasl->dptr_list; xaslp != nullptr; xaslp = xaslp->next)
 	  {
-	    if (uses_clones)
-	      {
-		if (XASL_IS_FLAGED (xaslp, XASL_DECACHE_CLONE))
-		  {
-		    xaslp->status = XASL_CLEARED;
-		  }
-		else
-		  {
-		    /* The values allocated during execution will be cleared and the xasl is reused. */
-		    xaslp->status = XASL_INITIALIZED;
-		  }
-	      }
-	    else
-	      {
-		xaslp->status = XASL_CLEARED;
-	      }
-	    if (xaslp->list_id->tuple_cnt > 0)
-	      {
-		qfile_truncate_list (thread_p, xaslp->list_id);
-	      }
-	    if (xaslp->single_tuple)
-	      {
-		QPROC_DB_VALUE_LIST value_list;
-		int i;
-		for (value_list = xaslp->single_tuple->valp, i = 0; i < xaslp->single_tuple->val_cnt;
-		     value_list = value_list->next, i++)
-		  {
-		    pr_clear_value (value_list->val);
-		  }
-	      }
+	    clear_xasl_dptr_node (thread_p, xaslp, uses_clones);
 	  }
       }
   }
