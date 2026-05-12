@@ -162,6 +162,7 @@ static int rv;
     && ((RCVI) != RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT) \
     && ((RCVI) != RVBT_REMOVE_UNIQUE_STATS) \
     && ((RCVI) != RVLOC_CLASSNAME_DUMMY) \
+    && ((RCVI) != RVLOG_SYSMETA_VERSION_UPDATE) \
     && ((RCVI) != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary(PGPTR)))
 
 #define CDC_IS_IGNORE_LOGINFO_ERROR(ERROR) \
