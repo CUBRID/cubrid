@@ -232,6 +232,9 @@ namespace cubthread
       status m_status;			/* thread status */
 
       pthread_mutex_t th_entry_lock;	/* latch for this thread entry */
+      /* both m_core_mutex and th_entry_lock can be held simultaneously. */
+      /* to avoid deadlocks, you must follow a consistent locking order; th_entry_lock should be acquired first. */
+
       pthread_cond_t wakeup_cond;	/* wakeup condition */
 
       HL_HEAPID private_heap_id;	/* id of thread private memory allocator */

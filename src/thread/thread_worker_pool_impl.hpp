@@ -335,6 +335,8 @@ namespace cubthread
 
       // guards the members in core
       mutable std::mutex m_core_mutex;
+      // both m_core_mutex and th_entry_lock can be held simultaneously.
+      // to avoid deadlocks, you must follow a consistent locking order; th_entry_lock should be acquired first.
   };
 
   // worker_pool_impl<Stats>::core_impl::snapshot

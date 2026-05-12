@@ -645,9 +645,6 @@ static void
 thread_prepare_resumption (cubthread::entry *thread_p, cubthread::entry::status status,
 			   thread_resume_suspend_status suspended_reason, thread_clock_type::time_point start_time, void *holder)
 {
-#if defined (SERVER_MODE)
-  std::unique_ptr<cubthread::concurrency_slot> slot;
-#endif
   std::chrono::microseconds usecs;
 
   // trace
@@ -685,13 +682,8 @@ thread_prepare_resumption (cubthread::entry *thread_p, cubthread::entry::status 
 	    {
 	      // 1. the entry still holds its slot (wait time < threshold)
 	      thread_p->stop_waiting ();
-	      slot = std::move (thread_p->m_slot);
-
-	      thread_p->unlock ();
-
-	      static_cast<cubthread::concurrency_slot_pool *> (holder)->release_slot (std::move (slot), false);
-
-	      thread_p->lock ();
+	      static_cast<cubthread::concurrency_slot_pool *> (holder)->release_slot (std::move (thread_p->m_slot), false);
+	      thread_p->m_slot = nullptr;
 	    }
 	}
       else
@@ -704,24 +696,18 @@ thread_prepare_resumption (cubthread::entry *thread_p, cubthread::entry::status 
 	  else
 	    {
 	      // 2. wait until the slot is acquired (wait time >= threshold)
-	      thread_p->unlock ();
-
 	      if (thread_p->event_stats.trace_slow_query == true)
 		{
 		  start_time = thread_clock_type::now ();
 		}
 
-	      slot = static_cast<cubthread::concurrency_slot_pool *> (holder)->acquire_slot (thread_p, false);
-
-	      thread_p->lock ();
+	      thread_p->m_slot = static_cast<cubthread::concurrency_slot_pool *> (holder)->acquire_slot (thread_p, false);
 
 	      if (thread_p->event_stats.trace_slow_query == true)
 		{
 		  usecs = std::chrono::duration_cast<std::chrono::microseconds> (thread_clock_type::now () - start_time);
 		  thread_timeval_add_usec (usecs, thread_p->event_stats.slot_waits);
 		}
-
-	      thread_p->m_slot = std::move (slot);
 	    }
 	  assert (thread_p->m_slot);
 	}
