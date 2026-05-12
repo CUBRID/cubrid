@@ -85,6 +85,8 @@ namespace cubmethod
   void
   error_context::set_error (int number, const char *msg, const char *file, int line)
   {
+    er_set (ER_NOTIFICATION_SEVERITY, file, line, ER_METHOD_CALLBACK, 2, number, (msg ? msg : "<null>"));
+
     err_id = number;
     err_string.assign (msg ? msg : "");
     err_file.assign (file ? file : "");
