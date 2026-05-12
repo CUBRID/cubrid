@@ -290,8 +290,8 @@ static void float_numeric_increment (uint64_t * calc_buf, int calc_words, uint64
 static int numeric_operation_compare (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, int calc_bytes);
 static int float_numeric_operation_compare (const uint64_t * arg1_word, const uint64_t * arg2_word, int calc_words);
 static int float_numeric_check_overflow_and_adjust_scale (int *result_prec, int *result_scale, DB_VALUE * answer);
-static void float_numeric_round_and_pack (uint64_t * word_buf, int calc_words, int calc_nbytes,
-					  uint8_t * result_buf, int *result_prec, int *result_scale);
+static int float_numeric_round_and_pack (uint64_t * word_buf, int calc_words, int calc_nbytes,
+					 uint8_t * result_buf, int *result_prec, int *result_scale);
 static int compare_mantissa_same_exponent (uint64_t * dividend_word, uint64_t * divisor_word,
 					   int calc_words, int calc_nbytes, int prec1, int prec2);
 static int float_numeric_compare_rem_round_up (const uint64_t * rem, const uint64_t * div, int calc_words);
@@ -1426,7 +1426,11 @@ float_numeric_div_fast (uint64_t dividend_val, uint64_t divisor_val,
       /* Prevent -0; zero is always treated as positive. */
       *result_sign = false;
     }
-  float_numeric_round_and_pack (quotient_word, word_count, word_bytes, result_buf, &result_prec, &result_scale);
+  /*
+   * Ignoring the return value here is intentional: any scale boundary overflow
+   * from round-carry is surfaced by the caller's float_numeric_check_overflow_and_adjust_scale().
+   */
+  (void) float_numeric_round_and_pack (quotient_word, word_count, word_bytes, result_buf, &result_prec, &result_scale);
   *result_prec_out = result_prec;
   *result_scale_out = result_scale;
 }
@@ -1468,8 +1472,12 @@ float_numeric_mod_fast (uint64_t dividend_val, uint64_t divisor_val,
       /* Prevent -0; zero is always treated as positive. */
       *result_sign = false;
     }
-  float_numeric_round_and_pack (result_word, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES,
-				result_buf, &result_prec, &result_scale);
+  /*
+   * Ignoring the return value here is intentional: any scale boundary overflow
+   * from round-carry is surfaced by the caller's float_numeric_check_overflow_and_adjust_scale().
+   */
+  (void) float_numeric_round_and_pack (result_word, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES,
+				       result_buf, &result_prec, &result_scale);
   *result_prec_out = result_prec;
   *result_scale_out = result_scale;
 }
@@ -2582,7 +2590,14 @@ float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
     }
 
   /* 7) round and pack to DB_NUMERIC_BUF_SIZE bytes */
-  (void) float_numeric_round_and_pack (result_word, calc_words, calc_nbytes, result_buf, &result_prec, &result_scale);
+  ret = float_numeric_round_and_pack (result_word, calc_words, calc_nbytes, result_buf, &result_prec, &result_scale);
+  if (ret != NO_ERROR)
+    {
+      TP_DOMAIN *domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
+      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      return ret;
+    }
 
   /* 8) store result */
   db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, result_sign, true);
@@ -2848,7 +2863,14 @@ float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
     }
 
   /* 7) round and pack to DB_NUMERIC_BUF_SIZE bytes */
-  (void) float_numeric_round_and_pack (result_word, calc_words, calc_nbytes, result_buf, &result_prec, &result_scale);
+  ret = float_numeric_round_and_pack (result_word, calc_words, calc_nbytes, result_buf, &result_prec, &result_scale);
+  if (ret != NO_ERROR)
+    {
+      TP_DOMAIN *domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
+      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      return ret;
+    }
 
   /* 8) store result */
   db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, result_sign, true);
@@ -3056,7 +3078,14 @@ float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
     }
 
   /* 7) round and pack to DB_NUMERIC_BUF_SIZE bytes */
-  (void) float_numeric_round_and_pack (result_word, calc_words, calc_nbytes, result_buf, &result_prec, &result_scale);
+  ret = float_numeric_round_and_pack (result_word, calc_words, calc_nbytes, result_buf, &result_prec, &result_scale);
+  if (ret != NO_ERROR)
+    {
+      TP_DOMAIN *domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
+      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      return ret;
+    }
 
   /* 8) store result */
   db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, result_sign, true);
@@ -3407,7 +3436,14 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
     }
 
   /* 11) round and pack to DB_NUMERIC_BUF_SIZE bytes */
-  (void) float_numeric_round_and_pack (quotient_work, calc_words, calc_nbytes, result_buf, &result_prec, &result_scale);
+  ret = float_numeric_round_and_pack (quotient_work, calc_words, calc_nbytes, result_buf, &result_prec, &result_scale);
+  if (ret != NO_ERROR)
+    {
+      TP_DOMAIN *domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
+      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      return ret;
+    }
 
   /* 12) store result */
   db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, result_sign, true);
@@ -4150,8 +4186,14 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
     }
 
   /* 8) round and pack to DB_NUMERIC_BUF_SIZE bytes */
-  (void) float_numeric_round_and_pack (remainder_work, calc_words, calc_nbytes, result_buf, &result_prec,
-				       &result_scale);
+  ret = float_numeric_round_and_pack (remainder_work, calc_words, calc_nbytes, result_buf, &result_prec, &result_scale);
+  if (ret != NO_ERROR)
+    {
+      TP_DOMAIN *domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
+      db_value_domain_init (result, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      return ret;
+    }
 
   /* 9) store result */
   db_make_numeric (result, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, result_sign, true);
@@ -5407,7 +5449,7 @@ float_numeric_check_overflow_and_adjust_scale (int *result_prec, int *result_sca
  *   - Used to reduce extended numeric precision down to DB_MAX_NUMERIC_PRECISION,
  *     apply half-up rounding, and pack into the fixed-size NUMERIC buffer.
  */
-static void
+static int
 float_numeric_round_and_pack (uint64_t * word_buf, int calc_words, int calc_nbytes, uint8_t * result_buf,
 			      int *result_prec, int *result_scale)
 {
@@ -5419,13 +5461,13 @@ float_numeric_round_and_pack (uint64_t * word_buf, int calc_words, int calc_nbyt
   if (drop <= 0)
     {
       numeric_words_to_bytes (word_buf, calc_words, result_buf);
-      return;
+      return NO_ERROR;
     }
 
   /* if more than 41 digits, truncate to 40 digits and round at the 41st digit */
   *result_prec = DB_MAX_NUMERIC_PRECISION;
 
-  /* 
+  /*
    * divide the value up to 40 digits and store the 41th digit in last_digit for rounding check.
    * reduces digits and returns the most significant digit of the truncated portion for rounding.
    */
@@ -5441,6 +5483,10 @@ float_numeric_round_and_pack (uint64_t * word_buf, int calc_words, int calc_nbyt
 	  /* reduces digits for normalization; does not perform rounding */
 	  (void) float_numeric_div_normalize (word_buf, calc_words, calc_nbytes, 1);
 	  (*result_scale)--;
+	  if (*result_scale < DB_MIN_NUMERIC_SCALE)
+	    {
+	      return ER_IT_DATA_OVERFLOW;
+	    }
 	  round_prec = DB_MAX_NUMERIC_PRECISION;
 	}
     }
@@ -5448,7 +5494,7 @@ float_numeric_round_and_pack (uint64_t * word_buf, int calc_words, int calc_nbyt
   /* copy the final DB_MAX_NUMERIC_PRECISION-digit value into result_buf (DB_NUMERIC_BUF_SIZE) */
   numeric_words_to_bytes (word_buf, calc_words, result_buf);
 
-  return;
+  return NO_ERROR;
 }
 
 /*
