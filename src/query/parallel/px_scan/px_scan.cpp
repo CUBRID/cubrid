@@ -2009,6 +2009,10 @@ namespace parallel_scan
 	  {
 	    m_input_handler->cleanup_on_main (m_thread_p);
 	  }
+	else if constexpr (ST == SCAN_TYPE::INDEX)
+	  {
+	    m_input_handler->cleanup_keys (m_thread_p);
+	  }
 	m_input_handler->~input_handler_t ();
 	db_private_free (m_thread_p, m_input_handler);
 	m_input_handler = nullptr;
