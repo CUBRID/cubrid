@@ -40,7 +40,6 @@
 #include "virtual_object.h"
 #include "dbtype.h"
 #include "boot.h"
-#include "system_parameter.h"
 
 #define MAX_STACK_OBJECTS 500
 
@@ -246,6 +245,7 @@ static int mq_copypush_sargable_terms_dblink (PARSER_CONTEXT * parser, PT_NODE *
 					      PT_NODE * new_query, FIND_ID_INFO * infop);
 static int mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
 					      PT_NODE * subquery, FIND_ID_INFO * infop);
+static bool mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di);
 static PT_NODE *mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
 						   PT_NODE * query_spec, bool remove_sel_list);
 static PT_NODE *mq_translate_select (PARSER_CONTEXT * parser, PT_NODE * select_statement);
@@ -5035,7 +5035,7 @@ mq_dblink_build_rewritten_base_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di
  *  (2) mq_copypush_sargable_terms_helper [pure-corr path]: no non-corr terms pushed
  *      → builds "SELECT * FROM (...) cublink WHERE col = ?" from scratch.
  * di->rewritten != NULL → appends AND.  di->rewritten == NULL → builds base SQL + WHERE. */
-bool
+static bool
 mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di)
 {
   PARSER_VARCHAR *base;
