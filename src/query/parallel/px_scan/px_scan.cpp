@@ -1441,7 +1441,6 @@ extern "C"
 	    db_private_free_and_init (thread_p, local_manager);
 	    worker_manager_p = nullptr;
 
-	    assert_release_error (er_errid () != NO_ERROR);
 	    error = er_errid ();
 	  }
 
@@ -1497,16 +1496,7 @@ extern "C"
 	    worker_manager_p = nullptr;
 	  }
 
-	if (error == ER_INTERRUPTED || er_errid () == ER_INTERRUPTED)
-	  {
-	    ASSERT_ERROR ();
-	    return error;
-	  }
-
-	/* fallback to single-thread index scan — isid is still intact */
-	er_clear ();
-	assert (scan_id->type == S_INDX_SCAN);
-	return NO_ERROR;
+	return error;
       }
 
     /* success: manager open, workers ready — clean up isid resources before overwriting with pisid. */
