@@ -21741,7 +21741,7 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
   update_mvcc_flags = OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION;
 
-  bool has_oos = heap_recdes_check_has_oos (update_context->recdes_p);
+  bool has_oos = heap_recdes_contains_oos (update_context->recdes_p);
 
   if (has_oos)
     {
