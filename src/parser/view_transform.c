@@ -4670,32 +4670,6 @@ mq_dblink_corr_classify_side (PT_NODE * expr, UINTPTR dblink_sid)
   return MQ_DBLINK_CORR_SIDE_OTHER;
 }
 
-/*
- * mq_dblink_corr_is_correlated_eq_term () - true if term is PT_EQ (remote = outer)
- */
-static bool
-mq_dblink_corr_is_correlated_eq_term (PARSER_CONTEXT * parser, PT_NODE * term, UINTPTR dblink_sid)
-{
-  int c1, c2;
-
-  (void) parser;
-  if (term->node_type != PT_EXPR || term->info.expr.op != PT_EQ)
-    {
-      return false;
-    }
-  if (term->info.expr.arg2 == NULL)
-    {
-      return false;
-    }
-  c1 = mq_dblink_corr_classify_side (term->info.expr.arg1, dblink_sid);
-  c2 = mq_dblink_corr_classify_side (term->info.expr.arg2, dblink_sid);
-  if (c1 == MQ_DBLINK_CORR_SIDE_ERR || c2 == MQ_DBLINK_CORR_SIDE_ERR)
-    {
-      return false;
-    }
-  return ((c1 == MQ_DBLINK_CORR_SIDE_REMOTE && c2 == MQ_DBLINK_CORR_SIDE_OUTER)
-	  || (c1 == MQ_DBLINK_CORR_SIDE_OUTER && c2 == MQ_DBLINK_CORR_SIDE_REMOTE));
-}
 
 /*
  * mq_dblink_corr_forbidden_pre () - forbid OR, NOT, host var, method, query block in predicate
@@ -4772,14 +4746,18 @@ mq_dblink_corr_term_has_outer_ref (PARSER_CONTEXT * parser, PT_NODE * term)
 }
 
 /*
- * mq_detect_dblink_corr_eq () - count correlated equalities (remote = outer) in subquery WHERE.
+ * mq_detect_dblink_corr_eq () - find a single correlated equality (remote = outer) in subquery WHERE,
+ *   and fill remote_out / outer_out when exactly one is found.
  *
  *   return:
- *     >=0 : number of AND terms that are exactly one remote=outer PT_EQ (currently == 1 required)
- *     -1  : not applicable (host var, OR/NOT, query block in predicate, outer ref without corr eq, etc.)
+ *     1   : exactly one remote=outer PT_EQ found; *remote_out and *outer_out are set
+ *     0   : no correlated equality found
+ *     -1  : not applicable (host var, OR/NOT, query block, outer ref without corr eq, etc.)
+ *     >=2 : more than one correlated equality (not yet supported; remote_out/outer_out cleared)
  */
 static int
-mq_detect_dblink_corr_eq (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * dblink_spec)
+mq_detect_dblink_corr_eq (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * dblink_spec,
+			   PT_NODE ** remote_out, PT_NODE ** outer_out)
 {
   PT_NODE *where, *term;
   bool forbidden;
@@ -4787,6 +4765,10 @@ mq_detect_dblink_corr_eq (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE *
   int corr_eq_count;
 
   assert (parser != NULL && subquery != NULL && dblink_spec != NULL);
+  assert (remote_out != NULL && outer_out != NULL);
+
+  *remote_out = NULL;
+  *outer_out = NULL;
 
   if (!PT_IS_SELECT (subquery))
     {
@@ -4824,9 +4806,32 @@ mq_detect_dblink_corr_eq (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE *
 
       if (!forbidden)
 	{
-	  if (mq_dblink_corr_is_correlated_eq_term (parser, term, dblink_sid))
+	  int c1 = MQ_DBLINK_CORR_SIDE_OTHER;
+	  int c2 = MQ_DBLINK_CORR_SIDE_OTHER;
+	  bool is_corr_eq = false;
+
+	  if (term->node_type == PT_EXPR && term->info.expr.op == PT_EQ && term->info.expr.arg2 != NULL)
+	    {
+	      c1 = mq_dblink_corr_classify_side (term->info.expr.arg1, dblink_sid);
+	      c2 = mq_dblink_corr_classify_side (term->info.expr.arg2, dblink_sid);
+	      is_corr_eq = (c1 != MQ_DBLINK_CORR_SIDE_ERR && c2 != MQ_DBLINK_CORR_SIDE_ERR
+			   && ((c1 == MQ_DBLINK_CORR_SIDE_REMOTE && c2 == MQ_DBLINK_CORR_SIDE_OUTER)
+			       || (c1 == MQ_DBLINK_CORR_SIDE_OUTER && c2 == MQ_DBLINK_CORR_SIDE_REMOTE)));
+	    }
+
+	  if (is_corr_eq)
 	    {
 	      corr_eq_count++;
+	      if (c1 == MQ_DBLINK_CORR_SIDE_REMOTE)
+		{
+		  *remote_out = term->info.expr.arg1;
+		  *outer_out = term->info.expr.arg2;
+		}
+	      else
+		{
+		  *remote_out = term->info.expr.arg2;
+		  *outer_out = term->info.expr.arg1;
+		}
 	    }
 	  else if (mq_dblink_corr_term_has_outer_ref (parser, term))
 	    {
@@ -4843,97 +4848,13 @@ mq_detect_dblink_corr_eq (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE *
 	}
     }
 
+  if (corr_eq_count != 1)
+    {
+      *remote_out = NULL;
+      *outer_out = NULL;
+    }
+
   return corr_eq_count;
-}
-
-/*
- * mq_dblink_corr_get_eq_pair () - after mq_detect_dblink_corr_eq == 1, fill remote/outer expr pointers.
- */
-static bool
-mq_dblink_corr_get_eq_pair (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * dblink_spec, PT_NODE ** remote_out,
-			    PT_NODE ** outer_out)
-{
-  UINTPTR dblink_sid;
-  PT_NODE *where, *term;
-  bool forbidden;
-  int c1, c2;
-  int found;
-
-  assert (parser != NULL && subquery != NULL && dblink_spec != NULL && remote_out != NULL && outer_out != NULL);
-
-  *remote_out = NULL;
-  *outer_out = NULL;
-
-  if (!PT_IS_SELECT (subquery))
-    {
-      return false;
-    }
-
-  where = subquery->info.query.q.select.where;
-  if (where == NULL)
-    {
-      return false;
-    }
-
-  dblink_sid = dblink_spec->info.spec.id;
-  found = 0;
-
-  for (term = where; term; term = term->next)
-    {
-      PT_NODE *save_next;
-
-      if (term->node_type == PT_EXPR && term->info.expr.location > 0)
-	{
-	  continue;
-	}
-      if (term->node_type == PT_VALUE && term->info.value.location > 0)
-	{
-	  continue;
-	}
-
-      /* Temporarily unlink ->next so parser_walk_tree does not spill into sibling terms. */
-      save_next = term->next;
-      term->next = NULL;
-
-      forbidden = false;
-      parser_walk_tree (parser, term, mq_dblink_corr_forbidden_pre, &forbidden, NULL, NULL);
-
-      if (!forbidden && mq_dblink_corr_is_correlated_eq_term (parser, term, dblink_sid))
-	{
-	  c1 = mq_dblink_corr_classify_side (term->info.expr.arg1, dblink_sid);
-	  c2 = mq_dblink_corr_classify_side (term->info.expr.arg2, dblink_sid);
-	  if (c1 == MQ_DBLINK_CORR_SIDE_REMOTE && c2 == MQ_DBLINK_CORR_SIDE_OUTER)
-	    {
-	      *remote_out = term->info.expr.arg1;
-	      *outer_out = term->info.expr.arg2;
-	    }
-	  else if (c1 == MQ_DBLINK_CORR_SIDE_OUTER && c2 == MQ_DBLINK_CORR_SIDE_REMOTE)
-	    {
-	      *remote_out = term->info.expr.arg2;
-	      *outer_out = term->info.expr.arg1;
-	    }
-	  else
-	    {
-	      term->next = save_next;
-	      return false;
-	    }
-	  found++;
-	}
-      else if (!forbidden && mq_dblink_corr_term_has_outer_ref (parser, term))
-	{
-	  term->next = save_next;
-	  return false;
-	}
-
-      term->next = save_next;
-
-      if (forbidden)
-	{
-	  return false;
-	}
-    }
-
-  return (found == 1 && *remote_out != NULL && *outer_out != NULL);
 }
 
 /* Clear correlated key slots; free owning corr_key_outer_copy trees. */
@@ -7154,31 +7075,24 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 	  /* comment out this block to disable correlated push-down */
 	  if (!hint_no_push)
 	    {
-	      ncorr = mq_detect_dblink_corr_eq (parser, node, spec);
+	      ncorr = mq_detect_dblink_corr_eq (parser, node, spec, &remote_expr, &outer_expr);
 	      if (ncorr == 1)
 		{
-		  if (!mq_dblink_corr_get_eq_pair (parser, node, spec, &remote_expr, &outer_expr))
+		  dinfo->corr_key_col_names[0] = mq_dblink_extract_col_name (parser, remote_expr);
+		  if (dinfo->corr_key_col_names[0] == NULL)
 		    {
 		      mq_dblink_clear_corr_keys (parser, dinfo);
 		    }
 		  else
 		    {
-		      dinfo->corr_key_col_names[0] = mq_dblink_extract_col_name (parser, remote_expr);
-		      if (dinfo->corr_key_col_names[0] == NULL)
+		      dinfo->corr_key_outer_copy[0] = parser_copy_tree (parser, outer_expr);
+		      if (dinfo->corr_key_outer_copy[0] == NULL)
 			{
 			  mq_dblink_clear_corr_keys (parser, dinfo);
 			}
 		      else
 			{
-			  dinfo->corr_key_outer_copy[0] = parser_copy_tree (parser, outer_expr);
-			  if (dinfo->corr_key_outer_copy[0] == NULL)
-			    {
-			      mq_dblink_clear_corr_keys (parser, dinfo);
-			    }
-			  else
-			    {
-			      dinfo->corr_key_count = 1;
-			    }
+			  dinfo->corr_key_count = 1;
 			}
 		    }
 		}
