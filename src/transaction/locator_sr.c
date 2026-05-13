@@ -5319,7 +5319,15 @@ locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * rec
   thread_p->oos_oids.clear ();
 
   /* The recdes data from the log includes the OOS record header. Since oos_insert adds its own header,
-   * we project a span over the payload (skipping the on-log header) instead of mutating the caller's recdes. */
+   * we project a span over the payload (skipping the on-log header) instead of mutating the caller's recdes.
+   * Guard the subtraction against a corrupt replication record: an int underflow here would cast to a huge
+   * size_t span and propagate as either a wrap-around int or a huge memcpy inside oos_insert. */
+  if (recdes->length <= OOS_RECORD_HEADER_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      "OOS replication log record shorter than header");
+      return ER_HA_GENERIC_ERROR;
+    }
   oos_buffer payload (recdes->data + OOS_RECORD_HEADER_SIZE, (size_t) (recdes->length - OOS_RECORD_HEADER_SIZE));
   error_code = oos_insert (thread_p, oos_vfid, payload, oos_oid);
   if (error_code != NO_ERROR)
