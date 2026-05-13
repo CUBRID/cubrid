@@ -2568,32 +2568,43 @@ jsp_create_trigger_body_sp (const char *sp_name, const char *pl_body, DB_OBJECT 
       /* Mark the backing SP and its code record as system-generated so that
        * ordinary DROP/ALTER PROCEDURE statements cannot accidentally remove it.
        * jsp_drop_trigger_body_sp() bypasses this flag when the owning trigger
-       * is explicitly dropped. */
+       * is explicitly dropped.
+       * Failure to set this flag is treated as a hard error: without protection
+       * the trigger lifecycle cannot be guaranteed. */
       int save;
       AU_DISABLE (save);
 
       MOP sp_mop = jsp_find_stored_procedure (sp_name, DB_AUTH_NONE);
-      if (sp_mop != NULL)
+      if (sp_mop == NULL)
 	{
-	  DB_VALUE gen_val;
-	  db_make_int (&gen_val, 1);
-	  (void) db_put (sp_mop, SP_ATTR_IS_SYSTEM_GENERATED, &gen_val);
+	  err = er_errid ();
+	  AU_ENABLE (save);
+	  return err;
+	}
 
-	  /* Also mark the code record */
-	  DB_VALUE target_cls_val;
-	  db_make_null (&target_cls_val);
-	  if (db_get (sp_mop, SP_ATTR_TARGET_CLASS, &target_cls_val) == NO_ERROR
-	      && !DB_IS_NULL (&target_cls_val))
+      DB_VALUE gen_val;
+      db_make_int (&gen_val, 1);
+      err = db_put (sp_mop, SP_ATTR_IS_SYSTEM_GENERATED, &gen_val);
+      if (err != NO_ERROR)
+	{
+	  AU_ENABLE (save);
+	  return err;
+	}
+
+      /* Also mark the code record */
+      DB_VALUE target_cls_val;
+      db_make_null (&target_cls_val);
+      if (db_get (sp_mop, SP_ATTR_TARGET_CLASS, &target_cls_val) == NO_ERROR
+	  && !DB_IS_NULL (&target_cls_val))
+	{
+	  const char *target_cls = db_get_string (&target_cls_val);
+	  MOP code_mop = jsp_find_stored_procedure_code (target_cls);
+	  if (code_mop != NULL)
 	    {
-	      const char *target_cls = db_get_string (&target_cls_val);
-	      MOP code_mop = jsp_find_stored_procedure_code (target_cls);
-	      if (code_mop != NULL)
-		{
-		  db_make_int (&gen_val, 1);
-		  (void) db_put (code_mop, SP_CODE_ATTR_IS_SYSTEM_GENERATED, &gen_val);
-		}
-	      pr_clear_value (&target_cls_val);
+	      db_make_int (&gen_val, 1);
+	      err = db_put (code_mop, SP_CODE_ATTR_IS_SYSTEM_GENERATED, &gen_val);
 	    }
+	  pr_clear_value (&target_cls_val);
 	}
 
       AU_ENABLE (save);

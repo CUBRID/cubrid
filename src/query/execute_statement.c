@@ -6674,8 +6674,9 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   SM_CLASS *smclass = NULL;
   int error = NO_ERROR;
   char pl_sp_name[DB_MAX_IDENTIFIER_LENGTH + 1];
-  /* qualified: "<owner>.<sp_name>" — used for CALL and action_body_sp storage */
-  char pl_sp_qualified_name[DB_MAX_USER_LENGTH + DB_MAX_IDENTIFIER_LENGTH + 2];
+  /* qualified: "<owner>.<sp_name>" — used for CALL and action_body_sp storage.
+   * Size: DB_MAX_USER_LENGTH (owner) + 1 (dot) + DB_MAX_IDENTIFIER_LENGTH (sp_name) + 1 (NUL) + 1 (margin) */
+  char pl_sp_qualified_name[DB_MAX_USER_LENGTH + DB_MAX_IDENTIFIER_LENGTH + 3];
   char pl_call_source[DB_MAX_USER_LENGTH + DB_MAX_IDENTIFIER_LENGTH + 10];
   pl_sp_name[0] = '\0';
   pl_sp_qualified_name[0] = '\0';
@@ -6774,7 +6775,20 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* Build the owner-qualified SP name so CALL resolves correctly at trigger fire
        * time regardless of who the DML executor is, and so trigger drop by another
        * user (e.g. DBA) can locate the SP without depending on the current session user. */
-      snprintf (pl_sp_qualified_name, sizeof (pl_sp_qualified_name), "%s.%s", Au_user_name, pl_sp_name);
+      /* Use %.*s so the compiler can bound Au_user_name to DB_MAX_USER_LENGTH chars
+       * and confirm the buffer (DB_MAX_USER_LENGTH+1+DB_MAX_IDENTIFIER_LENGTH+1+1 bytes)
+       * is sufficient, suppressing -Wformat-truncation. */
+      snprintf (pl_sp_qualified_name, sizeof (pl_sp_qualified_name), "%.*s.%s",
+		DB_MAX_USER_LENGTH, Au_user_name, pl_sp_name);
+
+      /* Reject trigger names whose backing SP qualified name would exceed the catalog column width.
+       * The action_body_sp column is varchar(DB_MAX_IDENTIFIER_LENGTH), so names longer than
+       * that limit cannot be stored and would cause db_put() to fail or silently truncate. */
+      if ((int) strlen (pl_sp_qualified_name) > DB_MAX_IDENTIFIER_LENGTH)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_NAME, 0);
+	  return er_errid ();
+	}
 
       error = jsp_create_trigger_body_sp (pl_sp_name, pl_body, NULL);
       if (error != NO_ERROR)
