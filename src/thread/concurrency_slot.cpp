@@ -209,6 +209,8 @@ namespace cubthread
   std::unique_ptr<concurrency_slot>
   concurrency_slot_pool::try_acquire_slot (std::unique_lock<std::mutex> &ulock)
   {
+    assert (ulock.owns_lock ());
+
     if (m_available_slots.empty ())
       {
 	return nullptr;
@@ -217,8 +219,9 @@ namespace cubthread
     std::unique_ptr<concurrency_slot> slot = std::move (m_available_slots.front ());
     m_available_slots.pop ();
 
+    assert (slot);
     slot->set_holder_pool (this);
-    assert (slot && slot->get_owner_pool () && slot->get_holder_pool ());
+    assert (slot->get_owner_pool () && slot->get_holder_pool ());
 
     return slot;
   }
@@ -236,26 +239,28 @@ namespace cubthread
   {
     assert (thread_p);
     assert (!thread_p->m_slot);
+    assert (ulock.owns_lock ());
 
-    thread_resume_suspend_status resume_status;
+    thread_resume_suspend_status saved_status;
 
     if (!m_available_slots.empty ())
       {
 	thread_p->m_slot = std::move (m_available_slots.front ());
 	m_available_slots.pop ();
 
+	assert (thread_p->m_slot);
 	thread_p->m_slot->set_holder_pool (this);
-	assert (thread_p->m_slot && thread_p->m_slot->get_owner_pool () && thread_p->m_slot->get_holder_pool ());
+	assert (thread_p->m_slot->get_owner_pool () && thread_p->m_slot->get_holder_pool ());
 
 	return true;
       }
 
-    // into wating list
+    // into waiting list
     m_wait_queue.push_back (thread_p);
 
     ulock.unlock ();
 
-    resume_status = thread_p->resume_status;
+    saved_status = thread_p->resume_status;
     thread_p->resume_status = THREAD_CONCURRENCY_SLOT_SUSPENDED;
 
     // wait until the wakeup predicate is true
@@ -264,31 +269,28 @@ namespace cubthread
 	pthread_cond_wait (&thread_p->wakeup_cond, &thread_p->th_entry_lock);
       }
 
-    if (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT ||
-	thread_p->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN)
+    thread_p->resume_status = saved_status;
+
+    if (thread_p->m_slot)
       {
-	ulock.lock ();
-
-	auto it = std::find (m_wait_queue.begin (), m_wait_queue.end (), thread_p);
-	if (it != m_wait_queue.end ())
-	  {
-	    m_wait_queue.erase (it);
-	  }
-	else
-	  {
-	    // maybe I was removed in the release_slot loop as stale slot
-	  }
-
-	ulock.unlock ();
-	return false;
+	assert (thread_p->m_slot->get_owner_pool () && thread_p->m_slot->get_holder_pool ());
+	return true;
       }
 
-    assert (thread_p->resume_status == THREAD_CONCURRENCY_SLOT_RESUMED);
-    thread_p->resume_status = resume_status;
+    ulock.lock ();
 
-    assert (thread_p->m_slot && thread_p->m_slot->get_owner_pool () && thread_p->m_slot->get_holder_pool ());
+    auto it = std::find (m_wait_queue.begin (), m_wait_queue.end (), thread_p);
+    if (it != m_wait_queue.end ())
+      {
+	m_wait_queue.erase (it);
+      }
+    else
+      {
+	// maybe I was removed in the release_slot loop as stale slot
+      }
 
-    return true;
+    ulock.unlock ();
+    return false;
   }
 
   void
@@ -303,6 +305,7 @@ namespace cubthread
   concurrency_slot_pool::release_slot (std::unique_ptr<concurrency_slot> slot, std::unique_lock<std::mutex> &ulock)
   {
     assert (slot);
+    assert (ulock.owns_lock ());
 
     entry *waiter;
 

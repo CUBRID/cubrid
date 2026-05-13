@@ -389,7 +389,6 @@ namespace cubthread
     m_slots.release_slot (std::move (slot));
   }
 
-
   template <stats_t Stats>
   void
   worker_pool_elastic<Stats>::core_elastic::release_slot (unique_slot slot, std::unique_lock<std::mutex> &ulock)
@@ -456,18 +455,17 @@ namespace cubthread
   void
   worker_pool_elastic<Stats>::core_elastic::get_stats (cubperf::stat_value *stats_out) const
   {
-    {
-      snapshot_guard snapshot (this);
-
-      for (const auto &it : snapshot.get_snapshot ())
-	{
-	  it->get_stats (stats_out);
-	}
-    }
-
-    std::lock_guard<std::mutex> lock (this->m_core_mutex);
+    std::unique_lock<std::mutex> ulock (this->m_core_mutex);
 
     stats::accumulate (m_retired_stats, stats_out);
+
+    snapshot_guard snapshot (this, ulock);
+    ulock.unlock ();
+
+    for (const auto &it : snapshot.get_snapshot ())
+      {
+	it->get_stats (stats_out);
+      }
   }
 
   template <stats_t Stats>
@@ -487,10 +485,9 @@ namespace cubthread
     if (!worker_p && this->m_workers.size () < m_max_worker)
       {
 	// create a worker when none is available
-	std::unique_ptr<worker> w = this->allocate_worker ();
-	w->set_parent_core (*this);
-	worker_p = w.get ();
-	this->m_workers.push_back (std::move (w));
+	this->m_workers.push_back (this->allocate_worker ());
+	worker_p = this->m_workers.back ().get ();
+	worker_p->set_parent_core (*this);
       }
     return worker_p;
   }

@@ -682,7 +682,7 @@ thread_prepare_resumption (cubthread::entry *thread_p, cubthread::entry::status 
 	{
 	  if (thread_p->m_slot)
 	    {
-	      // 1. the entry still holds its slot (wait time < threshold)
+	      // 0. Interrupted & the entry still holds its slot (wait time < threshold)
 	      static_cast<cubthread::concurrency_slot_pool *> (holder)->release_slot (std::move (thread_p->m_slot));
 	      thread_p->m_slot = nullptr;
 	    }

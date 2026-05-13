@@ -319,6 +319,7 @@ namespace cubthread
 
       // snapshot
       std::vector<worker *> fix_workers_snapshot () const;
+      std::vector<worker *> fix_workers_snapshot (std::unique_lock<std::mutex> &ulock) const;
       void release_workers_snapshot () const;
       bool has_workers_snapshot_readers () const;
 
@@ -349,6 +350,7 @@ namespace cubthread
   {
     public:
       explicit snapshot_guard (const core_impl *core);
+      explicit snapshot_guard (const core_impl *core, std::unique_lock<std::mutex> &ulock);
       ~snapshot_guard ();
 
       snapshot_guard (const snapshot_guard &) = delete;
@@ -357,7 +359,7 @@ namespace cubthread
       snapshot_guard (snapshot_guard &&) = delete;
       snapshot_guard &operator= (snapshot_guard &&) = delete;
 
-      const std::vector<worker *> &get_snapshot ();
+      const std::vector<worker *> &get_snapshot () const;
 
     private:
       const core_impl *m_core;
@@ -1194,9 +1196,18 @@ namespace cubthread
   std::vector<worker_pool::core::worker *>
   worker_pool_impl<Stats>::core_impl::fix_workers_snapshot () const
   {
-    std::vector<worker *> snapshot;
+    std::unique_lock<std::mutex> ulock (m_core_mutex);
 
-    std::lock_guard<std::mutex> lock (m_core_mutex);
+    return fix_workers_snapshot (ulock);
+  }
+
+  template <stats_t Stats>
+  std::vector<worker_pool::core::worker *>
+  worker_pool_impl<Stats>::core_impl::fix_workers_snapshot (std::unique_lock<std::mutex> &ulock) const
+  {
+    assert (ulock.owns_lock ());
+
+    std::vector<worker *> snapshot;
 
     snapshot.reserve (m_workers.size ());
     // fix
@@ -1279,7 +1290,6 @@ namespace cubthread
   // worker_pool_impl<Stats>::core_impl::snapshot
   //////////////////////////////////////////////////////////////////////////
 
-
   template <stats_t Stats>
   worker_pool_impl<Stats>::core_impl::snapshot_guard::snapshot_guard (const core_impl *core)
     : m_core (core)
@@ -1290,6 +1300,17 @@ namespace cubthread
   }
 
   template <stats_t Stats>
+  worker_pool_impl<Stats>::core_impl::snapshot_guard::snapshot_guard (const core_impl *core,
+      std::unique_lock<std::mutex> &ulock)
+    : m_core (core)
+  {
+    assert (m_core);
+    assert (ulock.owns_lock ());
+
+    m_snapshot = m_core->fix_workers_snapshot (ulock);
+  }
+
+  template <stats_t Stats>
   worker_pool_impl<Stats>::core_impl::snapshot_guard::~snapshot_guard ()
   {
     m_core->release_workers_snapshot ();
@@ -1297,7 +1318,7 @@ namespace cubthread
 
   template <stats_t Stats>
   const std::vector<worker_pool::core::worker *> &
-  worker_pool_impl<Stats>::core_impl::snapshot_guard::get_snapshot ()
+  worker_pool_impl<Stats>::core_impl::snapshot_guard::get_snapshot () const
   {
     return m_snapshot;
   }
