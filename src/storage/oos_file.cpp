@@ -1054,10 +1054,7 @@ oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &o
   assert (src.data () != nullptr);
   assert (src.size () > 0);
 
-  /* Runtime guard for the narrowing cast below. Asserts above catch programmer
-   * bugs in dev; this check catches corrupt callers (e.g. a truncated
-   * replication log record producing a wrap-around size_t in locator_sr.c)
-   * before they reach chunk-count math or oos_prepend_header. */
+  /* Guards the narrowing cast below against wrap-around from a corrupt caller. */
   if (src.data () == nullptr || src.size () == 0 || src.size () > (std::size_t) INT_MAX)
     {
       oos_error ("oos_insert rejected invalid src (data=%p, size=%zu)", src.data (), src.size ());
@@ -1120,15 +1117,10 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffe
   // split the payload to multiple chunks and insert them one by one
   const int max_chunk_size = oos_get_max_chunk_size_within_page ();
   const int total_data_length = static_cast<int> (src.size ());
-  /* Equivalent to total_data_length + OOS_RECORD_HEADER_SIZE > max_chunk_size
-   * but rewritten without addition on total_data_length: with the INT_MAX
-   * upper bound at oos_insert's entry guard, the addition form would overflow
-   * for payloads near INT_MAX (signed overflow is UB). */
+  /* Both expressions below are rewritten to avoid adding to total_data_length,
+   * which can be near INT_MAX (entry-guard bound) and would signed-overflow. */
   assert (total_data_length > max_chunk_size - OOS_RECORD_HEADER_SIZE);
 
-  /* Ceil division without `(total + max - 1) / max`, which overflows int when
-   * total_data_length is close to INT_MAX. The split-form below uses only one
-   * division and one modulo on values already bounded by total_data_length. */
   int required_page_nums = total_data_length / max_chunk_size;
   if (total_data_length % max_chunk_size != 0)
     {
@@ -1167,9 +1159,7 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffe
   // this loop inserts chunks in reverse order so that next_chunk_oid is always known
   for (int i = required_page_nums - 1; i >= 0; --i)
     {
-      // subspan handles both bounds checking (assert offset <= size) and tail
-      // clamping (count > remaining clamps to remaining), so the final chunk's
-      // shorter length falls out for free.
+      // subspan clamps count to the remaining size, so the tail chunk's shorter length is automatic.
       oos_buffer chunk = src.subspan (static_cast<std::size_t> (i * max_chunk_size),
 				      static_cast<std::size_t> (max_chunk_size));
       total_inserted_length += static_cast<int> (chunk.size ());
@@ -1307,9 +1297,7 @@ oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid,
       return er_errid ();
     }
 
-  /* Writer-side invariant: every OOS slot carries at least the chain header.
-   * A shorter slot indicates a writer bug; keep the runtime guard for release
-   * builds to catch genuine on-disk corruption safely. */
+  /* Every OOS slot carries at least the chain header; shorter is on-disk corruption. */
   assert (oos_recdes.length >= OOS_RECORD_HEADER_SIZE);
   if (oos_recdes.length < OOS_RECORD_HEADER_SIZE)
     {
@@ -1350,25 +1338,19 @@ oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &next_oid,
 	  return err;
 	}
 
-      /* Chain invariants: chunk_index must increment monotonically from 1, and
-       * every chunk's total_data_length must agree with the head. A mismatch
-       * means next_chunk_oid points outside the chain (corruption) or chunks
-       * are reordered. Asserts catch writer bugs in dev; the runtime check
-       * prevents release builds from silently returning a misassembled value. */
+      /* chunk_index must increment from 1 and total_data_length must match the head. */
+      assert (idx == header.chunk_index);
+      assert (header.total_data_length == total_data_length);
       if (idx != header.chunk_index || header.total_data_length != total_data_length)
 	{
 	  oos_error ("OOS chain inconsistency at idx=%d: header.chunk_index=%d, header.total_data_length=%d,"
 		     " expected_total=%d at oid={vol=%d,page=%d,slot=%d}",
 		     idx, header.chunk_index, header.total_data_length, total_data_length, OID_AS_ARGS (&current));
-	  assert (idx == header.chunk_index);
-	  assert (header.total_data_length == total_data_length);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return ER_GENERIC_ERROR;
 	}
 
-      /* Empty-chunk guard: a 0-byte chunk does not advance the writer, so a
-       * corrupt cyclic next_chunk_oid would loop forever. Production never
-       * emits empty chunks; treat as on-disk corruption. */
+      /* A 0-byte chunk would let a cyclic next_chunk_oid loop forever. */
       if (writer.written () == before)
 	{
 	  oos_error ("OOS empty chunk at idx=%d, oid={vol=%d,page=%d,slot=%d}", idx, OID_AS_ARGS (&current));
@@ -1383,17 +1365,9 @@ oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &next_oid,
 }
 
 
-/* oos_read - Read an OOS value into a caller-owned span.
- *
- * dest.size() is the authoritative expected payload length. The caller has
- * already obtained it (typically from the inline 8B length in the heap record
- * or from oos_get_length in test contexts) and sized the span accordingly.
- * The on-disk OOS header's total_data_length is cross-validated against
- * dest.size(); disagreement is treated as on-disk corruption.
- *
- * The writer's bounds check is the last line of defense against an inflated
- * payload_len on disk: see byte_span_writer.hpp.
- */
+/* Cross-validates dest.size() against the chain header's total_data_length;
+ * mismatch (corruption) is rejected. byte_span_writer guards each chunk
+ * against payload_len overflow inside the loop. */
 int
 oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest)
 {
@@ -1410,22 +1384,17 @@ oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest)
       return err;
     }
 
-  /* The caller's OID must point at the chain head (chunk_index == 0). If a
-   * corrupted heap inline OID points at a mid-chain chunk, that chunk's own
-   * total_data_length / next_chunk_oid would otherwise be accepted as a valid
-   * (but wrong) value. Runtime check so release builds reject corruption. */
+  /* Caller's OID must be the chain head; mid-chain target = corrupted inline OID. */
+  assert (first_header.chunk_index == 0);
   if (first_header.chunk_index != 0)
     {
       oos_error ("OOS read at non-head chunk: chunk_index=%d at oid={vol=%d,page=%d,slot=%d}",
 		 first_header.chunk_index, OID_AS_ARGS (&oid));
-      assert (first_header.chunk_index == 0);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_GENERIC_ERROR;
     }
 
-  /* Validate the on-disk OOS header length against the caller-provided length.
-   * Disagreement means the inline length and the OOS chain disagree, which is
-   * on-disk corruption. */
+  /* Inline length (dest.size()) and chain header must agree. */
   if (first_header.total_data_length != expected_length)
     {
       oos_error ("OOS length mismatch: caller=%d header=%d at oid={vol=%d,page=%d,slot=%d}",

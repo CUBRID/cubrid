@@ -37,20 +37,9 @@ using OOS_RECORD_HEADER = struct oos_record_header;
  * Documentation only — no compile-time distinction from RECDES. */
 using OOS_RECDES = RECDES;
 
-/* Byte-span for OOS payload exchange (oos_insert source / oos_read destination).
- *
- * span.size() is the authoritative payload length in both directions, decoupled
- * from any RECDES.area_size bookkeeping the caller may keep separately. The
- * caller may back the span with a scratch buffer larger than the payload
- * without lying about RECDES.area_size.
- *
- * Mutable element type (`char`, not `const char`) so a single alias serves both
- * directions; oos_insert only reads from its argument.
- *
- * Exists as a named alias so .c call sites (compiled as C++17) can construct
- * it as `oos_buffer (data, len)` instead of `cubbase::span<char> (data, len)`;
- * the C-file formatter (indent) mangles the template angle brackets, the
- * alias sidesteps that. */
+/* Caller-owned byte span for OOS payloads. size() is the authoritative length;
+ * oos_insert only reads from it, oos_read only writes. Named alias because the
+ * .c-file formatter mangles `cubbase::span<char>(...)`'s angle brackets. */
 using oos_buffer = cubbase::span<char>;
 
 #define OOS_NUM_BEST_SPACESTATS 10
@@ -95,26 +84,10 @@ struct oos_hdr_stats
 extern int oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid);
 extern int oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
 extern int oos_remove_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid);
-/* Insert an OOS value held in a caller-owned span.
- *
- * src.size() is the authoritative payload length to store; oos_insert only
- * reads from the span and never mutates the underlying bytes. If the payload
- * exceeds one OOS page, the value is split into a chunk chain and `oid` is
- * set to the head-chunk OID.
- */
+/* Inserts src.size() bytes; on multi-page payloads, oid is the head-chunk OID. */
 extern int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid);
-/* Read an OOS value into a caller-owned span.
- *
- * dest.size() is the authoritative expected payload length: the caller has
- * already obtained it (typically from the inline 8B length in the heap record
- * or from oos_get_length in test contexts) and sized the span accordingly.
- * The OOS chain header's total_data_length is cross-validated against
- * dest.size(); disagreement is treated as on-disk corruption.
- *
- * Span semantics decouple "expected payload length" from "underlying buffer
- * capacity", so the caller may back the span with a scratch buffer larger
- * than the payload without having to coerce a RECDES.area_size into a lie.
- */
+/* Reads exactly dest.size() bytes; the caller obtains the length from the
+ * heap record's inline 8B field (or oos_get_length in tests) and sizes dest. */
 extern int oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest);
 extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid);
 extern int oos_get_length (THREAD_ENTRY *thread_p, const OID &oid);

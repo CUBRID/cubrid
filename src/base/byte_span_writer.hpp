@@ -17,17 +17,9 @@
  */
 
 /*
- * byte_span_writer.hpp - bounded append-only cursor over a cubbase::span
- *
- * Invariant: 0 <= written() <= capacity(). append() is the only mutator;
- * it bounds-checks before memcpy and refuses to write past the end. There
- * is no way to advance the cursor without copying, and no way to copy
- * without also advancing the cursor — so "wrote past the end" is
- * unrepresentable.
- *
- * Error reporting: append() returns bool. Callers emit context-rich
- * errors (er_set / oos_error / etc.) — the writer stays free of any
- * specific error vocabulary.
+ * byte_span_writer.hpp - bounded append-only cursor over a cubbase::span.
+ * append() is the only mutator; it bounds-checks before memcpy, returns
+ * false on overflow, and never advances the cursor without copying.
  */
 
 #ifndef _BYTE_SPAN_WRITER_HPP_
@@ -71,9 +63,7 @@ namespace cubbase
 	return _written == _dest.size ();
       }
 
-      /* Append n bytes from src. Returns false if the write would overrun
-       * capacity; cursor is unchanged and no bytes are written in that case.
-       * n == 0 is always legal (no-op success), even when the writer is full. */
+      /* Returns false on capacity overrun; cursor unchanged. n == 0 is a no-op success. */
       bool append (const char *src, std::size_t n) noexcept
       {
 	assert (n == 0 || src != nullptr);

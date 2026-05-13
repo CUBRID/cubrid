@@ -97,22 +97,13 @@ namespace test_oos_utils
     return large_data;
   }
 
-  /* Test-side wrapper for the span-based oos_insert API. Tests construct
-   * payloads as RECDES via from_string_into_recdes; this helper bridges
-   * that to oos_insert's oos_buffer parameter without leaking span-
-   * construction boilerplate into every call site. Mirrors the production
-   * pattern in heap_file.c, which wraps recdes.data/length in an oos_buffer
-   * at the boundary. */
+  /* Wraps a test RECDES as the oos_buffer src that oos_insert expects. */
   inline int oos_insert_from_recdes (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const RECDES &recdes, OID &oid)
   {
     return oos_insert (thread_p, oos_vfid, oos_buffer (recdes.data, static_cast<std::size_t> (recdes.length)), oid);
   }
 
-  /* Test-side wrapper for the span-based oos_read API. Production callers know
-   * the OOS length from the inline 8B field in the heap record; tests don't
-   * have that record, so we read the length via oos_get_length and hand
-   * oos_read a span sized to exactly that length. The RECDES wrapping is for
-   * the test's downstream convenience only — oos_read no longer touches it. */
+  /* Reads OID into a fresh RECDES, sized via oos_get_length (tests have no heap-inline length). */
   inline int oos_read_with_alloc (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
   {
     recdes = RECDES{};
