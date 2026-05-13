@@ -1120,9 +1120,20 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffe
   // split the payload to multiple chunks and insert them one by one
   const int max_chunk_size = oos_get_max_chunk_size_within_page ();
   const int total_data_length = static_cast<int> (src.size ());
-  assert (total_data_length + OOS_RECORD_HEADER_SIZE > max_chunk_size);
+  /* Equivalent to total_data_length + OOS_RECORD_HEADER_SIZE > max_chunk_size
+   * but rewritten without addition on total_data_length: with the INT_MAX
+   * upper bound at oos_insert's entry guard, the addition form would overflow
+   * for payloads near INT_MAX (signed overflow is UB). */
+  assert (total_data_length > max_chunk_size - OOS_RECORD_HEADER_SIZE);
 
-  int required_page_nums = (total_data_length + max_chunk_size - 1) / max_chunk_size;
+  /* Ceil division without `(total + max - 1) / max`, which overflows int when
+   * total_data_length is close to INT_MAX. The split-form below uses only one
+   * division and one modulo on values already bounded by total_data_length. */
+  int required_page_nums = total_data_length / max_chunk_size;
+  if (total_data_length % max_chunk_size != 0)
+    {
+      ++required_page_nums;
+    }
   assert (required_page_nums > 1);
 
   int total_inserted_length = 0;
