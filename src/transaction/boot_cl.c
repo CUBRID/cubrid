@@ -1144,10 +1144,9 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   tran_lock_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
 
   er_log_debug (ARG_FILE_LINE,
-		"boot_restart_client: register client { type %d db %s user %s password %s "
+		"boot_restart_client: register client { type %d db %s user %s password **** "
 		"program %s login %s host %s pid %d }\n", client_credential->client_type,
 		client_credential->get_db_name (), client_credential->get_db_user (),
-		client_credential->db_password.empty ()? "(null)" : client_credential->get_db_password (),
 		client_credential->get_program_name (),
 		client_credential->get_login_name (), client_credential->get_host_name (),
 		client_credential->process_id);
