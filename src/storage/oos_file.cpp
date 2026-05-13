@@ -47,10 +47,10 @@ static int
 oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args);
 
 static int
-oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes,
+oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src,
 			const OOS_RECORD_HEADER &header, OID &oid);
 static int
-oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes,
+oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src,
 			 OID &oid);
 static int
 oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid,
@@ -1019,13 +1019,14 @@ oos_remove_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid)
 
 
 static int
-oos_prepend_header (const RECDES &recdes, const OOS_RECORD_HEADER &oos_header, OOS_RECDES &oos_recdes)
+oos_prepend_header (oos_buffer src, const OOS_RECORD_HEADER &oos_header, OOS_RECDES &oos_recdes)
 {
   // Prepends the OOS header to user data, producing the on-page record.
   // Allocates a new data area for oos_recdes; caller must free it.
 
+  const int src_len = static_cast<int> (src.size ());
   int err;
-  err = recdes_allocate_data_area (&oos_recdes, recdes.length + (int)sizeof (OOS_RECORD_HEADER));
+  err = recdes_allocate_data_area (&oos_recdes, src_len + OOS_RECORD_HEADER_SIZE);
   if (err != NO_ERROR)
     {
       oos_error ("recdes_allocate_data_area failed in oos_prepend_header");
@@ -1035,37 +1036,38 @@ oos_prepend_header (const RECDES &recdes, const OOS_RECORD_HEADER &oos_header, O
     }
 
   oos_recdes.type = REC_HOME;
-  oos_recdes.length = recdes.length + (int)sizeof (OOS_RECORD_HEADER);
-  std::memcpy (oos_recdes.data, &oos_header, (int)sizeof (OOS_RECORD_HEADER));
-  std::memcpy (oos_recdes.data + (int)sizeof (OOS_RECORD_HEADER), recdes.data, recdes.length);
+  oos_recdes.length = src_len + OOS_RECORD_HEADER_SIZE;
+  std::memcpy (oos_recdes.data, &oos_header, OOS_RECORD_HEADER_SIZE);
+  std::memcpy (oos_recdes.data + OOS_RECORD_HEADER_SIZE, src.data (), src.size ());
 
   return NO_ERROR;
 }
 
 
 int
-oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &oid)
+oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid)
 {
-  oos_debug ("arguments: oos_vfid={fileid=%d, volid=%d}, recdes.length=%d",
-	     oos_vfid.fileid, oos_vfid.volid, recdes.length);
+  oos_debug ("arguments: oos_vfid={fileid=%d, volid=%d}, src.size=%zu",
+	     oos_vfid.fileid, oos_vfid.volid, src.size ());
   int err = NO_ERROR;
 
-  // TODO: otherwise spage assert type <= REC_UNKNOWN fails
-  assert (recdes.type == REC_HOME);
-  assert (recdes.length > 0);
+  assert (src.data () != nullptr);
+  assert (src.size () > 0);
+
+  const int src_len = static_cast<int> (src.size ());
 
   // TODO: Once the OOS_RECORD_HEADER spec is finalized (first segment header and rest segment header),
   // review whether it is possible to generate the segment headers inside the oos_insert_within_page() and
   // oos_insert_across_pages() functions.
 
-  if (recdes.length <= oos_get_max_chunk_size_within_page ())
+  if (src_len <= oos_get_max_chunk_size_within_page ())
     {
-      const OOS_RECORD_HEADER header{recdes.length, 0, OID_INITIALIZER};
-      err = oos_insert_within_page (thread_p, oos_vfid, recdes, header, oid);
+      const OOS_RECORD_HEADER header{src_len, 0, OID_INITIALIZER};
+      err = oos_insert_within_page (thread_p, oos_vfid, src, header, oid);
     }
   else
     {
-      err = oos_insert_across_pages (thread_p, oos_vfid, recdes, oid);
+      err = oos_insert_across_pages (thread_p, oos_vfid, src, oid);
     }
 
   oos_debug ("inserted to oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
@@ -1096,7 +1098,7 @@ oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &o
 //   auto-push in log_append_{undo,}redo_crumbs while this function runs.
 //
 static int
-oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &oid)
+oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid)
 {
   int error_code = NO_ERROR;
   LOG_TDES *tdes = NULL;
@@ -1104,14 +1106,13 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
   LOG_LSA tail_chunk_lsa = NULL_LSA;
   bool track_repl = false;
 
-  // split the recdes to multiple chunks and insert them one by one
+  // split the payload to multiple chunks and insert them one by one
   const int max_chunk_size = oos_get_max_chunk_size_within_page ();
-  assert (recdes.length + (int)sizeof (OOS_RECORD_HEADER) > max_chunk_size);
+  const int total_data_length = static_cast<int> (src.size ());
+  assert (total_data_length + OOS_RECORD_HEADER_SIZE > max_chunk_size);
 
-  int required_page_nums = (recdes.length + max_chunk_size - 1) / max_chunk_size;
+  int required_page_nums = (total_data_length + max_chunk_size - 1) / max_chunk_size;
   assert (required_page_nums > 1);
-
-  const int total_data_length = recdes.length;
 
   int total_inserted_length = 0;
   OID next_chunk_oid = OID_INITIALIZER; // the last chunk has null OID as next_chunk_oid
@@ -1144,20 +1145,18 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
   // this loop inserts chunks in reverse order so that next_chunk_oid is always known
   for (int i = required_page_nums - 1; i >= 0; --i)
     {
-      RECDES chunk_recdes{};
-      chunk_recdes.type = REC_HOME;
-      chunk_recdes.length = std::min (max_chunk_size, total_data_length - i * max_chunk_size);
-      total_inserted_length += chunk_recdes.length;
-      chunk_recdes.data = recdes.data + i * max_chunk_size;
+      const int chunk_len = std::min (max_chunk_size, total_data_length - i * max_chunk_size);
+      oos_buffer chunk (src.data () + i * max_chunk_size, static_cast<std::size_t> (chunk_len));
+      total_inserted_length += chunk_len;
 
       // Keep total_data_length in each chunk so the log applier can validate all pieces before reassembly.
       OOS_RECORD_HEADER header{total_data_length, i, next_chunk_oid};
 
       OID current_chunk_oid;
-      error_code = oos_insert_within_page (thread_p, oos_vfid, chunk_recdes, header, current_chunk_oid);
+      error_code = oos_insert_within_page (thread_p, oos_vfid, chunk, header, current_chunk_oid);
       if (error_code != NO_ERROR)
 	{
-	  oos_error ("could not insert chunk index=%d of length %d.", i, chunk_recdes.length);
+	  oos_error ("could not insert chunk index=%d of length %d.", i, chunk_len);
 	  assert_release_error (er_errid () != NO_ERROR);
 	  // Partially inserted chunks are cleaned up when the caller aborts the transaction
 	  // (individual undo records replay in reverse). The caller MUST NOT continue
@@ -1172,7 +1171,7 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
 
       next_chunk_oid = current_chunk_oid;
     }
-  assert (total_inserted_length == recdes.length);
+  assert (total_inserted_length == total_data_length);
 
   if (track_repl)
     {
@@ -1188,16 +1187,17 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
 
 
 static int
-oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes,
+oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src,
 			const OOS_RECORD_HEADER &header,
 			OID &oid)
 {
   int err = NO_ERROR;
   VPID vpid;
 
-  assert (recdes.length <= oos_get_max_chunk_size_within_page ());
+  const int src_len = static_cast<int> (src.size ());
+  assert (src_len <= oos_get_max_chunk_size_within_page ());
 
-  int required_length = recdes.length + (int)sizeof (OOS_RECORD_HEADER);
+  int required_length = src_len + OOS_RECORD_HEADER_SIZE;
 
   assert (required_length <= DB_ALIGN_BELOW (spage_max_record_size (), OOS_ALIGNMENT));
 
@@ -1205,7 +1205,7 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &re
 
   OOS_RECDES oos_recdes{};
   {
-    err = oos_prepend_header (recdes, header, oos_recdes);
+    err = oos_prepend_header (src, header, oos_recdes);
     if (err != NO_ERROR)
       {
 	oos_error ("oos_prepend_header failed");

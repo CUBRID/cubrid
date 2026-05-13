@@ -101,7 +101,7 @@ TEST (OosDeleteTest, OosDeleteBasic)
   test_oos_utils::auto_freed_recdes_ptr defer_free_rec_in (&rec_in, recdes_free_data_area);
 
   OID oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_NE (oid.pageid, NULL_PAGEID);
   test_oos_debug ("Inserted oid={vol=%d,page=%d,slot=%d}", oid.volid, oid.pageid, oid.slotid);
@@ -141,7 +141,7 @@ TEST (OosDeleteTest, OosDeleteThenReadFails)
   test_oos_utils::auto_freed_recdes_ptr defer_free (&rec_in, recdes_free_data_area);
 
   OID oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   err = oos_delete (thread_p, oos_vfid, oid);
@@ -187,7 +187,7 @@ TEST (OosDeleteTest, OosDeleteMultiChunk)
   test_oos_utils::auto_freed_recdes_ptr defer_free (&rec_in, recdes_free_data_area);
 
   OID head_oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, head_oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, head_oid);
   ASSERT_EQ (err, NO_ERROR);
   test_oos_debug ("head_oid={vol=%d,page=%d,slot=%d}", head_oid.volid, head_oid.pageid, head_oid.slotid);
 
@@ -248,11 +248,11 @@ TEST (OosDeleteTest, OosUpdatePattern)
   test_oos_utils::auto_freed_recdes_ptr defer_new (&rec_new, recdes_free_data_area);
 
   OID old_oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_old, old_oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_old, old_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   OID new_oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_new, new_oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_new, new_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   // Both OIDs should be different slots
@@ -303,7 +303,7 @@ TEST (OosDeleteTest, OosDeleteRestoresFreeSpace)
 
   // First insert establishes the page; record free space after it
   OID first_oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, first_oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, first_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   int free_after_first_insert = get_free_space_of_oid_page (first_oid);
@@ -315,7 +315,7 @@ TEST (OosDeleteTest, OosDeleteRestoresFreeSpace)
   test_oos_utils::auto_freed_recdes_ptr defer_target (&rec_target, recdes_free_data_area);
 
   OID target_oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_target, target_oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_target, target_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   // Both inserts should land on the same page (small data)
@@ -364,7 +364,7 @@ TEST (OosDeleteTest, OosDeleteLarge160KBMultiChunk)
   test_oos_utils::auto_freed_recdes_ptr defer_free (&rec_in, recdes_free_data_area);
 
   OID oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
   test_oos_debug ("Inserted 160KB record at oid={vol=%d,page=%d,slot=%d}",
 		  oid.volid, oid.pageid, oid.slotid);
@@ -412,7 +412,7 @@ TEST (OosDeleteTest, OosDeleteSlotBecomesUnknown)
   test_oos_utils::auto_freed_recdes_ptr defer_free (&rec_in, recdes_free_data_area);
 
   OID oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_NE (oid.pageid, NULL_PAGEID);
 

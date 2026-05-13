@@ -37,10 +37,15 @@ using OOS_RECORD_HEADER = struct oos_record_header;
  * Documentation only — no compile-time distinction from RECDES. */
 using OOS_RECDES = RECDES;
 
-/* Mutable byte-span destination for oos_read.
+/* Byte-span for OOS payload exchange (oos_insert source / oos_read destination).
  *
- * dest.size() carries the authoritative expected payload length, decoupled
- * from any RECDES.area_size bookkeeping the caller may keep separately.
+ * span.size() is the authoritative payload length in both directions, decoupled
+ * from any RECDES.area_size bookkeeping the caller may keep separately. The
+ * caller may back the span with a scratch buffer larger than the payload
+ * without lying about RECDES.area_size.
+ *
+ * Mutable element type (`char`, not `const char`) so a single alias serves both
+ * directions; oos_insert only reads from its argument.
  *
  * Exists as a named alias so .c call sites (compiled as C++17) can construct
  * it as `oos_buffer (data, len)` instead of `cubbase::span<char> (data, len)`;
@@ -90,7 +95,14 @@ struct oos_hdr_stats
 extern int oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid);
 extern int oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
 extern int oos_remove_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid);
-extern int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &oid);
+/* Insert an OOS value held in a caller-owned span.
+ *
+ * src.size() is the authoritative payload length to store; oos_insert only
+ * reads from the span and never mutates the underlying bytes. If the payload
+ * exceeds one OOS page, the value is split into a chunk chain and `oid` is
+ * set to the head-chunk OID.
+ */
+extern int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid);
 /* Read an OOS value into a caller-owned span.
  *
  * dest.size() is the authoritative expected payload length: the caller has

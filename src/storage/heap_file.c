@@ -12512,7 +12512,7 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
 	    {
 	      return S_ERROR;
 	    }
-	  if (oos_insert (thread_p, oos_vfid, recdes, oos_oid) != NO_ERROR)
+	  if (oos_insert (thread_p, oos_vfid, oos_buffer (recdes.data, (size_t) recdes.length), oos_oid) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
