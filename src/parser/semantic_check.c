@@ -15950,7 +15950,7 @@ pt_check_cume_dist_percent_rank_order_by (PARSER_CONTEXT * parser, PT_NODE * fun
       /* check order by */
       order_expr = order->info.sort_spec.expr;
       if (order->node_type != PT_SORT_SPEC || (order_expr->node_type != PT_NAME && order_expr->node_type != PT_VALUE)
-	  || PT_IS_LOBFILE_TYPE (order_expr->type_enum))
+	  || PT_IS_LOB_FAMILY_TYPE (order_expr->type_enum))
 	{
 	  PT_ERRORmf (parser, func, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_FUNCTION_ORDERBY, func_name);
 	  goto error_exit;
