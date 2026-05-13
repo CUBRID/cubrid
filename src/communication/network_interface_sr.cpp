@@ -1237,6 +1237,18 @@ slocator_repl_force (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
   char *desc_ptr = NULL;
   int desc_size;
 
+#if !defined (NDEBUG)
+  /* Per-call wall of the network handler entry (slocator_repl_force).
+   * Includes argument unpack + receive_data_from_client + xlocator_repl_force
+   * + reply pack/send. Counted independently of xlocator_repl_force. */
+  static UINT64 _slc_call_count = 0;
+  UINT64 _slc_call_n = __atomic_add_fetch (&_slc_call_count, 1, __ATOMIC_RELAXED);
+  struct timeval _slc_begin;
+  gettimeofday (&_slc_begin, NULL);
+  int _slc_tid_idx = (thread_p != NULL) ? thread_p->index : -1;
+  unsigned long _slc_tid_os = (unsigned long) pthread_self ();
+#endif /* !NDEBUG */
+
   ptr = or_unpack_int (request, &num_objs);
   ptr = or_unpack_int (ptr, &packed_desc_size);
   ptr = or_unpack_int (ptr, &content_size);
@@ -1342,6 +1354,21 @@ slocator_repl_force (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
     {
       locator_free_copy_area (copy_area);
     }
+
+#if !defined (NDEBUG)
+  {
+    struct timeval _slc_end;
+    INT64 _slc_usec;
+    gettimeofday (&_slc_end, NULL);
+    _slc_usec = ((INT64) _slc_end.tv_sec - (INT64) _slc_begin.tv_sec) * 1000000LL
+		+ ((INT64) _slc_end.tv_usec - (INT64) _slc_begin.tv_usec);
+    er_log_debug (ARG_FILE_LINE,
+		  "slocator_repl_force_end calls=%llu thread_idx=%d tid=%lu "
+		  "num_objs=%d elapsed_usec=%lld\n",
+		  (unsigned long long) _slc_call_n, _slc_tid_idx, _slc_tid_os,
+		  num_objs, (long long) _slc_usec);
+  }
+#endif /* !NDEBUG */
   return ;
 
 exit_on_error:
@@ -1363,6 +1390,20 @@ exit_on_error:
       free_and_init (desc_ptr);
     }
 
+#if !defined (NDEBUG)
+  {
+    struct timeval _slc_end;
+    INT64 _slc_usec;
+    gettimeofday (&_slc_end, NULL);
+    _slc_usec = ((INT64) _slc_end.tv_sec - (INT64) _slc_begin.tv_sec) * 1000000LL
+		+ ((INT64) _slc_end.tv_usec - (INT64) _slc_begin.tv_usec);
+    er_log_debug (ARG_FILE_LINE,
+		  "slocator_repl_force_end_err calls=%llu thread_idx=%d tid=%lu "
+		  "num_objs=%d elapsed_usec=%lld\n",
+		  (unsigned long long) _slc_call_n, _slc_tid_idx, _slc_tid_os,
+		  num_objs, (long long) _slc_usec);
+  }
+#endif /* !NDEBUG */
   return;
 }
 

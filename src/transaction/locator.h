@@ -442,6 +442,7 @@ extern LC_LOCKHINT *locator_allocate_and_unpack_lockhint (char *unpacked, int un
 							  bool reg_unpacked);
 extern void locator_initialize_areas (void);
 extern void locator_free_areas (void);
+extern void *locator_get_keep_addr (void);
 
 extern LC_OIDSET *locator_make_oid_set (void);
 extern void locator_clear_oid_set (THREAD_ENTRY * thrd, LC_OIDSET * oidset);

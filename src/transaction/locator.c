@@ -198,6 +198,20 @@ locator_initialize_areas (void)
  * NOTE: With TLS storage this releases only the current thread's cache.
  *       Each worker must call it before exit to avoid leaking its slots.
  */
+/*
+ * locator_get_keep_addr: return the address of the calling thread's locator_Keep
+ *   for diagnostic purposes (verify per-worker TLS isolation).
+ *
+ *   The pointer must be used only for identity / address-comparison logging;
+ *   callers must not dereference it.
+ */
+void *
+locator_get_keep_addr (void)
+{
+  locator_ensure_tls_initialized ();
+  return (void *) &locator_Keep;
+}
+
 void
 locator_free_areas (void)
 {

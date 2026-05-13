@@ -101,6 +101,9 @@
 
 #define LA_MAX_REPL_ITEMS                       1000
 #define LA_APPLY_WORKER_COUNT                   10
+/* TEST ONLY: repl_obj 추가 / flush 를 실제로 수행할 워커 수 (worker_idx < N 만 활성).
+ * 나머지 워커는 add/flush 를 skip 하여 병렬 add/flush 의 부하 영향을 측정. */
+#define LA_APPLY_WORKER_REPL_ACTIVE_COUNT       10
 #define LA_APPLY_WORKER_QUEUE_CAPACITY          1024
 /* 디스패치된 태스크의 원래 순서를 기억해 두기 위한 FIFO 용량 (워커 큐 합보다 크게 잡는다) */
 #define LA_DISPATCH_ORDER_CAPACITY              (LA_APPLY_WORKER_COUNT * LA_APPLY_WORKER_QUEUE_CAPACITY + 1)
@@ -670,6 +673,11 @@ struct la_debug_progress_stats
   UINT64 worker_final_flush_usec_total[LA_APPLY_WORKER_COUNT];
   UINT64 worker_repl_obj_count_total[LA_APPLY_WORKER_COUNT];
   UINT64 worker_repl_obj_usec_total[LA_APPLY_WORKER_COUNT];
+  /* Combined per-call wall of (la_repl_add_object + la_flush_repl_items) inside one
+   * la_apply_{insert,update,delete}_log call. Lets us see the total active-worker
+   * extra cost per item without having to add the two existing series after the fact. */
+  UINT64 worker_add_and_flush_count_total[LA_APPLY_WORKER_COUNT];
+  UINT64 worker_add_and_flush_usec_total[LA_APPLY_WORKER_COUNT];
   UINT64 worker_long_tx_refetch_count_total[LA_APPLY_WORKER_COUNT];
   UINT64 worker_long_tx_refetch_usec_total[LA_APPLY_WORKER_COUNT];
   UINT64 worker_busy_usec_total[LA_APPLY_WORKER_COUNT];
@@ -712,6 +720,8 @@ struct la_debug_progress_stats
   UINT64 last_worker_final_flush_usec_total[LA_APPLY_WORKER_COUNT];
   UINT64 last_worker_repl_obj_count_total[LA_APPLY_WORKER_COUNT];
   UINT64 last_worker_repl_obj_usec_total[LA_APPLY_WORKER_COUNT];
+  UINT64 last_worker_add_and_flush_count_total[LA_APPLY_WORKER_COUNT];
+  UINT64 last_worker_add_and_flush_usec_total[LA_APPLY_WORKER_COUNT];
   UINT64 last_worker_long_tx_refetch_count_total[LA_APPLY_WORKER_COUNT];
   UINT64 last_worker_long_tx_refetch_usec_total[LA_APPLY_WORKER_COUNT];
   UINT64 last_worker_busy_usec_total[LA_APPLY_WORKER_COUNT];
@@ -2609,6 +2619,12 @@ la_debug_maybe_log_progress (void)
 	la_Debug_progress.worker_repl_obj_count_total[i] - la_Debug_progress.last_worker_repl_obj_count_total[i];
       UINT64 repl_obj_usec_delta =
 	la_Debug_progress.worker_repl_obj_usec_total[i] - la_Debug_progress.last_worker_repl_obj_usec_total[i];
+      UINT64 add_and_flush_count_delta =
+	la_Debug_progress.worker_add_and_flush_count_total[i]
+	- la_Debug_progress.last_worker_add_and_flush_count_total[i];
+      UINT64 add_and_flush_usec_delta =
+	la_Debug_progress.worker_add_and_flush_usec_total[i]
+	- la_Debug_progress.last_worker_add_and_flush_usec_total[i];
       UINT64 long_tx_refetch_count_delta =
 	la_Debug_progress.worker_long_tx_refetch_count_total[i]
 	- la_Debug_progress.last_worker_long_tx_refetch_count_total[i];
@@ -2663,7 +2679,8 @@ la_debug_maybe_log_progress (void)
 		    "busy=%d dequeued=%llu completed=%llu "
 		    "flush_count=%llu flush_usec=%llu mid_flush_count=%llu mid_flush_usec=%llu "
 		    "final_flush_count=%llu final_flush_usec=%llu "
-		    "repl_obj_count=%llu repl_obj_usec=%llu long_tx_refetch_count=%llu long_tx_refetch_usec=%llu "
+		    "repl_obj_count=%llu repl_obj_usec=%llu add_and_flush_count=%llu add_and_flush_usec=%llu "
+		    "long_tx_refetch_count=%llu long_tx_refetch_usec=%llu "
 		    "busy_usec=%llu apply_usec=%llu commit_usec=%llu "
 		    "db_commit_usec=%llu post_commit_cleanup_usec=%llu "
 		    "disk_fetch_usec=%llu queue_wait_usec=%llu result_enqueue_wait_usec=%llu "
@@ -2676,7 +2693,9 @@ la_debug_maybe_log_progress (void)
 		    (unsigned long long) flush_usec_delta, (unsigned long long) mid_flush_count_delta,
 		    (unsigned long long) mid_flush_usec_delta, (unsigned long long) final_flush_count_delta,
 		    (unsigned long long) final_flush_usec_delta, (unsigned long long) repl_obj_count_delta,
-		    (unsigned long long) repl_obj_usec_delta, (unsigned long long) long_tx_refetch_count_delta,
+		    (unsigned long long) repl_obj_usec_delta,
+		    (unsigned long long) add_and_flush_count_delta, (unsigned long long) add_and_flush_usec_delta,
+		    (unsigned long long) long_tx_refetch_count_delta,
 		    (unsigned long long) long_tx_refetch_usec_delta, (unsigned long long) busy_usec_delta,
 		    (unsigned long long) apply_usec_delta, (unsigned long long) commit_worker_usec_delta,
 		    (unsigned long long) db_commit_worker_usec_delta,
@@ -2699,6 +2718,10 @@ la_debug_maybe_log_progress (void)
       la_Debug_progress.last_worker_final_flush_usec_total[i] = la_Debug_progress.worker_final_flush_usec_total[i];
       la_Debug_progress.last_worker_repl_obj_count_total[i] = la_Debug_progress.worker_repl_obj_count_total[i];
       la_Debug_progress.last_worker_repl_obj_usec_total[i] = la_Debug_progress.worker_repl_obj_usec_total[i];
+      la_Debug_progress.last_worker_add_and_flush_count_total[i] =
+	la_Debug_progress.worker_add_and_flush_count_total[i];
+      la_Debug_progress.last_worker_add_and_flush_usec_total[i] =
+	la_Debug_progress.worker_add_and_flush_usec_total[i];
       la_Debug_progress.last_worker_long_tx_refetch_count_total[i] =
 	la_Debug_progress.worker_long_tx_refetch_count_total[i];
       la_Debug_progress.last_worker_long_tx_refetch_usec_total[i] =
@@ -2879,7 +2902,11 @@ la_apply_worker_main (void *arg)
 			task.rectype,
 			result.stats.last_class_name[0] != '\0' ? result.stats.last_class_name : "<none>",
 			result.stats.num_unflushed);
-	  result.error = la_flush_repl_items (true, &result.stats);
+	  /* TEST ONLY: worker_idx < LA_APPLY_WORKER_REPL_ACTIVE_COUNT 만 final-flush 수행. */
+	  if (worker_context.worker_idx < LA_APPLY_WORKER_REPL_ACTIVE_COUNT)
+	    {
+	      result.error = la_flush_repl_items (true, &result.stats);
+	    }
 	  LA_DEBUG_LOG (ARG_FILE_LINE,
 			"worker[tid=%lu idx=%d tran=%d] final_flush END trid=%d rectype=%d class=%s err=%d unflushed=%d\n",
 			(unsigned long) pthread_self (), (int) (worker - la_apply_Workers), tm_Tran_index, task.tranid,
@@ -7402,6 +7429,26 @@ la_flush_repl_items (bool immediate, LA_APPLY_STATS * stats)
 #endif /* !NDEBUG */
 
   num_repl_objs = __gv_loc_repl.ws_get_repl_obj_count ();
+
+#if !defined (NDEBUG)
+  {
+    static __thread unsigned int _flush_call_count = 0;
+    ++_flush_call_count;
+    if ((_flush_call_count % 1000) == 0)
+      {
+	int _worker_idx = la_get_page_buffer_owner_index ();
+	er_log_debug (ARG_FILE_LINE,
+		      "la_flush_repl_items_milestone calls=%u worker_idx=%d tid=%lu "
+		      "client_support_addr=%p locator_repl_addr=%p locator_keep_addr=%p "
+		      "tran_idx=%d session_id=%u num_repl_objs=%d immediate=%d\n",
+		      _flush_call_count, _worker_idx, (unsigned long) pthread_self (),
+		      (void *) &__gv_client_support, (void *) &__gv_locator_repl,
+		      locator_get_keep_addr (), tm_Tran_index,
+		      (unsigned int) db_Session_id, num_repl_objs, (int) immediate);
+      }
+  }
+#endif /* !NDEBUG */
+
   if (num_repl_objs == 0)
     {
       stats->num_unflushed = 0;
@@ -7553,6 +7600,25 @@ la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
 
   class_oid = ws_oid (classop);
 
+#if !defined (NDEBUG)
+  {
+    static __thread unsigned int _add_obj_call_count = 0;
+    ++_add_obj_call_count;
+    if ((_add_obj_call_count % 1000) == 0)
+      {
+	int _worker_idx = la_get_page_buffer_owner_index ();
+	er_log_debug (ARG_FILE_LINE,
+		      "la_repl_add_object_milestone calls=%u worker_idx=%d tid=%lu "
+		      "client_support_addr=%p locator_repl_addr=%p locator_keep_addr=%p "
+		      "tran_idx=%d session_id=%u\n",
+		      _add_obj_call_count, _worker_idx, (unsigned long) pthread_self (),
+		      (void *) &__gv_client_support, (void *) &__gv_locator_repl,
+		      locator_get_keep_addr (), tm_Tran_index,
+		      (unsigned int) db_Session_id);
+      }
+  }
+#endif /* !NDEBUG */
+
   /* TODO: initialize the worker authorization context so replication apply can run as the intended owner. */
   AU_SAVE_AND_DISABLE (au_save);
 
@@ -7684,10 +7750,16 @@ la_apply_delete_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_APPLY
     }
 
 #if !defined (NDEBUG)
+  struct timeval _add_and_flush_begin;
+  LA_TIME_BEGIN (_add_and_flush_begin);
   struct timeval _repl_obj_begin;
   LA_TIME_BEGIN (_repl_obj_begin);
 #endif /* !NDEBUG */
-  error = la_repl_add_object (class_obj, item, NULL);
+  /* TEST ONLY: worker_idx < LA_APPLY_WORKER_REPL_ACTIVE_COUNT 만 repl_obj 추가 + flush 수행. */
+  if (context->worker_idx < LA_APPLY_WORKER_REPL_ACTIVE_COUNT)
+    {
+      error = la_repl_add_object (class_obj, item, NULL);
+    }
 #if !defined (NDEBUG)
   ATOMIC_INC_64 (&la_Debug_progress.worker_repl_obj_count_total[context->worker_idx], 1);
   LA_TIME_ACCUM_USEC (_repl_obj_begin, la_Debug_progress.worker_repl_obj_usec_total[context->worker_idx]);
@@ -7712,7 +7784,11 @@ end:
 #if !defined (NDEBUG)
       la_Debug_worker_current_stage[context->worker_idx] = LA_WORKER_STAGE_APPLY_MID_FLUSH;
 #endif /* !NDEBUG */
-      error = la_flush_repl_items (false, stats);
+      /* TEST ONLY: worker_idx < LA_APPLY_WORKER_REPL_ACTIVE_COUNT 만 mid-flush. */
+      if (context->worker_idx < LA_APPLY_WORKER_REPL_ACTIVE_COUNT)
+        {
+          error = la_flush_repl_items (false, stats);
+        }
 #if !defined (NDEBUG)
       la_Debug_worker_current_stage[context->worker_idx] = LA_WORKER_STAGE_APPLY;
 #endif /* !NDEBUG */
@@ -7720,6 +7796,12 @@ end:
 		    "threshold_flush delete END class=%s err=%d unflushed=%d pending=%d\n",
 		    item->class_name, error, stats->num_unflushed, __gv_loc_repl.ws_get_repl_obj_count ());
     }
+
+#if !defined (NDEBUG)
+  ATOMIC_INC_64 (&la_Debug_progress.worker_add_and_flush_count_total[context->worker_idx], 1);
+  LA_TIME_ACCUM_USEC (_add_and_flush_begin,
+		      la_Debug_progress.worker_add_and_flush_usec_total[context->worker_idx]);
+#endif /* !NDEBUG */
 
   return error;
 }
@@ -7877,10 +7959,16 @@ la_apply_update_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_APPLY
     }
 
 #if !defined (NDEBUG)
+  struct timeval _add_and_flush_begin;
+  LA_TIME_BEGIN (_add_and_flush_begin);
   struct timeval _repl_obj_begin;
   LA_TIME_BEGIN (_repl_obj_begin);
 #endif /* !NDEBUG */
-  error = la_repl_add_object (class_obj, item, recdes);
+  /* TEST ONLY: worker_idx < LA_APPLY_WORKER_REPL_ACTIVE_COUNT 만 repl_obj 추가 + flush 수행. */
+  if (context->worker_idx < LA_APPLY_WORKER_REPL_ACTIVE_COUNT)
+    {
+      error = la_repl_add_object (class_obj, item, recdes);
+    }
 #if !defined (NDEBUG)
   ATOMIC_INC_64 (&la_Debug_progress.worker_repl_obj_count_total[context->worker_idx], 1);
   LA_TIME_ACCUM_USEC (_repl_obj_begin, la_Debug_progress.worker_repl_obj_usec_total[context->worker_idx]);
@@ -7905,7 +7993,11 @@ end:
 #if !defined (NDEBUG)
       la_Debug_worker_current_stage[context->worker_idx] = LA_WORKER_STAGE_APPLY_MID_FLUSH;
 #endif /* !NDEBUG */
-      error = la_flush_repl_items (false, stats);
+      /* TEST ONLY: worker_idx < LA_APPLY_WORKER_REPL_ACTIVE_COUNT 만 mid-flush. */
+      if (context->worker_idx < LA_APPLY_WORKER_REPL_ACTIVE_COUNT)
+        {
+          error = la_flush_repl_items (false, stats);
+        }
 #if !defined (NDEBUG)
       la_Debug_worker_current_stage[context->worker_idx] = LA_WORKER_STAGE_APPLY;
 #endif /* !NDEBUG */
@@ -7913,6 +8005,12 @@ end:
 		    "threshold_flush update END class=%s err=%d unflushed=%d pending=%d\n",
 		    item->class_name, error, stats->num_unflushed, __gv_loc_repl.ws_get_repl_obj_count ());
     }
+
+#if !defined (NDEBUG)
+  ATOMIC_INC_64 (&la_Debug_progress.worker_add_and_flush_count_total[context->worker_idx], 1);
+  LA_TIME_ACCUM_USEC (_add_and_flush_begin,
+		      la_Debug_progress.worker_add_and_flush_usec_total[context->worker_idx]);
+#endif /* !NDEBUG */
 
   la_release_page_buffer (old_pageid);
 
@@ -8125,10 +8223,16 @@ la_apply_insert_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_APPLY
     }
 
 #if !defined (NDEBUG)
+  struct timeval _add_and_flush_begin;
+  LA_TIME_BEGIN (_add_and_flush_begin);
   struct timeval _repl_obj_begin;
   LA_TIME_BEGIN (_repl_obj_begin);
 #endif /* !NDEBUG */
-  error = la_repl_add_object (class_obj, item, recdes);
+  /* TEST ONLY: worker_idx < LA_APPLY_WORKER_REPL_ACTIVE_COUNT 만 repl_obj 추가 + flush 수행. */
+  if (context->worker_idx < LA_APPLY_WORKER_REPL_ACTIVE_COUNT)
+    {
+      error = la_repl_add_object (class_obj, item, recdes);
+    }
 #if !defined (NDEBUG)
   ATOMIC_INC_64 (&la_Debug_progress.worker_repl_obj_count_total[context->worker_idx], 1);
   LA_TIME_ACCUM_USEC (_repl_obj_begin, la_Debug_progress.worker_repl_obj_usec_total[context->worker_idx]);
@@ -8160,7 +8264,11 @@ end:
 #if !defined (NDEBUG)
       la_Debug_worker_current_stage[context->worker_idx] = LA_WORKER_STAGE_APPLY_MID_FLUSH;
 #endif /* !NDEBUG */
-      error = la_flush_repl_items (false, stats);
+      /* TEST ONLY: worker_idx < LA_APPLY_WORKER_REPL_ACTIVE_COUNT 만 mid-flush. */
+      if (context->worker_idx < LA_APPLY_WORKER_REPL_ACTIVE_COUNT)
+        {
+          error = la_flush_repl_items (false, stats);
+        }
 #if !defined (NDEBUG)
       la_Debug_worker_current_stage[context->worker_idx] = LA_WORKER_STAGE_APPLY;
 #endif /* !NDEBUG */
@@ -8176,6 +8284,12 @@ end:
 		"stats[ins=%lu fail=%lu unflushed=%d]\n",
 		context->worker_idx, (unsigned long) pthread_self (), tm_Tran_index, item->class_name, sb.get_buffer (),
 		error, stats->insert_counter, stats->fail_counter, stats->num_unflushed);
+
+#if !defined (NDEBUG)
+  ATOMIC_INC_64 (&la_Debug_progress.worker_add_and_flush_count_total[context->worker_idx], 1);
+  LA_TIME_ACCUM_USEC (_add_and_flush_begin,
+		      la_Debug_progress.worker_add_and_flush_usec_total[context->worker_idx]);
+#endif /* !NDEBUG */
 
   la_release_page_buffer (old_pageid);
 

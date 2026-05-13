@@ -6961,6 +6961,18 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 
   LC_RECDES_IN_COPYAREA (*reply_area, &reply_recdes);
 
+#if !defined (NDEBUG)
+  /* Per-call wall on the server side of NET_SERVER_LC_REPL_FORCE.
+   * Lets us split client RPC wall vs server-side processing time
+   * (i.e. xlocator_repl_force body) when comparing N=1 vs N>1 runs. */
+  static UINT64 _xrf_call_count = 0;
+  UINT64 _xrf_call_n = __atomic_add_fetch (&_xrf_call_count, 1, __ATOMIC_RELAXED);
+  struct timeval _xrf_begin;
+  gettimeofday (&_xrf_begin, NULL);
+  int _xrf_tid_idx = (thread_p != NULL) ? thread_p->index : -1;
+  unsigned long _xrf_tid_os = (unsigned long) pthread_self ();
+#endif /* !NDEBUG */
+
   for (i = 0; i < mobjs->num_objs; i++)
     {
       er_clear ();
@@ -7090,6 +7102,22 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &lsa);
 
+#if !defined (NDEBUG)
+  {
+    struct timeval _xrf_end;
+    INT64 _xrf_usec;
+    int _xrf_err = (num_continue_on_error > 0) ? ER_LC_PARTIALLY_FAILED_TO_FLUSH : error_code;
+    gettimeofday (&_xrf_end, NULL);
+    _xrf_usec = ((INT64) _xrf_end.tv_sec - (INT64) _xrf_begin.tv_sec) * 1000000LL
+		+ ((INT64) _xrf_end.tv_usec - (INT64) _xrf_begin.tv_usec);
+    er_log_debug (ARG_FILE_LINE,
+		  "xlocator_repl_force_end calls=%llu thread_idx=%d tid=%lu objs=%d elapsed_usec=%lld "
+		  "continue_on_err=%d err=%d\n",
+		  (unsigned long long) _xrf_call_n, _xrf_tid_idx, _xrf_tid_os, mobjs->num_objs,
+		  (long long) _xrf_usec, num_continue_on_error, _xrf_err);
+  }
+#endif /* !NDEBUG */
+
   if (num_continue_on_error > 0)
     {
       return ER_LC_PARTIALLY_FAILED_TO_FLUSH;
@@ -7111,6 +7139,22 @@ exit_on_error:
     }
 
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
+
+#if !defined (NDEBUG)
+  {
+    struct timeval _xrf_end;
+    INT64 _xrf_usec;
+    int _xrf_num = (mobjs != NULL) ? mobjs->num_objs : -1;
+    gettimeofday (&_xrf_end, NULL);
+    _xrf_usec = ((INT64) _xrf_end.tv_sec - (INT64) _xrf_begin.tv_sec) * 1000000LL
+		+ ((INT64) _xrf_end.tv_usec - (INT64) _xrf_begin.tv_usec);
+    er_log_debug (ARG_FILE_LINE,
+		  "xlocator_repl_force_end calls=%llu thread_idx=%d tid=%lu objs=%d elapsed_usec=%lld "
+		  "continue_on_err=%d err=%d\n",
+		  (unsigned long long) _xrf_call_n, _xrf_tid_idx, _xrf_tid_os, _xrf_num,
+		  (long long) _xrf_usec, num_continue_on_error, error_code);
+  }
+#endif /* !NDEBUG */
 
   return error_code;
 }

@@ -73,6 +73,10 @@ public:
   void css_terminate (bool server_error);
   void css_cleanup_client_queues (char *host_name);
 
+  /* Diagnostic: return current open conn fd for the given host (-1 if none).
+   * Used by debug-only logging to verify per-worker TLS conn isolation. */
+  int css_get_open_conn_fd_for_host (const char *host);
+
 #if defined(ENABLE_UNUSED_FUNCTION)
   unsigned int css_send_request_to_server (char *host, int request, char *arg_buffer, int arg_buffer_size);
   unsigned int css_receive_error_from_server (unsigned int eid, char **buffer, int *size);

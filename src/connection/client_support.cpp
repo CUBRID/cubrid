@@ -236,6 +236,27 @@ client_support::css_client_sub_terminate (const char *host_name)
 }
 #endif // defined(MULTI_CONN_TO_A_SERVER)
 
+/*
+ * css_get_open_conn_fd_for_host - diagnostic accessor that returns the socket
+ *   fd of the currently open conn for the given host string, or -1 if none.
+ *   Intended for debug-only logging; do not use as a routing mechanism.
+ */
+int
+client_support::css_get_open_conn_fd_for_host (const char *host)
+{
+  if (host == NULL)
+    {
+      return -1;
+    }
+
+  CSS_MAP_ENTRY *entry = m_conn_less.css_return_open_entry ((char *) host);
+  if (entry == NULL || entry->conn == NULL)
+    {
+      return -1;
+    }
+  return (int) entry->conn->fd;
+}
+
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
