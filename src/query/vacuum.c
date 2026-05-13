@@ -1122,8 +1122,8 @@ vacuum_wakeup_master_daemon (void)
 #if defined(SERVER_MODE)
   if (vacuum_Master_daemon == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_FAILED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VACUUM_MASTER_DAEMON_NOT_AVAILABLE, 0);
+      return ER_VACUUM_MASTER_DAEMON_NOT_AVAILABLE;
     }
   vacuum_Master_daemon->wakeup ();
 #endif /* SERVER_MODE */
