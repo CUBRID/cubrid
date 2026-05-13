@@ -3695,7 +3695,9 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	  /* Reclaim OOS chunks referenced by an UPDATE pre-image. Restricted to
 	   * RVHF_UPDATE_NOTIFY_VACUUM: other RVHF_MVCC_* rcvindex values either
 	   * carry no pre-image (INSERT/DELETE_REC_HOME) or carry OOS OIDs that
-	   * vacuum_heap_record will reclaim when it retires the post-image slot. */
+	   * vacuum_heap_record will reclaim when it retires the post-image slot.
+	   * A failure here only leaks OOS chunks until the next vacuum pass; do
+	   * not fail the block (matches RVES_NOTIFY_VACUUM's policy below). */
 	  if (log_record_data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM && undo_data != NULL && undo_data_size > 0)
 	    {
 	      RECDES undo_recdes;
@@ -3711,26 +3713,25 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 							  &log_vacuum.vfid, &undo_oos_vfid, &has_oos);
 		  if (err != NO_ERROR)
 		    {
-		      vacuum_er_log_error (VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_HEAP,
-					   "vacuum_oos_vfid_cache_lookup failed for vfid %d|%d: %d",
-					   log_vacuum.vfid.volid, log_vacuum.vfid.fileid, err);
-		      error_code = err;
-		      goto end;
+		      vacuum_er_log_warning (VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_HEAP,
+					     "forward-walk oos vfid lookup failed: heap_vfid=%d|%d err=%d",
+					     log_vacuum.vfid.volid, log_vacuum.vfid.fileid, err);
+		      er_clear ();
 		    }
-		  if (has_oos)
+		  else if (has_oos)
 		    {
 		      OID_VECTOR forward_oos_oids;
 		      err = heap_recdes_get_oos_oids (&undo_recdes, forward_oos_oids);
 		      if (err == NO_ERROR && !forward_oos_oids.empty ())
 			{
 			  err = vacuum_forward_walk_delete_old_oos (thread_p, undo_oos_vfid, forward_oos_oids);
-			  if (err != NO_ERROR)
-			    {
-			      vacuum_er_log_error (VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_HEAP,
-						   "vacuum_forward_walk_delete_old_oos failed: %d", err);
-			      error_code = err;
-			      goto end;
-			    }
+			}
+		      if (err != NO_ERROR)
+			{
+			  vacuum_er_log_warning (VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_HEAP,
+						 "forward-walk oos cleanup failed: heap_vfid=%d|%d oos_vfid=%d|%d err=%d",
+						 VFID_AS_ARGS (&log_vacuum.vfid), VFID_AS_ARGS (&undo_oos_vfid), err);
+			  er_clear ();
 			}
 		    }
 		}
