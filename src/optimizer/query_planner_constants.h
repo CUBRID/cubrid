@@ -80,6 +80,9 @@
 /* sequential scan */
 #define QO_SSCAN_FILTER_CPU_FACTOR             5.00
 
+/* One-unique join cardinality adjustment */
+#define QO_UNIQUE_JOIN_SELECTIVITY_CEILING      0.30
+
 /* MCV/hot-key join cardinality guard */
 #define QO_MCV_GUARD_MIN_FREQUENCY             0.1
 #define QO_MCV_GUARD_MIN_RISK_FANOUT           10.0
