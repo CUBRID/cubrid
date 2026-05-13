@@ -269,6 +269,15 @@ namespace cubthread
 	pthread_cond_wait (&thread_p->wakeup_cond, &thread_p->th_entry_lock);
       }
 
+    // the restore is intentional. resume_status must preserve the result of the original wait
+    // (THREAD_LOCK_RESUMED / THREAD_CSS_QUEUE_RESUMED). the concurrency-slot wait is a nested
+    // auxiliary wait; exposing THREAD_RESUME_DUE_TO_INTERRUPT from it would make LOCK/CSS believe
+    // the original resource was not acquired even when it was already granted/received, which can
+    // break their cleanup/wakeup ownership.
+
+    // the interrupt is not lost; it remains recorded separately through the thread/transaction
+    // interrupt state and is handled by the upper cancellation path. we should not overload
+    // resume_status for the slot wait result here.
     thread_p->resume_status = saved_status;
 
     if (thread_p->m_slot)
