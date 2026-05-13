@@ -1254,7 +1254,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	      break;
 	    }
 
-	  error_code = db_oos_stats (class_name, &stats);
+	  error_code = db_get_oos_stats (class_name, &stats);
 	  if (error_code != NO_ERROR)
 	    {
 	      csql_display_csql_err (0, 0);

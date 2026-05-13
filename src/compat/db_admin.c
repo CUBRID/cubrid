@@ -1570,13 +1570,13 @@ db_vacuum (void)
 }
 
 /*
- * db_oos_stats: Fetch OOS file statistics for a given class.
+ * db_get_oos_stats: Fetch OOS file statistics for a given class.
  * return         : NO_ERROR or error code
  * class_name (in): target class name
  * stats (out)    : populated on success
  */
 int
-db_oos_stats (const char *class_name, DB_OOS_STATS * stats)
+db_get_oos_stats (const char *class_name, DB_OOS_STATS * stats)
 {
   DB_OBJECT *class_op;
   OID *class_oid;

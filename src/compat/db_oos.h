@@ -44,7 +44,7 @@ extern "C"
     int64_t recs_sumlen;	/* sum of live OOS record body bytes */
   };
 
-  extern int db_oos_stats (const char *class_name, DB_OOS_STATS * stats);
+  extern int db_get_oos_stats (const char *class_name, DB_OOS_STATS * stats);
 
 #ifdef __cplusplus
 }
