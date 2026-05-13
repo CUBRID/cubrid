@@ -37,6 +37,17 @@ using OOS_RECORD_HEADER = struct oos_record_header;
  * Documentation only — no compile-time distinction from RECDES. */
 using OOS_RECDES = RECDES;
 
+/* Mutable byte-span destination for oos_read.
+ *
+ * dest.size() carries the authoritative expected payload length, decoupled
+ * from any RECDES.area_size bookkeeping the caller may keep separately.
+ *
+ * Exists as a named alias so .c call sites (compiled as C++17) can construct
+ * it as `oos_buffer (data, len)` instead of `cubbase::span<char> (data, len)`;
+ * the C-file formatter (indent) mangles the template angle brackets, the
+ * alias sidesteps that. */
+using oos_buffer = cubbase::span<char>;
+
 #define OOS_NUM_BEST_SPACESTATS 10
 
 #define OOS_STATS_NEXT_BEST_INDEX(i) \
@@ -92,7 +103,7 @@ extern int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &rec
  * capacity", so the caller may back the span with a scratch buffer larger
  * than the payload without having to coerce a RECDES.area_size into a lie.
  */
-extern int oos_read (THREAD_ENTRY *thread_p, const OID &oid, cubbase::span<char> dest);
+extern int oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest);
 extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid);
 extern int oos_get_length (THREAD_ENTRY *thread_p, const OID &oid);
 

@@ -1356,7 +1356,7 @@ oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &next_oid,
  * payload_len on disk: see byte_span_writer.hpp.
  */
 int
-oos_read (THREAD_ENTRY *thread_p, const OID &oid, cubbase::span<char> dest)
+oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest)
 {
   assert (dest.data () != nullptr && dest.size () > 0);
 

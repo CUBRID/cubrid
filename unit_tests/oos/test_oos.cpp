@@ -717,7 +717,7 @@ TEST (OosTest, OosReadRejectsCallerLengthDisagreeingWithHeader)
 
       er_clear ();
       int read_err = oos_read (thread_p, oos_oid,
-			       cubbase::span<char> (rec_out.data, static_cast<std::size_t> (claimed_len)));
+			       oos_buffer (rec_out.data, static_cast<std::size_t> (claimed_len)));
       EXPECT_NE (read_err, NO_ERROR) << "actual_size=" << actual_size;
       EXPECT_NE (er_errid (), NO_ERROR) << "actual_size=" << actual_size;
 

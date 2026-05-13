@@ -10659,7 +10659,7 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch
       return;
     }
 
-  if (oos_read (thread_p, oos_oid, cubbase::span < char >(raw->data, (std::size_t) oos_len)) != NO_ERROR)
+  if (oos_read (thread_p, oos_oid, oos_buffer (raw->data, (std::size_t) oos_len)) != NO_ERROR)
     {
       if (raw->data != oos_scratch)
 	{

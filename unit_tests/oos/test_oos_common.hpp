@@ -115,7 +115,7 @@ namespace test_oos_utils
       {
 	return err;
       }
-    err = oos_read (thread_p, oid, cubbase::span<char> (recdes.data, static_cast<std::size_t> (len)));
+    err = oos_read (thread_p, oid, oos_buffer (recdes.data, static_cast<std::size_t> (len)));
     if (err != NO_ERROR)
       {
 	recdes_free_data_area (&recdes);
