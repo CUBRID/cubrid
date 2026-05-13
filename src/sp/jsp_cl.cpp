@@ -2428,22 +2428,60 @@ int
 jsp_drop_trigger_body_sp (const char *sp_name)
 {
   int err = NO_ERROR;
-  MOP sp_mop;
+  int save;
+  MOP sp_mop, code_mop;
+  DB_VALUE lang_val, target_cls_val;
 
   if (sp_name == NULL || sp_name[0] == '\0')
     {
       return NO_ERROR;
     }
 
+  AU_DISABLE (save);
+
+  db_make_null (&lang_val);
+  db_make_null (&target_cls_val);
+
   sp_mop = jsp_find_stored_procedure (sp_name, DB_AUTH_NONE);
   if (sp_mop == NULL)
     {
       /* SP may have already been dropped — not an error during trigger drop */
       er_clear ();
+      AU_ENABLE (save);
       return NO_ERROR;
     }
 
-  err = db_drop (sp_mop);
+  /* For PLCSQL procedures, also delete the _db_stored_procedure_code record.
+   * This mirrors the cleanup done by drop_stored_procedure() for PLCSQL,
+   * without the is_system_generated / owner checks which would block us here. */
+  err = db_get (sp_mop, SP_ATTR_LANG, &lang_val);
+  if (err == NO_ERROR && !DB_IS_NULL (&lang_val) && db_get_int (&lang_val) == SP_LANG_PLCSQL)
+    {
+      err = db_get (sp_mop, SP_ATTR_TARGET_CLASS, &target_cls_val);
+      if (err == NO_ERROR && !DB_IS_NULL (&target_cls_val))
+	{
+	  const char *target_cls = db_get_string (&target_cls_val);
+	  code_mop = jsp_find_stored_procedure_code (target_cls);
+	  if (code_mop != NULL)
+	    {
+	      err = obj_delete (code_mop);
+	    }
+	  else
+	    {
+	      er_clear ();		/* code record may already be gone */
+	    }
+	}
+    }
+
+  pr_clear_value (&lang_val);
+  pr_clear_value (&target_cls_val);
+
+  if (err == NO_ERROR)
+    {
+      err = obj_delete (sp_mop);
+    }
+
+  AU_ENABLE (save);
   return err;
 }
 
@@ -2457,7 +2495,7 @@ jsp_drop_trigger_body_sp (const char *sp_name)
  *   pl_body_len(in): length of pl_body in bytes
  */
 int
-jsp_create_trigger_body_sp (const char *sp_name, const char *pl_body, DB_OBJECT * owner)
+jsp_create_trigger_body_sp (const char *sp_name, const char *pl_body, DB_OBJECT *owner)
 {
   int err = NO_ERROR;
   DB_QUERY_RESULT *result = NULL;
@@ -2508,5 +2546,42 @@ jsp_create_trigger_body_sp (const char *sp_name, const char *pl_body, DB_OBJECT 
     }
 
   free (sql);
+
+  if (err == NO_ERROR)
+    {
+      /* Mark the backing SP and its code record as system-generated so that
+       * ordinary DROP/ALTER PROCEDURE statements cannot accidentally remove it.
+       * jsp_drop_trigger_body_sp() bypasses this flag when the owning trigger
+       * is explicitly dropped. */
+      int save;
+      AU_DISABLE (save);
+
+      MOP sp_mop = jsp_find_stored_procedure (sp_name, DB_AUTH_NONE);
+      if (sp_mop != NULL)
+	{
+	  DB_VALUE gen_val;
+	  db_make_int (&gen_val, 1);
+	  (void) db_put (sp_mop, SP_ATTR_IS_SYSTEM_GENERATED, &gen_val);
+
+	  /* Also mark the code record */
+	  DB_VALUE target_cls_val;
+	  db_make_null (&target_cls_val);
+	  if (db_get (sp_mop, SP_ATTR_TARGET_CLASS, &target_cls_val) == NO_ERROR
+	      && !DB_IS_NULL (&target_cls_val))
+	    {
+	      const char *target_cls = db_get_string (&target_cls_val);
+	      MOP code_mop = jsp_find_stored_procedure_code (target_cls);
+	      if (code_mop != NULL)
+		{
+		  db_make_int (&gen_val, 1);
+		  (void) db_put (code_mop, SP_CODE_ATTR_IS_SYSTEM_GENERATED, &gen_val);
+		}
+	      pr_clear_value (&target_cls_val);
+	    }
+	}
+
+      AU_ENABLE (save);
+    }
+
   return err;
 }

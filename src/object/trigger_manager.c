@@ -4503,21 +4503,27 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback, bool need_savepoin
 	       */
 	      if (trigger->action_body_sp != NULL)
 		{
-		  /* drop the internally-created SP backing a PL/SQL block action */
-		  (void) jsp_drop_trigger_body_sp (trigger->action_body_sp);
+		  /* drop the internally-created SP backing a PL/SQL block action;
+		   * on failure, propagate the error so the savepoint rolls back all
+		   * DB-level changes made so far in this function */
+		  error = jsp_drop_trigger_body_sp (trigger->action_body_sp);
 		}
-	      db_drop (trigger->object);
 
-	      /*
-	       * flush, decache object; no need to check if the object was indeed deleted;
-	       * it is supposed that the last version of the object was locked and deleted
-	       * because only the last version can be locked; previous versions are in the log
-	       */
-	      error = locator_flush_instance (trigger->object);
 	      if (error == NO_ERROR)
 		{
-		  ws_decache (trigger->object);
-		  ws_clear_hints (trigger->object, false);
+		  db_drop (trigger->object);
+
+		  /*
+		   * flush, decache object; no need to check if the object was indeed deleted;
+		   * it is supposed that the last version of the object was locked and deleted
+		   * because only the last version can be locked; previous versions are in the log
+		   */
+		  error = locator_flush_instance (trigger->object);
+		  if (error == NO_ERROR)
+		    {
+		      ws_decache (trigger->object);
+		      ws_clear_hints (trigger->object, false);
+		    }
 		}
 	    }
 

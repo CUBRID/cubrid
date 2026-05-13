@@ -6791,6 +6791,13 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (trigger == NULL)
     {
       assert (er_errid () != NO_ERROR);
+      if (pl_sp_name[0] != '\0')
+	{
+	  /* Trigger creation failed; drop the backing SP so it does not become an orphan.
+	   * Both the SP and the trigger are in the same transaction, so a transaction
+	   * rollback would also clean them up, but be explicit here for safety. */
+	  (void) jsp_drop_trigger_body_sp (pl_sp_name);
+	}
       return er_errid ();
     }
 
@@ -6801,8 +6808,9 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
       db_make_string (&sp_name_val, pl_sp_name);
       if (db_put (trigger, TR_ATT_ACTION_BODY_SP, &sp_name_val) != NO_ERROR)
 	{
-	  /* non-fatal: the SP was created but we failed to record its name */
-	  er_clear ();
+	  /* Cannot persist the backing SP name; the trigger and SP are useless without
+	   * this link.  Return error so the transaction rolls back, cleaning up both. */
+	  return er_errid ();
 	}
     }
 
