@@ -1047,6 +1047,14 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       return er_errid ();
     }
 
+  /* Reject names that start with the prefix reserved for trigger backing SPs */
+  if (strncasecmp (sp_info.sp_name.c_str (), "__trsp_", 7) == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NAME_RESERVED_PREFIX, 1,
+	      sp_info.sp_name.c_str ());
+      return er_errid ();
+    }
+
   sp_info.sp_type = jsp_map_pt_misc_to_sp_type (PT_NODE_SP_TYPE (statement));
   if (sp_info.sp_type == SP_TYPE_FUNCTION)
     {
@@ -1304,6 +1312,14 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   name_str = sp_name->info.name.original;
   assert (name_str != NULL);
+
+  /* Reject altering SPs whose base name starts with the prefix reserved for trigger backing SPs */
+  if (strncasecmp (sm_remove_qualifier_name (name_str), "__trsp_", 7) == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NAME_RESERVED_PREFIX, 1,
+	      sm_remove_qualifier_name (name_str));
+      return er_errid ();
+    }
 
   if (sp_owner != NULL)
     {
