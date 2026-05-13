@@ -38,6 +38,7 @@
 #include "dbtype_def.h"
 #include "db_date.h"
 #include "db_elo.h"
+#include "db_oos.h"
 #include "db_query.h"
 #include "databases_file.h"
 #include "error_code.h"
@@ -108,20 +109,6 @@ extern "C"
   extern int db_set_suppress_repl_on_transaction (int set);
   extern int db_checkpoint (void);
   extern int db_vacuum (void);
-
-  typedef struct db_oos_stats DB_OOS_STATS;
-  struct db_oos_stats
-  {
-    int has_oos_file;		/* 0 if class has no OOS file, 1 otherwise */
-    int oos_vfid_volid;
-    int oos_vfid_fileid;
-    int num_user_pages;		/* physical user pages in OOS file */
-    int page_size;		/* DB_PAGESIZE */
-    int num_recs;		/* live OOS records (slots on pages) */
-    INT64 recs_sumlen;		/* sum of live OOS record body bytes */
-  };
-
-  extern int db_oos_stats (const char *class_name, DB_OOS_STATS * stats);
 
   extern int db_freepgs (const char *vlabel);
   extern int db_totalpgs (const char *vlabel);
