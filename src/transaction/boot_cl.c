@@ -719,6 +719,7 @@ static int
 boot_restart_common_initialize (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang_charset, bool is_createdb)
 {
   int error_code;
+  const char *conf_file = NULL;
 
   /* If the client is restarted, shutdown the client */
   if (BOOT_IS_CLIENT_RESTARTED ())
@@ -780,8 +781,25 @@ boot_restart_common_initialize (BOOT_CLIENT_CREDENTIAL * client_credential, cons
       return ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
     }
 
+#if defined (CS_MODE)
+  if (is_createdb == false)
+    {
+      if (BOOT_BROKER_CLIENT_TYPE (client_credential->client_type))
+	{
+	  conf_file = getenv ("CUBRID_CONF_FOR_BROKER");
+	  if (conf_file && access (conf_file, R_OK | F_OK) != 0)
+	    {
+	      conf_file = NULL;
+	    }
+#if !defined (NDEBUG)
+	  _er_log_debug (ARG_FILE_LINE, "conf_for_broker = %s\n", conf_file ? conf_file : "unknown");
+#endif
+	}
+    }
+#endif
+
 /* initialize system parameters */
-  if (sysprm_load_and_init_client (client_credential->get_db_name (), NULL) != NO_ERROR)
+  if (sysprm_load_and_init_client (client_credential->get_db_name (), conf_file) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
       return ER_BO_CANT_LOAD_SYSPRM;

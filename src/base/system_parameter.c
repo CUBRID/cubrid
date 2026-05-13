@@ -4563,7 +4563,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_JAVA_STORED_PROCEDURE,
    PRM_NAME_JAVA_STORED_PROCEDURE,
-   (PRM_FOR_SERVER | PRM_DEPRECATED | PRM_HIDDEN),
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_RELOADABLE | PRM_DEPRECATED | PRM_HIDDEN),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = true}},
@@ -4996,7 +4996,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_STORED_PROCEDURE,
    PRM_NAME_STORED_PROCEDURE,
-   (PRM_FOR_SERVER | PRM_FORCE_SERVER),
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_RELOADABLE),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = true}},
@@ -6026,9 +6026,6 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
   SESSION_PARAM *sprm = NULL;
   int num_session_prms;
 #endif
-
-  /* TODO: conf_file is always NULL. Therefore, you need to decide whether to keep this argument. */
-  assert (conf_file == NULL);
 
 #ifndef NDEBUG
   sysprm_check_id_order ();
