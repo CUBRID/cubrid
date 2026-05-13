@@ -12474,14 +12474,17 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
 	  assert (attr_info->values != NULL && !db_value_is_null (&attr_info->values[i].dbvalue));
 	  assert (!attr_info->values[i].last_attrepr->is_fixed);
 
+	  /* heap_attrinfo_dbvalue_to_recdes may replace recdes.data with a malloc'd
+	   * buffer when the dbvalue doesn't fit the stack scratch. Both failure
+	   * branches below must reach the cleanup at error_oos. */
 	  if (heap_attrinfo_dbvalue_to_recdes (thread_p, &attr_info->values[i], attr_info->class_oid, lob_create_flag,
 					       &recdes) != S_SUCCESS)
 	    {
-	      return S_ERROR;
+	      goto error_oos;
 	    }
 	  if (oos_insert (thread_p, oos_vfid, oos_buffer (recdes.data, (size_t) recdes.length), oos_oid) != NO_ERROR)
 	    {
-	      return S_ERROR;
+	      goto error_oos;
 	    }
 
 	  thread_p->oos_oids.push_back (oos_oid);	/* for replication log */
@@ -12499,6 +12502,13 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
   /* here: or vectorize the DB_VALUEs and insert at once */
 
   return S_SUCCESS;
+
+error_oos:
+  if (recdes.data != PTR_ALIGN (recbuf, MAX_ALIGNMENT))
+    {
+      free_and_init (recdes.data);
+    }
+  return S_ERROR;
 }
 
 /*
