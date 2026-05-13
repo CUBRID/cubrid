@@ -728,8 +728,8 @@ typedef struct vacuum_oos_vfid_cache_entry
   VFID oos_vfid;		/* VFID_NULL means "no OOS file" */
 } VACUUM_OOS_VFID_CACHE_ENTRY;
 
-static int vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENTRY * cache, int *cache_size,
-					 const VFID * heap_vfid, VFID * out_oos_vfid, bool * out_has_oos);
+static bool vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENTRY * cache,
+					  int *cache_size, const VFID * heap_vfid, VFID * out_oos_vfid);
 static int vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, const VFID * vfid);
 static void vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 					    bool update_best_space_stat, bool unlatch_page);
@@ -2522,49 +2522,49 @@ vacuum_forward_walk_delete_old_oos (THREAD_ENTRY * thread_p, const VFID & oos_vf
 
 /*
  * vacuum_oos_vfid_cache_lookup () - Resolve heap_vfid -> oos_vfid with a small
- *   per-block cache. *out_has_oos is true when out_oos_vfid is populated.
- *   Returns a negative error code only when heap_get_hfid_from_vfid fails;
- *   such a transient failure is propagated, never cached.
+ *   per-block cache. Returns true iff out_oos_vfid was populated (heap has an
+ *   OOS file). All failures (dropped heap, transient pgbuf_fix) are silently
+ *   swallowed via er_clear() and reported as false; nothing is cached on
+ *   failure so the next call retries cleanly.
  */
-static int
+static bool
 vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENTRY * cache, int *cache_size,
-			      const VFID * heap_vfid, VFID * out_oos_vfid, bool * out_has_oos)
+			      const VFID * heap_vfid, VFID * out_oos_vfid)
 {
+  FILE_DESCRIPTORS file_descriptor;
   HFID hfid;
-  int error_code;
 
   assert (cache != NULL);
   assert (cache_size != NULL);
   assert (out_oos_vfid != NULL);
-  assert (out_has_oos != NULL);
-
-  VFID_SET_NULL (out_oos_vfid);
-  *out_has_oos = false;
 
   for (int i = 0; i < *cache_size; i++)
     {
       if (VFID_EQ (&cache[i].heap_vfid, heap_vfid))
 	{
 	  VFID_COPY (out_oos_vfid, &cache[i].oos_vfid);
-	  *out_has_oos = !VFID_ISNULL (out_oos_vfid);
-	  return NO_ERROR;
+	  return !VFID_ISNULL (out_oos_vfid);
 	}
     }
 
-  HFID_SET_NULL (&hfid);
-  error_code = heap_get_hfid_from_vfid (thread_p, heap_vfid, &hfid);
-  if (error_code != NO_ERROR)
+  VFID_SET_NULL (out_oos_vfid);
+
+  if (file_descriptor_get (thread_p, heap_vfid, &file_descriptor) != NO_ERROR)
     {
-      return error_code;
+      er_clear ();
+      return false;
     }
+
+  hfid = file_descriptor.heap.hfid;
   if (HFID_IS_NULL (&hfid))
     {
-      return NO_ERROR;
+      return false;
     }
 
   if (!heap_oos_find_vfid (thread_p, &hfid, out_oos_vfid, false /* docreate */ ))
     {
       VFID_SET_NULL (out_oos_vfid);
+      return false;
     }
 
   {
@@ -2572,8 +2572,7 @@ vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENT
     VFID_COPY (&cache[slot].heap_vfid, heap_vfid);
     VFID_COPY (&cache[slot].oos_vfid, out_oos_vfid);
   }
-  *out_has_oos = !VFID_ISNULL (out_oos_vfid);
-  return NO_ERROR;
+  return !VFID_ISNULL (out_oos_vfid);
 }
 
 /*
@@ -3708,29 +3707,14 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	      if (heap_recdes_contains_oos (&undo_recdes))
 		{
 		  VFID undo_oos_vfid;
-		  bool has_oos = false;
-		  int err = vacuum_oos_vfid_cache_lookup (thread_p, oos_vfid_cache, &oos_vfid_cache_size,
-							  &log_vacuum.vfid, &undo_oos_vfid, &has_oos);
-		  if (err != NO_ERROR)
-		    {
-		      vacuum_er_log_warning (VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_HEAP,
-					     "forward-walk oos vfid lookup failed: heap_vfid=%d|%d err=%d",
-					     log_vacuum.vfid.volid, log_vacuum.vfid.fileid, err);
-		      er_clear ();
-		    }
-		  else if (has_oos)
+		  if (vacuum_oos_vfid_cache_lookup (thread_p, oos_vfid_cache, &oos_vfid_cache_size,
+						    &log_vacuum.vfid, &undo_oos_vfid))
 		    {
 		      OID_VECTOR forward_oos_oids;
-		      err = heap_recdes_get_oos_oids (&undo_recdes, forward_oos_oids);
-		      if (err == NO_ERROR && !forward_oos_oids.empty ())
+		      if (heap_recdes_get_oos_oids (&undo_recdes, forward_oos_oids) == NO_ERROR
+			  && !forward_oos_oids.empty ()
+			  && vacuum_forward_walk_delete_old_oos (thread_p, undo_oos_vfid, forward_oos_oids) != NO_ERROR)
 			{
-			  err = vacuum_forward_walk_delete_old_oos (thread_p, undo_oos_vfid, forward_oos_oids);
-			}
-		      if (err != NO_ERROR)
-			{
-			  vacuum_er_log_warning (VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_HEAP,
-						 "forward-walk oos cleanup failed: heap_vfid=%d|%d oos_vfid=%d|%d err=%d",
-						 VFID_AS_ARGS (&log_vacuum.vfid), VFID_AS_ARGS (&undo_oos_vfid), err);
 			  er_clear ();
 			}
 		    }
