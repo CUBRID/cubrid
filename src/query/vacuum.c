@@ -4449,7 +4449,8 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
     }
 
   /* We are here because the file that will be vacuumed is not dropped. */
-  if (!LOG_IS_MVCC_BTREE_OPERATION (log_record_data->rcvindex) && log_record_data->rcvindex != RVES_NOTIFY_VACUUM)
+  if (!LOG_IS_MVCC_BTREE_OPERATION (log_record_data->rcvindex)
+      && log_record_data->rcvindex != RVES_NOTIFY_VACUUM && log_record_data->rcvindex != RVHF_UPDATE_NOTIFY_VACUUM)
     {
       /* No need to unpack undo data */
       return NO_ERROR;
