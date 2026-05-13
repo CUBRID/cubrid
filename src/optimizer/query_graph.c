@@ -139,8 +139,6 @@
 	} \
     } while (0)
 
-#define DEFAULT_EQUIJOIN_SELECTIVITY 0.001
-
 typedef enum
 {
   QO_BUILD_ENTITY = 0x01,	/* 0000 0001 */
@@ -159,7 +157,6 @@ struct qo_transitive_join_spec
 {
   QO_SEGMENT *head_seg;
   QO_SEGMENT *tail_seg;
-  QO_EQCLASS *eqclass;
 };
 
 double QO_INFINITY = 0.0;
@@ -244,10 +241,8 @@ static void qo_assign_eq_classes (QO_ENV *);
 static void qo_generate_transitive_join_terms (QO_ENV *);
 static int qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs_p, int *count_p,
 					     int *cap_p);
-static void qo_adjust_bitset_indices (QO_ENV * env, BITSET * bs, int old_nedges, int extra);
 static int qo_segment_cardinality (QO_SEGMENT * seg);
-static void qo_sort_edges (QO_ENV * env);
-static void qo_insert_transitive_join_terms (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC * specs, int count, int start_idx);
+static void qo_insert_transitive_join_terms (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC * specs, int count);
 static void qo_discover_edges (QO_ENV *);
 static void qo_classify_outerjoin_terms (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
@@ -603,6 +598,12 @@ qo_optimize_helper (QO_ENV * env)
 			       pt_continue_walk, NULL);
     }
 
+  /* Generate transitive join terms from the union-find segment groups before
+   * qo_discover_edges() rearranges the term array.  New terms are appended at
+   * the end; qo_discover_edges() will fold them into the edge zone and sort.
+   */
+  qo_generate_transitive_join_terms (env);
+
   /* finish the rest of the opt structures */
   qo_discover_edges (env);
 
@@ -611,7 +612,6 @@ qo_optimize_helper (QO_ENV * env)
    * one) will be pointing to the wrong term after they're rearranged.
    */
   qo_assign_eq_classes (env);
-  qo_generate_transitive_join_terms (env);
 
   get_local_subqueries (env, tree);
   get_rank (env);
@@ -8098,24 +8098,23 @@ qo_assign_eq_classes (QO_ENV * env)
 
 /*
  * qo_generate_transitive_join_terms () - Generate implied join terms from
- *   equivalence classes using transitive closure.
+ *   segment equivalence groups using transitive closure.
  *   env(in):
  *
- * Note: For each equivalence class with N segments on different nodes, this
- *   function generates join terms for all missing (head, tail) node pairs.
- *   It expands the term array, shifts non-edge terms, inserts new edge terms,
- *   fixes internal pointers invalidated by realloc/memmove, and finally sorts
- *   all edge terms by selectivity.
+ * Note: Uses the eq_root union-find (built during term discovery) to identify
+ *   equivalence groups.  For each group with N segments on different nodes,
+ *   appends join terms for all missing (head, tail) node pairs at the end of
+ *   env->terms.  qo_discover_edges() — called immediately after — folds the
+ *   new terms into the edge zone and handles sorting.
  */
 static void
 qo_generate_transitive_join_terms (QO_ENV * env)
 {
-  int i, q, extra, old_nedges, old_terms;
+  int i, extra, old_terms;
   QO_TRANSITIVE_JOIN_SPEC *specs = NULL;
   int specs_count = 0, specs_cap = 0;
   size_t new_size;
   QO_TERM *new_arr;
-  int *term_idx_backup = NULL;
 
   if (qo_collect_transitive_join_specs (env, &specs, &specs_count, &specs_cap) != 0 || specs_count == 0)
     {
@@ -8127,24 +8126,7 @@ qo_generate_transitive_join_terms (QO_ENV * env)
     }
 
   extra = specs_count;
-  old_nedges = env->nedges;
   old_terms = env->nterms;
-
-  /* Backup current term indices for eqclass. */
-  term_idx_backup = (int *) malloc (sizeof (int) * env->neqclasses);
-
-  if (term_idx_backup == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * env->neqclasses);
-      free_and_init (specs);
-      return;
-    }
-
-  for (i = 0; i < env->neqclasses; i++)
-    {
-      QO_EQCLASS *eqc = QO_ENV_EQCLASS (env, i);
-      term_idx_backup[i] = (eqc->term != NULL) ? QO_TERM_IDX (eqc->term) : -1;
-    }
 
   new_size = sizeof (QO_TERM) * (env->Nterms + extra);
   new_arr = (QO_TERM *) realloc (env->terms, new_size);
@@ -8153,37 +8135,20 @@ qo_generate_transitive_join_terms (QO_ENV * env)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, new_size);
       free_and_init (specs);
-      free_and_init (term_idx_backup);
       return;
     }
 
   env->terms = new_arr;
   env->Nterms += extra;
 
-  /* Initialize new capacity slots added by realloc; they are raw uninitialized
-   * memory and qo_env_free (which iterates Nterms) would crash calling
-   * bitset_delset on garbage setp values if we leave them untouched.
-   * memmove below may overwrite some of these slots with valid pre-cleared
-   * data, which is fine — the setp-fix loop that follows will correct any
-   * stale setp pointers introduced by memmove. */
+  /* Initialize new slots so qo_env_free won't crash on garbage bitset pointers. */
   for (i = old_terms; i < env->Nterms; i++)
     {
       qo_term_clear (env, i);
     }
 
-  if (old_terms > old_nedges)
-    {
-      memmove (&env->terms[old_nedges + extra], &env->terms[old_nedges], sizeof (QO_TERM) * (old_terms - old_nedges));
-
-      for (i = old_nedges; i < old_terms; i++)
-	{
-	  QO_TERM *term = QO_ENV_TERM (env, i + extra);
-	  QO_TERM_IDX (term) = i + extra;
-	}
-    }
-
-  /* Reset internal bitset pointers that may have been invalidated by realloc */
-  for (i = 0; i < env->Nterms; i++)
+  /* Reset internal bitset pointers in existing terms that realloc may have invalidated. */
+  for (i = 0; i < old_terms; i++)
     {
       QO_TERM *term = QO_ENV_TERM (env, i);
       if (term->nodes.nwords <= NWORDS)
@@ -8194,145 +8159,118 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 	term->subqueries.setp = term->subqueries.set.word;
     }
 
-  /* Adjust term indices in all related structures to reflect the shift */
-  for (i = 0; i < env->nnodes; i++)
-    {
-      qo_adjust_bitset_indices (env, &QO_NODE_SARGS (QO_ENV_NODE (env, i)), old_nedges, extra);
-    }
+  /* Append new transitive join terms after all existing terms. */
+  qo_insert_transitive_join_terms (env, specs, specs_count);
 
-  qo_adjust_bitset_indices (env, &env->fake_terms, old_nedges, extra);
-
-  for (q = 0; q < env->nsubqueries; q++)
-    {
-      qo_adjust_bitset_indices (env, &env->subqueries[q].terms, old_nedges, extra);
-    }
-
-  /* Insert new transitive joins into the vacancies created at the end of join edges */
-  qo_insert_transitive_join_terms (env, specs, specs_count, old_nedges);
-
-  /* Restore equivalence class terms using the backed-up indices */
-  for (i = 0; i < env->neqclasses; i++)
-    {
-      QO_EQCLASS *eqc = QO_ENV_EQCLASS (env, i);
-      if (term_idx_backup[i] != -1)
-	{
-	  int old_idx = term_idx_backup[i];
-	  int new_idx = (old_idx >= old_nedges) ? (old_idx + extra) : old_idx;
-	  eqc->term = QO_ENV_TERM (env, new_idx);
-	}
-    }
-
-  env->nedges += extra;
   env->nterms += extra;
 
-  qo_sort_edges (env);
-
   free_and_init (specs);
-  free_and_init (term_idx_backup);
 }
 
 /*
  * qo_collect_transitive_join_specs () - Collect candidate transitive join
- *   specifications from equivalence classes.
+ *   specifications using the segment union-find (eq_root).
  *   return: 0 on success, -1 on memory allocation failure
- *   env(in): 
+ *   env(in):
  *   specs_p(in/out): Pointer to the dynamically growing specs array
  *   count_p(in/out): Pointer to the current number of collected specs
  *   cap_p(in/out): Pointer to the current capacity of the specs array
  *
- * Note: Iterates over all equivalence classes and enumerates segment pairs
- *   belonging to different nodes. For each pair that does not already have
- *   an edge term (or is blocked by an outer join), a QO_TRANSITIVE_JOIN_SPEC
- *   is appended to the output array.
+ * Note: Builds a root array from the eq_root union-find chains set during term
+ *   discovery.  For each equivalence group with segments on 2+ distinct nodes,
+ *   emits a QO_TRANSITIVE_JOIN_SPEC for every node pair that lacks a direct
+ *   edge term, unless the group contains an outer-join term or all existing
+ *   edge terms for the group are DUMMY_JOIN.
  */
 static int
 qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs_p, int *count_p, int *cap_p)
 {
-  BITSET_ITERATOR bi;
-  QO_EQCLASS *eqclass;
-  QO_SEGMENT *seg1, *seg2, *head_seg, *tail_seg;
-  QO_NODE *node1, *node2, *head_node, *tail_node;
-  QO_TERM *term;
+  int i, j, k, t;
+  int *root_arr = NULL;
   int *segs_arr = NULL;
   int segs_arr_cap = 0;
   int nsegs;
-  bool eqclass_has_outer_join, already_has_term;
+  QO_SEGMENT *seg, *seg1, *seg2, *head_seg, *tail_seg, *root_seg, *nom;
+  QO_NODE *node1, *node2, *head_node, *tail_node;
+  QO_TERM *term;
+  bool group_has_outer_join, group_all_dummy, already_has_term;
 
-  for (int i = 0; i < env->neqclasses; i++)
+  if (env->nsegs == 0)
+    return 0;
+
+  root_arr = (int *) malloc (sizeof (int) * env->nsegs);
+  if (root_arr == NULL)
     {
-      int required_segs;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * env->nsegs);
+      return -1;
+    }
 
-      eqclass = QO_ENV_EQCLASS (env, i);
-      if (bitset_is_empty (&QO_EQCLASS_SEGS (eqclass)) || QO_EQCLASS_TERM (eqclass) != NULL)
-	{
-	  continue;
-	}
+  /* For each segment, walk the eq_root chain to find its group root. */
+  for (i = 0; i < env->nsegs; i++)
+    {
+      root_seg = QO_ENV_SEG (env, i);
+      while (QO_SEG_EQ_ROOT (root_seg))
+	root_seg = QO_SEG_EQ_ROOT (root_seg);
+      root_arr[i] = QO_SEG_IDX (root_seg);
+    }
 
-      required_segs = bitset_cardinality (&QO_EQCLASS_SEGS (eqclass));
-      if (required_segs < 2)
-	{
-	  continue;
-	}
+  /* Process each segment that is its own root (i.e., the canonical root of a group). */
+  for (i = 0; i < env->nsegs; i++)
+    {
+      if (root_arr[i] != i)
+	continue;
 
-      if (required_segs > segs_arr_cap)
+      /* Collect all segments belonging to this group. */
+      nsegs = 0;
+      for (j = 0; j < env->nsegs; j++)
 	{
-	  int *np = (int *) realloc (segs_arr, sizeof (int) * required_segs);
-	  if (np == NULL)
+	  if (root_arr[j] != i)
+	    continue;
+	  if (nsegs >= segs_arr_cap)
 	    {
-	      if (segs_arr)
+	      int new_cap = (segs_arr_cap == 0) ? 8 : segs_arr_cap * 2;
+	      int *np = (int *) realloc (segs_arr, sizeof (int) * new_cap);
+	      if (np == NULL)
 		{
 		  free_and_init (segs_arr);
+		  free_and_init (root_arr);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * new_cap);
+		  return -1;
 		}
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * required_segs);
-	      return -1;
+	      segs_arr = np;
+	      segs_arr_cap = new_cap;
 	    }
-	  segs_arr = np;
-	  segs_arr_cap = required_segs;
+	  segs_arr[nsegs++] = j;
 	}
 
-      nsegs = 0;
-      for (int s = bitset_iterate (&QO_EQCLASS_SEGS (eqclass), &bi); s != -1; s = bitset_next_member (&bi))
-	{
-	  segs_arr[nsegs++] = s;
-	}
+      if (nsegs < 2)
+	continue;
 
-      /* Check if any term in this eqclass is an outer join; if so, skip all pairs. */
-      eqclass_has_outer_join = false;
-      for (int e = 0; e < env->nedges; e++)
+      /* Scan edge terms in this group for outer joins and dummy-only status.
+       * Uses QO_IS_EDGE_TERM because nedges is not yet set at this call site. */
+      group_has_outer_join = false;
+      group_all_dummy = true;
+      for (t = 0; t < env->nterms; t++)
 	{
-	  term = QO_ENV_TERM (env, e);
-	  if (QO_TERM_EQCLASS (term) == eqclass && IS_OUTER_JOIN_TYPE (QO_TERM_JOIN_TYPE (term)))
-	    {
-	      eqclass_has_outer_join = true;
-	      break;
-	    }
-	}
-      if (eqclass_has_outer_join)
-	{
-	  continue;
-	}
-
-      /* Skip eqclasses where all existing edges are DUMMY_JOIN. */
-      {
-	bool eqclass_all_dummy = true;
-	for (int e = 0; e < env->nedges; e++)
-	  {
-	    term = QO_ENV_TERM (env, e);
-	    if (QO_TERM_EQCLASS (term) == eqclass && QO_TERM_CLASS (term) != QO_TC_DUMMY_JOIN)
-	      {
-		eqclass_all_dummy = false;
-		break;
-	      }
-	  }
-	if (eqclass_all_dummy)
-	  {
+	  term = QO_ENV_TERM (env, t);
+	  if (!QO_IS_EDGE_TERM (term))
 	    continue;
-	  }
-      }
+	  nom = QO_TERM_NOMINAL_SEG (term);
+	  if (nom == NULL || root_arr[QO_SEG_IDX (nom)] != i)
+	    continue;
+	  if (IS_OUTER_JOIN_TYPE (QO_TERM_JOIN_TYPE (term)))
+	    group_has_outer_join = true;
+	  if (QO_TERM_CLASS (term) != QO_TC_DUMMY_JOIN)
+	    group_all_dummy = false;
+	}
 
-      for (int j = 0; j < nsegs; j++)
+      if (group_has_outer_join || group_all_dummy)
+	continue;
+
+      /* Emit a spec for each segment pair on different nodes that has no direct edge term. */
+      for (j = 0; j < nsegs; j++)
 	{
-	  for (int k = j + 1; k < nsegs; k++)
+	  for (k = j + 1; k < nsegs; k++)
 	    {
 	      seg1 = QO_ENV_SEG (env, segs_arr[j]);
 	      seg2 = QO_ENV_SEG (env, segs_arr[k]);
@@ -8358,12 +8296,16 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 		}
 
 	      already_has_term = false;
-	      for (int e = 0; e < env->nedges; e++)
+	      for (t = 0; t < env->nterms; t++)
 		{
-		  term = QO_ENV_TERM (env, e);
-		  if (QO_TERM_EQCLASS (term) == eqclass
-		      && ((QO_TERM_HEAD (term) == head_node && QO_TERM_TAIL (term) == tail_node)
-			  || (QO_TERM_HEAD (term) == tail_node && QO_TERM_TAIL (term) == head_node)))
+		  term = QO_ENV_TERM (env, t);
+		  if (!QO_IS_EDGE_TERM (term))
+		    continue;
+		  nom = QO_TERM_NOMINAL_SEG (term);
+		  if (nom == NULL || root_arr[QO_SEG_IDX (nom)] != i)
+		    continue;
+		  if ((QO_TERM_HEAD (term) == head_node && QO_TERM_TAIL (term) == tail_node)
+		      || (QO_TERM_HEAD (term) == tail_node && QO_TERM_TAIL (term) == head_node))
 		    {
 		      already_has_term = true;
 		      break;
@@ -8371,87 +8313,33 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 		}
 
 	      if (already_has_term)
-		{
-		  continue;
-		}
+		continue;
 
 	      if (*count_p >= *cap_p)
 		{
 		  int new_cap = (*cap_p == 0) ? 8 : (*cap_p * 2);
 		  QO_TRANSITIVE_JOIN_SPEC *np =
 		    (QO_TRANSITIVE_JOIN_SPEC *) realloc (*specs_p, sizeof (QO_TRANSITIVE_JOIN_SPEC) * new_cap);
-
 		  if (np == NULL)
 		    {
-		      if (segs_arr)
-			{
-			  free_and_init (segs_arr);
-			}
+		      free_and_init (segs_arr);
+		      free_and_init (root_arr);
 		      return -1;
 		    }
-
 		  *specs_p = np;
 		  *cap_p = new_cap;
 		}
 
 	      (*specs_p)[*count_p].head_seg = head_seg;
 	      (*specs_p)[*count_p].tail_seg = tail_seg;
-	      (*specs_p)[*count_p].eqclass = eqclass;
 	      (*count_p)++;
 	    }
 	}
     }
 
-  if (segs_arr)
-    {
-      free_and_init (segs_arr);
-    }
-
+  free_and_init (segs_arr);
+  free_and_init (root_arr);
   return 0;
-}
-
-/*
- * qo_adjust_bitset_indices () - Shift term indices in a bitset after new edge
- *   terms have been inserted.
- *   return: 
- *   env(in): 
- *   bs(in/out): Bitset whose member indices are to be shifted
- *   old_nedges(in): The original number of edge terms before insertion
- *   extra(in): The number of newly inserted edge terms
- *
- * Note: All members in the bitset that are >= old_nedges are shifted right
- *   by 'extra' positions to accommodate newly inserted edge terms.
- */
-static void
-qo_adjust_bitset_indices (QO_ENV * env, BITSET * bs, int old_nedges, int extra)
-{
-  int member;
-  BITSET_ITERATOR bi;
-  BITSET to_remove, to_add;
-
-  bitset_init (&to_remove, env);
-  bitset_init (&to_add, env);
-
-  for (member = bitset_iterate (bs, &bi); member != -1; member = bitset_next_member (&bi))
-    {
-      if (member >= old_nedges)
-	{
-	  bitset_add (&to_remove, member);
-	  bitset_add (&to_add, member + extra);
-	}
-    }
-
-  for (member = bitset_iterate (&to_remove, &bi); member != -1; member = bitset_next_member (&bi))
-    {
-      bitset_remove (bs, member);
-    }
-  for (member = bitset_iterate (&to_add, &bi); member != -1; member = bitset_next_member (&bi))
-    {
-      bitset_add (bs, member);
-    }
-
-  bitset_delset (&to_remove);
-  bitset_delset (&to_add);
 }
 
 /*
@@ -8490,91 +8378,35 @@ qo_segment_cardinality (QO_SEGMENT * seg)
 }
 
 /*
- * qo_sort_edges () - Sort all edge terms by selectivity in descending
- *   order and fix related pointers.
- *   return: 
- *   env(in): Pointer to the optimizer environment
- *
- * Note: Uses selection sort to order edge terms [0..nedges-1] so that higher
- *   selectivity (less selective) terms come first. After each swap, eqclass
- *   term pointers and the fake_terms bitset are corrected accordingly.
- */
-static void
-qo_sort_edges (QO_ENV * env)
-{
-  int t1, t2;
-
-  for (t1 = 0; t1 < env->nedges - 1; t1++)
-    {
-      QO_TERM *term1 = QO_ENV_TERM (env, t1);
-
-      for (t2 = t1 + 1; t2 < env->nedges; t2++)
-	{
-	  QO_TERM *term2 = QO_ENV_TERM (env, t2);
-
-	  if (QO_TERM_SELECTIVITY (term1) < QO_TERM_SELECTIVITY (term2))
-	    {
-	      bool is_fake1, is_fake2;
-
-	      is_fake1 = BITSET_MEMBER (env->fake_terms, t1) ? true : false;
-	      is_fake2 = BITSET_MEMBER (env->fake_terms, t2) ? true : false;
-
-	      qo_exchange (term1, term2);
-
-	      /* fix eqclass term pointers */
-	      if (term1->eqclass && QO_EQCLASS_TERM (term1->eqclass) == term2)
-		QO_EQCLASS_TERM (term1->eqclass) = term1;
-	      if (term2->eqclass && QO_EQCLASS_TERM (term2->eqclass) == term1)
-		QO_EQCLASS_TERM (term2->eqclass) = term2;
-
-	      /* fix fake_terms bitset */
-	      if (is_fake1 && !is_fake2)
-		{
-		  bitset_remove (&env->fake_terms, t1);
-		  bitset_add (&env->fake_terms, t2);
-		}
-	      else if (!is_fake1 && is_fake2)
-		{
-		  bitset_add (&env->fake_terms, t1);
-		  bitset_remove (&env->fake_terms, t2);
-		}
-	    }
-	}
-    }
-}
-
-/*
  * qo_insert_transitive_join_terms () - Initialize new QO_TERM entries for
  *   the collected transitive join specifications.
  *   return: 
  *   env(in): Pointer to the optimizer environment
  *   specs(in): Array of transitive join specifications
  *   count(in): Number of specifications in the array
- *   start_idx(in): Starting index in env->terms where new terms are placed
  *
  * Note: For each spec, a new edge term is initialized via qo_term_clear()
  *   and configured as a QO_TC_JOIN / JOIN_INNER term. Selectivity is computed
  *   from the segment cardinality. A synthetic PT_EXPR (A = B) node is created
- *   for EXPLAIN output.
+ *   for EXPLAIN output.  Terms are appended starting at env->nterms, which
+ *   has not yet been incremented by the caller.
  */
 static void
-qo_insert_transitive_join_terms (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC * specs, int count, int start_idx)
+qo_insert_transitive_join_terms (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC * specs, int count)
 {
   int i;
   QO_TERM *term;
   QO_SEGMENT *head_seg, *tail_seg;
   QO_NODE *head_node, *tail_node;
-  QO_EQCLASS *eqclass;
   int head_icard, tail_icard, icard;
 
   for (i = 0; i < count; i++)
     {
-      int new_idx = start_idx + i;
+      int new_idx = env->nterms + i;
       head_seg = specs[i].head_seg;
       tail_seg = specs[i].tail_seg;
       head_node = QO_SEG_HEAD (head_seg);
       tail_node = QO_SEG_HEAD (tail_seg);
-      eqclass = specs[i].eqclass;
       qo_term_clear (env, new_idx);
       term = QO_ENV_TERM (env, new_idx);
 
@@ -8621,7 +8453,8 @@ qo_insert_transitive_join_terms (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC * specs, 
 	    }
 	}
 
-      QO_TERM_EQCLASS (term) = eqclass;
+      /* QO_TERM_EQCLASS is left NULL here; qo_assign_eq_classes() fills it in
+       * via QO_TERM_NOMINAL_SEG after qo_discover_edges() runs. */
       QO_TERM_NOMINAL_SEG (term) = head_seg;
       QO_TERM_HEAD (term) = head_node;
       QO_TERM_TAIL (term) = tail_node;
