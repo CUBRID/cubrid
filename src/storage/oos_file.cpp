@@ -1145,9 +1145,12 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffe
   // this loop inserts chunks in reverse order so that next_chunk_oid is always known
   for (int i = required_page_nums - 1; i >= 0; --i)
     {
-      const int chunk_len = std::min (max_chunk_size, total_data_length - i * max_chunk_size);
-      oos_buffer chunk (src.data () + i * max_chunk_size, static_cast<std::size_t> (chunk_len));
-      total_inserted_length += chunk_len;
+      // subspan handles both bounds checking (assert offset <= size) and tail
+      // clamping (count > remaining clamps to remaining), so the final chunk's
+      // shorter length falls out for free.
+      oos_buffer chunk = src.subspan (static_cast<std::size_t> (i * max_chunk_size),
+				      static_cast<std::size_t> (max_chunk_size));
+      total_inserted_length += static_cast<int> (chunk.size ());
 
       // Keep total_data_length in each chunk so the log applier can validate all pieces before reassembly.
       OOS_RECORD_HEADER header{total_data_length, i, next_chunk_oid};
@@ -1156,7 +1159,7 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffe
       error_code = oos_insert_within_page (thread_p, oos_vfid, chunk, header, current_chunk_oid);
       if (error_code != NO_ERROR)
 	{
-	  oos_error ("could not insert chunk index=%d of length %d.", i, chunk_len);
+	  oos_error ("could not insert chunk index=%d of length %zu.", i, chunk.size ());
 	  assert_release_error (er_errid () != NO_ERROR);
 	  // Partially inserted chunks are cleaned up when the caller aborts the transaction
 	  // (individual undo records replay in reverse). The caller MUST NOT continue
