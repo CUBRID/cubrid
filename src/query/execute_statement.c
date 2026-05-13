@@ -6674,8 +6674,11 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   SM_CLASS *smclass = NULL;
   int error = NO_ERROR;
   char pl_sp_name[DB_MAX_IDENTIFIER_LENGTH + 1];
-  char pl_call_source[DB_MAX_IDENTIFIER_LENGTH + 20];
+  /* qualified: "<owner>.<sp_name>" — used for CALL and action_body_sp storage */
+  char pl_sp_qualified_name[DB_MAX_USER_LENGTH + DB_MAX_IDENTIFIER_LENGTH + 2];
+  char pl_call_source[DB_MAX_USER_LENGTH + DB_MAX_IDENTIFIER_LENGTH + 10];
   pl_sp_name[0] = '\0';
+  pl_sp_qualified_name[0] = '\0';
   CHECK_MODIFICATION_ERROR ();
 
   name = PT_NODE_TR_NAME (statement);
@@ -6768,6 +6771,10 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       base_name = sm_remove_qualifier_name (name);
       snprintf (pl_sp_name, sizeof (pl_sp_name), "__trsp_%s", base_name);
+      /* Build the owner-qualified SP name so CALL resolves correctly at trigger fire
+       * time regardless of who the DML executor is, and so trigger drop by another
+       * user (e.g. DBA) can locate the SP without depending on the current session user. */
+      snprintf (pl_sp_qualified_name, sizeof (pl_sp_qualified_name), "%s.%s", Au_user_name, pl_sp_name);
 
       error = jsp_create_trigger_body_sp (pl_sp_name, pl_body, NULL);
       if (error != NO_ERROR)
@@ -6775,7 +6782,7 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  return error;
 	}
 
-      snprintf (pl_call_source, sizeof (pl_call_source), "CALL %s()", pl_sp_name);
+      snprintf (pl_call_source, sizeof (pl_call_source), "CALL %s()", pl_sp_qualified_name);
       action_type = TR_ACT_EXPRESSION;
       action_source = pl_call_source;
     }
@@ -6791,21 +6798,22 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (trigger == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      if (pl_sp_name[0] != '\0')
+      if (pl_sp_qualified_name[0] != '\0')
 	{
 	  /* Trigger creation failed; drop the backing SP so it does not become an orphan.
 	   * Both the SP and the trigger are in the same transaction, so a transaction
 	   * rollback would also clean them up, but be explicit here for safety. */
-	  (void) jsp_drop_trigger_body_sp (pl_sp_name);
+	  (void) jsp_drop_trigger_body_sp (pl_sp_qualified_name);
 	}
       return er_errid ();
     }
 
-  if (pl_sp_name[0] != '\0')
+  if (pl_sp_qualified_name[0] != '\0')
     {
-      /* Store the internal SP name on the trigger object so it can be dropped when the trigger is dropped */
+      /* Store the owner-qualified SP name so trigger drop can locate the backing SP
+       * regardless of who performs the DROP TRIGGER (e.g. DBA dropping another user's trigger). */
       DB_VALUE sp_name_val;
-      db_make_string (&sp_name_val, pl_sp_name);
+      db_make_string (&sp_name_val, pl_sp_qualified_name);
       if (db_put (trigger, TR_ATT_ACTION_BODY_SP, &sp_name_val) != NO_ERROR)
 	{
 	  /* Cannot persist the backing SP name; the trigger and SP are useless without
