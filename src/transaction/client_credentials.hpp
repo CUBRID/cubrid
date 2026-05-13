@@ -85,11 +85,6 @@ typedef struct boot_client_credential BOOT_CLIENT_CREDENTIAL;
 struct boot_client_credential : public clientids
 {
   std::string db_name;		/* DB_MAX_IDENTIFIER_LENGTH */
-  /*
-   * FIXME: The db_password remains an empty string after initialization; it is never assigned a functional value.
-   * But, We are preserving it in the schema to avoid potential runtime failures during rolling upgrades and to maintain backward compatibility
-  */
-  std::string db_password;	/* DB_MAX_PASSWORD_LENGTH */
   char *preferred_hosts;	/* LINE_MAX */
   int connect_order;
 
@@ -99,9 +94,12 @@ struct boot_client_credential : public clientids
   const char *get_db_name () const;
 
   // packable_object
+#if !defined(SERVER_MODE)
   virtual size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const override;
   virtual void pack (cubpacking::packer &serializator) const override;
+#else
   virtual void unpack (cubpacking::unpacker &deserializator) override;
+#endif
 };
 
 #endif // !_CLIENT_CREDENTIALS_HPP_
