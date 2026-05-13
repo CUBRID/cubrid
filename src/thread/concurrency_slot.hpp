@@ -93,6 +93,8 @@ namespace cubthread
     public:
       ~concurrency_slot ();
 
+      void reset ();
+
       concurrency_slot_pool *get_owner_pool ();
 
       void set_holder_pool (concurrency_slot_pool *holder_pool);
@@ -122,10 +124,15 @@ namespace cubthread
       virtual void initialize (void *identifier, std::size_t concurrency);
 
       // for worker
-      std::unique_ptr<concurrency_slot> try_acquire_slot (bool has_mutex = true);
-      std::unique_ptr<concurrency_slot> acquire_slot (cubthread::entry *thread_p, bool has_mutex = true);
+      std::unique_ptr<concurrency_slot> try_acquire_slot ();
+      std::unique_ptr<concurrency_slot> try_acquire_slot (std::unique_lock<std::mutex> &ulock);
 
-      void release_slot (std::unique_ptr<concurrency_slot> slot, bool has_mutex = true);
+      bool acquire_slot (cubthread::entry *thread_p);
+      // wait path may return with ulock unlocked
+      bool acquire_slot (cubthread::entry *thread_p, std::unique_lock<std::mutex> &ulock);
+
+      void release_slot (std::unique_ptr<concurrency_slot> slot);
+      void release_slot (std::unique_ptr<concurrency_slot> slot, std::unique_lock<std::mutex> &ulock);
 
       // called by the daemon to borrow surplus slots in batches of SLOT_SURPLUS_THRESHOLD.
       bool borrow_surplus_slots ();

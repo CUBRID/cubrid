@@ -119,11 +119,9 @@ namespace cubthread
       // execute task
       void execute_task (task_type *task_p) override;
 
-      // concurrency slot management
-      unique_slot try_acquire_slot (bool has_mutex = true);
-      unique_slot acquire_slot (cubthread::entry *thread_p, bool has_mutex = true);
-
-      void release_slot (unique_slot slot, bool has_mutex = true);
+      // concurrency slot interface
+      void release_slot (unique_slot slot);
+      void release_slot (unique_slot slot, std::unique_lock<std::mutex> &ulock);
 
       std::optional<std::pair<wrapped_task, unique_slot>> get_task_and_slot_or_become_available (worker &worker_arg);
 
@@ -344,7 +342,7 @@ namespace cubthread
     wrapped_task task_ref (task_p);
     std::unique_lock<std::mutex> ulock (this->m_core_mutex);
 
-    unique_slot slot = try_acquire_slot ();
+    unique_slot slot = m_slots.try_acquire_slot (ulock);
     if (slot)
       {
 	worker_p = static_cast<worker_elastic *> (get_or_make_available_worker ());
@@ -377,7 +375,7 @@ namespace cubthread
 	  }
 
 	// release the slot
-	release_slot (std::move (slot));
+	release_slot (std::move (slot), ulock);
       }
 
     // enqueue the task until a slot is available
@@ -385,45 +383,29 @@ namespace cubthread
   }
 
   template <stats_t Stats>
-  typename worker_pool_elastic<Stats>::unique_slot
-  worker_pool_elastic<Stats>::core_elastic::try_acquire_slot (bool has_mutex)
+  void
+  worker_pool_elastic<Stats>::core_elastic::release_slot (unique_slot slot)
   {
-    auto slot = m_slots.try_acquire_slot (has_mutex);
-    assert (!slot || (slot->get_owner_pool () && slot->get_holder_pool ()));
-
-    return slot;
+    m_slots.release_slot (std::move (slot));
   }
 
-  template <stats_t Stats>
-  typename worker_pool_elastic<Stats>::unique_slot
-  worker_pool_elastic<Stats>::core_elastic::acquire_slot (cubthread::entry *thread_p, bool has_mutex)
-  {
-    assert (thread_p);
-
-    auto slot = m_slots.acquire_slot (thread_p, has_mutex);
-    assert (slot->get_owner_pool () && slot->get_holder_pool ());
-
-    return slot;
-  }
 
   template <stats_t Stats>
   void
-  worker_pool_elastic<Stats>::core_elastic::release_slot (unique_slot slot, bool has_mutex)
+  worker_pool_elastic<Stats>::core_elastic::release_slot (unique_slot slot, std::unique_lock<std::mutex> &ulock)
   {
-    assert (slot);
-
-    m_slots.release_slot (std::move (slot), has_mutex);
+    m_slots.release_slot (std::move (slot), ulock);
   }
 
   template <stats_t Stats>
   std::optional<std::pair<typename worker_pool_elastic<Stats>::wrapped_task, typename worker_pool_elastic<Stats>::unique_slot>>
       worker_pool_elastic<Stats>::core_elastic::get_task_and_slot_or_become_available (worker &worker_arg)
   {
-    std::lock_guard<std::mutex> lock (this->m_core_mutex);
+    std::unique_lock<std::mutex> ulock (this->m_core_mutex);
 
     if (!this->m_task_queue.empty ())
       {
-	unique_slot slot = try_acquire_slot ();
+	unique_slot slot = m_slots.try_acquire_slot (ulock);
 	if (slot)
 	  {
 	    wrapped_task queued_task = std::move (this->m_task_queue.front ());
@@ -522,11 +504,11 @@ namespace cubthread
     if (unexecuted.has_value ())
       {
 	// could not start a new thread; put the task and slot back
-	std::lock_guard<std::mutex> lock (this->m_core_mutex);
+	std::unique_lock<std::mutex> ulock (this->m_core_mutex);
 	// requeue the task at the front to preserve FIFO order
 	this->m_task_queue.push_front (std::move (unexecuted->first));
 	// release the slot
-	release_slot (std::move (unexecuted->second));
+	release_slot (std::move (unexecuted->second), ulock);
 	// return the worker to the available list
 	this->m_available_workers.push_back (worker_p);
       }
@@ -701,7 +683,7 @@ namespace cubthread
     // return the slot to the pool
     if (this->m_context_p->m_slot)
       {
-	static_cast<core_elastic *> (this->m_parent_core)->release_slot (std::move (this->m_context_p->m_slot), false);
+	static_cast<core_elastic *> (this->m_parent_core)->release_slot (std::move (this->m_context_p->m_slot));
 	this->m_context_p->m_slot = nullptr;
       }
 
