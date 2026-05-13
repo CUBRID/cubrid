@@ -9936,7 +9936,7 @@ svacuum (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 void
 soos_stats (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
-  OR_ALIGNED_BUF (OR_INT_SIZE * 8 + OR_BIGINT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 7 + OR_BIGINT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   OID class_oid;
   OOS_STATS_INFO info;
