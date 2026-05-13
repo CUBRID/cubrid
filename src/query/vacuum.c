@@ -64,7 +64,6 @@
 #include <algorithm>
 #include <atomic>
 #include <condition_variable>
-#include <cstdlib>
 #include <mutex>
 #include <stack>
 
@@ -522,7 +521,7 @@ struct vacuum_heap_helper
 
   HFID hfid;			/* Heap file identifier. */
   VFID overflow_vfid;		/* Overflow file identifier. */
-  VFID oos_vfid;		/* OOS file identifier for this heap (populated lazily on first OOS-bearing slot in this page; see vacuum_heap_helper_resolve_oos_vfid). */
+  VFID oos_vfid;		/* OOS file identifier (resolved lazily, VFID_NULL if heap has none). */
   bool reusable;		/* True if heap file has reusable slots. */
 
   MVCC_SATISFIES_VACUUM_RESULT can_vacuum;	/* Result of vacuum check. */
@@ -719,7 +718,18 @@ static int vacuum_heap_record_remove_oos_inline (THREAD_ENTRY * thread_p, VACUUM
 // *INDENT-OFF*
 static int vacuum_forward_walk_delete_old_oos (THREAD_ENTRY * thread_p, const VFID & oos_vfid, OID_VECTOR & oos_oids);
 // *INDENT-ON*
-static void vacuum_oos_inject_crash_for_test (int scenario);
+
+/* Per-block heap-VFID -> OOS-VFID cache. Only positive lookups are cached; a
+ * transient heap_get_hfid_from_vfid failure is propagated, never cached. */
+#define VACUUM_OOS_VFID_CACHE_SIZE 16
+typedef struct vacuum_oos_vfid_cache_entry
+{
+  VFID heap_vfid;
+  VFID oos_vfid;		/* VFID_NULL means "no OOS file" */
+} VACUUM_OOS_VFID_CACHE_ENTRY;
+
+static int vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENTRY * cache, int *cache_size,
+					 const VFID * heap_vfid, VFID * out_oos_vfid, bool * out_has_oos);
 static int vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, const VFID * vfid);
 static void vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 					    bool update_best_space_stat, bool unlatch_page);
@@ -2364,74 +2374,39 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 }
 
 /*
- * VACUUM_OOS_CIT2_OID_INDEX - Named constant for spec section 10's CIT-2
- *   crash-injection point. CIT-2 fires after the 2nd OID's oos_delete returns
- *   inside vacuum_forward_walk_delete_old_oos's sysop, before sysop commit.
- *   The literal is 1 because the OID-loop index is 0-based: i == 1 means the
- *   2nd OID has just been deleted.
- */
-static const int VACUUM_OOS_CIT2_OID_INDEX = 1;
-
-/*
- * vacuum_oos_inject_crash_for_test () - Debug-only injection point that forces
- *   the server to crash via _exit(EXIT_FAILURE) when the env var
- *   CUBRID_TEST_OOS_VACUUM_INJECT matches the scenario argument. Bypasses every
- *   atexit handler (including boot_shutdown_server_at_exit) so dirty pages stay
- *   on the heap-page side of disk, modelling the worst-case crash semantics
- *   CUBRID recovery must handle. Release builds compile this to a no-op so the
- *   call sites carry zero overhead and zero attack surface.
- */
-#if !defined(NDEBUG)
-static __attribute__ ((unused))
-     void vacuum_oos_inject_crash_for_test (int scenario)
-{
-  const char *inject = getenv ("CUBRID_TEST_OOS_VACUUM_INJECT");
-  if (inject != NULL && atoi (inject) == scenario)
-    {
-      fprintf (stderr, "OOS vacuum inject: scenario %d _exit\n", scenario);
-      _exit (EXIT_FAILURE);
-    }
-}
-#else
-static __attribute__ ((unused))
-     void vacuum_oos_inject_crash_for_test (int scenario)
-{
-  (void) scenario;
-}
-#endif
-
-/*
- * vacuum_heap_helper_resolve_oos_vfid () - Populate helper->oos_vfid from the
- *   heap header on first call for this helper instance; no-op on subsequent
- *   calls. Vacuum is read-side for OOS-file existence: passes docreate=false.
- *   Returns NO_ERROR on success (including the case where the heap has no OOS
- *   file - helper->oos_vfid stays NULL and callers test VFID_ISNULL before
- *   calling oos_delete).
- *
- * Call site: vacuum_heap_record entry, BEFORE the switch on record_type.
+ * vacuum_heap_helper_resolve_oos_vfid () - Populate helper->oos_vfid lazily
+ *   when the current record claims OOS. Records without the OOS flag skip the
+ *   probe entirely to avoid a heap header pgbuf_fix while the data page is
+ *   write-latched (latch order is header -> data). A record that claims OOS
+ *   on a heap with no OOS file is corruption: log and return ER_FAILED.
  */
 static int
 vacuum_heap_helper_resolve_oos_vfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 {
+  if (!heap_recdes_contains_oos (&helper->record))
+    {
+      return NO_ERROR;
+    }
   if (!VFID_ISNULL (&helper->oos_vfid))
     {
-      /* Cached from a prior slot on this page. */
       return NO_ERROR;
     }
   assert (!HFID_IS_NULL (&helper->hfid));
-  /* docreate = false: vacuum never creates an OOS file. */
-  (void) heap_oos_find_vfid (thread_p, &helper->hfid, &helper->oos_vfid, false /* docreate */ );
-  /* heap_oos_find_vfid returns bool; on miss helper->oos_vfid stays NULL by
-   * VFID_SET_NULL initialization. Either outcome is non-error. */
-  return NO_ERROR;
+  if (heap_oos_find_vfid (thread_p, &helper->hfid, &helper->oos_vfid, false /* docreate */ ))
+    {
+      return NO_ERROR;
+    }
+  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
+		       "OOS flag set but no OOS VFID for hfid %d|%d (slotid=%d, rectype=%d, rec_len=%d).",
+		       VFID_AS_ARGS (&helper->hfid.vfid), (int) helper->crt_slotid, (int) helper->record_type,
+		       helper->record.length);
+  assert_release (false);
+  return ER_FAILED;
 }
 
 /*
  * vacuum_heap_oos_delete () - Reclaim every OOS chunk referenced by the slot's
- *   record currently held in helper->record. Caller MUST have an open sysop;
- *   this helper does NOT open, commit, or abort the sysop. On any oos_delete
- *   failure the helper returns the propagated negative error code; the CALLER
- *   is responsible for log_sysop_abort and for returning the error.
+ *   current record. Caller owns the sysop and aborts it on error.
  */
 static int
 vacuum_heap_oos_delete (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
@@ -2440,15 +2415,14 @@ vacuum_heap_oos_delete (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
   int error = heap_recdes_get_oos_oids (&helper->record, oos_oids);
   if (error != NO_ERROR)
     {
-      return error;		/* caller does log_sysop_abort */
+      return error;
     }
   if (oos_oids.empty ())
     {
-      return NO_ERROR;		/* nothing to delete; caller will commit the sysop */
+      return NO_ERROR;
     }
-  /* Page-locality sort: cluster OOS OIDs by (volid, pageid, slotid) so the
-   * subsequent oos_delete loop hits the same OOS page repeatedly, raising
-   * buffer-pool hit ratio. */
+  /* Sort by (volid, pageid, slotid) so the oos_delete loop hits the same OOS
+   * page repeatedly, raising buffer-pool hit ratio. */
   // *INDENT-OFF*
   std::sort (oos_oids.begin (), oos_oids.end (),
 	     [] (const OID &a, const OID &b) { return oid_compare (&a, &b) < 0; });
@@ -2458,18 +2432,16 @@ for (const OID & oid:oos_oids)
       error = oos_delete (thread_p, helper->oos_vfid, oid);
       if (error != NO_ERROR)
 	{
-	  return error;		/* caller does log_sysop_abort */
+	  return error;
 	}
-      perfmon_inc_stat (thread_p, PSTAT_OOS_VACUUM_DELETES);
     }
   return NO_ERROR;
 }
 
 /*
- * vacuum_heap_record_remove_oos_inline () - Inline REC_HOME vacuum for slots
- *   whose record carries OOS columns. OOS-bearing REC_HOME slots opt out of
- *   the bulk-batching path so the heap-slot vacuum log record and every
- *   oos_delete log record share a single sysop (Premise A).
+ * vacuum_heap_record_remove_oos_inline () - Inline REC_HOME vacuum for OOS-
+ *   bearing slots. The heap-slot vacuum log record and the oos_delete chain
+ *   share one sysop so recovery sees a single atomic boundary.
  */
 static int
 vacuum_heap_record_remove_oos_inline (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
@@ -2478,10 +2450,8 @@ vacuum_heap_record_remove_oos_inline (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPE
   assert (!VFID_ISNULL (&helper->oos_vfid));
   assert (heap_recdes_contains_oos (&helper->record));
 
-  /* Flush any pending REC_HOME bulk batch before opening a per-slot sysop so
-   * the bulk batch's log boundary is independent of the OOS sysop boundary.
-   * Guarded: on an OOS-only heap the inline-first path is the common case and
-   * n_bulk_vacuumed is typically zero - skip the no-op log_and_reset there. */
+  /* Flush any pending REC_HOME bulk batch so its log boundary is independent
+   * of the per-slot OOS sysop we open below. */
   if (helper->n_bulk_vacuumed > 0)
     {
       vacuum_heap_page_log_and_reset (thread_p, helper, false, false);
@@ -2489,10 +2459,6 @@ vacuum_heap_record_remove_oos_inline (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPE
 
   log_sysop_start (thread_p);
 
-  /* CIT-1 inject point: between log_sysop_start and the first oos_delete. */
-  vacuum_oos_inject_crash_for_test (1);
-
-  /* In-memory home-page slot mutation. */
   spage_vacuum_slot (thread_p, helper->home_page, helper->crt_slotid, helper->reusable);
 
   if (helper->reusable)
@@ -2500,9 +2466,6 @@ vacuum_heap_record_remove_oos_inline (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPE
       perfmon_inc_stat (thread_p, PSTAT_HEAP_REMOVE_VACUUMS);
     }
 
-  /* Mark dirty; WAL ordering is preserved because the LSA is stamped by the
-   * vacuum_log_redoundo_vacuum_record below, and pgbuf_flush blocks the disk
-   * write until the log is durable up to that LSA (Premise E). */
   pgbuf_set_dirty (thread_p, helper->home_page, DONT_FREE);
 
   vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page, helper->crt_slotid, &helper->record,
@@ -2516,28 +2479,16 @@ vacuum_heap_record_remove_oos_inline (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPE
 
   log_sysop_commit (thread_p);
 
-  /* CIT-3 inject point: log_sysop_commit returned, log is durable, but the
-   * in-memory home page and OOS pages are still dirty and have not yet been
-   * flushed to disk. Recovery must REDO the sysop. */
-  vacuum_oos_inject_crash_for_test (3);
-
   perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_VACUUMS);
   return NO_ERROR;
 }
 
 /*
  * vacuum_forward_walk_delete_old_oos () - Reclaim OOS chunks referenced by an
- *   UPDATE pre-image (RVHF_UPDATE_NOTIFY_VACUUM) encountered during the
- *   forward-walk in vacuum_process_log_block. Opens its own sysop (Premise A);
- *   commits on success, aborts on any oos_delete failure.
- *
- * Gate (Premise F): the caller has already filtered on
- *   rcvindex == RVHF_UPDATE_NOTIFY_VACUUM. Do NOT call this helper for any
- *   other rcvindex - in particular NOT for RVHF_MVCC_DELETE_MODIFY_HOME, whose
- *   undo carries the same OOS OIDs as the post-DELETE slot; that slot's OOS
- *   chunks will be reclaimed when vacuum_heap_record retires the slot. Double
- *   delete would trip the ASSERT_ERROR_AND_SET path inside oos_delete's chain
- *   walker (see oos_file.cpp).
+ *   UPDATE pre-image (RVHF_UPDATE_NOTIFY_VACUUM). Opens its own sysop; commits
+ *   on success, aborts on any oos_delete failure. Caller must gate on
+ *   rcvindex == RVHF_UPDATE_NOTIFY_VACUUM - other RVHF_MVCC_* rcvindex values
+ *   would double-delete OOS chains already reclaimed by vacuum_heap_record.
  */
 // *INDENT-OFF*
 static int
@@ -2549,28 +2500,18 @@ vacuum_forward_walk_delete_old_oos (THREAD_ENTRY * thread_p, const VFID & oos_vf
     }
   assert (!VFID_ISNULL (&oos_vfid));
 
-  /* Page-locality sort. */
   std::sort (oos_oids.begin (), oos_oids.end (),
 	     [] (const OID &a, const OID &b) { return oid_compare (&a, &b) < 0; });
 
   log_sysop_start (thread_p);
 
-  for (size_t i = 0; i < oos_oids.size (); ++i)
+  for (const OID & oid : oos_oids)
     {
-      int error = oos_delete (thread_p, oos_vfid, oos_oids[i]);
+      int error = oos_delete (thread_p, oos_vfid, oid);
       if (error != NO_ERROR)
 	{
 	  log_sysop_abort (thread_p);
 	  return error;
-	}
-      perfmon_inc_stat (thread_p, PSTAT_OOS_VACUUM_DELETES);
-      if ((int) i == VACUUM_OOS_CIT2_OID_INDEX)
-	{
-	  /* CIT-2 inject point (spec section 10): 2 of N OOS OIDs deleted
-	   * inside the sysop, before commit. Recovery must UNDO the partial
-	   * deletes. The index literal is named VACUUM_OOS_CIT2_OID_INDEX so
-	   * any future spec change to the inject ordering touches one place. */
-	  vacuum_oos_inject_crash_for_test (2);
 	}
     }
 
@@ -2578,6 +2519,62 @@ vacuum_forward_walk_delete_old_oos (THREAD_ENTRY * thread_p, const VFID & oos_vf
   return NO_ERROR;
 }
 // *INDENT-ON*
+
+/*
+ * vacuum_oos_vfid_cache_lookup () - Resolve heap_vfid -> oos_vfid with a small
+ *   per-block cache. *out_has_oos is true when out_oos_vfid is populated.
+ *   Returns a negative error code only when heap_get_hfid_from_vfid fails;
+ *   such a transient failure is propagated, never cached.
+ */
+static int
+vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENTRY * cache, int *cache_size,
+			      const VFID * heap_vfid, VFID * out_oos_vfid, bool * out_has_oos)
+{
+  HFID hfid;
+  int error_code;
+
+  assert (cache != NULL);
+  assert (cache_size != NULL);
+  assert (out_oos_vfid != NULL);
+  assert (out_has_oos != NULL);
+
+  VFID_SET_NULL (out_oos_vfid);
+  *out_has_oos = false;
+
+  for (int i = 0; i < *cache_size; i++)
+    {
+      if (VFID_EQ (&cache[i].heap_vfid, heap_vfid))
+	{
+	  VFID_COPY (out_oos_vfid, &cache[i].oos_vfid);
+	  *out_has_oos = !VFID_ISNULL (out_oos_vfid);
+	  return NO_ERROR;
+	}
+    }
+
+  HFID_SET_NULL (&hfid);
+  error_code = heap_get_hfid_from_vfid (thread_p, heap_vfid, &hfid);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  if (HFID_IS_NULL (&hfid))
+    {
+      return NO_ERROR;
+    }
+
+  if (!heap_oos_find_vfid (thread_p, &hfid, out_oos_vfid, false /* docreate */ ))
+    {
+      VFID_SET_NULL (out_oos_vfid);
+    }
+
+  {
+    int slot = (*cache_size < VACUUM_OOS_VFID_CACHE_SIZE) ? (*cache_size)++ : 0;
+    VFID_COPY (&cache[slot].heap_vfid, heap_vfid);
+    VFID_COPY (&cache[slot].oos_vfid, out_oos_vfid);
+  }
+  *out_has_oos = !VFID_ISNULL (out_oos_vfid);
+  return NO_ERROR;
+}
 
 /*
  * vacuum_heap_record () - Vacuum heap record.
@@ -2595,17 +2592,15 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
   assert (helper->home_page != NULL);
   assert (MVCC_IS_HEADER_DELID_VALID (&helper->mvcc_header));
 
-  /* Resolve the heap's OOS VFID lazily (per-page cache). NULL result means
-   * this heap has no OOS file; each arm below skips the OOS-delete branch. */
+  /* Resolve the heap's OOS VFID lazily; VFID_NULL means "no OOS file" and each
+   * arm below skips the OOS-delete branch. */
   if (vacuum_heap_helper_resolve_oos_vfid (thread_p, helper) != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  /* OOS-bearing REC_HOME slots opt out of the bulk batch and take the inline
-   * sysop-bounded path so the heap-slot vacuum and the oos_delete chain share
-   * one atomic recovery boundary (Premise A). Branch BEFORE the bulk-batching
-   * else arm. */
+  /* OOS-bearing REC_HOME slots take an inline sysop-bounded path so the heap-
+   * slot vacuum log record and the oos_delete chain share one atomic boundary. */
   if (helper->record_type == REC_HOME && !VFID_ISNULL (&helper->oos_vfid) && heap_recdes_contains_oos (&helper->record))
     {
       int error = vacuum_heap_record_remove_oos_inline (thread_p, helper);
@@ -2694,11 +2689,9 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
       helper->forward_page = NULL;
 
-      /* OOS reclamation for REC_RELOCATION: the OOS payload lives in the
-       * NEWHOME record (helper->record), NOT in the home-page slot pointer
-       * (helper->forward_recdes). Reclaim inside the existing sysop so the
-       * forward-page log records and the oos_delete log records share one
-       * atomic boundary (Premise A). */
+      /* The OOS payload lives in the NEWHOME record (helper->record), not in
+       * the home-page slot pointer. Reclaim inside the existing sysop so the
+       * forward-page and oos_delete log records share one atomic boundary. */
       if (!VFID_ISNULL (&helper->oos_vfid) && heap_recdes_contains_oos (&helper->record))
 	{
 	  if (vacuum_heap_oos_delete (thread_p, helper) != NO_ERROR)
@@ -3544,19 +3537,9 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
   bool was_interrupted = false;
   bool is_file_dropped = false;
 
-  /* Forward-walk OOS-VFID lookup cache (1-entry LRU keyed by heap VFID).
-   * Lifetime: this vacuum_process_log_block call. Many consecutive log records
-   * in a block typically reference the same heap VFID, so caching avoids
-   * O(N) heap-header pgbuf_fix calls in the forward-walk fast path. The cache
-   * is invalidated implicitly when the next iteration sees a different VFID -
-   * we don't need explicit invalidation because vacuum doesn't drop heaps. */
-  VFID forward_walk_cached_vfid;
-  HFID forward_walk_cached_hfid;
-  VFID forward_walk_cached_oos_vfid;
-  bool forward_walk_cache_valid = false;
-  VFID_SET_NULL (&forward_walk_cached_vfid);
-  HFID_SET_NULL (&forward_walk_cached_hfid);
-  VFID_SET_NULL (&forward_walk_cached_oos_vfid);
+  /* Per-block heap-VFID -> OOS-VFID cache for the forward-walk fast path. */
+  VACUUM_OOS_VFID_CACHE_ENTRY oos_vfid_cache[VACUUM_OOS_VFID_CACHE_SIZE];
+  int oos_vfid_cache_size = 0;
 
   PERF_UTIME_TRACKER perf_tracker;
   PERF_UTIME_TRACKER job_time_tracker;
@@ -3709,108 +3692,43 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 			 "collected oid %d|%d|%d, in file %d|%d, based on %lld|%d", OID_AS_ARGS (&heap_object_oid),
 			 VFID_AS_ARGS (&log_vacuum.vfid), LSA_AS_ARGS (&rcv_lsa));
 
-	  /* Premise F: forward-walk OOS cleanup is gated to RVHF_UPDATE_NOTIFY_VACUUM
-	   * only. Do NOT broaden to other RVHF_MVCC_* rcvindex values - in
-	   * particular NOT to RVHF_MVCC_DELETE_MODIFY_HOME, whose undo carries the
-	   * same OOS OIDs as the post-DELETE heap slot. Double-deleting via the
-	   * forward-walk pass would walk a chain whose head slot was already deleted
-	   * by vacuum_heap_record and trip the ASSERT_ERROR_AND_SET path inside
-	   * oos_delete's chain walker (see src/storage/oos_file.cpp). */
+	  /* Reclaim OOS chunks referenced by an UPDATE pre-image. Restricted to
+	   * RVHF_UPDATE_NOTIFY_VACUUM: other RVHF_MVCC_* rcvindex values either
+	   * carry no pre-image (INSERT/DELETE_REC_HOME) or carry OOS OIDs that
+	   * vacuum_heap_record will reclaim when it retires the post-image slot. */
 	  if (log_record_data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM && undo_data != NULL && undo_data_size > 0)
 	    {
 	      RECDES undo_recdes;
 	      undo_recdes.data = undo_data;
 	      undo_recdes.length = undo_data_size;
 	      undo_recdes.area_size = undo_data_size;
-	      /* VERIFIED: heap_recdes_contains_oos and heap_recdes_get_oos_oids
-	       * read OR_MVCC_FLAG_HAS_OOS / the object-var-table via OR_GET_*
-	       * macros on record->data only - they do NOT consult recdes.type.
-	       * REC_HOME is set here because the rcvindex gate is
-	       * RVHF_UPDATE_NOTIFY_VACUUM, whose undo redo data is emitted on a
-	       * REC_HOME slot via log_append_undoredo_recdes; assigning the same
-	       * type keeps the reconstructed RECDES self-consistent for any
-	       * future caller that does inspect type. */
 	      undo_recdes.type = REC_HOME;
 	      if (heap_recdes_contains_oos (&undo_recdes))
 		{
-		  HFID undo_hfid;
 		  VFID undo_oos_vfid;
-		  HFID_SET_NULL (&undo_hfid);
-		  VFID_SET_NULL (&undo_oos_vfid);
-
-		  /* 1-entry cache hit: same heap VFID as the previous iteration.
-		   * Reuse the resolved HFID and OOS-VFID without re-fixing the
-		   * heap header page. */
-		  if (forward_walk_cache_valid && VFID_EQ (&forward_walk_cached_vfid, &log_vacuum.vfid))
+		  bool has_oos = false;
+		  int err = vacuum_oos_vfid_cache_lookup (thread_p, oos_vfid_cache, &oos_vfid_cache_size,
+							  &log_vacuum.vfid, &undo_oos_vfid, &has_oos);
+		  if (err != NO_ERROR)
 		    {
-		      HFID_COPY (&undo_hfid, &forward_walk_cached_hfid);
-		      VFID_COPY (&undo_oos_vfid, &forward_walk_cached_oos_vfid);
+		      vacuum_er_log_error (VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_HEAP,
+					   "vacuum_oos_vfid_cache_lookup failed for vfid %d|%d: %d",
+					   log_vacuum.vfid.volid, log_vacuum.vfid.fileid, err);
+		      error_code = err;
+		      goto end;
 		    }
-		  else
-		    {
-		      /* Contract of heap_get_hfid_from_vfid (see src/storage/heap_file.c):
-		       *   - Returns NO_ERROR with a populated hfid when the heap header
-		       *     page is fetched successfully.
-		       *   - Returns a negative error code on genuine pgbuf_fix / header
-		       *     read failure AND sets hfid->vfid to NULL via VFID_SET_NULL.
-		       *   - There is NO "NO_ERROR with HFID_IS_NULL" path; the
-		       *     HFID_IS_NULL test below is defensive.
-		       * A genuine failure means recovery cannot resolve the heap from
-		       * the log record's VFID - that is a real corruption signal, not
-		       * a "no OOS work to do" case, so we propagate it. */
-		      int hfid_err = heap_get_hfid_from_vfid (thread_p, &log_vacuum.vfid, &undo_hfid);
-		      if (hfid_err != NO_ERROR)
-			{
-			  vacuum_er_log_error (VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_HEAP,
-					       "heap_get_hfid_from_vfid failed for vfid %d|%d: %d",
-					       log_vacuum.vfid.volid, log_vacuum.vfid.fileid, hfid_err);
-			  perfmon_inc_stat (thread_p, PSTAT_OOS_VACUUM_FORWARD_WALK_FAILURES);
-			  error_code = hfid_err;
-			  goto end;
-			}
-		      if (!HFID_IS_NULL (&undo_hfid))
-			{
-			  /* Contract of heap_oos_find_vfid (see src/storage/heap_file.c):
-			   *   - Returns bool.
-			   *   - On docreate=false: returns true iff the heap header was
-			   *     fixed successfully AND heap_hdr->oos_vfid is non-null;
-			   *     populates *oos_vfid from the header.
-			   *   - Returns false on either "no OOS file exists" OR on a
-			   *     pgbuf_fix failure; the bool signature cannot distinguish
-			   *     the two. Since the prior heap_get_hfid_from_vfid call
-			   *     just fixed the same header page successfully on a hit
-			   *     path, a false here in practice means "no OOS file" -
-			   *     not a fatal failure, so we leave undo_oos_vfid NULL and
-			   *     skip the oos_delete branch. */
-			  (void) heap_oos_find_vfid (thread_p, &undo_hfid, &undo_oos_vfid, false /* docreate */ );
-			}
-
-		      /* Refresh the cache regardless of outcome (including the
-		       * VFID_ISNULL(&undo_oos_vfid) case - caching the negative
-		       * result short-circuits future iterations on the same VFID). */
-		      VFID_COPY (&forward_walk_cached_vfid, &log_vacuum.vfid);
-		      HFID_COPY (&forward_walk_cached_hfid, &undo_hfid);
-		      VFID_COPY (&forward_walk_cached_oos_vfid, &undo_oos_vfid);
-		      forward_walk_cache_valid = true;
-		    }
-		  if (!VFID_ISNULL (&undo_oos_vfid))
+		  if (has_oos)
 		    {
 		      OID_VECTOR forward_oos_oids;
-		      int oos_error = heap_recdes_get_oos_oids (&undo_recdes, forward_oos_oids);
-		      if (oos_error == NO_ERROR && !forward_oos_oids.empty ())
+		      err = heap_recdes_get_oos_oids (&undo_recdes, forward_oos_oids);
+		      if (err == NO_ERROR && !forward_oos_oids.empty ())
 			{
-			  oos_error = vacuum_forward_walk_delete_old_oos (thread_p, undo_oos_vfid, forward_oos_oids);
-			  if (oos_error != NO_ERROR)
+			  err = vacuum_forward_walk_delete_old_oos (thread_p, undo_oos_vfid, forward_oos_oids);
+			  if (err != NO_ERROR)
 			    {
 			      vacuum_er_log_error (VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_HEAP,
-						   "vacuum_forward_walk_delete_old_oos failed: %d", oos_error);
-			      perfmon_inc_stat (thread_p, PSTAT_OOS_VACUUM_FORWARD_WALK_FAILURES);
-			      /* OOS-leak on the forward-walk path is a real
-			       * correctness signal (Premise B): the OOS chunks
-			       * stay leaked for the lifetime of the DB if we
-			       * silently swallow this. Propagate via the same
-			       * end: label the rest of this function uses. */
-			      error_code = oos_error;
+						   "vacuum_forward_walk_delete_old_oos failed: %d", err);
+			      error_code = err;
 			      goto end;
 			    }
 			}
