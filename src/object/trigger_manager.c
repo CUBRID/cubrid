@@ -28,6 +28,7 @@
 #include "error_manager.h"
 #include "dbtype.h"
 #include "trigger_manager.h"
+#include "jsp_cl.h"
 #include "memory_hash.h"
 #include "work_space.h"
 #include "schema_manager.h"
@@ -138,6 +139,7 @@ const char *TR_ATT_PROPERTIES = "properties";
 const char *TR_ATT_COMMENT = "comment";
 const char *TR_ATT_CREATED_TIME = "created_time";
 const char *TR_ATT_UPDATED_TIME = "updated_time";
+const char *TR_ATT_ACTION_BODY_SP = "action_body_sp";
 
 int tr_Current_depth = 0;
 int tr_Maximum_depth = TR_MAX_RECURSION_LEVEL;
@@ -406,6 +408,7 @@ tr_make_trigger (void)
   trigger->comment = NULL;
   trigger->created_time = DATETIME_NULL_VALUE;
   trigger->updated_time = DATETIME_NULL_VALUE;
+  trigger->action_body_sp = NULL;
 
   return trigger;
 }
@@ -454,6 +457,10 @@ tr_clear_trigger (TR_TRIGGER * trigger)
   if (trigger->comment != NULL)
     {
       free_and_init (trigger->comment);
+    }
+  if (trigger->action_body_sp != NULL)
+    {
+      free_and_init (trigger->action_body_sp);
     }
 }
 
@@ -1131,6 +1138,17 @@ trigger_to_object (TR_TRIGGER * trigger)
       goto error;
     }
 
+  if (trigger->action_body_sp != NULL)
+    {
+      db_make_string_copy (&value, trigger->action_body_sp);
+      err = dbt_put_internal (obt_p, TR_ATT_ACTION_BODY_SP, &value);
+      pr_clear_value (&value);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
   if (db_set_otmpl_timestamps (obt_p) != NO_ERROR)
     {
       goto error;
@@ -1195,6 +1213,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
   trigger->condition = NULL;
   trigger->action = NULL;
   trigger->comment = NULL;
+  trigger->action_body_sp = NULL;
 
   /*
    * Save the cache coherency number so we know when to re-calculate the
@@ -1439,6 +1458,25 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 	}
     }
   db_value_clear (&value);
+
+  /* ACTION_BODY_SP (optional — may not exist in older databases) */
+  if (db_get (object, TR_ATT_ACTION_BODY_SP, &value) == NO_ERROR)
+    {
+      if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value))
+	{
+	  tmp = db_get_string (&value);
+	  if (tmp != NULL)
+	    {
+	      trigger->action_body_sp = strdup (tmp);
+	    }
+	}
+      db_value_clear (&value);
+    }
+  else
+    {
+      /* column may not exist in older databases; ignore error */
+      er_clear ();
+    }
 
   AU_ENABLE (save);
   return NO_ERROR;
@@ -4463,6 +4501,11 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback, bool need_savepoin
 	       * if this isn't a rollback, delete the object, otherwise
 	       * it will already be marked as deleted as part of the normal transaction cleanup
 	       */
+	      if (trigger->action_body_sp != NULL)
+		{
+		  /* drop the internally-created SP backing a PL/SQL block action */
+		  (void) jsp_drop_trigger_body_sp (trigger->action_body_sp);
+		}
 	      db_drop (trigger->object);
 
 	      /*

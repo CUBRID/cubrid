@@ -2416,3 +2416,81 @@ jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig
 
   return default_next_node_list;
 }
+
+/*
+ * jsp_drop_trigger_body_sp() - Drops an internally-created SP that was
+ *   created to back a trigger PL/SQL block action.
+ *   Called from tr_drop_trigger_internal() with AU already disabled.
+ *   return: NO_ERROR or error code
+ *   sp_name(in): unique name of the SP to drop
+ */
+int
+jsp_drop_trigger_body_sp (const char *sp_name)
+{
+  int err = NO_ERROR;
+  MOP sp_mop;
+
+  if (sp_name == NULL || sp_name[0] == '\0')
+    {
+      return NO_ERROR;
+    }
+
+  sp_mop = jsp_find_stored_procedure (sp_name, DB_AUTH_NONE);
+  if (sp_mop == NULL)
+    {
+      /* SP may have already been dropped — not an error during trigger drop */
+      er_clear ();
+      return NO_ERROR;
+    }
+
+  err = db_drop (sp_mop);
+  return err;
+}
+
+/*
+ * jsp_create_trigger_body_sp() - Creates an internal stored procedure to back
+ *   a trigger PL/SQL block action.
+ *   The procedure has no parameters and no return value (PROCEDURE).
+ *   return: NO_ERROR or error code
+ *   sp_name(in): name for the new SP (without owner qualifier)
+ *   pl_body(in): PL/SQL body text starting with DECLARE or BEGIN
+ *   pl_body_len(in): length of pl_body in bytes
+ */
+int
+jsp_create_trigger_body_sp (const char *sp_name, const char *pl_body, DB_OBJECT * owner)
+{
+  int err = NO_ERROR;
+  DB_QUERY_RESULT *result = NULL;
+  int retval;
+
+  if (sp_name == NULL || pl_body == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /* Build: CREATE OR REPLACE PROCEDURE <sp_name>() AS <pl_body>; */
+  size_t sql_len = strlen ("CREATE OR REPLACE PROCEDURE ") + strlen (sp_name)
+		   + strlen ("() AS ") + strlen (pl_body) + 2;	/* ";" + NUL */
+  char *sql = (char *) malloc (sql_len);
+  if (sql == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sql_len);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  snprintf (sql, sql_len, "CREATE OR REPLACE PROCEDURE %s() AS %s;", sp_name, pl_body);
+
+  retval = db_execute (sql, &result, NULL);
+  if (retval >= 0)
+    {
+      db_query_end (result);
+      err = NO_ERROR;
+    }
+  else
+    {
+      err = retval;
+    }
+
+  free (sql);
+  return err;
+}

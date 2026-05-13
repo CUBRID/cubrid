@@ -75,6 +75,7 @@ int msg_ptr;
 int yybuffer_pos;
 int is_dblink_query_string = 0;
 int expecting_pl_lang_spec = 0;
+int expecting_trigger_pl_block = 0;
 
 /* TODO: 
  * For now, I've set it to ignore warnings in the automatically generated code. 
@@ -179,7 +180,16 @@ IDL       [a-zA-Z0-9_]
                                                                                 csql_yylval.cptr = pt_makename(yytext);
                                                                                 return AUTHID; }
 [bB][eE][fF][oO][rR][eE]						{ begin_token(yytext);   return BEFORE; }
-[bB][eE][gG][iI][nN]							{ begin_token(yytext);   return BEGIN_; }
+[bB][eE][gG][iI][nN]							{ begin_token(yytext);
+                                                                                if (expecting_trigger_pl_block) {
+                                                                                        expecting_trigger_pl_block = 0;
+                                                                                        BEGIN(PLCSQL_TEXT);
+                                                                                        init_plcsql_lexing();
+                                                                                        yybuffer_pos -= csql_yyleng;
+                                                                                        yyless(0);
+                                                                                } else {
+                                                                                        return BEGIN_;
+                                                                                } }
 [bB][eE][nN][cC][hH][mM][aA][rR][kK]					{ begin_token(yytext);
                                                                                 csql_yylval.cptr = pt_makename(yytext);
                                                                                 return BENCHMARK; }
@@ -321,7 +331,16 @@ IDL       [a-zA-Z0-9_]
 [dD][eE][aA][lL][lL][oO][cC][aA][tT][eE]				{ begin_token(yytext);   return DEALLOCATE; }
 [dD][eE][cC]								{ begin_token(yytext);   return NUMERIC; }
 [dD][eE][cC][iI][mM][aA][lL]						{ begin_token(yytext);   return NUMERIC; }
-[dD][eE][cC][lL][aA][rR][eE]						{ begin_token(yytext);   return DECLARE; }
+[dD][eE][cC][lL][aA][rR][eE]						{ begin_token(yytext);
+                                                                                if (expecting_trigger_pl_block) {
+                                                                                        expecting_trigger_pl_block = 0;
+                                                                                        BEGIN(PLCSQL_TEXT);
+                                                                                        init_plcsql_lexing();
+                                                                                        yybuffer_pos -= csql_yyleng;
+                                                                                        yyless(0);
+                                                                                } else {
+                                                                                        return DECLARE;
+                                                                                } }
 [dD][eE][cC][rR][eE][mM][eE][nN][tT]					{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return DECREMENT; }

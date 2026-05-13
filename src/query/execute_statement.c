@@ -6673,6 +6673,9 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *trigger;
   SM_CLASS *smclass = NULL;
   int error = NO_ERROR;
+  char pl_sp_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+  char pl_call_source[DB_MAX_IDENTIFIER_LENGTH + 20];
+  pl_sp_name[0] = '\0';
   CHECK_MODIFICATION_ERROR ();
 
   name = PT_NODE_TR_NAME (statement);
@@ -6743,7 +6746,43 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   action = PT_NODE_ACTION (statement);
   action_time = PT_NODE_ACTION_TIME (statement);
-  get_activity_info (parser, &action_type, &action_source, action);
+
+  if (action != NULL && action->info.trigger_action.action_type == PT_PL_BLOCK)
+    {
+      /* PL/SQL block action: create an internal SP and CALL it */
+      PT_NODE *pl_block_node = action->info.trigger_action.pl_block;
+      const char *pl_body = NULL;
+      const char *base_name;
+
+      if (pl_block_node != NULL && pl_block_node->node_type == PT_VALUE
+	  && pl_block_node->info.value.data_value.str != NULL)
+	{
+	  pl_body = (const char *) pl_block_node->info.value.data_value.str->bytes;
+	}
+
+      if (pl_body == NULL || pl_body[0] == '\0')
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_GENERIC_ERROR;
+	}
+
+      base_name = sm_remove_qualifier_name (name);
+      snprintf (pl_sp_name, sizeof (pl_sp_name), "__trsp_%s", base_name);
+
+      error = jsp_create_trigger_body_sp (pl_sp_name, pl_body, NULL);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      snprintf (pl_call_source, sizeof (pl_call_source), "CALL %s()", pl_sp_name);
+      action_type = TR_ACT_EXPRESSION;
+      action_source = pl_call_source;
+    }
+  else
+    {
+      get_activity_info (parser, &action_type, &action_source, action);
+    }
 
   trigger =
     tr_create_trigger (name, status, priority, event, class_, attribute, cond_time, cond_source, action_time,
@@ -6753,6 +6792,18 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
+    }
+
+  if (pl_sp_name[0] != '\0')
+    {
+      /* Store the internal SP name on the trigger object so it can be dropped when the trigger is dropped */
+      DB_VALUE sp_name_val;
+      db_make_string (&sp_name_val, pl_sp_name);
+      if (db_put (trigger, TR_ATT_ACTION_BODY_SP, &sp_name_val) != NO_ERROR)
+	{
+	  /* non-fatal: the SP was created but we failed to record its name */
+	  er_clear ();
+	}
     }
 
   /* Save the new trigger object in the parse tree. Actually, we probably should also allow INTO variable sub-clause to

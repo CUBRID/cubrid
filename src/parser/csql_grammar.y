@@ -111,6 +111,7 @@ extern int msg_ptr;
 extern int yybuffer_pos;
 extern int is_dblink_query_string;
 extern int expecting_pl_lang_spec;
+extern int expecting_trigger_pl_block;
 extern int yylex(void);
 
 static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, container_10 *ctn, container_2 info);
@@ -2847,32 +2848,33 @@ create_stmt
 	| CREATE					/* 1 */
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_TRIGGER); }	/* 2 */
 	  TRIGGER 					/* 3 */
-	  trigger_name_without_dot			/* 4 */
-	  opt_status					/* 5 */
-	  opt_priority					/* 6 */
-	  trigger_time 					/* 7 */
-		{ pop_msg(); }				/* 8 */
-	  event_spec 					/* 9 */
-	  opt_if_trigger_condition			/* 10 */
-	  EXECUTE					/* 11 */
-	  opt_trigger_action_time 			/* 12 */
-	  trigger_action				/* 13 */
-	  opt_comment_spec				/* 14 */
+		{ expecting_trigger_pl_block = 1; }	/* 4 */
+	  trigger_name_without_dot			/* 5 */
+	  opt_status					/* 6 */
+	  opt_priority					/* 7 */
+	  trigger_time 					/* 8 */
+		{ pop_msg(); }				/* 9 */
+	  event_spec 					/* 10 */
+	  opt_if_trigger_condition			/* 11 */
+	  EXECUTE					/* 12 */
+	  opt_trigger_action_time 			/* 13 */
+	  trigger_action				/* 14 */
+	  opt_comment_spec				/* 15 */
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_TRIGGER);
 
 			if (node)
 			  {
-			    node->info.create_trigger.trigger_name = $4;
-			    node->info.create_trigger.trigger_status = $5;
-			    node->info.create_trigger.trigger_priority = $6;
-			    node->info.create_trigger.condition_time = $7;
-			    node->info.create_trigger.trigger_event = $9;
+			    node->info.create_trigger.trigger_name = $5;
+			    node->info.create_trigger.trigger_status = $6;
+			    node->info.create_trigger.trigger_priority = $7;
+			    node->info.create_trigger.condition_time = $8;
+			    node->info.create_trigger.trigger_event = $10;
 			    node->info.create_trigger.trigger_reference = NULL;
-			    node->info.create_trigger.trigger_condition = $10;
-			    node->info.create_trigger.action_time = $12;
-			    node->info.create_trigger.trigger_action = $13;
-			    node->info.create_trigger.comment = $14;
+			    node->info.create_trigger.trigger_condition = $11;
+			    node->info.create_trigger.action_time = $13;
+			    node->info.create_trigger.trigger_action = $14;
+			    node->info.create_trigger.comment = $15;
 			  }
 
 			$$ = node;
@@ -11260,11 +11262,31 @@ trigger_action_in
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
+	| plcsql_text
+		{{
+			expecting_trigger_pl_block = 0;
+			PT_NODE *node = parser_new_node (this_parser, PT_TRIGGER_ACTION);
+
+			if (node)
+			  {
+			    node->info.trigger_action.action_type = PT_PL_BLOCK;
+			    if (g_query_string)
+			      {
+			        node->info.trigger_action.pl_block =
+			          pt_create_string_literal_node_w_charset_coll (
+			            g_query_string + g_plcsql_text_pos, $1);
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
 	;
 
 trigger_action
 	: trigger_action_in
 	    {{
+		expecting_trigger_pl_block = 0;
 		$$ = $1;
 		PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 	     }}
@@ -23699,6 +23721,7 @@ parser_main (PARSER_CONTEXT * parser)
   yybuffer_pos=0;
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
+  expecting_trigger_pl_block = 0;
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;
@@ -23706,7 +23729,7 @@ parser_main (PARSER_CONTEXT * parser)
   g_query_string_len = 0;
   g_original_buffer_len = 0;
 
-  pt_initialize_hint(parser, parser_hint_table); 
+  pt_initialize_hint(parser, parser_hint_table);
 #if YYDEBUG
   parser_init_yydebug ();
 #endif
@@ -23811,6 +23834,7 @@ parse_one_statement (int state)
 
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
+  expecting_trigger_pl_block = 0;
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;

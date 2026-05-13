@@ -73,4 +73,7 @@ extern void jsp_unset_prepare_call (void);
 extern bool jsp_is_prepare_call (void);
 
 extern PT_NODE *jsp_get_default_expr_node_list (PARSER_CONTEXT * parser, cubpl::pl_signature & sig);
+
+extern int jsp_drop_trigger_body_sp (const char *sp_name);
+extern int jsp_create_trigger_body_sp (const char *trigger_name, const char *pl_body, DB_OBJECT * owner);
 #endif /* _JSP_CL_H_ */
