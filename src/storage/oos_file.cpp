@@ -18,6 +18,7 @@
 
 #include <cassert>
 #include <cstring>
+#include "byte_span_writer.hpp"
 #include "error_code.h"
 #include "error_manager.h"
 #include "file_manager.h"
@@ -52,12 +53,11 @@ static int
 oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes,
 			 OID &oid);
 static int
-oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, char *buf_out, int buf_cap,
-		      OOS_RECORD_HEADER &header_out, int &chunk_bytes_out);
+oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid,
+		      cubbase::byte_span_writer &writer, OOS_RECORD_HEADER &header_out);
 static int
 oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &next_oid,
-		       int total_data_length, RECDES &recdes,
-		       int &remaining, int &bytes_written);
+		       int total_data_length, cubbase::byte_span_writer &writer);
 static void
 oos_log_insert_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, OID *oid_p, RECDES *recdes_p);
 static void
@@ -1251,8 +1251,8 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &re
 
 
 static int
-oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, char *buf_out, int buf_cap,
-		      OOS_RECORD_HEADER &header_out, int &chunk_bytes_out)
+oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid,
+		      cubbase::byte_span_writer &writer, OOS_RECORD_HEADER &header_out)
 {
   const auto [pageid, slotid, volid] = oid;
   auto vpid = VPID{pageid, volid};
@@ -1297,36 +1297,29 @@ oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, char *buf_out, int
   std::memcpy (&header_out, oos_recdes.data, OOS_RECORD_HEADER_SIZE);
 
   const int payload_len = oos_recdes.length - OOS_RECORD_HEADER_SIZE;
-  if (payload_len > buf_cap)
+  if (!writer.append (oos_recdes.data + OOS_RECORD_HEADER_SIZE, static_cast<std::size_t> (payload_len)))
     {
-      oos_error ("OOS chunk overflows caller buffer (payload=%d, cap=%d) at oid={vol=%d,page=%d,slot=%d}",
-		 payload_len, buf_cap, OID_AS_ARGS (&oid));
+      oos_error ("OOS chunk overflows caller buffer (payload=%d, remaining=%zu) at oid={vol=%d,page=%d,slot=%d}",
+		 payload_len, writer.remaining (), OID_AS_ARGS (&oid));
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_GENERIC_ERROR;
     }
-
-  std::memcpy (buf_out, oos_recdes.data + OOS_RECORD_HEADER_SIZE, payload_len);
-  chunk_bytes_out = payload_len;
   return NO_ERROR;
 }
 
 
 static int
 oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &next_oid,
-		       int total_data_length, RECDES &recdes,
-		       int &remaining, int &bytes_written)
+		       int total_data_length, cubbase::byte_span_writer &writer)
 {
-  assert (recdes.data != nullptr && recdes.area_size >= total_data_length);
-
   int idx = 1;
   OID current = next_oid;
   while (!OID_ISNULL (&current))
     {
       OOS_RECORD_HEADER header;
-      int chunk_bytes = 0;
-      char *dest = recdes.data + bytes_written;
+      const std::size_t before = writer.written ();
 
-      int err = oos_read_within_page (thread_p, current, dest, remaining, header, chunk_bytes);
+      int err = oos_read_within_page (thread_p, current, writer, header);
       if (err != NO_ERROR)
 	{
 	  return err;
@@ -1334,60 +1327,49 @@ oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &next_oid,
       assert (idx == header.chunk_index);
       assert (header.total_data_length == total_data_length);
 
-      /* Empty-chunk guard: a 0-byte chunk does not advance bytes_written, so a
+      /* Empty-chunk guard: a 0-byte chunk does not advance the writer, so a
        * corrupt cyclic next_chunk_oid would loop forever. Production never
        * emits empty chunks; treat as on-disk corruption. */
-      if (chunk_bytes == 0)
+      if (writer.written () == before)
 	{
 	  oos_error ("OOS empty chunk at idx=%d, oid={vol=%d,page=%d,slot=%d}", idx, OID_AS_ARGS (&current));
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return ER_GENERIC_ERROR;
 	}
 
-      bytes_written += chunk_bytes;
-      remaining -= chunk_bytes;
       current = header.next_chunk_oid;
       idx++;
-    }
-
-  if (bytes_written != total_data_length)
-    {
-      oos_error ("OOS short read: written=%d expected=%d", bytes_written, total_data_length);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_GENERIC_ERROR;
     }
   return NO_ERROR;
 }
 
 
-/* oos_read - Read an OOS value into a caller-preallocated buffer.
+/* oos_read - Read an OOS value into a caller-owned span.
  *
- * Caller owns recdes.data; recdes.area_size is the authoritative expected
- * length (sourced from the inline length in the heap record since M2). On
- * success, recdes.length is set to that same value. The on-disk OOS header's
- * total_data_length is cross-validated; disagreement is treated as corruption.
+ * dest.size() is the authoritative expected payload length. The caller has
+ * already obtained it (typically from the inline 8B length in the heap record
+ * or from oos_get_length in test contexts) and sized the span accordingly.
+ * The on-disk OOS header's total_data_length is cross-validated against
+ * dest.size(); disagreement is treated as on-disk corruption.
+ *
+ * The writer's bounds check is the last line of defense against an inflated
+ * payload_len on disk: see byte_span_writer.hpp.
  */
 int
-oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
+oos_read (THREAD_ENTRY *thread_p, const OID &oid, cubbase::span<char> dest)
 {
-  assert (recdes.data != nullptr && recdes.area_size > 0);
+  assert (dest.data () != nullptr && dest.size () > 0);
 
-  const int expected_length = recdes.area_size;
+  const int expected_length = static_cast<int> (dest.size ());
 
+  cubbase::byte_span_writer writer (dest);
   OOS_RECORD_HEADER first_header;
-  int bytes_written = 0;
-  /* buf_cap semantics = remaining buffer capacity at the write offset; track
-   * it explicitly so first-chunk and subsequent-chunk reads use the same
-   * "remaining" contract. */
-  int remaining = expected_length;
 
-  int err = oos_read_within_page (thread_p, oid, recdes.data, remaining,
-				  first_header, bytes_written);
+  int err = oos_read_within_page (thread_p, oid, writer, first_header);
   if (err != NO_ERROR)
     {
       return err;
     }
-  remaining -= bytes_written;
 
   assert (first_header.chunk_index == 0);
 
@@ -1405,21 +1387,20 @@ oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
   if (!OID_ISNULL (&first_header.next_chunk_oid))
     {
       err = oos_read_across_pages (thread_p, first_header.next_chunk_oid,
-				   expected_length, recdes, remaining, bytes_written);
+				   expected_length, writer);
       if (err != NO_ERROR)
 	{
 	  return err;
 	}
     }
 
-  if (bytes_written != expected_length)
+  if (!writer.full ())
     {
-      oos_error ("OOS final length mismatch: written=%d expected=%d at oid={vol=%d,page=%d,slot=%d}",
-		 bytes_written, expected_length, OID_AS_ARGS (&oid));
+      oos_error ("OOS final length mismatch: written=%zu expected=%d at oid={vol=%d,page=%d,slot=%d}",
+		 writer.written (), expected_length, OID_AS_ARGS (&oid));
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_GENERIC_ERROR;
     }
-  recdes.length = expected_length;
   return NO_ERROR;
 }
 

@@ -712,10 +712,12 @@ TEST (OosTest, OosReadRejectsCallerLengthDisagreeingWithHeader)
       ASSERT_EQ (err, NO_ERROR);
 
       RECDES rec_out{};
-      ASSERT_EQ (recdes_allocate_data_area (&rec_out, actual_size - 16), NO_ERROR);
+      const int claimed_len = actual_size - 16;
+      ASSERT_EQ (recdes_allocate_data_area (&rec_out, claimed_len), NO_ERROR);
 
       er_clear ();
-      int read_err = oos_read (thread_p, oos_oid, rec_out);
+      int read_err = oos_read (thread_p, oos_oid,
+			       cubbase::span<char> (rec_out.data, static_cast<std::size_t> (claimed_len)));
       EXPECT_NE (read_err, NO_ERROR) << "actual_size=" << actual_size;
       EXPECT_NE (er_errid (), NO_ERROR) << "actual_size=" << actual_size;
 

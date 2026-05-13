@@ -19,6 +19,7 @@
 #ifndef _OOS_FILE_HPP_
 #define _OOS_FILE_HPP_
 
+#include "span.hpp"
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
@@ -79,7 +80,19 @@ extern int oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid);
 extern int oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
 extern int oos_remove_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid);
 extern int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &oid);
-extern int oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes);
+/* Read an OOS value into a caller-owned span.
+ *
+ * dest.size() is the authoritative expected payload length: the caller has
+ * already obtained it (typically from the inline 8B length in the heap record
+ * or from oos_get_length in test contexts) and sized the span accordingly.
+ * The OOS chain header's total_data_length is cross-validated against
+ * dest.size(); disagreement is treated as on-disk corruption.
+ *
+ * Span semantics decouple "expected payload length" from "underlying buffer
+ * capacity", so the caller may back the span with a scratch buffer larger
+ * than the payload without having to coerce a RECDES.area_size into a lie.
+ */
+extern int oos_read (THREAD_ENTRY *thread_p, const OID &oid, cubbase::span<char> dest);
 extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid);
 extern int oos_get_length (THREAD_ENTRY *thread_p, const OID &oid);
 

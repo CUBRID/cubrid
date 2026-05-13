@@ -10645,12 +10645,12 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch
   /* Fast path: when the inline length fits the caller-provided scratch, skip
    * the per-row heap allocation. Caller must avoid freeing scratch-backed
    * buffers; it discriminates by comparing raw->data against its scratch ptr.
-   * NB: oos_read derives expected_length from raw->area_size, so set area_size
-   * to oos_len (not the scratch capacity) even though the buffer is larger. */
+   * oos_read now takes a cubbase::span sized to oos_len, so raw->area_size is
+   * free to truthfully reflect the underlying buffer's capacity. */
   if (oos_scratch != NULL && oos_len <= (DB_BIGINT) oos_scratch_size)
     {
       raw->data = oos_scratch;
-      raw->area_size = (int) oos_len;
+      raw->area_size = oos_scratch_size;
     }
   else if (recdes_allocate_data_area (raw, (int) oos_len) != NO_ERROR)
     {
@@ -10659,7 +10659,7 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch
       return;
     }
 
-  if (oos_read (thread_p, oos_oid, *raw) != NO_ERROR)
+  if (oos_read (thread_p, oos_oid, cubbase::span < char >(raw->data, (std::size_t) oos_len)) != NO_ERROR)
     {
       if (raw->data != oos_scratch)
 	{
@@ -10669,6 +10669,7 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch
       assert_release (false);
       return;
     }
+  raw->length = (int) oos_len;
 }
 
 /*

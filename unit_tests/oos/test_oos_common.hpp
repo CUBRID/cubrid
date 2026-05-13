@@ -97,9 +97,11 @@ namespace test_oos_utils
     return large_data;
   }
 
-  /* Test-side wrapper for the caller-preallocated oos_read API. Production
-   * callers know the OOS length from the inline 8B field in the heap record;
-   * tests don't have that record, so we read the length via oos_get_length. */
+  /* Test-side wrapper for the span-based oos_read API. Production callers know
+   * the OOS length from the inline 8B field in the heap record; tests don't
+   * have that record, so we read the length via oos_get_length and hand
+   * oos_read a span sized to exactly that length. The RECDES wrapping is for
+   * the test's downstream convenience only — oos_read no longer touches it. */
   inline int oos_read_with_alloc (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
   {
     recdes = RECDES{};
@@ -113,12 +115,14 @@ namespace test_oos_utils
       {
 	return err;
       }
-    err = oos_read (thread_p, oid, recdes);
+    err = oos_read (thread_p, oid, cubbase::span<char> (recdes.data, static_cast<std::size_t> (len)));
     if (err != NO_ERROR)
       {
 	recdes_free_data_area (&recdes);
+	return err;
       }
-    return err;
+    recdes.length = len;
+    return NO_ERROR;
   }
 
   inline int from_string_into_recdes (const std::string &large_data, RECDES &rec)
