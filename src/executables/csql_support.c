@@ -83,7 +83,9 @@ typedef enum csql_statement_substate
   CSQL_SUBSTATE_PL_LANG_SPEC,
   CSQL_SUBSTATE_SEEN_LANGUAGE,
   CSQL_SUBSTATE_PLCSQL_TEXT,
-  CSQL_SUBSTATE_SEEN_END
+  CSQL_SUBSTATE_SEEN_END,
+  CSQL_SUBSTATE_SEEN_TRIGGER,	// saw CREATE TRIGGER; scanning toward EXECUTE
+  CSQL_SUBSTATE_TRIGGER_EXECUTE	// saw EXECUTE in trigger context; next non-time word starts action
 } CSQL_STATEMENT_SUBSTATE;
 
 /* editor buffer management */
@@ -1133,6 +1135,11 @@ csql_walk_statement (const char *str)
 		  substate = CSQL_SUBSTATE_EXPECTING_IS_OR_AS;
 		  continue;
 		}
+	      else if (match_word_ci ("trigger", &p))
+		{
+		  substate = CSQL_SUBSTATE_SEEN_TRIGGER;
+		  continue;
+		}
 	      else
 		{
 		  substate = CSQL_SUBSTATE_INITIAL;
@@ -1214,6 +1221,51 @@ csql_walk_statement (const char *str)
 		  // syntax error
 		  substate = CSQL_SUBSTATE_INITIAL;
 		  // break and proceed to the second switch
+		}
+	      break;
+
+	    case CSQL_SUBSTATE_SEEN_TRIGGER:
+	      // scan forward through trigger metadata (name, status, priority, event, condition)
+	      // looking for the EXECUTE keyword that precedes the trigger action
+	      if (match_word_ci ("execute", &p))
+		{
+		  substate = CSQL_SUBSTATE_TRIGGER_EXECUTE;
+		  continue;
+		}
+	      else
+		{
+		  // keep scanning; fall through to identifier consumer / second switch
+		}
+	      break;
+
+	    case CSQL_SUBSTATE_TRIGGER_EXECUTE:
+	      // skip optional action time (BEFORE / AFTER / DEFERRED)
+	      if (match_word_ci ("before", &p) || match_word_ci ("after", &p) || match_word_ci ("deferred", &p))
+		{
+		  continue;
+		}
+	      else if (match_word_ci ("declare", &p))
+		{
+		  // DECLARE...BEGIN...END block — enter PL/CSQL text capture
+		  substate = CSQL_SUBSTATE_PLCSQL_TEXT;
+		  plcsql_begin_end_balance = 0;
+		  plcsql_nest_level = 0;
+		  // DECLARE itself is not BEGIN/END; just continue scanning in PLCSQL_TEXT
+		  continue;
+		}
+	      else if (match_word_ci ("begin", &p))
+		{
+		  // BEGIN...END block — enter PL/CSQL text capture and re-process BEGIN
+		  substate = CSQL_SUBSTATE_PLCSQL_TEXT;
+		  plcsql_begin_end_balance = 0;
+		  plcsql_nest_level = 0;
+		  goto substate_transition;	// re-process "begin" under PLCSQL_TEXT rules
+		}
+	      else
+		{
+		  // not a PL/SQL block action (REJECT, CALL, INSERT, etc.)
+		  // fall through to INITIAL; ';' will end the statement normally
+		  substate = CSQL_SUBSTATE_INITIAL;
 		}
 	      break;
 
