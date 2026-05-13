@@ -2468,9 +2468,25 @@ jsp_create_trigger_body_sp (const char *sp_name, const char *pl_body, DB_OBJECT 
       return ER_FAILED;
     }
 
-  /* Build: CREATE OR REPLACE PROCEDURE <sp_name>() AS <pl_body>; */
+  /* The PL server's routine_definition grammar expects declarations WITHOUT the
+   * DECLARE keyword (e.g. "AS x INT; BEGIN ... END").  The user-typed trigger
+   * body starts with DECLARE when variables are declared (anonymous-block syntax).
+   * Strip the leading DECLARE keyword so the generated CREATE PROCEDURE SQL is
+   * accepted by the PL server. */
+  const char *body_start = pl_body;
+  if (strncasecmp (body_start, "declare", 7) == 0
+      && (body_start[7] == '\0' || isspace ((unsigned char) body_start[7])))
+    {
+      body_start += 7;
+      while (*body_start && isspace ((unsigned char) *body_start))
+	{
+	  body_start++;
+	}
+    }
+
+  /* Build: CREATE OR REPLACE PROCEDURE <sp_name>() AS <body_start>; */
   size_t sql_len = strlen ("CREATE OR REPLACE PROCEDURE ") + strlen (sp_name)
-		   + strlen ("() AS ") + strlen (pl_body) + 2;	/* ";" + NUL */
+		   + strlen ("() AS ") + strlen (body_start) + 2;	/* ";" + NUL */
   char *sql = (char *) malloc (sql_len);
   if (sql == NULL)
     {
@@ -2478,7 +2494,7 @@ jsp_create_trigger_body_sp (const char *sp_name, const char *pl_body, DB_OBJECT 
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  snprintf (sql, sql_len, "CREATE OR REPLACE PROCEDURE %s() AS %s;", sp_name, pl_body);
+  snprintf (sql, sql_len, "CREATE OR REPLACE PROCEDURE %s() AS %s;", sp_name, body_start);
 
   retval = db_execute (sql, &result, NULL);
   if (retval >= 0)
