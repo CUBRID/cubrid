@@ -245,7 +245,6 @@ boot_client_credential::get_db_name () const
 #define BOOTCLCRED_PACKER_ARGS \
   db_name
 
-#if !defined(SERVER_MODE)
 size_t
 boot_client_credential::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
 {
@@ -259,11 +258,9 @@ boot_client_credential::pack (cubpacking::packer &serializator) const
   clientids::pack (serializator);
   serializator.pack_all (BOOTCLCRED_PACKER_ARGS);
 }
-#else
 void
 boot_client_credential::unpack (cubpacking::unpacker &deserializator)
 {
   clientids::unpack (deserializator);
   deserializator.unpack_all (BOOTCLCRED_PACKER_ARGS);
 }
-#endif

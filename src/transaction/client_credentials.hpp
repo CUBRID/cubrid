@@ -94,12 +94,9 @@ struct boot_client_credential : public clientids
   const char *get_db_name () const;
 
   // packable_object
-#if !defined(SERVER_MODE)
   virtual size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const override;
   virtual void pack (cubpacking::packer &serializator) const override;
-#else
   virtual void unpack (cubpacking::unpacker &deserializator) override;
-#endif
 };
 
 #endif // !_CLIENT_CREDENTIALS_HPP_
