@@ -284,8 +284,7 @@ namespace parallel_scan
 	    return NO_ERROR;
 	  }
 
-	/* (vpid, range_idx) 처리 단위 invariant: mid-leaf advance 발생 시 즉시 stop + signal.
-	 * 이 worker 는 entry_range_idx 의 slots 만 처리. 다음 range 의 slots 는 descent worker 가 처리. */
+	/* (vpid, range_idx) unit: stop+signal on mid-leaf advance; this worker handles only entry_range_idx slots, next range belongs to the descent worker. */
 	if (m_current_range_idx > entry_range_idx)
 	  {
 	    *past_upper = true;
@@ -337,8 +336,7 @@ namespace parallel_scan
 	m_current_slot = m_use_desc_index ? m_num_keys : 1;
       }
 
-    /* m_current_range_idx is NOT reset here — Synthesis S1 invariant: set_range_idx is the sole resetter,
-     * called by task wiring only when fetch returns a fresh range_idx (descent branch, ≥ 0). */
+    /* m_current_range_idx: only set_range_idx may reset it, and only on fetch's descent branch (range_idx >= 0). */
     return NO_ERROR;
   }
 
@@ -707,10 +705,7 @@ namespace parallel_scan
 
 	  }
 
-	/* 4. Collect visible OIDs from this leaf record (including overflow pages).
-	 * The MVCC snapshot filters out B-tree entries whose delete is already
-	 * visible, preventing stale OIDs from being processed (important for
-	 * filtered indexes where the updated version may not satisfy the filter). */
+	/* 4. Collect visible OIDs from leaf + overflow; MVCC snapshot drops already-deleted entries (critical for filtered indexes). */
 	m_slot_oids.clear ();
 	m_slot_oid_idx = 0;
 

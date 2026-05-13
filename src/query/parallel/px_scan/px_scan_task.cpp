@@ -659,8 +659,7 @@ namespace parallel_scan
 	  }
 	else if constexpr (ST == SCAN_TYPE::INDEX)
 	  {
-	    /* Hard contract: only refresh slot_iterator's range_idx when fetch performed a descent (range_idx >= 0).
-	     * Sentinel -1 means chain-walk; keep slot_iterator's local m_current_range_idx untouched. */
+	    /* refresh slot_iterator's range_idx only on descent (>= 0); -1 sentinel = chain-walk, leave local cursor alone. */
 	    if (index_range_idx >= 0)
 	      {
 		m_slot_iterator.set_range_idx (index_range_idx);

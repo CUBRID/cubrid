@@ -118,8 +118,7 @@ namespace parallel_scan
 	return NO_ERROR;
       }
 
-    /* scan_id must carry prebuilt_midxkey_domains (allocated by scan_open_index_scan on the coordinator).
-     * scan_dbvals_to_midxkey NULL-derefs on F_MIDXKEY without it. */
+    /* scan_id needs prebuilt_midxkey_domains from the coordinator; scan_dbvals_to_midxkey NULL-derefs on F_MIDXKEY otherwise. */
     if (worker_scan_id == nullptr)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
@@ -360,8 +359,7 @@ namespace parallel_scan
 	return S_ERROR;
       }
 
-    /* m_btid_int and m_key_val_ranges are populated by init_on_main on the main thread —
-     * re-gleaning here would leak the main-heap key_type and rebind it to worker-heap memory. */
+    /* m_btid_int / m_key_val_ranges already populated by init_on_main; re-glean would leak main-heap key_type into worker heap. */
 
     short node_level = root_header->node.node_level;
 
@@ -449,8 +447,7 @@ namespace parallel_scan
     return S_SUCCESS;
   }
 
-  /* Synthesis S1: chain-walk returns out_range_idx=-1 (slot_iterator keeps its local idx);
-   * descent returns out_range_idx=target (range advance overwrites slot_iterator's idx). */
+  /* out_range_idx: -1 on chain-walk (slot_iterator keeps local idx); target on descent (overwrites). */
   SCAN_CODE
   input_handler_index::get_next_page_with_fix (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, PAGE_PTR &out_page,
       INT16 *out_slot_hint, int *out_range_idx)

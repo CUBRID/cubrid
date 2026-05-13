@@ -4148,11 +4148,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   JSON_TABLE_SCAN_ID *jtidp = NULL;
 
 #if SERVER_MODE && !WINDOWS
-  /* If scan_open_parallel_index_scan stashed pending captures, attempt the parallel
-   * promotion now — qexec_evaluate_aggregates_optimize and need_count_only have been
-   * resolved by this point, and the worker pool reservation only happens for scans
-   * the engine actually drives. Promotion may rewrite scan_id->type to
-   * S_PARALLEL_INDEX_SCAN; the switch below dispatches accordingly. */
+  /* attempt parallel-index promotion now that need_count_only is resolved; may rewrite scan_id->type to S_PARALLEL_INDEX_SCAN. */
   if (scan_id->type == S_INDX_SCAN && scan_id->s.isid.parallel_pending != NULL)
     {
       ret = scan_try_promote_parallel_index_scan (thread_p, scan_id);
@@ -4975,8 +4971,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       isidp = &scan_id->s.isid;
 
 #if SERVER_MODE && !WINDOWS
-      /* free any pending parallel-index capture that scan_start_scan never consumed
-       * (e.g., scan was opened then aborted before start_scan ran) */
+      /* drop pending capture if start_scan never ran (open-then-abort path). */
       if (isidp->parallel_pending != NULL)
 	{
 	  scan_clear_parallel_index_pending (thread_p, scan_id);
