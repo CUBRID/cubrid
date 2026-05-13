@@ -223,7 +223,6 @@ clientids::unpack (cubpacking::unpacker &deserializator)
 boot_client_credential::boot_client_credential ()
   : clientids ()
   , db_name {}
-  , db_password {}
   , preferred_hosts (NULL)
   , connect_order (0)
 {
