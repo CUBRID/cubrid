@@ -1979,7 +1979,22 @@ xoos_get_stats_by_class_oid (THREAD_ENTRY *thread_p, const OID *class_oid, OOS_S
 
   VFID oos_vfid;
   VFID_SET_NULL (&oos_vfid);
-  if (!heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, false) || VFID_ISNULL (&oos_vfid))
+  if (!heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, false))
+    {
+      /* heap_oos_find_vfid returns false either on a real read error
+       * (pgbuf_fix / spage_get_record failure — er_set already called)
+       * or on the genuine "class has no OOS file" path (NULL oos_vfid in
+       * heap header with docreate=false — no er_set). Use er_errid() to
+       * distinguish: propagate the error if one was set, otherwise treat
+       * as "no OOS file". */
+      int errid = er_errid ();
+      if (errid != NO_ERROR)
+	{
+	  return errid;
+	}
+      return NO_ERROR;
+    }
+  if (VFID_ISNULL (&oos_vfid))
     {
       return NO_ERROR;
     }
