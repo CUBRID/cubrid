@@ -2746,6 +2746,30 @@ pt_check_union_compatibility (PARSER_CONTEXT * parser, PT_NODE * node)
       return NULL;
     }
 
+  /* CBRD-26782: LOB family (BFILE / CFILE / BLOB / CLOB) columns are not
+   * allowed in UNION / INTERSECT / DIFFERENCE select lists. */
+  {
+    PT_NODE *lob_iter;
+    for (lob_iter = attrs1; lob_iter != NULL; lob_iter = lob_iter->next)
+      {
+	if (PT_IS_LOB_FAMILY_TYPE (lob_iter->type_enum))
+	  {
+	    PT_ERRORmf2 (parser, lob_iter, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
+			 pt_short_print (parser, lob_iter), pt_show_type_enum (lob_iter->type_enum));
+	    return NULL;
+	  }
+      }
+    for (lob_iter = attrs2; lob_iter != NULL; lob_iter = lob_iter->next)
+      {
+	if (PT_IS_LOB_FAMILY_TYPE (lob_iter->type_enum))
+	  {
+	    PT_ERRORmf2 (parser, lob_iter, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
+			 pt_short_print (parser, lob_iter), pt_show_type_enum (lob_iter->type_enum));
+	    return NULL;
+	  }
+      }
+  }
+
   cnt1 = pt_length_of_select_list (attrs1, EXCLUDE_HIDDEN_COLUMNS);
   cnt2 = pt_length_of_select_list (attrs2, EXCLUDE_HIDDEN_COLUMNS);
 
@@ -11215,6 +11239,21 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 
       pt_check_into_clause (parser, node);
 
+      /* CBRD-26782: SELECT DISTINCT on LOB family column is not allowed. */
+      if (node->info.query.all_distinct == PT_DISTINCT)
+	{
+	  PT_NODE *sel_col;
+	  for (sel_col = node->info.query.q.select.list; sel_col != NULL; sel_col = sel_col->next)
+	    {
+	      if (PT_IS_LOB_FAMILY_TYPE (sel_col->type_enum))
+		{
+		  PT_ERRORmf2 (parser, sel_col, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON_1,
+			       "DISTINCT", pt_show_type_enum (sel_col->type_enum));
+		  break;
+		}
+	    }
+	}
+
       if (node->info.query.q.select.with_increment)
 	{
 	  PT_NODE *select_list = node->info.query.q.select.list;
@@ -14501,6 +14540,16 @@ pt_check_group_by (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      continue;
 	    }
+
+	  /* CBRD-26782: GROUP BY on LOB family (BFILE / CFILE / BLOB / CLOB) is not allowed.
+	   * Mirror the top-level ORDER BY gate at semantic_check.c:15729. */
+	  if (PT_IS_LOB_FAMILY_TYPE (r->type_enum))
+	    {
+	      PT_ERRORmf (parser, r, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_GROUPBY_ALLOWED,
+			  pt_short_print (parser, r));
+	      continue;
+	    }
+
 	  /*
 	   * If a position is specified on group by clause,
 	   * we should check its range.

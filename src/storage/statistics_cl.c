@@ -590,7 +590,7 @@ stats_make_select_list_for_ndv (const MOP class_mop, ATTR_NDV ** attr_ndv)
     {
       /* check if type is varchar or lobfile or json. */
       dom = db_attribute_domain (att);
-      if (TP_IS_LOBFILE_TYPE (TP_DOMAIN_TYPE (dom)) || TP_DOMAIN_TYPE (dom) == DB_TYPE_JSON ||
+      if (TP_IS_LOB_FAMILY_TYPE (TP_DOMAIN_TYPE (dom)) || TP_DOMAIN_TYPE (dom) == DB_TYPE_JSON ||
 	  (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (dom)) && dom->precision > STATS_MAX_PRECISION))
 	{
 	  /* These types are not gathered for statistics. */
