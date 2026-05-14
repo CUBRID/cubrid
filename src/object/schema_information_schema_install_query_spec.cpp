@@ -130,14 +130,10 @@
     "OR (" is_public_expr " = 0 AND " AUTH_CHECK_OWNER(owner_name_expr) ")" \
   ")"
 
-/*
- * If directive does not have invoker rights(SP_DIRECTIVE_RIGHTS_CALLER), it has owner rights(SP_DIRECTIVE_RIGHTS_OWNER)
- */
-#define AUTH_CHECK_STORED_PROC(owner_name_expr, sp_of_expr, directive_expr) \
+#define AUTH_CHECK_STORED_PROC(owner_name_expr, sp_of_expr) \
   "(" \
     AUTH_CHECK_DBA " " \
     "OR " AUTH_CHECK_OWNER(owner_name_expr) " " \
-    "OR (" directive_expr " & 1) <> 0 " \
     "OR " AUTH_CHECK_ANY_GRANT(sp_of_expr) \
   ")"
 
@@ -393,7 +389,7 @@ const char *sm_define_view_parameters_spec (void)
       /* CT_DATATYPE_NAME */
       "INNER JOIN [%s] AS [dt] ON [dt].[type_id] = [sp_args].[data_type] "
     "WHERE "
-      AUTH_CHECK_STORED_PROC("[sp_args].[sp_of].[owner].[name]", "[sp_args].[sp_of]", "[sp_args].[sp_of].[directive]"),
+      AUTH_CHECK_STORED_PROC("[sp_args].[sp_of].[owner].[name]", "[sp_args].[sp_of]"),
     SP_MODE_IN,
     SP_MODE_OUT,
     SP_MODE_INOUT,
@@ -600,7 +596,7 @@ const char *sm_define_view_routines_spec (void)
       "[%s] AS [ch] "
     "WHERE "
       "[ch].[charset_id] = [root].[charset] "
-      "AND " AUTH_CHECK_STORED_PROC("[sp].[owner].[name]", "[sp]", "[sp].[directive]") " "
+      "AND " AUTH_CHECK_STORED_PROC("[sp].[owner].[name]", "[sp]") " "
       "AND [sp].[is_system_generated] = 0",
     SP_TYPE_PROCEDURE,
     SP_TYPE_FUNCTION,
