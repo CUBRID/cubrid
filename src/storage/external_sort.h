@@ -158,10 +158,24 @@ struct SORT_INFO
   void *px_state;		/* per-worker sector scan state (ORDER_BY parallel only) */
 };
 
+#if defined(SERVER_MODE)
+/* Passed as px_extra_arg to sort_listfile for SORT_GROUP_BY parallel runs.
+ * Populated by query_executor.c from GROUPBY_STATE before calling sort_listfile.
+ * Gives sort_check_parallelism and sort_start_parallelism the inputs they need
+ * without requiring GROUPBY_STATE to be visible in external_sort.c. */
+typedef struct gby_sort_param GBY_SORT_PARAM;
+struct gby_sort_param
+{
+  SORTKEY_INFO *key_info;	/* points to gbstate.key_info — read-only, shared across workers */
+  QFILE_LIST_ID *input_list;	/* points to &gbstate.input_scan->list_id */
+  int hash_eligible;		/* if non-zero, parallelism must be skipped */
+};
+#endif /* SERVER_MODE */
+
 extern int sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GET_FUNC * get_fn,
 			  void *get_arg, SORT_PUT_FUNC * put_fn, void *put_arg, SORT_CMP_FUNC * cmp_fn, void *cmp_arg,
 			  SORT_DUP_OPTION option, int limit, bool includes_tde_class,
-			  SORT_PARALLEL_TYPE sort_parallel_type);
+			  SORT_PARALLEL_TYPE sort_parallel_type, void *px_extra_arg = NULL);
 
 extern SORT_STATUS btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg);
 

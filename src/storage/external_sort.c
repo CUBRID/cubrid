@@ -183,6 +183,7 @@ struct sort_param
     parallel_query::worker_manager * px_worker_manager;
   ORDERBY_STATS orderby_stats;
     cuberr::context * main_error_context;
+  void *px_extra_arg;		/* extra parallel context; for SORT_GROUP_BY: GBY_SORT_PARAM* */
 #if defined(SERVER_MODE)
   pthread_mutex_t *px_mtx;	/* px_status mutex */
   pthread_cond_t *complete_cond;	/* complete condition */
@@ -196,19 +197,6 @@ struct sort_rec_list
   int rec_pos;			/* record position */
   bool is_duplicated;		/* duplicated sort_key record flag */
 };				/* Sort record list */
-
-#if defined(SERVER_MODE)
-/* GBY_SORT_WORKER_INFO - minimal context for a parallel GROUP_BY inphase worker.
- * Workers carry only read-only pointers; no GROUPBY_STATE cloning needed.
- * key_info: shared read-only pointer to gbstate->key_info (set once before sort).
- * state:    per-worker sector scan state (exclusive ownership, freed by worker). */
-typedef struct gby_sort_worker_info GBY_SORT_WORKER_INFO;
-struct gby_sort_worker_info
-{
-  SORTKEY_INFO *key_info;
-  sort_px_list_state *state;
-};
-#endif /* SERVER_MODE */
 
 typedef struct slotted_pheader SLOTTED_PAGE_HEADER;
 struct slotted_pheader
@@ -1359,7 +1347,7 @@ sort_run_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, char **base, lo
 int
 sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GET_FUNC * get_fn, void *get_arg,
 	       SORT_PUT_FUNC * put_fn, void *put_arg, SORT_CMP_FUNC * cmp_fn, void *cmp_arg, SORT_DUP_OPTION option,
-	       int limit, bool includes_tde_class, SORT_PARALLEL_TYPE parallel_type)
+	       int limit, bool includes_tde_class, SORT_PARALLEL_TYPE parallel_type, void *px_extra_arg)
 {
 
   int error = NO_ERROR;
@@ -1489,6 +1477,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 
   sort_param->tde_encrypted = includes_tde_class;
   sort_param->px_type = parallel_type;
+  sort_param->px_extra_arg = px_extra_arg;
 
   tde_er_log ("sort_listfile(): tde_encrypted = %d\n", sort_param->tde_encrypted);
 
