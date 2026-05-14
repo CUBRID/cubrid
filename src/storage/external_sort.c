@@ -5466,6 +5466,13 @@ sort_merge_worker_runs_to_one (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_par
 	}
     }
 
+  if (remaining_run == 0)
+    {
+      /* All workers produced empty output — nothing to merge. */
+      sort_param->tot_runs = 0;
+      goto cleanup;
+    }
+
   level = 0;
 
   /* intermediate fan-in passes — safe to parallelize: no put_fn involved */

@@ -5622,7 +5622,12 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
   estimated_pages = qfile_get_estimated_pages_for_sorting (list_id, &gbstate.key_info);
 
 #if defined(SERVER_MODE)
-  GBY_SORT_PARAM gby_px = { &gbstate.key_info, &gbstate.input_scan->list_id, gbstate.hash_eligible };
+  /* Declare without initializer to avoid "jump crosses initialization" error
+   * when gotos earlier in the function target labels past this declaration. */
+  GBY_SORT_PARAM gby_px;
+  gby_px.key_info = &gbstate.key_info;
+  gby_px.input_list = &gbstate.input_scan->list_id;
+  gby_px.hash_eligible = gbstate.hash_eligible;
 #endif /* SERVER_MODE */
 
   if (sort_listfile (thread_p, NULL_VOLID, estimated_pages, &qexec_gby_get_next, &gbstate, &qexec_gby_put_next,
