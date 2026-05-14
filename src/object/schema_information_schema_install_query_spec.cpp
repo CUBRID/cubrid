@@ -593,7 +593,7 @@ const char *sm_define_view_routines_spec (void)
       /* CT_DATATYPE_NAME */
       "LEFT OUTER JOIN [%s] AS [dt] ON [dt].[type_id] = [sp].[return_type] "
       /* CT_STORED_PROC_CODE_NAME */
-      "INNER JOIN [%s] AS [sp_code] ON [sp_code].[name] = [sp].[target_class], "
+      "LEFT OUTER JOIN [%s] AS [sp_code] ON [sp_code].[name] = [sp].[target_class], "
       /* CT_ROOT_NAME */
       "[%s] AS [root], "
       /* CT_CHARSET_NAME */
