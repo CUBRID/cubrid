@@ -212,8 +212,7 @@ const char *sm_define_view_columns_spec (void)
       "'NO' AS [is_generated], "
       "NULL AS [generation_expression], "
       "NULL AS [is_updatable], "
-      /* TODO: is_visible not yet implemented */
-      "NULL AS [is_visible], "
+      "IF (([attr].[flags] & %d) = 0, 'YES', 'NO') AS [is_visible], "
       "[attr].[comment] AS [column_comment] "
     "FROM "
       /* CT_CLASS_NAME */
@@ -230,8 +229,9 @@ const char *sm_define_view_columns_spec (void)
       "INNER JOIN [%s] AS [coll] ON [coll].[coll_id] = [dom].[collation_id] "
     "WHERE "
       AUTH_CHECK_OBJECT_ANY("[cls].[owner].[name]", "[cls].[class_of]"),
-    SM_ATTFLAG_AUTO_INCREMENT,
-    SM_ATTFLAG_PARTITION_KEY,
+    DB_ATTOPT_AUTO_INCREMENT,
+    DB_ATTOPT_PARTITION_KEY,
+    DB_ATTOPT_INVISIBLE_COLUMN,
     CT_CLASS_NAME,
     CT_ATTRIBUTE_NAME,
     CT_DOMAIN_NAME,
