@@ -204,12 +204,14 @@ const char *sm_define_view_columns_spec (void)
       "NULL AS [udt_catalog], "
       "NULL AS [udt_schema], "
       "NULL AS [udt_name], "
-      "NULL AS [extra], "
+      "CONCAT_WS (' ', "
+        "IF (([attr].[flags] & %d) <> 0, 'auto_increment', NULL), "
+        "IF (([attr].[flags] & %d) <> 0, 'partition_key', NULL)"
+      ") AS [extra], "
       "NULL AS [privileges], "
       "'NO' AS [is_generated], "
       "NULL AS [generation_expression], "
-      /* SM_CLASSFLAG_REUSE_OID */
-      "IF (([cls].[flags] & %d) <> 0, 'YES', 'NO') AS [is_updatable], "
+      "NULL AS [is_updatable], "
       /* TODO: is_visible not yet implemented */
       "NULL AS [is_visible], "
       "[attr].[comment] AS [column_comment] "
@@ -228,7 +230,8 @@ const char *sm_define_view_columns_spec (void)
       "INNER JOIN [%s] AS [coll] ON [coll].[coll_id] = [dom].[collation_id] "
     "WHERE "
       AUTH_CHECK_OBJECT_ANY("[cls].[owner].[name]", "[cls].[class_of]"),
-    SM_CLASSFLAG_REUSE_OID,
+    SM_ATTFLAG_AUTO_INCREMENT,
+    SM_ATTFLAG_PARTITION_KEY,
     CT_CLASS_NAME,
     CT_ATTRIBUTE_NAME,
     CT_DOMAIN_NAME,
@@ -519,7 +522,7 @@ const char *sm_define_view_routine_privileges_spec (void)
       "CAST ([sp].[owner].[name] AS VARCHAR(255)) AS [routine_schema], " /* string -> varchar(255) */
       "[sp].[sp_name] AS [routine_name], "
       "'EXECUTE' AS [privilege_type], "
-      "'YES' AS [is_grantable] "
+      "'NO' AS [is_grantable] "
     "FROM "
       /* CT_CLASSAUTH_NAME */
       "[%s] AS [auth] "
@@ -878,7 +881,7 @@ const char *sm_define_view_tables_spec (void)
       "IF (([cls].[flags] & %d) <> 0, 'REUSE_OID', 'DONT_REUSE_OID') || "
       /* TDE_ALGORITHM_NONE, TDE_ALGORITHM_AES, TDE_ALGORITHM_ARIA */
       "' ENCRYPT=' || DECODE ([cls].[tde_algorithm], %d, 'NONE', %d, 'AES', %d, 'ARIA') AS [create_options], "
-      "NULL AS [is_temporary], "
+      "'NO' AS [is_temporary], "
       "[cls].[comment] AS [table_comment], "
       "[cls].[created_time] AS [create_time], "
       "[cls].[updated_time] AS [update_time], "
@@ -984,8 +987,7 @@ const char *sm_define_view_views_spec (void)
         "WHEN ([q].[class_of].[flags] & %d) <> 0 THEN 'LOCAL' "
         "ELSE 'NONE' "
       "END AS [check_option], "
-      /* SM_CLASSFLAG_REUSE_OID */
-      "IF (([q].[class_of].[flags] & %d) <> 0, 'YES', 'NO') AS [is_updatable], "
+      "NULL AS [is_updatable], "
       "[q].[class_of].[comment] AS [view_comment], "
       "[q].[class_of].[created_time] AS [create_time], "
       "[q].[class_of].[updated_time] AS [update_time] "
@@ -996,7 +998,6 @@ const char *sm_define_view_views_spec (void)
       AUTH_CHECK_OBJECT_ANY("[q].[class_of].[owner].[name]", "[q].[class_of].[class_of]"),
     SM_CLASSFLAG_WITHCHECKOPTION,
     SM_CLASSFLAG_LOCALCHECKOPTION,
-    SM_CLASSFLAG_REUSE_OID,
     CT_QUERYSPEC_NAME);
   // *INDENT-ON*
 
