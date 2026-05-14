@@ -303,6 +303,9 @@ static void sort_spage_dump (PAGE_PTR pgptr, int rec_p);
 static void sort_append (const void *pk0, const void *pk1);
 static int sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 							 SORT_PARAM * sort_param, int parallel_num);
+static int sort_merge_worker_runs_to_one (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
+					  SORT_PARAM * sort_param, int parallel_num);
+static int sort_run_final_single (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
 
 /*
  * sort_spage_initialize () - Initialize a slotted page
@@ -5424,6 +5427,140 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 }
 
 /*
+ * sort_merge_worker_runs_to_one () - fan-in Phase 2 for SORT_GROUP_BY.
+ *   Iteratively merges worker output runs (same loop as sort_merge_run_for_parallel)
+ *   but stops before sort_split_last_run / sort_put_result_for_parallel.
+ *
+ *   Exit state:
+ *     sort_param->tot_runs      = 1
+ *     sort_param->half_files    = 1
+ *     sort_param->tot_tempfiles = 2   (temp[1] allocated by caller for output)
+ *     sort_param->temp[0]       = single consolidated sorted-run VFID
+ *     sort_param->file_contents[0].{first_run=0, last_run=0, num_pages[0]=merged_page_count}
+ */
+static int
+sort_merge_worker_runs_to_one (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
+			       int parallel_num)
+{
+  int error = NO_ERROR;
+  int i = 0, idx = 0;
+  int remaining_run, level, merge_num;
+  RESULT_RUN result_run[SORT_MAX_PARALLEL];
+  SORT_INFO *sort_info_p;
+
+  if (parallel_num > SORT_MAX_PARALLEL)
+    {
+      return ER_FAILED;
+    }
+
+  /* collect non-empty worker runs — same compaction as sort_merge_run_for_parallel */
+  remaining_run = 0;
+  for (i = 0; i < parallel_num; i++)
+    {
+      int npages = px_sort_param[i].file_contents[px_sort_param[i].px_result_file_idx].num_pages[0];
+      if (npages > 0)
+	{
+	  result_run[remaining_run].temp_file = px_sort_param[i].temp[px_sort_param[i].px_result_file_idx];
+	  result_run[remaining_run].num_pages = npages;
+	  remaining_run++;
+	}
+    }
+
+  level = 0;
+
+  /* intermediate fan-in passes — safe to parallelize: no put_fn involved */
+  while (remaining_run > 1)
+    {
+      merge_num = (remaining_run + (SORT_PX_MERGE_FILES - 1)) / SORT_PX_MERGE_FILES;
+
+      for (i = 0; i < merge_num; i++)
+	{
+	  int first_idx = i * pow (SORT_PX_MERGE_FILES, level + 1);
+
+	  int half_files = MIN (remaining_run - (first_idx / pow (SORT_PX_MERGE_FILES, level)), SORT_PX_MERGE_FILES);
+	  if (half_files == 1)
+	    {
+	      continue;
+	    }
+
+	  px_sort_param[i].px_result_file_idx = 0;
+	  px_sort_param[i].half_files = half_files;
+	  px_sort_param[i].tot_tempfiles = half_files * 2;
+	  px_sort_param[i].in_half = 0;
+
+	  for (int j = 0; j < px_sort_param[i].half_files; j++)
+	    {
+	      idx = (level == 0) ? (j + first_idx) : ((j * pow (SORT_PX_MERGE_FILES, level)) + first_idx);
+	      px_sort_param[i].temp[j] = result_run[idx].temp_file;
+	      px_sort_param[i].file_contents[j].num_pages[0] = result_run[idx].num_pages;
+	      px_sort_param[i].file_contents[j].first_run = 0;
+	      px_sort_param[i].file_contents[j].last_run = 0;
+	    }
+	  for (int j = px_sort_param[i].half_files; j < px_sort_param[i].tot_tempfiles; j++)
+	    {
+	      px_sort_param[i].temp[j].volid = NULL_VOLID;
+	      px_sort_param[i].file_contents[j].first_run = -1;
+	      px_sort_param[i].file_contents[j].last_run = -1;
+	    }
+	  px_sort_param[i].px_result_run = &result_run[first_idx];
+	  px_sort_param[i].px_status = PX_PROGRESS;
+
+	  parallel_query::callable_task *task =
+	    new parallel_query::callable_task (sort_param->px_worker_manager,
+					       std::bind (sort_merge_nruns_parallel, std::placeholders::_1,
+							  &px_sort_param[i]));
+	  sort_param->px_worker_manager->push_task (task);
+	}
+
+      SORT_WAIT_PARALLEL (merge_num, sort_param, px_sort_param);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      remaining_run = merge_num;
+      level++;
+    }
+
+  /* Point sort_param at the single consolidated run for Phase 3. */
+  sort_param->tot_runs = 1;
+  sort_param->half_files = 1;
+  sort_param->tot_tempfiles = 2;	/* temp[1] is the output slot, allocated by caller */
+  sort_param->in_half = 0;
+  sort_param->temp[0] = result_run[0].temp_file;
+  sort_param->file_contents[0].num_pages[0] = result_run[0].num_pages;
+  sort_param->file_contents[0].first_run = 0;
+  sort_param->file_contents[0].last_run = 0;
+
+cleanup:
+  /* free per-worker cloned input_file (allocated in sort_start_parallelism) */
+  for (i = 0; i < parallel_num; i++)
+    {
+      sort_info_p = (SORT_INFO *) px_sort_param[i].get_arg;
+      if (sort_info_p != NULL && sort_info_p->input_file != NULL)
+	{
+	  qfile_free_list_id (sort_info_p->input_file);
+	  sort_info_p->input_file = NULL;
+	}
+    }
+
+  return error;
+}
+
+/*
+ * sort_run_final_single () - Phase 3 drain for the tot_runs==1 case after fan-in.
+ *   sort_exphase_merge would skip its loop when tot_runs==1; this wrapper calls
+ *   sort_put_result_from_tmpfile directly so put_fn fires for every tuple.
+ */
+static int
+sort_run_final_single (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
+{
+  assert (!SORT_IS_PARALLEL (sort_param));
+  assert (sort_param->put_fn != NULL);
+  sort_param->px_result_file_idx = 0;
+  return sort_put_result_from_tmpfile (thread_p, sort_param, 0);
+}
+
+/*
  * sort_end_parallelism () - end parallelism
  *   return: NO_ERROR
  *   px_sort_param(in):
@@ -5482,9 +5619,43 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	  return ER_FAILED;
 	}
     }
+  else if (sort_param->px_type == SORT_GROUP_BY)
+    {
+      /* Phase 2: fan-in — merge all worker runs into one consolidated run */
+      error = sort_merge_worker_runs_to_one (thread_p, px_sort_param, sort_param, parallel_num);
+      if (error != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      /* sort_param->tot_runs == 1, half_files == 1, tot_tempfiles == 2 */
+
+      /* Phase 3: serial aggregate — clear SORT_IS_PARALLEL so put_fn gates open */
+      sort_param->px_parallel_num = 1;
+
+      /* allocate output temp slot (temp[1]) for sort_exphase_merge / sort_run_final_single */
+      int pg_est = MAX (1, sort_get_avg_numpages_of_nonempty_tmpfile (sort_param));
+      if (sort_add_new_file (thread_p, &sort_param->temp[1], pg_est, true, sort_param->tde_encrypted) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      /* call put_fn (qexec_gby_put_next) once per tuple in globally sorted order */
+      if (sort_param->tot_runs > 1)
+	{
+	  error = sort_exphase_merge (thread_p, sort_param);
+	}
+      else
+	{
+	  error = sort_run_final_single (thread_p, sort_param);
+	}
+      if (error != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
   else
     {
-      /* not implemented yet (group by, analytic function, create index) */
+      /* not implemented yet (analytic function) */
       return ER_FAILED;
     }
 
