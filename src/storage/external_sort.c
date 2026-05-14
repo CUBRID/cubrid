@@ -1668,6 +1668,11 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
 	  goto cleanup;
 	}
     }
+  else if (sort_param->px_type == SORT_GROUP_BY)
+    {
+      /* Worker runs inphase-only; aggregation (put_fn) must NOT fire. */
+      assert (sort_param->put_fn == NULL);
+    }
   else
     {
       /* Not implemented yet */
@@ -1719,10 +1724,21 @@ cleanup:
       bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args_p, NULL, NULL);
       bt_load_clear_pred_and_unpack (thread_p, sort_args_p, func_unpack_info);
     }
-  else
+  else if (sort_param->px_type == SORT_GROUP_BY)
     {
-      /* Not implemented yet */
-      px_status = PX_ERR_FAILED;
+      /* tplrec.tpl is worker-private; free here before returning to main thread. */
+      if (sort_param->get_arg != NULL)
+	{
+	  SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
+	  if (sort_info_p->px_state != NULL)
+	    {
+	      sort_px_list_state *state = (sort_px_list_state *) sort_info_p->px_state;
+	      if (state->tplrec.tpl != NULL)
+		{
+		  db_private_free_and_init (thread_p, state->tplrec.tpl);
+		}
+	    }
+	}
     }
 
   if (sort_param->px_orig_thread_p->on_trace)
