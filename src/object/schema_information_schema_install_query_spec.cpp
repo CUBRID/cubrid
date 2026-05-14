@@ -372,7 +372,7 @@ const char *sm_define_view_parameters_spec (void)
       "[dt].[type_name] AS [data_type], "
       "NULL AS [character_maximum_length], "
       "NULL AS [character_octet_length], "
-      "[ch].[charset_name] AS [character_set_name], "
+      "NULL AS [character_set_name], "
       "NULL AS [collation_name], "
       "NULL AS [numeric_precision], "
       "NULL AS [numeric_scale], "
@@ -391,23 +391,16 @@ const char *sm_define_view_parameters_spec (void)
       /* CT_STORED_PROC_ARGS_NAME */
       "[%s] AS [sp_args] "
       /* CT_DATATYPE_NAME */
-      "INNER JOIN [%s] AS [dt] ON [dt].[type_id] = [sp_args].[data_type], "
-      /* CT_ROOT_NAME */
-      "[%s] AS [root], "
-      /* CT_CHARSET_NAME */
-      "[%s] AS [ch] "
+      "INNER JOIN [%s] AS [dt] ON [dt].[type_id] = [sp_args].[data_type] "
     "WHERE "
-      "[ch].[charset_id] = [root].[charset] "
-      "AND " AUTH_CHECK_STORED_PROC("[sp_args].[sp_of].[owner].[name]", "[sp_args].[sp_of]", "[sp_args].[sp_of].[directive]"),
+      AUTH_CHECK_STORED_PROC("[sp_args].[sp_of].[owner].[name]", "[sp_args].[sp_of]", "[sp_args].[sp_of].[directive]"),
     SP_MODE_IN,
     SP_MODE_OUT,
     SP_MODE_INOUT,
     SP_TYPE_PROCEDURE,
     SP_TYPE_FUNCTION,
     CT_STORED_PROC_ARGS_NAME,
-    CT_DATATYPE_NAME,
-    CT_ROOT_NAME,
-    CT_CHARSET_NAME);
+    CT_DATATYPE_NAME);
   // *INDENT-ON*
 
   return stmt;
@@ -557,7 +550,8 @@ const char *sm_define_view_routines_spec (void)
       "IF ([sp].[sp_type] = %d, [dt].[type_name], NULL) AS [data_type], "
       "NULL AS [character_maximum_length], "
       "NULL AS [character_octet_length], "
-      "[ch].[charset_name] AS [character_set_name], "
+      /* STRING/VARCHAR(4), CHAR(25) */
+      "IF ([sp].[return_type] IN (4, 25), [ch].[charset_name], NULL) AS [character_set_name], "
       "NULL AS [collation_name], "
       "NULL AS [numeric_precision], "
       "NULL AS [numeric_scale], "
