@@ -327,10 +327,10 @@ const char *sm_define_view_key_column_usage_spec (void)
   snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [constraint_catalog], " /* string -> varchar(255) */
-      "CAST ([idx].[class_of].[owner].[name] AS VARCHAR(255)) AS [constraint_schema], " /* string -> varchar(255) */
+      "[idx].[class_of].[owner].[name] AS [constraint_schema], "
       "[idx].[index_name] AS [constraint_name], "
       "CAST (DATABASE () AS VARCHAR(255)) AS [table_catalog], " /* string -> varchar(255) */
-      "CAST ([idx].[class_of].[owner].[name] AS VARCHAR(255)) AS [table_schema], " /* string -> varchar(255) */
+      "[idx].[class_of].[owner].[name] AS [table_schema], "
       "[idx].[class_of].[class_name] AS [table_name], "
       "[idx_key].[key_attr_name] AS [column_name], "
       "([idx_key].[key_order] + 1) AS [ordinal_position], "
@@ -362,7 +362,7 @@ const char *sm_define_view_parameters_spec (void)
   snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [specific_catalog], " /* string -> varchar(255) */
-      "CAST ([sp_args].[sp_of].[owner].[name] AS VARCHAR(255)) AS [specific_schema], " /* string -> varchar(255) */
+      "[sp_args].[sp_of].[owner].[name] AS [specific_schema], "
       "IF ([sp_args].[sp_of].[pkg_name] IS NOT NULL, CONCAT ([sp_args].[sp_of].[pkg_name], '.', [sp_args].[sp_of].[sp_name]), [sp_args].[sp_of].[sp_name]) AS [specific_name], "
       "([sp_args].[index_of] + 1) AS [ordinal_position], "
       /* SP_MODE_IN, SP_MODE_OUT, SP_MODE_INOUT */
@@ -414,7 +414,7 @@ const char *sm_define_view_partitions_spec (void)
   snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [table_catalog], " /* string -> varchar(255) */
-      "CAST ([super].[owner].[name] AS VARCHAR(255)) AS [table_schema], " /* string -> varchar(255) */
+      "[super].[owner].[name] AS [table_schema], "
       "[super].[class_name] AS [table_name], "
       "[part].[pname] AS [partition_name], "
       "NULL AS [partition_ordinal_position], "
@@ -464,10 +464,10 @@ const char *sm_define_view_referential_constraints_spec (void)
   snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [constraint_catalog], " /* string -> varchar(255) */
-      "CAST ([idx].[class_of].[owner].[name] AS VARCHAR(255)) AS [constraint_schema], " /* string -> varchar(255) */
+      "[idx].[class_of].[owner].[name] AS [constraint_schema], "
       "[idx].[index_name] AS [constraint_name], "
       "CAST (DATABASE () AS VARCHAR(255)) AS [unique_constraint_catalog], " /* string -> varchar(255) */
-      "CAST ([idx].[referential_index].[class_of].[owner].[name] AS VARCHAR(255)) AS [unique_constraint_schema], " /* string -> varchar(255) */
+      "[idx].[referential_index].[class_of].[owner].[name] AS [unique_constraint_schema], "
       "[idx].[referential_index].[index_name] AS [unique_constraint_name], "
       /* SM_FK_MATCH_NONE, SM_FK_MATCH_PARTIAL, SM_FK_MATCH_FULL */
       "DECODE ([idx].[referential_match_option], %d, 'NONE', %d, 'PARTIAL', %d, 'FULL') AS [match_option], "
@@ -506,13 +506,13 @@ const char *sm_define_view_routine_privileges_spec (void)
   // *INDENT-OFF*
   snprintf (stmt, sizeof (stmt),
     "SELECT "
-      "CAST ([auth].[grantor].[name] AS VARCHAR(255)) AS [grantor], " /* string -> varchar(255) */
-      "CAST ([auth].[grantee].[name] AS VARCHAR(255)) AS [grantee], " /* string -> varchar(255) */
+      "[auth].[grantor].[name] AS [grantor], "
+      "[auth].[grantee].[name] AS [grantee], "
       "CAST (DATABASE () AS VARCHAR(255)) AS [specific_catalog], " /* string -> varchar(255) */
-      "CAST ([sp].[owner].[name] AS VARCHAR(255)) AS [specific_schema], " /* string -> varchar(255) */
+      "[sp].[owner].[name] AS [specific_schema], "
       "IF ([sp].[pkg_name] IS NOT NULL, CONCAT ([sp].[pkg_name], '.', [sp].[sp_name]), [sp].[sp_name]) AS [specific_name], "
       "CAST (DATABASE () AS VARCHAR(255)) AS [routine_catalog], " /* string -> varchar(255) */
-      "CAST ([sp].[owner].[name] AS VARCHAR(255)) AS [routine_schema], " /* string -> varchar(255) */
+      "[sp].[owner].[name] AS [routine_schema], "
       "[sp].[sp_name] AS [routine_name], "
       "'EXECUTE' AS [privilege_type], "
       "'NO' AS [is_grantable] "
@@ -542,7 +542,7 @@ const char *sm_define_view_routines_spec (void)
     "SELECT "
       "IF ([sp].[pkg_name] IS NOT NULL, CONCAT ([sp].[pkg_name], '.', [sp].[sp_name]), [sp].[sp_name]) AS [specific_name], "
       "CAST (DATABASE () AS VARCHAR(255)) AS [routine_catalog], " /* string -> varchar(255) */
-      "CAST ([sp].[owner].[name] AS VARCHAR(255)) AS [routine_schema], " /* string -> varchar(255) */
+      "[sp].[owner].[name] AS [routine_schema], "
       "[sp].[sp_name] AS [routine_name], "
       /* SP_TYPE_PROCEDURE, SP_TYPE_FUNCTION */
       "DECODE ([sp].[sp_type], %d, 'PROCEDURE', %d, 'FUNCTION') AS [routine_type], "
@@ -634,8 +634,8 @@ const char *sm_define_view_schemata_spec (void)
   snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [catalog_name], " /* string -> varchar(255) */
-      "CAST ([usr].[name] AS VARCHAR(255)) AS [schema_name], " /* string -> varchar(255) */
-      "CAST ([usr].[name] AS VARCHAR(255)) AS [schema_owner], " /* string -> varchar(255) */
+      "[usr].[name] AS [schema_name], "
+      "[usr].[name] AS [schema_owner], "
       "CAST (DATABASE () AS VARCHAR(255)) AS [default_character_set_catalog], " /* string -> varchar(255) */
       "NULL AS [default_character_set_schema], "
       "CAST ([ch].[charset_name] AS VARCHAR(32)) AS [default_character_set_name], " /* string -> varchar(32) */
@@ -668,7 +668,7 @@ const char *sm_define_view_sequences_spec (void)
   snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [sequence_catalog], " /* string -> varchar(255) */
-      "CAST ([serial].[owner].[name] AS VARCHAR(255)) AS [sequence_schema], " /* string -> varchar(255) */
+      "[serial].[owner].[name] AS [sequence_schema], "
       "[serial].[name] AS [sequence_name], "
       "'NUMERIC' AS [data_type], "
       /* DB_MAX_NUMERIC_PRECISION */
@@ -706,10 +706,10 @@ const char *sm_define_view_statistics_spec (void)
   snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [table_catalog], " /* string -> varchar(255) */
-      "CAST ([cls].[owner].[name] AS VARCHAR(255)) AS [table_schema], " /* string -> varchar(255) */
+      "[cls].[owner].[name] AS [table_schema], "
       "[cls].[class_name] AS [table_name], "
       "[idx].[is_unique] AS [is_unique], "
-      "CAST ([cls].[owner].[name] AS VARCHAR(255)) AS [index_schema], " /* string -> varchar(255) */
+      "[cls].[owner].[name] AS [index_schema], "
       "[idx].[index_name] AS [index_name], "
       "([idx_key].[key_order] + 1) AS [seq_in_index], "
       "[idx_key].[key_attr_name] AS [column_name], "
@@ -759,11 +759,11 @@ const char *sm_define_view_synonyms_spec (void)
   snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [synonym_catalog], " /* string -> varchar(255) */
-      "CAST ([syn].[owner].[name] AS VARCHAR(255)) AS [synonym_schema], " /* string -> varchar(255) */
+      "[syn].[owner].[name] AS [synonym_schema], "
       "[syn].[name] AS [synonym_name], "
       "IF ([syn].[is_public] = 1, 'YES', 'NO') AS [is_public_synonym], "
       "CAST (DATABASE () AS VARCHAR(255)) AS [target_catalog], " /* string -> varchar(255) */
-      "CAST ([syn].[target_owner].[name] AS VARCHAR(255)) AS [target_schema], " /* string -> varchar(255) */
+      "[syn].[target_owner].[name] AS [target_schema], "
       "[syn].[target_name] AS [target_name], "
       "[syn].[comment] AS [synonym_comment], "
       "[syn].[created_time] AS [create_time], "
@@ -787,10 +787,10 @@ const char *sm_define_view_table_constraints_spec (void)
   snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [constraint_catalog], " /* string -> varchar(255) */
-      "CAST ([idx].[class_of].[owner].[name] AS VARCHAR(255)) AS [constraint_schema], " /* string -> varchar(255) */
+      "[idx].[class_of].[owner].[name] AS [constraint_schema], "
       "[idx].[index_name] AS [constraint_name], "
       "CAST (DATABASE () AS VARCHAR(255)) AS [table_catalog], " /* string -> varchar(255) */
-      "CAST ([idx].[class_of].[owner].[name] AS VARCHAR(255)) AS [table_schema], " /* string -> varchar(255) */
+      "[idx].[class_of].[owner].[name] AS [table_schema], "
       "[idx].[class_of].[class_name] AS [table_name], "
       "CASE "
         "WHEN [idx].[is_primary_key] = 1 THEN 'PRIMARY KEY' "
@@ -820,10 +820,10 @@ const char *sm_define_view_table_privileges_spec (void)
   // *INDENT-OFF*
   snprintf (stmt, sizeof (stmt),
     "SELECT "
-      "CAST ([auth].[grantor].[name] AS VARCHAR(255)) AS [grantor], " /* string -> varchar(255) */
-      "CAST ([auth].[grantee].[name] AS VARCHAR(255)) AS [grantee], " /* string -> varchar(255) */
+      "[auth].[grantor].[name] AS [grantor], "
+      "[auth].[grantee].[name] AS [grantee], "
       "CAST (DATABASE () AS VARCHAR(255)) AS [table_catalog], " /* string -> varchar(255) */
-      "CAST ([cls].[owner].[name] AS VARCHAR(255)) AS [table_schema], " /* string -> varchar(255) */
+      "[cls].[owner].[name] AS [table_schema], "
       "[cls].[class_name] AS [table_name], "
       "[auth].[auth_type] AS [privilege_type], "
       "IF ([auth].[is_grantable] = 0, 'NO', 'YES') AS [is_grantable] "
@@ -852,7 +852,7 @@ const char *sm_define_view_tables_spec (void)
   snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [table_catalog], " /* string -> varchar(255) */
-      "CAST ([cls].[owner].[name] AS VARCHAR(255)) AS [table_schema], " /* string -> varchar(255) */
+      "[cls].[owner].[name] AS [table_schema], "
       "CAST ([cls].[class_name] AS VARCHAR(255)) AS [table_name], " /* string -> varchar(255) */
       /* SM_CLASS_CT */
       "CASE "
@@ -921,7 +921,7 @@ const char *sm_define_view_triggers_spec (void)
   snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [trigger_catalog], " /* string -> varchar(255) */
-      "CAST ([tr].[owner].[name] AS VARCHAR(255)) AS [trigger_schema], " /* string -> varchar(255) */
+      "[tr].[owner].[name] AS [trigger_schema], "
       "CAST ([tr].[name] AS VARCHAR(255)) AS [trigger_name], " /* string -> varchar(255) */
       /* UPDATE(0,1), DELETE(2,3), INSERT(4,5), COMMIT(8), ROLLBACK(9) */
       "CASE "
@@ -933,7 +933,7 @@ const char *sm_define_view_triggers_spec (void)
         "ELSE NULL "
       "END AS [event_manipulation], "
       "CAST (DATABASE () AS VARCHAR(255)) AS [event_object_catalog], " /* string -> varchar(255) */
-      "CAST ([cls].[owner].[name] AS VARCHAR(255)) AS [event_object_schema], " /* string -> varchar(255) */
+      "[cls].[owner].[name] AS [event_object_schema], "
       "[cls].[class_name] AS [event_object_table], "
       "[tr].[target_attribute] AS [event_object_column], "
       "NULL AS [action_order], "
@@ -979,7 +979,7 @@ const char *sm_define_view_views_spec (void)
   snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [table_catalog], " /* string -> varchar(255) */
-      "CAST ([q].[class_of].[owner].[name] AS VARCHAR(255)) AS [table_schema], " /* string -> varchar(255) */
+      "[q].[class_of].[owner].[name] AS [table_schema], "
       "[q].[class_of].[class_name] AS [table_name], "
       "[q].[spec] AS [view_definition], "
       "CASE "
