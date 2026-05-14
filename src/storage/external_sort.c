@@ -5698,22 +5698,17 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	  return NO_ERROR;
 	}
 
-      /* allocate output temp slot (temp[1]) for sort_exphase_merge / sort_run_final_single */
+      /* allocate output temp slot (temp[1]) for sort_run_final_single */
       int pg_est = MAX (1, sort_get_avg_numpages_of_nonempty_tmpfile (sort_param));
       if (sort_add_new_file (thread_p, &sort_param->temp[1], pg_est, true, sort_param->tde_encrypted) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
 
-      /* call put_fn (qexec_gby_put_next) once per tuple in globally sorted order */
-      if (sort_param->tot_runs > 1)
-	{
-	  error = sort_exphase_merge (thread_p, sort_param);
-	}
-      else
-	{
-	  error = sort_run_final_single (thread_p, sort_param);
-	}
+      /* sort_merge_worker_runs_to_one guarantees tot_runs == 1 here;
+       * call put_fn (qexec_gby_put_next) once per tuple in globally sorted order */
+      assert (sort_param->tot_runs == 1);
+      error = sort_run_final_single (thread_p, sort_param);
       if (error != NO_ERROR)
 	{
 	  return ER_FAILED;

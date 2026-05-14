@@ -155,7 +155,7 @@ struct SORT_INFO
   int flag;			/* to open output list file */
   int parallelism;
   void *orderby_stats;
-  void *px_state;		/* per-worker sector scan state (ORDER_BY parallel only) */
+  void *px_state;		/* per-worker sector scan state (ORDER_BY and GROUP_BY parallel) */
 };
 
 #if defined(SERVER_MODE)
