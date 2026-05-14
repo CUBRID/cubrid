@@ -4926,9 +4926,26 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	  return parallel_num;
 	}
     }
+  else if (sort_param->px_type == SORT_GROUP_BY)
+    {
+      GBY_SORT_PARAM *gby = (GBY_SORT_PARAM *) sort_param->px_extra_arg;
+      if (gby == NULL || gby->hash_eligible)
+	{
+	  return 1;
+	}
+      QFILE_LIST_ID *input_list = gby->input_list;
+      parallel_num =
+	parallel_query::compute_parallel_degree (parallel_query::parallel_type::SORT, input_list->page_cnt, -1);
+      if (parallel_num < 2 || input_list->tuple_cnt <= parallel_num)
+	{
+	  return 1;
+	}
+      sort_param->px_worker_manager = parallel_query::worker_manager::try_reserve_workers (parallel_num);
+      return (sort_param->px_worker_manager == NULL) ? 1 : parallel_num;
+    }
   else
     {
-      /* Not implemented yet */
+      /* Not implemented yet (analytic function) */
       return 1;
     }
 
