@@ -574,8 +574,13 @@ const char *sm_define_view_routines_spec (void)
       "'SQL' AS [parameter_style], "
       /* SP_DIRECTIVE_DETERMINISTIC */
       "IF (([sp].[directive] & %d) <> 0, 'YES', 'NO') AS [is_deterministic], "
-      /* TODO */
-      "NULL AS [sql_data_access], "
+      "CASE [sp].[sql_data_access] "
+        "WHEN %d THEN 'NO SQL' "
+        "WHEN %d THEN 'CONTAINS SQL' "
+        "WHEN %d THEN 'READS SQL DATA' "
+        "WHEN %d THEN 'MODIFIES SQL DATA' "
+        "ELSE NULL "
+      "END AS [sql_data_access], "
       "NULL AS [sql_path], "
       /* SP_DIRECTIVE_RIGHTS_CALLER */
       "IF (([sp].[directive] & %d) <> 0, 'INVOKER', 'DEFINER') AS [security_type], "
@@ -606,6 +611,10 @@ const char *sm_define_view_routines_spec (void)
     SP_LANG_PLCSQL,
     SP_LANG_JAVA,
     SP_DIRECTIVE_DETERMINISTIC,
+    SP_SQL_TYPE_NO_SQL,
+    SP_SQL_TYPE_CONTAINS_SQL,
+    SP_SQL_TYPE_READS_SQL_DATA,
+    SP_SQL_TYPE_MODIFIES_SQL_DATA,
     SP_DIRECTIVE_RIGHTS_CALLER,
     CT_STORED_PROC_NAME,
     CT_DATATYPE_NAME,
