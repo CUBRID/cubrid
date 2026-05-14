@@ -6813,7 +6813,7 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  return error;
 	}
 
-      snprintf (pl_call_source, sizeof (pl_call_source), "CALL %s()", pl_sp_qualified_name);
+      snprintf (pl_call_source, sizeof (pl_call_source), "CALL %.*s()", DB_MAX_IDENTIFIER_LENGTH, pl_sp_qualified_name);
       action_type = TR_ACT_EXPRESSION;
       action_source = pl_call_source;
     }
@@ -6867,7 +6867,7 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      {
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			strlen (pl_sp_qualified_name) + 1);
-		return er_errid ();
+		return ER_OUT_OF_VIRTUAL_MEMORY;
 	      }
 	  }
       }
