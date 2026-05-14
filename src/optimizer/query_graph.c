@@ -241,8 +241,6 @@ static void qo_assign_eq_classes (QO_ENV *);
 static void qo_generate_transitive_join_terms (QO_ENV *);
 static int qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs_p, int *count_p,
 					     int *cap_p);
-static int qo_segment_cardinality (QO_SEGMENT * seg);
-static void qo_insert_transitive_join_terms (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC * specs, int count);
 static void qo_discover_edges (QO_ENV *);
 static void qo_classify_outerjoin_terms (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
@@ -8115,6 +8113,7 @@ qo_generate_transitive_join_terms (QO_ENV * env)
   int specs_count = 0, specs_cap = 0;
   size_t new_size;
   QO_TERM *new_arr;
+  PARSER_CONTEXT *parser;
 
   if (qo_collect_transitive_join_specs (env, &specs, &specs_count, &specs_cap) != 0 || specs_count == 0)
     {
@@ -8127,6 +8126,7 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 
   extra = specs_count;
   old_terms = env->nterms;
+  parser = QO_ENV_PARSER (env);
 
   new_size = sizeof (QO_TERM) * (env->Nterms + extra);
   new_arr = (QO_TERM *) realloc (env->terms, new_size);
@@ -8159,10 +8159,34 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 	term->subqueries.setp = term->subqueries.set.word;
     }
 
-  /* Append new transitive join terms after all existing terms. */
-  qo_insert_transitive_join_terms (env, specs, specs_count);
+  for (i = 0; i < specs_count; i++)
+    {
+      QO_SEGMENT *head_seg = specs[i].head_seg;
+      QO_SEGMENT *tail_seg = specs[i].tail_seg;
+      PT_NODE *pt_expr;
+      QO_TERM *term;
 
-  env->nterms += extra;
+      if (parser == NULL)
+	continue;
+
+      pt_expr = parser_new_node (parser, PT_EXPR);
+      if (pt_expr == NULL)
+	continue;
+
+      pt_expr->info.expr.op = PT_EQ;
+      pt_expr->info.expr.arg1 = parser_copy_tree_list (parser, QO_SEG_PT_NODE (head_seg));
+      pt_expr->info.expr.arg2 = parser_copy_tree_list (parser, QO_SEG_PT_NODE (tail_seg));
+      if (pt_expr->info.expr.arg1 == NULL || pt_expr->info.expr.arg2 == NULL)
+	{
+	  parser_free_tree (parser, pt_expr);
+	  continue;
+	}
+      pt_expr->type_enum = PT_TYPE_LOGICAL;
+
+      term = qo_add_term (pt_expr, PREDICATE_TERM, env);
+      QO_TERM_SET_FLAG (term, QO_TERM_TRANSITIVE);
+      QO_TERM_SET_FLAG (term, QO_TERM_COPY_PT_EXPR);
+    }
 
   free_and_init (specs);
 }
@@ -8340,134 +8364,6 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
   free_and_init (segs_arr);
   free_and_init (root_arr);
   return 0;
-}
-
-/*
- * qo_segment_cardinality () - Determine the cardinality (number of distinct
- *   values) of a segment using its attribute statistics.
- *   return: cardinality of the segment if available, otherwise 0
- *   seg(in): Pointer to the segment for which we want the cardinality
- *
- * Note: If NDV (Number of Distinct Values) statistics are available, they are
- *   used. When an index also exists on the segment, the minimum of NDV and
- *   the first partial-key cardinality (pkeys[0]) is chosen for a tighter
- *   estimate. If only index statistics exist, pkeys[0] is returned directly.
- */
-static int
-qo_segment_cardinality (QO_SEGMENT * seg)
-{
-  QO_ATTR_INFO *info = QO_SEG_INFO (seg);
-  int icard = 0;
-
-  if (info)
-    {
-      if (info->ndv > 0)
-	{
-	  icard = (info->ndv > INT_MAX) ? INT_MAX : info->ndv;
-	  if (info->cum_stats.is_indexed && info->cum_stats.pkeys != NULL && info->cum_stats.pkeys[0] > 0)
-	    {
-	      icard = MIN (icard, info->cum_stats.pkeys[0]);
-	    }
-	}
-      else if (info->cum_stats.is_indexed && info->cum_stats.pkeys != NULL && info->cum_stats.pkeys[0] > 0)
-	{
-	  icard = info->cum_stats.pkeys[0];
-	}
-    }
-  return icard;
-}
-
-/*
- * qo_insert_transitive_join_terms () - Initialize new QO_TERM entries for
- *   the collected transitive join specifications.
- *   return: 
- *   env(in): Pointer to the optimizer environment
- *   specs(in): Array of transitive join specifications
- *   count(in): Number of specifications in the array
- *
- * Note: For each spec, a new edge term is initialized via qo_term_clear()
- *   and configured as a QO_TC_JOIN / JOIN_INNER term. Selectivity is computed
- *   from the segment cardinality. A synthetic PT_EXPR (A = B) node is created
- *   for EXPLAIN output.  Terms are appended starting at env->nterms, which
- *   has not yet been incremented by the caller.
- */
-static void
-qo_insert_transitive_join_terms (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC * specs, int count)
-{
-  int i;
-  QO_TERM *term;
-  QO_SEGMENT *head_seg, *tail_seg;
-  QO_NODE *head_node, *tail_node;
-  int head_icard, tail_icard, icard;
-
-  for (i = 0; i < count; i++)
-    {
-      int new_idx = env->nterms + i;
-      head_seg = specs[i].head_seg;
-      tail_seg = specs[i].tail_seg;
-      head_node = QO_SEG_HEAD (head_seg);
-      tail_node = QO_SEG_HEAD (tail_seg);
-      qo_term_clear (env, new_idx);
-      term = QO_ENV_TERM (env, new_idx);
-
-      QO_TERM_CLASS (term) = QO_TC_JOIN;
-      QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
-
-      head_icard = qo_segment_cardinality (head_seg);
-      tail_icard = qo_segment_cardinality (tail_seg);
-      icard = MAX (head_icard, tail_icard);
-
-      if (icard != 0)
-	{
-	  QO_TERM_SELECTIVITY (term) = (1.0 / icard);
-	}
-      else
-	{
-	  QO_TERM_SELECTIVITY (term) = DEFAULT_EQUIJOIN_SELECTIVITY;
-	}
-
-      QO_TERM_SET_FLAG (term, QO_TERM_MERGEABLE_EDGE);
-      QO_TERM_SET_FLAG (term, QO_TERM_EQUAL_OP);
-      QO_TERM_SET_FLAG (term, QO_TERM_SINGLE_PRED);
-      QO_TERM_SET_FLAG (term, QO_TERM_TRANSITIVE);
-
-      if (env->parser)
-	{
-	  PT_NODE *eq_node = parser_new_node (env->parser, PT_EXPR);
-	  if (eq_node != NULL)
-	    {
-	      eq_node->info.expr.op = PT_EQ;
-	      eq_node->info.expr.arg1 = parser_copy_tree_list (env->parser, QO_SEG_PT_NODE (head_seg));
-	      eq_node->info.expr.arg2 = parser_copy_tree_list (env->parser, QO_SEG_PT_NODE (tail_seg));
-	      if (eq_node->info.expr.arg1 == NULL || eq_node->info.expr.arg2 == NULL)
-		{
-		  parser_free_tree (env->parser, eq_node);
-		  eq_node = NULL;
-		}
-	      else
-		{
-		  eq_node->type_enum = PT_TYPE_LOGICAL;
-		  QO_TERM_PT_EXPR (term) = eq_node;
-		  QO_TERM_SET_FLAG (term, QO_TERM_COPY_PT_EXPR);
-		}
-	    }
-	}
-
-      /* QO_TERM_EQCLASS is left NULL here; qo_assign_eq_classes() fills it in
-       * via QO_TERM_NOMINAL_SEG after qo_discover_edges() runs. */
-      QO_TERM_NOMINAL_SEG (term) = head_seg;
-      QO_TERM_HEAD (term) = head_node;
-      QO_TERM_TAIL (term) = tail_node;
-      QO_TERM_SEG (term) = head_seg;
-      QO_TERM_OID_SEG (term) = tail_seg;
-      bitset_add (&QO_TERM_NODES (term), QO_NODE_IDX (head_node));
-      bitset_add (&QO_TERM_NODES (term), QO_NODE_IDX (tail_node));
-      bitset_add (&QO_TERM_SEGS (term), QO_SEG_IDX (head_seg));
-      bitset_add (&QO_TERM_SEGS (term), QO_SEG_IDX (tail_seg));
-      term->index_seg[0] = head_seg;
-      term->index_seg[1] = tail_seg;
-      QO_TERM_CAN_USE_INDEX (term) = 2;
-    }
 }
 
 /*
