@@ -6837,6 +6837,20 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 	   * this link.  Return error so the transaction rolls back, cleaning up both. */
 	  return er_errid ();
 	}
+
+      /* Sync the in-memory TR_TRIGGER cache.  tr_create_trigger() cached the
+       * trigger struct before the backing SP name was known, so its
+       * action_body_sp field is NULL.  A DROP TRIGGER in the same session
+       * reads from this cache (WS_CHN unchanged within the transaction, so
+       * validate_trigger() skips re-reading the catalog) and would miss the SP,
+       * leaving an orphan.  Update the field directly now. */
+      {
+	TR_TRIGGER *trigger_cache = tr_map_trigger (trigger, 0);
+	if (trigger_cache != NULL && trigger_cache->action_body_sp == NULL)
+	  {
+	    trigger_cache->action_body_sp = strdup (pl_sp_qualified_name);
+	  }
+      }
     }
 
   /* Save the new trigger object in the parse tree. Actually, we probably should also allow INTO variable sub-clause to
