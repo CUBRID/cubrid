@@ -859,7 +859,8 @@ const char *sm_define_view_tables_spec (void)
         "WHEN [cls].[class_type] = %d AND [cls].[is_system_class] = 1 THEN 'SYSTEM TABLE' "
         "WHEN [cls].[class_type] <> %d AND [cls].[is_system_class] = 1 THEN 'SYSTEM VIEW' "
         "WHEN [cls].[class_type] = %d AND [cls].[is_system_class] <> 1 THEN 'BASE TABLE' "
-        "ELSE 'VIEW' "
+        "WHEN [cls].[class_type] <> %d AND [cls].[is_system_class] <> 1 THEN 'VIEW' "
+        "ELSE NULL "
       "END AS [table_type], "
       "estimated_table_rows ([cls].[unique_name]) AS [table_rows], "
       "estimated_avg_row_length ([cls].[unique_name]) AS [avg_row_length], "
@@ -896,6 +897,7 @@ const char *sm_define_view_tables_spec (void)
       "LEFT OUTER JOIN [%s] AS [serial] ON [serial].[class_name] = [cls].[class_name] "
     "WHERE "
       AUTH_CHECK_OBJECT_ANY("[cls].[owner].[name]", "[cls].[class_of]"),
+    SM_CLASS_CT,
     SM_CLASS_CT,
     SM_CLASS_CT,
     SM_CLASS_CT,
