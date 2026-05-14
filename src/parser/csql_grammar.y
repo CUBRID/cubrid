@@ -11276,6 +11276,41 @@ trigger_action_in
 			          pt_create_string_literal_node_w_charset_coll (
 			            g_query_string + g_plcsql_text_pos, $1);
 			      }
+			    else if (this_parser->file)
+			      {
+			        /* File input path (csql -i --no-single-line, loaddb -s):
+			         * original_buffer is NULL so g_query_string is NULL.
+			         * g_plcsql_text_pos is the file byte offset of the start
+			         * of the PL block; @1.buffer_pos is the offset after the
+			         * last character.  Read the block text directly from the
+			         * file, matching the fallback used for SP body (see
+			         * pt_set_plcsql_body_impl). */
+			        int spec_start = g_plcsql_text_pos;
+			        int spec_end   = @1.buffer_pos;
+			        int read_sz    = spec_end - spec_start;
+			        if (read_sz > 0)
+			          {
+			            char *buff = (char *) parser_alloc (this_parser, read_sz + 1);
+			            if (buff != NULL)
+			              {
+			                int saved_pos = (int) ftell (this_parser->file);
+			                if (fseek (this_parser->file, spec_start, SEEK_SET) == 0
+			                    && (int) fread (buff, 1, read_sz, this_parser->file) == read_sz)
+			                  {
+			                    (void) fseek (this_parser->file, saved_pos, SEEK_SET);
+			                    buff[read_sz] = '\0';
+			                    node->info.trigger_action.pl_block =
+			                      pt_create_string_literal_node_w_charset_coll (buff, read_sz);
+			                  }
+			                else
+			                  {
+			                    (void) fseek (this_parser->file, saved_pos, SEEK_SET);
+			                    PT_ERROR (this_parser, node,
+			                              "failed to read PL/SQL block text from input file");
+			                  }
+			              }
+			          }
+			      }
 			  }
 
 			$$ = node;

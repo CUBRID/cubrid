@@ -6863,6 +6863,12 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 	if (trigger_cache != NULL && trigger_cache->action_body_sp == NULL)
 	  {
 	    trigger_cache->action_body_sp = strdup (pl_sp_qualified_name);
+	    if (trigger_cache->action_body_sp == NULL)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			strlen (pl_sp_qualified_name) + 1);
+		return er_errid ();
+	      }
 	  }
       }
     }
