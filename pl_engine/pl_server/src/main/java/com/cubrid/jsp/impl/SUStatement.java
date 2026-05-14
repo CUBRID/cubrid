@@ -319,6 +319,7 @@ public class SUStatement {
         return commandType;
     }
 
+    /*
     public boolean nextResult() throws SQLException {
         // TODO
         try {
@@ -329,6 +330,7 @@ public class SUStatement {
         }
         return true;
     }
+     */
 
     public void fetch() throws SQLException {
         if (type == GET_BY_OID || type == GET_AUTOINCREMENT_KEYS) {

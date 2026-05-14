@@ -103,12 +103,6 @@ namespace cubmethod
 	error = generated_keys (unpacker);
 	break;
 
-      /* schema info */
-      case METHOD_CALLBACK_GET_SCHEMA_INFO:
-	// error = get_schema_info (unpacker);
-	assert (false);
-	break;
-
       /* compilation */
       case METHOD_CALLBACK_GET_SQL_SEMANTICS:
 	error = get_sql_semantics (unpacker);
@@ -434,24 +428,6 @@ namespace cubmethod
 	return xs_pack_and_queue (METHOD_RESPONSE_SUCCESS, result);
       }
   }
-
-//////////////////////////////////////////////////////////////////////////
-// Schema Info
-//////////////////////////////////////////////////////////////////////////
-  /*
-  int
-  callback_handler::get_schema_info (packing_unpacker &unpacker)
-  {
-    int error = NO_ERROR;
-
-    schema_info_handler sch_handler (m_error_ctx);
-
-
-
-
-    return error;
-  }
-  */
 
 //////////////////////////////////////////////////////////////////////////
 // Compile
