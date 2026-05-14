@@ -705,7 +705,7 @@ const char *sm_define_view_statistics_spec (void)
       "CAST (DATABASE () AS VARCHAR(255)) AS [table_catalog], " /* string -> varchar(255) */
       "CAST ([cls].[owner].[name] AS VARCHAR(255)) AS [table_schema], " /* string -> varchar(255) */
       "[cls].[class_name] AS [table_name], "
-      "(1 - [idx].[is_unique]) AS [non_unique], "
+      "[idx].[is_unique] AS [is_unique], "
       "CAST ([cls].[owner].[name] AS VARCHAR(255)) AS [index_schema], " /* string -> varchar(255) */
       "[idx].[index_name] AS [index_name], "
       "([idx_key].[key_order] + 1) AS [seq_in_index], "
@@ -716,14 +716,14 @@ const char *sm_define_view_statistics_spec (void)
         "ELSE NULL "
       "END AS [collation], "
       "NULL AS [cardinality], "
-      "[idx].[filter_expression] AS [sub_part], "
+      "[idx_key].[key_prefix_length] AS [sub_part], "
       "IF ([attr].[is_nullable] = 1, 'YES', 'NO') AS [nullable], "
       "'BTREE' AS [index_type], "
       "NULL AS [comment], "
       "[idx].[comment] AS [index_comment], "
       "IF ([idx].[status] = 1, 'YES', 'NO') AS [is_visible], "
       "[idx_key].[func] AS [expression], "
-      "NULL AS [deduplicate_level], "
+      "[idx].[options] & %d AS [deduplicate_level], "
       "[idx].[created_time] AS [create_time], "
       "[idx].[updated_time] AS [update_time], "
       "NULL AS [access_time] "
@@ -738,6 +738,7 @@ const char *sm_define_view_statistics_spec (void)
       "LEFT OUTER JOIN [%s] AS [attr] ON [attr].[class_of] = [cls] AND [attr].[attr_name] = [idx_key].[key_attr_name] "
     "WHERE "
       AUTH_CHECK_OBJECT_ANY("[cls].[owner].[name]", "[cls].[class_of]"),
+    OPTION_DEDUPLICATE_MASK,
     CT_INDEXKEY_NAME,
     CT_INDEX_NAME,
     CT_CLASS_NAME,
