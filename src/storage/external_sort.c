@@ -58,7 +58,7 @@
 #include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
 #include "px_sort.h"
 #include "btree_load.h"
-#include "xasl.h"			/* GROUPBY_STATS — for GROUP_BY parallel trace */
+#include "xasl.h"		/* GROUPBY_STATS — for GROUP_BY parallel trace */
 #include "px_ftab_set.hpp"
 
 #include <functional>
@@ -1671,11 +1671,6 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
 	  px_status = PX_ERR_FAILED;
 	  goto cleanup;
 	}
-    }
-  else if (sort_param->px_type == SORT_GROUP_BY)
-    {
-      /* Worker runs inphase-only; aggregation (put_fn) must NOT fire. */
-      assert (sort_param->put_fn == NULL);
     }
   else
     {
@@ -4966,8 +4961,8 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
       QFILE_LIST_ID *input_list = gby->input_list;
       parallel_num =
 	parallel_query::compute_parallel_degree (parallel_query::parallel_type::SORT, input_list->page_cnt,
-						 gby->parallelism /* hint */);
-      if (parallel_num < 2 || input_list->tuple_cnt <= parallel_num)
+						 gby->parallelism /* hint */ );
+      if (parallel_num < 2 || input_list->tuple_cnt < parallel_num || input_list->page_cnt < parallel_num)
 	{
 	  return 1;
 	}
@@ -5524,7 +5519,7 @@ sort_merge_worker_runs_to_one (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_par
 	  px_sort_param[i].px_result_run = &result_run[first_idx];
 	  px_sort_param[i].px_status = PX_PROGRESS;
 
-	  parallel_query::callable_task *task =
+	  parallel_query::callable_task * task =
 	    new parallel_query::callable_task (sort_param->px_worker_manager,
 					       std::bind (sort_merge_nruns_parallel, std::placeholders::_1,
 							  &px_sort_param[i]));
@@ -5652,9 +5647,11 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	  for (int i = 0; i < parallel_num; i++)
 	    {
 	      gstats->px_min_groupby_time =
-		std::min (gstats->px_min_groupby_time, (UINT64) (TO_MSEC (px_sort_param[i].orderby_stats.orderby_time)));
+		std::min (gstats->px_min_groupby_time,
+			  (UINT64) (TO_MSEC (px_sort_param[i].orderby_stats.orderby_time)));
 	      gstats->px_max_groupby_time =
-		std::max (gstats->px_max_groupby_time, (UINT64) (TO_MSEC (px_sort_param[i].orderby_stats.orderby_time)));
+		std::max (gstats->px_max_groupby_time,
+			  (UINT64) (TO_MSEC (px_sort_param[i].orderby_stats.orderby_time)));
 	      gstats->px_min_groupby_pages =
 		std::min (gstats->px_min_groupby_pages, px_sort_param[i].orderby_stats.orderby_pages);
 	      gstats->px_max_groupby_pages =

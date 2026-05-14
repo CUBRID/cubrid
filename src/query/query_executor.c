@@ -5640,7 +5640,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 #else
 		     NULL
 #endif /* SERVER_MODE */
-		     ) != NO_ERROR)
+      ) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
