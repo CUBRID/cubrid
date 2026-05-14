@@ -3343,7 +3343,6 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
   HFID hfid;
   VPID vpid = vpid_Null_vpid;
 
-  /* CBRD-26678: cur_oid snapshot to re-sync the slot cursor with the page cursor at nofit */
   OID slot_resume_oid;
 
   db_make_null (&dbvalue);
@@ -3413,7 +3412,6 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 	}
       else
 	{
-	  /* snapshot resume slot before heap_next_1page advances cur_oid (CBRD-26678 nofit) */
 	  slot_resume_oid = sort_args->cur_oid;
 	  slot_iter_scan_result =
 	    heap_next_1page (thread_p, &sort_args->hfids[cur_class], &vpid, &sort_args->class_ids[cur_class],
@@ -3641,7 +3639,6 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 
 nofit:
 
-  /* CBRD-26678: re-anchor cur_oid onto vpid's page so the page cursor can't desync and skip a page */
   assert (!VPID_ISNULL (&vpid));
   if (!OID_ISNULL (&slot_resume_oid))
     {
