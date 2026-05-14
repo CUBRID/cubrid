@@ -571,13 +571,13 @@ const char *sm_define_view_routines_spec (void)
       "END AS [datetime_precision], "
       "NULL AS [dtd_identifier], "
       /* SP_LANG_PLCSQL, SP_LANG_JAVA */
-      "DECODE ([sp].[lang], %d, 'SQL', %d, 'EXTERNAL') AS [routine_body], "
+      "DECODE ([sp].[lang], %d, 'EXTERNAL', %d, 'EXTERNAL') AS [routine_body], "
       /* SP_LANG_PLCSQL */
       "IF ([sp].[lang] = %d, [sp_code].[scode], NULL) AS [routine_definition], "
       /* SP_LANG_JAVA */
       "IF ([sp].[lang] = %d, [sp].[target_class], NULL) AS [external_name], "
       /* SP_LANG_PLCSQL, SP_LANG_JAVA */
-      "DECODE ([sp].[lang], %d, 'SQL', %d, 'JAVA') AS [external_language], "
+      "DECODE ([sp].[lang], %d, 'PLCSQL', %d, 'JAVA') AS [external_language], "
       "'SQL' AS [parameter_style], "
       /* SP_DIRECTIVE_DETERMINISTIC */
       "IF (([sp].[directive] & %d) <> 0, 'YES', 'NO') AS [is_deterministic], "
