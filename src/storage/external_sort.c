@@ -197,6 +197,19 @@ struct sort_rec_list
   bool is_duplicated;		/* duplicated sort_key record flag */
 };				/* Sort record list */
 
+#if defined(SERVER_MODE)
+/* GBY_SORT_WORKER_INFO - minimal context for a parallel GROUP_BY inphase worker.
+ * Workers carry only read-only pointers; no GROUPBY_STATE cloning needed.
+ * key_info: shared read-only pointer to gbstate->key_info (set once before sort).
+ * state:    per-worker sector scan state (exclusive ownership, freed by worker). */
+typedef struct gby_sort_worker_info GBY_SORT_WORKER_INFO;
+struct gby_sort_worker_info
+{
+  SORTKEY_INFO *key_info;
+  sort_px_list_state *state;
+};
+#endif /* SERVER_MODE */
+
 typedef struct slotted_pheader SLOTTED_PAGE_HEADER;
 struct slotted_pheader
 {
