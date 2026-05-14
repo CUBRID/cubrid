@@ -5028,6 +5028,11 @@ qexec_gby_get_next (THREAD_ENTRY * thread_p, RECDES * recdes, void *arg)
 static int
 qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 {
+#if !defined(NDEBUG) && defined(SERVER_MODE)
+  /* qexec_gby_put_next carries cross-tuple aggregation state and must never
+   * run on a parallel worker thread — only on the main (serial Phase 3) thread. */
+  assert (thread_p->m_px_orig_thread_entry == NULL);
+#endif /* !NDEBUG && SERVER_MODE */
   GROUPBY_STATE *info;
   SORT_REC *key;
   char *data;
