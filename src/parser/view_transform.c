@@ -4757,7 +4757,7 @@ mq_dblink_corr_term_has_outer_ref (PARSER_CONTEXT * parser, PT_NODE * term)
  */
 static int
 mq_detect_dblink_corr_eq (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * dblink_spec,
-			   PT_NODE ** remote_out, PT_NODE ** outer_out)
+			  PT_NODE ** remote_out, PT_NODE ** outer_out)
 {
   PT_NODE *where, *term;
   bool forbidden;
@@ -4815,8 +4815,8 @@ mq_detect_dblink_corr_eq (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE *
 	      c1 = mq_dblink_corr_classify_side (term->info.expr.arg1, dblink_sid);
 	      c2 = mq_dblink_corr_classify_side (term->info.expr.arg2, dblink_sid);
 	      is_corr_eq = (c1 != MQ_DBLINK_CORR_SIDE_ERR && c2 != MQ_DBLINK_CORR_SIDE_ERR
-			   && ((c1 == MQ_DBLINK_CORR_SIDE_REMOTE && c2 == MQ_DBLINK_CORR_SIDE_OUTER)
-			       || (c1 == MQ_DBLINK_CORR_SIDE_OUTER && c2 == MQ_DBLINK_CORR_SIDE_REMOTE)));
+			    && ((c1 == MQ_DBLINK_CORR_SIDE_REMOTE && c2 == MQ_DBLINK_CORR_SIDE_OUTER)
+				|| (c1 == MQ_DBLINK_CORR_SIDE_OUTER && c2 == MQ_DBLINK_CORR_SIDE_REMOTE)));
 	    }
 
 	  if (is_corr_eq)
