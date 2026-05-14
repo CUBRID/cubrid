@@ -96,14 +96,6 @@ namespace cubschema
     return s;
   }
 
-  const inline std::string format_char (const int size)
-  {
-    std::string s ("char(");
-    s += std::to_string (size);
-    s += ")";
-    return s;
-  }
-
   const inline std::string format_numeric (const int prec, const int scale)
   {
     std::string s ("numeric(");

@@ -627,7 +627,7 @@ namespace cubschema
       {"index_name", format_varchar (255)},
       {"seq_in_index", "integer"},
       {"column_name", format_varchar (255)},
-      {"collation", format_char (1)},
+      {"collation", format_varchar (1)},
       {"cardinality", "integer"},
       {"sub_part", "integer"},
       {"nullable", format_varchar (3)},
