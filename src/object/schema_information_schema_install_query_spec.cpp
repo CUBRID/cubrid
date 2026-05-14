@@ -209,11 +209,11 @@ const char *sm_define_view_columns_spec (void)
         "IF (([attr].[flags] & %d) <> 0, 'partition_key', NULL)"
       ") AS [extra], "
       "NULL AS [privileges], "
+      "[attr].[comment] AS [column_comment], "
       "'NO' AS [is_generated], "
       "NULL AS [generation_expression], "
       "NULL AS [is_updatable], "
-      "IF (([attr].[flags] & %d) = 0, 'YES', 'NO') AS [is_visible], "
-      "[attr].[comment] AS [column_comment] "
+      "IF (([attr].[flags] & %d) = 0, 'YES', 'NO') AS [is_visible] "
     "FROM "
       /* CT_CLASS_NAME */
       "[%s] AS [cls] "

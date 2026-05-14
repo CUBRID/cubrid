@@ -168,11 +168,11 @@ namespace cubschema
       {"udt_name", format_varchar (255)},
       {"extra", format_varchar (255)},
       {"privileges", format_varchar (512)},
+      {"column_comment", format_varchar (2048)},
       {"is_generated", format_varchar (3)},
       {"generation_expression", "string"},
       {"is_updatable", format_varchar (3)},
       {"is_visible", format_varchar (3)},
-      {"column_comment", format_varchar (2048)},
       {attribute_kind::QUERY_SPEC, sm_define_view_columns_spec ()}
     },
     // constraint
