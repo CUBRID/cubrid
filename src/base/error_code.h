@@ -1755,8 +1755,9 @@
 
 #define ER_AU_LOGIN_DISABLED                        -1369
 
-#define ER_LAST_ERROR                               -1370
+#define ER_AUTO_INCREMENT_SINGLE_COL_ONLY           -1370
 
+#define ER_LAST_ERROR                               -1371
 
 
 

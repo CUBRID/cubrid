@@ -59,7 +59,7 @@ namespace cubload
 }
 
 /* start load functions */
-void ldr_sa_load (cubload::load_args *args, int *status, bool *interrupted);
+void ldr_sa_load (cubload::load_args *args, int *status, volatile bool *interrupted);
 
 /* log functions */
 void print_log_msg (int verbose, const char *fmt, ...);

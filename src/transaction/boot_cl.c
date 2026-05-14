@@ -84,6 +84,7 @@
 #include "show_meta.h"
 #include "tz_support.h"
 #include "dbtype.h"
+#include "method_callback.hpp"
 #include "object_primitive.h"
 #include "connection_globals.h"
 #include "host_lookup.h"
@@ -97,7 +98,6 @@
 
 #if defined(CS_MODE)
 #include "network.h"
-#include "connection_cl.h"
 #endif /* CS_MODE */
 #include "network_interface_cl.h"
 
@@ -714,6 +714,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   bool skip_preferred_hosts = false;
   bool skip_db_info = false;
 #endif /* CS_MODE */
+  const char *conf_file = NULL;
 
   assert (client_credential != NULL);
 
@@ -771,7 +772,18 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
 
   /* initialize system parameters */
-  if (sysprm_load_and_init_client (client_credential->get_db_name (), NULL) != NO_ERROR)
+#if defined (CS_MODE)
+  if (BOOT_BROKER_CLIENT_TYPE (client_credential->client_type))
+    {
+      conf_file = getenv ("CUBRID_CONF_FOR_BROKER");
+      if (conf_file && access (conf_file, R_OK | F_OK) != 0)
+	{
+	  conf_file = NULL;
+	}
+    }
+#endif
+
+  if (sysprm_load_and_init_client (client_credential->get_db_name (), conf_file) != NO_ERROR)
     {
       error_code = ER_BO_CANT_LOAD_SYSPRM;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
@@ -784,6 +796,14 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       assert_release (false);
       goto error;
     }
+
+#if defined (CS_MODE) && !defined (NDEBUG)
+  /* log the parameter loading file for CAS in debug mode. */
+  if (BOOT_BROKER_CLIENT_TYPE (client_credential->client_type))
+    {
+      _er_log_debug (ARG_FILE_LINE, "conf_for_broker = %s\n", conf_file ? conf_file : "unknown");
+    }
+#endif
 
   pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
 
@@ -1133,10 +1153,9 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   tran_lock_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
 
   er_log_debug (ARG_FILE_LINE,
-		"boot_restart_client: register client { type %d db %s user %s password %s "
+		"boot_restart_client: register client { type %d db %s user %s password **** "
 		"program %s login %s host %s pid %d }\n", client_credential->client_type,
 		client_credential->get_db_name (), client_credential->get_db_user (),
-		client_credential->db_password.empty ()? "(null)" : client_credential->get_db_password (),
 		client_credential->get_program_name (),
 		client_credential->get_login_name (), client_credential->get_host_name (),
 		client_credential->process_id);
@@ -1389,7 +1408,7 @@ boot_shutdown_client (bool is_er_final)
 	{
 	  (void) boot_unregister_client (tm_Tran_index);
 #if defined(CS_MODE)
-	  (void) net_client_final ();
+	  (void) net_client_final (false);
 #else /* CS_MODE */
 #if defined(WINDOWS)
 	  css_windows_shutdown ();
@@ -1471,7 +1490,7 @@ boot_server_die_or_changed (void)
       boot_client (NULL_TRAN_INDEX, TM_TRAN_WAIT_MSECS (), TM_TRAN_ISOLATION ());
       boot_Is_client_all_final = false;
 #if defined(CS_MODE)
-      css_terminate (true);
+      net_client_final (true);
 #endif /* !CS_MODE */
       if (prm_get_bool_value (PRM_ID_TEST_MODE))
 	{
@@ -1535,6 +1554,7 @@ boot_client_all_finalize (int final_level)
 	  tr_final ();
 	  au_final ();
 	  sm_final ();
+	  method_callback_final ();
 	  ws_final ();
 	  es_final ();
 	  tp_final ();
@@ -1566,12 +1586,11 @@ boot_client_all_finalize (int final_level)
 
       boot_client (NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT, TRAN_DEFAULT_ISOLATION_LEVEL ());
       boot_Is_client_all_final = true;
-
-      /* restore the signals that was blocked, when the function started. */
-      signal (SIGTERM, sigterm_handler);
-      signal (SIGABRT, sigabrt_handler);
-      signal (SIGINT, sigint_handler);
     }
+  /* restore the signals that was blocked, when the function ended. */
+  signal (SIGTERM, sigterm_handler);
+  signal (SIGABRT, sigabrt_handler);
+  signal (SIGINT, sigint_handler);
 }
 
 #if defined(CS_MODE)
@@ -1688,7 +1707,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
 	  error = net_client_ping_server_with_handshake (client_type, check_capabilities, opt_cap);
 	  if (error != NO_ERROR)
 	    {
-	      css_terminate (false);
+	      net_client_final (false);
 	    }
 	}
 

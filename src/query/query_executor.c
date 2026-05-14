@@ -438,6 +438,7 @@ static void qexec_clear_head_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_li
 static void qexec_clear_head_lists_with_truncate (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static void qexec_clear_scan_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static void qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
+static void qexec_final_close_dblink_specs (XASL_NODE * xasl);
 static int qexec_clear_update_assignment (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, UPDATE_ASSIGNMENT * assignment,
 					  bool is_final);
 static DB_LOGICAL qexec_eval_ordbynum_pred (THREAD_ENTRY * thread_p, ORDBYNUM_INFO * ordby_info);
@@ -603,6 +604,7 @@ static SCAN_CODE qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC
 
 static int qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				     bool * empty_result);
+static XASL_NODE *qexec_determine_fixed_scan_xasl (XASL_NODE * xasl);
 static int qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					     UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info);
 static DEL_LOB_INFO *qexec_create_delete_lob_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
@@ -721,7 +723,8 @@ static void qexec_clear_pred_xasl (THREAD_ENTRY * thread_p, PRED_EXPR * pred);
 static void qexec_set_xasl_trace_to_session (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 #endif /* SERVER_MODE */
 
-static int qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * proc, XASL_STATE * xasl_state);
+static int qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * proc, XASL_STATE * xasl_state,
+					 bool not_use_membuf);
 static void qexec_free_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * proc);
 static int qexec_build_agg_hkey (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, REGU_VARIABLE_LIST regu_list,
 				 QFILE_TUPLE tpl, AGGREGATE_HASH_KEY * key);
@@ -1557,6 +1560,13 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
 		  /* regu_var->xasl not cleared yet. Clear the values allocated during execution. */
 		  pg_cnt += qexec_clear_xasl (thread_p, regu_var->xasl, is_final, for_parallel_aptr);
 		}
+	      else
+		{
+		  /* xcache clone reuse: XASL already cleared this run (status reset to XASL_INITIALIZED),
+		   * so skip full qexec_clear_xasl. But CCI handles must still be released — safe no-op if
+		   * qexec_clear_xasl already ran qexec_final_close_dblink_specs (stmt_handle = -1 sentinel). */
+		  qexec_final_close_dblink_specs (regu_var->xasl);
+		}
 	    }
 	  else if (regu_var->xasl->status != XASL_CLEARED)
 	    {
@@ -1956,8 +1966,8 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT >
 			*)p->s_id.s.phsid.manager)->close ();
 		      break;
-		    case parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT:
-		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT >
+		    case parallel_heap_scan::RESULT_TYPE::BUILDVALUE_OPT:
+		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::BUILDVALUE_OPT >
 			*)p->s_id.s.phsid.manager)->close ();
 		      break;
 		    default:
@@ -2397,6 +2407,35 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
       sq_cache_destroy (thread_p, xasl->sq_cache);
     }
 
+
+  /* Final teardown of correlated DBLink CCI handles — runs for all proc types so that inner
+   * DBLink XASLs (BUILDVALUE_PROC wrappers included) are covered regardless of which branch follows. */
+  qexec_final_close_dblink_specs (xasl);
+
+#if !defined(NDEBUG)
+  /* Invariant: after final teardown every DBLink spec must have released its handles.
+   * If either assertion fires here, qexec_final_close_dblink_specs did not reach this spec —
+   * i.e., the setter (cursor_rewind=1) was applied but the unsetter (is_final close) was not. */
+  {
+    ACCESS_SPEC_TYPE *dbg_spec;
+    for (dbg_spec = xasl->spec_list; dbg_spec != NULL; dbg_spec = dbg_spec->next)
+      {
+	if (dbg_spec->type == TARGET_DBLINK)
+	  {
+	    assert (dbg_spec->s_id.s.dblid.scan_info.stmt_handle <= 0);
+	    assert (dbg_spec->s_id.s.dblid.scan_info.cursor_rewind == 0);
+	  }
+      }
+    for (dbg_spec = xasl->merge_spec; dbg_spec != NULL; dbg_spec = dbg_spec->next)
+      {
+	if (dbg_spec->type == TARGET_DBLINK)
+	  {
+	    assert (dbg_spec->s_id.s.dblid.scan_info.stmt_handle <= 0);
+	    assert (dbg_spec->s_id.s.dblid.scan_info.cursor_rewind == 0);
+	  }
+      }
+  }
+#endif /* !defined(NDEBUG) */
 
   switch (xasl->type)
     {
@@ -2857,6 +2896,9 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
       qfile_clear_list_id (xasl->list_id);
     }
 
+  /* Final teardown of correlated DBLink CCI handles (parallel aptr path). */
+  qexec_final_close_dblink_specs (xasl);
+
   /* clear the body node */
   /* not clear aptr nodes has px_executor; it will be cleared by other threads. */
   if (xasl->aptr_list)
@@ -3312,8 +3354,6 @@ qexec_clear_head_lists_with_truncate (THREAD_ENTRY * thread_p, XASL_NODE * xasl_
 	  /* skip out zero correlation-level uncorrelated subquery */
 	  continue;
 	}
-
-
       if (xasl->list_id && !xasl->list_id->is_result_cached)
 	{
 	  qfile_truncate_list (thread_p, xasl->list_id);
@@ -3440,6 +3480,41 @@ qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
       if (xasl->scan_ptr)
 	{
 	  qexec_clear_scan_all_lists (thread_p, xasl->scan_ptr);
+	}
+    }
+}
+
+/*
+ * qexec_final_close_dblink_specs () - Walk spec_list and merge_spec of one XASL node and call
+ * dblink_close_scan(is_final=true) for every TARGET_DBLINK spec whose CCI handles are still open.
+ *
+ * Called from qexec_clear_xasl / qexec_clear_xasl_for_parallel_aptr before the proc-type switch so that
+ * the teardown runs regardless of XASL proc type (BUILDLIST, BUILDVALUE, etc.).
+ *
+ * Safe to call multiple times: dblink_close_scan sets stmt_handle = -1 on success, so subsequent calls
+ * return immediately via the stmt_handle < 0 sentinel.
+ */
+static void
+qexec_final_close_dblink_specs (XASL_NODE * xasl)
+{
+  ACCESS_SPEC_TYPE *spec;
+
+  if (xasl == NULL)
+    {
+      return;
+    }
+  for (spec = xasl->spec_list; spec != NULL; spec = spec->next)
+    {
+      if (spec->type == TARGET_DBLINK)
+	{
+	  (void) dblink_close_scan (&spec->s_id.s.dblid.scan_info, true);
+	}
+    }
+  for (spec = xasl->merge_spec; spec != NULL; spec = spec->next)
+    {
+      if (spec->type == TARGET_DBLINK)
+	{
+	  (void) dblink_close_scan (&spec->s_id.s.dblid.scan_info, true);
 	}
     }
 }
@@ -4511,6 +4586,16 @@ exit_on_error:
   goto wrapup;
 }
 
+int
+qexec_hash_gby_agg_tuple_public (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,
+				 QFILE_TUPLE_RECORD * tplrec, QFILE_TUPLE_DESCRIPTOR * tpldesc,
+				 QFILE_LIST_ID * groupby_list, bool * output_tuple)
+{
+  assert (xasl->type == BUILDLIST_PROC);
+  return qexec_hash_gby_agg_tuple (thread_p, xasl, xasl_state, &xasl->proc.buildlist, tplrec, tpldesc, groupby_list,
+				   output_tuple);
+}
+
 /*
  * qexec_hash_gby_agg_tuple () - aggregate tuple using hash table
  *   return: error code or NO_ERROR
@@ -4545,6 +4630,19 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   if (thread_is_on_trace (thread_p))
     {
       tsc_getticks (&start_tick);
+    }
+
+
+  REGU_VARIABLE_LIST regu_var_p = xasl->outptr_list->valptrp;
+  int f_idx = 0;
+  for (int i = 0; i < xasl->outptr_list->valptr_cnt && regu_var_p; i++, regu_var_p = regu_var_p->next)
+    {
+      if (REGU_VARIABLE_IS_FLAGED (&regu_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
+	{
+	  continue;
+	}
+      pr_share_value (tpldesc->f_valp[f_idx], regu_var_p->value.vfetch_to);
+      f_idx++;
     }
 
   /* build key */
@@ -4620,6 +4718,9 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     }
   else
     {
+      REGU_VARIABLE_LIST regu_var_p;
+      DB_VALUE *tmp;
+
       /* no need to output tuple */
       *output_tuple = false;
 
@@ -4628,7 +4729,30 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       context->tuple_count++;
 
       /* fetch values */
-      rc = fetch_val_list (thread_p, proc->g_scan_regu_list, &xasl_state->vd, NULL, NULL, tplrec->tpl, true);
+      for (regu_var_p = proc->g_scan_regu_list; regu_var_p != NULL; regu_var_p = regu_var_p->next)
+	{
+	  if (REGU_VARIABLE_IS_FLAGED (&regu_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
+	    {
+	      if (regu_var_p->value.vfetch_to && pr_is_set_type (DB_VALUE_DOMAIN_TYPE (regu_var_p->value.vfetch_to)))
+		{
+		  pr_clear_value (regu_var_p->value.vfetch_to);
+		}
+
+	      if (regu_var_p->value.vfetch_to && DB_NEED_CLEAR (regu_var_p->value.vfetch_to))
+		{
+		  pr_clear_value (regu_var_p->value.vfetch_to);
+		}
+
+	      rc = fetch_peek_dbval (thread_p, &regu_var_p->value, &xasl_state->vd, NULL, NULL, tplrec->tpl, &tmp);
+	      if (rc != NO_ERROR)
+		{
+		  pr_clear_value (regu_var_p->value.vfetch_to);
+		  return ER_FAILED;
+		}
+
+	      pr_share_value (tmp, regu_var_p->value.vfetch_to);
+	    }
+	}
 
       /* eval aggregate functions */
       if (rc == NO_ERROR)
@@ -7568,6 +7692,10 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	host_vars.count = curr_spec->s.dblink_node.host_var_count;
 	host_vars.index = curr_spec->s.dblink_node.host_var_index;
 
+	/* inject reuse flag before open: scan_init_scan_id does not touch s.dblid.scan_info,
+	 * so the flag survives across open/close cycles. */
+	s_id->s.dblid.scan_info.cursor_rewind = IS_DBLINK_CURSOR_REWIND_XASL (xasl) ? 1 : 0;
+
 	error_code = scan_open_dblink_scan (thread_p, s_id, curr_spec, vd, val_list, &host_vars);
 	if (error_code != NO_ERROR)
 	  {
@@ -9073,6 +9201,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	{
 	  int error = NO_ERROR;
 	  bool is_scan_needed = false;
+
 	  if (!buildvalue->is_always_false)
 	    {
 	      error =
@@ -14996,6 +15125,78 @@ qexec_execute_dblink_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STAT
 }
 
 /*
+ * qexec_determine_fixed_scan_xasl () - Determine which XASL node is eligible for fixed heap scan.
+ *   return: the innermost TARGET_CLASS XASL node that should use fixed scan, or NULL if fixed scan is not allowed.
+ *   xasl(in): top-level XASL node
+ *
+ * Fixed scan keeps the last fetched heap page latched between rows (PEEK mode), avoiding repeated fix/unfix overhead.
+ * It is disabled when: composite locking is required, any index scan is present, a correlated subquery exists,
+ * a HAVING subquery exists, an uncorrelated subquery linked to a regu variable exists, or the XASL_NO_FIXED_SCAN
+ * flag was set at compile time.
+ */
+static XASL_NODE *
+qexec_determine_fixed_scan_xasl (XASL_NODE * xasl)
+{
+  XASL_NODE *xptr;
+  ACCESS_SPEC_TYPE *specp;
+  XASL_NODE *fixed_scan_xasl = NULL;
+  bool has_index_scan = false;
+
+  if (COMPOSITE_LOCK (xasl->scan_op_type))
+    {
+      return NULL;
+    }
+
+  for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
+    {
+      for (specp = xptr->spec_list; specp; specp = specp->next)
+	{
+	  if (specp->type == TARGET_CLASS)
+	    {
+	      fixed_scan_xasl = xptr;
+	      if (IS_ANY_INDEX_ACCESS (specp->access))
+		{
+		  has_index_scan = true;
+		  break;
+		}
+	    }
+	}
+      if (has_index_scan)
+	{
+	  break;
+	}
+      specp = xptr->merge_spec;
+      if (specp && specp->type == TARGET_CLASS)
+	{
+	  fixed_scan_xasl = xptr;
+	  if (IS_ANY_INDEX_ACCESS (specp->access))
+	    {
+	      has_index_scan = true;
+	      break;
+	    }
+	}
+    }
+
+  if (has_index_scan || XASL_IS_FLAGED (xasl, XASL_NO_FIXED_SCAN) || xasl->dptr_list != NULL)
+    {
+      return NULL;
+    }
+  if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.eptr_list != NULL)
+    {
+      return NULL;
+    }
+  for (xptr = xasl->aptr_list; xptr != NULL; xptr = xptr->next)
+    {
+      if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
+	{
+	  return NULL;
+	}
+    }
+
+  return fixed_scan_xasl;
+}
+
+/*
  * qexec_execute_mainblock_internal () -
  *   return: NO_ERROR, or ER_code
  *   xasl(in)   : XASL Tree pointer
@@ -15020,7 +15221,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   XASL_NODE *outer_xasl = NULL, *inner_xasl = NULL;
   XASL_NODE *fixed_scan_xasl = NULL;
   bool iscan_oid_order, force_select_lock = false;
-  bool has_index_scan = false;
   int old_wait_msecs, wait_msecs;
   int error;
   bool empty_result = false;
@@ -15287,7 +15487,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  /* disable hash aggregate evaluation when group by skip is possible */
 		  xasl->proc.buildlist.g_hash_eligible = 0;
 		}
-	      else if (qexec_alloc_agg_hash_context (thread_p, &xasl->proc.buildlist, xasl_state) != NO_ERROR)
+	      else if (qexec_alloc_agg_hash_context (thread_p, &xasl->proc.buildlist, xasl_state, false) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -15539,84 +15739,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
       /* iterative processing is done only for XASL blocks that has access specification list blocks. */
       if (xasl->spec_list)
 	{
-	  /* Decide which scan will use fixed flags and which won't. There are several cases here: 1. Do not use fixed
-	   * scans if locks on objects are required. 2. Disable all fixed scans if any index scan is used (this is
-	   * legacy and should be reconsidered). 3. Disable fixed scan for outer scans. Fixed cannot be allowed while
-	   * new scans start which also need to fix pages. This may lead to page deadlocks. NOTE: Only the innermost
-	   * scans are allowed fixed scans. */
-	  if (COMPOSITE_LOCK (xasl->scan_op_type))
-	    {
-	      /* Do locking on each instance instead of composite locking */
-	      /* Fall through */
-	    }
-	  else
-	    {
-	      for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
-		{
-		  specp = xptr->spec_list;
-		  for (; specp; specp = specp->next)
-		    {
-		      if (specp->type == TARGET_CLASS)
-			{
-			  /* Update fixed scan XASL */
-			  fixed_scan_xasl = xptr;
-			  if (IS_ANY_INDEX_ACCESS (specp->access))
-			    {
-			      has_index_scan = true;
-			      break;
-			    }
-			}
-		    }
-		  if (has_index_scan)
-		    {
-		      /* Stop search */
-		      break;
-		    }
-		  specp = xptr->merge_spec;
-		  if (specp)
-		    {
-		      if (specp->type == TARGET_CLASS)
-			{
-			  /* Update fixed scan XASL */
-			  fixed_scan_xasl = xptr;
-			  if (IS_ANY_INDEX_ACCESS (specp->access))
-			    {
-			      has_index_scan = true;
-			      break;
-			    }
-			}
-		    }
-		}
-	    }
-	  if (has_index_scan)
-	    {
-	      /* Index found, no fixed is allowed */
-	      fixed_scan_xasl = NULL;
-	    }
-	  if (XASL_IS_FLAGED (xasl, XASL_NO_FIXED_SCAN))
-	    {
-	      /* no fixed scan if it was decided so during compilation */
-	      fixed_scan_xasl = NULL;
-	    }
-	  if (xasl->dptr_list != NULL)
-	    {
-	      /* correlated subquery found, no fixed is allowed */
-	      fixed_scan_xasl = NULL;
-	    }
-	  if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.eptr_list != NULL)
-	    {
-	      /* subquery in HAVING clause, can't have fixed scan */
-	      fixed_scan_xasl = NULL;
-	    }
-	  for (xptr = xasl->aptr_list; xptr != NULL; xptr = xptr->next)
-	    {
-	      if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
-		{
-		  /* uncorrelated query that is not pre-executed, but evaluated in a reguvar; no fixed scan in this
-		   * case */
-		  fixed_scan_xasl = NULL;
-		}
-	    }
+	  fixed_scan_xasl = qexec_determine_fixed_scan_xasl (xasl);
 
 	  /* open all the scans that are involved within the query, for SCAN blocks */
 	  for (xptr = xasl, level = 0; xptr; xptr = xptr->scan_ptr, level++)
@@ -15629,7 +15752,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  for (specp = spec_ptr[spec_level]; specp; specp = specp->next)
 		    {
 		      specp->fixed_scan = (xptr == fixed_scan_xasl)
-			|| ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN);
+			|| (ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN)
+			    && !COMPOSITE_LOCK (xasl->scan_op_type));
 
 		      /* set if the scan will be done in a grouped manner */
 		      if ((level == 0 && xptr->scan_ptr == NULL) && (QPROC_MAX_GROUPED_SCAN_CNT > 0))
@@ -15962,8 +16086,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	}
 
       /* process analytic functions */
-      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.a_eval_list
-	  && !XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.a_eval_list)
 	{
 	  ANALYTIC_EVAL_TYPE *eval_list;
 	  bool is_skip_sort = XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT);
@@ -20155,8 +20278,8 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist, OUTPTR_LIST
 }
 
 int
-qexec_resolve_domains_for_aggregation_for_parallel_heap_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, void *vd,
-							      int *resolved)
+qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_g_agg (THREAD_ENTRY * thread_p, XASL_NODE * xasl, void *vd,
+								    int *resolved)
 {
   QFILE_TUPLE_RECORD tpl = { NULL, 0 };
   VAL_DESCR *vd_p = (VAL_DESCR *) vd;
@@ -20165,8 +20288,8 @@ qexec_resolve_domains_for_aggregation_for_parallel_heap_scan (THREAD_ENTRY * thr
 }
 
 int
-qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_aggregate (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
-									void *vd, int *resolved)
+qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_buildvalue_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
+									      void *vd, int *resolved)
 {
   QFILE_TUPLE_RECORD tpl = { NULL, 0 };
   VAL_DESCR *vd_p = (VAL_DESCR *) vd;
@@ -20968,10 +21091,18 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   bool finalized = false;
   int i = 0;
   ANALYTIC_TYPE *func_p = NULL;
-  UINT64 old_sort_pages = 0, old_sort_ioreads = 0, old_ioreads = 0, old_fetches = 0;
+  UINT64 old_sort_pages = 0, old_sort_ioreads = 0;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   bool on_trace = false;
+
+  on_trace = thread_is_on_trace (thread_p);
+  if (on_trace)
+    {
+      tsc_getticks (&start_tick);
+      old_sort_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES);
+      old_sort_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+    }
 
   /* fetch regulist and outlist */
   a_outptr_list = (is_last ? buildlist->a_outptr_list : buildlist->a_outptr_list_interm);
@@ -20986,6 +21117,12 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 				       &list_id->type_list, tplrec) == NULL)
     {
       GOTO_EXIT_ON_ERROR;
+    }
+
+  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+    {
+      analytic_state.state = NO_ERROR;
+      goto wrapup;
     }
 
   if (analytic_state.is_last_run)
@@ -21089,16 +21226,6 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   interm_scan_id.keep_page_on_finish = 1;
   analytic_state.interm_scan = &interm_scan_id;
 
-  on_trace = thread_is_on_trace (thread_p);
-  if (on_trace)
-    {
-      tsc_getticks (&start_tick);
-      old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
-      old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
-      old_sort_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES);
-      old_sort_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
-    }
-
   /*
    * Now load up the sort module and set it off...
    */
@@ -21109,6 +21236,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
+      finalized = true;
       analytic_state.state = NO_ERROR;
       goto wrapup;
     }
@@ -21175,9 +21303,17 @@ wrapup:
       if (new_stat != NULL)
 	{
 	  memset (new_stat, 0, sizeof (ANALYTIC_STATS));
-	  new_stat->run_analytic = true;
+	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+	    {
+	      new_stat->analytic_stopkey = true;
+	      new_stat->analytic_sort = false;
+	    }
+	  else
+	    {
+	      new_stat->analytic_stopkey = false;
+	      new_stat->analytic_sort = !is_skip_sort;
+	    }
 	  TSC_ADD_TIMEVAL (new_stat->analytic_time, tv_diff);
-	  new_stat->analytic_sort = !is_skip_sort;
 
 	  new_stat->analytic_pages =
 	    (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) - old_sort_pages);
@@ -21225,13 +21361,16 @@ wrapup:
 	  analytic_state.input_scan = NULL;
 	}
 
-      /* replace current input with output */
-      qfile_close_list (thread_p, analytic_state.output_file);
-      qfile_destroy_list (thread_p, list_id);
-      qfile_copy_list_id (list_id, analytic_state.output_file, true, QFILE_PROHIBIT_DEPENDENT);
+      if (analytic_state.output_file != NULL)
+	{
+	  /* replace current input with output */
+	  qfile_close_list (thread_p, analytic_state.output_file);
+	  qfile_destroy_list (thread_p, list_id);
+	  qfile_copy_list_id (list_id, analytic_state.output_file, true, QFILE_PROHIBIT_DEPENDENT);
 
-      qfile_free_list_id (analytic_state.output_file);
-      analytic_state.output_file = NULL;
+	  qfile_free_list_id (analytic_state.output_file);
+	  analytic_state.output_file = NULL;
+	}
     }
 
   /* clear internal processing items */
@@ -21563,6 +21702,9 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
   analytic_state->input_tplrec.tpl = 0;
   analytic_state->input_recs = 0;
 
+  analytic_state->func_state_list = NULL;
+  analytic_state->func_count = 0;
+
   analytic_state->curr_sort_page.vpid.pageid = NULL_PAGEID;
   analytic_state->curr_sort_page.vpid.volid = NULL_VOLID;
   analytic_state->curr_sort_page.page_p = NULL;
@@ -21581,6 +21723,11 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
       analytic_state->key_info.use_original = 1;
       analytic_state->key_info.key = NULL;
       analytic_state->key_info.error = NO_ERROR;
+    }
+
+  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+    {
+      goto resolve_domain;
     }
 
   /* build function states */
@@ -21639,6 +21786,7 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
 	}
     }
 
+resolve_domain:
   /* resolve domains in regulist */
   for (regu_list = a_regu_list; regu_list; regu_list = regu_list->next)
     {
@@ -25818,6 +25966,16 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
       if (!*is_scan_needed && agg_ptr->function == PT_COUNT_STAR)
 	{
 	  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+	  if (tdes == NULL || tdes->isolation >= TRAN_REPEATABLE_READ)
+	    {
+	      /* COUNT(*) optimization uses global statistics that bypass MVCC visibility;
+	       * fall back to full scan under REPEATABLE_READ or SERIALIZABLE to prevent phantom reads. */
+	      agg_ptr->flag.agg_optimized = false;
+	      *is_scan_needed = true;
+	      continue;
+	    }
+
 	  LOG_TRAN_CLASS_COS *class_cos = logtb_tran_find_class_cos (thread_p, &ACCESS_SPEC_CLS_OID (spec),
 								     true);
 	  if (class_cos == NULL)
@@ -25826,31 +25984,48 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	      *is_scan_needed = true;
 	      continue;
 	    }
-	  if (tdes->mvccinfo.snapshot.valid)
+
+	  /* to check for query like 'select count(*), count(*) ...' */
+	  if (class_cos->count_state != COS_LOADED)
 	    {
-	      if (class_cos->count_state != COS_LOADED)
-		{
-		  agg_ptr->flag.agg_optimized = false;
-		  *is_scan_needed = true;
-		  continue;
-		}
-	    }
-	  else
-	    {
+
+	      class_cos->count_state = COS_TO_LOAD;
 	      if (logtb_tran_find_btid_stats (thread_p, &agg_ptr->btid, true) == NULL)
 		{
 		  agg_ptr->flag.agg_optimized = false;
 		  *is_scan_needed = true;
 		  continue;
 		}
-	      class_cos->count_state = COS_TO_LOAD;
 
-	      if (logtb_get_mvcc_snapshot (thread_p) == NULL)
+	      if (!tdes->mvccinfo.snapshot.valid)
 		{
-		  error = er_errid ();
-		  return (error == NO_ERROR ? ER_FAILED : error);
+		  if (logtb_get_mvcc_snapshot (thread_p) == NULL)
+		    {
+		      error = er_errid ();
+		      return (error == NO_ERROR ? ER_FAILED : error);
+		    }
 		}
 
+	      /* 
+	       * build_mvcc_info() loads stats only for classes already marked COS_TO_LOAD at snapshot time.
+	       * Under parallel UNION execution, the snapshot may have been built by another thread before this
+	       * class was marked COS_TO_LOAD, so its stats were never loaded.  Always retry here if still needed.
+	       */
+	      if (class_cos->count_state != COS_LOADED)
+		{
+		  if (logtb_load_global_statistics_to_tran (thread_p) != NO_ERROR)
+		    {
+		      error = er_errid ();
+		      return (error == NO_ERROR ? ER_FAILED : error);
+		    }
+		}
+
+	      if (class_cos->count_state != COS_LOADED)
+		{
+		  agg_ptr->flag.agg_optimized = false;
+		  *is_scan_needed = true;
+		  continue;
+		}
 	    }
 	}
 
@@ -26810,6 +26985,14 @@ qexec_clear_pred_xasl (THREAD_ENTRY * thread_p, PRED_EXPR * pred)
     }
 }
 
+int
+qexec_alloc_agg_hash_context_buildlist_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,
+					     bool not_use_membuf)
+{
+  assert (xasl->type == BUILDLIST_PROC);
+  return qexec_alloc_agg_hash_context (thread_p, &xasl->proc.buildlist, xasl_state, not_use_membuf);
+}
+
 /*
  * qexec_alloc_agg_hash_context () - allocate hash aggregate evaluation related
  *                                   structures used at runtime
@@ -26819,12 +27002,14 @@ qexec_clear_pred_xasl (THREAD_ENTRY * thread_p, PRED_EXPR * pred)
  *   xasl_state(in): XASL state
  */
 static int
-qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * proc, XASL_STATE * xasl_state)
+qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * proc, XASL_STATE * xasl_state,
+			      bool not_use_membuf)
 {
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
   REGU_VARIABLE_LIST regu_list;
   AGGREGATE_TYPE *agg_list;
   int value_count = 0, i = 0, error_code = NO_ERROR;
+  int open_list_flag = not_use_membuf ? QFILE_NOT_USE_MEMBUF : 0;
 
   if (!proc->g_hash_eligible)
     {
@@ -26945,7 +27130,8 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   proc->agg_hash_context->sort_key.nkeys = 0;
 
   /* create list files */
-  proc->agg_hash_context->part_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
+  proc->agg_hash_context->part_list_id =
+    qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, open_list_flag, NULL);
   proc->agg_hash_context->sorted_part_list_id =
     qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
 
@@ -27186,11 +27372,20 @@ qexec_build_agg_hkey (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, REGU_VAR
   key->val_count = 0;
   while (regu_list != NULL)
     {
-      rc =
-	fetch_peek_dbval (thread_p, &regu_list->value, &xasl_state->vd, NULL, NULL, tpl, &key->values[key->val_count]);
-      if (rc != NO_ERROR)
+      if (tpl == NULL)
 	{
-	  return rc;
+	  /* tpl is NULL when called during the processing phase */
+	  key->values[key->val_count] = regu_list->value.vfetch_to;
+	}
+      else
+	{
+	  rc =
+	    fetch_peek_dbval (thread_p, &regu_list->value, &xasl_state->vd, NULL, NULL, tpl,
+			      &key->values[key->val_count]);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
 	}
 
       /* next */
