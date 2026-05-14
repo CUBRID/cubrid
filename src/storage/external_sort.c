@@ -4292,6 +4292,24 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
 	      free_and_init (sort_param->get_arg);
 	    }
 	}
+      else if (sort_param->px_type == SORT_GROUP_BY)
+	{
+	  if (sort_param->get_arg != NULL)
+	    {
+	      SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
+	      if (sort_info_p->px_state != NULL)
+		{
+		  qfile_sort_px_state_free (thread_p, (sort_px_list_state *) sort_info_p->px_state);
+		  sort_info_p->px_state = NULL;
+		}
+	      if (sort_info_p->input_file != NULL)
+		{
+		  qfile_free_list_id (sort_info_p->input_file);
+		}
+	      db_private_free_and_init (thread_p, sort_param->get_arg);
+	    }
+	  /* put_arg is NULL for GROUP_BY parallel workers */
+	}
       else
 	{
 	  assert (false);
@@ -5670,10 +5688,15 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	{
 	  return ER_FAILED;
 	}
-      /* sort_param->tot_runs == 1, half_files == 1, tot_tempfiles == 2 */
 
       /* Phase 3: serial aggregate — clear SORT_IS_PARALLEL so put_fn gates open */
       sort_param->px_parallel_num = 1;
+
+      /* All workers produced empty output — no tuples to aggregate */
+      if (sort_param->tot_runs == 0)
+	{
+	  return NO_ERROR;
+	}
 
       /* allocate output temp slot (temp[1]) for sort_exphase_merge / sort_run_final_single */
       int pg_est = MAX (1, sort_get_avg_numpages_of_nonempty_tmpfile (sort_param));
