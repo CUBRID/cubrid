@@ -4965,7 +4965,8 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	}
       QFILE_LIST_ID *input_list = gby->input_list;
       parallel_num =
-	parallel_query::compute_parallel_degree (parallel_query::parallel_type::SORT, input_list->page_cnt, -1);
+	parallel_query::compute_parallel_degree (parallel_query::parallel_type::SORT, input_list->page_cnt,
+						 gby->parallelism /* hint */);
       if (parallel_num < 2 || input_list->tuple_cnt <= parallel_num)
 	{
 	  return 1;

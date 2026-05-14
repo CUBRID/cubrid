@@ -170,6 +170,7 @@ struct gby_sort_param
   QFILE_LIST_ID *input_list;	/* points to &gbstate.input_scan->list_id */
   int hash_eligible;		/* if non-zero, parallelism must be skipped */
   void *groupby_stats;		/* points to GROUPBY_STATS in xasl node for trace output */
+  int parallelism;		/* parallel(N) hint from xasl->parallelism; -1 = auto */
 };
 #endif /* SERVER_MODE */
 
