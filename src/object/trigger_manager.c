@@ -4484,51 +4484,64 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback, bool need_savepoin
 
   if (error == NO_ERROR || rollback)
     {
-      /* remove it from the uncommitted trigger list (if its on there) */
-      remove_trigger_list (&tr_Uncommitted_triggers, trigger);
-
-      /* remove it from the memory cache */
-      error = tr_unmap_trigger (trigger);
-
-      if (error == NO_ERROR || rollback)
+      /*
+       * Perform all disk-level operations before touching in-memory structures.
+       * If any disk operation fails, the savepoint restores all catalog state
+       * and the in-memory cache and name table remain consistent with the disk.
+       * During rollback the trigger object will be undone automatically as part
+       * of the normal transaction cleanup, so disk operations are skipped.
+       */
+      if (!rollback)
 	{
-	  /* remove it from the global name table */
-	  error = trigger_table_drop (trigger->name);
-
-	  if (error == NO_ERROR && !rollback)
+	  /* drop the internally-created SP backing a PL/SQL block action */
+	  if (trigger->action_body_sp != NULL)
 	    {
-	      /*
-	       * if this isn't a rollback, delete the object, otherwise
-	       * it will already be marked as deleted as part of the normal transaction cleanup
-	       */
-	      if (trigger->action_body_sp != NULL)
-		{
-		  /* drop the internally-created SP backing a PL/SQL block action;
-		   * on failure, propagate the error so the savepoint rolls back all
-		   * DB-level changes made so far in this function */
-		  error = jsp_drop_trigger_body_sp (trigger->action_body_sp);
-		}
-
-	      if (error == NO_ERROR)
-		{
-		  db_drop (trigger->object);
-
-		  /*
-		   * flush, decache object; no need to check if the object was indeed deleted;
-		   * it is supposed that the last version of the object was locked and deleted
-		   * because only the last version can be locked; previous versions are in the log
-		   */
-		  error = locator_flush_instance (trigger->object);
-		  if (error == NO_ERROR)
-		    {
-		      ws_decache (trigger->object);
-		      ws_clear_hints (trigger->object, false);
-		    }
-		}
+	      error = jsp_drop_trigger_body_sp (trigger->action_body_sp);
 	    }
 
-	  /* free the cache structure */
-	  free_trigger (trigger);
+	  if (error == NO_ERROR)
+	    {
+	      /*
+	       * delete the trigger object; during rollback it will already be
+	       * marked as deleted as part of the normal transaction cleanup
+	       */
+	      db_drop (trigger->object);
+
+	      /*
+	       * flush, decache object; no need to check if the object was indeed deleted;
+	       * it is supposed that the last version of the object was locked and deleted
+	       * because only the last version can be locked; previous versions are in the log
+	       */
+	      error = locator_flush_instance (trigger->object);
+	      if (error == NO_ERROR)
+		{
+		  ws_decache (trigger->object);
+		  ws_clear_hints (trigger->object, false);
+		}
+	    }
+	}
+
+      /*
+       * Update in-memory structures only after all disk operations have
+       * succeeded.  These operations are not covered by the savepoint and
+       * cannot be undone if a later step fails.
+       */
+      if (error == NO_ERROR || rollback)
+	{
+	  /* remove it from the uncommitted trigger list (if its on there) */
+	  remove_trigger_list (&tr_Uncommitted_triggers, trigger);
+
+	  /* remove it from the memory cache */
+	  error = tr_unmap_trigger (trigger);
+
+	  if (error == NO_ERROR || rollback)
+	    {
+	      /* remove it from the global name table */
+	      error = trigger_table_drop (trigger->name);
+
+	      /* free the cache structure */
+	      free_trigger (trigger);
+	    }
 	}
     }
 
