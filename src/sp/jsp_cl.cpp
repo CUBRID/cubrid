@@ -119,6 +119,7 @@
 static int server_port = -1;
 static int call_cnt = 0;
 static bool is_prepare_call[MAX_CALL_COUNT] = { false, };
+static bool is_trigger_body_sp_creation = false;
 
 static SP_TYPE_ENUM jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
 static SP_MODE_ENUM jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum);
@@ -1047,8 +1048,11 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       return er_errid ();
     }
 
-  /* Reject names that start with the prefix reserved for trigger backing SPs */
-  if (strncasecmp (sp_info.sp_name.c_str (), "__trsp_", 7) == 0)
+  /* Reject names that start with the prefix reserved for trigger backing SPs.
+   * The flag is_trigger_body_sp_creation is set only when jsp_create_trigger_body_sp()
+   * calls db_execute() internally, so internal creation is allowed while user-issued
+   * CREATE PROCEDURE statements with this prefix are rejected. */
+  if (strncasecmp (sp_info.sp_name.c_str (), "__trsp_", 7) == 0 && !is_trigger_body_sp_creation)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NAME_RESERVED_PREFIX, 1,
 	      sp_info.sp_name.c_str ());
@@ -2550,7 +2554,10 @@ jsp_create_trigger_body_sp (const char *sp_name, const char *pl_body, DB_OBJECT 
 
   snprintf (sql, sql_len, "CREATE OR REPLACE PROCEDURE %s() AS %s;", sp_name, body_start);
 
+  /* Allow the __trsp_ prefix to pass the guard inside jsp_create_stored_procedure */
+  is_trigger_body_sp_creation = true;
   retval = db_execute (sql, &result, NULL);
+  is_trigger_body_sp_creation = false;
   if (retval >= 0)
     {
       db_query_end (result);
