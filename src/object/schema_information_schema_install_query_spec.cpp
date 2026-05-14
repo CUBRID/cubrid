@@ -805,7 +805,7 @@ const char *sm_define_view_table_constraints_spec (void)
       /* CT_INDEX_NAME */
       "[%s] AS [idx] "
     "WHERE "
-      AUTH_CHECK_OBJECT_ANY("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]") " "
+      AUTH_CHECK_OBJECT_WRITE("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]") " "
       "AND ([idx].[is_primary_key] = 1 OR [idx].[is_unique] = 1 OR [idx].[is_foreign_key] = 1)",
     CT_INDEX_NAME);
   // *INDENT-ON*
@@ -958,7 +958,7 @@ const char *sm_define_view_triggers_spec (void)
       /* CT_CLASS_NAME */
       "LEFT OUTER JOIN [%s] AS [cls] ON [cls].[class_of] = [tr].[target_class] "
     "WHERE "
-      AUTH_CHECK_OBJECT_ANY("[tr].[owner].[name]", "[cls].[class_of]"),
+      AUTH_CHECK_OBJECT_WRITE("[tr].[owner].[name]", "[cls].[class_of]"),
     TR_TIME_BEFORE,
     TR_TIME_AFTER,
     TR_TIME_DEFERRED,
