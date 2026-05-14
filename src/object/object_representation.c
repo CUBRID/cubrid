@@ -249,7 +249,7 @@ or_class_name (RECDES * record)
   offset = OR_VAR_OFFSET (record->data, 0);
 
   /* or_get_varchar_compression_lengths parses the type_header-dispatched header
-   * (SMALL / MEDIUM_UNCOMPRESSED / MEDIUM_COMPRESSED / LARGE) and leaves buffer.ptr
+   * (TINY / SMALL / MEDIUM / LARGE) and leaves buffer.ptr
    * at the start of the data bytes. Class names are short and stored uncompressed,
    * so we return the raw pointer directly. */
   or_init (&buffer, &record->data[offset], -1);
@@ -824,7 +824,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int size, int length, int a
 	}
     }
 
-  /* Unified string header — or_put_string_header dispatches type_header (SMALL / MEDIUM_* / LARGE). */
+  /* Unified string header — or_put_string_header dispatches type_header (TINY / MEDIUM_* / LARGE). */
   rc = or_put_string_header (buf, length, size, compressed_length);
   if (rc != NO_ERROR)
     {

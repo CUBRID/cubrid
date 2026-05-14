@@ -3945,7 +3945,7 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
       else
 	{
 	  /* or_get_varchar_compression_lengths parses the type_header-dispatched header
-	   * (SMALL / MEDIUM_UNCOMPRESSED / MEDIUM_COMPRESSED / LARGE) and leaves
+	   * (TINY / SMALL / MEDIUM / LARGE) and leaves
 	   * buffer.ptr at the start of the data bytes. compressed_length == 0 means
 	   * the data is stored uncompressed. */
 	  or_init (&buffer, attr, -1);

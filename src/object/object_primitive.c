@@ -11333,8 +11333,8 @@ mr_initmem_char_type_common (void *mem, TP_DOMAIN * domain)
  *   - mem path never carries compressed bytes (no compressed_size slot).
  *     val→disk path is the only place that may emit compressed images
  *     (see mr_writeval_char_type_common / pr_do_db_value_string_compression).
- *   - Mem header is type_header-aware: SMALL (1 byte) / MEDIUM_UNCOMPRESSED
- *     (4 byte) / LARGE (8 byte). MEDIUM_COMPRESSED (disk-only) is never
+ *   - Mem header is type_header-aware: TINY (1 byte) / SMALL
+ *     (4 byte) / LARGE (8 byte). MEDIUM (disk-only) is never
  *     emitted on the mem path. Use or_put_mem_string_header /
  *     or_get_mem_string_header / or_mem_string_header_size to manipulate
  *     the mem header — these dispatch via or_mem_string_pick_type_header.
@@ -11423,7 +11423,7 @@ mr_setmem_char_type_common (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, 
  *   type(in)      : DB_TYPE_CHAR or DB_TYPE_VARCHAR (selects db_make_*)
  *
  * Mirrors mr_setmem_char_type_common. CHAR/VARCHAR mem layout uses the
- * type_header-aware mem header (SMALL / MEDIUM_UNCOMPRESSED / LARGE — see
+ * type_header-aware mem header (TINY / SMALL / LARGE — see
  * or_get_mem_string_header). data follows the header; trailing NUL after data.
  */
 static int
@@ -11568,8 +11568,8 @@ mr_data_lengthmem_char_type_common (void *memptr, TP_DOMAIN * domain, int disk)
  *
  * Index-key memory is laid out the same as the disk image; the first byte's top
  * 2 bits select the type_header. Wrap memptr in an OR_BUF and delegate to
- * or_get_string_header so all four type_headers (SMALL / MEDIUM_UNCOMPRESSED /
- * MEDIUM_COMPRESSED / LARGE) are handled by the single type_header-aware parser.
+ * or_get_string_header so all four type_headers (TINY / SMALL /
+ * MEDIUM / LARGE) are handled by the single type_header-aware parser.
  */
 static int
 mr_index_lengthmem_char_type_common (void *memptr, TP_DOMAIN * domain)
@@ -11947,8 +11947,8 @@ mr_lengthval_char_type_common (DB_VALUE * value, int disk, int align)
  *   value(in)   : source DB_VALUE
  *   align(in)   : INT_ALIGNMENT or CHAR_ALIGNMENT
  *
- * Emits the unified string header (SMALL / MEDIUM_UNCOMPRESSED /
- * MEDIUM_COMPRESSED / LARGE — selected inside or_put_string_header) followed
+ * Emits the unified string header (TINY / SMALL /
+ * MEDIUM / LARGE — selected inside or_put_string_header) followed
  * by data bytes. Compression is attempted once via
  * pr_do_db_value_string_compression(); the resulting compressed_buf is
  * retained on the DB_VALUE so a paired lengthval call can share the same
