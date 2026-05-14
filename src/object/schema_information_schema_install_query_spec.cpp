@@ -685,7 +685,8 @@ const char *sm_define_view_sequences_spec (void)
       /* CT_SERIAL_NAME */
       "[%s] AS [serial] "
     "WHERE "
-      "[serial].[class_name] IS NULL",
+      "[serial].[class_name] IS NULL "
+      "AND " AUTH_CHECK_OBJECT_ANY("[serial].[owner].[name]", "[serial]"),
     DB_MAX_NUMERIC_PRECISION,
     DB_DEFAULT_NUMERIC_SCALE,
     CT_SERIAL_NAME);
@@ -954,7 +955,7 @@ const char *sm_define_view_triggers_spec (void)
       /* TR_CLASS_NAME */
       "[%s] AS [tr] "
       /* CT_CLASS_NAME */
-      "LEFT OUTER JOIN [%s] AS [cls] ON [cls].[class_of] = [tr].[target_class] "
+      "INNER JOIN [%s] AS [cls] ON [cls].[class_of] = [tr].[target_class] "
     "WHERE "
       AUTH_CHECK_OBJECT_WRITE("[tr].[owner].[name]", "[cls].[class_of]"),
     TR_TIME_BEFORE,
