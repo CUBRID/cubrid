@@ -8217,6 +8217,7 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
   QO_SEGMENT *seg, *seg1, *seg2, *head_seg, *tail_seg, *root_seg, *nom;
   QO_NODE *node1, *node2, *head_node, *tail_node;
   QO_TERM *term;
+  PT_NODE *pt_expr;
   bool group_has_outer_join, group_all_dummy, already_has_term;
 
   if (env->nsegs == 0)
@@ -8271,7 +8272,12 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 	continue;
 
       /* Scan edge terms in this group for outer joins and dummy-only status.
-       * Uses QO_IS_EDGE_TERM because nedges is not yet set at this call site. */
+       * Uses QO_IS_EDGE_TERM because nedges is not yet set at this call site.
+       * qo_discover_edges has not run yet, so QO_TC_DUMMY_JOIN is not set for
+       * constant-substituted terms.  A term that carries PT_EXPR_INFO_TRANSITIVE
+       * will become QO_TC_DUMMY_JOIN once qo_discover_edges runs (group_has_outer_join
+       * = false already guarantees all group nodes are sargable), so treat it as
+       * effectively dummy here. */
       group_has_outer_join = false;
       group_all_dummy = true;
       for (t = 0; t < env->nterms; t++)
@@ -8284,7 +8290,9 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 	    continue;
 	  if (IS_OUTER_JOIN_TYPE (QO_TERM_JOIN_TYPE (term)))
 	    group_has_outer_join = true;
-	  if (QO_TERM_CLASS (term) != QO_TC_DUMMY_JOIN)
+	  pt_expr = QO_TERM_PT_EXPR (term);
+	  if (QO_TERM_CLASS (term) != QO_TC_DUMMY_JOIN
+	      && (pt_expr == NULL || !PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_TRANSITIVE)))
 	    group_all_dummy = false;
 	}
 
