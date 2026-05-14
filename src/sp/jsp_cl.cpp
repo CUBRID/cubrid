@@ -2569,8 +2569,8 @@ jsp_create_trigger_body_sp (const char *sp_name, const char *pl_body, DB_OBJECT 
        * ordinary DROP/ALTER PROCEDURE statements cannot accidentally remove it.
        * jsp_drop_trigger_body_sp() bypasses this flag when the owning trigger
        * is explicitly dropped.
-       * Failure to set this flag is treated as a hard error: without protection
-       * the trigger lifecycle cannot be guaranteed. */
+       * Any failure here is a hard error: the SP created by db_execute above is
+       * cleaned up before returning so no orphan is left in the catalog. */
       int save;
       AU_DISABLE (save);
 
@@ -2578,36 +2578,52 @@ jsp_create_trigger_body_sp (const char *sp_name, const char *pl_body, DB_OBJECT 
       if (sp_mop == NULL)
 	{
 	  err = er_errid ();
-	  AU_ENABLE (save);
-	  return err;
 	}
-
-      DB_VALUE gen_val;
-      db_make_int (&gen_val, 1);
-      err = db_put (sp_mop, SP_ATTR_IS_SYSTEM_GENERATED, &gen_val);
-      if (err != NO_ERROR)
+      else
 	{
-	  AU_ENABLE (save);
-	  return err;
-	}
+	  DB_VALUE gen_val;
+	  db_make_int (&gen_val, 1);
+	  err = db_put (sp_mop, SP_ATTR_IS_SYSTEM_GENERATED, &gen_val);
 
-      /* Also mark the code record */
-      DB_VALUE target_cls_val;
-      db_make_null (&target_cls_val);
-      if (db_get (sp_mop, SP_ATTR_TARGET_CLASS, &target_cls_val) == NO_ERROR
-	  && !DB_IS_NULL (&target_cls_val))
-	{
-	  const char *target_cls = db_get_string (&target_cls_val);
-	  MOP code_mop = jsp_find_stored_procedure_code (target_cls);
-	  if (code_mop != NULL)
+	  if (err == NO_ERROR)
 	    {
-	      db_make_int (&gen_val, 1);
-	      err = db_put (code_mop, SP_CODE_ATTR_IS_SYSTEM_GENERATED, &gen_val);
+	      /* Also mark the _db_stored_procedure_code record */
+	      DB_VALUE target_cls_val;
+	      db_make_null (&target_cls_val);
+	      err = db_get (sp_mop, SP_ATTR_TARGET_CLASS, &target_cls_val);
+	      if (err == NO_ERROR && !DB_IS_NULL (&target_cls_val))
+		{
+		  const char *target_cls = db_get_string (&target_cls_val);
+		  MOP code_mop = jsp_find_stored_procedure_code (target_cls);
+		  if (code_mop != NULL)
+		    {
+		      db_make_int (&gen_val, 1);
+		      err = db_put (code_mop, SP_CODE_ATTR_IS_SYSTEM_GENERATED, &gen_val);
+		    }
+		  else
+		    {
+		      /* code record missing — unexpected for a PLCSQL procedure */
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+		      err = ER_GENERIC_ERROR;
+		    }
+		}
+	      else if (err == NO_ERROR)
+		{
+		  /* TARGET_CLASS NULL — unexpected for a PLCSQL backing procedure */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+		  err = ER_GENERIC_ERROR;
+		}
+	      pr_clear_value (&target_cls_val);
 	    }
-	  pr_clear_value (&target_cls_val);
 	}
 
       AU_ENABLE (save);
+
+      if (err != NO_ERROR)
+	{
+	  /* Drop the SP created by db_execute to avoid leaving an orphan */
+	  (void) jsp_drop_trigger_body_sp (sp_name);
+	}
     }
 
   return err;

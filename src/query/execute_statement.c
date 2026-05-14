@@ -6673,10 +6673,11 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *trigger;
   SM_CLASS *smclass = NULL;
   int error = NO_ERROR;
-  char pl_sp_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+  /* "__trsp_" prefix (7) + trigger base_name (up to DB_MAX_IDENTIFIER_LENGTH) + NUL */
+  char pl_sp_name[DB_MAX_IDENTIFIER_LENGTH + 7 + 1];
   /* qualified: "<owner>.<sp_name>" — used for CALL and action_body_sp storage.
-   * Size: DB_MAX_USER_LENGTH (owner) + 1 (dot) + DB_MAX_IDENTIFIER_LENGTH (sp_name) + 1 (NUL) + 1 (margin) */
-  char pl_sp_qualified_name[DB_MAX_USER_LENGTH + DB_MAX_IDENTIFIER_LENGTH + 3];
+   * Size: DB_MAX_USER_LENGTH (owner) + 1 (dot) + sizeof(pl_sp_name)-1 + 1 (NUL) + margin */
+  char pl_sp_qualified_name[DB_MAX_USER_LENGTH + DB_MAX_IDENTIFIER_LENGTH + 10];
   char pl_call_source[DB_MAX_USER_LENGTH + DB_MAX_IDENTIFIER_LENGTH + 10];
   pl_sp_name[0] = '\0';
   pl_sp_qualified_name[0] = '\0';
@@ -6771,7 +6772,9 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       base_name = sm_remove_qualifier_name (name);
+      /* pl_sp_name buffer is sized to hold "__trsp_" + any valid identifier without truncation */
       snprintf (pl_sp_name, sizeof (pl_sp_name), "__trsp_%s", base_name);
+
       /* Build the owner-qualified SP name so CALL resolves correctly at trigger fire
        * time regardless of who the DML executor is, and so trigger drop by another
        * user (e.g. DBA) can locate the SP without depending on the current session user. */
