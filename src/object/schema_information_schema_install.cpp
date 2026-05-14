@@ -162,7 +162,7 @@ namespace cubschema
       {"collation_name", format_varchar (32)},
       {"domain_catalog", format_varchar (255)},
       {"domain_schema", format_varchar (255)},
-      {"domain_name", format_varchar (16)},
+      {"domain_name", format_varchar (255)},
       {"udt_catalog", format_varchar (255)},
       {"udt_schema", format_varchar (255)},
       {"udt_name", format_varchar (255)},
