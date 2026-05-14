@@ -58,6 +58,7 @@
 #include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
 #include "px_sort.h"
 #include "btree_load.h"
+#include "xasl.h"			/* GROUPBY_STATS — for GROUP_BY parallel trace */
 #include "px_ftab_set.hpp"
 
 #include <functional>
@@ -1626,7 +1627,7 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
       perfmon_initialize_parallel_stats (&thread_ref);
     }
 
-  if (sort_param->px_type == SORT_ORDER_BY)
+  if (sort_param->px_type == SORT_ORDER_BY || sort_param->px_type == SORT_GROUP_BY)
     {
       if (thread_is_on_trace (sort_param->px_orig_thread_p))
 	{
@@ -1729,6 +1730,16 @@ cleanup:
     }
   else if (sort_param->px_type == SORT_GROUP_BY)
     {
+      if (thread_is_on_trace (sort_param->px_orig_thread_p))
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	  TSC_ADD_TIMEVAL (sort_param->orderby_stats.orderby_time, tv_diff);
+
+	  sort_param->orderby_stats.orderby_pages += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES));
+	  sort_param->orderby_stats.orderby_ioreads += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES));
+	}
+
       /* tplrec.tpl is worker-private; free here before returning to main thread. */
       if (sort_param->get_arg != NULL)
 	{
@@ -5628,6 +5639,33 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
     }
   else if (sort_param->px_type == SORT_GROUP_BY)
     {
+      /* Collect per-worker inphase timing into groupby_stats for trace output. */
+      GBY_SORT_PARAM *gby = (GBY_SORT_PARAM *) sort_param->px_extra_arg;
+      if (gby != NULL && gby->groupby_stats != NULL && thread_is_on_trace (thread_p))
+	{
+	  GROUPBY_STATS *gstats = (GROUPBY_STATS *) gby->groupby_stats;
+	  gstats->px_min_groupby_time = std::numeric_limits < UINT64 >::max ();
+	  gstats->px_min_groupby_pages = std::numeric_limits < UINT64 >::max ();
+	  gstats->px_min_groupby_ioreads = std::numeric_limits < UINT64 >::max ();
+
+	  for (int i = 0; i < parallel_num; i++)
+	    {
+	      gstats->px_min_groupby_time =
+		std::min (gstats->px_min_groupby_time, (UINT64) (TO_MSEC (px_sort_param[i].orderby_stats.orderby_time)));
+	      gstats->px_max_groupby_time =
+		std::max (gstats->px_max_groupby_time, (UINT64) (TO_MSEC (px_sort_param[i].orderby_stats.orderby_time)));
+	      gstats->px_min_groupby_pages =
+		std::min (gstats->px_min_groupby_pages, px_sort_param[i].orderby_stats.orderby_pages);
+	      gstats->px_max_groupby_pages =
+		std::max (gstats->px_max_groupby_pages, px_sort_param[i].orderby_stats.orderby_pages);
+	      gstats->px_min_groupby_ioreads =
+		std::min (gstats->px_min_groupby_ioreads, px_sort_param[i].orderby_stats.orderby_ioreads);
+	      gstats->px_max_groupby_ioreads =
+		std::max (gstats->px_max_groupby_ioreads, px_sort_param[i].orderby_stats.orderby_ioreads);
+	    }
+	  gstats->parallel_num = parallel_num;
+	}
+
       /* Phase 2: fan-in — merge all worker runs into one consolidated run */
       error = sort_merge_worker_runs_to_one (thread_p, px_sort_param, sort_param, parallel_num);
       if (error != NO_ERROR)

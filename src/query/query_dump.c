@@ -3337,6 +3337,18 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 
       json_object_set_new (groupby, "rows", json_integer (gstats->rows));
       json_object_set_new (proc, "GROUPBY", groupby);
+      if (gstats->parallel_num > 0)
+	{
+	  parallel = json_object ();
+	  json_object_set_new (parallel, "parallel workers", json_integer (gstats->parallel_num));
+	  json_object_set_new (parallel, "min time", json_integer (gstats->px_min_groupby_time));
+	  json_object_set_new (parallel, "max time", json_integer (gstats->px_max_groupby_time));
+	  json_object_set_new (parallel, "min pages", json_integer (gstats->px_min_groupby_pages));
+	  json_object_set_new (parallel, "max pages", json_integer (gstats->px_max_groupby_pages));
+	  json_object_set_new (parallel, "min ioreads", json_integer (gstats->px_min_groupby_ioreads));
+	  json_object_set_new (parallel, "max ioreads", json_integer (gstats->px_max_groupby_ioreads));
+	  json_object_set_new (proc, "PARALLEL GROUPBY", parallel);
+	}
     }
 
   ostats = &xasl_p->orderby_stats;
@@ -3873,6 +3885,15 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	}
 
       fprintf (fp, ", rows: %d)\n", gstats->rows);
+
+      if (gstats->parallel_num > 0)
+	{
+	  fprintf (fp, "%*c", indent + 8, ' ');
+	  fprintf (fp, "(parallel workers: %d", gstats->parallel_num);
+	  fprintf (fp, ", time: %lu..%lu", gstats->px_min_groupby_time, gstats->px_max_groupby_time);
+	  fprintf (fp, ", page: %lu..%lu", gstats->px_min_groupby_pages, gstats->px_max_groupby_pages);
+	  fprintf (fp, ", ioread: %lu..%lu)\n", gstats->px_min_groupby_ioreads, gstats->px_max_groupby_ioreads);
+	}
     }
 
   ostats = &xasl_p->orderby_stats;

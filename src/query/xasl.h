@@ -982,6 +982,13 @@ struct groupby_stat
   AGGREGATE_HASH_STATE groupby_hash;
   bool run_groupby;
   bool groupby_sort;
+  int parallel_num;
+  UINT64 px_min_groupby_time;
+  UINT64 px_max_groupby_time;
+  UINT64 px_min_groupby_pages;
+  UINT64 px_max_groupby_pages;
+  UINT64 px_min_groupby_ioreads;
+  UINT64 px_max_groupby_ioreads;
 };
 
 struct analytic_stat

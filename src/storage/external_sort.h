@@ -169,6 +169,7 @@ struct gby_sort_param
   SORTKEY_INFO *key_info;	/* points to gbstate.key_info — read-only, shared across workers */
   QFILE_LIST_ID *input_list;	/* points to &gbstate.input_scan->list_id */
   int hash_eligible;		/* if non-zero, parallelism must be skipped */
+  void *groupby_stats;		/* points to GROUPBY_STATS in xasl node for trace output */
 };
 #endif /* SERVER_MODE */
 
