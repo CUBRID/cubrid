@@ -19,6 +19,7 @@
 #include "schema_information_schema_install.hpp"
 
 #include "authenticate.h"
+#include "dbtype_def.h"
 #include "schema_information_schema_builder.hpp"
 #include "schema_information_schema_constants.h"
 #include "schema_information_schema_definition.hpp"
@@ -111,10 +112,10 @@ namespace cubschema
 		   INFO_SCHEMA_COLUMN_PRIVILEGES,
 		   // columns
     {
-      {"grantor", format_varchar (255)},
-      {"grantee", format_varchar (255)},
+      {"grantor", format_varchar (DB_MAX_USER_LENGTH)},
+      {"grantee", format_varchar (DB_MAX_USER_LENGTH)},
       {"table_catalog", format_varchar (255)},
-      {"table_schema", format_varchar (255)},
+      {"table_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"table_name", format_varchar (255)},
       {"column_name", format_varchar (255)},
       {"privilege_type", format_varchar (7)},
@@ -146,7 +147,7 @@ namespace cubschema
 		   // columns
     {
       {"table_catalog", format_varchar (255)},
-      {"table_schema", format_varchar (255)},
+      {"table_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"table_name", format_varchar (255)},
       {"column_name", format_varchar (255)},
       {"ordinal_position", "integer"},
@@ -161,10 +162,10 @@ namespace cubschema
       {"character_set_name", format_varchar (32)},
       {"collation_name", format_varchar (32)},
       {"domain_catalog", format_varchar (255)},
-      {"domain_schema", format_varchar (255)},
+      {"domain_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"domain_name", format_varchar (255)},
       {"udt_catalog", format_varchar (255)},
-      {"udt_schema", format_varchar (255)},
+      {"udt_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"udt_name", format_varchar (255)},
       {"extra", format_varchar (255)},
       {"privileges", format_varchar (512)},
@@ -200,16 +201,16 @@ namespace cubschema
 		   // columns
     {
       {"domain_catalog", format_varchar (255)},
-      {"domain_schema", format_varchar (255)},
+      {"domain_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"domain_name", format_varchar (255)},
       {"data_type", format_varchar (16)},
       {"character_maximum_length", "bigint"},
       {"character_octet_length", "bigint"},
       {"character_set_catalog", format_varchar (255)},
-      {"character_set_schema", format_varchar (255)},
+      {"character_set_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"character_set_name", format_varchar (32)},
       {"collation_catalog", format_varchar (255)},
-      {"collation_schema", format_varchar (255)},
+      {"collation_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"collation_name", format_varchar (32)},
       {"numeric_precision", "integer"},
       {"numeric_precision_radix", "integer"},
@@ -217,7 +218,7 @@ namespace cubschema
       {"datetime_precision", "integer"},
       {"domain_default", format_varchar (255)},
       {"udt_catalog", format_varchar (255)},
-      {"udt_schema", format_varchar (255)},
+      {"udt_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"udt_name", format_varchar (255)},
       {"domain_comment", format_varchar (2048)},
       {"create_time", "datetime"},
@@ -254,7 +255,7 @@ namespace cubschema
       {"foreign_data_wrapper_name", format_varchar (255)},
       {"foreign_server_type", "string"},
       {"foreign_server_version", "string"},
-      {"authorization_identifier", format_varchar (255)},
+      {"authorization_identifier", format_varchar (DB_MAX_USER_LENGTH)},
       {"server_host", format_varchar (255)},
       {"server_port", "integer"},
       {"server_database", format_varchar (255)},
@@ -290,10 +291,10 @@ namespace cubschema
 		   // columns
     {
       {"constraint_catalog", format_varchar (255)},
-      {"constraint_schema", format_varchar (255)},
+      {"constraint_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"constraint_name", format_varchar (255)},
       {"table_catalog", format_varchar (255)},
-      {"table_schema", format_varchar (255)},
+      {"table_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"table_name", format_varchar (255)},
       {"column_name", format_varchar (255)},
       {"ordinal_position", "integer"},
@@ -325,7 +326,7 @@ namespace cubschema
 		   // columns
     {
       {"specific_catalog", format_varchar (255)},
-      {"specific_schema", format_varchar (255)},
+      {"specific_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"specific_name", format_varchar (255)},
       {"ordinal_position", "integer"},
       {"parameter_mode", format_varchar (5)},
@@ -370,7 +371,7 @@ namespace cubschema
 		   // columns
     {
       {"table_catalog", format_varchar (255)},
-      {"table_schema", format_varchar (255)},
+      {"table_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"table_name", format_varchar (255)},
       {"partition_name", format_varchar (255)},
       {"partition_ordinal_position", "integer"},
@@ -416,10 +417,10 @@ namespace cubschema
 		   // columns
     {
       {"constraint_catalog", format_varchar (255)},
-      {"constraint_schema", format_varchar (255)},
+      {"constraint_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"constraint_name", format_varchar (255)},
       {"unique_constraint_catalog", format_varchar (255)},
-      {"unique_constraint_schema", format_varchar (255)},
+      {"unique_constraint_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"unique_constraint_name", format_varchar (255)},
       {"match_option", format_varchar (7)},
       {"update_rule", format_varchar (9)},
@@ -452,13 +453,13 @@ namespace cubschema
 		   INFO_SCHEMA_ROUTINE_PRIVILEGES_NAME,
 		   // columns
     {
-      {"grantor", format_varchar (255)},
-      {"grantee", format_varchar (255)},
+      {"grantor", format_varchar (DB_MAX_USER_LENGTH)},
+      {"grantee", format_varchar (DB_MAX_USER_LENGTH)},
       {"specific_catalog", format_varchar (255)},
-      {"specific_schema", format_varchar (255)},
+      {"specific_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"specific_name", format_varchar (255)},
       {"routine_catalog", format_varchar (255)},
-      {"routine_schema", format_varchar (255)},
+      {"routine_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"routine_name", format_varchar (255)},
       {"privilege_type", format_varchar (7)},
       {"is_grantable", format_varchar (3)},
@@ -490,7 +491,7 @@ namespace cubschema
     {
       {"specific_name", format_varchar (255)},
       {"routine_catalog", format_varchar (255)},
-      {"routine_schema", format_varchar (255)},
+      {"routine_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"routine_name", format_varchar (255)},
       {"routine_type", format_varchar (9)},
       {"data_type", format_varchar (16)},
@@ -542,8 +543,8 @@ namespace cubschema
 		   // columns
     {
       {"catalog_name", format_varchar (255)},
-      {"schema_name", format_varchar (255)},
-      {"schema_owner", format_varchar (255)},
+      {"schema_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"schema_owner", format_varchar (DB_MAX_USER_LENGTH)},
       {"default_character_set_catalog", format_varchar (255)},
       {"default_character_set_schema", format_varchar (255)},
       {"default_character_set_name", format_varchar (32)},
@@ -577,7 +578,7 @@ namespace cubschema
 		   // columns
     {
       {"sequence_catalog", format_varchar (255)},
-      {"sequence_schema", format_varchar (255)},
+      {"sequence_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"sequence_name", format_varchar (255)},
       {"data_type", format_varchar (16)},
       {"numeric_precision", "integer"},
@@ -619,10 +620,10 @@ namespace cubschema
 		   // columns
     {
       {"table_catalog", format_varchar (255)},
-      {"table_schema", format_varchar (255)},
+      {"table_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"table_name", format_varchar (255)},
       {"is_unique", "integer"},
-      {"index_schema", format_varchar (255)},
+      {"index_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"index_name", format_varchar (255)},
       {"seq_in_index", "integer"},
       {"column_name", format_varchar (255)},
@@ -666,11 +667,11 @@ namespace cubschema
 		   // columns
     {
       {"synonym_catalog", format_varchar (255)},
-      {"synonym_schema", format_varchar (255)},
+      {"synonym_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"synonym_name", format_varchar (255)},
       {"is_public_synonym", format_varchar (3)},
       {"target_catalog", format_varchar (255)},
-      {"target_schema", format_varchar (255)},
+      {"target_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"target_name", format_varchar (255)},
       {"synonym_comment", format_varchar (2048)},
       {"create_time", "datetime"},
@@ -701,10 +702,10 @@ namespace cubschema
 		   // columns
     {
       {"constraint_catalog", format_varchar (255)},
-      {"constraint_schema", format_varchar (255)},
+      {"constraint_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"constraint_name", format_varchar (255)},
       {"table_catalog", format_varchar (255)},
-      {"table_schema", format_varchar (255)},
+      {"table_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"table_name", format_varchar (255)},
       {"constraint_type", format_varchar (11)},
       {"is_deferrable", format_varchar (3)},
@@ -736,10 +737,10 @@ namespace cubschema
 		   INFO_SCHEMA_TABLE_PRIVILEGES_NAME,
 		   // columns
     {
-      {"grantor", format_varchar (255)},
-      {"grantee", format_varchar (255)},
+      {"grantor", format_varchar (DB_MAX_USER_LENGTH)},
+      {"grantee", format_varchar (DB_MAX_USER_LENGTH)},
       {"table_catalog", format_varchar (255)},
-      {"table_schema", format_varchar (255)},
+      {"table_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"table_name", format_varchar (255)},
       {"privilege_type", format_varchar (7)},
       {"is_grantable", format_varchar (3)},
@@ -770,7 +771,7 @@ namespace cubschema
 		   // columns
     {
       {"table_catalog", format_varchar (255)},
-      {"table_schema", format_varchar (255)},
+      {"table_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"table_name", format_varchar (255)},
       {"table_type", format_varchar (12)},
       {"table_rows", "bigint"},
@@ -813,11 +814,11 @@ namespace cubschema
 		   // columns
     {
       {"trigger_catalog", format_varchar (255)},
-      {"trigger_schema", format_varchar (255)},
+      {"trigger_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"trigger_name", format_varchar (255)},
       {"event_manipulation", format_varchar (8)},
       {"event_object_catalog", format_varchar (255)},
-      {"event_object_schema", format_varchar (255)},
+      {"event_object_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"event_object_table", format_varchar (255)},
       {"event_object_column", format_varchar (255)},
       {"action_order", "integer"},
@@ -859,7 +860,7 @@ namespace cubschema
 		   // columns
     {
       {"table_catalog", format_varchar (255)},
-      {"table_schema", format_varchar (255)},
+      {"table_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"table_name", format_varchar (255)},
       {"view_definition", "string"},
       {"check_option", format_varchar (8)},

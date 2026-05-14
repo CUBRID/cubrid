@@ -177,7 +177,7 @@ const char *sm_define_view_columns_spec (void)
   snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [table_catalog], " /* string -> varchar(255) */
-      "CAST ([cls].[owner].[name] AS VARCHAR(255)) AS [table_schema], " /* string -> varchar(255) */
+      "[cls].[owner].[name] AS [table_schema], "
       "[cls].[class_name] AS [table_name], "
       "[attr].[attr_name] AS [column_name], "
       "([attr].[def_order] + 1) AS [ordinal_position], "
@@ -299,7 +299,7 @@ const char *sm_define_view_foreign_servers_spec (void)
       "NULL AS [foreign_data_wrapper_name], "
       "NULL AS [foreign_server_type], "
       "NULL AS [foreign_server_version], "
-      "CAST ([srv].[owner].[name] AS VARCHAR(255)) AS [authorization_identifier], " /* string -> varchar(255) */
+      "[srv].[owner].[name] AS [authorization_identifier], "
       "[srv].[host] AS [server_host], "
       "[srv].[port] AS [server_port], "
       "[srv].[db_name] AS [server_database], "
