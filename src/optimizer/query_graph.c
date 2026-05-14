@@ -8174,8 +8174,8 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 	continue;
 
       pt_expr->info.expr.op = PT_EQ;
-      pt_expr->info.expr.arg1 = parser_copy_tree_list (parser, QO_SEG_PT_NODE (head_seg));
-      pt_expr->info.expr.arg2 = parser_copy_tree_list (parser, QO_SEG_PT_NODE (tail_seg));
+      pt_expr->info.expr.arg1 = parser_copy_tree (parser, QO_SEG_PT_NODE (head_seg));
+      pt_expr->info.expr.arg2 = parser_copy_tree (parser, QO_SEG_PT_NODE (tail_seg));
       if (pt_expr->info.expr.arg1 == NULL || pt_expr->info.expr.arg2 == NULL)
 	{
 	  parser_free_tree (parser, pt_expr);
