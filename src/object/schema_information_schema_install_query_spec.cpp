@@ -564,8 +564,7 @@ const char *sm_define_view_routines_spec (void)
         "ELSE NULL "
       "END AS [datetime_precision], "
       "NULL AS [dtd_identifier], "
-      /* SP_LANG_PLCSQL, SP_LANG_JAVA */
-      "DECODE ([sp].[lang], %d, 'EXTERNAL', %d, 'EXTERNAL') AS [routine_body], "
+      "'EXTERNAL' AS [routine_body], "
       /* SP_LANG_PLCSQL */
       "IF ([sp].[lang] = %d, [sp_code].[scode], NULL) AS [routine_definition], "
       /* SP_LANG_JAVA */
@@ -602,8 +601,6 @@ const char *sm_define_view_routines_spec (void)
     SP_TYPE_FUNCTION,
     SP_TYPE_FUNCTION,
     SP_TYPE_PROCEDURE,
-    SP_LANG_PLCSQL,
-    SP_LANG_JAVA,
     SP_LANG_PLCSQL,
     SP_LANG_JAVA,
     SP_LANG_PLCSQL,
