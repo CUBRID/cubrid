@@ -13074,12 +13074,10 @@ pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE *
       corr_regu = pt_to_regu_variable (parser, pdblink->corr_key_outer_copy[0], UNBOX_AS_VALUE);
       if (corr_regu == NULL || pt_has_error (parser))
 	{
-	  if (pt_has_error (parser))
-	    {
-	      pt_reset_error (parser);
-	    }
-	  mq_dblink_clear_corr_keys (parser, pdblink);
-	  corr_regu = NULL;
+	  /* pdblink->rewritten already carries "WHERE col = ?" and cannot be rolled back.
+	   * Continuing with corr_key_count=0 would leave an unbound CCI parameter in conn_sql.
+	   * Propagate as XASL generation failure. */
+	  return NULL;
 	}
     }
 

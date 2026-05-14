@@ -7055,8 +7055,6 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
   int ncorr;
   bool hint_no_push;
 
-  (void) arg;
-
   if (node->node_type != PT_SELECT)
     {
       return node;
