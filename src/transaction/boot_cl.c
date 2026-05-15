@@ -172,6 +172,22 @@ static int boot_check_timezone_checksum (BOOT_CLIENT_CREDENTIAL * client_credent
 #endif
 static int boot_client_find_and_cache_class_oids (void);
 
+static int reset_isolation_and_wait_times (void);
+static int boot_restart_common_initialize (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang_charset,
+					   bool is_createdb);
+static void boot_restart_failure_cleanup (DB_INFO * db,
+#if !defined(WINDOWS)
+					  bool dl_initialized,
+#endif
+					  bool is_createdb);
+static int boot_connect_to_server (BOOT_CLIENT_CREDENTIAL * client_credential, DB_INFO * db);
+
+static int boot_check_and_fill_db_path_info (BOOT_CLIENT_CREDENTIAL * client_credential,
+					     BOOT_DB_PATH_INFO * db_path_info);
+static void boot_check_and_fill_connection_info (BOOT_CLIENT_CREDENTIAL * client_credential, bool is_createdb);
+static DB_INFO *boot_build_db_info (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info,
+				    int *ret_error_code);
+
 /*
  * boot_client () -
  *
@@ -282,217 +298,40 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   int tran_index;		/* Assigned transaction index */
   TRAN_ISOLATION tran_isolation;	/* Desired client Isolation level */
   int tran_lock_wait_msecs;	/* Default lock waiting */
-  unsigned int length;
   int error_code = NO_ERROR;
   DB_INFO *db = NULL;
 #if !defined(WINDOWS)
   bool dl_initialized = false;
 #endif /* !WINDOWS */
-  const char *hosts[2];
-#if defined (CS_MODE)
-  char format[BOOT_FORMAT_MAX_LENGTH];
-#endif
 
   assert (client_credential != NULL);
   assert (db_path_info != NULL);
 
-  /* If the client is restarted, shutdown the client */
-  if (BOOT_IS_CLIENT_RESTARTED ())
+  error_code = boot_restart_common_initialize (client_credential, lang_charset, true);
+  if (error_code != NO_ERROR)
     {
-      (void) boot_shutdown_client (true);
-    }
-
-  if (!boot_Is_client_all_final)
-    {
-      boot_client_all_finalize (ALL_FINALIZATION);
-    }
-
-#if defined(WINDOWS)
-  /* set up the WINDOWS stream emulations */
-  pc_init ();
-#endif /* WINDOWS */
-
-  /*
-   * initialize language parameters  */
-  if (lang_init () != NO_ERROR)
-    {
-      if (er_errid () == NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, "Failed to initialize language module");
-	}
-      error_code = ER_LOC_INIT;
       goto error_exit;
     }
-
-  if (lang_set_charset_lang (lang_charset) != NO_ERROR)
-    {
-      error_code = ER_LOC_INIT;
-      goto error_exit;
-    }
-
-  /* database name must be specified */
-  if (client_credential->db_name.empty ())
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, "(null)");
-      error_code = ER_BO_UNKNOWN_DATABASE;
-      goto error_exit;
-    }
-
-  /* open the system message catalog, before prm_ ? */
-  if (msgcat_init () != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG, 0);
-      error_code = ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
-      goto error_exit;
-    }
-
-  /* initialize system parameters */
-  if (sysprm_load_and_init_client (client_credential->get_db_name (), NULL) != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
-      error_code = ER_BO_CANT_LOAD_SYSPRM;
-      goto error_exit;
-    }
-
-  /* initialize the "areas" memory manager */
-  area_init ();
-  locator_initialize_areas ();
 
   (void) db_set_page_size (db_desired_pagesize, db_desired_log_page_size);
 
-  /* If db_path and/or log_path are NULL find the defaults */
-
-  if (db_path_info->db_path == NULL)
+  error_code = boot_check_and_fill_db_path_info (client_credential, db_path_info);
+  if (error_code != NO_ERROR)
     {
-      db_path_info->db_path = getcwd (boot_Db_path_buf, PATH_MAX);
-      if (db_path_info->db_path == NULL)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CWD_FAIL, 0);
-	  error_code = ER_BO_CWD_FAIL;
-	  goto error_exit;
-	}
-    }
-  if (db_path_info->log_path == NULL)
-    {
-      /* assign the data volume directory */
-      strcpy (boot_Log_path_buf, db_path_info->db_path);
-      db_path_info->log_path = boot_Log_path_buf;
-    }
-  if (db_path_info->lob_path == NULL)
-    {
-      /* assign the data volume directory */
-      snprintf (boot_Lob_path_buf, sizeof (boot_Lob_path_buf), "%s%s%clob", LOB_PATH_DEFAULT_PREFIX,
-		db_path_info->db_path, PATH_SEPARATOR);
-      db_path_info->lob_path = boot_Lob_path_buf;
-    }
-  else
-    {
-      ES_TYPE es_type = es_get_type (db_path_info->lob_path);
-
-      switch (es_type)
-	{
-	case ES_NONE:
-	  /* prepend default prefix */
-	  snprintf (boot_Lob_path_buf, sizeof (boot_Lob_path_buf), "%s%s", LOB_PATH_DEFAULT_PREFIX,
-		    db_path_info->lob_path);
-	  db_path_info->lob_path = boot_Lob_path_buf;
-	  break;
-#if !defined (CUBRID_OWFS)
-	case ES_OWFS:
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, db_path_info->lob_path);
-	  error_code = ER_ES_INVALID_PATH;
-	  goto error_exit;
-#endif /* !CUBRID_OWFS */
-	default:
-	  break;
-	}
-    }
-
-  /* make sure that the full path for the database is not too long */
-  length = (unsigned int) (client_credential->db_name.length () + strlen (db_path_info->db_path) + 2);
-  if (length > (unsigned) PATH_MAX)
-    {
-      /* db_path + db_name is too long */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 3, db_path_info->db_path,
-	      client_credential->get_db_name (), length, PATH_MAX);
-
-      error_code = ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG;
       goto error_exit;
     }
 
-  /* If a host was not given, assume the current host */
-  if (db_path_info->db_host == NULL)
+  db = boot_build_db_info (client_credential, db_path_info, &error_code);
+  if (error_code != NO_ERROR)
     {
-      strcpy (boot_Db_host_buf, "localhost");
-      db_path_info->db_host = boot_Db_host_buf;
-    }
-
-  /* make new DB_INFO */
-  hosts[0] = db_path_info->db_host;
-  hosts[1] = NULL;
-  db =
-    cfg_new_db (client_credential->get_db_name (), db_path_info->db_path, db_path_info->log_path,
-		db_path_info->lob_path, hosts);
-  if (db == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, client_credential->get_db_name ());
-      error_code = ER_BO_UNKNOWN_DATABASE;
       goto error_exit;
     }
-
-  /* Get the absolute path name */
-  COMPOSE_FULL_NAME (boot_Volume_label, sizeof (boot_Volume_label), db_path_info->db_path,
-		     client_credential->get_db_name ());
+  assert (db != NULL);
 
   er_clear ();
 
-  /* Get the user name */
-  if (client_credential->db_user.empty ())
-    {
-      char *user_name = strdup (Au_user_name);
-      int upper_case_name_size;
-      char *upper_case_name;
+  boot_check_and_fill_connection_info (client_credential, true);
 
-      if (user_name != NULL)
-	{
-	  upper_case_name_size = intl_identifier_upper_string_size (user_name);
-	  upper_case_name = (char *) malloc (upper_case_name_size + 1);
-	  if (upper_case_name == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      (size_t) (upper_case_name_size + 1));
-	    }
-	  else
-	    {
-	      intl_identifier_upper (user_name, upper_case_name);
-	      client_credential->db_user = upper_case_name;
-	    }
-	  free_and_init (user_name);
-	}
-      upper_case_name = NULL;
-
-      if (client_credential->db_user.empty ())
-	{
-	  client_credential->db_user = boot_Client_no_user_string;
-	}
-    }
-  /* Get the login name, host, and process identifier */
-  if (client_credential->login_name.empty ())
-    {
-      if (getuserid (boot_Client_id_buffer, L_cuserid) != (char *) NULL)
-	{
-	  client_credential->login_name = boot_Client_id_buffer;
-	}
-      else
-	{
-	  client_credential->login_name = boot_Client_id_unknown_string;
-	}
-    }
-
-  if (client_credential->host_name.empty ())
-    {
-      client_credential->host_name = boot_get_host_name ();
-    }
 
   /*
    * Initialize the dynamic loader. Don't care about failures. If dynamic
@@ -507,16 +346,6 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   dl_initialized = true;
 #endif /* !WINDOWS */
 
-#if defined(CS_MODE)
-  /* Initialize the communication subsystem */
-  error_code =
-    boot_client_initialize_css (db, client_credential->client_type, false, BOOT_NO_OPT_CAP, false,
-				DB_CONNECT_ORDER_SEQ, false);
-  if (error_code != NO_ERROR)
-    {
-      goto error_exit;
-    }
-#endif /* CS_MODE */
   boot_User_volid = 0;
   tran_isolation = (TRAN_ISOLATION) prm_get_integer_value (PRM_ID_LOG_ISOLATION_LEVEL);
   tran_lock_wait_msecs = prm_get_integer_value (PRM_ID_LK_TIMEOUT_SECS);
@@ -528,19 +357,9 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
       goto error_exit;
     }
 
-  /* Initialize tsc-timer */
-  tsc_init ();
-
   if (tran_lock_wait_msecs > 0)
     {
       tran_lock_wait_msecs = tran_lock_wait_msecs * 1000;
-    }
-
-  error_code = perfmon_initialize (MAX_NTRANS);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto error_exit;
     }
 
   /* Initialize the disk and the server part */
@@ -590,12 +409,6 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   else
     {
       boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
-#if defined (CS_MODE)
-      /* print version string */
-      strncpy_bufsize (format, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_GENERAL,
-					       MSGCAT_GENERAL_DATABASE_INIT));
-      (void) fprintf (stdout, format, rel_name ());
-#endif /* CS_MODE */
     }
 
   if (db != NULL)
@@ -606,61 +419,12 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   return error_code;
 
 error_exit:
-  if (db != NULL)
-    {
-      cfg_free_directory (db);
-      db = NULL;
-    }
-
-  if (BOOT_IS_CLIENT_RESTARTED ())
-    {
-      er_log_debug (ARG_FILE_LINE, "boot_initialize_client: unregister client { tran %d }\n", tm_Tran_index);
-      boot_shutdown_client (false);
-    }
-  else
-    {
-      if (boot_Server_credential.db_full_name)
-	{
-	  db_private_free_and_init (NULL, boot_Server_credential.db_full_name);
-	}
-      if (boot_Server_credential.host_name)
-	{
-	  db_private_free_and_init (NULL, boot_Server_credential.host_name);
-	}
-
-      showstmt_metadata_final ();
-      tran_free_savepoint_list ();
-      set_final ();
-      tr_final ();
-      au_final ();
-      sm_final ();
-      ws_final ();
-      es_final ();
-      tp_final ();
 
 #if !defined(WINDOWS)
-      if (dl_initialized == true)
-	{
-	  (void) dl_destroy_module ();
-	  dl_initialized = false;
-	}
-#endif /* !WINDOWS */
-
-      locator_free_areas ();
-      sysprm_final ();
-      area_final ();
-
-      lang_final ();
-      tz_unload ();
-      perfmon_finalize ();
-
-#if defined(WINDOWS)
-      pc_final ();
-#endif /* WINDOWS */
-
-      memset (&boot_Server_credential, 0, sizeof (boot_Server_credential));
-      memset (boot_Server_credential.server_session_key, 0xFF, SERVER_SESSION_KEY_SIZE);
-    }
+  boot_restart_failure_cleanup (db, dl_initialized, true);
+#else
+  boot_restart_failure_cleanup (db, true);
+#endif
 
   return error_code;
 }
@@ -700,228 +464,27 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 #if !defined(WINDOWS)
   bool dl_initialized = false;
 #endif /* !WINDOWS */
-  char *ptr;
-#if defined(CS_MODE)
-  const char *hosts[2];
-
-  char **ha_hosts;
-  int num_hosts;
-  int i, optional_cap;
-  char *ha_node_list = NULL;
-  bool check_capabilities;
-  bool skip_preferred_hosts = false;
-  bool skip_db_info = false;
-#endif /* CS_MODE */
-  const char *conf_file = NULL;
 
   assert (client_credential != NULL);
 
-  /* If the client is restarted, shutdown the client */
-  if (BOOT_IS_CLIENT_RESTARTED ())
+  error_code = boot_restart_common_initialize (client_credential, NULL, false);
+  if (error_code != NO_ERROR)
     {
-      (void) boot_shutdown_client (true);
-    }
-
-  if (!boot_Is_client_all_final)
-    {
-      boot_client_all_finalize (ALL_FINALIZATION);
-    }
-
-#if defined(WINDOWS)
-  /* set up the WINDOWS stream emulations */
-  pc_init ();
-#endif /* WINDOWS */
-
-  /* initialize language parameters */
-  if (lang_init () != NO_ERROR)
-    {
-      if (er_errid () == NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, "Failed to initialize language module");
-	}
-      return ER_LOC_INIT;
-    }
-
-  /* initialize time zone data - optional module */
-  if (tz_load () != NO_ERROR)
-    {
-      if (er_errid () == NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_LOAD_ERROR, 1, "Failed to initialize timezone module");
-	}
-      error_code = ER_TZ_LOAD_ERROR;
       goto error;
     }
-
-  /* database name must be specified */
-  if (client_credential->get_db_name () == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, "(null)");
-      error_code = ER_BO_UNKNOWN_DATABASE;
-      goto error;
-    }
-
-  /* open the system message catalog, before prm_ ? */
-  if (msgcat_init () != NO_ERROR)
-    {
-      error_code = ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
-      goto error;
-    }
-
-  /* initialize system parameters */
-#if defined (CS_MODE)
-  if (BOOT_BROKER_CLIENT_TYPE (client_credential->client_type))
-    {
-      conf_file = getenv ("CUBRID_CONF_FOR_BROKER");
-      if (conf_file && access (conf_file, R_OK | F_OK) != 0)
-	{
-	  conf_file = NULL;
-	}
-    }
-#endif
-
-  if (sysprm_load_and_init_client (client_credential->get_db_name (), conf_file) != NO_ERROR)
-    {
-      error_code = ER_BO_CANT_LOAD_SYSPRM;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
-      goto error;
-    }
-
-  // reload with update file name
-  if (er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE), prm_get_integer_value (PRM_ID_ER_EXIT_ASK)) != NO_ERROR)
-    {
-      assert_release (false);
-      goto error;
-    }
-
-#if defined (CS_MODE) && !defined (NDEBUG)
-  /* log the parameter loading file for CAS in debug mode. */
-  if (BOOT_BROKER_CLIENT_TYPE (client_credential->client_type))
-    {
-      _er_log_debug (ARG_FILE_LINE, "conf_for_broker = %s\n", conf_file ? conf_file : "unknown");
-    }
-#endif
 
   pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
 
-  /* initialize the "areas" memory manager, requires prm_ */
-  area_init ();
-  locator_initialize_areas ();
-
-  error_code = perfmon_initialize (1);	/* 1 transaction for SA_MODE */
+  db = boot_build_db_info (client_credential, NULL, &error_code);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
       goto error;
     }
-
-  ptr = (char *) strstr (client_credential->get_db_name (), "@");
-  if (ptr == NULL)
-    {
-      /* Find the location of the database and the log from the database.txt */
-      db = cfg_find_db (client_credential->get_db_name ());
-#if defined(CS_MODE)
-      if (db == NULL)
-	{
-	  /* if not found, use secondary host lists */
-	  db = cfg_new_db (client_credential->get_db_name (), NULL, NULL, NULL, NULL);
-	}
-
-      if (db == NULL
-	  || (db->num_hosts > 1
-	      && (BOOT_ADMIN_CLIENT_TYPE (client_credential->client_type)
-		  || BOOT_LOG_REPLICATOR_TYPE (client_credential->client_type)
-		  || BOOT_CSQL_CLIENT_TYPE (client_credential->client_type))))
-	{
-	  error_code = ER_NET_NO_EXPLICIT_SERVER_HOST;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
-	  goto error;
-	}
-#endif /* CS_MODE */
-    }
-  else
-    {
-      /* db_name@host_name */
-#if defined(CS_MODE)
-      *ptr = '\0';		/* screen 'db@host' */
-      if (BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE (client_credential->client_type))
-	{
-	  ha_node_list = ptr + 1;
-	  ha_hosts = cfg_get_hosts (ha_node_list, &num_hosts, false);
-
-	  db = cfg_new_db (client_credential->get_db_name (), NULL, NULL, NULL, (const char **) ha_hosts);
-
-	  if (ha_hosts)
-	    {
-	      cfg_free_hosts (ha_hosts);
-	    }
-	}
-      else
-	{
-	  hosts[0] = ptr + 1;
-	  hosts[1] = NULL;
-
-	  db = cfg_new_db (client_credential->get_db_name (), NULL, NULL, NULL, hosts);
-	}
-      *ptr = (char) '@';
-#else /* CS_MODE */
-      error_code = ER_NOT_IN_STANDALONE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, client_credential->get_db_name ());
-      goto error;
-#endif /* !CS_MODE */
-    }
-
-  if (db == NULL)
-    {
-      error_code = ER_BO_UNKNOWN_DATABASE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, client_credential->get_db_name ());
-      goto error;
-    }
+  assert (db != NULL);
 
   er_clear ();
 
-  /* Get the user name */
-  if (client_credential->db_user.empty ())
-    {
-      if (au_has_user_name ())
-	{
-	  const char *name = au_get_current_user_name ();	// while establishing a connection, never use db_get_user_name.
-	  if (name != NULL)
-	    {
-	      client_credential->db_user = name;
-	      ws_free_string (name);
-	    }
-	}
-      else
-	{
-	  // default is PUBLIC
-	  client_credential->db_user = AU_PUBLIC_USER_NAME;
-	}
-    }
-  /* Get the login name, host, and process identifier */
-  if (client_credential->login_name.empty ())
-    {
-      if (getuserid (boot_Client_id_buffer, L_cuserid) != (char *) NULL)
-	{
-	  client_credential->login_name = boot_Client_id_buffer;
-	}
-      else
-	{
-	  client_credential->login_name = boot_Client_id_unknown_string;
-	}
-    }
-  if (client_credential->host_name.empty ())
-    {
-      client_credential->host_name = boot_get_host_name ();
-    }
-
-  client_credential->process_id = getpid ();
-
-  if (client_credential->client_ip_addr.empty ())
-    {
-      client_credential->client_ip_addr = boot_get_ip ();
-    }
+  boot_check_and_fill_connection_info (client_credential, false);
 
   /*
    * Initialize the dynamic loader. Don't care about failures. If dynamic
@@ -943,176 +506,11 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
 
 #if defined(CS_MODE)
-  /* Initialize the communication subsystem */
-  db_clear_host_status ();
-
-  for (i = 0; i < 2; i++)
-    {
-      if (BOOT_IS_PREFERRED_HOSTS_SET (client_credential) && skip_preferred_hosts == false)
-	{
-	  char **hosts;
-	  DB_INFO *tmp_db;
-
-	  check_capabilities = true;
-
-	  if (i == 0)		/* first */
-	    {
-	      optional_cap = BOOT_CHECK_HA_DELAY_CAP;
-	    }
-	  else			/* second */
-	    {
-	      if (!BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE (client_credential->client_type)
-		  && BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
-		{
-		  check_capabilities = false;
-		}
-
-	      optional_cap = BOOT_NO_OPT_CAP;
-	    }
-
-	  hosts = util_split_string (client_credential->preferred_hosts, ":");
-	  if (hosts == NULL)
-	    {
-	      error_code = ER_GENERIC_ERROR;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
-	      goto error;
-	    }
-
-	  tmp_db = cfg_new_db (db->name, NULL, NULL, NULL, (const char **) hosts);
-	  if (tmp_db == NULL)
-	    {
-	      util_free_string_array (hosts);
-	      error_code = ER_BO_UNKNOWN_DATABASE;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, db->name);
-	      goto error;
-	    }
-
-	  boot_Host_connected[0] = '\0';
-
-	  /* connect to preferred hosts in a sequential order even though a user sets CONNECT_ORDER to RANDOM */
-	  error_code =
-	    boot_client_initialize_css (tmp_db, client_credential->client_type, check_capabilities,
-					optional_cap, false, DB_CONNECT_ORDER_SEQ, true);
-
-	  if (error_code != NO_ERROR)
-	    {
-	      if (error_code == ER_NET_SERVER_HAND_SHAKE)
-		{
-		  er_log_debug (ARG_FILE_LINE,
-				"boot_restart_client: boot_client_initialize_css () ER_NET_SERVER_HAND_SHAKE\n");
-
-		  boot_Host_connected[0] = '\0';
-		}
-	      else
-		{
-		  skip_preferred_hosts = true;
-		}
-	    }
-
-	  util_free_string_array (hosts);
-	  cfg_free_directory (tmp_db);
-	}
-
-      if (skip_db_info == true)
-	{
-	  continue;
-	}
-
-      if (BOOT_IS_PREFERRED_HOSTS_SET (client_credential) && error_code == NO_ERROR)
-	{
-	  /* connected to any preferred hosts successfully */
-	  break;
-	}
-      else if (BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE (client_credential->client_type)
-	       || client_credential->client_type == DB_CLIENT_TYPE_SLAVE_ONLY_BROKER)
-
-	{
-	  check_capabilities = true;
-	  if (i == 0)		/* first */
-	    {
-	      optional_cap = BOOT_CHECK_HA_DELAY_CAP;
-	    }
-	  else			/* second */
-	    {
-	      optional_cap = BOOT_NO_OPT_CAP;
-	    }
-
-	  error_code =
-	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities,
-					optional_cap, false, client_credential->connect_order, false);
-	}
-      else if (BOOT_CSQL_CLIENT_TYPE (client_credential->client_type))
-	{
-	  assert (!BOOT_IS_PREFERRED_HOSTS_SET (client_credential));
-
-	  check_capabilities = false;
-	  optional_cap = BOOT_NO_OPT_CAP;
-
-	  error_code =
-	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities,
-					optional_cap, false, DB_CONNECT_ORDER_SEQ, false);
-	  break;		/* dont retry */
-	}
-      else if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
-	{
-	  if (i == 0)		/* first */
-	    {
-	      check_capabilities = true;
-	      optional_cap = BOOT_CHECK_HA_DELAY_CAP;
-	    }
-	  else			/* second */
-	    {
-	      check_capabilities = false;
-	      optional_cap = BOOT_NO_OPT_CAP;
-	    }
-
-	  error_code =
-	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities,
-					optional_cap, false, client_credential->connect_order, false);
-
-	}
-      else
-	{
-	  assert (!BOOT_IS_PREFERRED_HOSTS_SET (client_credential));
-
-	  check_capabilities = false;
-	  optional_cap = BOOT_NO_OPT_CAP;
-	  error_code =
-	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities,
-					optional_cap, false, client_credential->connect_order, false);
-	  break;		/* dont retry */
-	}
-
-      if (error_code == NO_ERROR)
-	{
-	  if (BOOT_IS_PREFERRED_HOSTS_SET (client_credential))
-	    {
-	      db_set_host_status (boot_Host_connected, DB_HS_NON_PREFFERED_HOSTS);
-	    }
-	  break;
-	}
-      else if (error_code == ER_NET_SERVER_HAND_SHAKE)
-	{
-	  er_log_debug (ARG_FILE_LINE, "boot_restart_client: boot_client_initialize_css () ER_NET_SERVER_HAND_SHAKE\n");
-	}
-      else
-	{
-	  skip_db_info = true;
-	}
-    }
-
+  error_code = boot_connect_to_server (client_credential, db);
   if (error_code != NO_ERROR)
     {
-      er_log_debug (ARG_FILE_LINE, "boot_restart_client: boot_client_initialize_css () error %d\n", error_code);
       goto error;
     }
-
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CONNECTED_TO, 5,
-	  client_credential->get_program_name (), client_credential->process_id,
-	  client_credential->get_db_name (), boot_Host_connected, prm_get_integer_value (PRM_ID_TCP_PORT_ID));
-
-  /* tune some client parameters with the value from the server */
-  sysprm_tune_client_parameters ();
 #else /* CS_MODE */
 #if defined(WINDOWS)
   css_windows_startup ();
@@ -1129,9 +527,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     {
       goto error;
     }
-
-  /* Initialize tsc-timer */
-  tsc_init ();
 
   error_code = ws_init ();
   if (error_code != NO_ERROR)
@@ -1257,24 +652,10 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   /* Does not care if was committed/aborted .. */
   (void) tran_commit (false);
 
-  /*
-   * If there is a need to change the isolation level and the lock wait,
-   * do it at this moment
-   */
-
-  tran_isolation = (TRAN_ISOLATION) prm_get_integer_value (PRM_ID_LOG_ISOLATION_LEVEL);
-  tran_lock_wait_msecs = prm_get_integer_value (PRM_ID_LK_TIMEOUT_SECS);
-  if (tran_isolation != TRAN_DEFAULT_ISOLATION_LEVEL ())
+  error_code = reset_isolation_and_wait_times ();
+  if (error_code != NO_ERROR)
     {
-      error_code = tran_reset_isolation (tran_isolation, TM_TRAN_ASYNC_WS ());
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-  if (tran_lock_wait_msecs >= 0)
-    {
-      (void) tran_reset_wait_times (tran_lock_wait_msecs * 1000);
+      goto error;
     }
 
   error_code = showstmt_metadata_init ();
@@ -1295,59 +676,11 @@ error:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
     }
 
-  if (db != NULL)
-    {
-      cfg_free_directory (db);
-    }
-
-  if (BOOT_IS_CLIENT_RESTARTED ())
-    {
-      er_log_debug (ARG_FILE_LINE, "boot_restart_client: unregister client { tran %d }\n", tm_Tran_index);
-      boot_shutdown_client (false);
-    }
-  else
-    {
-      if (boot_Server_credential.db_full_name)
-	{
-	  db_private_free_and_init (NULL, boot_Server_credential.db_full_name);
-	}
-      if (boot_Server_credential.host_name)
-	{
-	  db_private_free_and_init (NULL, boot_Server_credential.host_name);
-	}
-
-      showstmt_metadata_final ();
-      tran_free_savepoint_list ();
-      set_final ();
-      tr_final ();
-      au_final ();
-      sm_final ();
-      ws_final ();
-      es_final ();
-      tp_final ();
-
 #if !defined(WINDOWS)
-      if (dl_initialized == true)
-	{
-	  (void) dl_destroy_module ();
-	  dl_initialized = false;
-	}
-#endif /* !WINDOWS */
-
-      locator_free_areas ();
-      sysprm_final ();
-      area_final ();
-
-      lang_final ();
-      tz_unload ();
-
-#if defined(WINDOWS)
-      pc_final ();
-#endif /* WINDOWS */
-
-      memset (&boot_Server_credential, 0, sizeof (boot_Server_credential));
-      memset (boot_Server_credential.server_session_key, 0xFF, SERVER_SESSION_KEY_SIZE);
-    }
+  boot_restart_failure_cleanup (db, dl_initialized, false);
+#else
+  boot_restart_failure_cleanup (db, false);
+#endif
 
   return error_code;
 }
@@ -2195,5 +1528,671 @@ boot_client_find_and_cache_class_oids (void)
       return ER_FAILED;
     }
   oid_set_cached_class_oid (OID_CACHE_HA_APPLY_INFO_CLASS_ID, &class_mop->oid_info.oid);
+  return NO_ERROR;
+}
+
+static int
+boot_restart_common_initialize (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang_charset, bool is_createdb)
+{
+  int error_code;
+  const char *conf_file = NULL;
+
+  /* If the client is restarted, shutdown the client */
+  if (BOOT_IS_CLIENT_RESTARTED ())
+    {
+      (void) boot_shutdown_client (true);
+    }
+
+  if (!boot_Is_client_all_final)
+    {
+      boot_client_all_finalize (ALL_FINALIZATION);
+    }
+
+#if defined(WINDOWS)
+/* set up the WINDOWS stream emulations */
+  pc_init ();
+#endif /* WINDOWS */
+
+/* initialize language parameters */
+  if (lang_init () != NO_ERROR)
+    {
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, "Failed to initialize language module");
+	}
+      return ER_LOC_INIT;
+    }
+
+  if (is_createdb)
+    {
+      if (lang_set_charset_lang (lang_charset) != NO_ERROR)
+	{
+	  return ER_LOC_INIT;
+	}
+    }
+  else
+    {
+      /* initialize time zone data - optional module */
+      if (tz_load () != NO_ERROR)
+	{
+	  if (er_errid () == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_LOAD_ERROR, 1, "Failed to initialize timezone module");
+	    }
+	  return ER_TZ_LOAD_ERROR;
+	}
+    }
+
+/* database name must be specified */
+  if (client_credential->db_name.empty ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, "(null)");
+      return ER_BO_UNKNOWN_DATABASE;
+    }
+
+/* open the system message catalog, before prm_ ? */
+  if (msgcat_init () != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG, 0);
+      return ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
+    }
+
+#if defined (CS_MODE)
+  if (is_createdb == false)
+    {
+      if (BOOT_BROKER_CLIENT_TYPE (client_credential->client_type))
+	{
+	  conf_file = getenv ("CUBRID_CONF_FOR_BROKER");
+	  if (conf_file && access (conf_file, R_OK | F_OK) != 0)
+	    {
+	      conf_file = NULL;
+	    }
+	}
+    }
+#endif
+
+/* initialize system parameters */
+  if (sysprm_load_and_init_client (client_credential->get_db_name (), conf_file) != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
+      return ER_BO_CANT_LOAD_SYSPRM;
+    }
+
+  if (!is_createdb)
+    {
+      // reload with update file name
+      if (er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE), prm_get_integer_value (PRM_ID_ER_EXIT_ASK)) != NO_ERROR)
+	{
+	  assert_release (false);
+	  return NO_ERROR;
+	}
+
+#if defined (CS_MODE) && !defined (NDEBUG)
+      /* log the parameter loading file for CAS in debug mode. */
+      if (BOOT_BROKER_CLIENT_TYPE (client_credential->client_type))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "conf_for_broker = %s\n", conf_file ? conf_file : "unknown");
+	}
+#endif
+    }
+
+  /* initialize the "areas" memory manager, requires prm_ */
+  area_init ();
+  locator_initialize_areas ();
+
+  if (is_createdb)
+    {
+      error_code = perfmon_initialize (MAX_NTRANS);
+    }
+  else
+    {
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+      error_code = perfmon_initialize (MAX_NTRANS);
+#else
+      error_code = perfmon_initialize (1);	/* 1 transaction for SA_MODE */
+#endif
+    }
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  /* Initialize tsc-timer */
+  tsc_init ();
+
+  return NO_ERROR;
+}
+
+
+
+
+static int
+boot_check_and_fill_db_path_info (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info)
+{
+  unsigned int length;
+
+  /* If db_path and/or log_path are NULL find the defaults */
+
+  if (db_path_info->db_path == NULL)
+    {
+      db_path_info->db_path = getcwd (boot_Db_path_buf, PATH_MAX);
+      if (db_path_info->db_path == NULL)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CWD_FAIL, 0);
+	  return ER_BO_CWD_FAIL;
+	}
+    }
+  if (db_path_info->log_path == NULL)
+    {
+      /* assign the data volume directory */
+      strcpy (boot_Log_path_buf, db_path_info->db_path);
+      db_path_info->log_path = boot_Log_path_buf;
+    }
+  if (db_path_info->lob_path == NULL)
+    {
+      /* assign the data volume directory */
+      snprintf (boot_Lob_path_buf, sizeof (boot_Lob_path_buf), "%s%s%clob", LOB_PATH_DEFAULT_PREFIX,
+		db_path_info->db_path, PATH_SEPARATOR);
+      db_path_info->lob_path = boot_Lob_path_buf;
+    }
+  else
+    {
+      ES_TYPE es_type = es_get_type (db_path_info->lob_path);
+
+      switch (es_type)
+	{
+	case ES_NONE:
+	  /* prepend default prefix */
+	  snprintf (boot_Lob_path_buf, sizeof (boot_Lob_path_buf), "%s%s", LOB_PATH_DEFAULT_PREFIX,
+		    db_path_info->lob_path);
+	  db_path_info->lob_path = boot_Lob_path_buf;
+	  break;
+#if !defined (CUBRID_OWFS)
+	case ES_OWFS:
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, db_path_info->lob_path);
+	  return ER_ES_INVALID_PATH;
+#endif /* !CUBRID_OWFS */
+	default:
+	  break;
+	}
+    }
+
+/* make sure that the full path for the database is not too long */
+  length = (unsigned int) (client_credential->db_name.length () + strlen (db_path_info->db_path) + 2);
+  if (length > (unsigned) PATH_MAX)
+    {
+      /* db_path + db_name is too long */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 3, db_path_info->db_path,
+	      client_credential->get_db_name (), length, PATH_MAX);
+
+      return ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG;
+    }
+
+/* If a host was not given, assume the current host */
+  if (db_path_info->db_host == NULL)
+    {
+      strcpy (boot_Db_host_buf, "localhost");
+      db_path_info->db_host = boot_Db_host_buf;
+    }
+
+  return NO_ERROR;
+}
+
+static void
+boot_check_and_fill_connection_info (BOOT_CLIENT_CREDENTIAL * client_credential, bool is_createdb)
+{
+  /* Get the user name */
+  if (client_credential->db_user.empty ())
+    {
+      if (is_createdb)
+	{
+	  char *user_name = strdup (Au_user_name);
+
+	  if (user_name != NULL)
+	    {
+	      int upper_case_name_size;
+	      char *upper_case_name;
+
+	      upper_case_name_size = intl_identifier_upper_string_size (user_name);
+	      upper_case_name = (char *) malloc (upper_case_name_size + 1);
+	      if (upper_case_name == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  (size_t) (upper_case_name_size + 1));
+		}
+	      else
+		{
+		  intl_identifier_upper (user_name, upper_case_name);
+		  client_credential->db_user = upper_case_name;
+		}
+	      free_and_init (user_name);
+	    }
+
+	  if (client_credential->db_user.empty ())
+	    {
+	      client_credential->db_user = boot_Client_no_user_string;
+	    }
+	}
+      else
+	{
+	  if (au_has_user_name ())
+	    {
+	      const char *name = au_get_current_user_name ();	// while establishing a connection, never use db_get_user_name.
+	      if (name != NULL)
+		{
+		  client_credential->db_user = name;
+		  ws_free_string (name);
+		}
+	    }
+	  else
+	    {
+	      // default is PUBLIC
+	      client_credential->db_user = AU_PUBLIC_USER_NAME;
+	    }
+	}
+    }
+/* Get the login name, host, and process identifier */
+  if (client_credential->login_name.empty ())
+    {
+      if (getuserid (boot_Client_id_buffer, L_cuserid) != (char *) NULL)
+	{
+	  client_credential->login_name = boot_Client_id_buffer;
+	}
+      else
+	{
+	  client_credential->login_name = boot_Client_id_unknown_string;
+	}
+    }
+  if (client_credential->host_name.empty ())
+    {
+      client_credential->host_name = boot_get_host_name ();
+    }
+
+  if (!is_createdb)
+    {
+      client_credential->process_id = getpid ();
+
+      if (client_credential->client_ip_addr.empty ())
+	{
+	  client_credential->client_ip_addr = boot_get_ip ();
+	}
+    }
+}
+
+static DB_INFO *
+boot_build_db_info (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info, int *ret_error_code)
+{
+  DB_INFO *db = NULL;
+  const char *hosts[2];
+  char *ptr;
+
+  *ret_error_code = NO_ERROR;
+  if (db_path_info)
+    {
+      /* make new DB_INFO */
+      hosts[0] = db_path_info->db_host;
+      hosts[1] = NULL;
+      db =
+	cfg_new_db (client_credential->get_db_name (), db_path_info->db_path, db_path_info->log_path,
+		    db_path_info->lob_path, hosts);
+    }
+  else
+    {
+      ptr = (char *) strstr (client_credential->get_db_name (), "@");
+      if (ptr == NULL)
+	{
+	  /* Find the location of the database and the log from the database.txt */
+	  db = cfg_find_db (client_credential->get_db_name ());
+#if defined(CS_MODE)
+	  if (db == NULL)
+	    {
+	      /* if not found, use secondary host lists */
+	      db = cfg_new_db (client_credential->get_db_name (), NULL, NULL, NULL, NULL);
+	    }
+
+	  if (db == NULL
+	      || (db->num_hosts > 1
+		  && (BOOT_ADMIN_CLIENT_TYPE (client_credential->client_type)
+		      || BOOT_LOG_REPLICATOR_TYPE (client_credential->client_type)
+		      || BOOT_CSQL_CLIENT_TYPE (client_credential->client_type))))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_NO_EXPLICIT_SERVER_HOST, 0);
+	      *ret_error_code = ER_NET_NO_EXPLICIT_SERVER_HOST;
+	    }
+#endif /* CS_MODE */
+	}
+      else
+	{
+	  /* db_name@host_name */
+#if defined(CS_MODE)
+	  char *ha_node_list = NULL;
+	  char **ha_hosts;
+	  int num_hosts;
+
+	  *ptr = '\0';		/* screen 'db@host' */
+	  if (BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE (client_credential->client_type))
+	    {
+	      ha_node_list = ptr + 1;
+	      ha_hosts = cfg_get_hosts (ha_node_list, &num_hosts, false);
+
+	      db = cfg_new_db (client_credential->get_db_name (), NULL, NULL, NULL, (const char **) ha_hosts);
+
+	      if (ha_hosts)
+		{
+		  cfg_free_hosts (ha_hosts);
+		}
+	    }
+	  else
+	    {
+	      hosts[0] = ptr + 1;
+	      hosts[1] = NULL;
+
+	      db = cfg_new_db (client_credential->get_db_name (), NULL, NULL, NULL, hosts);
+	    }
+	  *ptr = (char) '@';
+#else /* CS_MODE */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, client_credential->get_db_name ());
+	  *ret_error_code = ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+	}
+    }
+
+  if (*ret_error_code == NO_ERROR && db == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, client_credential->get_db_name ());
+      *ret_error_code = ER_BO_UNKNOWN_DATABASE;
+    }
+
+#if defined(SA_MODE)
+  if (db_path_info)
+    {
+/* Get the absolute path name */
+      COMPOSE_FULL_NAME (boot_Volume_label, sizeof (boot_Volume_label), db_path_info->db_path,
+			 client_credential->get_db_name ());
+    }
+#endif
+
+  return db;
+}
+
+
+static void
+boot_restart_failure_cleanup (DB_INFO * db,
+#if !defined(WINDOWS)
+			      bool dl_initialized,
+#endif
+			      bool is_createdb)
+{
+  if (db != NULL)
+    {
+      cfg_free_directory (db);
+    }
+
+  if (BOOT_IS_CLIENT_RESTARTED ())
+    {
+      er_log_debug (ARG_FILE_LINE, "boot_initialize_client: unregister client { tran %d }\n", tm_Tran_index);
+      boot_shutdown_client (false);
+    }
+  else
+    {
+      if (boot_Server_credential.db_full_name)
+	{
+	  db_private_free_and_init (NULL, boot_Server_credential.db_full_name);
+	}
+      if (boot_Server_credential.host_name)
+	{
+	  db_private_free_and_init (NULL, boot_Server_credential.host_name);
+	}
+
+      showstmt_metadata_final ();
+      tran_free_savepoint_list ();
+      tr_final ();
+      au_final ();
+      sm_final ();
+      ws_final ();
+      es_final ();
+      tp_final ();
+
+#if !defined(WINDOWS)
+      if (dl_initialized == true)
+	{
+	  (void) dl_destroy_module ();
+	  dl_initialized = false;
+	}
+#endif /* !WINDOWS */
+
+      locator_free_areas ();
+      sysprm_final ();
+      area_final ();
+
+      lang_final ();
+      tz_unload ();
+      if (is_createdb)
+	{
+	  perfmon_finalize ();
+	}
+
+#if defined(WINDOWS)
+      pc_final ();
+#endif /* WINDOWS */
+
+      memset (&boot_Server_credential, 0, sizeof (boot_Server_credential));
+      memset (boot_Server_credential.server_session_key, 0xFF, SERVER_SESSION_KEY_SIZE);
+    }
+}
+
+#if defined(CS_MODE)
+static int
+boot_connect_to_server (BOOT_CLIENT_CREDENTIAL * client_credential, DB_INFO * db)
+{
+  int error_code = NO_ERROR;
+  int i, optional_cap;
+  char *ha_node_list = NULL;
+  bool check_capabilities;
+  bool skip_preferred_hosts = false;
+  bool skip_db_info = false;
+
+  /* Initialize the communication subsystem */
+  db_clear_host_status ();
+
+  for (i = 0; i < 2; i++)
+    {
+      if (BOOT_IS_PREFERRED_HOSTS_SET (client_credential) && skip_preferred_hosts == false)
+	{
+	  char **hosts;
+	  DB_INFO *tmp_db;
+
+	  check_capabilities = true;
+
+	  if (i == 0)		/* first */
+	    {
+	      optional_cap = BOOT_CHECK_HA_DELAY_CAP;
+	    }
+	  else			/* second */
+	    {
+	      if (!BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE (client_credential->client_type)
+		  && BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
+		{
+		  check_capabilities = false;
+		}
+
+	      optional_cap = BOOT_NO_OPT_CAP;
+	    }
+
+	  hosts = util_split_string (client_credential->preferred_hosts, ":");
+	  if (hosts == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      return ER_GENERIC_ERROR;
+	    }
+
+	  tmp_db = cfg_new_db (db->name, NULL, NULL, NULL, (const char **) hosts);
+	  if (tmp_db == NULL)
+	    {
+	      util_free_string_array (hosts);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, db->name);
+	      return ER_BO_UNKNOWN_DATABASE;
+	    }
+
+	  boot_Host_connected[0] = '\0';
+
+	  /* connect to preferred hosts in a sequential order even though a user sets CONNECT_ORDER to RANDOM */
+	  error_code =
+	    boot_client_initialize_css (tmp_db, client_credential->client_type, check_capabilities,
+					optional_cap, false, DB_CONNECT_ORDER_SEQ, true);
+
+	  if (error_code != NO_ERROR)
+	    {
+	      if (error_code == ER_NET_SERVER_HAND_SHAKE)
+		{
+		  er_log_debug (ARG_FILE_LINE,
+				"boot_restart_client: boot_client_initialize_css () ER_NET_SERVER_HAND_SHAKE\n");
+
+		  boot_Host_connected[0] = '\0';
+		}
+	      else
+		{
+		  skip_preferred_hosts = true;
+		}
+	    }
+
+	  util_free_string_array (hosts);
+	  cfg_free_directory (tmp_db);
+	}
+
+      if (skip_db_info == true)
+	{
+	  continue;
+	}
+
+      if (BOOT_IS_PREFERRED_HOSTS_SET (client_credential) && error_code == NO_ERROR)
+	{
+	  /* connected to any preferred hosts successfully */
+	  break;
+	}
+      else if (BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE (client_credential->client_type)
+	       || client_credential->client_type == DB_CLIENT_TYPE_SLAVE_ONLY_BROKER)
+
+	{
+	  check_capabilities = true;
+	  if (i == 0)		/* first */
+	    {
+	      optional_cap = BOOT_CHECK_HA_DELAY_CAP;
+	    }
+	  else			/* second */
+	    {
+	      optional_cap = BOOT_NO_OPT_CAP;
+	    }
+
+	  error_code =
+	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities,
+					optional_cap, false, client_credential->connect_order, false);
+	}
+      else if (BOOT_CSQL_CLIENT_TYPE (client_credential->client_type))
+	{
+	  assert (!BOOT_IS_PREFERRED_HOSTS_SET (client_credential));
+
+	  check_capabilities = false;
+	  optional_cap = BOOT_NO_OPT_CAP;
+
+	  error_code =
+	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities,
+					optional_cap, false, DB_CONNECT_ORDER_SEQ, false);
+	  break;		/* dont retry */
+	}
+      else if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
+	{
+	  if (i == 0)		/* first */
+	    {
+	      check_capabilities = true;
+	      optional_cap = BOOT_CHECK_HA_DELAY_CAP;
+	    }
+	  else			/* second */
+	    {
+	      check_capabilities = false;
+	      optional_cap = BOOT_NO_OPT_CAP;
+	    }
+
+	  error_code =
+	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities,
+					optional_cap, false, client_credential->connect_order, false);
+
+	}
+      else
+	{
+	  assert (!BOOT_IS_PREFERRED_HOSTS_SET (client_credential));
+
+	  check_capabilities = false;
+	  optional_cap = BOOT_NO_OPT_CAP;
+	  error_code =
+	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities,
+					optional_cap, false, client_credential->connect_order, false);
+	  break;		/* dont retry */
+	}
+
+      if (error_code == NO_ERROR)
+	{
+	  if (BOOT_IS_PREFERRED_HOSTS_SET (client_credential))
+	    {
+	      db_set_host_status (boot_Host_connected, DB_HS_NON_PREFFERED_HOSTS);
+	    }
+	  break;
+	}
+      else if (error_code == ER_NET_SERVER_HAND_SHAKE)
+	{
+	  er_log_debug (ARG_FILE_LINE, "boot_restart_client: boot_client_initialize_css () ER_NET_SERVER_HAND_SHAKE\n");
+	}
+      else
+	{
+	  skip_db_info = true;
+	}
+    }
+
+  if (error_code != NO_ERROR)
+    {
+      er_log_debug (ARG_FILE_LINE, "boot_restart_client: boot_client_initialize_css () error %d\n", error_code);
+      return error_code;
+    }
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CONNECTED_TO, 5,
+	  client_credential->get_program_name (), client_credential->process_id,
+	  client_credential->get_db_name (), boot_Host_connected, prm_get_integer_value (PRM_ID_TCP_PORT_ID));
+
+  /* tune some client parameters with the value from the server */
+  sysprm_tune_client_parameters ();
+
+  return NO_ERROR;
+}
+#endif
+
+
+static int
+reset_isolation_and_wait_times (void)
+{
+  TRAN_ISOLATION tran_isolation;
+  int tran_lock_wait_msecs;
+  int error_code;
+
+  /*
+   * If there is a need to change the isolation level and the lock wait,
+   * do it at this moment
+   */
+
+  tran_isolation = (TRAN_ISOLATION) prm_get_integer_value (PRM_ID_LOG_ISOLATION_LEVEL);
+  tran_lock_wait_msecs = prm_get_integer_value (PRM_ID_LK_TIMEOUT_SECS);
+  if (tran_isolation != TRAN_DEFAULT_ISOLATION_LEVEL ())
+    {
+      error_code = tran_reset_isolation (tran_isolation, TM_TRAN_ASYNC_WS ());
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+  if (tran_lock_wait_msecs >= 0)
+    {
+      (void) tran_reset_wait_times (tran_lock_wait_msecs * 1000);
+    }
+
   return NO_ERROR;
 }
