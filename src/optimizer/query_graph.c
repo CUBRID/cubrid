@@ -8358,7 +8358,11 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 	      for (t = 0; t < env->nterms; t++)
 		{
 		  term = QO_ENV_TERM (env, t);
-		  if (!QO_IS_EDGE_TERM (term))
+		  /* Also check AFTER/DURING_JOIN: QO_TC_JOIN terms reclassified by
+		   * qo_classify_outerjoin_terms retain NOMINAL_SEG/HEAD/TAIL. */
+		  if (!QO_IS_EDGE_TERM (term)
+		      && QO_TERM_CLASS (term) != QO_TC_AFTER_JOIN
+		      && QO_TERM_CLASS (term) != QO_TC_DURING_JOIN)
 		    continue;
 		  nom = QO_TERM_NOMINAL_SEG (term);
 		  if (nom == NULL || root_arr[QO_SEG_IDX (nom)] != i)
