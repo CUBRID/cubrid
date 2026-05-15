@@ -2907,9 +2907,21 @@ preserve_info (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
 static QO_PLAN *
 qo_find_driving_scan_plan (QO_PLAN * plan)
 {
-  while (plan != NULL && plan->plan_type == QO_PLANTYPE_JOIN)
+  while (plan != NULL)
     {
-      plan = plan->plan_un.join.outer;
+      if (plan->plan_type == QO_PLANTYPE_JOIN)
+	{
+	  plan = plan->plan_un.join.outer;
+	}
+      else if (plan->plan_type == QO_PLANTYPE_SORT && plan->plan_un.sort.sort_type != SORT_LIMIT)
+	{
+	  /* SORT_LIMIT excluded: top-N early-stop defeated by parallel leaf-page split. */
+	  plan = plan->plan_un.sort.subplan;
+	}
+      else
+	{
+	  break;
+	}
     }
   if (plan != NULL && plan->plan_type == QO_PLANTYPE_SCAN)
     {
