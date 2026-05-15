@@ -379,7 +379,8 @@ const char *sm_define_view_parameters_spec (void)
       "DECODE ([sp_args].[mode], %d, 'IN', %d, 'OUT', %d, 'INOUT') AS [parameter_mode], "
       "'NO' AS [is_result], "
       "[sp_args].[arg_name] AS [parameter_name], "
-      "[dt].[type_name] AS [data_type], "
+      /* DB_TYPE_RESULTSET(28) has no row in _db_data_type; surface it as 'CURSOR' */
+      "CASE [sp_args].[data_type] WHEN 28 THEN 'CURSOR' ELSE [dt].[type_name] END AS [data_type], "
       "NULL AS [character_maximum_length], "
       "NULL AS [character_octet_length], "
       "NULL AS [character_set_name], "
@@ -400,8 +401,8 @@ const char *sm_define_view_parameters_spec (void)
     "FROM "
       /* CT_STORED_PROC_ARGS_NAME */
       "[%s] AS [sp_args] "
-      /* CT_DATATYPE_NAME */
-      "INNER JOIN [%s] AS [dt] ON [dt].[type_id] = [sp_args].[data_type] "
+      /* CT_DATATYPE_NAME — LEFT JOIN so OUT CURSOR (type_id=28, not in _db_data_type) rows survive */
+      "LEFT OUTER JOIN [%s] AS [dt] ON [dt].[type_id] = [sp_args].[data_type] "
     "WHERE "
       AUTH_CHECK_STORED_PROC("[sp_args].[sp_of].[owner].[name]", "[sp_args].[sp_of]") " "
       "AND [sp_args].[sp_of].[is_system_generated] = 0",
@@ -557,8 +558,8 @@ const char *sm_define_view_routines_spec (void)
       "[sp].[sp_name] AS [routine_name], "
       /* SP_TYPE_PROCEDURE, SP_TYPE_FUNCTION */
       "DECODE ([sp].[sp_type], %d, 'PROCEDURE', %d, 'FUNCTION') AS [routine_type], "
-      /* SP_TYPE_FUNCTION */
-      "IF ([sp].[sp_type] = %d, [dt].[type_name], NULL) AS [data_type], "
+      /* SP_TYPE_FUNCTION; DB_TYPE_RESULTSET(28) has no row in _db_data_type, surface it as 'CURSOR' */
+      "IF ([sp].[sp_type] = %d, CASE [sp].[return_type] WHEN 28 THEN 'CURSOR' ELSE [dt].[type_name] END, NULL) AS [data_type], "
       "NULL AS [character_maximum_length], "
       "NULL AS [character_octet_length], "
       /* STRING/VARCHAR(4), CHAR(25) */
