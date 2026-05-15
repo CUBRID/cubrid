@@ -46,6 +46,10 @@ namespace parallel_scan
       int set_page (THREAD_ENTRY *thread_p, PAGE_PTR page, INT16 slot_hint = NULL_SLOTID);
       SCAN_CODE next_qualified_slot_with_peek (THREAD_ENTRY *thread_p);
 
+      /* Late-joiner entry: handler-fetched overflow page + peek-borrowed key ref. */
+      int set_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page, DB_VALUE *key_ref,
+			     int range_idx, int after_key_offset);
+
       void set_input_handler (input_handler_index *handler)
       {
 	m_input_handler = handler;
@@ -58,6 +62,32 @@ namespace parallel_scan
       }
 
     private:
+      enum class slot_state
+      {
+	IDLE,             /* between leaf-records; normal slot iteration */
+	DRAIN_LEAF_OIDS,  /* m_slot_oids holds leaf-resident OIDs */
+	SHARED_DRAIN,     /* pulling overflow pages from input_handler shared cursor */
+	SOLO_DRAIN        /* walking the chain alone (try_publish_overflow lost) */
+      };
+      slot_state m_slot_state;
+
+      /* SOLO_DRAIN private cursor + hand-over-hand prev page. */
+      VPID m_solo_cur_vpid;
+      PAGE_PTR m_solo_prev_page;
+
+      /* True when the iterator was set up via set_overflow_page (late joiner). */
+      bool m_in_helper_mode;
+
+      /* Set on try_publish_overflow success — this iterator OWNS the m_slot_key buffer
+       * that m_overflow_key shallow-borrows. On SHARED_DRAIN S_END the producer calls
+       * wait_for_chain_done so helpers finish reading before the buffer is freed by the
+       * producer's next slot-advance pr_clear_value (same thread / mspace). */
+      bool m_was_producer;
+
+      /* Carried between leaf-OID drain and overflow chain take-up. */
+      VPID m_pending_ovf_vpid;
+      int m_pending_ovf_after_key_offset;
+
       SCAN_ID *m_scan_id;
       val_descr *m_vd;
       BTID_INT *m_btid_int;             /* shared, read-only — from input_handler. */
@@ -80,6 +110,7 @@ namespace parallel_scan
 
       int check_key_in_range (DB_VALUE *key, bool *in_range, bool *past_upper, int *matched_range_idx);
       SCAN_CODE process_oid (THREAD_ENTRY *thread_p, OID *oid);
+      SCAN_CODE drain_next_oid (THREAD_ENTRY *thread_p);
 
       /* btree_key_process_objects callback. */
       static int collect_oid_callback (THREAD_ENTRY *thread_p, BTID_INT *btid_int, RECDES *record,
