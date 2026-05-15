@@ -1457,6 +1457,21 @@ check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * key_va
   return ((*key_val_fn) (key_vals, key_cnt));
 }
 
+/* shared with parallel index scan: same dedup/merge serial path runs in scan_open_index_scan. */
+int
+scan_dedup_or_merge_key_ranges (RANGE_TYPE range_type, KEY_VAL_RANGE * key_vals, int key_cnt)
+{
+  if (range_type == R_KEYLIST)
+    {
+      return check_key_vals (key_vals, key_cnt, eliminate_duplicated_keys);
+    }
+  if (range_type == R_RANGELIST)
+    {
+      return check_key_vals (key_vals, key_cnt, merge_key_ranges);
+    }
+  return key_cnt;
+}
+
 /*
  * scan_dbvals_to_midxkey () -
  *   return: NO_ERROR or ER_code

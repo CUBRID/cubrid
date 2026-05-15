@@ -246,102 +246,18 @@ namespace parallel_scan
 	  }
       }
 
-    /* sort by key1 in B-tree storage order for cursor-friendly leaf-chain traversal. */
-    if (static_cast<int> (m_key_val_ranges.size ()) > 1)
+    /* delegate sort + dedup/merge to scan_manager helper (R_KEYLIST: eliminate_duplicated_keys; R_RANGELIST: merge_key_ranges) so serial and parallel share the same overlap/IN-dup handling. */
+    if (m_key_val_ranges.size () > 1 && m_indx_info != nullptr)
       {
-	TP_DOMAIN *key_domain = m_btid_int.key_type;
-	for (int i = 0; i < static_cast<int> (m_key_val_ranges.size ()) - 1; i++)
+	int new_cnt = scan_dedup_or_merge_key_ranges (m_indx_info->range_type, m_key_val_ranges.data (),
+		      static_cast<int> (m_key_val_ranges.size ()));
+	if (new_cnt < 0)
 	  {
-	    for (int j = i + 1; j < static_cast<int> (m_key_val_ranges.size ()); j++)
-	      {
-		key_val_range *a = &m_key_val_ranges[i];
-		key_val_range *b = &m_key_val_ranges[j];
-
-		if (a->range == NA_NA && b->range != NA_NA)
-		  {
-		    key_val_range tmp = *a;
-		    *a = *b;
-		    *b = tmp;
-		    continue;
-		  }
-		if (b->range == NA_NA)
-		  {
-		    continue;
-		  }
-
-		DB_VALUE *ak = DB_IS_NULL (&a->key1) ? nullptr : &a->key1;
-		DB_VALUE *bk = DB_IS_NULL (&b->key1) ? nullptr : &b->key1;
-
-		if (ak == nullptr && bk != nullptr)
-		  {
-		    continue;
-		  }
-		if (ak != nullptr && bk == nullptr)
-		  {
-		    key_val_range tmp = *a;
-		    *a = *b;
-		    *b = tmp;
-		    continue;
-		  }
-		if (ak != nullptr && bk != nullptr)
-		  {
-		    int start_col = 0;
-		    DB_VALUE_COMPARE_RESULT cmp = btree_compare_key (ak, bk, key_domain, 1, 1, &start_col);
-		    if (cmp == DB_GT)
-		      {
-			key_val_range tmp = *a;
-			*a = *b;
-			*b = tmp;
-		      }
-		  }
-	      }
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	    m_key_val_ranges.clear ();
+	    return ER_FAILED;
 	  }
-
-	/* dedup adjacent identical ranges (e.g. cola IN (1,1,1) yields 3 same ranges → 3x emits). serial multi-range-opt handles this internally; parallel re-descends per range and inflates counts. anchor walks past NA_NA so a run of N identical ranges collapses to one, not pairs. */
-	TP_DOMAIN *dedup_dom = m_btid_int.key_type;
-	key_val_range *anchor = nullptr;
-	for (int i = 0; i < static_cast<int> (m_key_val_ranges.size ()); i++)
-	  {
-	    key_val_range *cur = &m_key_val_ranges[i];
-	    if (cur->range == NA_NA)
-	      {
-		continue;
-	      }
-	    if (anchor == nullptr || anchor->range != cur->range)
-	      {
-		anchor = cur;
-		continue;
-	      }
-	    int sc = 0;
-	    bool k1_equal = (DB_IS_NULL (&anchor->key1) && DB_IS_NULL (&cur->key1));
-	    if (!k1_equal && !DB_IS_NULL (&anchor->key1) && !DB_IS_NULL (&cur->key1))
-	      {
-		sc = 0;
-		k1_equal = (btree_compare_key (&anchor->key1, &cur->key1, dedup_dom, 1, 1, &sc) == DB_EQ);
-	      }
-	    if (!k1_equal)
-	      {
-		anchor = cur;
-		continue;
-	      }
-	    bool k2_equal = (DB_IS_NULL (&anchor->key2) && DB_IS_NULL (&cur->key2));
-	    if (!k2_equal && !DB_IS_NULL (&anchor->key2) && !DB_IS_NULL (&cur->key2))
-	      {
-		sc = 0;
-		k2_equal = (btree_compare_key (&anchor->key2, &cur->key2, dedup_dom, 1, 1, &sc) == DB_EQ);
-	      }
-	    if (!k2_equal)
-	      {
-		anchor = cur;
-		continue;
-	      }
-	    pr_clear_value (&cur->key1);
-	    pr_clear_value (&cur->key2);
-	    db_make_null (&cur->key1);
-	    db_make_null (&cur->key2);
-	    cur->range = NA_NA;
-	    cur->num_index_term = 0;
-	  }
+	m_key_val_ranges.resize (new_cnt);
       }
 
     return NO_ERROR;
