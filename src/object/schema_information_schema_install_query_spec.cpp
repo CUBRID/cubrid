@@ -724,7 +724,7 @@ const char *sm_define_view_statistics_spec (void)
       "END AS VARCHAR (1)) AS [collation], "
       "CAST (INDEX_CARDINALITY ("
         "[cls].[unique_name], "
-        "LOWER ([idx].[index_name]), "
+        "[idx].[index_name], "
         "[idx_key].[key_order]"
       ") AS INTEGER) AS [cardinality], "
       "[idx_key].[key_prefix_length] AS [sub_part], "
