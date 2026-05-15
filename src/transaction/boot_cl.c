@@ -230,6 +230,7 @@ install_system_metadata (void)
   return NO_ERROR;
 }
 
+#if defined(SA_MODE)
 /*
  * boot_initialize_client () -
  *
@@ -663,6 +664,7 @@ error_exit:
 
   return error_code;
 }
+#endif /* SA_MODE */
 
 /*
  * boot_restart_client () - restart client
