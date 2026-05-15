@@ -577,7 +577,9 @@ const char *sm_define_view_routines_spec (void)
       "NULL AS [dtd_identifier], "
       "'EXTERNAL' AS [routine_body], "
       /* SP_LANG_PLCSQL */
-      "IF ([sp].[lang] = %d, [sp_code].[scode], NULL) AS [routine_definition], "
+      "IF ([sp].[lang] = %d "
+          "AND (" AUTH_CHECK_DBA " OR " AUTH_CHECK_OWNER ("[sp].[owner].[name]") "), "
+          "[sp_code].[scode], NULL) AS [routine_definition], "
       /* SP_LANG_JAVA */
       "IF ([sp].[lang] = %d, [sp].[target_class], NULL) AS [external_name], "
       /* SP_LANG_PLCSQL, SP_LANG_JAVA */
