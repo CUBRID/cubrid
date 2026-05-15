@@ -94,18 +94,11 @@ namespace parallel_scan
 	m_page = nullptr;
       }
 
-    /* SHARED_DRAIN cleanup: per-slot exit; producer leaf-unfix already happens inside SHARED_DRAIN branch. */
+    /* SHARED_DRAIN cleanup: per-slot exit; producer's leaf m_page was already unfixed by the unconditional top block above. */
     if (m_slot_state == slot_state::SHARED_DRAIN && m_in_helper_mode)
       {
-	if (m_chain_slot_idx >= 0)
-	  {
-	    m_input_handler->exit_overflow_help (thread_p, m_chain_slot_idx);
-	  }
-	if (m_was_producer && m_page != nullptr)
-	  {
-	    pgbuf_unfix (thread_p, m_page);
-	    m_page = nullptr;
-	  }
+	assert (m_chain_slot_idx >= 0);
+	m_input_handler->exit_overflow_help (thread_p, m_chain_slot_idx);
 	m_was_producer = false;
 	m_in_helper_mode = false;
 	m_chain_slot_idx = -1;
@@ -343,18 +336,11 @@ namespace parallel_scan
 	m_page = nullptr;
       }
 
-    /* drain-state cleanup: per-slot exit; producer's leaf-unfix already happened upstream. */
+    /* drain-state cleanup: per-slot exit; producer's leaf m_page was already unfixed by the unconditional top block above. */
     if (m_slot_state == slot_state::SHARED_DRAIN && m_in_helper_mode)
       {
-	if (m_chain_slot_idx >= 0)
-	  {
-	    m_input_handler->exit_overflow_help (thread_p, m_chain_slot_idx);
-	  }
-	if (m_was_producer && m_page != nullptr)
-	  {
-	    pgbuf_unfix (thread_p, m_page);
-	    m_page = nullptr;
-	  }
+	assert (m_chain_slot_idx >= 0);
+	m_input_handler->exit_overflow_help (thread_p, m_chain_slot_idx);
 	m_was_producer = false;
 	m_in_helper_mode = false;
 	m_chain_slot_idx = -1;
@@ -879,9 +865,7 @@ namespace parallel_scan
 		m_slot_state = slot_state::IDLE;
 		return S_END;
 	      }
-	    /* Try to publish the chain for sharing. leaf_slot_id recovery:
-	     * m_current_slot was advanced past the slot we just read (line 646 unconditional inc/dec);
-	     * subtract one in asc, add one in desc to recover producer's read slot. */
+	    /* leaf_slot_for_publish recovers producer's read slot: m_current_slot was inc/dec'd past it (line 633), so reverse by one. */
 	    VPID leaf_vpid_for_publish;
 	    pgbuf_get_vpid (m_page, &leaf_vpid_for_publish);
 	    PGSLOTID leaf_slot_for_publish = (PGSLOTID) (m_use_desc_index ? (m_current_slot + 1) : (m_current_slot - 1));
@@ -926,8 +910,7 @@ namespace parallel_scan
 		    pgbuf_unfix (thread_p, m_page);
 		    m_page = nullptr;
 		  }
-		/* Helper or producer: m_slot_key body owned by this worker mspace (helper via
-		 * btree_read_record COPY at wait_or_help_overflow; producer via next_qualified_slot_with_peek). */
+		/* m_slot_key body owned by this worker (helper: COPY in wait_or_help_overflow; producer: next_qualified_slot_with_peek). */
 		if (m_slot_key_valid && m_slot_clear_key)
 		  {
 		    pr_clear_value (&m_slot_key);
@@ -1089,10 +1072,9 @@ namespace parallel_scan
       {
 	pr_clear_value (&m_slot_key);
       }
-    /* Ownership transfer (byte copy of DB_VALUE struct): caller's stack local_key.data is heap from
-     * btree_read_record COPY on helper mspace. Caller MUST NOT pr_clear_value post-success; body now
-     * solely owned by m_slot_key, released at SHARED_DRAIN exit when m_slot_clear_key. */
+    /* ownership transfer: m_slot_key adopts local_key body (helper mspace via COPY); caller MUST NOT pr_clear_value post-S_SUCCESS. */
     m_slot_key = *local_key;
+    db_make_null (local_key);                 /* defensive: invalidate caller's struct so post-success pr_clear_value is a no-op. */
     m_slot_key_valid = true;
     m_slot_clear_key = local_clear_key;
     m_current_range_idx = range_idx;

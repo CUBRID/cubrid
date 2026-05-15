@@ -16,9 +16,7 @@
  *
  */
 
-/* px_scan_input_handler_index.cpp — multi-chain overflow share (v2);
- * per-slot generalization of v1 primitives; cap = parallelism; round-robin helper-affinity.
- * Helpers leaf-re-read producer's key under producer's S-latch hold (C1b). */
+/* px_scan_input_handler_index.cpp — multi-chain overflow share v2: per-slot active-chains vector, leaf re-read, round-robin. */
 
 #include "px_scan_input_handler_index.hpp"
 
@@ -60,7 +58,6 @@ namespace parallel_scan
     m_current_range_idx = 0;
 
     /* per-slot init: helper supply matches chain demand by construction (cap == parallelism). */
-    m_parallelism = parallelism;
     m_overflow_slots.assign (parallelism, overflow_slot {});
     for (auto &slot : m_overflow_slots)
       {
@@ -135,7 +132,7 @@ namespace parallel_scan
 	return NO_ERROR;
       }
 
-    /* scan_id needs prebuilt_midxkey_domains from the coordinator; scan_dbvals_to_midxkey NULL-derefs on F_MIDXKEY otherwise. */
+    /* scan_id needs coordinator's prebuilt_midxkey_domains; scan_dbvals_to_midxkey NULL-derefs on F_MIDXKEY otherwise. */
     if (worker_scan_id == nullptr)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
@@ -288,7 +285,7 @@ namespace parallel_scan
     return NO_ERROR;
   }
 
-  /* closed-bound via btree_locate_key (descent + leaf slot lookup in one call); open-bound via boundary-leaf path (btree.c:15077). */
+  /* closed-bound via btree_locate_key; open-bound via boundary-leaf path (btree.c:15077). */
   SCAN_CODE
   input_handler_index::descend_to_first_leaf (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, int range_idx,
       PAGE_PTR &out_leaf, VPID *out_vpid, INT16 *out_slot_id)
@@ -376,7 +373,7 @@ namespace parallel_scan
 	return S_ERROR;
       }
 
-    /* m_btid_int / m_key_val_ranges already populated by init_on_main; re-glean would leak main-heap key_type into worker heap. */
+    /* m_btid_int/m_key_val_ranges populated by init_on_main; re-glean leaks main-heap key_type into worker heap. */
 
     short node_level = root_header->node.node_level;
 
@@ -718,6 +715,7 @@ namespace parallel_scan
     assert (out_local_key != nullptr && out_local_clear_key != nullptr);
     db_make_null (out_local_key);
     *out_local_clear_key = false;
+    out_slot_idx = -1;
     std::unique_lock<std::mutex> lock (m_overflow_mutex);
     for (;;)
       {
@@ -737,9 +735,7 @@ namespace parallel_scan
 	  }
 	if (any_active)
 	  {
-	    /* round-robin pick.
-	     * relaxed memory order: counter advancement is best-effort progress;
-	     * under-lock slot-scan below provides the actual synchronization. */
+	    /* round-robin pick; relaxed counter is best-effort; under-lock slot-scan provides actual synchronization. */
 	    int cap = static_cast<int> (m_overflow_slots.size ());
 	    int base = m_next_chain_to_help.fetch_add (1, std::memory_order_relaxed) % cap;
 	    int picked = -1;
@@ -762,20 +758,28 @@ namespace parallel_scan
 	      }
 	    if (picked < 0)
 	      {
-		/* every active slot is chain_walked; wait for last-out to close them. */
-		m_overflow_cv.wait (lock);
+		m_overflow_cv.wait (lock);   /* every slot active && chain_walked; wait for last-out to close. */
 		continue;
 	      }
-	    lock.unlock ();
-	    /* Leaf re-read: S-compatible with producer's S-hold (C1b); never S_PROMOTE (C7). */
+	    /* AS1 race-window close: pin leaf S-latch INSIDE m_overflow_mutex while producer's S-hold still covers it; helper's own S then keeps any X-acquirer (split/compactify/vacuum) out. Never S_PROMOTE (C7). */
 	    PAGE_PTR leaf_page = pgbuf_fix (thread_p, &re_leaf_vpid, OLD_PAGE, PGBUF_LATCH_READ,
 					    PGBUF_UNCONDITIONAL_LATCH);
 	    if (leaf_page == NULL)
 	      {
 		ASSERT_ERROR ();
-		exit_overflow_help (thread_p, picked);
+		overflow_slot &s = m_overflow_slots[picked];
+		--s.helpers;
+		if (s.helpers == 0)
+		  {
+		    s.active = false;
+		    VPID_SET_NULL (&s.cur_vpid);
+		    s.chain_walked = true;
+		    s.range_idx = -1;
+		    m_overflow_cv.notify_all ();
+		  }
 		return S_ERROR;
 	      }
+	    lock.unlock ();
 	    (void) pgbuf_check_page_ptype (thread_p, leaf_page, PAGE_BTREE);
 	    RECDES leaf_rec;
 	    leaf_rec.data = nullptr;
@@ -783,6 +787,13 @@ namespace parallel_scan
 	    if (spage_get_record (thread_p, leaf_page, re_slot_id, &leaf_rec, PEEK) != S_SUCCESS)
 	      {
 		ASSERT_ERROR ();
+		pgbuf_unfix (thread_p, leaf_page);
+		exit_overflow_help (thread_p, picked);
+		return S_ERROR;
+	      }
+	    if (btree_leaf_record_is_fence (&leaf_rec))
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
 		pgbuf_unfix (thread_p, leaf_page);
 		exit_overflow_help (thread_p, picked);
 		return S_ERROR;

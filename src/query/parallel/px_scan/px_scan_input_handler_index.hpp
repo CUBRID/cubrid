@@ -66,7 +66,6 @@ namespace parallel_scan
 	  m_current_range_idx (0),
 	  m_overflow_slots (),
 	  m_next_chain_to_help (0),
-	  m_parallelism (0),
 	  m_active_workers (0),
 	  m_no_more_leaves (false)
       {
@@ -76,16 +75,11 @@ namespace parallel_scan
       }
       int init_on_main (THREAD_ENTRY *thread_p, INDX_INFO *indx_info, SCAN_ID *scan_id, val_descr *vd, int parallelism);
 
-      /* worker_scan_id MUST be per-task INDX_SCAN_ID (coordinator scan_id NULL-derefs scan_dbvals_to_midxkey on F_MIDXKEY).
-       * out_slot_hint = first-slot index for the leaf the worker is about to scan (single-use per descent).
-       * out_range_idx = active range index when fetch performed a range-advance descent; -1 sentinel on chain-walk
-       * (no overwrite of slot_iterator's local m_current_range_idx). */
+      /* get_next_page_with_fix: worker_scan_id MUST be per-task; out_slot_hint = descent leaf-slot; out_range_idx = -1 sentinel on chain-walk. */
       SCAN_CODE get_next_page_with_fix (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, PAGE_PTR &out_page,
 					INT16 *out_slot_hint = nullptr, int *out_range_idx = nullptr);
 
-      /* Mutex-protected signal from slot_iterator: this leaf chain is done.
-       * last_local_idx = caller's slot_iterator.m_current_range_idx at past_upper time; carries the
-       * post-advance value so fetch's descent target uses the correct cursor (monotonic max). */
+      /* signal_chain_ended: last_local_idx = post-advance range_idx at past_upper; monotonic-max merge with authoritative cursor. */
       void signal_chain_ended (int last_local_idx);
 
       int initialize (THREAD_ENTRY *thread_p, HFID *hfid, SCAN_ID *scan_id);
@@ -122,8 +116,7 @@ namespace parallel_scan
       }
 
       /* --- Shared overflow API (v2 / multi-chain) --- */
-      /* Returns slot_idx >= 0 on publish success; -1 on cap-overflow (caller falls to SOLO_DRAIN).
-       * leaf_vpid/leaf_slot_id stored in slot for helper leaf re-read. */
+      /* try_publish_overflow: returns slot_idx >= 0 on success, -1 on cap-overflow; leaf_vpid/slot_id stored for helper re-read. */
       int try_publish_overflow (THREAD_ENTRY *thread_p, VPID first_ovf_vpid,
 				VPID leaf_vpid, PGSLOTID leaf_slot_id, int range_idx);
       /* slot_idx mandatory: identifies which chain to advance. */
@@ -132,8 +125,7 @@ namespace parallel_scan
       void release_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page);
       /* slot_idx mandatory: decrements helpers on the specific slot. */
       void exit_overflow_help (THREAD_ENTRY *thread_p, int slot_idx);
-      /* Round-robin pick + leaf re-read; *out_local_key owned by caller on S_SUCCESS (pr_clear_value
-       * if *out_local_clear_key); cleared inside on S_END / S_ERROR. */
+      /* wait_or_help_overflow: round-robin pick; out_local_key owned by caller on S_SUCCESS (pr_clear_value if out_local_clear_key); cleared on S_END/S_ERROR. */
       SCAN_CODE wait_or_help_overflow (THREAD_ENTRY *thread_p, PAGE_PTR &out_page,
 				       DB_VALUE *out_local_key, bool *out_local_clear_key,
 				       int &out_range_idx, int &out_slot_idx);
@@ -142,7 +134,7 @@ namespace parallel_scan
       void signal_no_more_leaves ();
 
     private:
-      /* requires m_leaf_mutex; closed-bound delegates to btree_locate_key (leaf+slot in one call); open-bound walks root→leftmost/rightmost manually. */
+      /* requires m_leaf_mutex; closed-bound: btree_locate_key; open-bound: manual latch-coupled descent to boundary leaf. */
       SCAN_CODE descend_to_first_leaf (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, int range_idx, PAGE_PTR &out_leaf,
 				       VPID *out_vpid = nullptr, INT16 *out_slot_id = nullptr);
       /* idempotent; sort + part_key_desc swap. */
@@ -166,8 +158,7 @@ namespace parallel_scan
       std::vector<key_val_range> m_key_val_ranges;
       bool m_part_key_desc;
 
-      /* m_current_range_idx is the sole authoritative cursor for the active range.
-       * Mutex-protected; read only via fetch's out_range_idx (under mutex); written only by fetch's descent branch. */
+      /* m_current_range_idx: sole authoritative range cursor; mutex-protected; written only by fetch's descent branch. */
       int m_current_range_idx;
 
       /* --- Multi-chain shared overflow (v2; cap = parallelism) --- */
@@ -175,7 +166,6 @@ namespace parallel_scan
       std::condition_variable     m_overflow_cv;
       std::vector<overflow_slot>  m_overflow_slots;       /* size == parallelism; cap = helper supply. */
       std::atomic<int>            m_next_chain_to_help;   /* round-robin cursor; fetch_add(1) % cap. */
-      int                         m_parallelism;          /* memo of init_on_main parallelism arg. */
       /* --- Late-joiner termination tracking (under m_overflow_mutex) --- */
       int                       m_active_workers;         /* workers currently inside loop body */
       bool                      m_no_more_leaves;         /* set when last get_next_page_with_fix returned S_END */

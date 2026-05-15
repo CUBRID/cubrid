@@ -568,6 +568,13 @@ namespace parallel_scan
     if (m_orig_vd->dbval_cnt > 0)
       {
 	m_vd->dbval_ptr = (DB_VALUE *) db_private_alloc (&thread_ref, sizeof (DB_VALUE) * m_orig_vd->dbval_cnt);
+	if (m_vd->dbval_ptr == nullptr)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	    db_private_free_and_init (&thread_ref, m_xasl_state);
+	    m_vd = nullptr;
+	    return ER_FAILED;
+	  }
 	for (i = 0; i < m_orig_vd->dbval_cnt; i++)
 	  {
 	    pr_clone_value (&m_orig_vd->dbval_ptr[i], &m_vd->dbval_ptr[i]);
