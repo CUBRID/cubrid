@@ -28,6 +28,7 @@
 #include "access_spec.hpp"
 #include "btree.h"
 #include "dbtype.h"
+#include <condition_variable>
 #include <mutex>
 #include <vector>
 
@@ -49,11 +50,21 @@ namespace parallel_scan
 	  m_vd (nullptr),
 	  m_key_val_ranges (),
 	  m_part_key_desc (false),
-	  m_current_range_idx (0)
+	  m_current_range_idx (0),
+	  m_overflow_active (false),
+	  m_overflow_key_clear (false),
+	  m_overflow_range_idx (-1),
+	  m_overflow_after_key_offset (0),
+	  m_overflow_helpers (0),
+	  m_overflow_chain_walked (false),
+	  m_active_workers (0),
+	  m_no_more_leaves (false)
       {
 	memset (&m_btid_int, 0, sizeof (m_btid_int));
 	memset (&m_btid, 0, sizeof (m_btid));
 	VPID_SET_NULL (&m_current_leaf_vpid);
+	VPID_SET_NULL (&m_overflow_cur_vpid);
+	db_make_null (&m_overflow_key);
       }
       int init_on_main (THREAD_ENTRY *thread_p, INDX_INFO *indx_info, SCAN_ID *scan_id, val_descr *vd, int parallelism);
 
@@ -102,6 +113,21 @@ namespace parallel_scan
 	return m_part_key_desc;
       }
 
+      /* --- Shared overflow API (Phase 1 / parallel-overflow-share) --- */
+      bool try_publish_overflow (THREAD_ENTRY *thread_p, DB_VALUE *key, bool key_clear, VPID first_ovf_vpid,
+				 int range_idx, int after_key_offset);
+      SCAN_CODE claim_next_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR &out_page, DB_VALUE *&out_key_ref,
+					  int &out_range_idx, int &out_after_key_offset);
+      void release_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page);
+      void exit_overflow_help (THREAD_ENTRY *thread_p);
+      SCAN_CODE wait_or_help_overflow (THREAD_ENTRY *thread_p, PAGE_PTR &out_page, DB_VALUE *&out_key_ref,
+				       int &out_range_idx, int &out_after_key_offset);
+      void enter_worker ();
+      void leave_worker ();
+      void signal_no_more_leaves ();
+      DB_VALUE *get_overflow_key_ref ();        /* returns &m_overflow_key — caller must be an active helper */
+      void wait_for_chain_done (THREAD_ENTRY *thread_p);  /* producer-anchor: blocks until m_overflow_active becomes false. Keeps the producer's m_slot_key buffer alive through the chain so helpers never read freed data. */
+
     private:
       /* requires m_leaf_mutex; closed-bound delegates to btree_locate_key (leaf+slot in one call); open-bound walks root→leftmost/rightmost manually. */
       SCAN_CODE descend_to_first_leaf (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, int range_idx, PAGE_PTR &out_leaf,
@@ -130,6 +156,21 @@ namespace parallel_scan
       /* m_current_range_idx is the sole authoritative cursor for the active range.
        * Mutex-protected; read only via fetch's out_range_idx (under mutex); written only by fetch's descent branch. */
       int m_current_range_idx;
+
+      /* --- Shared overflow chain (one active at a time; lazy-free key snapshot) --- */
+      std::mutex                m_overflow_mutex;
+      std::condition_variable   m_overflow_cv;
+      bool                      m_overflow_active;        /* false until a producer publishes a chain */
+      VPID                      m_overflow_cur_vpid;      /* next ovf page to hand out */
+      DB_VALUE                  m_overflow_key;           /* cloned snapshot — lazy-freed at NEXT try_publish_overflow */
+      bool                      m_overflow_key_clear;     /* true when m_overflow_key holds a clone needing pr_clear_value */
+      int                       m_overflow_range_idx;     /* owning range of the active chain */
+      int                       m_overflow_after_key_offset;  /* 0 for OVERFLOW_NODE; held for symmetry */
+      int                       m_overflow_helpers;       /* active drainers including producer */
+      bool                      m_overflow_chain_walked;  /* m_overflow_cur_vpid hit VPID_ISNULL once */
+      /* --- Late-joiner termination tracking (under m_overflow_mutex) --- */
+      int                       m_active_workers;         /* workers currently inside loop body */
+      bool                      m_no_more_leaves;         /* set when last get_next_page_with_fix returned S_END */
   };
 }
 

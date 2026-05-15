@@ -59,6 +59,17 @@ namespace parallel_scan
     m_part_key_desc = false;
     m_current_range_idx = 0;
 
+    /* Lazy-free invariant: m_overflow_key is NOT cleared here. init_on_main runs on the main
+     * thread before any worker exists, so there is no prior chain. cleanup_keys reclaims residue. */
+    VPID_SET_NULL (&m_overflow_cur_vpid);
+    m_overflow_active = false;
+    m_overflow_chain_walked = false;
+    m_overflow_range_idx = -1;
+    m_overflow_after_key_offset = 0;
+    m_overflow_helpers = 0;
+    m_active_workers = 0;
+    m_no_more_leaves = false;
+
     VPID root_vpid;
     root_vpid.volid = m_btid.vfid.volid;
     root_vpid.pageid = m_btid.root_pageid;
@@ -593,5 +604,192 @@ namespace parallel_scan
 	pr_clear_value (&kvr.key2);
       }
     m_key_val_ranges.clear ();
+
+    /* No-clone design: m_overflow_key never owns an allocation (it shallow-copies the
+     * producer's m_slot_key). Nothing to free here. */
+    m_overflow_key_clear = false;
+  }
+
+  bool
+  input_handler_index::try_publish_overflow (THREAD_ENTRY *thread_p, DB_VALUE *key, bool key_clear,
+					     VPID first_ovf_vpid, int range_idx, int after_key_offset)
+  {
+    std::unique_lock<std::mutex> lock (m_overflow_mutex);
+    if (m_overflow_active)
+      {
+	return false;
+      }
+    /* No-clone design: avoid cross-mspace free. pr_clone_value would allocate in the
+     * publishing worker's private heap; clearing later from a different thread (main
+     * cleanup, or another worker as last-out) aborts in mspace_free. Instead, share
+     * the producer's m_slot_key buffer directly via shallow struct copy. The producer
+     * is anchored via wait_for_chain_done so the buffer outlives all helpers; only
+     * the producer (on its own thread) eventually frees the buffer via its normal
+     * slot-advance pr_clear_value path. Helpers peek-borrow with m_slot_clear_key=false. */
+    (void) key_clear;
+    m_overflow_key = *key;
+    m_overflow_key_clear = false;
+    m_overflow_active = true;
+    m_overflow_cur_vpid = first_ovf_vpid;
+    m_overflow_range_idx = range_idx;
+    m_overflow_after_key_offset = after_key_offset;
+    m_overflow_helpers = 1;
+    m_overflow_chain_walked = false;
+    m_overflow_cv.notify_all ();
+    return true;
+  }
+
+  SCAN_CODE
+  input_handler_index::claim_next_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR &out_page,
+						 DB_VALUE *&out_key_ref, int &out_range_idx,
+						 int &out_after_key_offset)
+  {
+    std::unique_lock<std::mutex> lock (m_overflow_mutex);
+    if (!m_overflow_active || VPID_ISNULL (&m_overflow_cur_vpid))
+      {
+	return S_END;
+      }
+    VPID claim_vpid = m_overflow_cur_vpid;
+    PAGE_PTR page = pgbuf_fix (thread_p, &claim_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+    if (page == NULL)
+      {
+	ASSERT_ERROR ();
+	return S_ERROR;
+      }
+    (void) pgbuf_check_page_ptype (thread_p, page, PAGE_BTREE);
+    VPID next_vpid;
+    if (btree_get_next_overflow_vpid (thread_p, page, &next_vpid) != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	pgbuf_unfix (thread_p, page);
+	return S_ERROR;
+      }
+    m_overflow_cur_vpid = next_vpid;
+    if (VPID_ISNULL (&next_vpid))
+      {
+	m_overflow_chain_walked = true;
+	m_overflow_cv.notify_all ();
+      }
+    out_page = page;
+    out_key_ref = &m_overflow_key;
+    out_range_idx = m_overflow_range_idx;
+    out_after_key_offset = m_overflow_after_key_offset;
+    return S_SUCCESS;
+  }
+
+  void
+  input_handler_index::release_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page)
+  {
+    if (page != NULL)
+      {
+	pgbuf_unfix (thread_p, page);
+      }
+  }
+
+  void
+  input_handler_index::exit_overflow_help (THREAD_ENTRY *thread_p)
+  {
+    std::unique_lock<std::mutex> lock (m_overflow_mutex);
+    assert (m_overflow_helpers > 0);
+    --m_overflow_helpers;
+    if (m_overflow_helpers == 0 && m_overflow_chain_walked)
+      {
+	/* Last out — flip active to false but DO NOT pr_clear_value the snapshot.
+	 * The next try_publish_overflow reclaims it (lazy-free). */
+	m_overflow_active = false;
+	VPID_SET_NULL (&m_overflow_cur_vpid);
+	m_overflow_chain_walked = false;
+	m_overflow_range_idx = -1;
+	m_overflow_after_key_offset = 0;
+	m_overflow_cv.notify_all ();
+      }
+  }
+
+  SCAN_CODE
+  input_handler_index::wait_or_help_overflow (THREAD_ENTRY *thread_p, PAGE_PTR &out_page,
+					      DB_VALUE *&out_key_ref, int &out_range_idx,
+					      int &out_after_key_offset)
+  {
+    std::unique_lock<std::mutex> lock (m_overflow_mutex);
+    for (;;)
+      {
+	if (m_overflow_active)
+	  {
+	    /* Join as a helper. Drop the lock, then claim a page (claim re-acquires it). */
+	    ++m_overflow_helpers;
+	    lock.unlock ();
+	    SCAN_CODE sc = claim_next_overflow_page (thread_p, out_page, out_key_ref, out_range_idx,
+			   out_after_key_offset);
+	    if (sc == S_SUCCESS)
+	      {
+		return S_SUCCESS;
+	      }
+	    if (sc == S_ERROR)
+	      {
+		exit_overflow_help (thread_p);
+		return S_ERROR;
+	      }
+	    /* sc == S_END — chain exhausted. Exit help, then re-check the predicate. */
+	    exit_overflow_help (thread_p);
+	    lock.lock ();
+	    continue;
+	  }
+	if (m_no_more_leaves && m_active_workers == 0)
+	  {
+	    return S_END;
+	  }
+	m_overflow_cv.wait (lock);
+      }
+  }
+
+  void
+  input_handler_index::enter_worker ()
+  {
+    std::unique_lock<std::mutex> lock (m_overflow_mutex);
+    ++m_active_workers;
+  }
+
+  void
+  input_handler_index::leave_worker ()
+  {
+    std::unique_lock<std::mutex> lock (m_overflow_mutex);
+    assert (m_active_workers > 0);
+    --m_active_workers;
+    if (m_active_workers == 0)
+      {
+	m_overflow_cv.notify_all ();
+      }
+  }
+
+  void
+  input_handler_index::signal_no_more_leaves ()
+  {
+    std::unique_lock<std::mutex> lock (m_overflow_mutex);
+    m_no_more_leaves = true;
+    m_overflow_cv.notify_all ();
+  }
+
+  DB_VALUE *
+  input_handler_index::get_overflow_key_ref ()
+  {
+    /* Caller must already be participating as a helper (holds an m_overflow_helpers slot).
+     * No lock — caller's helper-count guarantee keeps the snapshot stable. */
+    return &m_overflow_key;
+  }
+
+  void
+  input_handler_index::wait_for_chain_done (THREAD_ENTRY *thread_p)
+  {
+    /* Producer-anchor: blocks until m_overflow_active becomes false (every helper exited).
+     * The producer's m_slot_key buffer (which m_overflow_key shallow-borrowed) must stay
+     * valid for any helper still reading it. Once all helpers have called exit_overflow_help,
+     * the last-out path flips m_overflow_active=false and notifies. The producer wakes here
+     * and may safely advance to the next leaf slot (whose pr_clear_value would free the
+     * buffer on the producer's own thread / mspace). */
+    std::unique_lock<std::mutex> lock (m_overflow_mutex);
+    while (m_overflow_active)
+      {
+	m_overflow_cv.wait (lock);
+      }
   }
 }
