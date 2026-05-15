@@ -1074,7 +1074,8 @@ namespace parallel_scan
       }
     /* ownership transfer: m_slot_key adopts local_key body (helper mspace via COPY); caller MUST NOT pr_clear_value post-S_SUCCESS. */
     m_slot_key = *local_key;
-    db_make_null (local_key);                 /* defensive: invalidate caller's struct so post-success pr_clear_value is a no-op. */
+    /* defensive: invalidate caller's struct so post-success pr_clear_value is a no-op. */
+    db_make_null (local_key);
     m_slot_key_valid = true;
     m_slot_clear_key = local_clear_key;
     m_current_range_idx = range_idx;
