@@ -297,35 +297,42 @@ namespace parallel_scan
 	      }
 	  }
 
-	/* dedup adjacent identical ranges (e.g. cola IN (1,1,1) yields 3 same ranges → 3x emits). serial multi-range-opt handles this internally; parallel re-descends per range and inflates counts. */
+	/* dedup adjacent identical ranges (e.g. cola IN (1,1,1) yields 3 same ranges → 3x emits). serial multi-range-opt handles this internally; parallel re-descends per range and inflates counts. anchor walks past NA_NA so a run of N identical ranges collapses to one, not pairs. */
 	TP_DOMAIN *dedup_dom = m_btid_int.key_type;
-	for (int i = 1; i < static_cast<int> (m_key_val_ranges.size ()); i++)
+	key_val_range *anchor = nullptr;
+	for (int i = 0; i < static_cast<int> (m_key_val_ranges.size ()); i++)
 	  {
-	    key_val_range *prev = &m_key_val_ranges[i - 1];
 	    key_val_range *cur = &m_key_val_ranges[i];
-	    if (cur->range == NA_NA || prev->range != cur->range)
+	    if (cur->range == NA_NA)
 	      {
+		continue;
+	      }
+	    if (anchor == nullptr || anchor->range != cur->range)
+	      {
+		anchor = cur;
 		continue;
 	      }
 	    int sc = 0;
-	    bool k1_equal = (DB_IS_NULL (&prev->key1) && DB_IS_NULL (&cur->key1));
-	    if (!k1_equal && !DB_IS_NULL (&prev->key1) && !DB_IS_NULL (&cur->key1))
+	    bool k1_equal = (DB_IS_NULL (&anchor->key1) && DB_IS_NULL (&cur->key1));
+	    if (!k1_equal && !DB_IS_NULL (&anchor->key1) && !DB_IS_NULL (&cur->key1))
 	      {
 		sc = 0;
-		k1_equal = (btree_compare_key (&prev->key1, &cur->key1, dedup_dom, 1, 1, &sc) == DB_EQ);
+		k1_equal = (btree_compare_key (&anchor->key1, &cur->key1, dedup_dom, 1, 1, &sc) == DB_EQ);
 	      }
 	    if (!k1_equal)
 	      {
+		anchor = cur;
 		continue;
 	      }
-	    bool k2_equal = (DB_IS_NULL (&prev->key2) && DB_IS_NULL (&cur->key2));
-	    if (!k2_equal && !DB_IS_NULL (&prev->key2) && !DB_IS_NULL (&cur->key2))
+	    bool k2_equal = (DB_IS_NULL (&anchor->key2) && DB_IS_NULL (&cur->key2));
+	    if (!k2_equal && !DB_IS_NULL (&anchor->key2) && !DB_IS_NULL (&cur->key2))
 	      {
 		sc = 0;
-		k2_equal = (btree_compare_key (&prev->key2, &cur->key2, dedup_dom, 1, 1, &sc) == DB_EQ);
+		k2_equal = (btree_compare_key (&anchor->key2, &cur->key2, dedup_dom, 1, 1, &sc) == DB_EQ);
 	      }
 	    if (!k2_equal)
 	      {
+		anchor = cur;
 		continue;
 	      }
 	    pr_clear_value (&cur->key1);
