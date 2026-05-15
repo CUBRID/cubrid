@@ -73,9 +73,9 @@ namespace parallel_query
     void
     task_manager::end_task ()
     {
+      m_worker_manager->pop_task ();
       std::lock_guard<std::mutex> lock (m_active_tasks_mutex);
       --m_active_tasks;
-      m_worker_manager->pop_task ();
       if (m_active_tasks == 0)
 	{
 	  m_all_tasks_done_cv.notify_all ();
