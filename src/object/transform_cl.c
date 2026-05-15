@@ -673,11 +673,9 @@ re_check:
     {
       size += OR_VAR_TABLE_SIZE_INTERNAL (class_->variable_count, *offset_size_ptr);
 
-      /* Align the variable data area start to 4 bytes (relative to end of header).
-       * OR_GET_VAR_OFFSET() masks off the low 2 bits, so VOT offsets must be multiples of 4. */
-      int var_start = OR_VAR_TABLE_SIZE_INTERNAL (class_->variable_count, *offset_size_ptr)
-	+ class_->fixed_size + OR_BOUND_BIT_BYTES (class_->fixed_count);
-      size += DB_ALIGN (var_start, INT_ALIGNMENT) - var_start;
+      /* Pad the variable data area start to 4 bytes; the MVCC header is already
+       * 4-byte aligned so aligning the running total is equivalent. */
+      size = DB_ALIGN (size, INT_ALIGNMENT);
 
       for (a = class_->fixed_count; a < class_->att_count; a++)
 	{
@@ -746,28 +744,16 @@ put_attributes (OR_BUF * buf, char *obj, SM_CLASS * class_)
     {
       or_put_data (buf, obj + OBJ_HEADER_BOUND_BITS_OFFSET, OR_BOUND_BIT_BYTES (class_->fixed_count));
     }
-  /* write the variable attributes — pad to 4-byte alignment between each,
-   * matching the aligned offsets written by put_varinfo(). */
+  /* write the variable attributes, padding to 4 bytes between each so the
+   * VOT offsets emitted by put_varinfo () remain aligned (see put_varinfo). */
   if (att != NULL)
     {
-      /* align start of variable data area to 4 bytes */
-      int written = (int) (buf->ptr - start);
-      int aligned = DB_ALIGN (written, INT_ALIGNMENT);
-      if (aligned > written)
-	{
-	  or_pad (buf, aligned - written);
-	}
+      or_put_align32 (buf);
     }
   for (; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
       att->type->data_writemem (buf, obj + att->offset, att->domain);
-      /* align after each variable for the next one */
-      int written = (int) (buf->ptr - start);
-      int aligned = DB_ALIGN (written, INT_ALIGNMENT);
-      if (aligned > written)
-	{
-	  or_pad (buf, aligned - written);
-	}
+      or_put_align32 (buf);
     }
   return NO_ERROR;
 }
@@ -3508,7 +3494,7 @@ representation_size (SM_REPRESENTATION * rep)
 
   size =
     DB_ALIGN (tf_Metaclass_representation.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_representation.mc_n_variable),
-	      4);
+	      INT_ALIGNMENT);
 
   size += DB_ALIGN (substructure_set_size ((DB_LIST *) rep->attributes, (LSIZER) repattribute_size), INT_ALIGNMENT);
 

@@ -3291,20 +3291,12 @@ catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p, OI
       or_put_data (buf_p, bound_bits, bound_size);
     }
 
-  /* variable */
+  /* variable — VOT offsets must be 4-byte aligned because OR_GET_VAR_OFFSET ()
+   * masks the low 2 bits (flag bits OR_VAR_BIT_OOS, OR_VAR_BIT_LAST_ELEMENT). */
   var_attrs = &attrs[n_fixed];
   for (i = 0; i < n_variable; i++)
     {
-      /* Align variable data position to 4 bytes — OR_GET_VAR_OFFSET() masks off
-       * the low 2 bits, so unaligned offsets would lose precision. */
-      {
-	int current = (int) (buf_p->ptr - buf_p->buffer - header_size);
-	int aligned = DB_ALIGN (current, INT_ALIGNMENT);
-	if (aligned > current)
-	  {
-	    or_pad (buf_p, aligned - current);
-	  }
-      }
+      or_put_align32 (buf_p);
 
       /* the variable offsets are relative to end of the class record header */
       offset = (int) (buf_p->ptr - buf_p->buffer - header_size);
@@ -3317,14 +3309,7 @@ catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p, OI
     }
 
   /* put last offset */
-  {
-    int current = (int) (buf_p->ptr - buf_p->buffer - header_size);
-    int aligned = DB_ALIGN (current, INT_ALIGNMENT);
-    if (aligned > current)
-      {
-	or_pad (buf_p, aligned - current);
-      }
-  }
+  or_put_align32 (buf_p);
   offset = (int) (buf_p->ptr - buf_p->buffer - header_size);
   OR_PUT_LAST_VAR_OFFSET (offset_p, offset);
 
