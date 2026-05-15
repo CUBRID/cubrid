@@ -6824,7 +6824,8 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   trigger =
     tr_create_trigger (name, status, priority, event, class_, attribute, cond_time, cond_source, action_time,
-		       action_type, action_source, comment);
+		       action_type, action_source, comment,
+		       pl_sp_qualified_name[0] != '\0' ? pl_sp_qualified_name : NULL);
 
   if (trigger == NULL)
     {
@@ -6837,40 +6838,6 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  (void) jsp_drop_trigger_body_sp (pl_sp_qualified_name);
 	}
       return er_errid ();
-    }
-
-  if (pl_sp_qualified_name[0] != '\0')
-    {
-      /* Store the owner-qualified SP name so trigger drop can locate the backing SP
-       * regardless of who performs the DROP TRIGGER (e.g. DBA dropping another user's trigger). */
-      DB_VALUE sp_name_val;
-      db_make_string (&sp_name_val, pl_sp_qualified_name);
-      if (db_put (trigger, TR_ATT_ACTION_BODY_SP, &sp_name_val) != NO_ERROR)
-	{
-	  /* Cannot persist the backing SP name; the trigger and SP are useless without
-	   * this link.  Return error so the transaction rolls back, cleaning up both. */
-	  return er_errid ();
-	}
-
-      /* Sync the in-memory TR_TRIGGER cache.  tr_create_trigger() cached the
-       * trigger struct before the backing SP name was known, so its
-       * action_body_sp field is NULL.  A DROP TRIGGER in the same session
-       * reads from this cache (WS_CHN unchanged within the transaction, so
-       * validate_trigger() skips re-reading the catalog) and would miss the SP,
-       * leaving an orphan.  Update the field directly now. */
-      {
-	TR_TRIGGER *trigger_cache = tr_map_trigger (trigger, 0);
-	if (trigger_cache != NULL && trigger_cache->action_body_sp == NULL)
-	  {
-	    trigger_cache->action_body_sp = strdup (pl_sp_qualified_name);
-	    if (trigger_cache->action_body_sp == NULL)
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			strlen (pl_sp_qualified_name) + 1);
-		return ER_OUT_OF_VIRTUAL_MEMORY;
-	      }
-	  }
-      }
     }
 
   /* Save the new trigger object in the parse tree. Actually, we probably should also allow INTO variable sub-clause to

@@ -3969,7 +3969,7 @@ DB_OBJECT *
 tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, DB_TRIGGER_EVENT event,
 		   DB_OBJECT * class_mop, const char *attribute, DB_TRIGGER_TIME cond_time, const char *cond_source,
 		   DB_TRIGGER_TIME action_time, DB_TRIGGER_ACTION action_type, const char *action_source,
-		   const char *comment)
+		   const char *comment, const char *action_body_sp)
 {
   TR_TRIGGER *trigger;
   DB_OBJECT *object;
@@ -4140,6 +4140,16 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
 	}
 
       has_savepoint = true;
+    }
+
+  if (action_body_sp != NULL)
+    {
+      trigger->action_body_sp = strdup (action_body_sp);
+      if (trigger->action_body_sp == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (action_body_sp) + 1);
+	  goto error;
+	}
     }
 
   if (tr_set_trigger_timestamps (trigger) != NO_ERROR)
