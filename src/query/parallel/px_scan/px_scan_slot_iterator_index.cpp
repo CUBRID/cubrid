@@ -46,6 +46,7 @@ namespace parallel_scan
       m_solo_prev_page (nullptr),
       m_in_helper_mode (false),
       m_was_producer (false),
+      m_chain_slot_idx (-1),
       m_scan_id (nullptr),
       m_vd (nullptr),
       m_btid_int (nullptr),
@@ -93,21 +94,21 @@ namespace parallel_scan
 	m_page = nullptr;
       }
 
-    /* SHARED_DRAIN cleanup: producer unfixes leaf before wait — leaf-latch hold across slow helpers starves writers. */
+    /* SHARED_DRAIN cleanup: per-slot exit; producer leaf-unfix already happens inside SHARED_DRAIN branch. */
     if (m_slot_state == slot_state::SHARED_DRAIN && m_in_helper_mode)
       {
-	m_input_handler->exit_overflow_help (thread_p);
-	if (m_was_producer)
+	if (m_chain_slot_idx >= 0)
 	  {
-	    if (m_page != nullptr)
-	      {
-		pgbuf_unfix (thread_p, m_page);
-		m_page = nullptr;
-	      }
-	    m_input_handler->wait_for_chain_done (thread_p);
-	    m_was_producer = false;
+	    m_input_handler->exit_overflow_help (thread_p, m_chain_slot_idx);
 	  }
+	if (m_was_producer && m_page != nullptr)
+	  {
+	    pgbuf_unfix (thread_p, m_page);
+	    m_page = nullptr;
+	  }
+	m_was_producer = false;
 	m_in_helper_mode = false;
+	m_chain_slot_idx = -1;
       }
     if (m_slot_state == slot_state::SOLO_DRAIN && m_solo_prev_page != nullptr)
       {
@@ -342,21 +343,21 @@ namespace parallel_scan
 	m_page = nullptr;
       }
 
-    /* drain-state cleanup: unfix leaf before waiting to avoid holding read-latch through slow helpers. */
+    /* drain-state cleanup: per-slot exit; producer's leaf-unfix already happened upstream. */
     if (m_slot_state == slot_state::SHARED_DRAIN && m_in_helper_mode)
       {
-	m_input_handler->exit_overflow_help (thread_p);
-	if (m_was_producer)
+	if (m_chain_slot_idx >= 0)
 	  {
-	    if (m_page != nullptr)
-	      {
-		pgbuf_unfix (thread_p, m_page);
-		m_page = nullptr;
-	      }
-	    m_input_handler->wait_for_chain_done (thread_p);
-	    m_was_producer = false;
+	    m_input_handler->exit_overflow_help (thread_p, m_chain_slot_idx);
 	  }
+	if (m_was_producer && m_page != nullptr)
+	  {
+	    pgbuf_unfix (thread_p, m_page);
+	    m_page = nullptr;
+	  }
+	m_was_producer = false;
 	m_in_helper_mode = false;
+	m_chain_slot_idx = -1;
       }
     if (m_slot_state == slot_state::SOLO_DRAIN && m_solo_prev_page != nullptr)
       {
@@ -878,20 +879,28 @@ namespace parallel_scan
 		m_slot_state = slot_state::IDLE;
 		return S_END;
 	      }
-	    /* Try to publish the chain for sharing. */
-	    bool published = m_input_handler->try_publish_overflow (thread_p, &m_slot_key,
-			     m_pending_ovf_vpid,
-			     m_current_range_idx);
-	    if (published)
+	    /* Try to publish the chain for sharing. leaf_slot_id recovery:
+	     * m_current_slot was advanced past the slot we just read (line 646 unconditional inc/dec);
+	     * subtract one in asc, add one in desc to recover producer's read slot. */
+	    VPID leaf_vpid_for_publish;
+	    pgbuf_get_vpid (m_page, &leaf_vpid_for_publish);
+	    PGSLOTID leaf_slot_for_publish = (PGSLOTID) (m_use_desc_index ? (m_current_slot + 1) : (m_current_slot - 1));
+	    int published_idx = m_input_handler->try_publish_overflow (thread_p,
+				m_pending_ovf_vpid,
+				leaf_vpid_for_publish,
+				leaf_slot_for_publish,
+				m_current_range_idx);
+	    if (published_idx >= 0)
 	      {
-		/* Producer keeps m_slot_key; wait_for_chain_done fences its free. */
+		m_chain_slot_idx = published_idx;
 		m_was_producer = true;
-		m_in_helper_mode = true;     /* producer also counts in m_overflow_helpers */
+		m_in_helper_mode = true;     /* producer also counts in per-slot helpers */
 		m_slot_state = slot_state::SHARED_DRAIN;
 	      }
 	    else
 	      {
-		/* Lost the race — walk solo with private cursor. */
+		/* Cap-overflow — walk solo with private cursor. */
+		m_chain_slot_idx = -1;
 		m_solo_cur_vpid = m_pending_ovf_vpid;
 		m_solo_prev_page = nullptr;
 		m_slot_state = slot_state::SOLO_DRAIN;
@@ -904,55 +913,50 @@ namespace parallel_scan
 	  case slot_state::SHARED_DRAIN:
 	  {
 	    PAGE_PTR ovf_page = nullptr;
-	    DB_VALUE *key_ref = nullptr;
 	    int range_idx = -1;
-	    SCAN_CODE cs = m_input_handler->claim_next_overflow_page (thread_p, ovf_page,
-			   key_ref, range_idx);
+	    SCAN_CODE cs = m_input_handler->claim_next_overflow_page (thread_p, m_chain_slot_idx, ovf_page,
+			   range_idx);
 	    if (cs == S_END)
 	      {
-		/* Chain exhausted; release leaf READ latch BEFORE wait — avoid blocking eviction / writers. */
+		/* Chain exhausted; per-slot exit; producer drops leaf S latch here. */
 		assert (m_slot_oid_idx == m_slot_oids.size ());
-		m_input_handler->exit_overflow_help (thread_p);
+		m_input_handler->exit_overflow_help (thread_p, m_chain_slot_idx);
+		if (m_was_producer && m_page != nullptr)
+		  {
+		    pgbuf_unfix (thread_p, m_page);
+		    m_page = nullptr;
+		  }
+		/* Helper or producer: m_slot_key body owned by this worker mspace (helper via
+		 * btree_read_record COPY at wait_or_help_overflow; producer via next_qualified_slot_with_peek). */
+		if (m_slot_key_valid && m_slot_clear_key)
+		  {
+		    pr_clear_value (&m_slot_key);
+		  }
+		m_slot_key_valid = false;
+		m_slot_clear_key = false;
+		m_was_producer = false;
 		m_in_helper_mode = false;
-		if (m_was_producer)
-		  {
-		    if (m_page != nullptr)
-		      {
-			pgbuf_unfix (thread_p, m_page);
-			m_page = nullptr;
-		      }
-		    m_input_handler->wait_for_chain_done (thread_p);
-		    m_was_producer = false;
-		  }
-		else
-		  {
-		    /* Helper: m_slot_key was a peek-borrow, drop it. */
-		    m_slot_key_valid = false;
-		    m_slot_clear_key = false;
-		  }
+		m_chain_slot_idx = -1;
 		m_slot_state = slot_state::IDLE;
 		return S_END;
 	      }
 	    if (cs == S_ERROR)
 	      {
-		/* producer-anchor: helpers may still hold &m_overflow_key (shallow copy of m_slot_key); wait before unwind. */
-		m_input_handler->exit_overflow_help (thread_p);
+		m_input_handler->exit_overflow_help (thread_p, m_chain_slot_idx);
+		if (m_was_producer && m_page != nullptr)
+		  {
+		    pgbuf_unfix (thread_p, m_page);
+		    m_page = nullptr;
+		  }
+		if (m_slot_key_valid && m_slot_clear_key)
+		  {
+		    pr_clear_value (&m_slot_key);
+		  }
+		m_slot_key_valid = false;
+		m_slot_clear_key = false;
+		m_was_producer = false;
 		m_in_helper_mode = false;
-		if (m_was_producer)
-		  {
-		    if (m_page != nullptr)
-		      {
-			pgbuf_unfix (thread_p, m_page);
-			m_page = nullptr;
-		      }
-		    m_input_handler->wait_for_chain_done (thread_p);
-		    m_was_producer = false;
-		  }
-		else
-		  {
-		    m_slot_key_valid = false;
-		    m_slot_clear_key = false;
-		  }
+		m_chain_slot_idx = -1;
 		m_slot_state = slot_state::IDLE;
 		return S_ERROR;
 	      }
@@ -960,23 +964,21 @@ namespace parallel_scan
 	    m_input_handler->release_overflow_page (thread_p, ovf_page);
 	    if (rerr != NO_ERROR)
 	      {
-		m_input_handler->exit_overflow_help (thread_p);
+		m_input_handler->exit_overflow_help (thread_p, m_chain_slot_idx);
+		if (m_was_producer && m_page != nullptr)
+		  {
+		    pgbuf_unfix (thread_p, m_page);
+		    m_page = nullptr;
+		  }
+		if (m_slot_key_valid && m_slot_clear_key)
+		  {
+		    pr_clear_value (&m_slot_key);
+		  }
+		m_slot_key_valid = false;
+		m_slot_clear_key = false;
+		m_was_producer = false;
 		m_in_helper_mode = false;
-		if (m_was_producer)
-		  {
-		    if (m_page != nullptr)
-		      {
-			pgbuf_unfix (thread_p, m_page);
-			m_page = nullptr;
-		      }
-		    m_input_handler->wait_for_chain_done (thread_p);
-		    m_was_producer = false;
-		  }
-		else
-		  {
-		    m_slot_key_valid = false;
-		    m_slot_clear_key = false;
-		  }
+		m_chain_slot_idx = -1;
 		m_slot_state = slot_state::IDLE;
 		return S_ERROR;
 	      }
@@ -1068,7 +1070,8 @@ namespace parallel_scan
   }
 
   int
-  slot_iterator_index::set_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page, DB_VALUE *key_ref, int range_idx)
+  slot_iterator_index::set_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page, DB_VALUE *local_key,
+					  bool local_clear_key, int range_idx, int slot_idx)
   {
     /* Late-joiners skip set_page; init m_btid_int here to avoid NULL-deref in btree_record_process_objects. */
     if (m_input_handler != nullptr && m_btid_int == nullptr)
@@ -1086,11 +1089,14 @@ namespace parallel_scan
       {
 	pr_clear_value (&m_slot_key);
       }
-    /* Peek-borrow the handler's key snapshot — caller already holds an m_overflow_helpers slot. */
-    m_slot_key = *key_ref;
+    /* Ownership transfer (byte copy of DB_VALUE struct): caller's stack local_key.data is heap from
+     * btree_read_record COPY on helper mspace. Caller MUST NOT pr_clear_value post-success; body now
+     * solely owned by m_slot_key, released at SHARED_DRAIN exit when m_slot_clear_key. */
+    m_slot_key = *local_key;
     m_slot_key_valid = true;
-    m_slot_clear_key = false;
+    m_slot_clear_key = local_clear_key;
     m_current_range_idx = range_idx;
+    m_chain_slot_idx = slot_idx;
     m_slot_state = slot_state::SHARED_DRAIN;
     m_in_helper_mode = true;
 
@@ -1098,10 +1104,16 @@ namespace parallel_scan
     m_input_handler->release_overflow_page (thread_p, page);
     if (rerr != NO_ERROR)
       {
-	m_input_handler->exit_overflow_help (thread_p);
+	m_input_handler->exit_overflow_help (thread_p, m_chain_slot_idx);
+	if (m_slot_key_valid && m_slot_clear_key)
+	  {
+	    pr_clear_value (&m_slot_key);
+	  }
+	m_slot_key_valid = false;
+	m_slot_clear_key = false;
 	m_in_helper_mode = false;
 	m_was_producer = false;
-	m_slot_key_valid = false;
+	m_chain_slot_idx = -1;
 	m_slot_state = slot_state::IDLE;
 	return ER_FAILED;
       }

@@ -774,10 +774,13 @@ namespace parallel_scan
 		while (!stop)
 		  {
 		    PAGE_PTR ovf_page = nullptr;
-		    DB_VALUE *ovf_key = nullptr;
+		    DB_VALUE ovf_local_key;
+		    bool ovf_local_clear_key = false;
 		    int ovf_range = -1;
+		    int ovf_slot_idx = -1;
+		    db_make_null (&ovf_local_key);
 		    SCAN_CODE help = m_input_handler->wait_or_help_overflow (&thread_ref, ovf_page,
-				     ovf_key, ovf_range);
+				     &ovf_local_key, &ovf_local_clear_key, ovf_range, ovf_slot_idx);
 		    if (help == S_END)
 		      {
 			break;
@@ -792,8 +795,9 @@ namespace parallel_scan
 			stop = true;
 			break;
 		      }
-		    int sp_err = m_slot_iterator.set_overflow_page (&thread_ref, ovf_page, ovf_key,
-				 ovf_range);
+		    /* Ownership transfer: on S_SUCCESS, set_overflow_page adopts ovf_local_key body. */
+		    int sp_err = m_slot_iterator.set_overflow_page (&thread_ref, ovf_page, &ovf_local_key,
+				 ovf_local_clear_key, ovf_range, ovf_slot_idx);
 		    if (sp_err != NO_ERROR)
 		      {
 			if (m_interrupt->get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)

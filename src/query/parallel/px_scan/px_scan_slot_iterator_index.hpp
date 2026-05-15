@@ -46,8 +46,10 @@ namespace parallel_scan
       int set_page (THREAD_ENTRY *thread_p, PAGE_PTR page, INT16 slot_hint = NULL_SLOTID);
       SCAN_CODE next_qualified_slot_with_peek (THREAD_ENTRY *thread_p);
 
-      /* Late-joiner entry: handler-fetched overflow page + peek-borrowed key ref. */
-      int set_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page, DB_VALUE *key_ref, int range_idx);
+      /* Late-joiner entry: handler-fetched overflow page + helper-owned local_key (ownership transfer
+       * on S_SUCCESS: caller MUST NOT pr_clear_value post-success); slot_idx for per-chain exit. */
+      int set_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page, DB_VALUE *local_key,
+			     bool local_clear_key, int range_idx, int slot_idx);
 
       void set_input_handler (input_handler_index *handler)
       {
@@ -78,6 +80,8 @@ namespace parallel_scan
       bool m_in_helper_mode;
 
       bool m_was_producer;              /* producer-anchor flag — gates wait_for_chain_done before m_slot_key free. */
+
+      int m_chain_slot_idx;             /* slot index in m_overflow_slots; -1 when not in SHARED_DRAIN. */
 
       /* Carried between leaf-OID drain and overflow chain take-up. */
       VPID m_pending_ovf_vpid;

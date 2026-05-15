@@ -28,12 +28,25 @@
 #include "access_spec.hpp"
 #include "btree.h"
 #include "dbtype.h"
+#include <atomic>
 #include <condition_variable>
 #include <mutex>
 #include <vector>
 
 namespace parallel_scan
 {
+  /* Per-chain shared overflow descriptor; lifetime bounded to [publish, helpers==0 && chain_walked]. */
+  struct overflow_slot
+  {
+    VPID     cur_vpid;          /* chain cursor; VPID_ISNULL after chain_walked. */
+    VPID     leaf_vpid;         /* producer's leaf page locator (P2 leaf re-read source). */
+    PGSLOTID leaf_slot_id;      /* producer's leaf-slot id; record locator inside leaf_vpid. */
+    int      range_idx;         /* owning range. */
+    int      helpers;           /* drainers; producer counts itself. helpers==0 + chain_walked => releasable. */
+    bool     chain_walked;      /* cur_vpid hit VPID_ISNULL. */
+    bool     active;            /* slot in use; gates round-robin pick + termination predicate. */
+  };
+
   class input_handler_index
   {
       using interrupt = parallel_query::interrupt;
@@ -51,18 +64,15 @@ namespace parallel_scan
 	  m_key_val_ranges (),
 	  m_part_key_desc (false),
 	  m_current_range_idx (0),
-	  m_overflow_active (false),
-	  m_overflow_range_idx (-1),
-	  m_overflow_helpers (0),
-	  m_overflow_chain_walked (false),
+	  m_overflow_slots (),
+	  m_next_chain_to_help (0),
+	  m_parallelism (0),
 	  m_active_workers (0),
 	  m_no_more_leaves (false)
       {
 	memset (&m_btid_int, 0, sizeof (m_btid_int));
 	memset (&m_btid, 0, sizeof (m_btid));
 	VPID_SET_NULL (&m_current_leaf_vpid);
-	VPID_SET_NULL (&m_overflow_cur_vpid);
-	db_make_null (&m_overflow_key);
       }
       int init_on_main (THREAD_ENTRY *thread_p, INDX_INFO *indx_info, SCAN_ID *scan_id, val_descr *vd, int parallelism);
 
@@ -111,18 +121,26 @@ namespace parallel_scan
 	return m_part_key_desc;
       }
 
-      /* --- Shared overflow API (Phase 1 / parallel-overflow-share) --- */
-      bool try_publish_overflow (THREAD_ENTRY *thread_p, DB_VALUE *key, VPID first_ovf_vpid, int range_idx);
-      SCAN_CODE claim_next_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR &out_page, DB_VALUE *&out_key_ref,
+      /* --- Shared overflow API (v2 / multi-chain) --- */
+      /* Returns slot_idx >= 0 on publish success; -1 on cap-overflow (caller falls to SOLO_DRAIN).
+       * leaf_vpid/leaf_slot_id stored in slot for helper leaf re-read. */
+      int try_publish_overflow (THREAD_ENTRY *thread_p, VPID first_ovf_vpid,
+				VPID leaf_vpid, PGSLOTID leaf_slot_id, int range_idx);
+      /* slot_idx mandatory: identifies which chain to advance. */
+      SCAN_CODE claim_next_overflow_page (THREAD_ENTRY *thread_p, int slot_idx, PAGE_PTR &out_page,
 					  int &out_range_idx);
       void release_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page);
-      void exit_overflow_help (THREAD_ENTRY *thread_p);
-      SCAN_CODE wait_or_help_overflow (THREAD_ENTRY *thread_p, PAGE_PTR &out_page, DB_VALUE *&out_key_ref,
-				       int &out_range_idx);
+      /* slot_idx mandatory: decrements helpers on the specific slot. */
+      void exit_overflow_help (THREAD_ENTRY *thread_p, int slot_idx);
+      /* Round-robin pick + leaf re-read; *out_local_key owned by caller on S_SUCCESS (pr_clear_value
+       * if *out_local_clear_key); cleared inside on S_END / S_ERROR. */
+      SCAN_CODE wait_or_help_overflow (THREAD_ENTRY *thread_p, PAGE_PTR &out_page,
+				       DB_VALUE *out_local_key, bool *out_local_clear_key,
+				       int &out_range_idx, int &out_slot_idx);
       void enter_worker ();
       void leave_worker ();
       void signal_no_more_leaves ();
-      /* producer-anchor: blocks until m_overflow_active=false; keeps producer's m_slot_key alive through chain. */
+      /* DEPRECATED in v2: producer no longer anchors. Stub kept for caller compatibility; deletion in P6. */
       void wait_for_chain_done (THREAD_ENTRY *thread_p);
 
     private:
@@ -154,16 +172,12 @@ namespace parallel_scan
        * Mutex-protected; read only via fetch's out_range_idx (under mutex); written only by fetch's descent branch. */
       int m_current_range_idx;
 
-      /* --- Shared overflow chain (one active at a time; no-clone key sharing) --- */
-      std::mutex                m_overflow_mutex;
-      std::condition_variable   m_overflow_cv;
-      bool                      m_overflow_active;        /* false until a producer publishes a chain */
-      VPID                      m_overflow_cur_vpid;      /* next ovf page to hand out */
-      DB_VALUE
-      m_overflow_key;           /* no-clone shallow copy of producer's m_slot_key; lifetime anchored by producer's wait_for_chain_done */
-      int                       m_overflow_range_idx;     /* owning range of the active chain */
-      int                       m_overflow_helpers;       /* active drainers including producer */
-      bool                      m_overflow_chain_walked;  /* m_overflow_cur_vpid hit VPID_ISNULL once */
+      /* --- Multi-chain shared overflow (v2; cap = parallelism) --- */
+      std::mutex                  m_overflow_mutex;
+      std::condition_variable     m_overflow_cv;
+      std::vector<overflow_slot>  m_overflow_slots;       /* size == parallelism; cap = helper supply. */
+      std::atomic<int>            m_next_chain_to_help;   /* round-robin cursor; fetch_add(1) % cap. */
+      int                         m_parallelism;          /* memo of init_on_main parallelism arg. */
       /* --- Late-joiner termination tracking (under m_overflow_mutex) --- */
       int                       m_active_workers;         /* workers currently inside loop body */
       bool                      m_no_more_leaves;         /* set when last get_next_page_with_fix returned S_END */
