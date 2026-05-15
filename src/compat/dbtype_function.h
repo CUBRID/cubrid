@@ -170,7 +170,7 @@
 #define DB_MAKE_ENUMERATION(value, index, str, size, codeset, collation) \
 	db_make_enumeration(value, index, str, size, codeset, collation)
 
-#define DB_MAKE_CLOB (value, max_char_length, str, char_str_byte_size, codeset, collation_id) \
+#define DB_MAKE_CLOB(value, max_char_length, str, char_str_byte_size, codeset, collation_id) \
         db_make_clob (value, max_char_length, str, char_str_byte_size, codeset, collation_id)
 
 #define DB_MAKE_BLOB(value, max_byte_length, str, byte_str_size) \
