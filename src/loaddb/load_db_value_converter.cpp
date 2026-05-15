@@ -59,6 +59,7 @@ namespace cubload
   int to_db_varchar (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_make_nchar (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_make_varnchar (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_clob (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_string (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_float (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_double (const char *str, const size_t str_size, const attribute *attr, db_value *val);
@@ -75,6 +76,8 @@ namespace cubload
   int to_db_monetary (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_varbit_from_bin_str (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_varbit_from_hex_str (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_blob_from_bin_str (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_blob_from_hex_str (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_elo_ext (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_elo_int (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_int_generic (const char *str, const size_t str_size, const attribute *attr, db_value *val);
@@ -157,6 +160,10 @@ namespace cubload
     setters_[DB_TYPE_BIT][LDR_XSTR] = &to_db_varbit_from_hex_str;
     setters_[DB_TYPE_VARBIT][LDR_BSTR] = &to_db_varbit_from_bin_str;
     setters_[DB_TYPE_VARBIT][LDR_XSTR] = &to_db_varbit_from_hex_str;
+    setters_[DB_TYPE_BLOB][LDR_BSTR] = &to_db_blob_from_bin_str;
+    setters_[DB_TYPE_BLOB][LDR_XSTR] = &to_db_blob_from_hex_str;
+
+    setters_[DB_TYPE_CLOB][LDR_STR] = &to_db_clob;
 
     setters_[DB_TYPE_BFILE][LDR_ELO_EXT] = &to_db_elo_ext;
     setters_[DB_TYPE_BFILE][LDR_ELO_INT] = &to_db_elo_int;
@@ -423,6 +430,30 @@ namespace cubload
   int to_db_make_varnchar (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     return to_db_generic_char (DB_TYPE_VARNCHAR, str, str_size, attr, val);
+  }
+
+  int
+  to_db_clob (const char *str, const size_t str_size, const attribute *attr, db_value *val)
+  {
+    /*
+     * Internal CLOB is stored inline like a character string, but it is not a
+     * fixed-precision type: the trailing-pad truncation that to_db_generic_char
+     * performs for CHAR/VARCHAR is meaningless here. A CLOB only has the single
+     * absolute LOB size limit (DB_MAX_LOB_PRECISION), so apply a plain bound check.
+     */
+    int char_count = 0;
+    const tp_domain &domain = attr->get_domain ();
+    INTL_CODESET codeset = (INTL_CODESET) domain.codeset;
+
+    intl_char_count ((unsigned char *) str, (int) str_size, codeset, &char_count);
+
+    if (char_count > domain.precision)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_CLOB));
+	return ER_IT_DATA_OVERFLOW;
+      }
+
+    return db_make_clob (val, domain.precision, str, (int) str_size, codeset, domain.collation_id);
   }
 
   int
@@ -758,6 +789,24 @@ namespace cubload
     db_value_clear (&temp);
 
     return error_code;
+  }
+
+  /*
+   * Internal BLOB is stored inline like a bit string and currently shares the
+   * VARBIT conversion path (the target domain is resolved from the attribute,
+   * so the cast already lands on DB_TYPE_BLOB). Keep dedicated entry points so
+   * BLOB-specific handling can diverge here without touching the VARBIT path.
+   */
+  int
+  to_db_blob_from_bin_str (const char *str, const size_t str_size, const attribute *attr, db_value *val)
+  {
+    return to_db_varbit_from_bin_str (str, str_size, attr, val);
+  }
+
+  int
+  to_db_blob_from_hex_str (const char *str, const size_t str_size, const attribute *attr, db_value *val)
+  {
+    return to_db_varbit_from_hex_str (str, str_size, attr, val);
   }
 
   int
