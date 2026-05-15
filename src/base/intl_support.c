@@ -1236,7 +1236,8 @@ intl_next_char (const unsigned char *s, INTL_CODESET codeset, int *current_char_
       return intl_nextchar_euc (s, current_char_size);
 
     case INTL_CODESET_UTF8:
-      return intl_nextchar_utf8 (s, current_char_size);
+      *current_char_size = intl_Len_utf8_char[*s];
+      return s + *current_char_size;
 
     default:
       assert (false);
@@ -1286,7 +1287,8 @@ intl_next_char_pseudo_kor (const unsigned char *s, INTL_CODESET codeset, int *cu
       return intl_nextchar_euc (s, current_char_size);
 
     case INTL_CODESET_UTF8:
-      return intl_nextchar_utf8 (s, current_char_size);
+      *current_char_size = intl_Len_utf8_char[*s];
+      return s + *current_char_size;
 
     default:
       assert (false);
@@ -1869,7 +1871,7 @@ intl_reverse_string (const unsigned char *src, unsigned char *dst, int length_in
 	end = src + size_in_bytes;
 	for (; s < end && char_count < length_in_chars; char_count++)
 	  {
-	    intl_nextchar_utf8 (s, &char_size);
+	    char_size = intl_Len_utf8_char[*s];
 
 	    i = char_size;
 	    while (i > 0)
@@ -2175,14 +2177,53 @@ int
 intl_count_utf8_chars (const unsigned char *s, int length_in_bytes)
 {
   const unsigned char *end;
-  int dummy;
   int char_count;
 
   assert (s != NULL);
 
-  for (end = s + length_in_bytes, char_count = 0; s < end;)
+  end = s + length_in_bytes;
+
+  /* ASCII fast path: SWAR scan of the per-byte high bit. If every byte is
+   * ASCII (MSB clear) then char_count == length_in_bytes.
+   *
+   *   UTF-8 byte patterns:
+   *     0xxxxxxx  ASCII 1-byte char
+   *     110xxxxx  2-byte sequence lead
+   *     1110xxxx  3-byte sequence lead
+   *     11110xxx  4-byte sequence lead
+   *     10xxxxxx  continuation byte
+   *
+   *   Only ASCII has MSB=0, so "(word & 0x80..80) == 0" means 8 ASCII bytes.
+   */
+  {
+    const unsigned char *p = s;
+
+    while (p + 8 <= end)
+      {
+	UINT64 word;
+	memcpy (&word, p, sizeof (word));
+	if ((word & UINT64_C (0x8080808080808080)) != 0)
+	  {
+	    goto slow_path;
+	  }
+	p += 8;
+      }
+    while (p < end)
+      {
+	if (*p >= 0x80)
+	  {
+	    goto slow_path;
+	  }
+	p++;
+      }
+    return length_in_bytes;
+  }
+
+slow_path:
+  /* Multi-byte present: use the lead-byte length table to skip per char. */
+  for (char_count = 0; s < end;)
     {
-      s = intl_nextchar_utf8 (s, &dummy);
+      s += intl_Len_utf8_char[*s];
       if (s <= end)
 	{
 	  char_count++;
@@ -2204,15 +2245,53 @@ static int
 intl_count_utf8_bytes (const unsigned char *s, int length_in_chars)
 {
   int char_count;
-  int char_width;
   int byte_count;
 
   assert (s != NULL);
 
+  /* ASCII fast path: SWAR scan of the per-byte high bit. If every byte is
+   * ASCII (MSB clear) then byte_count == length_in_chars since each ASCII
+   * char occupies exactly one byte.
+   *
+   *   UTF-8 byte patterns:
+   *     0xxxxxxx  ASCII 1-byte char
+   *     110xxxxx  2-byte sequence lead
+   *     1110xxxx  3-byte sequence lead
+   *     11110xxx  4-byte sequence lead
+   *     10xxxxxx  continuation byte
+   *
+   *   Only ASCII has MSB=0, so "(word & 0x80..80) == 0" means 8 ASCII bytes.
+   */
+  {
+    const unsigned char *p = s;
+    const unsigned char *end = s + length_in_chars;
+
+    while (p + 8 <= end)
+      {
+	UINT64 word;
+	memcpy (&word, p, sizeof (word));
+	if ((word & UINT64_C (0x8080808080808080)) != 0)
+	  {
+	    goto slow_path;
+	  }
+	p += 8;
+      }
+    while (p < end)
+      {
+	if (*p >= 0x80)
+	  {
+	    goto slow_path;
+	  }
+	p++;
+      }
+    return length_in_chars;
+  }
+
+slow_path:
+  /* Multi-byte present: use the lead-byte length table to skip per char. */
   for (char_count = 0, byte_count = 0; char_count < length_in_chars; char_count++)
     {
-      s = intl_nextchar_utf8 (s, &char_width);
-      byte_count += char_width;
+      byte_count += intl_Len_utf8_char[s[byte_count]];
     }
 
   return byte_count;
@@ -2900,10 +2979,8 @@ intl_identifier_lower_string_size (const char *src)
 	const ALPHABET_DATA *alphabet = &(locale->ident_alphabet);
 	int s_size = src_size;
 	unsigned int cp;
-	int src_len;
 
 	const unsigned char *usrc = REINTERPRET_CAST (const unsigned char *, src);
-	intl_char_count (usrc, src_size, codeset, &src_len);
 
 	src_lower_size = 0;
 
@@ -3038,9 +3115,6 @@ intl_identifier_upper_string_size (const char *src)
 	const ALPHABET_DATA *alphabet = &(locale->ident_alphabet);
 	int s_size = src_size;
 	unsigned int cp;
-	int src_len;
-
-	intl_char_count (usrc, src_size, codeset, &src_len);
 
 	src_upper_size = 0;
 
@@ -3970,6 +4044,23 @@ intl_check_utf8 (const unsigned char *buf, int size, char **pos)
 
   while (p < p_end)
     {
+      /* ASCII fast path : skip 8 bytes while MSB is clear */
+      while (p + 8 <= p_end)
+	{
+	  UINT64 word;
+	  memcpy (&word, p, sizeof (word));
+	  if ((word & UINT64_C (0x8080808080808080)) != 0)
+	    {
+	      break;
+	    }
+	  p += 8;
+	}
+
+      if (p >= p_end)
+	{
+	  break;
+	}
+
       curr_char = p;
 
       if (*p < 0x80)

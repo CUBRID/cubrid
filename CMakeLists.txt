@@ -215,12 +215,12 @@ if(UNIX)
     endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4.7)
 
     # C flags for both debug and release build
-    set(CMAKE_C_COMMON_FLAGS "-ggdb -fno-omit-frame-pointer -fstack-protector-strong")
+    set(CMAKE_C_COMMON_FLAGS "-ggdb -fno-omit-frame-pointer")
     # C++ flags for both debug and release build
     set(CMAKE_CXX_COMMON_FLAGS "${CMAKE_C_COMMON_FLAGS} -std=c++17")
 
     # C flags for debug build
-    set(CMAKE_C_DEBUG_FLAGS "-ggdb3 -Wall -fno-inline ${CMAKE_C_COMMON_FLAGS}")
+    set(CMAKE_C_DEBUG_FLAGS "-ggdb3 -Wall -fno-inline -fstack-protector-strong ${CMAKE_C_COMMON_FLAGS}")
     # C++ flags for debug build
     set(CMAKE_CXX_DEBUG_FLAGS "-ggdb3 -Wall -fno-inline ${CMAKE_CXX_COMMON_FLAGS}")
 

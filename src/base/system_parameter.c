@@ -796,6 +796,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_LOG_POSTPONE_CACHE_SIZE "postpone_cache_size"
 
+#define PRM_NAME_ENABLE_HEAP_FIXED_SCAN "enable_heap_fixed_scan"
+
 // #endregion 
 
 /*
@@ -4564,7 +4566,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_JAVA_STORED_PROCEDURE,
    PRM_NAME_JAVA_STORED_PROCEDURE,
-   (PRM_FOR_SERVER | PRM_DEPRECATED | PRM_HIDDEN),
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_RELOADABLE | PRM_DEPRECATED | PRM_HIDDEN),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = true}},
@@ -4997,7 +4999,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_STORED_PROCEDURE,
    PRM_NAME_STORED_PROCEDURE,
-   (PRM_FOR_SERVER | PRM_FORCE_SERVER),
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_RELOADABLE),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = true}},
@@ -5338,6 +5340,17 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 512}},
    {false, {.i = 4096}},
    {false, {.i = 4}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ENABLE_HEAP_FIXED_SCAN,
+   PRM_NAME_ENABLE_HEAP_FIXED_SCAN,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true}},
+   {false, {.b = true}},
+   NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -6039,9 +6052,6 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
   SESSION_PARAM *sprm = NULL;
   int num_session_prms;
 #endif
-
-  /* TODO: conf_file is always NULL. Therefore, you need to decide whether to keep this argument. */
-  assert (conf_file == NULL);
 
 #ifndef NDEBUG
   sysprm_check_id_order ();
