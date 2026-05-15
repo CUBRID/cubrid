@@ -1765,6 +1765,7 @@ cleanup:
     {
       sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
     }
+  thread_ref.m_px_orig_thread_entry = NULL;
   pthread_cond_signal (sort_param->complete_cond);
   pthread_mutex_unlock (sort_param->px_mtx);
 
@@ -4398,6 +4399,7 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
   int i, j;
 
   /* init stats */
+  sort_param->ori_sort_param = NULL;
   memset (&sort_param->orderby_stats, 0, sizeof (sort_param->orderby_stats));
 
   /* copy from origin sort param */
@@ -5084,6 +5086,7 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
     {
       sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
     }
+  thread_ref.m_px_orig_thread_entry = NULL;
   pthread_cond_signal (sort_param->complete_cond);
   pthread_mutex_unlock (sort_param->px_mtx);
 }
@@ -5146,6 +5149,7 @@ sort_merge_nruns_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_para
     {
       sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
     }
+  thread_ref.m_px_orig_thread_entry = NULL;
   pthread_cond_signal (sort_param->complete_cond);
   pthread_mutex_unlock (sort_param->px_mtx);
 }
@@ -5347,7 +5351,6 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	    }
 	}
     }
-
   else if (sort_param->px_type == SORT_GROUP_BY)
     {
       GBY_SORT_PARAM *gby = (GBY_SORT_PARAM *) sort_param->px_extra_arg;
@@ -5586,7 +5589,6 @@ cleanup:
 static int
 sort_run_final_single (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 {
-  assert (!SORT_IS_PARALLEL (sort_param));
   assert (sort_param->put_fn != NULL);
   sort_param->px_result_file_idx = 0;
   return sort_put_result_from_tmpfile (thread_p, sort_param, 0);
@@ -5688,9 +5690,6 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	{
 	  return ER_FAILED;
 	}
-
-      /* Phase 3: serial aggregate — clear SORT_IS_PARALLEL so put_fn gates open */
-      sort_param->px_parallel_num = 1;
 
       /* All workers produced empty output — no tuples to aggregate */
       if (sort_param->tot_runs == 0)
