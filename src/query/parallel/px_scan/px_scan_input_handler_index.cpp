@@ -624,7 +624,7 @@ namespace parallel_scan
 
   SCAN_CODE
   input_handler_index::claim_next_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR &out_page,
-						 DB_VALUE *&out_key_ref, int &out_range_idx)
+      DB_VALUE *&out_key_ref, int &out_range_idx)
   {
     std::unique_lock<std::mutex> lock (m_overflow_mutex);
     if (!m_overflow_active || VPID_ISNULL (&m_overflow_cur_vpid))
@@ -693,7 +693,7 @@ namespace parallel_scan
 
   SCAN_CODE
   input_handler_index::wait_or_help_overflow (THREAD_ENTRY *thread_p, PAGE_PTR &out_page,
-					      DB_VALUE *&out_key_ref, int &out_range_idx)
+      DB_VALUE *&out_key_ref, int &out_range_idx)
   {
     std::unique_lock<std::mutex> lock (m_overflow_mutex);
     for (;;)

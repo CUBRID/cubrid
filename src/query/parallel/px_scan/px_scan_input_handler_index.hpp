@@ -159,7 +159,8 @@ namespace parallel_scan
       std::condition_variable   m_overflow_cv;
       bool                      m_overflow_active;        /* false until a producer publishes a chain */
       VPID                      m_overflow_cur_vpid;      /* next ovf page to hand out */
-      DB_VALUE                  m_overflow_key;           /* no-clone shallow copy of producer's m_slot_key; lifetime anchored by producer's wait_for_chain_done */
+      DB_VALUE
+      m_overflow_key;           /* no-clone shallow copy of producer's m_slot_key; lifetime anchored by producer's wait_for_chain_done */
       int                       m_overflow_range_idx;     /* owning range of the active chain */
       int                       m_overflow_helpers;       /* active drainers including producer */
       bool                      m_overflow_chain_walked;  /* m_overflow_cur_vpid hit VPID_ISNULL once */

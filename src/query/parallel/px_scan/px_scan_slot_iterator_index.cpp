@@ -439,8 +439,8 @@ namespace parallel_scan
     helper.snapshot = m_scan_id->s.isid.scan_cache.mvcc_snapshot;
     bool stop = false;
     int rerr = btree_record_process_objects (thread_p, m_btid_int, BTREE_OVERFLOW_NODE,
-					     &peeked, 0, &stop,
-					     collect_oid_callback, &helper);
+	       &peeked, 0, &stop,
+	       collect_oid_callback, &helper);
     if (rerr != NO_ERROR)
       {
 	return rerr;
@@ -935,11 +935,24 @@ namespace parallel_scan
 	      }
 	    if (cs == S_ERROR)
 	      {
+		/* producer-anchor: helpers may still hold &m_overflow_key (shallow copy of m_slot_key); wait before unwind. */
 		m_input_handler->exit_overflow_help (thread_p);
 		m_in_helper_mode = false;
-		m_was_producer = false;
-		m_slot_key_valid = false;
-		m_slot_clear_key = false;
+		if (m_was_producer)
+		  {
+		    if (m_page != nullptr)
+		      {
+			pgbuf_unfix (thread_p, m_page);
+			m_page = nullptr;
+		      }
+		    m_input_handler->wait_for_chain_done (thread_p);
+		    m_was_producer = false;
+		  }
+		else
+		  {
+		    m_slot_key_valid = false;
+		    m_slot_clear_key = false;
+		  }
 		m_slot_state = slot_state::IDLE;
 		return S_ERROR;
 	      }
@@ -949,9 +962,21 @@ namespace parallel_scan
 	      {
 		m_input_handler->exit_overflow_help (thread_p);
 		m_in_helper_mode = false;
-		m_was_producer = false;
-		m_slot_key_valid = false;
-		m_slot_clear_key = false;
+		if (m_was_producer)
+		  {
+		    if (m_page != nullptr)
+		      {
+			pgbuf_unfix (thread_p, m_page);
+			m_page = nullptr;
+		      }
+		    m_input_handler->wait_for_chain_done (thread_p);
+		    m_was_producer = false;
+		  }
+		else
+		  {
+		    m_slot_key_valid = false;
+		    m_slot_clear_key = false;
+		  }
 		m_slot_state = slot_state::IDLE;
 		return S_ERROR;
 	      }
