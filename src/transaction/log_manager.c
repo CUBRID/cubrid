@@ -12724,8 +12724,16 @@ cdc_get_attribute_size (DB_VALUE * value)
 	size = ((db_get_string_length (value) + 3) / 4) + 3;
 	break;
       }
+    case DB_TYPE_BLOB:
+      /* internal BLOB is stored inline like a bit string; see cdc_put_bit_string_to_loginfo */
+      size = ((db_get_string_length (value) + 3) / 4) + 3;
+      break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
+      size = db_get_string_size (value);
+      break;
+    case DB_TYPE_CLOB:
+      /* internal CLOB is stored inline like a character string; see cdc_put_value_to_loginfo */
       size = db_get_string_size (value);
       break;
     case DB_TYPE_NCHAR:
@@ -13627,6 +13635,69 @@ cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * old_v
     }
 }
 
+/*
+ * cdc_put_bit_string_to_loginfo - pack a bit-string DB_VALUE into CDC log info
+ *    return: NO_ERROR if successful, error code otherwise
+ *    new_value(in): DB_VALUE of type BIT/VARBIT/BLOB
+ *    data_ptr(in/out): CDC log info write pointer, advanced on success
+ * Note:
+ *    Internal BLOB is stored inline like a bit string and shares this packing
+ *    routine. It is invoked from dedicated BIT/VARBIT and BLOB switch cases so
+ *    that BLOB-specific handling can diverge without touching the BIT path.
+ */
+static int
+cdc_put_bit_string_to_loginfo (db_value * new_value, char **data_ptr)
+{
+  char temp[1024];
+  char *result = NULL;
+  int length;
+  int func_type = 7;
+  char *ptr = *data_ptr;
+
+  length = ((db_get_string_length (new_value) + 3) / 4) + 4;
+
+  if (length <= 1024)
+    {
+      result = temp;
+    }
+  else
+    {
+      result = (char *) malloc (length);
+      if (result == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
+
+  snprintf (result, 3, "X'");
+
+  if (db_bit_string (new_value, "%X", result + 2, length - 2) != NO_ERROR)
+    {
+      if (result != temp)
+	{
+	  free_and_init (result);
+	}
+
+      return ER_FAILED;
+    }
+
+  snprintf (result + length - 2, 2, "'");
+
+  assert ((int) strlen (result) == (length - 1));
+
+  ptr = or_pack_int (ptr, func_type);
+  ptr = or_pack_string (ptr, result);
+
+  if (result != temp)
+    {
+      free_and_init (result);
+    }
+
+  *data_ptr = ptr;
+  return NO_ERROR;
+}
+
 static int
 cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 {
@@ -13706,55 +13777,20 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       break;
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
-      {
-	char temp[1024];
-	char *result = NULL;
-	int length, n, count;
-	char *bitstring = NULL;
-	func_type = 7;
-
-	length = ((db_get_string_length (new_value) + 3) / 4) + 4;
-
-	if (length <= 1024)
-	  {
-	    result = temp;
-	  }
-	else
-	  {
-	    result = (char *) malloc (length);
-	    if (result == NULL)
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
-		return ER_OUT_OF_VIRTUAL_MEMORY;
-	      }
-	  }
-
-	snprintf (result, 3, "X'");
-
-	if (db_bit_string (new_value, "%X", result + 2, length - 2) != NO_ERROR)
-	  {
-	    if (result != temp)
-	      {
-		free_and_init (result);
-	      }
-
-	    return ER_FAILED;
-	  }
-
-	snprintf (result + length - 2, 2, "'");
-
-	assert ((int) strlen (result) == (length - 1));
-
-	ptr = or_pack_int (ptr, func_type);
-	ptr = or_pack_string (ptr, result);
-
-	if (result != temp)
-	  {
-	    free_and_init (result);
-	  }
-
-	break;
-      }
+      error_status = cdc_put_bit_string_to_loginfo (new_value, &ptr);
+      if (error_status != NO_ERROR)
+	{
+	  return error_status;
+	}
+      break;
+    case DB_TYPE_BLOB:
+      /* internal BLOB is stored inline like a bit string */
+      error_status = cdc_put_bit_string_to_loginfo (new_value, &ptr);
+      if (error_status != NO_ERROR)
+	{
+	  return error_status;
+	}
+      break;
     case DB_TYPE_CHAR:
       func_type = 7;
 
@@ -13762,6 +13798,12 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       ptr = or_pack_string_with_length (ptr, db_get_string (new_value), db_get_string_size (new_value) - 1);
       break;
     case DB_TYPE_VARCHAR:
+      func_type = 7;
+      ptr = or_pack_int (ptr, func_type);
+      ptr = or_pack_string (ptr, db_get_string (new_value));
+      break;
+    case DB_TYPE_CLOB:
+      /* internal CLOB is stored inline like a character string */
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
       ptr = or_pack_string (ptr, db_get_string (new_value));
