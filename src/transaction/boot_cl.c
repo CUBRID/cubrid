@@ -1624,7 +1624,7 @@ boot_restart_common_initialize (BOOT_CLIENT_CREDENTIAL * client_credential, cons
       if (er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE), prm_get_integer_value (PRM_ID_ER_EXIT_ASK)) != NO_ERROR)
 	{
 	  assert_release (false);
-	  return NO_ERROR;
+	  return ER_FAILED;
 	}
 
 #if defined (CS_MODE) && !defined (NDEBUG)
@@ -1947,6 +1947,7 @@ boot_restart_failure_cleanup (DB_INFO * db,
 
       showstmt_metadata_final ();
       tran_free_savepoint_list ();
+      set_final ();
       tr_final ();
       au_final ();
       sm_final ();
