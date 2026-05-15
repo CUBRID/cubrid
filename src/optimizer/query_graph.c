@@ -8272,12 +8272,10 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 	continue;
 
       /* Scan edge terms in this group for outer joins and dummy-only status.
-       * Uses QO_IS_EDGE_TERM because nedges is not yet set at this call site.
-       * qo_discover_edges has not run yet, so QO_TC_DUMMY_JOIN is not set for
-       * constant-substituted terms.  A term that carries PT_EXPR_INFO_TRANSITIVE
-       * will become QO_TC_DUMMY_JOIN once qo_discover_edges runs (group_has_outer_join
-       * = false already guarantees all group nodes are sargable), so treat it as
-       * effectively dummy here. */
+       * nedges is not yet set; use QO_IS_EDGE_TERM instead.
+       * QO_TC_DUMMY_JOIN is set by qo_discover_edges (not run yet), so also
+       * treat PT_EXPR_INFO_TRANSITIVE terms as dummy (group_has_outer_join=false
+       * guarantees all group nodes are sargable). */
       group_has_outer_join = false;
       group_all_dummy = true;
       for (t = 0; t < env->nterms; t++)
