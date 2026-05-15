@@ -583,6 +583,13 @@ catcls_guess_record_length (OR_VALUE * value_p)
       length += map_p->get_disk_size_of_value (&attrs_p[i].value);
     }
 
+  /* catcls_put_or_value_into_buffer () calls or_put_align32 () once per
+   * variable column and once before the last offset; each can add up to
+   * INT_ALIGNMENT - 1 zero pad bytes to keep VOT offsets 4-byte aligned.
+   * Reserve INT_ALIGNMENT per attribute as a conservative upper bound so the
+   * caller's malloc is large enough to hold the padded record. */
+  length += INT_ALIGNMENT * (n_attrs + 1);
+
   return (length);
 }
 
