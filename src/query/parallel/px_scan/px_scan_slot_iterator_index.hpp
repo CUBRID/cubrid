@@ -47,8 +47,7 @@ namespace parallel_scan
       SCAN_CODE next_qualified_slot_with_peek (THREAD_ENTRY *thread_p);
 
       /* Late-joiner entry: handler-fetched overflow page + peek-borrowed key ref. */
-      int set_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page, DB_VALUE *key_ref,
-			     int range_idx, int after_key_offset);
+      int set_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page, DB_VALUE *key_ref, int range_idx);
 
       void set_input_handler (input_handler_index *handler)
       {
@@ -78,15 +77,10 @@ namespace parallel_scan
       /* True when the iterator was set up via set_overflow_page (late joiner). */
       bool m_in_helper_mode;
 
-      /* Set on try_publish_overflow success — this iterator OWNS the m_slot_key buffer
-       * that m_overflow_key shallow-borrows. On SHARED_DRAIN S_END the producer calls
-       * wait_for_chain_done so helpers finish reading before the buffer is freed by the
-       * producer's next slot-advance pr_clear_value (same thread / mspace). */
-      bool m_was_producer;
+      bool m_was_producer;              /* producer-anchor flag — gates wait_for_chain_done before m_slot_key free. */
 
       /* Carried between leaf-OID drain and overflow chain take-up. */
       VPID m_pending_ovf_vpid;
-      int m_pending_ovf_after_key_offset;
 
       SCAN_ID *m_scan_id;
       val_descr *m_vd;
@@ -111,6 +105,7 @@ namespace parallel_scan
       int check_key_in_range (DB_VALUE *key, bool *in_range, bool *past_upper, int *matched_range_idx);
       SCAN_CODE process_oid (THREAD_ENTRY *thread_p, OID *oid);
       SCAN_CODE drain_next_oid (THREAD_ENTRY *thread_p);
+      int process_one_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page);
 
       /* btree_key_process_objects callback. */
       static int collect_oid_callback (THREAD_ENTRY *thread_p, BTID_INT *btid_int, RECDES *record,

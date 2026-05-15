@@ -840,7 +840,7 @@ typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * b
 extern int btree_key_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record,
 				      int after_key_offset, LEAF_REC * leaf_info,
 				      BTREE_PROCESS_OBJECT_FUNCTION * func, void *args);
-/* [Reused by parallel index scan] streams a single record (leaf or overflow) without walking the chain. */
+/* [Reused by parallel index scan] streams one record (leaf or overflow). PRECONDITION: caller holds at least PGBUF_LATCH_READ on the page from which 'record' was peeked. */
 extern int btree_record_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_NODE_TYPE node_type,
 					 RECDES * record, int after_key_offset, bool * stop,
 					 BTREE_PROCESS_OBJECT_FUNCTION * func, void *args);

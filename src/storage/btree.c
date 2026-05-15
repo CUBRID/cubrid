@@ -1481,7 +1481,6 @@ static int btree_key_lock_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 				  bool * was_page_refixed);
 #endif /* SERVER_MODE */
 
-/* [Reused by parallel index scan] — promoted to extern in btree.h. */
 static int btree_record_satisfies_snapshot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
 					    char *object_ptr, OID * oid, OID * class_oid, BTREE_MVCC_INFO * mvcc_info,
 					    bool * stop, void *args);

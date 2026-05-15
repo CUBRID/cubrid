@@ -52,9 +52,7 @@ namespace parallel_scan
 	  m_part_key_desc (false),
 	  m_current_range_idx (0),
 	  m_overflow_active (false),
-	  m_overflow_key_clear (false),
 	  m_overflow_range_idx (-1),
-	  m_overflow_after_key_offset (0),
 	  m_overflow_helpers (0),
 	  m_overflow_chain_walked (false),
 	  m_active_workers (0),
@@ -114,19 +112,18 @@ namespace parallel_scan
       }
 
       /* --- Shared overflow API (Phase 1 / parallel-overflow-share) --- */
-      bool try_publish_overflow (THREAD_ENTRY *thread_p, DB_VALUE *key, bool key_clear, VPID first_ovf_vpid,
-				 int range_idx, int after_key_offset);
+      bool try_publish_overflow (THREAD_ENTRY *thread_p, DB_VALUE *key, VPID first_ovf_vpid, int range_idx);
       SCAN_CODE claim_next_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR &out_page, DB_VALUE *&out_key_ref,
-					  int &out_range_idx, int &out_after_key_offset);
+					  int &out_range_idx);
       void release_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page);
       void exit_overflow_help (THREAD_ENTRY *thread_p);
       SCAN_CODE wait_or_help_overflow (THREAD_ENTRY *thread_p, PAGE_PTR &out_page, DB_VALUE *&out_key_ref,
-				       int &out_range_idx, int &out_after_key_offset);
+				       int &out_range_idx);
       void enter_worker ();
       void leave_worker ();
       void signal_no_more_leaves ();
-      DB_VALUE *get_overflow_key_ref ();        /* returns &m_overflow_key — caller must be an active helper */
-      void wait_for_chain_done (THREAD_ENTRY *thread_p);  /* producer-anchor: blocks until m_overflow_active becomes false. Keeps the producer's m_slot_key buffer alive through the chain so helpers never read freed data. */
+      /* producer-anchor: blocks until m_overflow_active=false; keeps producer's m_slot_key alive through chain. */
+      void wait_for_chain_done (THREAD_ENTRY *thread_p);
 
     private:
       /* requires m_leaf_mutex; closed-bound delegates to btree_locate_key (leaf+slot in one call); open-bound walks root→leftmost/rightmost manually. */
@@ -157,15 +154,13 @@ namespace parallel_scan
        * Mutex-protected; read only via fetch's out_range_idx (under mutex); written only by fetch's descent branch. */
       int m_current_range_idx;
 
-      /* --- Shared overflow chain (one active at a time; lazy-free key snapshot) --- */
+      /* --- Shared overflow chain (one active at a time; no-clone key sharing) --- */
       std::mutex                m_overflow_mutex;
       std::condition_variable   m_overflow_cv;
       bool                      m_overflow_active;        /* false until a producer publishes a chain */
       VPID                      m_overflow_cur_vpid;      /* next ovf page to hand out */
-      DB_VALUE                  m_overflow_key;           /* cloned snapshot — lazy-freed at NEXT try_publish_overflow */
-      bool                      m_overflow_key_clear;     /* true when m_overflow_key holds a clone needing pr_clear_value */
+      DB_VALUE                  m_overflow_key;           /* no-clone shallow copy of producer's m_slot_key; lifetime anchored by producer's wait_for_chain_done */
       int                       m_overflow_range_idx;     /* owning range of the active chain */
-      int                       m_overflow_after_key_offset;  /* 0 for OVERFLOW_NODE; held for symmetry */
       int                       m_overflow_helpers;       /* active drainers including producer */
       bool                      m_overflow_chain_walked;  /* m_overflow_cur_vpid hit VPID_ISNULL once */
       /* --- Late-joiner termination tracking (under m_overflow_mutex) --- */

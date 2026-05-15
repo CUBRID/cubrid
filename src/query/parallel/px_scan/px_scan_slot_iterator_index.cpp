@@ -16,9 +16,7 @@
  *
  */
 
-/*
- * px_scan_slot_iterator_index.cpp
- */
+/* px_scan_slot_iterator_index.cpp — IDLE/DRAIN_LEAF_OIDS/SHARED_DRAIN/SOLO_DRAIN state machine; producer-anchored buffer share. */
 
 #include "px_scan_slot_iterator_index.hpp"
 #include "px_scan_input_handler_index.hpp"
@@ -48,7 +46,6 @@ namespace parallel_scan
       m_solo_prev_page (nullptr),
       m_in_helper_mode (false),
       m_was_producer (false),
-      m_pending_ovf_after_key_offset (0),
       m_scan_id (nullptr),
       m_vd (nullptr),
       m_btid_int (nullptr),
@@ -96,16 +93,17 @@ namespace parallel_scan
 	m_page = nullptr;
       }
 
-    /* drain-state cleanup (Phase 2.6). Producer-anchor MUST run before freeing
-     * m_slot_key: if this iterator published a chain that is still active (e.g.,
-     * interrupt-driven early finalize), helpers may still be peek-reading the
-     * buffer; wait_for_chain_done blocks until all helpers exit, avoiding
-     * cross-thread use-after-free. */
+    /* SHARED_DRAIN cleanup: producer unfixes leaf before wait — leaf-latch hold across slow helpers starves writers. */
     if (m_slot_state == slot_state::SHARED_DRAIN && m_in_helper_mode)
       {
 	m_input_handler->exit_overflow_help (thread_p);
 	if (m_was_producer)
 	  {
+	    if (m_page != nullptr)
+	      {
+		pgbuf_unfix (thread_p, m_page);
+		m_page = nullptr;
+	      }
 	    m_input_handler->wait_for_chain_done (thread_p);
 	    m_was_producer = false;
 	  }
@@ -118,7 +116,6 @@ namespace parallel_scan
       }
     VPID_SET_NULL (&m_solo_cur_vpid);
     VPID_SET_NULL (&m_pending_ovf_vpid);
-    m_pending_ovf_after_key_offset = 0;
     m_slot_state = slot_state::IDLE;
 
     if (m_slot_key_valid && m_slot_clear_key)
@@ -345,10 +342,20 @@ namespace parallel_scan
 	m_page = nullptr;
       }
 
-    /* drain-state cleanup (Phase 2.6) */
+    /* drain-state cleanup: unfix leaf before waiting to avoid holding read-latch through slow helpers. */
     if (m_slot_state == slot_state::SHARED_DRAIN && m_in_helper_mode)
       {
 	m_input_handler->exit_overflow_help (thread_p);
+	if (m_was_producer)
+	  {
+	    if (m_page != nullptr)
+	      {
+		pgbuf_unfix (thread_p, m_page);
+		m_page = nullptr;
+	      }
+	    m_input_handler->wait_for_chain_done (thread_p);
+	    m_was_producer = false;
+	  }
 	m_in_helper_mode = false;
       }
     if (m_slot_state == slot_state::SOLO_DRAIN && m_solo_prev_page != nullptr)
@@ -358,7 +365,6 @@ namespace parallel_scan
       }
     VPID_SET_NULL (&m_solo_cur_vpid);
     VPID_SET_NULL (&m_pending_ovf_vpid);
-    m_pending_ovf_after_key_offset = 0;
     m_slot_state = slot_state::IDLE;
 
     if (m_slot_key_valid && m_slot_clear_key)
@@ -413,6 +419,34 @@ namespace parallel_scan
       }
 
     helper->oid_vec->push_back (*oid);
+    return NO_ERROR;
+  }
+
+  /* Reads OIDs from one overflow page into m_slot_oids; bumps scan counters. */
+  int
+  slot_iterator_index::process_one_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page)
+  {
+    RECDES peeked;
+    if (spage_get_record (thread_p, page, 1, &peeked, PEEK) != S_SUCCESS)
+      {
+	ASSERT_ERROR ();
+	return ER_FAILED;
+      }
+    m_slot_oids.clear ();
+    m_slot_oid_idx = 0;
+    collect_oid_helper helper;
+    helper.oid_vec = &m_slot_oids;
+    helper.snapshot = m_scan_id->s.isid.scan_cache.mvcc_snapshot;
+    bool stop = false;
+    int rerr = btree_record_process_objects (thread_p, m_btid_int, BTREE_OVERFLOW_NODE,
+					     &peeked, 0, &stop,
+					     collect_oid_callback, &helper);
+    if (rerr != NO_ERROR)
+      {
+	return rerr;
+      }
+    m_scan_id->scan_stats.key_qualified_rows += m_slot_oids.size ();
+    m_scan_id->scan_stats.read_rows += m_slot_oids.size ();
     return NO_ERROR;
   }
 
@@ -564,9 +598,7 @@ namespace parallel_scan
 	  {
 	    return sc;
 	  }
-	/* S_END from drain — fall through to fetch next leaf slot.
-	 * Late-joiner has no leaf page (m_page == NULL); fall-through would
-	 * dereference NULL on descending-index walk. Exit directly. */
+	/* late-joiner (m_page==null) cannot fall through to leaf-slot loop — return S_END to outer. */
 	if (m_page == nullptr)
 	  {
 	    return S_END;
@@ -748,10 +780,7 @@ namespace parallel_scan
 
 	  }
 
-	/* 4. Gather leaf-resident OIDs only (Phase 2 streaming).
-	 *    btree_record_process_objects(BTREE_LEAF_NODE, ...) fills m_slot_oids from
-	 *    the leaf record alone; overflow pages are pulled lazily after the leaf-OID
-	 *    buffer drains. */
+	/* 4. Gather leaf-resident OIDs only; overflow pulled lazily after leaf-OID buffer drains. */
 	m_slot_oids.clear ();
 	m_slot_oid_idx = 0;
 
@@ -778,7 +807,6 @@ namespace parallel_scan
 	    return S_ERROR;
 	  }
 
-	/* Phase 2.4 counter parity: per-refill increment (matches serial aggregate). */
 	m_scan_id->scan_stats.key_qualified_rows += m_slot_oids.size ();
 	m_scan_id->scan_stats.read_rows += m_slot_oids.size ();
 
@@ -788,11 +816,8 @@ namespace parallel_scan
 	m_slot_clear_key = clear_key;
 	m_slot_state = slot_state::DRAIN_LEAF_OIDS;
 
-	/* Phase 2.2: try_publish_overflow happens AFTER the leaf record's OIDs have been
-	 * drained (so layer-1 invariant is preserved by construction — we won't drop the
-	 * leaf-OID buffer mid-process). Carry the chain start over via instance fields. */
+	/* Carry overflow chain start; try_publish_overflow happens after leaf-OID drain (layer-1 invariant). */
 	m_pending_ovf_vpid = leaf_rec_info.ovfl;
-	m_pending_ovf_after_key_offset = 0;
 
 	/* Drop into the unified drain loop (handles DRAIN_LEAF_OIDS / SHARED_DRAIN / SOLO_DRAIN). */
 	{
@@ -843,7 +868,7 @@ namespace parallel_scan
 	    /* Leaf-OIDs done. Now decide overflow take-up. */
 	    if (VPID_ISNULL (&m_pending_ovf_vpid))
 	      {
-		/* No overflow chain on this slot — advance to next slot. */
+		/* No overflow chain — advance to next slot. */
 		if (m_slot_key_valid && m_slot_clear_key)
 		  {
 		    pr_clear_value (&m_slot_key);
@@ -855,17 +880,11 @@ namespace parallel_scan
 	      }
 	    /* Try to publish the chain for sharing. */
 	    bool published = m_input_handler->try_publish_overflow (thread_p, &m_slot_key,
-			     m_slot_clear_key,
 			     m_pending_ovf_vpid,
-			     m_current_range_idx,
-			     m_pending_ovf_after_key_offset);
+			     m_current_range_idx);
 	    if (published)
 	      {
-		/* No-clone design: producer KEEPS its own m_slot_key buffer (do NOT clear,
-		 * do NOT reassign). m_overflow_key shallow-borrows this buffer; helpers
-		 * peek-read it. Producer-anchor via wait_for_chain_done on SHARED_DRAIN
-		 * S_END below guarantees the buffer outlives every helper. The producer's
-		 * normal next-slot pr_clear_value frees the buffer on its own thread later. */
+		/* Producer keeps m_slot_key; wait_for_chain_done fences its free. */
 		m_was_producer = true;
 		m_in_helper_mode = true;     /* producer also counts in m_overflow_helpers */
 		m_slot_state = slot_state::SHARED_DRAIN;
@@ -878,7 +897,6 @@ namespace parallel_scan
 		m_slot_state = slot_state::SOLO_DRAIN;
 	      }
 	    VPID_SET_NULL (&m_pending_ovf_vpid);
-	    m_pending_ovf_after_key_offset = 0;
 	    /* Fall through outer for-loop to refill from new state. */
 	    continue;
 	  }
@@ -888,27 +906,23 @@ namespace parallel_scan
 	    PAGE_PTR ovf_page = nullptr;
 	    DB_VALUE *key_ref = nullptr;
 	    int range_idx = -1;
-	    int after_key_offset = 0;
 	    SCAN_CODE cs = m_input_handler->claim_next_overflow_page (thread_p, ovf_page,
-			   key_ref, range_idx,
-			   after_key_offset);
+			   key_ref, range_idx);
 	    if (cs == S_END)
 	      {
-		/* Chain exhausted; exit help. Layer-1 invariant: m_slot_oids fully drained. */
+		/* Chain exhausted; release leaf READ latch BEFORE wait — avoid blocking eviction / writers. */
 		assert (m_slot_oid_idx == m_slot_oids.size ());
 		m_input_handler->exit_overflow_help (thread_p);
 		m_in_helper_mode = false;
-		/* Producer-anchor: if we are the producer of this chain, our m_slot_key
-		 * buffer was the source m_overflow_key shallow-borrowed. Wait until every
-		 * helper has fully released the chain (m_overflow_active becomes false)
-		 * before letting next_qualified_slot_with_peek's next-slot path clear it. */
 		if (m_was_producer)
 		  {
+		    if (m_page != nullptr)
+		      {
+			pgbuf_unfix (thread_p, m_page);
+			m_page = nullptr;
+		      }
 		    m_input_handler->wait_for_chain_done (thread_p);
 		    m_was_producer = false;
-		    /* Producer keeps its m_slot_key + m_slot_clear_key intact — the leaf-slot
-		     * advance pr_clear_value (next_qualified_slot_with_peek line ~561) frees
-		     * the buffer on this thread / mspace. */
 		  }
 		else
 		  {
@@ -923,45 +937,24 @@ namespace parallel_scan
 	      {
 		m_input_handler->exit_overflow_help (thread_p);
 		m_in_helper_mode = false;
+		m_was_producer = false;
 		m_slot_key_valid = false;
 		m_slot_clear_key = false;
 		m_slot_state = slot_state::IDLE;
 		return S_ERROR;
 	      }
-	    RECDES peeked;
-	    if (spage_get_record (thread_p, ovf_page, 1, &peeked, PEEK) != S_SUCCESS)
-	      {
-		ASSERT_ERROR ();
-		m_input_handler->release_overflow_page (thread_p, ovf_page);
-		m_input_handler->exit_overflow_help (thread_p);
-		m_in_helper_mode = false;
-		m_slot_key_valid = false;
-		m_slot_clear_key = false;
-		m_slot_state = slot_state::IDLE;
-		return S_ERROR;
-	      }
-	    m_slot_oids.clear ();
-	    m_slot_oid_idx = 0;
-	    collect_oid_helper helper;
-	    helper.oid_vec = &m_slot_oids;
-	    helper.snapshot = m_scan_id->s.isid.scan_cache.mvcc_snapshot;
-	    bool stop = false;
-	    int rerr = btree_record_process_objects (thread_p, m_btid_int, BTREE_OVERFLOW_NODE,
-		       &peeked, 0, &stop,
-		       collect_oid_callback, &helper);
+	    int rerr = process_one_overflow_page (thread_p, ovf_page);
 	    m_input_handler->release_overflow_page (thread_p, ovf_page);
 	    if (rerr != NO_ERROR)
 	      {
 		m_input_handler->exit_overflow_help (thread_p);
 		m_in_helper_mode = false;
+		m_was_producer = false;
 		m_slot_key_valid = false;
 		m_slot_clear_key = false;
 		m_slot_state = slot_state::IDLE;
 		return S_ERROR;
 	      }
-	    /* Phase 2.4 per-refill counter increment. */
-	    m_scan_id->scan_stats.key_qualified_rows += m_slot_oids.size ();
-	    m_scan_id->scan_stats.read_rows += m_slot_oids.size ();
 	    continue;
 	  }
 
@@ -994,6 +987,12 @@ namespace parallel_scan
 		    pgbuf_unfix (thread_p, m_solo_prev_page);
 		    m_solo_prev_page = nullptr;
 		  }
+		if (m_slot_key_valid && m_slot_clear_key)
+		  {
+		    pr_clear_value (&m_slot_key);
+		  }
+		m_slot_key_valid = false;
+		m_slot_clear_key = false;
 		m_slot_state = slot_state::IDLE;
 		return S_ERROR;
 	      }
@@ -1003,26 +1002,16 @@ namespace parallel_scan
 		pgbuf_unfix (thread_p, m_solo_prev_page);
 		m_solo_prev_page = nullptr;
 	      }
-	    RECDES peeked;
-	    if (spage_get_record (thread_p, next_page, 1, &peeked, PEEK) != S_SUCCESS)
-	      {
-		ASSERT_ERROR ();
-		pgbuf_unfix (thread_p, next_page);
-		m_slot_state = slot_state::IDLE;
-		return S_ERROR;
-	      }
-	    m_slot_oids.clear ();
-	    m_slot_oid_idx = 0;
-	    collect_oid_helper helper;
-	    helper.oid_vec = &m_slot_oids;
-	    helper.snapshot = m_scan_id->s.isid.scan_cache.mvcc_snapshot;
-	    bool stop = false;
-	    int rerr = btree_record_process_objects (thread_p, m_btid_int, BTREE_OVERFLOW_NODE,
-		       &peeked, 0, &stop,
-		       collect_oid_callback, &helper);
+	    int rerr = process_one_overflow_page (thread_p, next_page);
 	    if (rerr != NO_ERROR)
 	      {
 		pgbuf_unfix (thread_p, next_page);
+		if (m_slot_key_valid && m_slot_clear_key)
+		  {
+		    pr_clear_value (&m_slot_key);
+		  }
+		m_slot_key_valid = false;
+		m_slot_clear_key = false;
 		m_slot_state = slot_state::IDLE;
 		return S_ERROR;
 	      }
@@ -1031,14 +1020,17 @@ namespace parallel_scan
 	      {
 		ASSERT_ERROR ();
 		pgbuf_unfix (thread_p, next_page);
+		if (m_slot_key_valid && m_slot_clear_key)
+		  {
+		    pr_clear_value (&m_slot_key);
+		  }
+		m_slot_key_valid = false;
+		m_slot_clear_key = false;
 		m_slot_state = slot_state::IDLE;
 		return S_ERROR;
 	      }
 	    m_solo_prev_page = next_page;
 	    m_solo_cur_vpid = next_next;
-	    /* Phase 2.4 per-refill counter increment. */
-	    m_scan_id->scan_stats.key_qualified_rows += m_slot_oids.size ();
-	    m_scan_id->scan_stats.read_rows += m_slot_oids.size ();
 	    continue;
 	  }
 
@@ -1051,18 +1043,14 @@ namespace parallel_scan
   }
 
   int
-  slot_iterator_index::set_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page, DB_VALUE *key_ref,
-					  int range_idx, int after_key_offset)
+  slot_iterator_index::set_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page, DB_VALUE *key_ref, int range_idx)
   {
-    /* Lazy-init m_btid_int — late-joiners enter via this path without going through
-     * set_page (which normally performs the same init at line ~327). Without this,
-     * btree_record_process_objects below dereferences a NULL btid_int → SEGV. */
+    /* Late-joiners skip set_page; init m_btid_int here to avoid NULL-deref in btree_record_process_objects. */
     if (m_input_handler != nullptr && m_btid_int == nullptr)
       {
 	m_btid_int = m_input_handler->get_btid_int ();
       }
-    /* Late-joiner: unfix any prior leaf page; the handler owns the overflow page until
-     * we release it after reading. */
+    /* Unfix any prior leaf page; handler owns the overflow page until we release it after reading. */
     if (m_page != nullptr)
       {
 	pgbuf_unfix (thread_p, m_page);
@@ -1073,7 +1061,7 @@ namespace parallel_scan
       {
 	pr_clear_value (&m_slot_key);
       }
-    /* Peek-borrow the handler's snapshot — caller already holds an m_overflow_helpers slot. */
+    /* Peek-borrow the handler's key snapshot — caller already holds an m_overflow_helpers slot. */
     m_slot_key = *key_ref;
     m_slot_key_valid = true;
     m_slot_clear_key = false;
@@ -1081,39 +1069,17 @@ namespace parallel_scan
     m_slot_state = slot_state::SHARED_DRAIN;
     m_in_helper_mode = true;
 
-    /* Read the page's OIDs into m_slot_oids and release the page. */
-    RECDES peeked;
-    if (spage_get_record (thread_p, page, 1, &peeked, PEEK) != S_SUCCESS)
-      {
-	ASSERT_ERROR ();
-	m_input_handler->release_overflow_page (thread_p, page);
-	m_input_handler->exit_overflow_help (thread_p);
-	m_in_helper_mode = false;
-	m_slot_key_valid = false;
-	m_slot_state = slot_state::IDLE;
-	return ER_FAILED;
-      }
-    m_slot_oids.clear ();
-    m_slot_oid_idx = 0;
-    collect_oid_helper helper;
-    helper.oid_vec = &m_slot_oids;
-    helper.snapshot = m_scan_id->s.isid.scan_cache.mvcc_snapshot;
-    bool stop = false;
-    int rerr = btree_record_process_objects (thread_p, m_btid_int, BTREE_OVERFLOW_NODE,
-	       &peeked, after_key_offset, &stop,
-	       collect_oid_callback, &helper);
+    int rerr = process_one_overflow_page (thread_p, page);
     m_input_handler->release_overflow_page (thread_p, page);
     if (rerr != NO_ERROR)
       {
 	m_input_handler->exit_overflow_help (thread_p);
 	m_in_helper_mode = false;
+	m_was_producer = false;
 	m_slot_key_valid = false;
 	m_slot_state = slot_state::IDLE;
 	return ER_FAILED;
       }
-    /* Phase 2.4 per-refill counter increment. */
-    m_scan_id->scan_stats.key_qualified_rows += m_slot_oids.size ();
-    m_scan_id->scan_stats.read_rows += m_slot_oids.size ();
     return NO_ERROR;
   }
 }

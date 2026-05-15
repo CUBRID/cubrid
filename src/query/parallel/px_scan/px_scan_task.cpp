@@ -576,9 +576,7 @@ namespace parallel_scan
     return NO_ERROR;
   }
 
-  /* Drain OIDs from the slot iterator into the result handler. Shared by leaf path
-   * and late-joiner path. Returns S_END on natural completion, S_ERROR on interrupt;
-   * sets stop=true on terminal error. */
+  /* Shared OID-drain helper: leaf-path + late-joiner. Returns S_END on completion, S_ERROR with stop=true on terminal failure. */
   template <RESULT_TYPE result_type, SCAN_TYPE ST>
   SCAN_CODE task<result_type, ST>::drain_slot_oids (cubthread::entry &thread_ref, bool &stop)
   {
@@ -703,10 +701,7 @@ namespace parallel_scan
     INT16 index_slot_hint = NULL_SLOTID;
     int index_range_idx = -1;
 
-    /* Phase 3.1: index-only worker-count bookkeeping. RAII guard, but the dtor
-     * gates leave_worker() through if constexpr — HEAP/LIST handler types do not
-     * define leave_worker() and would fail compile-time template instantiation
-     * if the call were unconditional. */
+    /* Index-only worker-count RAII guard; v2 TODO: drop if-constexpr once HEAP/LIST handlers add no-op leave_worker(). */
     struct worker_scope_guard
     {
       input_handler_t *handler;
@@ -771,24 +766,18 @@ namespace parallel_scan
 	  {
 	    if constexpr (ST == SCAN_TYPE::INDEX)
 	      {
-		/* Phase 3.2: leaf supply exhausted — enter late-joiner mode.
-		 * Leave the active-worker pool FIRST. Once a worker reaches
-		 * leaf-side S_END it cannot publish a new chain; the
-		 * termination predicate (m_no_more_leaves && m_active_workers
-		 * == 0) requires this worker to stop counting as active so
-		 * the all-in-wait deadlock is avoided when every worker
-		 * enters late-joiner mode. Idempotent guard handover. */
+		/* Late-joiner mode: leaf supply exhausted; help drain remaining shared chains. */
+		/* Order: signal_no_more_leaves before leave_worker so waiters seeing active==0 also see no_more_leaves. */
+		m_input_handler->signal_no_more_leaves ();
 		m_input_handler->leave_worker ();
 		worker_guard.handler = nullptr;
-		m_input_handler->signal_no_more_leaves ();
 		while (!stop)
 		  {
 		    PAGE_PTR ovf_page = nullptr;
 		    DB_VALUE *ovf_key = nullptr;
 		    int ovf_range = -1;
-		    int ovf_offset = 0;
 		    SCAN_CODE help = m_input_handler->wait_or_help_overflow (&thread_ref, ovf_page,
-				     ovf_key, ovf_range, ovf_offset);
+				     ovf_key, ovf_range);
 		    if (help == S_END)
 		      {
 			break;
@@ -804,7 +793,7 @@ namespace parallel_scan
 			break;
 		      }
 		    int sp_err = m_slot_iterator.set_overflow_page (&thread_ref, ovf_page, ovf_key,
-				 ovf_range, ovf_offset);
+				 ovf_range);
 		    if (sp_err != NO_ERROR)
 		      {
 			if (m_interrupt->get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
@@ -815,8 +804,7 @@ namespace parallel_scan
 			stop = true;
 			break;
 		      }
-		    /* Reuse the same inner drain — exit_overflow_help is called from inside the slot
-		     * iterator's SHARED_DRAIN → IDLE transition; we do NOT call it here. */
+		    /* drain_slot_oids returns S_END at completion or S_ERROR with stop=true on terminal failure. */
 		    (void) drain_slot_oids (thread_ref, stop);
 		  }
 	      }
@@ -873,7 +861,7 @@ namespace parallel_scan
 	      }
 	    break;
 	  }
-	/* drain handles its own stop/error propagation. */
+	/* drain_slot_oids returns S_END at completion or S_ERROR with stop=true on terminal failure. */
 	(void) drain_slot_oids (thread_ref, stop);
       }
   }
