@@ -2929,6 +2929,7 @@ struct pt_trigger_action_info
   PT_NODE *expression;		/* parse tree for expression */
   PT_NODE *string;		/* PT_PRINT string */
   PT_MISC_TYPE action_type;	/* REJECT, INVALIDATE_XACTION, etc. */
+  PT_NODE *pl_block;		/* PL/SQL block text node (PT_PL_BLOCK action) */
 };
 
 /* Info for Trigger Spec List */

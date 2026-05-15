@@ -95,6 +95,7 @@ typedef struct tr_trigger
   const char *comment;
   DB_DATETIME created_time;
   DB_DATETIME updated_time;
+  char *action_body_sp;		/* name of internally-created SP for PL/SQL block action */
 } TR_TRIGGER;
 
 
@@ -223,6 +224,7 @@ extern const char *TR_ATT_PROPERTIES;
 extern const char *TR_ATT_COMMENT;
 extern const char *TR_ATT_CREATED_TIME;
 extern const char *TR_ATT_UPDATED_TIME;
+extern const char *TR_ATT_ACTION_BODY_SP;
 
 extern int tr_Current_depth;
 extern int tr_Maximum_depth;
@@ -268,7 +270,8 @@ extern bool tr_set_execution_state (bool new_state);
 extern DB_OBJECT *tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority,
 				     DB_TRIGGER_EVENT event, DB_OBJECT * class_, const char *attribute,
 				     DB_TRIGGER_TIME cond_time, const char *cond_source, DB_TRIGGER_TIME action_time,
-				     DB_TRIGGER_ACTION action_type, const char *action_source, const char *comment);
+				     DB_TRIGGER_ACTION action_type, const char *action_source, const char *comment,
+				     const char *action_body_sp);
 
 /* Trigger location */
 

@@ -1310,7 +1310,7 @@ db_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
 
   /* check for invalid arguments */
   retval = tr_create_trigger (name, status, priority, event, class_, attr, cond_time, cond_source, action_time,
-			      action_type, action_source, NULL);
+			      action_type, action_source, NULL, NULL);
 
   return retval;
 }

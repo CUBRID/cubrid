@@ -818,7 +818,8 @@ namespace cubschema
       {TR_ATT_ACTION_TIME, "integer"},
       {TR_ATT_COMMENT, format_varchar (1024)},
       {TR_ATT_CREATED_TIME, "datetime"},
-      {TR_ATT_UPDATED_TIME, "datetime"}
+      {TR_ATT_UPDATED_TIME, "datetime"},
+      {TR_ATT_ACTION_BODY_SP, format_varchar (DB_MAX_IDENTIFIER_LENGTH)}
     },
 // constraints
     {},

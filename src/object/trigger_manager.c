@@ -28,6 +28,7 @@
 #include "error_manager.h"
 #include "dbtype.h"
 #include "trigger_manager.h"
+#include "jsp_cl.h"
 #include "memory_hash.h"
 #include "work_space.h"
 #include "schema_manager.h"
@@ -138,6 +139,7 @@ const char *TR_ATT_PROPERTIES = "properties";
 const char *TR_ATT_COMMENT = "comment";
 const char *TR_ATT_CREATED_TIME = "created_time";
 const char *TR_ATT_UPDATED_TIME = "updated_time";
+const char *TR_ATT_ACTION_BODY_SP = "action_body_sp";
 
 int tr_Current_depth = 0;
 int tr_Maximum_depth = TR_MAX_RECURSION_LEVEL;
@@ -406,6 +408,7 @@ tr_make_trigger (void)
   trigger->comment = NULL;
   trigger->created_time = DATETIME_NULL_VALUE;
   trigger->updated_time = DATETIME_NULL_VALUE;
+  trigger->action_body_sp = NULL;
 
   return trigger;
 }
@@ -454,6 +457,10 @@ tr_clear_trigger (TR_TRIGGER * trigger)
   if (trigger->comment != NULL)
     {
       free_and_init (trigger->comment);
+    }
+  if (trigger->action_body_sp != NULL)
+    {
+      free_and_init (trigger->action_body_sp);
     }
 }
 
@@ -1131,6 +1138,17 @@ trigger_to_object (TR_TRIGGER * trigger)
       goto error;
     }
 
+  if (trigger->action_body_sp != NULL)
+    {
+      db_make_string_copy (&value, trigger->action_body_sp);
+      err = dbt_put_internal (obt_p, TR_ATT_ACTION_BODY_SP, &value);
+      pr_clear_value (&value);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
   if (db_set_otmpl_timestamps (obt_p) != NO_ERROR)
     {
       goto error;
@@ -1195,6 +1213,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
   trigger->condition = NULL;
   trigger->action = NULL;
   trigger->comment = NULL;
+  trigger->action_body_sp = NULL;
 
   /*
    * Save the cache coherency number so we know when to re-calculate the
@@ -1439,6 +1458,25 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 	}
     }
   db_value_clear (&value);
+
+  /* ACTION_BODY_SP (optional — may not exist in older databases) */
+  if (db_get (object, TR_ATT_ACTION_BODY_SP, &value) == NO_ERROR)
+    {
+      if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value))
+	{
+	  tmp = db_get_string (&value);
+	  if (tmp != NULL)
+	    {
+	      trigger->action_body_sp = strdup (tmp);
+	    }
+	}
+      db_value_clear (&value);
+    }
+  else
+    {
+      /* column may not exist in older databases; ignore error */
+      er_clear ();
+    }
 
   AU_ENABLE (save);
   return NO_ERROR;
@@ -3931,7 +3969,7 @@ DB_OBJECT *
 tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, DB_TRIGGER_EVENT event,
 		   DB_OBJECT * class_mop, const char *attribute, DB_TRIGGER_TIME cond_time, const char *cond_source,
 		   DB_TRIGGER_TIME action_time, DB_TRIGGER_ACTION action_type, const char *action_source,
-		   const char *comment)
+		   const char *comment, const char *action_body_sp)
 {
   TR_TRIGGER *trigger;
   DB_OBJECT *object;
@@ -4102,6 +4140,16 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
 	}
 
       has_savepoint = true;
+    }
+
+  if (action_body_sp != NULL)
+    {
+      trigger->action_body_sp = strdup (action_body_sp);
+      if (trigger->action_body_sp == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (action_body_sp) + 1);
+	  goto error;
+	}
     }
 
   if (tr_set_trigger_timestamps (trigger) != NO_ERROR)
@@ -4446,22 +4494,26 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback, bool need_savepoin
 
   if (error == NO_ERROR || rollback)
     {
-      /* remove it from the uncommitted trigger list (if its on there) */
-      remove_trigger_list (&tr_Uncommitted_triggers, trigger);
-
-      /* remove it from the memory cache */
-      error = tr_unmap_trigger (trigger);
-
-      if (error == NO_ERROR || rollback)
+      /*
+       * Perform all disk-level operations before touching in-memory structures.
+       * If any disk operation fails, the savepoint restores all catalog state
+       * and the in-memory cache and name table remain consistent with the disk.
+       * During rollback the trigger object will be undone automatically as part
+       * of the normal transaction cleanup, so disk operations are skipped.
+       */
+      if (!rollback)
 	{
-	  /* remove it from the global name table */
-	  error = trigger_table_drop (trigger->name);
+	  /* drop the internally-created SP backing a PL/SQL block action */
+	  if (trigger->action_body_sp != NULL)
+	    {
+	      error = jsp_drop_trigger_body_sp (trigger->action_body_sp);
+	    }
 
-	  if (error == NO_ERROR && !rollback)
+	  if (error == NO_ERROR)
 	    {
 	      /*
-	       * if this isn't a rollback, delete the object, otherwise
-	       * it will already be marked as deleted as part of the normal transaction cleanup
+	       * delete the trigger object; during rollback it will already be
+	       * marked as deleted as part of the normal transaction cleanup
 	       */
 	      db_drop (trigger->object);
 
@@ -4477,9 +4529,29 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback, bool need_savepoin
 		  ws_clear_hints (trigger->object, false);
 		}
 	    }
+	}
 
-	  /* free the cache structure */
-	  free_trigger (trigger);
+      /*
+       * Update in-memory structures only after all disk operations have
+       * succeeded.  These operations are not covered by the savepoint and
+       * cannot be undone if a later step fails.
+       */
+      if (error == NO_ERROR || rollback)
+	{
+	  /* remove it from the uncommitted trigger list (if its on there) */
+	  remove_trigger_list (&tr_Uncommitted_triggers, trigger);
+
+	  /* remove it from the memory cache */
+	  error = tr_unmap_trigger (trigger);
+
+	  if (error == NO_ERROR || rollback)
+	    {
+	      /* remove it from the global name table */
+	      error = trigger_table_drop (trigger->name);
+
+	      /* free the cache structure */
+	      free_trigger (trigger);
+	    }
 	}
     }
 

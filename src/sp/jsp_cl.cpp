@@ -119,6 +119,7 @@
 static int server_port = -1;
 static int call_cnt = 0;
 static bool is_prepare_call[MAX_CALL_COUNT] = { false, };
+static thread_local bool is_trigger_body_sp_creation = false;
 
 static SP_TYPE_ENUM jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
 static SP_MODE_ENUM jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum);
@@ -1047,6 +1048,17 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       return er_errid ();
     }
 
+  /* Reject names that start with the prefix reserved for trigger backing SPs.
+   * The flag is_trigger_body_sp_creation is set only when jsp_create_trigger_body_sp()
+   * calls db_execute() internally, so internal creation is allowed while user-issued
+   * CREATE PROCEDURE statements with this prefix are rejected. */
+  if (strncasecmp (sp_info.sp_name.c_str (), "__trsp_", 7) == 0 && !is_trigger_body_sp_creation)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NAME_RESERVED_PREFIX, 1,
+	      sp_info.sp_name.c_str ());
+      return er_errid ();
+    }
+
   sp_info.sp_type = jsp_map_pt_misc_to_sp_type (PT_NODE_SP_TYPE (statement));
   if (sp_info.sp_type == SP_TYPE_FUNCTION)
     {
@@ -1304,6 +1316,14 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   name_str = sp_name->info.name.original;
   assert (name_str != NULL);
+
+  /* Reject altering SPs whose base name starts with the prefix reserved for trigger backing SPs */
+  if (strncasecmp (sm_remove_qualifier_name (name_str), "__trsp_", 7) == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NAME_RESERVED_PREFIX, 1,
+	      sm_remove_qualifier_name (name_str));
+      return er_errid ();
+    }
 
   if (sp_owner != NULL)
     {
@@ -2415,4 +2435,203 @@ jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig
     }
 
   return default_next_node_list;
+}
+
+/*
+ * jsp_drop_trigger_body_sp() - Drops an internally-created SP that was
+ *   created to back a trigger PL/SQL block action.
+ *   Called from tr_drop_trigger_internal() with AU already disabled.
+ *   return: NO_ERROR or error code
+ *   sp_name(in): unique name of the SP to drop
+ */
+int
+jsp_drop_trigger_body_sp (const char *sp_name)
+{
+  int err = NO_ERROR;
+  int save;
+  MOP sp_mop, code_mop;
+  DB_VALUE lang_val, target_cls_val;
+
+  if (sp_name == NULL || sp_name[0] == '\0')
+    {
+      return NO_ERROR;
+    }
+
+  AU_DISABLE (save);
+
+  db_make_null (&lang_val);
+  db_make_null (&target_cls_val);
+
+  sp_mop = jsp_find_stored_procedure (sp_name, DB_AUTH_NONE);
+  if (sp_mop == NULL)
+    {
+      /* SP may have already been dropped — not an error during trigger drop */
+      er_clear ();
+      AU_ENABLE (save);
+      return NO_ERROR;
+    }
+
+  /* For PLCSQL procedures, also delete the _db_stored_procedure_code record.
+   * This mirrors the cleanup done by drop_stored_procedure() for PLCSQL,
+   * without the is_system_generated / owner checks which would block us here. */
+  err = db_get (sp_mop, SP_ATTR_LANG, &lang_val);
+  if (err == NO_ERROR && !DB_IS_NULL (&lang_val) && db_get_int (&lang_val) == SP_LANG_PLCSQL)
+    {
+      err = db_get (sp_mop, SP_ATTR_TARGET_CLASS, &target_cls_val);
+      if (err == NO_ERROR && !DB_IS_NULL (&target_cls_val))
+	{
+	  const char *target_cls = db_get_string (&target_cls_val);
+	  code_mop = jsp_find_stored_procedure_code (target_cls);
+	  if (code_mop != NULL)
+	    {
+	      err = obj_delete (code_mop);
+	    }
+	  else
+	    {
+	      er_clear ();		/* code record may already be gone */
+	    }
+	}
+    }
+
+  pr_clear_value (&lang_val);
+  pr_clear_value (&target_cls_val);
+
+  if (err == NO_ERROR)
+    {
+      err = obj_delete (sp_mop);
+    }
+
+  AU_ENABLE (save);
+  return err;
+}
+
+/*
+ * jsp_create_trigger_body_sp() - Creates an internal stored procedure to back
+ *   a trigger PL/SQL block action.
+ *   The procedure has no parameters and no return value (PROCEDURE).
+ *   return: NO_ERROR or error code
+ *   sp_name(in): name for the new SP (without owner qualifier)
+ *   pl_body(in): PL/SQL body text starting with DECLARE or BEGIN
+ *   pl_body_len(in): length of pl_body in bytes
+ */
+int
+jsp_create_trigger_body_sp (const char *sp_name, const char *pl_body, DB_OBJECT *owner)
+{
+  int err = NO_ERROR;
+  DB_QUERY_RESULT *result = NULL;
+  int retval;
+
+  if (sp_name == NULL || pl_body == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /* The PL server's routine_definition grammar expects declarations WITHOUT the
+   * DECLARE keyword (e.g. "AS x INT; BEGIN ... END").  The user-typed trigger
+   * body starts with DECLARE when variables are declared (anonymous-block syntax).
+   * Strip the leading DECLARE keyword so the generated CREATE PROCEDURE SQL is
+   * accepted by the PL server. */
+  const char *body_start = pl_body;
+  if (strncasecmp (body_start, "declare", 7) == 0
+      && (body_start[7] == '\0' || isspace ((unsigned char) body_start[7])))
+    {
+      body_start += 7;
+      while (*body_start && isspace ((unsigned char) *body_start))
+	{
+	  body_start++;
+	}
+    }
+
+  /* Build: CREATE OR REPLACE PROCEDURE <sp_name>() AS <body_start>; */
+  size_t sql_len = strlen ("CREATE OR REPLACE PROCEDURE ") + strlen (sp_name)
+		   + strlen ("() AS ") + strlen (body_start) + 2;	/* ";" + NUL */
+  char *sql = (char *) malloc (sql_len);
+  if (sql == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sql_len);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  snprintf (sql, sql_len, "CREATE OR REPLACE PROCEDURE %s() AS %s;", sp_name, body_start);
+
+  /* Allow the __trsp_ prefix to pass the guard inside jsp_create_stored_procedure */
+  is_trigger_body_sp_creation = true;
+  retval = db_execute (sql, &result, NULL);
+  is_trigger_body_sp_creation = false;
+  if (retval >= 0)
+    {
+      db_query_end (result);
+      err = NO_ERROR;
+    }
+  else
+    {
+      err = retval;
+    }
+
+  free (sql);
+
+  if (err == NO_ERROR)
+    {
+      /* Mark the backing SP and its code record as system-generated so that
+       * ordinary DROP/ALTER PROCEDURE statements cannot accidentally remove it.
+       * jsp_drop_trigger_body_sp() bypasses this flag when the owning trigger
+       * is explicitly dropped.
+       * Any failure here is a hard error: the SP created by db_execute above is
+       * cleaned up before returning so no orphan is left in the catalog. */
+      int save;
+      AU_DISABLE (save);
+
+      MOP sp_mop = jsp_find_stored_procedure (sp_name, DB_AUTH_NONE);
+      if (sp_mop == NULL)
+	{
+	  err = er_errid ();
+	}
+      else
+	{
+	  DB_VALUE gen_val;
+	  db_make_int (&gen_val, 1);
+	  err = db_put (sp_mop, SP_ATTR_IS_SYSTEM_GENERATED, &gen_val);
+
+	  if (err == NO_ERROR)
+	    {
+	      /* Also mark the _db_stored_procedure_code record */
+	      DB_VALUE target_cls_val;
+	      db_make_null (&target_cls_val);
+	      err = db_get (sp_mop, SP_ATTR_TARGET_CLASS, &target_cls_val);
+	      if (err == NO_ERROR && !DB_IS_NULL (&target_cls_val))
+		{
+		  const char *target_cls = db_get_string (&target_cls_val);
+		  MOP code_mop = jsp_find_stored_procedure_code (target_cls);
+		  if (code_mop != NULL)
+		    {
+		      db_make_int (&gen_val, 1);
+		      err = db_put (code_mop, SP_CODE_ATTR_IS_SYSTEM_GENERATED, &gen_val);
+		    }
+		  else
+		    {
+		      /* code record missing — unexpected for a PLCSQL procedure */
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+		      err = ER_GENERIC_ERROR;
+		    }
+		}
+	      else if (err == NO_ERROR)
+		{
+		  /* TARGET_CLASS NULL — unexpected for a PLCSQL backing procedure */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+		  err = ER_GENERIC_ERROR;
+		}
+	      pr_clear_value (&target_cls_val);
+	    }
+	}
+
+      AU_ENABLE (save);
+
+      if (err != NO_ERROR)
+	{
+	  /* Drop the SP created by db_execute to avoid leaving an orphan */
+	  (void) jsp_drop_trigger_body_sp (sp_name);
+	}
+    }
+
+  return err;
 }

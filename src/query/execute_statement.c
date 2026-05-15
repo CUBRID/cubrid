@@ -6673,6 +6673,14 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *trigger;
   SM_CLASS *smclass = NULL;
   int error = NO_ERROR;
+  /* "__trsp_" prefix (7) + trigger base_name (up to DB_MAX_IDENTIFIER_LENGTH) + NUL */
+  char pl_sp_name[DB_MAX_IDENTIFIER_LENGTH + 7 + 1];
+  /* qualified: "<owner>.<sp_name>" — used for CALL and action_body_sp storage.
+   * Size: DB_MAX_USER_LENGTH (owner) + 1 (dot) + sizeof(pl_sp_name)-1 + 1 (NUL) + margin */
+  char pl_sp_qualified_name[DB_MAX_USER_LENGTH + DB_MAX_IDENTIFIER_LENGTH + 10];
+  char pl_call_source[DB_MAX_USER_LENGTH + DB_MAX_IDENTIFIER_LENGTH + 10];
+  pl_sp_name[0] = '\0';
+  pl_sp_qualified_name[0] = '\0';
   CHECK_MODIFICATION_ERROR ();
 
   name = PT_NODE_TR_NAME (statement);
@@ -6743,15 +6751,92 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   action = PT_NODE_ACTION (statement);
   action_time = PT_NODE_ACTION_TIME (statement);
-  get_activity_info (parser, &action_type, &action_source, action);
+
+  if (action != NULL && action->info.trigger_action.action_type == PT_PL_BLOCK)
+    {
+      /* PL/SQL block action: create an internal SP and CALL it */
+      PT_NODE *pl_block_node = action->info.trigger_action.pl_block;
+      const char *pl_body = NULL;
+      const char *base_name;
+
+      if (pl_block_node != NULL && pl_block_node->node_type == PT_VALUE
+	  && pl_block_node->info.value.data_value.str != NULL)
+	{
+	  pl_body = (const char *) pl_block_node->info.value.data_value.str->bytes;
+	}
+
+      if (pl_body == NULL || pl_body[0] == '\0')
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_GENERIC_ERROR;
+	}
+
+      base_name = sm_remove_qualifier_name (name);
+      /* pl_sp_name buffer is sized to hold "__trsp_" + any valid identifier without truncation */
+      snprintf (pl_sp_name, sizeof (pl_sp_name), "__trsp_%s", base_name);
+
+      /* Determine the trigger owner: use the qualifier from the trigger name if
+       * one was given (e.g. DBA creating "alice.t" → owner is "alice"), otherwise
+       * fall back to the current session user.  This ensures the backing SP is
+       * created under the same owner as the trigger, so two triggers with the
+       * same base name but different owners (e.g. "alice.t" and "bob.t") map to
+       * different SPs ("alice.__trsp_t" vs "bob.__trsp_t"). */
+      char trigger_owner[DB_MAX_USER_LENGTH + 1];
+      const char *sp_owner;
+      if (sm_qualifier_name (name, trigger_owner, sizeof (trigger_owner)) != NULL)
+	{
+	  sp_owner = trigger_owner;
+	}
+      else
+	{
+	  sp_owner = Au_user_name;
+	}
+
+      /* Build the owner-qualified SP name so CALL resolves correctly at trigger fire
+       * time regardless of who the DML executor is, and so trigger drop by another
+       * user (e.g. DBA) can locate the SP without depending on the current session user. */
+      snprintf (pl_sp_qualified_name, sizeof (pl_sp_qualified_name), "%.*s.%s",
+		DB_MAX_USER_LENGTH, sp_owner, pl_sp_name);
+
+      /* Reject trigger names whose backing SP qualified name would exceed the catalog column width.
+       * The action_body_sp column is varchar(DB_MAX_IDENTIFIER_LENGTH), so names longer than
+       * that limit cannot be stored and would cause db_put() to fail or silently truncate. */
+      if ((int) strlen (pl_sp_qualified_name) > DB_MAX_IDENTIFIER_LENGTH)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_NAME, 0);
+	  return er_errid ();
+	}
+
+      error = jsp_create_trigger_body_sp (pl_sp_qualified_name, pl_body, NULL);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      snprintf (pl_call_source, sizeof (pl_call_source), "CALL %.*s()", DB_MAX_IDENTIFIER_LENGTH, pl_sp_qualified_name);
+      action_type = TR_ACT_EXPRESSION;
+      action_source = pl_call_source;
+    }
+  else
+    {
+      get_activity_info (parser, &action_type, &action_source, action);
+    }
 
   trigger =
     tr_create_trigger (name, status, priority, event, class_, attribute, cond_time, cond_source, action_time,
-		       action_type, action_source, comment);
+		       action_type, action_source, comment,
+		       pl_sp_qualified_name[0] != '\0' ? pl_sp_qualified_name : NULL);
 
   if (trigger == NULL)
     {
       assert (er_errid () != NO_ERROR);
+      if (pl_sp_qualified_name[0] != '\0')
+	{
+	  /* Trigger creation failed; drop the backing SP so it does not become an orphan.
+	   * Both the SP and the trigger are in the same transaction, so a transaction
+	   * rollback would also clean them up, but be explicit here for safety. */
+	  (void) jsp_drop_trigger_body_sp (pl_sp_qualified_name);
+	}
       return er_errid ();
     }
 

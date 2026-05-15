@@ -15569,6 +15569,7 @@ pt_apply_trigger_action (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.trigger_action.expression, arg);
   PT_APPLY_WALK (parser, p->info.trigger_action.string, arg);
+  PT_APPLY_WALK (parser, p->info.trigger_action.pl_block, arg);
   return p;
 }
 
@@ -15597,6 +15598,10 @@ pt_print_trigger_action (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
     case PT_EXPRESSION:
       r1 = pt_print_bytes (parser, p->info.trigger_action.expression);
+      b = pt_append_varchar (parser, b, r1);
+      break;
+    case PT_PL_BLOCK:
+      r1 = pt_print_bytes (parser, p->info.trigger_action.pl_block);
       b = pt_append_varchar (parser, b, r1);
       break;
     default:

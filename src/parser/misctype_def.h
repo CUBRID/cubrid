@@ -88,6 +88,7 @@ typedef enum
   PT_INVALIDATE_XACTION,
   PT_PRINT,
   PT_EXPRESSION,
+  PT_PL_BLOCK,			/* trigger action: PL/SQL block (DECLARE...BEGIN...END) */
   PT_TRIGGER_TRACE,		/* trigger options */
   PT_TRIGGER_DEPTH,
   PT_IS_CALL_STMT,		/* is the method a call statement */
