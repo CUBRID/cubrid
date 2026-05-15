@@ -79,7 +79,7 @@ namespace parallel_scan
       /* True when the iterator was set up via set_overflow_page (late joiner). */
       bool m_in_helper_mode;
 
-      bool m_was_producer;              /* producer-anchor flag — gates wait_for_chain_done before m_slot_key free. */
+      bool m_was_producer;              /* this iterator published the active chain; gates leaf-S unfix at SHARED_DRAIN exit. */
 
       int m_chain_slot_idx;             /* slot index in m_overflow_slots; -1 when not in SHARED_DRAIN. */
 

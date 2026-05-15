@@ -140,8 +140,6 @@ namespace parallel_scan
       void enter_worker ();
       void leave_worker ();
       void signal_no_more_leaves ();
-      /* DEPRECATED in v2: producer no longer anchors. Stub kept for caller compatibility; deletion in P6. */
-      void wait_for_chain_done (THREAD_ENTRY *thread_p);
 
     private:
       /* requires m_leaf_mutex; closed-bound delegates to btree_locate_key (leaf+slot in one call); open-bound walks root→leftmost/rightmost manually. */

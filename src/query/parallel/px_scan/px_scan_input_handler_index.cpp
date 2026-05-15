@@ -864,11 +864,4 @@ namespace parallel_scan
     m_no_more_leaves = true;
     m_overflow_cv.notify_all ();
   }
-
-  /* DEPRECATED in v2: producer no longer anchors. Stub kept for caller compatibility; deletion in P6. */
-  void
-  input_handler_index::wait_for_chain_done (THREAD_ENTRY *thread_p)
-  {
-    /* no-op */
-  }
 }
