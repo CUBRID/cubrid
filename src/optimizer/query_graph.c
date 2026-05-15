@@ -8108,12 +8108,13 @@ qo_assign_eq_classes (QO_ENV * env)
 static void
 qo_generate_transitive_join_terms (QO_ENV * env)
 {
-  int i, extra, old_terms;
+  int i, ti, extra, old_terms;
   QO_TRANSITIVE_JOIN_SPEC *specs = NULL;
   int specs_count = 0, specs_cap = 0;
   size_t new_size;
   QO_TERM *new_arr;
   PARSER_CONTEXT *parser;
+  bool *node_has_transitive = NULL;
 
   if (qo_collect_transitive_join_specs (env, &specs, &specs_count, &specs_cap) != 0 || specs_count == 0)
     {
@@ -8128,12 +8129,36 @@ qo_generate_transitive_join_terms (QO_ENV * env)
   old_terms = env->nterms;
   parser = QO_ENV_PARSER (env);
 
+  /* Pre-compute which nodes appear in a PT_EXPR_INFO_TRANSITIVE edge term (O(1) check per spec below). */
+  if (env->nnodes > 0)
+    {
+      node_has_transitive = (bool *) calloc (env->nnodes, sizeof (bool));
+      if (node_has_transitive)
+	{
+	  for (ti = 0; ti < old_terms; ti++)
+	    {
+	      QO_TERM *t = QO_ENV_TERM (env, ti);
+	      PT_NODE *tpe;
+	      if (!QO_IS_EDGE_TERM (t))
+		continue;
+	      tpe = QO_TERM_PT_EXPR (t);
+	      if (tpe == NULL || !PT_EXPR_INFO_IS_FLAGED (tpe, PT_EXPR_INFO_TRANSITIVE))
+		continue;
+	      if (QO_TERM_HEAD (t))
+		node_has_transitive[QO_NODE_IDX (QO_TERM_HEAD (t))] = true;
+	      if (QO_TERM_TAIL (t))
+		node_has_transitive[QO_NODE_IDX (QO_TERM_TAIL (t))] = true;
+	    }
+	}
+    }
+
   new_size = sizeof (QO_TERM) * (env->Nterms + extra);
   new_arr = (QO_TERM *) realloc (env->terms, new_size);
 
   if (new_arr == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, new_size);
+      free_and_init (node_has_transitive);
       free_and_init (specs);
       return;
     }
@@ -8183,11 +8208,21 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 	}
       pt_expr->type_enum = PT_TYPE_LOGICAL;
 
+      /* Both endpoints already appear in transitive edge terms → the generated
+       * term is itself transitive; qo_discover_edges will classify it DUMMY_JOIN. */
+      if (node_has_transitive != NULL
+	  && node_has_transitive[QO_NODE_IDX (QO_SEG_HEAD (head_seg))]
+	  && node_has_transitive[QO_NODE_IDX (QO_SEG_HEAD (tail_seg))])
+	{
+	  PT_EXPR_INFO_SET_FLAG (pt_expr, PT_EXPR_INFO_TRANSITIVE);
+	}
+
       term = qo_add_term (pt_expr, PREDICATE_TERM, env);
       QO_TERM_SET_FLAG (term, QO_TERM_TRANSITIVE);
       QO_TERM_SET_FLAG (term, QO_TERM_COPY_PT_EXPR);
     }
 
+  free_and_init (node_has_transitive);
   free_and_init (specs);
 }
 
@@ -8203,8 +8238,7 @@ qo_generate_transitive_join_terms (QO_ENV * env)
  * Note: Builds a root array from the eq_root union-find chains set during term
  *   discovery.  For each equivalence group with segments on 2+ distinct nodes,
  *   emits a QO_TRANSITIVE_JOIN_SPEC for every node pair that lacks a direct
- *   edge term, unless the group contains an outer-join term or all existing
- *   edge terms for the group are DUMMY_JOIN.
+ *   edge term, unless the group contains an outer-join term.
  */
 static int
 qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs_p, int *count_p, int *cap_p)
@@ -8214,11 +8248,10 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
   int *segs_arr = NULL;
   int segs_arr_cap = 0;
   int nsegs;
-  QO_SEGMENT *seg, *seg1, *seg2, *head_seg, *tail_seg, *root_seg, *nom;
+  QO_SEGMENT *seg1, *seg2, *head_seg, *tail_seg, *root_seg, *nom;
   QO_NODE *node1, *node2, *head_node, *tail_node;
   QO_TERM *term;
-  PT_NODE *pt_expr;
-  bool group_has_outer_join, group_all_dummy, already_has_term;
+  bool group_has_outer_join, already_has_term;
 
   if (env->nsegs == 0)
     return 0;
@@ -8271,13 +8304,8 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
       if (nsegs < 2)
 	continue;
 
-      /* Scan edge terms in this group for outer joins and dummy-only status.
-       * nedges is not yet set; use QO_IS_EDGE_TERM instead.
-       * QO_TC_DUMMY_JOIN is set by qo_discover_edges (not run yet), so also
-       * treat PT_EXPR_INFO_TRANSITIVE terms as dummy (group_has_outer_join=false
-       * guarantees all group nodes are sargable). */
+      /* Skip groups with outer-join terms; transitive inference is unsafe there. */
       group_has_outer_join = false;
-      group_all_dummy = true;
       for (t = 0; t < env->nterms; t++)
 	{
 	  term = QO_ENV_TERM (env, t);
@@ -8287,14 +8315,13 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 	  if (nom == NULL || root_arr[QO_SEG_IDX (nom)] != i)
 	    continue;
 	  if (IS_OUTER_JOIN_TYPE (QO_TERM_JOIN_TYPE (term)))
-	    group_has_outer_join = true;
-	  pt_expr = QO_TERM_PT_EXPR (term);
-	  if (QO_TERM_CLASS (term) != QO_TC_DUMMY_JOIN
-	      && (pt_expr == NULL || !PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_TRANSITIVE)))
-	    group_all_dummy = false;
+	    {
+	      group_has_outer_join = true;
+	      break;
+	    }
 	}
 
-      if (group_has_outer_join || group_all_dummy)
+      if (group_has_outer_join)
 	continue;
 
       /* Emit a spec for each segment pair on different nodes that has no direct edge term. */
