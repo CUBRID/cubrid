@@ -573,17 +573,14 @@ exit:
       case METHOD_CALLBACK_END_TRANSACTION:
 	error_code = callback_end_transaction (thread_ref, unpacker);
 	break;
-        /*
       case METHOD_CALLBACK_GET_CODE_ATTR:
 	error_code = callback_get_code_attr (thread_ref, unpacker);
 	break;
-         */
 
       case METHOD_CALLBACK_SET_PL_SESSION_PARAM:
 	error_code = callback_set_pl_session_param (thread_ref, unpacker);
 	break;
       default:
-	// TODO: not implemented yet, do we need error handling?
 	assert (false);
 	error_code = ER_FAILED;
 	break;
@@ -995,7 +992,6 @@ exit:
     return error;
   }
 
-  /*
   int
   executor::callback_get_code_attr (cubthread::entry &thread_ref, packing_unpacker &unpacker)
   {
@@ -1039,7 +1035,6 @@ exit:
 
     return error;
   }
-   */
 
   int
   executor::callback_set_pl_session_param (cubthread::entry &thread_ref, packing_unpacker &unpacker)
