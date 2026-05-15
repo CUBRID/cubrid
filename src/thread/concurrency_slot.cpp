@@ -22,7 +22,8 @@
 
 #include "concurrency_slot.hpp"
 #include "thread_manager.hpp"
-#include "boot_sr.h"
+#include "server_support.h"
+#include "system_parameter.h"
 #include "error_manager.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -175,6 +176,8 @@ namespace cubthread
     : concurrency_slot_subscriber (concurrency_slot_daemon::get_publisher ())
     , m_available_slots ()
     , m_surplus_since ()
+    , m_slot_count (0)
+    , m_target_count (0)
     , m_wait_queue ()
     , m_mutex (&mtx)
   {
@@ -193,9 +196,48 @@ namespace cubthread
       {
 	m_available_slots.emplace (std::unique_ptr<concurrency_slot> (new concurrency_slot (this)));
       }
+    m_slot_count = concurrency;
+    m_target_count = concurrency;
 
     // attach to the daemon
     concurrency_slot_subscriber::activate (identifier);
+  }
+
+  void
+  concurrency_slot_pool::adjust_concurrency (std::size_t concurrency)
+  {
+    std::unique_lock<std::mutex> ulock (*m_mutex);
+
+    adjust_concurrency (concurrency, ulock);
+  }
+
+  void
+  concurrency_slot_pool::adjust_concurrency (std::size_t concurrency, std::unique_lock<std::mutex> &ulock)
+  {
+    std::size_t i;
+
+    m_target_count = concurrency;
+
+    if (m_slot_count < concurrency)
+      {
+	i = m_slot_count;
+	m_slot_count = concurrency;
+	for (; i < concurrency; i++)
+	  {
+	    release_slot (std::unique_ptr<concurrency_slot> (new concurrency_slot (this)), ulock);
+	  }
+      }
+    else if (m_slot_count > concurrency)
+      {
+	while (m_slot_count > concurrency && !m_available_slots.empty ())
+	  {
+	    auto slot = std::move (m_available_slots.front ());
+	    m_available_slots.pop ();
+	    slot.reset ();
+
+	    m_slot_count--;
+	  }
+      }
   }
 
   std::unique_ptr<concurrency_slot>
@@ -336,6 +378,14 @@ namespace cubthread
     // reset
     slot->reset ();
 
+    if (m_target_count < m_slot_count)
+      {
+	slot.reset ();
+
+	m_slot_count--;
+	return;
+      }
+
     // store or wake up
     while (true)
       {
@@ -378,6 +428,12 @@ namespace cubthread
     return false;
   }
 
+  std::size_t
+  concurrency_slot_pool::available_slots ()
+  {
+    return m_available_slots.size ();
+  }
+
   //////////////////////////////////////////////////////////////////////////
   // concurrency_slot_daemon task
   //////////////////////////////////////////////////////////////////////////
@@ -385,19 +441,89 @@ namespace cubthread
   class concurrency_slot_daemon_task : public entry_task
   {
     public:
-      concurrency_slot_daemon_task () = default;
+      concurrency_slot_daemon_task ();
       ~concurrency_slot_daemon_task () = default;
 
-      void execute (entry &thread_ref) override
-      {
-	// 1. traverse all entries and steal the concurrency slot from any entry
-	//    whose wait time exceeds the threshold. (identifier = worker pool pointer)
-	// 2. rebalance slots across cores.
-	// 3. apply concurrency parameter changes at runtime.
+      void execute (entry &thread_ref) override;
 
-	// add here
-      }
+    private:
+      void tune_parameters (std::size_t &max_transaction_concurrency, std::size_t &max_transaction_worker);
+      void check_and_propagate_parameters ();
+
+      std::size_t m_max_transaction_concurrency;
+      std::size_t m_max_transaction_worker;
   };
+
+  //////////////////////////////////////////////////////////////////////////
+  // concurrency_slot_daemon task definition
+  //////////////////////////////////////////////////////////////////////////
+
+  concurrency_slot_daemon_task::concurrency_slot_daemon_task ()
+    : m_max_transaction_concurrency (static_cast<std::size_t> (prm_get_integer_value (PRM_ID_MAX_TRANSACTION_CONCURRENCY)))
+    , m_max_transaction_worker (static_cast<std::size_t> (prm_get_integer_value (PRM_ID_MAX_TRANSACTION_WORKER)))
+  {
+  }
+
+  void
+  concurrency_slot_daemon_task::execute (entry &thread_ref)
+  {
+    // 1. traverse all entries and steal the concurrency slot from any entry
+    //    whose wait time exceeds the threshold. (identifier = worker pool pointer)
+    // 2. rebalance slots across cores.
+    // 3. apply concurrency parameter changes at runtime.
+
+    check_and_propagate_parameters ();
+  }
+
+  void
+  concurrency_slot_daemon_task::tune_parameters (std::size_t &max_transaction_concurrency,
+      std::size_t &max_transaction_worker)
+  {
+    std::size_t core_count = system_core_count ();
+    std::size_t max_clients = prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS);
+    std::size_t clamp_min = max_clients < core_count ? core_count : max_clients;
+
+    if (max_transaction_concurrency > max_clients)
+      {
+	max_transaction_concurrency = clamp_min;
+      }
+    if (max_transaction_concurrency < core_count)
+      {
+	max_transaction_concurrency = core_count;
+      }
+
+    if (max_transaction_worker > max_clients)
+      {
+	max_transaction_worker = clamp_min;
+      }
+    if (max_transaction_worker < max_transaction_concurrency)
+      {
+	max_transaction_worker = max_transaction_concurrency;
+      }
+  }
+
+  void
+  concurrency_slot_daemon_task::check_and_propagate_parameters ()
+  {
+    std::size_t max_transaction_concurrency = prm_get_integer_value (PRM_ID_MAX_TRANSACTION_CONCURRENCY);
+    std::size_t max_transaction_worker = prm_get_integer_value (PRM_ID_MAX_TRANSACTION_WORKER);
+
+    if (max_transaction_concurrency != m_max_transaction_concurrency ||
+	max_transaction_worker != m_max_transaction_worker)
+      {
+	tune_parameters (max_transaction_concurrency, max_transaction_worker);
+
+	// propagate
+	css_set_max_concurrency_and_workers (max_transaction_concurrency, max_transaction_worker);
+
+	// set
+	prm_set_integer_value (PRM_ID_MAX_TRANSACTION_CONCURRENCY, max_transaction_concurrency);
+	prm_set_integer_value (PRM_ID_MAX_TRANSACTION_WORKER, max_transaction_worker);
+
+	m_max_transaction_concurrency = max_transaction_concurrency;
+	m_max_transaction_worker = max_transaction_worker;
+      }
+  }
 
   //////////////////////////////////////////////////////////////////////////
   // concurrency_slot_daemon
