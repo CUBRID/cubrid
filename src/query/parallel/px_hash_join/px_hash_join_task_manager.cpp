@@ -395,7 +395,7 @@ namespace parallel_query
 	  if (tuple_cnt == 0)
 	    {
 	      /* empty page */
-	      qmgr_free_old_page_and_init (&thread_ref, page, list_id->tfile_vfid);
+	      qmgr_free_old_page_and_init (&thread_ref, page, m_page_iter.current_tfile ());
 	      continue;
 	    }
 
