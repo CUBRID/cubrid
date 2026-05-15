@@ -403,7 +403,8 @@ const char *sm_define_view_parameters_spec (void)
       /* CT_DATATYPE_NAME */
       "INNER JOIN [%s] AS [dt] ON [dt].[type_id] = [sp_args].[data_type] "
     "WHERE "
-      AUTH_CHECK_STORED_PROC("[sp_args].[sp_of].[owner].[name]", "[sp_args].[sp_of]"),
+      AUTH_CHECK_STORED_PROC("[sp_args].[sp_of].[owner].[name]", "[sp_args].[sp_of]") " "
+      "AND [sp_args].[sp_of].[is_system_generated] = 0",
     SP_MODE_IN,
     SP_MODE_OUT,
     SP_MODE_INOUT,
