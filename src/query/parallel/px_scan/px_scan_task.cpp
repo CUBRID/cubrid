@@ -59,7 +59,9 @@ namespace parallel_scan
   void task<result_type, ST>::retire()
   {
     m_worker_manager->pop_task();
-    delete this;
+    /* paired with malloc + placement_new in manager::start_tasks() */
+    this->~task ();
+    free (this);
   }
 
   template <RESULT_TYPE result_type, SCAN_TYPE ST>
