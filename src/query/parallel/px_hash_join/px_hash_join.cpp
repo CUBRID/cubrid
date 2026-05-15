@@ -337,8 +337,6 @@ error_exit:
 	  goto error_exit;
 	}
 
-      context->hash_scan.hash_list_scan_type = HASH_METH_NOT_USE;
-
       context->during_join_pred = single_context->during_join_pred;
       context->val_descr = single_context->val_descr;
 
@@ -373,8 +371,6 @@ error_exit:
 
       assert (context->outer.list_scan_id.curr_pgptr == nullptr);
       assert (context->inner.list_scan_id.curr_pgptr == nullptr);
-
-      assert (context->hash_scan.hash_list_scan_type == HASH_METH_NOT_USE);
     }
 
     int

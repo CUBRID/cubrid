@@ -1042,8 +1042,24 @@ cleanup:
       qfile_close_scan (&thread_ref, &m_context->outer.list_scan_id);
       qfile_close_scan (&thread_ref, &m_context->inner.list_scan_id);
 
-      /* skip hash table */
-      m_context->hash_scan.hash_list_scan_type = HASH_METH_NOT_USE;
+      /* skip hash table — owned by single_context, must not be released here */
+      switch (m_context->hash_scan.hash_list_scan_type)
+	{
+	case HASH_METH_IN_MEM:
+	case HASH_METH_HYBRID:
+	  m_context->hash_scan.memory.hash_table = nullptr;
+	  break;
+
+	case HASH_METH_HASH_FILE:
+	  m_context->hash_scan.file.hash_table = nullptr;
+	  break;
+
+	case HASH_METH_NOT_USE:
+	/* fall through */
+	default:
+	  break;
+	}
+
       hjoin_scan_clear (&thread_ref, &m_context->hash_scan);
 
       /* set to nullptr; cleaned up by clear_spawner after all tasks are done */
