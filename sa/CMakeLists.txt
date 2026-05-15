@@ -169,6 +169,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/fixed_size_allocator.hpp
+  ${BASE_DIR}/byte_span_writer.hpp
   ${BASE_DIR}/ifsys.hpp
   ${BASE_DIR}/filesys_parser.hpp
   ${BASE_DIR}/cgroup.hpp

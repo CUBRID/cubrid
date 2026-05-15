@@ -181,6 +181,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/fixed_size_allocator.hpp
   ${BASE_DIR}/span.hpp
+  ${BASE_DIR}/byte_span_writer.hpp
   ${BASE_DIR}/ifsys.hpp
   ${BASE_DIR}/packet_buffer.hpp
   ${BASE_DIR}/DMRB.hpp

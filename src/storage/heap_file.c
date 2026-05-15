@@ -698,10 +698,12 @@ static size_t heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_in
 
 static void heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
 					RECDES * raw);
+static void heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch, int oos_scratch_size);
 static void heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
-					   RECDES * raw, bool * is_oos);
+					   RECDES * raw, bool * oos_owned_buffer, char *oos_scratch,
+					   int oos_scratch_size);
 static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
-						bool is_oos);
+						bool oos_owned_buffer);
 static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info);
 
 static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value,
@@ -10589,22 +10591,87 @@ heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR
 }
 
 /*
+ * heap_attrvalue_read_oos_inline () - Resolve an inline-OOS variable attribute.
+ *   Inline layout (M2+): [OID (8B) | full_length (8B bigint)].
+ *   On success raw->data is either the caller scratch (when oos_len fits) or a
+ *   heap-allocated buffer the caller must free via recdes_free_data_area.
+ *   On failure raw->data is set to NULL.
+ */
+static void
+heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch, int oos_scratch_size)
+{
+  OR_BUF buf;
+  OID oos_oid;
+  DB_BIGINT oos_len;
+  int rc = NO_ERROR;
+  THREAD_ENTRY *thread_p;
+
+  buf.ptr = raw->data;
+  buf.endptr = recdes->data + recdes->length;
+  /* Writer invariant: the OOS-marked variable region always starts with [OID | bigint]. */
+  assert (buf.endptr - buf.ptr >= OR_OID_SIZE + OR_BIGINT_SIZE);
+
+  or_get_oid (&buf, &oos_oid);
+  oos_len = or_get_bigint (&buf, &rc);
+
+  if (rc != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      raw->data = NULL;
+      assert_release_error (er_errid () != NO_ERROR);
+      return;
+    }
+
+  /* Writer invariants: non-null OID, length fits int. */
+  assert (!OID_ISNULL (&oos_oid));
+  assert (oos_len > 0 && oos_len <= (DB_BIGINT) INT_MAX);
+
+  thread_p = thread_get_thread_entry_info ();
+
+  /* Fast path: payload fits scratch, no per-row heap alloc. The caller
+   * distinguishes scratch- vs heap-backed buffers by pointer comparison. */
+  if (oos_scratch != NULL && oos_len <= (DB_BIGINT) oos_scratch_size)
+    {
+      raw->data = oos_scratch;
+      raw->area_size = oos_scratch_size;
+    }
+  else if (recdes_allocate_data_area (raw, (int) oos_len) != NO_ERROR)
+    {
+      raw->data = NULL;
+      assert_release (false);
+      return;
+    }
+
+  if (oos_read (thread_p, oos_oid, oos_buffer (raw->data, (std::size_t) oos_len)) != NO_ERROR)
+    {
+      if (raw->data != oos_scratch)
+	{
+	  recdes_free_data_area (raw);
+	}
+      raw->data = NULL;
+      assert_release (false);
+      return;
+    }
+  raw->length = (int) oos_len;
+}
+
+/*
  * heap_attrvalue_point_variable () -
  *
  *   return: NO_ERROR
  *   recdes(in): Record
  *   attr_info(in): The attribute information structure
  *   attrepr(in): The attribute structure
- *   data(out): Disk value pointer
- *   length(out): Disk value length
- *
+ *   raw(out): Disk value pointer + length
+ *   oos_owned_buffer(out): true iff this attribute is OOS. Caller then owns
+ *                          raw->data, must use COPY in data_readval, and must
+ *                          recdes_free_data_area unless raw->data == oos_scratch.
+ *   oos_scratch / oos_scratch_size(in): optional fast-path buffer; NULL forces heap alloc.
  */
 static void
 heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr, RECDES * raw,
-			       bool * is_oos)
+			       bool * oos_owned_buffer, char *oos_scratch, int oos_scratch_size)
 {
-  OR_BUF buf;
-  OID oos_oid;
   int offset;
   int offset_size;
 
@@ -10640,19 +10707,9 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
   raw->data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location));
   if (OR_IS_OOS (offset))
     {
-      buf.ptr = raw->data;
-      buf.endptr = recdes->data + recdes->length;
-      or_get_oid (&buf, &oos_oid);
-
-      assert (!OID_ISNULL (&oos_oid));
-
-      THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-      assert (thread_p);
-      if (oos_read (thread_p, oos_oid, *raw) != NO_ERROR)
-	{
-	  assert_release (false);
-	}
-      *is_oos = true;
+      /* Flag set before the call so every helper exit leaves caller in OOS-owned state. */
+      *oos_owned_buffer = true;
+      heap_attrvalue_read_oos_inline (recdes, raw, oos_scratch, oos_scratch_size);
     }
   else
     {
@@ -10682,7 +10739,8 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
  *
  */
 static int
-heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw, bool is_oos)
+heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
+				     bool oos_owned_buffer)
 {
   const PR_TYPE *pr_type;
   OR_BUF buf;
@@ -10715,7 +10773,8 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
       pr_type = pr_type_from_id (attrepr->type);
       if (pr_type)
 	{
-	  rv = pr_type->data_readval (&buf, &value->dbvalue, attrepr->domain, raw->length, is_oos, NULL, 0);
+	  /* OOS-owned buffer => COPY (PEEK dangles once caller frees raw). */
+	  rv = pr_type->data_readval (&buf, &value->dbvalue, attrepr->domain, raw->length, oos_owned_buffer, NULL, 0);
 	}
       value->state = HEAP_READ_ATTRVALUE;
       if (rv != NO_ERROR)
@@ -10745,7 +10804,10 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 {
   OR_ATTRIBUTE *attrepr;
   RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
-  bool is_oos = false;
+  bool oos_owned_buffer = false;
+  /* Stack scratch for inline-OOS reads up to one I/O page; larger payloads heap-alloc. */
+  char oos_scratch_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char *oos_scratch = PTR_ALIGN (oos_scratch_buf, MAX_ALIGNMENT);
   int error;
 
   if (unlikely (IS_DEDUPLICATE_KEY_ATTR_ID (value->attrid)))
@@ -10780,20 +10842,15 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	}
       else
 	{
-	  heap_attrvalue_point_variable (recdes, attr_info, attrepr, &raw, &is_oos);
+	  heap_attrvalue_point_variable (recdes, attr_info, attrepr, &raw, &oos_owned_buffer, oos_scratch,
+					 IO_MAX_PAGE_SIZE);
 	}
     }
 
   /* the data pointer will point to either a current value in recdes or a default one in attrepr */
-  error = heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw, is_oos);
-  // TODO: heap_attrvalue_transform_to_dbvalue() used to PEEK &raw when creating value (dbvalue),
-  // but oos_insert() makes &raw point to newly allocated memory.
-  // Thus,
-  // 1) we need to free &raw only when is_oos is true.
-  // 2) we need to create dbvalue with mr_data_readval...(...COPY).
-  // This can be refactored later when dbvalue supports zero-copy to OOS data.
-  // oos_insert(OID) must be refactored to oos_read(PAGE_PTR, slotid, PEEK/COPY) and allow PEEK mode.
-  if (is_oos)
+  error = heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw, oos_owned_buffer);
+  /* TODO: revisit when dbvalue supports zero-copy to OOS and a PEEK mode lands. */
+  if (oos_owned_buffer && raw.data != oos_scratch)
     {
       recdes_free_data_area (&raw);
     }
@@ -10813,8 +10870,11 @@ static int
 heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, HEAP_CACHE_ATTRINFO * attr_info)
 {
   RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
-  bool is_oos = false;
+  bool oos_owned_buffer = false;
   bool found = true;		/* Does attribute(att) exist in this disk representation? */
+  /* Stack scratch for inline-OOS reads up to one I/O page on the hot index-key path. */
+  char oos_scratch_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char *oos_scratch = PTR_ALIGN (oos_scratch_buf, MAX_ALIGNMENT);
   int i;
 
   /* Initialize disk value information */
@@ -10855,7 +10915,8 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 	    }
 	  else
 	    {			/* A variable attribute */
-	      heap_attrvalue_point_variable (recdes, attr_info, att, &raw, &is_oos);
+	      heap_attrvalue_point_variable (recdes, attr_info, att, &raw, &oos_owned_buffer, oos_scratch,
+					     IO_MAX_PAGE_SIZE);
 	    }
 	}
     }
@@ -10870,10 +10931,11 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
       OR_BUF buf;
 
       or_init (&buf, raw.data, raw.length);
-      att->domain->type->data_readval (&buf, value, att->domain, raw.length, is_oos, NULL, 0);
+      /* OOS-owned buffer => COPY (PEEK would dangle once we free it below). */
+      att->domain->type->data_readval (&buf, value, att->domain, raw.length, oos_owned_buffer, NULL, 0);
     }
 
-  if (is_oos)
+  if (oos_owned_buffer && raw.data != oos_scratch)
     {
       recdes_free_data_area (&raw);
     }
@@ -12412,14 +12474,17 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
 	  assert (attr_info->values != NULL && !db_value_is_null (&attr_info->values[i].dbvalue));
 	  assert (!attr_info->values[i].last_attrepr->is_fixed);
 
+	  /* heap_attrinfo_dbvalue_to_recdes may replace recdes.data with a malloc'd
+	   * buffer when the dbvalue doesn't fit the stack scratch. Both failure
+	   * branches below must reach the cleanup at error_oos. */
 	  if (heap_attrinfo_dbvalue_to_recdes (thread_p, &attr_info->values[i], attr_info->class_oid, lob_create_flag,
 					       &recdes) != S_SUCCESS)
 	    {
-	      return S_ERROR;
+	      goto error_oos;
 	    }
-	  if (oos_insert (thread_p, oos_vfid, recdes, oos_oid) != NO_ERROR)
+	  if (oos_insert (thread_p, oos_vfid, oos_buffer (recdes.data, (size_t) recdes.length), oos_oid) != NO_ERROR)
 	    {
-	      return S_ERROR;
+	      goto error_oos;
 	    }
 
 	  thread_p->oos_oids.push_back (oos_oid);	/* for replication log */
@@ -12437,6 +12502,13 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
   /* here: or vectorize the DB_VALUEs and insert at once */
 
   return S_SUCCESS;
+
+error_oos:
+  if (recdes.data != PTR_ALIGN (recbuf, MAX_ALIGNMENT))
+    {
+      free_and_init (recdes.data);
+    }
+  return S_ERROR;
 }
 
 /*
