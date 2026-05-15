@@ -141,6 +141,22 @@ namespace parallel_scan
     INDX_SCAN_ID *isidp = &worker_scan_id->s.isid;
     TP_DOMAIN *btree_domainp = m_btid_int.key_type;
 
+    /* lazy-alloc prebuilt_midxkey_domains (parallel path bypasses scan_open_index_scan); scan_dbvals_to_midxkey would NULL-deref otherwise. */
+    if (isidp->prebuilt_midxkey_domains == NULL)
+      {
+	isidp->prebuilt_midxkey_domains =
+		(TP_DOMAIN **) db_private_alloc (thread_p, key_cnt * sizeof (TP_DOMAIN *));
+	if (isidp->prebuilt_midxkey_domains == NULL)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	    return ER_FAILED;
+	  }
+	for (int j = 0; j < key_cnt; j++)
+	  {
+	    isidp->prebuilt_midxkey_domains[j] = NULL;
+	  }
+      }
+
     m_part_key_desc = false;
     m_key_val_ranges.resize (key_cnt);
 
@@ -787,13 +803,6 @@ namespace parallel_scan
 	    if (spage_get_record (thread_p, leaf_page, re_slot_id, &leaf_rec, PEEK) != S_SUCCESS)
 	      {
 		ASSERT_ERROR ();
-		pgbuf_unfix (thread_p, leaf_page);
-		exit_overflow_help (thread_p, picked);
-		return S_ERROR;
-	      }
-	    if (btree_leaf_record_is_fence (&leaf_rec))
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
 		pgbuf_unfix (thread_p, leaf_page);
 		exit_overflow_help (thread_p, picked);
 		return S_ERROR;
