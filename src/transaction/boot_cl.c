@@ -776,9 +776,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	{
 	  conf_file = NULL;
 	}
-#if !defined (NDEBUG)
-      _er_log_debug (ARG_FILE_LINE, "conf_for_broker = %s\n", conf_file ? conf_file : "unknown");
-#endif
     }
 #endif
 
@@ -795,6 +792,14 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       assert_release (false);
       goto error;
     }
+
+#if defined (CS_MODE) && !defined (NDEBUG)
+  /* log the parameter loading file for CAS in debug mode. */
+  if (BOOT_BROKER_CLIENT_TYPE (client_credential->client_type))
+    {
+      _er_log_debug (ARG_FILE_LINE, "conf_for_broker = %s\n", conf_file ? conf_file : "unknown");
+    }
+#endif
 
   pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
 
@@ -1144,10 +1149,9 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   tran_lock_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
 
   er_log_debug (ARG_FILE_LINE,
-		"boot_restart_client: register client { type %d db %s user %s password %s "
+		"boot_restart_client: register client { type %d db %s user %s password **** "
 		"program %s login %s host %s pid %d }\n", client_credential->client_type,
 		client_credential->get_db_name (), client_credential->get_db_user (),
-		client_credential->db_password.empty ()? "(null)" : client_credential->get_db_password (),
 		client_credential->get_program_name (),
 		client_credential->get_login_name (), client_credential->get_host_name (),
 		client_credential->process_id);
