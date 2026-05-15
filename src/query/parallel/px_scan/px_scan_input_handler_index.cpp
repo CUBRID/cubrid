@@ -296,6 +296,45 @@ namespace parallel_scan
 		  }
 	      }
 	  }
+
+	/* dedup adjacent identical ranges (e.g. cola IN (1,1,1) yields 3 same ranges → 3x emits). serial multi-range-opt handles this internally; parallel re-descends per range and inflates counts. */
+	TP_DOMAIN *dedup_dom = m_btid_int.key_type;
+	for (int i = 1; i < static_cast<int> (m_key_val_ranges.size ()); i++)
+	  {
+	    key_val_range *prev = &m_key_val_ranges[i - 1];
+	    key_val_range *cur = &m_key_val_ranges[i];
+	    if (cur->range == NA_NA || prev->range != cur->range)
+	      {
+		continue;
+	      }
+	    int sc = 0;
+	    bool k1_equal = (DB_IS_NULL (&prev->key1) && DB_IS_NULL (&cur->key1));
+	    if (!k1_equal && !DB_IS_NULL (&prev->key1) && !DB_IS_NULL (&cur->key1))
+	      {
+		sc = 0;
+		k1_equal = (btree_compare_key (&prev->key1, &cur->key1, dedup_dom, 1, 1, &sc) == DB_EQ);
+	      }
+	    if (!k1_equal)
+	      {
+		continue;
+	      }
+	    bool k2_equal = (DB_IS_NULL (&prev->key2) && DB_IS_NULL (&cur->key2));
+	    if (!k2_equal && !DB_IS_NULL (&prev->key2) && !DB_IS_NULL (&cur->key2))
+	      {
+		sc = 0;
+		k2_equal = (btree_compare_key (&prev->key2, &cur->key2, dedup_dom, 1, 1, &sc) == DB_EQ);
+	      }
+	    if (!k2_equal)
+	      {
+		continue;
+	      }
+	    pr_clear_value (&cur->key1);
+	    pr_clear_value (&cur->key2);
+	    db_make_null (&cur->key1);
+	    db_make_null (&cur->key2);
+	    cur->range = NA_NA;
+	    cur->num_index_term = 0;
+	  }
       }
 
     return NO_ERROR;
@@ -494,12 +533,18 @@ namespace parallel_scan
 
     std::unique_lock<std::mutex> lock (m_leaf_mutex);
 
-    /* target = m_current_range_idx + 1, or 0 on first descent. */
+    /* target = m_current_range_idx + 1, or 0 on first descent. Skip NA_NA (dedup'd duplicate ranges). */
     if (!m_descent_done || m_leaf_ended)
       {
 	int target = m_descent_done ? (m_current_range_idx + 1) : 0;
+	while (target < static_cast<int> (m_key_val_ranges.size ())
+	       && m_key_val_ranges[target].range == NA_NA)
+	  {
+	    target++;
+	  }
 	if (target >= static_cast<int> (m_key_val_ranges.size ()))
 	  {
+	    m_current_range_idx = target;
 	    m_leaf_ended = true;
 	    return S_END;
 	  }
