@@ -6892,7 +6892,34 @@ locator_repl::locator_repl_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
   /* Force the objects stored in area */
   if (mflush->mobjs->num_objs > 0)
     {
+#if !defined (NDEBUG)
+      /* Mflush-batch wall around locator_repl_force.
+       * Logs tm_Tran_index so it joins with server slocator_repl_force's tran_index. */
+      static UINT64 _lrmf_call_count = 0;
+      UINT64 _lrmf_call_n = __atomic_add_fetch (&_lrmf_call_count, 1, __ATOMIC_RELAXED);
+      unsigned long _lrmf_tid_os = (unsigned long) pthread_self ();
+      int _lrmf_tran_idx = tm_Tran_index;
+      int _lrmf_num_objs = mflush->mobjs->num_objs;
+      struct timeval _lrmf_begin, _lrmf_end;
+      INT64 _lrmf_usec = 0;
+      gettimeofday (&_lrmf_begin, NULL);
+      er_log_debug (ARG_FILE_LINE,
+		    "locator_repl_mflush_force_begin calls=%llu tid=%lu tm_tran_index=%d num_objs=%d\n",
+		    (unsigned long long) _lrmf_call_n, _lrmf_tid_os, _lrmf_tran_idx, _lrmf_num_objs);
+#endif /* !NDEBUG */
+
       error_code = locator_repl_force (mflush->copy_area, &reply_copy_area);
+
+#if !defined (NDEBUG)
+      gettimeofday (&_lrmf_end, NULL);
+      _lrmf_usec = ((INT64) _lrmf_end.tv_sec - (INT64) _lrmf_begin.tv_sec) * 1000000LL
+		   + ((INT64) _lrmf_end.tv_usec - (INT64) _lrmf_begin.tv_usec);
+      er_log_debug (ARG_FILE_LINE,
+		    "locator_repl_mflush_force_end calls=%llu tid=%lu tm_tran_index=%d "
+		    "num_objs=%d error_code=%d elapsed_usec=%lld\n",
+		    (unsigned long long) _lrmf_call_n, _lrmf_tid_os, _lrmf_tran_idx,
+		    _lrmf_num_objs, error_code, (long long) _lrmf_usec);
+#endif /* !NDEBUG */
 
       /* If the force failed and the system is down.. finish */
       if (error_code == ER_LK_UNILATERALLY_ABORTED

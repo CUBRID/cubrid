@@ -646,6 +646,19 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
   int content_size;
   int num_objs = 0;
   int req_error;
+#if !defined (NDEBUG)
+  /* Per-call wall of the client RPC boundary (NET_SERVER_LC_REPL_FORCE).
+   * tm_Tran_index here is the client-side transaction index; the server's
+   * slocator_repl_force logs the matching tran_index/trid, so the two logs
+   * can be joined on (tm_Tran_index == server tran_index) plus tid/timestamp. */
+  static UINT64 _lrf_call_count = 0;
+  UINT64 _lrf_call_n = __atomic_add_fetch (&_lrf_call_count, 1, __ATOMIC_RELAXED);
+  unsigned long _lrf_tid_os = (unsigned long) pthread_self ();
+  int _lrf_tran_idx = tm_Tran_index;
+  struct timeval _lrf_begin, _lrf_end;
+  INT64 _lrf_usec = 0;
+  gettimeofday (&_lrf_begin, NULL);
+#endif /* !NDEBUG */
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -655,6 +668,14 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
   request_ptr = or_pack_int (request, num_objs);
   request_ptr = or_pack_int (request_ptr, desc_size);
   request_ptr = or_pack_int (request_ptr, content_size);
+
+#if !defined (NDEBUG)
+  er_log_debug (ARG_FILE_LINE,
+		"locator_repl_force_begin calls=%llu tid=%lu tm_tran_index=%d "
+		"num_objs=%d desc_size=%d content_size=%d\n",
+		(unsigned long long) _lrf_call_n, _lrf_tid_os, _lrf_tran_idx,
+		num_objs, desc_size, content_size);
+#endif /* !NDEBUG */
 
   req_error =
     net_client_request_3_data_recv_copyarea (NET_SERVER_LC_REPL_FORCE, request,
@@ -672,6 +693,17 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
       assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
     }
+
+#if !defined (NDEBUG)
+  gettimeofday (&_lrf_end, NULL);
+  _lrf_usec = ((INT64) _lrf_end.tv_sec - (INT64) _lrf_begin.tv_sec) * 1000000LL
+	      + ((INT64) _lrf_end.tv_usec - (INT64) _lrf_begin.tv_usec);
+  er_log_debug (ARG_FILE_LINE,
+		"locator_repl_force_end calls=%llu tid=%lu tm_tran_index=%d "
+		"num_objs=%d content_size=%d req_error=%d error_code=%d elapsed_usec=%lld\n",
+		(unsigned long long) _lrf_call_n, _lrf_tid_os, _lrf_tran_idx,
+		num_objs, content_size, req_error, error_code, (long long) _lrf_usec);
+#endif /* !NDEBUG */
 
   if (desc_ptr)
     {

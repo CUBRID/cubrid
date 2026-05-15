@@ -1253,6 +1253,22 @@ slocator_repl_force (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
   ptr = or_unpack_int (ptr, &packed_desc_size);
   ptr = or_unpack_int (ptr, &content_size);
 
+#if !defined(NDEBUG)
+  {
+    LOG_TDES *repl_tdes = LOG_FIND_CURRENT_TDES (thread_p);
+    _er_log_debug (ARG_FILE_LINE,
+		   "slocator_repl_force: thr=%d, pthread=%lu, tran_index=%d, trid=%d, client_id=%d, "
+		   "state=%d, num_objs=%d, packed_desc_size=%d, content_size=%d\n",
+		   thread_get_current_entry_index (),
+		   (thread_p != NULL) ? (unsigned long) thread_p->get_posix_id () : 0UL,
+		   (thread_p != NULL) ? thread_p->tran_index : NULL_TRAN_INDEX,
+		   (repl_tdes != NULL) ? repl_tdes->trid : NULL_TRANID,
+		   (repl_tdes != NULL) ? repl_tdes->client_id : -1,
+		   (repl_tdes != NULL) ? (int) repl_tdes->state : -1,
+		   num_objs, packed_desc_size, content_size);
+  }
+#endif /* !NDEBUG */
+
   csserror = 0;
 
   copy_area = locator_recv_allocate_copyarea (num_objs, &content_ptr, content_size);
