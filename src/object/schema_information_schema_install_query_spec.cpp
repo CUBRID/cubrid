@@ -87,6 +87,13 @@
     "AND [auth].[auth_type] IN ('INSERT', 'UPDATE', 'DELETE', 'ALTER')" \
   ")"
 
+#define AUTH_CHECK_EXECUTE_GRANT(sp_of_expr) \
+  "{" sp_of_expr "} SUBSETEQ (" \
+    "SELECT SUM (SET {[auth].[object_of]}) FROM [" CT_CLASSAUTH_NAME "] AS [auth] " \
+    "WHERE {[auth].[grantee].[name]} SUBSETEQ (" CURRENT_USER_GROUPS_SUBQUERY ") " \
+    "AND [auth].[auth_type] = 'EXECUTE'" \
+  ")"
+
 /* ----------------------------------------------------------------------------- */
 /* Composite macros (used in query specs) */
 /* ----------------------------------------------------------------------------- */
@@ -134,7 +141,7 @@
   "(" \
     AUTH_CHECK_DBA " " \
     "OR " AUTH_CHECK_OWNER(owner_name_expr) " " \
-    "OR " AUTH_CHECK_ANY_GRANT(sp_of_expr) \
+    "OR " AUTH_CHECK_EXECUTE_GRANT(sp_of_expr) \
   ")"
 
 /* CUBRID does not currently support column privilege.
@@ -728,7 +735,8 @@ const char *sm_define_view_statistics_spec (void)
         "[idx_key].[key_order]"
       ") AS INTEGER) AS [cardinality], "
       "[idx_key].[key_prefix_length] AS [sub_part], "
-      "IF ([attr].[is_nullable] = 1, 'YES', 'NO') AS [nullable], "
+      "IF ([idx_key].[key_attr_name] IS NULL, 'YES', "
+        "IF ([attr].[is_nullable] = 1, 'YES', 'NO')) AS [nullable], "
       "'BTREE' AS [index_type], "
       "NULL AS [comment], "
       "[idx].[comment] AS [index_comment], "
@@ -748,7 +756,8 @@ const char *sm_define_view_statistics_spec (void)
       /* CT_ATTRIBUTE_NAME */
       "LEFT OUTER JOIN [%s] AS [attr] ON [attr].[class_of] = [cls] AND [attr].[attr_name] = [idx_key].[key_attr_name] "
     "WHERE "
-      AUTH_CHECK_OBJECT_ANY("[cls].[owner].[name]", "[cls].[class_of]"),
+      AUTH_CHECK_OBJECT_ANY("[cls].[owner].[name]", "[cls].[class_of]") " "
+      "AND ([idx_key].[key_attr_name] IS NULL OR [idx_key].[key_attr_name] NOT LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN ")",
     OPTION_DEDUPLICATE_MASK,
     CT_INDEXKEY_NAME,
     CT_INDEX_NAME,
@@ -931,13 +940,11 @@ const char *sm_define_view_triggers_spec (void)
       "CAST (DATABASE () AS VARCHAR (255)) AS [trigger_catalog], " /* string -> varchar(255) */
       "[tr].[owner].[name] AS [trigger_schema], "
       "CAST ([tr].[name] AS VARCHAR (255)) AS [trigger_name], " /* string -> varchar(255) */
-      /* UPDATE(0,1), DELETE(2,3), INSERT(4,5), COMMIT(8), ROLLBACK(9) */
+      /* UPDATE(0,1), DELETE(2,3), INSERT(4,5) */
       "CASE "
         "WHEN [tr].[event] IN (0, 1) THEN 'UPDATE' "
         "WHEN [tr].[event] IN (2, 3) THEN 'DELETE' "
         "WHEN [tr].[event] IN (4, 5) THEN 'INSERT' "
-        "WHEN [tr].[event] = 8 THEN 'COMMIT' "
-        "WHEN [tr].[event] = 9 THEN 'ROLLBACK' "
         "ELSE NULL "
       "END AS [event_manipulation], "
       "CAST (DATABASE () AS VARCHAR (255)) AS [event_object_catalog], " /* string -> varchar(255) */
@@ -968,7 +975,9 @@ const char *sm_define_view_triggers_spec (void)
       /* CT_CLASS_NAME */
       "INNER JOIN [%s] AS [cls] ON [cls].[class_of] = [tr].[target_class] "
     "WHERE "
-      AUTH_CHECK_OBJECT_WRITE("[tr].[owner].[name]", "[cls].[class_of]"),
+      AUTH_CHECK_OBJECT_WRITE("[tr].[owner].[name]", "[cls].[class_of]") " "
+      /* exclude transaction triggers (COMMIT=8, ROLLBACK=9) per spec */
+      "AND [tr].[event] IN (0, 1, 2, 3, 4, 5)",
     TR_TIME_BEFORE,
     TR_TIME_AFTER,
     TR_TIME_DEFERRED,
