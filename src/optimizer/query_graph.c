@@ -8324,7 +8324,9 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
       if (group_has_outer_join)
 	continue;
 
-      /* Emit a spec for each segment pair on different nodes that has no direct edge term. */
+      /* Emit one spec per (head_node, tail_node) pair; also check already-collected specs
+       * to avoid duplicates when the same node has multiple segments in the eqclass. */
+      int group_start_count = *count_p;
       for (j = 0; j < nsegs; j++)
 	{
 	  for (k = j + 1; k < nsegs; k++)
@@ -8366,6 +8368,19 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 		    {
 		      already_has_term = true;
 		      break;
+		    }
+		}
+
+	      if (!already_has_term)
+		{
+		  for (t = group_start_count; t < *count_p; t++)
+		    {
+		      if (QO_SEG_HEAD ((*specs_p)[t].head_seg) == head_node
+			  && QO_SEG_HEAD ((*specs_p)[t].tail_seg) == tail_node)
+			{
+			  already_has_term = true;
+			  break;
+			}
 		    }
 		}
 
