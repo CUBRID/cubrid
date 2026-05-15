@@ -6667,6 +6667,7 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
       int dest_prec;
       int dest_length;
       int dest_size;
+      int src_length;
       INTL_CODESET src_codeset = db_get_string_codeset (src_string);
       INTL_CODESET dest_codeset = db_get_string_codeset (dest_string);
 
@@ -6677,17 +6678,34 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
 	  return error_status;
 	}
 
+      /* db_char_string_coerce is the common path for any coercion that lands on
+       * a character string — SQL CAST (string ↔ string, or non-string via an
+       * intermediate ASCII string created by make_desired_string_db_value),
+       * ALTER charset / collate, cross-codeset value comparison, and padding
+       * helpers (LTRIM / RTRIM / CONCAT 등).
+       *
+       * The cached medium.length was set at insert / writeval time under the
+       * source's prior codeset. Reinterpretation steps (notably ALTER to binary,
+       * which keeps the byte payload intact but redefines char_count as
+       * 1 byte = 1 char) leave the cached value stale: it still reflects
+       * char_count under the previous codeset, not the current src_codeset.
+       *
+       * Invalidate it here so the subsequent db_get_string_length walks the
+       * byte sequence under src_codeset and yields the correct char_count. */
+      ((DB_VALUE *) src_string)->data.ch.medium.length = -1;
+      src_length = db_get_string_length (src_string);
+
       /* Initialize the memory manager of the destination */
       if (DB_VALUE_PRECISION (dest_string) == TP_FLOATING_PRECISION_VALUE)
 	{
-	  dest_prec = db_get_string_length (src_string);
+	  dest_prec = src_length;
 	}
       else
 	{
 	  dest_prec = DB_VALUE_PRECISION (dest_string);
 	}
 
-      error_status = qstr_coerce (DB_GET_UCHAR (src_string), db_get_string_length (src_string),
+      error_status = qstr_coerce (DB_GET_UCHAR (src_string), src_length,
 				  QSTR_VALUE_PRECISION (src_string), DB_VALUE_DOMAIN_TYPE (src_string), src_codeset,
 				  dest_codeset, &dest, &dest_length, &dest_size, dest_prec,
 				  DB_VALUE_DOMAIN_TYPE (dest_string), data_status);
