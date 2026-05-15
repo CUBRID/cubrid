@@ -120,6 +120,7 @@ namespace parallel_scan
       int clone_xasl (cubthread::entry &thread_ref);
       int handle_result (cubthread::entry &thread_ref);
       void loop (cubthread::entry &thread_ref);
+      SCAN_CODE drain_slot_oids (cubthread::entry &thread_ref, bool &stop);
   };
 }
 
