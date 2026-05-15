@@ -96,10 +96,19 @@ namespace parallel_scan
 	m_page = nullptr;
       }
 
-    /* drain-state cleanup (Phase 2.6) */
+    /* drain-state cleanup (Phase 2.6). Producer-anchor MUST run before freeing
+     * m_slot_key: if this iterator published a chain that is still active (e.g.,
+     * interrupt-driven early finalize), helpers may still be peek-reading the
+     * buffer; wait_for_chain_done blocks until all helpers exit, avoiding
+     * cross-thread use-after-free. */
     if (m_slot_state == slot_state::SHARED_DRAIN && m_in_helper_mode)
       {
 	m_input_handler->exit_overflow_help (thread_p);
+	if (m_was_producer)
+	  {
+	    m_input_handler->wait_for_chain_done (thread_p);
+	    m_was_producer = false;
+	  }
 	m_in_helper_mode = false;
       }
     if (m_slot_state == slot_state::SOLO_DRAIN && m_solo_prev_page != nullptr)

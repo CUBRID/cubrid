@@ -654,6 +654,12 @@ namespace parallel_scan
     if (page == NULL)
       {
 	ASSERT_ERROR ();
+	/* Producer-anchor would otherwise wait forever on a single-page chain when
+	 * the first claim itself fails: helpers=0 + chain_walked=false leaves
+	 * m_overflow_active=true. Force chain_walked=true so the last-out path in
+	 * exit_overflow_help flips active=false and notifies wait_for_chain_done. */
+	m_overflow_chain_walked = true;
+	m_overflow_cv.notify_all ();
 	return S_ERROR;
       }
     (void) pgbuf_check_page_ptype (thread_p, page, PAGE_BTREE);
@@ -662,6 +668,9 @@ namespace parallel_scan
       {
 	ASSERT_ERROR ();
 	pgbuf_unfix (thread_p, page);
+	/* Same producer-anchor deadlock prevention as the pgbuf_fix path above. */
+	m_overflow_chain_walked = true;
+	m_overflow_cv.notify_all ();
 	return S_ERROR;
       }
     m_overflow_cur_vpid = next_vpid;
