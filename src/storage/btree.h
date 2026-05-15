@@ -840,6 +840,10 @@ typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * b
 extern int btree_key_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record,
 				      int after_key_offset, LEAF_REC * leaf_info,
 				      BTREE_PROCESS_OBJECT_FUNCTION * func, void *args);
+/* [Reused by parallel index scan] streams a single record (leaf or overflow) without walking the chain. */
+extern int btree_record_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_NODE_TYPE node_type,
+					 RECDES * record, int after_key_offset, bool * stop,
+					 BTREE_PROCESS_OBJECT_FUNCTION * func, void *args);
 extern void btree_leaf_change_first_object (THREAD_ENTRY * thread_p, RECDES * recp, BTID_INT * btid, OID * oidp,
 					    OID * class_oidp, BTREE_MVCC_INFO * mvcc_info, int *key_offset,
 					    char **rv_undo_data_ptr, char **rv_redo_data_ptr);

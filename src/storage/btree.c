@@ -1481,9 +1481,7 @@ static int btree_key_lock_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 				  bool * was_page_refixed);
 #endif /* SERVER_MODE */
 
-static int btree_record_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_NODE_TYPE node_type,
-					 RECDES * record, int after_key_offset, bool * stop,
-					 BTREE_PROCESS_OBJECT_FUNCTION * func, void *args);
+/* [Reused by parallel index scan] — promoted to extern in btree.h. */
 static int btree_record_satisfies_snapshot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
 					    char *object_ptr, OID * oid, OID * class_oid, BTREE_MVCC_INFO * mvcc_info,
 					    bool * stop, void *args);
@@ -24418,7 +24416,7 @@ error:
  * func (in)		 : BTREE_PROCESS_OBJECT_FUNCTION *.
  * args (in/out)	 : Arguments for internal function.
  */
-static int
+int
 btree_record_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_NODE_TYPE node_type,
 			      RECDES * record, int after_key_offset, bool * stop,
 			      BTREE_PROCESS_OBJECT_FUNCTION * func, void *args)
