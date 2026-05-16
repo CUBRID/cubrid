@@ -708,7 +708,7 @@ namespace parallel_scan
     INT16 index_slot_hint = NULL_SLOTID;
     int index_range_idx = -1;
 
-    /* Index-only worker-count RAII guard; v2 TODO: drop if-constexpr once HEAP/LIST handlers add no-op leave_worker(). */
+    /* abort path: signal_no_more_leaves before leave_worker; else wait_or_help_overflow stalls. S_END disarms via handler=nullptr. */
     struct worker_scope_guard
     {
       input_handler_t *handler;
@@ -718,6 +718,7 @@ namespace parallel_scan
 	  {
 	    if (handler != nullptr)
 	      {
+		handler->signal_no_more_leaves ();
 		handler->leave_worker ();
 	      }
 	  }
