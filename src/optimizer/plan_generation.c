@@ -2997,9 +2997,15 @@ qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
   has_hint = (select->info.query.q.select.hint & PT_HINT_PARALLEL) != 0;
   if (has_hint)
     {
-      if (spec->info.spec.num_parallel_threads <= 1)
+      /* PRM_ID_PARALLELISM=0 must veto hints; PARALLEL(N) otherwise bypasses global disable. */
+      cap = prm_get_integer_value (PRM_ID_PARALLELISM);
+      if (cap <= 0 || spec->info.spec.num_parallel_threads <= 1)
 	{
 	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
+	}
+      else if (spec->info.spec.num_parallel_threads > cap)
+	{
+	  spec->info.spec.num_parallel_threads = cap;
 	}
       return;
     }
