@@ -29,13 +29,10 @@
 
 #include <vector>
 
-namespace parallel_scan
-{
-  class slot_iterator_index;       /* fwd: owner facade, set via wire_owner. */
-}
-
 namespace parallel_index_scan
 {
+  class leaf_slot_walker;            /* fwd: owner = walker (holds m_page / m_slot_key / process_oid). */
+
   /* (E) Per-slot drain state machine: DRAIN_LEAF_OIDS → {SHARED_DRAIN | SOLO_DRAIN} → IDLE.
    * Owns m_slot_oids buffer + chain-take-up bookkeeping; producer-anchored buffer share. */
   class overflow_drain_fsm
@@ -63,12 +60,11 @@ namespace parallel_index_scan
 	VPID_SET_NULL (&m_pending_ovf_vpid);
       }
 
-      void wire_owner (parallel_scan::slot_iterator_index *owner)
+      void wire_owner (leaf_slot_walker *owner)
       {
 	m_owner = owner;
       }
 
-      /* State predicates / mutators used by the slot_iterator facade. */
       slot_state state () const
       {
 	return m_slot_state;
@@ -99,8 +95,7 @@ namespace parallel_index_scan
 	m_slot_state = slot_state::DRAIN_LEAF_OIDS;
       }
 
-      /* Drives DRAIN_LEAF_OIDS → SHARED/SOLO → IDLE; returns S_SUCCESS / S_END / S_ERROR.
-       * Calls back into m_owner for process_oid + leaf-slot context. */
+      /* Drives DRAIN_LEAF_OIDS → SHARED/SOLO → IDLE; returns S_SUCCESS / S_END / S_ERROR. */
       SCAN_CODE drain_next_oid (THREAD_ENTRY *thread_p);
 
       /* Late-joiner entry: handler-fetched overflow page + helper-owned local_key (ownership transfer
@@ -130,7 +125,7 @@ namespace parallel_index_scan
       bool m_was_producer;              /* This iterator published the active chain; gates leaf-S unfix at SHARED_DRAIN exit. */
       int  m_chain_slot_idx;            /* slot index in overflow pool; -1 when not in SHARED_DRAIN. */
 
-      parallel_scan::slot_iterator_index *m_owner;   /* borrowed; provides m_page/m_slot_key/etc. + process_oid. */
+      leaf_slot_walker *m_owner;        /* borrowed; provides m_page/m_slot_key/etc. + process_oid. */
   };
 }
 
