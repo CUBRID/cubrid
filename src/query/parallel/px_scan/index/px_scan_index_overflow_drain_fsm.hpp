@@ -1,0 +1,137 @@
+/*
+ *
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+/*
+ * px_scan_index_overflow_drain_fsm.hpp
+ */
+
+#ifndef _PX_SCAN_INDEX_OVERFLOW_DRAIN_FSM_HPP_
+#define _PX_SCAN_INDEX_OVERFLOW_DRAIN_FSM_HPP_
+
+#include "dbtype.h"
+#include "scan_manager.h"
+#include "storage_common.h"
+
+#include <vector>
+
+namespace parallel_scan
+{
+  class slot_iterator_index;       /* fwd: owner facade, set via wire_owner. */
+}
+
+namespace parallel_index_scan
+{
+  /* (E) Per-slot drain state machine: DRAIN_LEAF_OIDS → {SHARED_DRAIN | SOLO_DRAIN} → IDLE.
+   * Owns m_slot_oids buffer + chain-take-up bookkeeping; producer-anchored buffer share. */
+  class overflow_drain_fsm
+  {
+    public:
+      enum class slot_state
+      {
+	IDLE,             /* between leaf-records; normal slot iteration */
+	DRAIN_LEAF_OIDS,  /* m_slot_oids holds leaf-resident OIDs */
+	SHARED_DRAIN,     /* pulling overflow pages from input_handler shared cursor */
+	SOLO_DRAIN        /* walking the chain alone (try_publish_overflow lost) */
+      };
+
+      overflow_drain_fsm ()
+	: m_slot_state (slot_state::IDLE),
+	  m_slot_oids (),
+	  m_slot_oid_idx (0),
+	  m_solo_prev_page (nullptr),
+	  m_in_helper_mode (false),
+	  m_was_producer (false),
+	  m_chain_slot_idx (-1),
+	  m_owner (nullptr)
+      {
+	VPID_SET_NULL (&m_solo_cur_vpid);
+	VPID_SET_NULL (&m_pending_ovf_vpid);
+      }
+
+      void wire_owner (parallel_scan::slot_iterator_index *owner)
+      {
+	m_owner = owner;
+      }
+
+      /* State predicates / mutators used by the slot_iterator facade. */
+      slot_state state () const
+      {
+	return m_slot_state;
+      }
+      bool is_idle () const
+      {
+	return m_slot_state == slot_state::IDLE;
+      }
+      bool was_producer () const
+      {
+	return m_was_producer;
+      }
+      bool in_helper_mode () const
+      {
+	return m_in_helper_mode;
+      }
+      int chain_slot_idx () const
+      {
+	return m_chain_slot_idx;
+      }
+
+      /* Begin a leaf-OID drain by adopting the OID vector + pending overflow chain head from the producer-side leaf record. */
+      void begin_leaf_drain (std::vector<OID> &&oids, VPID pending_ovf_vpid)
+      {
+	m_slot_oids = std::move (oids);
+	m_slot_oid_idx = 0;
+	m_pending_ovf_vpid = pending_ovf_vpid;
+	m_slot_state = slot_state::DRAIN_LEAF_OIDS;
+      }
+
+      /* Drives DRAIN_LEAF_OIDS → SHARED/SOLO → IDLE; returns S_SUCCESS / S_END / S_ERROR.
+       * Calls back into m_owner for process_oid + leaf-slot context. */
+      SCAN_CODE drain_next_oid (THREAD_ENTRY *thread_p);
+
+      /* Late-joiner entry: handler-fetched overflow page + helper-owned local_key (ownership transfer
+       * on S_SUCCESS: caller MUST NOT pr_clear_value post-success); slot_idx for per-chain exit. */
+      int set_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page, DB_VALUE *local_key,
+			     bool local_clear_key, int range_idx, int slot_idx);
+
+      /* Cleanup helpers used from slot_iterator's finalize / set_page top blocks. */
+      void cleanup_on_reset (THREAD_ENTRY *thread_p);
+
+    private:
+      int process_one_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page);
+
+      slot_state m_slot_state;
+
+      std::vector<OID> m_slot_oids;
+      size_t m_slot_oid_idx;
+
+      /* SOLO_DRAIN private cursor + hand-over-hand prev page. */
+      VPID m_solo_cur_vpid;
+      PAGE_PTR m_solo_prev_page;
+
+      /* Carried between leaf-OID drain and overflow chain take-up. */
+      VPID m_pending_ovf_vpid;
+
+      bool m_in_helper_mode;            /* True when iterator was set up via set_overflow_page (late joiner). */
+      bool m_was_producer;              /* This iterator published the active chain; gates leaf-S unfix at SHARED_DRAIN exit. */
+      int  m_chain_slot_idx;            /* slot index in overflow pool; -1 when not in SHARED_DRAIN. */
+
+      parallel_scan::slot_iterator_index *m_owner;   /* borrowed; provides m_page/m_slot_key/etc. + process_oid. */
+  };
+}
+
+#endif /* _PX_SCAN_INDEX_OVERFLOW_DRAIN_FSM_HPP_ */

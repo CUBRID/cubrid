@@ -16,7 +16,7 @@
  *
  */
 
-/* px_scan_slot_iterator_index.cpp — IDLE/DRAIN_LEAF_OIDS/SHARED_DRAIN/SOLO_DRAIN state machine; producer-anchored buffer share. */
+/* px_scan_slot_iterator_index.cpp — facade: leaf slot loop + range check; delegates drain machinery to m_drain_fsm. */
 
 #include "px_scan_slot_iterator_index.hpp"
 #include "px_scan_input_handler_index.hpp"
@@ -41,13 +41,18 @@
 
 namespace parallel_scan
 {
+  namespace
+  {
+    /* file-local: leaf-side OID gather helper. */
+    struct leaf_collect_helper
+    {
+      std::vector<OID> *oid_vec;
+      MVCC_SNAPSHOT *snapshot;
+    };
+  }
+
   slot_iterator_index::slot_iterator_index ()
-    : m_slot_state (slot_state::IDLE),
-      m_solo_prev_page (nullptr),
-      m_in_helper_mode (false),
-      m_was_producer (false),
-      m_chain_slot_idx (-1),
-      m_scan_id (nullptr),
+    : m_scan_id (nullptr),
       m_vd (nullptr),
       m_btid_int (nullptr),
       m_input_handler (nullptr),
@@ -58,14 +63,13 @@ namespace parallel_scan
       m_is_covering (false),
       m_use_desc_index (false),
       m_current_range_idx (0),
-      m_slot_oid_idx (0),
       m_slot_key_valid (false),
-      m_slot_clear_key (false)
+      m_slot_clear_key (false),
+      m_drain_fsm ()
   {
     memset (&m_data_filter, 0, sizeof (m_data_filter));
     db_make_null (&m_slot_key);
-    VPID_SET_NULL (&m_solo_cur_vpid);
-    VPID_SET_NULL (&m_pending_ovf_vpid);
+    m_drain_fsm.wire_owner (this);
   }
 
   slot_iterator_index::~slot_iterator_index ()
@@ -94,23 +98,7 @@ namespace parallel_scan
 	m_page = nullptr;
       }
 
-    /* SHARED_DRAIN cleanup: per-slot exit; producer's leaf m_page was already unfixed by the unconditional top block above. */
-    if (m_slot_state == slot_state::SHARED_DRAIN && m_in_helper_mode)
-      {
-	assert (m_chain_slot_idx >= 0);
-	m_input_handler->exit_overflow_help (thread_p, m_chain_slot_idx);
-	m_was_producer = false;
-	m_in_helper_mode = false;
-	m_chain_slot_idx = -1;
-      }
-    if (m_slot_state == slot_state::SOLO_DRAIN && m_solo_prev_page != nullptr)
-      {
-	pgbuf_unfix (thread_p, m_solo_prev_page);
-	m_solo_prev_page = nullptr;
-      }
-    VPID_SET_NULL (&m_solo_cur_vpid);
-    VPID_SET_NULL (&m_pending_ovf_vpid);
-    m_slot_state = slot_state::IDLE;
+    m_drain_fsm.cleanup_on_reset (thread_p);
 
     if (m_slot_key_valid && m_slot_clear_key)
       {
@@ -118,8 +106,6 @@ namespace parallel_scan
       }
     m_slot_key_valid = false;
     m_slot_clear_key = false;
-    m_slot_oids.clear ();
-    m_slot_oid_idx = 0;
 
     m_scan_id = nullptr;
     m_vd = nullptr;
@@ -336,23 +322,7 @@ namespace parallel_scan
 	m_page = nullptr;
       }
 
-    /* drain-state cleanup: per-slot exit; producer's leaf m_page was already unfixed by the unconditional top block above. */
-    if (m_slot_state == slot_state::SHARED_DRAIN && m_in_helper_mode)
-      {
-	assert (m_chain_slot_idx >= 0);
-	m_input_handler->exit_overflow_help (thread_p, m_chain_slot_idx);
-	m_was_producer = false;
-	m_in_helper_mode = false;
-	m_chain_slot_idx = -1;
-      }
-    if (m_slot_state == slot_state::SOLO_DRAIN && m_solo_prev_page != nullptr)
-      {
-	pgbuf_unfix (thread_p, m_solo_prev_page);
-	m_solo_prev_page = nullptr;
-      }
-    VPID_SET_NULL (&m_solo_cur_vpid);
-    VPID_SET_NULL (&m_pending_ovf_vpid);
-    m_slot_state = slot_state::IDLE;
+    m_drain_fsm.cleanup_on_reset (thread_p);
 
     if (m_slot_key_valid && m_slot_clear_key)
       {
@@ -360,8 +330,6 @@ namespace parallel_scan
       }
     m_slot_key_valid = false;
     m_slot_clear_key = false;
-    m_slot_oids.clear ();
-    m_slot_oid_idx = 0;
 
     m_page = page;
 
@@ -381,19 +349,13 @@ namespace parallel_scan
     return NO_ERROR;
   }
 
-  struct collect_oid_helper
-  {
-    std::vector<OID> *oid_vec;
-    MVCC_SNAPSHOT *snapshot;
-  };
-
   /* MVCC pre-filter; without it filtered-index updated versions leak into heap_get_visible_version. */
   int
   slot_iterator_index::collect_oid_callback (THREAD_ENTRY *thread_p, BTID_INT *btid_int, RECDES *record,
       char *object_ptr, OID *oid, OID *class_oid,
       BTREE_MVCC_INFO *mvcc_info, bool *stop, void *args)
   {
-    auto *helper = static_cast<collect_oid_helper *> (args);
+    auto *helper = static_cast<leaf_collect_helper *> (args);
 
     if (helper->snapshot != nullptr)
       {
@@ -406,34 +368,6 @@ namespace parallel_scan
       }
 
     helper->oid_vec->push_back (*oid);
-    return NO_ERROR;
-  }
-
-  /* Reads OIDs from one overflow page into m_slot_oids; bumps scan counters. */
-  int
-  slot_iterator_index::process_one_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page)
-  {
-    RECDES peeked;
-    if (spage_get_record (thread_p, page, 1, &peeked, PEEK) != S_SUCCESS)
-      {
-	ASSERT_ERROR ();
-	return ER_FAILED;
-      }
-    m_slot_oids.clear ();
-    m_slot_oid_idx = 0;
-    collect_oid_helper helper;
-    helper.oid_vec = &m_slot_oids;
-    helper.snapshot = m_scan_id->s.isid.scan_cache.mvcc_snapshot;
-    bool stop = false;
-    int rerr = btree_record_process_objects (thread_p, m_btid_int, BTREE_OVERFLOW_NODE,
-	       &peeked, 0, &stop,
-	       collect_oid_callback, &helper);
-    if (rerr != NO_ERROR)
-      {
-	return rerr;
-      }
-    m_scan_id->scan_stats.key_qualified_rows += m_slot_oids.size ();
-    m_scan_id->scan_stats.read_rows += m_slot_oids.size ();
     return NO_ERROR;
   }
 
@@ -577,10 +511,10 @@ namespace parallel_scan
   {
     INDX_SCAN_ID *isidp = &m_scan_id->s.isid;
 
-    /* If we have a drain in progress (any state != IDLE), continue it. */
-    if (m_slot_state != slot_state::IDLE)
+    /* If we have a drain in progress (FSM not IDLE), continue it. */
+    if (!m_drain_fsm.is_idle ())
       {
-	SCAN_CODE sc = drain_next_oid (thread_p);
+	SCAN_CODE sc = m_drain_fsm.drain_next_oid (thread_p);
 	if (sc != S_END)
 	  {
 	    return sc;
@@ -764,15 +698,13 @@ namespace parallel_scan
 		  }
 		continue;
 	      }
-
 	  }
 
 	/* 4. Gather leaf-resident OIDs only; overflow pulled lazily after leaf-OID buffer drains. */
-	m_slot_oids.clear ();
-	m_slot_oid_idx = 0;
+	std::vector<OID> leaf_oids;
 
-	collect_oid_helper oid_helper;
-	oid_helper.oid_vec = &m_slot_oids;
+	leaf_collect_helper oid_helper;
+	oid_helper.oid_vec = &leaf_oids;
 	oid_helper.snapshot = isidp->scan_cache.mvcc_snapshot;
 
 	bool record_stop = false;
@@ -794,21 +726,20 @@ namespace parallel_scan
 	    return S_ERROR;
 	  }
 
-	m_scan_id->scan_stats.key_qualified_rows += m_slot_oids.size ();
-	m_scan_id->scan_stats.read_rows += m_slot_oids.size ();
+	m_scan_id->scan_stats.key_qualified_rows += leaf_oids.size ();
+	m_scan_id->scan_stats.read_rows += leaf_oids.size ();
 
 	/* Save the key for process_oid (covering-index PEEK reads via btree_attrinfo_read_dbvalues). */
 	m_slot_key = key;
 	m_slot_key_valid = true;
 	m_slot_clear_key = clear_key;
-	m_slot_state = slot_state::DRAIN_LEAF_OIDS;
 
-	/* Carry overflow chain start; try_publish_overflow happens after leaf-OID drain (layer-1 invariant). */
-	m_pending_ovf_vpid = leaf_rec_info.ovfl;
+	/* Hand the OID buffer + pending overflow chain head to the FSM; try_publish happens after leaf-OID drain. */
+	m_drain_fsm.begin_leaf_drain (std::move (leaf_oids), leaf_rec_info.ovfl);
 
 	/* Drop into the unified drain loop (handles DRAIN_LEAF_OIDS / SHARED_DRAIN / SOLO_DRAIN). */
 	{
-	  SCAN_CODE drain_sc = drain_next_oid (thread_p);
+	  SCAN_CODE drain_sc = m_drain_fsm.drain_next_oid (thread_p);
 	  if (drain_sc != S_END)
 	    {
 	      return drain_sc;
@@ -824,277 +755,5 @@ namespace parallel_scan
 	m_page = nullptr;
       }
     return S_END;
-  }
-
-  SCAN_CODE
-  slot_iterator_index::drain_next_oid (THREAD_ENTRY *thread_p)
-  {
-    for (;;)
-      {
-	/* Inner: pull next OID from current buffer. */
-	while (m_slot_oid_idx < m_slot_oids.size ())
-	  {
-	    OID oid = m_slot_oids[m_slot_oid_idx++];
-	    SCAN_CODE sc = process_oid (thread_p, &oid);
-	    if (sc == S_SUCCESS)
-	      {
-		return S_SUCCESS;
-	      }
-	    if (sc == S_ERROR)
-	      {
-		return S_ERROR;
-	      }
-	    /* S_END = skip; continue inner loop. */
-	  }
-
-	/* Buffer drained. Decide next refill source from state. */
-	switch (m_slot_state)
-	  {
-	  case slot_state::DRAIN_LEAF_OIDS:
-	  {
-	    /* Leaf-OIDs done. Now decide overflow take-up. */
-	    if (VPID_ISNULL (&m_pending_ovf_vpid))
-	      {
-		/* No overflow chain — advance to next slot. */
-		if (m_slot_key_valid && m_slot_clear_key)
-		  {
-		    pr_clear_value (&m_slot_key);
-		  }
-		m_slot_key_valid = false;
-		m_slot_clear_key = false;
-		m_slot_state = slot_state::IDLE;
-		return S_END;
-	      }
-	    /* leaf_slot_for_publish recovers producer's read slot: m_current_slot was inc/dec'd past it (line 633), so reverse by one. */
-	    VPID leaf_vpid_for_publish;
-	    pgbuf_get_vpid (m_page, &leaf_vpid_for_publish);
-	    PGSLOTID leaf_slot_for_publish = (PGSLOTID) (m_use_desc_index ? (m_current_slot + 1) : (m_current_slot - 1));
-	    int published_idx = m_input_handler->try_publish_overflow (thread_p,
-				m_pending_ovf_vpid,
-				leaf_vpid_for_publish,
-				leaf_slot_for_publish,
-				m_current_range_idx);
-	    if (published_idx >= 0)
-	      {
-		m_chain_slot_idx = published_idx;
-		m_was_producer = true;
-		m_in_helper_mode = true;     /* producer also counts in per-slot helpers */
-		m_slot_state = slot_state::SHARED_DRAIN;
-	      }
-	    else
-	      {
-		/* Cap-overflow — walk solo with private cursor. */
-		m_chain_slot_idx = -1;
-		m_solo_cur_vpid = m_pending_ovf_vpid;
-		m_solo_prev_page = nullptr;
-		m_slot_state = slot_state::SOLO_DRAIN;
-	      }
-	    VPID_SET_NULL (&m_pending_ovf_vpid);
-	    /* Fall through outer for-loop to refill from new state. */
-	    continue;
-	  }
-
-	  case slot_state::SHARED_DRAIN:
-	  {
-	    PAGE_PTR ovf_page = nullptr;
-	    int range_idx = -1;
-	    SCAN_CODE cs = m_input_handler->claim_next_overflow_page (thread_p, m_chain_slot_idx, ovf_page,
-			   range_idx);
-	    if (cs == S_END)
-	      {
-		/* per-slot chain exhausted; producer keeps leaf S latch to advance to next slot — leaf unfix is page-scoped (slot-loop exit / past_upper / set_page top), not chain-scoped. */
-		assert (m_slot_oid_idx == m_slot_oids.size ());
-		m_input_handler->exit_overflow_help (thread_p, m_chain_slot_idx);
-		/* m_slot_key body owned by this worker (helper: COPY in wait_or_help_overflow; producer: next_qualified_slot_with_peek). */
-		if (m_slot_key_valid && m_slot_clear_key)
-		  {
-		    pr_clear_value (&m_slot_key);
-		  }
-		m_slot_key_valid = false;
-		m_slot_clear_key = false;
-		m_was_producer = false;
-		m_in_helper_mode = false;
-		m_chain_slot_idx = -1;
-		m_slot_state = slot_state::IDLE;
-		return S_END;
-	      }
-	    if (cs == S_ERROR)
-	      {
-		m_input_handler->exit_overflow_help (thread_p, m_chain_slot_idx);
-		if (m_was_producer && m_page != nullptr)
-		  {
-		    pgbuf_unfix (thread_p, m_page);
-		    m_page = nullptr;
-		  }
-		if (m_slot_key_valid && m_slot_clear_key)
-		  {
-		    pr_clear_value (&m_slot_key);
-		  }
-		m_slot_key_valid = false;
-		m_slot_clear_key = false;
-		m_was_producer = false;
-		m_in_helper_mode = false;
-		m_chain_slot_idx = -1;
-		m_slot_state = slot_state::IDLE;
-		return S_ERROR;
-	      }
-	    int rerr = process_one_overflow_page (thread_p, ovf_page);
-	    m_input_handler->release_overflow_page (thread_p, ovf_page);
-	    if (rerr != NO_ERROR)
-	      {
-		m_input_handler->exit_overflow_help (thread_p, m_chain_slot_idx);
-		if (m_was_producer && m_page != nullptr)
-		  {
-		    pgbuf_unfix (thread_p, m_page);
-		    m_page = nullptr;
-		  }
-		if (m_slot_key_valid && m_slot_clear_key)
-		  {
-		    pr_clear_value (&m_slot_key);
-		  }
-		m_slot_key_valid = false;
-		m_slot_clear_key = false;
-		m_was_producer = false;
-		m_in_helper_mode = false;
-		m_chain_slot_idx = -1;
-		m_slot_state = slot_state::IDLE;
-		return S_ERROR;
-	      }
-	    continue;
-	  }
-
-	  case slot_state::SOLO_DRAIN:
-	  {
-	    if (VPID_ISNULL (&m_solo_cur_vpid))
-	      {
-		if (m_solo_prev_page != nullptr)
-		  {
-		    pgbuf_unfix (thread_p, m_solo_prev_page);
-		    m_solo_prev_page = nullptr;
-		  }
-		if (m_slot_key_valid && m_slot_clear_key)
-		  {
-		    pr_clear_value (&m_slot_key);
-		  }
-		m_slot_key_valid = false;
-		m_slot_clear_key = false;
-		m_slot_state = slot_state::IDLE;
-		return S_END;
-	      }
-	    VPID next_vpid = m_solo_cur_vpid;
-	    PAGE_PTR next_page = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_READ,
-					    PGBUF_UNCONDITIONAL_LATCH);
-	    if (next_page == NULL)
-	      {
-		ASSERT_ERROR ();
-		if (m_solo_prev_page != nullptr)
-		  {
-		    pgbuf_unfix (thread_p, m_solo_prev_page);
-		    m_solo_prev_page = nullptr;
-		  }
-		if (m_slot_key_valid && m_slot_clear_key)
-		  {
-		    pr_clear_value (&m_slot_key);
-		  }
-		m_slot_key_valid = false;
-		m_slot_clear_key = false;
-		m_slot_state = slot_state::IDLE;
-		return S_ERROR;
-	      }
-	    (void) pgbuf_check_page_ptype (thread_p, next_page, PAGE_BTREE);
-	    if (m_solo_prev_page != nullptr)
-	      {
-		pgbuf_unfix (thread_p, m_solo_prev_page);
-		m_solo_prev_page = nullptr;
-	      }
-	    int rerr = process_one_overflow_page (thread_p, next_page);
-	    if (rerr != NO_ERROR)
-	      {
-		pgbuf_unfix (thread_p, next_page);
-		if (m_slot_key_valid && m_slot_clear_key)
-		  {
-		    pr_clear_value (&m_slot_key);
-		  }
-		m_slot_key_valid = false;
-		m_slot_clear_key = false;
-		m_slot_state = slot_state::IDLE;
-		return S_ERROR;
-	      }
-	    VPID next_next;
-	    if (btree_get_next_overflow_vpid (thread_p, next_page, &next_next) != NO_ERROR)
-	      {
-		ASSERT_ERROR ();
-		pgbuf_unfix (thread_p, next_page);
-		if (m_slot_key_valid && m_slot_clear_key)
-		  {
-		    pr_clear_value (&m_slot_key);
-		  }
-		m_slot_key_valid = false;
-		m_slot_clear_key = false;
-		m_slot_state = slot_state::IDLE;
-		return S_ERROR;
-	      }
-	    m_solo_prev_page = next_page;
-	    m_solo_cur_vpid = next_next;
-	    continue;
-	  }
-
-	  case slot_state::IDLE:
-	  default:
-	    /* Out-of-state — caller should not reach here. */
-	    return S_END;
-	  }
-      }
-  }
-
-  int
-  slot_iterator_index::set_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page, DB_VALUE *local_key,
-					  bool local_clear_key, int range_idx, int slot_idx)
-  {
-    /* Late-joiners skip set_page; init m_btid_int here to avoid NULL-deref in btree_record_process_objects. */
-    if (m_input_handler != nullptr && m_btid_int == nullptr)
-      {
-	m_btid_int = m_input_handler->get_btid_int ();
-      }
-    /* Unfix any prior leaf page; handler owns the overflow page until we release it after reading. */
-    if (m_page != nullptr)
-      {
-	pgbuf_unfix (thread_p, m_page);
-	m_page = nullptr;
-      }
-    /* Clear any leaf-side slot_key residue. */
-    if (m_slot_key_valid && m_slot_clear_key)
-      {
-	pr_clear_value (&m_slot_key);
-      }
-    /* ownership transfer: m_slot_key adopts local_key body (helper mspace via COPY); caller MUST NOT pr_clear_value post-S_SUCCESS. */
-    m_slot_key = *local_key;
-    /* defensive: invalidate caller's struct so post-success pr_clear_value is a no-op. */
-    db_make_null (local_key);
-    m_slot_key_valid = true;
-    m_slot_clear_key = local_clear_key;
-    m_current_range_idx = range_idx;
-    m_chain_slot_idx = slot_idx;
-    m_slot_state = slot_state::SHARED_DRAIN;
-    m_in_helper_mode = true;
-
-    int rerr = process_one_overflow_page (thread_p, page);
-    m_input_handler->release_overflow_page (thread_p, page);
-    if (rerr != NO_ERROR)
-      {
-	m_input_handler->exit_overflow_help (thread_p, m_chain_slot_idx);
-	if (m_slot_key_valid && m_slot_clear_key)
-	  {
-	    pr_clear_value (&m_slot_key);
-	  }
-	m_slot_key_valid = false;
-	m_slot_clear_key = false;
-	m_in_helper_mode = false;
-	m_was_producer = false;
-	m_chain_slot_idx = -1;
-	m_slot_state = slot_state::IDLE;
-	return ER_FAILED;
-      }
-    return NO_ERROR;
   }
 }

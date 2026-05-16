@@ -23,10 +23,11 @@
 #ifndef _PX_SCAN_SLOT_ITERATOR_INDEX_HPP_
 #define _PX_SCAN_SLOT_ITERATOR_INDEX_HPP_
 
-#include "scan_manager.h"
-#include "query_evaluator.h"
-#include "storage_common.h"
 #include "btree.h"
+#include "px_scan_index_overflow_drain_fsm.hpp"
+#include "query_evaluator.h"
+#include "scan_manager.h"
+#include "storage_common.h"
 
 #include <vector>
 
@@ -36,6 +37,9 @@ namespace parallel_scan
 
   class slot_iterator_index
   {
+      /* FSM owns drain-state machinery + late-joiner entry; pokes into private leaf/key fields here. */
+      friend class parallel_index_scan::overflow_drain_fsm;
+
     public:
       slot_iterator_index ();
       ~slot_iterator_index ();
@@ -46,10 +50,12 @@ namespace parallel_scan
       int set_page (THREAD_ENTRY *thread_p, PAGE_PTR page, INT16 slot_hint = NULL_SLOTID);
       SCAN_CODE next_qualified_slot_with_peek (THREAD_ENTRY *thread_p);
 
-      /* Late-joiner entry: handler-fetched overflow page + helper-owned local_key (ownership transfer
-       * on S_SUCCESS: caller MUST NOT pr_clear_value post-success); slot_idx for per-chain exit. */
+      /* Late-joiner entry; delegates to m_drain_fsm. */
       int set_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page, DB_VALUE *local_key,
-			     bool local_clear_key, int range_idx, int slot_idx);
+			     bool local_clear_key, int range_idx, int slot_idx)
+      {
+	return m_drain_fsm.set_overflow_page (thread_p, page, local_key, local_clear_key, range_idx, slot_idx);
+      }
 
       void set_input_handler (input_handler_index *handler)
       {
@@ -63,29 +69,6 @@ namespace parallel_scan
       }
 
     private:
-      enum class slot_state
-      {
-	IDLE,             /* between leaf-records; normal slot iteration */
-	DRAIN_LEAF_OIDS,  /* m_slot_oids holds leaf-resident OIDs */
-	SHARED_DRAIN,     /* pulling overflow pages from input_handler shared cursor */
-	SOLO_DRAIN        /* walking the chain alone (try_publish_overflow lost) */
-      };
-      slot_state m_slot_state;
-
-      /* SOLO_DRAIN private cursor + hand-over-hand prev page. */
-      VPID m_solo_cur_vpid;
-      PAGE_PTR m_solo_prev_page;
-
-      /* True when the iterator was set up via set_overflow_page (late joiner). */
-      bool m_in_helper_mode;
-
-      bool m_was_producer;              /* this iterator published the active chain; gates leaf-S unfix at SHARED_DRAIN exit. */
-
-      int m_chain_slot_idx;             /* slot index in m_overflow_slots; -1 when not in SHARED_DRAIN. */
-
-      /* Carried between leaf-OID drain and overflow chain take-up. */
-      VPID m_pending_ovf_vpid;
-
       SCAN_ID *m_scan_id;
       val_descr *m_vd;
       BTID_INT *m_btid_int;             /* shared, read-only — from input_handler. */
@@ -100,18 +83,17 @@ namespace parallel_scan
       /* m_key_val_ranges owned by input_handler. */
       int m_current_range_idx;
 
-      std::vector<OID> m_slot_oids;
-      size_t m_slot_oid_idx;
       DB_VALUE m_slot_key;              /* retained across OID drain. */
       bool m_slot_key_valid;
       bool m_slot_clear_key;             /* needs pr_clear_value. */
 
+      /* (E) drain-state machine sub-component; pokes leaf/key fields above via friendship. */
+      parallel_index_scan::overflow_drain_fsm m_drain_fsm;
+
       int check_key_in_range (DB_VALUE *key, bool *in_range, bool *past_upper, int *matched_range_idx);
       SCAN_CODE process_oid (THREAD_ENTRY *thread_p, OID *oid);
-      SCAN_CODE drain_next_oid (THREAD_ENTRY *thread_p);
-      int process_one_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page);
 
-      /* btree_key_process_objects callback. */
+      /* btree_key_process_objects callback (leaf-side gather). */
       static int collect_oid_callback (THREAD_ENTRY *thread_p, BTID_INT *btid_int, RECDES *record,
 				       char *object_ptr, OID *oid, OID *class_oid,
 				       BTREE_MVCC_INFO *mvcc_info, bool *stop, void *args);
