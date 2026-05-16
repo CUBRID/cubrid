@@ -773,51 +773,9 @@ namespace parallel_scan
 	  {
 	    if constexpr (ST == SCAN_TYPE::INDEX)
 	      {
-		/* Late-joiner mode: leaf supply exhausted; help drain remaining shared chains. */
-		/* Order: signal_no_more_leaves before leave_worker so waiters seeing active==0 also see no_more_leaves. */
-		m_input_handler->signal_no_more_leaves ();
-		m_input_handler->leave_worker ();
+		/* drain_late_joiner_chains calls leave_worker itself; disarm the RAII guard first. */
 		worker_guard.handler = nullptr;
-		while (!stop)
-		  {
-		    PAGE_PTR ovf_page = nullptr;
-		    DB_VALUE ovf_local_key;
-		    bool ovf_local_clear_key = false;
-		    int ovf_range = -1;
-		    int ovf_slot_idx = -1;
-		    db_make_null (&ovf_local_key);
-		    SCAN_CODE help = m_input_handler->wait_or_help_overflow (&thread_ref, ovf_page,
-				     &ovf_local_key, &ovf_local_clear_key, ovf_range, ovf_slot_idx);
-		    if (help == S_END)
-		      {
-			break;
-		      }
-		    if (help == S_ERROR)
-		      {
-			if (m_interrupt->get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
-			  {
-			    m_err_messages->move_top_error_message_to_this();
-			    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-			  }
-			stop = true;
-			break;
-		      }
-		    /* Ownership transfer: on S_SUCCESS, set_overflow_page adopts ovf_local_key body. */
-		    int sp_err = m_slot_iterator.set_overflow_page (&thread_ref, ovf_page, &ovf_local_key,
-				 ovf_local_clear_key, ovf_range, ovf_slot_idx);
-		    if (sp_err != NO_ERROR)
-		      {
-			if (m_interrupt->get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
-			  {
-			    m_err_messages->move_top_error_message_to_this();
-			    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-			  }
-			stop = true;
-			break;
-		      }
-		    /* drain_slot_oids returns S_END at completion or S_ERROR with stop=true on terminal failure. */
-		    (void) drain_slot_oids (thread_ref, stop);
-		  }
+		drain_late_joiner_chains (thread_ref, stop);
 	      }
 	    m_xasl->curr_spec->s_id.position = S_AFTER;
 	    break;
@@ -874,6 +832,58 @@ namespace parallel_scan
 	  }
 	/* drain_slot_oids returns S_END at completion or S_ERROR with stop=true on terminal failure. */
 	(void) drain_slot_oids (thread_ref, stop);
+      }
+  }
+
+  /* INDEX-only: after leaf supply exhausted, signal no-more-leaves, leave worker count, then help drain remaining shared overflow chains until the pool quiesces. */
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  void task<result_type, ST>::drain_late_joiner_chains (cubthread::entry &thread_ref, bool &stop)
+  {
+    if constexpr (ST == SCAN_TYPE::INDEX)
+      {
+	/* Order: signal_no_more_leaves before leave_worker so waiters seeing active==0 also see no_more_leaves. */
+	m_input_handler->signal_no_more_leaves ();
+	m_input_handler->leave_worker ();
+	while (!stop)
+	  {
+	    PAGE_PTR ovf_page = nullptr;
+	    DB_VALUE ovf_local_key;
+	    bool ovf_local_clear_key = false;
+	    int ovf_range = -1;
+	    int ovf_slot_idx = -1;
+	    db_make_null (&ovf_local_key);
+	    SCAN_CODE help = m_input_handler->wait_or_help_overflow (&thread_ref, ovf_page,
+			     &ovf_local_key, &ovf_local_clear_key, ovf_range, ovf_slot_idx);
+	    if (help == S_END)
+	      {
+		break;
+	      }
+	    if (help == S_ERROR)
+	      {
+		if (m_interrupt->get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+		  {
+		    m_err_messages->move_top_error_message_to_this();
+		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		  }
+		stop = true;
+		break;
+	      }
+	    /* Ownership transfer: on S_SUCCESS, set_overflow_page adopts ovf_local_key body. */
+	    int sp_err = m_slot_iterator.set_overflow_page (&thread_ref, ovf_page, &ovf_local_key,
+			 ovf_local_clear_key, ovf_range, ovf_slot_idx);
+	    if (sp_err != NO_ERROR)
+	      {
+		if (m_interrupt->get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+		  {
+		    m_err_messages->move_top_error_message_to_this();
+		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		  }
+		stop = true;
+		break;
+	      }
+	    /* drain_slot_oids returns S_END at completion or S_ERROR with stop=true on terminal failure. */
+	    (void) drain_slot_oids (thread_ref, stop);
+	  }
       }
   }
 
