@@ -23,11 +23,12 @@
 #ifndef _PX_SCAN_INPUT_HANDLER_INDEX_HPP_
 #define _PX_SCAN_INPUT_HANDLER_INDEX_HPP_
 
-#include "px_interrupt.hpp"
-#include "scan_manager.h"
 #include "access_spec.hpp"
 #include "btree.h"
 #include "dbtype.h"
+#include "px_interrupt.hpp"
+#include "px_scan_index_key_range_list.hpp"
+#include "scan_manager.h"
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
@@ -57,20 +58,13 @@ namespace parallel_scan
 	  m_descent_done (false),
 	  m_interrupt_p (interrupt_p),
 	  m_err_messages_p (err_messages_p),
-	  m_indx_info (nullptr),
-	  m_use_desc_index (false),
-	  m_scan_id (nullptr),
-	  m_vd (nullptr),
-	  m_key_val_ranges (),
-	  m_part_key_desc (false),
+	  m_ranges (),
 	  m_current_range_idx (0),
 	  m_overflow_slots (),
 	  m_next_chain_to_help (0),
 	  m_active_workers (0),
 	  m_no_more_leaves (false)
       {
-	memset (&m_btid_int, 0, sizeof (m_btid_int));
-	memset (&m_btid, 0, sizeof (m_btid));
 	VPID_SET_NULL (&m_current_leaf_vpid);
       }
       int init_on_main (THREAD_ENTRY *thread_p, INDX_INFO *indx_info, SCAN_ID *scan_id, val_descr *vd, int parallelism);
@@ -86,33 +80,30 @@ namespace parallel_scan
       int finalize (THREAD_ENTRY *thread_p);
       void cleanup_keys (THREAD_ENTRY *thread_p);
 
+      /* getter delegations to m_ranges */
       BTID_INT *get_btid_int ()
       {
-	return &m_btid_int;
+	return m_ranges.get_btid_int ();
       }
-
       INDX_INFO *get_indx_info ()
       {
-	return m_indx_info;
+	return m_ranges.get_indx_info ();
       }
-
       bool is_desc_index () const
       {
-	return m_use_desc_index;
+	return m_ranges.is_desc_index ();
       }
-
-      /* valid after init_on_main: m_btid_int populated, key ranges converted on main thread. */
       key_val_range *get_key_val_ranges ()
       {
-	return m_key_val_ranges.empty () ? nullptr : m_key_val_ranges.data ();
+	return m_ranges.get_key_val_ranges ();
       }
       int get_num_key_ranges () const
       {
-	return static_cast<int> (m_key_val_ranges.size ());
+	return m_ranges.get_num_key_ranges ();
       }
       bool is_part_key_desc () const
       {
-	return m_part_key_desc;
+	return m_ranges.is_part_key_desc ();
       }
 
       /* --- Shared overflow API (v2 / multi-chain) --- */
@@ -137,26 +128,16 @@ namespace parallel_scan
       /* requires m_leaf_mutex; closed-bound: btree_locate_key; open-bound: manual latch-coupled descent to boundary leaf. */
       SCAN_CODE descend_to_first_leaf (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, int range_idx, PAGE_PTR &out_leaf,
 				       VPID *out_vpid = nullptr, INT16 *out_slot_id = nullptr);
-      /* idempotent; sort + part_key_desc swap. */
-      int convert_all_key_ranges (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id);
 
       VPID m_current_leaf_vpid;         /* mutex-protected */
       bool m_leaf_ended;                /* mutex-protected; set by signal_chain_ended (past_upper) or chain-end VPID_ISNULL */
       bool m_descent_done;              /* mutex-protected; first-descent latch */
       std::mutex m_leaf_mutex;
-      BTID_INT m_btid_int;
-      BTID m_btid;
       interrupt *m_interrupt_p;
       err_messages_with_lock *m_err_messages_p;
-      INDX_INFO *m_indx_info;
-      bool m_use_desc_index;
 
-      SCAN_ID *m_scan_id;               /* for scan_regu_key_to_index_key */
-      val_descr *m_vd;
-
-      /* std::vector — alloc/dealloc thread-context-independent (any worker may finalize). */
-      std::vector<key_val_range> m_key_val_ranges;
-      bool m_part_key_desc;
+      /* (C) range/keylist sub-component: owns BTID_INT/key_val_range vector lifecycle. */
+      parallel_index_scan::key_range_list m_ranges;
 
       /* m_current_range_idx: sole authoritative range cursor; mutex-protected; written only by fetch's descent branch. */
       int m_current_range_idx;

@@ -442,6 +442,7 @@ include_directories(
   src/xasl
   src/query/parallel/px_hash_join
   src/query/parallel/px_scan
+  src/query/parallel/px_scan/index
   src/query/parallel
   src/query/parallel/px_query_execute
   )
