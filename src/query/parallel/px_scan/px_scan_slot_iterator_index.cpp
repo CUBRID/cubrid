@@ -902,14 +902,9 @@ namespace parallel_scan
 			   range_idx);
 	    if (cs == S_END)
 	      {
-		/* Chain exhausted; per-slot exit; producer drops leaf S latch here. */
+		/* per-slot chain exhausted; producer keeps leaf S latch to advance to next slot — leaf unfix is page-scoped (slot-loop exit / past_upper / set_page top), not chain-scoped. */
 		assert (m_slot_oid_idx == m_slot_oids.size ());
 		m_input_handler->exit_overflow_help (thread_p, m_chain_slot_idx);
-		if (m_was_producer && m_page != nullptr)
-		  {
-		    pgbuf_unfix (thread_p, m_page);
-		    m_page = nullptr;
-		  }
 		/* m_slot_key body owned by this worker (helper: COPY in wait_or_help_overflow; producer: next_qualified_slot_with_peek). */
 		if (m_slot_key_valid && m_slot_clear_key)
 		  {
