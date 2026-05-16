@@ -118,11 +118,11 @@ namespace parallel_index_scan
     /* lazy-alloc prebuilt_midxkey_domains (parallel path bypasses scan_open_index_scan); scan_dbvals_to_midxkey would NULL-deref otherwise. */
     if (isidp->prebuilt_midxkey_domains == NULL)
       {
-	isidp->prebuilt_midxkey_domains =
-		(TP_DOMAIN **) db_private_alloc (thread_p, key_cnt * sizeof (TP_DOMAIN *));
+	size_t alloc_size = (size_t) key_cnt * sizeof (TP_DOMAIN *);
+	isidp->prebuilt_midxkey_domains = (TP_DOMAIN **) db_private_alloc (thread_p, alloc_size);
 	if (isidp->prebuilt_midxkey_domains == NULL)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
 	    return ER_FAILED;
 	  }
 	for (int j = 0; j < key_cnt; j++)
