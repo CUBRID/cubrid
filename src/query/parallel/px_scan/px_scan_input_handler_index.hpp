@@ -28,6 +28,7 @@
 #include "dbtype.h"
 #include "px_interrupt.hpp"
 #include "px_scan_index_key_range_list.hpp"
+#include "px_scan_index_leaf_page_dispatcher.hpp"
 #include "scan_manager.h"
 #include <atomic>
 #include <condition_variable>
@@ -54,27 +55,30 @@ namespace parallel_scan
       using err_messages_with_lock = parallel_query::err_messages_with_lock;
     public:
       input_handler_index (interrupt *interrupt_p, err_messages_with_lock *err_messages_p)
-	: m_leaf_ended (true),
-	  m_descent_done (false),
-	  m_interrupt_p (interrupt_p),
+	: m_interrupt_p (interrupt_p),
 	  m_err_messages_p (err_messages_p),
 	  m_ranges (),
-	  m_current_range_idx (0),
+	  m_leaf (),
 	  m_overflow_slots (),
 	  m_next_chain_to_help (0),
 	  m_active_workers (0),
 	  m_no_more_leaves (false)
       {
-	VPID_SET_NULL (&m_current_leaf_vpid);
       }
       int init_on_main (THREAD_ENTRY *thread_p, INDX_INFO *indx_info, SCAN_ID *scan_id, val_descr *vd, int parallelism);
 
       /* get_next_page_with_fix: worker_scan_id MUST be per-task; out_slot_hint = descent leaf-slot; out_range_idx = -1 sentinel on chain-walk. */
       SCAN_CODE get_next_page_with_fix (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, PAGE_PTR &out_page,
-					INT16 *out_slot_hint = nullptr, int *out_range_idx = nullptr);
+					INT16 *out_slot_hint = nullptr, int *out_range_idx = nullptr)
+      {
+	return m_leaf.get_next_page_with_fix (thread_p, worker_scan_id, out_page, out_slot_hint, out_range_idx);
+      }
 
       /* signal_chain_ended: last_local_idx = post-advance range_idx at past_upper; monotonic-max merge with authoritative cursor. */
-      void signal_chain_ended (int last_local_idx);
+      void signal_chain_ended (int last_local_idx)
+      {
+	m_leaf.signal_chain_ended (last_local_idx);
+      }
 
       int initialize (THREAD_ENTRY *thread_p, HFID *hfid, SCAN_ID *scan_id);
       int finalize (THREAD_ENTRY *thread_p);
@@ -125,22 +129,14 @@ namespace parallel_scan
       void signal_no_more_leaves ();
 
     private:
-      /* requires m_leaf_mutex; closed-bound: btree_locate_key; open-bound: manual latch-coupled descent to boundary leaf. */
-      SCAN_CODE descend_to_first_leaf (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, int range_idx, PAGE_PTR &out_leaf,
-				       VPID *out_vpid = nullptr, INT16 *out_slot_id = nullptr);
-
-      VPID m_current_leaf_vpid;         /* mutex-protected */
-      bool m_leaf_ended;                /* mutex-protected; set by signal_chain_ended (past_upper) or chain-end VPID_ISNULL */
-      bool m_descent_done;              /* mutex-protected; first-descent latch */
-      std::mutex m_leaf_mutex;
       interrupt *m_interrupt_p;
       err_messages_with_lock *m_err_messages_p;
 
       /* (C) range/keylist sub-component: owns BTID_INT/key_val_range vector lifecycle. */
       parallel_index_scan::key_range_list m_ranges;
 
-      /* m_current_range_idx: sole authoritative range cursor; mutex-protected; written only by fetch's descent branch. */
-      int m_current_range_idx;
+      /* (B) leaf cursor sub-component: own mutex + range cursor + first-descent latch. */
+      parallel_index_scan::leaf_page_dispatcher m_leaf;
 
       /* --- Multi-chain shared overflow (v2; cap = parallelism) --- */
       std::mutex                  m_overflow_mutex;
