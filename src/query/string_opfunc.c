@@ -9635,6 +9635,19 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
 		  intl_binary_to_euckr (src, copy_size, dest, &conv_size);
 		}
 	      copy_size = conv_size;
+
+	      /* After binary -> multi-byte conversion, copy_length still holds
+	       * src(binary) char_count (= byte_size). Re-derive in dest codeset
+	       * units so that `*dest_length - copy_length` padding count is
+	       * consistent. Only when padding is actually intended:
+	       *   CHAR(N) dest with room (dest_precision > copy_length).
+	       * Skipped for variable dest (VARCHAR/ENUM/VARBIT) and for
+	       * dest_precision == copy_length (e.g. ENUM lookup) where any
+	       * adjustment would inject spurious padding. */
+	      if (dest_type == DB_TYPE_CHAR && dest_precision > copy_length)
+		{
+		  intl_char_count (*dest, copy_size, dest_codeset, &copy_length);
+		}
 	    }
 	  else
 	    {
