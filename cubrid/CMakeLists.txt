@@ -363,6 +363,7 @@ set(PARALLEL_SCAN_SOURCES
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_index.cpp
   ${PARALLEL_SCAN_DIR}/index/px_scan_index_key_range_list.cpp
   ${PARALLEL_SCAN_DIR}/index/px_scan_index_leaf_page_dispatcher.cpp
+  ${PARALLEL_SCAN_DIR}/index/px_scan_index_overflow_chain_pool.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator_list.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator_index.cpp
@@ -379,6 +380,7 @@ set(PARALLEL_SCAN_HEADERS
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_index.hpp
   ${PARALLEL_SCAN_DIR}/index/px_scan_index_key_range_list.hpp
   ${PARALLEL_SCAN_DIR}/index/px_scan_index_leaf_page_dispatcher.hpp
+  ${PARALLEL_SCAN_DIR}/index/px_scan_index_overflow_chain_pool.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_result_handler.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_result_type.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator.hpp
