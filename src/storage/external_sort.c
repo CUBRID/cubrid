@@ -57,6 +57,8 @@
 #include "px_callable_task.hpp"
 #include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
 #include "px_sort.h"
+#include "btree_load.h"
+#include "px_ftab_set.hpp"
 
 #include <functional>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -298,6 +300,8 @@ static void sort_spage_dump (PAGE_PTR pgptr, int rec_p);
 #endif /* CUBRID_DEBUG */
 
 static void sort_append (const void *pk0, const void *pk1);
+static int sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
+							 SORT_PARAM * sort_param, int parallel_num);
 
 /*
  * sort_spage_initialize () - Initialize a slotted page
@@ -1483,12 +1487,44 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
     {
       /* single process */
       sort_param->px_parallel_num = 1;
+      if (sort_param->px_type == SORT_INDEX_LEAF)
+	{
+	  SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
+	  memset (&sort_args_p->hfscan_cache, 0, sizeof (HEAP_SCANCACHE));
+	  memset (&sort_args_p->attr_info, 0, sizeof (HEAP_CACHE_ATTRINFO));
+	  if (bt_load_heap_scancache_start_for_attrinfo (thread_p, sort_args_p, NULL, NULL, true) != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto cleanup;
+	    }
+	  log_sysop_start (thread_p);
+	  if (btree_create_file (thread_p, &sort_args_p->class_ids[0], sort_args_p->attr_ids[0],
+				 sort_args_p->btid->sys_btid) != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      log_sysop_abort (thread_p);
+	      bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args_p, NULL, NULL);
+	      error = ER_FAILED;
+	      goto cleanup;
+	    }
+	  vacuum_log_add_dropped_file (thread_p, &sort_args_p->btid->sys_btid->vfid, NULL,
+				       VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
+	}
       error = sort_listfile_internal (thread_p, sort_param);
+      if (sort_param->px_type == SORT_INDEX_LEAF)
+	{
+	  SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
+	  bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args_p, NULL, NULL);
+	  if (error != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	    }
+	}
     }
   else
     {
       px_sort_param = (SORT_PARAM *) malloc (sizeof (SORT_PARAM) * sort_param->px_parallel_num);
-      if (sort_param == NULL)
+      if (px_sort_param == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (SORT_PARAM));
@@ -1567,6 +1603,11 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
   TSCTIMEVAL tv_diff;
   THREAD_ENTRY *thread_p = &thread_ref;
   PX_STATUS px_status;
+  PRED_EXPR_WITH_CONTEXT *filter_pred = NULL;
+  FILTER_INDEX_INFO filter_index_info = { NULL, 0 };
+  FUNCTION_INDEX_INFO func_index_info;
+  XASL_UNPACK_INFO *func_unpack_info = NULL;
+  DB_TYPE single_node_type = DB_TYPE_NULL;
 
   thread_p->push_resource_tracks ();
 
@@ -1593,6 +1634,44 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
       if (thread_is_on_trace (sort_param->px_orig_thread_p))
 	{
 	  tsc_getticks (&start_tick);
+	}
+    }
+  else if (sort_param->px_type == SORT_INDEX_LEAF)
+    {
+      SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
+
+      func_index_info.expr_stream = NULL;
+      func_index_info.expr_stream_size = 0;
+
+      if (sort_args_p->filter != NULL)
+	{
+	  filter_index_info = *sort_args_p->filter_index_info;
+	}
+
+      if (sort_args_p->func_index_info != NULL)
+	{
+	  func_index_info = *sort_args_p->func_index_info;
+	}
+
+      sort_args_p->filter = NULL;
+      sort_args_p->func_index_info = NULL;
+
+      if (btree_load_filter_pred_function_info
+	  (thread_p, sort_args_p, &filter_pred, &filter_index_info, &func_index_info, &func_unpack_info,
+	   &single_node_type) != NO_ERROR)
+	{
+	  px_status = PX_ERR_FAILED;
+	  goto cleanup;
+	}
+
+      sort_args_p->attrinfo_inited = false;
+      sort_args_p->scancache_inited = false;
+      memset (&sort_args_p->hfscan_cache, 0, sizeof (HEAP_SCANCACHE));
+      memset (&sort_args_p->attr_info, 0, sizeof (HEAP_CACHE_ATTRINFO));
+      if (bt_load_heap_scancache_start_for_attrinfo (thread_p, sort_args_p, NULL, NULL, true) != NO_ERROR)
+	{
+	  px_status = PX_ERR_FAILED;
+	  goto cleanup;
 	}
     }
   else
@@ -1628,6 +1707,12 @@ cleanup:
 	  sort_param->orderby_stats.orderby_pages += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES));
 	  sort_param->orderby_stats.orderby_ioreads += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES));
 	}
+    }
+  else if (sort_param->px_type == SORT_INDEX_LEAF)
+    {
+      SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
+      bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args_p, NULL, NULL);
+      bt_load_clear_pred_and_unpack (thread_p, sort_args_p, func_unpack_info);
     }
   else
     {
@@ -4125,40 +4210,61 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
 
   if (parallel_type == PX_THREAD_IN_PARALLEL)
     {
-      if (sort_param->get_arg != NULL)
+      if (sort_param->px_type == SORT_ORDER_BY)
 	{
-	  SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
-	  if (sort_info_p->input_file)
+	  if (sort_param->get_arg != NULL)
 	    {
-	      qfile_free_list_id (sort_info_p->input_file);
+	      SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
+	      if (sort_info_p->input_file)
+		{
+		  qfile_free_list_id (sort_info_p->input_file);
+		}
+	      if (sort_info_p->s_id->s_id != NULL)
+		{
+		  db_private_free_and_init (thread_p, sort_info_p->s_id->s_id);
+		}
+	      if (sort_info_p->s_id != NULL)
+		{
+		  db_private_free_and_init (thread_p, sort_info_p->s_id);
+		}
+	      db_private_free_and_init (thread_p, sort_param->get_arg);
 	    }
-	  if (sort_info_p->s_id->s_id != NULL)
+	  if (sort_param->put_arg != NULL)
 	    {
-	      db_private_free_and_init (thread_p, sort_info_p->s_id->s_id);
+	      SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->put_arg;
+	      SORT_INFO *ori_sort_info_p = (SORT_INFO *) sort_param->ori_sort_param->put_arg;
+	      if (sort_info_p->output_file && sort_info_p->output_file != ori_sort_info_p->output_file)
+		{
+		  qfile_free_list_id (sort_info_p->output_file);
+		}
+	      if (sort_info_p->s_id->s_id != NULL)
+		{
+		  db_private_free_and_init (thread_p, sort_info_p->s_id->s_id);
+		}
+	      if (sort_info_p->s_id != NULL)
+		{
+		  db_private_free_and_init (thread_p, sort_info_p->s_id);
+		}
+	      db_private_free_and_init (thread_p, sort_param->put_arg);
 	    }
-	  if (sort_info_p->s_id != NULL)
-	    {
-	      db_private_free_and_init (thread_p, sort_info_p->s_id);
-	    }
-	  db_private_free_and_init (thread_p, sort_param->get_arg);
 	}
-      if (sort_param->put_arg != NULL)
+      else if (sort_param->px_type == SORT_INDEX_LEAF)
 	{
-	  SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->put_arg;
-	  SORT_INFO *ori_sort_info_p = (SORT_INFO *) sort_param->ori_sort_param->put_arg;
-	  if (sort_info_p->output_file && sort_info_p->output_file != ori_sort_info_p->output_file)
+	  if (sort_param->get_arg != NULL)
 	    {
-	      qfile_free_list_id (sort_info_p->output_file);
+	      SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
+	      if (sort_args_p->ftab_sets != NULL)
+		{
+		  sort_args_p->ftab_sets->~vector ();
+		  free_and_init (sort_args_p->ftab_sets);
+		}
+	      free_and_init (sort_param->get_arg);
 	    }
-	  if (sort_info_p->s_id->s_id != NULL)
-	    {
-	      db_private_free_and_init (thread_p, sort_info_p->s_id->s_id);
-	    }
-	  if (sort_info_p->s_id != NULL)
-	    {
-	      db_private_free_and_init (thread_p, sort_info_p->s_id);
-	    }
-	  db_private_free_and_init (thread_p, sort_param->put_arg);
+	}
+      else
+	{
+	  assert (false);
+	  return;
 	}
     }
 }
@@ -4293,7 +4399,7 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
       for (j = 0; j < SORT_MAX_TOT_FILES; j++)
 	{
 	  /* Initilize file contents list */
-	  px_sort_param[i].file_contents[j].num_pages = (int *) malloc (SORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int));
+	  px_sort_param[i].file_contents[j].num_pages = (int *) calloc (SORT_INITIAL_DYN_ARRAY_SIZE, sizeof (int));
 	  if (px_sort_param[i].file_contents[j].num_pages == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -4624,6 +4730,149 @@ cleanup:
   return error;
 }
 
+int
+sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
+					      SORT_PARAM * sort_param, int parallel_num)
+{
+  int error = NO_ERROR;
+  int i = 0, idx = 0;
+  int remaining_run, level, merge_num;
+  RESULT_RUN result_run[SORT_MAX_PARALLEL];
+  SORT_ARGS *sort_args_p;
+
+  if (parallel_num > SORT_MAX_PARALLEL)
+    {
+      return ER_FAILED;
+    }
+
+  /* init result_run */
+  for (i = 0; i < parallel_num; i++)
+    {
+      result_run[i].temp_file = px_sort_param[i].temp[px_sort_param[i].px_result_file_idx];
+      result_run[i].num_pages = px_sort_param[i].file_contents[px_sort_param[i].px_result_file_idx].num_pages[0];
+    }
+
+  remaining_run = parallel_num;
+  level = 0;
+
+
+  /* merge result run */
+  while (remaining_run > 1)
+    {
+      merge_num = (remaining_run + (SORT_PX_MERGE_FILES - 1)) / SORT_PX_MERGE_FILES;
+
+      for (i = 0; i < merge_num; i++)
+	{
+	  int first_idx = i * pow (SORT_PX_MERGE_FILES, level + 1);
+
+	  /* init file info */
+	  int half_files = MIN (remaining_run - (first_idx / pow (SORT_PX_MERGE_FILES, level)), SORT_PX_MERGE_FILES);
+	  if (half_files == 1)
+	    {
+	      /* skip last one file */
+	      continue;
+	    }
+
+	  px_sort_param[i].px_result_file_idx = 0;
+	  px_sort_param[i].in_half = 0;
+
+	  /* copy temp file and file contents, skip empty (0-page) workers */
+	  int valid_j = 0;
+	  for (int j = 0; j < half_files; j++)
+	    {
+	      idx = (level == 0) ? (j + first_idx) : ((j * pow (SORT_PX_MERGE_FILES, level)) + first_idx);
+	      if (result_run[idx].num_pages == 0)
+		{
+		  continue;
+		}
+	      px_sort_param[i].temp[valid_j] = result_run[idx].temp_file;
+	      px_sort_param[i].file_contents[valid_j].num_pages[0] = result_run[idx].num_pages;
+	      px_sort_param[i].file_contents[valid_j].first_run = 0;
+	      px_sort_param[i].file_contents[valid_j].last_run = 0;
+	      valid_j++;
+	    }
+
+	  if (valid_j <= 1)
+	    {
+	      /* 0 or 1 non-empty runs: no merge needed, propagate result directly */
+	      if (valid_j == 1)
+		{
+		  result_run[first_idx].temp_file = px_sort_param[i].temp[0];
+		  result_run[first_idx].num_pages = px_sort_param[i].file_contents[0].num_pages[0];
+		}
+	      else
+		{
+		  result_run[first_idx].num_pages = 0;
+		}
+	      px_sort_param[i].px_status = PX_DONE;
+	      continue;
+	    }
+
+	  px_sort_param[i].half_files = valid_j;
+	  px_sort_param[i].tot_tempfiles = valid_j * 2;
+	  for (int j = valid_j; j < px_sort_param[i].tot_tempfiles; j++)
+	    {
+	      /* init temp file and contents */
+	      px_sort_param[i].temp[j].volid = NULL_VOLID;
+	      px_sort_param[i].file_contents[j].first_run = -1;
+	      px_sort_param[i].file_contents[j].last_run = -1;
+	    }
+	  px_sort_param[i].px_result_run = &result_run[first_idx];
+	  px_sort_param[i].px_status = PX_PROGRESS;
+
+	  parallel_query::callable_task * task =
+	    new parallel_query::callable_task (sort_param->px_worker_manager,
+					       std::bind (sort_merge_nruns_parallel, std::placeholders::_1,
+							  &px_sort_param[i]));
+	  sort_param->px_worker_manager->push_task (task);
+	}
+
+      SORT_WAIT_PARALLEL (merge_num, sort_param, px_sort_param);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      remaining_run = merge_num;
+      level++;
+    }
+
+  sort_args_p = (SORT_ARGS *) sort_param->get_arg;
+
+  for (i = 0; i < parallel_num; i++)
+    {
+      SORT_ARGS *px_sort_args_p = (SORT_ARGS *) px_sort_param[i].get_arg;
+      sort_args_p->n_oids += px_sort_args_p->n_oids;
+      sort_args_p->n_nulls += px_sort_args_p->n_nulls;
+    }
+
+  log_sysop_start (thread_p);
+  if (btree_create_file
+      (thread_p, &sort_args_p->class_ids[0], sort_args_p->attr_ids[0], sort_args_p->btid->sys_btid) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      log_sysop_abort (thread_p);
+      return ER_FAILED;
+    }
+
+  /* if loading is aborted or if transaction is aborted, vacuum must be notified before file is destoyed. */
+  vacuum_log_add_dropped_file (thread_p, &sort_args_p->btid->sys_btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
+
+  int result_file_idx = px_sort_param[0].px_result_file_idx;
+  sort_param->px_result_file_idx = result_file_idx;
+  sort_param->file_contents[result_file_idx].num_pages[0] =
+    px_sort_param[0].file_contents[result_file_idx].num_pages[0];
+  sort_param->temp[result_file_idx] = px_sort_param[0].temp[result_file_idx];
+
+  if (sort_put_result_from_tmpfile (thread_p, sort_param, 0) != NO_ERROR)
+    {
+      log_sysop_abort (thread_p);
+      error = ER_FAILED;
+    }
+
+  return error;
+}
+
+
 /*
  * sort_merge_nruns () - merge n run
  *   return: NO_ERROR
@@ -4686,11 +4935,11 @@ sort_merge_nruns (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 int
 sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 {
-  SORT_INFO *sort_info_p;
   int parallel_num = 1;
 
   if (sort_param->px_type == SORT_ORDER_BY)
     {
+      SORT_INFO *sort_info_p;
       /* get scan id of input file */
       sort_info_p = (SORT_INFO *) sort_param->get_arg;
 
@@ -4705,6 +4954,59 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
       /* check tuple_cnt */
       if (sort_info_p->input_file->tuple_cnt <= parallel_num)
 	{
+	  return 1;
+	}
+
+      /* check worker */
+      sort_param->px_worker_manager = parallel_query::worker_manager::try_reserve_workers (parallel_num);
+      if (sort_param->px_worker_manager == NULL)
+	{
+	  return 1;
+	}
+      else
+	{
+	  return parallel_num;
+	}
+    }
+  else if (sort_param->px_type == SORT_INDEX_LEAF)
+    {
+      SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
+      int n_user_pages = 0, n_sects = 0, tmp_pg = 0, tmp_sects = 0, error_code = NO_ERROR;
+      if (sort_args_p->n_classes > 1)
+	{
+	  /* not partition, partition has own indexes, this means like this :
+	   * create t1; create t2 under t1; */
+	  return 1;
+	}
+      /* get number of pages to sort */
+      for (int i = 0; i < sort_args_p->n_classes; i++)
+	{
+	  error_code = file_get_num_user_pages (thread_p, &sort_args_p->hfids[i].vfid, &tmp_pg);
+	  if (error_code != NO_ERROR)
+	    {
+	      return 1;
+	    }
+	  error_code = file_get_num_data_sectors (thread_p, &sort_args_p->hfids[i].vfid, &tmp_sects);
+	  if (error_code != NO_ERROR)
+	    {
+	      return 1;
+	    }
+	  n_user_pages += tmp_pg;
+	  n_sects += tmp_sects;
+	}
+
+      parallel_num = parallel_query::compute_parallel_degree (parallel_query::parallel_type::SORT, n_user_pages,
+							      -1 /* no hint at parallel index build */ );
+
+      if (parallel_num < 2)
+	{
+	  /* single process */
+	  return 1;
+	}
+
+      if (n_sects < parallel_num)
+	{
+	  /* no sector in some threads */
 	  return 1;
 	}
 
@@ -4739,7 +5041,7 @@ void
 sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
 {
   THREAD_ENTRY *thread_p = &thread_ref;
-  SORT_INFO *sort_info_p, *ori_sort_info_p;
+  SORT_INFO *sort_info_p = NULL, *ori_sort_info_p;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   PX_STATUS px_status;
@@ -4758,18 +5060,21 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
       tsc_getticks (&start_tick);
     }
 
-  sort_info_p = (SORT_INFO *) sort_param->put_arg;
-  ori_sort_info_p = (SORT_INFO *) sort_param->ori_sort_param->put_arg;
-  if (sort_param->file_contents[0].start_index == 0)
+  if (sort_param->px_type == SORT_ORDER_BY)
     {
-      /* first file : use origin output temp file */
-      sort_info_p->output_file = ori_sort_info_p->output_file;
-    }
-  else
-    {
-      sort_info_p->output_file =
-	qfile_open_list (thread_p, &ori_sort_info_p->input_file->type_list, ori_sort_info_p->sort_list_p,
-			 ori_sort_info_p->input_file->query_id, ori_sort_info_p->flag | QFILE_NOT_USE_MEMBUF, NULL);
+      sort_info_p = (SORT_INFO *) sort_param->put_arg;
+      ori_sort_info_p = (SORT_INFO *) sort_param->ori_sort_param->put_arg;
+      if (sort_param->file_contents[0].start_index == 0)
+	{
+	  /* first file : use origin output temp file */
+	  sort_info_p->output_file = ori_sort_info_p->output_file;
+	}
+      else
+	{
+	  sort_info_p->output_file =
+	    qfile_open_list (thread_p, &ori_sort_info_p->input_file->type_list, ori_sort_info_p->sort_list_p,
+			     ori_sort_info_p->input_file->query_id, ori_sort_info_p->flag | QFILE_NOT_USE_MEMBUF, NULL);
+	}
     }
 
   /* write last temp file */
@@ -4782,11 +5087,14 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
       px_status = PX_DONE;
     }
 
-  qfile_close_list (thread_p, sort_info_p->output_file);
-  if (sort_info_p->output_recdes.data)
+  if (sort_param->px_type == SORT_ORDER_BY)
     {
-      db_private_free_and_init (NULL, sort_info_p->output_recdes.data);
-      sort_info_p->output_recdes.data = NULL;
+      qfile_close_list (thread_p, sort_info_p->output_file);
+      if (sort_info_p->output_recdes.data)
+	{
+	  db_private_free_and_init (NULL, sort_info_p->output_recdes.data);
+	  sort_info_p->output_recdes.data = NULL;
+	}
     }
 
   if (thread_is_on_trace (sort_param->px_orig_thread_p))
@@ -4824,7 +5132,6 @@ void
 sort_merge_nruns_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
 {
   THREAD_ENTRY *thread_p = &thread_ref;
-  SORT_INFO *sort_info_p, *ori_sort_info_p;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   PX_STATUS px_status;
@@ -4938,9 +5245,73 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	  return ER_FAILED;
 	}
     }
+  else if (sort_param->px_type == SORT_INDEX_LEAF)
+    {
+      using ftab_set = parallel_query::ftab_set;
+      SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg, *px_sort_args_p;
+      std::vector < ftab_set > ftab_sets (parallel_num);
+      ftab_set temp;
+      FILE_FTAB_COLLECTOR collector;
+
+      for (int i = 0; i < parallel_num; i++)
+	{
+	  px_sort_param[i].get_arg = NULL;
+	}
+
+      for (int i = 0; i < parallel_num; i++)
+	{
+	  px_sort_args_p = (SORT_ARGS *) malloc (sizeof (SORT_ARGS));
+	  if (px_sort_args_p == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SORT_ARGS));
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	  memcpy (px_sort_args_p, sort_param->get_arg, sizeof (SORT_ARGS));
+	  px_sort_param[i].get_arg = px_sort_args_p;
+	  px_sort_param[i].get_fn = &btree_sort_get_next_parallel;
+	  px_sort_args_p->ftab_sets = NULL;
+	  px_sort_args_p->curr_sec = FILE_PARTIAL_SECTOR_INITIALIZER;
+	  px_sort_args_p->curr_pgoffset = 0;
+	  px_sort_args_p->in_recdes =
+	  {
+	  0, 0, 0, NULL};
+	}
+
+      /* split ftab into each parallel sort param */
+      for (int i = 0; i < sort_args_p->n_classes; i++)
+	{
+	  error = file_get_all_data_sectors (thread_p, &sort_args_p->hfids[i].vfid, &collector);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  temp.convert (&collector);
+	  db_private_free_and_init (thread_p, collector.partsect_ftab);
+	  ftab_sets = temp.split (parallel_num);
+	  for (int j = 0; j < parallel_num; j++)
+	    {
+	      px_sort_args_p = (SORT_ARGS *) px_sort_param[j].get_arg;
+	      if (px_sort_args_p->ftab_sets == NULL)
+		{
+		  px_sort_args_p->ftab_sets = (std::vector < ftab_set > *)malloc (sizeof (std::vector < ftab_set >));
+		  if (px_sort_args_p->ftab_sets == NULL)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			      sizeof (std::vector < ftab_set >));
+		      return ER_OUT_OF_VIRTUAL_MEMORY;
+		    }
+		  placement_new (px_sort_args_p->ftab_sets);
+		}
+	      /* Always push (even if empty) to keep ftab_sets index aligned with cur_class.
+	       * An empty ftab_set causes get_next_vpid() to return S_END immediately. */
+	      px_sort_args_p->ftab_sets->push_back (ftab_sets[j]);
+	    }
+	}
+    }
+
   else
     {
-      /* not implemented yet (group by, analytic fuction, create index) */
+      /* not implemented yet (group by, analytic fuction) */
       return ER_FAILED;
     }
 
@@ -5008,6 +5379,14 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 		std::max (orderby_stats->px_max_orderby_ioreads, px_sort_param[i].orderby_stats.orderby_ioreads);
 	    }
 	  orderby_stats->parallel_num = parallel_num;
+	}
+    }
+  else if (sort_param->px_type == SORT_INDEX_LEAF)
+    {
+      error = sort_merge_run_for_parallel_index_leaf_build (thread_p, px_sort_param, sort_param, parallel_num);
+      if (error != NO_ERROR)
+	{
+	  return ER_FAILED;
 	}
     }
   else
