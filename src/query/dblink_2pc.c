@@ -68,9 +68,12 @@ dblink_2pc_get_participants (THREAD_ENTRY * thread_p, int *partid_len, void **bl
 	}
 
       dblink = dblink_conn;
-      while (dblink && dblink->is_2pc_participant)
+      while (dblink)
 	{
-	  memcpy (ids + (nth++) * id_size, &(dblink->conn_info), id_size);
+	  if (dblink->is_2pc_participant)
+	    {
+	      memcpy (ids + (nth++) * id_size, &(dblink->conn_info), id_size);
+	    }
 	  dblink = dblink->next;
 	}
 

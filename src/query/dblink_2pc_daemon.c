@@ -35,7 +35,9 @@
 #include "log_impl.h"
 #include "log_manager.h"
 #include "memory_alloc.h"
+#ifndef SA_MODE
 #include "thread_daemon.hpp"
+#endif
 #include "thread_entry_task.hpp"
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
