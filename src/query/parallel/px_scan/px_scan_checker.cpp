@@ -372,44 +372,6 @@ namespace parallel_scan
     return false;
   }
 
-  /* desc column on any index attribute → serial: post-swap range needs storage-compare in check_key_in_range; current code uses btree_compare_key which mixes natural/storage for mixed asc/desc indexes and drops all rows on first slot. */
-  static bool
-  index_has_desc_column (const INDX_INFO *indexptr)
-  {
-    if (indexptr == NULL)
-      {
-	return false;
-      }
-    if (OID_ISNULL (&indexptr->class_oid))
-      {
-	return false;
-      }
-    MOP class_mop = ws_mop (&indexptr->class_oid, NULL);
-    if (class_mop == NULL)
-      {
-	return false;
-      }
-    SM_CLASS_CONSTRAINT *cons = sm_class_constraints (class_mop);
-    for (; cons != NULL; cons = cons->next)
-      {
-	if (BTID_IS_EQUAL (&cons->index_btid, &indexptr->btid))
-	  {
-	    if (cons->asc_desc != NULL && cons->attributes != NULL)
-	      {
-		for (int i = 0; cons->attributes[i] != NULL; i++)
-		  {
-		    if (cons->asc_desc[i] != 0)
-		      {
-			return true;
-		      }
-		  }
-	      }
-	    break;
-	  }
-      }
-    return false;
-  }
-
   template <>
   possible_flags check<false> (ACCESS_SPEC_TYPE *arg)
   {
@@ -452,20 +414,8 @@ namespace parallel_scan
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
 
-		/* use_desc_index needs globally ordered traversal. */
-		if (arg->indexptr->use_desc_index)
-		  {
-		    set_flag (result, CANNOT_PARALLEL_SCAN);
-		  }
-
 		/* filtered index: bug-prone + low usage, excluded. */
 		if (is_filtered_index (arg->indexptr))
-		  {
-		    set_flag (result, CANNOT_PARALLEL_SCAN);
-		  }
-
-		/* desc column on any attribute: parallel check_key_in_range drops rows. */
-		if (index_has_desc_column (arg->indexptr))
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }

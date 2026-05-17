@@ -62,8 +62,10 @@ namespace parallel_index_scan
     if (range_idx >= 0 && range_idx < num_ranges)
       {
 	key_val_range *kvr = &all_ranges[range_idx];
-	/* mirrors btree_prepare_bts: midxkey of all-NULL elements is semantically open-bound, not a usable descent key. */
-	if (kvr->range != NA_NA && kvr->range != INF_INF
+	/* open-lower INF_xx: post-swap kvr->key1 holds the +inf marker; descending it lands past the range -> silent-zero. */
+	const bool open_lower_range = (kvr->range == INF_LE || kvr->range == INF_LT
+				       || kvr->range == INF_INF);
+	if (kvr->range != NA_NA && !open_lower_range
 	    && !DB_IS_NULL (&kvr->key1) && !btree_multicol_key_is_null (&kvr->key1))
 	  {
 	    descent_key = &kvr->key1;

@@ -169,10 +169,21 @@ namespace parallel_index_scan
     TP_DOMAIN *key_domain = m_btid_int->key_type;
     key_val_range *ranges = m_input_handler->get_key_val_ranges ();
     int num_ranges = m_input_handler->get_num_key_ranges ();
+    const bool use_desc_index = m_use_desc_index;
     /* gap-eager trigger compares post-advance m_current_range_idx against this entry snapshot — strictly thread-local, no mutex needed. */
     int entry_range_idx = m_current_range_idx;
 
-    /* Keys arrive in ascending B-tree order; iterate ranges forward */
+    /* index→walk order: btree_compare_key already gives index order (per-col flip via dom_is_desc[0]); negate when walking reverse. mirrors btree.c:16515-16518. */
+    auto post_flip = [use_desc_index] (DB_VALUE_COMPARE_RESULT c)
+    {
+      if (!use_desc_index || c == DB_EQ || c == DB_UNK)
+	{
+	  return c;
+	}
+      return (c == DB_GT) ? DB_LT : (c == DB_LT ? DB_GT : c);
+    };
+
+    /* Keys arrive in B-tree storage order; iterate ranges forward (post-flip handles per-column DESC). */
     for (int i = m_current_range_idx; i < num_ranges; i++)
       {
 	key_val_range *kvr = &ranges[i];
@@ -205,6 +216,7 @@ namespace parallel_index_scan
 		  {
 		    return ER_FAILED;
 		  }
+		c = post_flip (c);
 		if (c == DB_LT)
 		  {
 		    lower_ok = false;
@@ -222,6 +234,7 @@ namespace parallel_index_scan
 		  {
 		    return ER_FAILED;
 		  }
+		c = post_flip (c);
 		if (c == DB_LT || c == DB_EQ)
 		  {
 		    lower_ok = false;
@@ -241,6 +254,7 @@ namespace parallel_index_scan
 		  {
 		    return ER_FAILED;
 		  }
+		c = post_flip (c);
 		if (c == DB_LT)
 		  {
 		    lower_ok = false;
@@ -270,6 +284,7 @@ namespace parallel_index_scan
 		  {
 		    return ER_FAILED;
 		  }
+		c = post_flip (c);
 		if (c == DB_LT)
 		  {
 		    upper_ok = false;
@@ -288,6 +303,7 @@ namespace parallel_index_scan
 		  {
 		    return ER_FAILED;
 		  }
+		c = post_flip (c);
 		if (c == DB_LT || c == DB_EQ)
 		  {
 		    upper_ok = false;
@@ -308,6 +324,7 @@ namespace parallel_index_scan
 		  {
 		    return ER_FAILED;
 		  }
+		c = post_flip (c);
 		if (c != DB_EQ)
 		  {
 		    upper_ok = false;
