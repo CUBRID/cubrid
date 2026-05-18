@@ -187,20 +187,20 @@ const char *sm_define_view_columns_spec (void)
       "[attr].[default_value] AS [column_default], "
       "IF ([attr].[is_nullable] = 1, 'YES', 'NO') AS [is_nullable], "
       "[dt].[type_name] AS [data_type], "
-      /* STRING/VARCHAR(4), BIT(23), VARBIT(24), CHAR(25) */
-      "IF ([attr].[data_type] IN (4, 23, 24, 25), [dom].[prec], NULL) AS [character_maximum_length], "
-      /* STRING/VARCHAR(4), CHAR(25) */
-      "IF ([attr].[data_type] IN (4, 25), CAST ([dom].[prec] AS BIGINT) * [charset].[char_size], NULL) AS [character_octet_length], "
-      /* INTEGER(1), FLOAT(2), DOUBLE(3), SHORT/SMALLINT(18), NUMERIC(22), BIGINT(31) */
-      "IF ([attr].[data_type] IN (1, 2, 3, 18, 22, 31), [dom].[prec], NULL) AS [numeric_precision], "
-      /* INTEGER(1), SHORT/SMALLINT(18), NUMERIC(22), BIGINT(31) */
-      "IF ([attr].[data_type] IN (1, 18, 22, 31), [dom].[scale], NULL) AS [numeric_scale], "
-      /* TIME(10), TIMESTAMP(11), DATE(12), DATETIME(32), TIMESTAMPTZ(36), TIMESTAMPLTZ(37), DATETIMETZ(38), DATETIMELTZ(39) */
-      "IF ([attr].[data_type] IN (10, 11, 12, 32, 36, 37, 38, 39), [dom].[prec], NULL) AS [datetime_precision], "
-      /* STRING/VARCHAR(4), CHAR(25) */
-      "IF ([attr].[data_type] IN (4, 25), [charset].[charset_name], NULL) AS [character_set_name], "
-      /* STRING/VARCHAR(4), CHAR(25) */
-      "IF ([attr].[data_type] IN (4, 25), [coll].[coll_name], NULL) AS [collation_name], "
+      /* DB_TYPE_STRING/VARCHAR, DB_TYPE_BIT, DB_TYPE_VARBIT, DB_TYPE_CHAR */
+      "IF ([attr].[data_type] IN (%d, %d, %d, %d), [dom].[prec], NULL) AS [character_maximum_length], "
+      /* DB_TYPE_STRING/VARCHAR, DB_TYPE_CHAR */
+      "IF ([attr].[data_type] IN (%d, %d), CAST ([dom].[prec] AS BIGINT) * [charset].[char_size], NULL) AS [character_octet_length], "
+      /* DB_TYPE_INTEGER, DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DB_TYPE_SHORT/SMALLINT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT */
+      "IF ([attr].[data_type] IN (%d, %d, %d, %d, %d, %d), [dom].[prec], NULL) AS [numeric_precision], "
+      /* DB_TYPE_INTEGER, DB_TYPE_SHORT/SMALLINT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT */
+      "IF ([attr].[data_type] IN (%d, %d, %d, %d), [dom].[scale], NULL) AS [numeric_scale], "
+      /* DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_DATE, DB_TYPE_DATETIME, DB_TYPE_TIMESTAMPTZ, DB_TYPE_TIMESTAMPLTZ, DB_TYPE_DATETIMETZ, DB_TYPE_DATETIMELTZ */
+      "IF ([attr].[data_type] IN (%d, %d, %d, %d, %d, %d, %d, %d), [dom].[prec], NULL) AS [datetime_precision], "
+      /* DB_TYPE_STRING/VARCHAR, DB_TYPE_CHAR */
+      "IF ([attr].[data_type] IN (%d, %d), [charset].[charset_name], NULL) AS [character_set_name], "
+      /* DB_TYPE_STRING/VARCHAR, DB_TYPE_CHAR */
+      "IF ([attr].[data_type] IN (%d, %d), [coll].[coll_name], NULL) AS [collation_name], "
       "NULL AS [domain_catalog], "
       "NULL AS [domain_schema], "
       "NULL AS [domain_name], "
@@ -242,6 +242,13 @@ const char *sm_define_view_columns_spec (void)
       "INNER JOIN [%s] AS [coll] ON [coll].[coll_id] = [dom].[collation_id] "
     "WHERE "
       AUTH_CHECK_OBJECT_ANY("[cls].[owner].[name]", "[cls].[class_of]"),
+    DB_TYPE_STRING, DB_TYPE_BIT, DB_TYPE_VARBIT, DB_TYPE_CHAR,
+    DB_TYPE_STRING, DB_TYPE_CHAR,
+    DB_TYPE_INTEGER, DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DB_TYPE_SHORT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT,
+    DB_TYPE_INTEGER, DB_TYPE_SHORT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT,
+    DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_DATE, DB_TYPE_DATETIME, DB_TYPE_TIMESTAMPTZ, DB_TYPE_TIMESTAMPLTZ, DB_TYPE_DATETIMETZ, DB_TYPE_DATETIMELTZ,
+    DB_TYPE_STRING, DB_TYPE_CHAR,
+    DB_TYPE_STRING, DB_TYPE_CHAR,
     CT_CLASS_NAME,
     CT_ATTRIBUTE_NAME,
     CT_DOMAIN_NAME,
@@ -379,18 +386,18 @@ const char *sm_define_view_parameters_spec (void)
       "DECODE ([sp_args].[mode], %d, 'IN', %d, 'OUT', %d, 'INOUT') AS [parameter_mode], "
       "'NO' AS [is_result], "
       "[sp_args].[arg_name] AS [parameter_name], "
-      /* DB_TYPE_RESULTSET(28) has no row in _db_data_type; surface it as 'CURSOR' */
-      "CASE [sp_args].[data_type] WHEN 28 THEN 'CURSOR' ELSE [dt].[type_name] END AS [data_type], "
+      /* DB_TYPE_RESULTSET has no row in _db_data_type; surface it as 'CURSOR' */
+      "CASE [sp_args].[data_type] WHEN %d THEN 'CURSOR' ELSE [dt].[type_name] END AS [data_type], "
       "NULL AS [character_maximum_length], "
       "NULL AS [character_octet_length], "
       "NULL AS [character_set_name], "
       "NULL AS [collation_name], "
       "NULL AS [numeric_precision], "
       "NULL AS [numeric_scale], "
-      /* DATETIME(32) -> 3, TIME(10), TIMESTAMP(11), DATE(12) -> 0, else NULL */
+      /* DB_TYPE_DATETIME -> 3, DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_DATE -> 0, else NULL */
       "CASE "
-        "WHEN [sp_args].[data_type] = 32 THEN 3 "
-        "WHEN [sp_args].[data_type] IN (10, 11, 12) THEN 0 "
+        "WHEN [sp_args].[data_type] = %d THEN 3 "
+        "WHEN [sp_args].[data_type] IN (%d, %d, %d) THEN 0 "
         "ELSE NULL "
       "END AS [datetime_precision], "
       "NULL AS [dtd_identifier], "
@@ -406,11 +413,11 @@ const char *sm_define_view_parameters_spec (void)
     "WHERE "
       AUTH_CHECK_STORED_PROC("[sp_args].[sp_of].[owner].[name]", "[sp_args].[sp_of]") " "
       "AND [sp_args].[sp_of].[is_system_generated] = 0",
-    SP_MODE_IN,
-    SP_MODE_OUT,
-    SP_MODE_INOUT,
-    SP_TYPE_PROCEDURE,
-    SP_TYPE_FUNCTION,
+    SP_MODE_IN, SP_MODE_OUT, SP_MODE_INOUT,
+    DB_TYPE_RESULTSET,
+    DB_TYPE_DATETIME,
+    DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_DATE,
+    SP_TYPE_PROCEDURE, SP_TYPE_FUNCTION,
     CT_STORED_PROC_ARGS_NAME,
     CT_DATATYPE_NAME);
   // *INDENT-ON*
@@ -558,21 +565,21 @@ const char *sm_define_view_routines_spec (void)
       "[sp].[sp_name] AS [routine_name], "
       /* SP_TYPE_PROCEDURE, SP_TYPE_FUNCTION */
       "DECODE ([sp].[sp_type], %d, 'PROCEDURE', %d, 'FUNCTION') AS [routine_type], "
-      /* SP_TYPE_FUNCTION; DB_TYPE_RESULTSET(28) has no row in _db_data_type, surface it as 'CURSOR' */
-      "IF ([sp].[sp_type] = %d, CASE [sp].[return_type] WHEN 28 THEN 'CURSOR' ELSE [dt].[type_name] END, NULL) AS [data_type], "
+      /* SP_TYPE_FUNCTION; DB_TYPE_RESULTSET has no row in _db_data_type, surface it as 'CURSOR' */
+      "IF ([sp].[sp_type] = %d, CASE [sp].[return_type] WHEN %d THEN 'CURSOR' ELSE [dt].[type_name] END, NULL) AS [data_type], "
       "NULL AS [character_maximum_length], "
       "NULL AS [character_octet_length], "
-      /* STRING/VARCHAR(4), CHAR(25) */
-      "IF ([sp].[return_type] IN (4, 25), [ch].[charset_name], NULL) AS [character_set_name], "
+      /* DB_TYPE_STRING/VARCHAR, DB_TYPE_CHAR */
+      "IF ([sp].[return_type] IN (%d, %d), [ch].[charset_name], NULL) AS [character_set_name], "
       "NULL AS [collation_name], "
       "NULL AS [numeric_precision], "
       "NULL AS [numeric_scale], "
-      /* DATETIME(32) -> 3, TIME(10), TIMESTAMP(11), DATE(12) -> 0, else NULL */
+      /* DB_TYPE_DATETIME -> 3, DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_DATE -> 0, else NULL */
       "CASE "
         /* SP_TYPE_PROCEDURE */
         "WHEN [sp].[sp_type] = %d THEN NULL "
-        "WHEN [sp].[return_type] = 32 THEN 3 "
-        "WHEN [sp].[return_type] IN (10, 11, 12) THEN 0 "
+        "WHEN [sp].[return_type] = %d THEN 3 "
+        "WHEN [sp].[return_type] IN (%d, %d, %d) THEN 0 "
         "ELSE NULL "
       "END AS [datetime_precision], "
       "NULL AS [dtd_identifier], "
@@ -616,14 +623,15 @@ const char *sm_define_view_routines_spec (void)
       "[ch].[charset_id] = [root].[charset] "
       "AND " AUTH_CHECK_STORED_PROC("[sp].[owner].[name]", "[sp]") " "
       "AND [sp].[is_system_generated] = 0",
+    SP_TYPE_PROCEDURE, SP_TYPE_FUNCTION,
+    SP_TYPE_FUNCTION, DB_TYPE_RESULTSET,
+    DB_TYPE_STRING, DB_TYPE_CHAR,
     SP_TYPE_PROCEDURE,
-    SP_TYPE_FUNCTION,
-    SP_TYPE_FUNCTION,
-    SP_TYPE_PROCEDURE,
+    DB_TYPE_DATETIME,
+    DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_DATE,
     SP_LANG_PLCSQL,
     SP_LANG_JAVA,
-    SP_LANG_PLCSQL,
-    SP_LANG_JAVA,
+    SP_LANG_PLCSQL, SP_LANG_JAVA,
     SP_DIRECTIVE_DETERMINISTIC,
     SP_SQL_TYPE_NO_SQL,
     SP_SQL_TYPE_CONTAINS_SQL,
@@ -944,11 +952,11 @@ const char *sm_define_view_triggers_spec (void)
       "CAST (DATABASE () AS VARCHAR (255)) AS [trigger_catalog], " /* string -> varchar(255) */
       "[tr].[owner].[name] AS [trigger_schema], "
       "CAST ([tr].[name] AS VARCHAR (255)) AS [trigger_name], " /* string -> varchar(255) */
-      /* UPDATE(0,1), DELETE(2,3), INSERT(4,5) */
+      /* TR_EVENT_UPDATE/STATEMENT_UPDATE, TR_EVENT_DELETE/STATEMENT_DELETE, TR_EVENT_INSERT/STATEMENT_INSERT */
       "CASE "
-        "WHEN [tr].[event] IN (0, 1) THEN 'UPDATE' "
-        "WHEN [tr].[event] IN (2, 3) THEN 'DELETE' "
-        "WHEN [tr].[event] IN (4, 5) THEN 'INSERT' "
+        "WHEN [tr].[event] IN (%d, %d) THEN 'UPDATE' "
+        "WHEN [tr].[event] IN (%d, %d) THEN 'DELETE' "
+        "WHEN [tr].[event] IN (%d, %d) THEN 'INSERT' "
         "ELSE NULL "
       "END AS [event_manipulation], "
       "CAST (DATABASE () AS VARCHAR (255)) AS [event_object_catalog], " /* string -> varchar(255) */
@@ -958,10 +966,10 @@ const char *sm_define_view_triggers_spec (void)
       "NULL AS [action_order], "
       "[tr].[condition] AS [action_condition], "
       "[tr].[action_definition] AS [action_statement], "
-      /* ROW(0,2,4), STATEMENT(1,3,5), NULL for COMMIT/ROLLBACK */
+      /* row events: TR_EVENT_UPDATE/DELETE/INSERT; statement events: TR_EVENT_STATEMENT_*; NULL for COMMIT/ROLLBACK */
       "CASE "
-        "WHEN [tr].[event] IN (0, 2, 4) THEN 'ROW' "
-        "WHEN [tr].[event] IN (1, 3, 5) THEN 'STATEMENT' "
+        "WHEN [tr].[event] IN (%d, %d, %d) THEN 'ROW' "
+        "WHEN [tr].[event] IN (%d, %d, %d) THEN 'STATEMENT' "
         "ELSE NULL "
       "END AS [action_orientation], "
       /* TR_TIME_BEFORE, TR_TIME_AFTER, TR_TIME_DEFERRED */
@@ -981,12 +989,17 @@ const char *sm_define_view_triggers_spec (void)
     "WHERE "
       AUTH_CHECK_OBJECT_WRITE("[tr].[owner].[name]", "[cls].[class_of]") " "
       /* exclude transaction triggers (COMMIT=8, ROLLBACK=9) per spec */
-      "AND [tr].[event] IN (0, 1, 2, 3, 4, 5)",
-    TR_TIME_BEFORE,
-    TR_TIME_AFTER,
-    TR_TIME_DEFERRED,
+      "AND [tr].[event] IN (%d, %d, %d, %d, %d, %d)",
+    TR_EVENT_UPDATE, TR_EVENT_STATEMENT_UPDATE,
+    TR_EVENT_DELETE, TR_EVENT_STATEMENT_DELETE,
+    TR_EVENT_INSERT, TR_EVENT_STATEMENT_INSERT,
+    TR_EVENT_UPDATE, TR_EVENT_DELETE, TR_EVENT_INSERT,
+    TR_EVENT_STATEMENT_UPDATE, TR_EVENT_STATEMENT_DELETE, TR_EVENT_STATEMENT_INSERT,
+    TR_TIME_BEFORE, TR_TIME_AFTER, TR_TIME_DEFERRED,
     TR_CLASS_NAME,
-    CT_CLASS_NAME);
+    CT_CLASS_NAME,
+    TR_EVENT_UPDATE, TR_EVENT_STATEMENT_UPDATE, TR_EVENT_DELETE,
+    TR_EVENT_STATEMENT_DELETE, TR_EVENT_INSERT, TR_EVENT_STATEMENT_INSERT);
   // *INDENT-ON*
 
   return stmt;
