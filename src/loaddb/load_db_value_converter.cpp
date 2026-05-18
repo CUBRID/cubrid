@@ -394,9 +394,10 @@ namespace cubload
     else if (type == DB_TYPE_CHAR && char_count < precision)
       {
 	/*
-	 * CHAR(N) trailing-space padding for the CS loaddb entry. After
-	 * char_step, setmem/writeval became "data: passed bytes as-is" —
-	 * caller is now responsible for padding. INSERT goes through cast
+	 * CHAR(N) trailing-space padding for the CS loaddb entry. Padding
+	 * used to be done in mr_writeval_char_internal (legacy fixed-CHAR
+	 * layout); after CHAR became variable-length, writeval no longer
+	 * pads — caller responsibility. INSERT goes through cast
 	 * (qstr_coerce) which pads, but this loaddb entry bypasses cast, so
 	 * pad here and hand a padded buffer to db_make_db_char.
 	 *

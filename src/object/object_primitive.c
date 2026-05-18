@@ -11881,7 +11881,8 @@ mr_setval_char_type_common (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB
  *   disk(in)   : 0 = in-memory size, non-zero = packed disk size
  *   align(in)  : INT_ALIGNMENT or CHAR_ALIGNMENT
  *
- * Uses the shared 12-byte LARGE header. Compression is performed via
+ * Uses the type_header-dispatched header (1 / 4 / 6 / 12 byte =
+ * TINY / SMALL / MEDIUM / LARGE). Compression is performed via
  * pr_do_db_value_string_compression() and the compressed_buf is retained on
  * the DB_VALUE so that a subsequent writeval can reuse it.
  */
@@ -12046,9 +12047,11 @@ mr_writeval_char_type_common (OR_BUF * buf, DB_VALUE * value, int align)
  *   align(in)    : INT_ALIGNMENT or CHAR_ALIGNMENT
  *   type(in)     : DB_TYPE_CHAR or DB_TYPE_VARCHAR (selects db_make_*)
  *
- * Reads the shared 12-byte LARGE header, then either peeks (uncompressed) or
- * decompresses into an allocated buffer. compressed_buf retention follows the
- * legacy VARCHAR policy (server: keep, CS_MODE: drop).
+ * Reads the type_header-dispatched header (1 / 4 / 6 / 12 byte = TINY /
+ * SMALL / MEDIUM / LARGE), then either peeks (uncompressed) or decompresses
+ * into an allocated buffer.
+ * compressed_buf retention follows the legacy VARCHAR policy
+ * (server: keep, CS_MODE: drop).
  */
 static int
 mr_readval_char_type_common (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int disk_size, bool copy,

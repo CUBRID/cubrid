@@ -2751,10 +2751,11 @@ ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE
   else if (char_count < precision)
     {
       /*
-       * CHAR(N) trailing-space padding. After char_step, setmem/writeval
-       * became "data: passed bytes as-is" — caller is now responsible for
-       * padding. INSERT goes through cast (qstr_coerce) which pads, but
-       * loaddb bypasses cast, so pad here and hand a padded buffer to setmem.
+       * CHAR(N) trailing-space padding. Padding used to be done in
+       * mr_setmem_char (legacy fixed-CHAR layout); after CHAR became
+       * variable-length, setmem no longer pads — caller responsibility.
+       * INSERT goes through cast (qstr_coerce) which pads, but loaddb
+       * bypasses cast, so pad here and hand a padded buffer to setmem.
        * Space is 1 byte in every codeset.
        */
       int pad_chars = precision - char_count;
