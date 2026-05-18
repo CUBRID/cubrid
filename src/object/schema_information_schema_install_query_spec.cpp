@@ -988,8 +988,8 @@ const char *sm_define_view_triggers_spec (void)
       "INNER JOIN [%s] AS [cls] ON [cls].[class_of] = [tr].[target_class] "
     "WHERE "
       AUTH_CHECK_OBJECT_WRITE("[tr].[owner].[name]", "[cls].[class_of]") " "
-      /* exclude transaction triggers (COMMIT=8, ROLLBACK=9) per spec */
-      "AND [tr].[event] IN (%d, %d, %d, %d, %d, %d)",
+      /* DML row/statement triggers per spec */
+      "AND [tr].[event] BETWEEN %d AND %d",
     TR_EVENT_UPDATE, TR_EVENT_STATEMENT_UPDATE,
     TR_EVENT_DELETE, TR_EVENT_STATEMENT_DELETE,
     TR_EVENT_INSERT, TR_EVENT_STATEMENT_INSERT,
@@ -998,8 +998,7 @@ const char *sm_define_view_triggers_spec (void)
     TR_TIME_BEFORE, TR_TIME_AFTER, TR_TIME_DEFERRED,
     TR_CLASS_NAME,
     CT_CLASS_NAME,
-    TR_EVENT_UPDATE, TR_EVENT_STATEMENT_UPDATE, TR_EVENT_DELETE,
-    TR_EVENT_STATEMENT_DELETE, TR_EVENT_INSERT, TR_EVENT_STATEMENT_INSERT);
+    TR_EVENT_UPDATE, TR_EVENT_STATEMENT_INSERT);
   // *INDENT-ON*
 
   return stmt;
