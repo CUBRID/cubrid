@@ -769,6 +769,7 @@ spacedb: 데이터베이스 디스크 공간 정보 출력\n\
                                  *           모든 사용자 테이블\n\
                                  prefix*     해당 접두사로 시작하는 테이블\n
 61 View 클래스는 spacedb 대상이 아닙니다.\n
+62 경고: 클래스 "%1$s"가 변경 중이므로 건너뛰었습니다.\n
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
 15 추정되는 페이지 개수 = %1$d\n

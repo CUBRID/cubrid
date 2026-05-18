@@ -1276,6 +1276,17 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 		       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_VIEW_SKIPPED));
 	      continue;
 	    }
+	  /* Busy sentinel: file_count == 1 and header[0].ftype == 13
+	   * (FILE_UNKNOWN_TYPE) — server skipped this class because DDL was
+	   * holding SCH_M_LOCK. Follows the same magic-number pattern used
+	   * for FILE_HEAP (1) and FILE_BTREE (4) below. */
+	  if (table_sizes[table_num].file_count == 1 && table_sizes[table_num].header[0].ftype == 13)
+	    {
+	      fprintf (outfp,
+		       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_TABLE_BUSY),
+		       table_sizes[table_num].header[0].name);
+	      continue;
+	    }
 
 	  const char *class_name = table_sizes[table_num].header[0].name;
 	  INT64 total_used_npage = 0;

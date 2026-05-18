@@ -694,6 +694,7 @@ static int file_spacedb_get_file_page_count (THREAD_ENTRY * thread_p, const VFID
 static int file_spacedb_get_btree_ovf_vfid (THREAD_ENTRY * thread_p, const BTID * btid, VFID * ovf_vfid_p);
 static int file_spacedb_get_heap_ovf_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid_p);
 static bool file_spacedb_is_view_class (THREAD_ENTRY * thread_p, const OID * class_oid);
+static int file_spacedb_set_busy_sentinel (SPACEDB_TABLE_SIZES_HEADER * entry, const char *class_name);
 static int file_spacedb_fill_one_table (THREAD_ENTRY * thread_p, const OID * class_oid,
 					const char *class_name, SPACEDB_TABLE_SIZES_HEADER * entry);
 static int file_spacedb_fill_tables_from_oids (THREAD_ENTRY * thread_p, const OID * class_oids, int oid_count,
@@ -7995,16 +7996,31 @@ file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb, char **table_arr
 	{
 	  LC_FIND_CLASSNAME find_result;
 	  OID class_oid;
+	  int old_wait;
 
 	  OID_SET_NULL (&class_oid);
-	  find_result = xlocator_find_class_oid (thread_p, table_array[table_num], &class_oid, S_LOCK);
+	  /* Use LK_ZERO_WAIT so xlocator's internal LK_UNCOND_LOCK doesn't
+	   * block on pending DDL. On conflict xlocator returns
+	   * LC_CLASSNAME_ERROR and we write a busy sentinel from the input
+	   * name. */
+	  old_wait = xlogtb_reset_wait_msecs (thread_p, LK_ZERO_WAIT);
+	  find_result = xlocator_find_class_oid (thread_p, table_array[table_num], &class_oid, IS_LOCK);
+	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait);
+
 	  if (find_result == LC_CLASSNAME_ERROR)
 	    {
-	      ASSERT_ERROR_AND_SET (error_code);
-	      *actual_count_p = 0;
-	      file_spacedb_free_table_sizes (*table_sizes_p, table_num);
-	      *table_sizes_p = NULL;
-	      return error_code;
+	      /* Lock conflict with pending DDL — treat as busy. */
+	      er_clear ();
+	      error_code = file_spacedb_set_busy_sentinel (&(*table_sizes_p)[table_num], table_array[table_num]);
+	      if (error_code != NO_ERROR)
+		{
+		  *actual_count_p = 0;
+		  file_spacedb_free_table_sizes (*table_sizes_p, table_num);
+		  *table_sizes_p = NULL;
+		  return error_code;
+		}
+	      *actual_count_p = table_num + 1;
+	      continue;
 	    }
 
 	  if (OID_ISNULL (&class_oid))
@@ -8188,6 +8204,35 @@ file_spacedb_is_view_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 }
 
 /*
+ * file_spacedb_set_busy_sentinel () - Populate a header slot with a busy
+ *                                     sentinel that the client renders as
+ *                                     a "class is being modified" notice.
+ *
+ * return        : NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
+ * entry  (out)  : header slot to populate
+ * class_name(in): name to display in the client notice
+ *
+ * Note: Sentinel encoding — file_count == 1, header[0].name = class_name,
+ *       header[0].ftype = FILE_UNKNOWN_TYPE. Piggybacks on existing
+ *       pack/unpack of header[] (no protocol change).
+ */
+static int
+file_spacedb_set_busy_sentinel (SPACEDB_TABLE_SIZES_HEADER * entry, const char *class_name)
+{
+  entry->header = (SPACEDB_TABLE_SIZES *) malloc (sizeof (SPACEDB_TABLE_SIZES));
+  if (entry->header == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SPACEDB_TABLE_SIZES));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memset (entry->header, 0, sizeof (SPACEDB_TABLE_SIZES));
+  snprintf (entry->header[0].name, DB_MAX_IDENTIFIER_LENGTH, "%s", class_name);
+  entry->header[0].ftype = FILE_UNKNOWN_TYPE;
+  entry->file_count = 1;
+  return NO_ERROR;
+}
+
+/*
  * file_spacedb_get_heap_ovf_vfid () - Get overflow VFID for a heap file,
  *                                     distinguishing "no overflow" from I/O error.
  *
@@ -8239,6 +8284,13 @@ file_spacedb_fill_one_table (THREAD_ENTRY * thread_p, const OID * class_oid,
 
   entry->file_count = 0;
   entry->header = NULL;
+
+  /* Conditional class lock. If DDL (DROP/RENAME/ALTER) holds SCH_M_LOCK,
+   * skip via a busy sentinel rather than blocking. spacedb is best-effort. */
+  if (lock_object (thread_p, class_oid, oid_Root_class_oid, IS_LOCK, LK_COND_LOCK) != LK_GRANTED)
+    {
+      return file_spacedb_set_busy_sentinel (entry, class_name);
+    }
 
   /* The caller has already resolved class_oid from the classname table or via
    * xlocator_find_class_oid(), so the class is guaranteed to exist. A NULL
@@ -8397,31 +8449,34 @@ file_spacedb_fill_tables_from_oids (THREAD_ENTRY * thread_p, const OID * class_o
     }
   memset (*table_sizes_p, 0, oid_count * sizeof (SPACEDB_TABLE_SIZES_HEADER));
 
+  int valid = 0;
   for (int i = 0; i < oid_count; i++)
     {
       char *class_name = NULL;
 
       error_code = heap_get_class_name (thread_p, &class_oids[i], &class_name);
-      if (error_code == NO_ERROR && class_name == NULL)
+      if (error_code != NO_ERROR || class_name == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
-		  class_oids[i].volid, class_oids[i].pageid, class_oids[i].slotid);
-	  error_code = ER_HEAP_UNKNOWN_OBJECT;
-	}
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
+	  /* Class dropped between OID collection and fill — silent skip
+	   * (rare DDL race). The slot is left zeroed and compacted out. */
+	  er_clear ();
+	  if (class_name != NULL)
+	    {
+	      free_and_init (class_name);
+	    }
+	  continue;
 	}
 
-      error_code = file_spacedb_fill_one_table (thread_p, &class_oids[i], class_name, &(*table_sizes_p)[i]);
+      error_code = file_spacedb_fill_one_table (thread_p, &class_oids[i], class_name, &(*table_sizes_p)[valid]);
       free_and_init (class_name);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
 	}
+      valid++;
     }
 
-  *actual_count_p = oid_count;
+  *actual_count_p = valid;
   return NO_ERROR;
 
 error:
