@@ -64,6 +64,11 @@ class hnsw_impl_backend final:public hnsw_index_backend
 				      const std::string &name,
 				      const hnsw_build_params &build_params)
     override;
+    virtual hnsw_index *load_index (THREAD_ENTRY *thread_p,
+				    const BTID *btid,
+				    const std::string &name,
+				    const hnsw_build_params &build_params)
+    override;
     virtual int drop_index (THREAD_ENTRY *thread_p, const BTID *btid) override
     {
       return NO_ERROR;
@@ -83,6 +88,7 @@ class hnsw_impl final:public hnsw_index
     ~hnsw_impl () override;
 
     int init (cubthread::entry *thread_p, PAGE_PTR page_ptr, RECDES &rec);
+    int init_for_load ();
 
     virtual int prepare_to_add (cubthread::entry *thread_p, int n_vectors, const OID *oid,
 				const float *vector) override;
@@ -203,6 +209,29 @@ hnsw_impl_backend::create_index (THREAD_ENTRY *thread_p,
   return index;
 }
 
+hnsw_index *
+hnsw_impl_backend::load_index (THREAD_ENTRY *thread_p,
+			       const BTID *btid,
+			       const std::string &name,
+			       const hnsw_build_params &build_params)
+{
+  hnsw_impl *index =
+	  new hnsw_impl (*this, *btid, name, build_params);
+
+  if (index == NULL)
+    {
+      return NULL;
+    }
+
+  if (index->init_for_load () != NO_ERROR)
+    {
+      delete index;
+      return NULL;
+    }
+
+  return index;
+}
+
 // =====================================================================
 // hnsw_impl
 // =====================================================================
@@ -240,6 +269,14 @@ hnsw_impl::init (cubthread::entry *thread_p, PAGE_PTR page_ptr, RECDES &rec)
 
   init_worker_pool ();
 
+  return NO_ERROR;
+}
+
+int
+hnsw_impl::init_for_load ()
+{
+  m_algo->set_storage (m_storage.get ());
+  init_worker_pool ();
   return NO_ERROR;
 }
 

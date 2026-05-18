@@ -143,7 +143,8 @@ class hnsw_index_backend
 				      const hnsw_build_params &build_params) = 0;
     virtual int drop_index (THREAD_ENTRY *thread_p, const BTID *btid) = 0;
 
-    virtual hnsw_index *load_index (THREAD_ENTRY *thread_p, const BTID *btid)
+    virtual hnsw_index *load_index (THREAD_ENTRY *thread_p, const BTID *btid, const std::string &name,
+				    const hnsw_build_params &build_params)
     {
       return nullptr;
     }
