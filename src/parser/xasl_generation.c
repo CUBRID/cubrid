@@ -18814,6 +18814,24 @@ pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * spec)
 }
 
 /*
+ * pt_to_insert_xasl_remote_select () - Builds INSERT_PROC XASL for remote INSERT SELECT.
+ *   Fills INSERT_PROC_NODE remote sink fields and wires a local SELECT aptr.
+ *   Implemented in T2-3a/T2-3b.
+ *
+ * return      : XASL node, or NULL on error.
+ * parser (in) : Parser context.
+ * statement (in): PT_INSERT node (remote target + SELECT value_clauses).
+ */
+static XASL_NODE *
+pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  /* TODO: T2-3a — implement remote INSERT SELECT XASL generation */
+  (void) parser;
+  (void) statement;
+  return NULL;
+}
+
+/*
  * pt_to_insert_xasl () - Converts an insert parse tree to an XASL tree for insert server execution.
  *
  * return	  : Xasl node.
@@ -18863,6 +18881,12 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
 	  return NULL;
+	}
+
+      /* T2-2: remote INSERT SELECT takes its own XASL path */
+      if (pt_get_subquery_of_insert_select (statement) != NULL)
+	{
+	  return pt_to_insert_xasl_remote_select (parser, statement);
 	}
 
       return pt_to_xasl_for_dblink (parser, statement->info.insert.spec);
