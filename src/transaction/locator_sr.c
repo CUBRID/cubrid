@@ -136,8 +136,7 @@ static const INT32 locator_Pseudo_pageid_last = -0x7FFF;
 static INT32 locator_Pseudo_pageid_crt = -2;
 
 static int locator_permoid_class_name (THREAD_ENTRY * thread_p, const char *classname, const OID * class_oid);
-static bool locator_is_user_class_entry (THREAD_ENTRY * thread_p, const LOCATOR_CLASSNAME_ENTRY * entry);
-static bool locator_is_view_class (THREAD_ENTRY * thread_p, const OID * class_oid);
+static bool locator_is_user_class_entry (const LOCATOR_CLASSNAME_ENTRY * entry);
 static bool locator_wildcard_name_matches (const LOCATOR_CLASS_COLLECT_CTX * ctx, const char *name);
 static int locator_count_class_func (THREAD_ENTRY * thread_p, void *data, void *args);
 static int locator_collect_class_func (THREAD_ENTRY * thread_p, void *data, void *args);
@@ -1175,10 +1174,10 @@ start:
 
 /*
   * locator_is_user_class_entry () - Returns true if entry is a permanent
-  *                                  user (non-system, non-view) class.
+  *                                  non-system class.
   */
 static bool
-locator_is_user_class_entry (THREAD_ENTRY * thread_p, const LOCATOR_CLASSNAME_ENTRY * entry)
+locator_is_user_class_entry (const LOCATOR_CLASSNAME_ENTRY * entry)
 {
   const OID *class_oid;
 
@@ -1209,65 +1208,7 @@ locator_is_user_class_entry (THREAD_ENTRY * thread_p, const LOCATOR_CLASSNAME_EN
       return false;
     }
 
-  /*
-   * Reject user-defined views (CREATE VIEW): they have no heap file,
-   * so spacedb cannot report per-table space usage for them.
-   */
-  if (locator_is_view_class (thread_p, class_oid))
-    {
-      return false;
-    }
-
   return true;
-}
-
-/*
- * locator_is_view_class () - Returns true if class_oid refers to a class
- *                            without a heap file (i.e. a view).
- *
- * return        : true iff the class has no heap (view)
- * thread_p (in) : thread entry
- * class_oid (in): class OID to test
- *
- * Note: Reads the class record directly via heap_get_class_record to avoid
- *       polluting the HFID cache (heap_hfid_cache_get asserts non-null HFID,
- *       which views cannot satisfy).
- *
- *       HFID-null is used as the view discriminator following the precedent
- *       at locator_check_all_btrees() in this file.
- *
- *       Read failure is not propagated: callers (locator_get_user_class_oids,
- *       xlocator_find_class_oid) supply OIDs that were just resolved from the
- *       classname table or catalog, so heap_get_class_record is expected to
- *       succeed. A transient I/O error here will be re-encountered and
- *       reported by the downstream file_spacedb_fill_one_table() path.
- */
-static bool
-locator_is_view_class (THREAD_ENTRY * thread_p, const OID * class_oid)
-{
-  HEAP_SCANCACHE scan_cache;
-  RECDES recdes;
-  HFID hfid;
-  bool is_view = false;
-
-  if (heap_scancache_quick_start_root_hfid (thread_p, &scan_cache) != NO_ERROR)
-    {
-      return false;
-    }
-  if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) == S_SUCCESS)
-    {
-      or_class_hfid (&recdes, &hfid);
-      if (HFID_IS_NULL (&hfid))
-	{
-	  is_view = true;
-	}
-    }
-  /* Read failure is intentionally not propagated — caller-supplied OIDs are
-   * trusted (just resolved via classname table / xlocator_find_class_oid);
-   * any transient I/O error is re-encountered and reported downstream by
-   * file_spacedb_fill_one_table(). See function header for details. */
-  heap_scancache_end (thread_p, &scan_cache);
-  return is_view;
 }
 
 /*
@@ -1301,7 +1242,7 @@ locator_count_class_func (THREAD_ENTRY * thread_p, void *data, void *args)
   LOCATOR_CLASSNAME_ENTRY *entry = (LOCATOR_CLASSNAME_ENTRY *) data;
   LOCATOR_CLASS_COLLECT_CTX *ctx = (LOCATOR_CLASS_COLLECT_CTX *) args;
 
-  if (locator_is_user_class_entry (thread_p, entry)
+  if (locator_is_user_class_entry (entry)
       && (ctx->prefix == NULL || locator_wildcard_name_matches (ctx, entry->e_name)))
     {
       ctx->count++;
@@ -1327,7 +1268,7 @@ locator_collect_class_func (THREAD_ENTRY * thread_p, void *data, void *args)
   LOCATOR_CLASSNAME_ENTRY *entry = (LOCATOR_CLASSNAME_ENTRY *) data;
   LOCATOR_CLASS_COLLECT_CTX *ctx = (LOCATOR_CLASS_COLLECT_CTX *) args;
 
-  if (locator_is_user_class_entry (thread_p, entry)
+  if (locator_is_user_class_entry (entry)
       && (ctx->prefix == NULL || locator_wildcard_name_matches (ctx, entry->e_name)))
     {
       COPY_OID (&ctx->oids[ctx->count], &entry->e_current.oid);

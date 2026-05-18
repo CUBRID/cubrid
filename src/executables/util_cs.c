@@ -1272,6 +1272,8 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 	{
 	  if (table_sizes[table_num].file_count == 0)
 	    {
+	      fprintf (outfp, "%s\n",
+		       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_VIEW_SKIPPED));
 	      continue;
 	    }
 

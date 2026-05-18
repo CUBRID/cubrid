@@ -8015,15 +8015,6 @@ file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb, char **table_arr
 	      return error_code;
 	    }
 
-	  if (file_spacedb_is_view_class (thread_p, &class_oid))
-	    {
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, table_array[table_num]);
-	      file_spacedb_free_table_sizes (*table_sizes_p, table_num);
-	      *table_sizes_p = NULL;
-	      error_code = ER_LC_UNKNOWN_CLASSNAME;
-	      return error_code;
-	    }
-
 	  error_code =
 	    file_spacedb_fill_one_table (thread_p, &class_oid, table_array[table_num], &(*table_sizes_p)[table_num]);
 	  if (error_code != NO_ERROR)
@@ -8243,6 +8234,15 @@ file_spacedb_fill_one_table (THREAD_ENTRY * thread_p, const OID * class_oid,
 
   entry->file_count = 0;
   entry->header = NULL;
+
+  /* View has no heap file. Leave entry zeroed (file_count == 0) as a sentinel;
+   * the client uses this to emit a view-skipped notice. Detect view from the
+   * catalog record directly to avoid invoking heap_get_class_info, which would
+   * assert in heap_hfid_cache_get for null-HFID classes. */
+  if (file_spacedb_is_view_class (thread_p, class_oid))
+    {
+      return NO_ERROR;
+    }
 
   error_code = heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL);
   if (error_code != NO_ERROR)

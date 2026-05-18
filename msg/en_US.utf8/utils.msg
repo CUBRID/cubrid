@@ -777,6 +777,7 @@ valid options:\n\
                                  <table>     a specific table\n\
                                  *           all user tables\n\
                                  prefix*     tables matching the prefix\n
+61 View classes are not applicable to spacedb.\n
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
 15 Estimated Number of Pages = %1$d\n
