@@ -198,6 +198,38 @@ namespace test_oos_utils
     return large_data;
   }
 
+  /* Wraps a test RECDES as the oos_buffer src that oos_insert expects. */
+  inline int
+  oos_insert_from_recdes (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const RECDES &recdes, OID &oid)
+  {
+    return oos_insert (thread_p, oos_vfid, oos_buffer (recdes.data, static_cast<std::size_t> (recdes.length)), oid);
+  }
+
+  /* Reads OID into a fresh RECDES, sized via oos_get_length (tests have no heap-inline length). */
+  inline int
+  oos_read_with_alloc (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
+  {
+    recdes = RECDES{};
+    int len = oos_get_length (thread_p, oid);
+    if (len < 0)
+      {
+	return er_errid ();
+      }
+    int err = recdes_allocate_data_area (&recdes, len);
+    if (err != NO_ERROR)
+      {
+	return err;
+      }
+    err = oos_read (thread_p, oid, oos_buffer (recdes.data, static_cast<std::size_t> (len)));
+    if (err != NO_ERROR)
+      {
+	recdes_free_data_area (&recdes);
+	return err;
+      }
+    recdes.length = len;
+    return NO_ERROR;
+  }
+
   inline int
   from_string_into_recdes (const std::string &large_data, RECDES &rec)
   {

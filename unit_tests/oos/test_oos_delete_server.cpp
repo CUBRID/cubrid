@@ -90,7 +90,7 @@ TEST (OosDeleteServerTest, OosDeleteBasic)
   test_oos_utils::auto_freed_recdes_ptr defer_free_rec_in (&rec_in, recdes_free_data_area);
 
   OID oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_NE (oid.pageid, NULL_PAGEID);
 
@@ -123,14 +123,14 @@ TEST (OosDeleteServerTest, OosDeleteThenReadFails)
   test_oos_utils::auto_freed_recdes_ptr defer_free (&rec_in, recdes_free_data_area);
 
   OID oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   err = oos_delete (thread_p, oos_vfid, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES rec_out {};
-  int read_err = oos_read (thread_p, oid, rec_out);
+  int read_err = test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_out);
   ASSERT_NE (read_err, NO_ERROR);
 
   if (rec_out.data != nullptr)
@@ -161,7 +161,7 @@ TEST (OosDeleteServerTest, OosDeleteMultiChunk)
   test_oos_utils::auto_freed_recdes_ptr defer_free (&rec_in, recdes_free_data_area);
 
   OID head_oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, head_oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, head_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   /* peek the header to find the next chunk OID */
@@ -211,11 +211,11 @@ TEST (OosDeleteServerTest, OosUpdatePattern)
   test_oos_utils::auto_freed_recdes_ptr defer_new (&rec_new, recdes_free_data_area);
 
   OID old_oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_old, old_oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_old, old_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   OID new_oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_new, new_oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_new, new_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   ASSERT_NE (old_oid.slotid, new_oid.slotid);
@@ -225,7 +225,7 @@ TEST (OosDeleteServerTest, OosUpdatePattern)
 
   /* new record must still be readable and unchanged */
   RECDES rec_out {};
-  err = oos_read (thread_p, new_oid, rec_out);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, new_oid, rec_out);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_EQ (rec_out.length, rec_new.length);
   ASSERT_STREQ (rec_out.data, new_data.c_str ());
@@ -233,7 +233,7 @@ TEST (OosDeleteServerTest, OosUpdatePattern)
 
   /* old record must be gone */
   RECDES stale_out {};
-  int stale_err = oos_read (thread_p, old_oid, stale_out);
+  int stale_err = test_oos_utils::oos_read_with_alloc (thread_p, old_oid, stale_out);
   ASSERT_NE (stale_err, NO_ERROR);
   if (stale_out.data != nullptr)
     {
@@ -260,7 +260,7 @@ TEST (OosDeleteServerTest, OosDeleteRestoresFreeSpace)
 
   /* first insert establishes the page */
   OID first_oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, first_oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, first_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   int free_after_first_insert = get_free_space_of_oid_page (first_oid);
@@ -272,7 +272,7 @@ TEST (OosDeleteServerTest, OosDeleteRestoresFreeSpace)
   test_oos_utils::auto_freed_recdes_ptr defer_target (&rec_target, recdes_free_data_area);
 
   OID target_oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_target, target_oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_target, target_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   ASSERT_EQ (first_oid.pageid, target_oid.pageid);
@@ -309,12 +309,12 @@ TEST (OosDeleteServerTest, OosDeleteLarge160KBMultiChunk)
   test_oos_utils::auto_freed_recdes_ptr defer_free (&rec_in, recdes_free_data_area);
 
   OID oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   /* verify readable before deletion */
   RECDES rec_check {};
-  err = oos_read (thread_p, oid, rec_check);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_check);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_STREQ (rec_check.data, rec_in.data);
   recdes_free_data_area (&rec_check);
@@ -323,7 +323,7 @@ TEST (OosDeleteServerTest, OosDeleteLarge160KBMultiChunk)
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES rec_after {};
-  int read_err = oos_read (thread_p, oid, rec_after);
+  int read_err = test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_after);
   ASSERT_NE (read_err, NO_ERROR);
   if (rec_after.data != nullptr)
     {
@@ -348,7 +348,7 @@ TEST (OosDeleteServerTest, OosDeleteSlotBecomesUnknown)
   test_oos_utils::auto_freed_recdes_ptr defer_free (&rec_in, recdes_free_data_area);
 
   OID oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_NE (oid.pageid, NULL_PAGEID);
 
