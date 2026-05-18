@@ -515,7 +515,7 @@ namespace cubschema
       {"from_attr_name", format_varchar (255)},
       {"def_order", "integer"},
       {"data_type", "integer"},
-      {"default_value", format_varchar (255)},
+      {"default_value", format_varchar (DB_MAX_DEFAULT_EXPR_LENGTH)},
       {"domains", format_sequence (CT_DOMAIN_NAME)},
       {"is_nullable", "integer"},
       {"flags", "integer"},
@@ -958,7 +958,7 @@ namespace cubschema
       {SP_ARG_ATTR_ARG_NAME, format_varchar (255)},
       {SP_ARG_ATTR_DATA_TYPE, "integer"},
       {SP_ARG_ATTR_MODE, "integer"},
-      {SP_ARG_ATTR_DEFAULT_VALUE, format_varchar (255)}, // TODO: CBRD-25261
+      {SP_ARG_ATTR_DEFAULT_VALUE, format_varchar (DB_MAX_DEFAULT_EXPR_LENGTH)}, // TODO: CBRD-25261
       {SP_ARG_ATTR_IS_OPTIONAL, "integer"}, // default_value is used only when is_optional is 1
       {SP_ARG_ATTR_COMMENT, format_varchar (1024)},
     },
@@ -1397,7 +1397,8 @@ namespace cubschema
       {"collation", format_varchar (32)},
       {"domain_class_name", format_varchar (255)},
       {"domain_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
-      {"default_value", format_varchar (255)},
+      {"default_value", format_varchar (DB_MAX_DEFAULT_EXPR_LENGTH)},
+      {"is_partition_key", format_varchar (3)},
       {"is_nullable", format_varchar (3)},
       {"is_invisible", format_varchar (3)},
       {"comment", format_varchar (1024)},
@@ -1858,7 +1859,7 @@ namespace cubschema
       {"data_type", format_varchar (16)},
       {"mode", format_varchar (6)},
       {"is_optional", format_varchar (3)},
-      {"default_value", format_varchar (255)},
+      {"default_value", format_varchar (DB_MAX_DEFAULT_EXPR_LENGTH)},
       {"comment", format_varchar (1024)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_args_spec ()}
