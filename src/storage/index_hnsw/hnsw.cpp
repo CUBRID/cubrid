@@ -427,6 +427,12 @@ hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, 
   assert (distances);
   assert (k > 0);
 
+  for (int i = 0; i < k; i++)
+    {
+      OID_SET_NULL (&rec_oids[i]);
+      distances[i] = 0.0f;
+    }
+
   hnsw_index *index = index_manager->get_index (btid);
   if (index == nullptr)
     {
