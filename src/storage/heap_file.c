@@ -857,7 +857,9 @@ static int heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERA
 					     bool is_mvcc_class);
 static int heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * update_context,
 					     bool is_mvcc_class);
-static bool heap_recdes_compute_oos_flag (const RECDES * recdes);
+#if !defined (NDEBUG)
+static bool heap_recdes_compute_oos_flag_debug (const RECDES * recdes);
+#endif /* !NDEBUG */
 static int heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 static int heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 					       PGBUF_WATCHER * home_hint_p);
@@ -21627,7 +21629,7 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
       {
 	if (classrepr->n_variable > 0)
 	  {
-	    bool walked_has_oos = heap_recdes_compute_oos_flag (update_context->recdes_p);
+	    bool walked_has_oos = heap_recdes_compute_oos_flag_debug (update_context->recdes_p);
 	    assert (walked_has_oos == has_oos);
 	  }
 	heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
@@ -27867,25 +27869,18 @@ heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
   return ER_FAILED;
 }
 
+#if !defined (NDEBUG)
 /*
- * heap_recdes_compute_oos_flag - decide whether OR_MVCC_FLAG_HAS_OOS should be
- *                                set on this record's MVCC header
+ * heap_recdes_compute_oos_flag_debug - debug-only audit of OR_MVCC_FLAG_HAS_OOS
+ *                                      against the on-disk VOT
  *    return: true if the VOT contains any OOS-flagged entry, false otherwise
  *    recdes(in): heap record being written
  *
  * Note:
- *    Counterpart of heap_recdes_contains_oos (). The two functions look alike
- *    but serve opposite ends of the OOS-flag lifecycle:
- *
- *      compute  (this fn):  scan the VOT once at update time, derive the flag,
- *                           and store it in the MVCC header. Called by
- *                           heap_update_adjust_recdes_header ().
- *      contains:            on read, do an O(1) bit test on the cached header
- *                           flag. Hot path; called from locator_sr.c and from
- *                           heap_recdes_get_oos_oids ().
- *
- *    "compute" is the source of truth that produces the value "contains"
- *    later reads back.
+ *    Debug-only sanity check used by heap_update_adjust_recdes_header () to
+ *    verify the upstream builder (heap_attrinfo_transform_header_to_disk)
+ *    stamped HAS_OOS consistently with the VOT contents. The production path
+ *    trusts the bit; this walker is the assert that catches divergence.
  *
  *    Defense against non-object-instance records: the heap can hold records
  *    with layouts other than the object-instance VOT format (class records,
@@ -27903,7 +27898,7 @@ heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
  *    max_var_count is a backstop against malformed data.
  */
 static bool
-heap_recdes_compute_oos_flag (const RECDES * recdes)
+heap_recdes_compute_oos_flag_debug (const RECDES * recdes)
 {
   if (recdes == NULL || recdes->data == NULL)
     {
@@ -27962,3 +27957,4 @@ heap_recdes_compute_oos_flag (const RECDES * recdes)
 
   return false;
 }
+#endif /* !NDEBUG */
