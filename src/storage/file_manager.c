@@ -8001,6 +8001,7 @@ file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb, char **table_arr
 	  if (find_result == LC_CLASSNAME_ERROR)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
+	      *actual_count_p = 0;
 	      file_spacedb_free_table_sizes (*table_sizes_p, table_num);
 	      *table_sizes_p = NULL;
 	      return error_code;
@@ -8009,6 +8010,7 @@ file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb, char **table_arr
 	  if (OID_ISNULL (&class_oid))
 	    {
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, table_array[table_num]);
+	      *actual_count_p = 0;
 	      file_spacedb_free_table_sizes (*table_sizes_p, table_num);
 	      *table_sizes_p = NULL;
 	      error_code = ER_LC_UNKNOWN_CLASSNAME;
@@ -8019,6 +8021,7 @@ file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb, char **table_arr
 	    file_spacedb_fill_one_table (thread_p, &class_oid, table_array[table_num], &(*table_sizes_p)[table_num]);
 	  if (error_code != NO_ERROR)
 	    {
+	      *actual_count_p = 0;
 	      file_spacedb_free_table_sizes (*table_sizes_p, table_num + 1);
 	      *table_sizes_p = NULL;
 	      return error_code;
