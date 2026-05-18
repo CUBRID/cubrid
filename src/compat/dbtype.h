@@ -239,7 +239,7 @@ extern "C"
       }
 
     DB_TYPE type = db_value_domain_type (src);
-    if (type == DB_TYPE_STRING || type == DB_TYPE_VARNCHAR || type == DB_TYPE_CLOB)
+    if (TP_IS_VAR_LEN_CHAR_TYPE (type))
       {
 	dst->data.ch.info.compressed_need_clear = false;
       }
