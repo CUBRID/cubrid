@@ -260,6 +260,7 @@ hnsw_impl_backend::create_index (THREAD_ENTRY *thread_p,
   if (index->init (thread_p, page_ptr, rec) != NO_ERROR)
     {
       ASSERT_ERROR ();
+      pgbuf_unfix_and_init (thread_p, page_ptr);
       delete index;
       return NULL;
     }
