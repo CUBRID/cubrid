@@ -36,6 +36,7 @@
 #include "slotted_page.h"
 
 #include "db_vector.hpp"	// db_vector_is_all_zeros
+#include "oid.h"
 #if defined (SERVER_MODE)
 #include "thread_worker_pool.hpp"
 #include "thread_worker_pool_taskcap.hpp"
@@ -88,7 +89,7 @@ class hnsw_impl final:public hnsw_index
     ~hnsw_impl () override;
 
     int init (cubthread::entry *thread_p, PAGE_PTR page_ptr, RECDES &rec);
-    int init_for_load ();
+    int init_for_load (cubthread::entry *thread_p);
 
     virtual int prepare_to_add (cubthread::entry *thread_p, int n_vectors, const OID *oid,
 				const float *vector) override;
@@ -223,7 +224,7 @@ hnsw_impl_backend::load_index (THREAD_ENTRY *thread_p,
       return NULL;
     }
 
-  if (index->init_for_load () != NO_ERROR)
+  if (index->init_for_load (thread_p) != NO_ERROR)
     {
       delete index;
       return NULL;
@@ -273,8 +274,28 @@ hnsw_impl::init (cubthread::entry *thread_p, PAGE_PTR page_ptr, RECDES &rec)
 }
 
 int
-hnsw_impl::init_for_load ()
+hnsw_impl::init_for_load (cubthread::entry *thread_p)
 {
+  PAGE_PTR page_ptr = pgbuf_fix (thread_p, &m_root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_ptr == NULL)
+    {
+      ASSERT_ERROR ();
+      return ER_FAILED;
+    }
+
+  SPAGE_SLOT *slotp = spage_get_slot (page_ptr, 1);
+  if (slotp == NULL || slotp->record_length < static_cast<int> (cubhnsw::root_t::get_size ()))
+    {
+      pgbuf_unfix_and_init (thread_p, page_ptr);
+      return ER_FAILED;
+    }
+
+  cubhnsw::root_t root { reinterpret_cast<cubhnsw::byte_t *> (page_ptr) + slotp->offset_to_record };
+  cubhnsw::slot_id_t entry = root.get_entry ();
+  m_storage->set_empty (OID_ISNULL (&entry));
+
+  pgbuf_unfix_and_init (thread_p, page_ptr);
+
   m_algo->set_storage (m_storage.get ());
   init_worker_pool ();
   return NO_ERROR;

@@ -646,6 +646,13 @@ hnsw_index_manager::load_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, h
   meta.build_params.ef_construction = hnsw_header->hnsw_efConstruction;
   meta.build_params.metric = static_cast<DB_VECTOR_DISTANCE_METRIC> (hnsw_header->metric);
 
+  if (meta.build_params.dimension <= 0 || meta.build_params.m <= 1 || meta.build_params.ef_construction <= 0
+      || !backend->is_metric_supported (meta.build_params.metric))
+    {
+      pgbuf_unfix_and_init (thread_p, page_ptr);
+      return ER_FAILED;
+    }
+
   pgbuf_unfix_and_init (thread_p, page_ptr);
   return NO_ERROR;
 }
