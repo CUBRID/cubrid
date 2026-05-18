@@ -11736,7 +11736,7 @@ pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_N
 static void
 pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
 {
-  PT_NODE *insert, *spec;
+  PT_NODE *spec;
   int remote_ins = 0;
   bool is_insert = true;
 
@@ -11750,6 +11750,12 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
   if (spec->info.spec.remote_server_name)
     {
       remote_ins = 1;
+    }
+
+  /* remote INSERT SELECT: INSERT INTO remote_t@conn SELECT ... FROM local_t */
+  if (remote_ins && pt_get_subquery_of_insert_select (node) != NULL)
+    {
+      snl->is_remote_insert_select = true;
     }
 
   pt_convert_dblink_dml_query (parser, node, (remote_ins == 0), remote_ins, snl);
