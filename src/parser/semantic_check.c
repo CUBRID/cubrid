@@ -12208,6 +12208,17 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	      || (node->node_type == PT_UPDATE && node->info.update.spec->info.spec.remote_server_name)
 	      || (node->node_type == PT_MERGE && node->info.merge.into->info.spec.remote_server_name))
 	    {
+	      /* For remote INSERT SELECT, the SELECT subquery runs locally and needs name resolution
+	       * (flat_entity_list, range_var, column binding) on its FROM specs. */
+	      if (node->node_type == PT_INSERT)
+		{
+		  PT_NODE *subq = pt_get_subquery_of_insert_select (node);
+		  if (subq != NULL)
+		    {
+		      sc_info_ptr->system_class = false;
+		      pt_resolve_names (parser, subq, sc_info_ptr);
+		    }
+		}
 	      break;
 	    }
 	}
