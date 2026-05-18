@@ -12016,6 +12016,53 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
+  /* INSERT SELECT: skip DML text serialization; preserve value_clauses for XASL generation.
+   * Set up connection info (ct + pt_resolve_server_names) — runtime inserts via CCI bind. */
+  if (snl->is_remote_insert_select)
+    {
+      node->flag.cannot_prepare = 0;
+
+      PT_NODE *ct = parser_new_node (parser, PT_DBLINK_TABLE_DML);
+      if (!ct)
+	{
+	  PT_ERRORmf (parser, ct, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
+	  return;
+	}
+
+      PT_NODE *server = into_spec->info.spec.remote_server_name;
+      if (server == NULL)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_DERIVED_TABLE);
+	  return;
+	}
+      if (server->node_type == PT_DBLINK_TABLE_DML)
+	{
+	  return;			/* already converted */
+	}
+
+      ct->info.dblink_table.is_name = true;
+      ct->info.dblink_table.conn = server;
+      if (server->next)
+	{
+	  assert (server->next->node_type == PT_NAME);
+	  ct->info.dblink_table.owner_name = server->next;
+	  server->next = NULL;
+	}
+
+      for (i = 0; i < snl->server_node_cnt; i++)
+	{
+	  if (snl->server[i]->next)
+	    {
+	      parser_free_node (parser, snl->server[i]->next);
+	    }
+	  parser_free_node (parser, snl->server[i]);
+	}
+
+      into_spec->info.spec.remote_server_name = ct;
+      pt_resolve_server_names (parser, into_spec);
+      return;
+    }
+
   /*
    ** the query which has generic function is set flag.cannont_prepare to 1 by parser
    ** because the generic function might not be executed, 
