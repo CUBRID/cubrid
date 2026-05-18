@@ -1690,33 +1690,31 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
     }
 
 cleanup:
-  if (sort_param->px_type == SORT_ORDER_BY || sort_param->px_type == SORT_GROUP_BY)
+  if (sort_param->px_type == SORT_ORDER_BY)
     {
-      /* collect input pages read via qfile_sort_get_next_parallel (not tracked by PSTAT) */
-      int px_input_pages = 0;
-      if (sort_param->get_arg != NULL)
-	{
-	  SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
-	  if (sort_info_p->px_state != NULL)
-	    {
-	      sort_px_list_state *state = (sort_px_list_state *) sort_info_p->px_state;
-	      px_input_pages = state->pages_read;
-	      if (state->tplrec.tpl != NULL)
-		{
-		  db_private_free_and_init (thread_p, state->tplrec.tpl);
-		}
-	    }
-	}
-
       if (thread_is_on_trace (sort_param->px_orig_thread_p))
 	{
 	  tsc_getticks (&end_tick);
 	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 	  TSC_ADD_TIMEVAL (sort_param->orderby_stats.orderby_time, tv_diff);
 
-	  sort_param->orderby_stats.orderby_pages +=
-	    px_input_pages + (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES));
+	  sort_param->orderby_stats.orderby_pages += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES));
 	  sort_param->orderby_stats.orderby_ioreads += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES));
+	}
+
+      /* tplrec.tpl is allocated from the worker thread's private heap via db_private_alloc(NULL, ...).
+       * Free it here while still on the worker thread; the main thread cannot free it correctly. */
+      if (sort_param->get_arg != NULL)
+	{
+	  SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
+	  if (sort_info_p->px_state != NULL)
+	    {
+	      sort_px_list_state *state = (sort_px_list_state *) sort_info_p->px_state;
+	      if (state->tplrec.tpl != NULL)
+		{
+		  db_private_free_and_init (thread_p, state->tplrec.tpl);
+		}
+	    }
 	}
     }
   else if (sort_param->px_type == SORT_INDEX_LEAF)
@@ -1724,6 +1722,32 @@ cleanup:
       SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
       bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args_p, NULL, NULL);
       bt_load_clear_pred_and_unpack (thread_p, sort_args_p, func_unpack_info);
+    }
+  else if (sort_param->px_type == SORT_GROUP_BY)
+    {
+      if (thread_is_on_trace (sort_param->px_orig_thread_p))
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	  TSC_ADD_TIMEVAL (sort_param->orderby_stats.orderby_time, tv_diff);
+
+	  sort_param->orderby_stats.orderby_pages += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES));
+	  sort_param->orderby_stats.orderby_ioreads += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES));
+	}
+
+      /* tplrec.tpl is worker-private; free here before returning to main thread. */
+      if (sort_param->get_arg != NULL)
+	{
+	  SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
+	  if (sort_info_p->px_state != NULL)
+	    {
+	      sort_px_list_state *state = (sort_px_list_state *) sort_info_p->px_state;
+	      if (state->tplrec.tpl != NULL)
+		{
+		  db_private_free_and_init (thread_p, state->tplrec.tpl);
+		}
+	    }
+	}
     }
 
   if (sort_param->px_orig_thread_p->on_trace)
@@ -5257,7 +5281,6 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	  state->curr_offset = 0;
 	  state->tplrec.size = 0;
 	  state->tplrec.tpl = NULL;
-	  state->pages_read = 0;
 
 	  worker_info_p->px_state = state;
 	  px_sort_param[i].get_fn = &qfile_sort_get_next_parallel;
@@ -5414,7 +5437,6 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	  state->curr_offset = 0;
 	  state->tplrec.size = 0;
 	  state->tplrec.tpl = NULL;
-	  state->pages_read = 0;
 
 	  winfo->px_state = state;
 	  px_sort_param[i].get_arg = winfo;

@@ -137,7 +137,6 @@ struct sort_px_list_state
   int curr_tplno;		/* tuple index within curr_page */
   int curr_offset;		/* byte offset of current tuple in curr_page */
   QFILE_TUPLE_RECORD tplrec;	/* buffer for assembling overflow tuples */
-  int pages_read;		/* input pages consumed — for trace stats */
 };
 
 extern SORT_STATUS qfile_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * recdes_p, void *arg);

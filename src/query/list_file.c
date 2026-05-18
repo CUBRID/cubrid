@@ -3919,7 +3919,6 @@ qfile_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * recdes_p, void *
 	  state->curr_vpid.pageid = idx;
 	  state->curr_tplno = 0;
 	  state->curr_offset = QFILE_PAGE_HEADER_SIZE;
-	  state->pages_read++;
 	  /* membuf_cur is advanced when the page is exhausted above */
 	}
       else
@@ -3973,7 +3972,6 @@ qfile_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * recdes_p, void *
 		  state->curr_vpid = vpid;
 		  state->curr_tplno = 0;
 		  state->curr_offset = QFILE_PAGE_HEADER_SIZE;
-		  state->pages_read++;
 		  found = true;
 		  break;
 		}
