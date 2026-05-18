@@ -834,11 +834,9 @@ dblink_corr_execute (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, VAL_
   int i, ret;
   DB_VALUE *peek_val;
 
-#if !defined (NDEBUG)
   assert (scan_info->stmt_handle > 0);
-#endif
 
-  scan_info->corr_skip_result_fetch = 0;
+  scan_info->corr_skip_result_fetch = false;
 
   if (scan_info->corr_key_regu_list == NULL || scan_info->corr_key_count <= 0)
     {
@@ -855,7 +853,7 @@ dblink_corr_execute (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, VAL_
       if (DB_IS_NULL (peek_val))
 	{
 	  /* corr key is NULL: skip remote round-trip; corr_skip_result_fetch prevents reading a stale result set. */
-	  scan_info->corr_skip_result_fetch = 1;
+	  scan_info->corr_skip_result_fetch = true;
 	  return NO_ERROR;
 	}
       ret = dblink_bind_dbval_to_param (scan_info->stmt_handle, i + 1, peek_val);
@@ -978,7 +976,7 @@ dblink_close_scan (DBLINK_SCAN_INFO * scan_info, bool is_final)
 	{
 	  return NO_ERROR;
 	}
-      scan_info->cursor_rewind = 0;
+      scan_info->cursor_rewind = false;
     }
 
   /* Keep CCI stmt/conn across outer-row iterations (per-row execute is in dblink_corr_execute). */

@@ -3432,7 +3432,7 @@ typedef struct pt_dblink_info
 
   /* true once mq_dblink_append_corr_pred_sql has written "col = ?" into rewritten.
    * Replaces the rewritten==NULL sentinel so the pure-corr check in
-   * pt_to_dblink_table_spec_list does not depend on rewritten's NULL-ness. */
+   * mq_copypush_sargable_terms_helper does not depend on rewritten's NULL-ness. */
   bool corr_sql_built;
 
   /* true when pt_copypush_terms successfully appended " WHERE pushed_pred" to rewritten.

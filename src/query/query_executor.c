@@ -2453,7 +2453,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 	if (dbg_spec->type == TARGET_DBLINK)
 	  {
 	    assert (dbg_spec->s_id.s.dblid.scan_info.stmt_handle <= 0);
-	    assert (dbg_spec->s_id.s.dblid.scan_info.cursor_rewind == 0);
+	    assert (!dbg_spec->s_id.s.dblid.scan_info.cursor_rewind);
 	  }
       }
     for (dbg_spec = xasl->merge_spec; dbg_spec != NULL; dbg_spec = dbg_spec->next)
@@ -2461,7 +2461,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 	if (dbg_spec->type == TARGET_DBLINK)
 	  {
 	    assert (dbg_spec->s_id.s.dblid.scan_info.stmt_handle <= 0);
-	    assert (dbg_spec->s_id.s.dblid.scan_info.cursor_rewind == 0);
+	    assert (!dbg_spec->s_id.s.dblid.scan_info.cursor_rewind);
 	  }
       }
   }
@@ -7826,7 +7826,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 
 	/* inject reuse flag before open: scan_init_scan_id does not touch s.dblid.scan_info,
 	 * so the flag survives across open/close cycles. */
-	s_id->s.dblid.scan_info.cursor_rewind = IS_DBLINK_CURSOR_REWIND_XASL (xasl) ? 1 : 0;
+	s_id->s.dblid.scan_info.cursor_rewind = IS_DBLINK_CURSOR_REWIND_XASL (xasl);
 
 	error_code = scan_open_dblink_scan (thread_p, s_id, curr_spec, vd, val_list, &host_vars);
 	if (error_code != NO_ERROR)
@@ -15158,10 +15158,7 @@ qexec_prep_exec_corr_dblink (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STA
   ACCESS_SPEC_TYPE *spec;
   int err;
 
-  if (!IS_CORR_DBLINK_XASL (aptr))
-    {
-      return NO_ERROR;
-    }
+  assert (IS_CORR_DBLINK_XASL (aptr));
   for (spec = aptr->spec_list; spec != NULL; spec = spec->next)
     {
       DBLINK_SCAN_INFO *scan_info;
@@ -15179,9 +15176,7 @@ qexec_prep_exec_corr_dblink (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STA
 	      return err;
 	    }
 	}
-#if !defined (NDEBUG)
       assert (scan_info->stmt_handle > 0);
-#endif
       err = dblink_corr_execute (thread_p, scan_info, &xasl_state->vd);
       if (err != NO_ERROR)
 	{

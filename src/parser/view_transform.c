@@ -4591,13 +4591,18 @@ mq_is_dblink_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term)
     }
 }
 
-/* mq_detect_dblink_corr_eq helpers — correlated DBLink equality push-down */
+/* mq_detect_dblink_corr_eq helpers — correlated DBLink equality push-down
+ * mq_dblink_corr_classify_side() returns one of these for each side of an equality term.
+ * Currently only the REMOTE+OUTER pair triggers push-down.  _LOCAL (a column from a
+ * non-DBLink table in the same FROM clause) and _CONST (a literal constant) are kept
+ * distinct from _OTHER to preserve their semantics for future extensions such as join
+ * push-down or constant-predicate push-down into the remote SQL. */
 #define MQ_DBLINK_CORR_SIDE_ERR     (-1)
 #define MQ_DBLINK_CORR_SIDE_OTHER    0
 #define MQ_DBLINK_CORR_SIDE_REMOTE   1
 #define MQ_DBLINK_CORR_SIDE_OUTER    2
-#define MQ_DBLINK_CORR_SIDE_LOCAL    3
-#define MQ_DBLINK_CORR_SIDE_CONST    4
+#define MQ_DBLINK_CORR_SIDE_LOCAL    3	/* non-DBLink column in the same FROM clause */
+#define MQ_DBLINK_CORR_SIDE_CONST    4	/* literal constant */
 
 /*
  * mq_dblink_corr_dot_to_leaf_name () - rightmost name in a path (a.b.c -> c)
@@ -4680,7 +4685,6 @@ mq_dblink_corr_forbidden_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
   bool *bad = (bool *) arg;
 
   (void) parser;
-  (void) continue_walk;
   switch (node->node_type)
     {
     case PT_HOST_VAR:
@@ -4703,6 +4707,10 @@ mq_dblink_corr_forbidden_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
       break;
     default:
       break;
+    }
+  if (*bad)
+    {
+      *continue_walk = PT_STOP_WALK;
     }
   return node;
 }
@@ -4810,7 +4818,8 @@ mq_detect_dblink_corr_eq (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE *
 	  int c2 = MQ_DBLINK_CORR_SIDE_OTHER;
 	  bool is_corr_eq = false;
 
-	  if (term->node_type == PT_EXPR && term->info.expr.op == PT_EQ && term->info.expr.arg2 != NULL)
+	  if (term->node_type == PT_EXPR && term->info.expr.op == PT_EQ
+	      && term->info.expr.arg1 != NULL && term->info.expr.arg2 != NULL)
 	    {
 	      c1 = mq_dblink_corr_classify_side (term->info.expr.arg1, dblink_sid);
 	      c2 = mq_dblink_corr_classify_side (term->info.expr.arg2, dblink_sid);
@@ -4865,20 +4874,16 @@ mq_dblink_clear_corr_keys (PARSER_CONTEXT * parser, PT_DBLINK_INFO * dinfo)
 
   assert (parser != NULL && dinfo != NULL);
 
-  for (i = 0; i < PT_DBLINK_MAX_CORR_KEYS; i++)
+  for (i = 0; i < dinfo->corr_key_count; i++)
     {
       if (dinfo->corr_key_outer_copy[i] != NULL)
 	{
 	  parser_free_tree (parser, dinfo->corr_key_outer_copy[i]);
 	  dinfo->corr_key_outer_copy[i] = NULL;
 	}
-    }
-
-  dinfo->corr_key_count = 0;
-  for (i = 0; i < PT_DBLINK_MAX_CORR_KEYS; i++)
-    {
       dinfo->corr_key_col_names[i] = NULL;
     }
+  dinfo->corr_key_count = 0;
   dinfo->corr_sql_built = false;
   dinfo->rewritten = NULL;
 }
@@ -4963,7 +4968,8 @@ mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di)
   PARSER_VARCHAR *base;
   const char *col_name = di->corr_key_col_names[0];
 
-  if (col_name == NULL || col_name[0] == '\0')
+  assert (col_name != NULL);
+  if (col_name[0] == '\0')
     {
       return false;
     }
@@ -5174,7 +5180,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
   /* Pure-corr DBLink: no non-corr pushable terms found, but corr push-down is active.
    * Finalize conn_sql here so pt_to_dblink_table_spec_list only reads the completed string. */
   else if (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE
-	   && subquery != NULL && subquery->node_type == PT_DBLINK_TABLE
+	   && subquery != NULL
 	   && subquery->info.dblink_table.corr_key_count > 0 && !subquery->info.dblink_table.corr_sql_built)
     {
       if (!mq_dblink_append_corr_pred_sql (parser, &subquery->info.dblink_table))
@@ -7077,21 +7083,21 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 	      ncorr = mq_detect_dblink_corr_eq (parser, node, spec, &remote_expr, &outer_expr);
 	      if (ncorr == 1)
 		{
-		  dinfo->corr_key_col_names[0] = mq_dblink_extract_col_name (parser, remote_expr);
-		  if (dinfo->corr_key_col_names[0] == NULL)
+		  dinfo->corr_key_col_names[dinfo->corr_key_count] = mq_dblink_extract_col_name (parser, remote_expr);
+		  if (dinfo->corr_key_col_names[dinfo->corr_key_count] == NULL)
 		    {
 		      mq_dblink_clear_corr_keys (parser, dinfo);
 		    }
 		  else
 		    {
-		      dinfo->corr_key_outer_copy[0] = parser_copy_tree (parser, outer_expr);
-		      if (dinfo->corr_key_outer_copy[0] == NULL)
+		      dinfo->corr_key_outer_copy[dinfo->corr_key_count] = parser_copy_tree (parser, outer_expr);
+		      if (dinfo->corr_key_outer_copy[dinfo->corr_key_count] == NULL)
 			{
 			  mq_dblink_clear_corr_keys (parser, dinfo);
 			}
 		      else
 			{
-			  dinfo->corr_key_count = 1;
+			  dinfo->corr_key_count++;
 			}
 		    }
 		}

@@ -500,7 +500,7 @@ static int pt_split_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_
 static int pt_split_hash_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE * pred,
 				PT_NODE ** build_attrs, PT_NODE ** probe_attrs);
 
-static bool pt_fill_dblink_corr_for_spec (PARSER_CONTEXT * parser, PT_DBLINK_INFO * pdblink, ACCESS_SPEC_TYPE * access,
+static bool pt_fill_dblink_corr_for_spec (PT_DBLINK_INFO * pdblink, ACCESS_SPEC_TYPE * access,
 					  REGU_VARIABLE * corr_regu);
 
 static int pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** build_attrs,
@@ -12697,7 +12697,7 @@ pt_dblink_corr_side_has_spec (PT_NODE * node, UINTPTR spec_id)
 }
 
 /*
- * pt_dblink_corr_side_is_outer_ref () - strip an optional CAST wrap and return true
+ * pt_dblink_corr_side_is_outer_ref () - return true
  *   if node is a PT_NAME that belongs to an outer query block (correlation_level > 0) and is not
  *   the inner DBLink spec.  Using correlation_level mirrors mq_dblink_corr_classify_side() and
  *   correctly excludes same-level tables (e.g. a local table joined with DBLink in the same subquery).
@@ -13030,17 +13030,11 @@ pt_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * term_list, void *arg, int
  *   corr_regu must come from pt_to_regu_variable (parser, pdblink->corr_key_outer_copy[0], ...).
  */
 static bool
-pt_fill_dblink_corr_for_spec (PARSER_CONTEXT * parser, PT_DBLINK_INFO * pdblink, ACCESS_SPEC_TYPE * access,
-			      REGU_VARIABLE * corr_regu)
+pt_fill_dblink_corr_for_spec (PT_DBLINK_INFO * pdblink, ACCESS_SPEC_TYPE * access, REGU_VARIABLE * corr_regu)
 {
   REGU_VARIABLE_LIST rlist = NULL;
 
-  (void) parser;
-
-  if (access == NULL || access->type != TARGET_DBLINK)
-    {
-      return true;
-    }
+  assert (access != NULL && access->type == TARGET_DBLINK);
   if (corr_regu == NULL || pdblink->corr_key_count <= 0)
     {
       return true;
@@ -13143,7 +13137,7 @@ pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE *
 
   if (access)
     {
-      if (!pt_fill_dblink_corr_for_spec (parser, pdblink, access, corr_regu))
+      if (!pt_fill_dblink_corr_for_spec (pdblink, access, corr_regu))
 	{
 	  return NULL;
 	}
