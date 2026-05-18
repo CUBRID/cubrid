@@ -24,7 +24,7 @@
 #define _IDENTIFIER_STORE_HPP_
 
 #include <vector>
-#include <string_view>
+#include <string>
 
 #include "porting.h"
 #include "string_utility.hpp"
