@@ -2399,6 +2399,24 @@ css_push_server_task (CSS_CONN_ENTRY &conn_ref)
   conn_ref.add_pending_request ();
   conn_ref.add_working_task ();
 
+#if !defined (NDEBUG)
+  /* Slave-side (log_applier) RPCs only. Logs static conn->core mapping at push
+   * time. Join with slocator_repl_force's existing per-call log on conn_idx /
+   * tran_index to verify that the actual worker (thread_idx/pthread) rotates
+   * within a single core (1:N) while the core itself stays fixed per conn (1:1). */
+  if (conn_ref.client_type == DB_CLIENT_TYPE_LOG_APPLIER)
+    {
+      std::size_t core_count = css_Server_request_worker_pool->get_core_count ();
+      std::size_t core_idx = static_cast<size_t> (conn_ref.idx) % core_count;
+      er_log_debug (ARG_FILE_LINE,
+                    "css_push_server_task: conn_idx=%d core_idx=%zu core_count=%zu "
+                    "tran_index=%d client_id=%d client_type=%d in_method=%d\n",
+                    conn_ref.idx, core_idx, core_count,
+                    conn_ref.get_tran_index (), conn_ref.client_id,
+                    (int) conn_ref.client_type, (int) conn_ref.in_method);
+    }
+#endif /* !NDEBUG */
+
   thread_get_manager ()->push_task_on_core (css_Server_request_worker_pool, new css_server_task (conn_ref),
                                             static_cast<size_t> (conn_ref.idx), conn_ref.in_method);
 }
@@ -2906,6 +2924,12 @@ size_t css_get_max_task_count ()
 size_t css_get_max_connections ()
 {
   return css_get_max_conn () + 1;
+}
+
+size_t
+css_get_server_request_pool_core_count (void)
+{
+  return (css_Server_request_worker_pool != NULL) ? css_Server_request_worker_pool->get_core_count () : 1;
 }
 
 static bool

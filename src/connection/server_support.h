@@ -123,6 +123,7 @@ extern int css_check_accessibility (SOCKET new_fd);
 extern size_t css_get_max_workers ();
 extern size_t css_get_max_task_count ();
 extern size_t css_get_max_connections ();
+extern size_t css_get_server_request_pool_core_count (void);
 
 #if defined (SERVER_MODE)
 extern int css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt,

@@ -28,6 +28,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <unistd.h>
+#include <sys/syscall.h>
 
 #include "filesys.hpp"
 #include "filesys_temp.hpp"
@@ -1246,7 +1248,13 @@ slocator_repl_force (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
   struct timeval _slc_begin;
   gettimeofday (&_slc_begin, NULL);
   int _slc_tid_idx = (thread_p != NULL) ? thread_p->index : -1;
-  unsigned long _slc_tid_os = (unsigned long) pthread_self ();
+  unsigned long _slc_tid_os = (unsigned long) syscall (SYS_gettid);
+  /* Static conn->core mapping. core_idx = conn_idx % core_count, identical to
+   * the value used by push_task_on_core. Logging it alongside thr/pthread shows
+   * that conn:core is 1:1 while conn:worker rotates within that core (1:N). */
+  int _slc_conn_idx = (thread_p != NULL && thread_p->conn_entry != NULL) ? thread_p->conn_entry->idx : -1;
+  size_t _slc_core_count = css_get_server_request_pool_core_count ();
+  size_t _slc_core_idx = (_slc_conn_idx >= 0) ? ((size_t) _slc_conn_idx % _slc_core_count) : 0;
 #endif /* !NDEBUG */
 
   ptr = or_unpack_int (request, &num_objs);
@@ -1257,10 +1265,12 @@ slocator_repl_force (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
   {
     LOG_TDES *repl_tdes = LOG_FIND_CURRENT_TDES (thread_p);
     _er_log_debug (ARG_FILE_LINE,
-		   "slocator_repl_force: thr=%d, pthread=%lu, tran_index=%d, trid=%d, client_id=%d, "
-		   "state=%d, num_objs=%d, packed_desc_size=%d, content_size=%d\n",
+		   "slocator_repl_force: calls=%llu, thr=%d, tid=%lu, conn_idx=%d, core_idx=%zu, core_count=%zu, "
+		   "tran_index=%d, trid=%d, client_id=%d, state=%d, num_objs=%d, packed_desc_size=%d, content_size=%d\n",
+		   (unsigned long long) _slc_call_n,
 		   thread_get_current_entry_index (),
-		   (thread_p != NULL) ? (unsigned long) thread_p->get_posix_id () : 0UL,
+		   _slc_tid_os,
+		   _slc_conn_idx, _slc_core_idx, _slc_core_count,
 		   (thread_p != NULL) ? thread_p->tran_index : NULL_TRAN_INDEX,
 		   (repl_tdes != NULL) ? repl_tdes->trid : NULL_TRANID,
 		   (repl_tdes != NULL) ? repl_tdes->client_id : -1,
@@ -1379,9 +1389,10 @@ slocator_repl_force (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
     _slc_usec = ((INT64) _slc_end.tv_sec - (INT64) _slc_begin.tv_sec) * 1000000LL
 		+ ((INT64) _slc_end.tv_usec - (INT64) _slc_begin.tv_usec);
     er_log_debug (ARG_FILE_LINE,
-		  "slocator_repl_force_end calls=%llu thread_idx=%d tid=%lu "
+		  "slocator_repl_force_end calls=%llu thread_idx=%d tid=%lu conn_idx=%d core_idx=%zu core_count=%zu "
 		  "num_objs=%d elapsed_usec=%lld\n",
 		  (unsigned long long) _slc_call_n, _slc_tid_idx, _slc_tid_os,
+		  _slc_conn_idx, _slc_core_idx, _slc_core_count,
 		  num_objs, (long long) _slc_usec);
   }
 #endif /* !NDEBUG */
@@ -1414,9 +1425,10 @@ exit_on_error:
     _slc_usec = ((INT64) _slc_end.tv_sec - (INT64) _slc_begin.tv_sec) * 1000000LL
 		+ ((INT64) _slc_end.tv_usec - (INT64) _slc_begin.tv_usec);
     er_log_debug (ARG_FILE_LINE,
-		  "slocator_repl_force_end_err calls=%llu thread_idx=%d tid=%lu "
+		  "slocator_repl_force_end_err calls=%llu thread_idx=%d tid=%lu conn_idx=%d core_idx=%zu core_count=%zu "
 		  "num_objs=%d elapsed_usec=%lld\n",
 		  (unsigned long long) _slc_call_n, _slc_tid_idx, _slc_tid_os,
+		  _slc_conn_idx, _slc_core_idx, _slc_core_count,
 		  num_objs, (long long) _slc_usec);
   }
 #endif /* !NDEBUG */
