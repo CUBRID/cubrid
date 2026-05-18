@@ -44,6 +44,7 @@
 #define HJ_PROBE_CPU_OVERHEAD_FACTOR 20
 #define HJ_FILE_IO_WEIGHT 0.5	/* Unused */
 #define ISCAN_IO_HIT_RATIO 0.5
+#define QO_NLJOIN_MEMOIZE_HIT_COST_RATIO 0.01
 #define SSCAN_DEFAULT_CARD 100
 #define GUESSED_BIND_LIMIT_CARD 2000	/* When limit is a bind variable, assume that fewer rows will be assigned. */
 
@@ -78,37 +79,7 @@
 #define QO_COST_WEIGHT_MAX                     5.00
 
 /* sequential scan */
-#define QO_SSCAN_FILTER_CPU_FACTOR             5.00
-
-/* One-unique join cardinality adjustment */
-#define QO_UNIQUE_JOIN_SELECTIVITY_CEILING      0.30
-
-/* MCV/hot-key join cardinality guard */
-#define QO_MCV_GUARD_MIN_FREQUENCY             0.1
-#define QO_MCV_GUARD_MIN_RISK_FANOUT           10.0
-#define QO_MCV_GUARD_SMALL_CARD_ABS            20.0
-#define QO_MCV_GUARD_SMALL_CARD_RATIO          0.001
-#define QO_MCV_GUARD_MAX_BASE_SELECTIVITY      0.01
-#define QO_MCV_GUARD_MAX_SELECTIVITY_MULTIPLIER 25.0
-#define QO_MCV_GUARD_COLD_FANOUT_SELECTIVITY_MULTIPLIER 100.0
-#define QO_MCV_GUARD_MIN_SELECTIVITY_MULTIPLIER 0.5
-
-/* Delayed selective sarg repeated lookup penalty */
-#define QO_DELAYED_SARG_OUTER_CARD_THRESHOLD   1.0
-#define QO_DELAYED_SARG_PENALTY_FACTOR         0.25
-#define QO_DELAYED_SARG_PENALTY_MAX            2.0
-/* Bridge fanout amplification before residual filter */
-#define QO_READ_BEFORE_FILTER_RATIO_FLOOR      1.5
-#define QO_READ_BEFORE_FILTER_PENALTY_FACTOR   0.20
-#define QO_READ_BEFORE_FILTER_PENALTY_MAX      1.0
-/* Join-level bridge fanout penalty (edge-level amplification) */
-#define QO_BRIDGE_FANOUT_RATIO_FLOOR           4.0
-#define QO_BRIDGE_FANOUT_PENALTY_FACTOR        0.15
-#define QO_BRIDGE_FANOUT_PENALTY_MAX           2.0
-/* Skewed FK-like lookup uncertainty when the joined value is unknown */
-#define QO_SKEW_UNCERTAINTY_RATIO_FLOOR        4.0
-#define QO_SKEW_UNCERTAINTY_PENALTY_FACTOR     0.20
-#define QO_SKEW_UNCERTAINTY_PENALTY_MAX        1.0
+#define QO_SSCAN_FILTER_CPU_FACTOR             1.00
 
 #define DEFAULT_NULL_SELECTIVITY (double) 0.01
 #define DEFAULT_EXISTS_SELECTIVITY (double) 0.1
