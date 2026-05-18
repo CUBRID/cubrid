@@ -18891,17 +18891,76 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  /* remote column names: deferred */
-  insert->remote_attr_names = NULL;
-  insert->remote_num_attrs = 0;
-
-  /* no local class for remote INSERT */
-  OID_SET_NULL (&insert->class_oid);
-  HFID_SET_NULL (&insert->class_hfid);
   /* num_vals drives the val_list read loop in the executor */
   insert->num_vals = (xasl->val_list != NULL) ? xasl->val_list->val_cnt : 0;
   insert->num_default_expr = 0;
   insert->att_id = NULL;
+
+  /* remote column names:
+   *   attr_list present  → explicit columns (INSERT INTO remote (c1,c2) SELECT ...)
+   *                         → remote_attr_names[i] = attr_list column names
+   *   attr_list absent   → positional mapping (INSERT INTO remote SELECT ...)
+   *                         → remote_attr_names = NULL; T3 uses INSERT INTO t VALUES (?,?)
+   */
+  if (statement->info.insert.attr_list != NULL)
+    {
+      PT_NODE *col;
+      int n, i;
+      char **names;
+
+      n = pt_length_of_list (statement->info.insert.attr_list);
+      if (n != insert->num_vals)
+	{
+	  PT_INTERNAL_ERROR (parser, "remote INSERT SELECT: attr_list and SELECT column count mismatch");
+	  return NULL;
+	}
+
+      names = (char **) parser_alloc (parser, n * sizeof (char *));
+      if (names == NULL)
+	{
+	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	  return NULL;
+	}
+
+      for (col = statement->info.insert.attr_list, i = 0; col != NULL && i < n; col = col->next, i++)
+	{
+	  const char *col_name = NULL;
+
+	  if (col->node_type == PT_NAME)
+	    {
+	      col_name = col->info.name.original;
+	    }
+	  else if (col->node_type == PT_DOT_
+		   && col->info.dot.arg2 != NULL && col->info.dot.arg2->node_type == PT_NAME)
+	    {
+	      col_name = col->info.dot.arg2->info.name.original;
+	    }
+	  else
+	    {
+	      col_name = col->alias_print;
+	    }
+
+	  if (col_name == NULL)
+	    {
+	      PT_ERROR (parser, col, "dblink: remote INSERT SELECT column has no resolvable name");
+	      return NULL;
+	    }
+	  names[i] = (char *) col_name;
+	}
+
+      insert->remote_attr_names = names;
+      insert->remote_num_attrs = n;
+    }
+  else
+    {
+      /* positional insert: T3 builds INSERT INTO t VALUES (?,?) */
+      insert->remote_attr_names = NULL;
+      insert->remote_num_attrs = 0;
+    }
+
+  /* no local class for remote INSERT */
+  OID_SET_NULL (&insert->class_oid);
+  HFID_SET_NULL (&insert->class_hfid);
   insert->vals = NULL;
 
   /* XASL cache: OID of the user creating this XASL */
