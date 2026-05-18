@@ -5621,7 +5621,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
    * when gotos earlier in the function target labels past this declaration. */
   GBY_SORT_PARAM gby_px;
   gby_px.key_info = &gbstate.key_info;
-  gby_px.input_list = &gbstate.input_scan->list_id;
+  gby_px.input_list = list_id;
   gby_px.hash_eligible = gbstate.hash_eligible;
   gby_px.groupby_stats = &xasl->groupby_stats;
   gby_px.parallelism = xasl->parallelism;
