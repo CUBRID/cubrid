@@ -583,6 +583,13 @@ catcls_guess_record_length (OR_VALUE * value_p)
       length += map_p->get_disk_size_of_value (&attrs_p[i].value);
     }
 
+  /* catcls_put_or_value_into_buffer () calls or_put_align32 () once per
+   * variable column and once before the last offset; each can add up to
+   * INT_ALIGNMENT - 1 zero pad bytes to keep VOT offsets 4-byte aligned.
+   * Reserve INT_ALIGNMENT per attribute as a conservative upper bound so the
+   * caller's malloc is large enough to hold the padded record. */
+  length += INT_ALIGNMENT * (n_attrs + 1);
+
   return (length);
 }
 
@@ -3291,10 +3298,13 @@ catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p, OI
       or_put_data (buf_p, bound_bits, bound_size);
     }
 
-  /* variable */
+  /* variable — VOT offsets must be 4-byte aligned because OR_GET_VAR_OFFSET ()
+   * masks the low 2 bits (flag bits OR_VAR_BIT_OOS, OR_VAR_BIT_LAST_ELEMENT). */
   var_attrs = &attrs[n_fixed];
   for (i = 0; i < n_variable; i++)
     {
+      or_put_align32 (buf_p);
+
       /* the variable offsets are relative to end of the class record header */
       offset = (int) (buf_p->ptr - buf_p->buffer - header_size);
 
@@ -3306,6 +3316,7 @@ catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p, OI
     }
 
   /* put last offset */
+  or_put_align32 (buf_p);
   offset = (int) (buf_p->ptr - buf_p->buffer - header_size);
   OR_PUT_LAST_VAR_OFFSET (offset_p, offset);
 
