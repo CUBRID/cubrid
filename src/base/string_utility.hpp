@@ -24,7 +24,6 @@
 #define _STRING_UTILITY_HPP_
 
 #include <algorithm>
-#include <string>
 #include <string_view>
 #include <unordered_set>
 #include <cctype>
@@ -38,12 +37,19 @@ namespace cubbase
   struct lowercase_hash
   {
     // for case-insensitive comparision
+    // FNV-1a 64-bit: single pass, no allocation; consistent with lowercase_compare
+    static constexpr size_t FNV_OFFSET_BASIS = 14695981039346656037ULL;
+    static constexpr size_t FNV_PRIME        = 1099511628211ULL;
+
     size_t operator() (const std::string_view str) const
     {
-      std::string lower (str);
-      std::transform (str.begin(), str.end(), lower.begin(),
-		      [] (char c) -> char { return std::tolower (c); });
-      return std::hash<std::string> {} (lower);
+      size_t hash = FNV_OFFSET_BASIS;
+      for (unsigned char c : str)
+	{
+	  hash ^= static_cast<size_t> (std::tolower (c));
+	  hash *= FNV_PRIME;
+	}
+      return hash;
     }
   };
 
