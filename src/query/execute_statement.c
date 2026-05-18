@@ -4513,7 +4513,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (class_type == SM_CLASS_CT)
 	    {
 	      error = sm_update_statistics (class_mop, statement->info.update_stats.with_fullscan);
-	      if (error == NO_ERROR)
+	      if (error == NO_ERROR && prm_get_bool_value (PRM_ID_UPDATE_STATISTICS_UPDATE_HISTOGRAM))
 		{
 		  DB_OBJECT *obj;
 		  PT_HISTOGRAM_INFO histogram_info;
