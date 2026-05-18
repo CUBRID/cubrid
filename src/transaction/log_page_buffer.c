@@ -6127,8 +6127,18 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 
 	      _er_log_debug (ARG_FILE_LINE, "First log pageid for flashback is %lld", flashback_first_pageid);
 
-	      /* NULL check for flashback_first_pageid is done in flashback_is_needed_to_keep_archive () */
-	      if (flashback_first_pageid != NULL_LOG_PAGEID && logpb_is_page_in_archive (flashback_first_pageid))
+	      if (flashback_first_pageid == NULL_LOG_PAGEID)
+		{
+		  /* Flashback is in progress but has not yet declared the minimum
+		   * pageid (window between flashback_initialize and
+		   * flashback_set_min_log_pageid_to_keep, during which flashback_verify_time
+		   * calls cdc_find_lsa).  Skip this cleanup cycle so the archives that
+		   * the in-flight flashback may still need are not removed underneath it. */
+		  LOG_CS_EXIT (thread_p);
+		  return 0;
+		}
+
+	      if (logpb_is_page_in_archive (flashback_first_pageid))
 		{
 		  min_arv_required_for_flashback = logpb_get_archive_number (thread_p, flashback_first_pageid);
 
@@ -6301,10 +6311,21 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
       /* flashback */
       if (flashback_is_needed_to_keep_archive ())
 	{
-
 	  flashback_first_pageid = flashback_min_log_pageid_to_keep ();
 
-	  if (flashback_first_pageid != NULL_LOG_PAGEID && logpb_is_page_in_archive (flashback_first_pageid))
+	  if (flashback_first_pageid == NULL_LOG_PAGEID)
+	    {
+	      /* Flashback request is in progress but has not yet declared the minimum
+	       * log page id it needs.  This is the window between flashback_initialize
+	       * and flashback_set_min_log_pageid_to_keep, during which flashback_verify_time
+	       * calls cdc_find_lsa to look up archives.  Skip this removal cycle so the
+	       * archives the in-flight flashback may still need are not removed underneath
+	       * it.  The next cleanup attempt will run normally once the flashback request
+	       * either declares its minimum pageid or finishes. */
+	      return;
+	    }
+
+	  if (logpb_is_page_in_archive (flashback_first_pageid))
 	    {
 	      min_arv_required_for_flashback = logpb_get_archive_number (thread_p, flashback_first_pageid);
 	      min_arv_required_for_flashback--;
