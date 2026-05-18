@@ -8235,13 +8235,19 @@ file_spacedb_fill_one_table (THREAD_ENTRY * thread_p, const OID * class_oid,
   int idx_incache = -1;
   int error_code = NO_ERROR;
 
+  assert (class_oid != NULL && !OID_ISNULL (class_oid));
+
   entry->file_count = 0;
   entry->header = NULL;
 
-  /* View has no heap file. Leave entry zeroed (file_count == 0) as a sentinel;
-   * the client uses this to emit a view-skipped notice. Detect view from the
-   * catalog record directly to avoid invoking heap_get_class_info, which would
-   * assert in heap_hfid_cache_get for null-HFID classes. */
+  /* The caller has already resolved class_oid from the classname table or via
+   * xlocator_find_class_oid(), so the class is guaranteed to exist. A NULL
+   * HFID here therefore implies the class is a view (VCLASS) — views have a
+   * catalog entry but no heap file. Detect view from the class record directly
+   * to avoid invoking heap_get_class_info, which would assert in
+   * heap_hfid_cache_get for null-HFID classes. Leave entry zeroed
+   * (file_count == 0) as a sentinel; the client uses this to emit a
+   * view-skipped notice. */
   if (file_spacedb_is_view_class (thread_p, class_oid))
     {
       return NO_ERROR;
