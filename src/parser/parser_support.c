@@ -11924,6 +11924,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 {
   int i;
   int tmp_server_cnt = snl->server_cnt;
+  int sub_sel_server_cnt = 0;	/* remote server count found in INSERT SELECT subquery */
   unsigned int save_custom_print;
 
   PT_NODE *sub_sel = NULL;	/* for select sub-query */
@@ -11948,6 +11949,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	      parser_walk_tree (parser, list, pt_get_server_name_list, snl, NULL, NULL);
 	    }
 	}
+      sub_sel_server_cnt = snl->server_cnt - tmp_server_cnt;
       sub_sel = NULL;
       break;
     case PT_DELETE:
@@ -11984,9 +11986,15 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
-  if (snl->local_cnt > 0 && remote_upd > 0)
+  if (snl->local_cnt > 0 && remote_upd > 0 && !snl->is_remote_insert_select)
     {
       PT_ERROR (parser, upd_spec ? upd_spec : into_spec, "dblink: local mixed remote DML is not allowed");
+      return;
+    }
+
+  if (snl->is_remote_insert_select && sub_sel_server_cnt > 0)
+    {
+      PT_ERROR (parser, into_spec, "dblink: INSERT SELECT from remote source is not allowed");
       return;
     }
 
