@@ -499,6 +499,11 @@ int
 hnsw_impl::search (cubthread::entry *thread_p, const float *query, const int k, const int ef_search,
 		   OID *rec_oids, float *distances)
 {
+  if (m_storage->is_empty ())
+    {
+      return NO_ERROR;
+    }
+
   if (m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE
       && db_vector_is_all_zeros (query, m_build_params.dimension))
     {
