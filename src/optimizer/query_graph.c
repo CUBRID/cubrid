@@ -157,6 +157,7 @@ struct qo_transitive_join_spec
 {
   QO_SEGMENT *head_seg;
   QO_SEGMENT *tail_seg;
+  int eqclass_root;
 };
 
 double QO_INFINITY = 0.0;
@@ -8114,7 +8115,7 @@ qo_generate_transitive_join_terms (QO_ENV * env)
   size_t new_size;
   QO_TERM *new_arr;
   PARSER_CONTEXT *parser;
-  bool *node_has_transitive = NULL;
+  int *root_arr = NULL;
 
   if (qo_collect_transitive_join_specs (env, &specs, &specs_count, &specs_cap) != 0 || specs_count == 0)
     {
@@ -8129,25 +8130,18 @@ qo_generate_transitive_join_terms (QO_ENV * env)
   old_terms = env->nterms;
   parser = QO_ENV_PARSER (env);
 
-  /* Pre-compute which nodes appear in a PT_EXPR_INFO_TRANSITIVE edge term (O(1) check per spec below). */
-  if (env->nnodes > 0)
+  /* Rebuild the eq-root array to enable per-eqclass transitive checks below. */
+  if (env->nsegs > 0)
     {
-      node_has_transitive = (bool *) calloc (env->nnodes, sizeof (bool));
-      if (node_has_transitive)
+      root_arr = (int *) malloc (sizeof (int) * env->nsegs);
+      if (root_arr)
 	{
-	  for (ti = 0; ti < old_terms; ti++)
+	  for (ti = 0; ti < env->nsegs; ti++)
 	    {
-	      QO_TERM *t = QO_ENV_TERM (env, ti);
-	      PT_NODE *tpe;
-	      if (!QO_IS_EDGE_TERM (t))
-		continue;
-	      tpe = QO_TERM_PT_EXPR (t);
-	      if (tpe == NULL || !PT_EXPR_INFO_IS_FLAGED (tpe, PT_EXPR_INFO_TRANSITIVE))
-		continue;
-	      if (QO_TERM_HEAD (t))
-		node_has_transitive[QO_NODE_IDX (QO_TERM_HEAD (t))] = true;
-	      if (QO_TERM_TAIL (t))
-		node_has_transitive[QO_NODE_IDX (QO_TERM_TAIL (t))] = true;
+	      QO_SEGMENT *rs = QO_ENV_SEG (env, ti);
+	      while (QO_SEG_EQ_ROOT (rs))
+		rs = QO_SEG_EQ_ROOT (rs);
+	      root_arr[ti] = QO_SEG_IDX (rs);
 	    }
 	}
     }
@@ -8158,7 +8152,7 @@ qo_generate_transitive_join_terms (QO_ENV * env)
   if (new_arr == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, new_size);
-      free_and_init (node_has_transitive);
+      free_and_init (root_arr);
       free_and_init (specs);
       return;
     }
@@ -8208,13 +8202,35 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 	}
       pt_expr->type_enum = PT_TYPE_LOGICAL;
 
-      /* Both endpoints already appear in transitive edge terms → the generated
-       * term is itself transitive; qo_discover_edges will classify it DUMMY_JOIN. */
-      if (node_has_transitive != NULL
-	  && node_has_transitive[QO_NODE_IDX (QO_SEG_HEAD (head_seg))]
-	  && node_has_transitive[QO_NODE_IDX (QO_SEG_HEAD (tail_seg))])
+      /* Both endpoints appear in PT_EXPR_INFO_TRANSITIVE edge terms within the same
+       * eqclass; the generated term is itself transitive and qo_discover_edges will
+       * classify it DUMMY_JOIN. Check per-eqclass to avoid cross-eqclass contamination. */
+      if (root_arr != NULL)
 	{
-	  PT_EXPR_INFO_SET_FLAG (pt_expr, PT_EXPR_INFO_TRANSITIVE);
+	  bool head_in_trans = false, tail_in_trans = false;
+	  QO_NODE *head_node_p = QO_SEG_HEAD (head_seg);
+	  QO_NODE *tail_node_p = QO_SEG_HEAD (tail_seg);
+	  int spec_root = specs[i].eqclass_root;
+	  for (ti = 0; ti < old_terms && !(head_in_trans && tail_in_trans); ti++)
+	    {
+	      QO_TERM *tc = QO_ENV_TERM (env, ti);
+	      PT_NODE *tpe;
+	      QO_SEGMENT *nom;
+	      if (!QO_IS_EDGE_TERM (tc))
+		continue;
+	      tpe = QO_TERM_PT_EXPR (tc);
+	      if (tpe == NULL || !PT_EXPR_INFO_IS_FLAGED (tpe, PT_EXPR_INFO_TRANSITIVE))
+		continue;
+	      nom = QO_TERM_NOMINAL_SEG (tc);
+	      if (nom == NULL || root_arr[QO_SEG_IDX (nom)] != spec_root)
+		continue;
+	      if (QO_TERM_HEAD (tc) == head_node_p || QO_TERM_TAIL (tc) == head_node_p)
+		head_in_trans = true;
+	      if (QO_TERM_HEAD (tc) == tail_node_p || QO_TERM_TAIL (tc) == tail_node_p)
+		tail_in_trans = true;
+	    }
+	  if (head_in_trans && tail_in_trans)
+	    PT_EXPR_INFO_SET_FLAG (pt_expr, PT_EXPR_INFO_TRANSITIVE);
 	}
 
       term = qo_add_term (pt_expr, PREDICATE_TERM, env);
@@ -8222,7 +8238,7 @@ qo_generate_transitive_join_terms (QO_ENV * env)
       QO_TERM_SET_FLAG (term, QO_TERM_COPY_PT_EXPR);
     }
 
-  free_and_init (node_has_transitive);
+  free_and_init (root_arr);
   free_and_init (specs);
 }
 
@@ -8407,6 +8423,7 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 
 	      (*specs_p)[*count_p].head_seg = head_seg;
 	      (*specs_p)[*count_p].tail_seg = tail_seg;
+	      (*specs_p)[*count_p].eqclass_root = i;
 	      (*count_p)++;
 	    }
 	}
