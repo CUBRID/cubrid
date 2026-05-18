@@ -750,7 +750,7 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   error = jsp_make_pl_signature (parser, statement, NULL, sig);
   if (error == NO_ERROR)
     {
-      PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, sig, flag_si_datetime);
+      PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, sig, &flag_si_datetime);
       if (default_next_node_list != NULL && flag_si_datetime)
 	{
 	  // consider using 'db_calculate_current_server_time' in db_vdb.c for less server communication
@@ -2331,7 +2331,7 @@ check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
 }
 
 PT_NODE *
-jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig, bool &flag_si_datetime)
+jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig, bool *flag_si_datetime)
 {
   PT_NODE *default_next_node_list = NULL;
   PT_NODE *default_next_node = NULL;
@@ -2350,10 +2350,10 @@ jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig
 	  DB_DEFAULT_EXPR default_expr;
 	  pt_get_default_expression_from_string (parser, sig.arg.arg_default_value[i], sig.arg.arg_default_value_size[i],
 						 &default_expr);
-	  if (!flag_si_datetime && (DB_IS_DEFAULT_DATETIME_EXPR (default_expr.default_expr_type)
-				    || DB_IS_DEFAULT_UUID_TIMEBASE_EXPR (default_expr.default_expr_type)))
+	  if (flag_si_datetime && !*flag_si_datetime && (DB_IS_DEFAULT_DATETIME_EXPR (default_expr.default_expr_type)
+	      || DB_IS_DEFAULT_UUID_TIMEBASE_EXPR (default_expr.default_expr_type)))
 	    {
-	      flag_si_datetime = true;
+	      *flag_si_datetime = true;
 	    }
 
 	  if (default_expr.default_expr_type != DB_DEFAULT_NONE)

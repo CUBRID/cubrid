@@ -6745,7 +6745,6 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
   REGU_VARIABLE *regu = NULL;
   REGU_VARIABLE_LIST args;
   SP_TYPE *sp = NULL;
-  bool flag_si_datetime = true;	// dummy
 
   regu_alloc (regu);
   if (!regu)
@@ -6764,7 +6763,7 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
 	  return NULL;
 	}
 
-      PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, *(sp->sig), flag_si_datetime);
+      PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, *(sp->sig), NULL);
       if (default_next_node_list == NULL && pt_has_error (parser))
 	{
 	  return NULL;

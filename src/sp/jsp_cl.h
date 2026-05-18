@@ -73,5 +73,5 @@ extern void jsp_unset_prepare_call (void);
 extern bool jsp_is_prepare_call (void);
 
 extern PT_NODE *jsp_get_default_expr_node_list (PARSER_CONTEXT * parser, cubpl::pl_signature & sig,
-						bool & flag_si_datetime);
+						bool * flag_si_datetime);
 #endif /* _JSP_CL_H_ */
