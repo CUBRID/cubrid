@@ -534,8 +534,8 @@ enum param_id
 
   /* change PRM_LAST_ID when adding new system parameters */
   PRM_ID_UPDATE_STATISTICS_UPDATE_HISTOGRAM,
-  
-  PRM_LAST_ID = PRM_ID_LOG_POSTPONE_CACHE_SIZE
+
+  PRM_LAST_ID = PRM_ID_UPDATE_STATISTICS_UPDATE_HISTOGRAM
 };
 typedef enum param_id PARAM_ID;
 
