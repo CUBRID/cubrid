@@ -27,8 +27,7 @@
 #include "storage_common.h"
 #include "thread_manager.hpp"
 #include "page_buffer.h"
-// Note: caller must include "oos_file.hpp" before this header; the helper
-// below references oos_read/oos_get_length declared there.
+#include "oos_file.hpp"
 
 static cubthread::entry *thread_p;
 
@@ -98,36 +97,33 @@ namespace test_oos_utils
     return large_data;
   }
 
-  // Test-side compat wrapper for the new oos_read API.
-  // Production callers preallocate the output buffer using the OOS length stored
-  // inline in the heap record (M2 format). Unit tests don't have that heap
-  // record, so we size the buffer via oos_get_length() and then call oos_read.
-  // On error, recdes.data is left null so callers can assert non-success without
-  // leaking.
+  /* Wraps a test RECDES as the oos_buffer src that oos_insert expects. */
+  inline int oos_insert_from_recdes (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const RECDES &recdes, OID &oid)
+  {
+    return oos_insert (thread_p, oos_vfid, oos_buffer (recdes.data, static_cast<std::size_t> (recdes.length)), oid);
+  }
+
+  /* Reads OID into a fresh RECDES, sized via oos_get_length (tests have no heap-inline length). */
   inline int oos_read_with_alloc (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
   {
-    recdes.data = nullptr;
-    recdes.area_size = 0;
-    recdes.length = 0;
-
+    recdes = RECDES{};
     int len = oos_get_length (thread_p, oid);
-    if (len <= 0)
+    if (len < 0)
       {
-	return (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+	return er_errid ();
       }
-
     int err = recdes_allocate_data_area (&recdes, len);
     if (err != NO_ERROR)
       {
 	return err;
       }
-
-    err = oos_read (thread_p, oid, recdes);
+    err = oos_read (thread_p, oid, oos_buffer (recdes.data, static_cast<std::size_t> (len)));
     if (err != NO_ERROR)
       {
 	recdes_free_data_area (&recdes);
 	return err;
       }
+    recdes.length = len;
     return NO_ERROR;
   }
 

@@ -5073,7 +5073,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_DBLINK_SCAN:
-      dblink_close_scan (&scan_id->s.dblid.scan_info);
+      dblink_close_scan (&scan_id->s.dblid.scan_info, false);
       break;
 
     case S_JSON_TABLE_SCAN:

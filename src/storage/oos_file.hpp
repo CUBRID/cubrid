@@ -19,6 +19,7 @@
 #ifndef _OOS_FILE_HPP_
 #define _OOS_FILE_HPP_
 
+#include "span.hpp"
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
@@ -35,6 +36,11 @@ using OOS_RECORD_HEADER = struct oos_record_header;
 /* Alias for a RECDES whose first OOS_RECORD_HEADER_SIZE bytes are the OOS header.
  * Documentation only — no compile-time distinction from RECDES. */
 using OOS_RECDES = RECDES;
+
+/* Caller-owned byte span for OOS payloads. size() is the authoritative length;
+ * oos_insert only reads from it, oos_read only writes. Named alias because the
+ * .c-file formatter mangles `cubbase::span<char>(...)`'s angle brackets. */
+using oos_buffer = cubbase::span<char>;
 
 #define OOS_NUM_BEST_SPACESTATS 10
 
@@ -78,8 +84,11 @@ struct oos_hdr_stats
 extern int oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid);
 extern int oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
 extern int oos_remove_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid);
-extern int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &oid);
-extern int oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes);
+/* Inserts src.size() bytes; on multi-page payloads, oid is the head-chunk OID. */
+extern int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid);
+/* Reads exactly dest.size() bytes; the caller obtains the length from the
+ * heap record's inline 8B field (or oos_get_length in tests) and sizes dest. */
+extern int oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest);
 extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid);
 extern int oos_get_length (THREAD_ENTRY *thread_p, const OID &oid);
 

@@ -438,6 +438,7 @@ static void qexec_clear_head_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_li
 static void qexec_clear_head_lists_with_truncate (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static void qexec_clear_scan_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static void qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
+static void qexec_final_close_dblink_specs (XASL_NODE * xasl);
 static int qexec_clear_update_assignment (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, UPDATE_ASSIGNMENT * assignment,
 					  bool is_final);
 static DB_LOGICAL qexec_eval_ordbynum_pred (THREAD_ENTRY * thread_p, ORDBYNUM_INFO * ordby_info);
@@ -603,6 +604,7 @@ static SCAN_CODE qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC
 
 static int qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				     bool * empty_result);
+static XASL_NODE *qexec_determine_fixed_scan_xasl (XASL_NODE * xasl);
 static int qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					     UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info);
 static DEL_LOB_INFO *qexec_create_delete_lob_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
@@ -1558,6 +1560,13 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
 		  /* regu_var->xasl not cleared yet. Clear the values allocated during execution. */
 		  pg_cnt += qexec_clear_xasl (thread_p, regu_var->xasl, is_final, for_parallel_aptr);
 		}
+	      else
+		{
+		  /* xcache clone reuse: XASL already cleared this run (status reset to XASL_INITIALIZED),
+		   * so skip full qexec_clear_xasl. But CCI handles must still be released — safe no-op if
+		   * qexec_clear_xasl already ran qexec_final_close_dblink_specs (stmt_handle = -1 sentinel). */
+		  qexec_final_close_dblink_specs (regu_var->xasl);
+		}
 	    }
 	  else if (regu_var->xasl->status != XASL_CLEARED)
 	    {
@@ -2399,6 +2408,35 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
     }
 
 
+  /* Final teardown of correlated DBLink CCI handles — runs for all proc types so that inner
+   * DBLink XASLs (BUILDVALUE_PROC wrappers included) are covered regardless of which branch follows. */
+  qexec_final_close_dblink_specs (xasl);
+
+#if !defined(NDEBUG)
+  /* Invariant: after final teardown every DBLink spec must have released its handles.
+   * If either assertion fires here, qexec_final_close_dblink_specs did not reach this spec —
+   * i.e., the setter (cursor_rewind=1) was applied but the unsetter (is_final close) was not. */
+  {
+    ACCESS_SPEC_TYPE *dbg_spec;
+    for (dbg_spec = xasl->spec_list; dbg_spec != NULL; dbg_spec = dbg_spec->next)
+      {
+	if (dbg_spec->type == TARGET_DBLINK)
+	  {
+	    assert (dbg_spec->s_id.s.dblid.scan_info.stmt_handle <= 0);
+	    assert (dbg_spec->s_id.s.dblid.scan_info.cursor_rewind == 0);
+	  }
+      }
+    for (dbg_spec = xasl->merge_spec; dbg_spec != NULL; dbg_spec = dbg_spec->next)
+      {
+	if (dbg_spec->type == TARGET_DBLINK)
+	  {
+	    assert (dbg_spec->s_id.s.dblid.scan_info.stmt_handle <= 0);
+	    assert (dbg_spec->s_id.s.dblid.scan_info.cursor_rewind == 0);
+	  }
+      }
+  }
+#endif /* !defined(NDEBUG) */
+
   switch (xasl->type)
     {
     case CONNECTBY_PROC:
@@ -2858,6 +2896,9 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
       qfile_clear_list_id (xasl->list_id);
     }
 
+  /* Final teardown of correlated DBLink CCI handles (parallel aptr path). */
+  qexec_final_close_dblink_specs (xasl);
+
   /* clear the body node */
   /* not clear aptr nodes has px_executor; it will be cleared by other threads. */
   if (xasl->aptr_list)
@@ -3313,8 +3354,6 @@ qexec_clear_head_lists_with_truncate (THREAD_ENTRY * thread_p, XASL_NODE * xasl_
 	  /* skip out zero correlation-level uncorrelated subquery */
 	  continue;
 	}
-
-
       if (xasl->list_id && !xasl->list_id->is_result_cached)
 	{
 	  qfile_truncate_list (thread_p, xasl->list_id);
@@ -3441,6 +3480,41 @@ qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
       if (xasl->scan_ptr)
 	{
 	  qexec_clear_scan_all_lists (thread_p, xasl->scan_ptr);
+	}
+    }
+}
+
+/*
+ * qexec_final_close_dblink_specs () - Walk spec_list and merge_spec of one XASL node and call
+ * dblink_close_scan(is_final=true) for every TARGET_DBLINK spec whose CCI handles are still open.
+ *
+ * Called from qexec_clear_xasl / qexec_clear_xasl_for_parallel_aptr before the proc-type switch so that
+ * the teardown runs regardless of XASL proc type (BUILDLIST, BUILDVALUE, etc.).
+ *
+ * Safe to call multiple times: dblink_close_scan sets stmt_handle = -1 on success, so subsequent calls
+ * return immediately via the stmt_handle < 0 sentinel.
+ */
+static void
+qexec_final_close_dblink_specs (XASL_NODE * xasl)
+{
+  ACCESS_SPEC_TYPE *spec;
+
+  if (xasl == NULL)
+    {
+      return;
+    }
+  for (spec = xasl->spec_list; spec != NULL; spec = spec->next)
+    {
+      if (spec->type == TARGET_DBLINK)
+	{
+	  (void) dblink_close_scan (&spec->s_id.s.dblid.scan_info, true);
+	}
+    }
+  for (spec = xasl->merge_spec; spec != NULL; spec = spec->next)
+    {
+      if (spec->type == TARGET_DBLINK)
+	{
+	  (void) dblink_close_scan (&spec->s_id.s.dblid.scan_info, true);
 	}
     }
 }
@@ -7617,6 +7691,10 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 
 	host_vars.count = curr_spec->s.dblink_node.host_var_count;
 	host_vars.index = curr_spec->s.dblink_node.host_var_index;
+
+	/* inject reuse flag before open: scan_init_scan_id does not touch s.dblid.scan_info,
+	 * so the flag survives across open/close cycles. */
+	s_id->s.dblid.scan_info.cursor_rewind = IS_DBLINK_CURSOR_REWIND_XASL (xasl) ? 1 : 0;
 
 	error_code = scan_open_dblink_scan (thread_p, s_id, curr_spec, vd, val_list, &host_vars);
 	if (error_code != NO_ERROR)
@@ -15048,6 +15126,78 @@ qexec_execute_dblink_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STAT
 }
 
 /*
+ * qexec_determine_fixed_scan_xasl () - Determine which XASL node is eligible for fixed heap scan.
+ *   return: the innermost TARGET_CLASS XASL node that should use fixed scan, or NULL if fixed scan is not allowed.
+ *   xasl(in): top-level XASL node
+ *
+ * Fixed scan keeps the last fetched heap page latched between rows (PEEK mode), avoiding repeated fix/unfix overhead.
+ * It is disabled when: composite locking is required, any index scan is present, a correlated subquery exists,
+ * a HAVING subquery exists, an uncorrelated subquery linked to a regu variable exists, or the XASL_NO_FIXED_SCAN
+ * flag was set at compile time.
+ */
+static XASL_NODE *
+qexec_determine_fixed_scan_xasl (XASL_NODE * xasl)
+{
+  XASL_NODE *xptr;
+  ACCESS_SPEC_TYPE *specp;
+  XASL_NODE *fixed_scan_xasl = NULL;
+  bool has_index_scan = false;
+
+  if (COMPOSITE_LOCK (xasl->scan_op_type))
+    {
+      return NULL;
+    }
+
+  for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
+    {
+      for (specp = xptr->spec_list; specp; specp = specp->next)
+	{
+	  if (specp->type == TARGET_CLASS)
+	    {
+	      fixed_scan_xasl = xptr;
+	      if (IS_ANY_INDEX_ACCESS (specp->access))
+		{
+		  has_index_scan = true;
+		  break;
+		}
+	    }
+	}
+      if (has_index_scan)
+	{
+	  break;
+	}
+      specp = xptr->merge_spec;
+      if (specp && specp->type == TARGET_CLASS)
+	{
+	  fixed_scan_xasl = xptr;
+	  if (IS_ANY_INDEX_ACCESS (specp->access))
+	    {
+	      has_index_scan = true;
+	      break;
+	    }
+	}
+    }
+
+  if (has_index_scan || XASL_IS_FLAGED (xasl, XASL_NO_FIXED_SCAN) || xasl->dptr_list != NULL)
+    {
+      return NULL;
+    }
+  if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.eptr_list != NULL)
+    {
+      return NULL;
+    }
+  for (xptr = xasl->aptr_list; xptr != NULL; xptr = xptr->next)
+    {
+      if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
+	{
+	  return NULL;
+	}
+    }
+
+  return fixed_scan_xasl;
+}
+
+/*
  * qexec_execute_mainblock_internal () -
  *   return: NO_ERROR, or ER_code
  *   xasl(in)   : XASL Tree pointer
@@ -15072,7 +15222,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   XASL_NODE *outer_xasl = NULL, *inner_xasl = NULL;
   XASL_NODE *fixed_scan_xasl = NULL;
   bool iscan_oid_order, force_select_lock = false;
-  bool has_index_scan = false;
   int old_wait_msecs, wait_msecs;
   int error;
   bool empty_result = false;
@@ -15591,84 +15740,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
       /* iterative processing is done only for XASL blocks that has access specification list blocks. */
       if (xasl->spec_list)
 	{
-	  /* Decide which scan will use fixed flags and which won't. There are several cases here: 1. Do not use fixed
-	   * scans if locks on objects are required. 2. Disable all fixed scans if any index scan is used (this is
-	   * legacy and should be reconsidered). 3. Disable fixed scan for outer scans. Fixed cannot be allowed while
-	   * new scans start which also need to fix pages. This may lead to page deadlocks. NOTE: Only the innermost
-	   * scans are allowed fixed scans. */
-	  if (COMPOSITE_LOCK (xasl->scan_op_type))
-	    {
-	      /* Do locking on each instance instead of composite locking */
-	      /* Fall through */
-	    }
-	  else
-	    {
-	      for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
-		{
-		  specp = xptr->spec_list;
-		  for (; specp; specp = specp->next)
-		    {
-		      if (specp->type == TARGET_CLASS)
-			{
-			  /* Update fixed scan XASL */
-			  fixed_scan_xasl = xptr;
-			  if (IS_ANY_INDEX_ACCESS (specp->access))
-			    {
-			      has_index_scan = true;
-			      break;
-			    }
-			}
-		    }
-		  if (has_index_scan)
-		    {
-		      /* Stop search */
-		      break;
-		    }
-		  specp = xptr->merge_spec;
-		  if (specp)
-		    {
-		      if (specp->type == TARGET_CLASS)
-			{
-			  /* Update fixed scan XASL */
-			  fixed_scan_xasl = xptr;
-			  if (IS_ANY_INDEX_ACCESS (specp->access))
-			    {
-			      has_index_scan = true;
-			      break;
-			    }
-			}
-		    }
-		}
-	    }
-	  if (has_index_scan)
-	    {
-	      /* Index found, no fixed is allowed */
-	      fixed_scan_xasl = NULL;
-	    }
-	  if (XASL_IS_FLAGED (xasl, XASL_NO_FIXED_SCAN))
-	    {
-	      /* no fixed scan if it was decided so during compilation */
-	      fixed_scan_xasl = NULL;
-	    }
-	  if (xasl->dptr_list != NULL)
-	    {
-	      /* correlated subquery found, no fixed is allowed */
-	      fixed_scan_xasl = NULL;
-	    }
-	  if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.eptr_list != NULL)
-	    {
-	      /* subquery in HAVING clause, can't have fixed scan */
-	      fixed_scan_xasl = NULL;
-	    }
-	  for (xptr = xasl->aptr_list; xptr != NULL; xptr = xptr->next)
-	    {
-	      if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
-		{
-		  /* uncorrelated query that is not pre-executed, but evaluated in a reguvar; no fixed scan in this
-		   * case */
-		  fixed_scan_xasl = NULL;
-		}
-	    }
+	  fixed_scan_xasl = qexec_determine_fixed_scan_xasl (xasl);
 
 	  /* open all the scans that are involved within the query, for SCAN blocks */
 	  for (xptr = xasl, level = 0; xptr; xptr = xptr->scan_ptr, level++)
@@ -15681,7 +15753,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  for (specp = spec_ptr[spec_level]; specp; specp = specp->next)
 		    {
 		      specp->fixed_scan = (xptr == fixed_scan_xasl)
-			|| ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN);
+			|| (ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN)
+			    && !COMPOSITE_LOCK (xasl->scan_op_type));
 
 		      /* set if the scan will be done in a grouped manner */
 		      if ((level == 0 && xptr->scan_ptr == NULL) && (QPROC_MAX_GROUPED_SCAN_CNT > 0))
@@ -25894,6 +25967,16 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
       if (!*is_scan_needed && agg_ptr->function == PT_COUNT_STAR)
 	{
 	  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+	  if (tdes == NULL || tdes->isolation >= TRAN_REPEATABLE_READ)
+	    {
+	      /* COUNT(*) optimization uses global statistics that bypass MVCC visibility;
+	       * fall back to full scan under REPEATABLE_READ or SERIALIZABLE to prevent phantom reads. */
+	      agg_ptr->flag.agg_optimized = false;
+	      *is_scan_needed = true;
+	      continue;
+	    }
+
 	  LOG_TRAN_CLASS_COS *class_cos = logtb_tran_find_class_cos (thread_p, &ACCESS_SPEC_CLS_OID (spec),
 								     true);
 	  if (class_cos == NULL)

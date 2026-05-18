@@ -98,7 +98,7 @@ TEST (OosBestspaceTest, BestspaceReuseAfterDelete)
 
   // First insert — establishes a page
   OID oid1 = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid1);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid1);
   ASSERT_EQ (err, NO_ERROR);
   test_oos_debug ("oid1={vol=%d,page=%d,slot=%d}", oid1.volid, oid1.pageid, oid1.slotid);
 
@@ -115,7 +115,7 @@ TEST (OosBestspaceTest, BestspaceReuseAfterDelete)
   test_oos_utils::auto_freed_recdes_ptr defer_free_in2 (&rec_in2, recdes_free_data_area);
 
   OID oid2 = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in2, oid2);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in2, oid2);
   ASSERT_EQ (err, NO_ERROR);
   test_oos_debug ("oid2={vol=%d,page=%d,slot=%d}", oid2.volid, oid2.pageid, oid2.slotid);
 
@@ -161,7 +161,7 @@ TEST (OosBestspaceTest, BestspaceFullPageAllocsNew)
   test_oos_utils::auto_freed_recdes_ptr defer_large (&rec_large, recdes_free_data_area);
 
   OID oid_large = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_large, oid_large);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_large, oid_large);
   ASSERT_EQ (err, NO_ERROR);
   test_oos_debug ("large oid={vol=%d,page=%d,slot=%d}", oid_large.volid, oid_large.pageid, oid_large.slotid);
 
@@ -176,7 +176,7 @@ TEST (OosBestspaceTest, BestspaceFullPageAllocsNew)
   test_oos_utils::auto_freed_recdes_ptr defer_large2 (&rec_large2, recdes_free_data_area);
 
   OID oid_large2 = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_large2, oid_large2);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_large2, oid_large2);
   ASSERT_EQ (err, NO_ERROR);
   test_oos_debug ("large2 oid={vol=%d,page=%d,slot=%d}", oid_large2.volid, oid_large2.pageid, oid_large2.slotid);
 
@@ -214,7 +214,7 @@ TEST (OosBestspaceTest, BestspaceMultipleFilesIsolation)
   test_oos_utils::auto_freed_recdes_ptr defer1 (&rec1, recdes_free_data_area);
 
   OID oid1 = OID_INITIALIZER;
-  err = oos_insert (thread_p, vfid1, rec1, oid1);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, vfid1, rec1, oid1);
   ASSERT_EQ (err, NO_ERROR);
 
   // Insert into file 2
@@ -224,7 +224,7 @@ TEST (OosBestspaceTest, BestspaceMultipleFilesIsolation)
   test_oos_utils::auto_freed_recdes_ptr defer2 (&rec2, recdes_free_data_area);
 
   OID oid2 = OID_INITIALIZER;
-  err = oos_insert (thread_p, vfid2, rec2, oid2);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, vfid2, rec2, oid2);
   ASSERT_EQ (err, NO_ERROR);
 
   // Delete from file 1 — frees space in file 1 only
@@ -238,7 +238,7 @@ TEST (OosBestspaceTest, BestspaceMultipleFilesIsolation)
   test_oos_utils::auto_freed_recdes_ptr defer2b (&rec2b, recdes_free_data_area);
 
   OID oid2b = OID_INITIALIZER;
-  err = oos_insert (thread_p, vfid2, rec2b, oid2b);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, vfid2, rec2b, oid2b);
   ASSERT_EQ (err, NO_ERROR);
 
   // oid2b must be on the same volume/page as oid2 (file 2's page), not file 1's
@@ -290,7 +290,7 @@ TEST (OosBestspaceTest, BestspaceManySmallInsertsConsolidate)
       ASSERT_EQ (err, NO_ERROR);
 
       OID oid = OID_INITIALIZER;
-      err = oos_insert (thread_p, oos_vfid, rec, oid);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oid);
       ASSERT_EQ (err, NO_ERROR);
 
       pages_used.insert (oid.pageid);
@@ -352,7 +352,7 @@ TEST (OosBestspaceTest, BestspaceInsertDeleteCycle)
       test_oos_utils::auto_freed_recdes_ptr defer_rec (&rec, recdes_free_data_area);
 
       OID oid = OID_INITIALIZER;
-      err = oos_insert (thread_p, oos_vfid, rec, oid);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oid);
       ASSERT_EQ (err, NO_ERROR);
 
       all_pages.insert (oid.pageid);
@@ -441,7 +441,7 @@ TEST (OosBestspaceTest, BestspaceFindBestPageConsecutiveCalls)
   test_oos_utils::auto_freed_recdes_ptr defer_rec (&rec, recdes_free_data_area);
 
   OID oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   // Release page1 before second find
@@ -487,7 +487,7 @@ TEST (OosBestspaceTest, BestspaceDeleteThenFindReclaimsPage)
       ASSERT_EQ (err, NO_ERROR);
 
       OID oid = OID_INITIALIZER;
-      err = oos_insert (thread_p, oos_vfid, rec, oid);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oid);
       ASSERT_EQ (err, NO_ERROR);
       oids.push_back (oid);
       recdes_free_data_area (&rec);
@@ -545,7 +545,7 @@ TEST (OosBestspaceTest, BestspaceMultiChunkDeleteReuse)
   test_oos_utils::auto_freed_recdes_ptr defer_large (&rec_large, recdes_free_data_area);
 
   OID oid_large = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_large, oid_large);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_large, oid_large);
   ASSERT_EQ (err, NO_ERROR);
   test_oos_debug ("large oid={vol=%d,page=%d,slot=%d}", oid_large.volid, oid_large.pageid, oid_large.slotid);
 
@@ -563,7 +563,7 @@ TEST (OosBestspaceTest, BestspaceMultiChunkDeleteReuse)
   test_oos_utils::auto_freed_recdes_ptr defer_small (&rec_small, recdes_free_data_area);
 
   OID oid_small = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_small, oid_small);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_small, oid_small);
   ASSERT_EQ (err, NO_ERROR);
   test_oos_debug ("small oid={vol=%d,page=%d,slot=%d}", oid_small.volid, oid_small.pageid, oid_small.slotid);
 
@@ -616,7 +616,7 @@ TEST (OosBestspaceTest, BestspaceCacheCleanedOnFileRemove)
       ASSERT_EQ (err, NO_ERROR);
 
       OID oid = OID_INITIALIZER;
-      err = oos_insert (thread_p, vfid1, rec, oid);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, vfid1, rec, oid);
       ASSERT_EQ (err, NO_ERROR);
       recdes_free_data_area (&rec);
     }
@@ -636,7 +636,7 @@ TEST (OosBestspaceTest, BestspaceCacheCleanedOnFileRemove)
   test_oos_utils::auto_freed_recdes_ptr defer_rec (&rec, recdes_free_data_area);
 
   OID oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, vfid2, rec, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, vfid2, rec, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES rec_out{};
@@ -680,7 +680,7 @@ TEST (OosBestspaceTest, BestspaceBulkInsertDeleteReinsert)
       ASSERT_EQ (err, NO_ERROR);
 
       OID oid = OID_INITIALIZER;
-      err = oos_insert (thread_p, oos_vfid, rec, oid);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oid);
       ASSERT_EQ (err, NO_ERROR);
 
       oids.push_back (oid);
@@ -708,7 +708,7 @@ TEST (OosBestspaceTest, BestspaceBulkInsertDeleteReinsert)
       ASSERT_EQ (err, NO_ERROR);
 
       OID oid = OID_INITIALIZER;
-      err = oos_insert (thread_p, oos_vfid, rec, oid);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oid);
       ASSERT_EQ (err, NO_ERROR);
 
       oids.push_back (oid);
@@ -776,7 +776,7 @@ TEST (OosBestspaceTest, BestspaceArrayOverflowEviction)
       ASSERT_EQ (err, NO_ERROR);
 
       OID oid = OID_INITIALIZER;
-      err = oos_insert (thread_p, oos_vfid, rec, oid);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oid);
       ASSERT_EQ (err, NO_ERROR);
 
       oids.push_back (oid);
@@ -806,7 +806,7 @@ TEST (OosBestspaceTest, BestspaceArrayOverflowEviction)
       ASSERT_EQ (err, NO_ERROR);
 
       OID oid = OID_INITIALIZER;
-      err = oos_insert (thread_p, oos_vfid, rec, oid);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oid);
       ASSERT_EQ (err, NO_ERROR);
 
       pages_round2.insert (oid.pageid);
@@ -869,7 +869,7 @@ TEST (OosBestspaceTest, BestspaceStaleCacheEviction)
   test_oos_utils::auto_freed_recdes_ptr defer_small (&rec_small, recdes_free_data_area);
 
   OID oid_seed = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_small, oid_seed);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_small, oid_seed);
   ASSERT_EQ (err, NO_ERROR);
   PAGEID seed_page = oid_seed.pageid;
 
@@ -881,7 +881,7 @@ TEST (OosBestspaceTest, BestspaceStaleCacheEviction)
   test_oos_utils::auto_freed_recdes_ptr defer_large (&rec_large, recdes_free_data_area);
 
   OID oid_large = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_large, oid_large);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_large, oid_large);
   ASSERT_EQ (err, NO_ERROR);
 
   // The page should now be (nearly) full — verify the large record landed there
@@ -896,7 +896,7 @@ TEST (OosBestspaceTest, BestspaceStaleCacheEviction)
   test_oos_utils::auto_freed_recdes_ptr defer_large2 (&rec_large2, recdes_free_data_area);
 
   OID oid_large2 = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_large2, oid_large2);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_large2, oid_large2);
   ASSERT_EQ (err, NO_ERROR);
 
   // Must go to a different page since seed_page is full
@@ -942,7 +942,7 @@ TEST (OosBestspaceTest, BestspaceHeaderPageNeverReturned)
       ASSERT_EQ (err, NO_ERROR);
 
       OID oid = OID_INITIALIZER;
-      err = oos_insert (thread_p, oos_vfid, rec, oid);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oid);
       ASSERT_EQ (err, NO_ERROR);
       ASSERT_NE (oid.pageid, hdr_vpid.pageid);
       recdes_free_data_area (&rec);
@@ -982,7 +982,7 @@ TEST (OosBestspaceTest, BestspaceSyncRefillsCache)
       ASSERT_EQ (err, NO_ERROR);
 
       OID oid = OID_INITIALIZER;
-      err = oos_insert (thread_p, oos_vfid, rec, oid);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oid);
       ASSERT_EQ (err, NO_ERROR);
       oids.push_back (oid);
       original_pages.insert (oid.pageid);
@@ -1196,7 +1196,7 @@ TEST (OosBestspaceTest, BestspaceExactMaxChunkBoundary)
   test_oos_utils::auto_freed_recdes_ptr defer_exact (&rec_exact, recdes_free_data_area);
 
   OID oid_exact = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_exact, oid_exact);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_exact, oid_exact);
   ASSERT_EQ (err, NO_ERROR);
 
   PAGEID exact_page = oid_exact.pageid;
@@ -1213,7 +1213,7 @@ TEST (OosBestspaceTest, BestspaceExactMaxChunkBoundary)
   test_oos_utils::auto_freed_recdes_ptr defer_exact2 (&rec_exact2, recdes_free_data_area);
 
   OID oid_exact2 = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_exact2, oid_exact2);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_exact2, oid_exact2);
   ASSERT_EQ (err, NO_ERROR);
 
   ASSERT_NE (oid_exact2.pageid, exact_page);
@@ -1270,7 +1270,7 @@ TEST (OosBestspaceTest, DeleteUpdatesBestspaceCacheDirectly)
   test_oos_utils::auto_freed_recdes_ptr defer_large (&rec_large, recdes_free_data_area);
 
   OID oid_large = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_large, oid_large);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_large, oid_large);
   ASSERT_EQ (err, NO_ERROR);
 
   PAGEID target_page = oid_large.pageid;
@@ -1293,7 +1293,7 @@ TEST (OosBestspaceTest, DeleteUpdatesBestspaceCacheDirectly)
   test_oos_utils::auto_freed_recdes_ptr defer_medium (&rec_medium, recdes_free_data_area);
 
   OID oid_medium = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_medium, oid_medium);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_medium, oid_medium);
   ASSERT_EQ (err, NO_ERROR);
   test_oos_debug ("medium oid={vol=%d,page=%d,slot=%d}", oid_medium.volid, oid_medium.pageid, oid_medium.slotid);
 
@@ -1344,7 +1344,7 @@ TEST (OosBestspaceTest, DeleteMultipleRecordsUpdatesAllPages)
       ASSERT_EQ (err, NO_ERROR);
 
       OID oid = OID_INITIALIZER;
-      err = oos_insert (thread_p, oos_vfid, rec, oid);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oid);
       ASSERT_EQ (err, NO_ERROR);
 
       oids.push_back (oid);
@@ -1372,7 +1372,7 @@ TEST (OosBestspaceTest, DeleteMultipleRecordsUpdatesAllPages)
       ASSERT_EQ (err, NO_ERROR);
 
       OID oid = OID_INITIALIZER;
-      err = oos_insert (thread_p, oos_vfid, rec, oid);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oid);
       ASSERT_EQ (err, NO_ERROR);
 
       reinsert_pages.insert (oid.pageid);
@@ -1418,7 +1418,7 @@ TEST (OosBestspaceTest, DeletePartialChainUpdatesBestspace)
   test_oos_utils::auto_freed_recdes_ptr defer_large (&rec_large, recdes_free_data_area);
 
   OID oid_large = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_large, oid_large);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_large, oid_large);
   ASSERT_EQ (err, NO_ERROR);
 
   // Delete the multi-chunk record — all 3 pages should have freed space in cache
@@ -1437,7 +1437,7 @@ TEST (OosBestspaceTest, DeletePartialChainUpdatesBestspace)
       ASSERT_EQ (err, NO_ERROR);
 
       OID oid = OID_INITIALIZER;
-      err = oos_insert (thread_p, oos_vfid, rec, oid);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oid);
       ASSERT_EQ (err, NO_ERROR);
 
       reuse_pages.insert (oid.pageid);
