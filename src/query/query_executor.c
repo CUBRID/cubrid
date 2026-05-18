@@ -12355,7 +12355,7 @@ qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, U
     }
   else
     {
-      pr_clone_value (&new_val, out_val);
+      error = pr_clone_value (&new_val, out_val);
       pr_clear_value (&new_val);
     }
 
