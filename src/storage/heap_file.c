@@ -12432,13 +12432,15 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 
   /* TODO: change the statistics */
   /* make columns go to OOS */
-  if (header_size + payload_size + mvcc_extra > DB_PAGESIZE / 8)
+  // if (header_size + payload_size + mvcc_extra > DB_PAGESIZE / 8)
+  if (header_size + payload_size + mvcc_extra > 0)	// always
     {
       /* re-calculate the payload size */
       for (i = 0; i < attr_info->num_values; i++)
 	{
 	  /* only variable value can be oos column */
-	  (*oos_columns)[i] = !attr_info->values[i].last_attrepr->is_fixed && column_size[i] > 512 /* 512 B */ ;
+	  // (*oos_columns)[i] = !attr_info->values[i].last_attrepr->is_fixed && column_size[i] > 512 /* 512 B */ ;
+	  (*oos_columns)[i] = !attr_info->values[i].last_attrepr->is_fixed && column_size[i] > 50;	// values larger than 50 bytes
 	  if ((*oos_columns)[i])
 	    {
 	      payload_size -= column_size[i];
