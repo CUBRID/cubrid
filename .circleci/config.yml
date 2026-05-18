@@ -47,8 +47,8 @@ jobs:
             echo "RUN_ALL_TEST: $RUN_ALL_TEST"
             echo "BASELINE: $BASELINE"
                         
-            TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git feature/system-catalog-update | cut -f1)
-            echo "sha value from tc repository.(only from feature/system-catalog-update branch)"
+            TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git add_timestamps_and_invalidated_time_for_additional_system_catalog | cut -f1)
+            echo "sha value from tc repository.(only from add_timestamps_and_invalidated_time_for_additional_system_catalog branch)"
             echo "TC_SHA: $TC_SHA"
             echo "CACHE_KEY_BRANCH: $CACHE_KEY_BRANCH"
 
@@ -83,7 +83,7 @@ jobs:
                   - run:
                       name: Test
                       environment:
-                        BRANCH_TESTCASES: feature/system-catalog-update
+                        BRANCH_TESTCASES: add_timestamps_and_invalidated_time_for_additional_system_catalog
                       shell: /bin/bash
                       no_output_timeout: 45m
                       command: |
