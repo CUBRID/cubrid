@@ -5217,6 +5217,7 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
 #if defined (SERVER_MODE)
+   /* set the default to twice the value of MAX_TRANSACTION_CONCURRENCY */
    {false, {.i = (int) cubthread::system_core_count () * 6}},
    {false, {.i = (int) cubthread::system_core_count () * 6}},
    NULL_SYSPRM_PARAM_VALUE,
@@ -5236,6 +5237,7 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
 #if defined (SERVER_MODE)
+   /* adjusted based on CBRD-26636 */
    {false, {.i = (int) cubthread::system_core_count () * 3}},
    {false, {.i = (int) cubthread::system_core_count () * 3}},
    NULL_SYSPRM_PARAM_VALUE,
