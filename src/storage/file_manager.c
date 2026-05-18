@@ -55,6 +55,7 @@
 #include "xserver_interface.h"
 #include "oid.h"
 #include "heap_file.h"
+#include "object_representation_sr.h"
 #include "bit.h"
 #include "util_func.h"
 #include "vacuum.h"
@@ -692,6 +693,7 @@ static int file_spacedb_get_file_page_count (THREAD_ENTRY * thread_p, const VFID
 					     int *alloced_page_p);
 static int file_spacedb_get_btree_ovf_vfid (THREAD_ENTRY * thread_p, const BTID * btid, VFID * ovf_vfid_p);
 static int file_spacedb_get_heap_ovf_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid_p);
+static bool file_spacedb_is_view_class (THREAD_ENTRY * thread_p, const OID * class_oid);
 static int file_spacedb_fill_one_table (THREAD_ENTRY * thread_p, const OID * class_oid,
 					const char *class_name, SPACEDB_TABLE_SIZES_HEADER * entry);
 static int file_spacedb_fill_tables_from_oids (THREAD_ENTRY * thread_p, const OID * class_oids, int oid_count,
@@ -8013,6 +8015,15 @@ file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb, char **table_arr
 	      return error_code;
 	    }
 
+	  if (file_spacedb_is_view_class (thread_p, &class_oid))
+	    {
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, table_array[table_num]);
+	      file_spacedb_free_table_sizes (*table_sizes_p, table_num);
+	      *table_sizes_p = NULL;
+	      error_code = ER_LC_UNKNOWN_CLASSNAME;
+	      return error_code;
+	    }
+
 	  error_code =
 	    file_spacedb_fill_one_table (thread_p, &class_oid, table_array[table_num], &(*table_sizes_p)[table_num]);
 	  if (error_code != NO_ERROR)
@@ -8133,6 +8144,53 @@ file_spacedb_get_btree_ovf_vfid (THREAD_ENTRY * thread_p, const BTID * btid, VFI
 
   pgbuf_unfix_and_init (thread_p, root_page);
   return NO_ERROR;
+}
+
+/*
+ * file_spacedb_is_view_class () - Returns true if class_oid refers to a class
+ *                                 without a heap file (i.e. a view).
+ *
+ * return        : true iff the class has no heap (view)
+ * thread_p (in) : thread entry
+ * class_oid (in): class OID to test
+ *
+ * Note: Reads the class record directly via heap_get_class_record to avoid
+ *       polluting the HFID cache (heap_hfid_cache_get asserts non-null HFID,
+ *       which views cannot satisfy).
+ *
+ *       HFID-null is used as the view discriminator.
+ *
+ *       Read failure is not propagated: the caller (file_spacedb) supplies
+ *       OIDs just resolved via xlocator_find_class_oid, so the record read
+ *       is expected to succeed. Any transient I/O error will be re-hit and
+ *       reported by the downstream file_spacedb_fill_one_table() path.
+ */
+static bool
+file_spacedb_is_view_class (THREAD_ENTRY * thread_p, const OID * class_oid)
+{
+  HEAP_SCANCACHE scan_cache;
+  RECDES recdes;
+  HFID hfid;
+  bool is_view = false;
+
+  if (heap_scancache_quick_start_root_hfid (thread_p, &scan_cache) != NO_ERROR)
+    {
+      return false;
+    }
+  if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) == S_SUCCESS)
+    {
+      or_class_hfid (&recdes, &hfid);
+      if (HFID_IS_NULL (&hfid))
+	{
+	  is_view = true;
+	}
+    }
+  /* Read failure is intentionally not propagated — caller-supplied OIDs are
+   * trusted (just resolved via xlocator_find_class_oid); any transient I/O
+   * error is re-encountered and reported downstream by
+   * file_spacedb_fill_one_table(). See function header for details. */
+  heap_scancache_end (thread_p, &scan_cache);
+  return is_view;
 }
 
 /*
