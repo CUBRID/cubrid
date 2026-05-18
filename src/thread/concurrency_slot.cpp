@@ -278,16 +278,31 @@ namespace cubthread
     // the interrupt is not lost; it remains recorded separately through the thread/transaction
     // interrupt state and is handled by the upper cancellation path. we should not overload
     // resume_status for the slot wait result here.
-    thread_p->resume_status = saved_status;
 
-    if (thread_p->m_slot)
+    if (thread_p->resume_status == THREAD_CONCURRENCY_SLOT_RESUMED)
       {
+	assert (thread_p->m_slot);
 	assert (thread_p->m_slot->get_owner_pool () && thread_p->m_slot->get_holder_pool ());
+
+	thread_p->resume_status = saved_status;
 	return true;
       }
 
+    assert (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT);
+    thread_p->resume_status = saved_status;
+
     ulock.lock ();
 
+    if (thread_p->m_slot)
+      {
+	// I was handed over the slot and just after interrupted
+	release_slot (std::move (thread_p->m_slot), ulock);
+	thread_p->m_slot = nullptr;
+
+	return false;
+      }
+
+    // remove myself from the waiter list
     auto it = std::find (m_wait_queue.begin (), m_wait_queue.end (), thread_p);
     if (it != m_wait_queue.end ())
       {

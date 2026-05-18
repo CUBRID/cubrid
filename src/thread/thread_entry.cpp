@@ -703,6 +703,7 @@ thread_prepare_resumption (cubthread::entry *thread_p, cubthread::entry::status 
 		}
 
 	      static_cast<cubthread::concurrency_slot_pool *> (holder)->acquire_slot (thread_p);
+	      // if acquire_slot fails due to interrupt, this interrupt is handled within upper scope
 
 	      if (thread_p->event_stats.trace_slow_query == true)
 		{
