@@ -12562,6 +12562,12 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   thread_p->no_logging = (bool) insert->no_logging;
 
+  if (insert->is_remote_insert)
+    {
+      /* Remote INSERT SELECT via DBLink: CCI streaming not yet implemented. */
+      return NO_ERROR;
+    }
+
   aptr = xasl->aptr_list;
   val_no = insert->num_vals;
 
