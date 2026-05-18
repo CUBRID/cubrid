@@ -19252,6 +19252,20 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       xasl->query_alias = statement->alias_print;
     }
 
+#if !defined(NDEBUG)
+  if (prm_get_bool_value (PRM_ID_XASL_DEBUG_DUMP))
+    {
+      if (xasl != NULL)
+	{
+	  qdump_print_xasl (xasl);
+	}
+      else
+	{
+	  printf ("<NULL XASL generation>\n");
+	}
+    }
+#endif /* !NDEBUG */
+
   return xasl;
 }
 
