@@ -21606,16 +21606,34 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
   update_mvcc_flags = OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION;
 
-  bool has_oos = heap_recdes_check_has_oos (update_context->recdes_p);
+  /* Trust the HAS_OOS bit already stamped into the recdes by the upstream builder
+   * (heap_attrinfo_transform_header_to_disk, heap_file.c:12780). Recomputing it here by walking
+   * the VOT is unsafe for classes with no variable attributes — without a VOT in the on-disk
+   * record, the walk reads fixed-attribute / bound-bitmap bytes as VOT entries and false-
+   * positives on bit-0 of any byte, then sets HAS_OOS on a record that has no OOS, which trips
+   * the OOS-expansion writer on the next SELECT and corrupts the scancache buffer. The INSERT
+   * variant (heap_insert_adjust_recdes_header above) likewise trusts the flag from the builder. */
+  bool has_oos = (mvcc_flags & OR_MVCC_FLAG_HAS_OOS) != 0;
 
-  if (has_oos)
-    {
-      repid_and_flag_bits |= (OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
-    }
-  else
-    {
-      repid_and_flag_bits &= ~(OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
-    }
+#if !defined (NDEBUG)
+  /* Debug-only sanity check: verify the upstream builder stamped HAS_OOS consistently with the
+   * actual on-disk VOT contents. Skipped for classes with n_variable == 0 (no VOT to walk).
+   * If this assert ever fires, some recdes-producing path is forgetting to set/clear HAS_OOS. */
+  {
+    int classrepr_cacheindex = -1;
+    OR_CLASSREP *classrepr =
+      heap_classrepr_get (thread_p, &update_context->class_oid, NULL, NULL_REPRID, &classrepr_cacheindex);
+    if (classrepr != NULL)
+      {
+	if (classrepr->n_variable > 0)
+	  {
+	    bool walked_has_oos = heap_recdes_check_has_oos (update_context->recdes_p);
+	    assert (walked_has_oos == has_oos);
+	  }
+	heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
+      }
+  }
+#endif
 
   OR_PUT_INT (update_context->recdes_p->data, repid_and_flag_bits);
 
