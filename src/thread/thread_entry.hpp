@@ -169,7 +169,9 @@ enum thread_resume_suspend_status
   THREAD_ALLOC_BCB_SUSPENDED = 21,
   THREAD_ALLOC_BCB_RESUMED = 22,
   THREAD_DWB_QUEUE_SUSPENDED = 23,
-  THREAD_DWB_QUEUE_RESUMED = 24
+  THREAD_DWB_QUEUE_RESUMED = 24,
+  THREAD_CONCURRENCY_SLOT_SUSPENDED = 25,
+  THREAD_CONCURRENCY_SLOT_RESUMED = 26,
 };
 
 namespace cubthread
@@ -231,6 +233,8 @@ namespace cubthread
       unsigned int rid;		/* request id which this thread is processing */
       status m_status;			/* thread status */
 
+      /* both m_core_mutex and th_entry_lock can be held simultaneously. */
+      /* to avoid deadlocks, you must follow a consistent locking order; th_entry_lock should be acquired first. */
       pthread_mutex_t th_entry_lock;	/* latch for this thread entry */
       pthread_cond_t wakeup_cond;	/* wakeup condition */
 
