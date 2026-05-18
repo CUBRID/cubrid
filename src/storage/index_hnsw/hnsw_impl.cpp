@@ -22,6 +22,8 @@
 
 #include "hnsw_api.hpp"
 
+#include <cstring>
+
 #include "page_buffer.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
@@ -189,11 +191,54 @@ hnsw_impl_backend::create_index (THREAD_ENTRY *thread_p,
 
   if (log_is_in_crash_recovery ())
     {
-      if (index->init_for_recovery () != NO_ERROR)
+      VPID root_vpid = { btid->root_pageid, btid->vfid.volid };
+      PAGE_PTR page_ptr =
+	      pgbuf_fix (thread_p, &root_vpid, RECOVERY_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (page_ptr == NULL)
 	{
+	  ASSERT_ERROR ();
 	  delete index;
 	  return NULL;
 	}
+
+      pgbuf_set_page_ptype (thread_p, page_ptr, PAGE_HNSW);
+      spage_initialize (thread_p, page_ptr, UNANCHORED_KEEP_SEQUENCE, HNSW_MAX_ALIGN, DONT_SAFEGUARD_RVSPACE);
+
+      char header_buf[IO_MAX_PAGE_SIZE + HNSW_MAX_ALIGN];
+      HNSW_HEADER hnsw_header;
+      hnsw_header.dimension = build_params.dimension;
+      hnsw_header.hnsw_M = build_params.m;
+      hnsw_header.hnsw_efConstruction = build_params.ef_construction;
+      hnsw_header.metric = static_cast<int> (build_params.metric);
+
+      RECDES header_rec;
+      header_rec.area_size = DB_PAGESIZE;
+      header_rec.data = PTR_ALIGN (header_buf, HNSW_MAX_ALIGN);
+      memcpy (header_rec.data, &hnsw_header, sizeof (hnsw_header));
+      header_rec.length = sizeof (hnsw_header);
+      header_rec.type = REC_HOME;
+
+      if (spage_insert_at (thread_p, page_ptr, HNSW_HEADER_NUM, &header_rec) != SP_SUCCESS)
+	{
+	  ASSERT_ERROR ();
+	  pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
+	  delete index;
+	  return NULL;
+	}
+
+      char rec_buf[IO_MAX_PAGE_SIZE + INT_ALIGNMENT];
+      RECDES rec
+      {
+	DB_PAGESIZE, 0, REC_HOME, PTR_ALIGN (rec_buf, INT_ALIGNMENT)};
+
+      if (index->init (thread_p, page_ptr, rec) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
+	  delete index;
+	  return NULL;
+	}
+
       return index;
     }
 

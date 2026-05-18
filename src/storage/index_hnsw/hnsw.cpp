@@ -487,21 +487,6 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
       int wal_data_size = hnsw_get_insert_log_data_size (params.dimension);
       std::vector<char> wal_data (wal_data_size);
 
-      VPID root_vpid;
-      root_vpid.volid = btid->vfid.volid;
-      root_vpid.pageid = btid->root_pageid;
-
-      PAGE_PTR root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (root_page == NULL)
-	{
-	  return ER_FAILED;
-	}
-
-      LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
-      addr.vfid = &btid->vfid;
-      addr.pgptr = root_page;
-      addr.offset = 0;
-
       for (int idx = 0; idx < n_vectors; idx++)
 	{
 	  const OID *cur_oid = &oid[idx];
@@ -509,15 +494,11 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
 	  int packed_size = hnsw_pack_insert_data (wal_data.data (), wal_data_size, btid, cur_oid, params, cur_vector);
 	  if (packed_size != wal_data_size)
 	    {
-	      pgbuf_unfix_and_init (thread_p, root_page);
 	      return ER_FAILED;
 	    }
 
-	  log_append_redo_data (thread_p, RVHNSW_INSERT_ELEMENT, &addr, wal_data_size, wal_data.data ());
+	  log_append_dboutside_redo (thread_p, RVHNSW_INSERT_ELEMENT, wal_data_size, wal_data.data ());
 	}
-
-      pgbuf_set_dirty (thread_p, root_page, FREE);
-      root_page = NULL;
     }
 
   return index->add (thread_p, n_vectors, oid, vector);
