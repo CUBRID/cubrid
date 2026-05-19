@@ -23658,7 +23658,8 @@ error:
   CUBRID_OBJ_INSERT_END (&context->class_oid, (rc < 0));
 #endif /* ENABLE_SYSTEMTAP */
 
-  /* all ok */
+  heap_unfix_watchers (thread_p, context);
+
   return rc;
 }
 
