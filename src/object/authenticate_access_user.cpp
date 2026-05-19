@@ -1180,9 +1180,9 @@ au_drop_user (MOP user)
       goto error;
     }
 
-  /* check if user is dba/public or current user */
+  /* check if user is dba/public/information_schema or current user */
   if (ws_is_same_object (user, Au_dba_user) || ws_is_same_object (user, Au_public_user)
-      || ws_is_same_object (user, Au_user))
+      || ws_is_same_object (user, Au_information_schema_user) || ws_is_same_object (user, Au_user))
     {
       db_make_null (&name);
       error = obj_get (user, "name", &name);
