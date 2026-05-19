@@ -16763,6 +16763,16 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 	      goto error;
 	    }
 
+	  if (j >= curr_mkey->ncolumns)
+	    {
+	      /* Function argument attribute: only the function result is stored in the index key, not the argument itself.
+	       * This can happen when a function index covering scan includes the function argument in rest_attrs. */
+	      db_make_null (&attr_value->dbvalue);
+	      attr_value->state = HEAP_WRITTEN_ATTRVALUE;
+	      attr_value++;
+	      continue;
+	    }
+
 	  if (pr_midxkey_get_element_nocopy (((j < prefix_size) ? prefix_mkey : curr_mkey), j, &(attr_value->dbvalue),
 					     NULL, NULL) != NO_ERROR)
 	    {

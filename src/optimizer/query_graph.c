@@ -217,7 +217,8 @@ static void qo_partition_dump (QO_PARTITION *, FILE *);
 static void qo_find_index_terms (QO_ENV * env, BITSET * segsp, QO_INDEX_ENTRY * index_entry);
 static void qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx, BITSET * index_segsp);
 static bool qo_find_index_segs (QO_ENV *, SM_CLASS_CONSTRAINT *, QO_NODE *, int *, int, int *, BITSET *);
-static bool qo_is_segment_used_in_query (QO_ENV * env, int seg_idx);
+static bool qo_check_arg_segment_match (QO_ENV * env, QO_NODE * seg_nodep, PT_NODE * arg_node, int seg_idx);
+static bool qo_is_segment_func_index_arg (QO_ENV * env, QO_NODE * seg_nodep, PT_NODE * func_expr, int seg_idx);
 static bool qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry);
 static void qo_find_node_indexes (QO_ENV *, QO_NODE *);
 static int is_equivalent_indexes (QO_INDEX_ENTRY * index1, QO_INDEX_ENTRY * index2);
@@ -6861,30 +6862,120 @@ qo_find_index_segs (QO_ENV * env, SM_CLASS_CONSTRAINT * consp, QO_NODE * nodep, 
 }
 
 /*
- * qo_is_segment_used_in_query () - Check if a segment is actually used in the query
- *   return: true if segment is used, false otherwise
+ * qo_check_arg_segment_match () - Check if an argument node matches the given segment index
+ *   return: true if the argument matches the segment index, false otherwise
  *   env(in): optimizer environment
+ *   seg_nodep(in): node that the segment belongs to
+ *   arg_node(in): argument node to check
  *   seg_idx(in): segment index to check
  */
 static bool
-qo_is_segment_used_in_query (QO_ENV * env, int seg_idx)
+qo_check_arg_segment_match (QO_ENV * env, QO_NODE * seg_nodep, PT_NODE * arg_node, int seg_idx)
 {
-  int t;
-  QO_TERM *termp;
+  PT_NODE *arg;
 
-  /* Check if segment is in SELECT list (final_segs) */
-  if (BITSET_MEMBER (env->final_segs, seg_idx))
+  if (arg_node == NULL)
+    {
+      return false;
+    }
+
+  arg = pt_function_index_skip_expr (arg_node);
+  if (arg->node_type == PT_NAME)
+    {
+      QO_SEGMENT *arg_seg = lookup_seg (seg_nodep, arg, env);
+      if (arg_seg != NULL && QO_SEG_IDX (arg_seg) == seg_idx)
     {
       return true;
     }
+    }
 
-  /* Check all terms in the environment */
-  for (t = 0; t < env->nterms; t++)
+  return false;
+}
+
+/*
+ * qo_is_segment_directly_in_select_list () - Check if a segment's PT_NODE is directly in the SELECT list
+ *   return: true if segment is directly in SELECT list (not as an argument of a function), false otherwise
+ *   env(in): optimizer environment
+ *   seg(in): segment to check
+ */
+static bool
+qo_is_segment_directly_in_select_list (QO_ENV * env, QO_SEGMENT * seg)
+{
+  PT_NODE *select_list;
+  PT_NODE *node;
+  PT_NODE *seg_pt_node;
+
+  if (env == NULL || seg == NULL || QO_ENV_PT_TREE (env) == NULL
+      || QO_ENV_PT_TREE (env)->node_type != PT_SELECT)
     {
-      termp = QO_ENV_TERM (env, t);
+      return false;
+    }
 
-      /* Check if this term references the segment */
-      if (BITSET_MEMBER (QO_TERM_SEGS (termp), seg_idx))
+  select_list = QO_ENV_PT_TREE (env)->info.query.q.select.list;
+  if (select_list == NULL)
+    {
+      return false;
+    }
+
+  seg_pt_node = QO_SEG_PT_NODE (seg);
+  if (seg_pt_node == NULL)
+    {
+      return false;
+    }
+
+  /* Check if seg_pt_node is directly in the SELECT list as PT_NAME */
+  for (node = select_list; node != NULL; node = node->next)
+    {
+      if (node->node_type == PT_NAME && node == seg_pt_node)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_is_segment_func_index_arg () - Check if a segment is an argument of a function index expression
+ *   return: true if segment is an argument of the function index, false otherwise
+ *   env(in): optimizer environment
+ *   seg_nodep(in): node that the segment belongs to
+ *   func_expr(in): function index expression (PT_EXPR node)
+ *   seg_idx(in): segment index to check
+ */
+static bool
+qo_is_segment_func_index_arg (QO_ENV * env, QO_NODE * seg_nodep, PT_NODE * func_expr, int seg_idx)
+{
+  PT_NODE *arg;
+
+  if (func_expr == NULL || !pt_is_function_index_expr (env->parser, func_expr, false))
+    {
+      return false;
+    }
+
+  if (func_expr->info.expr.op == PT_FUNCTION_HOLDER)
+    {
+      PT_NODE *func = func_expr->info.expr.arg1;
+      for (arg = func->info.function.arg_list; arg != NULL; arg = arg->next)
+	{
+	  if (qo_check_arg_segment_match (env, seg_nodep, arg, seg_idx))
+	    {
+	      return true;
+	    }
+	}
+    }
+  else
+    {
+      /* Check arg1, arg2, arg3 for non-function-holder expressions */
+      if (qo_check_arg_segment_match (env, seg_nodep, func_expr->info.expr.arg1, seg_idx))
+	{
+	  return true;
+	}
+      if (qo_check_arg_segment_match (env, seg_nodep, func_expr->info.expr.arg2, seg_idx))
+	{
+	  return true;
+	}
+      if (qo_check_arg_segment_match (env, seg_nodep, func_expr->info.expr.arg3, seg_idx))
 	{
 	  return true;
 	}
@@ -7012,11 +7103,53 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 
       if (!found)
 	{
-	  /* Check if this segment is actually used in the query */
-	  if (!qo_is_segment_used_in_query (env, QO_SEG_IDX (seg)))
+	  /* If the segment is directly in the SELECT list, it cannot be covered by the index
+	   * because the index doesn't contain this segment (it's not in the index columns). */
+	  if (qo_is_segment_directly_in_select_list (env, seg))
 	    {
-	      continue;		/* Skip this segment if it's not used in the query */
+	      return false;
 	    }
+
+	  /* Check if this is a function index and the current segment is an argument of the function */
+	  if (index_entry->constraints != NULL && index_entry->constraints->func_index_info != NULL)
+	    {
+	      int func_col_id = index_entry->constraints->func_index_info->col_id;
+	      if (func_col_id >= 0 && func_col_id < index_entry->nsegs
+		  && index_entry->seg_idxs[func_col_id] != -1)
+		{
+		  QO_SEGMENT *func_seg = QO_ENV_SEG (env, index_entry->seg_idxs[func_col_id]);
+		  if (func_seg != NULL && QO_SEG_FUNC_INDEX (func_seg))
+		    {
+		      PT_NODE *func_expr = QO_SEG_PT_NODE (func_seg);
+		      if (qo_is_segment_func_index_arg (env, seg_nodep, func_expr, QO_SEG_IDX (seg)))
+			{
+			  /* seg (e.g. c2) is an argument of the function index expression (e.g. abs(c2)).
+			   * set_seg_expr stops recursion when it finds the function expression segment,
+			   * so c2's segment only appears in term SEGS when c2 is used directly
+			   * (e.g. WHERE c2 > 5), not when it is only used as abs(c2). */
+			  bool used_directly_in_term = false;
+			  int t;
+			  for (t = 0; t < env->nterms; t++)
+			    {
+			      QO_TERM *termp = QO_ENV_TERM (env, t);
+			      if (BITSET_MEMBER (QO_TERM_SEGS (termp), QO_SEG_IDX (seg)))
+				{
+				  used_directly_in_term = true;
+				  break;
+				}
+			    }
+			  if (!used_directly_in_term)
+			    {
+			      continue;
+			    }
+			}
+		    }
+		}
+	    }
+	}
+
+      if (!found)
+	{
 	  return false;
 	}
     }
