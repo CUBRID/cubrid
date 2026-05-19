@@ -146,6 +146,7 @@ namespace parallel_query
       : m_task_manager (task_manager)
       , m_manager (manager)
       , m_index (index)
+      , m_page_iter ()
     {
       assert (m_manager != nullptr);
       assert (m_manager->context_cnt > 1);
@@ -285,6 +286,64 @@ namespace parallel_query
 	}
     }
 
+    int
+    sector_page_iterator::assemble_overflow_tuple (cubthread::entry &thread_ref, PAGE_PTR start_page,
+	QFILE_TUPLE_RECORD &tuple_record,
+	QFILE_TUPLE_RECORD &overflow_record)
+    {
+      VPID overflow_vpid = VPID_INITIALIZER;
+      PAGE_PTR overflow_page = start_page;
+      int tuple_length = QFILE_GET_TUPLE_LENGTH (tuple_record.tpl);
+      int copy_offset = 0;
+      int copy_size;
+
+      if (overflow_record.size < tuple_length)
+	{
+	  if (qfile_reallocate_tuple (&overflow_record, tuple_length) != NO_ERROR)
+	    {
+	      assert_release_error (er_errid () != NO_ERROR);
+	      return er_errid ();
+	    }
+	}
+
+      do
+	{
+	  copy_size = MIN (tuple_length - copy_offset, QFILE_MAX_TUPLE_SIZE_IN_PAGE);
+
+	  memcpy (overflow_record.tpl + copy_offset, (char *) overflow_page + QFILE_PAGE_HEADER_SIZE, copy_size);
+
+	  copy_offset += copy_size;
+	  assert (copy_offset <= tuple_length);
+
+	  QFILE_GET_OVERFLOW_VPID (&overflow_vpid, overflow_page);
+
+	  if (overflow_page != start_page)
+	    {
+	      /* overflow continuation pages share the same tfile as the start page
+	       * (see qfile_allocate_new_ovf_page) */
+	      qmgr_free_old_page_and_init (&thread_ref, overflow_page, m_current_tfile);
+	    }
+
+	  if (VPID_ISNULL (&overflow_vpid))
+	    {
+	      /* end */
+	      break;
+	    }
+
+	  /* next overflow page */
+	  overflow_page = qmgr_get_old_page (&thread_ref, &overflow_vpid, m_current_tfile);
+	  if (overflow_page == nullptr)
+	    {
+	      assert_release_error (er_errid () != NO_ERROR);
+	      return er_errid ();
+	    }
+	}
+      while (!VPID_ISNULL (&overflow_vpid));
+
+      tuple_record.tpl = overflow_record.tpl;
+      return NO_ERROR;
+    }
+
     /*
      * split_task
      */
@@ -314,12 +373,8 @@ namespace parallel_query
 
       PAGE_PTR page = nullptr;
       QFILE_TUPLE_RECORD tuple_record = { nullptr, 0 };
-      int tuple_cnt, tuple_index, tuple_length;
-
-      VPID overflow_vpid = VPID_INITIALIZER;
-      PAGE_PTR overflow_page = nullptr;
       QFILE_TUPLE_RECORD overflow_record = { nullptr, 0 };
-      int copy_offset, copy_size;
+      int tuple_cnt, tuple_index, tuple_length;
 
       HASH_SCAN_KEY *temp_key = nullptr;
       unsigned int hash_key;
@@ -395,7 +450,7 @@ namespace parallel_query
 	  if (tuple_cnt == 0)
 	    {
 	      /* empty page */
-	      qmgr_free_old_page_and_init (&thread_ref, page, m_page_iter.current_tfile ());
+	      qmgr_free_old_page_and_init (&thread_ref, page, m_page_iter.get_current_tfile ());
 	      continue;
 	    }
 
@@ -409,66 +464,14 @@ namespace parallel_query
 	    {
 	      assert (tuple_cnt == 1);
 
-	      overflow_page = page;
-
-	      tuple_length = QFILE_GET_TUPLE_LENGTH (tuple_record.tpl);
-
-	      if (overflow_record.size < tuple_length)
+	      error = m_page_iter.assemble_overflow_tuple (thread_ref, page, tuple_record, overflow_record);
+	      if (error != NO_ERROR)
 		{
-		  if (qfile_reallocate_tuple (&overflow_record, tuple_length) != NO_ERROR)
-		    {
-		      assert_release_error (er_errid () != NO_ERROR);
-		      m_task_manager.handle_error (thread_ref);
-		      has_error = true;
-		      break;		/* error_exit */
-		    }
-		}
-
-	      copy_offset = 0;
-
-	      do
-		{
-		  copy_size = MIN (tuple_length - copy_offset, QFILE_MAX_TUPLE_SIZE_IN_PAGE);
-
-		  memcpy (overflow_record.tpl + copy_offset, (char *) overflow_page + QFILE_PAGE_HEADER_SIZE, copy_size);
-
-		  copy_offset += copy_size;
-		  assert (copy_offset <= tuple_length);
-
-		  QFILE_GET_OVERFLOW_VPID (&overflow_vpid, overflow_page);
-
-		  if (overflow_page != page)
-		    {
-		      /* overflow continuation pages share the same tfile as the start page
-		       * (see qfile_allocate_new_ovf_page) */
-		      qmgr_free_old_page_and_init (&thread_ref, overflow_page, m_page_iter.current_tfile ());
-		    }
-
-		  if (VPID_ISNULL (&overflow_vpid))
-		    {
-		      /* end */
-		      break;
-		    }
-
-		  /* next overflow page */
-		  overflow_page = qmgr_get_old_page (&thread_ref, &overflow_vpid, m_page_iter.current_tfile ());
-		  if (overflow_page == nullptr)
-		    {
-		      assert_release_error (er_errid () != NO_ERROR);
-		      m_task_manager.handle_error (thread_ref);
-		      has_error = true;
-		      break;		/* error_exit */
-		    }
-		}
-	      while (!VPID_ISNULL (&overflow_vpid));
-
-	      if (has_error)
-		{
+		  m_task_manager.handle_error (thread_ref);
+		  has_error = true;
 		  break;	/* error_exit */
 		}
-
-	      tuple_record.tpl = overflow_record.tpl;
-	    }	/* if (QFILE_GET_OVERFLOW_PAGE_ID (page) != NULL_PAGEID) */
+	    }
 
 	  assert (has_error == false);
 
@@ -618,7 +621,7 @@ namespace parallel_query
 
 	  if (page != nullptr)
 	    {
-	      qmgr_free_old_page_and_init (&thread_ref, page, m_page_iter.current_tfile ());
+	      qmgr_free_old_page_and_init (&thread_ref, page, m_page_iter.get_current_tfile ());
 	    }
 
 	  if (has_error)
@@ -630,7 +633,7 @@ namespace parallel_query
 
       if (page != nullptr)
 	{
-	  qmgr_free_old_page_and_init (&thread_ref, page, m_page_iter.current_tfile ());
+	  qmgr_free_old_page_and_init (&thread_ref, page, m_page_iter.get_current_tfile ());
 	}
 
       assert (temp_part_list_id != nullptr);
@@ -1078,12 +1081,8 @@ cleanup:
       QFILE_LIST_ID *list_id;
 
       PAGE_PTR page = nullptr;
-      int tuple_cnt, tuple_index, tuple_length;
-
-      VPID overflow_vpid = VPID_INITIALIZER;
-      PAGE_PTR overflow_page = nullptr;
       QFILE_TUPLE_RECORD overflow_record = { nullptr, 0 };
-      int copy_offset, copy_size;
+      int tuple_cnt, tuple_index, tuple_length;
 
       HASHJOIN_FETCH_INFO *outer, *inner;
       HASHJOIN_FETCH_INFO *build = nullptr, *probe = nullptr;
@@ -1163,7 +1162,7 @@ cleanup:
 	  if (tuple_cnt == 0)
 	    {
 	      /* empty page */
-	      qmgr_free_old_page_and_init (&thread_ref, page, m_page_iter.current_tfile ());
+	      qmgr_free_old_page_and_init (&thread_ref, page, m_page_iter.get_current_tfile ());
 	      continue;
 	    }
 	  tuple_index = -1;
@@ -1176,64 +1175,14 @@ cleanup:
 	    {
 	      assert (tuple_cnt == 1);
 
-	      overflow_page = page;
-
-	      tuple_length = QFILE_GET_TUPLE_LENGTH (probe->tuple_record.tpl);
-
-	      if (overflow_record.size < tuple_length)
+	      error = m_page_iter.assemble_overflow_tuple (thread_ref, page, probe->tuple_record, overflow_record);
+	      if (error != NO_ERROR)
 		{
-		  if (qfile_reallocate_tuple (&overflow_record, tuple_length) != NO_ERROR)
-		    {
-		      assert_release_error (er_errid () != NO_ERROR);
-		      m_task_manager.handle_error (thread_ref);
-		      has_error = true;
-		      break;		/* error_exit */
-		    }
-		}
-
-	      copy_offset = 0;
-
-	      do
-		{
-		  copy_size = MIN (tuple_length - copy_offset, QFILE_MAX_TUPLE_SIZE_IN_PAGE);
-
-		  memcpy (overflow_record.tpl + copy_offset, (char *) overflow_page + QFILE_PAGE_HEADER_SIZE, copy_size);
-
-		  copy_offset += copy_size;
-		  assert (copy_offset <= tuple_length);
-
-		  QFILE_GET_OVERFLOW_VPID (&overflow_vpid, overflow_page);
-
-		  if (overflow_page != page)
-		    {
-		      qmgr_free_old_page_and_init (&thread_ref, overflow_page, m_page_iter.current_tfile ());
-		    }
-
-		  if (VPID_ISNULL (&overflow_vpid))
-		    {
-		      /* end */
-		      break;
-		    }
-
-		  /* next overflow page */
-		  overflow_page = qmgr_get_old_page (&thread_ref, &overflow_vpid, m_page_iter.current_tfile ());
-		  if (overflow_page == nullptr)
-		    {
-		      assert_release_error (er_errid () != NO_ERROR);
-		      m_task_manager.handle_error (thread_ref);
-		      has_error = true;
-		      break;		/* error_exit */
-		    }
-		}
-	      while (!VPID_ISNULL (&overflow_vpid));
-
-	      if (has_error)
-		{
+		  m_task_manager.handle_error (thread_ref);
+		  has_error = true;
 		  break;	/* error_exit */
 		}
-
-	      probe->tuple_record.tpl = overflow_record.tpl;
-	    }	/* if (QFILE_GET_OVERFLOW_PAGE_ID (page) != NULL_PAGEID) */
+	    }
 
 	  assert (has_error == false);
 
@@ -1356,7 +1305,7 @@ cleanup:
 
 	  if (page != nullptr)
 	    {
-	      qmgr_free_old_page_and_init (&thread_ref, page, m_page_iter.current_tfile ());
+	      qmgr_free_old_page_and_init (&thread_ref, page, m_page_iter.get_current_tfile ());
 	    }
 
 	  if (has_error)
@@ -1368,7 +1317,7 @@ cleanup:
 
       if (page != nullptr)
 	{
-	  qmgr_free_old_page_and_init (&thread_ref, page, m_page_iter.current_tfile ());
+	  qmgr_free_old_page_and_init (&thread_ref, page, m_page_iter.get_current_tfile ());
 	}
 
       if (thread_is_on_trace (&thread_ref))
@@ -1391,12 +1340,8 @@ cleanup:
       QFILE_LIST_ID *list_id;
 
       PAGE_PTR page = nullptr;
-      int tuple_cnt, tuple_index, tuple_length;
-
-      VPID overflow_vpid = VPID_INITIALIZER;
-      PAGE_PTR overflow_page = nullptr;
       QFILE_TUPLE_RECORD overflow_record = { nullptr, 0 };
-      int copy_offset, copy_size;
+      int tuple_cnt, tuple_index, tuple_length;
 
       HASHJOIN_FETCH_INFO *outer, *inner;
       HASHJOIN_FETCH_INFO *build = nullptr, *probe = nullptr;
@@ -1479,7 +1424,7 @@ cleanup:
 	  if (tuple_cnt == 0)
 	    {
 	      /* empty page */
-	      qmgr_free_old_page_and_init (&thread_ref, page, m_page_iter.current_tfile ());
+	      qmgr_free_old_page_and_init (&thread_ref, page, m_page_iter.get_current_tfile ());
 	      continue;
 	    }
 	  tuple_index = -1;
@@ -1492,64 +1437,14 @@ cleanup:
 	    {
 	      assert (tuple_cnt == 1);
 
-	      overflow_page = page;
-
-	      tuple_length = QFILE_GET_TUPLE_LENGTH (probe->tuple_record.tpl);
-
-	      if (overflow_record.size < tuple_length)
+	      error = m_page_iter.assemble_overflow_tuple (thread_ref, page, probe->tuple_record, overflow_record);
+	      if (error != NO_ERROR)
 		{
-		  if (qfile_reallocate_tuple (&overflow_record, tuple_length) != NO_ERROR)
-		    {
-		      assert_release_error (er_errid () != NO_ERROR);
-		      m_task_manager.handle_error (thread_ref);
-		      has_error = true;
-		      break;		/* error_exit */
-		    }
-		}
-
-	      copy_offset = 0;
-
-	      do
-		{
-		  copy_size = MIN (tuple_length - copy_offset, QFILE_MAX_TUPLE_SIZE_IN_PAGE);
-
-		  memcpy (overflow_record.tpl + copy_offset, (char *) overflow_page + QFILE_PAGE_HEADER_SIZE, copy_size);
-
-		  copy_offset += copy_size;
-		  assert (copy_offset <= tuple_length);
-
-		  QFILE_GET_OVERFLOW_VPID (&overflow_vpid, overflow_page);
-
-		  if (overflow_page != page)
-		    {
-		      qmgr_free_old_page_and_init (&thread_ref, overflow_page, m_page_iter.current_tfile ());
-		    }
-
-		  if (VPID_ISNULL (&overflow_vpid))
-		    {
-		      /* end */
-		      break;
-		    }
-
-		  /* next overflow page */
-		  overflow_page = qmgr_get_old_page (&thread_ref, &overflow_vpid, m_page_iter.current_tfile ());
-		  if (overflow_page == nullptr)
-		    {
-		      assert_release_error (er_errid () != NO_ERROR);
-		      m_task_manager.handle_error (thread_ref);
-		      has_error = true;
-		      break;		/* error_exit */
-		    }
-		}
-	      while (!VPID_ISNULL (&overflow_vpid));
-
-	      if (has_error)
-		{
+		  m_task_manager.handle_error (thread_ref);
+		  has_error = true;
 		  break;	/* error_exit */
 		}
-
-	      probe->tuple_record.tpl = overflow_record.tpl;
-	    }	/* if (QFILE_GET_OVERFLOW_PAGE_ID (page) != NULL_PAGEID) */
+	    }
 
 	  assert (has_error == false);
 
@@ -1758,7 +1653,7 @@ cleanup:
 
 	  if (page != nullptr)
 	    {
-	      qmgr_free_old_page_and_init (&thread_ref, page, m_page_iter.current_tfile ());
+	      qmgr_free_old_page_and_init (&thread_ref, page, m_page_iter.get_current_tfile ());
 	    }
 
 	  if (has_error)
@@ -1770,7 +1665,7 @@ cleanup:
 
       if (page != nullptr)
 	{
-	  qmgr_free_old_page_and_init (&thread_ref, page, m_page_iter.current_tfile ());
+	  qmgr_free_old_page_and_init (&thread_ref, page, m_page_iter.get_current_tfile ());
 	}
 
       if (thread_is_on_trace (&thread_ref))
