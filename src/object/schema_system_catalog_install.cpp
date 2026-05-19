@@ -286,6 +286,7 @@ catcls_init (void)
   ADD_TABLE_DEFINITION (CT_DUAL_NAME, system_catalog_initializer::get_dual ());
   ADD_TABLE_DEFINITION (CT_SYNONYM_NAME, system_catalog_initializer::get_synonym ());
   ADD_TABLE_DEFINITION (CT_SERVER_NAME, system_catalog_initializer::get_server ());
+  ADD_TABLE_DEFINITION (CT_GLOBAL_TRAN_NAME, system_catalog_initializer::get_global_tran ());
 
   ADD_VIEW_DEFINITION (CTV_CLASS_NAME, system_catalog_initializer::get_view_class ());
   ADD_VIEW_DEFINITION (CTV_SUPER_CLASS_NAME, system_catalog_initializer::get_view_direct_super_class ());
@@ -1239,6 +1240,34 @@ namespace cubschema
 // authorization
     {
       // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_global_tran ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CT_GLOBAL_TRAN_NAME,
+		   // columns
+    {
+      {"gtrid", "integer"},
+      {"bqual", "integer"},
+      {"conn_url", format_varchar (512)},
+      {"user_name", format_varchar (32)},
+      {"password", format_varchar (256)},
+      {"state", format_varchar (1)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"}
+    },
+// constraints
+    {},
+// authorization
+    {
       Au_dba_user, {}
     },
 // initializer

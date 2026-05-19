@@ -77,6 +77,7 @@ namespace cubschema
     CT_CHARSET_NAME,			// "_db_charset"
     CT_SERVER_NAME,		// "_db_server"
     CT_SYNONYM_NAME,			// "_db_synonym"
+    CT_GLOBAL_TRAN_NAME,		// "_db_global_tran"
     CT_TRIGGER_NAME,		// "_db_trigger"
 
     /* currently, not implemented */

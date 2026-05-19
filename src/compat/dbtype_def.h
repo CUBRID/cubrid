@@ -518,7 +518,7 @@ extern "C"
 /* Maximum allowable user name.*/
 #define DB_MAX_USER_LENGTH 32
 
-#define DB_MAX_PASSWORD_LENGTH 8
+#define DB_MAX_PASSWORD_LENGTH 32
 
 /* Maximum allowable schema name. */
 #define DB_MAX_SCHEMA_LENGTH DB_MAX_USER_LENGTH
