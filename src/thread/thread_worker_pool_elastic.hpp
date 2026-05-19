@@ -115,6 +115,7 @@ namespace cubthread
 
       // runtime variable parameter
       void adjust_runtime_parameter (std::size_t max_concurrency, std::size_t max_worker);
+      void adjust_workers (std::unique_lock<std::mutex> &ulock);
 
       // execute task
       void execute_task (task_type *task_p) override;
@@ -137,9 +138,9 @@ namespace cubthread
 
       std::unique_ptr<worker> allocate_worker () override;
 
-      worker *get_or_make_available_worker ();
+      worker_elastic *get_or_make_available_worker ();
 
-      void try_execute_task_with_slot (worker_elastic *worker_p, wrapped_task &&task_ref, unique_slot slot);
+      bool try_execute_task_with_slot (worker_elastic *worker_p, wrapped_task &&task_ref, unique_slot slot);
 
       concurrency_slot_pool m_slots;
 
@@ -317,11 +318,46 @@ namespace cubthread
     assert (max_concurrency > 0);
     assert (max_worker >= max_concurrency);
 
-    std::lock_guard<std::mutex> lock (this->m_core_mutex);
+    std::unique_lock<std::mutex> ulock (this->m_core_mutex);
 
     m_max_concurrency = max_concurrency;
     m_max_worker = max_worker;
     m_retire_threshold = std::max ((max_concurrency + max_worker) / 2, max_concurrency);
+
+    m_slots.adjust_concurrency (m_max_concurrency, ulock);
+    adjust_workers (ulock);
+  }
+
+  template <stats_t Stats>
+  void
+  worker_pool_elastic<Stats>::core_elastic::adjust_workers (std::unique_lock<std::mutex> &ulock)
+  {
+    while (!this->m_task_queue.empty () && // the tasks exist in queue
+	   m_slots.available_slots () > 0)
+      {
+	worker_elastic *worker_p = get_or_make_available_worker ();
+	if (!worker_p)
+	  {
+	    ulock.unlock ();
+	    break;
+	  }
+
+	// has valid worker, concurrency slot and task
+	auto slot = m_slots.try_acquire_slot (ulock);
+	assert (slot);
+
+	wrapped_task queued_task = std::move (this->m_task_queue.front ());
+	this->m_task_queue.pop_front ();
+
+	ulock.unlock ();
+
+	if (!try_execute_task_with_slot (worker_p, std::move (queued_task), std::move (slot)))
+	  {
+	    break;
+	  }
+
+	ulock.lock ();
+      }
   }
 
   template <stats_t Stats>
@@ -345,7 +381,7 @@ namespace cubthread
     unique_slot slot = m_slots.try_acquire_slot (ulock);
     if (slot)
       {
-	worker_p = static_cast<worker_elastic *> (get_or_make_available_worker ());
+	worker_p = get_or_make_available_worker ();
 
 	if (worker_p)
 	  {
@@ -476,7 +512,7 @@ namespace cubthread
   }
 
   template <stats_t Stats>
-  typename worker_pool_elastic<Stats>::worker *
+  typename worker_pool_elastic<Stats>::core_elastic::worker_elastic *
   worker_pool_elastic<Stats>::core_elastic::get_or_make_available_worker ()
   {
     worker *worker_p;
@@ -489,11 +525,11 @@ namespace cubthread
 	worker_p = this->m_workers.back ().get ();
 	worker_p->set_parent_core (*this);
       }
-    return worker_p;
+    return static_cast<worker_elastic *> (worker_p);
   }
 
   template <stats_t Stats>
-  void
+  bool
   worker_pool_elastic<Stats>::core_elastic::try_execute_task_with_slot (worker_elastic *worker_p, wrapped_task &&task_ref,
       unique_slot slot)
   {
@@ -508,7 +544,10 @@ namespace cubthread
 	release_slot (std::move (unexecuted->second), ulock);
 	// return the worker to the available list
 	this->m_available_workers.push_back (worker_p);
+
+	return false;
       }
+    return true;
   }
 
   template <stats_t Stats>

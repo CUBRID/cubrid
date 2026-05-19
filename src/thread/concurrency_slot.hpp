@@ -123,6 +123,9 @@ namespace cubthread
 
       virtual void initialize (void *identifier, std::size_t concurrency);
 
+      void adjust_concurrency (std::size_t concurrency);
+      void adjust_concurrency (std::size_t concurrency, std::unique_lock<std::mutex> &ulock);
+
       // for worker
       std::unique_ptr<concurrency_slot> try_acquire_slot ();
       std::unique_ptr<concurrency_slot> try_acquire_slot (std::unique_lock<std::mutex> &ulock);
@@ -137,11 +140,16 @@ namespace cubthread
       // called by the daemon to borrow surplus slots in batches of SLOT_SURPLUS_THRESHOLD.
       bool borrow_surplus_slots ();
 
+      std::size_t available_slots ();
+
     private:
       static constexpr std::size_t SLOT_SURPLUS_THRESHOLD = 2;
 
       std::queue<std::unique_ptr<concurrency_slot>> m_available_slots;
       std::chrono::time_point<std::chrono::steady_clock> m_surplus_since;
+
+      std::size_t m_slot_count;
+      std::size_t m_target_count;
 
       std::list<entry *> m_wait_queue; // list of entries waiting to acquire a slot
 
