@@ -10585,9 +10585,9 @@ netsr_spacedb (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
     {
       for (int i = 0; i < table_array_length; i++)
 	{
-	  db_private_free_and_init (thread_p, table_array[i]);
+	  db_private_free_and_init (NULL, table_array[i]);
 	}
-      db_private_free_and_init (thread_p, table_array);
+      db_private_free_and_init (NULL, table_array);
     }
   if (table_sizes != NULL)
     {
