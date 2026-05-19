@@ -207,26 +207,16 @@ const char *sm_define_view_columns_spec (void)
       "NULL AS [udt_catalog], "
       "NULL AS [udt_schema], "
       "NULL AS [udt_name], "
-      /* TODO(CBRD-26401): once _db_attribute.flags is merged, replace the
-       * NULL/'YES' placeholders below with the original expressions and add
-       * the three DB_ATTOPT_* format args back to the snprintf call:
-       *
-       *   "CONCAT_WS (' ', "
-       *     "IF (([attr].[flags] & %d) <> 0, 'auto_increment', NULL), "
-       *     "IF (([attr].[flags] & %d) <> 0, 'partition_key', NULL)"
-       *   ") AS [extra], "
-       *
-       *   "IF (([attr].[flags] & %d) = 0, 'YES', 'NO') AS [is_visible] "
-       *
-       * Format args order: DB_ATTOPT_AUTO_INCREMENT, DB_ATTOPT_PARTITION_KEY,
-       * DB_ATTOPT_INVISIBLE_COLUMN. */
-      "NULL AS [extra], "
+      "CONCAT_WS (' ', "
+        "IF (([attr].[flags] & %d) <> 0, 'auto_increment', NULL), "
+        "IF (([attr].[flags] & %d) <> 0, 'partition_key', NULL)"
+      ") AS [extra], "
       "NULL AS [privileges], "
       "[attr].[comment] AS [column_comment], "
       "'NO' AS [is_generated], "
       "NULL AS [generation_expression], "
       "'YES' AS [is_updatable], "
-      "'YES' AS [is_visible] "
+      "IF (([attr].[flags] & %d) = 0, 'YES', 'NO') AS [is_visible] "
     "FROM "
       /* CT_CLASS_NAME */
       "[%s] AS [cls] "
@@ -249,6 +239,8 @@ const char *sm_define_view_columns_spec (void)
     DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_DATE, DB_TYPE_DATETIME, DB_TYPE_TIMESTAMPTZ, DB_TYPE_TIMESTAMPLTZ, DB_TYPE_DATETIMETZ, DB_TYPE_DATETIMELTZ,
     DB_TYPE_STRING, DB_TYPE_CHAR,
     DB_TYPE_STRING, DB_TYPE_CHAR,
+    DB_ATTOPT_AUTO_INCREMENT, DB_ATTOPT_PARTITION_KEY,
+    DB_ATTOPT_INVISIBLE_COLUMN,
     CT_CLASS_NAME,
     CT_ATTRIBUTE_NAME,
     CT_DOMAIN_NAME,
