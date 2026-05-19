@@ -4805,6 +4805,12 @@ mq_detect_dblink_corr_eq (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE *
 	  continue;
 	}
 
+      /* or_next indicates OR condition in CNF representation — forbidden for push-down */
+      if (term->or_next != NULL)
+	{
+	  return -1;
+	}
+
       /* Temporarily unlink ->next so parser_walk_tree does not spill into sibling terms. */
       save_next = term->next;
       term->next = NULL;
