@@ -8156,9 +8156,12 @@ heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
   const int new_length = src_header_size + dst_vot_bytes + fixed_bitmap_bytes + new_values_bytes;
 
   /* Make sure rec->data points to owned storage big enough for the expansion. If we were PEEK'ing
-   * into a page, we MUST switch to COPY here — we cannot write into the page buffer. */
-  const bool need_realloc = (context->ispeeking == PEEK) || (rec->area_size < new_length);
-  if (need_realloc)
+   * into a page, we MUST switch to COPY here — we cannot write into the page buffer. In COPY mode
+   * the caller owns rec->data and may have positioned it inside a copyarea slot; reallocating
+   * rec->data would silently redirect future writes away from that slot and leave the slot with
+   * stale pre-expansion bytes. Return S_DOESNT_FIT instead so the caller can retry with a bigger
+   * buffer (e.g. xlocator_fetch_all's grow-and-retry loop). */
+  if (context->ispeeking == PEEK)
     {
       if (context->scan_cache == NULL)
 	{
@@ -8169,6 +8172,10 @@ heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
 	  return S_ERROR;
 	}
       context->ispeeking = COPY;
+    }
+  else if (rec->area_size < new_length)
+    {
+      return S_DOESNT_FIT;
     }
 
   char *dst = rec->data;
