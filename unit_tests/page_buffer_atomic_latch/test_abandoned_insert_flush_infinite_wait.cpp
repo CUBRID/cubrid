@@ -19,11 +19,8 @@
 /* Worker runs heap_insert_logical with a mid-flight interrupt. If the insert
  * path has an unfix-miss on the interrupt/error route, the home page is left
  * with fcnt > 0 even though the worker did *nothing* except call insert.
- *
- * Pre-step-2: a FLUSH waiter on that orphan-latched page blocks forever.
- * Post-step-2: pgbuf_block_bcb's FLUSH branch uses a timed wait; on expiry
- * the shutdown thread invokes pgbuf_dead_holder_write_latch_takeover to
- * inherit the WRITE latch from the dead holder and unblock the flush. */
+ * A FLUSH-latch waiter on that page then has no live holder to release the
+ * latch — block must complete within FLUSH_WAIT_BUDGET, else FAIL. */
 
 #include <atomic>
 #include <chrono>
@@ -43,9 +40,7 @@ extern THREAD_ENTRY *g_thread_p;
 namespace
 {
 
-  constexpr auto FLUSH_WAIT_BUDGET = std::chrono::seconds (8);
-  /* tighten FLUSH latch timeout so force-grab fires inside the wait budget */
-  constexpr int FORCE_GRAB_TIMEOUT_S = 2;
+  constexpr auto FLUSH_WAIT_BUDGET = std::chrono::seconds (5);
 
   /* worker: assign tran_index, run heap_insert_logical with fault inject, done.
    * NO extra pgbuf_fix and NO leak-by-this-task — any orphan fcnt observed on
@@ -121,20 +116,7 @@ TEST (HeapInsertInterruptUnfixHoleTest, InterruptedInsertStallsFlushWaiterOnHeld
   ASSERT_EQ (insert_rc_fut.wait_for (std::chrono::minutes (1)), std::future_status::ready);
   int insert_rv = insert_rc_fut.get ();
   std::fprintf (stderr, "INFO: heap_insert_logical returned rc=%d under armed interrupt\n", insert_rv);
-  if (VPID_ISNULL (&home_vpid))
-    {
-      /* step 1 (heap_unfix_watchers in heap_insert_logical error path)
-       * cleaned the home watcher before we could capture its VPID. The
-       * orphan-latch scenario this test originally reproduced is no longer
-       * reachable through the heap-insert path. Record and exit cleanly —
-       * the test passes by absence of regression. */
-      std::fprintf (stderr,
-		    "NOTE: step 1 unfixed the home watcher on error — orphan-latch "
-		    "scenario not reproducible via heap_insert_logical. Pass by absence.\n");
-      cubthread::get_manager ()->destroy_worker_pool (insert_pool);
-      cubthread::get_manager ()->destroy_worker_pool (flusher_pool);
-      return;
-    }
+  ASSERT_FALSE (VPID_ISNULL (&home_vpid)) << "home VPID was not captured by insert task";
 
   /* join the worker — retire_context fires. anything left fixed at this point
    * is an unfix-miss inside heap_insert_logical, not a leak by the test. */
@@ -156,12 +138,7 @@ TEST (HeapInsertInterruptUnfixHoleTest, InterruptedInsertStallsFlushWaiterOnHeld
       return;
     }
 
-  /* Step 2: shrink the FLUSH latch timeout so the force-grab path fires
-   * inside FLUSH_WAIT_BUDGET. Without this, pgbuf_latch_timeout (default
-   * 300s) would dominate. */
-  const int saved_timeout_s = pgbuf_test_get_latch_timeout_seconds ();
-  pgbuf_test_set_latch_timeout_seconds (FORCE_GRAB_TIMEOUT_S);
-
+  /* unfix-miss confirmed — park a FLUSH waiter and prove it stalls */
   std::promise<int> flush_done;
   std::future<int> flush_done_fut = flush_done.get_future ();
   flusher_pool->execute (new flush_request_task (home_vpid, &flush_done));
@@ -173,21 +150,15 @@ TEST (HeapInsertInterruptUnfixHoleTest, InterruptedInsertStallsFlushWaiterOnHeld
       /* rescue so flusher_pool can join during teardown */
       pgbuf_test_wake_flush_waiters_for_test (g_thread_p, &home_vpid);
       flush_done_fut.wait ();
-      pgbuf_test_set_latch_timeout_seconds (saved_timeout_s);
       ADD_FAILURE () << "FLUSH waiter exceeded " << FLUSH_WAIT_BUDGET.count ()
-		     << "s — Step 2 force-grab failed to unblock the orphan FLUSH wait";
+		     << "s — heap_insert_logical left an orphan latch (CBRD-26510)";
     }
   else
     {
       int flush_rv = flush_done_fut.get ();
-      /* Step 2: insert worker pool was destroyed → its THREAD_ENTRY is
-       * TS_DEAD/TS_FREE, pgbuf_is_holder_alive returns false, force-grab
-       * succeeds, pgbuf_block_bcb returns NO_ERROR. */
-      EXPECT_EQ (flush_rv, NO_ERROR)
-	  << "Step 2 expected force-grab to unblock the FLUSH wait; got rv=" << flush_rv;
+      EXPECT_NE (flush_rv, NO_ERROR)
+	  << "expected ER_FAILED — orphan-latch holder is dead, flush cannot succeed";
     }
-
-  pgbuf_test_set_latch_timeout_seconds (saved_timeout_s);
 
   cubthread::get_manager ()->destroy_worker_pool (flusher_pool);
 }

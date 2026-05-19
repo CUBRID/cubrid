@@ -502,10 +502,6 @@ extern int pgbuf_test_get_fcnt (PAGE_PTR pgptr);
 extern int pgbuf_test_get_fcnt_by_vpid (THREAD_ENTRY * thread_p, const VPID * vpid_p);
 extern int pgbuf_test_request_flush_block (THREAD_ENTRY * thread_p, const VPID * vpid_p);
 extern void pgbuf_test_wake_flush_waiters_for_test (THREAD_ENTRY * thread_p, const VPID * vpid_p);
-extern int pgbuf_test_safe_flush_block (THREAD_ENTRY * thread_p, const VPID * vpid_p);
-extern void pgbuf_test_set_latch_timeout_seconds (int seconds);
-extern int pgbuf_test_get_latch_timeout_seconds (void);
-extern bool pgbuf_test_thread_has_holder_for_vpid (THREAD_ENTRY * thread_p, const VPID * vpid_p);
 #endif /* SERVER_MODE */
 
 #endif /* _PAGE_BUFFER_H_ */

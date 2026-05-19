@@ -27,7 +27,6 @@ project(test_page_buffer_atomic_latch_project)
 set(TEST_SOURCES
   test_pgbuf_atomic_latch_main.cpp
   test_abandoned_insert_flush_infinite_wait.cpp
-  test_force_grab_through_safe_flush.cpp
 )
 
 add_executable(test_page_buffer_atomic_latch ${TEST_SOURCES})

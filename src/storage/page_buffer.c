@@ -1030,11 +1030,7 @@ static void pgbuf_unlatch_void_zone_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bc
 STATIC_INLINE bool pgbuf_should_move_private_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb,
 							int thread_private_lru_index) __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE request_mode,
-			    int request_fcnt, bool as_promote, bool * out_force_grabbed);
-#if defined(SERVER_MODE)
-static bool pgbuf_is_holder_alive (THREAD_ENTRY * holder_thread, PGBUF_BCB * bufptr);
-static int pgbuf_dead_holder_write_latch_takeover (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
-#endif /* SERVER_MODE */
+			    int request_fcnt, bool as_promote);
 STATIC_INLINE int pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE request_mode,
 					    int buf_lock_acquired, PGBUF_LATCH_CONDITION condition,
 					    bool * is_latch_wait) __attribute__ ((ALWAYS_INLINE));
@@ -2770,7 +2766,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
       thread_p->wait_for_latch_promote = true;
 
       /* register as first blocker */
-      if (pgbuf_block_bcb (thread_p, bufptr, PGBUF_LATCH_WRITE, fix_count, true, NULL) != NO_ERROR)
+      if (pgbuf_block_bcb (thread_p, bufptr, PGBUF_LATCH_WRITE, fix_count, true) != NO_ERROR)
 	{
 	  *pgptr_p = NULL;	/* we didn't get a new latch */
 	  thread_p->wait_for_latch_promote = false;
@@ -6360,7 +6356,7 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
     {
       /* block the request */
       unlock_BCB.release ();
-      if (pgbuf_block_bcb (thread_p, bufptr, request_mode, request_fcnt, false, NULL) != NO_ERROR)
+      if (pgbuf_block_bcb (thread_p, bufptr, request_mode, request_fcnt, false) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -6793,173 +6789,6 @@ pgbuf_should_move_private_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, i
   return true;
 }
 
-#if defined(SERVER_MODE)
-/*
- * pgbuf_is_holder_alive () - dead-holder signature evaluator for FLUSH force-grab.
- *   return: true  = holder thread is still active (force-grab forbidden)
- *           false = dead holder signature confirmed (force-grab permitted)
- *   holder_thread(in): bufptr->latch_last_thread snapshot.
- *   bufptr(in): BCB under FLUSH wait.
- *
- * Note: condition A = no holder entry for this BCB in holder_thread's hold list;
- *       condition B = holder_thread->m_status is TS_FREE or TS_DEAD.
- *       Either condition is sufficient. holder_thread == NULL returns false as
- *       a safety net (caller is expected to enforce the C3 NULL guard first).
- */
-static bool
-pgbuf_is_holder_alive (THREAD_ENTRY * holder_thread, PGBUF_BCB * bufptr)
-{
-  if (holder_thread == NULL)
-    {
-      return false;
-    }
-  if (holder_thread->m_status == cubthread::entry::status::TS_FREE
-      || holder_thread->m_status == cubthread::entry::status::TS_DEAD)
-    {
-      return false;
-    }
-  if (pgbuf_find_thrd_holder (holder_thread, bufptr) == NULL)
-    {
-      return false;
-    }
-  return true;
-}
-
-/*
- * pgbuf_dead_holder_write_latch_takeover () - FLUSH force-grab core.
- *   return: NO_ERROR on successful takeover; ER_PB_FLUSH_LATCH_TIMEOUT when
- *           Q-C watch_count>0 bail-out fires or holder allocation fails.
- *
- * Preconditions (caller-checked):
- *   - PGBUF_BCB_LOCK (bufptr) held (C2 envelope).
- *   - bufptr->latch_last_thread != NULL (C3).
- *   - pgbuf_is_holder_alive (bufptr->latch_last_thread, bufptr) == false.
- *
- * Walk safety: condition B (TS_FREE/TS_DEAD) means the dead thread cannot
- * mutate its own thrd_hold_list, so the splice walk is stable. Condition A
- * (TS_RUN + holder absent for THIS bufptr) leaves dead_holder == NULL after
- * the walk, so the splice branch is never reached.
- *
- * Q-C bail-out (Scenario 3): if dead_holder->watch_count > 0 the dead holder
- * has live ordered_fix watchers attached; touching the entry would dangle
- * watcher pointers. Return ER_PB_FLUSH_LATCH_TIMEOUT without mutating
- * hold-list / atomic_latch / latch_last_thread.
- */
-static int
-pgbuf_dead_holder_write_latch_takeover (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
-{
-  THREAD_ENTRY *dead_thr = bufptr->latch_last_thread;
-  PGBUF_HOLDER *dead_holder = NULL;
-  PGBUF_HOLDER *self_holder;
-  PGBUF_ATOMIC_LATCH_IMPL impl, impl_new;
-
-  assert (dead_thr != NULL);
-
-  if (dead_thr->m_holder_anchor != NULL)
-    {
-      PGBUF_HOLDER *h;
-      for (h = dead_thr->m_holder_anchor->thrd_hold_list; h != NULL; h = h->thrd_link)
-	{
-	  if (h->bufptr == bufptr)
-	    {
-	      dead_holder = h;
-	      break;
-	    }
-	}
-    }
-
-  if (dead_holder != NULL && dead_holder->watch_count > 0)
-    {
-      /* Q-C: ordered_fix watcher attached → bail out, force-grab abandoned. */
-      return ER_FAILED;
-    }
-
-  /* Splice the dead holder out only on 조건 B (TS_FREE/TS_DEAD); 조건 A path
-   * has dead_holder == NULL and naturally skips this branch. */
-  if (dead_holder != NULL
-      && (dead_thr->m_status == cubthread::entry::status::TS_FREE
-	  || dead_thr->m_status == cubthread::entry::status::TS_DEAD) && dead_thr->m_holder_anchor != NULL)
-    {
-      bool need_unlock = false;
-      PGBUF_HOLDER **pp;
-
-#if !defined (NDEBUG)
-      assert (dead_thr->m_status == cubthread::entry::status::TS_FREE
-	      || dead_thr->m_status == cubthread::entry::status::TS_DEAD);
-#endif
-
-      /* best-effort: TS_FREE/TS_DEAD thread does not mutate its own hold-list */
-      if (pthread_mutex_trylock (&dead_thr->th_entry_lock) == 0)
-	{
-	  need_unlock = true;
-	}
-
-      pp = &dead_thr->m_holder_anchor->thrd_hold_list;
-      while (*pp != NULL && *pp != dead_holder)
-	{
-	  pp = &((*pp)->thrd_link);
-	}
-      if (*pp == dead_holder)
-	{
-	  *pp = dead_holder->thrd_link;
-	  dead_holder->thrd_link = NULL;
-	  dead_holder->fix_count = 0;
-	  dead_holder->watch_count = 0;
-	  dead_holder->first_watcher = NULL;
-	  dead_holder->last_watcher = NULL;
-	  dead_holder->next_holder = dead_thr->m_holder_anchor->thrd_free_list;
-	  dead_thr->m_holder_anchor->thrd_free_list = dead_holder;
-	  dead_thr->m_holder_anchor->num_hold_cnt -= 1;
-	  dead_thr->m_holder_anchor->num_free_cnt += 1;
-	}
-
-      if (need_unlock)
-	{
-	  pthread_mutex_unlock (&dead_thr->th_entry_lock);
-	}
-    }
-
-  /* register self as the new holder (C5) so that pgbuf_bcb_safe_flush_internal's
-   * immediate_flush condition (WRITE && find_thrd_holder(self)!=NULL) is met
-   * naturally on the retry pass. */
-  self_holder = pgbuf_allocate_thrd_holder_entry (thread_p);
-  if (self_holder == NULL)
-    {
-      return ER_FAILED;
-    }
-  self_holder->bufptr = bufptr;
-  self_holder->fix_count = 1;
-  self_holder->watch_count = 0;
-  self_holder->first_watcher = NULL;
-  self_holder->last_watcher = NULL;
-  INIT_HOLDER_STAT (&self_holder->perf_stat);
-  self_holder->perf_stat.hold_has_write_latch = 1;
-
-  bufptr->latch_last_thread = thread_p;
-
-  /* Q-A: dynamic waiter_exists value; WRITE/fcnt untouched (dead holder publish preserved). */
-  do
-    {
-      impl = get_impl (&bufptr->atomic_latch);
-      impl_new = impl;
-      assert (impl.impl.latch_mode == PGBUF_LATCH_WRITE);
-      assert (impl.impl.fcnt >= 1);
-      impl_new.impl.waiter_exists = (bufptr->next_wait_thrd != NULL);
-    }
-  while (!bufptr->atomic_latch.compare_exchange_strong (impl.raw, impl_new.raw,
-							std::memory_order_acq_rel, std::memory_order_acquire));
-
-#if !defined (NDEBUG)
-  assert (bufptr->latch_last_thread == thread_p);
-  assert (get_latch (&bufptr->atomic_latch) == PGBUF_LATCH_WRITE);
-  assert (get_fcnt (&bufptr->atomic_latch) >= 1);
-  assert (pgbuf_find_thrd_holder (thread_p, bufptr) != NULL);
-#endif
-
-  return NO_ERROR;
-}
-#endif /* SERVER_MODE */
-
 /*
  * pgbuf_block_bcb () - Adds it on the BCB waiting queue and block thread
  *   return: NO_ERROR, or ER_code
@@ -6967,16 +6796,12 @@ pgbuf_dead_holder_write_latch_takeover (THREAD_ENTRY * thread_p, PGBUF_BCB * buf
  *   request_mode(in):
  *   request_fcnt(in):
  *   as_promote(in): if true, will wait as first promoter
- *   out_force_grabbed(out): set to true when FLUSH branch took over a WRITE
- *                           latch from a dead holder (caller must retry the
- *                           outer safe-flush loop). NULL allowed for non-FLUSH
- *                           callers.
  *
  * Note: Promoter will be the first waiter. Others will be appended to waiting queue.
  */
 static int
 pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE request_mode, int request_fcnt,
-		 bool as_promote, bool * out_force_grabbed)
+		 bool as_promote)
 {
 #if defined(SERVER_MODE)
   THREAD_ENTRY *cur_thrd_entry, *thrd_entry;
@@ -6985,11 +6810,6 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
   /* caller is holding bufptr->mutex */
   /* request_mode == PGBUF_LATCH_READ/PGBUF_LATCH_WRITE/PGBUF_LATCH_FLUSH */
   assert (request_mode == PGBUF_LATCH_READ || request_mode == PGBUF_LATCH_WRITE || request_mode == PGBUF_LATCH_FLUSH);
-
-  if (out_force_grabbed != NULL)
-    {
-      *out_force_grabbed = false;
-    }
 
   if (thread_p == NULL)
     {
@@ -7032,132 +6852,42 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
 
   if (request_mode == PGBUF_LATCH_FLUSH)
     {
-      /* timed wait — dead-holder force-grab escape hatch on expiry.
-       * Replaces the historical infinite wait that fed CBRD-26510/26436 shutdown hangs. */
-      struct timespec to;
-      int r;
-
-      to.tv_sec = (int) time (NULL) + pgbuf_latch_timeout;
-      to.tv_nsec = 0;
-
+      /* is it safe to use infinite wait instead of timed sleep? */
       thread_lock_entry (cur_thrd_entry);
       PGBUF_BCB_UNLOCK (bufptr);
-      r = thread_suspend_timeout_wakeup_and_unlock_entry (cur_thrd_entry, &to, THREAD_PGBUF_SUSPENDED);
+      thread_suspend_wakeup_and_unlock_entry (cur_thrd_entry, THREAD_PGBUF_SUSPENDED);
 
-      if (r == NO_ERROR && cur_thrd_entry->resume_status == THREAD_PGBUF_RESUMED)
+      if (cur_thrd_entry->resume_status != THREAD_PGBUF_RESUMED)
 	{
-	  /* normal wakeup by the flusher */
-	  bufptr->latch_last_thread = thread_p;
-	  return NO_ERROR;
-	}
-
-      if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
-	{
-	  THREAD_ENTRY *cur, *prev;
-	  bool found_self = false;
-	  bool grabbed = false;
-	  int err;
+	  /* interrupt operation */
+	  THREAD_ENTRY *thrd_entry, *prev_thrd_entry = NULL;
 
 	  PGBUF_BCB_LOCK (bufptr);
+	  thrd_entry = bufptr->next_wait_thrd;
 
-	  /* splice self out of the waiter queue if still present */
-	  prev = NULL;
-	  cur = bufptr->next_wait_thrd;
-	  while (cur != NULL)
+	  while (thrd_entry != NULL)
 	    {
-	      if (cur == cur_thrd_entry)
+	      if (thrd_entry == cur_thrd_entry)
 		{
-		  if (prev == NULL)
+		  if (prev_thrd_entry == NULL)
 		    {
-		      bufptr->next_wait_thrd = cur->next_wait_thrd;
+		      bufptr->next_wait_thrd = thrd_entry->next_wait_thrd;
 		    }
 		  else
 		    {
-		      prev->next_wait_thrd = cur->next_wait_thrd;
+		      prev_thrd_entry->next_wait_thrd = thrd_entry->next_wait_thrd;
 		    }
-		  cur->next_wait_thrd = NULL;
-		  found_self = true;
-		  break;
+
+		  thrd_entry->next_wait_thrd = NULL;
+		  PGBUF_BCB_UNLOCK (bufptr);
+		  return ER_FAILED;
 		}
-	      prev = cur;
-	      cur = cur->next_wait_thrd;
-	    }
 
-	  if (!found_self)
-	    {
-	      /* someone removed us (e.g. wake_flush_waiters raced) — treat as success */
-	      bufptr->latch_last_thread = thread_p;
-	      PGBUF_BCB_UNLOCK (bufptr);
-	      return NO_ERROR;
+	      prev_thrd_entry = thrd_entry;
+	      thrd_entry = thrd_entry->next_wait_thrd;
 	    }
-
-	  if (bufptr->latch_last_thread == NULL)
-	    {
-	      /* C3: no anchor — force-grab forbidden */
-	      PGBUF_BCB_UNLOCK (bufptr);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_TIMEDOUT, 2,
-		      bufptr->vpid.volid, bufptr->vpid.pageid);
-	      return ER_FAILED;
-	    }
-
-	  if (pgbuf_is_holder_alive (bufptr->latch_last_thread, bufptr))
-	    {
-	      /* C6: alive holder — retry budget exhausted */
-	      PGBUF_BCB_UNLOCK (bufptr);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_TIMEDOUT, 2,
-		      bufptr->vpid.volid, bufptr->vpid.pageid);
-	      return ER_FAILED;
-	    }
-
-	  err = pgbuf_dead_holder_write_latch_takeover (thread_p, bufptr);
-	  grabbed = (err == NO_ERROR);
 	  PGBUF_BCB_UNLOCK (bufptr);
-
-	  if (err != NO_ERROR)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_TIMEDOUT, 2,
-		      bufptr->vpid.volid, bufptr->vpid.pageid);
-	      return ER_FAILED;
-	    }
-
-	  if (out_force_grabbed != NULL)
-	    {
-	      *out_force_grabbed = grabbed;
-	    }
-#if !defined (NDEBUG)
-	  assert (out_force_grabbed == NULL || *out_force_grabbed == true);
-#endif
-	  return NO_ERROR;
 	}
-
-      /* interrupt operation — preserve historical cancel path */
-      {
-	THREAD_ENTRY *iter, *prev_iter = NULL;
-
-	PGBUF_BCB_LOCK (bufptr);
-	iter = bufptr->next_wait_thrd;
-	while (iter != NULL)
-	  {
-	    if (iter == cur_thrd_entry)
-	      {
-		if (prev_iter == NULL)
-		  {
-		    bufptr->next_wait_thrd = iter->next_wait_thrd;
-		  }
-		else
-		  {
-		    prev_iter->next_wait_thrd = iter->next_wait_thrd;
-		  }
-		iter->next_wait_thrd = NULL;
-		PGBUF_BCB_UNLOCK (bufptr);
-		return ER_FAILED;
-	      }
-	    prev_iter = iter;
-	    iter = iter->next_wait_thrd;
-	  }
-	PGBUF_BCB_UNLOCK (bufptr);
-      }
-      return ER_FAILED;
     }
   else
     {
@@ -8822,27 +8552,11 @@ pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool
   int error_code = NO_ERROR;
   PGBUF_ATOMIC_LATCH_IMPL impl, impl_new;
   bool immediate_flush = false, block = false, is_flushing = false;
-  bool force_grabbed = false;
-  int retry_count = 0;		/* C6: at most one force-grab retry */
 
   assert (get_latch (&bufptr->atomic_latch) != PGBUF_LATCH_FLUSH);
 
-retry_outer:
   PGBUF_BCB_CHECK_OWN (bufptr);
   *locked = true;
-
-#if !defined (NDEBUG) && defined (SERVER_MODE)
-  /* M1: after force-grab retry, fcnt may have grown via concurrent fixers on
-   * the WRITE-latched BCB; we only require fcnt >= 1 because we are the
-   * holder-of-record. The copy-page sequence in pgbuf_bcb_flush_with_wal
-   * handles in-flight references safely. */
-  if (retry_count > 0)
-    {
-      assert (get_fcnt (&bufptr->atomic_latch) >= 1);
-      assert (get_latch (&bufptr->atomic_latch) == PGBUF_LATCH_WRITE);
-      assert (pgbuf_find_thrd_holder (thread_p, bufptr) != NULL);
-    }
-#endif
 
   /* the caller is holding bufptr->mutex */
   if (!pgbuf_bcb_is_dirty (bufptr))
@@ -8904,21 +8618,10 @@ retry_outer:
     {
       /* wait for bcb to be flushed. */
       *locked = false;
-      force_grabbed = false;
-      error_code = pgbuf_block_bcb (thread_p, bufptr, PGBUF_LATCH_FLUSH, 0, false, &force_grabbed);
+      error_code = pgbuf_block_bcb (thread_p, bufptr, PGBUF_LATCH_FLUSH, 0, false);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
-	}
-      if (force_grabbed && retry_count == 0)
-	{
-	  /* C8: dead-holder WRITE latch transferred to us. Re-enter the outer
-	   * loop; this pass will see latch_mode==WRITE && find_thrd_holder!=NULL
-	   * and take the immediate_flush branch into pgbuf_bcb_flush_with_wal. */
-	  retry_count++;
-	  PGBUF_BCB_LOCK (bufptr);
-	  goto retry_outer;
 	}
       return error_code;
     }
@@ -17313,7 +17016,7 @@ pgbuf_test_request_flush_block (THREAD_ENTRY * thread_p, const VPID * vpid_p)
   /* mirror pgbuf_bcb_safe_flush_internal: set ASYNC_FLUSH_REQ + waiter_exists before block */
   pgbuf_bcb_update_flags (thread_p, bufptr, PGBUF_BCB_ASYNC_FLUSH_REQ, 0);
   set_waiter_exists (&bufptr->atomic_latch, true);
-  rv = pgbuf_block_bcb (thread_p, bufptr, PGBUF_LATCH_FLUSH, 0, false, NULL);
+  rv = pgbuf_block_bcb (thread_p, bufptr, PGBUF_LATCH_FLUSH, 0, false);
   return rv;
 }
 
@@ -17362,75 +17065,5 @@ pgbuf_test_wake_flush_waiters_for_test (THREAD_ENTRY * thread_p, const VPID * vp
       set_waiter_exists (&bufptr->atomic_latch, false);
     }
   PGBUF_BCB_UNLOCK (bufptr);
-}
-
-/* test-only: drive caller into pgbuf_bcb_safe_flush_internal — exercises the
- * Step 5 retry_outer + force-grab end-to-end path. */
-int
-pgbuf_test_safe_flush_block (THREAD_ENTRY * thread_p, const VPID * vpid_p)
-{
-  PGBUF_BUFFER_HASH *hash_anchor;
-  PGBUF_BCB *bufptr;
-  bool locked = false;
-  int rv;
-
-  if (vpid_p == NULL)
-    {
-      return ER_FAILED;
-    }
-  hash_anchor = &(pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (vpid_p)]);
-  bufptr = pgbuf_search_hash_chain (thread_p, hash_anchor, vpid_p);
-  if (bufptr == NULL)
-    {
-      return ER_FAILED;
-    }
-  /* search returns with bufptr->mutex held */
-  rv = pgbuf_bcb_safe_flush_internal (thread_p, bufptr, true /* synchronous */ , &locked);
-  if (locked)
-    {
-      PGBUF_BCB_UNLOCK (bufptr);
-    }
-  return rv;
-}
-
-/* test-only: tune the FLUSH wait timeout for fast-firing unit tests.
- * seconds == 0 keeps the previous value. */
-void
-pgbuf_test_set_latch_timeout_seconds (int seconds)
-{
-  if (seconds > 0)
-    {
-      pgbuf_latch_timeout = seconds * 1000;
-    }
-}
-
-int
-pgbuf_test_get_latch_timeout_seconds (void)
-{
-  return pgbuf_latch_timeout / 1000;
-}
-
-/* test-only: probe whether the given thread owns a holder entry on the BCB
- * cached for vpid. Used by force-grab tests to confirm self-holder takeover. */
-bool
-pgbuf_test_thread_has_holder_for_vpid (THREAD_ENTRY * thread_p, const VPID * vpid_p)
-{
-  PGBUF_BUFFER_HASH *hash_anchor;
-  PGBUF_BCB *bufptr;
-  PGBUF_HOLDER *holder;
-
-  if (vpid_p == NULL || thread_p == NULL)
-    {
-      return false;
-    }
-  hash_anchor = &(pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (vpid_p)]);
-  bufptr = pgbuf_search_hash_chain (thread_p, hash_anchor, vpid_p);
-  if (bufptr == NULL)
-    {
-      return false;
-    }
-  holder = pgbuf_find_thrd_holder (thread_p, bufptr);
-  PGBUF_BCB_UNLOCK (bufptr);
-  return holder != NULL;
 }
 #endif /* SERVER_MODE */
