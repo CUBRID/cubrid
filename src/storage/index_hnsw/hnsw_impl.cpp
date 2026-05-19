@@ -695,6 +695,7 @@ hnsw_impl::search (cubthread::entry *thread_p, const float *query, const int k, 
   if (m_storage->is_empty ())
     {
       return NO_ERROR;
+    }
   const bool needs_query_copy =
 	  m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE
 	  || !db_vector_is_aligned (query);
