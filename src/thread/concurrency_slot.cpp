@@ -568,7 +568,7 @@ namespace cubthread
 
     private:
       void steal_from_entries_if_excess (std::vector<std::unique_ptr<concurrency_slot>> &slots, void *identifier);
-      void steal_from_cores_if_excess (std::vector<std::unique_ptr<concurrency_slot>> &slots, void *identifier,
+      void steal_from_cores_if_excess (std::vector<std::unique_ptr<concurrency_slot>> &slots,
 				       std::vector<concurrency_slot_subscriber *> &subs);
 
       void distribute_slots (std::vector<std::unique_ptr<concurrency_slot>> &slots,
@@ -619,7 +619,7 @@ namespace cubthread
       steal_from_entries_if_excess (slots, identifier);
 
       // 3.
-      steal_from_cores_if_excess (slots, identifier, subs);
+      steal_from_cores_if_excess (slots, subs);
 
       // 4.
       distribute_slots (slots, subs);
@@ -666,7 +666,7 @@ namespace cubthread
 
   void
   concurrency_slot_daemon_task::steal_from_cores_if_excess (std::vector<std::unique_ptr<concurrency_slot>> &slots,
-      void *identifier, std::vector<concurrency_slot_subscriber *> &subs)
+      std::vector<concurrency_slot_subscriber *> &subs)
   {
     std::chrono::time_point<std::chrono::steady_clock> now = std::chrono::steady_clock::now ();
 

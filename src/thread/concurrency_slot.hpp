@@ -145,7 +145,7 @@ namespace cubthread
       void release_slot (std::unique_ptr<concurrency_slot> slot, std::unique_lock<std::mutex> &ulock);
 
       std::unique_ptr<concurrency_slot> return_slot (std::unique_ptr<concurrency_slot> slot, bool force);
-      // called by the daemon to borrow surplus slots in batches of SLOT_SURPLUS_THRESHOLD.
+
       std::vector<std::unique_ptr<concurrency_slot>>
 	  borrow_surplus_slots (const std::chrono::time_point<std::chrono::steady_clock> &now);
 
