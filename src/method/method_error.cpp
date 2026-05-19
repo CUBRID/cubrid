@@ -85,12 +85,8 @@ namespace cubmethod
   void
   error_context::set_error (int number, const char *msg, const char *file, int line)
   {
-    if (er_errid() == NO_ERROR)
-      {
-	_er_log_debug ((file ? file : "<unknown>"), line,
-		       "unset error while handling a method callback - code(%d), msg(%s)\n",
-		       number, (msg ? msg : "<null>"));
-      }
+    _er_log_debug ((file ? file : "<unknown>"), line, "error while handling a method callback - code(%d), msg(%s)\n",
+		   number, (msg ? msg : "<null>"));
 
     err_id = number;
     err_string.assign (msg ? msg : "");
