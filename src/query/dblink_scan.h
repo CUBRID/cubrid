@@ -34,6 +34,10 @@
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
+/* Forward declarations */
+struct val_descr;
+typedef struct val_descr VAL_DESCR;
+
 typedef enum
 {
   DBLINK_SUCCESS = 1,
