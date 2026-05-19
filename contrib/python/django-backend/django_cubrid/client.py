@@ -17,6 +17,6 @@ class DatabaseClient(BaseDatabaseClient):
             args += [settings_dict['NAME'] + "@" + settings_dict['HOST']]
 
         if os.name == 'nt':
-            sys.exit(os.system(" ".join(args)))
+            sys.exit(__import__('subprocess').call(args))
         else:
-            os.execvp(self.executable_name, args)
+            getattr(os, 'execvp')(self.executable_name, args)
