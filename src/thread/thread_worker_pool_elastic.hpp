@@ -115,6 +115,7 @@ namespace cubthread
 
       // runtime variable parameter
       void adjust_runtime_parameter (std::size_t max_concurrency, std::size_t max_worker);
+      void adjust_workers ();
       void adjust_workers (std::unique_lock<std::mutex> &ulock);
 
       // execute task
@@ -287,7 +288,7 @@ namespace cubthread
   template <stats_t Stats>
   worker_pool_elastic<Stats>::core_elastic::core_elastic (bool pool_threads)
     : worker_pool_impl<Stats>::core_impl (pool_threads)
-    , m_slots (this->m_core_mutex)
+    , m_slots (this, this->m_core_mutex)
     , m_max_concurrency (0)
     , m_max_worker (0)
     , m_retire_threshold (0)
@@ -325,6 +326,16 @@ namespace cubthread
     m_retire_threshold = std::max ((max_concurrency + max_worker) / 2, max_concurrency);
 
     m_slots.adjust_concurrency (m_max_concurrency, ulock);
+    adjust_workers (ulock);
+  }
+
+
+  template <stats_t Stats>
+  void
+  worker_pool_elastic<Stats>::core_elastic::adjust_workers ()
+  {
+    std::unique_lock<std::mutex> ulock (this->m_core_mutex);
+
     adjust_workers (ulock);
   }
 
@@ -719,7 +730,7 @@ namespace cubthread
     // return the slot to the pool
     if (this->m_context_p->m_slot)
       {
-	static_cast<core_elastic *> (this->m_parent_core)->release_slot (std::move (this->m_context_p->m_slot));
+	this->m_context_p->m_slot->return_to_pool (std::move (this->m_context_p->m_slot));
 	this->m_context_p->m_slot = nullptr;
       }
 

@@ -71,6 +71,9 @@ namespace cubthread
       concurrency_slot_publisher ();
       ~concurrency_slot_publisher ();
 
+      template <typename Func>
+      void traverse (Func &&func);
+
     private:
       void subscribe (void *identifier, concurrency_slot_subscriber *sub);
       void unsubscribe (void *identifier, concurrency_slot_subscriber *sub);
@@ -100,8 +103,12 @@ namespace cubthread
       void set_holder_pool (concurrency_slot_pool *holder_pool);
       concurrency_slot_pool *get_holder_pool ();
 
+      void return_to_pool (std::unique_ptr<concurrency_slot> slot);
+
       void start_waiting ();
       void stop_waiting ();
+
+      bool has_wait_expired (const std::chrono::time_point<std::chrono::steady_clock> &now);
 
     private:
       concurrency_slot (concurrency_slot_pool *owner_pool);
@@ -118,7 +125,7 @@ namespace cubthread
   class concurrency_slot_pool : public concurrency_slot_subscriber
   {
     public:
-      concurrency_slot_pool (std::mutex &mtx);
+      concurrency_slot_pool (void *parent, std::mutex &mtx);
       ~concurrency_slot_pool ();
 
       virtual void initialize (void *identifier, std::size_t concurrency);
@@ -137,15 +144,25 @@ namespace cubthread
       void release_slot (std::unique_ptr<concurrency_slot> slot);
       void release_slot (std::unique_ptr<concurrency_slot> slot, std::unique_lock<std::mutex> &ulock);
 
-      // called by the daemon to borrow surplus slots in batches of SLOT_SURPLUS_THRESHOLD.
-      bool borrow_surplus_slots ();
+      std::unique_ptr<concurrency_slot> return_slot (std::unique_ptr<concurrency_slot> slot, bool force);
+
+      std::vector<std::unique_ptr<concurrency_slot>>
+	  borrow_surplus_slots (const std::chrono::time_point<std::chrono::steady_clock> &now);
 
       std::size_t available_slots ();
 
+      const void *get_parent ();
+      float get_score ();
+
     private:
+      // must be greater than 1
       static constexpr std::size_t SLOT_SURPLUS_THRESHOLD = 2;
 
+      const void *m_parent;
+
       std::queue<std::unique_ptr<concurrency_slot>> m_available_slots;
+
+      bool m_surplus;
       std::chrono::time_point<std::chrono::steady_clock> m_surplus_since;
 
       std::size_t m_slot_count;
@@ -155,6 +172,8 @@ namespace cubthread
 
       // slot pool state is guarded by the owning core mutex
       std::mutex *m_mutex;
+
+      void check_surplus_slots ();
   };
 
   // concurrency_slot_daemon
@@ -170,6 +189,9 @@ namespace cubthread
 
       static concurrency_slot_publisher *get_publisher ();
 
+      template <typename Func>
+      void traverse_subscribers (Func &&func);
+
     private:
       concurrency_slot_daemon ();
       ~concurrency_slot_daemon ();
@@ -181,6 +203,27 @@ namespace cubthread
 
       daemon *m_daemon;
   };
+}
+
+namespace cubthread
+{
+  template <typename Func>
+  void
+  concurrency_slot_publisher::traverse (Func &&func)
+  {
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    for (auto &subset : m_subscribers)
+      {
+	func (subset.first, subset.second);
+      }
+  }
+
+  template <typename Func>
+  void concurrency_slot_daemon::traverse_subscribers (Func &&func)
+  {
+    concurrency_slot_publisher::traverse (func);
+  }
 }
 
 #endif
