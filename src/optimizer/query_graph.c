@@ -6884,9 +6884,9 @@ qo_check_arg_segment_match (QO_ENV * env, QO_NODE * seg_nodep, PT_NODE * arg_nod
     {
       QO_SEGMENT *arg_seg = lookup_seg (seg_nodep, arg, env);
       if (arg_seg != NULL && QO_SEG_IDX (arg_seg) == seg_idx)
-    {
-      return true;
-    }
+	{
+	  return true;
+	}
     }
 
   return false;
@@ -6905,8 +6905,7 @@ qo_is_segment_directly_in_select_list (QO_ENV * env, QO_SEGMENT * seg)
   PT_NODE *node;
   PT_NODE *seg_pt_node;
 
-  if (env == NULL || seg == NULL || QO_ENV_PT_TREE (env) == NULL
-      || QO_ENV_PT_TREE (env)->node_type != PT_SELECT)
+  if (env == NULL || seg == NULL || QO_ENV_PT_TREE (env) == NULL || QO_ENV_PT_TREE (env)->node_type != PT_SELECT)
     {
       return false;
     }
@@ -7114,8 +7113,7 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 	  if (index_entry->constraints != NULL && index_entry->constraints->func_index_info != NULL)
 	    {
 	      int func_col_id = index_entry->constraints->func_index_info->col_id;
-	      if (func_col_id >= 0 && func_col_id < index_entry->nsegs
-		  && index_entry->seg_idxs[func_col_id] != -1)
+	      if (func_col_id >= 0 && func_col_id < index_entry->nsegs && index_entry->seg_idxs[func_col_id] != -1)
 		{
 		  QO_SEGMENT *func_seg = QO_ENV_SEG (env, index_entry->seg_idxs[func_col_id]);
 		  if (func_seg != NULL && QO_SEG_FUNC_INDEX (func_seg))
