@@ -80,6 +80,8 @@ namespace cubschema
       static system_catalog_definition get_view_serial ();
       static system_catalog_definition get_view_ha_apply_info ();
       static system_catalog_definition get_view_collation ();
+      static system_catalog_definition get_view_user ();
+      static system_catalog_definition get_view_authorization ();
       static system_catalog_definition get_view_charset ();
       static system_catalog_definition get_view_synonym ();
       static system_catalog_definition get_view_server ();
@@ -106,6 +108,8 @@ const char *sm_define_view_stored_procedure_args_spec (void);
 const char *sm_define_view_serial_spec (void);
 const char *sm_define_view_ha_apply_info_spec (void);
 const char *sm_define_view_collation_spec (void);
+const char *sm_define_view_user_spec (void);
+const char *sm_define_view_authorization_spec (void);
 const char *sm_define_view_charset_spec (void);
 const char *sm_define_view_synonym_spec (void);
 const char *sm_define_view_server_spec (void);
