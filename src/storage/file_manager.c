@@ -8302,7 +8302,7 @@ file_spacedb_fill_one_table (THREAD_ENTRY * thread_p, const OID * class_oid,
    * view-skipped notice. */
   if (file_spacedb_is_view_class (thread_p, class_oid))
     {
-      return NO_ERROR;
+      goto exit;
     }
 
   error_code = heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL);
@@ -8412,6 +8412,11 @@ exit:
       free_and_init (entry->header);
       entry->file_count = 0;
     }
+
+  /* Release the IS_LOCK acquired at function entry. spacedb is read-only
+   * metadata inspection — holding the lock until transaction end would
+   * unnecessarily delay concurrent SCH_M_LOCK requests (ALTER/DROP/RENAME). */
+  lock_unlock_object (thread_p, class_oid, oid_Root_class_oid, IS_LOCK, true);
 
   return error_code;
 }
