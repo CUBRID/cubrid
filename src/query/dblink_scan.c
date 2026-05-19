@@ -679,7 +679,7 @@ error_exit:
  *   scan_info(out)      : dblink information
  *   conn_url(in)        : connection URL for dblink
  *   user_name(in)	 : user name for dblink
- *   passowrd(in)	 : password for dblink
+ *   password(in)	 : password for dblink
  *   sql_text(in)	 : SQL text for dblink
  */
 int
@@ -694,6 +694,28 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
   char *user_name = spec->s.dblink_node.conn_user;
   char *password = spec->s.dblink_node.conn_password;
   char *sql_text = spec->s.dblink_node.conn_sql;
+
+  /* Invariant: a non-reuse open must arrive without an active stmt_handle.
+   * CCI handles are positive integers; 0 = zero-initialized (never opened), -1 = sentinel
+   * set by dblink_close_scan after successful close.  Both mean "no active statement".
+   * conn_handle is intentionally excluded: when auto_commit=false the connection is
+   * pool-managed (qmgr_dblink_*) and conn_handle legitimately remains >= 0 after close. */
+  assert (scan_info->cursor_rewind || scan_info->stmt_handle <= 0);
+
+  /* correlated reuse mode: CCI connection/stmt already open; reposition remote cursor to first row.
+   * conn/stmt handles are valid only from the second outer row onwards; first call falls through to open. */
+  if (scan_info->cursor_rewind && scan_info->conn_handle > 0 && scan_info->stmt_handle > 0)
+    {
+      ret = cci_cursor (scan_info->stmt_handle, 1, CCI_CURSOR_FIRST, &err_buf);
+      /* Success (CCI_ER_NO_ERROR) or 0-row remote result (CCI_ER_NO_MORE_DATA, expected). */
+      if (ret == CCI_ER_NO_ERROR || ret == CCI_ER_NO_MORE_DATA)
+	{
+	  scan_info->cursor = CCI_CURSOR_FIRST;
+	  return NO_ERROR;
+	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      return ER_DBLINK;
+    }
 
   char *find = strstr (spec->s.dblink_node.conn_url, ":?");
   if (find)
@@ -726,6 +748,8 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
       if (ret < 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "set autocommit mode");
+	  (void) cci_disconnect (scan_info->conn_handle, &err_buf);
+	  scan_info->conn_handle = -1;
 	  return ER_DBLINK;
 	}
 
@@ -736,8 +760,27 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
 					 password, false);
 	  if (ret < 0)
 	    {
+	      (void) cci_disconnect (scan_info->conn_handle, &err_buf);
+	      scan_info->conn_handle = -1;
 	      return ER_DBLINK;
 	    }
+	}
+    }
+
+  /* Force autocommit OFF for the duration of this scan.
+   * cursor_rewind requires the CCI cursor to stay alive across outer rows;
+   * this is only necessary when cursor_rewind is set and auto_commit is true
+   * (false connections are already OFF). */
+  if (scan_info->cursor_rewind && auto_commit)
+    {
+      ret = cci_set_autocommit (scan_info->conn_handle, CCI_AUTOCOMMIT_FALSE);
+      if (ret < 0)
+	{
+	  cci_get_err_msg (ret, err_buf.err_msg, sizeof (err_buf.err_msg));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  (void) cci_disconnect (scan_info->conn_handle, &err_buf);
+	  scan_info->conn_handle = -1;
+	  return ER_DBLINK;
 	}
     }
 
@@ -745,6 +788,11 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
   if (scan_info->stmt_handle < 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      if (auto_commit && scan_info->conn_handle >= 0)
+	{
+	  (void) cci_disconnect (scan_info->conn_handle, &err_buf);
+	  scan_info->conn_handle = -1;
+	}
       return ER_DBLINK;
     }
 
@@ -771,6 +819,13 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
 	{
 	  /* this can not be reached, something wrong */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "unknown error");
+	  (void) cci_close_req_handle (scan_info->stmt_handle);
+	  scan_info->stmt_handle = -1;
+	  if (auto_commit && scan_info->conn_handle >= 0)
+	    {
+	      (void) cci_disconnect (scan_info->conn_handle, &err_buf);
+	      scan_info->conn_handle = -1;
+	    }
 	  return ER_DBLINK;
 	}
       scan_info->cursor = CCI_CURSOR_FIRST;
@@ -783,9 +838,15 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
  * dblink_close_scan () -
  *   return: int
  *   scan_info(in)       : information for dblink
+ *   is_final(in)        : true  = final teardown (XASL clear path); always close CCI handles.
+ *                         false = per-iteration close; skip if cursor_rewind is set so that
+ *                                 the next outer row can rewind the CCI cursor without re-executing.
+ *
+ * Note: stmt_handle and conn_handle are set to -1 after successful close so that repeated calls
+ * (e.g. via scan_close_scan after an explicit is_final=true call) are safe no-ops.
  */
 int
-dblink_close_scan (DBLINK_SCAN_INFO * scan_info)
+dblink_close_scan (DBLINK_SCAN_INFO * scan_info, bool is_final)
 {
   int error;
   T_CCI_ERROR err_buf;
@@ -794,27 +855,47 @@ dblink_close_scan (DBLINK_SCAN_INFO * scan_info)
 
   /*  note: return NO_ERROR even though the connection or stmt handle is not valid */
 
-  if (scan_info->stmt_handle >= 0)
+  /* correlated reuse mode: keep CCI resources open for the next outer-row cursor rewind.
+   * On is_final=true (called from qexec_clear_xasl spec-list walk) clear the flag and
+   * fall through to the real teardown below. */
+  if (scan_info->cursor_rewind)
     {
-      if ((error = cci_close_req_handle (scan_info->stmt_handle)) < 0)
+      if (!is_final)
 	{
-	  cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	  if (auto_commit)
-	    {
-	      (void) cci_disconnect (scan_info->conn_handle, &err_buf);
-	    }
-	  return S_ERROR;
+	  return NO_ERROR;
 	}
+      scan_info->cursor_rewind = 0;
     }
+
+  /* sentinel: already closed (set below on success) */
+  if (scan_info->stmt_handle <= 0)
+    {
+      return NO_ERROR;
+    }
+
+  if ((error = cci_close_req_handle (scan_info->stmt_handle)) < 0)
+    {
+      cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      scan_info->stmt_handle = -1;
+      if (auto_commit)
+	{
+	  (void) cci_disconnect (scan_info->conn_handle, &err_buf);
+	  scan_info->conn_handle = -1;
+	}
+      return S_ERROR;
+    }
+  scan_info->stmt_handle = -1;
 
   if (scan_info->conn_handle >= 0 && auto_commit)
     {
       if ((error = cci_disconnect (scan_info->conn_handle, &err_buf)) < 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  scan_info->conn_handle = -1;
 	  return S_ERROR;
 	}
+      scan_info->conn_handle = -1;
     }
 
   return NO_ERROR;
