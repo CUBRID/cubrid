@@ -25053,6 +25053,10 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
 	      default_expr_type_string =
 		db_default_expression_string (attrepr->default_value.default_expr.default_expr_type);
+	      if (!default_expr_type_string)
+		{
+		  default_expr_type_string = "";
+		}
 
 	      if (attrepr->default_value.default_expr.default_expr_op == T_TO_CHAR)
 		{
@@ -25063,25 +25067,23 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
 		  len = ((default_expr_op_string ? strlen (default_expr_op_string) : 0)
 			 + 6 /* parenthesis, a comma, a blank and quotes */  + strlen (default_expr_type_string)
-			 + (default_expr_format ? strlen (default_expr_format) : 0));
+			 + (default_expr_format ? strlen (default_expr_format) : 0)) + 1;
 
-		  default_value_string = (char *) malloc (len + 1);
+		  default_value_string = (char *) malloc (len);
 		  if (default_value_string == NULL)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
 
-		  strcpy (default_value_string, default_expr_op_string);
-		  strcat (default_value_string, "(");
-		  strcat (default_value_string, default_expr_type_string);
 		  if (default_expr_format)
 		    {
-		      strcat (default_value_string, ", \'");
-		      strcat (default_value_string, default_expr_format);
-		      strcat (default_value_string, "\'");
+		      snprintf (default_value_string, len, "%s(%s, \'%s\')", default_expr_op_string,
+				default_expr_type_string, default_expr_format);
 		    }
-
-		  strcat (default_value_string, ")");
+		  else
+		    {
+		      snprintf (default_value_string, len, "%s(%s)", default_expr_op_string, default_expr_type_string);
+		    }
 
 		  db_make_string (out_values[idx_val], default_value_string);
 		  out_values[idx_val]->need_clear = true;
@@ -25114,55 +25116,69 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	      idx_val++;
 	    }
 
-	  /* attribute has auto_increment or not */
-	  if (attrepr->is_autoincrement == 0)
+	  if (!attrepr->is_autoincrement && !attrepr->is_invisible && attrepr->on_update_expr == DB_DEFAULT_NONE)
 	    {
 	      db_make_string (out_values[idx_val], "");
 	    }
 	  else
 	    {
-	      db_make_string (out_values[idx_val], "auto_increment");
-	    }
-
-	  if (attrepr->on_update_expr != DB_DEFAULT_NONE)
-	    {
-	      const char *saved = db_get_string (out_values[idx_val]);
-	      size_t len = strlen (saved);
-
-	      const char *default_expr_op_string = db_default_expression_string (attrepr->on_update_expr);
-	      if (default_expr_op_string == NULL)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-
-	      /* add whitespace character if saved is not an empty string */
+	      /* Extra: attribute is auto-increment, invisible, or has an ON UPDATE clause */
+	      const char *is_auto_increment_string = "auto_increment";
+	      const char *is_invisible_string = "invisible";
 	      const char *on_update_string = "ON UPDATE ";
-	      size_t str_len = len + strlen (on_update_string) + strlen (default_expr_op_string) + 1;
-	      if (len != 0)
+	      const char *default_expr_op_string = NULL;
+	      size_t used = 0;
+	      int written = 0;
+
+	      size_t str_len = (attrepr->is_autoincrement ? strlen (is_auto_increment_string) : 0) + 1
+		+ (attrepr->is_invisible ? strlen (is_invisible_string) : 0) + 1
+		+ (attrepr->on_update_expr != DB_DEFAULT_NONE ? strlen (on_update_string) : 0) + 1;
+
+	      if (attrepr->on_update_expr != DB_DEFAULT_NONE)
 		{
-		  str_len += 1;	// append space before
+		  default_expr_op_string = db_default_expression_string (attrepr->on_update_expr);
+		  if (default_expr_op_string == NULL)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		  str_len += strlen (default_expr_op_string);
 		}
 	      char *str_val = (char *) db_private_alloc (thread_p, str_len);
-
 	      if (str_val == NULL)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
 
-	      strcpy (str_val, saved);
-	      if (len != 0)
+	      written = snprintf (str_val, str_len, "%s", (attrepr->is_autoincrement ? is_auto_increment_string : ""));
+	      if (written < 0)
 		{
-		  strcat (str_val, " ");
+		  GOTO_EXIT_ON_ERROR;
 		}
-	      strcat (str_val, on_update_string);
-	      strcat (str_val, default_expr_op_string);
+	      used += written;
+	      if (attrepr->is_invisible)
+		{
+		  written = snprintf (str_val + used, str_len - used, "%s%s", used ? " " : "", is_invisible_string);
+		  if (written < 0)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		  used += written;
+		}
 
-	      if (default_expr_op_string)
+	      if (attrepr->on_update_expr != DB_DEFAULT_NONE)
 		{
-		  pr_clear_value (out_values[idx_val]);
-		  db_make_string (out_values[idx_val], str_val);
-		  out_values[idx_val]->need_clear = true;
+		  written =
+		    snprintf (str_val + used, str_len - used, "%s%s%s", used ? " " : "", on_update_string,
+			      default_expr_op_string);
+		  if (written < 0)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		  used += written;
 		}
+
+	      db_make_string (out_values[idx_val], str_val);
+	      out_values[idx_val]->need_clear = true;
 	    }
 	  idx_val++;
 

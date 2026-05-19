@@ -954,10 +954,11 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, bool &is_null, 
 	{
 	  if (TP_IS_CHAR_TYPE (db_value_domain_type (value)))
 	    {
-	      if (db_get_string_size (value) > 255)
+	      if (db_get_string_size (value) > DB_MAX_DEFAULT_EXPR_LENGTH)
 		{
 		  pt_reset_error (parser);
-		  PT_ERRORm (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_PARAM_DEFAULT_STR_TOO_BIG);
+		  PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_PARAM_DEFAULT_STR_TOO_BIG,
+			      DB_MAX_DEFAULT_EXPR_LENGTH);
 		  return ER_SP_PARAM_DEFAULT_STR_TOO_BIG;
 		}
 
@@ -1152,10 +1153,12 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 			   NULL);
 	  goto error_exit;
 	}
+      sp_info.sql_data_access = (SP_SQL_DATA_ACCESS_TYPE) compile_response.sql_data_access;
     }
   else				/* SP_LANG_JAVA */
     {
       decl = (const char *) PT_NODE_SP_JAVA_METHOD (statement);
+      sp_info.sql_data_access = SP_SQL_TYPE_UNKNOWN;
     }
 
   if (decl)

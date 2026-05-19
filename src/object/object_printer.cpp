@@ -499,6 +499,12 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
   /* could filter here but do in describe_domain */
   describe_domain (*attribute.domain, prt_type, force_print_collation);
 
+  // If the hidden column flag - 'system added invisible column' - is added to attribute.flags, the hidden column flag must be checked first.
+  if (attribute.flags & SM_ATTFLAG_INVISIBLE_COLUMN)
+    {
+      m_buf (" INVISIBLE");
+    }
+
   if (attribute.header.name_space == ID_SHARED_ATTRIBUTE)
     {
       m_buf (" SHARED ");
