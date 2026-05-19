@@ -981,8 +981,13 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   summarize = utility_get_option_bool_value (arg_map, SPACE_SUMMARIZE_S);
   purpose = utility_get_option_bool_value (arg_map, SPACE_PURPOSE_S);
   table_name = utility_get_option_string_value (arg_map, SPACE_TABLE_NAME_S, 0);
-  if (table_name != NULL && strlen (table_name) >= SM_MAX_IDENTIFIER_LENGTH)
+  if (table_name != NULL
+      && (strlen (table_name) >= SM_MAX_IDENTIFIER_LENGTH
+	  || intl_identifier_lower_string_size (table_name) >= SM_MAX_IDENTIFIER_LENGTH))
     {
+      /* Both raw and lowercase forms must fit lower_table_name[SM_MAX_IDENTIFIER_LENGTH].
+       * UTF-8 lowercasing can expand byte length (e.g. Turkish dotted-I), so the
+       * raw strlen check alone is insufficient. */
       PRINT_AND_LOG_ERR_MSG ("The table name is too long. "
 			     "It must be less than %d characters.\n", SM_MAX_IDENTIFIER_LENGTH);
       goto error_exit;
