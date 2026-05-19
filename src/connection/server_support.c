@@ -2880,6 +2880,18 @@ css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int tran_index, i
   return count;
 }
 
+void
+css_set_max_concurrency_and_workers (std::size_t max_concurrency, std::size_t max_worker)
+{
+  if (css_Server_request_worker_pool)
+    {
+      assert (max_concurrency > 0);
+      assert (max_worker >= max_concurrency);
+
+      css_Server_request_worker_pool->adjust_runtime_parameter (max_concurrency, max_worker);
+    }
+}
+
 size_t css_get_max_connections ()
 {
   return css_get_max_conn () + 1;
