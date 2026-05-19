@@ -58,6 +58,7 @@ namespace cubschema
       static system_catalog_definition get_dual ();
       static system_catalog_definition get_server ();
       static system_catalog_definition get_synonym ();
+      static system_catalog_definition get_global_tran ();
 
       // views
       static system_catalog_definition get_view_class ();
