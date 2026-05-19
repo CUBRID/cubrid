@@ -87,6 +87,13 @@
     "AND [auth].[auth_type] IN ('INSERT', 'UPDATE', 'DELETE', 'ALTER')" \
   ")"
 
+#define AUTH_CHECK_EXECUTE_GRANT(sp_of_expr) \
+  "{" sp_of_expr "} SUBSETEQ (" \
+    "SELECT SUM (SET {[auth].[object_of]}) FROM [" CT_CLASSAUTH_NAME "] AS [auth] " \
+    "WHERE {[auth].[grantee].[name]} SUBSETEQ (" CURRENT_USER_GROUPS_SUBQUERY ") " \
+    "AND [auth].[auth_type] = 'EXECUTE'" \
+  ")"
+
 /* ----------------------------------------------------------------------------- */
 /* Composite macros (used in query specs) */
 /* ----------------------------------------------------------------------------- */
@@ -130,15 +137,11 @@
     "OR (" is_public_expr " = 0 AND " AUTH_CHECK_OWNER(owner_name_expr) ")" \
   ")"
 
-/*
- * If directive does not have invoker rights(SP_DIRECTIVE_RIGHTS_CALLER), it has owner rights(SP_DIRECTIVE_RIGHTS_OWNER)
- */
-#define AUTH_CHECK_STORED_PROC(owner_name_expr, sp_of_expr, directive_expr) \
+#define AUTH_CHECK_STORED_PROC(owner_name_expr, sp_of_expr) \
   "(" \
     AUTH_CHECK_DBA " " \
     "OR " AUTH_CHECK_OWNER(owner_name_expr) " " \
-    "OR (" directive_expr " & 1) <> 0 " \
-    "OR " AUTH_CHECK_ANY_GRANT(sp_of_expr) \
+    "OR " AUTH_CHECK_EXECUTE_GRANT(sp_of_expr) \
   ")"
 
 /* CUBRID does not currently support column privilege.
@@ -176,43 +179,44 @@ const char *sm_define_view_columns_spec (void)
   // *INDENT-OFF*
   snprintf (stmt, sizeof (stmt),
     "SELECT "
-      "CAST (DATABASE () AS VARCHAR(255)) AS [table_catalog], " /* string -> varchar(255) */
-      "CAST ([cls].[owner].[name] AS VARCHAR(255)) AS [table_schema], " /* string -> varchar(255) */
+      "CAST (DATABASE () AS VARCHAR (255)) AS [table_catalog], " /* string -> varchar(255) */
+      "[cls].[owner].[name] AS [table_schema], "
       "[cls].[class_name] AS [table_name], "
       "[attr].[attr_name] AS [column_name], "
       "([attr].[def_order] + 1) AS [ordinal_position], "
       "[attr].[default_value] AS [column_default], "
       "IF ([attr].[is_nullable] = 1, 'YES', 'NO') AS [is_nullable], "
       "[dt].[type_name] AS [data_type], "
-      /* STRING/VARCHAR(4), BIT(23), VARBIT(24), CHAR(25) */
-      "IF ([attr].[data_type] IN (4, 23, 24, 25), [dom].[prec], NULL) AS [character_maximum_length], "
-      /* STRING/VARCHAR(4), CHAR(25) */
-      "IF ([attr].[data_type] IN (4, 25), CAST ([dom].[prec] AS BIGINT) * [charset].[char_size], NULL) AS [character_octet_length], "
-      /* INTEGER(1), FLOAT(2), DOUBLE(3), SHORT/SMALLINT(18), NUMERIC(22), BIGINT(31) */
-      "IF ([attr].[data_type] IN (1, 2, 3, 18, 22, 31), [dom].[prec], NULL) AS [numeric_precision], "
-      /* INTEGER(1), SHORT/SMALLINT(18), NUMERIC(22), BIGINT(31) */
-      "IF ([attr].[data_type] IN (1, 18, 22, 31), [dom].[scale], NULL) AS [numeric_scale], "
-      /* TIME(10), TIMESTAMP(11), DATE(12), DATETIME(32), TIMESTAMPTZ(36), TIMESTAMPLTZ(37), DATETIMETZ(38), DATETIMELTZ(39) */
-      "IF ([attr].[data_type] IN (10, 11, 12, 32, 36, 37, 38, 39), [dom].[prec], NULL) AS [datetime_precision], "
-      /* STRING/VARCHAR(4), CHAR(25) */
-      "IF ([attr].[data_type] IN (4, 25), [charset].[charset_name], NULL) AS [character_set_name], "
-      /* STRING/VARCHAR(4), CHAR(25) */
-      "IF ([attr].[data_type] IN (4, 25), [coll].[coll_name], NULL) AS [collation_name], "
+      /* DB_TYPE_STRING/VARCHAR, DB_TYPE_BIT, DB_TYPE_VARBIT, DB_TYPE_CHAR */
+      "IF ([attr].[data_type] IN (%d, %d, %d, %d), [dom].[prec], NULL) AS [character_maximum_length], "
+      /* DB_TYPE_STRING/VARCHAR, DB_TYPE_CHAR */
+      "IF ([attr].[data_type] IN (%d, %d), CAST ([dom].[prec] AS BIGINT) * [charset].[char_size], NULL) AS [character_octet_length], "
+      /* DB_TYPE_INTEGER, DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DB_TYPE_SHORT/SMALLINT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT */
+      "IF ([attr].[data_type] IN (%d, %d, %d, %d, %d, %d), [dom].[prec], NULL) AS [numeric_precision], "
+      /* DB_TYPE_INTEGER, DB_TYPE_SHORT/SMALLINT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT */
+      "IF ([attr].[data_type] IN (%d, %d, %d, %d), [dom].[scale], NULL) AS [numeric_scale], "
+      /* DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_DATE, DB_TYPE_DATETIME, DB_TYPE_TIMESTAMPTZ, DB_TYPE_TIMESTAMPLTZ, DB_TYPE_DATETIMETZ, DB_TYPE_DATETIMELTZ */
+      "IF ([attr].[data_type] IN (%d, %d, %d, %d, %d, %d, %d, %d), [dom].[prec], NULL) AS [datetime_precision], "
+      /* DB_TYPE_STRING/VARCHAR, DB_TYPE_CHAR */
+      "IF ([attr].[data_type] IN (%d, %d), [charset].[charset_name], NULL) AS [character_set_name], "
+      /* DB_TYPE_STRING/VARCHAR, DB_TYPE_CHAR */
+      "IF ([attr].[data_type] IN (%d, %d), [coll].[coll_name], NULL) AS [collation_name], "
       "NULL AS [domain_catalog], "
       "NULL AS [domain_schema], "
       "NULL AS [domain_name], "
       "NULL AS [udt_catalog], "
       "NULL AS [udt_schema], "
       "NULL AS [udt_name], "
-      "NULL AS [extra], "
+      "CONCAT_WS (' ', "
+        "IF (([attr].[flags] & %d) <> 0, 'auto_increment', NULL), "
+        "IF (([attr].[flags] & %d) <> 0, 'partition_key', NULL)"
+      ") AS [extra], "
       "NULL AS [privileges], "
+      "[attr].[comment] AS [column_comment], "
       "'NO' AS [is_generated], "
       "NULL AS [generation_expression], "
-      /* SM_CLASSFLAG_REUSE_OID */
-      "IF (([cls].[flags] & %d) <> 0, 'YES', 'NO') AS [is_updatable], "
-      /* TODO: is_visible not yet implemented */
-      "NULL AS [is_visible], "
-      "[attr].[comment] AS [column_comment] "
+      "'YES' AS [is_updatable], "
+      "IF (([attr].[flags] & %d) = 0, 'YES', 'NO') AS [is_visible] "
     "FROM "
       /* CT_CLASS_NAME */
       "[%s] AS [cls] "
@@ -228,7 +232,15 @@ const char *sm_define_view_columns_spec (void)
       "INNER JOIN [%s] AS [coll] ON [coll].[coll_id] = [dom].[collation_id] "
     "WHERE "
       AUTH_CHECK_OBJECT_ANY("[cls].[owner].[name]", "[cls].[class_of]"),
-    SM_CLASSFLAG_REUSE_OID,
+    DB_TYPE_STRING, DB_TYPE_BIT, DB_TYPE_VARBIT, DB_TYPE_CHAR,
+    DB_TYPE_STRING, DB_TYPE_CHAR,
+    DB_TYPE_INTEGER, DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DB_TYPE_SHORT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT,
+    DB_TYPE_INTEGER, DB_TYPE_SHORT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT,
+    DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_DATE, DB_TYPE_DATETIME, DB_TYPE_TIMESTAMPTZ, DB_TYPE_TIMESTAMPLTZ, DB_TYPE_DATETIMETZ, DB_TYPE_DATETIMELTZ,
+    DB_TYPE_STRING, DB_TYPE_CHAR,
+    DB_TYPE_STRING, DB_TYPE_CHAR,
+    DB_ATTOPT_AUTO_INCREMENT, DB_ATTOPT_PARTITION_KEY,
+    DB_ATTOPT_INVISIBLE_COLUMN,
     CT_CLASS_NAME,
     CT_ATTRIBUTE_NAME,
     CT_DOMAIN_NAME,
@@ -290,13 +302,13 @@ const char *sm_define_view_foreign_servers_spec (void)
   // *INDENT-OFF*
   snprintf (stmt, sizeof (stmt),
     "SELECT "
-      "CAST (DATABASE () AS VARCHAR(255)) AS [foreign_server_catalog], " /* string -> varchar(255) */
+      "CAST (DATABASE () AS VARCHAR (255)) AS [foreign_server_catalog], " /* string -> varchar(255) */
       "[srv].[link_name] AS [foreign_server_name], "
       "NULL AS [foreign_data_wrapper_catalog], "
       "NULL AS [foreign_data_wrapper_name], "
       "NULL AS [foreign_server_type], "
       "NULL AS [foreign_server_version], "
-      "CAST ([srv].[owner].[name] AS VARCHAR(255)) AS [authorization_identifier], " /* string -> varchar(255) */
+      "[srv].[owner].[name] AS [authorization_identifier], "
       "[srv].[host] AS [server_host], "
       "[srv].[port] AS [server_port], "
       "[srv].[db_name] AS [server_database], "
@@ -323,11 +335,11 @@ const char *sm_define_view_key_column_usage_spec (void)
   // *INDENT-OFF*
   snprintf (stmt, sizeof (stmt),
     "SELECT "
-      "CAST (DATABASE () AS VARCHAR(255)) AS [constraint_catalog], " /* string -> varchar(255) */
-      "CAST ([idx].[class_of].[owner].[name] AS VARCHAR(255)) AS [constraint_schema], " /* string -> varchar(255) */
+      "CAST (DATABASE () AS VARCHAR (255)) AS [constraint_catalog], " /* string -> varchar(255) */
+      "[idx].[class_of].[owner].[name] AS [constraint_schema], "
       "[idx].[index_name] AS [constraint_name], "
-      "CAST (DATABASE () AS VARCHAR(255)) AS [table_catalog], " /* string -> varchar(255) */
-      "CAST ([idx].[class_of].[owner].[name] AS VARCHAR(255)) AS [table_schema], " /* string -> varchar(255) */
+      "CAST (DATABASE () AS VARCHAR (255)) AS [table_catalog], " /* string -> varchar(255) */
+      "[idx].[class_of].[owner].[name] AS [table_schema], "
       "[idx].[class_of].[class_name] AS [table_name], "
       "[idx_key].[key_attr_name] AS [column_name], "
       "([idx_key].[key_order] + 1) AS [ordinal_position], "
@@ -358,25 +370,26 @@ const char *sm_define_view_parameters_spec (void)
   // *INDENT-OFF*
   snprintf (stmt, sizeof (stmt),
     "SELECT "
-      "CAST (DATABASE () AS VARCHAR(255)) AS [specific_catalog], " /* string -> varchar(255) */
-      "CAST ([sp_args].[sp_of].[owner].[name] AS VARCHAR(255)) AS [specific_schema], " /* string -> varchar(255) */
+      "CAST (DATABASE () AS VARCHAR (255)) AS [specific_catalog], " /* string -> varchar(255) */
+      "[sp_args].[sp_of].[owner].[name] AS [specific_schema], "
       "IF ([sp_args].[sp_of].[pkg_name] IS NOT NULL, CONCAT ([sp_args].[sp_of].[pkg_name], '.', [sp_args].[sp_of].[sp_name]), [sp_args].[sp_of].[sp_name]) AS [specific_name], "
       "([sp_args].[index_of] + 1) AS [ordinal_position], "
       /* SP_MODE_IN, SP_MODE_OUT, SP_MODE_INOUT */
       "DECODE ([sp_args].[mode], %d, 'IN', %d, 'OUT', %d, 'INOUT') AS [parameter_mode], "
       "'NO' AS [is_result], "
       "[sp_args].[arg_name] AS [parameter_name], "
-      "[dt].[type_name] AS [data_type], "
+      /* DB_TYPE_RESULTSET has no row in _db_data_type; surface it as 'CURSOR' */
+      "CASE [sp_args].[data_type] WHEN %d THEN 'CURSOR' ELSE [dt].[type_name] END AS [data_type], "
       "NULL AS [character_maximum_length], "
       "NULL AS [character_octet_length], "
-      "[ch].[charset_name] AS [character_set_name], "
+      "NULL AS [character_set_name], "
       "NULL AS [collation_name], "
       "NULL AS [numeric_precision], "
       "NULL AS [numeric_scale], "
-      /* DATETIME(32) -> 3, TIME(10), TIMESTAMP(11), DATE(12) -> 0, else NULL */
+      /* DB_TYPE_DATETIME -> 3, DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_DATE -> 0, else NULL */
       "CASE "
-        "WHEN [sp_args].[data_type] = 32 THEN 3 "
-        "WHEN [sp_args].[data_type] IN (10, 11, 12) THEN 0 "
+        "WHEN [sp_args].[data_type] = %d THEN 3 "
+        "WHEN [sp_args].[data_type] IN (%d, %d, %d) THEN 0 "
         "ELSE NULL "
       "END AS [datetime_precision], "
       "NULL AS [dtd_identifier], "
@@ -387,24 +400,18 @@ const char *sm_define_view_parameters_spec (void)
     "FROM "
       /* CT_STORED_PROC_ARGS_NAME */
       "[%s] AS [sp_args] "
-      /* CT_DATATYPE_NAME */
-      "INNER JOIN [%s] AS [dt] ON [dt].[type_id] = [sp_args].[data_type], "
-      /* CT_ROOT_NAME */
-      "[%s] AS [root], "
-      /* CT_CHARSET_NAME */
-      "[%s] AS [ch] "
+      /* CT_DATATYPE_NAME — LEFT JOIN so OUT CURSOR (type_id=28, not in _db_data_type) rows survive */
+      "LEFT OUTER JOIN [%s] AS [dt] ON [dt].[type_id] = [sp_args].[data_type] "
     "WHERE "
-      "[ch].[charset_id] = [root].[charset] "
-      "AND " AUTH_CHECK_STORED_PROC("[sp_args].[sp_of].[owner].[name]", "[sp_args].[sp_of]", "[sp_args].[sp_of].[directive]"),
-    SP_MODE_IN,
-    SP_MODE_OUT,
-    SP_MODE_INOUT,
-    SP_TYPE_PROCEDURE,
-    SP_TYPE_FUNCTION,
+      AUTH_CHECK_STORED_PROC("[sp_args].[sp_of].[owner].[name]", "[sp_args].[sp_of]") " "
+      "AND [sp_args].[sp_of].[is_system_generated] = 0",
+    SP_MODE_IN, SP_MODE_OUT, SP_MODE_INOUT,
+    DB_TYPE_RESULTSET,
+    DB_TYPE_DATETIME,
+    DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_DATE,
+    SP_TYPE_PROCEDURE, SP_TYPE_FUNCTION,
     CT_STORED_PROC_ARGS_NAME,
-    CT_DATATYPE_NAME,
-    CT_ROOT_NAME,
-    CT_CHARSET_NAME);
+    CT_DATATYPE_NAME);
   // *INDENT-ON*
 
   return stmt;
@@ -417,8 +424,8 @@ const char *sm_define_view_partitions_spec (void)
   // *INDENT-OFF*
   snprintf (stmt, sizeof (stmt),
     "SELECT "
-      "CAST (DATABASE () AS VARCHAR(255)) AS [table_catalog], " /* string -> varchar(255) */
-      "CAST ([super].[owner].[name] AS VARCHAR(255)) AS [table_schema], " /* string -> varchar(255) */
+      "CAST (DATABASE () AS VARCHAR (255)) AS [table_catalog], " /* string -> varchar(255) */
+      "[super].[owner].[name] AS [table_schema], "
       "[super].[class_name] AS [table_name], "
       "[part].[pname] AS [partition_name], "
       "NULL AS [partition_ordinal_position], "
@@ -467,11 +474,11 @@ const char *sm_define_view_referential_constraints_spec (void)
   // *INDENT-OFF*
   snprintf (stmt, sizeof (stmt),
     "SELECT "
-      "CAST (DATABASE () AS VARCHAR(255)) AS [constraint_catalog], " /* string -> varchar(255) */
-      "CAST ([idx].[class_of].[owner].[name] AS VARCHAR(255)) AS [constraint_schema], " /* string -> varchar(255) */
+      "CAST (DATABASE () AS VARCHAR (255)) AS [constraint_catalog], " /* string -> varchar(255) */
+      "[idx].[class_of].[owner].[name] AS [constraint_schema], "
       "[idx].[index_name] AS [constraint_name], "
-      "CAST (DATABASE () AS VARCHAR(255)) AS [unique_constraint_catalog], " /* string -> varchar(255) */
-      "CAST ([idx].[referential_index].[class_of].[owner].[name] AS VARCHAR(255)) AS [unique_constraint_schema], " /* string -> varchar(255) */
+      "CAST (DATABASE () AS VARCHAR (255)) AS [unique_constraint_catalog], " /* string -> varchar(255) */
+      "[idx].[referential_index].[class_of].[owner].[name] AS [unique_constraint_schema], "
       "[idx].[referential_index].[index_name] AS [unique_constraint_name], "
       /* SM_FK_MATCH_NONE, SM_FK_MATCH_PARTIAL, SM_FK_MATCH_FULL */
       "DECODE ([idx].[referential_match_option], %d, 'NONE', %d, 'PARTIAL', %d, 'FULL') AS [match_option], "
@@ -510,16 +517,16 @@ const char *sm_define_view_routine_privileges_spec (void)
   // *INDENT-OFF*
   snprintf (stmt, sizeof (stmt),
     "SELECT "
-      "CAST ([auth].[grantor].[name] AS VARCHAR(255)) AS [grantor], " /* string -> varchar(255) */
-      "CAST ([auth].[grantee].[name] AS VARCHAR(255)) AS [grantee], " /* string -> varchar(255) */
-      "CAST (DATABASE () AS VARCHAR(255)) AS [specific_catalog], " /* string -> varchar(255) */
-      "CAST ([sp].[owner].[name] AS VARCHAR(255)) AS [specific_schema], " /* string -> varchar(255) */
+      "[auth].[grantor].[name] AS [grantor], "
+      "[auth].[grantee].[name] AS [grantee], "
+      "CAST (DATABASE () AS VARCHAR (255)) AS [specific_catalog], " /* string -> varchar(255) */
+      "[sp].[owner].[name] AS [specific_schema], "
       "IF ([sp].[pkg_name] IS NOT NULL, CONCAT ([sp].[pkg_name], '.', [sp].[sp_name]), [sp].[sp_name]) AS [specific_name], "
-      "CAST (DATABASE () AS VARCHAR(255)) AS [routine_catalog], " /* string -> varchar(255) */
-      "CAST ([sp].[owner].[name] AS VARCHAR(255)) AS [routine_schema], " /* string -> varchar(255) */
+      "CAST (DATABASE () AS VARCHAR (255)) AS [routine_catalog], " /* string -> varchar(255) */
+      "[sp].[owner].[name] AS [routine_schema], "
       "[sp].[sp_name] AS [routine_name], "
       "'EXECUTE' AS [privilege_type], "
-      "'YES' AS [is_grantable] "
+      "'NO' AS [is_grantable] "
     "FROM "
       /* CT_CLASSAUTH_NAME */
       "[%s] AS [auth] "
@@ -545,41 +552,48 @@ const char *sm_define_view_routines_spec (void)
   snprintf (stmt, sizeof (stmt),
     "SELECT "
       "IF ([sp].[pkg_name] IS NOT NULL, CONCAT ([sp].[pkg_name], '.', [sp].[sp_name]), [sp].[sp_name]) AS [specific_name], "
-      "CAST (DATABASE () AS VARCHAR(255)) AS [routine_catalog], " /* string -> varchar(255) */
-      "CAST ([sp].[owner].[name] AS VARCHAR(255)) AS [routine_schema], " /* string -> varchar(255) */
+      "CAST (DATABASE () AS VARCHAR (255)) AS [routine_catalog], " /* string -> varchar(255) */
+      "[sp].[owner].[name] AS [routine_schema], "
       "[sp].[sp_name] AS [routine_name], "
       /* SP_TYPE_PROCEDURE, SP_TYPE_FUNCTION */
       "DECODE ([sp].[sp_type], %d, 'PROCEDURE', %d, 'FUNCTION') AS [routine_type], "
-      /* SP_TYPE_FUNCTION */
-      "IF ([sp].[sp_type] = %d, [dt].[type_name], NULL) AS [data_type], "
+      /* SP_TYPE_FUNCTION; DB_TYPE_RESULTSET has no row in _db_data_type, surface it as 'CURSOR' */
+      "IF ([sp].[sp_type] = %d, CASE [sp].[return_type] WHEN %d THEN 'CURSOR' ELSE [dt].[type_name] END, NULL) AS [data_type], "
       "NULL AS [character_maximum_length], "
       "NULL AS [character_octet_length], "
-      "[ch].[charset_name] AS [character_set_name], "
+      /* DB_TYPE_STRING/VARCHAR, DB_TYPE_CHAR */
+      "IF ([sp].[return_type] IN (%d, %d), [ch].[charset_name], NULL) AS [character_set_name], "
       "NULL AS [collation_name], "
       "NULL AS [numeric_precision], "
       "NULL AS [numeric_scale], "
-      /* DATETIME(32) -> 3, TIME(10), TIMESTAMP(11), DATE(12) -> 0, else NULL */
+      /* DB_TYPE_DATETIME -> 3, DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_DATE -> 0, else NULL */
       "CASE "
         /* SP_TYPE_PROCEDURE */
         "WHEN [sp].[sp_type] = %d THEN NULL "
-        "WHEN [sp].[return_type] = 32 THEN 3 "
-        "WHEN [sp].[return_type] IN (10, 11, 12) THEN 0 "
+        "WHEN [sp].[return_type] = %d THEN 3 "
+        "WHEN [sp].[return_type] IN (%d, %d, %d) THEN 0 "
         "ELSE NULL "
       "END AS [datetime_precision], "
       "NULL AS [dtd_identifier], "
-      /* SP_LANG_PLCSQL, SP_LANG_JAVA */
-      "DECODE ([sp].[lang], %d, 'SQL', %d, 'EXTERNAL') AS [routine_body], "
+      "'EXTERNAL' AS [routine_body], "
       /* SP_LANG_PLCSQL */
-      "IF ([sp].[lang] = %d, [sp_code].[scode], NULL) AS [routine_definition], "
+      "IF ([sp].[lang] = %d "
+          "AND (" AUTH_CHECK_DBA " OR " AUTH_CHECK_OWNER ("[sp].[owner].[name]") "), "
+          "[sp_code].[scode], NULL) AS [routine_definition], "
       /* SP_LANG_JAVA */
       "IF ([sp].[lang] = %d, [sp].[target_class], NULL) AS [external_name], "
       /* SP_LANG_PLCSQL, SP_LANG_JAVA */
-      "DECODE ([sp].[lang], %d, 'SQL', %d, 'JAVA') AS [external_language], "
+      "DECODE ([sp].[lang], %d, 'PLCSQL', %d, 'JAVA') AS [external_language], "
       "'SQL' AS [parameter_style], "
       /* SP_DIRECTIVE_DETERMINISTIC */
       "IF (([sp].[directive] & %d) <> 0, 'YES', 'NO') AS [is_deterministic], "
-      /* TODO */
-      "NULL AS [sql_data_access], "
+      "CASE [sp].[sql_data_access] "
+        "WHEN %d THEN 'NO SQL' "
+        "WHEN %d THEN 'CONTAINS SQL' "
+        "WHEN %d THEN 'READS SQL DATA' "
+        "WHEN %d THEN 'MODIFIES SQL DATA' "
+        "ELSE NULL "
+      "END AS [sql_data_access], "
       "NULL AS [sql_path], "
       /* SP_DIRECTIVE_RIGHTS_CALLER */
       "IF (([sp].[directive] & %d) <> 0, 'INVOKER', 'DEFINER') AS [security_type], "
@@ -592,26 +606,29 @@ const char *sm_define_view_routines_spec (void)
       /* CT_DATATYPE_NAME */
       "LEFT OUTER JOIN [%s] AS [dt] ON [dt].[type_id] = [sp].[return_type] "
       /* CT_STORED_PROC_CODE_NAME */
-      "INNER JOIN [%s] AS [sp_code] ON [sp_code].[name] = [sp].[target_class], "
+      "LEFT OUTER JOIN [%s] AS [sp_code] ON [sp_code].[name] = [sp].[target_class], "
       /* CT_ROOT_NAME */
       "[%s] AS [root], "
       /* CT_CHARSET_NAME */
       "[%s] AS [ch] "
     "WHERE "
       "[ch].[charset_id] = [root].[charset] "
-      "AND " AUTH_CHECK_STORED_PROC("[sp].[owner].[name]", "[sp]", "[sp].[directive]") " "
+      "AND " AUTH_CHECK_STORED_PROC("[sp].[owner].[name]", "[sp]") " "
       "AND [sp].[is_system_generated] = 0",
+    SP_TYPE_PROCEDURE, SP_TYPE_FUNCTION,
+    SP_TYPE_FUNCTION, DB_TYPE_RESULTSET,
+    DB_TYPE_STRING, DB_TYPE_CHAR,
     SP_TYPE_PROCEDURE,
-    SP_TYPE_FUNCTION,
-    SP_TYPE_FUNCTION,
-    SP_TYPE_PROCEDURE,
+    DB_TYPE_DATETIME,
+    DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_DATE,
     SP_LANG_PLCSQL,
     SP_LANG_JAVA,
-    SP_LANG_PLCSQL,
-    SP_LANG_JAVA,
-    SP_LANG_PLCSQL,
-    SP_LANG_JAVA,
+    SP_LANG_PLCSQL, SP_LANG_JAVA,
     SP_DIRECTIVE_DETERMINISTIC,
+    SP_SQL_TYPE_NO_SQL,
+    SP_SQL_TYPE_CONTAINS_SQL,
+    SP_SQL_TYPE_READS_SQL_DATA,
+    SP_SQL_TYPE_MODIFIES_SQL_DATA,
     SP_DIRECTIVE_RIGHTS_CALLER,
     CT_STORED_PROC_NAME,
     CT_DATATYPE_NAME,
@@ -630,12 +647,12 @@ const char *sm_define_view_schemata_spec (void)
   // *INDENT-OFF*
   snprintf (stmt, sizeof (stmt),
     "SELECT "
-      "CAST (DATABASE () AS VARCHAR(255)) AS [catalog_name], " /* string -> varchar(255) */
-      "CAST ([usr].[name] AS VARCHAR(255)) AS [schema_name], " /* string -> varchar(255) */
-      "CAST ([usr].[name] AS VARCHAR(255)) AS [schema_owner], " /* string -> varchar(255) */
-      "CAST (DATABASE () AS VARCHAR(255)) AS [default_character_set_catalog], " /* string -> varchar(255) */
+      "CAST (DATABASE () AS VARCHAR (255)) AS [catalog_name], " /* string -> varchar(255) */
+      "[usr].[name] AS [schema_name], "
+      "[usr].[name] AS [schema_owner], "
+      "CAST (DATABASE () AS VARCHAR (255)) AS [default_character_set_catalog], " /* string -> varchar(255) */
       "NULL AS [default_character_set_schema], "
-      "CAST ([ch].[charset_name] AS VARCHAR(32)) AS [default_character_set_name], " /* string -> varchar(32) */
+      "CAST ([ch].[charset_name] AS VARCHAR (32)) AS [default_character_set_name], " /* string -> varchar(32) */
       "NULL AS [sql_path], "
       "[usr].[comment] AS [schema_comment], "
       "[usr].[created_time] AS [create_time] "
@@ -664,8 +681,8 @@ const char *sm_define_view_sequences_spec (void)
   // *INDENT-OFF*
   snprintf (stmt, sizeof (stmt),
     "SELECT "
-      "CAST (DATABASE () AS VARCHAR(255)) AS [sequence_catalog], " /* string -> varchar(255) */
-      "CAST ([serial].[owner].[name] AS VARCHAR(255)) AS [sequence_schema], " /* string -> varchar(255) */
+      "CAST (DATABASE () AS VARCHAR (255)) AS [sequence_catalog], " /* string -> varchar(255) */
+      "[serial].[owner].[name] AS [sequence_schema], "
       "[serial].[name] AS [sequence_name], "
       "'NUMERIC' AS [data_type], "
       /* DB_MAX_NUMERIC_PRECISION */
@@ -686,7 +703,8 @@ const char *sm_define_view_sequences_spec (void)
       /* CT_SERIAL_NAME */
       "[%s] AS [serial] "
     "WHERE "
-      "[serial].[class_name] IS NULL",
+      "[serial].[class_name] IS NULL "
+      "AND " AUTH_CHECK_OBJECT_ANY("[serial].[owner].[name]", "[serial]"),
     DB_MAX_NUMERIC_PRECISION,
     DB_DEFAULT_NUMERIC_SCALE,
     CT_SERIAL_NAME);
@@ -702,28 +720,33 @@ const char *sm_define_view_statistics_spec (void)
   // *INDENT-OFF*
   snprintf (stmt, sizeof (stmt),
     "SELECT "
-      "CAST (DATABASE () AS VARCHAR(255)) AS [table_catalog], " /* string -> varchar(255) */
-      "CAST ([cls].[owner].[name] AS VARCHAR(255)) AS [table_schema], " /* string -> varchar(255) */
+      "CAST (DATABASE () AS VARCHAR (255)) AS [table_catalog], " /* string -> varchar(255) */
+      "[cls].[owner].[name] AS [table_schema], "
       "[cls].[class_name] AS [table_name], "
-      "(1 - [idx].[is_unique]) AS [non_unique], "
-      "CAST ([cls].[owner].[name] AS VARCHAR(255)) AS [index_schema], " /* string -> varchar(255) */
+      "[idx].[is_unique] AS [is_unique], "
+      "[cls].[owner].[name] AS [index_schema], "
       "[idx].[index_name] AS [index_name], "
       "([idx_key].[key_order] + 1) AS [seq_in_index], "
       "[idx_key].[key_attr_name] AS [column_name], "
-      "CASE "
+      "CAST (CASE "
         "WHEN [idx_key].[asc_desc] = 0 THEN 'A' "
         "WHEN [idx_key].[asc_desc] = 1 THEN 'D' "
         "ELSE NULL "
-      "END AS [collation], "
-      "NULL AS [cardinality], "
-      "[idx].[filter_expression] AS [sub_part], "
-      "IF ([attr].[is_nullable] = 1, 'YES', 'NO') AS [nullable], "
+      "END AS VARCHAR (1)) AS [collation], "
+      "CAST (INDEX_CARDINALITY ("
+        "[cls].[unique_name], "
+        "[idx].[index_name], "
+        "[idx_key].[key_order]"
+      ") AS INTEGER) AS [cardinality], "
+      "[idx_key].[key_prefix_length] AS [sub_part], "
+      "IF ([idx_key].[key_attr_name] IS NULL, 'YES', "
+        "IF ([attr].[is_nullable] = 1, 'YES', 'NO')) AS [nullable], "
       "'BTREE' AS [index_type], "
       "NULL AS [comment], "
       "[idx].[comment] AS [index_comment], "
       "IF ([idx].[status] = 1, 'YES', 'NO') AS [is_visible], "
       "[idx_key].[func] AS [expression], "
-      "NULL AS [deduplicate_level], "
+      "[idx].[options] & %d AS [deduplicate_level], "
       "[idx].[created_time] AS [create_time], "
       "[idx].[updated_time] AS [update_time], "
       "NULL AS [access_time] "
@@ -737,7 +760,9 @@ const char *sm_define_view_statistics_spec (void)
       /* CT_ATTRIBUTE_NAME */
       "LEFT OUTER JOIN [%s] AS [attr] ON [attr].[class_of] = [cls] AND [attr].[attr_name] = [idx_key].[key_attr_name] "
     "WHERE "
-      AUTH_CHECK_OBJECT_ANY("[cls].[owner].[name]", "[cls].[class_of]"),
+      AUTH_CHECK_OBJECT_ANY("[cls].[owner].[name]", "[cls].[class_of]") " "
+      "AND ([idx_key].[key_attr_name] IS NULL OR [idx_key].[key_attr_name] NOT LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN ")",
+    OPTION_DEDUPLICATE_MASK,
     CT_INDEXKEY_NAME,
     CT_INDEX_NAME,
     CT_CLASS_NAME,
@@ -754,12 +779,12 @@ const char *sm_define_view_synonyms_spec (void)
   // *INDENT-OFF*
   snprintf (stmt, sizeof (stmt),
     "SELECT "
-      "CAST (DATABASE () AS VARCHAR(255)) AS [synonym_catalog], " /* string -> varchar(255) */
-      "CAST ([syn].[owner].[name] AS VARCHAR(255)) AS [synonym_schema], " /* string -> varchar(255) */
+      "CAST (DATABASE () AS VARCHAR (255)) AS [synonym_catalog], " /* string -> varchar(255) */
+      "[syn].[owner].[name] AS [synonym_schema], "
       "[syn].[name] AS [synonym_name], "
       "IF ([syn].[is_public] = 1, 'YES', 'NO') AS [is_public_synonym], "
-      "CAST (DATABASE () AS VARCHAR(255)) AS [target_catalog], " /* string -> varchar(255) */
-      "CAST ([syn].[target_owner].[name] AS VARCHAR(255)) AS [target_schema], " /* string -> varchar(255) */
+      "CAST (DATABASE () AS VARCHAR (255)) AS [target_catalog], " /* string -> varchar(255) */
+      "[syn].[target_owner].[name] AS [target_schema], "
       "[syn].[target_name] AS [target_name], "
       "[syn].[comment] AS [synonym_comment], "
       "[syn].[created_time] AS [create_time], "
@@ -782,11 +807,11 @@ const char *sm_define_view_table_constraints_spec (void)
   // *INDENT-OFF*
   snprintf (stmt, sizeof (stmt),
     "SELECT "
-      "CAST (DATABASE () AS VARCHAR(255)) AS [constraint_catalog], " /* string -> varchar(255) */
-      "CAST ([idx].[class_of].[owner].[name] AS VARCHAR(255)) AS [constraint_schema], " /* string -> varchar(255) */
+      "CAST (DATABASE () AS VARCHAR (255)) AS [constraint_catalog], " /* string -> varchar(255) */
+      "[idx].[class_of].[owner].[name] AS [constraint_schema], "
       "[idx].[index_name] AS [constraint_name], "
-      "CAST (DATABASE () AS VARCHAR(255)) AS [table_catalog], " /* string -> varchar(255) */
-      "CAST ([idx].[class_of].[owner].[name] AS VARCHAR(255)) AS [table_schema], " /* string -> varchar(255) */
+      "CAST (DATABASE () AS VARCHAR (255)) AS [table_catalog], " /* string -> varchar(255) */
+      "[idx].[class_of].[owner].[name] AS [table_schema], "
       "[idx].[class_of].[class_name] AS [table_name], "
       "CASE "
         "WHEN [idx].[is_primary_key] = 1 THEN 'PRIMARY KEY' "
@@ -801,7 +826,7 @@ const char *sm_define_view_table_constraints_spec (void)
       /* CT_INDEX_NAME */
       "[%s] AS [idx] "
     "WHERE "
-      AUTH_CHECK_OBJECT_ANY("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]") " "
+      AUTH_CHECK_OBJECT_WRITE("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]") " "
       "AND ([idx].[is_primary_key] = 1 OR [idx].[is_unique] = 1 OR [idx].[is_foreign_key] = 1)",
     CT_INDEX_NAME);
   // *INDENT-ON*
@@ -816,10 +841,10 @@ const char *sm_define_view_table_privileges_spec (void)
   // *INDENT-OFF*
   snprintf (stmt, sizeof (stmt),
     "SELECT "
-      "CAST ([auth].[grantor].[name] AS VARCHAR(255)) AS [grantor], " /* string -> varchar(255) */
-      "CAST ([auth].[grantee].[name] AS VARCHAR(255)) AS [grantee], " /* string -> varchar(255) */
-      "CAST (DATABASE () AS VARCHAR(255)) AS [table_catalog], " /* string -> varchar(255) */
-      "CAST ([cls].[owner].[name] AS VARCHAR(255)) AS [table_schema], " /* string -> varchar(255) */
+      "[auth].[grantor].[name] AS [grantor], "
+      "[auth].[grantee].[name] AS [grantee], "
+      "CAST (DATABASE () AS VARCHAR (255)) AS [table_catalog], " /* string -> varchar(255) */
+      "[cls].[owner].[name] AS [table_schema], "
       "[cls].[class_name] AS [table_name], "
       "[auth].[auth_type] AS [privilege_type], "
       "IF ([auth].[is_grantable] = 0, 'NO', 'YES') AS [is_grantable] "
@@ -847,15 +872,16 @@ const char *sm_define_view_tables_spec (void)
   // *INDENT-OFF*
   snprintf (stmt, sizeof (stmt),
     "SELECT "
-      "CAST (DATABASE () AS VARCHAR(255)) AS [table_catalog], " /* string -> varchar(255) */
-      "CAST ([cls].[owner].[name] AS VARCHAR(255)) AS [table_schema], " /* string -> varchar(255) */
-      "CAST ([cls].[class_name] AS VARCHAR(255)) AS [table_name], " /* string -> varchar(255) */
+      "CAST (DATABASE () AS VARCHAR (255)) AS [table_catalog], " /* string -> varchar(255) */
+      "[cls].[owner].[name] AS [table_schema], "
+      "CAST ([cls].[class_name] AS VARCHAR (255)) AS [table_name], " /* string -> varchar(255) */
       /* SM_CLASS_CT */
       "CASE "
         "WHEN [cls].[class_type] = %d AND [cls].[is_system_class] = 1 THEN 'SYSTEM TABLE' "
         "WHEN [cls].[class_type] <> %d AND [cls].[is_system_class] = 1 THEN 'SYSTEM VIEW' "
         "WHEN [cls].[class_type] = %d AND [cls].[is_system_class] <> 1 THEN 'BASE TABLE' "
-        "ELSE 'VIEW' "
+        "WHEN [cls].[class_type] <> %d AND [cls].[is_system_class] <> 1 THEN 'VIEW' "
+        "ELSE NULL "
       "END AS [table_type], "
       "estimated_table_rows ([cls].[unique_name]) AS [table_rows], "
       "estimated_avg_row_length ([cls].[unique_name]) AS [avg_row_length], "
@@ -877,7 +903,7 @@ const char *sm_define_view_tables_spec (void)
       "IF (([cls].[flags] & %d) <> 0, 'REUSE_OID', 'DONT_REUSE_OID') || "
       /* TDE_ALGORITHM_NONE, TDE_ALGORITHM_AES, TDE_ALGORITHM_ARIA */
       "' ENCRYPT=' || DECODE ([cls].[tde_algorithm], %d, 'NONE', %d, 'AES', %d, 'ARIA') AS [create_options], "
-      "NULL AS [is_temporary], "
+      "'NO' AS [is_temporary], "
       "[cls].[comment] AS [table_comment], "
       "[cls].[created_time] AS [create_time], "
       "[cls].[updated_time] AS [update_time], "
@@ -892,6 +918,7 @@ const char *sm_define_view_tables_spec (void)
       "LEFT OUTER JOIN [%s] AS [serial] ON [serial].[class_name] = [cls].[class_name] "
     "WHERE "
       AUTH_CHECK_OBJECT_ANY("[cls].[owner].[name]", "[cls].[class_of]"),
+    SM_CLASS_CT,
     SM_CLASS_CT,
     SM_CLASS_CT,
     SM_CLASS_CT,
@@ -914,29 +941,27 @@ const char *sm_define_view_triggers_spec (void)
   // *INDENT-OFF*
   snprintf (stmt, sizeof (stmt),
     "SELECT "
-      "CAST (DATABASE () AS VARCHAR(255)) AS [trigger_catalog], " /* string -> varchar(255) */
-      "CAST ([tr].[owner].[name] AS VARCHAR(255)) AS [trigger_schema], " /* string -> varchar(255) */
-      "CAST ([tr].[name] AS VARCHAR(255)) AS [trigger_name], " /* string -> varchar(255) */
-      /* UPDATE(0,1), DELETE(2,3), INSERT(4,5), COMMIT(8), ROLLBACK(9) */
+      "CAST (DATABASE () AS VARCHAR (255)) AS [trigger_catalog], " /* string -> varchar(255) */
+      "[tr].[owner].[name] AS [trigger_schema], "
+      "CAST ([tr].[name] AS VARCHAR (255)) AS [trigger_name], " /* string -> varchar(255) */
+      /* TR_EVENT_UPDATE/STATEMENT_UPDATE, TR_EVENT_DELETE/STATEMENT_DELETE, TR_EVENT_INSERT/STATEMENT_INSERT */
       "CASE "
-        "WHEN [tr].[event] IN (0, 1) THEN 'UPDATE' "
-        "WHEN [tr].[event] IN (2, 3) THEN 'DELETE' "
-        "WHEN [tr].[event] IN (4, 5) THEN 'INSERT' "
-        "WHEN [tr].[event] = 8 THEN 'COMMIT' "
-        "WHEN [tr].[event] = 9 THEN 'ROLLBACK' "
+        "WHEN [tr].[event] IN (%d, %d) THEN 'UPDATE' "
+        "WHEN [tr].[event] IN (%d, %d) THEN 'DELETE' "
+        "WHEN [tr].[event] IN (%d, %d) THEN 'INSERT' "
         "ELSE NULL "
       "END AS [event_manipulation], "
-      "CAST (DATABASE () AS VARCHAR(255)) AS [event_object_catalog], " /* string -> varchar(255) */
-      "CAST ([cls].[owner].[name] AS VARCHAR(255)) AS [event_object_schema], " /* string -> varchar(255) */
+      "CAST (DATABASE () AS VARCHAR (255)) AS [event_object_catalog], " /* string -> varchar(255) */
+      "[cls].[owner].[name] AS [event_object_schema], "
       "[cls].[class_name] AS [event_object_table], "
       "[tr].[target_attribute] AS [event_object_column], "
       "NULL AS [action_order], "
       "[tr].[condition] AS [action_condition], "
       "[tr].[action_definition] AS [action_statement], "
-      /* ROW(0,2,4), STATEMENT(1,3,5), NULL for COMMIT/ROLLBACK */
+      /* row events: TR_EVENT_UPDATE/DELETE/INSERT; statement events: TR_EVENT_STATEMENT_*; NULL for COMMIT/ROLLBACK */
       "CASE "
-        "WHEN [tr].[event] IN (0, 2, 4) THEN 'ROW' "
-        "WHEN [tr].[event] IN (1, 3, 5) THEN 'STATEMENT' "
+        "WHEN [tr].[event] IN (%d, %d, %d) THEN 'ROW' "
+        "WHEN [tr].[event] IN (%d, %d, %d) THEN 'STATEMENT' "
         "ELSE NULL "
       "END AS [action_orientation], "
       /* TR_TIME_BEFORE, TR_TIME_AFTER, TR_TIME_DEFERRED */
@@ -952,14 +977,20 @@ const char *sm_define_view_triggers_spec (void)
       /* TR_CLASS_NAME */
       "[%s] AS [tr] "
       /* CT_CLASS_NAME */
-      "LEFT OUTER JOIN [%s] AS [cls] ON [cls].[class_of] = [tr].[target_class] "
+      "INNER JOIN [%s] AS [cls] ON [cls].[class_of] = [tr].[target_class] "
     "WHERE "
-      AUTH_CHECK_OBJECT_ANY("[tr].[owner].[name]", "[cls].[class_of]"),
-    TR_TIME_BEFORE,
-    TR_TIME_AFTER,
-    TR_TIME_DEFERRED,
+      AUTH_CHECK_OBJECT_WRITE("[tr].[owner].[name]", "[cls].[class_of]") " "
+      /* DML row/statement triggers per spec */
+      "AND [tr].[event] BETWEEN %d AND %d",
+    TR_EVENT_UPDATE, TR_EVENT_STATEMENT_UPDATE,
+    TR_EVENT_DELETE, TR_EVENT_STATEMENT_DELETE,
+    TR_EVENT_INSERT, TR_EVENT_STATEMENT_INSERT,
+    TR_EVENT_UPDATE, TR_EVENT_DELETE, TR_EVENT_INSERT,
+    TR_EVENT_STATEMENT_UPDATE, TR_EVENT_STATEMENT_DELETE, TR_EVENT_STATEMENT_INSERT,
+    TR_TIME_BEFORE, TR_TIME_AFTER, TR_TIME_DEFERRED,
     TR_CLASS_NAME,
-    CT_CLASS_NAME);
+    CT_CLASS_NAME,
+    TR_EVENT_UPDATE, TR_EVENT_STATEMENT_INSERT);
   // *INDENT-ON*
 
   return stmt;
@@ -972,8 +1003,8 @@ const char *sm_define_view_views_spec (void)
   // *INDENT-OFF*
   snprintf (stmt, sizeof (stmt),
     "SELECT "
-      "CAST (DATABASE () AS VARCHAR(255)) AS [table_catalog], " /* string -> varchar(255) */
-      "CAST ([q].[class_of].[owner].[name] AS VARCHAR(255)) AS [table_schema], " /* string -> varchar(255) */
+      "CAST (DATABASE () AS VARCHAR (255)) AS [table_catalog], " /* string -> varchar(255) */
+      "[q].[class_of].[owner].[name] AS [table_schema], "
       "[q].[class_of].[class_name] AS [table_name], "
       "[q].[spec] AS [view_definition], "
       "CASE "
@@ -983,8 +1014,7 @@ const char *sm_define_view_views_spec (void)
         "WHEN ([q].[class_of].[flags] & %d) <> 0 THEN 'LOCAL' "
         "ELSE 'NONE' "
       "END AS [check_option], "
-      /* SM_CLASSFLAG_REUSE_OID */
-      "IF (([q].[class_of].[flags] & %d) <> 0, 'YES', 'NO') AS [is_updatable], "
+      "NULL AS [is_updatable], "
       "[q].[class_of].[comment] AS [view_comment], "
       "[q].[class_of].[created_time] AS [create_time], "
       "[q].[class_of].[updated_time] AS [update_time] "
@@ -995,7 +1025,6 @@ const char *sm_define_view_views_spec (void)
       AUTH_CHECK_OBJECT_ANY("[q].[class_of].[owner].[name]", "[q].[class_of].[class_of]"),
     SM_CLASSFLAG_WITHCHECKOPTION,
     SM_CLASSFLAG_LOCALCHECKOPTION,
-    SM_CLASSFLAG_REUSE_OID,
     CT_QUERYSPEC_NAME);
   // *INDENT-ON*
 
