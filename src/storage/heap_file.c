@@ -7932,8 +7932,15 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
       return heap_record_replace_oos_oids (thread_p, context);
 
     case REC_BIGONE:
-      return heap_get_bigone_content (thread_p, scan_cache_p, context->ispeeking, &context->forward_oid,
-				      context->recdes_p);
+      scan =
+	heap_get_bigone_content (thread_p, scan_cache_p, context->ispeeking, &context->forward_oid, context->recdes_p);
+      if (scan != S_SUCCESS)
+	{
+	  return scan;
+	}
+
+      return heap_record_replace_oos_oids (thread_p, context);
+
     case REC_HOME:
       if (scan_cache_p != NULL && context->ispeeking == COPY && context->recdes_p->data == NULL
 	  && heap_scan_cache_allocate_recdes_data (thread_p, scan_cache_p, context->recdes_p,
