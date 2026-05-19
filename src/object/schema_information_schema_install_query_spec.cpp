@@ -123,9 +123,9 @@
     ")" \
   ")"
 
-#define AUTH_CHECK_PRIVILEGE(owner_name_expr, grantee_name_expr, grantor_name_expr) \
+#define AUTH_CHECK_PRIVILEGE(grantee_name_expr, grantor_name_expr) \
   "(" \
-    "{'DBA', " owner_name_expr ", " grantee_name_expr ", " grantor_name_expr "} * (" \
+    "{'DBA', " grantee_name_expr ", " grantor_name_expr "} * (" \
       CURRENT_USER_GROUPS_SUBQUERY \
     ") SETNEQ {}" \
   ")"
@@ -533,7 +533,7 @@ const char *sm_define_view_routine_privileges_spec (void)
       /* CT_STORED_PROC_NAME */
       "INNER JOIN [%s] AS [sp] ON [sp] = [auth].[object_of] "
     "WHERE "
-      AUTH_CHECK_PRIVILEGE("[sp].[owner].[name]", "[auth].[grantee].[name]", "[auth].[grantor].[name]") " "
+      AUTH_CHECK_PRIVILEGE("[auth].[grantee].[name]", "[auth].[grantor].[name]") " "
       /* DB_OBJECT_PROCEDURE */
       "AND [auth].[object_type] = %d",
     CT_CLASSAUTH_NAME,
@@ -854,7 +854,7 @@ const char *sm_define_view_table_privileges_spec (void)
       /* CT_CLASS_NAME */
       "INNER JOIN [%s] AS [cls] ON [cls].[class_of] = [auth].[object_of] "
     "WHERE "
-      AUTH_CHECK_PRIVILEGE("[cls].[owner].[name]", "[auth].[grantee].[name]", "[auth].[grantor].[name]") " "
+      AUTH_CHECK_PRIVILEGE("[auth].[grantee].[name]", "[auth].[grantor].[name]") " "
       /* DB_OBJECT_CLASS */
       "AND [auth].[object_type] = %d",
     CT_CLASSAUTH_NAME,
