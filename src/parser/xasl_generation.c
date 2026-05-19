@@ -452,6 +452,7 @@ static XASL_NODE *pt_plan_set_query (PARSER_CONTEXT * parser, PT_NODE * node, PR
 static XASL_NODE *pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node);
 static XASL_NODE *pt_plan_schema (PARSER_CONTEXT * parser, PT_NODE * select_node);
 static XASL_NODE *parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * query_list);
+static bool pt_xasl_spec_has_dblink (XASL_NODE * xasl);
 static PT_NODE *parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static int pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, OID ** oid_listp,
 					   int **lock_listp, int **tcard_listp, int *nump, int *sizep,
@@ -12464,6 +12465,11 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		  assert (access->num_parallel_threads == -1 /* auto-compute */ );
 		}
 
+	      if (scan_type == TARGET_CLASS && prm_get_bool_value (PRM_ID_ENABLE_HEAP_FIXED_SCAN))
+		{
+		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN);
+		}
+
 	    }
 	  else if (PT_SPEC_SPECIAL_INDEX_SCAN (spec))
 	    {
@@ -17941,6 +17947,32 @@ exit:
   return xasl;
 }
 
+/*
+ * pt_xasl_spec_has_dblink () - true if any scan in the xasl chain has a TARGET_DBLINK access spec
+ */
+static bool
+pt_xasl_spec_has_dblink (XASL_NODE * xasl)
+{
+  XASL_NODE *scan;
+  ACCESS_SPEC_TYPE *spec;
+
+  if (xasl == NULL)
+    {
+      return false;
+    }
+
+  for (scan = xasl; scan != NULL; scan = scan->scan_ptr)
+    {
+      for (spec = scan->spec_list; spec != NULL; spec = spec->next)
+	{
+	  if (spec->type == TARGET_DBLINK)
+	    {
+	      return true;
+	    }
+	}
+    }
+  return false;
+}
 
 /*
  * parser_generate_xasl_proc () - Creates xasl proc for parse tree.
@@ -18102,6 +18134,16 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * qu
       if ((PT_IS_QUERY (node) && node->info.query.correlation_level == 0) || node->node_type == PT_CTE)
 	{
 	  XASL_SET_FLAG (xasl, XASL_ZERO_CORR_LEVEL);
+	}
+
+      /* correlated subquery with DBLink: rewind CCI cursor instead of re-issuing cci_execute per outer row.
+       * Assumption: conn_sql is invariant across outer rows — mq_copypush never modifies conn_sql for
+       * correlated terms (they are always pushed to access_pred only).
+       * NOTE: if a future optimization (e.g. join push-down) places per-row host variables into
+       * conn_sql, this flag must NOT be set for that case; re-bind + re-execute would be required instead. */
+      if (PT_IS_QUERY (node) && node->info.query.correlation_level > 0 && pt_xasl_spec_has_dblink (xasl))
+	{
+	  XASL_SET_FLAG (xasl, XASL_DBLINK_CURSOR_REWIND);
 	}
 
 /* BUG FIX - COMMENT OUT: DO NOT REMOVE ME FOR USE IN THE FUTURE */

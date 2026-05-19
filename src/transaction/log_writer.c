@@ -34,6 +34,7 @@
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 #endif /* !WINDOWNS */
 #include <signal.h>
+#include <time.h>
 
 #include "log_writer.h"
 
@@ -2866,3 +2867,455 @@ logwr_get_min_copied_fpageid (void)
 }
 
 #endif /* SERVER_MODE */
+
+
+#if defined(CS_MODE)
+void
+logwr_dump_json_string_value (FILE * out, const char *str)
+{
+  const unsigned char *p;
+
+  if (str == NULL)
+    {
+      fprintf (out, "null");
+      return;
+    }
+
+  fputc ('"', out);
+  for (p = (const unsigned char *) str; *p != '\0'; p++)
+    {
+      switch (*p)
+	{
+	case '"':
+	  fprintf (out, "\\\"");
+	  break;
+	case '\\':
+	  fprintf (out, "\\\\");
+	  break;
+	case '\b':
+	  fprintf (out, "\\b");
+	  break;
+	case '\f':
+	  fprintf (out, "\\f");
+	  break;
+	case '\n':
+	  fprintf (out, "\\n");
+	  break;
+	case '\r':
+	  fprintf (out, "\\r");
+	  break;
+	case '\t':
+	  fprintf (out, "\\t");
+	  break;
+	default:
+	  if (*p < 0x20)
+	    {
+	      fprintf (out, "\\u%04x", (unsigned int) *p);
+	    }
+	  else
+	    {
+	      fputc (*p, out);
+	    }
+	  break;
+	}
+    }
+  fputc ('"', out);
+}
+
+void
+logwr_dump_json_pointer_value (FILE * out, const void *ptr)
+{
+  if (ptr == NULL)
+    {
+      fprintf (out, "null");
+      return;
+    }
+
+  fprintf (out, "\"%p\"", ptr);
+}
+
+static void
+logwr_dump_json_string_field (FILE * out, int indent, const char *name, const char *value, bool has_comma)
+{
+  fprintf (out, "%*s\"%s\": ", indent, "", name);
+  logwr_dump_json_string_value (out, value);
+  fprintf (out, "%s\n", has_comma ? "," : "");
+}
+
+void
+logwr_dump_logwr_gl (FILE * out)
+{
+  int indent = 2;
+  LOG_PAGE *loghdr_pgptr = logwr_Gl.loghdr_pgptr;
+
+  if (out == NULL)
+    {
+      out = stdout;
+    }
+
+  fprintf (out, "{\n");
+  fprintf (out, "%*s\"logwr_global\": {\n", indent, "");
+
+  logwr_dump_log_header (out, &logwr_Gl.hdr, indent + 2);
+  fprintf (out, ",\n\n");
+
+  logwr_dump_log_page_hdr (out, loghdr_pgptr != NULL ? &loghdr_pgptr->hdr : NULL, indent + 2);
+  fprintf (out, ",\n\n");
+
+  logwr_dump_logwr_gl_topfields (out, indent + 2);
+
+  fprintf (out, "%*s}\n", indent, "");
+  fprintf (out, "}\n");
+
+  fflush (out);
+}
+
+void
+logwr_dump_log_lsa (FILE * out, const LOG_LSA * lsa, int indent)
+{
+  if (lsa == NULL)
+    {
+      fprintf (out, "null");
+      return;
+    }
+
+  fprintf (out, "{\n");
+  fprintf (out, "%*s\"pageid\": %lld,\n", indent + 2, "", (long long) lsa->pageid);
+  fprintf (out, "%*s\"offset\": %lld\n", indent + 2, "", (long long) lsa->offset);
+  fprintf (out, "%*s}", indent, "");
+}
+
+void
+logwr_dump_log_header (FILE * out, const LOG_HEADER * hdr, int indent)
+{
+  const char *ha_file_status = NULL;
+  const char *ha_server_state = NULL;
+
+  if (hdr == NULL)
+    {
+      fprintf (out, "%*s\"log_header\": null", indent, "");
+      return;
+    }
+
+  switch (hdr->ha_file_status)
+    {
+    case LOG_HA_FILESTAT_CLEAR:
+      ha_file_status = "LOG_HA_FILESTAT_CLEAR";
+      break;
+    case LOG_HA_FILESTAT_ARCHIVED:
+      ha_file_status = "LOG_HA_FILESTAT_ARCHIVED";
+      break;
+    case LOG_HA_FILESTAT_SYNCHRONIZED:
+      ha_file_status = "LOG_HA_FILESTAT_SYNCHRONIZED";
+      break;
+    default:
+      ha_file_status = "UNKNOWN";
+      break;
+    }
+
+  switch (hdr->ha_server_state)
+    {
+    case HA_SERVER_STATE_NA:
+      ha_server_state = "HA_SERVER_STATE_NA";
+      break;
+    case HA_SERVER_STATE_IDLE:
+      ha_server_state = "HA_SERVER_STATE_IDLE";
+      break;
+    case HA_SERVER_STATE_ACTIVE:
+      ha_server_state = "HA_SERVER_STATE_ACTIVE";
+      break;
+    case HA_SERVER_STATE_TO_BE_ACTIVE:
+      ha_server_state = "HA_SERVER_STATE_TO_BE_ACTIVE";
+      break;
+    case HA_SERVER_STATE_STANDBY:
+      ha_server_state = "HA_SERVER_STATE_STANDBY";
+      break;
+    case HA_SERVER_STATE_TO_BE_STANDBY:
+      ha_server_state = "HA_SERVER_STATE_TO_BE_STANDBY";
+      break;
+    case HA_SERVER_STATE_MAINTENANCE:
+      ha_server_state = "HA_SERVER_STATE_MAINTENANCE";
+      break;
+    case HA_SERVER_STATE_DEAD:
+      ha_server_state = "HA_SERVER_STATE_DEAD";
+      break;
+    default:
+      ha_server_state = "UNKNOWN";
+      break;
+    }
+
+  fprintf (out, "%*s\"log_header\": {\n", indent, "");
+  logwr_dump_json_string_field (out, indent + 2, "magic", hdr->magic, true);
+  fprintf (out, "%*s\"db_creation\": %lld,\n", indent + 2, "", (long long) hdr->db_creation);
+  fprintf (out, "%*s\"vol_creation\": %lld,\n", indent + 2, "", (long long) hdr->vol_creation);
+  logwr_dump_json_string_field (out, indent + 2, "db_release", hdr->db_release, true);
+  fprintf (out, "%*s\"db_compatibility\": %f,\n", indent + 2, "", hdr->db_compatibility);
+  fprintf (out, "%*s\"db_iopagesize\": %d,\n", indent + 2, "", hdr->db_iopagesize);
+  fprintf (out, "%*s\"db_logpagesize\": %d,\n", indent + 2, "", hdr->db_logpagesize);
+  fprintf (out, "%*s\"is_shutdown\": %s,\n", indent + 2, "", hdr->is_shutdown ? "true" : "false");
+  fprintf (out, "%*s\"next_trid\": %d,\n", indent + 2, "", hdr->next_trid);
+  fprintf (out, "%*s\"mvcc_next_id\": %llu,\n", indent + 2, "", (unsigned long long) hdr->mvcc_next_id);
+  fprintf (out, "%*s\"avg_ntrans\": %d,\n", indent + 2, "", hdr->avg_ntrans);
+  fprintf (out, "%*s\"avg_nlocks\": %d,\n", indent + 2, "", hdr->avg_nlocks);
+  fprintf (out, "%*s\"npages\": %d,\n", indent + 2, "", hdr->npages);
+  fprintf (out, "%*s\"db_charset\": %d,\n", indent + 2, "", hdr->db_charset);
+  fprintf (out, "%*s\"was_copied\": %s,\n", indent + 2, "", hdr->was_copied ? "true" : "false");
+  fprintf (out, "%*s\"fpageid\": %lld,\n", indent + 2, "", (long long) hdr->fpageid);
+
+  fprintf (out, "%*s\"append_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &hdr->append_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"chkpt_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &hdr->chkpt_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"nxarv_pageid\": %lld,\n", indent + 2, "", (long long) hdr->nxarv_pageid);
+  fprintf (out, "%*s\"nxarv_phy_pageid\": %lld,\n", indent + 2, "", (long long) hdr->nxarv_phy_pageid);
+  fprintf (out, "%*s\"nxarv_num\": %d,\n", indent + 2, "", hdr->nxarv_num);
+  fprintf (out, "%*s\"last_arv_num_for_syscrashes\": %d,\n", indent + 2, "", hdr->last_arv_num_for_syscrashes);
+  fprintf (out, "%*s\"last_deleted_arv_num\": %d,\n", indent + 2, "", hdr->last_deleted_arv_num);
+
+  fprintf (out, "%*s\"bkup_level0_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &hdr->bkup_level0_lsa, indent + 4);
+  fprintf (out, ",\n");
+
+  fprintf (out, "%*s\"bkup_level1_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &hdr->bkup_level1_lsa, indent + 4);
+  fprintf (out, ",\n");
+
+  fprintf (out, "%*s\"bkup_level2_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &hdr->bkup_level2_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"bkinfo\": [\n", indent + 2, "");
+  for (int i = 0; i < FILEIO_BACKUP_UNDEFINED_LEVEL; i++)
+    {
+      fprintf (out,
+	       "%*s{ \"bkup_attime\": %lld, \"io_baseln_time\": %lld, \"io_bkuptime\": %lld, "
+	       "\"ndirty_pages_post_bkup\": %d, \"io_numpages\": %d }%s\n",
+	       indent + 4, "",
+	       (long long) hdr->bkinfo[i].bkup_attime,
+	       (long long) hdr->bkinfo[i].io_baseln_time,
+	       (long long) hdr->bkinfo[i].io_bkuptime,
+	       hdr->bkinfo[i].ndirty_pages_post_bkup,
+	       hdr->bkinfo[i].io_numpages, (i + 1 < FILEIO_BACKUP_UNDEFINED_LEVEL) ? "," : "");
+    }
+  fprintf (out, "%*s],\n\n", indent + 2, "");
+
+  logwr_dump_json_string_field (out, indent + 2, "prefix_name", hdr->prefix_name, true);
+  fprintf (out, "%*s\"has_logging_been_skipped\": %s,\n", indent + 2, "",
+	   hdr->has_logging_been_skipped ? "true" : "false");
+  fprintf (out, "%*s\"vacuum_last_blockid\": %lld,\n", indent + 2, "", (long long) hdr->vacuum_last_blockid);
+  fprintf (out, "%*s\"perm_status_obsolete\": %d,\n", indent + 2, "", hdr->perm_status_obsolete);
+  logwr_dump_json_string_field (out, indent + 2, "ha_server_state", ha_server_state, true);
+  logwr_dump_json_string_field (out, indent + 2, "ha_file_status", ha_file_status, true);
+
+  fprintf (out, "%*s\"eof_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &hdr->eof_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"smallest_lsa_at_last_chkpt\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &hdr->smallest_lsa_at_last_chkpt, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"mvcc_op_log_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &hdr->mvcc_op_log_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"oldest_visible_mvccid\": %llu,\n", indent + 2, "",
+	   (unsigned long long) hdr->oldest_visible_mvccid);
+  fprintf (out, "%*s\"newest_block_mvccid\": %llu,\n", indent + 2, "", (unsigned long long) hdr->newest_block_mvccid);
+  fprintf (out, "%*s\"ha_promotion_time\": %lld,\n", indent + 2, "", (long long) hdr->ha_promotion_time);
+  fprintf (out, "%*s\"db_restore_time\": %lld,\n", indent + 2, "", (long long) hdr->db_restore_time);
+  fprintf (out, "%*s\"mark_will_del\": %s,\n", indent + 2, "", hdr->mark_will_del ? "true" : "false");
+  fprintf (out, "%*s\"does_block_need_vacuum\": %s,\n", indent + 2, "", hdr->does_block_need_vacuum ? "true" : "false");
+  fprintf (out, "%*s\"was_active_log_reset\": %s\n", indent + 2, "", hdr->was_active_log_reset ? "true" : "false");
+  fprintf (out, "%*s}", indent, "");
+}
+
+void
+logwr_dump_log_arv_header (FILE * out, const LOG_ARV_HEADER * arv_hdr, int indent)
+{
+  if (arv_hdr == NULL)
+    {
+      fprintf (out, "%*s\"log_arv_header\": null", indent, "");
+      return;
+    }
+
+  fprintf (out, "%*s\"log_arv_header\": {\n", indent, "");
+  fprintf (out, "%*s\"db_creation\": %lld,\n", indent + 2, "", (long long) arv_hdr->db_creation);
+  fprintf (out, "%*s\"vol_creation\": %lld,\n", indent + 2, "", (long long) arv_hdr->vol_creation);
+  fprintf (out, "%*s\"next_trid\": %d,\n", indent + 2, "", arv_hdr->next_trid);
+  fprintf (out, "%*s\"npages\": %d,\n", indent + 2, "", arv_hdr->npages);
+  fprintf (out, "%*s\"fpageid\": %lld,\n", indent + 2, "", (long long) arv_hdr->fpageid);
+  fprintf (out, "%*s\"arv_num\": %d\n", indent + 2, "", arv_hdr->arv_num);
+  fprintf (out, "%*s}", indent, "");
+}
+
+void
+logwr_dump_log_page_hdr (FILE * out, const LOG_HDRPAGE * p, int indent)
+{
+  if (p == NULL)
+    {
+      fprintf (out, "%*s\"log_page_hdr\": null", indent, "");
+      return;
+    }
+
+  fprintf (out, "%*s\"log_page_hdr\": {\n", indent, "");
+  fprintf (out, "%*s\"logical_pageid\": %lld,\n", indent + 2, "", (long long) p->logical_pageid);
+  fprintf (out, "%*s\"offset\": %d,\n", indent + 2, "", p->offset);
+  fprintf (out, "%*s\"flags\": %d,\n", indent + 2, "", p->flags);
+  fprintf (out, "%*s\"checksum\": %d\n", indent + 2, "", p->checksum);
+  fprintf (out, "%*s}", indent, "");
+}
+
+static void
+logwr_dump_logwr_action_item (FILE * out, const char *action_string, bool * need_separator)
+{
+  if (*need_separator)
+    {
+      fprintf (out, ", ");
+    }
+  logwr_dump_json_string_value (out, action_string);
+  *need_separator = true;
+}
+
+static void
+logwr_dump_logwr_action (FILE * out, LOGWR_ACTION action)
+{
+  LOGWR_ACTION known_actions =
+    (LOGWR_ACTION) (LOGWR_ACTION_DELAYED_WRITE | LOGWR_ACTION_ASYNC_WRITE | LOGWR_ACTION_HDR_WRITE
+		    | LOGWR_ACTION_ARCHIVING);
+  bool need_separator = false;
+
+  fprintf (out, "[");
+  if (action == LOGWR_ACTION_NONE)
+    {
+      logwr_dump_logwr_action_item (out, "LOGWR_ACTION_NONE", &need_separator);
+    }
+  else
+    {
+      if (action & LOGWR_ACTION_DELAYED_WRITE)
+	{
+	  logwr_dump_logwr_action_item (out, "LOGWR_ACTION_DELAYED_WRITE", &need_separator);
+	}
+      if (action & LOGWR_ACTION_ASYNC_WRITE)
+	{
+	  logwr_dump_logwr_action_item (out, "LOGWR_ACTION_ASYNC_WRITE", &need_separator);
+	}
+      if (action & LOGWR_ACTION_HDR_WRITE)
+	{
+	  logwr_dump_logwr_action_item (out, "LOGWR_ACTION_HDR_WRITE", &need_separator);
+	}
+      if (action & LOGWR_ACTION_ARCHIVING)
+	{
+	  logwr_dump_logwr_action_item (out, "LOGWR_ACTION_ARCHIVING", &need_separator);
+	}
+      if (action & ~known_actions)
+	{
+	  char unknown_action[64];
+
+	  snprintf (unknown_action, sizeof (unknown_action), "UNKNOWN_BITS(0x%x)",
+		    (unsigned int) (action & ~known_actions));
+	  logwr_dump_logwr_action_item (out, unknown_action, &need_separator);
+	}
+    }
+  fprintf (out, "]");
+}
+
+void
+logwr_dump_logwr_gl_topfields (FILE * out, int indent)
+{
+  const char *mode;
+  long long copy_gap_pages;
+  long long archive_gap_pages;
+  long long last_arv_page_count;
+  time_t now = time (NULL);
+
+  switch (logwr_Gl.mode)
+    {
+    case LOGWR_MODE_ASYNC:
+      mode = "LOGWR_MODE_ASYNC";
+      break;
+    case LOGWR_MODE_SEMISYNC:
+      mode = "LOGWR_MODE_SEMISYNC";
+      break;
+    case LOGWR_MODE_SYNC:
+      mode = "LOGWR_MODE_SYNC";
+      break;
+    default:
+      mode = "LOGWR_MODE_UNKNOWN";
+      break;
+    }
+
+  copy_gap_pages =
+    (logwr_Gl.hdr.eof_lsa.pageid != NULL_PAGEID && logwr_Gl.last_recv_pageid != NULL_PAGEID)
+    ? (long long) (logwr_Gl.hdr.eof_lsa.pageid - logwr_Gl.last_recv_pageid) : -1;
+  archive_gap_pages =
+    (logwr_Gl.hdr.nxarv_pageid != NULL_PAGEID && logwr_Gl.last_arv_fpageid != NULL_PAGEID)
+    ? (long long) (logwr_Gl.hdr.nxarv_pageid - logwr_Gl.last_arv_fpageid) : -1;
+  last_arv_page_count =
+    (logwr_Gl.last_arv_fpageid != NULL_PAGEID && logwr_Gl.last_arv_lpageid >= logwr_Gl.last_arv_fpageid)
+    ? (long long) (logwr_Gl.last_arv_lpageid - logwr_Gl.last_arv_fpageid + 1) : 0;
+
+  fprintf (out, "%*s\"support_summary\": {\n", indent, "");
+  fprintf (out, "%*s\"dump_time\": %ld,\n", indent + 2, "", (long) now);
+  fprintf (out, "%*s\"copy_gap_pages\": %lld,\n", indent + 2, "", copy_gap_pages);
+  fprintf (out, "%*s\"pending_flush_pages\": %d,\n", indent + 2, "", logwr_Gl.num_toflush);
+  fprintf (out, "%*s\"archive_gap_pages\": %lld,\n", indent + 2, "", archive_gap_pages);
+  fprintf (out, "%*s\"action\": ", indent + 2, "");
+  logwr_dump_logwr_action (out, logwr_Gl.action);
+  fprintf (out, "\n");
+  fprintf (out, "%*s},\n\n", indent, "");
+
+  logwr_dump_json_string_field (out, indent, "db_name", logwr_Gl.db_name, true);
+  logwr_dump_json_string_field (out, indent, "hostname", logwr_Gl.hostname, true);
+  logwr_dump_json_string_field (out, indent, "log_path", logwr_Gl.log_path, true);
+  logwr_dump_json_string_field (out, indent, "loginf_path", logwr_Gl.loginf_path, true);
+  logwr_dump_json_string_field (out, indent, "active_name", logwr_Gl.active_name, true);
+  fprintf (out, "%*s\"append_vdes\": %d,\n", indent, "", logwr_Gl.append_vdes);
+  fprintf (out, "%*s\"logpg_area\": ", indent, "");
+  logwr_dump_json_pointer_value (out, logwr_Gl.logpg_area);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"logpg_area_size\": %d,\n", indent, "", logwr_Gl.logpg_area_size);
+  fprintf (out, "%*s\"logpg_fill_size\": %d,\n", indent, "", logwr_Gl.logpg_fill_size);
+  fprintf (out, "%*s\"max_toflush\": %d,\n", indent, "", logwr_Gl.max_toflush);
+  fprintf (out, "%*s\"num_toflush\": %d,\n", indent, "", logwr_Gl.num_toflush);
+  logwr_dump_json_string_field (out, indent, "mode", mode, true);
+  fprintf (out, "%*s\"action\": ", indent, "");
+  logwr_dump_logwr_action (out, logwr_Gl.action);
+  fprintf (out, ",\n");
+
+  fprintf (out, "%*s\"last_chkpt_pageid\": %lld,\n", indent, "", (long long) logwr_Gl.last_chkpt_pageid);
+  fprintf (out, "%*s\"last_recv_pageid\": %lld,\n", indent, "", (long long) logwr_Gl.last_recv_pageid);
+
+  fprintf (out, "%*s\"last_arv_page_range\": {\n", indent, "");
+  fprintf (out, "%*s\"from\": %lld,\n", indent + 2, "", (long long) logwr_Gl.last_arv_fpageid);
+  fprintf (out, "%*s\"to\": %lld,\n", indent + 2, "", (long long) logwr_Gl.last_arv_lpageid);
+  fprintf (out, "%*s\"count\": %lld,\n", indent + 2, "", last_arv_page_count);
+  fprintf (out, "%*s\"archive_num\": %d\n", indent + 2, "", logwr_Gl.last_arv_num);
+  fprintf (out, "%*s},\n\n", indent, "");
+
+  fprintf (out, "%*s\"force_flush\": %s,\n", indent, "", logwr_Gl.force_flush ? "true" : "false");
+
+  fprintf (out, "%*s\"last_flush_time\": {\n", indent, "");
+  fprintf (out, "%*s\"tv_sec\": %ld,\n", indent + 2, "", (long) logwr_Gl.last_flush_time.tv_sec);
+  fprintf (out, "%*s\"tv_usec\": %ld\n", indent + 2, "", (long) logwr_Gl.last_flush_time.tv_usec);
+  fprintf (out, "%*s},\n\n", indent, "");
+
+  fprintf (out, "%*s\"background_archiving_info\": {\n", indent, "");
+  fprintf (out, "%*s\"start_page_id\": %lld,\n", indent + 2, "", (long long) logwr_Gl.bg_archive_info.start_page_id);
+  fprintf (out, "%*s\"current_page_id\": %lld,\n", indent + 2, "",
+	   (long long) logwr_Gl.bg_archive_info.current_page_id);
+  fprintf (out, "%*s\"last_sync_pageid\": %lld,\n", indent + 2, "",
+	   (long long) logwr_Gl.bg_archive_info.last_sync_pageid);
+  fprintf (out, "%*s\"vdes\": %d\n", indent + 2, "", logwr_Gl.bg_archive_info.vdes);
+  fprintf (out, "%*s},\n\n", indent, "");
+
+  logwr_dump_json_string_field (out, indent, "bg_archive_name", logwr_Gl.bg_archive_name, true);
+  fprintf (out, "%*s\"ori_nxarv_pageid\": %lld,\n", indent, "", (long long) logwr_Gl.ori_nxarv_pageid);
+  fprintf (out, "%*s\"start_pageid\": %lld,\n", indent, "", (long long) logwr_Gl.start_pageid);
+  fprintf (out, "%*s\"reinit_copylog\": %s\n", indent, "", logwr_Gl.reinit_copylog ? "true" : "false");
+}
+#endif
