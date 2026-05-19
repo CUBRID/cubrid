@@ -5225,7 +5225,7 @@ SYSPRM_PARAM prm_Def[] = {
 #else
    {false, {.i = 1}},
    {false, {.i = 1}},
-   {false, {.i = 1}},
+   NULL_SYSPRM_PARAM_VALUE,
    {false, {.i = 1}},
 #endif
    (char *) NULL,
@@ -5245,7 +5245,7 @@ SYSPRM_PARAM prm_Def[] = {
 #else
    {false, {.i = 1}},
    {false, {.i = 1}},
-   {false, {.i = 1}},
+   NULL_SYSPRM_PARAM_VALUE,
    {false, {.i = 1}},
 #endif
    (char *) NULL,
