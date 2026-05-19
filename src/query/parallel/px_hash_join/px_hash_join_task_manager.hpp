@@ -158,8 +158,6 @@ namespace parallel_query
 	sector_page_iterator ();
 
 	PAGE_PTR get_next_page (cubthread::entry &thread_ref, QFILE_LIST_SECTOR_SCAN_INFO &sector_scan);
-	int assemble_overflow_tuple (cubthread::entry &thread_ref, PAGE_PTR start_page,
-				     QFILE_TUPLE_RECORD &tuple_record, QFILE_TUPLE_RECORD &overflow_record);
 
 	inline QMGR_TEMP_FILE *get_current_tfile () const
 	{

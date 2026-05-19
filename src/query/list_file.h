@@ -211,8 +211,10 @@ extern void qfile_print_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id);
 extern void qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE tpl);
 #endif
 extern QFILE_LIST_ID *qfile_duplicate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, int flag);
-extern int qfile_get_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page, QFILE_TUPLE tuplep,
-			    QFILE_TUPLE_RECORD * tplrec, QFILE_LIST_ID * list_idp);
+extern int qfile_get_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p, QFILE_TUPLE src_tuple,
+			    QFILE_TUPLE_RECORD * dest_tplrec, QFILE_LIST_ID * list_id_p);
+extern int qfile_assemble_overflow_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p,
+					  QFILE_TUPLE_RECORD * tplrec, struct qmgr_temp_file *tfile_vfid_p);
 extern void qfile_save_current_scan_tuple_position (QFILE_LIST_SCAN_ID * s_id, QFILE_TUPLE_POSITION * ls_tplpos);
 extern SCAN_CODE qfile_jump_scan_tuple_position (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * s_id,
 						 QFILE_TUPLE_POSITION * ls_tplpos, QFILE_TUPLE_RECORD * tplrec,
