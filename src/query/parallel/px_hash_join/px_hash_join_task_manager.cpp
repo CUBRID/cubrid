@@ -948,20 +948,20 @@ namespace parallel_query
 	  goto cleanup;		/* error_exit */
 	}
 
-      error = qfile_open_list_scan (m_context->outer.list_id, &m_context->outer.list_scan_id);
-      if (error != NO_ERROR)
-	{
-	  m_task_manager.handle_error (thread_ref);
-	  goto cleanup;		/* error_exit */
-	}
-
-      error = qfile_open_list_scan (m_context->inner.list_id, &m_context->inner.list_scan_id);
+      error = qfile_open_list_scan (m_context->build->list_id, &m_context->build->list_scan_id);
       if (error != NO_ERROR)
 	{
 	  m_task_manager.handle_error (thread_ref);
 	  goto cleanup;		/* error_exit */
 	}
       m_context->build->list_scan_id.is_read_only = true;
+
+      error = qfile_open_list_scan (m_context->probe->list_id, &m_context->probe->list_scan_id);
+      if (error != NO_ERROR)
+	{
+	  m_task_manager.handle_error (thread_ref);
+	  goto cleanup;		/* error_exit */
+	}
 
       error = hjoin_scan_init (&thread_ref, &m_context->hash_scan, m_manager->key_cnt, nullptr /* skip hash table */ );
       if (error != NO_ERROR)
@@ -1039,8 +1039,8 @@ namespace parallel_query
 cleanup:
       qfile_close_list (&thread_ref, m_context->list_id);
 
-      qfile_close_scan (&thread_ref, &m_context->outer.list_scan_id);
-      qfile_close_scan (&thread_ref, &m_context->inner.list_scan_id);
+      qfile_close_scan (&thread_ref, &m_context->build->list_scan_id);
+      qfile_close_scan (&thread_ref, &m_context->probe->list_scan_id);
 
       /* skip hash table — owned by single_context, must not be released here */
       switch (m_context->hash_scan.hash_list_scan_type)
