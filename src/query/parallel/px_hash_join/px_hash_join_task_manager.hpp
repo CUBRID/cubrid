@@ -143,22 +143,6 @@ namespace parallel_query
     };
 
     /*
-     * base_task
-     */
-
-    class base_task: public cubthread::entry_task
-    {
-      public:
-	base_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, int index);
-	void retire () override;
-
-      protected:
-	task_manager &m_task_manager;
-	HASHJOIN_MANAGER *m_manager;
-	const int m_index;
-    };
-
-    /*
      * sector_page_iterator
      *
      * Per-thread sector-based page iterator over a list_id's data pages.
@@ -192,6 +176,26 @@ namespace parallel_query
     };
 
     /*
+     * base_task
+     */
+
+    class base_task: public cubthread::entry_task
+    {
+      public:
+	base_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, int index);
+	void retire () override;
+
+      protected:
+	task_manager &m_task_manager;
+	HASHJOIN_MANAGER *m_manager;
+	const int m_index;
+
+	/* Worker-local sector/page iterator. join_task does not consume it, but keeping it
+	 * in the base avoids splitting the hierarchy just for this single member. */
+	sector_page_iterator m_page_iter;
+    };
+
+    /*
      * split_task
      */
 
@@ -205,8 +209,6 @@ namespace parallel_query
       private:
 	HASHJOIN_INPUT_SPLIT_INFO *m_split_info;
 	HASHJOIN_SHARED_SPLIT_INFO *m_shared_info;
-
-	sector_page_iterator m_page_iter;
     };
 
     /*
@@ -240,8 +242,6 @@ namespace parallel_query
       private:
 	HASHJOIN_CONTEXT *m_context;
 	HASHJOIN_SHARED_PROBE_INFO *m_shared_info;
-
-	sector_page_iterator m_page_iter;
 
 	void execute_inner (cubthread::entry &thread_ref);
 	void execute_outer (cubthread::entry &thread_ref);
