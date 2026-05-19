@@ -530,9 +530,12 @@ metadata_of_job_queues (void)
 {
   static const SHOWSTMT_COLUMN cols[] = {
     {"Jobq_index", "int"},
+    {"Num_total_slots", "int"},
+    {"Num_target_slots", "int"},
+    {"Num_busy_slots", "int"},
     {"Num_total_workers", "int"},
-    {"Num_busy_workers", "int"},
-    {"Num_connection_workers", "int"}
+    {"Num_target_workers", "int"},
+    {"Num_busy_workers", "int"}
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
