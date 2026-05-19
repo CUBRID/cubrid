@@ -166,6 +166,7 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #define COLUMN_CONSTRAINT_SHARED_DEFAULT_AI	(0x70)
 #define COLUMN_CONSTRAINT_COMMENT       (0x80)
 #define COLUMN_CONSTRAINT_ON_UPDATE     (0x100)
+#define COLUMN_CONSTRAINT_INVISIBLE	(0x200)
 
 #define STACK_SIZE	128
 
@@ -4737,6 +4738,10 @@ opt_invisible
 	: /* empty */
 		{{
  			$$ = false;
+		}}
+	| VISIBLE
+		{{
+			$$ = false;
 		}}
 	| INVISIBLE
 		{{
@@ -9889,13 +9894,29 @@ attr_def_one
 	  opt_attr_ordering_info
 		{{
 			PT_NODE *node = parser_get_attr_def_one ();
-			if (node != NULL && node->info.attr_def.attr_type != PT_SHARED)
-			  {
-			    node->info.attr_def.attr_type = parser_attr_type;
-			  }
 			if (node != NULL)
 			  {
+			    if (node->info.attr_def.attr_type != PT_SHARED)
+			      {
+			        node->info.attr_def.attr_type = parser_attr_type;
+			      }
 			    node->info.attr_def.ordering_info = $5;
+			    unsigned int mask = $4;
+			    if ((mask & COLUMN_CONSTRAINT_INVISIBLE))
+			      {
+			        if ((node->info.attr_def.attr_type == PT_SHARED
+				    || node->info.attr_def.attr_type == PT_META_ATTR))
+			          {
+			            PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			              MSGCAT_SEMANTIC_CLASS_ATT_OR_SHARED_CANT_SET_VISIBILITY,
+				      node->info.attr_def.attr_name->info.name.original);
+				    node->info.attr_def.attr_invisible = PT_ATTR_INVISIBLE_UNSET;
+			          }
+			      }
+			    else
+			      {
+			        node->info.attr_def.attr_invisible = PT_ATTR_INVISIBLE_UNSET;
+			      }
 			  }
 
 			$$ = node;
@@ -10028,6 +10049,10 @@ column_constraint_and_comment_def
 	| column_on_update_def
 		{{
 			$$ = COLUMN_CONSTRAINT_ON_UPDATE;
+		}}
+	| column_invisible_def
+		{{
+			$$ = COLUMN_CONSTRAINT_INVISIBLE;
 		}}
 	;
 
@@ -10471,6 +10496,19 @@ column_default_constraint_def
 
 			attr_node = parser_get_attr_def_one ();
 			attr_node->info.attr_def.data_default = node;
+		}}
+	;
+
+column_invisible_def
+	: VISIBLE
+		{{
+			PT_NODE* attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.attr_invisible = PT_ATTR_VISIBLE;
+		}}
+	| INVISIBLE
+		{{
+			PT_NODE* attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.attr_invisible = PT_ATTR_INVISIBLE;
 		}}
 	;
 
@@ -23541,6 +23579,7 @@ parser_remove_dummy_select (PT_NODE ** ent_inout)
               		    new_ent->info.spec.range_var = NULL;
               		    }
 
+                      new_ent->info.spec.flag = (PT_SPEC_FLAG) (new_ent->info.spec.flag | PT_SPEC_FLAG_DUMMY_REMOVED);
             	      new_ent->info.spec.range_var = ent->info.spec.range_var;
             	      ent->info.spec.range_var = NULL;
 

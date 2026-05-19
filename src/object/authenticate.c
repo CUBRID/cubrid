@@ -243,7 +243,7 @@ au_set_get_obj (DB_SET * set, int index, MOP * obj)
  *
  * Note: The db_root class used to have a user attribute which was a set
  *       containing the object-id for all users.  The users attribute has been
- *       eliminated for performance reasons.  A query on the db_user class is
+ *       eliminated for performance reasons.  A query on the _db_user class is
  *       new used to find all users.
  */
 void
@@ -369,7 +369,7 @@ au_dump_user (MOP user, FILE * fp)
  *
  * Note: The db_root class used to have a user attribute which was a set
  *       containing the object-id for all users.  The users attribute has been
- *       eliminated for performance reasons.  A query on the db_user class is
+ *       eliminated for performance reasons.  A query on the _db_user class is
  *       new used to find all users.
  */
 void
@@ -516,4 +516,49 @@ void
 au_disable_passwords (void)
 {
   AU_DISABLE_PASSWORDS ();
+}
+
+int
+au_set_new_timestamps (MOP obj)
+{
+  DB_VALUE current_datetime;
+  int save;
+  int error = NO_ERROR;
+
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
+    {
+      return er_errid ();
+    }
+
+  AU_SAVE_AND_DISABLE (save);
+  if (obj_set (obj, "created_time", &current_datetime) != NO_ERROR ||
+      obj_set (obj, "updated_time", &current_datetime) != NO_ERROR)
+    {
+      error = er_errid ();
+    }
+  AU_RESTORE (save);
+
+  return error;
+}
+
+int
+au_update_timestamps (MOP obj)
+{
+  DB_VALUE current_datetime;
+  int save;
+  int error = NO_ERROR;
+
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
+    {
+      return er_errid ();
+    }
+
+  AU_SAVE_AND_DISABLE (save);
+  if (obj_set (obj, "updated_time", &current_datetime) != NO_ERROR)
+    {
+      error = er_errid ();
+    }
+  AU_RESTORE (save);
+
+  return error;
 }
