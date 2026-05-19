@@ -970,8 +970,6 @@ authenticate_context::create_public_user (MOP root_cls, MOP user_cls, MOP auth_c
    * note that the password class cannot be read by anyone except the DBA
    */
   au_grant (DB_OBJECT_CLASS, public_user, root_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
-  au_grant (DB_OBJECT_CLASS, public_user, user_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
-  au_grant (DB_OBJECT_CLASS, public_user, auth_cls, AU_SELECT, false);
 
   return NO_ERROR;
 }
