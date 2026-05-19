@@ -25,6 +25,7 @@
 
 #include <vector>
 #include <string>
+#include <string_view>
 
 #include "porting.h"
 #include "string_utility.hpp"
