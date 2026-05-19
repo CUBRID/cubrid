@@ -13007,7 +13007,8 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
   if (is_oos)
     {
-      if (buf->ptr + OR_OOS_INLINE_SIZE > buf->endptr)
+      /* Check space at the value-area position, not buf->ptr (which is in the offset table). */
+      if (*ptr_varvals + OR_OOS_INLINE_SIZE > buf->endptr)
 	{
 	  return S_DOESNT_FIT;
 	}
