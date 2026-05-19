@@ -537,6 +537,13 @@ namespace cubthread
     return -static_cast<float> (m_available_slots.size ()) + m_wait_queue.size () * 2.0f;
   }
 
+  void concurrency_slot_pool::get_runtime_stats (UINT64 &total_slots, UINT64 &target_slots, INT64 &busy_slots) const
+  {
+    total_slots += m_slot_count;
+    target_slots += m_target_count;
+    busy_slots += static_cast<INT64> (m_slot_count) - static_cast<INT64> (m_available_slots.size ());
+  }
+
   void
   concurrency_slot_pool::check_surplus_slots ()
   {

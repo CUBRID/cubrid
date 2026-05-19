@@ -2659,6 +2659,35 @@ css_get_thread_stats (UINT64 *stats_out)
   css_Server_request_worker_pool->get_stats (stats_out);
 }
 
+/*
+ * css_get_thread_runtime_stats () - get runtime statistics for server request handlers
+ *
+ * total_slots (out)     : total slots count
+ * target_slots (out)    : target slots count
+ * busy_slots (out)      : busy slots count
+ * total_workers (out)   : total worker count
+ * target_workers (out)  : target worker count
+ * busy_workers (out)    : busy worker count
+ */
+void
+css_get_thread_runtime_stats (UINT64 *total_slots, UINT64 *target_slots, UINT64 *busy_slots,
+			      UINT64 *total_workers, UINT64 *target_workers, UINT64 *busy_workers)
+{
+  if (css_Server_request_worker_pool == NULL)
+    {
+      *total_slots = 0;
+      *target_slots = 0;
+      *busy_slots = 0;
+      *total_workers = 0;
+      *target_workers = 0;
+      *busy_workers = 0;
+      return;
+    }
+
+  css_Server_request_worker_pool->get_runtime_stats (*total_slots, *target_slots, *busy_slots,
+						     *total_workers, *target_workers, *busy_workers);
+}
+
 //
 // css_get_task_stats () - get task statistics for server request handlers
 //

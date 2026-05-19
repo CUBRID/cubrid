@@ -106,6 +106,8 @@ extern int css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPL
 extern void css_push_external_task (CSS_CONN_ENTRY * conn, cubthread::entry_task * task);
 extern void css_push_server_task (CSS_CONN_ENTRY & conn_ref);
 extern void css_get_thread_stats (UINT64 * stats_out);
+extern void css_get_thread_runtime_stats (UINT64 * total_slots, UINT64 * target_slots, UINT64 * busy_slots,
+					  UINT64 * total_workers, UINT64 * target_workers, UINT64 * busy_workers);
 extern void css_get_task_stats (UINT64 * stats_out);
 extern size_t css_get_num_request_workers (void);
 extern bool css_are_all_request_handlers_suspended (void);
