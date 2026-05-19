@@ -504,6 +504,7 @@ struct css_conn_entry
   // working task count manipulation
   void add_working_task ();
   size_t end_working_task ();
+  bool has_working_task () const;
   void init_working_task ();
 
   void release_packet (void *buffer);
