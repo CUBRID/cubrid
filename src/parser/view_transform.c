@@ -4765,7 +4765,6 @@ mq_dblink_corr_outer_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
   UINTPTR sid;
 
   (void) parser;
-  (void) continue_walk;
   if (node->node_type == PT_NAME && !PT_IS_OID_NAME (node))
     {
       sid = node->info.name.spec_id;
@@ -4785,6 +4784,10 @@ mq_dblink_corr_outer_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
 	      ctx->found = true;
 	    }
 	}
+    }
+  if (ctx->found)
+    {
+      *continue_walk = PT_STOP_WALK;
     }
   return node;
 }
@@ -4853,7 +4856,7 @@ mq_detect_dblink_corr_eq (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE *
 	{
 	  continue;
 	}
-      if (term->node_type == PT_VALUE && term->info.value.location > 0)
+      else if (term->node_type == PT_VALUE && term->info.value.location > 0)
 	{
 	  continue;
 	}
@@ -4882,9 +4885,8 @@ mq_detect_dblink_corr_eq (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE *
 	    {
 	      c1 = mq_dblink_corr_classify_side (term->info.expr.arg1, dblink_sid, subquery_from);
 	      c2 = mq_dblink_corr_classify_side (term->info.expr.arg2, dblink_sid, subquery_from);
-	      is_corr_eq = (c1 != MQ_DBLINK_CORR_SIDE_ERR && c2 != MQ_DBLINK_CORR_SIDE_ERR
-			    && ((c1 == MQ_DBLINK_CORR_SIDE_REMOTE && c2 == MQ_DBLINK_CORR_SIDE_OUTER)
-				|| (c1 == MQ_DBLINK_CORR_SIDE_OUTER && c2 == MQ_DBLINK_CORR_SIDE_REMOTE)));
+	      is_corr_eq = ((c1 == MQ_DBLINK_CORR_SIDE_REMOTE && c2 == MQ_DBLINK_CORR_SIDE_OUTER)
+			    || (c1 == MQ_DBLINK_CORR_SIDE_OUTER && c2 == MQ_DBLINK_CORR_SIDE_REMOTE));
 	    }
 
 	  if (is_corr_eq)
@@ -4968,6 +4970,7 @@ mq_dblink_extract_col_name (PARSER_CONTEXT * parser, PT_NODE * remote_col)
     }
   else
     {
+      assert (false);
       return NULL;
     }
   if (original == NULL || original[0] == '\0')
@@ -5020,7 +5023,11 @@ mq_dblink_build_rewritten_base_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di
  *      → appends "AND col = ?" to the already-present WHERE clause.
  *  (2) mq_copypush_sargable_terms_helper [pure-corr path]: no non-corr terms pushed
  *      → builds "SELECT * FROM (...) cublink WHERE col = ?" from scratch.
- * di->rewritten != NULL → appends AND.  di->rewritten == NULL → builds base SQL + WHERE. */
+ * di->rewritten != NULL → appends AND.  di->rewritten == NULL → builds base SQL + WHERE.
+ *
+ * TODO: Column name is appended unquoted.  Quoting makes identifiers case-sensitive, but
+ *       unquoted identifiers are normalized differently by DB (Oracle: uppercase, CUBRID/PostgreSQL:
+ *       lowercase).  Remote DB type is unknown at XASL generation, so proper quoting is deferred. */
 static bool
 mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di)
 {
