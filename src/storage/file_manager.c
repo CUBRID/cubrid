@@ -8413,9 +8413,11 @@ exit:
       entry->file_count = 0;
     }
 
-  /* Release the IS_LOCK acquired at function entry. spacedb is read-only
-   * metadata inspection — holding the lock until transaction end would
-   * unnecessarily delay concurrent SCH_M_LOCK requests (ALTER/DROP/RENAME). */
+  /* Decrement the IS_LOCK reference count acquired at function entry.
+   * force=true bypasses the isolation-level filter that would otherwise
+   * silently skip IS_LOCK release; internally release_flag=false keeps
+   * any prior holder's lock intact via reference counting (count > 0
+   * preserves the entry per lock_manager.c:3983-3996). */
   lock_unlock_object (thread_p, class_oid, oid_Root_class_oid, IS_LOCK, true);
 
   return error_code;
