@@ -21179,6 +21179,19 @@ heap_insert_physical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   assert (context->res_oid.pageid != NULL_PAGEID);
   assert (context->res_oid.slotid != NULL_SLOTID);
 
+#if !defined (NDEBUG)
+  /* test-only fault inject: heap_test_drive_insert_with_injected_fail flips the
+   * single-shot flag before calling heap_insert_logical; consume it here so the
+   * caller can verify we reached the physical insert path. */
+  if (heap_Test_force_insert_physical_fail)
+    {
+      heap_Test_force_insert_physical_fail = false;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      OID_SET_NULL (&context->res_oid);
+      return ER_FAILED;
+    }
+#endif /* !NDEBUG */
+
 #if defined(CUBRID_DEBUG)
   /* function should have received map record if input record was multipage */
   if (heap_is_big_length (context->recdes_p->length))
