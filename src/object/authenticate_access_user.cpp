@@ -127,7 +127,7 @@ au_find_user (const char *user_name)
    * if the query processing resources are all used up at the moment.
    * This is primarily of importance during logging in.
    */
-  user_class = db_find_class ("db_user");
+  user_class = db_find_class (CT_USER_NAME);
   if (user_class)
     {
       db_make_string (&user_name_string, upper_case_name);
@@ -325,6 +325,8 @@ au_get_user_name (MOP obj)
       }
   }
 
+  int save;
+  AU_DISABLE (save);
   int error = obj_get (obj, "name", &value);
   if (error == NO_ERROR)
     {
@@ -335,6 +337,7 @@ au_get_user_name (MOP obj)
     }
 
   db_value_clear (&value);
+  AU_ENABLE (save);
 
   return name;
 }
@@ -441,7 +444,7 @@ au_make_user (const char *name)
 		  db_make_null (&value);
 		  obj_set (user, "comment", &value);
 
-		  au_set_user_timestamps (user);
+		  au_set_new_timestamps (user);
 		}
 	    }
 	  else
@@ -474,6 +477,7 @@ au_is_dba_group_member (MOP user)
   DB_VALUE value;
   bool is_member = false;
   LC_FETCH_VERSION_TYPE read_fetch_instance_version;
+  int save;
 
   if (!user)
     {
@@ -485,6 +489,7 @@ au_is_dba_group_member (MOP user)
       return true;
     }
 
+  AU_DISABLE (save);
   /* Set fetch version type to read dirty version. */
   read_fetch_instance_version = TM_TRAN_READ_FETCH_VERSION ();
   db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
@@ -498,6 +503,7 @@ au_is_dba_group_member (MOP user)
 
   /* Restore fetch version type. */
   db_set_read_fetch_instance_version (read_fetch_instance_version);
+  AU_ENABLE (save);
 
   return is_member;
 }
@@ -508,6 +514,7 @@ au_is_user_group_member (MOP group_user, MOP user)
   DB_SET *groups;
   DB_VALUE group_user_val;
   int error = NO_ERROR;
+  int save;
 
   db_make_null (&group_user_val);
 
@@ -522,12 +529,14 @@ au_is_user_group_member (MOP group_user, MOP user)
     }
 
   db_make_object (&group_user_val, group_user);
+  AU_DISABLE (save);
 
   if (au_get_set (user, "groups", &groups) == NO_ERROR)
     {
       if (set_ismember (groups, &group_user_val))
 	{
 	  set_free (groups);
+	  AU_ENABLE (save);
 	  return true;
 	}
     }
@@ -541,6 +550,7 @@ au_is_user_group_member (MOP group_user, MOP user)
       set_free (groups);
     }
 
+  AU_ENABLE (save);
   return false;
 }
 
@@ -718,50 +728,6 @@ au_set_user_comment (MOP user, const char *comment)
   return error;
 }
 
-int
-au_set_user_timestamps (MOP user)
-{
-  DB_VALUE current_datetime;
-  int save;
-  int error = NO_ERROR;
-
-  if (db_sys_datetime (&current_datetime) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  AU_SAVE_AND_DISABLE (save);
-  if (obj_set (user, "created_time", &current_datetime) != NO_ERROR ||
-      obj_set (user, "updated_time", &current_datetime) != NO_ERROR)
-    {
-      error = ER_FAILED;
-    }
-  AU_RESTORE (save);
-
-  return error;
-}
-
-int
-au_update_user_timestamp (MOP user)
-{
-  DB_VALUE current_datetime;
-  int save;
-  int error = NO_ERROR;
-
-  if (db_sys_datetime (&current_datetime) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  AU_SAVE_AND_DISABLE (save);
-  if (obj_set (user, "updated_time", &current_datetime) != NO_ERROR)
-    {
-      error = ER_FAILED;
-    }
-  AU_RESTORE (save);
-
-  return error;
-}
 
 /*
  * GROUP HIERARCHY MAINTENANCE
@@ -830,7 +796,7 @@ au_compute_groups (MOP member, const char *name)
   DB_VALUE val[3];
   STATEMENT_ID stmt_id;
   DB_QUERY_RESULT *result = (DB_QUERY_RESULT *) 0;
-  const char *qstr = "select [d] from [db_user] [d] where ? in [d].[groups] or [d].[name] = ?;";
+  const char *qstr = "select [d] from [_db_user] [d] where ? in [d].[groups] or [d].[name] = ?;";
 
   db_make_object (&val[0], member);
   db_make_string (&val[1], name);
@@ -934,7 +900,7 @@ ret:
  *    new_user(in): whether the call is for a new user
  *
  * Note:
- *    the db_user class used to have a groups and a members attribute.  the
+ *    the _db_user class used to have a groups and a members attribute.  the
  *    members attribute was eliminated as a performance improvement, but the
  *    direct_groups attribute has been added.  both groups and direct_groups
  *    are sets.  the direct_groups attribute indicates which groups the user/
@@ -1041,7 +1007,7 @@ au_add_member_internal (MOP group, MOP member, int new_user)
 
   if (error == NO_ERROR)
     {
-      error = au_update_user_timestamp (member);
+      error = au_update_timestamps (member);
     }
 
   AU_ENABLE (save);
@@ -1069,7 +1035,7 @@ au_add_member (MOP group, MOP member)
  *
  * Note:
  *
- *    The db_user class used to have a groups and a members attribute.  The
+ *    The _db_user class used to have a groups and a members attribute.  The
  *    members attribute was eliminated as a performance improvement, but the
  *    direct_groups attribute has been added.  Both groups and direct_groups
  *    are sets.  The direct_groups attribute indicates which groups the user/
@@ -1145,7 +1111,7 @@ au_drop_member (MOP group, MOP member)
 
   if (error == NO_ERROR)
     {
-      error = au_update_user_timestamp (member);
+      error = au_update_timestamps (member);
     }
 
   AU_ENABLE (save);
@@ -1177,7 +1143,7 @@ static const char *AU_OBJECT_CLASS_NAME[] =
  * Note:
  *
  *    This should only be called with DBA privilidges.
- *    The db_user class used to have a groups and a members attribute.  The
+ *    The _db_user class used to have a groups and a members attribute.  The
  *    members attribute was eliminated as a performance improvement, but the
  *    direct_groups attribute has been added.  Both groups and direct_groups
  *    are sets.  The direct_groups attribute indicates which groups the user/
@@ -1294,7 +1260,7 @@ au_drop_user (MOP user)
   db_make_object (&val[1], user);
 
   session =
-	  db_open_buffer ("update [db_user] [d] set "
+	  db_open_buffer ("update [_db_user] [d] set "
 			  "[d].[direct_groups] = [d].[direct_groups] - ? where ? in [d].[direct_groups];");
   if (session == NULL)
     {
@@ -1337,7 +1303,7 @@ au_drop_user (MOP user)
       goto error;
     }
 
-  session = db_open_buffer ("select [d] from [db_user] [d] where ? in [d].[groups];");
+  session = db_open_buffer ("select [d] from [_db_user] [d] where ? in [d].[groups];");
   if (session == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -1396,7 +1362,7 @@ au_drop_user (MOP user)
 		    {
 		      db_make_set (&value, new_groups);
 		      obj_set (auser, "groups", &value);
-		      error = au_update_user_timestamp (auser);
+		      error = au_update_timestamps (auser);
 		    }
 
 		  if (new_groups)

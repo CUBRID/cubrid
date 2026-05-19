@@ -350,7 +350,7 @@ authenticate_context::install (void)
     }
 
   /*
-   * db_user
+   * _db_user
    */
 
   def = smt_edit_class_mop (user_cls, AU_ALTER);
@@ -361,11 +361,11 @@ authenticate_context::install (void)
   /* If the attribute configuration is changed, the CATCLS_USER_ATTR_IDX_NAME also be changed.
    *   - CATCLS_USER_ATTR_IDX_NAME is defined in the cubload::server_class_installer::locate_class () function.
    */
-  smt_add_attribute (def, "name", "string", (DB_DOMAIN *) 0);
+  smt_add_attribute (def, "name", "varchar(32)", (DB_DOMAIN *) 0); /* DB_MAX_USER_LENGTH */
   smt_add_attribute (def, "id", "integer", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "password", AU_PASSWORD_CLASS_NAME, (DB_DOMAIN *) 0);
-  smt_add_attribute (def, "direct_groups", "set of (db_user)", (DB_DOMAIN *) 0);
-  smt_add_attribute (def, "groups", "set of (db_user)", (DB_DOMAIN *) 0);
+  smt_add_attribute (def, "direct_groups", "set of (_db_user)", (DB_DOMAIN *) 0);
+  smt_add_attribute (def, "groups", "set of (_db_user)", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "authorization", AU_AUTH_CLASS_NAME, (DB_DOMAIN *) 0);
   smt_add_attribute (def, "triggers", "sequence of object", (DB_DOMAIN *) 0);
   smt_add_attribute (def, AU_USER_ATTR_IS_LOGINABLE, "integer", NULL);
@@ -403,7 +403,7 @@ authenticate_context::install (void)
   }
 
   /*
-   * db_password
+   * _db_password
    */
 
   def = smt_edit_class_mop (pass_cls, AU_ALTER);
@@ -412,6 +412,10 @@ authenticate_context::install (void)
       goto exit_on_error;
     }
   smt_add_attribute (def, "password", "string", (DB_DOMAIN *) 0);
+  smt_add_attribute (def, "created_time", "datetime", NULL);
+  smt_add_attribute (def, "updated_time", "datetime", NULL);
+  /* not yet implemented */
+  smt_add_attribute (def, "expire_time", "datetime", NULL);
 
   if (sm_update_class (def, NULL) != NO_ERROR || locator_create_heap_if_needed (pass_cls, false) == NULL)
     {
@@ -419,7 +423,7 @@ authenticate_context::install (void)
     }
 
   /*
-   * db_authorization
+   * _db_authorization
    */
 
   /*
@@ -1084,8 +1088,6 @@ au_add_method_check_authorization (void)
   smt_assign_argument_domain (def, "check_authorization", true, NULL, 1, "varchar(255)", (DB_DOMAIN *) 0);
   smt_assign_argument_domain (def, "check_authorization", true, NULL, 2, "integer", (DB_DOMAIN *) 0);
   sm_update_class (def, NULL);
-
-  au_grant (DB_OBJECT_CLASS, Au_public_user, auth, AU_EXECUTE, false);
 
   AU_ENABLE (save);
   return NO_ERROR;
