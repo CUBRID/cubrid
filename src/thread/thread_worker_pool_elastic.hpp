@@ -80,6 +80,9 @@ namespace cubthread
       std::size_t get_max_concurrency (void) const;
       std::size_t get_max_worker (void) const;
 
+      void get_runtime_stats (UINT64 &total_slots, UINT64 &target_slots, UINT64 &busy_slots,
+			      UINT64 &total_workers, UINT64 &target_workers, UINT64 &busy_workers) const;
+
     private:
       worker_pool_elastic (std::size_t pool_size, std::size_t core_count, std::size_t max_concurrency, std::size_t max_worker,
 			   const char *name, entry_manager &entry_mgr, bool pool_threads = false,
@@ -131,6 +134,8 @@ namespace cubthread
 
       // stats
       void get_stats (cubperf::stat_value *stats_out) const override;
+      void get_runtime_stats (UINT64 &total_slots, UINT64 &target_slots, INT64 &busy_slots,
+			      UINT64 &total_workers, UINT64 &target_workers, UINT64 &busy_workers) const;
 
     private:
       using snapshot_guard = typename worker_pool_impl<Stats>::core_impl::snapshot_guard;
@@ -272,6 +277,36 @@ namespace cubthread
     std::lock_guard<std::mutex> lock (m_variant_mutex);
 
     return m_max_worker;
+  }
+
+  template <stats_t Stats>
+  void
+  worker_pool_elastic<Stats>::get_runtime_stats (UINT64 &total_slots, UINT64 &target_slots, UINT64 &busy_slots,
+      UINT64 &total_workers, UINT64 &target_workers, UINT64 &busy_workers) const
+  {
+    INT64 signed_busy_slots = 0;
+
+    total_slots = 0;
+    target_slots = 0;
+    total_workers = 0;
+    target_workers = 0;
+    busy_workers = 0;
+
+    for (auto &it : this->m_cores)
+      {
+	assert (dynamic_cast<core_elastic *> (it.get ()));
+
+	static_cast<core_elastic *> (it.get ())->get_runtime_stats (
+		total_slots,
+		target_slots,
+		signed_busy_slots,
+		total_workers,
+		target_workers,
+		busy_workers
+	);
+      }
+
+    busy_slots = signed_busy_slots >= 0 ? signed_busy_slots : 0;
   }
 
   template <stats_t Stats>
@@ -513,6 +548,20 @@ namespace cubthread
       {
 	it->get_stats (stats_out);
       }
+  }
+
+  template <stats_t Stats>
+  void
+  worker_pool_elastic<Stats>::core_elastic::get_runtime_stats (UINT64 &total_slots, UINT64 &target_slots,
+      INT64 &busy_slots, UINT64 &total_workers, UINT64 &target_workers, UINT64 &busy_workers) const
+  {
+    std::unique_lock<std::mutex> ulock (this->m_core_mutex);
+
+    m_slots.get_runtime_stats (total_slots, target_slots, busy_slots);
+    total_workers += this->m_workers.size ();
+    target_workers += m_max_worker;
+    assert (this->m_workers.size () >= this->m_available_workers.size ());
+    busy_workers += this->m_workers.size () - this->m_available_workers.size ();
   }
 
   template <stats_t Stats>
