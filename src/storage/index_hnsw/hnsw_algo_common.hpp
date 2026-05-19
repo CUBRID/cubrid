@@ -23,14 +23,17 @@
 #ifndef _HNSW_ALGO_COMMON_HPP_
 #define _HNSW_ALGO_COMMON_HPP_
 
+#include <array>
 #include <random>
+#include <ankerl/unordered_dense.h>
 
 #include "hnsw_api.hpp"
 #include "hnsw_algo_common_graph_structure_profile.hpp"
 #include "hnsw_algo_common_stats.hpp"
-#include "hnsw_graph_base.hpp"
 #include "hnsw_utils.hpp"
+#include "thread_entry.hpp"
 #include "vector_distance.hpp"
+#include "environment_variable.h"
 
 namespace cubhnsw
 {
@@ -48,7 +51,6 @@ namespace cubhnsw
   constexpr level_t MAX_LEVELS = 16;
 
   static_assert (MAX_LEVELS == HNSW_MAX_LEVEL_COUNT, "profile level count must match MAX_LEVELS");
-
   struct candidate_t
   {
     distance_t distance;
@@ -70,41 +72,33 @@ namespace cubhnsw
     }
   };
 
-
-  struct oid_hash
+  inline uint64_t encode_oid_key (const OID &o) noexcept
   {
-    std::size_t operator() (const OID &o) const noexcept
-    {
-      std::size_t h = 0;
-      auto mix = [&h] (auto v)
-      {
-	std::size_t x = std::hash<std::decay_t<decltype (v)>> {} (v);
-	h ^= x + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
-      };
-
-      mix (o.volid);
-      mix (o.pageid);
-      mix (o.slotid);
-      return h;
-    }
-  };
-
-  struct oid_equal
-  {
-    bool operator() (const OID &a, const OID &b) const noexcept
-    {
-      return a.pageid == b.pageid
-	     && a.slotid == b.slotid
-	     && a.volid == b.volid;
-    }
-  };
+    return (uint64_t (uint32_t (o.pageid)) << 32)
+	   | (uint64_t (uint16_t (o.slotid)) << 16)
+	   | uint64_t (uint16_t (o.volid));
+  }
 
   struct visit_set_helper
   {
-    using type = std::unordered_set<OID, oid_hash, oid_equal>;
+    using type = ankerl::unordered_dense::set<uint64_t>;
   };
 
   using visited_set_t = visit_set_helper::type;
+
+  struct vector_cache_helper
+  {
+    using type = ankerl::unordered_dense::map<uint64_t, std::vector<float>>;
+  };
+
+  using vector_cache_t = vector_cache_helper::type;
+
+  using neighbors_cache_per_level_t =
+	  ankerl::unordered_dense::map<uint64_t, std::vector<slot_id_t>>;
+
+  // One map per level; level is the array index, so the in-map key is just the
+  // encoded slot (uint64_t). Avoids a composite key struct/hash on the hot path.
+  using neighbors_cache_t = std::array<neighbors_cache_per_level_t, MAX_LEVELS>;
 
   using candidates_view_t = std::vector<candidate_t>;
 
@@ -141,6 +135,42 @@ namespace cubhnsw
 
     // stats
     bool m_is_perf_tracking {false};
+    bool m_is_debugging {false};
+    FILE *m_debug_fp {nullptr};
+    std::vector<std::string> m_accessed_nodes; // for debug
+
+    void open_debug_file (std::size_t level_start_debug_cnt, std::size_t debug_cnt, int level)
+    {
+      char path[PATH_MAX];
+      if (!m_is_debugging)
+	{
+	  return;
+	}
+
+      constexpr std::size_t GROUP_SIZE = 10000;
+      std::size_t group_start =
+	      level_start_debug_cnt +
+	      ((debug_cnt - level_start_debug_cnt) / GROUP_SIZE) * GROUP_SIZE;
+
+      std::string filename =
+	      "hnsw_debug_" +
+	      std::to_string (group_start) +
+	      "_L" + std::to_string (level) +
+	      ".log";
+
+      envvar_tmpdir_file (path, PATH_MAX, filename.c_str());
+
+      m_debug_fp = fopen (path, "a");
+    }
+
+    void close_debug_file()
+    {
+      if (m_debug_fp)
+	{
+	  fclose (m_debug_fp);
+	  m_debug_fp = nullptr;
+	}
+    }
     algo_stats_t m_stats;
 
     void clear_candidates ()

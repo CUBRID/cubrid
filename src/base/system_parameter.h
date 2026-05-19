@@ -527,8 +527,9 @@ enum param_id
   PRM_ID_HOSTVAR_PEEKING,
 
   PRM_ID_VECTOR_INDEX_EF_SEARCH,
+  PRM_ID_VECTOR_INDEX_DEBUG,
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_VECTOR_INDEX_EF_SEARCH
+  PRM_LAST_ID = PRM_ID_VECTOR_INDEX_DEBUG
 };
 typedef enum param_id PARAM_ID;
 

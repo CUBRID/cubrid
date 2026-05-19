@@ -4948,7 +4948,7 @@ tp_atovector (const DB_VALUE * src, DB_VALUE * result)
 
   DB_VECTOR_FLOAT vector_float;
   vector_float.dim = 0;
-  vector_float.float_array = (float *) db_private_alloc (nullptr, max_vector_size * sizeof (float));
+  vector_float.float_array = db_vector_allocate_float_array (max_vector_size);
 
   vimkim_log ("db_private_alloc: %p of size %zu\n", vector_float.float_array, max_vector_size * sizeof (float));
 
@@ -4961,7 +4961,7 @@ tp_atovector (const DB_VALUE * src, DB_VALUE * result)
   int error = db_string_to_vector (p, db_get_string_size (src), vector_float.float_array, &vector_float.dim);
   if (error != NO_ERROR)
     {
-      db_private_free (nullptr, vector_float.float_array);
+      db_vector_free_float_array (vector_float.float_array);
       vimkim_log ("db_string_to_vector failed: %d\n", error);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
@@ -4973,7 +4973,7 @@ tp_atovector (const DB_VALUE * src, DB_VALUE * result)
   if (vector_float.dim == 0)
     {
       vimkim_log ("TODO: dim should not be zero yet.\n");
-      db_private_free (nullptr, vector_float.float_array);
+      db_vector_free_float_array (vector_float.float_array);
       return ER_FAILED;
     }
 

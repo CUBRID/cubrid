@@ -1,0 +1,16 @@
+*_ef_search_results.csv
+*_ef_search_results.svg
+*_excluded_queries.txt
+*_query_ids.txt
+*_query_ids.cache_ready
+*_object.nan_sanitized
+*_object.load_sanitized
+perf_*/
+nytimes_256_angular_object.nan_sanitized
+nytimes_256_angular_object.load_sanitized
+flame_graph
+*_object
+*_schema
+*.hdf5
+perf_*/
+*.cache_ready

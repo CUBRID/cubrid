@@ -23,12 +23,19 @@
 #ifndef _DB_VECTOR_HPP_
 #define _DB_VECTOR_HPP_
 
+#include <cstddef>
 #include <string>
 #include "dbtype_def.h"
 
 #ident "$Id$"
 
 extern int db_string_to_vector (const char *p, int str_len, float *vector, int *count);
+
+constexpr std::size_t DB_VECTOR_ALIGNMENT = 64;
+
+float *db_vector_allocate_float_array (int dim);
+void db_vector_free_float_array (float *vf);
+bool db_vector_is_aligned (const float *vf);
 
 std::string db_vector_float_to_string (const DB_VECTOR_FLOAT &vf);
 

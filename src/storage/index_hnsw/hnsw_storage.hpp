@@ -242,8 +242,18 @@ namespace cubhnsw
       pinned_t get_root (algo_context_t &context, lock_mode mode);
       pinned_t get_node_by_slot_id (algo_context_t &context, const slot_id_t &slot_id,
 				    const lock_mode &mode);
-      pinned_t get_vector_by_slot_id (algo_context_t &context, const slot_id_t &slot_id,
-				      const lock_mode &mode);
+      const float *get_vector_by_slot_id (algo_context_t &context, const slot_id_t &slot_id,
+					  const lock_mode &mode);
+
+      // neighbors cache helpers (single-thread, in-memory)
+      const std::vector<slot_id_t> *get_neighbors_cached_ids (
+	      algo_context_t &context,
+	      const slot_id_t &slot_id,
+	      level_t level);
+      void set_neighbors_cached_ids (algo_context_t &context,
+				     const slot_id_t &slot_id,
+				     level_t level,
+				     std::vector<slot_id_t> neighbors);
 
       void promote_root (pinned_t &root);
 
@@ -302,5 +312,10 @@ namespace cubhnsw
 
       block_id_t m_last_node_vpid;
       bool m_is_empty = true;
+
+      vector_cache_t m_vector_cache;  // (slot_id_t, vector) cache
+
+      /* TODO: This is not thread-safe. Currently, we are assuming single-threaded access, but we need to make it thread-safe. */
+      neighbors_cache_t m_neighbors_cache;    // per-level: encoded slot -> neighbors
   };
 }

@@ -50,6 +50,8 @@ namespace cubhnsw
     std::size_t vector_access {};
     std::size_t vector_cache_hit {};
     std::size_t vector_cache_miss {};
+    std::size_t neighbors_cache_hits {};
+    std::size_t neighbors_page_fixes {};
 
     // ===========================
     // layer 0 stats
@@ -68,6 +70,8 @@ namespace cubhnsw
     std::size_t vector_access_l0 {};
     std::size_t vector_cache_hit_l0 {};
     std::size_t vector_cache_miss_l0 {};
+    std::size_t neighbors_cache_hits_l0 {};
+    std::size_t neighbors_page_fixes_l0 {};
 
     // ===========================
     // entry point
@@ -246,6 +250,11 @@ namespace cubhnsw
       add_stat_if_positive (PSTAT_HNSW_NUM_VECTOR_CACHE_MISS, vector_cache_miss);
       add_stat_if_positive (PSTAT_HNSW_NUM_VECTOR_CACHE_MISS_L0, vector_cache_miss_l0);
 
+      add_stat_if_positive (PSTAT_HNSW_NUM_NEIGHBORS_CACHE_HIT, neighbors_cache_hits);
+      add_stat_if_positive (PSTAT_HNSW_NUM_NEIGHBORS_PAGE_FIX, neighbors_page_fixes);
+      add_stat_if_positive (PSTAT_HNSW_NUM_NEIGHBORS_CACHE_HIT_L0, neighbors_cache_hits_l0);
+      add_stat_if_positive (PSTAT_HNSW_NUM_NEIGHBORS_PAGE_FIX_L0, neighbors_page_fixes_l0);
+
       add_stat_if_positive (PSTAT_HNSW_NUM_ENTRYPOINT_UPDATES, entrypoint_updates);
 
       add_stat_if_positive (PSTAT_HNSW_NUM_CANDIDATES_PUSH, candidates_push);
@@ -279,6 +288,26 @@ namespace cubhnsw
     inline void on_vector_access (bool is_perf_tracking, std::int16_t level)
     {
       add_stat (is_perf_tracking, level, vector_access, vector_access_l0, 1);
+    }
+
+    inline void on_vector_cache_hit (bool is_perf_tracking, std::int16_t level)
+    {
+      add_stat (is_perf_tracking, level, vector_cache_hit, vector_cache_hit_l0, 1);
+    }
+
+    inline void on_vector_cache_miss (bool is_perf_tracking, std::int16_t level)
+    {
+      add_stat (is_perf_tracking, level, vector_cache_miss, vector_cache_miss_l0, 1);
+    }
+
+    inline void on_neighbors_cache_hit (bool is_perf_tracking, std::int16_t level)
+    {
+      add_stat (is_perf_tracking, level, neighbors_cache_hits, neighbors_cache_hits_l0, 1);
+    }
+
+    inline void on_neighbors_page_fix (bool is_perf_tracking, std::int16_t level)
+    {
+      add_stat (is_perf_tracking, level, neighbors_page_fixes, neighbors_page_fixes_l0, 1);
     }
 
     inline void add_stat (bool is_perf_tracking, std::int16_t level,

@@ -32,6 +32,7 @@ set(WITH_HDF_URL "https://github.com/HDFGroup/hdf5/releases/download/hdf5_1.14.6
 set(WITH_ZLIB_URL "https://github.com/madler/zlib")                                                           # ZLIB
 set(WITH_HIGHFIVE_URL "https://github.com/highfive-devs/highfive")                                            # HighFive
 set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_bison/win_flex_bison-2.5.22.zip") # Windows
+set(WITH_ANKERL_URL "https://github.com/martinus/unordered_dense.git")                                 # ankerl
 
 # URL_HASH is a hash value used to verify the integrity of a file downloaded from a specified URL.
 # It is optional but highly recommended to set this value. If not set, the file will be downloaded
@@ -80,6 +81,7 @@ set(WITH_LIBTBB       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with TBB lib
 set(WITH_HDF          "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with HDF5 library (default: EXTERNAL)")
 set(WITH_ZLIB         "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with ZLIB library (default: EXTERNAL)")
 set(WITH_HIGHFIVE     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with HIGHFIVE library (default: EXTERNAL)")
+set(WITH_ANKERL       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with ankerl::unordered_dense (default: EXTERNAL)")
 
 message(STATUS "Build with flex and bison library: ${WITH_LIBFLEXBISON}")
 message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
@@ -93,6 +95,7 @@ message(STATUS "Build with TBB library: ${WITH_LIBTBB}")
 message(STATUS "Build with HDF5 library: ${WITH_HDF}")
 message(STATUS "Build with ZLIB library: ${WITH_ZLIB}")
 message(STATUS "Build with HighFive library: ${WITH_HIGHFIVE}")
+message(STATUS "Build with ankerl::unordered_dense library: ${WITH_ANKERL}")
 
 macro(ADD_BY_PRODUCTS_VARIABLE prefix_dependee)
   if (CMAKE_GENERATOR MATCHES "Ninja")
@@ -639,6 +642,21 @@ endif()
 
 # For SIMD optimizations
 find_package(AVX)
+
+# ankerl::unordered_dense (header-only)
+if(WITH_ANKERL STREQUAL "EXTERNAL")
+  FetchContent_Declare(
+    ankerl_unordered_dense
+    GIT_REPOSITORY ${WITH_ANKERL_URL}
+    GIT_TAG v4.8.1
+  )
+  FetchContent_MakeAvailable(ankerl_unordered_dense)
+
+  set(ANKERL_INCLUDES
+      ${ankerl_unordered_dense_SOURCE_DIR}/include)
+
+  list(APPEND EP_INCLUDES ${ANKERL_INCLUDES})
+endif()
 
 # [FIXME!] Expose variables for other CMakeLists
 set (EP_TARGETS ${EP_TARGETS} PARENT_SCOPE)
