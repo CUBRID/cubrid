@@ -44,6 +44,8 @@
 #define EVAL_WORKER(mq, rmutex) (VAL_TO_SCORE (25, 3.5, (mq)) + VAL_TO_SCORE (500, 1, (rmutex)))
 #define EVAL_CONTEXT(bytes, budget) (VAL_TO_SCORE (50, 1000, (bytes)) + VAL_TO_SCORE (10, 1, (budget)))
 
+//#define ENABLE_CONTROLLER
+
 #if 0
 #define er_log_conn(...) er_log_debug (__VA_ARGS__)
 #else
@@ -69,6 +71,7 @@ namespace cubconn::connection
     std::size_t i;
 
     /* external controller */
+#if defined (ENABLE_CONTROLLER)
     if (!m_controller.open ("/tmp/cub_server_" + std::to_string (getpid ()) + "_coordinator.sock",
 			    SOCK_NONBLOCK | SOCK_CLOEXEC))
       {
@@ -76,6 +79,10 @@ namespace cubconn::connection
 	assert_release (false);
       }
     m_ctrlfd = m_controller.get_fd ();
+#else
+    m_ctrlfd = -1;
+#endif
+
     /* notifier */
     m_eventfd = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
     m_timerfd = timerfd_create (CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
@@ -87,7 +94,11 @@ namespace cubconn::connection
 
     if (!this->eventfd_register (m_eventfd) ||
 	!this->eventfd_register (m_timerfd) ||
+#if defined (ENABLE_CONTROLLER)
 	!this->eventfd_register (m_ctrlfd))
+#else
+	0)
+#endif
       {
 	er_log_conn (__FILE__, __LINE__, "connection::coordinator: failed to register fd\n");
 	assert_release (false);
@@ -1300,10 +1311,12 @@ not_transferred:
 			return false;
 		      }
 		  }
+#if defined (ENABLE_CONTROLLER)
 		else if (events[i].data.fd == m_ctrlfd)
 		  {
 		    this->handle_controller ();
 		  }
+#endif
 	      }
 	  }
       }
