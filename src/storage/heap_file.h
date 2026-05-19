@@ -721,4 +721,13 @@ extern void heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const 
 
 /* lob */
 extern int heap_rv_lob_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+
+#if !defined (NDEBUG)
+extern bool heap_Test_force_insert_physical_fail;
+#endif
+
+#if defined (SERVER_MODE)
+extern int heap_test_drive_insert_with_injected_fail (THREAD_ENTRY * thread_p, VPID * out_home_vpid);
+#endif /* SERVER_MODE */
+
 #endif /* _HEAP_FILE_H_ */

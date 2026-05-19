@@ -496,4 +496,12 @@ extern void pgbuf_daemons_destroy ();
 
 extern int pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ptr);
 
+#if defined (SERVER_MODE)
+/* test-only bridges for unit_tests/page_buffer_atomic_latch/ */
+extern int pgbuf_test_get_fcnt (PAGE_PTR pgptr);
+extern int pgbuf_test_get_fcnt_by_vpid (THREAD_ENTRY * thread_p, const VPID * vpid_p);
+extern int pgbuf_test_request_flush_block (THREAD_ENTRY * thread_p, const VPID * vpid_p);
+extern void pgbuf_test_wake_flush_waiters_for_test (THREAD_ENTRY * thread_p, const VPID * vpid_p);
+#endif /* SERVER_MODE */
+
 #endif /* _PAGE_BUFFER_H_ */
