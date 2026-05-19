@@ -4652,9 +4652,9 @@ qfile_duplicate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, int fl
  */
 
 /*
- * qfile_get_tuple () - Copy a tuple from first_page_p into dest_tplrec. For an overflow
- *   tuple, delegates to qfile_assemble_overflow_tuple to reassemble the VPID chain.
- *   Reallocates dest_tplrec if its buffer is too small.
+ * qfile_get_tuple () - Copy a tuple from first_page_p into dest_tplrec. For an overflow tuple,
+ *                      delegates to qfile_assemble_overflow_tuple to reassemble the VPID chain.
+ *                      Reallocates dest_tplrec if its buffer is too small.
  *   returns              : NO_ERROR or ER_FAILED.
  *   thread_p (in)        : thread entry
  *   first_page_p (in)    : page that holds the tuple start
@@ -4687,9 +4687,10 @@ qfile_get_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p, QFILE_TUPLE src
 }
 
 /*
- * qfile_assemble_overflow_tuple () - Reassemble a tuple spread across overflow pages into
- *   tplrec. Reallocates tplrec if its buffer is too small, frees the
- *   continuation pages it walks via tfile_vfid_p (the first page is left to the caller).
+ * qfile_assemble_overflow_tuple () - Reassemble a tuple spread across overflow pages into tplrec.
+ *                                    Reallocates tplrec if its buffer is too small.
+ *                                    Frees the continuation pages it walks via tfile_vfid_p
+ *                                    (the first page is left to the caller).
  *   returns           : NO_ERROR or er_errid ().
  *   thread_p (in)     : thread entry
  *   first_page_p (in) : first overflow page (caller owns its lifetime)
