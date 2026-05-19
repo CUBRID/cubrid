@@ -928,7 +928,11 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   char *only_table[1];
-  char lower_table_name[SM_MAX_IDENTIFIER_LENGTH];
+  /* Worst-case sized to fit any UTF-8 case-folded form of a valid identifier.
+   * INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER bounds the max byte expansion of
+   * intl_identifier_lower(), so a 254-byte input (the maximum allowed by the
+   * SM_MAX_IDENTIFIER_LENGTH strlen check below) cannot overflow this buffer. */
+  char lower_table_name[INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER * SM_MAX_IDENTIFIER_LENGTH + 1];
   const char *database_name;
   char **table_array = NULL;
   const char *output_file = NULL;
@@ -981,13 +985,8 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   summarize = utility_get_option_bool_value (arg_map, SPACE_SUMMARIZE_S);
   purpose = utility_get_option_bool_value (arg_map, SPACE_PURPOSE_S);
   table_name = utility_get_option_string_value (arg_map, SPACE_TABLE_NAME_S, 0);
-  if (table_name != NULL
-      && (strlen (table_name) >= SM_MAX_IDENTIFIER_LENGTH
-	  || intl_identifier_lower_string_size (table_name) >= SM_MAX_IDENTIFIER_LENGTH))
+  if (table_name != NULL && strlen (table_name) >= SM_MAX_IDENTIFIER_LENGTH)
     {
-      /* Both raw and lowercase forms must fit lower_table_name[SM_MAX_IDENTIFIER_LENGTH].
-       * UTF-8 lowercasing can expand byte length (e.g. Turkish dotted-I), so the
-       * raw strlen check alone is insufficient. */
       PRINT_AND_LOG_ERR_MSG ("The table name is too long. "
 			     "It must be less than %d characters.\n", SM_MAX_IDENTIFIER_LENGTH);
       goto error_exit;
