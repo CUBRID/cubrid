@@ -4605,6 +4605,24 @@ mq_is_dblink_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term)
 #define MQ_DBLINK_CORR_SIDE_CONST    4	/* literal constant */
 
 /*
+ * mq_dblink_sid_in_from () - true if spec_id belongs to the given FROM spec list
+ */
+static bool
+mq_dblink_sid_in_from (UINTPTR sid, PT_NODE * from)
+{
+  PT_NODE *s;
+
+  for (s = from; s != NULL; s = s->next)
+    {
+      if (s->info.spec.id == sid)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
  * mq_dblink_corr_dot_to_leaf_name () - rightmost name in a path (a.b.c -> c)
  */
 static PT_NODE *
@@ -4622,11 +4640,13 @@ mq_dblink_corr_dot_to_leaf_name (PT_NODE * expr)
 /*
  * mq_dblink_corr_classify_side () - classify one side of a potential corr eq
  *   return: MQ_DBLINK_CORR_SIDE_*; ERR on host var
+ *   subquery_from: FROM list of the scalar subquery containing the DBLink
  */
 static int
-mq_dblink_corr_classify_side (PT_NODE * expr, UINTPTR dblink_sid)
+mq_dblink_corr_classify_side (PT_NODE * expr, UINTPTR dblink_sid, PT_NODE * subquery_from)
 {
   PT_NODE *leaf;
+  UINTPTR sid;
 
   if (expr == NULL)
     {
@@ -4646,11 +4666,17 @@ mq_dblink_corr_classify_side (PT_NODE * expr, UINTPTR dblink_sid)
 	{
 	  return MQ_DBLINK_CORR_SIDE_OTHER;
 	}
-      if (expr->info.name.correlation_level > 0)
+      sid = expr->info.name.spec_id;
+      if (expr->info.name.correlation_level > 0 || !mq_dblink_sid_in_from (sid, subquery_from))
 	{
+	  /* corr_level > 0: classic outer ref; spec_id not in subquery FROM: derived-table outer ref */
+	  if (sid == dblink_sid)
+	    {
+	      return MQ_DBLINK_CORR_SIDE_REMOTE;
+	    }
 	  return MQ_DBLINK_CORR_SIDE_OUTER;
 	}
-      if (expr->info.name.spec_id == dblink_sid)
+      if (sid == dblink_sid)
 	{
 	  return MQ_DBLINK_CORR_SIDE_REMOTE;
 	}
@@ -4661,11 +4687,16 @@ mq_dblink_corr_classify_side (PT_NODE * expr, UINTPTR dblink_sid)
       leaf = mq_dblink_corr_dot_to_leaf_name (expr);
       if (leaf && leaf->node_type == PT_NAME && !PT_IS_OID_NAME (leaf))
 	{
-	  if (leaf->info.name.correlation_level > 0)
+	  sid = leaf->info.name.spec_id;
+	  if (leaf->info.name.correlation_level > 0 || !mq_dblink_sid_in_from (sid, subquery_from))
 	    {
+	      if (sid == dblink_sid)
+		{
+		  return MQ_DBLINK_CORR_SIDE_REMOTE;
+		}
 	      return MQ_DBLINK_CORR_SIDE_OUTER;
 	    }
-	  if (leaf->info.name.spec_id == dblink_sid)
+	  if (sid == dblink_sid)
 	    {
 	      return MQ_DBLINK_CORR_SIDE_REMOTE;
 	    }
@@ -4715,42 +4746,62 @@ mq_dblink_corr_forbidden_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
   return node;
 }
 
+typedef struct
+{
+  bool found;
+  PT_NODE *subquery_from;
+} MQ_DBLINK_OUTER_REF_ARG;
+
 /*
- * mq_dblink_corr_outer_ref_pre () - mark if any correlated (outer) column ref
+ * mq_dblink_corr_outer_ref_pre () - mark if any outer column ref exists
+ *   Detects both classic (correlation_level > 0) and derived-table outer refs
+ *   (spec_id not in subquery_from).
  */
 static PT_NODE *
 mq_dblink_corr_outer_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  bool *found = (bool *) arg;
+  MQ_DBLINK_OUTER_REF_ARG *ctx = (MQ_DBLINK_OUTER_REF_ARG *) arg;
   PT_NODE *leaf;
+  UINTPTR sid;
 
   (void) parser;
   (void) continue_walk;
-  if (node->node_type == PT_NAME && !PT_IS_OID_NAME (node) && node->info.name.correlation_level > 0)
+  if (node->node_type == PT_NAME && !PT_IS_OID_NAME (node))
     {
-      *found = true;
+      sid = node->info.name.spec_id;
+      if (node->info.name.correlation_level > 0 || !mq_dblink_sid_in_from (sid, ctx->subquery_from))
+	{
+	  ctx->found = true;
+	}
     }
   else if (node->node_type == PT_DOT_)
     {
       leaf = mq_dblink_corr_dot_to_leaf_name (node);
-      if (leaf && leaf->node_type == PT_NAME && !PT_IS_OID_NAME (leaf) && leaf->info.name.correlation_level > 0)
+      if (leaf && leaf->node_type == PT_NAME && !PT_IS_OID_NAME (leaf))
 	{
-	  *found = true;
+	  sid = leaf->info.name.spec_id;
+	  if (leaf->info.name.correlation_level > 0 || !mq_dblink_sid_in_from (sid, ctx->subquery_from))
+	    {
+	      ctx->found = true;
+	    }
 	}
     }
   return node;
 }
 
 /*
- * mq_dblink_corr_term_has_outer_ref () - any name with correlation_level > 0
+ * mq_dblink_corr_term_has_outer_ref () - true if term references any outer column
+ *   (classic corr_level > 0 or derived-table outer ref with spec_id not in subquery_from)
  */
 static bool
-mq_dblink_corr_term_has_outer_ref (PARSER_CONTEXT * parser, PT_NODE * term)
+mq_dblink_corr_term_has_outer_ref (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * subquery_from)
 {
-  bool found = false;
+  MQ_DBLINK_OUTER_REF_ARG ctx;
 
-  parser_walk_tree (parser, term, mq_dblink_corr_outer_ref_pre, &found, NULL, NULL);
-  return found;
+  ctx.found = false;
+  ctx.subquery_from = subquery_from;
+  parser_walk_tree (parser, term, mq_dblink_corr_outer_ref_pre, &ctx, NULL, NULL);
+  return ctx.found;
 }
 
 /*
@@ -4792,6 +4843,8 @@ mq_detect_dblink_corr_eq (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE *
   dblink_sid = dblink_spec->info.spec.id;
   corr_eq_count = 0;
 
+  PT_NODE *subquery_from = subquery->info.query.q.select.from;
+
   for (term = where; term; term = term->next)
     {
       PT_NODE *save_next;
@@ -4827,8 +4880,8 @@ mq_detect_dblink_corr_eq (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE *
 	  if (term->node_type == PT_EXPR && term->info.expr.op == PT_EQ
 	      && term->info.expr.arg1 != NULL && term->info.expr.arg2 != NULL)
 	    {
-	      c1 = mq_dblink_corr_classify_side (term->info.expr.arg1, dblink_sid);
-	      c2 = mq_dblink_corr_classify_side (term->info.expr.arg2, dblink_sid);
+	      c1 = mq_dblink_corr_classify_side (term->info.expr.arg1, dblink_sid, subquery_from);
+	      c2 = mq_dblink_corr_classify_side (term->info.expr.arg2, dblink_sid, subquery_from);
 	      is_corr_eq = (c1 != MQ_DBLINK_CORR_SIDE_ERR && c2 != MQ_DBLINK_CORR_SIDE_ERR
 			    && ((c1 == MQ_DBLINK_CORR_SIDE_REMOTE && c2 == MQ_DBLINK_CORR_SIDE_OUTER)
 				|| (c1 == MQ_DBLINK_CORR_SIDE_OUTER && c2 == MQ_DBLINK_CORR_SIDE_REMOTE)));
@@ -4848,7 +4901,7 @@ mq_detect_dblink_corr_eq (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE *
 		  *outer_out = term->info.expr.arg1;
 		}
 	    }
-	  else if (mq_dblink_corr_term_has_outer_ref (parser, term))
+	  else if (mq_dblink_corr_term_has_outer_ref (parser, term, subquery_from))
 	    {
 	      term->next = save_next;
 	      return -1;
