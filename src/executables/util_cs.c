@@ -1270,6 +1270,18 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 	       boot_get_lob_path ());
     }
 
+  /* Client-side mirror of FILE_TYPE values needed by spacedb output.
+   * Server packs FILE_TYPE enum values (from file_manager.h, server-only)
+   * into the ftype field. The client only needs these three to render the
+   * table-type column and detect the busy sentinel. Must stay in sync with
+   * src/storage/file_manager.h's FILE_TYPE enum. */
+  enum
+  {
+    SPACEDB_FILE_HEAP = 1,	/* FILE_HEAP */
+    SPACEDB_FILE_BTREE = 4,	/* FILE_BTREE */
+    SPACEDB_FILE_UNKNOWN = 13	/* FILE_UNKNOWN_TYPE — busy-class sentinel */
+  };
+
   /* print table_size */
   if (table_array_length > 0)
     {
@@ -1281,11 +1293,10 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 		       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_VIEW_SKIPPED));
 	      continue;
 	    }
-	  /* Busy sentinel: file_count == 1 and header[0].ftype == 13
-	   * (FILE_UNKNOWN_TYPE) — server skipped this class because DDL was
-	   * holding SCH_M_LOCK. Follows the same magic-number pattern used
-	   * for FILE_HEAP (1) and FILE_BTREE (4) below. */
-	  if (table_sizes[table_num].file_count == 1 && table_sizes[table_num].header[0].ftype == 13)
+	  /* Busy sentinel: file_count == 1 and header[0].ftype ==
+	   * SPACEDB_FILE_UNKNOWN — server skipped this class because DDL
+	   * was holding SCH_M_LOCK. */
+	  if (table_sizes[table_num].file_count == 1 && table_sizes[table_num].header[0].ftype == SPACEDB_FILE_UNKNOWN)
 	    {
 	      fprintf (outfp,
 		       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_TABLE_BUSY),
@@ -1317,7 +1328,8 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 
 	      used_npage = ts->data_used_page + ts->ovf_used_page;
 	      alloc_npage = ts->data_alloced_page + ts->ovf_alloced_page;
-	      ftype_str = (ts->ftype == 1) ? "HEAP" : (ts->ftype == 4) ? "BTREE" : "UNKNOWN";
+	      ftype_str = (ts->ftype == SPACEDB_FILE_HEAP) ? "HEAP"
+		: (ts->ftype == SPACEDB_FILE_BTREE) ? "BTREE" : "UNKNOWN";
 	      snprintf (used_pct_str, sizeof (used_pct_str), "%.1f", calc_used_pct (used_npage, alloc_npage));
 
 	      fprintf (outfp,
