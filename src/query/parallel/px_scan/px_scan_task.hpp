@@ -63,7 +63,6 @@ namespace parallel_scan
       m_scan_id (nullptr),
       m_slot_iterator (),
       m_result_handler (result_handler),
-      m_result_type (result_type),
       m_input_handler (input_handler),
       m_interrupt (interrupt),
       m_err_messages (err_messages),
@@ -98,7 +97,6 @@ namespace parallel_scan
       SCAN_ID *m_scan_id;
       slot_iterator_t m_slot_iterator;
       result_handler<result_type> *m_result_handler;
-      RESULT_TYPE m_result_type;
       input_handler_t *m_input_handler;
       interrupt *m_interrupt;
       err_messages_with_lock *m_err_messages;
@@ -118,7 +116,6 @@ namespace parallel_scan
       int initialize (cubthread::entry &thread_ref);
       int finalize (cubthread::entry &thread_ref);
       int clone_xasl (cubthread::entry &thread_ref);
-      int handle_result (cubthread::entry &thread_ref);
       void loop (cubthread::entry &thread_ref);
       SCAN_CODE drain_slot_oids (cubthread::entry &thread_ref, bool &stop);
       /* INDEX-only: after leaf supply exhausted, help drain remaining shared overflow chains. No-op otherwise. */

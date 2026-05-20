@@ -38,8 +38,7 @@ namespace parallel_scan
     xasl_node *xptr = head;
     ACCESS_SPEC_TYPE *specp;
     scan_info scan_info;
-    int n_scan_ptrs;
-    for (n_scan_ptrs = 0; xptr; xptr = xptr->scan_ptr, n_scan_ptrs++)
+    for (; xptr; xptr = xptr->scan_ptr)
       {
 	specp = xptr->curr_spec? xptr->curr_spec : xptr->spec_list;
 	if (specp->curent != NULL)

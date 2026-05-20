@@ -138,14 +138,6 @@ namespace parallel_query
 	return ftab;
       }
 
-      void append_from_collector (FILE_FTAB_COLLECTOR *collector)
-      {
-	for (int i = 0; i < collector->nsects; i++)
-	  {
-	    m_ftab_set.push_back (collector->partsect_ftab[i]);
-	  }
-      }
-
       size_t size() const
       {
 	return m_ftab_set.size();

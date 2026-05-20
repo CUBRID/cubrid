@@ -79,10 +79,6 @@ namespace parallel_scan
   {
     flags |= flag;
   }
-  static void clear_flag (possible_flags &flags, possible_flags flag)
-  {
-    flags &= ~flag;
-  }
   static bool is_flag_set (possible_flags flags, possible_flags flag)
   {
     return (flags & flag) != 0;

@@ -46,7 +46,6 @@ namespace parallel_index_scan
     m_use_desc_index = (indx_info->use_desc_index != 0);
     m_key_val_ranges.clear ();
     m_part_key_desc = false;
-    m_col_is_desc.clear ();
 
     VPID root_vpid;
     root_vpid.volid = m_btid.vfid.volid;
@@ -75,8 +74,6 @@ namespace parallel_index_scan
     m_btid_int.sys_btid = &m_btid;
 
     pgbuf_unfix_and_init (thread_p, root_page);
-
-    populate_col_is_desc ();
 
     int conv_err = convert_all_key_ranges (thread_p, scan_id, vd);
     if (conv_err != NO_ERROR)
@@ -238,29 +235,6 @@ namespace parallel_index_scan
       }
 
     return NO_ERROR;
-  }
-
-  /* SM_CLASS_CONSTRAINT::asc_desc[] equivalent reachable server-side (no ws_mop/schema_manager). */
-  void
-  key_range_list::populate_col_is_desc ()
-  {
-    m_col_is_desc.clear ();
-    TP_DOMAIN *key_dom = m_btid_int.key_type;
-    if (key_dom == nullptr)
-      {
-	return;
-      }
-    if (TP_DOMAIN_TYPE (key_dom) == DB_TYPE_MIDXKEY)
-      {
-	for (TP_DOMAIN *col = key_dom->setdomain; col != nullptr; col = col->next)
-	  {
-	    m_col_is_desc.push_back (col->is_desc ? 1 : 0);
-	  }
-      }
-    else
-      {
-	m_col_is_desc.push_back (key_dom->is_desc ? 1 : 0);
-      }
   }
 
   void

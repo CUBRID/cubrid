@@ -42,8 +42,7 @@ namespace parallel_index_scan
 	: m_indx_info (nullptr),
 	  m_use_desc_index (false),
 	  m_key_val_ranges (),
-	  m_part_key_desc (false),
-	  m_col_is_desc ()
+	  m_part_key_desc (false)
       {
 	memset (&m_btid_int, 0, sizeof (m_btid_int));
 	memset (&m_btid, 0, sizeof (m_btid));
@@ -76,19 +75,9 @@ namespace parallel_index_scan
       {
 	return static_cast<int> (m_key_val_ranges.size ());
       }
-      bool is_part_key_desc () const
-      {
-	return m_part_key_desc;
-      }
-      /* unused by post_flip (btree_compare_key already collapses dom_is_desc[0] at btree.c:19522); kept for per-column inspectors. */
-      const std::vector<uint8_t> &get_col_is_desc () const
-      {
-	return m_col_is_desc;
-      }
 
     private:
       int convert_all_key_ranges (THREAD_ENTRY *thread_p, SCAN_ID *worker_scan_id, val_descr *vd);
-      void populate_col_is_desc ();
 
       BTID_INT m_btid_int;
       BTID m_btid;
@@ -97,8 +86,6 @@ namespace parallel_index_scan
       /* std::vector — alloc/dealloc thread-context-independent (any worker may finalize). */
       std::vector<key_val_range> m_key_val_ranges;
       bool m_part_key_desc;
-      /* per-column DESC flag (1 = DESC); populated once from m_btid_int.key_type. */
-      std::vector<uint8_t> m_col_is_desc;
   };
 }
 

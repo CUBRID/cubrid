@@ -65,25 +65,9 @@ namespace parallel_index_scan
 	m_owner = owner;
       }
 
-      slot_state state () const
-      {
-	return m_slot_state;
-      }
       bool is_idle () const
       {
 	return m_slot_state == slot_state::IDLE;
-      }
-      bool was_producer () const
-      {
-	return m_was_producer;
-      }
-      bool in_helper_mode () const
-      {
-	return m_in_helper_mode;
-      }
-      int chain_slot_idx () const
-      {
-	return m_chain_slot_idx;
       }
 
       /* Begin a leaf-OID drain by adopting the OID vector + pending overflow chain head from the producer-side leaf record. */

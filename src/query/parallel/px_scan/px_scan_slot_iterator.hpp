@@ -46,7 +46,6 @@ namespace parallel_scan
       bool m_is_peeking;
       OID m_cur_oid;
       OID m_class_oid;
-      OID m_next_oid;
       RECDES m_recdes;
       LOG_LSA m_ref_lsa;
       regu_variable_list_node *m_rest_regu_list;

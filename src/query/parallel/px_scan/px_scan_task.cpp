@@ -508,11 +508,9 @@ namespace parallel_scan
   template <RESULT_TYPE result_type, SCAN_TYPE ST>
   int task<result_type, ST>::clone_xasl (cubthread::entry &thread_ref)
   {
-    THREAD_ENTRY *main_thread_p = m_parent_thread_p;
+    THREAD_ENTRY *main_thread_p = thread_get_main_thread (m_parent_thread_p);
     int err_code = NO_ERROR;
     int i;
-
-    main_thread_p = thread_get_main_thread (m_parent_thread_p);
 
     if (m_uses_xasl_clone)
       {

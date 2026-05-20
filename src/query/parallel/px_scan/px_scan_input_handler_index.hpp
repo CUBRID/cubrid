@@ -86,14 +86,6 @@ namespace parallel_scan
       {
 	return m_ranges.get_num_key_ranges ();
       }
-      bool is_part_key_desc () const
-      {
-	return m_ranges.is_part_key_desc ();
-      }
-      const std::vector<uint8_t> &get_col_is_desc () const
-      {
-	return m_ranges.get_col_is_desc ();
-      }
 
       /* --- Shared overflow API (v2 / multi-chain): delegate to m_ovf. --- */
       int try_publish_overflow (THREAD_ENTRY *thread_p, VPID first_ovf_vpid,

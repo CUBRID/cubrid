@@ -1759,7 +1759,6 @@ namespace parallel_scan
 	      {
 		/* already initialized */
 		m_px_stats_initialized_by_me = false;
-		/* do nothing */
 	      }
 	    else
 	      {
