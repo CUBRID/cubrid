@@ -7095,11 +7095,6 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 	{
 	  if (index_entry->seg_idxs[j] == QO_SEG_IDX (seg))
 	    {
-	      /* if the segment created in respect to the function index info is covered, we do not use index covering */
-	      if (QO_SEG_FUNC_INDEX (seg))
-		{
-		  return false;
-		}
 	      found = true;
 	      break;
 	    }
