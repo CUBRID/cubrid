@@ -585,14 +585,18 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
   if (css_Server_request_worker_pool == NULL)
     {
-      assert (false);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       status = ER_FAILED;
       goto shutdown;
     }
 
   /* initialize epoll worker pool */
-  connections.initialize (MAX_CONNECTIONS, max_connection_workers, min_connection_workers);
+  if (!connections.initialize (MAX_CONNECTIONS, max_connection_workers, min_connection_workers))
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      status = ER_FAILED;
+      goto shutdown;
+    }
 
   /* attach thread entry */
   connector.attach (*thread_p);
