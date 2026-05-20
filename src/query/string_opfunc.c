@@ -6678,22 +6678,17 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
 	  return error_status;
 	}
 
-      /* db_char_string_coerce is the common path for any coercion that lands on
+      /* db_char_string_coerce is the common entry for any coercion that ends in
        * a character string — SQL CAST (string ↔ string, or non-string via an
        * intermediate ASCII string created by make_desired_string_db_value),
        * ALTER charset / collate, cross-codeset value comparison, and padding
-       * helpers (LTRIM / RTRIM / CONCAT 등).
+       * helpers (LTRIM / RTRIM / CONCAT, etc.).
        *
-       * The cached medium.length was set at insert / writeval time under the
-       * source's prior codeset. Reinterpretation steps (notably ALTER to binary,
-       * which keeps the byte payload intact but redefines char_count as
-       * 1 byte = 1 char) leave the cached value stale: it still reflects
-       * char_count under the previous codeset, not the current src_codeset.
-       *
-       * Invalidate it here so the subsequent db_get_string_length walks the
-       * byte sequence under src_codeset and yields the correct char_count. */
-      ((DB_VALUE *) src_string)->data.ch.medium.length = -1;
-      src_length = db_get_string_length (src_string);
+       * At this coercion boundary the cached char_count on src_string may
+       * reflect a prior codeset (e.g. after ALTER to binary), so recompute
+       * under src_codeset. */
+      intl_char_count ((unsigned char *) db_get_string (src_string), db_get_string_size (src_string), src_codeset,
+		       &src_length);
 
       /* Initialize the memory manager of the destination */
       if (DB_VALUE_PRECISION (dest_string) == TP_FLOATING_PRECISION_VALUE)
