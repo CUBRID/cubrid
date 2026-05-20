@@ -46,7 +46,7 @@ namespace parallel_query
      * parallel_probe
      */
 
-    int init_contexts (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context);
+    int init_context (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context);
     void clear_context (cubthread::entry &thread_ref, HASHJOIN_CONTEXT *context);
 
     int probe_prepare (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager);

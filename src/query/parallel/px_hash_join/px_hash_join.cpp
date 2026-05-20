@@ -266,7 +266,7 @@ error_exit:
      */
 
     int
-    init_contexts (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context)
+    init_context (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context)
     {
       HASHJOIN_CONTEXT *single_context;
       int error = NO_ERROR;
@@ -397,7 +397,7 @@ error_exit:
 
       for (context_index = 0; context_index < context_cnt; context_index++)
 	{
-	  error = init_contexts (thread_ref, manager, &contexts[context_index]);
+	  error = init_context (thread_ref, manager, &contexts[context_index]);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
