@@ -173,8 +173,7 @@ static int boot_check_timezone_checksum (BOOT_CLIENT_CREDENTIAL * client_credent
 static int boot_client_find_and_cache_class_oids (void);
 
 static int reset_isolation_and_wait_times (void);
-static int boot_restart_common_initialize (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang_charset,
-					   bool is_createdb);
+static int boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang_charset, bool is_createdb);
 static void boot_restart_failure_cleanup (DB_INFO * db,
 #if !defined(WINDOWS)
 					  bool dl_initialized,
@@ -248,7 +247,7 @@ install_system_metadata (void)
 
 
 static int
-boot_restart_common_initialize (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang_charset, bool is_createdb)
+boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang_charset, bool is_createdb)
 {
   int error_code;
   const char *conf_file = NULL;
@@ -314,7 +313,7 @@ boot_restart_common_initialize (BOOT_CLIENT_CREDENTIAL * client_credential, cons
     }
 
 #if defined (CS_MODE)
-  if (is_createdb == false)
+  if (!is_createdb)
     {
       if (BOOT_BROKER_CLIENT_TYPE (client_credential->client_type))
 	{
@@ -643,7 +642,8 @@ boot_restart_failure_cleanup (DB_INFO * db,
 
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
-      er_log_debug (ARG_FILE_LINE, "boot_initialize_client: unregister client { tran %d }\n", tm_Tran_index);
+      er_log_debug (ARG_FILE_LINE, "%s: unregister client { tran %d }\n",
+		    (is_createdb ? "boot_initialize_client" : "boot_restart_client"), tm_Tran_index);
       boot_shutdown_client (false);
     }
   else
@@ -970,7 +970,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   assert (client_credential != NULL);
   assert (db_path_info != NULL);
 
-  error_code = boot_restart_common_initialize (client_credential, lang_charset, true);
+  error_code = boot_client_common (client_credential, lang_charset, true);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -1131,7 +1131,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
   assert (client_credential != NULL);
 
-  error_code = boot_restart_common_initialize (client_credential, NULL, false);
+  error_code = boot_client_common (client_credential, NULL, false);
   if (error_code != NO_ERROR)
     {
       goto error;
