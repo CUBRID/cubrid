@@ -386,6 +386,16 @@ struct heap_get_context
    * file. Set to false when the caller will decode per-attribute via heap_attrinfo_read_dbvalues
    * (which calls oos_read() itself), so the record-level expansion would be wasted work. */
   bool expand_oos;
+
+  /* True when the caller pre-positioned recdes_p->data into a buffer it owns (e.g. xlocator_fetch_all
+   * writes successive records into a copyarea slot) and therefore expects heap_get to write the record
+   * into THAT buffer. In this case, heap_record_replace_oos_oids must NOT reallocate recdes_p->data
+   * via scan_cache when the OOS expansion overflows -- it must return S_DOESNT_FIT so the caller's
+   * retry-with-bigger-buffer loop kicks in. Detected at heap_init_get_context time: recdes->data
+   * non-NULL on entry => externally positioned. Set to false when recdes->data was NULL on entry,
+   * in which case scan_cache is the owner and growing it is safe (used by heap_get_last_version's
+   * UPDATE path, which cannot itself retry). */
+  bool data_externally_positioned;
 };
 
 typedef struct sampling_info SAMPLING_INFO;

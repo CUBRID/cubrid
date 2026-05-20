@@ -8155,12 +8155,20 @@ heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
 
   const int new_length = src_header_size + dst_vot_bytes + fixed_bitmap_bytes + new_values_bytes;
 
-  /* Make sure rec->data points to owned storage big enough for the expansion. If we were PEEK'ing
-   * into a page, we MUST switch to COPY here — we cannot write into the page buffer. In COPY mode
-   * the caller owns rec->data and may have positioned it inside a copyarea slot; reallocating
-   * rec->data would silently redirect future writes away from that slot and leave the slot with
-   * stale pre-expansion bytes. Return S_DOESNT_FIT instead so the caller can retry with a bigger
-   * buffer (e.g. xlocator_fetch_all's grow-and-retry loop). */
+  /* Make sure rec->data points to owned storage big enough for the expansion. Two distinct callers:
+   *
+   *   (1) Externally-positioned buffer (xlocator_fetch_all: rec->data points into a copyarea slot,
+   *       caller advances the pointer between rows). Reallocating to scan_cache memory silently
+   *       redirects writes away from that slot, leaving the copyarea with stale pre-expansion bytes;
+   *       a later LC_RECDES_TO_GET_ONEOBJ reads those stale bytes and walks off the OOS-OID into the
+   *       next row. The caller has its own grow-and-retry loop, so we return S_DOESNT_FIT.
+   *
+   *   (2) Owned recdes (heap_get_last_version / UPDATE path: rec->data was NULL on entry; spage_get_record
+   *       wrote into a scan_cache-backed buffer). The caller does NOT retry on S_DOESNT_FIT, so we must
+   *       grow the scan_cache buffer here. rec->data pointer is updated and the caller picks it up
+   *       transparently because copy_recdes is read AFTER the call.
+   *
+   * The two are distinguished by HEAP_GET_CONTEXT::data_externally_positioned, captured at init time. */
   if (context->ispeeking == PEEK)
     {
       if (context->scan_cache == NULL)
@@ -8175,7 +8183,14 @@ heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
     }
   else if (rec->area_size < new_length)
     {
-      return S_DOESNT_FIT;
+      if (context->data_externally_positioned || context->scan_cache == NULL)
+	{
+	  return S_DOESNT_FIT;
+	}
+      if (heap_scan_cache_allocate_recdes_data (thread_p, context->scan_cache, rec, new_length) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
     }
 
   char *dst = rec->data;
@@ -26991,6 +27006,8 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
   context->ispeeking = ispeeking;
   context->old_chn = old_chn;
   context->expand_oos = true;
+  /* Record whether the caller pre-positioned recdes->data. See HEAP_GET_CONTEXT::data_externally_positioned. */
+  context->data_externally_positioned = (recdes != NULL && recdes->data != NULL);
   if (scan_cache != NULL && scan_cache->page_latch == X_LOCK)
     {
       context->latch_mode = PGBUF_LATCH_WRITE;
