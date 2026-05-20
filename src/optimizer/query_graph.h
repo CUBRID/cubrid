@@ -38,17 +38,6 @@
 #include "optimizer.h"
 #include "parser.h"
 
-/* Default selectivity values used when statistics are unavailable */
-#define DEFAULT_NULL_SELECTIVITY      (double) 0.01
-#define DEFAULT_EXISTS_SELECTIVITY    (double) 0.1
-#define DEFAULT_SELECTIVITY           (double) 0.1
-#define DEFAULT_EQUAL_SELECTIVITY     (double) 0.001
-#define DEFAULT_EQUIJOIN_SELECTIVITY  (double) 0.001
-#define DEFAULT_COMP_SELECTIVITY      (double) 0.1
-#define DEFAULT_BETWEEN_SELECTIVITY   (double) 0.01
-#define DEFAULT_IN_SELECTIVITY        (double) 0.01
-#define DEFAULT_RANGE_SELECTIVITY     (double) 0.1
-
 typedef struct qo_class_info_entry QO_CLASS_INFO_ENTRY;
 
 struct qo_class_info_entry
