@@ -7697,7 +7697,7 @@ try_again:
 	  /* A deleted class record, corresponding to a deleted class can be accessed through catalog update operations
 	   * on another class. This is possible if a class has an attribute holding a domain that references the
 	   * dropped class. Another situation is the client request for authentication, which fetches the object (an
-	   * instance of db_user) using dirty version. If it has been removed, it will be found as a deleted record. */
+	   * instance of _db_user) using dirty version. If it has been removed, it will be found as a deleted record. */
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid_p->volid,
 		  context->oid_p->pageid, context->oid_p->slotid);
 	}
@@ -12171,9 +12171,6 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	{
 	  DB_ELO dest_elo, *elo_p;
 	  HFID hfid;
-	  INT32 hpgid;
-	  int32_t fileid;
-	  short volid;
 	  char *save_meta_data, *new_meta_data;
 	  char lob_path_prefix[PATH_MAX];
 	  int ret;

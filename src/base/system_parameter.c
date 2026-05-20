@@ -793,6 +793,10 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_MEMOIZE_MEMORY_LIMIT "memoize_memory_limit"
 
+#define PRM_NAME_LOG_POSTPONE_CACHE_SIZE "postpone_cache_size"
+
+#define PRM_NAME_ENABLE_HEAP_FIXED_SCAN "enable_heap_fixed_scan"
+
 // #endregion 
 
 /*
@@ -4561,7 +4565,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_JAVA_STORED_PROCEDURE,
    PRM_NAME_JAVA_STORED_PROCEDURE,
-   (PRM_FOR_SERVER | PRM_DEPRECATED | PRM_HIDDEN),
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_RELOADABLE | PRM_DEPRECATED | PRM_HIDDEN),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = true}},
@@ -4994,7 +4998,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_STORED_PROCEDURE,
    PRM_NAME_STORED_PROCEDURE,
-   (PRM_FOR_SERVER | PRM_FORCE_SERVER),
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_RELOADABLE),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = true}},
@@ -5313,7 +5317,30 @@ SYSPRM_PARAM prm_Def[] = {
    NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_LOG_POSTPONE_CACHE_SIZE,
+   PRM_NAME_LOG_POSTPONE_CACHE_SIZE,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 512}},
+   {false, {.i = 512}},
+   {false, {.i = 4096}},
+   {false, {.i = 4}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ENABLE_HEAP_FIXED_SCAN,
+   PRM_NAME_ENABLE_HEAP_FIXED_SCAN,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true}},
+   {false, {.b = true}},
+   NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 SYSPRM_INDIRECT_POS prm_Def_session_idx[DIM (prm_Def)];
@@ -5948,35 +5975,42 @@ sysprm_set_er_log_file (const char *db_name)
 static void
 sysprm_check_id_order ()
 {
-  static bool is_first = true;
-  if (is_first)
-    {
-      int i, k;
-      const int *ptr;
-      assert (GET_PRM (0)->id == PRM_FIRST_ID);
-      for (i = 1; i < MAX_SYSTEM_PARAMS; i++)
-	{
-	  assert (GET_PRM (i - 1)->id == ((GET_PRM (i)->id) - 1));
-	  assert (GET_PRM (i)->id == (PARAM_ID) i);
-	}
+  static bool is_initialized =[](){
+    int i, k;
+    const int *ptr;
+    assert (GET_PRM (0)->id == PRM_FIRST_ID);
+    for (i = 1; i < MAX_SYSTEM_PARAMS; i++)
+      {
+	assert (GET_PRM (i - 1)->id == ((GET_PRM (i)->id) - 1));
+	assert (GET_PRM (i)->id == (PARAM_ID) i);
+      }
 
-      for (i = 0; PARAM_VALUE_SHARE[i] != NULL; i++)
-	{
-	  ptr = PARAM_VALUE_SHARE[i];
-	  assert (ptr[0] >= 2);
-	  for (k = 1; k < ptr[0]; k++)
-	    {
-	      assert (ptr[k] < ptr[k + 1]);
-	    }
+    for (i = 0; PARAM_VALUE_SHARE[i] != NULL; i++)
+      {
+	ptr = PARAM_VALUE_SHARE[i];
+	assert (ptr[0] >= 2);
+	for (k = 1; k < ptr[0]; k++)
+	  {
+	    assert (ptr[k] < ptr[k + 1]);
+	  }
 
-	  if (i > 0)
-	    {
-	      assert (ptr[1] > PARAM_VALUE_SHARE[i - 1][1]);
-	    }
-	}
+	if (i > 0)
+	  {
+	    assert (ptr[1] > PARAM_VALUE_SHARE[i - 1][1]);
+	  }
+      }
 
-      is_first = false;
-    }
+    return true;
+  }
+  ();
+
+  assert (is_initialized == true);
+  /* Notice:
+   * This ensures the variable is not optimized away, even though it does not change the functional logic of the code
+   * Please do not delete the following two lines.
+   */
+  (void) is_initialized;	// Dummy Reference  
+  *(volatile bool *) &is_initialized;
 }
 #endif
 
@@ -6005,9 +6039,6 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
   SESSION_PARAM *sprm = NULL;
   int num_session_prms;
 #endif
-
-  /* TODO: conf_file is always NULL. Therefore, you need to decide whether to keep this argument. */
-  assert (conf_file == NULL);
 
 #ifndef NDEBUG
   sysprm_check_id_order ();

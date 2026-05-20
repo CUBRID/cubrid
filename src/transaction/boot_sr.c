@@ -102,6 +102,11 @@
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
+
+#ifdef CCI_XA
+#include "dblink_2pc_daemon.h"
+#endif /* CCI_XA */
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -552,9 +557,9 @@ xboot_add_volume_extension (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * ext_in
 {
   VOLID volid;
 
-  if (disk_add_volume_extension (thread_p, ext_info->purpose, ext_info->max_npages, ext_info->path, ext_info->name,
-				 ext_info->comments, ext_info->max_writesize_in_sec, ext_info->overwrite, &volid)
-      != NO_ERROR)
+  if (disk_add_volume_extension
+      (thread_p, ext_info->purpose, ext_info->voltype, ext_info->max_npages, ext_info->path, ext_info->name,
+       ext_info->comments, ext_info->max_writesize_in_sec, ext_info->overwrite, &volid) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return NULL_VOLID;
@@ -876,8 +881,8 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
 	}
 
       error_code =
-	disk_add_volume_extension (thread_p, ext_purpose, ext_npages, ext_path, ext_name, ext_comments, 0, false,
-				   &volid);
+	disk_add_volume_extension (thread_p, ext_purpose, DB_PERMANENT_VOLTYPE, ext_npages, ext_path, ext_name,
+				   ext_comments, 0, false, &volid);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -2408,6 +2413,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined(SERVER_MODE)
+#ifdef CCI_XA
+  dblink_2pc_daemon_init ();
+#endif
   pgbuf_daemons_init ();
   dwb_daemons_init ();
   parallel_query::worker_manager_global::get_manager ().init ();
@@ -3080,6 +3088,9 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
+#ifdef CCI_XA
+  dblink_2pc_daemon_stop ();
+#endif /* CCI_XA */
   pgbuf_daemons_destroy ();
   cdc_daemons_destroy ();
   pl_server_destroy ();

@@ -683,6 +683,10 @@ $set 17 MSGCAT_UTIL_SET_ADDVOLDB
 20 Wrong value %1$d for npages\n
 21 Wrong value '%1$s' for volume storage purpose.\n
 22 WARNING: --max-writesize-in-sec option is ignored in stand-alone mode execution.\n
+23 Wrong value '%1$s' for volume type.\n
+24 -t is not supported in SA mode.\n
+25 -t can only use with '-p TEMP'.\n
+26 -t cannot be used with -F or -n options.\n
 60 \
 addvoldb: Add a volume-file for the database.\n\
 usage: %1$s addvoldb [OPTION] database-name\n\
@@ -698,6 +702,9 @@ valid options:\n\
                                            INDEX - only for indices\n\
                                            TEMP - only for temporary\n\
                                            GENERIC - for all purposes\n\
+  -t, --voltype=VOLTYPE            VOLTYPE for adding volume type; allowed:\n\
+                                           PERM - permanent volume type\n\
+                                           TEMP - temporary volume type\n\
   -S, --SA-mode                    stand-alone mode execution\n\
   -C, --CS-mode                    client-server mode execution\n
 
@@ -1342,3 +1349,32 @@ usage: %1$s memmon [OPTION] database-name\n\
 valid option:\n\
     -o, --output-file=FILE    output results to FILE\n\
     --disable-force           disable memory monitor of server forcibly\n
+
+$set 60 MSGCAT_UTIL_SET_CLEANFILEDB
+10 Couldn't open output file '%1$s'\n
+11 \
+*** CUBRID cleanfiledb (Database: %1$s) ***\n\
+\n\
+  Summary of invalid files cleaned:\n\
+  ======================================================================\n\
+  Type                  Cleaned Count      Status\n\
+  ======================================================================\n\
+  Heap                  %2$d                  Success\n\
+  Heap Overflow         %3$d                  Success\n\
+  B-Tree                %4$d                  Success\n\
+  B-Tree Overflow       %5$d                  Success\n\
+  ----------------------------------------------------------------------\n\
+  Total                 %6$d\n\
+  ======================================================================\n\
+\n\
+  Cleanup execution finished successfully.\n
+60 \
+cleanfiledb: Delete invalid files and reclaim storage space.\n\
+usage: %1$s cleanfiledb [OPTION] database-name\n\
+\n\
+valid options:\n\
+    -S, --SA-mode                 stand-alone mode execution\n\
+    -C, --CS-mode                 client-server mode execution\n\
+    -o, --output-file=FILE        redirect output message to FILE; default: none.\n\
+    -l, --list                    list all files\n\
+    -c, --clean-invalid-file      clean invalid files\n

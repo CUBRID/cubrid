@@ -50,6 +50,10 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#if defined(CS_MODE)
+#error Belongs to not client module
+#endif
+
 #if !defined (SERVER_MODE)
 
 #define pthread_mutex_init(a, b)
@@ -3894,7 +3898,10 @@ qmgr_dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url, char *use
 	  && !strcmp (dblink->conn_info.password, password))
 	{
 	  /* 2pc participant is set only if DML query */
-	  dblink->is_2pc_participant = set_participant;
+	  if (set_participant)
+	    {
+	      dblink->is_2pc_participant = set_participant;
+	    }
 	  conn_handle = dblink->conn_info.conn_handle;
 	  break;
 	}

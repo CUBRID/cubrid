@@ -167,9 +167,6 @@ int ws_Error_ignore_count = 0;
 
 #define OBJLIST_AREA_COUNT 4096
 
-static WS_REPL_FLUSH_ERR *ws_Repl_error_link = NULL;
-
-static WS_REPL_LIST ws_Repl_objs;
 
 static MOP ws_make_mop (const OID * oid);
 static void ws_free_mop (MOP op);
@@ -2463,7 +2460,7 @@ ws_final (void)
        */
       ws_clear_internal (true);
     }
-  ws_clear_all_repl_errors_of_error_link ();
+  __gv_loc_repl.ws_clear_all_repl_errors_of_error_link ();
   ws_clear ();
 
   /* destroy the classname cache */
@@ -2545,6 +2542,13 @@ ws_clear_internal (bool clear_vmop_keys)
 void
 ws_clear (void)
 {
+#if defined(SA_MODE)
+  /* In SA_MODE, rollback calls ws_clear() instead of ws_abort_mops().
+   * ws_abort_mops() already calls au_reset_authorization_caches() in CS_MODE,
+   * so we must do it here explicitly for the SA_MODE path. 
+   */
+  au_reset_authorization_caches ();
+#endif
   ws_clear_internal (false);
 }
 
@@ -4959,38 +4963,6 @@ ws_set_ignore_error_list_for_mflush (int error_count, int *error_list)
 }
 
 /*
- * ws_set_error_into_error_link() -
- *    return: void
- *    mop(in):
- */
-void
-ws_set_repl_error_into_error_link (LC_COPYAREA_ONEOBJ * obj, char *content_ptr)
-{
-  WS_REPL_FLUSH_ERR *flush_err;
-  char *ptr;
-
-  flush_err = (WS_REPL_FLUSH_ERR *) malloc (sizeof (WS_REPL_FLUSH_ERR));
-  if (flush_err == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (WS_REPL_FLUSH_ERR));
-      return;
-    }
-
-  flush_err->class_oid = obj->class_oid;
-  flush_err->operation = obj->operation;
-
-  ptr = content_ptr;
-  ptr = or_unpack_mem_value (ptr, &flush_err->pkey_value);
-  ptr = or_unpack_int (ptr, &flush_err->error_code);
-  ptr = or_unpack_string_alloc (ptr, &flush_err->error_msg);
-
-  flush_err->error_link = ws_Repl_error_link;
-  ws_Repl_error_link = flush_err;
-
-  return;
-}
-
-/*
  * ws_get_mvcc_snapshot_version () - Get current snapshot version.
  *
  * return : Current snapshot version.
@@ -5094,67 +5066,6 @@ bool
 ws_is_trigger_involved ()
 {
   return cdc_Trigger_involved;
-}
-
-/*
- * ws_get_error_from_error_link() -
- *    return: void
- */
-WS_REPL_FLUSH_ERR *
-ws_get_repl_error_from_error_link (void)
-{
-  WS_REPL_FLUSH_ERR *flush_err;
-
-  flush_err = ws_Repl_error_link;
-  if (flush_err == NULL)
-    {
-      return NULL;
-    }
-
-  ws_Repl_error_link = flush_err->error_link;
-  flush_err->error_link = NULL;
-
-  return flush_err;
-}
-
-/*
- * ws_clear_all_errors_of_error_link() -
- *    return: void
- */
-void
-ws_clear_all_repl_errors_of_error_link (void)
-{
-  WS_REPL_FLUSH_ERR *flush_err, *next;
-
-  for (flush_err = ws_Repl_error_link; flush_err; flush_err = next)
-    {
-      next = flush_err->error_link;
-      ws_free_repl_flush_error (flush_err);
-    }
-  ws_Repl_error_link = NULL;
-
-  return;
-}
-
-/*
- * ws_free_flush_error() -
- *    return: void
- */
-void
-ws_free_repl_flush_error (WS_REPL_FLUSH_ERR * flush_err)
-{
-  assert (flush_err != NULL);
-
-  if (flush_err->error_msg != NULL)
-    {
-      free_and_init (flush_err->error_msg);
-    }
-
-  db_value_clear (&flush_err->pkey_value);
-
-  free_and_init (flush_err);
-
-  return;
 }
 
 /*
@@ -5343,17 +5254,29 @@ ws_clean_label_value_list (MOP mop)
   mop->label_value_list = NULL;
 }
 
+
+ws_repl::ws_repl ()
+{
+  m_Repl_error_link = NULL;
+}
+
+ws_repl::~ws_repl ()
+{
+  ws_clear_all_repl_objs ();
+  ws_clear_all_repl_errors_of_error_link ();
+}
+
 /*
  * ws_init_repl_objs() -
  *    free_func (in): function for freeing data in recdes
  *    return: void
  */
 void
-ws_init_repl_objs (void)
+ws_repl::ws_init_repl_objs (void)
 {
-  ws_Repl_objs.head = NULL;
-  ws_Repl_objs.tail = NULL;
-  ws_Repl_objs.num_items = 0;
+  m_Repl_objs.head = NULL;
+  m_Repl_objs.tail = NULL;
+  m_Repl_objs.num_items = 0;
 }
 
 /*
@@ -5361,23 +5284,23 @@ ws_init_repl_objs (void)
  *    return: repl object
  */
 WS_REPL_OBJ *
-ws_get_repl_obj_from_list (void)
+ws_repl::ws_get_repl_obj_from_list (void)
 {
   WS_REPL_OBJ *repl_obj;
 
-  repl_obj = ws_Repl_objs.head;
+  repl_obj = m_Repl_objs.head;
   if (repl_obj != NULL)
     {
-      ws_Repl_objs.head = repl_obj->next;
-      if (ws_Repl_objs.head == NULL)
+      m_Repl_objs.head = repl_obj->next;
+      if (m_Repl_objs.head == NULL)
 	{
-	  ws_Repl_objs.tail = NULL;
+	  m_Repl_objs.tail = NULL;
 	}
 
-      ws_Repl_objs.num_items--;
+      m_Repl_objs.num_items--;
     }
 
-  assert (ws_Repl_objs.num_items >= 0);
+  assert (m_Repl_objs.num_items >= 0);
 
   return repl_obj;
 }
@@ -5387,7 +5310,7 @@ ws_get_repl_obj_from_list (void)
  *    return:
  */
 void
-ws_free_repl_obj (WS_REPL_OBJ * obj)
+ws_repl::ws_free_repl_obj (WS_REPL_OBJ * obj)
 {
   assert (obj != NULL);
 
@@ -5403,11 +5326,11 @@ ws_free_repl_obj (WS_REPL_OBJ * obj)
  *    return:
  */
 void
-ws_clear_all_repl_objs (void)
+ws_repl::ws_clear_all_repl_objs (void)
 {
   WS_REPL_OBJ *obj, *next_obj;
 
-  obj = ws_Repl_objs.head;
+  obj = m_Repl_objs.head;
   while (obj != NULL)
     {
       next_obj = obj->next;
@@ -5416,9 +5339,9 @@ ws_clear_all_repl_objs (void)
       obj = next_obj;
     }
 
-  ws_Repl_objs.head = NULL;
-  ws_Repl_objs.tail = NULL;
-  ws_Repl_objs.num_items = 0;
+  m_Repl_objs.head = NULL;
+  m_Repl_objs.tail = NULL;
+  m_Repl_objs.num_items = 0;
 
   return;
 }
@@ -5434,8 +5357,8 @@ ws_clear_all_repl_objs (void)
  *    return:
  */
 int
-ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int packed_pkey_value_length, RECDES * recdes,
-			 int operation, bool has_index)
+ws_repl::ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int packed_pkey_value_length,
+				  RECDES * recdes, int operation, bool has_index)
 {
   WS_REPL_OBJ *repl_obj = NULL;
 
@@ -5466,17 +5389,110 @@ ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int packed_pk
   repl_obj->operation = operation;
   repl_obj->next = NULL;
 
-  if (ws_Repl_objs.tail == NULL)
+  if (m_Repl_objs.tail == NULL)
     {
-      ws_Repl_objs.head = repl_obj;
-      ws_Repl_objs.tail = repl_obj;
+      m_Repl_objs.head = repl_obj;
+      m_Repl_objs.tail = repl_obj;
     }
   else
     {
-      ws_Repl_objs.tail->next = repl_obj;
-      ws_Repl_objs.tail = repl_obj;
+      m_Repl_objs.tail->next = repl_obj;
+      m_Repl_objs.tail = repl_obj;
     }
-  ws_Repl_objs.num_items++;
+  m_Repl_objs.num_items++;
 
   return NO_ERROR;
+}
+
+/*
+ * ws_set_error_into_error_link() -
+ *    return: void
+ *    mop(in):
+ */
+void
+ws_repl::ws_set_repl_error_into_error_link (LC_COPYAREA_ONEOBJ * obj, char *content_ptr)
+{
+  WS_REPL_FLUSH_ERR *flush_err;
+  char *ptr;
+
+  flush_err = (WS_REPL_FLUSH_ERR *) malloc (sizeof (WS_REPL_FLUSH_ERR));
+  if (flush_err == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (WS_REPL_FLUSH_ERR));
+      return;
+    }
+
+  flush_err->class_oid = obj->class_oid;
+  flush_err->operation = obj->operation;
+
+  ptr = content_ptr;
+  ptr = or_unpack_mem_value (ptr, &flush_err->pkey_value);
+  ptr = or_unpack_int (ptr, &flush_err->error_code);
+  ptr = or_unpack_string_alloc (ptr, &flush_err->error_msg);
+
+  flush_err->error_link = m_Repl_error_link;
+  m_Repl_error_link = flush_err;
+
+  return;
+}
+
+ /*
+  * ws_get_error_from_error_link() -
+  *    return: void
+  */
+WS_REPL_FLUSH_ERR *
+ws_repl::ws_get_repl_error_from_error_link (void)
+{
+  WS_REPL_FLUSH_ERR *flush_err;
+
+  flush_err = m_Repl_error_link;
+  if (flush_err == NULL)
+    {
+      return NULL;
+    }
+
+  m_Repl_error_link = flush_err->error_link;
+  flush_err->error_link = NULL;
+
+  return flush_err;
+}
+
+/*
+ * ws_clear_all_errors_of_error_link() -
+ *    return: void
+ */
+void
+ws_repl::ws_clear_all_repl_errors_of_error_link (void)
+{
+  WS_REPL_FLUSH_ERR *flush_err, *next;
+
+  for (flush_err = m_Repl_error_link; flush_err; flush_err = next)
+    {
+      next = flush_err->error_link;
+      ws_free_repl_flush_error (flush_err);
+    }
+  m_Repl_error_link = NULL;
+
+  return;
+}
+
+/*
+ * ws_free_flush_error() -
+ *    return: void
+ */
+void
+ws_repl::ws_free_repl_flush_error (WS_REPL_FLUSH_ERR * flush_err)
+{
+  assert (flush_err != NULL);
+
+  if (flush_err->error_msg != NULL)
+    {
+      free_and_init (flush_err->error_msg);
+    }
+
+  db_value_clear (&flush_err->pkey_value);
+
+  free_and_init (flush_err);
+
+  return;
 }

@@ -312,6 +312,9 @@ struct lc_lock_set
 				 * into mem */
   LC_LOCKSET_REQOBJ *objects;	/* Description of requested objects. The number of structures are num_reqobjs */
   bool first_fetch_lockset_call;	/* First client call to fetch_request */
+#if defined(CS_MODE)
+  int eid;			/* When first_fetch_lockset_call is true, it is set via net_client_request_2recv_copyarea() */
+#endif
 };
 
 typedef struct lc_lockhint_class LC_LOCKHINT_CLASS;
@@ -337,6 +340,9 @@ struct lc_lock_hint
   LC_LOCKHINT_CLASS *classes;	/* Description of set of classes. The number of class structures are num_classes.. Ptr
 				 * into mem */
   bool first_fetch_lockhint_call;	/* First client call to fetch_lockhint */
+#if defined(CS_MODE)
+  int eid;			/* When first_fetch_lockhint_call is true, it is set via net_client_request_2recv_copyarea() */
+#endif
 };
 
 enum lc_prefetch_flags

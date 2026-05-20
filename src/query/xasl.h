@@ -519,8 +519,10 @@ struct cte_proc_node
 #define XASL_NO_PARALLEL_SUBQUERY       (0x1 << 19)	/* disable parallel subquery */
 #define XASL_ANALYTIC_USES_LIMIT_OPT (0x1 << 20)	/* analytic uses limit optimization */
 #define XASL_ANALYTIC_SKIP_SORT (0x1 << 21)	/* analytic skip sort optimization */
+#define XASL_DBLINK_CURSOR_REWIND	(0x1 << 22)	/* correlated DBLink subquery: rewind CCI cursor instead of re-issuing cci_execute per outer row */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
+#define IS_DBLINK_CURSOR_REWIND_XASL(x)     XASL_IS_FLAGED ((x), XASL_DBLINK_CURSOR_REWIND)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
 #define XASL_CLEAR_FLAG(x, f)       (x)->flag &= (int) ~(f)
 
@@ -768,7 +770,7 @@ typedef enum
   ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN = 0x1 << 1,	/* used with parallel heap scan. */
   ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS = 0x1 << 2,	/* used with parallel heap scan. */
   ACCESS_SPEC_FLAG_MERGEABLE_LIST = 0x1 << 3,	/* used with parallel heap scan. */
-  ACCESS_SPEC_FLAG_COUNT_DISTINCT = 0x1 << 4,	/* used with parallel heap scan count distinct aggregate. */
+  ACCESS_SPEC_FLAG_BUILDVALUE_OPT = 0x1 << 4,	/* used with parallel heap scan buildvalue aggregate optimization. */
   ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x1 << 5,	/* used with min/max aggregate. */
   ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN = 0x1 << 6	/* used with keep page hint. */
 } ACCESS_SPEC_FLAG;
@@ -988,7 +990,7 @@ struct analytic_stat
   UINT64 analytic_pages;
   UINT64 analytic_ioreads;
   int rows;
-  bool run_analytic;
+  bool analytic_stopkey;
   bool analytic_sort;
   struct analytic_stat *next;
 };

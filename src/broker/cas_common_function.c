@@ -114,7 +114,9 @@ cas_common_bind_value_print (char type, void *net_value, bool slow_log, INTL_COD
 	net_arg_get_str (&str_val, &val_size, net_value);
 	if (val_size > 0)
 	  {
-	    num_chars = intl_char_count ((const unsigned char *) str_val, val_size, charset, &num_chars) - 1;
+	    /* CAS protocol: string payload carries a trailing NUL that is counted in val_size. */
+	    assert (str_val[val_size - 1] == '\0');
+	    intl_char_count ((const unsigned char *) str_val, val_size - 1, charset, &num_chars);
 	  }
 	write2_func ("(%d)", num_chars);
 	fwrite_func (str_val, val_size - 1);

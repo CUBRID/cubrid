@@ -23,6 +23,11 @@
 #ifndef _THREAD_DAEMON_HPP_
 #define _THREAD_DAEMON_HPP_
 
+#if !defined (SERVER_MODE)
+#error Wrong module
+#endif // not SERVER_MODE
+
+#include "thread_entry_task.hpp"
 #include "thread_looper.hpp"
 #include "thread_task.hpp"
 #include "thread_waiter.hpp"
@@ -33,6 +38,11 @@
 #include <thread>
 
 #include <cinttypes>
+#include <pthread.h>
+
+#ifndef TASK_COMM_LEN
+#define TASK_COMM_LEN 16
+#endif
 
 // cubthread::daemon
 //
@@ -47,8 +57,8 @@
 //      void execute (custom_thread_context & context) override { ... }
 //    }
 //
-//    // define your custom context manager
-//    class custom_thread_context_manager : public cubthread::context_manager<custom_thread_context>
+//    // define your custom entry manager
+//    class custom_entry_manager : public cubthread::entry_manager
 //    {
 //      custom_thread_context & create_context (void) override { ... }
 //      void retire_context(custom_thread_context & context) override { ... }
@@ -57,8 +67,8 @@
 //    // declare a looper
 //    cubthread::looper loop_pattern;   // by default sleep until wakeup
 //
-//    // context manager is required
-//    custom_thread_context_manager thr_ctxt_mgr;
+//    // entry manager is required
+//    custom_entry_manager thr_ctxt_mgr;
 //
 //    // and finally looping task
 //    custom_task *task = new_custom_task ();
@@ -80,14 +90,13 @@ namespace cubthread
 
       //  daemon constructor needs:
       //    loop_pattern_arg    : loop pattern for task execution
-      //    context_manager_arg : context manager to create and retire thread execution context
+      //    entry_manager_arg   : entry manager to create and retire thread execution context
       //    exec                : task to execute
       //
       //  NOTE: it is recommended to use dynamic allocation for execution tasks
       //
-      template <typename Context>
-      daemon (const looper &loop_pattern_arg, context_manager<Context> *context_manager_arg,
-	      task<Context> *exec, const char *name);
+      daemon (const looper &loop_pattern_arg, entry_manager *entry_manager_arg,
+	      entry_task *exec, const char *name);
       daemon (const looper &loop_pattern_arg, task_without_context *exec_arg, const char *name);
       ~daemon();
 
@@ -110,13 +119,12 @@ namespace cubthread
 
       // loop functions invoked by spawned daemon thread
 
-      // loop_with_context - after thread is spawned, it claims context from context manager and repeatedly executes
+      // loop_with_context - after thread is spawned, it claims context from entry manager and repeatedly executes
       //                     task until stopped.
       //
       // note: context must implement interrupt_execution function
-      template <typename Context>
-      static void loop_with_context (daemon *daemon_arg, context_manager<Context> *context_manager_arg,
-				     task<Context> *exec_arg, const char *name);
+      static void loop_with_context (daemon *daemon_arg, entry_manager *entry_manager_arg,
+				     entry_task *exec_arg, const char *name);
 
       // loop_without_context - just execute context-less task in a loop
       static void loop_without_context (daemon *daemon_arg, task_without_context *exec_arg, const char *name);
@@ -141,55 +149,6 @@ namespace cubthread
       cubperf::statset &m_stats;
   };
 
-  /************************************************************************/
-  /* Inline/template Implementation                                       */
-  /************************************************************************/
-
-  template <typename Context>
-  daemon::daemon (const looper &loop_pattern_arg, context_manager<Context> *context_manager_arg,
-		  task<Context> *exec, const char *name /* = "" */)
-    : m_waiter ()
-    , m_looper (loop_pattern_arg)
-    , m_thread ()
-    , m_name (name)
-    , m_stats (daemon::create_statset ())
-  {
-    // starts a thread to execute daemon::loop
-    m_thread = std::thread (daemon::loop_with_context<Context>, this, context_manager_arg, exec, m_name.c_str ());
-  }
-
-  template <typename Context>
-  void
-  daemon::loop_with_context (daemon *daemon_arg, context_manager<Context> *context_manager_arg,
-			     task<Context> *exec_arg, const char *name)
-  {
-    (void) name;  // suppress unused parameter warning
-    // its purpose is to help visualize daemon thread stacks
-
-    // create execution context
-    Context &context = context_manager_arg->create_context ();
-
-    daemon_arg->register_stat_start ();
-
-    while (!daemon_arg->m_looper.is_stopped ())
-      {
-	// execute task
-	exec_arg->execute (context);
-	daemon_arg->register_stat_execute ();
-
-	// take a break
-	daemon_arg->pause ();
-	daemon_arg->register_stat_pause ();
-      }
-
-    context_manager_arg->stop_execution (context);
-
-    // retire execution context
-    context_manager_arg->retire_context (context);
-
-    // retire task
-    exec_arg->retire ();
-  }
 
 } // namespace cubthread
 

@@ -125,7 +125,7 @@ enum
   /* property is not changed (not present in both current schema or new defition or present in both but not affected in
    * any way) */
   ATT_CHG_PROPERTY_UNCHANGED = 0x10,
-  /* property is changed (i.e.: both present in old an new , but different) */
+  /* property is changed (i.e.: both present in old and new , but different) */
   ATT_CHG_PROPERTY_DIFF = 0x20,
   /* type : precision increase : varchar(2) -> varchar (10) */
   ATT_CHG_TYPE_PREC_INCR = 0x100,
@@ -157,6 +157,7 @@ enum
   P_DEFFERABLE,			/* DEFFERABLE */
   P_ORDER,			/* ORDERING definition */
   P_AUTO_INCR,			/* has AUTO INCREMENT */
+  P_INVISIBLE,			/* is INVISIBLE COLUMN */
   P_CONSTR_FK,			/* constraint FOREIGN KEY */
   P_S_CONSTR_PK,		/* constraint PRIMARY KEY only on one single column : the checked attribute */
   P_M_CONSTR_PK,		/* constraint PRIMARY KEY on more columns, including checked attribute */
@@ -230,8 +231,8 @@ struct db_value_slist
 static int drop_class_name (const char *name, bool is_cascade_constraints);
 
 static int do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter);
-static int lob_process_dir_add_attr_if_needed (SM_CLASS * class_, int old_att_count);
-static int lob_process_dir_drop_attr_if_needed (SM_CLASS * class_, const char *attr_mthd_name);
+static int lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count);
+static int lob_process_dir_drop_attr (SM_CLASS * class_, const char *attr_name);
 static int do_alter_clause_rename_entity (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 static int do_alter_clause_add_index (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 static int do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter);
@@ -370,6 +371,8 @@ static int execute_create_select_query (PARSER_CONTEXT * parser, const char *con
 					PT_CREATE_SELECT_ACTION create_select_action, DB_QUERY_TYPE * query_columns,
 					PT_NODE * flagged_statement);
 
+static int do_set_auto_increment (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const char *attr_name,
+				  PT_NODE * attribute, SM_ATTRIBUTE ** attr);
 static int do_find_auto_increment_serial (MOP * auto_increment_obj, const char *class_name, const char *attr_name);
 static int do_check_fk_constraints_internal (DB_CTMPL * ctemplate, PT_NODE * constraints, bool is_partitioned);
 
@@ -429,6 +432,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 #endif
   SM_PARTITION_ALTER_INFO pinfo;
   bool partition_savepoint = false;
+  bool change_might_affect_visibility = false;
   const PT_ALTER_CODE alter_code = alter->info.alter.code;
 #if defined (ENABLE_RENAME_CONSTRAINT)
   SM_CONSTRAINT_FAMILY constraint_family;
@@ -637,7 +641,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
 	    assert (alter->info.alter.create_index == NULL);
 
-	    error = lob_process_dir_add_attr_if_needed (ctemplate->current, old_att_count);
+	    error = lob_process_dir_add_attr (ctemplate->current, old_att_count);
 	    if (error != NO_ERROR)
 	      {
 		dbt_abort_class (ctemplate);
@@ -646,6 +650,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      }
 	  }
 
+	change_might_affect_visibility = true;
 	break;
       }
 
@@ -769,13 +774,14 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    }
 	}
 
-      error = lob_process_dir_drop_attr_if_needed (ctemplate->current, (char *) attr_mthd_name);
+      error = lob_process_dir_drop_attr (ctemplate->current, (char *) attr_mthd_name);
       if (error != NO_ERROR)
 	{
 	  dbt_abort_class (ctemplate);
 	  return error;
 	}
 
+      change_might_affect_visibility = true;
       break;
 
     case PT_MODIFY_ATTR_MTHD:
@@ -1331,6 +1337,21 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       return error;
     }
 
+  if (change_might_affect_visibility)
+    {
+      /* check if all of attributes are invisible. if is, abort */
+      error = smt_check_attribute_all_invisible (ctemplate, alter->info.alter.entity_name->info.name.original);
+      if (error != NO_ERROR)
+	{
+	  dbt_abort_class (ctemplate);
+	  if (partition_savepoint)
+	    {
+	      goto alter_partition_fail;
+	    }
+	  return error;
+	}
+    }
+
   vclass = dbt_finish_class (ctemplate);
 
   /* the dbt_finish_class() failed, the template was not freed */
@@ -1424,22 +1445,27 @@ alter_partition_fail:
 }
 
 /*
- * lob_process_dir_add_attr_if_needed() - Collect newly added LOB attributes, build/manage
- *                              their attribute id array, and trigger LOB
- *                              directory creation for those attributes.
+ * lob_process_dir_add_attr() - This function is called during the execution of
+ *                              ALTER TABLE ... ADD COLUMN. If the newly added column is a LOB type,
+ *                              it constructs an attribute ID array and triggers the creation of the
+ *                              corresponding LOB directory.
  *   return: Error code
  *   class_(in): Class information
  *   old_att_count(in): Number of attributes before adding new attributes
  */
 static int
-lob_process_dir_add_attr_if_needed (SM_CLASS * class_, int old_att_count)
+lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count)
 {
   SM_ATTRIBUTE *attr;
+  HFID lob_hfid;
   int lob_attrid_arr_length = 0;
   int *lob_alloc_attrid_arr = NULL;
   int lob_local_attrid_arr[2];
   int *lob_attrid_arr = NULL;
   int error = NO_ERROR;
+
+  assert (class_ != NULL);
+  assert (old_att_count >= 0);
 
   for (int i = old_att_count; i < class_->att_count; i++)
     {
@@ -1455,52 +1481,38 @@ lob_process_dir_add_attr_if_needed (SM_CLASS * class_, int old_att_count)
     {
       goto end;
     }
-  else if (lob_attrid_arr_length > 2)
+  else if (lob_attrid_arr_length <= 2)
     {
-      int index = 0;
-
+      lob_attrid_arr = lob_local_attrid_arr;
+    }
+  else
+    {
       lob_alloc_attrid_arr = (int *) malloc (sizeof (int) * lob_attrid_arr_length);
       if (lob_alloc_attrid_arr == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * lob_attrid_arr_length);
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto end;
 	}
 
-      for (int i = old_att_count; i < class_->att_count; i++)
-	{
-	  attr = &class_->attributes[i];
-
-	  if (TP_IS_LOB_TYPE (attr->type->id))
-	    {
-	      lob_alloc_attrid_arr[index++] = attr->id;
-	    }
-	}
       lob_attrid_arr = lob_alloc_attrid_arr;
     }
-  else
+
+  for (int i = old_att_count, index = 0; i < class_->att_count; i++)
     {
-      int index = 0;
+      attr = &class_->attributes[i];
 
-      for (int i = old_att_count; i < class_->att_count; i++)
+      if (TP_IS_LOB_TYPE (attr->type->id))
 	{
-	  attr = &class_->attributes[i];
-
-	  if (TP_IS_LOB_TYPE (attr->type->id))
-	    {
-	      lob_local_attrid_arr[index++] = attr->id;
-	    }
+	  lob_attrid_arr[index++] = attr->id;
 	}
-      lob_attrid_arr = lob_local_attrid_arr;
     }
 
-  if (lob_attrid_arr_length)
+  lob_hfid = class_->header.ch_heap;
+  error = locator_lob_create_or_remove_dir (NULL, &lob_hfid, lob_attrid_arr, lob_attrid_arr_length);
+  if (error != NO_ERROR)
     {
-      HFID lob_hfid = class_->header.ch_heap;
-      error = locator_lob_create_or_remove_dir (NULL, &lob_hfid, lob_attrid_arr, lob_attrid_arr_length);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
+      goto end;
     }
 
 end:
@@ -1510,31 +1522,34 @@ end:
 }
 
 /*
- * lob_process_dir_drop_attr_if_needed() - Handle LOB directory removal when a LOB attribute is dropped.
- *
+ * lob_process_dir_drop_attr() - This function is called during the execution of
+ *                               ALTER TABLE ... DROP COLUMN. If the column being dropped is a LOB type,
+ *                               it removes the corresponding LOB directory.
  *   return: Error code
  *   class_(in): Class information
- *   attr_mthd_name(in): Name of the attribute to be dropped
+ *   attr_name(in): Name of the attribute to be dropped
  */
 static int
-lob_process_dir_drop_attr_if_needed (SM_CLASS * class_, const char *attr_mthd_name)
+lob_process_dir_drop_attr (SM_CLASS * class_, const char *attr_name)
 {
   SM_ATTRIBUTE attr;
   int error = NO_ERROR;
+
+  assert (class_ != NULL);
+  assert (attr_name != NULL);
 
   for (int i = 0; i < class_->att_count; i++)
     {
       attr = class_->attributes[i];
 
-      if (strcmp (attr.header.name, attr_mthd_name) == 0)
+      if (strcmp (attr.header.name, attr_name) == 0)
 	{
 	  if (TP_IS_LOB_TYPE (attr.type->id))
 	    {
 	      HFID lob_hfid = class_->header.ch_heap;
-	      int lob_attrid_arr[1];
+	      int lob_attrid_arr[1] = { attr.id };
 
-	      lob_attrid_arr[0] = attr.id;
-	      error = locator_lob_create_or_remove_dir (&lob_hfid, NULL, lob_attrid_arr, 0);
+	      error = locator_lob_create_or_remove_dir (&lob_hfid, NULL, lob_attrid_arr, 1);
 	      if (error != NO_ERROR)
 		{
 		  return error;
@@ -1739,16 +1754,9 @@ do_alter_change_auto_increment (PARSER_CONTEXT * const parser, PT_NODE * const a
 	{
 	  continue;
 	}
-      if (ai_serial != NULL)
-	{
-	  /* we already found a serial. AMBIGUITY! */
-	  ERROR0 (error, ER_AUTO_INCREMENT_SINGLE_COL_AMBIGUITY);
-	  goto change_ai_error;
-	}
-      else
-	{
-	  ai_serial = cur_attr->auto_increment;
-	}
+
+      ai_serial = cur_attr->auto_increment;
+      break;
     }
 
   if (ai_serial == NULL)
@@ -2327,7 +2335,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
   // for syncronizing created_time and updated_time
-  error = au_set_user_timestamps (user);
+  error = au_set_new_timestamps (user);
   if (error != NO_ERROR)
     {
       goto end;
@@ -2561,7 +2569,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
  */
   if (statement->info.alter_user.members == NULL)
     {
-      error = au_update_user_timestamp (user);
+      error = au_update_timestamps (user);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -5139,6 +5147,48 @@ exit:
   return error;
 }
 
+static int
+do_set_auto_increment (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const char *attr_name, PT_NODE * attribute,
+		       SM_ATTRIBUTE ** attr)
+{
+  SM_ATTRIBUTE *ctmpl_attrs = ctemplate->attributes;
+  int error = NO_ERROR;
+  MOP auto_increment_obj = NULL;
+
+  assert (attribute->info.attr_def.attr_type != PT_META_ATTR && attribute->info.attr_def.attr_type != PT_SHARED);
+  assert (attribute->info.attr_def.auto_increment != NULL);
+  assert (attr != NULL);
+
+  if (*attr == NULL)
+    {
+      error = smt_find_attribute (ctemplate, attr_name, 0, attr);
+    }
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  while (ctmpl_attrs != NULL)
+    {
+      if (ctmpl_attrs->auto_increment == NULL)
+	{
+	  ctmpl_attrs = (SM_ATTRIBUTE *) ctmpl_attrs->header.next;
+	  continue;
+	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AUTO_INCREMENT_SINGLE_COL_ONLY, 0);
+      return ER_AUTO_INCREMENT_SINGLE_COL_ONLY;
+    }
+
+  error = do_create_auto_increment_serial (parser, &auto_increment_obj, ctemplate->name, attribute);
+
+  if (error == NO_ERROR)
+    {
+      (*attr)->auto_increment = auto_increment_obj;
+      (*attr)->flags |= SM_ATTFLAG_AUTO_INCREMENT;
+    }
+
+  return error;
+}
 
 /*
  * do_find_auto_increment_serial() -
@@ -7515,16 +7565,21 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
     {
       if (attribute->info.attr_def.auto_increment)
 	{
-	  error = do_create_auto_increment_serial (parser, &auto_increment_obj, ctemplate->name, attribute);
+	  error = do_set_auto_increment (parser, ctemplate, attr_name, attribute, &att);
+	}
+    }
 
-	  if (error == NO_ERROR)
-	    {
-	      if (smt_find_attribute (ctemplate, attr_name, 0, &att) == NO_ERROR)
-		{
-		  att->auto_increment = auto_increment_obj;
-		  att->flags |= SM_ATTFLAG_AUTO_INCREMENT;
-		}
-	    }
+  if (error == NO_ERROR && attribute->info.attr_def.attr_invisible == PT_ATTR_INVISIBLE)
+    {
+      /* skip finding attribute if att is already available */
+      if (att == NULL)
+	{
+	  error = smt_find_attribute (ctemplate, attr_name, 0, &att);
+	}
+
+      if (error == NO_ERROR)
+	{
+	  att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
 	}
     }
 
@@ -9263,6 +9318,13 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       goto error_exit;
     }
 
+  /* check if all of attributes are invisible. if is, abort */
+  error = smt_check_attribute_all_invisible (ctemplate, node->info.create_entity.entity_name->info.name.original);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
   class_obj = dbt_finish_class (ctemplate);
 
   if (class_obj == NULL)
@@ -10065,6 +10127,13 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
     {
       COPY_OID (&class_oid, &(ctemplate->op->oid_info.oid));
       att_id = attr_chg_prop.att_id;
+    }
+
+  /* check if all of attributes are invisible. if is, abort */
+  error = smt_check_attribute_all_invisible (ctemplate, alter->info.alter.entity_name->info.name.original);
+  if (error != NO_ERROR)
+    {
+      goto exit;
     }
 
   /* force schema update to server */
@@ -10991,6 +11060,15 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	dbt_constrain_non_null (ctemplate, attr_name, (attr_chg_prop->name_space == ID_CLASS_ATTRIBUTE) ? 1 : 0, 0);
     }
 
+  /* add or drop INVISIBLE COLUMN option */
+  if (is_att_prop_set (attr_chg_prop->p[P_INVISIBLE], ATT_CHG_PROPERTY_GAINED))
+    {
+      found_att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
+    }
+  else if (is_att_prop_set (attr_chg_prop->p[P_INVISIBLE], ATT_CHG_PROPERTY_LOST))
+    {
+      found_att->flags &= ~(SM_ATTFLAG_INVISIBLE_COLUMN);
+    }
 
   /* delete or (re-)create auto_increment attribute's serial object */
   if (is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_DIFF)
@@ -11056,20 +11134,10 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   if (is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_DIFF)
       || is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_GAINED))
     {
-      MOP auto_increment_obj = NULL;
 
-      assert (attribute->info.attr_def.auto_increment != NULL);
+      error = do_set_auto_increment (parser, ctemplate, attr_name, attribute, &found_att);
 
-      error = do_create_auto_increment_serial (parser, &auto_increment_obj, ctemplate->name, attribute);
-      if (error == NO_ERROR)
-	{
-	  if (found_att != NULL)
-	    {
-	      found_att->auto_increment = auto_increment_obj;
-	      found_att->flags |= SM_ATTFLAG_AUTO_INCREMENT;
-	    }
-	}
-      else
+      if (error != NO_ERROR)
 	{
 	  goto exit;
 	}
@@ -11356,6 +11424,34 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 
   /* constraint CHECK : not supported, just mark as checked */
   attr_chg_properties->p[P_CONSTR_CHECK] = 0;
+
+  /* INVISIBLE COLUMN */
+  attr_chg_properties->p[P_INVISIBLE] = 0;
+  if (att->flags & SM_ATTFLAG_INVISIBLE_COLUMN)
+    {
+      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+  if (attr_def->info.attr_def.attr_invisible == PT_ATTR_INVISIBLE_UNSET)
+    {
+      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_UNCHANGED;
+    }
+  else if (attr_def->info.attr_def.attr_invisible == PT_ATTR_INVISIBLE)
+    {
+      /* PRESENT_NEW without PRESENT_OLD will be converted to GAINED by the consolidate properties loop below */
+      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
+    }
+  else if (attr_chg_properties->p[P_INVISIBLE] & ATT_CHG_PROPERTY_PRESENT_OLD)
+    {
+      /*
+       * attr_invisible == PT_ATTR_VISIBLE  -> NOW VISIBLE
+       * P_INVISIBLE & PRESENT_OLD          -> WAS INVISIBLE
+       *
+       * it changed from invisible to visible.
+       * This means the attribute has lost its invisible state
+       */
+      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_LOST;
+      attr_chg_properties->p[P_INVISIBLE] &= ~ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
 
   /* check for existing constraints: FK referenced, unique, non-unique idx */
   if (ctemplate->current != NULL)

@@ -41,7 +41,7 @@
 
 #include "system_parameter.h"
 #include "connection_globals.h"
-#include "connection_cl.h"
+#include "client_support.h"
 #include "error_manager.h"
 #include "utility.h"
 #include "message_catalog.h"
@@ -504,7 +504,7 @@ css_process_kill_slave (CSS_CONN_ENTRY * conn, unsigned short request_id, char *
   int time_size = 0;
   int rc;
 
-  rc = css_receive_data (conn, request_id, &time_buffer, &time_size, -1);
+  rc = __gv_cvar.css_receive_data (conn, request_id, &time_buffer, &time_size, -1);
   if (rc == NO_ERRORS && time_buffer != NULL)
     {
       timeout = ntohl ((int) *(int *) time_buffer);
@@ -1932,10 +1932,10 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
   unsigned short request_id;
   char *buffer = NULL;
 
-  rc = css_receive_request (conn, &request_id, &request, &buffer_size);
+  rc = __gv_cvar.css_receive_request (conn, &request_id, &request, &buffer_size);
   if (rc == NO_ERRORS)
     {
-      if (buffer_size && css_receive_data (conn, request_id, &buffer, &buffer_size, -1) != NO_ERRORS)
+      if (buffer_size && __gv_cvar.css_receive_data (conn, request_id, &buffer, &buffer_size, -1) != NO_ERRORS)
 	{
 	  if (buffer != NULL)
 	    {

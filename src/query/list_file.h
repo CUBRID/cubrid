@@ -242,5 +242,9 @@ extern void qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_
 extern int qfile_get_list_cache_number_of_entries (int ht_no);
 extern bool qfile_has_no_cache_entries ();
 
+/* Sector-based page distribution */
+extern int qfile_collect_list_sector_info (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
+					   QFILE_LIST_SECTOR_INFO * sector_info);
+extern void qfile_free_list_sector_info (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_INFO * sector_info);
 
 #endif /* _LIST_FILE_H_ */
