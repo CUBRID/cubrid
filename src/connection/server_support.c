@@ -641,7 +641,10 @@ shutdown:
       perfmon_er_log_current_stats (thread_p);
     }
 #if !defined (NDEBUG)
-  css_Server_request_worker_pool->er_log_stats ();
+  if (css_Server_request_worker_pool)
+    {
+      css_Server_request_worker_pool->er_log_stats ();
+    }
 #endif
 
   // destroy thread worker pools
