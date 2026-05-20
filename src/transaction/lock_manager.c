@@ -3316,6 +3316,52 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
 
 #if defined(SERVER_MODE)
 /*
+ * lock_find_my_holder_entry - Walk res_ptr->holder looking for tran_index.
+ *
+ * return: holder entry of the caller's transaction, or NULL if not present.
+ *
+ *   res_ptr(in):    lock resource; caller must hold res_ptr->res_mutex.
+ *   tran_index(in): caller's transaction index.
+ */
+static LK_ENTRY *
+lock_find_my_holder_entry (LK_RES * res_ptr, int tran_index)
+{
+  LK_ENTRY *e;
+
+  for (e = res_ptr->holder; e != NULL; e = e->next)
+    {
+      if (e->tran_index == tran_index)
+	{
+	  return e;
+	}
+    }
+  return NULL;
+}
+
+/*
+ * lock_find_my_waiter_entry - Walk res_ptr->waiter looking for tran_index.
+ *
+ * return: waiter entry of the caller's transaction, or NULL if not present.
+ *
+ *   res_ptr(in):    lock resource; caller must hold res_ptr->res_mutex.
+ *   tran_index(in): caller's transaction index.
+ */
+static LK_ENTRY *
+lock_find_my_waiter_entry (LK_RES * res_ptr, int tran_index)
+{
+  LK_ENTRY *e;
+
+  for (e = res_ptr->waiter; e != NULL; e = e->next)
+    {
+      if (e->tran_index == tran_index)
+	{
+	  return e;
+	}
+    }
+  return NULL;
+}
+
+/*
  * lock_internal_perform_lock_object - Performs actual object lock operation
  *
  * return: one of following values
@@ -3525,15 +3571,7 @@ start:
   /* the lockable object existed in the hash chain So, check whether I am a holder of the object. */
 
   /* find the lock entry of current transaction */
-  entry_ptr = res_ptr->holder;
-  while (entry_ptr != NULL)
-    {
-      if (entry_ptr->tran_index == tran_index)
-	{
-	  break;
-	}
-      entry_ptr = entry_ptr->next;
-    }
+  entry_ptr = lock_find_my_holder_entry (res_ptr, tran_index);
 
   if (entry_ptr == NULL)
     {
@@ -3629,15 +3667,7 @@ start:
 	}
 
       /* check if another thread is waiting for the same resource */
-      wait_entry_ptr = res_ptr->waiter;
-      while (wait_entry_ptr != NULL)
-	{
-	  if (wait_entry_ptr->tran_index == tran_index)
-	    {
-	      break;
-	    }
-	  wait_entry_ptr = wait_entry_ptr->next;
-	}
+      wait_entry_ptr = lock_find_my_waiter_entry (res_ptr, tran_index);
 
       if (wait_entry_ptr != NULL)
 	{
