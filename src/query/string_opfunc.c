@@ -6667,6 +6667,7 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
       int dest_prec;
       int dest_length;
       int dest_size;
+      int src_prec;
       int src_length;
       INTL_CODESET src_codeset = db_get_string_codeset (src_string);
       INTL_CODESET dest_codeset = db_get_string_codeset (dest_string);
@@ -6691,17 +6692,16 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
 		       &src_length);
 
       /* Initialize the memory manager of the destination */
-      if (DB_VALUE_PRECISION (dest_string) == TP_FLOATING_PRECISION_VALUE)
-	{
-	  dest_prec = src_length;
-	}
-      else
-	{
-	  dest_prec = DB_VALUE_PRECISION (dest_string);
-	}
+      dest_prec =
+	(DB_VALUE_PRECISION (dest_string) ==
+	 TP_FLOATING_PRECISION_VALUE) ? src_length : DB_VALUE_PRECISION (dest_string);
+
+      /* QSTR_VALUE_PRECISION reusing src_length on floating precision to avoid a redundant char-count call. */
+      src_prec =
+	(DB_VALUE_PRECISION (src_string) == TP_FLOATING_PRECISION_VALUE) ? src_length : DB_VALUE_PRECISION (src_string);
 
       error_status = qstr_coerce (DB_GET_UCHAR (src_string), src_length,
-				  QSTR_VALUE_PRECISION (src_string), DB_VALUE_DOMAIN_TYPE (src_string), src_codeset,
+				  src_prec, DB_VALUE_DOMAIN_TYPE (src_string), src_codeset,
 				  dest_codeset, &dest, &dest_length, &dest_size, dest_prec,
 				  DB_VALUE_DOMAIN_TYPE (dest_string), data_status);
 
