@@ -6555,6 +6555,7 @@ error_exit:
  * classobj_copy_attribute_like() - Copies an attribute from an existing class
  *                                  to a new class template.
  *    Potential NOT NULL constraints on the attribute are copied also.
+ *    INVISIBLE option on the attribute are copied also.
  *   return: NO_ERROR on success, non-zero for ERROR
  *   ctemplate(in): the template to copy to
  *   attribute(in): the attribute to be duplicated
@@ -6598,6 +6599,18 @@ classobj_copy_attribute_like (DB_CTMPL * ctemplate, SM_ATTRIBUTE * attribute, co
       if (error != NO_ERROR)
 	{
 	  return error;
+	}
+    }
+
+  if (attribute->flags & SM_ATTFLAG_INVISIBLE_COLUMN)
+    {
+      SM_ATTRIBUTE *att;
+      error =
+	smt_find_attribute (ctemplate, attribute->header.name,
+			    attribute->header.name_space == ID_CLASS_ATTRIBUTE ? 1 : 0, &att);
+      if (error == NO_ERROR)
+	{
+	  att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
 	}
     }
 
