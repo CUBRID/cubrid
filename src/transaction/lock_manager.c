@@ -3362,6 +3362,72 @@ lock_find_my_waiter_entry (LK_RES * res_ptr, int tran_index)
 }
 
 /*
+ * lock_join_existing_wait_train - The "MANY_LOCK_WAIT_TRAN" sequence:
+ *   line up behind a same-transaction in-progress lock requester, release
+ *   res_mutex, and suspend (or signal the caller to retry from `start:`
+ *   when the lead thread's lockwait was already cleared in the meantime).
+ *
+ *   This helper encapsulates *only* the pre-suspend train-joining and the
+ *   post-suspend return path — the post-suspend status inspection (resume
+ *   reason: THREAD_LOCK_RESUMED / INTERRUPT / other) stays at the call
+ *   site because the two callers (new-requester / conversion) wrap that
+ *   check differently for historical reasons (G4 bit-for-bit preservation).
+ *
+ *   Re-entry contract — see DESIGN §F3:
+ *     On *out_retry_from_start == true, the helper has *only* released
+ *     res_mutex and cleared *is_res_mutex_locked_p; it does NOT reset
+ *     `entry_ptr` / `wait_entry_ptr` / `is_instant_duration`. Caller must
+ *     `goto start` (or `state = LK_S_FIND_RESOURCE`) and let the
+ *     start-equivalent body re-establish these locals naturally.
+ *
+ *   Preconditions:
+ *     - res_ptr->res_mutex held by caller (*is_res_mutex_locked_p == true).
+ *     - lead_entry points to the existing lock entry (waiter for the
+ *       new-requester path, holder for the conversion path) whose
+ *       thrd_entry leads the wait train.
+ *
+ *   Postconditions:
+ *     - res_ptr->res_mutex released unconditionally; *is_res_mutex_locked_p
+ *       set to false.
+ *     - *out_retry_from_start == true:
+ *         lead_entry->thrd_entry->lockwait was NULL on inspection; no
+ *         suspend happened. Caller must restart from `start:`.
+ *     - *out_retry_from_start == false:
+ *         caller did suspend and is now resumed; thrd_entry->resume_status
+ *         contains the wake-up reason and caller must inspect it.
+ */
+static void
+lock_join_existing_wait_train (THREAD_ENTRY * thrd_entry, int tran_index, LK_ENTRY * lead_entry, LK_RES * res_ptr,
+			       bool * is_res_mutex_locked_p, bool * out_retry_from_start)
+{
+  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_MANY_LOCK_WAIT_TRAN, 1, tran_index);
+  thread_lock_entry (thrd_entry);
+  thread_lock_entry (lead_entry->thrd_entry);
+  if (lead_entry->thrd_entry->lockwait == NULL)
+    {
+      /* lead thread's lockwait was cleared in the meantime — retry from start. */
+      thread_unlock_entry (lead_entry->thrd_entry);
+      thread_unlock_entry (thrd_entry);
+      assert (*is_res_mutex_locked_p);
+      pthread_mutex_unlock (&res_ptr->res_mutex);
+      *is_res_mutex_locked_p = false;
+      *out_retry_from_start = true;
+      return;
+    }
+
+  thrd_entry->tran_next_wait = lead_entry->thrd_entry->tran_next_wait;
+  lead_entry->thrd_entry->tran_next_wait = thrd_entry;
+
+  thread_unlock_entry (lead_entry->thrd_entry);
+  assert (*is_res_mutex_locked_p);
+  pthread_mutex_unlock (&res_ptr->res_mutex);
+  *is_res_mutex_locked_p = false;
+
+  thread_suspend_wakeup_and_unlock_entry (thrd_entry, THREAD_LOCK_SUSPENDED);
+  *out_retry_from_start = false;
+}
+
+/*
  * lock_internal_perform_lock_object - Performs actual object lock operation
  *
  * return: one of following values
@@ -3671,29 +3737,18 @@ start:
 
       if (wait_entry_ptr != NULL)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_MANY_LOCK_WAIT_TRAN, 1, tran_index);
-	  thread_lock_entry (thrd_entry);
-	  thread_lock_entry (wait_entry_ptr->thrd_entry);
-	  if (wait_entry_ptr->thrd_entry->lockwait == NULL)
+	  bool retry_from_start;
+
+	  lock_join_existing_wait_train (thrd_entry, tran_index, wait_entry_ptr, res_ptr, &is_res_mutex_locked,
+					 &retry_from_start);
+	  if (retry_from_start)
 	    {
-	      /* */
-	      thread_unlock_entry (wait_entry_ptr->thrd_entry);
-	      thread_unlock_entry (thrd_entry);
-	      assert (is_res_mutex_locked);
-	      pthread_mutex_unlock (&res_ptr->res_mutex);
-	      is_res_mutex_locked = false;
 	      goto start;
 	    }
 
-	  thrd_entry->tran_next_wait = wait_entry_ptr->thrd_entry->tran_next_wait;
-	  wait_entry_ptr->thrd_entry->tran_next_wait = thrd_entry;
-
-	  thread_unlock_entry (wait_entry_ptr->thrd_entry);
-	  assert (is_res_mutex_locked);
-	  pthread_mutex_unlock (&res_ptr->res_mutex);
-	  is_res_mutex_locked = false;
-
-	  thread_suspend_wakeup_and_unlock_entry (thrd_entry, THREAD_LOCK_SUSPENDED);
+	  /* Historically the instance path wraps the post-suspend resume_status check in `if (entry_ptr)` even
+	   * though entry_ptr is NULL at this point (we entered via the `entry_ptr == NULL` branch). The block
+	   * is dead code; preserved verbatim per G4 bit-for-bit (DESIGN.md §F3 / §Failure Modes). */
 	  if (entry_ptr)
 	    {
 	      if (entry_ptr->thrd_entry->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
@@ -3872,30 +3927,15 @@ lock_tran_lk_entry:
   /* check if another thread is waiting for the same resource */
   if (entry_ptr->blocked_mode != NULL_LOCK)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_MANY_LOCK_WAIT_TRAN, 1, tran_index);
-      thread_lock_entry (thrd_entry);
-      thread_lock_entry (entry_ptr->thrd_entry);
+      bool retry_from_start;
 
-      if (entry_ptr->thrd_entry->lockwait == NULL)
+      lock_join_existing_wait_train (thrd_entry, tran_index, entry_ptr, res_ptr, &is_res_mutex_locked,
+				     &retry_from_start);
+      if (retry_from_start)
 	{
-	  thread_unlock_entry (entry_ptr->thrd_entry);
-	  thread_unlock_entry (thrd_entry);
-	  assert (is_res_mutex_locked);
-	  pthread_mutex_unlock (&res_ptr->res_mutex);
-	  is_res_mutex_locked = false;
 	  goto start;
 	}
 
-      thrd_entry->tran_next_wait = entry_ptr->thrd_entry->tran_next_wait;
-      entry_ptr->thrd_entry->tran_next_wait = thrd_entry;
-
-      thread_unlock_entry (entry_ptr->thrd_entry);
-
-      assert (is_res_mutex_locked);
-      pthread_mutex_unlock (&res_ptr->res_mutex);
-      is_res_mutex_locked = false;
-
-      thread_suspend_wakeup_and_unlock_entry (thrd_entry, THREAD_LOCK_SUSPENDED);
       if (thrd_entry->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
 	{
 	  /* a shutdown thread wakes me up */
