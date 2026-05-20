@@ -92,7 +92,7 @@ class hnsw_index_manager
     // index management on disk
     int save_index (THREAD_ENTRY *thread_p, hnsw_index *index);
     int load_index (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index *&index);
-    int save_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, const hnsw_index_meta &meta);
+    int save_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, const hnsw_index_meta &meta, bool overwrite = false);
     int load_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index_meta &meta);
     int save_all_indices (THREAD_ENTRY *thread_p);
     int delete_index_on_disk (THREAD_ENTRY *thread_p, const std::string &prefix, const BTID *btid);
@@ -108,6 +108,7 @@ class hnsw_index_manager
 
   private:
     fs::path get_vindex_root_path() const;
+    int load_index_meta_from_root_page (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index_meta &meta);
 
     /* singleton */
     hnsw_index_manager();
@@ -571,10 +572,11 @@ hnsw_index_manager::print_index_info (THREAD_ENTRY *thread_p, const BTID *btid)
 }
 
 int
-hnsw_index_manager::save_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, const hnsw_index_meta &meta)
+hnsw_index_manager::save_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, const hnsw_index_meta &meta,
+				     bool overwrite)
 {
   // if meta file exists, do not overwrite it
-  if (is_index_meta_file_exists (meta.backend_id, btid))
+  if (!overwrite && is_index_meta_file_exists (meta.backend_id, btid))
     {
       return NO_ERROR;
     }
@@ -622,6 +624,24 @@ hnsw_index_manager::load_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, h
       meta = temp_meta;
       return NO_ERROR;
     }
+  if (load_index_meta_from_root_page (thread_p, btid, meta) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  (void) save_index_meta (thread_p, btid, meta, true);
+  return NO_ERROR;
+}
+
+int
+hnsw_index_manager::load_index_meta_from_root_page (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index_meta &meta)
+{
+  hnsw_index_backend *backend = get_backend ();
+  if (backend == NULL)
+    {
+      return ER_FAILED;
+    }
+
   PAGE_PTR page_ptr = NULL;
   VPID root_vpid = { btid->root_pageid, btid->vfid.volid };
 
@@ -634,13 +654,6 @@ hnsw_index_manager::load_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, h
 
   HNSW_HEADER *hnsw_header = hnsw_get_header (thread_p, page_ptr);
   if (hnsw_header == NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, page_ptr);
-      return ER_FAILED;
-    }
-
-  hnsw_index_backend *backend = get_backend ();
-  if (backend == NULL)
     {
       pgbuf_unfix_and_init (thread_p, page_ptr);
       return ER_FAILED;
