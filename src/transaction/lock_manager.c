@@ -3362,6 +3362,29 @@ lock_find_my_waiter_entry (LK_RES * res_ptr, int tran_index)
 }
 
 /*
+ * LK_PERFORM_STATE - States of the acquisition state machine driving
+ *   lock_internal_perform_lock_object. File-local; do not expose in a
+ *   header. The naming follows the design doc (CBRD-26511 DESIGN.md
+ *   §Proposed Design).
+ *
+ *   LK_S_FIND_RESOURCE   - entry state; runs through find_or_insert.
+ *   LK_S_NEW_REQUESTER   - res_ptr held, I am not a holder yet.
+ *   LK_S_EXISTING_HOLDER - res_ptr held, I am a holder (conversion).
+ *   LK_S_SUSPENDED       - just before lock_suspend.
+ *   LK_S_POST_GRANT      - class-conversion cleanup + return.
+ *   LK_S_DONE            - loop exit.
+ */
+typedef enum
+{
+  LK_S_FIND_RESOURCE,
+  LK_S_NEW_REQUESTER,
+  LK_S_EXISTING_HOLDER,
+  LK_S_SUSPENDED,
+  LK_S_POST_GRANT,
+  LK_S_DONE
+} LK_PERFORM_STATE;
+
+/*
  * lock_join_existing_wait_train - The "MANY_LOCK_WAIT_TRAN" sequence:
  *   line up behind a same-transaction in-progress lock requester, release
  *   res_mutex, and suspend (or signal the caller to retry from `start:`
@@ -3471,6 +3494,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   UINT64 lock_wait_time;
+  LK_PERFORM_STATE state = LK_S_FIND_RESOURCE;
 
 #if defined(ENABLE_SYSTEMTAP)
   const OID *class_oid_for_marker_p;
@@ -3531,7 +3555,11 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
   is_instant_duration = tran_lock->is_instant_duration;
 
-start:
+  while (state != LK_S_DONE)
+    {
+  /* LK_S_FIND_RESOURCE entry: assertion holds on first entry and on every
+   * MANY_LOCK_WAIT_TRAN retry (the helper releases res_mutex and clears
+   * the flag before returning with *out_retry_from_start = true). */
   assert (!is_res_mutex_locked);
 
   if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
@@ -3743,7 +3771,7 @@ start:
 					 &retry_from_start);
 	  if (retry_from_start)
 	    {
-	      goto start;
+	      state = LK_S_FIND_RESOURCE; continue;
 	    }
 
 	  /* Historically the instance path wraps the post-suspend resume_status check in `if (entry_ptr)` even
@@ -3777,7 +3805,7 @@ start:
 		}
 	    }
 
-	  goto start;
+	  state = LK_S_FIND_RESOURCE; continue;
 	}
 
       /* allocate a lock entry. */
@@ -3933,7 +3961,7 @@ lock_tran_lk_entry:
 				     &retry_from_start);
       if (retry_from_start)
 	{
-	  goto start;
+	  state = LK_S_FIND_RESOURCE; continue;
 	}
 
       if (thrd_entry->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
@@ -3960,7 +3988,7 @@ lock_tran_lk_entry:
 	  assert (thrd_entry->resume_status == THREAD_LOCK_RESUMED);
 	}
 
-      goto start;
+      state = LK_S_FIND_RESOURCE; continue;
     }
 
   entry_ptr->blocked_mode = new_mode;
@@ -4098,6 +4126,9 @@ lock_conversion_treatement:
 
   *entry_addr_ptr = entry_ptr;
   ret_val = LK_GRANTED;
+
+  state = LK_S_DONE;
+    }				/* end of while (state != LK_S_DONE) */
 
 end:
 #if defined(ENABLE_SYSTEMTAP)
