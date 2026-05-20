@@ -2707,7 +2707,9 @@ ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE
   int err = NO_ERROR;
   DB_VALUE val;
   int char_count = 0;
-  char *padded = NULL;
+
+  /* Safe init so pr_clear_value at error_exit stays valid regardless of where the jump comes from. */
+  db_make_null (&val);
 
   precision = att->domain->precision;
 
@@ -2748,31 +2750,6 @@ ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE
 	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_CHAR, str);
 	}
     }
-  else if (char_count < precision)
-    {
-      /*
-       * CHAR(N) trailing-space padding. Padding used to be done in
-       * mr_setmem_char (legacy fixed-CHAR layout); after CHAR became
-       * variable-length, setmem no longer pads — caller responsibility.
-       * INSERT goes through cast (qstr_coerce) which pads, but loaddb
-       * bypasses cast, so pad here and hand a padded buffer to setmem.
-       * Space is 1 byte in every codeset.
-       */
-      int pad_chars = precision - char_count;
-      size_t new_len = len + pad_chars;
-      padded = (char *) db_private_alloc (NULL, new_len + 1);
-      if (padded == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
-      memcpy (padded, str, len);
-      memset (padded + len, ' ', pad_chars);
-      padded[new_len] = '\0';
-      str = padded;
-      len = new_len;
-      char_count = precision;
-    }
 
   val.domain = ldr_char_tmpl.domain;
   val.domain.char_info.length = precision;
@@ -2784,16 +2761,26 @@ ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE
   val.data.ch.medium.buf = (char *) str;
   val.data.ch.medium.compressed_buf = NULL;
   val.data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
+
+  /* CHAR(N) trailing-space padding.
+   * After char_step, setmem no longer pads, so padding is the caller's
+   * responsibility. The INSERT path goes through qstr_coerce, but loaddb
+   * bypasses cast, so we call the helper directly here. The helper
+   * replaces val's buf with the padded buffer and transfers ownership
+   * too, so a single pr_clear_value afterwards cleans everything up. */
+  if (char_count < precision)
+    {
+      CHECK_ERR (err, pr_pad_char_to_precision (&val, precision));
+    }
+
   mem = context->mobj + att->offset;
   CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
   /* CHAR is now stored in the variable-length attribute region (no bound bit
    * slot exists for variable attributes), so OBJ_SET_BOUND_BIT does not apply here. */
 
 error_exit:
-  if (padded != NULL)
-    {
-      db_private_free_and_init (NULL, padded);
-    }
+  /* No-op when need_clear=false; actually frees only when the helper installed a padded buffer. */
+  pr_clear_value (&val);
   return err;
 }
 

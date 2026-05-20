@@ -345,6 +345,7 @@ extern int pr_data_compress_string (const char *string, int str_length, char *co
 
 extern int pr_clear_compressed_string (DB_VALUE * value);
 extern int pr_do_db_value_string_compression (DB_VALUE * value);
+extern int pr_pad_char_to_precision (DB_VALUE * value, int precision);
 
 #if defined(ENABLE_UNUSED_FUNCTION)	// Unused macro — temporarily preserved to minimize review diff; will be removed in a follow-up PR
 #define PRIM_TEMPORARY_DISK_SIZE 256

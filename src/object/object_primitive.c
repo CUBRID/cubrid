@@ -11345,6 +11345,7 @@ mr_setmem_char_type_common (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, 
   char *cur, *new_, **mem;
   const char *src;
   int src_size, src_length, new_size, header_size;
+  int rc = NO_ERROR;
 
   assert (type == DB_TYPE_CHAR || type == DB_TYPE_VARCHAR);
 
@@ -11379,6 +11380,22 @@ mr_setmem_char_type_common (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, 
       intl_char_count ((unsigned char *) src, src_size, TP_DOMAIN_CODESET (domain), &value->data.ch.medium.length);
     }
   src_length = value->data.ch.medium.length;
+
+  /* CHAR padding must already be done by the caller (qstr_coerce / loaddb).
+   * Debug: invariant check via assert. Release: helper as a safety net. */
+  if (type == DB_TYPE_CHAR && src_length < domain->precision)
+    {
+      assert (false);
+      rc = pr_pad_char_to_precision (value, domain->precision);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+      /* Helper mutated value; re-read local variables to sync. */
+      src = db_get_string (value);
+      src_size = db_get_string_size (value);
+      src_length = value->data.ch.medium.length;
+    }
 
   /* Mem layout: [type_header-dispatched header][data][NUL]. Header size depends on type_header. */
   header_size = or_mem_string_header_size (src_length, src_size);
@@ -11915,7 +11932,28 @@ mr_lengthval_char_type_common (DB_VALUE * value, int disk, int align)
     }
   else
     {
-      int char_count;
+      /* db_get_string_length() always returns >= 0 for CHAR/VARCHAR — on cache miss
+       * (medium.length == -1) it computes char count via intl_char_count internally
+       * (string_opfunc.c:7788-7795). assert guards against future invariant breakage. */
+      int char_count = db_get_string_length (value);
+      assert (char_count >= 0);
+
+      /* CHAR padding must already be done by the caller (qstr_coerce / loaddb).
+       * Debug: invariant check via assert. Release: helper as a safety net. */
+      if (DB_VALUE_TYPE (value) == DB_TYPE_CHAR
+	  && !IS_FLOATING_PRECISION (DB_VALUE_PRECISION (value)) && char_count < DB_VALUE_PRECISION (value))
+	{
+	  assert (false);
+	  rc = pr_pad_char_to_precision (value, DB_VALUE_PRECISION (value));
+	  if (rc != NO_ERROR)
+	    {
+	      return 0;
+	    }
+	  /* Helper mutated value; re-read local variables to sync. */
+	  src = db_get_string (value);
+	  src_size = db_get_string_size (value);
+	  char_count = db_get_string_length (value);
+	}
 
       if (!DB_TRIED_COMPRESSION (value))
 	{
@@ -11928,11 +11966,6 @@ mr_lengthval_char_type_common (DB_VALUE * value, int disk, int align)
 
       compressed_size = db_get_compressed_size (value);
 
-      /* db_get_string_length() always returns >= 0 for CHAR/VARCHAR — on cache miss
-       * (medium.length == -1) it computes char count via intl_char_count internally
-       * (string_opfunc.c:7788-7795). assert guards against future invariant breakage. */
-      char_count = db_get_string_length (value);
-      assert (char_count >= 0);
       if (align == INT_ALIGNMENT)
 	{
 	  return or_packed_varchar_length (char_count, src_size, compressed_size);
@@ -11985,6 +12018,23 @@ mr_writeval_char_type_common (OR_BUF * buf, DB_VALUE * value, int align)
 			   &value->data.ch.medium.length);
 	}
       src_length = value->data.ch.medium.length;
+
+      /* CHAR padding must already be done by the caller (qstr_coerce / loaddb).
+       * Debug: invariant check via assert. Release: helper as a safety net. */
+      if (DB_VALUE_TYPE (value) == DB_TYPE_CHAR
+	  && !IS_FLOATING_PRECISION (DB_VALUE_PRECISION (value)) && src_length < DB_VALUE_PRECISION (value))
+	{
+	  assert (false);
+	  rc = pr_pad_char_to_precision (value, DB_VALUE_PRECISION (value));
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
+	  /* Helper mutated value; re-read local variables to sync. */
+	  str = db_get_string (value);
+	  src_size = db_get_string_size (value);
+	  src_length = value->data.ch.medium.length;
+	}
 
       /* Test for possible compression. */
       if (!DB_TRIED_COMPRESSION (value))
@@ -14542,6 +14592,90 @@ error:
     }
 
   return rc;
+}
+
+/*
+ * pr_pad_char_to_precision - CHAR(N) trailing-space padding helper.
+ *
+ *   value(in/out) : CHAR DB_VALUE. When padding is applied, value is cleared
+ *                   and re-set with a freshly allocated padded buffer; the
+ *                   buffer's ownership is transferred to the value (need_clear
+ *                   = true) so the caller does not free the padded buffer
+ *                   directly — pr_clear_value handles it.
+ *   precision(in) : target padded char count. Must be fixed (caller filters
+ *                   out floating precision). May come from the column domain
+ *                   (setmem/loaddb) or from the value itself (lengthval/
+ *                   writeval).
+ *
+ * Used as the release-mode safety net inside mr_setmem_char_type_common /
+ * mr_lengthval_char_type_common / mr_writeval_char_type_common. Caller guards
+ * the call with a debug assert so that debug builds abort on a caller
+ * invariant violation while release builds silently fix it.
+ *
+ * No-op when value's char count is already >= precision. After this call the
+ * value's medium.buf reflects the padded image and the existing compression
+ * cache is dropped — subsequent compression/length calculation operates on
+ * the padded buffer as if the caller had padded correctly.
+ *
+ * Space (0x20) is used as the pad byte — matches the legacy
+ * mr_writeval_char_internal behavior, which is consistent across all
+ * supported codesets at the byte level (KSC5601_EUC's 0xA1A1 ideographic-
+ * space discrepancy is a pre-existing, separate issue tracked outside this
+ * PR).
+ */
+int
+pr_pad_char_to_precision (DB_VALUE * value, int precision)
+{
+  int char_count, src_size, pad_chars, new_size;
+  const char *src;
+  char *padded;
+  INTL_CODESET codeset;
+  int collation;
+
+  assert (value != NULL);
+  assert (DB_VALUE_TYPE (value) == DB_TYPE_CHAR);
+  assert (precision >= 0);
+  assert (!IS_FLOATING_PRECISION (precision));
+  /* caller-provided precision must match the value's own precision or the
+   * value must be floating (column-domain precision substituted in). */
+  assert (precision == DB_VALUE_PRECISION (value) || IS_FLOATING_PRECISION (DB_VALUE_PRECISION (value)));
+
+  char_count = db_get_string_length (value);
+  if (char_count >= precision)
+    {
+      return NO_ERROR;
+    }
+
+  src = db_get_string (value);
+  src_size = db_get_string_size (value);
+  if (src_size < 0)
+    {
+      src_size = (int) strlen (src);
+    }
+  pad_chars = precision - char_count;
+  new_size = src_size + pad_chars;
+
+  padded = (char *) db_private_alloc (NULL, new_size + 1);
+  if (padded == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+  memcpy (padded, src, src_size);
+  memset (padded + src_size, ' ', pad_chars);
+  padded[new_size] = '\0';
+
+  /* clear existing value (frees old medium.buf if owned + drops compression
+   * cache) then re-set with the padded image. transfer ownership via
+   * need_clear so pr_clear_value handles the padded buf on next clear. */
+  codeset = (INTL_CODESET) db_get_string_codeset (value);
+  collation = db_get_string_collation (value);
+  pr_clear_value (value);
+  db_make_char (value, precision, padded, new_size, codeset, collation);
+  value->data.ch.medium.length = precision;	/* char_count cache */
+  value->need_clear = true;
+
+  return NO_ERROR;
 }
 
 const PR_TYPE tp_Json = {

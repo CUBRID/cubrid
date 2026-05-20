@@ -360,7 +360,6 @@ namespace cubload
     int precision = domain.precision;
     INTL_CODESET codeset = (INTL_CODESET) domain.codeset;
     int char_count = 0;
-    char *padded = NULL;
 
     intl_char_count ((unsigned char *) str, str_len, codeset, &char_count);
 
@@ -391,35 +390,6 @@ namespace cubload
 	    return ER_IT_DATA_OVERFLOW;
 	  }
       }
-    else if (type == DB_TYPE_CHAR && char_count < precision)
-      {
-	/*
-	 * CHAR(N) trailing-space padding for the CS loaddb entry. Padding
-	 * used to be done in mr_writeval_char_internal (legacy fixed-CHAR
-	 * layout); after CHAR became variable-length, writeval no longer
-	 * pads — caller responsibility. INSERT goes through cast
-	 * (qstr_coerce) which pads, but this loaddb entry bypasses cast, so
-	 * pad here and hand a padded buffer to db_make_db_char.
-	 *
-	 * padded is db_private_alloc'd; its ownership is transferred to val
-	 * via need_clear = true, so it is freed by pr_clear_value. Space is
-	 * 1 byte in every codeset.
-	 */
-	int pad_chars = precision - char_count;
-	int new_len = str_len + pad_chars;
-	padded = (char *) db_private_alloc (NULL, new_len + 1);
-	if (padded == NULL)
-	  {
-	    assert (er_errid () != NO_ERROR);
-	    return er_errid ();
-	  }
-	memcpy (padded, str, str_len);
-	memset (padded + str_len, ' ', pad_chars);
-	padded[new_len] = '\0';
-	str = padded;
-	str_len = new_len;
-	char_count = precision;
-      }
 
     error = db_value_domain_init (val, type, precision, 0);
     if (error == NO_ERROR)
@@ -429,16 +399,19 @@ namespace cubload
 	  {
 	    /* cache char_count (db_make_db_char resets to -1) */
 	    val->data.ch.medium.length = char_count;
-	    if (padded != NULL)
+	    /* CHAR(N) trailing-space padding.
+	     * After char_step, writeval / setmem no longer pad, so padding is
+	     * the caller's responsibility. The INSERT path goes through
+	     * qstr_coerce, but this loaddb entry bypasses cast, so we call the
+	     * helper directly here. VARCHAR is not a padding target and is
+	     * excluded. The helper replaces val's buf with the padded buffer
+	     * and transfers ownership too, so the caller's pr_clear_value
+	     * cleans it up automatically. */
+	    if (type == DB_TYPE_CHAR && char_count < precision)
 	      {
-		val->need_clear = true;	/* val takes ownership of padded */
+		error = pr_pad_char_to_precision (val, precision);
 	      }
 	  }
-      }
-
-    if (error != NO_ERROR && padded != NULL)
-      {
-	db_private_free_and_init (NULL, padded);
       }
 
     return error;
