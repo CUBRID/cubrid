@@ -1429,10 +1429,13 @@ file_header_dump_descriptor (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead,
   switch (fhead->type)
     {
     case FILE_OOS:
-      {
-	assert (false);
-	break;
-      }
+      /* OOS files do not currently store a parent HFID in their FILE_DESCRIPTORS, so we cannot
+       * emit an "Overflow for HFID: ..." line the way FILE_MULTIPAGE_OBJECT_HEAP does. Terminate
+       * the dump block with a newline instead — matches the default-case handling. The previous
+       * assert(false) here aborted cubrid diagdb in debug builds whenever it walked a database
+       * that contained any OOS file (i.e. any DB with a variable-length column >512 B). */
+      fprintf (fp, "\n");
+      break;
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
       file_print_name_of_class (thread_p, fp, &fhead->descriptor.heap.class_oid);
