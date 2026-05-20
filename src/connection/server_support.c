@@ -593,7 +593,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   /* initialize epoll worker pool */
   if (!connections.initialize (MAX_CONNECTIONS, max_connection_workers, min_connection_workers))
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      _er_log_debug (ARG_FILE_LINE, "connection::pool failed to prepare DMRB for connection contexts.\n");
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, 32 * 1024);
       status = ER_FAILED;
       goto shutdown;
     }
@@ -627,7 +628,7 @@ shutdown:
   /* we should flush all append pages before stop log writer */
   logpb_force_flush_pages (thread_p);
 
-#if !defined(NDEBUG)
+#if !defined (NDEBUG)
   /* All active transaction and vacuum workers should have been stopped. Only system transactions are still running. */
   assert (!log_prior_has_worker_log_records (thread_p));
 #endif
@@ -639,7 +640,9 @@ shutdown:
     {
       perfmon_er_log_current_stats (thread_p);
     }
+#if !defined (NDEBUG)
   css_Server_request_worker_pool->er_log_stats ();
+#endif
 
   // destroy thread worker pools
   thread_get_manager ()->destroy_worker_pool (css_Server_request_worker_pool);
