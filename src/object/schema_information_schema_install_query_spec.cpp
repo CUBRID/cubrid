@@ -915,7 +915,8 @@ const char *sm_define_view_tables_spec (void)
       /* CT_COLLATION_NAME */
       "INNER JOIN [%s] AS [coll] ON [coll].[coll_id] = [cls].[collation_id] "
       /* CT_SERIAL_NAME */
-      "LEFT OUTER JOIN [%s] AS [serial] ON [serial].[class_name] = [cls].[class_name] "
+      "LEFT OUTER JOIN [%s] AS [serial] "
+        "ON [serial].[class_name] = [cls].[class_name] AND [serial].[owner] = [cls].[owner] "
     "WHERE "
       AUTH_CHECK_OBJECT_ANY("[cls].[owner].[name]", "[cls].[class_of]"),
     SM_CLASS_CT,
