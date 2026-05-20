@@ -8171,11 +8171,17 @@ qo_generate_transitive_join_terms (QO_ENV * env)
     {
       QO_TERM *term = QO_ENV_TERM (env, i);
       if (term->nodes.nwords <= NWORDS)
-	term->nodes.setp = term->nodes.set.word;
+	{
+	  term->nodes.setp = term->nodes.set.word;
+	}
       if (term->segments.nwords <= NWORDS)
-	term->segments.setp = term->segments.set.word;
+	{
+	  term->segments.setp = term->segments.set.word;
+	}
       if (term->subqueries.nwords <= NWORDS)
-	term->subqueries.setp = term->subqueries.set.word;
+	{
+	  term->subqueries.setp = term->subqueries.set.word;
+	}
     }
 
   for (i = 0; i < specs_count; i++)
@@ -8186,11 +8192,15 @@ qo_generate_transitive_join_terms (QO_ENV * env)
       QO_TERM *term;
 
       if (parser == NULL)
-	continue;
+	{
+	  continue;
+	}
 
       pt_expr = parser_new_node (parser, PT_EXPR);
       if (pt_expr == NULL)
-	continue;
+	{
+	  continue;
+	}
 
       pt_expr->info.expr.op = PT_EQ;
       pt_expr->info.expr.arg1 = parser_copy_tree (parser, QO_SEG_PT_NODE (head_seg));
@@ -8217,20 +8227,32 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 	      PT_NODE *tpe;
 	      QO_SEGMENT *nom;
 	      if (!QO_IS_EDGE_TERM (tc))
-		continue;
+		{
+		  continue;
+		}
 	      tpe = QO_TERM_PT_EXPR (tc);
 	      if (tpe == NULL || !PT_EXPR_INFO_IS_FLAGED (tpe, PT_EXPR_INFO_TRANSITIVE))
-		continue;
+		{
+		  continue;
+		}
 	      nom = QO_TERM_NOMINAL_SEG (tc);
 	      if (nom == NULL || root_arr[QO_SEG_IDX (nom)] != spec_root)
-		continue;
+		{
+		  continue;
+		}
 	      if (QO_TERM_HEAD (tc) == head_node_p || QO_TERM_TAIL (tc) == head_node_p)
-		head_in_trans = true;
+		{
+		  head_in_trans = true;
+		}
 	      if (QO_TERM_HEAD (tc) == tail_node_p || QO_TERM_TAIL (tc) == tail_node_p)
-		tail_in_trans = true;
+		{
+		  tail_in_trans = true;
+		}
 	    }
 	  if (head_in_trans && tail_in_trans)
-	    PT_EXPR_INFO_SET_FLAG (pt_expr, PT_EXPR_INFO_TRANSITIVE);
+	    {
+	      PT_EXPR_INFO_SET_FLAG (pt_expr, PT_EXPR_INFO_TRANSITIVE);
+	    }
 	}
 
       term = qo_add_term (pt_expr, PREDICATE_TERM, env);
@@ -8270,7 +8292,9 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
   bool group_has_outer_join, already_has_term;
 
   if (env->nsegs == 0)
-    return 0;
+    {
+      return 0;
+    }
 
   root_arr = (int *) malloc (sizeof (int) * env->nsegs);
   if (root_arr == NULL)
@@ -8292,14 +8316,18 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
   for (i = 0; i < env->nsegs; i++)
     {
       if (root_arr[i] != i)
-	continue;
+	{
+	  continue;
+	}
 
       /* Collect all segments belonging to this group. */
       nsegs = 0;
       for (j = 0; j < env->nsegs; j++)
 	{
 	  if (root_arr[j] != i)
-	    continue;
+	    {
+	      continue;
+	    }
 	  if (nsegs >= segs_arr_cap)
 	    {
 	      int new_cap = (segs_arr_cap == 0) ? 8 : segs_arr_cap * 2;
@@ -8318,7 +8346,9 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 	}
 
       if (nsegs < 2)
-	continue;
+	{
+	  continue;
+	}
 
       /* Skip groups with outer-join terms; transitive inference is unsafe there. */
       group_has_outer_join = false;
@@ -8326,10 +8356,14 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 	{
 	  term = QO_ENV_TERM (env, t);
 	  if (!QO_IS_EDGE_TERM (term))
-	    continue;
+	    {
+	      continue;
+	    }
 	  nom = QO_TERM_NOMINAL_SEG (term);
 	  if (nom == NULL || root_arr[QO_SEG_IDX (nom)] != i)
-	    continue;
+	    {
+	      continue;
+	    }
 	  if (IS_OUTER_JOIN_TYPE (QO_TERM_JOIN_TYPE (term)))
 	    {
 	      group_has_outer_join = true;
@@ -8338,7 +8372,9 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 	}
 
       if (group_has_outer_join)
-	continue;
+	{
+	  continue;
+	}
 
       /* Emit one spec per (head_node, tail_node) pair; also check already-collected specs
        * to avoid duplicates when the same node has multiple segments in the eqclass. */
@@ -8353,7 +8389,9 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 	      node2 = QO_SEG_HEAD (seg2);
 
 	      if (QO_NODE_IDX (node1) == QO_NODE_IDX (node2))
-		continue;
+		{
+		  continue;
+		}
 
 	      if (QO_NODE_IDX (node1) < QO_NODE_IDX (node2))
 		{
@@ -8378,10 +8416,14 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 		   * qo_classify_outerjoin_terms retain NOMINAL_SEG/HEAD/TAIL. */
 		  if (!QO_IS_EDGE_TERM (term)
 		      && QO_TERM_CLASS (term) != QO_TC_AFTER_JOIN && QO_TERM_CLASS (term) != QO_TC_DURING_JOIN)
-		    continue;
+		    {
+		      continue;
+		    }
 		  nom = QO_TERM_NOMINAL_SEG (term);
 		  if (nom == NULL || root_arr[QO_SEG_IDX (nom)] != i)
-		    continue;
+		    {
+		      continue;
+		    }
 		  if ((QO_TERM_HEAD (term) == head_node && QO_TERM_TAIL (term) == tail_node)
 		      || (QO_TERM_HEAD (term) == tail_node && QO_TERM_TAIL (term) == head_node))
 		    {
@@ -8404,7 +8446,9 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 		}
 
 	      if (already_has_term)
-		continue;
+		{
+		  continue;
+		}
 
 	      if (*count_p >= *cap_p)
 		{
