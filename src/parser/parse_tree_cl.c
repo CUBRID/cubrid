@@ -19424,7 +19424,7 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
     }
 
-  if (print_detail)
+  if (print_detail && pt->url && pt->user && pt->pwd)
     {
       var = pt_print_remote_info (parser, pt, false);
     }
