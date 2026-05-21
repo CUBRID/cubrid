@@ -424,6 +424,16 @@ QO_PLAN_VTBL *all_vtbls[] = {
   &qo_worst_plan_vtbl
 };
 
+#define DEFAULT_NULL_SELECTIVITY (double) 0.01
+#define DEFAULT_EXISTS_SELECTIVITY (double) 0.1
+#define DEFAULT_SELECTIVITY (double) 0.1
+#define DEFAULT_EQUAL_SELECTIVITY (double) 0.001
+#define DEFAULT_EQUIJOIN_SELECTIVITY (double) 0.001
+#define DEFAULT_COMP_SELECTIVITY (double) 0.1
+#define DEFAULT_BETWEEN_SELECTIVITY (double) 0.01
+#define DEFAULT_IN_SELECTIVITY (double) 0.01
+#define DEFAULT_RANGE_SELECTIVITY (double) 0.1
+
 /* Structural equivalence classes for expressions */
 
 typedef enum PRED_CLASS
