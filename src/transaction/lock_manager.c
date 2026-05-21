@@ -3316,6 +3316,107 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
 
 #if defined(SERVER_MODE)
 /*
+ * lock_find_my_holder_entry - Walk res_ptr->holder looking for tran_index.
+ *
+ * return: holder entry of the caller's transaction, or NULL if not present.
+ *
+ *   res_ptr(in):    lock resource; caller must hold res_ptr->res_mutex.
+ *   tran_index(in): caller's transaction index.
+ */
+static LK_ENTRY *
+lock_find_my_holder_entry (LK_RES * res_ptr, int tran_index)
+{
+  LK_ENTRY *e;
+
+  for (e = res_ptr->holder; e != NULL; e = e->next)
+    {
+      if (e->tran_index == tran_index)
+	{
+	  return e;
+	}
+    }
+  return NULL;
+}
+
+/*
+ * lock_find_my_waiter_entry - Walk res_ptr->waiter looking for tran_index.
+ *
+ * return: waiter entry of the caller's transaction, or NULL if not present.
+ *
+ *   res_ptr(in):    lock resource; caller must hold res_ptr->res_mutex.
+ *   tran_index(in): caller's transaction index.
+ */
+static LK_ENTRY *
+lock_find_my_waiter_entry (LK_RES * res_ptr, int tran_index)
+{
+  LK_ENTRY *e;
+
+  for (e = res_ptr->waiter; e != NULL; e = e->next)
+    {
+      if (e->tran_index == tran_index)
+	{
+	  return e;
+	}
+    }
+  return NULL;
+}
+
+/*
+ * LK_PERFORM_STATE - states of the lock acquisition state machine in
+ *   lock_internal_perform_lock_object.
+ */
+typedef enum
+{
+  LK_S_FIND_RESOURCE,
+  LK_S_NEW_REQUESTER,
+  LK_S_EXISTING_HOLDER,
+  LK_S_SUSPENDED,
+  LK_S_POST_GRANT,
+  LK_S_DONE
+} LK_PERFORM_STATE;
+
+/*
+ * lock_join_existing_wait_train - Join the wait train led by lead_entry's
+ *   thread, release res_mutex, and suspend.
+ *
+ *   res_ptr->res_mutex is released unconditionally and *is_res_mutex_locked_p
+ *   is cleared. If the lead thread's lockwait was already cleared, the helper
+ *   returns without suspending and sets *out_retry_from_start to true to ask
+ *   the caller to restart the acquisition from the beginning. Otherwise it
+ *   suspends and returns with *out_retry_from_start = false; the caller must
+ *   then inspect thrd_entry->resume_status.
+ */
+static void
+lock_join_existing_wait_train (THREAD_ENTRY * thrd_entry, int tran_index, LK_ENTRY * lead_entry, LK_RES * res_ptr,
+			       bool * is_res_mutex_locked_p, bool * out_retry_from_start)
+{
+  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_MANY_LOCK_WAIT_TRAN, 1, tran_index);
+  thread_lock_entry (thrd_entry);
+  thread_lock_entry (lead_entry->thrd_entry);
+  if (lead_entry->thrd_entry->lockwait == NULL)
+    {
+      thread_unlock_entry (lead_entry->thrd_entry);
+      thread_unlock_entry (thrd_entry);
+      assert (*is_res_mutex_locked_p);
+      pthread_mutex_unlock (&res_ptr->res_mutex);
+      *is_res_mutex_locked_p = false;
+      *out_retry_from_start = true;
+      return;
+    }
+
+  thrd_entry->tran_next_wait = lead_entry->thrd_entry->tran_next_wait;
+  lead_entry->thrd_entry->tran_next_wait = thrd_entry;
+
+  thread_unlock_entry (lead_entry->thrd_entry);
+  assert (*is_res_mutex_locked_p);
+  pthread_mutex_unlock (&res_ptr->res_mutex);
+  *is_res_mutex_locked_p = false;
+
+  thread_suspend_wakeup_and_unlock_entry (thrd_entry, THREAD_LOCK_SUSPENDED);
+  *out_retry_from_start = false;
+}
+
+/*
  * lock_internal_perform_lock_object - Performs actual object lock operation
  *
  * return: one of following values
@@ -3359,6 +3460,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   UINT64 lock_wait_time;
+  LK_PERFORM_STATE state = LK_S_FIND_RESOURCE;
 
 #if defined(ENABLE_SYSTEMTAP)
   const OID *class_oid_for_marker_p;
@@ -3419,8 +3521,19 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
   is_instant_duration = tran_lock->is_instant_duration;
 
-start:
-  assert (!is_res_mutex_locked);
+  while (state != LK_S_DONE)
+    {
+      switch (state)
+	{
+	default:
+	case LK_S_NEW_REQUESTER:
+	case LK_S_DONE:
+	  assert (0);
+	  state = LK_S_DONE;
+	  break;
+
+	case LK_S_FIND_RESOURCE:
+	  assert (!is_res_mutex_locked);
 
   if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
     {
@@ -3433,7 +3546,8 @@ start:
 	  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
 	  if (tdes && tdes->tran_abort_reason == TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION)
 	    {
-	      goto end;
+	      state = LK_S_DONE;
+	      break;
 	    }
 	}
 
@@ -3442,7 +3556,8 @@ start:
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_RE_REQUESTED_ON_OBJECTS);	/* monitoring */
 	  ret_val = LK_GRANTED;
-	  goto end;
+	  state = LK_S_DONE;
+	  break;
 	}
     }
   else
@@ -3453,7 +3568,8 @@ start:
       if (entry_ptr != NULL)
 	{
 	  res_ptr = entry_ptr->res_head;
-	  goto lock_tran_lk_entry;
+	  state = LK_S_EXISTING_HOLDER;
+	  break;
 	}
     }
 
@@ -3483,7 +3599,8 @@ start:
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE, 1, "lock heap entry");
 	  ret_val = LK_NOTGRANTED_DUE_ERROR;
-	  goto end;
+	  state = LK_S_DONE;
+	  break;
 	}
 
       /* initialize the lock entry as granted state */
@@ -3519,21 +3636,14 @@ start:
       *entry_addr_ptr = entry_ptr;
 
       ret_val = LK_GRANTED;
-      goto end;
+      state = LK_S_DONE;
+      break;
     }
 
   /* the lockable object existed in the hash chain So, check whether I am a holder of the object. */
 
   /* find the lock entry of current transaction */
-  entry_ptr = res_ptr->holder;
-  while (entry_ptr != NULL)
-    {
-      if (entry_ptr->tran_index == tran_index)
-	{
-	  break;
-	}
-      entry_ptr = entry_ptr->next;
-    }
+  entry_ptr = lock_find_my_holder_entry (res_ptr, tran_index);
 
   if (entry_ptr == NULL)
     {
@@ -3553,7 +3663,8 @@ start:
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE, 1, "lock heap entry");
 
 	      ret_val = LK_NOTGRANTED_DUE_ERROR;
-	      goto end;
+	      state = LK_S_DONE;
+	      break;
 	    }
 
 	  /* initialize the lock entry as granted state */
@@ -3592,7 +3703,8 @@ start:
 	  *entry_addr_ptr = entry_ptr;
 
 	  ret_val = LK_GRANTED;
-	  goto end;
+	  state = LK_S_DONE;
+	  break;
 	}
 
       /* 2. I am not a holder & my request cannot be granted. */
@@ -3609,7 +3721,8 @@ start:
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE, 1, "lock heap entry");
 		      ret_val = LK_NOTGRANTED_DUE_ERROR;
-		      goto end;
+		      state = LK_S_DONE;
+		      break;
 		    }
 		  lock_initialize_entry_as_blocked (entry_ptr, thread_p, tran_index, res_ptr, lock);
 		  if (is_instant_duration
@@ -3625,45 +3738,27 @@ start:
 	    }
 
 	  ret_val = LK_NOTGRANTED_DUE_TIMEOUT;
-	  goto end;
+	  state = LK_S_DONE;
+	  break;
 	}
 
       /* check if another thread is waiting for the same resource */
-      wait_entry_ptr = res_ptr->waiter;
-      while (wait_entry_ptr != NULL)
-	{
-	  if (wait_entry_ptr->tran_index == tran_index)
-	    {
-	      break;
-	    }
-	  wait_entry_ptr = wait_entry_ptr->next;
-	}
+      wait_entry_ptr = lock_find_my_waiter_entry (res_ptr, tran_index);
 
       if (wait_entry_ptr != NULL)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_MANY_LOCK_WAIT_TRAN, 1, tran_index);
-	  thread_lock_entry (thrd_entry);
-	  thread_lock_entry (wait_entry_ptr->thrd_entry);
-	  if (wait_entry_ptr->thrd_entry->lockwait == NULL)
+	  bool retry_from_start;
+
+	  lock_join_existing_wait_train (thrd_entry, tran_index, wait_entry_ptr, res_ptr, &is_res_mutex_locked,
+					 &retry_from_start);
+	  if (retry_from_start)
 	    {
-	      /* */
-	      thread_unlock_entry (wait_entry_ptr->thrd_entry);
-	      thread_unlock_entry (thrd_entry);
-	      assert (is_res_mutex_locked);
-	      pthread_mutex_unlock (&res_ptr->res_mutex);
-	      is_res_mutex_locked = false;
-	      goto start;
+	      state = LK_S_FIND_RESOURCE;
+	  break;
 	    }
 
-	  thrd_entry->tran_next_wait = wait_entry_ptr->thrd_entry->tran_next_wait;
-	  wait_entry_ptr->thrd_entry->tran_next_wait = thrd_entry;
-
-	  thread_unlock_entry (wait_entry_ptr->thrd_entry);
-	  assert (is_res_mutex_locked);
-	  pthread_mutex_unlock (&res_ptr->res_mutex);
-	  is_res_mutex_locked = false;
-
-	  thread_suspend_wakeup_and_unlock_entry (thrd_entry, THREAD_LOCK_SUSPENDED);
+	  /* entry_ptr is NULL on this branch, so the block below is unreachable; left in place to keep the
+	   * post-suspend resume_status handling co-located with the conversion path. */
 	  if (entry_ptr)
 	    {
 	      if (entry_ptr->thrd_entry->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
@@ -3672,7 +3767,8 @@ start:
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 
 		  ret_val = LK_NOTGRANTED_DUE_ERROR;
-		  goto end;
+		  state = LK_S_DONE;
+		  break;
 		}
 	      else if (entry_ptr->thrd_entry->resume_status != THREAD_LOCK_RESUMED)
 		{
@@ -3684,7 +3780,8 @@ start:
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 		    }
 		  ret_val = LK_NOTGRANTED_DUE_ERROR;
-		  goto end;
+		  state = LK_S_DONE;
+		  break;
 		}
 	      else
 		{
@@ -3692,7 +3789,8 @@ start:
 		}
 	    }
 
-	  goto start;
+	  state = LK_S_FIND_RESOURCE;
+	  break;
 	}
 
       /* allocate a lock entry. */
@@ -3703,7 +3801,8 @@ start:
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE, 1, "lock heap entry");
 	  ret_val = LK_NOTGRANTED_DUE_ERROR;
-	  goto end;
+	  state = LK_S_DONE;
+	  break;
 	}
       /* initialize the lock entry as blocked state */
       lock_initialize_entry_as_blocked (entry_ptr, thread_p, tran_index, res_ptr, lock);
@@ -3733,10 +3832,14 @@ start:
       res_ptr->total_waiters_mode = lock_conv (lock, res_ptr->total_waiters_mode);
       assert (res_ptr->total_waiters_mode != NA_LOCK);
 
-      goto blocked;
+      state = LK_S_SUSPENDED;
+      break;
     }				/* end of a new lock request */
 
-lock_tran_lk_entry:
+	  state = LK_S_EXISTING_HOLDER;
+	  break;
+
+	case LK_S_EXISTING_HOLDER:
   /* The object exists in the hash chain & I am a lock holder of the lockable object. */
   lock_conversion = true;
   old_mode = entry_ptr->granted_mode;
@@ -3772,7 +3875,8 @@ lock_tran_lk_entry:
       *entry_addr_ptr = entry_ptr;
 
       ret_val = LK_GRANTED;
-      goto end;
+      state = LK_S_DONE;
+      break;
     }
 
   if (!is_res_mutex_locked)
@@ -3813,7 +3917,8 @@ lock_tran_lk_entry:
       assert (is_res_mutex_locked);
       pthread_mutex_unlock (&res_ptr->res_mutex);
 
-      goto lock_conversion_treatement;
+      state = LK_S_POST_GRANT;
+      break;
     }
 
   /* I am a holder & my request cannot be granted. */
@@ -3834,7 +3939,8 @@ lock_tran_lk_entry:
 	}
 
       ret_val = LK_NOTGRANTED_DUE_TIMEOUT;
-      goto end;
+      state = LK_S_DONE;
+      break;
     }
 
   /* Upgrader Positioning Rule (UPR) */
@@ -3842,36 +3948,23 @@ lock_tran_lk_entry:
   /* check if another thread is waiting for the same resource */
   if (entry_ptr->blocked_mode != NULL_LOCK)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_MANY_LOCK_WAIT_TRAN, 1, tran_index);
-      thread_lock_entry (thrd_entry);
-      thread_lock_entry (entry_ptr->thrd_entry);
+      bool retry_from_start;
 
-      if (entry_ptr->thrd_entry->lockwait == NULL)
+      lock_join_existing_wait_train (thrd_entry, tran_index, entry_ptr, res_ptr, &is_res_mutex_locked,
+				     &retry_from_start);
+      if (retry_from_start)
 	{
-	  thread_unlock_entry (entry_ptr->thrd_entry);
-	  thread_unlock_entry (thrd_entry);
-	  assert (is_res_mutex_locked);
-	  pthread_mutex_unlock (&res_ptr->res_mutex);
-	  is_res_mutex_locked = false;
-	  goto start;
+	  state = LK_S_FIND_RESOURCE;
+	  break;
 	}
 
-      thrd_entry->tran_next_wait = entry_ptr->thrd_entry->tran_next_wait;
-      entry_ptr->thrd_entry->tran_next_wait = thrd_entry;
-
-      thread_unlock_entry (entry_ptr->thrd_entry);
-
-      assert (is_res_mutex_locked);
-      pthread_mutex_unlock (&res_ptr->res_mutex);
-      is_res_mutex_locked = false;
-
-      thread_suspend_wakeup_and_unlock_entry (thrd_entry, THREAD_LOCK_SUSPENDED);
       if (thrd_entry->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
 	{
 	  /* a shutdown thread wakes me up */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 	  ret_val = LK_NOTGRANTED_DUE_ERROR;
-	  goto end;
+	  state = LK_S_DONE;
+	  break;
 	}
       else if (thrd_entry->resume_status != THREAD_LOCK_RESUMED)
 	{
@@ -3883,14 +3976,16 @@ lock_tran_lk_entry:
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 	    }
 	  ret_val = LK_NOTGRANTED_DUE_ERROR;
-	  goto end;
+	  state = LK_S_DONE;
+	  break;
 	}
       else
 	{
 	  assert (thrd_entry->resume_status == THREAD_LOCK_RESUMED);
 	}
 
-      goto start;
+      state = LK_S_FIND_RESOURCE;
+	  break;
     }
 
   entry_ptr->blocked_mode = new_mode;
@@ -3927,7 +4022,10 @@ lock_tran_lk_entry:
   /* position the lock entry in the holder list according to UPR */
   lock_position_holder_entry (res_ptr, entry_ptr);
 
-blocked:
+	  state = LK_S_SUSPENDED;
+	  break;
+
+	case LK_S_SUSPENDED:
 
   if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_LOCK_OBJECT))
     {
@@ -3964,22 +4062,28 @@ blocked:
       if (ret_val == LOCK_RESUMED_ABORTED)
 	{
 	  ret_val = LK_NOTGRANTED_DUE_ABORTED;
-	  goto end;
+	  state = LK_S_DONE;
+	  break;
 	}
       else if (ret_val == LOCK_RESUMED_INTERRUPT)
 	{
 	  ret_val = LK_NOTGRANTED_DUE_ERROR;
-	  goto end;
+	  state = LK_S_DONE;
+	  break;
 	}
       else			/* LOCK_RESUMED_TIMEOUT || LOCK_SUSPENDED */
 	{
 	  ret_val = LK_NOTGRANTED_DUE_TIMEOUT;
-	  goto end;
+	  state = LK_S_DONE;
+	  break;
 	}
     }
 
   /* The transaction now got the lock on the object */
-lock_conversion_treatement:
+	  state = LK_S_POST_GRANT;
+	  break;
+
+	case LK_S_POST_GRANT:
 
   if (entry_ptr->res_head->key.type == LOCK_RESOURCE_CLASS && lock_conversion == true)
     {
@@ -4029,7 +4133,11 @@ lock_conversion_treatement:
   *entry_addr_ptr = entry_ptr;
   ret_val = LK_GRANTED;
 
-end:
+	  state = LK_S_DONE;
+	  break;
+	}			/* end of switch (state) */
+    }				/* end of while (state != LK_S_DONE) */
+
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_LOCK_ACQUIRE_END (oid_for_marker_p, class_oid_for_marker_p, lock, ret_val != LK_GRANTED);
 #endif /* ENABLE_SYSTEMTAP */
