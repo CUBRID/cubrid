@@ -13087,7 +13087,6 @@ pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE *
   TABLE_INFO *tbl_info = pt_find_table_info (spec->info.spec.id, parser->symbols->table_info);
   assert (tbl_info != NULL);
 
-  REGU_VARIABLE *regu_var = pt_to_regu_variable (parser, pdblink->qstr, UNBOX_AS_VALUE);
   ACCESS_METHOD access_method = ACCESS_METHOD_SEQUENTIAL;
 
   PT_NODE *pred_attrs = NULL, *rest_attrs = NULL, *reserved_attrs = NULL;
