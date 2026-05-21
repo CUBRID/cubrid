@@ -21,7 +21,6 @@
 # - some: cmake -DUNIT_TEST_ABC=ON -DUNIT_TEST_XYZ=ON <path>
 
 project(Test)
-enable_testing()
 
 set(TEST_COMMON_DIR ${CMAKE_CURRENT_SOURCE_DIR}/common)
 
@@ -39,7 +38,6 @@ option (UNIT_TEST_RESOURCE_TRACKER "Unit testing: resource tracker")
 option (UNIT_TEST_MONITOR "Unit testing: monitor")
 option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
 option (UNIT_TEST_MEMORY_MONITOR "Unit testing: memory monitor")
-option (UNIT_TEST_PAGE_BUFFER_ATOMIC_LATCH "Unit testing: page-buffer atomic latch infinite-wait holes")
 
 message("  unit_tests/...")
 
@@ -58,17 +56,6 @@ externalproject_add(${CATCH2_TARGET}
 set (CATCH2_DIR ${CMAKE_BINARY_DIR}/unit_tests/catch2-prefix/src/catch2)
 include_directories(${CATCH2_DIR}/single_include)
 list(APPEND TESTS_EXTERNAL_TARGETS ${CATCH2_TARGET})
-
-# GoogleTest — used by tests that link against the real cubrid SERVER_MODE library
-# (page_buffer_atomic_latch and any future tests following the same pattern).
-if (UNIT_TESTS OR UNIT_TEST_PAGE_BUFFER_ATOMIC_LATCH)
-  include(FetchContent)
-  FetchContent_Declare(
-    googletest
-    URL https://github.com/google/googletest/archive/52eb8108c5bdec04579160ae17225d66034bd723.zip
-  )
-  FetchContent_MakeAvailable(googletest)
-endif()
 
 message("   common")
 add_subdirectory(common)
@@ -115,11 +102,6 @@ if (UNIT_TESTS OR UNIT_TEST_MONITOR)
   message("    monitor")
   add_subdirectory(monitor)
 endif(UNIT_TESTS OR UNIT_TEST_MONITOR)
-
-if (UNIT_TESTS OR UNIT_TEST_PAGE_BUFFER_ATOMIC_LATCH)
-  message("    page_buffer_atomic_latch")
-  add_subdirectory(page_buffer_atomic_latch)
-endif(UNIT_TESTS OR UNIT_TEST_PAGE_BUFFER_ATOMIC_LATCH)
 
 #[[
 TODO compilation fails

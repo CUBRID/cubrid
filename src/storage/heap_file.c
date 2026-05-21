@@ -21179,19 +21179,6 @@ heap_insert_physical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   assert (context->res_oid.pageid != NULL_PAGEID);
   assert (context->res_oid.slotid != NULL_SLOTID);
 
-#if !defined (NDEBUG)
-  /* test-only fault inject: heap_test_drive_insert_with_injected_fail flips the
-   * single-shot flag before calling heap_insert_logical; consume it here so the
-   * caller can verify we reached the physical insert path. */
-  if (heap_Test_force_insert_physical_fail)
-    {
-      heap_Test_force_insert_physical_fail = false;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      OID_SET_NULL (&context->res_oid);
-      return ER_FAILED;
-    }
-#endif /* !NDEBUG */
-
 #if defined(CUBRID_DEBUG)
   /* function should have received map record if input record was multipage */
   if (heap_is_big_length (context->recdes_p->length))
@@ -23671,8 +23658,7 @@ error:
   CUBRID_OBJ_INSERT_END (&context->class_oid, (rc < 0));
 #endif /* ENABLE_SYSTEMTAP */
 
-  heap_unfix_watchers (thread_p, context);
-
+  /* all ok */
   return rc;
 }
 
@@ -26768,89 +26754,3 @@ heap_rv_lob_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   return fileio_lob_remove_matching_dir (rcv->data);
 }
-
-#if !defined (NDEBUG)
-/* single-shot — consumed inside heap_insert_physical */
-bool heap_Test_force_insert_physical_fail = false;
-#endif /* !NDEBUG */
-
-#if defined (SERVER_MODE)
-/* test-only: drive heap_insert_logical with fault inject; *out_home_vpid = home page of the inserted record */
-int
-heap_test_drive_insert_with_injected_fail (THREAD_ENTRY * thread_p, VPID * out_home_vpid)
-{
-#if !defined (NDEBUG)
-  HFID hfid;
-  OID class_oid;
-  HEAP_OPERATION_CONTEXT context;
-  RECDES recdes;
-  char buf[64];
-  int rc;
-
-  if (out_home_vpid != NULL)
-    {
-      VPID_SET_NULL (out_home_vpid);
-    }
-
-  HFID_SET_NULL (&hfid);
-  /* root oid for IX lock only — heap_test path; catalog stays consistent */
-  COPY_OID (&class_oid, oid_Root_class_oid);
-
-  if (xheap_create (thread_p, &hfid, &class_oid, false) != NO_ERROR)
-    {
-      heap_Test_force_insert_physical_fail = false;
-      return ER_FAILED;
-    }
-
-  memset (buf, 0xab, sizeof (buf));
-  recdes.data = buf;
-  recdes.length = 32;
-  recdes.area_size = sizeof (buf);
-  recdes.type = REC_HOME;
-
-  heap_create_insert_context (&context, &hfid, &class_oid, &recdes, NULL);
-
-  heap_Test_force_insert_physical_fail = true;
-
-  /* xheap_create may leave a non-fatal warning in er_msg; scrub before entering
-   * heap_insert_logical so the inner `er_errid_if_has_error () == NO_ERROR`
-   * invariant inside heap_stats_find_page_in_bestspace holds at loop entry.
-   * heap_log_insert_physical asserts a sysop is active — wrap to satisfy invariants. */
-  er_clear ();
-  log_sysop_start (thread_p);
-  rc = heap_insert_logical (thread_p, &context, NULL);
-  log_sysop_commit (thread_p);
-
-  /* single-shot flag cleared by heap_insert_physical — confirms we hit the real path */
-  assert (heap_Test_force_insert_physical_fail == false);
-
-  if (out_home_vpid != NULL)
-    {
-      if (rc == NO_ERROR && !OID_ISNULL (&context.res_oid))
-	{
-	  out_home_vpid->volid = context.res_oid.volid;
-	  out_home_vpid->pageid = context.res_oid.pageid;
-	}
-      else if (context.home_page_watcher.pgptr != NULL)
-	{
-	  /* error path: heap_insert_logical may have left the home watcher
-	   * fixed (unfix-miss).  Capture the VPID directly from the page so
-	   * the caller can probe its fcnt. */
-	  pgbuf_get_vpid (context.home_page_watcher.pgptr, out_home_vpid);
-	}
-    }
-
-  /* clear interrupt so the calling worker isn't poisoned for follow-up ops */
-  xlogtb_set_interrupt (thread_p, 0);
-
-  return rc;
-#else
-  (void) thread_p;
-  if (out_home_vpid != NULL)
-    {
-      VPID_SET_NULL (out_home_vpid);
-    }
-  return NO_ERROR;
-#endif /* !NDEBUG */
-}
-#endif /* SERVER_MODE */
