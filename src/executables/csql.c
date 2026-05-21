@@ -3724,7 +3724,7 @@ csql_display_trace (void)
 {
   const char *stmts = NULL;
   DB_SESSION *session = NULL;
-  int stmt_id, dummy, db_error;
+  int stmt_id, db_error;
   DB_QUERY_RESULT *result = NULL;
   DB_VALUE trace;
   FILE *pf;
@@ -3773,7 +3773,7 @@ csql_display_trace (void)
     {
       pf = csql_popen (csql_Pager_cmd, csql_Output_fp);
       fprintf (pf, "\n=== Auto Trace ===\n");
-      fprintf (pf, "%s\n", db_get_char (&trace, &dummy));
+      fprintf (pf, "%s\n", db_get_char (&trace));
       csql_pclose (pf, csql_Output_fp);
     }
 
