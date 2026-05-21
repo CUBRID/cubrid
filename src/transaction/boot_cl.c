@@ -1809,7 +1809,7 @@ boot_build_catalog_classes (const char *dbname)
 	}
       if (error_code == NO_ERROR)
 	{
-	  /* add method to db_authorization */
+	  /* add method to _db_authorization */
 	  au_add_method_check_authorization ();
 
 	  /* mark catalog class/view as a system class */
@@ -1896,6 +1896,9 @@ boot_destroy_catalog_classes (void)
     CT_SYNONYM_NAME,
     CTV_SYNONYM_NAME,
     CTV_HISTOGRAM_NAME,
+    CTV_USER_NAME,
+    CTV_AUTHORIZATION_NAME,
+    CT_GLOBAL_TRAN_NAME,
     NULL
   };
 
@@ -1912,8 +1915,8 @@ boot_destroy_catalog_classes (void)
 
   AU_DISABLE (save);
 
-  /* drop method of db_authorization */
-  error_code = db_drop_class_method (locator_find_class ("db_authorization"), "check_authorization");
+  /* drop method of _db_authorization */
+  error_code = db_drop_class_method (locator_find_class (CT_AUTHORIZATION_NAME), "check_authorization");
   /* error checking */
   if (error_code != NO_ERROR)
     {

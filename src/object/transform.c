@@ -326,6 +326,7 @@ static CT_ATTR ct_attribute_atts[] = {
   {"is_nullable", NULL_ATTRID, DB_TYPE_INTEGER},
   {"default_value", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"domains", NULL_ATTRID, DB_TYPE_SEQUENCE},
+  {"flags", NULL_ATTRID, DB_TYPE_INTEGER},
   {"comment", NULL_ATTRID, DB_TYPE_VARCHAR}
 };
 
@@ -379,7 +380,9 @@ static CT_ATTR ct_methfile_atts[] = {
 
 static CT_ATTR ct_queryspec_atts[] = {
   {"class_of", NULL_ATTRID, DB_TYPE_OBJECT},
-  {"spec", NULL_ATTRID, DB_TYPE_VARCHAR}
+  {"spec", NULL_ATTRID, DB_TYPE_VARCHAR},
+  /* not yet implemented */
+  {"invalidated_time", NULL_ATTRID, DB_TYPE_DATETIME}
 };
 
 static CT_ATTR ct_resolution_atts[] = {

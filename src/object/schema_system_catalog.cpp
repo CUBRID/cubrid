@@ -45,9 +45,9 @@ namespace cubschema
      * AU_GRANT_CLASS_NAME
      */
     CT_ROOT_NAME,		// "db_root"
-    CT_USER_NAME,		// "db_user"
-    CT_PASSWORD_NAME,	// "db_password"
-    CT_AUTHORIZATION_NAME,		// "db_authorization"
+    CT_USER_NAME,		// "_db_user"
+    CT_PASSWORD_NAME,	// "_db_password"
+    CT_AUTHORIZATION_NAME,	// "_db_authorization"
 
     /* currently, not implemented */
     // AU_GRANT_CLASS_NAME,		// "db_grant"
@@ -77,7 +77,8 @@ namespace cubschema
     CT_CHARSET_NAME,			// "_db_charset"
     CT_SERVER_NAME,		// "_db_server"
     CT_SYNONYM_NAME,			// "_db_synonym"
-    CT_TRIGGER_NAME,			// "db_trigger"
+    CT_GLOBAL_TRAN_NAME,		// "_db_global_tran"
+    CT_TRIGGER_NAME,		// "_db_trigger"
     CT_HISTOGRAM_NAME,		// "_db_histogram"
 
     /* currently, not implemented */
@@ -108,6 +109,8 @@ namespace cubschema
     CTV_SERIAL_NAME,		// "db_serial"
     CTV_HA_APPLY_INFO_NAME,        // "db_ha_apply_info"
     CTV_COLLATION_NAME,	// "db_collation"
+    CTV_USER_NAME,			// "db_user"
+    CTV_AUTHORIZATION_NAME,		// "db_authorization"
     CTV_CHARSET_NAME,		// "db_charset"
     CTV_SERVER_NAME,		// "db_server"
     CTV_SYNONYM_NAME,		// "db_synonym"
