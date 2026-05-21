@@ -12465,6 +12465,11 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		  assert (access->num_parallel_threads == -1 /* auto-compute */ );
 		}
 
+	      if (scan_type == TARGET_CLASS && prm_get_bool_value (PRM_ID_ENABLE_HEAP_FIXED_SCAN))
+		{
+		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN);
+		}
+
 	    }
 	  else if (PT_SPEC_SPECIAL_INDEX_SCAN (spec))
 	    {

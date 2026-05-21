@@ -2500,23 +2500,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
       /* set ptr to the beginning of the fixed attributes */
       ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
 
-      if (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_AUTO_INCREMENT)
-	{
-	  att->is_autoincrement = 1;
-	}
-      else
-	{
-	  att->is_autoincrement = 0;
-	}
-
-      if (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_NON_NULL)
-	{
-	  att->is_notnull = 1;
-	}
-      else
-	{
-	  att->is_notnull = 0;
-	}
+      att->is_autoincrement = (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_AUTO_INCREMENT) ? 1 : 0;
+      att->is_notnull = (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_NON_NULL) ? 1 : 0;
+      att->is_invisible = (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_INVISIBLE_COLUMN) ? 1 : 0;
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
@@ -2702,14 +2688,8 @@ or_get_current_representation (RECDES * record, int do_indexes)
       ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
 
       att->is_autoincrement = 0;
-      if (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_NON_NULL)
-	{
-	  att->is_notnull = 1;
-	}
-      else
-	{
-	  att->is_notnull = 0;
-	}
+      att->is_invisible = 0;
+      att->is_notnull = (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_NON_NULL) ? 1 : 0;
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
@@ -2789,6 +2769,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
       ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
 
       att->is_autoincrement = 0;
+      att->is_invisible = 0;
       att->is_notnull = 0;
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
@@ -2809,7 +2790,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
       /* get the btree index id if an index has been assigned */
       or_get_att_index (ptr + ORC_ATT_INDEX_OFFSET, &att->index);
 
-      /* there won't be any indexes or uniques for shared attrs */
+      /* there won't be any indexes or uniques for class attrs */
       att->n_btids = 0;
       att->btids = NULL;
 
@@ -2870,14 +2851,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
       rep->needs_indexes = 1;
     }
 
-  if (OR_VAR_IS_NULL (record->data, ORC_PARTITION_INDEX))
-    {
-      rep->has_partition_info = 0;
-    }
-  else
-    {
-      rep->has_partition_info = 1;
-    }
+  rep->has_partition_info = (OR_VAR_IS_NULL (record->data, ORC_PARTITION_INDEX)) ? 0 : 1;
 
   return rep;
 
