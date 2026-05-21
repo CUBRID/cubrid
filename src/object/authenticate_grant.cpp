@@ -1339,18 +1339,18 @@ get_grants (MOP auth, DB_SET **grant_ptr, int filter)
    * during future permission refactoring.
    *
    * The reason is that, in versions prior to 11.3v, when `GRANT_ENTRY_CLASS` or `GRANT_ENTRY_SOURCE`
-   * was granted and then deleted, the `owner` and `grants` rows in the `db_authorization` catalog
+   * was granted and then deleted, the `owner` and `grants` rows in the `_db_authorization` catalog
    * were set to `NULL`.
    *
    * However, following the fixes for issues CBRD-25486 and CBRD-25574,
    * all permissions are now revoked before `GRANT_ENTRY_CLASS` or `GRANT_ENTRY_SOURCE` is deleted.
-   * As a result, the `owner` and `grants` rows in the `db_authorization` catalog can no longer become `NULL`.
+   * As a result, the `owner` and `grants` rows in the `_db_authorization` catalog can no longer become `NULL`.
    *
    * That said, there are two possible reasons why the following code was originally implemented before 11.3v (guess):
    *
-   * Case 1) If the `owner` in the `db_authorization` catalog is `NULL` and `GRANT_ENTRY_CLASS` in `grants` is also `NULL`,
+   * Case 1) If the `owner` in the `_db_authorization` catalog is `NULL` and `GRANT_ENTRY_CLASS` in `grants` is also `NULL`,
    *         the corresponding element is deleted.
-   * Case 2) If the `owner` in the `db_authorization` catalog is `NULL`, but `GRANT_ENTRY_CLASS` in `grants` has an owner,
+   * Case 2) If the `owner` in the `_db_authorization` catalog is `NULL`, but `GRANT_ENTRY_CLASS` in `grants` has an owner,
    *         the `GRANT_ENTRY_CACHE(mask)` is merged into the owner’s entry, and the existing element is deleted.
    */
   if (!filter)
@@ -1988,9 +1988,9 @@ au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP logi
 	  /*
 	   * This error condition occurs in the following two cases, both of which are considered as lacking authorization:
 	   * 1. gsize == 0: Indicates no prior authorization
-	   *    When the grants column in the db_authorization catalog is empty.
+	   *    When the grants column in the _db_authorization catalog is empty.
 	   * 2. db_get_object(&element) != obj_mop: Indicates that permissions exist for other objects but not for the current one
-	   *    When the grants column in the db_authorization catalog contains permissions for other objects (such as classes or procedures), but lacks permissions for the obj_mop object.
+	   *    When the grants column in the _db_authorization catalog contains permissions for other objects (such as classes or procedures), but lacks permissions for the obj_mop object.
 	   */
 	  if (error == NO_ERROR && *grantor == NULL)
 	    {
