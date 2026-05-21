@@ -85,9 +85,14 @@ namespace cubmethod
   void
   error_context::set_error (int number, const char *msg, const char *file, int line)
   {
-    er_stack_push();
-    er_set (ER_ERROR_SEVERITY, file ? file : "<unknown>", line, ER_METHOD_CALLBACK, 2, number, (msg ? msg : "<null>"));
-    er_stack_pop();
+    if (er_errid() == NO_ERROR)
+      {
+	// log only when not already error logged.
+	// push and pop error stack in order not to affect error id (result of er_errid() calls)
+	er_stack_push();
+	er_set (ER_ERROR_SEVERITY, file ? file : "<unknown>", line, ER_METHOD_CALLBACK, 2, number, (msg ? msg : "<null>"));
+	er_stack_pop();
+      }
 
     err_id = number;
     err_string.assign (msg ? msg : "");
