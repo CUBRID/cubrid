@@ -1757,7 +1757,9 @@
 
 #define ER_AUTO_INCREMENT_SINGLE_COL_ONLY           -1370
 
-#define ER_LAST_ERROR                               -1371
+#define ER_SM_ATT_AT_LEAST_ONE_VISIBLE              -1371
+
+#define ER_LAST_ERROR                               -1372
 
 
 
