@@ -2280,47 +2280,6 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	}
       break;
 
-    case DB_TYPE_CHAR:
-      while (domain)
-	{
-	  if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH || exact == TP_SET_MATCH)
-	    {
-	      if (domain->precision > transient->precision)
-		{
-		  break;
-		}
-
-	      match = ((domain->precision == transient->precision) && (domain->collation_id == transient->collation_id)
-		       && (domain->codeset == transient->codeset)
-		       && (domain->is_desc == transient->is_desc)
-		       && (domain->collation_flag == transient->collation_flag));
-	    }
-	  else
-	    {
-	      /*
-	       * see discussion of special domain precision values
-	       * in the DB_TYPE_CHAR case above.
-	       */
-	      match = ((domain->collation_id == transient->collation_id)
-		       && (domain->codeset == transient->codeset)
-		       && (transient->precision == 0 || (transient->precision == TP_FLOATING_PRECISION_VALUE)
-			   || domain->precision >= transient->precision)
-		       && (domain->is_desc == transient->is_desc)
-		       && (domain->collation_flag == transient->collation_flag));
-	    }
-
-	  if (match)
-	    {
-	      assert (domain->codeset == transient->codeset);
-	      break;
-	    }
-
-	  *ins_pos = domain;
-	  domain = domain->next_list;
-	}
-
-      break;
-
     case DB_TYPE_VARBIT:
       while (domain)
 	{
@@ -2406,6 +2365,47 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	  *ins_pos = domain;
 	  domain = domain->next_list;
 	}
+      break;
+
+    case DB_TYPE_CHAR:
+      while (domain)
+	{
+	  if (exact == TP_EXACT_MATCH || exact == TP_STR_MATCH || exact == TP_SET_MATCH)
+	    {
+	      if (domain->precision > transient->precision)
+		{
+		  break;
+		}
+
+	      match = ((domain->precision == transient->precision) && (domain->collation_id == transient->collation_id)
+		       && (domain->codeset == transient->codeset)
+		       && (domain->is_desc == transient->is_desc)
+		       && (domain->collation_flag == transient->collation_flag));
+	    }
+	  else
+	    {
+	      /*
+	       * see discussion of special domain precision values
+	       * in the DB_TYPE_CHAR case above.
+	       */
+	      match = ((domain->collation_id == transient->collation_id)
+		       && (domain->codeset == transient->codeset)
+		       && (transient->precision == 0 || (transient->precision == TP_FLOATING_PRECISION_VALUE)
+			   || domain->precision >= transient->precision)
+		       && (domain->is_desc == transient->is_desc)
+		       && (domain->collation_flag == transient->collation_flag));
+	    }
+
+	  if (match)
+	    {
+	      assert (domain->codeset == transient->codeset);
+	      break;
+	    }
+
+	  *ins_pos = domain;
+	  domain = domain->next_list;
+	}
+
       break;
 
     case DB_TYPE_NUMERIC:
