@@ -7881,7 +7881,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 }
 
 static int
-random_poisson_weight (int weight, sampling_info *sampling)
+random_poisson_weight (int weight, sampling_info * sampling)
 {
 // *INDENT-OFF*
   static thread_local std::mt19937 rng;
