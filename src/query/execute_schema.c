@@ -267,6 +267,7 @@ static int do_alter_change_default_cs_coll (PARSER_CONTEXT * const parser, PT_NO
 
 static int do_alter_change_tbl_comment (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 static int do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alter);
+static int do_cache_empty_histogram (MOP class_obj);
 
 static int do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attribute,
 				      PT_NODE * old_name_node, PT_NODE * constraints, SM_ATTR_PROP_CHG * attr_chg_prop,
@@ -3551,6 +3552,86 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   error_code = create_or_drop_index_helper (parser, index_name, is_reverse, is_unique, NULL, obj, DO_INDEX_DROP);
 
   return error_code;
+}
+
+/*
+ * do_cache_empty_histogram () - Initialize an empty histogram cache for a newly-created class.
+ * return : error code or NO_ERROR
+ * class_obj (in) : class object
+ */
+static int
+do_cache_empty_histogram (MOP class_obj)
+{
+  SM_CLASS *smclass = NULL;
+  HIST_STATS *histogram = NULL;
+  SM_ATTRIBUTE *att = NULL;
+  int error = NO_ERROR;
+  int i;
+
+  if (class_obj == NULL)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  error = au_fetch_class (class_obj, &smclass, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (smclass->histogram != NULL)
+    {
+      return NO_ERROR;
+    }
+
+  histogram = (HIST_STATS *) db_ws_alloc (sizeof (HIST_STATS));
+  if (histogram == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memset (histogram, 0, sizeof (HIST_STATS));
+
+  histogram->n_attrs = smclass->att_count;
+  if (histogram->n_attrs > 0)
+    {
+      histogram->histogram = (DB_VALUE **) db_ws_alloc (sizeof (DB_VALUE *) * histogram->n_attrs);
+      if (histogram->histogram == NULL)
+	{
+	  db_ws_free (histogram);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      memset (histogram->histogram, 0, sizeof (DB_VALUE *) * histogram->n_attrs);
+
+      histogram->null_frequency = (double *) db_ws_alloc (sizeof (double) * histogram->n_attrs);
+      if (histogram->null_frequency == NULL)
+	{
+	  db_ws_free (histogram->histogram);
+	  db_ws_free (histogram);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      for (i = 0; i < histogram->n_attrs; i++)
+	{
+	  histogram->histogram[i] = NULL;
+	  histogram->null_frequency[i] = -1.0;
+	}
+    }
+
+  smclass->histogram = histogram;
+
+  for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      DB_OBJECT *histogram_obj = NULL;
+      const char *attname = (const char *) att->header.name;
+      int warm_error = db_get_histogram (class_obj, attname, &histogram_obj);
+
+      if (warm_error != NO_ERROR)
+	{
+	  return warm_error;
+	}
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -9928,6 +10009,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      do_flush_class_mop = true;
 	    }
 	}
+      error = do_cache_empty_histogram (class_obj);
       break;
 
     default:

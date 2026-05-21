@@ -3687,14 +3687,14 @@ obj_find_multi_attr (MOP op, int size, const char *attr_names[], const DB_VALUE 
   DB_VALUE unique_key;
   BTREE_SEARCH result;
   OID oid;
-  int oid_count = 0;
 
-  DB_OTMPL *obj_tmpl = dbt_create_object_internal (op, true);
-  if (obj_tmpl == NULL)
+  if (op == NULL || attr_names == NULL || values == NULL || size < 1)
     {
-      error = ER_FAILED;
-      goto end_find;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return NULL;
     }
+
+  db_make_null (&unique_key);
 
   if (au_fetch_class (op, &class_, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
     {
@@ -3737,49 +3737,71 @@ obj_find_multi_attr (MOP op, int size, const char *attr_names[], const DB_VALUE 
     }
 
 
-  BTID_COPY (&unique_btid, &cons->index_btid);
-  db_make_null (&unique_key);
 
   for (i = 0; i < size; i++)
     {
-      error = dbt_put_internal (obj_tmpl, attr_names[i], (DB_VALUE *) values[i]);
-      if (error != NO_ERROR)
+      DB_TYPE value_type;
+      int temp_oid_result;
+
+      if (values[i] == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
 	  goto end_find;
+	}
+
+      value_type = DB_VALUE_TYPE (values[i]);
+      if (tp_domain_select (cons->attributes[i]->domain, values[i], 1, TP_ANY_MATCH) == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+	  goto end_find;
+	}
+
+      if (value_type == DB_TYPE_OBJECT)
+	{
+	  temp_oid_result = flush_temporary_OID (op, (DB_VALUE *) values[i]);
+	  if (temp_oid_result == TEMPOID_FLUSH_NOT_SUPPORT)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+	      goto end_find;
+	    }
+	  else if (temp_oid_result == TEMPOID_FLUSH_FAIL)
+	    {
+	      goto end_find;
+	    }
 	}
     }
 
-  /* multiple key, need to create a MIDXKEY */
-  error = do_create_midxkey_for_constraint (obj_tmpl, cons, &unique_key);
+  error = do_create_midxkey_from_values (values, size, cons, &unique_key);
   if (error != NO_ERROR)
     {
       goto end_find;
     }
 
-  result = btree_find_unique (&unique_btid, &unique_key, ws_oid (obj_tmpl->classobj), &oid);
+  BTID_COPY (&unique_btid, &cons->index_btid);
 
-  if (result == BTREE_ERROR_OCCURRED)
+  result = btree_find_unique (&unique_btid, &unique_key, ws_oid (op), &oid);
+
+
+  if (result == BTREE_KEY_FOUND)
     {
-      error = ER_FAILED;
+      obj = ws_mop (&oid, NULL);
+      if (au_fetch_instance_force (obj, NULL, fetchmode, LC_FETCH_DIRTY_VERSION) != NO_ERROR)
+	{
+	  obj = NULL;
+	}
+    }
+  else if (result == BTREE_ERROR_OCCURRED)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
     }
   else if (result == BTREE_KEY_NOTFOUND)
     {
-      error = ER_OBJ_OBJECT_NOT_FOUND;
-    }
-  else if (result == BTREE_KEY_FOUND)
-    {
-      obj = ws_mop (&oid, NULL);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
     }
 
 end_find:
-  if (obj_tmpl != NULL)
-    {
-      dbt_abort_object (obj_tmpl);
-    }
-
   db_value_clear (&unique_key);
 
-  assert (oid_count < 2);
   return obj;
 }
 

@@ -2897,7 +2897,12 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   hsidp->cache_recordinfo = cache_recordinfo;
   hsidp->recordinfo_regu_list = regu_list_recordinfo;
 
-  /* for scampling statistics. */
+  /* for sampling statistics. */
+  if (scan_type == S_HEAP_SAMPLING_SCAN)
+    {
+      hsidp->sampling.random_seeded = false;
+    }
+
   if (scan_type == S_HEAP_SAMPLING_SCAN && !is_partition_table)
     {
       int total_pages = 0;

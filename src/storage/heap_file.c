@@ -7881,15 +7881,21 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 }
 
 static int
-random_poisson_weight (int weight)
+random_poisson_weight (int weight, sampling_info *sampling)
 {
 // *INDENT-OFF*
-  static thread_local std::mt19937 rng { 123456789u };  // fixed seed
+  static thread_local std::mt19937 rng;
 // *INDENT-ON*
   if (weight < 1)
     {
       assert (false);
       return 1;
+    }
+
+  if (!sampling->random_seeded)
+    {
+      rng.seed (123456789u);
+      sampling->random_seeded = true;
     }
 
 /* shifted version of random_poisson_weight */
@@ -8124,7 +8130,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		      if (sampling)
 			{
 			  /* skip pages */
-			  int skip_count = random_poisson_weight (sampling->weight);
+			  int skip_count = random_poisson_weight (sampling->weight, sampling);
 			  if (heap_vpid_skip_next (thread_p, hfid, &scan_cache->page_watcher, &old_page_watcher,
 						   skip_count, &vpid, scan_cache) == S_ERROR)
 			    {

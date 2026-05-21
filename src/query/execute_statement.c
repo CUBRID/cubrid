@@ -12009,16 +12009,17 @@ do_set_insert_server_not_allowed (PARSER_CONTEXT * parser, PT_NODE * node, void 
 }
 
 /*
- * do_create_midxkey_for_constraint () - create a MIDX_KEY db_value for the
- *					 specified constraint using the values
- *					 assigned in an object template
+ * do_create_midxkey_from_values () - create a MIDX_KEY db_value for the
+ *				      specified constraint using DB_VALUE array
  * return : error code or NO_ERROR;
- * tmpl (in)	   : object template
- * constraint (in) : constraint
- * key (in/out)	   : the MIDX key
+ * values (in)      : values to compose the MIDX key
+ * value_count (in) : number of values
+ * constraint (in)  : constraint
+ * key (in/out)	    : the MIDX key
  */
 int
-do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constraint, DB_VALUE * key)
+do_create_midxkey_from_values (const DB_VALUE * values[], int value_count, SM_CLASS_CONSTRAINT * constraint,
+			       DB_VALUE * key)
 {
   DB_MIDXKEY midxkey;
   SM_ATTRIBUTE **attr = NULL;
@@ -12037,11 +12038,12 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
   /* compute key size */
   for (attr_count = 0, attr = constraint->attributes; *attr != NULL; attr_count++, attr++)
     {
-      val = NULL;
-      if (tmpl->assignments[(*attr)->order] != NULL)
+      if (attr_count >= value_count)
 	{
-	  val = tmpl->assignments[(*attr)->order]->variable;
+	  error = ER_OBJ_INVALID_ARGUMENTS;
+	  goto error_return;
 	}
+      val = (DB_VALUE *) values[attr_count];
 
       attr_dom = tp_domain_copy ((*attr)->domain, false);
       if (attr_dom == NULL)
@@ -12090,16 +12092,12 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
 
   for (i = 0, attr = constraint->attributes; *attr != NULL; attr++, i++)
     {
-      val = NULL;
-      if (tmpl->assignments[(*attr)->order] != NULL)
-	{
-	  val = tmpl->assignments[(*attr)->order]->variable;
-	}
+      val = (DB_VALUE *) values[i];
       dom = (*attr)->domain;
 
       or_multi_put_element_offset (nullmap_ptr, attr_count, CAST_BUFLEN (buf.ptr - buf.buffer), i);
 
-      if (!DB_IS_NULL (val))
+      if (val != NULL && !DB_IS_NULL (val))
 	{
 	  dom->type->index_writeval (&buf, val);
 	  or_multi_set_not_null (nullmap_ptr, i);
@@ -12147,6 +12145,56 @@ error_return:
       tp_domain_free (dom);
       dom = attr_dom;
     }
+  return error;
+}
+
+/*
+ * do_create_midxkey_for_constraint () - create a MIDX_KEY db_value for the
+ *					 specified constraint using the values
+ *					 assigned in an object template
+ * return : error code or NO_ERROR;
+ * tmpl (in)	   : object template
+ * constraint (in) : constraint
+ * key (in/out)	   : the MIDX key
+ */
+int
+do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constraint, DB_VALUE * key)
+{
+  const DB_VALUE **values = NULL;
+  SM_ATTRIBUTE **attr = NULL;
+  int attr_count = 0, i = 0, error = NO_ERROR;
+
+  for (attr = constraint->attributes; *attr != NULL; attr_count++, attr++)
+    {
+      /* count attributes */
+    }
+
+  if (attr_count <= 0)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  values = (const DB_VALUE **) malloc (sizeof (DB_VALUE *) * attr_count);
+  if (values == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  for (attr = constraint->attributes; *attr != NULL; i++, attr++)
+    {
+      if (tmpl->assignments[(*attr)->order] != NULL)
+	{
+	  values[i] = tmpl->assignments[(*attr)->order]->variable;
+	}
+      else
+	{
+	  values[i] = NULL;
+	}
+    }
+
+  error = do_create_midxkey_from_values (values, attr_count, constraint, key);
+  free_and_init (values);
+
   return error;
 }
 

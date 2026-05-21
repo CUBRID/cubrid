@@ -65,6 +65,7 @@
 #include "network_interface_cl.h"
 #include "parser.h"
 #include "trigger_manager.h"
+#include "oid.h"
 #include "storage_common.h"
 #include "transform.h"
 #include "system_parameter.h"
