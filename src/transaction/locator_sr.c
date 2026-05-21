@@ -5795,7 +5795,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		{
 		  scan = locator_lock_and_get_object_with_evaluation (thread_p, oid, class_oid, &copy_recdes,
 								      local_scan_cache, COPY, NULL_CHN, mvcc_reev_data,
-								      LOG_ERROR_IF_DELETED);
+								      LOG_ERROR_IF_DELETED, false);
 		}
 	      else
 		{
@@ -6283,7 +6283,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
      not the visible one; we need only the last version to use it to retrieve the last version of the btree key */
   scan_code =
     locator_lock_and_get_object_with_evaluation (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN,
-						 mvcc_reev_data, LOG_WARNING_IF_DELETED);
+						 mvcc_reev_data, LOG_WARNING_IF_DELETED, false);
 
   if (scan_code == S_SUCCESS && mvcc_reev_data != NULL && mvcc_reev_data->filter_result == V_FALSE)
     {
@@ -13257,7 +13257,7 @@ SCAN_CODE
 locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes,
 					     HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
 					     MVCC_REEV_DATA * mvcc_reev_data,
-					     NON_EXISTENT_HANDLING non_ex_handling_type)
+					     NON_EXISTENT_HANDLING non_ex_handling_type, bool skip_oos_expand)
 {
   HEAP_GET_CONTEXT context;
   SCAN_CODE scan = S_SUCCESS;
@@ -13290,6 +13290,13 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 	}
     }
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+  if (skip_oos_expand)
+    {
+      /* Caller does not need the OOS-expanded record; downstream heap_attrinfo_read_dbvalues
+       * does per-attribute OOS reads as needed. Skipping record-level expansion avoids a
+       * 3MB+ copy per row when the predicate only references small in-row columns. */
+      context.expand_oos = false;
+    }
 
   /* get class_oid if it is unknown */
   if (OID_ISNULL (class_oid))
