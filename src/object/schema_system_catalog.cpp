@@ -79,10 +79,7 @@ namespace cubschema
     CT_SYNONYM_NAME,			// "_db_synonym"
     CT_GLOBAL_TRAN_NAME,		// "_db_global_tran"
     CT_TRIGGER_NAME,		// "_db_trigger"
-    CT_HISTOGRAM_NAME,		// "_db_histogram"
-
-    /* currently, not implemented */
-    CT_RESOLUTION_NAME		// "_db_resolution"
+    CT_HISTOGRAM_NAME		// "_db_histogram"
   };
 
   static const std::vector <std::string> sm_system_vclass_names =

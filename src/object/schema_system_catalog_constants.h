@@ -130,6 +130,6 @@
  * See CBRD-23983 and CBRD-25697 for details.
  */
 
-#define CNT_CATCLS_OBJECTS              (8)	/* number of general object domains in system classes */
+#define CNT_CATCLS_OBJECTS              (9)	/* number of general object domains in system classes */
 
 #endif /* _SCHEMA_SYSTEM_CATALOG_CONSTANTS_H_ */
