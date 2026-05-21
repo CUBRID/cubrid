@@ -172,7 +172,8 @@ authenticate_context::start (void)
 
       public_user = au_find_user (AU_PUBLIC_USER_NAME);
       dba_user = au_find_user (AU_DBA_USER_NAME);
-      if (public_user == NULL || dba_user == NULL)
+      information_schema_user = au_find_user (AU_INFORMATION_SCHEMA_USER_NAME);
+      if (public_user == NULL || dba_user == NULL || information_schema_user == NULL)
 	{
 	  error = er_errid ();
 	  if (error != ER_LK_UNILATERALLY_ABORTED)
@@ -492,7 +493,7 @@ authenticate_context::install (void)
       goto exit_on_error;
     }
 
-  if (set_system_user () != NO_ERROR)
+  if (set_system_users_as_created () != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -578,7 +579,8 @@ authenticate_context::perform_login (const char *name, const char *password, boo
     {
       public_user = au_find_user (AU_PUBLIC_USER_NAME);
       dba_user = au_find_user (AU_DBA_USER_NAME);
-      if (public_user == NULL || dba_user == NULL)
+      information_schema_user = au_find_user (AU_INFORMATION_SCHEMA_USER_NAME);
+      if (public_user == NULL || dba_user == NULL || information_schema_user == NULL)
 	{
 	  error = er_errid ();
 	  if (error != ER_LK_UNILATERALLY_ABORTED)
@@ -1003,14 +1005,13 @@ authenticate_context::create_information_schema_user (MOP root_cls, MOP user_cls
 }
 
 int
-authenticate_context::set_system_user (void)
+authenticate_context::set_system_users_as_created (void)
 {
   DB_VALUE value;
   int error = NO_ERROR;
-  MOP system_users[] = { Au_dba_user, Au_public_user, Au_information_schema_user };
 
   db_make_int (&value, true);
-  for (MOP user : system_users)
+  for (MOP user : get_system_users ())
     {
       error = obj_set (user, AU_USER_ATTR_IS_SYSTEM_CREATED, &value);
       if (error != NO_ERROR)
@@ -1020,6 +1021,25 @@ authenticate_context::set_system_user (void)
     }
 
   return NO_ERROR;
+}
+
+bool
+authenticate_context::is_system_user (MOP user)
+{
+  if (user == NULL)
+    {
+      return false;
+    }
+
+  for (MOP sys_user : get_system_users ())
+    {
+      if (ws_is_same_object (user, sys_user))
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
 
 int
