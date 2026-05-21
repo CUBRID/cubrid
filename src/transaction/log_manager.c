@@ -341,7 +341,8 @@ static int cdc_find_user (THREAD_ENTRY * thread_p, LOG_LSA lsa, int trid, char *
 static int cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * old_value);
 static int cdc_put_value_to_loginfo (db_value * new_value, char **ptr);
 
-static int cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_lsa, time_t * time);
+static int cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_lsa, time_t * time,
+					  LOG_CS_ACCESS_MODE access_mode);
 static int cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa);
 
 static bool cdc_is_filtered_class (OID classoid);
@@ -14138,9 +14139,23 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
 {
   /*
    * 1. get volume list
-   * 2. get fpage from each volume 
-   * 3. get commit/abort/ha_dummy_server_state which contains time from fpage 
+   * 2. get fpage from each volume
+   * 3. get commit/abort/ha_dummy_server_state which contains time from fpage
    * */
+
+  /* Hold LOG_CS in write mode across the whole archive traversal so that the
+   * begin/end capture and the per-archive lookups in cdc_get_start_point_from_file()
+   * are serialized against logpb_remove_archive_logs[_exceed_limit](), which also
+   * runs under LOG_CS write mode.  Without this, a cleanup that starts before
+   * flashback_initialize() (so its NULL_LOG_PAGEID guard does not yet apply) can
+   * still delete archives that this function is about to mount, triggering the
+   * assert in cdc_get_start_point_from_file().  Write mode is used (not read)
+   * because the inner callees (cdc_get_start_point_from_file, logpb_fetch_page
+   * via LOG_READ_* macros) acquire LOG_CS as reader on their own, and CUBRID's
+   * critical_section_tracker forbids reader self-reentry while allowing a writer
+   * to reenter as reader (see critical_section_tracker::on_enter_as_reader). */
+  LOG_CS_ENTER (thread_p);
+
   int begin = log_Gl.hdr.last_deleted_arv_num;
   int end = log_Gl.hdr.nxarv_num - 1;
   char arv_name[PATH_MAX];
@@ -14160,13 +14175,13 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
   int error = NO_ERROR;
 
   /*
-   * 1. traverse from the latest log volume 
-   * 2. when num_arvs > 0, no logic to handle the active log volume 
-   * 3. check condition when i = begin while finding target_arv_num 
+   * 1. traverse from the latest log volume
+   * 2. when num_arvs > 0, no logic to handle the active log volume
+   * 3. check condition when i = begin while finding target_arv_num
    */
 
   /* At first, compare the time in active log volume. */
-  error = cdc_get_start_point_from_file (thread_p, -1, &ret_lsa, &active_start_time);
+  error = cdc_get_start_point_from_file (thread_p, -1, &ret_lsa, &active_start_time, LOG_CS_SAFE_READER);
   if (error == ER_FAILED || error == ER_LOG_READ)
     {
       goto end;
@@ -14206,7 +14221,8 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
 	      /* travers from the latest */
 	      for (int i = end; i > begin; i--)
 		{
-		  error = cdc_get_start_point_from_file (thread_p, i, &ret_lsa, &archive_start_time);
+		  error =
+		    cdc_get_start_point_from_file (thread_p, i, &ret_lsa, &archive_start_time, LOG_CS_SAFE_READER);
 		  if (error != NO_ERROR)
 		    {
 		      goto end;
@@ -14287,6 +14303,8 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
     }
 
 end:
+  LOG_CS_EXIT (thread_p);
+
   if (is_found)
     {
       cdc_log ("cdc_find_lsa : find LOG_LSA (%lld | %d) from time (%lld)", LSA_AS_ARGS (start_lsa), *extraction_time);
@@ -14547,7 +14565,8 @@ end:
  */
 
 static int
-cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_lsa, time_t * time)
+cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_lsa, time_t * time,
+			       LOG_CS_ACCESS_MODE access_mode)
 {
   char arv_name[PATH_MAX];
   LOG_ARV_HEADER *arv_hdr;
@@ -14573,7 +14592,10 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
-  LOG_CS_ENTER_READ_MODE (thread_p);
+  if (access_mode != LOG_CS_SAFE_READER)
+    {
+      LOG_CS_ENTER_READ_MODE (thread_p);
+    }
 
   if (arv_num == -1)
     {
@@ -14611,7 +14633,10 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 
 		      LOG_ARCHIVE_CS_EXIT (thread_p);
 
-		      LOG_CS_EXIT (thread_p);
+		      if (access_mode != LOG_CS_SAFE_READER)
+			{
+			  LOG_CS_EXIT (thread_p);
+			}
 
 		      return ER_LOG_READ;
 		    }
@@ -14622,7 +14647,10 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 		      fileio_dismount (thread_p, vdes);
 
 		      LOG_ARCHIVE_CS_EXIT (thread_p);
-		      LOG_CS_EXIT (thread_p);
+		      if (access_mode != LOG_CS_SAFE_READER)
+			{
+			  LOG_CS_EXIT (thread_p);
+			}
 
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_DOESNT_CORRESPOND_TO_DATABASE, 1, arv_name);
 		      return ER_LOG_DOESNT_CORRESPOND_TO_DATABASE;
@@ -14639,7 +14667,10 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
       LOG_ARCHIVE_CS_EXIT (thread_p);
     }
 
-  LOG_CS_EXIT (thread_p);
+  if (access_mode != LOG_CS_SAFE_READER)
+    {
+      LOG_CS_EXIT (thread_p);
+    }
 
   if (LSA_ISNULL (&process_lsa))
     {
