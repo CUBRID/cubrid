@@ -4593,6 +4593,97 @@ sort_merge_queue_setup_ctx (int pool_idx, SORT_MERGE_QUEUE_CTX * qctx, RESULT_RU
 
 static void sort_merge_nruns_queue_cb (cubthread::entry & thread_ref, SORT_PARAM * ctx,
 				       SORT_MERGE_QUEUE_CTX * qctx);
+static void sort_merge_queue_try_dispatch (SORT_MERGE_QUEUE_CTX * qctx);
+
+static void
+sort_merge_queue_ctx_init (SORT_MERGE_QUEUE_CTX * qctx, SORT_PARAM * sort_param,
+			   SORT_PARAM * px_sort_param, int parallel_num)
+{
+  memset (qctx, 0, sizeof (*qctx));
+  pthread_mutex_init (&qctx->mtx, NULL);
+  pthread_cond_init (&qctx->done_cond, NULL);
+  qctx->sort_param = sort_param;
+  qctx->px_sort_param = px_sort_param;
+  qctx->pool_size = parallel_num / 2 + 1;
+}
+
+static void
+sort_merge_queue_ctx_destroy (SORT_MERGE_QUEUE_CTX * qctx)
+{
+  pthread_mutex_destroy (&qctx->mtx);
+  pthread_cond_destroy (&qctx->done_cond);
+}
+
+static int
+sort_merge_queue_enqueue_initial_runs (SORT_MERGE_QUEUE_CTX * qctx, SORT_PARAM * px_sort_param, int parallel_num)
+{
+  int i, enqueued = 0;
+  for (i = 0; i < parallel_num; i++)
+    {
+      int npages = px_sort_param[i].file_contents[px_sort_param[i].px_result_file_idx].num_pages[0];
+      if (npages > 0)
+	{
+	  RESULT_RUN run;
+	  run.temp_file = px_sort_param[i].temp[px_sort_param[i].px_result_file_idx];
+	  run.num_pages = npages;
+	  sort_merge_queue_enqueue (qctx, run);
+	  enqueued++;
+	}
+    }
+  return enqueued;
+}
+
+/*
+ * sort_merge_queue_run () - drive the dispatcher + wait loop until all merges
+ *   complete. On return the queue holds 0 or 1 run depending on input;
+ *   the caller stages the final run.
+ */
+static int
+sort_merge_queue_run (SORT_MERGE_QUEUE_CTX * qctx)
+{
+  pthread_mutex_lock (&qctx->mtx);
+  while (qctx->queue_size >= 2)
+    {
+      sort_merge_queue_try_dispatch (qctx);
+    }
+  /* On error path workers may still enqueue successful results, so queue_size > 1
+   * can persist after in_flight reaches 0. Drain in-flight only and ignore the
+   * queue when has_error is set to avoid deadlock. */
+  while (qctx->in_flight > 0 || (!qctx->has_error && qctx->queue_size > 1))
+    {
+      pthread_cond_wait (&qctx->done_cond, &qctx->mtx);
+    }
+  pthread_mutex_unlock (&qctx->mtx);
+
+  return qctx->has_error ? ER_FAILED : NO_ERROR;
+}
+
+static void
+sort_merge_queue_stage_final_run (SORT_MERGE_QUEUE_CTX * qctx, SORT_PARAM * dst)
+{
+  RESULT_RUN final_run = sort_merge_queue_dequeue (qctx);
+  dst->px_result_file_idx = 0;
+  dst->temp[0] = final_run.temp_file;
+  dst->file_contents[0].num_pages[0] = final_run.num_pages;
+  dst->file_contents[0].first_run = 0;
+  dst->file_contents[0].last_run = 0;
+}
+
+static void
+sort_merge_free_worker_input_files (SORT_PARAM * px_sort_param, int parallel_num)
+{
+  int i;
+  SORT_INFO *sort_info_p;
+  for (i = 0; i < parallel_num; i++)
+    {
+      sort_info_p = (SORT_INFO *) px_sort_param[i].get_arg;
+      if (sort_info_p != NULL && sort_info_p->input_file != NULL)
+	{
+	  qfile_free_list_id (sort_info_p->input_file);
+	  sort_info_p->input_file = NULL;
+	}
+    }
+}
 
 static void
 sort_merge_queue_try_dispatch (SORT_MERGE_QUEUE_CTX * qctx)
@@ -4696,7 +4787,6 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
   int error = NO_ERROR;
   int i;
   SORT_MERGE_QUEUE_CTX qctx;
-  RESULT_RUN final_run;
   QFILE_LIST_ID *origin_list_id;
   SORT_INFO *sort_info_p;
 
@@ -4705,52 +4795,16 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
       return ER_FAILED;
     }
 
-  memset (&qctx, 0, sizeof (qctx));
-  pthread_mutex_init (&qctx.mtx, NULL);
-  pthread_cond_init (&qctx.done_cond, NULL);
-  qctx.sort_param = sort_param;
-  qctx.px_sort_param = px_sort_param;
-  qctx.pool_size = parallel_num / 2 + 1;
+  sort_merge_queue_ctx_init (&qctx, sort_param, px_sort_param, parallel_num);
+  sort_merge_queue_enqueue_initial_runs (&qctx, px_sort_param, parallel_num);
 
-  /* enqueue initial runs, skipping empty workers */
-  for (i = 0; i < parallel_num; i++)
+  error = sort_merge_queue_run (&qctx);
+  if (error != NO_ERROR)
     {
-      int npages = px_sort_param[i].file_contents[px_sort_param[i].px_result_file_idx].num_pages[0];
-      if (npages > 0)
-	{
-	  RESULT_RUN run;
-	  run.temp_file = px_sort_param[i].temp[px_sort_param[i].px_result_file_idx];
-	  run.num_pages = npages;
-	  sort_merge_queue_enqueue (&qctx, run);
-	}
-    }
-
-  pthread_mutex_lock (&qctx.mtx);
-  while (qctx.queue_size >= 2)
-    {
-      sort_merge_queue_try_dispatch (&qctx);
-    }
-  /* On error path workers may still enqueue successful results, so queue_size > 1
-   * can persist after in_flight reaches 0. Drain in-flight only and ignore the
-   * queue when has_error is set to avoid deadlock. */
-  while (qctx.in_flight > 0 || (!qctx.has_error && qctx.queue_size > 1))
-    {
-      pthread_cond_wait (&qctx.done_cond, &qctx.mtx);
-    }
-  pthread_mutex_unlock (&qctx.mtx);
-
-  if (qctx.has_error)
-    {
-      error = ER_FAILED;
       goto cleanup;
     }
 
-  final_run = sort_merge_queue_dequeue (&qctx);
-  px_sort_param[0].px_result_file_idx = 0;
-  px_sort_param[0].temp[0] = final_run.temp_file;
-  px_sort_param[0].file_contents[0].num_pages[0] = final_run.num_pages;
-  px_sort_param[0].file_contents[0].first_run = 0;
-  px_sort_param[0].file_contents[0].last_run = 0;
+  sort_merge_queue_stage_final_run (&qctx, &px_sort_param[0]);
 
   sort_split_last_run (thread_p, px_sort_param, sort_param, parallel_num);
 
@@ -4804,21 +4858,11 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
     }
 
 cleanup:
-  /* clear input_file for px */
-  for (i = 0; i < parallel_num; i++)
-    {
-      sort_info_p = (SORT_INFO *) px_sort_param[i].get_arg;
-      if (sort_info_p->input_file)
-	{
-	  qfile_free_list_id (sort_info_p->input_file);
-	  sort_info_p->input_file = NULL;
-	}
-    }
+  sort_merge_free_worker_input_files (px_sort_param, parallel_num);
 
-  /* clear output_file for px */
+  /* clear output_file for px (index 0 is origin output file, freed in qfile_sort_list_with_func) */
   for (i = 1; i < parallel_num; i++)
     {
-      /* index 0 is origin output file. it'll be freed in qfile_sort_list_with_func() */
       sort_info_p = (SORT_INFO *) px_sort_param[i].put_arg;
       if (sort_info_p->output_file)
 	{
@@ -4827,8 +4871,7 @@ cleanup:
 	}
     }
 
-  pthread_mutex_destroy (&qctx.mtx);
-  pthread_cond_destroy (&qctx.done_cond);
+  sort_merge_queue_ctx_destroy (&qctx);
 
   return error;
 }
@@ -4847,64 +4890,22 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
       return ER_FAILED;
     }
 
-  memset (&qctx, 0, sizeof (qctx));
-  pthread_mutex_init (&qctx.mtx, NULL);
-  pthread_cond_init (&qctx.done_cond, NULL);
-  qctx.sort_param = sort_param;
-  qctx.px_sort_param = px_sort_param;
-  qctx.pool_size = parallel_num / 2 + 1;
-
-  /* enqueue non-empty runs only */
-  for (i = 0; i < parallel_num; i++)
-    {
-      int npages = px_sort_param[i].file_contents[px_sort_param[i].px_result_file_idx].num_pages[0];
-      if (npages > 0)
-	{
-	  RESULT_RUN run;
-	  run.temp_file = px_sort_param[i].temp[px_sort_param[i].px_result_file_idx];
-	  run.num_pages = npages;
-	  sort_merge_queue_enqueue (&qctx, run);
-	}
-    }
+  sort_merge_queue_ctx_init (&qctx, sort_param, px_sort_param, parallel_num);
+  sort_merge_queue_enqueue_initial_runs (&qctx, px_sort_param, parallel_num);
 
   if (qctx.queue_size >= 2)
     {
-      pthread_mutex_lock (&qctx.mtx);
-      while (qctx.queue_size >= 2)
+      error = sort_merge_queue_run (&qctx);
+      if (error != NO_ERROR)
 	{
-	  sort_merge_queue_try_dispatch (&qctx);
-	}
-      /* See sort_merge_run_for_parallel for the has_error rationale. */
-      while (qctx.in_flight > 0 || (!qctx.has_error && qctx.queue_size > 1))
-	{
-	  pthread_cond_wait (&qctx.done_cond, &qctx.mtx);
-	}
-      pthread_mutex_unlock (&qctx.mtx);
-
-      if (qctx.has_error)
-	{
-	  pthread_mutex_destroy (&qctx.mtx);
-	  pthread_cond_destroy (&qctx.done_cond);
+	  sort_merge_queue_ctx_destroy (&qctx);
 	  return ER_FAILED;
 	}
-
-      {
-	RESULT_RUN final_run = sort_merge_queue_dequeue (&qctx);
-	px_sort_param[0].px_result_file_idx = 0;
-	px_sort_param[0].temp[0] = final_run.temp_file;
-	px_sort_param[0].file_contents[0].num_pages[0] = final_run.num_pages;
-	px_sort_param[0].file_contents[0].first_run = 0;
-	px_sort_param[0].file_contents[0].last_run = 0;
-      }
+      sort_merge_queue_stage_final_run (&qctx, &px_sort_param[0]);
     }
   else if (qctx.queue_size == 1)
     {
-      RESULT_RUN final_run = sort_merge_queue_dequeue (&qctx);
-      px_sort_param[0].px_result_file_idx = 0;
-      px_sort_param[0].temp[0] = final_run.temp_file;
-      px_sort_param[0].file_contents[0].num_pages[0] = final_run.num_pages;
-      px_sort_param[0].file_contents[0].first_run = 0;
-      px_sort_param[0].file_contents[0].last_run = 0;
+      sort_merge_queue_stage_final_run (&qctx, &px_sort_param[0]);
     }
 
   sort_args_p = (SORT_ARGS *) sort_param->get_arg;
@@ -4922,8 +4923,7 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
     {
       ASSERT_ERROR ();
       log_sysop_abort (thread_p);
-      pthread_mutex_destroy (&qctx.mtx);
-      pthread_cond_destroy (&qctx.done_cond);
+      sort_merge_queue_ctx_destroy (&qctx);
       return ER_FAILED;
     }
 
@@ -4944,8 +4944,7 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
       error = ER_FAILED;
     }
 
-  pthread_mutex_destroy (&qctx.mtx);
-  pthread_cond_destroy (&qctx.done_cond);
+  sort_merge_queue_ctx_destroy (&qctx);
   return error;
 }
 
