@@ -1336,6 +1336,169 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
 }
 
 /*
+ * dblink_bind_insert_value () - Bind a single DB_VALUE to a CCI parameter.
+ *   return: NO_ERROR on success, error code on failure.
+ *   stmt_handle(in) : CCI statement handle
+ *   param_index(in) : 1-based parameter index
+ *   dbval(in)       : DB_VALUE to bind
+ *
+ * Note: Similar to dblink_bind_param logic but for a single value.
+ *       When CBRD-26601 merges, this can be replaced by dblink_bind_dbval_to_param.
+ */
+static int
+dblink_bind_insert_value (int stmt_handle, int param_index, DB_VALUE * dbval)
+{
+  int ret, num_size = 0;
+  T_CCI_A_TYPE a_type;
+  T_CCI_U_TYPE u_type;
+  void *value;
+  int month, day, year;
+  int hh, mm, ss, ms;
+  DB_TIMESTAMP *timestamp;
+  DB_DATETIME *datetime;
+  DB_DATETIME dt_local;
+  TZ_ID *zone_id;
+  DB_DATE date;
+  DB_TIME time;
+  T_CCI_DATE cci_date;
+  T_CCI_BIT cci_bit;
+  char num_str[NUMERIC_MAX_STRING_SIZE];
+  unsigned char type;
+
+  value = &dbval->data;
+  type = DB_VALUE_DOMAIN_TYPE (dbval);
+
+  switch (type)
+    {
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+      a_type = CCI_A_TYPE_BIT;
+      u_type = (type == DB_TYPE_BIT) ? CCI_U_TYPE_BIT : CCI_U_TYPE_VARBIT;
+      cci_bit.buf = (char *) db_get_bit (dbval, &num_size);
+      cci_bit.size = QSTR_NUM_BYTES (num_size);
+      value = (void *) &cci_bit;
+      break;
+    case DB_TYPE_JSON:
+      a_type = CCI_A_TYPE_STR;
+      u_type = CCI_U_TYPE_JSON;
+      value = (void *) db_get_json_raw_body (dbval);
+      break;
+    case DB_TYPE_SHORT:
+      a_type = CCI_A_TYPE_INT;
+      u_type = CCI_U_TYPE_SHORT;
+      break;
+    case DB_TYPE_INTEGER:
+      a_type = CCI_A_TYPE_INT;
+      u_type = CCI_U_TYPE_INT;
+      break;
+    case DB_TYPE_BIGINT:
+      a_type = CCI_A_TYPE_BIGINT;
+      u_type = CCI_U_TYPE_BIGINT;
+      break;
+    case DB_TYPE_NUMERIC:
+      a_type = CCI_A_TYPE_STR;
+      u_type = CCI_U_TYPE_NUMERIC;
+      value = (void *) numeric_db_value_print (dbval, num_str);
+      break;
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_FLOAT:
+      a_type = CCI_A_TYPE_DOUBLE;
+      u_type = CCI_U_TYPE_DOUBLE;
+      break;
+    case DB_TYPE_STRING:
+    case DB_TYPE_CHAR:
+      a_type = CCI_A_TYPE_STR;
+      u_type = CCI_U_TYPE_STRING;
+      value = (void *) db_get_string (dbval);
+      break;
+    case DB_TYPE_DATE:
+      a_type = CCI_A_TYPE_DATE;
+      u_type = CCI_U_TYPE_DATE;
+      db_date_decode ((DB_DATE *) value, &month, &day, &year);
+      cci_date.mon = month;
+      cci_date.day = day;
+      cci_date.yr = year;
+      value = &cci_date;
+      break;
+    case DB_TYPE_TIME:
+      a_type = CCI_A_TYPE_DATE;
+      u_type = CCI_U_TYPE_TIME;
+      db_time_decode (&dbval->data.time, &hh, &mm, &ss);
+      cci_date.hh = hh;
+      cci_date.mm = mm;
+      cci_date.ss = ss;
+      cci_date.ms = 0;
+      value = &cci_date;
+      break;
+    case DB_TYPE_DATETIME:
+      a_type = CCI_A_TYPE_DATE;
+      u_type = CCI_U_TYPE_DATETIME;
+      DATETIME_DECODE (cci_date, dbval->data.datetime, month, day, year, hh, mm, ss, ms);
+      value = &cci_date;
+      break;
+    case DB_TYPE_TIMESTAMP:
+      a_type = CCI_A_TYPE_DATE;
+      u_type = CCI_U_TYPE_TIMESTAMP;
+      timestamp = &dbval->data.utime;
+      db_timestamp_decode_ses (timestamp, &date, &time);
+      TIMESTAMP_DECODE (cci_date, date, time, month, day, year, hh, mm, ss);
+      value = &cci_date;
+      break;
+    case DB_TYPE_TIMESTAMPTZ:
+      a_type = CCI_A_TYPE_DATE;
+      u_type = CCI_U_TYPE_TIMESTAMPTZ;
+      timestamp = &dbval->data.timestamptz.timestamp;
+      zone_id = &dbval->data.timestamptz.tz_id;
+      db_timestamp_decode_w_tz_id (timestamp, zone_id, &date, &time);
+      TIMESTAMP_DECODE (cci_date, date, time, month, day, year, hh, mm, ss);
+      value = &cci_date;
+      break;
+    case DB_TYPE_TIMESTAMPLTZ:
+      a_type = CCI_A_TYPE_DATE;
+      u_type = CCI_U_TYPE_TIMESTAMPLTZ;
+      timestamp = &dbval->data.timestamptz.timestamp;
+      db_timestamp_decode_utc (timestamp, &date, &time);
+      TIMESTAMP_DECODE (cci_date, date, time, month, day, year, hh, mm, ss);
+      value = &cci_date;
+      break;
+    case DB_TYPE_DATETIMETZ:
+      a_type = CCI_A_TYPE_DATE;
+      u_type = CCI_U_TYPE_DATETIMETZ;
+      datetime = &dbval->data.datetimetz.datetime;
+      zone_id = &dbval->data.datetimetz.tz_id;
+      tz_utc_datetimetz_to_local (datetime, zone_id, &dt_local);
+      DATETIME_DECODE (cci_date, dt_local, month, day, year, hh, mm, ss, ms);
+      value = &cci_date;
+      break;
+    case DB_TYPE_DATETIMELTZ:
+      a_type = CCI_A_TYPE_DATE;
+      u_type = CCI_U_TYPE_DATETIMELTZ;
+      datetime = &dbval->data.datetimetz.datetime;
+      tz_datetimeltz_to_local (datetime, &dt_local);
+      DATETIME_DECODE (cci_date, dt_local, month, day, year, hh, mm, ss, ms);
+      value = &cci_date;
+      break;
+    case DB_TYPE_NULL:
+      a_type = CCI_A_TYPE_LAST;
+      value = NULL;
+      u_type = CCI_U_TYPE_NULL;
+      break;
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_UNSUPPORTED_TYPE, 1, "unknown");
+      return ER_DBLINK_UNSUPPORTED_TYPE;
+    }
+
+  ret = cci_bind_param (stmt_handle, param_index, a_type, value, u_type, 0);
+  if (ret < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_INVALID_BIND_PARAM, 0);
+      return ER_DBLINK_INVALID_BIND_PARAM;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * dblink_insert_execute_row () - Bind values and execute one remote INSERT row.
  *   return: NO_ERROR on success, error code on failure.
  *   thread_p(in)  : thread entry
@@ -1346,9 +1509,36 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
 int
 dblink_insert_execute_row (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state, DB_VALUE ** vals, int num_vals)
 {
-  /* TODO: T3-3 — implement CCI bind and execute */
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT not yet implemented");
-  return ER_DBLINK;
+  int k, result, err;
+  T_CCI_ERROR err_buf;
+
+  (void) thread_p;
+
+  /* bind each column value */
+  for (k = 0; k < num_vals; k++)
+    {
+      if (vals[k] == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT: NULL bind value");
+	  return ER_DBLINK;
+	}
+
+      err = dblink_bind_insert_value (state->stmt_handle, k + 1, vals[k]);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+    }
+
+  /* execute INSERT */
+  result = cci_execute (state->stmt_handle, 0, 0, &err_buf);
+  if (result < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      return ER_DBLINK;
+    }
+
+  return NO_ERROR;
 }
 
 /*
