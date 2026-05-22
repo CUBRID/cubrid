@@ -138,7 +138,6 @@
 	    } \
 	} \
     } while (0)
-
 typedef enum
 {
   QO_BUILD_ENTITY = 0x01,	/* 0000 0001 */
@@ -8307,7 +8306,7 @@ qo_collect_transitive_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
   QO_SEGMENT *seg1, *seg2, *head_seg, *tail_seg, *nom;
   QO_NODE *node1, *node2, *head_node, *tail_node;
   QO_TERM *term;
-  bool group_has_outer_join, already_has_term;
+  bool group_has_outer_join, group_all_transitive, already_has_term;
 
   /* Process each segment that is its own root (i.e., the canonical root of a group). */
   for (i = 0; i < env->nsegs; i++)
@@ -8333,10 +8332,15 @@ qo_collect_transitive_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
 	  continue;
 	}
 
-      /* Skip groups with outer-join terms; transitive inference is unsafe there. */
+      /* Single pass: outer-join check and PT_EXPR_INFO_TRANSITIVE term coverage.
+       * Break early on outer-join; group_all_transitive state is irrelevant then.
+       * Do NOT break on non-transitive term: remaining terms may still include
+       * an outer-join that must be detected. */
       group_has_outer_join = false;
+      group_all_transitive = true;
       for (t = 0; t < env->nterms; t++)
 	{
+	  PT_NODE *tpe;
 	  term = QO_ENV_TERM (env, t);
 	  if (!QO_IS_EDGE_TERM (term))
 	    {
@@ -8352,9 +8356,23 @@ qo_collect_transitive_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
 	      group_has_outer_join = true;
 	      break;
 	    }
+	  tpe = QO_TERM_PT_EXPR (term);
+	  if (tpe == NULL || !PT_EXPR_INFO_IS_FLAGED (tpe, PT_EXPR_INFO_TRANSITIVE))
+	    {
+	      group_all_transitive = false;
+	    }
 	}
 
       if (group_has_outer_join)
+	{
+	  continue;
+	}
+
+      /* Skip groups where every edge term already has PT_EXPR_INFO_TRANSITIVE: new specs
+       * would also receive the flag and be reclassified QO_TC_DUMMY_JOIN by
+       * qo_discover_edges, contributing no new join paths.  Avoids O(n^2) DUMMY_JOIN
+       * proliferation for queries rewritten by qo_reduce_equality_terms. */
+      if (group_all_transitive)
 	{
 	  continue;
 	}
