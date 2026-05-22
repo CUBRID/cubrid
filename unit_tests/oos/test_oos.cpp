@@ -98,7 +98,7 @@ TEST (OosTest, OosInsertAndRead)
   test_oos_utils::from_string_into_recdes ("This is a test OOS data.", rec);
 
   OID oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oid);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_NE (oid.pageid, NULL_PAGEID);
   ASSERT_NE (oid.volid, NULL_VOLID);
@@ -106,7 +106,7 @@ TEST (OosTest, OosInsertAndRead)
   test_oos_debug ("OID: volid=%d, pageid=%d, slotid=%d", oid.volid, oid.pageid, oid.slotid);
 
   RECDES rec_out{};
-  err = oos_read (thread_p, oid, rec_out);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_out);
   ASSERT_EQ (err, NO_ERROR);
 
   ASSERT_EQ (rec_out.length, rec.length);
@@ -131,11 +131,11 @@ TEST (OosTest, OosInsertLargerThanPageSize)
   ASSERT_EQ (err, NO_ERROR);
 
   OID oid;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES rec_out{};
-  err = oos_read (thread_p, oid, rec_out);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_out);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_STREQ (rec_out.data, rec_in.data);
   ASSERT_EQ (strlen (rec_out.data),strlen (large_data.c_str()));
@@ -163,11 +163,11 @@ TEST (OosTest, OosInsertLarge160KBString)
   ASSERT_EQ (err, NO_ERROR);
 
   OID oid;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES rec_out{};
-  err = oos_read (thread_p, oid, rec_out);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_out);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_STREQ (rec_out.data, rec_in.data);
   ASSERT_EQ (strlen (rec_out.data),strlen (large_data.c_str()));
@@ -198,11 +198,11 @@ TEST (OosTest, OosInsertAndRead100LargeStringsAroundMaxOosChunkSize)
       ASSERT_EQ (err, NO_ERROR);
 
       OID oid;
-      err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
       ASSERT_EQ (err, NO_ERROR);
 
       RECDES rec_out{};
-      err = oos_read (thread_p, oid, rec_out);
+      err = test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_out);
       ASSERT_EQ (err, NO_ERROR);
       ASSERT_EQ (strlen (rec_out.data),strlen (large_data.c_str()));
       ASSERT_STREQ (rec_out.data, rec_in.data);
@@ -367,19 +367,19 @@ TEST (OosTest, ShouldInsertIntoSamePage)
     ASSERT_EQ (err, NO_ERROR);
 
     OID oid1;
-    err = oos_insert (thread_p, oos_vfid, rec_in1, oid1);
+    err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in1, oid1);
     ASSERT_EQ (err, NO_ERROR);
 
     OID oid2;
-    err = oos_insert (thread_p, oos_vfid, rec_in2, oid2);
+    err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in2, oid2);
     ASSERT_EQ (err, NO_ERROR);
 
-    err = oos_read (thread_p, oid1, rec_out1);
+    err = test_oos_utils::oos_read_with_alloc (thread_p, oid1, rec_out1);
     ASSERT_EQ (err, NO_ERROR);
     ASSERT_STREQ (rec_out1.data, rec_in1.data);
     ASSERT_EQ (strlen (rec_out1.data),strlen ("first string"));
 
-    err = oos_read (thread_p, oid2, rec_out2);
+    err = test_oos_utils::oos_read_with_alloc (thread_p, oid2, rec_out2);
     ASSERT_EQ (err, NO_ERROR);
     ASSERT_STREQ (rec_out2.data, rec_in2.data);
     ASSERT_EQ (strlen (rec_out2.data),strlen ("second string again"));
@@ -411,7 +411,7 @@ TEST (OosTest, OosGetLengthWithinPage)
   ASSERT_EQ (err, NO_ERROR);
 
   OID oid;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   int length = oos_get_length (thread_p, oid);
@@ -436,7 +436,7 @@ TEST (OosTest, OosGetLengthAcrossPages)
   ASSERT_EQ (err, NO_ERROR);
 
   OID oid;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   /* oos_get_length reads only the first chunk header, which stores the total size */
@@ -466,7 +466,7 @@ TEST (OosTest, OosGetLengthAroundMaxChunkSize)
       ASSERT_EQ (err, NO_ERROR);
 
       OID oid;
-      err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
       ASSERT_EQ (err, NO_ERROR);
 
       int length = oos_get_length (thread_p, oid);
@@ -503,7 +503,7 @@ TEST (OosTest, ShouldInsertIntoDifferentPages)
    */
 
   OID oid1;
-  err = oos_insert (thread_p, oos_vfid, rec_in1, oid1);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in1, oid1);
   ASSERT_EQ (err, NO_ERROR);
   test_oos_debug ("Inserted record oid1: volid=%d, pageid=%d, slotid=%d", oid1.volid, oid1.pageid, oid1.slotid);
 
@@ -583,7 +583,7 @@ TEST (OosTest, OosInlineFormatWithRealOosInsert)
   ASSERT_EQ (err, NO_ERROR);
 
   OID oos_oid;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oos_oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oos_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   /* Build inline OOS data: [OOS OID (8B) + length (8B)] */
@@ -614,7 +614,7 @@ TEST (OosTest, OosInlineFormatWithRealOosInsert)
 
   /* Verify that oos_read returns a recdes whose length matches the inline length */
   RECDES rec_out{};
-  err = oos_read (thread_p, oos_oid, rec_out);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oos_oid, rec_out);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_EQ (read_length, (DB_BIGINT) rec_out.length);
 
@@ -645,7 +645,7 @@ TEST (OosTest, OosInlineLengthMatchesAcrossPages)
       ASSERT_EQ (err, NO_ERROR);
 
       OID oos_oid;
-      err = oos_insert (thread_p, oos_vfid, rec_in, oos_oid);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oos_oid);
       ASSERT_EQ (err, NO_ERROR);
 
       /* Write inline format */
@@ -674,12 +674,55 @@ TEST (OosTest, OosInlineLengthMatchesAcrossPages)
 
       /* Inline length must match oos_read recdes length */
       RECDES rec_out{};
-      err = oos_read (thread_p, oos_oid, rec_out);
+      err = test_oos_utils::oos_read_with_alloc (thread_p, oos_oid, rec_out);
       ASSERT_EQ (err, NO_ERROR);
       ASSERT_EQ (inline_length, (DB_BIGINT) rec_out.length) << "Failed for data_size=" << data_size;
 
       recdes_free_data_area (&rec_in);
       recdes_free_data_area (&rec_out);
+    }
+}
+
+TEST (OosTest, OosReadRejectsCallerLengthDisagreeingWithHeader)
+{
+  /* Caller passes oos_read a buffer sized from an (assumed) inline length that
+   * disagrees with the OOS header's total_data_length. oos_read must surface a
+   * clean error rather than truncate silently. Covers within-page and
+   * multi-chunk cases. The within-page path fails in oos_read_within_page via
+   * payload_len > buf_cap; the multi-chunk path fails in oos_read on the
+   * length-vs-header cross-check. */
+  int err;
+  VFID oos_vfid;
+
+  err = oos_create_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  const int max_chunk_size = bridge_oos_get_max_chunk_size_within_page ();
+  int actual_sizes[] = { 4096, max_chunk_size + 4096 };
+
+  for (int actual_size : actual_sizes)
+    {
+      auto data = test_oos_utils::make_repeated_pattern_string (actual_size);
+      RECDES rec_in{};
+      err = test_oos_utils::from_string_into_recdes (data, rec_in);
+      ASSERT_EQ (err, NO_ERROR);
+
+      OID oos_oid;
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oos_oid);
+      ASSERT_EQ (err, NO_ERROR);
+
+      RECDES rec_out{};
+      const int claimed_len = actual_size - 16;
+      ASSERT_EQ (recdes_allocate_data_area (&rec_out, claimed_len), NO_ERROR);
+
+      er_clear ();
+      int read_err = oos_read (thread_p, oos_oid,
+			       oos_buffer (rec_out.data, static_cast<std::size_t> (claimed_len)));
+      EXPECT_NE (read_err, NO_ERROR) << "actual_size=" << actual_size;
+      EXPECT_NE (er_errid (), NO_ERROR) << "actual_size=" << actual_size;
+
+      recdes_free_data_area (&rec_out);
+      recdes_free_data_area (&rec_in);
     }
 }
 
