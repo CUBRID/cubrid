@@ -6627,8 +6627,40 @@ stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *ptr, CONNECTBY_PROC_NOD
 	}
     }
 
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      stx_connectby_proc->hash_build_regu_list = NULL;
+    }
+  else
+    {
+      stx_connectby_proc->hash_build_regu_list =
+	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (stx_connectby_proc->hash_build_regu_list == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      stx_connectby_proc->hash_probe_regu_list = NULL;
+    }
+  else
+    {
+      stx_connectby_proc->hash_probe_regu_list =
+	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (stx_connectby_proc->hash_probe_regu_list == NULL)
+	{
+	  goto error;
+	}
+    }
+
   ptr = or_unpack_int (ptr, &tmp);
   stx_connectby_proc->single_table_opt = (bool) tmp;
+  ptr = or_unpack_int (ptr, &tmp);
+  stx_connectby_proc->use_hash_for_hq = (bool) tmp;
   stx_connectby_proc->curr_tuple = NULL;
 
   return ptr;

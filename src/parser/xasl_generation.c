@@ -710,6 +710,9 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
 
   connect_by = &xasl->proc.connect_by;
   connect_by->single_table_opt = false;
+  connect_by->use_hash_for_hq = false;
+  connect_by->hash_build_regu_list = NULL;
+  connect_by->hash_probe_regu_list = NULL;
 
   if (connect_by->start_with_list_id == NULL || connect_by->input_list_id == NULL)
     {
@@ -749,6 +752,43 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
 	}
 
       connect_by->single_table_opt = true;
+      if (xasl->spec_list)
+	{
+	  connect_by->use_hash_for_hq = true;
+
+	  {
+	    PT_NODE *hash_build_attrs = NULL, *hash_probe_attrs = NULL, *hash_pred_wo = NULL;
+	    if (pt_split_hash_attrs_for_HQ (parser, select_node->info.query.q.select.connect_by,
+					    &hash_build_attrs, &hash_probe_attrs, &hash_pred_wo) != NO_ERROR)
+	      {
+		parser_free_tree (parser, pred_without_HQ);
+		parser_free_tree (parser, pred_with_HQ);
+		goto exit_on_error;
+	      }
+	    if (hash_build_attrs != NULL && hash_probe_attrs != NULL)
+	      {
+		/* null current_class so regu vars resolve to TYPE_CONSTANT (val_list) not TYPE_ATTR_ID (heap cache) */
+		PT_NODE *saved_current_class = parser->symbols->current_class;
+		parser->symbols->current_class = NULL;
+
+		connect_by->hash_build_regu_list =
+		  pt_to_regu_variable_list (parser, hash_build_attrs, UNBOX_AS_VALUE, xasl->val_list, NULL);
+		connect_by->hash_probe_regu_list =
+		  pt_to_regu_variable_list (parser, hash_probe_attrs, UNBOX_AS_VALUE, xasl->val_list, NULL);
+
+		parser->symbols->current_class = saved_current_class;
+	      }
+	    if (connect_by->hash_build_regu_list == NULL || connect_by->hash_probe_regu_list == NULL)
+	      {
+		connect_by->use_hash_for_hq = false;
+		connect_by->hash_build_regu_list = NULL;
+		connect_by->hash_probe_regu_list = NULL;
+	      }
+	    parser_free_tree (parser, hash_build_attrs);
+	    parser_free_tree (parser, hash_probe_attrs);
+	    parser_free_tree (parser, hash_pred_wo);
+	  }
+	}
 
       /* pred_with_HQ is appended to if_pred */
       from = select_node->info.query.q.select.from;
