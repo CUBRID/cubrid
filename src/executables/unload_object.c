@@ -125,7 +125,6 @@ static const char *prohibited_classes[] = {
   CT_METHARG_NAME,
   CT_METHFILE_NAME,
   CT_QUERYSPEC_NAME,
-  CT_RESOLUTION_NAME,		/* currently, not implemented */
   CT_INDEX_NAME,
   CT_INDEXKEY_NAME,
   CT_CLASSAUTH_NAME,
@@ -160,6 +159,8 @@ static const char *prohibited_classes[] = {
   CTV_STORED_PROC_ARGS_NAME,
   CTV_PARTITION_NAME,
   CTV_COLLATION_NAME,
+  CTV_USER_NAME,
+  CTV_AUTHORIZATION_NAME,
   CTV_CHARSET_NAME,
   CTV_SERVER_NAME,
   CTV_SYNONYM_NAME,

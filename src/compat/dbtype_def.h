@@ -471,6 +471,17 @@ extern "C"
     DB_CONSTRAINT_FOREIGN_KEY = 6
   } DB_CONSTRAINT_TYPE;		/* TODO: only one enum for DB_CONSTRAINT_TYPE and SM_CONSTRAINT_TYPE */
 
+  /* 
+   * attribute's options(no constraint)
+   * These flags are displayed in the ‘flags’ column of the system catalog table.
+   */
+  typedef enum
+  {
+    DB_ATTOPT_AUTO_INCREMENT = 1 << 0,
+    DB_ATTOPT_INVISIBLE_COLUMN = 1 << 1,
+    DB_ATTOPT_PARTITION_KEY = 1 << 2
+  } DB_ATTRIBUTE_OPTION_TYPE;
+
   typedef enum
   {
     DB_FK_DELETE = 0,
@@ -514,6 +525,29 @@ extern "C"
    * etc. This isn't strictly enforced right now but applications must be aware that this will be a requirement.
    */
 #define DB_MAX_IDENTIFIER_LENGTH 255
+
+/* 
+ * Maximum allowable default expression length
+ * 
+ * Notes:
+ * 1. TABLE COLUMN
+ *   - This limit does NOT apply directly to table column definitions.
+ *   - It affects the maximum length of the 'default_value' column
+ *     in system tables such as 'db_attribute' and '_db_attribute'.
+ *
+ * 2. PL/CSQL
+ *   - This limit is directly enforced for PL/CSQL arguments.
+ *     affect CREATE PROCEDURE/FUNCTION statements.
+ *
+ * Other EXPR_LENGTH
+ *   - PARTITION
+ *     - DB_MAX_PARTITION_EXPR_LENGTH 2048
+ *     - 'db_partition' : partition_expr (2048)
+ *     - '_db_partition' : pexpr (2048)
+ *   - INDEX
+ *     - 'db_index' : filter_expression (1073741823)
+ */
+#define DB_MAX_DEFAULT_EXPR_LENGTH 2048
 
 /* Maximum allowable user name.*/
 #define DB_MAX_USER_LENGTH 32
