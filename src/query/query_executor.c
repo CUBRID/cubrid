@@ -92,6 +92,7 @@
 #endif /* SERVER_MODE && !WINDOWS */
 #include "px_query_executor.hpp"
 #include <vector>
+#include "dblink_scan.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -560,6 +561,7 @@ static int qexec_init_upddel_ehash_files (THREAD_ENTRY * thread_p, XASL_NODE * b
 static void qexec_destroy_upddel_ehash_files (THREAD_ENTRY * thread_p, XASL_NODE * buildlist);
 static int qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete, XASL_STATE * xasl_state);
 static int qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
+static int qexec_execute_remote_insert_select (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool skip_aptr);
 static int qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
@@ -12509,6 +12511,124 @@ qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE *
 }
 
 /*
+ * qexec_execute_remote_insert_select () - Stream SELECT results to a remote table via CCI.
+ *   return: NO_ERROR or ER_FAILED
+ *   xasl(in)       : XASL Tree block (INSERT_PROC with is_remote_insert set)
+ *   xasl_state(in) : XASL state
+ *
+ * Note: The aptr (SELECT) has already been executed by qexec_execute_insert.
+ *       This function opens the local scan, streams rows to the remote table
+ *       via CCI bind/execute, and accumulates affected rows in list_id->tuple_cnt.
+ */
+static int
+qexec_execute_remote_insert_select (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
+{
+  INSERT_PROC_NODE *insert = &xasl->proc.insert;
+  ACCESS_SPEC_TYPE *specp = xasl->spec_list;
+  SCAN_CODE xb_scan, ls_scan;
+  SCAN_ID *s_id = NULL;
+  QPROC_DB_VALUE_LIST vallist;
+  int k, val_no;
+  DBLINK_INSERT_STATE dblink_state = { -1, -1 };
+
+  assert (specp != NULL);
+  assert (insert->is_remote_insert);
+
+  val_no = insert->num_vals;
+
+  /* allocate vals array if not present (defensive: XASL unpack may leave it NULL) */
+  if (insert->vals == NULL && val_no > 0)
+    {
+      insert->vals = (DB_VALUE **) db_private_alloc (thread_p, val_no * sizeof (DB_VALUE *));
+      if (insert->vals == NULL)
+	{
+	  qexec_failure_line (__LINE__, xasl_state);
+	  return ER_FAILED;
+	}
+    }
+
+  /* open remote connection and prepare INSERT statement */
+  if (dblink_insert_open (thread_p, insert->remote_url, insert->remote_user, insert->remote_pwd,
+				 insert->remote_table_name, insert->remote_attr_names,
+				 insert->remote_num_attrs, val_no, &dblink_state) != NO_ERROR)
+    {
+      qexec_failure_line (__LINE__, xasl_state);
+      goto exit_on_error;
+    }
+
+  /* open local scan on SELECT result */
+  if (qexec_open_scan (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan,
+		       specp->grouped_scan, true, &specp->s_id, xasl_state->query_id, S_SELECT, false,
+		       NULL, xasl) != NO_ERROR)
+    {
+      qexec_failure_line (__LINE__, xasl_state);
+      goto exit_on_error;
+    }
+
+  /* stream rows to remote */
+  while ((xb_scan = qexec_next_scan_block_iterations (thread_p, xasl)) == S_SUCCESS)
+    {
+      s_id = &xasl->curr_spec->s_id;
+
+      while ((ls_scan = scan_next_scan (thread_p, s_id)) == S_SUCCESS)
+	{
+	  /* collect column values from scan */
+	  for (k = 0, vallist = s_id->val_list->valp; k < val_no && vallist != NULL; k++, vallist = vallist->next)
+	    {
+	      if (vallist->val == NULL)
+		{
+		  assert (0);
+		  qexec_failure_line (__LINE__, xasl_state);
+		  goto exit_on_error;
+		}
+	      insert->vals[k] = vallist->val;
+	    }
+
+	  /* verify vallist count matches val_no */
+	  if (k != val_no || vallist != NULL)
+	    {
+	      assert (0);
+	      qexec_failure_line (__LINE__, xasl_state);
+	      goto exit_on_error;
+	    }
+
+	  /* send row to remote */
+	  if (dblink_insert_execute_row (thread_p, &dblink_state, insert->vals, val_no) != NO_ERROR)
+	    {
+	      qexec_failure_line (__LINE__, xasl_state);
+	      goto exit_on_error;
+	    }
+
+	  xasl->list_id->tuple_cnt++;
+	}
+
+      if (ls_scan != S_END)
+	{
+	  qexec_failure_line (__LINE__, xasl_state);
+	  goto exit_on_error;
+	}
+    }
+
+  if (xb_scan != S_END)
+    {
+      qexec_failure_line (__LINE__, xasl_state);
+      goto exit_on_error;
+    }
+
+  dblink_insert_close (&dblink_state);
+  qexec_close_scan (thread_p, specp);
+
+  return NO_ERROR;
+
+exit_on_error:
+  dblink_insert_close (&dblink_state);
+  qexec_end_scan (thread_p, specp);
+  qexec_close_scan (thread_p, specp);
+
+  return ER_FAILED;
+}
+
+/*
  * qexec_execute_insert () -
  *   return: NO_ERROR or ER_code
  *   xasl(in)   : XASL Tree block
@@ -12562,12 +12682,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   thread_p->no_logging = (bool) insert->no_logging;
 
-  if (insert->is_remote_insert)
-    {
-      /* Remote INSERT SELECT via DBLink: CCI streaming not yet implemented. */
-      return NO_ERROR;
-    }
-
   aptr = xasl->aptr_list;
   val_no = insert->num_vals;
 
@@ -12599,6 +12713,11 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
     {
       qexec_failure_line (__LINE__, xasl_state);
       return ER_FAILED;
+    }
+
+  if (insert->is_remote_insert)
+    {
+      return qexec_execute_remote_insert_select (thread_p, xasl, xasl_state);
     }
 
   /* We might not hold a strong enough lock on the class yet. */

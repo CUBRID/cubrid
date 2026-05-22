@@ -1142,3 +1142,57 @@ dblink_scan_reset (DBLINK_SCAN_INFO * scan_info)
 
   return S_SUCCESS;
 }
+
+/*
+ * dblink_insert_open () - Connect to remote server and prepare an INSERT statement.
+ *   return: NO_ERROR on success, error code on failure.
+ *   thread_p(in)    : thread entry
+ *   url(in)         : CCI connection URL
+ *   user(in)        : remote user name
+ *   pwd(in)         : remote password
+ *   table_name(in)  : remote table name
+ *   attr_names(in)  : explicit column names (NULL for positional INSERT)
+ *   num_attrs(in)   : length of attr_names (0 when positional)
+ *   num_bind(in)    : number of ? placeholders (= SELECT column count)
+ *   state(out)      : filled with conn_handle and stmt_handle on success
+ */
+int
+dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, const char *pwd,
+			   const char *table_name, char **attr_names, int num_attrs, int num_bind,
+			   DBLINK_INSERT_STATE * state)
+{
+  /* TODO: T3-2 — implement CCI connection and INSERT prepare */
+  state->conn_handle = -1;
+  state->stmt_handle = -1;
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT not yet implemented");
+  return ER_DBLINK;
+}
+
+/*
+ * dblink_insert_execute_row () - Bind values and execute one remote INSERT row.
+ *   return: NO_ERROR on success, error code on failure.
+ *   thread_p(in)  : thread entry
+ *   state(in)     : open insert state (conn_handle, stmt_handle)
+ *   vals(in)      : array of DB_VALUE* (one per SELECT output column)
+ *   num_vals(in)  : length of vals
+ */
+int
+dblink_insert_execute_row (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state, DB_VALUE ** vals, int num_vals)
+{
+  /* TODO: T3-3 — implement CCI bind and execute */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT not yet implemented");
+  return ER_DBLINK;
+}
+
+/*
+ * dblink_insert_close () - Release CCI statement and (if auto-commit) connection.
+ *   state(in/out) : handles are set to -1 after release
+ */
+void
+dblink_insert_close (DBLINK_INSERT_STATE * state)
+{
+  /* TODO: T3-2/T3-3 — implement CCI cleanup */
+  state->conn_handle = -1;
+  state->stmt_handle = -1;
+}
