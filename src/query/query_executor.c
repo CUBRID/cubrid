@@ -18812,13 +18812,10 @@ qexec_init_index_pseudocolumn_strings (THREAD_ENTRY * thread_p, char **father_in
 static int
 bf2df_str_son_index (THREAD_ENTRY * thread_p, char **son_index, char *father_index, int *len_son_index, int cnt)
 {
-  char counter[32];
-  size_t size, n = father_index ? strlen (father_index) : 0;
+  /* fixed-width 4-digit decimal per level for memcmp-friendly comparison */
+  size_t n = father_index ? strlen (father_index) : 0;
+  size_t size = n + 4 + 1;
 
-  snprintf (counter, 32, "%d", cnt);
-  size = strlen (counter) + n + 2;
-
-  /* more space needed? */
   if ((*len_son_index > 0) && (size > ((size_t) (*len_son_index))))
     {
       do
@@ -18833,23 +18830,13 @@ bf2df_str_son_index (THREAD_ENTRY * thread_p, char **son_index, char *father_ind
 	{
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-
-      memset (*son_index, 0, *len_son_index);
     }
 
-  if (father_index)
+  if (father_index && n > 0)
     {
-      strcpy (*son_index, father_index);
+      memcpy (*son_index, father_index, n);
     }
-  else
-    {
-      (*son_index)[0] = 0;
-    }
-  if (n > 0)
-    {
-      strcat (*son_index, ".");	/* '.' < '0'...'9' */
-    }
-  strcat (*son_index, counter);
+  snprintf (*son_index + n, 5, "%04d", cnt);
 
   return NO_ERROR;
 }
@@ -20291,75 +20278,24 @@ qexec_execute_do_stmt (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
 static DB_VALUE_COMPARE_RESULT
 bf2df_str_compare (const unsigned char *s0, int l0, const unsigned char *s1, int l1)
 {
-  DB_BIGINT b0, b1;
-  const unsigned char *e0 = s0 + l0;
-  const unsigned char *e1 = s1 + l1;
+  int min_len, cmp;
 
   if (!s0 || !s1)
     {
       return DB_UNK;
     }
 
-  while (s0 < e0 && s1 < e1)
+  min_len = l0 < l1 ? l0 : l1;
+  cmp = memcmp (s0, s1, min_len);
+  if (cmp != 0)
     {
-      b0 = b1 = 0;
-
-      /* find next dot in s0 */
-      while (s0 < e0 && *s0 != '.')
-	{
-	  if (*s0 >= '0' && *s0 <= '9')
-	    {
-	      b0 = b0 * 10 + (*s0 - '0');
-	    }
-	  s0++;
-	}
-
-      /* find next dot in s1 */
-      while (s1 < e1 && *s1 != '.')
-	{
-	  if (*s1 >= '0' && *s1 <= '9')
-	    {
-	      b1 = b1 * 10 + (*s1 - '0');
-	    }
-	  s1++;
-	}
-
-      /* compare integers */
-      if (b0 > b1)
-	{
-	  return DB_GT;
-	}
-      if (b0 < b1)
-	{
-	  return DB_LT;
-	}
-
-      /* both equal in this group, find next one */
-      if (*s0 == '.')
-	{
-	  s0++;
-	}
-      if (*s1 == '.')
-	{
-	  s1++;
-	}
+      return cmp > 0 ? DB_GT : DB_LT;
     }
-
-  /* one or both strings finished */
-  if (s0 == e0 && s1 == e1)
+  if (l0 == l1)
     {
-      /* both equal */
       return DB_EQ;
     }
-  else if (s0 == e0)
-    {
-      return DB_LT;
-    }
-  else if (s1 == e1)
-    {
-      return DB_GT;
-    }
-  return DB_UNK;
+  return l0 < l1 ? DB_LT : DB_GT;
 }
 
 /*
