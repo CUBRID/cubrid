@@ -240,8 +240,8 @@ static void qo_discover_partitions (QO_ENV *);
 static void qo_discover_indexes (QO_ENV *);
 static void qo_assign_eq_classes (QO_ENV *);
 static void qo_generate_transitive_join_terms (QO_ENV *);
-static int qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs_p, int *count_p,
-					     int *cap_p);
+static int qo_collect_transitive_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
+					     QO_TRANSITIVE_JOIN_SPEC ** specs_p, int *count_p, int *cap_p);
 static void qo_discover_edges (QO_ENV *);
 static void qo_classify_outerjoin_terms (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
@@ -8116,35 +8116,52 @@ qo_generate_transitive_join_terms (QO_ENV * env)
   QO_TERM *new_arr;
   PARSER_CONTEXT *parser;
   int *root_arr = NULL;
+  int *segs_arr = NULL;
 
-  if (qo_collect_transitive_join_specs (env, &specs, &specs_count, &specs_cap) != 0 || specs_count == 0)
+  if (env->nsegs == 0)
+    {
+      return;
+    }
+
+  root_arr = (int *) malloc (sizeof (int) * env->nsegs);
+  if (root_arr == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * env->nsegs);
+      return;
+    }
+
+  segs_arr = (int *) malloc (sizeof (int) * env->nsegs);
+  if (segs_arr == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * env->nsegs);
+      free_and_init (root_arr);
+      return;
+    }
+
+  /* Build eq-root array once; passed to qo_collect_transitive_join_specs and reused below. */
+  for (ti = 0; ti < env->nsegs; ti++)
+    {
+      QO_SEGMENT *rs = QO_ENV_SEG (env, ti);
+      while (QO_SEG_EQ_ROOT (rs))
+	rs = QO_SEG_EQ_ROOT (rs);
+      root_arr[ti] = QO_SEG_IDX (rs);
+    }
+
+  if (qo_collect_transitive_join_specs (env, root_arr, segs_arr, &specs, &specs_count, &specs_cap) != 0
+      || specs_count == 0)
     {
       if (specs)
 	{
 	  free_and_init (specs);
 	}
+      free_and_init (root_arr);
+      free_and_init (segs_arr);
       return;
     }
 
   extra = specs_count;
   old_terms = env->nterms;
   parser = QO_ENV_PARSER (env);
-
-  /* Rebuild the eq-root array to enable per-eqclass transitive checks below. */
-  if (env->nsegs > 0)
-    {
-      root_arr = (int *) malloc (sizeof (int) * env->nsegs);
-      if (root_arr)
-	{
-	  for (ti = 0; ti < env->nsegs; ti++)
-	    {
-	      QO_SEGMENT *rs = QO_ENV_SEG (env, ti);
-	      while (QO_SEG_EQ_ROOT (rs))
-		rs = QO_SEG_EQ_ROOT (rs);
-	      root_arr[ti] = QO_SEG_IDX (rs);
-	    }
-	}
-    }
 
   new_size = sizeof (QO_TERM) * (env->Nterms + extra);
   new_arr = (QO_TERM *) realloc (env->terms, new_size);
@@ -8153,6 +8170,7 @@ qo_generate_transitive_join_terms (QO_ENV * env)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, new_size);
       free_and_init (root_arr);
+      free_and_init (segs_arr);
       free_and_init (specs);
       return;
     }
@@ -8171,11 +8189,17 @@ qo_generate_transitive_join_terms (QO_ENV * env)
     {
       QO_TERM *term = QO_ENV_TERM (env, i);
       if (term->nodes.nwords <= NWORDS)
-	term->nodes.setp = term->nodes.set.word;
+	{
+	  term->nodes.setp = term->nodes.set.word;
+	}
       if (term->segments.nwords <= NWORDS)
-	term->segments.setp = term->segments.set.word;
+	{
+	  term->segments.setp = term->segments.set.word;
+	}
       if (term->subqueries.nwords <= NWORDS)
-	term->subqueries.setp = term->subqueries.set.word;
+	{
+	  term->subqueries.setp = term->subqueries.set.word;
+	}
     }
 
   for (i = 0; i < specs_count; i++)
@@ -8186,11 +8210,15 @@ qo_generate_transitive_join_terms (QO_ENV * env)
       QO_TERM *term;
 
       if (parser == NULL)
-	continue;
+	{
+	  continue;
+	}
 
       pt_expr = parser_new_node (parser, PT_EXPR);
       if (pt_expr == NULL)
-	continue;
+	{
+	  continue;
+	}
 
       pt_expr->info.expr.op = PT_EQ;
       pt_expr->info.expr.arg1 = parser_copy_tree (parser, QO_SEG_PT_NODE (head_seg));
@@ -8205,33 +8233,44 @@ qo_generate_transitive_join_terms (QO_ENV * env)
       /* Both endpoints appear in PT_EXPR_INFO_TRANSITIVE edge terms within the same
        * eqclass; the generated term is itself transitive and qo_discover_edges will
        * classify it DUMMY_JOIN. Check per-eqclass to avoid cross-eqclass contamination. */
-      if (root_arr != NULL)
-	{
-	  bool head_in_trans = false, tail_in_trans = false;
-	  QO_NODE *head_node_p = QO_SEG_HEAD (head_seg);
-	  QO_NODE *tail_node_p = QO_SEG_HEAD (tail_seg);
-	  int spec_root = specs[i].eqclass_root;
-	  for (ti = 0; ti < old_terms && !(head_in_trans && tail_in_trans); ti++)
-	    {
-	      QO_TERM *tc = QO_ENV_TERM (env, ti);
-	      PT_NODE *tpe;
-	      QO_SEGMENT *nom;
-	      if (!QO_IS_EDGE_TERM (tc))
+      {
+	bool head_in_trans = false, tail_in_trans = false;
+	QO_NODE *head_node_p = QO_SEG_HEAD (head_seg);
+	QO_NODE *tail_node_p = QO_SEG_HEAD (tail_seg);
+	int spec_root = specs[i].eqclass_root;
+	for (ti = 0; ti < old_terms && !(head_in_trans && tail_in_trans); ti++)
+	  {
+	    QO_TERM *tc = QO_ENV_TERM (env, ti);
+	    PT_NODE *tpe;
+	    QO_SEGMENT *nom;
+	    if (!QO_IS_EDGE_TERM (tc))
+	      {
 		continue;
-	      tpe = QO_TERM_PT_EXPR (tc);
-	      if (tpe == NULL || !PT_EXPR_INFO_IS_FLAGED (tpe, PT_EXPR_INFO_TRANSITIVE))
+	      }
+	    tpe = QO_TERM_PT_EXPR (tc);
+	    if (tpe == NULL || !PT_EXPR_INFO_IS_FLAGED (tpe, PT_EXPR_INFO_TRANSITIVE))
+	      {
 		continue;
-	      nom = QO_TERM_NOMINAL_SEG (tc);
-	      if (nom == NULL || root_arr[QO_SEG_IDX (nom)] != spec_root)
+	      }
+	    nom = QO_TERM_NOMINAL_SEG (tc);
+	    if (nom == NULL || root_arr[QO_SEG_IDX (nom)] != spec_root)
+	      {
 		continue;
-	      if (QO_TERM_HEAD (tc) == head_node_p || QO_TERM_TAIL (tc) == head_node_p)
+	      }
+	    if (QO_TERM_HEAD (tc) == head_node_p || QO_TERM_TAIL (tc) == head_node_p)
+	      {
 		head_in_trans = true;
-	      if (QO_TERM_HEAD (tc) == tail_node_p || QO_TERM_TAIL (tc) == tail_node_p)
+	      }
+	    if (QO_TERM_HEAD (tc) == tail_node_p || QO_TERM_TAIL (tc) == tail_node_p)
+	      {
 		tail_in_trans = true;
-	    }
-	  if (head_in_trans && tail_in_trans)
+	      }
+	  }
+	if (head_in_trans && tail_in_trans)
+	  {
 	    PT_EXPR_INFO_SET_FLAG (pt_expr, PT_EXPR_INFO_TRANSITIVE);
-	}
+	  }
+      }
 
       term = qo_add_term (pt_expr, PREDICATE_TERM, env);
       QO_TERM_SET_FLAG (term, QO_TERM_TRANSITIVE);
@@ -8239,6 +8278,7 @@ qo_generate_transitive_join_terms (QO_ENV * env)
     }
 
   free_and_init (root_arr);
+  free_and_init (segs_arr);
   free_and_init (specs);
 }
 
@@ -8247,78 +8287,51 @@ qo_generate_transitive_join_terms (QO_ENV * env)
  *   specifications using the segment union-find (eq_root).
  *   return: 0 on success, -1 on memory allocation failure
  *   env(in):
+ *   root_arr(in): Pre-built segment-to-root mapping (size env->nsegs); caller owns allocation.
+ *   segs_arr(in): Scratch buffer of size env->nsegs for collecting group segments; caller owns.
  *   specs_p(in/out): Pointer to the dynamically growing specs array
  *   count_p(in/out): Pointer to the current number of collected specs
  *   cap_p(in/out): Pointer to the current capacity of the specs array
  *
- * Note: Builds a root array from the eq_root union-find chains set during term
- *   discovery.  For each equivalence group with segments on 2+ distinct nodes,
- *   emits a QO_TRANSITIVE_JOIN_SPEC for every node pair that lacks a direct
- *   edge term, unless the group contains an outer-join term.
+ * Note: env->nsegs must be > 0 and root_arr/segs_arr must be non-NULL.  For each
+ *   equivalence group with segments on 2+ distinct nodes, emits a
+ *   QO_TRANSITIVE_JOIN_SPEC for every node pair that lacks a direct edge term,
+ *   unless the group contains an outer-join term.
  */
 static int
-qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs_p, int *count_p, int *cap_p)
+qo_collect_transitive_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
+				  QO_TRANSITIVE_JOIN_SPEC ** specs_p, int *count_p, int *cap_p)
 {
   int i, j, k, t;
-  int *root_arr = NULL;
-  int *segs_arr = NULL;
-  int segs_arr_cap = 0;
   int nsegs;
-  QO_SEGMENT *seg1, *seg2, *head_seg, *tail_seg, *root_seg, *nom;
+  QO_SEGMENT *seg1, *seg2, *head_seg, *tail_seg, *nom;
   QO_NODE *node1, *node2, *head_node, *tail_node;
   QO_TERM *term;
   bool group_has_outer_join, already_has_term;
-
-  if (env->nsegs == 0)
-    return 0;
-
-  root_arr = (int *) malloc (sizeof (int) * env->nsegs);
-  if (root_arr == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * env->nsegs);
-      return -1;
-    }
-
-  /* For each segment, walk the eq_root chain to find its group root. */
-  for (i = 0; i < env->nsegs; i++)
-    {
-      root_seg = QO_ENV_SEG (env, i);
-      while (QO_SEG_EQ_ROOT (root_seg))
-	root_seg = QO_SEG_EQ_ROOT (root_seg);
-      root_arr[i] = QO_SEG_IDX (root_seg);
-    }
 
   /* Process each segment that is its own root (i.e., the canonical root of a group). */
   for (i = 0; i < env->nsegs; i++)
     {
       if (root_arr[i] != i)
-	continue;
+	{
+	  continue;
+	}
 
-      /* Collect all segments belonging to this group. */
+      /* Collect all segments belonging to this group into the caller-provided scratch buffer. */
       nsegs = 0;
       for (j = 0; j < env->nsegs; j++)
 	{
 	  if (root_arr[j] != i)
-	    continue;
-	  if (nsegs >= segs_arr_cap)
 	    {
-	      int new_cap = (segs_arr_cap == 0) ? 8 : segs_arr_cap * 2;
-	      int *np = (int *) realloc (segs_arr, sizeof (int) * new_cap);
-	      if (np == NULL)
-		{
-		  free_and_init (segs_arr);
-		  free_and_init (root_arr);
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * new_cap);
-		  return -1;
-		}
-	      segs_arr = np;
-	      segs_arr_cap = new_cap;
+	      continue;
 	    }
 	  segs_arr[nsegs++] = j;
 	}
 
       if (nsegs < 2)
-	continue;
+	{
+	  continue;
+	}
 
       /* Skip groups with outer-join terms; transitive inference is unsafe there. */
       group_has_outer_join = false;
@@ -8326,10 +8339,14 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 	{
 	  term = QO_ENV_TERM (env, t);
 	  if (!QO_IS_EDGE_TERM (term))
-	    continue;
+	    {
+	      continue;
+	    }
 	  nom = QO_TERM_NOMINAL_SEG (term);
 	  if (nom == NULL || root_arr[QO_SEG_IDX (nom)] != i)
-	    continue;
+	    {
+	      continue;
+	    }
 	  if (IS_OUTER_JOIN_TYPE (QO_TERM_JOIN_TYPE (term)))
 	    {
 	      group_has_outer_join = true;
@@ -8338,7 +8355,9 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 	}
 
       if (group_has_outer_join)
-	continue;
+	{
+	  continue;
+	}
 
       /* Emit one spec per (head_node, tail_node) pair; also check already-collected specs
        * to avoid duplicates when the same node has multiple segments in the eqclass. */
@@ -8353,7 +8372,9 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 	      node2 = QO_SEG_HEAD (seg2);
 
 	      if (QO_NODE_IDX (node1) == QO_NODE_IDX (node2))
-		continue;
+		{
+		  continue;
+		}
 
 	      if (QO_NODE_IDX (node1) < QO_NODE_IDX (node2))
 		{
@@ -8378,13 +8399,14 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 		   * qo_classify_outerjoin_terms retain NOMINAL_SEG/HEAD/TAIL. */
 		  if (!QO_IS_EDGE_TERM (term)
 		      && QO_TERM_CLASS (term) != QO_TC_AFTER_JOIN && QO_TERM_CLASS (term) != QO_TC_DURING_JOIN)
-		    continue;
-		  /* DUMMY_JOIN carries no column equality; skip it. */
-		  if (QO_TERM_CLASS (term) == QO_TC_DUMMY_JOIN)
-		    continue;
+		    {
+		      continue;
+		    }
 		  nom = QO_TERM_NOMINAL_SEG (term);
 		  if (nom == NULL || root_arr[QO_SEG_IDX (nom)] != i)
-		    continue;
+		    {
+		      continue;
+		    }
 		  if ((QO_TERM_HEAD (term) == head_node && QO_TERM_TAIL (term) == tail_node)
 		      || (QO_TERM_HEAD (term) == tail_node && QO_TERM_TAIL (term) == head_node))
 		    {
@@ -8407,7 +8429,9 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 		}
 
 	      if (already_has_term)
-		continue;
+		{
+		  continue;
+		}
 
 	      if (*count_p >= *cap_p)
 		{
@@ -8416,8 +8440,6 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 		    (QO_TRANSITIVE_JOIN_SPEC *) realloc (*specs_p, sizeof (QO_TRANSITIVE_JOIN_SPEC) * new_cap);
 		  if (np == NULL)
 		    {
-		      free_and_init (segs_arr);
-		      free_and_init (root_arr);
 		      return -1;
 		    }
 		  *specs_p = np;
@@ -8432,8 +8454,6 @@ qo_collect_transitive_join_specs (QO_ENV * env, QO_TRANSITIVE_JOIN_SPEC ** specs
 	}
     }
 
-  free_and_init (segs_arr);
-  free_and_init (root_arr);
   return 0;
 }
 
