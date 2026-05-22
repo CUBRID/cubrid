@@ -1505,6 +1505,23 @@ dblink_bind_insert_value (int stmt_handle, int param_index, DB_VALUE * dbval)
  *   state(in)     : open insert state (conn_handle, stmt_handle)
  *   vals(in)      : array of DB_VALUE* (one per SELECT output column)
  *   num_vals(in)  : length of vals
+ *
+ * Transaction behavior on mid-stream error:
+ *   This function is called row-by-row during INSERT SELECT streaming.
+ *   If an error occurs (bind failure, cci_execute failure), the remaining
+ *   rows are not inserted.
+ *
+ *   DBLINK_AUTO_COMMIT=true (default):
+ *     - Each successful cci_execute is auto-committed immediately on remote.
+ *     - Rows inserted before the error are already committed (partial insert).
+ *     - Local transaction may still commit; remote has partial data.
+ *
+ *   DBLINK_AUTO_COMMIT=false:
+ *     - All rows share one remote transaction (connection pooled).
+ *     - On error, qexec_execute_remote_insert_select returns error to caller.
+ *     - Local transaction aborts → qmgr_check_dblink_trans(is_abort=true)
+ *       → dblink_end_tran rollbacks all remote inserts.
+ *     - Result: all-or-nothing semantics (pseudo-atomic).
  */
 int
 dblink_insert_execute_row (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state, DB_VALUE ** vals, int num_vals)
