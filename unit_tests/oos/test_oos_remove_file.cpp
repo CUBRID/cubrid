@@ -71,7 +71,7 @@ TEST (OosFileDestroyTest, OosFileDestroyWithData)
   test_oos_utils::auto_freed_recdes_ptr defer_free (&rec_in, recdes_free_data_area);
 
   OID oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_NE (oid.pageid, NULL_PAGEID);
   test_oos_debug ("Inserted oid={vol=%d,page=%d,slot=%d}", oid.volid, oid.pageid, oid.slotid);
@@ -105,7 +105,7 @@ TEST (OosFileDestroyTest, OosFileDestroyWithMultiChunkData)
   test_oos_utils::auto_freed_recdes_ptr defer_free (&rec_in, recdes_free_data_area);
 
   OID oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
   test_oos_debug ("Inserted multi-chunk oid={vol=%d,page=%d,slot=%d}", oid.volid, oid.pageid, oid.slotid);
 
@@ -134,7 +134,7 @@ TEST (OosFileDestroyTest, OosFileDestroyCacheCleared)
   test_oos_utils::auto_freed_recdes_ptr defer_free (&rec_in, recdes_free_data_area);
 
   OID oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   err = oos_remove_file (thread_p, oos_vfid);
@@ -162,7 +162,7 @@ TEST (OosFileDestroyTest, OosPageDestroyBasic)
   test_oos_utils::auto_freed_recdes_ptr defer_free (&rec_in, recdes_free_data_area);
 
   OID oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   // Get the VPID of the page where the record was inserted
@@ -204,11 +204,11 @@ TEST (OosFileDestroyTest, OosFileDestroyMultipleFiles)
   test_oos_utils::auto_freed_recdes_ptr defer_free2 (&rec2, recdes_free_data_area);
 
   OID oid1 = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid1, rec1, oid1);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid1, rec1, oid1);
   ASSERT_EQ (err, NO_ERROR);
 
   OID oid2 = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid2, rec2, oid2);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid2, rec2, oid2);
   ASSERT_EQ (err, NO_ERROR);
 
   // Destroy file 1
@@ -217,7 +217,7 @@ TEST (OosFileDestroyTest, OosFileDestroyMultipleFiles)
 
   // File 2 should still be readable
   RECDES rec_out{};
-  err = oos_read (thread_p, oid2, rec_out);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oid2, rec_out);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_STREQ (rec_out.data, "File 2 data");
   recdes_free_data_area (&rec_out);

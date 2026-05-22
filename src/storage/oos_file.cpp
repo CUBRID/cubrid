@@ -18,6 +18,7 @@
 
 #include <cassert>
 #include <cstring>
+#include "byte_span_writer.hpp"
 #include "error_code.h"
 #include "error_manager.h"
 #include "file_manager.h"
@@ -46,17 +47,17 @@ static int
 oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args);
 
 static int
-oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes,
+oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src,
 			const OOS_RECORD_HEADER &header, OID &oid);
 static int
-oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes,
+oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src,
 			 OID &oid);
 static int
-oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes,
-		      OOS_RECORD_HEADER &out_header);
+oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid,
+		      cubbase::byte_span_writer &writer, OOS_RECORD_HEADER &header_out);
 static int
-oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes,
-		       OOS_RECORD_HEADER &out_header);
+oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &next_oid,
+		       int total_data_length, cubbase::byte_span_writer &writer);
 static void
 oos_log_insert_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, OID *oid_p, RECDES *recdes_p);
 static void
@@ -1018,13 +1019,14 @@ oos_remove_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid)
 
 
 static int
-oos_prepend_header (const RECDES &recdes, const OOS_RECORD_HEADER &oos_header, OOS_RECDES &oos_recdes)
+oos_prepend_header (oos_buffer src, const OOS_RECORD_HEADER &oos_header, OOS_RECDES &oos_recdes)
 {
   // Prepends the OOS header to user data, producing the on-page record.
   // Allocates a new data area for oos_recdes; caller must free it.
 
+  const int src_len = static_cast<int> (src.size ());
   int err;
-  err = recdes_allocate_data_area (&oos_recdes, recdes.length + (int)sizeof (OOS_RECORD_HEADER));
+  err = recdes_allocate_data_area (&oos_recdes, src_len + OOS_RECORD_HEADER_SIZE);
   if (err != NO_ERROR)
     {
       oos_error ("recdes_allocate_data_area failed in oos_prepend_header");
@@ -1034,63 +1036,46 @@ oos_prepend_header (const RECDES &recdes, const OOS_RECORD_HEADER &oos_header, O
     }
 
   oos_recdes.type = REC_HOME;
-  oos_recdes.length = recdes.length + (int)sizeof (OOS_RECORD_HEADER);
-  std::memcpy (oos_recdes.data, &oos_header, (int)sizeof (OOS_RECORD_HEADER));
-  std::memcpy (oos_recdes.data + (int)sizeof (OOS_RECORD_HEADER), recdes.data, recdes.length);
-
-  return NO_ERROR;
-}
-
-
-static int
-oos_strip_header (const OOS_RECDES &oos_recdes, OOS_RECORD_HEADER &header_out, RECDES &recdes)
-{
-  assert (oos_recdes.length >= (int)sizeof (OOS_RECORD_HEADER));
-  assert (&oos_recdes != &recdes);
-
-  int err;
-
-  err = recdes_allocate_data_area (&recdes, oos_recdes.length - (int)sizeof (OOS_RECORD_HEADER));
-  if (err != NO_ERROR)
-    {
-      oos_error ("recdes_allocate_data_area failed");
-      assert_release_error (er_errid () != NO_ERROR);
-      assert (false);
-      return err;
-    }
-
-  recdes.type = REC_HOME;
-  recdes.length = oos_recdes.length - (int)sizeof (OOS_RECORD_HEADER);
-  std::memcpy (&header_out, oos_recdes.data, (int)sizeof (OOS_RECORD_HEADER));
-  std::memcpy (recdes.data, oos_recdes.data + (int)sizeof (OOS_RECORD_HEADER), recdes.length);
+  oos_recdes.length = src_len + OOS_RECORD_HEADER_SIZE;
+  std::memcpy (oos_recdes.data, &oos_header, OOS_RECORD_HEADER_SIZE);
+  std::memcpy (oos_recdes.data + OOS_RECORD_HEADER_SIZE, src.data (), src.size ());
 
   return NO_ERROR;
 }
 
 
 int
-oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &oid)
+oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid)
 {
-  oos_debug ("arguments: oos_vfid={fileid=%d, volid=%d}, recdes.length=%d",
-	     oos_vfid.fileid, oos_vfid.volid, recdes.length);
+  oos_debug ("arguments: oos_vfid={fileid=%d, volid=%d}, src.size=%zu",
+	     oos_vfid.fileid, oos_vfid.volid, src.size ());
   int err = NO_ERROR;
 
-  // TODO: otherwise spage assert type <= REC_UNKNOWN fails
-  assert (recdes.type == REC_HOME);
-  assert (recdes.length > 0);
+  assert (src.data () != nullptr);
+  assert (src.size () > 0);
+
+  /* Guards the narrowing cast below against wrap-around from a corrupt caller. */
+  if (src.data () == nullptr || src.size () == 0 || src.size () > (std::size_t) INT_MAX)
+    {
+      oos_error ("oos_insert rejected invalid src (data=%p, size=%zu)", src.data (), src.size ());
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  const int src_len = static_cast<int> (src.size ());
 
   // TODO: Once the OOS_RECORD_HEADER spec is finalized (first segment header and rest segment header),
   // review whether it is possible to generate the segment headers inside the oos_insert_within_page() and
   // oos_insert_across_pages() functions.
 
-  if (recdes.length <= oos_get_max_chunk_size_within_page ())
+  if (src_len <= oos_get_max_chunk_size_within_page ())
     {
-      const OOS_RECORD_HEADER header{recdes.length, 0, OID_INITIALIZER};
-      err = oos_insert_within_page (thread_p, oos_vfid, recdes, header, oid);
+      const OOS_RECORD_HEADER header{src_len, 0, OID_INITIALIZER};
+      err = oos_insert_within_page (thread_p, oos_vfid, src, header, oid);
     }
   else
     {
-      err = oos_insert_across_pages (thread_p, oos_vfid, recdes, oid);
+      err = oos_insert_across_pages (thread_p, oos_vfid, src, oid);
     }
 
   oos_debug ("inserted to oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
@@ -1121,7 +1106,7 @@ oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &o
 //   auto-push in log_append_{undo,}redo_crumbs while this function runs.
 //
 static int
-oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &oid)
+oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid)
 {
   int error_code = NO_ERROR;
   LOG_TDES *tdes = NULL;
@@ -1129,14 +1114,19 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
   LOG_LSA tail_chunk_lsa = NULL_LSA;
   bool track_repl = false;
 
-  // split the recdes to multiple chunks and insert them one by one
+  // split the payload to multiple chunks and insert them one by one
   const int max_chunk_size = oos_get_max_chunk_size_within_page ();
-  assert (recdes.length + (int)sizeof (OOS_RECORD_HEADER) > max_chunk_size);
+  const int total_data_length = static_cast<int> (src.size ());
+  /* Both expressions below are rewritten to avoid adding to total_data_length,
+   * which can be near INT_MAX (entry-guard bound) and would signed-overflow. */
+  assert (total_data_length > max_chunk_size - OOS_RECORD_HEADER_SIZE);
 
-  int required_page_nums = (recdes.length + max_chunk_size - 1) / max_chunk_size;
+  int required_page_nums = total_data_length / max_chunk_size;
+  if (total_data_length % max_chunk_size != 0)
+    {
+      ++required_page_nums;
+    }
   assert (required_page_nums > 1);
-
-  const int total_data_length = recdes.length;
 
   int total_inserted_length = 0;
   OID next_chunk_oid = OID_INITIALIZER; // the last chunk has null OID as next_chunk_oid
@@ -1169,20 +1159,19 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
   // this loop inserts chunks in reverse order so that next_chunk_oid is always known
   for (int i = required_page_nums - 1; i >= 0; --i)
     {
-      RECDES chunk_recdes{};
-      chunk_recdes.type = REC_HOME;
-      chunk_recdes.length = std::min (max_chunk_size, total_data_length - i * max_chunk_size);
-      total_inserted_length += chunk_recdes.length;
-      chunk_recdes.data = recdes.data + i * max_chunk_size;
+      // subspan clamps count to the remaining size, so the tail chunk's shorter length is automatic.
+      oos_buffer chunk = src.subspan (static_cast<std::size_t> (i * max_chunk_size),
+				      static_cast<std::size_t> (max_chunk_size));
+      total_inserted_length += static_cast<int> (chunk.size ());
 
       // Keep total_data_length in each chunk so the log applier can validate all pieces before reassembly.
       OOS_RECORD_HEADER header{total_data_length, i, next_chunk_oid};
 
       OID current_chunk_oid;
-      error_code = oos_insert_within_page (thread_p, oos_vfid, chunk_recdes, header, current_chunk_oid);
+      error_code = oos_insert_within_page (thread_p, oos_vfid, chunk, header, current_chunk_oid);
       if (error_code != NO_ERROR)
 	{
-	  oos_error ("could not insert chunk index=%d of length %d.", i, chunk_recdes.length);
+	  oos_error ("could not insert chunk index=%d of length %zu.", i, chunk.size ());
 	  assert_release_error (er_errid () != NO_ERROR);
 	  // Partially inserted chunks are cleaned up when the caller aborts the transaction
 	  // (individual undo records replay in reverse). The caller MUST NOT continue
@@ -1197,7 +1186,7 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
 
       next_chunk_oid = current_chunk_oid;
     }
-  assert (total_inserted_length == recdes.length);
+  assert (total_inserted_length == total_data_length);
 
   if (track_repl)
     {
@@ -1213,16 +1202,17 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &r
 
 
 static int
-oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes,
+oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src,
 			const OOS_RECORD_HEADER &header,
 			OID &oid)
 {
   int err = NO_ERROR;
   VPID vpid;
 
-  assert (recdes.length <= oos_get_max_chunk_size_within_page ());
+  const int src_len = static_cast<int> (src.size ());
+  assert (src_len <= oos_get_max_chunk_size_within_page ());
 
-  int required_length = recdes.length + (int)sizeof (OOS_RECORD_HEADER);
+  int required_length = src_len + OOS_RECORD_HEADER_SIZE;
 
   assert (required_length <= DB_ALIGN_BELOW (spage_max_record_size (), OOS_ALIGNMENT));
 
@@ -1230,7 +1220,7 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &re
 
   OOS_RECDES oos_recdes{};
   {
-    err = oos_prepend_header (recdes, header, oos_recdes);
+    err = oos_prepend_header (src, header, oos_recdes);
     if (err != NO_ERROR)
       {
 	oos_error ("oos_prepend_header failed");
@@ -1276,90 +1266,19 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &re
 
 
 static int
-oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &oid,
-		       const OOS_RECORD_HEADER &first_chunk_header, RECDES &recdes)
+oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid,
+		      cubbase::byte_span_writer &writer, OOS_RECORD_HEADER &header_out)
 {
-  int err = NO_ERROR;
-  const int total_data_length = first_chunk_header.total_data_length;
-  assert (first_chunk_header.chunk_index == 0);
-
-  assert (total_data_length > oos_get_max_chunk_size_within_page ());
-  oos_trace ("total_data_length=%d", total_data_length);
-
-  err = recdes_allocate_data_area (&recdes, total_data_length);
-  if (err != NO_ERROR)
-    {
-      oos_error ("recdes_allocate_data_area failed in oos_read_across_pages, total_data_length=%d", total_data_length);
-      assert_release_error (er_errid () != NO_ERROR);
-      assert (false);
-      return err;
-    }
-
-  recdes.type = REC_HOME;
-  recdes.length = total_data_length;
-
-  int idx = 0;
-  OID current_chunk_oid = oid;
-  char *buf = recdes.data;
-  int total_read_length = 0;
-  while (current_chunk_oid.pageid != NULL_PAGEID)
-    {
-      OOS_RECORD_HEADER header;
-      RECDES chunk_recdes;
-      {
-	int err = oos_read_within_page (thread_p, current_chunk_oid, chunk_recdes, header);
-	if (err != NO_ERROR)
-	  {
-	    oos_error ("oos_read_within_page failed for chunk index=%d", idx);
-	    assert_release_error (er_errid () != NO_ERROR);
-	    assert (false);
-	    recdes_free_data_area (&recdes);
-	    return err;
-	  }
-
-	scope_exit defer_free_chunk_recdes ([&]()
-	{
-	  recdes_free_data_area (&chunk_recdes);
-	});
-
-	assert (idx == header.chunk_index);
-	assert (total_data_length == header.total_data_length);
-
-	total_read_length += chunk_recdes.length;
-	std::memcpy (buf, chunk_recdes.data, chunk_recdes.length);
-	buf += chunk_recdes.length;
-
-	current_chunk_oid = header.next_chunk_oid;
-      }
-      assert (chunk_recdes.data == nullptr); // should be freed by scope_exit
-
-      idx++;
-    }
-
-  assert (total_read_length == total_data_length);
-  assert (buf == total_data_length + recdes.data);
-
-  return NO_ERROR;
-}
-
-
-static int
-oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes,
-		      OOS_RECORD_HEADER &header_out)
-{
-  int err = NO_ERROR;
   const auto [pageid, slotid, volid] = oid;
   auto vpid = VPID{pageid, volid};
 
   PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == nullptr)
     {
-      oos_error ("oos_read_within_page: pgbuf_fix failed for volid=%d, pageid=%d", volid, pageid);
+      oos_error ("pgbuf_fix failed at oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
       assert_release_error (er_errid () != NO_ERROR);
-      assert (false);
       return er_errid ();
     }
-
   scope_exit page_unfixer ([&]()
   {
     pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
@@ -1369,78 +1288,138 @@ oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes,
   SCAN_CODE code = spage_get_record (thread_p, page_ptr, slotid, &oos_recdes, PEEK);
   if (code != S_SUCCESS)
     {
-      oos_error ("oos_read_within_page: spage_get_record failed for volid=%d, pageid=%d, slotid=%d",
-		 volid, pageid, slotid);
+      oos_error ("spage_get_record failed (code=%d) at oid={vol=%d,page=%d,slot=%d}", (int) code, OID_AS_ARGS (&oid));
+      /* Some SCAN_CODE failures leave er_errid()==NO_ERROR; ensure caller observes an error. */
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
+      return er_errid ();
+    }
+
+  /* Every OOS slot carries at least the chain header; shorter is on-disk corruption. */
+  assert (oos_recdes.length >= OOS_RECORD_HEADER_SIZE);
+  if (oos_recdes.length < OOS_RECORD_HEADER_SIZE)
+    {
+      oos_error ("OOS slot smaller than header (len=%d) at oid={vol=%d,page=%d,slot=%d}",
+		 oos_recdes.length, OID_AS_ARGS (&oid));
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_GENERIC_ERROR;
     }
 
-  // TODO: Ensure OOS_RECORD_HEADER always fits within a single page
+  std::memcpy (&header_out, oos_recdes.data, OOS_RECORD_HEADER_SIZE);
 
-  err = oos_strip_header (oos_recdes, header_out, recdes);
-  if (err != NO_ERROR)
+  const int payload_len = oos_recdes.length - OOS_RECORD_HEADER_SIZE;
+  if (!writer.append (oos_recdes.data + OOS_RECORD_HEADER_SIZE, static_cast<std::size_t> (payload_len)))
     {
-      oos_error ("oos_strip_header failed for volid=%d, pageid=%d, slotid=%d",
-		 volid, pageid, slotid);
-      assert_release_error (er_errid () != NO_ERROR);
-      assert (false);
-      return err;
+      oos_error ("OOS chunk overflows caller buffer (payload=%d, remaining=%zu) at oid={vol=%d,page=%d,slot=%d}",
+		 payload_len, writer.remaining (), OID_AS_ARGS (&oid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
     }
-
   return NO_ERROR;
 }
 
 
-/* oos_read -
- *
- * return:
- *
- *   oos_vfid(in):
- *   oid(in):
- *   recdes(out):
- *
- *   important notes: recdes.data is allocated inside this function.
- *   It sholud be freed by the caller using recdes_free_data_area().
- */
-int
-oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
+static int
+oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &next_oid,
+		       int total_data_length, cubbase::byte_span_writer &writer)
 {
-  oos_debug ("reading from oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
+  int idx = 1;
+  OID current = next_oid;
+  while (!OID_ISNULL (&current))
+    {
+      OOS_RECORD_HEADER header;
+      const std::size_t before = writer.written ();
 
-  int err = NO_ERROR;
+      int err = oos_read_within_page (thread_p, current, writer, header);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
 
-  // try reading just one slot
-  OOS_RECORD_HEADER first_chunk_header;
-  RECDES first_chunk_recdes;
+      /* chunk_index must increment from 1 and total_data_length must match the head. */
+      assert (idx == header.chunk_index);
+      assert (header.total_data_length == total_data_length);
+      if (idx != header.chunk_index || header.total_data_length != total_data_length)
+	{
+	  oos_error ("OOS chain inconsistency at idx=%d: header.chunk_index=%d, header.total_data_length=%d,"
+		     " expected_total=%d at oid={vol=%d,page=%d,slot=%d}",
+		     idx, header.chunk_index, header.total_data_length, total_data_length, OID_AS_ARGS (&current));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_GENERIC_ERROR;
+	}
 
-  err = oos_read_within_page (thread_p, oid, first_chunk_recdes, first_chunk_header);
+      /* A 0-byte chunk would let a cyclic next_chunk_oid loop forever. */
+      if (writer.written () == before)
+	{
+	  oos_error ("OOS empty chunk at idx=%d, oid={vol=%d,page=%d,slot=%d}", idx, OID_AS_ARGS (&current));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_GENERIC_ERROR;
+	}
+
+      current = header.next_chunk_oid;
+      idx++;
+    }
+  return NO_ERROR;
+}
+
+
+/* Cross-validates dest.size() against the chain header's total_data_length;
+ * mismatch (corruption) is rejected. byte_span_writer guards each chunk
+ * against payload_len overflow inside the loop. */
+int
+oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest)
+{
+  assert (dest.data () != nullptr && dest.size () > 0);
+
+  const int expected_length = static_cast<int> (dest.size ());
+
+  cubbase::byte_span_writer writer (dest);
+  OOS_RECORD_HEADER first_header;
+
+  int err = oos_read_within_page (thread_p, oid, writer, first_header);
   if (err != NO_ERROR)
     {
-      oos_error ("oos_read_within_page failed");
       return err;
     }
 
-  // check if we need to read all the chunks
-  if (first_chunk_header.next_chunk_oid.slotid != NULL_SLOTID)
+  /* Caller's OID must be the chain head; mid-chain target = corrupted inline OID. */
+  assert (first_header.chunk_index == 0);
+  if (first_header.chunk_index != 0)
     {
-      err = oos_read_across_pages (thread_p, oid, first_chunk_header, recdes);
-      // CASE 1: we do not need first_chunk_recdes anymore
-      recdes_free_data_area (&first_chunk_recdes);
+      oos_error ("OOS read at non-head chunk: chunk_index=%d at oid={vol=%d,page=%d,slot=%d}",
+		 first_header.chunk_index, OID_AS_ARGS (&oid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  /* Inline length (dest.size()) and chain header must agree. */
+  if (first_header.total_data_length != expected_length)
+    {
+      oos_error ("OOS length mismatch: caller=%d header=%d at oid={vol=%d,page=%d,slot=%d}",
+		 expected_length, first_header.total_data_length, OID_AS_ARGS (&oid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  if (!OID_ISNULL (&first_header.next_chunk_oid))
+    {
+      err = oos_read_across_pages (thread_p, first_header.next_chunk_oid,
+				   expected_length, writer);
       if (err != NO_ERROR)
 	{
-	  oos_error ("oos_read_across_pages failed");
-	  assert_release_error (er_errid () != NO_ERROR);
-	  assert (false);
 	  return err;
 	}
     }
-  else
-    {
-      // CASE 2: we use first_chunk_recdes as the final output
-      recdes = std::move (first_chunk_recdes);
-    }
-  oos_trace ("read completed, total_data_length=%d", first_chunk_header.total_data_length);
 
+  if (!writer.full ())
+    {
+      oos_error ("OOS final length mismatch: written=%zu expected=%d at oid={vol=%d,page=%d,slot=%d}",
+		 writer.written (), expected_length, OID_AS_ARGS (&oid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
   return NO_ERROR;
 }
 
@@ -1946,6 +1925,115 @@ void
 oos_push_oos_oid (THREAD_ENTRY *thread_p, const OID *oid)
 {
   thread_p->oos_oids.push_back (*oid);
+}
+
+// ****************************************************************************
+// OOS stats for session-command verification (dev/debug)
+// ****************************************************************************
+
+int
+xoos_get_stats_by_class_oid (THREAD_ENTRY *thread_p, const OID *class_oid, OOS_STATS_INFO *out)
+{
+  if (class_oid == NULL || out == NULL || OID_ISNULL (class_oid))
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  memset (out, 0, sizeof (*out));
+  out->page_size = DB_PAGESIZE;
+  VFID_SET_NULL (&out->oos_vfid);
+
+  HFID hfid;
+  HFID_SET_NULL (&hfid);
+  if (heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
+  if (HFID_IS_NULL (&hfid))
+    {
+      /* Class has no heap file yet (empty). Treat as "no OOS file". */
+      return NO_ERROR;
+    }
+
+  VFID oos_vfid;
+  VFID_SET_NULL (&oos_vfid);
+  if (!heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, false))
+    {
+      /* false return is overloaded: real read errors set er_errid; the
+       * legitimate "no OOS file" path (docreate=false, NULL in heap header)
+       * does not. Propagate if set, else treat as no-OOS. */
+      int errid = er_errid ();
+      if (errid != NO_ERROR)
+	{
+	  return errid;
+	}
+      return NO_ERROR;
+    }
+  if (VFID_ISNULL (&oos_vfid))
+    {
+      return NO_ERROR;
+    }
+
+  out->has_oos_file = 1;
+  out->oos_vfid = oos_vfid;
+
+  int num_user_pages = 0;
+  if (file_get_num_user_pages (thread_p, &oos_vfid, &num_user_pages) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
+  out->num_user_pages = num_user_pages;
+
+  /* OOS_HDR_STATS.estimates is a lazy best-space hint (updated only by sync scan),
+   * so for accurate live counts we walk every page and sum spage statistics. */
+  VPID hdr_vpid;
+  VPID_SET_NULL (&hdr_vpid);
+  if (file_get_sticky_first_page (thread_p, &oos_vfid, &hdr_vpid) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
+
+  INT64 total_recs = 0;
+  INT64 total_sumlen = 0;
+  for (int i = 0; i < num_user_pages; i++)
+    {
+      VPID scan_vpid;
+      if (file_numerable_find_nth (thread_p, &oos_vfid, i, false, NULL, NULL, &scan_vpid) != NO_ERROR
+	  || VPID_ISNULL (&scan_vpid))
+	{
+	  er_clear ();
+	  continue;
+	}
+      if (!VPID_ISNULL (&hdr_vpid) && VPID_EQ (&scan_vpid, &hdr_vpid))
+	{
+	  continue;		/* skip header page — no user records */
+	}
+
+      PAGE_PTR page_ptr = pgbuf_fix (thread_p, &scan_vpid, OLD_PAGE,
+				     PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
+      if (page_ptr == NULL)
+	{
+	  er_clear ();
+	  continue;		/* page busy — accept a slight undercount */
+	}
+
+      int page_npages = 0;
+      int page_nrecs = 0;
+      int page_recs_len = 0;
+      spage_collect_statistics (page_ptr, &page_npages, &page_nrecs, &page_recs_len);
+      pgbuf_unfix_and_init (thread_p, page_ptr);
+
+      total_recs += page_nrecs;
+      total_sumlen += page_recs_len;
+    }
+
+  out->num_recs = (int) total_recs;
+  out->recs_sumlen = total_sumlen;
+
+  return NO_ERROR;
 }
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)

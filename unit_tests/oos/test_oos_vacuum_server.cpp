@@ -181,7 +181,7 @@ TEST_F (OosVacuumCodePathServer, HeapRecdesGetOosOidsSingle)
   test_oos_utils::auto_freed_recdes_ptr defer_oos (&oos_rec, recdes_free_data_area);
 
   OID oos_oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, oos_rec, oos_oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos_rec, oos_oid);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_NE (oos_oid.pageid, NULL_PAGEID);
 
@@ -218,9 +218,9 @@ TEST_F (OosVacuumCodePathServer, HeapRecdesGetOosOidsMultiple)
   test_oos_utils::auto_freed_recdes_ptr d2 (&oos2, recdes_free_data_area);
 
   OID oid1 = OID_INITIALIZER, oid2 = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, oos1, oid1);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos1, oid1);
   ASSERT_EQ (err, NO_ERROR);
-  err = oos_insert (thread_p, oos_vfid, oos2, oid2);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos2, oid2);
   ASSERT_EQ (err, NO_ERROR);
 
   /* Build heap RECDES with 2 OOS columns */
@@ -256,12 +256,12 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteSingle)
   test_oos_utils::auto_freed_recdes_ptr defer_oos (&oos_rec, recdes_free_data_area);
 
   OID oos_oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, oos_rec, oos_oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos_rec, oos_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   /* Verify readable before vacuum */
   RECDES check {};
-  err = oos_read (thread_p, oos_oid, check);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oos_oid, check);
   ASSERT_EQ (err, NO_ERROR);
   recdes_free_data_area (&check);
 
@@ -277,7 +277,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteSingle)
 
   /* OOS record must be gone */
   RECDES after {};
-  int read_err = oos_read (thread_p, oos_oid, after);
+  int read_err = test_oos_utils::oos_read_with_alloc (thread_p, oos_oid, after);
   ASSERT_NE (read_err, NO_ERROR);
   if (after.data != nullptr)
     {
@@ -302,7 +302,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteMultipleColumns)
       err = test_oos_utils::from_string_into_recdes (payloads[i], recs[i]);
       ASSERT_EQ (err, NO_ERROR);
       oids[i] = OID_INITIALIZER;
-      err = oos_insert (thread_p, oos_vfid, recs[i], oids[i]);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, recs[i], oids[i]);
       ASSERT_EQ (err, NO_ERROR);
     }
 
@@ -326,7 +326,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteMultipleColumns)
   for (int i = 0; i < N; i++)
     {
       RECDES after {};
-      int read_err = oos_read (thread_p, oids[i], after);
+      int read_err = test_oos_utils::oos_read_with_alloc (thread_p, oids[i], after);
       ASSERT_NE (read_err, NO_ERROR) << "OOS record " << i << " should be deleted by vacuum";
       if (after.data != nullptr)
 	{
@@ -357,12 +357,12 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteMultiChunk)
   test_oos_utils::auto_freed_recdes_ptr defer_oos (&oos_rec, recdes_free_data_area);
 
   OID oos_oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, oos_rec, oos_oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos_rec, oos_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   /* Verify readable before vacuum */
   RECDES check {};
-  err = oos_read (thread_p, oos_oid, check);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oos_oid, check);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_EQ (check.length, oos_rec.length);
   recdes_free_data_area (&check);
@@ -379,7 +379,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteMultiChunk)
 
   /* Multi-chunk OOS must be fully gone */
   RECDES after {};
-  int read_err = oos_read (thread_p, oos_oid, after);
+  int read_err = test_oos_utils::oos_read_with_alloc (thread_p, oos_oid, after);
   ASSERT_NE (read_err, NO_ERROR);
   if (after.data != nullptr)
     {
@@ -403,7 +403,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteLarge160KB)
   test_oos_utils::auto_freed_recdes_ptr defer_oos (&oos_rec, recdes_free_data_area);
 
   OID oos_oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, oos_rec, oos_oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos_rec, oos_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   INT64 oos_len = oos_rec.length;
@@ -416,7 +416,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteLarge160KB)
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES after {};
-  ASSERT_NE (oos_read (thread_p, oos_oid, after), NO_ERROR);
+  ASSERT_NE (test_oos_utils::oos_read_with_alloc (thread_p, oos_oid, after), NO_ERROR);
   if (after.data != nullptr)
     {
       recdes_free_data_area (&after);
@@ -468,7 +468,7 @@ TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
       ASSERT_EQ (err, NO_ERROR);
 
       current_oids[i] = OID_INITIALIZER;
-      err = oos_insert (thread_p, oos_vfid, rec, current_oids[i]);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, current_oids[i]);
       ASSERT_EQ (err, NO_ERROR);
 
       recdes_free_data_area (&rec);
@@ -509,7 +509,7 @@ TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
 
 	  /* Old OOS must be gone */
 	  RECDES stale {};
-	  ASSERT_NE (oos_read (thread_p, old_oid, stale), NO_ERROR);
+	  ASSERT_NE (test_oos_utils::oos_read_with_alloc (thread_p, old_oid, stale), NO_ERROR);
 	  if (stale.data != nullptr)
 	    {
 	      recdes_free_data_area (&stale);
@@ -525,12 +525,12 @@ TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
 	  ASSERT_EQ (err, NO_ERROR);
 
 	  OID new_oid = OID_INITIALIZER;
-	  err = oos_insert (thread_p, oos_vfid, rec, new_oid);
+	  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, new_oid);
 	  ASSERT_EQ (err, NO_ERROR);
 
 	  /* New OOS must be readable */
 	  RECDES check {};
-	  err = oos_read (thread_p, new_oid, check);
+	  err = test_oos_utils::oos_read_with_alloc (thread_p, new_oid, check);
 	  ASSERT_EQ (err, NO_ERROR);
 	  recdes_free_data_area (&check);
 
@@ -552,7 +552,7 @@ TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
   for (int i = 0; i < N_ROWS; i++)
     {
       RECDES out {};
-      err = oos_read (thread_p, current_oids[i], out);
+      err = test_oos_utils::oos_read_with_alloc (thread_p, current_oids[i], out);
       ASSERT_EQ (err, NO_ERROR);
       recdes_free_data_area (&out);
     }
@@ -581,7 +581,7 @@ TEST_F (OosVacuumCodePathServer, BulkVacuumReclaimAndReuse)
       ASSERT_EQ (err, NO_ERROR);
 
       oids[i] = OID_INITIALIZER;
-      err = oos_insert (thread_p, oos_vfid, rec, oids[i]);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oids[i]);
       ASSERT_EQ (err, NO_ERROR);
 
       recdes_free_data_area (&rec);
@@ -607,7 +607,7 @@ TEST_F (OosVacuumCodePathServer, BulkVacuumReclaimAndReuse)
   for (int i = 0; i < N; i++)
     {
       RECDES after {};
-      int read_err = oos_read (thread_p, oids[i], after);
+      int read_err = test_oos_utils::oos_read_with_alloc (thread_p, oids[i], after);
       ASSERT_NE (read_err, NO_ERROR) << "OOS record " << i << " should be deleted by vacuum";
       if (after.data != nullptr)
 	{
@@ -625,7 +625,7 @@ TEST_F (OosVacuumCodePathServer, BulkVacuumReclaimAndReuse)
       ASSERT_EQ (err, NO_ERROR);
 
       new_oids[i] = OID_INITIALIZER;
-      err = oos_insert (thread_p, oos_vfid, rec, new_oids[i]);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, new_oids[i]);
       ASSERT_EQ (err, NO_ERROR);
 
       recdes_free_data_area (&rec);
@@ -643,7 +643,7 @@ TEST_F (OosVacuumCodePathServer, BulkVacuumReclaimAndReuse)
   for (int i = 0; i < N; i++)
     {
       RECDES out {};
-      err = oos_read (thread_p, new_oids[i], out);
+      err = test_oos_utils::oos_read_with_alloc (thread_p, new_oids[i], out);
       ASSERT_EQ (err, NO_ERROR);
       ASSERT_EQ (out.length, oos_size + 1);
       recdes_free_data_area (&out);
@@ -699,24 +699,24 @@ TEST_F (OosVacuumCodePathServer, DISABLED_PrevVersionChainWalkerDeletesOldOos)
   test_oos_utils::auto_freed_recdes_ptr defer_new_payload (&oos_new_payload, recdes_free_data_area);
 
   OID oos_old_oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, oos_old_payload, oos_old_oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos_old_payload, oos_old_oid);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_NE (oos_old_oid.pageid, NULL_PAGEID);
 
   OID oos_new_oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, oos_new_payload, oos_new_oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos_new_payload, oos_new_oid);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_NE (oos_new_oid.pageid, NULL_PAGEID);
 
   /* Verify both are readable before the test. */
   {
     RECDES check {};
-    ASSERT_EQ (oos_read (thread_p, oos_old_oid, check), NO_ERROR);
+    ASSERT_EQ (test_oos_utils::oos_read_with_alloc (thread_p, oos_old_oid, check), NO_ERROR);
     recdes_free_data_area (&check);
   }
   {
     RECDES check {};
-    ASSERT_EQ (oos_read (thread_p, oos_new_oid, check), NO_ERROR);
+    ASSERT_EQ (test_oos_utils::oos_read_with_alloc (thread_p, oos_new_oid, check), NO_ERROR);
     recdes_free_data_area (&check);
   }
 
@@ -737,7 +737,7 @@ TEST_F (OosVacuumCodePathServer, DISABLED_PrevVersionChainWalkerDeletesOldOos)
 
   /* OOS_old MUST be gone — the dangling-OOS bug would leave it here. */
   RECDES after_old {};
-  int read_old_err = oos_read (thread_p, oos_old_oid, after_old);
+  int read_old_err = test_oos_utils::oos_read_with_alloc (thread_p, oos_old_oid, after_old);
   EXPECT_NE (read_old_err, NO_ERROR)
       << "OOS_old was not deleted by prev_version chain walker — dangling-OOS regression";
   if (after_old.data != nullptr)
@@ -747,7 +747,7 @@ TEST_F (OosVacuumCodePathServer, DISABLED_PrevVersionChainWalkerDeletesOldOos)
 
   /* OOS_new MUST still be readable — chain walker should not touch unrelated OOS. */
   RECDES after_new {};
-  int read_new_err = oos_read (thread_p, oos_new_oid, after_new);
+  int read_new_err = test_oos_utils::oos_read_with_alloc (thread_p, oos_new_oid, after_new);
   EXPECT_EQ (read_new_err, NO_ERROR) << "OOS_new was incorrectly deleted by chain walker";
   if (after_new.data != nullptr)
     {
@@ -775,7 +775,7 @@ TEST_F (OosVacuumCodePathServer, DISABLED_PrevVersionChainWalkerDeletesMultipleO
       ASSERT_EQ (err, NO_ERROR);
 
       oos_oids[i] = OID_INITIALIZER;
-      err = oos_insert (thread_p, oos_vfid, payloads[i], oos_oids[i]);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, payloads[i], oos_oids[i]);
       ASSERT_EQ (err, NO_ERROR);
       oos_lens[i] = payloads[i].length;
     }
@@ -799,7 +799,7 @@ TEST_F (OosVacuumCodePathServer, DISABLED_PrevVersionChainWalkerDeletesMultipleO
   for (int i = 0; i < N; i++)
     {
       RECDES after {};
-      int read_err = oos_read (thread_p, oos_oids[i], after);
+      int read_err = test_oos_utils::oos_read_with_alloc (thread_p, oos_oids[i], after);
       EXPECT_NE (read_err, NO_ERROR) << "OOS column " << i << " was not deleted by chain walker";
       if (after.data != nullptr)
 	{

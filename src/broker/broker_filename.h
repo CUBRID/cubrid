@@ -90,6 +90,7 @@ enum t_cubrid_file_id
   FID_SHARD_DBINFO,
   FID_SHARD_PROXY_LOG_DIR,
   FID_CUBRID_GATEWAY_CONF,
+  FID_COPIED_CUBRID_CONF,
   MAX_CUBRID_FILE
 };
 typedef enum t_cubrid_file_id T_CUBRID_FILE_ID;
@@ -101,6 +102,17 @@ struct t_cubrid_file_info
   char file_name[BROKER_PATH_MAX];
 };
 
+#if !defined (WINDOWS)
+enum t_cmd_cubrid_conf
+{
+  CMD_START,
+  CMD_STOP,
+  CMD_ON,
+  CMD_OFF
+};
+typedef enum t_cmd_cubrid_conf T_CMD_CUBRID_CONF;
+#endif
+
 extern void set_cubrid_home (void);
 extern void set_cubrid_file (T_CUBRID_FILE_ID fid, char *value);
 extern char *get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf, size_t len);
@@ -108,5 +120,19 @@ extern char *get_cubrid_file_ptr (T_CUBRID_FILE_ID fid);
 extern char *get_cubrid_home (void);
 extern const char *getenv_cubrid_broker (void);
 extern int make_abs_path (char *dst, const char *subdir, const char *path, size_t dest_len);
+#if !defined(WINDOWS)
+extern int copy_cubrid_conf (const char *dest);
+extern void manage_cubrid_conf (T_CMD_CUBRID_CONF command);
+
+#define COPY_CUBRID_CONF 	manage_cubrid_conf (CMD_START)
+#define REMOVE_CUBRID_CONF 	manage_cubrid_conf (CMD_STOP)
+#define ENABLE_CUBRID_CONF_ENV	manage_cubrid_conf (CMD_ON)
+#define DISABLE_CUBRID_CONF_ENV	manage_cubrid_conf (CMD_OFF)
+#else
+#define COPY_CUBRID_CONF	((void)0)
+#define REMOVE_CUBRID_CONF	((void)0)
+#define ENABLE_CUBRID_CONF_ENV	((void)0)
+#define DISABLE_CUBRID_CONF_ENV	((void)0)
+#endif
 
 #endif /* _BROKER_FILENAME_H_ */

@@ -624,9 +624,9 @@ put_varinfo (OR_BUF * buf, char *obj, SM_CLASS * class_, int offset_size)
 
   if (class_->variable_count)
     {
-      /* compute the variable offsets relative to the end of the header (beginning of variable table).
-       * Align each offset to 4 bytes — OR_GET_VAR_OFFSET() masks off the low 2 bits,
-       * so unaligned offsets would cause read errors and OR_IS_OOS false positives. */
+      /* VOT offsets must be 4-byte aligned: the low 2 bits are reserved for flags
+       * (one of them is the OOS flag, read by OR_IS_OOS / masked off by OR_GET_VAR_OFFSET).
+       * Align the first offset, then re-align after adding each attribute length. */
       offset =
 	DB_ALIGN (OR_VAR_TABLE_SIZE_INTERNAL (class_->variable_count,
 					      offset_size) + class_->fixed_size
@@ -673,11 +673,10 @@ re_check:
     {
       size += OR_VAR_TABLE_SIZE_INTERNAL (class_->variable_count, *offset_size_ptr);
 
-      /* Align the variable data area start to 4 bytes (relative to end of header).
-       * OR_GET_VAR_OFFSET() masks off the low 2 bits, so VOT offsets must be multiples of 4. */
-      int var_start = OR_VAR_TABLE_SIZE_INTERNAL (class_->variable_count, *offset_size_ptr)
-	+ class_->fixed_size + OR_BOUND_BIT_BYTES (class_->fixed_count);
-      size += DB_ALIGN (var_start, INT_ALIGNMENT) - var_start;
+      /* The variable data area starts on a 4-byte boundary, and each variable
+       * attribute is padded to 4 bytes. Sizes here must agree with the offsets
+       * emitted by put_varinfo () and the bytes written by put_attributes (). */
+      size = DB_ALIGN (size, INT_ALIGNMENT);
 
       for (a = class_->fixed_count; a < class_->att_count; a++)
 	{
@@ -746,28 +745,18 @@ put_attributes (OR_BUF * buf, char *obj, SM_CLASS * class_)
     {
       or_put_data (buf, obj + OBJ_HEADER_BOUND_BITS_OFFSET, OR_BOUND_BIT_BYTES (class_->fixed_count));
     }
-  /* write the variable attributes — pad to 4-byte alignment between each,
-   * matching the aligned offsets written by put_varinfo(). */
+  /* Write the variable attributes. The VOT offsets emitted by put_varinfo ()
+   * are 4-byte aligned, so we pad up to a 4-byte boundary at the start of the
+   * variable data area and after every attribute — that way the write cursor
+   * always lands on the offset the VOT advertises. */
   if (att != NULL)
     {
-      /* align start of variable data area to 4 bytes */
-      int written = (int) (buf->ptr - start);
-      int aligned = DB_ALIGN (written, INT_ALIGNMENT);
-      if (aligned > written)
-	{
-	  or_pad (buf, aligned - written);
-	}
+      or_put_align32 (buf);
     }
   for (; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
       att->type->data_writemem (buf, obj + att->offset, att->domain);
-      /* align after each variable for the next one */
-      int written = (int) (buf->ptr - start);
-      int aligned = DB_ALIGN (written, INT_ALIGNMENT);
-      if (aligned > written)
-	{
-	  or_pad (buf, aligned - written);
-	}
+      or_put_align32 (buf);
     }
   return NO_ERROR;
 }

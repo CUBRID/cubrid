@@ -79,14 +79,14 @@ TEST (OosServerTest, OosInsertAndRead)
   test_oos_utils::from_string_into_recdes (random_data, rec);
 
   OID oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oid);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_NE (oid.pageid, NULL_PAGEID);
   ASSERT_NE (oid.volid, NULL_VOLID);
   ASSERT_NE (oid.slotid, NULL_SLOTID);
 
   RECDES rec_out {};
-  err = oos_read (thread_p, oid, rec_out);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_out);
   ASSERT_EQ (err, NO_ERROR);
 
   ASSERT_EQ (rec_out.length, rec.length);
@@ -113,11 +113,11 @@ TEST (OosServerTest, OosInsertLargerThanPageSize)
   ASSERT_EQ (err, NO_ERROR);
 
   OID oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES rec_out {};
-  err = oos_read (thread_p, oid, rec_out);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_out);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_STREQ (rec_out.data, rec_in.data);
   ASSERT_EQ (strlen (rec_out.data), strlen (large_data.c_str ()));
@@ -142,11 +142,11 @@ TEST (OosServerTest, OosInsertLarge160KBString)
   ASSERT_EQ (err, NO_ERROR);
 
   OID oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES rec_out {};
-  err = oos_read (thread_p, oid, rec_out);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_out);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_STREQ (rec_out.data, rec_in.data);
   ASSERT_EQ (strlen (rec_out.data), strlen (large_data.c_str ()));
@@ -174,11 +174,11 @@ TEST (OosServerTest, OosInsertAndRead100LargeStringsAroundMaxOosChunkSize)
       ASSERT_EQ (err, NO_ERROR);
 
       OID oid = OID_INITIALIZER;
-      err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
       ASSERT_EQ (err, NO_ERROR);
 
       RECDES rec_out {};
-      err = oos_read (thread_p, oid, rec_out);
+      err = test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_out);
       ASSERT_EQ (err, NO_ERROR);
       ASSERT_EQ (strlen (rec_out.data), strlen (large_data.c_str ()));
       ASSERT_STREQ (rec_out.data, rec_in.data);
@@ -216,18 +216,18 @@ TEST (OosServerTest, ShouldInsertIntoSamePage)
     ASSERT_EQ (err, NO_ERROR);
 
     OID oid1 = OID_INITIALIZER;
-    err = oos_insert (thread_p, oos_vfid, rec_in1, oid1);
+    err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in1, oid1);
     ASSERT_EQ (err, NO_ERROR);
 
     OID oid2 = OID_INITIALIZER;
-    err = oos_insert (thread_p, oos_vfid, rec_in2, oid2);
+    err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in2, oid2);
     ASSERT_EQ (err, NO_ERROR);
 
-    err = oos_read (thread_p, oid1, rec_out1);
+    err = test_oos_utils::oos_read_with_alloc (thread_p, oid1, rec_out1);
     ASSERT_EQ (err, NO_ERROR);
     ASSERT_STREQ (rec_out1.data, rec_in1.data);
 
-    err = oos_read (thread_p, oid2, rec_out2);
+    err = test_oos_utils::oos_read_with_alloc (thread_p, oid2, rec_out2);
     ASSERT_EQ (err, NO_ERROR);
     ASSERT_STREQ (rec_out2.data, rec_in2.data);
 
@@ -254,7 +254,7 @@ TEST (OosServerTest, OosGetLengthWithinPage)
   ASSERT_EQ (err, NO_ERROR);
 
   OID oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   int length = oos_get_length (thread_p, oid);
@@ -279,7 +279,7 @@ TEST (OosServerTest, OosGetLengthAcrossPages)
   ASSERT_EQ (err, NO_ERROR);
 
   OID oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   int length = oos_get_length (thread_p, oid);
@@ -307,7 +307,7 @@ TEST (OosServerTest, OosGetLengthAroundMaxChunkSize)
       ASSERT_EQ (err, NO_ERROR);
 
       OID oid = OID_INITIALIZER;
-      err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
       ASSERT_EQ (err, NO_ERROR);
 
       int length = oos_get_length (thread_p, oid);
@@ -371,7 +371,7 @@ TEST (OosServerTest, OosInlineFormatWithRealOosInsert)
   ASSERT_EQ (err, NO_ERROR);
 
   OID oos_oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oos_oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oos_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   /* Build inline OOS data: [OOS OID (8B) + length (8B)] */
@@ -400,7 +400,7 @@ TEST (OosServerTest, OosInlineFormatWithRealOosInsert)
   ASSERT_EQ (read_length, (DB_BIGINT) oos_length);
 
   RECDES rec_out {};
-  err = oos_read (thread_p, oos_oid, rec_out);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oos_oid, rec_out);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_EQ (read_length, (DB_BIGINT) rec_out.length);
 
@@ -429,7 +429,7 @@ TEST (OosServerTest, OosInlineLengthMatchesAcrossPages)
       ASSERT_EQ (err, NO_ERROR);
 
       OID oos_oid = OID_INITIALIZER;
-      err = oos_insert (thread_p, oos_vfid, rec_in, oos_oid);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oos_oid);
       ASSERT_EQ (err, NO_ERROR);
 
       char inline_buf[OR_OOS_INLINE_SIZE];
@@ -452,7 +452,7 @@ TEST (OosServerTest, OosInlineLengthMatchesAcrossPages)
       ASSERT_EQ (inline_length, (DB_BIGINT) io_length) << "Failed for data_size=" << data_size;
 
       RECDES rec_out {};
-      err = oos_read (thread_p, oos_oid, rec_out);
+      err = test_oos_utils::oos_read_with_alloc (thread_p, oos_oid, rec_out);
       ASSERT_EQ (err, NO_ERROR);
       ASSERT_EQ (inline_length, (DB_BIGINT) rec_out.length) << "Failed for data_size=" << data_size;
 

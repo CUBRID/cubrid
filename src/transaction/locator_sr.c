@@ -5318,13 +5318,16 @@ locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * rec
   tdes->oos_insert_lsa_queue.clear ();
   thread_p->oos_oids.clear ();
 
-  /* The recdes data from the log includes the OOS record header. Since oos_insert adds its own header,
-   * we must skip the existing header to avoid duplication. */
-  recdes->data = recdes->data + OOS_RECORD_HEADER_SIZE;
-  recdes->length = recdes->length - OOS_RECORD_HEADER_SIZE;
-
-  recdes->type = REC_HOME;
-  error_code = oos_insert (thread_p, oos_vfid, *recdes, oos_oid);
+  /* Skip the on-log OOS header (oos_insert prepends its own). Reject corrupt
+   * records that would underflow the subtraction below. */
+  if (recdes->length <= OOS_RECORD_HEADER_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      "OOS replication log record shorter than header");
+      return ER_HA_GENERIC_ERROR;
+    }
+  oos_buffer payload (recdes->data + OOS_RECORD_HEADER_SIZE, (size_t) (recdes->length - OOS_RECORD_HEADER_SIZE));
+  error_code = oos_insert (thread_p, oos_vfid, payload, oos_oid);
   if (error_code != NO_ERROR)
     {
       if (er_errid () == NO_ERROR)

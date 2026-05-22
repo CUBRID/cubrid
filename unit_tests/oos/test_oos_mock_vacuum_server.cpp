@@ -88,13 +88,13 @@ TEST_F (OosVacuumServer, BasicInsertAndDelete)
   test_oos_utils::auto_freed_recdes_ptr defer_free (&rec_in, recdes_free_data_area);
 
   OID oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_NE (oid.pageid, NULL_PAGEID);
 
   /* Verify it's readable before deletion */
   RECDES rec_check {};
-  err = oos_read (thread_p, oid, rec_check);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_check);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_STREQ (rec_check.data, rec_in.data);
   recdes_free_data_area (&rec_check);
@@ -105,7 +105,7 @@ TEST_F (OosVacuumServer, BasicInsertAndDelete)
 
   /* Must be gone */
   RECDES rec_after {};
-  int read_err = oos_read (thread_p, oid, rec_after);
+  int read_err = test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_after);
   ASSERT_NE (read_err, NO_ERROR);
   if (rec_after.data != nullptr)
     {
@@ -134,7 +134,7 @@ TEST_F (OosVacuumServer, MultiChunkDelete)
   test_oos_utils::auto_freed_recdes_ptr defer_free (&rec_in, recdes_free_data_area);
 
   OID head_oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, head_oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, head_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   int free_before = get_free_space_of_oid_page (head_oid);
@@ -149,7 +149,7 @@ TEST_F (OosVacuumServer, MultiChunkDelete)
 
   /* Reading must fail */
   RECDES rec_after {};
-  int read_err = oos_read (thread_p, head_oid, rec_after);
+  int read_err = test_oos_utils::oos_read_with_alloc (thread_p, head_oid, rec_after);
   ASSERT_NE (read_err, NO_ERROR);
   if (rec_after.data != nullptr)
     {
@@ -176,12 +176,12 @@ TEST_F (OosVacuumServer, LargeMultiPageDelete)
   test_oos_utils::auto_freed_recdes_ptr defer_free (&rec_in, recdes_free_data_area);
 
   OID oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   /* Verify round-trip before delete */
   RECDES rec_check {};
-  err = oos_read (thread_p, oid, rec_check);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_check);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_EQ (rec_check.length, rec_in.length);
   recdes_free_data_area (&rec_check);
@@ -192,7 +192,7 @@ TEST_F (OosVacuumServer, LargeMultiPageDelete)
 
   /* Must be gone */
   RECDES rec_after {};
-  ASSERT_NE (oos_read (thread_p, oid, rec_after), NO_ERROR);
+  ASSERT_NE (test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_after), NO_ERROR);
   if (rec_after.data != nullptr)
     {
       recdes_free_data_area (&rec_after);
@@ -226,12 +226,12 @@ TEST_F (OosVacuumServer, MvccUpdateVacuumPattern)
 
   /* Step 1: Insert "original" OOS */
   OID old_oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_old, old_oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_old, old_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   /* Step 2: Insert "updated" OOS (new version) */
   OID new_oid = OID_INITIALIZER;
-  err = oos_insert (thread_p, oos_vfid, rec_new, new_oid);
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_new, new_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   /* Step 3: Vacuum deletes old version's OOS */
@@ -240,14 +240,14 @@ TEST_F (OosVacuumServer, MvccUpdateVacuumPattern)
 
   /* Step 4: New version OOS still readable */
   RECDES rec_out {};
-  err = oos_read (thread_p, new_oid, rec_out);
+  err = test_oos_utils::oos_read_with_alloc (thread_p, new_oid, rec_out);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_EQ (rec_out.length, rec_new.length);
   recdes_free_data_area (&rec_out);
 
   /* Old version must be gone */
   RECDES stale_out {};
-  ASSERT_NE (oos_read (thread_p, old_oid, stale_out), NO_ERROR);
+  ASSERT_NE (test_oos_utils::oos_read_with_alloc (thread_p, old_oid, stale_out), NO_ERROR);
   if (stale_out.data != nullptr)
     {
       recdes_free_data_area (&stale_out);
@@ -276,7 +276,7 @@ TEST_F (OosVacuumServer, BulkVacuumReclaimAndReuse)
       err = test_oos_utils::from_string_into_recdes (data, rec);
       ASSERT_EQ (err, NO_ERROR);
 
-      err = oos_insert (thread_p, oos_vfid, rec, oids[i]);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oids[i]);
       ASSERT_EQ (err, NO_ERROR);
 
       recdes_free_data_area (&rec);
@@ -303,7 +303,7 @@ TEST_F (OosVacuumServer, BulkVacuumReclaimAndReuse)
       err = test_oos_utils::from_string_into_recdes (data, rec);
       ASSERT_EQ (err, NO_ERROR);
 
-      err = oos_insert (thread_p, oos_vfid, rec, new_oids[i]);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, new_oids[i]);
       ASSERT_EQ (err, NO_ERROR);
 
       recdes_free_data_area (&rec);
@@ -320,7 +320,7 @@ TEST_F (OosVacuumServer, BulkVacuumReclaimAndReuse)
   for (int i = 0; i < N; i++)
     {
       RECDES rec_out {};
-      err = oos_read (thread_p, new_oids[i], rec_out);
+      err = test_oos_utils::oos_read_with_alloc (thread_p, new_oids[i], rec_out);
       ASSERT_EQ (err, NO_ERROR);
       ASSERT_EQ (rec_out.length, oos_size + 1); /* +1 for null terminator */
       recdes_free_data_area (&rec_out);
@@ -353,7 +353,7 @@ TEST_F (OosVacuumServer, MultiUpdateChurnVacuum)
       err = test_oos_utils::from_string_into_recdes (data, rec);
       ASSERT_EQ (err, NO_ERROR);
 
-      err = oos_insert (thread_p, oos_vfid, rec, current_oids[i]);
+      err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, current_oids[i]);
       ASSERT_EQ (err, NO_ERROR);
 
       recdes_free_data_area (&rec);
@@ -376,7 +376,7 @@ TEST_F (OosVacuumServer, MultiUpdateChurnVacuum)
 	  ASSERT_EQ (err, NO_ERROR);
 
 	  OID new_oid = OID_INITIALIZER;
-	  err = oos_insert (thread_p, oos_vfid, rec, new_oid);
+	  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, new_oid);
 	  ASSERT_EQ (err, NO_ERROR);
 
 	  /* Vacuum deletes old version */
@@ -401,7 +401,7 @@ TEST_F (OosVacuumServer, MultiUpdateChurnVacuum)
   for (int i = 0; i < N; i++)
     {
       RECDES rec_out {};
-      err = oos_read (thread_p, current_oids[i], rec_out);
+      err = test_oos_utils::oos_read_with_alloc (thread_p, current_oids[i], rec_out);
       ASSERT_EQ (err, NO_ERROR);
       recdes_free_data_area (&rec_out);
     }
