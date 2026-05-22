@@ -5217,69 +5217,6 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
 }
 
 /*
- * sort_merge_nruns_parallel () - merge nruns for parallel
- *   return:
- *   thread_p(in):
- *   sort_param(in):
- */
-void
-sort_merge_nruns_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
-{
-  THREAD_ENTRY *thread_p = &thread_ref;
-  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL tv_diff;
-  PX_STATUS px_status;
-
-  thread_ref.tran_index = sort_param->px_orig_thread_p->tran_index;
-  thread_ref.m_px_orig_thread_entry = sort_param->px_orig_thread_p;
-  thread_ref.conn_entry = sort_param->px_orig_thread_p->conn_entry;
-
-  thread_p->push_resource_tracks ();
-
-  if (thread_is_on_trace (sort_param->px_orig_thread_p))
-    {
-      thread_set_sort_stats_active (thread_p, true);
-      thread_ref.on_trace = true;
-      perfmon_initialize_parallel_stats (&thread_ref);
-      tsc_getticks (&start_tick);
-    }
-
-  if (sort_merge_nruns (thread_p, sort_param) != NO_ERROR)
-    {
-      px_status = PX_ERR_FAILED;
-    }
-  else
-    {
-      px_status = PX_DONE;
-    }
-
-  if (thread_is_on_trace (sort_param->px_orig_thread_p))
-    {
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      TSC_ADD_TIMEVAL (sort_param->orderby_stats.orderby_time, tv_diff);
-
-      sort_param->orderby_stats.orderby_pages += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES));
-      sort_param->orderby_stats.orderby_ioreads += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES));
-
-      thread_set_sort_stats_active (thread_p, false);
-      perfmon_destroy_parallel_stats (&thread_ref);
-    }
-  thread_p->pop_resource_tracks ();
-
-  /* done */
-  pthread_mutex_lock (sort_param->px_mtx);
-  sort_param->px_status = px_status;
-  if (sort_param->px_status == PX_ERR_FAILED)
-    {
-      sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
-    }
-  thread_ref.m_px_orig_thread_entry = NULL;
-  pthread_cond_signal (sort_param->complete_cond);
-  pthread_mutex_unlock (sort_param->px_mtx);
-}
-
-/*
  * sort_start_parallelism () - start parallelism
  *   return: NO_ERROR
  *   px_sort_param(in):
