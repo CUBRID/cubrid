@@ -577,6 +577,47 @@ static void qexec_end_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * xas
 static void qexec_clear_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static int qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				     QFILE_TUPLE_RECORD * tplrec);
+static int qexec_connect_by_process_level (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+					   QFILE_LIST_ID * result_list, QFILE_LIST_ID * current_frontier,
+					   QFILE_LIST_ID * next_frontier, QFILE_LIST_ID ** sibling_sort_buf_p,
+					   QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE_RECORD * tplrec,
+					   QFILE_TUPLE_RECORD * temp_tuple_rec, int level_value,
+					   DB_VALUE * level_valp, DB_VALUE * isleaf_valp, DB_VALUE * iscycle_valp,
+					   DB_VALUE * parent_pos_valp, DB_VALUE * index_valp,
+					   char **parent_path_key, int *len_parent_path_key,
+					   char **child_path_key, int *len_child_path_key,
+					   int *index_father, int has_order_siblings_by);
+static int qexec_connect_by_scan_children (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+					   QFILE_LIST_ID * result_list, QFILE_LIST_ID * next_frontier,
+					   QFILE_LIST_ID * sibling_sort_buf,
+					   QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE_RECORD * tplrec,
+					   QFILE_TUPLE_RECORD * temp_tuple_rec,
+					   QFILE_TUPLE_RECORD * tuple_rec, int level_value,
+					   DB_VALUE * level_valp, DB_VALUE * isleaf_valp, DB_VALUE * iscycle_valp,
+					   DB_VALUE * parent_pos_valp, DB_VALUE * index_valp,
+					   char *parent_path_key, char **child_path_key, int *len_child_path_key,
+					   int has_order_siblings_by, int *isleaf_value_out, int *iscycle_value_out,
+					   bool * parent_tuple_added, QFILE_TUPLE_POSITION * parent_pos);
+static int qexec_connect_by_build_child (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+					 QFILE_LIST_ID * result_list, QFILE_LIST_ID * next_frontier,
+					 QFILE_LIST_ID * sibling_sort_buf,
+					 QFILE_TUPLE_RECORD * tplrec, QFILE_TUPLE_RECORD * temp_tuple_rec,
+					 QFILE_TUPLE_RECORD * tuple_rec, DB_VALUE * isleaf_valp,
+					 DB_VALUE * parent_pos_valp, DB_VALUE * index_valp,
+					 char *parent_path_key, char **child_path_key, int *len_child_path_key,
+					 int isleaf_value, int has_order_siblings_by,
+					 bool * parent_tuple_added, QFILE_TUPLE_POSITION * parent_pos,
+					 int *child_index);
+static int qexec_connect_by_sort_siblings (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+					   QFILE_LIST_ID * next_frontier, QFILE_LIST_ID * sibling_sort_buf,
+					   QFILE_TUPLE_RECORD * tplrec,
+					   DB_VALUE * isleaf_valp, DB_VALUE * iscycle_valp,
+					   DB_VALUE * parent_pos_valp, DB_VALUE * index_valp,
+					   char *parent_path_key, char **child_path_key, int *len_child_path_key);
+static int qexec_connect_by_check_cycle (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QFILE_TUPLE tpl,
+					 QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_LIST_ID * result_list,
+					 int *cycle);
+static int qexec_connect_by_finalize (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_iterate_connect_by_results (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					     QFILE_TUPLE_RECORD * tplrec);
 static int qexec_check_for_cycle (THREAD_ENTRY * thread_p, OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl,
@@ -16779,8 +16820,548 @@ replace_null_dbval (REGU_VARIABLE * regu_var, DB_VALUE * set_dbval)
   return NULL;
 }
 
+/* qexec_connect_by_check_cycle () - thin wrapper for cycle detection in CONNECT BY */
+static int
+qexec_connect_by_check_cycle (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QFILE_TUPLE tpl,
+			      QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_LIST_ID * result_list, int *cycle)
+{
+  return qexec_check_for_cycle (thread_p, xasl->outptr_list, tpl, type_list, result_list, cycle);
+}
+
+/* qexec_connect_by_build_child () - embed pseudocolumns into parent, add parent to result, insert child tuple */
+static int
+qexec_connect_by_build_child (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+			      QFILE_LIST_ID * result_list, QFILE_LIST_ID * next_frontier,
+			      QFILE_LIST_ID * sibling_sort_buf,
+			      QFILE_TUPLE_RECORD * tplrec, QFILE_TUPLE_RECORD * temp_tuple_rec,
+			      QFILE_TUPLE_RECORD * tuple_rec, DB_VALUE * isleaf_valp,
+			      DB_VALUE * parent_pos_valp, DB_VALUE * index_valp,
+			      char *parent_path_key, char **child_path_key, int *len_child_path_key,
+			      int isleaf_value, int has_order_siblings_by,
+			      bool * parent_tuple_added, QFILE_TUPLE_POSITION * parent_pos, int *child_index)
+{
+  CONNECTBY_PROC_NODE *connect_by = &xasl->proc.connect_by;
+
+  if (!(*parent_tuple_added))
+    {
+      if (connect_by->start_with_list_id == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      /* set index string pseudocolumn for START WITH tuples */
+      if (xasl->proc.connect_by.start_with_list_id && index_valp)
+	{
+	  /* handled by caller before this function */
+	}
+
+      db_make_int (isleaf_valp, isleaf_value);
+
+      if (qexec_get_tuple_column_value (tuple_rec->tpl,
+					(xasl->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET),
+					parent_pos_valp, &tp_Bit_domain) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      /* make the "final" parent tuple */
+      *tuple_rec = *temp_tuple_rec;
+      if (qdata_copy_valptr_list_to_tuple (thread_p, connect_by->prior_outptr_list, &xasl_state->vd,
+					   tuple_rec) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      *temp_tuple_rec = *tuple_rec;
+
+      if (qfile_add_tuple_get_pos_in_list (thread_p, result_list, tuple_rec->tpl, parent_pos) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      db_make_bit (parent_pos_valp, DB_DEFAULT_PRECISION, REINTERPRET_CAST (DB_C_BIT, parent_pos),
+		   sizeof (QFILE_TUPLE_POSITION) * 8);
+
+      *parent_tuple_added = true;
+    }
+
+  if (has_order_siblings_by)
+    {
+      if (qexec_insert_tuple_into_list (thread_p, sibling_sort_buf, xasl->outptr_list, &xasl_state->vd,
+					tplrec) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+  else
+    {
+      (*child_index)++;
+      (*child_path_key)[0] = 0;
+      if (bf2df_str_son_index (thread_p, child_path_key, parent_path_key, len_child_path_key, *child_index) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      if (DB_NEED_CLEAR (index_valp))
+	{
+	  pr_clear_value (index_valp);
+	}
+
+      db_make_string (index_valp, *child_path_key);
+      if (qexec_insert_tuple_into_list (thread_p, next_frontier, xasl->outptr_list, &xasl_state->vd,
+					tplrec) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/* qexec_connect_by_sort_siblings () - sort one parent's children by ORDER SIBLINGS BY, assign bf2df indices */
+static int
+qexec_connect_by_sort_siblings (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+				QFILE_LIST_ID * next_frontier, QFILE_LIST_ID * sibling_sort_buf,
+				QFILE_TUPLE_RECORD * tplrec,
+				DB_VALUE * isleaf_valp, DB_VALUE * iscycle_valp,
+				DB_VALUE * parent_pos_valp, DB_VALUE * index_valp,
+				char *parent_path_key, char **child_path_key, int *len_child_path_key)
+{
+  CONNECTBY_PROC_NODE *connect_by = &xasl->proc.connect_by;
+  QFILE_LIST_SCAN_ID lfscan_id_tmp;
+  QFILE_TUPLE_RECORD tpl_tmp = { (QFILE_TUPLE) NULL, 0 };
+  SCAN_CODE qp_scan;
+  int index = 0;
+
+  if (qexec_listfile_orderby (thread_p, xasl, sibling_sort_buf, xasl->orderby_list, xasl_state,
+			      xasl->outptr_list) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (qfile_open_list_scan (sibling_sort_buf, &lfscan_id_tmp) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  while (1)
+    {
+      qp_scan = qfile_scan_list_next (thread_p, &lfscan_id_tmp, &tpl_tmp, PEEK);
+      if (qp_scan != S_SUCCESS)
+	{
+	  break;
+	}
+
+      index++;
+      (*child_path_key)[0] = 0;
+      if (bf2df_str_son_index (thread_p, child_path_key, parent_path_key, len_child_path_key, index) != NO_ERROR)
+	{
+	  qfile_close_scan (thread_p, &lfscan_id_tmp);
+	  return ER_FAILED;
+	}
+
+      if (DB_NEED_CLEAR (index_valp))
+	{
+	  pr_clear_value (index_valp);
+	}
+
+      db_make_string (index_valp, *child_path_key);
+
+      if (fetch_val_list (thread_p, connect_by->prior_regu_list_pred, &xasl_state->vd, NULL, NULL,
+			  tpl_tmp.tpl, PEEK) != NO_ERROR)
+	{
+	  qfile_close_scan (thread_p, &lfscan_id_tmp);
+	  return ER_FAILED;
+	}
+      if (fetch_val_list (thread_p, connect_by->prior_regu_list_rest, &xasl_state->vd, NULL, NULL,
+			  tpl_tmp.tpl, PEEK) != NO_ERROR)
+	{
+	  qfile_close_scan (thread_p, &lfscan_id_tmp);
+	  return ER_FAILED;
+	}
+
+      /* preserve iscycle, isleaf and parent_pos pseudocolumns */
+      if (qexec_get_tuple_column_value (tpl_tmp.tpl,
+					(xasl->outptr_list->valptr_cnt - PCOL_ISCYCLE_TUPLE_OFFSET),
+					iscycle_valp, &tp_Integer_domain) != NO_ERROR)
+	{
+	  qfile_close_scan (thread_p, &lfscan_id_tmp);
+	  return ER_FAILED;
+	}
+      if (qexec_get_tuple_column_value (tpl_tmp.tpl,
+					(xasl->outptr_list->valptr_cnt - PCOL_ISLEAF_TUPLE_OFFSET),
+					isleaf_valp, &tp_Integer_domain) != NO_ERROR)
+	{
+	  qfile_close_scan (thread_p, &lfscan_id_tmp);
+	  return ER_FAILED;
+	}
+      if (qexec_get_tuple_column_value (tpl_tmp.tpl,
+					(xasl->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET),
+					parent_pos_valp, &tp_Bit_domain) != NO_ERROR)
+	{
+	  qfile_close_scan (thread_p, &lfscan_id_tmp);
+	  return ER_FAILED;
+	}
+
+      if (qexec_insert_tuple_into_list (thread_p, next_frontier, connect_by->prior_outptr_list,
+					&xasl_state->vd, tplrec) != NO_ERROR)
+	{
+	  qfile_close_scan (thread_p, &lfscan_id_tmp);
+	  return ER_FAILED;
+	}
+    }
+
+  qfile_close_scan (thread_p, &lfscan_id_tmp);
+
+  return NO_ERROR;
+}
+
+/* qexec_connect_by_scan_children () - for one parent: setup PRIOR regu vars, rescan base table, evaluate predicates */
+static int
+qexec_connect_by_scan_children (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+				QFILE_LIST_ID * result_list, QFILE_LIST_ID * next_frontier,
+				QFILE_LIST_ID * sibling_sort_buf,
+				QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE_RECORD * tplrec,
+				QFILE_TUPLE_RECORD * temp_tuple_rec,
+				QFILE_TUPLE_RECORD * tuple_rec, int level_value,
+				DB_VALUE * level_valp, DB_VALUE * isleaf_valp, DB_VALUE * iscycle_valp,
+				DB_VALUE * parent_pos_valp, DB_VALUE * index_valp,
+				char *parent_path_key, char **child_path_key, int *len_child_path_key,
+				int has_order_siblings_by, int *isleaf_value_out, int *iscycle_value_out,
+				bool * parent_tuple_added, QFILE_TUPLE_POSITION * parent_pos)
+{
+  SCAN_CODE qp_input_lfscan;
+  DB_LOGICAL ev_res;
+  int cycle;
+  int child_index = 0;
+
+  xasl->next_scan_block_on = false;
+  qp_input_lfscan = qexec_next_scan_block_iterations (thread_p, xasl);
+
+  while (1)
+    {
+      if (qp_input_lfscan != S_SUCCESS)
+	{
+	  break;
+	}
+
+      qp_input_lfscan = scan_next_scan (thread_p, &xasl->curr_spec->s_id);
+      if (qp_input_lfscan != S_SUCCESS)
+	{
+	  break;
+	}
+
+      /* evaluate CONNECT BY predicate */
+      if (xasl->if_pred != NULL)
+	{
+	  if (xasl->level_val)
+	    {
+	      db_make_int (xasl->level_val, level_value + 1);
+	    }
+	  ev_res = eval_pred (thread_p, xasl->if_pred, &xasl_state->vd, NULL);
+	  if (ev_res == V_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	  else if (ev_res != V_TRUE)
+	    {
+	      continue;
+	    }
+	}
+
+      cycle = 0;
+      if (qexec_connect_by_check_cycle (thread_p, xasl, tuple_rec->tpl, type_list, result_list, &cycle) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      if (cycle == 0)
+	{
+	  *isleaf_value_out = 0;
+	}
+
+      /* add child if it doesn't create a cycle or if cycles should be ignored */
+      if (cycle == 0 || XASL_IS_FLAGED (xasl, XASL_IGNORE_CYCLES))
+	{
+	  if (qexec_connect_by_build_child (thread_p, xasl, xasl_state, result_list, next_frontier,
+					    sibling_sort_buf, tplrec, temp_tuple_rec, tuple_rec,
+					    isleaf_valp, parent_pos_valp, index_valp,
+					    parent_path_key, child_path_key, len_child_path_key,
+					    *isleaf_value_out, has_order_siblings_by,
+					    parent_tuple_added, parent_pos, &child_index) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+      else if (!XASL_IS_FLAGED (xasl, XASL_HAS_NOCYCLE))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CYCLE_DETECTED, 0);
+	  return ER_FAILED;
+	}
+      else
+	{
+	  *iscycle_value_out = 1;
+	}
+    }
+  xasl->curr_spec = NULL;
+
+  if (qp_input_lfscan != S_END)
+    {
+      return ER_FAILED;
+    }
+  qexec_end_scan (thread_p, xasl->spec_list);
+
+  if (has_order_siblings_by)
+    {
+      qfile_close_list (thread_p, sibling_sort_buf);
+    }
+
+  return NO_ERROR;
+}
+
+/* qexec_connect_by_process_level () - process one BFS level: iterate parents, scan children, write results */
+static int
+qexec_connect_by_process_level (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+				QFILE_LIST_ID * result_list, QFILE_LIST_ID * current_frontier,
+				QFILE_LIST_ID * next_frontier, QFILE_LIST_ID ** sibling_sort_buf_p,
+				QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE_RECORD * tplrec,
+				QFILE_TUPLE_RECORD * temp_tuple_rec, int level_value,
+				DB_VALUE * level_valp, DB_VALUE * isleaf_valp, DB_VALUE * iscycle_valp,
+				DB_VALUE * parent_pos_valp, DB_VALUE * index_valp,
+				char **parent_path_key, int *len_parent_path_key,
+				char **child_path_key, int *len_child_path_key,
+				int *index_father, int has_order_siblings_by)
+{
+  CONNECTBY_PROC_NODE *connect_by = &xasl->proc.connect_by;
+  QFILE_LIST_SCAN_ID lfscan_id;
+  QFILE_TUPLE_RECORD tuple_rec;
+  SCAN_CODE qp_lfscan;
+  QFILE_TUPLE_POSITION parent_pos;
+  bool parent_tuple_added;
+  int isleaf_value, iscycle_value;
+
+  tuple_rec.tpl = (QFILE_TUPLE) NULL;
+  tuple_rec.size = 0;
+
+  db_make_int (level_valp, level_value);
+
+  if (qfile_open_list_scan (current_frontier, &lfscan_id) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  while (1)
+    {
+      isleaf_value = 1;
+      iscycle_value = 0;
+
+      qp_lfscan = qfile_scan_list_next (thread_p, &lfscan_id, &tuple_rec, PEEK);
+      if (qp_lfscan != S_SUCCESS)
+	{
+	  break;
+	}
+
+      /* reset index covering scan if needed */
+      if (xasl->spec_list->s_id.type == S_INDX_SCAN && SCAN_IS_INDEX_COVERED (&xasl->spec_list->s_id.s.isid)
+	  && xasl->spec_list->s_id.s.isid.indx_cov.lsid->status == S_OPENED)
+	{
+	  INDX_SCAN_ID *isidp = &xasl->spec_list->s_id.s.isid;
+
+	  qfile_close_scan (thread_p, isidp->indx_cov.lsid);
+	  qfile_destroy_list (thread_p, isidp->indx_cov.list_id);
+	  isidp->indx_cov.list_id =
+	    qfile_open_list (thread_p, isidp->indx_cov.type_list, NULL, isidp->indx_cov.query_id, 0,
+			     isidp->indx_cov.list_id);
+	  if (isidp->indx_cov.list_id == NULL)
+	    {
+	      qfile_close_scan (thread_p, &lfscan_id);
+	      return ER_FAILED;
+	    }
+	}
+
+      parent_tuple_added = false;
+
+      db_make_bit (parent_pos_valp, DB_DEFAULT_PRECISION, NULL, 8);
+
+      /* fetch regu_variable values from parent tuple */
+      if (fetch_val_list (thread_p, connect_by->prior_regu_list_pred, &xasl_state->vd, NULL, NULL, tuple_rec.tpl,
+			  PEEK) != NO_ERROR)
+	{
+	  qfile_close_scan (thread_p, &lfscan_id);
+	  return ER_FAILED;
+	}
+      if (fetch_val_list (thread_p, connect_by->prior_regu_list_rest, &xasl_state->vd, NULL, NULL, tuple_rec.tpl,
+			  PEEK) != NO_ERROR)
+	{
+	  qfile_close_scan (thread_p, &lfscan_id);
+	  return ER_FAILED;
+	}
+
+      /* build parent_path_key from tuple or generate for START WITH */
+      if (current_frontier == connect_by->start_with_list_id)
+	{
+	  (*index_father)++;
+	  (*parent_path_key)[0] = 0;
+	  if (bf2df_str_son_index (thread_p, parent_path_key, NULL, len_parent_path_key, *index_father) != NO_ERROR)
+	    {
+	      qfile_close_scan (thread_p, &lfscan_id);
+	      return ER_FAILED;
+	    }
+	}
+      else
+	{
+	  if (DB_NEED_CLEAR (index_valp))
+	    {
+	      pr_clear_value (index_valp);
+	    }
+
+	  if (qexec_get_index_pseudocolumn_value_from_tuple (thread_p, xasl, tuple_rec.tpl, &index_valp,
+							     parent_path_key, len_parent_path_key) != NO_ERROR)
+	    {
+	      qfile_close_scan (thread_p, &lfscan_id);
+	      return ER_FAILED;
+	    }
+	}
+
+      /* set index string pseudocolumn for START WITH tuples before scanning children */
+      if (current_frontier == connect_by->start_with_list_id)
+	{
+	  if (DB_NEED_CLEAR (index_valp))
+	    {
+	      pr_clear_value (index_valp);
+	    }
+	  db_make_string (index_valp, *parent_path_key);
+	}
+
+      /* scan children for this parent */
+      if (qexec_connect_by_scan_children (thread_p, xasl, xasl_state, result_list, next_frontier,
+					  has_order_siblings_by ? *sibling_sort_buf_p : NULL,
+					  type_list, tplrec, temp_tuple_rec, &tuple_rec, level_value,
+					  level_valp, isleaf_valp, iscycle_valp, parent_pos_valp, index_valp,
+					  *parent_path_key, child_path_key, len_child_path_key,
+					  has_order_siblings_by, &isleaf_value, &iscycle_value,
+					  &parent_tuple_added, &parent_pos) != NO_ERROR)
+	{
+	  qfile_close_scan (thread_p, &lfscan_id);
+	  return ER_FAILED;
+	}
+
+      if (!parent_tuple_added)
+	{
+	  /* leaf node: add parent to result without children */
+	  db_make_int (isleaf_valp, isleaf_value);
+
+	  if (qexec_get_tuple_column_value (tuple_rec.tpl,
+					    (xasl->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET),
+					    parent_pos_valp, &tp_Bit_domain) != NO_ERROR)
+	    {
+	      qfile_close_scan (thread_p, &lfscan_id);
+	      return ER_FAILED;
+	    }
+
+	  tuple_rec = *temp_tuple_rec;
+	  if (qdata_copy_valptr_list_to_tuple (thread_p, connect_by->prior_outptr_list, &xasl_state->vd,
+					       &tuple_rec) != NO_ERROR)
+	    {
+	      qfile_close_scan (thread_p, &lfscan_id);
+	      return ER_FAILED;
+	    }
+	  *temp_tuple_rec = tuple_rec;
+
+	  if (qfile_add_tuple_get_pos_in_list (thread_p, result_list, tuple_rec.tpl, &parent_pos) != NO_ERROR)
+	    {
+	      qfile_close_scan (thread_p, &lfscan_id);
+	      return ER_FAILED;
+	    }
+	}
+
+      /* set CONNECT_BY_ISCYCLE pseudocolumn value */
+      db_make_int (iscycle_valp, iscycle_value);
+      if (qfile_set_tuple_column_value (thread_p, result_list, NULL, &parent_pos.vpid, parent_pos.tpl,
+					(xasl->outptr_list->valptr_cnt - PCOL_ISCYCLE_TUPLE_OFFSET), iscycle_valp,
+					&tp_Integer_domain) != NO_ERROR)
+	{
+	  qfile_close_scan (thread_p, &lfscan_id);
+	  return ER_FAILED;
+	}
+
+      /* set CONNECT_BY_ISLEAF pseudocolumn value */
+      db_make_int (isleaf_valp, isleaf_value);
+      if (qfile_set_tuple_column_value (thread_p, result_list, NULL, &parent_pos.vpid, parent_pos.tpl,
+					(xasl->outptr_list->valptr_cnt - PCOL_ISLEAF_TUPLE_OFFSET), isleaf_valp,
+					&tp_Integer_domain) != NO_ERROR)
+	{
+	  qfile_close_scan (thread_p, &lfscan_id);
+	  return ER_FAILED;
+	}
+
+      if (has_order_siblings_by)
+	{
+	  if (qexec_connect_by_sort_siblings (thread_p, xasl, xasl_state, next_frontier, *sibling_sort_buf_p,
+					      tplrec, isleaf_valp, iscycle_valp, parent_pos_valp, index_valp,
+					      *parent_path_key, child_path_key, len_child_path_key) != NO_ERROR)
+	    {
+	      qfile_close_scan (thread_p, &lfscan_id);
+	      return ER_FAILED;
+	    }
+
+	  qfile_close_list (thread_p, *sibling_sort_buf_p);
+	  qfile_destroy_list (thread_p, *sibling_sort_buf_p);
+	  QFILE_FREE_AND_INIT_LIST_ID (*sibling_sort_buf_p);
+
+	  *sibling_sort_buf_p = qfile_open_list (thread_p, type_list, NULL, xasl_state->query_id, 0, NULL);
+	  if (*sibling_sort_buf_p == NULL)
+	    {
+	      qfile_close_scan (thread_p, &lfscan_id);
+	      return ER_FAILED;
+	    }
+	}
+    }
+
+  qfile_close_scan (thread_p, &lfscan_id);
+
+  if (qp_lfscan != S_END)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/* qexec_connect_by_finalize () - bf2df sort + parent-pos recalculation after BFS traversal */
+static int
+qexec_connect_by_finalize (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
+{
+  SORT_LIST bf2df_sort_list;
+  TP_DOMAIN bf2df_str_domain = tp_String_domain;
+  PR_TYPE bf2df_str_type = tp_String;
+
+  bf2df_str_domain.type = &bf2df_str_type;
+  bf2df_str_type.set_data_cmpdisk_function (bf2df_str_cmpdisk);
+  bf2df_str_type.set_cmpval_function (bf2df_str_cmpval);
+
+  bf2df_sort_list.next = NULL;
+  bf2df_sort_list.s_order = S_ASC;
+  bf2df_sort_list.s_nulls = S_NULLS_FIRST;
+  bf2df_sort_list.pos_descr.pos_no = xasl->outptr_list->valptr_cnt - PCOL_INDEX_STRING_TUPLE_OFFSET;
+  bf2df_sort_list.pos_descr.dom = &bf2df_str_domain;
+
+  if (qexec_listfile_orderby (thread_p, xasl, xasl->list_id, &bf2df_sort_list, xasl_state, xasl->outptr_list) !=
+      NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  /* recalculate parent positions after sort */
+  if (qexec_recalc_tuples_parent_pos_in_list (thread_p, xasl->list_id) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
 /*
- * qexec_execute_connect_by () - CONNECT BY execution main function
+ * qexec_execute_connect_by () - CONNECT BY execution orchestrator
  *  return:
  *  xasl(in):
  *  xasl_state(in):
@@ -16789,49 +17370,35 @@ static int
 qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 			  QFILE_TUPLE_RECORD * tplrec)
 {
-  QFILE_LIST_ID *listfile0 = NULL, *listfile1 = NULL, *listfile2 = NULL;
-  QFILE_LIST_ID *listfile2_tmp = NULL;	/* for order siblings by */
+  QFILE_LIST_ID *result_list = NULL, *current_frontier = NULL, *next_frontier = NULL;
+  QFILE_LIST_ID *sibling_sort_buf = NULL;
   QFILE_TUPLE_VALUE_TYPE_LIST type_list = { NULL, 0 };
-  QFILE_TUPLE_POSITION parent_pos;
-  QFILE_LIST_SCAN_ID lfscan_id_lst2tmp, input_lfscan_id;
-  QFILE_TUPLE_RECORD tpl_lst2tmp = { (QFILE_TUPLE) NULL, 0 };
   QFILE_TUPLE_RECORD temp_tuple_rec = { (QFILE_TUPLE) NULL, 0 };
-
-  SCAN_CODE qp_lfscan_lst2tmp;
-  SORT_LIST bf2df_sort_list;
   CONNECTBY_PROC_NODE *connect_by;
 
   DB_VALUE *level_valp = NULL, *isleaf_valp = NULL, *iscycle_valp = NULL;
   DB_VALUE *parent_pos_valp = NULL, *index_valp = NULL;
   REGU_VARIABLE_LIST regu_list;
 
-  int level_value = 0, isleaf_value = 0, iscycle_value = 0;
-  char *son_index = NULL, *father_index = NULL;	/* current index and father */
-  int len_son_index = 0, len_father_index = 0;
-  int index = 0, index_father = 0;
+  int level_value = 0;
+  char *child_path_key = NULL, *parent_path_key = NULL;
+  int len_child_path_key = 0, len_parent_path_key = 0;
+  int index_father = 0;
   int has_order_siblings_by;
 
   int j, key_ranges_cnt;
   KEY_INFO *key_info_p;
 
-  /* scanners vars */
+  /* aliases for error cleanup */
+  QFILE_LIST_ID *listfile1 = NULL, *listfile2 = NULL, *listfile2_tmp = NULL;
   QFILE_LIST_SCAN_ID lfscan_id;
-  QFILE_TUPLE_RECORD tuple_rec;
-  QFILE_TUPLE_RECORD input_tuple_rec;
-  SCAN_CODE qp_lfscan, qp_input_lfscan;
-
-  DB_LOGICAL ev_res;
-  bool parent_tuple_added;
-  int cycle;
+  lfscan_id.status = S_CLOSED;
 
   has_order_siblings_by = xasl->orderby_list ? 1 : 0;
   connect_by = &xasl->proc.connect_by;
-  lfscan_id_lst2tmp.status = S_CLOSED;
-  input_lfscan_id.status = S_CLOSED;
-  lfscan_id.status = S_CLOSED;
 
-  if (qexec_init_index_pseudocolumn_strings (thread_p, &father_index, &len_father_index, &son_index,
-					     &len_son_index) != NO_ERROR)
+  if (qexec_init_index_pseudocolumn_strings (thread_p, &parent_path_key, &len_parent_path_key, &child_path_key,
+					     &len_child_path_key) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -16848,11 +17415,9 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* replace PRIOR argument constant regu vars values pointers in if_pred with the ones from the current parents list
-   * scan */
+  /* replace PRIOR argument constant regu vars values pointers */
   qexec_replace_prior_regu_vars_pred (thread_p, xasl->if_pred, xasl);
 
-  /* replace PRIOR constant regu vars values pointers with the ones from the prior val list */
   assert (xasl->spec_list->s_id.status == S_CLOSED);
   qexec_replace_prior_regu_vars_pred (thread_p, xasl->spec_list->where_pred, xasl);
   qexec_replace_prior_regu_vars_pred (thread_p, xasl->spec_list->where_key, xasl);
@@ -16879,38 +17444,33 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	}
     }
 
-  /* get the domains for the list files */
   if (qdata_get_valptr_type_list (thread_p, xasl->outptr_list, &type_list) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* listfile0: output list */
-  listfile0 = xasl->list_id;
-  if (listfile0 == NULL)
+  result_list = xasl->list_id;
+  if (result_list == NULL)
     {
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* listfile1: current parents list, initialized with START WITH list */
-  listfile1 = connect_by->start_with_list_id;
-  if (listfile1 == NULL)
+  current_frontier = connect_by->start_with_list_id;
+  if (current_frontier == NULL)
     {
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* listfile2: current children list */
-  listfile2 = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
-  if (listfile2 == NULL)
+  next_frontier = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
+  if (next_frontier == NULL)
     {
       GOTO_EXIT_ON_ERROR;
     }
 
   if (has_order_siblings_by)
     {
-      /* listfile2_tmp: current children list temporary (to apply order siblings by) */
-      listfile2_tmp = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
-      if (listfile2_tmp == NULL)
+      sibling_sort_buf = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
+      if (sibling_sort_buf == NULL)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -16919,8 +17479,8 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   /* sort the start with according to order siblings by */
   if (has_order_siblings_by)
     {
-      if (qexec_listfile_orderby (thread_p, xasl, listfile1, xasl->orderby_list, xasl_state, xasl->outptr_list) !=
-	  NO_ERROR)
+      if (qexec_listfile_orderby (thread_p, xasl, current_frontier, xasl->orderby_list, xasl_state,
+				  xasl->outptr_list) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -16933,436 +17493,64 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* we have all list files, let's begin */
+  /* keep aliases in sync for error cleanup */
+  listfile1 = current_frontier;
+  listfile2 = next_frontier;
+  listfile2_tmp = sibling_sort_buf;
 
-  while (listfile1->tuple_cnt > 0)
+  /* BFS traversal: process one level per iteration */
+  while (current_frontier->tuple_cnt > 0)
     {
-      tuple_rec.tpl = (QFILE_TUPLE) NULL;
-      tuple_rec.size = 0;
-
-      input_tuple_rec.tpl = (QFILE_TUPLE) NULL;
-      input_tuple_rec.size = 0;
-
-      qp_input_lfscan = S_ERROR;
-
-      /* calculate LEVEL pseudocolumn value */
       level_value++;
-      db_make_int (level_valp, level_value);
 
-      /* start parents list scanner */
-      if (qfile_open_list_scan (listfile1, &lfscan_id) != NO_ERROR)
+      if (qexec_connect_by_process_level (thread_p, xasl, xasl_state, result_list, current_frontier,
+					  next_frontier, &sibling_sort_buf, &type_list, tplrec, &temp_tuple_rec,
+					  level_value, level_valp, isleaf_valp, iscycle_valp, parent_pos_valp,
+					  index_valp, &parent_path_key, &len_parent_path_key,
+					  &child_path_key, &len_child_path_key,
+					  &index_father, has_order_siblings_by) != NO_ERROR)
 	{
+	  listfile2_tmp = sibling_sort_buf;
 	  GOTO_EXIT_ON_ERROR;
 	}
+      listfile2_tmp = sibling_sort_buf;
 
-      while (1)
+      if (current_frontier != connect_by->start_with_list_id)
 	{
-	  isleaf_value = 1;
-	  iscycle_value = 0;
-
-	  qp_lfscan = qfile_scan_list_next (thread_p, &lfscan_id, &tuple_rec, PEEK);
-	  if (qp_lfscan != S_SUCCESS)
-	    {
-	      break;
-	    }
-
-	  if (xasl->spec_list->s_id.type == S_INDX_SCAN && SCAN_IS_INDEX_COVERED (&xasl->spec_list->s_id.s.isid)
-	      && xasl->spec_list->s_id.s.isid.indx_cov.lsid->status == S_OPENED)
-	    {
-	      INDX_SCAN_ID *isidp = &xasl->spec_list->s_id.s.isid;
-
-	      /* close current list and start a new one */
-	      qfile_close_scan (thread_p, isidp->indx_cov.lsid);
-	      qfile_destroy_list (thread_p, isidp->indx_cov.list_id);
-	      isidp->indx_cov.list_id =
-		qfile_open_list (thread_p, isidp->indx_cov.type_list, NULL, isidp->indx_cov.query_id, 0,
-				 isidp->indx_cov.list_id);
-	      if (isidp->indx_cov.list_id == NULL)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-	    }
-
-	  parent_tuple_added = false;
-
-	  /* reset parent tuple position pseudocolumn value */
-	  db_make_bit (parent_pos_valp, DB_DEFAULT_PRECISION, NULL, 8);
-
-	  /* fetch regu_variable values from parent tuple; obs: prior_regu_list was split into pred and rest for
-	   * possible future optimizations. */
-	  if (fetch_val_list (thread_p, connect_by->prior_regu_list_pred, &xasl_state->vd, NULL, NULL, tuple_rec.tpl,
-			      PEEK) != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	  if (fetch_val_list (thread_p, connect_by->prior_regu_list_rest, &xasl_state->vd, NULL, NULL, tuple_rec.tpl,
-			      PEEK) != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-
-	  /* if START WITH list, we don't have the string index in the tuple so we create a fictional one with
-	   * index_father. The column in the START WITH list will be written afterwards, when we insert tuples from
-	   * list1 to list0. */
-	  if (listfile1 == connect_by->start_with_list_id)	/* is START WITH list? */
-	    {
-	      index_father++;
-	      father_index[0] = 0;
-	      if (bf2df_str_son_index (thread_p, &father_index, NULL, &len_father_index, index_father) != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-	    }
-	  else
-	    {
-	      /* not START WITH tuples but a previous generation of children, now parents. They have the index string
-	       * column written. */
-	      if (DB_NEED_CLEAR (index_valp))
-		{
-		  pr_clear_value (index_valp);
-		}
-
-	      if (qexec_get_index_pseudocolumn_value_from_tuple (thread_p, xasl, tuple_rec.tpl, &index_valp,
-								 &father_index, &len_father_index) != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-	    }
-
-	  xasl->next_scan_block_on = false;
-	  index = 0;
-	  qp_input_lfscan = qexec_next_scan_block_iterations (thread_p, xasl);
-
-	  while (1)
-	    {
-	      if (qp_input_lfscan != S_SUCCESS)
-		{
-		  break;
-		}
-
-	      qp_input_lfscan = scan_next_scan (thread_p, &xasl->curr_spec->s_id);
-	      if (qp_input_lfscan != S_SUCCESS)
-		{
-		  break;
-		}
-
-	      /* evaluate CONNECT BY predicate */
-	      if (xasl->if_pred != NULL)
-		{
-		  if (xasl->level_val)
-		    {
-		      /* set level_val to children's level */
-		      db_make_int (xasl->level_val, level_value + 1);
-		    }
-		  ev_res = eval_pred (thread_p, xasl->if_pred, &xasl_state->vd, NULL);
-		  if (ev_res == V_ERROR)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-		  else if (ev_res != V_TRUE)
-		    {
-		      continue;
-		    }
-		}
-
-	      cycle = 0;
-	      /* we found a qualified tuple; now check for cycle */
-	      if (qexec_check_for_cycle (thread_p, xasl->outptr_list, tuple_rec.tpl, &type_list, listfile0, &cycle)
-		  != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-
-	      if (cycle == 0)
-		{
-		  isleaf_value = 0;
-		}
-
-	      /* found ISLEAF, and we already know LEVEL; we need to add the parent tuple into result list ASAP,
-	       * because we need the information about its position into the list to be kept into each child tuple */
-	      if (!parent_tuple_added)
-		{
-		  if (listfile1 == connect_by->start_with_list_id)
-		    {
-		      if (DB_NEED_CLEAR (index_valp))
-			{
-			  pr_clear_value (index_valp);
-			}
-
-		      /* set index string pseudocolumn value to tuples from START WITH list */
-		      db_make_string (index_valp, father_index);
-		    }
-
-		  /* set CONNECT_BY_ISLEAF pseudocolumn value; this is only for completion, we don't know its final
-		   * value yet */
-		  db_make_int (isleaf_valp, isleaf_value);
-
-		  /* preserve the parent position pseudocolumn value */
-		  if (qexec_get_tuple_column_value
-		      (tuple_rec.tpl, (xasl->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET), parent_pos_valp,
-		       &tp_Bit_domain) != NO_ERROR)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-
-		  /* make the "final" parent tuple */
-		  tuple_rec = temp_tuple_rec;
-		  if (qdata_copy_valptr_list_to_tuple (thread_p, connect_by->prior_outptr_list, &xasl_state->vd,
-						       &tuple_rec) != NO_ERROR)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-		  temp_tuple_rec = tuple_rec;
-
-		  /* add parent tuple to output list file, and get its position into the list */
-		  if (qfile_add_tuple_get_pos_in_list (thread_p, listfile0, tuple_rec.tpl, &parent_pos) != NO_ERROR)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-
-		  /* set parent tuple position pseudocolumn value */
-		  db_make_bit (parent_pos_valp, DB_DEFAULT_PRECISION, REINTERPRET_CAST (DB_C_BIT, &parent_pos),
-			       sizeof (parent_pos) * 8);
-
-		  parent_tuple_added = true;
-		}
-
-	      /* only add a child if it doesn't create a cycle or if cycles should be ignored */
-	      if (cycle == 0 || XASL_IS_FLAGED (xasl, XASL_IGNORE_CYCLES))
-		{
-		  if (has_order_siblings_by)
-		    {
-		      if (qexec_insert_tuple_into_list (thread_p, listfile2_tmp, xasl->outptr_list, &xasl_state->vd,
-							tplrec) != NO_ERROR)
-			{
-			  GOTO_EXIT_ON_ERROR;
-			}
-		    }
-		  else
-		    {
-		      index++;
-		      son_index[0] = 0;
-		      if (bf2df_str_son_index (thread_p, &son_index, father_index, &len_son_index, index) != NO_ERROR)
-			{
-			  GOTO_EXIT_ON_ERROR;
-			}
-
-		      if (DB_NEED_CLEAR (index_valp))
-			{
-			  pr_clear_value (index_valp);
-			}
-
-		      db_make_string (index_valp, son_index);
-		      if (qexec_insert_tuple_into_list (thread_p, listfile2, xasl->outptr_list, &xasl_state->vd,
-							tplrec) != NO_ERROR)
-			{
-			  GOTO_EXIT_ON_ERROR;
-			}
-		    }
-		}
-	      else if (!XASL_IS_FLAGED (xasl, XASL_HAS_NOCYCLE))
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CYCLE_DETECTED, 0);
-		  GOTO_EXIT_ON_ERROR;
-		}
-	      else
-		{
-		  iscycle_value = 1;
-		}
-	    }
-	  xasl->curr_spec = NULL;
-
-	  if (qp_input_lfscan != S_END)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	  qexec_end_scan (thread_p, xasl->spec_list);
-
-	  if (has_order_siblings_by)
-	    {
-	      qfile_close_list (thread_p, listfile2_tmp);
-	    }
-
-	  if (!parent_tuple_added)
-	    {
-	      /* this parent node wasnt added above because it's a leaf node */
-
-	      if (listfile1 == connect_by->start_with_list_id)
-		{
-		  if (DB_NEED_CLEAR (index_valp))
-		    {
-		      pr_clear_value (index_valp);
-		    }
-
-		  db_make_string (index_valp, father_index);
-		}
-
-	      db_make_int (isleaf_valp, isleaf_value);
-
-	      if (qexec_get_tuple_column_value (tuple_rec.tpl,
-						(xasl->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET),
-						parent_pos_valp, &tp_Bit_domain) != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-
-	      tuple_rec = temp_tuple_rec;
-	      if (qdata_copy_valptr_list_to_tuple (thread_p, connect_by->prior_outptr_list, &xasl_state->vd, &tuple_rec)
-		  != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-	      temp_tuple_rec = tuple_rec;
-
-	      if (qfile_add_tuple_get_pos_in_list (thread_p, listfile0, tuple_rec.tpl, &parent_pos) != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-	    }
-
-	  /* set CONNECT_BY_ISCYCLE pseudocolumn value */
-	  db_make_int (iscycle_valp, iscycle_value);
-	  /* it is fixed size data, so we can set it in this fashion */
-	  if (qfile_set_tuple_column_value (thread_p, listfile0, NULL, &parent_pos.vpid, parent_pos.tpl,
-					    (xasl->outptr_list->valptr_cnt - PCOL_ISCYCLE_TUPLE_OFFSET), iscycle_valp,
-					    &tp_Integer_domain) != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-
-	  /* set CONNECT_BY_ISLEAF pseudocolumn value */
-	  db_make_int (isleaf_valp, isleaf_value);
-	  if (qfile_set_tuple_column_value (thread_p, listfile0, NULL, &parent_pos.vpid, parent_pos.tpl,
-					    (xasl->outptr_list->valptr_cnt - PCOL_ISLEAF_TUPLE_OFFSET), isleaf_valp,
-					    &tp_Integer_domain) != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-
-	  if (has_order_siblings_by)
-	    {
-	      /* sort the listfile2_tmp according to orderby lists */
-	      index = 0;
-	      if (qexec_listfile_orderby (thread_p, xasl, listfile2_tmp, xasl->orderby_list, xasl_state,
-					  xasl->outptr_list) != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-
-	      /* scan listfile2_tmp and add indexes to tuples, then add them to listfile2 */
-	      if (qfile_open_list_scan (listfile2_tmp, &lfscan_id_lst2tmp) != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-
-	      while (1)
-		{
-		  qp_lfscan_lst2tmp = qfile_scan_list_next (thread_p, &lfscan_id_lst2tmp, &tpl_lst2tmp, PEEK);
-		  if (qp_lfscan_lst2tmp != S_SUCCESS)
-		    {
-		      break;
-		    }
-
-		  index++;
-		  son_index[0] = 0;
-		  if (bf2df_str_son_index (thread_p, &son_index, father_index, &len_son_index, index) != NO_ERROR)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-
-		  if (DB_NEED_CLEAR (index_valp))
-		    {
-		      pr_clear_value (index_valp);
-		    }
-
-		  db_make_string (index_valp, son_index);
-
-		  if (fetch_val_list (thread_p, connect_by->prior_regu_list_pred, &xasl_state->vd, NULL, NULL,
-				      tpl_lst2tmp.tpl, PEEK) != NO_ERROR)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-		  if (fetch_val_list (thread_p, connect_by->prior_regu_list_rest, &xasl_state->vd, NULL, NULL,
-				      tpl_lst2tmp.tpl, PEEK) != NO_ERROR)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-
-		  /* preserve iscycle, isleaf and parent_pos pseudocolumns */
-		  if (qexec_get_tuple_column_value (tpl_lst2tmp.tpl,
-						    (xasl->outptr_list->valptr_cnt - PCOL_ISCYCLE_TUPLE_OFFSET),
-						    iscycle_valp, &tp_Integer_domain) != NO_ERROR)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-		  if (qexec_get_tuple_column_value (tpl_lst2tmp.tpl,
-						    (xasl->outptr_list->valptr_cnt - PCOL_ISLEAF_TUPLE_OFFSET),
-						    isleaf_valp, &tp_Integer_domain) != NO_ERROR)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-		  if (qexec_get_tuple_column_value (tpl_lst2tmp.tpl,
-						    (xasl->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET),
-						    parent_pos_valp, &tp_Bit_domain) != NO_ERROR)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-
-		  if (qexec_insert_tuple_into_list (thread_p, listfile2, connect_by->prior_outptr_list,
-						    &xasl_state->vd, tplrec) != NO_ERROR)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-		}
-
-	      qfile_close_scan (thread_p, &lfscan_id_lst2tmp);
-	      qfile_close_list (thread_p, listfile2_tmp);
-	      qfile_destroy_list (thread_p, listfile2_tmp);
-	      QFILE_FREE_AND_INIT_LIST_ID (listfile2_tmp);
-
-	      listfile2_tmp = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
-	    }
+	  qfile_close_list (thread_p, current_frontier);
+	  qfile_destroy_list (thread_p, current_frontier);
+	  QFILE_FREE_AND_INIT_LIST_ID (current_frontier);
 	}
+      current_frontier = next_frontier;
+      listfile1 = current_frontier;
 
-      qfile_close_scan (thread_p, &lfscan_id);
-
-      if (qp_lfscan != S_END)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-
-      if (listfile1 != connect_by->start_with_list_id)
-	{
-	  qfile_close_list (thread_p, listfile1);
-	  qfile_destroy_list (thread_p, listfile1);
-	  QFILE_FREE_AND_INIT_LIST_ID (listfile1);
-	}
-      listfile1 = listfile2;
-
-      listfile2 = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
+      next_frontier = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
+      listfile2 = next_frontier;
     }
 
   qexec_end_scan (thread_p, xasl->spec_list);
   qexec_close_scan (thread_p, xasl->spec_list);
 
-  if (listfile1 != connect_by->start_with_list_id)
+  if (current_frontier != connect_by->start_with_list_id)
     {
-      qfile_close_list (thread_p, listfile1);
-      qfile_destroy_list (thread_p, listfile1);
-      QFILE_FREE_AND_INIT_LIST_ID (listfile1);
+      qfile_close_list (thread_p, current_frontier);
+      qfile_destroy_list (thread_p, current_frontier);
+      QFILE_FREE_AND_INIT_LIST_ID (current_frontier);
     }
+  listfile1 = NULL;
 
-  qfile_close_list (thread_p, listfile2);
-  qfile_destroy_list (thread_p, listfile2);
-  QFILE_FREE_AND_INIT_LIST_ID (listfile2);
+  qfile_close_list (thread_p, next_frontier);
+  qfile_destroy_list (thread_p, next_frontier);
+  QFILE_FREE_AND_INIT_LIST_ID (next_frontier);
+  listfile2 = NULL;
 
   if (has_order_siblings_by)
     {
-      qfile_close_scan (thread_p, &lfscan_id_lst2tmp);
-      qfile_close_list (thread_p, listfile2_tmp);
-      qfile_destroy_list (thread_p, listfile2_tmp);
-      QFILE_FREE_AND_INIT_LIST_ID (listfile2_tmp);
+      qfile_close_list (thread_p, sibling_sort_buf);
+      qfile_destroy_list (thread_p, sibling_sort_buf);
+      QFILE_FREE_AND_INIT_LIST_ID (sibling_sort_buf);
     }
+  listfile2_tmp = NULL;
 
   if (type_list.domp)
     {
@@ -17374,43 +17562,17 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       GOTO_EXIT_ON_ERROR;
     }
 
-  if (son_index)
+  if (child_path_key)
     {
-      db_private_free_and_init (thread_p, son_index);
+      db_private_free_and_init (thread_p, child_path_key);
     }
-  if (father_index)
+  if (parent_path_key)
     {
-      db_private_free_and_init (thread_p, father_index);
+      db_private_free_and_init (thread_p, parent_path_key);
     }
 
-  /* sort resulting list file BF to DF */
-  {
-    /* make a special domain for custom compare of paths strings */
-    TP_DOMAIN bf2df_str_domain = tp_String_domain;
-    PR_TYPE bf2df_str_type = tp_String;
-
-    bf2df_str_domain.type = &bf2df_str_type;
-    bf2df_str_type.set_data_cmpdisk_function (bf2df_str_cmpdisk);
-    bf2df_str_type.set_cmpval_function (bf2df_str_cmpval);
-
-    /* init sort list */
-    bf2df_sort_list.next = NULL;
-    bf2df_sort_list.s_order = S_ASC;
-    bf2df_sort_list.s_nulls = S_NULLS_FIRST;
-    bf2df_sort_list.pos_descr.pos_no = xasl->outptr_list->valptr_cnt - PCOL_INDEX_STRING_TUPLE_OFFSET;
-    bf2df_sort_list.pos_descr.dom = &bf2df_str_domain;
-
-    /* sort list file */
-    if (qexec_listfile_orderby (thread_p, xasl, xasl->list_id, &bf2df_sort_list, xasl_state, xasl->outptr_list) !=
-	NO_ERROR)
-      {
-	GOTO_EXIT_ON_ERROR;
-      }
-  }
-
-  /* after sort, parent_pos doesnt indicate the correct position of the parent any more; recalculate the parent
-   * positions */
-  if (qexec_recalc_tuples_parent_pos_in_list (thread_p, xasl->list_id) != NO_ERROR)
+  /* sort resulting list file BF to DF and recalculate parent positions */
+  if (qexec_connect_by_finalize (thread_p, xasl, xasl_state) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -17487,20 +17649,19 @@ exit_on_error:
 
   if (listfile2_tmp)
     {
-      qfile_close_scan (thread_p, &lfscan_id_lst2tmp);
       qfile_close_list (thread_p, listfile2_tmp);
       qfile_destroy_list (thread_p, listfile2_tmp);
       QFILE_FREE_AND_INIT_LIST_ID (listfile2_tmp);
     }
 
-  if (son_index)
+  if (child_path_key)
     {
-      db_private_free_and_init (thread_p, son_index);
+      db_private_free_and_init (thread_p, child_path_key);
     }
 
-  if (father_index)
+  if (parent_path_key)
     {
-      db_private_free_and_init (thread_p, father_index);
+      db_private_free_and_init (thread_p, parent_path_key);
     }
 
   if (temp_tuple_rec.tpl)
