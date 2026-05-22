@@ -269,7 +269,7 @@ namespace cubconn::connection
 
       std::pair<int, int> start_connection_close (context *ctx);
       void end_connection_close ();
-      bool retry_connection_close (context *ctx, bool retry, std::shared_ptr<message_blocker> handle);
+      bool retry_connection_close (context *ctx, bool is_retry, std::shared_ptr<message_blocker> handle);
 
       bool handle_connection_close (context *ctx, bool is_retry = false, std::shared_ptr<message_blocker> handle = nullptr);
 

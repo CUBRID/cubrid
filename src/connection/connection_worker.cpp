@@ -388,7 +388,7 @@ namespace cubconn::connection
     pthread_mutex_unlock (&m_entry->tran_index_lock);
   }
 
-  bool worker::retry_connection_close (context *ctx, bool retry, std::shared_ptr<message_blocker> handle)
+  bool worker::retry_connection_close (context *ctx, bool is_retry, std::shared_ptr<message_blocker> handle)
   {
     message request;
 
@@ -398,7 +398,7 @@ namespace cubconn::connection
     request.type = message_type::SHUTDOWN_CLIENT;
     request.conn = ctx->m_conn;
     request.ignore = ctx->m_ignore;
-    request.retry = retry;
+    request.retry = is_retry;
     request.waiter_handle = handle;
 
     /* this request must be handled as lazily */
