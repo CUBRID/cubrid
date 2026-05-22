@@ -75,7 +75,8 @@ inline void
 print_owner_name (const char *owner, bool print, char *output_owner, size_t output_len)
 {
   assert (((int) strlen (owner) + 4) < STATIC_CAST (int, output_len));
-  // *INDENT_OFF*
+
+  /* *INDENT-OFF* */
   DISABLE_FMT_TRUNC_WARNING 
   if (print)
     {
@@ -86,7 +87,7 @@ print_owner_name (const char *owner, bool print, char *output_owner, size_t outp
       strcpy (output_owner, "");
     }
   ENABLE_FMT_TRUNC_WARNING
-   // *INDENT-ON*
+    /* *INDENT-ON* */
 }
 
 #define PRINT_OWNER_NAME(owner, print, output_owner, output_len) print_owner_name(owner, print, output_owner, output_len)
