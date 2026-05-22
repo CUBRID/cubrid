@@ -1161,12 +1161,178 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
 			   const char *table_name, char **attr_names, int num_attrs, int num_bind,
 			   DBLINK_INSERT_STATE * state)
 {
-  /* TODO: T3-2 — implement CCI connection and INSERT prepare */
+  static bool auto_commit = prm_get_bool_value (PRM_ID_DBLINK_AUTO_COMMIT);
+  int ret, i, remaining;
+  T_CCI_ERROR err_buf;
+  char conn_url[MAX_LEN_CONNECTION_URL] = { 0, };
+  char *sql = NULL;
+  size_t sql_len;
+  char *p;
+  const char *find;
+
   state->conn_handle = -1;
   state->stmt_handle = -1;
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT not yet implemented");
-  return ER_DBLINK;
+  /* guard: must have at least one column to insert */
+  if (num_bind <= 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT: no columns to insert");
+      return ER_DBLINK;
+    }
+
+  /* guard: attr_names must be valid if num_attrs > 0 */
+  if (num_attrs > 0 && attr_names == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT: attr_names is NULL");
+      return ER_DBLINK;
+    }
+
+  /* build connection URL with gateway flag */
+  find = strstr (url, ":?");
+  if (find)
+    {
+      snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", url, "&__gateway=true");
+    }
+  else
+    {
+      snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", url, "?__gateway=true");
+    }
+
+  /* try to reuse existing connection */
+  if (!auto_commit)
+    {
+      state->conn_handle = qmgr_dblink_find_conn_handle (thread_p, (char *) url, (char *) user, (char *) pwd, true);
+    }
+
+  if (state->conn_handle < 0)
+    {
+      state->conn_handle = cci_connect_with_url_ex (conn_url, (char *) user, (char *) pwd, &err_buf);
+      if (state->conn_handle < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  return ER_DBLINK;
+	}
+
+      ret = cci_set_autocommit (state->conn_handle, (CCI_AUTOCOMMIT_MODE) auto_commit);
+      if (ret < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "set autocommit error");
+	  (void) cci_disconnect (state->conn_handle, &err_buf);
+	  state->conn_handle = -1;
+	  return ER_DBLINK;
+	}
+
+      if (!auto_commit)
+	{
+	  ret = qmgr_dblink_add_conn_handle (thread_p, state->conn_handle, (char *) url, (char *) user, (char *) pwd, true);
+	  if (ret < 0)
+	    {
+	      (void) cci_disconnect (state->conn_handle, &err_buf);
+	      state->conn_handle = -1;
+	      return ER_DBLINK;
+	    }
+	}
+    }
+
+  /* build INSERT SQL: INSERT INTO <table> [(c1, c2, ...)] VALUES (?, ?, ...) */
+  sql_len = strlen (table_name) + 64;
+  if (num_attrs > 0)
+    {
+      for (i = 0; i < num_attrs; i++)
+	{
+	  sql_len += strlen (attr_names[i]) + 4;
+	}
+    }
+  sql_len += (size_t) num_bind * 4 + 16;
+
+  sql = (char *) db_private_alloc (thread_p, sql_len);
+  if (sql == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sql_len);
+      if (auto_commit && state->conn_handle >= 0)
+	{
+	  (void) cci_disconnect (state->conn_handle, &err_buf);
+	}
+      state->conn_handle = -1;
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  p = sql;
+  remaining = (int) sql_len;
+
+  ret = snprintf (p, remaining, "INSERT INTO %s", table_name);
+  p += ret;
+  remaining -= ret;
+
+  if (num_attrs > 0 && remaining > 0)
+    {
+      ret = snprintf (p, remaining, " (");
+      p += ret;
+      remaining -= ret;
+
+      for (i = 0; i < num_attrs && remaining > 0; i++)
+	{
+	  ret = snprintf (p, remaining, "%s%s", attr_names[i], (i < num_attrs - 1) ? ", " : "");
+	  p += ret;
+	  remaining -= ret;
+	}
+
+      if (remaining > 0)
+	{
+	  ret = snprintf (p, remaining, ")");
+	  p += ret;
+	  remaining -= ret;
+	}
+    }
+
+  if (remaining > 0)
+    {
+      ret = snprintf (p, remaining, " VALUES (");
+      p += ret;
+      remaining -= ret;
+    }
+
+  for (i = 0; i < num_bind && remaining > 0; i++)
+    {
+      ret = snprintf (p, remaining, "?%s", (i < num_bind - 1) ? ", " : "");
+      p += ret;
+      remaining -= ret;
+    }
+
+  if (remaining > 0)
+    {
+      (void) snprintf (p, remaining, ")");
+    }
+
+  /* verify SQL was not truncated */
+  if (remaining <= 0 || sql[sql_len - 1] != '\0')
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT: SQL buffer overflow");
+      db_private_free (thread_p, sql);
+      if (auto_commit && state->conn_handle >= 0)
+	{
+	  (void) cci_disconnect (state->conn_handle, &err_buf);
+	}
+      state->conn_handle = -1;
+      return ER_DBLINK;
+    }
+
+  /* prepare statement */
+  state->stmt_handle = cci_prepare (state->conn_handle, sql, 0, &err_buf);
+  db_private_free (thread_p, sql);
+
+  if (state->stmt_handle < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      if (auto_commit && state->conn_handle >= 0)
+	{
+	  (void) cci_disconnect (state->conn_handle, &err_buf);
+	}
+      state->conn_handle = -1;
+      return ER_DBLINK;
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -1192,7 +1358,18 @@ dblink_insert_execute_row (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state,
 void
 dblink_insert_close (DBLINK_INSERT_STATE * state)
 {
-  /* TODO: T3-2/T3-3 — implement CCI cleanup */
-  state->conn_handle = -1;
-  state->stmt_handle = -1;
+  static bool auto_commit = prm_get_bool_value (PRM_ID_DBLINK_AUTO_COMMIT);
+  T_CCI_ERROR err_buf;
+
+  if (state->stmt_handle >= 0)
+    {
+      (void) cci_close_req_handle (state->stmt_handle);
+      state->stmt_handle = -1;
+    }
+
+  if (auto_commit && state->conn_handle >= 0)
+    {
+      (void) cci_disconnect (state->conn_handle, &err_buf);
+      state->conn_handle = -1;
+    }
 }
