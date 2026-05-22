@@ -121,7 +121,7 @@ error_info_set_with_msg (int err_number, int err_indicator, const char *err_msg,
 
   err_info.err_indicator = err_indicator;
   strncpy (err_info.err_file, file, ERR_FILE_LENGTH - 1);
-  err_info.err_string[ERR_FILE_LENGTH - 1] = 0;
+  err_info.err_file[ERR_FILE_LENGTH - 1] = 0;
   err_info.err_line = line;
 
   if (err_indicator == CAS_ERROR_INDICATOR)
