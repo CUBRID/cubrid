@@ -180,6 +180,8 @@ extern "C"
   extern PT_NODE *pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query);
   extern PT_HINT_ENUM pt_get_hint_from_query (PARSER_CONTEXT * parser, PT_NODE * query);
 
+  extern PT_NODE *pt_make_expression_default_expr (PARSER_CONTEXT * parser, PT_NODE * node,
+						   DB_DEFAULT_EXPR_TYPE expr_type);
   extern PT_NODE *pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr);
   extern PT_OP_TYPE pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type);
 
@@ -639,7 +641,6 @@ extern "C"
   extern bool pt_list_has_logical_nodes (PT_NODE * list);
   extern bool pt_is_pseudo_const (PT_NODE * expr);
   extern bool pt_is_op_hv_late_bind (PT_OP_TYPE op);
-  extern PT_OP_TYPE pt_op_type_from_default_expr (DB_DEFAULT_EXPR_TYPE expr_type);
   extern void pt_mark_spec_list_for_update (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern void pt_mark_spec_list_for_delete (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern void pt_init_assignments_helper (PARSER_CONTEXT * parser, PT_ASSIGNMENTS_HELPER * helper,
@@ -704,6 +705,8 @@ extern "C"
 								DB_DEFAULT_EXPR * default_expr);
   extern void pt_get_default_expression_from_string (PARSER_CONTEXT * parser, const char *str, const int str_size,
 						     DB_DEFAULT_EXPR * default_expr);
+  extern PT_NODE *pt_make_default_value_tree_from_default_expr (PARSER_CONTEXT * parser,
+								const DB_DEFAULT_EXPR * default_expr);
   extern PT_NODE *pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
   extern int pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cipher, int ciper_size);

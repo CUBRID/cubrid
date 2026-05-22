@@ -3826,6 +3826,8 @@ struct parser_context
 
   long int lrand;		/* integer random value used by rand() */
   double drand;			/* floating-point random value used by drand() */
+  UINT64 uuidv7_last_ms;	/* last used millisecond timestamp for local UUIDv7 generation */
+  UINT8 uuidv7_seq;		/* local UUIDv7 sequence within the same millisecond */
 
   COMPILE_CONTEXT context;
   struct xasl_node *parent_proc_xasl;

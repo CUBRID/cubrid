@@ -6763,7 +6763,11 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
 	  return NULL;
 	}
 
-      PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, *(sp->sig));
+      PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, *(sp->sig), NULL);
+      if (default_next_node_list == NULL && pt_has_error (parser))
+	{
+	  return NULL;
+	}
       node->info.method_call.arg_list = parser_append_node (default_next_node_list, node->info.method_call.arg_list);
 
       DB_TYPE result_type = (DB_TYPE) sp->sig->result_type;
@@ -22263,8 +22267,8 @@ pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE *
 	  new_lhs_of_assign->info.name.resolved = cls->header.ch_name;
 	  new_lhs_of_assign->info.name.spec_id = spec_id;
 
-	  PT_OP_TYPE op = pt_op_type_from_default_expr_type (att->on_update_default_expr);
-	  PT_NODE *new_rhs_of_assign = parser_make_expression (parser, op, NULL, NULL, NULL);
+	  PT_NODE *new_rhs_of_assign = pt_make_expression_default_expr (parser, NULL, att->on_update_default_expr);
+
 	  if (new_rhs_of_assign == NULL)
 	    {
 	      if (new_lhs_of_assign != NULL)

@@ -57,10 +57,6 @@
 #include "tz_support.h"
 #include "util_func.h"
 
-#if !defined (CS_MODE)
-#include "thread_entry.hpp"
-#endif /* !defined (CS_MODE) */
-
 #include <algorithm>
 #include <string>
 #include <locale>
@@ -158,10 +154,8 @@ typedef enum
 
 #define MAX_TOKEN_SIZE 16000
 
-#if !defined (CS_MODE)
-static int uuidv4_generate_bytes (THREAD_ENTRY * thread_p, unsigned char *out_bytes);
-static int uuidv7_generate_bytes (THREAD_ENTRY * thread_p, uint64_t epoch_ms, unsigned char *out_bytes);
-#endif /* !defined (CS_MODE) */
+static int uuidv4_generate_bytes (unsigned char *out_bytes);
+static int uuidv7_generate_bytes (UUID_STATE * base_state, UINT64 new_epoch_ms, unsigned char *out_bytes);
 
 #define UPPER_HEX_DIGIT "0123456789ABCDEF"
 
@@ -26243,17 +26237,15 @@ error:
   return error_code;
 }
 
-#if !defined (CS_MODE)
 /*
- * db_uuidv4() - Generate a type 4 (randomly generated) UUID.
+ * db_uuidv4() - Generate a type 4 (randomly generated) UUID String.
  *   return: error code or NO_ERROR
- *   thread_p(in): thread context
  *   result(out): HEX encoded UUID string(32-character uppercase hexadecimal)
  * Note:
  *   Behavior matches SQL function SYS_GUID()
  */
 int
-db_uuidv4 (THREAD_ENTRY * thread_p, DB_VALUE * result)
+db_uuidv4 (DB_VALUE * result)
 {
   int i = 0, error_code = NO_ERROR;
   unsigned char guid_bytes[GUID_STANDARD_BYTES_LENGTH];
@@ -26269,13 +26261,13 @@ db_uuidv4 (THREAD_ENTRY * thread_p, DB_VALUE * result)
   db_make_null (result);
 
   /* Generate UUIDv4 bytes using helper */
-  error_code = uuidv4_generate_bytes (thread_p, guid_bytes);
+  error_code = uuidv4_generate_bytes (guid_bytes);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
 
-  guid_hex = (char *) db_private_alloc (thread_p, GUID_STANDARD_BYTES_LENGTH * 2 + 1);
+  guid_hex = (char *) db_private_alloc (NULL, GUID_STANDARD_BYTES_LENGTH * 2 + 1);
   if (guid_hex == NULL)
     {
       error_code = er_errid ();
@@ -26309,16 +26301,16 @@ error:
 /*
  * db_uuid_bin() - Generate a UUID and return as BIT(128) value.
  *   return: error code or NO_ERROR
- *   thread_p(in): thread context
- *   version(in): UUID version (UUID_V4 or UUID_V7)
- *   epoch_ms(in): epoch time in milliseconds (used for UUIDv7, from vd->sys_epochtime)
+ *   version(in): UUID version
+ *   base_state(in/out): Required if the version belongs to timebased UUID (UUID_V7). 
+ *     Use the variable address from the current generator context:
+ *     THREAD_ENTRY on server, PARSER_CONTEXT on CAS.
+ *   epoch_ms(in): Required if the version belongs to timebased UUID (UUID_V7).
+ *     Epoch time in milliseconds compares with base_state.
  *   result(out): BIT(128) DB_VALUE
- * Note:
- *   For UUIDv7, epoch_ms should be calculated from val_descr as:
- *   epoch_ms = (uint64_t)vd->sys_epochtime * 1000 + (uint64_t)vd->sys_datetime.time % 1000
  */
 int
-db_uuid_bin (THREAD_ENTRY * thread_p, UUID_VERSION version, uint64_t epoch_ms, DB_VALUE * result)
+db_uuid_bin (UUID_VERSION version, UUID_STATE * base_state, uint64_t epoch_ms, DB_VALUE * result)
 {
   int error_code = NO_ERROR;
   char *guid_bytes = NULL;
@@ -26332,7 +26324,7 @@ db_uuid_bin (THREAD_ENTRY * thread_p, UUID_VERSION version, uint64_t epoch_ms, D
 
   db_make_null (result);
 
-  guid_bytes = (char *) db_private_alloc (thread_p, GUID_STANDARD_BYTES_LENGTH);
+  guid_bytes = (char *) db_private_alloc (NULL, GUID_STANDARD_BYTES_LENGTH);
   if (guid_bytes == NULL)
     {
       error_code = er_errid ();
@@ -26342,10 +26334,10 @@ db_uuid_bin (THREAD_ENTRY * thread_p, UUID_VERSION version, uint64_t epoch_ms, D
   switch (version)
     {
     case UUID_V4:
-      error_code = uuidv4_generate_bytes (thread_p, (unsigned char *) guid_bytes);
+      error_code = uuidv4_generate_bytes ((unsigned char *) guid_bytes);
       break;
     case UUID_V7:
-      error_code = uuidv7_generate_bytes (thread_p, epoch_ms, (unsigned char *) guid_bytes);
+      error_code = uuidv7_generate_bytes (base_state, epoch_ms, (unsigned char *) guid_bytes);
       break;
     case UUID_UNSUPPORTED:
     default:
@@ -26367,7 +26359,7 @@ db_uuid_bin (THREAD_ENTRY * thread_p, UUID_VERSION version, uint64_t epoch_ms, D
 error:
   if (guid_bytes != NULL)
     {
-      db_private_free (thread_p, guid_bytes);
+      db_private_free (NULL, guid_bytes);
     }
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
@@ -26381,8 +26373,10 @@ error:
 /*
  * uuidv7_generate_bytes() - Generate UUIDv7 bytes using per-thread monotonic state.
  *   return: error code or NO_ERROR
- *   thread_p(in): thread context
- *   epoch_ms(in): epoch time in milliseconds (from query's val_descr)
+ *   base_state(in/out): CAN NOT be NULL. 
+ *     Use the variable address from the current generator context:
+ *     THREAD_ENTRY on server, PARSER_CONTEXT on CAS.
+ *   new_epoch_ms(in): epoch time in milliseconds
  *   out_bytes(out): 16-byte UUID output buffer
  * Note:
  *   UUIDv7 layout (RFC 9562):
@@ -26396,29 +26390,21 @@ error:
  *   - Octets 8-15 (bits 66 ~ 127): random_b
  *
  *   This implementation uses per-thread state for monotonic ordering within a thread.
- *   The epoch_ms comes from the query's xasl_state.vd for efficiency and
+ *   The epoch_ms comes from the (query's xasl_state.vd) or (parser's sys_datetime and sys_epochtime) for efficiency and
  *   consistency within a single query execution.
  */
 static int
-uuidv7_generate_bytes (THREAD_ENTRY * thread_p, uint64_t xasl_vd_epoch_ms, unsigned char *out_bytes)
+uuidv7_generate_bytes (UUID_STATE * base_state, UINT64 new_epoch_ms, unsigned char *out_bytes)
 {
   int i = 0, error_code = NO_ERROR;
-  uint64_t last_ms = 0;
-  uint8_t seq = 0;
 
-  /* Load per-thread UUIDv7 state */
-  thread_get_uuidv7_state (thread_p, &last_ms, &seq);
+  assert (base_state != NULL);
 
-  /* If the type of `seq` changes or if its maximum allowable value is modified 
-   * uuidv7_generate_bytes logics must be updated accordingly */
-  assert (sizeof (seq) == sizeof (thread_p->uuidv7_seq));
-  assert (sizeof (thread_p->uuidv7_seq) * 8 >= GUID_V7_SEQ_BITS);
-
-  if (xasl_vd_epoch_ms > last_ms)
+  if (new_epoch_ms > *base_state->last_ms)
     {
       /* New millisecond: reset sequence */
-      last_ms = xasl_vd_epoch_ms;
-      seq = 0;
+      *base_state->last_ms = new_epoch_ms;
+      *base_state->seq = 0;
     }
   else
     {
@@ -26430,19 +26416,16 @@ uuidv7_generate_bytes (THREAD_ENTRY * thread_p, uint64_t xasl_vd_epoch_ms, unsig
        *   : use last_ms to preserve monotonicity
        * Increment sequence to ensure uniqueness within the same effective timestamp
        */
-      seq++;
-      if (seq == 0)
+      ++(*base_state->seq);
+      if (*base_state->seq == 0)
 	{
 	  /* Sequence overflow
 	   *   (seq is uint8_t and GUID_V7_SEQ_MAX represents maximum value of an 8-bit)
 	   *   : advance timestamp by 1ms to preserve monotonicity 
 	   */
-	  last_ms++;
+	  ++(*base_state->last_ms);
 	}
     }
-
-  /* Save updated state back to thread */
-  thread_set_uuidv7_state (thread_p, last_ms, seq);
 
   /* Generate random bytes for the lower part (bytes 7-15) */
   error_code = crypt_generate_random_bytes ((char *) (out_bytes + 7), GUID_STANDARD_BYTES_LENGTH - 7);
@@ -26454,14 +26437,14 @@ uuidv7_generate_bytes (THREAD_ENTRY * thread_p, uint64_t xasl_vd_epoch_ms, unsig
   /* Fill timestamp (bytes 0-5, big-endian) */
   for (i = 0; i < GUID_V7_TS_BYTES_LENGTH; i++)
     {
-      out_bytes[i] = (unsigned char) ((last_ms >> ((GUID_V7_TS_BYTES_LENGTH - i - 1) * 8)) & 0xFF);
+      out_bytes[i] = (unsigned char) ((*base_state->last_ms >> ((GUID_V7_TS_BYTES_LENGTH - i - 1) * 8)) & 0xFF);
     }
 
   /* Set version (byte 6 high nibble = 0x7) and embed seq high 4 bits in byte 6 low nibble */
-  out_bytes[6] = (unsigned char) (0x70 | ((seq >> 4) & 0x0F));
+  out_bytes[6] = (unsigned char) (0x70 | ((*base_state->seq >> 4) & 0x0F));
 
   /* Set seq low 4bits in byte 7 high nibble and remain low nibble as random */
-  out_bytes[7] = (unsigned char) (((seq & 0x0F) << 4) | (out_bytes[7] & 0x0F));
+  out_bytes[7] = (unsigned char) (((*base_state->seq & 0x0F) << 4) | (out_bytes[7] & 0x0F));
 
   /* Set variant (byte 8 high 2 bits = 0b10) */
   out_bytes[8] = (unsigned char) ((out_bytes[8] & 0x3F) | 0x80);
@@ -26472,13 +26455,12 @@ uuidv7_generate_bytes (THREAD_ENTRY * thread_p, uint64_t xasl_vd_epoch_ms, unsig
 /*
  * uuidv4_generate_bytes() - Generate UUIDv4 bytes (random UUID).
  *   return: error code or NO_ERROR
- *   thread_p(in): thread context
  *   out_bytes(out): 16-byte UUID output buffer
  * Note:
  *   UUIDv4 is fully random except for version and variant bits.
  */
 static int
-uuidv4_generate_bytes (THREAD_ENTRY * thread_p, unsigned char *out_bytes)
+uuidv4_generate_bytes (unsigned char *out_bytes)
 {
   int error_code = NO_ERROR;
 
@@ -26497,7 +26479,6 @@ uuidv4_generate_bytes (THREAD_ENTRY * thread_p, unsigned char *out_bytes)
 
   return NO_ERROR;
 }
-#endif /* !defined (CS_MODE) */
 
 /*
  * db_ascii() - return ASCII code of first character in string

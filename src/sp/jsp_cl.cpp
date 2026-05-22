@@ -746,12 +746,14 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   /* call sp */
   std::vector <std::reference_wrapper <DB_VALUE>> args;
   cubpl::pl_signature sig;
+  bool flag_si_datetime = false;
   error = jsp_make_pl_signature (parser, statement, NULL, sig);
   if (error == NO_ERROR)
     {
-      PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, sig);
-      if (default_next_node_list != NULL)
+      PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, sig, &flag_si_datetime);
+      if (default_next_node_list != NULL && flag_si_datetime)
 	{
+	  // consider using 'db_calculate_current_server_time' in db_vdb.c for less server communication
 	  error = qp_get_server_info (parser, SI_SYS_DATETIME);
 	}
       statement->info.method_call.arg_list = parser_append_node (default_next_node_list,
@@ -2329,7 +2331,7 @@ check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
 }
 
 PT_NODE *
-jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig)
+jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig, bool *flag_si_datetime)
 {
   PT_NODE *default_next_node_list = NULL;
   PT_NODE *default_next_node = NULL;
@@ -2348,52 +2350,19 @@ jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig
 	  DB_DEFAULT_EXPR default_expr;
 	  pt_get_default_expression_from_string (parser, sig.arg.arg_default_value[i], sig.arg.arg_default_value_size[i],
 						 &default_expr);
+	  if (flag_si_datetime && !*flag_si_datetime && (DB_IS_DEFAULT_DATETIME_EXPR (default_expr.default_expr_type)
+	      || DB_IS_DEFAULT_UUID_TIMEBASE_EXPR (default_expr.default_expr_type)))
+	    {
+	      *flag_si_datetime = true;
+	    }
 
-	  // from pt_resolve_default_value
 	  if (default_expr.default_expr_type != DB_DEFAULT_NONE)
 	    {
-	      PT_OP_TYPE op = pt_op_type_from_default_expr_type (default_expr.default_expr_type);
-	      PT_NODE *default_op_value_node = pt_expression_0 (parser, op);
-
-	      if (default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
+	      default_next_node = pt_make_default_value_tree_from_default_expr (parser, &default_expr);
+	      if (default_next_node == NULL)
 		{
-		  default_next_node = default_op_value_node;
-		}
-	      else
-		{
-		  PT_NODE *arg1, *arg2, *arg3;
-		  arg1 = default_op_value_node;
-		  bool has_user_format = default_expr.default_expr_format ? true : false;
-		  arg2 = pt_make_string_value (parser, default_expr.default_expr_format);
-
-		  if (arg2 == NULL)
-		    {
-		      parser_free_tree (parser, default_op_value_node);
-		      return NULL;
-		    }
-
-		  arg3 = parser_new_node (parser, PT_VALUE);
-		  if (arg3 == NULL)
-		    {
-		      parser_free_tree (parser, default_op_value_node);
-		      parser_free_tree (parser, arg2);
-		      return NULL;
-		    }
-
-		  arg3->type_enum = PT_TYPE_INTEGER;
-		  const char *lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
-		  int flag = 0;
-		  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
-		  arg3->info.value.data_value.i = (long) flag;
-
-		  default_next_node = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
-		  if (default_next_node == NULL)
-		    {
-		      parser_free_tree (parser, default_op_value_node);
-		      parser_free_tree (parser, arg2);
-		      parser_free_tree (parser, arg3);
-		      return NULL;
-		    }
+		  PT_ERRORm (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		  return NULL;
 		}
 	    }
 	  else

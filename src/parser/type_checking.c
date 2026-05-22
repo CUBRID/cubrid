@@ -17289,18 +17289,53 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       break;
 
     case PT_SYS_GUID:
-      /* 
-       * constant folding for this expression is never performed : is always resolved on server
-       * PT_SYS_GUID and PT_UUID can be used as an attribute's default function
-       * We must perform a semantic check to ensure that the attribute domain and the default function type are compatible.
-       * During semantic checking, flag.do_not_fold is not considered; therefore, a dummy value is returned.
-       * Any PT_EXPR that contains PT_SYS_GUID or PT_UUID must always have flag.do_not_fold set to true.
-       */
-      db_make_string (result, "0123456789ABCDEF0123456789ABCDEF");
+      error = db_uuidv4 (result);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, expr, er_msg ());
+	  return 0;
+	}
       return 1;
+
     case PT_UUID:
-      db_make_bit (result, GUID_STANDARD_BYTES_LENGTH * 8, "0123456789ABCDEF", GUID_STANDARD_BYTES_LENGTH * 8);
+      {
+	int version = 4;
+	UINT64 epoch_ms = 0;
+	UUID_STATE uuid_state;
+
+	if (arg1 != NULL && DB_VALUE_TYPE (arg1) != DB_TYPE_NULL)
+	  {
+	    version = db_get_int (arg1);
+	  }
+
+	if (version == 0 || version == 4)
+	  {
+	    error = db_uuid_bin (UUID_V4, NULL, 0, result);
+	  }
+	else if (version == 7)
+	  {
+	    assert (!DB_IS_NULL (&parser->sys_epochtime));
+	    assert (!DB_IS_NULL (&parser->sys_datetime));
+
+	    uuid_state.last_ms = &parser->uuidv7_last_ms;
+	    uuid_state.seq = &parser->uuidv7_seq;
+	    epoch_ms = ((UINT64) (*db_get_timestamp (&parser->sys_epochtime)) * 1000ULL)
+	      + (UINT64) (db_get_datetime (&parser->sys_datetime)->time % 1000);
+	    error = db_uuid_bin (UUID_V7, &uuid_state, epoch_ms, result);
+	  }
+	else
+	  {
+	    error = db_uuid_bin (UUID_UNSUPPORTED, NULL, 0, result);
+	  }
+
+	if (error != NO_ERROR)
+	  {
+	    PT_ERRORc (parser, expr, er_msg ());
+	    return 0;
+	  }
+      }
       return 1;
+
     case PT_INDEX_CARDINALITY:
       /* constant folding for this expression is never performed : is always resolved on server */
       return 0;

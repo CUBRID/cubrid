@@ -836,8 +836,6 @@ typedef enum
   T_FROM_BASE64,
   T_SYS_GUID,
   T_UUID,
-  T_UUID4,
-  T_UUID7,
   T_UUID_FORMAT,
   T_SLEEP,
   T_DBTIMEZONE,
