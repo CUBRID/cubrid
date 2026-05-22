@@ -126,7 +126,7 @@ function verify_user_pass ()
 	local USERNAME
 	local dbuser
 	local passwd
-	local qry_dba_grp="SELECT u.name FROM db_user AS u, TABLE(u.groups) AS g(x) where x.name = 'DBA'"
+	local qry_dba_grp="SELECT u.name FROM _db_user AS u, TABLE(u.groups) AS g(x) where x.name = 'DBA'"
 
 	dbuser=$(echo ${user} | cut -d' ' -f2-2)
 	USERNAME=$(echo ${dbuser} | tr [:lower:] [:upper:])

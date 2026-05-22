@@ -167,8 +167,8 @@ extern int au_add_member (MOP group, MOP member);
 extern int au_drop_member (MOP group, MOP member);
 extern int au_drop_user (MOP user);
 extern int au_set_user_comment (MOP user, const char *comment);
-extern int au_set_user_timestamps (MOP user);
-extern int au_update_user_timestamp (MOP user);
+extern int au_set_new_timestamps (MOP obj);
+extern int au_update_timestamps (MOP obj);
 
 extern char *au_get_user_name (MOP obj);
 extern bool au_is_dba_group_member (MOP user);

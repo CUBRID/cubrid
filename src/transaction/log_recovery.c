@@ -24,6 +24,9 @@
 
 #include "log_recovery.h"
 
+#ifdef CCI_XA
+#include "dblink_2pc_daemon.h"
+#endif
 #include "boot_sr.h"
 #include "locator_sr.h"
 #include "log_impl.h"
@@ -948,6 +951,12 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
       // dead-ended. not reach here
       return;
     }
+
+#ifdef CCI_XA
+#ifdef SERVER_MODE
+  dblink_2pc_daemon_recovery_with_thread (thread_p);
+#endif
+#endif
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_FINISHED, 0);
 }

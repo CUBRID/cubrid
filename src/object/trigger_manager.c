@@ -1965,9 +1965,9 @@ register_user_trigger (DB_OBJECT * object)
 
       db_make_object (&value, object);
       error = set_insert_element (table, 0, &value);
-      if (error != NO_ERROR)
+      if (error == NO_ERROR)
 	{
-	  error = au_update_user_timestamp (Au_user);
+	  error = au_update_timestamps (Au_user);
 	}
       /* if an error is set, probably must abort the transaction */
     }
@@ -2033,9 +2033,9 @@ unregister_user_trigger (TR_TRIGGER * trigger, int rollback)
 	  error = set_drop_element (table, &value, false);
 	  set_free (table);
 	}
-      if (error != NO_ERROR)
+      if (error == NO_ERROR)
 	{
-	  error = au_update_user_timestamp (Au_user);
+	  error = au_update_timestamps (Au_user);
 	}
       /* else, should have "trigger not found" error ? */
     }
@@ -2069,6 +2069,7 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
   DB_TRIGGER_EVENT e;
   TR_TRIGGER *trigger;
   int max, i;
+  int save;
 
   *trigger_list = NULL;
 
@@ -2077,9 +2078,11 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
       return NO_ERROR;
     }
 
+  AU_DISABLE (save);
   error = obj_get (Au_user, "triggers", &value);
   if (error != NO_ERROR)
     {
+      AU_ENABLE (save);
       return error;
     }
 
@@ -2146,6 +2149,8 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
       *trigger_list = NULL;
     }
 
+  AU_ENABLE (save);
+
   return error;
 }
 
@@ -2172,6 +2177,9 @@ tr_update_user_cache (void)
       tr_free_trigger_list (tr_User_triggers);
       tr_User_triggers = NULL;
     }
+
+  int save;
+  AU_DISABLE (save);
 
   if (Au_user != NULL && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
     {
@@ -2225,6 +2233,8 @@ tr_update_user_cache (void)
       tr_free_trigger_list (tr_User_triggers);
       tr_User_triggers = NULL;
     }
+
+  AU_ENABLE (save);
 
   return error;
 }
