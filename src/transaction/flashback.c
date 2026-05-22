@@ -61,6 +61,12 @@
 
 static volatile LOG_PAGEID flashback_Min_log_pageid = NULL_LOG_PAGEID;	// Minumun log pageid to keep archive log volume from being removed
 
+/* Conservative archive-number reservation declared by flashback_initialize() before
+ * cdc_find_lsa() resolves the precise target archive.  -1 means "no reservation".
+ * Cleanup honors this whenever flashback_Min_log_pageid has not been set yet, so the
+ * archives that an in-flight flashback may still need are never removed underneath it. */
+static volatile int flashback_Min_archive_num = -1;
+
 static CSS_CONN_ENTRY *flashback_Current_conn = NULL;	// the connection entry for a flashback request
 
 static pthread_mutex_t flashback_Conn_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -137,6 +143,22 @@ flashback_initialize (THREAD_ENTRY * thread_p)
 
   flashback_Min_log_pageid = NULL_LOG_PAGEID;
 
+  /* Reserve the oldest currently-live archive number while holding LOG_CS in write
+   * mode.  This serializes against logpb_remove_archive_logs[_exceed_limit](), which
+   * acquires LOG_CS as writer too, and closes the race window where cleanup could
+   * delete an archive that cdc_find_lsa() is about to mount.  The precise per-page
+   * reservation will be installed later by flashback_set_min_log_pageid_to_keep(). */
+  LOG_CS_ENTER (thread_p);
+  if (log_Gl.hdr.last_deleted_arv_num + 1 < log_Gl.hdr.nxarv_num)
+    {
+      flashback_Min_archive_num = log_Gl.hdr.last_deleted_arv_num + 1;
+    }
+  else
+    {
+      flashback_Min_archive_num = -1;
+    }
+  LOG_CS_EXIT (thread_p);
+
   return NO_ERROR;
 }
 
@@ -162,6 +184,19 @@ LOG_PAGEID
 flashback_min_log_pageid_to_keep ()
 {
   return flashback_Min_log_pageid;
+}
+
+/*
+ * flashback_min_archive_num_to_keep - returns the oldest archive number that must
+ *                                     not be deleted while flashback is in progress
+ *
+ * return : oldest archive number to keep, or -1 if no reservation is active
+ */
+
+int
+flashback_min_archive_num_to_keep ()
+{
+  return flashback_Min_archive_num;
 }
 
 /*
@@ -196,6 +231,7 @@ void
 flashback_reset ()
 {
   flashback_Min_log_pageid = NULL_LOG_PAGEID;
+  flashback_Min_archive_num = -1;
 
   pthread_mutex_lock (&flashback_Conn_lock);
 
