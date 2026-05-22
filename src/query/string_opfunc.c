@@ -440,7 +440,7 @@ db_string_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB_VALUE 
 
 	  if (!ignore_trailing_space)
 	    {
-	      ti = (QSTR_IS_FIXED_LENGTH (str1_type) && QSTR_IS_FIXED_LENGTH (str2_type));
+	      ti = (QSTR_IS_PADDED_LENGTH (str1_type) && QSTR_IS_PADDED_LENGTH (str2_type));
 	    }
 	  cmp_result = QSTR_COMPARE (coll_id, DB_GET_UCHAR (string1), (int) db_get_string_size (string1),
 				     DB_GET_UCHAR (string2), (int) db_get_string_size (string2), ti);
@@ -3691,7 +3691,7 @@ db_string_prefix_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB
 
 	  if (!ignore_trailing_space)
 	    {
-	      ti = (QSTR_IS_FIXED_LENGTH (str1_type) && QSTR_IS_FIXED_LENGTH (str2_type));
+	      ti = (QSTR_IS_PADDED_LENGTH (str1_type) && QSTR_IS_PADDED_LENGTH (str2_type));
 	    }
 	  cmp_result = QSTR_COMPARE (coll_id, DB_GET_UCHAR (string1), (int) db_get_string_size (string1),
 				     DB_GET_UCHAR (string2), (int) db_get_string_size (string2), ti);
@@ -5623,7 +5623,7 @@ db_string_limit_size_string (DB_VALUE * src_string, DB_VALUE * result, const int
       memcpy (r, db_get_string (src_string), adj_char_size);
     }
   /* adjust also domain precision in case of fixed length types */
-  if (QSTR_IS_FIXED_LENGTH (src_type))
+  if (QSTR_IS_PADDED_LENGTH (src_type))
     {
       src_domain_precision = MIN (src_domain_precision, char_count);
     }
@@ -8480,7 +8480,7 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
    *  we are through.
    */
 
-  if (QSTR_IS_FIXED_LENGTH (s1_type))
+  if (QSTR_IS_PADDED_LENGTH (s1_type))
     {
       s1_logical_length = s1_precision;
     }
@@ -8490,7 +8490,7 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
     }
 
 
-  if (QSTR_IS_FIXED_LENGTH (s2_type))
+  if (QSTR_IS_PADDED_LENGTH (s2_type))
     {
       s2_logical_length = s2_precision;
     }
@@ -8503,7 +8503,7 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
    *  If both source strings are fixed-length, the concatenated
    *  result will be fixed-length.
    */
-  if (QSTR_IS_FIXED_LENGTH (s1_type) && QSTR_IS_FIXED_LENGTH (s2_type))
+  if (QSTR_IS_PADDED_LENGTH (s1_type) && QSTR_IS_PADDED_LENGTH (s2_type))
     {
       /*
        *  The result will be a chararacter string of length =
@@ -8675,7 +8675,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
    *  characters are present.  They all will be by the time
    *  we are through.
    */
-  if (QSTR_IS_FIXED_LENGTH (s1_type))
+  if (QSTR_IS_PADDED_LENGTH (s1_type))
     {
       s1_logical_length = s1_precision;
     }
@@ -8685,7 +8685,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
     }
 
 
-  if (QSTR_IS_FIXED_LENGTH (s2_type))
+  if (QSTR_IS_PADDED_LENGTH (s2_type))
     {
       s2_logical_length = s2_precision;
     }
@@ -8698,7 +8698,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
    *  If both source strings are fixed-length, the concatenated
    *  result will be fixed-length.
    */
-  if (QSTR_IS_FIXED_LENGTH (s1_type) && QSTR_IS_FIXED_LENGTH (s2_type))
+  if (QSTR_IS_PADDED_LENGTH (s1_type) && QSTR_IS_PADDED_LENGTH (s2_type))
     {
       /*
        * The only time we enter inside this if statement is 
@@ -9342,7 +9342,7 @@ qstr_bit_coerce (const unsigned char *src, int src_length, int src_precision, DB
    *  <src_padded_length> is the length of the fully padded
    *  source string.
    */
-  if (QSTR_IS_FIXED_LENGTH (src_type))
+  if (QSTR_IS_PADDED_LENGTH (src_type))
     {
       src_padded_length = src_precision;
     }
@@ -9390,7 +9390,7 @@ qstr_bit_coerce (const unsigned char *src, int src_length, int src_precision, DB
    *    Allocate enough for a fully padded source string, copy
    *    the source string and pad the rest.
    */
-  if (QSTR_IS_FIXED_LENGTH (dest_type))
+  if (QSTR_IS_PADDED_LENGTH (dest_type))
     {
       *dest_length = dest_precision;
     }
@@ -9453,7 +9453,7 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
    *  <src_padded_length> is the length of the fully padded
    *  source string.
    */
-  if (QSTR_IS_FIXED_LENGTH (src_type))
+  if (QSTR_IS_PADDED_LENGTH (src_type))
     {
       src_padded_length = src_precision;
     }
@@ -9489,7 +9489,7 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
    *    Allocate enough for a fully padded source string, copy
    *    the source string and pad the rest.
    */
-  if (QSTR_IS_FIXED_LENGTH (dest_type))
+  if (QSTR_IS_PADDED_LENGTH (dest_type))
     {
       *dest_length = dest_precision;
     }
@@ -9512,7 +9512,7 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
 	      copy_size = dest_precision;
 	    }
 	  copy_length = copy_size;
-	  if (QSTR_IS_VARIABLE_LENGTH (dest_type))
+	  if (QSTR_IS_UNPADDED_LENGTH (dest_type))
 	    {
 	      *dest_length = copy_length;
 	    }
