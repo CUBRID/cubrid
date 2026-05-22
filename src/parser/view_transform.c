@@ -4933,6 +4933,11 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
 	parser_copy_tree_list (parser, query_spec->info.query.q.select.after_cb_filter);
       new_query->info.query.q.select.check_cycles = query_spec->info.query.q.select.check_cycles;
       new_query->info.query.q.select.single_table_opt = query_spec->info.query.q.select.single_table_opt;
+      if (query_spec->info.query.order_by != NULL)
+	{
+	  new_query->info.query.order_by = parser_copy_tree_list (parser, query_spec->info.query.order_by);
+	  new_query->info.query.flag.order_siblings = query_spec->info.query.flag.order_siblings;
+	}
     }
 
   new_query = mq_reset_ids_and_references (parser, new_query, new_spec);

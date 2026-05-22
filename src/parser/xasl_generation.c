@@ -23859,6 +23859,35 @@ parser_generate_do_stmt_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_get_order_siblings_base_regu () - unwrap cast expressions to the underlying column regu
+ *   return:
+ *   regu(in):
+ */
+static REGU_VARIABLE *
+pt_get_order_siblings_base_regu (REGU_VARIABLE * regu)
+{
+  if (regu == NULL)
+    {
+      return NULL;
+    }
+
+  if (regu->type == TYPE_INARITH && regu->value.arithptr != NULL)
+    {
+      switch (regu->value.arithptr->opcode)
+	{
+	case T_CAST:
+	case T_CAST_WRAP:
+	case T_CAST_NOFAIL:
+	  return pt_get_order_siblings_base_regu (regu->value.arithptr->leftptr);
+	default:
+	  break;
+	}
+    }
+
+  return regu;
+}
+
+/*
  * pt_to_order_siblings_by () - modify order by list to match tuples used
  *                              at order siblings by execution
  *   return:
@@ -23870,11 +23899,20 @@ pt_to_order_siblings_by (PARSER_CONTEXT * parser, XASL_NODE * xasl, XASL_NODE * 
 {
   SORT_LIST *orderby;
   REGU_VARIABLE_LIST regu_list1, regu_list2;
+  REGU_VARIABLE *base_regu;
   int i, j;
+  bool mapped;
+  int user_col_cnt;
 
   if (!xasl || !xasl->outptr_list || !connect_by_xasl || !connect_by_xasl->outptr_list)
     {
       return NULL;
+    }
+
+  user_col_cnt = connect_by_xasl->outptr_list->valptr_cnt - PCOL_FIRST_TUPLE_OFFSET;
+  if (user_col_cnt < 0)
+    {
+      user_col_cnt = 0;
     }
 
   for (orderby = xasl->orderby_list; orderby; orderby = orderby->next)
@@ -23883,19 +23921,35 @@ pt_to_order_siblings_by (PARSER_CONTEXT * parser, XASL_NODE * xasl, XASL_NODE * 
 	{
 	  if (i == orderby->pos_descr.pos_no)
 	    {
-	      if (regu_list1->value.type != TYPE_CONSTANT)
+	      mapped = false;
+	      base_regu = pt_get_order_siblings_base_regu (&regu_list1->value);
+
+	      if (base_regu != NULL && base_regu->type == TYPE_CONSTANT)
+		{
+		  for (j = 0, regu_list2 = connect_by_xasl->outptr_list->valptrp; regu_list2;
+		       regu_list2 = regu_list2->next, j++)
+		    {
+		      if (regu_list2->value.type == TYPE_CONSTANT
+			  && base_regu->value.dbvalptr == regu_list2->value.value.dbvalptr)
+			{
+			  orderby->pos_descr.pos_no = j;
+			  mapped = true;
+			  break;
+			}
+		    }
+		}
+
+	      /* vclass type-cast wraps SELECT columns; CONNECT BY uses val_list column positions */
+	      if (!mapped && i < user_col_cnt)
+		{
+		  orderby->pos_descr.pos_no = i;
+		  mapped = true;
+		}
+
+	      if (!mapped)
 		{
 		  PT_INTERNAL_ERROR (parser, "invalid column in order siblings by");
-		}
-	      for (j = 0, regu_list2 = connect_by_xasl->outptr_list->valptrp; regu_list2;
-		   regu_list2 = regu_list2->next, j++)
-		{
-		  if (regu_list2->value.type == TYPE_CONSTANT
-		      && regu_list1->value.value.dbvalptr == regu_list2->value.value.dbvalptr)
-		    {
-		      orderby->pos_descr.pos_no = j;
-		      break;
-		    }
+		  return NULL;
 		}
 	      break;
 	    }

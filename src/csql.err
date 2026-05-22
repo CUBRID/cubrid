@@ -1,0 +1,9 @@
+
+Time: 05/21/26 14:19:44.970 - ERROR *** file /home/cubrid/work/cubrid/src/connection/connection_cl.cpp, line 776 ERROR CODE = -353, Tran = -1, EID = 1
+Cannot make connection to master server on host "localhost".... No such file or directory
+
+Time: 05/21/26 14:19:44.970 - ERROR *** file /home/cubrid/work/cubrid/src/transaction/boot_cl.c, line 1762 ERROR CODE = -677, Tran = -1, EID = 2
+Failed to connect to database server, 'demodb', on the following host(s): localhost
+
+*** The previous error message is the last one. ***
+
