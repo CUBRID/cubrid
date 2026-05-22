@@ -432,7 +432,10 @@ namespace cubconn::connection
 
     assert_release (ctx->m_conn);
 
-    if (this->is_wait_required (ctx) && ctx->m_conn->get_tran_index () == NULL_TRAN_INDEX
+    /* during shutdown, boot_client_register cannot be expected to finish */
+    if (m_status != status::TERMINATING && !css_is_shutdowning_server ()
+	&& this->is_wait_required (ctx)
+	&& ctx->m_conn->get_tran_index () == NULL_TRAN_INDEX
 	&& this->is_registering_client (ctx))
       {
 	er_log_conn (__FILE__, __LINE__,
