@@ -903,12 +903,7 @@ namespace parallel_query
 	}
       m_context->build->list_scan_id.is_read_only = true;
 
-      error = qfile_open_list_scan (m_context->probe->list_id, &m_context->probe->list_scan_id);
-      if (error != NO_ERROR)
-	{
-	  m_task_manager.handle_error (thread_ref);
-	  goto cleanup;		/* error_exit */
-	}
+      /* probe input is consumed via sector_page_iterator — no list_scan_id needed */
 
       error = hjoin_scan_init (&thread_ref, &m_context->hash_scan, m_manager->key_cnt, nullptr /* skip hash table */ );
       if (error != NO_ERROR)
@@ -987,7 +982,6 @@ cleanup:
       qfile_close_list (&thread_ref, m_context->list_id);
 
       qfile_close_scan (&thread_ref, &m_context->build->list_scan_id);
-      qfile_close_scan (&thread_ref, &m_context->probe->list_scan_id);
 
       /* skip hash table — owned by single_context, must not be released here */
       switch (m_context->hash_scan.hash_list_scan_type)
@@ -1052,13 +1046,12 @@ cleanup:
 
       outer = &m_context->outer;
       inner = &m_context->inner;
-      assert (outer->list_scan_id.status != S_CLOSED);
-      assert (inner->list_scan_id.status != S_CLOSED);
 
       build = m_context->build;
       probe = m_context->probe;
       assert (build != nullptr);
       assert (probe != nullptr);
+      assert (build->list_scan_id.status != S_CLOSED);
 
       // *INDENT-OFF*
       probe->tuple_record = { nullptr, 0 };
@@ -1214,7 +1207,7 @@ cleanup:
 		    }
 		  else if (need_skip_next)
 		    {
-		      HJOIN_PRINT_TUPLE (&build->list_scan_id, build->tuple_record.tpl, HASHJOIN_PRINT_NOT_MATCHED_KEY);
+		      HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_NOT_MATCHED_KEY);
 
 		      need_skip_next = false;	/* init */
 		      continue;
@@ -1224,7 +1217,7 @@ cleanup:
 		      /* fall through */
 		    }
 
-		  HJOIN_PRINT_TUPLE (&build->list_scan_id, build->tuple_record.tpl, HASHJOIN_PRINT_QUALIFIED_KEY);
+		  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_QUALIFIED_KEY);
 
 		  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 		  error = hjoin_merge_tuple_to_list_id (&thread_ref, list_id,
@@ -1314,8 +1307,6 @@ cleanup:
 
       outer = &m_context->outer;
       inner = &m_context->inner;
-      assert (outer->list_scan_id.status != S_CLOSED);
-      assert (inner->list_scan_id.status != S_CLOSED);
 
       assert (outer->fill_record == nullptr || outer->fill_record->tpl == nullptr);
 
@@ -1323,6 +1314,7 @@ cleanup:
       probe = m_context->probe;
       assert (build != nullptr);
       assert (probe != nullptr);
+      assert (build->list_scan_id.status != S_CLOSED);
 
       // *INDENT-OFF*
       probe->tuple_record = { nullptr, 0 };
@@ -1436,7 +1428,7 @@ cleanup:
 		}
 	      else if (need_skip_next)
 		{
-		  HJOIN_PRINT_TUPLE (&probe->list_scan_id, probe->tuple_record.tpl, HASHJOIN_PRINT_FILL_EMPTY_KEY);
+		  HJOIN_PRINT_TUPLE (probe->list_id, probe->tuple_record.tpl, HASHJOIN_PRINT_FILL_EMPTY_KEY);
 
 		  /* NULL key on preserved side — emit fill_record (null on null-supplying side) */
 		  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
@@ -1497,7 +1489,7 @@ cleanup:
 		    }
 		  else if (need_skip_next)
 		    {
-		      HJOIN_PRINT_TUPLE (&build->list_scan_id, build->tuple_record.tpl, HASHJOIN_PRINT_NOT_MATCHED_KEY);
+		      HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_NOT_MATCHED_KEY);
 
 		      need_skip_next = false;	/* init */
 		      continue;
@@ -1546,13 +1538,13 @@ cleanup:
 		      /* Search the next hash entry if additional conditions are not satisfied */
 		      if (ev_res != V_TRUE)
 			{
-			  HJOIN_PRINT_TUPLE (&build->list_scan_id, build->tuple_record.tpl, HASHJOIN_PRINT_NOT_QUALIFIED_KEY);
+			  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_NOT_QUALIFIED_KEY);
 			  assert (need_skip_next == false);
 			  continue;
 			}
 		    }			/* if (m_context->during_join_pred != nullptr) */
 
-		  HJOIN_PRINT_TUPLE (&build->list_scan_id, build->tuple_record.tpl, HASHJOIN_PRINT_QUALIFIED_KEY);
+		  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_QUALIFIED_KEY);
 
 		  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 		  error = hjoin_merge_tuple_to_list_id (&thread_ref, list_id,
@@ -1579,7 +1571,7 @@ cleanup:
 
 	      if (!any_record_added)
 		{
-		  HJOIN_PRINT_TUPLE (&probe->list_scan_id, probe->tuple_record.tpl, HASHJOIN_PRINT_FILL_EMPTY_KEY);
+		  HJOIN_PRINT_TUPLE (probe->list_id, probe->tuple_record.tpl, HASHJOIN_PRINT_FILL_EMPTY_KEY);
 
 		  /* no match — emit fill_record (null on null-supplying side) */
 		  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);

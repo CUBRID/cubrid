@@ -446,10 +446,10 @@ typedef struct hashjoin_manager
 #endif /* HASHJOIN_PROFILE_TIME */
 
 #if !defined(NDEBUG) && HASHJOIN_DUMP_PROBE
-#define HJOIN_PRINT_TUPLE(list_scan_id, tuple, step) \
-  hjoin_print_tuple ((list_scan_id), (tuple), (step))
+#define HJOIN_PRINT_TUPLE(list_id, tuple, step) \
+  hjoin_print_tuple ((list_id), (tuple), (step))
 #else
-#define HJOIN_PRINT_TUPLE(list_scan_id, tuple, step) ((void) 0)
+#define HJOIN_PRINT_TUPLE(list_id, tuple, step) ((void) 0)
 #endif /* !NDEBUG && HASHJOIN_DUMP_PROBE */
 
 /*
