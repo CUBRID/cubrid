@@ -16573,8 +16573,8 @@ pr_clear_compressed_string (DB_VALUE * value)
 
   db_type = DB_VALUE_DOMAIN_TYPE (value);
 
-  /* Make sure we clear only for VARCHAR and VARNCHAR types. */
-  if (db_type != DB_TYPE_VARCHAR && db_type != DB_TYPE_VARNCHAR)
+  /* Make sure we clear only for variable length character types. */
+  if (!TP_IS_VAR_LEN_CHAR_TYPE (db_type))
     {
       return NO_ERROR;		/* do nothing */
     }
