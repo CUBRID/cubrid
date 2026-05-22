@@ -1400,7 +1400,7 @@ extern int or_put_json_schema (OR_BUF * buf, const char *schema);
  *   <----------- 4-byte first word ------------>  <-- 4 --> <-- 4 -->
  *   [ tt | length (30 bit)                     ]  [ size  ] [ c_sz ]  [ data + padding ]
  *
- * tt (type_header, top 2 bits of first word — or first byte for TINY):
+ * tt (header_type, top 2 bits of first word — or first byte for TINY):
  *   selects the small/medium/large tier. Dispatch is size-driven (matches the
  *   compression boundary at size >= 255); TINY adds a length guard because its
  *   2-bit length field cannot represent 4+ chars (e.g. ASCII "abcd" — size 4,
@@ -1415,27 +1415,27 @@ extern int or_put_json_schema (OR_BUF * buf, const char *schema);
  * size            : decompressed byte count (includes CHAR trailing-space padding)
  * compressed_size : LZ4-compressed byte count; 0 when stored uncompressed
  */
-#define OR_STRING_TYPE_HEADER_TINY                (0x0u)
-#define OR_STRING_TYPE_HEADER_SMALL               (0x1u)
-#define OR_STRING_TYPE_HEADER_LARGE               (0x2u)
-#define OR_STRING_TYPE_HEADER_MEDIUM              (0x3u)
+#define OR_STRING_HEADER_TYPE_TINY                (0x0u)
+#define OR_STRING_HEADER_TYPE_SMALL               (0x1u)
+#define OR_STRING_HEADER_TYPE_MEDIUM              (0x2u)
+#define OR_STRING_HEADER_TYPE_LARGE               (0x3u)
 
 /* Tier bits always occupy the top 2 bits of the first *byte* (network byte order).
- * - TINY has a 1-byte header, so the type_header is read via a single-byte peek (IN_BYTE).
+ * - TINY has a 1-byte header, so the header_type is read via a single-byte peek (IN_BYTE).
  * - MEDIUM_* share a 2-byte first word; reading it as a 16-bit big-endian short places
  *   the same 2 bits at the top of the short (IN_SHORT).
  * - LARGE has a 4-byte first word; after reading it as a 32-bit int, the same 2 bits
  *   appear at the top of the int (IN_INT). */
-#define OR_STRING_TYPE_HEADER_SHIFT_IN_BYTE        (6)
-#define OR_STRING_TYPE_HEADER_MASK_IN_BYTE         (0x3u << OR_STRING_TYPE_HEADER_SHIFT_IN_BYTE)
+#define OR_STRING_HEADER_TYPE_SHIFT_IN_BYTE        (6)
+#define OR_STRING_HEADER_TYPE_MASK_IN_BYTE         (0x3u << OR_STRING_HEADER_TYPE_SHIFT_IN_BYTE)
 
-#define OR_STRING_TYPE_HEADER_SHIFT_IN_SHORT       (14)
-#define OR_STRING_TYPE_HEADER_MASK_IN_SHORT        (0x3u << OR_STRING_TYPE_HEADER_SHIFT_IN_SHORT)
+#define OR_STRING_HEADER_TYPE_SHIFT_IN_SHORT       (14)
+#define OR_STRING_HEADER_TYPE_MASK_IN_SHORT        (0x3u << OR_STRING_HEADER_TYPE_SHIFT_IN_SHORT)
 
-#define OR_STRING_TYPE_HEADER_SHIFT_IN_INT         (30)
-#define OR_STRING_TYPE_HEADER_MASK_IN_INT          (0x3u << OR_STRING_TYPE_HEADER_SHIFT_IN_INT)
+#define OR_STRING_HEADER_TYPE_SHIFT_IN_INT         (30)
+#define OR_STRING_HEADER_TYPE_MASK_IN_INT          (0x3u << OR_STRING_HEADER_TYPE_SHIFT_IN_INT)
 
-/* Per type_header length field bit-widths and TINY bit packing inside the single byte:
+/* Per header_type length field bit-widths and TINY bit packing inside the single byte:
  *   TINY  byte  = [type(2 high) | length(2) | size(4 low)]
  *   MEDIUM short = [type(2 high) | length(14)]      (size & csize follow as 16-bit fields)
  *   LARGE  int   = [type(2 high) | length(30)]      (size & csize follow as 32-bit fields) */
@@ -1445,7 +1445,7 @@ extern int or_put_json_schema (OR_BUF * buf, const char *schema);
 #define OR_STRING_LENGTH_SHIFT_TINY                (4)	/* TINY: length sits above the 4-bit size */
 #define OR_STRING_SIZE_MASK_TINY                   (0xFu)	/* TINY: 4-bit size in low nibble */
 
-/* type_header dispatch thresholds (size-driven, matches compression boundary at 255).
+/* header_type dispatch thresholds (size-driven, matches compression boundary at 255).
  * TINY and MEDIUM additionally require a length guard because their
  * length fields are narrower than the matching size field (e.g. ASCII "abcd"
  * is size=4 but length=4 — exceeds TINY's 2-bit length field, so it falls
@@ -1459,21 +1459,21 @@ extern int or_put_json_schema (OR_BUF * buf, const char *schema);
 #define OR_DISK_STRING_MEDIUM_MAX_SIZE        (65535)	/* 16-bit size/csize field limit */
 #define OR_DISK_STRING_MEDIUM_MAX_LENGTH      (16383)	/* 14-bit length field limit */
 
-/* On-disk per type_header header byte counts. Field offsets are not exposed —
+/* On-disk per header_type header byte counts. Field offsets are not exposed —
  * use the OR_DISK_STRING_*_LENGTH/SIZE/CSIZE accessor macros below or call
- * or_get_string_header to keep external code type_header-agnostic. */
+ * or_get_string_header to keep external code header_type-agnostic. */
 #define OR_DISK_STRING_TINY_HEADER_SIZE                   (1)	/* 1 byte */
-#define OR_DISK_STRING_SMALL_HEADER_SIZE                  (OR_INT_SIZE)	/* 4 bytes */
-#define OR_DISK_STRING_MEDIUM_HEADER_SIZE                 (OR_INT_SIZE + OR_SHORT_SIZE)	/* 6 bytes */
-#define OR_DISK_STRING_LARGE_HEADER_SIZE                  (OR_INT_SIZE * 3)	/* 12 bytes */
+#define OR_DISK_STRING_SMALL_HEADER_SIZE                  (4)	/* 4 bytes */
+#define OR_DISK_STRING_MEDIUM_HEADER_SIZE                 (6)	/* 6 bytes */
+#define OR_DISK_STRING_LARGE_HEADER_SIZE                  (12)	/* 12 bytes */
 
 /* Disk header field accessors.
  *
  * GET_*: extract length / size / csize from a header buffer (or the TINY byte).
- *        Each macro hides the offset arithmetic, type_header bit masking, and
+ *        Each macro hides the offset arithmetic, header_type bit masking, and
  *        OR_GET_* byte-order conversion.
  * PUT_*: write the encoded field into a header buffer at the right offset.
- *        LEAD pack-encodes the type_header bits with the length bits;
+ *        LEAD pack-encodes the header_type bits with the length bits;
  *        SIZE / CSIZE are plain integer writes at fixed offsets;
  *        TINY packs the entire header (type | length | size) into one byte.
  *
@@ -1508,20 +1508,20 @@ extern int or_put_json_schema (OR_BUF * buf, const char *schema);
 /* PUT — write to buffer */
 #define OR_DISK_STRING_PUT_TINY_HEADER(buf, length, size) \
   (*(unsigned char *) (buf) = \
-   (unsigned char) ((OR_STRING_TYPE_HEADER_TINY << OR_STRING_TYPE_HEADER_SHIFT_IN_BYTE) \
+   (unsigned char) ((OR_STRING_HEADER_TYPE_TINY << OR_STRING_HEADER_TYPE_SHIFT_IN_BYTE) \
                     | (((unsigned int) (length) & OR_STRING_LENGTH_MASK_TINY) << OR_STRING_LENGTH_SHIFT_TINY) \
                     | ((unsigned int) (size) & OR_STRING_SIZE_MASK_TINY)))
 
 #define OR_DISK_STRING_PUT_SMALL_LEAD(buf, length) \
   (OR_PUT_SHORT (buf, \
-                (short) ((OR_STRING_TYPE_HEADER_SMALL << OR_STRING_TYPE_HEADER_SHIFT_IN_SHORT) \
+                (short) ((OR_STRING_HEADER_TYPE_SMALL << OR_STRING_HEADER_TYPE_SHIFT_IN_SHORT) \
                          | ((unsigned int) (length) & OR_STRING_LENGTH_MASK_MEDIUM))))
 #define OR_DISK_STRING_PUT_SMALL_SIZE(buf, size) \
   (OR_PUT_SHORT ((char *) (buf) + OR_SHORT_SIZE, (short) (size)))
 
 #define OR_DISK_STRING_PUT_MEDIUM_LEAD(buf, length) \
   (OR_PUT_SHORT (buf, \
-                (short) ((OR_STRING_TYPE_HEADER_MEDIUM << OR_STRING_TYPE_HEADER_SHIFT_IN_SHORT) \
+                (short) ((OR_STRING_HEADER_TYPE_MEDIUM << OR_STRING_HEADER_TYPE_SHIFT_IN_SHORT) \
                          | ((unsigned int) (length) & OR_STRING_LENGTH_MASK_MEDIUM))))
 #define OR_DISK_STRING_PUT_MEDIUM_SIZE(buf, size) \
   (OR_PUT_SHORT ((char *) (buf) + OR_SHORT_SIZE, (short) (size)))
@@ -1530,7 +1530,7 @@ extern int or_put_json_schema (OR_BUF * buf, const char *schema);
 
 #define OR_DISK_STRING_PUT_LARGE_LEAD(buf, length) \
   (OR_PUT_INT (buf, \
-              (int) ((OR_STRING_TYPE_HEADER_LARGE << OR_STRING_TYPE_HEADER_SHIFT_IN_INT) \
+              (int) ((OR_STRING_HEADER_TYPE_LARGE << OR_STRING_HEADER_TYPE_SHIFT_IN_INT) \
                      | ((unsigned int) (length) & OR_STRING_LENGTH_MASK_LARGE))))
 #define OR_DISK_STRING_PUT_LARGE_SIZE(buf, size) \
   (OR_PUT_INT ((char *) (buf) + OR_INT_SIZE, (int) (size)))
@@ -1540,13 +1540,13 @@ extern int or_put_json_schema (OR_BUF * buf, const char *schema);
 /* CHAR/VARCHAR in-memory header layout (NOT CLOB/BLOB; differs from disk image).
  *
  * The mem path never carries compressed bytes (see mr_setmem_char_type_common),
- * so each type_header drops the disk version's compressed_size slot:
+ * so each header_type drops the disk version's compressed_size slot:
  *
  *     TINY               (0b00) : 1-byte header, size 0 ~ 12,     length 0 ~ 3
  *     SMALL (0b01) : 4-byte header, size 13 ~ 65535, length 0 ~ 16383
  *     LARGE               (0b10) : 8-byte header, size > 65535,    length up to 30 bits
  *
- * Mem reuses the disk type_header bit values (00 / 01 / 10) but never emits
+ * Mem reuses the disk header_type bit values (00 / 01 / 10) but never emits
  * MEDIUM (11). Mem dispatch is size-driven (no compression boundary
  * applies); MED_UNCOMPRESSED's range extends to its 16-bit size-field limit. */
 #define OR_MEM_STRING_TINY_HEADER_SIZE      (1)	/* 1 byte */
@@ -1580,19 +1580,19 @@ extern int or_put_json_schema (OR_BUF * buf, const char *schema);
 #define OR_MEM_STRING_PUT_SMALL_SIZE(buf, size)            (OR_DISK_STRING_PUT_SMALL_SIZE (buf, size))
 #define OR_MEM_STRING_PUT_LARGE_LEAD(buf, length) \
   (OR_PUT_INT (buf, \
-              (int) ((OR_STRING_TYPE_HEADER_LARGE << OR_STRING_TYPE_HEADER_SHIFT_IN_INT) \
+              (int) ((OR_STRING_HEADER_TYPE_LARGE << OR_STRING_HEADER_TYPE_SHIFT_IN_INT) \
                      | ((unsigned int) (length) & OR_STRING_LENGTH_MASK_LARGE))))
 #define OR_MEM_STRING_PUT_LARGE_SIZE(buf, size) \
   (OR_PUT_INT ((char *) (buf) + OR_INT_SIZE, (int) (size)))
 
-STATIC_INLINE unsigned int or_string_pick_type_header (int length, int size) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE unsigned int or_string_pick_header_type (int length, int size) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_put_string_header (OR_BUF * buf, int length, int size, int compressed_size)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_get_string_header (OR_BUF * buf, int *length, int *size, int *compressed_size)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_string_header_size (int length, int size, int compressed_size) __attribute__ ((ALWAYS_INLINE));
 
-STATIC_INLINE unsigned int or_mem_string_pick_type_header (int length, int size) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE unsigned int or_mem_string_pick_header_type (int length, int size) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_put_mem_string_header (char *mem, int length, int size) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_get_mem_string_header (char *mem, int *length, int *size) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_mem_string_header_size (int length, int size) __attribute__ ((ALWAYS_INLINE));
@@ -2332,7 +2332,7 @@ or_get_varchar_length (OR_BUF * buf, int *rc)
  * compressed_size(out)   : The compressed size of the string. Set to 0 if the string was not compressed.
  * decompressed_size(out) : The uncompressed size of the string.
  *
- * Note: Body delegates to or_get_string_header (the unified type_header parser);
+ * Note: Body delegates to or_get_string_header (the unified header_type parser);
  *       passes NULL for the length out-param since this helper only exposes sizes.
  */
 STATIC_INLINE int
@@ -2352,7 +2352,7 @@ or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *dec
  *                        (only emitted for MEDIUM / LARGE tiers)
  *
  * Note:
- *   Selects type_header via or_string_pick_type_header() — same dispatch as
+ *   Selects header_type via or_string_pick_header_type() — same dispatch as
  *   or_string_header_size — and emits 1 / 4 / 6 / 12 bytes accordingly.
  *
  *   Uses byte-level emit (OR_PUT_* + or_put_data) instead of or_put_int / or_put_short
@@ -2363,16 +2363,16 @@ or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *dec
 STATIC_INLINE int
 or_put_string_header (OR_BUF * buf, int length, int size, int compressed_size)
 {
-  switch (or_string_pick_type_header (length, size))
+  switch (or_string_pick_header_type (length, size))
     {
-    case OR_STRING_TYPE_HEADER_TINY:
+    case OR_STRING_HEADER_TYPE_TINY:
       {
 	char header_buf[OR_DISK_STRING_TINY_HEADER_SIZE];
 	OR_DISK_STRING_PUT_TINY_HEADER (header_buf, length, size);
 	return or_put_data (buf, header_buf, OR_DISK_STRING_TINY_HEADER_SIZE);
       }
 
-    case OR_STRING_TYPE_HEADER_SMALL:
+    case OR_STRING_HEADER_TYPE_SMALL:
       {
 	char header_buf[OR_DISK_STRING_SMALL_HEADER_SIZE];
 	OR_DISK_STRING_PUT_SMALL_LEAD (header_buf, length);
@@ -2380,7 +2380,7 @@ or_put_string_header (OR_BUF * buf, int length, int size, int compressed_size)
 	return or_put_data (buf, header_buf, OR_DISK_STRING_SMALL_HEADER_SIZE);
       }
 
-    case OR_STRING_TYPE_HEADER_MEDIUM:
+    case OR_STRING_HEADER_TYPE_MEDIUM:
       {
 	char header_buf[OR_DISK_STRING_MEDIUM_HEADER_SIZE];
 	OR_DISK_STRING_PUT_MEDIUM_LEAD (header_buf, length);
@@ -2389,7 +2389,7 @@ or_put_string_header (OR_BUF * buf, int length, int size, int compressed_size)
 	return or_put_data (buf, header_buf, OR_DISK_STRING_MEDIUM_HEADER_SIZE);
       }
 
-    case OR_STRING_TYPE_HEADER_LARGE:
+    case OR_STRING_HEADER_TYPE_LARGE:
       {
 	char header_buf[OR_DISK_STRING_LARGE_HEADER_SIZE];
 	OR_DISK_STRING_PUT_LARGE_LEAD (header_buf, length);
@@ -2414,7 +2414,7 @@ or_put_string_header (OR_BUF * buf, int length, int size, int compressed_size)
  *   compressed_size(out) : LZ4-compressed byte count, 0 when stored uncompressed   (NULL to skip)
  *
  * Note:
- *   Peeks byte 0 to dispatch on the top 2 bits (type_header), then consumes
+ *   Peeks byte 0 to dispatch on the top 2 bits (header_type), then consumes
  *   1 / 4 / 6 / 12 bytes accordingly. For MEDIUM_* and LARGE the peek is not
  *   advanced — the full N-byte read includes byte 0 again, since the type bits
  *   share the first word/short with the length bits.
@@ -2432,26 +2432,26 @@ or_get_string_header (OR_BUF * buf, int *length, int *size, int *compressed_size
 {
   int rc;
   int tmp_length = 0, tmp_size = 0, tmp_csize = 0;
-  unsigned int type_header;
+  unsigned int header_type;
   unsigned char peek_byte;
 
   /* Peek byte 0 — does NOT advance buf->ptr. */
   assert (buf->ptr + OR_BYTE_SIZE <= buf->endptr);
   peek_byte = (unsigned char) OR_GET_BYTE (buf->ptr);
-  type_header = (unsigned int) peek_byte >> OR_STRING_TYPE_HEADER_SHIFT_IN_BYTE;
+  header_type = (unsigned int) peek_byte >> OR_STRING_HEADER_TYPE_SHIFT_IN_BYTE;
 
   /* Parse into locals via the OR_DISK_STRING_GET_* accessors;
    * commit (NULL = skip) happens once at the bottom. */
-  switch (type_header)
+  switch (header_type)
     {
-    case OR_STRING_TYPE_HEADER_TINY:
+    case OR_STRING_HEADER_TYPE_TINY:
       /* TINY: 1 byte — entire header already in peek_byte */
       tmp_length = OR_DISK_STRING_GET_TINY_LENGTH (peek_byte);
       tmp_size = OR_DISK_STRING_GET_TINY_SIZE (peek_byte);
       buf->ptr += OR_BYTE_SIZE;
       break;
 
-    case OR_STRING_TYPE_HEADER_SMALL:
+    case OR_STRING_HEADER_TYPE_SMALL:
       {
 	char header_buf[OR_DISK_STRING_SMALL_HEADER_SIZE];
 	rc = or_get_data (buf, header_buf, OR_DISK_STRING_SMALL_HEADER_SIZE);
@@ -2464,7 +2464,7 @@ or_get_string_header (OR_BUF * buf, int *length, int *size, int *compressed_size
 	break;
       }
 
-    case OR_STRING_TYPE_HEADER_MEDIUM:
+    case OR_STRING_HEADER_TYPE_MEDIUM:
       {
 	char header_buf[OR_DISK_STRING_MEDIUM_HEADER_SIZE];
 	rc = or_get_data (buf, header_buf, OR_DISK_STRING_MEDIUM_HEADER_SIZE);
@@ -2478,7 +2478,7 @@ or_get_string_header (OR_BUF * buf, int *length, int *size, int *compressed_size
 	break;
       }
 
-    case OR_STRING_TYPE_HEADER_LARGE:
+    case OR_STRING_HEADER_TYPE_LARGE:
       {
 	char header_buf[OR_DISK_STRING_LARGE_HEADER_SIZE];
 	rc = or_get_data (buf, header_buf, OR_DISK_STRING_LARGE_HEADER_SIZE);
@@ -2514,9 +2514,9 @@ or_get_string_header (OR_BUF * buf, int *length, int *size, int *compressed_size
 }
 
 /*
- * or_string_pick_type_header() - Single source of truth for type_header dispatch.
+ * or_string_pick_header_type() - Single source of truth for header_type dispatch.
  *
- *   return     : OR_STRING_TYPE_HEADER_{TINY,SMALL,MEDIUM,LARGE}
+ *   return     : OR_STRING_HEADER_TYPE_{TINY,SMALL,MEDIUM,LARGE}
  *   length(in) : character count
  *   size(in)   : decompressed byte count
  *
@@ -2532,21 +2532,21 @@ or_get_string_header (OR_BUF * buf, int *length, int *size, int *compressed_size
  *   consistent. ALWAYS_INLINE makes this zero-cost at the call site.
  */
 STATIC_INLINE unsigned int
-or_string_pick_type_header (int length, int size)
+or_string_pick_header_type (int length, int size)
 {
   if (size <= OR_DISK_STRING_TINY_MAX_SIZE && length <= OR_DISK_STRING_TINY_MAX_LENGTH)
     {
-      return OR_STRING_TYPE_HEADER_TINY;
+      return OR_STRING_HEADER_TYPE_TINY;
     }
   if (size <= OR_DISK_STRING_SMALL_MAX_SIZE)
     {
-      return OR_STRING_TYPE_HEADER_SMALL;
+      return OR_STRING_HEADER_TYPE_SMALL;
     }
   if (size <= OR_DISK_STRING_MEDIUM_MAX_SIZE && length <= OR_DISK_STRING_MEDIUM_MAX_LENGTH)
     {
-      return OR_STRING_TYPE_HEADER_MEDIUM;
+      return OR_STRING_HEADER_TYPE_MEDIUM;
     }
-  return OR_STRING_TYPE_HEADER_LARGE;
+  return OR_STRING_HEADER_TYPE_LARGE;
 }
 
 /*
@@ -2560,7 +2560,7 @@ or_string_pick_type_header (int length, int size)
  *
  * Note:
  *   Mirrors or_put_string_header / or_get_string_header — uses the same
- *   or_string_pick_type_header() dispatch so the predicted byte count always
+ *   or_string_pick_header_type() dispatch so the predicted byte count always
  *   matches what the emitter actually writes.
  */
 STATIC_INLINE int
@@ -2568,15 +2568,15 @@ or_string_header_size (int length, int size, int compressed_size)
 {
   (void) compressed_size;
 
-  switch (or_string_pick_type_header (length, size))
+  switch (or_string_pick_header_type (length, size))
     {
-    case OR_STRING_TYPE_HEADER_TINY:
+    case OR_STRING_HEADER_TYPE_TINY:
       return OR_DISK_STRING_TINY_HEADER_SIZE;
-    case OR_STRING_TYPE_HEADER_SMALL:
+    case OR_STRING_HEADER_TYPE_SMALL:
       return OR_DISK_STRING_SMALL_HEADER_SIZE;
-    case OR_STRING_TYPE_HEADER_MEDIUM:
+    case OR_STRING_HEADER_TYPE_MEDIUM:
       return OR_DISK_STRING_MEDIUM_HEADER_SIZE;
-    case OR_STRING_TYPE_HEADER_LARGE:
+    case OR_STRING_HEADER_TYPE_LARGE:
       return OR_DISK_STRING_LARGE_HEADER_SIZE;
     default:
       assert (false);
@@ -2585,9 +2585,9 @@ or_string_header_size (int length, int size, int compressed_size)
 }
 
 /*
- * or_mem_string_pick_type_header() - Mem-only type_header dispatch (3 tiers, no compression).
+ * or_mem_string_pick_header_type() - Mem-only header_type dispatch (3 tiers, no compression).
  *
- *   return     : OR_STRING_TYPE_HEADER_{TINY, SMALL, LARGE} (never MEDIUM)
+ *   return     : OR_STRING_HEADER_TYPE_{TINY, SMALL, LARGE} (never MEDIUM)
  *   length(in) : character count
  *   size(in)   : byte count (always raw — mem path never compresses)
  *
@@ -2598,17 +2598,17 @@ or_string_header_size (int length, int size, int compressed_size)
  *   disk dispatch.
  */
 STATIC_INLINE unsigned int
-or_mem_string_pick_type_header (int length, int size)
+or_mem_string_pick_header_type (int length, int size)
 {
   if (size <= OR_MEM_STRING_TINY_MAX_SIZE && length <= OR_MEM_STRING_TINY_MAX_LENGTH)
     {
-      return OR_STRING_TYPE_HEADER_TINY;
+      return OR_STRING_HEADER_TYPE_TINY;
     }
   if (size <= OR_MEM_STRING_SMALL_MAX_SIZE && length <= OR_MEM_STRING_SMALL_MAX_LENGTH)
     {
-      return OR_STRING_TYPE_HEADER_SMALL;
+      return OR_STRING_HEADER_TYPE_SMALL;
     }
-  return OR_STRING_TYPE_HEADER_LARGE;
+  return OR_STRING_HEADER_TYPE_LARGE;
 }
 
 /*
@@ -2617,13 +2617,13 @@ or_mem_string_pick_type_header (int length, int size)
 STATIC_INLINE int
 or_mem_string_header_size (int length, int size)
 {
-  switch (or_mem_string_pick_type_header (length, size))
+  switch (or_mem_string_pick_header_type (length, size))
     {
-    case OR_STRING_TYPE_HEADER_TINY:
+    case OR_STRING_HEADER_TYPE_TINY:
       return OR_MEM_STRING_TINY_HEADER_SIZE;
-    case OR_STRING_TYPE_HEADER_SMALL:
+    case OR_STRING_HEADER_TYPE_SMALL:
       return OR_MEM_STRING_SMALL_HEADER_SIZE;
-    case OR_STRING_TYPE_HEADER_LARGE:
+    case OR_STRING_HEADER_TYPE_LARGE:
       return OR_MEM_STRING_LARGE_HEADER_SIZE;
     default:
       assert (false);
@@ -2641,24 +2641,24 @@ or_mem_string_header_size (int length, int size)
  *   size(in)  : byte count (always raw — mem path never compresses)
  *
  * Note:
- *   Writes 1 / 4 / 8 bytes per or_mem_string_pick_type_header directly to `mem`
+ *   Writes 1 / 4 / 8 bytes per or_mem_string_pick_header_type directly to `mem`
  *   via OR_MEM_STRING_PUT_* macros. No OR_BUF, no bounds check, no advance.
  */
 STATIC_INLINE int
 or_put_mem_string_header (char *mem, int length, int size)
 {
-  switch (or_mem_string_pick_type_header (length, size))
+  switch (or_mem_string_pick_header_type (length, size))
     {
-    case OR_STRING_TYPE_HEADER_TINY:
+    case OR_STRING_HEADER_TYPE_TINY:
       OR_MEM_STRING_PUT_TINY_HEADER (mem, length, size);
       return NO_ERROR;
 
-    case OR_STRING_TYPE_HEADER_SMALL:
+    case OR_STRING_HEADER_TYPE_SMALL:
       OR_MEM_STRING_PUT_SMALL_LEAD (mem, length);
       OR_MEM_STRING_PUT_SMALL_SIZE (mem, size);
       return NO_ERROR;
 
-    case OR_STRING_TYPE_HEADER_LARGE:
+    case OR_STRING_HEADER_TYPE_LARGE:
       OR_MEM_STRING_PUT_LARGE_LEAD (mem, length);
       OR_MEM_STRING_PUT_LARGE_SIZE (mem, size);
       return NO_ERROR;
@@ -2672,7 +2672,7 @@ or_put_mem_string_header (char *mem, int length, int size)
 /*
  * or_get_mem_string_header() - Read the mem string header.
  *
- *   return    : NO_ERROR or ER_FAILED (invalid type_header — corruption or
+ *   return    : NO_ERROR or ER_FAILED (invalid header_type — corruption or
  *               disk image mistakenly fed to a mem helper)
  *   mem(in)   : raw memory pointer at the header start
  *   length(out): character count   (NULL to skip)
@@ -2688,33 +2688,33 @@ STATIC_INLINE int
 or_get_mem_string_header (char *mem, int *length, int *size)
 {
   int tmp_length = 0, tmp_size = 0;
-  unsigned int type_header;
+  unsigned int header_type;
   unsigned char peek_byte;
 
   peek_byte = (unsigned char) OR_GET_BYTE (mem);
-  type_header = (unsigned int) peek_byte >> OR_STRING_TYPE_HEADER_SHIFT_IN_BYTE;
+  header_type = (unsigned int) peek_byte >> OR_STRING_HEADER_TYPE_SHIFT_IN_BYTE;
 
   /* Parse into locals via OR_MEM_STRING_GET_* accessors; commit at bottom. */
-  switch (type_header)
+  switch (header_type)
     {
-    case OR_STRING_TYPE_HEADER_TINY:
+    case OR_STRING_HEADER_TYPE_TINY:
       /* TINY: 1 byte — entire header already in peek_byte */
       tmp_length = OR_MEM_STRING_GET_TINY_LENGTH (peek_byte);
       tmp_size = OR_MEM_STRING_GET_TINY_SIZE (peek_byte);
       break;
 
-    case OR_STRING_TYPE_HEADER_SMALL:
+    case OR_STRING_HEADER_TYPE_SMALL:
       tmp_length = OR_MEM_STRING_GET_SMALL_LENGTH (mem);
       tmp_size = OR_MEM_STRING_GET_SMALL_SIZE (mem);
       break;
 
-    case OR_STRING_TYPE_HEADER_LARGE:
+    case OR_STRING_HEADER_TYPE_LARGE:
       tmp_length = OR_MEM_STRING_GET_LARGE_LENGTH (mem);
       tmp_size = OR_MEM_STRING_GET_LARGE_SIZE (mem);
       break;
 
-    case OR_STRING_TYPE_HEADER_MEDIUM:
-      /* Invalid for mem — MEDIUM is a disk-only type_header. mem path
+    case OR_STRING_HEADER_TYPE_MEDIUM:
+      /* Invalid for mem — MEDIUM is a disk-only header_type. mem path
        * never compresses, so seeing it here indicates the helper was called on a
        * disk image (use or_get_string_header instead). */
       assert (false);
@@ -2924,11 +2924,11 @@ or_skip_varbit (OR_BUF * buf, int align)
  *    buf(in/out): or buffer
  *    align(in):
  *
- * Note: Reads the unified string type_header (TINY / SMALL /
+ * Note: Reads the unified string header_type (TINY / SMALL /
  *       MEDIUM / LARGE), then advances past the data bytes
  *       (compressed_size when compressed, decompressed size otherwise) plus the
  *       trailing NUL + align32 padding via or_skip_varchar_remainder. Body is
- *       type_header-agnostic — or_get_string_header handles dispatch.
+ *       header_type-agnostic — or_get_string_header handles dispatch.
  */
 STATIC_INLINE int
 or_skip_varchar (OR_BUF * buf, int align)
