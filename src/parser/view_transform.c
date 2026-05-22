@@ -4937,6 +4937,11 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
 	{
 	  new_query->info.query.order_by = parser_copy_tree_list (parser, query_spec->info.query.order_by);
 	  new_query->info.query.flag.order_siblings = query_spec->info.query.flag.order_siblings;
+
+	  if (query_spec->info.query.orderby_for != NULL)
+	    {
+	      new_query->info.query.orderby_for = parser_copy_tree_list (parser, query_spec->info.query.orderby_for);
+	    }
 	}
     }
 

@@ -23940,7 +23940,7 @@ pt_to_order_siblings_by (PARSER_CONTEXT * parser, XASL_NODE * xasl, XASL_NODE * 
 		}
 
 	      /* vclass type-cast wraps SELECT columns; CONNECT BY uses val_list column positions */
-	      if (!mapped && i < user_col_cnt)
+	      if (!mapped && base_regu != NULL && base_regu->type == TYPE_CONSTANT && i < user_col_cnt)
 		{
 		  orderby->pos_descr.pos_no = i;
 		  mapped = true;
@@ -23953,6 +23953,12 @@ pt_to_order_siblings_by (PARSER_CONTEXT * parser, XASL_NODE * xasl, XASL_NODE * 
 		}
 	      break;
 	    }
+	}
+
+      if (regu_list1 == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "order siblings by position out of range");
+	  return NULL;
 	}
     }
 
