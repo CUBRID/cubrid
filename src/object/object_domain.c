@@ -4570,9 +4570,9 @@ tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain)
   switch (desired_type)
     {
     case DB_TYPE_CHAR:
-      /* compressed_buf NULL check dropped after Step 1: CHAR storage is variable-length,
-       * no STR_SIZE(precision) padding on serialization, so a cached compressed result stays valid
-       * across in-place domain slam (src == dest). */
+      /* No compressed_buf check needed: CHAR uses the same variable-length
+       * and compression storage as VARCHAR, so the cached compressed result
+       * remains valid. */
       return (desired_precision == original_length
 	      && (original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR));
     case DB_TYPE_VARCHAR:

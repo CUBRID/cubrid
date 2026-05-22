@@ -1395,90 +1395,134 @@ extern int or_put_json_schema (OR_BUF * buf, const char *schema);
   ((str_length) >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION && (str_length) <= LZ4_MAX_INPUT_SIZE)
 
 /*
- * VARIABLE-LENGTH STRING HEADER (shared by VARCHAR/CHAR)
+ * VARIABLE-LENGTH STRING HEADER on disk (used by both VARCHAR and CHAR)
  *
- *   <----------- 4-byte first word ------------>  <-- 4 --> <-- 4 -->
- *   [ tt | length (30 bit)                     ]  [ size  ] [ c_sz ]  [ data + padding ]
+ * The header begins with a 2-bit header type field stored in the top
+ * 2 bits of the first byte. The header type determines which of the
+ * following four header formats is used.
  *
- * tt (header_type, top 2 bits of first word — or first byte for TINY):
- *   selects the small/medium/large tier. Dispatch is size-driven (matches the
- *   compression boundary at size >= 255); TINY adds a length guard because its
- *   2-bit length field cannot represent 4+ chars (e.g. ASCII "abcd" — size 4,
- *   length 4 — falls back to SMALL).
+ * Each format is optimized to minimize header overhead for different
+ * string size ranges:
  *
- *     TINY               (0b00) : 1-byte  header, size 0 ~ 12,      length 0 ~ 3       (uncompressed)
- *     SMALL (0b01) : 4-byte  header, size 1 ~ 254,     length 1 ~ 254     (uncompressed)
- *     MEDIUM   (0b11) : 6-byte  header, size 255 ~ 65535, length 64 ~ 16383  (compressed)
- *     LARGE               (0b10) : 12-byte header, size 65536 ~ 4G,  length 16384 ~ 1G  (always compressed)
+ *   TINY   ( 1 byte ) : [ header type(2bit) | length(2bit) | size(4bit) ]
+ *   SMALL  ( 4 bytes) : [ header type(2bit) | length(14bit) ][ size(16bit) ]
+ *   MEDIUM ( 6 bytes) : [ header type(2bit) | length(14bit) ][ size(16bit) ][ compressed_size(16bit) ]
+ *   LARGE  (12 bytes) : [ header type(2bit) | length(30bit) ][ size(32bit) ][ compressed_size(32bit) ]
  *
+ * After the header, the string payload follows:
+ *   - size bytes when stored in uncompressed form
+ *   - compressed_size bytes when stored in compressed form
+ *
+ * Field meanings:
  * length          : character count
  * size            : decompressed byte count (includes CHAR trailing-space padding)
- * compressed_size : LZ4-compressed byte count; 0 when stored uncompressed
+ * compressed_size : LZ4-compressed byte count;
+ *                   0 when stored uncompressed
+ */
+
+/*
+ * Each header type is selected based on the string payload size.
+ *
+ * The TINY and SMALL formats are used for payloads smaller than the compression threshold
+ * (OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION = 255),
+ * while MEDIUM and LARGE support compressed storage.
+ *
+ * type   | bytes | length range                  | size range
+ * -------+-------+-------------------------------+-------------------------------
+ * TINY   | 1     | 0 ~ 3                         | 0 ~ 12 (13~15 reserved)
+ * SMALL  | 4     | 1 ~ 254 (255~16383 reserved)  | 13 ~ 254 (255~65535 reserved)
+ * MEDIUM | 6     | 255 ~ 16383                   | 255 ~ 65535
+ * LARGE  | 12    | 16384 ~ 1G                    | 65536 ~ 4G
  */
 #define OR_STRING_HEADER_TYPE_TINY                (0x0u)
 #define OR_STRING_HEADER_TYPE_SMALL               (0x1u)
 #define OR_STRING_HEADER_TYPE_MEDIUM              (0x2u)
 #define OR_STRING_HEADER_TYPE_LARGE               (0x3u)
 
-/* Tier bits always occupy the top 2 bits of the first *byte* (network byte order).
- * - TINY has a 1-byte header, so the header_type is read via a single-byte peek (IN_BYTE).
- * - MEDIUM_* share a 2-byte first word; reading it as a 16-bit big-endian short places
- *   the same 2 bits at the top of the short (IN_SHORT).
- * - LARGE has a 4-byte first word; after reading it as a 32-bit int, the same 2 bits
- *   appear at the top of the int (IN_INT). */
+/*
+ * Shift amounts used to place or extract the header type field.
+ *
+ * The header type always occupies the top 2 bits of the first byte,
+ * so the shift value is:
+ *   shift = (word bit width) - 2
+ *
+ *   SHIFT_IN_BYTE  (6)  : 8-bit byte
+ *                         - used when writing TINY headers
+ *                         - used when reading all header types
+ *                           (the header type can be read from the first byte alone)
+ *
+ *   SHIFT_IN_SHORT (14) : 16-bit short
+ *                         - used when writing SMALL and MEDIUM headers
+ *                           whose first header word is 2 bytes
+ *
+ *   SHIFT_IN_INT   (30) : 32-bit int
+ *                         - used when writing LARGE headers
+ *                           whose first header word is 4 bytes
+ */
 #define OR_STRING_HEADER_TYPE_SHIFT_IN_BYTE        (6)
-#define OR_STRING_HEADER_TYPE_MASK_IN_BYTE         (0x3u << OR_STRING_HEADER_TYPE_SHIFT_IN_BYTE)
-
 #define OR_STRING_HEADER_TYPE_SHIFT_IN_SHORT       (14)
-#define OR_STRING_HEADER_TYPE_MASK_IN_SHORT        (0x3u << OR_STRING_HEADER_TYPE_SHIFT_IN_SHORT)
-
 #define OR_STRING_HEADER_TYPE_SHIFT_IN_INT         (30)
-#define OR_STRING_HEADER_TYPE_MASK_IN_INT          (0x3u << OR_STRING_HEADER_TYPE_SHIFT_IN_INT)
 
-/* Per header_type length field bit-widths and TINY bit packing inside the single byte:
- *   TINY  byte  = [type(2 high) | length(2) | size(4 low)]
- *   MEDIUM short = [type(2 high) | length(14)]      (size & csize follow as 16-bit fields)
- *   LARGE  int   = [type(2 high) | length(30)]      (size & csize follow as 32-bit fields) */
+/*
+ * Bit masks used to read or write the length field of each header type
+ * by accessors (e.g. OR_DISK_STRING_GET_* / OR_DISK_STRING_PUT_*).
+ *
+ * TINY additionally requires LENGTH_SHIFT_TINY and SIZE_MASK_TINY
+ * because its length and size fields are packed into a single byte.
+ */
 #define OR_STRING_LENGTH_MASK_LARGE                (0x3FFFFFFFu)	/* 30-bit length (LARGE) */
-#define OR_STRING_LENGTH_MASK_MEDIUM               (0x3FFFu)	/* 14-bit length (both MEDIUM tiers) */
+#define OR_STRING_LENGTH_MASK_MEDIUM               (0x3FFFu)	/* 14-bit length (SMALL/MEDIUM) */
 #define OR_STRING_LENGTH_MASK_TINY                 (0x3u)	/* 2-bit length (TINY) */
-#define OR_STRING_LENGTH_SHIFT_TINY                (4)	/* TINY: length sits above the 4-bit size */
-#define OR_STRING_SIZE_MASK_TINY                   (0xFu)	/* TINY: 4-bit size in low nibble */
 
-/* header_type dispatch thresholds (size-driven, matches compression boundary at 255).
- * TINY and MEDIUM additionally require a length guard because their
- * length fields are narrower than the matching size field (e.g. ASCII "abcd"
- * is size=4 but length=4 — exceeds TINY's 2-bit length field, so it falls
- * through to SMALL). SMALL needs no length guard
- * (size ≤ 254 always fits its 14-bit length field).
- * LARGE has no explicit MAX: size goes up to UINT32 max (4G) and length up to
- * OR_STRING_LENGTH_MASK_LARGE (30-bit, ~1G). */
-#define OR_DISK_STRING_TINY_MAX_SIZE          (12)	/* 3 chars * 4-byte UTF-8 max */
-#define OR_DISK_STRING_TINY_MAX_LENGTH        (3)	/* 2-bit length field limit */
-#define OR_DISK_STRING_SMALL_MAX_SIZE         (254)	/* size < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION */
-#define OR_DISK_STRING_MEDIUM_MAX_SIZE        (65535)	/* 16-bit size/csize field limit */
-#define OR_DISK_STRING_MEDIUM_MAX_LENGTH      (16383)	/* 14-bit length field limit */
+#define OR_STRING_LENGTH_SHIFT_TINY                (4)	/* TINY: shift length above size bits */
+#define OR_STRING_SIZE_MASK_TINY                   (0xFu)	/* TINY: 4-bit size field */
 
-/* On-disk per header_type header byte counts. Field offsets are not exposed —
- * use the OR_DISK_STRING_*_LENGTH/SIZE/CSIZE accessor macros below or call
- * or_get_string_header to keep external code header_type-agnostic. */
-#define OR_DISK_STRING_TINY_HEADER_SIZE                   (1)	/* 1 byte */
-#define OR_DISK_STRING_SMALL_HEADER_SIZE                  (4)	/* 4 bytes */
-#define OR_DISK_STRING_MEDIUM_HEADER_SIZE                 (6)	/* 6 bytes */
-#define OR_DISK_STRING_LARGE_HEADER_SIZE                  (12)	/* 12 bytes */
-
-/* Disk header field accessors.
+/*
+ * Maximum size and length thresholds used by
+ * or_string_pick_header_type().
  *
- * GET_*: extract length / size / csize from a header buffer (or the TINY byte).
- *        Each macro hides the offset arithmetic, header_type bit masking, and
- *        OR_GET_* byte-order conversion.
- * PUT_*: write the encoded field into a header buffer at the right offset.
- *        LEAD pack-encodes the header_type bits with the length bits;
- *        SIZE / CSIZE are plain integer writes at fixed offsets;
- *        TINY packs the entire header (type | length | size) into one byte.
+ * Header types are primarily divided by string byte count,
+ * with the main split at the compression threshold
+ * (OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION = 255).
  *
- * Use these inside or_get_string_header / or_put_string_header so external
- * callers stay shielded from the on-disk layout details. */
+ * However, TINY and MEDIUM additionally require length checks
+ * because their length fields are narrower than their size ranges.
+ * If the length exceeds the selected type's length field limit,
+ * the next larger header type is used.
+ *
+ * Example:
+ *   ASCII "abcd" has size = 4 (fits TINY size range 0~12),
+ *   but length = 4 exceeds TINY's 2-bit length limit (max 3),
+ *   so SMALL is selected.
+ *
+ * SMALL has no MAX_LENGTH because its maximum size (254)
+ * always fits within the 14-bit length field.
+ *
+ * LARGE has no MAX_SIZE or MAX_LENGTH because it is the
+ * final header type.
+ */
+#define OR_DISK_STRING_TINY_MAX_SIZE                (12)	/* 3 chars * up to 4 bytes per UTF-8 char */
+#define OR_DISK_STRING_TINY_MAX_LENGTH              (3)	/* 2-bit length field limit */
+#define OR_DISK_STRING_SMALL_MAX_SIZE               (254)	/* below compression threshold */
+#define OR_DISK_STRING_MEDIUM_MAX_SIZE              (65535)	/* 16-bit size/csize field limit */
+#define OR_DISK_STRING_MEDIUM_MAX_LENGTH            (16383)	/* 14-bit length field limit */
+
+/* On-disk byte size of each header type's header. */
+#define OR_DISK_STRING_TINY_HEADER_SIZE             (1)
+#define OR_DISK_STRING_SMALL_HEADER_SIZE            (4)
+#define OR_DISK_STRING_MEDIUM_HEADER_SIZE           (6)
+#define OR_DISK_STRING_LARGE_HEADER_SIZE            (12)
+
+/*
+ * Disk header field accessors used by or_put_string_header()
+ * and or_get_string_header() to read or write individual
+ * header fields for each header type.
+ *
+ * GET_* read length / size / compressed_size from a header buffer.
+ * PUT_TINY_HEADER packs the entire 1-byte TINY header (type | length | size).
+ * PUT_*_LEAD writes the first header word (header type bits combined with length).
+ * PUT_*_SIZE / PUT_*_CSIZE write the corresponding field at a fixed offset.
+ */
 
 /* GET — read from buffer */
 #define OR_DISK_STRING_GET_TINY_LENGTH(b) \
@@ -1537,32 +1581,74 @@ extern int or_put_json_schema (OR_BUF * buf, const char *schema);
 #define OR_DISK_STRING_PUT_LARGE_CSIZE(buf, csize) \
   (OR_PUT_INT ((char *) (buf) + OR_INT_SIZE * 2, (int) (csize)))
 
-/* CHAR/VARCHAR in-memory header layout (NOT CLOB/BLOB; differs from disk image).
+/*
+ * CHAR/VARCHAR IN-MEMORY STRING HEADER (NOT CLOB/BLOB)
  *
- * The mem path never carries compressed bytes (see mr_setmem_char_type_common),
- * so each header_type drops the disk version's compressed_size slot:
+ * The in-memory layout differs from the on-disk layout (see line 1397) in two ways:
  *
- *     TINY               (0b00) : 1-byte header, size 0 ~ 12,     length 0 ~ 3
- *     SMALL (0b01) : 4-byte header, size 13 ~ 65535, length 0 ~ 16383
- *     LARGE               (0b10) : 8-byte header, size > 65535,    length up to 30 bits
+ *  1. In-memory strings never store compressed bytes (see mr_setmem_char_type_common()),
+ *     so the compressed_size field is removed.
  *
- * Mem reuses the disk header_type bit values (00 / 01 / 10) but never emits
- * MEDIUM (11). Mem dispatch is size-driven (no compression boundary
- * applies); MED_UNCOMPRESSED's range extends to its 16-bit size-field limit. */
-#define OR_MEM_STRING_TINY_HEADER_SIZE      (1)	/* 1 byte */
-#define OR_MEM_STRING_SMALL_HEADER_SIZE     (OR_INT_SIZE)	/* 4 bytes */
-#define OR_MEM_STRING_LARGE_HEADER_SIZE     (OR_INT_SIZE * 2)	/* 8 bytes */
+ *  2. Without a compression threshold separating SMALL
+ *     and MEDIUM, the in-memory layout uses only three
+ *     header types: TINY, SMALL, and LARGE.
+ *
+ *     SMALL therefore absorbs the uncompressed disk
+ *     MEDIUM range (size up to 65535, the 16-bit size field limit).
+ *
+ * Per-header-type byte layout:
+ *   TINY  (1 byte)  : [ type(2) | length(2) | size(4) ]
+ *   SMALL (4 bytes) : [ type(2) | length(14) ][ size(16) ]
+ *   LARGE (8 bytes) : [ type(2) | length(30) ][ size(32) ]
+ *
+ * Field meanings:
+ *   length : character count
+ *   size   : uncompressed byte count
+ */
 
+/*
+ * Maximum size and length thresholds used by or_mem_string_pick_header_type().
+ *
+ * Header type selection follows the same rules as the
+ * on-disk layout, but without a compression threshold.
+ *
+ * SMALL therefore covers all sizes up to the 16-bit size field limit (65535).
+ *
+ * LARGE has no MAX_SIZE or MAX_LENGTH because it is the final header type.
+ *
+ *   type   | bytes | length range | size range
+ *   -------+-------+--------------+--------------------------
+ *   TINY   | 1     | 0 ~ 3        | 0 ~ 12 (13~15 reserved)
+ *   SMALL  | 4     | up to 16383  | 13 ~ 65535
+ *   LARGE  | 8     | up to 30-bit | 65536 ~ UINT32_MAX
+ */
+#define OR_MEM_STRING_TINY_HEADER_SIZE      (1)
+#define OR_MEM_STRING_SMALL_HEADER_SIZE     (4)
+#define OR_MEM_STRING_LARGE_HEADER_SIZE     (8)
+
+/*
+ * Selection works the same as the on-disk version (see line 1480):
+ * size first, length checked as fallback.
+ */
 #define OR_MEM_STRING_TINY_MAX_SIZE         (12)	/* same as disk TINY */
 #define OR_MEM_STRING_TINY_MAX_LENGTH       (3)	/* 2-bit length field limit */
 #define OR_MEM_STRING_SMALL_MAX_SIZE        (65535)	/* 16-bit size field limit */
 #define OR_MEM_STRING_SMALL_MAX_LENGTH      (16383)	/* 14-bit length field limit */
 
-/* Mem header field accessors — same GET/PUT pattern as the OR_DISK_STRING_*
- * macros, but for the mem layout (no csize field, no MEDIUM tier).
- * TINY / SMALL have identical byte layouts on disk and mem, so
- * their accessors delegate to the disk versions; LARGE differs (8 byte vs 12
- * byte) and gets its own. */
+/*
+ * In-memory header field accessors.
+ *
+ * These follow the same GET/PUT pattern as OR_DISK_STRING_*,
+ * but the in-memory layout has no compressed_size field and
+ * no MEDIUM header type.
+ *
+ * TINY and SMALL use the same layout as the on-disk version,
+ * so their accessors reuse the disk macros.
+ *
+ * LARGE uses a different layout size (8 bytes instead of 12, 
+ * with no compressed_size field), so it defines separate 
+ * GET/PUT accessors.
+ */
 
 /* GET — read from buffer */
 #define OR_MEM_STRING_GET_TINY_LENGTH(b)          (OR_DISK_STRING_GET_TINY_LENGTH (b))
@@ -2349,16 +2435,21 @@ or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *dec
  *   length(in)          : character count
  *   size(in)            : decompressed byte count
  *   compressed_size(in) : LZ4-compressed byte count; 0 when stored uncompressed
- *                        (only emitted for MEDIUM / LARGE tiers)
+ *                        (only present in MEDIUM and LARGE headers)
  *
  * Note:
- *   Selects header_type via or_string_pick_header_type() — same dispatch as
- *   or_string_header_size — and emits 1 / 4 / 6 / 12 bytes accordingly.
+ *   The header type is selected by or_string_pick_header_type()
+ *   using the same rule as or_string_header_size(), and the
+ *   corresponding 1 / 4 / 6 / 12-byte header is written.
  *
- *   Uses byte-level emit (OR_PUT_* + or_put_data) instead of or_put_int / or_put_short
- *   so the header can be written from CHAR_ALIGNMENT contexts (e.g.
- *   mr_index_writeval_string), where buf->ptr is not guaranteed to be word aligned;
- *   or_put_int / or_put_short assert alignment.
+ *   The header is written using byte-level operations
+ *   (OR_PUT_* + or_put_data) instead of or_put_int() /
+ *   or_put_short() because this function may be called from
+ *   CHAR_ALIGNMENT contexts (e.g. mr_index_writeval_string())
+ *   where buf->ptr is not guaranteed to be word aligned.
+ *
+ *   or_put_int() / or_put_short() require aligned access
+ *   and assert on unaligned buffers.
  */
 STATIC_INLINE int
 or_put_string_header (OR_BUF * buf, int length, int size, int compressed_size)
@@ -2411,21 +2502,27 @@ or_put_string_header (OR_BUF * buf, int length, int size, int compressed_size)
  *   buf(in/out)          : or buffer
  *   length(out)          : character count   (NULL to skip)
  *   size(out)            : decompressed byte count   (NULL to skip)
- *   compressed_size(out) : LZ4-compressed byte count, 0 when stored uncompressed   (NULL to skip)
+ *   compressed_size(out) : LZ4-compressed byte count, 0 when stored uncompressed
+ *                          (only present in MEDIUM and LARGE headers; NULL to skip)
  *
  * Note:
- *   Peeks byte 0 to dispatch on the top 2 bits (header_type), then consumes
- *   1 / 4 / 6 / 12 bytes accordingly. For MEDIUM_* and LARGE the peek is not
- *   advanced — the full N-byte read includes byte 0 again, since the type bits
- *   share the first word/short with the length bits.
+ *   Byte 0 is first peeked to determine the header type from
+ *   its top 2 bits, then the corresponding 1 / 4 / 6 / 12-byte
+ *   header is read.
  *
- *   Each output pointer is independently optional; pass NULL when the caller
- *   only needs the buf->ptr advance (data start) or a subset of fields.
+ *   For SMALL, MEDIUM, and LARGE, the peek does not advance
+ *   buf->ptr, so the subsequent read includes byte 0 again.
+ *   The header type bits therefore share the first word
+ *   with the length bits.
  *
- *   Uses byte-level reads (or_get_data + OR_GET_*) instead of or_get_int /
- *   or_get_short so the header can be parsed from CHAR_ALIGNMENT contexts
- *   (e.g. mr_index_readval_string), where buf->ptr is not guaranteed to be
- *   word aligned; or_get_int / or_get_short assert alignment.
+ *   The header is read using byte-level operations
+ *   (or_get_data() + OR_GET_*) instead of or_get_int() /
+ *   or_get_short() because this function may be called from
+ *   CHAR_ALIGNMENT contexts (e.g. mr_index_readval_string())
+ *   where buf->ptr is not guaranteed to be word aligned.
+ *
+ *   or_get_int() / or_get_short() require aligned access
+ *   and assert on unaligned buffers.
  */
 STATIC_INLINE int
 or_get_string_header (OR_BUF * buf, int *length, int *size, int *compressed_size)
@@ -2514,22 +2611,22 @@ or_get_string_header (OR_BUF * buf, int *length, int *size, int *compressed_size
 }
 
 /*
- * or_string_pick_header_type() - Single source of truth for header_type dispatch.
+ * or_string_pick_header_type() - Select the header type used for a
+ *                                string of given length and size.
  *
  *   return     : OR_STRING_HEADER_TYPE_{TINY,SMALL,MEDIUM,LARGE}
  *   length(in) : character count
  *   size(in)   : decompressed byte count
  *
  * Note:
- *   Dispatch is size-driven (matches the compression boundary at size >= 255).
- *   TINY adds a length guard because its 2-bit length field cannot represent
- *   4+ chars: e.g. ASCII "abcd" has size=4 but length=4, so it falls through
- *   to SMALL. MEDIUM needs the same kind of guard
- *   for its 14-bit length field (long ASCII >= 16384 chars falls through to
- *   LARGE); SMALL needs none (size cap 254 always fits 14 bits).
+ *   Selects the smallest header type that can represent both
+ *   the string size and length.
  *
- *   Used by or_string_header_size and or_put_string_header so emit/size stay
- *   consistent. ALWAYS_INLINE makes this zero-cost at the call site.
+ *   See line 1480 for the detailed selection rule.
+ *
+ *   Shared by or_string_header_size() and
+ *   or_put_string_header() so the computed header size
+ *   always matches the actual written layout.
  */
 STATIC_INLINE unsigned int
 or_string_pick_header_type (int length, int size)
@@ -2585,17 +2682,30 @@ or_string_header_size (int length, int size, int compressed_size)
 }
 
 /*
- * or_mem_string_pick_header_type() - Mem-only header_type dispatch (3 tiers, no compression).
+ * or_mem_string_pick_header_type() - Select the header type used for
+ *                                    an in-memory string of given
+ *                                    length and size.
  *
  *   return     : OR_STRING_HEADER_TYPE_{TINY, SMALL, LARGE} (never MEDIUM)
  *   length(in) : character count
- *   size(in)   : byte count (always raw — mem path never compresses)
+ *   size(in)   : byte count (always uncompressed in memory)
  *
  * Note:
- *   Mem dispatch is size-driven without the compression boundary at 255; instead
- *   MED_UNCOMPRESSED is extended to its 16-bit size-field limit (65535). LARGE is
- *   reached only above that. TINY still requires the 2-bit length guard, same as
- *   disk dispatch.
+ *   In-memory strings are never compressed, so the
+ *   MEDIUM header type is not used.
+ *
+ *   The remaining header types follow the same
+ *   selection rule as or_string_pick_header_type():
+ *   SMALL covers all sizes up to the 16-bit size
+ *   field limit (65535), and anything larger uses
+ *   LARGE.
+ *
+ *   See line 1629 for the detailed selection rule.
+ *
+ *   Shared by or_mem_string_header_size() and
+ *   or_put_mem_string_header() so the computed
+ *   header size always matches the actual written
+ *   layout.
  */
 STATIC_INLINE unsigned int
 or_mem_string_pick_header_type (int length, int size)
@@ -2632,17 +2742,26 @@ or_mem_string_header_size (int length, int size)
 }
 
 /*
- * or_put_mem_string_header() - Write the mem string header (no compressed_size).
+ * or_put_mem_string_header() - Write the in-memory string header
+ *                              (no compressed_size field).
  *
- *   return    : NO_ERROR (cannot fail — caller-controlled mem; defensive int return for API parity with get)
- *   mem(out)  : raw memory pointer; caller must guarantee at least
- *               or_mem_string_header_size(length, size) bytes available
- *   length(in): character count
- *   size(in)  : byte count (always raw — mem path never compresses)
+ *   return     : NO_ERROR (cannot fail; int return type kept for
+ *                API parity with or_get_mem_string_header())
+ *   mem(out)   : caller-allocated memory buffer; must have at least
+ *                or_mem_string_header_size(length, size) bytes available
+ *   length(in) : character count
+ *   size(in)   : uncompressed byte count
  *
  * Note:
- *   Writes 1 / 4 / 8 bytes per or_mem_string_pick_header_type directly to `mem`
- *   via OR_MEM_STRING_PUT_* macros. No OR_BUF, no bounds check, no advance.
+ *   Selects the header type via
+ *   or_mem_string_pick_header_type() and writes the
+ *   corresponding 1 / 4 / 8-byte header directly to
+ *   mem using OR_MEM_STRING_PUT_* macros.
+ *
+ *   Unlike or_put_string_header(), this function does
+ *   not use OR_BUF, perform bounds checks, or advance
+ *   any pointer. The caller owns the destination buffer
+ *   and manages its lifetime.
  */
 STATIC_INLINE int
 or_put_mem_string_header (char *mem, int length, int size)
@@ -2670,19 +2789,25 @@ or_put_mem_string_header (char *mem, int length, int size)
 }
 
 /*
- * or_get_mem_string_header() - Read the mem string header.
+ * or_get_mem_string_header() - Read the in-memory string header.
  *
- *   return    : NO_ERROR or ER_FAILED (invalid header_type — corruption or
- *               disk image mistakenly fed to a mem helper)
- *   mem(in)   : raw memory pointer at the header start
+ *   return    : NO_ERROR or ER_FAILED
+ *   mem(in)   : memory pointer at the header start
  *   length(out): character count   (NULL to skip)
  *   size(out)  : byte count        (NULL to skip)
  *
  * Note:
- *   Peeks byte 0, dispatches on top 2 bits, then reads via OR_MEM_STRING_GET_*
- *   directly from `mem`. No OR_BUF, no advance. Caller computes the data start
- *   via `mem + or_mem_string_header_size(length, size)`.
- *   Refuses MEDIUM (11) — mem path must never see one.
+ *   Peeks byte 0 to determine the header type from its
+ *   top 2 bits, then reads the corresponding 1 / 4 / 8-byte
+ *   header directly from mem using OR_MEM_STRING_GET_* macros.
+ *
+ *   Unlike or_get_string_header(), this function does
+ *   not use OR_BUF or advance any pointer. The caller
+ *   computes the data start as:
+ *     mem + or_mem_string_header_size(length, size)
+ *
+ *   MEDIUM is rejected because the in-memory layout
+ *   never uses that header type.
  */
 STATIC_INLINE int
 or_get_mem_string_header (char *mem, int *length, int *size)
@@ -2714,9 +2839,8 @@ or_get_mem_string_header (char *mem, int *length, int *size)
       break;
 
     case OR_STRING_HEADER_TYPE_MEDIUM:
-      /* Invalid for mem — MEDIUM is a disk-only header_type. mem path
-       * never compresses, so seeing it here indicates the helper was called on a
-       * disk image (use or_get_string_header instead). */
+      /* MEDIUM is disk-only; seeing it here means disk header path
+       * was mistakenly passed into mem helper. */
       assert (false);
       return ER_FAILED;
 
@@ -2883,8 +3007,8 @@ or_varbit_length_internal (int bitlen, int align)
 STATIC_INLINE int
 or_varchar_length_internal (int length, int size, int compressed_size, int align)
 {
-  /* Tier dispatch is by (length, size); the data bytes that actually live in
-   * the buffer are compressed_size when compression succeeded, raw size otherwise. */
+  /* The header type is selected by (length, size). The buffer holds
+   * compressed_size bytes when compressed_size > 0, otherwise size. */
   int header = or_string_header_size (length, size, compressed_size);
   int data = (compressed_size > 0) ? compressed_size : size;
   int len = header + data;
@@ -2924,11 +3048,14 @@ or_skip_varbit (OR_BUF * buf, int align)
  *    buf(in/out): or buffer
  *    align(in):
  *
- * Note: Reads the unified string header_type (TINY / SMALL /
- *       MEDIUM / LARGE), then advances past the data bytes
- *       (compressed_size when compressed, decompressed size otherwise) plus the
- *       trailing NUL + align32 padding via or_skip_varchar_remainder. Body is
- *       header_type-agnostic — or_get_string_header handles dispatch.
+ * Note:
+ *   Reads the string header (TINY / SMALL / MEDIUM / LARGE)
+ *   via or_get_string_header(), then advances past the data
+ *   bytes (compressed_size if present, otherwise size) and
+ *   any trailing padding via or_skip_varchar_remainder().
+ *
+ *   The body format is independent of header type because
+ *   or_get_string_header() resolves the layout internally.
  */
 STATIC_INLINE int
 or_skip_varchar (OR_BUF * buf, int align)

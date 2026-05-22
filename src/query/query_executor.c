@@ -19823,7 +19823,7 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
   char *string1 = NULL, *string2 = NULL;
   bool alloced_string1 = false, alloced_string2 = false;
 
-  /* String 1: parse the header_type-dispatched header (1 / 4 / 6 / 12 byte = TINY / SMALL / MEDIUM / LARGE) and decompress if needed. */
+  /* String 1: parse the string header (TINY / SMALL / MEDIUM / LARGE) and decompress if needed. */
   or_init (&buf1, (char *) mem1, 0);
   rc = or_get_varchar_compression_lengths (&buf1, &str1_compressed_length, &str1_decompressed_length);
   if (rc != NO_ERROR)

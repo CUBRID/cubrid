@@ -6679,15 +6679,11 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
 	  return error_status;
 	}
 
-      /* db_char_string_coerce is the common entry for any coercion that ends in
-       * a character string — SQL CAST (string ↔ string, or non-string via an
-       * intermediate ASCII string created by make_desired_string_db_value),
-       * ALTER charset / collate, cross-codeset value comparison, and padding
-       * helpers (LTRIM / RTRIM / CONCAT, etc.).
+      /* This function is reached from multiple coercion paths (CAST, ALTER
+       * charset, comparison, padding helpers), and the source value may carry
+       * a stale char_count cached under a previous codeset.
        *
-       * At this coercion boundary the cached char_count on src_string may
-       * reflect a prior codeset (e.g. after ALTER to binary), so recompute
-       * under src_codeset. */
+       * Always recompute using src_codeset to ensure correctness. */
       intl_char_count ((unsigned char *) db_get_string (src_string), db_get_string_size (src_string), src_codeset,
 		       &src_length);
 
@@ -9631,14 +9627,9 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
 		}
 	      copy_size = conv_size;
 
-	      /* After binary -> multi-byte conversion, copy_length still holds
-	       * src(binary) char_count (= byte_size). Re-derive in dest codeset
-	       * units so that `*dest_length - copy_length` padding count is
-	       * consistent. Only when padding is actually intended:
-	       *   CHAR(N) dest with room (dest_precision > copy_length).
-	       * Skipped for variable dest (VARCHAR/ENUM/VARBIT) and for
-	       * dest_precision == copy_length (e.g. ENUM lookup) where any
-	       * adjustment would inject spurious padding. */
+	      /* After binary -> multi-byte conversion, copy_length is still in
+	       * source binary bytes. Recompute in dest codeset so padding count
+	       * (*dest_length - copy_length) is correct. */
 	      if (dest_type == DB_TYPE_CHAR && dest_precision > copy_length)
 		{
 		  intl_char_count (*dest, copy_size, dest_codeset, &copy_length);
