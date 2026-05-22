@@ -58,17 +58,38 @@ extern int get_requested_classes (const char *input_filename, DB_OBJECT * class_
 #define PRINT_IDENTIFIER_WITH_QUOTE(s) "\"", (s), "\""
 #define PRINT_FUNCTION_INDEX_NAME(s) "\"", (s), "\""
 
-#define PRINT_OWNER_NAME(owner, print, output_owner, output_len) \
-do \
-  { \
-  size_t total_len = strlen (owner) + 4; \
-  assert (strlen ((owner)) < STATIC_CAST (int, output_len)); \
-  if (print) \
-      snprintf (output_owner, total_len, "%s%s%s%s", PRINT_IDENTIFIER (owner), "."); \
-  else \
-    strcpy(output_owner, ""); \
-  } \
-while (0)
+/* Suppress GCC -Wformat-truncation warnings */
+#if defined(__GNUC__) || defined(__clang__)
+#define DISABLE_FMT_TRUNC_WARNING \
+  _Pragma("GCC diagnostic push") \
+  _Pragma("GCC diagnostic ignored \"-Wformat-truncation\"")
+
+#define ENABLE_FMT_TRUNC_WARNING \
+  _Pragma("GCC diagnostic pop")
+#else
+#define DISABLE_FMT_TRUNC_WARNING
+#define ENABLE_FMT_TRUNC_WARNING
+#endif
+
+inline void
+print_owner_name (const char *owner, bool print, char *output_owner, size_t output_len)
+{
+  assert (((int) strlen (owner) + 4) < STATIC_CAST (int, output_len));
+  // *INDENT_OFF*
+  DISABLE_FMT_TRUNC_WARNING 
+  if (print)
+    {
+      snprintf (output_owner, output_len, "%s%s%s%s", PRINT_IDENTIFIER (owner), ".");
+    }
+  else
+    {
+      strcpy (output_owner, "");
+    }
+  ENABLE_FMT_TRUNC_WARNING
+   // *INDENT-ON*
+}
+
+#define PRINT_OWNER_NAME(owner, print, output_owner, output_len) print_owner_name(owner, print, output_owner, output_len)
 
 /* 
  * name is user_specified_name.
