@@ -767,19 +767,40 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
 	      }
 	    if (hash_build_attrs != NULL && hash_probe_attrs != NULL)
 	      {
-		/* null current_class so regu vars resolve to TYPE_CONSTANT (val_list) not TYPE_ATTR_ID (heap cache) */
-		PT_NODE *saved_current_class = parser->symbols->current_class;
-		parser->symbols->current_class = NULL;
+		/* only use hash when ALL CONNECT BY conditions are hashable equalities.
+		 * non-hashable conditions (e.g., id<=440000) cannot be evaluated during
+		 * hash probe because where_pred uses TYPE_ATTR_ID regu vars. */
+		int n_hash = 0, n_total = 0;
+		PT_NODE *p;
+		for (p = hash_build_attrs; p; p = p->next)
+		  {
+		    n_hash++;
+		  }
+		for (p = hash_pred_wo; p; p = p->next)
+		  {
+		    n_total++;
+		  }
 
-		connect_by->hash_build_regu_list =
-		  pt_to_regu_variable_list (parser, hash_build_attrs, UNBOX_AS_VALUE, xasl->val_list, NULL);
-		connect_by->hash_probe_regu_list =
-		  pt_to_regu_variable_list (parser, hash_probe_attrs, UNBOX_AS_VALUE, xasl->val_list, NULL);
+		if (n_total <= n_hash)
+		  {
+		    PT_NODE *saved_current_class = parser->symbols->current_class;
+		    parser->symbols->current_class = NULL;
 
-		parser->symbols->current_class = saved_current_class;
+		    connect_by->hash_build_regu_list =
+		      pt_to_regu_variable_list (parser, hash_build_attrs, UNBOX_AS_VALUE, xasl->val_list, NULL);
+		    connect_by->hash_probe_regu_list =
+		      pt_to_regu_variable_list (parser, hash_probe_attrs, UNBOX_AS_VALUE, xasl->val_list, NULL);
+
+		    parser->symbols->current_class = saved_current_class;
+		  }
+		else
+		  {
+		    connect_by->use_hash_for_hq = false;
+		  }
 	      }
 	    if (connect_by->hash_build_regu_list == NULL || connect_by->hash_probe_regu_list == NULL)
 	      {
+		/* partial allocation is freed with parser context; just disable hash path */
 		connect_by->use_hash_for_hq = false;
 		connect_by->hash_build_regu_list = NULL;
 		connect_by->hash_probe_regu_list = NULL;
