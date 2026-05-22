@@ -8402,6 +8402,11 @@ qo_collect_transitive_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
 		    {
 		      continue;
 		    }
+		  /* DUMMY_JOIN carries no column equality; skip it. */
+		  if (QO_TERM_CLASS (term) == QO_TC_DUMMY_JOIN)
+		    {
+		      continue;
+		    }
 		  nom = QO_TERM_NOMINAL_SEG (term);
 		  if (nom == NULL || root_arr[QO_SEG_IDX (nom)] != i)
 		    {
