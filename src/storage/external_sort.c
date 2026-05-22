@@ -4707,6 +4707,9 @@ sort_merge_queue_try_dispatch (SORT_MERGE_QUEUE_CTX * qctx)
       run_a = sort_merge_queue_dequeue (qctx);
       run_b = sort_merge_queue_dequeue (qctx);
       pool_idx = sort_merge_queue_acquire_ctx (qctx);
+      /* pool_size = parallel_num/2 + 1 bounds simultaneous merges to parallel_num/2,
+       * so acquire_ctx should never fail under the current invariant. */
+      assert (pool_idx >= 0);
       sort_merge_queue_setup_ctx (pool_idx, qctx, run_a, run_b);
       qctx->in_flight++;
       ctx = &qctx->px_sort_param[pool_idx];
@@ -4796,7 +4799,13 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
     }
 
   sort_merge_queue_ctx_init (&qctx, sort_param, px_sort_param, parallel_num);
-  sort_merge_queue_enqueue_initial_runs (&qctx, px_sort_param, parallel_num);
+  {
+    /* sort_check_parallelism guarantees at least one non-empty worker run for SORT_ORDER_BY;
+     * stage_final_run below would dequeue garbage from an empty queue otherwise. */
+    int enqueued = sort_merge_queue_enqueue_initial_runs (&qctx, px_sort_param, parallel_num);
+    assert (enqueued > 0);
+    (void) enqueued;
+  }
 
   error = sort_merge_queue_run (&qctx);
   if (error != NO_ERROR)
