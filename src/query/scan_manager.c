@@ -1037,7 +1037,7 @@ scan_handle_overflow_subtraction_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * 
   else if (left_is_numeric)
     {
       /* case4 */
-      assert (right->type == TYPE_INARITH || right->type == TYPE_OUTARITH);
+      assert (right->type == TYPE_INARITH || right->type == TYPE_OUTARITH || right->type == TYPE_DBVAL);
       if (is_user_given_keylimit)
 	{
 	  /* rownum < -HUGE USING INDEX .. KEYLIMIT HUGE */
@@ -1059,7 +1059,7 @@ scan_handle_overflow_subtraction_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * 
   else
     {
       /* case2 */
-      assert (right->type == TYPE_INARITH || right->type == TYPE_OUTARITH);
+      assert (right->type == TYPE_INARITH || right->type == TYPE_OUTARITH || right->type == TYPE_DBVAL);
       tmp_dbvalp = NULL;
       if (is_user_given_keylimit)
 	{

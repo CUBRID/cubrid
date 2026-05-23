@@ -5013,6 +5013,22 @@ db_sleep (DB_VALUE * result, DB_VALUE * value)
 
   million_sec = (long) (db_get_double (value) * 1000L);
 
+  if (million_sec < 0)
+    {
+      /* When the value exceeds the range of long, it wraps around to a
+       * negative value and causes overflow.
+       * In debug builds, this fails due to an assert, while release builds
+       * eventually return 1.
+       *
+       * On the other hand, returning an error on overflow would cause the
+       * operation to fail even when the user provided a valid numeric input,
+       * which would differ from the existing behavior.
+       *
+       * Therefore, overflow cases are handled using LONG_MAX semantics.
+       */
+      million_sec = LONG_MAX;
+    }
+
   error = msleep (million_sec);
   if (error == NO_ERROR)
     {
