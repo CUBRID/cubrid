@@ -1469,9 +1469,11 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1371 A class "%1$s" cannot have all of its attributes defined as invisible. At least one visible attribute is required in the class.
 
-1372 Given scale of %1$d is invalid; it should be greater than or equal to %2$d and no greater than %3$d.
+1372 Error occurred while handling a callback. code(%1$d), msg(%2$s)
 
-1373 Last Error
+1373 Given scale of %1$d is invalid; it should be greater than or equal to %2$d and no greater than %3$d.
+
+1374 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
