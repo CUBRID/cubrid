@@ -1041,8 +1041,17 @@ scan_handle_overflow_subtraction_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * 
       if (is_user_given_keylimit)
 	{
 	  /* rownum < -HUGE USING INDEX .. KEYLIMIT HUGE */
-	  assert (right->value.arithptr != NULL && right->value.arithptr->leftptr != NULL);
-	  error_code = scan_check_user_given_keylimit_overflow (thread_p, right->value.arithptr->leftptr, vd);
+	  if (right->type == TYPE_DBVAL)
+	    {
+	      /* DBVAL holds the numeric directly — no arithmetic tree. */
+	      error_code = scan_check_user_given_keylimit_overflow (thread_p, right, vd);
+	    }
+	  else
+	    {
+	      /* Merged T_LEAST tree: numeric leaf is the left child. */
+	      assert (right->value.arithptr != NULL && right->value.arithptr->leftptr != NULL);
+	      error_code = scan_check_user_given_keylimit_overflow (thread_p, right->value.arithptr->leftptr, vd);
+	    }
 	  if (error_code != NO_ERROR)
 	    {
 	      return error_code;
@@ -1064,8 +1073,17 @@ scan_handle_overflow_subtraction_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * 
       if (is_user_given_keylimit)
 	{
 	  /* rownum < -HUGE USING INDEX .. KEYLIMIT BIGINT */
-	  assert (right->value.arithptr != NULL && right->value.arithptr->leftptr != NULL);
-	  error_code = scan_check_user_given_keylimit_overflow (thread_p, right->value.arithptr->leftptr, vd);
+	  if (right->type == TYPE_DBVAL)
+	    {
+	      /* DBVAL holds the numeric directly — no arithmetic tree. */
+	      error_code = scan_check_user_given_keylimit_overflow (thread_p, right, vd);
+	    }
+	  else
+	    {
+	      /* Merged T_LEAST tree: numeric leaf is the left child. */
+	      assert (right->value.arithptr != NULL && right->value.arithptr->leftptr != NULL);
+	      error_code = scan_check_user_given_keylimit_overflow (thread_p, right->value.arithptr->leftptr, vd);
+	    }
 	  if (error_code != NO_ERROR)
 	    {
 	      return error_code;
