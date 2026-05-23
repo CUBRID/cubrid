@@ -17836,6 +17836,17 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		break;
 	      }
 
+	    /* apply non-PRIOR filter before inserting into hash table */
+	    if (connect_by->hash_build_filter_pred != NULL)
+	      {
+		DB_LOGICAL ev_res = eval_pred (thread_p, connect_by->hash_build_filter_pred,
+					       &xasl_state->vd, NULL);
+		if (ev_res != V_TRUE)
+		  {
+		    continue;
+		  }
+	      }
+
 	    /* val_list is populated by scan; build hash key */
 	    if (qdata_build_hscan_key (thread_p, &xasl_state->vd, connect_by->hash_build_regu_list,
 				       build_key) != NO_ERROR)
@@ -17927,6 +17938,12 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   while (current_frontier->tuple_cnt > 0)
     {
       level_value++;
+
+      /* LEVEL early exit */
+      if (connect_by->max_level > 0 && level_value > connect_by->max_level)
+	{
+	  break;
+	}
 
       if (qexec_connect_by_process_level (thread_p, xasl, xasl_state, result_list, current_frontier,
 					  next_frontier, &sibling_sort_buf, &type_list, tplrec, &temp_tuple_rec,

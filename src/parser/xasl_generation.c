@@ -517,6 +517,7 @@ static PT_NODE *pt_null_xasl (PARSER_CONTEXT * parser, PT_NODE * tree, void *voi
 static PT_NODE *pt_is_spec_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *continue_walk);
 
 static PT_NODE *pt_check_hashable (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *continue_walk);
+static PT_NODE *pt_has_prior_walker (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 static PT_NODE *pt_find_hq_op_except_prior (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
@@ -713,6 +714,8 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
   connect_by->use_hash_for_hq = false;
   connect_by->hash_build_regu_list = NULL;
   connect_by->hash_probe_regu_list = NULL;
+  connect_by->hash_build_filter_pred = NULL;
+  connect_by->max_level = 0;
 
   if (connect_by->start_with_list_id == NULL || connect_by->input_list_id == NULL)
     {
@@ -720,6 +723,33 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
     }
 
   pt_set_level_node_etc (parser, select_node->info.query.q.select.connect_by, &xasl->level_val);
+
+  /* extract LEVEL <= N or LEVEL < N for early BFS exit */
+  {
+    PT_NODE *cb_pred = select_node->info.query.q.select.connect_by;
+    PT_NODE *p;
+    for (p = cb_pred; p; p = p->next)
+      {
+	if (PT_IS_EXPR_NODE (p) && p->info.expr.arg1 && p->info.expr.arg2)
+	  {
+	    PT_NODE *arg1 = p->info.expr.arg1;
+	    PT_NODE *arg2 = p->info.expr.arg2;
+	    if (arg1->node_type == PT_EXPR && arg1->info.expr.op == PT_LEVEL
+		&& arg2->node_type == PT_VALUE && arg2->type_enum == PT_TYPE_INTEGER)
+	      {
+		int val = arg2->info.value.data_value.i;
+		if (p->info.expr.op == PT_LE)
+		  {
+		    connect_by->max_level = val;
+		  }
+		else if (p->info.expr.op == PT_LT)
+		  {
+		    connect_by->max_level = val - 1;
+		  }
+	      }
+	  }
+      }
+  }
 
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (select_node->info.query.q.select.single_table_opt && OPTIMIZATION_ENABLED (level))
@@ -767,36 +797,15 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
 	      }
 	    if (hash_build_attrs != NULL && hash_probe_attrs != NULL)
 	      {
-		/* only use hash when ALL CONNECT BY conditions are hashable equalities.
-		 * non-hashable conditions (e.g., id<=440000) cannot be evaluated during
-		 * hash probe because where_pred uses TYPE_ATTR_ID regu vars. */
-		int n_hash = 0, n_total = 0;
-		PT_NODE *p;
-		for (p = hash_build_attrs; p; p = p->next)
-		  {
-		    n_hash++;
-		  }
-		for (p = hash_pred_wo; p; p = p->next)
-		  {
-		    n_total++;
-		  }
+		PT_NODE *saved_current_class = parser->symbols->current_class;
+		parser->symbols->current_class = NULL;
 
-		if (n_total <= n_hash)
-		  {
-		    PT_NODE *saved_current_class = parser->symbols->current_class;
-		    parser->symbols->current_class = NULL;
+		connect_by->hash_build_regu_list =
+		  pt_to_regu_variable_list (parser, hash_build_attrs, UNBOX_AS_VALUE, xasl->val_list, NULL);
+		connect_by->hash_probe_regu_list =
+		  pt_to_regu_variable_list (parser, hash_probe_attrs, UNBOX_AS_VALUE, xasl->val_list, NULL);
 
-		    connect_by->hash_build_regu_list =
-		      pt_to_regu_variable_list (parser, hash_build_attrs, UNBOX_AS_VALUE, xasl->val_list, NULL);
-		    connect_by->hash_probe_regu_list =
-		      pt_to_regu_variable_list (parser, hash_probe_attrs, UNBOX_AS_VALUE, xasl->val_list, NULL);
-
-		    parser->symbols->current_class = saved_current_class;
-		  }
-		else
-		  {
-		    connect_by->use_hash_for_hq = false;
-		  }
+		parser->symbols->current_class = saved_current_class;
 	      }
 	    if (connect_by->hash_build_regu_list == NULL || connect_by->hash_probe_regu_list == NULL)
 	      {
@@ -805,9 +814,60 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
 		connect_by->hash_build_regu_list = NULL;
 		connect_by->hash_probe_regu_list = NULL;
 	      }
+	    else
+	      {
+		/* extract non-PRIOR filter predicates for hash build */
+		PT_NODE *filter_preds = NULL;
+		PT_NODE *p;
+		for (p = hash_pred_wo; p; p = p->next)
+		  {
+		    bool has_prior = false;
+		    PT_NODE *save_next = p->next;
+		    p->next = NULL;
+		    parser_walk_tree (parser, p, pt_has_prior_walker, &has_prior, NULL, NULL);
+		    p->next = save_next;
+		    if (!has_prior)
+		      {
+			bool is_hash_eq = (PT_IS_EXPR_NODE_WITH_OPERATOR (p, PT_EQ) && !p->or_next);
+			if (!is_hash_eq)
+			  {
+			    filter_preds = parser_append_node (parser_copy_tree (parser, p), filter_preds);
+			  }
+		      }
+		  }
+		if (filter_preds != NULL)
+		  {
+		    PT_NODE *saved_cc = parser->symbols->current_class;
+		    parser->symbols->current_class = NULL;
+		    from = select_node->info.query.q.select.from;
+		    while (from)
+		      {
+			pt_to_pred_terms (parser, filter_preds, from->info.spec.id,
+					  &connect_by->hash_build_filter_pred);
+			from = from->next;
+		      }
+		    pt_to_pred_terms (parser, filter_preds, 0, &connect_by->hash_build_filter_pred);
+		    parser->symbols->current_class = saved_cc;
+		    parser_free_tree (parser, filter_preds);
+		  }
+	      }
 	    parser_free_tree (parser, hash_build_attrs);
 	    parser_free_tree (parser, hash_probe_attrs);
 	    parser_free_tree (parser, hash_pred_wo);
+	  }
+
+	  /* LIMIT-aware: prefer streaming scan for small constant LIMIT */
+	  {
+	    PT_NODE *limit = select_node->info.query.limit;
+	    if (limit != NULL)
+	      {
+		PT_NODE *row_count = (limit->next != NULL) ? limit->next : limit;
+		if (row_count->node_type == PT_VALUE && row_count->type_enum == PT_TYPE_INTEGER
+		    && row_count->info.value.data_value.i > 0 && row_count->info.value.data_value.i <= 1000)
+		  {
+		    connect_by->use_hash_for_hq = false;
+		  }
+	      }
 	  }
 	}
 
@@ -3623,6 +3683,20 @@ pt_check_hashable (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int 
     }
 
   return tree;
+}
+
+/*
+ * pt_has_prior_walker () - detect PT_PRIOR anywhere in subtree
+ */
+static PT_NODE *
+pt_has_prior_walker (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (node->node_type == PT_EXPR && node->info.expr.op == PT_PRIOR)
+    {
+      *(bool *) arg = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
 }
 
 /*

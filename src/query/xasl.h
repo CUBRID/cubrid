@@ -453,6 +453,8 @@ struct connectby_proc_node
   REGU_VARIABLE_LIST after_cb_regu_list_rest;	/* rest of regu vars */
   REGU_VARIABLE_LIST hash_build_regu_list;	/* hash key columns from child rows */
   REGU_VARIABLE_LIST hash_probe_regu_list;	/* hash key columns from PRIOR (parent) */
+  PRED_EXPR *hash_build_filter_pred;	/* non-PRIOR filter for hash build */
+  int max_level;		/* LEVEL limit for early BFS exit (0 = no limit) */
   bool single_table_opt;	/* single table optimizations */
   bool use_hash_for_hq;		/* hash probe for no-index connect-by key */
   QFILE_TUPLE curr_tuple;	/* needed for operators and functions */

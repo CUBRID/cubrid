@@ -6657,6 +6657,23 @@ stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *ptr, CONNECTBY_PROC_NOD
 	}
     }
 
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      stx_connectby_proc->hash_build_filter_pred = NULL;
+    }
+  else
+    {
+      stx_connectby_proc->hash_build_filter_pred =
+	stx_restore_pred_expr (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (stx_connectby_proc->hash_build_filter_pred == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &stx_connectby_proc->max_level);
+
   ptr = or_unpack_int (ptr, &tmp);
   stx_connectby_proc->single_table_opt = (bool) tmp;
   ptr = or_unpack_int (ptr, &tmp);

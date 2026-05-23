@@ -5906,6 +5906,15 @@ xts_process_connectby_proc (char *ptr, const CONNECTBY_PROC_NODE * connectby_pro
     }
   ptr = or_pack_int (ptr, offset);
 
+  offset = xts_save_pred_expr (connectby_proc->hash_build_filter_pred);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  ptr = or_pack_int (ptr, connectby_proc->max_level);
+
   ptr = or_pack_int (ptr, (int) connectby_proc->single_table_opt);
   ptr = or_pack_int (ptr, (int) connectby_proc->use_hash_for_hq);
 
@@ -7608,6 +7617,8 @@ xts_sizeof_connectby_proc (const CONNECTBY_PROC_NODE * connectby)
 	   + PTR_SIZE		/* after_cb_regu_list_rest */
 	   + PTR_SIZE		/* hash_build_regu_list */
 	   + PTR_SIZE		/* hash_probe_regu_list */
+	   + PTR_SIZE		/* hash_build_filter_pred */
+	   + OR_INT_SIZE	/* max_level */
 	   + OR_INT_SIZE	/* single_table_opt */
 	   + OR_INT_SIZE);	/* use_hash_for_hq */
 
