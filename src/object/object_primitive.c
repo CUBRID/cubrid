@@ -11379,11 +11379,18 @@ mr_setmem_char_type_common (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, 
     }
   src_length = value->data.ch.medium.length;
 
-  /* CHAR padding must already be done by the caller (qstr_coerce / loaddb).
-   * Debug: invariant check via assert. Release: helper as a safety net. */
+  /* CHAR(N) trailing padding fixup (mem/storage-side safety net).
+   *
+   * Normally the caller provides values already padded to the declared
+   * precision. However, some internal rewritten-query paths (e.g. XASL)
+   * may produce CHAR DB_VALUEs where intl_char_count() undercounts UTF-8
+   * characters, causing length < precision.
+   *
+   * Missing trailing padding is corrected here to preserve the
+   * length == precision invariant.
+   */
   if (type == DB_TYPE_CHAR && src_length < domain->precision)
     {
-      assert (false);
       rc = pr_pad_char_to_precision (value, domain->precision);
       if (rc != NO_ERROR)
 	{
@@ -11949,12 +11956,19 @@ mr_lengthval_char_type_common (DB_VALUE * value, int disk, int align)
       int char_count = db_get_string_length (value);
       assert (char_count >= 0);
 
-      /* CHAR padding must already be done by the caller (qstr_coerce / loaddb).
-       * Debug: invariant check via assert. Release: helper as a safety net. */
+      /* CHAR(N) trailing padding fixup (mem/storage-side safety net).
+       *
+       * Normally the caller provides values already padded to the declared
+       * precision. However, some internal rewritten-query paths (e.g. XASL)
+       * may produce CHAR DB_VALUEs where intl_char_count() undercounts UTF-8
+       * characters, causing length < precision.
+       *
+       * Missing trailing padding is corrected here to preserve the
+       * length == precision invariant.
+       */
       if (DB_VALUE_TYPE (value) == DB_TYPE_CHAR
 	  && !IS_FLOATING_PRECISION (DB_VALUE_PRECISION (value)) && char_count < DB_VALUE_PRECISION (value))
 	{
-	  assert (false);
 	  rc = pr_pad_char_to_precision (value, DB_VALUE_PRECISION (value));
 	  if (rc != NO_ERROR)
 	    {
@@ -12029,12 +12043,19 @@ mr_writeval_char_type_common (OR_BUF * buf, DB_VALUE * value, int align)
 	}
       src_length = value->data.ch.medium.length;
 
-      /* CHAR padding must already be done by the caller (qstr_coerce / loaddb).
-       * Debug: invariant check via assert. Release: helper as a safety net. */
+      /* CHAR(N) trailing padding fixup (mem/storage-side safety net).
+       *
+       * Normally the caller provides values already padded to the declared
+       * precision. However, some internal rewritten-query paths (e.g. XASL)
+       * may produce CHAR DB_VALUEs where intl_char_count() undercounts UTF-8
+       * characters, causing length < precision.
+       *
+       * Missing trailing padding is corrected here to preserve the
+       * length == precision invariant.
+       */
       if (DB_VALUE_TYPE (value) == DB_TYPE_CHAR
 	  && !IS_FLOATING_PRECISION (DB_VALUE_PRECISION (value)) && src_length < DB_VALUE_PRECISION (value))
 	{
-	  assert (false);
 	  rc = pr_pad_char_to_precision (value, DB_VALUE_PRECISION (value));
 	  if (rc != NO_ERROR)
 	    {
