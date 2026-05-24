@@ -6667,6 +6667,8 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
       int dest_prec;
       int dest_length;
       int dest_size;
+      int src_prec;
+      int src_length;
       INTL_CODESET src_codeset = db_get_string_codeset (src_string);
       INTL_CODESET dest_codeset = db_get_string_codeset (dest_string);
 
@@ -6677,18 +6679,29 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
 	  return error_status;
 	}
 
-      /* Initialize the memory manager of the destination */
-      if (DB_VALUE_PRECISION (dest_string) == TP_FLOATING_PRECISION_VALUE)
-	{
-	  dest_prec = db_get_string_length (src_string);
-	}
-      else
-	{
-	  dest_prec = DB_VALUE_PRECISION (dest_string);
-	}
+      /* db_char_string_coerce is the common entry for any coercion that ends in
+       * a character string — SQL CAST (string ↔ string, or non-string via an
+       * intermediate ASCII string created by make_desired_string_db_value),
+       * ALTER charset / collate, cross-codeset value comparison, and padding
+       * helpers (LTRIM / RTRIM / CONCAT, etc.).
+       *
+       * At this coercion boundary the cached char_count on src_string may
+       * reflect a prior codeset (e.g. after ALTER to binary), so recompute
+       * under src_codeset. */
+      intl_char_count ((unsigned char *) db_get_string (src_string), db_get_string_size (src_string), src_codeset,
+		       &src_length);
 
-      error_status = qstr_coerce (DB_GET_UCHAR (src_string), db_get_string_length (src_string),
-				  QSTR_VALUE_PRECISION (src_string), DB_VALUE_DOMAIN_TYPE (src_string), src_codeset,
+      /* Initialize the memory manager of the destination */
+      dest_prec =
+	(DB_VALUE_PRECISION (dest_string) ==
+	 TP_FLOATING_PRECISION_VALUE) ? src_length : DB_VALUE_PRECISION (dest_string);
+
+      /* QSTR_VALUE_PRECISION reusing src_length on floating precision to avoid a redundant char-count call. */
+      src_prec =
+	(DB_VALUE_PRECISION (src_string) == TP_FLOATING_PRECISION_VALUE) ? src_length : DB_VALUE_PRECISION (src_string);
+
+      error_status = qstr_coerce (DB_GET_UCHAR (src_string), src_length,
+				  src_prec, DB_VALUE_DOMAIN_TYPE (src_string), src_codeset,
 				  dest_codeset, &dest, &dest_length, &dest_size, dest_prec,
 				  DB_VALUE_DOMAIN_TYPE (dest_string), data_status);
 
@@ -9617,6 +9630,19 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
 		  intl_binary_to_euckr (src, copy_size, dest, &conv_size);
 		}
 	      copy_size = conv_size;
+
+	      /* After binary -> multi-byte conversion, copy_length still holds
+	       * src(binary) char_count (= byte_size). Re-derive in dest codeset
+	       * units so that `*dest_length - copy_length` padding count is
+	       * consistent. Only when padding is actually intended:
+	       *   CHAR(N) dest with room (dest_precision > copy_length).
+	       * Skipped for variable dest (VARCHAR/ENUM/VARBIT) and for
+	       * dest_precision == copy_length (e.g. ENUM lookup) where any
+	       * adjustment would inject spurious padding. */
+	      if (dest_type == DB_TYPE_CHAR && dest_precision > copy_length)
+		{
+		  intl_char_count (*dest, copy_size, dest_codeset, &copy_length);
+		}
 	    }
 	  else
 	    {
