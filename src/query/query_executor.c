@@ -17645,8 +17645,8 @@ qexec_connect_by_probe_partition (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   REGU_VARIABLE_LIST regulist;
   int n, i;
 
-  ppkey = qdata_alloc_hscan_key (thread_p, val_cnt, true);
-  pvkey = qdata_alloc_hscan_key (thread_p, val_cnt, true);
+  ppkey = qdata_alloc_hscan_key (thread_p, val_cnt, false);
+  pvkey = qdata_alloc_hscan_key (thread_p, val_cnt, false);
   if (ppkey == NULL || pvkey == NULL)
     {
       error = ER_FAILED;
@@ -17908,7 +17908,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   if (connect_by->use_hash_for_hq && connect_by->hash_build_regu_list)
     {
       QFILE_TUPLE_RECORD hash_tplrec = { NULL, 0 };
-      SCAN_CODE hash_scan;
+      SCAN_CODE hash_scan = S_SUCCESS;
       HASH_SCAN_KEY *build_key = NULL;
       HASH_SCAN_VALUE *new_value;
       unsigned int hkey;
@@ -17919,7 +17919,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	val_cnt++;
       part_val_cnt = val_cnt;
 
-      build_key = qdata_alloc_hscan_key (thread_p, val_cnt, true);
+      build_key = qdata_alloc_hscan_key (thread_p, val_cnt, false);
       if (build_key == NULL)
 	GOTO_EXIT_ON_ERROR;
 
@@ -17978,9 +17978,10 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
 	if (partition_count <= 1)
 	  {
-	    /* === IN_MEM: single hash table (existing logic) === */
-	    hash_table = mht_create_hls ("Connect By Hash", 4096, NULL, NULL);
-	    if (hash_table == NULL)
+	    /* === IN_MEM: build from input_list_id to avoid outptr_list arith re-evaluation === */
+	    HASH_SCAN_KEY *temp_build_key = NULL;
+	    if (qexec_connect_by_build_hash (thread_p, xasl, xasl_state, &hash_table, &temp_build_key,
+					     &hash_key_cnt) != NO_ERROR)
 	      {
 		xasl->spec_list->where_pred = saved_where_pred;
 		xasl->spec_list->where_key = saved_where_key;
@@ -17988,61 +17989,9 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		qdata_free_hscan_key (thread_p, build_key, val_cnt);
 		GOTO_EXIT_ON_ERROR;
 	      }
-
-	    xasl->next_scan_block_on = false;
-	    hash_scan = qexec_next_scan_block_iterations (thread_p, xasl);
-	    while (hash_scan == S_SUCCESS)
+	    if (temp_build_key != NULL)
 	      {
-		hash_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id);
-		if (hash_scan != S_SUCCESS)
-		  break;
-
-		if (connect_by->hash_build_filter_pred != NULL)
-		  {
-		    DB_LOGICAL ev_res = eval_pred (thread_p, connect_by->hash_build_filter_pred,
-						   &xasl_state->vd, NULL);
-		    if (ev_res != V_TRUE)
-		      continue;
-		  }
-
-		if (qdata_build_hscan_key (thread_p, &xasl_state->vd, connect_by->hash_build_regu_list,
-					   build_key) != NO_ERROR)
-		  {
-		    xasl->spec_list->where_pred = saved_where_pred;
-		    xasl->spec_list->where_key = saved_where_key;
-		    xasl->spec_list->access = saved_access;
-		    qdata_free_hscan_key (thread_p, build_key, val_cnt);
-		    GOTO_EXIT_ON_ERROR;
-		  }
-		hkey = qdata_hash_scan_key (build_key, UINT_MAX, HASH_METH_IN_MEM);
-
-		if (qdata_copy_valptr_list_to_tuple (thread_p, xasl->outptr_list, &xasl_state->vd,
-						     &hash_tplrec) != NO_ERROR)
-		  {
-		    xasl->spec_list->where_pred = saved_where_pred;
-		    xasl->spec_list->where_key = saved_where_key;
-		    xasl->spec_list->access = saved_access;
-		    qdata_free_hscan_key (thread_p, build_key, val_cnt);
-		    GOTO_EXIT_ON_ERROR;
-		  }
-
-		new_value = qdata_alloc_hscan_value (thread_p, hash_tplrec.tpl);
-		if (new_value == NULL)
-		  {
-		    xasl->spec_list->where_pred = saved_where_pred;
-		    xasl->spec_list->where_key = saved_where_key;
-		    xasl->spec_list->access = saved_access;
-		    qdata_free_hscan_key (thread_p, build_key, val_cnt);
-		    GOTO_EXIT_ON_ERROR;
-		  }
-		if (mht_put_hls (hash_table, (void *) &hkey, (void *) new_value) == NULL)
-		  {
-		    xasl->spec_list->where_pred = saved_where_pred;
-		    xasl->spec_list->where_key = saved_where_key;
-		    xasl->spec_list->access = saved_access;
-		    qdata_free_hscan_key (thread_p, build_key, val_cnt);
-		    GOTO_EXIT_ON_ERROR;
-		  }
+		qdata_free_hscan_key (thread_p, temp_build_key, hash_key_cnt);
 	      }
 	  }
 	else
@@ -18142,14 +18091,14 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
       if (partition_count <= 1)
 	{
-	  /* allocate probe and verify keys for IN_MEM mode */
-	  hash_probe_key = qdata_alloc_hscan_key (thread_p, val_cnt, true);
+	  /* allocate probe and verify keys for IN_MEM mode — peek pointers only */
+	  hash_probe_key = qdata_alloc_hscan_key (thread_p, val_cnt, false);
 	  if (hash_probe_key == NULL)
 	    {
 	      qdata_free_hscan_key (thread_p, build_key, val_cnt);
 	      GOTO_EXIT_ON_ERROR;
 	    }
-	  hash_verify_key = qdata_alloc_hscan_key (thread_p, val_cnt, true);
+	  hash_verify_key = qdata_alloc_hscan_key (thread_p, val_cnt, false);
 	  if (hash_verify_key == NULL)
 	    {
 	      qdata_free_hscan_key (thread_p, build_key, val_cnt);
@@ -18222,7 +18171,7 @@ skip_hash_build:
 	    QFILE_LIST_SCAN_ID fscan;
 	    QFILE_TUPLE_RECORD ftplrec = { NULL, 0 };
 	    SCAN_CODE fsc;
-	    HASH_SCAN_KEY *fkey = qdata_alloc_hscan_key (thread_p, part_val_cnt, true);
+	    HASH_SCAN_KEY *fkey = qdata_alloc_hscan_key (thread_p, part_val_cnt, false);
 
 	    if (qfile_open_list_scan (current_frontier, &fscan) != NO_ERROR)
 	      {
@@ -18346,8 +18295,8 @@ skip_hash_build:
 		    continue;
 		  }
 
-		ppkey = qdata_alloc_hscan_key (thread_p, part_val_cnt, true);
-		pvkey = qdata_alloc_hscan_key (thread_p, part_val_cnt, true);
+		ppkey = qdata_alloc_hscan_key (thread_p, part_val_cnt, false);
+		pvkey = qdata_alloc_hscan_key (thread_p, part_val_cnt, false);
 		if (ppkey == NULL || pvkey == NULL)
 		  {
 		    if (ppkey)
@@ -18413,7 +18362,7 @@ skip_hash_build:
 	      {
 		QFILE_LIST_SCAN_ID pscan;
 		QFILE_TUPLE_RECORD ptplrec = { NULL, 0 };
-		HASH_SCAN_KEY *pbkey = qdata_alloc_hscan_key (thread_p, part_val_cnt, true);
+		HASH_SCAN_KEY *pbkey = qdata_alloc_hscan_key (thread_p, part_val_cnt, false);
 		HASH_SCAN_VALUE *pval;
 		SCAN_CODE psc;
 		unsigned int phkey;
@@ -18495,8 +18444,8 @@ skip_hash_build:
 		  }
 	      }
 
-	      ppkey = qdata_alloc_hscan_key (thread_p, part_val_cnt, true);
-	      pvkey = qdata_alloc_hscan_key (thread_p, part_val_cnt, true);
+	      ppkey = qdata_alloc_hscan_key (thread_p, part_val_cnt, false);
+	      pvkey = qdata_alloc_hscan_key (thread_p, part_val_cnt, false);
 	      if (ppkey == NULL || pvkey == NULL)
 		{
 		  if (ppkey)

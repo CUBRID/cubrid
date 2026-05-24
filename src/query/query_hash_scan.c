@@ -380,24 +380,35 @@ int
 qdata_build_hscan_key (THREAD_ENTRY * thread_p, val_descr * vd, REGU_VARIABLE_LIST regu_list, HASH_SCAN_KEY * key)
 {
   int rc = NO_ERROR;
+  DB_VALUE *peek_val = NULL;
+  bool has_alloc_vals = key->free_values;
 
-  /* build key */
-  key->free_values = false;	/* references precreated DB_VALUES */
   key->val_count = 0;
   while (regu_list != NULL)
     {
-      rc = fetch_peek_dbval (thread_p, &regu_list->value, vd, NULL, NULL, NULL, &key->values[key->val_count]);
+      rc = fetch_peek_dbval (thread_p, &regu_list->value, vd, NULL, NULL, NULL, &peek_val);
       if (rc != NO_ERROR)
 	{
 	  return rc;
 	}
 
-      /* next */
+      if (has_alloc_vals)
+	{
+	  /* deep-copy into pre-allocated DB_VALUE to avoid dangling peek refs */
+	  if (!qdata_copy_db_value (key->values[key->val_count], peek_val))
+	    {
+	      return ER_FAILED;
+	    }
+	}
+      else
+	{
+	  key->values[key->val_count] = peek_val;
+	}
+
       regu_list = regu_list->next;
       key->val_count++;
     }
 
-  /* all ok */
   return NO_ERROR;
 }
 
