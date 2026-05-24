@@ -17775,18 +17775,18 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     {
       UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
       if (mem_limit > 0)
-        {
-          int est_npages = 0, est_nobjs = 0, est_avg_len = 0;
-          heap_estimate (thread_p, &ACCESS_SPEC_HFID (xasl->spec_list), &est_npages, &est_nobjs, &est_avg_len);
-          if ((UINT64) est_npages * DB_PAGESIZE > mem_limit)
-            {
-              connect_by->use_hash_for_hq = false;
-            }
-        }
+	{
+	  int est_npages = 0, est_nobjs = 0, est_avg_len = 0;
+	  heap_estimate (thread_p, &ACCESS_SPEC_HFID (xasl->spec_list), &est_npages, &est_nobjs, &est_avg_len);
+	  if ((UINT64) est_npages * DB_PAGESIZE > mem_limit)
+	    {
+	      connect_by->use_hash_for_hq = false;
+	    }
+	}
       else
-        {
-          connect_by->use_hash_for_hq = false;
-        }
+	{
+	  connect_by->use_hash_for_hq = false;
+	}
     }
 
   /* build hash table for hash-based CONNECT BY: full table scan → hash directly */
