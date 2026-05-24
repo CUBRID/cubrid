@@ -17660,6 +17660,9 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   HASH_SCAN_KEY *hash_probe_key = NULL;
   HASH_SCAN_KEY *hash_verify_key = NULL;
   int hash_key_cnt = 0;
+  QFILE_LIST_ID **partition_lists = NULL;
+  int partition_count = 0;
+  int part_val_cnt = 0;
 
   has_order_siblings_by = xasl->orderby_list ? 1 : 0;
   connect_by = &xasl->proc.connect_by;
@@ -17770,7 +17773,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* build hash table for hash-based CONNECT BY: full table scan → hash directly */
+  /* build hash table or partition split for hash-based CONNECT BY */
   if (connect_by->use_hash_for_hq && connect_by->hash_build_regu_list)
     {
       QFILE_TUPLE_RECORD hash_tplrec = { NULL, 0 };
@@ -17782,34 +17785,50 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       REGU_VARIABLE_LIST regu;
 
       for (regu = connect_by->hash_build_regu_list; regu; regu = regu->next)
-	{
-	  val_cnt++;
-	}
+	val_cnt++;
+      part_val_cnt = val_cnt;
+
       build_key = qdata_alloc_hscan_key (thread_p, val_cnt, true);
       if (build_key == NULL)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
+	GOTO_EXIT_ON_ERROR;
 
-      hash_table = mht_create_hls ("Connect By Hash", 4096, NULL, NULL);
-      if (hash_table == NULL)
-	{
-	  qdata_free_hscan_key (thread_p, build_key, val_cnt);
-	  GOTO_EXIT_ON_ERROR;
-	}
+      /* determine partition count from memory budget */
+      {
+	UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
+	if (mem_limit > 0)
+	  {
+	    int est_npages = 0, est_nobjs = 0, est_avg_len = 0;
+	    heap_estimate (thread_p, &ACCESS_SPEC_HFID (xasl->spec_list), &est_npages, &est_nobjs, &est_avg_len);
+	    if (est_nobjs > 0 && est_avg_len > 0)
+	      {
+		UINT64 est_mem = (UINT64) est_nobjs * (sizeof (HENTRY_HLS) + est_avg_len);
+		if (est_mem > mem_limit)
+		  {
+		    partition_count = (int) ((est_mem * 10 + mem_limit * 8 - 1) / (mem_limit * 8));
+		    if (partition_count < 2)
+		      partition_count = 2;
+		    if (partition_count > 128)
+		      partition_count = 128;
+		  }
+		else
+		  partition_count = 1;
+	      }
+	    else
+	      partition_count = 1;
+	  }
+	else
+	  {
+	    connect_by->use_hash_for_hq = false;
+	    qdata_free_hscan_key (thread_p, build_key, val_cnt);
+	    goto skip_hash_build;
+	  }
+      }
 
-      /* For single_table_opt, where_pred contains only the CONNECT BY equality predicate
-       * (e.g., PRIOR id = pid), not base table WHERE filters. The original WHERE clause
-       * is applied after CONNECT BY processing in the outer SELECT xasl. Nulling where_pred
-       * is safe because hash key matching replaces the equality check.
-       * NOTE: if CONNECT BY has non-PRIOR non-HQ filters (e.g., CONNECT BY PRIOR id=pid AND col>0),
-       * those filters are not enforced during hash probe — a known limitation for rare edge cases. */
       {
 	PRED_EXPR *saved_where_pred = xasl->spec_list->where_pred;
 	PRED_EXPR *saved_where_key = xasl->spec_list->where_key;
 	ACCESS_METHOD saved_access = xasl->spec_list->access;
 
-	/* force sequential scan for hash build: index scan uses PRIOR-dependent key ranges */
 	xasl->spec_list->where_pred = NULL;
 	xasl->spec_list->where_key = NULL;
 	xasl->spec_list->access = ACCESS_METHOD_SEQUENTIAL;
@@ -17826,68 +17845,157 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	    GOTO_EXIT_ON_ERROR;
 	  }
 
-	xasl->next_scan_block_on = false;
-	hash_scan = qexec_next_scan_block_iterations (thread_p, xasl);
-	while (hash_scan == S_SUCCESS)
+	if (partition_count <= 1)
 	  {
-	    hash_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id);
-	    if (hash_scan != S_SUCCESS)
+	    /* === IN_MEM: single hash table (existing logic) === */
+	    hash_table = mht_create_hls ("Connect By Hash", 4096, NULL, NULL);
+	    if (hash_table == NULL)
 	      {
-		break;
+		xasl->spec_list->where_pred = saved_where_pred;
+		xasl->spec_list->where_key = saved_where_key;
+		xasl->spec_list->access = saved_access;
+		qdata_free_hscan_key (thread_p, build_key, val_cnt);
+		GOTO_EXIT_ON_ERROR;
 	      }
 
-	    /* apply non-PRIOR filter before inserting into hash table */
-	    if (connect_by->hash_build_filter_pred != NULL)
+	    xasl->next_scan_block_on = false;
+	    hash_scan = qexec_next_scan_block_iterations (thread_p, xasl);
+	    while (hash_scan == S_SUCCESS)
 	      {
-		DB_LOGICAL ev_res = eval_pred (thread_p, connect_by->hash_build_filter_pred,
-					       &xasl_state->vd, NULL);
-		if (ev_res != V_TRUE)
+		hash_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id);
+		if (hash_scan != S_SUCCESS)
+		  break;
+
+		if (connect_by->hash_build_filter_pred != NULL)
 		  {
-		    continue;
+		    DB_LOGICAL ev_res = eval_pred (thread_p, connect_by->hash_build_filter_pred,
+						   &xasl_state->vd, NULL);
+		    if (ev_res != V_TRUE)
+		      continue;
+		  }
+
+		if (qdata_build_hscan_key (thread_p, &xasl_state->vd, connect_by->hash_build_regu_list,
+					   build_key) != NO_ERROR)
+		  {
+		    xasl->spec_list->where_pred = saved_where_pred;
+		    xasl->spec_list->where_key = saved_where_key;
+		    xasl->spec_list->access = saved_access;
+		    qdata_free_hscan_key (thread_p, build_key, val_cnt);
+		    GOTO_EXIT_ON_ERROR;
+		  }
+		hkey = qdata_hash_scan_key (build_key, UINT_MAX, HASH_METH_IN_MEM);
+
+		if (qdata_copy_valptr_list_to_tuple (thread_p, xasl->outptr_list, &xasl_state->vd,
+						     &hash_tplrec) != NO_ERROR)
+		  {
+		    xasl->spec_list->where_pred = saved_where_pred;
+		    xasl->spec_list->where_key = saved_where_key;
+		    xasl->spec_list->access = saved_access;
+		    qdata_free_hscan_key (thread_p, build_key, val_cnt);
+		    GOTO_EXIT_ON_ERROR;
+		  }
+
+		new_value = qdata_alloc_hscan_value (thread_p, hash_tplrec.tpl);
+		if (new_value == NULL)
+		  {
+		    xasl->spec_list->where_pred = saved_where_pred;
+		    xasl->spec_list->where_key = saved_where_key;
+		    xasl->spec_list->access = saved_access;
+		    qdata_free_hscan_key (thread_p, build_key, val_cnt);
+		    GOTO_EXIT_ON_ERROR;
+		  }
+		if (mht_put_hls (hash_table, (void *) &hkey, (void *) new_value) == NULL)
+		  {
+		    xasl->spec_list->where_pred = saved_where_pred;
+		    xasl->spec_list->where_key = saved_where_key;
+		    xasl->spec_list->access = saved_access;
+		    qdata_free_hscan_key (thread_p, build_key, val_cnt);
+		    GOTO_EXIT_ON_ERROR;
+		  }
+	      }
+	  }
+	else
+	  {
+	    /* === PARTITION SPLIT: distribute rows to N partition files === */
+	    int pi;
+
+	    partition_lists = (QFILE_LIST_ID **) db_private_alloc (thread_p,
+								   partition_count * sizeof (QFILE_LIST_ID *));
+	    if (partition_lists == NULL)
+	      {
+		xasl->spec_list->where_pred = saved_where_pred;
+		xasl->spec_list->where_key = saved_where_key;
+		xasl->spec_list->access = saved_access;
+		qdata_free_hscan_key (thread_p, build_key, val_cnt);
+		GOTO_EXIT_ON_ERROR;
+	      }
+	    memset (partition_lists, 0, partition_count * sizeof (QFILE_LIST_ID *));
+
+	    for (pi = 0; pi < partition_count; pi++)
+	      {
+		partition_lists[pi] = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
+		if (partition_lists[pi] == NULL)
+		  {
+		    xasl->spec_list->where_pred = saved_where_pred;
+		    xasl->spec_list->where_key = saved_where_key;
+		    xasl->spec_list->access = saved_access;
+		    qdata_free_hscan_key (thread_p, build_key, val_cnt);
+		    GOTO_EXIT_ON_ERROR;
 		  }
 	      }
 
-	    /* val_list is populated by scan; build hash key */
-	    if (qdata_build_hscan_key (thread_p, &xasl_state->vd, connect_by->hash_build_regu_list,
-				       build_key) != NO_ERROR)
+	    xasl->next_scan_block_on = false;
+	    hash_scan = qexec_next_scan_block_iterations (thread_p, xasl);
+	    while (hash_scan == S_SUCCESS)
 	      {
-		xasl->spec_list->where_pred = saved_where_pred;
-		xasl->spec_list->where_key = saved_where_key;
-		xasl->spec_list->access = saved_access;
-		qdata_free_hscan_key (thread_p, build_key, val_cnt);
-		GOTO_EXIT_ON_ERROR;
-	      }
-	    hkey = qdata_hash_scan_key (build_key, UINT_MAX, HASH_METH_IN_MEM);
+		hash_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id);
+		if (hash_scan != S_SUCCESS)
+		  break;
 
-	    /* serialize current row via outptr_list for later fetch */
-	    if (qdata_copy_valptr_list_to_tuple (thread_p, xasl->outptr_list, &xasl_state->vd,
-						 &hash_tplrec) != NO_ERROR)
-	      {
-		xasl->spec_list->where_pred = saved_where_pred;
-		xasl->spec_list->where_key = saved_where_key;
-		xasl->spec_list->access = saved_access;
-		qdata_free_hscan_key (thread_p, build_key, val_cnt);
-		GOTO_EXIT_ON_ERROR;
+		if (connect_by->hash_build_filter_pred != NULL)
+		  {
+		    DB_LOGICAL ev_res = eval_pred (thread_p, connect_by->hash_build_filter_pred,
+						   &xasl_state->vd, NULL);
+		    if (ev_res != V_TRUE)
+		      continue;
+		  }
+
+		if (qdata_build_hscan_key (thread_p, &xasl_state->vd, connect_by->hash_build_regu_list,
+					   build_key) != NO_ERROR)
+		  {
+		    xasl->spec_list->where_pred = saved_where_pred;
+		    xasl->spec_list->where_key = saved_where_key;
+		    xasl->spec_list->access = saved_access;
+		    qdata_free_hscan_key (thread_p, build_key, val_cnt);
+		    GOTO_EXIT_ON_ERROR;
+		  }
+		hkey = qdata_hash_scan_key (build_key, UINT_MAX, HASH_METH_IN_MEM);
+
+		if (qdata_copy_valptr_list_to_tuple (thread_p, xasl->outptr_list, &xasl_state->vd,
+						     &hash_tplrec) != NO_ERROR)
+		  {
+		    xasl->spec_list->where_pred = saved_where_pred;
+		    xasl->spec_list->where_key = saved_where_key;
+		    xasl->spec_list->access = saved_access;
+		    qdata_free_hscan_key (thread_p, build_key, val_cnt);
+		    GOTO_EXIT_ON_ERROR;
+		  }
+
+		if (qfile_add_tuple_to_list (thread_p, partition_lists[hkey % partition_count],
+					     hash_tplrec.tpl) != NO_ERROR)
+		  {
+		    xasl->spec_list->where_pred = saved_where_pred;
+		    xasl->spec_list->where_key = saved_where_key;
+		    xasl->spec_list->access = saved_access;
+		    qdata_free_hscan_key (thread_p, build_key, val_cnt);
+		    GOTO_EXIT_ON_ERROR;
+		  }
 	      }
 
-	    new_value = qdata_alloc_hscan_value (thread_p, hash_tplrec.tpl);
-	    if (new_value == NULL)
-	      {
-		xasl->spec_list->where_pred = saved_where_pred;
-		xasl->spec_list->where_key = saved_where_key;
-		xasl->spec_list->access = saved_access;
-		qdata_free_hscan_key (thread_p, build_key, val_cnt);
-		GOTO_EXIT_ON_ERROR;
-	      }
-	    if (mht_put_hls (hash_table, (void *) &hkey, (void *) new_value) == NULL)
-	      {
-		xasl->spec_list->where_pred = saved_where_pred;
-		xasl->spec_list->where_key = saved_where_key;
-		xasl->spec_list->access = saved_access;
-		qdata_free_hscan_key (thread_p, build_key, val_cnt);
-		GOTO_EXIT_ON_ERROR;
-	      }
+	    for (pi = 0; pi < partition_count; pi++)
+	      qfile_close_list (thread_p, partition_lists[pi]);
 	  }
+
 	xasl->curr_spec = NULL;
 	qexec_end_scan (thread_p, xasl->spec_list);
 	xasl->spec_list->where_pred = saved_where_pred;
@@ -17901,33 +18009,36 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  }
       }
 
-      /* allocate probe key and verify key for collision detection */
-      hash_probe_key = qdata_alloc_hscan_key (thread_p, val_cnt, true);
-      if (hash_probe_key == NULL)
+      if (partition_count <= 1)
 	{
-	  GOTO_EXIT_ON_ERROR;
+	  /* allocate probe and verify keys for IN_MEM mode */
+	  hash_probe_key = qdata_alloc_hscan_key (thread_p, val_cnt, true);
+	  if (hash_probe_key == NULL)
+	    {
+	      qdata_free_hscan_key (thread_p, build_key, val_cnt);
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	  hash_verify_key = qdata_alloc_hscan_key (thread_p, val_cnt, true);
+	  if (hash_verify_key == NULL)
+	    {
+	      qdata_free_hscan_key (thread_p, build_key, val_cnt);
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	  hash_key_cnt = val_cnt;
 	}
-      hash_verify_key = qdata_alloc_hscan_key (thread_p, val_cnt, true);
-      if (hash_verify_key == NULL)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-      hash_key_cnt = val_cnt;
+
       qdata_free_hscan_key (thread_p, build_key, val_cnt);
 
       if (hash_tplrec.tpl)
-	{
-	  db_private_free_and_init (thread_p, hash_tplrec.tpl);
-	}
+	db_private_free_and_init (thread_p, hash_tplrec.tpl);
 
       /* reopen scan (cleanup expects open scan) */
       if (qexec_open_scan (thread_p, xasl->spec_list, xasl->val_list, &xasl_state->vd, false, true, false,
 			   false, &xasl->spec_list->s_id, xasl_state->query_id, S_SELECT, false, NULL,
 			   xasl) != NO_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
+	GOTO_EXIT_ON_ERROR;
     }
+skip_hash_build:
 
   /* keep aliases in sync for error cleanup */
   listfile1 = current_frontier;
@@ -17945,16 +18056,268 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  break;
 	}
 
-      if (qexec_connect_by_process_level (thread_p, xasl, xasl_state, result_list, current_frontier,
-					  next_frontier, &sibling_sort_buf, &type_list, tplrec, &temp_tuple_rec,
-					  level_value, level_valp, isleaf_valp, iscycle_valp, parent_pos_valp,
-					  index_valp, &parent_path_key, &len_parent_path_key,
-					  &child_path_key, &len_child_path_key,
-					  &index_father, has_order_siblings_by, hash_table, hash_probe_key,
-					  hash_verify_key) != NO_ERROR)
+      if (partition_count > 1)
 	{
-	  listfile2_tmp = sibling_sort_buf;
-	  GOTO_EXIT_ON_ERROR;
+	  /* === PARTITION-AT-A-TIME: split frontier, process per-partition === */
+	  int pi;
+	  QFILE_LIST_ID **frontier_parts = NULL;
+
+	  frontier_parts = (QFILE_LIST_ID **) db_private_alloc (thread_p, partition_count * sizeof (QFILE_LIST_ID *));
+	  if (frontier_parts == NULL)
+	    {
+	      listfile2_tmp = sibling_sort_buf;
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	  memset (frontier_parts, 0, partition_count * sizeof (QFILE_LIST_ID *));
+	  for (pi = 0; pi < partition_count; pi++)
+	    {
+	      frontier_parts[pi] = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
+	      if (frontier_parts[pi] == NULL)
+		{
+		  for (pi--; pi >= 0; pi--)
+		    {
+		      qfile_close_list (thread_p, frontier_parts[pi]);
+		      qfile_destroy_list (thread_p, frontier_parts[pi]);
+		      QFILE_FREE_AND_INIT_LIST_ID (frontier_parts[pi]);
+		    }
+		  db_private_free (thread_p, frontier_parts);
+		  listfile2_tmp = sibling_sort_buf;
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
+
+	  /* split frontier by hash(probe_key) % N */
+	  {
+	    QFILE_LIST_SCAN_ID fscan;
+	    QFILE_TUPLE_RECORD ftplrec = { NULL, 0 };
+	    SCAN_CODE fsc;
+	    HASH_SCAN_KEY *fkey = qdata_alloc_hscan_key (thread_p, part_val_cnt, true);
+
+	    if (qfile_open_list_scan (current_frontier, &fscan) != NO_ERROR)
+	      {
+		qdata_free_hscan_key (thread_p, fkey, part_val_cnt);
+		goto partition_level_error;
+	      }
+	    while ((fsc = qfile_scan_list_next (thread_p, &fscan, &ftplrec, PEEK)) == S_SUCCESS)
+	      {
+		unsigned int fhkey;
+		int fpart;
+
+		if (fetch_val_list (thread_p, connect_by->prior_regu_list_pred, &xasl_state->vd, NULL, NULL,
+				    ftplrec.tpl, PEEK) != NO_ERROR)
+		  {
+		    qfile_close_scan (thread_p, &fscan);
+		    qdata_free_hscan_key (thread_p, fkey, part_val_cnt);
+		    goto partition_level_error;
+		  }
+		if (connect_by->prior_regu_list_rest != NULL
+		    && fetch_val_list (thread_p, connect_by->prior_regu_list_rest, &xasl_state->vd, NULL, NULL,
+				       ftplrec.tpl, PEEK) != NO_ERROR)
+		  {
+		    qfile_close_scan (thread_p, &fscan);
+		    qdata_free_hscan_key (thread_p, fkey, part_val_cnt);
+		    goto partition_level_error;
+		  }
+
+		if (qdata_build_hscan_key (thread_p, &xasl_state->vd, connect_by->hash_probe_regu_list,
+					   fkey) != NO_ERROR)
+		  {
+		    qfile_close_scan (thread_p, &fscan);
+		    qdata_free_hscan_key (thread_p, fkey, part_val_cnt);
+		    goto partition_level_error;
+		  }
+		fhkey = qdata_hash_scan_key (fkey, UINT_MAX, HASH_METH_IN_MEM);
+		fpart = fhkey % partition_count;
+
+		if (qfile_add_tuple_to_list (thread_p, frontier_parts[fpart], ftplrec.tpl) != NO_ERROR)
+		  {
+		    qfile_close_scan (thread_p, &fscan);
+		    qdata_free_hscan_key (thread_p, fkey, part_val_cnt);
+		    goto partition_level_error;
+		  }
+	      }
+	    qfile_close_scan (thread_p, &fscan);
+	    qdata_free_hscan_key (thread_p, fkey, part_val_cnt);
+	    if (fsc == S_ERROR)
+	      goto partition_level_error;
+	  }
+
+	  /* process each partition */
+	  for (pi = 0; pi < partition_count; pi++)
+	    {
+	      MHT_HLS_TABLE *part_hash = NULL;
+	      HASH_SCAN_KEY *ppkey = NULL, *pvkey = NULL;
+
+	      qfile_close_list (thread_p, frontier_parts[pi]);
+	      if (frontier_parts[pi]->tuple_cnt == 0)
+		continue;
+
+	      /* build hash from partition_lists[pi] */
+	      {
+		QFILE_LIST_SCAN_ID pscan;
+		QFILE_TUPLE_RECORD ptplrec = { NULL, 0 };
+		HASH_SCAN_KEY *pbkey = qdata_alloc_hscan_key (thread_p, part_val_cnt, true);
+		HASH_SCAN_VALUE *pval;
+		SCAN_CODE psc;
+		unsigned int phkey;
+
+		part_hash = mht_create_hls ("CB Partition", 4096, NULL, NULL);
+		if (part_hash == NULL || pbkey == NULL)
+		  {
+		    if (pbkey)
+		      qdata_free_hscan_key (thread_p, pbkey, part_val_cnt);
+		    if (part_hash)
+		      mht_destroy_hls (part_hash);
+		    goto partition_level_error;
+		  }
+
+		if (qfile_open_list_scan (partition_lists[pi], &pscan) != NO_ERROR)
+		  {
+		    qdata_free_hscan_key (thread_p, pbkey, part_val_cnt);
+		    mht_destroy_hls (part_hash);
+		    goto partition_level_error;
+		  }
+		while ((psc = qfile_scan_list_next (thread_p, &pscan, &ptplrec, PEEK)) == S_SUCCESS)
+		  {
+		    if (fetch_val_list (thread_p, connect_by->regu_list_pred, &xasl_state->vd, NULL, NULL,
+					ptplrec.tpl, PEEK) != NO_ERROR)
+		      {
+			qfile_close_scan (thread_p, &pscan);
+			qdata_free_hscan_key (thread_p, pbkey, part_val_cnt);
+			mht_clear_hls (part_hash, qdata_free_hscan_entry, (void *) thread_p);
+			mht_destroy_hls (part_hash);
+			goto partition_level_error;
+		      }
+		    if (connect_by->regu_list_rest != NULL
+			&& fetch_val_list (thread_p, connect_by->regu_list_rest, &xasl_state->vd, NULL, NULL,
+					   ptplrec.tpl, PEEK) != NO_ERROR)
+		      {
+			qfile_close_scan (thread_p, &pscan);
+			qdata_free_hscan_key (thread_p, pbkey, part_val_cnt);
+			mht_clear_hls (part_hash, qdata_free_hscan_entry, (void *) thread_p);
+			mht_destroy_hls (part_hash);
+			goto partition_level_error;
+		      }
+
+		    if (qdata_build_hscan_key (thread_p, &xasl_state->vd, connect_by->hash_build_regu_list,
+					       pbkey) != NO_ERROR)
+		      {
+			qfile_close_scan (thread_p, &pscan);
+			qdata_free_hscan_key (thread_p, pbkey, part_val_cnt);
+			mht_clear_hls (part_hash, qdata_free_hscan_entry, (void *) thread_p);
+			mht_destroy_hls (part_hash);
+			goto partition_level_error;
+		      }
+		    phkey = qdata_hash_scan_key (pbkey, UINT_MAX, HASH_METH_IN_MEM);
+
+		    pval = qdata_alloc_hscan_value (thread_p, ptplrec.tpl);
+		    if (pval == NULL)
+		      {
+			qfile_close_scan (thread_p, &pscan);
+			qdata_free_hscan_key (thread_p, pbkey, part_val_cnt);
+			mht_clear_hls (part_hash, qdata_free_hscan_entry, (void *) thread_p);
+			mht_destroy_hls (part_hash);
+			goto partition_level_error;
+		      }
+		    if (mht_put_hls (part_hash, (void *) &phkey, (void *) pval) == NULL)
+		      {
+			qfile_close_scan (thread_p, &pscan);
+			qdata_free_hscan_key (thread_p, pbkey, part_val_cnt);
+			mht_clear_hls (part_hash, qdata_free_hscan_entry, (void *) thread_p);
+			mht_destroy_hls (part_hash);
+			goto partition_level_error;
+		      }
+		  }
+		qfile_close_scan (thread_p, &pscan);
+		qdata_free_hscan_key (thread_p, pbkey, part_val_cnt);
+		if (psc == S_ERROR)
+		  {
+		    mht_clear_hls (part_hash, qdata_free_hscan_entry, (void *) thread_p);
+		    mht_destroy_hls (part_hash);
+		    goto partition_level_error;
+		  }
+	      }
+
+	      ppkey = qdata_alloc_hscan_key (thread_p, part_val_cnt, true);
+	      pvkey = qdata_alloc_hscan_key (thread_p, part_val_cnt, true);
+	      if (ppkey == NULL || pvkey == NULL)
+		{
+		  if (ppkey)
+		    qdata_free_hscan_key (thread_p, ppkey, part_val_cnt);
+		  if (pvkey)
+		    qdata_free_hscan_key (thread_p, pvkey, part_val_cnt);
+		  mht_clear_hls (part_hash, qdata_free_hscan_entry, (void *) thread_p);
+		  mht_destroy_hls (part_hash);
+		  goto partition_level_error;
+		}
+
+	      if (qexec_connect_by_process_level (thread_p, xasl, xasl_state, result_list, frontier_parts[pi],
+						  next_frontier, &sibling_sort_buf, &type_list, tplrec, &temp_tuple_rec,
+						  level_value, level_valp, isleaf_valp, iscycle_valp, parent_pos_valp,
+						  index_valp, &parent_path_key, &len_parent_path_key,
+						  &child_path_key, &len_child_path_key,
+						  &index_father, has_order_siblings_by, part_hash, ppkey,
+						  pvkey) != NO_ERROR)
+		{
+		  qdata_free_hscan_key (thread_p, ppkey, part_val_cnt);
+		  qdata_free_hscan_key (thread_p, pvkey, part_val_cnt);
+		  mht_clear_hls (part_hash, qdata_free_hscan_entry, (void *) thread_p);
+		  mht_destroy_hls (part_hash);
+		  goto partition_level_error;
+		}
+
+	      qdata_free_hscan_key (thread_p, ppkey, part_val_cnt);
+	      qdata_free_hscan_key (thread_p, pvkey, part_val_cnt);
+	      mht_clear_hls (part_hash, qdata_free_hscan_entry, (void *) thread_p);
+	      mht_destroy_hls (part_hash);
+	    }
+
+	  /* cleanup frontier parts */
+	  for (pi = 0; pi < partition_count; pi++)
+	    {
+	      if (frontier_parts[pi] != NULL)
+		{
+		  qfile_close_list (thread_p, frontier_parts[pi]);
+		  qfile_destroy_list (thread_p, frontier_parts[pi]);
+		  QFILE_FREE_AND_INIT_LIST_ID (frontier_parts[pi]);
+		}
+	    }
+	  db_private_free (thread_p, frontier_parts);
+	  frontier_parts = NULL;
+
+	  if (false)
+	    {
+	    partition_level_error:
+	      if (frontier_parts != NULL)
+		{
+		  for (pi = 0; pi < partition_count; pi++)
+		    {
+		      if (frontier_parts[pi] != NULL)
+			{
+			  qfile_close_list (thread_p, frontier_parts[pi]);
+			  qfile_destroy_list (thread_p, frontier_parts[pi]);
+			  QFILE_FREE_AND_INIT_LIST_ID (frontier_parts[pi]);
+			}
+		    }
+		  db_private_free (thread_p, frontier_parts);
+		}
+	      listfile2_tmp = sibling_sort_buf;
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	}
+      else
+	{
+	  if (qexec_connect_by_process_level (thread_p, xasl, xasl_state, result_list, current_frontier,
+					      next_frontier, &sibling_sort_buf, &type_list, tplrec, &temp_tuple_rec,
+					      level_value, level_valp, isleaf_valp, iscycle_valp, parent_pos_valp,
+					      index_valp, &parent_path_key, &len_parent_path_key,
+					      &child_path_key, &len_child_path_key,
+					      &index_father, has_order_siblings_by, hash_table, hash_probe_key,
+					      hash_verify_key) != NO_ERROR)
+	    {
+	      listfile2_tmp = sibling_sort_buf;
+	      GOTO_EXIT_ON_ERROR;
+	    }
 	}
       listfile2_tmp = sibling_sort_buf;
 
@@ -18062,6 +18425,22 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       hash_verify_key = NULL;
     }
 
+  if (partition_lists != NULL)
+    {
+      int pi;
+      for (pi = 0; pi < partition_count; pi++)
+	{
+	  if (partition_lists[pi] != NULL)
+	    {
+	      qfile_close_list (thread_p, partition_lists[pi]);
+	      qfile_destroy_list (thread_p, partition_lists[pi]);
+	      QFILE_FREE_AND_INIT_LIST_ID (partition_lists[pi]);
+	    }
+	}
+      db_private_free (thread_p, partition_lists);
+      partition_lists = NULL;
+    }
+
   qexec_reset_pseudocolumns_val_pointers (level_valp, isleaf_valp, iscycle_valp, parent_pos_valp, index_valp);
 
   xasl->status = XASL_SUCCESS;
@@ -18164,6 +18543,22 @@ exit_on_error:
     {
       qdata_free_hscan_key (thread_p, hash_verify_key, hash_key_cnt);
       hash_verify_key = NULL;
+    }
+
+  if (partition_lists != NULL)
+    {
+      int pi;
+      for (pi = 0; pi < partition_count; pi++)
+	{
+	  if (partition_lists[pi] != NULL)
+	    {
+	      qfile_close_list (thread_p, partition_lists[pi]);
+	      qfile_destroy_list (thread_p, partition_lists[pi]);
+	      QFILE_FREE_AND_INIT_LIST_ID (partition_lists[pi]);
+	    }
+	}
+      db_private_free (thread_p, partition_lists);
+      partition_lists = NULL;
     }
 
   if (!index_valp && DB_NEED_CLEAR (index_valp))
