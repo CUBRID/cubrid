@@ -17770,6 +17770,25 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       GOTO_EXIT_ON_ERROR;
     }
 
+  /* memory limit: disable hash if table exceeds max_hash_list_scan_size */
+  if (connect_by->use_hash_for_hq)
+    {
+      UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
+      if (mem_limit > 0)
+        {
+          int est_npages = 0, est_nobjs = 0, est_avg_len = 0;
+          heap_estimate (thread_p, &ACCESS_SPEC_HFID (xasl->spec_list), &est_npages, &est_nobjs, &est_avg_len);
+          if ((UINT64) est_npages * DB_PAGESIZE > mem_limit)
+            {
+              connect_by->use_hash_for_hq = false;
+            }
+        }
+      else
+        {
+          connect_by->use_hash_for_hq = false;
+        }
+    }
+
   /* build hash table for hash-based CONNECT BY: full table scan → hash directly */
   if (connect_by->use_hash_for_hq && connect_by->hash_build_regu_list)
     {
