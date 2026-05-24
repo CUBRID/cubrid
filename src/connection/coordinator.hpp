@@ -116,6 +116,7 @@ namespace cubconn::connection
 	uint64_t last_time;
       };
 
+#if defined (ENABLE_CONTROLLER)
       /* utils */
       enum class control_type : uint32_t
       {
@@ -146,6 +147,7 @@ namespace cubconn::connection
       {
 	control_type type;
       };
+#endif
 
     public:
       enum class message_type
@@ -236,9 +238,12 @@ namespace cubconn::connection
       int m_timerfd;
       uint64_t m_timens;
       std::array<timer_handle, static_cast<std::size_t> (timer_type::TYPE_COUNT)> m_timer_handler;
+
+#if defined (ENABLE_CONTROLLER)
       /* controller */
       controller<control_recv, control_send> m_controller;
       int m_ctrlfd;
+#endif
 
       /* this is a multi-producer single-consumer queue, so */
       /* data can be put into the queue from anywhere, but  */
@@ -363,11 +368,13 @@ namespace cubconn::connection
 
       bool handle_message_queue ();
 
+#if defined (ENABLE_CONTROLLER)
       /* --------------------------------------------------------------------------- */
       /* controller								     */
       /* --------------------------------------------------------------------------- */
       bool handle_controller_request (control_recv &rx, control_send &tx);
       bool handle_controller ();
+#endif
   };
 
   template <typename T>
