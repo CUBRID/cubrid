@@ -17,7 +17,7 @@
  */
 
 /*
- * px_connect_by.hpp - parallel partition build for CONNECT BY hash execution
+ * px_connect_by.hpp - parallel partition build/probe for CONNECT BY hash execution
  */
 
 #pragma once
@@ -30,9 +30,33 @@
 #include "query_executor.h"
 #include "query_hash_scan.h"
 #include "thread_entry.hpp"
+#include "xasl.h"
 
 struct mht_hls_table;
 typedef struct mht_hls_table MHT_HLS_TABLE;
+
+/* per-worker isolation context for parallel CONNECT BY probe */
+typedef struct connectby_px_context
+{
+  // *INDENT-OFF*
+  val_descr vd;
+
+  /* cloned regu lists with vfetch_to/dbvalptr redirected to private vd.dbval_ptr */
+  REGU_VARIABLE_LIST prior_regu_list_pred;
+  REGU_VARIABLE_LIST prior_regu_list_rest;
+  REGU_VARIABLE_LIST hash_probe_regu_list;
+  REGU_VARIABLE_LIST hash_build_regu_list;
+  REGU_VARIABLE_LIST regu_list_pred;
+  REGU_VARIABLE_LIST regu_list_rest;
+
+  /* cloned outptr lists (valptrp chains redirected to private vd.dbval_ptr) */
+  valptr_list_node prior_outptr_list;
+  valptr_list_node outptr_list;
+
+  /* global result_list from previous levels for cycle detection (read-only) */
+  QFILE_LIST_ID *cycle_check_list;
+  // *INDENT-ON*
+} CONNECTBY_PX_CONTEXT;
 
 namespace parallel_query
 {
@@ -47,5 +71,17 @@ namespace parallel_query
 				VAL_DESCR *vd,
 				int val_cnt,
 				MHT_HLS_TABLE **out_hashes);
+
+    int probe_partitions (cubthread::entry &thread_ref,
+			  XASL_NODE *xasl, XASL_STATE *xasl_state,
+			  QFILE_LIST_ID *global_result_list,
+			  QFILE_LIST_ID **frontier_parts,
+			  MHT_HLS_TABLE **part_hashes,
+			  int partition_count,
+			  QFILE_TUPLE_VALUE_TYPE_LIST *type_list,
+			  int level_value,
+			  int val_cnt,
+			  QFILE_LIST_ID *next_frontier,
+			  QFILE_LIST_ID *result_list);
   } /* namespace connect_by */
 } /* namespace parallel_query */

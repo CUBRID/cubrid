@@ -17,7 +17,7 @@
  */
 
 /*
- * px_connect_by.cpp - parallel partition hash build for CONNECT BY
+ * px_connect_by.cpp - parallel partition hash build/probe for CONNECT BY
  */
 
 #include "px_connect_by.hpp"
@@ -57,7 +57,7 @@ namespace parallel_query
       int val_cnt;
     };
 
-    /* clone a regu_variable_list redirecting vfetch_to to private array */
+    /* clone a regu_variable_list redirecting vfetch_to and dbvalptr to private array */
     static regu_variable_list_node *
     clone_regu_list (THREAD_ENTRY *thread_p, REGU_VARIABLE_LIST orig,
 		     DB_VALUE *orig_base, DB_VALUE *priv_base, int dbval_cnt)
@@ -88,7 +88,20 @@ namespace parallel_query
 		{
 		  node->value.vfetch_to = &priv_base[idx];
 		}
-	      /* else: points outside dbval_ptr array — leave as-is (rare/shouldn't happen) */
+	    }
+
+	  /* redirect value.dbvalptr for TYPE_CONSTANT / TYPE_ORDERBY_NUM */
+	  if (orig_base != nullptr
+	      && (node->value.type == TYPE_CONSTANT || node->value.type == TYPE_ORDERBY_NUM))
+	    {
+	      if (node->value.value.dbvalptr != nullptr)
+		{
+		  ptrdiff_t idx = node->value.value.dbvalptr - orig_base;
+		  if (idx >= 0 && idx < dbval_cnt)
+		    {
+		      node->value.value.dbvalptr = &priv_base[idx];
+		    }
+		}
 	    }
 
 	  if (head == nullptr)
@@ -113,6 +126,15 @@ namespace parallel_query
 	  db_private_free (thread_p, list);
 	  list = next;
 	}
+    }
+
+    /* clone an OUTPTR_LIST (valptr_list_node) by cloning its valptrp chain */
+    static void
+    clone_outptr_list (THREAD_ENTRY *thread_p, OUTPTR_LIST *dest, OUTPTR_LIST *src,
+		       DB_VALUE *orig_base, DB_VALUE *priv_base, int dbval_cnt)
+    {
+      dest->valptr_cnt = src->valptr_cnt;
+      dest->valptrp = clone_regu_list (thread_p, src->valptrp, orig_base, priv_base, dbval_cnt);
     }
 
     static int
@@ -484,6 +506,411 @@ cleanup:
 		  out_hashes[i] = nullptr;
 		}
 	    }
+	}
+
+      return error;
+    }
+
+    /*
+     * ========================================================================
+     *  Parallel probe
+     * ========================================================================
+     */
+
+    /* per-worker probe isolation context */
+    struct probe_context
+    {
+      DB_VALUE *private_dbval_ptr;
+      int dbval_cnt;
+      CONNECTBY_PX_CONTEXT px_ctx;
+    };
+
+    static int
+    init_probe_context (THREAD_ENTRY *thread_p, probe_context *ctx, XASL_NODE *xasl,
+			VAL_DESCR *vd, QFILE_LIST_ID *global_result_list, int val_cnt)
+    {
+      CONNECTBY_PROC_NODE *cb = &xasl->proc.connect_by;
+      DB_VALUE *orig_base = vd->dbval_ptr;
+
+      ctx->dbval_cnt = vd->dbval_cnt;
+
+      /* allocate private dbval array */
+      ctx->private_dbval_ptr = (DB_VALUE *) db_private_alloc (thread_p, ctx->dbval_cnt * sizeof (DB_VALUE));
+      if (ctx->private_dbval_ptr == nullptr)
+	{
+	  return ER_FAILED;
+	}
+      for (int i = 0; i < ctx->dbval_cnt; i++)
+	{
+	  db_make_null (&ctx->private_dbval_ptr[i]);
+	}
+
+      DB_VALUE *priv_base = ctx->private_dbval_ptr;
+
+      /* set up private val_descr */
+      ctx->px_ctx.vd = *vd;
+      ctx->px_ctx.vd.dbval_ptr = priv_base;
+
+      /* clone all regu lists with redirected pointers */
+      ctx->px_ctx.prior_regu_list_pred = clone_regu_list (thread_p, cb->prior_regu_list_pred,
+					 orig_base, priv_base, ctx->dbval_cnt);
+      ctx->px_ctx.prior_regu_list_rest = clone_regu_list (thread_p, cb->prior_regu_list_rest,
+					 orig_base, priv_base, ctx->dbval_cnt);
+      ctx->px_ctx.hash_probe_regu_list = clone_regu_list (thread_p, cb->hash_probe_regu_list,
+					 orig_base, priv_base, ctx->dbval_cnt);
+      ctx->px_ctx.hash_build_regu_list = clone_regu_list (thread_p, cb->hash_build_regu_list,
+					 orig_base, priv_base, ctx->dbval_cnt);
+      ctx->px_ctx.regu_list_pred = clone_regu_list (thread_p, cb->regu_list_pred,
+				   orig_base, priv_base, ctx->dbval_cnt);
+      ctx->px_ctx.regu_list_rest = clone_regu_list (thread_p, cb->regu_list_rest,
+				   orig_base, priv_base, ctx->dbval_cnt);
+
+      /* clone outptr lists */
+      clone_outptr_list (thread_p, &ctx->px_ctx.prior_outptr_list, cb->prior_outptr_list,
+			 orig_base, priv_base, ctx->dbval_cnt);
+      clone_outptr_list (thread_p, &ctx->px_ctx.outptr_list, xasl->outptr_list,
+			 orig_base, priv_base, ctx->dbval_cnt);
+
+      ctx->px_ctx.cycle_check_list = global_result_list;
+
+      /* validate critical clones */
+      if ((cb->prior_regu_list_pred && !ctx->px_ctx.prior_regu_list_pred)
+	  || (cb->hash_probe_regu_list && !ctx->px_ctx.hash_probe_regu_list)
+	  || (cb->regu_list_pred && !ctx->px_ctx.regu_list_pred)
+	  || (cb->prior_outptr_list && !ctx->px_ctx.prior_outptr_list.valptrp)
+	  || (xasl->outptr_list && !ctx->px_ctx.outptr_list.valptrp))
+	{
+	  return ER_FAILED;
+	}
+
+      return NO_ERROR;
+    }
+
+    static void
+    clear_probe_context (THREAD_ENTRY *thread_p, probe_context *ctx)
+    {
+      free_regu_list_clone (thread_p, ctx->px_ctx.prior_regu_list_pred);
+      free_regu_list_clone (thread_p, ctx->px_ctx.prior_regu_list_rest);
+      free_regu_list_clone (thread_p, ctx->px_ctx.hash_probe_regu_list);
+      free_regu_list_clone (thread_p, ctx->px_ctx.hash_build_regu_list);
+      free_regu_list_clone (thread_p, ctx->px_ctx.regu_list_pred);
+      free_regu_list_clone (thread_p, ctx->px_ctx.regu_list_rest);
+      free_regu_list_clone (thread_p, ctx->px_ctx.prior_outptr_list.valptrp);
+      free_regu_list_clone (thread_p, ctx->px_ctx.outptr_list.valptrp);
+
+      if (ctx->private_dbval_ptr != nullptr)
+	{
+	  for (int i = 0; i < ctx->dbval_cnt; i++)
+	    {
+	      pr_clear_value (&ctx->private_dbval_ptr[i]);
+	    }
+	  db_private_free (thread_p, ctx->private_dbval_ptr);
+	  ctx->private_dbval_ptr = nullptr;
+	}
+    }
+
+    /* shared state for parallel probe coordination */
+    struct shared_probe_state
+    {
+      // *INDENT-OFF*
+      std::atomic<int> next_partition;
+      std::atomic<bool> has_error;
+      std::mutex done_mutex;
+      std::condition_variable done_cv;
+      std::atomic<int> active_tasks;
+
+      /* immutable references */
+      XASL_NODE *xasl;
+      XASL_STATE *xasl_state;
+      QFILE_LIST_ID *global_result_list;
+      QFILE_LIST_ID **frontier_parts;
+      MHT_HLS_TABLE **part_hashes;
+      int partition_count;
+      QFILE_TUPLE_VALUE_TYPE_LIST *type_list;
+      int level_value;
+      int val_cnt;
+
+      /* per-partition output lists (allocated by caller) */
+      QFILE_LIST_ID **local_results;
+      QFILE_LIST_ID **local_frontiers;
+
+      shared_probe_state ()
+	: next_partition (0)
+	, has_error (false)
+	, done_mutex ()
+	, done_cv ()
+	, active_tasks (0)
+	, xasl (nullptr)
+	, xasl_state (nullptr)
+	, global_result_list (nullptr)
+	, frontier_parts (nullptr)
+	, part_hashes (nullptr)
+	, partition_count (0)
+	, type_list (nullptr)
+	, level_value (0)
+	, val_cnt (0)
+	, local_results (nullptr)
+	, local_frontiers (nullptr)
+      {
+      }
+      // *INDENT-ON*
+    };
+
+    /* task that probes hash tables for assigned partitions */
+    class probe_task: public cubthread::entry_task
+    {
+      public:
+	probe_task (shared_probe_state &shared, probe_context &ctx, cubthread::entry &main_thread)
+	  : m_shared (shared)
+	  , m_ctx (ctx)
+	  , m_main_thread (main_thread)
+	{
+	}
+
+	void execute (cubthread::entry &thread_ref) override
+	{
+	  thread_ref.conn_entry = m_main_thread.conn_entry;
+	  thread_ref.tran_index = m_main_thread.tran_index;
+	  thread_ref.push_resource_tracks ();
+
+	  while (!m_shared.has_error.load (std::memory_order_acquire))
+	    {
+	      int pi = m_shared.next_partition.fetch_add (1, std::memory_order_acq_rel);
+	      if (pi >= m_shared.partition_count)
+		{
+		  break;
+		}
+
+	      if (m_shared.frontier_parts[pi]->tuple_cnt == 0 || m_shared.part_hashes[pi] == nullptr)
+		{
+		  continue;
+		}
+
+	      int error = qexec_connect_by_probe_partition (&thread_ref, m_shared.xasl, m_shared.xasl_state,
+			  m_shared.local_results[pi],
+			  m_shared.frontier_parts[pi],
+			  m_shared.local_frontiers[pi],
+			  m_shared.type_list, m_shared.level_value,
+			  0 /* no ORDER SIBLINGS BY in parallel */,
+			  m_shared.part_hashes[pi], m_shared.val_cnt,
+			  &m_ctx.px_ctx);
+	      if (error != NO_ERROR)
+		{
+		  m_shared.has_error.store (true, std::memory_order_release);
+		  break;
+		}
+	    }
+
+	  thread_ref.conn_entry = nullptr;
+	  thread_ref.pop_resource_tracks ();
+	}
+
+	void retire () override
+	{
+	  {
+	    std::lock_guard<std::mutex> lock (m_shared.done_mutex);
+	    m_shared.active_tasks.fetch_sub (1, std::memory_order_release);
+	  }
+	  m_shared.done_cv.notify_all ();
+	  delete this;
+	}
+
+      private:
+	shared_probe_state &m_shared;
+	probe_context &m_ctx;
+	cubthread::entry &m_main_thread;
+    };
+
+    /*
+     * probe_partitions - parallel probe entry point
+     */
+    int
+    probe_partitions (cubthread::entry &thread_ref,
+		      XASL_NODE *xasl, XASL_STATE *xasl_state,
+		      QFILE_LIST_ID *global_result_list,
+		      QFILE_LIST_ID **frontier_parts,
+		      MHT_HLS_TABLE **part_hashes,
+		      int partition_count,
+		      QFILE_TUPLE_VALUE_TYPE_LIST *type_list,
+		      int level_value,
+		      int val_cnt,
+		      QFILE_LIST_ID *next_frontier,
+		      QFILE_LIST_ID *result_list)
+    {
+      THREAD_ENTRY *thread_p = &thread_ref;
+      int num_workers;
+      worker_manager *wm = nullptr;
+      probe_context *contexts = nullptr;
+      QFILE_LIST_ID **local_results = nullptr;
+      QFILE_LIST_ID **local_frontiers = nullptr;
+      int error = NO_ERROR;
+
+      assert (partition_count > 1);
+      assert (part_hashes != nullptr);
+      assert (frontier_parts != nullptr);
+
+      /* determine parallelism degree */
+      num_workers = compute_parallel_degree (parallel_type::HASH_JOIN, (UINT64) partition_count, -1);
+      if (num_workers < 2)
+	{
+	  num_workers = 2;
+	}
+      if (num_workers > partition_count)
+	{
+	  num_workers = partition_count;
+	}
+
+      wm = worker_manager::try_reserve_workers (num_workers);
+      if (wm == nullptr)
+	{
+	  return ER_FAILED;
+	}
+      num_workers = wm->get_reserved_workers ();
+
+      /* allocate per-partition output lists */
+      local_results = (QFILE_LIST_ID **) db_private_alloc (thread_p, partition_count * sizeof (QFILE_LIST_ID *));
+      local_frontiers = (QFILE_LIST_ID **) db_private_alloc (thread_p, partition_count * sizeof (QFILE_LIST_ID *));
+      if (local_results == nullptr || local_frontiers == nullptr)
+	{
+	  error = ER_FAILED;
+	  goto cleanup;
+	}
+      memset (local_results, 0, partition_count * sizeof (QFILE_LIST_ID *));
+      memset (local_frontiers, 0, partition_count * sizeof (QFILE_LIST_ID *));
+
+      for (int pi = 0; pi < partition_count; pi++)
+	{
+	  local_results[pi] = qfile_open_list (thread_p, type_list, nullptr, xasl_state->query_id, 0, nullptr);
+	  local_frontiers[pi] = qfile_open_list (thread_p, type_list, nullptr, xasl_state->query_id, 0, nullptr);
+	  if (local_results[pi] == nullptr || local_frontiers[pi] == nullptr)
+	    {
+	      error = ER_FAILED;
+	      goto cleanup;
+	    }
+	}
+
+      /* allocate per-worker probe contexts */
+      contexts = (probe_context *) db_private_alloc (thread_p, num_workers * sizeof (probe_context));
+      if (contexts == nullptr)
+	{
+	  error = ER_FAILED;
+	  goto cleanup;
+	}
+      memset (contexts, 0, num_workers * sizeof (probe_context));
+
+      for (int i = 0; i < num_workers; i++)
+	{
+	  error = init_probe_context (thread_p, &contexts[i], xasl, &xasl_state->vd, global_result_list, val_cnt);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	}
+
+      /* launch probe tasks */
+      {
+	shared_probe_state shared;
+	shared.xasl = xasl;
+	shared.xasl_state = xasl_state;
+	shared.global_result_list = global_result_list;
+	shared.frontier_parts = frontier_parts;
+	shared.part_hashes = part_hashes;
+	shared.partition_count = partition_count;
+	shared.type_list = type_list;
+	shared.level_value = level_value;
+	shared.val_cnt = val_cnt;
+	shared.local_results = local_results;
+	shared.local_frontiers = local_frontiers;
+	shared.next_partition.store (0, std::memory_order_relaxed);
+	shared.has_error.store (false, std::memory_order_relaxed);
+	shared.active_tasks.store (num_workers, std::memory_order_relaxed);
+
+	for (int i = 0; i < num_workers; i++)
+	  {
+	    auto *task = new probe_task (shared, contexts[i], thread_ref);
+	    wm->push_task (task);
+	  }
+
+	{
+	  std::unique_lock<std::mutex> lock (shared.done_mutex);
+	  shared.done_cv.wait (lock, [&shared] { return shared.active_tasks.load (std::memory_order_acquire) == 0; });
+	}
+	wm->wait_workers ();
+
+	if (shared.has_error.load (std::memory_order_acquire))
+	  {
+	    error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+	  }
+      }
+
+      /* merge local outputs into global lists */
+      if (error == NO_ERROR)
+	{
+	  for (int pi = 0; pi < partition_count; pi++)
+	    {
+	      if (local_results[pi] != nullptr && local_results[pi]->tuple_cnt > 0)
+		{
+		  qfile_close_list (thread_p, local_results[pi]);
+		  if (qfile_append_list (thread_p, result_list, local_results[pi]) != NO_ERROR)
+		    {
+		      error = ER_FAILED;
+		      goto cleanup;
+		    }
+		}
+	      if (local_frontiers[pi] != nullptr && local_frontiers[pi]->tuple_cnt > 0)
+		{
+		  qfile_close_list (thread_p, local_frontiers[pi]);
+		  if (qfile_append_list (thread_p, next_frontier, local_frontiers[pi]) != NO_ERROR)
+		    {
+		      error = ER_FAILED;
+		      goto cleanup;
+		    }
+		}
+	    }
+	}
+
+cleanup:
+      /* cleanup per-worker contexts */
+      if (contexts != nullptr)
+	{
+	  for (int i = 0; i < num_workers; i++)
+	    {
+	      clear_probe_context (thread_p, &contexts[i]);
+	    }
+	  db_private_free (thread_p, contexts);
+	}
+
+      /* cleanup per-partition output lists */
+      if (local_results != nullptr)
+	{
+	  for (int pi = 0; pi < partition_count; pi++)
+	    {
+	      if (local_results[pi] != nullptr)
+		{
+		  qfile_close_list (thread_p, local_results[pi]);
+		  qfile_destroy_list (thread_p, local_results[pi]);
+		  QFILE_FREE_AND_INIT_LIST_ID (local_results[pi]);
+		}
+	    }
+	  db_private_free (thread_p, local_results);
+	}
+      if (local_frontiers != nullptr)
+	{
+	  for (int pi = 0; pi < partition_count; pi++)
+	    {
+	      if (local_frontiers[pi] != nullptr)
+		{
+		  qfile_close_list (thread_p, local_frontiers[pi]);
+		  qfile_destroy_list (thread_p, local_frontiers[pi]);
+		  QFILE_FREE_AND_INIT_LIST_ID (local_frontiers[pi]);
+		}
+	    }
+	  db_private_free (thread_p, local_frontiers);
+	}
+
+      if (wm != nullptr)
+	{
+	  wm->release_workers ();
 	}
 
       return error;

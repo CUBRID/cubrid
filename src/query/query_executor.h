@@ -125,4 +125,14 @@ extern int qexec_alloc_agg_hash_context_buildlist_xasl (THREAD_ENTRY * thread_p,
 extern int qexec_hash_gby_agg_tuple_public (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,
 					    QFILE_TUPLE_RECORD * tplrec, QFILE_TUPLE_DESCRIPTOR * tpldesc,
 					    QFILE_LIST_ID * groupby_list, bool * output_tuple);
+#if defined (SERVER_MODE)
+typedef struct connectby_px_context CONNECTBY_PX_CONTEXT;
+extern int qexec_connect_by_probe_partition (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,
+					     qfile_list_id * local_result_list, qfile_list_id * frontier_part,
+					     qfile_list_id * local_next_frontier,
+					     QFILE_TUPLE_VALUE_TYPE_LIST * type_list, int level_value,
+					     int has_order_siblings_by, struct mht_hls_table *hash_table, int val_cnt,
+					     CONNECTBY_PX_CONTEXT * px_ctx);
+#endif
+
 #endif /* _QUERY_EXECUTOR_H_ */
