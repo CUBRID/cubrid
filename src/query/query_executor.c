@@ -588,7 +588,7 @@ static int qexec_connect_by_process_level (THREAD_ENTRY * thread_p, XASL_NODE * 
 					   char **child_path_key, int *len_child_path_key,
 					   int *index_father, int has_order_siblings_by,
 					   MHT_HLS_TABLE * hash_table, HASH_SCAN_KEY * probe_key,
-					   HASH_SCAN_KEY * verify_key);
+					   HASH_SCAN_KEY * verify_key, QFILE_LIST_SCAN_ID * hash_lscan_id);
 static int qexec_connect_by_scan_children (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					   QFILE_LIST_ID * result_list, QFILE_LIST_ID * next_frontier,
 					   QFILE_LIST_ID * sibling_sort_buf, QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
@@ -630,7 +630,8 @@ static int qexec_connect_by_hash_scan_children (THREAD_ENTRY * thread_p, XASL_NO
 						int has_order_siblings_by, int *isleaf_value_out,
 						int *iscycle_value_out, bool * parent_tuple_added,
 						QFILE_TUPLE_POSITION * parent_pos, MHT_HLS_TABLE * hash_table,
-						HASH_SCAN_KEY * probe_key, HASH_SCAN_KEY * verify_key);
+						HASH_SCAN_KEY * probe_key, HASH_SCAN_KEY * verify_key,
+						QFILE_LIST_SCAN_ID * hash_lscan_id);
 static int qexec_iterate_connect_by_results (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					     QFILE_TUPLE_RECORD * tplrec);
 static int qexec_check_for_cycle (THREAD_ENTRY * thread_p, OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl,
@@ -16952,7 +16953,8 @@ qexec_connect_by_hash_scan_children (THREAD_ENTRY * thread_p, XASL_NODE * xasl, 
 				     char *parent_path_key, char **child_path_key, int *len_child_path_key,
 				     int has_order_siblings_by, int *isleaf_value_out, int *iscycle_value_out,
 				     bool * parent_tuple_added, QFILE_TUPLE_POSITION * parent_pos,
-				     MHT_HLS_TABLE * hash_table, HASH_SCAN_KEY * probe_key, HASH_SCAN_KEY * verify_key)
+				     MHT_HLS_TABLE * hash_table, HASH_SCAN_KEY * probe_key, HASH_SCAN_KEY * verify_key,
+				     QFILE_LIST_SCAN_ID * hash_lscan_id)
 {
   CONNECTBY_PROC_NODE *connect_by = &xasl->proc.connect_by;
   HASH_SCAN_VALUE *hsv;
@@ -16972,16 +16974,42 @@ qexec_connect_by_hash_scan_children (THREAD_ENTRY * thread_p, XASL_NODE * xasl, 
   hsv = (HASH_SCAN_VALUE *) mht_get_hls (hash_table, (void *) &hash_key, &last);
   while (hsv != NULL)
     {
-      if (fetch_val_list (thread_p, connect_by->regu_list_pred, &xasl_state->vd, NULL, NULL,
-			  hsv->tuple, PEEK) != NO_ERROR)
+      if (hash_lscan_id != NULL)
 	{
-	  return ER_FAILED;
+	  /* HYBRID mode: resolve tuple by jumping to stored position */
+	  QFILE_TUPLE_POSITION tuple_pos;
+	  QFILE_TUPLE_RECORD h_tplrec = { NULL, 0 };
+	  MAKE_TUPLE_POSTION (tuple_pos, hsv->pos, hash_lscan_id);
+	  if (qfile_jump_scan_tuple_position (thread_p, hash_lscan_id, &tuple_pos, &h_tplrec, PEEK) != S_SUCCESS)
+	    {
+	      return ER_FAILED;
+	    }
+	  if (fetch_val_list (thread_p, connect_by->regu_list_pred, &xasl_state->vd, NULL, NULL,
+			      h_tplrec.tpl, PEEK) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	  if (connect_by->regu_list_rest != NULL
+	      && fetch_val_list (thread_p, connect_by->regu_list_rest, &xasl_state->vd, NULL, NULL,
+				 h_tplrec.tpl, PEEK) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
 	}
-      if (connect_by->regu_list_rest != NULL
-	  && fetch_val_list (thread_p, connect_by->regu_list_rest, &xasl_state->vd, NULL, NULL,
-			     hsv->tuple, PEEK) != NO_ERROR)
+      else
 	{
-	  return ER_FAILED;
+	  /* IN_MEM mode: tuple is stored directly in hsv->tuple */
+	  if (fetch_val_list (thread_p, connect_by->regu_list_pred, &xasl_state->vd, NULL, NULL,
+			      hsv->tuple, PEEK) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	  if (connect_by->regu_list_rest != NULL
+	      && fetch_val_list (thread_p, connect_by->regu_list_rest, &xasl_state->vd, NULL, NULL,
+				 hsv->tuple, PEEK) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
 	}
 
       /* verify actual key equality to handle hash collisions */
@@ -17373,7 +17401,8 @@ qexec_connect_by_process_level (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
 				char **parent_path_key, int *len_parent_path_key,
 				char **child_path_key, int *len_child_path_key,
 				int *index_father, int has_order_siblings_by,
-				MHT_HLS_TABLE * hash_table, HASH_SCAN_KEY * probe_key, HASH_SCAN_KEY * verify_key)
+				MHT_HLS_TABLE * hash_table, HASH_SCAN_KEY * probe_key, HASH_SCAN_KEY * verify_key,
+				QFILE_LIST_SCAN_ID * hash_lscan_id)
 {
   CONNECTBY_PROC_NODE *connect_by = &xasl->proc.connect_by;
   QFILE_LIST_SCAN_ID lfscan_id;
@@ -17486,7 +17515,7 @@ qexec_connect_by_process_level (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
 						   *parent_path_key, child_path_key, len_child_path_key,
 						   has_order_siblings_by, &isleaf_value, &iscycle_value,
 						   &parent_tuple_added, &parent_pos, hash_table, probe_key,
-						   verify_key) != NO_ERROR)
+						   verify_key, hash_lscan_id) != NO_ERROR)
 	    {
 	      qfile_close_scan (thread_p, &lfscan_id);
 	      return ER_FAILED;
@@ -17660,6 +17689,10 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   HASH_SCAN_KEY *hash_probe_key = NULL;
   HASH_SCAN_KEY *hash_verify_key = NULL;
   int hash_key_cnt = 0;
+  HASH_METHOD hash_method = HASH_METH_NOT_USE;
+  QFILE_LIST_SCAN_ID hash_lscan_storage;
+  QFILE_LIST_SCAN_ID *hash_lscan_id = NULL;
+  QFILE_LIST_ID *hash_listid = NULL;
 
   has_order_siblings_by = xasl->orderby_list ? 1 : 0;
   connect_by = &xasl->proc.connect_by;
@@ -17770,7 +17803,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* memory limit: disable hash if table exceeds max_hash_list_scan_size */
+  /* memory limit: determine hash method (IN_MEM / HYBRID / disabled) */
   if (connect_by->use_hash_for_hq)
     {
       UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
@@ -17778,12 +17811,16 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	{
 	  int est_npages = 0, est_nobjs = 0, est_avg_len = 0;
 	  heap_estimate (thread_p, &ACCESS_SPEC_HFID (xasl->spec_list), &est_npages, &est_nobjs, &est_avg_len);
-	  if ((UINT64) est_npages * DB_PAGESIZE > mem_limit)
+	  if ((UINT64) est_npages * DB_PAGESIZE <= mem_limit)
 	    {
-	      connect_by->use_hash_for_hq = false;
+	      hash_method = HASH_METH_IN_MEM;
+	    }
+	  else if ((UINT64) est_nobjs * (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)) <= mem_limit)
+	    {
+	      hash_method = HASH_METH_HYBRID;
 	    }
 	}
-      else
+      if (hash_method == HASH_METH_NOT_USE)
 	{
 	  connect_by->use_hash_for_hq = false;
 	}
@@ -17845,6 +17882,20 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	    GOTO_EXIT_ON_ERROR;
 	  }
 
+	/* HYBRID: open a temp list file to hold serialized rows for positional lookup */
+	if (hash_method == HASH_METH_HYBRID)
+	  {
+	    hash_listid = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
+	    if (hash_listid == NULL)
+	      {
+		xasl->spec_list->where_pred = saved_where_pred;
+		xasl->spec_list->where_key = saved_where_key;
+		xasl->spec_list->access = saved_access;
+		qdata_free_hscan_key (thread_p, build_key, val_cnt);
+		GOTO_EXIT_ON_ERROR;
+	      }
+	  }
+
 	xasl->next_scan_block_on = false;
 	hash_scan = qexec_next_scan_block_iterations (thread_p, xasl);
 	while (hash_scan == S_SUCCESS)
@@ -17866,19 +17917,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		  }
 	      }
 
-	    /* val_list is populated by scan; build hash key */
-	    if (qdata_build_hscan_key (thread_p, &xasl_state->vd, connect_by->hash_build_regu_list,
-				       build_key) != NO_ERROR)
-	      {
-		xasl->spec_list->where_pred = saved_where_pred;
-		xasl->spec_list->where_key = saved_where_key;
-		xasl->spec_list->access = saved_access;
-		qdata_free_hscan_key (thread_p, build_key, val_cnt);
-		GOTO_EXIT_ON_ERROR;
-	      }
-	    hkey = qdata_hash_scan_key (build_key, UINT_MAX, HASH_METH_IN_MEM);
-
-	    /* serialize current row via outptr_list for later fetch */
+	    /* serialize current row via outptr_list */
 	    if (qdata_copy_valptr_list_to_tuple (thread_p, xasl->outptr_list, &xasl_state->vd,
 						 &hash_tplrec) != NO_ERROR)
 	      {
@@ -17889,22 +17928,48 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		GOTO_EXIT_ON_ERROR;
 	      }
 
-	    new_value = qdata_alloc_hscan_value (thread_p, hash_tplrec.tpl);
-	    if (new_value == NULL)
+	    if (hash_method == HASH_METH_IN_MEM)
 	      {
-		xasl->spec_list->where_pred = saved_where_pred;
-		xasl->spec_list->where_key = saved_where_key;
-		xasl->spec_list->access = saved_access;
-		qdata_free_hscan_key (thread_p, build_key, val_cnt);
-		GOTO_EXIT_ON_ERROR;
+		/* val_list is populated by scan; build hash key */
+		if (qdata_build_hscan_key (thread_p, &xasl_state->vd, connect_by->hash_build_regu_list,
+					   build_key) != NO_ERROR)
+		  {
+		    xasl->spec_list->where_pred = saved_where_pred;
+		    xasl->spec_list->where_key = saved_where_key;
+		    xasl->spec_list->access = saved_access;
+		    qdata_free_hscan_key (thread_p, build_key, val_cnt);
+		    GOTO_EXIT_ON_ERROR;
+		  }
+		hkey = qdata_hash_scan_key (build_key, UINT_MAX, HASH_METH_IN_MEM);
+
+		new_value = qdata_alloc_hscan_value (thread_p, hash_tplrec.tpl);
+		if (new_value == NULL)
+		  {
+		    xasl->spec_list->where_pred = saved_where_pred;
+		    xasl->spec_list->where_key = saved_where_key;
+		    xasl->spec_list->access = saved_access;
+		    qdata_free_hscan_key (thread_p, build_key, val_cnt);
+		    GOTO_EXIT_ON_ERROR;
+		  }
+		if (mht_put_hls (hash_table, (void *) &hkey, (void *) new_value) == NULL)
+		  {
+		    xasl->spec_list->where_pred = saved_where_pred;
+		    xasl->spec_list->where_key = saved_where_key;
+		    xasl->spec_list->access = saved_access;
+		    qdata_free_hscan_key (thread_p, build_key, val_cnt);
+		    GOTO_EXIT_ON_ERROR;
+		  }
 	      }
-	    if (mht_put_hls (hash_table, (void *) &hkey, (void *) new_value) == NULL)
+	    else		/* HASH_METH_HYBRID: append to temp list; hash built in second pass */
 	      {
-		xasl->spec_list->where_pred = saved_where_pred;
-		xasl->spec_list->where_key = saved_where_key;
-		xasl->spec_list->access = saved_access;
-		qdata_free_hscan_key (thread_p, build_key, val_cnt);
-		GOTO_EXIT_ON_ERROR;
+		if (qfile_add_tuple_to_list (thread_p, hash_listid, hash_tplrec.tpl) != NO_ERROR)
+		  {
+		    xasl->spec_list->where_pred = saved_where_pred;
+		    xasl->spec_list->where_key = saved_where_key;
+		    xasl->spec_list->access = saved_access;
+		    qdata_free_hscan_key (thread_p, build_key, val_cnt);
+		    GOTO_EXIT_ON_ERROR;
+		  }
 	      }
 	  }
 	xasl->curr_spec = NULL;
@@ -17917,6 +17982,66 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  {
 	    qdata_free_hscan_key (thread_p, build_key, val_cnt);
 	    GOTO_EXIT_ON_ERROR;
+	  }
+
+	/* HYBRID second pass: scan temp list file to build hash with positions */
+	if (hash_method == HASH_METH_HYBRID && hash_listid != NULL)
+	  {
+	    SCAN_CODE h_scan;
+	    QFILE_TUPLE_RECORD h_tplrec = { NULL, 0 };
+
+	    qfile_close_list (thread_p, hash_listid);
+	    if (qfile_open_list_scan (hash_listid, &hash_lscan_storage) != NO_ERROR)
+	      {
+		qdata_free_hscan_key (thread_p, build_key, val_cnt);
+		GOTO_EXIT_ON_ERROR;
+	      }
+	    hash_lscan_id = &hash_lscan_storage;
+
+	    while ((h_scan = qfile_scan_list_next (thread_p, hash_lscan_id, &h_tplrec, PEEK)) == S_SUCCESS)
+	      {
+		/* populate val_list from temp tuple for key extraction */
+		if (fetch_val_list (thread_p, connect_by->regu_list_pred, &xasl_state->vd, NULL, NULL,
+				    h_tplrec.tpl, PEEK) != NO_ERROR)
+		  {
+		    qdata_free_hscan_key (thread_p, build_key, val_cnt);
+		    GOTO_EXIT_ON_ERROR;
+		  }
+		if (connect_by->regu_list_rest != NULL
+		    && fetch_val_list (thread_p, connect_by->regu_list_rest, &xasl_state->vd, NULL, NULL,
+				       h_tplrec.tpl, PEEK) != NO_ERROR)
+		  {
+		    qdata_free_hscan_key (thread_p, build_key, val_cnt);
+		    GOTO_EXIT_ON_ERROR;
+		  }
+
+		if (qdata_build_hscan_key (thread_p, &xasl_state->vd, connect_by->hash_build_regu_list,
+					   build_key) != NO_ERROR)
+		  {
+		    qdata_free_hscan_key (thread_p, build_key, val_cnt);
+		    GOTO_EXIT_ON_ERROR;
+		  }
+		hkey = qdata_hash_scan_key (build_key, UINT_MAX, HASH_METH_IN_MEM);
+
+		new_value = qdata_alloc_hscan_value_OID (thread_p, hash_lscan_id);
+		if (new_value == NULL)
+		  {
+		    qdata_free_hscan_key (thread_p, build_key, val_cnt);
+		    GOTO_EXIT_ON_ERROR;
+		  }
+		if (mht_put_hls (hash_table, (void *) &hkey, (void *) new_value) == NULL)
+		  {
+		    qdata_free_hscan_value (thread_p, new_value);
+		    qdata_free_hscan_key (thread_p, build_key, val_cnt);
+		    GOTO_EXIT_ON_ERROR;
+		  }
+	      }
+	    if (h_scan == S_ERROR)
+	      {
+		qdata_free_hscan_key (thread_p, build_key, val_cnt);
+		GOTO_EXIT_ON_ERROR;
+	      }
+	    /* keep hash_lscan_id open for probe phase; closed after BFS completes */
 	  }
       }
 
@@ -17970,7 +18095,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 					  index_valp, &parent_path_key, &len_parent_path_key,
 					  &child_path_key, &len_child_path_key,
 					  &index_father, has_order_siblings_by, hash_table, hash_probe_key,
-					  hash_verify_key) != NO_ERROR)
+					  hash_verify_key, hash_lscan_id) != NO_ERROR)
 	{
 	  listfile2_tmp = sibling_sort_buf;
 	  GOTO_EXIT_ON_ERROR;
@@ -18064,6 +18189,17 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	}
     }
 
+  if (hash_lscan_id != NULL)
+    {
+      qfile_close_scan (thread_p, hash_lscan_id);
+      hash_lscan_id = NULL;
+    }
+  if (hash_listid != NULL)
+    {
+      qfile_close_list (thread_p, hash_listid);
+      qfile_destroy_list (thread_p, hash_listid);
+      QFILE_FREE_AND_INIT_LIST_ID (hash_listid);
+    }
   if (hash_table != NULL)
     {
       mht_clear_hls (hash_table, qdata_free_hscan_entry, (void *) thread_p);
@@ -18168,6 +18304,17 @@ exit_on_error:
 	}
     }
 
+  if (hash_lscan_id != NULL)
+    {
+      qfile_close_scan (thread_p, hash_lscan_id);
+      hash_lscan_id = NULL;
+    }
+  if (hash_listid != NULL)
+    {
+      qfile_close_list (thread_p, hash_listid);
+      qfile_destroy_list (thread_p, hash_listid);
+      QFILE_FREE_AND_INIT_LIST_ID (hash_listid);
+    }
   if (hash_table != NULL)
     {
       mht_clear_hls (hash_table, qdata_free_hscan_entry, (void *) thread_p);
