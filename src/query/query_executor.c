@@ -88,6 +88,7 @@
 #include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
 #include "px_heap_scan_trace_handler.hpp"
 #include "px_heap_scan.hpp"
+#include "px_connect_by/px_connect_by.hpp"
 #endif /* SERVER_MODE && !WINDOWS */
 #include "px_query_executor.hpp"
 #include <vector>
@@ -18142,13 +18143,112 @@ skip_hash_build:
 	      goto partition_level_error;
 	  }
 
-	  /* process each partition */
+	  /* close frontier parts before processing */
+	  for (pi = 0; pi < partition_count; pi++)
+	    qfile_close_list (thread_p, frontier_parts[pi]);
+
+#if defined (SERVER_MODE)
+	  /* === PARALLEL BUILD: build all partition hash tables concurrently === */
+	  {
+	    MHT_HLS_TABLE **part_hashes = NULL;
+	    int px_error;
+
+	    // *INDENT-OFF*
+	    part_hashes = (MHT_HLS_TABLE **) db_private_alloc (thread_p,
+							       partition_count * sizeof (MHT_HLS_TABLE *));
+	    // *INDENT-ON*
+	    if (part_hashes == NULL)
+	      goto partition_level_error;
+
+	    px_error = parallel_query::connect_by::build_partition_hashes (*thread_p, partition_lists, partition_count,
+									   connect_by->regu_list_pred,
+									   connect_by->regu_list_rest,
+									   connect_by->hash_build_regu_list,
+									   &xasl_state->vd, part_val_cnt, part_hashes);
+
+	    if (px_error != NO_ERROR)
+	      {
+		/* parallel build failed — fallback to sequential build+probe */
+		db_private_free (thread_p, part_hashes);
+		er_clear ();
+		goto sequential_partition_path;
+	      }
+
+	    /* === SEQUENTIAL PROBE: probe each pre-built hash table === */
+	    for (pi = 0; pi < partition_count; pi++)
+	      {
+		HASH_SCAN_KEY *ppkey = NULL, *pvkey = NULL;
+
+		if (frontier_parts[pi]->tuple_cnt == 0 || part_hashes[pi] == NULL)
+		  {
+		    if (part_hashes[pi] != NULL)
+		      {
+			mht_clear_hls (part_hashes[pi], qdata_free_hscan_entry, (void *) thread_p);
+			mht_destroy_hls (part_hashes[pi]);
+		      }
+		    continue;
+		  }
+
+		ppkey = qdata_alloc_hscan_key (thread_p, part_val_cnt, true);
+		pvkey = qdata_alloc_hscan_key (thread_p, part_val_cnt, true);
+		if (ppkey == NULL || pvkey == NULL)
+		  {
+		    if (ppkey)
+		      qdata_free_hscan_key (thread_p, ppkey, part_val_cnt);
+		    if (pvkey)
+		      qdata_free_hscan_key (thread_p, pvkey, part_val_cnt);
+		    /* cleanup remaining hashes */
+		    for (int ri = pi; ri < partition_count; ri++)
+		      {
+			if (part_hashes[ri] != NULL)
+			  {
+			    mht_clear_hls (part_hashes[ri], qdata_free_hscan_entry, (void *) thread_p);
+			    mht_destroy_hls (part_hashes[ri]);
+			  }
+		      }
+		    db_private_free (thread_p, part_hashes);
+		    goto partition_level_error;
+		  }
+
+		if (qexec_connect_by_process_level (thread_p, xasl, xasl_state, result_list, frontier_parts[pi],
+						    next_frontier, &sibling_sort_buf, &type_list, tplrec,
+						    &temp_tuple_rec, level_value, level_valp, isleaf_valp, iscycle_valp,
+						    parent_pos_valp, index_valp, &parent_path_key, &len_parent_path_key,
+						    &child_path_key, &len_child_path_key, &index_father,
+						    has_order_siblings_by, part_hashes[pi], ppkey, pvkey) != NO_ERROR)
+		  {
+		    qdata_free_hscan_key (thread_p, ppkey, part_val_cnt);
+		    qdata_free_hscan_key (thread_p, pvkey, part_val_cnt);
+		    for (int ri = pi; ri < partition_count; ri++)
+		      {
+			if (part_hashes[ri] != NULL)
+			  {
+			    mht_clear_hls (part_hashes[ri], qdata_free_hscan_entry, (void *) thread_p);
+			    mht_destroy_hls (part_hashes[ri]);
+			  }
+		      }
+		    db_private_free (thread_p, part_hashes);
+		    goto partition_level_error;
+		  }
+
+		qdata_free_hscan_key (thread_p, ppkey, part_val_cnt);
+		qdata_free_hscan_key (thread_p, pvkey, part_val_cnt);
+		mht_clear_hls (part_hashes[pi], qdata_free_hscan_entry, (void *) thread_p);
+		mht_destroy_hls (part_hashes[pi]);
+	      }
+
+	    db_private_free (thread_p, part_hashes);
+	    goto partition_level_done;
+	  }
+	sequential_partition_path:
+#endif /* SERVER_MODE */
+
+	  /* === SEQUENTIAL BUILD+PROBE FALLBACK === */
 	  for (pi = 0; pi < partition_count; pi++)
 	    {
 	      MHT_HLS_TABLE *part_hash = NULL;
 	      HASH_SCAN_KEY *ppkey = NULL, *pvkey = NULL;
 
-	      qfile_close_list (thread_p, frontier_parts[pi]);
 	      if (frontier_parts[pi]->tuple_cnt == 0)
 		continue;
 
@@ -18271,6 +18371,10 @@ skip_hash_build:
 	      mht_clear_hls (part_hash, qdata_free_hscan_entry, (void *) thread_p);
 	      mht_destroy_hls (part_hash);
 	    }
+
+#if defined (SERVER_MODE)
+	partition_level_done:
+#endif
 
 	  /* cleanup frontier parts */
 	  for (pi = 0; pi < partition_count; pi++)
