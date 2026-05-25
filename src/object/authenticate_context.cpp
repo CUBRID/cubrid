@@ -483,7 +483,7 @@ authenticate_context::install (void)
   au_change_class_owner_including_partitions (pass_cls, current_user);
   au_change_class_owner_including_partitions (auth_cls, current_user);
 
-  if (create_public_user (root_cls, user_cls, auth_cls) != NO_ERROR)
+  if (create_public_user (root_cls) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -956,7 +956,7 @@ authenticate_context::pop_user (void)
 }
 
 int
-authenticate_context::create_public_user (MOP root_cls, MOP user_cls, MOP auth_cls)
+authenticate_context::create_public_user (MOP root_cls)
 {
   int exists = 0;
 

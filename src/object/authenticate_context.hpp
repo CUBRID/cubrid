@@ -202,7 +202,7 @@ class EXPORT_IMPORT authenticate_context
 
     void reset (void);
 
-    int create_public_user (MOP root_cls, MOP user_cls, MOP auth_cls);
+    int create_public_user (MOP root_cls);
     int create_information_schema_user (MOP root_cls, MOP user_cls, MOP auth_cls);
 
     int set_system_users_as_created (void);

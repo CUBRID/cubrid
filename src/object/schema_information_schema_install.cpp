@@ -38,7 +38,7 @@ info_schema_init (void)
 {
   using namespace cubschema;
 
-  info_schema_list.emplace_back (INFO_SCHEMA_COLUMN_PRIVILEGES,
+  info_schema_list.emplace_back (INFO_SCHEMA_COLUMN_PRIVILEGES_NAME,
 				 information_schema_initializer::get_view_column_privileges ());
   info_schema_list.emplace_back (INFO_SCHEMA_COLUMNS_NAME, information_schema_initializer::get_view_columns ());
   info_schema_list.emplace_back (INFO_SCHEMA_DOMAINS_NAME, information_schema_initializer::get_view_domains ());
@@ -109,7 +109,7 @@ namespace cubschema
   {
     return information_schema_definition (
 		   // name
-		   INFO_SCHEMA_COLUMN_PRIVILEGES,
+		   INFO_SCHEMA_COLUMN_PRIVILEGES_NAME,
 		   // columns
     {
       {"grantor", format_varchar (DB_MAX_USER_LENGTH)},

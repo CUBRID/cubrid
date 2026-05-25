@@ -28,7 +28,7 @@ namespace cubschema
 {
   static const std::vector<std::string> sm_information_schema_names =
   {
-    INFO_SCHEMA_COLUMN_PRIVILEGES,
+    INFO_SCHEMA_COLUMN_PRIVILEGES_NAME,
     INFO_SCHEMA_COLUMNS_NAME,
     INFO_SCHEMA_DOMAINS_NAME,
     INFO_SCHEMA_FOREIGN_SERVERS_NAME,

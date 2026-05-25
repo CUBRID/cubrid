@@ -25,7 +25,7 @@
 #define _SCHEMA_INFORMATION_SCHEMA_CONSTANTS_H_
 
 /* information_schema views (vclasses) - alphabetic order */
-#define INFO_SCHEMA_COLUMN_PRIVILEGES        "column_privileges"
+#define INFO_SCHEMA_COLUMN_PRIVILEGES_NAME   "column_privileges"
 #define INFO_SCHEMA_COLUMNS_NAME             "columns"
 #define INFO_SCHEMA_DOMAINS_NAME             "domains"
 #define INFO_SCHEMA_FOREIGN_SERVERS_NAME     "foreign_servers"
