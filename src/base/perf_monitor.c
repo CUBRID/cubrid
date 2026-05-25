@@ -568,13 +568,13 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_DEALLOC_CNT, "Num_data_page_avoid_dealloc"),
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_VICTIM_CNT, "Num_data_page_avoid_victim"),
 
-  /* concurrency and workers */
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_THREAD_TOTAL_SLOTS, "Num_thread_total_slots"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_THREAD_TARGET_SLOTS, "Num_thread_target_slots"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_THREAD_BUSY_SLOTS, "Num_thread_busy_slots"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_THREAD_TOTAL_WORKERS, "Num_thread_total_workers"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_THREAD_TARGET_WORKERS, "Num_thread_target_workers"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_THREAD_BUSY_WORKERS, "Num_thread_busy_workers"),
+  /* transaction slots and workers */
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_TRANSACTION_TOTAL_SLOTS, "Num_transaction_total_slots"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_TRANSACTION_TARGET_SLOTS, "Num_transaction_target_slots"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_TRANSACTION_BUSY_SLOTS, "Num_transaction_busy_slots"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_TRANSACTION_TOTAL_WORKERS, "Num_transaction_total_workers"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_TRANSACTION_TARGET_WORKERS, "Num_transaction_target_workers"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_TRANSACTION_BUSY_WORKERS, "Num_transaction_busy_workers"),
 
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_REDO_ASYNC, "Log_redo_async"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_REDO_FUNC_EXEC, "Log_redo_func_exec"),
@@ -4065,12 +4065,12 @@ perfmon_get_peek_stats (UINT64 * stats)
   stats[pstat_Metadata[PSTAT_QM_NUM_HOLDABLE_CURSORS].start_offset] = session_get_number_of_holdable_cursors ();
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #if defined (SERVER_MODE)
-  css_get_thread_runtime_stats (&(stats[pstat_Metadata[PSTAT_THREAD_TOTAL_SLOTS].start_offset]),
-				&(stats[pstat_Metadata[PSTAT_THREAD_TARGET_SLOTS].start_offset]),
-				&(stats[pstat_Metadata[PSTAT_THREAD_BUSY_SLOTS].start_offset]),
-				&(stats[pstat_Metadata[PSTAT_THREAD_TOTAL_WORKERS].start_offset]),
-				&(stats[pstat_Metadata[PSTAT_THREAD_TARGET_WORKERS].start_offset]),
-				&(stats[pstat_Metadata[PSTAT_THREAD_BUSY_WORKERS].start_offset]));
+  css_get_thread_runtime_stats (&(stats[pstat_Metadata[PSTAT_TRANSACTION_TOTAL_SLOTS].start_offset]),
+				&(stats[pstat_Metadata[PSTAT_TRANSACTION_TARGET_SLOTS].start_offset]),
+				&(stats[pstat_Metadata[PSTAT_TRANSACTION_BUSY_SLOTS].start_offset]),
+				&(stats[pstat_Metadata[PSTAT_TRANSACTION_TOTAL_WORKERS].start_offset]),
+				&(stats[pstat_Metadata[PSTAT_TRANSACTION_TARGET_WORKERS].start_offset]),
+				&(stats[pstat_Metadata[PSTAT_TRANSACTION_BUSY_WORKERS].start_offset]));
 #endif /* SERVER_MODE */
 }
 
