@@ -92,6 +92,7 @@
 #include "sp_catalog.hpp"
 
 #include "authenticate_context.hpp"
+#include "schema_information_schema.hpp"
 
 #include <signal.h>
 
@@ -227,7 +228,10 @@ install_system_metadata (void)
       return error;
     }
 
-  return NO_ERROR;
+  info_schema_init ();
+  error = info_schema_install ();
+
+  return error;
 }
 
 /*

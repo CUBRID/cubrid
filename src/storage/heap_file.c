@@ -23686,6 +23686,8 @@ error:
 #endif /* ENABLE_SYSTEMTAP */
 
   /* all ok */
+  heap_unfix_watchers (thread_p, context);
+
   return rc;
 }
 

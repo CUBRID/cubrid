@@ -3377,6 +3377,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_TO_TIMESTAMP_TZ:
     case PT_CRC32:
     case PT_CONV_TZ:
+    case PT_COLLECTION_TO_STRING:
       return RANK_EXPR_MEDIUM;
 
       /* Group 3 -- heavy */
@@ -3395,6 +3396,10 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_ENCRYPT:
     case PT_DECRYPT:
     case PT_INDEX_CARDINALITY:
+    case PT_ESTIMATED_TABLE_ROWS:
+    case PT_ESTIMATED_AVG_ROW_LENGTH:
+    case PT_ESTIMATED_DATA_LENGTH:
+    case PT_ESTIMATED_DATA_FREE:
     case PT_TO_BASE64:
     case PT_FROM_BASE64:
     case PT_SYS_GUID:

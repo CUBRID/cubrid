@@ -7892,7 +7892,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_TO_BASE64 || node->info.expr.op == PT_FROM_BASE64
 		       || node->info.expr.op == PT_FROM_BASE64 || node->info.expr.op == PT_SLEEP
 		       || node->info.expr.op == PT_TZ_OFFSET || node->info.expr.op == PT_CRC32
-		       || node->info.expr.op == PT_DISK_SIZE || node->info.expr.op == PT_CONV_TZ)
+		       || node->info.expr.op == PT_DISK_SIZE || node->info.expr.op == PT_CONV_TZ
+		       || node->info.expr.op == PT_COLLECTION_TO_STRING)
 		{
 		  r1 = NULL;
 
@@ -8161,6 +8162,19 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  r2 = NULL;
 		  r3 = NULL;
 
+		  domain = pt_xasl_node_to_domain (parser, node);
+		  if (domain == NULL)
+		    {
+		      goto end_expr_op_switch;
+		    }
+		}
+	      else if (node->info.expr.op == PT_ESTIMATED_TABLE_ROWS
+		       || node->info.expr.op == PT_ESTIMATED_AVG_ROW_LENGTH
+		       || node->info.expr.op == PT_ESTIMATED_DATA_LENGTH
+		       || node->info.expr.op == PT_ESTIMATED_DATA_FREE)
+		{
+		  r1 = NULL;
+		  r2 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
 		  domain = pt_xasl_node_to_domain (parser, node);
 		  if (domain == NULL)
 		    {
@@ -9354,11 +9368,43 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    {
 		      XASL_SET_FLAG (parser->parent_proc_xasl, XASL_NO_FIXED_SCAN);
 		    }
-		  else
+		  /* else: no scan context (e.g., INSERT VALUES), flag not needed */
+		  break;
+
+		case PT_ESTIMATED_TABLE_ROWS:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_ESTIMATED_TABLE_ROWS, domain);
+		  if (parser->parent_proc_xasl != NULL)
 		    {
-		      /* should not happen */
-		      assert (false);
+		      XASL_SET_FLAG (parser->parent_proc_xasl, XASL_NO_FIXED_SCAN);
 		    }
+		  /* else: no scan context (e.g., INSERT VALUES), flag not needed */
+		  break;
+
+		case PT_ESTIMATED_AVG_ROW_LENGTH:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_ESTIMATED_AVG_ROW_LENGTH, domain);
+		  if (parser->parent_proc_xasl != NULL)
+		    {
+		      XASL_SET_FLAG (parser->parent_proc_xasl, XASL_NO_FIXED_SCAN);
+		    }
+		  /* else: no scan context (e.g., INSERT VALUES), flag not needed */
+		  break;
+
+		case PT_ESTIMATED_DATA_LENGTH:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_ESTIMATED_DATA_LENGTH, domain);
+		  if (parser->parent_proc_xasl != NULL)
+		    {
+		      XASL_SET_FLAG (parser->parent_proc_xasl, XASL_NO_FIXED_SCAN);
+		    }
+		  /* else: no scan context (e.g., INSERT VALUES), flag not needed */
+		  break;
+
+		case PT_ESTIMATED_DATA_FREE:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_ESTIMATED_DATA_FREE, domain);
+		  if (parser->parent_proc_xasl != NULL)
+		    {
+		      XASL_SET_FLAG (parser->parent_proc_xasl, XASL_NO_FIXED_SCAN);
+		    }
+		  /* else: no scan context (e.g., INSERT VALUES), flag not needed */
 		  break;
 
 		case PT_EXEC_STATS:
@@ -9431,6 +9477,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_CRC32:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_CRC32, domain);
+		  break;
+
+		case PT_COLLECTION_TO_STRING:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_COLLECTION_TO_STRING, domain);
 		  break;
 
 		default:
