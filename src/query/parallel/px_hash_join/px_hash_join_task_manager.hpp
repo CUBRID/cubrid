@@ -29,6 +29,7 @@
 #include <mutex>
 
 #include "error_context.hpp"		/* cuberr::context */
+#include "px_hash_join_spawn_manager.hpp"	/* parallel_query::hash_join::spawn_manager */
 #include "px_worker_manager.hpp"	/* parallel_query::worker_manager */
 #include "storage_common.h"		/* NULL_TRAN_INDEX */
 #include "thread_entry.hpp"		/* cubthread::entry */
@@ -120,14 +121,58 @@ namespace parallel_query
 
 	inline ~task_execution_guard ()
 	{
+	  /* Tear down any spawn_manager TLS the task may have obtained via get_spawn_manager().
+	   * Safe no-op when never acquired (NULL-guarded inside). */
+	  spawn_manager::destroy_instance ();
+
 	  m_thread_ref.conn_entry = nullptr;
 	  m_thread_ref.on_trace = false;
 
 	  m_thread_ref.pop_resource_tracks ();
 	}
 
+	/* Lazily obtain the per-worker spawn_manager TLS owned by this guard. Returns nullptr
+	 * on allocation failure (er_errid set). Subsequent calls return the same instance. */
+	inline spawn_manager *get_spawn_manager ()
+	{
+	  return spawn_manager::get_instance (m_thread_ref);
+	}
+
       private:
 	cubthread::entry &m_thread_ref;
+    };
+
+    /*
+     * sector_page_iterator
+     *
+     * Per-thread sector-based page iterator over a list_id's data pages.
+     * Phase 1: one worker (the CAS winner of membuf_claimed) iterates the
+     *          membuf region sequentially.
+     * Phase 2: all workers split disk pages by atomically claiming sectors
+     *          via next_sector_index and walking each sector's bitmap.
+     */
+
+    class sector_page_iterator
+    {
+      public:
+	sector_page_iterator ();
+
+	PAGE_PTR get_next_page (cubthread::entry &thread_ref, QFILE_LIST_SECTOR_SCAN_INFO &sector_scan);
+
+	inline QMGR_TEMP_FILE *get_current_tfile () const
+	{
+	  return m_current_tfile;
+	}
+
+      private:
+	/* per-thread membuf iteration state: -1 = not owner, (>= 0) = current membuf page index */
+	int m_membuf_index;
+
+	/* per-thread sector iteration state */
+	int m_sector_index;		/* current sector index in page_map, -1 = need next sector */
+	UINT64 m_current_bitmap;	/* remaining page bits in current sector */
+	VSID m_current_vsid;		/* current sector VSID */
+	QMGR_TEMP_FILE *m_current_tfile;	/* tfile that owns the last returned page */
     };
 
     /*
@@ -144,6 +189,10 @@ namespace parallel_query
 	task_manager &m_task_manager;
 	HASHJOIN_MANAGER *m_manager;
 	const int m_index;
+
+	/* Worker-local sector/page iterator. join_task does not consume it, but keeping it
+	 * in the base avoids splitting the hierarchy just for this single member. */
+	sector_page_iterator m_page_iter;
     };
 
     /*
@@ -160,17 +209,6 @@ namespace parallel_query
       private:
 	HASHJOIN_INPUT_SPLIT_INFO *m_split_info;
 	HASHJOIN_SHARED_SPLIT_INFO *m_shared_info;
-
-	/* per-thread membuf iteration state: -1 = not owner, (>= 0) = current membuf page index */
-	int m_membuf_index;
-
-	/* per-thread sector iteration state */
-	int m_sector_index;		/* current sector index in page_map, -1 = need next sector */
-	UINT64 m_current_bitmap;	/* remaining page bits in current sector */
-	VSID m_current_vsid;		/* current sector VSID */
-	QMGR_TEMP_FILE *m_current_tfile;	/* tfile that owns the last returned page */
-
-	PAGE_PTR get_next_page (cubthread::entry &thread_ref);
     };
 
     /*
@@ -189,6 +227,24 @@ namespace parallel_query
 	HASHJOIN_SHARED_JOIN_INFO *m_shared_info;
 
 	HASHJOIN_CONTEXT *get_next_context ();
+    };
+    /*
+     * probe_task
+     */
+
+    class probe_task: public base_task
+    {
+      public:
+	probe_task (task_manager &task_manager, HASHJOIN_MANAGER *manager,
+		    HASHJOIN_CONTEXT *context, HASHJOIN_SHARED_PROBE_INFO *shared_info, int index);
+	void execute (cubthread::entry &thread_ref) override;
+
+      private:
+	HASHJOIN_CONTEXT *m_context;
+	HASHJOIN_SHARED_PROBE_INFO *m_shared_info;
+
+	void execute_inner (cubthread::entry &thread_ref);
+	void execute_outer (cubthread::entry &thread_ref);
     };
   } /* namespace hash_join */
 } /* namespace parallel_query */
