@@ -5426,7 +5426,7 @@ tp_ftoa (DB_VALUE const *src, DB_VALUE * result)
 
 	if (data_size < prec && pr_pad_char_to_precision (result, prec) != NO_ERROR)
 	  {
-	    db_make_null (result);
+	    pr_clear_value (result);
 	    return;
 	  }
       }
@@ -5495,7 +5495,7 @@ tp_dtoa (DB_VALUE const *src, DB_VALUE * result)
 
 	if (data_size < prec && pr_pad_char_to_precision (result, prec) != NO_ERROR)
 	  {
-	    db_make_null (result);
+	    pr_clear_value (result);
 	    return;
 	  }
       }
