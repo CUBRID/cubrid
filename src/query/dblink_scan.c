@@ -1187,6 +1187,18 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
       return ER_DBLINK;
     }
 
+  /* guard: table_name, url, user, pwd must be valid */
+  if (table_name == NULL || table_name[0] == '\0')
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT: table_name is NULL or empty");
+      return ER_DBLINK;
+    }
+  if (url == NULL || user == NULL || pwd == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT: url/user/pwd is NULL");
+      return ER_DBLINK;
+    }
+
   /* build connection URL with gateway flag */
   find = strstr (url, ":?");
   if (find)
@@ -1304,8 +1316,8 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
       (void) snprintf (p, remaining, ")");
     }
 
-  /* verify SQL was not truncated */
-  if (remaining <= 0 || sql[sql_len - 1] != '\0')
+  /* verify SQL was not truncated - just check remaining; string is null-terminated by snprintf */
+  if (remaining <= 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT: SQL buffer overflow");
       db_private_free (thread_p, sql);
