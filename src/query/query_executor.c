@@ -17094,7 +17094,7 @@ qexec_connect_by_build_child (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
       /* make the "final" parent tuple */
       *tuple_rec = *temp_tuple_rec;
       if (qdata_copy_valptr_list_to_tuple (thread_p, connect_by->prior_outptr_list, &xasl_state->vd,
-					       tuple_rec) != NO_ERROR)
+					   tuple_rec) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -17645,6 +17645,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   MHT_HLS_TABLE *hash_table = NULL;
   HASH_SCAN_KEY *hash_probe_key = NULL;
   int hash_key_cnt = 0;
+  bool use_hash = false;
 
   has_order_siblings_by = xasl->orderby_list ? 1 : 0;
   connect_by = &xasl->proc.connect_by;
@@ -17745,19 +17746,31 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
 		if (qdata_build_hscan_key (thread_p, &xasl_state->vd, connect_by->hash_build_regu_list,
 					   build_key) != NO_ERROR)
-		  { hash_scan = S_ERROR; break; }
+		  {
+		    hash_scan = S_ERROR;
+		    break;
+		  }
 		hkey = qdata_hash_scan_key (build_key, UINT_MAX, HASH_METH_IN_MEM);
 
 		if (qdata_copy_valptr_list_to_tuple (thread_p, xasl->outptr_list, &xasl_state->vd,
 						     &hash_tplrec) != NO_ERROR)
-		  { hash_scan = S_ERROR; break; }
+		  {
+		    hash_scan = S_ERROR;
+		    break;
+		  }
 
 		new_value = qdata_alloc_hscan_value (thread_p, hash_tplrec.tpl);
 		if (new_value == NULL)
-		  { hash_scan = S_ERROR; break; }
+		  {
+		    hash_scan = S_ERROR;
+		    break;
+		  }
 
 		if (mht_put_hls (hash_table, (void *) &hkey, (void *) new_value) == NULL)
-		  { hash_scan = S_ERROR; break; }
+		  {
+		    hash_scan = S_ERROR;
+		    break;
+		  }
 	      }
 
 	    if (hash_scan == S_ERROR)
@@ -17803,6 +17816,8 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     }
 skip_prescan_hash:
 
+  use_hash = (hash_table != NULL);
+
   /* replace PRIOR argument constant regu vars values pointers */
   qexec_replace_prior_regu_vars_pred (thread_p, xasl->if_pred, xasl);
 
@@ -17832,7 +17847,7 @@ skip_prescan_hash:
 	}
     }
 
-  if (connect_by->use_hash_for_hq && connect_by->hash_probe_regu_list)
+  if (use_hash && connect_by->hash_probe_regu_list)
     {
       regu_list = connect_by->hash_probe_regu_list;
       while (regu_list)
@@ -17910,11 +17925,11 @@ skip_prescan_hash:
 	}
 
       if (qexec_connect_by_process_level (thread_p, xasl, xasl_state, result_list, current_frontier,
-					    next_frontier, &sibling_sort_buf, &type_list, tplrec, &temp_tuple_rec,
-					    level_value, level_valp, isleaf_valp, iscycle_valp, parent_pos_valp,
-					    index_valp, &parent_path_key, &len_parent_path_key,
-					    &child_path_key, &len_child_path_key,
-					    &index_father, has_order_siblings_by, hash_table, hash_probe_key) != NO_ERROR)
+					  next_frontier, &sibling_sort_buf, &type_list, tplrec, &temp_tuple_rec,
+					  level_value, level_valp, isleaf_valp, iscycle_valp, parent_pos_valp,
+					  index_valp, &parent_path_key, &len_parent_path_key,
+					  &child_path_key, &len_child_path_key,
+					  &index_father, has_order_siblings_by, hash_table, hash_probe_key) != NO_ERROR)
 	{
 	  listfile2_tmp = sibling_sort_buf;
 	  GOTO_EXIT_ON_ERROR;
@@ -17940,7 +17955,7 @@ skip_prescan_hash:
     }
 
   /* teardown attr caches before end_scan so cached-XASL reuse finds clean state */
-  if (connect_by->single_table_opt && connect_by->use_hash_for_hq)
+  if (use_hash)
     {
       heap_attrinfo_end (thread_p, xasl->spec_list->s.cls_node.cache_pred);
       heap_attrinfo_end (thread_p, xasl->spec_list->s.cls_node.cache_rest);
@@ -18036,7 +18051,7 @@ skip_prescan_hash:
 exit_on_error:
 
   /* teardown attr caches before end_scan so cached-XASL reuse finds clean state */
-  if (connect_by->single_table_opt && connect_by->use_hash_for_hq)
+  if (use_hash)
     {
       heap_attrinfo_end (thread_p, xasl->spec_list->s.cls_node.cache_pred);
       heap_attrinfo_end (thread_p, xasl->spec_list->s.cls_node.cache_rest);
