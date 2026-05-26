@@ -241,7 +241,8 @@ namespace cubload
 	scan_code = heap_next (&thread_ref, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK);
 	if (scan_code == S_SUCCESS)
 	  {
-	    scan_code = heap_get_visible_version (&thread_ref, &inst_oid, oid_User_class_oid, &recdes, &scan_cache, PEEK, NULL_CHN);
+	    scan_code = heap_get_visible_version_expand_oos (&thread_ref, &inst_oid, oid_User_class_oid, &recdes, &scan_cache, PEEK,
+			NULL_CHN);
 	    if (scan_code == S_SNAPSHOT_NOT_SATISFIED || scan_code == S_DOESNT_EXIST)
 	      {
 		continue;

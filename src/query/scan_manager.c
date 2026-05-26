@@ -6306,7 +6306,6 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
       recdes.data = NULL;
     }
 
-  isidp->scan_cache.expand_oos = false;
   sp_scan = heap_get_visible_version (thread_p, isidp->curr_oidp, NULL, &recdes, &isidp->scan_cache,
 				      scan_id->fixed, NULL_CHN);
   if (sp_scan == S_SNAPSHOT_NOT_SATISFIED)

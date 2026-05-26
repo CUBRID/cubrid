@@ -156,7 +156,6 @@ struct heap_scancache
     FILE_TYPE file_type;		/* The file type of the heap file being scanned. Can be FILE_HEAP or
 				         * FILE_HEAP_REUSE_SLOTS */
     MVCC_SNAPSHOT *mvcc_snapshot;	/* mvcc snapshot */
-    bool expand_oos;		/* if true, replace inline OOS OID slots with actual values */
     HEAP_SCANCACHE_NODE_LIST *partition_list;	/* list holding the heap file information for partition nodes involved
 						 * in the scan */
 
@@ -686,6 +685,9 @@ extern int heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rc
 extern int heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, MVCCID threshold_mvccid);
 extern SCAN_CODE heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 					   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn);
+extern SCAN_CODE heap_get_visible_version_expand_oos (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
+						      RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
+						      int old_chn);
 extern SCAN_CODE heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
 						RECDES * recdes, RECDES * forward_recdes, HEAP_SCANCACHE * scan_cache,
 						int ispeeking, int old_chn);

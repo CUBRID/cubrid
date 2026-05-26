@@ -6982,7 +6982,6 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   scan_cache->debug_initpattern = HEAP_DEBUG_SCANCACHE_INITPATTERN;
   scan_cache->mvcc_snapshot = mvcc_snapshot;
   scan_cache->partition_list = NULL;
-  scan_cache->expand_oos = true;
 
   return ret;
 
@@ -9034,8 +9033,9 @@ heap_scanrange_to_following (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_rang
 	{
 	  /* Scanrange starts with the given object */
 	  scan_range->first_oid = *start_oid;
-	  scan = heap_get_visible_version (thread_p, &scan_range->last_oid, &scan_range->scan_cache.node.class_oid,
-					   &recdes, &scan_range->scan_cache, PEEK, NULL_CHN);
+	  scan = heap_get_visible_version_expand_oos (thread_p, &scan_range->last_oid,
+						      &scan_range->scan_cache.node.class_oid, &recdes,
+						      &scan_range->scan_cache, PEEK, NULL_CHN);
 	  if (scan != S_SUCCESS)
 	    {
 	      if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
@@ -9144,8 +9144,9 @@ heap_scanrange_to_prior (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range, O
 	  /* Scanrange ends with the given object */
 	  scan_range->last_oid = *last_oid;
 	  scan =
-	    heap_get_visible_version (thread_p, &scan_range->last_oid, &scan_range->scan_cache.node.class_oid, &recdes,
-				      &scan_range->scan_cache, PEEK, NULL_CHN);
+	    heap_get_visible_version_expand_oos (thread_p, &scan_range->last_oid,
+						 &scan_range->scan_cache.node.class_oid, &recdes,
+						 &scan_range->scan_cache, PEEK, NULL_CHN);
 	  if (scan != S_SUCCESS)
 	    {
 	      if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
@@ -9241,8 +9242,8 @@ heap_scanrange_next (THREAD_ENTRY * thread_p, OID * next_oid, RECDES * recdes, H
       /* Retrieve the first object in the scanrange */
       *next_oid = scan_range->first_oid;
       scan =
-	heap_get_visible_version (thread_p, next_oid, &scan_range->scan_cache.node.class_oid, recdes,
-				  &scan_range->scan_cache, ispeeking, NULL_CHN);
+	heap_get_visible_version_expand_oos (thread_p, next_oid, &scan_range->scan_cache.node.class_oid, recdes,
+					     &scan_range->scan_cache, ispeeking, NULL_CHN);
       if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
 	{
 	  scan =
@@ -26425,10 +26426,23 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
   HEAP_GET_CONTEXT context;
 
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
-  if (scan_cache != NULL)
-    {
-      context.expand_oos = scan_cache->expand_oos;
-    }
+
+  scan = heap_get_visible_version_internal (thread_p, &context, false);
+
+  heap_clean_get_context (thread_p, &context);
+
+  return scan;
+}
+
+SCAN_CODE
+heap_get_visible_version_expand_oos (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
+				     HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
+{
+  SCAN_CODE scan = S_SUCCESS;
+  HEAP_GET_CONTEXT context;
+
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+  context.expand_oos = true;
 
   scan = heap_get_visible_version_internal (thread_p, &context, false);
 
@@ -26481,11 +26495,10 @@ heap_scan_get_visible_version_impl (THREAD_ENTRY * thread_p, const OID * oid, OI
    * the heap_get_visible_version_internal() function.
    *
    * Note: this shortcut returns peeked_recdes as-is, preserving any inline OOS OID slots.
-   * Callers that request OOS expansion (expand_oos == true) must not take this shortcut for
-   * records that contain OOS; they fall through to the normal path which runs the expansion.
+   * The scan path never expands OOS (callers that need expanded records use
+   * heap_get_visible_version_expand_oos instead), so no OOS guard is needed here.
    */
-  if (peeked_recdes->type == REC_HOME && ispeeking == PEEK
-      && (!scan_cache->expand_oos || !heap_recdes_contains_oos (peeked_recdes)))
+  if (peeked_recdes->type == REC_HOME && ispeeking == PEEK)
     {
       MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
 
@@ -26531,7 +26544,6 @@ heap_scan_get_visible_version_impl (THREAD_ENTRY * thread_p, const OID * oid, OI
     }
 
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
-  context.expand_oos = scan_cache->expand_oos;
 
   scan = heap_get_visible_version_internal (thread_p, &context, true);
 
@@ -26952,7 +26964,7 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
   context->scan_cache = scan_cache;
   context->ispeeking = ispeeking;
   context->old_chn = old_chn;
-  context->expand_oos = true;
+  context->expand_oos = false;
   if (scan_cache != NULL && scan_cache->page_latch == X_LOCK)
     {
       context->latch_mode = PGBUF_LATCH_WRITE;
