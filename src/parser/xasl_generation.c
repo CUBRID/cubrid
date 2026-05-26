@@ -616,8 +616,8 @@ static int pt_append_order_siblings_pos_regu (PARSER_CONTEXT * parser, REGU_VARI
 					      DB_VALUE * fetch_to, int pos_no);
 static int pt_to_connect_by_extend_for_order_siblings (PARSER_CONTEXT * parser, PT_NODE * select_node,
 						       XASL_NODE * select_xasl, XASL_NODE * connect_by_xasl);
-static SORT_LIST *pt_to_order_siblings_by (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * xasl,
-					   XASL_NODE * connect_by_xasl);
+static PT_NODE *pt_order_siblings_sort_key_expr (PT_NODE * sort_spec, PT_NODE * select_list);
+static int pt_order_siblings_base_val_pos (REGU_VARIABLE * regu, VAL_LIST * val_list, int base_cnt);
 static SORT_LIST *pt_agg_orderby_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * order_list, PT_NODE * agg_args_list);
 static PT_NODE *pt_substitute_assigned_name_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
@@ -13433,15 +13433,16 @@ pt_set_connect_by_xasl (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NOD
   xasl->connect_by_ptr = connect_by_xasl;
   XASL_SET_FLAG (xasl, XASL_HAS_CONNECT_BY);
 
-  /* When ORDER SIBLINGS BY references SELECT list expressions that are not part of the CONNECT BY
-   * scan tuple (e.g. arithmetic / function expressions over the scan columns), inject those
-   * expressions as hidden trailing user columns BEFORE the pseudo-columns so that the sort key is
-   * materialized in the listfile and survives the listfile2_tmp -> listfile2 -> listfile0 path. */
+  /* Build ORDER SIBLINGS BY sort keys on the CONNECT BY scan tuple from the ORDER SIBLINGS BY
+   * expressions themselves (not by matching outer SELECT list regu trees). */
   if (xasl->orderby_list != NULL && select_node->info.query.flag.order_siblings == 1)
     {
       if (pt_to_connect_by_extend_for_order_siblings (parser, select_node, xasl, connect_by_xasl) != NO_ERROR)
 	{
-	  PT_ERRORm (parser, select_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  if (!pt_has_error (parser))
+	    {
+	      PT_ERRORm (parser, select_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	    }
 	  return NULL;
 	}
     }
@@ -13492,14 +13493,10 @@ pt_set_connect_by_xasl (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NOD
 	}
     }
 
-  /* move ORDER SIBLINGS BY column list in the CONNECT BY xasl if order_by was not cut out because of aggregates */
+  /* move ORDER SIBLINGS BY sort list to the CONNECT BY xasl (pos_no already remapped above) */
   if (xasl->orderby_list != NULL && select_node->info.query.flag.order_siblings == 1)
     {
-      connect_by_xasl->orderby_list = pt_to_order_siblings_by (parser, select_node, xasl, connect_by_xasl);
-      if (!connect_by_xasl->orderby_list)
-	{
-	  return NULL;
-	}
+      connect_by_xasl->orderby_list = xasl->orderby_list;
       xasl->orderby_list = NULL;
     }
 
@@ -23877,90 +23874,61 @@ parser_generate_do_stmt_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * pt_order_siblings_regu_equal () - compare two regu trees (built-in, SP, arithmetic, columns)
- *   return:
- *   r1(in):
- *   r2(in):
+ * pt_order_siblings_sort_key_expr () - resolve the PT_NODE expression that ORDER SIBLINGS BY
+ *   sorts by. For ORDER SIBLINGS BY n (ordinal), returns the n-th SELECT list item; otherwise
+ *   returns the sort spec expression itself.
  */
-static bool
-pt_order_siblings_regu_equal (REGU_VARIABLE * r1, REGU_VARIABLE * r2)
+static PT_NODE *
+pt_order_siblings_sort_key_expr (PT_NODE * sort_spec, PT_NODE * select_list)
 {
-  ARITH_TYPE *a1, *a2;
-  REGU_VARIABLE_LIST l1, l2;
+  PT_NODE *col;
+  int pos, k;
 
-  if (r1 == r2)
+  if (sort_spec == NULL || sort_spec->node_type != PT_SORT_SPEC)
     {
-      return true;
-    }
-  if (r1 == NULL || r2 == NULL)
-    {
-      return false;
-    }
-  if (r1->type != r2->type)
-    {
-      return false;
+      return NULL;
     }
 
-  switch (r1->type)
+  pos = sort_spec->info.sort_spec.pos_descr.pos_no;
+  if (pos > 0)
     {
-    case TYPE_CONSTANT:
-    case TYPE_ORDERBY_NUM:
-      return r1->value.dbvalptr != NULL && r1->value.dbvalptr == r2->value.dbvalptr;
-
-    case TYPE_INARITH:
-    case TYPE_OUTARITH:
-      a1 = r1->value.arithptr;
-      a2 = r2->value.arithptr;
-      if (a1 == a2)
+      for (col = select_list, k = 1; col != NULL && k < pos; col = col->next, k++)
 	{
-	  return true;
+	  ;
 	}
-      if (a1 == NULL || a2 == NULL || a1->opcode != a2->opcode)
+      if (col != NULL)
 	{
-	  return false;
+	  return col;
 	}
-      return pt_order_siblings_regu_equal (a1->leftptr, a2->leftptr)
-	&& pt_order_siblings_regu_equal (a1->rightptr, a2->rightptr)
-	&& pt_order_siblings_regu_equal (a1->thirdptr, a2->thirdptr);
-
-    case TYPE_FUNC:
-      if (r1->value.funcp == NULL || r2->value.funcp == NULL || r1->value.funcp->ftype != r2->value.funcp->ftype)
-	{
-	  return false;
-	}
-      for (l1 = r1->value.funcp->operand, l2 = r2->value.funcp->operand; l1 != NULL && l2 != NULL;
-	   l1 = l1->next, l2 = l2->next)
-	{
-	  if (!pt_order_siblings_regu_equal (&l1->value, &l2->value))
-	    {
-	      return false;
-	    }
-	}
-      return (l1 == NULL && l2 == NULL);
-
-    case TYPE_SP:
-      if (r1->value.sp_ptr == NULL || r2->value.sp_ptr == NULL)
-	{
-	  return false;
-	}
-      for (l1 = r1->value.sp_ptr->args, l2 = r2->value.sp_ptr->args; l1 != NULL && l2 != NULL;
-	   l1 = l1->next, l2 = l2->next)
-	{
-	  if (!pt_order_siblings_regu_equal (&l1->value, &l2->value))
-	    {
-	      return false;
-	    }
-	}
-      return (l1 == NULL && l2 == NULL);
-
-    case TYPE_ATTR_ID:
-    case TYPE_CLASS_ATTR_ID:
-    case TYPE_SHARED_ATTR_ID:
-      return r1->value.attr_descr.id == r2->value.attr_descr.id;
-
-    default:
-      return false;
     }
+
+  return sort_spec->info.sort_spec.expr;
+}
+
+/*
+ * pt_order_siblings_base_val_pos () - if regu is a TYPE_CONSTANT pointing at one of the original
+ *   CONNECT BY scan val_list slots [0..base_cnt), return that index; otherwise -1.
+ */
+static int
+pt_order_siblings_base_val_pos (REGU_VARIABLE * regu, VAL_LIST * val_list, int base_cnt)
+{
+  QPROC_DB_VALUE_LIST valp;
+  int j;
+
+  if (regu == NULL || regu->type != TYPE_CONSTANT || val_list == NULL || base_cnt <= 0)
+    {
+      return -1;
+    }
+
+  for (valp = val_list->valp, j = 0; valp != NULL && j < base_cnt; valp = valp->next, j++)
+    {
+      if (regu->value.dbvalptr == valp->val)
+	{
+	  return j;
+	}
+    }
+
+  return -1;
 }
 
 /*
@@ -24018,15 +23986,13 @@ pt_append_order_siblings_pos_regu (PARSER_CONTEXT * parser, REGU_VARIABLE_LIST *
 }
 
 /*
- * pt_to_connect_by_extend_for_order_siblings () - inject the outer outptr_list entries that
- *   are referenced by ORDER SIBLINGS BY but are not part of the CONNECT BY scan tuple. The
- *   new columns are appended as trailing user columns BEFORE the 5 pseudo columns, and the
- *   corresponding val_list / prior_val_list / regu_list_rest / prior_regu_list_rest /
- *   after_cb_regu_list_rest / prior_outptr_list are kept consistent.
+ * pt_to_connect_by_extend_for_order_siblings () - for each ORDER SIBLINGS BY sort key, build a
+ *   regu_variable from the ORDER SIBLINGS BY expression in CONNECT BY scan context and either
+ *   reuse an existing scan-column outptr slot or inject a new trailing user column (before pseudo
+ *   columns). Also remaps orderby_list pos_no to the CONNECT BY outptr_list position.
  *
- *   This makes ORDER SIBLINGS BY behave like ORDER BY: ORDER SIBLINGS BY n maps to the n-th
- *   SELECT list item, ORDER SIBLINGS BY expr sorts by expr's value, and hidden ORDER BY
- *   columns added by the parser are sorted just like in regular ORDER BY.
+ *   Sort keys are determined solely by ORDER SIBLINGS BY expressions; they are not matched against
+ *   outer SELECT list regu trees.
  *
  *   return: NO_ERROR or ER_FAILED
  */
@@ -24035,21 +24001,21 @@ pt_to_connect_by_extend_for_order_siblings (PARSER_CONTEXT * parser, PT_NODE * s
 					    XASL_NODE * select_xasl, XASL_NODE * connect_by_xasl)
 {
   CONNECTBY_PROC_NODE *connect_by;
+  PT_NODE *sort_spec, *sort_key_expr;
   SORT_LIST *orderby;
-  REGU_VARIABLE_LIST outer_regu, scan_regu, new_regu;
+  REGU_VARIABLE *sort_key_regu;
+  REGU_VARIABLE_LIST new_regu;
   REGU_VARIABLE_LIST cb_prev, cb_insert_before;
   REGU_VARIABLE_LIST prior_prev, prior_insert_before;
   QPROC_DB_VALUE_LIST val_tail, prior_val_tail, new_val, new_prior_val;
   TP_DOMAIN *new_dom;
-  int user_cnt, i;
-  bool found;
+  int base_user_cnt, user_cnt, i, base_pos;
 
   if (parser == NULL || select_xasl == NULL || connect_by_xasl == NULL)
     {
       return NO_ERROR;
     }
-  if (select_xasl->orderby_list == NULL || select_xasl->outptr_list == NULL
-      || connect_by_xasl->outptr_list == NULL || connect_by_xasl->val_list == NULL)
+  if (select_xasl->orderby_list == NULL || connect_by_xasl->outptr_list == NULL || connect_by_xasl->val_list == NULL)
     {
       return NO_ERROR;
     }
@@ -24064,9 +24030,10 @@ pt_to_connect_by_extend_for_order_siblings (PARSER_CONTEXT * parser, PT_NODE * s
       return NO_ERROR;
     }
 
-  user_cnt = connect_by_xasl->val_list->val_cnt;
+  base_user_cnt = connect_by_xasl->val_list->val_cnt;
+  user_cnt = base_user_cnt;
 
-  /* locate the insertion point in outptr_list / prior_outptr_list: just before the first pseudo column */
+  /* insertion point in outptr_list / prior_outptr_list: just before the first pseudo column */
   cb_prev = NULL;
   cb_insert_before = connect_by_xasl->outptr_list->valptrp;
   for (i = 0; i < user_cnt && cb_insert_before != NULL; i++)
@@ -24083,7 +24050,6 @@ pt_to_connect_by_extend_for_order_siblings (PARSER_CONTEXT * parser, PT_NODE * s
       prior_insert_before = prior_insert_before->next;
     }
 
-  /* locate tails of val_list / prior_val_list for appending */
   val_tail = connect_by_xasl->val_list->valp;
   if (val_tail != NULL)
     {
@@ -24101,49 +24067,40 @@ pt_to_connect_by_extend_for_order_siblings (PARSER_CONTEXT * parser, PT_NODE * s
 	}
     }
 
-  /* walk each ORDER SIBLINGS BY sort key and inject the corresponding outer outptr_list entry
-   * into the CONNECT BY scan tuple if it's not already there */
-  for (orderby = select_xasl->orderby_list; orderby != NULL; orderby = orderby->next)
+  for (sort_spec = select_node->info.query.order_by, orderby = select_xasl->orderby_list;
+       sort_spec != NULL && orderby != NULL; sort_spec = sort_spec->next, orderby = orderby->next)
     {
-      /* find the outer outptr_list entry at this sort key position */
-      outer_regu = select_xasl->outptr_list->valptrp;
-      for (i = 0; outer_regu != NULL && i < orderby->pos_descr.pos_no; i++)
+      sort_key_expr = pt_order_siblings_sort_key_expr (sort_spec, select_node->info.query.q.select.list);
+
+      sort_key_regu = pt_to_regu_variable (parser, sort_key_expr, UNBOX_AS_VALUE);
+      if (sort_key_regu == NULL)
 	{
-	  outer_regu = outer_regu->next;
-	}
-      if (outer_regu == NULL)
-	{
-	  /* position out of range: leave it for pt_to_order_siblings_by to report */
-	  continue;
+	  return ER_FAILED;
 	}
 
-      /* skip if the same regu is already in the connect_by scan tuple (user columns part) */
-      found = false;
-      for (scan_regu = connect_by_xasl->outptr_list->valptrp; scan_regu != cb_insert_before;
-	   scan_regu = scan_regu->next)
-	{
-	  if (pt_order_siblings_regu_equal (&outer_regu->value, &scan_regu->value))
-	    {
-	      found = true;
-	      break;
-	    }
-	}
-      if (found)
-	{
-	  continue;
-	}
-
-      new_dom = outer_regu->value.domain;
+      new_dom = sort_key_regu->domain;
       if (new_dom == NULL)
 	{
 	  new_dom = orderby->pos_descr.dom;
 	}
       if (new_dom == NULL)
 	{
+	  new_dom = sort_spec->info.sort_spec.pos_descr.dom;
+	}
+      if (new_dom == NULL)
+	{
 	  return ER_FAILED;
 	}
 
-      /* allocate fresh DB_VALUE for val_list and prior_val_list */
+      /* a bare scan-column reference can reuse the existing outptr slot */
+      base_pos = pt_order_siblings_base_val_pos (sort_key_regu, connect_by_xasl->val_list, base_user_cnt);
+      if (base_pos >= 0)
+	{
+	  orderby->pos_descr.pos_no = base_pos;
+	  continue;
+	}
+
+      /* compound expression: materialize as a trailing user column before pseudo columns */
       regu_alloc (new_val);
       if (new_val == NULL)
 	{
@@ -24172,7 +24129,6 @@ pt_to_connect_by_extend_for_order_siblings (PARSER_CONTEXT * parser, PT_NODE * s
       new_prior_val->dom = new_dom;
       new_prior_val->next = NULL;
 
-      /* extend val_list and prior_val_list */
       if (val_tail != NULL)
 	{
 	  val_tail->next = new_val;
@@ -24195,7 +24151,6 @@ pt_to_connect_by_extend_for_order_siblings (PARSER_CONTEXT * parser, PT_NODE * s
       prior_val_tail = new_prior_val;
       connect_by->prior_val_list->val_cnt++;
 
-      /* extend positional regu lists: tuple position user_cnt -> {val_list,prior_val_list}[user_cnt] */
       if (pt_append_order_siblings_pos_regu (parser, &connect_by->regu_list_rest, new_dom, new_val->val,
 					     user_cnt) != NO_ERROR)
 	{
@@ -24212,16 +24167,12 @@ pt_to_connect_by_extend_for_order_siblings (PARSER_CONTEXT * parser, PT_NODE * s
 	  return ER_FAILED;
 	}
 
-      /* insert expression regu into connect_by outptr_list right before pseudo columns;
-       * the expression's child TYPE_CONSTANT regus point to outer val_list DB_VALUEs which are
-       * shared with connect_by val_list[0..user_cnt-1], so evaluation works in CONNECT BY context.
-       * Clear HIDDEN_COLUMN flag so the value is actually materialized into the listfile. */
       regu_alloc (new_regu);
       if (new_regu == NULL)
 	{
 	  return ER_FAILED;
 	}
-      new_regu->value = outer_regu->value;
+      new_regu->value = *sort_key_regu;
       REGU_VARIABLE_CLEAR_FLAG (&new_regu->value, REGU_VARIABLE_HIDDEN_COLUMN);
       new_regu->next = cb_insert_before;
       if (cb_prev != NULL)
@@ -24235,7 +24186,6 @@ pt_to_connect_by_extend_for_order_siblings (PARSER_CONTEXT * parser, PT_NODE * s
       cb_prev = new_regu;
       connect_by_xasl->outptr_list->valptr_cnt++;
 
-      /* insert TYPE_CONSTANT regu into prior_outptr_list, fetching from prior_val_list[user_cnt] */
       regu_alloc (new_regu);
       if (new_regu == NULL)
 	{
@@ -24256,76 +24206,11 @@ pt_to_connect_by_extend_for_order_siblings (PARSER_CONTEXT * parser, PT_NODE * s
       prior_prev = new_regu;
       connect_by->prior_outptr_list->valptr_cnt++;
 
+      orderby->pos_descr.pos_no = user_cnt;
       user_cnt++;
     }
 
   return NO_ERROR;
-}
-
-/*
- * pt_to_order_siblings_by () - remap ORDER SIBLINGS BY sort key positions from outer outptr_list
- *   positions to CONNECT BY scan tuple positions.
- *
- *   pt_to_connect_by_extend_for_order_siblings () must have run first so that every regu
- *   referenced by ORDER SIBLINGS BY is guaranteed to exist somewhere in the CONNECT BY scan
- *   outptr_list (either as an original user column or as an injected trailing user column).
- *
- *   return: sort list for connect_by xasl, or NULL on error
- *   parser(in):
- *   select_node(in): SELECT with ORDER SIBLINGS BY (for error reporting)
- *   xasl(in): outer query xasl (orderby_list references outer outptr_list positions)
- *   connect_by_xasl(in): CONNECT BY scan xasl
- */
-static SORT_LIST *
-pt_to_order_siblings_by (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * xasl, XASL_NODE * connect_by_xasl)
-{
-  SORT_LIST *orderby;
-  REGU_VARIABLE_LIST regu_list1, regu_list2;
-  int i, j;
-  bool mapped;
-
-  if (!parser || !select_node || !xasl || !xasl->outptr_list || !connect_by_xasl || !connect_by_xasl->outptr_list)
-    {
-      return NULL;
-    }
-
-  for (orderby = xasl->orderby_list; orderby; orderby = orderby->next)
-    {
-      for (i = 0, regu_list1 = xasl->outptr_list->valptrp; regu_list1; regu_list1 = regu_list1->next, i++)
-	{
-	  if (i == orderby->pos_descr.pos_no)
-	    {
-	      mapped = false;
-
-	      for (j = 0, regu_list2 = connect_by_xasl->outptr_list->valptrp; regu_list2 && !mapped;
-		   regu_list2 = regu_list2->next, j++)
-		{
-		  if (pt_order_siblings_regu_equal (&regu_list1->value, &regu_list2->value))
-		    {
-		      orderby->pos_descr.pos_no = j;
-		      mapped = true;
-		    }
-		}
-
-	      if (!mapped)
-		{
-		  PT_ERRORmf (parser, select_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
-			      "ORDER SIBLINGS BY expression cannot be mapped to CONNECT BY scan tuple");
-		  return NULL;
-		}
-	      break;
-	    }
-	}
-
-      if (regu_list1 == NULL)
-	{
-	  PT_ERRORmf (parser, select_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
-		      "ORDER SIBLINGS BY position");
-	  return NULL;
-	}
-    }
-
-  return xasl->orderby_list;
 }
 
 /*
