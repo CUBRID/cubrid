@@ -21619,13 +21619,11 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
   update_mvcc_flags = OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION;
 
-  /* Trust the HAS_OOS bit already stamped into the recdes by the upstream builder
-   * (heap_attrinfo_transform_header_to_disk, heap_file.c:12780). Recomputing it here by walking
-   * the VOT is unsafe for classes with no variable attributes — without a VOT in the on-disk
-   * record, the walk reads fixed-attribute / bound-bitmap bytes as VOT entries and false-
-   * positives on bit-0 of any byte, then sets HAS_OOS on a record that has no OOS, which trips
-   * the OOS-expansion writer on the next SELECT and corrupts the scancache buffer. The INSERT
-   * variant (heap_insert_adjust_recdes_header above) likewise trusts the flag from the builder. */
+  /* Trust the HAS_OOS bit already stamped into the recdes by heap_attrinfo_transform_header_to_disk.
+   * Recomputing it here by walking the VOT is unsafe for classes with no variable attributes —
+   * without a VOT in the on-disk record, the walk reads fixed-attribute / bound-bitmap bytes as
+   * VOT entries and false-positives on bit-0 of any byte, then sets HAS_OOS on a record that has
+   * no OOS, which corrupts the scancache buffer on the next SELECT. */
   bool has_oos = (mvcc_flags & OR_MVCC_FLAG_HAS_OOS) != 0;
 
 #if !defined (NDEBUG)

@@ -381,11 +381,7 @@ struct heap_get_context
   PGBUF_LATCH_MODE latch_mode;	/* normally, we need READ latch for get_context, but some operations
 				 * (like serial increment) require WRITE mode */
 
-  /* When true (default), heap_record_replace_oos_oids rewrites the returned record so that
-   * each inline OOS OID slot is replaced by the actual variable-attribute bytes from the OOS
-   * file. Set to false when the caller will decode per-attribute via heap_attrinfo_read_dbvalues
-   * (which calls oos_read() itself), so the record-level expansion would be wasted work. */
-  bool expand_oos;
+  bool expand_oos;		/* if true, replace inline OOS OID slots with actual values */
 };
 
 typedef struct sampling_info SAMPLING_INFO;
