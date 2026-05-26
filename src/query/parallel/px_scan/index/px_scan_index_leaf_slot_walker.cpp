@@ -651,8 +651,6 @@ namespace parallel_index_scan
 	      }
 	  }
 
-	m_scan_id->scan_stats.qualified_keys++;
-
 	if (isidp->key_pred.pr_eval_fnc != nullptr && isidp->key_pred.pred_expr != nullptr)
 	  {
 	    FILTER_INFO key_filter;
@@ -688,6 +686,9 @@ namespace parallel_index_scan
 		continue;
 	      }
 	  }
+
+	/* mirrors btree.c:25414 — increment only after key filter passes. */
+	m_scan_id->scan_stats.qualified_keys++;
 
 	/* Gather leaf-resident OIDs only; overflow pulled lazily after leaf-OID buffer drains. */
 	std::vector<OID> leaf_oids;
