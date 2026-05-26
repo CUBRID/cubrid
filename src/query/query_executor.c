@@ -12363,7 +12363,7 @@ qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, U
       break;
 
     case DB_DEFAULT_UUIDV7:
-      if (xasl_state == NULL || DATETIME_IS_NULL (&xasl_state->vd.sys_datetime) || xasl_state->vd.sys_epochtime == 0)
+      if (DATETIME_IS_NULL (&xasl_state->vd.sys_datetime) || xasl_state->vd.sys_epochtime == 0)
 	{
 	  qexec_failure_line (__LINE__, xasl_state);
 	  return ER_FAILED;
