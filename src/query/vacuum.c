@@ -3740,11 +3740,11 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 
 		  if (oos_err != NO_ERROR)
 		    {
-		      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
-					     "forward-walk oos cleanup failed: heap_vfid=%d|%d oos_vfid=%d|%d err=%d",
-					     VFID_AS_ARGS (&log_vacuum.vfid), VFID_AS_ARGS (&oos_vfid), oos_err);
-		      er_clear ();
-		      /* Do not fail the vacuum block; continue processing. */
+		      vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
+					   "forward-walk oos cleanup failed: heap_vfid=%d|%d oos_vfid=%d|%d err=%d",
+					   VFID_AS_ARGS (&log_vacuum.vfid), VFID_AS_ARGS (&oos_vfid), oos_err);
+		      error_code = oos_err;
+		      goto end;
 		    }
 		}
 	    }
