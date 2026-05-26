@@ -31,8 +31,6 @@
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
 
-#include "lock_free.h"
-
 #include <iostream>
 #include <sstream>
 
@@ -61,31 +59,17 @@ namespace test_thread
   };
 
   void
-  prepare (std::size_t max_threads)
+  run (void)
   {
-    lf_initialize_transaction_systems ((int) max_threads);
-  }
+    cubthread::manager *thread_mgr = cubthread::get_manager ();
 
-  void
-  end (void)
-  {
-    lf_destroy_transaction_systems ();
-  }
+    auto *dummy_pool = thread_create_worker_pool (1, 1, nullptr, thread_mgr->get_entry_manager ());
+    thread_mgr->destroy_worker_pool (dummy_pool);
 
-  void
-  run (std::size_t max_threads)
-  {
-    cubthread::manager thread_mgr;
-
-    thread_mgr.init_entries (max_threads);
-
-    auto *dummy_pool = thread_create_worker_pool (1, 1, NULL, thread_mgr.get_entry_manager ());
-    thread_mgr.destroy_worker_pool (dummy_pool);
-
-    auto *daemon = thread_mgr.create_daemon (cubthread::looper (), new dummy_exec ());
+    auto *daemon = thread_mgr->create_daemon (cubthread::looper (), new dummy_exec ());
     // give daemon a chance to loop
     std::this_thread::sleep_for (std::chrono::duration<std::size_t> (1));
-    thread_mgr.destroy_daemon (daemon);
+    thread_mgr->destroy_daemon (daemon);
 
     std::cout << "  test_manager successful" << std::endl;
   }
@@ -93,11 +77,7 @@ namespace test_thread
   int
   test_manager (void)
   {
-    const std::size_t MAX_THREADS = 16;
-
-    prepare (MAX_THREADS);
-    run (MAX_THREADS);
-    end ();
+    run ();
 
     return 0;
   }

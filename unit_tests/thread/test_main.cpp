@@ -16,12 +16,44 @@
  *
  */
 
+#include "test_elastic.hpp"
 #include "test_manager.hpp"
+
+#define SERVER_MODE
+#include "thread_manager.hpp"
+
+namespace
+{
+  constexpr std::size_t MAX_TEST_THREADS = 192;
+
+  void
+  init_thread_tests (void)
+  {
+    cubthread::entry *thread_p = NULL;
+
+    cubthread::initialize (thread_p);
+    cubthread::get_manager ()->set_max_thread_count (MAX_TEST_THREADS);
+    cubthread::get_manager ()->alloc_entries ();
+    cubthread::get_manager ()->init_lockfree_system ();
+    cubthread::get_manager ()->init_entries (false);
+  }
+
+  void
+  finalize_thread_tests (void)
+  {
+    cubthread::finalize ();
+  }
+}
 
 int
 main (int, char **)
 {
+  init_thread_tests ();
+
   (void) test_thread::test_manager ();
+  (void) test_thread::test_elastic_worker_pool ();
+
+  finalize_thread_tests ();
 
   return 0;
 }

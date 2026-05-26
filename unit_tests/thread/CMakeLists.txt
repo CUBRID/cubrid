@@ -18,9 +18,11 @@
 
 set (TEST_THREAD_SOURCES
   test_main.cpp
+  test_elastic.cpp
   test_manager.cpp
   )
 set (TEST_THREAD_HEADERS
+  test_elastic.hpp
   test_manager.hpp
   )
 SET_SOURCE_FILES_PROPERTIES(
