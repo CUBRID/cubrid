@@ -117,16 +117,26 @@ namespace parallel_heap_scan
 
   void accumulative_trace_storage::dump_stats_text (FILE *fp, int indent, char *class_name)
   {
+    int parallel_workers = m_stats.size();
+    const char *result_type_str = m_result_type == RESULT_TYPE::MERGEABLE_LIST ? "mergeable list" :
+				  m_result_type == RESULT_TYPE::XASL_SNAPSHOT ? "row by row" :
+				  m_result_type == RESULT_TYPE::BUILDVALUE_OPT ? "buildvalue" : "unknown";
+    if (m_stats.empty())
+      {
+	fprintf (fp, "\n%*c(parallel workers: 0", indent, ' ');
+	fprintf (fp, ", heap time: 0..0");
+	fprintf (fp, ", readrows: 0..0");
+	fprintf (fp, ", rows: 0..0");
+	fprintf (fp, ", gather: %s", result_type_str);
+	fprintf (fp, ")");
+	return;
+      }
     UINT64 min_elapsed_scan = std::numeric_limits<UINT64>::max();
     UINT64 max_elapsed_scan = 0;
     UINT64 min_read_rows = std::numeric_limits<UINT64>::max();
     UINT64 max_read_rows = 0;
     UINT64 min_qualified_rows = std::numeric_limits<UINT64>::max();
     UINT64 max_qualified_rows = 0;
-    int parallel_workers = m_stats.size();
-    const char *result_type_str = m_result_type == RESULT_TYPE::MERGEABLE_LIST ? "mergeable list" :
-				  m_result_type == RESULT_TYPE::XASL_SNAPSHOT ? "row by row" :
-				  m_result_type == RESULT_TYPE::BUILDVALUE_OPT ? "buildvalue" : "unknown";
     for (size_t i = 0; i < m_stats.size(); i++)
       {
 	min_elapsed_scan = std::min (min_elapsed_scan, (UINT64) (TO_MSEC (m_stats[i].elapsed_time)));
@@ -146,6 +156,20 @@ namespace parallel_heap_scan
 
   void accumulative_trace_storage::dump_stats_json (json_t *scan, char *class_name)
   {
+    const char *result_type_str = m_result_type == RESULT_TYPE::MERGEABLE_LIST ? "mergeable list" :
+				  m_result_type == RESULT_TYPE::XASL_SNAPSHOT ? "row by row" :
+				  m_result_type == RESULT_TYPE::BUILDVALUE_OPT ? "buildvalue" : "unknown";
+    if (m_stats.empty())
+      {
+	json_t *parallel_obj = json_pack ("{s:I, s:s, s:s, s:s, s:s}",
+					  "parallel_workers", (json_int_t) 0,
+					  "time", "0..0",
+					  "readrows", "0..0",
+					  "rows", "0..0",
+					  "gather", result_type_str);
+	json_object_set_new (scan, "parallel heap", parallel_obj);
+	return;
+      }
     UINT64 min_elapsed_scan = std::numeric_limits<UINT64>::max();
     UINT64 max_elapsed_scan = 0;
     UINT64 min_read_rows = std::numeric_limits<UINT64>::max();
@@ -153,9 +177,6 @@ namespace parallel_heap_scan
     UINT64 min_qualified_rows = std::numeric_limits<UINT64>::max();
     UINT64 max_qualified_rows = 0;
     int parallel_workers = m_stats.size();
-    const char *result_type_str = m_result_type == RESULT_TYPE::MERGEABLE_LIST ? "mergeable list" :
-				  m_result_type == RESULT_TYPE::XASL_SNAPSHOT ? "row by row" :
-				  m_result_type == RESULT_TYPE::BUILDVALUE_OPT ? "buildvalue" : "unknown";
     for (size_t i = 0; i < m_stats.size(); i++)
       {
 	min_elapsed_scan = std::min (min_elapsed_scan, (UINT64) (TO_MSEC (m_stats[i].elapsed_time)));
