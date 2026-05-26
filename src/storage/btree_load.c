@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <time.h>
 
 #include "btree_load.h"
 
@@ -51,6 +52,10 @@
 #include "stream_to_xasl.h"
 #include "thread_manager.hpp"
 #include "thread_entry_task.hpp"
+#if defined(SERVER_MODE)
+#include "px_parallel.hpp"
+#include "px_worker_manager.hpp"
+#endif /* SERVER_MODE */
 #include "xserver_interface.h"
 #include "xasl.h"
 #include "xasl_unpack_info.hpp"
@@ -108,6 +113,14 @@ struct load_args
   PGSLOTID last_leaf_insert_slotid;	/* Slotid of last inserted leaf record. */
 
   VPID vpid_first_leaf;
+
+  /* Pre-allocated page pool for parallel index build */
+  VPID *preallocated_vpids;	/* Array of pre-allocated page VPIDs (NULL if not using pre-allocation) */
+  int preallocated_count;	/* Total number of pre-allocated pages */
+  int preallocated_index;	/* Next page to consume from pool */
+
+  /* Timing accumulator for parallel index build profiling (Step 0) */
+  long long leaf_construct_elapsed_ns;	/* accumulated time in btree_construct_leafs (nanoseconds) */
 };
 
 typedef struct btree_scan_partition_info BTREE_SCAN_PART;
@@ -192,7 +205,7 @@ static int btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, i
 
 static void btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr);
 static int btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEADER * header, int node_level,
-				VPID * vpid_new, PAGE_PTR * page_new);
+				VPID * vpid_new, PAGE_PTR * page_new, LOAD_ARGS * load_args = NULL);
 static PAGE_PTR btree_proceed_leaf (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args);
 static int btree_first_oid (THREAD_ENTRY * thread_p, DB_VALUE * this_key, OID * class_oid, OID * first_oid,
 			    MVCC_REC_HEADER * p_mvcc_rec_header, LOAD_ARGS * load_args);
@@ -229,6 +242,166 @@ static int online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, H
 				 HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scancache, int unique_pk,
 				 int ib_thread_count, TP_DOMAIN * key_type);
 static bool btree_is_worker_pool_logging_true ();
+
+/* ========================================================================== */
+/*  PARALLEL INDEX BUILD - Sort record collection and worker task             */
+/* ========================================================================== */
+
+#if defined(SERVER_MODE)
+// *INDENT-OFF*
+
+/* A single sort record copied from the sort output */
+struct px_sort_record
+{
+  char *data;
+  int length;
+};
+
+/* Context for collecting sorted records during btree_index_sort put_fn callback */
+struct px_collect_context
+{
+  std::vector<px_sort_record> records;
+  int total_count;
+
+  px_collect_context () : total_count (0) {}
+
+  ~px_collect_context ()
+  {
+    for (auto &rec : records)
+      {
+	if (rec.data != NULL)
+	  {
+	    free (rec.data);
+	  }
+      }
+  }
+};
+
+/* Entry manager for parallel leaf builder worker threads */
+class px_leaf_builder_context : public cubthread::entry_manager
+{
+  public:
+    THREAD_ENTRY *m_parent_thread;
+
+    px_leaf_builder_context () : m_parent_thread (NULL) {}
+
+  protected:
+    void on_create (context_type &context) override
+    {
+      context.tran_index = m_parent_thread->tran_index;
+      context.m_px_orig_thread_entry = m_parent_thread;
+      context.conn_entry = m_parent_thread->conn_entry;
+    }
+    void on_retire (context_type &) override {}
+    void on_recycle (context_type &context) override
+    {
+      context.tran_index = m_parent_thread->tran_index;
+      context.m_px_orig_thread_entry = m_parent_thread;
+      context.conn_entry = m_parent_thread->conn_entry;
+    }
+};
+
+/* Worker task: builds leaf pages for a partition of sorted records */
+class px_leaf_builder_task : public cubthread::entry_task
+{
+  private:
+    px_sort_record *m_records;
+    int m_record_count;
+    LOAD_ARGS *m_load_args;
+    int *m_error_out;
+
+  public:
+    px_leaf_builder_task (px_sort_record *records, int count, LOAD_ARGS *load_args, int *error_out)
+      : m_records (records), m_record_count (count), m_load_args (load_args), m_error_out (error_out)
+    {}
+
+    void execute (cubthread::entry &thread_ref) override;
+};
+
+void
+px_leaf_builder_task::execute (cubthread::entry &thread_ref)
+{
+  THREAD_ENTRY *thread_p = &thread_ref;
+  thread_p->push_resource_tracks ();
+
+  int ret = NO_ERROR;
+  RECDES recdes;
+
+  for (int i = 0; i < m_record_count; i++)
+    {
+      /* Reconstruct single-record RECDES with NULL next pointer */
+      recdes.data = m_records[i].data;
+      recdes.length = m_records[i].length;
+      recdes.area_size = m_records[i].length;
+      recdes.type = REC_HOME;
+
+      /* Clear the forward link so btree_construct_leafs processes exactly one record */
+      *(char **) recdes.data = NULL;
+
+      ret = btree_construct_leafs (thread_p, &recdes, m_load_args);
+      if (ret != NO_ERROR)
+	{
+	  break;
+	}
+    }
+
+  /* Save last leaf record for this partition (critical: must be done per partition) */
+  if (ret == NO_ERROR && m_load_args->leaf.pgptr != NULL)
+    {
+      ret = btree_save_last_leafrec (thread_p, m_load_args);
+    }
+
+  *m_error_out = ret;
+  thread_p->pop_resource_tracks ();
+}
+
+/* put_fn callback: collects sorted records into a vector instead of building leaves */
+static int
+btree_collect_sorted_records (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *arg)
+{
+  px_collect_context *ctx = (px_collect_context *) arg;
+  RECDES sort_key_recdes = *in_recdes;
+  RECDES *recdes = &sort_key_recdes;
+
+  for (;;)
+    {
+      char *next = *(char **) recdes->data;
+
+      /* Copy the record data */
+      px_sort_record rec;
+      rec.length = recdes->length;
+      rec.data = (char *) malloc (rec.length);
+      if (rec.data == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) rec.length);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      memcpy (rec.data, recdes->data, rec.length);
+
+      ctx->records.push_back (rec);
+      ctx->total_count++;
+
+      if (!next)
+	{
+	  break;
+	}
+
+      recdes->data = next;
+      recdes->length = SORT_RECORD_LENGTH (next);
+    }
+
+  return NO_ERROR;
+}
+
+/* Forward declarations for parallel leaf build functions */
+static int btree_parallel_build_leafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, SORT_ARGS * sort_args,
+				       BTID_INT * btid_int, int parallel_degree, bool has_fk);
+static int btree_stitch_leaf_partitions (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args_array, int partition_count);
+static void btree_aggregate_load_stats (LOAD_ARGS * primary_load_args, LOAD_ARGS * load_args_array,
+					int partition_count);
+
+// *INDENT-ON*
+#endif /* SERVER_MODE */
 
 typedef struct
 {
@@ -874,6 +1047,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   BTID btid_global_stats = BTID_INITIALIZER;
   OID *notification_class_oid;
   bool is_sysop_started = false;
+  bool used_parallel_path = false;
+  struct timespec ts_sort_start, ts_sort_end, ts_nleaf_start, ts_nleaf_end;
 
   /* Check for robustness */
   if (!btid || !hfids || !class_oids || !attr_ids || !key_type)
@@ -1057,6 +1232,10 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       goto error;
     }
   load_args->out_recdes = NULL;
+  load_args->preallocated_vpids = NULL;
+  load_args->preallocated_count = 0;
+  load_args->preallocated_index = 0;
+  load_args->leaf_construct_elapsed_ns = 0;
 
   /* Allocate a root page and save the page_id */
   *load_args->btid->sys_btid = *btid;
@@ -1072,10 +1251,62 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     }
 
   /* Build the leaf pages of the btree as the output of the sort. We do not estimate the number of pages required. */
+  clock_gettime (CLOCK_MONOTONIC, &ts_sort_start);
+
+  /* Compute parallel degree for non-unique indexes */
+#if defined(SERVER_MODE)
+  {
+    int parallel_degree = 0;
+
+    if (!unique_pk)
+      {
+	/* Estimate page count from heap file for parallel degree computation */
+	int heap_page_count = 0;
+	(void) file_get_num_user_pages (thread_p, &sort_args->hfids[sort_args->cur_class].vfid, &heap_page_count);
+
+	if (heap_page_count > 0)
+	  {
+	    parallel_degree =
+	      (int) parallel_query::compute_parallel_degree (parallel_query::parallel_type::INDEX_BUILD,
+							     (UINT64) heap_page_count, -1);
+	  }
+      }
+
+    if (parallel_degree >= 2)
+      {
+	/* === PARALLEL PATH === */
+	used_parallel_path = true;
+
+	if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
+	  {
+	    _er_log_debug (ARG_FILE_LINE, "PARALLEL_INDEX_BUILD: using %d threads for leaf construction.",
+			   parallel_degree);
+	  }
+
+	if (btree_parallel_build_leafs (thread_p, load_args, sort_args, &btid_int, parallel_degree, has_fk) !=
+	    NO_ERROR)
+	  {
+	    goto error;
+	  }
+      }
+    else
+      {
+	/* === SEQUENTIAL PATH (unchanged) === */
+	if (btree_index_sort (thread_p, sort_args, btree_construct_leafs, load_args) != NO_ERROR)
+	  {
+	    goto error;
+	  }
+      }
+  }
+#else /* !SERVER_MODE */
+  /* SA_MODE / CS_MODE: always sequential */
   if (btree_index_sort (thread_p, sort_args, btree_construct_leafs, load_args) != NO_ERROR)
     {
       goto error;
     }
+#endif /* SERVER_MODE */
+
+  clock_gettime (CLOCK_MONOTONIC, &ts_sort_end);
 
 #if !defined (SERVER_MODE)
   bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args, NULL, NULL);
@@ -1095,12 +1326,15 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   /* Just to make sure that there were entries to put into the tree */
   if (load_args->leaf.pgptr != NULL)
     {
-      /* Save the last leaf record */
-
-      if (btree_save_last_leafrec (thread_p, load_args) != NO_ERROR)
+      if (!used_parallel_path)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_LOAD_FAILED, 0);
-	  goto error;
+	  /* Sequential path: save last leaf record.
+	   * Parallel path already called btree_save_last_leafrec per partition in worker tasks. */
+	  if (btree_save_last_leafrec (thread_p, load_args) != NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_LOAD_FAILED, 0);
+	      goto error;
+	    }
 	}
 
       /* No need to deal with overflow pages anymore */
@@ -1116,12 +1350,43 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 	}
 
       /* Build the non leaf nodes of the btree; Root page id will be assigned here */
+      clock_gettime (CLOCK_MONOTONIC, &ts_nleaf_start);
 
       if (btree_build_nleafs (thread_p, load_args, sort_args->n_nulls, sort_args->n_oids, load_args->n_keys) !=
 	  NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_LOAD_FAILED, 0);
 	  goto error;
+	}
+
+      clock_gettime (CLOCK_MONOTONIC, &ts_nleaf_end);
+
+      /* Log parallel index build profiling (Step 0 measurement gate) */
+      if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
+	{
+	  long long sort_total_ns =
+	    (ts_sort_end.tv_sec - ts_sort_start.tv_sec) * 1000000000LL + (ts_sort_end.tv_nsec - ts_sort_start.tv_nsec);
+	  long long leaf_construct_ns = load_args->leaf_construct_elapsed_ns;
+	  long long heap_scan_sort_ns = sort_total_ns - leaf_construct_ns;
+	  long long nleaf_ns =
+	    (ts_nleaf_end.tv_sec - ts_nleaf_start.tv_sec) * 1000000000LL
+	    + (ts_nleaf_end.tv_nsec - ts_nleaf_start.tv_nsec);
+	  long long total_ns = sort_total_ns + nleaf_ns;
+
+	  _er_log_debug (ARG_FILE_LINE,
+			 "PARALLEL_INDEX_BUILD_PROFILE: total=%lld ms, "
+			 "heap_scan_sort=%lld ms (%.1f%%), "
+			 "leaf_construct=%lld ms (%.1f%%), "
+			 "nleaf_build=%lld ms (%.1f%%), "
+			 "keys=%d",
+			 total_ns / 1000000LL,
+			 heap_scan_sort_ns / 1000000LL,
+			 (total_ns > 0) ? (heap_scan_sort_ns * 100.0 / total_ns) : 0.0,
+			 leaf_construct_ns / 1000000LL,
+			 (total_ns > 0) ? (leaf_construct_ns * 100.0 / total_ns) : 0.0,
+			 nleaf_ns / 1000000LL,
+			 (total_ns > 0) ? (nleaf_ns * 100.0 / total_ns) : 0.0,
+			 load_args->n_keys);
 	}
 
       /* There is at least one leaf page */
@@ -2028,7 +2293,7 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr)
  */
 static int
 btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEADER * header, int node_level,
-		     VPID * vpid_new, PAGE_PTR * page_new)
+		     VPID * vpid_new, PAGE_PTR * page_new, LOAD_ARGS * load_args)
 {
   int error_code = NO_ERROR;
 
@@ -2036,6 +2301,41 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
 	  || (header == NULL && node_level == -1));	/* overflow */
   assert (log_check_system_op_is_started (thread_p));	/* need system operation */
 
+  /* Check pre-allocated page pool first (for parallel index build) */
+  if (load_args != NULL && load_args->preallocated_vpids != NULL
+      && load_args->preallocated_index < load_args->preallocated_count && header != NULL)
+    {
+      /* Consume a pre-allocated page — avoids log_sysop_start and file_alloc contention */
+      *vpid_new = load_args->preallocated_vpids[load_args->preallocated_index++];
+
+      *page_new = pgbuf_fix (thread_p, vpid_new, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (*page_new == NULL)
+	{
+	  ASSERT_ERROR ();
+	  return er_errid ();
+	}
+
+      /* Initialize btree node header (replicating btree_load.c:2093-2107 logic) */
+      header->node_level = node_level;
+      header->max_key_len = 0;
+      VPID_SET_NULL (&header->next_vpid);
+      VPID_SET_NULL (&header->prev_vpid);
+      header->split_info.pivot = 0.0f;
+      header->split_info.index = 0;
+      header->common_prefix = 0;
+
+      error_code = btree_init_node_header (thread_p, &btid->vfid, *page_new, header, false);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  pgbuf_unfix_and_init (thread_p, *page_new);
+	  return error_code;
+	}
+
+      return NO_ERROR;
+    }
+
+  /* Original path: allocate via file_alloc with log_sysop_start/commit */
   /* we need to commit page allocations. if loading index is aborted, the entire file is destroyed. */
   log_sysop_start (thread_p);
 
@@ -2132,8 +2432,8 @@ btree_proceed_leaf (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
   temp_recdes.area_size = sizeof (BTREE_NODE_HEADER);
 
   /* Allocate the new leaf page */
-  if (btree_load_new_page (thread_p, load_args->btid->sys_btid, &new_leafhdr, 1, &new_leafpgid, &new_leafpgptr)
-      != NO_ERROR)
+  if (btree_load_new_page (thread_p, load_args->btid->sys_btid, &new_leafhdr, 1, &new_leafpgid, &new_leafpgptr,
+			   load_args) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return NULL;
@@ -2540,7 +2840,7 @@ bt_load_get_first_leaf_page_and_init_args (THREAD_ENTRY * thread_p, LOAD_ARGS * 
 {
   /* Allocate the first page for the index */
   int ret = btree_load_new_page (thread_p, load_args->btid->sys_btid, &load_args->leaf.hdr, 1, &load_args->leaf.vpid,
-				 &load_args->leaf.pgptr);
+				 &load_args->leaf.pgptr, load_args);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -3010,6 +3310,9 @@ bt_load_notify_to_vacuum (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARA
 static int
 btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *arg)
 {
+  struct timespec ts_leaf_start, ts_leaf_end;
+  clock_gettime (CLOCK_MONOTONIC, &ts_leaf_start);
+
   int ret = NO_ERROR;
   bool copy = false;
   RECDES sort_key_recdes, *recdes;
@@ -3111,6 +3414,11 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
     }
 
   assert (ret == NO_ERROR);
+
+  clock_gettime (CLOCK_MONOTONIC, &ts_leaf_end);
+  load_args->leaf_construct_elapsed_ns +=
+    (ts_leaf_end.tv_sec - ts_leaf_start.tv_sec) * 1000000000LL + (ts_leaf_end.tv_nsec - ts_leaf_start.tv_nsec);
+
   return ret;
 
 error:
@@ -3123,6 +3431,10 @@ error:
     {
       db_private_free (thread_p, notify_vacuum_rv_data);
     }
+
+  clock_gettime (CLOCK_MONOTONIC, &ts_leaf_end);
+  load_args->leaf_construct_elapsed_ns +=
+    (ts_leaf_end.tv_sec - ts_leaf_start.tv_sec) * 1000000000LL + (ts_leaf_end.tv_nsec - ts_leaf_start.tv_nsec);
 
   assert (er_errid () != NO_ERROR);
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
@@ -3190,6 +3502,376 @@ exit_on_error:
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 #endif /* CUBRID_DEBUG */
+
+#if defined(SERVER_MODE)
+/* ========================================================================== */
+/*  PARALLEL INDEX BUILD - Orchestrator, stitching, and aggregation           */
+/* ========================================================================== */
+
+/*
+ * btree_stitch_leaf_partitions () - Fix prev/next pointers at partition boundaries
+ *   return: error code
+ *   thread_p(in): thread entry
+ *   load_args_array(in): array of per-partition LOAD_ARGS
+ *   partition_count(in): number of partitions
+ */
+static int
+btree_stitch_leaf_partitions (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args_array, int partition_count)
+{
+  int error_code = NO_ERROR;
+
+  for (int i = 0; i < partition_count - 1; i++)
+    {
+      VPID last_vpid_i = load_args_array[i].leaf.vpid;
+      VPID first_vpid_next = load_args_array[i + 1].vpid_first_leaf;
+
+      if (VPID_ISNULL (&last_vpid_i) || VPID_ISNULL (&first_vpid_next))
+	{
+	  /* Empty partition — skip this boundary */
+	  continue;
+	}
+
+      /* Fix last page of partition i: set next_vpid */
+      PAGE_PTR last_page = pgbuf_fix (thread_p, &last_vpid_i, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (last_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+
+      BTREE_NODE_HEADER *header = btree_get_node_header (thread_p, last_page);
+      if (header == NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, last_page);
+	  return ER_FAILED;
+	}
+      header->next_vpid = first_vpid_next;
+      btree_log_page (thread_p, &load_args_array[i].btid->sys_btid->vfid, last_page);
+      /* btree_log_page calls pgbuf_set_dirty + pgbuf_unfix */
+
+      /* Fix first page of partition i+1: set prev_vpid */
+      PAGE_PTR first_page =
+	pgbuf_fix (thread_p, &first_vpid_next, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (first_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+
+      header = btree_get_node_header (thread_p, first_page);
+      if (header == NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, first_page);
+	  return ER_FAILED;
+	}
+      header->prev_vpid = last_vpid_i;
+      btree_log_page (thread_p, &load_args_array[i + 1].btid->sys_btid->vfid, first_page);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * btree_aggregate_load_stats () - Merge per-partition stats into primary LOAD_ARGS
+ *   primary_load_args(out): receives aggregated stats
+ *   load_args_array(in): per-partition LOAD_ARGS
+ *   partition_count(in): number of partitions
+ */
+static void
+btree_aggregate_load_stats (LOAD_ARGS * primary_load_args, LOAD_ARGS * load_args_array, int partition_count)
+{
+  primary_load_args->n_keys = 0;
+  primary_load_args->max_key_size = 0;
+
+  for (int i = 0; i < partition_count; i++)
+    {
+      primary_load_args->n_keys += load_args_array[i].n_keys;
+      if (load_args_array[i].max_key_size > primary_load_args->max_key_size)
+	{
+	  primary_load_args->max_key_size = load_args_array[i].max_key_size;
+	}
+
+      /* Merge push_list: append partition i's list to primary */
+      if (load_args_array[i].push_list != NULL)
+	{
+	  BTREE_NODE *tail = load_args_array[i].push_list;
+	  while (tail->next != NULL)
+	    {
+	      tail = tail->next;
+	    }
+	  tail->next = primary_load_args->push_list;
+	  primary_load_args->push_list = load_args_array[i].push_list;
+	  load_args_array[i].push_list = NULL;
+	}
+    }
+
+  /* vpid_first_leaf from partition 0 (the first non-empty partition) */
+  for (int i = 0; i < partition_count; i++)
+    {
+      if (!VPID_ISNULL (&load_args_array[i].vpid_first_leaf))
+	{
+	  primary_load_args->vpid_first_leaf = load_args_array[i].vpid_first_leaf;
+	  break;
+	}
+    }
+
+  /* leaf page info from the last non-empty partition */
+  for (int i = partition_count - 1; i >= 0; i--)
+    {
+      if (load_args_array[i].leaf.pgptr != NULL || !VPID_ISNULL (&load_args_array[i].leaf.vpid))
+	{
+	  primary_load_args->leaf.vpid = load_args_array[i].leaf.vpid;
+	  primary_load_args->leaf.pgptr = load_args_array[i].leaf.pgptr;
+	  load_args_array[i].leaf.pgptr = NULL;	/* transfer ownership */
+	  break;
+	}
+    }
+
+  /* current_key from the last partition */
+  if (partition_count > 0)
+    {
+      pr_clear_value (&primary_load_args->current_key);
+      pr_clone_value (&load_args_array[partition_count - 1].current_key, &primary_load_args->current_key);
+    }
+}
+
+/*
+ * btree_parallel_build_leafs () - Orchestrate parallel leaf page construction
+ *   return: error code
+ *   thread_p(in): thread entry
+ *   load_args(in/out): primary LOAD_ARGS (receives aggregated results)
+ *   sort_args(in): sort arguments
+ *   btid_int(in): B-tree identifier
+ *   parallel_degree(in): number of worker threads
+ *   has_fk(in): whether foreign key check is needed
+ */
+static int
+btree_parallel_build_leafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, SORT_ARGS * sort_args,
+			    BTID_INT * btid_int, int parallel_degree, bool has_fk)
+{
+  int error_code = NO_ERROR;
+  px_collect_context collect_ctx;
+  LOAD_ARGS *load_args_array = NULL;
+  int *worker_errors = NULL;
+
+  /* Phase 1: Sort and collect all records into a vector */
+  if (btree_index_sort (thread_p, sort_args, btree_collect_sorted_records, &collect_ctx) != NO_ERROR)
+    {
+      return er_errid ();
+    }
+
+  int total_records = collect_ctx.total_count;
+  if (total_records == 0)
+    {
+      /* No records — nothing to build */
+      return NO_ERROR;
+    }
+
+  /* Adjust parallel degree if we have fewer records than threads */
+  if (parallel_degree > total_records)
+    {
+      parallel_degree = total_records;
+    }
+  if (parallel_degree < 2)
+    {
+      parallel_degree = 1;
+    }
+
+  /* Phase 2: Pre-allocate pages */
+  int key_size = tp_domain_disk_size (btid_int->key_type);
+  if (key_size <= 0)
+    {
+      key_size = 32;		/* conservative estimate for variable-length keys */
+    }
+  int records_per_page = (DB_PAGESIZE - sizeof (BTREE_NODE_HEADER)) / (key_size + BTREE_MAX_OIDLEN_INPAGE);
+  if (records_per_page <= 0)
+    {
+      records_per_page = 1;
+    }
+  int estimated_pages = (total_records / records_per_page) + parallel_degree;
+  estimated_pages = (int) (estimated_pages * 1.2);	/* 20% overestimate */
+
+  VPID *preallocated_vpids = (VPID *) os_malloc (estimated_pages * sizeof (VPID));
+  if (preallocated_vpids == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) (estimated_pages * sizeof (VPID)));
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto cleanup;
+    }
+
+  error_code =
+    file_alloc_multiple (thread_p, &btid_int->sys_btid->vfid, btree_initialize_new_page, NULL, estimated_pages,
+			 preallocated_vpids);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto cleanup;
+    }
+
+  /* Phase 3: Create per-partition LOAD_ARGS and distribute pre-allocated pages */
+  load_args_array = (LOAD_ARGS *) os_malloc (parallel_degree * sizeof (LOAD_ARGS));
+  worker_errors = (int *) os_malloc (parallel_degree * sizeof (int));
+  if (load_args_array == NULL || worker_errors == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) (parallel_degree * sizeof (LOAD_ARGS)));
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto cleanup;
+    }
+
+  {
+    int pages_per_partition = estimated_pages / parallel_degree;
+    int records_per_partition = total_records / parallel_degree;
+
+    for (int i = 0; i < parallel_degree; i++)
+      {
+	LOAD_ARGS *la = &load_args_array[i];
+
+	/* Initialize like xbtree_load_index does */
+	la->btid = btid_int;
+	la->bt_name = load_args->bt_name;
+	db_make_null (&la->current_key);
+	VPID_SET_NULL (&la->nleaf.vpid);
+	la->nleaf.pgptr = NULL;
+	VPID_SET_NULL (&la->leaf.vpid);
+	la->leaf.pgptr = NULL;
+	VPID_SET_NULL (&la->ovf.vpid);
+	la->ovf.pgptr = NULL;
+	la->n_keys = 0;
+	la->curr_non_del_obj_count = 0;
+	la->max_key_size = 0;
+	la->cur_key_len = 0;
+	la->overflowing = false;
+	la->curr_rec_max_obj_count = 0;
+	la->curr_rec_obj_count = 0;
+	la->last_leaf_insert_slotid = NULL_SLOTID;
+	VPID_SET_NULL (&la->vpid_first_leaf);
+	la->push_list = NULL;
+	la->pop_list = NULL;
+	la->out_recdes = NULL;
+	la->leaf_construct_elapsed_ns = 0;
+
+	/* Allocate per-partition record buffers */
+	la->leaf_nleaf_recdes.area_size = BTREE_MAX_KEYLEN_INPAGE + BTREE_MAX_OIDLEN_INPAGE;
+	la->leaf_nleaf_recdes.length = 0;
+	la->leaf_nleaf_recdes.type = REC_HOME;
+	la->leaf_nleaf_recdes.data = (char *) os_malloc (la->leaf_nleaf_recdes.area_size);
+	la->ovf_recdes.area_size = DB_PAGESIZE;
+	la->ovf_recdes.length = 0;
+	la->ovf_recdes.type = REC_HOME;
+	la->ovf_recdes.data = (char *) os_malloc (la->ovf_recdes.area_size);
+
+	if (la->leaf_nleaf_recdes.data == NULL || la->ovf_recdes.data == NULL)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
+	    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto cleanup;
+	  }
+
+	/* Distribute pre-allocated pages */
+	int page_start = i * pages_per_partition;
+	int page_count = (i == parallel_degree - 1) ? (estimated_pages - page_start) : pages_per_partition;
+	la->preallocated_vpids = preallocated_vpids + page_start;
+	la->preallocated_count = page_count;
+	la->preallocated_index = 0;
+
+	worker_errors[i] = NO_ERROR;
+      }
+
+    /* Phase 4: Pre-assign MVCCID in parent thread */
+#if defined (SERVER_MODE)
+    (void) logtb_get_current_mvccid (thread_p);
+#endif
+
+    /* Phase 5: Dispatch workers */
+    // *INDENT-OFF*
+    px_leaf_builder_context builder_ctx;
+    builder_ctx.m_parent_thread = thread_p;
+
+    cubthread::entry_workpool *workpool =
+	thread_get_manager ()->create_worker_pool (parallel_degree, parallel_degree + 1,
+						   "Parallel index build pool", &builder_ctx, 1,
+						   btree_is_worker_pool_logging_true ());
+    if (workpool == NULL)
+      {
+	error_code = ER_FAILED;
+	goto cleanup;
+      }
+
+    int record_offset = 0;
+    for (int i = 0; i < parallel_degree; i++)
+      {
+	int count = (i == parallel_degree - 1) ? (total_records - record_offset) : records_per_partition;
+
+	px_leaf_builder_task *task =
+	    new px_leaf_builder_task (collect_ctx.records.data () + record_offset, count,
+				     &load_args_array[i], &worker_errors[i]);
+	thread_get_manager ()->push_task (workpool, task);
+	record_offset += count;
+      }
+
+    /* Wait for all workers to finish */
+    thread_get_manager ()->destroy_worker_pool (workpool);
+    // *INDENT-ON*
+
+    /* Phase 6: Check worker errors */
+    for (int i = 0; i < parallel_degree; i++)
+      {
+	if (worker_errors[i] != NO_ERROR)
+	  {
+	    error_code = worker_errors[i];
+	    goto cleanup;
+	  }
+      }
+
+    /* Phase 7: Stitch leaf page boundaries */
+    error_code = btree_stitch_leaf_partitions (thread_p, load_args_array, parallel_degree);
+    if (error_code != NO_ERROR)
+      {
+	goto cleanup;
+      }
+
+    /* Phase 8: Aggregate stats into primary load_args */
+    btree_aggregate_load_stats (load_args, load_args_array, parallel_degree);
+  }
+
+cleanup:
+  /* Free per-partition resources */
+  if (load_args_array != NULL)
+    {
+      for (int i = 0; i < parallel_degree; i++)
+	{
+	  if (load_args_array[i].leaf_nleaf_recdes.data != NULL)
+	    {
+	      os_free_and_init (load_args_array[i].leaf_nleaf_recdes.data);
+	    }
+	  if (load_args_array[i].ovf_recdes.data != NULL)
+	    {
+	      os_free_and_init (load_args_array[i].ovf_recdes.data);
+	    }
+	  pr_clear_value (&load_args_array[i].current_key);
+	  list_clear (load_args_array[i].push_list);
+	  list_clear (load_args_array[i].pop_list);
+	}
+      os_free_and_init (load_args_array);
+    }
+
+  if (worker_errors != NULL)
+    {
+      os_free_and_init (worker_errors);
+    }
+
+  /* Note: preallocated_vpids array is freed but the pages themselves belong to the B-tree file.
+   * On error, the outer log_sysop_abort in xbtree_load_index will reclaim all pages. */
+  if (preallocated_vpids != NULL)
+    {
+      os_free_and_init (preallocated_vpids);
+    }
+
+  return error_code;
+}
+#endif /* SERVER_MODE */
 
 /*
  * btree_index_sort () - Sort for the index file creation

@@ -81,6 +81,11 @@ namespace parallel_query
 	page_threshold = (UINT32) sort_page_threshold;
 	break;
 
+      case parallel_type::INDEX_BUILD:
+	/* Reuse sort threshold for index building. Index build parallelism applies to leaf page construction. */
+	page_threshold = (UINT32) sort_page_threshold;
+	break;
+
       case parallel_type::SUBQUERY:
       {
 	assert (num_pages == 0);
