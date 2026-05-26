@@ -262,7 +262,7 @@ namespace cubconn::connection
       /* --------------------------------------------------------------------------- */
       /* close connection							     */
       /* --------------------------------------------------------------------------- */
-      bool is_wait_required (context *ctx);
+      bool requires_client_info (context *ctx);
       bool is_registering_client (context *ctx);
 
       bool has_remaining_tasks (context *ctx);
