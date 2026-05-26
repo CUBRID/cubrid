@@ -327,7 +327,7 @@ namespace cubconn::connection
       }
   }
 
-  bool worker::is_wait_required (context *ctx)
+  bool worker::requires_client_info (context *ctx)
   {
     if (ctx->m_conn->fd == cdc_Gl.conn.fd)
       {
@@ -397,6 +397,8 @@ namespace cubconn::connection
 
     request.type = message_type::SHUTDOWN_CLIENT;
     request.conn = ctx->m_conn;
+    request.ctx = ctx;
+    request.id = ctx->m_id;
     request.ignore = ctx->m_ignore;
     request.retry = is_retry;
     request.waiter_handle = handle;
@@ -434,7 +436,7 @@ namespace cubconn::connection
 
     /* during shutdown, boot_client_register cannot be expected to finish */
     if (m_status != status::TERMINATING && !css_is_shutdowning_server ()
-	&& this->is_wait_required (ctx)
+	&& this->requires_client_info (ctx)
 	&& ctx->m_conn->get_tran_index () == NULL_TRAN_INDEX
 	&& this->is_registering_client (ctx))
       {
@@ -465,9 +467,10 @@ namespace cubconn::connection
     std::tie (tran_index, client_id) = this->start_connection_close (ctx);
     if (tran_index < 0 && client_id < 0)
       {
-	if (this->is_wait_required (ctx))
+	if (this->requires_client_info (ctx))
 	  {
-	    /* boot_client_register cannot make progress anymore. close the connection without fixed wait. */
+	    /* retry was skipped, so boot_client_register is not expected to publish a transaction index. */
+	    /* close without retry. */
 	    client_id = ctx->m_conn->client_id;
 	  }
       }
