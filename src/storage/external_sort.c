@@ -4593,8 +4593,7 @@ sort_merge_queue_setup_ctx (int pool_idx, SORT_MERGE_QUEUE_CTX * qctx, RESULT_RU
   ctx->px_result_run = &qctx->ctx_results[pool_idx];
 }
 
-static void sort_merge_nruns_queue_cb (cubthread::entry & thread_ref, SORT_PARAM * ctx,
-				       SORT_MERGE_QUEUE_CTX * qctx);
+static void sort_merge_nruns_queue_cb (cubthread::entry & thread_ref, SORT_PARAM * ctx, SORT_MERGE_QUEUE_CTX * qctx);
 static void sort_merge_queue_try_dispatch (SORT_MERGE_QUEUE_CTX * qctx);
 
 static void
@@ -4693,7 +4692,7 @@ sort_merge_queue_try_dispatch (SORT_MERGE_QUEUE_CTX * qctx)
   RESULT_RUN run_a, run_b;
   int pool_idx;
   SORT_PARAM *ctx;
-  parallel_query::callable_task *task;
+  parallel_query::callable_task * task;
 
   if (qctx->has_error)
     {
@@ -5652,7 +5651,7 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	      /* allocate output temp slot (temp[1]) for sort_run_final_single */
 	      int pg_est = MAX (1, sort_get_avg_numpages_of_nonempty_tmpfile (sort_param));
 	      if (sort_add_new_file (thread_p, &sort_param->temp[1], pg_est, true,
-				    sort_param->tde_encrypted) != NO_ERROR)
+				     sort_param->tde_encrypted) != NO_ERROR)
 		{
 		  return ER_FAILED;
 		}
