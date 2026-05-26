@@ -1474,6 +1474,10 @@ typedef enum
   PT_TYPEOF,
   PT_FUNCTION_HOLDER,		/* special operator : wrapper for PT_FUNCTION node */
   PT_INDEX_CARDINALITY,
+  PT_ESTIMATED_TABLE_ROWS,
+  PT_ESTIMATED_AVG_ROW_LENGTH,
+  PT_ESTIMATED_DATA_LENGTH,
+  PT_ESTIMATED_DATA_FREE,
   PT_DEFINE_VARIABLE,
   PT_EVALUATE_VARIABLE,
   PT_EXEC_STATS,
@@ -1519,6 +1523,7 @@ typedef enum
   PT_CRC32,
   PT_SCHEMA_DEF,
   PT_CONV_TZ,
+  PT_COLLECTION_TO_STRING,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE

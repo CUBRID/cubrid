@@ -365,6 +365,11 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/trigger_manager.c
   ${OBJECT_DIR}/virtual_object.c
   ${OBJECT_DIR}/work_space.c
+  ${OBJECT_DIR}/schema_information_schema.cpp
+  ${OBJECT_DIR}/schema_information_schema_builder.cpp
+  ${OBJECT_DIR}/schema_information_schema_definition.cpp
+  ${OBJECT_DIR}/schema_information_schema_install.cpp
+  ${OBJECT_DIR}/schema_information_schema_install_query_spec.cpp
   )
 set(OBJECT_HEADERS
   ${OBJECT_DIR}/lob_locator.hpp
