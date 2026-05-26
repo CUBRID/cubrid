@@ -1138,7 +1138,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
   DB_QUERY_RESULT *query_result;
   DB_QUERY_ERROR query_error;
   DB_VALUE values[SYNONYM_VALUE_INDEX_MAX];
-  char synonym_name[DB_MAX_CLASS_LENGTH] = { '\0', };	// ctshim
+  char synonym_name[DB_MAX_CLASS_LENGTH] = { '\0', };
   DB_OBJECT *synonym_owner = NULL;
   const char *synonym_unique_name = NULL;
   char synonym_owner_name[DB_MAX_USER_LENGTH] = { '\0', };
