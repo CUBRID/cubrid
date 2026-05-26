@@ -1927,6 +1927,115 @@ oos_push_oos_oid (THREAD_ENTRY *thread_p, const OID *oid)
   thread_p->oos_oids.push_back (*oid);
 }
 
+// ****************************************************************************
+// OOS stats for session-command verification (dev/debug)
+// ****************************************************************************
+
+int
+xoos_get_stats_by_class_oid (THREAD_ENTRY *thread_p, const OID *class_oid, OOS_STATS_INFO *out)
+{
+  if (class_oid == NULL || out == NULL || OID_ISNULL (class_oid))
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  memset (out, 0, sizeof (*out));
+  out->page_size = DB_PAGESIZE;
+  VFID_SET_NULL (&out->oos_vfid);
+
+  HFID hfid;
+  HFID_SET_NULL (&hfid);
+  if (heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
+  if (HFID_IS_NULL (&hfid))
+    {
+      /* Class has no heap file yet (empty). Treat as "no OOS file". */
+      return NO_ERROR;
+    }
+
+  VFID oos_vfid;
+  VFID_SET_NULL (&oos_vfid);
+  if (!heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, false))
+    {
+      /* false return is overloaded: real read errors set er_errid; the
+       * legitimate "no OOS file" path (docreate=false, NULL in heap header)
+       * does not. Propagate if set, else treat as no-OOS. */
+      int errid = er_errid ();
+      if (errid != NO_ERROR)
+	{
+	  return errid;
+	}
+      return NO_ERROR;
+    }
+  if (VFID_ISNULL (&oos_vfid))
+    {
+      return NO_ERROR;
+    }
+
+  out->has_oos_file = 1;
+  out->oos_vfid = oos_vfid;
+
+  int num_user_pages = 0;
+  if (file_get_num_user_pages (thread_p, &oos_vfid, &num_user_pages) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
+  out->num_user_pages = num_user_pages;
+
+  /* OOS_HDR_STATS.estimates is a lazy best-space hint (updated only by sync scan),
+   * so for accurate live counts we walk every page and sum spage statistics. */
+  VPID hdr_vpid;
+  VPID_SET_NULL (&hdr_vpid);
+  if (file_get_sticky_first_page (thread_p, &oos_vfid, &hdr_vpid) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
+
+  INT64 total_recs = 0;
+  INT64 total_sumlen = 0;
+  for (int i = 0; i < num_user_pages; i++)
+    {
+      VPID scan_vpid;
+      if (file_numerable_find_nth (thread_p, &oos_vfid, i, false, NULL, NULL, &scan_vpid) != NO_ERROR
+	  || VPID_ISNULL (&scan_vpid))
+	{
+	  er_clear ();
+	  continue;
+	}
+      if (!VPID_ISNULL (&hdr_vpid) && VPID_EQ (&scan_vpid, &hdr_vpid))
+	{
+	  continue;		/* skip header page — no user records */
+	}
+
+      PAGE_PTR page_ptr = pgbuf_fix (thread_p, &scan_vpid, OLD_PAGE,
+				     PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
+      if (page_ptr == NULL)
+	{
+	  er_clear ();
+	  continue;		/* page busy — accept a slight undercount */
+	}
+
+      int page_npages = 0;
+      int page_nrecs = 0;
+      int page_recs_len = 0;
+      spage_collect_statistics (page_ptr, &page_npages, &page_nrecs, &page_recs_len);
+      pgbuf_unfix_and_init (thread_p, page_ptr);
+
+      total_recs += page_nrecs;
+      total_sumlen += page_recs_len;
+    }
+
+  out->num_recs = (int) total_recs;
+  out->recs_sumlen = total_sumlen;
+
+  return NO_ERROR;
+}
+
 #if defined(CUBRID_UNIT_TEST_ENABLED)
 int
 bridge_oos_get_max_chunk_size_within_page ()
