@@ -11692,8 +11692,13 @@ mr_data_readmem_char_type_common (OR_BUF * buf, void *memptr, TP_DOMAIN * domain
     }
 
   mem = (char **) memptr;
-  new_ = NULL;
+  /* should we be checking for existing strings ? */
+#if 0
+  if (cur != NULL)
+    db_private_free_and_init (NULL, cur);
+#endif
 
+  new_ = NULL;
   if (size)
     {
       start = buf->ptr;
@@ -11726,9 +11731,7 @@ mr_data_readmem_char_type_common (OR_BUF * buf, void *memptr, TP_DOMAIN * domain
 	  }
 	cur = new_ + header_size;
 
-	/* decompress (or copy raw) disk bytes into mem; helper writes the NUL terminator.
-	 * NOTE: when compressed_size > 0 the helper does NOT advance buf->ptr — the trailing
-	 * padding accounting below absorbs the compressed bytes via the (start..buf->ptr) delta. */
+	/* decompress buffer (this also writes nul terminator) */
 	rc = pr_get_compressed_data_from_buffer (buf, cur, compressed_size, src_size);
 	if (rc != NO_ERROR)
 	  {
@@ -11798,7 +11801,6 @@ mr_setval_char_type_common (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB
   else if ((src_str = db_get_string (src)) == NULL)
     {
       error = db_value_domain_init (dest, type, db_value_precision (src), 0);
-      /* is_max_string is VARCHAR-only */
       if (type == DB_TYPE_VARCHAR && src->data.ch.info.is_max_string)
 	{
 	  dest->data.ch.info.style = MEDIUM_STRING;
@@ -11941,9 +11943,6 @@ mr_lengthval_char_type_common (DB_VALUE * value, int disk, int align)
     }
   else
     {
-      /* db_get_string_length() always returns >= 0 for CHAR/VARCHAR — on cache miss
-       * (medium.length == -1) it computes char count via intl_char_count internally
-       * (string_opfunc.c:7788-7795). assert guards against future invariant breakage. */
       int char_count = db_get_string_length (value);
       assert (char_count >= 0);
 
@@ -11962,15 +11961,17 @@ mr_lengthval_char_type_common (DB_VALUE * value, int disk, int align)
 	  char_count = db_get_string_length (value);
 	}
 
+      /* Test and try compression. */
       if (!DB_TRIED_COMPRESSION (value))
 	{
+	  /* It means that the value has never passed through a compression process. */
 	  rc = pr_do_db_value_string_compression (value);
 	  if (rc != NO_ERROR)
 	    {
 	      return 0;
 	    }
 	}
-
+      /* We are now sure that the value has been through the process of compression */
       compressed_size = db_get_compressed_size (value);
 
       if (align == INT_ALIGNMENT)
@@ -12007,7 +12008,7 @@ mr_writeval_char_type_common (OR_BUF * buf, DB_VALUE * value, int align)
   if (value != NULL && !db_value_is_null (value))
     {
       str = db_get_string (value);
-      src_size = db_get_string_size (value);	/* byte size */
+      src_size = db_get_string_size (value);	/* size in bytes */
       if (src_size <= 0)
 	{
 	  if (src_size == 0)
@@ -12282,9 +12283,6 @@ mr_cmpdisk_char_type_common (void *mem1, void *mem2, TP_DOMAIN * domain, int do_
 
   assert (type == DB_TYPE_CHAR || type == DB_TYPE_VARCHAR);
 
-  /* or_get_string_header() advances buf->ptr past the header, so the resulting
-   * buf->ptr is the data start regardless of the header type (1 / 4 / 6 / 12 bytes).
-   * Byte-level compare doesn't need char count, so pass NULL to skip length. */
   or_init (&hdr_buf1, (char *) mem1, 0);
   or_init (&hdr_buf2, (char *) mem2, 0);
   if (or_get_string_header (&hdr_buf1, NULL, &mem_length1, &cmp_size1) != NO_ERROR
@@ -12347,8 +12345,6 @@ mr_cmpdisk_char_type_common (void *mem1, void *mem2, TP_DOMAIN * domain, int do_
       is_trailing_space_ignored = (type == DB_TYPE_CHAR);
     }
 
-  /* Both QSTR_CHAR_COMPARE and QSTR_COMPARE expand to the same fastcmp call; the macro
-   * choice here documents the caller's type intent. */
   if (type == DB_TYPE_CHAR)
     {
       strc = QSTR_CHAR_COMPARE (domain->collation_id, (unsigned char *) data1, mem_length1, (unsigned char *) data2,
