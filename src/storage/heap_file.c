@@ -8135,6 +8135,11 @@ heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
       const int this_off = OR_GET_VAR_OFFSET (vot_raw[i]);
       const int next_off = OR_GET_VAR_OFFSET (vot_raw[i + 1]);
       const int src_val_len = next_off - this_off;
+      if (src_val_len < 0 || src_header_size + next_off > src_length)
+	{
+	  assert_release (false && "VOT offsets out of order or past record");
+	  return S_ERROR;
+	}
       if (OR_IS_OOS (vot_raw[i]))
 	{
 	  assert (src_val_len == OR_OOS_INLINE_SIZE);
