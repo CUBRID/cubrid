@@ -28244,12 +28244,18 @@ heap_recdes_compute_oos_flag (const RECDES * recdes)
   if (max_var_count > 0)
     {
       int first;
-      if (offset_size == OR_BYTE_SIZE)
-	first = OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (var_table, 0, offset_size));
-      else if (offset_size == OR_SHORT_SIZE)
-	first = (unsigned short) OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (var_table, 0, offset_size));
-      else
-	first = OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (var_table, 0, offset_size));
+      switch (offset_size)
+	{
+	case OR_BYTE_SIZE:
+	  first = OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (var_table, 0, offset_size));
+	  break;
+	case OR_SHORT_SIZE:
+	  first = (unsigned short) OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (var_table, 0, offset_size));
+	  break;
+	default:
+	  first = OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (var_table, 0, offset_size));
+	  break;
+	}
       int clean = first & ~OR_VAR_FLAG_MASK;
       if (clean < 0 || clean > recdes->length - header_size)
 	{
