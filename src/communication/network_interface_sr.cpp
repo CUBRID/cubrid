@@ -12283,7 +12283,7 @@ scopy_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
       }
 
     /* create copy session */
-    copy_session *session = new (std::nothrow) copy_session ();
+    copy_session *session = new copy_session ();
     if (session == NULL)
       {
 	error_code = ER_OUT_OF_VIRTUAL_MEMORY;
