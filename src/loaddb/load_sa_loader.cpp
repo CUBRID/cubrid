@@ -2762,12 +2762,6 @@ ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE
   val.data.ch.medium.compressed_buf = NULL;
   val.data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
 
-  /* CHAR(N) trailing-space padding.
-   * After char_step, setmem no longer pads, so padding is the caller's
-   * responsibility. The INSERT path goes through qstr_coerce, but loaddb
-   * bypasses cast, so we call the helper directly here. The helper
-   * replaces val's buf with the padded buffer and transfers ownership
-   * too, so a single pr_clear_value afterwards cleans everything up. */
   if (char_count < precision)
     {
       CHECK_ERR (err, pr_pad_char_to_precision (&val, precision));
@@ -2775,11 +2769,8 @@ ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE
 
   mem = context->mobj + att->offset;
   CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
-  /* CHAR is now stored in the variable-length attribute region (no bound bit
-   * slot exists for variable attributes), so OBJ_SET_BOUND_BIT does not apply here. */
 
 error_exit:
-  /* No-op when need_clear=false; actually frees only when the helper installed a padded buffer. */
   pr_clear_value (&val);
   return err;
 }

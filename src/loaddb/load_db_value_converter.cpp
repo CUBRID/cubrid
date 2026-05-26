@@ -399,14 +399,6 @@ namespace cubload
 	  {
 	    /* cache char_count (db_make_db_char resets to -1) */
 	    val->data.ch.medium.length = char_count;
-	    /* CHAR(N) trailing-space padding.
-	     * After char_step, writeval / setmem no longer pad, so padding is
-	     * the caller's responsibility. The INSERT path goes through
-	     * qstr_coerce, but this loaddb entry bypasses cast, so we call the
-	     * helper directly here. VARCHAR is not a padding target and is
-	     * excluded. The helper replaces val's buf with the padded buffer
-	     * and transfers ownership too, so the caller's pr_clear_value
-	     * cleans it up automatically. */
 	    if (type == DB_TYPE_CHAR && char_count < precision)
 	      {
 		error = pr_pad_char_to_precision (val, precision);

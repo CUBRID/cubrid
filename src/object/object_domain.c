@@ -4570,9 +4570,6 @@ tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain)
   switch (desired_type)
     {
     case DB_TYPE_CHAR:
-      /* No compressed_buf check needed: CHAR uses the same variable-length
-       * and compression storage as VARCHAR, so the cached compressed result
-       * remains valid. */
       return (desired_precision == original_length
 	      && (original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR));
     case DB_TYPE_VARCHAR:
@@ -5422,31 +5419,16 @@ tp_ftoa (DB_VALUE const *src, DB_VALUE * result)
 	int prec = DB_VALUE_PRECISION (result);
 	int data_size = strlen (str_float);
 
-	if (prec != TP_FLOATING_PRECISION_VALUE && data_size < prec)
-	  {
-	    /* Pad with trailing spaces to CHAR(n) precision. */
-	    char *padded = (char *) db_private_alloc (NULL, prec + 1);
-	    if (padded == NULL)
-	      {
-		db_private_free_and_init (NULL, str_float);
-		db_make_null (result);
-		return;
-	      }
-	    memset (padded, ' ', prec);
-	    memcpy (padded, str_float, data_size);
-	    padded[prec] = '\0';
-
-	    db_private_free_and_init (NULL, str_float);
-	    db_make_char (result, prec, padded, prec, db_get_string_codeset (result), db_get_string_collation (result));
-	  }
-	else
-	  {
-	    /* No padding: data_size == prec (exact) or > prec (caller detects overflow
-	     * via db_get_string_length > precision check) or floating precision. */
-	    db_make_char (result, (prec == TP_FLOATING_PRECISION_VALUE) ? data_size : prec,
-			  str_float, data_size, db_get_string_codeset (result), db_get_string_collation (result));
-	  }
+	db_make_char (result, (prec == TP_FLOATING_PRECISION_VALUE) ? data_size : prec,
+		      str_float, data_size, db_get_string_codeset (result), db_get_string_collation (result));
 	result->need_clear = true;
+	result->data.ch.medium.length = data_size;	/* ASCII float string: char_count == byte_count */
+
+	if (data_size < prec && pr_pad_char_to_precision (result, prec) != NO_ERROR)
+	  {
+	    db_make_null (result);
+	    return;
+	  }
       }
       break;
 
@@ -5506,31 +5488,16 @@ tp_dtoa (DB_VALUE const *src, DB_VALUE * result)
 	int prec = DB_VALUE_PRECISION (result);
 	int data_size = strlen (str_double);
 
-	if (prec != TP_FLOATING_PRECISION_VALUE && data_size < prec)
-	  {
-	    /* Pad with trailing spaces to CHAR(n) precision. */
-	    char *padded = (char *) db_private_alloc (NULL, prec + 1);
-	    if (padded == NULL)
-	      {
-		db_private_free_and_init (NULL, str_double);
-		db_make_null (result);
-		return;
-	      }
-	    memset (padded, ' ', prec);
-	    memcpy (padded, str_double, data_size);
-	    padded[prec] = '\0';
-
-	    db_private_free_and_init (NULL, str_double);
-	    db_make_char (result, prec, padded, prec, db_get_string_codeset (result), db_get_string_collation (result));
-	  }
-	else
-	  {
-	    /* No padding: data_size == prec (exact) or > prec (caller detects overflow
-	     * via db_get_string_length > precision check) or floating precision. */
-	    db_make_char (result, (prec == TP_FLOATING_PRECISION_VALUE) ? data_size : prec,
-			  str_double, data_size, db_get_string_codeset (result), db_get_string_collation (result));
-	  }
+	db_make_char (result, (prec == TP_FLOATING_PRECISION_VALUE) ? data_size : prec,
+		      str_double, data_size, db_get_string_codeset (result), db_get_string_collation (result));
 	result->need_clear = true;
+	result->data.ch.medium.length = data_size;	/* ASCII double string: char_count == byte_count */
+
+	if (data_size < prec && pr_pad_char_to_precision (result, prec) != NO_ERROR)
+	  {
+	    db_make_null (result);
+	    return;
+	  }
       }
       break;
 

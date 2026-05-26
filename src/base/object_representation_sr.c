@@ -3918,10 +3918,6 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 	}
       else
 	{
-	  /* or_get_varchar_compression_lengths parses the header_type-dispatched header
-	   * (TINY / SMALL / MEDIUM / LARGE) and leaves
-	   * buffer.ptr at the start of the data bytes. compressed_length == 0 means
-	   * the data is stored uncompressed. */
 	  or_init (&buffer, attr, -1);
 
 	  rc = or_get_varchar_compression_lengths (&buffer, &compressed_length, &decompressed_length);
@@ -3955,7 +3951,6 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 	    }
 	  else
 	    {
-	      /* Uncompressed: data starts at buffer.ptr (NUL-terminated by writeval). */
 	      *string = buffer.ptr;
 	    }
 	}

@@ -6681,11 +6681,7 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
 	  return error_status;
 	}
 
-      /* This function is reached from multiple coercion paths (CAST, ALTER
-       * charset, comparison, padding helpers), and the source value may carry
-       * a stale char_count cached under a previous codeset.
-       *
-       * Always recompute using src_codeset to ensure correctness. */
+      /* Recompute char_count since the cached value may no longer match the string. */
       intl_char_count ((unsigned char *) db_get_string (src_string), db_get_string_size (src_string), src_codeset,
 		       &src_length);
 
@@ -6693,7 +6689,6 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
       is_dest_floating = (DB_VALUE_PRECISION (dest_string) == TP_FLOATING_PRECISION_VALUE);
       dest_prec = is_dest_floating ? src_length : DB_VALUE_PRECISION (dest_string);
 
-      /* QSTR_VALUE_PRECISION reusing src_length on floating precision to avoid a redundant char-count call. */
       src_prec =
 	(DB_VALUE_PRECISION (src_string) == TP_FLOATING_PRECISION_VALUE) ? src_length : DB_VALUE_PRECISION (src_string);
 
@@ -9628,9 +9623,8 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
 		}
 	      copy_size = conv_size;
 
-	      /* After binary -> multi-byte conversion, copy_length is still in
-	       * source binary bytes. Recompute in dest codeset so padding count
-	       * (*dest_length - copy_length) is correct. */
+	      /* copy_length becomes stale after binary-to-multibyte conversion.
+	       * Skip floating-precision destinations to avoid spurious padding. */
 	      if (dest_type == DB_TYPE_CHAR && !is_dest_floating)
 		{
 		  intl_char_count (*dest, copy_size, dest_codeset, &copy_length);

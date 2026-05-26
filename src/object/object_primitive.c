@@ -11379,16 +11379,7 @@ mr_setmem_char_type_common (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, 
     }
   src_length = value->data.ch.medium.length;
 
-  /* CHAR(N) trailing padding fixup (mem/storage-side safety net).
-   *
-   * Normally the caller provides values already padded to the declared
-   * precision. However, some internal rewritten-query paths (e.g. XASL)
-   * may produce CHAR DB_VALUEs where intl_char_count() undercounts UTF-8
-   * characters, causing length < precision.
-   *
-   * Missing trailing padding is corrected here to preserve the
-   * length == precision invariant.
-   */
+  /* CHAR(N) padding safety guard. */
   if (type == DB_TYPE_CHAR && src_length < domain->precision)
     {
       rc = pr_pad_char_to_precision (value, domain->precision);
@@ -11956,16 +11947,7 @@ mr_lengthval_char_type_common (DB_VALUE * value, int disk, int align)
       int char_count = db_get_string_length (value);
       assert (char_count >= 0);
 
-      /* CHAR(N) trailing padding fixup (mem/storage-side safety net).
-       *
-       * Normally the caller provides values already padded to the declared
-       * precision. However, some internal rewritten-query paths (e.g. XASL)
-       * may produce CHAR DB_VALUEs where intl_char_count() undercounts UTF-8
-       * characters, causing length < precision.
-       *
-       * Missing trailing padding is corrected here to preserve the
-       * length == precision invariant.
-       */
+      /* CHAR(N) padding safety guard. */
       if (DB_VALUE_TYPE (value) == DB_TYPE_CHAR
 	  && !IS_FLOATING_PRECISION (DB_VALUE_PRECISION (value)) && char_count < DB_VALUE_PRECISION (value))
 	{
@@ -12043,16 +12025,7 @@ mr_writeval_char_type_common (OR_BUF * buf, DB_VALUE * value, int align)
 	}
       src_length = value->data.ch.medium.length;
 
-      /* CHAR(N) trailing padding fixup (mem/storage-side safety net).
-       *
-       * Normally the caller provides values already padded to the declared
-       * precision. However, some internal rewritten-query paths (e.g. XASL)
-       * may produce CHAR DB_VALUEs where intl_char_count() undercounts UTF-8
-       * characters, causing length < precision.
-       *
-       * Missing trailing padding is corrected here to preserve the
-       * length == precision invariant.
-       */
+      /* CHAR(N) padding safety guard. */
       if (DB_VALUE_TYPE (value) == DB_TYPE_CHAR
 	  && !IS_FLOATING_PRECISION (DB_VALUE_PRECISION (value)) && src_length < DB_VALUE_PRECISION (value))
 	{
@@ -14631,31 +14604,22 @@ error:
 /*
  * pr_pad_char_to_precision - CHAR(N) trailing-space padding helper.
  *
- *   value(in/out) : CHAR DB_VALUE. When padding is applied, value is cleared
- *                   and re-set with a freshly allocated padded buffer; the
- *                   buffer's ownership is transferred to the value (need_clear
- *                   = true) so the caller does not free the padded buffer
- *                   directly — pr_clear_value handles it.
- *   precision(in) : target padded char count. Must be fixed (caller filters
- *                   out floating precision). May come from the column domain
- *                   (setmem/loaddb) or from the value itself (lengthval/
- *                   writeval).
+ *   value(in/out) : CHAR DB_VALUE to pad in place.
+ *   precision(in) : target character length.
  *
- * Used as the release-mode safety net inside mr_setmem_char_type_common /
- * mr_lengthval_char_type_common / mr_writeval_char_type_common. Caller guards
- * the call with a debug assert so that debug builds abort on a caller
- * invariant violation while release builds silently fix it.
+ * Note (see each callsite for detailed rationale):
+ *   - loaddb:
+ *       input strings bypass the normal cast path (which applies CHAR padding),
+ *       so loaddb performs CHAR padding explicitly.
  *
- * No-op when value's char count is already >= precision. After this call the
- * value's medium.buf reflects the padded image and the existing compression
- * cache is dropped — subsequent compression/length calculation operates on
- * the padded buffer as if the caller had padded correctly.
+ *   - tp_ftoa / tp_dtoa (FLOAT/DOUBLE -> CHAR cast):
+ *       these paths bypass qstr_coerce() and therefore skip normal CHAR
+ *       padding, so this helper applies the missing padding explicitly.
  *
- * Space (0x20) is used as the pad byte — matches the legacy
- * mr_writeval_char_internal behavior, which is consistent across all
- * supported codesets at the byte level (KSC5601_EUC's 0xA1A1 ideographic-
- * space discrepancy is a pre-existing, separate issue tracked outside this
- * PR).
+ *   - storage layer (mr_setmem / mr_lengthval / mr_writeval):
+ *       safety net for paths that produce CHAR DB_VALUEs whose length is
+ *       smaller than precision (e.g. UTF-8 character length miscalculated
+ *       from XASL-rewritten binary buffers).
  */
 int
 pr_pad_char_to_precision (DB_VALUE * value, int precision)
@@ -14670,8 +14634,6 @@ pr_pad_char_to_precision (DB_VALUE * value, int precision)
   assert (DB_VALUE_TYPE (value) == DB_TYPE_CHAR);
   assert (precision >= 0);
   assert (!IS_FLOATING_PRECISION (precision));
-  /* caller-provided precision must match the value's own precision or the
-   * value must be floating (column-domain precision substituted in). */
   assert (precision == DB_VALUE_PRECISION (value) || IS_FLOATING_PRECISION (DB_VALUE_PRECISION (value)));
 
   char_count = db_get_string_length (value);
@@ -14699,14 +14661,11 @@ pr_pad_char_to_precision (DB_VALUE * value, int precision)
   memset (padded + src_size, ' ', pad_chars);
   padded[new_size] = '\0';
 
-  /* clear existing value (frees old medium.buf if owned + drops compression
-   * cache) then re-set with the padded image. transfer ownership via
-   * need_clear so pr_clear_value handles the padded buf on next clear. */
   codeset = (INTL_CODESET) db_get_string_codeset (value);
   collation = db_get_string_collation (value);
   pr_clear_value (value);
   db_make_char (value, precision, padded, new_size, codeset, collation);
-  value->data.ch.medium.length = precision;	/* char_count cache */
+  value->data.ch.medium.length = precision;
   value->need_clear = true;
 
   return NO_ERROR;

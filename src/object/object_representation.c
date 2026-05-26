@@ -248,10 +248,6 @@ or_class_name (RECDES * record)
 
   offset = OR_VAR_OFFSET (record->data, 0);
 
-  /* or_get_varchar_compression_lengths() parses the variable-length string header
-   * (TINY / SMALL / MEDIUM / LARGE) and leaves buffer.ptr at the start of the
-   * data bytes. Class names are short and stored uncompressed, so we return the
-   * data pointer directly. */
   or_init (&buffer, &record->data[offset], -1);
   rc = or_get_varchar_compression_lengths (&buffer, &compressed_length, &decompressed_length);
   if (rc != NO_ERROR)
@@ -785,8 +781,8 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int size, int length, int a
   int rc = NO_ERROR;
   int compressed_length = 0;
 
-  /* Try LZ4 compression when the input is long enough; fall back to uncompressed
-   * storage if compression fails. */
+  /* Attempt LZ4 compression for sufficiently long inputs (mirrors as-is: short
+   * strings skip compression, long strings try and fall back to raw on failure). */
   if (OR_IS_STRING_LENGTH_COMPRESSABLE (size) && pr_Enable_string_compression)
     {
       /* Alloc memory for the compressed string */
@@ -824,7 +820,6 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int size, int length, int a
 	}
     }
 
-  /* or_put_string_header() selects the header type (TINY / SMALL / MEDIUM / LARGE) and writes it. */
   rc = or_put_string_header (buf, length, size, compressed_length);
   if (rc != NO_ERROR)
     {
