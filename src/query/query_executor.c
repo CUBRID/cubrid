@@ -16832,7 +16832,719 @@ replace_null_dbval (REGU_VARIABLE * regu_var, DB_VALUE * set_dbval)
   return NULL;
 }
 
+/* qexec_connect_by_decide_partition_count () - mirror hjoin_check_partition for CONNECT BY. */
+/* Returns 1 (SINGLE) or >=2 (PARTITION). Outer-join +1 NOT applicable (connect_by is not outer). */
+/* PARTITION_FILL_FACTOR mirror, see src/query/query_hash_join.c:48 — 0.8 inlined intentionally. */
+static int
+qexec_connect_by_decide_partition_count (QFILE_LIST_ID * input_list_id)
+{
+  UINT64 mem_limit;
+  UINT32 part_cnt;
+
+  if (input_list_id == NULL || input_list_id->tuple_cnt <= 0)
+    {
+      return 1;
+    }
+
+  mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
+  if (mem_limit == 0)
+    {
+      return 1;
+    }
+
+  /* PARTITION_FILL_FACTOR mirror, see src/query/query_hash_join.c:48 */
+  part_cnt =
+    CEIL_PTVDIV ((sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)) * (UINT64) input_list_id->tuple_cnt,
+		 (UINT64) (mem_limit * 0.8));
+  return (part_cnt <= 1) ? 1 : (int) part_cnt;
+}
+
+/* qexec_connect_by_route_input_to_partitions () - distribute input_list_id into partition_lists[N]. */
+/* HASH_METH_IN_MEM enforced for routing (independent of per-partition mode). */
+/* hash_build_filter_pred NOT applied — prescan already filtered. */
+static int
+qexec_connect_by_route_input_to_partitions (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+					    QFILE_LIST_ID * input_list_id, QFILE_LIST_ID ** partition_lists,
+					    int partition_count)
+{
+  CONNECTBY_PROC_NODE *connect_by = &xasl->proc.connect_by;
+  QFILE_LIST_SCAN_ID lfscan_id;
+  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  SCAN_CODE qp_scan;
+  HASH_SCAN_KEY *build_key = NULL;
+  unsigned int hash_key;
+  int pi, val_cnt = 0;
+  REGU_VARIABLE_LIST regu;
+  int ret = NO_ERROR;
+  bool scan_open = false;
+
+  if (input_list_id == NULL || input_list_id->tuple_cnt <= 0)
+    {
+      return NO_ERROR;
+    }
+
+  for (regu = connect_by->hash_build_regu_list; regu; regu = regu->next)
+    {
+      val_cnt++;
+    }
+  if (val_cnt == 0)
+    {
+      return ER_FAILED;
+    }
+
+  build_key = qdata_alloc_hscan_key (thread_p, val_cnt, true);
+  if (build_key == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (qfile_open_list_scan (input_list_id, &lfscan_id) != NO_ERROR)
+    {
+      ret = ER_FAILED;
+      goto cleanup;
+    }
+  scan_open = true;
+
+  while ((qp_scan = qfile_scan_list_next (thread_p, &lfscan_id, &tplrec, PEEK)) == S_SUCCESS)
+    {
+      if (fetch_val_list (thread_p, connect_by->regu_list_pred, &xasl_state->vd, NULL, NULL,
+			  tplrec.tpl, PEEK) != NO_ERROR)
+	{
+	  ret = ER_FAILED;
+	  goto cleanup;
+	}
+      if (connect_by->regu_list_rest != NULL
+	  && fetch_val_list (thread_p, connect_by->regu_list_rest, &xasl_state->vd, NULL, NULL,
+			     tplrec.tpl, PEEK) != NO_ERROR)
+	{
+	  ret = ER_FAILED;
+	  goto cleanup;
+	}
+
+      if (qdata_build_hscan_key (thread_p, &xasl_state->vd, connect_by->hash_build_regu_list, build_key) != NO_ERROR)
+	{
+	  ret = ER_FAILED;
+	  goto cleanup;
+	}
+
+      hash_key = qdata_hash_scan_key (build_key, UINT_MAX, HASH_METH_IN_MEM);
+      pi = (int) (hash_key % (unsigned int) partition_count);
+
+      if (qfile_add_tuple_to_list (thread_p, partition_lists[pi], tplrec.tpl) != NO_ERROR)
+	{
+	  ret = ER_FAILED;
+	  goto cleanup;
+	}
+    }
+
+  if (qp_scan == S_ERROR)
+    {
+      ret = ER_FAILED;
+    }
+
+cleanup:
+  if (scan_open)
+    {
+      qfile_close_scan (thread_p, &lfscan_id);
+    }
+  if (build_key)
+    {
+      qdata_free_hscan_key (thread_p, build_key, val_cnt);
+    }
+  return ret;
+}
+
+/* qexec_connect_by_route_start_with_to_frontier () - distribute start_with_list_id into frontier_list1[N]. */
+/* START WITH tuples take the parent role at BFS level 1, so their hash_probe_regu_list key */
+/* dictates which partition (where their children live) they must probe. HASH_METH_IN_MEM enforced. */
+static int
+qexec_connect_by_route_start_with_to_frontier (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+					       QFILE_LIST_ID * start_with_list_id,
+					       QFILE_LIST_ID ** frontier_list1, int partition_count)
+{
+  CONNECTBY_PROC_NODE *connect_by = &xasl->proc.connect_by;
+  QFILE_LIST_SCAN_ID lfscan_id;
+  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  SCAN_CODE qp_scan;
+  HASH_SCAN_KEY *probe_key = NULL;
+  unsigned int hash_key;
+  int pi, val_cnt = 0;
+  REGU_VARIABLE_LIST regu;
+  int ret = NO_ERROR;
+  bool scan_open = false;
+
+  if (start_with_list_id == NULL || start_with_list_id->tuple_cnt <= 0)
+    {
+      return NO_ERROR;
+    }
+
+  for (regu = connect_by->hash_probe_regu_list; regu; regu = regu->next)
+    {
+      val_cnt++;
+    }
+  if (val_cnt == 0)
+    {
+      return ER_FAILED;
+    }
+
+  probe_key = qdata_alloc_hscan_key (thread_p, val_cnt, true);
+  if (probe_key == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (qfile_open_list_scan (start_with_list_id, &lfscan_id) != NO_ERROR)
+    {
+      ret = ER_FAILED;
+      goto cleanup;
+    }
+  scan_open = true;
+
+  while ((qp_scan = qfile_scan_list_next (thread_p, &lfscan_id, &tplrec, PEEK)) == S_SUCCESS)
+    {
+      if (fetch_val_list (thread_p, connect_by->prior_regu_list_pred, &xasl_state->vd, NULL, NULL,
+			  tplrec.tpl, PEEK) != NO_ERROR)
+	{
+	  ret = ER_FAILED;
+	  goto cleanup;
+	}
+      if (connect_by->prior_regu_list_rest != NULL
+	  && fetch_val_list (thread_p, connect_by->prior_regu_list_rest, &xasl_state->vd, NULL, NULL,
+			     tplrec.tpl, PEEK) != NO_ERROR)
+	{
+	  ret = ER_FAILED;
+	  goto cleanup;
+	}
+
+      if (qdata_build_hscan_key (thread_p, &xasl_state->vd, connect_by->hash_probe_regu_list, probe_key) != NO_ERROR)
+	{
+	  ret = ER_FAILED;
+	  goto cleanup;
+	}
+
+      hash_key = qdata_hash_scan_key (probe_key, UINT_MAX, HASH_METH_IN_MEM);
+      pi = (int) (hash_key % (unsigned int) partition_count);
+
+      if (qfile_add_tuple_to_list (thread_p, frontier_list1[pi], tplrec.tpl) != NO_ERROR)
+	{
+	  ret = ER_FAILED;
+	  goto cleanup;
+	}
+    }
+
+  if (qp_scan == S_ERROR)
+    {
+      ret = ER_FAILED;
+    }
+
+cleanup:
+  if (scan_open)
+    {
+      qfile_close_scan (thread_p, &lfscan_id);
+    }
+  if (probe_key)
+    {
+      qdata_free_hscan_key (thread_p, probe_key, val_cnt);
+    }
+  return ret;
+}
+
+/* qexec_connect_by_build_partition_hash () - build per-partition hash table in 3 modes. */
+/* Mirrors hjoin_scan_init (src/query/query_hash_join.c:2516-2575) with sub_budget instead of mem_limit. */
+/* out_hash_i: MHT_HLS_TABLE* (IN_MEM/HYBRID) or HASH_LIST_SCAN* (FILE_HASH, holds FHSID + state). */
+/* out_list_scan_i: scan kept open for HYBRID (probe-time qfile_jump_scan_tuple_position lookups). */
+static int
+qexec_connect_by_build_partition_hash (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+				       int pi, QFILE_LIST_ID * partition_list_i, UINT64 sub_budget,
+				       void **out_hash_i, unsigned char *out_mode_i,
+				       QFILE_LIST_SCAN_ID * out_list_scan_i)
+{
+  CONNECTBY_PROC_NODE *connect_by = &xasl->proc.connect_by;
+  QFILE_LIST_SCAN_ID build_scan;
+  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  SCAN_CODE qp_scan;
+  HASH_SCAN_KEY *build_key = NULL;
+  HASH_SCAN_VALUE *new_value = NULL;
+  MHT_HLS_TABLE *hash_table = NULL;
+  HASH_LIST_SCAN *file_hls = NULL;
+  FHSID *fhs = NULL;
+  TFTID tftid;
+  unsigned int hash_key;
+  int val_cnt = 0;
+  REGU_VARIABLE_LIST regu;
+  int ret = NO_ERROR;
+  bool build_scan_open = false;
+  bool keep_list_scan_open = false;
+
+  *out_hash_i = NULL;
+  *out_mode_i = HASH_METH_NOT_USE;
+
+  if (partition_list_i == NULL || partition_list_i->tuple_cnt <= 0)
+    {
+      return NO_ERROR;
+    }
+
+  for (regu = connect_by->hash_build_regu_list; regu; regu = regu->next)
+    {
+      val_cnt++;
+    }
+  if (val_cnt == 0)
+    {
+      return ER_FAILED;
+    }
+
+  build_key = qdata_alloc_hscan_key (thread_p, val_cnt, true);
+  if (build_key == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /* PARTITION_FILL_FACTOR mirror, see src/query/query_hash_join.c:48 — sub_budget already split */
+  if ((UINT64) partition_list_i->page_cnt * DB_PAGESIZE <= sub_budget)
+    {
+      *out_mode_i = HASH_METH_IN_MEM;
+      hash_table = mht_create_hls ("Connect By Hash Part", partition_list_i->tuple_cnt, NULL, NULL);
+      if (hash_table == NULL)
+	{
+	  ret = ER_FAILED;
+	  goto cleanup;
+	}
+
+      if (qfile_open_list_scan (partition_list_i, &build_scan) != NO_ERROR)
+	{
+	  ret = ER_FAILED;
+	  goto cleanup;
+	}
+      build_scan_open = true;
+
+      while ((qp_scan = qfile_scan_list_next (thread_p, &build_scan, &tplrec, PEEK)) == S_SUCCESS)
+	{
+	  if (fetch_val_list (thread_p, connect_by->regu_list_pred, &xasl_state->vd, NULL, NULL,
+			      tplrec.tpl, PEEK) != NO_ERROR)
+	    {
+	      ret = ER_FAILED;
+	      goto cleanup;
+	    }
+	  if (connect_by->regu_list_rest != NULL
+	      && fetch_val_list (thread_p, connect_by->regu_list_rest, &xasl_state->vd, NULL, NULL,
+				 tplrec.tpl, PEEK) != NO_ERROR)
+	    {
+	      ret = ER_FAILED;
+	      goto cleanup;
+	    }
+	  if (qdata_build_hscan_key (thread_p, &xasl_state->vd, connect_by->hash_build_regu_list, build_key) !=
+	      NO_ERROR)
+	    {
+	      ret = ER_FAILED;
+	      goto cleanup;
+	    }
+
+	  hash_key = qdata_hash_scan_key (build_key, UINT_MAX, HASH_METH_IN_MEM);
+	  new_value = qdata_alloc_hscan_value (thread_p, tplrec.tpl);
+	  if (new_value == NULL)
+	    {
+	      ret = ER_FAILED;
+	      goto cleanup;
+	    }
+	  if (mht_put_hls (hash_table, (void *) &hash_key, (void *) new_value) == NULL)
+	    {
+	      qdata_free_hscan_value (thread_p, new_value);
+	      ret = ER_FAILED;
+	      goto cleanup;
+	    }
+	}
+      if (qp_scan == S_ERROR)
+	{
+	  ret = ER_FAILED;
+	  goto cleanup;
+	}
+
+      *out_hash_i = (void *) hash_table;
+    }
+  else if ((UINT64) partition_list_i->tuple_cnt * (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)) <= sub_budget)
+    {
+      *out_mode_i = HASH_METH_HYBRID;
+      hash_table = mht_create_hls ("Connect By Hash Part", partition_list_i->tuple_cnt, NULL, NULL);
+      if (hash_table == NULL)
+	{
+	  ret = ER_FAILED;
+	  goto cleanup;
+	}
+
+      /* HYBRID: probe-time scan kept open — partition_list_scan[pi] lifetime spans BFS+finalize */
+      if (qfile_open_list_scan (partition_list_i, out_list_scan_i) != NO_ERROR)
+	{
+	  ret = ER_FAILED;
+	  goto cleanup;
+	}
+      keep_list_scan_open = true;
+
+      while ((qp_scan = qfile_scan_list_next (thread_p, out_list_scan_i, &tplrec, PEEK)) == S_SUCCESS)
+	{
+	  if (fetch_val_list (thread_p, connect_by->regu_list_pred, &xasl_state->vd, NULL, NULL,
+			      tplrec.tpl, PEEK) != NO_ERROR)
+	    {
+	      ret = ER_FAILED;
+	      goto cleanup;
+	    }
+	  if (connect_by->regu_list_rest != NULL
+	      && fetch_val_list (thread_p, connect_by->regu_list_rest, &xasl_state->vd, NULL, NULL,
+				 tplrec.tpl, PEEK) != NO_ERROR)
+	    {
+	      ret = ER_FAILED;
+	      goto cleanup;
+	    }
+	  if (qdata_build_hscan_key (thread_p, &xasl_state->vd, connect_by->hash_build_regu_list, build_key) !=
+	      NO_ERROR)
+	    {
+	      ret = ER_FAILED;
+	      goto cleanup;
+	    }
+
+	  hash_key = qdata_hash_scan_key (build_key, UINT_MAX, HASH_METH_IN_MEM);
+	  /* qdata_alloc_hscan_value_OID reads scan curr_vpid/curr_offset directly */
+	  new_value = qdata_alloc_hscan_value_OID (thread_p, out_list_scan_i);
+	  if (new_value == NULL)
+	    {
+	      ret = ER_FAILED;
+	      goto cleanup;
+	    }
+	  if (mht_put_hls (hash_table, (void *) &hash_key, (void *) new_value) == NULL)
+	    {
+	      qdata_free_hscan_value (thread_p, new_value);
+	      ret = ER_FAILED;
+	      goto cleanup;
+	    }
+	}
+      if (qp_scan == S_ERROR)
+	{
+	  ret = ER_FAILED;
+	  goto cleanup;
+	}
+
+      *out_hash_i = (void *) hash_table;
+    }
+  else
+    {
+      *out_mode_i = HASH_METH_HASH_FILE;
+      file_hls = (HASH_LIST_SCAN *) db_private_alloc (thread_p, sizeof (HASH_LIST_SCAN));
+      if (file_hls == NULL)
+	{
+	  ret = ER_FAILED;
+	  goto cleanup;
+	}
+      memset (file_hls, 0, sizeof (HASH_LIST_SCAN));
+      file_hls->hash_list_scan_type = HASH_METH_HASH_FILE;
+
+      fhs = (FHSID *) db_private_alloc (thread_p, sizeof (FHSID));
+      if (fhs == NULL)
+	{
+	  ret = ER_FAILED;
+	  goto cleanup;
+	}
+      if (fhs_create (thread_p, fhs, partition_list_i->tuple_cnt) == NULL)
+	{
+	  ret = ER_FAILED;
+	  goto cleanup;
+	}
+      file_hls->file.hash_table = fhs;
+      file_hls->file.curr_oid = OID_INITIALIZER;
+      file_hls->file.is_dk_bucket = false;
+
+      /* FILE_HASH: probe-time scan kept open for qfile_jump_scan_tuple_position lookups */
+      if (qfile_open_list_scan (partition_list_i, out_list_scan_i) != NO_ERROR)
+	{
+	  ret = ER_FAILED;
+	  goto cleanup;
+	}
+      keep_list_scan_open = true;
+
+      while ((qp_scan = qfile_scan_list_next (thread_p, out_list_scan_i, &tplrec, PEEK)) == S_SUCCESS)
+	{
+	  if (fetch_val_list (thread_p, connect_by->regu_list_pred, &xasl_state->vd, NULL, NULL,
+			      tplrec.tpl, PEEK) != NO_ERROR)
+	    {
+	      ret = ER_FAILED;
+	      goto cleanup;
+	    }
+	  if (connect_by->regu_list_rest != NULL
+	      && fetch_val_list (thread_p, connect_by->regu_list_rest, &xasl_state->vd, NULL, NULL,
+				 tplrec.tpl, PEEK) != NO_ERROR)
+	    {
+	      ret = ER_FAILED;
+	      goto cleanup;
+	    }
+	  if (qdata_build_hscan_key (thread_p, &xasl_state->vd, connect_by->hash_build_regu_list, build_key) !=
+	      NO_ERROR)
+	    {
+	      ret = ER_FAILED;
+	      goto cleanup;
+	    }
+
+	  hash_key = qdata_hash_scan_key (build_key, UINT_MAX, HASH_METH_IN_MEM);
+	  /* mirror hjoin_build_key HASH_METH_HASH_FILE: SET_TFTID from current scan position */
+	  SET_TFTID (tftid, out_list_scan_i->curr_vpid.volid, out_list_scan_i->curr_vpid.pageid,
+		     out_list_scan_i->curr_offset);
+	  if (fhs_insert (thread_p, fhs, (void *) &hash_key, &tftid) == NULL)
+	    {
+	      ret = ER_FAILED;
+	      goto cleanup;
+	    }
+	}
+      if (qp_scan == S_ERROR)
+	{
+	  ret = ER_FAILED;
+	  goto cleanup;
+	}
+
+      *out_hash_i = (void *) file_hls;
+    }
+
+cleanup:
+  if (build_scan_open)
+    {
+      qfile_close_scan (thread_p, &build_scan);
+    }
+  if (build_key)
+    {
+      qdata_free_hscan_key (thread_p, build_key, val_cnt);
+    }
+  if (ret != NO_ERROR)
+    {
+      if (keep_list_scan_open)
+	{
+	  qfile_close_scan (thread_p, out_list_scan_i);
+	}
+      if (hash_table)
+	{
+	  mht_clear_hls (hash_table, qdata_free_hscan_entry, (void *) thread_p);
+	  mht_destroy_hls (hash_table);
+	}
+      if (fhs)
+	{
+	  fhs_destroy (thread_p, fhs);
+	  db_private_free_and_init (thread_p, fhs);
+	}
+      if (file_hls)
+	{
+	  db_private_free_and_init (thread_p, file_hls);
+	}
+      *out_hash_i = NULL;
+      *out_mode_i = HASH_METH_NOT_USE;
+    }
+  return ret;
+}
+
+/* qexec_connect_by_probe_partition () - probe one partition for one parent tuple's children. */
+/* Mirrors qexec_connect_by_hash_scan_children with 3-mode support (IN_MEM/HYBRID/FILE_HASH). */
+/* For each surviving child: route to frontier_list2[pj] where pj = hash(child build key) % N. */
+/* cycle detection uses result_list (single source), partition hash entries irrelevant */
+/* — see qexec_connect_by_check_cycle. */
+static int
+qexec_connect_by_probe_partition (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+				  int pi, void *hash_i, unsigned char mode_i,
+				  QFILE_LIST_SCAN_ID * list_scan_i,
+				  QFILE_LIST_ID * result_list, QFILE_LIST_ID * sibling_sort_buf,
+				  QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
+				  QFILE_TUPLE_RECORD * tplrec, QFILE_TUPLE_RECORD * temp_tuple_rec,
+				  QFILE_TUPLE_RECORD * tuple_rec, int level_value,
+				  DB_VALUE * level_valp, DB_VALUE * isleaf_valp, DB_VALUE * iscycle_valp,
+				  DB_VALUE * parent_pos_valp, DB_VALUE * index_valp,
+				  char *parent_path_key, char **child_path_key, int *len_child_path_key,
+				  int has_order_siblings_by, int *isleaf_value_out, int *iscycle_value_out,
+				  bool * parent_tuple_added, QFILE_TUPLE_POSITION * parent_pos,
+				  HASH_SCAN_KEY * probe_key, HASH_SCAN_KEY * route_key,
+				  QFILE_LIST_ID ** frontier_list2, int partition_count)
+{
+  CONNECTBY_PROC_NODE *connect_by = &xasl->proc.connect_by;
+  MHT_HLS_TABLE *mem_table = NULL;
+  HASH_LIST_SCAN *file_hls = NULL;
+  HASH_SCAN_VALUE *hsv;
+  QFILE_TUPLE_RECORD child_tplrec = { NULL, 0 };
+  QFILE_TUPLE_POSITION tuple_position;
+  QFILE_TUPLE child_tpl;
+  EH_SEARCH eh_search;
+  TFTID tftid;
+  SCAN_CODE scan_code;
+  DB_LOGICAL ev_res;
+  int cycle;
+  int child_index = 0;
+  unsigned int hash_key;
+  unsigned int route_hash;
+  int pj;
+  void *last = NULL;
+  bool first_probe = true;
+
+  if (hash_i == NULL || mode_i == HASH_METH_NOT_USE)
+    {
+      return NO_ERROR;
+    }
+
+  if (qdata_build_hscan_key (thread_p, &xasl_state->vd, connect_by->hash_probe_regu_list, probe_key) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  hash_key = qdata_hash_scan_key (probe_key, UINT_MAX, HASH_METH_IN_MEM);
+
+  if (mode_i == HASH_METH_IN_MEM || mode_i == HASH_METH_HYBRID)
+    {
+      mem_table = (MHT_HLS_TABLE *) hash_i;
+    }
+  else
+    {
+      file_hls = (HASH_LIST_SCAN *) hash_i;
+      file_hls->curr_hash_key = hash_key;
+    }
+
+  while (true)
+    {
+      child_tpl = NULL;
+      child_tplrec.tpl = NULL;
+      child_tplrec.size = 0;
+
+      if (mode_i == HASH_METH_IN_MEM)
+	{
+	  hsv = (HASH_SCAN_VALUE *) (first_probe
+				     ? mht_get_hls (mem_table, (void *) &hash_key, &last)
+				     : mht_get_next_hls (mem_table, (void *) &hash_key, &last));
+	  if (hsv == NULL)
+	    {
+	      break;
+	    }
+	  child_tpl = hsv->tuple;
+	}
+      else if (mode_i == HASH_METH_HYBRID)
+	{
+	  hsv = (HASH_SCAN_VALUE *) (first_probe
+				     ? mht_get_hls (mem_table, (void *) &hash_key, &last)
+				     : mht_get_next_hls (mem_table, (void *) &hash_key, &last));
+	  if (hsv == NULL)
+	    {
+	      break;
+	    }
+	  MAKE_TUPLE_POSTION (tuple_position, hsv->pos, list_scan_i);
+	  scan_code = qfile_jump_scan_tuple_position (thread_p, list_scan_i, &tuple_position, &child_tplrec, PEEK);
+	  if (scan_code != S_SUCCESS)
+	    {
+	      return ER_FAILED;
+	    }
+	  child_tpl = child_tplrec.tpl;
+	}
+      else
+	{
+	  eh_search = first_probe ? fhs_search (thread_p, file_hls, &tftid)
+	    : fhs_search_next (thread_p, file_hls, &tftid);
+	  if (eh_search == EH_KEY_NOTFOUND)
+	    {
+	      break;
+	    }
+	  if (eh_search != EH_KEY_FOUND)
+	    {
+	      return ER_FAILED;
+	    }
+	  MAKE_TFTID_TO_TUPLE_POSTION (tuple_position, tftid, list_scan_i);
+	  scan_code = qfile_jump_scan_tuple_position (thread_p, list_scan_i, &tuple_position, &child_tplrec, PEEK);
+	  if (scan_code != S_SUCCESS)
+	    {
+	      return ER_FAILED;
+	    }
+	  child_tpl = child_tplrec.tpl;
+	}
+
+      first_probe = false;
+
+      if (fetch_val_list (thread_p, connect_by->regu_list_pred, &xasl_state->vd, NULL, NULL,
+			  child_tpl, PEEK) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      if (connect_by->regu_list_rest != NULL
+	  && fetch_val_list (thread_p, connect_by->regu_list_rest, &xasl_state->vd, NULL, NULL,
+			     child_tpl, PEEK) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      if (xasl->level_val)
+	{
+	  db_make_int (xasl->level_val, level_value + 1);
+	}
+
+      if (xasl->if_pred != NULL)
+	{
+	  ev_res = eval_pred (thread_p, xasl->if_pred, &xasl_state->vd, NULL);
+	  if (ev_res == V_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	  else if (ev_res != V_TRUE)
+	    {
+	      continue;
+	    }
+	}
+
+      cycle = 0;
+      if (qexec_connect_by_check_cycle (thread_p, xasl, tuple_rec->tpl, type_list, result_list, &cycle) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      if (cycle == 0)
+	{
+	  *isleaf_value_out = 0;
+	}
+
+      if (cycle == 0 || XASL_IS_FLAGED (xasl, XASL_IGNORE_CYCLES))
+	{
+	  /* compute destination partition pj from CHILD's build key (= next-level parent's PROBE key) */
+	  if (has_order_siblings_by)
+	    {
+	      /* sibling sort path uses single sibling_sort_buf; routing deferred to sort emit */
+	      pj = 0;
+	    }
+	  else
+	    {
+	      if (qdata_build_hscan_key (thread_p, &xasl_state->vd, connect_by->hash_build_regu_list, route_key) !=
+		  NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+	      route_hash = qdata_hash_scan_key (route_key, UINT_MAX, HASH_METH_IN_MEM);
+	      pj = (int) (route_hash % (unsigned int) partition_count);
+	    }
+
+	  if (qexec_connect_by_build_child (thread_p, xasl, xasl_state, result_list, frontier_list2[pj],
+					    sibling_sort_buf, tplrec, temp_tuple_rec, tuple_rec,
+					    isleaf_valp, parent_pos_valp, index_valp,
+					    parent_path_key, child_path_key, len_child_path_key,
+					    *isleaf_value_out, has_order_siblings_by,
+					    parent_tuple_added, parent_pos, &child_index) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+      else if (!XASL_IS_FLAGED (xasl, XASL_HAS_NOCYCLE))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CYCLE_DETECTED, 0);
+	  return ER_FAILED;
+	}
+      else
+	{
+	  *iscycle_value_out = 1;
+	}
+    }
+
+  if (has_order_siblings_by && sibling_sort_buf != NULL)
+    {
+      qfile_close_list (thread_p, sibling_sort_buf);
+    }
+
+  return NO_ERROR;
+}
+
 /* qexec_connect_by_build_hash () - build in-memory hash table from input_list_id */
+/* SINGLE branch only — see qexec_connect_by_build_partition_hash for PARTITION */
 static int
 qexec_connect_by_build_hash (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 			     MHT_HLS_TABLE ** hash_table_p, HASH_SCAN_KEY ** temp_key_p, int *key_cnt_p)
@@ -17650,6 +18362,15 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   has_order_siblings_by = xasl->orderby_list ? 1 : 0;
   connect_by = &xasl->proc.connect_by;
 
+  /* zero-init partition runtime state (stream-deserialized struct may not be NULL-init) */
+  connect_by->partition_count = 0;
+  connect_by->partition_lists = NULL;
+  connect_by->frontier_list1 = NULL;
+  connect_by->frontier_list2 = NULL;
+  connect_by->partition_hash = NULL;
+  connect_by->partition_mode = NULL;
+  connect_by->partition_list_scan = NULL;
+
   if (qexec_init_index_pseudocolumn_strings (thread_p, &parent_path_key, &len_parent_path_key, &child_path_key,
 					     &len_child_path_key) != NO_ERROR)
     {
@@ -17668,10 +18389,20 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* single_table_opt hash build: prescan full table into hash, probe during BFS */
-  /* skip hash build for INDEX access — index probe per parent is already efficient */
+  /* partition-hash decision: input_list_id already populated by outer block prescan */
+  /* (qexec_update_connect_by_lists). If partition_count >= 2, take PARTITION branch */
+  /* and skip the SINGLE inline prescan below. */
   if (connect_by->single_table_opt && connect_by->use_hash_for_hq && connect_by->hash_build_regu_list
       && xasl->spec_list->access != ACCESS_METHOD_INDEX)
+    {
+      connect_by->partition_count = qexec_connect_by_decide_partition_count (connect_by->input_list_id);
+    }
+
+  /* single_table_opt hash build: prescan full table into hash, probe during BFS */
+  /* skip hash build for INDEX access — index probe per parent is already efficient */
+  /* PARTITION path (partition_count >= 2) bypasses this SINGLE inline build */
+  if (connect_by->single_table_opt && connect_by->use_hash_for_hq && connect_by->hash_build_regu_list
+      && xasl->spec_list->access != ACCESS_METHOD_INDEX && connect_by->partition_count <= 1)
     {
       QFILE_TUPLE_RECORD hash_tplrec = { NULL, 0 };
       SCAN_CODE hash_scan;
@@ -17816,6 +18547,107 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     }
 skip_prescan_hash:
 
+  /* PARTITION branch setup: allocate arrays, route input + start_with, build N hash tables */
+  if (connect_by->partition_count >= 2)
+    {
+      int pi;
+      int pcnt = connect_by->partition_count;
+      UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
+      /* PARTITION_FILL_FACTOR mirror, see src/query/query_hash_join.c:48 */
+      UINT64 total_budget = (UINT64) (mem_limit * 0.8);
+      UINT64 sub_budget = (pcnt > 0) ? (total_budget / (UINT64) pcnt) : 0;
+
+      if (qdata_get_valptr_type_list (thread_p, xasl->outptr_list, &type_list) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+      connect_by->partition_lists = (QFILE_LIST_ID **) db_private_alloc (thread_p, sizeof (QFILE_LIST_ID *) * pcnt);
+      connect_by->frontier_list1 = (QFILE_LIST_ID **) db_private_alloc (thread_p, sizeof (QFILE_LIST_ID *) * pcnt);
+      connect_by->frontier_list2 = (QFILE_LIST_ID **) db_private_alloc (thread_p, sizeof (QFILE_LIST_ID *) * pcnt);
+      connect_by->partition_hash = (void **) db_private_alloc (thread_p, sizeof (void *) * pcnt);
+      connect_by->partition_mode = (unsigned char *) db_private_alloc (thread_p, sizeof (unsigned char) * pcnt);
+      connect_by->partition_list_scan =
+	(QFILE_LIST_SCAN_ID *) db_private_alloc (thread_p, sizeof (QFILE_LIST_SCAN_ID) * pcnt);
+      if (connect_by->partition_lists == NULL || connect_by->frontier_list1 == NULL
+	  || connect_by->frontier_list2 == NULL || connect_by->partition_hash == NULL
+	  || connect_by->partition_mode == NULL || connect_by->partition_list_scan == NULL)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+      for (pi = 0; pi < pcnt; pi++)
+	{
+	  connect_by->partition_lists[pi] = NULL;
+	  connect_by->frontier_list1[pi] = NULL;
+	  connect_by->frontier_list2[pi] = NULL;
+	  connect_by->partition_hash[pi] = NULL;
+	  connect_by->partition_mode[pi] = HASH_METH_NOT_USE;
+	  connect_by->partition_list_scan[pi].status = S_CLOSED;
+	}
+
+      /* open one list per partition for build-side routing and BFS frontiers */
+      for (pi = 0; pi < pcnt; pi++)
+	{
+	  connect_by->partition_lists[pi] =
+	    qfile_open_list (thread_p, &connect_by->input_list_id->type_list, NULL, xasl_state->query_id, 0, NULL);
+	  if (connect_by->partition_lists[pi] == NULL)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	  connect_by->frontier_list1[pi] = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
+	  if (connect_by->frontier_list1[pi] == NULL)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	  connect_by->frontier_list2[pi] = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
+	  if (connect_by->frontier_list2[pi] == NULL)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	}
+
+      /* route input_list_id tuples into partition_lists[N] */
+      if (qexec_connect_by_route_input_to_partitions
+	  (thread_p, xasl, xasl_state, connect_by->input_list_id, connect_by->partition_lists, pcnt) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+      /* close lists so subsequent scans see complete data */
+      for (pi = 0; pi < pcnt; pi++)
+	{
+	  qfile_close_list (thread_p, connect_by->partition_lists[pi]);
+	}
+
+      /* build per-partition hash tables (IN_MEM / HYBRID / FILE_HASH static decision) */
+      for (pi = 0; pi < pcnt; pi++)
+	{
+	  if (connect_by->partition_lists[pi]->tuple_cnt <= 0)
+	    {
+	      continue;
+	    }
+	  if (qexec_connect_by_build_partition_hash
+	      (thread_p, xasl, xasl_state, pi, connect_by->partition_lists[pi], sub_budget,
+	       &connect_by->partition_hash[pi], &connect_by->partition_mode[pi],
+	       &connect_by->partition_list_scan[pi]) != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	}
+
+      /* route start_with_list_id tuples into frontier_list1[N] */
+      if (qexec_connect_by_route_start_with_to_frontier
+	  (thread_p, xasl, xasl_state, connect_by->start_with_list_id, connect_by->frontier_list1, pcnt) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+      for (pi = 0; pi < pcnt; pi++)
+	{
+	  qfile_close_list (thread_p, connect_by->frontier_list1[pi]);
+	}
+    }
+
   use_hash = (hash_table != NULL);
 
   /* replace PRIOR argument constant regu vars values pointers */
@@ -17899,11 +18731,15 @@ skip_prescan_hash:
 	}
     }
 
-  /* start the scanner on "input" */
-  if (qexec_open_scan (thread_p, xasl->spec_list, xasl->val_list, &xasl_state->vd, false, true, false,
-		       false, &xasl->spec_list->s_id, xasl_state->query_id, S_SELECT, false, NULL, xasl) != NO_ERROR)
+  /* start the scanner on "input" — SINGLE branch only (PARTITION probes hash, not heap) */
+  if (connect_by->partition_count < 2)
     {
-      GOTO_EXIT_ON_ERROR;
+      if (qexec_open_scan (thread_p, xasl->spec_list, xasl->val_list, &xasl_state->vd, false, true, false,
+			   false, &xasl->spec_list->s_id, xasl_state->query_id, S_SELECT, false, NULL,
+			   xasl) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
     }
 
   /* hash table already built in prescan above; no secondary build needed */
@@ -17913,45 +18749,321 @@ skip_prescan_hash:
   listfile2 = next_frontier;
   listfile2_tmp = sibling_sort_buf;
 
-  /* BFS traversal: process one level per iteration */
-  while (current_frontier->tuple_cnt > 0)
+  if (connect_by->partition_count >= 2)
     {
-      level_value++;
+      /* PARTITION BFS — N concurrent hash tables, frontier_list1[N] <-> frontier_list2[N] swap */
+      int pi;
+      int pcnt = connect_by->partition_count;
+      bool any_frontier;
+      HASH_SCAN_KEY *probe_key = NULL;
+      HASH_SCAN_KEY *route_key = NULL;
+      int val_cnt = 0;
+      REGU_VARIABLE_LIST regu;
 
-      /* LEVEL early exit */
-      if (connect_by->max_level > 0 && level_value > connect_by->max_level)
+      for (regu = connect_by->hash_probe_regu_list; regu; regu = regu->next)
 	{
-	  break;
+	  val_cnt++;
+	}
+      if (val_cnt == 0)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+      probe_key = qdata_alloc_hscan_key (thread_p, val_cnt, true);
+      if (probe_key == NULL)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+      route_key = qdata_alloc_hscan_key (thread_p, val_cnt, true);
+      if (route_key == NULL)
+	{
+	  qdata_free_hscan_key (thread_p, probe_key, val_cnt);
+	  GOTO_EXIT_ON_ERROR;
 	}
 
-      if (qexec_connect_by_process_level (thread_p, xasl, xasl_state, result_list, current_frontier,
-					  next_frontier, &sibling_sort_buf, &type_list, tplrec, &temp_tuple_rec,
-					  level_value, level_valp, isleaf_valp, iscycle_valp, parent_pos_valp,
-					  index_valp, &parent_path_key, &len_parent_path_key,
-					  &child_path_key, &len_child_path_key,
-					  &index_father, has_order_siblings_by, hash_table, hash_probe_key) != NO_ERROR)
+      do
 	{
+	  level_value++;
+
+	  if (connect_by->max_level > 0 && level_value > connect_by->max_level)
+	    {
+	      break;
+	    }
+
+	  db_make_int (level_valp, level_value);
+
+	  for (pi = 0; pi < pcnt; pi++)
+	    {
+	      QFILE_LIST_SCAN_ID fscan;
+	      QFILE_TUPLE_RECORD parent_tplrec = { NULL, 0 };
+	      SCAN_CODE qpf;
+	      QFILE_TUPLE_POSITION parent_pos;
+	      bool parent_tuple_added;
+	      int isleaf_value, iscycle_value;
+	      int valptr_cnt = xasl->outptr_list->valptr_cnt;
+	      bool fscan_open = false;
+
+	      if (connect_by->frontier_list1[pi] == NULL || connect_by->frontier_list1[pi]->tuple_cnt <= 0)
+		{
+		  continue;
+		}
+
+	      if (qfile_open_list_scan (connect_by->frontier_list1[pi], &fscan) != NO_ERROR)
+		{
+		  qdata_free_hscan_key (thread_p, probe_key, val_cnt);
+		  qdata_free_hscan_key (thread_p, route_key, val_cnt);
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      fscan_open = true;
+
+	      while ((qpf = qfile_scan_list_next (thread_p, &fscan, &parent_tplrec, PEEK)) == S_SUCCESS)
+		{
+		  QFILE_TUPLE_RECORD tuple_rec;
+		  unsigned int probe_hash;
+		  int target_pi;
+
+		  tuple_rec.tpl = parent_tplrec.tpl;
+		  tuple_rec.size = parent_tplrec.size;
+
+		  isleaf_value = 1;
+		  iscycle_value = 0;
+		  parent_tuple_added = false;
+		  db_make_bit (parent_pos_valp, DB_DEFAULT_PRECISION, NULL, 8);
+
+		  /* fetch PRIOR vals from parent tuple */
+		  if (fetch_val_list (thread_p, connect_by->prior_regu_list_pred, &xasl_state->vd, NULL, NULL,
+				      parent_tplrec.tpl, PEEK) != NO_ERROR)
+		    {
+		      qfile_close_scan (thread_p, &fscan);
+		      qdata_free_hscan_key (thread_p, probe_key, val_cnt);
+		      qdata_free_hscan_key (thread_p, route_key, val_cnt);
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		  if (fetch_val_list (thread_p, connect_by->prior_regu_list_rest, &xasl_state->vd, NULL, NULL,
+				      parent_tplrec.tpl, PEEK) != NO_ERROR)
+		    {
+		      qfile_close_scan (thread_p, &fscan);
+		      qdata_free_hscan_key (thread_p, probe_key, val_cnt);
+		      qdata_free_hscan_key (thread_p, route_key, val_cnt);
+		      GOTO_EXIT_ON_ERROR;
+		    }
+
+		  /* parent_path_key handling for level 1 (start_with) vs deeper levels */
+		  if (level_value == 1)
+		    {
+		      index_father++;
+		      parent_path_key[0] = 0;
+		      if (bf2df_str_son_index (thread_p, &parent_path_key, NULL, &len_parent_path_key,
+					       index_father) != NO_ERROR)
+			{
+			  qfile_close_scan (thread_p, &fscan);
+			  qdata_free_hscan_key (thread_p, probe_key, val_cnt);
+			  qdata_free_hscan_key (thread_p, route_key, val_cnt);
+			  GOTO_EXIT_ON_ERROR;
+			}
+		      if (DB_NEED_CLEAR (index_valp))
+			{
+			  pr_clear_value (index_valp);
+			}
+		      db_make_string (index_valp, parent_path_key);
+		    }
+		  else
+		    {
+		      if (DB_NEED_CLEAR (index_valp))
+			{
+			  pr_clear_value (index_valp);
+			}
+		      if (qexec_get_index_pseudocolumn_value_from_tuple (thread_p, xasl, parent_tplrec.tpl,
+									 &index_valp, &parent_path_key,
+									 &len_parent_path_key) != NO_ERROR)
+			{
+			  qfile_close_scan (thread_p, &fscan);
+			  qdata_free_hscan_key (thread_p, probe_key, val_cnt);
+			  qdata_free_hscan_key (thread_p, route_key, val_cnt);
+			  GOTO_EXIT_ON_ERROR;
+			}
+		    }
+
+		  /* determine which partition's hash holds this parent's children */
+		  if (qdata_build_hscan_key (thread_p, &xasl_state->vd, connect_by->hash_probe_regu_list,
+					     probe_key) != NO_ERROR)
+		    {
+		      qfile_close_scan (thread_p, &fscan);
+		      qdata_free_hscan_key (thread_p, probe_key, val_cnt);
+		      qdata_free_hscan_key (thread_p, route_key, val_cnt);
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		  probe_hash = qdata_hash_scan_key (probe_key, UINT_MAX, HASH_METH_IN_MEM);
+		  target_pi = (int) (probe_hash % (unsigned int) pcnt);
+
+		  if (qexec_connect_by_probe_partition
+		      (thread_p, xasl, xasl_state, target_pi, connect_by->partition_hash[target_pi],
+		       connect_by->partition_mode[target_pi], &connect_by->partition_list_scan[target_pi],
+		       result_list, has_order_siblings_by ? sibling_sort_buf : NULL, &type_list, tplrec,
+		       &temp_tuple_rec, &tuple_rec, level_value, level_valp, isleaf_valp, iscycle_valp,
+		       parent_pos_valp, index_valp, parent_path_key, &child_path_key, &len_child_path_key,
+		       has_order_siblings_by, &isleaf_value, &iscycle_value, &parent_tuple_added, &parent_pos,
+		       probe_key, route_key, connect_by->frontier_list2, pcnt) != NO_ERROR)
+		    {
+		      qfile_close_scan (thread_p, &fscan);
+		      qdata_free_hscan_key (thread_p, probe_key, val_cnt);
+		      qdata_free_hscan_key (thread_p, route_key, val_cnt);
+		      GOTO_EXIT_ON_ERROR;
+		    }
+
+		  if (!parent_tuple_added)
+		    {
+		      /* leaf node: add parent to result without children */
+		      db_make_int (isleaf_valp, isleaf_value);
+		      if (qexec_get_tuple_column_value (parent_tplrec.tpl,
+							(valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET),
+							parent_pos_valp, &tp_Bit_domain) != NO_ERROR)
+			{
+			  qfile_close_scan (thread_p, &fscan);
+			  qdata_free_hscan_key (thread_p, probe_key, val_cnt);
+			  qdata_free_hscan_key (thread_p, route_key, val_cnt);
+			  GOTO_EXIT_ON_ERROR;
+			}
+		      tuple_rec = temp_tuple_rec;
+		      if (qdata_copy_valptr_list_to_tuple (thread_p, connect_by->prior_outptr_list, &xasl_state->vd,
+							   &tuple_rec) != NO_ERROR)
+			{
+			  qfile_close_scan (thread_p, &fscan);
+			  qdata_free_hscan_key (thread_p, probe_key, val_cnt);
+			  qdata_free_hscan_key (thread_p, route_key, val_cnt);
+			  GOTO_EXIT_ON_ERROR;
+			}
+		      temp_tuple_rec = tuple_rec;
+		      if (qfile_add_tuple_get_pos_in_list (thread_p, result_list, tuple_rec.tpl,
+							   &parent_pos) != NO_ERROR)
+			{
+			  qfile_close_scan (thread_p, &fscan);
+			  qdata_free_hscan_key (thread_p, probe_key, val_cnt);
+			  qdata_free_hscan_key (thread_p, route_key, val_cnt);
+			  GOTO_EXIT_ON_ERROR;
+			}
+		    }
+
+		  db_make_int (iscycle_valp, iscycle_value);
+		  if (qfile_set_tuple_column_value (thread_p, result_list, NULL, &parent_pos.vpid, parent_pos.tpl,
+						    (valptr_cnt - PCOL_ISCYCLE_TUPLE_OFFSET), iscycle_valp,
+						    &tp_Integer_domain) != NO_ERROR)
+		    {
+		      qfile_close_scan (thread_p, &fscan);
+		      qdata_free_hscan_key (thread_p, probe_key, val_cnt);
+		      qdata_free_hscan_key (thread_p, route_key, val_cnt);
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		  db_make_int (isleaf_valp, isleaf_value);
+		  if (qfile_set_tuple_column_value (thread_p, result_list, NULL, &parent_pos.vpid, parent_pos.tpl,
+						    (valptr_cnt - PCOL_ISLEAF_TUPLE_OFFSET), isleaf_valp,
+						    &tp_Integer_domain) != NO_ERROR)
+		    {
+		      qfile_close_scan (thread_p, &fscan);
+		      qdata_free_hscan_key (thread_p, probe_key, val_cnt);
+		      qdata_free_hscan_key (thread_p, route_key, val_cnt);
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		}
+
+	      if (fscan_open)
+		{
+		  qfile_close_scan (thread_p, &fscan);	/* AC #23: close per partition */
+		}
+
+	      if (qpf == S_ERROR)
+		{
+		  qdata_free_hscan_key (thread_p, probe_key, val_cnt);
+		  qdata_free_hscan_key (thread_p, route_key, val_cnt);
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
+
+	  /* close all frontier_list2 (just-written) before swap */
+	  for (pi = 0; pi < pcnt; pi++)
+	    {
+	      qfile_close_list (thread_p, connect_by->frontier_list2[pi]);
+	    }
+
+	  /* swap frontier_list1 <-> frontier_list2 (AC #15: outside per-partition loop) */
+	  {
+	    QFILE_LIST_ID **tmp_lists = connect_by->frontier_list1;
+	    connect_by->frontier_list1 = connect_by->frontier_list2;
+	    connect_by->frontier_list2 = tmp_lists;
+	  }
+	  /* reset new frontier_list2 to empty for next level */
+	  for (pi = 0; pi < pcnt; pi++)
+	    {
+	      qfile_close_list (thread_p, connect_by->frontier_list2[pi]);
+	      qfile_destroy_list (thread_p, connect_by->frontier_list2[pi]);
+	      QFILE_FREE_AND_INIT_LIST_ID (connect_by->frontier_list2[pi]);
+	      connect_by->frontier_list2[pi] =
+		qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
+	      if (connect_by->frontier_list2[pi] == NULL)
+		{
+		  qdata_free_hscan_key (thread_p, probe_key, val_cnt);
+		  qdata_free_hscan_key (thread_p, route_key, val_cnt);
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
+
+	  any_frontier = false;
+	  for (pi = 0; pi < pcnt; pi++)
+	    {
+	      if (connect_by->frontier_list1[pi] != NULL && connect_by->frontier_list1[pi]->tuple_cnt > 0)
+		{
+		  any_frontier = true;
+		  break;
+		}
+	    }
+	}
+      while (any_frontier);
+
+      qdata_free_hscan_key (thread_p, probe_key, val_cnt);
+      qdata_free_hscan_key (thread_p, route_key, val_cnt);
+    }
+  else
+    {
+      /* SINGLE BFS — existing unchanged path */
+      while (current_frontier->tuple_cnt > 0)
+	{
+	  level_value++;
+
+	  /* LEVEL early exit */
+	  if (connect_by->max_level > 0 && level_value > connect_by->max_level)
+	    {
+	      break;
+	    }
+
+	  if (qexec_connect_by_process_level (thread_p, xasl, xasl_state, result_list, current_frontier,
+					      next_frontier, &sibling_sort_buf, &type_list, tplrec,
+					      &temp_tuple_rec, level_value, level_valp, isleaf_valp,
+					      iscycle_valp, parent_pos_valp, index_valp, &parent_path_key,
+					      &len_parent_path_key, &child_path_key, &len_child_path_key,
+					      &index_father, has_order_siblings_by, hash_table,
+					      hash_probe_key) != NO_ERROR)
+	    {
+	      listfile2_tmp = sibling_sort_buf;
+	      GOTO_EXIT_ON_ERROR;
+	    }
 	  listfile2_tmp = sibling_sort_buf;
-	  GOTO_EXIT_ON_ERROR;
-	}
-      listfile2_tmp = sibling_sort_buf;
 
-      if (current_frontier != connect_by->start_with_list_id)
-	{
-	  qfile_close_list (thread_p, current_frontier);
-	  qfile_destroy_list (thread_p, current_frontier);
-	  QFILE_FREE_AND_INIT_LIST_ID (current_frontier);
-	}
-      current_frontier = next_frontier;
-      listfile1 = current_frontier;
+	  if (current_frontier != connect_by->start_with_list_id)
+	    {
+	      qfile_close_list (thread_p, current_frontier);
+	      qfile_destroy_list (thread_p, current_frontier);
+	      QFILE_FREE_AND_INIT_LIST_ID (current_frontier);
+	    }
+	  current_frontier = next_frontier;
+	  listfile1 = current_frontier;
 
-      next_frontier = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
-      if (next_frontier == NULL)
-	{
-	  listfile2 = NULL;
-	  GOTO_EXIT_ON_ERROR;
+	  next_frontier = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
+	  if (next_frontier == NULL)
+	    {
+	      listfile2 = NULL;
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	  listfile2 = next_frontier;
 	}
-      listfile2 = next_frontier;
     }
 
   /* teardown attr caches before end_scan so cached-XASL reuse finds clean state */
@@ -17962,8 +19074,11 @@ skip_prescan_hash:
       xasl->spec_list->s_id.s.hsid.caches_inited = false;
       xasl->spec_list->s_id.s.isid.caches_inited = false;
     }
-  qexec_end_scan (thread_p, xasl->spec_list);
-  qexec_close_scan (thread_p, xasl->spec_list);
+  if (connect_by->partition_count < 2)
+    {
+      qexec_end_scan (thread_p, xasl->spec_list);
+      qexec_close_scan (thread_p, xasl->spec_list);
+    }
 
   if (current_frontier != connect_by->start_with_list_id)
     {
@@ -18042,6 +19157,75 @@ skip_prescan_hash:
       qdata_free_hscan_key (thread_p, hash_probe_key, hash_key_cnt);
       hash_probe_key = NULL;
     }
+
+  /* PARTITION cleanup — AC #19: AFTER qexec_connect_by_finalize returns */
+  if (connect_by->partition_count >= 2)
+    {
+      int pi;
+      int pcnt = connect_by->partition_count;
+      for (pi = 0; pi < pcnt; pi++)
+	{
+	  if (connect_by->partition_hash && connect_by->partition_hash[pi])
+	    {
+	      if (connect_by->partition_mode[pi] == HASH_METH_HASH_FILE)
+		{
+		  HASH_LIST_SCAN *fhls = (HASH_LIST_SCAN *) connect_by->partition_hash[pi];
+		  if (fhls->file.hash_table)
+		    {
+		      fhs_destroy (thread_p, fhls->file.hash_table);
+		      db_private_free_and_init (thread_p, fhls->file.hash_table);
+		    }
+		  db_private_free_and_init (thread_p, fhls);
+		}
+	      else
+		{
+		  MHT_HLS_TABLE *mt = (MHT_HLS_TABLE *) connect_by->partition_hash[pi];
+		  mht_clear_hls (mt, qdata_free_hscan_entry, (void *) thread_p);
+		  mht_destroy_hls (mt);
+		}
+	      connect_by->partition_hash[pi] = NULL;
+	    }
+	  if (connect_by->partition_mode
+	      && (connect_by->partition_mode[pi] == HASH_METH_HYBRID
+		  || connect_by->partition_mode[pi] == HASH_METH_HASH_FILE)
+	      && connect_by->partition_list_scan && connect_by->partition_list_scan[pi].status != S_CLOSED)
+	    {
+	      qfile_close_scan (thread_p, &connect_by->partition_list_scan[pi]);
+	    }
+	  if (connect_by->partition_lists && connect_by->partition_lists[pi])
+	    {
+	      qfile_close_list (thread_p, connect_by->partition_lists[pi]);
+	      qfile_destroy_list (thread_p, connect_by->partition_lists[pi]);
+	      QFILE_FREE_AND_INIT_LIST_ID (connect_by->partition_lists[pi]);
+	    }
+	  if (connect_by->frontier_list1 && connect_by->frontier_list1[pi])
+	    {
+	      qfile_close_list (thread_p, connect_by->frontier_list1[pi]);
+	      qfile_destroy_list (thread_p, connect_by->frontier_list1[pi]);
+	      QFILE_FREE_AND_INIT_LIST_ID (connect_by->frontier_list1[pi]);
+	    }
+	  if (connect_by->frontier_list2 && connect_by->frontier_list2[pi])
+	    {
+	      qfile_close_list (thread_p, connect_by->frontier_list2[pi]);
+	      qfile_destroy_list (thread_p, connect_by->frontier_list2[pi]);
+	      QFILE_FREE_AND_INIT_LIST_ID (connect_by->frontier_list2[pi]);
+	    }
+	}
+      if (connect_by->partition_lists)
+	db_private_free_and_init (thread_p, connect_by->partition_lists);
+      if (connect_by->frontier_list1)
+	db_private_free_and_init (thread_p, connect_by->frontier_list1);
+      if (connect_by->frontier_list2)
+	db_private_free_and_init (thread_p, connect_by->frontier_list2);
+      if (connect_by->partition_hash)
+	db_private_free_and_init (thread_p, connect_by->partition_hash);
+      if (connect_by->partition_mode)
+	db_private_free_and_init (thread_p, connect_by->partition_mode);
+      if (connect_by->partition_list_scan)
+	db_private_free_and_init (thread_p, connect_by->partition_list_scan);
+      connect_by->partition_count = 0;
+    }
+
   qexec_reset_pseudocolumns_val_pointers (level_valp, isleaf_valp, iscycle_valp, parent_pos_valp, index_valp);
 
   xasl->status = XASL_SUCCESS;
@@ -18148,6 +19332,75 @@ exit_on_error:
       qdata_free_hscan_key (thread_p, hash_probe_key, hash_key_cnt);
       hash_probe_key = NULL;
     }
+
+  /* PARTITION cleanup on error — best-effort, finalize may not have run */
+  if (connect_by->partition_count >= 2)
+    {
+      int pi;
+      int pcnt = connect_by->partition_count;
+      for (pi = 0; pi < pcnt; pi++)
+	{
+	  if (connect_by->partition_hash && connect_by->partition_hash[pi])
+	    {
+	      if (connect_by->partition_mode[pi] == HASH_METH_HASH_FILE)
+		{
+		  HASH_LIST_SCAN *fhls = (HASH_LIST_SCAN *) connect_by->partition_hash[pi];
+		  if (fhls->file.hash_table)
+		    {
+		      fhs_destroy (thread_p, fhls->file.hash_table);
+		      db_private_free_and_init (thread_p, fhls->file.hash_table);
+		    }
+		  db_private_free_and_init (thread_p, fhls);
+		}
+	      else
+		{
+		  MHT_HLS_TABLE *mt = (MHT_HLS_TABLE *) connect_by->partition_hash[pi];
+		  mht_clear_hls (mt, qdata_free_hscan_entry, (void *) thread_p);
+		  mht_destroy_hls (mt);
+		}
+	      connect_by->partition_hash[pi] = NULL;
+	    }
+	  if (connect_by->partition_mode
+	      && (connect_by->partition_mode[pi] == HASH_METH_HYBRID
+		  || connect_by->partition_mode[pi] == HASH_METH_HASH_FILE)
+	      && connect_by->partition_list_scan && connect_by->partition_list_scan[pi].status != S_CLOSED)
+	    {
+	      qfile_close_scan (thread_p, &connect_by->partition_list_scan[pi]);
+	    }
+	  if (connect_by->partition_lists && connect_by->partition_lists[pi])
+	    {
+	      qfile_close_list (thread_p, connect_by->partition_lists[pi]);
+	      qfile_destroy_list (thread_p, connect_by->partition_lists[pi]);
+	      QFILE_FREE_AND_INIT_LIST_ID (connect_by->partition_lists[pi]);
+	    }
+	  if (connect_by->frontier_list1 && connect_by->frontier_list1[pi])
+	    {
+	      qfile_close_list (thread_p, connect_by->frontier_list1[pi]);
+	      qfile_destroy_list (thread_p, connect_by->frontier_list1[pi]);
+	      QFILE_FREE_AND_INIT_LIST_ID (connect_by->frontier_list1[pi]);
+	    }
+	  if (connect_by->frontier_list2 && connect_by->frontier_list2[pi])
+	    {
+	      qfile_close_list (thread_p, connect_by->frontier_list2[pi]);
+	      qfile_destroy_list (thread_p, connect_by->frontier_list2[pi]);
+	      QFILE_FREE_AND_INIT_LIST_ID (connect_by->frontier_list2[pi]);
+	    }
+	}
+      if (connect_by->partition_lists)
+	db_private_free_and_init (thread_p, connect_by->partition_lists);
+      if (connect_by->frontier_list1)
+	db_private_free_and_init (thread_p, connect_by->frontier_list1);
+      if (connect_by->frontier_list2)
+	db_private_free_and_init (thread_p, connect_by->frontier_list2);
+      if (connect_by->partition_hash)
+	db_private_free_and_init (thread_p, connect_by->partition_hash);
+      if (connect_by->partition_mode)
+	db_private_free_and_init (thread_p, connect_by->partition_mode);
+      if (connect_by->partition_list_scan)
+	db_private_free_and_init (thread_p, connect_by->partition_list_scan);
+      connect_by->partition_count = 0;
+    }
+
   if (!index_valp && DB_NEED_CLEAR (index_valp))
     {
       pr_clear_value (index_valp);

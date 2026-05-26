@@ -458,6 +458,14 @@ struct connectby_proc_node
   bool single_table_opt;	/* single table optimizations */
   bool use_hash_for_hq;		/* hash probe for no-index connect-by key */
   QFILE_TUPLE curr_tuple;	/* needed for operators and functions */
+  /* partition hash runtime state — runtime-only, zero-init at qexec_execute_connect_by entry */
+  int partition_count;		/* 0 = uninitialized, 1 = SINGLE, >=2 = PARTITION */
+  QFILE_LIST_ID **partition_lists;	/* size partition_count, build-side routed */
+  QFILE_LIST_ID **frontier_list1;	/* size partition_count, current frontier */
+  QFILE_LIST_ID **frontier_list2;	/* size partition_count, next frontier */
+  void **partition_hash;	/* size partition_count, MHT_HLS_TABLE* or FHSID* */
+  unsigned char *partition_mode;	/* size partition_count, HASH_METH_IN_MEM/HYBRID/HASH_FILE */
+  QFILE_LIST_SCAN_ID *partition_list_scan;	/* size partition_count, HYBRID OID lookup, alive BFS+finalize */
 };
 
 typedef struct merge_proc_node MERGE_PROC_NODE;
