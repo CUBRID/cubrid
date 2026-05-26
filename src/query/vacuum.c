@@ -3475,6 +3475,35 @@ vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENT
  *   under recovery. Caller restricts invocation to RVHF_UPDATE_NOTIFY_VACUUM (see commit
  *   fc0e35ced for why other rcvindexes must be excluded).
  */
+
+/*
+ * vacuum_oos_chunk_exists () - Idempotency probe for block retry. Returns true iff the OOS
+ *   chunk's slot is still present. vacuum_forward_walk_delete_old_oos calls this before each
+ *   oos_delete so an OID whose chunk was already removed by a sibling forward-walk's committed
+ *   sysop on a prior attempt at this block can be skipped, rather than tripping the
+ *   S_DOESNT_EXIST hard error inside oos_delete_chain. A missing page or missing slot both
+ *   mean "already gone" — never an error in this context, so any er_set residue is cleared.
+ */
+static bool
+vacuum_oos_chunk_exists (THREAD_ENTRY * thread_p, const OID & oid)
+{
+  VPID vpid;
+  vpid.volid = oid.volid;
+  vpid.pageid = oid.pageid;
+
+  PAGE_PTR page_ptr =
+    pgbuf_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_ptr == NULL)
+    {
+      er_clear ();
+      return false;
+    }
+  RECDES probe = RECDES_INITIALIZER;
+  SCAN_CODE code = spage_get_record (thread_p, page_ptr, oid.slotid, &probe, PEEK);
+  pgbuf_unfix_and_init (thread_p, page_ptr);
+  return code == S_SUCCESS;
+}
+
 static int
 vacuum_forward_walk_delete_old_oos (THREAD_ENTRY * thread_p, const VFID * oos_vfid, const OID_VECTOR & oos_oids)
 {
@@ -3492,6 +3521,13 @@ vacuum_forward_walk_delete_old_oos (THREAD_ENTRY * thread_p, const VFID * oos_vf
   log_sysop_start (thread_p);
 for (const OID & oid:sorted_oos_oids)
     {
+      /* Idempotency for block retry: a sibling forward-walk earlier in this block may have
+       * committed its sysop before a later one failed. On retry, the earlier OID's chunk is
+       * already physically gone — skip rather than fail at oos_delete_chain's S_DOESNT_EXIST. */
+      if (!vacuum_oos_chunk_exists (thread_p, oid))
+	{
+	  continue;
+	}
       error_code = oos_delete (thread_p, *oos_vfid, oid);
       if (error_code != NO_ERROR)
 	{
