@@ -8129,7 +8129,7 @@ heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
       return S_ERROR;
     }
 
-  int new_values_bytes = 0;
+  int64_t new_values_bytes = 0;
   for (int i = 0; i < n_var; ++i)
     {
       const int this_off = OR_GET_VAR_OFFSET (vot_raw[i]);
@@ -8146,7 +8146,13 @@ heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
 	}
     }
 
-  const int new_length = src_header_size + dst_vot_bytes + fixed_bitmap_bytes + new_values_bytes;
+  const int64_t new_length_64 = (int64_t) src_header_size + dst_vot_bytes + fixed_bitmap_bytes + new_values_bytes;
+  if (new_length_64 > (int64_t) INT_MAX)
+    {
+      assert_release (false && "OOS-expanded record size exceeds INT_MAX");
+      return S_ERROR;
+    }
+  const int new_length = (int) new_length_64;
 
   /* Make sure rec->data points to owned storage big enough for the expansion. If we were PEEK'ing
    * into a page, we MUST switch to COPY here — we cannot write into the page buffer. */
