@@ -689,16 +689,12 @@ extern int heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rc
 extern int heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, MVCCID threshold_mvccid);
 extern SCAN_CODE heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 					   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn);
-/* heap_get_visible_version variant that returns the record with inline OOS OID slots left in
- * place (HEAP_GET_CONTEXT::expand_oos = false). Use when the caller decodes per-attribute via
- * heap_attrinfo_read_dbvalues, which already calls oos_read() for each OOS column. */
 extern SCAN_CODE heap_get_visible_version_skip_oos_expand (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
 							   RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
 							   int old_chn);
 extern SCAN_CODE heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
 						RECDES * recdes, RECDES * forward_recdes, HEAP_SCANCACHE * scan_cache,
 						int ispeeking, int old_chn);
-/* heap_scan_get_visible_version variant matching heap_get_visible_version_skip_oos_expand. */
 extern SCAN_CODE heap_scan_get_visible_version_skip_oos_expand (THREAD_ENTRY * thread_p, const OID * oid,
 								OID * class_oid, RECDES * recdes,
 								RECDES * forward_recdes, HEAP_SCANCACHE * scan_cache,
