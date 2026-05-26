@@ -8183,18 +8183,7 @@ heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
   unsigned int repid_bits = (unsigned int) OR_GET_INT (dst + OR_REP_OFFSET);
   repid_bits &= ~((unsigned int) OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
   repid_bits &= ~(unsigned int) OR_OFFSET_SIZE_FLAG;
-  if (dst_offset_size == OR_BYTE_SIZE)
-    {
-      repid_bits |= OR_OFFSET_SIZE_1BYTE;
-    }
-  else if (dst_offset_size == OR_SHORT_SIZE)
-    {
-      repid_bits |= OR_OFFSET_SIZE_2BYTE;
-    }
-  else
-    {
-      repid_bits |= OR_OFFSET_SIZE_4BYTE;
-    }
+  repid_bits |= OR_OFFSET_SIZE_4BYTE;
   OR_PUT_INT (dst + OR_REP_OFFSET, (int) repid_bits);
 
   /* Rewrite the VOT with new offsets computed from the expanded variable-value area. */
@@ -21628,6 +21617,7 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   bool has_oos = (mvcc_flags & OR_MVCC_FLAG_HAS_OOS) != 0;
 
 #if !defined (NDEBUG)
+  /* Debug only: classrepr is fetched here solely to check n_variable > 0 before walking the VOT. */
   /* Debug-only sanity check: verify the upstream builder stamped HAS_OOS consistently with the
    * actual on-disk VOT contents. Skipped for classes with n_variable == 0 (no VOT to walk).
    * If this assert ever fires, some recdes-producing path is forgetting to set/clear HAS_OOS. */
