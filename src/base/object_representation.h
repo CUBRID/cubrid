@@ -1267,8 +1267,8 @@ STATIC_INLINE int or_get_varbit_length (OR_BUF * buf, int *intval) __attribute__
 STATIC_INLINE int or_get_varchar_length (OR_BUF * buf, int *intval) __attribute__ ((ALWAYS_INLINE));
 #endif
 /* Get the compressed and the decompressed lengths of a string stored in buffer */
-STATIC_INLINE int or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *decompressed_size)
-  __attribute__ ((ALWAYS_INLINE));
+#define or_get_varchar_compression_lengths(buf, compressed_size, decompressed_size) \
+  or_get_string_header (buf, NULL, decompressed_size, compressed_size)
 #if defined(ENABLE_UNUSED_FUNCTION)	// Unused — temporarily preserved to minimize review diff; will be removed in a follow-up PR
 STATIC_INLINE int or_get_string_size_byte (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
 #endif
@@ -2409,23 +2409,6 @@ or_get_varchar_length (OR_BUF * buf, int *rc)
   return charlen;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
-
-/* or_get_varchar_compression_lengths() - Function to get the compressed length and the uncompressed length of
- *					  a compressed string.
- *
- * return                 : NO_ERROR or error_code.
- * buf(in)                : The buffer where the string is stored.
- * compressed_size(out)   : The compressed size of the string. Set to 0 if the string was not compressed.
- * decompressed_size(out) : The uncompressed size of the string.
- *
- * Note: Body delegates to or_get_string_header (the unified header_type parser);
- *       passes NULL for the length out-param since this helper only exposes sizes.
- */
-STATIC_INLINE int
-or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *decompressed_size)
-{
-  return or_get_string_header (buf, NULL, decompressed_size, compressed_size);
-}
 
 /*
  * or_put_string_header() - Write the variable-length string header.

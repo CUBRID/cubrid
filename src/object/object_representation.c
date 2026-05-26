@@ -237,7 +237,7 @@ char *
 or_class_name (RECDES * record)
 {
   OR_BUF buffer;
-  int offset, compressed_length = 0, decompressed_length = 0, rc = NO_ERROR;
+  int offset, rc = NO_ERROR;
 
   /*
    * the first variable attribute for both classes and the rootclass
@@ -249,13 +249,12 @@ or_class_name (RECDES * record)
   offset = OR_VAR_OFFSET (record->data, 0);
 
   or_init (&buffer, &record->data[offset], -1);
-  rc = or_get_varchar_compression_lengths (&buffer, &compressed_length, &decompressed_length);
+  rc = or_get_string_header (&buffer, NULL, NULL, NULL);
   if (rc != NO_ERROR)
     {
       assert (false);
       return NULL;
     }
-  assert (compressed_length == 0);
   return buffer.ptr;
 }
 
