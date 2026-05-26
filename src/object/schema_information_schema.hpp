@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,18 +16,25 @@
  *
  */
 
+
 /*
- * test_worker_pool.hpp - interface to test thread worker pool
+ * schema_information_schema.hpp - SQL INFORMATION_SCHEMA (ISO/IEC 9075-11:2003) metadata interface
  */
 
-#ifndef _TEST_WORKER_POOL_HPP_
-#define _TEST_WORKER_POOL_HPP_
+#ifndef _SCHEMA_INFORMATION_SCHEMA_HPP_
+#define _SCHEMA_INFORMATION_SCHEMA_HPP_
 
-namespace test_thread
+#include <string>
+#include <string_view>
+#include <vector>
+
+void info_schema_init (void);
+int info_schema_install (void);
+bool sm_is_information_schema_views (const std::string_view name);
+
+namespace cubschema
 {
+  const std::vector<std::string> &get_information_schema_view_names ();
+}
 
-  int test_worker_pool (void);
-
-} // namespace test_thread
-
-#endif // _TEST_WORKER_POOL_HPP_
+#endif /* _SCHEMA_INFORMATION_SCHEMA_HPP_ */

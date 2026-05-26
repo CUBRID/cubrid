@@ -225,7 +225,7 @@ namespace parallel_heap_scan
   };
 
   template <>
-  class result_handler <RESULT_TYPE::COUNT_DISTINCT>
+  class result_handler <RESULT_TYPE::BUILDVALUE_OPT>
   {
       using interrupt = parallel_query::interrupt;
       using err_messages_with_lock = parallel_query::err_messages_with_lock;

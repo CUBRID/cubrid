@@ -7536,7 +7536,7 @@ pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser)
  *				 groups to which a DB user belongs to.
  *
  *    SELECT SUM(SET{t.g.name})
- *    FROM db_user U, TABLE(groups) AS t(g)
+ *    FROM _db_user U, TABLE(groups) AS t(g)
  *    WHERE U.name=<user_name>
  *
  *
@@ -7587,8 +7587,8 @@ pt_make_query_user_groups (PARSER_CONTEXT * parser, const char *user_name)
   query->info.query.q.select.list = parser_append_node (sel_item, query->info.query.q.select.list);
 
   /* FROM : */
-  /* db_user U */
-  from_item = pt_add_table_name_to_from_list (parser, query, "db_user", "U", DB_AUTH_SELECT);
+  /* _db_user U */
+  from_item = pt_add_table_name_to_from_list (parser, query, CT_USER_NAME, "U", DB_AUTH_SELECT);
 
 
   {
@@ -7735,7 +7735,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                                         "SUM (SET {[t].[g].[name]}) "
                                 "FROM "
                                         /* AU_USER_CLASS_NAME */
-                                        "[db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+                                        "[_db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
                                 "WHERE "
                                         "[u].[name] = '%1$s'"
                                 ") "
@@ -7762,7 +7762,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                                         "SUM (SET {[t].[g].[name]}) "
                                 "FROM "
                                         /* AU_USER_CLASS_NAME */
-                                        "[db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+                                        "[_db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
                                 "WHERE "
                                         "[u].[name] = '%1$s'"
                                 ") "
@@ -11822,9 +11822,6 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
   if (spec->info.spec.remote_server_name)
     {
       remote_ins = 1;
-
-      /* alias is not needed for remote table */
-      spec->info.spec.range_var = NULL;
     }
 
   pt_convert_dblink_dml_query (parser, node, (remote_ins == 0), remote_ins, snl);
@@ -11854,13 +11851,6 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 	  if (spec->info.spec.range_var)
 	    {
 	      a_name = (char *) spec->info.spec.range_var->info.name.original;
-
-	      /* to skip aliased name at rewriting for mariadb and etc. */
-	      if (a_name && spec->info.spec.remote_server_name && spec->info.spec.entity_name
-		  && strcasecmp (a_name, spec->info.spec.entity_name->info.name.original) == 0)
-		{
-		  spec->info.spec.range_var = NULL;
-		}
 	    }
 
 	  t_name = (char *) target->info.name.original;
@@ -11921,27 +11911,11 @@ pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 {
   int local_upd = 0, remote_upd = 0;
   int error;
-  PT_NODE *spec;
 
   parser_walk_tree (parser, node, pt_convert_dblink_synonym, NULL, NULL, NULL);
   if (pt_has_error (parser))
     {
       return;
-    }
-
-  for (spec = node->info.update.spec; spec; spec = spec->next)
-    {
-      if (spec->info.spec.range_var)
-	{
-	  char *a_name = (char *) spec->info.spec.range_var->info.name.original;
-
-	  /* to skip aliased name at rewriting for mariadb and etc. */
-	  if (a_name && spec->info.spec.entity_name && spec->info.spec.remote_server_name
-	      && strcasecmp (a_name, spec->info.spec.entity_name->info.name.original) == 0)
-	    {
-	      spec->info.spec.range_var = NULL;
-	    }
-	}
     }
 
   error = pt_check_update_set (parser, node, &local_upd, &remote_upd);
@@ -12160,6 +12134,44 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   parser->custom_print |=
     PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_NO_HOST_VAR_INDEX |
     PT_PRINT_SUPPRESS_FOR_DBLINK;
+
+  /* strip redundant aliases (alias == entity_name) from remote specs before printing;
+   * without this, "t1@srv1 t1" would be printed as "t1 t1" after server name suppression */
+  {
+    PT_NODE *s;
+    PT_NODE *spec_list;
+    const char *a_name, *e_name;
+
+    /* for update incuding merge node */
+    spec_list = upd_spec;
+    for (s = spec_list; s; s = s->next)
+      {
+	if (s->info.spec.range_var && s->info.spec.entity_name && s->info.spec.remote_server_name)
+	  {
+	    a_name = s->info.spec.range_var->info.name.original;
+	    e_name = s->info.spec.entity_name->info.name.original;
+	    if (a_name && e_name && strcasecmp (a_name, e_name) == 0)
+	      {
+		s->info.spec.range_var = NULL;
+	      }
+	  }
+      }
+
+    /* for insert incuding merge node */
+    spec_list = into_spec;
+    for (s = spec_list; s; s = s->next)
+      {
+	if (s->info.spec.range_var && s->info.spec.entity_name && s->info.spec.remote_server_name)
+	  {
+	    a_name = s->info.spec.range_var->info.name.original;
+	    e_name = s->info.spec.entity_name->info.name.original;
+	    if (a_name && e_name && strcasecmp (a_name, e_name) == 0)
+	      {
+		s->info.spec.range_var = NULL;
+	      }
+	  }
+      }
+  }
 
   dml = pt_print_bytes (parser, node);
 

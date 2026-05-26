@@ -162,4 +162,6 @@ extern int sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_c
 			  SORT_DUP_OPTION option, int limit, bool includes_tde_class,
 			  SORT_PARALLEL_TYPE sort_parallel_type);
 
+extern SORT_STATUS btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg);
+
 #endif /* _EXTERNAL_SORT_H_ */

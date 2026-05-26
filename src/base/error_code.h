@@ -1757,9 +1757,13 @@
 
 #define ER_AUTO_INCREMENT_SINGLE_COL_ONLY           -1370
 
-#define ER_QSTR_INVALID_UUID_FORMAT                 -1371
+#define ER_SM_ATT_AT_LEAST_ONE_VISIBLE              -1371
 
-#define ER_LAST_ERROR                               -1372
+#define ER_METHOD_CALLBACK                          -1372
+
+#define ER_QSTR_INVALID_UUID_FORMAT                 -1373
+
+#define ER_LAST_ERROR                               -1374
 
 
 

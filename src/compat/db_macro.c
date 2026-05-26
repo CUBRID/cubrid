@@ -83,7 +83,8 @@ bool db_Keep_session = false;
 
 int db_Row_count = DB_ROW_COUNT_NOT_SET;
 
-static int valcnv_Max_set_elements = 10;
+static thread_local int valcnv_Max_set_elements = 10;
+static thread_local bool valcnv_Quote_strings = false;
 
 #if defined(SERVER_MODE)
 int db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
@@ -933,28 +934,33 @@ db_string_truncate (DB_VALUE * value, const int precision)
       break;
 
     case DB_TYPE_CHAR:
-      val_str = db_get_char (value, &length);
-      if (val_str != NULL && length > precision)
+      val_str = db_get_char (value);
+      if (val_str != NULL && db_get_string_size (value) > precision)
 	{
-	  intl_char_size ((unsigned char *) val_str, precision, db_get_string_codeset (value), &byte_size);
-	  string = (char *) db_private_alloc (NULL, byte_size + 1);
-	  if (string == NULL)
+	  /* char_count <= byte_count in every codeset, so byte_size <= precision guarantees no truncation */
+	  intl_char_count ((unsigned char *) val_str, db_get_string_size (value),
+			   db_get_string_codeset (value), &length);
+	  if (length > precision)
 	    {
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      break;
+	      intl_char_size ((unsigned char *) val_str, precision, db_get_string_codeset (value), &byte_size);
+	      string = (char *) db_private_alloc (NULL, byte_size + 1);
+	      if (string == NULL)
+		{
+		  error = ER_OUT_OF_VIRTUAL_MEMORY;
+		  break;
+		}
+
+	      assert (byte_size < db_get_string_size (value));
+	      strncpy (string, val_str, byte_size);
+	      string[byte_size] = '\0';
+	      db_make_char (&src_value, precision, string, byte_size,
+			    db_get_string_codeset (value), db_get_string_collation (value));
+
+	      pr_clear_value (value);
+	      tp_Char.setval (value, &src_value, true);
+
+	      pr_clear_value (&src_value);
 	    }
-
-	  assert (byte_size < db_get_string_size (value));
-	  strncpy (string, val_str, byte_size);
-	  string[byte_size] = '\0';
-	  db_make_char (&src_value, precision, string, byte_size,
-			db_get_string_codeset (value), db_get_string_collation (value));
-
-	  pr_clear_value (value);
-	  tp_Char.setval (value, &src_value, true);
-
-	  pr_clear_value (&src_value);
-
 	}
       break;
 
@@ -2714,6 +2720,30 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * va
 	  buffer_p = valcnv_append_string (buffer_p, "'");
 	  break;
 
+	case DB_TYPE_CHAR:
+	case DB_TYPE_VARCHAR:
+	  if (valcnv_Quote_strings)
+	    {
+	      buffer_p = valcnv_append_string (buffer_p, "'");
+	      if (buffer_p == NULL)
+		{
+		  return NULL;
+		}
+
+	      buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
+	      if (buffer_p == NULL)
+		{
+		  return NULL;
+		}
+
+	      buffer_p = valcnv_append_string (buffer_p, "'");
+	    }
+	  else
+	    {
+	      buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
+	    }
+	  break;
+
 	default:
 	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
 	  break;
@@ -2758,6 +2788,26 @@ valcnv_convert_value_to_string (DB_VALUE * value_p)
     }
 
   return NO_ERROR;
+}
+
+int
+valcnv_convert_collection_value_to_string_all_elements (DB_VALUE * value_p)
+{
+  int save_max = valcnv_Max_set_elements;
+  bool save_quote = valcnv_Quote_strings;
+  int error = NO_ERROR;
+
+  assert (db_value_type_is_collection (value_p));
+
+  valcnv_Max_set_elements = 0;
+  valcnv_Quote_strings = true;
+
+  error = valcnv_convert_value_to_string (value_p);
+
+  valcnv_Max_set_elements = save_max;
+  valcnv_Quote_strings = save_quote;
+
+  return error;
 }
 
 #if !defined(SERVER_MODE)

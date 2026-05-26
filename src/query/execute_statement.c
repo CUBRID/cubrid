@@ -14455,6 +14455,7 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
   const char *into_label;
   DB_VALUE *vals, *v;
   int save;
+  int prev_parser_au_save;
   QUERY_FLAG query_flag;
   XASL_STREAM stream;
   bool query_trace = false;
@@ -14472,6 +14473,7 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
     }
 
   AU_DISABLE (save);
+  prev_parser_au_save = parser->au_save;
   parser->au_save = save;
 
   /* mark the beginning of another level of xasl packing */
@@ -14611,6 +14613,7 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
   /* mark the end of another level of xasl packing */
   pt_exit_packing_buf ();
 
+  parser->au_save = prev_parser_au_save;
   AU_ENABLE (save);
   return error;
 }
@@ -14661,6 +14664,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   COMPILE_CONTEXT *contextp;
   XASL_STREAM stream;
+  XASL_NODE_HEADER xasl_header = { 0, 0 };
 
   contextp = &parser->context;
 
@@ -14723,7 +14727,6 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   contextp->recompile_xasl = statement->flag.recompile;
   if (statement->flag.recompile == 0)
     {
-      XASL_NODE_HEADER xasl_header;
       stream.xasl_header = &xasl_header;
 
       err = prepare_query (contextp, &stream);

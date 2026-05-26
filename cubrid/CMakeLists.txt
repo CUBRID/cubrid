@@ -51,7 +51,7 @@ set(THREAD_SOURCES
   ${THREAD_DIR}/thread_looper.cpp
   ${THREAD_DIR}/thread_manager.cpp
   ${THREAD_DIR}/thread_waiter.cpp
-  ${THREAD_DIR}/thread_worker_pool.cpp
+  ${THREAD_DIR}/thread_worker_pool_impl.cpp
   ${THREAD_DIR}/thread_worker_pool_taskcap.cpp
   )
 set(THREAD_HEADERS
@@ -66,6 +66,7 @@ set(THREAD_HEADERS
   ${THREAD_DIR}/thread_task.hpp
   ${THREAD_DIR}/thread_waiter.hpp
   ${THREAD_DIR}/thread_worker_pool.hpp
+  ${THREAD_DIR}/thread_worker_pool_impl.hpp
   ${THREAD_DIR}/thread_worker_pool_taskcap.hpp
   )
 
@@ -267,6 +268,8 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/list_file.c
   ${QUERY_DIR}/dblink_scan.c
   ${QUERY_DIR}/dblink_2pc.c
+  ${QUERY_DIR}/dblink_2pc_daemon.c
+  ${QUERY_DIR}/dblink_global_tran_catalog.c
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/partition.c
   ${QUERY_DIR}/query_aggregate.cpp
@@ -315,6 +318,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/object_primitive.c
   ${OBJECT_DIR}/object_representation.c
   ${OBJECT_DIR}/set_object.c
+  ${OBJECT_DIR}/schema_information_schema.cpp
   ${OBJECT_DIR}/schema_system_catalog.cpp
   ${OBJECT_DIR}/transform.c
   )
@@ -368,7 +372,6 @@ set(PARALLEL_HEAP_SCAN_SOURCES
 
 set(PARALLEL_HEAP_SCAN_HEADERS
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler_ftabs.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_ftab_set.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_handler.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_type.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_slot_iterator.hpp
@@ -395,6 +398,7 @@ set(PARALLEL_QUERY_HEADERS
   ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.hpp
   ${PARALLEL_QUERY_DIR}/px_interrupt.hpp
   ${PARALLEL_QUERY_DIR}/px_parallel.hpp
+  ${PARALLEL_QUERY_DIR}/px_ftab_set.hpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_SOURCES
