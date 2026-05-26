@@ -23933,8 +23933,7 @@ pt_order_siblings_base_val_pos (REGU_VARIABLE * regu, VAL_LIST * val_list, int b
 
 /*
  * pt_append_order_siblings_pos_regu () - append a TYPE_POSITION regu_variable to the tail
- *   of a REGU_VARIABLE_LIST. The head pointer is not changed, so any consumer that has
- *   already saved the head (e.g. ACCESS_SPEC's list_regu_list_rest) still sees the new entry.
+ *   of a REGU_VARIABLE_LIST (or become the head when the list was NULL).
  *   return: NO_ERROR or ER_FAILED
  *   parser(in):
  *   head(in/out): pointer to the head of the list
@@ -24208,6 +24207,15 @@ pt_to_connect_by_extend_for_order_siblings (PARSER_CONTEXT * parser, PT_NODE * s
 
       orderby->pos_descr.pos_no = user_cnt;
       user_cnt++;
+    }
+
+  /* pt_make_connect_by_proc() already copied connect_by->regu_list_rest into the list scan
+   * access spec. If regu_list_rest was NULL (all attrs moved to regu_list_pred) and ORDER
+   * SIBLINGS BY injected new trailing fetches above, refresh list_regu_list_rest so the list
+   * scan loads the sort-key DB_VALUEs from the parent tuple. */
+  if (!connect_by->single_table_opt && connect_by_xasl->spec_list != NULL)
+    {
+      connect_by_xasl->spec_list->s.list_node.list_regu_list_rest = connect_by->regu_list_rest;
     }
 
   return NO_ERROR;
