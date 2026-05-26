@@ -35,11 +35,14 @@
 
 namespace parallel_index_scan
 {
+  /* cap == parallelism + producer/late-joiner time-disjoint per worker => -1 unreachable; -1 path is defense-in-depth (er_set + assert) feeding the sole caller's S_ERROR. */
   int
   overflow_chain_pool::try_publish (THREAD_ENTRY *thread_p, VPID first_ovf_vpid,
 				    VPID leaf_vpid, PGSLOTID leaf_slot_id, int range_idx)
   {
     std::unique_lock<std::mutex> lock (m_overflow_mutex);
+    /* producer-mode precondition: inside enter_worker, before signal_no_more_leaves. */
+    assert (m_active_workers > 0 && !m_no_more_leaves);
     /* find free slot — O(parallelism), small N. */
     for (int i = 0; i < static_cast<int> (m_overflow_slots.size ()); i++)
       {
@@ -57,7 +60,10 @@ namespace parallel_index_scan
 	    return i;
 	  }
       }
-    return -1;   /* cap-overflow; caller falls to OVERFLOW_SOLO */
+    /* invariant break: surface in release logs (er_set), trip debug CI (assert); -1 feeds caller's S_ERROR. */
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+    assert (false && "try_publish invariant: cap == parallelism guarantees a free slot");
+    return -1;
   }
 
   SCAN_CODE

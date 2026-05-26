@@ -33,8 +33,8 @@ namespace parallel_index_scan
 {
   class leaf_slot_walker;            /* fwd: owner = walker (holds m_page / m_slot_key / process_oid). */
 
-  /* (E) Per-record drain state machine: LEAF_OIDS → {OVERFLOW_SHARED | OVERFLOW_SOLO} → IDLE.
-   * Owns m_leaf_oids buffer + chain-take-up bookkeeping; producer-anchored buffer share. */
+  /* (E) Per-record drain state machine: LEAF_OIDS → OVERFLOW_SHARED → IDLE.
+   * Owns m_leaf_oids buffer + chain-take-up bookkeeping. */
   class overflow_drain_fsm
   {
     public:
@@ -42,21 +42,18 @@ namespace parallel_index_scan
       {
 	IDLE,             /* between leaf-records; normal slot iteration */
 	LEAF_OIDS,        /* m_leaf_oids holds leaf-resident OIDs */
-	OVERFLOW_SHARED,  /* pulling overflow pages from input_handler shared cursor */
-	OVERFLOW_SOLO     /* walking the chain alone (try_publish_overflow lost) */
+	OVERFLOW_SHARED   /* pulling overflow pages from input_handler shared cursor */
       };
 
       overflow_drain_fsm ()
 	: m_drain_state (drain_state::IDLE),
 	  m_leaf_oids (),
 	  m_leaf_oid_idx (0),
-	  m_solo_prev_page (nullptr),
 	  m_in_helper_mode (false),
 	  m_was_producer (false),
 	  m_chain_pool_idx (-1),
 	  m_owner (nullptr)
       {
-	VPID_SET_NULL (&m_solo_cur_vpid);
 	VPID_SET_NULL (&m_pending_ovf_vpid);
       }
 
@@ -97,10 +94,6 @@ namespace parallel_index_scan
 
       std::vector<OID> m_leaf_oids;
       size_t m_leaf_oid_idx;
-
-      /* OVERFLOW_SOLO private cursor + hand-over-hand prev page. */
-      VPID m_solo_cur_vpid;
-      PAGE_PTR m_solo_prev_page;
 
       /* Carried between leaf-OID drain and overflow chain take-up. */
       VPID m_pending_ovf_vpid;

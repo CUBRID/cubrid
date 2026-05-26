@@ -81,7 +81,7 @@ namespace parallel_index_scan
 	m_no_more_leaves = false;
       }
 
-      /* try_publish: returns slot_idx >= 0 on success, -1 on cap-overflow; leaf_vpid/slot_id stored for helper re-read. */
+      /* returns slot_idx >= 0; -1 only on broken cap==parallelism invariant (er_set+assert inside); leaf_vpid/slot_id stored for helper re-read. */
       int try_publish (THREAD_ENTRY *thread_p, VPID first_ovf_vpid,
 		       VPID leaf_vpid, PGSLOTID leaf_slot_id, int range_idx);
       /* slot_idx mandatory: identifies which chain to advance. */

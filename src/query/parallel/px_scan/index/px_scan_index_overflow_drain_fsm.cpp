@@ -16,7 +16,7 @@
  *
  */
 
-/* px_scan_index_overflow_drain_fsm.cpp — IDLE/LEAF_OIDS/OVERFLOW_{SHARED,SOLO} state machine. */
+/* px_scan_index_overflow_drain_fsm.cpp — IDLE/LEAF_OIDS/OVERFLOW_SHARED state machine. */
 
 #include "px_scan_index_overflow_drain_fsm.hpp"
 
@@ -148,21 +148,33 @@ namespace parallel_index_scan
 				leaf_vpid_for_publish,
 				leaf_slot_for_publish,
 				walker->m_current_range_idx);
-	    if (published_idx >= 0)
+	    /* cap == parallelism invariant: try_publish_overflow cannot legitimately return -1; if-branch defends release builds (try_publish already er_set). */
+	    assert (published_idx >= 0 && "try_publish must succeed under cap == parallelism invariant");
+	    if (published_idx < 0)
 	      {
-		m_chain_pool_idx = published_idx;
-		m_was_producer = true;
-		m_in_helper_mode = true;     /* producer also counts in per-slot helpers */
-		m_drain_state = drain_state::OVERFLOW_SHARED;
-	      }
-	    else
-	      {
-		/* Cap-overflow — walk solo with private cursor. */
+		/* mirrors OVERFLOW_SHARED S_ERROR cleanup; leaf S-latch from begin_leaf_drain released defensively. */
+		if (walker->m_page != nullptr)
+		  {
+		    pgbuf_unfix (thread_p, walker->m_page);
+		    walker->m_page = nullptr;
+		  }
+		if (walker->m_slot_key_valid && walker->m_slot_clear_key)
+		  {
+		    pr_clear_value (&walker->m_slot_key);
+		  }
+		walker->m_slot_key_valid = false;
+		walker->m_slot_clear_key = false;
+		m_was_producer = false;
+		m_in_helper_mode = false;
 		m_chain_pool_idx = -1;
-		m_solo_cur_vpid = m_pending_ovf_vpid;
-		m_solo_prev_page = nullptr;
-		m_drain_state = drain_state::OVERFLOW_SOLO;
+		VPID_SET_NULL (&m_pending_ovf_vpid);
+		m_drain_state = drain_state::IDLE;
+		return S_ERROR;
 	      }
+	    m_chain_pool_idx = published_idx;
+	    m_was_producer = true;
+	    m_in_helper_mode = true;     /* producer also counts in per-slot helpers */
+	    m_drain_state = drain_state::OVERFLOW_SHARED;
 	    VPID_SET_NULL (&m_pending_ovf_vpid);
 	    /* Fall through outer for-loop to refill from new state. */
 	    continue;
@@ -235,82 +247,6 @@ namespace parallel_index_scan
 	    continue;
 	  }
 
-	  case drain_state::OVERFLOW_SOLO:
-	  {
-	    if (VPID_ISNULL (&m_solo_cur_vpid))
-	      {
-		if (m_solo_prev_page != nullptr)
-		  {
-		    pgbuf_unfix (thread_p, m_solo_prev_page);
-		    m_solo_prev_page = nullptr;
-		  }
-		if (walker->m_slot_key_valid && walker->m_slot_clear_key)
-		  {
-		    pr_clear_value (&walker->m_slot_key);
-		  }
-		walker->m_slot_key_valid = false;
-		walker->m_slot_clear_key = false;
-		m_drain_state = drain_state::IDLE;
-		return S_END;
-	      }
-	    VPID next_vpid = m_solo_cur_vpid;
-	    PAGE_PTR next_page = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_READ,
-					    PGBUF_UNCONDITIONAL_LATCH);
-	    if (next_page == NULL)
-	      {
-		ASSERT_ERROR ();
-		if (m_solo_prev_page != nullptr)
-		  {
-		    pgbuf_unfix (thread_p, m_solo_prev_page);
-		    m_solo_prev_page = nullptr;
-		  }
-		if (walker->m_slot_key_valid && walker->m_slot_clear_key)
-		  {
-		    pr_clear_value (&walker->m_slot_key);
-		  }
-		walker->m_slot_key_valid = false;
-		walker->m_slot_clear_key = false;
-		m_drain_state = drain_state::IDLE;
-		return S_ERROR;
-	      }
-	    (void) pgbuf_check_page_ptype (thread_p, next_page, PAGE_BTREE);
-	    if (m_solo_prev_page != nullptr)
-	      {
-		pgbuf_unfix (thread_p, m_solo_prev_page);
-		m_solo_prev_page = nullptr;
-	      }
-	    int rerr = process_one_overflow_page (thread_p, next_page);
-	    if (rerr != NO_ERROR)
-	      {
-		pgbuf_unfix (thread_p, next_page);
-		if (walker->m_slot_key_valid && walker->m_slot_clear_key)
-		  {
-		    pr_clear_value (&walker->m_slot_key);
-		  }
-		walker->m_slot_key_valid = false;
-		walker->m_slot_clear_key = false;
-		m_drain_state = drain_state::IDLE;
-		return S_ERROR;
-	      }
-	    VPID next_next;
-	    if (btree_get_next_overflow_vpid (thread_p, next_page, &next_next) != NO_ERROR)
-	      {
-		ASSERT_ERROR ();
-		pgbuf_unfix (thread_p, next_page);
-		if (walker->m_slot_key_valid && walker->m_slot_clear_key)
-		  {
-		    pr_clear_value (&walker->m_slot_key);
-		  }
-		walker->m_slot_key_valid = false;
-		walker->m_slot_clear_key = false;
-		m_drain_state = drain_state::IDLE;
-		return S_ERROR;
-	      }
-	    m_solo_prev_page = next_page;
-	    m_solo_cur_vpid = next_next;
-	    continue;
-	  }
-
 	  case drain_state::IDLE:
 	  default:
 	    return S_END;
@@ -372,7 +308,7 @@ namespace parallel_index_scan
     return NO_ERROR;
   }
 
-  /* Used from slot_iterator finalize / set_page-top: per-slot helper exit + SOLO prev unfix; resets to IDLE. */
+  /* slot_iterator finalize / set_page-top entry; resets to IDLE. */
   void
   overflow_drain_fsm::cleanup_on_reset (THREAD_ENTRY *thread_p)
   {
@@ -387,12 +323,6 @@ namespace parallel_index_scan
 	m_in_helper_mode = false;
 	m_chain_pool_idx = -1;
       }
-    if (m_drain_state == drain_state::OVERFLOW_SOLO && m_solo_prev_page != nullptr)
-      {
-	pgbuf_unfix (thread_p, m_solo_prev_page);
-	m_solo_prev_page = nullptr;
-      }
-    VPID_SET_NULL (&m_solo_cur_vpid);
     VPID_SET_NULL (&m_pending_ovf_vpid);
     m_drain_state = drain_state::IDLE;
     m_leaf_oids.clear ();
