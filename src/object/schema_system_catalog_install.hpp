@@ -146,30 +146,30 @@ namespace cubschema
 } // namespace cubschema
 
 // TODO: move them to proper place
-  const char *sm_define_view_class_spec (void);
-  const char *sm_define_view_direct_super_class_spec (void);
-  const char *sm_define_view_vclass_spec (void);
-  const char *sm_define_view_attribute_spec (void);
-  const char *sm_define_view_attr_setdomain_elm_spec (void);
-  const char *sm_define_view_method_spec (void);
-  const char *sm_define_view_method_arg_spec (void);
-  const char *sm_define_view_meth_arg_setdomain_elm_spec (void);
-  const char *sm_define_view_meth_file_spec (void);
-  const char *sm_define_view_index_spec (void);
-  const char *sm_define_view_index_key_spec (void);
-  const char *sm_define_view_auth_spec (void);
-  const char *sm_define_view_trigger_spec (void);
-  const char *sm_define_view_partition_spec (void);
-  const char *sm_define_view_stored_procedure_spec (void);
-  const char *sm_define_view_stored_procedure_args_spec (void);
-  const char *sm_define_view_serial_spec (void);
-  const char *sm_define_view_ha_apply_info_spec (void);
-  const char *sm_define_view_collation_spec (void);
-  const char *sm_define_view_user_spec (void);
-  const char *sm_define_view_authorization_spec (void);
-  const char *sm_define_view_charset_spec (void);
-  const char *sm_define_view_synonym_spec (void);
-  const char *sm_define_view_server_spec (void);
-  const char *sm_define_view_histogram_spec (void);
+const char *sm_define_view_class_spec (void);
+const char *sm_define_view_direct_super_class_spec (void);
+const char *sm_define_view_vclass_spec (void);
+const char *sm_define_view_attribute_spec (void);
+const char *sm_define_view_attr_setdomain_elm_spec (void);
+const char *sm_define_view_method_spec (void);
+const char *sm_define_view_method_arg_spec (void);
+const char *sm_define_view_meth_arg_setdomain_elm_spec (void);
+const char *sm_define_view_meth_file_spec (void);
+const char *sm_define_view_index_spec (void);
+const char *sm_define_view_index_key_spec (void);
+const char *sm_define_view_auth_spec (void);
+const char *sm_define_view_trigger_spec (void);
+const char *sm_define_view_partition_spec (void);
+const char *sm_define_view_stored_procedure_spec (void);
+const char *sm_define_view_stored_procedure_args_spec (void);
+const char *sm_define_view_serial_spec (void);
+const char *sm_define_view_ha_apply_info_spec (void);
+const char *sm_define_view_collation_spec (void);
+const char *sm_define_view_user_spec (void);
+const char *sm_define_view_authorization_spec (void);
+const char *sm_define_view_charset_spec (void);
+const char *sm_define_view_synonym_spec (void);
+const char *sm_define_view_server_spec (void);
+const char *sm_define_view_histogram_spec (void);
 
 #endif /* _SCHEMA_SYSTEM_CATALOG_INSTALL_HPP_ */
