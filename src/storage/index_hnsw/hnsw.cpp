@@ -92,7 +92,7 @@ class hnsw_index_manager
     // index management on disk
     int save_index (THREAD_ENTRY *thread_p, hnsw_index *index);
     int load_index (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index *&index);
-    int save_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, const hnsw_index_meta &meta);
+    int save_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, const hnsw_index_meta &meta, bool overwrite = false);
     int load_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index_meta &meta);
     int save_all_indices (THREAD_ENTRY *thread_p);
     int delete_index_on_disk (THREAD_ENTRY *thread_p, const std::string &prefix, const BTID *btid);
@@ -108,6 +108,7 @@ class hnsw_index_manager
 
   private:
     fs::path get_vindex_root_path() const;
+    int load_index_meta_from_root_page (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index_meta &meta);
 
     /* singleton */
     hnsw_index_manager();
@@ -427,6 +428,12 @@ hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, 
   assert (distances);
   assert (k > 0);
 
+  for (int i = 0; i < k; i++)
+    {
+      OID_SET_NULL (&rec_oids[i]);
+      distances[i] = 0.0f;
+    }
+
   hnsw_index *index = index_manager->get_index (btid);
   if (index == nullptr)
     {
@@ -565,10 +572,11 @@ hnsw_index_manager::print_index_info (THREAD_ENTRY *thread_p, const BTID *btid)
 }
 
 int
-hnsw_index_manager::save_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, const hnsw_index_meta &meta)
+hnsw_index_manager::save_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, const hnsw_index_meta &meta,
+				     bool overwrite)
 {
   // if meta file exists, do not overwrite it
-  if (is_index_meta_file_exists (meta.backend_id, btid))
+  if (!overwrite && is_index_meta_file_exists (meta.backend_id, btid))
     {
       return NO_ERROR;
     }
@@ -616,8 +624,56 @@ hnsw_index_manager::load_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, h
       meta = temp_meta;
       return NO_ERROR;
     }
-  // Could not find or read any meta file
-  return ER_FAILED;
+  if (load_index_meta_from_root_page (thread_p, btid, meta) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  (void) save_index_meta (thread_p, btid, meta, true);
+  return NO_ERROR;
+}
+
+int
+hnsw_index_manager::load_index_meta_from_root_page (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index_meta &meta)
+{
+  hnsw_index_backend *backend = get_backend ();
+  if (backend == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  PAGE_PTR page_ptr = NULL;
+  VPID root_vpid = { btid->root_pageid, btid->vfid.volid };
+
+  page_ptr = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_ptr == NULL)
+    {
+      ASSERT_ERROR ();
+      return ER_FAILED;
+    }
+
+  HNSW_HEADER *hnsw_header = hnsw_get_header (thread_p, page_ptr);
+  if (hnsw_header == NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, page_ptr);
+      return ER_FAILED;
+    }
+
+  meta.backend_id = backend->get_id();
+  meta.build_params.dimension = hnsw_header->dimension;
+  meta.build_params.m = hnsw_header->hnsw_M;
+  meta.build_params.ef_construction = hnsw_header->hnsw_efConstruction;
+  meta.build_params.metric = static_cast<DB_VECTOR_DISTANCE_METRIC> (hnsw_header->metric);
+
+  if (meta.build_params.dimension <= 0 || meta.build_params.m <= 1 || meta.build_params.ef_construction <= 0
+      || !backend->is_metric_supported (meta.build_params.metric))
+    {
+      pgbuf_unfix_and_init (thread_p, page_ptr);
+      return ER_FAILED;
+    }
+
+  pgbuf_unfix_and_init (thread_p, page_ptr);
+  return NO_ERROR;
 }
 
 int
@@ -649,7 +705,8 @@ int hnsw_index_manager::load_index (THREAD_ENTRY *thread_p, const BTID *btid, hn
 {
   if (is_index_loaded (btid))
     {
-      return NO_ERROR;
+      index_out = get_index (btid);
+      return index_out == NULL ? ER_FAILED : NO_ERROR;
     }
 
   hnsw_index_meta meta;
@@ -668,13 +725,16 @@ int hnsw_index_manager::load_index (THREAD_ENTRY *thread_p, const BTID *btid, hn
       return ER_FAILED;
     }
 
-  index_out = backend->create_index (thread_p, btid, meta.backend_id, meta.build_params);
+  index_out = backend->load_index (thread_p, btid, meta.backend_id, meta.build_params);
   if (!index_out)
     {
       return ER_FAILED;
     }
-  if (index_out->load (thread_p, get_index_file_path (meta.backend_id, btid).string()) != NO_ERROR)
+  if (is_index_file_exists (meta.backend_id, btid)
+      && index_out->load (thread_p, get_index_file_path (meta.backend_id, btid).string()) != NO_ERROR)
     {
+      delete index_out;
+      index_out = NULL;
       return ER_FAILED;
     }
   add_index (btid, index_out);

@@ -19,6 +19,7 @@
 #include "hnsw_storage.hpp"
 
 #include "file_manager.h" // FILE_DESCRIPTORS
+#include "oid.h"
 #include "slotted_page.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -38,6 +39,12 @@ namespace cubhnsw
   storage::init_root (std::byte *root_block, std::size_t &root_size)
   {
     root_t root { reinterpret_cast<byte_t *> (root_block) };
+    slot_id_t entry = OID_INITIALIZER;
+
+    root.set_params (m_build_params);
+    root.set_level (0);
+    root.set_entry (entry);
+
     root_size = root.get_size();
   }
 

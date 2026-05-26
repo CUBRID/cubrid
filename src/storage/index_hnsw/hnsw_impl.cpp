@@ -38,6 +38,7 @@
 #include "slotted_page.h"
 
 #include "db_vector.hpp"	// db_vector_is_all_zeros
+#include "oid.h"
 #if defined (SERVER_MODE)
 #include "thread_worker_pool.hpp"
 #include "thread_worker_pool_taskcap.hpp"
@@ -105,6 +106,11 @@ class hnsw_impl_backend final:public hnsw_index_backend
 				      const std::string &name,
 				      const hnsw_build_params &build_params)
     override;
+    virtual hnsw_index *load_index (THREAD_ENTRY *thread_p,
+				    const BTID *btid,
+				    const std::string &name,
+				    const hnsw_build_params &build_params)
+    override;
     virtual int drop_index (THREAD_ENTRY *thread_p, const BTID *btid) override
     {
       return NO_ERROR;
@@ -124,6 +130,7 @@ class hnsw_impl final:public hnsw_index
     ~hnsw_impl () override;
 
     int init (cubthread::entry *thread_p, PAGE_PTR page_ptr, RECDES &rec);
+    int init_for_load (cubthread::entry *thread_p);
 
     virtual int prepare_to_add (cubthread::entry *thread_p, int n_vectors, const OID *oid,
 				const float *vector) override;
@@ -366,6 +373,29 @@ hnsw_impl_backend::create_index (THREAD_ENTRY *thread_p,
   return index;
 }
 
+hnsw_index *
+hnsw_impl_backend::load_index (THREAD_ENTRY *thread_p,
+			       const BTID *btid,
+			       const std::string &name,
+			       const hnsw_build_params &build_params)
+{
+  hnsw_impl *index =
+	  new hnsw_impl (*this, *btid, name, build_params);
+
+  if (index == NULL)
+    {
+      return NULL;
+    }
+
+  if (index->init_for_load (thread_p) != NO_ERROR)
+    {
+      delete index;
+      return NULL;
+    }
+
+  return index;
+}
+
 // =====================================================================
 // hnsw_impl
 // =====================================================================
@@ -403,6 +433,34 @@ hnsw_impl::init (cubthread::entry *thread_p, PAGE_PTR page_ptr, RECDES &rec)
 
   init_worker_pool ();
 
+  return NO_ERROR;
+}
+
+int
+hnsw_impl::init_for_load (cubthread::entry *thread_p)
+{
+  PAGE_PTR page_ptr = pgbuf_fix (thread_p, &m_root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_ptr == NULL)
+    {
+      ASSERT_ERROR ();
+      return ER_FAILED;
+    }
+
+  SPAGE_SLOT *slotp = spage_get_slot (page_ptr, 1);
+  if (slotp == NULL || slotp->record_length < static_cast<int> (cubhnsw::root_t::get_size ()))
+    {
+      pgbuf_unfix_and_init (thread_p, page_ptr);
+      return ER_FAILED;
+    }
+
+  cubhnsw::root_t root { reinterpret_cast<cubhnsw::byte_t *> (page_ptr) + slotp->offset_to_record };
+  cubhnsw::slot_id_t entry = root.get_entry ();
+  m_storage->set_empty (OID_ISNULL (&entry));
+
+  pgbuf_unfix_and_init (thread_p, page_ptr);
+
+  m_algo->set_storage (m_storage.get ());
+  init_worker_pool ();
   return NO_ERROR;
 }
 
@@ -634,6 +692,10 @@ int
 hnsw_impl::search (cubthread::entry *thread_p, const float *query, const int k, const int ef_search,
 		   OID *rec_oids, float *distances)
 {
+  if (m_storage->is_empty ())
+    {
+      return NO_ERROR;
+    }
   const bool needs_query_copy =
 	  m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE
 	  || !db_vector_is_aligned (query);
