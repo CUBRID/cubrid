@@ -3477,16 +3477,29 @@ vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENT
  */
 
 /*
- * vacuum_oos_chunk_exists () - Idempotency probe for block retry. Returns true iff the OOS
- *   chunk's slot is still present. vacuum_forward_walk_delete_old_oos calls this before each
- *   oos_delete so an OID whose chunk was already removed by a sibling forward-walk's committed
- *   sysop on a prior attempt at this block can be skipped, rather than tripping the
- *   S_DOESNT_EXIST hard error inside oos_delete_chain. A missing page or missing slot both
- *   mean "already gone" — never an error in this context, so any er_set residue is cleared.
+ * vacuum_oos_chunk_exists () - Idempotency probe for block retry. Sets *out_exists to true iff
+ *   the OOS chunk's slot is still present. vacuum_forward_walk_delete_old_oos calls this before
+ *   each oos_delete so an OID whose chunk was already removed by a sibling forward-walk's
+ *   committed sysop on a prior attempt at this block can be skipped, rather than tripping the
+ *   S_DOESNT_EXIST hard error inside oos_delete_chain.
+ *
+ *   "Already gone" is narrowly defined:
+ *     - pgbuf_fix returns NULL with er_errid()==NO_ERROR (page legitimately deallocated under
+ *       OLD_PAGE_MAYBE_DEALLOCATED), OR
+ *     - spage_get_record returns S_DOESNT_EXIST (slot removed but page still alive).
+ *
+ *   Any other failure (real pgbuf_fix error from I/O / interrupt / buffer corruption, or
+ *   spage_get_record returning S_ERROR) is propagated as the probe's return value. The caller
+ *   must treat that as a forward-walk failure rather than a successful skip — otherwise a
+ *   transient access error would be misread as "already deleted" and the OOS chain would
+ *   leak with no further reclamation path (UPDATE pre-image OIDs are not reachable from the
+ *   live post-image, so heap REMOVE will not retry them).
  */
-static bool
-vacuum_oos_chunk_exists (THREAD_ENTRY * thread_p, const OID & oid)
+static int
+vacuum_oos_chunk_exists (THREAD_ENTRY * thread_p, const OID & oid, bool * out_exists)
 {
+  *out_exists = false;
+
   VPID vpid;
   vpid.volid = oid.volid;
   vpid.pageid = oid.pageid;
@@ -3495,13 +3508,33 @@ vacuum_oos_chunk_exists (THREAD_ENTRY * thread_p, const OID & oid)
     pgbuf_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == NULL)
     {
-      er_clear ();
-      return false;
+      int errid = er_errid ();
+      if (errid == NO_ERROR)
+	{
+	  /* Page legitimately deallocated under OLD_PAGE_MAYBE_DEALLOCATED; chunk is gone. */
+	  return NO_ERROR;
+	}
+      ASSERT_ERROR ();
+      return errid;
     }
+
   RECDES probe = RECDES_INITIALIZER;
   SCAN_CODE code = spage_get_record (thread_p, page_ptr, oid.slotid, &probe, PEEK);
   pgbuf_unfix_and_init (thread_p, page_ptr);
-  return code == S_SUCCESS;
+
+  if (code == S_SUCCESS)
+    {
+      *out_exists = true;
+      return NO_ERROR;
+    }
+  if (code == S_DOESNT_EXIST)
+    {
+      /* Slot already removed by a prior committed sysop; chunk is gone. */
+      return NO_ERROR;
+    }
+  ASSERT_ERROR ();
+  int errid = er_errid ();
+  return errid != NO_ERROR ? errid : ER_FAILED;
 }
 
 static int
@@ -3523,8 +3556,15 @@ for (const OID & oid:sorted_oos_oids)
     {
       /* Idempotency for block retry: a sibling forward-walk earlier in this block may have
        * committed its sysop before a later one failed. On retry, the earlier OID's chunk is
-       * already physically gone — skip rather than fail at oos_delete_chain's S_DOESNT_EXIST. */
-      if (!vacuum_oos_chunk_exists (thread_p, oid))
+       * already physically gone — skip rather than fail at oos_delete_chain's S_DOESNT_EXIST.
+       * Real probe failures (I/O, interrupt, etc.) propagate as forward-walk errors. */
+      bool exists;
+      error_code = vacuum_oos_chunk_exists (thread_p, oid, &exists);
+      if (error_code != NO_ERROR)
+	{
+	  break;
+	}
+      if (!exists)
 	{
 	  continue;
 	}
