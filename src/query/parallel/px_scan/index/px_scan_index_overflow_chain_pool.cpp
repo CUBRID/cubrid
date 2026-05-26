@@ -57,7 +57,7 @@ namespace parallel_index_scan
 	    return i;
 	  }
       }
-    return -1;   /* cap-overflow; caller falls to SOLO_DRAIN */
+    return -1;   /* cap-overflow; caller falls to OVERFLOW_SOLO */
   }
 
   SCAN_CODE

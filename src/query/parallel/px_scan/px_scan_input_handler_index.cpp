@@ -60,6 +60,6 @@ namespace parallel_scan
   input_handler_index::cleanup_keys (THREAD_ENTRY *thread_p)
   {
     m_ranges.cleanup_keys (thread_p);
-    /* per-helper local_key owned by slot_iterator's m_slot_key; cleared at SHARED_DRAIN exit. */
+    /* per-helper local_key owned by slot_iterator's m_slot_key; cleared at OVERFLOW_SHARED exit. */
   }
 }

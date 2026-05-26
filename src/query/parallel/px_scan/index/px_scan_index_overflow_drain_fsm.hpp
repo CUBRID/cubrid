@@ -33,27 +33,27 @@ namespace parallel_index_scan
 {
   class leaf_slot_walker;            /* fwd: owner = walker (holds m_page / m_slot_key / process_oid). */
 
-  /* (E) Per-slot drain state machine: DRAIN_LEAF_OIDS → {SHARED_DRAIN | SOLO_DRAIN} → IDLE.
-   * Owns m_slot_oids buffer + chain-take-up bookkeeping; producer-anchored buffer share. */
+  /* (E) Per-record drain state machine: LEAF_OIDS → {OVERFLOW_SHARED | OVERFLOW_SOLO} → IDLE.
+   * Owns m_leaf_oids buffer + chain-take-up bookkeeping; producer-anchored buffer share. */
   class overflow_drain_fsm
   {
     public:
-      enum class slot_state
+      enum class drain_state
       {
 	IDLE,             /* between leaf-records; normal slot iteration */
-	DRAIN_LEAF_OIDS,  /* m_slot_oids holds leaf-resident OIDs */
-	SHARED_DRAIN,     /* pulling overflow pages from input_handler shared cursor */
-	SOLO_DRAIN        /* walking the chain alone (try_publish_overflow lost) */
+	LEAF_OIDS,        /* m_leaf_oids holds leaf-resident OIDs */
+	OVERFLOW_SHARED,  /* pulling overflow pages from input_handler shared cursor */
+	OVERFLOW_SOLO     /* walking the chain alone (try_publish_overflow lost) */
       };
 
       overflow_drain_fsm ()
-	: m_slot_state (slot_state::IDLE),
-	  m_slot_oids (),
-	  m_slot_oid_idx (0),
+	: m_drain_state (drain_state::IDLE),
+	  m_leaf_oids (),
+	  m_leaf_oid_idx (0),
 	  m_solo_prev_page (nullptr),
 	  m_in_helper_mode (false),
 	  m_was_producer (false),
-	  m_chain_slot_idx (-1),
+	  m_chain_pool_idx (-1),
 	  m_owner (nullptr)
       {
 	VPID_SET_NULL (&m_solo_cur_vpid);
@@ -67,25 +67,25 @@ namespace parallel_index_scan
 
       bool is_idle () const
       {
-	return m_slot_state == slot_state::IDLE;
+	return m_drain_state == drain_state::IDLE;
       }
 
       /* Begin a leaf-OID drain by adopting the OID vector + pending overflow chain head from the producer-side leaf record. */
       void begin_leaf_drain (std::vector<OID> &&oids, VPID pending_ovf_vpid)
       {
-	m_slot_oids = std::move (oids);
-	m_slot_oid_idx = 0;
+	m_leaf_oids = std::move (oids);
+	m_leaf_oid_idx = 0;
 	m_pending_ovf_vpid = pending_ovf_vpid;
-	m_slot_state = slot_state::DRAIN_LEAF_OIDS;
+	m_drain_state = drain_state::LEAF_OIDS;
       }
 
-      /* Drives DRAIN_LEAF_OIDS → SHARED/SOLO → IDLE; returns S_SUCCESS / S_END / S_ERROR. */
+      /* Drives LEAF_OIDS → OVERFLOW_{SHARED,SOLO} → IDLE; returns S_SUCCESS / S_END / S_ERROR. */
       SCAN_CODE drain_next_oid (THREAD_ENTRY *thread_p);
 
       /* Late-joiner entry: handler-fetched overflow page + helper-owned local_key (ownership transfer
-       * on S_SUCCESS: caller MUST NOT pr_clear_value post-success); slot_idx for per-chain exit. */
+       * on S_SUCCESS: caller MUST NOT pr_clear_value post-success); pool_idx for per-chain exit. */
       int set_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page, DB_VALUE *local_key,
-			     bool local_clear_key, int range_idx, int slot_idx);
+			     bool local_clear_key, int range_idx, int pool_idx);
 
       /* Cleanup helpers used from slot_iterator's finalize / set_page top blocks. */
       void cleanup_on_reset (THREAD_ENTRY *thread_p);
@@ -93,12 +93,12 @@ namespace parallel_index_scan
     private:
       int process_one_overflow_page (THREAD_ENTRY *thread_p, PAGE_PTR page);
 
-      slot_state m_slot_state;
+      drain_state m_drain_state;
 
-      std::vector<OID> m_slot_oids;
-      size_t m_slot_oid_idx;
+      std::vector<OID> m_leaf_oids;
+      size_t m_leaf_oid_idx;
 
-      /* SOLO_DRAIN private cursor + hand-over-hand prev page. */
+      /* OVERFLOW_SOLO private cursor + hand-over-hand prev page. */
       VPID m_solo_cur_vpid;
       PAGE_PTR m_solo_prev_page;
 
@@ -106,8 +106,8 @@ namespace parallel_index_scan
       VPID m_pending_ovf_vpid;
 
       bool m_in_helper_mode;            /* True when iterator was set up via set_overflow_page (late joiner). */
-      bool m_was_producer;              /* This iterator published the active chain; gates leaf-S unfix at SHARED_DRAIN exit. */
-      int  m_chain_slot_idx;            /* slot index in overflow pool; -1 when not in SHARED_DRAIN. */
+      bool m_was_producer;              /* This iterator published the active chain; gates leaf-S unfix at OVERFLOW_SHARED exit. */
+      int  m_chain_pool_idx;            /* index in overflow pool; -1 when not in OVERFLOW_SHARED. */
 
       leaf_slot_walker *m_owner;        /* borrowed; provides m_page/m_slot_key/etc. + process_oid. */
   };
