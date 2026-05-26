@@ -6982,6 +6982,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   scan_cache->debug_initpattern = HEAP_DEBUG_SCANCACHE_INITPATTERN;
   scan_cache->mvcc_snapshot = mvcc_snapshot;
   scan_cache->partition_list = NULL;
+  scan_cache->expand_oos = true;
 
   return ret;
 
@@ -26434,29 +26435,10 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
   HEAP_GET_CONTEXT context;
 
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
-
-  scan = heap_get_visible_version_internal (thread_p, &context, false);
-
-  heap_clean_get_context (thread_p, &context);
-
-  return scan;
-}
-
-/*
- * heap_get_visible_version_skip_oos_expand () - heap_get_visible_version variant that returns the record with inline
- *                                               OOS OID slots left in place (expand_oos = false). Use when the caller
- *                                               decodes per-attribute via heap_attrinfo_read_dbvalues, which already
- *                                               calls oos_read() for each OOS column.
- */
-SCAN_CODE
-heap_get_visible_version_skip_oos_expand (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
-					  HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
-{
-  SCAN_CODE scan = S_SUCCESS;
-  HEAP_GET_CONTEXT context;
-
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
-  context.expand_oos = false;
+  if (scan_cache != NULL)
+    {
+      context.expand_oos = scan_cache->expand_oos;
+    }
 
   scan = heap_get_visible_version_internal (thread_p, &context, false);
 
@@ -26489,8 +26471,7 @@ heap_get_visible_version_skip_oos_expand (THREAD_ENTRY * thread_p, const OID * o
 */
 static SCAN_CODE
 heap_scan_get_visible_version_impl (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
-				    RECDES * peeked_recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
-				    bool expand_oos)
+				    RECDES * peeked_recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
 {
   SCAN_CODE scan = S_SUCCESS;
   HEAP_GET_CONTEXT context;
@@ -26514,7 +26495,7 @@ heap_scan_get_visible_version_impl (THREAD_ENTRY * thread_p, const OID * oid, OI
    * records that contain OOS; they fall through to the normal path which runs the expansion.
    */
   if (peeked_recdes->type == REC_HOME && ispeeking == PEEK
-      && (!expand_oos || !heap_recdes_contains_oos (peeked_recdes)))
+      && (!scan_cache->expand_oos || !heap_recdes_contains_oos (peeked_recdes)))
     {
       MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
 
@@ -26560,7 +26541,7 @@ heap_scan_get_visible_version_impl (THREAD_ENTRY * thread_p, const OID * oid, OI
     }
 
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
-  context.expand_oos = expand_oos;
+  context.expand_oos = scan_cache->expand_oos;
 
   scan = heap_get_visible_version_internal (thread_p, &context, true);
 
@@ -26574,20 +26555,7 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 			       RECDES * peeked_recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
 {
   return heap_scan_get_visible_version_impl (thread_p, oid, class_oid, recdes, peeked_recdes, scan_cache, ispeeking,
-					     old_chn, true);
-}
-
-/*
- * heap_scan_get_visible_version_skip_oos_expand () - heap_scan_get_visible_version variant matching
- *                                                    heap_get_visible_version_skip_oos_expand.
- */
-SCAN_CODE
-heap_scan_get_visible_version_skip_oos_expand (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
-					       RECDES * recdes, RECDES * peeked_recdes, HEAP_SCANCACHE * scan_cache,
-					       int ispeeking, int old_chn)
-{
-  return heap_scan_get_visible_version_impl (thread_p, oid, class_oid, recdes, peeked_recdes, scan_cache, ispeeking,
-					     old_chn, false);
+					     old_chn);
 }
 
 /*
