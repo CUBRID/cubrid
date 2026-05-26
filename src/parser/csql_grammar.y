@@ -14318,7 +14318,7 @@ opt_orderby_clause
 				parser_save_and_set_pseudoc (0);
 			  }
 
-			if (stmt && !stmt->info.query.q.select.from)
+			if (stmt && stmt->node_type == PT_SELECT && !stmt->info.query.q.select.from)
 			    PT_ERRORmf(this_parser, pt_top(this_parser),
 				MSGCAT_SET_PARSER_SEMANTIC,
 				MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "ORDER BY");
@@ -23338,13 +23338,16 @@ parser_attach_order_siblings_to_branches (PARSER_CONTEXT * parser, PT_NODE * que
 	      return 0;
 	    }
 
+	  /* position numbers are range-checked here; expressions are resolved in pt_check_order_by() */
 	  hier_select_cnt = pt_length_of_list (query->info.query.q.select.list);
 	  for (sort = orderby; sort; sort = sort->next)
 	    {
 	      PT_NODE *expr = sort->info.sort_spec.expr;
+
 	      if (expr != NULL && expr->node_type == PT_VALUE && expr->type_enum == PT_TYPE_INTEGER)
 		{
 		  int pos = expr->info.value.data_value.i;
+
 		  if (pos < 1 || pos > hier_select_cnt)
 		    {
 		      PT_ERRORmf (parser, sort, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SORT_SPEC_RANGE_ERR, pos);

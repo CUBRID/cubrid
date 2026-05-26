@@ -23859,32 +23859,181 @@ parser_generate_do_stmt_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * pt_get_order_siblings_base_regu () - unwrap cast expressions to the underlying column regu
- *   return:
+ * pt_find_order_siblings_column_regu () - find a column regu (TYPE_CONSTANT) inside an expression tree
+ *   return: first column regu found in depth-first order, or NULL
  *   regu(in):
  */
 static REGU_VARIABLE *
-pt_get_order_siblings_base_regu (REGU_VARIABLE * regu)
+pt_find_order_siblings_column_regu (REGU_VARIABLE * regu)
 {
+  REGU_VARIABLE_LIST regu_list;
+  ARITH_TYPE *arith;
+  REGU_VARIABLE *found;
+
   if (regu == NULL)
     {
       return NULL;
     }
 
-  if (regu->type == TYPE_INARITH && regu->value.arithptr != NULL)
+  switch (regu->type)
     {
-      switch (regu->value.arithptr->opcode)
+    case TYPE_CONSTANT:
+    case TYPE_ORDERBY_NUM:
+      return regu;
+
+    case TYPE_INARITH:
+    case TYPE_OUTARITH:
+      arith = regu->value.arithptr;
+      if (arith == NULL)
 	{
-	case T_CAST:
-	case T_CAST_WRAP:
-	case T_CAST_NOFAIL:
-	  return pt_get_order_siblings_base_regu (regu->value.arithptr->leftptr);
-	default:
-	  break;
+	  return NULL;
 	}
+      if (arith->leftptr != NULL)
+	{
+	  found = pt_find_order_siblings_column_regu (arith->leftptr);
+	  if (found != NULL)
+	    {
+	      return found;
+	    }
+	}
+      if (arith->rightptr != NULL)
+	{
+	  found = pt_find_order_siblings_column_regu (arith->rightptr);
+	  if (found != NULL)
+	    {
+	      return found;
+	    }
+	}
+      if (arith->thirdptr != NULL)
+	{
+	  found = pt_find_order_siblings_column_regu (arith->thirdptr);
+	  if (found != NULL)
+	    {
+	      return found;
+	    }
+	}
+      return NULL;
+
+    case TYPE_FUNC:
+      if (regu->value.funcp == NULL)
+	{
+	  return NULL;
+	}
+      for (regu_list = regu->value.funcp->operand; regu_list != NULL; regu_list = regu_list->next)
+	{
+	  found = pt_find_order_siblings_column_regu (&regu_list->value);
+	  if (found != NULL)
+	    {
+	      return found;
+	    }
+	}
+      return NULL;
+
+    case TYPE_SP:
+      if (regu->value.sp_ptr == NULL)
+	{
+	  return NULL;
+	}
+      for (regu_list = regu->value.sp_ptr->args; regu_list != NULL; regu_list = regu_list->next)
+	{
+	  found = pt_find_order_siblings_column_regu (&regu_list->value);
+	  if (found != NULL)
+	    {
+	      return found;
+	    }
+	}
+      return NULL;
+
+    default:
+      return NULL;
+    }
+}
+
+/*
+ * pt_order_siblings_regu_equal () - compare two regu trees (built-in, SP, arithmetic, columns)
+ *   return:
+ *   r1(in):
+ *   r2(in):
+ */
+static bool
+pt_order_siblings_regu_equal (REGU_VARIABLE * r1, REGU_VARIABLE * r2)
+{
+  ARITH_TYPE *a1, *a2;
+  REGU_VARIABLE_LIST l1, l2;
+
+  if (r1 == r2)
+    {
+      return true;
+    }
+  if (r1 == NULL || r2 == NULL)
+    {
+      return false;
+    }
+  if (r1->type != r2->type)
+    {
+      return false;
     }
 
-  return regu;
+  switch (r1->type)
+    {
+    case TYPE_CONSTANT:
+    case TYPE_ORDERBY_NUM:
+      return r1->value.dbvalptr != NULL && r1->value.dbvalptr == r2->value.dbvalptr;
+
+    case TYPE_INARITH:
+    case TYPE_OUTARITH:
+      a1 = r1->value.arithptr;
+      a2 = r2->value.arithptr;
+      if (a1 == a2)
+	{
+	  return true;
+	}
+      if (a1 == NULL || a2 == NULL || a1->opcode != a2->opcode)
+	{
+	  return false;
+	}
+      return pt_order_siblings_regu_equal (a1->leftptr, a2->leftptr)
+	&& pt_order_siblings_regu_equal (a1->rightptr, a2->rightptr)
+	&& pt_order_siblings_regu_equal (a1->thirdptr, a2->thirdptr);
+
+    case TYPE_FUNC:
+      if (r1->value.funcp == NULL || r2->value.funcp == NULL || r1->value.funcp->ftype != r2->value.funcp->ftype)
+	{
+	  return false;
+	}
+      for (l1 = r1->value.funcp->operand, l2 = r2->value.funcp->operand; l1 != NULL && l2 != NULL;
+	   l1 = l1->next, l2 = l2->next)
+	{
+	  if (!pt_order_siblings_regu_equal (&l1->value, &l2->value))
+	    {
+	      return false;
+	    }
+	}
+      return (l1 == NULL && l2 == NULL);
+
+    case TYPE_SP:
+      if (r1->value.sp_ptr == NULL || r2->value.sp_ptr == NULL)
+	{
+	  return false;
+	}
+      for (l1 = r1->value.sp_ptr->args, l2 = r2->value.sp_ptr->args; l1 != NULL && l2 != NULL;
+	   l1 = l1->next, l2 = l2->next)
+	{
+	  if (!pt_order_siblings_regu_equal (&l1->value, &l2->value))
+	    {
+	      return false;
+	    }
+	}
+      return (l1 == NULL && l2 == NULL);
+
+    case TYPE_ATTR_ID:
+    case TYPE_CLASS_ATTR_ID:
+    case TYPE_SHARED_ATTR_ID:
+      return r1->value.attr_descr.id == r2->value.attr_descr.id;
+
+    default:
+      return false;
+    }
 }
 
 /*
@@ -23922,25 +24071,42 @@ pt_to_order_siblings_by (PARSER_CONTEXT * parser, XASL_NODE * xasl, XASL_NODE * 
 	  if (i == orderby->pos_descr.pos_no)
 	    {
 	      mapped = false;
-	      base_regu = pt_get_order_siblings_base_regu (&regu_list1->value);
 
-	      if (base_regu != NULL && base_regu->type == TYPE_CONSTANT)
+	      /* match full SELECT list expression regu (ORDER BY expr, built-in, SP, etc.) */
+	      for (j = 0, regu_list2 = connect_by_xasl->outptr_list->valptrp; regu_list2 && !mapped;
+		   regu_list2 = regu_list2->next, j++)
 		{
-		  for (j = 0, regu_list2 = connect_by_xasl->outptr_list->valptrp; regu_list2;
-		       regu_list2 = regu_list2->next, j++)
+		  if (pt_order_siblings_regu_equal (&regu_list1->value, &regu_list2->value))
 		    {
-		      if (regu_list2->value.type == TYPE_CONSTANT
-			  && base_regu->value.dbvalptr == regu_list2->value.value.dbvalptr)
+		      orderby->pos_descr.pos_no = j;
+		      mapped = true;
+		    }
+		}
+
+	      /* match underlying column regu inside an expression tree */
+	      if (!mapped)
+		{
+		  base_regu = pt_find_order_siblings_column_regu (&regu_list1->value);
+		  if (base_regu != NULL)
+		    {
+		      for (j = 0, regu_list2 = connect_by_xasl->outptr_list->valptrp; regu_list2;
+			   regu_list2 = regu_list2->next, j++)
 			{
-			  orderby->pos_descr.pos_no = j;
-			  mapped = true;
-			  break;
+			  REGU_VARIABLE *cb_col_regu;
+
+			  cb_col_regu = pt_find_order_siblings_column_regu (&regu_list2->value);
+			  if (cb_col_regu != NULL && cb_col_regu->value.dbvalptr == base_regu->value.dbvalptr)
+			    {
+			      orderby->pos_descr.pos_no = j;
+			      mapped = true;
+			      break;
+			    }
 			}
 		    }
 		}
 
-	      /* vclass type-cast wraps SELECT columns; CONNECT BY uses val_list column positions */
-	      if (!mapped && base_regu != NULL && base_regu->type == TYPE_CONSTANT && i < user_col_cnt)
+	      /* ORDER SIBLINGS BY n: map SELECT list position to CONNECT BY tuple column */
+	      if (!mapped && i < user_col_cnt)
 		{
 		  orderby->pos_descr.pos_no = i;
 		  mapped = true;
