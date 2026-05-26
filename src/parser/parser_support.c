@@ -12538,15 +12538,19 @@ pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr)
 			else
 			  {
 			    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-			    PT_ERROR (parser, node, "DEFAULT UUID only supports UUID(), UUID(4), or UUID(7)");
+			    PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UUID_INVALID_ARG);
 			  }
+		      }
+		    else
+		      {
+			node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
+			PT_ERROR (parser, node, "UUID argument coercion error");
 		      }
 		  }
 		else
 		  {
 		    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-		    PT_ERROR (parser, node, "DEFAULT UUID only supports UUID(), UUID(4), or UUID(7).\n"
-			      "Only literal arguments 4 or 7 are allowed; nested expressions in DEFAULT are not supported");
+		    PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UUID_INVALID_ARG);
 		  }
 	      }
 	      break;

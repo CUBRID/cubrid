@@ -12285,6 +12285,11 @@ qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, U
       break;
 
     case DB_DEFAULT_UUIDV7:
+      if (xasl_state == NULL || DATETIME_IS_NULL (&xasl_state->vd.sys_datetime) || xasl_state->vd.sys_epochtime == 0)
+	{
+	  qexec_failure_line (__LINE__, xasl_state);
+	  return ER_FAILED;
+	}
       error =
 	db_uuid_bin (UUID_V7, uuid_state,
 		     ((uint64_t) xasl_state->vd.sys_epochtime * 1000ULL)
@@ -16623,6 +16628,13 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
   /* form the value descriptor to represent positional values */
   xasl_state.vd.dbval_cnt = dbval_cnt;
   xasl_state.vd.dbval_ptr = (DB_VALUE *) dbval_ptr;
+
+  /* save the query_id into the XASL state struct */
+  xasl_state.query_id = query_id;
+
+  /* initialize error line */
+  xasl_state.qp_xasl_line = 0;
+
   time_t sec;
   int millisec;
   util_get_second_and_ms_since_epoch (&sec, &millisec);
@@ -16630,23 +16642,27 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
 
   xasl_state.vd.sys_epochtime = (DB_TIMESTAMP) sec;
 
-  if (c_time_struct != NULL)
+  if (c_time_struct == NULL)
     {
-      db_datetime_encode (&xasl_state.vd.sys_datetime, c_time_struct->tm_mon + 1, c_time_struct->tm_mday,
-			  c_time_struct->tm_year + 1900, c_time_struct->tm_hour, c_time_struct->tm_min,
-			  c_time_struct->tm_sec, millisec);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+      qexec_failure_line (__LINE__, &xasl_state);
+      stat = ER_DATE_CONVERSION;
+      goto query_error;
+    }
+
+  stat = db_datetime_encode (&xasl_state.vd.sys_datetime, c_time_struct->tm_mon + 1, c_time_struct->tm_mday,
+			     c_time_struct->tm_year + 1900, c_time_struct->tm_hour, c_time_struct->tm_min,
+			     c_time_struct->tm_sec, millisec);
+  if (stat != NO_ERROR)
+    {
+      qexec_failure_line (__LINE__, &xasl_state);
+      goto query_error;
     }
 
   rand_buf_p = qmgr_get_rand_buf (thread_p);
   lrand48_r (rand_buf_p, &xasl_state.vd.lrand);
   drand48_r (rand_buf_p, &xasl_state.vd.drand);
   xasl_state.vd.xasl_state = &xasl_state;
-
-  /* save the query_id into the XASL state struct */
-  xasl_state.query_id = query_id;
-
-  /* initialize error line */
-  xasl_state.qp_xasl_line = 0;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   if (logtb_find_current_isolation (thread_p) >= TRAN_REP_READ)
@@ -16662,6 +16678,8 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
   xasl->query_in_progress = true;
   stat = qexec_execute_mainblock (thread_p, xasl, &xasl_state, NULL);
   xasl->query_in_progress = false;
+
+query_error:
 
 #if defined(SERVER_MODE)
   if (thread_is_on_trace (thread_p))

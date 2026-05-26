@@ -1975,6 +1975,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 332 Stored Procedure는 CALL 문에서만 호출할 수 있습니다.
 333 Stored Procedure를 호출하는 CALL 문은 INTO 절을 가질 수 없습니다.
 
+334 DEFAULT UUID는 UUID(), UUID(4), 또는 UUID(7)만 지원합니다.
+
 
 
 
