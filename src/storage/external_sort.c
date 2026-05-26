@@ -1627,7 +1627,8 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
       perfmon_initialize_parallel_stats (&thread_ref);
     }
 
-  if (sort_param->px_type == SORT_ORDER_BY || sort_param->px_type == SORT_GROUP_BY)
+  if (sort_param->px_type == SORT_ORDER_BY || sort_param->px_type == SORT_ORDER_WITH_LIMIT
+      || sort_param->px_type == SORT_GROUP_BY)
     {
       if (thread_is_on_trace (sort_param->px_orig_thread_p))
 	{
@@ -1690,7 +1691,7 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
     }
 
 cleanup:
-  if (sort_param->px_type == SORT_ORDER_BY)
+  if (sort_param->px_type == SORT_ORDER_BY || sort_param->px_type == SORT_ORDER_WITH_LIMIT)
     {
       if (thread_is_on_trace (sort_param->px_orig_thread_p))
 	{
@@ -4245,7 +4246,7 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
   if (parallel_type == PX_THREAD_IN_PARALLEL)
     {
 #if defined (SERVER_MODE)
-      if (sort_param->px_type == SORT_ORDER_BY)
+      if (sort_param->px_type == SORT_ORDER_BY || sort_param->px_type == SORT_ORDER_WITH_LIMIT)
 	{
 	  if (sort_param->get_arg != NULL)
 	    {
@@ -4261,6 +4262,7 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
 		}
 	      db_private_free_and_init (thread_p, sort_param->get_arg);
 	    }
+	  /* ORDER_WITH_LIMIT workers have put_arg=NULL (serial put by main thread) */
 	  if (sort_param->put_arg != NULL)
 	    {
 	      SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->put_arg;
@@ -5021,7 +5023,7 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 {
   int parallel_num = 1;
 
-  if (sort_param->px_type == SORT_ORDER_BY)
+  if (sort_param->px_type == SORT_ORDER_BY || sort_param->px_type == SORT_ORDER_WITH_LIMIT)
     {
       SORT_INFO *sort_info_p;
       /* get scan id of input file */
@@ -5246,8 +5248,8 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
       return ER_FAILED;
     }
 
-  /* case of ORDER BY */
-  if (sort_param->px_type == SORT_ORDER_BY)
+  /* case of ORDER BY / ORDER WITH LIMIT — identical sector distribution; put_arg differs */
+  if (sort_param->px_type == SORT_ORDER_BY || sort_param->px_type == SORT_ORDER_WITH_LIMIT)
     {
       SORT_INFO *sort_info_p;
       QFILE_LIST_ID *input_file;
@@ -5286,19 +5288,29 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 
       for (int i = 0; i < parallel_num; i++)
 	{
-	  /* sort_copy_sort_param did a shallow memcpy, so put_arg still points to the main
-	   * sort_param's SORT_INFO.  Deep-copy put_arg so each worker has its own output_file.
-	   * get_arg only needs key_info/input_file/px_state — allocate a plain copy without
-	   * deep-copying s_id (not used by qfile_sort_get_next_parallel). */
-	  error =
-	    sort_copy_sort_info (thread_p, (SORT_INFO **) & px_sort_param[i].put_arg,
-				 (SORT_INFO *) sort_param->put_arg);
-	  if (error != NO_ERROR)
+	  if (sort_param->px_type == SORT_ORDER_BY)
 	    {
-	      qfile_free_list_sector_info (thread_p, &sector_info);
-	      return ER_FAILED;
+	      /* Deep-copy put_arg so each worker has its own output_file.
+	       * sort_copy_sort_param did a shallow memcpy, so put_arg still
+	       * points to the main sort_param's SORT_INFO. */
+	      error =
+		sort_copy_sort_info (thread_p, (SORT_INFO **) & px_sort_param[i].put_arg,
+				     (SORT_INFO *) sort_param->put_arg);
+	      if (error != NO_ERROR)
+		{
+		  qfile_free_list_sector_info (thread_p, &sector_info);
+		  return ER_FAILED;
+		}
+	    }
+	  else
+	    {
+	      /* ORDER_WITH_LIMIT: put is done serially by the main thread after
+	       * fan-in; workers only sort their partition into a temp run. */
+	      px_sort_param[i].put_fn = NULL;
+	      px_sort_param[i].put_arg = NULL;
 	    }
 
+	  /* get_arg: key_info/input_file/px_state — plain copy, no deep s_id */
 	  SORT_INFO *worker_info_p = (SORT_INFO *) db_private_alloc (thread_p, sizeof (SORT_INFO));
 	  if (worker_info_p == NULL)
 	    {
@@ -5613,16 +5625,47 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
   int error = NO_ERROR;
   int parallel_num = sort_param->px_parallel_num;
 
-  if (sort_param->px_type == SORT_ORDER_BY)
+  if (sort_param->px_type == SORT_ORDER_BY || sort_param->px_type == SORT_ORDER_WITH_LIMIT)
     {
-      /* merge parallel result into sort location temp file */
-      error = sort_merge_run_for_parallel (thread_p, px_sort_param, sort_param, parallel_num);
-      if (error != NO_ERROR)
+      if (sort_param->px_type == SORT_ORDER_BY)
 	{
-	  return ER_FAILED;
+	  /* fan-in merge + split + parallel put into per-worker output files */
+	  error = sort_merge_run_for_parallel (thread_p, px_sort_param, sort_param, parallel_num);
+	  if (error != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+      else
+	{
+	  /* ORDER_WITH_LIMIT: fan-in only, then serial put via put_fn (qexec_ordby_put_next).
+	   * put_fn must not run in parallel because ordbynum_val state is shared and
+	   * SORT_PUT_STOP must fire exactly once at the global LIMIT boundary. */
+	  error = sort_merge_worker_runs_to_one (thread_p, px_sort_param, sort_param, parallel_num);
+	  if (error != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  if (sort_param->tot_runs > 0)
+	    {
+	      /* allocate output temp slot (temp[1]) for sort_run_final_single */
+	      int pg_est = MAX (1, sort_get_avg_numpages_of_nonempty_tmpfile (sort_param));
+	      if (sort_add_new_file (thread_p, &sort_param->temp[1], pg_est, true,
+				    sort_param->tde_encrypted) != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+	      assert (sort_param->tot_runs == 1);
+	      error = sort_run_final_single (thread_p, sort_param);
+	      if (error != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+	    }
 	}
 
-      /* Do not output parallel sort trace info from qfile_sort_list(). */
+      /* Collect per-worker trace stats into orderby_stats. */
       ORDERBY_STATS *orderby_stats = (ORDERBY_STATS *) ((SORT_INFO *) sort_param->get_arg)->orderby_stats;
       if (orderby_stats && thread_is_on_trace (thread_p))
 	{
