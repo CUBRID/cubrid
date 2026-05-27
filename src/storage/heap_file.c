@@ -8027,6 +8027,7 @@ heap_oos_parse_vot (HEAP_OOS_EXPAND_STATE * state)
 
   if (state->n_var <= 0)
     {
+      /* OR_MVCC_FLAG_HAS_OOS was set but the record has no variable attributes. Corrupt record. */
       assert_release (false && "OOS flag set without variable attributes");
       return ER_FAILED;
     }
@@ -8057,6 +8058,7 @@ heap_oos_read_blobs (THREAD_ENTRY * thread_p, HEAP_OOS_EXPAND_STATE * state)
 	  return ER_FAILED;
 	}
 
+      /* Inline OOS slot layout (M2+): [OID (8B) | full_length (8B bigint)]. */
       OID oos_oid = OID_INITIALIZER;
       DB_BIGINT oos_len = 0;
       int rc = NO_ERROR;
@@ -8251,6 +8253,7 @@ heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
 
   if (!context->expand_oos)
     {
+      /* Caller opted out: they handle OOS themselves (e.g. heap_attrinfo_read_dbvalues). */
       return S_SUCCESS;
     }
 
