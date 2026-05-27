@@ -1272,7 +1272,7 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
   p = sql;
   remaining = (int) sql_len;
 
-  ret = snprintf (p, remaining, "INSERT INTO %s", table_name);
+  ret = snprintf (p, remaining, "/* DBLINK INSERT */ INSERT INTO %s", table_name);
   p += ret;
   remaining -= ret;
 
