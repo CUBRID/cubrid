@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,23 +17,13 @@
  */
 
 /*
- * parallel.h - parallel module
+ * px_scan_checker.hpp
  */
 
-#pragma once
+#ifndef _PX_SCAN_CHECKER_HPP_
+#define _PX_SCAN_CHECKER_HPP_
+#include "xasl.h"
 
-#include "system.h"
+extern "C" int scan_check_parallel_scan_possible (XASL_NODE *xasl);
 
-namespace parallel_query
-{
-  enum class parallel_type : int
-  {
-    SCAN      = 0,	/* heap / list / index scan */
-    HASH_JOIN = 1,
-    SORT      = 2,
-    SUBQUERY  = 3,
-  };
-
-  UINT32 compute_parallel_degree (parallel_type type, UINT64 num_pages,
-				  int hint_degree = -1 /* auto-compute */ ) noexcept;
-}				/* namespace parallel_query */
+#endif /*_PX_SCAN_CHECKER_HPP_ */

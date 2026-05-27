@@ -17,15 +17,14 @@
  */
 
 /*
- * px_heap_scan_result_handler.cpp
+ * px_scan_result_handler.cpp
  */
 
-#include "px_heap_scan_result_handler.hpp"
+#include "px_scan_result_handler.hpp"
 #include "error_code.h"
 #include "error_manager.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
-#include "porting.h"
 #include "query_opfunc.h"
 #include "list_file.h"
 #include "dbtype_def.h"
@@ -35,11 +34,12 @@
 #include "fetch.h"
 #include "query_aggregate.hpp"
 #include "xasl_aggregate.hpp"
+#include "object_domain.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
   template <RESULT_TYPE result_type>
   thread_local typename result_handler<result_type>::tls result_handler<result_type>::tl;
@@ -77,7 +77,6 @@ namespace parallel_heap_scan
       }
     return NO_ERROR;
   }
-
 
   template <RESULT_TYPE result_type>
   result_handler<result_type>::result_handler (QUERY_ID query_id, interrupt *interrupt_p,
@@ -226,7 +225,6 @@ namespace parallel_heap_scan
 	    {
 	      m_err_messages_p->move_top_error_message_to_this();
 	      m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-	      /* error occurred, return false to stop the writer */
 	      return;
 	    }
 	  list_id = qfile_open_list (thread_p, &type_list, NULL, m_query_id, QFILE_FLAG_ALL|QFILE_NOT_USE_MEMBUF, NULL );
@@ -234,7 +232,6 @@ namespace parallel_heap_scan
 	    {
 	      m_err_messages_p->move_top_error_message_to_this();
 	      m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-	      /* error occurred, return false to stop the writer */
 	      return;
 	    }
 	  m_.writer_results.push_back (list_id);
@@ -251,7 +248,6 @@ namespace parallel_heap_scan
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	    m_err_messages_p->move_top_error_message_to_this();
 	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-	    /* error occurred, return false to stop the writer */
 	    return;
 	  }
 	size = tl.writer_result_p->type_list.type_cnt * sizeof (bool);
@@ -323,8 +319,7 @@ namespace parallel_heap_scan
 	      {
 		m_err_messages_p->move_top_error_message_to_this();
 		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		/* for prevent data corruption at m_.hgby_results;
-		 * context->part_list_id will be destroyed in thread's qexec_clear_xasl */
+		/* skip append: part_list_id freed by qexec_clear_xasl; touching m_.hgby_results would corrupt it. */
 		hash_aggregate_append = false;
 	      }
 	    if (context->part_list_id != NULL)
@@ -592,8 +587,7 @@ namespace parallel_heap_scan
 	  {
 	    BUILDLIST_PROC_NODE *buildlist_proc = &m_.orig_xasl->proc.buildlist;
 	    merge_list_ids (thread_p, buildlist_proc->agg_hash_context->part_list_id, m_.hgby_results);
-	    /* Using HS_REJECT_ALL to force 'hash: partial' in trace during hash group by with part list IDs.
-	     * Refer to gstats in qdump_print_stats_text(). */
+	    /* HS_REJECT_ALL forces 'hash: partial' trace for hgby with part list IDs (cf. qdump_print_stats_text). */
 	    m_.orig_xasl->groupby_stats.groupby_hash = HS_REJECT_ALL;
 	  }
 
@@ -844,7 +838,7 @@ namespace parallel_heap_scan
 	int err_code;
 	VPID old_last_vpid;
 	QFILE_LIST_ID *list_id_p;
-	parallel_heap_scan::list_id_header *tl_list_id_header = tl.list_id_header_p;
+	parallel_scan::list_id_header *tl_list_id_header = tl.list_id_header_p;
 	QFILE_TUPLE_RECORD &tl_tpl_buf = tl.tpl_buf;
 	VAL_LIST *input = src;
 
@@ -969,14 +963,17 @@ namespace parallel_heap_scan
       }
     for (AGGREGATE_TYPE *orig_agg_p = m_orig_agg_list; orig_agg_p != NULL; orig_agg_p = orig_agg_p->next)
       {
+	/* COUNT_STAR/DISTINCT already finalized upstream; COUNT needs curr_cnt→BIGINT, others need value clone. */
 	if (orig_agg_p->function == PT_COUNT_STAR)
 	  {
+	    continue;
 	  }
-	else if (orig_agg_p->option == Q_DISTINCT
-		 && orig_agg_p->function != PT_MIN && orig_agg_p->function != PT_MAX)
+	if (orig_agg_p->option == Q_DISTINCT
+	    && orig_agg_p->function != PT_MIN && orig_agg_p->function != PT_MAX)
 	  {
+	    continue;
 	  }
-	else if (orig_agg_p->function == PT_COUNT)
+	if (orig_agg_p->function == PT_COUNT)
 	  {
 	    db_make_bigint (orig_agg_p->accumulator.value, (INT64) orig_agg_p->accumulator.curr_cnt);
 	  }
@@ -1014,7 +1011,6 @@ namespace parallel_heap_scan
 
   void result_handler<RESULT_TYPE::BUILDVALUE_OPT>::read_finalize (THREAD_ENTRY *thread_p)
   {
-
   }
 
   void result_handler<RESULT_TYPE::BUILDVALUE_OPT>::write_initialize (THREAD_ENTRY *thread_p, OUTPTR_LIST *outptr_list,
@@ -1058,8 +1054,7 @@ namespace parallel_heap_scan
 	  }
 	else
 	  {
-	    /* Non-DISTINCT: init curr_cnt for all types.
-	     * value/value2 initialization happens on first row in write() via curr_cnt < 1 check. */
+	    /* Non-DISTINCT: curr_cnt init; value/value2 set on first write() row via curr_cnt < 1. */
 	    agg_node->accumulator.curr_cnt = 0;
 	  }
       }
@@ -1157,6 +1152,83 @@ namespace parallel_heap_scan
 	  }
 	else
 	  {
+	    /* per-row domain fallback: qexec_resolve_domains_for_aggregation may leave NULL domain for covering index NULL values. */
+	    if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
+	      {
+		switch (agg_node->function)
+		  {
+		  case PT_AGG_BIT_AND:
+		  case PT_AGG_BIT_OR:
+		  case PT_AGG_BIT_XOR:
+		  case PT_MIN:
+		  case PT_MAX:
+		    acc_dom->value_dom = agg_node->domain;
+		    acc_dom->value2_dom = &tp_Null_domain;
+		    break;
+
+		  case PT_AVG:
+		  case PT_SUM:
+		    if (TP_IS_NUMERIC_TYPE (DB_VALUE_DOMAIN_TYPE (db_value_p)))
+		      {
+			if (agg_node->domain != NULL && TP_DOMAIN_TYPE (agg_node->domain) == DB_TYPE_NUMERIC)
+			  {
+			    acc_dom->value_dom =
+				    tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_MAX_NUMERIC_PRECISION,
+						       agg_node->domain->scale, NULL, 0);
+			  }
+			else if (DB_VALUE_DOMAIN_TYPE (db_value_p) == DB_TYPE_NUMERIC)
+			  {
+			    acc_dom->value_dom =
+				    tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_MAX_NUMERIC_PRECISION,
+						       DB_VALUE_SCALE (db_value_p), NULL, 0);
+			  }
+			else if (DB_VALUE_DOMAIN_TYPE (db_value_p) == DB_TYPE_FLOAT)
+			  {
+			    acc_dom->value_dom =
+				    tp_domain_resolve (DB_TYPE_DOUBLE, NULL, DB_DOUBLE_DECIMAL_PRECISION,
+						       DB_VALUE_SCALE (db_value_p), NULL, 0);
+			  }
+			else
+			  {
+			    acc_dom->value_dom = tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (db_value_p));
+			  }
+		      }
+		    else
+		      {
+			acc_dom->value_dom = agg_node->domain;
+		      }
+		    acc_dom->value2_dom = &tp_Null_domain;
+		    break;
+
+		  case PT_STDDEV:
+		  case PT_STDDEV_POP:
+		  case PT_STDDEV_SAMP:
+		  case PT_VARIANCE:
+		  case PT_VAR_POP:
+		  case PT_VAR_SAMP:
+		    acc_dom->value_dom = &tp_Double_domain;
+		    acc_dom->value2_dom = &tp_Double_domain;
+		    break;
+
+		  case PT_GROUP_CONCAT:
+		    acc_dom->value_dom = agg_node->domain;
+		    acc_dom->value2_dom = &tp_Null_domain;
+		    break;
+
+		  default:
+		    if (agg_node->domain != NULL)
+		      {
+			acc_dom->value_dom = agg_node->domain;
+		      }
+		    else
+		      {
+			acc_dom->value_dom = tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (db_value_p));
+		      }
+		    acc_dom->value2_dom = &tp_Null_domain;
+		    break;
+		  }
+	      }
+
 	    switch (agg_node->function)
 	      {
 	      case PT_COUNT:
@@ -1433,8 +1505,7 @@ namespace parallel_heap_scan
     tl_tpl_buf.size = 0;
   }
 
-
-// Explicit template instantiations
+  /* Explicit template instantiations */
   template class result_handler<RESULT_TYPE::MERGEABLE_LIST>;
   template class result_handler<RESULT_TYPE::XASL_SNAPSHOT>;
   template class result_handler<RESULT_TYPE::BUILDVALUE_OPT>;

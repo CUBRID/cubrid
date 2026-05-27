@@ -17,48 +17,47 @@
  */
 
 /*
- * px_heap_scan_slot_iterator.hpp
+ * px_scan_slot_iterator_list.hpp
  */
 
-#ifndef _PX_HEAP_SCAN_SLOT_ITERATOR_HPP_
-#define _PX_HEAP_SCAN_SLOT_ITERATOR_HPP_
+#ifndef _PX_SCAN_SLOT_ITERATOR_LIST_HPP_
+#define _PX_SCAN_SLOT_ITERATOR_LIST_HPP_
 
-#include "heap_file.h"
-#include "query_executor.h"
-#include "storage_common.h"
+#include "query_evaluator.h"
+#include "query_list.h"
+#include "query_manager.h"
 #include "scan_manager.h"
-#include "xasl.h"
+#include "storage_common.h"
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
-  class slot_iterator
+  class slot_iterator_list
   {
     public:
-      slot_iterator();
-      ~slot_iterator();
+      slot_iterator_list ();
+      ~slot_iterator_list ();
       int initialize (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, val_descr *vd);
       int finalize (THREAD_ENTRY *thread_p);
-      int set_page (THREAD_ENTRY *thread_p, VPID *vpid);
+      /* adopts page pre-fixed by input_handler_list (no re-fix). */
+      int set_page (THREAD_ENTRY *thread_p, PAGE_PTR page, QMGR_TEMP_FILE *tfile);
       SCAN_CODE next_qualified_slot_with_peek (THREAD_ENTRY *thread_p);
 
     private:
-      FILTER_INFO m_data_filter;
-      bool m_is_peeking;
-      OID m_cur_oid;
-      OID m_class_oid;
-      OID m_next_oid;
-      RECDES m_recdes;
-      LOG_LSA m_ref_lsa;
+      PAGE_PTR m_curr_pgptr;
+      QFILE_TUPLE m_curr_tpl;
+      int m_curr_tplno;
+      int m_tuple_count;
+      QMGR_TEMP_FILE *m_curr_tfile;
+      QFILE_LIST_ID *m_list_id;
+      SCAN_PRED m_scan_pred;
       regu_variable_list_node *m_rest_regu_list;
-      HEAP_CACHE_ATTRINFO *m_rest_attr_cache;
-      VAL_LIST *m_val_list;
-      HEAP_SCANCACHE *m_scan_cache;
-      VPID m_vpid;
-      HFID m_hfid;
+      QFILE_TUPLE_RECORD *m_tplrecp;
+      QFILE_TUPLE_RECORD m_tplrec;
+      val_list_node *m_val_list;
       val_descr *m_vd;
       SCAN_STATS *m_scan_stats;
       bool m_on_trace;
   };
 }
 
-#endif /*_PX_HEAP_SCAN_SLOT_ITERATOR_HPP_ */
+#endif /*_PX_SCAN_SLOT_ITERATOR_LIST_HPP_ */
