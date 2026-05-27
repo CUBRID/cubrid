@@ -8000,7 +8000,7 @@ heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
 
   const int src_offset_size = OR_GET_OFFSET_SIZE (src);
   const int src_header_size = OR_HEADER_SIZE ((char *) src);
-  const char *src_vot = src + src_header_size;
+  const char *src_vot = (const char *) OR_GET_OBJECT_VAR_TABLE (src);
   const int src_vot_capacity = (src_length - src_header_size) / src_offset_size;
 
   /* Walk the VOT and collect each raw offset entry (including flag bits). The loop stops at the
