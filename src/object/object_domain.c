@@ -9424,16 +9424,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	case DB_TYPE_VARBIT:
 	  err = db_bit_to_blob (src, target);
 	  break;
-	case DB_TYPE_CHAR:
-	case DB_TYPE_VARCHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
-	  err = db_char_to_blob (src, target);
-	  break;
-	case DB_TYPE_CLOB:
-	  // TODO: update when storage structure is improved.
-	  err = db_char_to_blob (src, target);
-	  break;
+	  /* CHAR / VARCHAR / NCHAR / VARNCHAR / CLOB → BLOB implicit cast is
+	   * intentionally not supported.  Use CHAR_TO_BLOB / BIT_TO_BLOB /
+	   * BLOB_FROM_FILE etc. explicitly. */
 	case DB_TYPE_ENUMERATION:
 	  {
 	    DB_VALUE varchar_val;
@@ -9485,7 +9478,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
     case DB_TYPE_VARBIT:
       switch (original_type)
 	{
-	case DB_TYPE_CLOB:
+	  /* CLOB → BIT/VARBIT implicit cast is intentionally not supported.
+	   * Use CLOB_TO_CHAR (or similar) then string → bit explicitly. */
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CHAR:
 	case DB_TYPE_NCHAR:
@@ -9562,20 +9556,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  }
 	  break;
 
-	case DB_TYPE_BFILE:
-	  {
-	    DB_VALUE tmpval;
-
-	    db_make_null (&tmpval);
-
-	    err = db_bfile_to_bit (src, NULL, &tmpval);
-	    if (err == NO_ERROR)
-	      {
-		err = tp_value_cast_internal (&tmpval, target, desired_domain, coercion_mode, do_domain_select, false);
-	      }
-	    (void) pr_clear_value (&tmpval);
-	  }
-	  break;
+	  /* BFILE → BIT/VARBIT implicit cast is intentionally not supported.
+	   * Use BFILE_TO_BIT explicitly. */
 
 	default:
 	  if (src == dest && tp_can_steal_string (src, desired_domain))
@@ -9904,10 +9886,10 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  }
 	  break;
 
+	  /* BLOB → CHAR/VARCHAR/NCHAR/VARNCHAR implicit cast is intentionally
+	   * not supported.  Use BLOB_TO_CHAR / BLOB_TO_BIT explicitly. */
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
-	case DB_TYPE_BLOB:
-	  // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
 	  {
 	    int max_size;
 	    char *new_string;
@@ -9951,33 +9933,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  }
 	  break;
 
-	case DB_TYPE_CFILE:
-	  switch (desired_type)
-	    {
-	    case DB_TYPE_NCHAR:
-	    case DB_TYPE_VARNCHAR:
-	      status = DOMAIN_INCOMPATIBLE;
-	      break;
-	    default:
-	      {
-		DB_VALUE tmpval;
-		DB_VALUE cs;
-
-		db_make_null (&tmpval);
-		/* convert directly from CFILE into charset of desired domain string */
-		db_make_int (&cs, desired_domain->codeset);
-		err = db_cfile_to_char (src, &cs, &tmpval);
-		if (err == NO_ERROR)
-		  {
-		    err =
-		      tp_value_cast_internal (&tmpval, dest, desired_domain, coercion_mode, do_domain_select, false);
-		  }
-
-		pr_clear_value (&tmpval);
-	      }
-	      break;
-	    }
-	  break;
+	  /* CFILE → CHAR/VARCHAR/NCHAR/VARNCHAR implicit cast is intentionally
+	   * not supported.  Use CFILE_TO_CHAR explicitly. */
 	case DB_TYPE_CLOB:
 	  switch (desired_type)
 	    {
@@ -10035,24 +9992,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	case DB_TYPE_BFILE:
 	  err = db_value_clone ((DB_VALUE *) src, target);
 	  break;
-	case DB_TYPE_BIT:
-	case DB_TYPE_VARBIT:
-	  err = db_bit_to_bfile (src, target);
-	  break;
-	case DB_TYPE_CHAR:
-	case DB_TYPE_VARCHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
-	  err = db_char_to_bfile (src, target);
-	  break;
-	case DB_TYPE_BLOB:
-	  // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
-	  err = db_bit_to_bfile (src, target);
-	  break;
-	case DB_TYPE_CLOB:
-	  // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
-	  err = db_char_to_bfile (src, target);
-	  break;
+	  /* No implicit cast into BFILE.  BFILE represents an external file and
+	   * any conversion must be explicit (BFILE_FROM_FILE / CHAR_TO_BFILE /
+	   * BIT_TO_BFILE / BLOB_TO_BFILE). */
 	case DB_TYPE_ENUMERATION:
 	  {
 	    DB_VALUE varchar_val;
@@ -10078,14 +10020,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	case DB_TYPE_CFILE:
 	  err = db_value_clone ((DB_VALUE *) src, target);
 	  break;
-	case DB_TYPE_CHAR:
-	case DB_TYPE_VARCHAR:
-	  err = db_char_to_cfile (src, target);
-	  break;
-	case DB_TYPE_CLOB:
-	  // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
-	  err = db_char_to_cfile (src, target);
-	  break;
+	  /* No implicit cast into CFILE.  CFILE represents an external file and
+	   * any conversion must be explicit (CFILE_FROM_FILE / CHAR_TO_CFILE /
+	   * CLOB_TO_CFILE). */
 	case DB_TYPE_ENUMERATION:
 	  {
 	    DB_VALUE varchar_val;
