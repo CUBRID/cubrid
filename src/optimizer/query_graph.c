@@ -8181,22 +8181,6 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 	  continue;
 	}
 
-      pt_expr = parser_new_node (parser, PT_EXPR);
-      if (pt_expr == NULL)
-	{
-	  continue;
-	}
-
-      pt_expr->info.expr.op = PT_EQ;
-      pt_expr->info.expr.arg1 = parser_copy_tree (parser, QO_SEG_PT_NODE (head_seg));
-      pt_expr->info.expr.arg2 = parser_copy_tree (parser, QO_SEG_PT_NODE (tail_seg));
-      if (pt_expr->info.expr.arg1 == NULL || pt_expr->info.expr.arg2 == NULL)
-	{
-	  parser_free_tree (parser, pt_expr);
-	  continue;
-	}
-      pt_expr->type_enum = PT_TYPE_LOGICAL;
-
       /* Both endpoints appear in PT_EXPR_INFO_TRANSITIVE edge terms within the same
        * eqclass; the generated term is itself transitive and qo_discover_edges will
        * classify it DUMMY_JOIN. Check per-eqclass to avoid cross-eqclass contamination. */
@@ -8233,6 +8217,24 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 		tail_in_trans = true;
 	      }
 	  }
+
+	pt_expr = parser_new_node (parser, PT_EXPR);
+	if (pt_expr == NULL)
+	  {
+	    continue;
+	  }
+
+	pt_expr->info.expr.op = PT_EQ;
+	pt_expr->info.expr.arg1 = parser_copy_tree (parser, QO_SEG_PT_NODE (head_seg));
+	pt_expr->info.expr.arg2 = parser_copy_tree (parser, QO_SEG_PT_NODE (tail_seg));
+	
+        if (pt_expr->info.expr.arg1 == NULL || pt_expr->info.expr.arg2 == NULL)
+	  {
+	    parser_free_tree (parser, pt_expr);
+	    continue;
+	  }
+	pt_expr->type_enum = PT_TYPE_LOGICAL;
+
 	if (head_in_trans && tail_in_trans)
 	  {
 	    PT_EXPR_INFO_SET_FLAG (pt_expr, PT_EXPR_INFO_TRANSITIVE);
