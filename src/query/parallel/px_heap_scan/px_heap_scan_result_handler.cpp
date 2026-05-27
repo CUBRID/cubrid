@@ -1300,6 +1300,43 @@ namespace parallel_heap_scan
 	      }
 	      break;
 
+	      case PT_AGG_BIT_AND:
+	      case PT_AGG_BIT_OR:
+	      case PT_AGG_BIT_XOR:
+	      {
+		DB_VALUE tmp_val;
+		db_make_bigint (&tmp_val, (DB_BIGINT) 0);
+		if (acc->curr_cnt < 1 || DB_IS_NULL (acc->value))
+		  {
+		    if (qdata_bit_or_dbval (&tmp_val, db_value_p, acc->value, acc_dom->value_dom) != NO_ERROR)
+		      {
+			return false;
+		      }
+		  }
+		else
+		  {
+		    int bit_err = NO_ERROR;
+		    if (agg_node->function == PT_AGG_BIT_AND)
+		      {
+			bit_err = qdata_bit_and_dbval (acc->value, db_value_p, acc->value, acc_dom->value_dom);
+		      }
+		    else if (agg_node->function == PT_AGG_BIT_OR)
+		      {
+			bit_err = qdata_bit_or_dbval (acc->value, db_value_p, acc->value, acc_dom->value_dom);
+		      }
+		    else
+		      {
+			bit_err = qdata_bit_xor_dbval (acc->value, db_value_p, acc->value, acc_dom->value_dom);
+		      }
+		    if (bit_err != NO_ERROR)
+		      {
+			return false;
+		      }
+		  }
+		acc->curr_cnt++;
+	      }
+	      break;
+
 	      default:
 		assert (false);
 		return false;

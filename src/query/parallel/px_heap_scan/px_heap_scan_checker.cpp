@@ -75,6 +75,9 @@ namespace parallel_heap_scan
       case PT_VARIANCE:
       case PT_VAR_POP:
       case PT_VAR_SAMP:
+      case PT_AGG_BIT_AND:
+      case PT_AGG_BIT_OR:
+      case PT_AGG_BIT_XOR:
 	return true;
       default:
 	return false;
