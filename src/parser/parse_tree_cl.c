@@ -4042,6 +4042,14 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "typeof ";
     case PT_INDEX_CARDINALITY:
       return "index_cardinality ";
+    case PT_ESTIMATED_TABLE_ROWS:
+      return "estimated_table_rows";
+    case PT_ESTIMATED_AVG_ROW_LENGTH:
+      return "estimated_avg_row_length";
+    case PT_ESTIMATED_DATA_LENGTH:
+      return "estimated_data_length";
+    case PT_ESTIMATED_DATA_FREE:
+      return "estimated_data_free";
     case PT_EVALUATE_VARIABLE:
       return "evaluate_variable";
     case PT_DEFINE_VARIABLE:
@@ -4090,6 +4098,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "schema_def";
     case PT_CONV_TZ:
       return "conv_tz";
+    case PT_COLLECTION_TO_STRING:
+      return "collection_to_string";
     default:
       assert (false);
       return "unknown opcode";
@@ -12116,6 +12126,34 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, ")");
       break;
 
+    case PT_ESTIMATED_TABLE_ROWS:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " estimated_table_rows(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_ESTIMATED_AVG_ROW_LENGTH:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " estimated_avg_row_length(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_ESTIMATED_DATA_LENGTH:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " estimated_data_length(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_ESTIMATED_DATA_FREE:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " estimated_data_free(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
     case PT_TO_ENUMERATION_VALUE:
       /* only print argument */
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
@@ -12374,6 +12412,12 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_SCHEMA_DEF:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_nulstring (parser, q, " schema_def(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_COLLECTION_TO_STRING:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " collection_to_string(");
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;

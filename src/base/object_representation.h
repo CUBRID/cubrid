@@ -1052,6 +1052,7 @@ extern "C"
   extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
 
   extern int valcnv_convert_value_to_string (DB_VALUE * value);
+  extern int valcnv_convert_collection_value_to_string_all_elements (DB_VALUE * value);
 
 #if defined __cplusplus
 }

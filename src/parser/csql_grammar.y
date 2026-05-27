@@ -24068,6 +24068,11 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_CRC32:
     case PT_SCHEMA_DEF:
     case PT_DISK_SIZE:
+    case PT_ESTIMATED_TABLE_ROWS:
+    case PT_ESTIMATED_AVG_ROW_LENGTH:
+    case PT_ESTIMATED_DATA_LENGTH:
+    case PT_ESTIMATED_DATA_FREE:
+    case PT_COLLECTION_TO_STRING:
       {
 	PT_NODE *expr;
 	if (c != 1)
