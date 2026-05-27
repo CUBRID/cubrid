@@ -7982,12 +7982,12 @@ heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
       return S_SUCCESS;
     }
 
+  assert (rec != NULL && rec->data != NULL && rec->length > 0);
+
   if (!heap_recdes_contains_oos (rec))
     {
       return S_SUCCESS;
     }
-
-  assert (rec != NULL && rec->data != NULL && rec->length > 0);
 
   /* Snapshot input bytes up front: rec->data may live in a PEEK'd page, and we may reallocate it
    * via scan_cache below. Either way, we must not rely on rec->data remaining valid once we start
