@@ -27,8 +27,6 @@
 #include "query_list.h"
 #include "query_manager.h"
 #include "scan_manager.h"
-#include <atomic>
-#include <vector>
 
 namespace parallel_scan
 {
@@ -37,19 +35,9 @@ namespace parallel_scan
       using interrupt = parallel_query::interrupt;
       using err_messages_with_lock = parallel_query::err_messages_with_lock;
 
-      /* [start, end) into m_sector_info; iter advances as sectors are consumed. */
-      struct worker_slice
-      {
-	int start;
-	int end;
-	int iter;
-      };
-
     public:
       input_handler_list (interrupt *interrupt_p, err_messages_with_lock *err_messages_p)
-	: m_sector_info (),
-	  m_worker_slice_idx (0),
-	  m_membuf_claimed (false),
+	: m_sector_scan (),
 	  m_list_id (nullptr),
 	  m_interrupt_p (interrupt_p),
 	  m_err_messages_p (err_messages_p)
@@ -75,17 +63,12 @@ namespace parallel_scan
       }
 
     private:
-      QFILE_LIST_SECTOR_INFO m_sector_info;
-      std::vector<worker_slice> m_worker_slices;
-      std::atomic_int m_worker_slice_idx;
-      /* CAS membuf ownership — idx==0 failure cannot strand the membuf. */
-      std::atomic<bool> m_membuf_claimed;
+      QFILE_LIST_SECTOR_SCAN_INFO m_sector_scan;
 
       QFILE_LIST_ID *m_list_id;
       interrupt *m_interrupt_p;
       err_messages_with_lock *m_err_messages_p;
 
-      thread_local static worker_slice *m_tl_slice;
       thread_local static UINT64 m_tl_bitmap;
       thread_local static VSID m_tl_vsid;
       thread_local static QMGR_TEMP_FILE *m_tl_current_tfile;
