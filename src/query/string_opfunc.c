@@ -25257,15 +25257,17 @@ db_bit_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
 
   if ((length >= 0) && (bit_data != NULL))
     {
-      /* Allocate 1 byte when length is 0 (empty string case) so that buf can hold an empty string (''). */
-      buf = db_private_alloc (NULL, length ? length : 1);
+      /* db_get_bit returns the length in BITS; convert to bytes for allocation / memcpy.
+       * Allocate 1 byte when length is 0 (empty string) so buf can hold an empty value. */
+      int byte_len = QSTR_NUM_BYTES (length);
+      buf = db_private_alloc (NULL, byte_len ? byte_len : 1);
       if (buf == NULL)
 	{
 	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error;
 	}
 
-      memcpy (buf, bit_data, length);
+      memcpy (buf, bit_data, byte_len);
     }
 
   error_status = db_make_blob (result_value, DB_MAX_LOB_PRECISION, (DB_CONST_C_BIT) buf, length);
@@ -25400,7 +25402,7 @@ db_blob_to_bit (const DB_VALUE * src_value, const DB_VALUE * length_value, DB_VA
       goto success;
     }
 
-  if (src_type != DB_TYPE_BLOB && length_type != DB_TYPE_INTEGER)
+  if (src_type != DB_TYPE_BLOB || length_type != DB_TYPE_INTEGER)
     {
       error_status = ER_QSTR_INVALID_DATA_TYPE;
       goto error;
@@ -25411,15 +25413,16 @@ db_blob_to_bit (const DB_VALUE * src_value, const DB_VALUE * length_value, DB_VA
 
   if ((length >= 0) && (blob_data != NULL))
     {
-      /* Allocate 1 byte when length is 0 (empty string case) so that buf can hold an empty string (''). */
-      buf = db_private_alloc (NULL, length ? length : 1);
+      /* db_get_bit returns the length in BITS; convert to bytes for allocation / memcpy. */
+      int byte_len = QSTR_NUM_BYTES (length);
+      buf = db_private_alloc (NULL, byte_len ? byte_len : 1);
       if (buf == NULL)
 	{
 	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error;
 	}
 
-      memcpy (buf, blob_data, length);
+      memcpy (buf, blob_data, byte_len);
     }
 
   error_status = db_make_varbit (result_value, max_length, (DB_CONST_C_BIT) buf, length);
@@ -25455,6 +25458,7 @@ db_blob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
 {
   int error_status = NO_ERROR;
   DB_VALUE bfile_value;
+  DB_ELO *temp_elo = NULL;
   // TODO: This part should be revised when the TOAST structure is introduced in the future.
   db_make_null (&bfile_value);
 
@@ -25465,6 +25469,20 @@ db_blob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
     }
 
   error_status = db_bfile_to_bit (&bfile_value, NULL, result_value);
+
+  /* The temporary BFILE was created on the ES backing store solely to
+   * read the file bytes; remove it before returning to avoid orphaning
+   * the ES file on every BLOB_FROM_FILE invocation.
+   * elo_delete() only unlinks the ES backing file; it does NOT free the
+   * DB_ELO's locator buffer. pr_clear_value () is still required to free
+   * that buffer (operates on disjoint resources, so no double-free). */
+  temp_elo = db_get_elo (&bfile_value);
+  if (temp_elo != NULL)
+    {
+      (void) elo_delete (temp_elo, true);
+    }
+  pr_clear_value (&bfile_value);
+
   if (error_status != NO_ERROR)
     {
       return error_status;
@@ -25681,6 +25699,7 @@ db_clob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
 {
   int error_status = NO_ERROR;
   DB_VALUE cfile_value;
+  DB_ELO *temp_elo = NULL;
   // TODO: This part should be revised when the TOAST structure is introduced in the future.
   db_make_null (&cfile_value);
 
@@ -25691,6 +25710,20 @@ db_clob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
     }
 
   error_status = db_cfile_to_char (&cfile_value, NULL, result_value);
+
+  /* The temporary CFILE was created on the ES backing store solely to
+   * read the file bytes; remove it before returning to avoid orphaning
+   * the ES file on every CLOB_FROM_FILE invocation.
+   * elo_delete() only unlinks the ES backing file; it does NOT free the
+   * DB_ELO's locator buffer. pr_clear_value () is still required to free
+   * that buffer (operates on disjoint resources, so no double-free). */
+  temp_elo = db_get_elo (&cfile_value);
+  if (temp_elo != NULL)
+    {
+      (void) elo_delete (temp_elo, true);
+    }
+  pr_clear_value (&cfile_value);
+
   if (error_status != NO_ERROR)
     {
       return error_status;
