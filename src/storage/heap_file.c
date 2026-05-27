@@ -8077,7 +8077,7 @@ heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
 	  continue;
 	}
 
-      const int value_offset = src_header_size + OR_GET_VAR_OFFSET (vot_raw[i]);
+      const int value_offset = OR_VAR_OFFSET (src, i);
       if (value_offset + OR_OOS_INLINE_SIZE > src_length)
 	{
 	  assert_release (false && "OOS inline slot extends past record bounds");
