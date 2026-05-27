@@ -39,7 +39,7 @@ namespace parallel_query
     static std::size_t system_core_count;
     static int parallelism;
 
-    static int heap_scan_page_threshold;
+    static int scan_page_threshold;
     static int hash_join_page_threshold;
     static int sort_page_threshold;
 
@@ -50,7 +50,7 @@ namespace parallel_query
       assert (parallelism >= 0);
       assert ((std::size_t) parallelism <= system_core_count);
 
-      heap_scan_page_threshold = prm_get_integer_value (PRM_ID_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD);
+      scan_page_threshold = prm_get_integer_value (PRM_ID_PARALLEL_SCAN_PAGE_THRESHOLD);
       hash_join_page_threshold = prm_get_integer_value (PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD);
       sort_page_threshold = prm_get_integer_value (PRM_ID_PARALLEL_SORT_PAGE_THRESHOLD);
     });
@@ -69,8 +69,8 @@ namespace parallel_query
 
     switch (type)
       {
-      case parallel_type::HEAP_SCAN:
-	page_threshold = (UINT32) heap_scan_page_threshold;
+      case parallel_type::SCAN:
+	page_threshold = (UINT32) scan_page_threshold;
 	break;
 
       case parallel_type::HASH_JOIN:
