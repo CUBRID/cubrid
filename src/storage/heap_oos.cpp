@@ -29,7 +29,6 @@
 #include "object_representation.h"
 #include "oos_file.hpp"
 #include "oos_log.hpp"
-#include "scope_exit.hpp"
 #include "storage_common.h"
 
 #include <cassert>
@@ -54,7 +53,7 @@ struct HEAP_OOS_EXPAND_STATE
   int dst_vot_bytes;
   int fixed_bitmap_bytes;
   std::vector<int> vot_raw;
-  std::vector<RECDES> oos_recdes;
+  std::vector<std::vector<char>> oos_blobs;
 };
 
 /*
@@ -117,7 +116,7 @@ heap_oos_parse_vot (HEAP_OOS_EXPAND_STATE *state)
  * heap_oos_read_blobs () - Read the OOS blob for every OOS-tagged variable index.
  *   return: NO_ERROR or error code
  *   thread_p(in): thread entry
- *   state(in/out): oos_recdes must be pre-initialized with RECDES_INITIALIZER
+ *   state(in/out): oos_blobs must be resized to n_var (empty vectors)
  */
 static int
 heap_oos_read_blobs (THREAD_ENTRY *thread_p, HEAP_OOS_EXPAND_STATE *state)
@@ -154,16 +153,12 @@ heap_oos_read_blobs (THREAD_ENTRY *thread_p, HEAP_OOS_EXPAND_STATE *state)
 	  return ER_FAILED;
 	}
 
-      if (recdes_allocate_data_area (&state->oos_recdes[i], (int) oos_len) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-      if (oos_read (thread_p, oos_oid, oos_buffer (state->oos_recdes[i].data, (std::size_t) oos_len)) != NO_ERROR)
+      state->oos_blobs[i].resize ((std::size_t) oos_len);
+      if (oos_read (thread_p, oos_oid, oos_buffer (state->oos_blobs[i].data (), (std::size_t) oos_len)) != NO_ERROR)
 	{
 	  oos_error ("oos_read failed for OID %d|%d|%d", OID_AS_ARGS (&oos_oid));
 	  return ER_FAILED;
 	}
-      state->oos_recdes[i].length = (int) oos_len;
     }
 
   return NO_ERROR;
@@ -202,7 +197,7 @@ heap_oos_compute_layout (HEAP_OOS_EXPAND_STATE *state)
       if (OR_IS_OOS (state->vot_raw[i]))
 	{
 	  assert (src_val_len == OR_OOS_INLINE_SIZE);
-	  new_values_bytes += state->oos_recdes[i].length;
+	  new_values_bytes += (int64_t) state->oos_blobs[i].size ();
 	}
       else
 	{
@@ -264,7 +259,7 @@ heap_oos_build_record (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context, const 
     {
       OR_PUT_INT (dst_vot + i * dst_offset_size, dst_first_value_rel + cumulative);
       const int val_len = (OR_IS_OOS (state->vot_raw[i])
-			   ? state->oos_recdes[i].length
+			   ? (int) state->oos_blobs[i].size ()
 			   : (OR_GET_VAR_OFFSET (state->vot_raw[i + 1]) - OR_GET_VAR_OFFSET (state->vot_raw[i])));
       cumulative += val_len;
     }
@@ -290,8 +285,8 @@ heap_oos_build_record (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context, const 
     {
       if (OR_IS_OOS (state->vot_raw[i]))
 	{
-	  std::memcpy (dst + dst_pos, state->oos_recdes[i].data, state->oos_recdes[i].length);
-	  dst_pos += state->oos_recdes[i].length;
+	  std::memcpy (dst + dst_pos, state->oos_blobs[i].data (), state->oos_blobs[i].size ());
+	  dst_pos += (int) state->oos_blobs[i].size ();
 	}
       else
 	{
@@ -351,22 +346,7 @@ heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context)
       return S_ERROR;
     }
 
-  state.oos_recdes.resize (state.n_var);
-  for (int i = 0; i < state.n_var; ++i)
-    {
-      state.oos_recdes[i] = RECDES_INITIALIZER;
-    }
-
-  auto oos_cleanup = make_scope_exit ([&]()
-  {
-    for (int i = 0; i < state.n_var; ++i)
-      {
-	if (state.oos_recdes[i].data != NULL)
-	  {
-	    recdes_free_data_area (&state.oos_recdes[i]);
-	  }
-      }
-  });
+  state.oos_blobs.resize (state.n_var);
 
   if (heap_oos_read_blobs (thread_p, &state) != NO_ERROR)
     {
