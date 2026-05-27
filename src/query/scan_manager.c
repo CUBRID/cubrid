@@ -2911,7 +2911,7 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	  return ER_FAILED;
 	}
 
-      /* sampling_weight: default 30% sampling, minimum 100 pages, maximum 5000 pages */
+      /* sampling_weight: default 30% sampling, minimum 100 pages, maximum 10000 pages */
       /* 30% sampling = weight approximately 3.33 (1/0.3) */
       int base_weight = 3;	/* base weight for 33% sampling */
       int min_weight = (total_pages + MIN_HEAP_SAMPLING_PAGES - 1) / MIN_HEAP_SAMPLING_PAGES;	/* ensure minimum MIN_HEAP_SAMPLING_PAGES pages (rounded up) */
