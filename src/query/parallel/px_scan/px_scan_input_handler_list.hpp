@@ -47,7 +47,7 @@ namespace parallel_scan
 
     public:
       input_handler_list (interrupt *interrupt_p, err_messages_with_lock *err_messages_p)
-	: m_sector_info (QFILE_LIST_SECTOR_INFO_INITIALIZER),
+	: m_sector_info (),
 	  m_worker_slice_idx (0),
 	  m_membuf_claimed (false),
 	  m_list_id (nullptr),
