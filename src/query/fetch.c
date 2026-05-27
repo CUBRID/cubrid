@@ -509,6 +509,11 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_SLEEP:
     case T_CRC32:
     case T_CONV_TZ:
+    case T_ESTIMATED_TABLE_ROWS:
+    case T_ESTIMATED_AVG_ROW_LENGTH:
+    case T_ESTIMATED_DATA_LENGTH:
+    case T_ESTIMATED_DATA_FREE:
+    case T_COLLECTION_TO_STRING:
       /* fetch rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
 	{
@@ -3730,6 +3735,23 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  PRIM_SET_NULL (arithptr->value);
 	}
       else if (db_crc32_dbval (arithptr->value, peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_ESTIMATED_TABLE_ROWS:
+    case T_ESTIMATED_AVG_ROW_LENGTH:
+    case T_ESTIMATED_DATA_LENGTH:
+    case T_ESTIMATED_DATA_FREE:
+      if (qdata_get_estimated_heap_stat (thread_p, peek_right, arithptr->value, arithptr->opcode) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_COLLECTION_TO_STRING:
+      if (db_collection_to_string_dbval (arithptr->value, peek_right) != NO_ERROR)
 	{
 	  goto error;
 	}

@@ -1346,7 +1346,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 
 /*
  * pt_check_user_exists () -  given 'user.class', check that 'user' exists
- *   return:  db_user instance if user exists, NULL otherwise.
+ *   return:  _db_user instance if user exists, NULL otherwise.
  *   parser(in): the parser context used to derive cls_ref
  *   cls_ref(in): a PT_NAME node
  *
@@ -1380,7 +1380,7 @@ pt_check_user_exists (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
 
 /*
  * pt_check_user_owns_class () - given user.class, check that user owns class
- *   return:  db_user instance if 'user' exists & owns 'class', NULL otherwise
+ *   return:  _db_user instance if 'user' exists & owns 'class', NULL otherwise
  *   parser(in): the parser context used to derive cls_ref
  *   cls_ref(in): a PT_NAME node
  */
@@ -4910,6 +4910,13 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      if (attr->info.attr_def.auto_increment != NULL)
 		{
 		  PT_ERRORm (parser, alter, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VCLASS_ATT_CANT_BE_AUTOINC);
+		  return;
+		}
+	      if (attr->info.attr_def.attr_invisible != PT_ATTR_INVISIBLE_UNSET)
+		{
+		  /* attempt to set visibility in vclass */
+		  PT_ERRORm (parser, alter, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VCLASS_ATT_CANT_SET_VISIBILITY);
+		  return;
 		}
 	    }
 	}
@@ -8731,6 +8738,12 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if (attr->info.attr_def.auto_increment != NULL)
 	    {
 	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VCLASS_ATT_CANT_BE_AUTOINC);
+	      return;
+	    }
+	  if (attr->info.attr_def.attr_invisible != PT_ATTR_INVISIBLE_UNSET)
+	    {
+	      /* attempt to set visibility in vclass */
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VCLASS_ATT_CANT_SET_VISIBILITY);
 	      return;
 	    }
 	}

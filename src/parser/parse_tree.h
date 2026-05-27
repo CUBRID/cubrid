@@ -1474,6 +1474,10 @@ typedef enum
   PT_TYPEOF,
   PT_FUNCTION_HOLDER,		/* special operator : wrapper for PT_FUNCTION node */
   PT_INDEX_CARDINALITY,
+  PT_ESTIMATED_TABLE_ROWS,
+  PT_ESTIMATED_AVG_ROW_LENGTH,
+  PT_ESTIMATED_DATA_LENGTH,
+  PT_ESTIMATED_DATA_FREE,
   PT_DEFINE_VARIABLE,
   PT_EVALUATE_VARIABLE,
   PT_EXEC_STATS,
@@ -1519,6 +1523,7 @@ typedef enum
   PT_CRC32,
   PT_SCHEMA_DEF,
   PT_CONV_TZ,
+  PT_COLLECTION_TO_STRING,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
@@ -1575,7 +1580,8 @@ typedef enum
   PT_SPEC_FLAG_SAMPLING_SCAN = 0x2000,	/* spec for sampling scan */
   PT_SPEC_FLAG_REFERENCED_AT_ODKU = 0x4000,	/* spec for odku assignment */
   PT_SPEC_FLAG_NO_PARALLEL_SCAN = 0x8000,	/* spec for not for parallel scan */
-  PT_SPEC_FLAG_PARALLEL_THREAD = 0x10000	/* spec for setted number of parallel query execution threads */
+  PT_SPEC_FLAG_PARALLEL_THREAD = 0x10000,	/* spec for setted number of parallel query execution threads */
+  PT_SPEC_FLAG_DUMMY_REMOVED = 0x20000	/* this spec was originally a subquery but was resolved to a table during dummy SELECT removal; invisible columns should be excluded from this spec */
 } PT_SPEC_FLAG;
 
 typedef enum
@@ -1906,6 +1912,13 @@ struct pt_attach_info
   int trans_id;			/* transaction id */
 };
 
+typedef enum
+{
+  PT_ATTR_INVISIBLE_UNSET,
+  PT_ATTR_VISIBLE,
+  PT_ATTR_INVISIBLE
+} PT_ATTR_INVISIBLE_SETTING;
+
 /* Info for ATTR_DEF */
 struct pt_attr_def_info
 {
@@ -1918,6 +1931,7 @@ struct pt_attr_def_info
   PT_MISC_TYPE attr_type;	/* PT_NORMAL or PT_META */
   int size_constraint;		/* max length of STRING */
   short constrain_not_null;
+  PT_ATTR_INVISIBLE_SETTING attr_invisible:2;	/* unchange | VISIBLE | INVISIBLE */
 };
 
 /* Info for ALTER TABLE ADD COLUMN [FIRST | AFTER column_name ] */

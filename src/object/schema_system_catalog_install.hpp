@@ -24,6 +24,8 @@
 #ifndef _SCHEMA_SYSTEM_CATALOG_INSTALL_HPP_
 #define _SCHEMA_SYSTEM_CATALOG_INSTALL_HPP_
 
+#include <string>
+
 namespace cubschema
 {
   // forward definitions
@@ -58,6 +60,7 @@ namespace cubschema
       static system_catalog_definition get_dual ();
       static system_catalog_definition get_server ();
       static system_catalog_definition get_synonym ();
+      static system_catalog_definition get_global_tran ();
 
       // views
       static system_catalog_definition get_view_class ();
@@ -79,10 +82,54 @@ namespace cubschema
       static system_catalog_definition get_view_serial ();
       static system_catalog_definition get_view_ha_apply_info ();
       static system_catalog_definition get_view_collation ();
+      static system_catalog_definition get_view_user ();
+      static system_catalog_definition get_view_authorization ();
       static system_catalog_definition get_view_charset ();
       static system_catalog_definition get_view_synonym ();
       static system_catalog_definition get_view_server ();
   };
+
+  // TODO: find right place
+  // TODO: implement formatting utility function for std::string (like fmt library)
+  const inline std::string format_varchar (const int size)
+  {
+    std::string s ("varchar(");
+    s += std::to_string (size);
+    s += ")";
+    return s;
+  }
+
+  const inline std::string format_numeric (const int prec, const int scale)
+  {
+    std::string s ("numeric(");
+    s += std::to_string (prec);
+    s += ",";
+    s += std::to_string (scale);
+    s += ")";
+    return s;
+  }
+
+  const inline std::string format_sequence (const std::string_view type)
+  {
+    std::string s ("sequence of");
+    if (!type.empty ())
+      {
+	s.append (" ");
+	s.append (type);
+      }
+    return s;
+  }
+
+  const inline std::string format_set (const std::string_view type)
+  {
+    std::string s ("set of");
+    if (!type.empty ())
+      {
+	s.append (" ");
+	s.append (type);
+      }
+    return s;
+  }
 }
 
 // TODO: move them to proper place
@@ -105,6 +152,8 @@ const char *sm_define_view_stored_procedure_args_spec (void);
 const char *sm_define_view_serial_spec (void);
 const char *sm_define_view_ha_apply_info_spec (void);
 const char *sm_define_view_collation_spec (void);
+const char *sm_define_view_user_spec (void);
+const char *sm_define_view_authorization_spec (void);
 const char *sm_define_view_charset_spec (void);
 const char *sm_define_view_synonym_spec (void);
 const char *sm_define_view_server_spec (void);
