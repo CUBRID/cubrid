@@ -99,6 +99,7 @@ extern int qexec_execute_mainblock (THREAD_ENTRY * thread_p, xasl_node * xasl, x
 extern int qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xstate);
 extern int qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xstate);
 extern int qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool for_parallel_aptr);
+extern void qexec_clear_topn_items (THREAD_ENTRY * thread_p, xasl_node * xasl);
 extern int qexec_clear_pred_context (THREAD_ENTRY * thread_p, pred_expr_with_context * pred_filter,
 				     bool dealloc_dbvalues);
 extern int qexec_clear_func_pred (THREAD_ENTRY * thread_p, func_pred * pred_filter);

@@ -285,7 +285,7 @@ namespace parallel_scan
 	    tl.agg_hash_state = HS_ACCEPT_ALL;
 	    tl.g_agg_domains_resolved = FALSE;
 	  }
-	/* setup failure leaves curr_xasl->topn_items NULL; main reinsertion preserves correctness. */
+	/* setup failure leaves curr_xasl->topn_items NULL; worker falls back to plain BUILDLIST and final ORDER BY+LIMIT runs on main's concat list_id via qexec_orderby_distinct_by_sorting. */
 	if (m_.orig_xasl->topn_items != nullptr && curr_xasl->type == BUILDLIST_PROC)
 	  {
 	    if (qexec_setup_topn_proc (thread_p, curr_xasl, vd) != NO_ERROR)
@@ -608,6 +608,9 @@ namespace parallel_scan
 	    /* HS_REJECT_ALL forces 'hash: partial' trace for hgby with part list IDs (cf. qdump_print_stats_text). */
 	    m_.orig_xasl->groupby_stats.groupby_hash = HS_REJECT_ALL;
 	  }
+
+	/* main heap empty under parallel concat; falls through to qexec_orderby_distinct_by_sorting on worker concat list_id at qexec_orderby_distinct:4049 (orderby_topnsort intentionally not set). */
+	qexec_clear_topn_items (thread_p, m_.orig_xasl);
 
 	return S_END;
       }
