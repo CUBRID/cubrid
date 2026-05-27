@@ -8266,7 +8266,7 @@ heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
   std::vector<char> src_buf (rec->data, rec->data + rec->length);
   // *INDENT-ON*
 
-  HEAP_OOS_EXPAND_STATE state;
+  HEAP_OOS_EXPAND_STATE state = { };
   state.src = src_buf.data ();
   state.src_length = (int) src_buf.size ();
   state.src_offset_size = OR_GET_OFFSET_SIZE (state.src);
