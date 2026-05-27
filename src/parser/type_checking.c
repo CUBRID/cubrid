@@ -10315,10 +10315,6 @@ error:
 	{
 	  node->type_enum = PT_TYPE_MAYBE;
 	}
-      else if (arg1_type == PT_TYPE_NA || arg2_type == PT_TYPE_NA || arg3_type == PT_TYPE_NA)
-	{
-	  node->type_enum = PT_TYPE_NA;
-	}
     }
 
   if (check_expr_coll && node->type_enum != PT_TYPE_NONE)
@@ -10451,16 +10447,6 @@ PT_TYPE_ENUM
 pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 {
   PT_TYPE_ENUM common_type = PT_TYPE_NONE;
-
-  /* NA is a select-list placeholder; it is compatible with any other type. */
-  if (arg1_type == PT_TYPE_NA)
-    {
-      return (arg2_type != PT_TYPE_NONE) ? arg2_type : PT_TYPE_NA;
-    }
-  if (arg2_type == PT_TYPE_NA)
-    {
-      return (arg1_type != PT_TYPE_NONE) ? arg1_type : PT_TYPE_NA;
-    }
 
   if (arg1_type == arg2_type)
     {
