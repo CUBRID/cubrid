@@ -83,7 +83,8 @@ bool db_Keep_session = false;
 
 int db_Row_count = DB_ROW_COUNT_NOT_SET;
 
-static int valcnv_Max_set_elements = 10;
+static thread_local int valcnv_Max_set_elements = 10;
+static thread_local bool valcnv_Quote_strings = false;
 
 #if defined(SERVER_MODE)
 int db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
@@ -2719,6 +2720,30 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * va
 	  buffer_p = valcnv_append_string (buffer_p, "'");
 	  break;
 
+	case DB_TYPE_CHAR:
+	case DB_TYPE_VARCHAR:
+	  if (valcnv_Quote_strings)
+	    {
+	      buffer_p = valcnv_append_string (buffer_p, "'");
+	      if (buffer_p == NULL)
+		{
+		  return NULL;
+		}
+
+	      buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
+	      if (buffer_p == NULL)
+		{
+		  return NULL;
+		}
+
+	      buffer_p = valcnv_append_string (buffer_p, "'");
+	    }
+	  else
+	    {
+	      buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
+	    }
+	  break;
+
 	default:
 	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
 	  break;
@@ -2763,6 +2788,26 @@ valcnv_convert_value_to_string (DB_VALUE * value_p)
     }
 
   return NO_ERROR;
+}
+
+int
+valcnv_convert_collection_value_to_string_all_elements (DB_VALUE * value_p)
+{
+  int save_max = valcnv_Max_set_elements;
+  bool save_quote = valcnv_Quote_strings;
+  int error = NO_ERROR;
+
+  assert (db_value_type_is_collection (value_p));
+
+  valcnv_Max_set_elements = 0;
+  valcnv_Quote_strings = true;
+
+  error = valcnv_convert_value_to_string (value_p);
+
+  valcnv_Max_set_elements = save_max;
+  valcnv_Quote_strings = save_quote;
+
+  return error;
 }
 
 #if !defined(SERVER_MODE)

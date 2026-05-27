@@ -19,9 +19,11 @@
 #include "schema_system_catalog.hpp"
 
 #include "db.h"
+#include "authenticate_constants.h"
 #include "dbtype_function.h"
 #include "identifier_store.hpp"
 #include "oid.h"
+#include "schema_information_schema.hpp"
 #include "schema_system_catalog_constants.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -81,36 +83,46 @@ namespace cubschema
     CT_TRIGGER_NAME,		// "_db_trigger"
   };
 
-  static const std::vector <std::string> sm_system_vclass_names =
+  static const std::vector <std::string> sm_system_vclass_names = []()
   {
-    /*
-     * catalog vclasses
-     */
-    CTV_CLASS_NAME,			// "db_class"
-    CTV_SUPER_CLASS_NAME,	// "db_direct_super_class"
-    CTV_VCLASS_NAME,			// "db_vclass"
-    CTV_ATTRIBUTE_NAME,		// "db_attribute"
-    CTV_ATTR_SD_NAME,		// "db_attr_setdomain_elm"
-    CTV_METHOD_NAME,			// "db_method"
-    CTV_METHARG_NAME,		// "db_meth_arg"
-    CTV_METHARG_SD_NAME,		// "db_meth_arg_setdomain_elm"
-    CTV_METHFILE_NAME,		// "db_meth_file"
-    CTV_INDEX_NAME,			// "db_index"
-    CTV_INDEXKEY_NAME,		// "db_index_key"
-    CTV_AUTH_NAME,			// "db_auth"
-    CTV_TRIGGER_NAME,		// "db_trigger"
-    CTV_PARTITION_NAME,		// "db_partition"
-    CTV_STORED_PROC_NAME,	// "db_stored_procedure"
-    CTV_STORED_PROC_ARGS_NAME,	// "db_stored_procedure_args"
-    CTV_SERIAL_NAME,		// "db_serial"
-    CTV_HA_APPLY_INFO_NAME,        // "db_ha_apply_info"
-    CTV_COLLATION_NAME,	// "db_collation"
-    CTV_USER_NAME,			// "db_user"
-    CTV_AUTHORIZATION_NAME,		// "db_authorization"
-    CTV_CHARSET_NAME,		// "db_charset"
-    CTV_SERVER_NAME,		// "db_server"
-    CTV_SYNONYM_NAME			// "db_synonym"
-  };
+    std::vector<std::string> v =
+    {
+      /*
+       * catalog vclasses
+       */
+      CTV_CLASS_NAME,			// "db_class"
+      CTV_SUPER_CLASS_NAME,	// "db_direct_super_class"
+      CTV_VCLASS_NAME,			// "db_vclass"
+      CTV_ATTRIBUTE_NAME,		// "db_attribute"
+      CTV_ATTR_SD_NAME,		// "db_attr_setdomain_elm"
+      CTV_METHOD_NAME,			// "db_method"
+      CTV_METHARG_NAME,		// "db_meth_arg"
+      CTV_METHARG_SD_NAME,		// "db_meth_arg_setdomain_elm"
+      CTV_METHFILE_NAME,		// "db_meth_file"
+      CTV_INDEX_NAME,			// "db_index"
+      CTV_INDEXKEY_NAME,		// "db_index_key"
+      CTV_AUTH_NAME,			// "db_auth"
+      CTV_TRIGGER_NAME,		// "db_trigger"
+      CTV_PARTITION_NAME,		// "db_partition"
+      CTV_STORED_PROC_NAME,	// "db_stored_procedure"
+      CTV_STORED_PROC_ARGS_NAME,	// "db_stored_procedure_args"
+      CTV_SERIAL_NAME,		// "db_serial"
+      CTV_HA_APPLY_INFO_NAME,        // "db_ha_apply_info"
+      CTV_COLLATION_NAME,	// "db_collation"
+      CTV_USER_NAME,			// "db_user"
+      CTV_AUTHORIZATION_NAME,		// "db_authorization"
+      CTV_CHARSET_NAME,		// "db_charset"
+      CTV_SERVER_NAME,		// "db_server"
+      CTV_SYNONYM_NAME			// "db_synonym"
+    };
+
+    const std::string prefix = std::string (AU_INFORMATION_SCHEMA_USER_NAME) + ".";
+    for (const auto &name : get_information_schema_view_names ())
+      {
+	v.emplace_back (prefix + name);
+      }
+    return v;
+  } ();
 
   static const identifier_store sm_catalog_class_names (sm_system_class_names, false);
   static const identifier_store sm_catalog_vclass_names (sm_system_vclass_names, false);
