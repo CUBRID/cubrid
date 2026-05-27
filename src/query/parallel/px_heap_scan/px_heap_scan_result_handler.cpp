@@ -1058,6 +1058,30 @@ namespace parallel_heap_scan
 		return;
 	      }
 	  }
+	else if ((agg_node->function == PT_GROUP_CONCAT && agg_node->sort_list != NULL)
+		 || agg_node->function == PT_MEDIAN)
+	  {
+	    /* GROUP_CONCAT(ORDER BY) and MEDIAN: open list_id for value accumulation */
+	    int ls_flag = QFILE_FLAG_ALL | QFILE_NOT_USE_MEMBUF;
+	    QFILE_TUPLE_VALUE_TYPE_LIST type_list;
+	    type_list.type_cnt = 1;
+	    type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *));
+	    if (type_list.domp == NULL)
+	      {
+		m_err_messages_p->move_top_error_message_to_this ();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		return;
+	      }
+	    type_list.domp[0] = agg_node->operands->value.domain;
+	    agg_node->list_id = qfile_open_list (thread_p, &type_list, NULL, m_query_id, ls_flag, agg_node->list_id);
+	    db_private_free_and_init (thread_p, type_list.domp);
+	    if (agg_node->list_id == nullptr)
+	      {
+		m_err_messages_p->move_top_error_message_to_this ();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		return;
+	      }
+	  }
 	else
 	  {
 	    /* Non-DISTINCT: init curr_cnt for all types.
@@ -1174,6 +1198,41 @@ namespace parallel_heap_scan
 		  {
 		    return false;
 		  }
+	      }
+	  }
+	else if ((agg_node->function == PT_GROUP_CONCAT && agg_node->sort_list != NULL)
+		 || agg_node->function == PT_MEDIAN)
+	  {
+	    /* GROUP_CONCAT(ORDER BY) and MEDIAN: push first operand value to list_id */
+	    if (agg_node->function == PT_MEDIAN)
+	      {
+		if (qdata_update_agg_interpolation_func_value_and_domain (agg_node, db_value_p) != NO_ERROR)
+		  {
+		    return false;
+		  }
+	      }
+	    DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (db_value_p);
+	    const PR_TYPE *pr_type_p = pr_type_from_id (dbval_type);
+	    if (pr_type_p == nullptr)
+	      {
+		return false;
+	      }
+	    int dbval_size = pr_data_writeval_disk_size (db_value_p);
+	    if (dbval_size > tl_tpl_buf.size)
+	      {
+		char *new_tpl = (char *) db_private_realloc (thread_p, tl_tpl_buf.tpl, dbval_size);
+		if (new_tpl == nullptr)
+		  {
+		    return false;
+		  }
+		tl_tpl_buf.tpl = new_tpl;
+		tl_tpl_buf.size = dbval_size;
+	      }
+	    or_init (&tl_or_buf, tl_tpl_buf.tpl, dbval_size);
+	    pr_type_p->data_writeval (&tl_or_buf, db_value_p);
+	    if (qfile_add_item_to_list (thread_p, tl_tpl_buf.tpl, dbval_size, agg_node->list_id) != NO_ERROR)
+	      {
+		return false;
 	      }
 	  }
 	else
@@ -1358,6 +1417,26 @@ namespace parallel_heap_scan
 	      }
 	      break;
 
+	      case PT_GROUP_CONCAT:
+	      {
+		/* sort_list == NULL case; ORDER BY case is handled by the else-if above */
+		int gc_err;
+		if (acc->curr_cnt < 1)
+		  {
+		    gc_err = qdata_group_concat_first_value (thread_p, agg_node, db_value_p);
+		  }
+		else
+		  {
+		    gc_err = qdata_group_concat_value (thread_p, agg_node, db_value_p);
+		  }
+		if (gc_err != NO_ERROR)
+		  {
+		    return false;
+		  }
+		acc->curr_cnt++;
+	      }
+	      break;
+
 	      case PT_JSON_ARRAYAGG:
 	      {
 		if (db_accumulate_json_arrayagg (db_value_p, acc->value) != NO_ERROR)
@@ -1436,6 +1515,14 @@ namespace parallel_heap_scan
 		      qfile_close_list (thread_p, cur_agg_p->list_id);
 		      qfile_destroy_list (thread_p, cur_agg_p->list_id);
 		    }
+		  if (((cur_agg_p->function == PT_GROUP_CONCAT && cur_agg_p->sort_list != NULL
+			&& cur_agg_p->option != Q_DISTINCT)
+		       || cur_agg_p->function == PT_MEDIAN)
+		      && cur_agg_p->list_id != nullptr)
+		    {
+		      qfile_close_list (thread_p, cur_agg_p->list_id);
+		      qfile_destroy_list (thread_p, cur_agg_p->list_id);
+		    }
 		  if (cur_agg_p->accumulator.value != NULL)
 		    {
 		      pr_clear_value (cur_agg_p->accumulator.value);
@@ -1496,6 +1583,82 @@ namespace parallel_heap_scan
 
 	      qfile_copy_list_id (orig_agg_p->list_id, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT);
 	      qfile_clear_list_id (cur_agg_p->list_id);
+	    }
+	  else if ((orig_agg_p->function == PT_GROUP_CONCAT && orig_agg_p->sort_list != NULL
+		    && orig_agg_p->option != Q_DISTINCT)
+		   || orig_agg_p->function == PT_MEDIAN)
+	    {
+	      /* GROUP_CONCAT(ORDER BY) and MEDIAN: merge list_ids from worker into main */
+	      qfile_close_list (thread_p, cur_agg_p->list_id);
+	      if (cur_agg_p->list_id->tuple_cnt == 0)
+		{
+		  qfile_destroy_list (thread_p, cur_agg_p->list_id);
+		  cur_agg_p = cur_agg_p->next;
+		  continue;
+		}
+	      if (orig_agg_p->list_id->tuple_cnt > 0)
+		{
+		  QFILE_LIST_ID *list_id_p = (QFILE_LIST_ID *) malloc (sizeof (QFILE_LIST_ID));
+		  if (list_id_p == nullptr)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			      (size_t) sizeof (QFILE_LIST_ID));
+		      m_err_messages_p->move_top_error_message_to_this ();
+		      m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		      qfile_destroy_list (thread_p, cur_agg_p->list_id);
+		      cur_agg_p = cur_agg_p->next;
+		      continue;
+		    }
+		  qfile_copy_list_id (list_id_p, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT);
+		  qfile_connect_list (thread_p, orig_agg_p->list_id, list_id_p);
+		  qfile_clear_list_id (cur_agg_p->list_id);
+		}
+	      else if (orig_agg_p->list_id->type_list.type_cnt > 0)
+		{
+		  qfile_clear_list_id (orig_agg_p->list_id);
+		  qfile_copy_list_id (orig_agg_p->list_id, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT);
+		  qfile_clear_list_id (cur_agg_p->list_id);
+		}
+	      else
+		{
+		  QFILE_CLEAR_LIST_ID (orig_agg_p->list_id);
+		  qfile_copy_list_id (orig_agg_p->list_id, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT);
+		  qfile_clear_list_id (cur_agg_p->list_id);
+		}
+	    }
+	  else if (orig_agg_p->function == PT_GROUP_CONCAT && orig_agg_p->sort_list == NULL
+		   && orig_agg_p->option != Q_DISTINCT)
+	    {
+	      /* GROUP_CONCAT (no ORDER BY): merge partial strings from worker into main */
+	      if (cur_agg_p->accumulator.curr_cnt > 0)
+		{
+		  HL_HEAPID prev_heap_id = db_change_private_heap (thread_p, 0);
+		  if (orig_agg_p->accumulator.curr_cnt > 0)
+		    {
+		      if (qdata_group_concat_value (thread_p, orig_agg_p,
+						    cur_agg_p->accumulator.value) != NO_ERROR)
+			{
+			  db_change_private_heap (thread_p, prev_heap_id);
+			  m_err_messages_p->move_top_error_message_to_this ();
+			  m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+			  cur_agg_p = cur_agg_p->next;
+			  continue;
+			}
+		    }
+		  else
+		    {
+		      if (pr_clone_value (cur_agg_p->accumulator.value, orig_agg_p->accumulator.value) != NO_ERROR)
+			{
+			  db_change_private_heap (thread_p, prev_heap_id);
+			  m_err_messages_p->move_top_error_message_to_this ();
+			  m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+			  cur_agg_p = cur_agg_p->next;
+			  continue;
+			}
+		    }
+		  orig_agg_p->accumulator.curr_cnt += cur_agg_p->accumulator.curr_cnt;
+		  db_change_private_heap (thread_p, prev_heap_id);
+		}
 	    }
 	  else if (orig_agg_p->function == PT_COUNT)
 	    {

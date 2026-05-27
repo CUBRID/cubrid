@@ -80,6 +80,8 @@ namespace parallel_heap_scan
       case PT_AGG_BIT_XOR:
       case PT_JSON_ARRAYAGG:
       case PT_JSON_OBJECTAGG:
+      case PT_GROUP_CONCAT:
+      case PT_MEDIAN:
 	return true;
       default:
 	return false;
