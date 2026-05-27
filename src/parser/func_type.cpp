@@ -1166,6 +1166,14 @@ namespace func_type
       }
 
     PT_TYPE_ENUM arg_type = arg_node->type_enum;
+
+    if (arg_type == PT_TYPE_NA)
+      {
+	arg_res.m_type = PT_TYPE_NA;
+	compat.m_compat = type_compatibility::EQUIVALENT;
+	return true;
+      }
+
     if (PT_IS_PARAMETER (arg_node) && arg_type == PT_TYPE_NONE)
       {
 	DB_VALUE *db_value = pt_find_value_of_label (arg_node->info.name.original);
