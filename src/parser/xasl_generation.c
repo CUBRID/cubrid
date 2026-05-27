@@ -28736,22 +28736,11 @@ pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
     }
 
   *continue_walk = PT_CONTINUE_WALK;
-  if (node->node_type == PT_DOT_)
+
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type) || node->node_type == PT_CTE || node->node_type == PT_DOT_)
     {
-      // switch(node->info.dot.arg2->info.name.meta_class)
-      // {
-      //   case PT_PARAMETER:
-      //   case PT_META_ATTR:
-      //      case PT_NORMAL:
-      //      case PT_SHARED:
-      //         *continue_walk = PT_CONTINUE_WALK;
-      //         break;
-
-      //   default:
-      *continue_walk = PT_STOP_WALK;
+      *continue_walk = PT_LIST_WALK;
       return node;
-
-      // }
     }
 
   if (node->node_type != PT_NAME && node->node_type != PT_EXPR)
@@ -28761,14 +28750,11 @@ pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 
   for (out_name = info->args; out_name != NULL; out_name = out_name->next)
     {
-      while (out_name && out_name->node_type == PT_NODE_POINTER)
-	{
-	  out_name = out_name->info.pointer.node;
-	}
 
       if (pt_check_path_eq (parser, node, out_name) == 0)
 	{
 	  already_exist = true;
+	  break;
 	}
     }
 
@@ -28805,18 +28791,12 @@ pt_substitute_groupby_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 
   for (out_name = info->args; out_name != NULL; out_name = out_name->next, i++)
     {
-      if (out_name->node_type == PT_NODE_POINTER)
-	{
-	  dbval = (DB_VALUE *) out_name->etc;
-	  out_name = out_name->info.pointer.node;
-	}
-
-      if (pt_check_path_eq (parser, node, out_name) == 0)
+      if (PT_IS_POINTER_REF_NODE (out_name) && pt_check_path_eq (parser, node, out_name) == 0)
 	{
 	  new_node = parser_copy_tree (parser, node);
 	  pointer = pt_point_ref (parser, new_node);
 
-	  pointer->etc = dbval;
+	  pointer->etc = (DB_VALUE *) out_name->etc;
 	  tmp = node->next;
 	  pointer->next = tmp;
 
