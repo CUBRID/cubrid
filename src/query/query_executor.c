@@ -396,13 +396,6 @@ typedef enum analytic_stage ANALYTIC_STAGE;
 
 #define QEXEC_GET_BH_TOPN_TUPLE(heap, index) (*(TOPN_TUPLE **) BH_ELEMENT (heap, index))
 
-typedef enum
-{
-  TOPN_SUCCESS,
-  TOPN_OVERFLOW,
-  TOPN_FAILURE
-} TOPN_STATUS;
-
 static DB_LOGICAL qexec_eval_instnum_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_add_composite_lock (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST reg_var_list, XASL_STATE * xasl_state,
 				     LK_COMPOSITE_LOCK * composite_lock, int upd_del_cls_cnt, OID * default_cls_oid);
@@ -702,13 +695,8 @@ static int qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGAT
 static int qexec_evaluate_partition_aggregates (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec,
 						AGGREGATE_TYPE * agg_list, bool * is_scan_needed);
 
-static int qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd);
 static BH_CMP_RESULT qexec_topn_compare (const void *left, const void *right, BH_CMP_ARG arg);
 static BH_CMP_RESULT qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_LIST * sort_spec);
-static TOPN_STATUS qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * sort_stop,
-					    QFILE_TUPLE_DESCRIPTOR * tpldescr);
-static int qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
-					 bool is_final);
 static void qexec_clear_topn_tuple (THREAD_ENTRY * thread_p, TOPN_TUPLE * tuple, int count);
 static int qexec_get_orderbynum_upper_bound (THREAD_ENTRY * tread_p, PRED_EXPR * pred, VAL_DESCR * vd,
 					     DB_VALUE * ubound);
@@ -1239,7 +1227,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
-	      if (qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, false) != NO_ERROR)
+	      if (qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, false, NULL, true, true) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -1300,7 +1288,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       if (xasl->topn_items != NULL && tpldescr_status != QPROC_TPLDESCR_SUCCESS)
 	{
 	  /* abandon top-n processing */
-	  if (qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, false) != NO_ERROR)
+	  if (qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, false, NULL, true, true) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -4061,7 +4049,7 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_OPTIONS
   if (xasl->topn_items != NULL)
     {
       /* already sorted, just dump tuples to list */
-      error = qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, true);
+      error = qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, true, NULL, true, true);
     }
   else
     {
@@ -26218,7 +26206,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
  * xasl (in) :
  * vd (in) :
  */
-static int
+int
 qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd)
 {
   BINARY_HEAP *heap = NULL;
@@ -26505,7 +26493,7 @@ qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_LIST * sort_spec)
  * Note: We only add a tuple here if the top-n heap has fewer than n elements
  *  or if the new tuple can replace one of the existing tuples
  */
-static TOPN_STATUS
+TOPN_STATUS
 qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items, QFILE_TUPLE_DESCRIPTOR * tpldescr)
 {
   int error = NO_ERROR;
@@ -26606,8 +26594,9 @@ qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items, QFIL
  * return : error code or NO_ERROR
  * xasl (in) : xasl node
  */
-static int
-qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool is_final)
+int
+qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool is_final,
+			      QFILE_LIST_ID * override_list_id, bool set_trace_flag, bool close_list)
 {
   QFILE_LIST_ID *list_id = NULL;
   QFILE_TUPLE_DESCRIPTOR *tpl_descr = NULL;
@@ -26627,12 +26616,15 @@ qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
   ordby_info.ordbynum_val = xasl->ordbynum_val;
   db_make_bigint (ordby_info.ordbynum_val, 0);
 
-  list_id = xasl->list_id;
+  list_id = (override_list_id != NULL) ? override_list_id : xasl->list_id;
   topn = xasl->topn_items;
   heap = topn->heap;
   tpl_descr = &list_id->tpl_descr;
   values_count = topn->values_count;
-  xasl->orderby_stats.orderby_topnsort = true;
+  if (set_trace_flag)
+    {
+      xasl->orderby_stats.orderby_topnsort = true;
+    }
 
   /* convert binary heap to sorted array */
   bh_to_sorted_array (heap);
@@ -26748,7 +26740,10 @@ cleanup:
 
   if (is_final)
     {
-      qfile_close_list (thread_p, list_id);
+      if (close_list)
+	{
+	  qfile_close_list (thread_p, list_id);
+	}
     }
   else
     {

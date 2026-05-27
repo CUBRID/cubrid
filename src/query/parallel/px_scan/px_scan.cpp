@@ -433,7 +433,9 @@ extern "C"
     /* update to actual reserved workers */
     num_parallel_threads = worker_manager_p->get_reserved_workers ();
 
-    if (xasl->topn_items || XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
+    /* topn_items 는 worker MERGEABLE_LIST path 가 자기 clone xasl slot 으로 처리 → 게이트 해제.
+     * XASL_TO_BE_CACHED 는 main 의 final list_id 캐싱과 worker intermediate 결과 누출 방지 위해 차단 유지. */
+    if (XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
       {
 	ACCESS_SPEC_UNSET_FLAG (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST);
       }
@@ -863,7 +865,8 @@ extern "C"
 	return NO_ERROR;
       }
 
-    if (xasl->topn_items || XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
+    /* topn_items 는 worker MERGEABLE_LIST path 처리. XASL_TO_BE_CACHED 만 parallel skip 유지. */
+    if (XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
       {
 	return NO_ERROR;
       }
@@ -1319,7 +1322,8 @@ extern "C"
 	return NO_ERROR;
       }
 
-    if (xasl->topn_items || XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
+    /* topn_items 는 worker MERGEABLE_LIST path 처리. XASL_TO_BE_CACHED 만 parallel skip 유지. */
+    if (XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
       {
 	return NO_ERROR;
       }

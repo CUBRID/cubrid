@@ -54,6 +54,17 @@ using XASL_STATE = xasl_state;
 
 #define QEXEC_NULL_COMMAND_ID   -1	/* Invalid command identifier */
 
+/* top-n add status: success / overflow (heap full + size exceeded) / failure (error) */
+typedef enum
+{
+  TOPN_SUCCESS,
+  TOPN_OVERFLOW,
+  TOPN_FAILURE
+} TOPN_STATUS;
+
+struct topn_tuples;
+typedef struct topn_tuples TOPN_TUPLES;
+
 typedef struct upddel_class_instances_lock_info UPDDEL_CLASS_INSTANCE_LOCK_INFO;
 struct upddel_class_instances_lock_info
 {
@@ -125,4 +136,10 @@ extern int qexec_alloc_agg_hash_context_buildlist_xasl (THREAD_ENTRY * thread_p,
 extern int qexec_hash_gby_agg_tuple_public (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,
 					    QFILE_TUPLE_RECORD * tplrec, QFILE_TUPLE_DESCRIPTOR * tpldesc,
 					    QFILE_LIST_ID * groupby_list, bool * output_tuple);
+extern int qexec_setup_topn_proc (THREAD_ENTRY * thread_p, xasl_node * xasl, VAL_DESCR * vd);
+extern TOPN_STATUS qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items,
+					    QFILE_TUPLE_DESCRIPTOR * tpldescr);
+extern int qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,
+					 bool is_final, QFILE_LIST_ID * override_list_id, bool set_trace_flag,
+					 bool close_list);
 #endif /* _QUERY_EXECUTOR_H_ */
