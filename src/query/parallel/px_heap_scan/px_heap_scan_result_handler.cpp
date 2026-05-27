@@ -33,6 +33,8 @@
 #include <chrono>
 #include "dbtype.h"
 #include "fetch.h"
+#include "arithmetic.h"
+#include "db_json.hpp"
 #include "query_aggregate.hpp"
 #include "xasl_aggregate.hpp"
 
@@ -1104,6 +1106,25 @@ namespace parallel_heap_scan
 
 	if (DB_IS_NULL (db_value_p))
 	  {
+	    if (agg_node->function == PT_JSON_ARRAYAGG)
+	      {
+		/* JSON_ARRAYAGG includes NULL as JSON_NULL */
+		DB_VALUE json_null;
+		db_make_json (&json_null, db_json_allocate_doc (), true);
+		if (db_accumulate_json_arrayagg (&json_null, acc->value) != NO_ERROR)
+		  {
+		    pr_clear_value (&json_null);
+		    return false;
+		  }
+		pr_clear_value (&json_null);
+		acc->curr_cnt++;
+	      }
+	    else if (agg_node->function == PT_JSON_OBJECTAGG)
+	      {
+		/* NULL key is an error */
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_OBJECT_NAME_IS_NULL, 0);
+		return false;
+	      }
 	    continue;
 	  }
 
@@ -1329,6 +1350,58 @@ namespace parallel_heap_scan
 			bit_err = qdata_bit_xor_dbval (acc->value, db_value_p, acc->value, acc_dom->value_dom);
 		      }
 		    if (bit_err != NO_ERROR)
+		      {
+			return false;
+		      }
+		  }
+		acc->curr_cnt++;
+	      }
+	      break;
+
+	      case PT_JSON_ARRAYAGG:
+	      {
+		if (db_accumulate_json_arrayagg (db_value_p, acc->value) != NO_ERROR)
+		  {
+		    return false;
+		  }
+		acc->curr_cnt++;
+	      }
+	      break;
+
+	      case PT_JSON_OBJECTAGG:
+	      {
+		REGU_VARIABLE_LIST second_operand = agg_node->operands->next;
+		if (second_operand == nullptr)
+		  {
+		    return false;
+		  }
+		DB_VALUE *db_value2_p;
+		if (second_operand->value.type == TYPE_CONSTANT)
+		  {
+		    db_value2_p = second_operand->value.value.dbvalptr;
+		  }
+		else
+		  {
+		    if (fetch_peek_dbval (thread_p, &second_operand->value, tl_vd, NULL, NULL,
+					  tl_tpl_buf.tpl, &db_value2_p) != NO_ERROR)
+		      {
+			return false;
+		      }
+		  }
+		if (DB_IS_NULL (db_value2_p))
+		  {
+		    DB_VALUE json_null;
+		    db_make_json (&json_null, db_json_allocate_doc (), true);
+		    if (db_accumulate_json_objectagg (db_value_p, &json_null, acc->value) != NO_ERROR)
+		      {
+			pr_clear_value (&json_null);
+			return false;
+		      }
+		    pr_clear_value (&json_null);
+		  }
+		else
+		  {
+		    if (db_accumulate_json_objectagg (db_value_p, db_value2_p, acc->value) != NO_ERROR)
 		      {
 			return false;
 		      }

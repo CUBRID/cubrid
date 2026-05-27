@@ -78,6 +78,8 @@ namespace parallel_heap_scan
       case PT_AGG_BIT_AND:
       case PT_AGG_BIT_OR:
       case PT_AGG_BIT_XOR:
+      case PT_JSON_ARRAYAGG:
+      case PT_JSON_OBJECTAGG:
 	return true;
       default:
 	return false;
