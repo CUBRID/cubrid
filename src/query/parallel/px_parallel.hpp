@@ -28,7 +28,7 @@ namespace parallel_query
 {
   enum class parallel_type : int
   {
-    HEAP_SCAN = 0,
+    SCAN      = 0,	/* heap / list / index scan */
     HASH_JOIN = 1,
     SORT      = 2,
     SUBQUERY  = 3,

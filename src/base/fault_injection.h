@@ -77,6 +77,13 @@ typedef enum
   FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_RUN_POSTPONE = 500000,
   FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP = 500001,
 
+  /* DBLINK 2PC RECOVERY */
+  FI_TEST_DBLINK_2PC_CRASH_BEFORE_1 = 600000,	/* before _db_global_tran INSERT (state 'P') */
+  FI_TEST_DBLINK_2PC_CRASH_BETWEEN_1_2 = 600001,	/* after (1) before (2) SEND XA PREPARE */
+  FI_TEST_DBLINK_2PC_CRASH_BETWEEN_2_4 = 600002,	/* after (2) before (4) UPDATE state to C/A */
+  FI_TEST_DBLINK_2PC_CRASH_BETWEEN_4_6 = 600003,	/* after (4),(3) before (5) enqueue to daemon */
+  FI_TEST_DBLINK_2PC_CRASH_BETWEEN_6_7 = 600004,	/* after (6) send decision, before (7) DELETE row */
+
   /* etc .... */
 
 } FI_TEST_CODE;

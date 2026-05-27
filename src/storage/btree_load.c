@@ -3343,6 +3343,8 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
   HFID hfid;
   VPID vpid = vpid_Null_vpid;
 
+  OID slot_resume_oid;
+
   db_make_null (&dbvalue);
 
   aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
@@ -3355,6 +3357,8 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
   VPID_SET_NULL (&vpid);
   hfid = sort_args->hfids[0];
   PGBUF_INIT_WATCHER (&old_pgwatcher, PGBUF_ORDERED_HEAP_NORMAL, &hfid);
+
+  OID_SET_NULL (&slot_resume_oid);
 
   if (OID_ISNULL (&sort_args->cur_oid))
     {
@@ -3408,6 +3412,7 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 	}
       else
 	{
+	  slot_resume_oid = sort_args->cur_oid;
 	  slot_iter_scan_result =
 	    heap_next_1page (thread_p, &sort_args->hfids[cur_class], &vpid, &sort_args->class_ids[cur_class],
 			     &sort_args->cur_oid, &sort_args->in_recdes, &sort_args->hfscan_cache,
@@ -3633,6 +3638,18 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
   while (true);
 
 nofit:
+
+  assert (!VPID_ISNULL (&vpid));
+  if (!OID_ISNULL (&slot_resume_oid))
+    {
+      sort_args->cur_oid = slot_resume_oid;
+    }
+  else
+    {
+      sort_args->cur_oid.volid = vpid.volid;
+      sort_args->cur_oid.pageid = vpid.pageid;
+      sort_args->cur_oid.slotid = 0;
+    }
 
   if (dbvalue_ptr == &dbvalue || dbvalue_ptr->need_clear == true)
     {

@@ -23,6 +23,7 @@
 #ident "$Id$"
 
 #include <assert.h>
+#include <math.h>
 
 #include "optimizer.h"
 
@@ -116,6 +117,9 @@ static PT_NODE *qo_get_orderby_num_upper_bound_node (PARSER_CONTEXT * parser, PT
 						     bool * is_new_node);
 static int qo_get_multi_col_range_segs (QO_ENV * env, QO_PLAN * plan, QO_INDEX_ENTRY * index_entryp,
 					BITSET * multi_col_segs, BITSET * multi_col_range_segs, BITSET * index_segs);
+
+static QO_PLAN *qo_find_driving_scan_plan (QO_PLAN * plan);
+static void qo_apply_parallel_index_scan_threshold (QO_PLAN * plan);
 
 static int qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJECTION_INFO * info);
 static void qo_clear_projection_info (QO_ENV * env, PROJECTION_INFO * info);
@@ -2896,6 +2900,180 @@ preserve_info (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
 }
 
 /*
+ * qo_find_driving_scan_plan () - Descend the plan tree to the leftmost scan
+ *   return: leftmost QO_PLANTYPE_SCAN plan, or NULL if none
+ *   plan(in): root plan
+ */
+static QO_PLAN *
+qo_find_driving_scan_plan (QO_PLAN * plan)
+{
+  while (plan != NULL)
+    {
+      if (plan->plan_type == QO_PLANTYPE_JOIN)
+	{
+	  plan = plan->plan_un.join.outer;
+	}
+      else if (plan->plan_type == QO_PLANTYPE_SORT && plan->plan_un.sort.sort_type != SORT_LIMIT)
+	{
+	  /* SORT_LIMIT excluded: top-N early-stop defeated by parallel leaf-page split. */
+	  plan = plan->plan_un.sort.subplan;
+	}
+      else
+	{
+	  break;
+	}
+    }
+  if (plan != NULL && plan->plan_type == QO_PLANTYPE_SCAN)
+    {
+      return plan;
+    }
+  return NULL;
+}
+
+/*
+ * qo_apply_parallel_index_scan_threshold () - Decide whether parallel index
+ *                                             scan is worthwhile for the
+ *                                             driving table, and write the
+ *                                             degree back to its PT_SPEC.
+ *   return: void
+ *   plan(in): root plan
+ *
+ * Note: When the driving table is an index-family scan, compute
+ *       metric = ceil (sel * leaf_pages).  If the metric is below the
+ *       session threshold (PRM_ID_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD) or
+ *       any required input is missing, mark the spec with
+ *       PT_SPEC_FLAG_NO_PARALLEL_SCAN (fail-safe).  Otherwise pick a
+ *       degree and record it on the spec so xasl_generation propagates
+ *       it to the server exactly like a user hint.
+ *       An explicit PARALLEL(N) hint bypasses the metric check.
+ */
+static void
+qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
+{
+  QO_PLAN *driving;
+  PT_NODE *spec;
+  PT_NODE *select;
+  QO_NODE_INDEX_ENTRY *index_entry;
+  QO_ATTR_CUM_STATS *cum_stats;
+  QO_NODE *nodep;
+  QO_TERM *termp;
+  BITSET_ITERATOR iter;
+  double sel;
+  double metric;
+  int threshold;
+  int cap;
+  int degree;
+  int t;
+  bool has_hint;
+
+  driving = qo_find_driving_scan_plan (plan);
+  if (driving == NULL)
+    {
+      return;
+    }
+
+  if (driving->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN)
+    {
+      return;
+    }
+
+  if (driving->info == NULL || driving->info->env == NULL)
+    {
+      return;
+    }
+
+  spec = QO_NODE_ENTITY_SPEC (driving->plan_un.scan.node);
+  if (spec == NULL)
+    {
+      return;
+    }
+
+  select = QO_ENV_PT_TREE (driving->info->env);
+  if (select == NULL || !PT_IS_SELECT (select))
+    {
+      return;
+    }
+
+  has_hint = (select->info.query.q.select.hint & PT_HINT_PARALLEL) != 0;
+  if (has_hint)
+    {
+      /* PRM_ID_PARALLELISM=0 must veto hints; PARALLEL(N) otherwise bypasses global disable. */
+      cap = prm_get_integer_value (PRM_ID_PARALLELISM);
+      if (cap <= 0 || spec->info.spec.num_parallel_threads <= 1)
+	{
+	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
+	}
+      else if (spec->info.spec.num_parallel_threads > cap)
+	{
+	  spec->info.spec.num_parallel_threads = cap;
+	}
+      return;
+    }
+
+  index_entry = driving->plan_un.scan.index;
+  if (index_entry == NULL)
+    {
+      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
+      return;
+    }
+
+  cum_stats = &index_entry->cum_stats;
+  if (!cum_stats->is_indexed || cum_stats->pages <= 0)
+    {
+      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
+      return;
+    }
+
+  nodep = driving->plan_un.scan.node;
+  sel = 1.0;
+  for (t = bitset_iterate (&(driving->plan_un.scan.terms), &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
+      sel *= QO_TERM_SELECTIVITY (termp);
+    }
+  if (sel > 1.0)
+    {
+      sel = 1.0;
+    }
+  if (sel < 0.0)
+    {
+      sel = 0.0;
+    }
+
+  threshold = prm_get_integer_value (PRM_ID_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD);
+  metric = ceil (sel * (double) cum_stats->pages);
+
+  if (metric < (double) threshold)
+    {
+      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
+      return;
+    }
+
+  {
+    UINT64 x = (UINT64) (metric / (threshold > 0 ? (double) threshold : 1.0));
+    /* degree = floor(log2(x)) + 2, matching compute_parallel_degree's start_degree=2 formula */
+    degree = (x <= 1) ? 2 : ((63 - __builtin_clzll (x)) + 2);
+  }
+  cap = prm_get_integer_value (PRM_ID_PARALLELISM);
+  if (cap <= 0)
+    {
+      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
+      return;
+    }
+  if (degree > cap)
+    {
+      degree = cap;
+    }
+  if (degree > PRM_MAX_PARALLELISM)
+    {
+      degree = PRM_MAX_PARALLELISM;
+    }
+
+  spec->info.spec.num_parallel_threads = degree;
+  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_PARALLEL_THREAD);
+}
+
+/*
  * qo_to_xasl () -
  *   return: XASL_NODE *
  *   plan(in): The (already optimized) select statement to generate code for
@@ -2919,6 +3097,8 @@ qo_to_xasl (QO_PLAN * plan, xasl_node * xasl)
 
   if (plan && xasl && (env = (plan->info)->env))
     {
+      qo_apply_parallel_index_scan_threshold (plan);
+
       xasl = gen_outer (env, plan, &EMPTY_SET, NULL, NULL, xasl);
 
       lastxasl = xasl;
