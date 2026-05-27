@@ -3716,7 +3716,9 @@ qfile_generate_sort_tuple (SORTKEY_INFO * key_info_p, SORT_REC * sort_record_p, 
 /*
  * sector_page_iterator
  */
-sector_page_iterator::sector_page_iterator ()
+
+// *INDENT-OFF*
+ sector_page_iterator::sector_page_iterator ()
 {
   m_membuf_index = -1;
   m_sector_index = -1;
@@ -3834,6 +3836,7 @@ sector_page_iterator::get_next_page (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_
       m_current_bitmap = sectors[sector_index].page_bitmap;
     }
 }
+// *INDENT-ON*
 
 /*
  * qfile_sort_px_state_free () - free a sort_px_list_state allocated with db_private_alloc
