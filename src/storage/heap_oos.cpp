@@ -42,7 +42,6 @@
 /*
  * State shared across heap_record_replace_oos_oids() sub-functions.
  */
-// *INDENT-OFF*
 struct HEAP_OOS_EXPAND_STATE
 {
   const char *src;
@@ -57,7 +56,6 @@ struct HEAP_OOS_EXPAND_STATE
   std::vector<int> vot_raw;
   std::vector<RECDES> oos_recdes;
 };
-// *INDENT-ON*
 
 /*
  * heap_oos_parse_vot () - Walk the source VOT and collect each entry (including flag bits).
@@ -160,13 +158,11 @@ heap_oos_read_blobs (THREAD_ENTRY *thread_p, HEAP_OOS_EXPAND_STATE *state)
 	{
 	  return ER_FAILED;
 	}
-      // *INDENT-OFF*
       if (oos_read (thread_p, oos_oid, oos_buffer (state->oos_recdes[i].data, (std::size_t) oos_len)) != NO_ERROR)
-        {
-          oos_error ("oos_read failed for OID %d|%d|%d", OID_AS_ARGS (&oos_oid));
-          return ER_FAILED;
-        }
-      // *INDENT-ON*
+	{
+	  oos_error ("oos_read failed for OID %d|%d|%d", OID_AS_ARGS (&oos_oid));
+	  return ER_FAILED;
+	}
       state->oos_recdes[i].length = (int) oos_len;
     }
 
@@ -342,9 +338,7 @@ heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context)
     }
 
   /* Snapshot input bytes: rec->data may be invalidated during reallocation below. */
-  // *INDENT-OFF*
   std::vector<char> src_buf (rec->data, rec->data + rec->length);
-  // *INDENT-ON*
 
   HEAP_OOS_EXPAND_STATE state = { };
   state.src = src_buf.data ();
@@ -363,17 +357,16 @@ heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context)
       state.oos_recdes[i] = RECDES_INITIALIZER;
     }
 
-  // *INDENT-OFF*
-  auto oos_cleanup = make_scope_exit ([&]() {
+  auto oos_cleanup = make_scope_exit ([&]()
+  {
     for (int i = 0; i < state.n_var; ++i)
       {
-        if (state.oos_recdes[i].data != NULL)
-          {
-            recdes_free_data_area (&state.oos_recdes[i]);
-          }
+	if (state.oos_recdes[i].data != NULL)
+	  {
+	    recdes_free_data_area (&state.oos_recdes[i]);
+	  }
       }
   });
-  // *INDENT-ON*
 
   if (heap_oos_read_blobs (thread_p, &state) != NO_ERROR)
     {
