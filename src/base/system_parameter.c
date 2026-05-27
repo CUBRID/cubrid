@@ -773,7 +773,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PARALLELISM "parallelism"
 #define PRM_NAME_MAX_PARALLEL_WORKERS "max_parallel_workers"
-#define PRM_NAME_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD "parallel_heap_scan_page_threshold"
+#define PRM_NAME_PARALLEL_SCAN_PAGE_THRESHOLD "parallel_scan_page_threshold"
+#define PRM_NAME_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD "parallel_index_scan_page_threshold"
 #define PRM_NAME_PARALLEL_HASH_JOIN_PAGE_THRESHOLD "parallel_hash_join_page_threshold"
 #define PRM_NAME_PARALLEL_SORT_PAGE_THRESHOLD "parallel_sort_page_threshold"
 
@@ -5102,7 +5103,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_PARALLELISM,
    PRM_NAME_PARALLELISM,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FORCE_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 4}},
@@ -5124,13 +5125,25 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD,
-   PRM_NAME_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD,
+  {PRM_ID_PARALLEL_SCAN_PAGE_THRESHOLD,
+   PRM_NAME_PARALLEL_SCAN_PAGE_THRESHOLD,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 2048}},
    {false, {.i = 2048}},
+   {false, {.i = INT_MAX}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD,
+   PRM_NAME_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 32}},
+   {false, {.i = 32}},
    {false, {.i = INT_MAX}},
    {false, {.i = 0}},
    (char *) NULL,
@@ -10008,15 +10021,14 @@ prm_tune_parameters (void)
 
       if (PRM_GET_BOOL (test_mode_prm->value) == true)
 	{
-	  SYSPRM_PARAM *heap_scan_page_threshold_prm = GET_PRM (PRM_ID_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD);
+	  SYSPRM_PARAM *scan_page_threshold_prm = GET_PRM (PRM_ID_PARALLEL_SCAN_PAGE_THRESHOLD);
 	  SYSPRM_PARAM *hash_join_page_threshold_prm = GET_PRM (PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD);
 	  SYSPRM_PARAM *sort_page_threshold_prm = GET_PRM (PRM_ID_PARALLEL_SORT_PAGE_THRESHOLD);
 
-	  if (PRM_GET_INT (heap_scan_page_threshold_prm->value) ==
-	      PRM_GET_INT (heap_scan_page_threshold_prm->default_value))
+	  if (PRM_GET_INT (scan_page_threshold_prm->value) == PRM_GET_INT (scan_page_threshold_prm->default_value))
 	    {
 	      sprintf (newval, "%d", 32);	/* TODO: 0 ? */
-	      (void) prm_set (heap_scan_page_threshold_prm, newval, false);
+	      (void) prm_set (scan_page_threshold_prm, newval, false);
 	    }
 
 	  if (PRM_GET_INT (hash_join_page_threshold_prm->value) ==

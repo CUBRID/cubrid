@@ -68,7 +68,7 @@
 #include "subquery_cache.h"
 #include "pl_signature.hpp"
 #include "sp_catalog.hpp"
-#include "px_heap_scan_checker.hpp"
+#include "px_scan_checker.hpp"
 #include "px_query_checker.hpp"
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -12499,22 +12499,6 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 					   NULL, where, NULL, NULL, regu_attributes_pred, regu_attributes_rest, NULL,
 					   output_val_list, regu_var_list, NULL, cache_pred, cache_rest,
 					   NULL, NO_SCHEMA, db_values_array_p, regu_attributes_reserved);
-	      if (access_method == ACCESS_METHOD_SEQUENTIAL
-		  && PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN))
-		{
-		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
-		}
-
-	      if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PARALLEL_THREAD))
-		{
-		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS);
-		  access->num_parallel_threads = spec->info.spec.num_parallel_threads;
-		}
-	      else
-		{
-		  assert (access->num_parallel_threads == -1 /* auto-compute */ );
-		}
-
 	      if (scan_type == TARGET_CLASS && prm_get_bool_value (PRM_ID_ENABLE_HEAP_FIXED_SCAN))
 		{
 		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN);
@@ -12750,6 +12734,23 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_FOR_UPDATE);
 		}
 
+	      if (access->access == ACCESS_METHOD_SEQUENTIAL || access->access == ACCESS_METHOD_INDEX)
+		{
+		  if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NO_PARALLEL_SCAN))
+		    {
+		      ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+		    }
+		  if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PARALLEL_THREAD))
+		    {
+		      ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS);
+		      access->num_parallel_threads = spec->info.spec.num_parallel_threads;
+		    }
+		  else
+		    {
+		      assert (access->num_parallel_threads == -1 /* auto-compute from regu_init */ );
+		    }
+		}
+
 	      access->next = access_list;
 	      access_list = access;
 	    }
@@ -12886,6 +12887,15 @@ pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE
 
   if (access && subquery_proc && (regu_attributes_pred || regu_attributes_rest || !spec->info.spec.as_attr_list))
     {
+      if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NO_PARALLEL_SCAN))
+	{
+	  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+	}
+      if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PARALLEL_THREAD))
+	{
+	  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS);
+	  access->num_parallel_threads = spec->info.spec.num_parallel_threads;
+	}
       return access;
     }
 
@@ -17237,7 +17247,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
   /* restore old parent xasl */
   parser->parent_proc_xasl = save_parent_proc_xasl;
 
-  scan_check_parallel_heap_scan_possible (xasl);
+  scan_check_parallel_scan_possible (xasl);
 
   return xasl;
 
@@ -17468,7 +17478,7 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
   /* restore old parent xasl */
   parser->parent_proc_xasl = save_parent_proc_xasl;
 
-  scan_check_parallel_heap_scan_possible (xasl);
+  scan_check_parallel_scan_possible (xasl);
 
   return xasl;
 
@@ -18707,7 +18717,7 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
 	}
     }
 
-  scan_check_parallel_heap_scan_possible (xasl);
+  scan_check_parallel_scan_possible (xasl);
   check_parallel_subquery_possible (xasl);
 
   if (pt_has_error (parser))
@@ -19903,7 +19913,7 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
   PT_HINT_ENUM hint_flags =
     PT_HINT_ORDERED | PT_HINT_USE_IDX_DESC | PT_HINT_NO_COVERING_IDX | PT_HINT_NO_IDX_DESC | PT_HINT_USE_NL |
     PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_NO_MULTI_RANGE_OPT | PT_HINT_RECOMPILE | PT_HINT_NO_SORT_LIMIT |
-    PT_HINT_LEADING | PT_HINT_NO_USE_HASH | PT_HINT_USE_HASH | PT_HINT_NO_PARALLEL_HEAP_SCAN |
+    PT_HINT_LEADING | PT_HINT_NO_USE_HASH | PT_HINT_USE_HASH | PT_HINT_NO_PARALLEL_SCAN |
     PT_HINT_NO_PARALLEL_SUBQUERY | PT_HINT_NO_PARALLEL_HASH_JOIN | PT_HINT_PARALLEL;
   PT_NODE *arg = NULL;
 
@@ -22630,7 +22640,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     }
 
-  scan_check_parallel_heap_scan_possible (xasl);
+  scan_check_parallel_scan_possible (xasl);
   check_parallel_subquery_possible (xasl);
 
   /* fill in XASL cache related information */
@@ -26147,7 +26157,7 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_n
   /* set TDE flag */
   XASL_SET_FLAG (xasl, xptr->flag & XASL_INCLUDES_TDE_CLASS);
 
-  scan_check_parallel_heap_scan_possible (xasl);
+  scan_check_parallel_scan_possible (xasl);
 
   return xasl;
 }

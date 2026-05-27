@@ -252,4 +252,21 @@ extern int qfile_open_list_sector_scan (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
 					QFILE_LIST_SECTOR_SCAN_INFO * sector_scan);
 extern void qfile_close_list_sector_scan (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_SCAN_INFO * sector_scan);
 
+#ifdef __cplusplus
+/* ctz on bitmap_inout: lowest set bit -> VPID; clears that bit. false = sector drained. */
+static inline bool
+qfile_sector_bitmap_next_vpid (const VSID * vsid, UINT64 * bitmap_inout, VPID * out_vpid)
+{
+  if (*bitmap_inout == 0)
+    {
+      return false;
+    }
+  int bit_pos = __builtin_ctzll (*bitmap_inout);
+  *bitmap_inout &= *bitmap_inout - 1;
+  out_vpid->volid = vsid->volid;
+  out_vpid->pageid = SECTOR_FIRST_PAGEID (vsid->sectid) + bit_pos;
+  return true;
+}
+#endif /* __cplusplus */
+
 #endif /* _LIST_FILE_H_ */

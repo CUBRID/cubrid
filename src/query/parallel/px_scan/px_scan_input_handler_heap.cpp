@@ -17,28 +17,26 @@
  */
 
 /*
- * px_heap_scan_input_handler_ftabs.cpp
+ * px_scan_input_handler_heap.cpp
  */
 
-
-#include "px_heap_scan_input_handler_ftabs.hpp"
+#include "px_scan_input_handler_heap.hpp"
 #include "error_code.h"
 #include "bit.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
-  thread_local HEAP_SCANCACHE *input_handler_ftabs::m_tl_scan_cache = NULL;
-  thread_local PGBUF_WATCHER input_handler_ftabs::m_tl_old_page_watcher = {0};
-  thread_local ftab_set *input_handler_ftabs::m_tl_ftab_set = NULL;
-  thread_local VPID input_handler_ftabs::m_tl_vpid = VPID_INITIALIZER;
-  thread_local size_t input_handler_ftabs::m_tl_pgoffset = 0;
-  thread_local FILE_PARTIAL_SECTOR input_handler_ftabs::m_tl_ftab = FILE_PARTIAL_SECTOR_INITIALIZER;
+  thread_local HEAP_SCANCACHE *input_handler_heap::m_tl_scan_cache = NULL;
+  thread_local PGBUF_WATCHER input_handler_heap::m_tl_old_page_watcher = {0};
+  thread_local ftab_set *input_handler_heap::m_tl_ftab_set = NULL;
+  thread_local VPID input_handler_heap::m_tl_vpid = VPID_INITIALIZER;
+  thread_local size_t input_handler_heap::m_tl_pgoffset = 0;
+  thread_local FILE_PARTIAL_SECTOR input_handler_heap::m_tl_ftab = FILE_PARTIAL_SECTOR_INITIALIZER;
 
-
-  int input_handler_ftabs::initialize (THREAD_ENTRY *thread_p, HFID *hfid, SCAN_ID *scan_id)
+  int input_handler_heap::initialize (THREAD_ENTRY *thread_p, HFID *hfid, SCAN_ID *scan_id)
   {
     m_tl_scan_cache = &scan_id->s.hsid.scan_cache;
     /* open_scan should have succeeded */
@@ -57,7 +55,7 @@ namespace parallel_heap_scan
     return NO_ERROR;
   }
 
-  int input_handler_ftabs::init_on_main (THREAD_ENTRY *thread_p, HFID hfid, int parallelism)
+  int input_handler_heap::init_on_main (THREAD_ENTRY *thread_p, HFID hfid, int parallelism)
   {
     FILE_FTAB_COLLECTOR collector;
     int error_code;
@@ -84,7 +82,7 @@ namespace parallel_heap_scan
     return NO_ERROR;
   }
 
-  SCAN_CODE input_handler_ftabs::get_next_vpid_with_fix (THREAD_ENTRY *thread_p, VPID *vpid)
+  SCAN_CODE input_handler_heap::get_next_vpid_with_fix (THREAD_ENTRY *thread_p, VPID *vpid)
   {
     int error_code = NO_ERROR;
 
@@ -136,9 +134,7 @@ namespace parallel_heap_scan
 			m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 			return S_ERROR;
 		      }
-		    /* when bitmap is built, that page was valid.
-		     * but now, it's deallocated in some reasons.
-		     * this is not error, it can be ignored */
+		    /* page valid at bitmap build time but deallocated since; ignorable. */
 		    if (m_tl_old_page_watcher.pgptr != NULL)
 		      {
 			pgbuf_ordered_unfix (thread_p, &m_tl_old_page_watcher);
@@ -177,7 +173,7 @@ namespace parallel_heap_scan
     return S_ERROR;	/* unreachable */
   }
 
-  int input_handler_ftabs::finalize (THREAD_ENTRY *thread_p)
+  int input_handler_heap::finalize (THREAD_ENTRY *thread_p)
   {
     if (m_tl_old_page_watcher.pgptr != NULL)
       {

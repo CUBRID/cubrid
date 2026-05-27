@@ -17,36 +17,32 @@
  */
 
 /*
- * px_heap_scan_join_info.hpp
+ * px_scan_join_info.hpp
  */
 
-#ifndef _PX_HEAP_SCAN_JOIN_INFO_HPP_
-#define _PX_HEAP_SCAN_JOIN_INFO_HPP_
+#ifndef _PX_SCAN_JOIN_INFO_HPP_
+#define _PX_SCAN_JOIN_INFO_HPP_
 
-#include "system.h"
 #include "storage_common.h"
 #include "xasl.h"
 
 #include <map>
-#include <vector>
 
-/* forward declaration */
 struct xasl_node;
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
   struct scan_info
   {
-    /* read-only section */
-    OID oid;			/* class oid */
-    HFID hfid;			/* class hfid */
-    BTID btid;			/* index id */
-    QFILE_LIST_ID *list_id;	/* list file identifier */
+    OID oid;
+    HFID hfid;
+    BTID btid;
+    QFILE_LIST_ID *list_id;
     TARGET_TYPE target_type;
     ACCESS_METHOD access_method;
-    /* writable section (mutex needed) */
+    /* status / qualified_block: mutex-guarded. */
     SCAN_STATUS status;
-    bool qualified_block;	/* qualified block? */
+    bool qualified_block;
   };
 
   using XASL_ID = int;
@@ -58,7 +54,7 @@ namespace parallel_heap_scan
       ~join_info() = default;
 
       void capture_join_info (xasl_node *head);
-      inline scan_info get_scan_info (XASL_ID xasl_id)
+      scan_info get_scan_info (XASL_ID xasl_id)
       {
 	return m_scan_infos[xasl_id];
       }
@@ -71,4 +67,4 @@ namespace parallel_heap_scan
   };
 }
 
-#endif /* _PX_HEAP_SCAN_JOIN_INFO_HPP_ */
+#endif /* _PX_SCAN_JOIN_INFO_HPP_ */

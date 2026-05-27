@@ -33,7 +33,7 @@
 #include "lock_table.h"		// lock_to_lockmode_string
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
-#include "px_heap_scan_trace_handler.hpp"
+#include "px_scan_trace_handler.hpp"
 #include "px_query_executor.hpp"
 #endif // SERVER_MODE
 #include "xasl.h"
@@ -511,9 +511,9 @@ qdump_print_access_spec (ACCESS_SPEC_TYPE * spec_list_p)
 
   fprintf (foutput, ",%s", qdump_access_method_string (spec_list_p->access));
 
-  if (spec_list_p->flags & ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN)
+  if (spec_list_p->flags & ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN)
     {
-      fprintf (foutput, ",no_parallel_heap_scan");
+      fprintf (foutput, ",no_parallel_scan");
     }
 
   if (IS_ANY_INDEX_ACCESS (spec_list_p->access))
@@ -3084,6 +3084,33 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 	      spec->s_id.s.phsid.trace_storage = NULL;
 	    }
 	}
+      else if (spec->s_id.type == S_PARALLEL_LIST_SCAN)
+	{
+	  if (spec->s_id.s.pllsid_parallel.trace_storage != NULL)
+	    {
+	      if (!spec->s_id.scan_stats.noscan)
+		{
+		  spec->s_id.s.pllsid_parallel.trace_storage->dump_stats_json (scan, class_name);
+		}
+	      spec->s_id.s.pllsid_parallel.trace_storage->~accumulative_trace_storage ();
+	      free (spec->s_id.s.pllsid_parallel.trace_storage);
+	      spec->s_id.s.pllsid_parallel.trace_storage = NULL;
+	    }
+	}
+      else if (spec->s_id.type == S_PARALLEL_INDEX_SCAN || spec->s_id.type == S_INDX_SCAN)
+	{
+	  /* type rolls back to S_INDX_SCAN on parent-class re-open; pisid superset preserves trace_storage */
+	  if (spec->s_id.s.pisid.trace_storage != NULL)
+	    {
+	      if (!spec->s_id.scan_stats.noscan)
+		{
+		  spec->s_id.s.pisid.trace_storage->dump_stats_json (scan, class_name);
+		}
+	      spec->s_id.s.pisid.trace_storage->~accumulative_trace_storage ();
+	      free (spec->s_id.s.pisid.trace_storage);
+	      spec->s_id.s.pisid.trace_storage = NULL;
+	    }
+	}
 #endif
 
       if (scan_array != NULL)
@@ -3531,6 +3558,19 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		  spec->s_id.s.phsid.trace_storage = NULL;
 		}
 	    }
+	  else if (spec->s_id.type == S_PARALLEL_INDEX_SCAN || spec->s_id.type == S_INDX_SCAN)
+	    {
+	      if (spec->s_id.s.pisid.trace_storage)
+		{
+		  if (!spec->s_id.scan_stats.noscan)
+		    {
+		      spec->s_id.s.pisid.trace_storage->dump_stats_text (fp, multi_spec_indent, class_name);
+		    }
+		  spec->s_id.s.pisid.trace_storage->~accumulative_trace_storage ();
+		  free (spec->s_id.s.pisid.trace_storage);
+		  spec->s_id.s.pisid.trace_storage = NULL;
+		}
+	    }
 #endif
 	  if (class_name != NULL)
 	    {
@@ -3635,6 +3675,21 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
       else
 	{
 	  scan_print_stats_text (fp, &spec->s_id);
+#if !WINDOWS
+	  if (spec->s_id.type == S_PARALLEL_LIST_SCAN)
+	    {
+	      if (spec->s_id.s.pllsid_parallel.trace_storage)
+		{
+		  if (!spec->s_id.scan_stats.noscan)
+		    {
+		      spec->s_id.s.pllsid_parallel.trace_storage->dump_stats_text (fp, multi_spec_indent, class_name);
+		    }
+		  spec->s_id.s.pllsid_parallel.trace_storage->~accumulative_trace_storage ();
+		  free (spec->s_id.s.pllsid_parallel.trace_storage);
+		  spec->s_id.s.pllsid_parallel.trace_storage = NULL;
+		}
+	    }
+#endif
 	}
 
       fprintf (fp, "\n");
