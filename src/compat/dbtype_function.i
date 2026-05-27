@@ -133,7 +133,7 @@ STATIC_INLINE int db_make_json (DB_VALUE * value, JSON_DOC * json_document, bool
   __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE int db_make_clob (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR str,
-				const int char_str_byte_size, const int codeset, const int collation_id)
+				const int char_str_byte_size)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_blob (DB_VALUE * value, const int max_bit_length, DB_CONST_C_BIT bit_str,
 				const int bit_str_bit_size) __attribute__ ((ALWAYS_INLINE));
@@ -2147,8 +2147,7 @@ db_make_json (DB_VALUE * value, JSON_DOC * json_document, bool need_clear)
  * char_str_byte_size(in):
  */
 int
-db_make_clob (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR str, const int char_str_byte_size,
-	      const int codeset, const int collation_id)
+db_make_clob (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR str, const int char_str_byte_size)
 {
   int error;
 
@@ -2159,8 +2158,9 @@ db_make_clob (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR str, 
   error = db_value_domain_init (value, DB_TYPE_CLOB, max_char_length, 0);
   if (error == NO_ERROR)
     {
-      assert (codeset >= INTL_CODESET_RAW_BYTES && codeset <= INTL_CODESET_UTF8);
-      error = db_make_db_char (value, (INTL_CODESET) codeset, collation_id, str, char_str_byte_size);
+      /* CLOB has no per-value codeset/collation — server uses LANG_SYS_CODESET
+       * (createdb codeset). Mirrors BFILE/CFILE which carry no codeset slot. */
+      error = db_make_db_char (value, (INTL_CODESET) LANG_SYS_CODESET, 0, str, char_str_byte_size);
     }
 
   return error;

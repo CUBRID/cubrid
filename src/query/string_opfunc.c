@@ -8158,7 +8158,7 @@ qstr_make_typed_string (const DB_TYPE db_type, DB_VALUE * value, const int preci
       break;
 
     case DB_TYPE_CLOB:
-      error = db_make_clob (value, precision, src, s_unit, codeset, collation_id);
+      error = db_make_clob (value, precision, src, s_unit);
       break;
 
     case DB_TYPE_BLOB:
@@ -25560,7 +25560,7 @@ db_char_to_clob (const DB_VALUE * src_value, DB_VALUE * result_value)
       memcpy (buf, char_data, length);
     }
 
-  error_status = db_make_clob (result_value, DB_MAX_LOB_PRECISION, (DB_CONST_C_CHAR) buf, length, codeset, collation);
+  error_status = db_make_clob (result_value, DB_MAX_LOB_PRECISION, (DB_CONST_C_CHAR) buf, length);
   if (error_status != NO_ERROR)
     {
       goto error;

@@ -3800,7 +3800,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 	  }
 	buf[len] = '\0';
 
-	db_make_clob (db_value, DB_MAX_LOB_PRECISION, buf, len, codeset, collation_id);
+	db_make_clob (db_value, DB_MAX_LOB_PRECISION, buf, len);
 
 	db_value->need_clear = true;
 	value->info.value.db_value_is_in_workspace = true;
