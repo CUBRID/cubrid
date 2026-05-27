@@ -8885,13 +8885,6 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
   common_type = arg1_type;
   expr = node;
 
-  /* NA is a select-list placeholder (e.g. unloaddb view specs). Skip type checking. */
-  if (arg1_type == PT_TYPE_NA || arg2_type == PT_TYPE_NA || arg3_type == PT_TYPE_NA)
-    {
-      node->type_enum = PT_TYPE_NA;
-      return node;
-    }
-
   /* adjust expression definition to fit the signature implementation */
   switch (op)
     {

@@ -7587,7 +7587,7 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
       return NULL;
     }
 
-  if (do_semantic_check)
+  if (do_semantic_check && !pt_query_select_list_all_na (parser, qry))
     {
       qry = pt_semantic_check (parser, qry);
       if (pt_has_error (parser) || qry == NULL)
@@ -7625,6 +7625,12 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
       if (attr->info.attr_def.attr_type == PT_META_ATTR)
 	{
 	  attr = attr->next;
+	  continue;
+	}
+
+      if (pt_query_select_list_all_na (parser, qry)
+	  && (col->type_enum == PT_TYPE_NA || col->type_enum == PT_TYPE_NULL))
+	{
 	  continue;
 	}
 
@@ -7812,6 +7818,15 @@ pt_type_cast_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE 
 		  continue;
 		}
 
+	      if (pt_query_select_list_all_na (parser, qry)
+		  && (col->type_enum == PT_TYPE_NA || col->type_enum == PT_TYPE_NULL))
+		{
+		  prev_col = col;
+		  col = col->next;
+		  attr = attr->next;
+		  continue;
+		}
+
 	      new_col = pt_type_cast_vclass_query_spec_column (parser, attr, col);
 	      if (new_col != col)
 		{
@@ -7854,6 +7869,15 @@ pt_type_cast_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE 
 	  /* bypass any class_attribute */
 	  if (attr->info.attr_def.attr_type == PT_META_ATTR)
 	    {
+	      attr = attr->next;
+	      continue;
+	    }
+
+	  if (pt_query_select_list_all_na (parser, qry)
+	      && (col->type_enum == PT_TYPE_NA || col->type_enum == PT_TYPE_NULL))
+	    {
+	      prev_col = col;
+	      col = col->next;
 	      attr = attr->next;
 	      continue;
 	    }
@@ -8172,7 +8196,14 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	}
       crt_qry = result_stmt;
 
-      result_stmt = pt_semantic_check (parser, crt_qry);
+      if (!pt_query_select_list_all_na (parser, crt_qry))
+	{
+	  result_stmt = pt_semantic_check (parser, crt_qry);
+	}
+      else
+	{
+	  result_stmt = crt_qry;
+	}
       if (pt_has_error (parser))
 	{
 	  if (prev_qry)
@@ -11097,6 +11128,11 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  break;		/* error */
 	}
 
+      if (pt_query_select_list_all_na (parser, node))
+	{
+	  break;
+	}
+
       node = pt_semantic_type (parser, node, info);
       if (node == NULL)
 	{
@@ -11254,7 +11290,10 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  }
       }
 
-      node = pt_semantic_type (parser, node, info);
+      if (!pt_query_select_list_all_na (parser, node))
+	{
+	  node = pt_semantic_type (parser, node, info);
+	}
       break;
 
     case PT_DO:

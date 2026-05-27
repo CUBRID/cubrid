@@ -5076,6 +5076,68 @@ error_exit:
 }
 
 /*
+ * pt_select_list_all_na () - true when every visible select-list item is NA
+ *   return: true if select list is non-empty and all items are PT_TYPE_NA values
+ *   select_list(in): SELECT list columns
+ */
+bool
+pt_select_list_all_na (PT_NODE * select_list)
+{
+  bool has_column = false;
+
+  if (select_list == NULL)
+    {
+      return false;
+    }
+
+  for (PT_NODE * col = select_list; col != NULL; col = col->next)
+    {
+      if (col->flag.is_hidden_column)
+	{
+	  continue;
+	}
+
+      has_column = true;
+      if (col->node_type != PT_VALUE || col->type_enum != PT_TYPE_NA)
+	{
+	  return false;
+	}
+    }
+
+  return has_column;
+}
+
+/*
+ * pt_query_select_list_all_na () - true when a query's select list is all NA
+ *   return: true for SELECT NA,...,NA or UNION of queries with all-NA lists
+ *   parser(in): parser context
+ *   query(in): SELECT, UNION, DIFFERENCE, or INTERSECTION node
+ */
+bool
+pt_query_select_list_all_na (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  if (query == NULL || !pt_is_query (query))
+    {
+      return false;
+    }
+
+  switch (query->node_type)
+    {
+    case PT_SELECT:
+      return pt_select_list_all_na (query->info.query.q.select.list);
+
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      return (pt_query_select_list_all_na (parser, query->info.query.q.union_.arg1)
+	      && pt_query_select_list_all_na (parser, query->info.query.q.union_.arg2));
+
+    default:
+      return false;
+    }
+}
+
+/*
  * pt_fixup_column_type() - Fixes the type of a SELECT column so that it can
  *                          be used for view creation and for CREATE AS SELECT
  *                          statements
