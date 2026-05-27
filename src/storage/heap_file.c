@@ -26156,6 +26156,9 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
   return scan;
 }
 
+/* TODO (CBRD-26847): Audit all callers of heap_get_visible_version_expand_oos to determine whether each actually
+ * needs OOS expansion.  Many call sites may have been migrated mechanically from heap_get_visible_version and could
+ * safely switch back, reducing unnecessary OOS blob reads. */
 SCAN_CODE
 heap_get_visible_version_expand_oos (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 				     HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
