@@ -54,7 +54,6 @@ using XASL_STATE = xasl_state;
 
 #define QEXEC_NULL_COMMAND_ID   -1	/* Invalid command identifier */
 
-/* top-n add status: success / overflow (heap full + size exceeded) / failure (error) */
 typedef enum
 {
   TOPN_SUCCESS,

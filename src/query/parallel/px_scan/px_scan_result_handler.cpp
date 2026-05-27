@@ -285,13 +285,12 @@ namespace parallel_scan
 	    tl.agg_hash_state = HS_ACCEPT_ALL;
 	    tl.g_agg_domains_resolved = FALSE;
 	  }
-	/* main 이 topn 활성이면 worker 도 자기 clone xasl 슬롯에 별도 topn heap alloc.
-	 * setup 실패 시 curr_xasl->topn_items = NULL 자연 fallback (non-topn worker). */
+	/* setup failure leaves curr_xasl->topn_items NULL; main reinsertion preserves correctness. */
 	if (m_.orig_xasl->topn_items != nullptr && curr_xasl->type == BUILDLIST_PROC)
 	  {
 	    if (qexec_setup_topn_proc (thread_p, curr_xasl, vd) != NO_ERROR)
 	      {
-		/* graceful degrade: main 재삽입이 correctness 보장. er stack 만 정리. */
+		/* clear stale error so subsequent worker handling reports its own. */
 		er_clear ();
 		assert (curr_xasl->topn_items == nullptr);
 	      }
@@ -339,7 +338,7 @@ namespace parallel_scan
 		qfile_close_list (thread_p, context->part_list_id);
 	      }
 	  }
-	/* small input case: write 단계에서 overflow/RETRY 미발생 → heap 잔존. 모든 가지친 tuple flush 후 close. */
+	/* small-input case: heap survived all writes without overflow, flush before close. */
 	if (tl.xasl->topn_items != nullptr)
 	  {
 	    (void) qexec_topn_tuples_to_list_id (thread_p, tl.xasl, tl.vd->xasl_state, false,
@@ -819,7 +818,6 @@ namespace parallel_scan
 	      }
 	    if (output_tuple)
 	      {
-		/* worker-local top-n prune. main 재삽입이 글로벌 N 으로 자동 회복하므로 overflow 는 graceful flush. */
 		if (tl.xasl->topn_items != nullptr)
 		  {
 		    TOPN_STATUS topn_status = qexec_add_tuple_to_topn (thread_p, tl.xasl->topn_items,
@@ -834,9 +832,7 @@ namespace parallel_scan
 			m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 			return false;
 		      }
-		    /* TOPN_OVERFLOW: write current row first (tpl_descr still valid), then flush heap.
-		     * heap flush corrupts tpl_descr.f_valp via freed topn tuple values; write must precede flush.
-		     * SKIP fall-through: current row already written. */
+		    /* OVERFLOW: write current row before flush; flush frees topn tuples and invalidates tpl_descr.f_valp. */
 		    if (unlikely (qfile_generate_tuple_into_list (thread_p, tl.writer_result_p, T_NORMAL) != NO_ERROR))
 		      {
 			m_err_messages_p->move_top_error_message_to_this();
@@ -869,8 +865,7 @@ namespace parallel_scan
 	  }
 	else if (unlikely (status == QPROC_TPLDESCR_RETRY_SET_TYPE || status == QPROC_TPLDESCR_RETRY_BIG_REC))
 	  {
-	    /* RETRY 분기는 tpldescr 미충전 → topn 가지치기 불가. 잔존 heap 을 먼저 flush 해 list 로 빼낸 뒤
-	     * 본 tuple 은 기존 add_tuple_to_list 경로로 그대로 write (correctness: main 재삽입 보장). */
+	    /* RETRY path: tpldescr incomplete; drain residual heap to list before plain insertion. */
 	    if (tl.xasl->topn_items != nullptr)
 	      {
 		if (qexec_topn_tuples_to_list_id (thread_p, tl.xasl, tl.vd->xasl_state, false,
