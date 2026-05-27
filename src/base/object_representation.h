@@ -1267,6 +1267,7 @@ STATIC_INLINE int or_get_varbit_length (OR_BUF * buf, int *intval) __attribute__
 STATIC_INLINE int or_get_varchar_length (OR_BUF * buf, int *intval) __attribute__ ((ALWAYS_INLINE));
 #endif
 /* Get the compressed and the decompressed lengths of a string stored in buffer */
+/* Legacy alias for compression-length-only reads. */
 #define or_get_varchar_compression_lengths(buf, compressed_size, decompressed_size) \
   or_get_string_header (buf, NULL, decompressed_size, compressed_size)
 #if defined(ENABLE_UNUSED_FUNCTION)	// Unused — temporarily preserved to minimize review diff; will be removed in a follow-up PR
@@ -1584,7 +1585,7 @@ extern int or_put_json_schema (OR_BUF * buf, const char *schema);
 /*
  * CHAR/VARCHAR IN-MEMORY STRING HEADER (NOT CLOB/BLOB)
  *
- * The in-memory layout differs from the on-disk layout (see line 1397) in two ways:
+ * The in-memory layout differs from the on-disk layout in two ways:
  *
  *  1. In-memory strings never store compressed bytes (see mr_setmem_char_type_common()),
  *     so the compressed_size field is removed.
@@ -1676,7 +1677,7 @@ STATIC_INLINE int or_put_string_header (OR_BUF * buf, int length, int size, int 
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_get_string_header (OR_BUF * buf, int *length, int *size, int *compressed_size)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int or_string_header_size (int length, int size, int compressed_size) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_string_header_size (int length, int size) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE unsigned int or_mem_string_pick_header_type (int length, int size) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_put_mem_string_header (char *mem, int length, int size) __attribute__ ((ALWAYS_INLINE));
@@ -2421,18 +2422,12 @@ or_get_varchar_length (OR_BUF * buf, int *rc)
  *                        (only present in MEDIUM and LARGE headers)
  *
  * Note:
- *   The header type is selected by or_string_pick_header_type()
- *   using the same rule as or_string_header_size(), and the
- *   corresponding 1 / 4 / 6 / 12-byte header is written.
+ *   See the VARIABLE-LENGTH STRING HEADER comment above for the
+ *   on-disk layout and header type selection rule.
  *
- *   The header is written using byte-level operations
- *   (OR_PUT_* + or_put_data) instead of or_put_int() /
- *   or_put_short() because this function may be called from
- *   CHAR_ALIGNMENT contexts (e.g. mr_index_writeval_string())
- *   where buf->ptr is not guaranteed to be word aligned.
- *
- *   or_put_int() / or_put_short() require aligned access
- *   and assert on unaligned buffers.
+ *   Uses byte-level writes (OR_PUT_* + or_put_data) instead of
+ *   or_put_int() / or_put_short() because this function may be
+ *   called with unaligned buffers from CHAR_ALIGNMENT contexts.
  */
 STATIC_INLINE int
 or_put_string_header (OR_BUF * buf, int length, int size, int compressed_size)
@@ -2489,23 +2484,16 @@ or_put_string_header (OR_BUF * buf, int length, int size, int compressed_size)
  *                          (only present in MEDIUM and LARGE headers; NULL to skip)
  *
  * Note:
- *   Byte 0 is first peeked to determine the header type from
- *   its top 2 bits, then the corresponding 1 / 4 / 6 / 12-byte
- *   header is read.
+ *   See the VARIABLE-LENGTH STRING HEADER comment above for the
+ *   on-disk layout.
  *
- *   For SMALL, MEDIUM, and LARGE, the peek does not advance
- *   buf->ptr, so the subsequent read includes byte 0 again.
- *   The header type bits therefore share the first word
- *   with the length bits.
+ *   Byte 0 is peeked to determine the header type from the top
+ *   2 bits. For SMALL, MEDIUM, and LARGE the peek does not advance
+ *   buf->ptr, so the subsequent read re-includes byte 0.
  *
- *   The header is read using byte-level operations
- *   (or_get_data() + OR_GET_*) instead of or_get_int() /
- *   or_get_short() because this function may be called from
- *   CHAR_ALIGNMENT contexts (e.g. mr_index_readval_string())
- *   where buf->ptr is not guaranteed to be word aligned.
- *
- *   or_get_int() / or_get_short() require aligned access
- *   and assert on unaligned buffers.
+ *   Uses byte-level reads (or_get_data() + OR_GET_*) instead of
+ *   or_get_int() / or_get_short() because this function may be
+ *   called with unaligned buffers from CHAR_ALIGNMENT contexts.
  */
 STATIC_INLINE int
 or_get_string_header (OR_BUF * buf, int *length, int *size, int *compressed_size)
@@ -2515,13 +2503,10 @@ or_get_string_header (OR_BUF * buf, int *length, int *size, int *compressed_size
   unsigned int header_type;
   unsigned char peek_byte;
 
-  /* Peek byte 0 — does NOT advance buf->ptr. */
   assert (buf->ptr + OR_BYTE_SIZE <= buf->endptr);
   peek_byte = (unsigned char) OR_GET_BYTE (buf->ptr);
   header_type = (unsigned int) peek_byte >> OR_STRING_HEADER_TYPE_SHIFT_IN_BYTE;
 
-  /* Parse into locals via the OR_DISK_STRING_GET_* accessors;
-   * commit (NULL = skip) happens once at the bottom. */
   switch (header_type)
     {
     case OR_STRING_HEADER_TYPE_TINY:
@@ -2577,7 +2562,6 @@ or_get_string_header (OR_BUF * buf, int *length, int *size, int *compressed_size
       return ER_FAILED;
     }
 
-  /* Commit — NULL out-param means "skip". */
   if (length != NULL)
     {
       *length = tmp_length;
@@ -2604,8 +2588,6 @@ or_get_string_header (OR_BUF * buf, int *length, int *size, int *compressed_size
  * Note:
  *   Selects the smallest header type that can represent both
  *   the string size and length.
- *
- *   See line 1480 for the detailed selection rule.
  *
  *   Shared by or_string_header_size() and
  *   or_put_string_header() so the computed header size
@@ -2635,8 +2617,6 @@ or_string_pick_header_type (int length, int size)
  *   return              : header byte count (1 / 4 / 6 / 12)
  *   length(in)          : character count
  *   size(in)            : decompressed byte count (caller's data size)
- *   compressed_size(in) : LZ4-compressed byte count; 0 when stored uncompressed
- *                        (unused — kept for signature parity with or_put/get_string_header)
  *
  * Note:
  *   Mirrors or_put_string_header / or_get_string_header — uses the same
@@ -2644,10 +2624,8 @@ or_string_pick_header_type (int length, int size)
  *   matches what the emitter actually writes.
  */
 STATIC_INLINE int
-or_string_header_size (int length, int size, int compressed_size)
+or_string_header_size (int length, int size)
 {
-  (void) compressed_size;
-
   switch (or_string_pick_header_type (length, size))
     {
     case OR_STRING_HEADER_TYPE_TINY:
@@ -2677,18 +2655,12 @@ or_string_header_size (int length, int size, int compressed_size)
  *   In-memory strings are never compressed, so the
  *   MEDIUM header type is not used.
  *
- *   The remaining header types follow the same
- *   selection rule as or_string_pick_header_type():
- *   SMALL covers all sizes up to the 16-bit size
- *   field limit (65535), and anything larger uses
- *   LARGE.
- *
- *   See line 1629 for the detailed selection rule.
+ *   See the CHAR/VARCHAR IN-MEMORY STRING HEADER comment
+ *   above for the layout and selection thresholds.
  *
  *   Shared by or_mem_string_header_size() and
- *   or_put_mem_string_header() so the computed
- *   header size always matches the actual written
- *   layout.
+ *   or_put_mem_string_header() so the computed header size
+ *   always matches the actual written layout.
  */
 STATIC_INLINE unsigned int
 or_mem_string_pick_header_type (int length, int size)
@@ -2736,15 +2708,12 @@ or_mem_string_header_size (int length, int size)
  *   size(in)   : uncompressed byte count
  *
  * Note:
- *   Selects the header type via
- *   or_mem_string_pick_header_type() and writes the
- *   corresponding 1 / 4 / 8-byte header directly to
- *   mem using OR_MEM_STRING_PUT_* macros.
+ *   See the CHAR/VARCHAR IN-MEMORY STRING HEADER comment above
+ *   for the layout and selection thresholds.
  *
- *   Unlike or_put_string_header(), this function does
- *   not use OR_BUF, perform bounds checks, or advance
- *   any pointer. The caller owns the destination buffer
- *   and manages its lifetime.
+ *   Unlike or_put_string_header(), this function does not use
+ *   OR_BUF, perform bounds checks, or advance any pointer.
+ *   The caller owns the destination buffer and its lifetime.
  */
 STATIC_INLINE int
 or_put_mem_string_header (char *mem, int length, int size)
@@ -2780,17 +2749,17 @@ or_put_mem_string_header (char *mem, int length, int size)
  *   size(out)  : byte count        (NULL to skip)
  *
  * Note:
- *   Peeks byte 0 to determine the header type from its
- *   top 2 bits, then reads the corresponding 1 / 4 / 8-byte
- *   header directly from mem using OR_MEM_STRING_GET_* macros.
+ *   See the CHAR/VARCHAR IN-MEMORY STRING HEADER comment above
+ *   for the layout.
  *
- *   Unlike or_get_string_header(), this function does
- *   not use OR_BUF or advance any pointer. The caller
- *   computes the data start as:
+ *   Byte 0 is peeked to determine the header type from the top
+ *   2 bits. MEDIUM is rejected because in-memory strings never
+ *   use that header type.
+ *
+ *   Unlike or_get_string_header(), this function does not use
+ *   OR_BUF or advance any pointer. The caller computes the
+ *   payload start as:
  *     mem + or_mem_string_header_size(length, size)
- *
- *   MEDIUM is rejected because the in-memory layout
- *   never uses that header type.
  */
 STATIC_INLINE int
 or_get_mem_string_header (char *mem, int *length, int *size)
@@ -2822,8 +2791,6 @@ or_get_mem_string_header (char *mem, int *length, int *size)
       break;
 
     case OR_STRING_HEADER_TYPE_MEDIUM:
-      /* MEDIUM is disk-only; seeing it here means disk header path
-       * was mistakenly passed into mem helper. */
       assert (false);
       return ER_FAILED;
 
@@ -2990,9 +2957,7 @@ or_varbit_length_internal (int bitlen, int align)
 STATIC_INLINE int
 or_varchar_length_internal (int length, int size, int compressed_size, int align)
 {
-  /* The header type is selected by (length, size). The buffer holds
-   * compressed_size bytes when compressed_size > 0, otherwise size. */
-  int header = or_string_header_size (length, size, compressed_size);
+  int header = or_string_header_size (length, size);
   int data = (compressed_size > 0) ? compressed_size : size;
   int len = header + data;
 
@@ -3032,13 +2997,10 @@ or_skip_varbit (OR_BUF * buf, int align)
  *    align(in):
  *
  * Note:
- *   Reads the string header (TINY / SMALL / MEDIUM / LARGE)
- *   via or_get_string_header(), then advances past the data
- *   bytes (compressed_size if present, otherwise size) and
- *   any trailing padding via or_skip_varchar_remainder().
- *
- *   The body format is independent of header type because
- *   or_get_string_header() resolves the layout internally.
+ *   Reads the string header via or_get_string_header(), then
+ *   advances past the data bytes (compressed_size if present,
+ *   otherwise size) and any trailing padding via
+ *   or_skip_varchar_remainder().
  */
 STATIC_INLINE int
 or_skip_varchar (OR_BUF * buf, int align)

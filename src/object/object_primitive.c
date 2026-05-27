@@ -10404,6 +10404,20 @@ cleanup:
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
+static inline int
+mr_make_char_or_varchar (DB_VALUE * value, DB_TYPE type, int precision, const char *str, int size,
+			 int codeset, int collation)
+{
+  if (type == DB_TYPE_CHAR)
+    {
+      return db_make_char (value, precision, str, size, codeset, collation);
+    }
+  else
+    {
+      return db_make_varchar (value, precision, str, size, codeset, collation);
+    }
+}
+
 #if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
 /* data_readval_string() was written separately to read varchar columns 
  * from HEAP records to support unloaddb.
@@ -10484,16 +10498,8 @@ data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 	      goto cleanup;
 	    }
 
-	  if (type == DB_TYPE_CHAR)
-	    {
-	      db_make_char (value, precision, decompressed_string, expected_decompressed_size,
-			    TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
-	    }
-	  else
-	    {
-	      db_make_varchar (value, precision, decompressed_string, expected_decompressed_size,
-			       TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
-	    }
+	  mr_make_char_or_varchar (value, type, precision, decompressed_string, expected_decompressed_size,
+				   TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
 	  value->need_clear = (decompressed_string != copy_buf) ? true : false;
 	  db_set_compressed_string (value, NULL, DB_NOT_YET_COMPRESSED, false);
 	}
@@ -10501,16 +10507,8 @@ data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 	{
 	  assert (compressed_size == 0);
 
-	  if (type == DB_TYPE_CHAR)
-	    {
-	      db_make_char (value, precision, buf->ptr, expected_decompressed_size, TP_DOMAIN_CODESET (domain),
-			    TP_DOMAIN_COLLATION (domain));
-	    }
-	  else
-	    {
-	      db_make_varchar (value, precision, buf->ptr, expected_decompressed_size, TP_DOMAIN_CODESET (domain),
-			       TP_DOMAIN_COLLATION (domain));
-	    }
+	  mr_make_char_or_varchar (value, type, precision, buf->ptr, expected_decompressed_size,
+				   TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
 	  value->need_clear = false;
 	  db_set_compressed_string (value, NULL, DB_UNCOMPRESSABLE, false);
 	}
@@ -10545,16 +10543,8 @@ data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 	      goto cleanup;
 	    }
 
-	  if (type == DB_TYPE_CHAR)
-	    {
-	      db_make_char (value, precision, decompressed_string, expected_decompressed_size,
-			    TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
-	    }
-	  else
-	    {
-	      db_make_varchar (value, precision, decompressed_string, expected_decompressed_size,
-			       TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
-	    }
+	  mr_make_char_or_varchar (value, type, precision, decompressed_string, expected_decompressed_size,
+				   TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
 	  value->need_clear = (decompressed_string != copy_buf) ? true : false;
 	  db_set_compressed_string (value, NULL, DB_NOT_YET_COMPRESSED, false);
 	}
@@ -10565,16 +10555,8 @@ data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 	  memcpy (decompressed_string, buf->ptr, expected_decompressed_size);
 	  decompressed_string[expected_decompressed_size] = '\0';
 
-	  if (type == DB_TYPE_CHAR)
-	    {
-	      db_make_char (value, precision, decompressed_string, expected_decompressed_size,
-			    TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
-	    }
-	  else
-	    {
-	      db_make_varchar (value, precision, decompressed_string, expected_decompressed_size,
-			       TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
-	    }
+	  mr_make_char_or_varchar (value, type, precision, decompressed_string, expected_decompressed_size,
+				   TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
 	  value->need_clear = (decompressed_string != copy_buf) ? true : false;
 	  db_set_compressed_string (value, NULL, DB_UNCOMPRESSABLE, false);
 	}
@@ -11393,7 +11375,6 @@ mr_setmem_char_type_common (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, 
       src_length = value->data.ch.medium.length;
     }
 
-  /* In-memory layout: [header][data][NUL]. Header size depends on the header type. */
   header_size = or_mem_string_header_size (src_length, src_size);
   new_size = header_size + src_size + 1;
   new_ = (char *) db_private_alloc (NULL, new_size);
@@ -11416,7 +11397,6 @@ mr_setmem_char_type_common (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, 
       return ER_FAILED;
     }
 
-  /* data: passed bytes as-is (no prec padding, no truncation) */
   memcpy (new_ + header_size, src, src_size);
   new_[header_size + src_size] = '\0';
 
@@ -11470,7 +11450,6 @@ mr_getmem_char_type_common (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, 
       return NO_ERROR;
     }
 
-  /* Parse the in-memory header; data starts at cur + header bytes. */
   if (or_get_mem_string_header (cur, &src_length, &src_size) != NO_ERROR)
     {
       assert (false);
@@ -11480,17 +11459,8 @@ mr_getmem_char_type_common (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, 
 
   if (!copy)
     {
-      /* peek: point DB_VALUE directly at the in-memory buffer's data region */
-      if (type == DB_TYPE_CHAR)
-	{
-	  db_make_char (value, domain->precision, data, src_size, TP_DOMAIN_CODESET (domain),
-			TP_DOMAIN_COLLATION (domain));
-	}
-      else
-	{
-	  db_make_varchar (value, domain->precision, data, src_size, TP_DOMAIN_CODESET (domain),
-			   TP_DOMAIN_COLLATION (domain));
-	}
+      mr_make_char_or_varchar (value, type, domain->precision, data, src_size, TP_DOMAIN_CODESET (domain),
+			       TP_DOMAIN_COLLATION (domain));
       value->data.ch.medium.length = src_length;
       value->need_clear = false;
     }
@@ -11505,16 +11475,8 @@ mr_getmem_char_type_common (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, 
 	}
       memcpy (new_, data, src_size);
       new_[src_size] = '\0';
-      if (type == DB_TYPE_CHAR)
-	{
-	  db_make_char (value, domain->precision, new_, src_size, TP_DOMAIN_CODESET (domain),
-			TP_DOMAIN_COLLATION (domain));
-	}
-      else
-	{
-	  db_make_varchar (value, domain->precision, new_, src_size, TP_DOMAIN_CODESET (domain),
-			   TP_DOMAIN_COLLATION (domain));
-	}
+      mr_make_char_or_varchar (value, type, domain->precision, new_, src_size, TP_DOMAIN_CODESET (domain),
+			       TP_DOMAIN_COLLATION (domain));
       value->data.ch.medium.length = src_length;
       value->need_clear = true;
     }
@@ -11635,7 +11597,6 @@ mr_data_writemem_char_type_common (OR_BUF * buf, void *memptr, TP_DOMAIN * domai
   cur = *mem;
   if (cur != NULL)
     {
-      /* Parse the in-memory header; data starts at cur + header bytes. */
       if (or_get_mem_string_header (cur, &src_length, &src_size) != NO_ERROR)
 	{
 	  assert (false);
@@ -11692,13 +11653,8 @@ mr_data_readmem_char_type_common (OR_BUF * buf, void *memptr, TP_DOMAIN * domain
     }
 
   mem = (char **) memptr;
-  /* should we be checking for existing strings ? */
-#if 0
-  if (cur != NULL)
-    db_private_free_and_init (NULL, cur);
-#endif
-
   new_ = NULL;
+
   if (size)
     {
       start = buf->ptr;
@@ -11830,16 +11786,8 @@ mr_setval_char_type_common (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB
       if (!copy)
 	{
 	  /* shallow: share src buffers; dest does not own compressed_buf */
-	  if (type == DB_TYPE_CHAR)
-	    {
-	      error = db_make_char (dest, src_precision, src_str, src_size, db_get_string_codeset (src),
-				    db_get_string_collation (src));
-	    }
-	  else
-	    {
-	      error = db_make_varchar (dest, src_precision, src_str, src_size, db_get_string_codeset (src),
-				       db_get_string_collation (src));
-	    }
+	  error = mr_make_char_or_varchar (dest, type, src_precision, src_str, src_size, db_get_string_codeset (src),
+					   db_get_string_collation (src));
 	  dest->data.ch.medium.compressed_buf = src->data.ch.medium.compressed_buf;
 	  dest->data.ch.info.compressed_need_clear = false;
 	}
@@ -11857,16 +11805,8 @@ mr_setval_char_type_common (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB
 	    {
 	      memcpy (new_, src_str, src_size);
 	      new_[src_size] = '\0';
-	      if (type == DB_TYPE_CHAR)
-		{
-		  db_make_char (dest, src_precision, new_, src_size, db_get_string_codeset (src),
-				db_get_string_collation (src));
-		}
-	      else
-		{
-		  db_make_varchar (dest, src_precision, new_, src_size, db_get_string_codeset (src),
-				   db_get_string_collation (src));
-		}
+	      mr_make_char_or_varchar (dest, type, src_precision, new_, src_size, db_get_string_codeset (src),
+				       db_get_string_collation (src));
 	      dest->need_clear = true;
 	    }
 
@@ -12148,7 +12088,6 @@ mr_readval_char_type_common (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
       return ER_FAILED;
     }
 
-  /* Read disk header (length + size + compressed_size) and advance buf->ptr to the data area. */
   rc = or_get_string_header (buf, &src_length, &expected_decompressed_size, &compressed_size);
   if (rc != NO_ERROR)
     {
@@ -12182,16 +12121,8 @@ mr_readval_char_type_common (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
 	  goto cleanup;
 	}
 
-      if (type == DB_TYPE_CHAR)
-	{
-	  db_make_char (value, precision, decompressed_string, expected_decompressed_size,
-			TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
-	}
-      else
-	{
-	  db_make_varchar (value, precision, decompressed_string, expected_decompressed_size,
-			   TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
-	}
+      mr_make_char_or_varchar (value, type, precision, decompressed_string, expected_decompressed_size,
+			       TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
       value->need_clear = (decompressed_string != copy_buf) ? true : false;
 
 #if defined(CS_MODE)
@@ -12215,16 +12146,8 @@ mr_readval_char_type_common (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
       if (!copy)
 	{
 	  assert (decompressed_string == NULL);
-	  if (type == DB_TYPE_CHAR)
-	    {
-	      db_make_char (value, precision, buf->ptr, expected_decompressed_size,
-			    TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
-	    }
-	  else
-	    {
-	      db_make_varchar (value, precision, buf->ptr, expected_decompressed_size,
-			       TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
-	    }
+	  mr_make_char_or_varchar (value, type, precision, buf->ptr, expected_decompressed_size,
+				   TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
 	  value->need_clear = false;
 	}
       else			/* if (!copy) */
@@ -12233,16 +12156,8 @@ mr_readval_char_type_common (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
 	  memcpy (decompressed_string, buf->ptr, expected_decompressed_size);
 	  decompressed_string[expected_decompressed_size] = '\0';
 
-	  if (type == DB_TYPE_CHAR)
-	    {
-	      db_make_char (value, precision, decompressed_string, expected_decompressed_size,
-			    TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
-	    }
-	  else
-	    {
-	      db_make_varchar (value, precision, decompressed_string, expected_decompressed_size,
-			       TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
-	    }
+	  mr_make_char_or_varchar (value, type, precision, decompressed_string, expected_decompressed_size,
+				   TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
 	  value->need_clear = (decompressed_string != copy_buf) ? true : false;
 	}
       db_set_compressed_string (value, NULL, DB_UNCOMPRESSABLE, false);
