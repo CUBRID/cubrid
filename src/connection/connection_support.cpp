@@ -393,8 +393,8 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
     {
 #if !defined (WINDOWS)
       /* Try recv first without poll.
-       * MSG_DONTWAIT is a per-call flag.
-       * The socket stays in blocking mode for all other callers. */
+       * MSG_DONTWAIT makes only this recv non-blocking, regardless of the socket mode.
+       * EAGAIN / EWOULDBLOCK falls through to the poll-based slow path below. */
       n = recv (fd, ptr, nleft, MSG_DONTWAIT);
 
       if (likely (n > 0))
@@ -985,8 +985,12 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
   while (true)
     {
       /* Try writev first without poll.
-       * Unlike recv(), writev() has no per-call non-blocking flag.
-       * EAGAIN on non-blocking sockets falls through to the poll-based slow path below. */
+       * Unlike recv(), writev() has no per-call non-blocking flag,
+       * so blocking follows the socket mode:
+       * a non-blocking socket returns EAGAIN here (-> poll slow path below);
+       * a blocking socket blocks here and the poll path is not reached --
+       * with timeout = -1 this makes no difference:
+       * both resume as soon as the send buffer drains, just without a time limit. */
       n = writev (fd, *vec, *len);
 
       if (likely (n > 0))
@@ -1004,7 +1008,8 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
 
       /* n < 0 */
 
-      /* EAGAIN / EWOULDBLOCK is the expected "send buffer full" signal on a non-blocking socket and is not an error.
+      /* EAGAIN / EWOULDBLOCK = "send buffer full"; not an error
+       * (a blocking socket never reaches here).
        * It falls through to the poll-based slow path below. */
       if (unlikely (errno != EAGAIN && errno != EWOULDBLOCK))
 	{
