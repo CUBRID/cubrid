@@ -12499,31 +12499,12 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 					   NULL, where, NULL, NULL, regu_attributes_pred, regu_attributes_rest, NULL,
 					   output_val_list, regu_var_list, NULL, cache_pred, cache_rest,
 					   NULL, NO_SCHEMA, db_values_array_p, regu_attributes_reserved);
-<<<<<<< HEAD
 
 	      if (access == NULL)
 		{
 		  return NULL;
 		}
 
-	      if (access_method == ACCESS_METHOD_SEQUENTIAL
-		  && PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN))
-		{
-		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
-		}
-
-	      if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PARALLEL_THREAD))
-		{
-		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS);
-		  access->num_parallel_threads = spec->info.spec.num_parallel_threads;
-		}
-	      else
-		{
-		  assert (access->num_parallel_threads == -1 /* auto-compute */ );
-		}
-
-=======
->>>>>>> upstream/develop
 	      if (scan_type == TARGET_CLASS && prm_get_bool_value (PRM_ID_ENABLE_HEAP_FIXED_SCAN))
 		{
 		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN);
