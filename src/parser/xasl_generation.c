@@ -644,6 +644,9 @@ static int pt_check_analytic_limit_optimization (XASL_NODE * xasl, ANALYTIC_EVAL
 static int pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, ANALYTIC_EVAL_TYPE * eval,
 						ANALYTIC_INFO * info);
 
+static PT_NODE *pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *pt_substitute_groupby_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+
 static void
 pt_init_xasl_supp_info ()
 {
@@ -3915,7 +3918,9 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
   PT_NODE *pointer = NULL;
   PT_NODE *pt_val = NULL;
   PT_NODE *percentile = NULL;
+  PT_NODE *out_name;
   PT_NODE *arg_list = NULL;
+  bool already_exist = false;
 
   // it contains a list of positions
   REGU_VARIABLE_LIST regu_position_list = NULL;
@@ -4028,47 +4033,37 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	  pt_optimize_min_max_list (parser, tree, info->qo_plan, aggregate_list);
 	}
 
+      arg_list = parser_copy_tree (parser, tree->info.function.arg_list);
+
       if (aggregate_list->function != PT_COUNT_STAR && aggregate_list->function != PT_GROUPBY_NUM)
 	{
 	  if (aggregate_list->function != PT_CUME_DIST && aggregate_list->function != PT_PERCENT_RANK)
 	    {
-	      PT_NODE *node, *node2, *new_node;
-	      for (node = tree->info.function.arg_list; node; node = node->next)
+	      if (aggregate_list->function != PT_GROUP_CONCAT && aggregate_list->function != PT_JSON_OBJECTAGG)	// tree->info.function.arg_list 길이가 1 이하인 경우
 		{
-		  new_node = NULL;
+		  tree->info.function.arg_list =
+		    parser_walk_tree (parser, tree->info.function.arg_list, NULL, NULL, pt_substitute_groupby_ref_post,
+				      info);
 
-		  int i = 0;
-
-		  for (node2 = info->out_names; node2; node2 = node2->next)
+		  if (tree->info.function.arg_list->node_type == PT_NODE_POINTER)
 		    {
-		      if (pt_check_path_eq (parser, node, node2) == 0)
-			{
-			  new_node = pt_point_ref (parser, node);
-			  new_node->etc = pt_index_value (info->value_list, i);
-			}
-		      i++;
+		      already_exist = true;
 		    }
-
-		  if (new_node == NULL)
-		    {
-		      parser_free_tree (parser, arg_list);
-		      arg_list = NULL;
-		      break;
-		    }
-
-		  arg_list = parser_append_node (new_node, arg_list);
 		}
 
-	      regu_constant_list =
-		pt_to_regu_variable_list (parser, tree->info.function.arg_list, UNBOX_AS_VALUE, NULL, NULL);
-
-	      scan_regu_constant_list =
-		pt_to_regu_variable_list (parser, tree->info.function.arg_list, UNBOX_AS_VALUE, NULL, NULL);
-
-	      if (!regu_constant_list || !scan_regu_constant_list)
+	      if ((regu_constant_list == NULL || scan_regu_constant_list == NULL))
 		{
-		  return NULL;
+
+		  regu_constant_list = pt_to_regu_variable_list (parser, arg_list, UNBOX_AS_VALUE, NULL, NULL);
+
+		  scan_regu_constant_list = pt_to_regu_variable_list (parser, arg_list, UNBOX_AS_VALUE, NULL, NULL);
+
+		  if (!regu_constant_list || !scan_regu_constant_list)
+		    {
+		      return NULL;
+		    }
 		}
+
 	    }
 	  else
 	    {
@@ -4151,7 +4146,54 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	    {
 	      /* handle the buildlist case. append regu to the out_list, and create a new value to append to the
 	       * value_list Note: cume_dist() and percent_rank() also need special operations. */
-	      if (aggregate_list->function != PT_CUME_DIST && aggregate_list->function != PT_PERCENT_RANK)
+
+	      if (already_exist && tree->info.function.arg_list->node_type == PT_NODE_POINTER)
+		{
+		  PT_NODE *real_node;
+		  QPROC_DB_VALUE_LIST dbval_list;
+		  QPROC_DB_VALUE_LIST *dbval_list_tail;
+		  DB_VALUE *dbval = (DB_VALUE *) tree->info.function.arg_list->etc;
+
+		  real_node = tree->info.function.arg_list;
+
+		  info->out_names = parser_append_node (real_node, info->out_names);
+		  regu_alloc (value_list);
+		  if (value_list == NULL)
+		    {
+		      return NULL;
+		    }
+
+		  value_list->val_cnt = 0;
+		  value_list->valp = NULL;
+		  dbval_list_tail = &value_list->valp;
+
+		  // init regu
+		  regu_alloc (dbval_list);
+		  dbval_list->val = (DB_VALUE *) tree->info.function.arg_list->etc;
+		  // init value with expected type
+		  dbval_list->dom = pt_xasl_node_to_domain (parser, tree->info.function.arg_list);
+
+		  value_list->val_cnt++;
+		  (*dbval_list_tail) = dbval_list;
+		  dbval_list_tail = &dbval_list->next;
+		  dbval_list->next = NULL;
+
+		  if (pt_make_regu_list_from_value_list
+		      (parser, tree->info.function.arg_list, value_list, &regu_position_list) == NULL)
+		    {
+		      return NULL;
+		    }
+
+		  regu_position_list->value.value.pos_descr.pos_no = info->out_list->valptr_cnt;
+
+		  pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list,
+								    regu_constant_list);
+		  pt_aggregate_info_update_scan_regu_list (info, scan_regu_constant_list);
+
+		  aggregate_list->operands =
+		    pt_to_regu_variable_list (parser, tree->info.function.arg_list, UNBOX_AS_VALUE, NULL, NULL);
+		}
+	      else if (aggregate_list->function != PT_CUME_DIST && aggregate_list->function != PT_PERCENT_RANK)
 		{
 
 		  if (arg_list)
@@ -4636,8 +4678,10 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * o
   info.regu_list = regu_list;
   info.scan_regu_list = scan_regu_list;
   info.out_names = out_names;
+  info.args = NULL;
   info.grbynum_valp = grbynum_valp;
   info.qo_plan = plan;
+//   (void) parser_walk_tree (parser, out_names, NULL, NULL, pt_substitute_groupby_ref_pre, &info);
 
   /* init */
   info.class_name = NULL;
@@ -4663,6 +4707,8 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * o
 	    }
 	}
     }
+  select_node->info.query.q.select.list =
+    parser_walk_tree (parser, select_list, pt_substitute_groupby_ref_pre, &info, NULL, NULL);
 
   select_node->info.query.q.select.list =
     parser_walk_tree (parser, select_list, pt_to_aggregate_node, &info, pt_continue_walk, NULL);
@@ -28626,4 +28672,101 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
     }
 
   return covered_count;
+}
+
+static PT_NODE *
+pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  AGGREGATE_INFO *info = (AGGREGATE_INFO *) arg;
+  VAL_LIST *value_list;
+  PT_NODE *out_name;
+  bool already_exist = false;
+
+  if (node == NULL)
+    {
+      return node;
+    }
+
+  *continue_walk = PT_CONTINUE_WALK;
+  if (node->node_type == PT_DOT_)
+    {
+      // switch(node->info.dot.arg2->info.name.meta_class)
+      // {
+      //   case PT_PARAMETER:
+      //   case PT_META_ATTR:
+      //      case PT_NORMAL:
+      //      case PT_SHARED:
+      //         *continue_walk = PT_CONTINUE_WALK;
+      //         break;
+
+      //   default:
+      *continue_walk = PT_STOP_WALK;
+      return node;
+
+      // }
+    }
+  if (node->node_type != PT_NAME && node->node_type != PT_EXPR)
+    {
+      return node;
+    }
+
+  for (out_name = info->args; out_name != NULL; out_name = out_name->next)
+    {
+      if (pt_check_path_eq (parser, node, out_name) == 0)
+	{
+	  already_exist = true;
+	}
+    }
+
+  if (!already_exist)
+    {
+      PT_NODE *pointer = pt_point_ref (parser, node);
+      value_list = pt_make_val_list (parser, node);
+      pointer->etc = value_list->valp->val;
+      info->args = parser_append_node (pointer, info->args);
+
+      return node;
+    }
+
+  return node;
+}
+
+
+static PT_NODE *
+pt_substitute_groupby_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  AGGREGATE_INFO *info = (AGGREGATE_INFO *) arg;
+  PT_NODE *out_name, *new_node, *tmp, *pointer;
+  int i = 0;
+  bool already_exist = false;
+
+  if (node == NULL)
+    {
+      return node;
+    }
+
+  if (node->node_type != PT_NAME && node->node_type != PT_EXPR)
+    {
+      return node;
+    }
+
+  for (out_name = info->args; out_name != NULL; out_name = out_name->next, i++)
+    {
+      if (pt_check_path_eq (parser, node, out_name) == 0)
+	{
+	  new_node = parser_copy_tree (parser, node);
+	  pointer = pt_point_ref (parser, new_node);
+
+	  pointer->etc = (DB_VALUE *) out_name->etc;
+	  tmp = node->next;
+	  pointer->next = tmp;
+
+	  node->next = NULL;
+	  parser_free_tree (parser, node);
+
+	  return pointer;
+	}
+    }
+
+  return node;
 }
