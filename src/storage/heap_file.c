@@ -7960,6 +7960,279 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 }
 
 /*
+ * State shared across heap_record_replace_oos_oids() sub-functions.
+ */
+// *INDENT-OFF*
+struct HEAP_OOS_EXPAND_STATE
+{
+  const char *src;
+  int src_length;
+  int src_offset_size;
+  int src_header_size;
+  int n_var;
+  int new_length;
+  int src_vot_bytes;
+  int dst_vot_bytes;
+  int fixed_bitmap_bytes;
+  std::vector<int> vot_offset;
+  std::vector<RECDES> oos_recdes;
+};
+// *INDENT-ON*
+
+/*
+ * heap_oos_parse_vot () - Walk the source VOT and collect each entry (including flag bits).
+ *   return: NO_ERROR or ER_FAILED
+ *   state(in/out): fills vot_offset and n_var
+ */
+static int
+heap_oos_parse_vot (HEAP_OOS_EXPAND_STATE * state)
+{
+  const char *src_vot = (const char *) OR_GET_OBJECT_VAR_TABLE (state->src);
+  const int capacity = (state->src_length - state->src_header_size) / state->src_offset_size;
+
+  state->vot_offset.reserve (capacity + 1);
+  state->n_var = -1;
+
+  for (int i = 0; i <= capacity; ++i)
+    {
+      if (i == capacity)
+	{
+	  assert_release (false && "VOT sentinel (LAST_ELEMENT) not found within record bounds");
+	  return ER_FAILED;
+	}
+      int raw;
+      const char *ep = src_vot + i * state->src_offset_size;
+      switch (state->src_offset_size)
+	{
+	case OR_BYTE_SIZE:
+	  raw = OR_GET_BYTE (ep);
+	  break;
+	case OR_SHORT_SIZE:
+	  raw = OR_GET_SHORT (ep);
+	  break;
+	case OR_INT_SIZE:
+	  raw = OR_GET_INT (ep);
+	  break;
+	default:
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+      state->vot_offset.push_back (raw);
+      if (OR_IS_LAST_ELEMENT (raw))
+	{
+	  state->n_var = i;
+	  break;
+	}
+    }
+
+  if (state->n_var <= 0)
+    {
+      assert_release (false && "OOS flag set without variable attributes");
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * heap_oos_read_blobs () - Read the OOS blob for every OOS-tagged variable index.
+ *   return: NO_ERROR or error code
+ *   thread_p(in): thread entry
+ *   state(in/out): oos_recdes must be pre-initialized with RECDES_INITIALIZER
+ */
+static int
+heap_oos_read_blobs (THREAD_ENTRY * thread_p, HEAP_OOS_EXPAND_STATE * state)
+{
+  for (int i = 0; i < state->n_var; ++i)
+    {
+      if (!OR_IS_OOS (state->vot_offset[i]))
+	{
+	  continue;
+	}
+
+      const int value_offset = OR_VAR_OFFSET (state->src, i);
+      if (value_offset + OR_OOS_INLINE_SIZE > state->src_length)
+	{
+	  assert_release (false && "OOS inline slot extends past record bounds");
+	  return ER_FAILED;
+	}
+
+      OID oos_oid = OID_INITIALIZER;
+      DB_BIGINT oos_len = 0;
+      int rc = NO_ERROR;
+      OR_BUF buf;
+      or_init (&buf, (char *) state->src + value_offset, OR_OOS_INLINE_SIZE);
+      if (or_get_oid (&buf, &oos_oid) != NO_ERROR || OID_ISNULL (&oos_oid))
+	{
+	  assert_release (false && "failed to read OOS OID from inline slot");
+	  return ER_FAILED;
+	}
+      oos_len = or_get_bigint (&buf, &rc);
+      if (rc != NO_ERROR || oos_len <= 0 || oos_len > (DB_BIGINT) INT_MAX)
+	{
+	  assert_release (false && "invalid OOS inline length");
+	  return ER_FAILED;
+	}
+
+      if (recdes_allocate_data_area (&state->oos_recdes[i], (int) oos_len) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      // *INDENT-OFF*
+      if (oos_read (thread_p, oos_oid, oos_buffer (state->oos_recdes[i].data, (std::size_t) oos_len)) != NO_ERROR)
+      // *INDENT-ON*
+      {
+	oos_error ("oos_read failed for OID %d|%d|%d", OID_AS_ARGS (&oos_oid));
+	return ER_FAILED;
+      }
+      state->oos_recdes[i].length = (int) oos_len;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * heap_oos_compute_layout () - Compute the output record layout and total length.
+ *   return: NO_ERROR or ER_FAILED
+ *   state(in/out): fills new_length, src_vot_bytes, dst_vot_bytes, fixed_bitmap_bytes
+ */
+static int
+heap_oos_compute_layout (HEAP_OOS_EXPAND_STATE * state)
+{
+  const int dst_offset_size = BIG_VAR_OFFSET_SIZE;
+  state->src_vot_bytes = OR_VAR_TABLE_SIZE_INTERNAL (state->n_var, state->src_offset_size);
+  state->dst_vot_bytes = OR_VAR_TABLE_SIZE_INTERNAL (state->n_var, dst_offset_size);
+
+  state->fixed_bitmap_bytes = OR_GET_VAR_OFFSET (state->vot_offset[0]) - state->src_vot_bytes;
+  if (state->fixed_bitmap_bytes < 0)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  int64_t new_values_bytes = 0;
+  for (int i = 0; i < state->n_var; ++i)
+    {
+      const int this_off = OR_GET_VAR_OFFSET (state->vot_offset[i]);
+      const int next_off = OR_GET_VAR_OFFSET (state->vot_offset[i + 1]);
+      const int src_val_len = next_off - this_off;
+      if (src_val_len < 0 || state->src_header_size + next_off > state->src_length)
+	{
+	  assert_release (false && "VOT offsets out of order or past record");
+	  return ER_FAILED;
+	}
+      if (OR_IS_OOS (state->vot_offset[i]))
+	{
+	  assert (src_val_len == OR_OOS_INLINE_SIZE);
+	  new_values_bytes += state->oos_recdes[i].length;
+	}
+      else
+	{
+	  new_values_bytes += src_val_len;
+	}
+    }
+
+  const int64_t new_length_64 =
+    (int64_t) state->src_header_size + state->dst_vot_bytes + state->fixed_bitmap_bytes + new_values_bytes;
+  if (new_length_64 > (int64_t) INT_MAX)
+    {
+      assert_release (false && "OOS-expanded record size exceeds INT_MAX");
+      return ER_FAILED;
+    }
+  state->new_length = (int) new_length_64;
+
+  return NO_ERROR;
+}
+
+/*
+ * heap_oos_build_record () - Assemble the expanded output record from the computed layout.
+ *   return: SCAN_CODE
+ *   thread_p(in): thread entry
+ *   context(in/out): heap get context — rec->data may be reallocated
+ *   state(in): OOS expansion state with all phases completed
+ */
+static SCAN_CODE
+heap_oos_build_record (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, const HEAP_OOS_EXPAND_STATE * state)
+{
+  RECDES *rec = context->recdes_p;
+  const int dst_offset_size = BIG_VAR_OFFSET_SIZE;
+
+  const bool need_realloc = (context->ispeeking == PEEK) || (rec->area_size < state->new_length);
+  if (need_realloc)
+    {
+      if (context->scan_cache == NULL)
+	{
+	  return S_DOESNT_FIT;
+	}
+      if (heap_scan_cache_allocate_recdes_data (thread_p, context->scan_cache, rec, state->new_length) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+      context->ispeeking = COPY;
+    }
+
+  char *dst = rec->data;
+
+  /* Header: copy verbatim, then clear the OOS flag and reset the offset-size bits. */
+  std::memcpy (dst, state->src, state->src_header_size);
+  unsigned int repid_bits = (unsigned int) OR_GET_INT (dst + OR_REP_OFFSET);
+  repid_bits &= ~((unsigned int) OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
+  repid_bits &= ~(unsigned int) OR_OFFSET_SIZE_FLAG;
+  repid_bits |= OR_OFFSET_SIZE_4BYTE;
+  OR_PUT_INT (dst + OR_REP_OFFSET, (int) repid_bits);
+
+  /* Rewrite the VOT with new offsets. */
+  const int dst_first_value_rel = state->dst_vot_bytes + state->fixed_bitmap_bytes;
+  char *dst_vot = dst + state->src_header_size;
+  int cumulative = 0;
+  for (int i = 0; i < state->n_var; ++i)
+    {
+      OR_PUT_INT (dst_vot + i * dst_offset_size, dst_first_value_rel + cumulative);
+      const int val_len = (OR_IS_OOS (state->vot_offset[i])
+			   ? state->oos_recdes[i].length
+			   : (OR_GET_VAR_OFFSET (state->vot_offset[i + 1]) - OR_GET_VAR_OFFSET (state->vot_offset[i])));
+      cumulative += val_len;
+    }
+  OR_PUT_INT (dst_vot + state->n_var * dst_offset_size, OR_SET_VAR_LAST_ELEMENT (dst_first_value_rel + cumulative));
+
+  /* Zero any alignment padding past the last VOT entry. */
+  const int vot_entry_bytes = (state->n_var + 1) * dst_offset_size;
+  if (state->dst_vot_bytes > vot_entry_bytes)
+    {
+      std::memset (dst_vot + vot_entry_bytes, 0, state->dst_vot_bytes - vot_entry_bytes);
+    }
+
+  /* Fixed attributes + bound-bit bitmap: copy unchanged. */
+  if (state->fixed_bitmap_bytes > 0)
+    {
+      std::memcpy (dst + state->src_header_size + state->dst_vot_bytes,
+		   state->src + state->src_header_size + state->src_vot_bytes, state->fixed_bitmap_bytes);
+    }
+
+  /* Variable values: inline the OOS blobs in place of their inline slots. */
+  int dst_pos = state->src_header_size + state->dst_vot_bytes + state->fixed_bitmap_bytes;
+  for (int i = 0; i < state->n_var; ++i)
+    {
+      if (OR_IS_OOS (state->vot_offset[i]))
+	{
+	  std::memcpy (dst + dst_pos, state->oos_recdes[i].data, state->oos_recdes[i].length);
+	  dst_pos += state->oos_recdes[i].length;
+	}
+      else
+	{
+	  const int src_off = state->src_header_size + OR_GET_VAR_OFFSET (state->vot_offset[i]);
+	  const int len = OR_GET_VAR_OFFSET (state->vot_offset[i + 1]) - OR_GET_VAR_OFFSET (state->vot_offset[i]);
+	  std::memcpy (dst + dst_pos, state->src + src_off, len);
+	  dst_pos += len;
+	}
+    }
+  assert (dst_pos == state->new_length);
+
+  rec->length = state->new_length;
+  return S_SUCCESS;
+}
+
+/*
  * heap_record_replace_oos_oids () - Replace inlined OOS OID slots in a heap record with the actual
  *                                   variable-attribute bytes, producing a record that looks as if
  *                                   OOS had never been used.
@@ -7978,7 +8251,6 @@ heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
 
   if (!context->expand_oos)
     {
-      /* Caller opted out: they handle OOS themselves (e.g. heap_attrinfo_read_dbvalues). */
       return S_SUCCESS;
     }
 
@@ -7989,250 +8261,51 @@ heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
       return S_SUCCESS;
     }
 
-  /* Snapshot input bytes up front: rec->data may live in a PEEK'd page, and we may reallocate it
-   * via scan_cache below. Either way, we must not rely on rec->data remaining valid once we start
-   * writing the rebuilt record. */
+  /* Snapshot input bytes: rec->data may be invalidated during reallocation below. */
   // *INDENT-OFF*
   std::vector<char> src_buf (rec->data, rec->data + rec->length);
   // *INDENT-ON*
-  const char *src = src_buf.data ();
-  const int src_length = (int) src_buf.size ();
 
-  const int src_offset_size = OR_GET_OFFSET_SIZE (src);
-  const int src_header_size = OR_HEADER_SIZE ((char *) src);
-  const char *src_vot = (const char *) OR_GET_OBJECT_VAR_TABLE (src);
-  const int src_vot_capacity = (src_length - src_header_size) / src_offset_size;
+  HEAP_OOS_EXPAND_STATE state;
+  state.src = src_buf.data ();
+  state.src_length = (int) src_buf.size ();
+  state.src_offset_size = OR_GET_OFFSET_SIZE (state.src);
+  state.src_header_size = OR_HEADER_SIZE ((char *) state.src);
 
-  /* Walk the VOT and collect each raw offset entry (including flag bits). The loop stops at the
-   * sentinel carrying OR_VAR_BIT_LAST_ELEMENT. */
-  // *INDENT-OFF*
-  std::vector<int> vot_offset;
-  // *INDENT-ON*
-  vot_offset.reserve (src_vot_capacity + 1);
-  int n_var = -1;
-  for (int i = 0; i <= src_vot_capacity; ++i)
+  if (heap_oos_parse_vot (&state) != NO_ERROR)
     {
-      if (i == src_vot_capacity)
-	{
-	  assert_release (false && "VOT sentinel (LAST_ELEMENT) not found within record bounds");
-	  return S_ERROR;
-	}
-      int raw;
-      const char *ep = src_vot + i * src_offset_size;
-      switch (src_offset_size)
-	{
-	case OR_BYTE_SIZE:
-	  raw = OR_GET_BYTE (ep);
-	  break;
-	case OR_SHORT_SIZE:
-	  raw = OR_GET_SHORT (ep);
-	  break;
-	case OR_INT_SIZE:
-	  raw = OR_GET_INT (ep);
-	  break;
-	default:
-	  assert_release (false);
-	  return S_ERROR;
-	}
-      vot_offset.push_back (raw);
-      if (OR_IS_LAST_ELEMENT (raw))
-	{
-	  n_var = i;
-	  break;
-	}
-    }
-
-  if (n_var <= 0)
-    {
-      /* OR_MVCC_FLAG_HAS_OOS was set but the record has no variable attributes. Corrupt record. */
-      assert_release (false && "OOS flag set without variable attributes");
       return S_ERROR;
     }
 
-  /* Read the OOS blob for every OOS-tagged variable index. */
-  // *INDENT-OFF*
-  std::vector<RECDES> oos_recdes (n_var);
-  // *INDENT-ON*
-  for (int i = 0; i < n_var; ++i)
+  state.oos_recdes.resize (state.n_var);
+  for (int i = 0; i < state.n_var; ++i)
     {
-      oos_recdes[i] = RECDES_INITIALIZER;
+      state.oos_recdes[i] = RECDES_INITIALIZER;
     }
 
   // *INDENT-OFF*
   auto oos_cleanup = make_scope_exit ([&]() {
-    for (int i = 0; i < n_var; ++i)
+    for (int i = 0; i < state.n_var; ++i)
       {
-        if (oos_recdes[i].data != NULL)
+        if (state.oos_recdes[i].data != NULL)
           {
-            recdes_free_data_area (&oos_recdes[i]);
+            recdes_free_data_area (&state.oos_recdes[i]);
           }
       }
   });
   // *INDENT-ON*
 
-  for (int i = 0; i < n_var; ++i)
+  if (heap_oos_read_blobs (thread_p, &state) != NO_ERROR)
     {
-      if (!OR_IS_OOS (vot_offset[i]))
-	{
-	  continue;
-	}
-
-      const int value_offset = OR_VAR_OFFSET (src, i);
-      if (value_offset + OR_OOS_INLINE_SIZE > src_length)
-	{
-	  assert_release (false && "OOS inline slot extends past record bounds");
-	  return S_ERROR;
-	}
-
-      /* Inline OOS slot layout (M2+): [OID (8B) | full_length (8B bigint)]. */
-      OID oos_oid = OID_INITIALIZER;
-      DB_BIGINT oos_len = 0;
-      int rc = NO_ERROR;
-      OR_BUF buf;
-      or_init (&buf, (char *) src + value_offset, OR_OOS_INLINE_SIZE);
-      if (or_get_oid (&buf, &oos_oid) != NO_ERROR || OID_ISNULL (&oos_oid))
-	{
-	  assert_release (false && "failed to read OOS OID from inline slot");
-	  return S_ERROR;
-	}
-      oos_len = or_get_bigint (&buf, &rc);
-      if (rc != NO_ERROR || oos_len <= 0 || oos_len > (DB_BIGINT) INT_MAX)
-	{
-	  assert_release (false && "invalid OOS inline length");
-	  return S_ERROR;
-	}
-
-      if (recdes_allocate_data_area (&oos_recdes[i], (int) oos_len) != NO_ERROR)
-	{
-	  return S_ERROR;
-	}
-      if (oos_read (thread_p, oos_oid, oos_buffer (oos_recdes[i].data, (std::size_t) oos_len)) != NO_ERROR)
-	{
-	  oos_error ("oos_read failed for OID %d|%d|%d", OID_AS_ARGS (&oos_oid));
-	  return S_ERROR;
-	}
-      oos_recdes[i].length = (int) oos_len;
-    }
-
-  /* Lay out the rebuilt record. We always write a 4-byte VOT: OOS blobs can push the record past
-   * whatever the source offset size could encode. */
-  const int dst_offset_size = BIG_VAR_OFFSET_SIZE;
-  const int src_vot_bytes = OR_VAR_TABLE_SIZE_INTERNAL (n_var, src_offset_size);
-  const int dst_vot_bytes = OR_VAR_TABLE_SIZE_INTERNAL (n_var, dst_offset_size);
-
-  /* Space between end-of-VOT and start-of-first-var-value holds fixed attributes and the bound-bit
-   * bitmap; it is copied over unchanged. */
-  const int fixed_bitmap_bytes = OR_GET_VAR_OFFSET (vot_offset[0]) - src_vot_bytes;
-  if (fixed_bitmap_bytes < 0)
-    {
-      assert_release (false);
       return S_ERROR;
     }
 
-  int64_t new_values_bytes = 0;
-  for (int i = 0; i < n_var; ++i)
+  if (heap_oos_compute_layout (&state) != NO_ERROR)
     {
-      const int this_off = OR_GET_VAR_OFFSET (vot_offset[i]);
-      const int next_off = OR_GET_VAR_OFFSET (vot_offset[i + 1]);
-      const int src_val_len = next_off - this_off;
-      if (src_val_len < 0 || src_header_size + next_off > src_length)
-	{
-	  assert_release (false && "VOT offsets out of order or past record");
-	  return S_ERROR;
-	}
-      if (OR_IS_OOS (vot_offset[i]))
-	{
-	  assert (src_val_len == OR_OOS_INLINE_SIZE);
-	  new_values_bytes += oos_recdes[i].length;
-	}
-      else
-	{
-	  new_values_bytes += src_val_len;
-	}
-    }
-
-  const int64_t new_length_64 = (int64_t) src_header_size + dst_vot_bytes + fixed_bitmap_bytes + new_values_bytes;
-  if (new_length_64 > (int64_t) INT_MAX)
-    {
-      assert_release (false && "OOS-expanded record size exceeds INT_MAX");
       return S_ERROR;
     }
-  const int new_length = (int) new_length_64;
 
-  /* Make sure rec->data points to owned storage big enough for the expansion. If we were PEEK'ing
-   * into a page, we MUST switch to COPY here — we cannot write into the page buffer. */
-  const bool need_realloc = (context->ispeeking == PEEK) || (rec->area_size < new_length);
-  if (need_realloc)
-    {
-      if (context->scan_cache == NULL)
-	{
-	  return S_DOESNT_FIT;
-	}
-      if (heap_scan_cache_allocate_recdes_data (thread_p, context->scan_cache, rec, new_length) != NO_ERROR)
-	{
-	  return S_ERROR;
-	}
-      context->ispeeking = COPY;
-    }
-
-  char *dst = rec->data;
-
-  /* Header: copy verbatim, then clear the OOS flag and reset the offset-size bits. */
-  std::memcpy (dst, src, src_header_size);
-  unsigned int repid_bits = (unsigned int) OR_GET_INT (dst + OR_REP_OFFSET);
-  repid_bits &= ~((unsigned int) OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
-  repid_bits &= ~(unsigned int) OR_OFFSET_SIZE_FLAG;
-  repid_bits |= OR_OFFSET_SIZE_4BYTE;
-  OR_PUT_INT (dst + OR_REP_OFFSET, (int) repid_bits);
-
-  /* Rewrite the VOT with new offsets computed from the expanded variable-value area. */
-  const int dst_first_value_rel = dst_vot_bytes + fixed_bitmap_bytes;
-  char *dst_vot = dst + src_header_size;
-  int cumulative = 0;
-  for (int i = 0; i < n_var; ++i)
-    {
-      OR_PUT_INT (dst_vot + i * dst_offset_size, dst_first_value_rel + cumulative);
-      const int val_len = (OR_IS_OOS (vot_offset[i])
-			   ? oos_recdes[i].length
-			   : OR_GET_VAR_OFFSET (vot_offset[i + 1]) - OR_GET_VAR_OFFSET (vot_offset[i]));
-      cumulative += val_len;
-    }
-  OR_PUT_INT (dst_vot + n_var * dst_offset_size, OR_SET_VAR_LAST_ELEMENT (dst_first_value_rel + cumulative));
-
-  /* Zero any alignment padding past the last VOT entry. */
-  const int vot_offset_bytes = (n_var + 1) * dst_offset_size;
-  if (dst_vot_bytes > vot_offset_bytes)
-    {
-      std::memset (dst_vot + vot_offset_bytes, 0, dst_vot_bytes - vot_offset_bytes);
-    }
-
-  /* Fixed attributes + bound-bit bitmap: copy unchanged. */
-  if (fixed_bitmap_bytes > 0)
-    {
-      std::memcpy (dst + src_header_size + dst_vot_bytes, src + src_header_size + src_vot_bytes, fixed_bitmap_bytes);
-    }
-
-  /* Variable values: inline the OOS blobs in place of their 16-byte slots. */
-  int dst_pos = src_header_size + dst_vot_bytes + fixed_bitmap_bytes;
-  for (int i = 0; i < n_var; ++i)
-    {
-      if (OR_IS_OOS (vot_offset[i]))
-	{
-	  std::memcpy (dst + dst_pos, oos_recdes[i].data, oos_recdes[i].length);
-	  dst_pos += oos_recdes[i].length;
-	}
-      else
-	{
-	  const int src_off = src_header_size + OR_GET_VAR_OFFSET (vot_offset[i]);
-	  const int len = OR_GET_VAR_OFFSET (vot_offset[i + 1]) - OR_GET_VAR_OFFSET (vot_offset[i]);
-	  std::memcpy (dst + dst_pos, src + src_off, len);
-	  dst_pos += len;
-	}
-    }
-  assert (dst_pos == new_length);
-
-  rec->length = new_length;
-  return S_SUCCESS;
+  return heap_oos_build_record (thread_p, context, &state);
 }
 
 /*
