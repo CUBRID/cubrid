@@ -651,6 +651,7 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
 {
   QO_ENV *env;
   int i;
+  int extra_term_cap;
   size_t size;
 
   if (query == NULL)
@@ -693,10 +694,15 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
 	}
     }
 
+  /* Pre-allocate room for transitive join terms.
+   * Upper bound is sum_eqclass C(segs_in_eqclass, 2) <= C(nsegs, 2): the same node pair
+   * may need one term per independent eqclass, so C(nnodes,2) is insufficient.
+   * This avoids realloc after setup, which would require rebinding inline bitset pointers. */
+  extra_term_cap = env->nsegs * (env->nsegs - 1) / 2;
   env->terms = NULL;
-  if (env->nterms > 0)
+  if (env->nterms + extra_term_cap > 0)
     {
-      size = sizeof (QO_TERM) * env->nterms;
+      size = sizeof (QO_TERM) * (env->nterms + extra_term_cap);
       env->terms = (QO_TERM *) malloc (size);
       if (env->terms == NULL)
 	{
@@ -739,14 +745,14 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
       qo_node_clear (env, i);
     }
 
-  for (i = 0; i < env->nterms; ++i)
+  for (i = 0; i < env->nterms + extra_term_cap; ++i)
     {
       qo_term_clear (env, i);
     }
 
   env->Nnodes = env->nnodes;
   env->Nsegs = env->nsegs;
-  env->Nterms = env->nterms;
+  env->Nterms = env->nterms + extra_term_cap;
   env->Neqclasses = MAX (env->nnodes, env->nterms) + env->nsegs;
 
   env->nnodes = 0;
@@ -8111,8 +8117,6 @@ qo_generate_transitive_join_terms (QO_ENV * env)
   int i, ti, extra, old_terms;
   QO_TRANSITIVE_JOIN_SPEC *specs = NULL;
   int specs_count = 0, specs_cap = 0;
-  size_t new_size;
-  QO_TERM *new_arr;
   PARSER_CONTEXT *parser;
   int *root_arr = NULL;
   int *segs_arr = NULL;
@@ -8162,44 +8166,8 @@ qo_generate_transitive_join_terms (QO_ENV * env)
   old_terms = env->nterms;
   parser = QO_ENV_PARSER (env);
 
-  new_size = sizeof (QO_TERM) * (env->Nterms + extra);
-  new_arr = (QO_TERM *) realloc (env->terms, new_size);
-
-  if (new_arr == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, new_size);
-      free_and_init (root_arr);
-      free_and_init (segs_arr);
-      free_and_init (specs);
-      return;
-    }
-
-  env->terms = new_arr;
-  env->Nterms += extra;
-
-  /* Initialize new slots so qo_env_free won't crash on garbage bitset pointers. */
-  for (i = old_terms; i < env->Nterms; i++)
-    {
-      qo_term_clear (env, i);
-    }
-
-  /* Reset internal bitset pointers in existing terms that realloc may have invalidated. */
-  for (i = 0; i < old_terms; i++)
-    {
-      QO_TERM *term = QO_ENV_TERM (env, i);
-      if (term->nodes.nwords <= NWORDS)
-	{
-	  term->nodes.setp = term->nodes.set.word;
-	}
-      if (term->segments.nwords <= NWORDS)
-	{
-	  term->segments.setp = term->segments.set.word;
-	}
-      if (term->subqueries.nwords <= NWORDS)
-	{
-	  term->subqueries.setp = term->subqueries.set.word;
-	}
-    }
+  /* Room for transitive terms was pre-allocated in qo_env_init (C(nnodes,2) slots). */
+  QO_ASSERT (env, env->nterms + extra <= env->Nterms);
 
   for (i = 0; i < specs_count; i++)
     {
