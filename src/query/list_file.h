@@ -120,19 +120,13 @@ typedef enum
 #if defined (SERVER_MODE)
 struct sort_px_list_state
 {
-  /* disk sector slice for this worker (from qfile_collect_list_sector_info) */
-  std::vector < FILE_PARTIAL_SECTOR > sectors;	/* sectors assigned to this worker */
-  std::vector < struct qmgr_temp_file *>sector_tfiles;	/* owning tfile per sector */
-  int sector_idx;		/* current index into sectors[] */
-  int curr_pgoffset;		/* page offset within the current sector */
-  /* membuf slice for this worker */
-  struct qmgr_temp_file *membuf_tfile;	/* tfile that owns membuf pages (NULL = none) */
-  int membuf_cur;		/* current membuf page index */
-  int membuf_end;		/* one-past-last membuf page for this worker */
-  /* current active page — set when we fix a page, cleared when the page is exhausted */
-  PAGE_PTR curr_page;		/* fixed disk page or membuf page pointer */
-  bool curr_is_membuf;		/* true iff curr_page comes from membuf */
-  struct qmgr_temp_file *curr_tfile;	/* tfile for curr_page when !curr_is_membuf */
+  /* shared sector scan — owned by sort_param->px_sector_scan, freed after all workers finish */
+  QFILE_LIST_SECTOR_SCAN_INFO *sector_scan;
+  /* per-worker page iterator — encapsulates membuf CAS + atomic sector steal */
+  sector_page_iterator page_iter;
+  /* current active page — set when we land on a page, cleared after all tuples are consumed */
+  PAGE_PTR curr_page;
+  struct qmgr_temp_file *curr_tfile;	/* tfile for curr_page (membuf_tfile or disk tfile) */
   VPID curr_vpid;		/* VPID of curr_page (used for sort key pageid/volid) */
   int curr_tplno;		/* tuple index within curr_page */
   int curr_offset;		/* byte offset of current tuple in curr_page */

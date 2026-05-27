@@ -3714,6 +3714,128 @@ qfile_generate_sort_tuple (SORTKEY_INFO * key_info_p, SORT_REC * sort_record_p, 
 
 #if defined (SERVER_MODE)
 /*
+ * sector_page_iterator
+ */
+sector_page_iterator::sector_page_iterator ()
+{
+  m_membuf_index = -1;
+  m_sector_index = -1;
+  m_current_bitmap = 0;
+  VSID_SET_NULL (&m_current_vsid);
+  VPID_SET_NULL (&m_last_vpid);
+  m_current_tfile = NULL;
+}
+
+PAGE_PTR
+sector_page_iterator::get_next_page (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_SCAN_INFO & sector_scan)
+{
+  QFILE_LIST_SECTOR_INFO *sinfo = &sector_scan.sector_info;
+  FILE_PARTIAL_SECTOR *sectors = sinfo->sectors;
+  void **tfiles = sinfo->tfiles;
+  int sector_index;
+
+  /* Phase 1: membuf pages — the CAS winner claims the entire membuf region */
+  while (true)
+    {
+      if (m_membuf_index >= 0)
+	{
+	  if (m_membuf_index <= sinfo->membuf_tfile->membuf_last)
+	    {
+	      VPID vpid;
+	      vpid.volid = NULL_VOLID;
+	      vpid.pageid = m_membuf_index++;
+
+	      PAGE_PTR page = qmgr_get_old_page (thread_p, &vpid, sinfo->membuf_tfile);
+	      if (page == NULL)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  return NULL;
+		}
+
+	      if (QFILE_GET_TUPLE_COUNT (page) == QFILE_OVERFLOW_TUPLE_COUNT_FLAG
+		  || QFILE_GET_TUPLE_COUNT (page) == 0)
+		{
+		  qmgr_free_old_page_and_init (thread_p, page, sinfo->membuf_tfile);
+		  continue;
+		}
+
+	      m_current_tfile = sinfo->membuf_tfile;
+	      m_last_vpid = vpid;
+	      return page;
+	    }
+
+	  /* membuf exhausted — fall through to Phase 2 */
+	  m_membuf_index = -1;
+	  break;
+	}
+
+      if (m_sector_index == -1 && sinfo->membuf_tfile != NULL)
+	{
+	  bool expected = false;
+	  if (sector_scan.membuf_claimed.compare_exchange_strong (expected, true, std::memory_order_acq_rel))
+	    {
+	      assert (m_membuf_index == -1);
+	      m_membuf_index = 0;
+	      continue;		/* re-enter Phase 1 as the owner */
+	    }
+	}
+
+      /* not the owner — proceed to Phase 2 */
+      break;
+    }
+
+  /* Phase 2: sector-based disk pages */
+  while (true)
+    {
+      while (m_current_bitmap != 0)
+	{
+#if defined(__GNUC__) || defined(__clang__)
+	  int bit_pos = __builtin_ctzll (m_current_bitmap);
+#else
+	  int bit_pos = bit64_count_trailing_zeros (m_current_bitmap);
+#endif
+	  m_current_bitmap &= m_current_bitmap - 1;	/* clear lowest set bit */
+
+	  VPID vpid;
+	  vpid.volid = m_current_vsid.volid;
+	  vpid.pageid = SECTOR_FIRST_PAGEID (m_current_vsid.sectid) + bit_pos;
+
+	  QMGR_TEMP_FILE *tfile = (QMGR_TEMP_FILE *) tfiles[m_sector_index];
+	  assert (tfile != NULL);
+
+	  PAGE_PTR page = qmgr_get_old_page (thread_p, &vpid, tfile);
+	  if (page == NULL)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      return NULL;
+	    }
+
+	  if (QFILE_GET_TUPLE_COUNT (page) == QFILE_OVERFLOW_TUPLE_COUNT_FLAG
+	      || QFILE_GET_TUPLE_COUNT (page) == 0)
+	    {
+	      qmgr_free_old_page_and_init (thread_p, page, tfile);
+	      continue;
+	    }
+
+	  m_current_tfile = tfile;
+	  m_last_vpid = vpid;
+	  return page;
+	}
+
+      /* current sector exhausted — grab next sector atomically */
+      sector_index = sector_scan.next_sector_index.fetch_add (1, std::memory_order_relaxed);
+      if (sector_index >= sinfo->sector_cnt)
+	{
+	  return NULL;		/* all sectors distributed */
+	}
+
+      m_sector_index = sector_index;
+      m_current_vsid = sectors[sector_index].vsid;
+      m_current_bitmap = sectors[sector_index].page_bitmap;
+    }
+}
+
+/*
  * qfile_sort_px_state_free () - free a sort_px_list_state allocated with db_private_alloc
  */
 void
@@ -3760,14 +3882,7 @@ qfile_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * recdes_p, void *
 	  if (state->curr_tplno >= tpl_cnt)
 	    {
 	      /* page exhausted — release it and get the next one */
-	      if (state->curr_is_membuf)
-		{
-		  state->membuf_cur++;
-		}
-	      else
-		{
-		  qmgr_free_old_page_and_init (thread_p, state->curr_page, state->curr_tfile);
-		}
+	      qmgr_free_old_page_and_init (thread_p, state->curr_page, state->curr_tfile);
 	      state->curr_page = NULL;
 	      state->curr_tfile = NULL;
 	      state->curr_tplno = 0;
@@ -3785,13 +3900,10 @@ qfile_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * recdes_p, void *
 	    {
 	      /* qfile_get_tuple uses input_file->tfile_vfid; redirect it to this page's tfile.
 	       * input_file is per-worker cloned, so this modification is thread-safe. */
-	      input_file->tfile_vfid = state->curr_tfile ? state->curr_tfile : state->membuf_tfile;
+	      input_file->tfile_vfid = state->curr_tfile;
 	      if (qfile_get_tuple (thread_p, state->curr_page, tuple_p, &state->tplrec, input_file) != NO_ERROR)
 		{
-		  if (!state->curr_is_membuf)
-		    {
-		      qmgr_free_old_page_and_init (thread_p, state->curr_page, state->curr_tfile);
-		    }
+		  qmgr_free_old_page_and_init (thread_p, state->curr_page, state->curr_tfile);
 		  state->curr_page = NULL;
 		  state->curr_tfile = NULL;
 		  return SORT_ERROR_OCCURRED;
@@ -3889,101 +4001,19 @@ qfile_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * recdes_p, void *
 	    }
 	}
 
-      /* ---------------------------------------------------------------
-       * No active page.  Acquire the next page: membuf first, then disk
-       * sectors (via sector bitmap from qfile_collect_list_sector_info).
-       * --------------------------------------------------------------- */
-      if (state->membuf_cur < state->membuf_end)
+      /* Acquire the next page via shared sector scan (membuf CAS + atomic sector steal).
+       * Overflow and empty pages are skipped inside get_next_page. */
+      PAGE_PTR page_p = state->page_iter.get_next_page (thread_p, *state->sector_scan);
+      if (page_p == NULL)
 	{
-	  /* membuf page — accessed as raw pointer, never fixed via pgbuf */
-	  QMGR_TEMP_FILE *mtf = state->membuf_tfile;
-	  int idx = state->membuf_cur;
-	  if (mtf == NULL || mtf->membuf == NULL || idx > mtf->membuf_last)
-	    {
-	      state->membuf_cur = state->membuf_end;	/* skip remaining */
-	      continue;
-	    }
-
-	  PAGE_PTR page_p = mtf->membuf[idx];
-	  int tpl_cnt = QFILE_GET_TUPLE_COUNT (page_p);
-	  if (tpl_cnt == QFILE_OVERFLOW_TUPLE_COUNT_FLAG || tpl_cnt == 0)
-	    {
-	      state->membuf_cur++;
-	      continue;
-	    }
-
-	  state->curr_page = page_p;
-	  state->curr_is_membuf = true;
-	  state->curr_tfile = NULL;
-	  state->curr_vpid.volid = NULL_VOLID;
-	  state->curr_vpid.pageid = idx;
-	  state->curr_tplno = 0;
-	  state->curr_offset = QFILE_PAGE_HEADER_SIZE;
-	  /* membuf_cur is advanced when the page is exhausted above */
+	  return (er_errid () != NO_ERROR) ? SORT_ERROR_OCCURRED : SORT_NOMORE_RECS;
 	}
-      else
-	{
-	  /* disk sector iteration — mirrors get_next_vpid in btree_sort_get_next_parallel */
-	  bool found = false;
-	  while (!found)
-	    {
-	      if (state->sector_idx >= (int) state->sectors.size ())
-		{
-		  return SORT_NOMORE_RECS;
-		}
 
-	      FILE_PARTIAL_SECTOR *sec = &state->sectors[state->sector_idx];
-	      QMGR_TEMP_FILE *sec_tfile = state->sector_tfiles[state->sector_idx];
-
-	      for (; state->curr_pgoffset < DISK_SECTOR_NPAGES; state->curr_pgoffset++)
-		{
-		  if (!bit64_is_set (sec->page_bitmap, state->curr_pgoffset))
-		    {
-		      continue;
-		    }
-
-		  PAGEID cand_pageid = SECTOR_FIRST_PAGEID (sec->vsid.sectid) + state->curr_pgoffset;
-		  VOLID cand_volid = sec->vsid.volid;
-
-		  /* skip the FTAB page of this sector's temp file */
-		  if (cand_pageid == sec_tfile->temp_vfid.fileid && cand_volid == sec_tfile->temp_vfid.volid)
-		    {
-		      continue;
-		    }
-
-		  VPID vpid = { cand_pageid, cand_volid };
-		  PAGE_PTR page_p = qmgr_get_old_page (thread_p, &vpid, sec_tfile);
-		  if (page_p == NULL)
-		    {
-		      return SORT_ERROR_OCCURRED;
-		    }
-
-		  int tpl_cnt = QFILE_GET_TUPLE_COUNT (page_p);
-		  if (tpl_cnt == QFILE_OVERFLOW_TUPLE_COUNT_FLAG || tpl_cnt == 0)
-		    {
-		      qmgr_free_old_page_and_init (thread_p, page_p, sec_tfile);
-		      continue;	/* for-loop increment handles curr_pgoffset advance */
-		    }
-
-		  state->curr_pgoffset++;	/* advance past this page; break skips for-loop increment */
-		  state->curr_page = page_p;
-		  state->curr_is_membuf = false;
-		  state->curr_tfile = sec_tfile;
-		  state->curr_vpid = vpid;
-		  state->curr_tplno = 0;
-		  state->curr_offset = QFILE_PAGE_HEADER_SIZE;
-		  found = true;
-		  break;
-		}
-
-	      if (!found)
-		{
-		  /* sector exhausted — move to next */
-		  state->sector_idx++;
-		  state->curr_pgoffset = 0;
-		}
-	    }
-	}
+      state->curr_page = page_p;
+      state->curr_tfile = state->page_iter.get_current_tfile ();
+      state->curr_vpid = state->page_iter.get_current_vpid ();
+      state->curr_tplno = 0;
+      state->curr_offset = QFILE_PAGE_HEADER_SIZE;
     }
 }
 #endif /* SERVER_MODE */

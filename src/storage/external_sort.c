@@ -185,6 +185,7 @@ struct sort_param
   ORDERBY_STATS orderby_stats;
     cuberr::context * main_error_context;
   void *px_extra_arg;		/* extra parallel context; for SORT_GROUP_BY: GBY_SORT_PARAM* */
+  QFILE_LIST_SECTOR_SCAN_INFO *px_sector_scan;	/* shared sector scan for ORDER_BY/ORDER_WITH_LIMIT/GROUP_BY workers */
 #if defined(SERVER_MODE)
   pthread_mutex_t *px_mtx;	/* px_status mutex */
   pthread_cond_t *complete_cond;	/* complete condition */
@@ -1482,6 +1483,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   sort_param->tde_encrypted = includes_tde_class;
   sort_param->px_type = parallel_type;
   sort_param->px_extra_arg = px_extra_arg;
+  sort_param->px_sector_scan = NULL;
 
   tde_er_log ("sort_listfile(): tde_encrypted = %d\n", sort_param->tde_encrypted);
 
@@ -4228,6 +4230,14 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
 	      (void) file_temp_retire (thread_p, &sort_param->temp[k]);
 	    }
 	}
+
+      /* Safety net: free shared sector scan if sort_end_parallelism was skipped due to error */
+      if (sort_param->px_sector_scan != NULL)
+	{
+	  qfile_close_list_sector_scan (thread_p, sort_param->px_sector_scan);
+	  sort_param->px_sector_scan->~qfile_list_sector_scan_info ();
+	  db_private_free_and_init (thread_p, sort_param->px_sector_scan);
+	}
     }
 
   if (sort_param->multipage_file.volid != NULL_VOLID)
@@ -5247,36 +5257,29 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
       return ER_FAILED;
     }
 
-  /* case of ORDER BY / ORDER WITH LIMIT — identical sector distribution; put_arg differs */
+  /* case of ORDER BY / ORDER WITH LIMIT — open shared sector scan; put_arg differs per type */
   if (sort_param->px_type == SORT_ORDER_BY || sort_param->px_type == SORT_ORDER_WITH_LIMIT)
     {
-      SORT_INFO *sort_info_p;
-      QFILE_LIST_ID *input_file;
-      QFILE_LIST_SECTOR_INFO sector_info = QFILE_LIST_SECTOR_INFO_INITIALIZER;
-      int total_membuf_pages = 0;
-      int membuf_base = 0;
+      SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
+      QFILE_LIST_ID *input_file = sort_info_p->input_file;
 
-      sort_info_p = (SORT_INFO *) sort_param->get_arg;
-      input_file = sort_info_p->input_file;
-
-      /* collect disk sectors and tfile mapping via qfile_collect_list_sector_info,
-       * analogous to file_get_all_data_sectors for heap in btree_sort_get_next_parallel */
-      error = qfile_collect_list_sector_info (thread_p, input_file, &sector_info);
-      if (error != NO_ERROR)
+      /* open shared sector scan — all workers atomically steal sectors from this */
+      sort_param->px_sector_scan =
+	(QFILE_LIST_SECTOR_SCAN_INFO *) db_private_alloc (thread_p, sizeof (QFILE_LIST_SECTOR_SCAN_INFO));
+      if (sort_param->px_sector_scan == NULL)
 	{
 	  return ER_FAILED;
 	}
+      placement_new (sort_param->px_sector_scan);
 
-      if (sector_info.membuf_tfile != NULL && sector_info.membuf_tfile->membuf_last >= 0)
+      error = qfile_open_list_sector_scan (thread_p, input_file, sort_param->px_sector_scan);
+      if (error != NO_ERROR)
 	{
-	  total_membuf_pages = sector_info.membuf_tfile->membuf_last + 1;
+	  qfile_close_list_sector_scan (thread_p, sort_param->px_sector_scan);
+	  sort_param->px_sector_scan->~qfile_list_sector_scan_info ();
+	  db_private_free_and_init (thread_p, sort_param->px_sector_scan);
+	  return ER_FAILED;
 	}
-
-      /* distribute sectors and membuf pages evenly across workers */
-      int sectors_per_worker = sector_info.sector_cnt / parallel_num;
-      int sector_remainder = sector_info.sector_cnt % parallel_num;
-      int sector_base = 0;
-      int membuf_remainder = total_membuf_pages % parallel_num;
 
       /* null out get_arg/put_arg so cleanup skips workers not yet initialized */
       for (int i = 0; i < parallel_num; i++)
@@ -5297,7 +5300,6 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 				     (SORT_INFO *) sort_param->put_arg);
 	      if (error != NO_ERROR)
 		{
-		  qfile_free_list_sector_info (thread_p, &sector_info);
 		  return ER_FAILED;
 		}
 	    }
@@ -5313,7 +5315,6 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	  SORT_INFO *worker_info_p = (SORT_INFO *) db_private_alloc (thread_p, sizeof (SORT_INFO));
 	  if (worker_info_p == NULL)
 	    {
-	      qfile_free_list_sector_info (thread_p, &sector_info);
 	      return ER_FAILED;
 	    }
 	  memcpy (worker_info_p, sort_param->get_arg, sizeof (SORT_INFO));
@@ -5327,36 +5328,18 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	  worker_info_p->input_file = qfile_clone_list_id (input_file, true, QFILE_SKIP_DEPENDENT);
 	  if (worker_info_p->input_file == NULL)
 	    {
-	      qfile_free_list_sector_info (thread_p, &sector_info);
 	      return ER_FAILED;
 	    }
 
 	  sort_px_list_state *state = (sort_px_list_state *) db_private_alloc (thread_p, sizeof (sort_px_list_state));
 	  if (state == NULL)
 	    {
-	      qfile_free_list_sector_info (thread_p, &sector_info);
 	      return ER_FAILED;
 	    }
 	  placement_new (state);
 
-	  /* assign this worker's slice of disk sectors */
-	  int nsectors = sectors_per_worker + (i < sector_remainder ? 1 : 0);
-	  state->sectors.assign (sector_info.sectors + sector_base, sector_info.sectors + sector_base + nsectors);
-	  state->sector_tfiles.assign ((QMGR_TEMP_FILE **) sector_info.tfiles + sector_base,
-				       (QMGR_TEMP_FILE **) sector_info.tfiles + sector_base + nsectors);
-	  sector_base += nsectors;
-	  state->sector_idx = 0;
-	  state->curr_pgoffset = 0;
-
-	  /* assign this worker's membuf page range */
-	  state->membuf_tfile = sector_info.membuf_tfile;
-	  int membuf_pages = total_membuf_pages / parallel_num + (i < membuf_remainder ? 1 : 0);
-	  state->membuf_cur = membuf_base;
-	  state->membuf_end = membuf_base + membuf_pages;
-	  membuf_base += membuf_pages;
-
+	  state->sector_scan = sort_param->px_sector_scan;
 	  state->curr_page = NULL;
-	  state->curr_is_membuf = false;
 	  state->curr_tfile = NULL;
 	  VPID_SET_NULL (&state->curr_vpid);
 	  state->curr_tplno = 0;
@@ -5367,8 +5350,6 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	  worker_info_p->px_state = state;
 	  px_sort_param[i].get_fn = &qfile_sort_get_next_parallel;
 	}
-
-      qfile_free_list_sector_info (thread_p, &sector_info);
     }
   else if (sort_param->px_type == SORT_INDEX_LEAF)
     {
@@ -5437,24 +5418,24 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
     {
       GBY_SORT_PARAM *gby = (GBY_SORT_PARAM *) sort_param->px_extra_arg;
       QFILE_LIST_ID *input_list = gby->input_list;
-      QFILE_LIST_SECTOR_INFO sector_info = QFILE_LIST_SECTOR_INFO_INITIALIZER;
-      int total_membuf_pages = 0, membuf_base = 0;
 
-      error = qfile_collect_list_sector_info (thread_p, input_list, &sector_info);
-      if (error != NO_ERROR)
+      /* open shared sector scan */
+      sort_param->px_sector_scan =
+	(QFILE_LIST_SECTOR_SCAN_INFO *) db_private_alloc (thread_p, sizeof (QFILE_LIST_SECTOR_SCAN_INFO));
+      if (sort_param->px_sector_scan == NULL)
 	{
 	  return ER_FAILED;
 	}
+      placement_new (sort_param->px_sector_scan);
 
-      if (sector_info.membuf_tfile != NULL && sector_info.membuf_tfile->membuf_last >= 0)
+      error = qfile_open_list_sector_scan (thread_p, input_list, sort_param->px_sector_scan);
+      if (error != NO_ERROR)
 	{
-	  total_membuf_pages = sector_info.membuf_tfile->membuf_last + 1;
+	  qfile_close_list_sector_scan (thread_p, sort_param->px_sector_scan);
+	  sort_param->px_sector_scan->~qfile_list_sector_scan_info ();
+	  db_private_free_and_init (thread_p, sort_param->px_sector_scan);
+	  return ER_FAILED;
 	}
-
-      int sectors_per_worker = sector_info.sector_cnt / parallel_num;
-      int sector_remainder = sector_info.sector_cnt % parallel_num;
-      int sector_base = 0;
-      int membuf_remainder = total_membuf_pages % parallel_num;
 
       /* null out get_arg so partial-init cleanup is safe */
       for (int i = 0; i < parallel_num; i++)
@@ -5472,7 +5453,6 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	  SORT_INFO *winfo = (SORT_INFO *) db_private_alloc (thread_p, sizeof (SORT_INFO));
 	  if (winfo == NULL)
 	    {
-	      qfile_free_list_sector_info (thread_p, &sector_info);
 	      return ER_FAILED;
 	    }
 	  memset (winfo, 0, sizeof (SORT_INFO));
@@ -5483,7 +5463,6 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	  if (winfo->input_file == NULL)
 	    {
 	      db_private_free_and_init (thread_p, winfo);
-	      qfile_free_list_sector_info (thread_p, &sector_info);
 	      return ER_FAILED;
 	    }
 
@@ -5492,27 +5471,12 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	    {
 	      qfile_free_list_id (winfo->input_file);
 	      db_private_free_and_init (thread_p, winfo);
-	      qfile_free_list_sector_info (thread_p, &sector_info);
 	      return ER_FAILED;
 	    }
 	  placement_new (state);
 
-	  int nsectors = sectors_per_worker + (i < sector_remainder ? 1 : 0);
-	  state->sectors.assign (sector_info.sectors + sector_base, sector_info.sectors + sector_base + nsectors);
-	  state->sector_tfiles.assign ((QMGR_TEMP_FILE **) sector_info.tfiles + sector_base,
-				       (QMGR_TEMP_FILE **) sector_info.tfiles + sector_base + nsectors);
-	  sector_base += nsectors;
-	  state->sector_idx = 0;
-	  state->curr_pgoffset = 0;
-
-	  state->membuf_tfile = sector_info.membuf_tfile;
-	  int membuf_pages = total_membuf_pages / parallel_num + (i < membuf_remainder ? 1 : 0);
-	  state->membuf_cur = membuf_base;
-	  state->membuf_end = membuf_base + membuf_pages;
-	  membuf_base += membuf_pages;
-
+	  state->sector_scan = sort_param->px_sector_scan;
 	  state->curr_page = NULL;
-	  state->curr_is_membuf = false;
 	  state->curr_tfile = NULL;
 	  VPID_SET_NULL (&state->curr_vpid);
 	  state->curr_tplno = 0;
@@ -5524,8 +5488,6 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	  px_sort_param[i].get_arg = winfo;
 	  px_sort_param[i].get_fn = &qfile_sort_get_next_parallel;
 	}
-
-      qfile_free_list_sector_info (thread_p, &sector_info);
     }
   else
     {
@@ -5623,6 +5585,14 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 {
   int error = NO_ERROR;
   int parallel_num = sort_param->px_parallel_num;
+
+  /* Free shared sector scan — workers are done at this point */
+  if (sort_param->px_sector_scan != NULL)
+    {
+      qfile_close_list_sector_scan (thread_p, sort_param->px_sector_scan);
+      sort_param->px_sector_scan->~qfile_list_sector_scan_info ();
+      db_private_free_and_init (thread_p, sort_param->px_sector_scan);
+    }
 
   if (sort_param->px_type == SORT_ORDER_BY || sort_param->px_type == SORT_ORDER_WITH_LIMIT)
     {
