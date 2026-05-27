@@ -319,6 +319,11 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/trigger_manager.c
   ${OBJECT_DIR}/virtual_object.c
   ${OBJECT_DIR}/work_space.c
+  ${OBJECT_DIR}/schema_information_schema.cpp
+  ${OBJECT_DIR}/schema_information_schema_builder.cpp
+  ${OBJECT_DIR}/schema_information_schema_definition.cpp
+  ${OBJECT_DIR}/schema_information_schema_install.cpp
+  ${OBJECT_DIR}/schema_information_schema_install_query_spec.cpp
   )
 set(OBJECT_HEADERS
   ${OBJECT_DIR}/lob_locator.hpp
@@ -423,12 +428,12 @@ set(API_HEADERS
   ${API_DIR}/cubrid_log.h
   )
 
-set(PARALLEL_HEAP_SCAN_SOURCES
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.cpp
+set(PARALLEL_SCAN_SOURCES
+  ${PARALLEL_SCAN_DIR}/px_scan_checker.cpp
   )
 
-set(PARALLEL_HEAP_SCAN_HEADERS
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.hpp
+set(PARALLEL_SCAN_HEADERS
+  ${PARALLEL_SCAN_DIR}/px_scan_checker.hpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_SOURCES
@@ -522,7 +527,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${XASL_SOURCES}
   ${LOADDB_SOURCES}
   ${API_SOURCES}
-  ${PARALLEL_HEAP_SCAN_SOURCES}
+  ${PARALLEL_SCAN_SOURCES}
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
@@ -567,8 +572,8 @@ add_library(cubridcs SHARED
   ${LOADDB_HEADERS}
   ${API_SOURCES}
   ${API_HEADERS}
-  ${PARALLEL_HEAP_SCAN_SOURCES}
-  ${PARALLEL_HEAP_SCAN_HEADERS}
+  ${PARALLEL_SCAN_SOURCES}
+  ${PARALLEL_SCAN_HEADERS}
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
   ${PARALLEL_QUERY_EXECUTE_HEADERS}
   )

@@ -51,7 +51,7 @@
 #include "xasl.h"
 #include "query_hash_scan.h"
 #include "statistics.h"
-#include "px_heap_scan.hpp"
+#include "px_scan.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -164,9 +164,7 @@ static int check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_
 static int scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * indexal,
 				   TP_DOMAIN * btree_domainp, int num_term, REGU_VARIABLE * func, VAL_DESCR * vd,
 				   int key_minmax, bool is_iss, TP_DOMAIN ** prebuilt_midxkey_domain);
-static int scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY_VAL_RANGE * key_val_range,
-				       INDX_SCAN_ID * iscan_id, TP_DOMAIN * btree_domainp, VAL_DESCR * vd,
-				       int key_range_idx);
+/* scan_regu_key_to_index_key is declared in scan_manager.h (used by parallel index scan) */
 static int scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_limit_upper,
 				  DB_BIGINT * key_limit_lower);
 static void scan_init_scan_id (SCAN_ID * scan_id, bool force_select_lock, SCAN_OPERATION_TYPE scan_op_type, int fixed,
@@ -320,6 +318,7 @@ scan_init_index_scan (INDX_SCAN_ID * isidp, struct btree_iscan_oid_list *oid_lis
   isidp->check_not_vacuumed = false;
   isidp->not_vacuumed_res = DISK_VALID;
   isidp->prebuilt_midxkey_domains = NULL;
+  isidp->parallel_pending = NULL;
 }
 
 /*
@@ -1839,6 +1838,21 @@ check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * key_va
   return ((*key_val_fn) (key_vals, key_cnt));
 }
 
+/* shared with parallel index scan: same dedup/merge serial path runs in scan_open_index_scan. */
+int
+scan_dedup_or_merge_key_ranges (RANGE_TYPE range_type, KEY_VAL_RANGE * key_vals, int key_cnt)
+{
+  if (range_type == R_KEYLIST)
+    {
+      return check_key_vals (key_vals, key_cnt, eliminate_duplicated_keys);
+    }
+  if (range_type == R_RANGELIST)
+    {
+      return check_key_vals (key_vals, key_cnt, merge_key_ranges);
+    }
+  return key_cnt;
+}
+
 /*
  * scan_dbvals_to_midxkey () -
  *   return: NO_ERROR or ER_code
@@ -2309,7 +2323,7 @@ err_exit:
 /*
  * scan_regu_key_to_index_key:
  */
-static int
+int
 scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY_VAL_RANGE * key_val_range,
 			    INDX_SCAN_ID * iscan_id, TP_DOMAIN * btree_domainp, VAL_DESCR * vd, int key_range_idx)
 {
@@ -4529,6 +4543,18 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   JSON_TABLE_SCAN_ID *jtidp = NULL;
 
+#if SERVER_MODE && !WINDOWS
+  /* attempt parallel-index promotion now that need_count_only is resolved; may rewrite scan_id->type to S_PARALLEL_INDEX_SCAN. */
+  if (scan_id->type == S_INDX_SCAN && scan_id->s.isid.parallel_pending != NULL)
+    {
+      ret = scan_try_promote_parallel_index_scan (thread_p, scan_id);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+    }
+#endif /* SERVER_MODE && !WINDOWS */
+
   switch (scan_id->type)
     {
     case S_HEAP_SCAN:
@@ -4598,6 +4624,16 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     case S_PARALLEL_HEAP_SCAN:
 #if SERVER_MODE && !WINDOWS
       scan_start_parallel_heap_scan (thread_p, scan_id);
+#endif /* SERVER_MODE && !WINDOWS */
+      break;
+    case S_PARALLEL_LIST_SCAN:
+#if SERVER_MODE && !WINDOWS
+      scan_start_parallel_list_scan (thread_p, scan_id);
+#endif /* SERVER_MODE && !WINDOWS */
+      break;
+    case S_PARALLEL_INDEX_SCAN:
+#if SERVER_MODE && !WINDOWS
+      scan_start_parallel_index_scan (thread_p, scan_id);
 #endif /* SERVER_MODE && !WINDOWS */
       break;
     case S_HEAP_PAGE_SCAN:
@@ -4853,6 +4889,20 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	  break;
 	}
       break;
+    case S_PARALLEL_LIST_SCAN:
+      if (scan_reset_scan_block_parallel_list_scan (thread_p, s_id) != NO_ERROR)
+	{
+	  status = S_ERROR;
+	  break;
+	}
+      break;
+    case S_PARALLEL_INDEX_SCAN:
+      if (scan_reset_scan_block_parallel_index_scan (thread_p, s_id) != NO_ERROR)
+	{
+	  status = S_ERROR;
+	  break;
+	}
+      break;
 #endif /* SERVER_MODE && !WINDOWS */
 
     case S_INDX_SCAN:
@@ -4999,6 +5049,8 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
     case S_HEAP_PAGE_SCAN:
     case S_HEAP_SAMPLING_SCAN:
     case S_PARALLEL_HEAP_SCAN:
+    case S_PARALLEL_LIST_SCAN:
+    case S_PARALLEL_INDEX_SCAN:
       if (s_id->grouped)
 	{
 	  /* grouped, fixed scan */
@@ -5189,6 +5241,18 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 #endif /* SERVER_MODE && !WINDOWS */
       break;
 
+    case S_PARALLEL_LIST_SCAN:
+#if SERVER_MODE && !WINDOWS
+      scan_end_parallel_list_scan (thread_p, scan_id);
+#endif /* SERVER_MODE && !WINDOWS */
+      break;
+
+    case S_PARALLEL_INDEX_SCAN:
+#if SERVER_MODE && !WINDOWS
+      scan_end_parallel_index_scan (thread_p, scan_id);
+#endif /* SERVER_MODE && !WINDOWS */
+      break;
+
     case S_CLASS_ATTR_SCAN:
       /* do not free attr_cache here. xs_clear_access_spec_list() will free attr_caches. */
       break;
@@ -5287,8 +5351,28 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 #endif /* SERVER_MODE && !WINDOWS */
       break;
 
+    case S_PARALLEL_LIST_SCAN:
+#if SERVER_MODE && !WINDOWS
+      scan_close_parallel_list_scan (thread_p, scan_id);
+#endif /* SERVER_MODE && !WINDOWS */
+      break;
+
+    case S_PARALLEL_INDEX_SCAN:
+#if SERVER_MODE && !WINDOWS
+      scan_close_parallel_index_scan (thread_p, scan_id);
+#endif /* SERVER_MODE && !WINDOWS */
+      break;
+
     case S_INDX_SCAN:
       isidp = &scan_id->s.isid;
+
+#if SERVER_MODE && !WINDOWS
+      /* drop pending capture if start_scan never ran (open-then-abort path). */
+      if (isidp->parallel_pending != NULL)
+	{
+	  scan_clear_parallel_index_pending (thread_p, scan_id);
+	}
+#endif /* SERVER_MODE && !WINDOWS */
 
       if (isidp->prebuilt_midxkey_domains != NULL)
 	{
@@ -5606,6 +5690,12 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     case S_PARALLEL_HEAP_SCAN:
       status = scan_next_parallel_heap_scan (thread_p, scan_id);
       break;
+    case S_PARALLEL_LIST_SCAN:
+      status = scan_next_parallel_list_scan (thread_p, scan_id);
+      break;
+    case S_PARALLEL_INDEX_SCAN:
+      status = scan_next_parallel_index_scan (thread_p, scan_id);
+      break;
 #endif /* SERVER_MODE && !WINDOWS */
 
     case S_HEAP_PAGE_SCAN:
@@ -5690,6 +5780,10 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    case S_HEAP_SCAN_RECORD_INFO:
 	    case S_HEAP_SAMPLING_SCAN:
 	    case S_LIST_SCAN:
+#if SERVER_MODE && !WINDOWS
+	    case S_PARALLEL_HEAP_SCAN:
+	    case S_PARALLEL_LIST_SCAN:
+#endif /* SERVER_MODE && !WINDOWS */
 	      scan_id->partition_stats->read_rows += scan_id->scan_stats.read_rows - old_scan_stats.read_rows;
 	      scan_id->partition_stats->qualified_rows +=
 		scan_id->scan_stats.qualified_rows - old_scan_stats.qualified_rows;
@@ -5698,6 +5792,9 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      break;
 
 	    case S_INDX_SCAN:
+#if SERVER_MODE && !WINDOWS
+	    case S_PARALLEL_INDEX_SCAN:
+#endif /* SERVER_MODE && !WINDOWS */
 	      scan_id->partition_stats->read_keys += scan_id->scan_stats.read_keys - old_scan_stats.read_keys;
 	      scan_id->partition_stats->qualified_keys +=
 		scan_id->scan_stats.qualified_keys - old_scan_stats.qualified_keys;
@@ -8364,6 +8461,7 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
     case S_HEAP_SCAN:
     case S_LIST_SCAN:
     case S_PARALLEL_HEAP_SCAN:
+    case S_PARALLEL_LIST_SCAN:
       json_object_set_new (scan, "readrows", json_integer (scan_id->scan_stats.read_rows));
       json_object_set_new (scan, "rows", json_integer (scan_id->scan_stats.qualified_rows));
 
@@ -8418,6 +8516,7 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
       break;
 
     case S_INDX_SCAN:
+    case S_PARALLEL_INDEX_SCAN:
       json_object_set_new (scan, "readkeys", json_integer (scan_id->scan_stats.read_keys));
       json_object_set_new (scan, "filteredkeys", json_integer (scan_id->scan_stats.qualified_keys));
       json_object_set_new (scan, "rows", json_integer (scan_id->scan_stats.key_qualified_rows));
@@ -8505,6 +8604,14 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 	}
       break;
 
+    case S_PARALLEL_LIST_SCAN:
+      fprintf (fp, "(temp");
+      break;
+
+    case S_PARALLEL_INDEX_SCAN:
+      fprintf (fp, "(btree");
+      break;
+
     case S_INDX_SCAN:
       fprintf (fp, "(btree");
       break;
@@ -8561,6 +8668,7 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     {
     case S_HEAP_SCAN:
     case S_PARALLEL_HEAP_SCAN:
+    case S_PARALLEL_LIST_SCAN:
     case S_LIST_SCAN:
     case S_HEAP_SAMPLING_SCAN:
       fprintf (fp, ", readrows: %llu, rows: %llu", (unsigned long long int) scan_id->scan_stats.read_rows,
@@ -8583,6 +8691,7 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       break;
 
     case S_INDX_SCAN:
+    case S_PARALLEL_INDEX_SCAN:
       fprintf (fp, ", readkeys: %llu, filteredkeys: %llu, rows: %llu",
 	       (unsigned long long int) scan_id->scan_stats.read_keys,
 	       (unsigned long long int) scan_id->scan_stats.qualified_keys,

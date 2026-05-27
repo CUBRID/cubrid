@@ -113,6 +113,8 @@ extern int qdata_regu_list_to_regu_array (function_node * function_p, const int 
 					  regu_variable_node * regu_array[], int *num_regu);
 extern int qdata_get_cardinality (THREAD_ENTRY * thread_p, DB_VALUE * db_class_name, DB_VALUE * db_index_name,
 				  DB_VALUE * db_key_position, DB_VALUE * result_p);
+extern int qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name, DB_VALUE * result_p,
+					  OPERATOR_TYPE op);
 extern int qdata_tuple_to_values_array (THREAD_ENTRY * thread_p, qfile_tuple_descriptor * tuple, DB_VALUE ** values);
 extern int qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p);
 extern int qdata_apply_interpolation_function_coercion (DB_VALUE * f_value, tp_domain ** result_dom, DB_VALUE * result,

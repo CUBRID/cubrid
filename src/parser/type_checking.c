@@ -2966,6 +2966,23 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads_count = num;
       break;
 
+    case PT_ESTIMATED_TABLE_ROWS:
+    case PT_ESTIMATED_AVG_ROW_LENGTH:
+    case PT_ESTIMATED_DATA_LENGTH:
+    case PT_ESTIMATED_DATA_FREE:
+      num = 0;
+
+      /* one overload */
+
+      sig.arg1_type.type = pt_arg_type::GENERIC;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_BIGINT;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     case PT_SIGN:
       num = 0;
 
@@ -4441,6 +4458,23 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::GENERIC;
       sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+
+      /* return type */
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_COLLECTION_TO_STRING:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.type = pt_arg_type::GENERIC;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_SEQUENCE;
 
       /* return type */
       sig.return_type.type = pt_arg_type::NORMAL;
@@ -6261,6 +6295,10 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_CLOB_TO_CHAR:
     case PT_TYPEOF:
     case PT_INDEX_CARDINALITY:
+    case PT_ESTIMATED_TABLE_ROWS:
+    case PT_ESTIMATED_AVG_ROW_LENGTH:
+    case PT_ESTIMATED_DATA_LENGTH:
+    case PT_ESTIMATED_DATA_FREE:
     case PT_INCR:
     case PT_DECR:
     case PT_RAND:
@@ -6316,6 +6354,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_CRC32:
     case PT_SCHEMA_DEF:
     case PT_CONV_TZ:
+    case PT_COLLECTION_TO_STRING:
       return false;
 
     default:
@@ -8606,6 +8645,7 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_CRC32:
     case PT_DISK_SIZE:
     case PT_SCHEMA_DEF:
+    case PT_COLLECTION_TO_STRING:
       return true;
 
     default:
@@ -9073,6 +9113,16 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    goto error;
 	  }
       }
+      break;
+
+    case PT_COLLECTION_TO_STRING:
+      if (arg1_type != PT_TYPE_NULL && arg1_type != PT_TYPE_MAYBE && !PT_IS_COLLECTION_TYPE (arg1_type))
+	{
+	  PT_ERRORmf2 (parser, arg1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+		       pt_short_print (parser, arg1), "collection type");
+	  node->type_enum = PT_TYPE_NONE;
+	  goto error;
+	}
       break;
 
     default:
@@ -11765,6 +11815,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
     case PT_SUBSTRING:
     case PT_COERCIBILITY:
     case PT_INDEX_PREFIX:
+    case PT_COLLECTION_TO_STRING:
       assert (dt == NULL);
       dt = pt_make_prim_data_type (parser, node->type_enum);
       dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
@@ -17168,6 +17219,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       break;
 
     case PT_INDEX_CARDINALITY:
+    case PT_ESTIMATED_TABLE_ROWS:
+    case PT_ESTIMATED_AVG_ROW_LENGTH:
+    case PT_ESTIMATED_DATA_LENGTH:
+    case PT_ESTIMATED_DATA_FREE:
       /* constant folding for this expression is never performed : is always resolved on server */
       return 0;
     case PT_LIST_DBS:
@@ -17451,6 +17506,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  return 1;
 	}
 
+    case PT_COLLECTION_TO_STRING:
+      error = db_collection_to_string_dbval (result, arg1);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      return 1;
+
     default:
       break;
     }
@@ -17655,7 +17719,9 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
     }
   else if (op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE || op == PT_BIT_TO_BLOB || op == PT_CHAR_TO_BLOB
 	   || op == PT_BLOB_TO_BIT || op == PT_BLOB_LENGTH || op == PT_CHAR_TO_CLOB || op == PT_CLOB_TO_CHAR
-	   || op == PT_CLOB_LENGTH || op == PT_EXEC_STATS || op == PT_TRACE_STATS || op == PT_TZ_OFFSET)
+	   || op == PT_CLOB_LENGTH || op == PT_EXEC_STATS || op == PT_TRACE_STATS || op == PT_TZ_OFFSET
+	   || op == PT_ESTIMATED_TABLE_ROWS || op == PT_ESTIMATED_AVG_ROW_LENGTH
+	   || op == PT_ESTIMATED_DATA_LENGTH || op == PT_ESTIMATED_DATA_FREE)
     {
       goto end;
     }

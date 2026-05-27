@@ -2043,11 +2043,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
        * obtaining record information or page header information and so on. In these cases, names will be resolved to a
        * set of reserved names for each type of results. The query spec must be marked accordingly. NOTE: These hints
        * can be applied on single-spec queries. If this is a joined-spec query, just ignore the hints. */
-      if (node->info.query.q.select.hint & PT_HINT_NO_PARALLEL_HEAP_SCAN)
+      if (node->info.query.q.select.hint & PT_HINT_NO_PARALLEL_SCAN)
 	{
 	  for (PT_NODE * from = node->info.query.q.select.from; from != NULL; from = from->next)
 	    {
-	      from->info.spec.flag = (PT_SPEC_FLAG) (from->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+	      from->info.spec.flag = (PT_SPEC_FLAG) (from->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
 	    }
 	}
 
