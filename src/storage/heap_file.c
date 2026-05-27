@@ -8050,7 +8050,7 @@ heap_oos_read_blobs (THREAD_ENTRY * thread_p, HEAP_OOS_EXPAND_STATE * state)
 	  continue;
 	}
 
-      const int value_offset = OR_VAR_OFFSET (state->src, i);
+      const int value_offset = state->src_header_size + OR_GET_VAR_OFFSET (state->vot_raw[i]);
       if (value_offset + OR_OOS_INLINE_SIZE > state->src_length)
 	{
 	  assert_release (false && "OOS inline slot extends past record bounds");
