@@ -3918,7 +3918,6 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
   PT_NODE *pointer = NULL;
   PT_NODE *pt_val = NULL;
   PT_NODE *percentile = NULL;
-  PT_NODE *out_name;
   PT_NODE *arg_list = NULL;
   bool already_exist = false;
 
@@ -4039,7 +4038,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	{
 	  if (aggregate_list->function != PT_CUME_DIST && aggregate_list->function != PT_PERCENT_RANK)
 	    {
-	      if (aggregate_list->function != PT_GROUP_CONCAT && aggregate_list->function != PT_JSON_OBJECTAGG)	// tree->info.function.arg_list 길이가 1 이하인 경우
+	      if (tree->info.function.arg_list->next == NULL)	// aggregate_list->function != PT_GROUP_CONCAT && aggregate_list->function != PT_JSON_OBJECTAGG
 		{
 		  tree->info.function.arg_list =
 		    parser_walk_tree (parser, tree->info.function.arg_list, NULL, NULL, pt_substitute_groupby_ref_post,
@@ -4155,8 +4154,12 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		  DB_VALUE *dbval = (DB_VALUE *) tree->info.function.arg_list->etc;
 
 		  real_node = tree->info.function.arg_list;
-
+		  while (real_node && real_node->node_type == PT_NODE_POINTER)
+		    {
+		      real_node = real_node->info.pointer.node;
+		    }
 		  info->out_names = parser_append_node (real_node, info->out_names);
+
 		  regu_alloc (value_list);
 		  if (value_list == NULL)
 		    {
@@ -4195,57 +4198,49 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		}
 	      else if (aggregate_list->function != PT_CUME_DIST && aggregate_list->function != PT_PERCENT_RANK)
 		{
-
-		  if (arg_list)
+		  // add dummy output name nodes, one for each argument
+		  for (PT_NODE * it_args = tree->info.function.arg_list; it_args != NULL; it_args = it_args->next)
 		    {
+		      pt_val = parser_new_node (parser, PT_VALUE);
+		      if (pt_val == NULL)
+			{
+			  PT_INTERNAL_ERROR (parser, "allocate new node");
+			  return NULL;
+			}
+
+		      pt_val->type_enum = PT_TYPE_INTEGER;
+		      pt_val->info.value.data_value.i = 0;
 		      parser_append_node (pt_val, info->out_names);
-		      aggregate_list->operands =
-			pt_to_regu_variable_list (parser, arg_list, UNBOX_AS_VALUE, NULL, NULL);
 		    }
-		  else
+
+		  // for each element from arg_list we create a corresponding node in the value_list and regu_list
+		  if (pt_node_list_to_value_and_reguvar_list (parser, tree->info.function.arg_list,
+							      &value_list, &regu_position_list) == NULL)
 		    {
-		      for (PT_NODE * it_args = tree->info.function.arg_list; it_args != NULL; it_args = it_args->next)
-			{
-			  pt_val = parser_copy_tree (parser, it_args);
-			  if (pt_val == NULL)
-			    {
-			      PT_INTERNAL_ERROR (parser, "allocate new node");
-			      return NULL;
-			    }
-
-			  parser_append_node (pt_val, info->out_names);
-			}
-
-		      // for each element from arg_list we create a corresponding node in the value_list and regu_list
-		      if (pt_node_list_to_value_and_reguvar_list (parser, tree->info.function.arg_list,
-								  &value_list, &regu_position_list) == NULL)
-			{
-			  PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
-								  MSGCAT_SEMANTIC_OUT_OF_MEMORY));
-			  return NULL;
-			}
-
-		      error_code =
-			pt_make_constant_regu_list_from_val_list (parser, value_list, &aggregate_list->operands);
-		      if (error_code != NO_ERROR)
-			{
-			  PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
-								  MSGCAT_SEMANTIC_OUT_OF_MEMORY));
-			  return NULL;
-			}
-
-		      // this regu_list has the TYPE_POSITION type so we need to set the corresponding indexes for elements
-		      pt_set_regu_list_pos_descr_from_idx (regu_position_list, info->out_list->valptr_cnt);
-
-		      // until now we have constructed the value_list, regu_list and out_list
-		      // they are based on the current aggregate node information and we need to append them to the global
-		      // information, i.e in info
-		      pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list,
-									regu_constant_list);
-
-		      // also we need to update the scan_regu_list from info
-		      pt_aggregate_info_update_scan_regu_list (info, scan_regu_constant_list);
+		      PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+							      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+		      return NULL;
 		    }
+
+		  error_code = pt_make_constant_regu_list_from_val_list (parser, value_list, &aggregate_list->operands);
+		  if (error_code != NO_ERROR)
+		    {
+		      PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+							      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+		      return NULL;
+		    }
+
+		  // this regu_list has the TYPE_POSITION type so we need to set the corresponding indexes for elements
+		  pt_set_regu_list_pos_descr_from_idx (regu_position_list, info->out_list->valptr_cnt);
+
+		  // until now we have constructed the value_list, regu_list and out_list
+		  // they are based on the current aggregate node information and we need to append them to the global
+		  // information, i.e in info
+		  pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list,
+								    regu_constant_list);
+
+		  // also we need to update the scan_regu_list from info
+		  pt_aggregate_info_update_scan_regu_list (info, scan_regu_constant_list);
 		}
 	      else
 		{
@@ -4681,7 +4676,6 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * o
   info.args = NULL;
   info.grbynum_valp = grbynum_valp;
   info.qo_plan = plan;
-//   (void) parser_walk_tree (parser, out_names, NULL, NULL, pt_substitute_groupby_ref_pre, &info);
 
   /* init */
   info.class_name = NULL;
@@ -4707,8 +4701,7 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * o
 	    }
 	}
     }
-  select_node->info.query.q.select.list =
-    parser_walk_tree (parser, select_list, pt_substitute_groupby_ref_pre, &info, NULL, NULL);
+  (void) parser_walk_tree (parser, select_list, pt_substitute_groupby_ref_pre, &info, NULL, NULL);
 
   select_node->info.query.q.select.list =
     parser_walk_tree (parser, select_list, pt_to_aggregate_node, &info, pt_continue_walk, NULL);
@@ -28705,6 +28698,7 @@ pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 
       // }
     }
+
   if (node->node_type != PT_NAME && node->node_type != PT_EXPR)
     {
       return node;
@@ -28712,6 +28706,11 @@ pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 
   for (out_name = info->args; out_name != NULL; out_name = out_name->next)
     {
+      while (out_name && out_name->node_type == PT_NODE_POINTER)
+	{
+	  out_name = out_name->info.pointer.node;
+	}
+
       if (pt_check_path_eq (parser, node, out_name) == 0)
 	{
 	  already_exist = true;
@@ -28724,8 +28723,6 @@ pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
       value_list = pt_make_val_list (parser, node);
       pointer->etc = value_list->valp->val;
       info->args = parser_append_node (pointer, info->args);
-
-      return node;
     }
 
   return node;
@@ -28737,6 +28734,7 @@ pt_substitute_groupby_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 {
   AGGREGATE_INFO *info = (AGGREGATE_INFO *) arg;
   PT_NODE *out_name, *new_node, *tmp, *pointer;
+  DB_VALUE *dbval = NULL;
   int i = 0;
   bool already_exist = false;
 
@@ -28752,12 +28750,18 @@ pt_substitute_groupby_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 
   for (out_name = info->args; out_name != NULL; out_name = out_name->next, i++)
     {
+      if (out_name->node_type == PT_NODE_POINTER)
+	{
+	  dbval = (DB_VALUE *) out_name->etc;
+	  out_name = out_name->info.pointer.node;
+	}
+
       if (pt_check_path_eq (parser, node, out_name) == 0)
 	{
 	  new_node = parser_copy_tree (parser, node);
 	  pointer = pt_point_ref (parser, new_node);
 
-	  pointer->etc = (DB_VALUE *) out_name->etc;
+	  pointer->etc = dbval;
 	  tmp = node->next;
 	  pointer->next = tmp;
 

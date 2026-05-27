@@ -14527,15 +14527,9 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
       return 1;
     }
 
-  while (p && p->node_type == PT_NODE_POINTER)
-    {
-      p = p->info.pointer.node;
-    }
+  CAST_POINTER_TO_NODE (p);
+  CAST_POINTER_TO_NODE (q);
 
-  while (q && q->node_type == PT_NODE_POINTER)
-    {
-      q = q->info.pointer.node;
-    }
   /* check node types are same */
   if (p->node_type != q->node_type)
     {
