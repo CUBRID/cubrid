@@ -24,9 +24,6 @@
 
 #include "recovery.h"
 
-#include <stdio.h>
-#include <string.h>
-
 #include "boot_sr.h"
 #include "btree.h"
 #include "btree_load.h"
@@ -39,6 +36,8 @@
 #include "overflow_file.h"
 #include "replication.h"
 #include "system_catalog.h"
+
+#include <stdio.h>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"

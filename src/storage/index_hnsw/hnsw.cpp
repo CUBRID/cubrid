@@ -145,6 +145,8 @@ static hnsw_index_manager *index_manager = nullptr;
 int
 xhnsw_initialize (THREAD_ENTRY *thread_p)
 {
+  assert (index_manager == nullptr);
+
   if (index_manager == nullptr)
     {
       index_manager = &hnsw_index_manager::instance();
@@ -459,7 +461,7 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
       return ER_FAILED;
     }
 
-  if (index_manager == nullptr && xhnsw_initialize (thread_p) != NO_ERROR)
+  if (index_manager == nullptr)
     {
       assert (false);
       return ER_FAILED;
@@ -560,7 +562,7 @@ hnsw_rv_redo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
       return ER_FAILED;
     }
 
-  if (index_manager == nullptr && xhnsw_initialize (thread_p) != NO_ERROR)
+  if (index_manager == nullptr)
     {
       assert (false);
       return ER_FAILED;
@@ -608,7 +610,7 @@ hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, 
       distances[i] = 0.0f;
     }
 
-  if (index_manager == nullptr && xhnsw_initialize (thread_p) != NO_ERROR)
+  if (index_manager == nullptr)
     {
       assert (false);
       return ER_FAILED;
