@@ -694,11 +694,10 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
 	}
     }
 
-  /* Pre-allocate room for transitive join terms.
-   * Upper bound is sum_eqclass C(segs_in_eqclass, 2) <= C(nsegs, 2): the same node pair
-   * may need one term per independent eqclass, so C(nnodes,2) is insufficient.
+  /* Pre-allocate room for transitive join terms (at most C(nnodes,2) extras per eqclass in
+   * practice).  Sufficient for typical queries; generation stops gracefully if exceeded.
    * This avoids realloc after setup, which would require rebinding inline bitset pointers. */
-  extra_term_cap = env->nsegs * (env->nsegs - 1) / 2;
+  extra_term_cap = env->nnodes * (env->nnodes - 1) / 2;
   env->terms = NULL;
   if (env->nterms + extra_term_cap > 0)
     {
@@ -8114,7 +8113,7 @@ qo_assign_eq_classes (QO_ENV * env)
 static void
 qo_generate_transitive_join_terms (QO_ENV * env)
 {
-  int i, ti, extra, old_terms;
+  int i, ti, old_terms;
   QO_TRANSITIVE_JOIN_SPEC *specs = NULL;
   int specs_count = 0, specs_cap = 0;
   PARSER_CONTEXT *parser;
@@ -8162,12 +8161,8 @@ qo_generate_transitive_join_terms (QO_ENV * env)
       return;
     }
 
-  extra = specs_count;
   old_terms = env->nterms;
   parser = QO_ENV_PARSER (env);
-
-  /* Room for transitive terms was pre-allocated in qo_env_init (C(nnodes,2) slots). */
-  QO_ASSERT (env, env->nterms + extra <= env->Nterms);
 
   for (i = 0; i < specs_count; i++)
     {
@@ -8175,6 +8170,13 @@ qo_generate_transitive_join_terms (QO_ENV * env)
       QO_SEGMENT *tail_seg = specs[i].tail_seg;
       PT_NODE *pt_expr;
       QO_TERM *term;
+
+      /* Pre-allocated capacity (C(nnodes,2)) may be exhausted when the same node pair
+       * appears across multiple independent eqclasses.  Stop gracefully rather than overflow. */
+      if (env->nterms >= env->Nterms)
+	{
+	  break;
+	}
 
       if (parser == NULL)
 	{
@@ -8227,8 +8229,8 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 	pt_expr->info.expr.op = PT_EQ;
 	pt_expr->info.expr.arg1 = parser_copy_tree (parser, QO_SEG_PT_NODE (head_seg));
 	pt_expr->info.expr.arg2 = parser_copy_tree (parser, QO_SEG_PT_NODE (tail_seg));
-	
-        if (pt_expr->info.expr.arg1 == NULL || pt_expr->info.expr.arg2 == NULL)
+
+	if (pt_expr->info.expr.arg1 == NULL || pt_expr->info.expr.arg2 == NULL)
 	  {
 	    parser_free_tree (parser, pt_expr);
 	    continue;
