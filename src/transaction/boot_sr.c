@@ -102,6 +102,11 @@
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
+
+#ifdef CCI_XA
+#include "dblink_2pc_daemon.h"
+#endif /* CCI_XA */
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -2408,6 +2413,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined(SERVER_MODE)
+#ifdef CCI_XA
+  dblink_2pc_daemon_init ();
+#endif
   pgbuf_daemons_init ();
   dwb_daemons_init ();
   parallel_query::worker_manager_global::get_manager ().init ();
@@ -3080,6 +3088,9 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
+#ifdef CCI_XA
+  dblink_2pc_daemon_stop ();
+#endif /* CCI_XA */
   pgbuf_daemons_destroy ();
   cdc_daemons_destroy ();
   pl_server_destroy ();
