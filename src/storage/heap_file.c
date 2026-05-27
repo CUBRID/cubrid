@@ -8082,11 +8082,11 @@ heap_oos_read_blobs (THREAD_ENTRY * thread_p, HEAP_OOS_EXPAND_STATE * state)
 	}
       // *INDENT-OFF*
       if (oos_read (thread_p, oos_oid, oos_buffer (state->oos_recdes[i].data, (std::size_t) oos_len)) != NO_ERROR)
+        {
+          oos_error ("oos_read failed for OID %d|%d|%d", OID_AS_ARGS (&oos_oid));
+          return ER_FAILED;
+        }
       // *INDENT-ON*
-      {
-	oos_error ("oos_read failed for OID %d|%d|%d", OID_AS_ARGS (&oos_oid));
-	return ER_FAILED;
-      }
       state->oos_recdes[i].length = (int) oos_len;
     }
 
