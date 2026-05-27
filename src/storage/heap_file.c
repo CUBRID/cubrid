@@ -8006,9 +8006,9 @@ heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
   /* Walk the VOT and collect each raw offset entry (including flag bits). The loop stops at the
    * sentinel carrying OR_VAR_BIT_LAST_ELEMENT. */
   // *INDENT-OFF*
-  std::vector<int> vot_raw;
+  std::vector<int> vot_offset;
   // *INDENT-ON*
-  vot_raw.reserve (src_vot_capacity + 1);
+  vot_offset.reserve (src_vot_capacity + 1);
   int n_var = -1;
   for (int i = 0; i <= src_vot_capacity; ++i)
     {
@@ -8034,7 +8034,7 @@ heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
 	  assert_release (false);
 	  return S_ERROR;
 	}
-      vot_raw.push_back (raw);
+      vot_offset.push_back (raw);
       if (OR_IS_LAST_ELEMENT (raw))
 	{
 	  n_var = i;
@@ -8072,7 +8072,7 @@ heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
 
   for (int i = 0; i < n_var; ++i)
     {
-      if (!OR_IS_OOS (vot_raw[i]))
+      if (!OR_IS_OOS (vot_offset[i]))
 	{
 	  continue;
 	}
@@ -8122,7 +8122,7 @@ heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
 
   /* Space between end-of-VOT and start-of-first-var-value holds fixed attributes and the bound-bit
    * bitmap; it is copied over unchanged. */
-  const int fixed_bitmap_bytes = OR_GET_VAR_OFFSET (vot_raw[0]) - src_vot_bytes;
+  const int fixed_bitmap_bytes = OR_GET_VAR_OFFSET (vot_offset[0]) - src_vot_bytes;
   if (fixed_bitmap_bytes < 0)
     {
       assert_release (false);
@@ -8132,15 +8132,15 @@ heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
   int64_t new_values_bytes = 0;
   for (int i = 0; i < n_var; ++i)
     {
-      const int this_off = OR_GET_VAR_OFFSET (vot_raw[i]);
-      const int next_off = OR_GET_VAR_OFFSET (vot_raw[i + 1]);
+      const int this_off = OR_GET_VAR_OFFSET (vot_offset[i]);
+      const int next_off = OR_GET_VAR_OFFSET (vot_offset[i + 1]);
       const int src_val_len = next_off - this_off;
       if (src_val_len < 0 || src_header_size + next_off > src_length)
 	{
 	  assert_release (false && "VOT offsets out of order or past record");
 	  return S_ERROR;
 	}
-      if (OR_IS_OOS (vot_raw[i]))
+      if (OR_IS_OOS (vot_offset[i]))
 	{
 	  assert (src_val_len == OR_OOS_INLINE_SIZE);
 	  new_values_bytes += oos_recdes[i].length;
@@ -8192,18 +8192,18 @@ heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
   for (int i = 0; i < n_var; ++i)
     {
       OR_PUT_INT (dst_vot + i * dst_offset_size, dst_first_value_rel + cumulative);
-      const int val_len = (OR_IS_OOS (vot_raw[i])
+      const int val_len = (OR_IS_OOS (vot_offset[i])
 			   ? oos_recdes[i].length
-			   : OR_GET_VAR_OFFSET (vot_raw[i + 1]) - OR_GET_VAR_OFFSET (vot_raw[i]));
+			   : OR_GET_VAR_OFFSET (vot_offset[i + 1]) - OR_GET_VAR_OFFSET (vot_offset[i]));
       cumulative += val_len;
     }
   OR_PUT_INT (dst_vot + n_var * dst_offset_size, OR_SET_VAR_LAST_ELEMENT (dst_first_value_rel + cumulative));
 
   /* Zero any alignment padding past the last VOT entry. */
-  const int vot_raw_bytes = (n_var + 1) * dst_offset_size;
-  if (dst_vot_bytes > vot_raw_bytes)
+  const int vot_offset_bytes = (n_var + 1) * dst_offset_size;
+  if (dst_vot_bytes > vot_offset_bytes)
     {
-      std::memset (dst_vot + vot_raw_bytes, 0, dst_vot_bytes - vot_raw_bytes);
+      std::memset (dst_vot + vot_offset_bytes, 0, dst_vot_bytes - vot_offset_bytes);
     }
 
   /* Fixed attributes + bound-bit bitmap: copy unchanged. */
@@ -8216,15 +8216,15 @@ heap_record_replace_oos_oids (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
   int dst_pos = src_header_size + dst_vot_bytes + fixed_bitmap_bytes;
   for (int i = 0; i < n_var; ++i)
     {
-      if (OR_IS_OOS (vot_raw[i]))
+      if (OR_IS_OOS (vot_offset[i]))
 	{
 	  std::memcpy (dst + dst_pos, oos_recdes[i].data, oos_recdes[i].length);
 	  dst_pos += oos_recdes[i].length;
 	}
       else
 	{
-	  const int src_off = src_header_size + OR_GET_VAR_OFFSET (vot_raw[i]);
-	  const int len = OR_GET_VAR_OFFSET (vot_raw[i + 1]) - OR_GET_VAR_OFFSET (vot_raw[i]);
+	  const int src_off = src_header_size + OR_GET_VAR_OFFSET (vot_offset[i]);
+	  const int len = OR_GET_VAR_OFFSET (vot_offset[i + 1]) - OR_GET_VAR_OFFSET (vot_offset[i]);
 	  std::memcpy (dst + dst_pos, src + src_off, len);
 	  dst_pos += len;
 	}
