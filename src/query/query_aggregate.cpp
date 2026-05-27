@@ -62,12 +62,12 @@ static int qdata_process_distinct_or_sort (cubthread::entry *thread_p, cubxasl::
 static int qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p,
     cubxasl::aggregate_list_node *agg_p,
     VAL_DESCR *val_desc_p);
-static int qdata_update_agg_interpolation_func_value_and_domain (cubxasl::aggregate_list_node *agg_p, DB_VALUE *val);
+int qdata_update_agg_interpolation_func_value_and_domain (cubxasl::aggregate_list_node *agg_p, DB_VALUE *val);
 static int qdata_aggregate_interpolation (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
     QFILE_LIST_SCAN_ID *scan_id);
 
-static int qdata_group_concat_first_value (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_p, DB_VALUE *dbvalue);
-static int qdata_group_concat_value (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_p, DB_VALUE *dbvalue);
+int qdata_group_concat_first_value (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_p, DB_VALUE *dbvalue);
+int qdata_group_concat_value (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_p, DB_VALUE *dbvalue);
 
 //
 // implementation
@@ -2774,7 +2774,7 @@ qdata_save_agg_htable_to_list (cubthread::entry *thread_p, mht_table *hash_table
  *   val(in):
  *
  */
-static int
+int
 qdata_update_agg_interpolation_func_value_and_domain (cubxasl::aggregate_list_node *agg_p, DB_VALUE *dbval)
 {
   int error = NO_ERROR;
