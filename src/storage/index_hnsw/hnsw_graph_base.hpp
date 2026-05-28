@@ -179,6 +179,9 @@ namespace cubhnsw
   * - level (level_t):
   *   Maximum HNSW level of this node.
   *
+  * - flags (uint32_t):
+  *   Node metadata flags. Currently used to mark tombstoned entries.
+  *
   * - neighbors_offset (std::size_t):
   *   Byte offset from tape_ to the beginning of the neighbors array.
   *   Allows variable-sized vectors without fixing the header layout.
@@ -232,9 +235,15 @@ namespace cubhnsw
       node_t (node_t &&) noexcept = default;
       node_t &operator= (node_t &&) noexcept = default;
 
+      using flags_t = uint32_t;
+
+      static constexpr flags_t FLAG_NONE = 0;
+      static constexpr flags_t FLAG_TOMBSTONE = 1u;
+
       static constexpr std::size_t offset_key = 0;
       static constexpr std::size_t offset_level = offset_key + sizeof (slot_id_t);
-      static constexpr std::size_t offset_neighbors_offset = offset_level + sizeof (level_t);
+      static constexpr std::size_t offset_flags = offset_level + sizeof (level_t);
+      static constexpr std::size_t offset_neighbors_offset = offset_flags + sizeof (flags_t);
       static constexpr std::size_t offset_vector = offset_neighbors_offset + sizeof (std::size_t);
       static constexpr std::size_t offset_header_end = offset_vector;
 
@@ -255,6 +264,38 @@ namespace cubhnsw
       {
 	return misaligned_store<level_t> (tape_ + offset_level, v);
       }
+
+      flags_t get_flags () const noexcept
+      {
+	return misaligned_load<flags_t> (tape_ + offset_flags);
+      }
+
+      void set_flags (flags_t flags) noexcept
+      {
+	return misaligned_store<flags_t> (tape_ + offset_flags, flags);
+      }
+
+      bool is_tombstoned () const noexcept
+      {
+	return (get_flags () & FLAG_TOMBSTONE) != 0;
+      }
+
+      void set_tombstoned (bool tombstoned) noexcept
+      {
+	flags_t flags = get_flags ();
+
+	if (tombstoned)
+	  {
+	    flags |= FLAG_TOMBSTONE;
+	  }
+	else
+	  {
+	    flags &= ~FLAG_TOMBSTONE;
+	  }
+
+	set_flags (flags);
+      }
+
       const float *get_vector() const noexcept
       {
 	return reinterpret_cast<const float *> (vector_tape());

@@ -114,6 +114,7 @@ namespace cubhnsw
     node_t node { reinterpret_cast<byte_t *> (rec_buf) };
     node.set_key (key);
     node.set_level (level);
+    node.set_tombstoned (false);
     node.set_vector (vector, get_dimension());
 
     PGSLOTID slot_id;
