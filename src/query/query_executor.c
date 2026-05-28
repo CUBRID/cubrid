@@ -8878,8 +8878,8 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
       /* save stats for the partition before ending the current scan */
       if (thread_is_on_trace (thread_p))
 	{
-	  /* trace_storage lives in distinct union members per scan type; list never partitions */
-	  if (spec->s_id.type == S_PARALLEL_HEAP_SCAN || spec->s_id.type == S_HEAP_SCAN)
+	  /* parallel-only: serial leaves m_stats_last stale and clobbers per-row deltas accumulated via 5406 */
+	  if (spec->s_id.type == S_PARALLEL_HEAP_SCAN)
 	    {
 	      if (spec->s_id.s.phsid.trace_storage)
 		{
