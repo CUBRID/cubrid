@@ -25,7 +25,6 @@
 
 #include "file_manager.h"
 
-
 namespace parallel_query
 {
   class ftab_set

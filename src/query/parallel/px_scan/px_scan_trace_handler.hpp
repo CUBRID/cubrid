@@ -17,21 +17,21 @@
  */
 
 /*
- * px_heap_scan_trace_handler.hpp
+ * px_scan_trace_handler.hpp
  */
 
-#ifndef _PX_HEAP_SCAN_TRACE_HANDLER_HPP_
-#define _PX_HEAP_SCAN_TRACE_HANDLER_HPP_
+#ifndef _PX_SCAN_TRACE_HANDLER_HPP_
+#define _PX_SCAN_TRACE_HANDLER_HPP_
 
 #include "system.h"
 #include <vector>
 #include "thread_entry.hpp"
 #include "scan_manager.h"
 #include "jansson.h"
-#include "px_heap_scan_result_type.hpp"
+#include "px_scan_result_type.hpp"
+#include "px_scan_type_enum.hpp"
 
-
-namespace parallel_heap_scan
+namespace parallel_scan
 {
   struct child_stats
   {
@@ -41,6 +41,18 @@ namespace parallel_heap_scan
     UINT64 read_rows;
     UINT64 qualified_rows;
     struct timeval elapsed_time;
+
+    /* index scan only */
+    UINT64 read_keys;
+    UINT64 qualified_keys;
+    UINT64 key_qualified_rows;
+    UINT64 data_qualified_rows;
+    struct timeval elapsed_lookup;
+    bool covered_index;
+    bool multi_range_opt;
+    bool index_skip_scan;
+    bool loose_index_scan;
+    bool need_count_only;
   };
 
   class trace_storage_for_sibling_xasl
@@ -62,7 +74,7 @@ namespace parallel_heap_scan
       trace_handler() = default;
       ~trace_handler() = default;
 
-      void add_trace (UINT64 fetches, UINT64 ioreads, UINT64 fetch_time, UINT64 read_rows, UINT64 qualified_rows,
+      void add_trace (UINT64 fetches, UINT64 ioreads, UINT64 fetch_time, SCAN_ID *scan_id,
 		      struct timeval elapsed_time);
       void merge_stats (THREAD_ENTRY *thread_p, SCAN_STATS *scan_stats);
       void clear();
@@ -74,8 +86,9 @@ namespace parallel_heap_scan
   class accumulative_trace_storage
   {
     public:
-      accumulative_trace_storage (RESULT_TYPE result_type)
+      accumulative_trace_storage (RESULT_TYPE result_type, SCAN_TYPE scan_type)
 	: m_result_type (result_type)
+	, m_scan_type (scan_type)
 	, m_is_initialized (false)
       {}
       ~accumulative_trace_storage() = default;
@@ -88,8 +101,9 @@ namespace parallel_heap_scan
       std::vector<child_stats> m_stats;
       child_stats m_stats_last;
       RESULT_TYPE m_result_type;
+      SCAN_TYPE m_scan_type;
       bool m_is_initialized;
   };
 }
 
-#endif /*_PX_HEAP_SCAN_TRACE_HANDLER_HPP_ */
+#endif /*_PX_SCAN_TRACE_HANDLER_HPP_ */
