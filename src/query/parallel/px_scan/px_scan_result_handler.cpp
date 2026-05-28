@@ -341,8 +341,12 @@ namespace parallel_scan
 	/* small-input case: heap survived all writes without overflow, flush before close. */
 	if (tl.xasl->topn_items != nullptr)
 	  {
-	    (void) qexec_topn_tuples_to_list_id (thread_p, tl.xasl, tl.vd->xasl_state, false,
-						 tl.writer_result_p, false, false);
+	    if (qexec_topn_tuples_to_list_id (thread_p, tl.xasl, tl.vd->xasl_state, false,
+					      tl.writer_result_p, false, false) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+	      }
 	    assert (tl.xasl->topn_items == nullptr);
 	  }
 	qfile_close_list (thread_p, tl.writer_result_p);
