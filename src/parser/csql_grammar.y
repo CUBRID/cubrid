@@ -583,6 +583,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <boolean> opt_invisible
 %type <number> opt_paren_plus
 %type <number> opt_with_fullscan
+%type <number> opt_with_n_buckets
 %type <number> online_parallel
 %type <number> comp_op
 %type <number> opt_of_all_some_any
@@ -663,9 +664,11 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> rename_class_list
 %type <node> rename_class_pair
 %type <node> drop_stmt
+%type <node> drop_histogram_stmt
 %type <node> opt_index_column_name_list
 %type <node> index_column_name_list
 %type <node> update_statistics_stmt
+%type <node> update_histogram_stmt
 %type <node> only_class_name_list
 %type <node> opt_level_spec
 %type <node> char_string_literal_list
@@ -891,6 +894,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> constant_set
 %type <node> file_path_name
 %type <node> identifier_list
+%type <node> opt_with_column_list
 %type <node> opt_bracketed_identifier_list
 %type <node> index_column_identifier_list
 %type <node> identifier_without_dot
@@ -957,6 +961,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> on_duplicate_key_update
 %type <node> opt_attr_ordering_info
 %type <node> show_stmt
+%type <node> show_histogram_stmt
 %type <node> session_variable;
 %type <node> session_variable_assignment_list
 %type <node> session_variable_assignment
@@ -1128,6 +1133,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token BOOLEAN_
 %token BOTH_
 %token BREADTH
+%token BUCKETS
 %token BY
 %token CALL
 %token CASCADE
@@ -1234,6 +1240,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token GRANT
 %token GROUP_
 %token HAVING
+%token HISTOGRAM
 %token HOUR_
 %token HOUR_MILLISECOND
 %token HOUR_SECOND
@@ -1915,6 +1922,12 @@ stmt_
 	| rename_stmt
 		{ $$ = $1; }
 	| update_statistics_stmt
+		{ $$ = $1; }
+	| update_histogram_stmt
+		{ $$ = $1; }
+        | show_histogram_stmt
+                { $$ = $1; }
+	| drop_histogram_stmt
 		{ $$ = $1; }
 	| drop_stmt
 		{ $$ = $1; }
@@ -4682,6 +4695,14 @@ index_column_name_list
 		}}
 	;
 
+opt_with_column_list
+        : /* empty */
+        {{ $$ = NULL; }}
+
+        | ON_ identifier_list
+        {{ $$ = $2; }}
+        ;
+
 update_statistics_stmt
 	: UPDATE STATISTICS ON_ only_class_name_list opt_with_fullscan
 		{{
@@ -4721,6 +4742,66 @@ update_statistics_stmt
 		}}
 	;
 
+show_histogram_stmt
+        : SHOW HISTOGRAM only_class_name opt_with_column_list
+                {{
+                        PT_NODE *uhs = parser_new_node (this_parser, PT_SHOW_HISTOGRAM);
+                        PT_NODE *target_t = parser_new_node (this_parser, PT_SPEC);
+
+                        if (uhs && target_t)
+                        {
+                            target_t->info.spec.entity_name = $3;
+                            PARSER_SAVE_ERR_CONTEXT (target_t, @3.buffer_pos)
+                            target_t->info.spec.meta_class = PT_CLASS;
+                            uhs->info.histogram.target_table_spec = target_t;
+                            uhs->info.histogram.target_columns = $4;
+                        }
+
+                        $$ = uhs;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                }}
+        ;
+
+update_histogram_stmt
+        : ANALYZE TABLE only_class_name UPDATE HISTOGRAM opt_with_column_list opt_with_n_buckets opt_with_fullscan
+                {{
+                        PT_NODE *uhs = parser_new_node (this_parser, PT_UPDATE_HISTOGRAM);
+                        PT_NODE *target_t = parser_new_node (this_parser, PT_SPEC);
+                        if (uhs && target_t)
+                        {
+                            target_t->info.spec.entity_name = $3;
+                            PARSER_SAVE_ERR_CONTEXT (target_t, @3.buffer_pos)
+                            target_t->info.spec.meta_class = PT_CLASS;
+                            uhs->info.histogram.target_table_spec = target_t;
+
+                            uhs->info.histogram.target_columns = $6;
+                            uhs->info.histogram.bucket_count = $7;
+                            uhs->info.histogram.with_fullscan = $8;             
+                        }
+
+                        $$ = uhs;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                }}
+        ;
+
+drop_histogram_stmt
+        : ANALYZE TABLE only_class_name DROP HISTOGRAM opt_with_column_list
+                {{
+                        PT_NODE *dhs = parser_new_node (this_parser, PT_DROP_HISTOGRAM);
+                        PT_NODE *target_t = parser_new_node (this_parser, PT_SPEC);
+                        if (dhs && target_t)
+                        {
+                            target_t->info.spec.entity_name = $3;
+                            PARSER_SAVE_ERR_CONTEXT (target_t, @3.buffer_pos)
+                            target_t->info.spec.meta_class = PT_CLASS;
+                            dhs->info.histogram.target_table_spec = target_t;
+                            dhs->info.histogram.target_columns = $6;
+                        }
+                        $$ = dhs;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                }}
+        ;
+
 only_class_name_list
 	: only_class_name_list ',' only_class_name
 		{{
@@ -4758,6 +4839,18 @@ opt_with_fullscan
         | WITH FULLSCAN
                 {{
                         $$ = 1;
+                }}
+        ;
+
+
+opt_with_n_buckets
+        : /* empty */
+                {{
+                        $$ = 0;
+                }}
+        | WITH unsigned_integer BUCKETS
+                {{
+                        $$ = $2->info.value.data_value.i;
                 }}
         ;
 

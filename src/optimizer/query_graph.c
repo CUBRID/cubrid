@@ -2913,6 +2913,11 @@ set_seg_node (PT_NODE * attr, QO_ENV * env, BITSET * bitset)
        * for shared variables, and it doesn't really hurt anyone just
        * to ignore failures here.
        */
+      if (attr->node_type == PT_NAME)
+	{
+	  attr->info.name.histogram = seg->pt_node->info.name.histogram;
+	  attr->info.name.null_frequency = seg->pt_node->info.name.null_frequency;
+	}
       bitset_add (bitset, QO_SEG_IDX (seg));
     }
 
@@ -5178,6 +5183,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   int attr_id;
   QO_ATTR_CUM_STATS *cum_statsp;
   ATTR_STATS *attr_statsp;
+  int attr_hist_statsp_index = 0;
   BTREE_STATS *bt_statsp;
   int n_attrs;
   const char *name;
@@ -5186,6 +5192,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   int n_unavail_indexes;
   SM_CLASS_CONSTRAINT *consp;
   CLASS_STATS *stats;
+  HIST_STATS *hist_stats;
   bool is_reserved_name = false;
 
   if ((QO_SEG_PT_NODE (seg))->info.name.meta_class == PT_RESERVED)
@@ -5254,6 +5261,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 
       /* pointer to ATTR_STATS of CLASS_STATS of QO_CLASS_INFO_ENTRY */
       stats = QO_GET_CLASS_STATS (class_info_entryp);
+      hist_stats = QO_GET_HIST_STATS (class_info_entryp);
       QO_ASSERT (env, stats != NULL);
       if (stats->attr_stats == NULL)
 	{
@@ -5275,8 +5283,9 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 
       /* search the attribute from the class information */
       attr_statsp = stats->attr_stats;
+      attr_hist_statsp_index = 0;
       n_attrs = stats->n_attrs;
-      for (j = 0; j < n_attrs; j++, attr_statsp++)
+      for (j = 0; j < n_attrs; j++, attr_statsp++, attr_hist_statsp_index++)
 	{
 	  if (attr_statsp->id == attr_id)
 	    {
@@ -5292,6 +5301,18 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 
       /* set Number of Distinct Values */
       attr_infop->ndv += attr_statsp->ndv;
+
+      /* set histogram */
+      if (hist_stats != NULL && attr_hist_statsp_index < hist_stats->n_attrs)
+	{
+	  QO_SEG_PT_NODE (seg)->info.name.histogram = hist_stats->histogram[attr_hist_statsp_index];
+	  QO_SEG_PT_NODE (seg)->info.name.null_frequency = hist_stats->null_frequency[attr_hist_statsp_index];
+	}
+      else
+	{
+	  QO_SEG_PT_NODE (seg)->info.name.histogram = NULL;
+	  QO_SEG_PT_NODE (seg)->info.name.null_frequency = 0.0;
+	}
 
       if (cum_statsp->valid_limits == false)
 	{
