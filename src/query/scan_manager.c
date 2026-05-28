@@ -2932,7 +2932,6 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	}
       hsidp->sampling.picked_cursor = 0;
       hsidp->sampling.weight = MAX (total_pages / MAX (hsidp->sampling.picked_count, 1), 1);
-      assert (hsidp->sampling.picked_count >= 0 && hsidp->sampling.picked_cursor == 0);
       assert (hsidp->sampling.picked_vpids != NULL || hsidp->sampling.picked_count == 0);
     }
 

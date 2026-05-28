@@ -24,7 +24,6 @@
 #define _FTAB_SET_HPP_
 
 #include "file_manager.h"
-#include "storage_common.h"
 
 
 class ftab_set
