@@ -3415,8 +3415,9 @@ vacuum_rv_redo_vacuum_complete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * heap_vfid (in)     : Heap file VFID (key).
  * out_oos_vfid (out) : Resolved OOS VFID (may be VFID_NULL sentinel meaning "no OOS file").
  *
- * Note: The cache stores VFID_NULL for heap files with no OOS companion, so repeated misses
- * for non-OOS heaps do not trigger additional file_descriptor_get / heap_oos_find_vfid calls.
+ * Note: The cache stores VFID_NULL as a negative sentinel for heap files with no OOS companion,
+ * so repeated lookups for non-OOS heaps hit the cache instead of re-executing file_descriptor_get.
+ * Eviction uses round-robin across all slots to avoid always thrashing slot 0.
  */
 static bool
 vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENTRY * cache, int *cache_size,
@@ -3437,8 +3438,8 @@ vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENT
 	}
     }
 
-  /* On any failure below, do NOT cache: a cached VFID_NULL would falsely negative-cache for the
-   * rest of the block and leak OOS records. The next call retries. */
+  /* On file_descriptor_get or HFID extraction failure, do NOT cache — retry on next call.
+   * On successful HFID extraction but no OOS file, cache VFID_NULL as a negative sentinel. */
   VFID_SET_NULL (out_oos_vfid);
 
   if (file_descriptor_get (thread_p, heap_vfid, &file_descriptor) != NO_ERROR)
@@ -3457,10 +3458,24 @@ vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENT
   if (!heap_oos_find_vfid (thread_p, &hfid, out_oos_vfid, false))
     {
       VFID_SET_NULL (out_oos_vfid);
-      return false;
+      /* Fall through to cache the VFID_NULL negative sentinel so subsequent lookups
+       * for this non-OOS heap hit the cache instead of re-executing file_descriptor_get. */
     }
 
-  int slot = (*cache_size < VACUUM_OOS_VFID_CACHE_SIZE) ? (*cache_size)++ : 0;
+  /* Round-robin eviction: cycle through all slots instead of always evicting slot 0.
+   * cache_size stays capped at VACUUM_OOS_VFID_CACHE_SIZE so the lookup loop is always in-bounds. */
+  int slot;
+  if (*cache_size < VACUUM_OOS_VFID_CACHE_SIZE)
+    {
+      slot = (*cache_size)++;
+    }
+  else
+    {
+      /* Evict using round-robin starting from slot 0, cycling through all slots. */
+      static int evict_idx = 0;
+      slot = evict_idx % VACUUM_OOS_VFID_CACHE_SIZE;
+      evict_idx++;
+    }
   VFID_COPY (&cache[slot].heap_vfid, heap_vfid);
   VFID_COPY (&cache[slot].oos_vfid, out_oos_vfid);
 
@@ -3484,8 +3499,7 @@ vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENT
  *   S_DOESNT_EXIST hard error inside oos_delete_chain.
  *
  *   "Already gone" is narrowly defined:
- *     - pgbuf_fix returns NULL with er_errid()==NO_ERROR (page legitimately deallocated under
- *       OLD_PAGE_MAYBE_DEALLOCATED), OR
+ *     - pgbuf_fix_if_not_deallocated returns NO_ERROR with page_ptr==NULL (page deallocated), OR
  *     - spage_get_record returns S_DOESNT_EXIST (slot removed but page still alive).
  *
  *   Any other failure (real pgbuf_fix error from I/O / interrupt / buffer corruption, or
@@ -3504,18 +3518,18 @@ vacuum_oos_chunk_exists (THREAD_ENTRY * thread_p, const OID & oid, bool * out_ex
   vpid.volid = oid.volid;
   vpid.pageid = oid.pageid;
 
-  PAGE_PTR page_ptr =
-    pgbuf_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  PAGE_PTR page_ptr = NULL;
+  int error_code = pgbuf_fix_if_not_deallocated (thread_p, &vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH,
+						 &page_ptr);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
   if (page_ptr == NULL)
     {
-      int errid = er_errid ();
-      if (errid == NO_ERROR)
-	{
-	  /* Page legitimately deallocated under OLD_PAGE_MAYBE_DEALLOCATED; chunk is gone. */
-	  return NO_ERROR;
-	}
-      ASSERT_ERROR ();
-      return errid;
+      /* Page legitimately deallocated; chunk is gone. */
+      return NO_ERROR;
     }
 
   RECDES probe = RECDES_INITIALIZER;
@@ -3795,11 +3809,13 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	   *   - RVHF_MVCC_INSERT, RVHF_MVCC_DELETE_REC_HOME, RVHF_MVCC_NO_MODIFY_HOME, and
 	   *     RVHF_MVCC_REDISTRIBUTE log no pre-image recdes in undo, so undo_data_size > 0 below
 	   *     filters them naturally; no rcvindex check needed for those. */
-	  if (log_record_data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM && undo_data != NULL && undo_data_size > 0)
+	  if (log_record_data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM && undo_data != NULL
+	      && undo_data_size > (int) sizeof (INT16))
 	    {
 	      RECDES undo_recdes;
-	      undo_recdes.data = undo_data;
-	      undo_recdes.length = undo_data_size;
+	      undo_recdes.type = *(INT16 *) undo_data;
+	      undo_recdes.data = undo_data + sizeof (INT16);
+	      undo_recdes.length = undo_data_size - sizeof (INT16);
 
 	      VFID oos_vfid;
 	      if (heap_recdes_contains_oos (&undo_recdes)
@@ -4457,9 +4473,9 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
 
   /* We are here because the file that will be vacuumed is not dropped. */
   if (!LOG_IS_MVCC_BTREE_OPERATION (log_record_data->rcvindex)
-      && !LOG_IS_MVCC_HEAP_OPERATION (log_record_data->rcvindex) && log_record_data->rcvindex != RVES_NOTIFY_VACUUM)
+      && log_record_data->rcvindex != RVHF_UPDATE_NOTIFY_VACUUM && log_record_data->rcvindex != RVES_NOTIFY_VACUUM)
     {
-      /* No need to unpack undo data unless it's BTREE or HEAP MVCC operation or ES */
+      /* Only unpack undo data for BTREE ops, RVHF_UPDATE_NOTIFY_VACUUM (forward-walk OOS cleanup), and ES. */
       return NO_ERROR;
     }
 
@@ -8395,6 +8411,7 @@ vacuum_init_data_page_with_last_blockid (THREAD_ENTRY * thread_p, VACUUM_DATA_PA
   vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
 }
 
+#if !defined(NDEBUG)
 /* Test bridge for static vacuum_heap_oos_delete. Used by unit_tests/oos. */
 int
 bridge_vacuum_heap_oos_delete (THREAD_ENTRY * thread_p, const VFID * oos_vfid, RECDES * record)
@@ -8469,6 +8486,7 @@ bridge_log_append_undo_for_prev_version_test (THREAD_ENTRY * thread_p, const VFI
   assert (tdes != NULL);
   LSA_COPY (out_lsa, &tdes->tail_lsa);
 }
+#endif /* !NDEBUG */
 
 // *INDENT-OFF*
 //
