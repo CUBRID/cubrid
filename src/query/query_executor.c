@@ -15214,8 +15214,7 @@ qexec_setup_fixed_scan (XASL_NODE * xasl, bool force_select_lock)
 	  for (specp = spec_ptr[spec_level]; specp; specp = specp->next)
 	    {
 	      specp->fixed_scan = (xptr == fixed_scan_xasl)
-		|| (force_fixed_scan_allowed
-		    && ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN));
+		|| (force_fixed_scan_allowed && ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN));
 	    }
 	}
     }
