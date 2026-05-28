@@ -841,6 +841,12 @@ struct rvfun RV_fun[] = {
    heap_rv_lob_remove_dir,
    NULL,
    NULL},
+  {RVHNSW_INSERT_ELEMENT,
+   "RVHNSW_INSERT_ELEMENT",
+   NULL,
+   hnsw_rv_redo_insert_element,
+   NULL,
+   NULL},
 };
 
 /*

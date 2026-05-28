@@ -23,6 +23,9 @@
 #include "hnsw.hpp"
 
 #include <fstream>
+#include <cstring>
+#include <cstdlib>
+#include <vector>
 
 #include "error_manager.h"
 #include "system_parameter.h"
@@ -36,6 +39,9 @@
 #include "vector_distance_enum.h"
 #include "heap_file.h"
 #include "hnsw_api.hpp"
+#include "log_manager.h"
+#include "mvcc.h"
+#include "recovery.h"
 
 #include "slotted_page.h"
 #include "page_buffer.h"
@@ -92,6 +98,8 @@ class hnsw_index_manager
     // index management on disk
     int save_index (THREAD_ENTRY *thread_p, hnsw_index *index);
     int load_index (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index *&index);
+    int load_or_create_index_for_recovery (THREAD_ENTRY *thread_p, const BTID *btid,
+					   const hnsw_build_params &params, hnsw_index *&index);
     int save_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, const hnsw_index_meta &meta, bool overwrite = false);
     int load_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index_meta &meta);
     int save_all_indices (THREAD_ENTRY *thread_p);
@@ -386,6 +394,60 @@ xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, i
   return NO_ERROR;
 }
 
+// =====================================================================
+// HNSW WAL Logging Structures and Functions
+// =====================================================================
+
+typedef struct hnsw_insert_log_header
+{
+  OID oid;
+  BTID btid;
+  int dimension;
+  int hnsw_M;
+  int hnsw_efConstruction;
+  int metric;
+} HNSW_INSERT_LOG_HEADER;
+
+/*
+ * hnsw_pack_insert_data() - Pack vector insertion data into WAL log.
+ *
+ * return      : Total packed size
+ * buffer(out) : Output buffer (must be pre-allocated)
+ * btid        : B-tree ID identifying the HNSW index
+ * oid         : Object ID of the vector record
+ * params      : HNSW build parameters
+ * vector      : Vector values
+ */
+static int
+hnsw_get_insert_log_data_size (int dimension)
+{
+  return (int) sizeof (HNSW_INSERT_LOG_HEADER) + dimension * (int) sizeof (float);
+}
+
+static int
+hnsw_pack_insert_data (char *buffer, int buffer_size, const BTID *btid, const OID *oid,
+		       const hnsw_build_params &params, const float *vector)
+{
+  HNSW_INSERT_LOG_HEADER *log_data = (HNSW_INSERT_LOG_HEADER *) buffer;
+  int total_size = hnsw_get_insert_log_data_size (params.dimension);
+
+  if (params.dimension <= 0 || params.m <= 0 || params.ef_construction <= 0 || vector == NULL
+      || total_size > buffer_size)
+    {
+      return 0;
+    }
+
+  log_data->btid = *btid;
+  log_data->oid = *oid;
+  log_data->dimension = params.dimension;
+  log_data->hnsw_M = params.m;
+  log_data->hnsw_efConstruction = params.ef_construction;
+  log_data->metric = static_cast<int> (params.metric);
+  memcpy (buffer + sizeof (HNSW_INSERT_LOG_HEADER), vector, params.dimension * sizeof (float));
+
+  return total_size;
+}
+
 int
 hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, int n_vectors)
 {
@@ -394,6 +456,12 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
   assert (n_vectors > 0);
 
   if (!btid)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (index_manager == nullptr)
     {
       assert (false);
       return ER_FAILED;
@@ -416,7 +484,115 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
       return ER_FAILED;
     }
 
+  if (!log_is_in_crash_recovery ())
+    {
+      const hnsw_build_params &params = index->get_build_params ();
+      int wal_data_size = hnsw_get_insert_log_data_size (params.dimension);
+      std::vector<char> wal_data (wal_data_size);
+
+      for (int idx = 0; idx < n_vectors; idx++)
+	{
+	  const OID *cur_oid = &oid[idx];
+	  const float *cur_vector = vector + idx * params.dimension;
+	  int packed_size = hnsw_pack_insert_data (wal_data.data (), wal_data_size, btid, cur_oid, params, cur_vector);
+	  if (packed_size != wal_data_size)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  log_append_dboutside_redo (thread_p, RVHNSW_INSERT_ELEMENT, wal_data_size, wal_data.data ());
+	}
+    }
+
   return index->add (thread_p, n_vectors, oid, vector);
+}
+
+/*
+ * hnsw_rv_redo_insert_element() - Recovery function for HNSW vector insertion.
+ *
+ * return      : Error code.
+ * thread_p(in) : Thread entry.
+ * rcv(in)     : Recovery data containing BTID and OID.
+ *
+ * NOTE: This is a REDO-only recovery function following CUBRID patterns.
+ *
+ *       Recovery flow:
+ *       1. Unpack BTID, OID, build parameters and vector data from the log record
+ *       2. Re-insert vector into the index
+ */
+int
+hnsw_rv_redo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
+{
+  if (rcv == NULL || rcv->data == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  const BTID *btid = NULL;
+  const OID *oid = NULL;
+  hnsw_build_params params;
+  std::vector<float> vector_data;
+
+  if (rcv->length >= (int) sizeof (HNSW_INSERT_LOG_HEADER))
+    {
+      const HNSW_INSERT_LOG_HEADER *log_data = (const HNSW_INSERT_LOG_HEADER *) rcv->data;
+      btid = &log_data->btid;
+      oid = &log_data->oid;
+
+      if (log_data->dimension <= 0 || log_data->hnsw_M <= 0 || log_data->hnsw_efConstruction <= 0
+	  || rcv->length != hnsw_get_insert_log_data_size (log_data->dimension))
+	{
+	  return ER_FAILED;
+	}
+
+      params = hnsw_build_params (log_data->dimension, log_data->hnsw_M, log_data->hnsw_efConstruction,
+				  static_cast<DB_VECTOR_DISTANCE_METRIC> (log_data->metric));
+      vector_data.resize (log_data->dimension);
+      memcpy (vector_data.data (), rcv->data + sizeof (HNSW_INSERT_LOG_HEADER),
+	      log_data->dimension * sizeof (float));
+    }
+
+  if (btid == NULL || oid == NULL || vector_data.empty ())
+    {
+      return ER_FAILED;
+    }
+
+  if (params.dimension != (int) vector_data.size ())
+    {
+      return ER_FAILED;
+    }
+
+  if (index_manager == nullptr)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  hnsw_index *index = NULL;
+  int error = index_manager->load_or_create_index_for_recovery (thread_p, btid, params, index);
+  if (error != NO_ERROR || index == NULL)
+    {
+      return error == NO_ERROR ? ER_FAILED : error;
+    }
+
+  if (index->prepare_to_add (thread_p, 1, oid, vector_data.data ()) != NO_ERROR)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  error = index->add (thread_p, 1, oid, vector_data.data ());
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (rcv->pgptr != NULL)
+    {
+      pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+    }
+
+  return NO_ERROR;
 }
 
 int
@@ -432,6 +608,12 @@ hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, 
     {
       OID_SET_NULL (&rec_oids[i]);
       distances[i] = 0.0f;
+    }
+
+  if (index_manager == nullptr)
+    {
+      assert (false);
+      return ER_FAILED;
     }
 
   hnsw_index *index = index_manager->get_index (btid);
@@ -739,6 +921,51 @@ int hnsw_index_manager::load_index (THREAD_ENTRY *thread_p, const BTID *btid, hn
     }
   add_index (btid, index_out);
   return NO_ERROR;
+}
+
+int
+hnsw_index_manager::load_or_create_index_for_recovery (THREAD_ENTRY *thread_p, const BTID *btid,
+    const hnsw_build_params &params,
+    hnsw_index *&index_out)
+{
+  index_out = get_index (btid);
+  if (index_out != NULL)
+    {
+      return NO_ERROR;
+    }
+
+  hnsw_index_backend *backend = get_backend ();
+  if (backend == nullptr)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  std::string backend_id = backend->get_id ();
+  if (log_is_in_crash_recovery ())
+    {
+      index_out = backend->create_index (thread_p, btid, backend_id, params);
+      if (index_out == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      return add_index (btid, index_out);
+    }
+
+  int error = load_index (thread_p, btid, index_out);
+  if (error == NO_ERROR)
+    {
+      return NO_ERROR;
+    }
+
+  index_out = backend->create_index (thread_p, btid, backend_id, params);
+  if (index_out == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  return add_index (btid, index_out);
 }
 
 int hnsw_index_manager::delete_index_on_disk (THREAD_ENTRY *thread_p, const std::string &prefix, const BTID *btid)

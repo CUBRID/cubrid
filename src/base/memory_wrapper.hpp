@@ -23,6 +23,7 @@
 #ifndef _MEMORY_WRAPPER_HPP_
 #define _MEMORY_WRAPPER_HPP_
 
+#include <new>
 #include <utility>
 
 template <typename T, typename... Args>
@@ -59,6 +60,28 @@ inline void *operator new (size_t size, const char *file, const int line) noexce
 inline void *operator new[] (size_t size, const char *file, const int line) noexcept
 {
   return cub_alloc (size, file, line);
+}
+
+inline void *operator new (std::size_t size, const std::nothrow_t &) noexcept
+{
+  return cub_alloc (size, __FILE__, __LINE__);
+}
+
+inline void *operator new[] (std::size_t size, const std::nothrow_t &) noexcept
+{
+  return cub_alloc (size, __FILE__, __LINE__);
+}
+
+template <typename T, typename... Args>
+inline T *nothrow_new (Args &&... args) noexcept
+{
+  void *ptr = operator new (sizeof (T), std::nothrow);
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
+  return placement_new (static_cast<T *> (ptr), std::forward<Args> (args)...);
 }
 
 /* Mainly delete (void *ptr, size_t sz) / delete [] (void *ptr, size_t sz) is called,

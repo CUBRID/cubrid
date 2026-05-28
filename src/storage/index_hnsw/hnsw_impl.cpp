@@ -38,6 +38,7 @@
 #include "slotted_page.h"
 
 #include "db_vector.hpp"	// db_vector_is_all_zeros
+#include "log_manager.h"
 #include "oid.h"
 #if defined (SERVER_MODE)
 #include "thread_worker_pool.hpp"
@@ -131,6 +132,7 @@ class hnsw_impl final:public hnsw_index
 
     int init (cubthread::entry *thread_p, PAGE_PTR page_ptr, RECDES &rec);
     int init_for_load (cubthread::entry *thread_p);
+    int init_for_recovery ();
 
     virtual int prepare_to_add (cubthread::entry *thread_p, int n_vectors, const OID *oid,
 				const float *vector) override;
@@ -342,6 +344,66 @@ hnsw_impl_backend::create_index (THREAD_ENTRY *thread_p,
 				 const std::string &name,
 				 const hnsw_build_params &build_params)
 {
+  hnsw_impl *index =
+	  new hnsw_impl (*this, *btid, name, build_params);
+  if (index == NULL)
+    {
+      return NULL;
+    }
+
+  if (log_is_in_crash_recovery ())
+    {
+      VPID root_vpid = { btid->root_pageid, btid->vfid.volid };
+      PAGE_PTR page_ptr =
+	      pgbuf_fix (thread_p, &root_vpid, RECOVERY_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (page_ptr == NULL)
+	{
+	  ASSERT_ERROR ();
+	  delete index;
+	  return NULL;
+	}
+
+      pgbuf_set_page_ptype (thread_p, page_ptr, PAGE_HNSW);
+      spage_initialize (thread_p, page_ptr, UNANCHORED_KEEP_SEQUENCE, HNSW_MAX_ALIGN, DONT_SAFEGUARD_RVSPACE);
+
+      char header_buf[IO_MAX_PAGE_SIZE + HNSW_MAX_ALIGN];
+      HNSW_HEADER hnsw_header;
+      hnsw_header.dimension = build_params.dimension;
+      hnsw_header.hnsw_M = build_params.m;
+      hnsw_header.hnsw_efConstruction = build_params.ef_construction;
+      hnsw_header.metric = static_cast<int> (build_params.metric);
+
+      RECDES header_rec;
+      header_rec.area_size = DB_PAGESIZE;
+      header_rec.data = PTR_ALIGN (header_buf, HNSW_MAX_ALIGN);
+      memcpy (header_rec.data, &hnsw_header, sizeof (hnsw_header));
+      header_rec.length = sizeof (hnsw_header);
+      header_rec.type = REC_HOME;
+
+      if (spage_insert_at (thread_p, page_ptr, HNSW_HEADER_NUM, &header_rec) != SP_SUCCESS)
+	{
+	  ASSERT_ERROR ();
+	  pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
+	  delete index;
+	  return NULL;
+	}
+
+      char rec_buf[IO_MAX_PAGE_SIZE + INT_ALIGNMENT];
+      RECDES rec
+      {
+	DB_PAGESIZE, 0, REC_HOME, PTR_ALIGN (rec_buf, INT_ALIGNMENT)};
+
+      if (index->init (thread_p, page_ptr, rec) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
+	  delete index;
+	  return NULL;
+	}
+
+      return index;
+    }
+
   VPID root_vpid = { btid->root_pageid, btid->vfid.volid };
   PAGE_PTR page_ptr =
 	  pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
@@ -357,12 +419,11 @@ hnsw_impl_backend::create_index (THREAD_ENTRY *thread_p,
   {
     DB_PAGESIZE, 0, REC_HOME, PTR_ALIGN (rec_buf, INT_ALIGNMENT)};
 
-  hnsw_impl *index =
-	  new hnsw_impl (*this, *btid, name, build_params);
-
   if (index->init (thread_p, page_ptr, rec) != NO_ERROR)
     {
       ASSERT_ERROR ();
+      pgbuf_unfix_and_init (thread_p, page_ptr);
+      delete index;
       return NULL;
     }
 
@@ -459,6 +520,14 @@ hnsw_impl::init_for_load (cubthread::entry *thread_p)
 
   pgbuf_unfix_and_init (thread_p, page_ptr);
 
+  m_algo->set_storage (m_storage.get ());
+  init_worker_pool ();
+  return NO_ERROR;
+}
+
+int
+hnsw_impl::init_for_recovery ()
+{
   m_algo->set_storage (m_storage.get ());
   init_worker_pool ();
   return NO_ERROR;
