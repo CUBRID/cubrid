@@ -45,6 +45,7 @@ namespace parallel_scan
   class xasl_snapshot_variables;
   class mergeable_list_tls;
   class xasl_snapshot_tls;
+  class trace_handler;
 
   template <RESULT_TYPE result_type>
   class result_handler
@@ -65,6 +66,7 @@ namespace parallel_scan
       void write_initialize (THREAD_ENTRY *thread_p, OUTPTR_LIST *outptr_list, XASL_NODE *curr_xasl, VAL_DESCR *vd);
       bool write (THREAD_ENTRY *thread_p, write_dest_type *src);
       void write_finalize (THREAD_ENTRY *thread_p);
+      void set_trace_handler (trace_handler *trace_handler_p);
 
     private:
       void get_valid_read_spec ();
@@ -84,7 +86,8 @@ namespace parallel_scan
       mergeable_list_variables()
 	: orig_xasl (nullptr),
 	  active_results (0),
-	  is_list_id_domain_resolved (false) {}
+	  is_list_id_domain_resolved (false),
+	  trace_handler_p (nullptr) {}
       ~mergeable_list_variables() = default;
       std::vector<QFILE_LIST_ID *> writer_results;
       std::mutex writer_results_mutex;
@@ -93,6 +96,7 @@ namespace parallel_scan
       bool is_list_id_domain_resolved;
       std::vector<QFILE_LIST_ID *> hgby_results;
       bool g_hash_eligible;
+      trace_handler *trace_handler_p;
   };
 
   class xasl_snapshot_variables

@@ -36,6 +36,7 @@
 #include "xasl_aggregate.hpp"
 #include "object_domain.h"
 #include "query_executor.h"
+#include "px_scan_trace_handler.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -124,6 +125,15 @@ namespace parallel_scan
     else
       {
 	assert (false);
+      }
+  }
+
+  template <RESULT_TYPE result_type>
+  void result_handler<result_type>::set_trace_handler (trace_handler *trace_handler_p)
+  {
+    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
+      {
+	m_.trace_handler_p = trace_handler_p;
       }
   }
 
@@ -293,6 +303,10 @@ namespace parallel_scan
 		/* clear stale error so subsequent worker handling reports its own. */
 		er_clear ();
 		assert (curr_xasl->topn_items == nullptr);
+	      }
+	    else if (curr_xasl->topn_items != nullptr && m_.trace_handler_p != nullptr)
+	      {
+		m_.trace_handler_p->set_topnsort_used ();
 	      }
 	  }
       }
