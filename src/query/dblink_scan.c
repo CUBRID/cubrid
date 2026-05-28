@@ -146,9 +146,11 @@ static int type_map[] = {
   CCI_A_TYPE_BIGINT,		/* CCI_U_TYPE_BIGINT */
   CCI_A_TYPE_DATE,		/* CCI_U_TYPE_DATETIME */
 
-  /* not support for BFILE, CFILE, and ENUM */
+  /* not support for BFILE, CFILE, BLOB, CLOB, and ENUM */
   0,				/* CCI_U_TYPE_BFILE */
   0,				/* CCI_U_TYPE_CFILE */
+  0,				/* CCI_U_TYPE_BLOB */
+  0,				/* CCI_U_TYPE_CLOB */
   0,				/* CCI_U_TYPE_ENUM */
 
   CCI_A_TYPE_UINT,		/* CCI_U_TYPE_USHORT */
