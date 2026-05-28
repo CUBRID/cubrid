@@ -606,7 +606,6 @@ extern "C"
   extern int pt_get_select_query_columns (PARSER_CONTEXT * parser, PT_NODE * create_select,
 					  DB_QUERY_TYPE ** query_columns);
   void pt_fixup_column_type (PT_NODE * col);
-  extern bool pt_select_list_all_na (PT_NODE * select_list);
   extern bool pt_query_select_list_all_na (PARSER_CONTEXT * parser, PT_NODE * query);
   extern int pt_node_list_to_array (PARSER_CONTEXT * parser, PT_NODE * arg_list, PT_NODE * arg_array[],
 				    const int array_size, int *num_args);
