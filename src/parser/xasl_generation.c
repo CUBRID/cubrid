@@ -4146,7 +4146,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	      /* handle the buildlist case. append regu to the out_list, and create a new value to append to the
 	       * value_list Note: cume_dist() and percent_rank() also need special operations. */
 
-	      if (already_exist && tree->info.function.arg_list->node_type == PT_NODE_POINTER)
+	      if (already_exist)
 		{
 		  PT_NODE *real_node;
 		  QPROC_DB_VALUE_LIST dbval_list;
@@ -4174,15 +4174,14 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		  regu_alloc (dbval_list);
 		  dbval_list->val = (DB_VALUE *) tree->info.function.arg_list->etc;
 		  // init value with expected type
-		  dbval_list->dom = pt_xasl_node_to_domain (parser, tree->info.function.arg_list);
+		  dbval_list->dom = pt_xasl_node_to_domain (parser, real_node);
 
 		  value_list->val_cnt++;
 		  (*dbval_list_tail) = dbval_list;
 		  dbval_list_tail = &dbval_list->next;
 		  dbval_list->next = NULL;
 
-		  if (pt_make_regu_list_from_value_list
-		      (parser, tree->info.function.arg_list, value_list, &regu_position_list) == NULL)
+		  if (pt_make_regu_list_from_value_list (parser, real_node, value_list, &regu_position_list) == NULL)
 		    {
 		      return NULL;
 		    }
@@ -28801,8 +28800,6 @@ pt_substitute_groupby_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	  pointer->next = tmp;
 
 	  node->next = NULL;
-	  parser_free_tree (parser, node);
-
 	  return pointer;
 	}
     }
