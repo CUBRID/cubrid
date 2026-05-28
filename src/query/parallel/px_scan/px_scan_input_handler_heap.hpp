@@ -17,25 +17,25 @@
  */
 
 /*
- * px_heap_scan_input_handler_ftabs.hpp
+ * px_scan_input_handler_heap.hpp
  */
 
-#ifndef _PX_HEAP_SCAN_INPUT_HANDLER_FTABS_HPP_
-#define _PX_HEAP_SCAN_INPUT_HANDLER_FTABS_HPP_
+#ifndef _PX_SCAN_INPUT_HANDLER_HEAP_HPP_
+#define _PX_SCAN_INPUT_HANDLER_HEAP_HPP_
 
 #include "px_ftab_set.hpp"
 #include "px_interrupt.hpp"
 #include "scan_manager.h"
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
   using ftab_set = parallel_query::ftab_set;
-  class input_handler_ftabs
+  class input_handler_heap
   {
       using interrupt = parallel_query::interrupt;
       using err_messages_with_lock = parallel_query::err_messages_with_lock;
     public:
-      input_handler_ftabs (interrupt *interrupt_p, err_messages_with_lock *err_messages_p)
+      input_handler_heap (interrupt *interrupt_p, err_messages_with_lock *err_messages_p)
 	: m_splited_ftab_set_idx (0),
 	  m_interrupt_p (interrupt_p),
 	  m_err_messages_p (err_messages_p)
@@ -62,4 +62,4 @@ namespace parallel_heap_scan
   };
 }
 
-#endif /*_PX_HEAP_SCAN_INPUT_HANDLER_FTABS_HPP_ */
+#endif /*_PX_SCAN_INPUT_HANDLER_HEAP_HPP_ */
