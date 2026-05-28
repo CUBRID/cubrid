@@ -1566,7 +1566,16 @@ namespace parallel_heap_scan
 		      cur_agg_p = cur_agg_p->next;
 		      continue;
 		    }
-		  qfile_copy_list_id (list_id_p, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT);
+		  if (qfile_copy_list_id (list_id_p, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+		    {
+		      free_and_init (list_id_p);
+		      m_err_messages_p->move_top_error_message_to_this ();
+		      m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		      qfile_destroy_list (thread_p, cur_agg_p->list_id);
+		      cur_agg_p = cur_agg_p->next;
+		      continue;
+		    }
+		  er_clear ();
 		  qfile_connect_list (thread_p, orig_agg_p->list_id, list_id_p);
 		  qfile_clear_list_id (cur_agg_p->list_id);
 		  cur_agg_p = cur_agg_p->next;
@@ -1609,7 +1618,16 @@ namespace parallel_heap_scan
 		      cur_agg_p = cur_agg_p->next;
 		      continue;
 		    }
-		  qfile_copy_list_id (list_id_p, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT);
+		  if (qfile_copy_list_id (list_id_p, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+		    {
+		      free_and_init (list_id_p);
+		      m_err_messages_p->move_top_error_message_to_this ();
+		      m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		      qfile_destroy_list (thread_p, cur_agg_p->list_id);
+		      cur_agg_p = cur_agg_p->next;
+		      continue;
+		    }
+		  er_clear ();
 		  qfile_connect_list (thread_p, orig_agg_p->list_id, list_id_p);
 		  qfile_clear_list_id (cur_agg_p->list_id);
 		}
