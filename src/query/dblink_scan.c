@@ -114,11 +114,11 @@ static int type_map[] = {
   CCI_A_TYPE_BIGINT,		/* CCI_U_TYPE_BIGINT */
   CCI_A_TYPE_DATE,		/* CCI_U_TYPE_DATETIME */
 
-  /* not support for BFILE, CFILE, and ENUM */
+  /* not support for BFILE, CFILE, BLOB, CLOB, and ENUM */
   0,				/* CCI_U_TYPE_BFILE */
   0,				/* CCI_U_TYPE_CFILE */
-  CCI_A_TYPE_BIT,		/* CCI_U_TYPE_BLOB */
-  CCI_A_TYPE_STR,		/* CCI_U_TYPE_CLOB */
+  0,				/* CCI_U_TYPE_BLOB */
+  0,				/* CCI_U_TYPE_CLOB */
   0,				/* CCI_U_TYPE_ENUM */
 
   CCI_A_TYPE_UINT,		/* CCI_U_TYPE_USHORT */
@@ -535,6 +535,12 @@ dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars
 	  value = NULL;
 	  u_type = CCI_U_TYPE_NULL;
 	  break;
+	case DB_TYPE_BFILE:
+	case DB_TYPE_CFILE:
+	case DB_TYPE_BLOB:
+	case DB_TYPE_CLOB:
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_UNSUPPORTED_TYPE, 1, pr_type_name ((DB_TYPE) type));
+	  return ER_DBLINK_UNSUPPORTED_TYPE;
 	default:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_UNSUPPORTED_TYPE, 1, "unknown");
 	  return ER_DBLINK_UNSUPPORTED_TYPE;
