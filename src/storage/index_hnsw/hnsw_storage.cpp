@@ -126,7 +126,86 @@ namespace cubhnsw
 	return slot_id_t { -1, -1, -1 };
       }
 
-    return { m_last_node_vpid.pageid, slot_id, m_last_node_vpid.volid };
+    slot_id_t node_slot = { m_last_node_vpid.pageid, slot_id, m_last_node_vpid.volid };
+    set_node_slot_cached_id (key, node_slot);
+
+    return node_slot;
+  }
+
+  const std::vector<slot_id_t> *
+  storage::get_node_slots_cached_ids (algo_context_t &context, const key_id_t &key)
+  {
+    auto it = m_node_slots_cache.find (encode_oid_key (key));
+    if (it != m_node_slots_cache.end ())
+      {
+	return &it->second;
+      }
+
+    if (!m_node_slots_cache_is_complete && rebuild_node_slots_cache (context) != NO_ERROR)
+      {
+	return nullptr;
+      }
+
+    it = m_node_slots_cache.find (encode_oid_key (key));
+    if (it != m_node_slots_cache.end ())
+      {
+	return &it->second;
+      }
+
+    return nullptr;
+  }
+
+  void
+  storage::set_node_slot_cached_id (const key_id_t &key, const slot_id_t &slot_id)
+  {
+    m_node_slots_cache[encode_oid_key (key)].push_back (slot_id);
+  }
+
+  int
+  storage::rebuild_node_slots_cache (algo_context_t &context)
+  {
+    m_node_slots_cache.clear ();
+
+    int error_code = file_map_pages (context.m_thread_p, &m_vfid, PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH,
+				     &storage::rebuild_node_slots_cache_page, this);
+    if (error_code != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	return error_code;
+      }
+
+    m_node_slots_cache_is_complete = true;
+    return NO_ERROR;
+  }
+
+  int
+  storage::rebuild_node_slots_cache_page (cubthread::entry *thread_p, PAGE_PTR *page, bool *stop, void *args)
+  {
+    storage *storage_p = static_cast<storage *> (args);
+    VPID *vpid = pgbuf_get_vpid_ptr (*page);
+    PGSLOTID slot_id = 0;
+    RECDES recdes;
+
+    while (spage_next_record (*page, &slot_id, &recdes, PEEK) == S_SUCCESS)
+      {
+	if (VPID_EQ (vpid, &storage_p->m_root_vpid) && slot_id == 1)
+	  {
+	    continue;
+	  }
+
+	if (recdes.length < static_cast<int> (node_t::offset_header_end))
+	  {
+	    continue;
+	  }
+
+	node_t node { reinterpret_cast<byte_t *> (recdes.data) };
+	slot_id_t node_slot = { vpid->pageid, slot_id, vpid->volid };
+
+	storage_p->set_node_slot_cached_id (node.get_key (), node_slot);
+      }
+
+    *stop = false;
+    return NO_ERROR;
   }
 
   pinned_t

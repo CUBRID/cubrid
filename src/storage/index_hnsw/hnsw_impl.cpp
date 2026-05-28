@@ -521,6 +521,16 @@ hnsw_impl::init_for_load (cubthread::entry *thread_p)
   pgbuf_unfix_and_init (thread_p, page_ptr);
 
   m_algo->set_storage (m_storage.get ());
+  if (!m_storage->is_empty ())
+    {
+      cubhnsw::algo_context_t context;
+      context.m_thread_p = thread_p;
+
+      if (m_storage->rebuild_node_slots_cache (context) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
   init_worker_pool ();
   return NO_ERROR;
 }
