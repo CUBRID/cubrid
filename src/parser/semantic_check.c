@@ -8172,6 +8172,7 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	}
       crt_qry = result_stmt;
 
+      result_stmt = pt_semantic_check (parser, crt_qry);
       if (pt_has_error (parser))
 	{
 	  if (prev_qry)
@@ -11252,6 +11253,8 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	    PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_DISABLE_LOOSE_SCAN);
 	  }
       }
+
+      node = pt_semantic_type (parser, node, info);
       break;
 
     case PT_DO:
