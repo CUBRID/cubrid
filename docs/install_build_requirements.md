@@ -98,3 +98,46 @@ Start-Process -FilePath $VS_INSTALL_PATH -Argument (
 
 Copy-Item "C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Redist\MSVC\14.16.27012\MergeModules\*" -Destination "C:\Program Files (x86)\Common Files\Merge Modules"
 ```
+
+## Code Formatters
+
+CI rejects PRs whose changed files are not a fixed point under the project
+formatters. **Versions are pinned** — the distro `indent` package (2.2.12+)
+produces output that differs from CI and will cause failures. Do not use
+`clang-format`; there is no `.clang-format` in this repository.
+
+The CI invocation lives in [`.github/workflows/check.yml`](../.github/workflows/check.yml)
+(the `code-style` job); these commands mirror it exactly.
+
+### Linux
+
+```sh
+# GNU indent 2.2.11 — MUST be built from source.
+# Distro 'indent' is 2.2.12+ and produces different output, breaking CI.
+sudo apt-get install -y build-essential texi2html wget
+wget https://github.com/CUBRID/3rdparty/raw/develop/indent/indent-2.2.11.tar.gz
+tar xf indent-2.2.11.tar.gz
+cd indent-2.2.11 && ./configure && sudo make -j install && cd ..
+
+# astyle — system package is fine on Ubuntu 24.04
+sudo apt-get install -y astyle
+
+# google-java-format 1.7 — codestyle.sh expects the jar at the path
+# .github/workflows/google-java-format-1.7-all-deps.jar relative to the repo
+# root. Place it there directly (run from the repo root).
+wget -O .github/workflows/google-java-format-1.7-all-deps.jar \
+    https://github.com/CUBRID/3rdparty/raw/develop/google-java-format/google-java-format-1.7-all-deps.jar
+```
+
+### Verify
+
+```sh
+indent --version   # must print: GNU indent 2.2.11
+astyle --version   # Artistic Style 3.x
+java -jar .github/workflows/google-java-format-1.7-all-deps.jar --version
+# expected: google-java-format: Version 1.7
+```
+
+For the format-on-save workflow and how to avoid spurious "you touched lines
+you didn't touch" CI failures, see
+[CONTRIBUTING.md](../CONTRIBUTING.md#code-style).
