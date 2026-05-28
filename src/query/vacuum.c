@@ -721,7 +721,7 @@ typedef struct vacuum_oos_vfid_cache_entry
 } VACUUM_OOS_VFID_CACHE_ENTRY;
 
 static bool vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENTRY * cache, int *cache_size,
-					  const VFID * heap_vfid, VFID * out_oos_vfid);
+					  int *evict_idx, const VFID * heap_vfid, VFID * out_oos_vfid);
 static int vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_forward_walk_delete_old_oos (THREAD_ENTRY * thread_p, const VFID * oos_vfid,
 					       const OID_VECTOR & oos_oids);
@@ -3412,22 +3412,31 @@ vacuum_rv_redo_vacuum_complete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * thread_p (in)      : Thread entry.
  * cache (in/out)     : Per-block linear-scan cache of size VACUUM_OOS_VFID_CACHE_SIZE.
  * cache_size (in/out): Current number of populated cache entries.
+ * evict_idx (in/out) : Per-block round-robin cursor for slot eviction once the cache is full.
+ *			Caller owns the lifetime; it is co-allocated with `cache` in vacuum_process_log_block,
+ *			making the cursor per-block and thread-local. Do NOT replace with a function-local static —
+ *			vacuum runs across multiple worker threads and a shared static would race.
  * heap_vfid (in)     : Heap file VFID (key).
  * out_oos_vfid (out) : Resolved OOS VFID (may be VFID_NULL sentinel meaning "no OOS file").
  *
  * Note: The cache stores VFID_NULL as a negative sentinel for heap files with no OOS companion,
  * so repeated lookups for non-OOS heaps hit the cache instead of re-executing file_descriptor_get.
- * Eviction uses round-robin across all slots to avoid always thrashing slot 0.
+ * Negative caching is gated on `er_errid()==NO_ERROR` after heap_oos_find_vfid returns false —
+ * transient lookup failures (pgbuf_fix, spage_get_record) set an error and are NOT cached, so a
+ * single transient hiccup cannot poison the block-scope cache and silently leak OOS for every
+ * subsequent record on the same heap. Only the legitimate "no OOS file" case (VFID_ISNULL on the
+ * heap header) returns false with no error set, and only that case is cached.
  */
 static bool
 vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENTRY * cache, int *cache_size,
-			      const VFID * heap_vfid, VFID * out_oos_vfid)
+			      int *evict_idx, const VFID * heap_vfid, VFID * out_oos_vfid)
 {
   FILE_DESCRIPTORS file_descriptor;
   HFID hfid;
   int i;
 
   assert (cache != NULL);
+  assert (evict_idx != NULL);
 
   for (i = 0; i < *cache_size; i++)
     {
@@ -3438,8 +3447,10 @@ vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENT
 	}
     }
 
-  /* On file_descriptor_get or HFID extraction failure, do NOT cache — retry on next call.
-   * On successful HFID extraction but no OOS file, cache VFID_NULL as a negative sentinel. */
+  /* On any failure below — file_descriptor_get, HFID extraction, or transient heap_oos_find_vfid —
+   * do NOT cache: a falsely-cached VFID_NULL would skip OOS reclamation for every subsequent record
+   * on this heap in the block. Only cache when the heap legitimately has no OOS file (false return
+   * with no error set). */
   VFID_SET_NULL (out_oos_vfid);
 
   if (file_descriptor_get (thread_p, heap_vfid, &file_descriptor) != NO_ERROR)
@@ -3458,12 +3469,22 @@ vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENT
   if (!heap_oos_find_vfid (thread_p, &hfid, out_oos_vfid, false))
     {
       VFID_SET_NULL (out_oos_vfid);
-      /* Fall through to cache the VFID_NULL negative sentinel so subsequent lookups
-       * for this non-OOS heap hit the cache instead of re-executing file_descriptor_get. */
+      if (er_errid () != NO_ERROR)
+	{
+	  /* Transient failure (pgbuf_fix returned NULL with ER_PB_BAD_PAGEID, spage_get_record
+	   * failure, etc.) — do NOT cache. Next call retries. */
+	  er_clear ();
+	  return false;
+	}
+      /* Legitimate "no OOS file": heap_hdr->oos_vfid was VFID_NULL with docreate=false and no
+       * error was raised. Fall through to cache the VFID_NULL negative sentinel. */
     }
 
-  /* Round-robin eviction: cycle through all slots instead of always evicting slot 0.
-   * cache_size stays capped at VACUUM_OOS_VFID_CACHE_SIZE so the lookup loop is always in-bounds. */
+  /* Round-robin eviction: once the cache is full, cycle through all slots instead of always
+   * evicting slot 0. `*evict_idx` is per-block (caller-owned), so the cursor resets to 0 at the
+   * start of every vacuum_process_log_block invocation — guaranteeing the "start from slot 0"
+   * intent on every fresh block. `*cache_size` stays capped at VACUUM_OOS_VFID_CACHE_SIZE so the
+   * lookup loop above is always in-bounds. */
   int slot;
   if (*cache_size < VACUUM_OOS_VFID_CACHE_SIZE)
     {
@@ -3471,10 +3492,7 @@ vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENT
     }
   else
     {
-      /* Evict using round-robin starting from slot 0, cycling through all slots. */
-      static int evict_idx = 0;
-      slot = evict_idx % VACUUM_OOS_VFID_CACHE_SIZE;
-      evict_idx++;
+      slot = (*evict_idx)++ % VACUUM_OOS_VFID_CACHE_SIZE;
     }
   VFID_COPY (&cache[slot].heap_vfid, heap_vfid);
   VFID_COPY (&cache[slot].oos_vfid, out_oos_vfid);
@@ -3644,9 +3662,13 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 #endif /* SA_MODE */
 
   /* Per-block cache mapping heap-VFID -> OOS-VFID (VFID_NULL sentinel = "no OOS file").
-   * Avoids repeated file_descriptor_get + heap_oos_find_vfid for the same heap file within one block. */
+   * Avoids repeated file_descriptor_get + heap_oos_find_vfid for the same heap file within one block.
+   * cache_size tracks population (capped at VACUUM_OOS_VFID_CACHE_SIZE); evict_idx is the per-block
+   * round-robin cursor used once the cache is full. Both are stack-local => per-worker-per-block,
+   * so vacuum_oos_vfid_cache_lookup needs no synchronization. */
   VACUUM_OOS_VFID_CACHE_ENTRY oos_vfid_cache[VACUUM_OOS_VFID_CACHE_SIZE];
   int oos_vfid_cache_size = 0;
+  int oos_vfid_cache_evict_idx = 0;
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
@@ -3820,7 +3842,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	      VFID oos_vfid;
 	      if (heap_recdes_contains_oos (&undo_recdes)
 		  && vacuum_oos_vfid_cache_lookup (thread_p, oos_vfid_cache, &oos_vfid_cache_size,
-						   &log_vacuum.vfid, &oos_vfid))
+						   &oos_vfid_cache_evict_idx, &log_vacuum.vfid, &oos_vfid))
 		{
 		  OID_VECTOR oos_oids;
 		  int oos_err = heap_recdes_get_oos_oids (&undo_recdes, oos_oids);
@@ -8411,7 +8433,11 @@ vacuum_init_data_page_with_last_blockid (THREAD_ENTRY * thread_p, VACUUM_DATA_PA
   vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
 }
 
-#if !defined(NDEBUG)
+/* Test bridges below are unconditionally built so unit_tests/oos can link against any build mode
+ * (debug or release). The runtime cost is zero in normal operation — bridges are only entered
+ * when explicitly invoked by test binaries — and the binary footprint of three thin wrappers is
+ * negligible. Gating on NDEBUG breaks `./build.sh -m release -c -DUNIT_TESTS=ON` builds. */
+
 /* Test bridge for static vacuum_heap_oos_delete. Used by unit_tests/oos. */
 int
 bridge_vacuum_heap_oos_delete (THREAD_ENTRY * thread_p, const VFID * oos_vfid, RECDES * record)
@@ -8486,7 +8512,6 @@ bridge_log_append_undo_for_prev_version_test (THREAD_ENTRY * thread_p, const VFI
   assert (tdes != NULL);
   LSA_COPY (out_lsa, &tdes->tail_lsa);
 }
-#endif /* !NDEBUG */
 
 // *INDENT-OFF*
 //
