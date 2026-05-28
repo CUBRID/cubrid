@@ -1155,13 +1155,22 @@ dblink_scan_reset (DBLINK_SCAN_INFO * scan_info)
  *   num_attrs(in)   : length of attr_names (0 when positional)
  *   num_bind(in)    : number of ? placeholders (= SELECT column count)
  *   state(out)      : filled with conn_handle and stmt_handle on success
+ *
+ * Note: To prevent partial inserts, remote INSERT SELECT ALWAYS:
+ *   1. Sets CCI_AUTOCOMMIT_FALSE on the remote CCI connection (ignores DBLINK_AUTO_COMMIT)
+ *   2. Registers the connection in the per-local-transaction dblink pool
+ *      (qmgr_dblink_add_conn_handle)
+ *
+ *   dblink_insert_close() releases only the stmt handle, not the connection.
+ *   Remote COMMIT/ROLLBACK + disconnect happen in qmgr_check_dblink_trans()
+ *   when the local transaction commits or aborts (explicit COMMIT/ROLLBACK,
+ *   session AUTOCOMMIT, or EXECUTE_QUERY_WITH_COMMIT).
  */
 int
 dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, const char *pwd,
 			   const char *table_name, char **attr_names, int num_attrs, int num_bind,
 			   DBLINK_INSERT_STATE * state)
 {
-  static bool auto_commit = prm_get_bool_value (PRM_ID_DBLINK_AUTO_COMMIT);
   int ret, i, remaining;
   T_CCI_ERROR err_buf;
   char conn_url[MAX_LEN_CONNECTION_URL] = { 0, };
@@ -1210,11 +1219,8 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
       snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", url, "?__gateway=true");
     }
 
-  /* try to reuse existing connection */
-  if (!auto_commit)
-    {
-      state->conn_handle = qmgr_dblink_find_conn_handle (thread_p, (char *) url, (char *) user, (char *) pwd, true);
-    }
+  /* Reuse remote conn from dblink pool within the same local transaction */
+  state->conn_handle = qmgr_dblink_find_conn_handle (thread_p, (char *) url, (char *) user, (char *) pwd, true);
 
   if (state->conn_handle < 0)
     {
@@ -1225,7 +1231,8 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
 	  return ER_DBLINK;
 	}
 
-      ret = cci_set_autocommit (state->conn_handle, (CCI_AUTOCOMMIT_MODE) auto_commit);
+      /* Remote: CCI_AUTOCOMMIT_FALSE (ignore DBLINK_AUTO_COMMIT; partial insert prevention) */
+      ret = cci_set_autocommit (state->conn_handle, CCI_AUTOCOMMIT_FALSE);
       if (ret < 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "set autocommit error");
@@ -1234,15 +1241,13 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
 	  return ER_DBLINK;
 	}
 
-      if (!auto_commit)
+      /* Register remote conn in dblink pool for qmgr_check_dblink_trans() at local txn end */
+      ret = qmgr_dblink_add_conn_handle (thread_p, state->conn_handle, (char *) url, (char *) user, (char *) pwd, true);
+      if (ret < 0)
 	{
-	  ret = qmgr_dblink_add_conn_handle (thread_p, state->conn_handle, (char *) url, (char *) user, (char *) pwd, true);
-	  if (ret < 0)
-	    {
-	      (void) cci_disconnect (state->conn_handle, &err_buf);
-	      state->conn_handle = -1;
-	      return ER_DBLINK;
-	    }
+	  (void) cci_disconnect (state->conn_handle, &err_buf);
+	  state->conn_handle = -1;
+	  return ER_DBLINK;
 	}
     }
 
@@ -1261,11 +1266,7 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
   if (sql == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sql_len);
-      if (auto_commit && state->conn_handle >= 0)
-	{
-	  (void) cci_disconnect (state->conn_handle, &err_buf);
-	}
-      state->conn_handle = -1;
+      /* Remote conn stays in dblink pool; cleaned up at local txn end by qmgr_check_dblink_trans() */
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -1321,11 +1322,7 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT: SQL buffer overflow");
       db_private_free (thread_p, sql);
-      if (auto_commit && state->conn_handle >= 0)
-	{
-	  (void) cci_disconnect (state->conn_handle, &err_buf);
-	}
-      state->conn_handle = -1;
+      /* Remote conn stays in dblink pool; cleaned up at local txn end by qmgr_check_dblink_trans() */
       return ER_DBLINK;
     }
 
@@ -1336,11 +1333,7 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
   if (state->stmt_handle < 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-      if (auto_commit && state->conn_handle >= 0)
-	{
-	  (void) cci_disconnect (state->conn_handle, &err_buf);
-	}
-      state->conn_handle = -1;
+      /* Remote conn stays in dblink pool; cleaned up at local txn end by qmgr_check_dblink_trans() */
       return ER_DBLINK;
     }
 
@@ -1518,22 +1511,12 @@ dblink_bind_insert_value (int stmt_handle, int param_index, DB_VALUE * dbval)
  *   vals(in)      : array of DB_VALUE* (one per SELECT output column)
  *   num_vals(in)  : length of vals
  *
- * Transaction behavior on mid-stream error:
- *   This function is called row-by-row during INSERT SELECT streaming.
- *   If an error occurs (bind failure, cci_execute failure), the remaining
- *   rows are not inserted.
- *
- *   DBLINK_AUTO_COMMIT=true (default):
- *     - Each successful cci_execute is auto-committed immediately on remote.
- *     - Rows inserted before the error are already committed (partial insert).
- *     - Local transaction may still commit; remote has partial data.
- *
- *   DBLINK_AUTO_COMMIT=false:
- *     - All rows share one remote transaction (connection pooled).
- *     - On error, qexec_execute_remote_insert_select returns error to caller.
- *     - Local transaction aborts → qmgr_check_dblink_trans(is_abort=true)
- *       → dblink_end_tran rollbacks all remote inserts.
- *     - Result: all-or-nothing semantics (pseudo-atomic).
+ * Remote transaction behavior (distinct from local session AUTOCOMMIT and DBLINK_AUTO_COMMIT):
+ *   dblink_insert_open always sets CCI_AUTOCOMMIT_FALSE on the remote connection.
+ *   All-or-nothing semantics:
+ *     - On error: dblink_insert_rollback() rolls back the remote txn immediately.
+ *     - On success: qmgr_check_dblink_trans() commits the remote txn when the
+ *       local transaction commits.
  */
 int
 dblink_insert_execute_row (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state, DB_VALUE ** vals, int num_vals)
@@ -1571,24 +1554,53 @@ dblink_insert_execute_row (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state,
 }
 
 /*
- * dblink_insert_close () - Release CCI statement and (if auto-commit) connection.
- *   state(in/out) : handles are set to -1 after release
+ * dblink_insert_rollback () - Rollback remote transaction immediately on error.
+ *   state(in) : connection handle to rollback
+ *
+ * Note: Called from error paths in qexec_execute_remote_insert_select() to prevent
+ *   partial inserts. Rollback is best-effort on the remote connection; if it fails,
+ *   the conn remains in the dblink pool and qmgr_check_dblink_trans() will attempt
+ *   remote ROLLBACK again at local transaction end (idempotent for already-rolled-back
+ *   remote transactions).
+ */
+void
+dblink_insert_rollback (DBLINK_INSERT_STATE * state)
+{
+  if (state->conn_handle >= 0)
+    {
+      T_CCI_ERROR err_buf;
+      (void) cci_end_tran (state->conn_handle, CCI_TRAN_ROLLBACK, &err_buf);
+    }
+}
+
+/*
+ * dblink_insert_close () - Release CCI statement handle only.
+ *   state(in/out) : stmt_handle is set to -1 after release
+ *
+ * Note: This function only closes the remote stmt handle, NOT the remote connection.
+ *   dblink_insert_open registered the connection in the per-local-transaction dblink pool;
+ *   qmgr_check_dblink_trans() runs when the local transaction ends:
+ *     - COMMIT path: xtran_server_commit -> qmgr_check_dblink_trans(false)
+ *       -> remote COMMIT + disconnect
+ *     - ABORT path:  xtran_server_abort  -> qmgr_check_dblink_trans(true)
+ *       -> remote ROLLBACK + disconnect
+ *
+ *   This asymmetric open/close design prevents partial inserts on remote:
+ *   remote INSERT SELECT uses CCI_AUTOCOMMIT_FALSE (ignores DBLINK_AUTO_COMMIT) and
+ *   ties remote commit/rollback to the local transaction:
+ *     - On error: local txn abort -> remote ROLLBACK -> no partial data on remote
+ *     - On success: local txn commit -> remote COMMIT -> all-or-nothing semantics
  */
 void
 dblink_insert_close (DBLINK_INSERT_STATE * state)
 {
-  static bool auto_commit = prm_get_bool_value (PRM_ID_DBLINK_AUTO_COMMIT);
-  T_CCI_ERROR err_buf;
-
   if (state->stmt_handle >= 0)
     {
       (void) cci_close_req_handle (state->stmt_handle);
       state->stmt_handle = -1;
     }
 
-  if (auto_commit && state->conn_handle >= 0)
-    {
-      (void) cci_disconnect (state->conn_handle, &err_buf);
-      state->conn_handle = -1;
-    }
+  /* Remote connection is NOT closed here.
+   * It remains in the dblink pool until the local transaction ends;
+   * qmgr_check_dblink_trans() then remote COMMIT/ROLLBACK + disconnect. */
 }

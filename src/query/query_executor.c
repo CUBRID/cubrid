@@ -12621,6 +12621,7 @@ qexec_execute_remote_insert_select (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
   return NO_ERROR;
 
 exit_on_error:
+  dblink_insert_rollback (&dblink_state);
   dblink_insert_close (&dblink_state);
   qexec_end_scan (thread_p, specp);
   qexec_close_scan (thread_p, specp);
