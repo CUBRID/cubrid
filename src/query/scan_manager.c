@@ -2867,7 +2867,7 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		     regu_variable_list_node * regu_list_rest, int num_attrs_pred, ATTR_ID * attrids_pred,
 		     HEAP_CACHE_ATTRINFO * cache_pred, int num_attrs_rest, ATTR_ID * attrids_rest,
 		     HEAP_CACHE_ATTRINFO * cache_rest, SCAN_TYPE scan_type, DB_VALUE ** cache_recordinfo,
-		     regu_variable_list_node * regu_list_recordinfo, bool is_partition_table)
+		     regu_variable_list_node * regu_list_recordinfo)
 {
   HEAP_SCAN_ID *hsidp;
   DB_TYPE single_node_type = DB_TYPE_NULL;
@@ -2913,7 +2913,7 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   hsidp->recordinfo_regu_list = regu_list_recordinfo;
 
   /* sampling pre-pick: re-open via qexec_init_next_partition may already hold a buffer */
-  if (scan_type == S_HEAP_SAMPLING_SCAN && hfid->vfid.fileid >= 0)
+  if (scan_type == S_HEAP_SAMPLING_SCAN && !HFID_IS_NULL (hfid))
     {
       int total_pages = 0;
 

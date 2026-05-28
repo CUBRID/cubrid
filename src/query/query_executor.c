@@ -7489,7 +7489,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 					 curr_spec->s.cls_node.num_attrs_rest, curr_spec->s.cls_node.attrids_rest,
 					 curr_spec->s.cls_node.cache_rest, S_HEAP_SCAN,
 					 curr_spec->s.cls_node.cache_reserved,
-					 curr_spec->s.cls_node.cls_regu_list_reserved, false);
+					 curr_spec->s.cls_node.cls_regu_list_reserved);
 		  if (error_code != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
@@ -7518,7 +7518,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 						curr_spec->s.cls_node.num_attrs_rest,
 						curr_spec->s.cls_node.attrids_rest, curr_spec->s.cls_node.cache_rest,
 						scan_type, curr_spec->s.cls_node.cache_reserved,
-						curr_spec->s.cls_node.cls_regu_list_reserved, false);
+						curr_spec->s.cls_node.cls_regu_list_reserved);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -9041,7 +9041,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 					 spec->s.cls_node.attrids_pred, spec->s.cls_node.cache_pred,
 					 spec->s.cls_node.num_attrs_rest, spec->s.cls_node.attrids_rest,
 					 spec->s.cls_node.cache_rest, S_HEAP_SCAN, spec->s.cls_node.cache_reserved,
-					 spec->s.cls_node.cls_regu_list_reserved, true);
+					 spec->s.cls_node.cls_regu_list_reserved);
 		  if (error != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
@@ -9086,7 +9086,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 				     spec->s.cls_node.attrids_pred, spec->s.cls_node.cache_pred,
 				     spec->s.cls_node.num_attrs_rest, spec->s.cls_node.attrids_rest,
 				     spec->s.cls_node.cache_rest, scan_type, spec->s.cls_node.cache_reserved,
-				     spec->s.cls_node.cls_regu_list_reserved, true);
+				     spec->s.cls_node.cls_regu_list_reserved);
 	      if (error != NO_ERROR)
 		{
 		  return S_ERROR;
