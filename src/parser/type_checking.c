@@ -4526,12 +4526,13 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
       /* no coercion needed for NULL arguments */
       return NO_ERROR;
     }
-
+#if 0
   if (def_type == PT_TYPE_NA)
     {
       /* NA is a placeholder type; do not coerce other types to NA */
       return NO_ERROR;
     }
+#endif
 
   if (def_type == node->type_enum)
     {
