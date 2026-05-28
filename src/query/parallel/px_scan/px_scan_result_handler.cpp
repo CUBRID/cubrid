@@ -296,6 +296,7 @@ namespace parallel_scan
 	    tl.g_agg_domains_resolved = FALSE;
 	  }
 	/* setup failure leaves curr_xasl->topn_items NULL; worker falls back to plain BUILDLIST and final ORDER BY+LIMIT runs on main's concat list_id via qexec_orderby_distinct_by_sorting. */
+	tl.is_topn = false;
 	if (m_.orig_xasl->topn_items != nullptr && curr_xasl->type == BUILDLIST_PROC)
 	  {
 	    if (qexec_setup_topn_proc (thread_p, curr_xasl, vd) != NO_ERROR)
@@ -304,9 +305,13 @@ namespace parallel_scan
 		er_clear ();
 		assert (curr_xasl->topn_items == nullptr);
 	      }
-	    else if (curr_xasl->topn_items != nullptr && m_.trace_handler_p != nullptr)
+	    else if (curr_xasl->topn_items != nullptr)
 	      {
-		m_.trace_handler_p->set_topnsort_used ();
+		tl.is_topn = true;
+		if (m_.trace_handler_p != nullptr)
+		  {
+		    m_.trace_handler_p->set_topnsort_used ();
+		  }
 	      }
 	  }
       }
@@ -353,7 +358,7 @@ namespace parallel_scan
 	      }
 	  }
 	/* small-input case: heap survived all writes without overflow, flush before close. */
-	if (tl.xasl->topn_items != nullptr)
+	if (tl.is_topn)
 	  {
 	    if (qexec_topn_tuples_to_list_id (thread_p, tl.xasl, tl.vd->xasl_state, false,
 					      tl.writer_result_p, false, false) != NO_ERROR)
@@ -361,6 +366,7 @@ namespace parallel_scan
 		m_err_messages_p->move_top_error_message_to_this();
 		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	      }
+	    tl.is_topn = false;
 	    assert (tl.xasl->topn_items == nullptr);
 	  }
 	qfile_close_list (thread_p, tl.writer_result_p);
@@ -839,7 +845,7 @@ namespace parallel_scan
 	      }
 	    if (output_tuple)
 	      {
-		if (tl.xasl->topn_items != nullptr)
+		if (tl.is_topn)
 		  {
 		    TOPN_STATUS topn_status = qexec_add_tuple_to_topn (thread_p, tl.xasl->topn_items,
 					      &tl.writer_result_p->tpl_descr);
@@ -867,6 +873,7 @@ namespace parallel_scan
 			m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 			return false;
 		      }
+		    tl.is_topn = false;
 		    assert (tl.xasl->topn_items == nullptr);
 		    return true;
 		  }
@@ -887,7 +894,7 @@ namespace parallel_scan
 	else if (unlikely (status == QPROC_TPLDESCR_RETRY_SET_TYPE || status == QPROC_TPLDESCR_RETRY_BIG_REC))
 	  {
 	    /* RETRY path: tpldescr incomplete; drain residual heap to list before plain insertion. */
-	    if (tl.xasl->topn_items != nullptr)
+	    if (tl.is_topn)
 	      {
 		if (qexec_topn_tuples_to_list_id (thread_p, tl.xasl, tl.vd->xasl_state, false,
 						  tl.writer_result_p, false, false) != NO_ERROR)
@@ -896,6 +903,7 @@ namespace parallel_scan
 		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		    return false;
 		  }
+		tl.is_topn = false;
 		assert (tl.xasl->topn_items == nullptr);
 	      }
 	    err_code = qdata_copy_valptr_list_to_tuple (thread_p, input, tl.vd, &tl.tpl_buf);

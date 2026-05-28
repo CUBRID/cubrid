@@ -121,7 +121,8 @@ namespace parallel_scan
 	  xasl (nullptr),
 	  val_list_domain_resolved (false),
 	  agg_hash_state (HS_NONE),
-	  g_agg_domains_resolved (TRUE) {}
+	  g_agg_domains_resolved (TRUE),
+	  is_topn (false) {}
       ~mergeable_list_tls() = default;
       QFILE_LIST_ID *writer_result_p;
       QFILE_TUPLE_RECORD tpl_buf;
@@ -131,6 +132,8 @@ namespace parallel_scan
       bool val_list_domain_resolved;
       AGGREGATE_HASH_STATE agg_hash_state;
       int g_agg_domains_resolved;
+      /* per-worker mirror of (xasl->topn_items != nullptr); avoids hot-path pointer chase on every row. */
+      bool is_topn;
   };
 
   class xasl_snapshot_tls
