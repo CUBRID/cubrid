@@ -17,22 +17,21 @@
  */
 
 /*
- * px_heap_scan_result_type.hpp
+ * px_scan_result_type.hpp
  */
 
-#ifndef _PX_HEAP_SCAN_RESULT_TYPE_HPP_
-#define _PX_HEAP_SCAN_RESULT_TYPE_HPP_
+#ifndef _PX_SCAN_RESULT_TYPE_HPP_
+#define _PX_SCAN_RESULT_TYPE_HPP_
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
   enum class RESULT_TYPE
   {
-    NONE = 0x0,
-    MERGEABLE_LIST = 0x1, /* (fast) list-per-thread return, and merge (set dependent) it. */
-    XASL_SNAPSHOT = 0x2, /* (slow) xasl snapshot return (row-by-row) */
-    BUILDVALUE_OPT = 0x3, /* (fast) buildvalue proc aggregate optimization */
+    MERGEABLE_LIST = 0x1,	/* fast: list-per-thread, merged set-dependent. */
+    XASL_SNAPSHOT = 0x2,	/* slow: row-by-row snapshot. */
+    BUILDVALUE_OPT = 0x3,	/* fast: buildvalue proc aggregate optimization. */
 
   };
 }
 
-#endif /* _PX_HEAP_SCAN_RESULT_TYPE_HPP_ */
+#endif /* _PX_SCAN_RESULT_TYPE_HPP_ */

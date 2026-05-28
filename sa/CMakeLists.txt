@@ -365,6 +365,11 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/trigger_manager.c
   ${OBJECT_DIR}/virtual_object.c
   ${OBJECT_DIR}/work_space.c
+  ${OBJECT_DIR}/schema_information_schema.cpp
+  ${OBJECT_DIR}/schema_information_schema_builder.cpp
+  ${OBJECT_DIR}/schema_information_schema_definition.cpp
+  ${OBJECT_DIR}/schema_information_schema_install.cpp
+  ${OBJECT_DIR}/schema_information_schema_install_query_spec.cpp
   )
 set(OBJECT_HEADERS
   ${OBJECT_DIR}/lob_locator.hpp
@@ -394,12 +399,12 @@ set(SP_HEADERS
   ${SP_DIR}/pl_struct_compile.cpp
 )
 
-set(PARALLEL_HEAP_SCAN_SOURCES
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.cpp
+set(PARALLEL_SCAN_SOURCES
+  ${PARALLEL_SCAN_DIR}/px_scan_checker.cpp
   )
 
-set(PARALLEL_HEAP_SCAN_HEADERS
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.hpp
+set(PARALLEL_SCAN_HEADERS
+  ${PARALLEL_SCAN_DIR}/px_scan_checker.hpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_SOURCES
@@ -649,7 +654,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${SP_SOURCES}
-  ${PARALLEL_HEAP_SCAN_SOURCES}
+  ${PARALLEL_SCAN_SOURCES}
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
   ${METHOD_SOURCES}
   ${THREAD_SOURCES}
@@ -688,8 +693,8 @@ add_library(cubridsa SHARED
   ${HEAPLAYER_SOURCES}
   ${SP_SOURCES}
   ${SP_HEADERS}
-  ${PARALLEL_HEAP_SCAN_SOURCES}
-  ${PARALLEL_HEAP_SCAN_HEADERS}
+  ${PARALLEL_SCAN_SOURCES}
+  ${PARALLEL_SCAN_HEADERS}
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
   ${PARALLEL_QUERY_EXECUTE_HEADERS}
   ${METHOD_SOURCES}

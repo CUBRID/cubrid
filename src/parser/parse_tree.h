@@ -1234,7 +1234,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_LEADING			(1ULL << 37)	/* force specific table to join left-to-right */
 #define  PT_HINT_NO_SUBQUERY_CACHE		(1ULL << 38)	/* don't use the subquery result cache */
 #define  PT_HINT_NO_USE_HASH			(1ULL << 39)	/* disable hash-join */
-#define  PT_HINT_NO_PARALLEL_HEAP_SCAN		(1ULL << 40)	/* disable parallel heap scan */
+#define  PT_HINT_NO_PARALLEL_SCAN		(1ULL << 40)	/* disable parallel scan */
 #define  PT_HINT_PARALLEL			(1ULL << 41)	/* parallel query execution threads */
 #define  PT_HINT_INLINE_CTE			(1ULL << 42)	/* inline CTE */
 #define  PT_HINT_MATERIALIZE_CTE		(1ULL << 43)	/* materialize CTE */
@@ -1474,6 +1474,10 @@ typedef enum
   PT_TYPEOF,
   PT_FUNCTION_HOLDER,		/* special operator : wrapper for PT_FUNCTION node */
   PT_INDEX_CARDINALITY,
+  PT_ESTIMATED_TABLE_ROWS,
+  PT_ESTIMATED_AVG_ROW_LENGTH,
+  PT_ESTIMATED_DATA_LENGTH,
+  PT_ESTIMATED_DATA_FREE,
   PT_DEFINE_VARIABLE,
   PT_EVALUATE_VARIABLE,
   PT_EXEC_STATS,
@@ -1519,6 +1523,7 @@ typedef enum
   PT_CRC32,
   PT_SCHEMA_DEF,
   PT_CONV_TZ,
+  PT_COLLECTION_TO_STRING,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
@@ -1574,7 +1579,7 @@ typedef enum
   PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE = 0x1000,	/* the spec was checked and does not have any uniques */
   PT_SPEC_FLAG_SAMPLING_SCAN = 0x2000,	/* spec for sampling scan */
   PT_SPEC_FLAG_REFERENCED_AT_ODKU = 0x4000,	/* spec for odku assignment */
-  PT_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN = 0x8000,	/* spec for not for parallel heap scan */
+  PT_SPEC_FLAG_NO_PARALLEL_SCAN = 0x8000,	/* spec for not for parallel scan */
   PT_SPEC_FLAG_PARALLEL_THREAD = 0x10000,	/* spec for setted number of parallel query execution threads */
   PT_SPEC_FLAG_DUMMY_REMOVED = 0x20000	/* this spec was originally a subquery but was resolved to a table during dummy SELECT removal; invisible columns should be excluded from this spec */
 } PT_SPEC_FLAG;

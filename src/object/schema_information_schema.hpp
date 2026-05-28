@@ -16,14 +16,25 @@
  *
  */
 
+
 /*
- * px_heap_scan_checker.hpp - module that checks whether parallel heap scan is possible.
+ * schema_information_schema.hpp - SQL INFORMATION_SCHEMA (ISO/IEC 9075-11:2003) metadata interface
  */
 
-#ifndef _PX_HEAP_SCAN_CHECKER_HPP_
-#define _PX_HEAP_SCAN_CHECKER_HPP_
-#include "xasl.h"
+#ifndef _SCHEMA_INFORMATION_SCHEMA_HPP_
+#define _SCHEMA_INFORMATION_SCHEMA_HPP_
 
-extern "C" int scan_check_parallel_heap_scan_possible (XASL_NODE *xasl);
+#include <string>
+#include <string_view>
+#include <vector>
 
-#endif /*_PX_HEAP_SCAN_CHECKER_HPP_ */
+void info_schema_init (void);
+int info_schema_install (void);
+bool sm_is_information_schema_views (const std::string_view name);
+
+namespace cubschema
+{
+  const std::vector<std::string> &get_information_schema_view_names ();
+}
+
+#endif /* _SCHEMA_INFORMATION_SCHEMA_HPP_ */
