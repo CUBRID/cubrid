@@ -676,7 +676,6 @@ namespace cubschema
       {"is_unique", "integer"},
       {"key_count", "integer"},
       {"key_attrs", format_sequence (CT_INDEXKEY_NAME)},
-      {"is_reverse", "integer"},
       {"is_primary_key", "integer"},
       {"is_foreign_key", "integer"},
       {"filter_expression", format_varchar (1073741823)},
@@ -1598,7 +1597,6 @@ namespace cubschema
     {
       {"index_name", format_varchar (255)},
       {"is_unique", format_varchar (3)},
-      {"is_reverse", format_varchar (3)},
       {"class_name", format_varchar (255)},
       {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"key_count", "integer"},

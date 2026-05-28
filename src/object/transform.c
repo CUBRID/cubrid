@@ -398,7 +398,6 @@ static CT_ATTR ct_index_atts[] = {
   {"is_unique", NULL_ATTRID, DB_TYPE_INTEGER},
   {"key_count", NULL_ATTRID, DB_TYPE_INTEGER},
   {"key_attrs", NULL_ATTRID, DB_TYPE_SEQUENCE},
-  {"is_reverse", NULL_ATTRID, DB_TYPE_INTEGER},
   {"is_primary_key", NULL_ATTRID, DB_TYPE_INTEGER},
   {"is_foreign_key", NULL_ATTRID, DB_TYPE_INTEGER},
   {"filter_expression", NULL_ATTRID, DB_TYPE_VARCHAR},

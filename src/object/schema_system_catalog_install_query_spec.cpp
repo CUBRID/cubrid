@@ -784,7 +784,6 @@ sm_define_view_index_spec (void)
 	"SELECT "
 	  "[i].[index_name] AS [index_name], "
 	  "CASE [i].[is_unique] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_unique], "
-	  "CASE [i].[is_reverse] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_reverse], "
 	  "[i].[class_of].[class_name] AS [class_name], "
 	  "[i].[class_of].[owner].[name] AS [owner_name], "
 	  "NVL2 ("

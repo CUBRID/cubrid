@@ -2743,8 +2743,6 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	  pvalue = NULL;
 	}
 
-      db_make_int (&attrs[CT_INDEX_IS_REVERSE_INDEX].value, is_reverse);
-
       db_make_int (&attrs[CT_INDEX_IS_PRIMARY_KEY_INDEX].value, is_primary_key);
 
       db_make_int (&attrs[CT_INDEX_IS_FOREIGN_KEY_INDEX].value, is_foreign_key);
