@@ -236,7 +236,29 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
     // for these two situations we just need to merge
     case PT_JSON_ARRAYAGG:
     case PT_JSON_OBJECTAGG:
-      error = db_evaluate_json_merge_preserve (new_acc->value, &acc->value, 1);
+      if (!DB_IS_NULL (new_acc->value))
+	{
+	  if (DB_IS_NULL (acc->value))
+	    {
+	      error = pr_clone_value (new_acc->value, acc->value);
+	    }
+	  else
+	    {
+	      DB_VALUE merge_result;
+	      db_make_null (&merge_result);
+	      DB_VALUE *merge_args[2] = { acc->value, new_acc->value };
+	      error = db_evaluate_json_merge_preserve (&merge_result, (DB_VALUE * const *) merge_args, 2);
+	      if (error == NO_ERROR)
+		{
+		  pr_clear_value (acc->value);
+		  *acc->value = merge_result;
+		}
+	      else
+		{
+		  pr_clear_value (&merge_result);
+		}
+	    }
+	}
       break;
 
     case PT_STDDEV:
