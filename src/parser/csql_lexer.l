@@ -201,6 +201,7 @@ IDL       [a-zA-Z0-9_]
 [bB][oO][oO][lL][eE][aA][nN]						{ begin_token(yytext);   return BOOLEAN_; }
 [bB][oO][tT][hH]							{ begin_token(yytext);   return BOTH_; }
 [bB][rR][eE][aA][dD][tT][hH]						{ begin_token(yytext);   return BREADTH; }
+[bB][uU][cC][kK][eE][tT][sS]						{ begin_token(yytext);   return BUCKETS; }
 [bB][yY]								{ begin_token(yytext);   return BY; }
 [bB][uU][fF][fF][eE][rR]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
@@ -454,6 +455,7 @@ IDL       [a-zA-Z0-9_]
 [hH][eE][aA][pP]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return HEAP; }                                                                            
+[hH][iI][sS][tT][oO][gG][rR][aA][mM]					{ begin_token(yytext);   return HISTOGRAM; }
 [hH][oO][sS][tT]					                { begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return HOST; }

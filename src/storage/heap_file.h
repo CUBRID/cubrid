@@ -386,6 +386,7 @@ typedef struct sampling_info SAMPLING_INFO;
 struct sampling_info
 {
   int weight;			/* for sampling statistics */
+  bool random_seeded;		/* true once the deterministic sampler seed is initialized */
 };
 
 /* Forward definition. */

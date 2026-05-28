@@ -139,6 +139,7 @@ static const char *prohibited_classes[] = {
   CT_DUAL_NAME,
   CT_SERVER_NAME,
   CT_SYNONYM_NAME,
+  CT_HISTOGRAM_NAME,
   CT_GLOBAL_TRAN_NAME,
   /* catalog vclasses */
   CTV_CLASS_NAME,
