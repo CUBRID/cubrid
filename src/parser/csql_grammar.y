@@ -374,10 +374,6 @@ static PT_NODE *parser_get_attr_def_one (void);
 static void parser_push_orderby_node (PT_NODE * node);
 static PT_NODE *parser_top_orderby_node (void);
 static PT_NODE *parser_pop_orderby_node (void);
-static PT_NODE *parser_find_hierarchical_query (PT_NODE * query);
-static int parser_attach_order_siblings_to_branches (PARSER_CONTEXT * parser, PT_NODE * query,
-						     PT_NODE * orderby, PT_NODE * orderby_for);
-static void parser_relocate_order_siblings (PARSER_CONTEXT * parser, PT_NODE * stmt);
 
 static void parser_push_select_stmt_node (PT_NODE * node);
 static PT_NODE *parser_top_select_stmt_node (void);
@@ -14487,11 +14483,6 @@ opt_orderby_clause
 				      }
 				  }
 			      }
-
-			    if (stmt->info.query.flag.order_siblings)
-			      {
-				parser_relocate_order_siblings (this_parser, stmt);
-			      }
 			  }
 
 			$$ = stmt;
@@ -14506,7 +14497,7 @@ opt_siblings
 			PT_NODE *stmt = parser_top_orderby_node ();
 
 			stmt->info.query.flag.order_siblings = true;
-			if (parser_find_hierarchical_query (stmt) == NULL)
+			if (stmt->info.query.q.select.connect_by == NULL)
 			    {
 				PT_ERRORmf(this_parser, stmt,
 				    MSGCAT_SET_PARSER_SEMANTIC,
@@ -23274,163 +23265,6 @@ static PT_NODE *parser_orderby_node_stack_default[STACK_SIZE];
 static PT_NODE **parser_orderby_node_stack = parser_orderby_node_stack_default;
 static int parser_orderby_node_sp = 0;
 static int parser_orderby_node_limit = STACK_SIZE;
-
-/*
- * parser_find_hierarchical_query () - find a SELECT with CONNECT BY in a query tree
- */
-static PT_NODE *
-parser_find_hierarchical_query (PT_NODE * query)
-{
-  PT_NODE *found;
-
-  if (query == NULL)
-    {
-      return NULL;
-    }
-
-  switch (query->node_type)
-    {
-    case PT_SELECT:
-      if (query->info.query.q.select.connect_by != NULL)
-	{
-	  return query;
-	}
-      return NULL;
-
-    case PT_UNION:
-    case PT_INTERSECTION:
-    case PT_DIFFERENCE:
-      found = parser_find_hierarchical_query (query->info.query.q.union_.arg2);
-      if (found != NULL)
-	{
-	  return found;
-	}
-      return parser_find_hierarchical_query (query->info.query.q.union_.arg1);
-
-    default:
-      return NULL;
-    }
-}
-
-/*
- * parser_attach_order_siblings_to_branches () - recursively attach ORDER SIBLINGS BY to all CONNECT BY branches
- *   return: number of branches attached (negative on error)
- */
-static int
-parser_attach_order_siblings_to_branches (PARSER_CONTEXT * parser, PT_NODE * query,
-					  PT_NODE * orderby, PT_NODE * orderby_for)
-{
-  if (query == NULL)
-    {
-      return 0;
-    }
-
-  switch (query->node_type)
-    {
-    case PT_SELECT:
-      if (query->info.query.q.select.connect_by != NULL)
-	{
-	  int hier_select_cnt;
-	  PT_NODE *sort;
-
-	  if (query->info.query.order_by != NULL)
-	    {
-	      return 0;
-	    }
-
-	  /* position numbers are range-checked here; expressions are resolved in pt_check_order_by() */
-	  hier_select_cnt = pt_length_of_list (query->info.query.q.select.list);
-	  for (sort = orderby; sort; sort = sort->next)
-	    {
-	      PT_NODE *expr = sort->info.sort_spec.expr;
-
-	      if (expr != NULL && expr->node_type == PT_VALUE && expr->type_enum == PT_TYPE_INTEGER)
-		{
-		  int pos = expr->info.value.data_value.i;
-
-		  if (pos < 1 || pos > hier_select_cnt)
-		    {
-		      PT_ERRORmf (parser, sort, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SORT_SPEC_RANGE_ERR, pos);
-		      return -1;
-		    }
-		}
-	    }
-
-	  query->info.query.order_by = parser_copy_tree (parser, orderby);
-	  query->info.query.orderby_for = parser_copy_tree (parser, orderby_for);
-	  query->info.query.flag.order_siblings = 1;
-
-	  /* Re-resolve aliases in FOR clause against this branch's select-list */
-	  {
-	    PT_NODE *n;
-	    for (n = query->info.query.orderby_for; n; n = n->next)
-	      {
-		resolve_alias_in_expr_node (n, query->info.query.q.select.list);
-	      }
-	  }
-
-	  return 1;
-	}
-      return 0;
-
-    case PT_UNION:
-    case PT_INTERSECTION:
-    case PT_DIFFERENCE:
-      {
-	int cnt1, cnt2;
-
-	cnt1 = parser_attach_order_siblings_to_branches (parser, query->info.query.q.union_.arg1, orderby, orderby_for);
-	if (cnt1 < 0)
-	  {
-	    return -1;
-	  }
-
-	cnt2 = parser_attach_order_siblings_to_branches (parser, query->info.query.q.union_.arg2, orderby, orderby_for);
-	if (cnt2 < 0)
-	  {
-	    return -1;
-	  }
-
-	return cnt1 + cnt2;
-      }
-
-    default:
-      return 0;
-    }
-}
-
-/*
- * parser_relocate_order_siblings () - move ORDER SIBLINGS BY from UNION to all CONNECT BY branches
- */
-static void
-parser_relocate_order_siblings (PARSER_CONTEXT * parser, PT_NODE * stmt)
-{
-  int attached;
-
-  if (stmt == NULL || !stmt->info.query.flag.order_siblings)
-    {
-      return;
-    }
-
-  if (stmt->node_type == PT_SELECT && stmt->info.query.q.select.connect_by != NULL)
-    {
-      return;
-    }
-
-  if (stmt->node_type != PT_UNION && stmt->node_type != PT_INTERSECTION && stmt->node_type != PT_DIFFERENCE)
-    {
-      return;
-    }
-
-  attached =
-    parser_attach_order_siblings_to_branches (parser, stmt, stmt->info.query.order_by, stmt->info.query.orderby_for);
-  if (attached > 0)
-    {
-      stmt->info.query.order_by = NULL;
-      stmt->info.query.orderby_for = NULL;
-      stmt->info.query.flag.order_siblings = 0;
-    }
-}
 
 static void
 parser_push_orderby_node (PT_NODE * node)
