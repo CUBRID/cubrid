@@ -11962,6 +11962,10 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
     {
       parser_walk_tree (parser, node, pt_check_sub_query_spec, snl, NULL, NULL);
     }
+  else if (remote_upd > 0 && upd_spec)
+    {
+      parser_walk_tree (parser, node, pt_get_server_name_list, snl, NULL, NULL);
+    }
 
   if (into_spec)
     {
