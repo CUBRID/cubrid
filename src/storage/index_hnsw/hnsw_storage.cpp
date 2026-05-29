@@ -161,6 +161,34 @@ namespace cubhnsw
     m_node_slots_cache[encode_oid_key (key)].push_back (slot_id);
   }
 
+  void
+  storage::remove_node_slot_cached_id (const key_id_t &key, const slot_id_t &slot_id)
+  {
+    auto it = m_node_slots_cache.find (encode_oid_key (key));
+    if (it == m_node_slots_cache.end ())
+      {
+	return;
+      }
+
+    std::vector<slot_id_t> &node_slots = it->second;
+    for (auto node_slot_it = node_slots.begin (); node_slot_it != node_slots.end ();)
+      {
+	if (OID_EQ (&*node_slot_it, &slot_id))
+	  {
+	    node_slot_it = node_slots.erase (node_slot_it);
+	  }
+	else
+	  {
+	    ++node_slot_it;
+	  }
+      }
+
+    if (node_slots.empty ())
+      {
+	m_node_slots_cache.erase (it);
+      }
+  }
+
   int
   storage::rebuild_node_slots_cache (algo_context_t &context)
   {
@@ -199,6 +227,11 @@ namespace cubhnsw
 	  }
 
 	node_t node { reinterpret_cast<byte_t *> (recdes.data) };
+	if (node.is_tombstoned ())
+	  {
+	    continue;
+	  }
+
 	slot_id_t node_slot = { vpid->pageid, slot_id, vpid->volid };
 
 	storage_p->set_node_slot_cached_id (node.get_key (), node_slot);

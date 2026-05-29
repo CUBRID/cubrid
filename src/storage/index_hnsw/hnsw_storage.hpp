@@ -245,6 +245,7 @@ namespace cubhnsw
       const float *get_vector_by_slot_id (algo_context_t &context, const slot_id_t &slot_id,
 					  const lock_mode &mode);
       const std::vector<slot_id_t> *get_node_slots_cached_ids (algo_context_t &context, const key_id_t &key);
+      void remove_node_slot_cached_id (const key_id_t &key, const slot_id_t &slot_id);
       int rebuild_node_slots_cache (algo_context_t &context);
 
       // neighbors cache helpers (single-thread, in-memory)
@@ -322,7 +323,7 @@ namespace cubhnsw
       /* TODO: This is not thread-safe. Currently, we are assuming single-threaded access, but we need to make it thread-safe. */
       neighbors_cache_t m_neighbors_cache;    // per-level: encoded slot -> neighbors
 
-      /* heap OID -> HNSW node slots. Tombstone state belongs to node slots, not to heap OIDs. */
+      /* heap OID -> live HNSW node slots. Tombstone state belongs to node slots, not to heap OIDs. */
       node_slots_cache_t m_node_slots_cache;
       bool m_node_slots_cache_is_complete = false;
   };
