@@ -17,14 +17,17 @@
  */
 
 /*
- * px_heap_scan_checker.cpp - module that checks whether parallel heap scan is possible.
+ * px_scan_checker.cpp - module that checks whether parallel scan is possible.
  */
 
-#include "px_heap_scan_checker.hpp"
+#include "px_scan_checker.hpp"
 
 #include "dbtype_def.h"
+#include "error_manager.h"
 #include "regu_var.hpp"
+#include "schema_manager.h"
 #include "storage_common.h"
+#include "work_space.h"
 #include "xasl_predicate.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
@@ -34,27 +37,12 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
-  /*
-   * Parallel heap scan has two execution modes:
-   *   1. list_merge: Fast mode that merges sorted partial results from workers
-   *   2. row_by_row: Slower mode that processes rows individually, but covers all cases
-   *
-   * When list_merge is not possible, row_by_row is always available as a fallback.
-   *
-   * Buildvalue optimization (buildvalue_opt) can be applied when:
-   *   - The select list contains only aggregate functions suitable for buildvalue optimization
-   *   - list_merge mode: buildvalue_opt is always possible
-   *   - row_by_row mode: buildvalue_opt may not be possible due to constraints like ROWNUM
-   *
-   * The BUILDVALUE_OPT_POSSIBLE flag specifically checks:
-   *   1. Whether the select list consists solely of suitable aggregate functions
-   *   2. Whether row_by_row constraints (e.g., ROWNUM usage) prevent buildvalue optimization
-   */
+  /* modes: list_merge (fast, workers merge partial lists) | row_by_row (fallback) | buildvalue_opt (agg-only selects; blocked by ROWNUM in row_by_row). */
 
   using possible_flags = uint32_t;
-  const possible_flags CANNOT_PARALLEL_HEAP_SCAN = 0x1 << 0;
+  const possible_flags CANNOT_PARALLEL_SCAN = 0x1 << 0;
   const possible_flags CANNOT_LIST_MERGE = 0x1 << 1;
   const possible_flags CANNOT_BUILDVALUE_OPT = 0x1 << 2;
 
@@ -81,22 +69,17 @@ namespace parallel_heap_scan
       }
   }
 
-  // Thread-local map to cache check results for XASL_NODE and prevent infinite recursion
-  // This is used to detect circular references in XASL structures and reuse computed results
+  /* thread-local cache: memoizes check results and breaks circular XASL refs. */
   thread_local std::unordered_map<XASL_NODE *, possible_flags> xasl_check_cache;
 
-  // Thread-local set to track XASL_NODEs being processed to prevent infinite recursion in process functions
+  /* cycle guard for the process_* recursion. */
   thread_local std::unordered_set<XASL_NODE *> xasl_processing_set;
 
-  inline void set_flag (possible_flags &flags, possible_flags flag)
+  static void set_flag (possible_flags &flags, possible_flags flag)
   {
     flags |= flag;
   }
-  inline void clear_flag (possible_flags &flags, possible_flags flag)
-  {
-    flags &= ~flag;
-  }
-  inline bool is_flag_set (possible_flags flags, possible_flags flag)
+  static bool is_flag_set (possible_flags flags, possible_flags flag)
   {
     return (flags & flag) != 0;
   }
@@ -138,6 +121,7 @@ namespace parallel_heap_scan
 
   void process_xasl_node_recursive (XASL_NODE *arg);
   void process_xasl_node_recursive_force_cannot_parallel (XASL_NODE *arg);
+  void block_parallel_index_and_temp_in_subtree (XASL_NODE *arg);
 
   template <bool is_outptr_list>
   possible_flags check (REGU_VARIABLE *arg)
@@ -151,9 +135,9 @@ namespace parallel_heap_scan
     if (arg->xasl)
       {
 	temp = sibling_check<is_outptr_list> (arg->xasl);
-	if (is_flag_set (temp, CANNOT_PARALLEL_HEAP_SCAN))
+	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	  {
-	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
       }
 
@@ -164,7 +148,7 @@ namespace parallel_heap_scan
       case TYPE_CLASS_ATTR_ID:
 	if (arg->value.attr_descr.type == DB_TYPE_OBJECT || arg->value.attr_descr.type == DB_TYPE_OID)
 	  {
-	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
 	break;
       case TYPE_CONSTANT:
@@ -173,13 +157,11 @@ namespace parallel_heap_scan
       case TYPE_POSITION:
       case TYPE_POS_VALUE:
       case TYPE_LIST_ID:
-	/* can execute with constants */
 	break;
       case TYPE_ORDERBY_NUM:
       case TYPE_CLASSOID:
       case TYPE_REGUVAL_LIST:
-	/* cannot execute with this regu-variable */
-	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	set_flag (result, CANNOT_PARALLEL_SCAN);
 	break;
       case TYPE_INARITH:
       case TYPE_OUTARITH:
@@ -188,14 +170,14 @@ namespace parallel_heap_scan
 	break;
       case TYPE_SP:
 	result |= check<is_outptr_list> (arg->value.sp_ptr->args);
-	/* cannot execute sp in child threads */
+	/* SP not executable in child threads. */
 	if (is_outptr_list)
 	  {
 	    set_flag (result, CANNOT_LIST_MERGE);
 	  }
 	else
 	  {
-	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
 	break;
       case TYPE_FUNC:
@@ -204,9 +186,9 @@ namespace parallel_heap_scan
 	break;
       case TYPE_REGU_VAR_LIST:
 	temp = check<is_outptr_list> (arg->value.regu_var_list);
-	if (is_flag_set (temp, CANNOT_PARALLEL_HEAP_SCAN))
+	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	  {
-	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
 	else
 	  {
@@ -214,7 +196,7 @@ namespace parallel_heap_scan
 	  }
 	break;
       default:
-	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	set_flag (result, CANNOT_PARALLEL_SCAN);
 	break;
       }
 
@@ -273,7 +255,7 @@ namespace parallel_heap_scan
     if (arg->opcode == T_TRACE_STATS || arg->opcode == T_EVALUATE_VARIABLE || arg->opcode == T_DEFINE_VARIABLE
 	|| arg->opcode == T_CURRENT_VALUE || arg->opcode == T_NEXT_VALUE)
       {
-	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
     return result;
   }
@@ -302,16 +284,12 @@ namespace parallel_heap_scan
       {
       case T_COMP_EVAL_TERM:
 	return check<is_outptr_list> (&arg->et.et_comp);
-	break;
       case T_ALSM_EVAL_TERM:
 	return check<is_outptr_list> (&arg->et.et_alsm);
-	break;
       case T_LIKE_EVAL_TERM:
 	return check<is_outptr_list> (&arg->et.et_like);
-	break;
       case T_RLIKE_EVAL_TERM:
 	return check<is_outptr_list> (&arg->et.et_rlike);
-	break;
       default:
 	return 0;
       }
@@ -358,6 +336,38 @@ namespace parallel_heap_scan
 	   (arg->case_sensitive);
   }
 
+  /* filtered index → serial: bug-prone + low usage, excluded as a constraint. function indexes are plain B-tree keys, not blocked. */
+  static bool
+  is_filtered_index (const INDX_INFO *indexptr)
+  {
+    if (indexptr == NULL)
+      {
+	return false;
+      }
+    if (OID_ISNULL (&indexptr->class_oid))
+      {
+	return false;
+      }
+    MOP class_mop = ws_mop (&indexptr->class_oid, NULL);
+    if (class_mop == NULL)
+      {
+	return false;
+      }
+    SM_CLASS_CONSTRAINT *cons = sm_class_constraints (class_mop);
+    for (; cons != NULL; cons = cons->next)
+      {
+	if (BTID_IS_EQUAL (&cons->index_btid, &indexptr->btid))
+	  {
+	    if (cons->filter_predicate != NULL)
+	      {
+		return true;
+	      }
+	    break;
+	  }
+      }
+    return false;
+  }
+
   template <>
   possible_flags check<false> (ACCESS_SPEC_TYPE *arg)
   {
@@ -366,22 +376,92 @@ namespace parallel_heap_scan
       {
 	return 0;
       }
-    if (arg->access != ACCESS_METHOD_SEQUENTIAL || arg->type != TARGET_CLASS)
+    if (arg->type == TARGET_CLASS)
       {
-	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	if (arg->access == ACCESS_METHOD_SEQUENTIAL)
+	  {
+	  }
+	else if (arg->access == ACCESS_METHOD_INDEX)
+	  {
+	    if (ACCESS_SPEC_IS_FLAGED (arg, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN))
+	      {
+		/* min/max agg scan emits no rows. */
+		set_flag (result, CANNOT_PARALLEL_SCAN);
+		return result;
+	      }
+	    if (arg->indexptr != NULL)
+	      {
+		/* ISS/ILS dynamically rewrites curr_keyno/key-ranges; conflicts with leaf-page cursor. */
+		if (arg->indexptr->use_iss || arg->indexptr->ils_prefix_len > 0)
+		  {
+		    set_flag (result, CANNOT_PARALLEL_SCAN);
+		  }
+
+		/* keylimit: global cap incompatible with per-worker page split. */
+		if (arg->indexptr->key_info.is_user_given_keylimit)
+		  {
+		    set_flag (result, CANNOT_PARALLEL_SCAN);
+		  }
+
+		/* orderby/groupby skip+desc need globally ordered traversal. */
+		if (arg->indexptr->orderby_skip || arg->indexptr->groupby_skip
+		    || arg->indexptr->orderby_desc || arg->indexptr->groupby_desc)
+		  {
+		    set_flag (result, CANNOT_PARALLEL_SCAN);
+		  }
+
+		/* filtered index: bug-prone + low usage, excluded. */
+		if (is_filtered_index (arg->indexptr))
+		  {
+		    set_flag (result, CANNOT_PARALLEL_SCAN);
+		  }
+	      }
+	  }
+	else
+	  {
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
+	    return result;
+	  }
+      }
+    else if (arg->type == TARGET_LIST)
+      {
+      }
+    else
+      {
+	set_flag (result, CANNOT_PARALLEL_SCAN);
 	return result;
       }
     if (arg->next)
       {
-	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	set_flag (result, CANNOT_PARALLEL_SCAN);
 	return result;
       }
-    result |= check<false> (arg->s.cls_node.cls_regu_list_pred);
-    result |= check<false> (arg->s.cls_node.cls_regu_list_rest);
-    result |= check<false> (arg->where_pred);
-    if (!arg->s.cls_node.cls_regu_list_pred && !arg->s.cls_node.cls_regu_list_rest)
+    if (arg->type == TARGET_CLASS)
       {
-	set_flag (result, CANNOT_LIST_MERGE);
+	result |= check<false> (arg->s.cls_node.cls_regu_list_pred);
+	result |= check<false> (arg->s.cls_node.cls_regu_list_rest);
+	result |= check<false> (arg->where_pred);
+	if (arg->access == ACCESS_METHOD_INDEX)
+	  {
+	    result |= check<false> (arg->s.cls_node.cls_regu_list_key);
+	    result |= check<false> (arg->where_key);
+	    result |= check<false> (arg->s.cls_node.cls_regu_list_range);
+	    result |= check<false> (arg->where_range);
+	  }
+	if (!arg->s.cls_node.cls_regu_list_pred && !arg->s.cls_node.cls_regu_list_rest)
+	  {
+	    set_flag (result, CANNOT_LIST_MERGE);
+	  }
+      }
+    else if (arg->type == TARGET_LIST)
+      {
+	result |= check<false> (arg->s.list_node.list_regu_list_pred);
+	result |= check<false> (arg->s.list_node.list_regu_list_rest);
+	result |= check<false> (arg->where_pred);
+	if (!arg->s.list_node.list_regu_list_pred && !arg->s.list_node.list_regu_list_rest)
+	  {
+	    set_flag (result, CANNOT_LIST_MERGE);
+	  }
       }
     return result;
   }
@@ -396,7 +476,7 @@ namespace parallel_heap_scan
       }
     if (arg->next)
       {
-	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	set_flag (result, CANNOT_PARALLEL_SCAN);
 	return result;
       }
     if (arg->type != TARGET_CLASS && arg->type != TARGET_LIST)
@@ -425,7 +505,7 @@ namespace parallel_heap_scan
     if (sibling->selected_upd_list || sibling->scan_op_type != S_SELECT || sibling->upd_del_class_cnt > 0
 	|| XASL_IS_FLAGED (sibling, XASL_MULTI_UPDATE_AGG))
       {
-	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
 
     for (XASL_NODE *xaslp = sibling->aptr_list; xaslp; xaslp = xaslp->next)
@@ -435,15 +515,15 @@ namespace parallel_heap_scan
 
     if (sibling->bptr_list || sibling->fptr_list)
       {
-	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
 
     for (XASL_NODE *xaslp = sibling->dptr_list; xaslp; xaslp = xaslp->next)
       {
 	temp = sibling_check<false> (xaslp);
-	if (is_flag_set (temp, CANNOT_PARALLEL_HEAP_SCAN))
+	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	  {
-	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
       }
 
@@ -455,9 +535,9 @@ namespace parallel_heap_scan
     if (sibling->if_pred)
       {
 	temp = check<is_outptr_list> (sibling->if_pred);
-	if (is_flag_set (temp, CANNOT_PARALLEL_HEAP_SCAN))
+	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	  {
-	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
       }
 
@@ -482,15 +562,13 @@ namespace parallel_heap_scan
 	return 0;
       }
 
-    // Check if this XASL_NODE has already been checked
     auto it = xasl_check_cache.find (arg);
     if (it != xasl_check_cache.end ())
       {
-	// Return cached result
 	return it->second;
       }
 
-    // Mark as being visited (with temporary result 0) to prevent infinite recursion
+    /* mark visited (sentinel 0) before recursing — breaks XASL ref cycles. */
     xasl_check_cache[arg] = 0;
 
     possible_flags result = 0, temp = 0;
@@ -516,7 +594,7 @@ namespace parallel_heap_scan
 		    break;
 		  }
 		temp |= check<false> (agg_it->operands);
-		if (is_flag_set (temp, CANNOT_PARALLEL_HEAP_SCAN))
+		if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 		  {
 		    buildvalue_opt = false;
 		    break;
@@ -531,18 +609,20 @@ namespace parallel_heap_scan
       case CTE_PROC:
 	if (arg->proc.cte.recursive_part)
 	  {
-	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
 	break;
       case MERGE_PROC:
-	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	set_flag (result, CANNOT_PARALLEL_SCAN);
 	break;
       case HASHJOIN_PROC:
       case UNION_PROC:
       case DIFFERENCE_PROC:
       case INTERSECTION_PROC:
       case INSERT_PROC:
+	break;
       case MERGELIST_PROC:
+	set_flag (result, CANNOT_PARALLEL_SCAN);
 	break;
       case OBJFETCH_PROC:
       case UPDATE_PROC:
@@ -552,43 +632,67 @@ namespace parallel_heap_scan
       case BUILD_SCHEMA_PROC:
       case SCAN_PROC:
       default:
-	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	set_flag (result, CANNOT_PARALLEL_SCAN);
 	break;
       }
 
     if (arg->selected_upd_list || arg->scan_op_type != S_SELECT || arg->upd_del_class_cnt > 0
 	|| XASL_IS_FLAGED (arg, XASL_MULTI_UPDATE_AGG))
       {
-	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
     for (XASL_NODE *xaslp = arg->aptr_list; xaslp; xaslp = xaslp->next)
       {
 	if (XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE))
 	  {
 	    temp = sibling_check<false> (xaslp);
-	    if (is_flag_set (temp, CANNOT_PARALLEL_HEAP_SCAN))
+	    if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	      {
-		set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+		set_flag (result, CANNOT_PARALLEL_SCAN);
 	      }
 	  }
 	else
 	  {
-	    result |= check<is_outptr_list> (xaslp);
+	    /* this xasl not belong to current arg */
 	  }
-
       }
 
     if (arg->bptr_list || arg->fptr_list || arg->connect_by_ptr)
       {
-	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
 
-    for (XASL_NODE *xaslp = arg->dptr_list; xaslp; xaslp = xaslp->next)
+    std::unordered_set<XASL_NODE *> dptrs;
+    for (XASL_NODE *xaslp1 = arg; xaslp1; xaslp1 = xaslp1->scan_ptr)
+      {
+	for (XASL_NODE *xaslp2 = xaslp1->dptr_list; xaslp2; xaslp2 = xaslp2->next)
+	  {
+	    dptrs.insert (xaslp2);
+	  }
+      }
+
+    for (XASL_NODE *xaslp : dptrs)
       {
 	temp = sibling_check<false> (xaslp);
-	if (is_flag_set (temp, CANNOT_PARALLEL_HEAP_SCAN))
+	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	  {
-	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
+	  }
+      }
+
+    if (dptrs.size() > 0)
+      {
+	std::unordered_set<XASL_NODE *> dptrs2 (dptrs);
+	for (XASL_NODE *xaslp : dptrs2)
+	  {
+	    if (XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE))
+	      {
+		dptrs.erase (xaslp);
+	      }
+	  }
+	if (dptrs.size() > 0)
+	  {
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
       }
 
@@ -596,7 +700,7 @@ namespace parallel_heap_scan
       {
 	for (XASL_NODE *xaslp = arg->scan_ptr; xaslp; xaslp = xaslp->scan_ptr)
 	  {
-	    result |= sibling_check<is_outptr_list> (arg->scan_ptr);
+	    result |= sibling_check<is_outptr_list> (xaslp);
 	  }
       }
 
@@ -609,9 +713,9 @@ namespace parallel_heap_scan
     if (arg->if_pred)
       {
 	temp = check<is_outptr_list> (arg->if_pred);
-	if (is_flag_set (temp, CANNOT_PARALLEL_HEAP_SCAN))
+	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	  {
-	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
       }
 
@@ -640,7 +744,7 @@ namespace parallel_heap_scan
 	set_flag (result, CANNOT_BUILDVALUE_OPT);
       }
 
-    // Update cache with computed result
+    /* Update cache with computed result */
     xasl_check_cache[arg] = result;
 
     return result;
@@ -653,7 +757,6 @@ namespace parallel_heap_scan
 	return;
       }
 
-    // Check if this XASL_NODE is already being processed to prevent infinite recursion
     if (xasl_processing_set.find (arg) != xasl_processing_set.end ())
       {
 	return;
@@ -667,7 +770,7 @@ namespace parallel_heap_scan
 	if (arg->proc.cte.recursive_part)
 	  {
 	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.cte.recursive_part);
-	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
 	if (arg->proc.cte.non_recursive_part)
 	  {
@@ -683,7 +786,21 @@ namespace parallel_heap_scan
 	  {
 	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.merge.update_xasl);
 	  }
-	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	set_flag (result, CANNOT_PARALLEL_SCAN);
+	break;
+      case MERGELIST_PROC:
+	for (ACCESS_SPEC_TYPE *specp = arg->proc.mergelist.outer_spec_list; specp; specp = specp->next)
+	  {
+	    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+	  }
+	for (ACCESS_SPEC_TYPE *specp = arg->proc.mergelist.inner_spec_list; specp; specp = specp->next)
+	  {
+	    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+	  }
+	for (XASL_NODE *xaslp = arg->aptr_list; xaslp; xaslp = xaslp->next)
+	  {
+	    block_parallel_index_and_temp_in_subtree (xaslp);
+	  }
 	break;
       case BUILDLIST_PROC:
       case BUILDVALUE_PROC:
@@ -692,7 +809,6 @@ namespace parallel_heap_scan
       case DIFFERENCE_PROC:
       case INTERSECTION_PROC:
       case INSERT_PROC:
-      case MERGELIST_PROC:
 	break;
       case OBJFETCH_PROC:
       case UPDATE_PROC:
@@ -703,13 +819,20 @@ namespace parallel_heap_scan
       case SCAN_PROC:
       default:
 	process_xasl_node_recursive_force_cannot_parallel (arg);
-	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	set_flag (result, CANNOT_PARALLEL_SCAN);
 	break;
       }
 
     for (XASL_NODE *xaslp = arg->aptr_list; xaslp; xaslp = xaslp->next)
       {
-	process_xasl_node_recursive (xaslp);
+	if (XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE))
+	  {
+	    process_xasl_node_recursive_force_cannot_parallel (xaslp);
+	  }
+	else
+	  {
+	    process_xasl_node_recursive (xaslp);
+	  }
       }
     for (XASL_NODE *xaslp = arg->bptr_list; xaslp; xaslp = xaslp->next)
       {
@@ -733,19 +856,36 @@ namespace parallel_heap_scan
       }
 
     result |= check<false> (arg);
-    if (is_flag_set (result, CANNOT_PARALLEL_HEAP_SCAN))
+
+    const bool block_index_spec =
+	    (arg->instnum_pred || arg->instnum_val)
+	    || XASL_IS_FLAGED (arg, XASL_ANALYTIC_SKIP_SORT)
+	    || XASL_IS_FLAGED (arg, XASL_ANALYTIC_USES_LIMIT_OPT);
+
+    const bool block_all_specs = XASL_IS_FLAGED (arg, XASL_SKIP_ORDERBY_LIST);
+
+    if (is_flag_set (result, CANNOT_PARALLEL_SCAN) || block_all_specs)
       {
 	for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
 	  {
-	    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+	    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
 	  }
       }
     else
       {
-	/* parallel heap scan is possible */
+	if (block_index_spec)
+	  {
+	    for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
+	      {
+		if (specp->type == TARGET_CLASS && specp->access == ACCESS_METHOD_INDEX)
+		  {
+		    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+		  }
+	      }
+	  }
+
 	if (!is_flag_set (result, CANNOT_BUILDVALUE_OPT))
 	  {
-	    /* buildvalue optimization is possible */
 	    for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
 	      {
 		ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_BUILDVALUE_OPT);
@@ -755,7 +895,6 @@ namespace parallel_heap_scan
 	  {
 	    if (!is_flag_set (result, CANNOT_LIST_MERGE))
 	      {
-		/* list merge is possible */
 		for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
 		  {
 		    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_MERGEABLE_LIST);
@@ -763,15 +902,56 @@ namespace parallel_heap_scan
 	      }
 	    else
 	      {
-		/* list merge is not possible, try row by row mode */
+		/* list merge blocked → row-by-row fallback. */
 		for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
 		  {
 		    ACCESS_SPEC_UNSET_FLAG (specp, ACCESS_SPEC_FLAG_MERGEABLE_LIST);
+		    if (specp->type == TARGET_LIST
+			|| (specp->type == TARGET_CLASS && specp->access == ACCESS_METHOD_INDEX))
+		      {
+			ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+		      }
 		  }
 	      }
 	  }
       }
 
+  }
+
+  void block_parallel_index_and_temp_in_subtree (XASL_NODE *arg)
+  {
+    if (!arg)
+      {
+	return;
+      }
+    for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
+      {
+	if (specp->type == TARGET_LIST
+	    || (specp->type == TARGET_CLASS && IS_ANY_INDEX_ACCESS (specp->access)))
+	  {
+	    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+	  }
+      }
+    for (XASL_NODE *xaslp = arg->aptr_list; xaslp; xaslp = xaslp->next)
+      {
+	block_parallel_index_and_temp_in_subtree (xaslp);
+      }
+    for (XASL_NODE *xaslp = arg->bptr_list; xaslp; xaslp = xaslp->next)
+      {
+	block_parallel_index_and_temp_in_subtree (xaslp);
+      }
+    for (XASL_NODE *xaslp = arg->dptr_list; xaslp; xaslp = xaslp->next)
+      {
+	block_parallel_index_and_temp_in_subtree (xaslp);
+      }
+    for (XASL_NODE *xaslp = arg->fptr_list; xaslp; xaslp = xaslp->next)
+      {
+	block_parallel_index_and_temp_in_subtree (xaslp);
+      }
+    for (XASL_NODE *xaslp = arg->scan_ptr; xaslp; xaslp = xaslp->scan_ptr)
+      {
+	block_parallel_index_and_temp_in_subtree (xaslp);
+      }
   }
 
   void process_xasl_node_recursive_force_cannot_parallel (XASL_NODE *arg)
@@ -781,20 +961,17 @@ namespace parallel_heap_scan
 	return;
       }
 
-    // Check if this XASL_NODE is already being processed to prevent infinite recursion
     if (xasl_processing_set.find (arg) != xasl_processing_set.end ())
       {
 	return;
       }
     xasl_processing_set.insert (arg);
 
-    // Mark all access specs as cannot parallel
     for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
       {
-	ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+	ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
       }
 
-    // Recursively process all child nodes
     for (XASL_NODE *xaslp = arg->aptr_list; xaslp; xaslp = xaslp->next)
       {
 	process_xasl_node_recursive_force_cannot_parallel (xaslp);
@@ -820,7 +997,6 @@ namespace parallel_heap_scan
 	process_xasl_node_recursive_force_cannot_parallel (xaslp);
       }
 
-    // Process special node types
     switch (arg->type)
       {
       case CTE_PROC:
@@ -843,6 +1019,17 @@ namespace parallel_heap_scan
 	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.merge.update_xasl);
 	  }
 	break;
+      case MERGELIST_PROC:
+	/* guard llsid union from pllsid_parallel overwrite via outer/inner spec_list. */
+	for (ACCESS_SPEC_TYPE *specp = arg->proc.mergelist.outer_spec_list; specp; specp = specp->next)
+	  {
+	    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+	  }
+	for (ACCESS_SPEC_TYPE *specp = arg->proc.mergelist.inner_spec_list; specp; specp = specp->next)
+	  {
+	    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+	  }
+	break;
       default:
 	break;
       }
@@ -850,17 +1037,15 @@ namespace parallel_heap_scan
 }
 
 extern int
-scan_check_parallel_heap_scan_possible (XASL_NODE *xasl)
+scan_check_parallel_scan_possible (XASL_NODE *xasl)
 {
-  // Clear caches to start fresh for each top-level check
-  parallel_heap_scan::xasl_check_cache.clear ();
-  parallel_heap_scan::xasl_processing_set.clear ();
+  parallel_scan::xasl_check_cache.clear ();
+  parallel_scan::xasl_processing_set.clear ();
 
-  parallel_heap_scan::process_xasl_node_recursive (xasl);
+  parallel_scan::process_xasl_node_recursive (xasl);
 
-  // Clear caches after processing to free memory
-  parallel_heap_scan::xasl_check_cache.clear ();
-  parallel_heap_scan::xasl_processing_set.clear ();
+  parallel_scan::xasl_check_cache.clear ();
+  parallel_scan::xasl_processing_set.clear ();
 
   return NO_ERROR;
 }
