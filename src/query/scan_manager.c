@@ -51,6 +51,7 @@
 #include "xasl_predicate.hpp"
 #include "xasl.h"
 #include "query_hash_scan.h"
+#include "file_manager.h"
 #include "statistics.h"
 #include "px_scan.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -2921,18 +2922,32 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	{
 	  db_private_free_and_init (thread_p, hsidp->sampling.picked_vpids);
 	}
+      hsidp->sampling.picked_count = 0;
+      hsidp->sampling.picked_cursor = 0;
 
-      if (collect_strided_vpids (thread_p, hfid,
-				 &hsidp->sampling.picked_vpids,
-				 &hsidp->sampling.picked_count, &total_pages) != NO_ERROR)
+      if (file_get_num_total_user_pages (thread_p, cls_oid, &total_pages) != NO_ERROR)
 	{
-	  /* collect contract zeros picked_count on failure; sync cursor to keep cursor<=count invariant */
-	  hsidp->sampling.picked_cursor = 0;
 	  return ER_FAILED;
 	}
-      hsidp->sampling.picked_cursor = 0;
-      hsidp->sampling.weight = MAX (total_pages / MAX (hsidp->sampling.picked_count, 1), 1);
-      assert (hsidp->sampling.picked_vpids != NULL || hsidp->sampling.picked_count == 0);
+
+      /* small table: sampling picks every page anyway -> plain full scan, exact stats, weight 1 */
+      if (total_pages <= MIN_HEAP_SAMPLING_PAGES)
+	{
+	  hsidp->sampling.is_fullscan = true;
+	  hsidp->sampling.weight = 1;
+	}
+      else
+	{
+	  hsidp->sampling.is_fullscan = false;
+	  if (collect_strided_vpids (thread_p, hfid, &hsidp->sampling.picked_vpids,
+				     &hsidp->sampling.picked_count, &total_pages) != NO_ERROR)
+	    {
+	      /* collect contract zeros picked_count on failure; cursor already synced above */
+	      return ER_FAILED;
+	    }
+	  hsidp->sampling.weight = MAX (total_pages / MAX (hsidp->sampling.picked_count, 1), 1);
+	  assert (hsidp->sampling.picked_vpids != NULL || hsidp->sampling.picked_count == 0);
+	}
     }
 
   return NO_ERROR;

@@ -8051,7 +8051,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		    }
 		  else
 		    {
-		      if (sampling)
+		      if (sampling && !sampling->is_fullscan)
 			{
 			  /* consume next pre-picked VPID */
 			  assert (sampling->picked_cursor <= sampling->picked_count);

@@ -386,6 +386,7 @@ typedef struct sampling_info SAMPLING_INFO;
 struct sampling_info
 {
   int weight;			/* for sampling statistics */
+  bool is_fullscan;		/* total <= MIN_HEAP_SAMPLING_PAGES: sequential full scan, no pre-pick */
   VPID *picked_vpids;		/* pre-picked sampling VPIDs (db_private_alloc) */
   int picked_count;		/* number of valid entries in picked_vpids */
   int picked_cursor;		/* next index to consume from picked_vpids */
