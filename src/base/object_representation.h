@@ -1259,21 +1259,11 @@ STATIC_INLINE int or_put_string_aligned (OR_BUF * buf, char *string) __attribute
 STATIC_INLINE int or_put_string_aligned_with_length (OR_BUF * buf, const char *str) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE int or_get_data (OR_BUF * buf, char *data, int length) __attribute__ ((ALWAYS_INLINE));
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern char *or_get_varbit (OR_BUF * buf, int *length_ptr);
-extern char *or_get_varchar (OR_BUF * buf, int *length_ptr);
-#endif
 STATIC_INLINE int or_get_varbit_length (OR_BUF * buf, int *intval) __attribute__ ((ALWAYS_INLINE));
-#if defined(ENABLE_UNUSED_FUNCTION)	// Unused — temporarily preserved to minimize review diff; will be removed in a follow-up PR
-STATIC_INLINE int or_get_varchar_length (OR_BUF * buf, int *intval) __attribute__ ((ALWAYS_INLINE));
-#endif
 /* Get the compressed and the decompressed lengths of a string stored in buffer */
 /* Legacy alias for compression-length-only reads. */
 #define or_get_varchar_compression_lengths(buf, compressed_size, decompressed_size) \
   or_get_string_header (buf, NULL, decompressed_size, compressed_size)
-#if defined(ENABLE_UNUSED_FUNCTION)	// Unused — temporarily preserved to minimize review diff; will be removed in a follow-up PR
-STATIC_INLINE int or_get_string_size_byte (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
-#endif
 
 STATIC_INLINE int or_varbit_length (int bitlen) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_varchar_length (int length, int size, int compressed_size) __attribute__ ((ALWAYS_INLINE));
@@ -2385,33 +2375,6 @@ or_get_varbit_length (OR_BUF * buf, int *rc)
   return bitlen;
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)	// Unused — temporarily preserved to minimize review diff; will be removed in a follow-up PR
-/*
- * or_get_varchar_length - get varchar length from or buffer
- *    return: length of varchar or 0 if error.
- *    buf(in/out): or buffer
- *    rc(out): status code
- */
-STATIC_INLINE int
-or_get_varchar_length (OR_BUF * buf, int *rc)
-{
-  int charlen, compressed_length = 0, decompressed_length = 0;
-
-  *rc = or_get_varchar_compression_lengths (buf, &compressed_length, &decompressed_length);
-
-  if (compressed_length > 0)
-    {
-      charlen = compressed_length;
-    }
-  else
-    {
-      charlen = decompressed_length;
-    }
-
-  return charlen;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
 /*
  * or_put_string_header() - Write the variable-length string header.
  *
@@ -2881,28 +2844,6 @@ or_put_string_aligned_with_length (OR_BUF * buf, const char *str)
     }
   return rc;
 }
-
-#if defined(ENABLE_UNUSED_FUNCTION)	// Unused — temporarily preserved to minimize review diff; will be removed in a follow-up PR
-/*
- * or_get_string_size_byte - read string size byte value from or buffer
- *    return: byte value read
- *    buf(in/out): or buffer
- *    error(out): NO_ERROR or error code
- *
- * NOTE that it is really same as or_get_byte function. It is duplicated to inline the function for performance.
- */
-STATIC_INLINE int
-or_get_string_size_byte (OR_BUF * buf, int *error)
-{
-  int size_prefix;
-
-  assert (buf->ptr + OR_BYTE_SIZE <= buf->endptr);
-  size_prefix = OR_GET_BYTE (buf->ptr);
-  buf->ptr += OR_BYTE_SIZE;
-  *error = NO_ERROR;
-  return size_prefix;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * or_packed_varbit_length - returns packed varbit length of or buffer encoding
