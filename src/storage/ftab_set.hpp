@@ -156,6 +156,6 @@ int collect_strided_vpids_multi (THREAD_ENTRY *thread_p,
 				 VPID **out_picked,
 				 int *out_count,
 				 int **out_part_offsets,
-				 int *out_total_data_pages);
+				 int *out_weight);
 
 #endif // _FTAB_SET_HPP_

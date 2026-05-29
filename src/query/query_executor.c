@@ -7398,7 +7398,7 @@ qexec_prepare_table_sampling (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_s
   VPID *picked = NULL;
   int *part_offsets = NULL;
   int picked_count = 0;
-  int total_data_pages = 0;
+  int weight = 1;
   int n_parts = 0;
   int error_code = NO_ERROR;
 
@@ -7426,7 +7426,7 @@ qexec_prepare_table_sampling (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_s
   assert (n_parts >= 1);
 
   error_code = collect_strided_vpids_multi (thread_p, hfids.data (), n_parts, &picked, &picked_count, &part_offsets,
-					    &total_data_pages);
+					    &weight);
   if (error_code != NO_ERROR)
     {
       /* collect self-cleans on error */
@@ -7442,11 +7442,8 @@ qexec_prepare_table_sampling (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_s
   sampling->partition_cursor = 0;
   /* non-partitioned slice_end; partitioned reset by qexec_init_next_partition */
   sampling->slice_end = (part_offsets != NULL) ? part_offsets[1] : 0;
-  sampling->weight = MAX (total_data_pages / MAX (picked_count, 1), 1);
+  sampling->weight = weight;
   sampling->prepared = true;
-
-  er_log_debug (ARG_FILE_LINE, "[SAMPLING] n_parts=%d picked_count=%d weight=%d total_pages=%d\n",
-		n_parts, picked_count, sampling->weight, total_data_pages);
 
   return NO_ERROR;
 }

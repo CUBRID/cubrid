@@ -42,7 +42,7 @@
 
 int
 collect_strided_vpids_multi (THREAD_ENTRY *thread_p, const HFID *hfids, int n_hfids,
-			     VPID **out_picked, int *out_count, int **out_part_offsets, int *out_total_data_pages)
+			     VPID **out_picked, int *out_count, int **out_part_offsets, int *out_weight)
 {
   VPID *picked = NULL;
   int *part_offsets = NULL;
@@ -53,7 +53,7 @@ collect_strided_vpids_multi (THREAD_ENTRY *thread_p, const HFID *hfids, int n_hf
   *out_picked = NULL;
   *out_count = 0;
   *out_part_offsets = NULL;
-  *out_total_data_pages = 0;
+  *out_weight = 1;
 
   if (n_hfids <= 0)
     {
@@ -62,9 +62,9 @@ collect_strided_vpids_multi (THREAD_ENTRY *thread_p, const HFID *hfids, int n_hf
 
   {
     ftab_set merged;
-    // header pages to skip during pick; (volid, hpgid)
-    std::vector<VPID> header_pages;
     // bound_sect[i] = cumulative merged-sector count after partition i
+    // heap header pages (hfid->hpgid) to skip in pick: picking sets slotid=-1 -> reads slot 0 (HEAP_HDR_STATS)
+    std::vector<VPID> header_pages;
     std::vector<size_t> bound_sect;
 
     header_pages.reserve ((size_t) n_hfids);
@@ -85,8 +85,15 @@ collect_strided_vpids_multi (THREAD_ENTRY *thread_p, const HFID *hfids, int n_hf
 	    goto cleanup;
 	  }
 
-	// drop one header page per partition; else weight skews
-	total += collector.npages > 0 ? collector.npages - 1 : 0;
+	// accurate page count from file header (n_page_user); collector.npages is sector-derived
+	int part_pages = 0;
+	error_code = file_get_num_user_pages (thread_p, &hfids[i].vfid, &part_pages);
+	if (error_code != NO_ERROR)
+	  {
+	    db_private_free_and_init (thread_p, collector.partsect_ftab);
+	    goto cleanup;
+	  }
+	total += part_pages;
 
 	{
 	  // convert clobbers; temp per partition then append
@@ -101,17 +108,15 @@ collect_strided_vpids_multi (THREAD_ENTRY *thread_p, const HFID *hfids, int n_hf
 	header.volid = hfids[i].vfid.volid;
 	header.pageid = hfids[i].hpgid;
 	header_pages.push_back (header);
-
 	db_private_free_and_init (thread_p, collector.partsect_ftab);
       }
 
-    *out_total_data_pages = total;
-
-    // mean Poisson gap = weight: base 3 (~33%), all pages below MIN, capped near MAX sampling pages
+    // bucketed weight from accurate total user pages: ~33% (gap 3), full scan below MIN, capped near MAX
     int base_weight = 3;
     int min_weight = (total + MIN_HEAP_SAMPLING_PAGES - 1) / MIN_HEAP_SAMPLING_PAGES;
     int max_weight = total / MAX_HEAP_SAMPLING_PAGES;
     int weight = std::max (std::min (base_weight, min_weight), std::max (max_weight, 1));
+    *out_weight = weight;
 
     // max picks ~ MAX*(base+1)/base + MAX/base variance headroom; tracks MAX so no realloc
     int capacity = MAX_HEAP_SAMPLING_PAGES * (base_weight + 2) / base_weight;
@@ -167,19 +172,19 @@ collect_strided_vpids_multi (THREAD_ENTRY *thread_p, const HFID *hfids, int n_hf
 	    candidate.volid = ftab.vsid.volid;
 	    candidate.pageid = SECTOR_FIRST_PAGEID (ftab.vsid.sectid) + offset;
 
-	    // skip header page; keep next_pick_pos so next bit fills the slot
+	    // skip heap header page: picking it sets slotid=-1 -> reads slot 0 (HEAP_HDR_STATS) as a record
 	    bool is_header = false;
 	    for (size_t h = 0; h < header_pages.size (); h++)
 	      {
-		if (candidate.volid == header_pages[h].volid && candidate.pageid == header_pages[h].pageid)
-		  {
-		    is_header = true;
-		    break;
-		  }
+	        if (candidate.volid == header_pages[h].volid && candidate.pageid == header_pages[h].pageid)
+	          {
+	            is_header = true;
+	            break;
+	          }
 	      }
 	    if (is_header)
 	      {
-		continue;
+	        continue;
 	      }
 
 	    if (current_pos == next_pick_pos)
@@ -226,7 +231,7 @@ cleanup:
       *out_picked = NULL;
       *out_count = 0;
       *out_part_offsets = NULL;
-      *out_total_data_pages = 0;
+      *out_weight = 1;
     }
   return error_code;
 }
