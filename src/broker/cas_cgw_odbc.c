@@ -304,9 +304,7 @@ cgw_execute (SQLHDBC hdbc, T_SRV_HANDLE * srv_handle, SQLLEN * row_count)
 
       if (srv_handle->cgw_hstmt == NULL)
 	{
-	  SQL_CHK_ERR (hdbc,
-		       SQL_HANDLE_DBC, err_code =
-		       SQLAllocHandle (SQL_HANDLE_STMT, hdbc, &srv_handle->cgw_hstmt));
+	  SQL_CHK_ERR (hdbc, SQL_HANDLE_DBC, err_code = SQLAllocHandle (SQL_HANDLE_STMT, hdbc, &srv_handle->cgw_hstmt));
 	}
     }
 
@@ -1351,8 +1349,7 @@ cgw_set_bindparam (SQLHDBC hdbc, T_SRV_HANDLE * srv_handle, int bind_num, void *
 		return ER_CGW_INVALID_DBC_HANDLE;
 	      }
 
-	    SQL_CHK_ERR (hdbc, SQL_HANDLE_DBC, err_code =
-			 SQLAllocHandle (SQL_HANDLE_DESC, hdbc, &hdesc));
+	    SQL_CHK_ERR (hdbc, SQL_HANDLE_DBC, err_code = SQLAllocHandle (SQL_HANDLE_DESC, hdbc, &hdesc));
 
 	    memset (&value_list->ns_val, 0x00, sizeof (SQL_NUMERIC_STRUCT));
 
@@ -1774,9 +1771,7 @@ cgw_sql_prepare (SQLHDBC hdbc, T_SRV_HANDLE * srv_handle, SQLCHAR * sql_stmt)
 
   if (srv_handle->cgw_hstmt == NULL)
     {
-      SQL_CHK_ERR (hdbc,
-		   SQL_HANDLE_DBC,
-		   err_code = SQLAllocHandle (SQL_HANDLE_STMT, hdbc, &srv_handle->cgw_hstmt));
+      SQL_CHK_ERR (hdbc, SQL_HANDLE_DBC, err_code = SQLAllocHandle (SQL_HANDLE_STMT, hdbc, &srv_handle->cgw_hstmt));
     }
 
   out_length = (strlen (in_string) + 1) * sizeof (wchar_t);
