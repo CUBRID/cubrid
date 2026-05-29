@@ -1647,7 +1647,7 @@ const PR_TYPE tp_Vobj = {
 const PR_TYPE *tp_Type_vobj = &tp_Vobj;
 
 const PR_TYPE tp_Numeric = {
-  "numeric", DB_TYPE_NUMERIC, 1, FLOAT_NUMERIC_SIZE, 0, 1,
+  "numeric", DB_TYPE_NUMERIC, 1, sizeof (const char *), 0, 1,
   mr_initmem_numeric,
   mr_initval_numeric,
   mr_setmem_numeric,
