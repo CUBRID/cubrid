@@ -11827,7 +11827,7 @@ mr_setval_char_type_common (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB
 	    {
 	      db_value_domain_init (dest, type, src_precision, 0);
 	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
+	      return er_errid ();
 	    }
 	  else
 	    {
@@ -11851,7 +11851,7 @@ mr_setval_char_type_common (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB
 		  pr_clear_value (dest);
 		  db_value_domain_init (dest, type, src_precision, 0);
 		  assert (er_errid () != NO_ERROR);
-		  error = er_errid ();
+		  return er_errid ();
 		}
 	      else
 		{
