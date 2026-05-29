@@ -22,7 +22,6 @@
 
 #include "px_hash_join_task_manager.hpp"
 
-#include "bit.h"			/* bit64_count_trailing_zeros */
 #include "error_manager.h"		/* assert_release_error, er_errid, er_set, ... */
 #include "fetch.h"			/* fetch_val_list */
 #include "list_file.h"			/* qfile_open_list, qfile_open_list_scan, qfile_close_scan, ... */
@@ -240,16 +239,11 @@ namespace parallel_query
 	  /* find next set bit in current sector bitmap */
 	  while (m_current_bitmap != 0)
 	    {
-#if defined(__GNUC__) || defined(__clang__)
-	      int bit_pos = __builtin_ctzll (m_current_bitmap);
-#else
-	      int bit_pos = bit64_count_trailing_zeros (m_current_bitmap);
-#endif
-	      m_current_bitmap &= m_current_bitmap - 1;	/* clear lowest set bit */
-
 	      VPID vpid;
-	      vpid.volid = m_current_vsid.volid;
-	      vpid.pageid = SECTOR_FIRST_PAGEID (m_current_vsid.sectid) + bit_pos;
+	      if (!qfile_sector_bitmap_next_vpid (&m_current_vsid, &m_current_bitmap, &vpid))
+		{
+		  break;	/* current sector exhausted — fall through to next-sector fetch */
+		}
 
 	      QMGR_TEMP_FILE *tfile = (QMGR_TEMP_FILE *) tfiles[m_sector_index];
 	      assert (tfile != nullptr);

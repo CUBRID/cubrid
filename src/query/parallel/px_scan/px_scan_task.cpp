@@ -17,10 +17,10 @@
  */
 
 /*
- * px_heap_scan_task.cpp - derived from cubthread::entry_task
+ * px_scan_task.cpp - derived from cubthread::entry_task
  */
 
-#include "px_heap_scan_task.hpp"
+#include "px_scan_task.hpp"
 #include "error_code.h"
 #include "error_manager.h"
 #include "heap_file.h"
@@ -38,10 +38,10 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
-  template <RESULT_TYPE result_type>
-  void task<result_type>::execute (cubthread::entry &thread_ref)
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  void task<result_type, ST>::execute (cubthread::entry &thread_ref)
   {
     int err_code;
     err_code = initialize (thread_ref);
@@ -55,20 +55,22 @@ namespace parallel_heap_scan
     finalize (thread_ref);
   }
 
-  template <RESULT_TYPE result_type>
-  void task<result_type>::retire()
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  void task<result_type, ST>::retire()
   {
     m_worker_manager->pop_task();
-    delete this;
+    /* paired with malloc + placement_new in manager::start_tasks() */
+    this->~task ();
+    free (this);
   }
 
-  template <RESULT_TYPE result_type>
-  task<result_type>::~task()
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  task<result_type, ST>::~task()
   {
   }
 
-  template <RESULT_TYPE result_type>
-  int task<result_type>::initialize (cubthread::entry &thread_ref)
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  int task<result_type, ST>::initialize (cubthread::entry &thread_ref)
   {
     int err_code = NO_ERROR;
     HEAP_SCAN_ID *hsidp;
@@ -96,7 +98,10 @@ namespace parallel_heap_scan
       {
 	return err_code;
       }
-    hsidp = &m_scan_id->s.hsid;
+    if constexpr (ST != SCAN_TYPE::LIST)
+      {
+	hsidp = &m_scan_id->s.hsid;
+      }
     m_scan_id->vd = m_vd;
     spec = m_xasl->spec_list;
     cls = &spec->s.cls_node;
@@ -107,14 +112,67 @@ namespace parallel_heap_scan
 	spec_ptr = xptr->spec_list;
 	if (level == 0)
 	  {
-	    scan_open_heap_scan (&thread_ref, m_scan_id, false, S_SELECT,
-				 m_is_fixed, m_is_grouped, spec->single_fetch, spec->s_dbval,
-				 m_xasl->val_list, m_vd, &m_cls_oid, &m_hfid,
-				 cls->cls_regu_list_pred, spec->where_pred, cls->cls_regu_list_rest,
-				 cls->num_attrs_pred, cls->attrids_pred, cls->cache_pred,
-				 cls->num_attrs_rest, cls->attrids_rest, cls->cache_rest,
-				 S_HEAP_SCAN, cls->cache_reserved, cls->cls_regu_list_reserved, false);
-	    err_code = scan_start_scan (&thread_ref, m_scan_id);
+	    if constexpr (ST == SCAN_TYPE::LIST)
+	      {
+		LIST_SPEC_TYPE *list_node = &spec->s.list_node;
+		err_code = scan_open_list_scan (&thread_ref, m_scan_id,
+						false, spec->single_fetch, spec->s_dbval,
+						m_xasl->val_list, m_vd,
+						m_input_handler->get_list_id (),
+						list_node->list_regu_list_pred, spec->where_pred,
+						list_node->list_regu_list_rest, list_node->list_regu_list_build,
+						list_node->list_regu_list_probe,
+						list_node->hash_list_scan_yn, false);
+		if (err_code != NO_ERROR)
+		  {
+		    return err_code;
+		  }
+		err_code = scan_start_scan (&thread_ref, m_scan_id);
+	      }
+	    else if constexpr (ST == SCAN_TYPE::INDEX)
+	      {
+		/* clone_xasl restores parent compile-time BTID from XASL stream; override with partition BTID */
+		if (spec->indexptr != nullptr && m_input_handler != nullptr)
+		  {
+		    INDX_INFO *part_indx_info = m_input_handler->get_indx_info ();
+		    if (part_indx_info != nullptr)
+		      {
+			BTID_COPY (&spec->indexptr->btid, &part_indx_info->btid);
+		      }
+		  }
+		bool iscan_oid_order = m_scan_id->s.isid.iscan_oid_order;
+		err_code = scan_open_index_scan (&thread_ref, m_scan_id, false, S_SELECT,
+						 m_is_fixed, m_is_grouped, spec->single_fetch, spec->s_dbval,
+						 m_xasl->val_list, m_vd, spec->indexptr, &m_cls_oid, &m_hfid,
+						 cls->cls_regu_list_key, spec->where_key,
+						 cls->cls_regu_list_pred, spec->where_pred,
+						 cls->cls_regu_list_rest, spec->where_range,
+						 cls->cls_regu_list_range, cls->cls_output_val_list,
+						 cls->cls_regu_val_list, cls->num_attrs_key,
+						 cls->attrids_key, cls->cache_key,
+						 cls->num_attrs_pred, cls->attrids_pred, cls->cache_pred,
+						 cls->num_attrs_rest, cls->attrids_rest, cls->cache_rest,
+						 cls->num_attrs_range, cls->attrids_range, cls->cache_range,
+						 iscan_oid_order, m_query_entry->query_id,
+						 ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN));
+		if (err_code != NO_ERROR)
+		  {
+		    return err_code;
+		  }
+		/* scan_start_scan initializes scan caches and attr info required by slot_iterator_index for leaf page processing. */
+		err_code = scan_start_scan (&thread_ref, m_scan_id);
+	      }
+	    else
+	      {
+		scan_open_heap_scan (&thread_ref, m_scan_id, false, S_SELECT,
+				     m_is_fixed, m_is_grouped, spec->single_fetch, spec->s_dbval,
+				     m_xasl->val_list, m_vd, &m_cls_oid, &m_hfid,
+				     cls->cls_regu_list_pred, spec->where_pred, cls->cls_regu_list_rest,
+				     cls->num_attrs_pred, cls->attrids_pred, cls->cache_pred,
+				     cls->num_attrs_rest, cls->attrids_rest, cls->cache_rest,
+				     S_HEAP_SCAN, cls->cache_reserved, cls->cls_regu_list_reserved, false);
+		err_code = scan_start_scan (&thread_ref, m_scan_id);
+	      }
 	  }
 	else
 	  {
@@ -282,12 +340,20 @@ namespace parallel_heap_scan
 	m_scan_func_ptr = nullptr;
       }
 
-    if (err_code != NO_ERROR)
-      {
-	return err_code;
-      }
     m_slot_iterator.initialize (&thread_ref, m_scan_id, m_vd);
-    m_input_handler->initialize (&thread_ref, &hsidp->hfid, m_scan_id);
+    if constexpr (ST == SCAN_TYPE::INDEX)
+      {
+	m_slot_iterator.set_input_handler (m_input_handler);
+	m_input_handler->initialize (&thread_ref, nullptr, m_scan_id);
+      }
+    else if constexpr (ST == SCAN_TYPE::LIST)
+      {
+	m_input_handler->initialize (&thread_ref, nullptr, m_scan_id);
+      }
+    else
+      {
+	m_input_handler->initialize (&thread_ref, &hsidp->hfid, m_scan_id);
+      }
     if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
       {
 	m_result_handler->write_initialize (&thread_ref, m_xasl->outptr_list, m_xasl->proc.buildvalue.agg_list, m_vd, m_xasl);
@@ -303,8 +369,8 @@ namespace parallel_heap_scan
     return NO_ERROR;
   }
 
-  template <RESULT_TYPE result_type>
-  int task<result_type>::finalize (cubthread::entry &thread_ref)
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  int task<result_type, ST>::finalize (cubthread::entry &thread_ref)
   {
     THREAD_ENTRY *main_thread_p = thread_get_main_thread (m_parent_thread_p);
     xasl_node *xptr;
@@ -331,8 +397,7 @@ namespace parallel_heap_scan
 	m_trace_handler->add_trace (perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_FETCHES),
 				    perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_IOREADS),
 				    perfmon_get_from_statistic (&thread_ref,PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC),
-				    m_scan_id->scan_stats.read_rows,
-				    m_scan_id->scan_stats.qualified_rows,
+				    m_scan_id,
 				    elapsed_time);
 	perfmon_destroy_parallel_stats (&thread_ref);
       }
@@ -366,7 +431,6 @@ namespace parallel_heap_scan
 	scan_close_scan (&thread_ref, m_scan_id);
       }
 
-
     for (int i = 0; i < m_vd->dbval_cnt; i++)
       {
 	pr_clear_value (&m_vd->dbval_ptr[i]);
@@ -395,54 +459,58 @@ namespace parallel_heap_scan
     return NO_ERROR;
   }
 
-  inline void clear_xasl_dptr_list (THREAD_ENTRY *thread_p, XASL_NODE *xasl, bool uses_clones)
+  static void clear_xasl_dptr_node (THREAD_ENTRY *thread_p, XASL_NODE *xaslp, bool uses_clones)
   {
-    if (xasl->dptr_list)
+    if (uses_clones)
       {
-	for (XASL_NODE *xaslp = xasl->dptr_list; xaslp; xaslp = xaslp->next)
+	if (XASL_IS_FLAGED (xaslp, XASL_DECACHE_CLONE))
 	  {
-	    if (uses_clones)
-	      {
-		if (XASL_IS_FLAGED (xaslp, XASL_DECACHE_CLONE))
-		  {
-		    xaslp->status = XASL_CLEARED;
-		  }
-		else
-		  {
-		    /* The values allocated during execution will be cleared and the xasl is reused. */
-		    xaslp->status = XASL_INITIALIZED;
-		  }
-	      }
-	    else
-	      {
-		xaslp->status = XASL_CLEARED;
-	      }
-	    if (xaslp->list_id->tuple_cnt > 0)
-	      {
-		qfile_truncate_list (thread_p, xaslp->list_id);
-	      }
-	    if (xaslp->single_tuple)
-	      {
-		QPROC_DB_VALUE_LIST value_list;
-		int i;
-		for (value_list = xaslp->single_tuple->valp, i = 0; i < xaslp->single_tuple->val_cnt;
-		     value_list = value_list->next, i++)
-		  {
-		    pr_clear_value (value_list->val);
-		  }
-	      }
+	    xaslp->status = XASL_CLEARED;
+	  }
+	else
+	  {
+	    /* The values allocated during execution will be cleared and the xasl is reused. */
+	    xaslp->status = XASL_INITIALIZED;
+	  }
+      }
+    else
+      {
+	xaslp->status = XASL_CLEARED;
+      }
+    if (xaslp->list_id->tuple_cnt > 0)
+      {
+	qfile_truncate_list (thread_p, xaslp->list_id);
+      }
+    if (xaslp->single_tuple)
+      {
+	QPROC_DB_VALUE_LIST value_list;
+	int i;
+	for (value_list = xaslp->single_tuple->valp, i = 0; i < xaslp->single_tuple->val_cnt;
+	     value_list = value_list->next, i++)
+	  {
+	    pr_clear_value (value_list->val);
 	  }
       }
   }
 
-  template <RESULT_TYPE result_type>
-  int task<result_type>::clone_xasl (cubthread::entry &thread_ref)
+  /* walk the full scan_ptr chain; mainline qexec_clear_scan_all_lists does the same. */
+  static void clear_xasl_dptr_list (THREAD_ENTRY *thread_p, XASL_NODE *xasl, bool uses_clones)
   {
-    THREAD_ENTRY *main_thread_p = m_parent_thread_p;
+    for (XASL_NODE *scan_xasl = xasl; scan_xasl != nullptr; scan_xasl = scan_xasl->scan_ptr)
+      {
+	for (XASL_NODE *xaslp = scan_xasl->dptr_list; xaslp != nullptr; xaslp = xaslp->next)
+	  {
+	    clear_xasl_dptr_node (thread_p, xaslp, uses_clones);
+	  }
+      }
+  }
+
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  int task<result_type, ST>::clone_xasl (cubthread::entry &thread_ref)
+  {
+    THREAD_ENTRY *main_thread_p = thread_get_main_thread (m_parent_thread_p);
     int err_code = NO_ERROR;
     int i;
-
-    main_thread_p = thread_get_main_thread (m_parent_thread_p);
 
     if (m_uses_xasl_clone)
       {
@@ -498,6 +566,13 @@ namespace parallel_heap_scan
     if (m_orig_vd->dbval_cnt > 0)
       {
 	m_vd->dbval_ptr = (DB_VALUE *) db_private_alloc (&thread_ref, sizeof (DB_VALUE) * m_orig_vd->dbval_cnt);
+	if (m_vd->dbval_ptr == nullptr)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	    db_private_free_and_init (&thread_ref, m_xasl_state);
+	    m_vd = nullptr;
+	    return ER_FAILED;
+	  }
 	for (i = 0; i < m_orig_vd->dbval_cnt; i++)
 	  {
 	    pr_clone_value (&m_orig_vd->dbval_ptr[i], &m_vd->dbval_ptr[i]);
@@ -506,18 +581,154 @@ namespace parallel_heap_scan
     return NO_ERROR;
   }
 
-  template <RESULT_TYPE result_type>
-  void task<result_type>::loop (cubthread::entry &thread_ref)
+  /* Shared OID-drain helper: leaf-path + late-joiner. Returns S_END on completion, S_ERROR with stop=true on terminal failure. */
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  SCAN_CODE task<result_type, ST>::drain_slot_oids (cubthread::entry &thread_ref, bool &stop)
   {
-    result_handler<result_type> *result_handler_p = m_result_handler;
     SCAN_CODE scan_code, xs_scan;
+    bool uses_clones = xcache_uses_clones ();
+    DB_LOGICAL ev_res;
+    result_handler<result_type> *result_handler_p = m_result_handler;
+
+    while (!stop)
+      {
+	scan_code = m_slot_iterator.next_qualified_slot_with_peek (&thread_ref);
+	if (scan_code == S_END)
+	  {
+	    return S_END;
+	  }
+	if (scan_code == S_ERROR)
+	  {
+	    m_err_messages->move_top_error_message_to_this();
+	    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+	    stop = true;
+	    return S_ERROR;
+	  }
+
+	if (m_xasl->if_pred)
+	  {
+	    ev_res = eval_pred (&thread_ref, m_xasl->if_pred, m_vd, NULL);
+	    if (ev_res != V_TRUE)
+	      {
+		clear_xasl_dptr_list (&thread_ref, m_xasl, uses_clones);
+		if (ev_res == V_FALSE || ev_res == V_UNKNOWN)
+		  {
+		    continue;
+		  }
+		else
+		  {
+		    m_err_messages->move_top_error_message_to_this();
+		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		    stop = true;
+		    return S_ERROR;
+		  }
+	      }
+	  }
+	if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
+	  {
+	    if (m_xasl->scan_ptr)
+	      {
+		m_xasl->curr_spec->s_id.qualified_block = true;
+
+		/* handle the scan procedure */
+		m_xasl->scan_ptr->next_scan_on = false;
+		if (scan_reset_scan_block (&thread_ref, &m_xasl->scan_ptr->curr_spec->s_id) == S_ERROR)
+		  {
+		    m_err_messages->move_top_error_message_to_this();
+		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		    stop = true;
+		    return S_ERROR;
+		  }
+
+		m_xasl->next_scan_on = true;
+		if (m_xasl->scan_ptr->memoize_storage)
+		  {
+		    m_xasl->scan_ptr->memoize_storage->set_key_changed ();
+		  }
+		while ((xs_scan = qexec_execute_scan_ptr (&thread_ref, m_xasl->scan_ptr, m_xasl_state, m_scan_func_ptr)) == S_SUCCESS)
+		  {
+		    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
+		      {
+			result_handler_p->write (&thread_ref, m_xasl->outptr_list);
+		      }
+		    else if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
+		      {
+			result_handler_p->write (&thread_ref);
+		      }
+		  }
+		if (xs_scan == S_ERROR)
+		  {
+		    m_err_messages->move_top_error_message_to_this();
+		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		    stop = true;
+		    return S_ERROR;
+		  }
+		m_xasl->next_scan_on = false;
+	      }
+	    else
+	      {
+		if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
+		  {
+		    result_handler_p->write (&thread_ref, m_xasl->outptr_list);
+		  }
+		else if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
+		  {
+		    result_handler_p->write (&thread_ref);
+		  }
+	      }
+	  }
+	else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
+	  {
+	    result_handler_p->write (&thread_ref, m_xasl->val_list);
+	  }
+
+	/* dptrs reaching here are per-row re-evaluated correlated subqueries; checker blocks join-type and IN-clause variants. clear all. */
+
+	clear_xasl_dptr_list (&thread_ref, m_xasl, uses_clones);
+      }
+    return S_END;
+  }
+
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  void task<result_type, ST>::loop (cubthread::entry &thread_ref)
+  {
+    SCAN_CODE scan_code;
     VPID vpid;
     int err_code;
     bool stop = false;
     bool is_interrupt;
     bool dummy = false;
-    DB_LOGICAL ev_res;
-    bool uses_clones = xcache_uses_clones ();
+    int set_page_err;
+    PAGE_PTR list_page = nullptr;
+    QMGR_TEMP_FILE *list_tfile = nullptr;
+    PAGE_PTR index_page = nullptr;
+
+    INT16 index_slot_hint = NULL_SLOTID;
+    int index_range_idx = -1;
+
+    /* abort path: signal_no_more_leaves before leave_worker; else wait_or_help_overflow stalls. S_END disarms via handler=nullptr. */
+    struct worker_scope_guard
+    {
+      input_handler_t *handler;
+      ~worker_scope_guard ()
+      {
+	if constexpr (ST == SCAN_TYPE::INDEX)
+	  {
+	    if (handler != nullptr)
+	      {
+		handler->signal_no_more_leaves ();
+		handler->leave_worker ();
+	      }
+	  }
+      }
+    };
+    worker_scope_guard worker_guard;
+    worker_guard.handler = nullptr;
+    if constexpr (ST == SCAN_TYPE::INDEX)
+      {
+	m_input_handler->enter_worker ();
+	worker_guard.handler = m_input_handler;
+      }
 
     while (!stop)
       {
@@ -537,9 +748,34 @@ namespace parallel_heap_scan
 	      }
 	    break;
 	  }
-	scan_code = m_input_handler->get_next_vpid_with_fix (&thread_ref, &vpid);
+	/* LIST/INDEX: handler hands fixed page to iterator. HEAP: vpid; page lives in scan_cache->page_watcher. */
+
+	if constexpr (ST == SCAN_TYPE::LIST)
+	  {
+	    list_page = nullptr;
+	    list_tfile = nullptr;
+	    scan_code = m_input_handler->get_next_page_with_fix (&thread_ref, list_page, list_tfile);
+	  }
+	else if constexpr (ST == SCAN_TYPE::INDEX)
+	  {
+	    index_page = nullptr;
+	    index_slot_hint = NULL_SLOTID;
+	    index_range_idx = -1;
+	    scan_code = m_input_handler->get_next_page_with_fix (&thread_ref, m_scan_id, index_page, &index_slot_hint,
+			&index_range_idx);
+	  }
+	else
+	  {
+	    scan_code = m_input_handler->get_next_vpid_with_fix (&thread_ref, &vpid);
+	  }
 	if (scan_code == S_END)
 	  {
+	    if constexpr (ST == SCAN_TYPE::INDEX)
+	      {
+		/* drain_late_joiner_chains calls leave_worker itself; disarm the RAII guard first. */
+		worker_guard.handler = nullptr;
+		drain_late_joiner_chains (thread_ref, stop);
+	      }
 	    m_xasl->curr_spec->s_id.position = S_AFTER;
 	    break;
 	  }
@@ -559,117 +795,105 @@ namespace parallel_heap_scan
 	      }
 	    break;
 	  }
-	m_slot_iterator.set_page (&thread_ref, &vpid);
-	while (!stop)
+
+	if constexpr (ST == SCAN_TYPE::LIST)
 	  {
-	    scan_code = m_slot_iterator.next_qualified_slot_with_peek (&thread_ref);
-	    if (scan_code == S_END)
+	    set_page_err = m_slot_iterator.set_page (&thread_ref, list_page, list_tfile);
+	  }
+	else if constexpr (ST == SCAN_TYPE::INDEX)
+	  {
+	    /* refresh slot_iterator's range_idx only on descent (>= 0); -1 sentinel = chain-walk, leave local cursor alone. */
+	    if (index_range_idx >= 0)
 	      {
-		break;
+		m_slot_iterator.set_range_idx (index_range_idx);
 	      }
-	    if (scan_code == S_ERROR)
+	    set_page_err = m_slot_iterator.set_page (&thread_ref, index_page, index_slot_hint);
+	  }
+	else
+	  {
+	    set_page_err = m_slot_iterator.set_page (&thread_ref, &vpid);
+	  }
+	if (set_page_err != NO_ERROR)
+	  {
+	    if (m_interrupt->get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
 	      {
-		m_err_messages->move_top_error_message_to_this();
-		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		stop = true;
-		break;
-	      }
-
-	    if (m_xasl->if_pred)
-	      {
-		ev_res = eval_pred (&thread_ref, m_xasl->if_pred, m_vd, NULL);
-		if (ev_res != V_TRUE)
+		err_code = m_err_messages->move_top_error_message_to_this();
+		if (err_code == ER_INTERRUPTED)
 		  {
-		    clear_xasl_dptr_list (&thread_ref, m_xasl, uses_clones);
-		    if (ev_res == V_FALSE || ev_res == V_UNKNOWN)
-		      {
-			continue;
-		      }
-		    else
-		      {
-			m_err_messages->move_top_error_message_to_this();
-			m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-			stop = true;
-			break;
-		      }
-		  }
-	      }
-	    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
-	      {
-		if (m_xasl->scan_ptr)
-		  {
-		    m_xasl->curr_spec->s_id.qualified_block = true;
-
-		    /* handle the scan procedure */
-		    m_xasl->scan_ptr->next_scan_on = false;
-		    if (scan_reset_scan_block (&thread_ref, &m_xasl->scan_ptr->curr_spec->s_id) == S_ERROR)
-		      {
-			m_err_messages->move_top_error_message_to_this();
-			m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-			stop = true;
-			break;
-		      }
-
-		    m_xasl->next_scan_on = true;
-		    if (m_xasl->scan_ptr->memoize_storage)
-		      {
-			m_xasl->scan_ptr->memoize_storage->set_key_changed ();
-		      }
-		    while ((xs_scan = qexec_execute_scan_ptr (&thread_ref, m_xasl->scan_ptr, m_xasl_state, m_scan_func_ptr)) == S_SUCCESS)
-		      {
-			if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
-			  {
-			    result_handler_p->write (&thread_ref, m_xasl->outptr_list);
-			  }
-			else if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
-			  {
-			    result_handler_p->write (&thread_ref);
-			  }
-		      }
-		    if (xs_scan == S_ERROR)
-		      {
-			m_err_messages->move_top_error_message_to_this();
-			m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-			stop = true;
-			break;
-		      }
-		    m_xasl->next_scan_on = false;
+		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::USER_INTERRUPTED_FROM_WORKER_THREAD);
 		  }
 		else
 		  {
-		    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
-		      {
-			result_handler_p->write (&thread_ref, m_xasl->outptr_list);
-		      }
-		    else if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
-		      {
-			result_handler_p->write (&thread_ref);
-		      }
+		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		  }
 	      }
-	    else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
+	    break;
+	  }
+	/* drain_slot_oids returns S_END at completion or S_ERROR with stop=true on terminal failure. */
+	(void) drain_slot_oids (thread_ref, stop);
+      }
+  }
+
+  /* INDEX-only: after leaf supply exhausted, signal no-more-leaves, leave worker count, then help drain remaining shared overflow chains until the pool quiesces. */
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  void task<result_type, ST>::drain_late_joiner_chains (cubthread::entry &thread_ref, bool &stop)
+  {
+    if constexpr (ST == SCAN_TYPE::INDEX)
+      {
+	/* Order: signal_no_more_leaves before leave_worker so waiters seeing active==0 also see no_more_leaves. */
+	m_input_handler->signal_no_more_leaves ();
+	m_input_handler->leave_worker ();
+	while (!stop)
+	  {
+	    PAGE_PTR ovf_page = nullptr;
+	    DB_VALUE ovf_local_key;
+	    bool ovf_local_clear_key = false;
+	    int ovf_range = -1;
+	    int ovf_slot_idx = -1;
+	    db_make_null (&ovf_local_key);
+	    SCAN_CODE help = m_input_handler->wait_or_help_overflow (&thread_ref, ovf_page,
+			     &ovf_local_key, &ovf_local_clear_key, ovf_range, ovf_slot_idx);
+	    if (help == S_END)
 	      {
-		result_handler_p->write (&thread_ref, m_xasl->val_list);
+		break;
 	      }
-
-	    /* clear dptr lists
-	     * There are mainly 4 types of dptr:
-	     * 1. scalar correlated subquery - In this case, xasl is evaluated in fetch_peek_dbval during write (end_one_iteration).
-	     * 2. exists - In this case, it is evaluated in eval_pred (line 320).
-	     * 3. other if_pred such as IN clause - In this case, the checker restricts the mergeable list.
-	     * 4. correlated subquery in FROM clause - In this case, it does not work as a mergeable list because there is a join.
-	     *
-	     * Therefore, dptr that reaches here are only those that need to be re-executed per row during parallel heap scan.
-	     * Thus, it is correct to clear all dptr.
-	     */
-
-	    clear_xasl_dptr_list (&thread_ref, m_xasl, uses_clones);
+	    if (help == S_ERROR)
+	      {
+		if (m_interrupt->get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+		  {
+		    m_err_messages->move_top_error_message_to_this();
+		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		  }
+		stop = true;
+		break;
+	      }
+	    /* Ownership transfer: on S_SUCCESS, set_overflow_page adopts ovf_local_key body. */
+	    int sp_err = m_slot_iterator.set_overflow_page (&thread_ref, ovf_page, &ovf_local_key,
+			 ovf_local_clear_key, ovf_range, ovf_slot_idx);
+	    if (sp_err != NO_ERROR)
+	      {
+		if (m_interrupt->get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+		  {
+		    m_err_messages->move_top_error_message_to_this();
+		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		  }
+		stop = true;
+		break;
+	      }
+	    /* drain_slot_oids returns S_END at completion or S_ERROR with stop=true on terminal failure. */
+	    (void) drain_slot_oids (thread_ref, stop);
 	  }
       }
   }
 
-  // Explicit template instantiations
-  template class task<RESULT_TYPE::MERGEABLE_LIST>;
-  template class task<RESULT_TYPE::XASL_SNAPSHOT>;
-  template class task<RESULT_TYPE::BUILDVALUE_OPT>;
+  /* Explicit template instantiations */
+  template class task<RESULT_TYPE::MERGEABLE_LIST, SCAN_TYPE::HEAP>;
+  template class task<RESULT_TYPE::XASL_SNAPSHOT, SCAN_TYPE::HEAP>;
+  template class task<RESULT_TYPE::BUILDVALUE_OPT, SCAN_TYPE::HEAP>;
+
+  template class task<RESULT_TYPE::MERGEABLE_LIST, SCAN_TYPE::LIST>;
+  template class task<RESULT_TYPE::BUILDVALUE_OPT, SCAN_TYPE::LIST>;
+
+  template class task<RESULT_TYPE::MERGEABLE_LIST, SCAN_TYPE::INDEX>;
+  template class task<RESULT_TYPE::BUILDVALUE_OPT, SCAN_TYPE::INDEX>;
 }

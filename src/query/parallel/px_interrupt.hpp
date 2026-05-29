@@ -83,6 +83,8 @@ namespace parallel_query
   {
       using er_message = cuberr::er_message;
     public:
+      // er_message stores logging as `const bool&`; bind to static storage to avoid dangling temporary.
+      static constexpr bool s_no_logging = false;
       std::mutex m_mutex;
       std::vector<er_message *> m_error_messages;
       err_messages_with_lock()
@@ -101,7 +103,7 @@ namespace parallel_query
       {
 	int err_id = 0;
 	std::lock_guard<std::mutex> lock (m_mutex);
-	m_error_messages.push_back (new cuberr::er_message (false));
+	m_error_messages.push_back (new cuberr::er_message (s_no_logging));
 	err_id = cuberr::context::get_thread_local_context ().get_current_error_level ().err_id;
 	m_error_messages.back()->swap (cuberr::context::get_thread_local_context ().get_current_error_level ());
 	return err_id;
