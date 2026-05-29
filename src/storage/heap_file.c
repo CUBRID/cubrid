@@ -8051,13 +8051,14 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		    }
 		  else
 		    {
-		      if (sampling && !sampling->is_fullscan)
+		      if (sampling)
 			{
-			  /* consume next pre-picked VPID */
-			  assert (sampling->picked_cursor <= sampling->picked_count);
+			  /* next pre-picked VPID in current slice */
+			  assert (sampling->picked_cursor <= sampling->slice_end);
 			  assert (sampling->picked_vpids != NULL || sampling->picked_count == 0);
-			  if (sampling->picked_cursor >= sampling->picked_count)
+			  if (sampling->picked_cursor >= sampling->slice_end)
 			    {
+			      /* slice exhausted -> S_END */
 			      VPID_SET_NULL (&vpid);
 			    }
 			  else

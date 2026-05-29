@@ -2913,42 +2913,7 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   hsidp->cache_recordinfo = cache_recordinfo;
   hsidp->recordinfo_regu_list = regu_list_recordinfo;
 
-  /* sampling pre-pick: re-open via qexec_init_next_partition may already hold a buffer */
-  if (scan_type == S_HEAP_SAMPLING_SCAN && !HFID_IS_NULL (hfid))
-    {
-      int total_pages = 0;
-
-      if (hsidp->sampling.picked_vpids != NULL)
-	{
-	  db_private_free_and_init (thread_p, hsidp->sampling.picked_vpids);
-	}
-      hsidp->sampling.picked_count = 0;
-      hsidp->sampling.picked_cursor = 0;
-
-      if (file_get_num_total_user_pages (thread_p, cls_oid, &total_pages) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-
-      /* small table: sampling picks every page anyway -> plain full scan, exact stats, weight 1 */
-      if (total_pages <= MIN_HEAP_SAMPLING_PAGES)
-	{
-	  hsidp->sampling.is_fullscan = true;
-	  hsidp->sampling.weight = 1;
-	}
-      else
-	{
-	  hsidp->sampling.is_fullscan = false;
-	  if (collect_strided_vpids (thread_p, hfid, &hsidp->sampling.picked_vpids,
-				     &hsidp->sampling.picked_count, &total_pages) != NO_ERROR)
-	    {
-	      /* collect contract zeros picked_count on failure; cursor already synced above */
-	      return ER_FAILED;
-	    }
-	  hsidp->sampling.weight = MAX (total_pages / MAX (hsidp->sampling.picked_count, 1), 1);
-	  assert (hsidp->sampling.picked_vpids != NULL || hsidp->sampling.picked_count == 0);
-	}
-    }
+  /* sampling pick owned by qexec_prepare_table_sampling (gated by prepared); no re-pick here */
 
   return NO_ERROR;
 }
@@ -4527,9 +4492,12 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       break;
 
     case S_HEAP_SAMPLING_SCAN:
-      /* preserve picked_vpids buffer; rewind cursor and curr_oid so heap_next restarts from picked_vpids[0] */
+      /* rewind cursor to current partition slice start, not global */
       assert (s_id->s.hsid.sampling.picked_vpids != NULL || s_id->s.hsid.sampling.picked_count == 0);
-      s_id->s.hsid.sampling.picked_cursor = 0;
+      /* sampling never reset-driven: single-table BUILDVALUE only (name_resolution.c:2063) */
+      assert (s_id->s.hsid.sampling.n_parts == 1);
+      assert (s_id->s.hsid.sampling.part_offsets != NULL);
+      s_id->s.hsid.sampling.picked_cursor = s_id->s.hsid.sampling.part_offsets[s_id->s.hsid.sampling.partition_cursor];
       UT_CAST_TO_NULL_HEAP_OID (&s_id->s.hsid.hfid, &s_id->s.hsid.curr_oid);
       break;
 
@@ -4968,6 +4936,32 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   scan_id->status = S_ENDED;
 }
 
+/* free table-wide sampling pick (picked_vpids + part_offsets) once; idempotent, type-gated */
+void
+scan_free_sampling (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+{
+  if (scan_id == NULL || scan_id->type != S_HEAP_SAMPLING_SCAN)
+    {
+      return;
+    }
+
+  if (scan_id->s.hsid.sampling.picked_vpids != NULL)
+    {
+      db_private_free_and_init (thread_p, scan_id->s.hsid.sampling.picked_vpids);
+    }
+  if (scan_id->s.hsid.sampling.part_offsets != NULL)
+    {
+      db_private_free_and_init (thread_p, scan_id->s.hsid.sampling.part_offsets);
+    }
+  scan_id->s.hsid.sampling.prepared = false;
+  scan_id->s.hsid.sampling.weight = 0;
+  scan_id->s.hsid.sampling.picked_count = 0;
+  scan_id->s.hsid.sampling.picked_cursor = 0;
+  scan_id->s.hsid.sampling.slice_end = 0;
+  scan_id->s.hsid.sampling.n_parts = 0;
+  scan_id->s.hsid.sampling.partition_cursor = 0;
+}
+
 /*
  * scan_close_scan () - The scan identifier is closed and allocated areas and page buffers are freed.
  *   return:
@@ -4990,13 +4984,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   switch (scan_id->type)
     {
     case S_HEAP_SAMPLING_SCAN:
-      assert (scan_id->s.hsid.sampling.picked_vpids != NULL || scan_id->s.hsid.sampling.picked_count == 0);
-      if (scan_id->s.hsid.sampling.picked_vpids != NULL)
-	{
-	  db_private_free_and_init (thread_p, scan_id->s.hsid.sampling.picked_vpids);
-	}
-      scan_id->s.hsid.sampling.picked_count = 0;
-      scan_id->s.hsid.sampling.picked_cursor = 0;
+      /* picked_vpids/part_offsets outlive close; freed via scan_free_sampling */
       break;
 
     case S_HEAP_SCAN:

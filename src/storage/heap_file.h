@@ -385,11 +385,15 @@ struct heap_get_context
 typedef struct sampling_info SAMPLING_INFO;
 struct sampling_info
 {
-  int weight;			/* for sampling statistics */
-  bool is_fullscan;		/* total <= MIN_HEAP_SAMPLING_PAGES: sequential full scan, no pre-pick */
-  VPID *picked_vpids;		/* pre-picked sampling VPIDs (db_private_alloc) */
-  int picked_count;		/* number of valid entries in picked_vpids */
-  int picked_cursor;		/* next index to consume from picked_vpids */
+  bool prepared;		/* set once; gates re-pick/clobber */
+  int weight;			/* global: total_data_pages / picked_count */
+  VPID *picked_vpids;		/* all partitions, pruned order; owned (db_private_alloc) */
+  int picked_count;		/* total = part_offsets[n_parts] */
+  int picked_cursor;		/* read index into picked_vpids */
+  int slice_end;		/* cached part_offsets[pc+1]; hot-path bound */
+  int *part_offsets;		/* prefix-sum, len n_parts+1; slice pc = [off[pc], off[pc+1]) */
+  int n_parts;			/* pruned partitions; 1 if non-partitioned */
+  int partition_cursor;		/* current partition index; written only by qexec_init_next_partition */
 };
 
 /* Forward definition. */

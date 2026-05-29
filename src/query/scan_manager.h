@@ -637,6 +637,7 @@ extern int scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern SCAN_CODE scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern SCAN_CODE scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
+extern void scan_free_sampling (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 extern void scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern SCAN_CODE scan_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern SCAN_CODE scan_prev_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);

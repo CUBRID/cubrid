@@ -149,10 +149,13 @@ class ftab_set
     }
 };
 
-int collect_strided_vpids (THREAD_ENTRY *thread_p,
-			   const HFID *hfid,
-			   VPID **out_picked,
-			   int *out_count,
-			   int *out_total_data_pages);
+// table-wide pick over N partitions: one stride over merged sectors, per-partition offsets
+int collect_strided_vpids_multi (THREAD_ENTRY *thread_p,
+				 const HFID *hfids,
+				 int n_hfids,
+				 VPID **out_picked,
+				 int *out_count,
+				 int **out_part_offsets,
+				 int *out_total_data_pages);
 
 #endif // _FTAB_SET_HPP_
