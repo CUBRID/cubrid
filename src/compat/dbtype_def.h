@@ -561,7 +561,7 @@ extern "C"
 #define DB_MAX_SCHEMA_LENGTH DB_MAX_USER_LENGTH
 
 /* Maximum allowable class name. */
-#define DB_MAX_CLASS_LENGTH (DB_MAX_IDENTIFIER_LENGTH-DB_MAX_SCHEMA_LENGTH-4)
+#define DB_MAX_CLASS_LENGTH (223)	// (DB_MAX_IDENTIFIER_LENGTH - DB_MAX_SCHEMA_LENGTH - 1 /* '.' */ + 1  /* '\0' */)
 
 #define DB_MAX_SPEC_LENGTH       (0x3FFFFFFF)
 
