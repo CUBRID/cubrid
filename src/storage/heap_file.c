@@ -39,6 +39,7 @@
 #include "porting.h"
 #include "porting_inline.hpp"
 #include "record_descriptor.hpp"
+#include <random>
 #include "slotted_page.h"
 #include "overflow_file.h"
 #include "boot_sr.h"
@@ -7826,6 +7827,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
   /* Shouldn't be here. */
   return S_ERROR;
 }
+
 
 /*
  * heap_next_internal () - Retrieve of peek next object.

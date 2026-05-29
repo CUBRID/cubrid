@@ -476,7 +476,7 @@ dbt_create_object (MOP classobj)
 
   if (!do_check_partitioned_class (classobj, CHECK_PARTITION_PARENT | CHECK_PARTITION_SUBS, NULL))
     {
-      def = dbt_create_object_internal (classobj);
+      def = dbt_create_object_internal (classobj, false);
     }
 
   return def;
@@ -499,7 +499,7 @@ dbt_create_object (MOP classobj)
  *   any reason, the underlying object is not created.
  */
 DB_OTMPL *
-dbt_create_object_internal (MOP classobj)
+dbt_create_object_internal (MOP classobj, bool is_read_only)
 {
   DB_OTMPL *def = NULL;
 
@@ -507,10 +507,11 @@ dbt_create_object_internal (MOP classobj)
   CHECK_1ARG_NULL (classobj);
   CHECK_MODIFICATION_NULL ();
 
-  def = obt_def_object (classobj);
+  def = obt_def_object (classobj, is_read_only);
 
   return def;
 }
+
 
 /*
  * dbt_edit_object() - This function creates an object template for an existing
@@ -1184,6 +1185,7 @@ db_find_multi_unique (MOP classmop, int size, char *attr_names[], DB_VALUE * val
     obj_find_multi_attr (classmop, size, (const char **) attr_names, (const DB_VALUE **) values,
 			 purpose == DB_FETCH_WRITE ? AU_FETCH_UPDATE : AU_FETCH_READ);
 
+  er_clear ();
   return retval;
 }
 
