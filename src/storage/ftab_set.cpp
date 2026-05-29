@@ -176,15 +176,15 @@ collect_strided_vpids_multi (THREAD_ENTRY *thread_p, const HFID *hfids, int n_hf
 	    bool is_header = false;
 	    for (size_t h = 0; h < header_pages.size (); h++)
 	      {
-	        if (candidate.volid == header_pages[h].volid && candidate.pageid == header_pages[h].pageid)
-	          {
-	            is_header = true;
-	            break;
-	          }
+		if (candidate.volid == header_pages[h].volid && candidate.pageid == header_pages[h].pageid)
+		  {
+		    is_header = true;
+		    break;
+		  }
 	      }
 	    if (is_header)
 	      {
-	        continue;
+		continue;
 	      }
 
 	    if (current_pos == next_pick_pos)
