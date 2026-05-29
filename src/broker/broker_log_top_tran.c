@@ -60,17 +60,57 @@ log_top_tran (int argc, char *argv[], int arg_start)
   char *filename;
   FILE *fp;
   long start_offset, end_offset;
+  char splitdir[512] = "";
+  char prev_prefix[256] = "";
+  char curr_prefix[256] = "";
+  char org_cwd[PATH_MAX];
+
+  if (getcwd (org_cwd, sizeof (org_cwd)) == NULL)
+    {
+      return -1;
+    }
+
+  if (output_mode == OUTPUT_SPLIT && make_splitdir (splitdir) < 0)
+    {
+      fprintf (stderr, "cannot make dir (%s).\n", splitdir);
+      return -1;
+    }
 
   info_arr_size = 0;
 
   for (i = arg_start; i < argc; i++)
     {
       filename = argv[i];
-      fprintf (stdout, "%s\n", filename);
+
+      if (output_mode == OUTPUT_SPLIT)
+	{
+	  get_brokername_from_filename (filename, curr_prefix, sizeof (curr_prefix));
+
+	  if (i > arg_start && strcmp (curr_prefix, prev_prefix) != 0)
+	    {
+	      if (make_change_split_brokerdir (splitdir, prev_prefix) < 0)
+		{
+		  fprintf (stderr, "cannot make and change dir (%s/%s).\n", splitdir, prev_prefix);
+		  return -1;
+		}
+	      fprintf (stdout, "Report files created: ./%s/%s/log_top.t\n", splitdir, prev_prefix);
+	      print_result ();
+	      chdir (org_cwd);
+
+	      info_arr_size = 0;
+	    }
+	  strcpy (prev_prefix, curr_prefix);
+	}
 
 #if defined(WINDOWS)
       fp = fopen (filename, "rb");
 #else
+      struct stat st;
+      if (stat (filename, &st) != 0 || !S_ISREG (st.st_mode))
+	{
+	  continue;
+	}
+
       fp = fopen (filename, "r");
 #endif
       if (fp == NULL)
@@ -78,6 +118,11 @@ log_top_tran (int argc, char *argv[], int arg_start)
 	  fprintf (stderr, "%s[%s]\n", strerror (errno), filename);
 	  return -1;
 	}
+      else
+	{
+	  fprintf (stdout, "%s\n", get_basename (filename));
+	}
+
       if (get_file_offset (filename, &start_offset, &end_offset) < 0)
 	{
 	  start_offset = end_offset = -1;
@@ -91,7 +136,24 @@ log_top_tran (int argc, char *argv[], int arg_start)
 	}
     }
 
-  print_result ();
+  if (output_mode == OUTPUT_SPLIT)
+    {
+      if (make_change_split_brokerdir (splitdir, prev_prefix) < 0)
+	{
+	  fprintf (stderr, "cannot make and change dir (%s/%s).\n", splitdir, prev_prefix);
+	  return -1;
+	}
+      fprintf (stdout, "Report files created: ./%s/%s/log_top.t\n", splitdir, prev_prefix);
+      print_result ();
+      chdir (org_cwd);
+
+      info_arr_size = 0;
+    }
+  else
+    {
+      fprintf (stdout, "Report files created: ./log_top.t\n");
+      print_result ();
+    }
 
   return 0;
 }
