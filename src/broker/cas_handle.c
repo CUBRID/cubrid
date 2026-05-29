@@ -199,7 +199,7 @@ hm_srv_handle_free_all (bool free_holdable)
 	{
 	  cgw_free_stmt_func (srv_handle);
 	}
-      
+
       FREE_MEM (srv_handle);
       srv_handle_table[i] = NULL;
       current_handle_count--;
