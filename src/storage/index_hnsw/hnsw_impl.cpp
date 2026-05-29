@@ -847,12 +847,12 @@ hnsw_impl::remove (cubthread::entry *thread_p, const OID *oid)
 
       if (node.is_tombstoned ())
 	{
-	  assert (false);
 	  m_storage->remove_node_slot_cached_id (*oid, node_slot);
-	  return ER_FAILED;
+	  continue;
 	}
 
       node.set_tombstoned (true);
+      node_blk.reset ();
       m_storage->remove_node_slot_cached_id (*oid, node_slot);
     }
 

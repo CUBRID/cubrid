@@ -18,6 +18,7 @@
 
 #include "hnsw_storage.hpp"
 
+#include "bit.h"
 #include "file_manager.h" // FILE_DESCRIPTORS
 #include "oid.h"
 #include "slotted_page.h"
@@ -192,31 +193,79 @@ namespace cubhnsw
   int
   storage::rebuild_node_slots_cache (algo_context_t &context)
   {
-    m_node_slots_cache.clear ();
-
-    int error_code = file_map_pages (context.m_thread_p, &m_vfid, PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH,
-				     &storage::rebuild_node_slots_cache_page, this);
+    FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
+    int error_code = file_get_all_data_sectors (context.m_thread_p, &m_vfid, &collector);
     if (error_code != NO_ERROR)
       {
 	ASSERT_ERROR ();
 	return error_code;
       }
 
+    m_node_slots_cache.clear ();
+
+    for (int sect_idx = 0; sect_idx < collector.nsects; sect_idx++)
+      {
+	FILE_PARTIAL_SECTOR *partsect = &collector.partsect_ftab[sect_idx];
+	VPID vpid = { SECTOR_FIRST_PAGEID (partsect->vsid.sectid), partsect->vsid.volid };
+
+	for (int page_offset = 0; page_offset < DISK_SECTOR_NPAGES; page_offset++, vpid.pageid++)
+	  {
+	    if (!bit64_is_set (partsect->page_bitmap, page_offset))
+	      {
+		continue;
+	      }
+
+	    PAGE_PTR page = nullptr;
+	    error_code =
+		    pgbuf_fix_if_not_deallocated (context.m_thread_p, &vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH,
+						  &page);
+	    if (error_code != NO_ERROR)
+	      {
+		ASSERT_ERROR ();
+		goto exit;
+	      }
+	    if (page == nullptr)
+	      {
+		continue;
+	      }
+
+	    error_code = rebuild_node_slots_cache_page (context.m_thread_p, page);
+	    pgbuf_unfix_and_init (context.m_thread_p, page);
+	    if (error_code != NO_ERROR)
+	      {
+		ASSERT_ERROR ();
+		goto exit;
+	      }
+	  }
+      }
+
     m_node_slots_cache_is_complete = true;
+
+exit:
+    if (collector.partsect_ftab != nullptr)
+      {
+	db_private_free_and_init (context.m_thread_p, collector.partsect_ftab);
+      }
+    if (error_code != NO_ERROR)
+      {
+	m_node_slots_cache.clear ();
+	m_node_slots_cache_is_complete = false;
+	return error_code;
+      }
+
     return NO_ERROR;
   }
 
   int
-  storage::rebuild_node_slots_cache_page (cubthread::entry *thread_p, PAGE_PTR *page, bool *stop, void *args)
+  storage::rebuild_node_slots_cache_page (cubthread::entry *thread_p, PAGE_PTR page)
   {
-    storage *storage_p = static_cast<storage *> (args);
-    VPID *vpid = pgbuf_get_vpid_ptr (*page);
+    VPID *vpid = pgbuf_get_vpid_ptr (page);
     PGSLOTID slot_id = 0;
     RECDES recdes;
 
-    while (spage_next_record (*page, &slot_id, &recdes, PEEK) == S_SUCCESS)
+    while (spage_next_record (page, &slot_id, &recdes, PEEK) == S_SUCCESS)
       {
-	if (VPID_EQ (vpid, &storage_p->m_root_vpid) && slot_id == 1)
+	if (VPID_EQ (vpid, &m_root_vpid) && slot_id == 1)
 	  {
 	    continue;
 	  }
@@ -234,10 +283,9 @@ namespace cubhnsw
 
 	slot_id_t node_slot = { vpid->pageid, slot_id, vpid->volid };
 
-	storage_p->set_node_slot_cached_id (node.get_key (), node_slot);
+	set_node_slot_cached_id (node.get_key (), node_slot);
       }
 
-    *stop = false;
     return NO_ERROR;
   }
 

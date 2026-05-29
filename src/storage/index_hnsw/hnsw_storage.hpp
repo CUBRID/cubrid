@@ -306,7 +306,7 @@ namespace cubhnsw
 
       static int initialize_new_block (cubthread::entry *thread_p, PAGE_PTR page, void *args);
       void set_node_slot_cached_id (const key_id_t &key, const slot_id_t &slot_id);
-      static int rebuild_node_slots_cache_page (cubthread::entry *thread_p, PAGE_PTR *page, bool *stop, void *args);
+      int rebuild_node_slots_cache_page (cubthread::entry *thread_p, PAGE_PTR page);
 
       hnsw_build_params m_build_params;
       index_id_t m_giid; // general index identifier
