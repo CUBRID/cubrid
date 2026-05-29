@@ -55,7 +55,7 @@
 #include "trigger_manager.h"
 #include "view_transform.h"
 #include "network_interface_cl.h"
-
+#include "execute_statement.h"
 #include "dbtype.h"
 
 /*
@@ -1925,7 +1925,7 @@ obj_create (MOP classop)
 
   new_mop = NULL;
 
-  obj_template = obt_def_object (classop);
+  obj_template = obt_def_object (classop, false);
   if (obj_template != NULL)
     {
       /* remember to disable the NON NULL integrity constraint checking */
@@ -2020,7 +2020,7 @@ obj_copy (MOP op)
   if (au_fetch_instance (op, &src, AU_FETCH_READ, TM_TRAN_READ_FETCH_VERSION (), AU_SELECT) != NO_ERROR)
     return NULL;
 
-  obj_template = obt_def_object (ws_class_mop (op));
+  obj_template = obt_def_object (ws_class_mop (op), false);
   if (obj_template != NULL)
     {
       for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
@@ -3675,13 +3675,18 @@ obj_make_key_value (DB_VALUE * key, const DB_VALUE * values[], int size)
 MOP
 obj_find_multi_attr (MOP op, int size, const char *attr_names[], const DB_VALUE * values[], AU_FETCHMODE fetchmode)
 {
-  SM_CLASS *class_;
+  int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *cons;
   MOP obj = NULL;
-  DB_VALUE key;
   SM_ATTRIBUTE **attp;
   const char **namep;
-  int i;
+
+  SM_CLASS *class_ = NULL;
+  int i = 0;
+  BTID unique_btid;
+  DB_VALUE unique_key;
+  BTREE_SEARCH result;
+  OID oid;
 
   if (op == NULL || attr_names == NULL || values == NULL || size < 1)
     {
@@ -3689,11 +3694,7 @@ obj_find_multi_attr (MOP op, int size, const char *attr_names[], const DB_VALUE 
       return NULL;
     }
 
-  db_make_null (&key);
-  if (obj_make_key_value (&key, values, size) == NULL)
-    {
-      return NULL;
-    }
+  db_make_null (&unique_key);
 
   if (au_fetch_class (op, &class_, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
     {
@@ -3735,11 +3736,71 @@ obj_find_multi_attr (MOP op, int size, const char *attr_names[], const DB_VALUE 
       goto end_find;
     }
 
-  obj = obj_find_object_by_cons_and_key (op, cons, &key, fetchmode);
+
+
+  for (i = 0; i < size; i++)
+    {
+      DB_TYPE value_type;
+      int temp_oid_result;
+
+      if (values[i] == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+	  goto end_find;
+	}
+
+      value_type = DB_VALUE_TYPE (values[i]);
+      if (tp_domain_select (cons->attributes[i]->domain, values[i], 1, TP_ANY_MATCH) == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+	  goto end_find;
+	}
+
+      if (value_type == DB_TYPE_OBJECT)
+	{
+	  temp_oid_result = flush_temporary_OID (op, (DB_VALUE *) values[i]);
+	  if (temp_oid_result == TEMPOID_FLUSH_NOT_SUPPORT)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+	      goto end_find;
+	    }
+	  else if (temp_oid_result == TEMPOID_FLUSH_FAIL)
+	    {
+	      goto end_find;
+	    }
+	}
+    }
+
+  error = do_create_midxkey_from_values (values, size, cons, &unique_key);
+  if (error != NO_ERROR)
+    {
+      goto end_find;
+    }
+
+  BTID_COPY (&unique_btid, &cons->index_btid);
+
+  result = btree_find_unique (&unique_btid, &unique_key, ws_oid (op), &oid);
+
+
+  if (result == BTREE_KEY_FOUND)
+    {
+      obj = ws_mop (&oid, NULL);
+      if (au_fetch_instance_force (obj, NULL, fetchmode, LC_FETCH_DIRTY_VERSION) != NO_ERROR)
+	{
+	  obj = NULL;
+	}
+    }
+  else if (result == BTREE_ERROR_OCCURRED)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+    }
+  else if (result == BTREE_KEY_NOTFOUND)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
+    }
 
 end_find:
-  if (size > 1)			/* must clear a multi-column index key */
-    pr_clear_value (&key);
+  db_value_clear (&unique_key);
 
   return obj;
 }
