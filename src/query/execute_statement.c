@@ -881,9 +881,8 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
   DB_OBJECT *serial_object = NULL;
   DB_VALUE value;
   DB_OTMPL *obj_tmpl = NULL;
-  char *serial_name = NULL;
+  char serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
   char att_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
-  size_t name_len;
   int save;
   bool au_disable_flag = false;
 
@@ -898,16 +897,11 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
   sm_downcase_name (att_name, att_downcase_name, SM_MAX_IDENTIFIER_LENGTH);
   att_name = att_downcase_name;
 
-  /* serial_name : <class_name>_ai_<att_name> */
-  name_len = (strlen (class_name) + strlen (att_name) + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1);
-  serial_name = (char *) malloc (name_len);
-  if (serial_name == NULL)
+  error = set_auto_increment_serial_name (serial_name, class_name, att_name);
+  if (error != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, name_len);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      return error;
     }
-
-  SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, class_name, att_name);
 
   AU_DISABLE (save);
   au_disable_flag = true;
@@ -991,15 +985,9 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
       goto update_auto_increment_error;
     }
 
-  free_and_init (serial_name);
   return NO_ERROR;
 
 update_auto_increment_error:
-  if (serial_name)
-    {
-      free_and_init (serial_name);
-    }
-
   if (au_disable_flag == true)
     {
       AU_ENABLE (save);
@@ -1877,7 +1865,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   int error = NO_ERROR;
   PT_NODE *auto_increment_node, *start_val_node, *inc_val_node;
   PT_NODE *dtyp;
-  char *att_name = NULL, *serial_name = NULL;
+  char *att_name = NULL, serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
   DB_VALUE start_val, inc_val, max_val, min_val;
   DB_VALUE zero, value, *pval = NULL;
   DB_VALUE cmp_result;
@@ -1885,7 +1873,6 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   DB_VALUE e38;
   char *p, num[DB_MAX_NUMERIC_PRECISION + 1];
   char att_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
-  size_t name_len;
 
   db_make_null (&e38);
   db_make_null (&value);
@@ -1923,17 +1910,11 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   sm_downcase_name (att_name, att_downcase_name, SM_MAX_IDENTIFIER_LENGTH);
   att_name = att_downcase_name;
 
-  /* serial_name : <class_name>_ai_<att_name> */
-  name_len = (strlen (class_name) + strlen (att_name) + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1);
-  serial_name = (char *) malloc (name_len);
-  if (serial_name == NULL)
+  error = set_auto_increment_serial_name (serial_name, class_name, att_name);
+  if (error != NO_ERROR)
     {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name_len);
       goto end;
     }
-
-  SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, class_name, att_name);
 
   serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class, serial_name);
   if (serial_mop != NULL)
@@ -2082,18 +2063,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
       goto end;
     }
 
-  pr_clear_value (&e38);
-  pr_clear_value (&value);
-  pr_clear_value (&zero);
-  pr_clear_value (&cmp_result);
-  pr_clear_value (&start_val);
-  pr_clear_value (&inc_val);
-  pr_clear_value (&max_val);
-  pr_clear_value (&min_val);
-
-  free_and_init (serial_name);
-
-  return NO_ERROR;
+  error = NO_ERROR;
 
 end:
   pr_clear_value (&e38);
@@ -2104,11 +2074,6 @@ end:
   pr_clear_value (&inc_val);
   pr_clear_value (&max_val);
   pr_clear_value (&min_val);
-
-  if (serial_name)
-    {
-      free_and_init (serial_name);
-    }
 
   return error;
 }
@@ -2134,12 +2099,11 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
   DB_DATA_STATUS data_stat;
   int error = NO_ERROR;
   PT_NODE *dtyp;
-  char *att_name = NULL, *serial_name = NULL;
+  char *att_name = NULL, serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0', };
   DB_VALUE e38, current_val, max_val, value;
   int i, compare_result, save;
   char *p, num[DB_MAX_NUMERIC_PRECISION + 1];
   char att_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
-  size_t name_len;
   bool au_disable_flag = false;
 
   db_make_null (&e38);
@@ -2167,17 +2131,11 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
   sm_downcase_name (att_name, att_downcase_name, SM_MAX_IDENTIFIER_LENGTH);
   att_name = att_downcase_name;
 
-  /* serial_name : <class_name>_ai_<att_name> */
-  name_len = (strlen (class_name) + strlen (att_name) + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1);
-  serial_name = (char *) malloc (name_len);
-  if (serial_name == NULL)
+  error = set_auto_increment_serial_name (serial_name, class_name, att_name);
+  if (error != NO_ERROR)
     {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name_len);
       goto end;
     }
-
-  SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, class_name, att_name);
 
   /* get serial mop by serial name */
   serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class, serial_name);
@@ -2304,11 +2262,6 @@ end:
   pr_clear_value (&value);
   pr_clear_value (&current_val);
   pr_clear_value (&max_val);
-
-  if (serial_name != NULL)
-    {
-      free_and_init (serial_name);
-    }
 
   if (obj_tmpl != NULL)
     {

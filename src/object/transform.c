@@ -630,3 +630,93 @@ tf_install_meta_classes ()
   return NO_ERROR;
 }
 #endif /* CS_MODE */
+
+
+
+#include "intl_support.h"
+#include "crypt_opfunc.h"
+
+#define AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH (4)	// "_ai_"
+/*
+ * AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH : (255 - 1) + 4 + (255 -1) + 1 = 513
+ *   - sprintf (..., "%s_ai_%s", unique_name, attribute_name)
+ */
+
+#define AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH \
+  ((DB_MAX_IDENTIFIER_LENGTH - 1) + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + (DB_MAX_IDENTIFIER_LENGTH - 1) + 1)
+
+static int
+fill_auto_increment_serial_name_part (char *serial_name, int copy_length, const char *name1, const char *name2)
+{
+  if (copy_length >= (int) strlen (name1))
+    {
+      return sprintf (serial_name, "%s_%s", name1, name2);
+    }
+  else
+    {
+      char name_buf[DB_MAX_IDENTIFIER_LENGTH];
+
+      memcpy (name_buf, name1, copy_length);
+      name_buf[copy_length] = '\0';
+      /* make sure last character is not truncated */
+      if (intl_identifier_fix (name_buf, copy_length, false) != NO_ERROR)
+	{
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_GENERIC_ERROR;
+	}
+
+      return sprintf (serial_name, "%s_%s", name_buf, name2);
+    }
+}
+
+int
+set_auto_increment_serial_name (char *serial_name, const char *class_name, const char *attr_name)
+{
+  // class_name and attr_name must be in lowercase      
+  int full_length = strlen (class_name) + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + strlen (attr_name);
+
+  if (full_length < DB_MAX_SERIAL_NAME_LENGTH)
+    {
+      snprintf (serial_name, DB_MAX_SERIAL_NAME_LENGTH, "%s_ai_%s", class_name, attr_name);
+    }
+  else
+    {
+      const int md5_str_len = 34;	// 1 + 32 + 1,  '_' + <md5(32)> + '\0'
+      char md5_str[32 + 1] = { '\0' };
+      char name_buf[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH] = { '\0' };
+      const char *dot = strchr (class_name, '.');
+      int pos, copy_length = 0;
+
+      assert (full_length < (int) sizeof (name_buf));
+
+      serial_name[0] = '\0';
+
+      copy_length = sprintf (name_buf, "%s_ai_%s", dot ? (dot + 1) : class_name, attr_name);
+      pos = crypt_md5_buffer_hex (name_buf, copy_length, md5_str);
+      if (pos != NO_ERROR)
+	{
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, pos, 0);
+	  return pos;
+	}
+
+      copy_length = (DB_MAX_SERIAL_NAME_LENGTH - (AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + md5_str_len)) / 2;
+
+      pos = fill_auto_increment_serial_name_part (serial_name, copy_length, class_name, "ai_");
+      if (pos < 0)
+	{
+	  return pos;
+	}
+
+      copy_length = DB_MAX_SERIAL_NAME_LENGTH - (pos + md5_str_len);
+      pos = fill_auto_increment_serial_name_part (serial_name + pos, copy_length, attr_name, md5_str);
+      if (pos < 0)
+	{
+	  return pos;
+	}
+    }
+
+  assert (strlen (serial_name) < DB_MAX_SERIAL_NAME_LENGTH);
+  return NO_ERROR;
+}

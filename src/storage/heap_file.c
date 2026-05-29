@@ -17295,7 +17295,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
   char *classname = NULL;
   char *attr_name = NULL;
   RECDES recdes;		/* Used to obtain attribute name */
-  char serial_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
+  char serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0', };
   HEAP_ATTRVALUE *value;
   DB_VALUE dbvalue_numeric, *dbvalue, key_val;
   OR_ATTRIBUTE *att;
@@ -17331,7 +17331,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 	  OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
 	  if (OID_ISNULL (&serial_obj_oid) || prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
 	    {
-	      memset (serial_name, '\0', sizeof (serial_name));
+	      serial_name[0] = '\0';
 	      recdes.data = NULL;
 	      recdes.area_size = 0;
 
@@ -17371,7 +17371,11 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 		  goto exit_on_error;
 		}
 
-	      SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, classname, attr_name);
+	      ret = set_auto_increment_serial_name (serial_name, classname, attr_name);
+	      if (ret != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
 
 	      if (OID_ISNULL (&serial_obj_oid))
 		{

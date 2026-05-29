@@ -75,8 +75,8 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
   char *class_old_name = NULL;
   char *class_new_name = NULL;
   char *owner_name = NULL;
+  const char *classname_only = NULL;
   char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
-  char buf[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
   bool has_savepoint = true;
   int save = 0;
   int error = NO_ERROR;
@@ -158,13 +158,14 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
   sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
   db_ws_free_and_init (owner_name);
 
-  snprintf (buf, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name, sm_remove_qualifier_name (class_old_name));
-  class_new_name = db_private_strdup (NULL, buf);
+  classname_only = sm_remove_qualifier_name (class_old_name);
+  class_new_name = (char *)malloc (snprintf (NULL, 0,  "%s.%s", downcase_owner_name, classname_only) + 1);
   if (class_new_name == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       goto end;
     }
+  sprintf (class_new_name, "%s.%s", downcase_owner_name, classname_only);
 
   obj = locator_prepare_rename_class (class_mop, class_old_name, class_new_name);
   if (obj == NULL)

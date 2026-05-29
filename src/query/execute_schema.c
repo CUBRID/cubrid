@@ -5203,8 +5203,7 @@ static int
 do_find_auto_increment_serial (MOP * auto_increment_obj, const char *class_name, const char *attr_name)
 {
   MOP serial_class = NULL;
-  char *serial_name = NULL;
-  size_t serial_name_size;
+  char serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
   DB_IDENTIFIER serial_obj_id;
   int error = NO_ERROR;
 
@@ -5220,17 +5219,11 @@ do_find_auto_increment_serial (MOP * auto_increment_obj, const char *class_name,
       goto end;
     }
 
-  serial_name_size = strlen (class_name) + strlen (attr_name) + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1;
-
-  serial_name = (char *) malloc (serial_name_size);
-  if (serial_name == NULL)
+  error = set_auto_increment_serial_name (serial_name, class_name, attr_name);
+  if (error != NO_ERROR)
     {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, serial_name_size);
       goto end;
     }
-
-  SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, class_name, attr_name);
 
   *auto_increment_obj = do_get_serial_obj_id (&serial_obj_id, serial_class, serial_name);
   if (*auto_increment_obj == NULL)
@@ -5241,11 +5234,6 @@ do_find_auto_increment_serial (MOP * auto_increment_obj, const char *class_name,
     }
 
 end:
-  if (serial_name != NULL)
-    {
-      free_and_init (serial_name);
-    }
-
   return error;
 }
 
@@ -11089,12 +11077,16 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 
       if (found_att->auto_increment == NULL)
 	{
-	  char auto_increment_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
+	  char auto_increment_name[DB_MAX_SERIAL_NAME_LENGTH];
 	  MOP serial_class_mop, serial_mop;
 
 	  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
-	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name, ctemplate->name, name);
+	  error = set_auto_increment_serial_name (auto_increment_name, ctemplate->name, name);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
 	  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, auto_increment_name);
 	  found_att->auto_increment = serial_mop;
 	}
@@ -11156,12 +11148,16 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 
       if (found_att->auto_increment == NULL)
 	{
-	  char auto_increment_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
+	  char auto_increment_name[DB_MAX_SERIAL_NAME_LENGTH];
 	  MOP serial_class_mop, serial_mop;
 
 	  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
-	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name, ctemplate->name, old_name);
+	  error = set_auto_increment_serial_name (auto_increment_name, ctemplate->name, old_name);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
 	  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, auto_increment_name);
 	  found_att->auto_increment = serial_mop;
 	}
