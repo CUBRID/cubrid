@@ -151,7 +151,6 @@ class ftab_set
 
 int collect_strided_vpids (THREAD_ENTRY *thread_p,
 			   const HFID *hfid,
-			   int target_count,
 			   VPID **out_picked,
 			   int *out_count,
 			   int *out_total_data_pages);

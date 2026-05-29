@@ -29,19 +29,24 @@
 #include "error_manager.h"
 #include "file_manager.h"
 #include "memory_alloc.h"
+#include "statistics.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
+
+#include <algorithm>
+#include <random>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 int
-collect_strided_vpids (THREAD_ENTRY *thread_p, const HFID *hfid, int target_count,
+collect_strided_vpids (THREAD_ENTRY *thread_p, const HFID *hfid,
 		       VPID **out_picked, int *out_count, int *out_total_data_pages)
 {
   FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
   VPID *picked = NULL;
   int picked_count = 0;
+  int capacity = 0;
   int error_code = NO_ERROR;
 
   *out_picked = NULL;
@@ -58,28 +63,37 @@ collect_strided_vpids (THREAD_ENTRY *thread_p, const HFID *hfid, int target_coun
   // so the total-axis must exclude it too — otherwise weight = total/picked is off-by-one.
   *out_total_data_pages = collector.npages > 0 ? collector.npages - 1 : 0;
 
-  picked = (VPID *) db_private_alloc (thread_p, target_count * sizeof (VPID));
-  if (picked == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, target_count * sizeof (VPID));
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto cleanup;
-    }
-
   {
     ftab_set bitmap_set;
     bitmap_set.convert (&collector);
 
-    int stride = *out_total_data_pages / target_count;
-    if (stride < 1)
+    // Poisson-distributed sampling gap. mean gap = weight (develop clamp):
+    // ~33% (base 3), full scan below MIN_HEAP_SAMPLING_PAGES, capped near MAX_HEAP_SAMPLING_PAGES.
+    int total = *out_total_data_pages;
+    int base_weight = 3;
+    int min_weight = (total + MIN_HEAP_SAMPLING_PAGES - 1) / MIN_HEAP_SAMPLING_PAGES;
+    int max_weight = total / MAX_HEAP_SAMPLING_PAGES;
+    int weight = std::max (std::min (base_weight, min_weight), std::max (max_weight, 1));
+
+    // realized count ~ total/weight; the in-loop realloc absorbs Poisson variance.
+    capacity = total / weight + 64;
+    picked = (VPID *) db_private_alloc (thread_p, ((size_t) capacity) * sizeof (VPID));
+    if (picked == NULL)
       {
-	stride = 1;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, ((size_t) capacity) * sizeof (VPID));
+	error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	goto cleanup;
       }
+
+    // Fresh fixed-seed RNG per call so every query reproduces the same sample; a thread_local
+    // RNG would carry state into the next query on the same thread and break reproducibility.
+    std::mt19937 rng (123456789u);
+    std::poisson_distribution<int> gap_dist (weight - 1);
 
     int current_pos = 0;
     int next_pick_pos = 0;
 
-    while (picked_count < target_count)
+    while (true)
       {
 	FILE_PARTIAL_SECTOR ftab = bitmap_set.get_next ();
 	if (VSID_IS_NULL (&ftab.vsid))
@@ -87,7 +101,7 @@ collect_strided_vpids (THREAD_ENTRY *thread_p, const HFID *hfid, int target_coun
 	    break;
 	  }
 
-	for (int offset = 0; offset < DISK_SECTOR_NPAGES && picked_count < target_count; offset++)
+	for (int offset = 0; offset < DISK_SECTOR_NPAGES; offset++)
 	  {
 	    if (!bit64_is_set (ftab.page_bitmap, offset))
 	      {
@@ -106,8 +120,22 @@ collect_strided_vpids (THREAD_ENTRY *thread_p, const HFID *hfid, int target_coun
 
 	    if (current_pos == next_pick_pos)
 	      {
+		if (picked_count == capacity)
+		  {
+		    capacity *= 2;
+		    VPID *grown = (VPID *) db_private_realloc (thread_p, picked, ((size_t) capacity) * sizeof (VPID));
+		    if (grown == NULL)
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+				((size_t) capacity) * sizeof (VPID));
+			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+			goto cleanup;
+		      }
+		    picked = grown;
+		  }
 		picked[picked_count++] = candidate;
-		next_pick_pos += stride;
+		// shifted Poisson gap (mean = weight); weight == 1 -> sample every page
+		next_pick_pos += (weight > 1) ? (gap_dist (rng) + 1) : 1;
 	      }
 	    current_pos++;
 	  }

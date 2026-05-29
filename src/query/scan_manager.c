@@ -2922,7 +2922,7 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	  db_private_free_and_init (thread_p, hsidp->sampling.picked_vpids);
 	}
 
-      if (collect_strided_vpids (thread_p, hfid, NUMBER_OF_SAMPLING_PAGES,
+      if (collect_strided_vpids (thread_p, hfid,
 				 &hsidp->sampling.picked_vpids,
 				 &hsidp->sampling.picked_count, &total_pages) != NO_ERROR)
 	{

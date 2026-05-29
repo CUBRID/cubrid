@@ -38,7 +38,6 @@
 #define STATS_SAMPLING_LEAFS_MAX 5000	/* sampling leaf pages */
 #define MAX_HEAP_SAMPLING_PAGES 10000
 #define MIN_HEAP_SAMPLING_PAGES 5000
-#define NUMBER_OF_SAMPLING_PAGES 5000	/* PR strided pre-pick target; Poisson clamp merge pending */
 #define EXPECTED_ROWS_PER_PAGE 20
 
 /* disk-resident elements of pkeys[] field */
