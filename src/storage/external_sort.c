@@ -2232,7 +2232,6 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 	      temp_recdes.data = index_area[i];
 	      temp_recdes.length = SORT_RECORD_LENGTH (index_area[i]);
 
-	      assert (!SORT_IS_PARALLEL (sort_param));
 	      error = (*sort_param->put_fn) (thread_p, &temp_recdes, sort_param->put_arg);
 	      if (error != NO_ERROR)
 		{
@@ -2255,7 +2254,6 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 	      temp_recdes.data = saved_index_area[i];
 	      temp_recdes.length = SORT_RECORD_LENGTH (saved_index_area[i]);
 
-	      assert (!SORT_IS_PARALLEL (sort_param));
 	      error = (*sort_param->put_fn) (thread_p, &temp_recdes, sort_param->put_arg);
 	      if (error != NO_ERROR)
 		{
@@ -2284,7 +2282,6 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 	      free_and_init (long_recdes.data);
 	    }
 
-	  assert (!SORT_IS_PARALLEL (sort_param));
 	  if (sort_read_area (thread_p, &sort_param->temp[0], 0, 1, output_buffer) != NO_ERROR
 	      || sort_spage_get_record (output_buffer, 0, &temp_recdes, PEEK) != S_SUCCESS
 	      || sort_retrieve_longrec (thread_p, &temp_recdes, &long_recdes) == NULL
