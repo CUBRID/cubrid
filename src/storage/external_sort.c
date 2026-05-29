@@ -1705,14 +1705,21 @@ cleanup:
 	  sort_param->orderby_stats.orderby_ioreads += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES));
 	}
 
-      /* tplrec.tpl is allocated from the worker thread's private heap via db_private_alloc(NULL, ...).
-       * Free it here while still on the worker thread; the main thread cannot free it correctly. */
+      /* Worker-thread-only cleanup: unfix the active page (latch held by this
+       * thread) and free tplrec.tpl (allocated from this thread's private heap).
+       * On the early-termination path curr_page may still be fixed; the main
+       * thread cannot release either resource correctly. */
       if (sort_param->get_arg != NULL)
 	{
 	  SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
 	  if (sort_info_p->px_state != NULL)
 	    {
 	      sort_px_list_state *state = (sort_px_list_state *) sort_info_p->px_state;
+	      if (state->curr_page != NULL)
+		{
+		  qmgr_free_old_page_and_init (thread_p, state->curr_page, state->curr_tfile);
+		  state->curr_tfile = NULL;
+		}
 	      if (state->tplrec.tpl != NULL)
 		{
 		  db_private_free_and_init (thread_p, state->tplrec.tpl);
@@ -1738,13 +1745,20 @@ cleanup:
 	  sort_param->orderby_stats.orderby_ioreads += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES));
 	}
 
-      /* tplrec.tpl is worker-private; free here before returning to main thread. */
+      /* Worker-thread-only cleanup: unfix the active page (latch held by this
+       * thread) and free tplrec.tpl (worker-private heap). On the
+       * early-termination path curr_page may still be fixed. */
       if (sort_param->get_arg != NULL)
 	{
 	  SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
 	  if (sort_info_p->px_state != NULL)
 	    {
 	      sort_px_list_state *state = (sort_px_list_state *) sort_info_p->px_state;
+	      if (state->curr_page != NULL)
+		{
+		  qmgr_free_old_page_and_init (thread_p, state->curr_page, state->curr_tfile);
+		  state->curr_tfile = NULL;
+		}
 	      if (state->tplrec.tpl != NULL)
 		{
 		  db_private_free_and_init (thread_p, state->tplrec.tpl);
