@@ -22,7 +22,6 @@
 
 #include "px_hash_join_task_manager.hpp"
 
-#include "bit.h"			/* bit64_count_trailing_zeros */
 #include "error_manager.h"		/* assert_release_error, er_errid, er_set, ... */
 #include "fetch.h"			/* fetch_val_list */
 #include "list_file.h"			/* qfile_open_list, qfile_open_list_scan, qfile_close_scan, ... */
