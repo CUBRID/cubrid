@@ -4513,11 +4513,16 @@ clear:
 
 
 /*
- * sort_merge_run_for_parallel () - merge run for parallel using async 2-way queue
+ * sort_merge_run_for_parallel () - merge run for parallel using async k-way queue
  *   return: NO_ERROR
  *   px_sort_param(in):
  *   sort_param(in):
  *   parallel_num(in):
+ *
+ *   Each dispatched merge consumes up to SORT_PX_MERGE_FILES runs from the
+ *   shared queue and pushes a single merged result back. Using k > 2 reduces
+ *   merge-tree depth (and total fan-in I/O) at the cost of more state per
+ *   in-flight merge.
  */
 
 typedef struct sort_merge_queue_ctx SORT_MERGE_QUEUE_CTX;
@@ -4577,24 +4582,24 @@ sort_merge_queue_release_ctx (SORT_MERGE_QUEUE_CTX * qctx, int idx)
 }
 
 static void
-sort_merge_queue_setup_ctx (int pool_idx, SORT_MERGE_QUEUE_CTX * qctx, RESULT_RUN run_a, RESULT_RUN run_b)
+sort_merge_queue_setup_ctx (int pool_idx, SORT_MERGE_QUEUE_CTX * qctx, const RESULT_RUN * runs, int k)
 {
   int j;
   SORT_PARAM *ctx = &qctx->px_sort_param[pool_idx];
 
-  ctx->half_files = 2;
-  ctx->tot_tempfiles = 4;
+  assert (k >= 2 && k <= SORT_PX_MERGE_FILES);
+  ctx->half_files = k;
+  ctx->tot_tempfiles = k * 2;
   ctx->in_half = 0;
   ctx->px_result_file_idx = 0;
-  ctx->temp[0] = run_a.temp_file;
-  ctx->temp[1] = run_b.temp_file;
-  ctx->file_contents[0].num_pages[0] = run_a.num_pages;
-  ctx->file_contents[0].first_run = 0;
-  ctx->file_contents[0].last_run = 0;
-  ctx->file_contents[1].num_pages[0] = run_b.num_pages;
-  ctx->file_contents[1].first_run = 0;
-  ctx->file_contents[1].last_run = 0;
-  for (j = 2; j < 4; j++)
+  for (j = 0; j < k; j++)
+    {
+      ctx->temp[j] = runs[j].temp_file;
+      ctx->file_contents[j].num_pages[0] = runs[j].num_pages;
+      ctx->file_contents[j].first_run = 0;
+      ctx->file_contents[j].last_run = 0;
+    }
+  for (j = k; j < k * 2; j++)
     {
       ctx->temp[j].volid = NULL_VOLID;
       ctx->file_contents[j].first_run = -1;
@@ -4615,7 +4620,7 @@ sort_merge_queue_ctx_init (SORT_MERGE_QUEUE_CTX * qctx, SORT_PARAM * sort_param,
   pthread_cond_init (&qctx->done_cond, NULL);
   qctx->sort_param = sort_param;
   qctx->px_sort_param = px_sort_param;
-  qctx->pool_size = parallel_num / 2 + 1;
+  qctx->pool_size = parallel_num / SORT_PX_MERGE_FILES + 1;
 }
 
 static void
@@ -4699,7 +4704,8 @@ sort_merge_free_worker_input_files (SORT_PARAM * px_sort_param, int parallel_num
 static void
 sort_merge_queue_try_dispatch (SORT_MERGE_QUEUE_CTX * qctx)
 {
-  RESULT_RUN run_a, run_b;
+  RESULT_RUN runs[SORT_PX_MERGE_FILES];
+  int k, j;
   int pool_idx;
   SORT_PARAM *ctx;
   parallel_query::callable_task * task;
@@ -4715,13 +4721,19 @@ sort_merge_queue_try_dispatch (SORT_MERGE_QUEUE_CTX * qctx)
 
   if (qctx->queue_size >= 2)
     {
-      run_a = sort_merge_queue_dequeue (qctx);
-      run_b = sort_merge_queue_dequeue (qctx);
+      /* Greedy k-way: consume up to SORT_PX_MERGE_FILES runs per merge to
+       * minimize merge-tree depth (= fan-in I/O). k=2 is the smallest valid
+       * merge and is used whenever the queue currently holds fewer than K. */
+      k = MIN (qctx->queue_size, SORT_PX_MERGE_FILES);
+      for (j = 0; j < k; j++)
+	{
+	  runs[j] = sort_merge_queue_dequeue (qctx);
+	}
       pool_idx = sort_merge_queue_acquire_ctx (qctx);
-      /* pool_size = parallel_num/2 + 1 bounds simultaneous merges to parallel_num/2,
-       * so acquire_ctx should never fail under the current invariant. */
+      /* pool_size = parallel_num/SORT_PX_MERGE_FILES + 1 bounds simultaneous
+       * merges, so acquire_ctx should never fail under the current invariant. */
       assert (pool_idx >= 0);
-      sort_merge_queue_setup_ctx (pool_idx, qctx, run_a, run_b);
+      sort_merge_queue_setup_ctx (pool_idx, qctx, runs, k);
       qctx->in_flight++;
       ctx = &qctx->px_sort_param[pool_idx];
       task = new parallel_query::callable_task (qctx->sort_param->px_worker_manager,
