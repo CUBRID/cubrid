@@ -30,6 +30,25 @@ xs_get_data_queue ()
 }
 
 #if defined (CS_MODE)
+
+bool
+xs_is_in_method_rids (unsigned short rid)
+{
+  for (int i = 0; i <= METHOD_MAX_RECURSION_DEPTH ; i++)
+    {
+      unsigned short method_rid = CSS_RID_FROM_EID (xs_conn_info[i]);
+      if (0 == method_rid)
+	{
+	  break;
+	}
+      if (rid == method_rid)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
 void
 xs_set_conn_info (int idx, unsigned int rc)
 {
@@ -46,8 +65,8 @@ int
 xs_queue_send ()
 {
   int error = NO_ERROR;
-  int depth = tran_get_libcas_depth () - 1;
-  int rc = xs_get_conn_info (depth);
+  int idx = tran_get_libcas_depth () - 1;
+  int rc = xs_get_conn_info (idx);
 
   if (!xs_get_data_queue().empty())
     {
