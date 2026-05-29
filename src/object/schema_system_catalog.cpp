@@ -81,6 +81,7 @@ namespace cubschema
     CT_SYNONYM_NAME,			// "_db_synonym"
     CT_GLOBAL_TRAN_NAME,		// "_db_global_tran"
     CT_TRIGGER_NAME,		// "_db_trigger"
+    CT_HISTOGRAM_NAME		// "_db_histogram"
   };
 
   static const std::vector <std::string> sm_system_vclass_names = []()
@@ -113,7 +114,8 @@ namespace cubschema
       CTV_AUTHORIZATION_NAME,		// "db_authorization"
       CTV_CHARSET_NAME,		// "db_charset"
       CTV_SERVER_NAME,		// "db_server"
-      CTV_SYNONYM_NAME			// "db_synonym"
+      CTV_SYNONYM_NAME,			// "db_synonym"
+      CTV_HISTOGRAM_NAME		// "db_histogram"
     };
 
     const std::string prefix = std::string (AU_INFORMATION_SCHEMA_USER_NAME) + ".";

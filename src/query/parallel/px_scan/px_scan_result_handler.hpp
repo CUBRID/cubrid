@@ -17,18 +17,18 @@
  */
 
 /*
- * px_heap_scan_result_handler.hpp
+ * px_scan_result_handler.hpp
  */
 
-#ifndef _PX_HEAP_SCAN_RESULT_HANDLER_HPP_
-#define _PX_HEAP_SCAN_RESULT_HANDLER_HPP_
+#ifndef _PX_SCAN_RESULT_HANDLER_HPP_
+#define _PX_SCAN_RESULT_HANDLER_HPP_
 
 #include "query_list.h"
 #include "storage_common.h"
 #include "thread_entry.hpp"
 #include "px_interrupt.hpp"
 #include "xasl.h"
-#include "px_heap_scan_result_type.hpp"
+#include "px_scan_result_type.hpp"
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
@@ -36,7 +36,7 @@
 #include <type_traits>
 #include <vector>
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
   class list_id_header;
   struct read_spec;
@@ -68,14 +68,12 @@ namespace parallel_heap_scan
 
     private:
       void get_valid_read_spec ();
-      /* common */
       int m_parallelism;
       std::mutex m_result_mutex;
       std::condition_variable m_result_cv;
       QUERY_ID m_query_id;
-      interrupt *m_interrupt_p; /* for interrupt */
-      err_messages_with_lock *m_err_messages_p; /* for error messages */
-      /* specific */
+      interrupt *m_interrupt_p;
+      err_messages_with_lock *m_err_messages_p;
       variables m_;
       thread_local static tls tl;
   };
@@ -247,8 +245,8 @@ namespace parallel_heap_scan
       std::condition_variable m_result_cv;
       int m_result_completed;
       QUERY_ID m_query_id;
-      interrupt *m_interrupt_p; /* for interrupt */
-      err_messages_with_lock *m_err_messages_p; /* for error messages */
+      interrupt *m_interrupt_p;
+      err_messages_with_lock *m_err_messages_p;
       AGGREGATE_TYPE *m_orig_agg_list;
       std::mutex writer_results_mutex;
       thread_local static AGGREGATE_TYPE *tl_agg_p;
@@ -260,4 +258,4 @@ namespace parallel_heap_scan
   };
 }
 
-#endif /*_PX_HEAP_SCAN_RESULT_HANDLER_HPP_ */
+#endif /*_PX_SCAN_RESULT_HANDLER_HPP_ */

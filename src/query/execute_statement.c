@@ -20,6 +20,8 @@
  * execute_statement.c - functions to do execute
  */
 
+#include "error_code.h"
+#include "parse_tree.h"
 #ident "$Id$"
 
 #include "config.h"
@@ -695,7 +697,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
       goto end;
     }
 
-  obj_tmpl = dbt_create_object_internal ((MOP) serial_class);
+  obj_tmpl = dbt_create_object_internal ((MOP) serial_class, false);
   if (obj_tmpl == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -3194,6 +3196,8 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_CREATE_SERIAL:
 	case PT_CREATE_TRIGGER:
 	case PT_CREATE_USER:
+	case PT_UPDATE_HISTOGRAM:
+	case PT_DROP_HISTOGRAM:
 	case PT_ALTER:
 	case PT_ALTER_INDEX:
 	case PT_ALTER_SERIAL:
@@ -3270,6 +3274,15 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_CREATE_INDEX:
 	  error = do_create_index (parser, statement);
 	  break;
+
+	case PT_UPDATE_HISTOGRAM:
+	  error = do_update_histogram (parser, statement);
+	  break;
+
+	case PT_DROP_HISTOGRAM:
+	  error = do_drop_histogram (parser, statement);
+	  break;
+
 
 	case PT_EVALUATE:
 	  error = do_evaluate (parser, statement);
@@ -3881,6 +3894,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_VACUUM:
     case PT_QUERY_TRACE:
     case PT_KILL_STMT:
+    case PT_SHOW_HISTOGRAM:
 
       db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
       break;
@@ -3891,6 +3905,8 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_CREATE_SERIAL:
     case PT_CREATE_TRIGGER:
     case PT_CREATE_USER:
+    case PT_UPDATE_HISTOGRAM:
+    case PT_DROP_HISTOGRAM:
     case PT_ALTER:
     case PT_ALTER_INDEX:
     case PT_ALTER_SERIAL:
@@ -3963,6 +3979,15 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_CREATE_USER:
       err = do_create_user (parser, statement);
+      break;
+    case PT_UPDATE_HISTOGRAM:
+      err = do_update_histogram (parser, statement);
+      break;
+    case PT_DROP_HISTOGRAM:
+      err = do_drop_histogram (parser, statement);
+      break;
+    case PT_SHOW_HISTOGRAM:
+      err = do_show_histogram (parser, statement);
       break;
     case PT_ALTER:
       /* err = do_alter(parser, statement); */
@@ -4488,6 +4513,32 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (class_type == SM_CLASS_CT)
 	    {
 	      error = sm_update_statistics (class_mop, statement->info.update_stats.with_fullscan);
+	      if (error == NO_ERROR && prm_get_bool_value (PRM_ID_UPDATE_STATISTICS_UPDATE_HISTOGRAM))
+		{
+		  DB_OBJECT *obj;
+		  PT_HISTOGRAM_INFO histogram_info;
+		  int save;
+
+		  AU_DISABLE (save);
+		  obj = db_find_class (sm_get_ch_name (class_mop));
+		  if (obj == NULL)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      AU_ENABLE (save);
+		      return er_errid ();
+		    }
+
+		  histogram_info.target_columns = NULL;
+		  histogram_info.bucket_count = -1;
+		  histogram_info.with_fullscan = false;
+		  error = update_or_drop_histogram_helper (NULL, obj, &histogram_info, DO_HISTOGRAM_CREATE);
+		  if (!(error == NO_ERROR || error == ER_OBJ_INVALID_ARGUMENTS))
+		    {
+		      AU_ENABLE (save);
+		      return error;
+		    }
+		  AU_ENABLE (save);
+		}
 	    }
 	}
 
@@ -6261,8 +6312,8 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
     }
 
   /* lock splitted classes with X_LOCK */
-  if (locator_lockhint_classes (num_classes, (const char **) classes_names, locks, need_subclasses, flags, 1, NULL_LOCK)
-      != LC_CLASSNAME_EXIST)
+  if (locator_lockhint_classes
+      (num_classes, (const char **) classes_names, locks, need_subclasses, flags, 1, NULL_LOCK) != LC_CLASSNAME_EXIST)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -7344,9 +7395,10 @@ unlink_list (PT_NODE * list)
  * Note:
  */
 static QFILE_LIST_ID *
-get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * column_names, PT_NODE * column_values,
-			   PT_NODE * with, PT_NODE * where, PT_NODE * order_by, PT_NODE * orderby_for,
-			   PT_NODE * using_index, PT_NODE * class_specs, PT_NODE * update_stmt)
+get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * column_names,
+			   PT_NODE * column_values, PT_NODE * with, PT_NODE * where,
+			   PT_NODE * order_by, PT_NODE * orderby_for, PT_NODE * using_index,
+			   PT_NODE * class_specs, PT_NODE * update_stmt)
 {
   PT_NODE *statement = NULL;
   QFILE_LIST_ID *result = NULL;
@@ -7919,9 +7971,9 @@ do_set_pruning_type (PARSER_CONTEXT * parser, PT_NODE * spec, CLIENT_UPDATE_CLAS
  * Note:
  */
 int
-init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE_INFO ** assigns_data, int *assigns_count,
-		  CLIENT_UPDATE_CLASS_INFO ** cls_data, int *cls_count, DB_VALUE ** values, int *values_cnt,
-		  bool has_delete)
+init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE_INFO ** assigns_data,
+		  int *assigns_count, CLIENT_UPDATE_CLASS_INFO ** cls_data, int *cls_count, DB_VALUE ** values,
+		  int *values_cnt, bool has_delete)
 {
   int error = NO_ERROR;
   int assign_cnt = 0, upd_cls_cnt = 0, vals_cnt = 0, idx, idx2, idx3, i;
@@ -8638,8 +8690,8 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
 
       error =
 	prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
-				   parser->host_var_count + parser->auto_param_count, parser->host_variables, &list_id,
-				   query_flag);
+				   parser->host_var_count + parser->auto_param_count, parser->host_variables,
+				   &list_id, query_flag);
       AU_RESTORE (au_save);
     }
 
@@ -9741,8 +9793,9 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      qo_auto_parameterize (parser, statement->info.update.orderby_for);
 	    }
 
-	  err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-			       parser->host_variables, &list_id, query_flag, NULL, NULL);
+	  err =
+	    execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
+			   parser->host_variables, &list_id, query_flag, NULL, NULL);
 
 	  AU_RESTORE (au_save);
 	  if (err != NO_ERROR)
@@ -10307,8 +10360,8 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       error =
 	prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
-				   parser->host_var_count + parser->auto_param_count, parser->host_variables, &list_id,
-				   query_flag);
+				   parser->host_var_count + parser->auto_param_count, parser->host_variables,
+				   &list_id, query_flag);
       AU_RESTORE (au_save);
     }
 
@@ -11263,7 +11316,6 @@ static PT_NODE *test_check_option (PARSER_CONTEXT * parser, PT_NODE * node, void
 static int insert_local (PARSER_CONTEXT * parser, PT_NODE * statement);
 static PT_NODE *do_create_odku_stmt (PARSER_CONTEXT * parser, PT_NODE * insert);
 static int do_find_unique_constraint_violations (DB_OTMPL * tmpl, bool for_update, OID ** oids, int *oids_count);
-static int do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constraint, DB_VALUE * key);
 static int do_on_duplicate_key_update (PARSER_CONTEXT * parser, DB_OTMPL * tpl, PT_NODE * update_stmt);
 static int do_replace_into (PARSER_CONTEXT * parser, DB_OTMPL * tmpl, PT_NODE * spec, PT_NODE * class_specs);
 static int is_replace_or_odku_allowed (DB_OBJECT * obj, int *allowed);
@@ -11957,16 +12009,17 @@ do_set_insert_server_not_allowed (PARSER_CONTEXT * parser, PT_NODE * node, void 
 }
 
 /*
- * do_create_midxkey_for_constraint () - create a MIDX_KEY db_value for the
- *					 specified constraint using the values
- *					 assigned in an object template
+ * do_create_midxkey_from_values () - create a MIDX_KEY db_value for the
+ *				      specified constraint using DB_VALUE array
  * return : error code or NO_ERROR;
- * tmpl (in)	   : object template
- * constraint (in) : constraint
- * key (in/out)	   : the MIDX key
+ * values (in)      : values to compose the MIDX key
+ * value_count (in) : number of values
+ * constraint (in)  : constraint
+ * key (in/out)	    : the MIDX key
  */
-static int
-do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constraint, DB_VALUE * key)
+int
+do_create_midxkey_from_values (const DB_VALUE * values[], int value_count, SM_CLASS_CONSTRAINT * constraint,
+			       DB_VALUE * key)
 {
   DB_MIDXKEY midxkey;
   SM_ATTRIBUTE **attr = NULL;
@@ -11985,11 +12038,12 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
   /* compute key size */
   for (attr_count = 0, attr = constraint->attributes; *attr != NULL; attr_count++, attr++)
     {
-      val = NULL;
-      if (tmpl->assignments[(*attr)->order] != NULL)
+      if (attr_count >= value_count)
 	{
-	  val = tmpl->assignments[(*attr)->order]->variable;
+	  error = ER_OBJ_INVALID_ARGUMENTS;
+	  goto error_return;
 	}
+      val = (DB_VALUE *) values[attr_count];
 
       attr_dom = tp_domain_copy ((*attr)->domain, false);
       if (attr_dom == NULL)
@@ -11998,6 +12052,7 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
 	  goto error_return;
 	}
 
+      assert (attr_dom->type->id <= DB_TYPE_LAST);
       if (asc_desc != NULL && asc_desc[attr_count] == 1)
 	{
 	  attr_dom->is_desc = 1;
@@ -12037,16 +12092,12 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
 
   for (i = 0, attr = constraint->attributes; *attr != NULL; attr++, i++)
     {
-      val = NULL;
-      if (tmpl->assignments[(*attr)->order] != NULL)
-	{
-	  val = tmpl->assignments[(*attr)->order]->variable;
-	}
+      val = (DB_VALUE *) values[i];
       dom = (*attr)->domain;
 
       or_multi_put_element_offset (nullmap_ptr, attr_count, CAST_BUFLEN (buf.ptr - buf.buffer), i);
 
-      if (!DB_IS_NULL (val))
+      if (val != NULL && !DB_IS_NULL (val))
 	{
 	  dom->type->index_writeval (&buf, val);
 	  or_multi_set_not_null (nullmap_ptr, i);
@@ -12068,10 +12119,12 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
       goto error_return;
     }
   midxkey.domain = tp_domain_cache (midxkey.domain);
+  assert (midxkey.domain->type->id <= DB_TYPE_LAST);
   midxkey.min_max_val.position = -1;
   midxkey.min_max_val.type = MIN_COLUMN;
 
   error = db_make_midxkey (key, &midxkey);
+  assert (key->domain.general_info.type <= DB_TYPE_LAST);
   if (error != NO_ERROR)
     {
       goto error_return;
@@ -12094,6 +12147,57 @@ error_return:
     }
   return error;
 }
+
+/*
+ * do_create_midxkey_for_constraint () - create a MIDX_KEY db_value for the
+ *					 specified constraint using the values
+ *					 assigned in an object template
+ * return : error code or NO_ERROR;
+ * tmpl (in)	   : object template
+ * constraint (in) : constraint
+ * key (in/out)	   : the MIDX key
+ */
+int
+do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constraint, DB_VALUE * key)
+{
+  const DB_VALUE **values = NULL;
+  SM_ATTRIBUTE **attr = NULL;
+  int attr_count = 0, i = 0, error = NO_ERROR;
+
+  for (attr = constraint->attributes; *attr != NULL; attr_count++, attr++)
+    {
+      /* count attributes */
+    }
+
+  if (attr_count <= 0)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  values = (const DB_VALUE **) malloc (sizeof (DB_VALUE *) * attr_count);
+  if (values == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  for (attr = constraint->attributes; *attr != NULL; i++, attr++)
+    {
+      if (tmpl->assignments[(*attr)->order] != NULL)
+	{
+	  values[i] = tmpl->assignments[(*attr)->order]->variable;
+	}
+      else
+	{
+	  values[i] = NULL;
+	}
+    }
+
+  error = do_create_midxkey_from_values (values, attr_count, constraint, key);
+  free_and_init (values);
+
+  return error;
+}
+
 
 /*
  * do_create_odku_stmt () - create an UPDATE statement for ON DUPLICATE KEY
@@ -12299,8 +12403,8 @@ do_find_unique_constraint_violations (DB_OTMPL * tmpl, bool for_update, OID ** o
     }
 
   result =
-    btree_find_multi_uniques (ws_oid (tmpl->classobj), tmpl->pruning_type, unique_btids, unique_keys, key_cnt, op_type,
-			      oids, oids_count);
+    btree_find_multi_uniques (ws_oid (tmpl->classobj), tmpl->pruning_type, unique_btids, unique_keys, key_cnt,
+			      op_type, oids, oids_count);
   if (result == BTREE_ERROR_OCCURRED)
     {
       error = ER_FAILED;
@@ -12507,8 +12611,8 @@ is_replace_or_odku_allowed (DB_OBJECT * obj, int *allowed)
  * row_count_ptr (in/out)  : Pointer to row counter.
  */
 int
-do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * statement, const char **savepoint_name,
-		    int *row_count_ptr)
+do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * statement,
+		    const char **savepoint_name, int *row_count_ptr)
 {
   const char *into_label = NULL;
   DB_VALUE *ins_val = NULL, *val = NULL, db_value;
@@ -12668,7 +12772,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 	  /* now create the object using templates, and then dbt_put each value for each corresponding attribute. Of
 	   * course, it is presumed that the order in which attributes are defined in the class as well as in the
 	   * actual insert statement is preserved. */
-	  *otemplate = dbt_create_object_internal (class_->info.name.db_object);
+	  *otemplate = dbt_create_object_internal (class_->info.name.db_object, false);
 	  if (*otemplate == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -13227,7 +13331,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 		    }
 
 		  /* create an instance of the target class using templates */
-		  otemplate = dbt_create_object_internal (class_->info.name.db_object);
+		  otemplate = dbt_create_object_internal (class_->info.name.db_object, false);
 		  if (otemplate == NULL)
 		    {
 		      break;
@@ -13260,8 +13364,8 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 			      if (!is_vclass)
 				{
 				  error =
-				    db_get_attribute_descriptor (class_->info.name.db_object, attr->info.name.original,
-								 0, 1, &attr_descs[k]);
+				    db_get_attribute_descriptor (class_->info.name.db_object,
+								 attr->info.name.original, 0, 1, &attr_descs[k]);
 				}
 			    }
 			}
@@ -15026,8 +15130,8 @@ do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
     }
 
   err =
-    execute_query (stmt->xasl_id, &query_id, stmt->sub_host_var_count, host_variables, &list_id, flag, &clt_cache_time,
-		   &stmt->cache_time);
+    execute_query (stmt->xasl_id, &query_id, stmt->sub_host_var_count, host_variables, &list_id, flag,
+		   &clt_cache_time, &stmt->cache_time);
 
   if (host_variables)
     {
@@ -16198,6 +16302,18 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_DROP_INDEX:
       name = pt_print_bytes (parser, statement->info.index.indexed_class);
       repl_stmt.statement_type = CUBRID_STMT_DROP_INDEX;
+      break;
+
+    case PT_UPDATE_HISTOGRAM:
+      repl_stmt.statement_type = CUBRID_STMT_UPDATE_HISTOGRAM;
+      break;
+
+    case PT_DROP_HISTOGRAM:
+      repl_stmt.statement_type = CUBRID_STMT_DROP_HISTOGRAM;
+      break;
+
+    case PT_SHOW_HISTOGRAM:
+      repl_stmt.statement_type = CUBRID_STMT_SHOW_HISTOGRAM;
       break;
 
     case PT_CREATE_SERIAL:
@@ -20786,7 +20902,7 @@ do_create_server_internal (MOP * server_object, DB_VALUE * port_no, DB_VALUE * p
       goto end;
     }
 
-  obj_tmpl = dbt_create_object_internal ((MOP) server_class);
+  obj_tmpl = dbt_create_object_internal ((MOP) server_class, false);
   if (obj_tmpl == NULL)
     {
       assert (er_errid () != NO_ERROR);
