@@ -11848,6 +11848,7 @@ mr_setval_char_type_common (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB
 	      new_compressed_buf = (char *) db_private_alloc (NULL, src->data.ch.medium.compressed_size + 1);
 	      if (new_compressed_buf == NULL)
 		{
+		  pr_clear_value (dest);
 		  db_value_domain_init (dest, type, src_precision, 0);
 		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
