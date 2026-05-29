@@ -7977,7 +7977,15 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	      CUBRID_IDX_DELETE_START (classname, index->btname);
 #endif /* ENABLE_SYSTEMTAP */
 
-	      if (use_mvcc == true)
+	      if (index->type == HNSW_VECTOR_INDEX)
+		{
+		  error_code = hnsw_delete_element (thread_p, &btid, inst_oid);
+		  if (error_code != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		}
+	      else if (use_mvcc == true)
 		{
 		  if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 		    {
@@ -8630,7 +8638,15 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 
 	      if (do_delete_only)
 		{
-		  if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+		  if (index->type == HNSW_VECTOR_INDEX)
+		    {
+		      error_code = hnsw_delete_element (thread_p, &old_btid, oid);
+		      if (error_code != NO_ERROR)
+			{
+			  goto error;
+			}
+		    }
+		  else if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 		    {
 		      error_code =
 			btree_online_index_dispatcher (thread_p, &index->btid, old_key, class_oid, oid, unique_pk,
@@ -8671,7 +8687,31 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	      else
 		{
 		  /* in MVCC - update index key means insert index key */
-		  if ((do_insert_only == true))
+		  if (index->type == HNSW_VECTOR_INDEX)
+		    {
+		      if (do_insert_only || old_isnull)
+			{
+			  const DB_VECTOR_FLOAT *vf = db_get_vector_float (new_key);
+
+			  error_code = hnsw_add_element (thread_p, &new_btid, oid, vf->float_array, 1);
+			}
+		      else if (new_isnull)
+			{
+			  error_code = hnsw_delete_element (thread_p, &old_btid, oid);
+			}
+		      else
+			{
+			  const DB_VECTOR_FLOAT *vf = db_get_vector_float (new_key);
+
+			  error_code = hnsw_update_element (thread_p, &old_btid, oid, vf->float_array);
+			}
+
+		      if (error_code != NO_ERROR)
+			{
+			  goto error;
+			}
+		    }
+		  else if ((do_insert_only == true))
 		    {
 		      if (index->type == BTREE_FOREIGN_KEY)
 			{
