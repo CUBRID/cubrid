@@ -4571,8 +4571,7 @@ tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain)
     {
     case DB_TYPE_CHAR:
       return (desired_precision == original_length
-	      && (original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR)
-	      && DB_GET_COMPRESSED_STRING (val) == NULL);
+	      && (original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR));
     case DB_TYPE_VARCHAR:
       return (desired_precision >= original_length
 	      && (original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR));
@@ -5416,9 +5415,21 @@ tp_ftoa (DB_VALUE const *src, DB_VALUE * result)
   switch (DB_VALUE_DOMAIN_TYPE (result))
     {
     case DB_TYPE_CHAR:
-      db_make_char (result, DB_VALUE_PRECISION (result), str_float, strlen (str_float), db_get_string_codeset (result),
-		    db_get_string_collation (result));
-      result->need_clear = true;
+      {
+	int prec = DB_VALUE_PRECISION (result);
+	int data_size = strlen (str_float);
+
+	db_make_char (result, (prec == TP_FLOATING_PRECISION_VALUE) ? data_size : prec,
+		      str_float, data_size, db_get_string_codeset (result), db_get_string_collation (result));
+	result->need_clear = true;
+	result->data.ch.medium.length = data_size;	/* ASCII float string: char_count == byte_count */
+
+	if (data_size < prec && pr_pad_char_to_precision (result, prec) != NO_ERROR)
+	  {
+	    pr_clear_value (result);
+	    return;
+	  }
+      }
       break;
 
     case DB_TYPE_VARCHAR:
@@ -5473,9 +5484,21 @@ tp_dtoa (DB_VALUE const *src, DB_VALUE * result)
   switch (DB_VALUE_DOMAIN_TYPE (result))
     {
     case DB_TYPE_CHAR:
-      db_make_char (result, DB_VALUE_PRECISION (result), str_double, strlen (str_double),
-		    db_get_string_codeset (result), db_get_string_collation (result));
-      result->need_clear = true;
+      {
+	int prec = DB_VALUE_PRECISION (result);
+	int data_size = strlen (str_double);
+
+	db_make_char (result, (prec == TP_FLOATING_PRECISION_VALUE) ? data_size : prec,
+		      str_double, data_size, db_get_string_codeset (result), db_get_string_collation (result));
+	result->need_clear = true;
+	result->data.ch.medium.length = data_size;	/* ASCII double string: char_count == byte_count */
+
+	if (data_size < prec && pr_pad_char_to_precision (result, prec) != NO_ERROR)
+	  {
+	    pr_clear_value (result);
+	    return;
+	  }
+      }
       break;
 
     case DB_TYPE_VARCHAR:
