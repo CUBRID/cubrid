@@ -158,11 +158,11 @@ struct SORT_INFO
   void *px_state;		/* per-worker sector scan state (ORDER_BY and GROUP_BY parallel) */
 };
 
-#if defined(SERVER_MODE)
 /* Passed as px_extra_arg to sort_listfile for SORT_GROUP_BY parallel runs.
  * Populated by query_executor.c from GROUPBY_STATE before calling sort_listfile.
  * Gives sort_check_parallelism and sort_start_parallelism the inputs they need
- * without requiring GROUPBY_STATE to be visible in external_sort.c. */
+ * without requiring GROUPBY_STATE to be visible in external_sort.c.
+ * Harmless in SA_MODE: parallelism degenerates to 1 and the pointer is ignored. */
 typedef struct gby_sort_param GBY_SORT_PARAM;
 struct gby_sort_param
 {
@@ -172,7 +172,6 @@ struct gby_sort_param
   void *groupby_stats;		/* points to GROUPBY_STATS in xasl node for trace output */
   int parallelism;		/* parallel(N) hint from xasl->parallelism; -1 = auto */
 };
-#endif /* SERVER_MODE */
 
 extern int sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GET_FUNC * get_fn,
 			  void *get_arg, SORT_PUT_FUNC * put_fn, void *put_arg, SORT_CMP_FUNC * cmp_fn, void *cmp_arg,

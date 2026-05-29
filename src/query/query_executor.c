@@ -5617,7 +5617,6 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 
   estimated_pages = qfile_get_estimated_pages_for_sorting (list_id, &gbstate.key_info);
 
-#if defined(SERVER_MODE)
   /* Declare without initializer to avoid "jump crosses initialization" error
    * when gotos earlier in the function target labels past this declaration. */
   GBY_SORT_PARAM gby_px;
@@ -5626,17 +5625,10 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
   gby_px.hash_eligible = gbstate.hash_eligible;
   gby_px.groupby_stats = &xasl->groupby_stats;
   gby_px.parallelism = xasl->parallelism;
-#endif /* SERVER_MODE */
 
   if (sort_listfile (thread_p, NULL_VOLID, estimated_pages, &qexec_gby_get_next, &gbstate, &qexec_gby_put_next,
 		     &gbstate, gbstate.cmp_fn, &gbstate.key_info, SORT_DUP, NO_SORT_LIMIT,
-		     gbstate.output_file->tfile_vfid->tde_encrypted, SORT_GROUP_BY,
-#if defined(SERVER_MODE)
-		     &gby_px
-#else
-		     NULL
-#endif /* SERVER_MODE */
-      ) != NO_ERROR)
+		     gbstate.output_file->tfile_vfid->tde_encrypted, SORT_GROUP_BY, &gby_px) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
