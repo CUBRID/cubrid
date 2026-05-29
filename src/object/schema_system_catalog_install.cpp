@@ -286,6 +286,7 @@ catcls_init (void)
   ADD_TABLE_DEFINITION (CT_DUAL_NAME, system_catalog_initializer::get_dual ());
   ADD_TABLE_DEFINITION (CT_SYNONYM_NAME, system_catalog_initializer::get_synonym ());
   ADD_TABLE_DEFINITION (CT_SERVER_NAME, system_catalog_initializer::get_server ());
+  ADD_TABLE_DEFINITION (CT_HISTOGRAM_NAME, system_catalog_initializer::get_histogram());
   ADD_TABLE_DEFINITION (CT_GLOBAL_TRAN_NAME, system_catalog_initializer::get_global_tran ());
 
   ADD_VIEW_DEFINITION (CTV_CLASS_NAME, system_catalog_initializer::get_view_class ());
@@ -312,6 +313,7 @@ catcls_init (void)
   ADD_VIEW_DEFINITION (CTV_CHARSET_NAME, system_catalog_initializer::get_view_charset ());
   ADD_VIEW_DEFINITION (CTV_SERVER_NAME, system_catalog_initializer::get_view_server ());
   ADD_VIEW_DEFINITION (CTV_SYNONYM_NAME, system_catalog_initializer::get_view_synonym ());
+  ADD_VIEW_DEFINITION (CTV_HISTOGRAM_NAME, system_catalog_initializer::get_view_db_histogram ());
 }
 
 int
@@ -383,49 +385,6 @@ namespace cubschema
   /* NEW DEFINITION (CLASS) */
   /* ========================================================================== */
 
-
-// TODO: find right place
-// TODO: implement formatting utility function for std::string (like fmt library)
-  const inline std::string format_varchar (const int size)
-  {
-    std::string s ("varchar(");
-    s += std::to_string (size);
-    s += ")";
-    return s;
-  }
-
-  const inline std::string format_numeric (const int prec, const int scale)
-  {
-    std::string s ("numeric(");
-    s += std::to_string (prec);
-    s += ",";
-    s += std::to_string (scale);
-    s += ")";
-    return s;
-  }
-
-  const inline std::string format_sequence (const std::string_view type)
-  {
-    std::string s ("sequence of");
-    if (!type.empty ())
-      {
-	s.append (" ");
-	s.append (type);
-      }
-    return s;
-  }
-
-  const inline std::string format_set (const std::string_view type)
-  {
-    std::string s ("set of");
-    if (!type.empty ())
-      {
-	s.append (" ");
-	s.append (type);
-      }
-    return s;
-  }
-
   system_catalog_definition
   system_catalog_initializer::get_class ()
   {
@@ -494,7 +453,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -529,7 +488,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -563,7 +522,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -592,7 +551,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -620,7 +579,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -647,7 +606,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -673,7 +632,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -699,7 +658,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -743,7 +702,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -772,7 +731,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -804,7 +763,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializers
     nullptr
@@ -843,7 +802,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializers
     nullptr
@@ -873,7 +832,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -898,7 +857,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     catcls_add_data_type
@@ -938,7 +897,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -970,7 +929,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -1002,7 +961,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -1047,7 +1006,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -1102,7 +1061,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -1133,7 +1092,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     catcls_add_collations
@@ -1158,7 +1117,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     catcls_add_charsets
@@ -1182,7 +1141,8 @@ namespace cubschema
       // owner, grants
       Au_dba_user,
       {
-	{Au_public_user, AU_SELECT, false}
+	{Au_public_user, AU_SELECT, false},
+	{Au_information_schema_user, AU_SELECT, false}
       }
     },
 // initializer
@@ -1223,7 +1183,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -1259,11 +1219,43 @@ namespace cubschema
 // authorization
     {
       // owner, grants
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
+    },
+// initializer
+    nullptr
+	   );
+
+
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_histogram ()
+  {
+// db_class
+    return system_catalog_definition (
+		   // name
+		   CT_HISTOGRAM_NAME,
+		   // columns
+    {
+      {"class_of", "object"},
+      {"key_attr", format_varchar (255)},
+      {"with_fullscan","integer"},
+      {"null_frequency", "double"},
+      {"histogram_values", format_varbit (1073741823) }
+    },
+// constraint
+    {
+      {DB_CONSTRAINT_UNIQUE, "", {"class_of", "key_attr", nullptr}, false}
+    },
+// authorization
+    {
+      // owner
       Au_dba_user, {}
     },
 // initializer
     nullptr
 	   );
+
   }
 
   system_catalog_definition
@@ -2216,5 +2208,38 @@ namespace cubschema
 // initializer
     nullptr
 	   );
+
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_view_db_histogram ()
+  {
+// db_class
+    return system_catalog_definition (
+		   // name
+		   CTV_HISTOGRAM_NAME,
+		   // columns
+    {
+      {"class_name", "object"},
+      {"key_attr", format_varchar (255)},
+      {"with_fullscan", format_varchar (32)},
+      {"null_frequency", "double"},
+      {attribute_kind::QUERY_SPEC, sm_define_view_histogram_spec ()}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+	   );
+
   }
 }

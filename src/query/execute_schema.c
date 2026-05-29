@@ -20,6 +20,7 @@
  * execute_schema.c
  */
 
+#include "error_code.h"
 #ident "$Id$"
 
 #include "config.h"
@@ -61,6 +62,7 @@
 #include "dbtype.h"
 #include "jsp_cl.h"
 #include "msgcat_glossary.hpp"
+#include "histogram_cl.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -266,6 +268,7 @@ static int do_alter_change_default_cs_coll (PARSER_CONTEXT * const parser, PT_NO
 
 static int do_alter_change_tbl_comment (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 static int do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alter);
+static int do_cache_empty_histogram (MOP class_obj);
 
 static int do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attribute,
 				      PT_NODE * old_name_node, PT_NODE * constraints, SM_ATTR_PROP_CHG * attr_chg_prop,
@@ -1792,7 +1795,8 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   PT_NODE *crt_clause = NULL;
   bool do_semantic_checks = false;
   bool do_rollback = false;
-
+  int au_save = 0;
+  DB_OBJECT *histogram_obj = NULL;
   CHECK_MODIFICATION_ERROR ();
 
   /* Multiple alter operations in a single statement need to be atomic. */
@@ -1824,7 +1828,131 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    }
 	  assert (crt_result == crt_clause);
 	}
+      AU_DISABLE (au_save);
+      /* HANDLE HISTOGRAM DROP WHILE COLUMN MODIFY, CHANGE, RENAME, DROP */
+      switch (alter_code)
+	{
+	case PT_DROP_ATTR_MTHD:
+	case PT_MODIFY_ATTR_MTHD:
+	case PT_CHANGE_ATTR:
+	  {
+	    if (crt_clause->info.alter.alter_clause.attr_mthd.attr_mthd_name_list != NULL)
+	      {
+		for (PT_NODE * attr_mthd_name = crt_clause->info.alter.alter_clause.attr_mthd.attr_mthd_name_list;
+		     attr_mthd_name != NULL; attr_mthd_name = attr_mthd_name->next)
+		  {
+		    const char *attr_mthd_name_str = attr_mthd_name->info.name.original;
+		    if (attr_mthd_name_str != NULL)
+		      {
+			error_code =
+			  db_get_histogram (crt_clause->info.alter.entity_name->info.name.db_object, attr_mthd_name_str,
+					    &histogram_obj);
+			if (error_code != NO_ERROR)
+			  {
+			    AU_ENABLE (au_save);
+			    goto error_exit;
+			  }
+			if (histogram_obj != NULL)
+			  {
+			    error_code = db_drop (histogram_obj);
+			    if (error_code != NO_ERROR)
+			      {
+				AU_ENABLE (au_save);
+				goto error_exit;
+			      }
+			  }
+		      }
+		  }
+	      }
+	    if (crt_clause->info.alter.alter_clause.attr_mthd.attr_def_list != NULL)
+	      {
+		for (PT_NODE * attr_def = crt_clause->info.alter.alter_clause.attr_mthd.attr_def_list;
+		     attr_def != NULL; attr_def = attr_def->next)
+		  {
+		    const char *attr_def_name = attr_def->info.attr_def.attr_name->info.name.original;
+		    if (attr_def_name != NULL)
+		      {
+			error_code =
+			  db_get_histogram (crt_clause->info.alter.entity_name->info.name.db_object, attr_def_name,
+					    &histogram_obj);
+			if (error_code != NO_ERROR)
+			  {
+			    AU_ENABLE (au_save);
+			    goto error_exit;
+			  }
+			if (histogram_obj != NULL)
+			  {
+			    error_code = db_drop (histogram_obj);
+			    if (error_code != NO_ERROR)
+			      {
+				AU_ENABLE (au_save);
+				goto error_exit;
+			      }
+			  }
+		      }
+		  }
+	      }
+	    if (crt_clause->info.alter.alter_clause.attr_mthd.attr_old_name != NULL)
+	      {
+		const char *attr_name = crt_clause->info.alter.alter_clause.attr_mthd.attr_old_name->info.name.original;
+		if (attr_name != NULL)
+		  {
+		    error_code = db_get_histogram (crt_clause->info.alter.entity_name->info.name.db_object, attr_name,
+						   &histogram_obj);
+		    if (error_code != NO_ERROR)
+		      {
+			AU_ENABLE (au_save);
+			goto error_exit;
+		      }
+		    if (histogram_obj != NULL)
+		      {
+			error_code = db_drop (histogram_obj);
+			if (error_code != NO_ERROR)
+			  {
+			    AU_ENABLE (au_save);
+			    goto error_exit;
+			  }
+		      }
+		  }
+	      }
+	    break;
+	  }
+	case PT_RENAME_ATTR_MTHD:
+	  {
+	    /* Altering the column name does affect the histogram. Drop histogram before renaming the column. */
+	    if (alter->info.alter.alter_clause.rename.old_name != NULL)
+	      {
+		const char *attr_name = crt_clause->info.alter.alter_clause.rename.old_name->info.name.original;
+		if (attr_name != NULL)
+		  {
+		    error_code = db_get_histogram (crt_clause->info.alter.entity_name->info.name.db_object, attr_name,
+						   &histogram_obj);
+		    if (error_code != NO_ERROR)
+		      {
+			AU_ENABLE (au_save);
+			goto error_exit;
+		      }
+		    if (histogram_obj != NULL)
+		      {
+			error_code = db_drop (histogram_obj);
+			if (error_code != NO_ERROR)
+			  {
+			    AU_ENABLE (au_save);
+			    goto error_exit;
+			  }
+		      }
+		  }
+	      }
+	    break;
+	  }
+	case PT_RENAME_ENTITY:
+	  /* Altering the table name does not affect the histogram. */
 
+	  break;
+	default:
+	  break;
+	}
+      AU_ENABLE (au_save);
       switch (alter_code)
 	{
 	case PT_RENAME_ENTITY:
@@ -3446,6 +3574,86 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 }
 
 /*
+ * do_cache_empty_histogram () - Initialize an empty histogram cache for a newly-created class.
+ * return : error code or NO_ERROR
+ * class_obj (in) : class object
+ */
+static int
+do_cache_empty_histogram (MOP class_obj)
+{
+  SM_CLASS *smclass = NULL;
+  HIST_STATS *histogram = NULL;
+  SM_ATTRIBUTE *att = NULL;
+  int error = NO_ERROR;
+  int i;
+
+  if (class_obj == NULL)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  error = au_fetch_class (class_obj, &smclass, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (smclass->histogram != NULL)
+    {
+      return NO_ERROR;
+    }
+
+  histogram = (HIST_STATS *) db_ws_alloc (sizeof (HIST_STATS));
+  if (histogram == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memset (histogram, 0, sizeof (HIST_STATS));
+
+  histogram->n_attrs = smclass->att_count;
+  if (histogram->n_attrs > 0)
+    {
+      histogram->histogram = (DB_VALUE **) db_ws_alloc (sizeof (DB_VALUE *) * histogram->n_attrs);
+      if (histogram->histogram == NULL)
+	{
+	  db_ws_free (histogram);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      memset (histogram->histogram, 0, sizeof (DB_VALUE *) * histogram->n_attrs);
+
+      histogram->null_frequency = (double *) db_ws_alloc (sizeof (double) * histogram->n_attrs);
+      if (histogram->null_frequency == NULL)
+	{
+	  db_ws_free (histogram->histogram);
+	  db_ws_free (histogram);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      for (i = 0; i < histogram->n_attrs; i++)
+	{
+	  histogram->histogram[i] = NULL;
+	  histogram->null_frequency[i] = -1.0;
+	}
+    }
+
+  smclass->histogram = histogram;
+
+  for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      DB_OBJECT *histogram_obj = NULL;
+      const char *attname = (const char *) att->header.name;
+      int warm_error = db_get_histogram (class_obj, attname, &histogram_obj);
+
+      if (warm_error != NO_ERROR)
+	{
+	  return warm_error;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * do_alter_index_rebuild() - Alters an index on a class (drop and create).
  *                            INDEX REBUILD statement ignores any type of the
  *                            qualifier, column, and filter predicate (filtered
@@ -4041,6 +4249,390 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
   return error;
+}
+
+
+
+/*
+ * update_or_drop_histogram_helper() - Creates or drops a histogram on a class.
+ *   return: Error code
+ *   parser(in): Parser context
+ *   obj(in): Class object
+ *   histogram_info(in): Histogram information
+*/
+int
+update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
+				 PT_HISTOGRAM_INFO * const histogram_info, DO_HISTOGRAM do_histogram)
+{
+  int error = NO_ERROR;
+  int bucket_count, nnames = 0, bucket_count_min, bucket_count_max;
+  bool with_fullscan = false;
+  char *attname = NULL;
+  PT_NODE *cur_column = NULL;
+  int is_partition = DB_NOT_PARTITIONED_CLASS;
+  DB_TYPE attr_type = DB_TYPE_NULL;
+
+  /* fill infos for catlaog table */
+  nnames = pt_length_of_list (histogram_info->target_columns);
+  bucket_count =
+    (histogram_info->bucket_count ==
+     0) ? prm_get_integer_value (PRM_ID_DEFAULT_HISTOGRAM_BUCKET_COUNT) : histogram_info->bucket_count;
+
+  sysprm_get_range (PRM_ID_DEFAULT_HISTOGRAM_BUCKET_COUNT, &bucket_count_min, &bucket_count_max);
+  if (bucket_count < bucket_count_min)
+    {
+      bucket_count = bucket_count_min;
+    }
+  else if (bucket_count > bucket_count_max)
+    {
+      bucket_count = bucket_count_max;
+    }
+
+  cur_column = histogram_info->target_columns;
+  with_fullscan = histogram_info->with_fullscan ? true : false;
+
+  /* update statistics for class first (only when creating/updating histograms) */
+  if (do_histogram == DO_HISTOGRAM_CREATE)
+    {
+      error = sm_update_statistics (obj, with_fullscan);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  if (locator_flush_all_instances (obj, DONT_DECACHE) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  if (nnames == 0)
+    {
+      SM_ATTRIBUTE *att;
+
+      for (att = (DB_ATTRIBUTE *) db_get_attributes_force (obj); att != NULL; att = db_attribute_next (att))
+	{
+
+	  attname = (char *) att->header.name;
+	  if (do_histogram == DO_HISTOGRAM_DROP)
+	    {
+	      error = sm_drop_histogram (obj, attname);
+	      if (error != NO_ERROR && error != ER_LC_UNKNOWN_CLASSNAME)
+		{
+		  return error;
+		}
+	    }
+	  else if (do_histogram == DO_HISTOGRAM_CREATE)
+	    {
+	      /* type check for the attribute */
+	      attr_type = TP_DOMAIN_TYPE (att->domain);
+	      if (!is_histogrammable_type (attr_type))
+		{
+		  error = ER_OBJ_INVALID_ARGUMENTS;
+		  error = dump_histogram (obj, attname, attr_type, with_fullscan, false, error, stdout);
+		  continue;
+		}
+
+	      /* create histogram catalog entry */
+	      error = sm_add_histogram (obj, attname, bucket_count, with_fullscan);
+	      if (error != NO_ERROR)
+		{
+		  if (error != ER_LC_CLASSNAME_EXIST)
+		    {
+		      error = dump_histogram (obj, attname, attr_type, with_fullscan, false, error, stdout);
+		      return error;
+		    }
+		}
+	      /* update the histogram */
+	      error = analyze_classes (NULL, db_get_class_name (obj), attname, bucket_count, with_fullscan, obj);
+	      if (error != NO_ERROR)
+		{
+		  error = dump_histogram (obj, attname, attr_type, with_fullscan, false, error, stdout);
+		  return error;
+		}
+	      error = dump_histogram (obj, attname, attr_type, with_fullscan, false, error, stdout);
+	      if (error != NO_ERROR)
+		{
+		  assert (false);
+		  return error;
+		}
+	    }
+	  else if (do_histogram == DO_HISTOGRAM_SHOW)
+	    {
+	      attr_type = TP_DOMAIN_TYPE (att->domain);
+	      error = dump_histogram (obj, attname, attr_type, with_fullscan, true, error, stdout);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	    }
+	}
+    }
+  for (int i = 0; i < nnames; i++)
+    {
+      attname = (char *) cur_column->info.name.original;
+      if (do_histogram == DO_HISTOGRAM_DROP)
+	{
+	  error = sm_drop_histogram (obj, attname);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+      else if (do_histogram == DO_HISTOGRAM_CREATE)
+	{
+	  /* type check for the attribute */
+	  DB_ATTRIBUTE *attribute;
+	  DB_DOMAIN *attr_domain;
+
+	  attribute = db_get_attribute (obj, attname);
+	  if (attribute == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+	      assert (false);
+	      return ER_OBJ_INVALID_ARGUMENTS;
+	    }
+	  attr_domain = db_attribute_domain (attribute);
+	  if (attr_domain == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+	      assert (false);
+	      return ER_OBJ_INVALID_ARGUMENT;
+	    }
+
+	  attr_type = TP_DOMAIN_TYPE (attr_domain);
+
+	  if (!is_histogrammable_type (attr_type))
+	    {
+	      error = ER_OBJ_INVALID_ARGUMENTS;
+	      error = dump_histogram (obj, attname, attr_type, with_fullscan, false, error, stdout);
+	      continue;
+	    }
+	  /* create histogram catalog entry */
+	  error = sm_add_histogram (obj, attname, bucket_count, with_fullscan);
+	  if (error != NO_ERROR)
+	    {
+	      if (error != ER_LC_CLASSNAME_EXIST)
+		{
+		  error = dump_histogram (obj, attname, attr_type, with_fullscan, false, error, stdout);
+		  return error;
+		}
+	    }
+	  /* update the histogram */
+	  error = analyze_classes (NULL, db_get_class_name (obj), attname, bucket_count, with_fullscan, obj);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  error = dump_histogram (obj, attname, attr_type, with_fullscan, false, error, stdout);
+	  if (error != NO_ERROR)
+	    {
+	      assert (false);
+	      return error;
+	    }
+	}
+      else if (do_histogram == DO_HISTOGRAM_SHOW)
+	{
+	  DB_ATTRIBUTE *attribute;
+	  DB_DOMAIN *attr_domain;
+
+	  attribute = db_get_attribute (obj, attname);
+	  if (attribute == NULL)
+	    {
+	      error = ER_OBJ_INVALID_ARGUMENTS;
+	      assert (false);
+	      return error;
+	    }
+	  attr_domain = db_attribute_domain (attribute);
+	  if (attr_domain == NULL)
+	    {
+	      error = ER_OBJ_INVALID_ARGUMENTS;
+	      assert (false);
+	      return error;
+	    }
+
+	  attr_type = TP_DOMAIN_TYPE (attr_domain);
+	  error = dump_histogram (obj, attname, attr_type, with_fullscan, true, error, stdout);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+      cur_column = cur_column->next;
+    }
+
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (do_histogram == DO_HISTOGRAM_CREATE || do_histogram == DO_HISTOGRAM_DROP)
+    {
+      SM_CLASS *smclass;
+      /* only recache if the class itself is cached */
+      if (obj->object != NULL)
+	{
+	  error = au_fetch_class_force (obj, &smclass, AU_FETCH_READ);
+	  if (error == NO_ERROR)
+	    {
+	      if (smclass->stats != NULL)
+		{
+		  stats_free_statistics (smclass->stats);
+		  smclass->stats = NULL;
+		}
+
+	      if (smclass->histogram != NULL)
+		{
+		  stats_free_histogram_and_init (smclass->histogram);
+		  smclass->histogram = NULL;
+		}
+	      /* make sure the class is flushed before acquiring stats, see comments above in
+	       * sm_get_class_with_statistics */
+	      if (locator_flush_class (obj) != NO_ERROR)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  return (er_errid ());
+		}
+
+	      /* get the new ones, should do this at the same time as the update operation to avoid two server
+	       * calls */
+	      error = stats_get_statistics (WS_OID (obj), 0, &smclass->stats);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	    }
+	}
+    }
+
+  return NO_ERROR;
+}
+
+
+/**
+ * do_update_histogram() - Create or Update a histogram on a class.
+ *   return: Error code if it fails
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of a create histogram statement
+ */
+int
+do_update_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  PT_NODE *cls;
+  DB_OBJECT *obj;
+  int error = NO_ERROR, save;
+  CHECK_MODIFICATION_ERROR ();
+  AU_DISABLE (save);
+
+  /* class should be already available */
+  assert (statement->info.histogram.target_table_spec);
+
+  cls = statement->info.histogram.target_table_spec->info.spec.entity_name;
+
+  obj = db_find_class (cls->info.name.original);
+  if (obj == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      AU_ENABLE (save);
+      return er_errid ();
+    }
+
+  error = update_or_drop_histogram_helper (parser, obj, &statement->info.histogram, DO_HISTOGRAM_CREATE);
+
+  if (error != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      AU_ENABLE (save);
+      return error;
+    }
+
+  AU_ENABLE (save);
+  return error;
+}
+
+/**
+ * do_drop_histogram () - drop a histogram on a class.
+ *   return: Error code if it fails
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of a create histogram statement
+ */
+int
+do_drop_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  PT_NODE *cls;
+  DB_OBJECT *obj;
+  int error = NO_ERROR, save;
+  CHECK_MODIFICATION_ERROR ();
+  AU_DISABLE (save);
+
+  /* class should be already available */
+  assert (statement->info.histogram.target_table_spec);
+
+  cls = statement->info.histogram.target_table_spec->info.spec.entity_name;
+
+  obj = db_find_class (cls->info.name.original);
+  if (obj == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      AU_ENABLE (save);
+      return er_errid ();
+    }
+
+  error = update_or_drop_histogram_helper (parser, obj, &statement->info.histogram, DO_HISTOGRAM_DROP);
+
+  if (error != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      AU_ENABLE (save);
+      return error;
+    }
+
+  AU_ENABLE (save);
+  return error;
+}
+
+/**
+ * do_show_histogram() - Show a histogram on a class.
+ *   return: Error code if it fails
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of a show histogram statement
+ */
+int
+do_show_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  PT_NODE *cls;
+  DB_OBJECT *obj;
+  int error = NO_ERROR, save;
+  AU_DISABLE (save);
+
+  /* class should be already available */
+  assert (statement->info.histogram.target_table_spec);
+
+  cls = statement->info.histogram.target_table_spec->info.spec.entity_name;
+  obj = db_find_class (cls->info.name.original);
+  if (obj == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      AU_ENABLE (save);
+      return er_errid ();
+    }
+
+  error = update_or_drop_histogram_helper (parser, obj, &statement->info.histogram, DO_HISTOGRAM_SHOW);
+
+  if (error != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      AU_ENABLE (save);
+      return error;
+    }
+  AU_ENABLE (save);
+
+  return NO_ERROR;
 }
 
 /*
@@ -9457,6 +10049,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      do_flush_class_mop = true;
 	    }
 	}
+      error = do_cache_empty_histogram (class_obj);
       break;
 
     default:

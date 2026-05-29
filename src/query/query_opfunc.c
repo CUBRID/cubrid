@@ -55,6 +55,8 @@
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"
+#include "xserver_interface.h"
+#include "intl_support.h"
 
 #include "dbtype.h"
 
@@ -8830,6 +8832,127 @@ qdata_get_cardinality (THREAD_ENTRY * thread_p, DB_VALUE * db_class_name, DB_VAL
     }
 
 exit:
+  return error;
+}
+
+/*
+ * qdata_get_estimated_heap_stat () - gets an estimated heap statistic
+ *				      of a table using its name
+ *   return: NO_ERROR, or error code
+ *   thread_p(in)      : thread context
+ *   db_table_name(in) : string DB_VALUE holding the unique_name of the table
+ *   result_p(out)     : estimated statistic (bigint or NULL DB_VALUE)
+ *   op(in)            : which statistic to return
+ *
+ * Note: If the specified table does not exist, is a view/vclass, or NULL is given,
+ *       result_p is set to NULL and NO_ERROR is returned.
+ *       heap_get_class_info() is not used because heap_hfid_cache_get() asserts
+ *       that the HFID is non-null and ftype == FILE_HEAP, which fails for views.
+ */
+int
+qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name, DB_VALUE * result_p, OPERATOR_TYPE op)
+{
+  const char *unique_name_str;
+  char lower_name[SM_MAX_IDENTIFIER_LENGTH];
+  OID class_oid;
+  HFID hfid;
+  RECDES recdes;
+  HEAP_SCANCACHE scan_cache;
+  bool scan_cache_opened = false;
+  int npages, nobjs, avg_length;
+  int error = NO_ERROR;
+  int str_len;
+
+  db_make_null (result_p);
+
+  if (DB_IS_NULL (db_table_name))
+    {
+      goto exit;
+    }
+
+  if (!QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (db_table_name)))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 1, "Arguments type mismatching.");
+      error = ER_UNEXPECTED;
+      goto exit;
+    }
+
+  str_len = db_get_string_size (db_table_name);
+  if (str_len < 0 || str_len >= SM_MAX_IDENTIFIER_LENGTH)
+    {
+      goto exit;
+    }
+
+  unique_name_str = db_get_string (db_table_name);
+  if (unique_name_str == NULL)
+    {
+      goto exit;
+    }
+
+  intl_identifier_lower (unique_name_str, lower_name);
+
+  if (xlocator_find_class_oid (thread_p, lower_name, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
+    {
+      er_clear ();
+      goto exit;
+    }
+
+  (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
+  scan_cache_opened = true;
+
+  if (heap_get_class_record (thread_p, &class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto exit;
+    }
+
+  or_class_hfid (&recdes, &hfid);
+  if (HFID_IS_NULL (&hfid))
+    {
+      /* view or virtual class — no heap file; return NULL DB_VALUE */
+      goto exit;
+    }
+
+  error = heap_scancache_end (thread_p, &scan_cache);
+  scan_cache_opened = false;
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  if (heap_estimate (thread_p, &hfid, &npages, &nobjs, &avg_length) < 0)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto exit;
+    }
+
+  switch (op)
+    {
+    case T_ESTIMATED_TABLE_ROWS:
+      db_make_bigint (result_p, (DB_BIGINT) nobjs);
+      break;
+    case T_ESTIMATED_AVG_ROW_LENGTH:
+      db_make_bigint (result_p, (DB_BIGINT) avg_length);
+      break;
+    case T_ESTIMATED_DATA_LENGTH:
+      db_make_bigint (result_p, (DB_BIGINT) npages * DB_PAGESIZE);
+      break;
+    case T_ESTIMATED_DATA_FREE:
+      {
+	DB_BIGINT data_free = (DB_BIGINT) npages * DB_PAGESIZE - (DB_BIGINT) nobjs * avg_length;
+	db_make_bigint (result_p, data_free > 0 ? data_free : 0);
+      }
+      break;
+    default:
+      assert (false);
+      break;
+    }
+
+exit:
+  if (scan_cache_opened)
+    {
+      (void) heap_scancache_end (thread_p, &scan_cache);
+    }
   return error;
 }
 
