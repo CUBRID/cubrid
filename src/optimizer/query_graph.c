@@ -8361,11 +8361,6 @@ qo_collect_transitive_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
 	      node1 = QO_SEG_HEAD (seg1);
 	      node2 = QO_SEG_HEAD (seg2);
 
-	      if (QO_NODE_IDX (node1) == QO_NODE_IDX (node2))
-		{
-		  continue;
-		}
-
 	      if (QO_NODE_IDX (node1) < QO_NODE_IDX (node2))
 		{
 		  head_seg = seg1;
