@@ -3573,8 +3573,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  }
 	else
 	  {
-	    db_uuid_bin (UUID_UNSUPPORTED, NULL, 0, arithptr->value);
-	    goto error;
+	    if (db_uuid_bin (UUID_UNSUPPORTED, NULL, 0, arithptr->value) != NO_ERROR)
+	      {
+		goto error;
+	      }
 	  }
       }
       break;
