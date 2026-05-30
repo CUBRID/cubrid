@@ -1,5 +1,5 @@
 /*
- *
+ * Copyright 2008 Search Solution Corporation
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,12 +30,12 @@ class ftab_set
 {
   private:
     std::vector<FILE_PARTIAL_SECTOR> m_ftab_set;
-    size_t iterator;
+    size_t m_iterator;
 
   public:
     ftab_set()
       :m_ftab_set(),
-       iterator (0)
+       m_iterator (0)
     {}
 
     ~ftab_set()
@@ -46,14 +46,14 @@ class ftab_set
 
     ftab_set (const ftab_set &other)
       :m_ftab_set (other.m_ftab_set),
-       iterator (other.iterator)
+       m_iterator (other.m_iterator)
     {}
 
     ftab_set (ftab_set &&other)
       :m_ftab_set (std::move (other.m_ftab_set)),
-       iterator (other.iterator)
+       m_iterator (other.m_iterator)
     {
-      other.iterator = 0;
+      other.m_iterator = 0;
     }
 
     ftab_set &operator= (const ftab_set &other)
@@ -61,7 +61,7 @@ class ftab_set
       if (this != &other)
 	{
 	  m_ftab_set = other.m_ftab_set;
-	  iterator = other.iterator;
+	  m_iterator = other.m_iterator;
 	}
       return *this;
     }
@@ -71,8 +71,8 @@ class ftab_set
       if (this != &other)
 	{
 	  m_ftab_set = std::move (other.m_ftab_set);
-	  iterator = other.iterator;
-	  other.iterator = 0;
+	  m_iterator = other.m_iterator;
+	  other.m_iterator = 0;
 	}
       return *this;
     }
@@ -80,13 +80,6 @@ class ftab_set
     void append (const ftab_set &other)
     {
       m_ftab_set.insert (m_ftab_set.end (), other.m_ftab_set.begin (), other.m_ftab_set.end ());
-    }
-
-    void move_from (ftab_set &other)
-    {
-      m_ftab_set = std::move (other.m_ftab_set);
-      iterator = other.iterator;
-      other.iterator = 0;
     }
 
     void convert (FILE_FTAB_COLLECTOR *ftab_collector)
@@ -128,12 +121,12 @@ class ftab_set
 
     FILE_PARTIAL_SECTOR get_next()
     {
-      if (iterator >= m_ftab_set.size())
+      if (m_iterator >= m_ftab_set.size())
 	{
 	  return FILE_PARTIAL_SECTOR_INITIALIZER;
 	}
-      FILE_PARTIAL_SECTOR ftab = m_ftab_set[iterator];
-      iterator++;
+      FILE_PARTIAL_SECTOR ftab = m_ftab_set[m_iterator];
+      m_iterator++;
       return ftab;
     }
 
@@ -145,7 +138,7 @@ class ftab_set
     void clear()
     {
       m_ftab_set.clear();
-      iterator = 0;
+      m_iterator = 0;
     }
 };
 

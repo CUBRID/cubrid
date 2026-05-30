@@ -51,7 +51,6 @@
 #include "xasl_predicate.hpp"
 #include "xasl.h"
 #include "query_hash_scan.h"
-#include "file_manager.h"
 #include "statistics.h"
 #include "px_scan.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -4492,10 +4491,8 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       break;
 
     case S_HEAP_SAMPLING_SCAN:
-      /* rewind cursor to current partition slice start, not global */
+      /* stats-gathering sampling is not reset-driven; rewind stays partition-slice-safe regardless */
       assert (s_id->s.hsid.sampling.picked_vpids != NULL || s_id->s.hsid.sampling.picked_count == 0);
-      /* sampling never reset-driven: single-table BUILDVALUE only (name_resolution.c:2063) */
-      assert (s_id->s.hsid.sampling.n_parts == 1);
       assert (s_id->s.hsid.sampling.part_offsets != NULL);
       s_id->s.hsid.sampling.picked_cursor = s_id->s.hsid.sampling.part_offsets[s_id->s.hsid.sampling.partition_cursor];
       UT_CAST_TO_NULL_HEAP_OID (&s_id->s.hsid.hfid, &s_id->s.hsid.curr_oid);

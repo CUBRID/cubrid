@@ -1,5 +1,5 @@
 /*
- *
+ * Copyright 2008 Search Solution Corporation
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,6 +34,7 @@
 #include "thread_compat.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <random>
 #include <vector>
 
@@ -47,7 +48,7 @@ collect_strided_vpids_multi (THREAD_ENTRY *thread_p, const HFID *hfids, int n_hf
   VPID *picked = NULL;
   int *part_offsets = NULL;
   int picked_count = 0;
-  int total = 0;
+  std::uint64_t total = 0;
   int error_code = NO_ERROR;
 
   *out_picked = NULL;
@@ -93,7 +94,7 @@ collect_strided_vpids_multi (THREAD_ENTRY *thread_p, const HFID *hfids, int n_hf
 	    db_private_free_and_init (thread_p, collector.partsect_ftab);
 	    goto cleanup;
 	  }
-	total += part_pages;
+	total += (std::uint64_t) part_pages;
 
 	{
 	  // convert clobbers; temp per partition then append
@@ -113,8 +114,8 @@ collect_strided_vpids_multi (THREAD_ENTRY *thread_p, const HFID *hfids, int n_hf
 
     // bucketed weight from accurate total user pages: ~33% (gap 3), full scan below MIN, capped near MAX
     int base_weight = 3;
-    int min_weight = (total + MIN_HEAP_SAMPLING_PAGES - 1) / MIN_HEAP_SAMPLING_PAGES;
-    int max_weight = total / MAX_HEAP_SAMPLING_PAGES;
+    int min_weight = (int) ((total + MIN_HEAP_SAMPLING_PAGES - 1) / MIN_HEAP_SAMPLING_PAGES);
+    int max_weight = (int) (total / MAX_HEAP_SAMPLING_PAGES);
     int weight = std::max (std::min (base_weight, min_weight), std::max (max_weight, 1));
     *out_weight = weight;
 

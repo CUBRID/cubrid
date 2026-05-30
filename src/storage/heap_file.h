@@ -386,7 +386,7 @@ typedef struct sampling_info SAMPLING_INFO;
 struct sampling_info
 {
   bool prepared;		/* set once; gates re-pick/clobber */
-  int weight;			/* global: total_data_pages / picked_count */
+  int weight;			/* sampling stride (Poisson gap mean); bucketed from total user pages */
   VPID *picked_vpids;		/* all partitions, pruned order; owned (db_private_alloc) */
   int picked_count;		/* total = part_offsets[n_parts] */
   int picked_cursor;		/* read index into picked_vpids */
