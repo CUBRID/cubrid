@@ -43,10 +43,7 @@ typedef struct pred_expr_with_context PRED_EXPR_WITH_CONTEXT;
 typedef struct xasl_unpack_info XASL_UNPACK_INFO;
 
 /* *INDENT-OFF* */
-namespace parallel_query
-{
-  class ftab_set;
-}
+class ftab_set;
 /* *INDENT-ON* */
 
 /*
@@ -314,7 +311,7 @@ struct sort_args
 
   /* for parallel processing */
   /* *INDENT-OFF* */
-  std::vector<parallel_query::ftab_set> *ftab_sets;
+  std::vector<ftab_set> *ftab_sets;
   FILE_PARTIAL_SECTOR curr_sec;
   int curr_pgoffset;
   /* *INDENT-ON* */
