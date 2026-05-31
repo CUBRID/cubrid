@@ -243,7 +243,7 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
 
       if (error == NO_ERROR)
 	{
-	  bool is_system_user = ws_is_same_object (user, Au_dba_user) || ws_is_same_object (user, Au_public_user);
+	  bool is_system_user = au_ctx ()->is_system_user (user);
 	  bool has_password = (passbuf[0] != '\0');
 
 	  if (!is_system_user && has_dba_privilege)
@@ -306,6 +306,13 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
 	      uname = au_get_user_name (user);
 	      if (uname == NULL)
 		{
+		  continue;
+		}
+
+	      /* Skip system users — they are auto-created during DB install */
+	      if (au_ctx ()->is_system_user (user))
+		{
+		  ws_free_string_and_init (uname);
 		  continue;
 		}
 
@@ -419,8 +426,13 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
 
 	  if (uname != NULL && gname != NULL)
 	    {
-	      output_ctx ("call [find_user]('%s') on class [_db_user] to [g_%s];\n", gname, gname);
-	      output_ctx ("call [add_member]('%s') on [g_%s];\n", uname, gname);
+	      /* Skip if member is a system user (e.g. INFORMATION_SCHEMA in PUBLIC group) */
+	      MOP member_user = au_find_user (uname);
+	      if (member_user == NULL || !au_ctx ()->is_system_user (member_user))
+		{
+		  output_ctx ("call [find_user]('%s') on class [_db_user] to [g_%s];\n", gname, gname);
+		  output_ctx ("call [add_member]('%s') on [g_%s];\n", uname, gname);
+		}
 	    }
 
 	  if (uname != NULL)

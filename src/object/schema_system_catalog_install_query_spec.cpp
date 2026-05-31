@@ -1731,3 +1731,27 @@ sm_define_view_server_spec (void)
 
   return stmt;
 }
+
+const char *
+sm_define_view_histogram_spec (void)
+{
+  static char stmt [2048];
+
+  // *INDENT-OFF*
+  sprintf (stmt,
+	"SELECT "
+	  "[h].[class_of] AS [class_name], "
+	  "[h].[key_attr] AS [key_attr], "
+	  "CASE WHEN [h].[with_fullscan] = 0 THEN 'sampling scan' ELSE 'full scan' END AS [with_fullscan], "
+	  "CAST([h].[null_frequency] AS NUMERIC(18, 12)) AS [null_frequency] "
+	"FROM "
+	  /* CT_HISTOGRAM_NAME */
+	  "[%s] AS [h] "
+	"ORDER BY " /* Is it possible to remove ORDER BY? */
+	  "[h].[class_of], "
+	  "[h].[key_attr]",
+	CT_HISTOGRAM_NAME);
+  // *INDENT-ON*
+
+  return stmt;
+}

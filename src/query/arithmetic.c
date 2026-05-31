@@ -5039,6 +5039,39 @@ error:
     }
 }
 
+/*
+ * db_collection_to_string_dbval()
+ *   return: error code
+ *   result(out):
+ *   value(in) : input db_value (collection type)
+ */
+int
+db_collection_to_string_dbval (DB_VALUE * result, DB_VALUE * value)
+{
+  int error = NO_ERROR;
+
+  if (DB_IS_NULL (value))
+    {
+      db_make_null (result);
+      return NO_ERROR;
+    }
+
+  error = db_value_clone (value, result);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  error = valcnv_convert_collection_value_to_string_all_elements (result);
+  if (error != NO_ERROR)
+    {
+      db_value_clear (result);
+      return error;
+    }
+
+  return error;
+}
+
 int
 db_evaluate_json_contains (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
