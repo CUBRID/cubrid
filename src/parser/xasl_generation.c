@@ -23981,7 +23981,8 @@ pt_order_siblings_sort_key_expr (PT_NODE * sort_spec, PT_NODE * select_list)
 }
 
 /*
- * pt_order_siblings_sort_key_domain () - domain for a sort key regu / sort list entry
+ * pt_order_siblings_sort_key_domain () - return the sort key domain, trying the regu domain first,
+ *   then the orderby pos_descr, then the sort_spec pos_descr; returns NULL if none is available.
  */
 static TP_DOMAIN *
 pt_order_siblings_sort_key_domain (REGU_VARIABLE * sort_key_regu, SORT_LIST * orderby, PT_NODE * sort_spec)
@@ -24035,7 +24036,6 @@ static int
 pt_append_pos_regu_to_list (REGU_VARIABLE_LIST * head, TP_DOMAIN * dom, DB_VALUE * fetch_to, int pos_no)
 {
   REGU_VARIABLE_LIST entry;
-  REGU_VARIABLE *regu;
 
   if (head == NULL || dom == NULL || fetch_to == NULL || pos_no < 0)
     {
@@ -24048,13 +24048,11 @@ pt_append_pos_regu_to_list (REGU_VARIABLE_LIST * head, TP_DOMAIN * dom, DB_VALUE
       return ER_FAILED;
     }
 
-  regu = pt_make_pos_regu_var_from_scratch (dom, fetch_to, pos_no);
-  if (regu == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  entry->value = *regu;
+  entry->value.type = TYPE_POSITION;
+  entry->value.domain = dom;
+  entry->value.vfetch_to = fetch_to;
+  entry->value.value.pos_descr.pos_no = pos_no;
+  entry->value.value.pos_descr.dom = dom;
   pt_add_regu_var_to_list (head, entry);
 
   return NO_ERROR;
@@ -24082,7 +24080,6 @@ pt_alloc_order_siblings_val_slot (PARSER_CONTEXT * parser, TP_DOMAIN * dom)
 
   pt_register_orphan_db_value (parser, new_val->val);
   new_val->dom = dom;
-  new_val->next = NULL;
 
   return new_val;
 }
@@ -24254,7 +24251,8 @@ pt_to_connect_by_extend_for_order_siblings (PARSER_CONTEXT * parser, PT_NODE * s
       user_cnt++;
     }
 
-  /* refresh list scan regu_list_rest when ORDER SIBLINGS BY added trailing fetches */
+  /* pt_make_connect_by_proc() copied regu_list_rest into the list scan access spec before we
+   * appended sort-key fetches above; refresh it so the list scan loads those DB_VALUEs too. */
   if (!connect_by->single_table_opt && connect_by_xasl->spec_list != NULL)
     {
       connect_by_xasl->spec_list->s.list_node.list_regu_list_rest = connect_by->regu_list_rest;
