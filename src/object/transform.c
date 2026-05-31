@@ -38,6 +38,8 @@
 #include "language_support.h"
 #include "system_catalog.h"
 #endif /* !CS_MODE */
+#include "intl_support.h"
+#include "crypt_opfunc.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -632,9 +634,6 @@ tf_install_meta_classes ()
 #endif /* CS_MODE */
 
 
-
-#include "intl_support.h"
-#include "crypt_opfunc.h"
 
 #define AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH (4)	// "_ai_"
 /*
