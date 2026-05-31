@@ -83,6 +83,7 @@
 #include "subquery_cache.h"
 #include "query_hash_join.h"
 #include "memoize.hpp"
+#include "ftab_set.hpp"
 
 #if SERVER_MODE && !WINDOWS
 #include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
@@ -601,6 +602,7 @@ static int qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p, PRUNIN
 static int qexec_process_unique_stats (THREAD_ENTRY * thread_p, const OID * class_oid,
 				       UPDDEL_CLASS_INFO_INTERNAL * class_);
 static SCAN_CODE qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl);
+static int qexec_prepare_table_sampling (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec);
 
 static int qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				     bool * empty_result);
@@ -1897,6 +1899,9 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	      p->curent = NULL;
 	      p->pruned = false;
 	    }
+
+	  /* free table-wide sampling pick once (all paths); idempotent */
+	  scan_free_sampling (thread_p, &p->s_id);
 	}
 
       if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
@@ -7384,6 +7389,65 @@ exit_on_error:
   return ER_FAILED;
 }
 
+/* one-shot table-wide pick over all pruned-partition sectors -> picked_vpids + part_offsets + global weight */
+static int
+qexec_prepare_table_sampling (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
+{
+  sampling_info *sampling = &curr_spec->s_id.s.hsid.sampling;
+  std::vector < HFID > hfids;
+  VPID *picked = NULL;
+  int *part_offsets = NULL;
+  int picked_count = 0;
+  int weight = 1;
+  int n_parts = 0;
+  int error_code = NO_ERROR;
+
+  /* pick once per execution; reopen / cached re-exec must not re-pick */
+  if (sampling->prepared)
+    {
+      return NO_ERROR;
+    }
+
+  /* pruned-partition HFIDs, or root HFID when non-partitioned */
+  if (curr_spec->parts != NULL)
+    {
+      PARTITION_SPEC_TYPE *part;
+
+      for (part = curr_spec->parts; part != NULL; part = part->next)
+	{
+	  hfids.push_back (part->hfid);
+	}
+    }
+  else
+    {
+      hfids.push_back (ACCESS_SPEC_HFID (curr_spec));
+    }
+  n_parts = (int) hfids.size ();
+  assert (n_parts >= 1);
+
+  error_code = collect_strided_vpids_multi (thread_p, hfids.data (), n_parts, &picked, &picked_count, &part_offsets,
+					    &weight);
+  if (error_code != NO_ERROR)
+    {
+      /* collect self-cleans on error */
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  sampling->picked_vpids = picked;
+  sampling->picked_count = picked_count;
+  sampling->part_offsets = part_offsets;
+  sampling->n_parts = n_parts;
+  sampling->picked_cursor = 0;
+  sampling->partition_cursor = 0;
+  /* non-partitioned slice_end; partitioned reset by qexec_init_next_partition */
+  sampling->slice_end = (part_offsets != NULL) ? part_offsets[1] : 0;
+  sampling->weight = weight;
+  sampling->prepared = true;
+
+  return NO_ERROR;
+}
+
 /*
  * Interpreter routines
  */
@@ -7416,6 +7480,17 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
   if (curr_spec->pruning_type == DB_PARTITIONED_CLASS && !curr_spec->pruned)
     {
       error_code = qexec_prune_spec (thread_p, curr_spec, vd, scan_op_type);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
+    }
+
+  /* table-wide pick once, after pruning and before parts[0] reopen */
+  if (curr_spec->type == TARGET_CLASS && curr_spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
+    {
+      error_code = qexec_prepare_table_sampling (thread_p, curr_spec);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -7489,7 +7564,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 					 curr_spec->s.cls_node.num_attrs_rest, curr_spec->s.cls_node.attrids_rest,
 					 curr_spec->s.cls_node.cache_rest, S_HEAP_SCAN,
 					 curr_spec->s.cls_node.cache_reserved,
-					 curr_spec->s.cls_node.cls_regu_list_reserved, false);
+					 curr_spec->s.cls_node.cls_regu_list_reserved);
 		  if (error_code != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
@@ -7518,7 +7593,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 						curr_spec->s.cls_node.num_attrs_rest,
 						curr_spec->s.cls_node.attrids_rest, curr_spec->s.cls_node.cache_rest,
 						scan_type, curr_spec->s.cls_node.cache_reserved,
-						curr_spec->s.cls_node.cls_regu_list_reserved, false);
+						curr_spec->s.cls_node.cls_regu_list_reserved);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -7814,6 +7889,9 @@ exit_on_error:
       curr_spec->curent = NULL;
       curr_spec->pruned = false;
     }
+
+  /* free sampling pick on early-error; idempotent vs clear backstop */
+  scan_free_sampling (thread_p, &curr_spec->s_id);
 
   ASSERT_ERROR_AND_SET (error_code);
   return error_code;
@@ -8883,6 +8961,11 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
     {
       /* first partition */
       spec->curent = spec->parts;
+      /* sampling cursor tracks spec->curent; first partition = 0 */
+      if (spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
+	{
+	  spec->s_id.s.hsid.sampling.partition_cursor = 0;
+	}
     }
   else
     {
@@ -8927,12 +9010,17 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
       /* move to next partition */
       if (spec->curent->next == NULL)
 	{
-	  /* no more partitions */
+	  /* no more partitions; TAIL leaves sampling cursor untouched */
 	  spec->curent = NULL;
 	}
       else
 	{
 	  spec->curent = spec->curent->next;
+	  /* sampling cursor tracks spec->curent */
+	  if (spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
+	    {
+	      spec->s_id.s.hsid.sampling.partition_cursor++;
+	    }
 	}
     }
 
@@ -8975,6 +9063,15 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
       if (IS_ANY_INDEX_ACCESS (spec->access))
 	{
 	  btid = spec->curent->btid;
+	}
+      /* load partition slice; partition_cursor < n_parts, so [pc+1] in-bounds */
+      if (spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
+	{
+	  sampling_info *sampling = &spec->s_id.s.hsid.sampling;
+
+	  assert (sampling->partition_cursor < sampling->n_parts);
+	  sampling->picked_cursor = sampling->part_offsets[sampling->partition_cursor];
+	  sampling->slice_end = sampling->part_offsets[sampling->partition_cursor + 1];
 	}
     }
 
@@ -9041,7 +9138,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 					 spec->s.cls_node.attrids_pred, spec->s.cls_node.cache_pred,
 					 spec->s.cls_node.num_attrs_rest, spec->s.cls_node.attrids_rest,
 					 spec->s.cls_node.cache_rest, S_HEAP_SCAN, spec->s.cls_node.cache_reserved,
-					 spec->s.cls_node.cls_regu_list_reserved, true);
+					 spec->s.cls_node.cls_regu_list_reserved);
 		  if (error != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
@@ -9086,7 +9183,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 				     spec->s.cls_node.attrids_pred, spec->s.cls_node.cache_pred,
 				     spec->s.cls_node.num_attrs_rest, spec->s.cls_node.attrids_rest,
 				     spec->s.cls_node.cache_rest, scan_type, spec->s.cls_node.cache_reserved,
-				     spec->s.cls_node.cls_regu_list_reserved, true);
+				     spec->s.cls_node.cls_regu_list_reserved);
 	      if (error != NO_ERROR)
 		{
 		  return S_ERROR;
