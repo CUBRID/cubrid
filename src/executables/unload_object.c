@@ -743,8 +743,8 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
   int64_t total_objects, failed_objects;
   LOG_LSA lsa;
   char unloadlog_filename[PATH_MAX];
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char *class_name = NULL;
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char class_name[DB_MAX_CLASS_LENGTH] = { '\0' };
   char owner_str[DB_MAX_USER_LENGTH + 4] = { '\0' };
   TEXT_OUTPUT *obj_out = NULL;
 
@@ -1647,8 +1647,8 @@ unload_writer_thread (void *param)
 int
 print_object_header_for_class (extract_context & ctxt, SM_CLASS * class_ptr, OID * class_oid, TEXT_OUTPUT * obj_out)
 {
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char *class_name = NULL;
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char class_name[DB_MAX_CLASS_LENGTH] = { '\0' };
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
   SM_ATTRIBUTE *attribute;
   int v, error = NO_ERROR;
