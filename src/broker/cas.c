@@ -69,50 +69,7 @@ static char cas_db_name[MAX_HA_DBINFO_LENGTH];
 static char cas_db_user[SRV_CON_DBUSER_SIZE];
 static char cas_db_passwd[SRV_CON_DBPASSWD_SIZE];
 
-int cas_shard_flag = OFF;
-int shm_shard_id = SHARD_ID_UNSUPPORTED;
-
-
-const char *program_name;
-char broker_name[BROKER_NAME_LEN];
-int psize_at_start;
-
-int shm_as_index;
-T_SHM_APPL_SERVER *shm_appl;
-T_APPL_SERVER_INFO *as_info;
-int shm_proxy_id = -1;
-int shm_shard_cas_id = -1;
-
-struct timeval tran_start_time;
-struct timeval query_start_time;
-int tran_timeout = 0;
-int query_timeout = 0;
-INT64 query_cancel_time;
-char query_cancel_flag;
-
-bool autocommit_deferred = false;
-
-
-int errors_in_transaction = 0;
-char stripped_column_name;
-char cas_client_type;
-
-
-int con_status_before_check_cas;
-bool is_first_request;
-SOCKET new_req_sock_fd = INVALID_SOCKET;
-
-int cas_default_isolation_level = 0;
-int cas_default_lock_timeout = -1;
-bool cas_default_ansi_quotes = true;
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-bool cas_default_no_backslash_escapes = true;
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-int cas_send_result_flag = TRUE;
-int cas_info_size = CAS_INFO_SIZE;
-char prev_cas_info[CAS_INFO_SIZE];
-
-T_ERROR_INFO err_info;
+/* CAS global variables are defined in cas_common_vars.c (declared via cas_common_vars.h). */
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 static T_SERVER_FUNC server_fn_table[] = {
