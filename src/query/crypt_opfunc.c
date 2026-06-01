@@ -896,6 +896,9 @@ crypt_dblink_bin_to_str (const char *src, int src_len, char *dest, int dest_len,
   unsigned char *enc_ptr = NULL;
   int enc_len = 0;
   unsigned char empty_str[4] = { 0x00, };
+  /* Thread-safe RNG seed (filler bytes only, not the cipher key). Mix the per-call time with the
+   * destination address so concurrent callers within the same microsecond do not correlate. */
+  unsigned int rand_seed = (unsigned int) tm ^ (unsigned int) (size_t) dest;
 
   assert (src != NULL && dest != NULL);
 
@@ -969,7 +972,7 @@ crypt_dblink_bin_to_str (const char *src, int src_len, char *dest, int dest_len,
   even = 0;
   for (i = enc_len + pk_len; i < dest_len; i++)
     {
-      dest[i] = hextable[rand () % hextable_mod];
+      dest[i] = hextable[rand_r (&rand_seed) % hextable_mod];
       even += (dest[i] + i);
     }
   dest[i++] = ((even >> 8) % 26) + 'A';
@@ -1089,11 +1092,15 @@ shake_dblink_password (const char *passwd, char *confused, int confused_size, st
   unsigned char *p;
   unsigned char checksum;
   int tmpx_len = 90;		/* strlen(tmpx) */
+  unsigned int rand_seed;
 
   p = (unsigned char *) confused;
   pwdlen = (int) strlen (passwd);
 
   gettimeofday (chk_time, NULL);
+  /* Thread-safe RNG seed for the garbage filler (not the cipher key). Mix the per-call time with the
+   * buffer address so concurrent callers within the same microsecond do not correlate. */
+  rand_seed = (unsigned int) chk_time->tv_usec ^ (unsigned int) (size_t) confused;
   shift = (chk_time->tv_usec & 0x7FFF);
   memcpy (p, &shift, sizeof (int));
   p += sizeof (int);
@@ -1114,7 +1121,7 @@ shake_dblink_password (const char *passwd, char *confused, int confused_size, st
 
   for (i = 0; i < start; i++)
     {
-      p[i] = tmpx[rand () % tmpx_len];
+      p[i] = tmpx[rand_r (&rand_seed) % tmpx_len];
     }
   p += start;
 
@@ -1276,7 +1283,9 @@ crypt_dblink_password_encrypt (const char *passwd, char *cipher_buf, int cipher_
       return ER_TF_BUFFER_OVERFLOW;
     }
 
-  srand (time (NULL));
+  /* Note: no srand() here. The filler RNG is seeded thread-locally inside shake_dblink_password()
+   * and crypt_dblink_bin_to_str() (rand_r), so this helper is safe to call from concurrent server
+   * threads (2PC catalog path) without racing on or reseeding the process-wide RNG. */
 
   if (!passwd)
     {
