@@ -133,8 +133,7 @@ STATIC_INLINE int db_make_json (DB_VALUE * value, JSON_DOC * json_document, bool
   __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE int db_make_clob (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR str,
-				const int char_str_byte_size)
-  __attribute__ ((ALWAYS_INLINE));
+				const int char_str_byte_size) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_blob (DB_VALUE * value, const int max_bit_length, DB_CONST_C_BIT bit_str,
 				const int bit_str_bit_size) __attribute__ ((ALWAYS_INLINE));
 

@@ -9185,11 +9185,9 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       || op == PT_RLIKE_BINARY || op == PT_NOT_RLIKE_BINARY
       || op == PT_NOT_BETWEEN
       || op == PT_SETEQ || op == PT_SETNEQ
-      || op == PT_SUPERSET || op == PT_SUPERSETEQ
-      || op == PT_SUBSET || op == PT_SUBSETEQ)
+      || op == PT_SUPERSET || op == PT_SUPERSETEQ || op == PT_SUBSET || op == PT_SUBSETEQ)
     {
-      if (PT_IS_LOB_FAMILY_TYPE (arg1_type) || PT_IS_LOB_FAMILY_TYPE (arg2_type)
-	  || PT_IS_LOB_FAMILY_TYPE (arg3_type))
+      if (PT_IS_LOB_FAMILY_TYPE (arg1_type) || PT_IS_LOB_FAMILY_TYPE (arg2_type) || PT_IS_LOB_FAMILY_TYPE (arg3_type))
 	{
 	  if (arg2 && arg3)
 	    {
@@ -9200,8 +9198,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  else if (arg2)
 	    {
 	      PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
-			   pt_show_binopcode (op), pt_show_type_enum (arg1_type),
-			   pt_show_type_enum (arg2_type));
+			   pt_show_binopcode (op), pt_show_type_enum (arg1_type), pt_show_type_enum (arg2_type));
 	    }
 	  else
 	    {
