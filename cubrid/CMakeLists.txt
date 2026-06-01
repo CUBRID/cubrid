@@ -418,7 +418,6 @@ set(PARALLEL_QUERY_HEADERS
   ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.hpp
   ${PARALLEL_QUERY_DIR}/px_interrupt.hpp
   ${PARALLEL_QUERY_DIR}/px_parallel.hpp
-  ${PARALLEL_QUERY_DIR}/px_ftab_set.hpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_SOURCES
@@ -517,6 +516,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/external_sort.c
   ${STORAGE_DIR}/file_io.c
   ${STORAGE_DIR}/file_manager.c
+  ${STORAGE_DIR}/ftab_set.cpp
   ${STORAGE_DIR}/heap_file.c
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/overflow_file.c
@@ -531,6 +531,7 @@ set(STORAGE_SOURCES
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/double_write_buffer.hpp
+  ${STORAGE_DIR}/ftab_set.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
   ${STORAGE_DIR}/vpid.hpp
 )
