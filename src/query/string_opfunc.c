@@ -25945,15 +25945,14 @@ db_blob_to_bfile (const DB_VALUE * src_value, DB_VALUE * result_value)
  *   src_value(in): cfile value
  *   result_value(out): clob value
  *
- *   Reads the characters from the CFILE-backed external storage and stores
- *   them inline as a CLOB. Mirrors db_clob_from_file (), which first builds
- *   a CFILE then folds it into a CLOB.
+ *   Reads the full CFILE-backed external storage and stores it inline as a
+ *   CLOB via db_make_clob (). Reading the whole file (capped at
+ *   DB_MAX_LOB_PRECISION, error beyond) avoids the silent truncation that the
+ *   string-capped db_cfile_to_char () path would impose on large CFILEs.
  */
 int
 db_cfile_to_clob (const DB_VALUE * src_value, DB_VALUE * result_value)
 {
-  int error_status = NO_ERROR;
-
   assert (src_value != NULL && result_value != NULL);
 
   if (DB_VALUE_DOMAIN_TYPE (src_value) == DB_TYPE_NULL)
@@ -25962,15 +25961,7 @@ db_cfile_to_clob (const DB_VALUE * src_value, DB_VALUE * result_value)
       return NO_ERROR;
     }
 
-  error_status = db_cfile_to_char (src_value, NULL, result_value);
-  if (error_status != NO_ERROR)
-    {
-      return error_status;
-    }
-
-  result_value->domain.general_info.type = DB_TYPE_CLOB;
-
-  return error_status;
+  return lobfile_to_lob (src_value, result_value, DB_TYPE_CLOB);
 }
 
 /*
