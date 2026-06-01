@@ -646,7 +646,7 @@ tf_install_meta_classes ()
   ((DB_MAX_IDENTIFIER_LENGTH - 1) + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + (DB_MAX_IDENTIFIER_LENGTH - 1) + 1)
 
 static int
-fill_auto_increment_serial_name_part (char *serial_name, int copy_length, const char *name1, const char *name2)
+set_auto_increment_serial_partial_name (char *serial_name, int copy_length, const char *name1, const char *name2)
 {
   if (copy_length >= (int) strlen (name1))
     {
@@ -703,14 +703,14 @@ set_auto_increment_serial_name (char *serial_name, const char *class_name, const
 
       copy_length = (DB_MAX_SERIAL_NAME_LENGTH - (AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + md5_str_len)) / 2;
 
-      pos = fill_auto_increment_serial_name_part (serial_name, copy_length, class_name, "ai_");
+      pos = set_auto_increment_serial_partial_name (serial_name, copy_length, class_name, "ai_");
       if (pos < 0)
 	{
 	  return pos;
 	}
 
       copy_length = DB_MAX_SERIAL_NAME_LENGTH - (pos + md5_str_len);
-      pos = fill_auto_increment_serial_name_part (serial_name + pos, copy_length, attr_name, md5_str);
+      pos = set_auto_increment_serial_partial_name (serial_name + pos, copy_length, attr_name, md5_str);
       if (pos < 0)
 	{
 	  return pos;
