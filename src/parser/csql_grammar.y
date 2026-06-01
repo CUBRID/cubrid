@@ -198,6 +198,18 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #define COLUMN_CONSTRAINT_ON_UPDATE     (0x100)
 #define COLUMN_CONSTRAINT_INVISIBLE	(0x200)
 
+#ifdef PARSER_DEBUG
+#define DBG_PRINT printf("rule matched at line: %d\n", __LINE__);
+#define PRINT_(a) printf(a)
+#define PRINT_1(a, b) printf(a, b)
+#define PRINT_2(a, b, c) printf(a, b, c)
+#else
+#define DBG_PRINT
+#define PRINT_(a)
+#define PRINT_1(a, b)
+#define PRINT_2(a, b, c)
+#endif
+
 #define STACK_SIZE	128
 
 struct _s_passwd{
