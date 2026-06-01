@@ -27,7 +27,9 @@
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
+#if !defined(WINDOWS)
 #include <unistd.h>
+#endif
 #include <sys/stat.h>
 #include <sys/types.h>
 
