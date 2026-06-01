@@ -11255,6 +11255,10 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  PT_NODE *sel_col;
 	  for (sel_col = node->info.query.q.select.list; sel_col != NULL; sel_col = sel_col->next)
 	    {
+	      if (sel_col->flag.is_hidden_column)
+		{
+		  continue;
+		}
 	      if (PT_IS_LOB_FAMILY_TYPE (sel_col->type_enum))
 		{
 		  PT_ERRORmf2 (parser, sel_col, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON_1,
