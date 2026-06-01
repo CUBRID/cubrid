@@ -1155,62 +1155,12 @@ namespace parallel_heap_scan
 	if (agg_node->option == Q_DISTINCT
 	    && agg_node->function != PT_MIN && agg_node->function != PT_MAX)
 	  {
-	    for (REGU_VARIABLE_LIST operand = agg_node->operands; operand != NULL; operand = operand->next)
-	      {
-		DB_VALUE *op_val_p;
-		if (operand == agg_node->operands)
-		  {
-		    op_val_p = db_value_p;
-		  }
-		else if (operand->value.type == TYPE_CONSTANT)
-		  {
-		    op_val_p = operand->value.value.dbvalptr;
-		  }
-		else
-		  {
-		    int err_code = fetch_peek_dbval (thread_p, &operand->value, tl_vd, NULL, NULL,
-						     tl_tpl_buf.tpl, &op_val_p);
-		    if (err_code != NO_ERROR)
-		      {
-			return false;
-		      }
-		  }
-		if (DB_IS_NULL (op_val_p))
-		  {
-		    continue;
-		  }
-		DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (op_val_p);
-		const PR_TYPE *pr_type_p = pr_type_from_id (dbval_type);
-		int dbval_size = pr_data_writeval_disk_size (op_val_p);
-		if (dbval_size > tl_tpl_buf.size)
-		  {
-		    char *new_tpl = (char *) db_private_realloc (thread_p, tl_tpl_buf.tpl, dbval_size);
-		    if (new_tpl == nullptr)
-		      {
-			return false;
-		      }
-		    tl_tpl_buf.tpl = new_tpl;
-		    tl_tpl_buf.size = dbval_size;
-		  }
-		or_init (&tl_or_buf, tl_tpl_buf.tpl, dbval_size);
-		pr_type_p->data_writeval (&tl_or_buf, op_val_p);
-		if (qfile_add_item_to_list (thread_p, tl_tpl_buf.tpl, dbval_size, agg_node->list_id) != NO_ERROR)
-		  {
-		    return false;
-		  }
-	      }
-	  }
-	else if ((agg_node->function == PT_GROUP_CONCAT && agg_node->sort_list != NULL)
-		 || agg_node->function == PT_MEDIAN)
-	  {
-	    /* GROUP_CONCAT(ORDER BY) and MEDIAN: push first operand value to list_id */
-	    if (agg_node->function == PT_MEDIAN)
-	      {
-		if (qdata_update_agg_interpolation_func_value_and_domain (agg_node, db_value_p) != NO_ERROR)
-		  {
-		    return false;
-		  }
-	      }
+	    /* DISTINCT inserts only the first operand (the aggregated value) into the
+	     * distinct list file. Additional operands (e.g. the GROUP_CONCAT separator)
+	     * are metadata, not values, and must not be added to the list -- otherwise
+	     * they pollute the distinct value set (matches serial
+	     * qdata_evaluate_aggregate_list, which inserts only db_values[0]).
+	     * db_value_p (operand[0]) was already fetched and NULL-checked above. */
 	    DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (db_value_p);
 	    const PR_TYPE *pr_type_p = pr_type_from_id (dbval_type);
 	    if (pr_type_p == nullptr)
@@ -1234,6 +1184,58 @@ namespace parallel_heap_scan
 	      {
 		return false;
 	      }
+	  }
+	else if ((agg_node->function == PT_GROUP_CONCAT && agg_node->sort_list != NULL)
+		 || agg_node->function == PT_MEDIAN)
+	  {
+	    /* GROUP_CONCAT(ORDER BY) and MEDIAN: push first operand value to list_id */
+	    DB_VALUE median_cast_val;
+	    DB_VALUE *write_val_p = db_value_p;
+	    db_make_null (&median_cast_val);
+	    if (agg_node->function == PT_MEDIAN)
+	      {
+		/* MEDIAN casts the value to its interpolation domain (e.g. INT -> DOUBLE).
+		 * db_value_p is a peeked pointer into the shared attribute cache and may be
+		 * referenced by other aggregates (e.g. MIN/MAX) on the same column, so we must
+		 * cast a private copy instead of mutating the shared value in place. */
+		if (pr_clone_value (db_value_p, &median_cast_val) != NO_ERROR)
+		  {
+		    return false;
+		  }
+		if (qdata_update_agg_interpolation_func_value_and_domain (agg_node, &median_cast_val) != NO_ERROR)
+		  {
+		    pr_clear_value (&median_cast_val);
+		    return false;
+		  }
+		write_val_p = &median_cast_val;
+	      }
+	    DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (write_val_p);
+	    const PR_TYPE *pr_type_p = pr_type_from_id (dbval_type);
+	    if (pr_type_p == nullptr)
+	      {
+		pr_clear_value (&median_cast_val);
+		return false;
+	      }
+	    int dbval_size = pr_data_writeval_disk_size (write_val_p);
+	    if (dbval_size > tl_tpl_buf.size)
+	      {
+		char *new_tpl = (char *) db_private_realloc (thread_p, tl_tpl_buf.tpl, dbval_size);
+		if (new_tpl == nullptr)
+		  {
+		    pr_clear_value (&median_cast_val);
+		    return false;
+		  }
+		tl_tpl_buf.tpl = new_tpl;
+		tl_tpl_buf.size = dbval_size;
+	      }
+	    or_init (&tl_or_buf, tl_tpl_buf.tpl, dbval_size);
+	    pr_type_p->data_writeval (&tl_or_buf, write_val_p);
+	    if (qfile_add_item_to_list (thread_p, tl_tpl_buf.tpl, dbval_size, agg_node->list_id) != NO_ERROR)
+	      {
+		pr_clear_value (&median_cast_val);
+		return false;
+	      }
+	    pr_clear_value (&median_cast_val);
 	  }
 	else
 	  {
