@@ -978,6 +978,16 @@ namespace parallel_heap_scan
 		 && orig_agg_p->function != PT_MIN && orig_agg_p->function != PT_MAX)
 	  {
 	  }
+	else if ((orig_agg_p->function == PT_GROUP_CONCAT && orig_agg_p->sort_list != NULL
+		  && orig_agg_p->option != Q_DISTINCT)
+		 || orig_agg_p->function == PT_MEDIAN)
+	  {
+	    /* List-based aggregates: the result is produced later by
+	     * qdata_finalize_aggregate_list from the connected list_id. The accumulator
+	     * value holds no result yet and value2 holds only metadata (the GROUP_CONCAT
+	     * separator), so they must not be re-homed here -- cloning value2 would leak
+	     * the separator buffer (mr_setval_char) on the transaction heap. */
+	  }
 	else if (orig_agg_p->function == PT_COUNT)
 	  {
 	    db_make_bigint (orig_agg_p->accumulator.value, (INT64) orig_agg_p->accumulator.curr_cnt);
@@ -997,7 +1007,12 @@ namespace parallel_heap_scan
 		db_change_private_heap (thread_p, save_heap);
 		* (orig_agg_p->accumulator.value) = tmp;
 	      }
-	    if (orig_agg_p->accumulator.value2 != NULL && !DB_IS_NULL (orig_agg_p->accumulator.value2))
+	    /* value2 carries a real accumulated result only for STDDEV/VARIANCE (sum of
+	     * squares). For GROUP_CONCAT it holds the separator (metadata set on the main
+	     * thread at init), which must not be re-homed -- cloning it leaks the separator
+	     * buffer (mr_setval_char) on the transaction heap. */
+	    if (orig_agg_p->accumulator.value2 != NULL && !DB_IS_NULL (orig_agg_p->accumulator.value2)
+		&& orig_agg_p->function != PT_GROUP_CONCAT)
 	      {
 		db_make_null (&tmp);
 		if (pr_clone_value (orig_agg_p->accumulator.value2, &tmp) != NO_ERROR)
