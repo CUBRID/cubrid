@@ -3931,9 +3931,9 @@ qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *con
   dblink_conn_entry->conn_info.conn_handle = conn_handle;
   dblink_conn_entry->is_2pc_participant = set_participant;
 
-  strcpy (dblink_conn_entry->conn_info.conn_url, conn_url);
-  strcpy (dblink_conn_entry->conn_info.user_name, user_name);
-  strcpy (dblink_conn_entry->conn_info.password, password);
+  snprintf (dblink_conn_entry->conn_info.conn_url, sizeof (dblink_conn_entry->conn_info.conn_url), "%s", conn_url);
+  snprintf (dblink_conn_entry->conn_info.user_name, sizeof (dblink_conn_entry->conn_info.user_name), "%s", user_name);
+  snprintf (dblink_conn_entry->conn_info.password, sizeof (dblink_conn_entry->conn_info.password), "%s", password);
 
   dblink_conn_entry->next = tran_entry_p->dblink_entry;
 
@@ -3961,4 +3961,44 @@ qmgr_dblink_clear_conn_entry (THREAD_ENTRY * thread_p)
   tran_entry_p->dblink_entry = NULL;
 
   return;
+}
+
+/*
+ * qmgr_dblink_remove_conn_entry () - unlink and free the dblink entry whose conn_handle matches
+ *   return: NO_ERROR if removed, ER_FAILED if not found
+ *   thread_p(in):
+ *   conn_handle(in): connection handle of the entry to remove
+ *
+ * Note: Used by 2PC send-prepare: once a participant has been XA-prepared, the decision is owned by
+ *       the 2PC daemon (which holds the same conn_handle via the participant block copy), so the
+ *       entry must be dropped from the per-transaction list. The CCI connection is NOT touched here.
+ */
+int
+qmgr_dblink_remove_conn_entry (THREAD_ENTRY * thread_p, int conn_handle)
+{
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+  DBLINK_CONN_ENTRY *dblink = tran_entry_p->dblink_entry;
+  DBLINK_CONN_ENTRY *prev = NULL;
+
+  while (dblink)
+    {
+      if (dblink->conn_info.conn_handle == conn_handle)
+	{
+	  if (prev == NULL)
+	    {
+	      tran_entry_p->dblink_entry = dblink->next;
+	    }
+	  else
+	    {
+	      prev->next = dblink->next;
+	    }
+	  free_and_init (dblink);
+	  return NO_ERROR;
+	}
+      prev = dblink;
+      dblink = dblink->next;
+    }
+
+  return ER_FAILED;
 }

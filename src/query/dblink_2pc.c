@@ -108,6 +108,13 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
 	{
 	  return false;
 	}
+
+      /* The participant is now XA-prepared; its branch is persisted on the participant and survives a
+       * disconnect. Ownership passes to the 2PC daemon (which reconnects via the gateway URL to send the
+       * decision), so drop the entry from this transaction's dblink list and release the local socket.
+       * The decision is driven by the block_particps_ids copy, not by this list. */
+      (void) cci_disconnect (dblink[i].conn_handle, &err_buf);
+      (void) qmgr_dblink_remove_conn_entry (thread_p, dblink[i].conn_handle);
     }
 
   return true;
@@ -188,7 +195,7 @@ dblink_2pc_dump_participants (FILE * fp, int block_length, void *block_particps_
 int
 dblink_2pc_send_decision_one_participant (int gtrid, DBLINK_CONN_INFO * participant, bool is_commit)
 {
-  int err, bqual, conn_handle;
+  int err, bqual, conn_handle, len;
   XID xid;
   T_CCI_ERROR err_buf;
   char type = is_commit ? CCI_TRAN_COMMIT : CCI_TRAN_ROLLBACK;
@@ -220,14 +227,27 @@ dblink_2pc_send_decision_one_participant (int gtrid, DBLINK_CONN_INFO * particip
       return NO_ERROR;
     }
 
+  /* For an ABORT decision, an unknown/not-prepared global transaction means the participant already
+   * has no branch to roll back (never prepared, or already resolved). Treat it as done so the daemon
+   * does not retry forever. (A COMMIT must never be silently dropped, so this applies to abort only.) */
+  if (!is_commit && err_buf.err_code == ER_LOG_2PC_UNKNOWN_GTID)
+    {
+      return NO_ERROR;
+    }
+
   /* try to connect for cci_xa_end_tran, maybe recoverying */
   if (strstr (conn_url, ":?"))
     {
-      snprintf (conn_url_gateway, sizeof (conn_url_gateway), "%s%s", conn_url, "&__gateway=true");
+      len = snprintf (conn_url_gateway, sizeof (conn_url_gateway), "%s%s", conn_url, "&__gateway=true");
     }
   else
     {
-      snprintf (conn_url_gateway, sizeof (conn_url_gateway), "%s%s", conn_url, "?__gateway=true");
+      len = snprintf (conn_url_gateway, sizeof (conn_url_gateway), "%s%s", conn_url, "?__gateway=true");
+    }
+  if (len < 0 || len >= (int) sizeof (conn_url_gateway))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "connection url too long");
+      return ER_DBLINK;
     }
 
   conn_handle = cci_connect_with_url_ex (conn_url_gateway, user_name, password, &err_buf);
@@ -240,6 +260,11 @@ dblink_2pc_send_decision_one_participant (int gtrid, DBLINK_CONN_INFO * particip
   (void) cci_disconnect (conn_handle, &err_buf);
 
   if (err == CCI_ER_NO_ERROR)
+    {
+      return NO_ERROR;
+    }
+
+  if (!is_commit && err_buf.err_code == ER_LOG_2PC_UNKNOWN_GTID)
     {
       return NO_ERROR;
     }
