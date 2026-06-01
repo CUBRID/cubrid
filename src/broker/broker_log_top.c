@@ -924,7 +924,8 @@ get_args (int *argc, char **argv[])
 	  return -1;
 	}
 
-      int new_argc = conf_argc_allocated = optind + captured_cnt;
+      conf_argc_allocated = captured_cnt;
+      int new_argc = optind + captured_cnt;
       char **new_argv = (char **) malloc (sizeof (char *) * (new_argc + 1));
       if (new_argv == NULL)
 	{
