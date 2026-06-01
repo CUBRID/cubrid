@@ -113,6 +113,36 @@ extern int is_dblink_query_string;
 extern int expecting_pl_lang_spec;
 extern int yylex(void);
 
+#if defined(SA_MODE)
+     /*
+     ** DBG_TRACE_LEVEL is specified by referring to the following.
+     ** 0: No displayed on the screen
+     ** 1: Words extracted from csql_lexer are displayed on the screen
+     ** 2: Display the contents of application of grammar rules in csql_grammar on the screen
+     ** 3: Expression of both 1 and 2 above
+     */
+#    define DBG_TRACE_LEVEL      0
+#endif
+
+#if (DBG_TRACE_LEVEL == 1 || DBG_TRACE_LEVEL == 3)
+#    define DBG_PRINT_TOKEN(token)            fprintf(stdout, " *** Token) [%s]\n", token);
+#    define DBG_PRINT_STRING(pre, str, post)  fprintf(stdout, " *** Token) [%s%s%s]\n", pre, str, post);
+#    define DBG_PRINT_TOKEN_END()             fprintf(stdout, "\n");
+#else
+#    define DBG_PRINT_TOKEN(token)
+#    define DBG_PRINT_STRING(pre, str, post)
+#    define DBG_PRINT_TOKEN_END()
+#endif
+
+#if (DBG_TRACE_LEVEL == 2 || DBG_TRACE_LEVEL == 3)
+#    define DBG_TRACE_GRAMMAR(rule_head, rule_components) do {                            \
+                fprintf(stdout, " *** Rule) " #rule_head "::= "  #rule_components "\n");  \
+                fflush(stdout);                                                           \
+        } while(0)
+#else
+#    define DBG_TRACE_GRAMMAR(rule_head, rule_components)
+#endif
+
 static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, container_10 *ctn, container_2 info);
 /*%CODE_END%*/%}
 
