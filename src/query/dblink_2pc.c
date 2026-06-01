@@ -205,37 +205,26 @@ dblink_2pc_send_decision_one_participant (int gtrid, DBLINK_CONN_INFO * particip
   char *user_name = participant->user_name;
   char *password = participant->password;
 
-  conn_handle = bqual = participant->conn_handle;
+  bqual = participant->conn_handle;
 
   if (conn_url == NULL || user_name == NULL || password == NULL)
     {
       return ER_FAILED;
     }
 
-  /* try to connect with conntion handle first */
+  /* The original conn_handle is always stale at this point: the normal path disconnects it right after
+   * XA prepare (dblink_2pc_send_prepare), and the recovery path only has the bqual value read from the
+   * catalog (the connection of the now-dead process no longer exists). So conn_handle is used only as
+   * the bqual part of the xid, and the decision is always delivered over a fresh gateway connection.
+   * This avoids a guaranteed-futile cci_xa_end_tran() on a closed handle and the risk of sending the
+   * decision to a recycled handle that points at an unrelated connection. */
   xid.formatID = MAJOR_VERSION * 100 + MINOR_VERSION;
   xid.gtrid_length = sizeof (int);
   xid.bqual_length = sizeof (int);
   memcpy (xid.data, &gtrid, xid.gtrid_length);
   memcpy (xid.data + xid.gtrid_length, &bqual, xid.bqual_length);
 
-  err = cci_xa_end_tran (conn_handle, &xid, type, &err_buf);
-  (void) cci_disconnect (conn_handle, &err_buf);
-
-  if (err == CCI_ER_NO_ERROR)
-    {
-      return NO_ERROR;
-    }
-
-  /* For an ABORT decision, an unknown/not-prepared global transaction means the participant already
-   * has no branch to roll back (never prepared, or already resolved). Treat it as done so the daemon
-   * does not retry forever. (A COMMIT must never be silently dropped, so this applies to abort only.) */
-  if (!is_commit && err_buf.err_code == ER_LOG_2PC_UNKNOWN_GTID)
-    {
-      return NO_ERROR;
-    }
-
-  /* try to connect for cci_xa_end_tran, maybe recoverying */
+  /* connect to the participant through the gateway to send the decision */
   if (strstr (conn_url, ":?"))
     {
       len = snprintf (conn_url_gateway, sizeof (conn_url_gateway), "%s%s", conn_url, "&__gateway=true");
@@ -264,6 +253,9 @@ dblink_2pc_send_decision_one_participant (int gtrid, DBLINK_CONN_INFO * particip
       return NO_ERROR;
     }
 
+  /* For an ABORT decision, an unknown/not-prepared global transaction means the participant already
+   * has no branch to roll back (never prepared, or already resolved). Treat it as done so the daemon
+   * does not retry forever. (A COMMIT must never be silently dropped, so this applies to abort only.) */
   if (!is_commit && err_buf.err_code == ER_LOG_2PC_UNKNOWN_GTID)
     {
       return NO_ERROR;
