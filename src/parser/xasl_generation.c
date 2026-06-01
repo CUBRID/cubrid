@@ -28688,7 +28688,7 @@ pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
   for (out_name = info->args; out_name != NULL; out_name = out_name->next)
     {
 
-      if (pt_check_path_eq (parser, node, out_name) == 0)
+      if (pt_check_function_path_eq (parser, node, out_name) == 0)
 	{
 	  already_exist = true;
 	  break;
