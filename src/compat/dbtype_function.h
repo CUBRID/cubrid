@@ -170,8 +170,8 @@
 #define DB_MAKE_ENUMERATION(value, index, str, size, codeset, collation) \
 	db_make_enumeration(value, index, str, size, codeset, collation)
 
-#define DB_MAKE_CLOB(value, max_char_length, str, char_str_byte_size, codeset, collation_id) \
-        db_make_clob (value, max_char_length, str, char_str_byte_size, codeset, collation_id)
+#define DB_MAKE_CLOB(value, max_char_length, str, char_str_byte_size) \
+        db_make_clob (value, max_char_length, str, char_str_byte_size)
 
 #define DB_MAKE_BLOB(value, max_byte_length, str, byte_str_size) \
         db_make_blob(value, max_byte_length, str, byte_str_size)
@@ -393,7 +393,7 @@ extern "C"
   extern int db_make_time (DB_VALUE * value, const int hour, const int minute, const int second);
   extern int db_make_date (DB_VALUE * value, const int month, const int day, const int year);
   extern int db_make_clob (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR str,
-			   const int char_str_byte_size, const int codeset, const int collation_id);
+			   const int char_str_byte_size);
   extern int db_make_blob (DB_VALUE * value, const int max_bit_length, DB_CONST_C_BIT bit_str,
 			   const int bit_str_bit_size);
   extern int db_get_compressed_size (DB_VALUE * value);

@@ -9235,6 +9235,41 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
+  /* CBRD-26782: comparison / relational / range / set-compare / LIKE operators
+   * are not defined on LOB family (BFILE / CFILE / BLOB / CLOB).
+   * IS NULL / IS NOT NULL are different ops (PT_IS_NULL / PT_IS_NOT_NULL) and
+   * bypass this gate, which matches the spec's "IS NULL is allowed" exception. */
+  if (pt_is_range_or_comp (op) || pt_is_range_expression (op)
+      || op == PT_LIKE || op == PT_NOT_LIKE
+      || op == PT_RLIKE || op == PT_NOT_RLIKE
+      || op == PT_RLIKE_BINARY || op == PT_NOT_RLIKE_BINARY
+      || op == PT_NOT_BETWEEN
+      || op == PT_SETEQ || op == PT_SETNEQ
+      || op == PT_SUPERSET || op == PT_SUPERSETEQ || op == PT_SUBSET || op == PT_SUBSETEQ)
+    {
+      if (PT_IS_LOB_FAMILY_TYPE (arg1_type) || PT_IS_LOB_FAMILY_TYPE (arg2_type) || PT_IS_LOB_FAMILY_TYPE (arg3_type))
+	{
+	  if (arg2 && arg3)
+	    {
+	      PT_ERRORmf4 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON_3,
+			   pt_show_binopcode (op), pt_show_type_enum (arg1_type),
+			   pt_show_type_enum (arg2_type), pt_show_type_enum (arg3_type));
+	    }
+	  else if (arg2)
+	    {
+	      PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
+			   pt_show_binopcode (op), pt_show_type_enum (arg1_type), pt_show_type_enum (arg2_type));
+	    }
+	  else
+	    {
+	      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON_1,
+			   pt_show_binopcode (op), pt_show_type_enum (arg1_type));
+	    }
+	  node->type_enum = PT_TYPE_NONE;
+	  return node;
+	}
+    }
+
   /*
    * At this point, arg1_hv is non-NULL (and equal to arg1) if it represents
    * a dynamic host variable, i.e., a host var parameter that hasn't had
