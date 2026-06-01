@@ -1698,7 +1698,7 @@ qfile_save_normal_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, char *tuple_p, 
   int total_tuple_value_size = 0;
   for (i = 0; i < tuple_descr_p->f_cnt; i++)
     {
-      if (qdata_copy_db_value_to_tuple_value (tuple_descr_p->f_valp[i], tuple_p, &tuple_value_size) != NO_ERROR)
+      if (qdata_copy_db_value_to_tuple_value (tuple_descr_p->f_valp[i], false, tuple_p, &tuple_value_size) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -3284,7 +3284,7 @@ qfile_copy_tuple_descr_to_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_DESCRIPTOR
   /* build tuple */
   for (i = 0; i < tpl_descr->f_cnt; i++)
     {
-      if (qdata_copy_db_value_to_tuple_value (tpl_descr->f_valp[i], tuple_p, &size) != NO_ERROR)
+      if (qdata_copy_db_value_to_tuple_value (tpl_descr->f_valp[i], false, tuple_p, &size) != NO_ERROR)
 	{
 	  /* error has already been set */
 	  db_private_free_and_init (thread_p, tplrec->tpl);

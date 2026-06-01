@@ -1210,15 +1210,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
     case PT_TYPE_CLOB:
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
-      if ((PT_IS_NATIONAL_CHAR_STRING_TYPE (arg_type) && PT_IS_SIMPLE_CHAR_STRING_TYPE (cast_type))
-	  || (PT_IS_SIMPLE_CHAR_STRING_TYPE (arg_type) && PT_IS_NATIONAL_CHAR_STRING_TYPE (cast_type)))
-	{
-	  cast_is_valid = PT_CAST_INVALID;
-	  break;
-	}
-
       switch (cast_type)
 	{
 	case PT_TYPE_SET:

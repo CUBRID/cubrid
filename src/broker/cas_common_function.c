@@ -289,7 +289,7 @@ cas_common_bind_value_print (char type, void *net_value, bool slow_log, INTL_COD
       {
 	DB_VALUE db_val;
 	DB_ELO *db_elo;
-	net_arg_get_lob_value (&db_val, net_value);
+	net_arg_get_lobfile_value (&db_val, net_value);
 	db_elo = db_get_elo (&db_val);
 	if (db_elo)
 	  {

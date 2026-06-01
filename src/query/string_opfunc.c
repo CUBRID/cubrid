@@ -25035,8 +25035,7 @@ lobfile_to_lob (const DB_VALUE * src_value, DB_VALUE * result_value, DB_TYPE lob
     }
   else
     {
-      error_status = db_make_clob (result_value, DB_MAX_LOB_PRECISION, (DB_CONST_C_CHAR) buf, (int) data_length,
-				   LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+      error_status = db_make_clob (result_value, DB_MAX_LOB_PRECISION, (DB_CONST_C_CHAR) buf, (int) data_length);
     }
 
   if (error_status != NO_ERROR)

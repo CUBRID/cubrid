@@ -14146,8 +14146,6 @@ get_hard_default_for_type (PT_TYPE_ENUM type)
     case PT_TYPE_VARCHAR:
       return empty_str;
 
-    case PT_TYPE_VARNCHAR:
-    case PT_TYPE_NCHAR:
     case PT_TYPE_CLOB:
       return empty_n_str;
 

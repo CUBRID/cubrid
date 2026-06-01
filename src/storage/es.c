@@ -431,8 +431,8 @@ es_copy_file_with_prefix (const char *in_uri, const char *metaname, const char *
 
   if (es_initialized_type == ES_NONE)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
-      return ER_ES_NO_LOB_PATH;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOBFILE_PATH, 0);
+      return ER_ES_NO_LOBFILE_PATH;
     }
 
   es_type = es_get_type (in_uri);
@@ -554,8 +554,8 @@ es_move_file_with_prefix (const char *src_path, const char *metaname, const char
 
   if (es_initialized_type == ES_NONE)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
-      return ER_ES_NO_LOB_PATH;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOBFILE_PATH, 0);
+      return ER_ES_NO_LOBFILE_PATH;
     }
 
   es_type = es_get_type (src_path);
