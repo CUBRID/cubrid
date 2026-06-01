@@ -21,7 +21,7 @@
 #include "network_interface_cl.h" /* net_client_send_data */
 #include "method_callback.hpp"
 
-static unsigned int xs_conn_info [METHOD_MAX_RECURSION_DEPTH + 1];
+static unsigned int xs_method_eid [METHOD_MAX_RECURSION_DEPTH + 1];
 
 std::queue <cubmem::extensible_block> &
 xs_get_data_queue ()
@@ -36,7 +36,7 @@ xs_is_in_method_rids (unsigned short rid)
 {
   for (int i = 0; i <= METHOD_MAX_RECURSION_DEPTH ; i++)
     {
-      unsigned short method_rid = CSS_RID_FROM_EID (xs_conn_info[i]);
+      unsigned short method_rid = CSS_RID_FROM_EID (xs_method_eid[i]);
       if (0 == method_rid)
 	{
 	  break;
@@ -50,15 +50,15 @@ xs_is_in_method_rids (unsigned short rid)
   return false;
 }
 void
-xs_set_conn_info (int idx, unsigned int rc)
+xs_set_method_eid (int idx, unsigned int eid)
 {
-  xs_conn_info [idx] = rc;
+  xs_method_eid [idx] = eid;
 }
 
 unsigned int
-xs_get_conn_info (int idx)
+xs_get_method_eid (int idx)
 {
-  return xs_conn_info [idx];
+  return xs_method_eid [idx];
 }
 
 int
@@ -66,12 +66,12 @@ xs_queue_send ()
 {
   int error = NO_ERROR;
   int idx = tran_get_libcas_depth () - 1;
-  int rc = xs_get_conn_info (idx);
+  int eid = xs_get_method_eid (idx);
 
   if (!xs_get_data_queue().empty())
     {
       cubmem::extensible_block &blk = xs_get_data_queue().front ();
-      error = net_client_send_data (rc, blk.get_ptr (), blk.get_size());
+      error = net_client_send_data (eid, blk.get_ptr (), blk.get_size());
       xs_get_data_queue().pop ();
     }
 
