@@ -27665,11 +27665,13 @@ static PT_NODE *
 pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_FUNCTION_INFO *func_info_p = NULL;
-  PT_NODE *sort_spec = NULL;
+  PT_NODE *sort_spec = NULL, *arg_list = NULL;
 
   assert (parser != NULL && node != NULL && node->node_type == PT_FUNCTION);
 
   func_info_p = &node->info.function;
+  arg_list =
+    PT_IS_POINTER_REF_NODE (func_info_p->arg_list) ? func_info_p->arg_list->info.pointer.node : func_info_p->arg_list;
   assert (!func_info_p->analytic.is_analytic);
 
   if (func_info_p->function_type == PT_GROUP_CONCAT || func_info_p->function_type == PT_CUME_DIST
@@ -27682,10 +27684,10 @@ pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT * parser, PT_NO
 	   && func_info_p->order_by != NULL && func_info_p->order_by->info.sort_spec.pos_descr.pos_no == 0)
     {
       func_info_p->order_by->info.sort_spec.pos_descr.pos_no = 1;
-      func_info_p->order_by->info.sort_spec.pos_descr.dom = pt_xasl_node_to_domain (parser, func_info_p->arg_list);
+      func_info_p->order_by->info.sort_spec.pos_descr.dom = pt_xasl_node_to_domain (parser, arg_list);
     }
-  else if (func_info_p->function_type == PT_MEDIAN && func_info_p->arg_list != NULL
-	   && !PT_IS_CONST (func_info_p->arg_list) && func_info_p->order_by == NULL)
+  else if (func_info_p->function_type == PT_MEDIAN && arg_list != NULL
+	   && !PT_IS_CONST (arg_list) && func_info_p->order_by == NULL)
     {
       /* generate the sort spec for median */
       sort_spec = parser_new_node (parser, PT_SORT_SPEC);
@@ -27705,7 +27707,7 @@ pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT * parser, PT_NO
 	}
 
       sort_spec->info.sort_spec.pos_descr.pos_no = 1;
-      sort_spec->info.sort_spec.pos_descr.dom = pt_xasl_node_to_domain (parser, func_info_p->arg_list);
+      sort_spec->info.sort_spec.pos_descr.dom = pt_xasl_node_to_domain (parser, arg_list);
 
       func_info_p->order_by = sort_spec;
     }
