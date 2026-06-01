@@ -18395,7 +18395,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	   op == PT_BFILE_TO_BIT || op == PT_BFILE_LENGTH || op == PT_CHAR_TO_CFILE || op == PT_CFILE_TO_CHAR ||
 	   op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE || op == PT_BIT_TO_BLOB || op == PT_CHAR_TO_BLOB ||
 	   op == PT_BLOB_TO_BIT || op == PT_BLOB_LENGTH || op == PT_CHAR_TO_CLOB || op == PT_CLOB_TO_CHAR ||
-	   op == PT_CLOB_LENGTH || op == PT_EXEC_STATS || op == PT_TRACE_STATS || op == PT_TZ_OFFSET)
+	   op == PT_CLOB_LENGTH || op == PT_BLOB_TO_BFILE || op == PT_BFILE_TO_BLOB || op == PT_CLOB_TO_CFILE ||
+	   op == PT_CFILE_TO_CLOB || op == PT_EXEC_STATS || op == PT_TRACE_STATS || op == PT_TZ_OFFSET)
     {
       goto end;
     }
