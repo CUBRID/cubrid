@@ -423,6 +423,9 @@ log_top_query (int argc, char *argv[], int arg_start)
 
       if (output_mode == OUTPUT_SPLIT)
 	{
+#ifdef MT_MODE
+	  process_flag = 0;
+#endif
 	  get_brokername_from_filename (filename, curr_prefix, sizeof (curr_prefix));
 	  if (i > arg_start && strcmp (curr_prefix, prev_prefix) != 0)
 	    {
@@ -918,10 +921,10 @@ get_args (int *argc, char **argv[])
       if (captured_cnt == 0)
 	{
 	  fprintf (stderr, "No log files found.");
-	  return 0;
+	  return -1;
 	}
 
-      int new_argc = optind + captured_cnt;
+      int new_argc = conf_argc_allocated = optind + captured_cnt;
       char **new_argv = (char **) malloc (sizeof (char *) * (new_argc + 1));
       if (new_argv == NULL)
 	{
@@ -1541,7 +1544,10 @@ collect_log_files_from_conf (char ***out_argv)
 	      char full_path[PATH_MAX];
 	      snprintf (full_path, sizeof (full_path), "%s/%s", target_dir, entry->d_name);
 	      allocated_files[total_captured] = strdup (full_path);
-	      total_captured++;
+	      if (allocated_files[total_captured])
+		{
+		  total_captured++;
+		}
 	    }
 	}
       closedir (dir);
