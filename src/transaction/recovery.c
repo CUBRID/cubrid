@@ -843,7 +843,7 @@ struct rvfun RV_fun[] = {
    NULL},
   {RVHNSW_INSERT_ELEMENT,
    "RVHNSW_INSERT_ELEMENT",
-   NULL,
+   hnsw_rv_undo_insert_element,
    hnsw_rv_redo_insert_element,
    NULL,
    NULL},

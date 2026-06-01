@@ -55,5 +55,6 @@ extern int hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *ke
 struct log_rcv;
 extern int hnsw_rv_redo_insert_element (THREAD_ENTRY *thread_p, struct log_rcv *rcv);
 extern int hnsw_rv_redo_delete_element (THREAD_ENTRY *thread_p, struct log_rcv *rcv);
+extern int hnsw_rv_undo_insert_element (THREAD_ENTRY *thread_p, struct log_rcv *rcv);
 
 #endif

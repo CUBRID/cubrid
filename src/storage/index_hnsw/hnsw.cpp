@@ -514,6 +514,12 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
 	      return ER_FAILED;
 	    }
 
+	  /* INSERT UNDO (logical, null-page addr): on rollback / recovery-undo the undofun
+	   * tombstones the inserted node. Undo must be appended before redo. Only the header
+	   * (OID/BTID/params) is needed for undo; the vector is only needed for redo. */
+	  LOG_DATA_ADDR addr = { NULL, NULL, NULL_OFFSET };
+	  log_append_undo_data (thread_p, RVHNSW_INSERT_ELEMENT, &addr,
+				(int) sizeof (HNSW_INSERT_LOG_HEADER), wal_data.data ());
 	  log_append_dboutside_redo (thread_p, RVHNSW_INSERT_ELEMENT, wal_data_size, wal_data.data ());
 	}
     }
@@ -717,6 +723,62 @@ hnsw_rv_redo_delete_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
     }
 
   return NO_ERROR;
+}
+
+/*
+ * hnsw_rv_undo_insert_element() - Transaction UNDO for HNSW insert.
+ *
+ * return       : Error code.
+ * thread_p(in) : Thread entry.
+ * rcv(in)      : Recovery data containing BTID, OID and build parameters (insert log header).
+ *
+ * Reverses an inserted entry by tombstoning the live node for the OID (the inverse of insert),
+ * logical / OID-based. Invoked under the logical-compensate system op by the rollback driver, for
+ * both normal abort and the crash-recovery undo phase. A RVHNSW_DELETE_ELEMENT compensation redo
+ * is logged (unconditionally) so the tombstone is replayed should a crash occur during/after the
+ * rollback: repeat-history re-adds the node via the insert REDO, then the compensation re-applies
+ * the tombstone.
+ */
+int
+hnsw_rv_undo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
+{
+  if (rcv == NULL || rcv->data == NULL || rcv->length < (int) sizeof (HNSW_INSERT_LOG_HEADER))
+    {
+      return ER_FAILED;
+    }
+
+  const HNSW_INSERT_LOG_HEADER *log_data = (const HNSW_INSERT_LOG_HEADER *) rcv->data;
+  const BTID *btid = &log_data->btid;
+  const OID *oid = &log_data->oid;
+
+  if (log_data->dimension <= 0 || log_data->hnsw_M <= 0 || log_data->hnsw_efConstruction <= 0)
+    {
+      return ER_FAILED;
+    }
+
+  hnsw_build_params params (log_data->dimension, log_data->hnsw_M, log_data->hnsw_efConstruction,
+			    static_cast<DB_VECTOR_DISTANCE_METRIC> (log_data->metric));
+
+  if (index_manager == nullptr)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  hnsw_index *index = NULL;
+  int error = index_manager->load_or_create_index_for_recovery (thread_p, btid, params, index);
+  if (error != NO_ERROR || index == NULL)
+    {
+      return error == NO_ERROR ? ER_FAILED : error;
+    }
+
+  /* Compensation: log the tombstone as a delete REDO before applying it, so a crash during or
+   * after rollback replays it. */
+  char wal_data[sizeof (HNSW_INSERT_LOG_HEADER)];
+  memcpy (wal_data, rcv->data, sizeof (HNSW_INSERT_LOG_HEADER));
+  log_append_dboutside_redo (thread_p, RVHNSW_DELETE_ELEMENT, (int) sizeof (wal_data), wal_data);
+
+  return index->remove (thread_p, oid);
 }
 
 int
