@@ -68,6 +68,7 @@ namespace cubconn::connection
   {
     std::size_t i;
 
+#if defined (ENABLE_CONTROLLER)
     /* external controller */
     if (!m_controller.open ("/tmp/cub_server_" + std::to_string (getpid ()) + "_coordinator.sock",
 			    SOCK_NONBLOCK | SOCK_CLOEXEC))
@@ -76,6 +77,8 @@ namespace cubconn::connection
 	assert_release (false);
       }
     m_ctrlfd = m_controller.get_fd ();
+#endif
+
     /* notifier */
     m_eventfd = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
     m_timerfd = timerfd_create (CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
@@ -86,12 +89,19 @@ namespace cubconn::connection
       }
 
     if (!this->eventfd_register (m_eventfd) ||
-	!this->eventfd_register (m_timerfd) ||
-	!this->eventfd_register (m_ctrlfd))
+	!this->eventfd_register (m_timerfd))
       {
 	er_log_conn (__FILE__, __LINE__, "connection::coordinator: failed to register fd\n");
 	assert_release (false);
       }
+
+#if defined (ENABLE_CONTROLLER)
+    if (!this->eventfd_register (m_ctrlfd))
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::coordinator: failed to register fd\n");
+	assert_release (false);
+      }
+#endif
 
     /* timer */
     for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
@@ -1107,6 +1117,7 @@ not_transferred:
     return true;
   }
 
+#if defined (ENABLE_CONTROLLER)
   bool coordinator::handle_controller_request (control_recv &rx, control_send &tx)
   {
     const char *name_table[] =
@@ -1188,6 +1199,7 @@ not_transferred:
 
     return true;
   }
+#endif
 
   void coordinator::initialize ()
   {
@@ -1300,10 +1312,12 @@ not_transferred:
 			return false;
 		      }
 		  }
+#if defined (ENABLE_CONTROLLER)
 		else if (events[i].data.fd == m_ctrlfd)
 		  {
 		    this->handle_controller ();
 		  }
+#endif
 	      }
 	  }
       }
