@@ -119,6 +119,9 @@ extern int do_delete (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * parent);
 extern int do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement);
 
+extern int do_update_histogram (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_drop_histogram (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_show_histogram (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_drop (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int do_drop_variable (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -209,4 +212,8 @@ extern int do_find_trigger_by_query (const char *name, char *buf, int buf_size);
 extern int do_find_synonym_by_query (const char *name, char *buf, int buf_size);
 extern int do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size);
 
+
+extern int do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constraint, DB_VALUE * key);
+extern int do_create_midxkey_from_values (const DB_VALUE * values[], int value_count, SM_CLASS_CONSTRAINT * constraint,
+					  DB_VALUE * key);
 #endif /* _EXECUTE_STATEMENT_H_ */

@@ -36,7 +36,8 @@
 
 #define STATS_SAMPLING_THRESHOLD 5000	/* sampling trial count */
 #define STATS_SAMPLING_LEAFS_MAX 5000	/* sampling leaf pages */
-#define NUMBER_OF_SAMPLING_PAGES 5000
+#define MAX_HEAP_SAMPLING_PAGES 10000
+#define MIN_HEAP_SAMPLING_PAGES 5000
 #define EXPECTED_ROWS_PER_PAGE 20
 
 /* disk-resident elements of pkeys[] field */
@@ -53,6 +54,14 @@
     { \
       stats_free_statistics ((stats)); \
       (stats) = NULL; \
+    } \
+  while (0)
+
+#define stats_free_histogram_and_init_and_set_null(histogram) \
+  do \
+    { \
+      stats_free_histogram_and_init (histogram); \
+      (histogram) = NULL; \
     } \
   while (0)
 
@@ -99,6 +108,14 @@ struct class_stats
   ATTR_STATS *attr_stats;	/* pointer to the array of attribute statistics */
 };
 
+typedef struct hist_stats HIST_STATS;
+struct hist_stats
+{
+  int n_attrs;			/* number of attributes; size of the histogram[] */
+  DB_VALUE **histogram;		/* column histogram , null if not exists */
+  double *null_frequency;	/* column null frequency , 0 if not exists */
+};
+
 /* Statistical Information about the attribute NDV */
 typedef struct attr_ndv ATTR_NDV;
 struct attr_ndv
@@ -142,7 +159,7 @@ stats_adjust_sampling_weight (INT64 sampling_ndv, int sampling_weight)
     {
       return sampling_weight;
     }
-  int min_NDV = NUMBER_OF_SAMPLING_PAGES * EXPECTED_ROWS_PER_PAGE / 100;	/* 1% of number of sampling data */
+  int min_NDV = MAX_HEAP_SAMPLING_PAGES * EXPECTED_ROWS_PER_PAGE / 100;	/* 1% of number of sampling data */
   if (sampling_ndv < min_NDV)
     {
       return MAX (sampling_weight * sampling_ndv / min_NDV, 1);

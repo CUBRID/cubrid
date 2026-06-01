@@ -17,22 +17,22 @@
  */
 
 /*
- * px_heap_scan_result_type.hpp
+ * px_scan_type_enum.hpp - SCAN_TYPE enum (lightweight header without scan_traits)
  */
 
-#ifndef _PX_HEAP_SCAN_RESULT_TYPE_HPP_
-#define _PX_HEAP_SCAN_RESULT_TYPE_HPP_
+#ifndef _PX_SCAN_TYPE_ENUM_HPP_
+#define _PX_SCAN_TYPE_ENUM_HPP_
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
-  enum class RESULT_TYPE
+
+  enum class SCAN_TYPE
   {
-    NONE = 0x0,
-    MERGEABLE_LIST = 0x1, /* (fast) list-per-thread return, and merge (set dependent) it. */
-    XASL_SNAPSHOT = 0x2, /* (slow) xasl snapshot return (row-by-row) */
-    BUILDVALUE_OPT = 0x3, /* (fast) buildvalue proc aggregate optimization */
-
+    HEAP = 0,
+    LIST = 1,
+    INDEX = 2,
   };
-}
 
-#endif /* _PX_HEAP_SCAN_RESULT_TYPE_HPP_ */
+} /* namespace parallel_scan */
+
+#endif /* _PX_SCAN_TYPE_ENUM_HPP_ */

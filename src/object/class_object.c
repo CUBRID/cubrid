@@ -43,6 +43,7 @@
 #include "parser.h"
 #include "trigger_manager.h"
 #include "schema_manager.h"
+#include "histogram_cl.hpp"
 #include "dbi.h"
 #if defined(WINDOWS)
 #include "misc_string.h"
@@ -6902,6 +6903,7 @@ classobj_make_class (const char *name)
 
   class_->new_ = NULL;
   class_->stats = NULL;
+  class_->histogram = NULL;
   class_->owner = NULL;
   class_->collation_id = LANG_SYS_COLLATION;
   class_->auth_cache = NULL;
@@ -6974,6 +6976,11 @@ classobj_free_class (SM_CLASS * class_)
   if (class_->stats != NULL)
     {
       stats_free_statistics_and_init (class_->stats);
+    }
+
+  if (class_->histogram != NULL)
+    {
+      stats_free_histogram_and_init_and_set_null (class_->histogram);
     }
 
   if (class_->properties != NULL)

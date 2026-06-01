@@ -17,13 +17,21 @@
  */
 
 /*
- * px_heap_scan_checker.hpp - module that checks whether parallel heap scan is possible.
+ * px_scan_result_type.hpp
  */
 
-#ifndef _PX_HEAP_SCAN_CHECKER_HPP_
-#define _PX_HEAP_SCAN_CHECKER_HPP_
-#include "xasl.h"
+#ifndef _PX_SCAN_RESULT_TYPE_HPP_
+#define _PX_SCAN_RESULT_TYPE_HPP_
 
-extern "C" int scan_check_parallel_heap_scan_possible (XASL_NODE *xasl);
+namespace parallel_scan
+{
+  enum class RESULT_TYPE
+  {
+    MERGEABLE_LIST = 0x1,	/* fast: list-per-thread, merged set-dependent. */
+    XASL_SNAPSHOT = 0x2,	/* slow: row-by-row snapshot. */
+    BUILDVALUE_OPT = 0x3,	/* fast: buildvalue proc aggregate optimization. */
 
-#endif /*_PX_HEAP_SCAN_CHECKER_HPP_ */
+  };
+}
+
+#endif /* _PX_SCAN_RESULT_TYPE_HPP_ */
