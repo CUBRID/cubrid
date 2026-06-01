@@ -2747,11 +2747,17 @@ pt_check_union_compatibility (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   /* CBRD-26782: LOB family (BFILE / CFILE / BLOB / CLOB) columns are not
-   * allowed in UNION / INTERSECT / DIFFERENCE select lists. */
+   * allowed in UNION / INTERSECT / DIFFERENCE select lists. Only the visible
+   * select-list columns participate in the set operation (arity/compat below
+   * use EXCLUDE_HIDDEN_COLUMNS), so skip system-added hidden columns here. */
   {
     PT_NODE *lob_iter;
     for (lob_iter = attrs1; lob_iter != NULL; lob_iter = lob_iter->next)
       {
+	if (lob_iter->flag.is_hidden_column)
+	  {
+	    continue;
+	  }
 	if (PT_IS_LOB_FAMILY_TYPE (lob_iter->type_enum))
 	  {
 	    PT_ERRORmf2 (parser, lob_iter, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
@@ -2761,6 +2767,10 @@ pt_check_union_compatibility (PARSER_CONTEXT * parser, PT_NODE * node)
       }
     for (lob_iter = attrs2; lob_iter != NULL; lob_iter = lob_iter->next)
       {
+	if (lob_iter->flag.is_hidden_column)
+	  {
+	    continue;
+	  }
 	if (PT_IS_LOB_FAMILY_TYPE (lob_iter->type_enum))
 	  {
 	    PT_ERRORmf2 (parser, lob_iter, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
