@@ -119,8 +119,8 @@ namespace cubpl
     size_t size = serializator.get_packed_int_size (start_offset); // arg_size
     if (arg_size > 0)
       {
-	size += serializator.get_packed_int_vector_size (size, arg_size); // arg_mode
-	size += serializator.get_packed_int_vector_size (size, arg_size); // arg_type
+	size += serializator.get_packed_int_array_size (size, arg_size); // arg_mode
+	size += serializator.get_packed_int_array_size (size, arg_size); // arg_type
       }
     return size;
   }
@@ -359,7 +359,7 @@ namespace cubpl
 
 	if (arg.arg_size > 0)
 	  {
-	    size += serializator.get_packed_int_vector_size (size, arg.arg_size); // arg_pos
+	    size += serializator.get_packed_int_array_size (size, arg.arg_size); // arg_pos
 	  }
       }
     else

@@ -43,15 +43,10 @@
 typedef struct cub_compiled_regex cub_compiled_regex;
 #endif
 
-#define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || \
-                                 ((s)==DB_TYPE_VARCHAR))
-#define QSTR_IS_NATIONAL_CHAR(s) (((s)==DB_TYPE_NCHAR) || \
-                                 ((s)==DB_TYPE_VARNCHAR))
-#define QSTR_IS_BIT(s)           (((s)==DB_TYPE_BIT) || \
-                                 ((s)==DB_TYPE_VARBIT))
-#define QSTR_IS_ANY_CHAR(s)	(QSTR_IS_CHAR(s) || QSTR_IS_NATIONAL_CHAR(s))
-#define QSTR_IS_ANY_CHAR_OR_BIT(s)		(QSTR_IS_ANY_CHAR(s) \
-                                                 || QSTR_IS_BIT(s))
+#define QSTR_IS_CHAR(s)          (((s) == DB_TYPE_CHAR) || ((s) == DB_TYPE_VARCHAR))
+#define QSTR_IS_BIT(s)           (((s) == DB_TYPE_BIT)  || ((s) == DB_TYPE_VARBIT))
+#define QSTR_IS_ANY_CHAR(s)	 (QSTR_IS_CHAR(s))
+#define QSTR_IS_ANY_CHAR_OR_BIT(s)   (QSTR_IS_ANY_CHAR(s) || QSTR_IS_BIT(s))
 
 #define QSTR_IS_FIXED_LENGTH(s) (((s)==DB_TYPE_CHAR) || \
                                      ((s)==DB_TYPE_NCHAR) || \
@@ -68,9 +63,6 @@ typedef struct cub_compiled_regex cub_compiled_regex;
 
 #define QSTR_CHAR_COMPARE(id, string1, size1, string2, size2, ti) \
 	QSTR_COMPARE(id, string1, size1, string2, size2, ti)
-
-#define QSTR_NCHAR_COMPARE(id, string1, size1, string2, size2, codeset, ti) \
-        QSTR_COMPARE(id, string1, size1, string2, size2, ti)
 
 #define QSTR_COMPARE(id, string1, size1, string2, size2, ti) \
   (LANG_GET_COLLATION (id))->fastcmp ((LANG_GET_COLLATION (id)), (string1), \
@@ -102,6 +94,11 @@ typedef struct cub_compiled_regex cub_compiled_regex;
 #define TIMEZONE_BUF_SIZE	64
 #define TIMESTAMPTZ_BUF_SIZE	(TIMESTAMP_BUF_SIZE + TIMEZONE_BUF_SIZE)
 #define DATETIMETZ_BUF_SIZE	(DATETIME_BUF_SIZE + TIMEZONE_BUF_SIZE)
+
+#define QSTR_DATETIME_LENGTH 26
+#define DATETIME_NULL_VALUE { UINT_MAX, UINT_MAX }
+#define DATETIME_IS_NULL(dt) \
+  ((dt)->date == UINT_MAX && (dt)->time == UINT_MAX)
 
 /*
  *  For the trim operation, db_string_trim(), this operand specifies
@@ -171,13 +168,10 @@ typedef enum
 
 #define QSTR_IS_LIKE_WILDCARD_CHAR(ch)	((ch) == LIKE_WILDCARD_MATCH_ONE || \
 					 (ch) == LIKE_WILDCARD_MATCH_MANY)
-
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int qstr_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2);
 extern int char_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2);
-extern int varnchar_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2,
-			     INTL_CODESET codeset);
-extern int nchar_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2,
-			  INTL_CODESET codeset);
+#endif
 extern int bit_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2);
 extern int varbit_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2);
 extern int get_last_day (int month, int year);
@@ -266,9 +260,6 @@ extern int db_json_copy_and_convert_to_utf8 (const DB_VALUE * src_dbval, DB_VALU
 extern int db_string_convert_to (const DB_VALUE * src_string, DB_VALUE * dest_string, INTL_CODESET dest_codeset,
 				 int dest_col);
 
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern int db_string_convert (const DB_VALUE * src_string, DB_VALUE * dest_string);
-#endif
 extern unsigned char *qstr_pad_string (unsigned char *s, int length, INTL_CODESET codeset);
 extern int qstr_bin_to_hex (char *dest, int dest_size, const char *src, int src_size);
 extern int qstr_hex_to_bin (char *dest, int dest_size, const char *src, int src_size);
@@ -287,6 +278,7 @@ extern int db_time_format (const DB_VALUE * src_time, const DB_VALUE * src_forma
 extern int db_timestamp (const DB_VALUE * src_datetime1, const DB_VALUE * src_time2, DB_VALUE * result_datetime);
 extern int db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp);
 extern int db_datetime_to_timestamp (const DB_VALUE * src_datetime, DB_VALUE * result_timestamp);
+extern int db_timestamp_to_datetime (const DB_VALUE * src_timestamp, DB_VALUE * result_datetime);
 extern int db_months_between (const DB_VALUE * start_mon, const DB_VALUE * end_mon, DB_VALUE * result_mon);
 extern int db_sys_date (DB_VALUE * result_date);
 extern int db_sys_time (DB_VALUE * result_time);

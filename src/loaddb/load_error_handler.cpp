@@ -89,8 +89,8 @@ namespace cubload
     if (m_syntax_check)
       {
 	// just log er_msg ()
-	std::string er_msg;
-	log_error_message (er_msg, false, use_scanner_line);
+	std::string empty;
+	log_error_message (empty, false, use_scanner_line);
 	er_clear ();
 	return;
       }
@@ -122,6 +122,12 @@ namespace cubload
 	err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), lineno));
 	err_msg.append (std::string (er_msg ()));
 	err_msg.append ("\n");
+
+	er_clear ();
+      }
+    else if (!err_msg.empty() && err_msg.back() != '\n')
+      {
+	err_msg.append ("\n");
       }
 
     m_session.on_error (err_msg);
@@ -140,7 +146,14 @@ namespace cubload
 	ldr_increment_err_total ();
       }
 
-    fprintf (stderr, "%s", err_msg.c_str ());
+    if (!err_msg.empty() && err_msg.back() != '\n')
+      {
+	fprintf (stderr, "%s\n", err_msg.c_str ());
+      }
+    else
+      {
+	fprintf (stderr, "%s", err_msg.c_str ());
+      }
 #endif
   }
 

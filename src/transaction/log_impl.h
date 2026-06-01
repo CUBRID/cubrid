@@ -561,6 +561,8 @@ struct log_tdes
 
   bool has_supplemental_log;	/* Checks if supplemental log has been appended within the transaction */
 
+  char *ddl_sql_user_text;	/* SQL user text for the transaction */
+
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
 
@@ -952,7 +954,7 @@ extern bool cdc_Logging;
 
 #if defined (SERVER_MODE)
 // *INDENT-OFF*
-extern cubthread::entry_workpool *g_backup_read_worker_pool;
+extern cubthread::worker_pool_type *g_backup_read_worker_pool;
 // *INDENT-ON*
 #endif
 

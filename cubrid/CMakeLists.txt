@@ -44,7 +44,6 @@ set (COMPAT_HEADERS
 set(THREAD_SOURCES
   ${THREAD_DIR}/critical_section.c
   ${THREAD_DIR}/critical_section_tracker.cpp
-  ${THREAD_DIR}/internal_tasks_worker_pool.cpp
   ${THREAD_DIR}/thread_daemon.cpp
   ${THREAD_DIR}/thread_entry.cpp
   ${THREAD_DIR}/thread_entry_task.cpp
@@ -52,11 +51,11 @@ set(THREAD_SOURCES
   ${THREAD_DIR}/thread_looper.cpp
   ${THREAD_DIR}/thread_manager.cpp
   ${THREAD_DIR}/thread_waiter.cpp
-  ${THREAD_DIR}/thread_worker_pool.cpp
+  ${THREAD_DIR}/thread_worker_pool_impl.cpp
+  ${THREAD_DIR}/thread_worker_pool_taskcap.cpp
   )
 set(THREAD_HEADERS
   ${THREAD_DIR}/critical_section_tracker.hpp
-  ${THREAD_DIR}/internal_tasks_worker_pool.hpp
   ${THREAD_DIR}/thread_compat.hpp
   ${THREAD_DIR}/thread_daemon.hpp
   ${THREAD_DIR}/thread_entry.hpp
@@ -67,6 +66,7 @@ set(THREAD_HEADERS
   ${THREAD_DIR}/thread_task.hpp
   ${THREAD_DIR}/thread_waiter.hpp
   ${THREAD_DIR}/thread_worker_pool.hpp
+  ${THREAD_DIR}/thread_worker_pool_impl.hpp
   ${THREAD_DIR}/thread_worker_pool_taskcap.hpp
   )
 
@@ -83,7 +83,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/environment_variable.c
   ${BASE_DIR}/error_context.cpp
   ${BASE_DIR}/error_manager.c
-  ${BASE_DIR}/event_log.c
+  ${BASE_DIR}/trace_event_log.c
   ${BASE_DIR}/fault_injection.c
   ${BASE_DIR}/fileline_location.cpp
   ${BASE_DIR}/filesys_temp.cpp
@@ -131,8 +131,17 @@ set(BASE_SOURCES
   ${BASE_DIR}/unicode_support.c
   ${BASE_DIR}/util_func.c
   ${BASE_DIR}/xml_parser.c
+  ${BASE_DIR}/packet_buffer.cpp
+  ${BASE_DIR}/DMRBMemoryPool.cpp
+  ${BASE_DIR}/ifsys.cpp
+  ${BASE_DIR}/nonblocking.cpp
+  ${BASE_DIR}/epoll.cpp
+  ${BASE_DIR}/filesys_parser.cpp
+  ${BASE_DIR}/cgroup.cpp
+  ${BASE_DIR}/resources.cpp
   )
 set (BASE_HEADERS
+  ${BASE_DIR}/compressor.hpp
   ${BASE_DIR}/error_code.h
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
@@ -170,6 +179,18 @@ set (BASE_HEADERS
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/string_buffer.hpp
+  ${BASE_DIR}/fixed_size_allocator.hpp
+  ${BASE_DIR}/span.hpp
+  ${BASE_DIR}/ifsys.hpp
+  ${BASE_DIR}/packet_buffer.hpp
+  ${BASE_DIR}/DMRB.hpp
+  ${BASE_DIR}/DMRBMemoryPool.hpp
+  ${BASE_DIR}/nonblocking.hpp
+  ${BASE_DIR}/epoll.hpp
+  ${BASE_DIR}/filesys_parser.hpp
+  ${BASE_DIR}/cgroup.hpp
+  ${BASE_DIR}/resources.hpp
+  ${BASE_DIR}/count_registry.hpp
   )
 
 set(EXECUTABLE_SOURCES
@@ -186,14 +207,35 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/connection_list_sr.c
   ${CONNECTION_DIR}/connection_globals.c
   ${CONNECTION_DIR}/server_support.c
-  ${CONNECTION_DIR}/connection_support.c
+  ${CONNECTION_DIR}/connection_support.cpp
   ${CONNECTION_DIR}/host_lookup.c
+  ${CONNECTION_DIR}/connection_context.cpp
+  ${CONNECTION_DIR}/master_connector.cpp
+  ${CONNECTION_DIR}/connection_pool.cpp
+  ${CONNECTION_DIR}/connection_worker.cpp
+  ${CONNECTION_DIR}/coordinator.cpp
+  ${CONNECTION_DIR}/receiver.cpp
+  ${CONNECTION_DIR}/transmitter.cpp
+  ${CONNECTION_DIR}/buffer.cpp
+  )
+
+set(CONNECTION_HEADERS
+  ${CONNECTION_DIR}/connection_support.hpp
+  ${CONNECTION_DIR}/connection_context.hpp
+  ${CONNECTION_DIR}/master_connector.hpp
+  ${CONNECTION_DIR}/connection_pool.hpp
+  ${CONNECTION_DIR}/connection_worker.hpp
+  ${CONNECTION_DIR}/coordinator.hpp
+  ${CONNECTION_DIR}/connection_statistics.hpp
+  ${CONNECTION_DIR}/receiver.hpp
+  ${CONNECTION_DIR}/transmitter.hpp
+  ${CONNECTION_DIR}/buffer.hpp
   )
 
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_common.cpp
   ${COMMUNICATION_DIR}/network_callback_sr.cpp
-  ${COMMUNICATION_DIR}/network_interface_sr.c
+  ${COMMUNICATION_DIR}/network_interface_sr.cpp
   ${COMMUNICATION_DIR}/network_sr.c
   )
 
@@ -225,6 +267,9 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
   ${QUERY_DIR}/dblink_scan.c
+  ${QUERY_DIR}/dblink_2pc.c
+  ${QUERY_DIR}/dblink_2pc_daemon.c
+  ${QUERY_DIR}/dblink_global_tran_catalog.c
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/partition.c
   ${QUERY_DIR}/query_aggregate.cpp
@@ -244,6 +289,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/set_scan.c
   ${QUERY_DIR}/show_scan.c
   ${QUERY_DIR}/subquery_cache.c
+  ${QUERY_DIR}/memoize.cpp
   ${QUERY_DIR}/stream_to_xasl.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
@@ -260,6 +306,7 @@ set(QUERY_HEADERS
   ${QUERY_DIR}/query_monitoring.hpp
   ${QUERY_DIR}/query_reevaluation.hpp
   ${QUERY_DIR}/scan_json_table.hpp
+  ${QUERY_DIR}/memoize.hpp
   )
 
 set(OBJECT_SOURCES
@@ -271,6 +318,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/object_primitive.c
   ${OBJECT_DIR}/object_representation.c
   ${OBJECT_DIR}/set_object.c
+  ${OBJECT_DIR}/schema_information_schema.cpp
   ${OBJECT_DIR}/schema_system_catalog.cpp
   ${OBJECT_DIR}/transform.c
   )
@@ -299,40 +347,77 @@ set(SP_HEADERS
   ${SP_DIR}/pl_signature.hpp
   ${SP_DIR}/pl_struct_compile.cpp
 )
-set(PARALLEL_HEAP_SCAN_SOURCES
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_context.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_manager.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_memory_mapper.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_misc.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_mergable_list.cpp
+
+set(PARALLEL_HASH_JOIN_SOURCES
+  ${PARALLEL_HASH_JOIN_DIR}/px_hash_join_spawn_manager.cpp
+  ${PARALLEL_HASH_JOIN_DIR}/px_hash_join_task_manager.cpp
+  ${PARALLEL_HASH_JOIN_DIR}/px_hash_join.cpp
+)
+
+set(PARALLEL_HASH_JOIN_HEADERS
+  ${PARALLEL_HASH_JOIN_DIR}/px_hash_join_spawn_manager.hpp
+  ${PARALLEL_HASH_JOIN_DIR}/px_hash_join_task_manager.hpp
+  ${PARALLEL_HASH_JOIN_DIR}/px_hash_join.hpp
+)
+
+set(PARALLEL_SCAN_SOURCES
+  ${PARALLEL_SCAN_DIR}/px_scan_input_handler_heap.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_input_handler_list.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_input_handler_index.cpp
+  ${PARALLEL_SCAN_DIR}/index/px_scan_index_key_range_list.cpp
+  ${PARALLEL_SCAN_DIR}/index/px_scan_index_leaf_page_dispatcher.cpp
+  ${PARALLEL_SCAN_DIR}/index/px_scan_index_overflow_chain_pool.cpp
+  ${PARALLEL_SCAN_DIR}/index/px_scan_index_overflow_drain_fsm.cpp
+  ${PARALLEL_SCAN_DIR}/index/px_scan_index_leaf_slot_walker.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator_list.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator_index.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_result_handler.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_join_info.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_task.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_trace_handler.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan.cpp
   )
 
-set(PARALLEL_HEAP_SCAN_HEADERS
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_context.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_manager.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_memory_mapper.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_misc.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_mergable_list.hpp
+set(PARALLEL_SCAN_HEADERS
+  ${PARALLEL_SCAN_DIR}/px_scan_input_handler_heap.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_input_handler_list.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_input_handler_index.hpp
+  ${PARALLEL_SCAN_DIR}/index/px_scan_index_key_range_list.hpp
+  ${PARALLEL_SCAN_DIR}/index/px_scan_index_leaf_page_dispatcher.hpp
+  ${PARALLEL_SCAN_DIR}/index/px_scan_index_overflow_chain_pool.hpp
+  ${PARALLEL_SCAN_DIR}/index/px_scan_index_overflow_drain_fsm.hpp
+  ${PARALLEL_SCAN_DIR}/index/px_scan_index_leaf_slot_walker.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_result_handler.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_result_type.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator_list.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator_index.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_join_info.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_task.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_trace_handler.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_type.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_type_enum.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan.hpp
   )
 
 set(PARALLEL_QUERY_SOURCES
-  ${PARALLEL_QUERY_DIR}/px_list_merger.cpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager_global.cpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager.cpp
   ${PARALLEL_QUERY_DIR}/px_callable_task.cpp
+  ${PARALLEL_QUERY_DIR}/px_sort.c
+  ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.cpp
+  ${PARALLEL_QUERY_DIR}/px_parallel.cpp
   )
 
 set(PARALLEL_QUERY_HEADERS
-  ${PARALLEL_QUERY_DIR}/px_list_merger.hpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager_global.hpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager.hpp
   ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
+  ${PARALLEL_QUERY_DIR}/px_sort.h
+  ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.hpp
+  ${PARALLEL_QUERY_DIR}/px_interrupt.hpp
+  ${PARALLEL_QUERY_DIR}/px_parallel.hpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_SOURCES
@@ -342,6 +427,7 @@ set(PARALLEL_QUERY_EXECUTE_SOURCES
 set(PARALLEL_QUERY_EXECUTE_HEADERS
   ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_executor.hpp
   ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_task.hpp
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_job.hpp
   )
 
 set(METHOD_SOURCES
@@ -422,7 +508,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/catalog_class.c
   ${STORAGE_DIR}/compactdb_sr.c
   ${STORAGE_DIR}/disk_manager.c
-  ${STORAGE_DIR}/double_write_buffer.c
+  ${STORAGE_DIR}/double_write_buffer.cpp
   ${STORAGE_DIR}/es.c
   ${STORAGE_DIR}/es_common.c
   ${STORAGE_DIR}/es_posix.c
@@ -430,6 +516,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/external_sort.c
   ${STORAGE_DIR}/file_io.c
   ${STORAGE_DIR}/file_manager.c
+  ${STORAGE_DIR}/ftab_set.cpp
   ${STORAGE_DIR}/heap_file.c
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/overflow_file.c
@@ -443,6 +530,8 @@ set(STORAGE_SOURCES
   )
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/btree_unique.hpp
+  ${STORAGE_DIR}/double_write_buffer.hpp
+  ${STORAGE_DIR}/ftab_set.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
   ${STORAGE_DIR}/vpid.hpp
 )
@@ -456,8 +545,10 @@ set(XASL_SOURCES
   ${XASL_DIR}/access_json_table.cpp
   ${XASL_DIR}/xasl_analytic.cpp
   ${XASL_DIR}/xasl_predicate.cpp
+  ${XASL_DIR}/xasl_spawner.cpp
   ${XASL_DIR}/xasl_stream.cpp
   ${XASL_DIR}/xasl_unpack_info.cpp
+  ${XASL_DIR}/xasl_iteration.cpp
   )
 set(XASL_HEADERS
   ${XASL_DIR}/access_json_table.hpp
@@ -467,7 +558,9 @@ set(XASL_HEADERS
   ${XASL_DIR}/xasl_analytic.hpp
   ${XASL_DIR}/xasl_unpack_info.hpp
   ${XASL_DIR}/xasl_predicate.hpp
+  ${XASL_DIR}/xasl_spawner.hpp
   ${XASL_DIR}/xasl_stream.hpp
+  ${XASL_DIR}/xasl_iteration.hpp
   )
 
 set(LOADDB_SOURCES
@@ -542,6 +635,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
   ${XASL_SOURCES}
+  ${PARALLEL_QUERY_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 
@@ -566,7 +660,8 @@ set (CUBRID_LIB_SOURCES
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
   ${XASL_SOURCES}
-  ${PARALLEL_HEAP_SCAN_SOURCES}
+  ${PARALLEL_HASH_JOIN_SOURCES}
+  ${PARALLEL_SCAN_SOURCES}
   ${PARALLEL_QUERY_SOURCES}
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
   )
@@ -580,11 +675,13 @@ set (CUBRID_LIB_HEADERS
   ${QUERY_HEADERS}
   ${STORAGE_HEADERS}
   ${SP_HEADERS}
+  ${CONNECTION_HEADERS}
   ${THREAD_HEADERS}
   ${TRANSACTION_HEADERS}
   ${XASL_HEADERS}
   ${LOADDB_HEADERS}
-  ${PARALLEL_HEAP_SCAN_HEADERS}
+  ${PARALLEL_HASH_JOIN_HEADERS}
+  ${PARALLEL_SCAN_HEADERS}
   ${PARALLEL_QUERY_HEADERS}
   ${PARALLEL_QUERY_EXECUTE_HEADERS}
   )
@@ -600,9 +697,6 @@ if(WIN32)
 endif(WIN32)
 
 target_compile_definitions(cubrid PRIVATE SERVER_MODE EnableThreadMonitoring CUBRID_EXPORTING ${COMMON_DEFS})
-if(NOT USE_CUBRID_ENV)
-  target_compile_definitions(cubrid PRIVATE ${DIR_DEFS})
-endif(NOT USE_CUBRID_ENV)
 if(WIN32)
   set_source_files_properties(${HEAPLAYERS_DIR}/customheaps.cpp PROPERTIES COMPILE_FLAGS -Od)
   set_source_files_properties(

@@ -84,7 +84,7 @@ static unsigned char powers_of_10[TWICE_NUM_MAX_PREC + 1][DB_NUMERIC_BUF_SIZE];
 static bool initialized_10 = false;
 #endif
 
-static double numeric_Pow_of_10[10] = {
+static const double numeric_Pow_of_10[10] = {
   1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9
 };
 
@@ -2371,29 +2371,39 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer)
   if (scale > 0)
     {
       numeric_div (arg, numeric_get_pow_of_10 (scale), zero_scale_arg, rem);
-      if (!numeric_is_negative (zero_scale_arg))
+      if (!numeric_is_zero (rem))
 	{
-	  numeric_negate (rem);
-	}
-
-      /* round */
-      numeric_add (numeric_get_pow_of_10 (scale), rem, tmp, DB_NUMERIC_BUF_SIZE);
-      numeric_add (tmp, rem, tmp, DB_NUMERIC_BUF_SIZE);
-      if (numeric_is_negative (tmp) || numeric_is_zero (tmp))
-	{
-	  if (numeric_is_negative (zero_scale_arg))
+	  /* The signs of the input, quotient(except for zero), and remainder will be the same. 
+	     Here, we force 'rem' to be negative */
+	  if (!numeric_is_negative (rem))
 	    {
-	      numeric_decrease (zero_scale_arg);
+	      numeric_negate (rem);
 	    }
-	  else
+
+	  /* round */
+	  /* If (10^'scale' + 'rem' + 'rem') <= 0 (where 'rem' is a negative remainder), round up; otherwise, disregard. 
+	   * If adding the negative remainder twice to a power of 10 results in a negative value, the remainder is considered large enough to round up.
+	   * Otherwise, it is disregarded. 
+	   * Note: Since the remainder is expressed as a negative value, addition is used instead of subtraction.
+	   */
+	  numeric_add (numeric_get_pow_of_10 (scale), rem, tmp, DB_NUMERIC_BUF_SIZE);
+	  numeric_add (tmp, rem, tmp, DB_NUMERIC_BUF_SIZE);
+	  if (numeric_is_negative (tmp) || numeric_is_zero (tmp))
 	    {
-	      numeric_increase (zero_scale_arg);
+	      if (numeric_is_negative (arg))
+		{
+		  numeric_decrease (zero_scale_arg);
+		}
+	      else
+		{
+		  numeric_increase (zero_scale_arg);
+		}
 	    }
 	}
     }
   else
     {
-      numeric_copy (zero_scale_arg, arg);
+      zero_scale_arg = arg;
     }
 
   if (!numeric_is_bigint (zero_scale_arg))
@@ -3609,8 +3619,6 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       {
 	char *return_string = NULL;
 	char str_buf[NUMERIC_MAX_STRING_SIZE];
@@ -3635,14 +3643,6 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	else if (type == DB_TYPE_VARCHAR)
 	  {
 	    db_make_varchar (dest, size, return_string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-	  }
-	else if (type == DB_TYPE_NCHAR)
-	  {
-	    db_make_nchar (dest, size, return_string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-	  }
-	else if (type == DB_TYPE_VARNCHAR)
-	  {
-	    db_make_varnchar (dest, size, return_string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	  }
 	dest->need_clear = true;
 	break;

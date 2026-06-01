@@ -67,7 +67,7 @@
  * variable can be removed, it is only retained to allow for a quick disable
  * in the event that something ugly happens.
  */
-int tf_Allow_fixups = 1;
+const int tf_Allow_fixups = 1;
 
 
 /*
@@ -1438,10 +1438,9 @@ free_var_table (OR_VARINFO * vars)
     }
 }
 
-
 /*
  * string_disk_size - calculate the disk size of a NULL terminated ASCII
- * string that is supposed to be stored as a VARNCHAR attribute in one of
+ * string that is supposed to be stored as a VARCHAR attribute in one of
  * the various class objects.
  *    return: byte size for packed "varchar" string
  *    string(in):
@@ -1457,13 +1456,10 @@ string_disk_size (const char *string)
     {
       str_length = strlen (string);
     }
-  else
-    {
-      str_length = 0;
-    }
 
-  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  length = tp_VarNChar.get_disk_size_of_value (&value);
+  db_make_varchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+
+  length = tp_String.get_disk_size_of_value (&value);
 
   /* Clear the compressed_string of DB_VALUE */
   pr_clear_compressed_string (&value);
@@ -1499,19 +1495,20 @@ get_string (OR_BUF * buf, int length)
   db_make_null (&value);
 
   /*
-   * The domain here is always a server side VARNCHAR.  Set a temporary
+   * The domain here is always a server side VARCHAR.  Set a temporary
    * domain to reflect this.
    */
-  my_domain.precision = DB_MAX_VARNCHAR_PRECISION;
+  my_domain.precision = DB_MAX_VARCHAR_PRECISION;
 
   my_domain.codeset = lang_charset ();
   my_domain.collation_id = LANG_SYS_COLLATION;
   my_domain.collation_flag = TP_DOMAIN_COLL_NORMAL;
 
-  tp_VarNChar.data_readval (buf, &value, &my_domain, length, false, NULL, 0);
+  tp_String.data_readval (buf, &value, &my_domain, length, false, NULL, 0);
 
-  if (DB_VALUE_TYPE (&value) == DB_TYPE_VARNCHAR)
+  if (DB_VALUE_TYPE (&value) != DB_TYPE_NULL)
     {
+      assert (DB_VALUE_TYPE (&value) == DB_TYPE_VARCHAR);
       string = ws_copy_string (db_get_string (&value));
     }
 
@@ -1545,8 +1542,9 @@ put_string (OR_BUF * buf, const char *string)
       str_length = 0;
     }
 
-  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  tp_VarNChar.data_writeval (buf, &value);
+  db_make_varchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+
+  tp_String.data_writeval (buf, &value);
   pr_clear_value (&value);
 }
 
@@ -3290,8 +3288,8 @@ disk_to_resolution (OR_BUF * buf)
       if (class_ == NULL)
 	{
 	  (void) or_get_int (buf, &rc);
-	  tp_VarNChar.data_readval (buf, NULL, NULL, vars[ORC_RES_NAME_INDEX].length, true, NULL, 0);
-	  tp_VarNChar.data_readval (buf, NULL, NULL, vars[ORC_RES_ALIAS_INDEX].length, true, NULL, 0);
+	  tp_String.data_readval (buf, NULL, NULL, vars[ORC_RES_NAME_INDEX].length, true, NULL, 0);
+	  tp_String.data_readval (buf, NULL, NULL, vars[ORC_RES_ALIAS_INDEX].length, true, NULL, 0);
 	}
       else
 	{
@@ -3717,7 +3715,6 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
   or_put_int (buf, (int) class_->collation_id);
 
   or_put_int (buf, class_->tde_algorithm);
-
 
   /* 0: NAME */
   put_string (buf, sm_ch_name ((MOBJ) class_));
@@ -4900,6 +4897,7 @@ partition_info_to_disk (OR_BUF * buf, SM_PARTITION * partition_info)
 
   /* ATTRIBUTES */
   or_put_int (buf, partition_info->partition_type);
+  or_put_int (buf, partition_info->class_partition_type);
 
   put_string (buf, partition_info->pname);
   put_string (buf, partition_info->expr);
@@ -4969,8 +4967,6 @@ disk_to_partition_info (OR_BUF * buf)
       return NULL;
     }
 
-  assert (vars != NULL);
-
   partition_info = classobj_make_partition_info ();
   if (partition_info == NULL)
     {
@@ -4986,6 +4982,16 @@ disk_to_partition_info (OR_BUF * buf)
 	  classobj_free_partition_info (partition_info);
 	  return NULL;
 	}
+
+      partition_info->class_partition_type = (DB_CLASS_PARTITION_TYPE) or_get_int (buf, &error);
+      if (error != NO_ERROR)
+	{
+	  free_var_table (vars);
+	  classobj_free_partition_info (partition_info);
+	  return NULL;
+	}
+      assert (partition_info->class_partition_type >= DB_PARTITIONED_CLASS
+	      && partition_info->class_partition_type <= DB_PARTITION_CLASS);
 
       partition_info->pname = get_string (buf, vars[ORC_PARTITION_NAME_INDEX].length);
       partition_info->expr = get_string (buf, vars[ORC_PARTITION_EXPR_INDEX].length);

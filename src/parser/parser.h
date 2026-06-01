@@ -462,6 +462,8 @@ extern "C"
   extern PT_NODE *pt_add_table_name_to_from_list (PARSER_CONTEXT * parser, PT_NODE * select, const char *table_name,
 						  const char *table_alias, const DB_AUTH auth_bypass);
 
+  extern PT_NODE *pt_is_method_call_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+
   extern int pt_is_ddl_statement (const PT_NODE * node);
   extern int pt_is_method_call (PT_NODE * node);
   extern int pt_is_attr (PT_NODE * node);
@@ -536,7 +538,7 @@ extern "C"
   extern int pt_statement_line_number (const PT_NODE * stmt);
 
   extern const char *pt_get_select_from_name (PARSER_CONTEXT * parser, const PT_NODE * spec);
-  extern const char *pt_get_proxy_spec_name (const char *qspec);
+  extern const char *pt_get_proxy_spec_name (PARSER_CONTEXT * parser, const char *qspec);
   extern const char *pt_get_spec_name (PARSER_CONTEXT * parser, const PT_NODE * selqry);
   extern const char *pt_get_name (PT_NODE * nam);
   extern PT_NODE *pt_get_cursor (const PT_HOST_VARS * hv);
@@ -549,6 +551,7 @@ extern "C"
   extern bool pt_has_inst_num (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_expr_of_inst_in_sel_list (PARSER_CONTEXT * parser, PT_NODE * select_list);
   extern bool pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern bool pt_has_having_with_predicate (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_inst_or_orderby_num_in_where (PARSER_CONTEXT * parser, PT_NODE * node);
   extern void pt_set_correlation_level (PARSER_CONTEXT * parser, PT_NODE * subquery, int level);
   extern void pt_set_pred_order (PARSER_CONTEXT * parser, PT_NODE * pre_pred, int pre_order);
@@ -556,6 +559,8 @@ extern "C"
   extern bool pt_has_nullable_term (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_define_vars (PARSER_CONTEXT * parser, PT_NODE * stmt);
   extern PT_NODE *pt_is_define_vars (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+  extern bool pt_has_path_expr (PARSER_CONTEXT * parser, PT_NODE * stmt);
+  extern PT_NODE *pt_is_path_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
   extern void pt_preset_hostvar (PARSER_CONTEXT * parser, PT_NODE * hv_node);
   extern void pt_set_expected_domain (PT_NODE * node, TP_DOMAIN * domain);
@@ -626,6 +631,7 @@ extern "C"
 					  PT_NODE * arg3);
   extern PT_NODE *parser_keyword_func (const char *name, PT_NODE * args);
 
+  extern bool pt_check_not_null_constraint (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * node);
   extern PT_NODE *pt_convert_to_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node, bool use_parens_inside,
 					      bool use_parens_outside);
   extern bool pt_is_operator_logical (PT_OP_TYPE op);
@@ -646,6 +652,7 @@ extern "C"
 				      PT_NODE * assign, PT_NODE *** old_links);
 
   extern bool pt_is_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool report_error);
+  extern bool pt_expr_keep_uniqueness (const PT_NODE * expr);
   extern PT_NODE *pt_function_index_skip_expr (PT_NODE * node);
   extern PT_NODE *pt_expr_to_sort_spec (PARSER_CONTEXT * parser, PT_NODE * expr);
   extern bool pt_is_join_expr (PT_NODE * expr, UINTPTR * spec_id);
@@ -666,6 +673,10 @@ extern "C"
   extern PT_NODE *pt_make_query_show_collation (PARSER_CONTEXT * parser, int like_where_syntax,
 						PT_NODE * like_or_where_expr);
 
+  extern int pt_get_query_expr_value (PARSER_CONTEXT * parser, PT_NODE * expr, DB_VALUE * expr_val);
+  extern PT_NODE *pt_check_removable_expr_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+  extern PT_NODE *pt_check_removable_expr_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+
   extern PT_NODE *pt_find_node_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern PT_NODE *pt_find_op_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern int pt_get_query_limit_value (PARSER_CONTEXT * parser, PT_NODE * query, DB_VALUE * limit_val, bool add_offset);
@@ -679,7 +690,7 @@ extern "C"
   extern void pt_free_statement_xasl_id (PT_NODE * statement);
   extern int pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt);
   extern bool pt_recompile_for_limit_optimizations (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag);
-
+  extern bool pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag);
   extern PT_NODE *pt_make_query_show_trace (PARSER_CONTEXT * parser);
 
   extern void insert_rewrite_names_in_value_clauses (PARSER_CONTEXT * parser, PT_NODE * insert_statement);
@@ -696,7 +707,6 @@ extern "C"
   extern PT_NODE *pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
   extern int pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cipher, int ciper_size);
-  extern int pt_remake_dblink_password (const char *passwd, DB_VALUE * outval, bool is_external);
 
   extern PT_NODE *pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern const char *pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * name);
@@ -710,6 +720,7 @@ extern "C"
 
   extern void pt_free_dblink_remote_cols (PARSER_CONTEXT * parser);
   extern int pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink);
+  extern PT_NODE *pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 #ifdef __cplusplus
 }
 #endif

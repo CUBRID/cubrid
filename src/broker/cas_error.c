@@ -40,17 +40,9 @@
 #include <sys/time.h>
 #endif
 
-#include "cas.h"
-#include "cas_common.h"
-#include "cas_execute.h"
-#include "cas_network.h"
 #include "cas_util.h"
 #include "cas_schema_info.h"
 #include "cas_log.h"
-#include "cas_str_like.h"
-
-#include "broker_filename.h"
-#include "cas_sql_log2.h"
 
 #define CUBRID_CAS_ERR_TRACE        "CUBRID_CAS_ERR_TRACE"
 
@@ -76,51 +68,6 @@ err_msg_set (T_NET_BUF * net_buf, const char *file, int line)
       return;
     }
 
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  if ((err_info.err_indicator == DBMS_ERROR_INDICATOR) && !is_server_alive ())
-    {
-      set_server_aborted (true);
-    }
-#if defined(CAS_FOR_MYSQL)
-  switch (err_info.err_number)
-    {
-    case CR_COMMANDS_OUT_OF_SYNC:
-      /**
-       * if you execute two select query in one connection,
-       * [2014][Commands out of sync; you can't run this command now]
-       * error will be occurred and all query execution will be failed until
-       * close select query statement. so we have to terminate cub_cas_mysql
-       * to avoid this situation.
-       */
-      if (as_info->reset_flag == FALSE)
-	{
-	  cas_log_write_and_end (0, true, "FAILED TO EXECUTE QUERY AS INTERNAL PROBLEM. (MySQL ERR %d : %s)",
-				 err_info.err_number, err_info.err_string);
-	}
-      as_info->reset_flag = TRUE;
-      cas_set_db_connect_status (DB_CONNECTION_STATUS_NOT_CONNECTED);
-      break;
-    case CR_SERVER_GONE_ERROR:
-    case CR_SERVER_LOST:
-      as_info->reset_flag = TRUE;
-      cas_set_db_connect_status (DB_CONNECTION_STATUS_NOT_CONNECTED);
-      cas_log_debug (ARG_FILE_LINE, "db_err_msg_set: set reset_flag");
-      break;
-    }
-#elif defined(CAS_FOR_ORACLE)
-  switch (err_info.err_number)
-    {
-    case 3114:			/* ORA-03114: not connected to ORACLE */
-    case 3113:			/* ORA-03113: end-of-file on communication channel */
-    case 1012:			/* ORA-01012: not logged on */
-    case 28:			/* ORA-00028: your session has been killed */
-      as_info->reset_flag = TRUE;
-      cas_set_db_connect_status (DB_CONNECTION_STATUS_NOT_CONNECTED);
-      cas_log_debug (ARG_FILE_LINE, "db_err_msg_set: set reset_flag");
-      break;
-    }
-#endif /* CAS_FOR_MYSQL */
-#else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
   if ((net_buf == NULL) && (err_info.err_number == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED))
     {
       set_server_aborted (true);
@@ -137,7 +84,6 @@ err_msg_set (T_NET_BUF * net_buf, const char *file, int line)
       cas_log_debug (ARG_FILE_LINE, "db_err_msg_set: set reset_flag");
       break;
     }
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 }
 
 int
@@ -163,9 +109,6 @@ error_info_set_with_msg (int err_number, int err_indicator, const char *err_msg,
       return err_info.err_indicator;
     }
 
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  err_info.err_number = err_number;
-#else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
   if ((err_indicator == DBMS_ERROR_INDICATOR) && (err_number == -1))	/* might be connection error */
     {
       assert (er_errid () != NO_ERROR);
@@ -175,10 +118,10 @@ error_info_set_with_msg (int err_number, int err_indicator, const char *err_msg,
     {
       err_info.err_number = err_number;
     }
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
+
   err_info.err_indicator = err_indicator;
   strncpy (err_info.err_file, file, ERR_FILE_LENGTH - 1);
-  err_info.err_string[ERR_FILE_LENGTH - 1] = 0;
+  err_info.err_file[ERR_FILE_LENGTH - 1] = 0;
   err_info.err_line = line;
 
   if (err_indicator == CAS_ERROR_INDICATOR)
@@ -202,12 +145,6 @@ error_info_set_with_msg (int err_number, int err_indicator, const char *err_msg,
 	}
     }
 
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  if (err_msg)
-    {
-      strncpy (err_info.err_string, err_msg, ERR_MSG_LENGTH - 1);
-    }
-#else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
   if (err_msg)
     {
       strncpy (err_info.err_string, err_msg, ERR_MSG_LENGTH - 1);
@@ -218,7 +155,6 @@ error_info_set_with_msg (int err_number, int err_indicator, const char *err_msg,
       strncpy (err_info.err_string, tmp_err_msg, ERR_MSG_LENGTH - 1);
     }
   err_info.err_string[ERR_MSG_LENGTH - 1] = 0;
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
   return err_indicator;
 }

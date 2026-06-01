@@ -39,13 +39,12 @@ namespace cubpl
   struct invoke_java : public cubpacking::packable_object
   {
     invoke_java () = delete;
-    invoke_java (uint64_t g_id, int tran_id, pl_signature *sig, bool tc);
+    invoke_java (int tran_id, pl_signature *sig, bool tc);
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
-    uint64_t g_id;
     int tran_id;
 
     std::string signature;

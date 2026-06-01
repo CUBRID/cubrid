@@ -39,6 +39,7 @@
 #include "numeric_opfunc.h"
 #include "object_representation.h"
 #include "dbtype.h"
+#include "string_opfunc.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -4228,67 +4229,23 @@ db_datetime_to_string (char *buf, int bufsize, DB_DATETIME * datetime)
 {
   int mon, day, year;
   int hour, minute, second, millisecond;
-  bool pm;
+  const char *ampm;
   int cnt = 0;
-  const int len_out = 26;
 
-  if (buf == NULL || bufsize == 0)
-    {
-      return 0;
-    }
-  if (bufsize <= len_out)
+  if (buf == NULL || bufsize <= QSTR_DATETIME_LENGTH)
     {
       return 0;
     }
 
   db_datetime_decode (datetime, &mon, &day, &year, &hour, &minute, &second, &millisecond);
-  pm = (hour >= 12) ? true : false;
-  if (hour == 0)
-    {
-      hour = 12;
-    }
-  else if (hour > 12)
-    {
-      hour -= 12;
-    }
+  ampm = (hour >= 12) ? "PM" : "AM";
+  hour = (hour % 12 == 0) ? 12 : (hour % 12);
 
-  buf[cnt++] = hour / 10 + '0';
-  buf[cnt++] = hour % 10 + '0';
-  buf[cnt++] = ':';
-  buf[cnt++] = minute / 10 + '0';
-  buf[cnt++] = minute % 10 + '0';
-  buf[cnt++] = ':';
-  buf[cnt++] = second / 10 + '0';
-  buf[cnt++] = second % 10 + '0';
-  buf[cnt++] = '.';
-  buf[cnt++] = millisecond / 100 + '0';
-  buf[cnt++] = (millisecond / 10) % 10 + '0';
-  buf[cnt++] = millisecond % 10 + '0';
-  buf[cnt++] = ' ';
-  if (pm)
-    {
-      buf[cnt++] = 'P';
-      buf[cnt++] = 'M';
-    }
-  else
-    {
-      buf[cnt++] = 'A';
-      buf[cnt++] = 'M';
-    }
-  buf[cnt++] = ' ';
-  buf[cnt++] = mon / 10 + '0';
-  buf[cnt++] = mon % 10 + '0';
-  buf[cnt++] = '/';
-  buf[cnt++] = day / 10 + '0';
-  buf[cnt++] = day % 10 + '0';
-  buf[cnt++] = '/';
-  buf[cnt++] = year / 1000 + '0';
-  buf[cnt++] = (year / 100) % 10 + '0';
-  buf[cnt++] = (year / 10) % 10 + '0';
-  buf[cnt++] = year % 10 + '0';
-  buf[cnt] = '\0';
+  cnt =
+    snprintf (buf, bufsize, "%02d:%02d:%02d.%03d %s %02d/%02d/%04d", hour, minute, second, millisecond, ampm, mon, day,
+	      year);
 
-  return cnt;
+  return (cnt < 0 || cnt >= bufsize) ? 0 : cnt;
 }
 
 /*

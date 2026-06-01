@@ -387,12 +387,7 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
 	{
 	  type = CCI_U_TYPE_NULL;
 	}
-      else if (memcmp (p, "NCHAR", 6) == 0)
-	{
-	  type = CCI_U_TYPE_NCHAR;
-	}
       break;
-
 
     case 'O':
       if (memcmp (p, "OBJECT", 7) == 0)
@@ -446,10 +441,6 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
       else if (memcmp (p, "VARBIT", 7) == 0)
 	{
 	  type = CCI_U_TYPE_VARBIT;
-	}
-      else if (memcmp (p, "VARNCHAR", 9) == 0)
-	{
-	  type = CCI_U_TYPE_VARNCHAR;
 	}
       break;
 

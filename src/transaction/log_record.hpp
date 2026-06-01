@@ -130,12 +130,12 @@ enum log_rectype
   LOG_SYSOP_ATOMIC_START = 50,	/* Log marker to start atomic operations that need to be rollbacked immediately after
 				 * redo phase of recovery and before finishing postpones */
 
-  LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
+  LOG_DUMMY_GENERIC = 51,	/* used for flush for now. it is ridiculous to create dummy log records for every single
                                  * case. we should find a different approach */
 
-  LOG_SUPPLEMENTAL_INFO,        /* used for supplemental logs to support CDC interface.
-                                 * it contains transaction user info, DDL statement, undo lsa, redo lsa for DML,
-                                 * or undo images that never retrieved from the log. */
+  LOG_SUPPLEMENTAL_INFO = 52,	/* used for supplemental logs to support CDC interface.
+				 * it contains transaction user info, DDL statement, undo lsa, redo lsa for DML,
+				 * or undo images that never retrieved from the log. */
 
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };

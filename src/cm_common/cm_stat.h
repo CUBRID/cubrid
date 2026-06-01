@@ -55,13 +55,9 @@ extern "C"
 #define BROKER_NAME_LEN     64
 #define DB_NAME_LEN         64
 
-#if !defined (DO_NOT_USE_CUBRIDENV)
+
 #define BROKER_LOG_DIR  "log/broker"
 #define UNICAS_CONF_DIR "conf"
-#else
-#define BROKER_LOG_DIR  CUBRID_LOGDIR "/broker"
-#define UNICAS_CONF_DIR CUBRID_CONFDIR
-#endif
 
 #define UNICAS_SQL_LOG_DIR "sql_log"
 

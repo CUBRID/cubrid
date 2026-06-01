@@ -1738,9 +1738,9 @@
 
 #define ER_SP_PL_SERVER_CRASHED                     -1359
 #define ER_SP_COMPILE_ERROR                         -1360
-#define ER_QPROC_RESULT_CACHE_INVALID		        -1361
+#define ER_QPROC_RESULT_CACHE_INVALID               -1361
 
-#define ER_LOCALE_LANG_NOT_AVAILABLE		        -1362
+#define ER_LOCALE_LANG_NOT_AVAILABLE                -1362
 #define ER_SP_DROP_NOT_ALLOWED_SYSTEM_GENERATED     -1363
 #define ER_SP_INVOKERS_RIGHTS_NOT_SUPPORTED         -1364
 
@@ -1750,8 +1750,18 @@
 
 #define ER_DBLINK_TRAN				    -1367
 
-#define ER_LAST_ERROR                               -1368
+// CAUTION: sync this value with that in CUBRIDServerSideJDBCErrorCode.java
+#define ER_SP_INVALID_CURSOR                        -1368
 
+#define ER_AU_LOGIN_DISABLED                        -1369
+
+#define ER_AUTO_INCREMENT_SINGLE_COL_ONLY           -1370
+
+#define ER_SM_ATT_AT_LEAST_ONE_VISIBLE              -1371
+
+#define ER_METHOD_CALLBACK                          -1372
+
+#define ER_LAST_ERROR                               -1373
 
 
 

@@ -148,6 +148,7 @@ main (int argc, char *argv[])
     {CSQL_QUERY_COLUMN_DELIMITER_L, 1, 0, CSQL_QUERY_COLUMN_DELIMITER_S},
     {CSQL_QUERY_COLUMN_ENCLOSURE_L, 1, 0, CSQL_QUERY_COLUMN_ENCLOSURE_S},
     {CSQL_LOADDB_OUTPUT_L, 0, 0, CSQL_LOADDB_OUTPUT_S},
+    {CSQL_NOPRINT_TITLE_L, 0, 0, CSQL_NOPRINT_TITLE_S},
     {VERSION_L, 0, 0, VERSION_S},
     {0, 0, 0, 0}
   };
@@ -345,6 +346,10 @@ main (int argc, char *argv[])
 
 	case CSQL_LOADDB_OUTPUT_S:
 	  csql_arg.loaddb_output = true;
+	  break;
+
+	case CSQL_NOPRINT_TITLE_S:
+	  csql_arg.noprint_entrymsg = true;
 	  break;
 
 	case VERSION_S:

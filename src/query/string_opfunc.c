@@ -64,9 +64,10 @@
 #if !defined (SERVER_MODE)
 #include "parse_tree.h"
 #include "es_common.h"
+#else
+#include "misctype_def.h"
 #endif /* !defined (SERVER_MODE) */
 
-#include "dbtype.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -81,9 +82,7 @@
                             DB_VALUE_PRECISION(value))
 
 #define QSTR_MAX_PRECISION(str_type)                                         \
-            (QSTR_IS_CHAR(str_type)          ?	DB_MAX_VARCHAR_PRECISION :  \
-	     QSTR_IS_NATIONAL_CHAR(str_type) ?	DB_MAX_VARNCHAR_PRECISION : \
-	                                        DB_MAX_VARBIT_PRECISION)
+            (QSTR_IS_CHAR(str_type) ? DB_MAX_VARCHAR_PRECISION : DB_MAX_VARBIT_PRECISION)
 
 #define ABS(i) ((i) >= 0 ? (i) : -(i))
 
@@ -103,7 +102,6 @@
  *  string types into function like groups.
  *
  *      DB_STRING and DB_CHAR    become QSTR_CHAR
- *      DB_NCHAR and DB_VARNCHAR become QSTR_NATIONAL_CHAR
  *      DB_BIT and DB_VARBIT     become QSTR_BIT
  *      All others               become QSTR_UNKNOWN, although this
  *                                      categorizations doesn't apply to
@@ -113,7 +111,6 @@ typedef enum
 {
   QSTR_UNKNOWN,
   QSTR_CHAR,
-  QSTR_NATIONAL_CHAR,
   QSTR_BIT
 } QSTR_CATEGORY;
 
@@ -149,7 +146,6 @@ typedef enum
 #define QSTR_DATE_LENGTH 10
 #define QSTR_TIME_LENGTH 11
 #define QSTR_TIME_STAMPLENGTH 22
-#define QSTR_DATETIME_LENGTH 26
 /* multiplier ratio for TO_CHAR function : estimate result len/size based on
  * format string len/size : maximum multiplier is given by:
  * - format element : DAY (3)
@@ -160,18 +156,30 @@ typedef enum
 
 #define GUID_STANDARD_BYTES_LENGTH 16
 
+typedef enum
+{
+  COMPOSITE_YEAR = 0,
+  COMPOSITE_MONTH,
+  COMPOSITE_DAY,
+  COMPOSITE_HOUR,
+  COMPOSITE_MINUTE,
+  COMPOSITE_SECOND,
+  COMPOSITE_MILLISECOND,
+  COMPOSITE_MAX
+} EN_COMPOSITE_POS;
+
 static int db_string_prefix_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB_VALUE * result);
 static char db_string_escape_char (char c);
 static int qstr_trim (MISC_OPERAND tr_operand, const unsigned char *trim, int trim_length, int trim_size,
 		      const unsigned char *src_ptr, DB_TYPE src_type, int src_length, int src_size,
-		      INTL_CODESET codeset, unsigned char **res, DB_TYPE * res_type, int *res_length, int *res_size);
+		      INTL_CODESET codeset, unsigned char **res, int *res_length, int *res_size);
 static void trim_leading (const unsigned char *trim_charset_ptr, int trim_charset_size, const unsigned char *src_ptr,
 			  DB_TYPE src_type, int src_length, int src_size, INTL_CODESET codeset,
 			  unsigned char **lead_trimmed_ptr, int *lead_trimmed_length, int *lead_trimmed_size,
 			  bool skip_spaces);
 static int qstr_pad (MISC_OPERAND pad_operand, int pad_length, const unsigned char *pad_charset_ptr,
 		     int pad_charset_length, int pad_charset_size, const unsigned char *src_ptr, DB_TYPE src_type,
-		     int src_length, int src_size, INTL_CODESET codeset, unsigned char **result, DB_TYPE * result_type,
+		     int src_length, int src_size, INTL_CODESET codeset, unsigned char **result,
 		     int *result_length, int *result_size);
 static int qstr_eval_like (const char *tar, int tar_length, const char *expr, int expr_length, const char *escape,
 			   INTL_CODESET codeset, int coll_id);
@@ -183,8 +191,7 @@ static int qstr_replace (const unsigned char *src_buf, int src_len, int src_size
 			 int repl_str_size, unsigned char **result_buf, int *result_len, int *result_size);
 static int qstr_translate (const unsigned char *src_ptr, DB_TYPE src_type, int src_size, INTL_CODESET codeset,
 			   const unsigned char *from_str_ptr, int from_str_size, const unsigned char *to_str_ptr,
-			   int to_str_size, unsigned char **result_ptr, DB_TYPE * result_type, int *result_len,
-			   int *result_size);
+			   int to_str_size, unsigned char **result_ptr, int *result_len, int *result_size);
 static QSTR_CATEGORY qstr_get_category (const DB_VALUE * s);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static bool is_string (const DB_VALUE * s);
@@ -201,7 +208,7 @@ static int qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_T
 static int qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size, int s1_precision, DB_TYPE s1_type,
 			     const unsigned char *s2, int s2_length, int s2_size, int s2_precision, DB_TYPE s2_type,
 			     INTL_CODESET codeset, unsigned char **result, int *result_length, int *result_size,
-			     DB_TYPE * result_type, DB_DATA_STATUS * data_status);
+			     DB_DATA_STATUS * data_status);
 static int qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type,
 				 const unsigned char *s2, int s2_length, int s2_precision, DB_TYPE s2_type,
 				 unsigned char **result, int *result_length, int *result_size, DB_TYPE * result_type,
@@ -259,19 +266,17 @@ static int get_cur_year (void);
 static int get_cur_month (void);
 /* utility functions */
 static int add_and_normalize_date_time (int *years, int *months, int *days, int *hours, int *minutes, int *seconds,
-					int *milliseconds, DB_BIGINT y, DB_BIGINT m, DB_BIGINT d, DB_BIGINT h,
-					DB_BIGINT mi, DB_BIGINT s, DB_BIGINT ms);
+					int *milliseconds, const DB_BIGINT * composite_values);
 static int sub_and_normalize_date_time (int *years, int *months, int *days, int *hours, int *minutes, int *seconds,
-					int *milliseconds, DB_BIGINT y, DB_BIGINT m, DB_BIGINT d, DB_BIGINT h,
-					DB_BIGINT mi, DB_BIGINT s, DB_BIGINT ms);
+					int *milliseconds, const DB_BIGINT * composite_values);
 static void set_time_argument (struct tm *dest, int year, int month, int day, int hour, int min, int sec);
 static long calc_unix_timestamp (struct tm *time_argument);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int parse_for_next_int (char **ch, char *output);
 #endif
-static int db_str_to_millisec (const char *str);
-static void copy_and_shift_values (int shift, int n, DB_BIGINT * first, ...);
-static DB_BIGINT get_single_unit_value (const char *expr, DB_BIGINT int_val);
+
+static int db_date_add_sub_interval_composite_value (const char *expr_s, int unit, DB_BIGINT * values,
+						     int *is_positive_value);
 static int db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * expr,
 					  const int unit, int is_add);
 static int db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * db_days,
@@ -422,7 +427,6 @@ db_string_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB_VALUE 
       switch (string1_category)
 	{
 	case QSTR_CHAR:
-	case QSTR_NATIONAL_CHAR:
 
 	  assert (db_get_string_codeset (string1) == db_get_string_codeset (string2));
 
@@ -549,7 +553,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
     {
       result_type = DB_TYPE_VARBIT;
     }
-  else if (!QSTR_IS_CHAR (result_type) && !QSTR_IS_NATIONAL_CHAR (result_type))
+  else if (!QSTR_IS_CHAR (result_type))
     {
       db_make_null (db_result);
 #if defined(CUBRID_DEBUG)
@@ -605,9 +609,8 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
 
       if (!ignore_trailing_space)
 	{
-	  ti = (db_string1->domain.char_info.type == DB_TYPE_CHAR || db_string1->domain.char_info.type == DB_TYPE_NCHAR)
-	    && (db_string2->domain.char_info.type == DB_TYPE_CHAR
-		|| db_string2->domain.char_info.type == DB_TYPE_NCHAR);
+	  ti = (db_string1->domain.char_info.type == DB_TYPE_CHAR)
+	    && (db_string2->domain.char_info.type == DB_TYPE_CHAR);
 	}
       if (ti)
 	{
@@ -786,10 +789,6 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
     {
       result_type = DB_TYPE_VARCHAR;
     }
-  else if (QSTR_IS_NATIONAL_CHAR (string_type))
-    {
-      result_type = DB_TYPE_VARNCHAR;
-    }
   else if (QSTR_IS_BIT (string_type))
     {
       result_type = DB_TYPE_VARBIT;
@@ -830,8 +829,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
 
       /* We need to implicitly trim both strings since we don't want padding for the result (its of varying type) and
        * since padding can mask the logical end of both of the strings.  We need to be careful how the trimming is
-       * done.  Char and varchar can do the normal trim, nchar and varnchar need to worry about codeset and pad chars,
-       * and bit and varbit don't want to trim at all. */
+       * done.  Char and varchar can do the normal trim and bit and varbit don't want to trim at all. */
       if (result_type == DB_TYPE_VARCHAR)
 	{
 	  for (; string1_size && string1[string1_size - 1] == ' '; string1_size--)
@@ -842,63 +840,6 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
 	    {
 	      ;			/* do nothing */
 	    }
-	}
-      else if (result_type == DB_TYPE_VARNCHAR)
-	{
-	  /* This is going to look a lot like qstr_trim_trailing.  We don't call qstr_trim_trailing because he works on
-	   * length of characters and we need to work on length of bytes.  We could calculate the length in characters,
-	   * but that requires a full scan of the strings which is not necessary. */
-	  int i, pad_size, trim_length, cmp_flag, prev_size;
-	  unsigned char *prev_ptr, *current_ptr, pad[2];
-
-	  intl_pad_char (codeset, pad, &pad_size);
-
-	  trim_length = string1_size;
-	  current_ptr = (unsigned char *) (string1 + string1_size);
-	  for (i = 0, cmp_flag = 0; (i < string1_size) && (cmp_flag == 0); i++)
-	    {
-	      prev_ptr = qstr_prev_char (current_ptr, codeset, &prev_size);
-	      if (pad_size == prev_size)
-		{
-		  cmp_flag = memcmp ((char *) prev_ptr, (char *) pad, pad_size);
-
-		  if (cmp_flag == 0)
-		    {
-		      trim_length -= pad_size;
-		    }
-		}
-	      else
-		{
-		  cmp_flag = 1;
-		}
-
-	      current_ptr = prev_ptr;
-	    }
-	  string1_size = trim_length;
-
-	  trim_length = string2_size;
-	  current_ptr = (unsigned char *) (string2 + string2_size);
-	  for (i = 0, cmp_flag = 0; (i < string2_size) && (cmp_flag == 0); i++)
-	    {
-	      prev_ptr = qstr_prev_char (current_ptr, codeset, &prev_size);
-	      if (pad_size == prev_size)
-		{
-		  cmp_flag = memcmp ((char *) prev_ptr, (char *) pad, pad_size);
-
-		  if (cmp_flag == 0)
-		    {
-		      trim_length -= pad_size;
-		    }
-		}
-	      else
-		{
-		  cmp_flag = 1;
-		}
-
-	      current_ptr = prev_ptr;
-	    }
-	  string2_size = trim_length;
-
 	}
 
       /* now find the first byte where the strings differ */
@@ -1106,17 +1047,6 @@ db_string_concatenate (const DB_VALUE * string1, const DB_VALUE * string2, DB_VA
 		  db_value_domain_init (result, DB_TYPE_CHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 		}
 	    }
-	  else if (QSTR_IS_NATIONAL_CHAR (string_type1))
-	    {
-	      if (string_type1 == DB_TYPE_VARNCHAR || string_type2 == DB_TYPE_VARNCHAR)
-		{
-		  db_value_domain_init (result, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-		}
-	      else
-		{
-		  db_value_domain_init (result, DB_TYPE_NCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-		}
-	    }
 	  else
 	    {
 	      if (string_type1 == DB_TYPE_VARBIT || string_type2 == DB_TYPE_VARBIT)
@@ -1230,7 +1160,7 @@ db_string_concatenate (const DB_VALUE * string1, const DB_VALUE * string2, DB_VA
 					   DB_GET_UCHAR (string2), (int) db_get_string_length ((DB_VALUE *) string2),
 					   (int) db_get_string_size (string2),
 					   (int) QSTR_VALUE_PRECISION (string2), DB_VALUE_DOMAIN_TYPE (string2),
-					   codeset, &r, &r_length, &r_size, &r_type, data_status);
+					   codeset, &r, &r_length, &r_size, data_status);
 
 	  pr_clear_value (&temp);
 
@@ -1244,7 +1174,7 @@ db_string_concatenate (const DB_VALUE * string1, const DB_VALUE * string2, DB_VA
 	      else
 		{
 		  result_domain_length =
-		    MIN (QSTR_MAX_PRECISION (r_type), DB_VALUE_PRECISION (string1) + DB_VALUE_PRECISION (string2));
+		    MIN (DB_MAX_VARCHAR_PRECISION, DB_VALUE_PRECISION (string1) + DB_VALUE_PRECISION (string2));
 		}
 
 	      if (is_inplace_concat)
@@ -1253,7 +1183,8 @@ db_string_concatenate (const DB_VALUE * string1, const DB_VALUE * string2, DB_VA
 		  (void) pr_clear_value (result);
 		}
 
-	      qstr_make_typed_string (r_type, result, result_domain_length, (char *) r, r_size, codeset, common_coll);
+	      qstr_make_typed_string (DB_TYPE_VARCHAR, result, result_domain_length, (char *) r, r_size, codeset,
+				      common_coll);
 	      r[r_size] = 0;
 	      result->data.ch.medium.length = r_length;
 	      result->need_clear = true;
@@ -1465,10 +1396,8 @@ db_string_instr (const DB_VALUE * src_string, const DB_VALUE * sub_string, const
     }
   else
     {
-      if ((str1_type != DB_TYPE_STRING && str1_type != DB_TYPE_CHAR && str1_type != DB_TYPE_VARCHAR
-	   && str1_type != DB_TYPE_NCHAR && str1_type != DB_TYPE_VARNCHAR)
-	  || (str2_type != DB_TYPE_STRING && str2_type != DB_TYPE_CHAR && str2_type != DB_TYPE_VARCHAR
-	      && str2_type != DB_TYPE_NCHAR && str2_type != DB_TYPE_VARNCHAR)
+      if ((str1_type != DB_TYPE_STRING && str1_type != DB_TYPE_CHAR && str1_type != DB_TYPE_VARCHAR)
+	  || (str2_type != DB_TYPE_STRING && str2_type != DB_TYPE_CHAR && str2_type != DB_TYPE_VARCHAR)
 	  || (arg3_type != DB_TYPE_INTEGER && arg3_type != DB_TYPE_SHORT && arg3_type != DB_TYPE_BIGINT))
 	{
 	  error_status = ER_QSTR_INVALID_DATA_TYPE;
@@ -1732,7 +1661,7 @@ db_string_position (const DB_VALUE * sub_string, const DB_VALUE * src_string, DB
       int position;
       DB_TYPE src_type = DB_VALUE_DOMAIN_TYPE (src_string);
 
-      if (QSTR_IS_CHAR (src_type) || QSTR_IS_NATIONAL_CHAR (src_type))
+      if (QSTR_IS_CHAR (src_type))
 	{
 	  const char *src_str = db_get_string (src_string);
 	  int src_size = db_get_string_size (src_string);
@@ -1824,10 +1753,6 @@ db_string_substring (const MISC_OPERAND substr_operand, const DB_VALUE * src_str
     {
       result_type = DB_TYPE_VARCHAR;
     }
-  else if (QSTR_IS_NATIONAL_CHAR (src_type))
-    {
-      result_type = DB_TYPE_VARNCHAR;
-    }
   else
     {
       result_type = DB_TYPE_VARBIT;
@@ -1861,7 +1786,7 @@ db_string_substring (const MISC_OPERAND substr_operand, const DB_VALUE * src_str
 	    }
 
 	  /* Initialize the memory manager of the substring */
-	  if (QSTR_IS_CHAR (src_type) || QSTR_IS_NATIONAL_CHAR (src_type))
+	  if (QSTR_IS_CHAR (src_type))
 	    {
 	      int sub_size = 0;
 
@@ -2070,10 +1995,6 @@ db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE 
   if (QSTR_IS_CHAR (src_type))
     {
       result_type = DB_TYPE_VARCHAR;
-    }
-  else if (QSTR_IS_NATIONAL_CHAR (src_type))
-    {
-      result_type = DB_TYPE_VARNCHAR;
     }
 
   src_size = db_get_string_size (src_string);
@@ -2427,10 +2348,10 @@ db_string_substring_index (DB_VALUE * src_string, DB_VALUE * delim_string, const
 	  /* return the entire source string */
 
 	  error_status = pr_clone_value ((DB_VALUE *) src_string, result);
-	  if (src_type == DB_TYPE_CHAR || src_type == DB_TYPE_NCHAR)
+	  if (src_type == DB_TYPE_CHAR)
 	    {
 	      /* convert CHARACTER(N) to CHARACTER VARYING(N) */
-	      qstr_make_typed_string ((src_type == DB_TYPE_NCHAR ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR), result,
+	      qstr_make_typed_string (DB_TYPE_VARCHAR, result,
 				      DB_VALUE_PRECISION (result), db_get_string (result), db_get_string_size (result),
 				      src_cs, src_coll);
 	      result->need_clear = true;
@@ -2454,10 +2375,7 @@ empty_string:
     {
       src_type = DB_TYPE_VARCHAR;
     }
-  else if (src_type == DB_TYPE_NCHAR)
-    {
-      src_type = DB_TYPE_VARNCHAR;
-    }
+
   error_status = db_string_make_empty_typed_string (result, src_type, TP_FLOATING_PRECISION_VALUE, src_cs, src_coll);
   pr_clear_value (&empty_string1);
   pr_clear_value (&empty_string2);
@@ -3092,10 +3010,10 @@ db_string_insert_substring (DB_VALUE * src_string, const DB_VALUE * position, co
     }
 
   /* force type to variable string */
-  if (src_type == DB_TYPE_CHAR || src_type == DB_TYPE_NCHAR)
+  if (src_type == DB_TYPE_CHAR)
     {
       /* convert CHARACTER(N) to CHARACTER VARYING(N) */
-      qstr_make_typed_string ((src_type == DB_TYPE_NCHAR ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR), result,
+      qstr_make_typed_string (DB_TYPE_VARCHAR, result,
 			      TP_FLOATING_PRECISION_VALUE, db_get_string (result), result_size, src_cs, src_coll);
     }
   else if (src_type == DB_TYPE_BIT)
@@ -3594,7 +3512,6 @@ db_string_trim (const MISC_OPERAND tr_operand, const DB_VALUE * trim_charset, co
 
   unsigned char *result;
   int result_length, result_size = 0, result_domain_length;
-  DB_TYPE result_type = DB_TYPE_NULL;
 
   const unsigned char *trim_charset_ptr = NULL;
   int trim_charset_length = 0;
@@ -3611,14 +3528,7 @@ db_string_trim (const MISC_OPERAND tr_operand, const DB_VALUE * trim_charset, co
   /* if source is NULL, return NULL */
   if (DB_IS_NULL (src_string))
     {
-      if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
-	{
-	  db_value_domain_init (trimmed_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	}
-      else
-	{
-	  db_value_domain_init (trimmed_string, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	}
+      db_value_domain_init (trimmed_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
       return error_status;
     }
 
@@ -3633,14 +3543,7 @@ db_string_trim (const MISC_OPERAND tr_operand, const DB_VALUE * trim_charset, co
 
       if (DB_IS_NULL (trim_charset))
 	{
-	  if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
-	    {
-	      db_value_domain_init (trimmed_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	    }
-	  else
-	    {
-	      db_value_domain_init (trimmed_string, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	    }
+	  db_value_domain_init (trimmed_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  return error_status;
 	}
     }
@@ -3679,12 +3582,12 @@ db_string_trim (const MISC_OPERAND tr_operand, const DB_VALUE * trim_charset, co
   error_status = qstr_trim (tr_operand, trim_charset_ptr, trim_charset_length, trim_charset_size,
 			    DB_GET_UCHAR (src_string), DB_VALUE_DOMAIN_TYPE (src_string),
 			    db_get_string_length (src_string), db_get_string_size (src_string),
-			    db_get_string_codeset (src_string), &result, &result_type, &result_length, &result_size);
+			    db_get_string_codeset (src_string), &result, &result_length, &result_size);
 
   if (error_status == NO_ERROR && result != NULL)
     {
-      result_domain_length = MIN (QSTR_MAX_PRECISION (result_type), DB_VALUE_PRECISION (src_string));
-      qstr_make_typed_string (result_type, trimmed_string, result_domain_length, (char *) result, result_size,
+      result_domain_length = MIN (DB_MAX_VARCHAR_PRECISION, DB_VALUE_PRECISION (src_string));
+      qstr_make_typed_string (DB_TYPE_VARCHAR, trimmed_string, result_domain_length, (char *) result, result_size,
 			      db_get_string_codeset (src_string), db_get_string_collation (src_string));
       result[result_size] = 0;
       trimmed_string->need_clear = true;
@@ -3775,7 +3678,6 @@ db_string_prefix_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB
       switch (string1_category)
 	{
 	case QSTR_CHAR:
-	case QSTR_NATIONAL_CHAR:
 
 	  assert (db_get_string_codeset (string1) == db_get_string_codeset (string2));
 
@@ -3824,7 +3726,7 @@ db_string_prefix_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB
 static int
 qstr_trim (MISC_OPERAND trim_operand, const unsigned char *trim_charset, int trim_charset_length, int trim_charset_size,
 	   const unsigned char *src_ptr, DB_TYPE src_type, int src_length, int src_size, INTL_CODESET codeset,
-	   unsigned char **result, DB_TYPE * result_type, int *result_length, int *result_size)
+	   unsigned char **result, int *result_length, int *result_size)
 {
   unsigned char pad_char[2], *lead_trimmed_ptr, *trail_trimmed_ptr;
   int lead_trimmed_length, trail_trimmed_length;
@@ -3875,14 +3777,6 @@ qstr_trim (MISC_OPERAND trim_operand, const unsigned char *trim_charset, int tri
   (void) memcpy ((char *) (*result), (char *) trail_trimmed_ptr, trail_trimmed_size);
   (*result)[trail_trimmed_size] = '\0';
 
-  if (QSTR_IS_NATIONAL_CHAR (src_type))
-    {
-      *result_type = DB_TYPE_VARNCHAR;
-    }
-  else
-    {
-      *result_type = DB_TYPE_VARCHAR;
-    }
   *result_length = trail_trimmed_length;
   *result_size = trail_trimmed_size;
 
@@ -4065,7 +3959,6 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, cons
 
   unsigned char *result;
   int result_length = 0, result_size = 0;
-  DB_TYPE result_type;
 
   const unsigned char *pad_charset_ptr = NULL;
   int pad_charset_length = 0;
@@ -4076,14 +3969,7 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, cons
   assert (src_string != (DB_VALUE *) NULL);
   assert (padded_string != (DB_VALUE *) NULL);
 
-  if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
-    {
-      db_value_domain_init (padded_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-    }
-  else
-    {
-      db_value_domain_init (padded_string, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-    }
+  db_value_domain_init (padded_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
   /* if source is NULL, return NULL */
   if (DB_IS_NULL (src_string))
@@ -4133,7 +4019,7 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, cons
   error_status = qstr_pad (pad_operand, total_length, pad_charset_ptr, pad_charset_length, pad_charset_size,
 			   DB_GET_UCHAR (src_string), DB_VALUE_DOMAIN_TYPE (src_string),
 			   db_get_string_length (src_string), db_get_string_size (src_string),
-			   db_get_string_codeset (src_string), &result, &result_type, &result_length, &result_size);
+			   db_get_string_codeset (src_string), &result, &result_length, &result_size);
 
   if (error_status != NO_ERROR)
     {
@@ -4163,7 +4049,7 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, cons
       db_private_free_and_init (NULL, result);
       return ER_QPROC_STRING_SIZE_TOO_BIG;
     }
-  qstr_make_typed_string (result_type, padded_string, result_length, (char *) result, result_size,
+  qstr_make_typed_string (DB_TYPE_VARCHAR, padded_string, result_length, (char *) result, result_size,
 			  db_get_string_codeset (src_string), db_get_string_collation (src_string));
   result[result_size] = 0;
   padded_string->need_clear = true;
@@ -4176,7 +4062,7 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, cons
 static int
 qstr_pad (MISC_OPERAND pad_operand, int pad_length, const unsigned char *pad_charset_ptr, int pad_charset_length,
 	  int pad_charset_size, const unsigned char *src_ptr, DB_TYPE src_type, int src_length, int src_size,
-	  INTL_CODESET codeset, unsigned char **result, DB_TYPE * result_type, int *result_length, int *result_size)
+	  INTL_CODESET codeset, unsigned char **result, int *result_length, int *result_size)
 {
   unsigned char def_pad_char[2];
   unsigned char *cur_pad_char_ptr;
@@ -4217,15 +4103,6 @@ qstr_pad (MISC_OPERAND pad_operand, int pad_length, const unsigned char *pad_cha
       intl_char_size ((unsigned char *) pad_charset_ptr, (pad_length - src_length) % pad_charset_length, codeset,
 		      &pad_reminder_size);
       alloc_size = src_size + pad_full_size + pad_reminder_size;
-    }
-
-  if (QSTR_IS_NATIONAL_CHAR (src_type))
-    {
-      *result_type = DB_TYPE_VARNCHAR;
-    }
-  else
-    {
-      *result_type = DB_TYPE_VARCHAR;
     }
 
   *result = (unsigned char *) db_private_alloc (NULL, (size_t) alloc_size + 1);
@@ -5383,7 +5260,7 @@ db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], int const num_ar
     memcpy (result_char_string, result_string.c_str (), result_char_size);
     result_char_string[result_char_size] = '\0';
 
-    qstr_make_typed_string ((DB_VALUE_DOMAIN_TYPE (src) == DB_TYPE_NCHAR ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR), result,
+    qstr_make_typed_string (DB_TYPE_VARCHAR, result,
 			    result_char_size, result_char_string, result_char_size,
 			    db_get_string_codeset (src), coll_id);
     result->need_clear = true;
@@ -5398,10 +5275,10 @@ exit_copy:
     const DB_VALUE *src = args[0];
     pr_clone_value ((DB_VALUE *) src, result);
     DB_TYPE src_type = DB_VALUE_DOMAIN_TYPE (src);
-    if (src_type == DB_TYPE_CHAR || src_type == DB_TYPE_NCHAR)
+    if (src_type == DB_TYPE_CHAR)
       {
 	/* convert CHARACTER(N) to CHARACTER VARYING(N) */
-	qstr_make_typed_string ((src_type == DB_TYPE_NCHAR ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR), result,
+	qstr_make_typed_string (DB_TYPE_VARCHAR, result,
 				DB_VALUE_PRECISION (result), db_get_string (result), db_get_string_size (result),
 				db_get_string_codeset (src), db_get_string_collation (src));
       }
@@ -5618,7 +5495,7 @@ db_string_regexp_substr (DB_VALUE * result, DB_VALUE * args[], int const num_arg
 	memcpy (result_char_string, result_string.c_str (), result_char_size);
 	result_char_string[result_char_size] = '\0';
 
-	qstr_make_typed_string ((DB_VALUE_DOMAIN_TYPE (src) == DB_TYPE_NCHAR ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR),
+	qstr_make_typed_string (DB_TYPE_VARCHAR,
 				result, result_char_size, result_char_string, result_char_size,
 				db_get_string_codeset (src), coll_id);
 	result->need_clear = true;
@@ -5672,8 +5549,7 @@ exit:
  *
  * Errors:
  *	ER_QSTR_INVALID_DATA_TYPE:
- *		  <src_string> is not CHAR, NCHAR, VARCHAR, VARNCHAR, BIT or
- *		   VARBIT
+ *		  <src_string> is not CHAR, VARCHAR, BIT or VARBIT
  *
  * Note : result variable must already be created
  *	  operates directly on memory buffer
@@ -5785,7 +5661,7 @@ exit_copy:
  *
  * Errors:
  *	ER_QSTR_INVALID_DATA_TYPE:
- *		  <src_string> is not CHAR, NCHAR, VARCHAR, VARNCHAR
+ *		  <src_string> is not CHAR, VARCHAR
  *
  * Note : Used in context of GROUP_CONCAT. It is complementary to
  *	  'db_string_limit_size_string' function
@@ -6161,7 +6037,6 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string, co
   int error_status = NO_ERROR;
   unsigned char *result_ptr = NULL;
   int result_length = 0, result_size = 0;
-  DB_TYPE result_type = DB_TYPE_NULL;
   int coll_id, coll_id_tmp;
   DB_VALUE dummy_string;
   int is_repl_string_omitted = false;
@@ -6204,16 +6079,9 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string, co
 	}
       else
 	{
-	  if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
-	    {
-	      error_status =
-		db_value_domain_init (replaced_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	    }
-	  else
-	    {
-	      error_status =
-		db_value_domain_init (replaced_string, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	    }
+	  error_status =
+	    db_value_domain_init (replaced_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+
 	  goto exit;
 	}
     }
@@ -6260,8 +6128,6 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string, co
       coll_id = coll_id_tmp;
     }
 
-  result_type = QSTR_IS_NATIONAL_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)) ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR;
-
   if (!is_repl_string_omitted)
     {
       repl_string_ptr = DB_GET_UCHAR (repl_string);
@@ -6276,13 +6142,13 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string, co
     {
       if (result_length == 0)
 	{
-	  qstr_make_typed_string (result_type, replaced_string,
+	  qstr_make_typed_string (DB_TYPE_VARCHAR, replaced_string,
 				  (db_get_string_length (src_string) == 0) ? 1 : db_get_string_length (src_string),
 				  (char *) result_ptr, result_size, db_get_string_codeset (src_string), coll_id);
 	}
       else
 	{
-	  qstr_make_typed_string (result_type, replaced_string, result_length, (char *) result_ptr, result_size,
+	  qstr_make_typed_string (DB_TYPE_VARCHAR, replaced_string, result_length, (char *) result_ptr, result_size,
 				  db_get_string_codeset (src_string), coll_id);
 	}
       result_ptr[result_size] = 0;
@@ -6459,15 +6325,7 @@ db_string_translate (const DB_VALUE * src_string, const DB_VALUE * from_string, 
 
   if (DB_IS_NULL (src_string) || DB_IS_NULL (from_string) || DB_IS_NULL (to_string))
     {
-      if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
-	{
-	  error_status = db_value_domain_init (transed_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	}
-      else
-	{
-	  error_status =
-	    db_value_domain_init (transed_string, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	}
+      error_status = db_value_domain_init (transed_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
       return error_status;
     }
 
@@ -6493,20 +6351,20 @@ db_string_translate (const DB_VALUE * src_string, const DB_VALUE * from_string, 
 				 db_get_string_size (src_string), db_get_string_codeset (src_string),
 				 DB_GET_UCHAR (from_string), db_get_string_size (from_string),
 				 DB_GET_UCHAR (to_string), db_get_string_size (to_string), &result_ptr,
-				 &result_type, &result_length, &result_size);
+				 &result_length, &result_size);
 
   if (error_status == NO_ERROR && result_ptr != NULL)
     {
       if (result_length == 0)
 	{
-	  qstr_make_typed_string (result_type, transed_string,
+	  qstr_make_typed_string (DB_TYPE_VARCHAR, transed_string,
 				  (db_get_string_length (src_string) == 0) ? 1 : db_get_string_length (src_string),
 				  (char *) result_ptr, result_size, db_get_string_codeset (src_string),
 				  db_get_string_collation (src_string));
 	}
       else
 	{
-	  qstr_make_typed_string (result_type, transed_string, result_length, (char *) result_ptr, result_size,
+	  qstr_make_typed_string (DB_TYPE_VARCHAR, transed_string, result_length, (char *) result_ptr, result_size,
 				  db_get_string_codeset (src_string), db_get_string_collation (src_string));
 	}
       result_ptr[result_size] = 0;
@@ -6522,7 +6380,7 @@ db_string_translate (const DB_VALUE * src_string, const DB_VALUE * from_string, 
 static int
 qstr_translate (const unsigned char *src_ptr, DB_TYPE src_type, int src_size, INTL_CODESET codeset,
 		const unsigned char *from_str_ptr, int from_str_size, const unsigned char *to_str_ptr, int to_str_size,
-		unsigned char **result_ptr, DB_TYPE * result_type, int *result_len, int *result_size)
+		unsigned char **result_ptr, int *result_len, int *result_size)
 {
   int error_status = NO_ERROR;
   int j, offset, offset1, offset2;
@@ -6618,7 +6476,6 @@ loop:
     }
 
   /* evaluate result string length */
-  *result_type = QSTR_IS_NATIONAL_CHAR (src_type) ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR;
   *result_ptr = (unsigned char *) db_private_alloc (NULL, (size_t) * result_size + 1);
   if (*result_ptr == NULL)
     {
@@ -6856,7 +6713,7 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
  *
  * Arguments:
  *       db_val	    : (In/Out) value to make
- *       db_type    : (In) Type of string (char,nchar,bit)
+ *       db_type    : (In) Type of string (char,bit)
  *       precision  : (In)
  *       codeset    : (In)
  *       collation_id  : (In)
@@ -6865,7 +6722,7 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
  *
  * Errors:
  *   ER_QSTR_INVALID_DATA_TYPE
- *      <type> is not one of (char,nchar,bit)
+ *      <type> is not one of (char,bit)
  *   ER_OUT_OF_VIRTUAL_MEMORY
  *      out of memory
  *
@@ -7153,8 +7010,6 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       {
 	bool has_zone = false;
 	bool is_explicit_time = false;
@@ -7306,6 +7161,8 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
 
   if (left_is_datetime)
     {
+      DB_BIGINT composite_values[COMPOSITE_MAX] = { 0, 0, 0, rhour, rminute, rsecond, 0 };
+
       /* add a datetime to a time */
       if (!is_datetime_decoded)
 	{
@@ -7319,9 +7176,7 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
 	  goto error_return;
 	}
 
-      error =
-	add_and_normalize_date_time (&year, &month, &day, &lhour, &lminute, &lsecond, &lms, 0, 0, 0, rhour, rminute,
-				     rsecond, 0);
+      error = add_and_normalize_date_time (&year, &month, &day, &lhour, &lminute, &lsecond, &lms, composite_values);
       if (error != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
@@ -7550,164 +7405,6 @@ db_string_convert_to (const DB_VALUE * src_str_dbval, DB_VALUE * dest_str_dbval,
 
   return NO_ERROR;
 }
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * db_string_convert () -
- *
- * Arguments:
- *        src_string:  (In) Source string
- *       dest_string: (Out) Converted string
- *       data_status: (Out) Data status
- *
- * Returns: int
- *
- * Errors:
- *   ER_QSTR_INVALID_DATA_TYPE
- *      <src_string> and <dest_string> are not both national char strings
- *   ER_QSTR_INCOMPATIBLE_CODE_SETS
- *      Conversion not supported between code sets of <src_string>
- *      and <dest_string>
- *
- * Note:
- *   This function converts a national character string from one
- *   set encoding to another.
- *
- *   A new DB_VALUE is created making use of the code set and
- *   memory manager stored in <dest_string>, and converting
- *   the characters in the data portion of <src_string>.
- *
- *   If the source string is fixed-length, the destination will be
- *   fixed-length with pad characters.  If the source string is
- *   variable-length, the result will also be variable length.
- *
- * Assert:
- *
- *   1. src_string  != (DB_VALUE *) NULL
- *   2. dest_value  != (DB_VALUE *) NULL
- *   3. data_status != (DB_DATA_STATUS *) NULL
- *
- */
-
-int
-db_string_convert (const DB_VALUE * src_string, DB_VALUE * dest_string)
-{
-  DB_TYPE src_type, dest_type;
-  int error_status = NO_ERROR;
-
-  /*
-   *  Assert that DB_VALUE structures have been allocated.
-   */
-  assert (src_string != (DB_VALUE *) NULL);
-  assert (dest_string != (DB_VALUE *) NULL);
-
-  /*
-   *  Categorize the two input parameters and check for errors.
-   *    Verify that the parameters are both character strings.
-   */
-  src_type = DB_VALUE_DOMAIN_TYPE (src_string);
-  dest_type = DB_VALUE_DOMAIN_TYPE (dest_string);
-
-  if (!QSTR_IS_NATIONAL_CHAR (src_type) || !QSTR_IS_NATIONAL_CHAR (dest_type))
-    {
-      error_status = ER_QSTR_INVALID_DATA_TYPE;
-    }
-
-  else if (DB_IS_NULL (src_string))
-    {
-      db_value_domain_init (dest_string, DB_VALUE_DOMAIN_TYPE (src_string), 0, 0);
-    }
-  else
-    {
-      unsigned char *src, *dest;
-      int src_length = 0, src_precision;
-      INTL_CODESET src_codeset, dest_codeset;
-      int convert_status;
-      int num_unconverted, cnv_size;
-
-
-      src = (unsigned char *) db_get_nchar (src_string, &src_length);
-      src_precision = QSTR_VALUE_PRECISION (src_string);
-
-      src_codeset = db_get_string_codeset (src_string);
-      dest_codeset = db_get_string_codeset (dest_string);
-
-      /* Fixed-length strings */
-
-      if (QSTR_IS_FIXED_LENGTH (src_type))
-	{
-	  /* Allocate enough room for a fully padded string */
-	  dest = (unsigned char *) db_private_alloc (NULL, (size_t) (2 * src_precision) + 1);
-	  if (dest == NULL)
-	    {
-	      goto mem_error;
-	    }
-
-	  /* Convert the string codeset */
-	  convert_status = intl_convert_charset (src, src_length, src_codeset, dest, dest_codeset, &num_unconverted);
-
-	  /* Pad the result */
-	  if (convert_status == NO_ERROR)
-	    {
-	      intl_char_size (dest, (src_length - num_unconverted), dest_codeset, &cnv_size);
-	      qstr_pad_string ((unsigned char *) &dest[cnv_size], (src_precision - src_length + num_unconverted),
-			       dest_codeset);
-	      dest[src_precision] = 0;
-	      db_make_nchar (dest_string, src_precision, (char *) dest, src_precision);
-	      dest_string->need_clear = true;
-	    }
-	  else
-	    {
-	      db_private_free_and_init (NULL, dest);
-	    }
-	}
-
-      /* Variable-length strings */
-      else
-	{
-	  /* Allocate enough room for the string */
-	  dest = (unsigned char *) db_private_alloc (NULL, (size_t) (2 * src_length) + 1);
-	  if (dest == NULL)
-	    {
-	      goto mem_error;
-	    }
-
-	  /* Convert the string codeset */
-	  convert_status = intl_convert_charset (src, src_length, src_codeset, dest, dest_codeset, &num_unconverted);
-
-	  if (convert_status == NO_ERROR)
-	    {
-	      dest[src_length - num_unconverted] = 0;
-	      db_make_varnchar (dest_string, src_precision, (char *) dest, (src_length - num_unconverted));
-	      dest_string->need_clear = true;
-	    }
-	  else
-	    {
-	      db_private_free_and_init (NULL, dest);
-	    }
-	}
-
-      /*
-       *  If intl_convert_charset() returned an error, map
-       *  to an ER_QSTR_INCOMPATIBLE_CODE_SETS error.
-       */
-      if (convert_status != NO_ERROR)
-	{
-	  error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
-	}
-    }
-
-  return error_status;
-
-  /*
-   *  Error handling
-   */
-mem_error:
-  assert (er_errid () != NO_ERROR);
-  error_status = er_errid ();
-  return error_status;
-}
-#endif
 
 /*
  * qstr_pad_string () -
@@ -8142,14 +7839,6 @@ qstr_make_typed_string (const DB_TYPE db_type, DB_VALUE * value, const int preci
       error = db_make_varchar (value, precision, src, s_unit, codeset, collation_id);
       break;
 
-    case DB_TYPE_NCHAR:
-      error = db_make_nchar (value, precision, src, s_unit, codeset, collation_id);
-      break;
-
-    case DB_TYPE_VARNCHAR:
-      error = db_make_varnchar (value, precision, src, s_unit, codeset, collation_id);
-      break;
-
     case DB_TYPE_BIT:
       error = db_make_bit (value, precision, src, s_unit);
       break;
@@ -8192,7 +7881,7 @@ qstr_make_typed_string (const DB_TYPE db_type, DB_VALUE * value, const int preci
  *   Returns the character code set of the string "s."  The character code
  *   set of strings is:
  *
- *       QSTR_CHAR, QSTR_NATIONAL_CHAR, QSTR_BIT
+ *       QSTR_CHAR, QSTR_BIT
  *
  *   as defined in type QSTR_CATEGORY.  A value of QSTR_UNKNOWN is defined
  *   if the string does not fit into one of these categories.  This should
@@ -8212,11 +7901,6 @@ qstr_get_category (const DB_VALUE * s)
     case DB_TYPE_CHAR:
     case DB_TYPE_CLOB:
       code_set = QSTR_CHAR;
-      break;
-
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      code_set = QSTR_NATIONAL_CHAR;
       break;
 
     case DB_TYPE_BIT:
@@ -8251,8 +7935,6 @@ qstr_get_category (const DB_VALUE * s)
  *       DB_TYPE_STRING
  *       DB_TYPE_CHAR
  *       DB_TYPE_VARCHAR
- *       DB_TYPE_NCHAR
- *       DB_TYPE_VARNCHAR
  *       DB_TYPE_BIT
  *       DB_TYPE_VARBIT
  *
@@ -8289,8 +7971,6 @@ is_string (const DB_VALUE * s)
  *       DB_TYPE_STRING
  *       DB_TYPE_VARCHAR
  *       DB_TYPE_CHAR
- *       DB_TYPE_NCHAR
- *       DB_TYPE_VARNCHAR
  *
  *   Returns FALSE otherwise.
  *
@@ -8570,191 +8250,6 @@ char_compare (const unsigned char *string1, int size1, const unsigned char *stri
 #undef SPACE
 #undef ZERO
 }				/* char_compare() */
-
-/*
- * varnchar_compare () - compare two national character strings of
- *                    DB_TYPE_VARNCHAR(tp_VarNChar)
- *
- * Arguments:
- *      string1: 1st national character string
- *        size1: size of 1st string
- *      string2: 2nd national character string
- *        size2: size of 2nd string
- *      codeset: codeset of strings
- *
- * Returns:
- *   Greater than 0 if string1 > string2
- *   Equal to 0     if string1 = string2
- *   Less than 0    if string1 < string2
- *
- * Errors:
- *
- * Note:
- *   This function is identical to qstr_compare() except that it awares
- *   of the codeset.
- *
- */
-
-int
-varnchar_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2,
-		  INTL_CODESET codeset)
-{
-  int n, i, cmp, pad_size = 0;
-  unsigned char c1, c2, pad[2];
-
-  intl_pad_char (codeset, pad, &pad_size);
-#define PAD pad[i % pad_size]
-#define SPACE PAD		/* smallest character in the collation sequence */
-#define ZERO '\0'		/* space is treated as zero */
-  n = size1 < size2 ? size1 : size2;
-  for (i = 0, cmp = 0; i < n && cmp == 0; i++)
-    {
-      c1 = *string1++;
-      if (c1 == SPACE)
-	{
-	  c1 = ZERO;
-	}
-      c2 = *string2++;
-      if (c2 == SPACE)
-	{
-	  c2 = ZERO;
-	}
-      cmp = c1 - c2;
-    }
-  if (cmp != 0)
-    {
-      return cmp;
-    }
-  if (size1 == size2)
-    {
-      return cmp;
-    }
-
-  c1 = c2 = ZERO;
-  if (size1 < size2)
-    {
-      n = size2 - size1;
-      for (i = 0; i < n && cmp == 0; i++)
-	{
-	  c2 = *string2++;
-	  if (c2 == PAD)
-	    {
-	      c2 = ZERO;
-	    }
-	  cmp = c1 - c2;
-	}
-    }
-  else
-    {
-      n = size1 - size2;
-      for (i = 0; i < n && cmp == 0; i++)
-	{
-	  c1 = *string1++;
-	  if (c1 == PAD)
-	    {
-	      c1 = ZERO;
-	    }
-	  cmp = c1 - c2;
-	}
-    }
-  return cmp;
-#undef SPACE
-#undef ZERO
-#undef PAD
-}				/* varnchar_compare() */
-
-/*
- * nchar_compare () - compare two national character strings of
- *                 DB_TYPE_NCHAR(tp_NChar)
- *
- * Arguments:
- *      string1: 1st national character string
- *        size1: size of 1st string
- *      string2: 2nd national character string
- *        size2: size of 2nd string
- *      codeset: codeset of strings
- *
- * Returns:
- *   Greater than 0 if string1 > string2
- *   Equal to 0     if string1 = string2
- *   Less than 0    if string1 < string2
- *
- * Errors:
- *
- * Note:
- *   This function is identical to qstr_compare() except that it awares
- *   of the codeset.
- *
- */
-
-int
-nchar_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2, INTL_CODESET codeset)
-{
-  int n, i, cmp, pad_size = 0;
-  unsigned char c1, c2, pad[2];
-
-  assert (size1 >= 0 && size2 >= 0);
-
-  intl_pad_char (codeset, pad, &pad_size);
-#define PAD pad[i % pad_size]
-#define SPACE PAD		/* smallest character in the collation sequence */
-#define ZERO '\0'		/* space is treated as zero */
-  n = size1 < size2 ? size1 : size2;
-  for (i = 0, cmp = 0; i < n && cmp == 0; i++)
-    {
-      c1 = *string1++;
-      if (c1 == SPACE)
-	{
-	  c1 = ZERO;
-	}
-      c2 = *string2++;
-      if (c2 == SPACE)
-	{
-	  c2 = ZERO;
-	}
-      cmp = c1 - c2;
-    }
-  if (cmp != 0)
-    {
-      return cmp;
-    }
-  if (size1 == size2)
-    {
-      return cmp;
-    }
-
-  c1 = c2 = ZERO;
-  if (size1 < size2)
-    {
-      n = size2 - size1;
-      for (i = 0; i < n && cmp == 0; i++)
-	{
-	  c2 = *string2++;
-	  if (c2 == PAD)
-	    {
-	      c2 = ZERO;
-	    }
-	  cmp = c1 - c2;
-	}
-    }
-  else
-    {
-      n = size1 - size2;
-      for (i = 0; i < n && cmp == 0; i++)
-	{
-	  c1 = *string1++;
-	  if (c1 == PAD)
-	    {
-	      c1 = ZERO;
-	    }
-	  cmp = c1 - c2;
-	}
-    }
-  return cmp;
-#undef SPACE
-#undef ZERO
-#undef PAD
-}				/* nchar_compare() */
 #endif /* ENABLE_UNUSED_FUNCTION */
 /*
  * bit_compare () - compare two bit strings of DB_TYPE_BIT(tp_Bit)
@@ -8856,7 +8351,7 @@ varbit_compare (const unsigned char *string1, int size1, const unsigned char *st
  *
  * Errors:
  *	ER_QSTR_INVALID_DATA_TYPE:
- *		  <src_string> is not CHAR, NCHAR, VARCHAR or VARNCHAR
+ *		  <src_string> is not CHAR, VARCHAR
  *
  * Note : src buffer is not freed, caller should be aware of this;
  *	  Result DB_VALUE must already be created.
@@ -8871,7 +8366,7 @@ qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size)
   int result_size = 0, src_length = 0, result_domain_length = 0, src_size = 0;
   char *r = NULL;
   int error_status = NO_ERROR;
-  DB_TYPE src_type, result_type;
+  DB_TYPE src_type;
   INTL_CODESET codeset;
 
   assert (src_string != (DB_VALUE *) NULL);
@@ -8884,14 +8379,6 @@ qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size)
   if (!QSTR_IS_ANY_CHAR (src_type) || DB_IS_NULL (src_string))
     {
       return ER_QSTR_INVALID_DATA_TYPE;
-    }
-  if (QSTR_IS_NATIONAL_CHAR (src_type))
-    {
-      result_type = DB_TYPE_VARNCHAR;
-    }
-  else
-    {
-      result_type = DB_TYPE_VARCHAR;
     }
 
   codeset = db_get_string_codeset (src_string);
@@ -8927,7 +8414,7 @@ qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size)
     {
       memcpy (r, db_get_string (src_string), src_size);
     }
-  qstr_make_typed_string (result_type, result, result_domain_length, r, (int) MIN (result_size, src_size),
+  qstr_make_typed_string (DB_TYPE_VARCHAR, result, result_domain_length, r, (int) MIN (result_size, src_size),
 			  codeset, db_get_string_collation (src_string));
 
   if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == true && DB_IS_NULL (result)
@@ -8960,7 +8447,7 @@ qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size)
  *
  * Returns:
  *	ER_QSTR_INVALID_DATA_TYPE:
- *		  <s1> and <s2> are not CHAR, NCHAR, VARCHAR or VARNCHAR
+ *		  <s1> and <s2> are not CHAR, VARCHAR
  *
  * Errors:
  *
@@ -9037,14 +8524,7 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
 	  *data_status = DATA_STATUS_TRUNCATED;
 	}
 
-      if (QSTR_IS_NATIONAL_CHAR (s1_type))
-	{
-	  *result_size = *result_length * 2;
-	}
-      else
-	{
-	  *result_size = *result_length;
-	}
+      *result_size = *result_length;
 
       /*
        *  Determine how much of s1 is already copied.
@@ -9092,14 +8572,7 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
        */
       *result_length = MIN ((s1_logical_length + s2_logical_length), QSTR_MAX_PRECISION (s1_type));
 
-      if ((s1_type == DB_TYPE_NCHAR) || (s1_type == DB_TYPE_VARNCHAR))
-	{
-	  *result_size = *result_length * 2;
-	}
-      else
-	{
-	  *result_size = *result_length;
-	}
+      *result_size = *result_length;
 
       /*
        *  Calculate the number of characters from string1 that are already
@@ -9183,7 +8656,7 @@ static int
 qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_precision, DB_TYPE s1_type,
 		  const unsigned char *s2, int s2_length, int s2_size_, int s2_precision, DB_TYPE s2_type,
 		  INTL_CODESET codeset, unsigned char **result, int *result_length, int *result_size,
-		  DB_TYPE * result_type, DB_DATA_STATUS * data_status)
+		  DB_DATA_STATUS * data_status)
 {
   int copy_length, copy_size;
   int pad1_length, pad2_length;
@@ -9262,21 +8735,12 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
 
       *result_size = s1_size + s2_size;
 
-      if (QSTR_IS_NATIONAL_CHAR (s1_type))
-	{
-	  *result_type = DB_TYPE_VARNCHAR;
-	}
-      else
-	{
-	  *result_type = DB_TYPE_VARCHAR;
-	}
-
       if (*result_size > (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))
 	{
 	  goto size_error;
 	}
       /* Allocate storage for the result string */
-      *result = (unsigned char *) db_private_alloc (NULL, (size_t) * result_size + 1);
+      *result = (unsigned char *) db_private_alloc (NULL, (size_t) (*result_size) + 1);
       if (*result == NULL)
 	{
 	  goto mem_error;
@@ -9329,15 +8793,6 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
        */
       *result_length = MIN ((s1_logical_length + s2_logical_length), QSTR_MAX_PRECISION (s1_type));
 
-      if ((s1_type == DB_TYPE_NCHAR) || (s1_type == DB_TYPE_VARNCHAR))
-	{
-	  *result_type = DB_TYPE_VARNCHAR;
-	}
-      else
-	{
-	  *result_type = DB_TYPE_VARCHAR;
-	}
-
       if (s1_size == 0)
 	{
 	  s1_size = s1_logical_length;
@@ -9355,7 +8810,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
 	}
 
       /* Allocate the result string */
-      *result = (unsigned char *) db_private_alloc (NULL, (size_t) * result_size + 1);
+      *result = (unsigned char *) db_private_alloc (NULL, (size_t) (*result_size) + 1);
       if (*result == NULL)
 	{
 	  goto mem_error;
@@ -9483,25 +8938,8 @@ qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, 
    *  characters are present.  They all will be by the time
    *  we are through.
    */
-  if ((s1_type == DB_TYPE_CHAR) || (s1_type == DB_TYPE_NCHAR))
-    {
-      s1_logical_length = s1_precision;
-    }
-  else
-    {
-      s1_logical_length = s1_length;
-    }
-
-
-  if ((s2_type == DB_TYPE_CHAR) || (s2_type == DB_TYPE_NCHAR))
-    {
-      s2_logical_length = s2_precision;
-    }
-  else
-    {
-      s2_logical_length = s2_length;
-    }
-
+  s1_logical_length = (s1_type == DB_TYPE_CHAR) ? s1_precision : s1_length;
+  s2_logical_length = (s2_type == DB_TYPE_CHAR) ? s2_precision : s2_length;
 
   if ((s1_type == DB_TYPE_BIT) && (s2_type == DB_TYPE_BIT))
     {
@@ -9529,7 +8967,7 @@ qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, 
 	}
 
       /* Allocate the result string */
-      *result = (unsigned char *) db_private_alloc (NULL, (size_t) * result_size + 1);
+      *result = (unsigned char *) db_private_alloc (NULL, (size_t) (*result_size) + 1);
       if (*result == NULL)
 	{
 	  goto mem_error;
@@ -9594,7 +9032,7 @@ qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, 
 	  goto size_error;
 	}
       /* Allocate storage for the result string */
-      *result = (unsigned char *) db_private_alloc (NULL, (size_t) * result_size + 1);
+      *result = (unsigned char *) db_private_alloc (NULL, (size_t) (*result_size) + 1);
       if (*result == NULL)
 	{
 	  goto mem_error;
@@ -10974,9 +10412,7 @@ db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
   switch (type)
     {
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
     case DB_TYPE_DATETIME:
     case DB_TYPE_DATE:
       {
@@ -11186,6 +10622,30 @@ db_datetime_to_timestamp (const DB_VALUE * src_datetime, DB_VALUE * result_times
       /* if src_datetime was the same with result_timestamp, copy the result from temp, and release the temporary value */
       pr_clone_value (temp_p, result_timestamp);
     }
+
+  return NO_ERROR;
+}
+
+int
+db_timestamp_to_datetime (const DB_VALUE * src_timestamp, DB_VALUE * result_datetime)
+{
+  time_t sec;
+  struct tm tm_val;
+  DB_DATETIME datetime = DATETIME_NULL_VALUE;
+
+  sec = (time_t) * db_get_timestamp (src_timestamp);
+  if (sec != 0)
+    {
+      if (localtime_r (&sec, &tm_val) == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SYSTEM_DATE, 0);
+	  return ER_SYSTEM_DATE;
+	}
+
+      db_datetime_encode (&datetime, tm_val.tm_mon + 1, tm_val.tm_mday,
+			  tm_val.tm_year + 1900, tm_val.tm_hour, tm_val.tm_min, tm_val.tm_sec, 0);
+    }
+  db_make_datetime (result_datetime, &datetime);
 
   return NO_ERROR;
 }
@@ -11802,8 +11262,6 @@ db_round_dbvalue_to_int (const DB_VALUE * src, int *result)
 
     case DB_TYPE_STRING:
     case DB_TYPE_CHAR:
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_NCHAR:
       {
 	double x;
 	DB_VALUE val;
@@ -13194,8 +12652,6 @@ check_date_lang_on_prepared (const DB_VALUE * date_lang, INTL_LANG * date_lang_i
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       /* We got here because we used HOST_VAR.  And using HOST_VAR means we didn't omit format. */
       if (lang_get_lang_id_from_name (db_get_string (date_lang), date_lang_id))
 	{
@@ -19969,9 +19425,7 @@ db_format (const DB_VALUE * value, const DB_VALUE * decimals, const DB_VALUE * n
   switch (arg1_type)
     {
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
       {
 	char *c;
 	int len, dot = 0;
@@ -20140,22 +19594,29 @@ db_string_reverse (const DB_VALUE * src_str, DB_VALUE * result_str)
 	  intl_reverse_string (DB_GET_UCHAR (src_str),
 			       REINTERPRET_CAST (unsigned char *, res), db_get_string_length (src_str),
 			       db_get_string_size (src_str), db_get_string_codeset (src_str));
-	  if (QSTR_IS_CHAR (str_type))
-	    {
-	      db_make_varchar (result_str, DB_GET_STRING_PRECISION (src_str), res, db_get_string_size (src_str),
-			       db_get_string_codeset (src_str), db_get_string_collation (src_str));
-	    }
-	  else
-	    {
-	      db_make_varnchar (result_str, DB_GET_STRING_PRECISION (src_str), res, db_get_string_size (src_str),
-				db_get_string_codeset (src_str), db_get_string_collation (src_str));
-	    }
+
+	  assert (QSTR_IS_CHAR (str_type));
+	  db_make_varchar (result_str, DB_GET_STRING_PRECISION (src_str), res, db_get_string_size (src_str),
+			   db_get_string_codeset (src_str), db_get_string_collation (src_str));
+
 	  result_str->need_clear = true;
 	}
     }
 
   return error_status;
 }
+
+// Monthly Days and Monthly Cumulative Days Table
+// The 0th position is unused and left blank for array access efficiency.
+static const int days_per_month[2][13] = {
+  {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31},
+  {0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
+};
+
+static const int cumulative_days_per_month[2][13] = {
+  {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365},
+  {0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366}
+};
 
 /*
  * add_and_normalize_date_time ()
@@ -20172,33 +19633,21 @@ db_string_reverse (const DB_VALUE * src_str, DB_VALUE * result_str)
  */
 int
 add_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *minute, int *second, int *millisecond,
-			     DB_BIGINT y, DB_BIGINT m, DB_BIGINT d, DB_BIGINT h, DB_BIGINT mi, DB_BIGINT s,
-			     DB_BIGINT ms)
+			     const DB_BIGINT * composite_values)
 {
-  DB_BIGINT days[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
-  DB_BIGINT i;
+  int days_idx;
   DB_BIGINT _y, _m, _d, _h, _mi, _s, _ms;
-  DB_BIGINT old_day = *day;
-
-  _y = *year;
-  _m = *month;
-  _d = *day;
-  _h = *hour;
-  _mi = *minute;
-  _s = *second;
-  _ms = *millisecond;
-
-  _y += y;
-  _m += m;
-  _d += d;
-  _h += h;
-  _mi += mi;
-  _s += s;
-  _ms += ms;
 
   /* just years and/or months case */
-  if (d == 0 && h == 0 && mi == 0 && s == 0 && ms == 0 && (m > 0 || y > 0))
+  if (composite_values[COMPOSITE_MONTH] > 0 || composite_values[COMPOSITE_YEAR] > 0)
     {
+      assert (composite_values[COMPOSITE_DAY] == 0 && composite_values[COMPOSITE_HOUR] == 0 &&
+	      composite_values[COMPOSITE_MINUTE] == 0 && composite_values[COMPOSITE_SECOND] == 0 &&
+	      composite_values[COMPOSITE_MILLISECOND] == 0);
+
+      _y = *year + composite_values[COMPOSITE_YEAR];
+      _m = *month + composite_values[COMPOSITE_MONTH];
+
       if (_m % 12 == 0)
 	{
 	  _y += (_m - 12) / 12;
@@ -20210,15 +19659,30 @@ add_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
 	  _m %= 12;
 	}
 
-      days[2] = LEAP (_y) ? 29 : 28;
-
-      if (old_day > days[_m])
+      days_idx = LEAP (_y) ? 1 : 0;
+      if (*day > days_per_month[days_idx][_m])
 	{
-	  _d = days[_m];
+	  *day = days_per_month[days_idx][_m];
 	}
 
-      goto set_and_return;
+      if (_y > 9999)
+	{
+	  return ER_FAILED;
+	}
+
+      *year = (int) _y;
+      *month = (int) _m;
+      return NO_ERROR;
     }
+
+  assert (composite_values[COMPOSITE_MONTH] == 0 && composite_values[COMPOSITE_YEAR] == 0);
+  _y = *year;
+  _m = *month;
+  _d = *day + composite_values[COMPOSITE_DAY];
+  _h = *hour + composite_values[COMPOSITE_HOUR];
+  _mi = *minute + composite_values[COMPOSITE_MINUTE];
+  _s = *second + composite_values[COMPOSITE_SECOND];
+  _ms = *millisecond + composite_values[COMPOSITE_MILLISECOND];
 
   /* time */
   _s += _ms / 1000;
@@ -20233,65 +19697,49 @@ add_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
   _d += _h / 24;
   _h %= 24;
 
-  /* date */
-  if (_m > 12)
-    {
-      _y += _m / 12;
-      _m %= 12;
-
-      if (_m == 0)
-	{
-	  _m = 1;
-	}
-    }
-
-  days[2] = LEAP (_y) ? 29 : 28;
-
-  if (_d > days[_m])
+  days_idx = LEAP (_y) ? 1 : 0;
+  if (_d > days_per_month[days_idx][_m])
     {
       /* rewind to 1st january */
-      for (i = 1; i < _m; i++)
-	{
-	  _d += days[i];
-	}
-      _m = 1;
+      _d += cumulative_days_per_month[days_idx][_m - 1];
 
       /* days for years */
-      while (_d >= 366)
+      int maxdays = cumulative_days_per_month[days_idx][12];
+      while (_d >= maxdays)
 	{
-	  days[2] = LEAP (_y) ? 29 : 28;
-	  _d -= (days[2] == 29) ? 366 : 365;
+	  _d -= maxdays;
 	  _y++;
 	  if (_y > 9999)
 	    {
 	      goto set_and_return;
 	    }
+	  maxdays = LEAP (_y) ? 366 : 365;
 	}
 
       /* days within a year */
-      days[2] = LEAP (_y) ? 29 : 28;
-      for (_m = 1;; _m++)
+      days_idx = LEAP (_y) ? 1 : 0;
+      for (_m = (_d < cumulative_days_per_month[days_idx][7]) ? 1 : 7; /* blank */ ; _m++)
 	{
-	  if (_d <= days[_m])
+	  if (_d <= cumulative_days_per_month[days_idx][_m])
 	    {
+	      _d -= cumulative_days_per_month[days_idx][_m - 1];
 	      break;
 	    }
-	  _d -= days[_m];
 	}
     }
 
-  if (_m == 0)
-    {
-      _m = 1;
-    }
+  assert (_m > 0 && _m <= 12);
   if (_d == 0)
     {
-      _d = 1;
+      assert (_m == 1);
+      _y--;
+      _m = 12;
+      _d = 31;
     }
 
 set_and_return:
 
-  if (_y >= 10000 || _y < 0)
+  if (_y > 9999)
     {
       return ER_FAILED;
     }
@@ -20322,31 +19770,56 @@ set_and_return:
  */
 int
 sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *minute, int *second, int *millisecond,
-			     DB_BIGINT y, DB_BIGINT m, DB_BIGINT d, DB_BIGINT h, DB_BIGINT mi, DB_BIGINT s,
-			     DB_BIGINT ms)
+			     const DB_BIGINT * composite_values)
 {
-  DB_BIGINT days[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
-  DB_BIGINT i;
-  DB_BIGINT old_day = *day;
+  int days_idx;
   DB_BIGINT _y, _m, _d, _h, _mi, _s, _ms;
 
+  /* just years and/or months case */
+  if (composite_values[COMPOSITE_MONTH] > 0 || composite_values[COMPOSITE_YEAR] > 0)
+    {
+      assert (composite_values[COMPOSITE_DAY] == 0 && composite_values[COMPOSITE_HOUR] == 0 &&
+	      composite_values[COMPOSITE_MINUTE] == 0 && composite_values[COMPOSITE_SECOND] == 0 &&
+	      composite_values[COMPOSITE_MILLISECOND] == 0);
+
+      _y = *year - composite_values[COMPOSITE_YEAR];
+      _m = *month - composite_values[COMPOSITE_MONTH];
+
+      if (_m <= 0)
+	{
+	  _y += (_m / 12);
+	  _m %= 12;
+	  if (_m <= 0)
+	    {
+	      _m += 12;
+	      _y--;
+	    }
+	}
+
+      if (_y < 0)
+	{
+	  return ER_FAILED;
+	}
+
+      days_idx = LEAP (_y) ? 1 : 0;
+      if (*day > days_per_month[days_idx][_m])
+	{
+	  *day = days_per_month[days_idx][_m];
+	}
+
+      *year = (int) _y;
+      *month = (int) _m;
+      return NO_ERROR;
+    }
+
+  assert (composite_values[COMPOSITE_MONTH] == 0 && composite_values[COMPOSITE_YEAR] == 0);
   _y = *year;
   _m = *month;
-  _d = *day;
-  _h = *hour;
-  _mi = *minute;
-  _s = *second;
-  _ms = *millisecond;
-
-  _y -= y;
-  _m -= m;
-  _d -= d;
-  _h -= h;
-  _mi -= mi;
-  _s -= s;
-  _ms -= ms;
-
-  days[2] = LEAP (_y) ? 29 : 28;
+  _d = *day - composite_values[COMPOSITE_DAY];
+  _h = *hour - composite_values[COMPOSITE_HOUR];
+  _mi = *minute - composite_values[COMPOSITE_MINUTE];
+  _s = *second - composite_values[COMPOSITE_SECOND];
+  _ms = *millisecond - composite_values[COMPOSITE_MILLISECOND];
 
   /* time */
   _s += _ms / 1000;
@@ -20381,66 +19854,11 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
       _d--;
     }
 
-  if (_d == 0)
-    {
-      _m--;
-
-      if (_m == 0)
-	{
-	  _y--;
-	  days[2] = LEAP (_y) ? 29 : 28;
-	  _m = 12;
-	}
-      _d = days[_m];
-    }
-
-  /* date */
-  if (_m <= 0)
-    {
-      _y += (_m / 12);
-      _m %= 12;
-      if (_m <= 0)
-	{
-	  _m += 12;
-	  _y--;
-	}
-      days[2] = LEAP (_y) ? 29 : 28;
-    }
-
-  /* just years and/or months case */
-  if (d == 0 && h == 0 && mi == 0 && s == 0 && ms == 0 && (m > 0 || y > 0))
-    {
-      if (_m <= 0)
-	{
-	  _y += (_m / 12);
-	  _m %= 12;
-	  if (_m <= 0)
-	    {
-	      _m += 12;
-	      _y--;
-	    }
-	}
-
-      days[2] = LEAP (_y) ? 29 : 28;
-
-      if (old_day > days[_m])
-	{
-	  _d = days[_m];
-	}
-
-      goto set_and_return;
-    }
-
-  days[2] = LEAP (_y) ? 29 : 28;
-
-  if (_d > days[_m] || _d < 0)
+  days_idx = LEAP (_y) ? 1 : 0;
+  if (_d > days_per_month[days_idx][_m] || _d < 0)
     {
       /* rewind to 1st january */
-      for (i = 1; i < _m; i++)
-	{
-	  _d += days[i];
-	}
-      _m = 1;
+      _d += cumulative_days_per_month[days_idx][_m - 1];
 
       /* days for years */
       while (_d < 0)
@@ -20450,34 +19868,38 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
 	    {
 	      goto set_and_return;
 	    }
-	  days[2] = LEAP (_y) ? 29 : 28;
-	  _d += (days[2] == 29) ? 366 : 365;
+
+	  _d += (LEAP (_y) ? 366 : 365);
 	}
 
       /* days within a year */
-      days[2] = LEAP (_y) ? 29 : 28;
-      for (_m = 1;; _m++)
+      days_idx = LEAP (_y) ? 1 : 0;
+      for (_m = (_d < cumulative_days_per_month[days_idx][7]) ? 1 : 7; /* blank */ ; _m++)
 	{
-	  if (_d <= days[_m])
+	  if (_d <= cumulative_days_per_month[days_idx][_m])
 	    {
+	      _d -= cumulative_days_per_month[days_idx][_m - 1];
 	      break;
 	    }
-	  _d -= days[_m];
 	}
     }
 
-  if (_m == 0)
-    {
-      _m = 1;
-    }
+  assert (_m > 0 && _m <= 12);
   if (_d == 0)
     {
-      _d = 1;
+      _m--;
+      if (_m == 0)
+	{
+	  _y--;
+	  _m = 12;
+	  days_idx = LEAP (_y) ? 1 : 0;
+	}
+      _d = days_per_month[days_idx][_m];
     }
 
 set_and_return:
 
-  if (_y >= 10000 || _y < 0)
+  if (_y < 0)
     {
       return ER_FAILED;
     }
@@ -20519,12 +19941,12 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
   DB_TIMESTAMP db_timestamp, *ts_p = NULL;
   int is_dt = -1, is_d = -1, is_t = -1, is_timest = -1, is_timezone = -1, is_local_timezone = -1;
   DB_TYPE res_type;
-  const char *date_s = NULL;
   char res_s[64];
   int y, m, d, h, mi, s, ms;
   int ret;
   char *res_final;
   TZ_ID tz_id;
+  DB_BIGINT composite_values[COMPOSITE_MAX] = { 0, 0, 0, 0, 0, 0, 0 };
 
   res_type = DB_VALUE_DOMAIN_TYPE (date);
   if (res_type == DB_TYPE_NULL || DB_IS_NULL (date))
@@ -20539,18 +19961,19 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
       return NO_ERROR;
     }
 
-  /* simple case, where just a number of days is added to date */
+  bool is_null_on_error = prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS);
 
+  /* simple case, where just a number of days is added to date */
   days = db_get_int (db_days);
+  composite_values[COMPOSITE_DAY] = abs (days);
 
   switch (res_type)
     {
     case DB_TYPE_STRING:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
       {
 	bool has_explicit_time = false;
+	const char *date_s = NULL;
 	int str_len = db_get_string_size (date);
 	date_s = db_get_string (date);
 
@@ -20661,7 +20084,10 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
 
     default:
       error_status = ER_OBJ_INVALID_ARGUMENTS;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      if (!is_null_on_error)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	}
       goto error;
     }
 
@@ -20672,36 +20098,34 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0)
 	{
-	  db_make_null (result);
-	  er_clear ();
-	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	  if (!is_null_on_error)
 	    {
-	      return NO_ERROR;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
 	    }
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
-	  return ER_ATTEMPT_TO_USE_ZERODATE;
+	  error_status = ER_ATTEMPT_TO_USE_ZERODATE;
+	  goto error;
 	}
 
       if (is_add)
 	{
 	  if (days > 0)
 	    {
-	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, days, 0, 0, 0, 0);
+	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	  else
 	    {
-	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, -days, 0, 0, 0, 0);
+	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	}
       else
 	{
 	  if (days > 0)
 	    {
-	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, days, 0, 0, 0, 0);
+	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	  else
 	    {
-	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, -days, 0, 0, 0, 0);
+	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	}
 
@@ -20709,7 +20133,10 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
       if (ret != NO_ERROR)
 	{
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  if (!is_null_on_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    }
 	  goto error;
 	}
 
@@ -20743,43 +20170,44 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0 && ms == 0)
 	{
-	  db_make_null (result);
-	  er_clear ();
-	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	  if (!is_null_on_error)
 	    {
-	      return NO_ERROR;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
 	    }
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
-	  return ER_ATTEMPT_TO_USE_ZERODATE;
+	  error_status = ER_ATTEMPT_TO_USE_ZERODATE;
+	  goto error;
 	}
 
       if (is_add)
 	{
 	  if (days > 0)
 	    {
-	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, days, 0, 0, 0, 0);
+	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	  else
 	    {
-	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, -days, 0, 0, 0, 0);
+	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	}
       else
 	{
 	  if (days > 0)
 	    {
-	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, days, 0, 0, 0, 0);
+	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	  else
 	    {
-	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, -days, 0, 0, 0, 0);
+	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	}
       /* year should always be greater than 1 and less than 9999 */
       if (ret != NO_ERROR)
 	{
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  if (!is_null_on_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    }
 	  goto error;
 	}
 
@@ -20846,36 +20274,34 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0)
 	{
-	  db_make_null (result);
-	  er_clear ();
-	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	  if (!is_null_on_error)
 	    {
-	      return NO_ERROR;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
 	    }
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
-	  return ER_ATTEMPT_TO_USE_ZERODATE;
+	  error_status = ER_ATTEMPT_TO_USE_ZERODATE;
+	  goto error;
 	}
 
       if (is_add)
 	{
 	  if (days > 0)
 	    {
-	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, days, 0, 0, 0, 0);
+	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	  else
 	    {
-	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, -days, 0, 0, 0, 0);
+	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	}
       else
 	{
 	  if (days > 0)
 	    {
-	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, days, 0, 0, 0, 0);
+	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	  else
 	    {
-	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, -days, 0, 0, 0, 0);
+	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	}
 
@@ -20883,7 +20309,10 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
       if (ret != NO_ERROR)
 	{
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  if (!is_null_on_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    }
 	  goto error;
 	}
 
@@ -20956,6 +20385,16 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
     }
 
 error:
+  if (error_status != NO_ERROR && error_status != ER_OUT_OF_VIRTUAL_MEMORY)
+    {
+      db_make_null (result);
+      if (is_null_on_error)
+	{
+	  /* clear error and return NULL */
+	  er_clear ();
+	  return NO_ERROR;
+	}
+    }
   return error_status;
 }
 
@@ -20971,141 +20410,136 @@ db_date_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const DB_VA
   return db_date_add_sub_interval_days (result, date, db_days, false);
 }
 
-/*
- * db_str_to_millisec () -
- *
- * Arguments:
- *         str: millisecond format
- *
- * Returns: int
- *
- * Errors:
- */
 static int
-db_str_to_millisec (const char *str)
+db_date_add_sub_interval_composite_value (const char *expr_s, int unit, DB_BIGINT * values, int *is_positive_value)
 {
-  int digit_num, value, ret;
+  int cnt = 0, base;
+  int max_composite;
+  bool millisec_flag = false;
+  char *endptr;
+  const char *ms_ptr = NULL;
 
-  if (str == NULL || str[0] == '\0')
-    {
-      return 0;
-    }
+  assert (values);
 
-  digit_num = strlen (str);
-  if (digit_num >= 1 && str[0] == '-')
+  switch (unit)
     {
-      digit_num--;
-      ret = sscanf (str, "%4d", &value);
-    }
-  else
-    {
-      ret = sscanf (str, "%3d", &value);
-    }
-
-  if (ret != 1)
-    {
-      return 0;
-    }
-
-  switch (digit_num)
-    {
-    case 1:
-      value *= 100;
+      /*  composite units  */
+    case PT_SECOND_MILLISECOND:
+      base = COMPOSITE_SECOND;
+      max_composite = 2;
+      millisec_flag = true;
+      break;
+    case PT_MINUTE_MILLISECOND:
+      base = COMPOSITE_MINUTE;
+      max_composite = 3;
+      millisec_flag = true;
+      break;
+    case PT_HOUR_MILLISECOND:
+      base = COMPOSITE_HOUR;
+      max_composite = 4;
+      millisec_flag = true;
+      break;
+    case PT_DAY_MILLISECOND:
+      base = COMPOSITE_DAY;
+      max_composite = 5;
+      millisec_flag = true;
       break;
 
-    case 2:
-      value *= 10;
+    case PT_MINUTE_SECOND:
+      base = COMPOSITE_MINUTE;
+      max_composite = 2;
+      break;
+    case PT_HOUR_SECOND:
+      base = COMPOSITE_HOUR;
+      max_composite = 3;
+      break;
+    case PT_DAY_SECOND:
+      base = COMPOSITE_DAY;
+      max_composite = 4;
+      break;
+
+    case PT_HOUR_MINUTE:
+      base = COMPOSITE_HOUR;
+      max_composite = 2;
+      break;
+    case PT_DAY_MINUTE:
+      base = COMPOSITE_DAY;
+      max_composite = 3;
+      break;
+
+    case PT_DAY_HOUR:
+      base = COMPOSITE_DAY;
+      max_composite = 2;
+      break;
+
+    case PT_YEAR_MONTH:
+      base = COMPOSITE_YEAR;
+      max_composite = 2;
       break;
 
     default:
-      break;
+      assert (false);
+      return ER_OBJ_INVALID_ARGUMENTS;
     }
 
-  return value;
-}
-
-/*
- * copy_and_shift_values () -
- *
- * Arguments:
- *         shift: the offset the values are shifted
- *         n: normal number of arguments
- *	   first...: arguments
- *
- * Returns: int
- *
- * Errors:
- *
- * Note:
- *    shifts all arguments by the given value
- */
-static void
-copy_and_shift_values (int shift, int n, DB_BIGINT * first, ...)
-{
-  va_list marker;
-  DB_BIGINT *curr = first;
-  DB_BIGINT *v[16];		/* will contain max 5 elements */
-  int i, count = 0, cnt_src = 0;
-
-  /*
-   * numeric arguments from interval expression have a delimiter read also
-   * as argument so out of N arguments there are actually (N + 1)/2 numeric
-   * values (ex: 1:2:3:4 or 1:2 or 1:2:3)
-   */
-  shift = (shift + 1) / 2;
-
-  if (shift == n)
+  while (char_isspace (*expr_s))
     {
-      return;
+      expr_s++;
     }
 
-  va_start (marker, first);	/* init variable arguments */
-  while (cnt_src < n)
+  // Like MySQL, it only accepts the first sign character, excluding spaces.
+  if (*expr_s == '-')
     {
-      cnt_src++;
-      v[count++] = curr;
-      curr = va_arg (marker, DB_BIGINT *);
-    }
-  va_end (marker);
-
-  cnt_src = shift - 1;
-  /* move backwards to not overwrite values */
-  for (i = count - 1; i >= 0; i--)
-    {
-      if (cnt_src >= 0)
-	{
-	  /* replace */
-	  *v[i] = *v[cnt_src--];
-	}
-      else
-	{
-	  /* reset */
-	  *v[i] = 0;
-	}
-    }
-}
-
-/*
- * get_single_unit_value () -
- *   return:
- *   expr (in): input as string
- *   int_val (in) : input as integer
- */
-static DB_BIGINT
-get_single_unit_value (const char *expr, DB_BIGINT int_val)
-{
-  DB_BIGINT v = 0;
-
-  if (expr == NULL)
-    {
-      v = int_val;
+      *is_positive_value = 0;
+      expr_s++;
     }
   else
     {
-      sscanf (expr, "%lld", (long long *) &v);
+      *is_positive_value = 1;
     }
 
-  return v;
+  while (*expr_s)
+    {
+      if (char_isdigit (*expr_s))
+	{
+	  if (cnt >= max_composite)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  ms_ptr = expr_s;
+	  values[base + cnt] = strtoll (expr_s, &endptr, 10);
+	  cnt++;
+	  expr_s = endptr;
+	}
+      else
+	{
+	  expr_s++;
+	}
+    }
+
+  if (millisec_flag && cnt > 0)
+    {
+      assert (ms_ptr);
+      // Adjust in milliseconds, cnt must be greater than 1 to be treated as yy.xxx format.
+      if (!char_isdigit (ms_ptr[1]))
+	{
+	  values[base + cnt - 1] *= 100;
+	}
+      else if (!char_isdigit (ms_ptr[2]))
+	{
+	  values[base + cnt - 1] *= 10;
+	}
+    }
+
+  if (cnt < max_composite)
+    {
+      memmove (values + (base + (max_composite - cnt)), values + base, sizeof (DB_BIGINT) * cnt);
+      memset (values + base, 0x00, sizeof (DB_BIGINT) * (max_composite - cnt));
+    }
+
+  return NO_ERROR;
+
 }
 
 /*
@@ -21127,24 +20561,21 @@ static int
 db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * expr, const int unit,
 			       int is_add)
 {
-  int sign = 0;
-  int type = 0;			/* 1 -> time, 2 -> date, 3 -> both */
+  int is_positive_value = 0;
+  bool date_only = false;
   DB_TYPE res_type, expr_type;
   const char *expr_s = NULL, *date_s = NULL;
-  char res_s[64], millisec_s[64];
+  char res_s[64];
   int error_status = NO_ERROR;
-  DB_BIGINT millisec, seconds, minutes, hours;
-  DB_BIGINT days, weeks, months, quarters, years;
   DB_DATETIME db_datetime, *dt_p = NULL;
   DB_DATETIMETZ dt_tz;
   DB_TIME db_time;
   DB_DATE db_date, *d_p;
   DB_TIMESTAMP db_timestamp, *ts_p = NULL;
-  int narg, is_dt = -1, is_d = -1, is_t = -1, is_timest = -1, is_timezone = -1, is_local_timezone = -1;
-  char delim;
-  DB_VALUE trimed_expr;
-  DB_BIGINT unit_int_val;
-  double dbl;
+  int is_dt = -1, is_d = -1, is_t = -1, is_timest = -1, is_timezone = -1, is_local_timezone = -1;
+  DB_BIGINT unit_int_val = 0;
+  DB_BIGINT composite_values[COMPOSITE_MAX];	// { years, month, days, hours, minutes, seconds, millisec }
+
   int y, m, d, h, mi, s, ms;
   int ret;
   char *res_final;
@@ -21164,395 +20595,163 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       return NO_ERROR;
     }
 
-  db_make_null (&trimed_expr);
-  unit_int_val = 0;
-  expr_s = NULL;
+  bool is_null_on_error = prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS);
 
-  /* 1. Prepare the input: convert expr to char */
-
-  /*
-   * expr is converted to char because it may contain a more complicated form
-   * for the multiple unit formats, for example:
-   * 'DAYS HOURS:MINUTES:SECONDS.MILLISECONDS'
-   * For the simple unit tags, expr is integer
-   */
-
-  expr_type = DB_VALUE_DOMAIN_TYPE (expr);
   switch (expr_type)
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      error_status = db_string_trim (BOTH, NULL, expr, &trimed_expr);
-      if (error_status != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      /* db_string_trim builds a NULL terminated string, expr_s is NULL terminated */
-      expr_s = db_get_string (&trimed_expr);
+      expr_s = db_get_string (expr);
       if (expr_s == NULL)
 	{
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  if (!is_null_on_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    }
 	  goto error;
 	}
       break;
 
-    case DB_TYPE_SHORT:
+    case DB_TYPE_SMALLINT:
       unit_int_val = db_get_short (expr);
       break;
-
     case DB_TYPE_INTEGER:
       unit_int_val = db_get_int (expr);
       break;
-
     case DB_TYPE_BIGINT:
       unit_int_val = db_get_bigint (expr);
       break;
 
-    case DB_TYPE_FLOAT:
-      unit_int_val = (DB_BIGINT) round (db_get_float (expr));
-      break;
-
-    case DB_TYPE_DOUBLE:
-      unit_int_val = (DB_BIGINT) round (db_get_double (expr));
-      break;
-
-    case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double ((DB_C_NUMERIC) db_locate_numeric (expr), DB_VALUE_SCALE (expr), &dbl);
-      unit_int_val = (DB_BIGINT) round (dbl);
-      break;
-
     default:
+      assert (false);
       error_status = ER_OBJ_INVALID_ARGUMENTS;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      if (!is_null_on_error)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	}
       goto error;
     }
 
-  /* 2. the big switch: according to unit, we parse expr and get amounts of ms/s/m/h/d/m/y/w/q to add or subtract */
+  memset (composite_values, 0x00, sizeof (composite_values));
+  if (expr_s == NULL)
+    {
+      assert (unit == PT_MILLISECOND || unit == PT_SECOND || unit == PT_MINUTE || unit == PT_HOUR ||
+	      unit == PT_DAY || unit == PT_WEEK || unit == PT_MONTH || unit == PT_QUARTER || unit == PT_YEAR);
 
-  millisec_s[0] = '\0';
-  millisec = seconds = minutes = hours = 0;
-  days = weeks = months = quarters = years = 0;
+      if (unit_int_val >= 0)
+	{
+	  is_positive_value = 1;
+	}
+      else
+	{
+	  is_positive_value = 0;
+	  unit_int_val = -unit_int_val;
+	}
+    }
+  else
+    {
+      /* the big switch: according to unit, we parse expr and get amounts of ms/s/m/h/d/m/y/w/q to add or subtract */
+      /*
+       * expr is converted to char because it may contain a more complicated form
+       * for the multiple unit formats, for example:
+       * 'DAYS HOURS:MINUTES:SECONDS.MILLISECONDS'
+       * For the simple unit tags, expr is integer
+       */
 
-#if defined (SERVER_MODE)
-  /* FIXME!! */
-#define PT_MILLISECOND 3087
-#define PT_SECOND (PT_MILLISECOND + 1)
-#define PT_MINUTE (PT_MILLISECOND + 2)
-#define PT_HOUR (PT_MILLISECOND + 3)
-#define PT_DAY (PT_MILLISECOND + 4)
-#define PT_WEEK (PT_MILLISECOND + 5)
-#define PT_MONTH (PT_MILLISECOND + 6)
-#define PT_QUARTER (PT_MILLISECOND + 7)
-#define PT_YEAR (PT_MILLISECOND + 8)
-#define PT_SECOND_MILLISECOND (PT_MILLISECOND + 9)
-#define PT_MINUTE_MILLISECOND (PT_MILLISECOND + 10)
-#define PT_MINUTE_SECOND (PT_MILLISECOND + 11)
-#define PT_HOUR_MILLISECOND (PT_MILLISECOND + 12)
-#define PT_HOUR_SECOND (PT_MILLISECOND + 13)
-#define PT_HOUR_MINUTE (PT_MILLISECOND + 14)
-#define PT_DAY_MILLISECOND (PT_MILLISECOND + 15)
-#define PT_DAY_SECOND (PT_MILLISECOND + 16)
-#define PT_DAY_MINUTE (PT_MILLISECOND + 17)
-#define PT_DAY_HOUR (PT_MILLISECOND + 18)
-#define PT_YEAR_MONTH (PT_MILLISECOND + 19)
-#endif /* SERVER_MODE */
+      error_status = db_date_add_sub_interval_composite_value (expr_s, unit, composite_values, &is_positive_value);
+      if (error_status != NO_ERROR)
+	{
+	  if (error_status == ER_FAILED)
+	    {
+	      db_make_null (result);
+	      return NO_ERROR;
+	    }
+	  if (!is_null_on_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    }
+	  goto error;
+	}
+    }
 
   switch (unit)
     {
     case PT_MILLISECOND:
-      millisec = get_single_unit_value (expr_s, unit_int_val);
-      sign = (millisec >= 0);
-      type |= 1;
+      composite_values[COMPOSITE_MILLISECOND] = unit_int_val;
       break;
 
     case PT_SECOND:
-      seconds = get_single_unit_value (expr_s, unit_int_val);
-      sign = (seconds >= 0);
-      type |= 1;
+      composite_values[COMPOSITE_SECOND] = unit_int_val;
       break;
 
     case PT_MINUTE:
-      minutes = get_single_unit_value (expr_s, unit_int_val);
-      sign = (minutes >= 0);
-      type |= 1;
+      composite_values[COMPOSITE_MINUTE] = unit_int_val;
       break;
 
     case PT_HOUR:
-      hours = get_single_unit_value (expr_s, unit_int_val);
-      sign = (hours >= 0);
-      type |= 1;
+      composite_values[COMPOSITE_HOUR] = unit_int_val;
       break;
 
     case PT_DAY:
-      days = get_single_unit_value (expr_s, unit_int_val);
-      sign = (days >= 0);
-      type |= 2;
+      composite_values[COMPOSITE_DAY] = unit_int_val;
+      date_only = true;
       break;
-
     case PT_WEEK:
-      weeks = get_single_unit_value (expr_s, unit_int_val);
-      sign = (weeks >= 0);
-      type |= 2;
+      composite_values[COMPOSITE_DAY] = unit_int_val * 7;
+      date_only = true;
       break;
 
     case PT_MONTH:
-      months = get_single_unit_value (expr_s, unit_int_val);
-      sign = (months >= 0);
-      type |= 2;
+      composite_values[COMPOSITE_MONTH] = unit_int_val;
+      date_only = true;
       break;
-
     case PT_QUARTER:
-      quarters = get_single_unit_value (expr_s, unit_int_val);
-      sign = (quarters >= 0);
-      type |= 2;
+      composite_values[COMPOSITE_MONTH] = unit_int_val * 3;
+      date_only = true;
       break;
 
     case PT_YEAR:
-      years = get_single_unit_value (expr_s, unit_int_val);
-      sign = (years >= 0);
-      type |= 2;
+      composite_values[COMPOSITE_YEAR] = unit_int_val;
+      date_only = true;
       break;
 
     case PT_SECOND_MILLISECOND:
-      if (expr_s)
-	{
-	  narg = sscanf (expr_s, "%lld%c%s", (long long *) &seconds, &delim, millisec_s);
-	  millisec = db_str_to_millisec (millisec_s);
-	  copy_and_shift_values (narg, 2, &seconds, &millisec);
-	}
-      else
-	{
-	  millisec = unit_int_val;
-	}
-      sign = (seconds >= 0);
-      type |= 1;
-      break;
-
     case PT_MINUTE_MILLISECOND:
-      if (expr_s)
-	{
-	  narg =
-	    sscanf (expr_s, "%lld%c%lld%c%s", (long long *) &minutes, &delim, (long long *) &seconds, &delim,
-		    millisec_s);
-	  millisec = db_str_to_millisec (millisec_s);
-	  copy_and_shift_values (narg, 3, &minutes, &seconds, &millisec);
-	}
-      else
-	{
-	  millisec = unit_int_val;
-	}
-      sign = (minutes >= 0);
-      type |= 1;
-      break;
-
-    case PT_MINUTE_SECOND:
-      if (expr_s)
-	{
-	  narg = sscanf (expr_s, "%lld%c%lld", (long long *) &minutes, &delim, (long long *) &seconds);
-	  copy_and_shift_values (narg, 2, &minutes, &seconds);
-	}
-      else
-	{
-	  seconds = unit_int_val;
-	}
-      sign = (minutes >= 0);
-      type |= 1;
-      break;
-
     case PT_HOUR_MILLISECOND:
-      if (expr_s)
-	{
-	  narg =
-	    sscanf (expr_s, "%lld%c%lld%c%lld%c%s", (long long *) &hours, &delim, (long long *) &minutes, &delim,
-		    (long long *) &seconds, &delim, millisec_s);
-	  millisec = db_str_to_millisec (millisec_s);
-	  copy_and_shift_values (narg, 4, &hours, &minutes, &seconds, &millisec);
-	}
-      else
-	{
-	  millisec = unit_int_val;
-	}
-      sign = (hours >= 0);
-      type |= 1;
-      break;
-
+    case PT_MINUTE_SECOND:
     case PT_HOUR_SECOND:
-      if (expr_s)
-	{
-	  narg =
-	    sscanf (expr_s, "%lld%c%lld%c%lld", (long long *) &hours, &delim, (long long *) &minutes, &delim,
-		    (long long *) &seconds);
-	  copy_and_shift_values (narg, 3, &hours, &minutes, &seconds);
-	}
-      else
-	{
-	  seconds = unit_int_val;
-	}
-      sign = (hours >= 0);
-      type |= 1;
-      break;
-
     case PT_HOUR_MINUTE:
-      if (expr_s)
-	{
-	  narg = sscanf (expr_s, "%lld%c%lld", (long long *) &hours, &delim, (long long *) &minutes);
-	  copy_and_shift_values (narg, 2, &hours, &minutes);
-	}
-      else
-	{
-	  minutes = unit_int_val;
-	}
-      sign = (hours >= 0);
-      type |= 1;
+      assert (expr_s);
       break;
 
     case PT_DAY_MILLISECOND:
-      if (expr_s)
-	{
-	  narg =
-	    sscanf (expr_s, "%lld%c%lld%c%lld%c%lld%c%s", (long long *) &days, &delim, (long long *) &hours, &delim,
-		    (long long *) &minutes, &delim, (long long *) &seconds, &delim, millisec_s);
-	  millisec = db_str_to_millisec (millisec_s);
-	  copy_and_shift_values (narg, 5, &days, &hours, &minutes, &seconds, &millisec);
-	}
-      else
-	{
-	  millisec = unit_int_val;
-	}
-      sign = (days >= 0);
-      type |= 1;
-      type |= 2;
-      break;
-
     case PT_DAY_SECOND:
-      if (expr_s)
-	{
-	  narg =
-	    sscanf (expr_s, "%lld%c%lld%c%lld%c%lld", (long long *) &days, &delim, (long long *) &hours, &delim,
-		    (long long *) &minutes, &delim, (long long *) &seconds);
-	  copy_and_shift_values (narg, 4, &days, &hours, &minutes, &seconds);
-	}
-      else
-	{
-	  seconds = unit_int_val;
-	}
-      sign = (days >= 0);
-      type |= 1;
-      type |= 2;
-      break;
-
     case PT_DAY_MINUTE:
-      if (expr_s)
-	{
-	  narg =
-	    sscanf (expr_s, "%lld%c%lld%c%lld", (long long *) &days, &delim, (long long *) &hours, &delim,
-		    (long long *) &minutes);
-	  copy_and_shift_values (narg, 3, &days, &hours, &minutes);
-	}
-      else
-	{
-	  minutes = unit_int_val;
-	}
-      sign = (days >= 0);
-      type |= 1;
-      type |= 2;
-      break;
-
     case PT_DAY_HOUR:
-      if (expr_s)
-	{
-	  narg = sscanf (expr_s, "%lld%c%lld", (long long *) &days, &delim, (long long *) &hours);
-	  copy_and_shift_values (narg, 2, &days, &hours);
-	}
-      else
-	{
-	  hours = unit_int_val;
-	}
-      sign = (days >= 0);
-      type |= 1;
-      type |= 2;
+      assert (expr_s);
       break;
 
     case PT_YEAR_MONTH:
-      if (expr_s)
-	{
-	  narg = sscanf (expr_s, "%lld%c%lld", (long long *) &years, &delim, (long long *) &months);
-	  copy_and_shift_values (narg, 2, &years, &months);
-	}
-      else
-	{
-	  months = unit_int_val;
-	}
-      sign = (years >= 0);
-      type |= 2;
+      assert (expr_s);
+      date_only = true;
       break;
 
     default:
       error_status = ER_OBJ_INVALID_ARGUMENTS;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      if (!is_null_on_error)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	}
       goto error;
     }
 
-#if defined (SERVER_MODE)
-  /* FIXME!! */
-#undef PT_MILLISECOND
-#undef PT_SECOND
-#undef PT_MINUTE
-#undef PT_HOUR
-#undef PT_DAY
-#undef PT_WEEK
-#undef PT_MONTH
-#undef PT_QUARTER
-#undef PT_YEAR
-#undef PT_SECOND_MILLISECOND
-#undef PT_MINUTE_MILLISECOND
-#undef PT_MINUTE_SECOND
-#undef PT_HOUR_MILLISECOND
-#undef PT_HOUR_SECOND
-#undef PT_HOUR_MINUTE
-#undef PT_DAY_MILLISECOND
-#undef PT_DAY_SECOND
-#undef PT_DAY_MINUTE
-#undef PT_DAY_HOUR
-#undef PT_YEAR_MONTH
-#endif /* SERVER_MODE */
-
-  /* we have the sign of the amounts, turn them in absolute value */
-  years = ABS (years);
-  months = ABS (months);
-  days = ABS (days);
-  weeks = ABS (weeks);
-  quarters = ABS (quarters);
-  hours = ABS (hours);
-  minutes = ABS (minutes);
-  seconds = ABS (seconds);
-  millisec = ABS (millisec);
-
-  /* convert weeks and quarters to our units */
-  if (weeks != 0)
-    {
-      days += weeks * 7;
-      weeks = 0;
-    }
-
-  if (quarters != 0)
-    {
-      months += 3 * quarters;
-      quarters = 0;
-    }
-
-  /* 3. Convert string with date to DateTime or Time */
+  /* Convert string with date to DateTime or Time */
 
   switch (res_type)
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       {
 	bool has_explicit_time = false;
 	bool has_zone = false;
@@ -21604,7 +20803,10 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	if (is_t == 0)
 	  {
 	    error_status = ER_OBJ_INVALID_ARGUMENTS;
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    if (!is_null_on_error)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      }
 	    goto error;
 	  }
 
@@ -21673,7 +20875,10 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
     default:
       error_status = ER_OBJ_INVALID_ARGUMENTS;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      if (!is_null_on_error)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	}
       goto error;
     }
 
@@ -21685,53 +20890,46 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0)
 	{
-	  pr_clear_value (&trimed_expr);
-	  db_make_null (result);
-	  er_clear ();
-	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	  if (!is_null_on_error)
 	    {
-	      return NO_ERROR;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
 	    }
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
-	  return ER_DATE_CONVERSION;
+	  error_status = ER_DATE_CONVERSION;
+	  goto error;
 	}
 
-      if (sign ^ is_add)
+      if (is_positive_value ^ is_add)
 	{
-	  ret =
-	    sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, years, months, days, hours, minutes, seconds,
-					 millisec);
+	  ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	}
       else
 	{
-	  ret =
-	    add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, years, months, days, hours, minutes, seconds,
-					 millisec);
+	  ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	}
 
       /* year should always be greater than 1 and less than 9999 */
       if (ret != NO_ERROR)
 	{
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  if (!is_null_on_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    }
 	  goto error;
 	}
 
-      if (type == 2)
+      if (date_only)
 	{
 	  db_date_encode (&db_date, m, d, y);
 
 	  if (m == 0 && d == 0 && y == 0)
 	    {
-	      pr_clear_value (&trimed_expr);
-	      db_make_null (result);
-	      er_clear ();
-	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	      if (!is_null_on_error)
 		{
-		  return NO_ERROR;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
 		}
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
-	      return ER_DATE_CONVERSION;
+	      error_status = ER_DATE_CONVERSION;
+	      goto error;
 	    }
 
 	  if (res_type == DB_TYPE_STRING || res_type == DB_TYPE_CHAR)
@@ -21753,22 +20951,19 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	      db_make_date (result, m, d, y);
 	    }
 	}
-      else if (type & 1)
+      else
 	{
 	  db_datetime.date = db_datetime.time = 0;
 	  db_datetime_encode (&db_datetime, m, d, y, h, mi, s, ms);
 
 	  if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0 && ms == 0)
 	    {
-	      pr_clear_value (&trimed_expr);
-	      db_make_null (result);
-	      er_clear ();
-	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	      if (!is_null_on_error)
 		{
-		  return NO_ERROR;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
 		}
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
-	      return ER_DATE_CONVERSION;
+	      error_status = ER_DATE_CONVERSION;
+	      goto error;
 	    }
 
 	  if (res_type == DB_TYPE_STRING || res_type == DB_TYPE_CHAR)
@@ -21824,35 +21019,31 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0 && ms == 0)
 	{
-	  pr_clear_value (&trimed_expr);
-	  db_make_null (result);
-	  er_clear ();
-	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	  if (!is_null_on_error)
 	    {
-	      return NO_ERROR;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
 	    }
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
-	  return ER_DATE_CONVERSION;
+	  error_status = ER_DATE_CONVERSION;
+	  goto error;
 	}
 
-      if (sign ^ is_add)
+      if (is_positive_value ^ is_add)
 	{
-	  ret =
-	    sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, years, months, days, hours, minutes, seconds,
-					 millisec);
+	  ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	}
       else
 	{
-	  ret =
-	    add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, years, months, days, hours, minutes, seconds,
-					 millisec);
+	  ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	}
 
       /* year should always be greater than 1 and less than 9999 */
       if (ret != NO_ERROR)
 	{
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  if (!is_null_on_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    }
 	  goto error;
 	}
 
@@ -21920,35 +21111,31 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0)
 	{
-	  pr_clear_value (&trimed_expr);
-	  db_make_null (result);
-	  er_clear ();
-	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	  if (!is_null_on_error)
 	    {
-	      return NO_ERROR;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
 	    }
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
-	  return ER_TIMESTAMP_CONVERSION;
+	  error_status = ER_TIMESTAMP_CONVERSION;
+	  goto error;
 	}
 
-      if (sign ^ is_add)
+      if (is_positive_value ^ is_add)
 	{
-	  ret =
-	    sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, years, months, days, hours, minutes, seconds,
-					 millisec);
+	  ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	}
       else
 	{
-	  ret =
-	    add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, years, months, days, hours, minutes, seconds,
-					 millisec);
+	  ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	}
 
       /* year should always be greater than 1 and less than 9999 */
       if (ret != NO_ERROR)
 	{
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  if (!is_null_on_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    }
 	  goto error;
 	}
 
@@ -22023,7 +21210,16 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
     }
 
 error:
-  pr_clear_value (&trimed_expr);
+  if (error_status != NO_ERROR && error_status != ER_OUT_OF_VIRTUAL_MEMORY)
+    {
+      db_make_null (result);
+      if (is_null_on_error)
+	{
+	  /* clear error and return NULL */
+	  er_clear ();
+	  return NO_ERROR;
+	}
+    }
   return error_status;
 }
 
@@ -22238,19 +21434,13 @@ get_date_time_info (DATE_TIME_INFO * dtzi, DB_TYPE res_type, const DB_VALUE * va
       break;
 
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
       {
 	bool check_has_date = false;
 
 	if (dateformat == false)
 	  {
-	    if (res_type == DB_TYPE_NCHAR || res_type == DB_TYPE_VARNCHAR)
-	      {
-		;		// ignore
-	      }
-	    else if (db_check_datetime_format (value_ptr))
+	    if (db_check_datetime_format (value_ptr))
 	      {
 		check_has_date = true;
 	      }
@@ -24170,12 +23360,6 @@ db_time_dbval (DB_VALUE * result, const DB_VALUE * datetime_value, const TP_DOMA
 
   switch (type)
     {
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_NCHAR:
-      db_make_varnchar (result, TP_FLOATING_PRECISION_VALUE, res_s, strlen (res_s),
-			db_get_string_codeset (datetime_value), db_get_string_collation (datetime_value));
-      break;
-
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
       db_make_varchar (result, TP_FLOATING_PRECISION_VALUE, res_s, strlen (res_s),
@@ -24209,7 +23393,6 @@ db_time_dbval (DB_VALUE * result, const DB_VALUE * datetime_value, const TP_DOMA
 int
 db_date_dbval (DB_VALUE * result, const DB_VALUE * date_value, const TP_DOMAIN * domain)
 {
-  DB_TYPE type;
   char *res_s;
   int y, m, d, hour, min, sec, ms;
   int error_status = NO_ERROR;
@@ -24223,8 +23406,7 @@ db_date_dbval (DB_VALUE * result, const DB_VALUE * date_value, const TP_DOMAIN *
 
   y = m = d = 0;
 
-  type = DB_VALUE_DOMAIN_TYPE (date_value);
-  if (type == DB_TYPE_NULL || DB_IS_NULL (date_value))
+  if ((DB_VALUE_DOMAIN_TYPE (date_value) == DB_TYPE_NULL) || DB_IS_NULL (date_value))
     {
       db_make_null (result);
       return NO_ERROR;
@@ -24266,15 +23448,8 @@ db_date_dbval (DB_VALUE * result, const DB_VALUE * date_value, const TP_DOMAIN *
       collation_id = LANG_SYS_COLLATION;
     }
 
-  if (QSTR_IS_NATIONAL_CHAR (type))
-    {
-      db_make_varnchar (result, 10, res_s, 10, codeset, collation_id);
-    }
-  else
-    {
-      db_make_string (result, res_s);
-      db_string_put_cs_and_collation (result, codeset, collation_id);
-    }
+  db_make_string (result, res_s);
+  db_string_put_cs_and_collation (result, codeset, collation_id);
 
   result->need_clear = true;
 
@@ -24403,8 +23578,8 @@ error:
 }
 
 int
-db_from_unixtime (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VALUE * date_lang, DB_VALUE * result,
-		  const TP_DOMAIN * domain)
+db_from_unixtime (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VALUE * date_lang,
+		  DB_VALUE * result, const TP_DOMAIN * domain)
 {
   time_t unix_timestamp;
   DB_TYPE format_type;
@@ -24447,8 +23622,6 @@ db_from_unixtime (const DB_VALUE * src_value, const DB_VALUE * format, const DB_
     {
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       {
 	DB_VALUE ts_val;
 	DB_VALUE default_date_lang;
@@ -26036,9 +25209,7 @@ db_get_datetime_from_dbvalue (const DB_VALUE * src_date, int *year, int *month, 
   switch (arg_type)
     {
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
       {
 	DB_DATETIME db_datetime;
 	int str_len;
@@ -26179,9 +25350,7 @@ db_get_time_from_dbvalue (const DB_VALUE * src_date, int *hour, int *minute, int
       }
 
     case DB_TYPE_STRING:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
       {
 	DB_TIME db_time;
 	int str_len;
@@ -26284,8 +25453,7 @@ db_get_time_from_dbvalue (const DB_VALUE * src_date, int *hour, int *minute, int
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * db_null_terminate_string () - create a null terminated c string from a
- *				 DB_VALUE of type DB_TYPE_CHAR or
- *				 DB_TYPE_NCHAR
+ *				 DB_VALUE of type DB_TYPE_CHAR
  *    return	    : NO_ERROR or error code
  *    src_value(in) : DB_VALUE containing the string
  *    strp(out)	    : pointer for output
@@ -26307,7 +25475,7 @@ db_null_terminate_string (const DB_VALUE * src_value, char **strp)
   src_size = db_get_string_size (src_value);
   src_type = DB_VALUE_DOMAIN_TYPE (src_value);
 
-  if (src_type != DB_TYPE_CHAR && src_type != DB_TYPE_NCHAR)
+  if (src_type != DB_TYPE_CHAR)
     {
       return ER_FAILED;
     }
@@ -26508,9 +25676,10 @@ is_safe_last_char_for_like_optimization (const char *chr, const bool is_escaped,
  * execution than the alternatives.
  */
 int
-db_get_info_for_like_optimization (const DB_VALUE * const pattern, const bool has_escape_char, const char *escape_str,
-				   int *const num_logical_chars, int *const last_safe_logical_pos,
-				   int *const num_match_many, int *const num_match_one)
+db_get_info_for_like_optimization (const DB_VALUE * const pattern, const bool has_escape_char,
+				   const char *escape_str, int *const num_logical_chars,
+				   int *const last_safe_logical_pos, int *const num_match_many,
+				   int *const num_match_one)
 {
   int i = 0;
   int error_code = NO_ERROR;
@@ -26547,8 +25716,8 @@ db_get_info_for_like_optimization (const DB_VALUE * const pattern, const bool ha
       bool is_escaped = false;
 
       error_code =
-	db_get_next_like_pattern_character (pattern_str, pattern_size, db_get_string_codeset (pattern), has_escape_char,
-					    escape_str, &i, &crt_char_p, &is_escaped);
+	db_get_next_like_pattern_character (pattern_str, pattern_size, db_get_string_codeset (pattern),
+					    has_escape_char, escape_str, &i, &crt_char_p, &is_escaped);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -27283,8 +26452,8 @@ get_string_date_token_id (const STRING_DATE_TOKEN token_type, const INTL_LANG in
  *   token_size(out): size in bytes of token printed
  */
 static int
-print_string_date_token (const STRING_DATE_TOKEN token_type, const INTL_LANG intl_lang_id, const INTL_CODESET codeset,
-			 int token_id, int case_mode, char *buffer, int *token_size)
+print_string_date_token (const STRING_DATE_TOKEN token_type, const INTL_LANG intl_lang_id,
+			 const INTL_CODESET codeset, int token_id, int case_mode, char *buffer, int *token_size)
 {
   const char *p;
   int error_status = NO_ERROR;
@@ -27546,7 +26715,7 @@ coerce_pos:
 	  str_size = db_get_string_size (param);
 
 	  /* remove padding from end of string */
-	  if (param_type == DB_TYPE_CHAR || param_type == DB_TYPE_NCHAR)
+	  if (param_type == DB_TYPE_CHAR)
 	    {
 	      unsigned char pad_char[2];
 	      int pad_char_size;
@@ -27798,7 +26967,7 @@ db_ascii (const DB_VALUE * param, DB_VALUE * result)
       str_size = db_get_string_size (param);
 
       /* remove padding from end of string */
-      if (param_type == DB_TYPE_CHAR || param_type == DB_TYPE_NCHAR)
+      if (param_type == DB_TYPE_CHAR)
 	{
 	  unsigned char pad_char[2];
 	  int pad_char_size;
@@ -28454,8 +27623,9 @@ db_inet_aton (DB_VALUE * result_numbered_ip, const DB_VALUE * string)
       goto error;
     }
 
-  /* there is no need to check db_get_string_length or db_get_string_size or cnt, we control ip format by ourselves */
-  ip_string = db_get_char (string, &cnt);
+  /* ip format is controlled internally; use byte size directly */
+  ip_string = db_get_char (string);
+  cnt = db_get_string_size (string);
   local_ipstring = (char *) db_private_alloc (NULL, cnt + 1);
   if (local_ipstring == NULL)
     {
@@ -28856,11 +28026,7 @@ db_string_index_prefix (const DB_VALUE * string1, const DB_VALUE * string2, cons
 
   if (DB_IS_NULL (string1) || DB_IS_NULL (string2) || DB_IS_NULL (index_type))
     {
-      if (QSTR_IS_NATIONAL_CHAR (DB_VALUE_DOMAIN_TYPE (string1)))
-	{
-	  error_status = db_value_domain_init (prefix_index, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	}
-      else if (QSTR_IS_BIT (DB_VALUE_DOMAIN_TYPE (string1)))
+      if (QSTR_IS_BIT (DB_VALUE_DOMAIN_TYPE (string1)))
 	{
 	  error_status = db_value_domain_init (prefix_index, DB_TYPE_VARBIT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	}
@@ -29216,8 +28382,6 @@ db_string_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval_p, DB
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       {
 	DB_UTIME utime_s;
 	DB_DATETIME datetime_s;

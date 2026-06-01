@@ -28,6 +28,7 @@
 #include <stddef.h>
 #include <string.h>
 #include <assert.h>
+#include <atomic>
 
 #include "page_buffer.h"
 
@@ -47,7 +48,10 @@
 #include "perf_monitor.h"
 #include "porting_inline.hpp"
 #include "environment_variable.h"
+#include "thread_looper.hpp"
+#if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
+#endif
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
 #include "list_file.h"
@@ -56,12 +60,13 @@
 #include "xserver_interface.h"
 #include "btree_load.h"
 #include "boot_sr.h"
-#include "double_write_buffer.h"
+#include "double_write_buffer.hpp"
 #include "resource_tracker.hpp"
 #include "tde.h"
 #include "show_scan.h"
 #include "numeric_opfunc.h"
 #include "dbtype.h"
+#include "scope_exit.hpp"
 
 #if defined(SERVER_MODE)
 #include "connection_error.h"
@@ -98,8 +103,8 @@ static int rv;
 #endif /* !SERVER_MODE */
 
 /* default timeout seconds for infinite wait */
-#define PGBUF_TIMEOUT                      300	/* timeout seconds */
 #define PGBUF_FIX_COUNT_THRESHOLD           64	/* fix count threshold. used as indicator for hot pages. */
+static int pgbuf_latch_timeout = 300 * 1000;	/* timeout seconds */
 
 /* size of io page */
 #if defined(CUBRID_DEBUG)
@@ -132,6 +137,9 @@ static int rv;
 
 #define PGBUF_FIND_IOPAGE_PTR(i) \
   ((PGBUF_IOPAGE_BUFFER *) ((char *) &(pgbuf_Pool.iopage_table[0]) + (PGBUF_IOPAGE_BUFFER_SIZE * (i))))
+
+#define PGBUF_FIND_IOPAGE_PTR_FROM_EXTERNAL_ALLOCATE(alloc_memory, i) \
+  ((PGBUF_IOPAGE_BUFFER *) ((char *) (alloc_memory) + (PGBUF_IOPAGE_BUFFER_SIZE * (i))))
 
 #define PGBUF_FIND_BUFFER_GUARD(bufptr) \
   (&bufptr->iopage_buffer->iopage.page[DB_PAGESIZE])
@@ -287,6 +295,8 @@ typedef enum
 #define HASH_SIZE_BITS 20
 #define PGBUF_HASH_SIZE (1 << HASH_SIZE_BITS)
 
+#define UINT16MAX 65534
+
 #define PGBUF_HASH_VALUE(vpid) pgbuf_hash_func_mirror(vpid)
 
 /* Maximum overboost flush multiplier: controls the maximum factor to apply to configured flush ratio,
@@ -350,6 +360,11 @@ enum
 typedef struct pgbuf_holder PGBUF_HOLDER;
 typedef struct pgbuf_holder_anchor PGBUF_HOLDER_ANCHOR;
 typedef struct pgbuf_holder_set PGBUF_HOLDER_SET;
+
+/* *INDENT-OFF* */
+typedef std::atomic<uint64_t> PGBUF_ATOMIC_LATCH;
+/* *INDENT-ON* */
+typedef union pgbuf_atomic_latch_impl PGBUF_ATOMIC_LATCH_IMPL;
 
 typedef struct pgbuf_bcb PGBUF_BCB;
 typedef struct pgbuf_iopage_buffer PGBUF_IOPAGE_BUFFER;
@@ -476,6 +491,17 @@ struct pgbuf_holder_set
   PGBUF_HOLDER_SET *next_set;	/* next array */
 };
 
+union pgbuf_atomic_latch_impl
+{
+  uint64_t raw;
+  struct
+  {
+    PGBUF_LATCH_MODE latch_mode;
+    uint16_t waiter_exists;
+    int32_t fcnt;
+  } impl;
+};
+
 /* BCB structure */
 struct pgbuf_bcb
 {
@@ -484,12 +510,14 @@ struct pgbuf_bcb
   int owner_mutex;		/* mutex owner */
 #endif				/* SERVER_MODE */
   VPID vpid;			/* Volume and page identifier of resident page */
-  int fcnt;			/* Fix count */
-  PGBUF_LATCH_MODE latch_mode;	/* page latch mode */
+  PGBUF_ATOMIC_LATCH atomic_latch;	/* atomic latch */
   volatile int flags;
 #if defined(SERVER_MODE)
   THREAD_ENTRY *next_wait_thrd;	/* BCB waiting queue */
 #endif				/* SERVER_MODE */
+#if defined(SERVER_MODE)
+  THREAD_ENTRY *latch_last_thread;	/* last thread that acquired latch */
+#endif				/* SERVER_MODE && !NDEBUG */
   PGBUF_BCB *hash_next;		/* next hash chain */
   PGBUF_BCB *prev_BCB;		/* prev LRU chain */
   PGBUF_BCB *next_BCB;		/* next LRU or Invalid(Free) chain */
@@ -666,9 +694,9 @@ struct pgbuf_page_monitor
 
   /* Overall counters */
   volatile int lru_shared_pgs_cnt;	/* count of BCBs in all shared LRUs */
-  int pg_unfix_cnt;		/* Count of page unfixes; used for refreshing quota adjustment */
+    std::atomic_int pg_unfix_cnt;	/* Count of page unfixes; used for refreshing quota adjustment */
   int lru_victim_req_cnt;	/* number of victim requests from all LRUs */
-  int fix_req_cnt;		/* number of fix requests */
+    std::atomic_int fix_req_cnt;	/* number of fix requests */
 
 #if defined (SERVER_MODE)
   PGBUF_MONITOR_BCB_MUTEX *bcb_locks;	/* track bcb mutex usage. */
@@ -929,7 +957,7 @@ struct pgbuf_dealloc_undo_data
 static bool
 PGBUF_THREAD_HAS_PRIVATE_LRU (THREAD_ENTRY * thread_p)
 {
-  return PGBUF_PAGE_QUOTA_IS_ENABLED && (thread_p) != NULL && (thread_p)->private_lru_index != -1;
+  return thread_p != NULL && thread_p->m_is_private_lru_enabled;
 }
 #else
 #define PGBUF_PRIVATE_LRU_FROM_THREAD(thread_p) 0
@@ -1006,10 +1034,15 @@ static int pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_L
 STATIC_INLINE int pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE request_mode,
 					    int buf_lock_acquired, PGBUF_LATCH_CONDITION condition,
 					    bool * is_latch_wait) __attribute__ ((ALWAYS_INLINE));
-static int pgbuf_latch_idle_page (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE request_mode);
 
 STATIC_INLINE PGBUF_BCB *pgbuf_search_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor,
 						  const VPID * vpid) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE PAGE_PTR pgbuf_lockfree_fix_ro (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE PGBUF_BCB *pgbuf_search_hash_chain_no_bcb_lock (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor,
+							      const VPID * vpid) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_lockfree_unfix_ro (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_insert_into_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor,
 						PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_delete_from_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
@@ -1019,7 +1052,8 @@ static int pgbuf_unlock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_
 			      int need_hash_mutex);
 static PGBUF_BCB *pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid);
 static PGBUF_BCB *pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
-					   PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf, bool * try_again);
+					   PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf, bool * try_again,
+					   bool already_locked);
 static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 static int pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous, bool * locked);
 static int pgbuf_invalidate_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
@@ -1078,8 +1112,8 @@ STATIC_INLINE bool pgbuf_is_exist_blocked_reader_writer (PGBUF_BCB * bufptr) __a
 static int pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid, bool is_only_fixed, bool is_set_lsa_as_null);
 
 #if defined(SERVER_MODE)
-static int pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * thrd_entry);
-static int pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * thrd_entry);
+static int pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thrd_entry, PGBUF_BCB * bufptr);
+static int pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 STATIC_INLINE void pgbuf_wakeup_reader_writer (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   __attribute__ ((ALWAYS_INLINE));
 #endif /* SERVER_MODE */
@@ -1234,6 +1268,170 @@ static cubthread::daemon *pgbuf_Flush_control_daemon = NULL;
 
 static bool pgbuf_is_page_flush_daemon_available ();
 
+STATIC_INLINE void set_latch (PGBUF_ATOMIC_LATCH * latch, PGBUF_LATCH_MODE latch_mode) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void add_fcnt (PGBUF_ATOMIC_LATCH * latch, int cnt) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void set_latch_and_fcnt (PGBUF_ATOMIC_LATCH * latch, PGBUF_LATCH_MODE latch_mode, int cnt)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void set_latch_and_add_fcnt (PGBUF_ATOMIC_LATCH * latch, PGBUF_LATCH_MODE latch_mode, int cnt)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void set_waiter_exists (PGBUF_ATOMIC_LATCH * latch, bool waiter_exists) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int get_fcnt (PGBUF_ATOMIC_LATCH * latch) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool get_waiter_exists (PGBUF_ATOMIC_LATCH * latch) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE PGBUF_LATCH_MODE get_latch (PGBUF_ATOMIC_LATCH * latch) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE PGBUF_ATOMIC_LATCH_IMPL get_impl (PGBUF_ATOMIC_LATCH * latch) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void copy_bcb (PGBUF_BCB * dest_bcb, PGBUF_BCB * src_bcb) __attribute__ ((ALWAYS_INLINE));
+
+STATIC_INLINE void
+copy_bcb (PGBUF_BCB * dest_bcb, PGBUF_BCB * src_bcb)
+{
+#if defined(SERVER_MODE)
+  dest_bcb->owner_mutex = src_bcb->owner_mutex;
+#endif /* SERVER_MODE */
+  dest_bcb->vpid = src_bcb->vpid;
+  dest_bcb->atomic_latch.store (src_bcb->atomic_latch.load ());
+  dest_bcb->flags = src_bcb->flags;
+#if defined(SERVER_MODE)
+  dest_bcb->next_wait_thrd = src_bcb->next_wait_thrd;
+#endif /* SERVER_MODE */
+#if defined(SERVER_MODE)
+  dest_bcb->latch_last_thread = src_bcb->latch_last_thread;
+#endif /* SERVER_MODE && !NDEBUG */
+  dest_bcb->hash_next = src_bcb->hash_next;
+  dest_bcb->prev_BCB = src_bcb->prev_BCB;
+  dest_bcb->next_BCB = src_bcb->next_BCB;
+  dest_bcb->tick_lru_list = src_bcb->tick_lru_list;
+  dest_bcb->tick_lru3 = src_bcb->tick_lru3;
+  dest_bcb->count_fix_and_avoid_dealloc = src_bcb->count_fix_and_avoid_dealloc;
+  dest_bcb->hit_age = src_bcb->hit_age;
+  dest_bcb->oldest_unflush_lsa = src_bcb->oldest_unflush_lsa;
+  dest_bcb->iopage_buffer = src_bcb->iopage_buffer;
+}
+
+STATIC_INLINE void
+set_latch (PGBUF_ATOMIC_LATCH * latch, PGBUF_LATCH_MODE latch_mode)
+{
+  PGBUF_ATOMIC_LATCH_IMPL impl;
+  PGBUF_ATOMIC_LATCH_IMPL new_impl;
+  do
+    {
+      impl.raw = latch->load (std::memory_order_acquire);
+      new_impl = impl;
+      new_impl.impl.latch_mode = latch_mode;
+    }
+  while (!latch->compare_exchange_weak (impl.raw, new_impl.raw, std::memory_order_acq_rel, std::memory_order_acquire));
+}
+
+STATIC_INLINE void
+add_fcnt (PGBUF_ATOMIC_LATCH * latch, int cnt)
+{
+  PGBUF_ATOMIC_LATCH_IMPL impl;
+  PGBUF_ATOMIC_LATCH_IMPL new_impl;
+  do
+    {
+      impl.raw = latch->load (std::memory_order_acquire);
+      new_impl = impl;
+      new_impl.impl.fcnt += cnt;
+    }
+  while (!latch->compare_exchange_weak (impl.raw, new_impl.raw, std::memory_order_acq_rel, std::memory_order_acquire));
+}
+
+STATIC_INLINE void
+set_latch_and_fcnt (PGBUF_ATOMIC_LATCH * latch, PGBUF_LATCH_MODE latch_mode, int cnt)
+{
+  PGBUF_ATOMIC_LATCH_IMPL impl;
+  PGBUF_ATOMIC_LATCH_IMPL new_impl;
+  do
+    {
+      impl.raw = latch->load (std::memory_order_acquire);
+      new_impl = impl;
+      new_impl.impl.latch_mode = latch_mode;
+      new_impl.impl.fcnt = cnt;
+    }
+  while (!latch->compare_exchange_weak (impl.raw, new_impl.raw, std::memory_order_acq_rel, std::memory_order_acquire));
+}
+
+STATIC_INLINE void
+set_latch_and_add_fcnt (PGBUF_ATOMIC_LATCH * latch, PGBUF_LATCH_MODE latch_mode, int cnt)
+{
+  PGBUF_ATOMIC_LATCH_IMPL impl;
+  PGBUF_ATOMIC_LATCH_IMPL new_impl;
+  do
+    {
+      impl.raw = latch->load (std::memory_order_acquire);
+      new_impl = impl;
+      new_impl.impl.latch_mode = latch_mode;
+      new_impl.impl.fcnt += cnt;
+    }
+  while (!latch->compare_exchange_weak (impl.raw, new_impl.raw, std::memory_order_acq_rel, std::memory_order_acquire));
+}
+
+STATIC_INLINE void
+set_waiter_exists (PGBUF_ATOMIC_LATCH * latch, bool waiter_exists)
+{
+  PGBUF_ATOMIC_LATCH_IMPL impl;
+  PGBUF_ATOMIC_LATCH_IMPL new_impl;
+  do
+    {
+      impl.raw = latch->load (std::memory_order_acquire);
+      new_impl = impl;
+      new_impl.impl.waiter_exists = waiter_exists;
+    }
+  while (!latch->compare_exchange_weak (impl.raw, new_impl.raw, std::memory_order_acq_rel, std::memory_order_acquire));
+}
+
+STATIC_INLINE int
+get_fcnt (PGBUF_ATOMIC_LATCH * latch)
+{
+  PGBUF_ATOMIC_LATCH_IMPL impl;
+  impl.raw = latch->load (std::memory_order_acquire);
+  return impl.impl.fcnt;
+}
+
+STATIC_INLINE bool
+get_waiter_exists (PGBUF_ATOMIC_LATCH * latch)
+{
+  PGBUF_ATOMIC_LATCH_IMPL impl;
+  impl.raw = latch->load (std::memory_order_acquire);
+  return impl.impl.waiter_exists;
+}
+
+STATIC_INLINE PGBUF_LATCH_MODE
+get_latch (PGBUF_ATOMIC_LATCH * latch)
+{
+  PGBUF_ATOMIC_LATCH_IMPL impl;
+  impl.raw = latch->load (std::memory_order_acquire);
+  return impl.impl.latch_mode;
+}
+
+STATIC_INLINE PGBUF_ATOMIC_LATCH_IMPL
+get_impl (PGBUF_ATOMIC_LATCH * latch)
+{
+  PGBUF_ATOMIC_LATCH_IMPL impl;
+  impl.raw = latch->load (std::memory_order_acquire);
+  return impl;
+}
+
+void
+pgbuf_thread_variables_init (THREAD_ENTRY * thread_p)
+{
+  if (!thread_p)
+    {
+      return;
+    }
+  if (pgbuf_Pool.quota.num_private_LRU_list > 0 && thread_p->private_lru_index != -1)
+    {
+      thread_p->m_is_private_lru_enabled = true;
+    }
+  else
+    {
+      thread_p->m_is_private_lru_enabled = false;
+    }
+  if (!thread_p->m_holder_anchor)
+    {
+      thread_p->m_holder_anchor = &pgbuf_Pool.thrd_holder_info[thread_p->index];
+    }
+}
+
 /*
  * pgbuf_hash_func_mirror () - Hash VPID into hash anchor
  *   return: hash value
@@ -1321,7 +1519,67 @@ pgbuf_initialize (void)
 {
   pgbuf_flags_mask_sanity_check ();
 
-  memset (&pgbuf_Pool, 0, sizeof (pgbuf_Pool));
+  /* Initialize all members individually */
+  pgbuf_Pool.num_buffers = 0;
+  pgbuf_Pool.BCB_table = NULL;
+  pgbuf_Pool.buf_hash_table = NULL;
+  pgbuf_Pool.buf_lock_table = NULL;
+  pgbuf_Pool.iopage_table = NULL;
+  pgbuf_Pool.num_LRU_list = 0;
+  pgbuf_Pool.ratio_lru1 = 0.0f;
+  pgbuf_Pool.ratio_lru2 = 0.0f;
+  pgbuf_Pool.buf_LRU_list = NULL;
+  pgbuf_Pool.victim_cand_list = NULL;
+
+  memset (&pgbuf_Pool.buf_AOUT_list, 0, sizeof (PGBUF_AOUT_LIST));
+  memset (&pgbuf_Pool.buf_invalid_list, 0, sizeof (PGBUF_INVALID_LIST));
+  memset (&pgbuf_Pool.seq_chkpt_flusher, 0, sizeof (PGBUF_SEQ_FLUSHER));
+  memset (&pgbuf_Pool.quota, 0, sizeof (PGBUF_PAGE_QUOTA));
+  memset (&pgbuf_Pool.show_status_old, 0, sizeof (PGBUF_STATUS_OLD));
+  memset (&pgbuf_Pool.show_status_snapshot, 0, sizeof (PGBUF_STATUS_SNAPSHOT));
+
+#if defined (SERVER_MODE)
+  memset (&pgbuf_Pool.direct_victims, 0, sizeof (PGBUF_VICTIM_CANDIDATE_LIST));
+#endif
+
+  /* Initialize monitor - C++ members need special handling */
+  pgbuf_Pool.monitor.dirties_cnt = 0;
+  pgbuf_Pool.monitor.lru_hits = NULL;
+  pgbuf_Pool.monitor.lru_activity = NULL;
+  pgbuf_Pool.monitor.lru_shared_pgs_cnt = 0;
+  pgbuf_Pool.monitor.pg_unfix_cnt.store (0);
+  pgbuf_Pool.monitor.lru_victim_req_cnt = 0;
+  pgbuf_Pool.monitor.fix_req_cnt.store (0);
+#if defined (SERVER_MODE)
+  pgbuf_Pool.monitor.bcb_locks = NULL;
+#endif
+  pgbuf_Pool.monitor.victim_rich = false;
+
+  pgbuf_Pool.thrd_holder_info = NULL;
+  pgbuf_Pool.thrd_reserved_holder = NULL;
+
+#if defined(SERVER_MODE)
+  pgbuf_Pool.free_holder_set_mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
+  pgbuf_Pool.free_holder_set = NULL;
+  pgbuf_Pool.free_index = 0;
+
+  pgbuf_Pool.check_for_interrupts = false;
+
+#if defined(SERVER_MODE)
+  pgbuf_Pool.is_flushing_victims = false;
+  pgbuf_Pool.is_checkpoint = false;
+
+  pgbuf_Pool.flushed_bcbs = NULL;
+#endif
+  pgbuf_Pool.private_lrus_with_victims = NULL;
+  pgbuf_Pool.big_private_lrus_with_victims = NULL;
+  pgbuf_Pool.shared_lrus_with_victims = NULL;
+
+  pgbuf_Pool.show_status = NULL;
+#if defined (SERVER_MODE)
+  pgbuf_Pool.show_status_mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
 
   pgbuf_Pool.num_buffers = prm_get_integer_value (PRM_ID_PB_NBUFFERS);
   if (pgbuf_Pool.num_buffers < PGBUF_MINIMUM_BUFFERS)
@@ -1332,6 +1590,7 @@ pgbuf_initialize (void)
 #endif /* CUBRID_DEBUG */
       pgbuf_Pool.num_buffers = PGBUF_MINIMUM_BUFFERS;
     }
+  pgbuf_latch_timeout = prm_get_integer_value (PRM_ID_PAGE_LATCH_TIMEOUT) * 1000;
 #if defined (SERVER_MODE)
 #if defined (NDEBUG)
   pgbuf_Monitor_locks = prm_get_bool_value (PRM_ID_PB_MONITOR_LOCKS);
@@ -1718,6 +1977,8 @@ pgbuf_finalize (void)
 #if defined(SERVER_MODE)
   pthread_mutex_destroy (&pgbuf_Pool.show_status_mutex);
 #endif
+
+  thread_clear_all_holder_anchor ();
 }
 
 /*
@@ -1815,7 +2076,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
       return NULL;
     }
 
-  ATOMIC_INC_32 (&pgbuf_Pool.monitor.fix_req_cnt, 1);
+  pgbuf_Pool.monitor.fix_req_cnt.fetch_add (1, std::memory_order_relaxed);
 
   if (pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_FETCH) && fetch_mode != RECOVERY_PAGE)
     {
@@ -1870,6 +2131,28 @@ try_again:
 
   /* Normal process */
   /* latch_mode = PGBUF_LATCH_READ/PGBUF_LATCH_WRITE */
+
+  if (request_mode == PGBUF_LATCH_READ
+      && (fetch_mode == OLD_PAGE || fetch_mode == OLD_PAGE_PREVENT_DEALLOC || fetch_mode == OLD_PAGE_MAYBE_DEALLOCATED)
+      && condition == PGBUF_UNCONDITIONAL_LATCH)
+    {
+      pgptr = pgbuf_lockfree_fix_ro (thread_p, vpid, fetch_mode);
+      if (pgptr != NULL)
+	{
+	  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+#if !defined (NDEBUG)
+	  pgbuf_add_fixed_at (pgbuf_find_thrd_holder (thread_p, bufptr), caller_file, caller_line, !had_holder);
+#endif
+#if defined (ENABLE_SYSTEMTAP)
+	  CUBRID_PGBUF_HIT ();
+	  pgbuf_hit = true;
+#endif /* ENABLE_SYSTEMTAP */
+
+	  show_status->num_hit++;
+	  goto fast_path;
+	}
+    }
+
   hash_anchor = &pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (vpid)];
 
   buf_lock_acquired = false;
@@ -1905,7 +2188,7 @@ try_again:
     }
   else
     {
-      bufptr = pgbuf_claim_bcb_for_fix (thread_p, vpid, fetch_mode, hash_anchor, &perf, &retry);
+      bufptr = pgbuf_claim_bcb_for_fix (thread_p, vpid, fetch_mode, hash_anchor, &perf, &retry, false);
       if (bufptr == NULL)
 	{
 	  if (retry)
@@ -2036,7 +2319,7 @@ try_again:
     }
 
   CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
-
+fast_path:
 #if !defined (NDEBUG)
   assert (pgptr != NULL);
 
@@ -2186,6 +2469,7 @@ try_again:
  *       This is only for reading temporary file.
  *       if bcb is on buffer, only fcnt++. it is latchless and LRU mutexless.
  *       Even if it is a temporary file, it can be a problem if there is a write operation.
+ *       Cannot be mixed with general FIX(LATCH).
  */
 PAGE_PTR
 pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid, bool need_fix)
@@ -2193,6 +2477,8 @@ pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid, bool need_fix)
   PGBUF_BUFFER_HASH *hash_anchor;
   PGBUF_BCB *bufptr;
   PAGE_PTR pgptr;
+  bool retry;
+  int th_lru_idx;
 
   assert (pgbuf_is_temporary_volume (vpid->volid));
 
@@ -2203,42 +2489,45 @@ retry:
 
   if (bufptr == NULL)
     {
-      /* the caller is holding only hash_anchor->hash_mutex. */
-      /* release hash mutex */
-      pthread_mutex_unlock (&hash_anchor->hash_mutex);
-
       if (!need_fix || er_errid () == ER_CSS_PTHREAD_MUTEX_TRYLOCK)
 	{
+	  pthread_mutex_unlock (&hash_anchor->hash_mutex);
 	  return NULL;
 	}
 
-      pgptr = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-      if (pgptr == NULL)
+      if (pgbuf_lock_page (thread_p, hash_anchor, vpid) != PGBUF_LOCK_HOLDER)
 	{
+	  /* retry */
+	  goto retry;
+	}
+      bufptr = pgbuf_claim_bcb_for_fix (thread_p, vpid, OLD_PAGE, hash_anchor, NULL, &retry, true);
+      if (bufptr == NULL)
+	{
+	  (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
 	  return NULL;
 	}
-      pgbuf_unfix (thread_p, pgptr);
+      pgbuf_insert_into_hash_chain (thread_p, hash_anchor, bufptr);
+      (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, false);
 
-      pgptr = pgbuf_simple_fix (thread_p, vpid, true);
-      if (pgptr == NULL)
+      add_fcnt (&bufptr->atomic_latch, 1);
+      CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
+
+      /* add lru list. */
+      if (PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
 	{
-	  /* impossible case */
-	  assert (0);
-	  return NULL;
+	  th_lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
+	  pgbuf_lru_add_new_bcb_to_top (thread_p, bufptr, th_lru_idx);
 	}
+      else
+	{
+	  pgbuf_lru_add_new_bcb_to_middle (thread_p, bufptr, pgbuf_get_shared_lru_index_for_add ());
+	}
+      PGBUF_BCB_UNLOCK (bufptr);
     }
   else
     {
       if (need_fix)
 	{
-	  /* Cannot be mixed with general FIX(LATCH). Only possible when NO_LATCH. */
-	  if (bufptr->latch_mode != PGBUF_NO_LATCH)
-	    {
-	      /* retry simple_fix until finishing general fix and unfix */
-	      PGBUF_BCB_UNLOCK (bufptr);
-	      goto retry;
-	    }
-
 	  /* we need to notify the thread that is waiting for this bcb to victimize that it cannot use it. */
 	  if (pgbuf_bcb_is_direct_victim (bufptr))
 	    {
@@ -2259,7 +2548,7 @@ retry:
       /* the caller is holding only bufptr->mutex. */
       CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
 
-      bufptr->fcnt++;
+      add_fcnt (&bufptr->atomic_latch, 1);
       /* release mutex */
       PGBUF_BCB_UNLOCK (bufptr);
     }
@@ -2285,7 +2574,7 @@ pgbuf_simple_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 
   /* only decrease fcnt */
   PGBUF_BCB_LOCK (bufptr);
-  bufptr->fcnt--;
+  add_fcnt (&bufptr->atomic_latch, -1);
   PGBUF_BCB_UNLOCK (bufptr);
 }
 
@@ -2316,8 +2605,8 @@ pgbuf_dealloc_temp_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool need_free
   /* simple unfix */
   if (need_free)
     {
-      bufptr->fcnt--;
-      assert (bufptr->fcnt == 0);
+      add_fcnt (&bufptr->atomic_latch, -1);
+      assert (get_fcnt (&bufptr->atomic_latch) == 0);
     }
   PGBUF_BCB_UNLOCK (bufptr);
 
@@ -2340,18 +2629,21 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
 #endif				/* NDEBUG */
 {
   PGBUF_BCB *bufptr;
+  PGBUF_ATOMIC_LATCH_IMPL impl, impl_new;
 #if defined(SERVER_MODE)
   PGBUF_HOLDER *holder;
   VPID vpid;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   UINT64 promote_wait_time;
-  bool is_perf_tracking;
+  bool is_perf_tracking, need_block;
   PERF_PAGE_TYPE perf_page_type = PERF_PAGE_UNKNOWN;
   PERF_PROMOTE_CONDITION perf_promote_cond_type = PERF_PROMOTE_ONLY_READER;
   PERF_HOLDER_LATCH perf_holder_latch = PERF_HOLDER_LATCH_READ;
+  PGBUF_HOLDER_STAT perf_stat;
   int stat_success = 0;
   int rv = NO_ERROR;
+  int fix_count;
 #endif /* SERVER_MODE */
 
 #if !defined (NDEBUG)
@@ -2374,28 +2666,10 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
 
   /* fetch BCB from page pointer */
   CAST_PGPTR_TO_BFPTR (bufptr, *pgptr_p);
-  assert (!VPID_ISNULL (&bufptr->vpid));
-
-  /* check latch mode - no need for BCB mutex, page is already latched */
-  if (bufptr->latch_mode == PGBUF_LATCH_WRITE)
-    {
-      /* this is a redundant call */
-      return NO_ERROR;
-    }
-  else if (bufptr->latch_mode != PGBUF_LATCH_READ)
-    {
-      assert_release (false);
-      return ER_FAILED;
-    }
-
-  /* check condition */
-  if (condition != PGBUF_PROMOTE_ONLY_READER && condition != PGBUF_PROMOTE_SHARED_READER)
-    {
-      assert_release (false);
-      return ER_FAILED;
-    }
 
 #if defined(SERVER_MODE)	/* SERVER_MODE */
+  vpid.pageid = bufptr->vpid.pageid;
+  vpid.volid = bufptr->vpid.volid;
   /* performance tracking - get start counter */
   is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
@@ -2404,140 +2678,131 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
     }
 
   PGBUF_BCB_LOCK (bufptr);
-
-  /* save info for performance tracking */
-  vpid = bufptr->vpid;
-  if (is_perf_tracking)
-    {
-      perf_page_type = pgbuf_get_page_type_for_stat (thread_p, *pgptr_p);
-
-      /* promote condition */
-      if (condition == PGBUF_PROMOTE_ONLY_READER)
-	{
-	  perf_promote_cond_type = PERF_PROMOTE_ONLY_READER;
-	}
-      else
-	{
-	  perf_promote_cond_type = PERF_PROMOTE_SHARED_READER;
-	}
-
-      /* latch mode - NOTE: MIX will be always zero */
-      if (bufptr->latch_mode == PGBUF_LATCH_READ)
-	{
-	  perf_holder_latch = PERF_HOLDER_LATCH_READ;
-	}
-      else
-	{
-	  perf_holder_latch = PERF_HOLDER_LATCH_WRITE;
-	}
-    }
-
-  /* check if we're the single read latch holder */
   holder = pgbuf_find_thrd_holder (thread_p, bufptr);
   assert_release (holder != NULL);
-  if (holder->fix_count == bufptr->fcnt)
+  do
     {
-      assert (bufptr->latch_mode == PGBUF_LATCH_READ);
+      need_block = false;
+      impl = get_impl (&bufptr->atomic_latch);
+      impl_new = impl;
 
-      /* check for waiters for promotion */
-      if (bufptr->next_wait_thrd != NULL && bufptr->next_wait_thrd->wait_for_latch_promote)
+      if (holder->fix_count == impl.impl.fcnt)
 	{
-	  PGBUF_BCB_UNLOCK (bufptr);
-	  rv = ER_PAGE_LATCH_PROMOTE_FAIL;
+	  if (impl.impl.waiter_exists == true && bufptr->next_wait_thrd
+	      && bufptr->next_wait_thrd->wait_for_latch_promote)
+	    {
+	      PGBUF_BCB_UNLOCK (bufptr);
+	      rv = ER_PAGE_LATCH_PROMOTE_FAIL;
 #if !defined(NDEBUG)
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_PROMOTE_FAIL, 2, vpid.pageid, vpid.volid);
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_PROMOTE_FAIL, 2, vpid.pageid, vpid.volid);
 #endif
-	  goto end;
+	      goto end;
+	    }
+	  else
+	    {
+	      /* we're the single holder of the read latch, do an in-place promotion */
+	      impl_new.impl.latch_mode = PGBUF_LATCH_WRITE;
+	      holder->perf_stat.hold_has_write_latch = 1;
+	      /* NOTE: no need to set the promoted flag as long as we don't wait */
+	    }
 	}
+      else
+	{
+	  if ((condition == PGBUF_PROMOTE_ONLY_READER)
+	      || (bufptr->next_wait_thrd != NULL && bufptr->next_wait_thrd->wait_for_latch_promote))
+	    {
+	      /*
+	       * CASE #1: first waiter is from a latch promotion - we can't
+	       * guarantee both will see the same page they initially fixed so
+	       * we'll abort the current promotion
+	       * CASE #2: PGBUF_PROMOTE_ONLY_READER condition, we're only allowed
+	       * to promote if we're the only reader; this is not the case
+	       */
+	      PGBUF_BCB_UNLOCK (bufptr);
+	      rv = ER_PAGE_LATCH_PROMOTE_FAIL;
+#if !defined(NDEBUG)
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_PROMOTE_FAIL, 2, vpid.pageid, vpid.volid);
+#endif
+	      goto end;
+	    }
+	  else
+	    {
+	      fix_count = holder->fix_count;
+	      perf_stat = holder->perf_stat;
+	      if (impl.impl.fcnt == holder->fix_count)
+		{
+		  continue;
+		}
+	      impl_new.impl.fcnt -= fix_count;
+	      impl_new.impl.waiter_exists = true;
+	      need_block = true;
+	    }
+	}
+    }
+  while (!bufptr->atomic_latch.compare_exchange_strong (impl.raw, impl_new.raw, std::memory_order_acq_rel,
+							std::memory_order_acquire));
 
-      /* we're the single holder of the read latch, do an in-place promotion */
-      bufptr->latch_mode = PGBUF_LATCH_WRITE;
-      holder->perf_stat.hold_has_write_latch = 1;
-      /* NOTE: no need to set the promoted flag as long as we don't wait */
+  if (!need_block)
+    {
       PGBUF_BCB_UNLOCK (bufptr);
     }
   else
     {
-      if ((condition == PGBUF_PROMOTE_ONLY_READER)
-	  || (bufptr->next_wait_thrd != NULL && bufptr->next_wait_thrd->wait_for_latch_promote))
+      holder->fix_count = 0;
+      if (pgbuf_remove_thrd_holder (thread_p, holder) != NO_ERROR)
 	{
-	  /*
-	   * CASE #1: first waiter is from a latch promotion - we can't
-	   * guarantee both will see the same page they initially fixed so
-	   * we'll abort the current promotion
-	   * CASE #2: PGBUF_PROMOTE_ONLY_READER condition, we're only allowed
-	   * to promote if we're the only reader; this is not the case
-	   */
+	  /* We unfixed the page, but failed to remove holder entry; consider the page as unfixed */
+	  *pgptr_p = NULL;
+
+	  /* shouldn't happen */
 	  PGBUF_BCB_UNLOCK (bufptr);
-	  rv = ER_PAGE_LATCH_PROMOTE_FAIL;
-#if !defined(NDEBUG)
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_PROMOTE_FAIL, 2, vpid.pageid, vpid.volid);
-#endif
-	  goto end;
+	  assert_release (false);
+	  return ER_FAILED;
 	}
-      else
+      holder = NULL;
+      /* NOTE: at this point the page is unfixed */
+
+      /* flag this thread as promoter */
+      thread_p->wait_for_latch_promote = true;
+
+      /* register as first blocker */
+      if (pgbuf_block_bcb (thread_p, bufptr, PGBUF_LATCH_WRITE, fix_count, true) != NO_ERROR)
 	{
-	  int fix_count = holder->fix_count;
-	  PGBUF_HOLDER_STAT perf_stat = holder->perf_stat;
-
-	  bufptr->fcnt -= fix_count;
-	  holder->fix_count = 0;
-	  if (pgbuf_remove_thrd_holder (thread_p, holder) != NO_ERROR)
-	    {
-	      /* We unfixed the page, but failed to remove holder entry; consider the page as unfixed */
-	      *pgptr_p = NULL;
-
-	      /* shouldn't happen */
-	      PGBUF_BCB_UNLOCK (bufptr);
-	      assert_release (false);
-	      return ER_FAILED;
-	    }
-	  holder = NULL;
-	  /* NOTE: at this point the page is unfixed */
-
-	  /* flag this thread as promoter */
-	  thread_p->wait_for_latch_promote = true;
-
-	  /* register as first blocker */
-	  if (pgbuf_block_bcb (thread_p, bufptr, PGBUF_LATCH_WRITE, fix_count, true) != NO_ERROR)
-	    {
-	      *pgptr_p = NULL;	/* we didn't get a new latch */
-	      thread_p->wait_for_latch_promote = false;
-	      return ER_FAILED;
-	    }
-
-	  /* NOTE: BCB mutex is no longer held at this point */
-
-	  /* remove promote flag */
+	  *pgptr_p = NULL;	/* we didn't get a new latch */
 	  thread_p->wait_for_latch_promote = false;
-
-	  /* new holder entry */
-	  assert (pgbuf_find_thrd_holder (thread_p, bufptr) == NULL);
-	  holder = pgbuf_allocate_thrd_holder_entry (thread_p);
-	  if (holder == NULL)
-	    {
-	      /* We have new latch, but can't add a holder entry; consider the page as fixed */
-	      /* This situation must not be occurred. */
-	      assert_release (false);
-	      return ER_FAILED;
-	    }
-	  holder->fix_count = fix_count;
-	  holder->bufptr = bufptr;
-	  holder->perf_stat = perf_stat;
-	  if (bufptr->latch_mode == PGBUF_LATCH_WRITE)
-	    {
-	      holder->perf_stat.hold_has_write_latch = 1;
-	    }
-	  else if (bufptr->latch_mode == PGBUF_LATCH_READ)
-	    {
-	      holder->perf_stat.hold_has_read_latch = 1;
-	    }
-#if !defined(NDEBUG)
-	  pgbuf_add_fixed_at (holder, caller_file, caller_line, true);
-#endif /* NDEBUG */
+	  return ER_FAILED;
 	}
-    }
 
+      /* NOTE: BCB mutex is no longer held at this point */
+
+      /* remove promote flag */
+      thread_p->wait_for_latch_promote = false;
+
+      /* new holder entry */
+      assert (pgbuf_find_thrd_holder (thread_p, bufptr) == NULL);
+      holder = pgbuf_allocate_thrd_holder_entry (thread_p);
+      if (holder == NULL)
+	{
+	  /* We have new latch, but can't add a holder entry; consider the page as fixed */
+	  /* This situation must not be occurred. */
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+      holder->fix_count = fix_count;
+      holder->bufptr = bufptr;
+      holder->perf_stat = perf_stat;
+      if (get_latch (&bufptr->atomic_latch) == PGBUF_LATCH_WRITE)
+	{
+	  holder->perf_stat.hold_has_write_latch = 1;
+	}
+      else if (get_latch (&bufptr->atomic_latch) == PGBUF_LATCH_READ)
+	{
+	  holder->perf_stat.hold_has_read_latch = 1;
+	}
+#if !defined(NDEBUG)
+      pgbuf_add_fixed_at (holder, caller_file, caller_line, true);
+#endif /* NDEBUG */
+    }
 end:
   assert (rv == NO_ERROR || rv == ER_PAGE_LATCH_PROMOTE_FAIL);
 
@@ -2564,7 +2829,7 @@ end:
   return rv;
 
 #else /* SERVER_MODE */
-  bufptr->latch_mode = PGBUF_LATCH_WRITE;
+  set_latch (&bufptr->atomic_latch, PGBUF_LATCH_WRITE);
   return NO_ERROR;
 #endif
 }
@@ -2598,6 +2863,10 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   LOG_LSA restart_lsa;
 #endif /* CUBRID_DEBUG */
 
+  /* Get the address of the buffer from the page and free the buffer */
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+  assert (!VPID_ISNULL (&bufptr->vpid));
+
 #if !defined (NDEBUG)
   assert (pgptr != NULL);
 
@@ -2625,11 +2894,6 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
       return;
     }
 #endif /* !NDEBUG */
-
-  /* Get the address of the buffer from the page and free the buffer */
-  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
-  assert (!VPID_ISNULL (&bufptr->vpid));
-
 #if defined(CUBRID_DEBUG)
   /*
    * If the buffer is dirty and the log sequence address of the buffer
@@ -2661,7 +2925,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
     }
 
   /* Give a warning if the page is not consistent */
-  if (bufptr->fcnt <= 0)
+  if (get_fcnt (&bufptr->atomic_latch) <= 0)
     {
       er_log_debug (ARG_FILE_LINE,
 		    "pgbuf_unfix: SYSTEM ERROR Freeing too much buffer of pageid = %d of Volume = %s\n",
@@ -2697,6 +2961,11 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
       perfmon_pbx_unfix (thread_p, perf_page_type, holder_perf_stat.dirty_before_hold,
 			 holder_perf_stat.dirtied_by_holder, perf_holder_latch);
     }
+  /* if read latch exists,... */
+  if (pgbuf_lockfree_unfix_ro (thread_p, bufptr))
+    {
+      return;
+    }
 
   PGBUF_BCB_LOCK (bufptr);
 
@@ -2722,7 +2991,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
        * the page to detect illegal access to the page in the future.
        */
       PGBUF_BCB_LOCK (bufptr);
-      if (bufptr->fcnt == 0)
+      if (get_fcnt (&bufptr->atomic_latch) == 0)
 	{
 	  /* Check for consistency */
 	  if (!VPID_ISNULL (&bufptr->vpid) && pgbuf_is_consistent (bufptr, 0) == PGBUF_CONTENT_BAD)
@@ -2830,7 +3099,7 @@ pgbuf_unfix_all (THREAD_ENTRY * thread_p)
 	  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
 	  assert (!VPID_ISNULL (&bufptr->vpid));
 
-	  latch_mode_str = pgbuf_latch_mode_str (bufptr->latch_mode);
+	  latch_mode_str = pgbuf_latch_mode_str (get_latch (&bufptr->atomic_latch));
 	  zone_str = pgbuf_zone_str (pgbuf_bcb_get_zone (bufptr));
 
 	  /* check if the content of current buffer page is consistent. */
@@ -2842,9 +3111,9 @@ pgbuf_unfix_all (THREAD_ENTRY * thread_p)
 #endif /* CUBRID_DEBUG */
 	  er_log_debug (ARG_FILE_LINE,
 			"pgbuf_unfix_all: WARNING %4d %5d %6d %4d %9s %1d %1d %1d %11s %6d|%4d %10s %p %p-%p\n",
-			pgbuf_bcb_get_pool_index (bufptr), bufptr->vpid.volid, bufptr->vpid.pageid, bufptr->fcnt,
-			latch_mode_str, (int) pgbuf_bcb_is_dirty (bufptr), (int) pgbuf_bcb_is_flushing (bufptr),
-			(int) pgbuf_bcb_is_async_flush_request (bufptr), zone_str,
+			pgbuf_bcb_get_pool_index (bufptr), bufptr->vpid.volid, bufptr->vpid.pageid,
+			get_fcnt (&bufptr->atomic_latch), latch_mode_str, (int) pgbuf_bcb_is_dirty (bufptr),
+			(int) pgbuf_bcb_is_flushing (bufptr), (int) pgbuf_bcb_is_async_flush_request (bufptr), zone_str,
 			LSA_AS_ARGS (&bufptr->iopage_buffer->iopage.prv.lsa), consistent_str, (void *) bufptr,
 			(void *) (&bufptr->iopage_buffer->iopage.page[0]),
 			(void *) (&bufptr->iopage_buffer->iopage.page[DB_PAGESIZE - 1]));
@@ -2912,7 +3181,7 @@ pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
    * with PGBUF_LATCH_WRITE mode in CUBRID environment. Therefore,
    * the caller must unfix the page and then invalidate the page.
    */
-  if (bufptr->fcnt > 1)
+  if (get_fcnt (&bufptr->atomic_latch) > 1)
     {
       holder_status = pgbuf_unlatch_thrd_holder (thread_p, bufptr, NULL);
 
@@ -2931,7 +3200,7 @@ pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
     }
 
   /* bufptr->fcnt == 1 */
-  /* Currently, bufptr->latch_mode is PGBUF_LATCH_WRITE */
+  /* Currently, atomic_latch latch_mode is PGBUF_LATCH_WRITE */
   if (pgbuf_bcb_safe_flush_force_lock (thread_p, bufptr, true) != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -2956,7 +3225,7 @@ pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   PGBUF_BCB_LOCK (bufptr);
 
   /* check if the page should be invalidated. */
-  if (VPID_ISNULL (&bufptr->vpid) || !VPID_EQ (&temp_vpid, &bufptr->vpid) || bufptr->fcnt > 0
+  if (VPID_ISNULL (&bufptr->vpid) || !VPID_EQ (&temp_vpid, &bufptr->vpid) || get_fcnt (&bufptr->atomic_latch) > 0
       || pgbuf_bcb_avoid_victim (bufptr))
     {
       PGBUF_BCB_UNLOCK (bufptr);
@@ -3011,7 +3280,8 @@ pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid)
 	}
 
       PGBUF_BCB_LOCK (bufptr);
-      if (VPID_ISNULL (&bufptr->vpid) || (volid != NULL_VOLID && volid != bufptr->vpid.volid) || bufptr->fcnt > 0)
+      if (VPID_ISNULL (&bufptr->vpid) || (volid != NULL_VOLID && volid != bufptr->vpid.volid)
+	  || get_fcnt (&bufptr->atomic_latch) > 0)
 	{
 	  /* PGBUF_LATCH_READ/PGBUF_LATCH_WRITE */
 	  PGBUF_BCB_UNLOCK (bufptr);
@@ -3028,7 +3298,7 @@ pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid)
 
 	  /* check if page invalidation should be performed on the page */
 	  if (VPID_ISNULL (&bufptr->vpid) || !VPID_EQ (&temp_vpid, &bufptr->vpid)
-	      || (volid != NULL_VOLID && volid != bufptr->vpid.volid) || bufptr->fcnt > 0)
+	      || (volid != NULL_VOLID && volid != bufptr->vpid.volid) || get_fcnt (&bufptr->atomic_latch) > 0)
 	    {
 	      PGBUF_BCB_UNLOCK (bufptr);
 	      continue;
@@ -3109,7 +3379,7 @@ pgbuf_flush_with_wal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   assert (!VPID_ISNULL (&bufptr->vpid));
 
   /* In CUBRID, the caller is holding WRITE page latch */
-  assert (bufptr->latch_mode >= PGBUF_LATCH_READ && pgbuf_find_thrd_holder (thread_p, bufptr) != NULL);
+  assert (get_latch (&bufptr->atomic_latch) >= PGBUF_LATCH_READ && pgbuf_find_thrd_holder (thread_p, bufptr) != NULL);
   PGBUF_BCB_LOCK (bufptr);
 
   /* Flush the page only when it is dirty */
@@ -3150,7 +3420,7 @@ pgbuf_flush_if_requested (THREAD_ENTRY * thread_p, PAGE_PTR page)
   assert (!VPID_ISNULL (&bcb->vpid));
 
   /* caller should have write latch, otherwise there is no point in calling this function */
-  assert (bcb->latch_mode == PGBUF_LATCH_WRITE && pgbuf_find_thrd_holder (thread_p, bcb) != NULL);
+  assert (get_latch (&bcb->atomic_latch) == PGBUF_LATCH_WRITE && pgbuf_find_thrd_holder (thread_p, bcb) != NULL);
 
   if (pgbuf_bcb_is_async_flush_request (bcb))
     {
@@ -3181,7 +3451,7 @@ pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid, bool is_unfixed_on
 
       PGBUF_BCB_LOCK (bufptr);
       /* flush condition check */
-      if (!pgbuf_bcb_is_dirty (bufptr) || (is_unfixed_only && bufptr->fcnt > 0)
+      if (!pgbuf_bcb_is_dirty (bufptr) || (is_unfixed_only && get_fcnt (&bufptr->atomic_latch) > 0)
 	  || (volid != NULL_VOLID && volid != bufptr->vpid.volid))
 	{
 	  PGBUF_BCB_UNLOCK (bufptr);
@@ -3441,7 +3711,7 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   check_count_lru = 0;
 
   lru_victim_req_cnt = ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_victim_req_cnt, 0);
-  fix_req_cnt = ATOMIC_TAS_32 (&pgbuf_Pool.monitor.fix_req_cnt, 0);
+  fix_req_cnt = pgbuf_Pool.monitor.fix_req_cnt.exchange (0, std::memory_order_seq_cst);
 
   if (fix_req_cnt > lru_victim_req_cnt)
     {
@@ -4209,10 +4479,13 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
   PGBUF_BCB *bufptr;
   PAGE_PTR pgptr;
 
-  if (logtb_is_interrupted (thread_p, true, &pgbuf_Pool.check_for_interrupts) == true)
+  if (logtb_get_check_interrupt (thread_p) == true)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-      return NULL;
+      if (logtb_is_interrupted (thread_p, true, &pgbuf_Pool.check_for_interrupts) == true)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  return NULL;
+	}
     }
 
 #if defined(CUBRID_DEBUG)
@@ -4339,11 +4612,11 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
   PGBUF_BCB *bufptr;
   PAGE_PTR pgptr;
   LOG_DATA_ADDR addr;
-#if defined(ENABLE_UNUSED_FUNCTION)
-  int vol_fd;
-#endif
 
   assert (start_offset >= 0 && (start_offset + length) <= DB_PAGESIZE);
+
+#if defined(ENABLE_UNUSED_FUNCTION)
+  int vol_fd;
 
   /* Is this a resident page ? */
   hash_anchor = &(pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (vpid)]);
@@ -4360,7 +4633,6 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
 	  return NULL;
 	}
 
-#if defined(ENABLE_UNUSED_FUNCTION)
       if (do_fetch == false)
 	{
 	  /* Do not cache the page in the page buffer pool. Write the desired portion of the page directly to disk */
@@ -4383,13 +4655,13 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
 
 	  return area;
 	}
-#endif
     }
   else
     {
       /* the caller is holding only bufptr->mutex. */
       PGBUF_BCB_UNLOCK (bufptr);
     }
+#endif
 
   pgptr = pgbuf_fix (thread_p, vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (pgptr != NULL)
@@ -4779,7 +5051,7 @@ pgbuf_get_latch_mode (PAGE_PTR pgptr)
   /* NOTE: Does not need to hold mutex since the page is fixed */
 
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
-  return bufptr->latch_mode;
+  return get_latch (&bufptr->atomic_latch);
 }
 
 /*
@@ -5063,9 +5335,12 @@ pgbuf_initialize_bcb_table (void)
 {
   PGBUF_BCB *bufptr;
   PGBUF_IOPAGE_BUFFER *ioptr;
+  PGBUF_ATOMIC_LATCH_IMPL impl;
   int i;
   long long unsigned alloc_size;
-
+  impl.impl.latch_mode = PGBUF_LATCH_INVALID;
+  impl.impl.waiter_exists = false;
+  impl.impl.fcnt = 0;
   /* allocate space for page buffer BCB table */
   alloc_size = (long long unsigned) pgbuf_Pool.num_buffers * PGBUF_BCB_SIZEOF;
   if (!MEM_SIZE_IS_VALID (alloc_size))
@@ -5111,11 +5386,14 @@ pgbuf_initialize_bcb_table (void)
       bufptr->owner_mutex = -1;
 #endif /* SERVER_MODE */
       VPID_SET_NULL (&bufptr->vpid);
-      bufptr->fcnt = 0;
-      bufptr->latch_mode = PGBUF_LATCH_INVALID;
+      placement_new (&bufptr->atomic_latch, 0);
+      bufptr->atomic_latch.store (impl.raw);
 
 #if defined(SERVER_MODE)
       bufptr->next_wait_thrd = NULL;
+#endif /* SERVER_MODE */
+#if defined(SERVER_MODE)
+      bufptr->latch_last_thread = NULL;
 #endif /* SERVER_MODE */
 
       bufptr->hash_next = NULL;
@@ -5208,9 +5486,7 @@ pgbuf_initialize_lock_table (void)
 
   /* allocate memory space for the buffer lock table */
   thrd_num_total = thread_num_total_threads ();
-#if defined(SERVER_MODE)
-  assert ((int) thrd_num_total > MAX_NTRANS * 2);
-#else /* !SERVER_MODE */
+#if !defined(SERVER_MODE)
   assert (thrd_num_total == 1);
 #endif /* !SERVER_MODE */
 
@@ -5429,9 +5705,7 @@ pgbuf_initialize_thrd_holder (void)
   size_t i, j, idx;
 
   thrd_num_total = thread_num_total_threads ();
-#if defined(SERVER_MODE)
-  assert ((int) thrd_num_total > MAX_NTRANS * 2);
-#else /* !SERVER_MODE */
+#if !defined(SERVER_MODE)
   assert (thrd_num_total == 1);
 #endif /* !SERVER_MODE */
 
@@ -5516,9 +5790,17 @@ pgbuf_allocate_thrd_holder_entry (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  thrd_index = thread_get_entry_index (thread_p);
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+      assert (thread_p != NULL);
+    }
 
-  thrd_holder_info = &(pgbuf_Pool.thrd_holder_info[thrd_index]);
+  if (!thread_p->m_holder_anchor)
+    {
+      thread_p->m_holder_anchor = &pgbuf_Pool.thrd_holder_info[thread_p->index];
+    }
+  thrd_holder_info = thread_p->m_holder_anchor;
 
   if (thrd_holder_info->thrd_free_list != NULL)
     {
@@ -5591,11 +5873,17 @@ pgbuf_find_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   PGBUF_HOLDER *holder;
 
   assert (bufptr != NULL);
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+      assert (thread_p != NULL);
+    }
 
-  thrd_index = thread_get_entry_index (thread_p);
-
-  /* For each BCB holder entry of thread's holder list */
-  holder = pgbuf_Pool.thrd_holder_info[thrd_index].thrd_hold_list;
+  if (!thread_p->m_holder_anchor)
+    {
+      thread_p->m_holder_anchor = &pgbuf_Pool.thrd_holder_info[thread_p->index];
+    }
+  holder = thread_p->m_holder_anchor->thrd_hold_list;
 
   while (holder != NULL)
     {
@@ -5696,9 +5984,17 @@ pgbuf_remove_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_HOLDER * holder)
   /* holder->fix_count is always set to some meaningful value when the holder entry is allocated for use. So, at this
    * time, we do not need to initialize it. connect the BCB holder entry into free BCB holder list of given thread. */
 
-  thrd_index = thread_get_entry_index (thread_p);
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+      assert (thread_p != NULL);
+    }
 
-  thrd_holder_info = &(pgbuf_Pool.thrd_holder_info[thrd_index]);
+  if (!thread_p->m_holder_anchor)
+    {
+      thread_p->m_holder_anchor = &pgbuf_Pool.thrd_holder_info[thread_p->index];
+    }
+  thrd_holder_info = thread_p->m_holder_anchor;
 
   holder->next_holder = thrd_holder_info->thrd_free_list;
   thrd_holder_info->thrd_free_list = holder;
@@ -5753,49 +6049,6 @@ exit_on_error:
   return err;
 }
 
-static int
-pgbuf_latch_idle_page (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE request_mode)
-{
-  PGBUF_HOLDER *holder = NULL;
-  bool buf_is_dirty;
-
-  buf_is_dirty = pgbuf_bcb_is_dirty (bufptr);
-
-  bufptr->latch_mode = request_mode;
-  bufptr->fcnt = 1;
-
-  PGBUF_BCB_UNLOCK (bufptr);
-
-  /* allocate a BCB holder entry */
-
-  assert (pgbuf_find_thrd_holder (thread_p, bufptr) == NULL);
-
-  holder = pgbuf_allocate_thrd_holder_entry (thread_p);
-  if (holder == NULL)
-    {
-      /* This situation must not be occurred. */
-      assert (false);
-      return ER_FAILED;
-    }
-
-  holder->fix_count = 1;
-  holder->bufptr = bufptr;
-  holder->perf_stat.dirtied_by_holder = 0;
-  if (request_mode == PGBUF_LATCH_WRITE)
-    {
-      holder->perf_stat.hold_has_write_latch = 1;
-      holder->perf_stat.hold_has_read_latch = 0;
-    }
-  else
-    {
-      holder->perf_stat.hold_has_read_latch = 1;
-      holder->perf_stat.hold_has_write_latch = 0;
-    }
-  holder->perf_stat.dirty_before_hold = buf_is_dirty;
-
-  return NO_ERROR;
-}
-
 /*
  * pgbuf_latch_bcb_upon_fix () -
  *   return: NO_ERROR, or ER_code
@@ -5824,199 +6077,186 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
   int request_fcnt = 1;
   bool is_page_idle;
   bool buf_is_dirty;
-
+  PGBUF_ATOMIC_LATCH_IMPL old_impl, new_impl;
+  bool can_latch, promote_needed;
+  // *INDENT-OFF*
+  scope_exit unlock_BCB ([bufptr] ()
+			 {
+			 PGBUF_BCB_UNLOCK (bufptr);
+			 });
+  // *INDENT-ON*
   /* parameter validation */
   assert (request_mode == PGBUF_LATCH_READ || request_mode == PGBUF_LATCH_WRITE);
   assert (condition == PGBUF_UNCONDITIONAL_LATCH || condition == PGBUF_CONDITIONAL_LATCH);
   assert (is_latch_wait != NULL);
 
   *is_latch_wait = false;
+  holder = pgbuf_find_thrd_holder (thread_p, bufptr);
+// *INDENT-OFF*
+  do
+    {
+      promote_needed = false;
+      is_page_idle = false;
+      can_latch = false;
+      request_fcnt = 1;
+      old_impl = get_impl (&bufptr->atomic_latch);
+      new_impl = old_impl;
+      if (buf_lock_acquired || old_impl.impl.latch_mode == PGBUF_NO_LATCH)
+	{
+	  is_page_idle = true;
+	}
+#if defined (SA_MODE)
+      else
+	{
+	  holder = pgbuf_find_thrd_holder (thread_p, bufptr);
+	  if (holder == NULL)
+	    {
+	      /* It means bufptr->latch_mode was leaked by the previous holder, since there should be no user except me in
+	       * SA_MODE. */
+	      assert (0);
+	      is_page_idle = true;
+	    }
+	}
+#endif
+      if (is_page_idle == true)
+	{
+	  old_impl.impl.waiter_exists = false;
+	  old_impl.impl.latch_mode = PGBUF_NO_LATCH;
+	  old_impl.impl.fcnt = 0;
+	  new_impl = old_impl;
+	  new_impl.impl.latch_mode = request_mode;
+	  new_impl.impl.fcnt = 1;
+	}
+      else
+	{
+	  /* the caller is holding bufptr->mutex */
+
+	  /* Check if we can grant latch immediately or need to block */
+
+	  /* Case 1: READ request on READ-latched page without waiters - can grant immediately */
+	  if (request_mode == PGBUF_LATCH_READ && old_impl.impl.latch_mode == PGBUF_LATCH_READ)
+	    {
+	      if (!old_impl.impl.waiter_exists)
+		{
+		  can_latch = true;
+		  new_impl.impl.fcnt++;
+		}
+	      else
+		{
+		  /* some waiters exists, check i'm the owner */
+		  if (holder == NULL)
+		    {
+		      /* i'm not the owner, need to block */
+		      can_latch = false;
+		      /* waiter_exists is already true */
+		    }
+		  else
+		    {
+		      /* i'm the owner, grant it */
+		      can_latch = true;
+		      new_impl.impl.fcnt++;
+		    }
+		}
+	    }
+	  else
+	    {
+	      /* Case 2: Caller is already a holder */
+	      if (holder != NULL)
+		{
+		  /* Sub-case 2-1: Page is WRITE-latched by holder - can upgrade/regrant */
+		  if (old_impl.impl.latch_mode == PGBUF_LATCH_WRITE)
+		    {
+		      can_latch = true;
+		      new_impl.impl.fcnt++;
+		    }
+		  /* Sub-case 2-2: Page is READ-latched and requesting WRITE latch (promotion) */
+		  else if (old_impl.impl.latch_mode == PGBUF_LATCH_READ)
+		    {
+		      /* If holder is the only one with fix count, can promote to WRITE */
+		      if (old_impl.impl.fcnt == holder->fix_count)
+			{
+			  can_latch = true;
+			  new_impl.impl.latch_mode = request_mode;
+			  new_impl.impl.fcnt = 1;
+			}
+		      else
+			{
+			  /* Other readers exist - need to release holder's READ latch first */
+			  if (condition == PGBUF_CONDITIONAL_LATCH)
+			    {
+			      /* Conditional latch fails */
+			      can_latch = false;
+			      new_impl.impl.waiter_exists = true;
+			    }
+			  else
+			    {
+			      promote_needed = true;
+			      new_impl.impl.fcnt -= holder->fix_count;
+			      can_latch = false;
+			      new_impl.impl.waiter_exists = true;
+			    }
+			}
+		    }
+		}
+	      else
+		{
+		  /* Case 3: Caller is not a holder - need to block and wait */
+		  can_latch = false;
+		  new_impl.impl.waiter_exists = true;
+		}
+	    }
+	}
+    }
+  while (!bufptr->atomic_latch.
+	 compare_exchange_strong (old_impl.raw, new_impl.raw, std::memory_order::memory_order_acq_rel,
+				  std::memory_order::memory_order_acquire));
+// *INDENT-ON*
 
   buf_is_dirty = pgbuf_bcb_is_dirty (bufptr);
 
-  /* the caller is holding bufptr->mutex */
-  is_page_idle = false;
-  if (buf_lock_acquired || bufptr->latch_mode == PGBUF_NO_LATCH)
+  if (is_page_idle)
     {
-      is_page_idle = true;
-    }
-#if defined (SA_MODE)
-  else
-    {
-      holder = pgbuf_find_thrd_holder (thread_p, bufptr);
-      if (holder == NULL)
-	{
-	  /* It means bufptr->latch_mode was leaked by the previous holder, since there should be no user except me in
-	   * SA_MODE. */
-	  assert (0);
-	  is_page_idle = true;
-	}
-    }
-#endif
-
-  if (is_page_idle == true)
-    {
-      return pgbuf_latch_idle_page (thread_p, bufptr, request_mode);
-    }
-
-  if (request_mode == PGBUF_LATCH_READ && bufptr->latch_mode == PGBUF_LATCH_READ)
-    {
-      if (pgbuf_is_exist_blocked_reader_writer (bufptr) == false)
-	{
-	  /* there is not any blocked reader/writer. */
-	  /* grant the request */
-
-	  /* increment the fix count */
-	  bufptr->fcnt++;
-	  assert (0 < bufptr->fcnt);
-
-	  PGBUF_BCB_UNLOCK (bufptr);
-
-	  /* allocate a BCB holder entry */
-
-	  holder = pgbuf_find_thrd_holder (thread_p, bufptr);
-	  if (holder != NULL)
-	    {
-	      /* the caller is the holder of the buffer page */
-	      holder->fix_count++;
-
-	      /* holder->dirty_before_holder not changed */
-	      holder->perf_stat.hold_has_read_latch = 1;
-	    }
-#if defined(SERVER_MODE)
-	  else
-	    {
-	      /* the caller is not the holder of the buffer page */
-	      /* allocate a BCB holder entry */
-	      holder = pgbuf_allocate_thrd_holder_entry (thread_p);
-	      if (holder == NULL)
-		{
-		  /* This situation must not be occurred. */
-		  assert (false);
-		  return ER_FAILED;
-		}
-
-	      holder->fix_count = 1;
-	      holder->bufptr = bufptr;
-
-	      holder->perf_stat.hold_has_read_latch = 1;
-	      holder->perf_stat.hold_has_write_latch = 0;
-	      holder->perf_stat.dirtied_by_holder = 0;
-	      holder->perf_stat.dirty_before_hold = buf_is_dirty;
-	    }
-#endif /* SERVER_MODE */
-
-	  return NO_ERROR;
-	}
-
-#if defined (SA_MODE)
-      /* It is impossible to have a blocked waiter under SA_MODE. */
-      assert (0);
-#endif /* SA_MODE */
-
-      /* at here, there is some blocked reader/writer. */
-
-      holder = pgbuf_find_thrd_holder (thread_p, bufptr);
-      if (holder == NULL)
-	{
-	  /* in case that the caller is not the holder */
-	  goto do_block;
-	}
-
-      /* in case that the caller is the holder */
-      bufptr->fcnt++;
-      assert (0 < bufptr->fcnt);
-
       PGBUF_BCB_UNLOCK (bufptr);
+      unlock_BCB.release ();
+      /* allocate a BCB holder entry */
 
-      /* set BCB holder entry */
+      assert (pgbuf_find_thrd_holder (thread_p, bufptr) == NULL);
 
-      holder->fix_count++;
-      /* holder->dirty_before_holder not changed */
-      if (request_mode == PGBUF_LATCH_WRITE)
-	{
-	  holder->perf_stat.hold_has_write_latch = 1;
-	}
-      else
-	{
-	  holder->perf_stat.hold_has_read_latch = 1;
-	}
-
-      return NO_ERROR;
-    }
-
-  holder = pgbuf_find_thrd_holder (thread_p, bufptr);
-  if (holder == NULL)
-    {
-      /* in case that the caller is not the holder */
-#if defined (SA_MODE)
-      assert (0);
-#endif
-      goto do_block;
-    }
-
-  /* in case that the caller is holder */
-
-  if (bufptr->latch_mode != PGBUF_LATCH_WRITE)
-    {
-      /* check iff nested write mode fix */
-      assert_release (request_mode != PGBUF_LATCH_WRITE);
-
-#if !defined(NDEBUG)
-      if (request_mode == PGBUF_LATCH_WRITE)
+      holder = pgbuf_allocate_thrd_holder_entry (thread_p);
+      if (holder == NULL)
 	{
 	  /* This situation must not be occurred. */
 	  assert (false);
-
-	  PGBUF_BCB_UNLOCK (bufptr);
-
 	  return ER_FAILED;
 	}
-#endif
-    }
 
-  if (bufptr->latch_mode == PGBUF_LATCH_WRITE)
-    {				/* only the holder */
-      assert (bufptr->fcnt == holder->fix_count);
-
-      bufptr->fcnt++;
-      assert (0 < bufptr->fcnt);
-
-      PGBUF_BCB_UNLOCK (bufptr);
-
-      /* set BCB holder entry */
-
-      holder->fix_count++;
-      /* holder->dirty_before_holder not changed */
+      holder->fix_count = 1;
+      holder->bufptr = bufptr;
+      holder->perf_stat.dirtied_by_holder = 0;
       if (request_mode == PGBUF_LATCH_WRITE)
 	{
 	  holder->perf_stat.hold_has_write_latch = 1;
+	  holder->perf_stat.hold_has_read_latch = 0;
 	}
       else
 	{
 	  holder->perf_stat.hold_has_read_latch = 1;
+	  holder->perf_stat.hold_has_write_latch = 0;
 	}
+      holder->perf_stat.dirty_before_hold = buf_is_dirty;
+#if defined(SERVER_MODE)
+      bufptr->latch_last_thread = thread_p;
+#endif /* SERVER_MODE */
 
       return NO_ERROR;
     }
-  else if (bufptr->latch_mode == PGBUF_LATCH_READ)
+
+  if (can_latch)
     {
-#if 0				/* TODO: do not delete me */
-      assert (false);
-#endif
-
-      assert (request_mode == PGBUF_LATCH_WRITE);
-
-      if (bufptr->fcnt == holder->fix_count)
+      PGBUF_BCB_UNLOCK (bufptr);
+      unlock_BCB.release ();
+      if (holder != NULL)
 	{
-	  bufptr->latch_mode = request_mode;	/* PGBUF_LATCH_WRITE */
-	  bufptr->fcnt++;
-	  assert (0 < bufptr->fcnt);
-
-	  PGBUF_BCB_UNLOCK (bufptr);
-
-	  /* set BCB holder entry */
-
 	  holder->fix_count++;
 	  /* holder->dirty_before_holder not changed */
 	  if (request_mode == PGBUF_LATCH_WRITE)
@@ -6027,21 +6267,40 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 	    {
 	      holder->perf_stat.hold_has_read_latch = 1;
 	    }
-
-	  return NO_ERROR;
 	}
-
-      assert (bufptr->fcnt > holder->fix_count);
-
-      if (condition == PGBUF_CONDITIONAL_LATCH)
+#if defined(SERVER_MODE)
+      else
 	{
-	  goto do_block;	/* will return immediately */
+	  /* the caller is not the holder of the buffer page */
+	  /* allocate a BCB holder entry */
+	  holder = pgbuf_allocate_thrd_holder_entry (thread_p);
+	  if (holder == NULL)
+	    {
+	      /* This situation must not be occurred. */
+	      assert (false);
+	      return ER_FAILED;
+	    }
+
+	  holder->fix_count = 1;
+	  holder->bufptr = bufptr;
+
+	  holder->perf_stat.hold_has_read_latch = 1;
+	  holder->perf_stat.hold_has_write_latch = 0;
+	  holder->perf_stat.dirtied_by_holder = 0;
+	  holder->perf_stat.dirty_before_hold = buf_is_dirty;
 	}
+#endif /* SERVER_MODE */
+#if defined(SERVER_MODE)
+      bufptr->latch_last_thread = thread_p;
+#endif /* SERVER_MODE */
 
-      assert (request_fcnt == 1);
-
+      return NO_ERROR;
+    }
+  if (promote_needed)
+    {
+      /* Release current READ latch to prepare for WRITE latch */
       request_fcnt += holder->fix_count;
-      bufptr->fcnt -= holder->fix_count;
+
       holder->fix_count = 0;
 
       INIT_HOLDER_STAT (&holder->perf_stat);
@@ -6050,24 +6309,9 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 	{
 	  /* This situation must not be occurred. */
 	  assert (false);
-
-	  PGBUF_BCB_UNLOCK (bufptr);
-
 	  return ER_FAILED;
 	}
-
-      /* at here, goto do_block; */
     }
-  else
-    {
-#if 0				/* TODO: do not delete me */
-      assert (false);
-#endif
-
-      /* at here, goto do_block; */
-    }
-
-do_block:
 
 #if defined (SA_MODE)
   assert (0);
@@ -6090,7 +6334,7 @@ do_block:
 	  int client_pid;	/* Client process identifier for tran */
 
 	  /* setup timeout error, if wait_msec == LK_ZERO_WAIT */
-
+	  unlock_BCB.release ();
 	  PGBUF_BCB_UNLOCK (bufptr);
 
 	  (void) logtb_find_client_name_host_pid (tran_index, &client_prog_name, &client_user_name, &client_host_name,
@@ -6102,6 +6346,7 @@ do_block:
 	}
       else
 	{
+	  unlock_BCB.release ();
 	  PGBUF_BCB_UNLOCK (bufptr);
 	}
 
@@ -6110,7 +6355,7 @@ do_block:
   else
     {
       /* block the request */
-
+      unlock_BCB.release ();
       if (pgbuf_block_bcb (thread_p, bufptr, request_mode, request_fcnt, false) != NO_ERROR)
 	{
 	  return ER_FAILED;
@@ -6141,7 +6386,9 @@ do_block:
       holder->perf_stat.dirtied_by_holder = 0;
       holder->perf_stat.dirty_before_hold = buf_is_dirty;
       *is_latch_wait = true;
-
+#if defined(SERVER_MODE)
+      bufptr->latch_last_thread = thread_p;
+#endif /* SERVER_MODE */
       return NO_ERROR;
     }
 }
@@ -6173,6 +6420,8 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
   int th_lru_idx;
   PGBUF_ZONE zone;
   int error_code = NO_ERROR;
+  PGBUF_ATOMIC_LATCH_IMPL impl_orig, impl_new;
+  bool blocked_reader_writer = false, is_zero_fcnt = false;
 
   assert (holder_status == NO_ERROR);
 
@@ -6184,15 +6433,34 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
   CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
 
   /* decrement the fix count */
-  bufptr->fcnt--;
-  if (bufptr->fcnt < 0)
+  do
     {
-      /* This situation must not be occurred. */
-      assert (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_UNFIXED_PAGEPTR, 3, pgptr, bufptr->vpid.pageid,
-	      fileio_get_volume_label (bufptr->vpid.volid, PEEK));
-      bufptr->fcnt = 0;
+      blocked_reader_writer = false;
+      is_zero_fcnt = false;
+      impl_orig = get_impl (&bufptr->atomic_latch);
+      impl_new = impl_orig;
+      impl_new.impl.fcnt--;
+      blocked_reader_writer = impl_orig.impl.waiter_exists;
+      if (impl_new.impl.fcnt == 0)
+	{
+	  is_zero_fcnt = true;
+	  impl_new.impl.latch_mode = PGBUF_NO_LATCH;
+	}
+      if (impl_new.impl.fcnt < 0)
+	{
+	  /* This situation must not be occurred. */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_UNFIXED_PAGEPTR, 3, pgptr, bufptr->vpid.pageid,
+		  fileio_get_volume_label (bufptr->vpid.volid, PEEK));
+	  impl_new.impl.latch_mode = PGBUF_NO_LATCH;
+	  impl_new.impl.fcnt = 0;
+	  impl_new.impl.waiter_exists = false;
+	  is_zero_fcnt = true;
+	  break;
+	}
     }
+  while (!bufptr->atomic_latch.compare_exchange_weak (impl_orig.raw, impl_new.raw, std::memory_order_acq_rel,
+						      std::memory_order_acquire));
 
   if (holder_status != NO_ERROR)
     {
@@ -6202,7 +6470,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
       return ER_FAILED;
     }
 
-  if (bufptr->fcnt == 0)
+  if (is_zero_fcnt)
     {
       /* When oldest_unflush_lsa of a page is set, its dirty mark should also be set */
       assert (LSA_ISNULL (&bufptr->oldest_unflush_lsa) || pgbuf_bcb_is_dirty (bufptr));
@@ -6214,9 +6482,9 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	{
 	  pgbuf_move_bcb_to_bottom_lru (thread_p, bufptr);
 	}
-      else if (pgbuf_is_exist_blocked_reader_writer (bufptr) == false)
+      else if (blocked_reader_writer == false)
 	{
-	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.pg_unfix_cnt, 1);
+	  pgbuf_Pool.monitor.pg_unfix_cnt.fetch_add (1, std::memory_order_relaxed);
 
 	  if (PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
 	    {
@@ -6338,20 +6606,20 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	    }
 	}
 
-      bufptr->latch_mode = PGBUF_NO_LATCH;
 #if defined(SERVER_MODE)
       pgbuf_wakeup_reader_writer (thread_p, bufptr);
 #endif /* SERVER_MODE */
     }
 
-  assert (bufptr->latch_mode != PGBUF_LATCH_FLUSH);
+  assert (get_latch (&bufptr->atomic_latch) != PGBUF_LATCH_FLUSH);
 
   if (pgbuf_bcb_is_async_flush_request (bufptr))
     {
       /* PGBUF_LATCH_READ is possible, when a reader and a flusher was blocked by a writer.
        * Blocked readers are already wakened by the ex-owner.
        */
-      assert (bufptr->fcnt == 0 || bufptr->latch_mode == PGBUF_LATCH_WRITE || bufptr->latch_mode == PGBUF_LATCH_READ);
+      assert (get_fcnt (&bufptr->atomic_latch) == 0 || get_latch (&bufptr->atomic_latch) == PGBUF_LATCH_WRITE
+	      || get_latch (&bufptr->atomic_latch) == PGBUF_LATCH_READ);
 
       /* we need to flush bcb. we won't need the bcb mutex afterwards */
       error_code = pgbuf_bcb_safe_flush_force_unlock (thread_p, bufptr, false);
@@ -6537,6 +6805,7 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
 {
 #if defined(SERVER_MODE)
   THREAD_ENTRY *cur_thrd_entry, *thrd_entry;
+  assert (get_waiter_exists (&bufptr->atomic_latch) == true);
 
   /* caller is holding bufptr->mutex */
   /* request_mode == PGBUF_LATCH_READ/PGBUF_LATCH_WRITE/PGBUF_LATCH_FLUSH */
@@ -6586,7 +6855,7 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
       /* is it safe to use infinite wait instead of timed sleep? */
       thread_lock_entry (cur_thrd_entry);
       PGBUF_BCB_UNLOCK (bufptr);
-      thread_suspend_wakeup_and_unlock_entry (thread_p, THREAD_PGBUF_SUSPENDED);
+      thread_suspend_wakeup_and_unlock_entry (cur_thrd_entry, THREAD_PGBUF_SUSPENDED);
 
       if (cur_thrd_entry->resume_status != THREAD_PGBUF_RESUMED)
 	{
@@ -6630,18 +6899,18 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
        * some time interval, the request will be waken up by timeout.
        * When the request is waken up, the request is treated as a victim.
        */
-      if (pgbuf_timed_sleep (thread_p, bufptr, cur_thrd_entry) != NO_ERROR)
+      if (pgbuf_timed_sleep (cur_thrd_entry, bufptr) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
 
 #if !defined (NDEBUG)
       /* To hold mutex is not required because I hold the latch. This means at least my fix count is kept. */
-      assert (0 < bufptr->fcnt);
+      assert (0 < get_fcnt (&bufptr->atomic_latch));
 #endif
     }
+  bufptr->latch_last_thread = thread_p;
 #endif /* SERVER_MODE */
-
   return NO_ERROR;
 }
 
@@ -6649,14 +6918,16 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
 /*
  * pgbuf_timed_sleep_error_handling () -
  *   return:
- *   bufptr(in):
  *   thrd_entry(in):
+ *   bufptr(in):
  */
 static int
-pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * thrd_entry)
+pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thrd_entry, PGBUF_BCB * bufptr)
 {
   THREAD_ENTRY *prev_thrd_entry;
   THREAD_ENTRY *curr_thrd_entry;
+  PGBUF_ATOMIC_LATCH_IMPL impl, impl_new;
+  bool can_grant = false;
 
   PGBUF_BCB_LOCK (bufptr);
 
@@ -6690,14 +6961,25 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, T
   while (bufptr->next_wait_thrd != NULL)
     {
       curr_thrd_entry = bufptr->next_wait_thrd;
-      if (bufptr->latch_mode == PGBUF_LATCH_READ && curr_thrd_entry->request_latch_mode == PGBUF_LATCH_READ)
+      do
+	{
+	  can_grant = false;
+	  impl = get_impl (&bufptr->atomic_latch);
+	  impl_new = impl;
+	  if (impl.impl.latch_mode == PGBUF_LATCH_READ && curr_thrd_entry->request_latch_mode == PGBUF_LATCH_READ)
+	    {
+	      can_grant = true;
+	      impl_new.impl.fcnt += curr_thrd_entry->request_fix_count;
+	    }
+	}
+      while (!bufptr->atomic_latch.compare_exchange_weak (impl.raw, impl_new.raw, std::memory_order_acq_rel,
+							  std::memory_order_acquire));
+      if (can_grant)
 	{
 	  /* grant the request */
 	  thread_lock_entry (curr_thrd_entry);
 	  if (curr_thrd_entry->request_latch_mode == PGBUF_LATCH_READ)
 	    {
-	      bufptr->fcnt += curr_thrd_entry->request_fix_count;
-
 	      /* do not handle BCB holder entry, at here. refer pgbuf_latch_bcb_upon_fix () */
 
 	      /* remove thrd_entry from BCB waiting queue. */
@@ -6725,11 +7007,11 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, T
 /*
  * pgbuf_timed_sleep () -
  *   return: NO_ERROR, or ER_code
+ *   thread_p(in):
  *   bufptr(in):
- *   thrd_entry(in):
  */
 static int
-pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * thrd_entry)
+pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 {
   int r;
   struct timespec to;
@@ -6740,12 +7022,10 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * t
   const char *client_user_name;	/* Client user name for tran */
   const char *client_host_name;	/* Client host for tran */
   int client_pid;		/* Client process identifier for tran */
-
-  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL tv_diff;
+  bool old_check_interrupt = false;
 
   /* After holding the mutex associated with conditional variable, release the bufptr->mutex. */
-  thread_lock_entry (thrd_entry);
+  thread_lock_entry (thread_p);
   PGBUF_BCB_UNLOCK (bufptr);
 
   old_wait_msecs = wait_secs = pgbuf_find_current_wait_msecs (thread_p);
@@ -6759,43 +7039,41 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * t
     }
   else
     {
-      wait_secs = PGBUF_TIMEOUT;
+      wait_secs = pgbuf_latch_timeout;
     }
 
 try_again:
   to.tv_sec = (int) time (NULL) + wait_secs;
   to.tv_nsec = 0;
 
-  if (thrd_entry->event_stats.trace_slow_query == true)
+  if (thread_p->type == TT_WORKER)
     {
-      tsc_getticks (&start_tick);
+      old_check_interrupt = logtb_set_check_interrupt (thread_p, true);
     }
 
-  thrd_entry->resume_status = THREAD_PGBUF_SUSPENDED;
-  r = pthread_cond_timedwait (&thrd_entry->wakeup_cond, &thrd_entry->th_entry_lock, &to);
+  thread_p->resume_status = THREAD_PGBUF_SUSPENDED;
+  r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_PGBUF_SUSPENDED);
 
-  if (thrd_entry->event_stats.trace_slow_query == true)
+  if (thread_p->type == TT_WORKER)
     {
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      TSC_ADD_TIMEVAL (thrd_entry->event_stats.latch_waits, tv_diff);
+      logtb_set_check_interrupt (thread_p, old_check_interrupt);
     }
 
-  if (r == 0)
+  if (r == NO_ERROR)
     {
+      thread_lock_entry (thread_p);
       /* someone wakes up me */
-      if (thrd_entry->resume_status == THREAD_PGBUF_RESUMED)
+      if (thread_p->resume_status == THREAD_PGBUF_RESUMED)
 	{
-	  thread_unlock_entry (thrd_entry);
+	  thread_unlock_entry (thread_p);
 	  return NO_ERROR;
 	}
 
       /* interrupt operation */
-      thrd_entry->request_latch_mode = PGBUF_NO_LATCH;
-      thrd_entry->resume_status = THREAD_PGBUF_RESUMED;
-      thread_unlock_entry (thrd_entry);
+      thread_p->request_latch_mode = PGBUF_NO_LATCH;
+      thread_unlock_entry (thread_p);
 
-      if (pgbuf_timed_sleep_error_handling (thread_p, bufptr, thrd_entry) == NO_ERROR)
+      if (pgbuf_timed_sleep_error_handling (thread_p, bufptr) == NO_ERROR)
 	{
 	  PGBUF_BCB_UNLOCK (bufptr);
 	}
@@ -6803,12 +7081,12 @@ try_again:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
       return ER_FAILED;
     }
-  else if (r == ETIMEDOUT)
+  else if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
     {
       /* rollback operation, postpone operation, etc. */
-      if (thrd_entry->resume_status == THREAD_PGBUF_RESUMED)
+      if (thread_p->resume_status == THREAD_PGBUF_RESUMED)
 	{
-	  thread_unlock_entry (thrd_entry);
+	  thread_unlock_entry (thread_p);
 	  return NO_ERROR;
 	}
 
@@ -6821,11 +7099,11 @@ try_again:
       /* following order of execution is important. */
       /* request_latch_mode == PGBUF_NO_LATCH means that the thread has waken up by timeout. This value must be set
        * before release the mutex. */
-      save_request_latch_mode = thrd_entry->request_latch_mode;
-      thrd_entry->request_latch_mode = PGBUF_NO_LATCH;
-      thread_unlock_entry (thrd_entry);
+      save_request_latch_mode = thread_p->request_latch_mode;
+      thread_p->request_latch_mode = PGBUF_NO_LATCH;
+      thread_unlock_entry (thread_p);
 
-      if (pgbuf_timed_sleep_error_handling (thread_p, bufptr, thrd_entry) == NO_ERROR)
+      if (pgbuf_timed_sleep_error_handling (thread_p, bufptr) == NO_ERROR)
 	{
 	  goto er_set_return;
 	}
@@ -6834,7 +7112,7 @@ try_again:
     }
   else
     {
-      thread_unlock_entry (thrd_entry);
+      thread_unlock_entry (thread_p);
       /* error setting */
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_TIMEDWAIT, 0);
       return ER_FAILED;
@@ -6882,10 +7160,10 @@ er_set_return:
 
       PGBUF_BCB_UNLOCK (bufptr);
 
-      (void) logtb_find_client_name_host_pid (thrd_entry->tran_index, &client_prog_name, &client_user_name,
+      (void) logtb_find_client_name_host_pid (thread_p->tran_index, &client_prog_name, &client_user_name,
 					      &client_host_name, &client_pid);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_PAGE_TIMEOUT, 8, thrd_entry->tran_index, client_user_name,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_PAGE_TIMEOUT, 8, thread_p->tran_index, client_user_name,
 	      client_host_name, client_pid, (save_request_latch_mode == PGBUF_LATCH_READ ? "READ" : "WRITE"),
 	      bufptr->vpid.volid, bufptr->vpid.pageid, NULL);
     }
@@ -6910,11 +7188,14 @@ pgbuf_wakeup_reader_writer (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   THREAD_ENTRY *thrd_entry = NULL;
   THREAD_ENTRY *prev_thrd_entry = NULL;
   THREAD_ENTRY *next_thrd_entry = NULL;
+  PGBUF_ATOMIC_LATCH_IMPL impl = get_impl (&bufptr->atomic_latch), impl_new;
+  bool can_grant = false, should_stop = false;
 
   /* the caller is holding bufptr->mutex */
+#if !defined (NDEBUG)
 
-  assert (bufptr->latch_mode == PGBUF_NO_LATCH && bufptr->fcnt == 0);
-
+  assert (impl.impl.latch_mode == PGBUF_NO_LATCH && impl.impl.fcnt == 0);
+#endif
   /* fcnt == 0, bufptr->latch_mode == PGBUF_NO_LATCH */
 
   /* how it works:
@@ -6957,58 +7238,81 @@ pgbuf_wakeup_reader_writer (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 	  continue;
 	}
 
-      if ((bufptr->latch_mode == PGBUF_NO_LATCH)
-	  || (bufptr->latch_mode == PGBUF_LATCH_READ && thrd_entry->request_latch_mode == PGBUF_LATCH_READ))
+      do
 	{
-	  thread_lock_entry (thrd_entry);
-
-	  if (thrd_entry->request_latch_mode != PGBUF_NO_LATCH)
+	  can_grant = false;
+	  impl = get_impl (&bufptr->atomic_latch);
+	  impl_new = impl;
+	  if (impl.impl.latch_mode == PGBUF_NO_LATCH
+	      || (impl.impl.latch_mode == PGBUF_LATCH_READ && thrd_entry->request_latch_mode == PGBUF_LATCH_READ))
 	    {
-	      /* grant the request */
-	      bufptr->latch_mode = (PGBUF_LATCH_MODE) thrd_entry->request_latch_mode;
-	      bufptr->fcnt += thrd_entry->request_fix_count;
-
-	      /* do not handle BCB holder entry, at here. refer pgbuf_latch_bcb_upon_fix () */
-
-	      /* remove thrd_entry from BCB waiting queue. */
-	      if (prev_thrd_entry == NULL)
+	      thread_lock_entry (thrd_entry);
+	      if (thrd_entry->request_latch_mode == PGBUF_NO_LATCH)
 		{
-		  bufptr->next_wait_thrd = next_thrd_entry;
+		  can_grant = false;
+		  if (prev_thrd_entry == NULL)
+		    {
+		      bufptr->next_wait_thrd = next_thrd_entry;
+		    }
+		  else
+		    {
+		      prev_thrd_entry->next_wait_thrd = next_thrd_entry;
+		    }
+		  thrd_entry->next_wait_thrd = NULL;
+		  thread_unlock_entry (thrd_entry);
+		  break;
 		}
-	      else
-		{
-		  prev_thrd_entry->next_wait_thrd = next_thrd_entry;
-		}
-	      thrd_entry->next_wait_thrd = NULL;
-
-	      /* wake up the thread */
-	      pgbuf_wakeup (thrd_entry);
+	      can_grant = true;
+	      impl_new.impl.fcnt += thrd_entry->request_fix_count;
+	      impl_new.impl.latch_mode = (PGBUF_LATCH_MODE) (uint16_t) thrd_entry->request_latch_mode;
+	      assert_release (impl_new.impl.latch_mode == PGBUF_NO_LATCH || impl_new.impl.latch_mode == PGBUF_LATCH_READ
+			      || impl_new.impl.latch_mode == PGBUF_LATCH_WRITE
+			      || impl_new.impl.latch_mode == PGBUF_LATCH_FLUSH);
+	    }
+	  else if (impl.impl.latch_mode == PGBUF_LATCH_READ)
+	    {
+	      /* Look for other readers. */
+	      prev_thrd_entry = thrd_entry;
+	      break;
 	    }
 	  else
 	    {
-	      if (prev_thrd_entry == NULL)
-		{
-		  bufptr->next_wait_thrd = next_thrd_entry;
-		}
-	      else
-		{
-		  prev_thrd_entry->next_wait_thrd = next_thrd_entry;
-		}
-	      thrd_entry->next_wait_thrd = NULL;
-	      thread_unlock_entry (thrd_entry);
+	      assert (impl.impl.latch_mode == PGBUF_LATCH_WRITE);
+	      should_stop = true;
+	      break;
 	    }
 	}
-      else if (bufptr->latch_mode == PGBUF_LATCH_READ)
+      while (!bufptr->atomic_latch.compare_exchange_strong (impl.raw, impl_new.raw, std::memory_order_acq_rel,
+							    std::memory_order_acquire));
+
+      if (should_stop)
 	{
-	  /* Look for other readers. */
-	  prev_thrd_entry = thrd_entry;
-	  continue;
-	}
-      else
-	{
-	  assert (bufptr->latch_mode == PGBUF_LATCH_WRITE);
 	  break;
 	}
+
+      if (can_grant)
+	{
+	  /* do not handle BCB holder entry, at here. refer pgbuf_latch_bcb_upon_fix () */
+
+	  /* remove thrd_entry from BCB waiting queue. */
+	  if (prev_thrd_entry == NULL)
+	    {
+	      bufptr->next_wait_thrd = next_thrd_entry;
+	    }
+	  else
+	    {
+	      prev_thrd_entry->next_wait_thrd = next_thrd_entry;
+	    }
+	  thrd_entry->next_wait_thrd = NULL;
+
+	  /* wake up the thread */
+	  pgbuf_wakeup (thrd_entry);
+	}
+    }
+
+  if (!pgbuf_is_exist_blocked_reader_writer (bufptr))
+    {
+      set_waiter_exists (&bufptr->atomic_latch, false);
     }
 }
 #endif /* SERVER_MODE */
@@ -7144,6 +7448,113 @@ try_again:
   return bufptr;
 }
 
+STATIC_INLINE PAGE_PTR
+pgbuf_lockfree_fix_ro (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode)
+{
+  assert (fetch_mode == OLD_PAGE || fetch_mode == OLD_PAGE_PREVENT_DEALLOC || fetch_mode == OLD_PAGE_MAYBE_DEALLOCATED);
+  PGBUF_HOLDER *holder = NULL;
+  PGBUF_ATOMIC_LATCH_IMPL impl, new_impl;
+  PGBUF_BCB *bufptr =
+    pgbuf_search_hash_chain_no_bcb_lock (thread_p, &pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (vpid)], vpid);
+  PAGE_PTR pgptr = NULL;
+  if (bufptr == NULL)
+    {
+      return NULL;
+    }
+
+  do
+    {
+      impl = get_impl (&bufptr->atomic_latch);
+      new_impl = impl;
+      if (impl.impl.latch_mode != PGBUF_LATCH_READ || impl.impl.waiter_exists || impl.impl.fcnt == 0
+	  || bufptr->vpid.pageid != vpid->pageid || bufptr->vpid.volid != vpid->volid)
+	{
+	  return NULL;
+	}
+      new_impl.impl.fcnt++;
+    }
+  while (!bufptr->atomic_latch.compare_exchange_weak (impl.raw, new_impl.raw,
+						      std::memory_order_acq_rel, std::memory_order_acquire));
+
+
+  holder = pgbuf_find_thrd_holder (thread_p, bufptr);
+  if (holder != NULL)
+    {
+      /* the caller is the holder of the buffer page */
+      holder->fix_count++;
+
+      /* holder->dirty_before_holder not changed */
+      holder->perf_stat.hold_has_read_latch = 1;
+    }
+#if defined(SERVER_MODE)
+  else
+    {
+      /* the caller is not the holder of the buffer page */
+      /* allocate a BCB holder entry */
+      holder = pgbuf_allocate_thrd_holder_entry (thread_p);
+      if (holder == NULL)
+	{
+	  /* This situation must not be occurred. */
+	  assert (false);
+	  return NULL;
+	}
+
+      holder->fix_count = 1;
+      holder->bufptr = bufptr;
+
+      holder->perf_stat.hold_has_read_latch = 1;
+      holder->perf_stat.hold_has_write_latch = 0;
+      holder->perf_stat.dirtied_by_holder = 0;
+      holder->perf_stat.dirty_before_hold = pgbuf_bcb_is_dirty (bufptr);
+    }
+#endif /* SERVER_MODE */
+  CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
+  assert (pgptr != NULL);
+  return pgptr;
+}
+
+STATIC_INLINE PGBUF_BCB *
+pgbuf_search_hash_chain_no_bcb_lock (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid)
+{
+  PGBUF_BCB *bufptr;
+
+  bufptr = hash_anchor->hash_next;
+  while (bufptr != NULL)
+    {
+      if (VPID_EQ (&(bufptr->vpid), vpid))
+	{
+	  return bufptr;
+	}
+      bufptr = bufptr->hash_next;
+    }
+  return NULL;
+}
+
+STATIC_INLINE bool
+pgbuf_lockfree_unfix_ro (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
+{
+  PGBUF_ATOMIC_LATCH_IMPL impl, new_impl;
+  do
+    {
+      impl = get_impl (&bufptr->atomic_latch);
+
+      if (impl.impl.latch_mode != PGBUF_LATCH_READ || impl.impl.waiter_exists || impl.impl.fcnt == 1)
+	{
+	  return false;
+	}
+      new_impl = impl;
+      new_impl.impl.fcnt--;
+    }
+  while (!bufptr->atomic_latch.compare_exchange_weak (impl.raw, new_impl.raw,
+						      std::memory_order_acq_rel, std::memory_order_acquire));
+#if !defined (NDEBUG)
+  PAGE_PTR pgptr = NULL;
+  CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
+  thread_p->get_pgbuf_tracker ().decrement (pgptr);
+#endif // !NDEBUG
+  return true;
+}
+
 /*
  * pgbuf_insert_into_hash_chain () - Inserts BCB into the hash chain
  *   return: NO_ERROR
@@ -7241,7 +7652,7 @@ pgbuf_delete_from_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 
       /* Someone tries to fix the current buffer page. So, give up selecting current buffer page as a victim. */
       pthread_mutex_unlock (&hash_anchor->hash_mutex);
-      bufptr->latch_mode = PGBUF_NO_LATCH;
+      set_latch (&bufptr->atomic_latch, PGBUF_NO_LATCH);
       PGBUF_BCB_UNLOCK (bufptr);
       return ER_FAILED;
     }
@@ -7568,7 +7979,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
       high_priority = high_priority || VACUUM_IS_THREAD_VACUUM (thread_p) || pgbuf_is_thread_high_priority (thread_p);
 
       /* add to waiters thread list to be assigned victim directly */
-      to.tv_sec = (int) time (NULL) + PGBUF_TIMEOUT;
+      to.tv_sec = (int) time (NULL) + pgbuf_latch_timeout;
       to.tv_nsec = 0;
 
       thread_lock_entry (thread_p);
@@ -7720,7 +8131,7 @@ end:
  */
 static PGBUF_BCB *
 pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
-			 PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf, bool * try_again)
+			 PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf, bool * try_again, bool already_locked)
 {
   PGBUF_BCB *bufptr = NULL;
   PAGE_PTR pgptr = NULL;
@@ -7728,6 +8139,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   bool success;
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[tran_index];
+  PGBUF_ATOMIC_LATCH_IMPL impl;
 
 #if defined (ENABLE_SYSTEMTAP)
   bool monitored = false;
@@ -7746,39 +8158,45 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 
   /* In this case, the caller is holding only hash_anchor->hash_mutex. The hash_anchor->hash_mutex is to be
    * released in pgbuf_lock_page (). */
-  if (pgbuf_lock_page (thread_p, hash_anchor, vpid) != PGBUF_LOCK_HOLDER)
+  if (!already_locked && pgbuf_lock_page (thread_p, hash_anchor, vpid) != PGBUF_LOCK_HOLDER)
     {
-      if (perf->is_perf_tracking)
+      if (perf)
 	{
-	  tsc_getticks (&perf->end_tick);
-	  tsc_elapsed_time_usec (&perf->tv_diff, perf->end_tick, perf->start_tick);
-	  perf->lock_wait_time = perf->tv_diff.tv_sec * 1000000LL + perf->tv_diff.tv_usec;
-	}
+	  if (perf->is_perf_tracking)
+	    {
+	      tsc_getticks (&perf->end_tick);
+	      tsc_elapsed_time_usec (&perf->tv_diff, perf->end_tick, perf->start_tick);
+	      perf->lock_wait_time = perf->tv_diff.tv_sec * 1000000LL + perf->tv_diff.tv_usec;
+	    }
 
-      if (fetch_mode == NEW_PAGE)
-	{
-	  perf->perf_page_found = PERF_PAGE_MODE_NEW_LOCK_WAIT;
-	}
-      else
-	{
-	  perf->perf_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
+	  if (fetch_mode == NEW_PAGE)
+	    {
+	      perf->perf_page_found = PERF_PAGE_MODE_NEW_LOCK_WAIT;
+	    }
+	  else
+	    {
+	      perf->perf_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
+	    }
 	}
       *try_again = true;
       return NULL;
     }
 
-  if (perf->perf_page_found != PERF_PAGE_MODE_NEW_LOCK_WAIT && perf->perf_page_found != PERF_PAGE_MODE_OLD_LOCK_WAIT)
+  if (perf)
     {
-      if (fetch_mode == NEW_PAGE)
+      if (perf->perf_page_found != PERF_PAGE_MODE_NEW_LOCK_WAIT
+	  && perf->perf_page_found != PERF_PAGE_MODE_OLD_LOCK_WAIT)
 	{
-	  perf->perf_page_found = PERF_PAGE_MODE_NEW_NO_WAIT;
-	}
-      else
-	{
-	  perf->perf_page_found = PERF_PAGE_MODE_OLD_NO_WAIT;
+	  if (fetch_mode == NEW_PAGE)
+	    {
+	      perf->perf_page_found = PERF_PAGE_MODE_NEW_NO_WAIT;
+	    }
+	  else
+	    {
+	      perf->perf_page_found = PERF_PAGE_MODE_OLD_NO_WAIT;
+	    }
 	}
     }
-
   /* Now, the caller is not holding any mutex. */
   bufptr = pgbuf_allocate_bcb (thread_p, vpid);
   if (bufptr == NULL)
@@ -7794,7 +8212,11 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   /* initialize the BCB */
   bufptr->vpid = *vpid;
   assert (!pgbuf_bcb_avoid_victim (bufptr));
-  bufptr->latch_mode = PGBUF_NO_LATCH;
+  impl = get_impl (&bufptr->atomic_latch);
+  impl.impl.latch_mode = PGBUF_NO_LATCH;
+  impl.impl.waiter_exists = false;
+  impl.impl.fcnt = 0;
+  bufptr->atomic_latch.store (impl.raw);
   pgbuf_bcb_update_flags (thread_p, bufptr, 0, PGBUF_BCB_ASYNC_FLUSH_REQ);	/* todo: why this?? */
   pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (bufptr, ARG_FILE_LINE);
   LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
@@ -7949,6 +8371,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 static int
 pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 {
+  PGBUF_ATOMIC_LATCH_IMPL impl;
 #if defined(SERVER_MODE)
   if (thread_p == NULL)
     {
@@ -7971,14 +8394,18 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
     {
       pgbuf_bcb_update_flags (thread_p, bufptr, 0, PGBUF_BCB_TO_VACUUM_FLAG);
     }
-  assert (bufptr->latch_mode == PGBUF_NO_LATCH);
+  assert (get_latch (&bufptr->atomic_latch) == PGBUF_NO_LATCH);
 
   /* a safe victim */
   if (pgbuf_delete_from_hash_chain (thread_p, bufptr) != NO_ERROR)
     {
       return ER_FAILED;
     }
-
+  impl = get_impl (&bufptr->atomic_latch);
+  impl.impl.latch_mode = PGBUF_LATCH_INVALID;
+  impl.impl.waiter_exists = false;
+  impl.impl.fcnt = 0;
+  bufptr->atomic_latch.store (impl.raw);
   /* If above function returns success, the caller is still holding bufptr->mutex.
    * Otherwise, the caller does not hold bufptr->mutex.
    */
@@ -7999,7 +8426,7 @@ pgbuf_invalidate_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   /* the caller is holding bufptr->mutex */
   /* be sure that there is not any reader/writer */
 
-  if (bufptr->latch_mode == PGBUF_LATCH_INVALID)
+  if (get_latch (&bufptr->atomic_latch) == PGBUF_LATCH_INVALID)
     {
       PGBUF_BCB_UNLOCK (bufptr);
       return NO_ERROR;
@@ -8029,7 +8456,7 @@ pgbuf_invalidate_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       break;
     }
 
-  if (bufptr->latch_mode == PGBUF_NO_LATCH)
+  if (get_latch (&bufptr->atomic_latch) == PGBUF_NO_LATCH)
     {
       if (pgbuf_delete_from_hash_chain (thread_p, bufptr) != NO_ERROR)
 	{
@@ -8047,7 +8474,7 @@ pgbuf_invalidate_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
     {
       /* todo: what to do? */
       assert (false);
-      bufptr->latch_mode = PGBUF_NO_LATCH;
+      set_latch (&bufptr->atomic_latch, PGBUF_NO_LATCH);
       PGBUF_BCB_UNLOCK (bufptr);
     }
 
@@ -8123,8 +8550,10 @@ static int
 pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous, bool * locked)
 {
   int error_code = NO_ERROR;
+  PGBUF_ATOMIC_LATCH_IMPL impl, impl_new;
+  bool immediate_flush = false, block = false, is_flushing = false;
 
-  assert (bufptr->latch_mode != PGBUF_LATCH_FLUSH);
+  assert (get_latch (&bufptr->atomic_latch) != PGBUF_LATCH_FLUSH);
 
   PGBUF_BCB_CHECK_OWN (bufptr);
   *locked = true;
@@ -8146,23 +8575,46 @@ pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool
    * for the second case, we know the bcb is already being flushed. if we need to be sure page is flushed, we'll put
    * ourselves in bcb's waiting list (and a thread doing flush should wake us).
    */
+  do
+    {
+      immediate_flush = false;
+      block = false;
+      is_flushing = false;
+      impl = get_impl (&bufptr->atomic_latch);
+      impl_new = impl;
+      is_flushing = pgbuf_bcb_is_flushing (bufptr);
+      if (!is_flushing
+	  && (impl.impl.latch_mode == PGBUF_NO_LATCH || impl.impl.latch_mode == PGBUF_LATCH_READ
+	      || (impl.impl.latch_mode == PGBUF_LATCH_WRITE && pgbuf_find_thrd_holder (thread_p, bufptr) != NULL)))
+	{
+	  immediate_flush = true;
+	}
+      else
+	{
+	  assert (is_flushing || impl.impl.latch_mode == PGBUF_LATCH_WRITE);
+	  if (synchronous)
+	    {
+	      block = true;
+	      impl_new.impl.waiter_exists = true;
+	    }
+	}
+    }
+  while (!bufptr->atomic_latch.compare_exchange_strong (impl.raw, impl_new.raw, std::memory_order_acq_rel,
+							std::memory_order_acquire));
 
-  if (!pgbuf_bcb_is_flushing (bufptr)
-      && (bufptr->latch_mode == PGBUF_NO_LATCH || bufptr->latch_mode == PGBUF_LATCH_READ
-	  || (bufptr->latch_mode == PGBUF_LATCH_WRITE && pgbuf_find_thrd_holder (thread_p, bufptr) != NULL)))
+  if (immediate_flush)
     {
       /* don't have to wait for writer/flush */
       return pgbuf_bcb_flush_with_wal (thread_p, bufptr, false, locked);
     }
 
   /* page is write latched. notify the holder to flush it on unfix. */
-  assert (pgbuf_bcb_is_flushing (bufptr) || bufptr->latch_mode == PGBUF_LATCH_WRITE);
-  if (!pgbuf_bcb_is_flushing (bufptr))
+  if (!is_flushing)
     {
       pgbuf_bcb_update_flags (thread_p, bufptr, PGBUF_BCB_ASYNC_FLUSH_REQ, 0);
     }
 
-  if (synchronous == true)
+  if (block)
     {
       /* wait for bcb to be flushed. */
       *locked = false;
@@ -8246,7 +8698,7 @@ pgbuf_put_bcb_into_invalid_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 
   /* the caller is holding bufptr->mutex */
   VPID_SET_NULL (&bufptr->vpid);
-  bufptr->latch_mode = PGBUF_LATCH_INVALID;
+  set_latch (&bufptr->atomic_latch, PGBUF_LATCH_INVALID);
   assert ((bufptr->flags & PGBUF_BCB_FLAGS_MASK) == 0);
   pgbuf_bcb_change_zone (thread_p, bufptr, 0, PGBUF_INVALID_ZONE);
   pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (bufptr, ARG_FILE_LINE);
@@ -8552,9 +9004,11 @@ pgbuf_is_bcb_fixed_by_any (PGBUF_BCB * bcb, bool has_mutex_lock)
    *       cases. we'd rather miss a few good bcb's from time to time, rather than processing the waiting list for
    *       every bcb. */
 
-  return bcb->fcnt > 0 || bcb->next_wait_thrd != NULL || (!has_mutex_lock && bcb->latch_mode != PGBUF_NO_LATCH);
+  return get_fcnt (&bcb->atomic_latch) > 0 || bcb->next_wait_thrd != NULL || (!has_mutex_lock
+									      && get_latch (&bcb->atomic_latch) !=
+									      PGBUF_NO_LATCH);
 #else /* !SERVER_MODE */
-  return bcb->fcnt != 0;
+  return get_fcnt (&bcb->atomic_latch) != 0;
 #endif /* !SERVER_MODE */
 }
 
@@ -10025,10 +10479,10 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
   /* the caller is holding bufptr->mutex */
   *is_bcb_locked = true;
 
-  assert (bufptr->latch_mode == PGBUF_NO_LATCH || bufptr->latch_mode == PGBUF_LATCH_READ
-	  || bufptr->latch_mode == PGBUF_LATCH_WRITE);
+  assert (get_latch (&bufptr->atomic_latch) == PGBUF_NO_LATCH || get_latch (&bufptr->atomic_latch) == PGBUF_LATCH_READ
+	  || get_latch (&bufptr->atomic_latch) == PGBUF_LATCH_WRITE);
 #if !defined (NDEBUG) && defined (SERVER_MODE)
-  if (bufptr->latch_mode == PGBUF_LATCH_WRITE)
+  if (get_latch (&bufptr->atomic_latch) == PGBUF_LATCH_WRITE)
     {
       /* I must be the owner, or else we'll be in trouble. */
       int thread_index = thread_p->index;
@@ -10091,7 +10545,7 @@ start_copy_page:
     }
   if (uses_dwb)
     {
-      error = dwb_set_data_on_next_slot (thread_p, iopage, false, &dwb_slot);
+      error = dwb_set_data_on_next_slot (thread_p, iopage, false, false, &dwb_slot);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -10140,7 +10594,7 @@ copy_unflushed_lsa:
    */
   if (uses_dwb)
     {
-      error = dwb_add_page (thread_p, iopage, &bufptr->vpid, &dwb_slot);
+      error = dwb_add_page (thread_p, iopage, &bufptr->vpid, false, &dwb_slot);
       if (error == NO_ERROR)
 	{
 	  if (dwb_slot == NULL)
@@ -10192,7 +10646,7 @@ copy_unflushed_lsa:
       return ER_FAILED;
     }
 
-  assert (bufptr->latch_mode != PGBUF_LATCH_FLUSH);
+  assert (get_latch (&bufptr->atomic_latch) != PGBUF_LATCH_FLUSH);
 
 #if defined (SERVER_MODE)
   /* if the flush thread is under pressure, we'll move some of the workload to post-flush thread. */
@@ -10380,7 +10834,7 @@ pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr)
 
       if (((PAGE_PTR) (&(bufptr->iopage_buffer->iopage.page[0]))) == pgptr)
 	{
-	  if (bufptr->fcnt <= 0)
+	  if (get_fcnt (&bufptr->atomic_latch) <= 0)
 	    {
 	      /* This situation must not be occurred. */
 	      assert (false);
@@ -10590,7 +11044,7 @@ pgbuf_dump_if_any_fixed (void)
       bufptr = PGBUF_FIND_BCB_PTR (bufid);
       PGBUF_BCB_LOCK (bufptr);
 
-      if (bufptr->latch_mode != PGBUF_LATCH_INVALID && bufptr->fcnt > 0)
+      if (get_latch (&bufptr->atomic_latch) != PGBUF_LATCH_INVALID && get_fcnt (&bufptr->atomic_latch) > 0)
 	{
 	  /* The buffer is not unfixed */
 	  PGBUF_BCB_UNLOCK (bufptr);
@@ -10678,20 +11132,20 @@ pgbuf_dump (void)
 
       /* check if the content of current buffer page is consistent. */
       consistent = pgbuf_is_consistent (bufptr, 0);
-      if (!pgbuf_bcb_is_dirty (bufptr) && bufptr->fcnt == 0 && consistent != PGBUF_CONTENT_BAD)
+      if (!pgbuf_bcb_is_dirty (bufptr) && get_fcnt (&bufptr->atomic_latch) == 0 && consistent != PGBUF_CONTENT_BAD)
 	{
 	  PGBUF_BCB_UNLOCK (bufptr);
 	  continue;
 	}
       else
 	{
-	  latch_mode_str = pgbuf_latch_mode_str (bufptr->latch_mode);
+	  latch_mode_str = pgbuf_latch_mode_str (get_latch (&bufptr->atomic_latch));
 	  zone_str = pgbuf_latch_mode_str (bufptr->zone);
 	  consistenet_str = pgbuf_consistent_str (consistent);
 
 	  fprintf (stdout, "%4d %5d %6d %4d %9s %1d %1d %1d %11s %lld|%4d %10s %p %p-%p\n",
-		   pgbuf_bcb_get_pool_index (bufptr), VPID_AS_ARGS (&bufptr->vpid), bufptr->fcnt, latch_mode_str,
-		   pgbuf_bcb_is_dirty (bufptr), (int) pgbuf_bcb_is_flushing (bufptr),
+		   pgbuf_bcb_get_pool_index (bufptr), VPID_AS_ARGS (&bufptr->vpid), get_fcnt (&bufptr->atomic_latch),
+		   latch_mode_str, pgbuf_bcb_is_dirty (bufptr), (int) pgbuf_bcb_is_flushing (bufptr),
 		   (int) pgbuf_bcb_is_async_flush_request (bufptr), zone_str,
 		   LSA_AS_ARGS (&bufptr->iopage_buffer->iopage.prv.lsa), consistent_str, (void *) bufptr,
 		   (void *) (&bufptr->iopage_buffer->iopage.page[0]),
@@ -10761,7 +11215,7 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
 	      consistent = (pgbuf_bcb_is_dirty (bufptr) ? PGBUF_CONTENT_GOOD : PGBUF_CONTENT_BAD);
 
 	      /* If fix count is greater than likely_bad_after_fixcnt, the function cannot state that the page is bad */
-	      if (consistent == PGBUF_CONTENT_BAD && bufptr->fcnt > likely_bad_after_fixcnt)
+	      if (consistent == PGBUF_CONTENT_BAD && get_fcnt (&bufptr->atomic_latch) > likely_bad_after_fixcnt)
 		{
 		  consistent = PGBUF_CONTENT_LIKELY_BAD;
 		}
@@ -10785,7 +11239,8 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
     }
   else
     {
-      if (bufptr->fcnt <= 0 && pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+      if (get_fcnt (&bufptr->atomic_latch) <= 0
+	  && pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_ALL))
 	{
 	  int i;
 	  /* The page should be scrambled, otherwise some one step on it */
@@ -10920,7 +11375,7 @@ pgbuf_set_dirty_buffer_ptr (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   pgbuf_bcb_set_dirty (thread_p, bufptr);
 
   holder = pgbuf_find_thrd_holder (thread_p, bufptr);
-  assert (bufptr->latch_mode == PGBUF_LATCH_WRITE);
+  assert (get_latch (&bufptr->atomic_latch) == PGBUF_LATCH_WRITE);
   assert (holder != NULL);
   if (holder != NULL && holder->perf_stat.dirtied_by_holder == 0)
     {
@@ -11192,7 +11647,7 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, 
 	}
 
       /* Abandon batch for: fixed pages, latched pages or with 'avoid_victim' */
-      if (pgbuf_bcb_is_flushing (bufptr) || bufptr->latch_mode > PGBUF_LATCH_READ)
+      if (pgbuf_bcb_is_flushing (bufptr) || get_latch (&bufptr->atomic_latch) > PGBUF_LATCH_READ)
 	{
 	  PGBUF_BCB_UNLOCK (bufptr);
 	  if (search_nondirty == true)
@@ -11367,8 +11822,8 @@ pgbuf_add_bufptr_to_batch (PGBUF_BCB * bufptr, int idx)
   PGBUF_BATCH_FLUSH_HELPER *helper = &pgbuf_Flush_helper;
   int pos;
 
-  assert (bufptr->latch_mode == PGBUF_NO_LATCH || bufptr->latch_mode == PGBUF_LATCH_READ
-	  || bufptr->latch_mode == PGBUF_LATCH_WRITE);
+  assert (get_latch (&bufptr->atomic_latch) == PGBUF_NO_LATCH || get_latch (&bufptr->atomic_latch) == PGBUF_LATCH_READ
+	  || get_latch (&bufptr->atomic_latch) == PGBUF_LATCH_WRITE);
 
   assert (idx > -PGBUF_NEIGHBOR_PAGES && idx < PGBUF_NEIGHBOR_PAGES);
   pos = PGBUF_NEIGHBOR_POS (idx);
@@ -11417,7 +11872,7 @@ pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * e
       return NO_ERROR;
     }
 
-  if (pgbuf_bcb_is_flushing (bufptr) || bufptr->latch_mode > PGBUF_LATCH_READ)
+  if (pgbuf_bcb_is_flushing (bufptr) || get_latch (&bufptr->atomic_latch) > PGBUF_LATCH_READ)
     {
       PGBUF_BCB_UNLOCK (bufptr);
       return NO_ERROR;
@@ -11667,6 +12122,13 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
       er_status = er_errid_if_has_error ();
       if (er_status == ER_PB_BAD_PAGEID || er_status == ER_INTERRUPTED)
 	{
+	  goto exit;
+	}
+      /* OLD_PAGE_MAYBE_DEALLOCATED sets ER_WARNING_SEVERITY for ER_PB_BAD_PAGEID,
+       * which er_errid_if_has_error() does not catch; handle it explicitly here. */
+      if (fetch_mode == OLD_PAGE_MAYBE_DEALLOCATED && er_errid () == ER_PB_BAD_PAGEID)
+	{
+	  er_status = ER_PB_BAD_PAGEID;
 	  goto exit;
 	}
 
@@ -12115,10 +12577,21 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	    }
 	  if (er_status == ER_PB_BAD_PAGEID)
 	    {
-	      /* page was probably deallocated? so has the impossible indeed happen?? */
-	      assert (false);
-	      er_log_debug (ARG_FILE_LINE, "pgbuf_ordered_fix: page %d|%d was deallocated an we told it not to!\n",
-			    VPID_AS_ARGS (&ordered_holders_info[i].vpid));
+	      if (VPID_EQ (req_vpid, &(ordered_holders_info[i].vpid)) && fetch_mode == OLD_PAGE_MAYBE_DEALLOCATED)
+		{
+		  /* page was deallocated between ftab snapshot and actual fix; this is expected with
+		   * OLD_PAGE_MAYBE_DEALLOCATED. */
+		  er_log_debug (ARG_FILE_LINE,
+				"pgbuf_ordered_fix: page %d|%d was deallocated (OLD_PAGE_MAYBE_DEALLOCATED mode).\n",
+				VPID_AS_ARGS (&ordered_holders_info[i].vpid));
+		}
+	      else
+		{
+		  /* page was probably deallocated? so has the impossible indeed happen?? */
+		  assert (false);
+		  er_log_debug (ARG_FILE_LINE, "pgbuf_ordered_fix: page %d|%d was deallocated an we told it not to!\n",
+				VPID_AS_ARGS (&ordered_holders_info[i].vpid));
+		}
 	    }
 	  if (!VPID_EQ (req_vpid, &(ordered_holders_info[i].vpid)))
 	    {
@@ -12581,11 +13054,21 @@ pgbuf_get_holder (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   PGBUF_HOLDER *holder;
 
   assert (pgptr != NULL);
-  thrd_idx = thread_get_entry_index (thread_p);
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+      assert (thread_p != NULL);
+    }
+
+  if (!thread_p->m_holder_anchor)
+    {
+      thread_p->m_holder_anchor = &pgbuf_Pool.thrd_holder_info[thread_p->index];
+    }
+  holder = thread_p->m_holder_anchor->thrd_hold_list;
 
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
 
-  for (holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list; holder != NULL; holder = holder->thrd_link)
+  for (; holder != NULL; holder = holder->thrd_link)
     {
       if (bufptr == holder->bufptr)
 	{
@@ -12954,8 +13437,13 @@ pgbuf_initialize_page_monitor (void)
 #endif /* SERVER_MODE */
 
   monitor = &(pgbuf_Pool.monitor);
-
-  memset (monitor, 0, sizeof (PGBUF_PAGE_MONITOR));
+  monitor->dirties_cnt = 0;
+  monitor->lru_hits = NULL;
+  monitor->lru_activity = NULL;
+#if defined (SERVER_MODE)
+  monitor->bcb_locks = NULL;
+#endif /* SERVER_MODE */
+  monitor->victim_rich = false;
 
   monitor->lru_hits = (int *) malloc (PGBUF_TOTAL_LRU_COUNT * sizeof (monitor->lru_hits[0]));
   if (monitor->lru_hits == NULL)
@@ -12983,8 +13471,8 @@ pgbuf_initialize_page_monitor (void)
     }
 
   monitor->lru_victim_req_cnt = 0;
-  monitor->fix_req_cnt = 0;
-  monitor->pg_unfix_cnt = 0;
+  monitor->fix_req_cnt.store (0);
+  monitor->pg_unfix_cnt.store (0);
   monitor->lru_shared_pgs_cnt = 0;
 
 #if defined (SERVER_MODE)
@@ -13206,12 +13694,13 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
    * - or more than 5 min since last adjustment and activity is more 1% of threshold
    * Activity of page buffer is measured in number of page unfixes
    */
-  if (pgbuf_Pool.monitor.pg_unfix_cnt < PGBUF_TRAN_THRESHOLD_ACTIVITY && diff_usec < 500000LL)
+  if (pgbuf_Pool.monitor.pg_unfix_cnt.load (std::memory_order_seq_cst) < PGBUF_TRAN_THRESHOLD_ACTIVITY
+      && diff_usec < 500000LL)
     {
       quota->is_adjusting = 0;
       return;
     }
-  if (ATOMIC_TAS_32 (&monitor->pg_unfix_cnt, 0) < PGBUF_TRAN_THRESHOLD_ACTIVITY / 100)
+  if (monitor->pg_unfix_cnt.exchange (0) < PGBUF_TRAN_THRESHOLD_ACTIVITY / 100)
     {
       low_overall_activity = true;
     }
@@ -13489,7 +13978,6 @@ retry:
 
   /* TODO: is this necessary? */
   pgbuf_adjust_quotas (thread_p);
-
   return private_idx;
 }
 
@@ -13661,7 +14149,7 @@ pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt, UIN
   for (i = 0; i < pgbuf_Pool.num_buffers; i++)
     {
       bufptr = PGBUF_FIND_BCB_PTR (i);
-      if (bufptr->fcnt > 0)
+      if (get_fcnt (&bufptr->atomic_latch) > 0)
 	{
 	  *fixed_cnt = *fixed_cnt + 1;
 	}
@@ -13940,7 +14428,7 @@ pgbuf_get_fix_count (PAGE_PTR pgptr)
 
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
 
-  return bufptr->fcnt;
+  return get_fcnt (&bufptr->atomic_latch);
 }
 
 /*
@@ -14087,7 +14575,7 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
    *       victimized. */
 
   CAST_PGPTR_TO_BFPTR (bcb, page_dealloc);
-  assert (bcb->fcnt == 1);
+  assert (get_fcnt (&bcb->atomic_latch) == 1);
 
   prv = &bcb->iopage_buffer->iopage.prv;
   assert (prv->ptype != PAGE_UNKNOWN);
@@ -15527,7 +16015,8 @@ pgbuf_is_hit_ratio_low (void)
 #define PGBUF_DESIRED_HIT_VS_MISS_RATE      1000	/* 99.9% hit ratio */
 
   return (pgbuf_Pool.monitor.lru_victim_req_cnt > PGBUF_MIN_VICTIM_REQ
-	  && pgbuf_Pool.monitor.lru_victim_req_cnt * PGBUF_DESIRED_HIT_VS_MISS_RATE > pgbuf_Pool.monitor.fix_req_cnt);
+	  && pgbuf_Pool.monitor.lru_victim_req_cnt * PGBUF_DESIRED_HIT_VS_MISS_RATE >
+	  pgbuf_Pool.monitor.fix_req_cnt.load (std::memory_order_seq_cst));
 
 #undef PGBUF_DESIRED_HIT_VS_MISS_RATE
 #undef PGBUF_MIN_VICTIM_REQ
@@ -16036,6 +16525,8 @@ class pgbuf_flush_control_daemon_task : public cubthread::entry_task
 /*
  * pgbuf_page_maintenance_daemon_init () - initialize page maintenance daemon thread
  */
+REGISTER_DAEMON (pgbuf_page_maintenance);
+
 void
 pgbuf_page_maintenance_daemon_init ()
 {
@@ -16044,8 +16535,7 @@ pgbuf_page_maintenance_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (100));
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (pgbuf_page_maintenance_execute);
 
-  pgbuf_Page_maintenance_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                            "pgbuf_page_maintenance");
+  pgbuf_Page_maintenance_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "pgbuf-maintain");
 }
 #endif /* SERVER_MODE */
 
@@ -16053,6 +16543,8 @@ pgbuf_page_maintenance_daemon_init ()
 /*
  * pgbuf_page_flush_daemon_init () - initialize page flush daemon thread
  */
+REGISTER_DAEMON (pgbuf_page_flush);
+
 void
 pgbuf_page_flush_daemon_init ()
 {
@@ -16061,7 +16553,7 @@ pgbuf_page_flush_daemon_init ()
   cubthread::looper looper = cubthread::looper (pgbuf_get_page_flush_interval);
   pgbuf_page_flush_daemon_task *daemon_task = new pgbuf_page_flush_daemon_task ();
 
-  pgbuf_Page_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "pgbuf_page_flush");
+  pgbuf_Page_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "pgbuf-page-flush");
 }
 #endif /* SERVER_MODE */
 
@@ -16069,6 +16561,8 @@ pgbuf_page_flush_daemon_init ()
 /*
  * pgbuf_page_post_flush_daemon_init () - initialize page post flush daemon thread
  */
+REGISTER_DAEMON (pgbuf_page_post_flush);
+
 void
 pgbuf_page_post_flush_daemon_init ()
 {
@@ -16083,8 +16577,7 @@ pgbuf_page_post_flush_daemon_init ()
   cubthread::looper looper = cubthread::looper (looper_interval);
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (pgbuf_page_post_flush_execute);
 
-  pgbuf_Page_post_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                           "pgbuf_page_post_flush");
+  pgbuf_Page_post_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "pgbuf-page-post-flush");
 }
 #endif /* SERVER_MODE */
 
@@ -16092,6 +16585,8 @@ pgbuf_page_post_flush_daemon_init ()
 /*
  * pgbuf_flush_control_daemon_init () - initialize flush control daemon thread
  */
+REGISTER_DAEMON (pgbuf_flush_control);
+
 void
 pgbuf_flush_control_daemon_init ()
 {
@@ -16106,8 +16601,7 @@ pgbuf_flush_control_daemon_init ()
     }
 
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (50));
-  pgbuf_Flush_control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                         "pgbuf_flush_control");
+  pgbuf_Flush_control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "pgbuf-flush-control");
 }
 #endif /* SERVER_MODE */
 

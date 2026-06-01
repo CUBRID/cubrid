@@ -59,9 +59,6 @@
 
 #define DEFAULT_EMPTY_STRING           "\0"
 #define DEFAULT_CUB_USER_NAME          "PUBLIC"
-#define DEFAULT_ORACLE_USER_NAME       "scott"
-#define DEFAULT_ORACLE_PASSWORD        "tiger"
-#define DEFAULT_MYSQL_USER_NAME        "root"
 
 #define RESULT_FORMAT            "%-15s"
 #define SHARD_ID_FORMAT          "%-10d"
@@ -240,16 +237,6 @@ init_default_conn_info (int appl_server_type)
     {
     case APPL_SERVER_CAS:
       user_name = DEFAULT_CUB_USER_NAME;
-      user_password = DEFAULT_EMPTY_STRING;
-      break;
-
-    case APPL_SERVER_CAS_ORACLE:
-      user_name = DEFAULT_ORACLE_USER_NAME;
-      user_password = DEFAULT_ORACLE_PASSWORD;
-      break;
-
-    case APPL_SERVER_CAS_MYSQL:
-      user_name = DEFAULT_MYSQL_USER_NAME;
       user_password = DEFAULT_EMPTY_STRING;
       break;
 

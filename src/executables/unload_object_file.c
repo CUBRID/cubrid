@@ -669,6 +669,20 @@ exit_on_error:
 
 #define INTERNAL_BUFFER_SIZE (400)	/* bigger than DBL_MAX_DIGITS */
 
+inline bool
+need_append_dot (const char *val)
+{
+  while (*val)
+    {
+      if (*val == '.' || *val == 'e' || *val == 'E')
+	{
+	  return false;
+	}
+      val++;
+    }
+  return true;
+}
+
 /*
  * fprint_special_strings - print special DB_VALUE to TEXT_OUTPUT
  *    return: NO_ERROR if successful, error code otherwise
@@ -706,21 +720,25 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
       {
-	char *pos;
+	char *pos = NULL;
+	TEXT_BUFFER_BLK *tail_ptr_bk = NULL;
 
-	if (tout->tail_ptr == NULL)
+	if (tout->tail_ptr)
 	  {
-	    assert (tout->head_ptr == NULL);
-	    CHECK_PRINT_ERROR (get_text_output_mem (tout, -1));
+	    tail_ptr_bk = tout->tail_ptr;
+	    pos = tout->tail_ptr->ptr;
 	  }
-
-	pos = tout->tail_ptr->ptr;
 	CHECK_PRINT_ERROR (text_print
 			   (tout, NULL, 0, "%.*g", (type == DB_TYPE_FLOAT) ? 10 : 17,
 			    (type == DB_TYPE_FLOAT) ? db_get_float (value) : db_get_double (value)));
 	/* if tout flushed, then this float/double should be the first content */
-	if ((pos < tout->tail_ptr->ptr && !strchr (pos, '.'))
-	    || (pos > tout->tail_ptr->ptr && !strchr (tout->tail_ptr->buffer, '.')))
+	if (pos == NULL || tail_ptr_bk != tout->tail_ptr)
+	  {
+	    assert (tout->tail_ptr != NULL);
+	    pos = tout->tail_ptr->buffer;
+	  }
+
+	if (need_append_dot (pos))
 	  {
 	    CHECK_PRINT_ERROR (text_print (tout, ".", 1, NULL));
 	  }
@@ -770,10 +788,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 			 (tout, NULL, 0, "%s%.*f", intl_get_money_esc_ISO_symbol (db_get_monetary (value)->type), 2,
 			  db_get_monetary (value)->amount));
       break;
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      CHECK_PRINT_ERROR (text_print (tout, "N", 1, NULL));
-      [[fallthrough]];
+
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
       str_ptr = db_get_string (value);
@@ -940,22 +955,24 @@ text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ..
   size = tout->tail_ptr->iosize - tout->tail_ptr->count;	/* free space size */
   if (buflen > 0)
     {
+      int tlen = 0;
       assert (buf != NULL);
 
       while (buflen >= size)
 	{
-	  memcpy (tout->tail_ptr->ptr, buf, size);
+	  memcpy (tout->tail_ptr->ptr, buf + tlen, size);
 	  *(tout->tail_ptr->ptr + size) = '\0';	/* Null terminate */
 	  tout->tail_ptr->ptr += size;
 	  tout->tail_ptr->count += size;
 	  buflen -= size;
+	  tlen += size;
 	  CHECK_PRINT_ERROR (get_text_output_mem (tout, buflen));
 	  size = tout->tail_ptr->iosize;
 	}
 
       if (buflen > 0)
 	{
-	  memcpy (tout->tail_ptr->ptr, buf, buflen);
+	  memcpy (tout->tail_ptr->ptr, buf + tlen, buflen);
 	  *(tout->tail_ptr->ptr + buflen) = '\0';	/* Null terminate */
 
 	  tout->tail_ptr->ptr += buflen;

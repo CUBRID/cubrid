@@ -119,7 +119,6 @@ extern "C"
     CUBRID_STMT_ALTER_USER,
     CUBRID_STMT_SET_SYS_PARAMS,
     CUBRID_STMT_ALTER_INDEX,
-
     CUBRID_STMT_CREATE_STORED_PROCEDURE,
     CUBRID_STMT_DROP_STORED_PROCEDURE,
     CUBRID_STMT_PREPARE_STATEMENT,
@@ -147,6 +146,10 @@ extern "C"
     CUBRID_STMT_CREATE_SYNONYM,
     CUBRID_STMT_DROP_SYNONYM,
     CUBRID_STMT_RENAME_SYNONYM,
+
+    CUBRID_STMT_UPDATE_HISTOGRAM,
+    CUBRID_STMT_SHOW_HISTOGRAM,
+    CUBRID_STMT_DROP_HISTOGRAM,
 
     CUBRID_MAX_STMT_TYPE
   } CUBRID_STMT_TYPE;
@@ -471,6 +474,17 @@ extern "C"
     DB_CONSTRAINT_FOREIGN_KEY = 6
   } DB_CONSTRAINT_TYPE;		/* TODO: only one enum for DB_CONSTRAINT_TYPE and SM_CONSTRAINT_TYPE */
 
+  /* 
+   * attribute's options(no constraint)
+   * These flags are displayed in the ‘flags’ column of the system catalog table.
+   */
+  typedef enum
+  {
+    DB_ATTOPT_AUTO_INCREMENT = 1 << 0,
+    DB_ATTOPT_INVISIBLE_COLUMN = 1 << 1,
+    DB_ATTOPT_PARTITION_KEY = 1 << 2
+  } DB_ATTRIBUTE_OPTION_TYPE;
+
   typedef enum
   {
     DB_FK_DELETE = 0,
@@ -491,7 +505,7 @@ extern "C"
     DB_OBJECT_UNKNOWN = -1,
     DB_OBJECT_CLASS = 0,	/* TABLE, VIEW (_db_class) */
     DB_OBJECT_TRIGGER = 1,	/* TRIGGER (_db_trigger) */
-    DB_OBJECT_SERIAL = 2,	/* SERIAL (db_serial) */
+    DB_OBJECT_SERIAL = 2,	/* SERIAL (_db_serial) */
     DB_OBJECT_SERVER = 3,	/* SERVER (db_server) */
     DB_OBJECT_SYNONYM = 4,	/* SYNONYM (_db_synonym) */
     DB_OBJECT_PROCEDURE = 5	/* PROCEDURE, FUNCTION  (_db_stored_procedure) */
@@ -515,16 +529,39 @@ extern "C"
    */
 #define DB_MAX_IDENTIFIER_LENGTH 255
 
+/* 
+ * Maximum allowable default expression length
+ * 
+ * Notes:
+ * 1. TABLE COLUMN
+ *   - This limit does NOT apply directly to table column definitions.
+ *   - It affects the maximum length of the 'default_value' column
+ *     in system tables such as 'db_attribute' and '_db_attribute'.
+ *
+ * 2. PL/CSQL
+ *   - This limit is directly enforced for PL/CSQL arguments.
+ *     affect CREATE PROCEDURE/FUNCTION statements.
+ *
+ * Other EXPR_LENGTH
+ *   - PARTITION
+ *     - DB_MAX_PARTITION_EXPR_LENGTH 2048
+ *     - 'db_partition' : partition_expr (2048)
+ *     - '_db_partition' : pexpr (2048)
+ *   - INDEX
+ *     - 'db_index' : filter_expression (1073741823)
+ */
+#define DB_MAX_DEFAULT_EXPR_LENGTH 2048
+
 /* Maximum allowable user name.*/
 #define DB_MAX_USER_LENGTH 32
 
-#define DB_MAX_PASSWORD_LENGTH 8
+#define DB_MAX_PASSWORD_LENGTH 32
 
 /* Maximum allowable schema name. */
 #define DB_MAX_SCHEMA_LENGTH DB_MAX_USER_LENGTH
 
 /* Maximum allowable class name. */
-#define DB_MAX_CLASS_LENGTH (DB_MAX_IDENTIFIER_LENGTH-DB_MAX_SCHEMA_LENGTH-4)
+#define DB_MAX_CLASS_LENGTH (223)	// (DB_MAX_IDENTIFIER_LENGTH - DB_MAX_SCHEMA_LENGTH - 1 /* '.' */ + 1  /* '\0' */)
 
 #define DB_MAX_SPEC_LENGTH       (0x3FFFFFFF)
 
@@ -555,16 +592,6 @@ extern "C"
 
 /* The maximum precision that can be specified for a CHARACTER VARYING domain.*/
 #define DB_MAX_VARCHAR_PRECISION DB_MAX_STRING_LENGTH
-
-/* The maximum precision that can be specified for a NATIONAL CHAR(n) domain. This probably isn't restrictive enough.
- * We may need to define this functionally as the maximum precision will depend on the size multiplier of the codeset.
- */
-#define DB_MAX_NCHAR_PRECISION (DB_MAX_STRING_LENGTH/2)
-
-/* The maximum precision that can be specified for a NATIONAL CHARACTER VARYING domain. This probably isn't restrictive enough.
- * We may need to define this functionally as the maximum precision will depend on the size multiplier of the codeset.
- */
-#define DB_MAX_VARNCHAR_PRECISION DB_MAX_NCHAR_PRECISION
 
 /* The maximum precision that can be specified for a BIT domain. */
 #define DB_MAX_BIT_PRECISION DB_MAX_BIT_LENGTH
@@ -649,10 +676,10 @@ extern "C"
 /* Defines the state of a value as not being compressable due to its bad compression size or
  * its uncompressed size being lower than PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
  */
-#define DB_UNCOMPRESSABLE -1
+#define DB_UNCOMPRESSABLE (-1)
 
 /* Defines the state of a value not being yet prompted for a compression process. */
-#define DB_NOT_YET_COMPRESSED 0
+#define DB_NOT_YET_COMPRESSED (0)
 
 #define DB_INT16_MIN   (-(DB_INT16_MAX)-1)
 #define DB_INT16_MAX   0x7FFF
@@ -725,8 +752,14 @@ extern "C"
     DB_TYPE_BIT = 23,		/* SQL BIT(n) values */
     DB_TYPE_VARBIT = 24,	/* SQL BIT(n) VARYING values */
     DB_TYPE_CHAR = 25,		/* SQL CHAR(n) values */
-    DB_TYPE_NCHAR = 26,		/* SQL NATIONAL CHAR(n) values */
-    DB_TYPE_VARNCHAR = 27,	/* SQL NATIONAL CHAR(n) VARYING values */
+
+    /* TODO:
+     * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+     * However, to maintain compatibility with previous versions, the enum list will be preserved.       
+     */
+    DB_TYPE_NCHAR_DEPRECATED = 26,	/* SQL NATIONAL CHAR(n) values */
+    DB_TYPE_VARNCHAR_DEPRECATED = 27,	/* SQL NATIONAL CHAR(n) VARYING values */
+
     DB_TYPE_RESULTSET = 28,	/* internal use only */
     DB_TYPE_MIDXKEY = 29,	/* internal use only */
     DB_TYPE_TABLE = 30,		/* internal use only */
@@ -996,7 +1029,7 @@ extern "C"
 
   typedef DB_IDENTIFIER OID;
 
-  /* Structure used for the representation of char, nchar and bit values. */
+  /* Structure used for the representation of char and bit values. */
   typedef struct db_large_string DB_LARGE_STRING;
 
   /* db_char.sm was formerly db_char.small.  small is an (undocumented) reserved word on NT. */
@@ -1042,7 +1075,6 @@ extern "C"
     } large;
   };
 
-  typedef DB_CHAR DB_NCHAR;
   typedef DB_CHAR DB_BIT;
 
   typedef uint64_t DB_RESULTSET;
@@ -1155,8 +1187,6 @@ extern "C"
     DB_TYPE_C_DOUBLE,
     DB_TYPE_C_CHAR,
     DB_TYPE_C_VARCHAR,
-    DB_TYPE_C_NCHAR,
-    DB_TYPE_C_VARNCHAR,
     DB_TYPE_C_BIT,
     DB_TYPE_C_VARBIT,
     DB_TYPE_C_OBJECT,
@@ -1184,8 +1214,6 @@ extern "C"
   typedef double DB_C_DOUBLE;
   typedef char *DB_C_CHAR;
   typedef const char *DB_CONST_C_CHAR;
-  typedef char *DB_C_NCHAR;
-  typedef const char *DB_CONST_C_NCHAR;
   typedef char *DB_C_BIT;
   typedef const char *DB_CONST_C_BIT;
   typedef DB_OBJECT DB_C_OBJECT;

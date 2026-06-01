@@ -49,14 +49,12 @@
 #include "msgcat_set_log.hpp"
 #include "log_compress.h"
 #include "log_lsa.hpp"
-#include "parser.h"
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "db_value_printer.hpp"
 #include "db.h"
 #include "object_accessor.h"
 #include "locator_cl.h"
-#include "connection_cl.h"
 #include "network_interface_cl.h"
 #include "schema_system_catalog_constants.h"
 #include "file_io.h"
@@ -325,7 +323,7 @@ struct la_info
   int last_server_state;
   bool is_role_changed;
 
-  /* db_ha_apply_info */
+  /* _db_ha_apply_info */
   LOG_LSA append_lsa;		/* append lsa of active log header */
   LOG_LSA eof_lsa;		/* eof lsa of active log header */
   LOG_LSA required_lsa;		/* start lsa of the first transaction to be applied */
@@ -518,7 +516,11 @@ static int la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr,
 				     void **logs, char **rec_type, RECDES * recdes);
 static int la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *rcvindex, char *rec_type,
 			  bool is_mvcc_class);
-
+static void la_log_apply_error (const char *op_name, int err_id, LA_ITEM * item, int error);
+static void la_set_error_sql_log (const char *class_name, DB_VALUE * key_val);
+static int la_write_delete_sql_log (LA_ITEM * item, DB_OBJECT * class_obj);
+static int la_write_update_sql_log (LA_ITEM * item, DB_OBJECT * class_obj, RECDES * recdes);
+static int la_write_insert_sql_log (LA_ITEM * item, DB_OBJECT * class_obj, RECDES * recdes);
 static int la_apply_delete_log (LA_ITEM * item);
 static int la_apply_update_log (LA_ITEM * item);
 static int la_apply_insert_log (LA_ITEM * item);
@@ -1926,7 +1928,7 @@ la_update_ha_apply_info_log_record_time (time_t new_time)
   res = la_update_query_execute_with_values (query_buf, in_value_idx, &in_value[0], true);
   if (res == 0)
     {
-      /* it means db_ha_apply_info was deleted */
+      /* it means _db_ha_apply_info was deleted */
       DB_DATETIME log_db_creation_time;
 
       db_localdatetime (&la_Info.act_log.log_hdr->db_creation, &log_db_creation_time);
@@ -2061,7 +2063,7 @@ la_get_last_ha_applied_info (void)
 }
 
 /*
- * la_update_ha_last_applied_info() - update db_ha_apply_info table
+ * la_update_ha_last_applied_info() - update _db_ha_apply_info table
  *   returns  : error code, if execution failed
  *              number of affected objects, if a success
  *
@@ -2191,7 +2193,7 @@ la_update_ha_last_applied_info (void)
   res = la_update_query_execute_with_values (query_buf, in_value_idx, &in_value[0], true);
   if (res == 0)
     {
-      /* it means db_ha_apply_info was deleted */
+      /* it means _db_ha_apply_info was deleted */
       DB_DATETIME log_db_creation_time;
 
       db_localdatetime (&la_Info.act_log.log_hdr->db_creation, &log_db_creation_time);
@@ -4763,12 +4765,12 @@ la_flush_repl_items (bool immediate)
 
   if (la_Info.num_unflushed >= LA_MAX_UNFLUSHED_REPL_ITEMS || immediate == true)
     {
-      error = locator_repl_flush_all ();
+      error = __gv_loc_repl.locator_repl_flush_all ();
       if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
 	{
 	  while (true)
 	    {
-	      flush_err = ws_get_repl_error_from_error_link ();
+	      flush_err = __gv_loc_repl.ws_get_repl_error_from_error_link ();
 	      if (flush_err == NULL)
 		{
 		  break;
@@ -4838,22 +4840,22 @@ la_flush_repl_items (bool immediate)
 
 		  error = ER_LC_PARTIALLY_FAILED_TO_FLUSH;
 
-		  ws_free_repl_flush_error (flush_err);
-		  ws_clear_all_repl_errors_of_error_link ();
+		  __gv_loc_repl.ws_free_repl_flush_error (flush_err);
+		  __gv_loc_repl.ws_clear_all_repl_errors_of_error_link ();
 
 		  return error;
 		}
 
-	      ws_free_repl_flush_error (flush_err);
+	      __gv_loc_repl.ws_free_repl_flush_error (flush_err);
 	    }
 
-	  ws_clear_all_repl_errors_of_error_link ();
+	  __gv_loc_repl.ws_clear_all_repl_errors_of_error_link ();
 	  error = NO_ERROR;
 	}
       else if (error != NO_ERROR)
 	{
 	  la_Info.fail_counter++;
-	  ws_clear_all_repl_errors_of_error_link ();
+	  __gv_loc_repl.ws_clear_all_repl_errors_of_error_link ();
 
 	  er_stack_push ();
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_FAILED_TO_FLUSH_REPL_ITEMS, 1, error);
@@ -4863,7 +4865,7 @@ la_flush_repl_items (bool immediate)
 	}
 
       la_Info.num_unflushed = 0;
-      ws_clear_all_repl_objs ();
+      __gv_loc_repl.ws_clear_all_repl_objs ();
     }
 
   return error;
@@ -4930,9 +4932,58 @@ la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
 
   has_index = classobj_class_has_indexes (class_);
 
-  error = ws_add_to_repl_obj_list (class_oid, item->packed_key_value, item->packed_key_value_length, recdes,
-				   operation, has_index);
+  error =
+    __gv_loc_repl.ws_add_to_repl_obj_list (class_oid, item->packed_key_value, item->packed_key_value_length, recdes,
+					   operation, has_index);
   return error;
+}
+
+static void
+la_set_error_sql_log (const char *class_name, DB_VALUE * key_val)
+{
+  char sql_log_err[LINE_MAX];
+  string_buffer sb;
+
+  sb.clear ();
+  db_sprint_value (key_val, sb);
+  snprintf (sql_log_err, sizeof (sql_log_err),
+	    "failed to write SQL log. class: %s, key: %s", class_name, sb.get_buffer ());
+
+  er_stack_push ();
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
+  er_stack_pop ();
+}
+
+static void
+la_log_apply_error (const char *op_name, int err_id, LA_ITEM * item, int error)
+{
+  string_buffer sb;
+  sb.clear ();
+  db_sprint_value (la_get_item_pk_value (item), sb);
+
+#if defined(LA_VERBOSE_DEBUG)
+  er_log_debug (ARG_FILE_LINE,
+		"%s : error %d %s\n\tclass %s key %s\n", op_name, error, er_msg (), item->class_name, sb.get_buffer ());
+#endif
+
+  er_stack_push ();
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	  err_id, 4, item->class_name, sb.get_buffer (), error, "internal client error.");
+  er_stack_pop ();
+
+  la_Info.fail_counter++;
+}
+
+static int
+la_write_delete_sql_log (LA_ITEM * item, DB_OBJECT * class_obj)
+{
+  MOBJ mclass = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD);
+  if (mclass == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  return sl_write_delete_sql (item->class_name, mclass, la_get_item_pk_value (item));
 }
 
 /*
@@ -4941,16 +4992,14 @@ la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
  *   item(in): replication item
  *
  * Note:
+ *      . fetch the class info
+ *      . create a replication object to be flushed and add it to a link
+ *      . If la_enable_sql_logging(config param is ha_enable_sql_logging) is enabled, the query is written to a file.
  */
 static int
 la_apply_delete_log (LA_ITEM * item)
 {
   DB_OBJECT *class_obj;
-  MOBJ mclass;
-  char buf[256];
-  char sql_log_err[LINE_MAX];
-
-  string_buffer sb;
 
   int error = la_flush_repl_items (false);
   if (error != NO_ERROR)
@@ -4964,52 +5013,84 @@ la_apply_delete_log (LA_ITEM * item)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
+      goto end;
+    }
+
+  if (la_enable_sql_logging)
+    {
+      if (la_write_delete_sql_log (item, class_obj) != NO_ERROR)
+	{
+	  la_set_error_sql_log (item->class_name, &item->key);
+	}
+    }
+
+  error = la_repl_add_object (class_obj, item, NULL);
+
+end:
+  if (error != NO_ERROR)
+    {
+      la_log_apply_error ("apply_delete", ER_HA_LA_FAILED_TO_APPLY_DELETE, item, error);
     }
   else
     {
-      /* get class info */
-      mclass = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD);
-
-      if (la_enable_sql_logging)
-	{
-	  if (sl_write_delete_sql (item->class_name, mclass, la_get_item_pk_value (item)) != NO_ERROR)
-	    {
-	      sb.clear ();
-	      db_sprint_value (&item->key, sb);
-	      snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s",
-			item->class_name, sb.get_buffer ());
-
-	      er_stack_push ();
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
-	      er_stack_pop ();
-	    }
-	}
-
-      error = la_repl_add_object (class_obj, item, NULL);
-      if (error == NO_ERROR)
-	{
-	  la_Info.delete_counter++;
-	  la_Info.num_unflushed++;
-	}
-    }
-
-  if (error != NO_ERROR)
-    {
-      sb.clear ();
-      db_sprint_value (la_get_item_pk_value (item), sb);
-#if defined (LA_VERBOSE_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "apply_delete : error %d %s\n\tclass %s key %s\n", error, er_msg (),
-		    item->class_name, sb.get_buffer ());
-#endif
-      er_stack_push ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_DELETE, 4, item->class_name, sb.get_buffer (),
-	      error, "internal client error.");
-      er_stack_pop ();
-
-      la_Info.fail_counter++;
+      la_Info.delete_counter++;
+      la_Info.num_unflushed++;
     }
 
   return error;
+}
+
+static int
+la_write_update_sql_log (LA_ITEM * item, DB_OBJECT * class_obj, RECDES * recdes)
+{
+  MOBJ mclass;
+  int au_save;
+  DB_VALUE *key;
+  DB_OTMPL *inst_tp = NULL;
+  int ret = NO_ERROR;
+
+  mclass = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD);
+  if (mclass == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  AU_SAVE_AND_DISABLE (au_save);
+
+  inst_tp = dbt_create_object_internal (class_obj, false);
+  if (inst_tp == NULL)
+    {
+      ret = ER_FAILED;
+      goto end;
+    }
+
+  key = la_get_item_pk_value (item);
+
+  if (la_disk_to_obj (mclass, recdes, inst_tp, key) != NO_ERROR)
+    {
+      ret = ER_FAILED;
+      goto end;
+    }
+
+  if (sl_write_update_sql (inst_tp, key) != NO_ERROR)
+    {
+      ret = ER_FAILED;
+    }
+
+end:
+  AU_RESTORE (au_save);
+
+  if (inst_tp)
+    {
+      if (inst_tp->object)
+	{
+	  ws_release_user_instance (inst_tp->object);
+	  ws_decache (inst_tp->object);
+	}
+      dbt_abort_object (inst_tp);
+    }
+
+  return ret;
 }
 
 /*
@@ -5023,21 +5104,17 @@ la_apply_delete_log (LA_ITEM * item)
  *      . get the record description
  *      . fetch the class info
  *      . create a replication object to be flushed and add it to a link
+ *      . If la_enable_sql_logging(config param is ha_enable_sql_logging) is enabled, the query is written to a file.
  */
 static int
 la_apply_update_log (LA_ITEM * item)
 {
-  int error = NO_ERROR, au_save;
+  int error = NO_ERROR;
   unsigned int rcvindex;
   RECDES *recdes;
   LOG_PAGE *pgptr = NULL;
   LOG_PAGEID old_pageid = NULL_PAGEID;
   DB_OBJECT *class_obj;
-  MOBJ mclass;
-  DB_OTMPL *inst_tp = NULL;
-  char sql_log_err[LINE_MAX];
-
-  string_buffer sb;
 
   error = la_flush_repl_items (false);
   if (error != NO_ERROR)
@@ -5070,6 +5147,7 @@ la_apply_update_log (LA_ITEM * item)
 
       goto end;
     }
+
   if (rcvindex != RVHF_UPDATE && rcvindex != RVOVF_CHANGE_LINK && rcvindex != RVHF_MVCC_INSERT
       && rcvindex != RVHF_UPDATE_NOTIFY_VACUUM && rcvindex != RVHF_INSERT_NEWHOME)
     {
@@ -5083,113 +5161,44 @@ la_apply_update_log (LA_ITEM * item)
   if (class_obj == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      if (error == NO_ERROR)
+      if (er_errid () == NO_ERROR)
 	{
 	  error = ER_FAILED;
 	}
+
       goto end;
     }
-
-  error = la_repl_add_object (class_obj, item, recdes);
 
   /*
    * regardless of the success or failure of obj_repl_update_object,
    * we should write sql log.
    */
+
   if (la_enable_sql_logging)
     {
-      bool sql_logging_failed = false;
-      int rc;
+      int ret;
 
       er_stack_push ();
-      do
-	{
-	  mclass = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD);
-	  if (mclass == NULL)
-	    {
-	      sql_logging_failed = true;
-	      break;
-	    }
-
-	  AU_SAVE_AND_DISABLE (au_save);
-
-	  inst_tp = dbt_create_object_internal (class_obj);
-	  if (inst_tp == NULL)
-	    {
-	      sql_logging_failed = true;
-	      AU_RESTORE (au_save);
-	      break;
-	    }
-
-	  rc = la_disk_to_obj (mclass, recdes, inst_tp, la_get_item_pk_value (item));
-	  if (rc != NO_ERROR)
-	    {
-	      sql_logging_failed = true;
-	      AU_RESTORE (au_save);
-	      break;
-	    }
-
-	  if (sl_write_update_sql (inst_tp, &item->key) != NO_ERROR)
-	    {
-	      AU_RESTORE (au_save);
-	      sql_logging_failed = true;
-	      break;
-	    }
-
-	  AU_RESTORE (au_save);
-	}
-      while (0);
+      ret = la_write_update_sql_log (item, class_obj, recdes);
       er_stack_pop ();
 
-      if (sql_logging_failed == true)
+      if (ret != NO_ERROR)
 	{
-	  sb.clear ();
-	  db_sprint_value (la_get_item_pk_value (item), sb);
-	  snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s", item->class_name,
-		    sb.get_buffer ());
-
-	  er_stack_push ();
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
-	  er_stack_pop ();
+	  la_set_error_sql_log (item->class_name, la_get_item_pk_value (item));
 	}
     }
+
+  error = la_repl_add_object (class_obj, item, recdes);
 
 end:
   if (error != NO_ERROR)
     {
-      sb.clear ();
-      db_sprint_value (la_get_item_pk_value (item), sb);
-#if defined (LA_VERBOSE_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "apply_update : error %d %s\n\tclass %s key %s\n", error, er_msg (),
-		    item->class_name, sb.get_buffer ());
-#endif
-      er_stack_push ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_UPDATE, 4, item->class_name, sb.get_buffer (),
-	      error, "internal client error.");
-      er_stack_pop ();
-
-      la_Info.fail_counter++;
-
-      if (ER_IS_SERVER_DOWN_ERROR (error))
-	{
-	  error = ER_NET_CANT_CONNECT_SERVER;
-	}
+      la_log_apply_error ("apply_update", ER_HA_LA_FAILED_TO_APPLY_UPDATE, item, error);
     }
   else
     {
       la_Info.update_counter++;
       la_Info.num_unflushed++;
-    }
-
-  if (inst_tp)
-    {
-      if (inst_tp->object)
-	{
-	  ws_release_user_instance (inst_tp->object);
-	  ws_decache (inst_tp->object);
-	}
-      dbt_abort_object (inst_tp);
     }
 
   la_release_page_buffer (old_pageid);
@@ -5231,6 +5240,60 @@ la_is_mvcc_class (const OID * class_oid)
   return true;
 }
 
+static int
+la_write_insert_sql_log (LA_ITEM * item, DB_OBJECT * class_obj, RECDES * recdes)
+{
+  MOBJ mclass;
+  int au_save;
+  DB_VALUE *key;
+  DB_OTMPL *inst_tp = NULL;
+  int ret = NO_ERROR;
+
+  mclass = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD);
+  if (mclass == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  AU_SAVE_AND_DISABLE (au_save);
+
+  inst_tp = dbt_create_object_internal (class_obj, false);
+  if (inst_tp == NULL)
+    {
+      ret = ER_FAILED;
+      goto end;
+    }
+
+  key = la_get_item_pk_value (item);
+
+  /* make object using the record description */
+  if (la_disk_to_obj (mclass, recdes, inst_tp, key) != NO_ERROR)
+    {
+      ret = ER_FAILED;
+      goto end;
+    }
+
+  if (sl_write_insert_sql (inst_tp, key) != NO_ERROR)
+    {
+      ret = ER_FAILED;
+    }
+
+end:
+  AU_RESTORE (au_save);
+
+  if (inst_tp)
+    {
+      if (inst_tp->object)
+	{
+	  ws_release_user_instance (inst_tp->object);
+	  ws_decache (inst_tp->object);
+	}
+      dbt_abort_object (inst_tp);
+    }
+
+  return ret;
+}
+
 /*
  * la_apply_insert_log() - apply the insert log to the target slave
  *   return: NO_ERROR or error code
@@ -5242,20 +5305,17 @@ la_is_mvcc_class (const OID * class_oid)
  *      . get the record description
  *      . fetch the class info
  *      . create a replication object to be flushed and add it to a link
+ *      . If la_enable_sql_logging(config param is ha_enable_sql_logging) is enabled, the query is written to a file.
  */
 static int
 la_apply_insert_log (LA_ITEM * item)
 {
-  int error = NO_ERROR, au_save;
+  int error = NO_ERROR;
   DB_OBJECT *class_obj;
-  MOBJ mclass;
   LOG_PAGE *pgptr;
   unsigned int rcvindex;
   RECDES *recdes;
-  DB_OTMPL *inst_tp = NULL;
   LOG_PAGEID old_pageid = NULL_PAGEID;
-
-  string_buffer sb;
   bool is_mvcc_class;
 
   error = la_flush_repl_items (false);
@@ -5277,11 +5337,11 @@ la_apply_insert_log (LA_ITEM * item)
   if (class_obj == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      if (error == NO_ERROR)
+      if (er_errid () == NO_ERROR)
 	{
 	  error = ER_FAILED;
 	}
+
       goto end;
     }
 
@@ -5311,104 +5371,30 @@ la_apply_insert_log (LA_ITEM * item)
       goto end;
     }
 
-  error = la_repl_add_object (class_obj, item, recdes);
-
-  if (la_enable_sql_logging == true)
+  if (la_enable_sql_logging)
     {
-      bool sql_logging_failed = false;
-      int rc;
-      char sql_log_err[LINE_MAX];
+      int ret;
 
       er_stack_push ();
-
-      do
-	{
-	  mclass = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD);
-	  if (mclass == NULL)
-	    {
-	      sql_logging_failed = true;
-	      break;
-	    }
-
-	  AU_SAVE_AND_DISABLE (au_save);
-
-	  inst_tp = dbt_create_object_internal (class_obj);
-	  if (inst_tp == NULL)
-	    {
-	      sql_logging_failed = true;
-	      AU_RESTORE (au_save);
-	      break;
-	    }
-
-	  /* make object using the record description */
-	  rc = la_disk_to_obj (mclass, recdes, inst_tp, la_get_item_pk_value (item));
-	  if (rc != NO_ERROR)
-	    {
-	      sql_logging_failed = true;
-	      AU_RESTORE (au_save);
-	      break;
-	    }
-
-	  if (sl_write_insert_sql (inst_tp, la_get_item_pk_value (item)) != NO_ERROR)
-	    {
-	      sql_logging_failed = true;
-	      AU_RESTORE (au_save);
-	      break;
-	    }
-
-	  AU_RESTORE (au_save);
-	}
-      while (0);
+      ret = la_write_insert_sql_log (item, class_obj, recdes);
       er_stack_pop ();
-
-      if (sql_logging_failed == true)
+      if (ret != NO_ERROR)
 	{
-	  sb.clear ();
-	  db_sprint_value (la_get_item_pk_value (item), sb);
-	  snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s", item->class_name,
-		    sb.get_buffer ());
-
-	  er_stack_push ();
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
-	  er_stack_pop ();
+	  la_set_error_sql_log (item->class_name, la_get_item_pk_value (item));
 	}
     }
+
+  error = la_repl_add_object (class_obj, item, recdes);
 
 end:
   if (error != NO_ERROR)
     {
-      sb.clear ();
-      db_sprint_value (la_get_item_pk_value (item), sb);
-#if defined (LA_VERBOSE_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "apply_insert : error %d %s\n\tclass %s key %s\n", error, er_msg (),
-		    item->class_name, sb.get_buffer ());
-#endif
-      er_stack_push ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_INSERT, 4, item->class_name, sb.get_buffer (),
-	      error, "internal client error.");
-      er_stack_pop ();
-
-      la_Info.fail_counter++;
-
-      if (ER_IS_SERVER_DOWN_ERROR (error))
-	{
-	  error = ER_NET_CANT_CONNECT_SERVER;
-	}
+      la_log_apply_error ("apply_insert", ER_HA_LA_FAILED_TO_APPLY_INSERT, item, error);
     }
   else
     {
       la_Info.insert_counter++;
       la_Info.num_unflushed++;
-    }
-
-  if (inst_tp)
-    {
-      if (inst_tp->object)
-	{
-	  ws_release_user_instance (inst_tp->object);
-	  ws_decache (inst_tp->object);
-	}
-      dbt_abort_object (inst_tp);
     }
 
   la_release_page_buffer (old_pageid);
@@ -5538,6 +5524,9 @@ la_apply_statement_log (LA_ITEM * item)
     case CUBRID_STMT_CREATE_SERIAL:
     case CUBRID_STMT_ALTER_SERIAL:
     case CUBRID_STMT_DROP_SERIAL:
+
+    case CUBRID_STMT_UPDATE_HISTOGRAM:
+    case CUBRID_STMT_DROP_HISTOGRAM:
 
     case CUBRID_STMT_DROP_DATABASE:
 
@@ -6225,7 +6214,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 		}
 	    }
 
-	  /* make db_ha_apply_info.status busy */
+	  /* make _db_ha_apply_info.status busy */
 	  if (la_Info.status == LA_STATUS_IDLE)
 	    {
 	      la_Info.status = LA_STATUS_BUSY;
@@ -6580,7 +6569,7 @@ la_log_commit (bool update_commit_time)
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "failed to update db_ha_apply_info");
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "failed to update _db_ha_apply_info");
 	  error = NO_ERROR;
 	}
     }
@@ -6763,10 +6752,10 @@ la_check_time_commit (struct timeval *time_commit, unsigned int threshold)
       if (ha_mode == HA_MODE_REPLICA && la_Info.act_log.log_hdr->ha_server_state == HA_SERVER_STATE_STANDBY)
 	{
 	  /*
-	   * 'db_ha_apply_info' catalog is updated by la_log_commit, and the HA service uses the updated
-	   * information (db_ha_apply_info) to obtain delay information.
+	   * '_db_ha_apply_info' catalog is updated by la_log_commit, and the HA service uses the updated
+	   * information (_db_ha_apply_info) to obtain delay information.
 	   * However, during the process of applying logs replicated from the standby,
-	   * the db_ha_apply_info is not updated. Therefore, it needs to be updated periodically here.
+	   * the _db_ha_apply_info is not updated. Therefore, it needs to be updated periodically here.
 	   *
 	   * NOTE:
 	   * 1. The logs replicated from the 'standby' server do not contain replication logs.
@@ -6797,7 +6786,7 @@ la_check_time_commit (struct timeval *time_commit, unsigned int threshold)
 	{
 	  if (la_Info.status == LA_STATUS_BUSY)
 	    {
-	      /* make db_ha_apply_info.status idle */
+	      /* make _db_ha_apply_info.status idle */
 	      la_Info.status = LA_STATUS_IDLE;
 	    }
 	}
@@ -6975,7 +6964,7 @@ la_init (const char *log_path, const int max_mem_size)
 
   if (db_get_client_type () == DB_CLIENT_TYPE_LOG_APPLIER)
     {
-      ws_init_repl_objs ();
+      __gv_loc_repl.ws_init_repl_objs ();
     }
 
   la_Info.repl_filter.type = REPL_FILTER_NONE;
@@ -7088,7 +7077,7 @@ la_shutdown (void)
 
   if (db_get_client_type () == DB_CLIENT_TYPE_LOG_APPLIER)
     {
-      ws_clear_all_repl_objs ();
+      __gv_loc_repl.ws_clear_all_repl_objs ();
     }
 
   if (la_recdes_pool.is_initialized == true)
@@ -8198,7 +8187,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   if (error != NO_ERROR)
     {
       er_stack_push ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Failed to initialize db_ha_apply_info");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Failed to initialize _db_ha_apply_info");
       er_stack_pop ();
       return error;
     }
@@ -8751,6 +8740,486 @@ la_delay_replica (time_t eot_time)
 
   return NO_ERROR;
 }
+
+#if defined(CS_MODE)
+static const char *
+la_repl_filter_type_string (REPL_FILTER_TYPE type)
+{
+  switch (type)
+    {
+    case REPL_FILTER_NONE:
+      return "REPL_FILTER_NONE";
+    case REPL_FILTER_INCLUDE_TBL:
+      return "REPL_FILTER_INCLUDE_TBL";
+    case REPL_FILTER_EXCLUDE_TBL:
+      return "REPL_FILTER_EXCLUDE_TBL";
+    default:
+      return "UNKNOWN";
+    }
+}
+
+static void
+la_count_repl_lists (const LA_INFO * info, int *active_repl_count, int *long_repl_count, int *active_repl_item_count)
+{
+  *active_repl_count = 0;
+  *long_repl_count = 0;
+  *active_repl_item_count = 0;
+
+  if (info->repl_lists == NULL || info->repl_cnt <= 0)
+    {
+      return;
+    }
+
+  for (int i = 0; i < info->repl_cnt; i++)
+    {
+      LA_APPLY *apply = info->repl_lists[i];
+
+      if (apply == NULL)
+	{
+	  continue;
+	}
+
+      if (apply->tranid != 0 || apply->num_items > 0)
+	{
+	  (*active_repl_count)++;
+	  *active_repl_item_count += apply->num_items;
+	}
+
+      if (apply->is_long_trans)
+	{
+	  (*long_repl_count)++;
+	}
+    }
+}
+
+static void
+la_dump_repl_filter (FILE * out, const LA_REPL_FILTER * filter, int indent)
+{
+  int filter_count;
+
+  if (filter == NULL)
+    {
+      fprintf (out, "%*s\"repl_filter\": null", indent, "");
+      return;
+    }
+
+  filter_count = filter->num_filters;
+  if (filter_count < 0)
+    {
+      filter_count = 0;
+    }
+  if (filter->list_size >= 0 && filter_count > filter->list_size)
+    {
+      filter_count = filter->list_size;
+    }
+  if (filter->list == NULL)
+    {
+      filter_count = 0;
+    }
+
+  fprintf (out, "%*s\"repl_filter\": {\n", indent, "");
+  fprintf (out, "%*s\"type\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, la_repl_filter_type_string (filter->type));
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"list_size\": %d,\n", indent + 2, "", filter->list_size);
+  fprintf (out, "%*s\"num_filters\": %d,\n", indent + 2, "", filter->num_filters);
+  fprintf (out, "%*s\"filters\": [\n", indent + 2, "");
+  for (int i = 0; i < filter_count; i++)
+    {
+      fprintf (out, "%*s", indent + 4, "");
+      logwr_dump_json_string_value (out, filter->list[i]);
+      fprintf (out, "%s\n", (i + 1 < filter_count) ? "," : "");
+    }
+  fprintf (out, "%*s]\n", indent + 2, "");
+  fprintf (out, "%*s}", indent, "");
+}
+
+void
+la_dump_la_info (FILE * out)
+{
+  int indent = 2;
+  LA_INFO *info = &la_Info;
+  time_t now = time (NULL);
+  long delay_seconds;
+  long long apply_gap_pages;
+  long long commit_gap_pages;
+  long long required_gap_pages;
+  int active_repl_count;
+  int long_repl_count;
+  int active_repl_item_count;
+
+  if (out == NULL)
+    {
+      out = stdout;
+    }
+
+  delay_seconds =
+    (info->log_record_time > 0 && now >= info->log_record_time) ? (long) (now - info->log_record_time) : -1;
+  apply_gap_pages =
+    (info->append_lsa.pageid != NULL_PAGEID && info->final_lsa.pageid != NULL_PAGEID)
+    ? (long long) (info->append_lsa.pageid - info->final_lsa.pageid) : -1;
+  commit_gap_pages =
+    (info->final_lsa.pageid != NULL_PAGEID && info->committed_lsa.pageid != NULL_PAGEID)
+    ? (long long) (info->final_lsa.pageid - info->committed_lsa.pageid) : -1;
+  required_gap_pages =
+    (info->append_lsa.pageid != NULL_PAGEID && info->required_lsa.pageid != NULL_PAGEID)
+    ? (long long) (info->append_lsa.pageid - info->required_lsa.pageid) : -1;
+  la_count_repl_lists (info, &active_repl_count, &long_repl_count, &active_repl_item_count);
+
+  const char *apply_state = NULL;
+  switch (info->apply_state)
+    {
+    case HA_LOG_APPLIER_STATE_NA:
+      apply_state = "HA_LOG_APPLIER_STATE_NA";
+      break;
+    case HA_LOG_APPLIER_STATE_UNREGISTERED:
+      apply_state = "HA_LOG_APPLIER_STATE_UNREGISTERED";
+      break;
+    case HA_LOG_APPLIER_STATE_RECOVERING:
+      apply_state = "HA_LOG_APPLIER_STATE_RECOVERING";
+      break;
+    case HA_LOG_APPLIER_STATE_WORKING:
+      apply_state = "HA_LOG_APPLIER_STATE_WORKING";
+      break;
+    case HA_LOG_APPLIER_STATE_DONE:
+      apply_state = "HA_LOG_APPLIER_STATE_DONE";
+      break;
+    case HA_LOG_APPLIER_STATE_ERROR:
+      apply_state = "HA_LOG_APPLIER_STATE_ERROR";
+      break;
+    default:
+      apply_state = "UNKNOWN";
+    }
+
+  const char *last_file_state = NULL;
+  switch (info->last_file_state)
+    {
+    case LOG_HA_FILESTAT_CLEAR:
+      last_file_state = "LOG_HA_FILESTAT_CLEAR";
+      break;
+    case LOG_HA_FILESTAT_ARCHIVED:
+      last_file_state = "LOG_HA_FILESTAT_ARCHIVED";
+      break;
+    case LOG_HA_FILESTAT_SYNCHRONIZED:
+      last_file_state = "LOG_HA_FILESTAT_SYNCHRONIZED";
+      break;
+    default:
+      last_file_state = "UNKNOWN";
+    }
+
+  const char *last_server_state = NULL;
+  switch (info->last_server_state)
+    {
+    case HA_SERVER_STATE_NA:
+      last_server_state = "HA_SERVER_STATE_NA";
+      break;
+    case HA_SERVER_STATE_IDLE:
+      last_server_state = "HA_SERVER_STATE_IDLE";
+      break;
+    case HA_SERVER_STATE_ACTIVE:
+      last_server_state = "HA_SERVER_STATE_ACTIVE";
+      break;
+    case HA_SERVER_STATE_TO_BE_ACTIVE:
+      last_server_state = "HA_SERVER_STATE_TO_BE_ACTIVE";
+      break;
+    case HA_SERVER_STATE_STANDBY:
+      last_server_state = "HA_SERVER_STATE_STANDBY";
+      break;
+    case HA_SERVER_STATE_TO_BE_STANDBY:
+      last_server_state = "HA_SERVER_STATE_TO_BE_STANDBY";
+      break;
+    case HA_SERVER_STATE_MAINTENANCE:
+      last_server_state = "HA_SERVER_STATE_MAINTENANCE";
+      break;
+    case HA_SERVER_STATE_DEAD:
+      last_server_state = "HA_SERVER_STATE_DEAD";
+      break;
+    default:
+      last_server_state = "UNKNOWN";
+    }
+
+  const char *la_status = NULL;
+  switch (info->status)
+    {
+    case LA_STATUS_BUSY:
+      la_status = "LA_STATUS_BUSY";
+      break;
+    case LA_STATUS_IDLE:
+      la_status = "LA_STATUS_IDLE";
+      break;
+    default:
+      la_status = "UNKNOWN";
+    }
+
+  fprintf (out, "{\n");
+  fprintf (out, "%*s\"la_info\": {\n", indent, "");
+
+  fprintf (out, "%*s\"log_path\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, info->log_path);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"loginf_path\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, info->loginf_path);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"support_summary\": {\n", indent + 2, "");
+  fprintf (out, "%*s\"dump_time\": %ld,\n", indent + 4, "", (long) now);
+  fprintf (out, "%*s\"delay_seconds\": %ld,\n", indent + 4, "", delay_seconds);
+  fprintf (out, "%*s\"apply_gap_pages\": %lld,\n", indent + 4, "", apply_gap_pages);
+  fprintf (out, "%*s\"commit_gap_pages\": %lld,\n", indent + 4, "", commit_gap_pages);
+  fprintf (out, "%*s\"required_gap_pages\": %lld,\n", indent + 4, "", required_gap_pages);
+  fprintf (out, "%*s\"cur_repl\": %d,\n", indent + 4, "", info->cur_repl);
+  fprintf (out, "%*s\"active_repl_count\": %d,\n", indent + 4, "", active_repl_count);
+  fprintf (out, "%*s\"long_repl_count\": %d,\n", indent + 4, "", long_repl_count);
+  fprintf (out, "%*s\"active_repl_item_count\": %d,\n", indent + 4, "", active_repl_item_count);
+  fprintf (out, "%*s\"total_rows\": %d,\n", indent + 4, "", info->total_rows);
+  fprintf (out, "%*s\"prev_total_rows\": %d,\n", indent + 4, "", info->prev_total_rows);
+  fprintf (out, "%*s\"log_record_time\": %ld,\n", indent + 4, "", (long) info->log_record_time);
+  fprintf (out, "%*s\"log_commit_time\": %ld,\n", indent + 4, "", (long) info->log_commit_time);
+  fprintf (out, "%*s\"num_unflushed\": %d,\n", indent + 4, "", info->num_unflushed);
+  fprintf (out, "%*s\"apply_state\": ", indent + 4, "");
+  logwr_dump_json_string_value (out, apply_state);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"status\": ", indent + 4, "");
+  logwr_dump_json_string_value (out, la_status);
+  fprintf (out, "\n");
+  fprintf (out, "%*s},\n\n", indent + 2, "");
+
+  la_dump_la_act_log (out, indent + 2);
+  fprintf (out, ",\n\n");
+
+  la_dump_la_arv_log (out, indent + 2);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"last_file_state\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, last_file_state);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"start_vsize\": %lu,\n", indent + 2, "", info->start_vsize);
+  fprintf (out, "%*s\"start_time\": %ld,\n", indent + 2, "", (long) info->start_time);
+  fprintf (out, "%*s\"log_record_time\": %ld,\n", indent + 2, "", (long) info->log_record_time);
+
+  fprintf (out, "%*s\"final_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->final_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"committed_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->committed_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"committed_rep_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->committed_rep_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"last_committed_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->last_committed_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"last_committed_rep_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->last_committed_rep_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"repl_cnt\": %d,\n", indent + 2, "", info->repl_cnt);
+  fprintf (out, "%*s\"cur_repl\": %d,\n", indent + 2, "", info->cur_repl);
+  fprintf (out, "%*s\"active_repl_count\": %d,\n", indent + 2, "", active_repl_count);
+  fprintf (out, "%*s\"long_repl_count\": %d,\n", indent + 2, "", long_repl_count);
+  fprintf (out, "%*s\"active_repl_item_count\": %d,\n", indent + 2, "", active_repl_item_count);
+  fprintf (out, "%*s\"total_rows\": %d,\n", indent + 2, "", info->total_rows);
+  fprintf (out, "%*s\"prev_total_rows\": %d,\n", indent + 2, "", info->prev_total_rows);
+  la_dump_la_apply_list (out, indent + 2);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"commit_head\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, info->commit_head);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"commit_tail\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, info->commit_tail);
+  fprintf (out, ",\n");
+
+  fprintf (out, "%*s\"last_deleted_archive_num\": %d,\n", indent + 2, "", info->last_deleted_archive_num);
+  fprintf (out, "%*s\"last_time_archive_deleted\": %ld,\n", indent + 2, "", (long) info->last_time_archive_deleted);
+
+  fprintf (out, "%*s\"log_data\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, info->log_data);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"rec_type\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, info->rec_type);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"undo_unzip_ptr\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, info->undo_unzip_ptr);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"redo_unzip_ptr\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, info->redo_unzip_ptr);
+  fprintf (out, ",\n");
+
+  fprintf (out, "%*s\"apply_state\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, apply_state);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"max_mem_size\": %d,\n", indent + 2, "", info->max_mem_size);
+
+  fprintf (out, "%*s\"cache_pb\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, info->cache_pb);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"cache_buffer_size\": %d,\n", indent + 2, "", info->cache_buffer_size);
+  fprintf (out, "%*s\"last_is_end_of_record\": %s,\n", indent + 2, "", info->last_is_end_of_record ? "true" : "false");
+  fprintf (out, "%*s\"is_end_of_record\": %s,\n", indent + 2, "", info->is_end_of_record ? "true" : "false");
+  fprintf (out, "%*s\"last_server_state\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, last_server_state);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"is_role_changed\": %s,\n", indent + 2, "", info->is_role_changed ? "true" : "false");
+
+  fprintf (out, "%*s\"append_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->append_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"eof_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->eof_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"required_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->required_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"insert_counter\": %lu,\n", indent + 2, "", info->insert_counter);
+  fprintf (out, "%*s\"update_counter\": %lu,\n", indent + 2, "", info->update_counter);
+  fprintf (out, "%*s\"delete_counter\": %lu,\n", indent + 2, "", info->delete_counter);
+  fprintf (out, "%*s\"schema_counter\": %lu,\n", indent + 2, "", info->schema_counter);
+  fprintf (out, "%*s\"commit_counter\": %lu,\n", indent + 2, "", info->commit_counter);
+  fprintf (out, "%*s\"fail_counter\": %lu,\n", indent + 2, "", info->fail_counter);
+  fprintf (out, "%*s\"log_commit_time\": %ld,\n", indent + 2, "", (long) info->log_commit_time);
+  fprintf (out, "%*s\"required_lsa_changed\": %s,\n", indent + 2, "", info->required_lsa_changed ? "true" : "false");
+  fprintf (out, "%*s\"status\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, la_status);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"is_apply_info_updated\": %s,\n", indent + 2, "", info->is_apply_info_updated ? "true" : "false");
+  fprintf (out, "%*s\"num_unflushed\": %d,\n", indent + 2, "", info->num_unflushed);
+
+  fprintf (out, "%*s\"log_path_lockf_vdes\": %d,\n", indent + 2, "", info->log_path_lockf_vdes);
+  fprintf (out, "%*s\"db_lockf_vdes\": %d,\n", indent + 2, "", info->db_lockf_vdes);
+
+  la_dump_repl_filter (out, &info->repl_filter, indent + 2);
+  fprintf (out, ",\n");
+
+  fprintf (out, "%*s\"reinit_copylog\": %s,\n", indent + 2, "", info->reinit_copylog ? "true" : "false");
+  fprintf (out, "%*s\"maxslotted_reclength\": %d\n", indent + 2, "", info->maxslotted_reclength);
+
+  fprintf (out, "%*s}\n", indent, "");
+  fprintf (out, "}\n");
+
+  fflush (out);
+}
+
+void
+la_dump_la_act_log (FILE * out, int indent)
+{
+  LA_ACT_LOG *a = &la_Info.act_log;
+  LOG_PAGE *hdr_page = a->hdr_page;
+  LOG_HEADER *log_hdr = a->log_hdr;
+
+  fprintf (out, "%*s\"la_act_log\": {\n", indent, "");
+  fprintf (out, "%*s\"path\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, a->path);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"log_vdes\": %d,\n", indent + 2, "", a->log_vdes);
+
+  logwr_dump_log_page_hdr (out, hdr_page != NULL ? &hdr_page->hdr : NULL, indent + 2);
+  fprintf (out, ",\n\n");
+
+  logwr_dump_log_header (out, log_hdr, indent + 2);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"db_iopagesize\": %d,\n", indent + 2, "", a->db_iopagesize);
+  fprintf (out, "%*s\"db_logpagesize\": %d\n", indent + 2, "", a->db_logpagesize);
+
+  fprintf (out, "%*s}", indent, "");
+}
+
+void
+la_dump_la_arv_log (FILE * out, int indent)
+{
+  LA_ARV_LOG *r = &la_Info.arv_log;
+  LOG_PAGE *hdr_page = r->hdr_page;
+  LOG_ARV_HEADER *log_hdr = r->log_hdr;
+
+  if (r->log_vdes == NULL_VOLDES)
+    {
+      fprintf (out, "%*s\"la_arv_log\": null", indent, "");
+      return;
+    }
+
+  fprintf (out, "%*s\"la_arv_log\": {\n", indent, "");
+  fprintf (out, "%*s\"path\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, r->path);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"log_vdes\": %d,\n", indent + 2, "", r->log_vdes);
+
+  logwr_dump_log_page_hdr (out, hdr_page != NULL ? &hdr_page->hdr : NULL, indent + 2);
+  fprintf (out, ",\n\n");
+
+  logwr_dump_log_arv_header (out, log_hdr, indent + 2);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"arv_num\": %d\n", indent + 2, "", r->arv_num);
+  fprintf (out, "%*s}", indent, "");
+}
+
+void
+la_dump_la_apply_list (FILE * out, int indent)
+{
+  if (la_Info.repl_lists == NULL)
+    {
+      fprintf (out, "%*s\"repl_lists\": null", indent, "");
+      return;
+    }
+
+  fprintf (out, "%*s\"repl_lists\": [\n", indent, "");
+  for (int i = 0; i < la_Info.repl_cnt; i++)
+    {
+      la_dump_la_apply (out, i, indent + 2);
+      fprintf (out, "%s\n", (i + 1 < la_Info.repl_cnt) ? "," : "");
+    }
+  fprintf (out, "%*s]", indent, "");
+}
+
+void
+la_dump_la_apply (FILE * out, int idx, int indent)
+{
+  if (idx < 0 || la_Info.repl_lists == NULL || idx >= la_Info.repl_cnt)
+    {
+      fprintf (out, "%*snull", indent, "");
+      return;
+    }
+
+  LA_APPLY *apply = la_Info.repl_lists[idx];
+  if (apply == NULL)
+    {
+      fprintf (out, "%*snull", indent, "");
+      return;
+    }
+
+  fprintf (out, "%*s{\n", indent, "");
+  fprintf (out, "%*s\"index\": %d,\n", indent + 2, "", idx);
+  fprintf (out, "%*s\"tranid\": %d,\n", indent + 2, "", apply->tranid);
+  fprintf (out, "%*s\"num_items\": %d,\n", indent + 2, "", apply->num_items);
+  fprintf (out, "%*s\"is_long_trans\": %s,\n", indent + 2, "", apply->is_long_trans ? "true" : "false");
+
+  fprintf (out, "%*s\"start_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &apply->start_lsa, indent + 4);
+  fprintf (out, ",\n");
+
+  fprintf (out, "%*s\"last_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &apply->last_lsa, indent + 4);
+  fprintf (out, ",\n");
+
+  fprintf (out, "%*s\"head\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, apply->head);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"tail\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, apply->tail);
+  fprintf (out, "\n");
+
+  fprintf (out, "%*s}", indent, "");
+}
+
+#endif /* CS_MODE */
 
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 int

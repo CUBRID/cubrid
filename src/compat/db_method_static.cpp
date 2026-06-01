@@ -709,6 +709,7 @@ au_login_method (MOP class_mop, DB_VALUE *returnval, DB_VALUE *user, DB_VALUE *p
   if (error == NO_ERROR)
     {
       user_name = db_get_user_name ();
+      tm_Tran_invalidate_snapshot = 1;
       error = clogin_user (user_name);
 
       if (error == NO_ERROR)
@@ -1186,7 +1187,6 @@ qo_set_cost (DB_OBJECT *target, DB_VALUE *result, DB_VALUE *plan, DB_VALUE *cost
     {
     case DB_TYPE_STRING:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
       plan_string = db_get_string (plan);
       break;
     default:
@@ -1198,7 +1198,6 @@ qo_set_cost (DB_OBJECT *target, DB_VALUE *result, DB_VALUE *plan, DB_VALUE *cost
     {
     case DB_TYPE_STRING:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
       cost_string = db_get_string (cost);
       break;
     default:

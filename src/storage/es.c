@@ -348,7 +348,7 @@ es_delete_file (const char *uri)
  *
  * return: error code
  * in_uri(in):
- * metapath(in) : meta name combined with in_uri
+ * metaname(in) : meta name combined with in_uri
  * out_uri(out):
  */
 int
@@ -408,6 +408,64 @@ es_copy_file (const char *in_uri, const char *metaname, char *out_uri)
 }
 
 /*
+ * es_copy_file_with_prefix - Similar to es_copy_file(), but handles only the ES_POSIX type and performs file copy
+                              while adding a prefix to the destination path.
+ *
+ * return: error code
+ * in_uri(in): path of the original source file
+ * metaname(in) : mataname was used as a keyword to identify tables
+ * prefix(in): prefix that will be added to the destination path when copying
+ * out_uri(out): new path of the copied file
+ */
+int
+es_copy_file_with_prefix (const char *in_uri, const char *metaname, const char *prefix, char *out_uri)
+{
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  ES_TYPE es_type;
+  int ret = NO_ERROR;
+
+  assert (in_uri != NULL);
+  assert (metaname != NULL);
+  assert (prefix != NULL);
+  assert (out_uri != NULL);
+
+  if (es_initialized_type == ES_NONE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
+      return ER_ES_NO_LOB_PATH;
+    }
+
+  es_type = es_get_type (in_uri);
+  if (es_type != es_initialized_type)
+    {
+      /* copy file operation is allowed only between same types */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_COPY_TO_DIFFERENT_TYPE, 2, es_get_type_string (es_type),
+	      es_get_type_string (es_initialized_type));
+      return ER_ES_COPY_TO_DIFFERENT_TYPE;
+    }
+
+  if (es_type == ES_POSIX)
+    {
+      memcpy (out_uri, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX));
+
+      ret =
+	xes_posix_copy_file_with_prefix (ES_POSIX_PATH_POS (in_uri), (char *) metaname, prefix,
+					 ES_POSIX_PATH_POS (out_uri));
+      es_log ("es_copy_file_with_prefix: xes_posix_copy_file_with_prefix(%s) -> %s: %d\n", in_uri, out_uri, ret);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, in_uri);
+      return ER_ES_INVALID_PATH;
+    }
+
+  return ret;
+#else /* SERVER_MODE || SA_MODE */
+  return ER_FAILED;		/* Not supported in CS_MODE because it handles server-side external storage. */
+#endif
+}
+
+/*
  * es_rename_file - rename a locator according to the metaname
  *
  * return: error code
@@ -448,7 +506,7 @@ es_rename_file (const char *in_uri, const char *metaname, char *out_uri)
 #else /* WINDOWS */
       memcpy (out_uri, ES_OWFS_PATH_PREFIX, sizeof (ES_OWFS_PATH_PREFIX));
       ret = es_owfs_rename_file (ES_OWFS_PATH_POS (in_uri), metaname, ES_OWFS_PATH_POS (out_uri));
-      es_log ("es_copy_file: es_owfs_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
+      es_log ("es_rename_file: es_owfs_rename_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
 #endif /* !WINDOWS */
     }
   else if (es_type == ES_POSIX)
@@ -456,10 +514,10 @@ es_rename_file (const char *in_uri, const char *metaname, char *out_uri)
       memcpy (out_uri, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX));
 #if defined (CS_MODE)
       ret = es_posix_rename_file (ES_POSIX_PATH_POS (in_uri), metaname, ES_POSIX_PATH_POS (out_uri));
-      es_log ("es_copy_file: es_posix_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
+      es_log ("es_rename_file: es_posix_rename_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
 #else /* CS_MODE */
       ret = xes_posix_rename_file (ES_POSIX_PATH_POS (in_uri), metaname, ES_POSIX_PATH_POS (out_uri));
-      es_log ("es_copy_file: xes_posix_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
+      es_log ("es_rename_file: xes_posix_rename_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
 #endif /* SERVER_MODE || SA_MODE */
     }
   else
@@ -469,6 +527,64 @@ es_rename_file (const char *in_uri, const char *metaname, char *out_uri)
     }
 
   return ret;
+}
+
+/*
+ * es_move_file_with_prefix - Moves a LOB file from the source path to a destination directory defined by the prefix.
+ *
+ * return: error code
+ * src_path(in): Source file path
+ * metaname(in) : Metadata used for the new file name
+ * prefix(in) : prefix to be added to the destination path when moving the file
+ * new_path(out): Resulting path of the moved file
+ *
+ * Note: CUBRID supports only the ES_POSIX type, so only the ES_POSIX case is handled.
+ */
+int
+es_move_file_with_prefix (const char *src_path, const char *metaname, const char *prefix, char *new_path)
+{
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  int ret;
+  ES_TYPE es_type;
+
+  assert (src_path != NULL);
+  assert (metaname != NULL);
+  assert (prefix != NULL);
+  assert (new_path != NULL);
+
+  if (es_initialized_type == ES_NONE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
+      return ER_ES_NO_LOB_PATH;
+    }
+
+  es_type = es_get_type (src_path);
+  if (es_type != es_initialized_type)
+    {
+      /* move file operation is allowed only between same types */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_COPY_TO_DIFFERENT_TYPE, 2, es_get_type_string (es_type),
+	      es_get_type_string (es_initialized_type));
+      return ER_ES_COPY_TO_DIFFERENT_TYPE;
+    }
+
+  if (es_type == ES_POSIX)
+    {
+      memcpy (new_path, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX));
+
+      ret =
+	xes_posix_move_file_with_prefix (ES_POSIX_PATH_POS (src_path), metaname, prefix, ES_POSIX_PATH_POS (new_path));
+      es_log ("es_move_file_with_prefix: xes_posix_move_file_with_prefix(%s) -> %s: %d\n", src_path, new_path, ret);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, src_path);
+      return ER_ES_INVALID_PATH;
+    }
+
+  return ret;
+#else /* SERVER_MODE || SA_MODE */
+  return ER_FAILED;		/* Not supported in CS_MODE because it handles server-side external storage. */
+#endif
 }
 
 /*

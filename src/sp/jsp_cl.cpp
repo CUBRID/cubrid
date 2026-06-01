@@ -88,9 +88,6 @@
 #define PT_NODE_SP_ARGS(node) \
   ((node)->info.sp.param_list)
 
-#define PT_NODE_SP_DIRECT(node) \
-  ((node)->info.sp.body->info.sp_body.direct)
-
 #define PT_NODE_SP_IMPL(node) \
   ((node)->info.sp.body->info.sp_body.impl->info.value.data_value.str->bytes)
 
@@ -195,9 +192,9 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
       er_clear ();
 
       /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+      if (db_client_type_is_loaddb_compat () /*latest compat client type */ )
 	{
-	  err = jsp_find_sp_of_another_owner (name, &mop);
+	  err = jsp_find_sp_of_another_owner (checked_name, &mop);
 	}
       else
 	{
@@ -245,7 +242,7 @@ jsp_find_stored_procedure_code (const char *name)
   AU_DISABLE (save);
 
   db_make_string (&value, name);
-  mop = db_find_unique (db_find_class (SP_CODE_CLASS_NAME), SP_ATTR_CLS_NAME, &value);
+  mop = db_find_unique (db_find_class (SP_CODE_CLASS_NAME), SP_CODE_ATTR_NAME, &value);
 
   if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
     {
@@ -278,6 +275,17 @@ jsp_find_sp_of_another_owner (const char *name, MOP *return_mop)
   error = do_find_stored_procedure_by_query (name, other_class_name, DB_MAX_IDENTIFIER_LENGTH);
   if (other_class_name[0] != '\0')
     {
+      if (db_get_client_statement_type () == CUBRID_STMT_CREATE_STORED_PROCEDURE)
+	{
+	  /* maybe unloaded from version 11.4+ or later */
+	  db_set_client_type (DB_CLIENT_TYPE_LOADDB_UTILITY);
+
+	  error = ER_SP_NOT_EXIST;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, name);
+
+	  return error;
+	}
+
       db_make_string (&value, other_class_name);
       *return_mop = db_find_unique (db_find_class (SP_CLASS_NAME), SP_ATTR_UNIQUE_NAME, &value);
       if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
@@ -527,7 +535,7 @@ jsp_get_name (MOP mop_p)
   AU_DISABLE (save);
 
   /* check type */
-  int err = db_get (mop_p, SP_ATTR_NAME, &value);
+  int err = db_get (mop_p, SP_ATTR_SP_NAME, &value);
   if (err != NO_ERROR)
     {
       AU_ENABLE (save);
@@ -946,10 +954,11 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, bool &is_null, 
 	{
 	  if (TP_IS_CHAR_TYPE (db_value_domain_type (value)))
 	    {
-	      if (db_get_string_size (value) > 255)
+	      if (db_get_string_size (value) > DB_MAX_DEFAULT_EXPR_LENGTH)
 		{
 		  pt_reset_error (parser);
-		  PT_ERRORm (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMATNIC_SP_PARAM_DEFAULT_STR_TOO_BIG);
+		  PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_PARAM_DEFAULT_STR_TOO_BIG,
+			      DB_MAX_DEFAULT_EXPR_LENGTH);
 		  return ER_SP_PARAM_DEFAULT_STR_TOO_BIG;
 		}
 
@@ -1004,6 +1013,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   SP_INFO sp_info;
   char *temp;
+  DB_VALUE current_datetime;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -1143,19 +1153,12 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 			   NULL);
 	  goto error_exit;
 	}
+      sp_info.sql_data_access = (SP_SQL_DATA_ACCESS_TYPE) compile_response.sql_data_access;
     }
   else				/* SP_LANG_JAVA */
     {
-      bool is_direct = PT_NODE_SP_DIRECT (statement);
-      if (is_direct)
-	{
-	  // TODO: CBRD-24641
-	  assert (false);
-	}
-      else
-	{
-	  decl = (const char *) PT_NODE_SP_JAVA_METHOD (statement);
-	}
+      decl = (const char *) PT_NODE_SP_JAVA_METHOD (statement);
+      sp_info.sql_data_access = SP_SQL_TYPE_UNKNOWN;
     }
 
   if (decl)
@@ -1166,10 +1169,12 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   sp_info.comment = (char *) PT_NODE_SP_COMMENT (statement);
 
-  if (err != NO_ERROR)
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
     {
       goto error_exit;
     }
+  sp_info.created_time = *db_get_datetime (&current_datetime);
+  sp_info.updated_time = *db_get_datetime (&current_datetime);
 
   /* check already exists */
   if (jsp_is_exist_stored_procedure (sp_info.unique_name.data ()))
@@ -1205,6 +1210,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   if (!compile_request.code.empty ())
     {
+      assert (sp_info.lang == SP_LANG_PLCSQL);
       SP_CODE_INFO code_info;
 
       auto now = std::chrono::system_clock::now();
@@ -1212,10 +1218,24 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       std::stringstream stm;
       stm << std::put_time (localtime (&converted_timep), "%Y%m%d%H%M%S");
 
+
+      // CBRD-26513, CBRD-26514: rewrite the user code without the user name and the comment
+      const char *rewritten_code;
+      {
+	int custom_print_saved = parser->custom_print;
+
+	parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
+	parser->flag.is_unloading_plcsql_def = 1;
+	rewritten_code = parser_print_tree (parser, statement);
+	parser->flag.is_unloading_plcsql_def = 0;
+
+	parser->custom_print = custom_print_saved;
+      }
+
       code_info.name = sp_info.target_class;
       code_info.created_time = stm.str ();
-      code_info.stype = (sp_info.lang == SP_LANG_PLCSQL) ? SPSC_PLCSQL : SPSC_JAVA;
-      code_info.scode = compile_request.code;
+      code_info.stype = SPSC_PLCSQL;
+      code_info.scode.assign (rewritten_code, strlen (rewritten_code));
       code_info.otype = compile_response.compiled_type;
       code_info.ocode = compile_response.compiled_code;
       code_info.owner = sp_info.owner;
@@ -1392,6 +1412,16 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     {
       db_make_string (&user_val, comment_str);
       err = obj_set (sp_mop, SP_ATTR_COMMENT, &user_val);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
+  err = db_update_obj_timestamp (sp_mop);
+  if (err != NO_ERROR)
+    {
+      goto error;
     }
 
 error:
@@ -1487,7 +1517,7 @@ jsp_check_stored_procedure_name (const char *str)
   char buffer[SM_MAX_IDENTIFIER_LENGTH + 2];
   char tmp[SM_MAX_IDENTIFIER_LENGTH + 2];
   char *name = NULL;
-  static int dbms_output_len = strlen ("dbms_output.");
+  static const int dbms_output_len = strlen ("dbms_output.");
 
 
   if (strncasecmp (str, "dbms_output.", dbms_output_len) == 0)
@@ -1775,7 +1805,7 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
       goto error;
     }
 
-  err = db_get (code_mop, SP_ATTR_SOURCE_CODE, &scode_val);
+  err = db_get (code_mop, SP_CODE_ATTR_SCODE, &scode_val);
   if (err != NO_ERROR)
     {
       goto error;
@@ -1862,6 +1892,12 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
   db_make_string (&value, sp_info.target_method.data ());
   err = dbt_put_internal (obt_p, SP_ATTR_TARGET_METHOD, &value);
   pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  err = db_update_otmpl_timestamp (obt_p);
   if (err != NO_ERROR)
     {
       goto error;
@@ -2031,12 +2067,24 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 
   assert (node);
 
-  sp_entry entry (SP_ATTR_INDEX_LAST);
+  sp_entry entry (NUM_SP_ATTR);
 
   {
     PT_NODE *method_name_node = node->info.method_call.method_name;
-    const char *name = PT_NAME_RESOLVED (method_name_node) ? parser_print_tree (parser,
-		       method_name_node) : PT_NAME_ORIGINAL (method_name_node);
+
+    const char *name;
+    if (PT_NAME_RESOLVED (method_name_node))
+      {
+	int custom_print_saved = parser->custom_print;
+	parser->custom_print |= PT_SUPPRESS_QUOTES;
+	parser->custom_print &= ~PT_PRINT_QUOTES;
+	name = parser_print_tree (parser, method_name_node);
+	parser->custom_print = custom_print_saved;
+      }
+    else
+      {
+	name = PT_NAME_ORIGINAL (method_name_node);
+      }
 
     sig.name = db_private_strdup (NULL, name);
     if (PT_IS_METHOD (node))
@@ -2056,7 +2104,7 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 	AU_DISABLE (save);
 	entry.oid = *WS_OID (mop_p);
 
-	for (int i = 0; i < SP_ATTR_INDEX_LAST; i++)
+	for (int i = 0; i < NUM_SP_ATTR; i++)
 	  {
 	    error = obj_get (mop_p, sp_get_entry_name (i).data (), &entry.vals[i]);
 	    if (error != NO_ERROR)
@@ -2065,15 +2113,15 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 	      }
 	  }
 
-	int lang = db_get_int (&entry.vals[SP_ATTR_INDEX_LANG]);
+	int lang = db_get_int (&entry.vals[INDEX_SP_ATTR_LANG]);
 	sig.type = (lang == SP_LANG_PLCSQL) ? PL_TYPE_PLCSQL : PL_TYPE_JAVA_SP;
 
 	/* semantic check */
-	int directive = db_get_int (&entry.vals[SP_ATTR_INDEX_DIRECTIVE]);
+	int directive = db_get_int (&entry.vals[INDEX_SP_ATTR_DIRECTIVE]);
 	const char *auth_name = (! (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_CALLER) ? jsp_get_owner_name (
 					 name, user_name_buffer, DB_MAX_USER_LENGTH) : au_get_current_user_name ());
 
-	int result_type = db_get_int (&entry.vals[SP_ATTR_INDEX_RETURN_TYPE]);
+	int result_type = db_get_int (&entry.vals[INDEX_SP_ATTR_RETURN_TYPE]);
 	error = jsp_check_return_type_supported ((DB_TYPE) result_type);
 	if (error != NO_ERROR)
 	  {
@@ -2081,8 +2129,8 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 	  }
 
 	// args
-	int num_params = db_get_int (&entry.vals[SP_ATTR_INDEX_ARG_COUNT]);
-	DB_SET *param_set = db_get_set (&entry.vals[SP_ATTR_INDEX_ARGS]);
+	int num_params = db_get_int (&entry.vals[INDEX_SP_ATTR_ARG_COUNT]);
+	DB_SET *param_set = db_get_set (&entry.vals[INDEX_SP_ATTR_ARGS]);
 	error = jsp_make_pl_args (parser, node, num_params, param_set, sig);
 	if (error != NO_ERROR)
 	  {
@@ -2127,8 +2175,8 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
       }
     else
       {
-	sig.ext.sp.target_class_name = db_private_strdup (NULL, db_get_string (&entry.vals[SP_ATTR_INDEX_TARGET_CLASS]));
-	sig.ext.sp.target_method_name = db_private_strdup (NULL, db_get_string (&entry.vals[SP_ATTR_INDEX_TARGET_METHOD]));
+	sig.ext.sp.target_class_name = db_private_strdup (NULL, db_get_string (&entry.vals[INDEX_SP_ATTR_TARGET_CLASS]));
+	sig.ext.sp.target_method_name = db_private_strdup (NULL, db_get_string (&entry.vals[INDEX_SP_ATTR_TARGET_METHOD]));
 	if (sig.ext.sp.target_class_name != NULL)
 	  {
 	    MOP code_mop = jsp_find_stored_procedure_code (sig.ext.sp.target_class_name);
@@ -2173,7 +2221,7 @@ jsp_make_pl_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, DB_SET 
 	goto exit_on_error;
       }
 
-    sp_entry entry (SP_ARGS_ATTR_INDEX_LAST);
+    sp_entry entry (NUM_SP_ARG_ATTR);
 
     for (int i = 0; i < num_params; i++)
       {
@@ -2187,7 +2235,7 @@ jsp_make_pl_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, DB_SET 
 	    goto exit_on_error;
 	  }
 
-	for (int i = 0; i < SP_ARGS_ATTR_INDEX_LAST; i++)
+	for (int i = 0; i < NUM_SP_ARG_ATTR; i++)
 	  {
 	    error = obj_get (arg_mop_p, sp_args_get_entry_name (i).data (), &entry.vals[i]);
 	    if (error != NO_ERROR)
@@ -2196,14 +2244,14 @@ jsp_make_pl_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, DB_SET 
 	      }
 	  }
 
-	int arg_mode = db_get_int (&entry.vals[SP_ARGS_ATTR_INDEX_MODE]);
+	int arg_mode = db_get_int (&entry.vals[INDEX_SP_ARG_ATTR_MODE]);
 	error = jsp_check_out_param_in_query (parser, node, arg_mode);
 	if (error != NO_ERROR)
 	  {
 	    goto exit_on_error;
 	  }
 
-	int arg_type = db_get_int (&entry.vals[SP_ARGS_ATTR_INDEX_DATA_TYPE]);
+	int arg_type = db_get_int (&entry.vals[INDEX_SP_ARG_ATTR_DATA_TYPE]);
 	error = jsp_check_param_type_supported ((DB_TYPE) arg_type, arg_mode);
 	if (error != NO_ERROR)
 	  {
@@ -2217,10 +2265,10 @@ jsp_make_pl_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, DB_SET 
 
 	if (i >= num_required_args)
 	  {
-	    int is_optional = db_get_int (&entry.vals[SP_ARGS_ATTR_INDEX_IS_OPTIONAL]);
+	    int is_optional = db_get_int (&entry.vals[INDEX_SP_ARG_ATTR_IS_OPTIONAL]);
 	    if (is_optional == 1)
 	      {
-		const DB_VALUE &default_val = entry.vals[SP_ARGS_ATTR_INDEX_DEFAULT_VALUE];
+		const DB_VALUE &default_val = entry.vals[INDEX_SP_ARG_ATTR_DEFAULT_VALUE];
 		if (!DB_IS_NULL (&default_val))
 		  {
 		    default_value_size = db_get_string_size (&default_val); // null character

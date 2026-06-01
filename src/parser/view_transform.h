@@ -98,4 +98,6 @@ extern PT_NODE *mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NOD
 extern PT_NODE *mq_rewrite_query_as_derived (PARSER_CONTEXT * parser, PT_NODE * query);
 
 extern int mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec);
+
+extern PT_NODE *mq_has_click_counter (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 #endif /* _VIEW_TRANSFORM_H_ */

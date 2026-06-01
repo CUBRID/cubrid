@@ -240,6 +240,7 @@ namespace cubload
     , m_max_batch_id {NULL_BATCH_ID}
     , m_active_task_count {0}
     , m_class_registry ()
+    , m_load_client_type (DB_CLIENT_TYPE_LOADDB_UTILITY)
     , m_stats ()
     , m_is_failed (false)
     , m_collected_stats ()
@@ -518,6 +519,18 @@ namespace cubload
     return m_args;
   }
 
+  int
+  session::get_client_type ()
+  {
+    return m_load_client_type.load ();
+  }
+
+  void
+  session::set_client_type (int client_type)
+  {
+    m_load_client_type.store (client_type);
+  }
+
   void
   session::notify_waiting_threads ()
   {
@@ -664,7 +677,7 @@ namespace cubload
 	assert (m_collected_stats.empty ());
       }
 
-    status = load_status (is_completed (), is_failed (), stats_);
+    status = load_status (get_client_type (), is_completed (), is_failed (), stats_);
 
     if (!has_lock)
       {

@@ -19,7 +19,7 @@
 #include "pl_struct_compile.hpp"
 
 #include "byte_order.h"
-#include "connection_support.h"
+#include "connection_support.hpp"
 #include "dbtype.h"		/* db_value_* */
 
 #include "method_struct_value.hpp"
@@ -70,6 +70,7 @@ namespace cubpl
     : err_code (-1)
     , err_line (0)
     , err_column (0)
+    , sql_data_access (SP_SQL_TYPE_UNKNOWN)
   {
     //
   }
@@ -90,11 +91,19 @@ namespace cubpl
 	serializator.pack_string (register_stmt);
 	serializator.pack_string (class_name);
 	serializator.pack_string (java_signature);
+	serializator.pack_int (sql_data_access);
 
 	serializator.pack_int (compiled_type);
 	if (compiled_type >= 0)
 	  {
 	    serializator.pack_string (compiled_code);
+	  }
+
+	int dependencies_size = (int) dependencies.size();
+	serializator.pack_int (dependencies_size);
+	for (int i = 0; i < dependencies_size; i++)
+	  {
+	    dependencies[i].pack (serializator);
 	  }
       }
   }
@@ -116,11 +125,18 @@ namespace cubpl
 	size += serializator.get_packed_string_size (register_stmt, size); // register_stmt
 	size += serializator.get_packed_string_size (class_name, size); // class_name
 	size += serializator.get_packed_string_size (java_signature, size); // java_signature
+	size += serializator.get_packed_int_size (size); // sql_data_access
 
 	size += serializator.get_packed_int_size (size); // compiled_type
 	if (compiled_type >= 0)
 	  {
 	    size += serializator.get_packed_string_size (compiled_code, size); // compiled_code
+	  }
+
+	size += serializator.get_packed_int_size (size); // size of dependencies
+	for (int i = 0; i < (int) dependencies.size(); i++)
+	  {
+	    dependencies[i].get_packed_size (serializator, size);
 	  }
       }
 
@@ -143,18 +159,60 @@ namespace cubpl
 	deserializator.unpack_string (register_stmt);
 	deserializator.unpack_string (class_name);
 	deserializator.unpack_string (java_signature);
+	deserializator.unpack_int (sql_data_access);
 
 	deserializator.unpack_int (compiled_type);
 	if (compiled_type >= 0)
 	  {
 	    deserializator.unpack_string (compiled_code);
 	  }
+
+	int dependencies_size = 0;
+	deserializator.unpack_int (dependencies_size);
+	if (dependencies_size > 0)
+	  {
+	    dependencies.resize (dependencies_size);
+	    for (int i = 0; i < dependencies_size; i++)
+	      {
+		dependencies[i].unpack (deserializator);
+	      }
+	  }
       }
+  }
+
+//////////////////////////////////////////////////////////////////////////
+// plcsql_dependency
+//////////////////////////////////////////////////////////////////////////
+
+  plcsql_dependency::plcsql_dependency () { }
+
+  void
+  plcsql_dependency::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_int (obj_type);
+    serializator.pack_string (obj_uniq_name);
+  }
+
+  size_t
+  plcsql_dependency::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    size_t size = serializator.get_packed_int_size (start_offset); // obj_type
+    size += serializator.get_packed_string_size (obj_uniq_name, size); // obj_uniq_name
+    return size;
+  }
+
+  void
+  plcsql_dependency::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_int (obj_type);
+    deserializator.unpack_string (obj_uniq_name);
   }
 
 //////////////////////////////////////////////////////////////////////////
 // sql semantics
 //////////////////////////////////////////////////////////////////////////
+
+
   sql_semantics::sql_semantics ()
   {
     //
@@ -165,6 +223,7 @@ namespace cubpl
   {
     serializator.pack_int (idx);
     serializator.pack_int (sql_type);
+    serializator.pack_int (has_table_access);
     serializator.pack_string (rewritten_query);
 
     if (sql_type >= 0)
@@ -186,6 +245,12 @@ namespace cubpl
 	  {
 	    serializator.pack_string (into_vars[i]);
 	  }
+
+	serializator.pack_int (dependencies.size ());
+	for (int i = 0; i < (int) dependencies.size(); i++)
+	  {
+	    dependencies[i].pack (serializator);
+	  }
       }
   }
 
@@ -194,6 +259,7 @@ namespace cubpl
   {
     size_t size = serializator.get_packed_int_size (start_offset); // idx
     size += serializator.get_packed_int_size (size); // sql_type
+    size += serializator.get_packed_int_size (size); // has_table_access
     size += serializator.get_packed_string_size (rewritten_query, size); // rewritten_query
 
     if (sql_type >= 0)
@@ -217,11 +283,20 @@ namespace cubpl
 	  }
 
 	size += serializator.get_packed_int_size (size); // into_vars size
-	if (into_vars.size() > 0) // host variables
+	if (into_vars.size() > 0) // into variables
 	  {
 	    for (int i = 0; i < (int) into_vars.size (); i++)
 	      {
 		size += serializator.get_packed_string_size (into_vars[i], size);
+	      }
+	  }
+
+	size += serializator.get_packed_int_size (size); // dependencies size
+	if (dependencies.size() > 0) // dependencies
+	  {
+	    for (int i = 0; i < (int) dependencies.size(); i++)
+	      {
+		size += dependencies[i].get_packed_size (serializator, size);
 	      }
 	  }
       }
@@ -232,44 +307,7 @@ namespace cubpl
   void
   sql_semantics::unpack (cubpacking::unpacker &deserializator)
   {
-    deserializator.unpack_int (idx);
-    deserializator.unpack_int (sql_type);
-
-    if (sql_type >= 0)
-      {
-	int column_size = 0;
-	deserializator.unpack_int (column_size);
-
-	if (column_size > 0)
-	  {
-	    columns.resize (column_size);
-	    for (int i = 0; i < (int) column_size; i++)
-	      {
-		columns[i].unpack (deserializator);
-	      }
-	  }
-
-	int hv_size = 0;
-	deserializator.unpack_int (hv_size);
-
-	if (hv_size > 0)
-	  {
-	    hvs.resize (hv_size);
-	    for (int i = 0; i < (int) hv_size; i++)
-	      {
-		hvs[i].unpack (deserializator);
-	      }
-	  }
-
-	std::string s;
-	int into_vars_size = 0;
-	deserializator.unpack_int (into_vars_size);
-	for (int i = 0; i < into_vars_size; i++)
-	  {
-	    deserializator.unpack_string (s);
-	    into_vars.push_back (s);
-	  }
-      }
+    assert (false);     // unreachable
   }
 
   sql_semantics_request::sql_semantics_request ()
@@ -307,6 +345,11 @@ namespace cubpl
     code = METHOD_CALLBACK_GET_SQL_SEMANTICS;
     int size;
     deserializator.unpack_int (size);
+    if (size != 1)
+      {
+	// current implementation only asks one by one.
+	er_log_debug (ARG_FILE_LINE, "note: size of SQL semantics request %d\n", size);
+      }
 
     std::string s;
     for (int i = 0; i < size; i++)

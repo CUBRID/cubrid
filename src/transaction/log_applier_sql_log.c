@@ -42,6 +42,7 @@
 #include "schema_manager.h"
 #include "dbtype.h"
 #include "file_io.h"
+#include "schema_system_catalog_constants.h"
 
 #include "db_value_printer.hpp"
 #include "mem_block.hpp"
@@ -373,7 +374,7 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 {
   int result;
 
-  if (strcmp (sm_ch_name ((MOBJ) (inst_tp->class_)), "db_serial") != 0)
+  if (strcmp (sm_ch_name ((MOBJ) (inst_tp->class_)), CT_SERIAL_NAME) != 0)
     {
       /* ordinary tables */
       string_buffer update_strbuf;
@@ -398,7 +399,7 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
     }
   else
     {
-      /* db_serial */
+      /* _db_serial */
       DB_VALUE *cur_value = sl_find_att_value ("current_val", inst_tp->assignments, inst_tp->nassigns);
       DB_VALUE *incr_value = sl_find_att_value ("increment_val", inst_tp->assignments, inst_tp->nassigns);
 
@@ -707,9 +708,10 @@ sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_s
       log_path = repl_log_path;
     }
 
-  if (strlen (log_path) + 1 + strlen (path_base_name) >= (size_t) path_buf_size)
+  int n = snprintf (path_buf, path_buf_size, "%s%s%s", log_path, FILEIO_PATH_SEPARATOR (log_path), path_base_name);
+  if (n >= path_buf_size)
     {
-      snprintf (er_msg, sizeof (er_msg), "Too long the SQL log path \'%s\'", path_buf);
+      snprintf (er_msg, sizeof (er_msg), "Too long the SQL log path \'%s\'", log_path);
 
       er_stack_push ();
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, er_msg);
@@ -717,8 +719,6 @@ sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_s
 
       return ER_FAILED;
     }
-
-  snprintf (path_buf, path_buf_size, "%s%s%s", log_path, FILEIO_PATH_SEPARATOR (log_path), path_base_name);
 
   p = path_buf;
   if (*p == PATH_SEPARATOR)

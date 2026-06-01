@@ -77,10 +77,6 @@
 #include "host_lookup.h"
 #include "system_parameter.h"
 
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-#define DB_EMPTY_SESSION        (0)
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-
 #define ADMIN_ERR_MSG_SIZE	BROKER_PATH_MAX * 2
 
 #define MAKE_VERSION(MAJOR, MINOR)	(((MAJOR) << 8) | (MINOR))
@@ -364,6 +360,8 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
       return -1;
     }
 
+  COPY_CUBRID_CONF;
+
   for (i = 0; i < br_num; i++)
     {
       if (br_info[i].shard_flag == OFF)
@@ -573,6 +571,8 @@ admin_stop_cmd (int master_shm_id)
   uw_shm_detach (shm_br);
 #endif /* WINDOWS */
   uw_shm_destroy (master_shm_id);
+
+  REMOVE_CUBRID_CONF;
 
   return 0;
 }
@@ -965,6 +965,8 @@ admin_on_cmd (int master_shm_id, const char *broker_name)
       putenv (shard_db_password_env_str[i]);
     }
 
+  ENABLE_CUBRID_CONF_ENV;
+
   for (i = 0; i < shm_br->num_broker; i++)
     {
       shm_proxy_p = NULL;
@@ -1107,6 +1109,8 @@ admin_off_cmd (int master_shm_id, const char *broker_name)
       return -1;
     }
 #endif /* !WINDOWS */
+
+  DISABLE_CUBRID_CONF_ENV;
 
   for (i = 0; i < shm_br->num_broker; i++)
     {
@@ -2200,39 +2204,6 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
 	}
       br_info_p->query_timeout = val;
       shm_as_p->query_timeout = val;
-    }
-  else if (strcasecmp (conf_name, "MYSQL_READ_TIMEOUT") == 0)
-    {
-      int val;
-
-      val = (int) ut_time_string_to_sec (conf_value, "sec");
-
-      if (val < 0)
-	{
-	  sprintf (admin_err_msg, "invalid value: %s", conf_value);
-	  goto set_conf_error;
-	}
-      else if (val > MAX_QUERY_TIMEOUT_LIMIT)
-	{
-	  sprintf (admin_err_msg, "value is out of range : %s", conf_value);
-	  goto set_conf_error;
-	}
-      br_info_p->mysql_read_timeout = val;
-      shm_as_p->mysql_read_timeout = val;
-    }
-  else if (strcasecmp (conf_name, "MYSQL_KEEPALIVE_INTERVAL") == 0)
-    {
-      int val;
-
-      val = (int) ut_time_string_to_sec (conf_value, "sec");
-
-      if (val < MIN_MYSQL_KEEPALIVE_INTERVAL)
-	{
-	  sprintf (admin_err_msg, "invalid value: %s", conf_value);
-	  goto set_conf_error;
-	}
-      br_info_p->mysql_keepalive_interval = val;
-      shm_as_p->mysql_keepalive_interval = val;
     }
   else if (strcasecmp (conf_name, "SHARD_PROXY_LOG") == 0)
     {
@@ -3379,10 +3350,6 @@ as_activate (T_SHM_BROKER * shm_br, T_BROKER_INFO * br_info, T_SHM_APPL_SERVER *
 	{
 	  snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d_%d_%d", shm_appl->broker_name, appl_name,
 		    as_info->proxy_id + 1, as_info->shard_id, as_info->shard_cas_id + 1);
-	}
-      else if (br_info->appl_server == APPL_SERVER_CAS_ORACLE)
-	{
-	  snprintf (process_name, sizeof (process_name) - 1, "%s", appl_name);
 	}
       else
 	{

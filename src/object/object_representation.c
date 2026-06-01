@@ -38,6 +38,7 @@
 #include "file_io.h"
 #include "log_lsa.hpp"
 
+#include "compressor.hpp"
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "oid.h"
@@ -204,50 +205,6 @@ classobj_decompose_property_oid (const char *buffer, int *volid, int *fileid, in
 
   return 3;
 }
-
-/*
- * or_Type_sizes
- *    This is used primarily on the server but can be used on the client
- *    as well.  Given a type identifier, return the disk size of values
- *    of this type, if they are fixed size.  A value of -1 indicates that
- *    the values are of variable size.
- *    Must be kept in sync with the DB_TYPE enumeration in orh
- *    This information is duplicated in the const PR_TYPE structures
- *    for use on the client.  Should consider using this on the client
- *    side as well to avoid the duplication.
- *
- */
-int or_Type_sizes[] = {
-
-  0,				/* null */
-  OR_INT_SIZE,			/* integer */
-  OR_FLOAT_SIZE,		/* float */
-  OR_DOUBLE_SIZE,		/* double */
-  -1,				/* string */
-  OR_OID_SIZE,			/* object */
-  -1,				/* set */
-  -1,				/* multiset */
-  -1,				/* sequence */
-  -1,				/* elo */
-  OR_TIME_SIZE,			/* time */
-  OR_UTIME_SIZE,		/* utime */
-  OR_DATE_SIZE,			/* date */
-  OR_MONETARY_SIZE,		/* monetary */
-  -1,				/* variable */
-  -1,				/* substructure */
-  0,				/* pointer */
-  0,				/* error */
-  OR_INT_SIZE,			/* short */
-  -1,				/* virtual obj */
-  OR_OID_SIZE,			/* oid */
-  0,				/* last */
-  -1,				/* numeric */
-  -1,				/* bit */
-  -1,				/* varbit */
-  -1,				/* char */
-  -1,				/* nchar */
-  -1,				/* varnchar */
-};
 
 /*
  * RECDES DECODING FUNCTIONS
@@ -863,7 +820,10 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
       assert (OR_IS_STRING_LENGTH_COMPRESSABLE (charlen));
 
       /* Alloc memory for the compressed string */
-      compress_buffer_size = LZ4_compressBound (charlen);
+
+      // *INDENT-OFF*
+      compress_buffer_size = cubcompress::bound<cubcompress::LZ4> (charlen);
+      // *INDENT-ON*
       compressed_string = (char *) malloc (compress_buffer_size);
       if (compressed_string == NULL)
 	{
@@ -873,7 +833,10 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	}
 
       /* Compress the string */
-      compressed_length = LZ4_compress_default (string, compressed_string, charlen, compress_buffer_size);
+      // *INDENT-OFF*
+      compressed_length =
+	cubcompress::compress<cubcompress::LZ4> (string, charlen, compressed_string, compress_buffer_size);
+      // *INDENT-ON*
       if (compressed_length <= 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZ4_COMPRESS_FAIL, 4, FILEIO_ZIP_LZ4_METHOD,
@@ -1581,13 +1544,21 @@ or_unpack_int_array (char *ptr, int n, int **number_array)
 {
   int i;
 
-  *number_array = (int *) db_private_alloc (NULL, (n * sizeof (int)));
-  if (*number_array)
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
+  if (n > 0)
     {
-      ASSERT_ALIGN (ptr, INT_ALIGNMENT);
-      for (i = 0; i < n; i++)
+      *number_array = (int *) db_private_alloc (NULL, (n * sizeof (int)));
+      if (*number_array)
 	{
-	  ptr = or_unpack_int (ptr, &(*number_array)[i]);
+	  for (i = 0; i < n; i++)
+	    {
+	      ptr = or_unpack_int (ptr, &(*number_array)[i]);
+	    }
+	}
+      else
+	{
+	  ptr = NULL;
 	}
     }
   else
@@ -2623,8 +2594,6 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	    }
 	  break;
 
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CLOB:
@@ -2651,7 +2620,6 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	   * chunk of code can be removed.
 	   */
 	  if ((id == DB_TYPE_VARCHAR && d->precision == DB_MAX_VARCHAR_PRECISION)
-	      || (id == DB_TYPE_VARNCHAR && d->precision == DB_MAX_VARNCHAR_PRECISION)
 	      || (id == DB_TYPE_VARBIT && d->precision == DB_MAX_VARBIT_PRECISION)
 	      || (id == DB_TYPE_BLOB && d->precision == DB_MAX_LOB_PRECISION)
 	      || (id == DB_TYPE_CLOB && d->precision == DB_MAX_LOB_PRECISION))
@@ -2819,8 +2787,6 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	  break;
 
 	case DB_TYPE_CLOB:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  has_collation = true;
@@ -2845,7 +2811,6 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	   * in or_packed_domain_size above.
 	   */
 	  if ((id == DB_TYPE_VARCHAR && d->precision == DB_MAX_VARCHAR_PRECISION)
-	      || (id == DB_TYPE_VARNCHAR && d->precision == DB_MAX_VARNCHAR_PRECISION)
 	      || (id == DB_TYPE_VARBIT && d->precision == DB_MAX_VARBIT_PRECISION)
 	      || (id == DB_TYPE_CLOB && d->precision == DB_MAX_LOB_PRECISION)
 	      || (id == DB_TYPE_BLOB && d->precision == DB_MAX_LOB_PRECISION))
@@ -3130,8 +3095,6 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	      scale = (carrier & OR_DOMAIN_SCALE_MASK) >> OR_DOMAIN_SCALE_SHIFT;
 	      break;
 
-	    case DB_TYPE_NCHAR:
-	    case DB_TYPE_VARNCHAR:
 	    case DB_TYPE_CHAR:
 	    case DB_TYPE_VARCHAR:
 	      has_collation = true;
@@ -3149,10 +3112,6 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 		  if (type == DB_TYPE_VARCHAR)
 		    {
 		      precision = DB_MAX_VARCHAR_PRECISION;
-		    }
-		  else if (type == DB_TYPE_VARNCHAR)
-		    {
-		      precision = DB_MAX_VARNCHAR_PRECISION;
 		    }
 		  else if (type == DB_TYPE_VARBIT)
 		    {
@@ -3527,8 +3486,6 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	      dom = tp_domain_find_numeric (type, precision, scale, is_desc);
 	      break;
 
-	    case DB_TYPE_NCHAR:
-	    case DB_TYPE_VARNCHAR:
 	    case DB_TYPE_CHAR:
 	    case DB_TYPE_VARCHAR:
 	      collation_storage = or_get_int (buf, &rc);
@@ -3575,10 +3532,6 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		  if (type == DB_TYPE_VARCHAR)
 		    {
 		      precision = DB_MAX_VARCHAR_PRECISION;
-		    }
-		  else if (type == DB_TYPE_VARNCHAR)
-		    {
-		      precision = DB_MAX_VARNCHAR_PRECISION;
 		    }
 		  else if (type == DB_TYPE_VARBIT)
 		    {
@@ -3747,8 +3700,6 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		      dom->json_validator = NULL;
 		    }
 		  break;
-		case DB_TYPE_NCHAR:
-		case DB_TYPE_VARNCHAR:
 		case DB_TYPE_CHAR:
 		case DB_TYPE_VARCHAR:
 		  dom->collation_id = collation_id;
@@ -5857,6 +5808,37 @@ or_header_size (char *ptr)
   return mvcc_header_size_lookup[OR_GET_MVCC_FLAG (ptr)];
 }
 
+/*
+ * or_pack_int_array - write a int array
+ *    return: advanced buffer pointer
+ *    buffer(out): output buffer
+ *    count(in): array length
+ *    int_array(in): int array
+ */
+char *
+or_pack_int_array (char *buffer, int count, const int *int_array)
+{
+  int i;
+  char *ptr;
+
+  assert (buffer != NULL && int_array != NULL && count >= 0);
+
+  if (count < 0 || int_array == NULL)
+    {
+      count = 0;
+    }
+
+  /* pack count + that many integers */
+  ptr = or_pack_int (buffer, count);
+
+  for (i = 0; i < count; i++)
+    {
+      ptr = or_pack_int (ptr, int_array[i]);
+    }
+
+  return ptr;
+}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * or_packed_string_array_length - get the amount of space needed to pack an
@@ -5898,36 +5880,6 @@ or_packed_db_value_array_length (int count, DB_VALUE * val)
       size += or_db_value_size (val++);
     }
   return size;
-}
-
-/*
- * or_pack_int_array - write a int array
- *    return: advanced buffer pointer
- *    buffer(out): output buffer
- *    count(in): array length
- *    int_array(in): int array
- */
-char *
-or_pack_int_array (char *buffer, int count, int *int_array)
-{
-  int i;
-  char *ptr;
-
-  if (!int_array)
-    {
-      /* there are no values to pack, so pack a count of 0 */
-      ptr = or_pack_int (buffer, 0);
-    }
-  else
-    {
-      /* pack count + that many integers */
-      ptr = or_pack_int (buffer, count);
-      for (i = 0; i < count; i++)
-	{
-	  ptr = or_pack_int (ptr, int_array[i]);
-	}
-    }
-  return ptr;
 }
 
 /*

@@ -75,6 +75,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     public String buildCodeLines(Unit unit) {
 
         javaTypesUsed.add("com.cubrid.jsp.Server");
+        javaTypesUsed.add("com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorCode");
         javaTypesUsed.add("com.cubrid.plcsql.predefined.PlcsqlRuntimeError");
         javaTypesUsed.add("java.util.List");
 
@@ -1569,13 +1570,20 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplStmtCursorFetch =
             new String[] {
-                "{ // cursor fetch",
+                "try { // cursor fetch",
                 "  if (%'CURSOR'% == null) {",
                 "    throw new INVALID_CURSOR(\"the cursor is NULL\");",
                 "  }",
                 "  ResultSet rs = %'CURSOR'%.rs;",
                 "  if (%'CURSOR'%.fetch()) {",
                 "    %'+SET-INTO-VARIABLES'%",
+                "  }",
+                "} catch (SQLException e) {",
+                "  Server.log(e);",
+                "  if (e.getErrorCode() == CUBRIDServerSideJDBCErrorCode.ER_SP_INVALID_CURSOR) {",
+                "    throw new INVALID_CURSOR(e.getMessage());",
+                "  } else {",
+                "    throw new SQL_ERROR(e.getMessage());",
                 "  }",
                 "}"
             };

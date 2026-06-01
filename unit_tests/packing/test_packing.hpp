@@ -56,13 +56,11 @@ namespace test_packing
       short sh1;
       std::int64_t b1;
       int int_a[5];
-      std::vector<int> int_v;
       DB_VALUE values[10];
       char small_str[256];
       std::string large_str;
       std::string str1;
       char str2[300];
-      rgb color;
 
     public:
 

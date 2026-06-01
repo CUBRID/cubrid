@@ -216,6 +216,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   int header_size;
   int offset;
   XASL_UNPACK_INFO *unpack_info_p = NULL;
+  XASL_UNPACK_INFO *unpack_info_p_orig = thread_p->xasl_unpack_info_ptr;
 
   if (!xasl_tree || !xasl_stream || !xasl_unpack_info_ptr || xasl_stream_size <= 0)
     {
@@ -255,6 +256,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   xasl->class_locks = NULL;
   xasl->tcard_list = NULL;
   xasl->px_executor = NULL;
+  xasl->memoize_storage = NULL;
   xasl->executed_parallelism = 0;
 
   /* initialize the query in progress flag to FALSE.  Note that this flag is not packed/unpacked.  It is strictly a
@@ -263,7 +265,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
 end:
   stx_free_visited_ptrs (thread_p);
 #if defined(SERVER_MODE)
-  set_xasl_unpack_info_ptr (thread_p, NULL);
+  set_xasl_unpack_info_ptr (thread_p, unpack_info_p_orig);
 #endif /* SERVER_MODE */
 
   return stx_get_xasl_errcode (thread_p);
@@ -293,6 +295,7 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context *
   int header_size;
   int offset;
   XASL_UNPACK_INFO *unpack_info_p = NULL;
+  XASL_UNPACK_INFO *unpack_info_p_orig = thread_p->xasl_unpack_info_ptr;
 
   if (!pred || !pred_stream || pred_stream_size <= 0)
     {
@@ -327,7 +330,7 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context *
 end:
   stx_free_visited_ptrs (thread_p);
 #if defined(SERVER_MODE)
-  set_xasl_unpack_info_ptr (thread_p, NULL);
+  set_xasl_unpack_info_ptr (thread_p, unpack_info_p_orig);
 #endif /* SERVER_MODE */
 
   return stx_get_xasl_errcode (thread_p);
@@ -350,6 +353,7 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *x
   int header_size;
   int offset;
   XASL_UNPACK_INFO *unpack_info_p = NULL;
+  XASL_UNPACK_INFO *unpack_info_p_orig = thread_p->xasl_unpack_info_ptr;
 
   if (!xasl || !xasl_stream || !xasl_unpack_info_ptr || xasl_stream_size <= 0)
     {
@@ -384,7 +388,7 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *x
 end:
   stx_free_visited_ptrs (thread_p);
 #if defined(SERVER_MODE)
-  set_xasl_unpack_info_ptr (thread_p, NULL);
+  set_xasl_unpack_info_ptr (thread_p, unpack_info_p_orig);
 #endif /* SERVER_MODE */
 
   return stx_get_xasl_errcode (thread_p);
@@ -2363,8 +2367,10 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   memset (&xasl->groupby_stats, 0, sizeof (xasl->groupby_stats));
   memset (&xasl->xasl_stats, 0, sizeof (xasl->xasl_stats));
   memset (&xasl->func_stats, 0, sizeof (xasl->func_stats));
+  xasl->analytic_stats = NULL;
   xasl->max_iterations = -1;
   xasl->px_executor = NULL;
+  xasl->memoize_storage = NULL;
   xasl->executed_parallelism = 0;
   return ptr;
 
@@ -2937,6 +2943,21 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
       stx_build_list_proc->a_regu_list =
 	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
       if (stx_build_list_proc->a_regu_list == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      stx_build_list_proc->a_scan_regu_list = NULL;
+    }
+  else
+    {
+      stx_build_list_proc->a_scan_regu_list =
+	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (stx_build_list_proc->a_scan_regu_list == NULL)
 	{
 	  goto error;
 	}
@@ -4680,7 +4701,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
     }
 
   ptr = or_unpack_int (ptr, &val);
-  access_spec->flags = (ACCESS_SPEC_FLAG) val;
+  access_spec->flags = val;
 
   ptr = or_unpack_int (ptr, &val);
   access_spec->num_parallel_threads = val;
@@ -5433,6 +5454,14 @@ stx_build_val_list (THREAD_ENTRY * thread_p, char *ptr, VAL_LIST * val_list)
 	    }
 	  assert (value_list[i].val->need_clear == false);
 	}
+
+      ptr = or_unpack_domain (ptr, &value_list[i].dom, NULL);
+      if (value_list[i].dom == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+      value_list[i].dom = tp_domain_cache (value_list[i].dom);
 
       if (i < val_list->val_cnt - 1)
 	{
@@ -6300,7 +6329,7 @@ error:
 static char *
 stx_build_analytic_eval_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_EVAL_TYPE * analytic_eval)
 {
-  int offset;
+  int offset, tmp_i;
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
@@ -6340,6 +6369,11 @@ stx_build_analytic_eval_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_EVAL_
 	  goto error;
 	}
     }
+
+  ptr = or_unpack_int (ptr, &tmp_i);
+  analytic_eval->sort_list_size = tmp_i;
+
+  analytic_eval->covered_size = 0;	/* not serialized; only used at XASL build time */
 
   return ptr;
 

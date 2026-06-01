@@ -39,6 +39,7 @@
 #include "porting.h"
 #include "porting_inline.hpp"
 #include "record_descriptor.hpp"
+#include <random>
 #include "slotted_page.h"
 #include "overflow_file.h"
 #include "boot_sr.h"
@@ -156,7 +157,6 @@ static int rv;
 
 #define HEAP_SCAN_ORDERED_HFID(scan) \
   (((scan) != NULL) ? (&(scan)->node.hfid) : (PGBUF_ORDERED_NULL_HFID))
-
 typedef enum
 {
   HEAP_FINDSPACE_FOUND,
@@ -682,8 +682,17 @@ static int heap_attrinfo_check (const OID * inst_oid, HEAP_CACHE_ATTRINFO * attr
 static int heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
 					    HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info);
-static int heap_attrinfo_get_disksize (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, int *offset_size_ptr);
+static int heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info);
+static int heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int payload_size, bool is_mvcc_class,
+						 size_t * offset_size_ptr);
+static size_t heap_attrinfo_determine_disksize (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class,
+						size_t * offset_size_ptr);
 
+static void heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
+					RECDES * raw);
+static void heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
+					   RECDES * raw);
+static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw);
 static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info);
 
 static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value,
@@ -733,6 +742,23 @@ static int heap_stats_bestspace_finalize (void);
 
 static int heap_get_spage_type (void);
 static bool heap_is_reusable_oid (const FILE_TYPE file_type);
+
+// *INDENT-OFF*
+static SCAN_CODE heap_attrinfo_transform_fixed_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, OR_BUF *buf,
+							int index, std::set<int> *incremented_attrids, char *bitmap_bound);
+// *INDENT-ON*
+static SCAN_CODE heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
+							   OR_BUF * buf, char **ptr_varvals, int index, int offset_size,
+							   int header_size, int lob_create_flag);
+static SCAN_CODE heap_attrinfo_transform_header_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
+							 OR_BUF * buf, int offset_size, bool is_mvcc_class,
+							 bool is_update);
+
+// *INDENT-OFF*
+static SCAN_CODE heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
+							  OR_BUF * buf, std::set<int> * incremented_attrids, int offset_size, int header_size,
+							  size_t mvcc_extra, int lob_create_flag, size_t * record_size);
+// *INDENT-ON*
 
 static SCAN_CODE heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							   RECDES * old_recdes, record_descriptor * new_recdes,
@@ -1245,8 +1271,7 @@ heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p, const VPID * vpid_pt
       else
 	{
 	  assert (scan_cache->page_latch > NULL_LOCK);
-	  page_lock = lock_Conv[scan_cache->page_latch][lock];
-	  assert (page_lock != NA_LOCK);
+	  page_lock = lock_conv (scan_cache->page_latch, lock);
 	}
     }
   else
@@ -5049,58 +5074,6 @@ heap_vpid_next (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr, VPID
 }
 
 /*
- * heap_vpid_skip_next () - Skip pages by skip_cnt
- *   return: NO_ERROR
- *   hfid(in): Object heap file identifier
- *   pgptr(in): Current page pointer
- *   next_vpid(in/out): Next volume-page identifier
- *   skip_cnt(in): skip pages by skip_cnt
- *
- * Note: Find the next page of heap file.
- */
-int
-heap_vpid_skip_next (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER * curr_page_watcher,
-		     PGBUF_WATCHER * old_page_watcher, int skip_cnt, VPID * vpid, HEAP_SCANCACHE * scan_cache)
-{
-  int ret = NO_ERROR;
-
-#if !defined (NDEBUG)
-  (void) pgbuf_check_page_ptype (thread_p, curr_page_watcher->pgptr, PAGE_HEAP);
-#endif /* !NDEBUG */
-
-  for (int i = 0; i < skip_cnt - 1; i++)
-    {
-      (void) heap_vpid_next (thread_p, hfid, curr_page_watcher->pgptr, vpid);
-      if (vpid->pageid == NULL_PAGEID)
-	{
-	  /* must be last page, end scanning */
-	  return ret;
-	}
-      pgbuf_replace_watcher (thread_p, curr_page_watcher, old_page_watcher);
-      curr_page_watcher->pgptr =
-	heap_scan_pb_lock_and_fetch (thread_p, vpid, OLD_PAGE_PREVENT_DEALLOC, S_LOCK, scan_cache, curr_page_watcher);
-      if (old_page_watcher->pgptr != NULL)
-	{
-	  pgbuf_ordered_unfix (thread_p, old_page_watcher);
-	}
-      if (curr_page_watcher->pgptr == NULL)
-	{
-	  if (er_errid () == ER_PB_BAD_PAGEID)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, vpid->volid, vpid->pageid, 1);
-	    }
-
-	  /* something went wrong, return */
-	  return S_ERROR;
-	}
-    }
-
-  (void) heap_vpid_next (thread_p, hfid, curr_page_watcher->pgptr, vpid);
-
-  return ret;
-}
-
-/*
  * heap_vpid_prev () - Find previous page of heap
  *   return: NO_ERROR
  *   hfid(in): Object heap file identifier
@@ -6807,6 +6780,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 			       MVCC_SNAPSHOT * mvcc_snapshot)
 {
   int ret = NO_ERROR;
+  int granted;
 
   if (class_oid != NULL)
     {
@@ -6822,30 +6796,24 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 	   * levels that release the locks of the class when the class is read.
 	   */
 #if defined(SERVER_MODE)
-	  THREAD_ENTRY *orig_thread_p = NULL;
+	  THREAD_ENTRY *main_thread_p = NULL;
 	  if (thread_p->m_px_orig_thread_entry != NULL)
 	    {
-	      orig_thread_p = thread_p->m_px_orig_thread_entry;
-	      assert (orig_thread_p != NULL);
-	      pthread_mutex_lock (&orig_thread_p->m_px_lock);
+	      main_thread_p = thread_get_main_thread (thread_p);
+	      pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
 	    }
 #endif
-	  if (lock_scan (thread_p, class_oid, LK_UNCOND_LOCK, IS_LOCK) != LK_GRANTED)
-	    {
+	  granted = lock_scan (thread_p, class_oid, LK_UNCOND_LOCK, IS_LOCK);
 #if defined(SERVER_MODE)
-	      if (orig_thread_p != NULL)
-		{
-		  pthread_mutex_unlock (&orig_thread_p->m_px_lock);
-		}
+	  if (main_thread_p != NULL)
+	    {
+	      pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+	    }
 #endif
+	  if (granted != LK_GRANTED)
+	    {
 	      goto exit_on_error;
 	    }
-#if defined(SERVER_MODE)
-	  if (orig_thread_p != NULL)
-	    {
-	      pthread_mutex_unlock (&orig_thread_p->m_px_lock);
-	    }
-#endif
 	}
 
       ret = heap_get_class_info (thread_p, class_oid, &scan_cache->node.hfid, &scan_cache->file_type, NULL);
@@ -7678,7 +7646,7 @@ try_again:
 	  /* A deleted class record, corresponding to a deleted class can be accessed through catalog update operations
 	   * on another class. This is possible if a class has an attribute holding a domain that references the
 	   * dropped class. Another situation is the client request for authentication, which fetches the object (an
-	   * instance of db_user) using dirty version. If it has been removed, it will be found as a deleted record. */
+	   * instance of _db_user) using dirty version. If it has been removed, it will be found as a deleted record. */
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid_p->volid,
 		  context->oid_p->pageid, context->oid_p->slotid);
 	}
@@ -7859,6 +7827,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
   /* Shouldn't be here. */
   return S_ERROR;
 }
+
 
 /*
  * heap_next_internal () - Retrieve of peek next object.
@@ -8084,11 +8053,17 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		    {
 		      if (sampling)
 			{
-			  /* skip pages */
-			  if (heap_vpid_skip_next (thread_p, hfid, &scan_cache->page_watcher, &old_page_watcher,
-						   sampling->weight, &vpid, scan_cache) == S_ERROR)
+			  /* next pre-picked VPID in current slice */
+			  assert (sampling->picked_cursor <= sampling->slice_end);
+			  assert (sampling->picked_vpids != NULL || sampling->picked_count == 0);
+			  if (sampling->picked_cursor >= sampling->slice_end)
 			    {
-			      return S_ERROR;
+			      /* slice exhausted -> S_END */
+			      VPID_SET_NULL (&vpid);
+			    }
+			  else
+			    {
+			      vpid = sampling->picked_vpids[sampling->picked_cursor++];
 			    }
 			}
 		      else
@@ -10377,6 +10352,131 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
 }
 
 /*
+ * heap_attrvalue_point_fixed () -
+ *
+ *   return: NO_ERROR
+ *   recdes(in): Record
+ *   attr_info(in): The attribute information structure
+ *   attrepr(in): The attribute structure
+ *   data(out): Disk value pointer
+ *   length(out): Disk value length
+ *
+ */
+static void
+heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr, RECDES * raw)
+{
+  if (OR_FIXED_ATT_IS_UNBOUND (recdes->data, attr_info->read_classrepr->n_variable,
+			       attr_info->read_classrepr->fixed_length, attrepr->position))
+    {
+      /* nothing to do */
+      return;
+    }
+
+  /* the fixed value is bound. access its information */
+  raw->data = ((char *) recdes->data
+	       + OR_FIXED_ATTRIBUTES_OFFSET_BY_OBJ (recdes->data,
+						    attr_info->read_classrepr->n_variable) + attrepr->location);
+  raw->length = tp_domain_disk_size (attrepr->domain);
+}
+
+/*
+ * heap_attrvalue_point_variable () -
+ *
+ *   return: NO_ERROR
+ *   recdes(in): Record
+ *   attr_info(in): The attribute information structure
+ *   attrepr(in): The attribute structure
+ *   data(out): Disk value pointer
+ *   length(out): Disk value length
+ *
+ */
+static void
+heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr, RECDES * raw)
+{
+  if (OR_VAR_IS_NULL (recdes->data, attrepr->location))
+    {
+      /* nothing to do */
+      return;
+    }
+
+  /* the variable attribute is bound. */
+  /* find its location through the variable offset attribute table. */
+  raw->data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location));
+
+  switch (TP_DOMAIN_TYPE (attrepr->domain))
+    {
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
+    case DB_TYPE_SET:		/* it may be just a little bit fast */
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+      OR_VAR_LENGTH (raw->length, recdes->data, attrepr->location, attr_info->read_classrepr->n_variable);
+      break;
+    default:
+      raw->length = -1;		/* remains can read without disk_length */
+    }
+}
+
+/*
+ * heap_attrvalue_transform_to_dbvalue () -
+ *
+ *   return: NO_ERROR
+ *   value(in): Disk value attribute information
+ *   attrepr(in): The attribute structure
+ *   data(in): Disk value pointer
+ *   length(in): Disk value length
+ *
+ */
+static int
+heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw)
+{
+  const PR_TYPE *pr_type;
+  OR_BUF buf;
+  int rv;
+
+  rv = NO_ERROR;
+
+  /* clear/decache if old exists */
+  if (value->state != HEAP_UNINIT_ATTRVALUE)
+    {
+      (void) pr_clear_value (&value->dbvalue);
+    }
+
+  /* make the dbvalue according to the disk data value */
+  if (raw->data == NULL)
+    {
+      /* Unbound attribute, set it to null value */
+      rv = db_value_domain_init (&value->dbvalue, attrepr->type, attrepr->domain->precision, attrepr->domain->scale);
+      if (rv != NO_ERROR)
+	{
+	  return rv;
+	}
+      value->state = HEAP_READ_ATTRVALUE;
+    }
+  else
+    {
+      or_init (&buf, raw->data, raw->length);
+
+      /* read the value according to disk information that was found */
+      pr_type = pr_type_from_id (attrepr->type);
+      if (pr_type)
+	{
+	  rv = pr_type->data_readval (&buf, &value->dbvalue, attrepr->domain, raw->length, false, NULL, 0);
+	}
+      value->state = HEAP_READ_ATTRVALUE;
+      if (rv != NO_ERROR)
+	{
+	  (void) db_value_domain_init (&value->dbvalue, attrepr->type, attrepr->domain->precision,
+				       attrepr->domain->scale);
+	  value->state = HEAP_UNINIT_ATTRVALUE;
+	  return rv;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * heap_attrvalue_read () - Read attribute information of given attribute cache
  *                        and instance
  *   return: NO_ERROR
@@ -10389,153 +10489,47 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
 static int
 heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info)
 {
-  OR_BUF buf;
-  const PR_TYPE *pr_type;	/* Primitive type array function structure */
+  RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
   OR_ATTRIBUTE *attrepr;
-  char *disk_data = NULL;
-  int disk_bound = false;
-  int disk_length = -1;
-  int ret = NO_ERROR;
 
-  if (IS_DEDUPLICATE_KEY_ATTR_ID (value->attrid))
+  if (unlikely (IS_DEDUPLICATE_KEY_ATTR_ID (value->attrid)))
     {
       /* In the case of deduplicate_key_attr_id, there is no content that actually exists in HEAP.
        * Therefore, the read operation is skipped and success is returned. */
       return NO_ERROR;
     }
 
-  /* Initialize disk value information */
-  disk_data = NULL;
-  disk_bound = false;
-  disk_length = -1;
-
-  /*
-   * Does attribute exist in this disk representation?
-   */
-
+  /* does attribute exist in this disk representation? */
   if (recdes == NULL || recdes->data == NULL || value->read_attrepr == NULL || value->attr_type == HEAP_SHARED_ATTR
       || value->attr_type == HEAP_CLASS_ATTR)
     {
-      /*
-       * Either the attribute is a shared or class attr, or the attribute
-       * does not exist in this disk representation, or we do not have
-       * the disk object (recdes), get default value if any...
-       */
+      /* Either the attribute is a shared or class attr, or the attribute */
+      /* does not exist in this disk representation, or we do not have    */
+      /* the disk object (recdes), get default value if any...            */
       attrepr = value->last_attrepr;
-      disk_length = value->last_attrepr->default_value.val_length;
-      if (disk_length > 0)
+      raw.length = value->last_attrepr->default_value.val_length;
+      if (raw.length > 0)
 	{
-	  disk_data = (char *) value->last_attrepr->default_value.value;
-	  disk_bound = true;
+	  raw.data = (char *) value->last_attrepr->default_value.value;
 	}
     }
   else
     {
       attrepr = value->read_attrepr;
+      prefetch (attrepr, PREFETCH_WRITE, PREFETCH_CACHE_L1);
       /* Is it a fixed size attribute ? */
-      if (value->read_attrepr->is_fixed != 0)
+      if (attrepr->is_fixed != 0)
 	{
-	  /*
-	   * A fixed attribute.
-	   */
-	  if (!OR_FIXED_ATT_IS_UNBOUND (recdes->data, attr_info->read_classrepr->n_variable,
-					attr_info->read_classrepr->fixed_length, value->read_attrepr->position))
-	    {
-	      /*
-	       * The fixed attribute is bound. Access its information
-	       */
-	      disk_data =
-		((char *) recdes->data
-		 + OR_FIXED_ATTRIBUTES_OFFSET_BY_OBJ (recdes->data,
-						      attr_info->read_classrepr->n_variable)
-		 + value->read_attrepr->location);
-	      disk_length = tp_domain_disk_size (value->read_attrepr->domain);
-	      disk_bound = true;
-	    }
+	  heap_attrvalue_point_fixed (recdes, attr_info, attrepr, &raw);
 	}
       else
 	{
-	  /*
-	   * A variable attribute
-	   */
-	  if (!OR_VAR_IS_NULL (recdes->data, value->read_attrepr->location))
-	    {
-	      /*
-	       * The variable attribute is bound.
-	       * Find its location through the variable offset attribute table.
-	       */
-	      disk_data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, value->read_attrepr->location));
-
-	      disk_bound = true;
-	      switch (TP_DOMAIN_TYPE (attrepr->domain))
-		{
-		case DB_TYPE_BFILE:
-		case DB_TYPE_CFILE:
-		case DB_TYPE_SET:	/* it may be just a little bit fast */
-		case DB_TYPE_MULTISET:
-		case DB_TYPE_SEQUENCE:
-		  OR_VAR_LENGTH (disk_length, recdes->data, value->read_attrepr->location,
-				 attr_info->read_classrepr->n_variable);
-		  break;
-		default:
-		  disk_length = -1;	/* remains can read without disk_length */
-		}
-	    }
+	  heap_attrvalue_point_variable (recdes, attr_info, attrepr, &raw);
 	}
     }
 
-  /*
-   * From now on, I should only use attrepr.. it will point to either
-   * a current value or a default one
-   */
-
-  /*
-   * Clear/decache any old value
-   */
-  if (value->state != HEAP_UNINIT_ATTRVALUE)
-    {
-      (void) pr_clear_value (&value->dbvalue);
-    }
-
-  /*
-   * Now make the dbvalue according to the disk data value
-   */
-
-  if (disk_data == NULL || disk_bound == false)
-    {
-      /* Unbound attribute, set it to null value */
-      ret = db_value_domain_init (&value->dbvalue, attrepr->type, attrepr->domain->precision, attrepr->domain->scale);
-      if (ret != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-      value->state = HEAP_READ_ATTRVALUE;
-    }
-  else
-    {
-      /*
-       * Read the value according to disk information that was found
-       */
-      or_init (&buf, disk_data, disk_length);
-
-      pr_type = pr_type_from_id (attrepr->type);
-      if (pr_type)
-	{
-	  ret = pr_type->data_readval (&buf, &value->dbvalue, attrepr->domain, disk_length, false, NULL, 0);
-	}
-      value->state = HEAP_READ_ATTRVALUE;
-      if (ret != NO_ERROR)
-	{
-	  (void) db_value_domain_init (&value->dbvalue, attrepr->type, attrepr->domain->precision,
-				       attrepr->domain->scale);
-	  value->state = HEAP_UNINIT_ATTRVALUE;
-	  goto exit_on_error;
-	}
-    }
-  return ret;
-exit_on_error:
-
-  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  /* the data pointer will point to either a current value in recdes or a default one in attrepr */
+  return heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw);
 }
 
 /*
@@ -10651,7 +10645,7 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECD
   int ret = NO_ERROR;
 
   /* check to make sure the attr_info has been used */
-  if (attr_info->num_values == -1)
+  if (unlikely (attr_info->num_values == -1))
     {
       return NO_ERROR;
     }
@@ -10664,7 +10658,7 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECD
     {
       reprid = or_rep_id (recdes);
 
-      if (attr_info->read_classrepr == NULL || attr_info->read_classrepr->id != reprid)
+      if (unlikely (attr_info->read_classrepr == NULL || attr_info->read_classrepr->id != reprid))
 	{
 	  /* Get the needed representation */
 	  ret = heap_attrinfo_recache (thread_p, reprid, attr_info);
@@ -10727,7 +10721,7 @@ heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recde
     {
       reprid = or_rep_id (recdes);
 
-      if (attr_info->read_classrepr == NULL || attr_info->read_classrepr->id != reprid)
+      if (unlikely (attr_info->read_classrepr == NULL || attr_info->read_classrepr->id != reprid))
 	{
 	  /* Get the needed representation */
 	  ret = heap_attrinfo_recache (thread_p, reprid, attr_info);
@@ -11753,25 +11747,18 @@ exit_on_error:
 }
 
 /*
- * heap_attrinfo_get_disksize () - Find the disk size needed to transform the object
- *                        represented by attr_info
- *   return: size of the object
- *   attr_info(in/out): The attribute information structure
- *   is_mvcc_class(in): true, if MVCC class
- *   offset_size_ptr(out): offset size
+ * heap_attrinfo_get_record_payload_size ()
  *
- * Note: Find the disk size needed to transform the object represented
- * by the attribute information structure.
+ *   return: size of the payload size of record
+ *   attr_info(in/out): the attribute information structure
  */
 static int
-heap_attrinfo_get_disksize (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, int *offset_size_ptr)
+heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info)
 {
-  int i, size;
-  HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
+  HEAP_ATTRVALUE *value;
+  int size;
+  int i;
 
-  *offset_size_ptr = OR_BYTE_SIZE;
-
-re_check:
   size = 0;
   for (i = 0; i < attr_info->num_values; i++)
     {
@@ -11787,30 +11774,67 @@ re_check:
 	}
     }
 
-  if (is_mvcc_class)
-    {
-      size += OR_MVCC_INSERT_HEADER_SIZE;
-    }
-  else
-    {
-      size += OR_NON_MVCC_HEADER_SIZE;
-    }
-
-  size += OR_VAR_TABLE_SIZE_INTERNAL (attr_info->last_classrepr->n_variable, *offset_size_ptr);
-  size += OR_BOUND_BIT_BYTES (attr_info->last_classrepr->n_attributes - attr_info->last_classrepr->n_variable);
-
-  if (*offset_size_ptr == OR_BYTE_SIZE && size > OR_MAX_BYTE)
-    {
-      *offset_size_ptr = OR_SHORT_SIZE;	/* 2byte */
-      goto re_check;
-    }
-  if (*offset_size_ptr == OR_SHORT_SIZE && size > OR_MAX_SHORT)
-    {
-      *offset_size_ptr = BIG_VAR_OFFSET_SIZE;	/* 4byte */
-      goto re_check;
-    }
-
   return size;
+}
+
+/*
+ * heap_attrinfo_get_record_header_size ()
+ *
+ *   return: size of the header size of record
+ *   attr_info(in/out): the attribute information structure
+ *   column_size(in): the size of payload (raw format of colmuns)
+ *   is_mvcc_class(in): true, if MVCC class
+ *   offset_size_ptr(out): offset size
+ */
+static int
+heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int payload_size, bool is_mvcc_class,
+				      size_t * offset_size_ptr)
+{
+  int header_size;
+
+  *offset_size_ptr = OR_BYTE_SIZE;
+
+  header_size = is_mvcc_class ? OR_MVCC_INSERT_HEADER_SIZE : OR_NON_MVCC_HEADER_SIZE;
+  header_size += OR_VAR_TABLE_SIZE_INTERNAL (attr_info->last_classrepr->n_variable, *offset_size_ptr);
+  header_size += OR_BOUND_BIT_BYTES (attr_info->last_classrepr->n_attributes - attr_info->last_classrepr->n_variable);
+
+  if (*offset_size_ptr == OR_BYTE_SIZE && header_size + payload_size > OR_MAX_BYTE)
+    {
+      header_size -= OR_VAR_TABLE_SIZE_INTERNAL (attr_info->last_classrepr->n_variable, *offset_size_ptr);
+      *offset_size_ptr = OR_SHORT_SIZE;	/* 2 byte */
+      header_size += OR_VAR_TABLE_SIZE_INTERNAL (attr_info->last_classrepr->n_variable, *offset_size_ptr);
+    }
+  if (*offset_size_ptr == OR_SHORT_SIZE && header_size + payload_size > OR_MAX_SHORT)
+    {
+      header_size -= OR_VAR_TABLE_SIZE_INTERNAL (attr_info->last_classrepr->n_variable, *offset_size_ptr);
+      *offset_size_ptr = OR_INT_SIZE;	/* 4 byte */
+      header_size += OR_VAR_TABLE_SIZE_INTERNAL (attr_info->last_classrepr->n_variable, *offset_size_ptr);
+    }
+
+  return header_size;
+}
+
+/*
+ * heap_attrinfo_determine_disksize () - Find the disk size needed to transform the object
+ *                        represented by attr_info
+ *   return: size of the object
+ *   attr_info(in/out): The attribute information structure
+ *   is_mvcc_class(in): true, if MVCC class
+ *   offset_size_ptr(out): offset size
+ *
+ * Note: Find the disk size needed to transform the object represented
+ * by the attribute information structure.
+ */
+static size_t
+heap_attrinfo_determine_disksize (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, size_t * offset_size_ptr)
+{
+  int payload_size, header_size;
+
+  /* calcuate the entire size of columns */
+  payload_size = heap_attrinfo_get_record_payload_size (attr_info);
+  header_size = heap_attrinfo_get_record_header_size (attr_info, payload_size, is_mvcc_class, offset_size_ptr);
+
+  return header_size + payload_size;
 }
 
 /*
@@ -11855,6 +11879,397 @@ heap_attrinfo_transform_to_disk_except_lobfile (THREAD_ENTRY * thread_p, HEAP_CA
 }
 
 /*
+ * heap_attrinfo_transform_header_to_disk ()
+ *   return: SCAN_CODE
+ *           (Either of S_SUCCESS, S_DOESNT_FIT,
+ *                      S_ERROR)
+ *   attr_info(in/out): The attribute information structure
+ *   buf(in): record buffer
+ *   offset_size(in): byte size of variable offset
+ *   is_mvcc_class(in): is mvcc class
+ *   has_prev(in): do this record have previous version
+ *
+ * Note: Transform the object represented by attr_info to disk format
+ */
+static SCAN_CODE
+heap_attrinfo_transform_header_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, OR_BUF * buf,
+					int offset_size, bool is_mvcc_class, bool is_update)
+{
+  unsigned int repid_bits;
+
+  /* store the representation of the class along with bound bit */
+  /* flag information                                           */
+
+  repid_bits = attr_info->last_classrepr->id;
+
+  /* Do we have fixed value attributes ? */
+  if ((attr_info->last_classrepr->n_attributes - attr_info->last_classrepr->n_variable) != 0)
+    {
+      repid_bits |= OR_BOUND_BIT_FLAG;
+    }
+
+  /* offset size */
+  OR_SET_VAR_OFFSET_SIZE (repid_bits, offset_size);
+
+  /* We must increase the current value by one so that clients      */
+  /* can detect the change in object. That is, clients will need to */
+  /* refetch the object.                                            */
+  attr_info->inst_chn++;
+
+  if (is_mvcc_class)
+    {
+      if (!is_update)
+	{
+	  repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
+	  if ((buf->ptr + OR_MVCC_INSERT_HEADER_SIZE) > buf->endptr)
+	    {
+	      return S_DOESNT_FIT;
+	    }
+	  else
+	    {
+	      or_put_int (buf, repid_bits);
+	      or_put_int (buf, 0);	/* CHN */
+	      or_put_bigint (buf, 0);	/* MVCC insert id */
+	    }
+	}
+      else
+	{
+	  LOG_LSA null_lsa = LSA_INITIALIZER;
+	  repid_bits |= ((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_MVCC_FLAG_SHIFT_BITS);
+	  if ((buf->ptr + OR_MVCC_INSERT_HEADER_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE) > buf->endptr)
+	    {
+	      return S_DOESNT_FIT;
+	    }
+	  else
+	    {
+	      or_put_int (buf, repid_bits);
+	      or_put_int (buf, 0);	/* CHN */
+	      or_put_bigint (buf, 0);	/* MVCC insert id */
+	      assert ((buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE) <= buf->endptr);
+	      or_put_data (buf, (char *) &null_lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);	/* prev version lsa */
+	    }
+	}
+    }
+  else
+    {
+      if ((buf->ptr + OR_NON_MVCC_HEADER_SIZE) > buf->endptr)
+	{
+	  return S_DOESNT_FIT;
+	}
+      else
+	{
+	  or_put_int (buf, repid_bits);
+	  or_put_int (buf, attr_info->inst_chn);
+	}
+    }
+
+  return S_SUCCESS;
+}
+
+/*
+ * heap_attrinfo_transform_fixed_to_disk ()
+ *   return: SCAN_CODE
+ *           (Either of S_SUCCESS, S_DOESNT_FIT,
+ *                      S_ERROR)
+ *   attr_info(in/out): The attribute information structure
+ *   buf(in): record buffer
+ *   index(in): column index
+ *   incremented_attrids(in): auto increment column set
+ *   bitmap_bound(in/out): is fixed data null
+ *
+ * Note: Transform the object represented by attr_info to disk format
+ */
+// *INDENT-OFF*
+static SCAN_CODE
+heap_attrinfo_transform_fixed_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, OR_BUF *buf,
+				       int index, std::set<int> *incremented_attrids, char *bitmap_bound)
+// *INDENT-ON*
+
+{
+  HEAP_ATTRVALUE *value;
+  DB_VALUE *dbvalue;
+  const PR_TYPE *pr_type;
+
+  value = &attr_info->values[index];
+  pr_type = value->last_attrepr->domain->type;
+  if (pr_type == NULL)
+    {
+      return S_ERROR;
+    }
+
+  dbvalue = &value->dbvalue;
+
+  /* fixed attribute                                                  */
+  /* Write the fixed attributes values, if unbound, does not matter   */
+  /* what value is stored. We need to set the appropriate bit in the  */
+  /* bound bit array for fixed attributes. For variable attributes,   */
+  buf->ptr = (buf->buffer
+	      + OR_FIXED_ATTRIBUTES_OFFSET_BY_OBJ (buf->buffer, attr_info->last_classrepr->n_variable)
+	      + value->last_attrepr->location);
+
+  if (value->do_increment && (incremented_attrids->find (index) == incremented_attrids->end ()))
+    {
+      if (qdata_increment_dbval (dbvalue, dbvalue, value->do_increment) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+      incremented_attrids->insert (index);
+    }
+
+  if (dbvalue == NULL || db_value_is_null (dbvalue) == true)
+    {
+      /*
+       * This is an unbound value.
+       *  1) Set any value in the fixed array value table, so we can
+       *     advance to next attribute.
+       *  2) and set the bound bit as unbound
+       */
+      OR_CLEAR_BOUND_BIT (bitmap_bound, value->last_attrepr->position);
+
+      /*
+       * pad the appropriate amount, writeval needs to be modified
+       * to accept a domain so it can perform this padding.
+       */
+      if ((buf->ptr + tp_domain_disk_size (value->last_attrepr->domain)) > buf->endptr)
+	{
+	  return S_DOESNT_FIT;
+	}
+      else
+	{
+	  or_pad (buf, tp_domain_disk_size (value->last_attrepr->domain));
+	}
+    }
+  else
+    {
+      /*
+       * Write the value.
+       */
+      if (buf->ptr + pr_type->get_disk_size_of_value (dbvalue) > buf->endptr)
+	{
+	  return S_DOESNT_FIT;
+	}
+      else
+	{
+	  OR_ENABLE_BOUND_BIT (bitmap_bound, value->last_attrepr->position);
+	  pr_type->data_writeval (buf, dbvalue);
+	}
+    }
+
+  return S_SUCCESS;
+}
+
+/*
+ * heap_attrinfo_transform_variable_to_disk ()
+ *   return: SCAN_CODE
+ *           (Either of S_SUCCESS, S_DOESNT_FIT,
+ *                      S_ERROR)
+ *   attr_info(in/out): The attribute information structure
+ *   buf(in): record buffer
+ *   ptr_varvals(in): pointer where variable data will be inserted
+ *   index(in): column index
+ *   offset_size(in): byte size of variable offset
+ *   header_size(in): header size
+ *   lob_create_flag(in): log flag
+ *
+ * Note: Transform the object represented by attr_info to disk format
+ */
+static SCAN_CODE
+heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, OR_BUF * buf,
+					  char **ptr_varvals, int index, int offset_size, int header_size,
+					  int lob_create_flag)
+{
+  HEAP_ATTRVALUE *value;
+  DB_VALUE *dbvalue;
+  ATTR_ID attrid;
+  const PR_TYPE *pr_type;
+
+  value = &attr_info->values[index];
+  attrid = value->attrid;
+  pr_type = value->last_attrepr->domain->type;
+  if (pr_type == NULL)
+    {
+      return S_ERROR;
+    }
+
+  dbvalue = &value->dbvalue;
+
+  /* variable attribute                                             */
+  /*  1) Set the offset to this value in the variable offset table  */
+  /*  2) Set the value in the variable value portion of the disk    */
+  /*     object (Only if the value is bound)                        */
+
+  /* write the offset onto the variable offset table and remember   */
+  /* the current pointer to the variable offset table               */
+
+  if (value->do_increment != 0)
+    {
+      return S_ERROR;
+    }
+
+  buf->ptr = (char *) (OR_VAR_ELEMENT_PTR (buf->buffer, value->last_attrepr->location));
+
+  /* compute the variable offsets relative to the end of the header (beginning of variable table) */
+  if ((buf->ptr + offset_size) > buf->endptr)
+    {
+      return S_DOESNT_FIT;
+    }
+  else
+    {
+      or_put_offset_internal (buf, CAST_BUFLEN (*ptr_varvals - buf->buffer - header_size), offset_size);
+    }
+
+  if (dbvalue != NULL && db_value_is_null (dbvalue) != true)
+    {
+      /* now write the value and remember the current pointer */
+      /* to variable value array for the next element.        */
+      buf->ptr = *ptr_varvals;
+
+      if (lob_create_flag == LOB_FLAG_INCLUDE_LOBFILE && value->state == HEAP_WRITTEN_ATTRVALUE
+	  && TP_IS_LOBFILE_TYPE (pr_type->id))
+	{
+	  DB_ELO dest_elo, *elo_p;
+	  HFID hfid;
+	  char *save_meta_data, *new_meta_data;
+	  char lob_path_prefix[PATH_MAX];
+	  int ret;
+
+	  assert (db_value_type (dbvalue) == DB_TYPE_BFILE || db_value_type (dbvalue) == DB_TYPE_CFILE);
+
+	  elo_p = db_get_elo (dbvalue);
+
+	  if (elo_p == NULL)
+	    {
+	      /* nothing to do here */
+	      return S_SUCCESS;
+	    }
+
+	  if (heap_get_class_name (thread_p, &(attr_info->class_oid), &new_meta_data) != NO_ERROR
+	      || new_meta_data == NULL)
+	    {
+	      return S_ERROR;
+	    }
+
+	  heap_hfid_cache_get (thread_p, &attr_info->class_oid, &hfid, NULL, NULL);
+
+	  snprintf (lob_path_prefix, PATH_MAX, "%d%d%d%d", HFID_AS_ARGS (&hfid), attrid);
+
+	  save_meta_data = elo_p->meta_data;
+	  elo_p->meta_data = new_meta_data;
+	  ret = db_elo_copy_with_prefix (db_get_elo (dbvalue), lob_path_prefix, &dest_elo);
+	  free_and_init (elo_p->meta_data);
+	  elo_p->meta_data = save_meta_data;
+	  if (ret != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+
+	  /* The purpose of HEAP_WRITTEN_LOBFILE_ATTRVALUE is to avoid reenter this branch. In the first pass,
+	   * this branch is entered and elo is copied. When BUFFER_OVERFLOW happens, we need avoid to copy
+	   * elo again. Otherwize it will generate 2 copies. */
+	  value->state = HEAP_WRITTEN_LOBFILE_ATTRVALUE;
+
+	  pr_clear_value (dbvalue);
+	  db_make_elo (dbvalue, pr_type->id, &dest_elo);
+	  dbvalue->need_clear = true;
+	}
+
+      if (buf->ptr + pr_type->get_disk_size_of_value (dbvalue) > buf->endptr)
+	{
+	  return S_DOESNT_FIT;
+	}
+      else
+	{
+	  pr_type->data_writeval (buf, dbvalue);
+	  *ptr_varvals = buf->ptr;
+	}
+    }
+
+  return S_SUCCESS;
+}
+
+/*
+ * heap_attrinfo_transform_columns_to_disk ()
+ *   return: SCAN_CODE
+ *           (Either of S_SUCCESS, S_DOESNT_FIT,
+ *                      S_ERROR)
+ *   attr_info(in/out): The attribute information structure
+ *   buf(in): record buffer
+ *   offset_size(in): byte size of variable offset
+ *   header_size(in): header size
+ *   mvcc_extra(in): mvcc extra space
+ *   lob_create_flag(in): lob flag
+ *   record_size(out): record size
+ *
+ * Note: Transform the object represented by attr_info to disk format
+ */
+
+// *INDENT-OFF*
+static SCAN_CODE
+heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, OR_BUF * buf,
+					 std::set<int> * incremented_attrids, int offset_size, int header_size,
+					 size_t mvcc_extra, int lob_create_flag, size_t * record_size)
+// *INDENT-ON*
+
+{
+  char *bitmap_bound, *ptr_varvals;
+  SCAN_CODE status;
+  int i;
+
+  bitmap_bound = OR_GET_BOUND_BITS (buf->buffer, attr_info->last_classrepr->n_variable,
+				    attr_info->last_classrepr->fixed_length);
+  ptr_varvals = (bitmap_bound
+		 + OR_BOUND_BIT_BYTES (attr_info->last_classrepr->n_attributes
+				       - attr_info->last_classrepr->n_variable));
+
+  for (i = 0; i < attr_info->num_values; i++)
+    {
+      if (attr_info->values[i].last_attrepr->is_fixed != 0)
+	{
+	  status =
+	    heap_attrinfo_transform_fixed_to_disk (thread_p, attr_info, buf, i, incremented_attrids, bitmap_bound);
+	}
+      else
+	{
+	  status =
+	    heap_attrinfo_transform_variable_to_disk (thread_p, attr_info, buf, &ptr_varvals, i, offset_size,
+						      header_size, lob_create_flag);
+	}
+      if (status != S_SUCCESS)
+	{
+	  return status;
+	}
+    }
+
+  if (attr_info->last_classrepr->n_variable > 0)
+    {
+      /* the last element of the variable offset table points to the end of */
+      /* the object. The variable offset array starts with zero, so we can  */
+      /* just access n_variable...                                          */
+
+      /* write the offset to the end of the variable attributes table */
+      buf->ptr = ((char *) (OR_VAR_ELEMENT_PTR (buf->buffer, attr_info->last_classrepr->n_variable)));
+      if ((buf->ptr + offset_size) > buf->endptr)
+	{
+	  return S_DOESNT_FIT;
+	}
+      else
+	{
+	  or_put_offset_internal (buf, CAST_BUFLEN (ptr_varvals - buf->buffer - header_size), offset_size);
+	}
+      buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
+    }
+
+  if (ptr_varvals + mvcc_extra > buf->endptr)
+    {
+      return S_DOESNT_FIT;
+    }
+
+  *record_size = ptr_varvals - buf->buffer;
+
+  return S_SUCCESS;
+}
+
+/*
  * heap_attrinfo_transform_to_disk_internal () -
  *                         Transform to disk an attribute information
  *                         kind of instance.
@@ -11872,21 +12287,11 @@ static SCAN_CODE
 heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 					  RECDES * old_recdes, record_descriptor * new_recdes, int lobfile_create_flag)
 {
-  OR_BUF orep, *buf;
-  char *ptr_bound, *ptr_varvals;
-  HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
-  DB_VALUE temp_dbvalue;
-  const PR_TYPE *pr_type;	/* Primitive type array function structure */
-  unsigned int repid_bits;
+  OR_BUF buf;
+  size_t expected_size, mvcc_extra;
+  size_t record_size, header_size, offset_size;
   SCAN_CODE status;
-  int i;
-  DB_VALUE *dbvalue = NULL;
-  size_t expected_size;
-  int tmp;
-  int offset_size;
-  int mvcc_wasted_space = 0;
-  int header_size;
-  bool is_mvcc_class;
+  bool is_mvcc_class, is_update;
   // *INDENT-OFF*
   std::set<int> incremented_attrids;
   // *INDENT-ON*
@@ -11899,356 +12304,72 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       return S_ERROR;
     }
 
-  /*
-   * Get any of the values that have not been set/read
-   */
+  /* get any of the values that have not been set/read */
   if (heap_attrinfo_set_uninitialized (thread_p, &attr_info->inst_oid, old_recdes, attr_info) != NO_ERROR)
     {
       return S_ERROR;
     }
 
-  /* Start transforming the dbvalues into disk values for the object */
+  /* a previous version of the record exists */
+  is_update = old_recdes != NULL;
+
+  /* start transforming the dbvalues into disk values for the object */
   is_mvcc_class = !mvcc_is_mvcc_disabled_class (&(attr_info->class_oid));
 
-  expected_size = heap_attrinfo_get_disksize (attr_info, is_mvcc_class, &tmp);
-  offset_size = tmp;
+  /* determine the size */
+  expected_size = heap_attrinfo_determine_disksize (attr_info, is_mvcc_class, &offset_size);
 
+  mvcc_extra = 0;
+  header_size = OR_NON_MVCC_HEADER_SIZE;
   if (is_mvcc_class)
     {
-      mvcc_wasted_space = (OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE);
-      if (old_recdes != NULL)
+      header_size = OR_MVCC_INSERT_HEADER_SIZE;
+      mvcc_extra = OR_MVCC_DELETE_ID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE;
+
+      /* update case, reserve space for previous version LSA. */
+      if (is_update)
 	{
-	  /* Update case, reserve space for previous version LSA. */
-	  expected_size += OR_MVCC_PREV_VERSION_LSA_SIZE;
-	  mvcc_wasted_space -= OR_MVCC_PREV_VERSION_LSA_SIZE;
+	  header_size = OR_MVCC_INSERT_HEADER_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE;
+	  mvcc_extra = OR_MVCC_DELETE_ID_SIZE;
 	}
+      expected_size += OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE;
     }
 
-  /* reserve enough space if need to add additional MVCC header info */
-  expected_size += mvcc_wasted_space;
-
-resize_and_start:
-
-  new_recdes->resize_buffer (expected_size);
-  or_init (&orep, new_recdes->get_data_for_modify (), (int) expected_size);
-
-  buf = &orep;
-
-  status = S_SUCCESS;
-  /*
-   * Store the representation of the class along with bound bit
-   * flag information
-   */
-
-  repid_bits = attr_info->last_classrepr->id;
-  /*
-   * Do we have fixed value attributes ?
-   */
-  if ((attr_info->last_classrepr->n_attributes - attr_info->last_classrepr->n_variable) != 0)
+  record_size = 0;
+  do
     {
-      repid_bits |= OR_BOUND_BIT_FLAG;
-    }
+      /* build record buffer */
+      new_recdes->resize_buffer (expected_size);
+      or_init (&buf, new_recdes->get_data_for_modify (), (int) expected_size);
 
-  /* offset size */
-  OR_SET_VAR_OFFSET_SIZE (repid_bits, offset_size);
-
-  /*
-   * We must increase the current value by one so that clients
-   * can detect the change in object. That is, clients will need to
-   * refetch the object.
-   */
-  attr_info->inst_chn++;
-  if (is_mvcc_class)
-    {
-      if (old_recdes == NULL)
-	{
-	  repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
-	  if ((buf->ptr + OR_MVCC_INSERT_HEADER_SIZE) > buf->endptr)
-	    {
-	      expected_size += DB_PAGESIZE;
-	      goto resize_and_start;
-	    }
-	  else
-	    {
-	      or_put_int (buf, repid_bits);
-	      or_put_int (buf, 0);	/* CHN */
-	      or_put_bigint (buf, 0);	/* MVCC insert id */
-	      header_size = OR_MVCC_INSERT_HEADER_SIZE;
-	    }
-	}
-      else
-	{
-	  LOG_LSA null_lsa = LSA_INITIALIZER;
-	  repid_bits |= ((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_MVCC_FLAG_SHIFT_BITS);
-	  if ((buf->ptr + OR_MVCC_INSERT_HEADER_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE) > buf->endptr)
-	    {
-	      expected_size += DB_PAGESIZE;
-	      goto resize_and_start;
-	    }
-	  else
-	    {
-	      or_put_int (buf, repid_bits);
-	      or_put_int (buf, 0);	/* CHN */
-	      or_put_bigint (buf, 0);	/* MVCC insert id */
-	      assert ((buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE) <= buf->endptr);
-	      or_put_data (buf, (char *) &null_lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);	/* prev version lsa */
-	      header_size = OR_MVCC_INSERT_HEADER_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE;
-	    }
-	}
-    }
-  else
-    {
-      if ((buf->ptr + OR_NON_MVCC_HEADER_SIZE) > buf->endptr)
+      /* build header */
+      status =
+	heap_attrinfo_transform_header_to_disk (thread_p, attr_info, &buf, offset_size, is_mvcc_class, is_update);
+      if (status == S_DOESNT_FIT)
 	{
 	  expected_size += DB_PAGESIZE;
-	  goto resize_and_start;
-	}
-      else
-	{
-	  or_put_int (buf, repid_bits);
-	  or_put_int (buf, attr_info->inst_chn);
-	  header_size = OR_NON_MVCC_HEADER_SIZE;
-	}
-    }
-
-  /*
-   * Calculate the pointer address to variable offset attribute table,
-   * fixed attributes, and variable attributes
-   */
-
-  ptr_bound = OR_GET_BOUND_BITS (buf->buffer, attr_info->last_classrepr->n_variable,
-				 attr_info->last_classrepr->fixed_length);
-
-  /*
-   * Variable offset table is relative to the beginning of the buffer
-   */
-
-  ptr_varvals = (ptr_bound
-		 + OR_BOUND_BIT_BYTES (attr_info->last_classrepr->n_attributes
-				       - attr_info->last_classrepr->n_variable));
-
-  /* Need to make sure that the bound array is not past the allocated buffer because OR_ENABLE_BOUND_BIT() will
-   * just slam the bound bit without checking the length. */
-
-  if (ptr_varvals + mvcc_wasted_space > buf->endptr)
-    {
-      // is it possible?
-      expected_size += DB_PAGESIZE;
-      goto resize_and_start;
-    }
-
-  for (i = 0; i < attr_info->num_values; i++)
-    {
-      value = &attr_info->values[i];
-      dbvalue = &value->dbvalue;
-      pr_type = value->last_attrepr->domain->type;
-      if (pr_type == NULL)
-	{
-	  return S_ERROR;
+	  continue;
 	}
 
-      /*
-       * Is this a fixed or variable attribute ?
-       */
-      if (value->last_attrepr->is_fixed != 0)
-	{
-	  /*
-	   * Fixed attribute
-	   * Write the fixed attributes values, if unbound, does not matter
-	   * what value is stored. We need to set the appropriate bit in the
-	   * bound bit array for fixed attributes. For variable attributes,
-	   */
-	  buf->ptr = (buf->buffer
-		      + OR_FIXED_ATTRIBUTES_OFFSET_BY_OBJ (buf->buffer, attr_info->last_classrepr->n_variable)
-		      + value->last_attrepr->location);
+      assert (status == S_SUCCESS);
 
-	  if (value->do_increment && (incremented_attrids.find (i) == incremented_attrids.end ()))
-	    {
-	      if (qdata_increment_dbval (dbvalue, dbvalue, value->do_increment) != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
-	      incremented_attrids.insert (i);
-	    }
-
-	  if (dbvalue == NULL || db_value_is_null (dbvalue) == true)
-	    {
-	      /*
-	       * This is an unbound value.
-	       *  1) Set any value in the fixed array value table, so we can
-	       *     advance to next attribute.
-	       *  2) and set the bound bit as unbound
-	       */
-	      db_value_domain_init (&temp_dbvalue, value->last_attrepr->type,
-				    value->last_attrepr->domain->precision, value->last_attrepr->domain->scale);
-	      dbvalue = &temp_dbvalue;
-	      OR_CLEAR_BOUND_BIT (ptr_bound, value->last_attrepr->position);
-
-	      /*
-	       * pad the appropriate amount, writeval needs to be modified
-	       * to accept a domain so it can perform this padding.
-	       */
-	      if ((buf->ptr + tp_domain_disk_size (value->last_attrepr->domain)) > buf->endptr)
-		{
-		  expected_size += DB_PAGESIZE;
-		  goto resize_and_start;
-		}
-	      else
-		{
-		  or_pad (buf, tp_domain_disk_size (value->last_attrepr->domain));
-		}
-
-	    }
-	  else
-	    {
-	      /*
-	       * Write the value.
-	       */
-	      if (buf->ptr + pr_type->get_disk_size_of_value (dbvalue) > buf->endptr)
-		{
-		  expected_size += DB_PAGESIZE;
-		  goto resize_and_start;
-		}
-	      else
-		{
-		  OR_ENABLE_BOUND_BIT (ptr_bound, value->last_attrepr->position);
-		  pr_type->data_writeval (buf, dbvalue);
-		}
-	    }
-	}
-      else
-	{
-	  /*
-	   * Variable attribute
-	   *  1) Set the offset to this value in the variable offset table
-	   *  2) Set the value in the variable value portion of the disk
-	   *     object (Only if the value is bound)
-	   */
-
-	  /*
-	   * Write the offset onto the variable offset table and remember
-	   * the current pointer to the variable offset table
-	   */
-
-	  if (value->do_increment != 0)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  buf->ptr = (char *) (OR_VAR_ELEMENT_PTR (buf->buffer, value->last_attrepr->location));
-	  /* compute the variable offsets relative to the end of the header (beginning of variable table) */
-	  if ((buf->ptr + offset_size) > buf->endptr)
-	    {
-	      expected_size += DB_PAGESIZE;
-	      goto resize_and_start;
-	    }
-	  else
-	    {
-	      or_put_offset_internal (buf, CAST_BUFLEN (ptr_varvals - buf->buffer - header_size), offset_size);
-	    }
-	  if (dbvalue != NULL && db_value_is_null (dbvalue) != true)
-	    {
-	      /*
-	       * Now write the value and remember the current pointer
-	       * to variable value array for the next element.
-	       */
-	      buf->ptr = ptr_varvals;
-
-	      if (lobfile_create_flag == LOB_FLAG_INCLUDE_LOBFILE && value->state == HEAP_WRITTEN_ATTRVALUE
-		  && (pr_type->id == DB_TYPE_BFILE || pr_type->id == DB_TYPE_CFILE))
-		{
-		  DB_ELO dest_elo, *elo_p;
-		  char *save_meta_data, *new_meta_data;
-		  int error;
-
-		  assert (db_value_type (dbvalue) == DB_TYPE_BFILE || db_value_type (dbvalue) == DB_TYPE_CFILE);
-
-		  elo_p = db_get_elo (dbvalue);
-
-		  if (elo_p == NULL)
-		    {
-		      continue;
-		    }
-
-		  if (heap_get_class_name (thread_p, &(attr_info->class_oid), &new_meta_data) != NO_ERROR
-		      || new_meta_data == NULL)
-		    {
-		      status = S_ERROR;
-		      break;
-		    }
-		  save_meta_data = elo_p->meta_data;
-		  elo_p->meta_data = new_meta_data;
-		  error = db_elo_copy (db_get_elo (dbvalue), &dest_elo);
-
-		  free_and_init (elo_p->meta_data);
-		  elo_p->meta_data = save_meta_data;
-
-		  /* The purpose of HEAP_WRITTEN_LOBFILE_ATTRVALUE is to avoid reenter this branch. In the first pass,
-		   * this branch is entered and elo is copied. When BUFFER_OVERFLOW happens, we need avoid to copy
-		   * elo again. Otherwize it will generate 2 copies. */
-		  value->state = HEAP_WRITTEN_LOBFILE_ATTRVALUE;
-
-		  error = (error >= 0 ? NO_ERROR : error);
-		  if (error == NO_ERROR)
-		    {
-		      pr_clear_value (dbvalue);
-		      db_make_elo (dbvalue, pr_type->id, &dest_elo);
-		      dbvalue->need_clear = true;
-		    }
-		  else
-		    {
-		      goto exit_on_error;
-		    }
-		}
-
-	      if (buf->ptr + pr_type->get_disk_size_of_value (dbvalue) > buf->endptr)
-		{
-		  expected_size += DB_PAGESIZE;
-		  goto resize_and_start;
-		}
-	      else
-		{
-		  pr_type->data_writeval (buf, dbvalue);
-		  ptr_varvals = buf->ptr;
-		}
-	    }
-	}
-    }
-
-  if (attr_info->last_classrepr->n_variable > 0)
-    {
-      /*
-       * The last element of the variable offset table points to the end of
-       * the object. The variable offset array starts with zero, so we can
-       * just access n_variable...
-       */
-
-      /* Write the offset to the end of the variable attributes table */
-      buf->ptr = ((char *) (OR_VAR_ELEMENT_PTR (buf->buffer, attr_info->last_classrepr->n_variable)));
-      if ((buf->ptr + offset_size) > buf->endptr)
+      /* build columns */
+      status =
+	heap_attrinfo_transform_columns_to_disk (thread_p, attr_info, &buf, &incremented_attrids, offset_size,
+						 header_size, mvcc_extra, lobfile_create_flag, &record_size);
+      if (status == S_DOESNT_FIT)
 	{
 	  expected_size += DB_PAGESIZE;
-	  goto resize_and_start;
 	}
-      else
-	{
-	  or_put_offset_internal (buf, CAST_BUFLEN (ptr_varvals - buf->buffer - header_size), offset_size);
-	}
-      buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
+  while (status == S_DOESNT_FIT);
 
-  /* Record the length of the object */
-  new_recdes->set_record_length (ptr_varvals - buf->buffer);
-
-  /* if not enough MVCC wasted space need to reallocate */
-  if (ptr_varvals + mvcc_wasted_space > buf->endptr)
+  if (status == S_SUCCESS)
     {
-      expected_size += DB_PAGESIZE;
-      goto resize_and_start;
+      /* record the length of the object */
+      new_recdes->set_record_length (record_size);
     }
-  return status;
-exit_on_error:
-  status = S_ERROR;
+
   return status;
 }
 
@@ -17754,15 +17875,7 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 	{
 	  /* If destination is char/varchar, we need to first cast the value to a string with no precision, then to
 	   * destination type with the desired precision. */
-	  TP_DOMAIN *string_dom;
-	  if (TP_DOMAIN_TYPE (dest_dom) == DB_TYPE_NCHAR || TP_DOMAIN_TYPE (dest_dom) == DB_TYPE_VARNCHAR)
-	    {
-	      string_dom = tp_domain_resolve_default (DB_TYPE_VARNCHAR);
-	    }
-	  else
-	    {
-	      string_dom = tp_domain_resolve_default (DB_TYPE_VARCHAR);
-	    }
+	  TP_DOMAIN *string_dom = tp_domain_resolve_default (DB_TYPE_VARCHAR);
 	  if ((status = tp_value_cast (&(value->dbvalue), &(value->dbvalue), string_dom, false)) != DOMAIN_COMPATIBLE)
 	    {
 	      error = tp_domain_status_er_set (status, ARG_FILE_LINE, &(value->dbvalue), string_dom);
@@ -17822,8 +17935,6 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 
 		case DB_TYPE_CHAR:
 		case DB_TYPE_VARCHAR:
-		case DB_TYPE_NCHAR:
-		case DB_TYPE_VARNCHAR:
 		  {
 		    const char *str = db_get_string (&(value->dbvalue));
 		    const char *str_end = str + db_get_string_length (&(value->dbvalue));
@@ -23506,6 +23617,8 @@ error:
 #endif /* ENABLE_SYSTEMTAP */
 
   /* all ok */
+  heap_unfix_watchers (thread_p, context);
+
   return rc;
 }
 
@@ -25376,16 +25489,15 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
       if (class_oid != NULL)
 	{
 	  assert (OID_EQ (class_oid, &scan_cache->node.class_oid));
+	  if (MVCC_IS_HEADER_ALL_VISIBLE (&mvcc_header))
+	    {
+	      *recdes = *peeked_recdes;
+	      return scan;
+	    }
 	  if (!scan_cache->mvcc_disabled_class)
 	    {
 	      if (scan_cache->mvcc_snapshot != NULL && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
 		{
-		  if (MVCC_IS_HEADER_ALL_VISIBLE (&mvcc_header))
-		    {
-		      *recdes = *peeked_recdes;
-		      return scan;
-		    }
-
 		  if (scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot) ==
 		      SNAPSHOT_SATISFIED)
 		    {
@@ -26583,3 +26695,22 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
 }
 
 // *INDENT-ON*
+
+/*
+ * heap_rv_lob_remove_dir () - Recovery function for LOB directories.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data.
+ *
+ * NOTE: This function is called when creating or deleting a LOB directory.
+ *       If a LOB directory is created and the transaction is rolled back, this
+ *       function will be called to remove the created directory.
+ *       If a LOB directory deletion command is issued and the transaction is
+ *       committed, this function will be called to actually remove the directory.
+ */
+int
+heap_rv_lob_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  return fileio_lob_remove_matching_dir (rcv->data);
+}

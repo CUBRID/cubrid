@@ -313,13 +313,13 @@ namespace cubpl
     int nbytes = pl_writen (m_socket, request, OR_INT_SIZE);
     if (nbytes != OR_INT_SIZE)
       {
-	return do_handle_network_error (nbytes);
+	return do_handle_network_error (ARG_FILE_LINE, nbytes);
       }
 
     nbytes = pl_writen (m_socket, blk.ptr, blk.dim);
     if (nbytes != static_cast<int> (blk.dim))
       {
-	return do_handle_network_error (nbytes);
+	return do_handle_network_error (ARG_FILE_LINE, nbytes);
       }
 
     return NO_ERROR;
@@ -338,7 +338,7 @@ namespace cubpl
 
     if (!is_valid ())
       {
-	return do_handle_network_error (-1);
+	return do_handle_network_error (ARG_FILE_LINE, -1);
       }
 
     int res_size = 0;
@@ -360,11 +360,11 @@ namespace cubpl
 		  }
 		continue;
 	      }
-	    return do_handle_network_error (-1);
+	    return do_handle_network_error (ARG_FILE_LINE, -1);
 	  }
 	if (nbytes != sizeof (int))
 	  {
-	    return do_handle_network_error (nbytes);
+	    return do_handle_network_error (ARG_FILE_LINE, nbytes);
 	  }
 	else
 	  {
@@ -378,7 +378,7 @@ namespace cubpl
     constexpr int MAX_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB max size
     if (res_size > MAX_BUFFER_SIZE || res_size < 0)
       {
-	return do_handle_network_error (nbytes);
+	return do_handle_network_error (ARG_FILE_LINE, res_size);
       }
 
     if (res_size == 0)
@@ -402,7 +402,7 @@ namespace cubpl
 	  }
 	if (nbytes < 0)
 	  {
-	    return do_handle_network_error (nbytes);
+	    return do_handle_network_error (ARG_FILE_LINE, nbytes);
 	  }
 
 	total_read += nbytes;
@@ -443,7 +443,7 @@ namespace cubpl
   }
 
   int
-  connection::do_handle_network_error (int nbytes)
+  connection::do_handle_network_error (const char *file_name, const int line_no, int nbytes)
   {
     (void) invalidate ();
 
@@ -455,7 +455,7 @@ namespace cubpl
       }
     else
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
+	er_set (ER_ERROR_SEVERITY, file_name, line_no, ER_SP_NETWORK_ERROR, 1, nbytes);
 	m_error = er_errid ();
       }
 

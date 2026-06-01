@@ -33,7 +33,6 @@
 #define CT_METHARG_NAME            "_db_meth_arg"
 #define CT_METHFILE_NAME           "_db_meth_file"
 #define CT_QUERYSPEC_NAME          "_db_query_spec"
-#define CT_RESOLUTION_NAME         "_db_resolution"
 #define CT_INDEX_NAME              "_db_index"
 #define CT_INDEXKEY_NAME           "_db_index_key"
 #define CT_CLASSAUTH_NAME          "_db_auth"
@@ -42,19 +41,20 @@
 #define CT_STORED_PROC_ARGS_NAME   "_db_stored_procedure_args"
 #define CT_STORED_PROC_CODE_NAME   "_db_stored_procedure_code"
 #define CT_PARTITION_NAME          "_db_partition"
-#define CT_SERIAL_NAME             "db_serial"
-#define CT_HA_APPLY_INFO_NAME      "db_ha_apply_info"
+#define CT_SERIAL_NAME             "_db_serial"
+#define CT_HA_APPLY_INFO_NAME      "_db_ha_apply_info"
 #define CT_COLLATION_NAME          "_db_collation"
-#define CT_USER_NAME               "db_user"
-#define CT_TRIGGER_NAME            "db_trigger"
+#define CT_USER_NAME               "_db_user"
+#define CT_TRIGGER_NAME            "_db_trigger"
 #define CT_ROOT_NAME               "db_root"
-#define CT_PASSWORD_NAME           "db_password"
-#define CT_AUTHORIZATION_NAME      "db_authorization"
-#define CT_AUTHORIZATIONS_NAME     "db_authorizations"
+#define CT_PASSWORD_NAME           "_db_password"
+#define CT_AUTHORIZATION_NAME      "_db_authorization"
 #define CT_CHARSET_NAME		   "_db_charset"
 #define CT_DUAL_NAME               "dual"
-#define CT_DB_SERVER_NAME          "_db_server"
+#define CT_SERVER_NAME          "_db_server"
 #define CT_SYNONYM_NAME            "_db_synonym"
+#define CT_HISTOGRAM_NAME       "_db_histogram"
+#define CT_GLOBAL_TRAN_NAME     "_db_global_tran"
 
 /* catalog vclasses */
 #define CTV_CLASS_NAME             "db_class"
@@ -69,14 +69,19 @@
 #define CTV_INDEX_NAME             "db_index"
 #define CTV_INDEXKEY_NAME          "db_index_key"
 #define CTV_AUTH_NAME              "db_auth"
-#define CTV_TRIGGER_NAME           "db_trig"
+#define CTV_TRIGGER_NAME           "db_trigger"
 #define CTV_STORED_PROC_NAME       "db_stored_procedure"
 #define CTV_STORED_PROC_ARGS_NAME  "db_stored_procedure_args"
+#define CTV_SERIAL_NAME            "db_serial"
+#define CTV_HA_APPLY_INFO_NAME     "db_ha_apply_info"
 #define CTV_PARTITION_NAME         "db_partition"
-#define CTV_DB_COLLATION_NAME      "db_collation"
-#define CTV_DB_CHARSET_NAME	   "db_charset"
-#define CTV_DB_SERVER_NAME         "db_server"
+#define CTV_COLLATION_NAME      "db_collation"
+#define CTV_USER_NAME              "db_user"
+#define CTV_AUTHORIZATION_NAME     "db_authorization"
+#define CTV_CHARSET_NAME	   "db_charset"
+#define CTV_SERVER_NAME         "db_server"
 #define CTV_SYNONYM_NAME           "db_synonym"
+#define CTV_HISTOGRAM_NAME      "db_histogram"
 
 #define CT_DBCOLL_COLL_ID_COLUMN	   "coll_id"
 #define CT_DBCOLL_COLL_NAME_COLUMN	   "coll_name"
@@ -91,5 +96,40 @@
 #define CT_DBCHARSET_CHARSET_NAME	  "charset_name"
 #define CT_DBCHARSET_DEFAULT_COLLATION	  "default_collation"
 #define CT_DBCHARSET_CHAR_SIZE		  "char_size"
+
+#define SP_ATTR_TARGET_METHOD_LEN       (4096)
+
+/*
+ * !! CAUTION !!
+ *
+ * If [data_type] is DB_TYPE_OBJECT and [class_of] is NULL, this represents a
+ * general object domain. However, for correctness we must consider only
+ * general object domains that belong to user-defined classes.
+ *
+ * This distinction is especially important for TRUNCATE processing, where
+ * domain validation must ignore system-class object domains and detect only
+ * user-class dependencies.
+ *
+ * Since there is no direct way to distinguish system-class object domains
+ * from user-class ones at this point, we use a workaround: we count the
+ * number of general object domains that are known to exist in system catalogs,
+ * and if the SELECT result exceeds this number, we assume that at least one
+ * general object domain exists in a user class.
+ *
+ * The number of general object domains in system classes is currently 6 and
+ * is hard-coded. Therefore, when a general object domain is added to or
+ * removed from any system class, this value MUST be reviewed.
+ *
+ * If the number changes, CNT_CATCLS_OBJECTS MUST be updated accordingly.
+ *
+ * A QA test case has been added to verify that system classes contain exactly
+ * 6 general object domains. This test is intended to catch violations of this
+ * assumption early. If CNT_CATCLS_OBJECTS is modified, the corresponding QA
+ * test MUST also be updated.
+ *
+ * See CBRD-23983 and CBRD-25697 for details.
+ */
+
+#define CNT_CATCLS_OBJECTS              (9)	/* number of general object domains in system classes */
 
 #endif /* _SCHEMA_SYSTEM_CATALOG_CONSTANTS_H_ */

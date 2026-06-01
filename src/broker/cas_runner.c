@@ -1111,7 +1111,6 @@ process_bind (char *linebuf, int *num_bind_p, T_BIND_INFO * bind_info, int bind_
 
   // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
   if ((bind_info[num_bind].type == CCI_U_TYPE_CHAR) || (bind_info[num_bind].type == CCI_U_TYPE_STRING)
-      || (bind_info[num_bind].type == CCI_U_TYPE_NCHAR) || (bind_info[num_bind].type == CCI_U_TYPE_VARNCHAR)
       || (bind_info[num_bind].type == CCI_U_TYPE_BIT) || (bind_info[num_bind].type == CCI_U_TYPE_VARBIT)
       || (bind_info[num_bind].type == CCI_U_TYPE_ENUM) || (bind_info[num_bind].type == CCI_U_TYPE_JSON)
       || (bind_info[num_bind].type == CCI_U_TYPE_BLOB) || (bind_info[num_bind].type == CCI_U_TYPE_CLOB))
@@ -1455,9 +1454,9 @@ make_node_info (T_NODE_INFO * node, char *node_name, char *info_str)
   return 0;
 
 err:
+  fprintf (stderr, "invalid node format (%s)\n", info_str ? info_str : "NULL");
   FREE_MEM (info_str);
   free_node (node);
-  fprintf (stderr, "invalid node format (%s)\n", info_str);
   return -1;
 }
 

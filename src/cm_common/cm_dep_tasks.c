@@ -49,9 +49,9 @@
 #include "system_parameter.h"
 #include "dbtype.h"
 #include "object_primitive.h"
+#include "schema_system_catalog_constants.h"
+#include "authenticate.h"
 
-extern int set_size (DB_COLLECTION * set);
-extern int set_get_element (DB_COLLECTION * set, int index, DB_VALUE * value);
 
 #if defined(WINDOWS)
 #define OP_SERVER_SHM_OPEN(SHM_KEY, HANDLE_PTR)            \
@@ -117,6 +117,23 @@ static void *op_server_shm_open (int shm_key);
 #define SH_MODE 0644
 #define MAX_SERVER_THREAD_COUNT         500
 
+
+#define CUBRID_VERSION(major,minor)     (major*100 + minor)
+#if (MAJOR_VERSION*100+MINOR_VERSION) < 1104
+#define GRANT_ENTRY_LENGTH              (3)
+#define GRANT_ENTRY_OBJECT_TYPE(index)  (index)
+#define GRANT_ENTRY_CLASS(index)        (index)
+#define GRANT_ENTRY_TYPE(index)         (index + 2)
+#else
+#define GRANT_ENTRY_LENGTH              (4)
+#define GRANT_ENTRY_OBJECT_TYPE(index)  (index)
+#define GRANT_ENTRY_CLASS(index)        (index + 1)
+#define GRANT_ENTRY_TYPE(index)         (index + 3)
+#endif
+
+#define DBMT_ERROR_MSG_SIZE 5000	/* this is defined in cm_job_task.h on cubridmanager */
+#define LINE_BUF_SIZE 1024
+
 static int get_dbvoldir (char *vol_dir, size_t vol_dir_size, char *dbname);
 static int getservershmid (char *dir, char *dbname);
 
@@ -150,6 +167,9 @@ static void _op_get_db_user_groups (nvplist * res, DB_OBJECT * user);
 static void _op_get_db_user_authorization (nvplist * res, DB_OBJECT * user);
 
 static T_EMGR_VERSION get_client_version (char *cli_ver_val);
+
+static bool is_class_entry (DB_COLLECTION * col, int index);
+static void error_file_to_buf (const char *err_file, char *err_buf);
 
 #if defined(WINDOWS)
 static void
@@ -503,8 +523,12 @@ cm_ts_optimizedb (nvplist * req, nvplist * res, char *_dbmt_error)
       char cmd_name[PATH_MAX];
       const char *argv[6];
       int argc = 0;
+      int exit_code = 0;
+      char cubrid_err_file[PATH_MAX];
 
       (void) envvar_bindir_file (cmd_name, PATH_MAX, UTIL_CUBRID);
+      make_temp_filename (cubrid_err_file, "optimizedb.", PATH_MAX);
+
       argv[argc++] = cmd_name;
       argv[argc++] = UTIL_OPTION_OPTIMIZEDB;
       if (classname != NULL)
@@ -515,10 +539,16 @@ cm_ts_optimizedb (nvplist * req, nvplist * res, char *_dbmt_error)
       argv[argc++] = dbname;
       argv[argc++] = NULL;
 
-      if (run_child (argv, 1, NULL, NULL, NULL, NULL) < 0)
+      if (run_child (argv, 1, NULL, NULL, cubrid_err_file, &exit_code) < 0)
 	{			/* optimizedb */
 	  strcpy (_dbmt_error, argv[0]);
 	  return ERR_SYSTEM_CALL;
+	}
+
+      if (exit_code != 0)
+	{
+	  error_file_to_buf (cubrid_err_file, _dbmt_error);
+	  return ERR_WITH_MSG;
 	}
     }
   else
@@ -956,6 +986,7 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
   int i, sect, sect_len;
   char *tval, *sval;
   int anum;
+  int save = 0;
 
   db_passwd = nv_get_val (req, "_DBPASSWD");
   db_name = nv_get_val (req, "_DBNAME");
@@ -1013,6 +1044,7 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
     }
 
   /* clear existing group - clear group, direct group */
+  AU_DISABLE (save);
   if (db_get (dbuser, "groups", &val) < 0)
     {
       goto error_return;
@@ -1155,10 +1187,12 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
       goto error_return;
     }
   db_shutdown ();
+  AU_ENABLE (save);
 
   return ERR_NO_ERROR;
 
 error_return:
+  AU_ENABLE (save);
   CUBRID_ERR_MSG_SET (_dbmt_error);
   db_shutdown ();
   return ERR_WITH_MSG;
@@ -1301,6 +1335,7 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
   char *db_name;
   int ha_mode = 0;
   T_DB_SERVICE_MODE db_mode;
+  int save = 0;
 
   db_name = nv_get_val (in, "dbname");
   if (db_name == NULL)
@@ -1318,7 +1353,7 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
     {
       return ERR_WITH_MSG;
     }
-  p_class_db_user = db_find_class ("db_user");
+  p_class_db_user = db_find_class (CT_USER_NAME);
   if (p_class_db_user == NULL)
     {
       goto error_return;
@@ -1334,6 +1369,7 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
 	  goto error_return;
 	}
     }
+  AU_DISABLE (save);
   temp = user_list;
   while (temp != NULL)
     {
@@ -1358,10 +1394,12 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
     {
       goto error_return;
     }
+  AU_ENABLE (save);
   db_shutdown ();
   return ERR_NO_ERROR;
 
 error_return:
+  AU_ENABLE (save);
   CUBRID_ERR_MSG_SET (_dbmt_error);
   db_shutdown ();
   return ERR_WITH_MSG;
@@ -2274,7 +2312,7 @@ _op_get_value_string (DB_VALUE * value)
 #if !defined (NUMERIC_MAX_STRING_SIZE)
 #define NUMERIC_MAX_STRING_SIZE (80 + 1)
 #endif
-  const char *db_varnchar_p = NULL, *db_string_p_tmp = NULL;
+  const char *db_string_p_tmp = NULL;
   char *result, *return_result, *db_string_p;
   DB_TYPE type;
   DB_DATE *date_v;
@@ -2314,14 +2352,6 @@ _op_get_value_string (DB_VALUE * value)
       if (db_string_p_tmp != NULL)
 	{
 	  snprintf (result, result_size, "%s", db_string_p_tmp);
-	}
-      break;
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      db_varnchar_p = db_get_nchar (value, &size);
-      if (db_varnchar_p != NULL)
-	{
-	  snprintf (result, result_size, "N'%s'", db_varnchar_p);
 	}
       break;
     case DB_TYPE_BIT:
@@ -2510,11 +2540,6 @@ _op_get_set_value (DB_VALUE * val)
 
     case DB_TYPE_DATETIMELTZ:
       snprintf (result, result_size, "%s%s%s", "datetimeltz '", return_result, "'");
-      break;
-
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      snprintf (result, result_size, "%s%s%s", "N'", return_result, "'");
       break;
 
     case DB_TYPE_BIT:
@@ -2792,34 +2817,38 @@ revoke_all_from_user (DB_OBJECT * user)
 {
   int i;
   DB_VALUE v;
-  DB_OBJECT *obj, **class_obj = NULL;
-  int num_class = 0;
+  DB_OBJECT *obj, **auth_obj = NULL;
+  int num_auth = 0;
   DB_COLLECTION *col;
+  int save;
 
+  AU_DISABLE (save);
   db_get (user, "authorization.grants", &v);
   col = db_get_collection (&v);
-  for (i = 0; i < db_seq_size (col); i += 3)
+  for (i = 0; i < db_seq_size (col); i += GRANT_ENTRY_LENGTH)
     {
-      db_seq_get (col, i, &v);
+      db_seq_get (col, GRANT_ENTRY_CLASS (i), &v);
       obj = db_get_object (&v);
-      if (db_is_system_class (obj))
+      if (obj->class_mop == NULL || (is_class_entry (col, i) && db_is_system_class (obj)))
 	{
 	  continue;
 	}
-      class_obj = (DB_OBJECT **) (REALLOC (class_obj, sizeof (DB_OBJECT *) * (num_class + 1)));
-      if (class_obj == NULL)
+      auth_obj = (DB_OBJECT **) (REALLOC (auth_obj, sizeof (DB_OBJECT *) * (num_auth + 1)));
+      if (auth_obj == NULL)
 	{
+	  AU_ENABLE (save);
 	  return ERR_MEM_ALLOC;
 	}
-      class_obj[num_class] = obj;
-      num_class++;
+      auth_obj[num_auth] = obj;
+      num_auth++;
     }
 
-  for (i = 0; i < num_class; i++)
+  for (i = 0; i < num_auth; i++)
     {
-      db_revoke (user, class_obj[i], DB_AUTH_ALL);
+      db_revoke (user, auth_obj[i], DB_AUTH_ALL);
     }
-  FREE_MEM (class_obj);
+  FREE_MEM (auth_obj);
+  AU_ENABLE (save);
   return ERR_NO_ERROR;
 }
 
@@ -2844,14 +2873,38 @@ _op_get_db_user_authorization (nvplist * res, DB_OBJECT * user)
 
   db_get (user, "authorization.grants", &v);
   col = db_get_collection (&v);
-  for (i = 0; i < db_seq_size (col); i += 3)
+  for (i = 0; i < db_seq_size (col); i += GRANT_ENTRY_LENGTH)
     {
-      db_seq_get (col, i, &v);
+      if (!is_class_entry (col, i))
+	{
+	  continue;
+	}
+
+      db_seq_get (col, GRANT_ENTRY_CLASS (i), &v);
       obj = db_get_object (&v);
-      db_seq_get (col, i + 2, &v);
+      db_seq_get (col, GRANT_ENTRY_TYPE (i), &v);
       snprintf (buf, sizeof (buf) - 1, "%d", db_get_int (&v));
       nv_add_nvp (res, (char *) db_get_class_name (obj), buf);
     }
+}
+
+static bool
+is_class_entry (DB_COLLECTION * col, int index)
+{
+  DB_VALUE v;
+
+  if (CUBRID_VERSION (MAJOR_VERSION, MINOR_VERSION) < 1104)
+    {
+      return true;
+    }
+
+  db_seq_get (col, GRANT_ENTRY_OBJECT_TYPE (index), &v);
+  if (db_get_int (&v) == 0)
+    {
+      return true;
+    }
+
+  return false;
 }
 
 static void
@@ -2908,11 +2961,7 @@ get_dbvoldir (char *vol_dir, size_t vol_dir_size, char *dbname)
     {
       return -1;
     }
-#if !defined (DO_NOT_USE_CUBRIDENV)
   envpath = getenv (CUBRID_DATABASES_ENV);
-#else
-  envpath = CUBRID_VARDIR;
-#endif
   if (envpath == NULL || strlen (envpath) == 0)
     {
       return -1;
@@ -2985,4 +3034,73 @@ getservershmid (char *dir, char *dbname)
 
   fclose (fdkey_file);
   return shm_key;
+}
+
+/*
+ * base code: read_error_file () at cm_dep_tasks.c on cubridmanager
+ * fill error message from file to buffer
+ */
+
+static void
+error_file_to_buf (const char *err_file, char *err_buf)
+{
+  FILE *fp;
+  char buf[LINE_BUF_SIZE];
+  int msg_size = 0;
+  size_t i;
+  char *ptr;
+
+  if (err_buf == NULL)
+    {
+      return;
+    }
+
+  memset (err_buf, 0, DBMT_ERROR_MSG_SIZE);
+
+  if ((fp = fopen (err_file, "r")) == NULL)
+    {
+      return;
+    }
+
+  while (1)
+    {
+      memset (buf, 0, LINE_BUF_SIZE);
+      if (fgets (buf, LINE_BUF_SIZE - 1, fp) == NULL)
+	{
+	  break;
+	}
+
+      if ((ptr = strchr (buf, '\n')) != NULL)
+	{
+	  *ptr = '\0';
+	}
+
+      ut_trim (buf);
+
+      if (buf[0] == '\0')
+	{
+	  continue;
+	}
+
+      if ((DBMT_ERROR_MSG_SIZE - msg_size - 1) > 0)
+	{
+	  snprintf (err_buf + msg_size, DBMT_ERROR_MSG_SIZE - msg_size - 1, "%s ", buf);
+	}
+      else
+	{
+	  break;
+	}
+
+      msg_size = strlen (err_buf);
+    }
+
+  if (msg_size > 0)
+    {
+      err_buf[msg_size - 1] = '\0';
+    }
+
+  fclose (fp);
+  unlink (err_file);
+
+  return;
 }

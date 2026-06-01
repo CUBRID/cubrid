@@ -67,10 +67,6 @@ HMODULE handle = NULL;
 void *handle = NULL;
 #endif
 
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-extern char *envvar_confdir_file (char *path, size_t size, const char *filename);
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-
 static void shard_println_1 (FILE * fp);
 static void shard_println_2 (FILE * fp);
 

@@ -40,14 +40,15 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-const char *css_Service_name = "cubrid";
-int css_Service_id = 1523;
-
+#if defined(SERVER_MODE)
 SOCKET css_Pipe_to_master = INVALID_SOCKET;	/* socket for Master->Slave communication */
+#endif
 
 /* Stuff for the new client/server/master protocol */
 int css_Server_inhibit_connection_socket = 0;
+#if defined(WINDOWS)
 SOCKET css_Server_connection_socket = INVALID_SOCKET;
+#endif
 
 /* For Windows, we only support the new style of connection protocol. */
 #if defined(WINDOWS)
@@ -57,7 +58,7 @@ int css_Server_use_new_connection_protocol = 0;
 #endif /* WINDOWS */
 
 /* do not change first 4 bytes of css_Net_magic */
-char css_Net_magic[CSS_NET_MAGIC_SIZE] = { 0x00, 0x00, 0x00, 0x01, 0x20, 0x08, 0x11, 0x22 };
+const char css_Net_magic[CSS_NET_MAGIC_SIZE] = { 0x00, 0x00, 0x00, 0x01, 0x20, 0x08, 0x11, 0x22 };
 
 static bool css_Is_conn_rules_initialized = false;
 

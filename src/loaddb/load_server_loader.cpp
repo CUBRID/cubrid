@@ -38,6 +38,7 @@
 #include "schema_system_catalog.hpp"
 #include "thread_manager.hpp"
 #include "xserver_interface.h"
+#include "schema_system_catalog_constants.h"
 
 #include <cstring>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -121,7 +122,18 @@ namespace cubload
     LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
     LC_FIND_CLASSNAME found_again = LC_CLASSNAME_EXIST;
 
-    if (strchr (class_name, '.') || sm_check_system_class_by_name (class_name))
+    if (strchr (class_name, '.'))
+      {
+	found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
+
+	/* maybe unloaded from version 11.2+ or later */
+	if (m_session.get_client_type() == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
+	  {
+	    assert (m_session.get_client_type() == thread_ref.conn_entry->client_type);
+	    m_session.set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4);
+	  }
+      }
+    else if (sm_check_system_class_by_name (class_name))
       {
 	found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
       }
@@ -134,13 +146,31 @@ namespace cubload
 	 */
 
 	char user_specified_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+	char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
 	const char *user_name = m_session.get_args ().user_name.c_str ();
-	assert (user_name != NULL);
+	assert (user_name != NULL && user_name[0] != '\0');
 
 	snprintf (user_specified_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", user_name, class_name);
 
-	found = xlocator_find_class_oid (&thread_ref, user_specified_name, &class_oid, BU_LOCK);
+	assert (intl_identifier_lower_string_size (user_name) < DB_MAX_USER_LENGTH);
+	intl_identifier_lower (user_specified_name, realname);
+
+	found = xlocator_find_class_oid (&thread_ref, realname, &class_oid, BU_LOCK);
+	if (found == LC_CLASSNAME_EXIST)
+	  {
+	    return found;
+	  }
+
+	/* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
+	if (m_session.get_client_type() == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
+	  {
+	    found_again = locate_class_for_all_users (class_name, class_oid);
+	    if (found_again == LC_CLASSNAME_EXIST)
+	      {
+		return found_again;
+	      }
+	  }
       }
 
     if (found == LC_CLASSNAME_EXIST)
@@ -148,38 +178,28 @@ namespace cubload
 	return found;
       }
 
-#if defined(SERVER_MODE)
-    /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-    if (thread_ref.conn_entry->client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
-      {
-	found_again = locate_class_for_all_users (class_name, class_oid);
-	if (found_again == LC_CLASSNAME_EXIST)
-	  {
-	    return found_again;
-	  }
-      }
-#endif
-
     return found;
   }
 
   LC_FIND_CLASSNAME
   server_class_installer::locate_class_for_all_users (const char *class_name, OID &class_oid)
   {
-#define CATCLS_USER_ATTR_IDX_NAME 7
+#define CATCLS_USER_ATTR_IDX_NAME 11
     cubthread::entry &thread_ref = cubthread::get_entry ();
     LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
     HEAP_CACHE_ATTRINFO attr_info;
     HEAP_SCANCACHE scan_cache;
+    MVCC_SNAPSHOT *mvcc_snapshot = NULL;
     SCAN_CODE scan_code = S_SUCCESS;
     RECDES recdes = RECDES_INITIALIZER;
     HFID hfid = HFID_INITIALIZER;
     OID inst_oid = OID_INITIALIZER;
     HEAP_ATTRVALUE *heap_value = NULL;
     const char *dot = NULL;
-    const char *class_name_p = NULL;
+    const char *class_name_only = NULL;
     int error = NO_ERROR;
     int i = 0;
+    bool already_found = false;
 
     error = heap_attrinfo_start (&thread_ref, oid_User_class_oid, -1, NULL, &attr_info);
     assert (attr_info.num_values != -1);
@@ -197,7 +217,15 @@ namespace cubload
 	return LC_CLASSNAME_ERROR;
       }
 
-    error = heap_scancache_start (&thread_ref, &scan_cache, &hfid, NULL, true, NULL);
+    mvcc_snapshot = logtb_get_mvcc_snapshot (&thread_ref);
+    if (mvcc_snapshot == NULL)
+      {
+	ASSERT_ERROR ();
+	heap_attrinfo_end (&thread_ref, &attr_info);
+	return LC_CLASSNAME_ERROR;
+      }
+
+    error = heap_scancache_start (&thread_ref, &scan_cache, &hfid, NULL, true, mvcc_snapshot);
     if (error != NO_ERROR)
       {
 	ASSERT_ERROR ();
@@ -207,13 +235,26 @@ namespace cubload
 
     /* If it is user_specified_name, remove user_name. */
     dot = strchr (class_name, '.');
-    class_name_p = dot ? dot + 1 : class_name;
+    class_name_only = dot ? dot + 1 : class_name;
 
     while (true)
       {
 	scan_code = heap_next (&thread_ref, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK);
 	if (scan_code == S_SUCCESS)
 	  {
+	    scan_code = heap_get_visible_version (&thread_ref, &inst_oid, oid_User_class_oid, &recdes, &scan_cache, PEEK, NULL_CHN);
+	    if (scan_code == S_SNAPSHOT_NOT_SATISFIED || scan_code == S_DOESNT_EXIST)
+	      {
+		continue;
+	      }
+	    else if (scan_code != S_SUCCESS)
+	      {
+		ASSERT_ERROR ();
+		heap_scancache_end (&thread_ref, &scan_cache);
+		heap_attrinfo_end (&thread_ref, &attr_info);
+		return LC_CLASSNAME_ERROR;
+	      }
+
 	    error = heap_attrinfo_read_dbvalues (&thread_ref, &inst_oid, &recdes, &attr_info);
 	    if (error != NO_ERROR)
 	      {
@@ -227,23 +268,34 @@ namespace cubload
 	      {
 		if (heap_value->attrid == CATCLS_USER_ATTR_IDX_NAME)
 		  {
-		    const char *user_name = NULL;
-		    char downcase_user_name[DB_MAX_USER_LENGTH] = { '\0' };
-		    char user_specified_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+		    break;
+		  }
+	      }
 
-		    user_name = db_get_string (&heap_value->dbvalue);
-		    intl_identifier_lower (user_name, downcase_user_name);
-		    snprintf (user_specified_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_user_name, class_name_p);
+	    if (i != attr_info.num_values)
+	      {
+		const char *user_name = NULL;
+		char downcase_user_name[DB_MAX_USER_LENGTH] = { '\0' };
+		char user_specified_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-		    found = xlocator_find_class_oid (&thread_ref, user_specified_name, &class_oid, BU_LOCK);
-		    if (found == LC_CLASSNAME_EXIST)
+		user_name = db_get_string (&heap_value->dbvalue);
+		intl_identifier_lower (user_name, downcase_user_name);
+		snprintf (user_specified_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_user_name, class_name_only);
+
+		found = xlocator_find_class_oid (&thread_ref, user_specified_name, &class_oid, BU_LOCK);
+		if (found == LC_CLASSNAME_EXIST)
+		  {
+		    if (already_found)
 		      {
 			heap_scancache_end (&thread_ref, &scan_cache);
 			heap_attrinfo_end (&thread_ref, &attr_info);
-			return found;
+			return LC_CLASSNAME_DELETED;
 		      }
-
-		    break;
+		    else
+		      {
+			already_found = true;
+			continue;
+		      }
 		  }
 	      }
 	  }
@@ -262,7 +314,15 @@ namespace cubload
 
     heap_scancache_end (&thread_ref, &scan_cache);
     heap_attrinfo_end (&thread_ref, &attr_info);
-    return LC_CLASSNAME_DELETED;
+
+    if (already_found)
+      {
+	return LC_CLASSNAME_EXIST;
+      }
+    else
+      {
+	return LC_CLASSNAME_DELETED;
+      }
 #undef CATCLS_USER_ATTR_IDX_NAME
   }
 
@@ -785,7 +845,6 @@ namespace cubload
       case LDR_DATETIMELTZ:
       case LDR_DATETIMETZ:
       case LDR_STR:
-      case LDR_NSTR:
       case LDR_BSTR:
       case LDR_XSTR:
       case LDR_ELO_INT:
@@ -813,7 +872,7 @@ namespace cubload
 	  }
 	else
 	  {
-	    class_name = cons->type == LDR_SYS_USER ? "db_user" : "*system class*";
+	    class_name = cons->type == LDR_SYS_USER ? CT_USER_NAME : "*system class*";
 	  }
 
 	error_code = ER_FAILED;
