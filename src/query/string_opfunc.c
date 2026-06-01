@@ -238,6 +238,7 @@ static int number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_s
 			   DB_VALUE * result_str, const TP_DOMAIN * domain);
 static int lobfile_to_bit_char (const DB_VALUE * src_value, DB_VALUE * result_value, DB_TYPE lobfile_type,
 				int max_length);
+static int lobfile_to_lob (const DB_VALUE * src_value, DB_VALUE * result_value, DB_TYPE lob_type);
 static int lobfile_from_file (const char *path, const DB_VALUE * src_value, DB_VALUE * lobfile_value,
 			      DB_TYPE lobfile_type);
 static int lobfile_length (const DB_VALUE * src_value, DB_VALUE * result_value);
@@ -25769,20 +25770,126 @@ db_clob_length (const DB_VALUE * src_value, DB_VALUE * result_value)
 }
 
 /*
+ * lobfile_to_lob () - read the full external LOB (BFILE / CFILE) content and
+ *   build an internal LOB (BLOB / CLOB) value.
+ *   return: NO_ERROR or error code
+ *   src_value(in): external LOB (BFILE / CFILE) value
+ *   result_value(out): internal LOB (BLOB / CLOB) value
+ *   lob_type(in): DB_TYPE_BLOB or DB_TYPE_CLOB
+ *
+ *   Unlike lobfile_to_bit_char (), which caps the read at DB_MAX_STRING_LENGTH
+ *   for STRING / BIT conversion (and, for BFILE, divides that bit cap by 8),
+ *   this reads the whole external file up to DB_MAX_LOB_LENGTH and raises an
+ *   explicit error when the source exceeds that limit. This avoids the silent
+ *   truncation that a string-capped path would introduce on large LOBs, and
+ *   builds the result through db_make_blob () / db_make_clob () so the value
+ *   carries proper LOB precision / metadata instead of a retagged
+ *   VARBIT / VARCHAR shape.
+ */
+static int
+lobfile_to_lob (const DB_VALUE * src_value, DB_VALUE * result_value, DB_TYPE lob_type)
+{
+  int error_status = NO_ERROR;
+  DB_ELO *elo;
+  char *buf = NULL;
+  INT64 size = 0LL;
+  INT64 data_length = 0LL;
+
+  assert (src_value != NULL && result_value != NULL);
+  assert (lob_type == DB_TYPE_BLOB || lob_type == DB_TYPE_CLOB);
+
+  elo = db_get_elo (src_value);
+  if (elo == NULL)
+    {
+      db_make_null (result_value);
+      return NO_ERROR;
+    }
+
+  size = db_elo_size (elo);
+  if (size < 0)
+    {
+      if (er_errid () == ER_ES_GENERAL)
+	{
+	  /* by the spec, some lobfile handling functions treat a read error as a NULL value */
+	  db_make_null (result_value);
+	  er_clear ();
+	  return NO_ERROR;
+	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_BAD_LENGTH, 1, size);
+      return ER_QSTR_BAD_LENGTH;
+    }
+
+  /* A BLOB carries its length in bits, a CLOB in bytes/chars; both are capped
+   * at DB_MAX_LOB_PRECISION in that unit. Reject input that would exceed the
+   * cap with an explicit error instead of silently truncating it. */
+  data_length = (lob_type == DB_TYPE_BLOB) ? (size * 8) : size;
+  if (data_length > DB_MAX_LOB_PRECISION)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, (int) data_length,
+	      (int) DB_MAX_LOB_PRECISION);
+      return ER_QPROC_STRING_SIZE_TOO_BIG;
+    }
+
+  /* Allocate 1 byte for the empty-file case so buf stays non-NULL. */
+  buf = (char *) db_private_alloc (NULL, size ? (size_t) size : 1);
+  if (buf == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  if (size > 0)
+    {
+      error_status = db_elo_read (elo, 0, buf, (size_t) size, NULL);
+      if (error_status == ER_ES_GENERAL)
+	{
+	  /* by the spec, some lobfile handling functions treat a read error as a NULL value */
+	  db_make_null (result_value);
+	  db_private_free_and_init (NULL, buf);
+	  er_clear ();
+	  return NO_ERROR;
+	}
+      else if (error_status < 0)
+	{
+	  db_private_free_and_init (NULL, buf);
+	  return error_status;
+	}
+    }
+
+  if (lob_type == DB_TYPE_BLOB)
+    {
+      /* data_length is the bit length, matching db_blob_to_bit () readback. */
+      error_status = db_make_blob (result_value, DB_MAX_LOB_PRECISION, (DB_CONST_C_BIT) buf, (int) data_length);
+    }
+  else
+    {
+      error_status = db_make_clob (result_value, DB_MAX_LOB_PRECISION, (DB_CONST_C_CHAR) buf, (int) data_length,
+				   LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+    }
+
+  if (error_status != NO_ERROR)
+    {
+      db_private_free_and_init (NULL, buf);
+      return error_status;
+    }
+
+  result_value->need_clear = true;
+  return NO_ERROR;
+}
+
+/*
  * db_bfile_to_blob - convert external BFILE value to internal BLOB value
  *   return: NO_ERROR or error code
  *   src_value(in): bfile value
  *   result_value(out): blob value
  *
- *   Reads the bytes from the BFILE-backed external storage and stores them
- *   inline as a BLOB. Mirrors db_blob_from_file (), which first builds a
- *   BFILE then folds it into a BLOB.
+ *   Reads the full BFILE-backed external storage and stores it inline as a
+ *   BLOB via db_make_blob (). Reading the whole file (capped at
+ *   DB_MAX_LOB_LENGTH, error beyond) avoids the silent truncation that the
+ *   string-capped db_bfile_to_bit () path would impose on large BFILEs.
  */
 int
 db_bfile_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
 {
-  int error_status = NO_ERROR;
-
   assert (src_value != NULL && result_value != NULL);
 
   if (DB_VALUE_DOMAIN_TYPE (src_value) == DB_TYPE_NULL)
@@ -25791,15 +25898,7 @@ db_bfile_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
       return NO_ERROR;
     }
 
-  error_status = db_bfile_to_bit (src_value, NULL, result_value);
-  if (error_status != NO_ERROR)
-    {
-      return error_status;
-    }
-
-  result_value->domain.general_info.type = DB_TYPE_BLOB;
-
-  return error_status;
+  return lobfile_to_lob (src_value, result_value, DB_TYPE_BLOB);
 }
 
 /*
