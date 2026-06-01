@@ -397,6 +397,8 @@ namespace cubconn::connection
 
     request.type = message_type::SHUTDOWN_CLIENT;
     request.conn = ctx->m_conn;
+    request.ctx = ctx;
+    request.id = ctx->m_id;
     request.ignore = ctx->m_ignore;
     request.retry = is_retry;
     request.waiter_handle = handle;
