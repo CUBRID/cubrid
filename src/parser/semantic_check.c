@@ -14961,8 +14961,7 @@ pt_check_function_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_
 	  return 1;
 	}
 
-      if (pt_check_sort_spec_list_eq (parser, p->info.function.analytic.order_by,
-				      q->info.function.analytic.order_by))
+      if (pt_check_sort_spec_list_eq (parser, p->info.function.analytic.order_by, q->info.function.analytic.order_by))
 	{
 	  return 1;
 	}
@@ -14972,8 +14971,7 @@ pt_check_function_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_
 	  return 1;
 	}
 
-      if (pt_check_path_eq (parser, p->info.function.analytic.default_value,
-			    q->info.function.analytic.default_value))
+      if (pt_check_path_eq (parser, p->info.function.analytic.default_value, q->info.function.analytic.default_value))
 	{
 	  return 1;
 	}

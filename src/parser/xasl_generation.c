@@ -4047,10 +4047,13 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	{
 	  if (aggregate_list->function != PT_CUME_DIST && aggregate_list->function != PT_PERCENT_RANK)
 	    {
-	      tree->info.function.arg_list =
-		parser_walk_tree (parser, tree->info.function.arg_list, NULL, NULL, pt_substitute_groupby_ref_post,
-				  info);
 
+	      if (aggregate_list->function != PT_GROUP_CONCAT && !(QPROC_IS_INTERPOLATION_FUNC (aggregate_list)))
+		{
+		  tree->info.function.arg_list =
+		    parser_walk_tree (parser, tree->info.function.arg_list, NULL, NULL, pt_substitute_groupby_ref_post,
+				      info);
+		}
 	      regu_constant_list = pt_to_regu_variable_list (parser, arg_list, UNBOX_AS_VALUE, NULL, NULL);
 
 	      scan_regu_constant_list = pt_to_regu_variable_list (parser, arg_list, UNBOX_AS_VALUE, NULL, NULL);
