@@ -159,10 +159,11 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
   db_ws_free_and_init (owner_name);
 
   classname_only = sm_remove_qualifier_name (class_old_name);
-  class_new_name = (char *)malloc (snprintf (NULL, 0,  "%s.%s", downcase_owner_name, classname_only) + 1);
+  class_new_name = (char *) db_private_alloc (NULL, snprintf (NULL, 0, "%s.%s", downcase_owner_name, classname_only) + 1);
   if (class_new_name == NULL)
     {
-      ASSERT_ERROR_AND_SET (error);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 0);
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
       goto end;
     }
   sprintf (class_new_name, "%s.%s", downcase_owner_name, classname_only);
