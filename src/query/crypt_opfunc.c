@@ -972,7 +972,7 @@ crypt_dblink_bin_to_str (const char *src, int src_len, char *dest, int dest_len,
   even = 0;
   for (i = enc_len + pk_len; i < dest_len; i++)
     {
-      dest[i] = hextable[rand_r (&rand_seed) % hextable_mod];
+      dest[i] = hextable[(unsigned int) rand_r (&rand_seed) % hextable_mod];
       even += (dest[i] + i);
     }
   dest[i++] = ((even >> 8) % 26) + 'A';
@@ -1121,7 +1121,7 @@ shake_dblink_password (const char *passwd, char *confused, int confused_size, st
 
   for (i = 0; i < start; i++)
     {
-      p[i] = tmpx[rand_r (&rand_seed) % tmpx_len];
+      p[i] = tmpx[(unsigned int) rand_r (&rand_seed) % tmpx_len];
     }
   p += start;
 
