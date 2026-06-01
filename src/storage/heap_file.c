@@ -17280,6 +17280,76 @@ heap_get_class_repr_id (THREAD_ENTRY * thread_p, OID * class_oid)
   return id;
 }
 
+int
+build_auto_increment_serial_name (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scan_cache,
+				  OR_ATTRIBUTE * att, char *serial_name)
+{
+  int ret = NO_ERROR;
+  int alloced_string = 0;
+  char *attr_name = NULL;
+  char *classname = NULL;	/* Used to obtain attribute name */
+  HEAP_SCANCACHE local_scan_cache;
+  bool use_local_scan_cache = false;
+  RECDES recdes;
+
+  recdes.data = NULL;
+  recdes.area_size = 0;
+
+  if (scan_cache->cache_last_fix_page == false)
+    {
+      scan_cache = &local_scan_cache;
+      (void) heap_scancache_quick_start_root_hfid (thread_p, scan_cache);
+      use_local_scan_cache = true;
+    }
+
+  if (heap_get_class_record (thread_p, &(attr_info->class_oid), &recdes, scan_cache, PEEK) != S_SUCCESS)
+    {
+      ret = ER_FAILED;
+      goto error_serial_name;
+    }
+
+  if (heap_get_class_name (thread_p, &(att->classoid), &classname) != NO_ERROR || classname == NULL)
+    {
+      ASSERT_ERROR_AND_SET (ret);
+      goto error_serial_name;
+    }
+
+  ret = or_get_attrname (&recdes, att->id, &attr_name, &alloced_string);
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error_serial_name;
+    }
+
+  if (attr_name == NULL)
+    {
+      ret = ER_FAILED;
+      goto error_serial_name;
+    }
+
+  ret = set_auto_increment_serial_name (serial_name, classname, attr_name);
+
+error_serial_name:
+  free_and_init (classname);
+  if (attr_name != NULL && alloced_string == 1)
+    {
+      db_private_free_and_init (thread_p, attr_name);
+    }
+
+  if (use_local_scan_cache)
+    {
+      heap_scancache_end (thread_p, scan_cache);
+    }
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
+  return NO_ERROR;
+}
+
+
+
 /*
  * heap_set_autoincrement_value () -
  *   return: NO_ERROR, or ER_code
@@ -17289,13 +17359,16 @@ heap_get_class_repr_id (THREAD_ENTRY * thread_p, OID * class_oid)
  */
 int
 heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scan_cache,
-			      int *is_set)
+			      int *is_set
+#if defined(ENABLE_ENHANCE_AUTO_INCR_TEST)
+			      , int *autoincrement_column_idx, char *serial_name
+#endif
+  )
 {
   int i, idx_in_cache;
-  char *classname = NULL;
-  char *attr_name = NULL;
-  RECDES recdes;		/* Used to obtain attribute name */
+#if !defined(ENABLE_ENHANCE_AUTO_INCR_TEST)
   char serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0', };
+#endif
   HEAP_ATTRVALUE *value;
   DB_VALUE dbvalue_numeric, *dbvalue, key_val;
   OR_ATTRIBUTE *att;
@@ -17304,11 +17377,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
   OR_CLASSREP *classrep;
   BTID serial_btid;
   DB_DATA_STATUS data_stat;
-  HEAP_SCANCACHE local_scan_cache;
-  bool use_local_scan_cache = false;
   int ret = NO_ERROR;
-  int alloced_string = 0;
-  char *string = NULL;
 
   if (!attr_info || !scan_cache)
     {
@@ -17317,75 +17386,109 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 
   *is_set = 0;
 
-  recdes.data = NULL;
-  recdes.area_size = 0;
+#if defined(ENABLE_ENHANCE_AUTO_INCR_TEST)
+  {
+    att = &attr_info->last_classrepr->attributes[*autoincrement_column_idx];
+    assert (att->is_autoincrement == true);
 
+    value = &attr_info->values[*autoincrement_column_idx];
+    dbvalue = &value->dbvalue;
+
+    if (value->state != HEAP_UNINIT_ATTRVALUE)
+      {
+	*autoincrement_column_idx = -1;
+      }
+    else
+      {
+#else
   for (i = 0; i < attr_info->num_values; i++)
     {
+      att = &attr_info->last_classrepr->attributes[i];
+      if (att->is_autoincrement == false)
+	{
+	  continue;
+	}
+
       value = &attr_info->values[i];
       dbvalue = &value->dbvalue;
-      att = &attr_info->last_classrepr->attributes[i];
 
-      if (att->is_autoincrement && (value->state == HEAP_UNINIT_ATTRVALUE))
+      if (value->state == HEAP_UNINIT_ATTRVALUE)
 	{
+#endif
 	  OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
 	  if (OID_ISNULL (&serial_obj_oid) || prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
 	    {
-	      serial_name[0] = '\0';
-	      recdes.data = NULL;
-	      recdes.area_size = 0;
-
-	      if (scan_cache->cache_last_fix_page == false)
+#if defined(ENABLE_ENHANCE_AUTO_INCR_TEST)
+	      if (serial_name[0] == '\0')
 		{
-		  scan_cache = &local_scan_cache;
-		  (void) heap_scancache_quick_start_root_hfid (thread_p, scan_cache);
-		  use_local_scan_cache = true;
+		  build_auto_increment_serial_name (thread_p, attr_info, scan_cache, att, serial_name);
 		}
-
-	      if (heap_get_class_record (thread_p, &(attr_info->class_oid), &recdes, scan_cache, PEEK) != S_SUCCESS)
+#else
+	      if (serial_name[0] == '\0')
 		{
-		  ret = ER_FAILED;
-		  goto exit_on_error;
-		}
+		  int alloced_string = 0;
+		  char *attr_name = NULL;
+		  char *classname = NULL;	/* Used to obtain attribute name */
+		  HEAP_SCANCACHE local_scan_cache;
+		  bool use_local_scan_cache = false;
+		  RECDES recdes;
 
-	      if (heap_get_class_name (thread_p, &(att->classoid), &classname) != NO_ERROR || classname == NULL)
-		{
-		  ASSERT_ERROR_AND_SET (ret);
-		  goto exit_on_error;
-		}
+		  recdes.data = NULL;
+		  recdes.area_size = 0;
 
-	      string = NULL;
-	      alloced_string = 0;
-
-	      ret = or_get_attrname (&recdes, att->id, &string, &alloced_string);
-	      if (ret != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  goto exit_on_error;
-		}
-
-	      attr_name = string;
-	      if (attr_name == NULL)
-		{
-		  ret = ER_FAILED;
-		  goto exit_on_error;
-		}
-
-	      ret = set_auto_increment_serial_name (serial_name, classname, attr_name);
-	      if (ret != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
-
-	      if (OID_ISNULL (&serial_obj_oid))
-		{
-		  if (string != NULL && alloced_string == 1)
+		  if (scan_cache->cache_last_fix_page == false)
 		    {
-		      db_private_free_and_init (thread_p, string);
+		      scan_cache = &local_scan_cache;
+		      (void) heap_scancache_quick_start_root_hfid (thread_p, scan_cache);
+		      use_local_scan_cache = true;
 		    }
 
-		  free_and_init (classname);
+		  if (heap_get_class_record (thread_p, &(attr_info->class_oid), &recdes, scan_cache, PEEK) != S_SUCCESS)
+		    {
+		      ret = ER_FAILED;
+		      goto error_serial_name;
+		    }
 
+		  if (heap_get_class_name (thread_p, &(att->classoid), &classname) != NO_ERROR || classname == NULL)
+		    {
+		      ASSERT_ERROR_AND_SET (ret);
+		      goto error_serial_name;
+		    }
+
+		  ret = or_get_attrname (&recdes, att->id, &attr_name, &alloced_string);
+		  if (ret != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      goto error_serial_name;
+		    }
+
+		  if (attr_name == NULL)
+		    {
+		      ret = ER_FAILED;
+		      goto error_serial_name;
+		    }
+
+		  ret = set_auto_increment_serial_name (serial_name, classname, attr_name);
+
+		error_serial_name:
+		  free_and_init (classname);
+		  if (attr_name != NULL && alloced_string == 1)
+		    {
+		      db_private_free_and_init (thread_p, attr_name);
+		    }
+
+		  if (use_local_scan_cache)
+		    {
+		      heap_scancache_end (thread_p, scan_cache);
+		    }
+		  if (ret != NO_ERROR)
+		    {
+		      goto exit_on_error;
+		    }
+		}
+#endif
+	      if (OID_ISNULL (&serial_obj_oid))
+		{
 		  if (db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, serial_name, (int) strlen (serial_name),
 				       LANG_SYS_CODESET, LANG_SYS_COLLATION) != NO_ERROR)
 		    {
@@ -17490,25 +17593,15 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 	      thread_p->no_supplemental_log = false;
 	    }
 	}
-    }
 
-  if (use_local_scan_cache)
-    {
-      heap_scancache_end (thread_p, scan_cache);
+#if !defined(ENABLE_ENHANCE_AUTO_INCR_TEST)
+      // Notice: Each table can have at most one auto_increment column, so we can break the loop early.
+      break;
+#endif
     }
-
-  return ret;
 
 exit_on_error:
-  if (classname != NULL)
-    {
-      free_and_init (classname);
-    }
 
-  if (use_local_scan_cache)
-    {
-      heap_scancache_end (thread_p, scan_cache);
-    }
   return ret;
 }
 

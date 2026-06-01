@@ -12375,6 +12375,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   int flag;
   TP_DOMAIN *result_domain;
   bool has_user_format;
+#if defined(ENABLE_ENHANCE_AUTO_INCR_TEST)
+  char serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0', };
+  int autoincrement_column_idx = -1;
+#endif
 
   thread_p->no_logging = (bool) insert->no_logging;
 
@@ -12474,6 +12478,18 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
     }
   attr_info_inited = true;
   n_indexes = attr_info.last_classrepr->n_indexes;
+
+
+#if defined(ENABLE_ENHANCE_AUTO_INCR_TEST)
+  for (i = 0; i < attr_info.num_values; i++)
+    {
+      if (attr_info.last_classrepr->attributes[i].is_autoincrement)
+	{
+	  autoincrement_column_idx = i;
+	  break;
+	}
+    }
+#endif
 
   /* first values should be the results of default expressions */
   num_default_expr = insert->num_default_expr;
@@ -12806,6 +12822,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
+
 	      for (k = 0; k < val_no; ++k)
 		{
 		  if (DB_IS_NULL (insert->vals[k]))
@@ -12823,18 +12840,28 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			}
 		    }
 
-
 		  rc = heap_attrinfo_set (NULL, insert->att_id[k], insert->vals[k], &attr_info);
 		  if (rc != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
 		}
-
+#if defined(ENABLE_ENHANCE_AUTO_INCR_TEST)
+	      if (autoincrement_column_idx >= 0)
+		{
+		  if (heap_set_autoincrement_value (thread_p, &attr_info, &scan_cache,
+						    &is_autoincrement_set, &autoincrement_column_idx,
+						    serial_name) != NO_ERROR)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		}
+#else
 	      if (heap_set_autoincrement_value (thread_p, &attr_info, &scan_cache, &is_autoincrement_set) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
+#endif
 
 	      if (insert->do_replace && insert->has_uniques)
 		{
@@ -13002,10 +13029,22 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		}
 	    }
 
+#if defined(ENABLE_ENHANCE_AUTO_INCR_TEST)
+	  if (autoincrement_column_idx >= 0)
+	    {
+	      if (heap_set_autoincrement_value
+		  (thread_p, &attr_info, &scan_cache, &is_autoincrement_set, &autoincrement_column_idx,
+		   serial_name) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
+#else
 	  if (heap_set_autoincrement_value (thread_p, &attr_info, &scan_cache, &is_autoincrement_set) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
+#endif
 
 	  if (insert->do_replace && insert->has_uniques)
 	    {
