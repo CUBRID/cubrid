@@ -246,7 +246,7 @@ namespace cubhnsw
 					  const lock_mode &mode);
       const std::vector<slot_id_t> *get_node_slots_cached_ids (algo_context_t &context, const key_id_t &key);
       void remove_node_slot_cached_id (const key_id_t &key, const slot_id_t &slot_id);
-      int rebuild_node_slots_cache (algo_context_t &context);
+      int rebuild_node_slots_cache (cubthread::entry *thread_p);
 
       // neighbors cache helpers (single-thread, in-memory)
       const std::vector<slot_id_t> *get_neighbors_cached_ids (

@@ -523,10 +523,7 @@ hnsw_impl::init_for_load (cubthread::entry *thread_p)
   m_algo->set_storage (m_storage.get ());
   if (!m_storage->is_empty ())
     {
-      cubhnsw::algo_context_t context;
-      context.m_thread_p = thread_p;
-
-      if (m_storage->rebuild_node_slots_cache (context) != NO_ERROR)
+      if (m_storage->rebuild_node_slots_cache (thread_p) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}

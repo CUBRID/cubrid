@@ -8643,6 +8643,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 		      error_code = hnsw_delete_element (thread_p, &old_btid, oid);
 		      if (error_code != NO_ERROR)
 			{
+			  ASSERT_ERROR ();
 			  goto error;
 			}
 		    }

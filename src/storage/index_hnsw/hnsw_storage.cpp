@@ -142,7 +142,7 @@ namespace cubhnsw
 	return &it->second;
       }
 
-    if (!m_node_slots_cache_is_complete && rebuild_node_slots_cache (context) != NO_ERROR)
+    if (!m_node_slots_cache_is_complete && rebuild_node_slots_cache (context.m_thread_p) != NO_ERROR)
       {
 	return nullptr;
       }
@@ -191,10 +191,10 @@ namespace cubhnsw
   }
 
   int
-  storage::rebuild_node_slots_cache (algo_context_t &context)
+  storage::rebuild_node_slots_cache (cubthread::entry *thread_p)
   {
     FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
-    int error_code = file_get_all_data_sectors (context.m_thread_p, &m_vfid, &collector);
+    int error_code = file_get_all_data_sectors (thread_p, &m_vfid, &collector);
     if (error_code != NO_ERROR)
       {
 	ASSERT_ERROR ();
@@ -217,8 +217,7 @@ namespace cubhnsw
 
 	    PAGE_PTR page = nullptr;
 	    error_code =
-		    pgbuf_fix_if_not_deallocated (context.m_thread_p, &vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH,
-						  &page);
+		    pgbuf_fix_if_not_deallocated (thread_p, &vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &page);
 	    if (error_code != NO_ERROR)
 	      {
 		ASSERT_ERROR ();
@@ -229,8 +228,8 @@ namespace cubhnsw
 		continue;
 	      }
 
-	    error_code = rebuild_node_slots_cache_page (context.m_thread_p, page);
-	    pgbuf_unfix_and_init (context.m_thread_p, page);
+	    error_code = rebuild_node_slots_cache_page (thread_p, page);
+	    pgbuf_unfix_and_init (thread_p, page);
 	    if (error_code != NO_ERROR)
 	      {
 		ASSERT_ERROR ();
@@ -244,7 +243,7 @@ namespace cubhnsw
 exit:
     if (collector.partsect_ftab != nullptr)
       {
-	db_private_free_and_init (context.m_thread_p, collector.partsect_ftab);
+	db_private_free_and_init (thread_p, collector.partsect_ftab);
       }
     if (error_code != NO_ERROR)
       {
