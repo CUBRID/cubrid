@@ -533,6 +533,25 @@ hnsw_delete_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid)
       return error;
     }
 
+  if (!log_is_in_crash_recovery ())
+    {
+      /* DELETE REDO: logical, OID-based. Reuse the insert log header (no vector needed to
+       * re-tombstone by OID). Build params let recovery reconstruct the index object, mirroring
+       * RVHNSW_INSERT_ELEMENT. */
+      const hnsw_build_params &params = index->get_build_params ();
+      char wal_data[sizeof (HNSW_INSERT_LOG_HEADER)];
+      HNSW_INSERT_LOG_HEADER *log_data = (HNSW_INSERT_LOG_HEADER *) wal_data;
+
+      log_data->btid = *btid;
+      log_data->oid = *oid;
+      log_data->dimension = params.dimension;
+      log_data->hnsw_M = params.m;
+      log_data->hnsw_efConstruction = params.ef_construction;
+      log_data->metric = static_cast<int> (params.metric);
+
+      log_append_dboutside_redo (thread_p, RVHNSW_DELETE_ELEMENT, (int) sizeof (wal_data), wal_data);
+    }
+
   return index->remove (thread_p, oid);
 }
 
@@ -627,6 +646,66 @@ hnsw_rv_redo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
     }
 
   error = index->add (thread_p, 1, oid, vector_data.data ());
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (rcv->pgptr != NULL)
+    {
+      pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * hnsw_rv_redo_delete_element() - Recovery REDO function for HNSW tombstone delete.
+ *
+ * return       : Error code.
+ * thread_p(in) : Thread entry.
+ * rcv(in)      : Recovery data containing BTID, OID and build parameters.
+ *
+ * Re-applies a committed DELETE by tombstoning the live node(s) for the OID, mirroring runtime
+ * hnsw_delete_element. Logical / OID-based: the target node is relocated by OID at replay time.
+ * The graph is rebuilt non-deterministically during recovery, so no physical slot from the log
+ * is trusted. The insert REDO records that precede this one rebuild the graph (and the OID->slot
+ * cache) so the live node for the OID is present when this runs.
+ */
+int
+hnsw_rv_redo_delete_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
+{
+  if (rcv == NULL || rcv->data == NULL || rcv->length < (int) sizeof (HNSW_INSERT_LOG_HEADER))
+    {
+      return ER_FAILED;
+    }
+
+  const HNSW_INSERT_LOG_HEADER *log_data = (const HNSW_INSERT_LOG_HEADER *) rcv->data;
+  const BTID *btid = &log_data->btid;
+  const OID *oid = &log_data->oid;
+
+  if (log_data->dimension <= 0 || log_data->hnsw_M <= 0 || log_data->hnsw_efConstruction <= 0)
+    {
+      return ER_FAILED;
+    }
+
+  hnsw_build_params params (log_data->dimension, log_data->hnsw_M, log_data->hnsw_efConstruction,
+			    static_cast<DB_VECTOR_DISTANCE_METRIC> (log_data->metric));
+
+  if (index_manager == nullptr)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  hnsw_index *index = NULL;
+  int error = index_manager->load_or_create_index_for_recovery (thread_p, btid, params, index);
+  if (error != NO_ERROR || index == NULL)
+    {
+      return error == NO_ERROR ? ER_FAILED : error;
+    }
+
+  error = index->remove (thread_p, oid);
   if (error != NO_ERROR)
     {
       return error;

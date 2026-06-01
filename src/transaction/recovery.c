@@ -847,6 +847,12 @@ struct rvfun RV_fun[] = {
    hnsw_rv_redo_insert_element,
    NULL,
    NULL},
+  {RVHNSW_DELETE_ELEMENT,
+   "RVHNSW_DELETE_ELEMENT",
+   NULL,
+   hnsw_rv_redo_delete_element,
+   NULL,
+   NULL},
 };
 
 /*
