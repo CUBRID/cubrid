@@ -32,7 +32,9 @@
 #include "tbb/concurrent_queue.h"
 #include "epoll.hpp"
 #include "connection_context.hpp"
+#if defined (ENABLE_CONTROLLER)
 #include "controller.hpp"
+#endif
 
 namespace cubconn::connection
 {
