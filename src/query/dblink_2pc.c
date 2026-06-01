@@ -253,10 +253,16 @@ dblink_2pc_send_decision_one_participant (int gtrid, DBLINK_CONN_INFO * particip
       return NO_ERROR;
     }
 
-  /* For an ABORT decision, an unknown/not-prepared global transaction means the participant already
-   * has no branch to roll back (never prepared, or already resolved). Treat it as done so the daemon
-   * does not retry forever. (A COMMIT must never be silently dropped, so this applies to abort only.) */
-  if (!is_commit && err_buf.err_code == ER_LOG_2PC_UNKNOWN_GTID)
+  /* An unknown global transaction id means the participant no longer has this branch, so the decision
+   * is already complete and re-sending it is idempotent (required for crash recovery, e.g. the P5 path
+   * where a crash happens after the decision is sent but before the _db_global_tran row is deleted):
+   *   - ABORT: the branch was never prepared or was already rolled back.
+   *   - COMMIT: a row only reaches the 'C' state after every participant has successfully prepared, so
+   *     a missing branch here means it was already committed (a prepared branch only disappears once it
+   *     completes). There is no path that sends COMMIT to a never-prepared branch.
+   * In both cases the participant is in (or past) the desired terminal state, so report success and let
+   * the caller delete the row instead of retrying forever. */
+  if (err_buf.err_code == ER_LOG_2PC_UNKNOWN_GTID)
     {
       return NO_ERROR;
     }
