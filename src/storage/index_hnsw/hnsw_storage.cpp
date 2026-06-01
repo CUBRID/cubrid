@@ -275,11 +275,10 @@ exit:
 	  }
 
 	node_t node { reinterpret_cast<byte_t *> (recdes.data) };
-	if (node.is_tombstoned ())
-	  {
-	    continue;
-	  }
 
+	/* All-slots cache: cache both live and tombstoned nodes. Tombstoned slots are
+	 * needed so a transaction UNDO can relocate the exact node to revive (CUBVEC-186).
+	 * Liveness is always read from the node record, never inferred from cache membership. */
 	slot_id_t node_slot = { vpid->pageid, slot_id, vpid->volid };
 
 	set_node_slot_cached_id (node.get_key (), node_slot);

@@ -844,13 +844,13 @@ hnsw_impl::remove (cubthread::entry *thread_p, const OID *oid)
 
       if (node.is_tombstoned ())
 	{
-	  m_storage->remove_node_slot_cached_id (*oid, node_slot);
+	  /* Already tombstoned: keep the slot in the all-slots cache so a later UNDO can
+	   * relocate and revive it. Liveness is read from the node, not the cache. */
 	  continue;
 	}
 
       node.set_tombstoned (true);
       node_blk.reset ();
-      m_storage->remove_node_slot_cached_id (*oid, node_slot);
     }
 
   return NO_ERROR;

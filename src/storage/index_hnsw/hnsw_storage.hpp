@@ -323,7 +323,9 @@ namespace cubhnsw
       /* TODO: This is not thread-safe. Currently, we are assuming single-threaded access, but we need to make it thread-safe. */
       neighbors_cache_t m_neighbors_cache;    // per-level: encoded slot -> neighbors
 
-      /* heap OID -> live HNSW node slots. Tombstone state belongs to node slots, not to heap OIDs. */
+      /* heap OID -> all HNSW node slots (live and tombstoned). Liveness is read from the node
+       * record, not inferred from cache membership; tombstoned slots are retained so a
+       * transaction UNDO can relocate the exact node to revive (CUBVEC-186). */
       node_slots_cache_t m_node_slots_cache;
       bool m_node_slots_cache_is_complete = false;
   };
