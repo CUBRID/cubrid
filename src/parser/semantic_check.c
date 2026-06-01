@@ -14591,6 +14591,17 @@ pt_check_group_by (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      t_node->info.sort_spec.expr = parser_copy_tree (parser, referred_node);
 	      parser_free_node (parser, r);
+
+	      /* CBRD-26782: a positional group key (e.g. GROUP BY 1) is resolved
+	       * to a select-list column only here, after the type_enum check
+	       * above. Re-check the resolved column so an ordinal cannot bypass
+	       * the LOB family (BFILE / CFILE / BLOB / CLOB) gate. */
+	      if (PT_IS_LOB_FAMILY_TYPE (referred_node->type_enum))
+		{
+		  PT_ERRORmf (parser, t_node->info.sort_spec.expr, MSGCAT_SET_PARSER_SEMANTIC,
+			      MSGCAT_SEMANTIC_NO_GROUPBY_ALLOWED, pt_short_print (parser, t_node->info.sort_spec.expr));
+		  continue;
+		}
 	    }
 	}
 
