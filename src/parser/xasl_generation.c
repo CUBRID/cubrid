@@ -28731,7 +28731,7 @@ pt_substitute_groupby_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 
   for (out_name = info->args; out_name != NULL; out_name = out_name->next, i++)
     {
-      if (PT_IS_POINTER_REF_NODE (out_name) && pt_check_path_eq (parser, node, out_name) == 0)
+      if (PT_IS_POINTER_REF_NODE (out_name) && pt_check_function_path_eq (parser, node, out_name) == 0)
 	{
 	  new_node = parser_copy_tree (parser, node);
 	  pointer = pt_point_ref (parser, new_node);
