@@ -999,6 +999,13 @@ struct analytic_stat
   int rows;
   bool analytic_stopkey;
   bool analytic_sort;
+  int parallel_num;
+  UINT64 px_min_analytic_time;
+  UINT64 px_max_analytic_time;
+  UINT64 px_min_analytic_pages;
+  UINT64 px_max_analytic_pages;
+  UINT64 px_min_analytic_ioreads;
+  UINT64 px_max_analytic_ioreads;
   struct analytic_stat *next;
 };
 

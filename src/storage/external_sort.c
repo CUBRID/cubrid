@@ -58,7 +58,7 @@
 #include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
 #include "px_sort.h"
 #include "btree_load.h"
-#include "xasl.h"		/* GROUPBY_STATS — for GROUP_BY parallel trace */
+#include "xasl.h"		/* GROUPBY_STATS / ANALYTIC_STATS — for GROUP_BY / ANALYTIC parallel trace */
 #include "ftab_set.hpp"
 
 #include <functional>
@@ -184,8 +184,8 @@ struct sort_param
     parallel_query::worker_manager * px_worker_manager;
   ORDERBY_STATS orderby_stats;
     cuberr::context * main_error_context;
-  void *px_extra_arg;		/* extra parallel context; for SORT_GROUP_BY: GBY_SORT_PARAM* */
-  QFILE_LIST_SECTOR_SCAN_INFO *px_sector_scan;	/* shared sector scan for ORDER_BY/ORDER_WITH_LIMIT/GROUP_BY workers */
+  void *px_extra_arg;		/* extra parallel context; for SORT_GROUP_BY/SORT_ANALYTIC: SORT_LISTFILE_PX_ARG* */
+  QFILE_LIST_SECTOR_SCAN_INFO *px_sector_scan;	/* shared sector scan for ORDER_BY/ORDER_WITH_LIMIT/GROUP_BY/ANALYTIC workers */
 #if defined(SERVER_MODE)
   pthread_mutex_t *px_mtx;	/* px_status mutex */
   pthread_cond_t *complete_cond;	/* complete condition */
@@ -1630,7 +1630,7 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
     }
 
   if (sort_param->px_type == SORT_ORDER_BY || sort_param->px_type == SORT_ORDER_WITH_LIMIT
-      || sort_param->px_type == SORT_GROUP_BY)
+      || sort_param->px_type == SORT_GROUP_BY || sort_param->px_type == SORT_ANALYTIC)
     {
       if (thread_is_on_trace (sort_param->px_orig_thread_p))
 	{
@@ -1733,7 +1733,7 @@ cleanup:
       bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args_p, NULL, NULL);
       bt_load_clear_pred_and_unpack (thread_p, sort_args_p, func_unpack_info);
     }
-  else if (sort_param->px_type == SORT_GROUP_BY)
+  else if (sort_param->px_type == SORT_GROUP_BY || sort_param->px_type == SORT_ANALYTIC)
     {
       if (thread_is_on_trace (sort_param->px_orig_thread_p))
 	{
@@ -4316,7 +4316,7 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
 	      free_and_init (sort_param->get_arg);
 	    }
 	}
-      else if (sort_param->px_type == SORT_GROUP_BY)
+      else if (sort_param->px_type == SORT_GROUP_BY || sort_param->px_type == SORT_ANALYTIC)
 	{
 	  if (sort_param->get_arg != NULL)
 	    {
@@ -4332,7 +4332,7 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
 		}
 	      db_private_free_and_init (thread_p, sort_param->get_arg);
 	    }
-	  /* put_arg is NULL for GROUP_BY parallel workers */
+	  /* put_arg is NULL for GROUP_BY / ANALYTIC parallel workers */
 	}
       else
 	{
@@ -5139,17 +5139,18 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	  return parallel_num;
 	}
     }
-  else if (sort_param->px_type == SORT_GROUP_BY)
+  else if (sort_param->px_type == SORT_GROUP_BY || sort_param->px_type == SORT_ANALYTIC)
     {
-      GBY_SORT_PARAM *gby = (GBY_SORT_PARAM *) sort_param->px_extra_arg;
-      if (gby == NULL || gby->hash_eligible)
+      SORT_LISTFILE_PX_ARG *px = (SORT_LISTFILE_PX_ARG *) sort_param->px_extra_arg;
+      /* hash_eligible is GROUP_BY only (0 for ANALYTIC); skip parallelism when set */
+      if (px == NULL || px->hash_eligible)
 	{
 	  return 1;
 	}
-      QFILE_LIST_ID *input_list = gby->input_list;
+      QFILE_LIST_ID *input_list = px->input_list;
       parallel_num =
 	parallel_query::compute_parallel_degree (parallel_query::parallel_type::SORT, input_list->page_cnt,
-						 gby->parallelism /* hint */ );
+						 px->parallelism /* hint */ );
       if (parallel_num < 2 || input_list->tuple_cnt < parallel_num || input_list->page_cnt < parallel_num)
 	{
 	  return 1;
@@ -5159,7 +5160,7 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
     }
   else
     {
-      /* Not implemented yet (analytic function) */
+      /* Not implemented yet */
       return 1;
     }
 
@@ -5436,10 +5437,10 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	    }
 	}
     }
-  else if (sort_param->px_type == SORT_GROUP_BY)
+  else if (sort_param->px_type == SORT_GROUP_BY || sort_param->px_type == SORT_ANALYTIC)
     {
-      GBY_SORT_PARAM *gby = (GBY_SORT_PARAM *) sort_param->px_extra_arg;
-      QFILE_LIST_ID *input_list = gby->input_list;
+      SORT_LISTFILE_PX_ARG *px = (SORT_LISTFILE_PX_ARG *) sort_param->px_extra_arg;
+      QFILE_LIST_ID *input_list = px->input_list;
 
       /* open shared sector scan */
       sort_param->px_sector_scan =
@@ -5478,7 +5479,7 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	      return ER_FAILED;
 	    }
 	  memset (winfo, 0, sizeof (SORT_INFO));
-	  memcpy (&winfo->key_info, gby->key_info, sizeof (SORTKEY_INFO));
+	  memcpy (&winfo->key_info, px->key_info, sizeof (SORTKEY_INFO));
 
 	  /* clone input_file per worker so overflow tfile_vfid redirect is thread-safe */
 	  winfo->input_file = qfile_clone_list_id (input_list, true, QFILE_SKIP_DEPENDENT);
@@ -5692,35 +5693,48 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	  return ER_FAILED;
 	}
     }
-  else if (sort_param->px_type == SORT_GROUP_BY)
+  else if (sort_param->px_type == SORT_GROUP_BY || sort_param->px_type == SORT_ANALYTIC)
     {
-      /* Collect per-worker inphase timing into groupby_stats for trace output. */
-      GBY_SORT_PARAM *gby = (GBY_SORT_PARAM *) sort_param->px_extra_arg;
-      if (gby != NULL && gby->groupby_stats != NULL && thread_is_on_trace (thread_p))
+      /* Collect per-worker inphase timing into trace stats (GROUPBY_STATS / ANALYTIC_STATS). */
+      SORT_LISTFILE_PX_ARG *px = (SORT_LISTFILE_PX_ARG *) sort_param->px_extra_arg;
+      if (px != NULL && px->stats != NULL && thread_is_on_trace (thread_p))
 	{
-	  GROUPBY_STATS *gstats = (GROUPBY_STATS *) gby->groupby_stats;
-	  gstats->px_min_groupby_time = std::numeric_limits < UINT64 >::max ();
-	  gstats->px_min_groupby_pages = std::numeric_limits < UINT64 >::max ();
-	  gstats->px_min_groupby_ioreads = std::numeric_limits < UINT64 >::max ();
+	  UINT64 min_time = std::numeric_limits < UINT64 >::max (), max_time = 0;
+	  UINT64 min_pages = std::numeric_limits < UINT64 >::max (), max_pages = 0;
+	  UINT64 min_ioreads = std::numeric_limits < UINT64 >::max (), max_ioreads = 0;
 
 	  for (int i = 0; i < parallel_num; i++)
 	    {
-	      gstats->px_min_groupby_time =
-		std::min (gstats->px_min_groupby_time,
-			  (UINT64) (TO_MSEC (px_sort_param[i].orderby_stats.orderby_time)));
-	      gstats->px_max_groupby_time =
-		std::max (gstats->px_max_groupby_time,
-			  (UINT64) (TO_MSEC (px_sort_param[i].orderby_stats.orderby_time)));
-	      gstats->px_min_groupby_pages =
-		std::min (gstats->px_min_groupby_pages, px_sort_param[i].orderby_stats.orderby_pages);
-	      gstats->px_max_groupby_pages =
-		std::max (gstats->px_max_groupby_pages, px_sort_param[i].orderby_stats.orderby_pages);
-	      gstats->px_min_groupby_ioreads =
-		std::min (gstats->px_min_groupby_ioreads, px_sort_param[i].orderby_stats.orderby_ioreads);
-	      gstats->px_max_groupby_ioreads =
-		std::max (gstats->px_max_groupby_ioreads, px_sort_param[i].orderby_stats.orderby_ioreads);
+	      min_time = std::min (min_time, (UINT64) (TO_MSEC (px_sort_param[i].orderby_stats.orderby_time)));
+	      max_time = std::max (max_time, (UINT64) (TO_MSEC (px_sort_param[i].orderby_stats.orderby_time)));
+	      min_pages = std::min (min_pages, px_sort_param[i].orderby_stats.orderby_pages);
+	      max_pages = std::max (max_pages, px_sort_param[i].orderby_stats.orderby_pages);
+	      min_ioreads = std::min (min_ioreads, px_sort_param[i].orderby_stats.orderby_ioreads);
+	      max_ioreads = std::max (max_ioreads, px_sort_param[i].orderby_stats.orderby_ioreads);
 	    }
-	  gstats->parallel_num = parallel_num;
+
+	  if (sort_param->px_type == SORT_GROUP_BY)
+	    {
+	      GROUPBY_STATS *gstats = (GROUPBY_STATS *) px->stats;
+	      gstats->px_min_groupby_time = min_time;
+	      gstats->px_max_groupby_time = max_time;
+	      gstats->px_min_groupby_pages = min_pages;
+	      gstats->px_max_groupby_pages = max_pages;
+	      gstats->px_min_groupby_ioreads = min_ioreads;
+	      gstats->px_max_groupby_ioreads = max_ioreads;
+	      gstats->parallel_num = parallel_num;
+	    }
+	  else
+	    {
+	      ANALYTIC_STATS *astats = (ANALYTIC_STATS *) px->stats;
+	      astats->px_min_analytic_time = min_time;
+	      astats->px_max_analytic_time = max_time;
+	      astats->px_min_analytic_pages = min_pages;
+	      astats->px_max_analytic_pages = max_pages;
+	      astats->px_min_analytic_ioreads = min_ioreads;
+	      astats->px_max_analytic_ioreads = max_ioreads;
+	      astats->parallel_num = parallel_num;
+	    }
 	}
 
       /* Phase 2: fan-in — merge all worker runs into one consolidated run */
@@ -5730,7 +5744,7 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	  return ER_FAILED;
 	}
 
-      /* All workers produced empty output — no tuples to aggregate */
+      /* All workers produced empty output — no tuples to process */
       if (sort_param->tot_runs == 0)
 	{
 	  return NO_ERROR;
@@ -5744,7 +5758,8 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	}
 
       /* sort_merge_worker_runs_to_one guarantees tot_runs == 1 here;
-       * call put_fn (qexec_gby_put_next) once per tuple in globally sorted order */
+       * call put_fn (qexec_gby_put_next / qexec_analytic_put_next) once per tuple
+       * in globally sorted order */
       assert (sort_param->tot_runs == 1);
       error = sort_run_final_single (thread_p, sort_param);
       if (error != NO_ERROR)
@@ -5754,7 +5769,7 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
     }
   else
     {
-      /* not implemented yet (analytic function) */
+      /* not implemented yet */
       return ER_FAILED;
     }
 

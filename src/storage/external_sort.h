@@ -158,18 +158,18 @@ struct SORT_INFO
   void *px_state;		/* per-worker sector scan state (ORDER_BY and GROUP_BY parallel) */
 };
 
-/* Passed as px_extra_arg to sort_listfile for SORT_GROUP_BY parallel runs.
- * Populated by query_executor.c from GROUPBY_STATE before calling sort_listfile.
- * Gives sort_check_parallelism and sort_start_parallelism the inputs they need
- * without requiring GROUPBY_STATE to be visible in external_sort.c.
+/* Passed as px_extra_arg to sort_listfile for SORT_GROUP_BY / SORT_ANALYTIC parallel runs.
+ * Populated by query_executor.c (from GROUPBY_STATE or ANALYTIC_STATE) before calling
+ * sort_listfile. Gives sort_check_parallelism and sort_start_parallelism the inputs they
+ * need without requiring those states to be visible in external_sort.c.
  * Harmless in SA_MODE: parallelism degenerates to 1 and the pointer is ignored. */
-typedef struct gby_sort_param GBY_SORT_PARAM;
-struct gby_sort_param
+typedef struct sort_listfile_px_arg SORT_LISTFILE_PX_ARG;
+struct sort_listfile_px_arg
 {
-  SORTKEY_INFO *key_info;	/* points to gbstate.key_info — read-only, shared across workers */
-  QFILE_LIST_ID *input_list;	/* points to &gbstate.input_scan->list_id */
-  int hash_eligible;		/* if non-zero, parallelism must be skipped */
-  void *groupby_stats;		/* points to GROUPBY_STATS in xasl node for trace output */
+  SORTKEY_INFO *key_info;	/* points to the caller's key_info — read-only, shared across workers */
+  QFILE_LIST_ID *input_list;	/* points to the input list file scanned by all workers */
+  int hash_eligible;		/* GROUP_BY only: if non-zero, parallelism must be skipped (0 otherwise) */
+  void *stats;			/* GROUPBY_STATS* or ANALYTIC_STATS* in xasl node for trace output */
   int parallelism;		/* parallel(N) hint from xasl->parallelism; -1 = auto */
 };
 
