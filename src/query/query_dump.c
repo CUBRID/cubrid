@@ -2379,78 +2379,77 @@ qdump_print_xasl (xasl_node * xasl_p)
 
   if (xasl_p->flag)
     {
-      int save_flag, nflag;
+      /* Non-mutating dump: clear bits in a local copy only, never touch the live XASL flag. */
+      int fl, nflag;
 
-      save_flag = xasl_p->flag;
+      fl = xasl_p->flag;
       nflag = 0;
 
       fprintf (foutput, "-->[flag=");
 
-      if (XASL_IS_FLAGED (xasl_p, XASL_LINK_TO_REGU_VARIABLE))
+      if (fl & XASL_LINK_TO_REGU_VARIABLE)
 	{
-	  XASL_CLEAR_FLAG (xasl_p, XASL_LINK_TO_REGU_VARIABLE);
+	  fl &= ~XASL_LINK_TO_REGU_VARIABLE;
 	  fprintf (foutput, "%sXASL_LINK_TO_REGU_VARIABLE", (nflag ? "|" : ""));
 	  nflag++;
 	}
 
-      if (XASL_IS_FLAGED (xasl_p, XASL_SKIP_ORDERBY_LIST))
+      if (fl & XASL_SKIP_ORDERBY_LIST)
 	{
-	  XASL_CLEAR_FLAG (xasl_p, XASL_SKIP_ORDERBY_LIST);
+	  fl &= ~XASL_SKIP_ORDERBY_LIST;
 	  fprintf (foutput, "%sXASL_SKIP_ORDERBY_LIST", (nflag ? "|" : ""));
 	  nflag++;
 	}
 
-      if (XASL_IS_FLAGED (xasl_p, XASL_ZERO_CORR_LEVEL))
+      if (fl & XASL_ZERO_CORR_LEVEL)
 	{
-	  XASL_CLEAR_FLAG (xasl_p, XASL_ZERO_CORR_LEVEL);
+	  fl &= ~XASL_ZERO_CORR_LEVEL;
 	  fprintf (foutput, "%sXASL_ZERO_CORR_LEVEL", (nflag ? "|" : ""));
 	  nflag++;
 	}
 
-      if (IS_DBLINK_CURSOR_REWIND_XASL (xasl_p))
+      if (fl & XASL_DBLINK_CURSOR_REWIND)
 	{
-	  XASL_CLEAR_FLAG (xasl_p, XASL_DBLINK_CURSOR_REWIND);
+	  fl &= ~XASL_DBLINK_CURSOR_REWIND;
 	  fprintf (foutput, "%sXASL_DBLINK_CURSOR_REWIND", (nflag ? "|" : ""));
 	  nflag++;
 	}
 
-      if (XASL_IS_FLAGED (xasl_p, XASL_TOP_MOST_XASL))
+      if (fl & XASL_TOP_MOST_XASL)
 	{
-	  XASL_CLEAR_FLAG (xasl_p, XASL_TOP_MOST_XASL);
+	  fl &= ~XASL_TOP_MOST_XASL;
 	  fprintf (foutput, "%sXASL_TOP_MOST_XASL", (nflag ? "|" : ""));
 	  nflag++;
 	}
 
-      if (XASL_IS_FLAGED (xasl_p, XASL_SAMPLING_SCAN))
+      if (fl & XASL_SAMPLING_SCAN)
 	{
-	  XASL_CLEAR_FLAG (xasl_p, XASL_SAMPLING_SCAN);
+	  fl &= ~XASL_SAMPLING_SCAN;
 	  fprintf (foutput, "%sXASL_SAMPLING_SCAN", (nflag ? "|" : ""));
 	  nflag++;
 	}
 
-      if (XASL_IS_FLAGED (xasl_p, XASL_NL_SEMIJOIN))
+      if (fl & XASL_NL_SEMIJOIN)
 	{
-	  XASL_CLEAR_FLAG (xasl_p, XASL_NL_SEMIJOIN);
+	  fl &= ~XASL_NL_SEMIJOIN;
 	  fprintf (foutput, "%ssemi join", (nflag ? "|" : ""));
 	  nflag++;
 	}
 
-      if (XASL_IS_FLAGED (xasl_p, XASL_NL_ANTIJOIN))
+      if (fl & XASL_NL_ANTIJOIN)
 	{
-	  XASL_CLEAR_FLAG (xasl_p, XASL_NL_ANTIJOIN);
+	  fl &= ~XASL_NL_ANTIJOIN;
 	  fprintf (foutput, "%santi join", (nflag ? "|" : ""));
 	  nflag++;
 	}
 
-      if (xasl_p->flag)
+      if (fl)
 	{
-	  fprintf (foutput, "%d%s", xasl_p->flag, (nflag ? "|" : ""));
+	  fprintf (foutput, "%d%s", fl, (nflag ? "|" : ""));
 	  nflag++;
 	}
 
       fprintf (foutput, "]\n");
-
-      xasl_p->flag = save_flag;
     }
 
   if (xasl_p->next)
