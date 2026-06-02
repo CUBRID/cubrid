@@ -28664,9 +28664,10 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
 
 /*
  * pt_is_shareable_groupby_ref_pre () - parser_walk_tree pre-callback that clears
- *				     the result flag when it visits a node whose
- *				     type is not one of the allowed (shareable)
- *				     node types
+ *				     the result flag when it visits a node that
+ *				     cannot be shared: a disallowed node type, or
+ *				     a non-deterministic / side-effecting PT_EXPR
+ *				     operator
  *   return: node (unchanged)
  *   parser(in):
  *   node(in):
@@ -28687,10 +28688,18 @@ pt_is_shareable_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *
     {
     case PT_NAME:
     case PT_DOT_:
-    case PT_EXPR:
     case PT_VALUE:
     case PT_FUNCTION:
       /* allowed (shareable) node types */
+      break;
+
+    case PT_EXPR:
+      if (PT_IS_EXPR_NODE_WITH_NON_PUSHABLE (node)
+	  || PT_IS_SERIAL (node->info.expr.op) || PT_IS_NUMBERING_AFTER_EXECUTION (node->info.expr.op))
+	{
+	  *only_allowed = false;
+	  *continue_walk = PT_STOP_WALK;
+	}
       break;
 
     default:
