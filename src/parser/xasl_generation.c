@@ -28700,7 +28700,9 @@ pt_is_shareable_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *
 	if (PT_IS_EXPR_NODE_WITH_NON_PUSHABLE (node)	/* RAND / DRAND / RANDOM / DRANDOM / SYS_GUID */
 	    || PT_IS_SERIAL (op)	/* NEXT VALUE / CURRENT VALUE */
 	    || PT_IS_NUMBERING_AFTER_EXECUTION (op)	/* INST_NUM / ROWNUM / ORDERBY_NUM */
-	    || op == PT_DEFINE_VARIABLE || op == PT_EVALUATE_VARIABLE || op == PT_INCR || op == PT_DECR)
+	    || op == PT_INCR || op == PT_DECR
+	    || op == PT_DEFINE_VARIABLE || op == PT_EVALUATE_VARIABLE || op == PT_ROW_COUNT
+	    || op == PT_LAST_INSERT_ID || op == PT_EXEC_STATS || op == PT_TRACE_STATS || op == PT_SLEEP)
 	  {
 	    *only_allowed = false;
 	    *continue_walk = PT_STOP_WALK;
