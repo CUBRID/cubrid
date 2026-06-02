@@ -656,6 +656,19 @@ hnsw_rv_redo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
       return error == NO_ERROR ? ER_FAILED : error;
     }
 
+  /* Idempotent replay: when recovery reuses the disk-flushed graph, a windowed insert whose row
+   * was already flushed is present as a live node — re-adding it would duplicate. Skip in that
+   * case. (Matches on OID + vector so an update's new entry is still added.) */
+  {
+    std::vector<float> existing (params.dimension);
+    bool found = false;
+    index->peek_live_vector (thread_p, oid, existing.data (), &found);
+    if (found && memcmp (existing.data (), vector_data.data (), params.dimension * sizeof (float)) == 0)
+      {
+	return NO_ERROR;
+      }
+  }
+
   if (index->prepare_to_add (thread_p, 1, oid, vector_data.data ()) != NO_ERROR)
     {
       assert (false);
@@ -1237,12 +1250,22 @@ hnsw_index_manager::load_or_create_index_for_recovery (THREAD_ENTRY *thread_p, c
   std::string backend_id = backend->get_id ();
   if (log_is_in_crash_recovery ())
     {
+      /* CUBVEC-180 fix: reuse the disk-flushed graph (preserves levels/slots) instead of wiping
+       * and rebuilding only from the redo window. Wiping would drop rows committed before the
+       * last checkpoint (their insert REDO is outside the window). Only the unflushed tail is
+       * replayed, idempotently, by the redo handlers. Fall back to a fresh index if nothing is on
+       * disk yet (e.g. the index was created entirely within the redo window). */
+      int load_error = load_index (thread_p, btid, index_out);
+      if (load_error == NO_ERROR && index_out != NULL)
+	{
+	  return NO_ERROR;
+	}
+
       index_out = backend->create_index (thread_p, btid, backend_id, params);
       if (index_out == NULL)
 	{
 	  return ER_FAILED;
 	}
-
       return add_index (btid, index_out);
     }
 
