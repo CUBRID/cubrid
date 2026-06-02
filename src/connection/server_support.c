@@ -658,6 +658,7 @@ css_enqueue_and_notify (cubconn::connection::worker::queue_type type, cubconn::c
 			int wait_time)
 {
   CSS_CONN_ENTRY * conn;
+  cubconn::connection::context *ctx;
   int r;
 
   assert (item.conn);
@@ -680,6 +681,10 @@ css_enqueue_and_notify (cubconn::connection::worker::queue_type type, cubconn::c
 
       return 0;
     }
+
+  ctx = static_cast<cubconn::connection::context *> (conn->context);
+  item.ctx = ctx;
+  item.id = ctx->m_id;
 
   auto func =[conn] ()noexcept {
     /* unlock */
