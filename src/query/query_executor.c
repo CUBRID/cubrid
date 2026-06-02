@@ -83,6 +83,7 @@
 #include "subquery_cache.h"
 #include "query_hash_join.h"
 #include "memoize.hpp"
+#include "ftab_set.hpp"
 
 #if SERVER_MODE && !WINDOWS
 #include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
@@ -601,10 +602,11 @@ static int qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p, PRUNIN
 static int qexec_process_unique_stats (THREAD_ENTRY * thread_p, const OID * class_oid,
 				       UPDDEL_CLASS_INFO_INTERNAL * class_);
 static SCAN_CODE qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl);
+static int qexec_prepare_table_sampling (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec);
 
 static int qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				     bool * empty_result);
-static XASL_NODE *qexec_determine_fixed_scan_xasl (XASL_NODE * xasl);
+static void qexec_setup_fixed_scan (XASL_NODE * xasl, bool force_select_lock);
 static int qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					     UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info);
 static DEL_LOB_INFO *qexec_create_delete_lob_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
@@ -1897,6 +1899,9 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	      p->curent = NULL;
 	      p->pruned = false;
 	    }
+
+	  /* free table-wide sampling pick once (all paths); idempotent */
+	  scan_free_sampling (thread_p, &p->s_id);
 	}
 
       if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
@@ -7384,6 +7389,65 @@ exit_on_error:
   return ER_FAILED;
 }
 
+/* one-shot table-wide pick over all pruned-partition sectors -> picked_vpids + part_offsets + global weight */
+static int
+qexec_prepare_table_sampling (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
+{
+  sampling_info *sampling = &curr_spec->s_id.s.hsid.sampling;
+  std::vector < HFID > hfids;
+  VPID *picked = NULL;
+  int *part_offsets = NULL;
+  int picked_count = 0;
+  int weight = 1;
+  int n_parts = 0;
+  int error_code = NO_ERROR;
+
+  /* pick once per execution; reopen / cached re-exec must not re-pick */
+  if (sampling->prepared)
+    {
+      return NO_ERROR;
+    }
+
+  /* pruned-partition HFIDs, or root HFID when non-partitioned */
+  if (curr_spec->parts != NULL)
+    {
+      PARTITION_SPEC_TYPE *part;
+
+      for (part = curr_spec->parts; part != NULL; part = part->next)
+	{
+	  hfids.push_back (part->hfid);
+	}
+    }
+  else
+    {
+      hfids.push_back (ACCESS_SPEC_HFID (curr_spec));
+    }
+  n_parts = (int) hfids.size ();
+  assert (n_parts >= 1);
+
+  error_code = collect_strided_vpids_multi (thread_p, hfids.data (), n_parts, &picked, &picked_count, &part_offsets,
+					    &weight);
+  if (error_code != NO_ERROR)
+    {
+      /* collect self-cleans on error */
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  sampling->picked_vpids = picked;
+  sampling->picked_count = picked_count;
+  sampling->part_offsets = part_offsets;
+  sampling->n_parts = n_parts;
+  sampling->picked_cursor = 0;
+  sampling->partition_cursor = 0;
+  /* non-partitioned slice_end; partitioned reset by qexec_init_next_partition */
+  sampling->slice_end = (part_offsets != NULL) ? part_offsets[1] : 0;
+  sampling->weight = weight;
+  sampling->prepared = true;
+
+  return NO_ERROR;
+}
+
 /*
  * Interpreter routines
  */
@@ -7416,6 +7480,17 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
   if (curr_spec->pruning_type == DB_PARTITIONED_CLASS && !curr_spec->pruned)
     {
       error_code = qexec_prune_spec (thread_p, curr_spec, vd, scan_op_type);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
+    }
+
+  /* table-wide pick once, after pruning and before parts[0] reopen */
+  if (curr_spec->type == TARGET_CLASS && curr_spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
+    {
+      error_code = qexec_prepare_table_sampling (thread_p, curr_spec);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -7489,7 +7564,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 					 curr_spec->s.cls_node.num_attrs_rest, curr_spec->s.cls_node.attrids_rest,
 					 curr_spec->s.cls_node.cache_rest, S_HEAP_SCAN,
 					 curr_spec->s.cls_node.cache_reserved,
-					 curr_spec->s.cls_node.cls_regu_list_reserved, false);
+					 curr_spec->s.cls_node.cls_regu_list_reserved);
 		  if (error_code != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
@@ -7518,7 +7593,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 						curr_spec->s.cls_node.num_attrs_rest,
 						curr_spec->s.cls_node.attrids_rest, curr_spec->s.cls_node.cache_rest,
 						scan_type, curr_spec->s.cls_node.cache_reserved,
-						curr_spec->s.cls_node.cls_regu_list_reserved, false);
+						curr_spec->s.cls_node.cls_regu_list_reserved);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -7814,6 +7889,9 @@ exit_on_error:
       curr_spec->curent = NULL;
       curr_spec->pruned = false;
     }
+
+  /* free sampling pick on early-error; idempotent vs clear backstop */
+  scan_free_sampling (thread_p, &curr_spec->s_id);
 
   ASSERT_ERROR_AND_SET (error_code);
   return error_code;
@@ -8883,6 +8961,11 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
     {
       /* first partition */
       spec->curent = spec->parts;
+      /* sampling cursor tracks spec->curent; first partition = 0 */
+      if (spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
+	{
+	  spec->s_id.s.hsid.sampling.partition_cursor = 0;
+	}
     }
   else
     {
@@ -8927,12 +9010,17 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
       /* move to next partition */
       if (spec->curent->next == NULL)
 	{
-	  /* no more partitions */
+	  /* no more partitions; TAIL leaves sampling cursor untouched */
 	  spec->curent = NULL;
 	}
       else
 	{
 	  spec->curent = spec->curent->next;
+	  /* sampling cursor tracks spec->curent */
+	  if (spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
+	    {
+	      spec->s_id.s.hsid.sampling.partition_cursor++;
+	    }
 	}
     }
 
@@ -8975,6 +9063,15 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
       if (IS_ANY_INDEX_ACCESS (spec->access))
 	{
 	  btid = spec->curent->btid;
+	}
+      /* load partition slice; partition_cursor < n_parts, so [pc+1] in-bounds */
+      if (spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
+	{
+	  sampling_info *sampling = &spec->s_id.s.hsid.sampling;
+
+	  assert (sampling->partition_cursor < sampling->n_parts);
+	  sampling->picked_cursor = sampling->part_offsets[sampling->partition_cursor];
+	  sampling->slice_end = sampling->part_offsets[sampling->partition_cursor + 1];
 	}
     }
 
@@ -9041,7 +9138,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 					 spec->s.cls_node.attrids_pred, spec->s.cls_node.cache_pred,
 					 spec->s.cls_node.num_attrs_rest, spec->s.cls_node.attrids_rest,
 					 spec->s.cls_node.cache_rest, S_HEAP_SCAN, spec->s.cls_node.cache_reserved,
-					 spec->s.cls_node.cls_regu_list_reserved, true);
+					 spec->s.cls_node.cls_regu_list_reserved);
 		  if (error != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
@@ -9086,7 +9183,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 				     spec->s.cls_node.attrids_pred, spec->s.cls_node.cache_pred,
 				     spec->s.cls_node.num_attrs_rest, spec->s.cls_node.attrids_rest,
 				     spec->s.cls_node.cache_rest, scan_type, spec->s.cls_node.cache_reserved,
-				     spec->s.cls_node.cls_regu_list_reserved, true);
+				     spec->s.cls_node.cls_regu_list_reserved);
 	      if (error != NO_ERROR)
 		{
 		  return S_ERROR;
@@ -15212,75 +15309,99 @@ qexec_execute_dblink_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STAT
 }
 
 /*
- * qexec_determine_fixed_scan_xasl () - Determine which XASL node is eligible for fixed heap scan.
- *   return: the innermost TARGET_CLASS XASL node that should use fixed scan, or NULL if fixed scan is not allowed.
- *   xasl(in): top-level XASL node
+ * qexec_setup_fixed_scan () - Decide and apply fixed heap scan flags for every access spec in the pipeline.
+ *   xasl(in/out): top-level XASL node; specp->fixed_scan is written on every spec reachable via scan_ptr,
+ *                 spec_list and merge_spec.
+ *   force_select_lock(in): true if the top-level select forces instance locking (e.g. selupd reevaluation)
  *
  * Fixed scan keeps the last fetched heap page latched between rows (PEEK mode), avoiding repeated fix/unfix overhead.
- * It is disabled when: composite locking is required, any index scan is present, a correlated subquery exists,
- * a HAVING subquery exists, an uncorrelated subquery linked to a regu variable exists, or the XASL_NO_FIXED_SCAN
- * flag was set at compile time.
+ * Two independent paths can enable it for a spec:
+ *   - It is the innermost TARGET_CLASS in the pipeline (the natural fixed_scan_xasl). Disabled globally when
+ *     composite locking is required, any index scan is present, a correlated subquery exists, a HAVING subquery
+ *     exists, an uncorrelated subquery linked to a regu variable exists, or the XASL_NO_FIXED_SCAN flag was set
+ *     at compile time.
+ *   - The spec carries ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN (e.g. PT_HINT_NLJ_KEEP_HEAP_PAGE_PINNED or the
+ *     enable_heap_fixed_scan default). Honored only when no per-row locking happens anywhere in the pipeline
+ *     and there is no composite locking — otherwise an inner scan suspending on a row lock while an outer scan
+ *     keeps a page latched would violate lock_suspend ()'s no-perm-latch invariant (CBRD-26840). The natural
+ *     fixed_scan_xasl stays safe under locking because it releases its own page during the lock retry.
  */
-static XASL_NODE *
-qexec_determine_fixed_scan_xasl (XASL_NODE * xasl)
+static void
+qexec_setup_fixed_scan (XASL_NODE * xasl, bool force_select_lock)
 {
   XASL_NODE *xptr;
+  ACCESS_SPEC_TYPE *spec_ptr[2];
   ACCESS_SPEC_TYPE *specp;
   XASL_NODE *fixed_scan_xasl = NULL;
   bool has_index_scan = false;
+  bool scan_needs_obj_lock = force_select_lock;
+  bool composite_lock = COMPOSITE_LOCK (xasl->scan_op_type);
+  bool force_fixed_scan_allowed;
+  int spec_level;
 
-  if (COMPOSITE_LOCK (xasl->scan_op_type))
-    {
-      return NULL;
-    }
-
+  /* First pass: walk pipeline to find the innermost fixed-scan candidate, detect any per-row locks, and detect
+   * any index scan. Do not early-break on has_index_scan — a FOR_UPDATE spec may still appear deeper. */
   for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
     {
-      for (specp = xptr->spec_list; specp; specp = specp->next)
+      spec_ptr[0] = xptr->spec_list;
+      spec_ptr[1] = xptr->merge_spec;
+      for (spec_level = 0; spec_level < 2; ++spec_level)
 	{
-	  if (specp->type == TARGET_CLASS)
+	  for (specp = spec_ptr[spec_level]; specp; specp = specp->next)
 	    {
-	      fixed_scan_xasl = xptr;
-	      if (IS_ANY_INDEX_ACCESS (specp->access))
+	      if (ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_FOR_UPDATE))
 		{
-		  has_index_scan = true;
-		  break;
+		  scan_needs_obj_lock = true;
+		}
+	      if (specp->type == TARGET_CLASS && !has_index_scan)
+		{
+		  fixed_scan_xasl = xptr;
+		  if (IS_ANY_INDEX_ACCESS (specp->access))
+		    {
+		      has_index_scan = true;
+		    }
 		}
 	    }
 	}
-      if (has_index_scan)
+    }
+
+  /* Disqualify the natural fixed_scan_xasl if any global condition forbids fixed scan. */
+  if (composite_lock || has_index_scan || XASL_IS_FLAGED (xasl, XASL_NO_FIXED_SCAN) || xasl->dptr_list != NULL)
+    {
+      fixed_scan_xasl = NULL;
+    }
+  else if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.eptr_list != NULL)
+    {
+      fixed_scan_xasl = NULL;
+    }
+  else
+    {
+      for (xptr = xasl->aptr_list; xptr != NULL; xptr = xptr->next)
 	{
-	  break;
-	}
-      specp = xptr->merge_spec;
-      if (specp && specp->type == TARGET_CLASS)
-	{
-	  fixed_scan_xasl = xptr;
-	  if (IS_ANY_INDEX_ACCESS (specp->access))
+	  if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
 	    {
-	      has_index_scan = true;
+	      fixed_scan_xasl = NULL;
 	      break;
 	    }
 	}
     }
 
-  if (has_index_scan || XASL_IS_FLAGED (xasl, XASL_NO_FIXED_SCAN) || xasl->dptr_list != NULL)
+  force_fixed_scan_allowed = !composite_lock && !scan_needs_obj_lock;
+
+  /* Second pass: apply the decision to every spec. */
+  for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
     {
-      return NULL;
-    }
-  if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.eptr_list != NULL)
-    {
-      return NULL;
-    }
-  for (xptr = xasl->aptr_list; xptr != NULL; xptr = xptr->next)
-    {
-      if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
+      spec_ptr[0] = xptr->spec_list;
+      spec_ptr[1] = xptr->merge_spec;
+      for (spec_level = 0; spec_level < 2; ++spec_level)
 	{
-	  return NULL;
+	  for (specp = spec_ptr[spec_level]; specp; specp = specp->next)
+	    {
+	      specp->fixed_scan = (xptr == fixed_scan_xasl)
+		|| (force_fixed_scan_allowed && ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN));
+	    }
 	}
     }
-
-  return fixed_scan_xasl;
 }
 
 /*
@@ -15306,7 +15427,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   int multi_upddel = false;
   QFILE_LIST_MERGE_INFO *merge_infop;
   XASL_NODE *outer_xasl = NULL, *inner_xasl = NULL;
-  XASL_NODE *fixed_scan_xasl = NULL;
   bool iscan_oid_order, force_select_lock = false;
   int old_wait_msecs, wait_msecs;
   int error;
@@ -15826,7 +15946,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
       /* iterative processing is done only for XASL blocks that has access specification list blocks. */
       if (xasl->spec_list)
 	{
-	  fixed_scan_xasl = qexec_determine_fixed_scan_xasl (xasl);
+	  qexec_setup_fixed_scan (xasl, force_select_lock);
 
 	  /* open all the scans that are involved within the query, for SCAN blocks */
 	  for (xptr = xasl, level = 0; xptr; xptr = xptr->scan_ptr, level++)
@@ -15838,10 +15958,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		{
 		  for (specp = spec_ptr[spec_level]; specp; specp = specp->next)
 		    {
-		      specp->fixed_scan = (xptr == fixed_scan_xasl)
-			|| (ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN)
-			    && !COMPOSITE_LOCK (xasl->scan_op_type));
-
 		      /* set if the scan will be done in a grouped manner */
 		      if ((level == 0 && xptr->scan_ptr == NULL) && (QPROC_MAX_GROUPED_SCAN_CNT > 0))
 			{

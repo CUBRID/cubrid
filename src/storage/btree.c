@@ -24784,7 +24784,8 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
        * do not create an MVCC snapshot so that it does not differ from the previous answer in the isolation test case.
        */
       if (oid_check_cached_class_oid (OID_CACHE_USER_CLASS_ID, class_oid)
-	  || oid_check_cached_class_oid (OID_CACHE_SYNONYM_CLASS_ID, class_oid))
+	  || oid_check_cached_class_oid (OID_CACHE_SYNONYM_CLASS_ID, class_oid)
+	  || oid_check_cached_class_oid (OID_CACHE_HISTOGRAM_CLASS_ID, class_oid))
 	{
 	  need_skip_mvcc_snapshot = true;
 	}
