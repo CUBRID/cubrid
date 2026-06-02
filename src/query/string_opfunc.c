@@ -25474,13 +25474,16 @@ db_blob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
   /* The temporary BFILE was created on the ES backing store solely to
    * read the file bytes; remove it before returning to avoid orphaning
    * the ES file on every BLOB_FROM_FILE invocation.
-   * elo_delete() only unlinks the ES backing file; it does NOT free the
-   * DB_ELO's locator buffer. pr_clear_value () is still required to free
-   * that buffer (operates on disjoint resources, so no double-free). */
+   * Pass force_delete = false so that, on transaction-managed stores
+   * (ES_POSIX / ES_OWFS), elo_delete () also drops the LOB_TRANSIENT_CREATED
+   * locator entry that elo_create () registered; force_delete = true would
+   * unlink the file but leave that locator table entry dangling.
+   * elo_delete () does not free the DB_ELO's locator buffer, so
+   * pr_clear_value () is still required (disjoint resources, no double-free). */
   temp_elo = db_get_elo (&bfile_value);
   if (temp_elo != NULL)
     {
-      (void) elo_delete (temp_elo, true);
+      (void) elo_delete (temp_elo, false);
     }
   pr_clear_value (&bfile_value);
 
@@ -25715,13 +25718,16 @@ db_clob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
   /* The temporary CFILE was created on the ES backing store solely to
    * read the file bytes; remove it before returning to avoid orphaning
    * the ES file on every CLOB_FROM_FILE invocation.
-   * elo_delete() only unlinks the ES backing file; it does NOT free the
-   * DB_ELO's locator buffer. pr_clear_value () is still required to free
-   * that buffer (operates on disjoint resources, so no double-free). */
+   * Pass force_delete = false so that, on transaction-managed stores
+   * (ES_POSIX / ES_OWFS), elo_delete () also drops the LOB_TRANSIENT_CREATED
+   * locator entry that elo_create () registered; force_delete = true would
+   * unlink the file but leave that locator table entry dangling.
+   * elo_delete () does not free the DB_ELO's locator buffer, so
+   * pr_clear_value () is still required (disjoint resources, no double-free). */
   temp_elo = db_get_elo (&cfile_value);
   if (temp_elo != NULL)
     {
-      (void) elo_delete (temp_elo, true);
+      (void) elo_delete (temp_elo, false);
     }
   pr_clear_value (&cfile_value);
 
@@ -25825,8 +25831,12 @@ lobfile_to_lob (const DB_VALUE * src_value, DB_VALUE * result_value, DB_TYPE lob
   data_length = (lob_type == DB_TYPE_BLOB) ? (size * 8) : size;
   if (data_length > DB_MAX_LOB_PRECISION)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, (int) data_length,
-	      (int) DB_MAX_LOB_PRECISION);
+      /* data_length may exceed INT_MAX for very large inputs; clamp the
+       * reported value so the %d message stays meaningful instead of wrapping
+       * to a negative number. The comparison above is done in INT64, so the
+       * truncation decision itself is unaffected. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2,
+	      (int) ((data_length > INT_MAX) ? INT_MAX : data_length), (int) DB_MAX_LOB_PRECISION);
       return ER_QPROC_STRING_SIZE_TOO_BIG;
     }
 
@@ -25839,7 +25849,9 @@ lobfile_to_lob (const DB_VALUE * src_value, DB_VALUE * result_value, DB_TYPE lob
 
   if (size > 0)
     {
-      error_status = db_elo_read (elo, 0, buf, (size_t) size, NULL);
+      DB_BIGINT read_bytes = 0;
+
+      error_status = db_elo_read (elo, 0, buf, (size_t) size, &read_bytes);
       if (error_status == ER_ES_GENERAL)
 	{
 	  /* by the spec, some lobfile handling functions treat a read error as a NULL value */
@@ -25852,6 +25864,17 @@ lobfile_to_lob (const DB_VALUE * src_value, DB_VALUE * result_value, DB_TYPE lob
 	{
 	  db_private_free_and_init (NULL, buf);
 	  return error_status;
+	}
+      else if (read_bytes != size)
+	{
+	  /* A short read (fewer bytes than db_elo_size () reported) means the
+	   * external file changed underneath us or the backing store is
+	   * inconsistent. Fail instead of materializing the uninitialized tail
+	   * of buf into the LOB. */
+	  db_private_free_and_init (NULL, buf);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "LOB",
+		  "unexpected end of file while reading external storage");
+	  return ER_ES_GENERAL;
 	}
     }
 
@@ -25908,35 +25931,16 @@ db_bfile_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
  *   result_value(out): bfile value
  *
  *   Writes the inline BLOB bytes to a freshly allocated external storage
- *   file and returns a BFILE handle. Composed from db_blob_to_bit ()
- *   followed by db_bit_to_bfile ().
+ *   file and returns a BFILE handle. db_bit_to_bfile () already accepts a
+ *   DB_TYPE_BLOB source directly (it reads the inline bytes via db_get_bit ()),
+ *   so the BLOB is forwarded as-is without an intermediate VARBIT copy.
  */
 int
 db_blob_to_bfile (const DB_VALUE * src_value, DB_VALUE * result_value)
 {
-  int error_status = NO_ERROR;
-  DB_VALUE bit_value;
-
   assert (src_value != NULL && result_value != NULL);
 
-  db_make_null (&bit_value);
-
-  if (DB_VALUE_DOMAIN_TYPE (src_value) == DB_TYPE_NULL)
-    {
-      db_make_null (result_value);
-      return NO_ERROR;
-    }
-
-  error_status = db_blob_to_bit (src_value, NULL, &bit_value);
-  if (error_status != NO_ERROR)
-    {
-      return error_status;
-    }
-
-  error_status = db_bit_to_bfile (&bit_value, result_value);
-
-  pr_clear_value (&bit_value);
-  return error_status;
+  return db_bit_to_bfile (src_value, result_value);
 }
 
 /*
@@ -25971,35 +25975,17 @@ db_cfile_to_clob (const DB_VALUE * src_value, DB_VALUE * result_value)
  *   result_value(out): cfile value
  *
  *   Writes the inline CLOB characters to a freshly allocated external
- *   storage file and returns a CFILE handle. Composed from db_clob_to_char ()
- *   followed by db_char_to_cfile ().
+ *   storage file and returns a CFILE handle. db_char_to_cfile () already
+ *   accepts a DB_TYPE_CLOB source directly (it reads the inline characters via
+ *   db_get_string ()), so the CLOB is forwarded as-is without an intermediate
+ *   VARCHAR copy.
  */
 int
 db_clob_to_cfile (const DB_VALUE * src_value, DB_VALUE * result_value)
 {
-  int error_status = NO_ERROR;
-  DB_VALUE char_value;
-
   assert (src_value != NULL && result_value != NULL);
 
-  db_make_null (&char_value);
-
-  if (DB_VALUE_DOMAIN_TYPE (src_value) == DB_TYPE_NULL)
-    {
-      db_make_null (result_value);
-      return NO_ERROR;
-    }
-
-  error_status = db_clob_to_char (src_value, NULL, &char_value);
-  if (error_status != NO_ERROR)
-    {
-      return error_status;
-    }
-
-  error_status = db_char_to_cfile (&char_value, result_value);
-
-  pr_clear_value (&char_value);
-  return error_status;
+  return db_char_to_cfile (src_value, result_value);
 }
 
 
