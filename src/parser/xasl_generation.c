@@ -28687,7 +28687,7 @@ pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
   for (out_name = info->args; out_name != NULL; out_name = out_name->next)
     {
 
-      if (pt_check_function_path_eq (parser, node, out_name) == 0)
+      if (pt_check_path_eq (parser, node, out_name) == 0)
 	{
 	  already_exist = true;
 	  break;
@@ -28698,6 +28698,12 @@ pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
     {
       PT_NODE *pointer = pt_point_ref (parser, node);
       DB_VALUE *dbval = NULL;
+
+      if (pointer == NULL)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return node;
+	}
 
       regu_alloc (dbval);
       if (dbval == NULL)
@@ -28735,10 +28741,21 @@ pt_substitute_groupby_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 
   for (out_name = info->args; out_name != NULL; out_name = out_name->next, i++)
     {
-      if (PT_IS_POINTER_REF_NODE (out_name) && pt_check_function_path_eq (parser, node, out_name) == 0)
+      if (PT_IS_POINTER_REF_NODE (out_name) && pt_check_path_eq (parser, node, out_name) == 0)
 	{
 	  new_node = parser_copy_tree (parser, node);
+	  if (new_node == NULL)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return node;
+	    }
+
 	  pointer = pt_point_ref (parser, new_node);
+	  if (pointer == NULL)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return node;
+	    }
 
 	  pointer->etc = (DB_VALUE *) out_name->etc;
 	  tmp = node->next;

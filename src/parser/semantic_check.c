@@ -247,6 +247,7 @@ static int pt_collection_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_
 static int pt_assignment_class_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs);
 static PT_NODE *pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs);
 static int pt_check_defaultf (PARSER_CONTEXT * parser, PT_NODE * node);
+static int pt_check_sort_spec_list_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q);
 static PT_NODE *pt_check_vclass_union_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * attrds);
 static int pt_check_group_concat_order_by (PARSER_CONTEXT * parser, PT_NODE * func);
 static bool pt_has_parameters (PARSER_CONTEXT * parser, PT_NODE * stmt);
@@ -14777,6 +14778,113 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
       }
       break;			/* PT_VALUE */
 
+    case PT_FUNCTION:
+      {
+	const PT_NODE *p_arg, *q_arg;
+
+	/* function code and ALL/DISTINCT option must match (COUNT(a) != COUNT(DISTINCT a)) */
+	if (p->info.function.function_type != q->info.function.function_type)
+	  {
+	    return 1;
+	  }
+
+	if (p->info.function.all_or_distinct != q->info.function.all_or_distinct)
+	  {
+	    return 1;
+	  }
+
+	if (p->info.function.coll_modifier != q->info.function.coll_modifier)
+	  {
+	    return 1;
+	  }
+
+	/* for generic functions, the name must match */
+	if (p->info.function.function_type == PT_GENERIC)
+	  {
+	    if (p->info.function.generic_name == NULL || q->info.function.generic_name == NULL)
+	      {
+		if (p->info.function.generic_name != q->info.function.generic_name)
+		  {
+		    return 1;
+		  }
+	      }
+	    else if (intl_identifier_casecmp (p->info.function.generic_name, q->info.function.generic_name) != 0)
+	      {
+		return 1;
+	      }
+	  }
+
+	/* argument lists must match element-by-element and have the same length */
+	p_arg = p->info.function.arg_list;
+	q_arg = q->info.function.arg_list;
+	while (p_arg != NULL && q_arg != NULL)
+	  {
+	    if (pt_check_path_eq (parser, p_arg, q_arg))
+	      {
+		return 1;
+	      }
+
+	    p_arg = p_arg->next;
+	    q_arg = q_arg->next;
+	  }
+
+	if (p_arg != NULL || q_arg != NULL)
+	  {
+	    return 1;
+	  }
+
+	/* GROUP_CONCAT ordering must match */
+	if (pt_check_sort_spec_list_eq (parser, p->info.function.order_by, q->info.function.order_by))
+	  {
+	    return 1;
+	  }
+
+	/* percentile argument (PERCENTILE_CONT / PERCENTILE_DISC) must match */
+	if (pt_check_path_eq (parser, p->info.function.percentile, q->info.function.percentile))
+	  {
+	    return 1;
+	  }
+
+	/* analytic (window) clause must match */
+	if (p->info.function.analytic.is_analytic != q->info.function.analytic.is_analytic)
+	  {
+	    return 1;
+	  }
+
+	if (p->info.function.analytic.is_analytic)
+	  {
+	    if (p->info.function.analytic.from_last != q->info.function.analytic.from_last
+		|| p->info.function.analytic.ignore_nulls != q->info.function.analytic.ignore_nulls)
+	      {
+		return 1;
+	      }
+
+	    if (pt_check_sort_spec_list_eq (parser, p->info.function.analytic.partition_by,
+					    q->info.function.analytic.partition_by))
+	      {
+		return 1;
+	      }
+
+	    if (pt_check_sort_spec_list_eq (parser, p->info.function.analytic.order_by,
+					    q->info.function.analytic.order_by))
+	      {
+		return 1;
+	      }
+
+	    if (pt_check_path_eq (parser, p->info.function.analytic.offset, q->info.function.analytic.offset))
+	      {
+		return 1;
+	      }
+
+	    if (pt_check_path_eq (parser, p->info.function.analytic.default_value,
+				  q->info.function.analytic.default_value))
+	      {
+		return 1;
+	      }
+	  }
+      }
+      break;			/* PT_FUNCTION */
+
     default:
       PT_ERRORmf (parser, p, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SORT_SPEC_NAN_PATH,
 		  pt_short_print (parser, p));
@@ -14822,159 +14930,6 @@ pt_check_sort_spec_list_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT
   if (p != NULL || q != NULL)
     {
       return 1;
-    }
-
-  return 0;
-}
-
-/*
- * pt_check_function_path_eq () - determine if two PT_FUNCTION nodes are the same
- *   return: 0 if the two function expressions are identical, else non-zero.
- *   parser(in):
- *   p(in):
- *   q(in):
- *
- * Note :
- *   Unlike pt_check_path_eq (), this helper accepts PT_FUNCTION nodes. It
- *   compares every field that affects a function's identity so that the two
- *   nodes are reported equal only when they are guaranteed to produce the same
- *   result (e.g. COUNT(a) and COUNT(DISTINCT a) are NOT considered equal). The
- *   return convention matches pt_check_path_eq (): 0 means equal, non-zero
- *   means different.
- */
-int
-pt_check_function_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
-{
-  const PT_NODE *p_arg, *q_arg;
-
-  if (p == NULL && q == NULL)
-    {
-      return 0;
-    }
-
-  if (p == NULL || q == NULL)
-    {
-      return 1;
-    }
-
-  while (p && p->node_type == PT_NODE_POINTER)
-    {
-      p = p->info.pointer.node;
-    }
-
-  while (q && q->node_type == PT_NODE_POINTER)
-    {
-      q = q->info.pointer.node;
-    }
-
-  if (p == NULL || q == NULL)
-    {
-      return (p == q) ? 0 : 1;
-    }
-
-  /* both nodes must be functions */
-  if (p->node_type != PT_FUNCTION || q->node_type != PT_FUNCTION)
-    {
-      return 1;
-    }
-
-  /* function code and ALL/DISTINCT option must match (COUNT(a) != COUNT(DISTINCT a)) */
-  if (p->info.function.function_type != q->info.function.function_type)
-    {
-      return 1;
-    }
-
-  if (p->info.function.all_or_distinct != q->info.function.all_or_distinct)
-    {
-      return 1;
-    }
-
-  if (p->info.function.coll_modifier != q->info.function.coll_modifier)
-    {
-      return 1;
-    }
-
-  /* for generic functions, the name must match */
-  if (p->info.function.function_type == PT_GENERIC)
-    {
-      if (p->info.function.generic_name == NULL || q->info.function.generic_name == NULL)
-	{
-	  if (p->info.function.generic_name != q->info.function.generic_name)
-	    {
-	      return 1;
-	    }
-	}
-      else if (intl_identifier_casecmp (p->info.function.generic_name, q->info.function.generic_name) != 0)
-	{
-	  return 1;
-	}
-    }
-
-  /* argument lists must match element-by-element and have the same length */
-  p_arg = p->info.function.arg_list;
-  q_arg = q->info.function.arg_list;
-  while (p_arg != NULL && q_arg != NULL)
-    {
-      if (pt_check_path_eq (parser, p_arg, q_arg))
-	{
-	  return 1;
-	}
-
-      p_arg = p_arg->next;
-      q_arg = q_arg->next;
-    }
-
-  if (p_arg != NULL || q_arg != NULL)
-    {
-      return 1;
-    }
-
-  /* GROUP_CONCAT ordering must match */
-  if (pt_check_sort_spec_list_eq (parser, p->info.function.order_by, q->info.function.order_by))
-    {
-      return 1;
-    }
-
-  /* percentile argument (PERCENTILE_CONT / PERCENTILE_DISC) must match */
-  if (pt_check_path_eq (parser, p->info.function.percentile, q->info.function.percentile))
-    {
-      return 1;
-    }
-
-  /* analytic (window) clause must match */
-  if (p->info.function.analytic.is_analytic != q->info.function.analytic.is_analytic)
-    {
-      return 1;
-    }
-
-  if (p->info.function.analytic.is_analytic)
-    {
-      if (p->info.function.analytic.from_last != q->info.function.analytic.from_last
-	  || p->info.function.analytic.ignore_nulls != q->info.function.analytic.ignore_nulls)
-	{
-	  return 1;
-	}
-
-      if (pt_check_sort_spec_list_eq (parser, p->info.function.analytic.partition_by,
-				      q->info.function.analytic.partition_by))
-	{
-	  return 1;
-	}
-
-      if (pt_check_sort_spec_list_eq (parser, p->info.function.analytic.order_by, q->info.function.analytic.order_by))
-	{
-	  return 1;
-	}
-
-      if (pt_check_path_eq (parser, p->info.function.analytic.offset, q->info.function.analytic.offset))
-	{
-	  return 1;
-	}
-
-      if (pt_check_path_eq (parser, p->info.function.analytic.default_value, q->info.function.analytic.default_value))
-	{
-	  return 1;
-	}
     }
 
   return 0;
