@@ -646,6 +646,9 @@ static int pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN
 
 static PT_NODE *pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_substitute_groupby_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *pt_is_shareable_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+						 int *continue_walk);
+static bool pt_is_shareable_groupby_ref (PARSER_CONTEXT * parser, PT_NODE * node);
 
 static void
 pt_init_xasl_supp_info ()
@@ -28659,6 +28662,77 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
   return covered_count;
 }
 
+/*
+ * pt_is_shareable_groupby_ref_pre () - parser_walk_tree pre-callback that clears
+ *				     the result flag when it visits a node whose
+ *				     type is not one of the allowed (shareable)
+ *				     node types
+ *   return: node (unchanged)
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out): bool * -- set to false when a disallowed node is found
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_is_shareable_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *only_allowed = (bool *) arg;
+
+  if (node == NULL || *continue_walk == PT_STOP_WALK)
+    {
+      return node;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_NAME:
+    case PT_DOT_:
+    case PT_EXPR:
+    case PT_VALUE:
+    case PT_FUNCTION:
+      /* allowed (shareable) node types */
+      break;
+
+    default:
+      *only_allowed = false;
+      *continue_walk = PT_STOP_WALK;
+      break;
+    }
+
+  return node;
+}
+
+/*
+ * pt_is_shareable_groupby_ref () - determine whether an expression is built only
+ *				  from the allowed (shareable) node types listed
+ *				  in pt_is_shareable_groupby_ref_pre ()
+ *   return: true if every node in node's subtree is an allowed type, false
+ *	     otherwise (an empty tree trivially returns true).
+ *   parser(in):
+ *   node(in): root of the (sub)expression to inspect. Only this node and its
+ *	       descendants are checked; the sibling list (node->next) is not
+ *	       followed.
+ */
+static bool
+pt_is_shareable_groupby_ref (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  bool only_allowed = true;
+  PT_NODE *save_next;
+
+  if (node == NULL)
+    {
+      return true;
+    }
+
+  /* restrict the walk to this node's own subtree, not its siblings */
+  save_next = node->next;
+  node->next = NULL;
+  (void) parser_walk_tree (parser, node, pt_is_shareable_groupby_ref_pre, &only_allowed, NULL, NULL);
+  node->next = save_next;
+
+  return only_allowed;
+}
+
 static PT_NODE *
 pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
@@ -28679,7 +28753,7 @@ pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
       return node;
     }
 
-  if (node->node_type != PT_NAME && node->node_type != PT_EXPR)
+  if (!pt_is_shareable_groupby_ref (parser, node))
     {
       return node;
     }
@@ -28734,7 +28808,7 @@ pt_substitute_groupby_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *a
       return node;
     }
 
-  if (node->node_type != PT_NAME && node->node_type != PT_EXPR)
+  if (!pt_is_shareable_groupby_ref (parser, node))
     {
       return node;
     }
