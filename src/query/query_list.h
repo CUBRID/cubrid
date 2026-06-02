@@ -330,7 +330,7 @@ struct qfile_tuple_value_position
 typedef enum
 {
   QPROC_NO_SINGLE_INNER = 0,	/* 0 or n qualified rows */
-  QPROC_SINGLE_INNER,		/* 0 or 1 qualified row - currently, not used */
+  QPROC_SINGLE_INNER,		/* 0 or 1 qualified row - used by NL SEMI/ANTI JOIN inner (first-match) */
   QPROC_SINGLE_OUTER,		/* 1 NULL row or 1 qualified row */
   QPROC_NO_SINGLE_OUTER		/* 1 NULL row or n qualified rows */
 } QPROC_SINGLE_FETCH;

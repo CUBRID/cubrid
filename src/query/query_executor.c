@@ -8716,7 +8716,7 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	      if (XASL_IS_FLAGED (xasl->scan_ptr, XASL_NL_ANTIJOIN))
 		{
 		  /* anti join: emit this outer row once iff the inner produced no qualifying row.
-		   * inner uses single_fetch=QPROC_SINGLE_INNER, so it returns 0 or 1 row (no drain needed). */
+		   * inner uses single_fetch=QPROC_SINGLE_INNER, so it yields at most one qualifying row. */
 		  xasl->next_scan_on = false;
 		  if (xs_scan == S_ERROR)
 		    {
@@ -8724,8 +8724,10 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 		    }
 		  if (xs_scan == S_SUCCESS)
 		    {
-		      /* inner matched -> drain it to S_END so its page latches are released before the next
-		       * outer row scans (memoization is disabled for semi/anti inners, so no cache corruption). */
+		      /* inner matched -> advance it to S_END so its page latches are released before the next
+		       * outer row scans. Because of single_fetch this is a short drain (one more call returns
+		       * S_END), not a full inner scan; memoization is disabled for semi/anti inners, so no cache
+		       * corruption. */
 		      while ((xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore,
 							  next_scan_fnc + 1)) == S_SUCCESS)
 			{
@@ -9813,7 +9815,15 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 					}
 				      else
 					{
-					  /* one iteration successfully completed */
+					  /* one iteration successfully completed.
+					   * SEMI join has no dedicated branch here: it rides this same path, but its inner
+					   * scan carries single_fetch=QPROC_SINGLE_INNER (set in mark_access_as_semi_anti_join),
+					   * so the inner stops after the first qualifying row and this outer row is emitted
+					   * exactly once. A plain inner join also reaches this branch and emits once per
+					   * qualifying inner row. */
+					  assert (!XASL_IS_FLAGED (xasl->scan_ptr, XASL_NL_SEMIJOIN)
+						  || xasl->scan_ptr->curr_spec == NULL
+						  || xasl->scan_ptr->curr_spec->single_fetch == QPROC_SINGLE_INNER);
 					  if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
 					    {
 					      return S_ERROR;
@@ -16103,17 +16113,31 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      p_class_instance_lock_info->instances_locked = true;
 			    }
 			}
-		      if (spec_level == 0 && level >= 1 && !mvcc_select_lock_needed && !XASL_IS_NL_SEMI_OR_ANTI (xptr))
-			{
-			  /* semi/anti single-fetch inners are not memoized: the cache key is the join key,
-			   * but a per-outer first-match/zero-match result must not be reused across outer
-			   * rows that share a key. */
-			  if (new_memoize_storage (thread_p, xptr) != NO_ERROR)
-			    {
-			      qexec_clear_mainblock_iterations (thread_p, xasl);
-			      GOTO_EXIT_ON_ERROR;
-			    }
-			}
+		      {
+			/* Skip memoize if this scan, or any scan nested below it on the scan_ptr chain, is a
+			 * semi/anti single-fetch inner. Memoizing an ancestor caches the whole subtree including
+			 * the nested semi/anti per-outer first-match/zero-match state, which must not be reused
+			 * across outer rows that share the ancestor's join key (skip-level semi/anti, where the
+			 * semi/anti inner is not adjacent to its referenced outer). */
+			bool sa_in_chain = false;
+			XASL_NODE *dxp;
+			for (dxp = xptr; dxp != NULL; dxp = dxp->scan_ptr)
+			  {
+			    if (XASL_IS_NL_SEMI_OR_ANTI (dxp))
+			      {
+				sa_in_chain = true;
+				break;
+			      }
+			  }
+			if (spec_level == 0 && level >= 1 && !mvcc_select_lock_needed && !sa_in_chain)
+			  {
+			    if (new_memoize_storage (thread_p, xptr) != NO_ERROR)
+			      {
+				qexec_clear_mainblock_iterations (thread_p, xasl);
+				GOTO_EXIT_ON_ERROR;
+			      }
+			  }
+		      }
 		    }
 		}
 	    }
