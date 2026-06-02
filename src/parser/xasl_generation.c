@@ -28694,12 +28694,18 @@ pt_is_shareable_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *
       break;
 
     case PT_EXPR:
-      if (PT_IS_EXPR_NODE_WITH_NON_PUSHABLE (node)
-	  || PT_IS_SERIAL (node->info.expr.op) || PT_IS_NUMBERING_AFTER_EXECUTION (node->info.expr.op))
-	{
-	  *only_allowed = false;
-	  *continue_walk = PT_STOP_WALK;
-	}
+      {
+	PT_OP_TYPE op = node->info.expr.op;
+
+	if (PT_IS_EXPR_NODE_WITH_NON_PUSHABLE (node)	/* RAND / DRAND / RANDOM / DRANDOM / SYS_GUID */
+	    || PT_IS_SERIAL (op)	/* NEXT VALUE / CURRENT VALUE */
+	    || PT_IS_NUMBERING_AFTER_EXECUTION (op)	/* INST_NUM / ROWNUM / ORDERBY_NUM */
+	    || op == PT_DEFINE_VARIABLE || op == PT_EVALUATE_VARIABLE || op == PT_INCR || op == PT_DECR)
+	  {
+	    *only_allowed = false;
+	    *continue_walk = PT_STOP_WALK;
+	  }
+      }
       break;
 
     default:
