@@ -4649,7 +4649,11 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * o
 	    }
 	}
     }
-  (void) parser_walk_tree (parser, select_list, pt_substitute_groupby_ref_pre, &info, NULL, NULL);
+
+  if (out_list != NULL && value_list != NULL && regu_list != NULL)
+    {
+      (void) parser_walk_tree (parser, select_list, pt_substitute_groupby_ref_pre, &info, NULL, NULL);
+    }
 
   select_node->info.query.q.select.list =
     parser_walk_tree (parser, select_list, pt_to_aggregate_node, &info, pt_continue_walk, NULL);
