@@ -980,7 +980,8 @@ namespace parallel_heap_scan
 	  }
 	else if ((orig_agg_p->function == PT_GROUP_CONCAT && orig_agg_p->sort_list != NULL
 		  && orig_agg_p->option != Q_DISTINCT)
-		 || orig_agg_p->function == PT_MEDIAN)
+		 || orig_agg_p->function == PT_MEDIAN || orig_agg_p->function == PT_PERCENTILE_CONT
+		 || orig_agg_p->function == PT_PERCENTILE_DISC)
 	  {
 	    /* List-based aggregates: the result is produced later by
 	     * qdata_finalize_aggregate_list from the connected list_id. The accumulator
@@ -1074,9 +1075,10 @@ namespace parallel_heap_scan
 	      }
 	  }
 	else if ((agg_node->function == PT_GROUP_CONCAT && agg_node->sort_list != NULL)
-		 || agg_node->function == PT_MEDIAN)
+		 || agg_node->function == PT_MEDIAN || agg_node->function == PT_PERCENTILE_CONT
+		 || agg_node->function == PT_PERCENTILE_DISC)
 	  {
-	    /* GROUP_CONCAT(ORDER BY) and MEDIAN: open list_id for value accumulation */
+	    /* GROUP_CONCAT(ORDER BY), MEDIAN, PERCENTILE_CONT/DISC: open list_id for value accumulation */
 	    int ls_flag = QFILE_FLAG_ALL | QFILE_NOT_USE_MEMBUF;
 	    QFILE_TUPLE_VALUE_TYPE_LIST type_list;
 	    type_list.type_cnt = 1;
@@ -1201,15 +1203,49 @@ namespace parallel_heap_scan
 	      }
 	  }
 	else if ((agg_node->function == PT_GROUP_CONCAT && agg_node->sort_list != NULL)
-		 || agg_node->function == PT_MEDIAN)
+		 || agg_node->function == PT_MEDIAN || agg_node->function == PT_PERCENTILE_CONT
+		 || agg_node->function == PT_PERCENTILE_DISC)
 	  {
-	    /* GROUP_CONCAT(ORDER BY) and MEDIAN: push first operand value to list_id */
+	    /* GROUP_CONCAT(ORDER BY), MEDIAN, PERCENTILE_CONT/DISC: push first operand value to list_id */
 	    DB_VALUE median_cast_val;
 	    DB_VALUE *write_val_p = db_value_p;
 	    db_make_null (&median_cast_val);
-	    if (agg_node->function == PT_MEDIAN)
+	    if (agg_node->function == PT_MEDIAN || agg_node->function == PT_PERCENTILE_CONT
+		|| agg_node->function == PT_PERCENTILE_DISC)
 	      {
-		/* MEDIAN casts the value to its interpolation domain (e.g. INT -> DOUBLE).
+		/* PERCENTILE_CONT/DISC carry a percentile ratio (0..1) in percentile_reguvar.
+		 * Evaluate and validate it, then store it on this (clone) agg so write_finalize
+		 * can propagate it to the main agg for qdata_aggregate_interpolation.
+		 * MEDIAN uses a fixed 0.5 and has no ratio. */
+		if (agg_node->function == PT_PERCENTILE_CONT || agg_node->function == PT_PERCENTILE_DISC)
+		  {
+		    DB_VALUE *pct_val_p;
+		    if (fetch_peek_dbval (thread_p, agg_node->info.percentile.percentile_reguvar, tl_vd, NULL, NULL,
+					  NULL, &pct_val_p) != NO_ERROR)
+		      {
+			m_err_messages_p->move_top_error_message_to_this ();
+			m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+			return false;
+		      }
+		    if (DB_VALUE_TYPE (pct_val_p) != DB_TYPE_DOUBLE)
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+			m_err_messages_p->move_top_error_message_to_this ();
+			m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+			return false;
+		      }
+		    double cur_percentile = db_get_double (pct_val_p);
+		    if (cur_percentile < 0 || cur_percentile > 1)
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PERCENTILE_FUNC_INVALID_PERCENTILE_RANGE, 1,
+				cur_percentile);
+			m_err_messages_p->move_top_error_message_to_this ();
+			m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+			return false;
+		      }
+		    agg_node->info.percentile.cur_group_percentile = cur_percentile;
+		  }
+		/* Interpolation funcs cast the value to their domain (e.g. INT -> DOUBLE).
 		 * db_value_p is a peeked pointer into the shared attribute cache and may be
 		 * referenced by other aggregates (e.g. MIN/MAX) on the same column, so we must
 		 * cast a private copy instead of mutating the shared value in place. */
@@ -1534,7 +1570,8 @@ namespace parallel_heap_scan
 		    }
 		  if (((cur_agg_p->function == PT_GROUP_CONCAT && cur_agg_p->sort_list != NULL
 			&& cur_agg_p->option != Q_DISTINCT)
-		       || cur_agg_p->function == PT_MEDIAN)
+		       || cur_agg_p->function == PT_MEDIAN || cur_agg_p->function == PT_PERCENTILE_CONT
+		       || cur_agg_p->function == PT_PERCENTILE_DISC)
 		      && cur_agg_p->list_id != nullptr)
 		    {
 		      qfile_close_list (thread_p, cur_agg_p->list_id);
@@ -1621,15 +1658,23 @@ namespace parallel_heap_scan
 	    }
 	  else if ((orig_agg_p->function == PT_GROUP_CONCAT && orig_agg_p->sort_list != NULL
 		    && orig_agg_p->option != Q_DISTINCT)
-		   || orig_agg_p->function == PT_MEDIAN)
+		   || orig_agg_p->function == PT_MEDIAN || orig_agg_p->function == PT_PERCENTILE_CONT
+		   || orig_agg_p->function == PT_PERCENTILE_DISC)
 	    {
-	      /* GROUP_CONCAT(ORDER BY) and MEDIAN: merge list_ids from worker into main */
+	      /* GROUP_CONCAT(ORDER BY), MEDIAN, PERCENTILE_CONT/DISC: merge list_ids from worker into main */
 	      qfile_close_list (thread_p, cur_agg_p->list_id);
 	      if (cur_agg_p->list_id->tuple_cnt == 0)
 		{
 		  qfile_destroy_list (thread_p, cur_agg_p->list_id);
 		  cur_agg_p = cur_agg_p->next;
 		  continue;
+		}
+	      /* Propagate the percentile ratio (set per-row on the worker clone) to the main agg
+	       * so qdata_aggregate_interpolation uses the correct value. Only a worker that
+	       * processed rows (tuple_cnt > 0) has a valid ratio. */
+	      if (orig_agg_p->function == PT_PERCENTILE_CONT || orig_agg_p->function == PT_PERCENTILE_DISC)
+		{
+		  orig_agg_p->info.percentile.cur_group_percentile = cur_agg_p->info.percentile.cur_group_percentile;
 		}
 	      if (orig_agg_p->list_id->tuple_cnt > 0)
 		{

@@ -82,6 +82,8 @@ namespace parallel_heap_scan
       case PT_JSON_OBJECTAGG:
       case PT_GROUP_CONCAT:
       case PT_MEDIAN:
+      case PT_PERCENTILE_CONT:
+      case PT_PERCENTILE_DISC:
 	return true;
       default:
 	return false;
