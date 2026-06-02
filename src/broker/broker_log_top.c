@@ -517,15 +517,18 @@ log_top_query (int argc, char *argv[], int arg_start)
 
   if (output_mode == OUTPUT_SPLIT)
     {
-      if (make_change_split_brokerdir (splitdir, prev_prefix) < 0)
+      if (strlen (prev_prefix) > 0)
 	{
-	  fprintf (stderr, "cannot make and change dir (%s/%s).\n", splitdir, prev_prefix);
-	  return -1;
+	  if (make_change_split_brokerdir (splitdir, prev_prefix) < 0)
+	    {
+	      fprintf (stderr, "cannot make and change dir (%s/%s).\n", splitdir, prev_prefix);
+	      return -1;
+	    }
+	  fprintf (stdout, "Report files created: ./%s/%s/log_top.{q,res}\n", splitdir, prev_prefix);
+	  query_info_print ();
+	  query_info_clear_array ();
+	  chdir (org_cwd);
 	}
-      fprintf (stdout, "Report files created: ./%s/%s/log_top.{q,res}\n", splitdir, prev_prefix);
-      query_info_print ();
-      query_info_clear_array ();
-      chdir (org_cwd);
     }
   else
     {

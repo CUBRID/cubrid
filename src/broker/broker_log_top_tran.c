@@ -147,22 +147,25 @@ log_top_tran (int argc, char *argv[], int arg_start)
 
   if (output_mode == OUTPUT_SPLIT)
     {
-      if (make_change_split_brokerdir (splitdir, prev_prefix) < 0)
+      if (strlen (prev_prefix) > 0)
 	{
-	  fprintf (stderr, "cannot make and change dir (%s/%s).\n", splitdir, prev_prefix);
-	  return -1;
+	  if (make_change_split_brokerdir (splitdir, prev_prefix) < 0)
+	    {
+	      fprintf (stderr, "cannot make and change dir (%s/%s).\n", splitdir, prev_prefix);
+	      return -1;
+	    }
+	  fprintf (stdout, "Report files created: ./%s/%s/log_top.t\n", splitdir, prev_prefix);
+	  print_result ();
+	  chdir (org_cwd);
 	}
-      fprintf (stdout, "Report files created: ./%s/%s/log_top.t\n", splitdir, prev_prefix);
-      print_result ();
-      chdir (org_cwd);
-
-      info_arr_size = 0;
     }
   else
     {
       fprintf (stdout, "Report files created: ./log_top.t\n");
       print_result ();
     }
+
+  info_arr_size = 0;
 
   return 0;
 }
