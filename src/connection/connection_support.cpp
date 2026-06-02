@@ -430,6 +430,16 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 	      continue;
 	    }
 
+	  /* ECONNRESET is the recv-side report of the same peer close
+	   * that poll reports as POLLERR / POLLHUP.
+	   * Return -1 without raising ER_CSS_RECV_OR_SEND. */
+	  if (errno == ECONNRESET)
+	    {
+	      errno = EINVAL;
+	      er_log_debug (ARG_FILE_LINE, "css_readn: %s %s", "ECONNRESET", strerror (errno));
+	      return -1;
+	    }
+
 #if !defined (SERVER_MODE)
 	  css_set_networking_error (fd);
 #endif /* !SERVER_MODE */
@@ -1023,6 +1033,17 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
 	  if (errno == EINTR)
 	    {
 	      continue;
+	    }
+
+	  /* EPIPE / ECONNRESET is the writev-side report of the same peer close
+	   * that poll reports as POLLERR / POLLHUP.
+	   * Return -1 without raising ER_CSS_RECV_OR_SEND. */
+	  if (errno == EPIPE || errno == ECONNRESET)
+	    {
+	      const char *cause = (errno == ECONNRESET) ? "ECONNRESET" : "EPIPE";
+	      errno = EINVAL;
+	      er_log_debug (ARG_FILE_LINE, "css_vector_send: %s %s\n", cause, strerror (errno));
+	      return -1;
 	    }
 
 #if !defined (SERVER_MODE)
