@@ -3425,13 +3425,9 @@ vacuum_rv_redo_vacuum_complete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * heap_vfid (in)     : Heap file VFID (key).
  * out_oos_vfid (out) : Resolved OOS VFID (may be VFID_NULL sentinel meaning "no OOS file").
  *
- * Note: The cache stores VFID_NULL as a negative sentinel for heap files with no OOS companion,
- * so repeated lookups for non-OOS heaps hit the cache instead of re-executing file_descriptor_get.
- * Negative caching is gated on `er_errid()==NO_ERROR` after heap_oos_find_vfid returns false —
- * transient lookup failures (pgbuf_fix, spage_get_record) set an error and are NOT cached, so a
- * single transient hiccup cannot poison the block-scope cache and silently leak OOS for every
- * subsequent record on the same heap. Only the legitimate "no OOS file" case (VFID_ISNULL on the
- * heap header) returns false with no error set, and only that case is cached.
+ * Caches a VFID_NULL sentinel for heaps with no OOS file, so non-OOS heaps skip file_descriptor_get
+ * on repeat lookups. Only the genuine "no OOS file" case (false return, no error set) is cached;
+ * transient failures are not — see the in-body comments for why caching one would poison the block.
  */
 static bool
 vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENTRY * cache, int *cache_size,
@@ -3486,11 +3482,8 @@ vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENT
        * error was raised. Fall through to cache the VFID_NULL negative sentinel. */
     }
 
-  /* Round-robin eviction: once the cache is full, cycle through all slots instead of always
-   * evicting slot 0. `*evict_idx` is per-block (caller-owned), so the cursor resets to 0 at the
-   * start of every vacuum_process_log_block invocation — guaranteeing the "start from slot 0"
-   * intent on every fresh block. `*cache_size` stays capped at VACUUM_OOS_VFID_CACHE_SIZE so the
-   * lookup loop above is always in-bounds. */
+  /* Round-robin eviction once full (cycle all slots, not just slot 0). `*cache_size` stays capped at
+   * VACUUM_OOS_VFID_CACHE_SIZE so the lookup loop above stays in-bounds. */
   int slot;
   if (*cache_size < VACUUM_OOS_VFID_CACHE_SIZE)
     {
@@ -8448,10 +8441,8 @@ vacuum_init_data_page_with_last_blockid (THREAD_ENTRY * thread_p, VACUUM_DATA_PA
   vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
 }
 
-/* Test bridges below are unconditionally built so unit_tests/oos can link against any build mode
- * (debug or release). The runtime cost is zero in normal operation — bridges are only entered
- * when explicitly invoked by test binaries — and the binary footprint of three thin wrappers is
- * negligible. Gating on NDEBUG breaks `./build.sh -m release -c -DUNIT_TESTS=ON` builds. */
+/* Test bridges below are unconditionally built (not NDEBUG-gated) so unit_tests/oos can link in any
+ * build mode — gating on NDEBUG breaks `./build.sh -m release -c -DUNIT_TESTS=ON`. */
 
 /* Test bridge for static vacuum_heap_oos_delete. Used by unit_tests/oos. */
 int
@@ -8486,19 +8477,12 @@ bridge_vacuum_cleanup_prev_version_oos (THREAD_ENTRY * thread_p, const HFID * hf
 }
 
 /*
- * bridge_log_append_undo_for_prev_version_test () - Test helper that appends an undo log
- *   record carrying a heap recdes and returns the LSA.
+ * bridge_log_append_undo_for_prev_version_test () - Test helper: append an undo log record carrying
+ *   a heap recdes and return its LSA (usable as a prev_version_lsa to simulate an old OOS version).
  *
- * The LSA can then be used as prev_version_lsa in a VACUUM_HEAP_HELPER to simulate an
- * old MVCC version whose OOS records need reclaiming. The log record is appended as
- * LOG_MVCC_UNDO_DATA, which is exactly what log_get_undo_record in the chain walker
- * parses and extracts the undo-data (heap recdes) from.
- *
- * Uses RVES_NOTIFY_VACUUM as the recovery index:
- *   - It is an MVCC operation (LOG_IS_MVCC_OPERATION) so the log record type is LOG_MVCC_UNDO_DATA.
- *   - Its undo handler is vacuum_rv_es_nop (no-op), so shutdown/rollback of the test transaction
- *     doesn't try to reverse-apply the hand-crafted recdes against a nonexistent heap page.
- *   - It accepts a NULL vfid at log-append time, so no bogus heap VFID is needed.
+ * Uses RVES_NOTIFY_VACUUM: it is an MVCC op (so the record is LOG_MVCC_UNDO_DATA), its undo handler
+ * vacuum_rv_es_nop is a no-op (so test rollback won't reverse-apply the hand-crafted recdes), and it
+ * accepts a NULL vfid at append time.
  *
  * thread_p(in)   : Thread entry.
  * old_recdes(in) : Old heap recdes to log (treated as undo data).
