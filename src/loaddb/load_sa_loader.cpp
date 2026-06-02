@@ -2973,15 +2973,47 @@ error_exit:
  *    len():
  *    att():
  * Note:
- *    Internal BLOB is stored inline like a bit string and currently shares the
- *    VARBIT loader path (ldr_bstr_elem resolves the target domain from context,
- *    so the cast already lands on DB_TYPE_BLOB). Keep a dedicated entry point so
- *    BLOB-specific handling can diverge here without touching the VARBIT path.
+ *    Internal BLOB is stored inline like a bit string, but it must be built with
+ *    the BLOB primitive (db_make_blob), not by borrowing the VARBIT loader path.
+ *    The identical on-disk layout today is incidental; routing BLOB through the
+ *    VARBIT functions couples the two types and would break if the BLOB storage
+ *    diverges later. The bit literal is parsed into a raw buffer and handed to
+ *    db_make_blob directly.
  */
 static int
 ldr_bstr_db_blob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att)
 {
-  return ldr_bstr_db_varbit (context, str, len, att);
+  int err = NO_ERROR;
+  size_t dest_size;
+  char *bstring = NULL;
+  DB_VALUE val;
+
+  db_make_null (&val);
+
+  dest_size = (len + 7) / 8;
+  CHECK_PTR (err, bstring = (char *) db_private_alloc (NULL, dest_size + 1));
+
+  if (qstr_bit_to_bin (bstring, (int) dest_size, (char *) str, (int) len) != (int) len)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, ldr_attr_name (context));
+      CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BLOB, str);
+    }
+
+  CHECK_ERR (err, db_make_blob (&val, DB_MAX_LOB_PRECISION, bstring, (int) len));
+
+  /* val takes ownership of this piece of memory */
+  val.need_clear = true;
+  bstring = NULL;
+
+  CHECK_ERR (err, ldr_generic (context, &val));
+
+error_exit:
+  if (bstring != NULL)
+    {
+      db_private_free_and_init (NULL, bstring);
+    }
+  db_value_clear (&val);
+  return err;
 }
 
 /*
@@ -3080,15 +3112,47 @@ error_exit:
  *    len():
  *    att():
  * Note:
- *    Internal BLOB is stored inline like a bit string and currently shares the
- *    VARBIT loader path (ldr_xstr_elem resolves the target domain from context,
- *    so the cast already lands on DB_TYPE_BLOB). Keep a dedicated entry point so
- *    BLOB-specific handling can diverge here without touching the VARBIT path.
+ *    Internal BLOB is stored inline like a bit string, but it must be built with
+ *    the BLOB primitive (db_make_blob), not by borrowing the VARBIT loader path.
+ *    The identical on-disk layout today is incidental; routing BLOB through the
+ *    VARBIT functions couples the two types and would break if the BLOB storage
+ *    diverges later. The hex literal is parsed into a raw buffer and handed to
+ *    db_make_blob directly.
  */
 static int
 ldr_xstr_db_blob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att)
 {
-  return ldr_xstr_db_varbit (context, str, len, att);
+  int err = NO_ERROR;
+  size_t dest_size;
+  char *bstring = NULL;
+  DB_VALUE val;
+
+  db_make_null (&val);
+
+  dest_size = (len + 1) / 2;
+  CHECK_PTR (err, bstring = (char *) db_private_alloc (NULL, dest_size + 1));
+
+  if (qstr_hex_to_bin (bstring, (int) dest_size, (char *) str, (int) len) != (int) len)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, ldr_attr_name (context));
+      CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BLOB, str);
+    }
+
+  CHECK_ERR (err, db_make_blob (&val, DB_MAX_LOB_PRECISION, bstring, (int) len * 4));
+
+  /* val takes ownership of this piece of memory */
+  val.need_clear = true;
+  bstring = NULL;
+
+  CHECK_ERR (err, ldr_generic (context, &val));
+
+error_exit:
+  if (bstring != NULL)
+    {
+      db_private_free_and_init (NULL, bstring);
+    }
+  db_value_clear (&val);
+  return err;
 }
 
 /*

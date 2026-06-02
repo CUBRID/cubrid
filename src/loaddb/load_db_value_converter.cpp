@@ -792,21 +792,93 @@ namespace cubload
   }
 
   /*
-   * Internal BLOB is stored inline like a bit string and currently shares the
-   * VARBIT conversion path (the target domain is resolved from the attribute,
-   * so the cast already lands on DB_TYPE_BLOB). Keep dedicated entry points so
-   * BLOB-specific handling can diverge here without touching the VARBIT path.
+   * Internal BLOB is stored inline like a bit string, but it must be built with
+   * the BLOB primitive (db_make_blob), not by borrowing the VARBIT conversion
+   * path. The on-disk layout being identical today is incidental; routing BLOB
+   * through VARBIT functions couples the two types and would break if the BLOB
+   * storage diverges later. The literal is parsed into a raw bit buffer here and
+   * handed directly to db_make_blob.
    */
   int
   to_db_blob_from_bin_str (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
-    return to_db_varbit_from_bin_str (str, str_size, attr, val);
+    int error_code = NO_ERROR;
+    char *bstring = NULL;
+    std::size_t dest_size;
+
+    dest_size = (str_size + 7) / 8;
+
+    bstring = (char *) db_private_alloc (NULL, dest_size + 1);
+    if (bstring == NULL)
+      {
+	error_code = er_errid ();
+	assert (error_code != NO_ERROR);
+
+	return error_code;
+      }
+
+    if (qstr_bit_to_bin (bstring, (int) dest_size, const_cast<char *> (str), (int) str_size) != (int) str_size)
+      {
+	db_private_free_and_init (NULL, bstring);
+
+	error_code = ER_OBJ_DOMAIN_CONFLICT;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
+
+	return error_code;
+      }
+
+    error_code = db_make_blob (val, DB_MAX_LOB_PRECISION, bstring, (int) str_size);
+    if (error_code != NO_ERROR)
+      {
+	db_private_free_and_init (NULL, bstring);
+	return error_code;
+      }
+
+    /* val takes ownership of bstring */
+    val->need_clear = true;
+
+    return error_code;
   }
 
   int
   to_db_blob_from_hex_str (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
-    return to_db_varbit_from_hex_str (str, str_size, attr, val);
+    int error_code = NO_ERROR;
+    char *bstring = NULL;
+    std::size_t dest_size;
+
+    dest_size = (str_size + 1) / 2;
+
+    bstring = (char *) db_private_alloc (NULL, dest_size + 1);
+    if (bstring == NULL)
+      {
+	error_code = er_errid ();
+	assert (error_code != NO_ERROR);
+
+	return error_code;
+      }
+
+    if (qstr_hex_to_bin (bstring, (int) dest_size, const_cast<char *> (str), (int) str_size) != (int) str_size)
+      {
+	db_private_free_and_init (NULL, bstring);
+
+	error_code = ER_OBJ_DOMAIN_CONFLICT;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
+
+	return error_code;
+      }
+
+    error_code = db_make_blob (val, DB_MAX_LOB_PRECISION, bstring, ((int) str_size) * 4);
+    if (error_code != NO_ERROR)
+      {
+	db_private_free_and_init (NULL, bstring);
+	return error_code;
+      }
+
+    /* val takes ownership of bstring */
+    val->need_clear = true;
+
+    return error_code;
   }
 
   int
