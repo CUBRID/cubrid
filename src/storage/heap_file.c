@@ -17317,7 +17317,7 @@ int
 heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scan_cache,
 			      int *is_set
 #if defined(ENABLE_ENHANCE_AUTO_INCR_TEST)
-			      , int *autoincrement_column_idx, char *serial_name
+			      , int auto_incr_pos, char *serial_name
 #endif
   )
 {
@@ -17344,19 +17344,13 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 
 #if defined(ENABLE_ENHANCE_AUTO_INCR_TEST)
   {
-    att = &attr_info->last_classrepr->attributes[*autoincrement_column_idx];
+    att = &attr_info->last_classrepr->attributes[auto_incr_pos];
     assert (att->is_autoincrement == true);
 
-    value = &attr_info->values[*autoincrement_column_idx];
+    value = &attr_info->values[auto_incr_pos];
     dbvalue = &value->dbvalue;
-
-    if (value->state != HEAP_UNINIT_ATTRVALUE)
-      {
-	*autoincrement_column_idx = -1;
-      }
-    else
-      {
 #else
+
   for (i = 0; i < attr_info->num_values; i++)
     {
       att = &attr_info->last_classrepr->attributes[i];
@@ -17367,10 +17361,10 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 
       value = &attr_info->values[i];
       dbvalue = &value->dbvalue;
+#endif
 
       if (value->state == HEAP_UNINIT_ATTRVALUE)
 	{
-#endif
 	  OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
 	  if (OID_ISNULL (&serial_obj_oid) || prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
 	    {

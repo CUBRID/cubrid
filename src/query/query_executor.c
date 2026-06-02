@@ -12561,7 +12561,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   bool has_user_format;
 #if defined(ENABLE_ENHANCE_AUTO_INCR_TEST)
   char serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0', };
-  int autoincrement_column_idx = -1;
+  int auto_incr_pos = -1;
 #endif
 
   thread_p->no_logging = (bool) insert->no_logging;
@@ -12669,7 +12669,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
     {
       if (attr_info.last_classrepr->attributes[i].is_autoincrement)
 	{
-	  autoincrement_column_idx = i;
+	  auto_incr_pos = i;
 	  break;
 	}
     }
@@ -13031,11 +13031,11 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		    }
 		}
 #if defined(ENABLE_ENHANCE_AUTO_INCR_TEST)
-	      if (autoincrement_column_idx >= 0)
+	      if (auto_incr_pos >= 0)
 		{
-		  if (heap_set_autoincrement_value (thread_p, &attr_info, &scan_cache,
-						    &is_autoincrement_set, &autoincrement_column_idx,
-						    serial_name) != NO_ERROR)
+		  if (heap_set_autoincrement_value
+		      (thread_p, &attr_info, &scan_cache, &is_autoincrement_set, auto_incr_pos,
+		       serial_name) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
@@ -13214,11 +13214,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	    }
 
 #if defined(ENABLE_ENHANCE_AUTO_INCR_TEST)
-	  if (autoincrement_column_idx >= 0)
+	  if (auto_incr_pos >= 0)
 	    {
 	      if (heap_set_autoincrement_value
-		  (thread_p, &attr_info, &scan_cache, &is_autoincrement_set, &autoincrement_column_idx,
-		   serial_name) != NO_ERROR)
+		  (thread_p, &attr_info, &scan_cache, &is_autoincrement_set, auto_incr_pos, serial_name) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
