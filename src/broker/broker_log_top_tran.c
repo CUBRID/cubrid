@@ -101,7 +101,7 @@ log_top_tran (int argc, char *argv[], int arg_start)
 	{
 	  get_brokername_from_filename (filename, curr_prefix, sizeof (curr_prefix));
 
-	  if (i > arg_start && strcmp (curr_prefix, prev_prefix) != 0)
+	  if (strlen (prev_prefix) > 0 && strcmp (curr_prefix, prev_prefix) != 0)
 	    {
 	      if (make_change_split_brokerdir (splitdir, prev_prefix) < 0)
 		{
