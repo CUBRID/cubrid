@@ -28407,15 +28407,8 @@ heap_recdes_compute_oos_flag (const RECDES * recdes)
 	  return false;
 	}
 
-      /* First-entry bound check — see the function header for the rationale. */
-      if (index == 0)
-	{
-	  const int clean = offset & ~OR_VAR_FLAG_MASK;
-	  if (clean < 0 || clean > recdes->length)
-	    {
-	      return false;
-	    }
-	}
+      /* The first-entry bound check lives in the pre-loop guard above (which uses the correct
+       * end-of-header-relative bound recdes->length - header_size); no need to repeat it here. */
 
       if (OR_IS_OOS (offset))
 	{

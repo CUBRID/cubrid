@@ -2317,8 +2317,11 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
     case REC_BIGONE:
       /* First overflow page is required. */
       assert (helper->forward_page != NULL);
-      /* Invariant: OOS does not coexist with REC_BIGONE. See matching assert in vacuum_heap_record. */
-      assert (!heap_recdes_contains_oos (&helper->record));
+      /* Invariant: OOS does not coexist with REC_BIGONE. See matching assert in vacuum_heap_record.
+       * helper->record is NOT populated for REC_BIGONE (the record body lives on overflow pages, and
+       * vacuum_heap_prepare_record only reads the MVCC header from there), so the OOS flag must be
+       * checked on helper->mvcc_header rather than by dereferencing the uninitialized helper->record. */
+      assert (!(MVCC_GET_FLAG (&helper->mvcc_header) & OR_MVCC_FLAG_HAS_OOS));
 
       /* Replace current insert MVCCID with MVCCID_ALL_VISIBLE. Header must remain the same size. */
       MVCC_SET_INSID (&helper->mvcc_header, MVCCID_ALL_VISIBLE);
@@ -2606,8 +2609,11 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       assert (!VFID_ISNULL (&helper->overflow_vfid));
       /* Invariant: OOS does not coexist with REC_BIGONE. If this ever fires, the REMOVE path
        * needs to reclaim the OOS records attached to the overflow record — add an oos_delete
-       * loop here. Until then, fail loud in debug so the regression is visible. */
-      assert (!heap_recdes_contains_oos (&helper->record));
+       * loop here. Until then, fail loud in debug so the regression is visible. helper->record is
+       * NOT populated for REC_BIGONE (the body lives on overflow pages — note this case logs
+       * helper->forward_recdes below, never helper->record), so the OOS flag must be checked on
+       * helper->mvcc_header rather than by dereferencing the uninitialized helper->record. */
+      assert (!(MVCC_GET_FLAG (&helper->mvcc_header) & OR_MVCC_FLAG_HAS_OOS));
 
       VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 
@@ -3839,8 +3845,17 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	      undo_recdes.data = undo_data + sizeof (INT16);
 	      undo_recdes.length = undo_data_size - sizeof (INT16);
 
+	      /* Only object-instance records (REC_HOME / REC_NEWHOME) carry an OOS-bearing VOT. Other
+	       * RVHF_UPDATE_NOTIFY_VACUUM undo images are forwarding pointers: heap_update_bigone and
+	       * heap_update_relocation's update_old_home log the old REC_BIGONE / REC_RELOCATION home
+	       * slot, which is just an 8-byte OID. Feeding such a record to heap_recdes_contains_oos
+	       * reinterprets the OID's pageid as an MVCC header — a pageid with bit 27 set spuriously
+	       * trips OR_MVCC_FLAG_HAS_OOS, after which heap_recdes_get_oos_oids walks a bogus VOT and
+	       * hits assert_release. Mirror the record-type guard the eager-delete paths already apply
+	       * (forward_recdes.type == REC_NEWHOME / home_recdes.type == REC_HOME). */
 	      VFID oos_vfid;
-	      if (heap_recdes_contains_oos (&undo_recdes)
+	      if ((undo_recdes.type == REC_HOME || undo_recdes.type == REC_NEWHOME)
+		  && heap_recdes_contains_oos (&undo_recdes)
 		  && vacuum_oos_vfid_cache_lookup (thread_p, oos_vfid_cache, &oos_vfid_cache_size,
 						   &oos_vfid_cache_evict_idx, &log_vacuum.vfid, &oos_vfid))
 		{
