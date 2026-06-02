@@ -8669,6 +8669,15 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	    }
 	}			/* if (qualified) */
 
+      /* single-fetch semi/anti inner: if THIS level's own predicate rejected the physical row,
+       * clear single_fetched so QPROC_SINGLE_INNER advances to the next physical row instead of
+       * stopping after the first non-qualifying row (leaf-deferral). Only applies to this level's
+       * own rejection, not to a downstream scan_ptr suppression (which is handled below). */
+      if (!qualified && XASL_IS_NL_SEMI_OR_ANTI (xasl) && xasl->curr_spec != NULL)
+	{
+	  xasl->curr_spec->s_id.single_fetched = false;
+	}
+
       if (qualified)
 	{
 	  if (xasl->memoize_storage)
@@ -8704,7 +8713,36 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	      xasl->next_scan_on = true;
 	      /* execute following scan procedure */
 	      xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore, next_scan_fnc + 1);
-	      if (xs_scan == S_END)
+	      if (XASL_IS_FLAGED (xasl->scan_ptr, XASL_NL_ANTIJOIN))
+		{
+		  /* anti join: emit this outer row once iff the inner produced no qualifying row.
+		   * inner uses single_fetch=QPROC_SINGLE_INNER, so it returns 0 or 1 row (no drain needed). */
+		  xasl->next_scan_on = false;
+		  if (xs_scan == S_ERROR)
+		    {
+		      return S_ERROR;
+		    }
+		  if (xs_scan == S_SUCCESS)
+		    {
+		      /* inner matched -> drain it to S_END so its page latches are released before the next
+		       * outer row scans (memoization is disabled for semi/anti inners, so no cache corruption). */
+		      while ((xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore,
+							  next_scan_fnc + 1)) == S_SUCCESS)
+			{
+			  ;
+			}
+		      if (xs_scan == S_ERROR)
+			{
+			  return S_ERROR;
+			}
+		      qualified = false;	/* inner matched -> anti suppresses this outer row */
+		    }
+		  else
+		    {
+		      return S_SUCCESS;	/* S_END: zero match -> emit outer (inner columns not projected) */
+		    }
+		}
+	      else if (xs_scan == S_END)
 		{
 		  xasl->next_scan_on = false;
 		  qualified = false;
@@ -9767,24 +9805,48 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				  qualified = (xasl->instnum_pred == NULL || ev_res == V_TRUE);
 				  if (qualified)
 				    {
-				      /* one iteration successfully completed */
-				      if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
+				      if (XASL_IS_FLAGED (xasl->scan_ptr, XASL_NL_ANTIJOIN))
 					{
-					  return S_ERROR;
+					  /* anti: a qualifying inner row means this outer is suppressed; record the
+					   * match and let the loop drain the inner to S_END (do not emit here). */
+					  scan_ptr_qualified = true;
 					}
-				      /* only one row is need for exists OP */
-				      if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
+				      else
 					{
-					  return S_SUCCESS;
+					  /* one iteration successfully completed */
+					  if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
+					    {
+					      return S_ERROR;
+					    }
+					  /* only one row is need for exists OP */
+					  if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
+					    {
+					      return S_SUCCESS;
+					    }
+					  scan_ptr_qualified = true;
 					}
-				      scan_ptr_qualified = true;
 				    }
 				}
 			    }
 
 			  if (xs_scan == S_END)
 			    {
-			      if (!scan_ptr_qualified)
+			      if (XASL_IS_FLAGED (xasl->scan_ptr, XASL_NL_ANTIJOIN))
+				{
+				  if (!scan_ptr_qualified)
+				    {
+				      /* anti zero-match: emit the outer row (inner columns are not projected) */
+				      if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
+					{
+					  return S_ERROR;
+					}
+				    }
+				  else
+				    {
+				      qualified = false;
+				    }
+				}
+			      else if (!scan_ptr_qualified)
 				{
 				  qualified = false;
 				}
@@ -16041,8 +16103,11 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      p_class_instance_lock_info->instances_locked = true;
 			    }
 			}
-		      if (spec_level == 0 && level >= 1 && !mvcc_select_lock_needed)
+		      if (spec_level == 0 && level >= 1 && !mvcc_select_lock_needed && !XASL_IS_NL_SEMI_OR_ANTI (xptr))
 			{
+			  /* semi/anti single-fetch inners are not memoized: the cache key is the join key,
+			   * but a per-outer first-match/zero-match result must not be reused across outer
+			   * rows that share a key. */
 			  if (new_memoize_storage (thread_p, xptr) != NO_ERROR)
 			    {
 			      qexec_clear_mainblock_iterations (thread_p, xasl);

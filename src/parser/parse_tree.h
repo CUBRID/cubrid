@@ -1192,7 +1192,9 @@ typedef enum
   PT_JOIN_LEFT_OUTER = 0x08,	/* 0000 1000 */
   PT_JOIN_RIGHT_OUTER = 0x10,	/* 0001 0000 */
   PT_JOIN_FULL_OUTER = 0x20,	/* 0010 0000 -- not used */
-  PT_JOIN_UNION = 0x40		/* 0100 0000 -- not used */
+  PT_JOIN_UNION = 0x40,		/* 0100 0000 -- not used */
+  PT_JOIN_SEMI = 0x80,		/* 1000 0000 -- first-match, single-fetch inner */
+  PT_JOIN_ANTI = 0x100		/* 1 0000 0000 -- zero-match */
 } PT_JOIN_TYPE;
 
 typedef UINT64 PT_HINT_ENUM;

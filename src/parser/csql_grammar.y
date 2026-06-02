@@ -899,6 +899,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> index_column_identifier_list
 %type <node> identifier_without_dot
 %type <node> identifier
+%type <node> identifier_core
 %type <node> index_column_identifier
 %type <node> string_literal_or_input_hv
 %type <node> escape_literal
@@ -1499,6 +1500,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> ADDDATE
 %token <cptr> AES
 %token <cptr> ANALYZE
+%token <cptr> ANTI
 %token <cptr> ARCHIVE
 %token <cptr> ARIA
 %token <cptr> AUTHID
@@ -1668,6 +1670,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> DISK_SIZE
 %token <cptr> ROW_NUMBER
 %token <cptr> SECTIONS
+%token <cptr> SEMI
 %token <cptr> SEMICOLON
 %token <cptr> SEPARATOR
 %token <cptr> SERIAL
@@ -5004,6 +5007,35 @@ join_table_spec
 			$$ = sopt;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
+	| SEMI JOIN table_spec join_condition
+		{{
+			/* SEMI/ANTI JOIN: explicit Trino-style keyword. ON rule (outer-ref conjunct) enforced in semantic check. */
+			PT_NODE *sopt = $3;
+
+			if (sopt)
+			  {
+			    sopt->info.spec.natural = false;
+			    sopt->info.spec.join_type = PT_JOIN_SEMI;
+			    sopt->info.spec.on_cond = $4;
+			  }
+			$$ = sopt;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			parser_restore_pseudoc ();
+		}}
+	| ANTI JOIN table_spec join_condition
+		{{
+			PT_NODE *sopt = $3;
+
+			if (sopt)
+			  {
+			    sopt->info.spec.natural = false;
+			    sopt->info.spec.join_type = PT_JOIN_ANTI;
+			    sopt->info.spec.on_cond = $4;
+			  }
+			$$ = sopt;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			parser_restore_pseudoc ();
+		}}
 	;
 
 join_condition
@@ -5342,16 +5374,29 @@ opt_as_identifier_attr_name
 			SET_CONTAINER_2 (ctn, NULL, NULL);
 			$$ = ctn;
 		}}
-	| opt_as identifier '(' identifier_list ')'
+	| AS identifier '(' identifier_list ')'
 		{{
 			container_2 ctn;
 			SET_CONTAINER_2 (ctn, $2, $4);
 			$$ = ctn;
 		}}
-	| opt_as identifier
+	| identifier_core '(' identifier_list ')'
+		{{
+			/* bare alias (no AS): identifier_core excludes SEMI/ANTI to avoid join keyword ambiguity */
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, $1, $3);
+			$$ = ctn;
+		}}
+	| AS identifier
 		{{
 			container_2 ctn;
 			SET_CONTAINER_2 (ctn, $2, NULL);
+			$$ = ctn;
+		}}
+	| identifier_core
+		{{
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, $1, NULL);
 			$$ = ctn;
 		}}
 	;
@@ -20593,6 +20638,18 @@ identifier_without_dot
 	;
 
 identifier
+	: identifier_core
+		{{
+			$$ = $1;
+		}}
+	| ANTI                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| SEMI                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	;
+
+/* identifier_core : non-reserved identifiers usable as a bare table alias.
+ * Excludes SEMI/ANTI so that `t1 SEMI/ANTI JOIN t2` is not misparsed as a bare alias.
+ * SEMI/ANTI remain valid identifiers elsewhere (table/column names) via `identifier`. */
+identifier_core
 	: IdName
 		{{
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);

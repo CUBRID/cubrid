@@ -2428,6 +2428,20 @@ qdump_print_xasl (xasl_node * xasl_p)
 	  nflag++;
 	}
 
+      if (XASL_IS_FLAGED (xasl_p, XASL_NL_SEMIJOIN))
+	{
+	  XASL_CLEAR_FLAG (xasl_p, XASL_NL_SEMIJOIN);
+	  fprintf (foutput, "%ssemi join", (nflag ? "|" : ""));
+	  nflag++;
+	}
+
+      if (XASL_IS_FLAGED (xasl_p, XASL_NL_ANTIJOIN))
+	{
+	  XASL_CLEAR_FLAG (xasl_p, XASL_NL_ANTIJOIN);
+	  fprintf (foutput, "%santi join", (nflag ? "|" : ""));
+	  nflag++;
+	}
+
       if (xasl_p->flag)
 	{
 	  fprintf (foutput, "%d%s", xasl_p->flag, (nflag ? "|" : ""));

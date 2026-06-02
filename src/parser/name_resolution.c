@@ -3677,6 +3677,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	    case PT_JOIN_INNER:
 	    case PT_JOIN_LEFT_OUTER:
 	    case PT_JOIN_RIGHT_OUTER:
+	    case PT_JOIN_SEMI:	/* ON predicate is a join predicate at the inner's level */
+	    case PT_JOIN_ANTI:
 	      parser_walk_tree (parser, node->info.spec.on_cond, pt_mark_location, &(node->info.spec.location), NULL,
 				NULL);
 	      break;
@@ -7515,6 +7517,12 @@ pt_resolve_star (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * attr)
 	      spec = spec->next;	/* skip to next spec */
 	      continue;
 	    }
+	}
+      else if (spec->info.spec.join_type == PT_JOIN_ANTI)
+	{
+	  /* SELECT * : ANTI inner columns are not part of the output (right columns forbidden for anti) */
+	  spec = spec->next;
+	  continue;
 	}
 
       /* spec_att := all attributes of this entity spec */

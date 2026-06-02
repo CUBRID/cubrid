@@ -3564,6 +3564,8 @@ qo_rewrite_innerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	case PT_JOIN_LEFT_OUTER:
 	case PT_JOIN_RIGHT_OUTER:
 	  /* case PT_JOIN_FULL_OUTER: */
+	case PT_JOIN_SEMI:	/* semi/anti are reorder barriers: RHS frozen, no explicit->implicit demotion across them */
+	case PT_JOIN_ANTI:
 	  info.found_outerjoin = true;
 	  break;
 	default:

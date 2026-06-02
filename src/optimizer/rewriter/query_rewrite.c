@@ -640,7 +640,8 @@ qo_rewrite_queries_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int
 	      if (spec != NULL)
 		{
 		  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER
-		      || spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER || spec->info.spec.join_type == PT_JOIN_INNER)
+		      || spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER || spec->info.spec.join_type == PT_JOIN_INNER
+		      || spec->info.spec.join_type == PT_JOIN_SEMI || spec->info.spec.join_type == PT_JOIN_ANTI)
 		    {
 		      node->next = spec->info.spec.on_cond;
 		      spec->info.spec.on_cond = node;

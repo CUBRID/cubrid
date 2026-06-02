@@ -450,6 +450,12 @@ mq_is_outer_join_spec (PARSER_CONTEXT * parser, PT_NODE * spec)
       return true;
     }
 
+  if (spec->info.spec.join_type == PT_JOIN_SEMI || spec->info.spec.join_type == PT_JOIN_ANTI)
+    {
+      /* the inner of a semi/anti join is a frozen boundary; treat as outer-joined so it is not view-merged across it */
+      return true;
+    }
+
   spec = spec->next;
   while (spec)
     {
@@ -470,6 +476,8 @@ mq_is_outer_join_spec (PARSER_CONTEXT * parser, PT_NODE * spec)
 	case PT_JOIN_LEFT_OUTER:
 	case PT_JOIN_FULL_OUTER:	/* not used */
 	case PT_JOIN_UNION:	/* not used */
+	case PT_JOIN_SEMI:	/* a following semi/anti join does not outer-join an earlier spec */
+	case PT_JOIN_ANTI:
 	  break;
 #endif
 	}
@@ -519,6 +527,8 @@ mq_is_right_outer_join_spec (PARSER_CONTEXT * parser, PT_NODE * spec)
 	case PT_JOIN_LEFT_OUTER:
 	case PT_JOIN_FULL_OUTER:	/* not used */
 	case PT_JOIN_UNION:	/* not used */
+	case PT_JOIN_SEMI:	/* semi/anti are not right-outer joins */
+	case PT_JOIN_ANTI:
 	  break;
 #endif
 	}
@@ -7893,6 +7903,8 @@ mq_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 		case PT_JOIN_INNER:
 		case PT_JOIN_LEFT_OUTER:
 		case PT_JOIN_RIGHT_OUTER:
+		case PT_JOIN_SEMI:	/* ON predicate is a join predicate at the inner's level */
+		case PT_JOIN_ANTI:
 		  parser_walk_tree (parser, on_cond, mq_mark_location, &(spec->info.spec.location), NULL, NULL);
 		  break;
 		  /* case PT_JOIN_FULL_OUTER: not supported */

@@ -1980,6 +1980,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 
 334 An attribute of virtual class cannot set column's visibility.
 335 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set visibility.
+336 Column '%1$s' of the ANTI JOIN inner table cannot be referenced.
+337 SEMI/ANTI JOIN requires a join predicate that references the outer (left) side.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME

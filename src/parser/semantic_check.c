@@ -213,6 +213,7 @@ static PT_NODE *pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * 
 static PT_NODE *pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
 static void pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry);
+static void pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select);
 static int pt_normalize_path (PARSER_CONTEXT * parser, REFPTR (char, c));
 static int pt_json_str_codeset_normalization (PARSER_CONTEXT * parser, REFPTR (char, c));
 static int pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -10757,6 +10758,121 @@ pt_check_into_clause_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * qry, int
 }
 
 /*
+ * pt_semi_anti_ref_info - context for detecting column references to a spec
+ */
+typedef struct pt_semi_anti_ref_info PT_SEMI_ANTI_REF_INFO;
+struct pt_semi_anti_ref_info
+{
+  UINTPTR inner_id;		/* spec id of the semi/anti inner */
+  bool found_inner;		/* a reference to the inner spec was found */
+  bool found_outer;		/* a reference to some other (outer) spec was found */
+};
+
+/*
+ * pt_semi_anti_ref_pre () - walk helper: classify PT_NAME references as inner/outer
+ */
+static PT_NODE *
+pt_semi_anti_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_SEMI_ANTI_REF_INFO *info = (PT_SEMI_ANTI_REF_INFO *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node->node_type == PT_NAME && node->info.name.spec_id != 0)
+    {
+      if (node->info.name.spec_id == info->inner_id)
+	{
+	  info->found_inner = true;
+	}
+      else
+	{
+	  info->found_outer = true;
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_check_semi_anti_join () - enforce v1 SEMI/ANTI JOIN semantic rules:
+ *      (1) the ON predicate must reference the outer (left) side;
+ *      (2) ANTI inner columns may not be referenced outside the ANTI ON predicate.
+ *   return:  none
+ *   parser(in): the parser context
+ *   select(in): a PT_SELECT node
+ */
+static void
+pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
+{
+  PT_NODE *spec;
+
+  if (select == NULL || select->node_type != PT_SELECT)
+    {
+      return;
+    }
+
+  for (spec = select->info.query.q.select.from; spec != NULL; spec = spec->next)
+    {
+      if (spec->info.spec.join_type != PT_JOIN_SEMI && spec->info.spec.join_type != PT_JOIN_ANTI)
+	{
+	  continue;
+	}
+
+      /* (1) ON predicate must reference the outer side (>=1 conjunct referencing a non-inner spec) */
+      {
+	PT_SEMI_ANTI_REF_INFO info;
+	info.inner_id = spec->info.spec.id;
+	info.found_inner = false;
+	info.found_outer = false;
+
+	if (spec->info.spec.on_cond != NULL)
+	  {
+	    (void) parser_walk_tree (parser, spec->info.spec.on_cond, pt_semi_anti_ref_pre, &info, NULL, NULL);
+	  }
+
+	if (spec->info.spec.on_cond == NULL || !info.found_outer)
+	  {
+	    PT_ERRORm (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SEMI_ANTI_JOIN_NEEDS_OUTER_PRED);
+	    continue;
+	  }
+      }
+
+      /* (2) ANTI inner columns may not be referenced outside the ANTI ON predicate */
+      if (spec->info.spec.join_type == PT_JOIN_ANTI)
+	{
+	  PT_SEMI_ANTI_REF_INFO info;
+	  PT_NODE *targets[6];
+	  int i;
+
+	  info.inner_id = spec->info.spec.id;
+	  info.found_inner = false;
+	  info.found_outer = false;
+
+	  targets[0] = select->info.query.q.select.list;
+	  targets[1] = select->info.query.q.select.where;
+	  targets[2] = select->info.query.q.select.group_by;
+	  targets[3] = select->info.query.q.select.having;
+	  targets[4] = select->info.query.order_by;
+	  targets[5] = select->info.query.q.select.connect_by;
+
+	  for (i = 0; i < 6 && !info.found_inner; i++)
+	    {
+	      if (targets[i] != NULL)
+		{
+		  (void) parser_walk_tree (parser, targets[i], pt_semi_anti_ref_pre, &info, NULL, NULL);
+		}
+	    }
+
+	  if (info.found_inner)
+	    {
+	      PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ANTI_JOIN_RHS_NOT_ALLOWED,
+			  spec->info.spec.range_var ? spec->info.spec.range_var->info.name.original : "");
+	    }
+	}
+    }
+}
+
+/*
  * pt_check_into_clause () - check arity of any into_clause
  *                           equals arity of query
  *   return:  none
@@ -11233,6 +11349,8 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	}
 
       pt_check_into_clause (parser, node);
+
+      pt_check_semi_anti_join (parser, node);
 
       if (node->info.query.q.select.with_increment)
 	{
