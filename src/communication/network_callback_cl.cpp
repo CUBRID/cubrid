@@ -21,7 +21,8 @@
 #include "network_interface_cl.h" /* net_client_send_data */
 #include "method_callback.hpp"
 
-static unsigned int xs_method_eid [METHOD_MAX_RECURSION_DEPTH];
+// +1 (one more slot): method_error need this when ER_SP_TOO_MANY_NESTED_CALL occurs in method_dispatch
+static unsigned int xs_method_eid [METHOD_MAX_RECURSION_DEPTH + 1];
 
 std::queue <cubmem::extensible_block> &
 xs_get_data_queue ()
@@ -34,7 +35,7 @@ xs_get_data_queue ()
 bool
 xs_is_in_method_rids (unsigned short rid)
 {
-  for (int i = 0; i < METHOD_MAX_RECURSION_DEPTH ; i++)
+  for (int i = 0; i <= METHOD_MAX_RECURSION_DEPTH ; i++)
     {
       unsigned int method_eid = xs_method_eid[i];
       if (method_eid)
@@ -52,14 +53,14 @@ xs_is_in_method_rids (unsigned short rid)
 void
 xs_set_method_eid (int idx, unsigned int eid)
 {
-  assert (idx < METHOD_MAX_RECURSION_DEPTH);
+  assert (idx <= METHOD_MAX_RECURSION_DEPTH);
   xs_method_eid [idx] = eid;
 }
 
 unsigned int
 xs_get_method_eid (int idx)
 {
-  assert (idx < METHOD_MAX_RECURSION_DEPTH);
+  assert (idx <= METHOD_MAX_RECURSION_DEPTH);
   return xs_method_eid [idx];
 }
 
@@ -68,7 +69,7 @@ xs_queue_send ()
 {
   int error = NO_ERROR;
   int idx = tran_get_libcas_depth () - 1;
-  assert (idx < METHOD_MAX_RECURSION_DEPTH);
+  assert (idx <= METHOD_MAX_RECURSION_DEPTH);
   int eid = xs_get_method_eid (idx);
 
   if (!xs_get_data_queue().empty())
