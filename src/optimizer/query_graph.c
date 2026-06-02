@@ -8145,7 +8145,9 @@ qo_generate_transitive_join_terms (QO_ENV * env)
     {
       QO_SEGMENT *rs = QO_ENV_SEG (env, ti);
       while (QO_SEG_EQ_ROOT (rs))
-	rs = QO_SEG_EQ_ROOT (rs);
+	{
+	  rs = QO_SEG_EQ_ROOT (rs);
+	}
       root_arr[ti] = QO_SEG_IDX (rs);
     }
 
