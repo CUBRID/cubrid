@@ -12526,9 +12526,28 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
     {
       if (docreate == true)
 	{
+	  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+
 	  /* START A TOP SYSTEM OPERATION */
 	  log_sysop_start (thread_p);
 	  if (oos_create_file (thread_p, *oos_vfid) != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      goto exit_on_error;
+	    }
+
+	  /* Apply TDE to the new OOS file atomically with its creation.
+	   * The class may have been created with `encrypt`, in which case the
+	   * heap and heap-overflow files already carry a TDE algorithm; the OOS
+	   * file must match so >512B variable values do not land on disk in
+	   * plaintext. Pattern mirrors heap_ovf_find_vfid (heap_file.c:6586). */
+	  if (heap_get_class_tde_algorithm (thread_p, &heap_hdr->class_oid, &tde_algo) != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      goto exit_on_error;
+	    }
+
+	  if (file_apply_tde_algorithm (thread_p, oos_vfid, tde_algo) != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
 	      goto exit_on_error;
