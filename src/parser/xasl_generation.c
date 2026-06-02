@@ -4138,7 +4138,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	    {
 	      regu_dbval_type_init (aggregate_list->accumulator.value2, pt_node_to_db_type (tree));
 	    }
-	  aggregate_list->opr_dbtype = pt_node_to_db_type (tree->info.function.arg_list);
+	  aggregate_list->opr_dbtype = pt_node_to_db_type (arg_list);
 
 	  if (info->out_list && info->value_list && info->regu_list)
 	    {
