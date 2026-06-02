@@ -9145,6 +9145,35 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       break;
 
+    case PT_INDEX_CARDINALITY:
+    case PT_ESTIMATED_TABLE_ROWS:
+    case PT_ESTIMATED_AVG_ROW_LENGTH:
+    case PT_ESTIMATED_DATA_LENGTH:
+    case PT_ESTIMATED_DATA_FREE:
+      /* qualify a constant class name with the current schema; the server resolves it by the 'owner.name' form */
+      if (PT_IS_VALUE_NODE (arg1) && PT_IS_CHAR_STRING_TYPE (arg1->type_enum)
+	  && arg1->info.value.data_value.str != NULL)
+	{
+	  char realname[DB_MAX_IDENTIFIER_LENGTH];
+
+	  if (sm_user_specified_name ((const char *) PT_VALUE_GET_BYTES (arg1), realname,
+				      DB_MAX_IDENTIFIER_LENGTH) != NULL)
+	    {
+	      arg1->info.value.data_value.str = pt_append_bytes (parser, NULL, realname, strlen (realname));
+	      arg1->info.value.text = NULL;
+	      if (arg1->info.value.db_value.need_clear)
+		{
+		  pr_clear_value (&arg1->info.value.db_value);
+		}
+	      if (arg1->info.value.db_value_is_initialized)
+		{
+		  arg1->info.value.db_value_is_initialized = false;
+		  pt_value_to_db (parser, arg1);
+		}
+	    }
+	}
+      break;
+
     default:
       break;
     }
