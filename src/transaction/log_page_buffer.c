@@ -6028,6 +6028,15 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 
   LOG_CS_ENTER (thread_p);
 
+  if (cdc_find_lsa_in_progress () > 0)
+    {
+      /* A cdc_find_lsa() (flashback verify or CDC find) is mounting archives one by one; defer
+       * removal this cycle so an archive it is about to read is not deleted underneath it and
+       * trips assert (!LSA_ISNULL (&process_lsa)) in cdc_get_start_point_from_file(). */
+      LOG_CS_EXIT (thread_p);
+      return 0;
+    }
+
   if (!prm_get_bool_value (PRM_ID_FORCE_REMOVE_LOG_ARCHIVES))
     {
 #if defined(SERVER_MODE)
@@ -6144,17 +6153,6 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 		      assert (false);
 		    }
 		}
-	      else
-		{
-		  /* Precise pageid not declared yet (window between flashback_initialize and
-		   * flashback_set_min_log_pageid_to_keep).  Honor the conservative archive-number
-		   * reservation that flashback_initialize() installed while holding LOG_CS. */
-		  int flashback_min_arv_num = flashback_min_archive_num_to_keep ();
-		  if (flashback_min_arv_num >= 0)
-		    {
-		      last_arv_num_to_delete = MIN (last_arv_num_to_delete, flashback_min_arv_num);
-		    }
-		}
 	    }
 	}
 
@@ -6246,6 +6244,14 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
+  if (cdc_find_lsa_in_progress () > 0)
+    {
+      /* A cdc_find_lsa() (flashback verify or CDC find) is mounting archives one by one; defer
+       * removal this cycle so an archive it is about to read is not deleted underneath it and
+       * trips assert (!LSA_ISNULL (&process_lsa)) in cdc_get_start_point_from_file(). */
+      return;
+    }
+
   /* Close any log archives that are opened */
   if (log_Gl.archive.vdes != NULL_VOLDES)
     {
@@ -6322,17 +6328,6 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
 	      _er_log_debug (ARG_FILE_LINE,
 			     "FLASHBACK : first log pageid is %d, first archive log number is %d, last_deleted_arv_num is %d",
 			     flashback_first_pageid, min_arv_required_for_flashback, last_deleted_arv_num);
-	    }
-	  else
-	    {
-	      /* Precise pageid not declared yet (window between flashback_initialize and
-	       * flashback_set_min_log_pageid_to_keep).  Honor the conservative archive-number
-	       * reservation that flashback_initialize() installed while holding LOG_CS. */
-	      int flashback_min_arv_num = flashback_min_archive_num_to_keep ();
-	      if (flashback_min_arv_num >= 0)
-		{
-		  last_deleted_arv_num = MIN (last_deleted_arv_num, flashback_min_arv_num - 1);
-		}
 	    }
 	}
     }
