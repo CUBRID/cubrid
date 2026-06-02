@@ -606,7 +606,7 @@ static int qexec_prepare_table_sampling (THREAD_ENTRY * thread_p, ACCESS_SPEC_TY
 
 static int qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				     bool * empty_result);
-static XASL_NODE *qexec_determine_fixed_scan_xasl (XASL_NODE * xasl);
+static void qexec_setup_fixed_scan (XASL_NODE * xasl, bool force_select_lock);
 static int qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					     UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info);
 static DEL_LOB_INFO *qexec_create_delete_lob_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
@@ -15309,75 +15309,99 @@ qexec_execute_dblink_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STAT
 }
 
 /*
- * qexec_determine_fixed_scan_xasl () - Determine which XASL node is eligible for fixed heap scan.
- *   return: the innermost TARGET_CLASS XASL node that should use fixed scan, or NULL if fixed scan is not allowed.
- *   xasl(in): top-level XASL node
+ * qexec_setup_fixed_scan () - Decide and apply fixed heap scan flags for every access spec in the pipeline.
+ *   xasl(in/out): top-level XASL node; specp->fixed_scan is written on every spec reachable via scan_ptr,
+ *                 spec_list and merge_spec.
+ *   force_select_lock(in): true if the top-level select forces instance locking (e.g. selupd reevaluation)
  *
  * Fixed scan keeps the last fetched heap page latched between rows (PEEK mode), avoiding repeated fix/unfix overhead.
- * It is disabled when: composite locking is required, any index scan is present, a correlated subquery exists,
- * a HAVING subquery exists, an uncorrelated subquery linked to a regu variable exists, or the XASL_NO_FIXED_SCAN
- * flag was set at compile time.
+ * Two independent paths can enable it for a spec:
+ *   - It is the innermost TARGET_CLASS in the pipeline (the natural fixed_scan_xasl). Disabled globally when
+ *     composite locking is required, any index scan is present, a correlated subquery exists, a HAVING subquery
+ *     exists, an uncorrelated subquery linked to a regu variable exists, or the XASL_NO_FIXED_SCAN flag was set
+ *     at compile time.
+ *   - The spec carries ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN (e.g. PT_HINT_NLJ_KEEP_HEAP_PAGE_PINNED or the
+ *     enable_heap_fixed_scan default). Honored only when no per-row locking happens anywhere in the pipeline
+ *     and there is no composite locking — otherwise an inner scan suspending on a row lock while an outer scan
+ *     keeps a page latched would violate lock_suspend ()'s no-perm-latch invariant (CBRD-26840). The natural
+ *     fixed_scan_xasl stays safe under locking because it releases its own page during the lock retry.
  */
-static XASL_NODE *
-qexec_determine_fixed_scan_xasl (XASL_NODE * xasl)
+static void
+qexec_setup_fixed_scan (XASL_NODE * xasl, bool force_select_lock)
 {
   XASL_NODE *xptr;
+  ACCESS_SPEC_TYPE *spec_ptr[2];
   ACCESS_SPEC_TYPE *specp;
   XASL_NODE *fixed_scan_xasl = NULL;
   bool has_index_scan = false;
+  bool scan_needs_obj_lock = force_select_lock;
+  bool composite_lock = COMPOSITE_LOCK (xasl->scan_op_type);
+  bool force_fixed_scan_allowed;
+  int spec_level;
 
-  if (COMPOSITE_LOCK (xasl->scan_op_type))
-    {
-      return NULL;
-    }
-
+  /* First pass: walk pipeline to find the innermost fixed-scan candidate, detect any per-row locks, and detect
+   * any index scan. Do not early-break on has_index_scan — a FOR_UPDATE spec may still appear deeper. */
   for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
     {
-      for (specp = xptr->spec_list; specp; specp = specp->next)
+      spec_ptr[0] = xptr->spec_list;
+      spec_ptr[1] = xptr->merge_spec;
+      for (spec_level = 0; spec_level < 2; ++spec_level)
 	{
-	  if (specp->type == TARGET_CLASS)
+	  for (specp = spec_ptr[spec_level]; specp; specp = specp->next)
 	    {
-	      fixed_scan_xasl = xptr;
-	      if (IS_ANY_INDEX_ACCESS (specp->access))
+	      if (ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_FOR_UPDATE))
 		{
-		  has_index_scan = true;
-		  break;
+		  scan_needs_obj_lock = true;
+		}
+	      if (specp->type == TARGET_CLASS && !has_index_scan)
+		{
+		  fixed_scan_xasl = xptr;
+		  if (IS_ANY_INDEX_ACCESS (specp->access))
+		    {
+		      has_index_scan = true;
+		    }
 		}
 	    }
 	}
-      if (has_index_scan)
+    }
+
+  /* Disqualify the natural fixed_scan_xasl if any global condition forbids fixed scan. */
+  if (composite_lock || has_index_scan || XASL_IS_FLAGED (xasl, XASL_NO_FIXED_SCAN) || xasl->dptr_list != NULL)
+    {
+      fixed_scan_xasl = NULL;
+    }
+  else if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.eptr_list != NULL)
+    {
+      fixed_scan_xasl = NULL;
+    }
+  else
+    {
+      for (xptr = xasl->aptr_list; xptr != NULL; xptr = xptr->next)
 	{
-	  break;
-	}
-      specp = xptr->merge_spec;
-      if (specp && specp->type == TARGET_CLASS)
-	{
-	  fixed_scan_xasl = xptr;
-	  if (IS_ANY_INDEX_ACCESS (specp->access))
+	  if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
 	    {
-	      has_index_scan = true;
+	      fixed_scan_xasl = NULL;
 	      break;
 	    }
 	}
     }
 
-  if (has_index_scan || XASL_IS_FLAGED (xasl, XASL_NO_FIXED_SCAN) || xasl->dptr_list != NULL)
+  force_fixed_scan_allowed = !composite_lock && !scan_needs_obj_lock;
+
+  /* Second pass: apply the decision to every spec. */
+  for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
     {
-      return NULL;
-    }
-  if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.eptr_list != NULL)
-    {
-      return NULL;
-    }
-  for (xptr = xasl->aptr_list; xptr != NULL; xptr = xptr->next)
-    {
-      if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
+      spec_ptr[0] = xptr->spec_list;
+      spec_ptr[1] = xptr->merge_spec;
+      for (spec_level = 0; spec_level < 2; ++spec_level)
 	{
-	  return NULL;
+	  for (specp = spec_ptr[spec_level]; specp; specp = specp->next)
+	    {
+	      specp->fixed_scan = (xptr == fixed_scan_xasl)
+		|| (force_fixed_scan_allowed && ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN));
+	    }
 	}
     }
-
-  return fixed_scan_xasl;
 }
 
 /*
@@ -15403,7 +15427,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   int multi_upddel = false;
   QFILE_LIST_MERGE_INFO *merge_infop;
   XASL_NODE *outer_xasl = NULL, *inner_xasl = NULL;
-  XASL_NODE *fixed_scan_xasl = NULL;
   bool iscan_oid_order, force_select_lock = false;
   int old_wait_msecs, wait_msecs;
   int error;
@@ -15923,7 +15946,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
       /* iterative processing is done only for XASL blocks that has access specification list blocks. */
       if (xasl->spec_list)
 	{
-	  fixed_scan_xasl = qexec_determine_fixed_scan_xasl (xasl);
+	  qexec_setup_fixed_scan (xasl, force_select_lock);
 
 	  /* open all the scans that are involved within the query, for SCAN blocks */
 	  for (xptr = xasl, level = 0; xptr; xptr = xptr->scan_ptr, level++)
@@ -15935,10 +15958,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		{
 		  for (specp = spec_ptr[spec_level]; specp; specp = specp->next)
 		    {
-		      specp->fixed_scan = (xptr == fixed_scan_xasl)
-			|| (ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN)
-			    && !COMPOSITE_LOCK (xasl->scan_op_type));
-
 		      /* set if the scan will be done in a grouped manner */
 		      if ((level == 0 && xptr->scan_ptr == NULL) && (QPROC_MAX_GROUPED_SCAN_CNT > 0))
 			{
