@@ -21537,10 +21537,8 @@ wrapup:
 	}
       TSC_ADD_TIMEVAL (new_stat->analytic_time, tv_diff);
 
-      new_stat->analytic_pages =
-	(perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) - old_sort_pages);
-      new_stat->analytic_ioreads =
-	(perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES) - old_sort_ioreads);
+      new_stat->analytic_pages = (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) - old_sort_pages);
+      new_stat->analytic_ioreads = (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES) - old_sort_ioreads);
 
       if (list_id != NULL)
 	{
