@@ -2178,7 +2178,9 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	      && plan->plan_un.join.join_method != QO_JOINMETHOD_IDX_JOIN))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
-		  "SEMI/ANTI JOIN inner must be placed as a single-fetch nested-loop inner");
+		  "SEMI/ANTI JOIN is not supported with this plan: the SEMI/ANTI operand must be the inner of a"
+		  " nested-loop or index join (hash/merge join and a SEMI/ANTI outer side are not supported)."
+		  " Try a USE_NL hint or rewrite the query.");
 	  xasl = NULL;
 	  break;
 	}

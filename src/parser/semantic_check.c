@@ -10764,12 +10764,34 @@ typedef struct pt_semi_anti_ref_info PT_SEMI_ANTI_REF_INFO;
 struct pt_semi_anti_ref_info
 {
   UINTPTR inner_id;		/* spec id of the semi/anti inner */
+  PT_NODE *from_list;		/* the local from-list; qualifies what counts as a local "outer" ref */
   bool found_inner;		/* a reference to the inner spec was found */
-  bool found_outer;		/* a reference to some other (outer) spec was found */
+  bool found_outer;		/* a reference to a local from-list spec other than the inner was found */
 };
 
 /*
- * pt_semi_anti_ref_pre () - walk helper: classify PT_NAME references as inner/outer
+ * pt_spec_id_in_from () - true iff spec_id belongs to a spec in the local from-list
+ */
+static bool
+pt_spec_id_in_from (PT_NODE * from_list, UINTPTR spec_id)
+{
+  PT_NODE *s;
+
+  for (s = from_list; s != NULL; s = s->next)
+    {
+      if (s->info.spec.id == spec_id)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
+ * pt_semi_anti_ref_pre () - walk helper: classify PT_NAME references as inner/outer.
+ *      "outer" is restricted to specs of the local from-list so that the semantic gate matches
+ *      the optimizer's local dep-set freeze; references reaching into a nested subquery (whose
+ *      specs are neither the inner nor a local from-list spec) do not count as a local outer.
  */
 static PT_NODE *
 pt_semi_anti_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
@@ -10784,7 +10806,7 @@ pt_semi_anti_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	{
 	  info->found_inner = true;
 	}
-      else
+      else if (pt_spec_id_in_from (info->from_list, node->info.name.spec_id))
 	{
 	  info->found_outer = true;
 	}
@@ -10818,10 +10840,13 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
 	  continue;
 	}
 
-      /* (1) ON predicate must reference the outer side (>=1 conjunct referencing a non-inner spec) */
+      /* (1) ON predicate must reference the local outer side (>=1 conjunct referencing a from-list
+       *     spec other than the inner). Restricting to the from-list keeps this gate aligned with
+       *     the optimizer's local dep-set freeze. */
       {
 	PT_SEMI_ANTI_REF_INFO info;
 	info.inner_id = spec->info.spec.id;
+	info.from_list = select->info.query.q.select.from;
 	info.found_inner = false;
 	info.found_outer = false;
 
@@ -10837,14 +10862,18 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
 	  }
       }
 
-      /* (2) ANTI inner columns may not be referenced outside the ANTI ON predicate */
+      /* (2) ANTI inner columns may not be referenced anywhere except the ANTI ON predicate itself.
+       *     Scan the select clauses AND every other from-list spec's ON / START WITH, so the right-col
+       *     prohibition cannot be bypassed through a sibling join's ON condition. */
       if (spec->info.spec.join_type == PT_JOIN_ANTI)
 	{
 	  PT_SEMI_ANTI_REF_INFO info;
-	  PT_NODE *targets[6];
+	  PT_NODE *targets[7];
+	  PT_NODE *other;
 	  int i;
 
 	  info.inner_id = spec->info.spec.id;
+	  info.from_list = select->info.query.q.select.from;
 	  info.found_inner = false;
 	  info.found_outer = false;
 
@@ -10854,13 +10883,24 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
 	  targets[3] = select->info.query.q.select.having;
 	  targets[4] = select->info.query.order_by;
 	  targets[5] = select->info.query.q.select.connect_by;
+	  targets[6] = select->info.query.q.select.start_with;
 
-	  for (i = 0; i < 6 && !info.found_inner; i++)
+	  for (i = 0; i < 7 && !info.found_inner; i++)
 	    {
 	      if (targets[i] != NULL)
 		{
 		  (void) parser_walk_tree (parser, targets[i], pt_semi_anti_ref_pre, &info, NULL, NULL);
 		}
+	    }
+
+	  /* other from-list specs' ON conditions (the ANTI spec's own ON is the one legal place) */
+	  for (other = select->info.query.q.select.from; other != NULL && !info.found_inner; other = other->next)
+	    {
+	      if (other == spec || other->info.spec.on_cond == NULL)
+		{
+		  continue;
+		}
+	      (void) parser_walk_tree (parser, other->info.spec.on_cond, pt_semi_anti_ref_pre, &info, NULL, NULL);
 	    }
 
 	  if (info.found_inner)
