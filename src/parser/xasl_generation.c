@@ -4048,12 +4048,9 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	  if (aggregate_list->function != PT_CUME_DIST && aggregate_list->function != PT_PERCENT_RANK)
 	    {
 
-	      if (aggregate_list->function != PT_GROUP_CONCAT && !(QPROC_IS_INTERPOLATION_FUNC (aggregate_list)))
-		{
-		  tree->info.function.arg_list =
-		    parser_walk_tree (parser, tree->info.function.arg_list, NULL, NULL, pt_substitute_groupby_ref_post,
-				      info);
-		}
+	      tree->info.function.arg_list =
+		parser_walk_tree (parser, tree->info.function.arg_list, NULL, NULL, pt_substitute_groupby_ref_post,
+				  info);
 	      regu_constant_list = pt_to_regu_variable_list (parser, arg_list, UNBOX_AS_VALUE, NULL, NULL);
 
 	      scan_regu_constant_list = pt_to_regu_variable_list (parser, arg_list, UNBOX_AS_VALUE, NULL, NULL);
@@ -28666,7 +28663,6 @@ static PT_NODE *
 pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   AGGREGATE_INFO *info = (AGGREGATE_INFO *) arg;
-  VAL_LIST *value_list;
   PT_NODE *out_name;
   bool already_exist = false;
 
@@ -28701,8 +28697,16 @@ pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
   if (!already_exist)
     {
       PT_NODE *pointer = pt_point_ref (parser, node);
-      value_list = pt_make_val_list (parser, node);
-      pointer->etc = value_list->valp->val;
+      DB_VALUE *dbval = NULL;
+
+      regu_alloc (dbval);
+      if (dbval == NULL)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return node;
+	}
+      pt_data_type_init_value (node, dbval);
+      pointer->etc = dbval;
       info->args = parser_append_node (pointer, info->args);
     }
 
