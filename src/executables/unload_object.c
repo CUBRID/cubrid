@@ -72,6 +72,7 @@
 
 #include "system_parameter.h"
 #include "schema_system_catalog_constants.h"
+#include "schema_information_schema_constants.h"
 #include "execute_schema.h"
 #include "network_interface_cl.h"
 #include "transaction_cl.h"
@@ -125,7 +126,6 @@ static const char *prohibited_classes[] = {
   CT_METHARG_NAME,
   CT_METHFILE_NAME,
   CT_QUERYSPEC_NAME,
-  CT_RESOLUTION_NAME,		/* currently, not implemented */
   CT_INDEX_NAME,
   CT_INDEXKEY_NAME,
   CT_CLASSAUTH_NAME,
@@ -140,6 +140,7 @@ static const char *prohibited_classes[] = {
   CT_SERVER_NAME,
   CT_SYNONYM_NAME,
   CT_HISTOGRAM_NAME,
+  CT_GLOBAL_TRAN_NAME,
   /* catalog vclasses */
   CTV_CLASS_NAME,
   CTV_SUPER_CLASS_NAME,
@@ -160,10 +161,31 @@ static const char *prohibited_classes[] = {
   CTV_STORED_PROC_ARGS_NAME,
   CTV_PARTITION_NAME,
   CTV_COLLATION_NAME,
+  CTV_USER_NAME,
+  CTV_AUTHORIZATION_NAME,
   CTV_CHARSET_NAME,
   CTV_SERVER_NAME,
   CTV_SYNONYM_NAME,
-  // CTV_HISTOGRAM_NAME, TODO: emit_histogram
+  /* information_schema views */
+  INFO_SCHEMA_COLUMN_PRIVILEGES_NAME,
+  INFO_SCHEMA_COLUMNS_NAME,
+  INFO_SCHEMA_DOMAINS_NAME,
+  INFO_SCHEMA_FOREIGN_SERVERS_NAME,
+  INFO_SCHEMA_KEY_COLUMN_USAGE_NAME,
+  INFO_SCHEMA_PARAMETERS_NAME,
+  INFO_SCHEMA_PARTITIONS_NAME,
+  INFO_SCHEMA_REFERENTIAL_CONS_NAME,
+  INFO_SCHEMA_ROUTINE_PRIVILEGES_NAME,
+  INFO_SCHEMA_ROUTINES_NAME,
+  INFO_SCHEMA_SCHEMATA_NAME,
+  INFO_SCHEMA_SEQUENCES_NAME,
+  INFO_SCHEMA_STATISTICS_NAME,
+  INFO_SCHEMA_SYNONYMS_NAME,
+  INFO_SCHEMA_TABLE_CONSTRAINTS_NAME,
+  INFO_SCHEMA_TABLE_PRIVILEGES_NAME,
+  INFO_SCHEMA_TABLES_NAME,
+  INFO_SCHEMA_TRIGGERS_NAME,
+  INFO_SCHEMA_VIEWS_NAME,
   NULL
 };
 
@@ -721,8 +743,8 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
   int64_t total_objects, failed_objects;
   LOG_LSA lsa;
   char unloadlog_filename[PATH_MAX];
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char *class_name = NULL;
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char class_name[DB_MAX_CLASS_LENGTH] = { '\0' };
   char owner_str[DB_MAX_USER_LENGTH + 4] = { '\0' };
   TEXT_OUTPUT *obj_out = NULL;
 
@@ -1625,8 +1647,8 @@ unload_writer_thread (void *param)
 int
 print_object_header_for_class (extract_context & ctxt, SM_CLASS * class_ptr, OID * class_oid, TEXT_OUTPUT * obj_out)
 {
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char *class_name = NULL;
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char class_name[DB_MAX_CLASS_LENGTH] = { '\0' };
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
   SM_ATTRIBUTE *attribute;
   int v, error = NO_ERROR;

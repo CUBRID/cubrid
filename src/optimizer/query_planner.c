@@ -53,6 +53,7 @@
 #include "regu_var.hpp"
 #include "query_planner_internal.h"
 #include "query_planner_constants.h"
+#include "histogram_cl.hpp"
 
 #define TEST_DUMP_PLAN_SCAN_COST 0
 #define TEST_DUMP_PLAN_SORT_COST 0
@@ -438,16 +439,6 @@ QO_PLAN_VTBL *all_vtbls[] = {
   &qo_set_follow_plan_vtbl,
   &qo_worst_plan_vtbl
 };
-
-#define DEFAULT_NULL_SELECTIVITY (double) 0.01
-#define DEFAULT_EXISTS_SELECTIVITY (double) 0.1
-#define DEFAULT_SELECTIVITY (double) 0.1
-#define DEFAULT_EQUAL_SELECTIVITY (double) 0.001
-#define DEFAULT_EQUIJOIN_SELECTIVITY (double) 0.001
-#define DEFAULT_COMP_SELECTIVITY (double) 0.1
-#define DEFAULT_BETWEEN_SELECTIVITY (double) 0.01
-#define DEFAULT_IN_SELECTIVITY (double) 0.01
-#define DEFAULT_RANGE_SELECTIVITY (double) 0.1
 
 static int qo_index_cardinality_with_dedup (QO_ENV * env, PT_NODE * attr, BITSET * seg_bitset);
 

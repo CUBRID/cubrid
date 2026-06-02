@@ -214,4 +214,6 @@ extern int do_find_stored_procedure_by_query (const char *name, char *buf, int b
 
 
 extern int do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constraint, DB_VALUE * key);
+extern int do_create_midxkey_from_values (const DB_VALUE * values[], int value_count, SM_CLASS_CONSTRAINT * constraint,
+					  DB_VALUE * key);
 #endif /* _EXECUTE_STATEMENT_H_ */

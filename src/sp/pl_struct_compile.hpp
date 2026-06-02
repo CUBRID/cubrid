@@ -68,6 +68,7 @@ namespace cubpl
     std::string register_stmt;
     std::string class_name;
     std::string java_signature;
+    int sql_data_access;
 
     int compiled_type;
     std::string compiled_code;
@@ -98,6 +99,7 @@ namespace cubpl
 
     int idx;
     int sql_type;
+    int has_table_access;
     std::string rewritten_query;
 
     std::vector <cubmethod::column_info> columns;

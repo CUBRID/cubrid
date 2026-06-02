@@ -634,6 +634,7 @@ histogram_extract_key (const DB_VALUE *db_val, hist::histogram_key &key)
       return true;
     }
     case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
     {
       DB_DATETIME *datetime = db_get_datetime (db_val);
       key.kind = hist::histogram_key_kind::u64;
@@ -641,7 +642,6 @@ histogram_extract_key (const DB_VALUE *db_val, hist::histogram_key &key)
       return true;
     }
     case DB_TYPE_DATETIMETZ:
-    case DB_TYPE_DATETIMELTZ:
     {
       DB_DATETIMETZ *datetimetz = db_get_datetimetz (db_val);
       key.kind = hist::histogram_key_kind::u64;

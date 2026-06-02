@@ -65,6 +65,7 @@
 #include "network_interface_cl.h"
 #include "parser.h"
 #include "trigger_manager.h"
+#include "oid.h"
 #include "storage_common.h"
 #include "transform.h"
 #include "system_parameter.h"
@@ -3129,6 +3130,8 @@ sm_mark_system_class_for_catalog (void)
     CT_SERVER_NAME,
     CTV_SERVER_NAME,
     CTV_HISTOGRAM_NAME,
+    CTV_USER_NAME,
+    CTV_AUTHORIZATION_NAME,
     NULL
   };
 
@@ -4442,10 +4445,13 @@ sm_update_all_statistics (bool with_fullscan)
 	}
     }
 
-  error = update_histogram_for_all_classes ();
-  if (error != NO_ERROR)
+  if (prm_get_bool_value (PRM_ID_UPDATE_STATISTICS_UPDATE_HISTOGRAM))
     {
-      return error;
+      error = update_histogram_for_all_classes ();
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
 
   return error;

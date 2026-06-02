@@ -127,7 +127,7 @@ enum
   /* property is not changed (not present in both current schema or new defition or present in both but not affected in
    * any way) */
   ATT_CHG_PROPERTY_UNCHANGED = 0x10,
-  /* property is changed (i.e.: both present in old an new , but different) */
+  /* property is changed (i.e.: both present in old and new , but different) */
   ATT_CHG_PROPERTY_DIFF = 0x20,
   /* type : precision increase : varchar(2) -> varchar (10) */
   ATT_CHG_TYPE_PREC_INCR = 0x100,
@@ -159,6 +159,7 @@ enum
   P_DEFFERABLE,			/* DEFFERABLE */
   P_ORDER,			/* ORDERING definition */
   P_AUTO_INCR,			/* has AUTO INCREMENT */
+  P_INVISIBLE,			/* is INVISIBLE COLUMN */
   P_CONSTR_FK,			/* constraint FOREIGN KEY */
   P_S_CONSTR_PK,		/* constraint PRIMARY KEY only on one single column : the checked attribute */
   P_M_CONSTR_PK,		/* constraint PRIMARY KEY on more columns, including checked attribute */
@@ -267,6 +268,7 @@ static int do_alter_change_default_cs_coll (PARSER_CONTEXT * const parser, PT_NO
 
 static int do_alter_change_tbl_comment (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 static int do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alter);
+static int do_cache_empty_histogram (MOP class_obj);
 
 static int do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attribute,
 				      PT_NODE * old_name_node, PT_NODE * constraints, SM_ATTR_PROP_CHG * attr_chg_prop,
@@ -433,6 +435,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 #endif
   SM_PARTITION_ALTER_INFO pinfo;
   bool partition_savepoint = false;
+  bool change_might_affect_visibility = false;
   const PT_ALTER_CODE alter_code = alter->info.alter.code;
 #if defined (ENABLE_RENAME_CONSTRAINT)
   SM_CONSTRAINT_FAMILY constraint_family;
@@ -650,6 +653,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      }
 	  }
 
+	change_might_affect_visibility = true;
 	break;
       }
 
@@ -780,6 +784,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  return error;
 	}
 
+      change_might_affect_visibility = true;
       break;
 
     case PT_MODIFY_ATTR_MTHD:
@@ -1333,6 +1338,21 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  goto alter_partition_fail;
 	}
       return error;
+    }
+
+  if (change_might_affect_visibility)
+    {
+      /* check if all of attributes are invisible. if is, abort */
+      error = smt_check_attribute_all_invisible (ctemplate, alter->info.alter.entity_name->info.name.original);
+      if (error != NO_ERROR)
+	{
+	  dbt_abort_class (ctemplate);
+	  if (partition_savepoint)
+	    {
+	      goto alter_partition_fail;
+	    }
+	  return error;
+	}
     }
 
   vclass = dbt_finish_class (ctemplate);
@@ -2443,7 +2463,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
   // for syncronizing created_time and updated_time
-  error = au_set_user_timestamps (user);
+  error = au_set_new_timestamps (user);
   if (error != NO_ERROR)
     {
       goto end;
@@ -2677,7 +2697,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
  */
   if (statement->info.alter_user.members == NULL)
     {
-      error = au_update_user_timestamp (user);
+      error = au_update_timestamps (user);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -3554,6 +3574,86 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 }
 
 /*
+ * do_cache_empty_histogram () - Initialize an empty histogram cache for a newly-created class.
+ * return : error code or NO_ERROR
+ * class_obj (in) : class object
+ */
+static int
+do_cache_empty_histogram (MOP class_obj)
+{
+  SM_CLASS *smclass = NULL;
+  HIST_STATS *histogram = NULL;
+  SM_ATTRIBUTE *att = NULL;
+  int error = NO_ERROR;
+  int i;
+
+  if (class_obj == NULL)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  error = au_fetch_class (class_obj, &smclass, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (smclass->histogram != NULL)
+    {
+      return NO_ERROR;
+    }
+
+  histogram = (HIST_STATS *) db_ws_alloc (sizeof (HIST_STATS));
+  if (histogram == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memset (histogram, 0, sizeof (HIST_STATS));
+
+  histogram->n_attrs = smclass->att_count;
+  if (histogram->n_attrs > 0)
+    {
+      histogram->histogram = (DB_VALUE **) db_ws_alloc (sizeof (DB_VALUE *) * histogram->n_attrs);
+      if (histogram->histogram == NULL)
+	{
+	  db_ws_free (histogram);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      memset (histogram->histogram, 0, sizeof (DB_VALUE *) * histogram->n_attrs);
+
+      histogram->null_frequency = (double *) db_ws_alloc (sizeof (double) * histogram->n_attrs);
+      if (histogram->null_frequency == NULL)
+	{
+	  db_ws_free (histogram->histogram);
+	  db_ws_free (histogram);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      for (i = 0; i < histogram->n_attrs; i++)
+	{
+	  histogram->histogram[i] = NULL;
+	  histogram->null_frequency[i] = -1.0;
+	}
+    }
+
+  smclass->histogram = histogram;
+
+  for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      DB_OBJECT *histogram_obj = NULL;
+      const char *attname = (const char *) att->header.name;
+      int warm_error = db_get_histogram (class_obj, attname, &histogram_obj);
+
+      if (warm_error != NO_ERROR)
+	{
+	  return warm_error;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * do_alter_index_rebuild() - Alters an index on a class (drop and create).
  *                            INDEX REBUILD statement ignores any type of the
  *                            qualifier, column, and filter predicate (filtered
@@ -4194,7 +4294,7 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
   /* update statistics for class first (only when creating/updating histograms) */
   if (do_histogram == DO_HISTOGRAM_CREATE)
     {
-      error = sm_update_statistics (obj, true);
+      error = sm_update_statistics (obj, with_fullscan);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -8061,6 +8161,20 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
 	}
     }
 
+  if (error == NO_ERROR && attribute->info.attr_def.attr_invisible == PT_ATTR_INVISIBLE)
+    {
+      /* skip finding attribute if att is already available */
+      if (att == NULL)
+	{
+	  error = smt_find_attribute (ctemplate, attr_name, 0, &att);
+	}
+
+      if (error == NO_ERROR)
+	{
+	  att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
+	}
+    }
+
   comment = attribute->info.attr_def.comment;
   if (error == NO_ERROR && comment != NULL)
     {
@@ -9796,6 +9910,13 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       goto error_exit;
     }
 
+  /* check if all of attributes are invisible. if is, abort */
+  error = smt_check_attribute_all_invisible (ctemplate, node->info.create_entity.entity_name->info.name.original);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
   class_obj = dbt_finish_class (ctemplate);
 
   if (class_obj == NULL)
@@ -9928,6 +10049,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      do_flush_class_mop = true;
 	    }
 	}
+      error = do_cache_empty_histogram (class_obj);
       break;
 
     default:
@@ -10598,6 +10720,13 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
     {
       COPY_OID (&class_oid, &(ctemplate->op->oid_info.oid));
       att_id = attr_chg_prop.att_id;
+    }
+
+  /* check if all of attributes are invisible. if is, abort */
+  error = smt_check_attribute_all_invisible (ctemplate, alter->info.alter.entity_name->info.name.original);
+  if (error != NO_ERROR)
+    {
+      goto exit;
     }
 
   /* force schema update to server */
@@ -11524,6 +11653,15 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	dbt_constrain_non_null (ctemplate, attr_name, (attr_chg_prop->name_space == ID_CLASS_ATTRIBUTE) ? 1 : 0, 0);
     }
 
+  /* add or drop INVISIBLE COLUMN option */
+  if (is_att_prop_set (attr_chg_prop->p[P_INVISIBLE], ATT_CHG_PROPERTY_GAINED))
+    {
+      found_att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
+    }
+  else if (is_att_prop_set (attr_chg_prop->p[P_INVISIBLE], ATT_CHG_PROPERTY_LOST))
+    {
+      found_att->flags &= ~(SM_ATTFLAG_INVISIBLE_COLUMN);
+    }
 
   /* delete or (re-)create auto_increment attribute's serial object */
   if (is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_DIFF)
@@ -11879,6 +12017,34 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 
   /* constraint CHECK : not supported, just mark as checked */
   attr_chg_properties->p[P_CONSTR_CHECK] = 0;
+
+  /* INVISIBLE COLUMN */
+  attr_chg_properties->p[P_INVISIBLE] = 0;
+  if (att->flags & SM_ATTFLAG_INVISIBLE_COLUMN)
+    {
+      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+  if (attr_def->info.attr_def.attr_invisible == PT_ATTR_INVISIBLE_UNSET)
+    {
+      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_UNCHANGED;
+    }
+  else if (attr_def->info.attr_def.attr_invisible == PT_ATTR_INVISIBLE)
+    {
+      /* PRESENT_NEW without PRESENT_OLD will be converted to GAINED by the consolidate properties loop below */
+      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
+    }
+  else if (attr_chg_properties->p[P_INVISIBLE] & ATT_CHG_PROPERTY_PRESENT_OLD)
+    {
+      /*
+       * attr_invisible == PT_ATTR_VISIBLE  -> NOW VISIBLE
+       * P_INVISIBLE & PRESENT_OLD          -> WAS INVISIBLE
+       *
+       * it changed from invisible to visible.
+       * This means the attribute has lost its invisible state
+       */
+      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_LOST;
+      attr_chg_properties->p[P_INVISIBLE] &= ~ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
 
   /* check for existing constraints: FK referenced, unique, non-unique idx */
   if (ctemplate->current != NULL)

@@ -538,6 +538,21 @@ namespace cubschema
 	    return ER_FAILED;
 	  }
 
+	/*
+	 * !!CAUTION!!
+	 * If [data_type] is DB_TYPE_OBJECT and [class_of] is NULL, it is a general object domain, but we have to check only user classes.
+	 * To do this, we use an walkaround in which we count the number of general object domains in existing system catalogs
+	 * and if the SELECT result is over this, we asuume that there are some general object domain in some user class.
+	 *
+	 * The number is hard-coded, so we MUST consider it when add or remove a general object domain in a system class.
+	 * If it is changed, we MUST also change the value of CNT_CATCLS_OBJECTS.
+	 *
+	 * We add a QA test case to confirm the number of general object domains in system classes, which will help notice this constraint
+	 * and this test case also has to be changed along if CNT_CATCLS_OBJECTS is changed.
+	 *
+	 * See CBRD-23983 and CBRD-25697 for the details.
+	 */
+
 	AU_DISABLE (au_save);
 
 	(void) snprintf (select_query, sizeof (select_query),

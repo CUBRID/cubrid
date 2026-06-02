@@ -49,18 +49,6 @@
 #include "histogram_cl.hpp"
 #include "query_planner_constants.h"
 
-/* Structural equivalence classes for expressions */
-typedef enum PRED_CLASS
-{
-  PC_ATTR,
-  PC_CONST,
-  PC_HOST_VAR,
-  PC_SUBQUERY,
-  PC_SET,
-  PC_OTHER,
-  PC_MULTI_ATTR
-} PRED_CLASS;
-
 double qo_or_selectivity (QO_ENV * env, double lhs_sel, double rhs_sel);
 double qo_and_selectivity (QO_ENV * env, double lhs_sel, double rhs_sel);
 double qo_not_selectivity (QO_ENV * env, double sel);
@@ -70,7 +58,6 @@ double qo_between_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 double qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 double qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 double qo_like_selectivity (QO_ENV * env, PT_NODE * pt_expr);
-PRED_CLASS qo_classify (PT_NODE * attr);
 int qo_index_cardinality (QO_ENV * env, PT_NODE * attr);
 
 #endif /* _QUERY_PLANNER_INTERNAL_H_ */

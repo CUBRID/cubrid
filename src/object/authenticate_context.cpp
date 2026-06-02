@@ -24,6 +24,7 @@
 
 #include "authenticate.h"
 #include "authenticate_cache.hpp" /* init_caches */
+#include "authenticate_constants.h"
 #include "boot_cl.h" /* BOOT_IS_CLIENT_RESTARTED () */
 
 #include "db.h"
@@ -50,6 +51,7 @@ authenticate_context::reset (void)
   current_user = nullptr;
   public_user = nullptr;
   dba_user = nullptr;
+  information_schema_user = nullptr;
   disable_auth_check = true;
   ignore_passwords = false;
 }
@@ -170,7 +172,8 @@ authenticate_context::start (void)
 
       public_user = au_find_user (AU_PUBLIC_USER_NAME);
       dba_user = au_find_user (AU_DBA_USER_NAME);
-      if (public_user == NULL || dba_user == NULL)
+      information_schema_user = au_find_user (AU_INFORMATION_SCHEMA_USER_NAME);
+      if (public_user == NULL || dba_user == NULL || information_schema_user == NULL)
 	{
 	  error = er_errid ();
 	  if (error != ER_LK_UNILATERALLY_ABORTED)
@@ -348,7 +351,7 @@ authenticate_context::install (void)
     }
 
   /*
-   * db_user
+   * _db_user
    */
 
   def = smt_edit_class_mop (user_cls, AU_ALTER);
@@ -359,11 +362,11 @@ authenticate_context::install (void)
   /* If the attribute configuration is changed, the CATCLS_USER_ATTR_IDX_NAME also be changed.
    *   - CATCLS_USER_ATTR_IDX_NAME is defined in the cubload::server_class_installer::locate_class () function.
    */
-  smt_add_attribute (def, "name", "string", (DB_DOMAIN *) 0);
+  smt_add_attribute (def, "name", "varchar(32)", (DB_DOMAIN *) 0); /* DB_MAX_USER_LENGTH */
   smt_add_attribute (def, "id", "integer", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "password", AU_PASSWORD_CLASS_NAME, (DB_DOMAIN *) 0);
-  smt_add_attribute (def, "direct_groups", "set of (db_user)", (DB_DOMAIN *) 0);
-  smt_add_attribute (def, "groups", "set of (db_user)", (DB_DOMAIN *) 0);
+  smt_add_attribute (def, "direct_groups", "set of (_db_user)", (DB_DOMAIN *) 0);
+  smt_add_attribute (def, "groups", "set of (_db_user)", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "authorization", AU_AUTH_CLASS_NAME, (DB_DOMAIN *) 0);
   smt_add_attribute (def, "triggers", "sequence of object", (DB_DOMAIN *) 0);
   smt_add_attribute (def, AU_USER_ATTR_IS_LOGINABLE, "integer", NULL);
@@ -401,7 +404,7 @@ authenticate_context::install (void)
   }
 
   /*
-   * db_password
+   * _db_password
    */
 
   def = smt_edit_class_mop (pass_cls, AU_ALTER);
@@ -410,6 +413,10 @@ authenticate_context::install (void)
       goto exit_on_error;
     }
   smt_add_attribute (def, "password", "string", (DB_DOMAIN *) 0);
+  smt_add_attribute (def, "created_time", "datetime", NULL);
+  smt_add_attribute (def, "updated_time", "datetime", NULL);
+  /* not yet implemented */
+  smt_add_attribute (def, "expire_time", "datetime", NULL);
 
   if (sm_update_class (def, NULL) != NO_ERROR || locator_create_heap_if_needed (pass_cls, false) == NULL)
     {
@@ -417,7 +424,7 @@ authenticate_context::install (void)
     }
 
   /*
-   * db_authorization
+   * _db_authorization
    */
 
   /*
@@ -476,28 +483,22 @@ authenticate_context::install (void)
   au_change_class_owner_including_partitions (pass_cls, current_user);
   au_change_class_owner_including_partitions (auth_cls, current_user);
 
-  /* create the PUBLIC user */
-  public_user = au_add_user (AU_PUBLIC_USER_NAME, &exists);
-  if (public_user == NULL)
+  if (create_public_user (root_cls) != NO_ERROR)
     {
       goto exit_on_error;
     }
 
-  /*
-   * grant browser access to the authorization objects
-   * note that the password class cannot be read by anyone except the DBA
-   */
-  au_grant (DB_OBJECT_CLASS, public_user, root_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
-  au_grant (DB_OBJECT_CLASS, public_user, user_cls, AU_SELECT, false);
-  au_grant (DB_OBJECT_CLASS, public_user, user_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
-  au_grant (DB_OBJECT_CLASS, public_user, auth_cls, AU_SELECT, false);
+  if (create_information_schema_user (root_cls, user_cls, auth_cls) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  if (set_system_users_as_created () != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
 
   au_add_method_check_authorization ();
-
-  if (set_system_user() != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
 
   AU_ENABLE (save);
 
@@ -513,6 +514,11 @@ exit_on_error:
     {
       au_drop_user (dba_user);
       dba_user = NULL;
+    }
+  if (information_schema_user != NULL)
+    {
+      au_drop_user (information_schema_user);
+      information_schema_user = NULL;
     }
   if (root != NULL)
     {
@@ -573,7 +579,8 @@ authenticate_context::perform_login (const char *name, const char *password, boo
     {
       public_user = au_find_user (AU_PUBLIC_USER_NAME);
       dba_user = au_find_user (AU_DBA_USER_NAME);
-      if (public_user == NULL || dba_user == NULL)
+      information_schema_user = au_find_user (AU_INFORMATION_SCHEMA_USER_NAME);
+      if (public_user == NULL || dba_user == NULL || information_schema_user == NULL)
 	{
 	  error = er_errid ();
 	  if (error != ER_LK_UNILATERALLY_ABORTED)
@@ -949,26 +956,90 @@ authenticate_context::pop_user (void)
 }
 
 int
-authenticate_context::set_system_user (void)
+authenticate_context::create_public_user (MOP root_cls)
+{
+  int exists = 0;
+
+  public_user = au_add_user (AU_PUBLIC_USER_NAME, &exists);
+  assert (exists == 0);
+  if (public_user == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /*
+   * grant browser access to the authorization objects
+   * note that the password class cannot be read by anyone except the DBA
+   */
+  au_grant (DB_OBJECT_CLASS, public_user, root_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
+
+  return NO_ERROR;
+}
+
+int
+authenticate_context::create_information_schema_user (MOP root_cls, MOP user_cls, MOP auth_cls)
+{
+  int exists = 0;
+
+  information_schema_user = au_add_user (AU_INFORMATION_SCHEMA_USER_NAME, &exists);
+  assert (exists == 0);
+  if (information_schema_user == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /*
+   * grant browser access to the authorization objects
+   * note that the password class cannot be read by anyone except the DBA
+   */
+  au_grant (DB_OBJECT_CLASS, information_schema_user, root_cls, AU_SELECT, false);
+  au_grant (DB_OBJECT_CLASS, information_schema_user, user_cls, AU_SELECT, false);
+  au_grant (DB_OBJECT_CLASS, information_schema_user, auth_cls, AU_SELECT, false);
+
+  if (disable_login (information_schema_user) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+int
+authenticate_context::set_system_users_as_created (void)
 {
   DB_VALUE value;
   int error = NO_ERROR;
 
   db_make_int (&value, true);
-
-  error = obj_set (Au_dba_user, AU_USER_ATTR_IS_SYSTEM_CREATED, &value);
-  if (error != NO_ERROR)
+  for (MOP user : get_system_users ())
     {
-      return error;
-    }
-
-  error = obj_set (Au_public_user, AU_USER_ATTR_IS_SYSTEM_CREATED, &value);
-  if (error != NO_ERROR)
-    {
-      return error;
+      error = obj_set (user, AU_USER_ATTR_IS_SYSTEM_CREATED, &value);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
 
   return NO_ERROR;
+}
+
+bool
+authenticate_context::is_system_user (MOP user)
+{
+  if (user == NULL)
+    {
+      return false;
+    }
+
+  for (MOP sys_user : get_system_users ())
+    {
+      if (ws_is_same_object (user, sys_user))
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
 
 int
@@ -1035,8 +1106,6 @@ au_add_method_check_authorization (void)
   smt_assign_argument_domain (def, "check_authorization", true, NULL, 1, "varchar(255)", (DB_DOMAIN *) 0);
   smt_assign_argument_domain (def, "check_authorization", true, NULL, 2, "integer", (DB_DOMAIN *) 0);
   sm_update_class (def, NULL);
-
-  au_grant (DB_OBJECT_CLASS, Au_public_user, auth, AU_EXECUTE, false);
 
   AU_ENABLE (save);
   return NO_ERROR;

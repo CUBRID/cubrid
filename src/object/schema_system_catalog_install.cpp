@@ -287,6 +287,7 @@ catcls_init (void)
   ADD_TABLE_DEFINITION (CT_SYNONYM_NAME, system_catalog_initializer::get_synonym ());
   ADD_TABLE_DEFINITION (CT_SERVER_NAME, system_catalog_initializer::get_server ());
   ADD_TABLE_DEFINITION (CT_HISTOGRAM_NAME, system_catalog_initializer::get_histogram());
+  ADD_TABLE_DEFINITION (CT_GLOBAL_TRAN_NAME, system_catalog_initializer::get_global_tran ());
 
   ADD_VIEW_DEFINITION (CTV_CLASS_NAME, system_catalog_initializer::get_view_class ());
   ADD_VIEW_DEFINITION (CTV_SUPER_CLASS_NAME, system_catalog_initializer::get_view_direct_super_class ());
@@ -307,6 +308,8 @@ catcls_init (void)
   ADD_VIEW_DEFINITION (CTV_SERIAL_NAME, system_catalog_initializer::get_view_serial ());
   ADD_VIEW_DEFINITION (CTV_HA_APPLY_INFO_NAME, system_catalog_initializer::get_view_ha_apply_info ());
   ADD_VIEW_DEFINITION (CTV_COLLATION_NAME, system_catalog_initializer::get_view_collation ());
+  ADD_VIEW_DEFINITION (CTV_USER_NAME, system_catalog_initializer::get_view_user ());
+  ADD_VIEW_DEFINITION (CTV_AUTHORIZATION_NAME, system_catalog_initializer::get_view_authorization ());
   ADD_VIEW_DEFINITION (CTV_CHARSET_NAME, system_catalog_initializer::get_view_charset ());
   ADD_VIEW_DEFINITION (CTV_SERVER_NAME, system_catalog_initializer::get_view_server ());
   ADD_VIEW_DEFINITION (CTV_SYNONYM_NAME, system_catalog_initializer::get_view_synonym ());
@@ -382,46 +385,6 @@ namespace cubschema
   /* NEW DEFINITION (CLASS) */
   /* ========================================================================== */
 
-
-// TODO: find right place
-// TODO: implement formatting utility function for std::string (like fmt library)
-  const inline std::string format_varchar (const int size)
-  {
-    std::string s ("varchar(");
-    s += std::to_string (size);
-    s += ")";
-    return s;
-  }
-
-  const inline std::string format_varbit (const int size)
-  {
-    std::string s ("bit varying(");
-    s += std::to_string (size);
-    s += ")";
-    return s;
-  }
-
-  const inline std::string format_numeric (const int prec, const int scale)
-  {
-    std::string s ("numeric(");
-    s += std::to_string (prec);
-    s += ",";
-    s += std::to_string (scale);
-    s += ")";
-    return s;
-  }
-
-  const inline std::string format_sequence (const std::string_view type)
-  {
-    std::string s ("sequence of");
-    if (!type.empty ())
-      {
-	s.append (" ");
-	s.append (type);
-      }
-    return s;
-  }
-
   system_catalog_definition
   system_catalog_initializer::get_class ()
   {
@@ -490,7 +453,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -512,9 +475,10 @@ namespace cubschema
       {"from_attr_name", format_varchar (255)},
       {"def_order", "integer"},
       {"data_type", "integer"},
-      {"default_value", format_varchar (255)},
+      {"default_value", format_varchar (DB_MAX_DEFAULT_EXPR_LENGTH)},
       {"domains", format_sequence (CT_DOMAIN_NAME)},
       {"is_nullable", "integer"},
+      {"flags", "integer"},
       {"comment", format_varchar (2048)}
     },
 // constraints
@@ -524,7 +488,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -558,7 +522,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -587,7 +551,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -615,7 +579,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -642,7 +606,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -668,7 +632,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -684,7 +648,8 @@ namespace cubschema
 		   // columns
     {
       {"class_of", CT_CLASS_NAME},
-      {"spec", format_varchar (1073741823)}
+      {"spec", format_varchar (1073741823)},
+      {"invalidated_time", "datetime"}
     },
 // constraints
     {
@@ -693,7 +658,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -737,7 +702,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -766,7 +731,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -786,7 +751,9 @@ namespace cubschema
       {"object_type", "integer"},
       {"object_of", "object"},
       {"auth_type", format_varchar (7)},
-      {"is_grantable", "integer"}
+      {"is_grantable", "integer"},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"}
     },
 // constraints
     {
@@ -796,7 +763,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializers
     nullptr
@@ -835,7 +802,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializers
     nullptr
@@ -865,7 +832,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -890,7 +857,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     catcls_add_data_type
@@ -930,7 +897,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -951,7 +918,7 @@ namespace cubschema
       {SP_ARG_ATTR_ARG_NAME, format_varchar (255)},
       {SP_ARG_ATTR_DATA_TYPE, "integer"},
       {SP_ARG_ATTR_MODE, "integer"},
-      {SP_ARG_ATTR_DEFAULT_VALUE, format_varchar (255)}, // TODO: CBRD-25261
+      {SP_ARG_ATTR_DEFAULT_VALUE, format_varchar (DB_MAX_DEFAULT_EXPR_LENGTH)}, // TODO: CBRD-25261
       {SP_ARG_ATTR_IS_OPTIONAL, "integer"}, // default_value is used only when is_optional is 1
       {SP_ARG_ATTR_COMMENT, format_varchar (1024)},
     },
@@ -962,7 +929,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -994,7 +961,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -1039,7 +1006,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -1094,7 +1061,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -1125,7 +1092,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     catcls_add_collations
@@ -1150,7 +1117,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     catcls_add_charsets
@@ -1174,7 +1141,8 @@ namespace cubschema
       // owner, grants
       Au_dba_user,
       {
-	{Au_public_user, AU_SELECT, false}
+	{Au_public_user, AU_SELECT, false},
+	{Au_information_schema_user, AU_SELECT, false}
       }
     },
 // initializer
@@ -1215,7 +1183,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -1234,13 +1202,15 @@ namespace cubschema
       {"host", format_varchar (255)},
       {"port", "integer"},
       {"db_name", format_varchar (255)},
+      /* dblink remote user_name; kept 255 for external DBMS compatibility */
       {"user_name", format_varchar (255)},
       {"password", "string"},
       {"properties", format_varchar (2048)},
       {"owner", AU_USER_CLASS_NAME},
       {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
-      {"updated_time", "datetime"}
+      {"updated_time", "datetime"},
+      {"invalidated_time", "datetime"}
     },
 // constraints
     {
@@ -1249,7 +1219,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -1288,6 +1258,34 @@ namespace cubschema
 
   }
 
+  system_catalog_definition
+  system_catalog_initializer::get_global_tran ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CT_GLOBAL_TRAN_NAME,
+		   // columns
+    {
+      {"gtrid", "integer"},
+      {"bqual", "integer"},
+      {"conn_url", format_varchar (512)},
+      {"user_name", format_varchar (32)},
+      {"password", format_varchar (256)},
+      {"state", format_varchar (1)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"}
+    },
+// constraints
+    {},
+// authorization
+    {
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+	   );
+  }
+
   /* ========================================================================== */
   /* NEW DEFINITION (VCLASS) */
   /* ========================================================================== */
@@ -1301,7 +1299,7 @@ namespace cubschema
 		   // columns
     {
       {"class_name", format_varchar (255)},
-      {"owner_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"class_type", format_varchar (6)},
       {"is_system_class", format_varchar (3)},
       {"tde_algorithm", format_varchar (32)},
@@ -1341,9 +1339,9 @@ namespace cubschema
 		   // columns
     {
       {"class_name", format_varchar (255)},
-      {"owner_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"super_class_name", format_varchar (255)},
-      {"super_owner_name", format_varchar (255)},
+      {"super_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_direct_super_class_spec ()}
     },
@@ -1372,9 +1370,12 @@ namespace cubschema
 		   // columns
     {
       {"vclass_name", format_varchar (255)},
-      {"owner_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"vclass_def", format_varchar (1073741823)},
       {"comment", format_varchar (2048)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      {"invalidated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_vclass_spec ()}
     },
@@ -1404,11 +1405,11 @@ namespace cubschema
     {
       {"attr_name", format_varchar (255)},
       {"class_name", format_varchar (255)},
-      {"owner_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"attr_type", format_varchar (8)},
       {"def_order", "integer"},
       {"from_class_name", format_varchar (255)},
-      {"from_owner_name", format_varchar (255)},
+      {"from_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"from_attr_name", format_varchar (255)},
       {"data_type", format_varchar (9)},
       {"prec", "integer"},
@@ -1416,9 +1417,11 @@ namespace cubschema
       {"charset", format_varchar (32)},
       {"collation", format_varchar (32)},
       {"domain_class_name", format_varchar (255)},
-      {"domain_owner_name", format_varchar (255)},
-      {"default_value", format_varchar (255)},
+      {"domain_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"default_value", format_varchar (DB_MAX_DEFAULT_EXPR_LENGTH)},
+      {"is_partition_key", format_varchar (3)},
       {"is_nullable", format_varchar (3)},
+      {"is_invisible", format_varchar (3)},
       {"comment", format_varchar (1024)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_attribute_spec ()}
@@ -1449,14 +1452,14 @@ namespace cubschema
     {
       {"attr_name", format_varchar (255)},
       {"class_name", format_varchar (255)},
-      {"owner_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"attr_type", format_varchar (8)},
       {"data_type", format_varchar (9)},
       {"prec", "integer"},
       {"scale", "integer"},
       {"code_set", "integer"},
       {"domain_class_name", format_varchar (255)},
-      {"domain_owner_name", format_varchar (255)},
+      {"domain_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_attr_setdomain_elm_spec ()}
     },
@@ -1486,10 +1489,10 @@ namespace cubschema
     {
       {"meth_name", format_varchar (255)},
       {"class_name", format_varchar (255)},
-      {"owner_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"meth_type", format_varchar (8)},
       {"from_class_name", format_varchar (255)},
-      {"from_owner_name", format_varchar (255)},
+      {"from_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"from_meth_name", format_varchar (255)},
       {"func_name", format_varchar (255)},
       // query specs
@@ -1521,7 +1524,7 @@ namespace cubschema
     {
       {"meth_name", format_varchar (255)},
       {"class_name", format_varchar (255)},
-      {"owner_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"meth_type", format_varchar (8)},
       {"index_of", "integer"},
       {"data_type", format_varchar (9)},
@@ -1529,7 +1532,7 @@ namespace cubschema
       {"scale", "integer"},
       {"code_set", "integer"},
       {"domain_class_name", format_varchar (255)},
-      {"domain_owner_name", format_varchar (255)},
+      {"domain_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_method_arg_spec ()}
     },
@@ -1559,7 +1562,7 @@ namespace cubschema
     {
       {"meth_name", format_varchar (255)},
       {"class_name", format_varchar (255)},
-      {"owner_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"meth_type", format_varchar (8)},
       {"index_of", "integer"},
       {"data_type", format_varchar (9)},
@@ -1567,7 +1570,7 @@ namespace cubschema
       {"scale", "integer"},
       {"code_set", "integer"},
       {"domain_class_name", format_varchar (255)},
-      {"domain_owner_name", format_varchar (255)},
+      {"domain_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_meth_arg_setdomain_elm_spec ()}
     },
@@ -1596,10 +1599,10 @@ namespace cubschema
 		   // columns
     {
       {"class_name", format_varchar (255)},
-      {"owner_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"path_name", format_varchar (255)},
       {"from_class_name", format_varchar (255)},
-      {"from_owner_name", format_varchar (255)},
+      {"from_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_meth_file_spec ()}
     },
@@ -1631,14 +1634,14 @@ namespace cubschema
       {"is_unique", format_varchar (3)},
       {"is_reverse", format_varchar (3)},
       {"class_name", format_varchar (255)},
-      {"owner_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"key_count", "integer"},
       {"is_primary_key", format_varchar (3)},
       {"is_foreign_key", format_varchar (3)},
       {"filter_expression", format_varchar (1073741823)},
       {"have_function", format_varchar (3)},
       {"status", format_varchar (255)},
-      {"referential_index_class_owner_name", format_varchar (255)},
+      {"referential_index_class_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"referential_index_class_name", format_varchar (255)},
       {"referential_index_name", format_varchar (255)},
       {"delete_rule", format_varchar (32)},
@@ -1678,7 +1681,7 @@ namespace cubschema
     {
       {"index_name", format_varchar (255)},
       {"class_name", format_varchar (255)},
-      {"owner_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"key_attr_name", format_varchar (255)},
       {"key_order", "integer"},
       {"asc_desc", format_varchar (4)},
@@ -1715,13 +1718,15 @@ namespace cubschema
 		   CTV_AUTH_NAME,
 		   // columns
     {
-      {"grantor_name", format_varchar (255)},
-      {"grantee_name", format_varchar (255)},
+      {"grantor_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"grantee_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"object_type", format_varchar (16)},
       {"object_name", format_varchar (255)},
-      {"owner_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"auth_type", format_varchar (7)},
       {"is_grantable", format_varchar (3)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_auth_spec ()}
     },
@@ -1750,9 +1755,9 @@ namespace cubschema
 		   // columns
     {
       {"trigger_name", format_varchar (255)},
-      {"owner_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"target_class_name", format_varchar (255)},
-      {"target_owner_name", format_varchar (255)},
+      {"target_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"target_attr_name", format_varchar (255)},
       {"target_attr_type", format_varchar (8)},
       {"action_type", "integer"},
@@ -1788,7 +1793,7 @@ namespace cubschema
 		   // columns
     {
       {"class_name", format_varchar (255)},
-      {"owner_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"partition_name", format_varchar (255)},
       {"partition_class_name", format_varchar (255)},
       {"partition_type", format_varchar (32)},
@@ -1796,6 +1801,8 @@ namespace cubschema
       {"partition_values", "sequence of"},
       {"class_partition_type", format_varchar (32)},
       {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_partition_spec ()}
     },
@@ -1832,10 +1839,9 @@ namespace cubschema
       {"authid", format_varchar (16)},
       {"is_deterministic", format_varchar (3)},
       {"target", format_varchar (4096)},
-      {"owner", format_varchar (256)},
+      {"owner", format_varchar (DB_MAX_USER_LENGTH)},
       {"code", format_varchar (1073741823)},
-// TODO: implement sql_data_access
-//       {"sql_data_access", format_varchar (17)},
+      {"sql_data_access", format_varchar (17)},
       {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"},
@@ -1867,14 +1873,14 @@ namespace cubschema
 		   // columns
     {
       {"sp_name", format_varchar (255)},
-      {"owner_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"pkg_name", format_varchar (255)},
       {"index_of", "integer"},
       {"arg_name", format_varchar (255)},
       {"data_type", format_varchar (16)},
       {"mode", format_varchar (6)},
       {"is_optional", format_varchar (3)},
-      {"default_value", format_varchar (255)},
+      {"default_value", format_varchar (DB_MAX_DEFAULT_EXPR_LENGTH)},
       {"comment", format_varchar (1024)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_args_spec ()}
@@ -1903,8 +1909,10 @@ namespace cubschema
 		   CTV_SERIAL_NAME,
 		   // columns
     {
+      /* kept for compatibility */
+      {"unique_name", format_varchar (255)},
       {"name", format_varchar (255)},
-      {"owner", format_varchar (255)},
+      {"owner", format_varchar (DB_MAX_USER_LENGTH)},
       {"current_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
       {"increment_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
       {"max_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
@@ -2023,6 +2031,80 @@ namespace cubschema
   }
 
   system_catalog_definition
+  system_catalog_initializer::get_view_user ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_USER_NAME,
+		   // columns
+    {
+      {"name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"id", "integer"},
+      /* kept for compatibility; always NULL in view */
+      {"password", AU_PASSWORD_CLASS_NAME},
+      {"direct_groups", format_set (format_varchar (DB_MAX_USER_LENGTH))},
+      {"groups", format_set (format_varchar (DB_MAX_USER_LENGTH))},
+      /* kept for compatibility; always NULL in view */
+      {"authorization", AU_AUTH_CLASS_NAME},
+      {"triggers", format_sequence ("object")},
+      {"is_loginable", format_varchar (3)},
+      {"is_system_created", format_varchar (3)},
+      {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      // class methods (only find_user and login are exposed in view)
+      {attribute_kind::CLASS_METHOD, "find_user", "au_find_user_method"},
+      {attribute_kind::CLASS_METHOD, "login", "au_login_method"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_user_spec ()}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false}
+      }
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_view_authorization ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_AUTHORIZATION_NAME,
+		   // columns
+    {
+      /* "owner_name" by convention, but "owner" for compatibility */
+      {"owner", format_varchar (DB_MAX_USER_LENGTH)},
+      {"grants", "sequence of"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_authorization_spec ()}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
   system_catalog_initializer::get_view_charset ()
   {
     return system_catalog_definition (
@@ -2062,10 +2144,10 @@ namespace cubschema
 		   // columns
     {
       {"synonym_name", format_varchar (255)},
-      {"synonym_owner_name", format_varchar (255)},
+      {"synonym_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"is_public_synonym", format_varchar (3)},	/* access_modifier */
       {"target_name", format_varchar (255)},
-      {"target_owner_name", format_varchar (255)},
+      {"target_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"comment", format_varchar (2048)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"},
@@ -2100,13 +2182,15 @@ namespace cubschema
       {"host", format_varchar (255)},
       {"port", "integer"},
       {"db_name", format_varchar (255)},
+      /* dblink remote user_name; kept 255 for external DBMS compatibility */
       {"user_name", format_varchar (255)},
       // {"password", format_varchar(256)}
       {"properties", format_varchar (2048)},
-      {"owner", format_varchar (255)},
+      {"owner", format_varchar (DB_MAX_USER_LENGTH)},
       {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"},
+      {"invalidated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_server_spec ()}
     },
