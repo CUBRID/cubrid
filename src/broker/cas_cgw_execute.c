@@ -366,23 +366,6 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	}
     }
 
-  if (srv_handle->is_prepared == FALSE)
-    {
-      err_code = cgw_sql_prepare (cgw_handle->hdbc, srv_handle, (SQLCHAR *) srv_handle->sql_stmt);
-
-      if (err_code != SQL_SUCCESS && err_code != SQL_SUCCESS_WITH_INFO)
-	{
-	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-	  goto execute_error;
-	}
-
-      err_code = cgw_set_commit_mode (cgw_handle->hdbc, srv_handle->auto_commit_mode);
-      if (err_code != NO_ERROR)
-	{
-	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-	  goto execute_error;
-	}
-    }
   srv_handle->is_from_current_transaction = true;
 
   err_code = cgw_set_commit_mode (cgw_handle->hdbc, srv_handle->auto_commit_mode);
@@ -585,6 +568,12 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
       return ERROR_INFO_SET (CAS_ER_NO_MORE_RESULT_SET, CAS_ERROR_INDICATOR);
     }
 
+  err_code = cgw_get_handle (&cgw_handle);
+  if (err_code < 0)
+    {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      goto fetch_error;
+    }
 
   if (srv_handle->is_cursor_open == false)
     {
