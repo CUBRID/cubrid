@@ -18900,7 +18900,7 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
    *   attr_list present  → explicit columns (INSERT INTO remote (c1,c2) SELECT ...)
    *                         → remote_attr_names[i] = attr_list column names
    *   attr_list absent   → positional mapping (INSERT INTO remote SELECT ...)
-   *                         → remote_attr_names = NULL; T3 uses INSERT INTO t VALUES (?,?)
+   *                         → remote_attr_names = NULL; dblink_insert_open uses INSERT INTO t VALUES (?,?)
    */
   if (statement->info.insert.attr_list != NULL)
     {
@@ -18953,7 +18953,7 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
-      /* positional insert: T3 builds INSERT INTO t VALUES (?,?) */
+      /* positional insert: dblink_insert_open builds INSERT INTO t VALUES (?,?) */
       insert->remote_attr_names = NULL;
       insert->remote_num_attrs = 0;
     }
