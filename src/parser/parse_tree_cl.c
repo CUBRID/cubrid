@@ -12226,6 +12226,34 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, ")");
       break;
 
+    case PT_BFILE_TO_BLOB:
+      q = pt_append_nulstring (parser, q, " bfile_to_blob(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_BLOB_TO_BFILE:
+      q = pt_append_nulstring (parser, q, " blob_to_bfile(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_CFILE_TO_CLOB:
+      q = pt_append_nulstring (parser, q, " cfile_to_clob(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_CLOB_TO_CFILE:
+      q = pt_append_nulstring (parser, q, " clob_to_cfile(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
     case PT_TYPEOF:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_nulstring (parser, q, " typeof(");
