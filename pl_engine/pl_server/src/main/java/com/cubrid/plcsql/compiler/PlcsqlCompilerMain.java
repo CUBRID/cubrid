@@ -32,6 +32,7 @@ package com.cubrid.plcsql.compiler;
 
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.data.CompileInfo;
+import com.cubrid.plcsql.compiler.antlrgen.PlcLexer;
 import com.cubrid.plcsql.compiler.antlrgen.PlcParser;
 import com.cubrid.plcsql.compiler.ast.Unit;
 import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
@@ -78,6 +79,25 @@ public class PlcsqlCompilerMain {
             CompileInfo err = new CompileInfo(-1, 0, 0, "internal error");
             return err;
         }
+    }
+
+    public static void checkSyntax(String code) {
+
+        CharStream input = CharStreams.fromString(code);
+        PlcLexer lexer = new PlcLexerEx(input);
+
+        SyntaxErrorIndicator lei = new SyntaxErrorIndicator(false);
+        lexer.removeErrorListeners(); // This removes unwanted console output
+        lexer.addErrorListener(lei);
+
+        CommonTokenStream tokens = new CommonTokenStream(lexer);
+        PlcParser parser = new PlcParser(tokens);
+
+        SyntaxErrorIndicator sei = new SyntaxErrorIndicator(false);
+        parser.removeErrorListeners(); // This removes unwanted console output
+        parser.addErrorListener(sei);
+
+        parser.sql_script();
     }
 
     // ------------------------------------------------------------------
@@ -279,11 +299,11 @@ public class PlcsqlCompilerMain {
 
     private static class SyntaxErrorIndicator extends BaseErrorListener {
 
-        final boolean forParser;
+        final boolean cutVariablePart;
 
-        public SyntaxErrorIndicator(boolean forParser) {
+        public SyntaxErrorIndicator(boolean cutVariablePart) {
             super();
-            this.forParser = forParser;
+            this.cutVariablePart = cutVariablePart;
         }
 
         @Override
@@ -296,7 +316,7 @@ public class PlcsqlCompilerMain {
                 RecognitionException e) {
 
             // throw SyntaxError at the first syntax error
-            String errMsg = forParser ? cutExpectingClause(msg) : msg;
+            String errMsg = cutVariablePart ? cutExpectingClause(msg) : msg;
             throw new SyntaxError(line, charPositionInLine + 1, errMsg);
         }
     }
