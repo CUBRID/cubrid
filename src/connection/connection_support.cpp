@@ -420,6 +420,13 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 	{
 	  if (errno == EINTR)
 	    {
+#if !defined (SERVER_MODE)
+	      if (css_server_timeout_fn != NULL)
+		{
+		  css_server_timeout_fn ();
+		}
+#endif /* !SERVER_MODE */
+
 	      continue;
 	    }
 
