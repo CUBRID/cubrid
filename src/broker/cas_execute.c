@@ -1061,6 +1061,7 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
   int num_markers;
   T_BROKER_VERSION client_version = req_info->client_version;
   int result_cache_lifetime;
+  T_CGW_HANDLE *cgw_handle = NULL;
 
   if ((flag & CCI_PREPARE_UPDATABLE) && (flag & CCI_PREPARE_HOLDABLE))
     {
@@ -1077,7 +1078,7 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
       goto prepare_error;
     }
 
-  err_code = cgw_get_handle (&srv_handle->cgw_handle);
+  err_code = cgw_get_handle (&cgw_handle);
   if (err_code < 0)
     {
       err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -1118,7 +1119,7 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
   srv_handle->num_markers = num_markers;
   srv_handle->prepare_flag = flag;
 
-  err_code = cgw_sql_prepare ((SQLCHAR *) sql_stmt);
+  err_code = cgw_sql_prepare (cgw_handle->hdbc, srv_handle, (SQLCHAR *) sql_stmt);
   if (err_code < 0)
     {
       err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -1142,8 +1143,7 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
   net_buf_cp_int (net_buf, num_markers, NULL);
 
   err_code =
-    cgw_prepare_column_list_info_set (srv_handle->cgw_handle->hstmt, flag, srv_handle->stmt_type, client_version,
-				      net_buf);
+    cgw_prepare_column_list_info_set (srv_handle->cgw_hstmt, flag, srv_handle->stmt_type, client_version, net_buf);
 
   if (err_code < 0)
     {
@@ -1349,10 +1349,18 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
   SQLLEN row_count = 0;
   T_BROKER_VERSION client_version = req_info->client_version;
   ODBC_BIND_INFO *bind_data_list = NULL;
+  T_CGW_HANDLE *cgw_handle = NULL;
+
+  err_code = cgw_get_handle (&cgw_handle);
+  if (err_code < 0)
+    {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      goto execute_error;
+    }
 
   if (srv_handle->is_prepared == FALSE)
     {
-      err_code = cgw_sql_prepare ((SQLCHAR *) srv_handle->sql_stmt);
+      err_code = cgw_sql_prepare (cgw_handle->hdbc, srv_handle, (SQLCHAR *) srv_handle->sql_stmt);
 
       if (err_code < 0)
 	{
@@ -1365,7 +1373,7 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
   if (num_bind > 0)
     {
-      err_code = cgw_make_bind_value (srv_handle->cgw_handle, num_bind, argc, argv, &bind_data_list);
+      err_code = cgw_make_bind_value (cgw_handle->hdbc, srv_handle, num_bind, argc, argv, &bind_data_list);
       if (err_code < 0)
 	{
 	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -1373,33 +1381,16 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	}
     }
 
-  if (srv_handle->is_prepared == FALSE)
-    {
-      err_code = cgw_sql_prepare ((SQLCHAR *) srv_handle->sql_stmt);
-
-      if (err_code != SQL_SUCCESS && err_code != SQL_SUCCESS_WITH_INFO)
-	{
-	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-	  goto execute_error;
-	}
-
-      err_code = cgw_set_commit_mode (srv_handle->cgw_handle->hdbc, srv_handle->auto_commit_mode);
-      if (err_code != NO_ERROR)
-	{
-	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-	  goto execute_error;
-	}
-    }
   srv_handle->is_from_current_transaction = true;
 
-  err_code = cgw_set_commit_mode (srv_handle->cgw_handle->hdbc, srv_handle->auto_commit_mode);
+  err_code = cgw_set_commit_mode (cgw_handle->hdbc, srv_handle->auto_commit_mode);
   if (err_code != NO_ERROR)
     {
       err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
       goto execute_error;
     }
 
-  err_code = cgw_execute (srv_handle, &row_count);
+  err_code = cgw_execute (cgw_handle->hdbc, srv_handle, &row_count);
   if (err_code < 0)
     {
       err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -1476,7 +1467,7 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	  net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
 
 	  err_code =
-	    cgw_prepare_column_list_info_set (srv_handle->cgw_handle->hstmt, flag, srv_handle->stmt_type,
+	    cgw_prepare_column_list_info_set (srv_handle->cgw_hstmt, flag, srv_handle->stmt_type,
 					      client_version, net_buf);
 	  if (err_code != NO_ERROR)
 	    {
@@ -5837,16 +5828,23 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
   SQLSMALLINT num_cols;
   SQLLEN total_row_count = 0;
   T_BROKER_VERSION client_version = req_info->client_version;
+  T_CGW_HANDLE *cgw_handle = NULL;
 
   if (result_set_idx < 0 || result_set_idx > 1)
     {
       return ERROR_INFO_SET (CAS_ER_NO_MORE_RESULT_SET, CAS_ERROR_INDICATOR);
     }
 
+  err_code = cgw_get_handle (&cgw_handle);
+  if (err_code < 0)
+    {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      goto fetch_error;
+    }
 
   if (srv_handle->is_cursor_open == false)
     {
-      err_code = cgw_execute (srv_handle, &row_count);
+      err_code = cgw_execute (cgw_handle->hdbc, srv_handle, &row_count);
       if (err_code < 0)
 	{
 	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -5862,7 +5860,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	  goto fetch_error;
 	}
 
-      err_code = cgw_execute (srv_handle, &row_count);
+      err_code = cgw_execute (cgw_handle->hdbc, srv_handle, &row_count);
       if (err_code < 0)
 	{
 	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -5872,7 +5870,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 
   net_buf_cp_int (net_buf, (int) total_row_count, &num_tuple_msg_offset);
 
-  err_code = cgw_get_num_cols (srv_handle->cgw_handle->hstmt, &num_cols);
+  err_code = cgw_get_num_cols (srv_handle->cgw_hstmt, &num_cols);
 
   if (err_code < 0)
     {
@@ -5888,7 +5886,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	  col_binding_buff = NULL;
 	}
 
-      err_code = cgw_col_bindings (srv_handle->cgw_handle->hstmt, num_cols, &col_binding, &col_binding_buff);
+      err_code = cgw_col_bindings (srv_handle->cgw_hstmt, num_cols, &col_binding, &col_binding_buff);
       if (err_code < 0)
 	{
 	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -5922,7 +5920,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	}
       else
 	{
-	  err_code = cgw_row_data (srv_handle->cgw_handle->hstmt);
+	  err_code = cgw_row_data (srv_handle->cgw_hstmt);
 	  if (err_code < 0)
 	    {
 	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -5984,7 +5982,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	  break;
 	}
 
-      err_code = cgw_row_data (srv_handle->cgw_handle->hstmt);
+      err_code = cgw_row_data (srv_handle->cgw_hstmt);
       if (err_code < 0)
 	{
 	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
