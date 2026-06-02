@@ -294,18 +294,14 @@ cgw_execute (SQLHDBC hdbc, T_SRV_HANDLE * srv_handle, SQLLEN * row_count)
       goto ODBC_ERROR;
     }
 
-  if (srv_handle->num_markers > 0)
+  if (srv_handle->cgw_hstmt == NULL)
     {
       if (hdbc == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_DBC_HANDLE, 0);
 	  goto ODBC_ERROR;
 	}
-
-      if (srv_handle->cgw_hstmt == NULL)
-	{
-	  SQL_CHK_ERR (hdbc, SQL_HANDLE_DBC, err_code = SQLAllocHandle (SQL_HANDLE_STMT, hdbc, &srv_handle->cgw_hstmt));
-	}
+      SQL_CHK_ERR (hdbc, SQL_HANDLE_DBC, err_code = SQLAllocHandle (SQL_HANDLE_STMT, hdbc, &srv_handle->cgw_hstmt));
     }
 
   SQL_CHK_ERR (srv_handle->cgw_hstmt, SQL_HANDLE_STMT, err_code = SQLExecute (srv_handle->cgw_hstmt));
