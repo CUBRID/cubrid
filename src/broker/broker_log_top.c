@@ -163,11 +163,11 @@ main (int argc, char *argv[])
 
   if (mode_tran)
     {
-      error = log_top_tran (argc, argv, arg_start);
+      error = log_top_tran (total_files, target_files, 0);
     }
   else
     {
-      error = log_top_query (argc, argv, arg_start);
+      error = log_top_query (total_files, target_files, 0);
     }
 
 main_finalize:
@@ -421,6 +421,16 @@ log_top_query (int argc, char *argv[], int arg_start)
     {
       filename = argv[i];
 
+      struct stat st;
+#if defined(WINDOWS)
+      if (stat (filename, &st) != 0 || (st.st_mode & S_IFMT) != S_IFREG)
+#else
+      if (stat (filename, &st) != 0 || !S_ISREG (st.st_mode))
+#endif
+	{
+	  continue;
+	}
+
       if (output_mode == OUTPUT_SPLIT)
 	{
 #ifdef MT_MODE
@@ -445,12 +455,6 @@ log_top_query (int argc, char *argv[], int arg_start)
 #if defined(WINDOWS)
       fp = fopen (filename, "rb");
 #else
-      struct stat st;
-      if (stat (filename, &st) != 0 || !S_ISREG (st.st_mode))
-	{
-	  continue;
-	}
-
       fp = fopen (filename, "r");
 #endif
       if (fp == NULL)
@@ -1401,7 +1405,7 @@ get_basename (const char *path)
 #if defined(WINDOWS)
   const char *basename_win = strrchr (path, '\\');
 
-  if (basename_win > basename)
+  if (basename == NULL || (basename_win != NULL && basename_win > basename))
     {
       basename = basename_win;
     }
@@ -1475,7 +1479,7 @@ compare_by_brokername (const void *a, const void *b)
   return strcmp (prefix_a, prefix_b);
 }
 
-#define MAX_LOG_FILES (4096 * 2)
+#define MAX_LOG_FILES 20000
 
 static int
 collect_log_files_from_conf (char ***out_argv)
@@ -1499,7 +1503,7 @@ collect_log_files_from_conf (char ***out_argv)
   int s1_len = strlen (SUFFIX_SQL_LOG);
   int s2_len = strlen (SUFFIX_SQL_LOG_BAK);
 
-  for (int i = 0; i < num_broker; i++)
+  for (int i = 0; i < num_broker && total_captured < MAX_LOG_FILES; i++)
     {
       char strict_prefix[256];
 
@@ -1528,6 +1532,7 @@ collect_log_files_from_conf (char ***out_argv)
 
 	  if (total_captured >= MAX_LOG_FILES)
 	    {
+	      fprintf (stderr, "Log file collection has stopped : exceeded %d\n", MAX_LOG_FILES);
 	      break;
 	    }
 

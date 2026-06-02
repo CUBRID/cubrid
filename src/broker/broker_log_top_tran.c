@@ -87,6 +87,16 @@ log_top_tran (int argc, char *argv[], int arg_start)
     {
       filename = argv[i];
 
+      struct stat st;
+#if defined(WINDOWS)
+      if (stat (filename, &st) != 0 || (st.st_mode & S_IFMT) != S_IFREG)
+#else
+      if (stat (filename, &st) != 0 || !S_ISREG (st.st_mode))
+#endif
+	{
+	  continue;
+	}
+
       if (output_mode == OUTPUT_SPLIT)
 	{
 	  get_brokername_from_filename (filename, curr_prefix, sizeof (curr_prefix));
@@ -110,12 +120,6 @@ log_top_tran (int argc, char *argv[], int arg_start)
 #if defined(WINDOWS)
       fp = fopen (filename, "rb");
 #else
-      struct stat st;
-      if (stat (filename, &st) != 0 || !S_ISREG (st.st_mode))
-	{
-	  continue;
-	}
-
       fp = fopen (filename, "r");
 #endif
       if (fp == NULL)
