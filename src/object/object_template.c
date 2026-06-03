@@ -509,8 +509,8 @@ quick_validate (SM_VALIDATION * valid, DB_VALUE * value)
       break;
 
     case DB_TYPE_NUMERIC:
-      if (type == valid->last_type && DB_GET_NUMERIC_PRECISION (value) == valid->last_precision
-	  && DB_GET_NUMERIC_SCALE (value) == valid->last_scale)
+      if (type == valid->last_type && db_value_precision (value) == valid->last_precision
+	  && db_value_scale (value) == valid->last_scale)
 	{
 	  is_valid = 1;
 	}

@@ -568,7 +568,7 @@ histogram_extract_key (const DB_VALUE *db_val, hist::histogram_key &key)
 
     case DB_TYPE_NUMERIC:
       key.kind = hist::histogram_key_kind::dbl;
-      numeric_coerce_num_to_double (db_get_numeric (db_val), db_value_scale (db_val), &key.dbl);
+      numeric_coerce_num_to_double (db_val, db_get_numeric_scale (db_val, NULL), &key.dbl);
       return true;
 
     case DB_TYPE_BIT:

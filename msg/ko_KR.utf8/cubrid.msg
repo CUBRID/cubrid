@@ -1470,7 +1470,9 @@ $ LOADDB
 
 1372 콜백 처리 중에 에러가 발생했습니다. code(%1$d), msg(%2$s)
 
-1373 마지막 에러
+1373 주어진 scale %1$d는 유효하지 않습니다; %2$d 이상 %3$d 이하의 값이어야 합니다.
+
+1374 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1979,6 +1981,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 
 334 가상 클래스 속성은 visibility를 정의할 수 없습니다.
 335 '%1$s'은 CLASS 또는 SHARED 속성 컬럼입니다. 일반적인 컬럼에서 visibility를 정의할 수 있습니다.
+336 NUMERIC의 스케일 범위(-84부터 127)를 초과했습니다.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
