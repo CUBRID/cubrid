@@ -2445,7 +2445,7 @@ qdump_print_xasl (xasl_node * xasl_p)
 
       if (fl)
 	{
-	  fprintf (foutput, "%d%s", fl, (nflag ? "|" : ""));
+	  fprintf (foutput, "%s%d", (nflag ? "|" : ""), fl);
 	  nflag++;
 	}
 
