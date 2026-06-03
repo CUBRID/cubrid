@@ -138,6 +138,7 @@ static void qo_scan_fprint (QO_PLAN *, FILE *, int);
 static void qo_sort_fprint (QO_PLAN *, FILE *, int);
 static void qo_join_fprint (QO_PLAN *, FILE *, int);
 static void qo_hjoin_fprint (QO_PLAN *, FILE *, int);
+static PT_JOIN_TYPE qo_plan_semi_anti_join_type (QO_PLAN *);
 static void qo_follow_fprint (QO_PLAN *, FILE *, int);
 static void qo_worst_fprint (QO_PLAN *, FILE *, int);
 
@@ -3100,6 +3101,43 @@ qo_join_walk (QO_PLAN * plan, void (*child_fn) (QO_PLAN *, void *), void *child_
 }
 
 /*
+ * qo_plan_semi_anti_join_type () - return PT_JOIN_SEMI/PT_JOIN_ANTI if the inner
+ *      plan's representative scan node carries that join type, else PT_JOIN_NONE.
+ *      Used only for plan dump labelling; semi/anti are modelled structurally as
+ *      JOIN_INNER, so this recovers the real intent from the scan node spec.
+ *   return: PT_JOIN_TYPE
+ *   plan(in): the inner plan of an NL join
+ */
+static PT_JOIN_TYPE
+qo_plan_semi_anti_join_type (QO_PLAN * plan)
+{
+  PT_NODE *spec;
+
+  while (plan != NULL)
+    {
+      switch (plan->plan_type)
+	{
+	case QO_PLANTYPE_SCAN:
+	  spec = QO_NODE_ENTITY_SPEC (plan->plan_un.scan.node);
+	  if (spec != NULL && (spec->info.spec.join_type == PT_JOIN_SEMI || spec->info.spec.join_type == PT_JOIN_ANTI))
+	    {
+	      return spec->info.spec.join_type;
+	    }
+	  return PT_JOIN_NONE;
+	case QO_PLANTYPE_SORT:
+	  plan = plan->plan_un.sort.subplan;
+	  continue;
+	case QO_PLANTYPE_FOLLOW:
+	  plan = plan->plan_un.follow.head;
+	  continue;
+	default:
+	  return PT_JOIN_NONE;
+	}
+    }
+  return PT_JOIN_NONE;
+}
+
+/*
  * qo_join_fprint () -
  *   return:
  *   plan(in):
@@ -3112,6 +3150,19 @@ qo_join_fprint (QO_PLAN * plan, FILE * f, int howfar)
   switch (plan->plan_un.join.join_type)
     {
     case JOIN_INNER:
+      {
+	PT_JOIN_TYPE sa = qo_plan_semi_anti_join_type (plan->plan_un.join.inner);
+	if (sa == PT_JOIN_SEMI)
+	  {
+	    fputs (" (semi join)", f);
+	    break;
+	  }
+	if (sa == PT_JOIN_ANTI)
+	  {
+	    fputs (" (anti join)", f);
+	    break;
+	  }
+      }
       if (!bitset_is_empty (&(plan->plan_un.join.join_terms)))
 	{
 	  fputs (" (inner join)", f);
@@ -3654,6 +3705,19 @@ qo_hjoin_fprint (QO_PLAN * plan, FILE * f, int howfar)
   switch (plan->plan_un.join.join_type)
     {
     case JOIN_INNER:
+      {
+	PT_JOIN_TYPE sa = qo_plan_semi_anti_join_type (plan->plan_un.join.inner);
+	if (sa == PT_JOIN_SEMI)
+	  {
+	    fputs (" (semi join)", f);
+	    break;
+	  }
+	if (sa == PT_JOIN_ANTI)
+	  {
+	    fputs (" (anti join)", f);
+	    break;
+	  }
+      }
       fputs (" (inner join)", f);
       break;
 
@@ -12747,6 +12811,19 @@ qo_plan_join_print_json (QO_PLAN * plan)
   switch (plan->plan_un.join.join_type)
     {
     case JOIN_INNER:
+      {
+	PT_JOIN_TYPE sa = qo_plan_semi_anti_join_type (plan->plan_un.join.inner);
+	if (sa == PT_JOIN_SEMI)
+	  {
+	    type = "semi join";
+	    break;
+	  }
+	if (sa == PT_JOIN_ANTI)
+	  {
+	    type = "anti join";
+	    break;
+	  }
+      }
       if (!bitset_is_empty (&(plan->plan_un.join.join_terms)))
 	{
 	  type = "inner join";
@@ -13076,6 +13153,19 @@ qo_plan_join_print_text (FILE * fp, QO_PLAN * plan, int indent)
   switch (plan->plan_un.join.join_type)
     {
     case JOIN_INNER:
+      {
+	PT_JOIN_TYPE sa = qo_plan_semi_anti_join_type (plan->plan_un.join.inner);
+	if (sa == PT_JOIN_SEMI)
+	  {
+	    type = "semi join";
+	    break;
+	  }
+	if (sa == PT_JOIN_ANTI)
+	  {
+	    type = "anti join";
+	    break;
+	  }
+      }
       if (!bitset_is_empty (&(plan->plan_un.join.join_terms)))
 	{
 	  type = "inner join";
