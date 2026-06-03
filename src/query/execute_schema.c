@@ -143,6 +143,8 @@ enum
   ATT_CHG_TYPE_NOT_SUPPORTED_WITH_CFG = 0x2000,
   /* type : upgrade : not supported */
   ATT_CHG_TYPE_NOT_SUPPORTED = 0x4000,
+  /* type : numeric precision increase (scale unchanged) : numeric(5,2) -> numeric(10,2) - domain cast only */
+  ATT_CHG_TYPE_NUMERIC_PREC_INCR = 0x8000,
   /* property was not checked needs to be the highest value in enum */
   ATT_CHG_PROPERTY_NOT_CHECKED = 0x10000
 };
@@ -5771,10 +5773,26 @@ do_set_auto_increment (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const char
       return ER_AUTO_INCREMENT_SINGLE_COL_ONLY;
     }
 
+  /* AUTO_INCREMENT NUMERIC defaults to NUMERIC(38,0) for _db_serial consistency.
+   * Guard against buffer overrun in do_create_auto_increment_serial when the
+   * parser node carries DB_DEFAULT_NUMERIC_PRECISION (= float-numeric default,
+   * exceeds the fixed-numeric buffer). Idempotent: no-op if precision was
+   * already adjusted by an earlier validation step (e.g. line 10980). */
+  if (attribute->type_enum == PT_TYPE_NUMERIC
+      && attribute->data_type->info.data_type.precision == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      attribute->data_type->info.data_type.precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+    }
+
   error = do_create_auto_increment_serial (parser, &auto_increment_obj, ctemplate->name, attribute);
 
   if (error == NO_ERROR)
     {
+      if (TP_DOMAIN_TYPE ((*attr)->domain) == DB_TYPE_NUMERIC
+	  && (*attr)->domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  (*attr)->domain->precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+	}
       (*attr)->auto_increment = auto_increment_obj;
       (*attr)->flags |= SM_ATTFLAG_AUTO_INCREMENT;
     }
@@ -7904,10 +7922,10 @@ validate_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attribute, const b
 		{
 		case PT_TYPE_FLOAT:
 		case PT_TYPE_DOUBLE:
-		  if (p != DB_DEFAULT_PRECISION && (p < 0 || p > DB_MAX_NUMERIC_PRECISION))
+		  if (p != DB_DEFAULT_PRECISION && (p < 0 || p > DB_MAX_FIXED_NUMERIC_PRECISION))
 		    {
 		      PT_ERRORmf3 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INV_PREC, p, 0,
-				   DB_MAX_NUMERIC_PRECISION);
+				   DB_MAX_FIXED_NUMERIC_PRECISION);
 		    }
 		  break;
 
@@ -7916,7 +7934,7 @@ validate_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attribute, const b
 		      && (p < 0 || (p == 0 && check_zero_precision) || p > DB_MAX_NUMERIC_PRECISION))
 		    {
 		      PT_ERRORmf3 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INV_PREC, p, 0,
-				   DB_MAX_NUMERIC_PRECISION);
+				   DB_MAX_FIXED_NUMERIC_PRECISION);
 		    }
 		  break;
 
@@ -10714,8 +10732,9 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
       goto exit;
     }
 
-  is_srv_update_needed = ((change_mode == SM_ATTR_CHG_WITH_ROW_UPDATE || change_mode == SM_ATTR_CHG_BEST_EFFORT)
-			  && attr_chg_prop.name_space == ID_ATTRIBUTE) ? true : false;
+  is_srv_update_needed = (((change_mode == SM_ATTR_CHG_WITH_ROW_UPDATE || change_mode == SM_ATTR_CHG_BEST_EFFORT)
+			   && attr_chg_prop.name_space == ID_ATTRIBUTE)
+			  || is_att_prop_set (attr_chg_prop.p[P_TYPE], ATT_CHG_TYPE_NUMERIC_PREC_INCR)) ? true : false;
   if (is_srv_update_needed)
     {
       COPY_OID (&class_oid, &(ctemplate->op->oid_info.oid));
@@ -11503,7 +11522,8 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	{
 	  assert (is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_PROPERTY_UNCHANGED)
 		  || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_SET_CLS_COMPAT)
-		  || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_PREC_INCR));
+		  || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_PREC_INCR)
+		  || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_NUMERIC_PREC_INCR));
 	}
       else
 	{
@@ -11585,7 +11605,13 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	  break;
 
 	case PT_TYPE_NUMERIC:
-	  if (attribute->data_type->info.data_type.dec_precision == 0)
+	  if (attribute->data_type->info.data_type.precision == DB_DEFAULT_NUMERIC_PRECISION)
+	    {
+	      /* AUTO_INCREMENT NUMERIC defaults to NUMERIC(38,0) for _db_serial consistency */
+	      attribute->data_type->info.data_type.precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+	      break;
+	    }
+	  else if (attribute->data_type->info.data_type.dec_precision == 0)
 	    {
 	      break;
 	    }
@@ -11785,6 +11811,12 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	  assert_release (auto_increment_obj != NULL);
 	  if (found_att != NULL)
 	    {
+	      if (TP_DOMAIN_TYPE (found_att->domain) == DB_TYPE_NUMERIC
+		  && found_att->domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+		{
+		  /* AUTO_INCREMENT NUMERIC defaults to NUMERIC(38,0) for _db_serial consistency */
+		  found_att->domain->precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+		}
 	      found_att->auto_increment = auto_increment_obj;
 	      found_att->flags |= SM_ATTFLAG_AUTO_INCREMENT;
 	    }
@@ -12380,7 +12412,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 	{
 	  if (attr_db_domain->scale == att->domain->scale && attr_db_domain->precision > att->domain->precision)
 	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_PREC_INCR;
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NUMERIC_PREC_INCR;
 	    }
 	  else
 	    {
@@ -13454,6 +13486,7 @@ check_att_chg_allowed (const char *att_name, const PT_TYPE_ENUM t, const SM_ATTR
 		  || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_PSEUDO_UPGRADE)
 		  || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_UPGRADE)
 		  || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_PREC_INCR)
+		  || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_NUMERIC_PREC_INCR)
 		  || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_SET_CLS_COMPAT));
 	}
       else
@@ -13471,6 +13504,7 @@ check_att_chg_allowed (const char *att_name, const PT_TYPE_ENUM t, const SM_ATTR
 	    }
 	  else if (is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_PROPERTY_DIFF)
 		   && !(is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_PREC_INCR)
+			|| is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_NUMERIC_PREC_INCR)
 			|| is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_SET_CLS_COMPAT)))
 	    {
 	      error = ER_ALTER_CHANGE_TYPE_NOT_SUPP;

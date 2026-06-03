@@ -689,14 +689,6 @@ extern "C"
 #define SERVER_SESSION_CHCK  ((PRM_FOR_SESSION | PRM_FOR_SERVER) & ~PRM_CLIENT_SESSION)	// 0x00000104
 #define PRM_SERVER_SESSION(id)  (((GET_PRM (id))->static_flag & SERVER_SESSION_MASK) == SERVER_SESSION_CHCK)
 
-
-/* 
- * for PRM_STORE_PROCEDURE_RETURN_NUMERIC_SIZE
- * PARAM type integer list, first is precision second is scale
- */
-#define PRM_PRECISION	1
-#define PRM_SCALE	2
-
 /*
  * for PRM_ID_PARALLELISM
  */
