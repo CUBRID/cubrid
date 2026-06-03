@@ -61,7 +61,15 @@ make_numeric_value_fn (const char *str)
 {
   return [str] (DB_VALUE *val)
   {
-    return numeric_coerce_string_to_num (str, strlen (str), LANG_SYS_CODESET, val);
+    int error_code = NO_ERROR;
+    error_code = numeric_coerce_string_to_num (str, strlen (str), LANG_SYS_CODESET, val);
+    if (error_code != NO_ERROR)
+      {
+	return error_code;
+      }
+
+    FLOAT_TO_FIXED_NUMERIC (val);
+    return error_code;
   };
 }
 
@@ -979,11 +987,11 @@ namespace cubschema
       {"unique_name", "string"},
       {"name", "string"},
       {"owner", AU_USER_CLASS_NAME},
-      {"current_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), make_numeric_value_fn ("1")},
-      {"increment_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), make_numeric_value_fn ("1")},
-      {"max_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
-      {"min_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
-      {"start_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), make_numeric_value_fn ("1")},
+      {"current_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0), make_numeric_value_fn ("1")},
+      {"increment_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0), make_numeric_value_fn ("1")},
+      {"max_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
+      {"min_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
+      {"start_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0), make_numeric_value_fn ("1")},
       {"cyclic", "integer", make_int_value_fn (0)},
       {"started", "integer", make_int_value_fn (0)},
       {"class_name", "string"},
@@ -1913,11 +1921,11 @@ namespace cubschema
       {"unique_name", format_varchar (255)},
       {"name", format_varchar (255)},
       {"owner", format_varchar (DB_MAX_USER_LENGTH)},
-      {"current_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
-      {"increment_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
-      {"max_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
-      {"min_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
-      {"start_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
+      {"current_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
+      {"increment_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
+      {"max_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
+      {"min_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
+      {"start_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
       {"cyclic", "integer"},
       {"started", "integer"},
       {"class_name", format_varchar (255)},
