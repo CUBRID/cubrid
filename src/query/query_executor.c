@@ -14466,6 +14466,7 @@ exit_on_error:
   goto exit;
 }
 
+
 /*
  * qexec_init_instnum_val () -
  *   return: NO_ERROR, or ER_code
@@ -14484,12 +14485,9 @@ exit_on_error:
 static int
 qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
 {
-  TP_DOMAIN *domainp = tp_domain_resolve_default (DB_TYPE_BIGINT);
-  DB_TYPE orig_type;
   REGU_VARIABLE *key_limit_l;
-  DB_VALUE *dbvalp;
+  DB_VALUE dbval;
   int error = NO_ERROR;
-  TP_DOMAIN_STATUS dom_status;
 
   assert (xasl && xasl->instnum_val);
   db_make_bigint (xasl->instnum_val, 0);
@@ -14505,36 +14503,19 @@ qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * 
       && xasl->spec_list->indexptr->key_info.key_limit_l)
     {
       key_limit_l = xasl->spec_list->indexptr->key_info.key_limit_l;
-      if (fetch_peek_dbval (thread_p, key_limit_l, &xasl_state->vd, NULL, NULL, NULL, &dbvalp) != NO_ERROR)
+
+      error = fetch_and_coerce_key_limit_lower (thread_p, key_limit_l, &xasl_state->vd, &dbval);
+      if (error != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
 
-      orig_type = DB_VALUE_DOMAIN_TYPE (dbvalp);
-      if (orig_type != DB_TYPE_BIGINT)
-	{
-	  dom_status = tp_value_coerce (dbvalp, dbvalp, domainp);
-	  if (dom_status != DOMAIN_COMPATIBLE)
-	    {
-	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbvalp, domainp);
-	      assert_release (error != NO_ERROR);
-
-	      goto exit_on_error;
-	    }
-
-	  if (DB_VALUE_DOMAIN_TYPE (dbvalp) != DB_TYPE_BIGINT)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-	      goto exit_on_error;
-	    }
-	}
-
-      if (pr_clone_value (dbvalp, xasl->instnum_val) != NO_ERROR)
+      if (pr_clone_value (&dbval, xasl->instnum_val) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
 
-      if (xasl->save_instnum_val && pr_clone_value (dbvalp, xasl->save_instnum_val) != NO_ERROR)
+      if (xasl->save_instnum_val && pr_clone_value (&dbval, xasl->save_instnum_val) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -17063,10 +17044,59 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   if (xasl->spec_list->type == TARGET_LIST && xasl->spec_list->s.list_node.list_regu_list_probe)
     {
       regu_list = xasl->spec_list->s.list_node.list_regu_list_probe;
+      REGU_VARIABLE_LIST probe_regu = regu_list;	/* Save first probe item before loop */
+
       while (regu_list)
 	{
 	  qexec_replace_prior_regu_vars (thread_p, &regu_list->value, xasl);
 	  regu_list = regu_list->next;
+	}
+
+      /* Adjust probe domain precision/scale from rest_regu_list for hash list scan */
+      if (probe_regu && xasl->spec_list->s.list_node.list_regu_list_rest)
+	{
+	  REGU_VARIABLE_LIST rest_regu_numeric = NULL;
+
+	  /* Find first numeric item in rest_regu_list with fixed precision */
+	  for (REGU_VARIABLE_LIST rest_iter = xasl->spec_list->s.list_node.list_regu_list_rest;
+	       rest_iter != NULL; rest_iter = rest_iter->next)
+	    {
+	      if (TP_DOMAIN_TYPE (rest_iter->value.domain) == DB_TYPE_NUMERIC &&
+		  rest_iter->value.domain->precision != DB_DEFAULT_NUMERIC_PRECISION)
+		{
+		  rest_regu_numeric = rest_iter;
+		  break;
+		}
+	    }
+
+	  /* Adjust first numeric probe item if found */
+	  if (rest_regu_numeric)
+	    {
+	      DB_TYPE vtype1 = REGU_VARIABLE_GET_TYPE (&probe_regu->value);
+
+	      if (vtype1 == DB_TYPE_NUMERIC &&
+		  probe_regu->value.domain && probe_regu->value.domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+		{
+		  /* in START WITH ... CONNECT BY, join and expression evaluation may widen
+		   * probe_regu_list domain to float numeric.
+		   *
+		   * since tp_value_coerce() always casts values to the probe domain,
+		   * the cast behavior depends on probe_regu_list->value.domain (vtype1's domain).
+		   * when the probe domain is float numeric, integer values are not scaled,
+		   * which can produce different hash keys from fixed numeric columns.
+		   *
+		   * to avoid this mismatch, restore precision/scale from rest_regu_list
+		   * when it represents a fixed numeric domain.
+		   */
+		  TP_DOMAIN *new_domain = tp_domain_copy (probe_regu->value.domain, false);
+		  if (new_domain != NULL)
+		    {
+		      new_domain->precision = rest_regu_numeric->value.domain->precision;
+		      new_domain->scale = rest_regu_numeric->value.domain->scale;
+		      probe_regu->value.domain = new_domain;
+		    }
+		}
+	    }
 	}
     }
 
@@ -20627,17 +20657,11 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	    case PT_SUM:
 	      if (TP_IS_NUMERIC_TYPE (DB_VALUE_TYPE (dbval)))
 		{
-		  if (TP_DOMAIN_TYPE (agg_p->domain) == DB_TYPE_NUMERIC)
+		  if (TP_DOMAIN_TYPE (agg_p->domain) == DB_TYPE_NUMERIC || DB_VALUE_TYPE (dbval) == DB_TYPE_NUMERIC)
 		    {
 		      agg_p->accumulator_domain.value_dom =
-			tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_MAX_NUMERIC_PRECISION, agg_p->domain->scale, NULL,
-					   0);
-		    }
-		  else if (DB_VALUE_TYPE (dbval) == DB_TYPE_NUMERIC)
-		    {
-		      agg_p->accumulator_domain.value_dom =
-			tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_MAX_NUMERIC_PRECISION, DB_VALUE_SCALE (dbval),
-					   NULL, 0);
+			tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_DEFAULT_NUMERIC_PRECISION,
+					   DB_DEFAULT_NUMERIC_SCALE, NULL, 0);
 		    }
 		  else if (DB_VALUE_TYPE (dbval) == DB_TYPE_FLOAT)
 		    {
@@ -24903,6 +24927,14 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       DB_VALUE comma, bracket1, bracket2;
       DB_DATA_STATUS data_stat;
 
+      /* if numeric with default precision (float numeric), return "numeric" only */
+      if (id == DB_TYPE_NUMERIC && precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  db_make_string (result, name);
+	  return NO_ERROR;
+	}
+
+      /* otherwise, format as "name(precision, scale)" */
       db_make_int (&db_int_precision, precision);
       db_make_null (&db_str_precision);
       if (tp_value_cast (&db_int_precision, &db_str_precision, &tp_String_domain, false) != DOMAIN_COMPATIBLE)

@@ -39,6 +39,7 @@
 #include "error_manager.h"
 #include "file_io.h"
 #include "compressor.hpp"
+#include "numeric_opfunc.h"
 #include "mem_block.hpp"
 #include "object_representation.h"
 #include "set_object.h"
@@ -112,12 +113,23 @@ extern unsigned int db_on_server;
 #endif
 
 /*
- * These are currently fixed length widets of length DB_NUMERIC_BUF_SIZE.
- * Ultimately they may be of variable size based on the precision and scale,
- * in antipication of that move, use the followign function for copying.
+ * NUMERIC_HEADER_SIZE
+ * The numeric header is 3 bytes in size.
+ * - header[0]: Total byte size of the numeric data (header + data).
+ *              Bit 7 (0x80): Data sign bit (1 = negative, 0 = positive).
+ *              Bits 0-6: Total byte size value (4 ~ 20 bytes).
+ *                        Minimum: precision 1 -> data 1 byte + header 3 = 4 bytes (aligned to 4).
+ *                        Maximum: precision 40 -> data 17 bytes + header 3 = 20 bytes (aligned to 20).
+ * - header[1]: Precision and scale sign bit.
+ *              Bit 7 (0x80): Scale sign bit (1 = negative scale, 0 = positive scale).
+ *              Bits 0-6: Precision value (1 ~ 40).
+ * - header[2]: Scale value.
+ *              Bits 0-7: Scale absolute value (0 ~ 214).
+ *                        Positive scale: 0 ~ 252.
+ *                        Negative scale: -214 to -1 (stored as absolute value, sign in header[1] bit 7).
  */
-#define OR_NUMERIC_SIZE(precision) DB_NUMERIC_BUF_SIZE
-#define MR_NUMERIC_SIZE(precision) DB_NUMERIC_BUF_SIZE
+#define NUMERIC_HEADER_SIZE (3)
+#define FLOAT_NUMERIC_SIZE (NUMERIC_HEADER_SIZE + DB_NUMERIC_BUF_SIZE)
 
 #define STR_SIZE(prec, codeset)                                             \
      (((codeset) == INTL_CODESET_RAW_BITS) ? ((prec+7)/8) :		    \
@@ -142,6 +154,16 @@ extern unsigned int db_on_server;
 
 #define IS_FLOATING_PRECISION(prec) \
   ((prec) == TP_FLOATING_PRECISION_VALUE)
+
+static const int _gv_mr_float_numeric_precision_to_size[41] = {
+  0, 4, 4, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 12, 12, 12, 12, 12, 12, 12,
+  12, 12, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 20, 20, 20, 20, 20, 20, 20, 20,
+  20
+};
+
+static const int _gv_mr_fixed_numeric_bytes_to_size[17] = {
+  0, 4, 8, 8, 8, 8, 12, 12, 12, 12, 16, 16, 16, 16, 20, 20, 20
+};
 
 // *INDENT-OFF*
 pr_type::pr_type (const char * name_arg, DB_TYPE id_arg, int varp_arg, int size_arg, int disksize_arg, int align_arg,
@@ -787,12 +809,13 @@ static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_vobj (void *mem1, void *mem2, TP_
 static DB_VALUE_COMPARE_RESULT mr_cmpval_vobj (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
 					       int *start_colp, int collation);
 static void mr_initmem_numeric (void *memptr, TP_DOMAIN * domain);
-static int mr_setmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
-static int mr_getmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
-static int mr_data_lengthmem_numeric (void *mem, TP_DOMAIN * domain, int disk);
-static int mr_index_lengthmem_numeric (void *mem, TP_DOMAIN * domain);
-static void mr_data_writemem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain);
-static void mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size);
+static int mr_setmem_numeric (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
+static int mr_getmem_numeric (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
+static int mr_data_lengthmem_numeric (void *memptr, TP_DOMAIN * domain, int disk);
+static int mr_index_lengthmem_numeric (void *memptr, TP_DOMAIN * domain);
+static void mr_data_writemem_numeric (OR_BUF * buf, void *memptr, TP_DOMAIN * domain);
+static void mr_data_readmem_numeric (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size);
+static void mr_freemem_numeric (void *memptr);
 static void mr_initval_numeric (DB_VALUE * value, int precision, int scale);
 static int mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy);
 static int mr_data_lengthval_numeric (DB_VALUE * value, int disk);
@@ -809,6 +832,7 @@ static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_numeric (void *mem1, void *mem2, 
 							int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
 						  int total_order, int *start_colp, int collation);
+static inline int mr_get_fixed_numeric_size (const DB_C_NUMERIC data);
 static void mr_initmem_resultset (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_resultset (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_resultset (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -1623,7 +1647,7 @@ const PR_TYPE tp_Vobj = {
 const PR_TYPE *tp_Type_vobj = &tp_Vobj;
 
 const PR_TYPE tp_Numeric = {
-  "numeric", DB_TYPE_NUMERIC, 0, 0, 0, 1,
+  "numeric", DB_TYPE_NUMERIC, 1, sizeof (const char *), 0, 1,
   mr_initmem_numeric,
   mr_initval_numeric,
   mr_setmem_numeric,
@@ -1640,7 +1664,7 @@ const PR_TYPE tp_Numeric = {
   mr_index_writeval_numeric,
   mr_index_readval_numeric,
   mr_index_cmpdisk_numeric,
-  NULL,				/* freemem */
+  mr_freemem_numeric,
   mr_data_cmpdisk_numeric,
   mr_cmpval_numeric
 };
@@ -8318,13 +8342,10 @@ mr_cmpval_vobj (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 /*
  * TYPE NUMERIC
  */
-
 static void
 mr_initmem_numeric (void *memptr, TP_DOMAIN * domain)
 {
-  assert (!IS_FLOATING_PRECISION (domain->precision));
-
-  memset (memptr, 0, MR_NUMERIC_SIZE (domain->precision));
+  *(char **) memptr = NULL;
 }
 
 /*
@@ -8334,116 +8355,270 @@ mr_initmem_numeric (void *memptr, TP_DOMAIN * domain)
  * an on-the-fly coercion here.
  */
 static int
-mr_setmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_numeric (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 {
   int error = NO_ERROR;
-  int src_precision, src_scale, byte_size;
-  DB_C_NUMERIC num, src_num;
+  char *cur, *new_, **mem;
 
-  if (value == NULL)
+  /* get the current memory contents */
+  mem = (char **) memptr;
+  cur = *mem;
+
+  if (value == NULL || db_value_is_null (value))
     {
-      mr_initmem_numeric (mem, domain);
+      /* remove the current value */
+      if (cur != NULL)
+	{
+	  db_private_free_and_init (NULL, cur);
+	  mr_initmem_numeric (memptr, domain);
+	}
     }
   else
     {
-      src_num = db_get_numeric (value);
+      DB_C_NUMERIC num, src_num;
+      DB_C_NUMERIC data_dest;
+      int precision, scale, byte_size;
+      bool is_float_numeric = false;
 
-      src_precision = db_value_precision (value);
-      src_scale = db_value_scale (value);
+      src_num = db_get_numeric (value);
+      db_get_numeric_precision_and_scale (value, &precision, &scale, &is_float_numeric);
 
       /* this should have been handled by now */
-      if (src_num == NULL || src_precision != domain->precision || src_scale != domain->scale)
+      if (src_num == NULL || (is_float_numeric == false && (precision != domain->precision || scale != domain->scale)))
 	{
 	  error = ER_OBJ_DOMAIN_CONFLICT;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "");
 	}
       else
 	{
-	  num = (DB_C_NUMERIC) mem;
-	  byte_size = MR_NUMERIC_SIZE (src_precision);
-	  memcpy (num, src_num, byte_size);
+	  unsigned char header[NUMERIC_HEADER_SIZE];
+	  bool is_value_negative = DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value);
+
+	  if (is_float_numeric)
+	    {
+	      assert (precision >= 0 && precision <= DB_MAX_NUMERIC_PRECISION);
+	      byte_size = _gv_mr_float_numeric_precision_to_size[precision];
+	    }
+	  else
+	    {
+	      byte_size = _gv_mr_fixed_numeric_bytes_to_size[mr_get_fixed_numeric_size (src_num)];
+	    }
+
+	  assert ((byte_size & NUMERIC_VALUE_SIGN_BIT_MASK) == 0);
+
+	  header[0] = byte_size | (is_value_negative ? NUMERIC_VALUE_SIGN_BIT_MASK : 0x00);
+	  if (scale < 0)
+	    {
+	      header[1] = precision | NUMERIC_HEADER_SCALE_SIGN_BIT_MASK;
+	      header[2] = -(scale);
+	    }
+	  else
+	    {
+	      header[1] = precision;
+	      header[2] = scale;
+	    }
+
+	  new_ = (char *) db_private_alloc (NULL, byte_size);
+	  if (new_ == NULL)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	    }
+	  else
+	    {
+	      if (cur != NULL)
+		{
+		  db_private_free_and_init (NULL, cur);
+		}
+
+	      num = (DB_C_NUMERIC) new_;
+	      memcpy (num, header, NUMERIC_HEADER_SIZE);
+
+	      byte_size -= NUMERIC_HEADER_SIZE;
+	      data_dest = num + NUMERIC_HEADER_SIZE;
+
+	      memcpy (data_dest, src_num + (DB_NUMERIC_BUF_SIZE - byte_size), byte_size);
+
+	      *mem = new_;
+	    }
 	}
     }
   return error;
 }
 
 static int
-mr_getmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_numeric (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 {
   int error = NO_ERROR;
-  DB_C_NUMERIC num;
+  char **mem, *cur;
 
   if (value == NULL)
     {
       return error;
     }
 
-  num = (DB_C_NUMERIC) mem;
-  error = db_make_numeric (value, num, domain->precision, domain->scale);
-  value->need_clear = false;
+  /* get to the current value */
+  mem = (char **) memptr;
+  cur = *mem;
+
+  if (cur == NULL)
+    {
+      db_value_domain_init (value, DB_TYPE_NUMERIC, domain->precision, domain->scale);
+      value->need_clear = false;
+    }
+  else
+    {
+      DB_C_NUMERIC num;
+      int byte_size = 0;
+      int precision, scale;
+      bool is_float_numeric = (domain->precision == DB_DEFAULT_NUMERIC_PRECISION);
+
+      num = (DB_C_NUMERIC) cur;
+      unsigned char header[NUMERIC_HEADER_SIZE] = { num[0], num[1], num[2] };
+
+      byte_size = (header[0] & 0x7F);
+      bool is_value_negative = (header[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
+      precision = (header[1] & 0x7F);
+      bool is_negative_scale = (header[1] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) != 0;
+      scale = is_negative_scale ? -header[2] : header[2];
+
+      num = (DB_C_NUMERIC) ((char *) cur + NUMERIC_HEADER_SIZE);
+
+      error = db_make_numeric (value, num, precision, scale, byte_size, is_value_negative, is_float_numeric);
+      value->need_clear = false;
+    }
 
   return error;
 }
 
 static void
-mr_data_writemem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+mr_data_writemem_numeric (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 {
+  char **mem, *cur;
   int disk_size;
 
-  disk_size = OR_NUMERIC_SIZE (domain->precision);
-  or_put_data (buf, (char *) mem, disk_size);
+  mem = (char **) memptr;
+  cur = *mem;
+  if (cur != NULL)
+    {
+      disk_size = OR_GET_BYTE (cur) & 0x7F;
+      or_put_data (buf, cur, disk_size);
+    }
 }
 
 static void
-mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+mr_data_readmem_numeric (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 {
-  /* if stored size is unknown, the domain precision must be set correctly */
+  char **mem, *cur, *new_;
+  int calc_size = 0;
+
+  /* Must have an explicit size here - can't be determined from the domain */
   if (size < 0)
     {
-      size = OR_NUMERIC_SIZE (domain->precision);
+      return;
     }
 
-  if (mem == NULL)
+  if (memptr == NULL)
     {
       if (size)
 	{
 	  or_advance (buf, size);
 	}
     }
-  else if (size)
+  else
     {
-      if (size != OR_NUMERIC_SIZE (domain->precision))
+      mem = (char **) memptr;
+      cur = *mem;
+      /* should we be checking for existing numerics ? */
+#if 0
+      if (cur != NULL)
+	db_private_free_and_init (NULL, cur);
+#endif
+
+      new_ = NULL;
+      if (size)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-	  assert (false);
-	  return;
+	  /* guard: declared disk_size must fit in buffer (covers the size byte and the payload read below) */
+	  if (buf->ptr + size > buf->endptr)
+	    {
+	      *mem = NULL;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
+	      assert (false);
+	      return;
+	    }
+
+	  /* caller-supplied size must match the in-band header byte */
+	  calc_size = OR_GET_BYTE (buf->ptr) & 0x7F;
+
+	  if (size != calc_size)
+	    {
+	      *mem = NULL;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
+	      assert (false);
+	      return;
+	    }
+
+	  /* allocate new memory */
+	  new_ = (char *) db_private_alloc (NULL, size);
+	  if (new_ == NULL)
+	    {
+	      *mem = NULL;
+	      return;
+	    }
+
+	  /* read data from buffer into allocated memory */
+	  or_get_data (buf, new_, size);
 	}
-      else
-	{
-	  or_get_data (buf, (char *) mem, size);
-	}
+
+      /* update pointer (caller is responsible for releasing the prior numeric, matching readmem_string/varbit) */
+      *mem = new_;
+    }
+}
+
+static void
+mr_freemem_numeric (void *mem)
+{
+  char *cur;
+
+  if (mem != NULL)
+    {
+      cur = *(char **) mem;
+      if (cur != NULL)
+	db_private_free_and_init (NULL, cur);
     }
 }
 
 static int
-mr_index_lengthmem_numeric (void *mem, TP_DOMAIN * domain)
-{
-  return mr_data_lengthmem_numeric (mem, domain, 1);
-}
-
-static int
-mr_data_lengthmem_numeric (void *mem, TP_DOMAIN * domain, int disk)
+mr_index_lengthmem_numeric (void *memptr, TP_DOMAIN * domain)
 {
   int len;
 
-  /* think about caching this in the domain so we don't have to calculate it */
-  if (disk)
+  /* index uses direct pointer, not pointer to pointer */
+  len = OR_GET_BYTE (memptr) & 0x7F;
+
+  return len;
+}
+
+static int
+mr_data_lengthmem_numeric (void *memptr, TP_DOMAIN * domain, int disk)
+{
+  char **mem, *cur;
+  int len;
+
+  len = 0;
+  if (!disk)
     {
-      len = OR_NUMERIC_SIZE (domain->precision);
+      len = tp_Numeric.size;
     }
-  else
+  else if (memptr != NULL)
     {
-      len = MR_NUMERIC_SIZE (domain->precision);
+      mem = (char **) memptr;
+      cur = *mem;
+
+      if (cur != NULL)
+	{
+	  len = OR_GET_BYTE (cur) & 0x7F;
+	}
     }
 
   return len;
@@ -8459,8 +8634,6 @@ static int
 mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   int error = NO_ERROR;
-  int src_precision, src_scale;
-  DB_C_NUMERIC src_numeric;
 
   assert (!db_value_is_corrupted (src));
   if (src == NULL || DB_IS_NULL (src))
@@ -8469,13 +8642,17 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     }
   else
     {
-      src_precision = db_value_precision (src);
-      src_scale = db_value_scale (src);
+      DB_C_NUMERIC src_numeric;
+      int precision, scale;
+      bool is_float_numeric = false;
+
+      db_get_numeric_precision_and_scale (src, &precision, &scale, &is_float_numeric);
+
       src_numeric = (DB_C_NUMERIC) db_get_numeric (src);
 
-      if (DB_IS_NULL (src) || src_numeric == NULL)
+      if (src_numeric == NULL)
 	{
-	  db_value_domain_init (dest, DB_TYPE_NUMERIC, src_precision, src_scale);
+	  db_value_domain_init (dest, DB_TYPE_NUMERIC, precision, scale);
 	}
       else
 	{
@@ -8484,7 +8661,9 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	   * difference between the copy and non-copy operations, this may
 	   * need to change.
 	   */
-	  error = db_make_numeric (dest, src_numeric, src_precision, src_scale);
+	  error =
+	    db_make_numeric (dest, src_numeric, precision, scale, DB_NUMERIC_BUF_SIZE,
+			     DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (src), is_float_numeric);
 	}
     }
   return error;
@@ -8499,20 +8678,27 @@ mr_index_lengthval_numeric (DB_VALUE * value)
 static int
 mr_data_lengthval_numeric (DB_VALUE * value, int disk)
 {
-  int precision, len;
+  int len = 0;
 
-  len = 0;
   if (value != NULL)
     {
+      int precision;
+      bool is_float_numeric = false;
+
       /* better have a non-NULL value by the time writeval is called ! */
-      precision = db_value_precision (value);
-      if (disk)
+      precision = db_get_numeric_precision (value, &is_float_numeric);
+      if (is_float_numeric)
 	{
-	  len = OR_NUMERIC_SIZE (precision);
+	  assert (precision >= 0 && precision <= DB_MAX_NUMERIC_PRECISION);
+	  len = _gv_mr_float_numeric_precision_to_size[precision];
 	}
       else
 	{
-	  len = MR_NUMERIC_SIZE (precision);
+	  DB_C_NUMERIC numeric = db_get_numeric (value);
+	  if (numeric != NULL)
+	    {
+	      len = _gv_mr_fixed_numeric_bytes_to_size[mr_get_fixed_numeric_size (numeric)];
+	    }
 	}
     }
   return len;
@@ -8527,18 +8713,46 @@ mr_index_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
 static int
 mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
 {
-  DB_C_NUMERIC numeric;
-  int precision, disk_size;
   int rc = NO_ERROR;
 
   if (value != NULL)
     {
+      DB_C_NUMERIC numeric;
+      int precision, scale, disk_size;
+      bool is_float_numeric = false;
+
       numeric = db_get_numeric (value);
       if (numeric != NULL)
 	{
-	  precision = db_value_precision (value);
-	  disk_size = OR_NUMERIC_SIZE (precision);
-	  rc = or_put_data (buf, (char *) numeric, disk_size);
+	  db_get_numeric_precision_and_scale (value, &precision, &scale, &is_float_numeric);
+	  unsigned char header[NUMERIC_HEADER_SIZE];
+
+	  if (is_float_numeric)
+	    {
+	      disk_size = _gv_mr_float_numeric_precision_to_size[precision];
+	    }
+	  else
+	    {
+	      disk_size = _gv_mr_fixed_numeric_bytes_to_size[mr_get_fixed_numeric_size (numeric)];
+	    }
+	  assert ((disk_size & NUMERIC_VALUE_SIGN_BIT_MASK) == 0);
+
+	  header[0] = disk_size | (DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value) ? NUMERIC_VALUE_SIGN_BIT_MASK : 0x00);
+	  if (scale < 0)
+	    {
+	      header[1] = precision | NUMERIC_HEADER_SCALE_SIGN_BIT_MASK;
+	      header[2] = -(scale);
+	    }
+	  else
+	    {
+	      header[1] = precision;
+	      header[2] = scale;
+	    }
+
+	  or_put_data (buf, (char *) header, NUMERIC_HEADER_SIZE);
+	  disk_size -= NUMERIC_HEADER_SIZE;
+
+	  rc = or_put_data (buf, (char *) numeric + (DB_NUMERIC_BUF_SIZE - disk_size), disk_size);
 	}
     }
   return rc;
@@ -8566,14 +8780,14 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
    * If size is -1, the caller doesn't know the size and we must determine
    * it from the domain.
    */
-  if (size == -1)
+  if (size == -1 || size == 1)
     {
-      size = OR_NUMERIC_SIZE (domain->precision);
-    }
-
-  if (size == 1)
-    {
-      size = OR_NUMERIC_SIZE (domain->precision);
+      /* guard: the leading size byte must be within buffer bounds */
+      if (buf->ptr + OR_BYTE_SIZE > buf->endptr)
+	{
+	  return ER_FAILED;
+	}
+      size = OR_GET_BYTE (buf->ptr) & 0x7F;
     }
 
   if (value == NULL)
@@ -8583,15 +8797,59 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 	  rc = or_advance (buf, size);
 	}
     }
+  else if (domain->type->id == DB_TYPE_NUMERIC && domain->precision == 0)
+    {
+      /* 1. reason for checking domain->type
+       *   - when the type is DB_TYPE_VARIABLE, domain->precision is set to 0.
+       *   - in this case, the numeric precision condition below should be skipped
+       *     and handled by the else branch, so the type check is required.
+       *   - tc : _14_mysql_compatibility_2/_15_host_variable/_12_common/union.sql
+       *
+       * 2. reason for checking domain->precision == 0
+       *   - in normal definitions, a numeric type cannot have precision 0.
+       *   - however, for historical compatibility (about 10 years),
+       *     numeric(0,0) used in view definitions or CAST expressions
+       *     does not raise an error and is treated as NULL.
+       *   - tc : _01_object/_01_type/_003_numeric/1004.sql
+       */
+      rc = or_advance (buf, 0);
+    }
   else
     {
       /*
        * the copy and no copy cases are identical because db_make_numeric
        * will copy the bits into its internal buffer.
        */
-      (void) db_make_numeric (value, (DB_C_NUMERIC) buf->ptr, domain->precision, domain->scale);
+      DB_C_NUMERIC num;
+      unsigned char *header;
+      int precision, scale;
+      bool is_float_numeric = (domain->precision == DB_DEFAULT_NUMERIC_PRECISION);
+      /* guard: NUMERIC_HEADER_SIZE bytes must be readable before parsing the header */
+      if (buf->ptr + NUMERIC_HEADER_SIZE > buf->endptr)
+	{
+	  return ER_FAILED;
+	}
+
+      header = (unsigned char *) buf->ptr;
+      size = (header[0] & 0x7F);
+
+      /* guard: declared disk_size must fit in buffer; check before further parsing to fail fast */
+      if (buf->ptr + size > buf->endptr)
+	{
+	  return ER_FAILED;
+	}
+
+      bool is_value_negative = (header[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
+      precision = (header[1] & 0x7F);
+      bool is_negative_scale = (header[1] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) != 0;
+      scale = is_negative_scale ? -(header[2]) : header[2];
+
+      num = (DB_C_NUMERIC) (buf->ptr + NUMERIC_HEADER_SIZE);
+
+      rc = db_make_numeric (value, num, precision, scale, size, is_value_negative, is_float_numeric);
+
       value->need_clear = false;
-      rc = or_advance (buf, size);
+      or_advance (buf, size);
     }
 
   return rc;
@@ -8670,6 +8928,68 @@ mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int to
     }
 
   return c;
+}
+
+/*
+ * mr_get_fixed_numeric_size - calculate the byte size of a fixed numeric value.
+ *
+ * return: the required number of bytes (1 ~ 16).
+ * data(in): pointer to the fixed numeric data buffer.
+ *
+ * Note: 
+ *   the maximum precision of a fixed numeric is 38, which fits within 16 bytes.
+ *
+ *   except for the sign byte (data[0]), the remaining 16 bytes of DB_NUMERIC_BUF_SIZE(17) 
+ *   can be evaluated efficiently by casting them into two 64-bit integers (uint64_t).
+ *
+ *   this allows O(1) performance by using __builtin_ctzll or __builtin_clzll to quickly locate 
+ *   the MSB or LSB without a traditional byte-by-byte loop.
+ */
+static inline int
+mr_get_fixed_numeric_size (const DB_C_NUMERIC data)
+{
+  uint64_t word_buf[2] = { 0 };
+
+  /*
+   * 'data' points to a 17-byte numeric value stored in big-endian byte order.
+   * memcpy() copies the raw bytes as-is (no endianness conversion).
+   */
+  memcpy (word_buf, data + 1, sizeof (word_buf));
+
+  /*
+   * When the copied bytes are interpreted as uint64_t, the result depends on
+   * the host endianness:
+   *
+   * - On little-endian systems, the byte significance within each 64-bit word
+   *   is effectively reversed. 
+   *   Therefore, counting leading zeros (CLZ) in the original big-endian
+   *   representation is equivalent to counting trailing zeros (CTZ) here.
+   *
+   * - On big-endian systems, the byte order is preserved, so CLZ can be used
+   *   directly.
+   *
+   * This avoids the need for an explicit byte swap (bswap).
+   */
+  if (word_buf[0] != 0)
+    {
+#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
+      return 16 - (NUMERIC_CTZ64 (word_buf[0]) >> 3);
+#else
+      return 16 - (NUMERIC_CLZ64 (word_buf[0]) >> 3);
+#endif
+    }
+  else if (word_buf[1] != 0)
+    {
+#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
+      return 8 - (NUMERIC_CTZ64 (word_buf[1]) >> 3);
+#else
+      return 8 - (NUMERIC_CLZ64 (word_buf[1]) >> 3);
+#endif
+    }
+  else
+    {
+      return 1;			// value = 0
+    }
 }
 
 /*
@@ -10315,6 +10635,7 @@ mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	  rc = or_get_varchar_compression_lengths (buf, &compressed_size, &len);
 	  if (rc != NO_ERROR)
 	    {
+	      *mem = NULL;
 	      return;
 	    }
 
@@ -10327,6 +10648,7 @@ mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	  new_ = (char *) db_private_alloc (NULL, mem_length);
 	  if (new_ == NULL)
 	    {
+	      *mem = NULL;
 	      return;
 	    }
 	  else
@@ -10340,6 +10662,7 @@ mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	      if (rc != NO_ERROR)
 		{
 		  db_private_free (NULL, new_);
+		  *mem = NULL;
 		  ASSERT_ERROR ();
 		  return;
 		}
@@ -13081,6 +13404,7 @@ mr_data_readmem_varbit (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	  new_ = (char *) db_private_alloc (NULL, mem_length);
 	  if (new_ == NULL)
 	    {
+	      *mem = NULL;
 	      return;
 	    }
 	  else
