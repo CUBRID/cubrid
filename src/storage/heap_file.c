@@ -12007,6 +12007,7 @@ heap_attrinfo_transform_fixed_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRI
 
   if (value->do_increment && (incremented_attrids->find (index) == incremented_attrids->end ()))
     {
+      /* handle INCR(), DECR() functions */
       if (qdata_increment_dbval (dbvalue, dbvalue, value->do_increment) != NO_ERROR)
 	{
 	  return S_ERROR;
@@ -12101,6 +12102,7 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
   if (value->do_increment != 0)
     {
+      /* handle INCR(), DECR() functions */
       return S_ERROR;
     }
 
@@ -12169,6 +12171,18 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  pr_clear_value (dbvalue);
 	  db_make_elo (dbvalue, pr_type->id, &dest_elo);
 	  dbvalue->need_clear = true;
+	}
+
+      /* 
+       * user AUTO_INCREMENT NUMERIC(1~28) uses 4–12 bytes, while
+       * _db_serial.current_val (NUMERIC(38)) always uses 16 bytes.
+       * this byte-size mismatch corrupts values.
+       * fix: if user column precision < 38, override current_val precision to match it.
+       */
+      if (dbvalue->domain.general_info.type == DB_TYPE_NUMERIC && value->last_attrepr->is_autoincrement
+	  && value->last_attrepr->domain->precision != DB_MAX_FIXED_NUMERIC_PRECISION)
+	{
+	  dbvalue->domain.numeric_info.precision = value->last_attrepr->domain->precision;
 	}
 
       if (buf->ptr + pr_type->get_disk_size_of_value (dbvalue) > buf->endptr)
@@ -17882,6 +17896,45 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 
       if (error == NO_ERROR)
 	{
+	  if (src_type == DB_TYPE_NUMERIC && dest_type == DB_TYPE_NUMERIC)
+	    {
+	      int src_prec = value->dbvalue.domain.numeric_info.precision;
+	      int src_scale = value->dbvalue.domain.numeric_info.scale;
+	      int dest_scale = dest_dom->scale;
+
+	      bool can_skip_cast = false;
+
+	      if (dest_prec == DB_DEFAULT_NUMERIC_PRECISION)
+		{
+		  /* this handles both ATT_CHG_TYPE_NUMERIC_PREC_INCR and SM_ATTR_CHG_WITH_ROW_UPDATE cases.
+		   * For float numeric, precision must be calculated accurately from the actual value.
+		   */
+		  value->dbvalue.data.num.header.precision =
+		    numeric_get_precision_digits (value->dbvalue.data.num.d.buf);
+		  value->dbvalue.data.num.header.scale = src_scale;
+		  can_skip_cast = true;
+		}
+	      else if (src_scale == dest_scale && src_prec < dest_prec)
+		{
+		  /* optimize ATT_CHG_TYPE_NUMERIC_PREC_INCR case: when numeric precision increases
+		   * with same scale, only update domain metadata (no value cast needed).
+		   */
+		  can_skip_cast = true;
+		}
+
+	      if (can_skip_cast)
+		{
+		  value->dbvalue.domain.numeric_info.precision = dest_prec;
+		  value->dbvalue.domain.numeric_info.scale = dest_scale;
+		  value->state = HEAP_WRITTEN_ATTRVALUE;
+		  atts_id[updated_n_attrs_id] = value->attrid;
+		  updated_n_attrs_id++;
+
+		  /* Skip tp_value_cast - just update domain metadata */
+		  continue;
+		}
+	    }
+
 	  if ((status = tp_value_cast (&(value->dbvalue), &(value->dbvalue), dest_dom, false)) != DOMAIN_COMPATIBLE)
 	    {
 	      error = tp_domain_status_er_set (status, ARG_FILE_LINE, &(value->dbvalue), dest_dom);

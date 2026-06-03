@@ -515,10 +515,10 @@ extern "C"
   typedef unsigned int SESSION_ID;
 
 /* uninitialized value for session id */
-#define DB_EMPTY_SESSION			0
+#define DB_EMPTY_SESSION			(0)
 
 /* uninitialized value for row count */
-#define DB_ROW_COUNT_NOT_SET			-2
+#define DB_ROW_COUNT_NOT_SET			(-2)
 
   /******************************************/
   /*
@@ -527,7 +527,7 @@ extern "C"
    * a string to the db_ functions (other than user attribute values). This includes such things as class names, attribute names
    * etc. This isn't strictly enforced right now but applications must be aware that this will be a requirement.
    */
-#define DB_MAX_IDENTIFIER_LENGTH 255
+#define DB_MAX_IDENTIFIER_LENGTH (255)
 
 /* 
  * Maximum allowable default expression length
@@ -553,12 +553,12 @@ extern "C"
 #define DB_MAX_DEFAULT_EXPR_LENGTH 2048
 
 /* Maximum allowable user name.*/
-#define DB_MAX_USER_LENGTH 32
+#define DB_MAX_USER_LENGTH (32)
 
 #define DB_MAX_PASSWORD_LENGTH 32
 
 /* Maximum allowable schema name. */
-#define DB_MAX_SCHEMA_LENGTH DB_MAX_USER_LENGTH
+#define DB_MAX_SCHEMA_LENGTH (DB_MAX_USER_LENGTH)
 
 /* Maximum allowable class name. */
 #define DB_MAX_CLASS_LENGTH (223)	// (DB_MAX_IDENTIFIER_LENGTH - DB_MAX_SCHEMA_LENGTH - 1 /* '.' */ + 1  /* '\0' */)
@@ -566,106 +566,129 @@ extern "C"
 #define DB_MAX_SPEC_LENGTH       (0x3FFFFFFF)
 
 /* Maximum allowable class comment length */
-#define DB_MAX_CLASS_COMMENT_LENGTH     2048
+#define DB_MAX_CLASS_COMMENT_LENGTH     (2048)
 /* Maximum allowable comment length */
-#define DB_MAX_COMMENT_LENGTH    1024
+#define DB_MAX_COMMENT_LENGTH    (1024)
 
 /* This constant defines the maximum length of a character string that can be used as the value of an attribute. */
-#define DB_MAX_STRING_LENGTH	0x3fffffff
+#define DB_MAX_STRING_LENGTH	(0x3fffffff)
 
 /* This constant defines the maximum length of a bit string that can be used as the value of an attribute. */
-#define DB_MAX_BIT_LENGTH 0x3fffffff
+#define DB_MAX_BIT_LENGTH (0x3fffffff)
+
+/* The maximum precision that can be specified for a numeric domain in SQL grammar. */
+#define DB_MAX_FIXED_NUMERIC_PRECISION (38)
+
+/* The minimum and maximum scale that can be specified for a numeric domain in SQL grammar. */
+#define DB_MIN_FIXED_NUMERIC_SCALE (-84)
+#define DB_MAX_FIXED_NUMERIC_SCALE (127)
 
 /* The maximum precision that can be specified for a numeric domain. */
-#define DB_MAX_NUMERIC_PRECISION 38
+#define DB_MAX_NUMERIC_PRECISION (40)
+
+/* The minimum and maximum scale that can be specified for a numeric domain. */
+#define DB_MIN_NUMERIC_SCALE (-214)
+#define DB_MAX_NUMERIC_SCALE (252)
 
 /* The upper limit for a number that can be represented by a numeric type */
-#define DB_NUMERIC_OVERFLOW_LIMIT 1e38
+#define DB_NUMERIC_OVERFLOW_LIMIT (1e254)
 
 /* The lower limit for a number that can be represented by a numeric type */
-#define DB_NUMERIC_UNDERFLOW_LIMIT 1e-38
+#define DB_NUMERIC_UNDERFLOW_LIMIT (1e-252)
 
-#define DB_MAX_CHAR_PRECISION 2048
+#define DB_MAX_CHAR_PRECISION (2048)
 
 /* The maximum precision that can be specified for a CHARACTER VARYING domain.*/
-#define DB_MAX_VARCHAR_PRECISION DB_MAX_STRING_LENGTH
+#define DB_MAX_VARCHAR_PRECISION (DB_MAX_STRING_LENGTH)
 
 /* The maximum precision that can be specified for a BIT domain. */
-#define DB_MAX_BIT_PRECISION DB_MAX_BIT_LENGTH
+#define DB_MAX_BIT_PRECISION (DB_MAX_BIT_LENGTH)
 
 /* The maximum precision that can be specified for a BIT VARYING domain. */
-#define DB_MAX_VARBIT_PRECISION DB_MAX_BIT_PRECISION
+#define DB_MAX_VARBIT_PRECISION (DB_MAX_BIT_PRECISION)
 
 /* This constant indicates that the system defined default for determining the length of a string is to be used for a DB_VALUE. */
-#define DB_DEFAULT_STRING_LENGTH -1
+#define DB_DEFAULT_STRING_LENGTH (-1)
 
 /* This constant indicates that the system defined default for precision is to be used for a DB_VALUE. */
-#define DB_DEFAULT_PRECISION -1
+#define DB_DEFAULT_PRECISION (-1)
 
 /* This constant indicates that the system defined default for scale is to be used for a DB_VALUE. */
-#define DB_DEFAULT_SCALE -1
-
-/* This constant indecates that SP function's default NUMERIC domain */
-#define DB_NUMERIC_PRECISION_SP 38
-#define DB_NUMERIC_SCALE_SP 15
+#define DB_DEFAULT_SCALE (-9999)
 
 /* This constant defines the default precision of DB_TYPE_NUMERIC. */
-#define DB_DEFAULT_NUMERIC_PRECISION 15
+#define DB_DEFAULT_NUMERIC_PRECISION (DB_MAX_NUMERIC_PRECISION)
+
+/* This constant indicates that the fixed numeric's precision is deferred for later recalculation when float and fixed numeric meet in hash join. */
+#define DB_HJOIN_NUMERIC_PRECISION_DEFERRED (DB_DEFAULT_PRECISION)
+
+/* This constant defines the legacy default precision of DB_TYPE_NUMERIC (CUBRID 11.4 and earlier). */
+#define DB_DEFAULT_NUMERIC_SCALE_FOR_TO_NUMBER (15)	/* DB_LEGACY_DEFAULT_NUMERIC_PRECISION: 15 */
 
 /* This constant defines the default scale of DB_TYPE_NUMERIC. */
-#define DB_DEFAULT_NUMERIC_SCALE 0
+#define DB_DEFAULT_NUMERIC_SCALE (0)
 
-/* This constant defines the default scale of result of numeric division operation */
-#define DB_DEFAULT_NUMERIC_DIVISION_SCALE 9
+/* This constant defines the default scale of result of numeric division operation (CUBRID 11.4 and earlier) */
+#define DB_LEGACY_DEFAULT_NUMERIC_DIVISION_SCALE (9)
+
+/* This constant defines the maximum VARCHAR precision when casting NUMERIC type to VARCHAR (254 digits) */
+#define DB_MAX_VARCHAR_PRECISION_FOR_NUMERIC_CAST (254)
 
 /* These constants define the size of buffers within a DB_VALUE. */
-#define DB_NUMERIC_BUF_SIZE	(2*sizeof(double))
+/*
+ * DB_NUMERIC_BUF_SIZE
+ * 
+ * buffer size for numeric type's db_value->data.num
+ * stores 17 bytes of data (for precision 40), excluding the 2-byte header.
+ * Formula: ceil(DB_MAX_NUMERIC_PRECISION / log10(256)) = 17
+ */
+#define DB_NUMERIC_BUF_SIZE	(17)
 #define DB_SMALL_CHAR_BUF_SIZE	(2*sizeof(double) - 3*sizeof(unsigned char))
 
 /* This constant defines the default precision of DB_TYPE_BIGINT. */
-#define DB_BIGINT_PRECISION      19
+#define DB_BIGINT_PRECISION      (19)
 
 /* This constant defines the default precision of DB_TYPE_INTEGER. */
-#define DB_INTEGER_PRECISION      10
+#define DB_INTEGER_PRECISION      (10)
 
 /* This constant defines the default precision of DB_TYPE_SMALLINT. */
-#define DB_SMALLINT_PRECISION      5
+#define DB_SMALLINT_PRECISION      (5)
 
 /* This constant defines the default precision of DB_TYPE_SHORT.*/
-#define DB_SHORT_PRECISION      DB_SMALLINT_PRECISION
+#define DB_SHORT_PRECISION      (DB_SMALLINT_PRECISION)
 
 /* This constant defines the default decimal precision of DB_TYPE_FLOAT. */
-#define DB_FLOAT_DECIMAL_PRECISION      7
+#define DB_FLOAT_DECIMAL_PRECISION      (7)
 
 /* This constant defines the default decimal precision of DB_TYPE_DOUBLE. */
-#define DB_DOUBLE_DECIMAL_PRECISION      15
+#define DB_DOUBLE_DECIMAL_PRECISION      (15)
 
 /* This constant defines the default decimal precision of DB_TYPE_MONETARY. */
-#define DB_MONETARY_DECIMAL_PRECISION DB_DOUBLE_DECIMAL_PRECISION
+#define DB_MONETARY_DECIMAL_PRECISION (DB_DOUBLE_DECIMAL_PRECISION)
 
 /* This constant defines the default precision of DB_TYPE_TIME. */
-#define DB_TIME_PRECISION      8
+#define DB_TIME_PRECISION      (8)
 
 /* This constant defines the default precision of DB_TYPE_DATE. */
-#define DB_DATE_PRECISION      10
+#define DB_DATE_PRECISION      (10)
 
 /* This constant defines the default precision of DB_TYPE_TIMESTAMP. */
-#define DB_TIMESTAMP_PRECISION      19
+#define DB_TIMESTAMP_PRECISION      (19)
 
 /* This constant defines the default precision of DB_TYPE_TIMESTAMPTZ. */
-#define DB_TIMESTAMPTZ_PRECISION   DB_TIMESTAMP_PRECISION
+#define DB_TIMESTAMPTZ_PRECISION   (DB_TIMESTAMP_PRECISION)
 
 /* This constant defines the default precision of DB_TYPE_DATETIME. */
-#define DB_DATETIME_PRECISION      23
+#define DB_DATETIME_PRECISION      (23)
 
 /* This constant defines the default precision of DB_TYPE_DATETIMETZ. */
-#define DB_DATETIMETZ_PRECISION    DB_DATETIME_PRECISION
+#define DB_DATETIMETZ_PRECISION    (DB_DATETIME_PRECISION)
 
 /* This constant defines the default scale of DB_TYPE_DATETIME. */
-#define DB_DATETIME_DECIMAL_SCALE      3
+#define DB_DATETIME_DECIMAL_SCALE      (3)
 
 /* The maximum length of the partition expression after it is processed */
-#define DB_MAX_PARTITION_EXPR_LENGTH 2048
+#define DB_MAX_PARTITION_EXPR_LENGTH (2048)
 
 /* Defines the state of a value as not being compressable due to its bad compression size or
  * its uncompressed size being lower than PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
@@ -791,7 +814,8 @@ extern "C"
       unsigned char is_null;
       unsigned char type;
       unsigned char precision;
-      unsigned char scale;
+      int scale;
+      bool is_value_negative;
     } numeric_info;
     struct char_info
     {
@@ -843,6 +867,11 @@ extern "C"
   typedef struct db_numeric DB_NUMERIC;
   struct db_numeric
   {
+    struct
+    {
+      int precision;
+      int scale;
+    } header;
     union
     {
       unsigned char *digits;
