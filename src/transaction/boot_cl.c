@@ -120,12 +120,7 @@
 #define BOOT_NO_OPT_CAP                 0
 #define BOOT_CHECK_HA_DELAY_CAP         NET_CAP_HA_REPL_DELAY
 
-#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-#define MAX_TRANS_MULTI_CONN_TO_A_SERVER (10)
-int g_max_trans_multi_conn_to_a_server = MAX_TRANS_MULTI_CONN_TO_A_SERVER;
-#endif
-
-static CUB_THREAD_LOCAL BOOT_SERVER_CREDENTIAL boot_Server_credential = {
+static BOOT_SERVER_CREDENTIAL boot_Server_credential = {
   /* db_full_name */ NULL, /* host_name */ NULL, /* lob_path */ NULL,
   /* process_id */ -1,
   /* root_class_oid */ {NULL_PAGEID, NULL_SLOTID, NULL_VOLID},
@@ -157,10 +152,7 @@ char boot_Host_connected[CUB_MAXHOSTNAMELEN] = "";
 char boot_Host_name[CUB_MAXHOSTNAMELEN] = "";
 char boot_Ip_address[16] = { 0 };
 
-#if defined(SA_MODE)
-// boot_Volume_label seems redundant in the current logic.
 static char boot_Volume_label[PATH_MAX] = " ";
-#endif
 static bool boot_Is_client_all_final = true;
 static bool boot_Set_client_at_exit = false;
 static int boot_Process_id = -1;
@@ -179,22 +171,21 @@ static int boot_check_locales (BOOT_CLIENT_CREDENTIAL * client_credential);
 static int boot_check_timezone_checksum (BOOT_CLIENT_CREDENTIAL * client_credential);
 #endif
 static int boot_client_find_and_cache_class_oids (void);
+
 static int reset_isolation_and_wait_times (void);
-static int boot_restart_common_initialize (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang_charset,
-					   bool is_createdb);
+static int boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang_charset, bool is_createdb);
 static void boot_restart_failure_cleanup (DB_INFO * db,
 #if !defined(WINDOWS)
 					  bool dl_initialized,
 #endif
 					  bool is_createdb);
-static int boot_connection (BOOT_CLIENT_CREDENTIAL * client_credential, DB_INFO * db);
+static int boot_connect_to_server (BOOT_CLIENT_CREDENTIAL * client_credential, DB_INFO * db);
 
 static int boot_check_and_fill_db_path_info (BOOT_CLIENT_CREDENTIAL * client_credential,
 					     BOOT_DB_PATH_INFO * db_path_info);
 static void boot_check_and_fill_connection_info (BOOT_CLIENT_CREDENTIAL * client_credential, bool is_createdb);
-static DB_INFO *build_db_info (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info,
-			       int *ret_error_code);
-
+static DB_INFO *boot_build_db_info (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info,
+				    int *ret_error_code);
 
 /*
  * boot_client () -
@@ -254,214 +245,136 @@ install_system_metadata (void)
   return NO_ERROR;
 }
 
-#if defined(SA_MODE)
-/*
- * boot_initialize_client () -
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   client_credential(in): Contains database access information such as :
- *                          database name, user name and password, client type
- *   db_path_info(in) : Directory where the database is created. It allows you
- *                      to specify the exact pathname of a directory in which
-  *                     to create the new database.
- *   db_overwrite(in) : Wheater to overwrite the database if it already exist.
- *   file_addmore_vols(in): More volumes are created during the initialization
- *                      process.
- *   npages(in)       : Total number of pages to allocate for the database.
- *   db_desired_pagesize(in): Desired pagesize for the new database.
- *                      The given size must be power of 2 and greater or
- *                      equal than 512.
- *   log_npages(in)   : Number of log pages. If log_npages <=0, default value
- *                      of system parameter is used.
- *   db_desired_log_page_size(in):
- *   lang_charset(in): language and charset to set on DB
- *
- * Note:
- *              The first step of any CUBRID application is to initialize a
- *              database. A database is composed of data volumes (or Unix file
- *              system files), database backup files, and log files. A data
- *              volume contains information on attributes, classes, indexes,
- *              and objects created in the database. A database backup is a
- *              fuzzy snapshot of the entire database. The backup is fuzzy
- *              since it can be taken online when other transactions are
- *              updating the database. The logs contain records that reflect
- *              changes to the database. The log and backup files are used by
- *              the system to recover committed and uncommitted transactions
- *              in the event of system and media crashes. Logs are also used
- *              to support user-initiated rollbacks. This function also
- *              initializes the database with built-in CUBRID classes.
- *
- *              The rest of this function is identical to the restart. The
- *              transaction for the current client session is automatically
- *              started.
- */
-int
-boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info, bool db_overwrite,
-			const char *file_addmore_vols, DKNPAGES npages, PGLENGTH db_desired_pagesize,
-			DKNPAGES log_npages, PGLENGTH db_desired_log_page_size, const char *lang_charset)
+
+static int
+boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang_charset, bool is_createdb)
 {
-  OID rootclass_oid;		/* Oid of root class */
-  HFID rootclass_hfid;		/* Heap for classes */
-  int tran_index;		/* Assigned transaction index */
-  TRAN_ISOLATION tran_isolation;	/* Desired client Isolation level */
-  int tran_lock_wait_msecs;	/* Default lock waiting */
-  int error_code = NO_ERROR;
-  DB_INFO *db = NULL;
-#if !defined(WINDOWS)
-  bool dl_initialized = false;
-#endif /* !WINDOWS */
-  assert (client_credential != NULL);
-  assert (db_path_info != NULL);
+  int error_code;
+  const char *conf_file = NULL;
 
-  error_code = boot_restart_common_initialize (client_credential, lang_charset, true);
-  if (error_code != NO_ERROR)
+  /* If the client is restarted, shutdown the client */
+  if (BOOT_IS_CLIENT_RESTARTED ())
     {
-      goto error_exit;
+      (void) boot_shutdown_client (true);
     }
 
-  (void) db_set_page_size (db_desired_pagesize, db_desired_log_page_size);
-
-  error_code = boot_check_and_fill_db_path_info (client_credential, db_path_info);
-  if (error_code != NO_ERROR)
+  if (!boot_Is_client_all_final)
     {
-      goto error_exit;
+      boot_client_all_finalize (ALL_FINALIZATION);
     }
 
-  db = build_db_info (client_credential, db_path_info, &error_code);
-  if (error_code != NO_ERROR)
+#if defined(WINDOWS)
+/* set up the WINDOWS stream emulations */
+  pc_init ();
+#endif /* WINDOWS */
+
+/* initialize language parameters */
+  if (lang_init () != NO_ERROR)
     {
-      goto error_exit;
-    }
-  assert (db != NULL);
-
-  er_clear ();
-
-  boot_check_and_fill_connection_info (client_credential, true);
-
-  /*
-   * Initialize the dynamic loader. Don't care about failures. If dynamic
-   * loader fails, methods will fail when they are invoked
-   */
-#if !defined(WINDOWS)
-#if !defined (SOLARIS) && !defined(LINUX) && !defined(AIX)
-  (void) dl_initiate_module (client_credential->get_program_name ());
-#else /* !SOLARIS && !LINUX && !AIX */
-  (void) dl_initiate_module ();
-#endif /* !SOLARIS && !LINUX && !AIX */
-  dl_initialized = true;
-#endif /* !WINDOWS */
-
-  boot_User_volid = 0;
-  tran_isolation = (TRAN_ISOLATION) prm_get_integer_value (PRM_ID_LOG_ISOLATION_LEVEL);
-  tran_lock_wait_msecs = prm_get_integer_value (PRM_ID_LK_TIMEOUT_SECS);
-
-  /* this must be done before the init_server because recovery steps may need domains. */
-  error_code = tp_init ();
-  if (error_code != NO_ERROR)
-    {
-      goto error_exit;
-    }
-
-  if (tran_lock_wait_msecs > 0)
-    {
-      tran_lock_wait_msecs = tran_lock_wait_msecs * 1000;
-    }
-
-  /* Initialize the disk and the server part */
-  tran_index =
-    boot_initialize_server (client_credential, db_path_info, db_overwrite, file_addmore_vols, npages,
-			    db_desired_pagesize, log_npages, db_desired_log_page_size, &rootclass_oid, &rootclass_hfid,
-			    tran_lock_wait_msecs, tran_isolation);
-
-  if (tran_index == NULL_TRAN_INDEX)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      if (error_code == NO_ERROR)
+      if (er_errid () == NO_ERROR)
 	{
-	  error_code = ER_GENERIC_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, "Failed to initialize language module");
 	}
-      goto error_exit;
+      return ER_LOC_INIT;
     }
 
-  // create session
-  (void) db_find_or_create_session (client_credential->get_db_user (), client_credential->get_program_name ());
-
-  oid_set_root (&rootclass_oid);
-  OID_INIT_TEMPID ();
-
-  error_code = ws_init (false);
-  if (error_code == NO_ERROR)
+  if (is_createdb)
     {
-      sm_create_root (&rootclass_oid, &rootclass_hfid);
-      error_code = install_system_metadata ();
-      if (error_code == NO_ERROR)
+      if (lang_set_charset_lang (lang_charset) != NO_ERROR)
 	{
-	  error_code = tran_commit (false);
+	  return ER_LOC_INIT;
 	}
-
-      if (error_code == NO_ERROR)
-	{
-	  error_code = sp_builtin_install ();
-	}
-    }
-
-  if (error_code != NO_ERROR)
-    {
-      (void) boot_shutdown_client (false);
     }
   else
     {
-      boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
-    }
-
-  if (db != NULL)
-    {
-      cfg_free_directory (db);
-      db = NULL;
-    }
-  return error_code;
-
-error_exit:
-
-#if !defined(WINDOWS)
-  boot_restart_failure_cleanup (db, dl_initialized, true);
-#else
-  boot_restart_failure_cleanup (db, true);
-#endif
-
-  return error_code;
-}
-#endif /* SA_MODE */
-
-static int
-reset_isolation_and_wait_times (void)
-{
-  TRAN_ISOLATION tran_isolation;
-  int tran_lock_wait_msecs;
-  int error_code;
-
-  /*
-   * If there is a need to change the isolation level and the lock wait,
-   * do it at this moment
-   */
-
-  tran_isolation = (TRAN_ISOLATION) prm_get_integer_value (PRM_ID_LOG_ISOLATION_LEVEL);
-  tran_lock_wait_msecs = prm_get_integer_value (PRM_ID_LK_TIMEOUT_SECS);
-  if (tran_isolation != TRAN_DEFAULT_ISOLATION_LEVEL ())
-    {
-      error_code = tran_reset_isolation (tran_isolation, TM_TRAN_ASYNC_WS ());
-      if (error_code != NO_ERROR)
+      /* initialize time zone data - optional module */
+      if (tz_load () != NO_ERROR)
 	{
-	  return error_code;
+	  if (er_errid () == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_LOAD_ERROR, 1, "Failed to initialize timezone module");
+	    }
+	  return ER_TZ_LOAD_ERROR;
 	}
     }
-  if (tran_lock_wait_msecs >= 0)
+
+/* database name must be specified */
+  if (client_credential->db_name.empty ())
     {
-      (void) tran_reset_wait_times (tran_lock_wait_msecs * 1000);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, "(null)");
+      return ER_BO_UNKNOWN_DATABASE;
     }
+
+/* open the system message catalog, before prm_ ? */
+  if (msgcat_init () != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG, 0);
+      return ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
+    }
+
+#if defined (CS_MODE)
+  if (!is_createdb)
+    {
+      if (BOOT_BROKER_CLIENT_TYPE (client_credential->client_type))
+	{
+	  conf_file = getenv ("CUBRID_CONF_FOR_BROKER");
+	  if (conf_file && access (conf_file, R_OK | F_OK) != 0)
+	    {
+	      conf_file = NULL;
+	    }
+	}
+    }
+#endif
+
+/* initialize system parameters */
+  if (sysprm_load_and_init_client (client_credential->get_db_name (), conf_file) != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
+      return ER_BO_CANT_LOAD_SYSPRM;
+    }
+
+  if (!is_createdb)
+    {
+      // reload with update file name
+      if (er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE), prm_get_integer_value (PRM_ID_ER_EXIT_ASK)) != NO_ERROR)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+
+#if defined (CS_MODE) && !defined (NDEBUG)
+      /* log the parameter loading file for CAS in debug mode. */
+      if (BOOT_BROKER_CLIENT_TYPE (client_credential->client_type))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "conf_for_broker = %s\n", conf_file ? conf_file : "unknown");
+	}
+#endif
+    }
+
+  /* initialize the "areas" memory manager, requires prm_ */
+  area_init ();
+  locator_initialize_areas ();
+
+  if (is_createdb)
+    {
+      error_code = perfmon_initialize (MAX_NTRANS);
+    }
+  else
+    {
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+      error_code = perfmon_initialize (MAX_NTRANS);
+#else
+      error_code = perfmon_initialize (1);	/* 1 transaction for SA_MODE */
+#endif
+    }
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  /* Initialize tsc-timer */
+  tsc_init ();
 
   return NO_ERROR;
 }
@@ -620,7 +533,7 @@ boot_check_and_fill_connection_info (BOOT_CLIENT_CREDENTIAL * client_credential,
 }
 
 static DB_INFO *
-build_db_info (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info, int *ret_error_code)
+boot_build_db_info (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info, int *ret_error_code)
 {
   DB_INFO *db = NULL;
   const char *hosts[2];
@@ -715,127 +628,6 @@ build_db_info (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * d
   return db;
 }
 
-static int
-boot_restart_common_initialize (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang_charset, bool is_createdb)
-{
-  int error_code;
-  const char *conf_file = NULL;
-
-  /* If the client is restarted, shutdown the client */
-  if (BOOT_IS_CLIENT_RESTARTED ())
-    {
-      (void) boot_shutdown_client (true);
-    }
-
-  if (!boot_Is_client_all_final)
-    {
-      boot_client_all_finalize (ALL_FINALIZATION);
-    }
-
-#if defined(WINDOWS)
-/* set up the WINDOWS stream emulations */
-  pc_init ();
-#endif /* WINDOWS */
-
-/* initialize language parameters */
-  if (lang_init () != NO_ERROR)
-    {
-      if (er_errid () == NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, "Failed to initialize language module");
-	}
-      return ER_LOC_INIT;
-    }
-
-  if (is_createdb)
-    {
-      if (lang_set_charset_lang (lang_charset) != NO_ERROR)
-	{
-	  return ER_LOC_INIT;
-	}
-    }
-  else
-    {
-      /* initialize time zone data - optional module */
-      if (tz_load () != NO_ERROR)
-	{
-	  if (er_errid () == NO_ERROR)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_LOAD_ERROR, 1, "Failed to initialize timezone module");
-	    }
-	  return ER_TZ_LOAD_ERROR;
-	}
-    }
-
-/* database name must be specified */
-  if (client_credential->db_name.empty ())
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, "(null)");
-      return ER_BO_UNKNOWN_DATABASE;
-    }
-
-/* open the system message catalog, before prm_ ? */
-  if (msgcat_init () != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG, 0);
-      return ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
-    }
-
-#if defined (CS_MODE)
-  if (is_createdb == false)
-    {
-      if (BOOT_BROKER_CLIENT_TYPE (client_credential->client_type))
-	{
-	  conf_file = getenv ("CUBRID_CONF_FOR_BROKER");
-	  if (conf_file && access (conf_file, R_OK | F_OK) != 0)
-	    {
-	      conf_file = NULL;
-	    }
-#if !defined (NDEBUG)
-	  _er_log_debug (ARG_FILE_LINE, "conf_for_broker = %s\n", conf_file ? conf_file : "unknown");
-#endif
-	}
-    }
-#endif
-
-/* initialize system parameters */
-  if (sysprm_load_and_init_client (client_credential->get_db_name (), conf_file) != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
-      return ER_BO_CANT_LOAD_SYSPRM;
-    }
-
-  if (!is_createdb)
-    {
-      // reload with update file name
-      if (er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE), prm_get_integer_value (PRM_ID_ER_EXIT_ASK)) != NO_ERROR)
-	{
-	  assert_release (false);
-	  return NO_ERROR;
-	}
-    }
-
-  /* initialize the "areas" memory manager, requires prm_ */
-  area_init ();
-  locator_initialize_areas ();
-
-#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-  error_code = perfmon_initialize (g_max_trans_multi_conn_to_a_server + 1);
-#else
-  error_code = perfmon_initialize (1);	/* 1 transaction for SA_MODE */
-#endif
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
-
-  /* Initialize tsc-timer */
-  tsc_init ();
-
-  return NO_ERROR;
-}
-
 static void
 boot_restart_failure_cleanup (DB_INFO * db,
 #if !defined(WINDOWS)
@@ -850,7 +642,8 @@ boot_restart_failure_cleanup (DB_INFO * db,
 
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
-      er_log_debug (ARG_FILE_LINE, "boot_initialize_client: unregister client { tran %d }\n", tm_Tran_index);
+      er_log_debug (ARG_FILE_LINE, "%s: unregister client { tran %d }\n",
+		    (is_createdb ? "boot_initialize_client" : "boot_restart_client"), tm_Tran_index);
       boot_shutdown_client (false);
     }
   else
@@ -903,7 +696,7 @@ boot_restart_failure_cleanup (DB_INFO * db,
 
 #if defined(CS_MODE)
 static int
-boot_connection (BOOT_CLIENT_CREDENTIAL * client_credential, DB_INFO * db)
+boot_connect_to_server (BOOT_CLIENT_CREDENTIAL * client_credential, DB_INFO * db)
 {
   int error_code = NO_ERROR;
   int i, optional_cap;
@@ -1085,6 +878,220 @@ boot_connection (BOOT_CLIENT_CREDENTIAL * client_credential, DB_INFO * db)
 }
 #endif
 
+static int
+reset_isolation_and_wait_times (void)
+{
+  TRAN_ISOLATION tran_isolation;
+  int tran_lock_wait_msecs;
+  int error_code;
+
+  /*
+   * If there is a need to change the isolation level and the lock wait,
+   * do it at this moment
+   */
+
+  tran_isolation = (TRAN_ISOLATION) prm_get_integer_value (PRM_ID_LOG_ISOLATION_LEVEL);
+  tran_lock_wait_msecs = prm_get_integer_value (PRM_ID_LK_TIMEOUT_SECS);
+  if (tran_isolation != TRAN_DEFAULT_ISOLATION_LEVEL ())
+    {
+      error_code = tran_reset_isolation (tran_isolation, TM_TRAN_ASYNC_WS ());
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+  if (tran_lock_wait_msecs >= 0)
+    {
+      (void) tran_reset_wait_times (tran_lock_wait_msecs * 1000);
+    }
+
+  return NO_ERROR;
+}
+
+#if defined(SA_MODE)
+/*
+ * boot_initialize_client () -
+ *
+ * returns : NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   client_credential(in): Contains database access information such as :
+ *                          database name, user name and password, client type
+ *   db_path_info(in) : Directory where the database is created. It allows you
+ *                      to specify the exact pathname of a directory in which
+  *                     to create the new database.
+ *   db_overwrite(in) : Wheater to overwrite the database if it already exist.
+ *   file_addmore_vols(in): More volumes are created during the initialization
+ *                      process.
+ *   npages(in)       : Total number of pages to allocate for the database.
+ *   db_desired_pagesize(in): Desired pagesize for the new database.
+ *                      The given size must be power of 2 and greater or
+ *                      equal than 512.
+ *   log_npages(in)   : Number of log pages. If log_npages <=0, default value
+ *                      of system parameter is used.
+ *   db_desired_log_page_size(in):
+ *   lang_charset(in): language and charset to set on DB
+ *
+ * Note:
+ *              The first step of any CUBRID application is to initialize a
+ *              database. A database is composed of data volumes (or Unix file
+ *              system files), database backup files, and log files. A data
+ *              volume contains information on attributes, classes, indexes,
+ *              and objects created in the database. A database backup is a
+ *              fuzzy snapshot of the entire database. The backup is fuzzy
+ *              since it can be taken online when other transactions are
+ *              updating the database. The logs contain records that reflect
+ *              changes to the database. The log and backup files are used by
+ *              the system to recover committed and uncommitted transactions
+ *              in the event of system and media crashes. Logs are also used
+ *              to support user-initiated rollbacks. This function also
+ *              initializes the database with built-in CUBRID classes.
+ *
+ *              The rest of this function is identical to the restart. The
+ *              transaction for the current client session is automatically
+ *              started.
+ */
+int
+boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info, bool db_overwrite,
+			const char *file_addmore_vols, DKNPAGES npages, PGLENGTH db_desired_pagesize,
+			DKNPAGES log_npages, PGLENGTH db_desired_log_page_size, const char *lang_charset)
+{
+  OID rootclass_oid;		/* Oid of root class */
+  HFID rootclass_hfid;		/* Heap for classes */
+  int tran_index;		/* Assigned transaction index */
+  TRAN_ISOLATION tran_isolation;	/* Desired client Isolation level */
+  int tran_lock_wait_msecs;	/* Default lock waiting */
+  int error_code = NO_ERROR;
+  DB_INFO *db = NULL;
+#if !defined(WINDOWS)
+  bool dl_initialized = false;
+#endif /* !WINDOWS */
+
+  assert (client_credential != NULL);
+  assert (db_path_info != NULL);
+
+  error_code = boot_client_common (client_credential, lang_charset, true);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  (void) db_set_page_size (db_desired_pagesize, db_desired_log_page_size);
+
+  error_code = boot_check_and_fill_db_path_info (client_credential, db_path_info);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  // build db info
+  db = boot_build_db_info (client_credential, db_path_info, &error_code);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+  assert (db != NULL);
+
+  er_clear ();
+
+  boot_check_and_fill_connection_info (client_credential, true);
+
+
+  /*
+   * Initialize the dynamic loader. Don't care about failures. If dynamic
+   * loader fails, methods will fail when they are invoked
+   */
+#if !defined(WINDOWS)
+#if !defined (SOLARIS) && !defined(LINUX) && !defined(AIX)
+  (void) dl_initiate_module (client_credential->get_program_name ());
+#else /* !SOLARIS && !LINUX && !AIX */
+  (void) dl_initiate_module ();
+#endif /* !SOLARIS && !LINUX && !AIX */
+  dl_initialized = true;
+#endif /* !WINDOWS */
+
+  boot_User_volid = 0;
+  tran_isolation = (TRAN_ISOLATION) prm_get_integer_value (PRM_ID_LOG_ISOLATION_LEVEL);
+  tran_lock_wait_msecs = prm_get_integer_value (PRM_ID_LK_TIMEOUT_SECS);
+
+  /* this must be done before the init_server because recovery steps may need domains. */
+  error_code = tp_init ();
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  if (tran_lock_wait_msecs > 0)
+    {
+      tran_lock_wait_msecs = tran_lock_wait_msecs * 1000;
+    }
+
+  /* Initialize the disk and the server part */
+  tran_index =
+    boot_initialize_server (client_credential, db_path_info, db_overwrite, file_addmore_vols, npages,
+			    db_desired_pagesize, log_npages, db_desired_log_page_size, &rootclass_oid, &rootclass_hfid,
+			    tran_lock_wait_msecs, tran_isolation);
+
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_code = er_errid ();
+      if (error_code == NO_ERROR)
+	{
+	  error_code = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	}
+      goto error_exit;
+    }
+
+  // create session
+  (void) db_find_or_create_session (client_credential->get_db_user (), client_credential->get_program_name ());
+
+  oid_set_root (&rootclass_oid);
+  OID_INIT_TEMPID ();
+
+  error_code = ws_init (false);
+  if (error_code == NO_ERROR)
+    {
+      sm_create_root (&rootclass_oid, &rootclass_hfid);
+      error_code = install_system_metadata ();
+      if (error_code == NO_ERROR)
+	{
+	  error_code = tran_commit (false);
+	}
+
+      if (error_code == NO_ERROR)
+	{
+	  error_code = sp_builtin_install ();
+	}
+    }
+
+  if (error_code != NO_ERROR)
+    {
+      (void) boot_shutdown_client (false);
+    }
+  else
+    {
+      boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
+    }
+
+  if (db != NULL)
+    {
+      cfg_free_directory (db);
+      db = NULL;
+    }
+  return error_code;
+
+error_exit:
+
+#if !defined(WINDOWS)
+  boot_restart_failure_cleanup (db, dl_initialized, true);
+#else
+  boot_restart_failure_cleanup (db, true);
+#endif
+
+  return error_code;
+}
+#endif /* SA_MODE */
 
 /*
  * boot_restart_client () - restart client
@@ -1123,7 +1130,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
   assert (client_credential != NULL);
 
-  error_code = boot_restart_common_initialize (client_credential, NULL, false);
+  error_code = boot_client_common (client_credential, NULL, false);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -1131,7 +1138,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
   pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
 
-  db = build_db_info (client_credential, NULL, &error_code);
+  // build db info
+  db = boot_build_db_info (client_credential, NULL, &error_code);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -1162,7 +1170,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
 
 #if defined(CS_MODE)
-  error_code = boot_connection (client_credential, db);
+  error_code = boot_connect_to_server (client_credential, db);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -1341,6 +1349,7 @@ error:
   return error_code;
 }
 
+
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 pthread_mutex_t g_db_restart_client_sub_mutex = PTHREAD_MUTEX_INITIALIZER;
 int
@@ -1418,10 +1427,9 @@ boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
   tran_lock_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
 
   er_log_debug (ARG_FILE_LINE,
-		"boot_restart_client: register client { type %d db %s user %s password %s "
+		"boot_restart_client: register client { type %d db %s user %s password **** "
 		"program %s login %s host %s pid %d }\n", client_credential->client_type,
 		client_credential->get_db_name (), client_credential->get_db_user (),
-		client_credential->db_password.empty ()? "(null)" : client_credential->get_db_password (),
 		client_credential->get_program_name (),
 		client_credential->get_login_name (), client_credential->get_host_name (),
 		client_credential->process_id);
@@ -1849,8 +1857,8 @@ boot_client_all_finalize (int final_level)
  *       in hostlist until success or the end of list is reached.
  */
 static int
-boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabilities, int opt_cap,
-			    bool discriminative, int connect_order, bool is_preferred_host)
+boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabilities, int opt_cap, bool discriminative,
+			    int connect_order, bool is_preferred_host)
 {
   int error = ER_NET_NO_SERVER_HOST;
   int hn, n;
@@ -2059,8 +2067,10 @@ boot_build_catalog_classes (const char *dbname)
 	  /* mark catalog class/view as a system class */
 	  sm_mark_system_class_for_catalog ();
 
-	  tf_compile_meta_classes ();
-
+	  if (!tf_Metaclass_class.n_variable)
+	    {
+	      tf_compile_meta_classes ();
+	    }
 	  if (catcls_Enable != true)
 	    {
 	      error_code = catcls_compile_catalog_classes (NULL);

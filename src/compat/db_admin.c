@@ -1013,7 +1013,7 @@ db_restart_sub (int sub_index)
   client_credential = gv_client_credential;
   client_credential.program_name = program_name;
 
-  error = au_login (client_credential.get_db_user (), client_credential.get_db_password (), false);
+  error = au_login (client_credential.get_db_user (), "", false);	// TODO: ctshim, password
   if (error != NO_ERROR)
     {
       return error;

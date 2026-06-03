@@ -222,8 +222,7 @@ extern int db_init (const char *program, int print_version, const char *dbname, 
 		    const char *host_name, const bool overwrite, const char *comments, const char *addmore_vols_file,
 		    int npages, int desired_pagesize, int log_npages, int desired_log_page_size,
 		    const char *lang_charset);
-#endif
-
+#endif /* SA_MODE */
 extern int db_parse_one_statement (DB_SESSION * session);
 #ifdef __cplusplus
 extern "C"
@@ -259,7 +258,7 @@ extern DB_DATA *db_value_get_db_data (DB_VALUE * value);
 extern DB_OBJECT *db_create_internal (DB_OBJECT * obj);
 extern DB_OBJECT *db_create_by_name_internal (const char *name);
 extern int db_put_internal (DB_OBJECT * obj, const char *name, DB_VALUE * value);
-extern DB_OTMPL *dbt_create_object_internal (DB_OBJECT * classobj);
+extern DB_OTMPL *dbt_create_object_internal (DB_OBJECT * classobj, bool is_read_only);
 extern int dbt_put_internal (DB_OTMPL * def, const char *name, DB_VALUE * value);
 extern int db_dput_internal (DB_OBJECT * obj, DB_ATTDESC * attribute, DB_VALUE * value);
 extern int dbt_dput_internal (DB_OTMPL * def, DB_ATTDESC * attribute, DB_VALUE * value);

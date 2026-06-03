@@ -126,7 +126,7 @@ static int check_constraints (SM_ATTRIBUTE * att, DB_VALUE * value, unsigned for
 static int quick_validate (SM_VALIDATION * valid, DB_VALUE * value);
 static void cache_validation (SM_VALIDATION * valid, DB_VALUE * value);
 static void begin_template_traversal (void);
-static OBJ_TEMPLATE *make_template (MOP object, MOP classobj);
+static OBJ_TEMPLATE *make_template (MOP object, MOP classobj, bool is_read_only);
 static int validate_template (OBJ_TEMPLATE * temp);
 static OBJ_TEMPASSIGN *obt_make_assignment (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att);
 static void obt_free_assignment (OBJ_TEMPASSIGN * assign);
@@ -737,7 +737,7 @@ begin_template_traversal (void)
  */
 
 static OBJ_TEMPLATE *
-make_template (MOP object, MOP classobj)
+make_template (MOP object, MOP classobj, bool is_read_only)
 {
   OBJ_TEMPLATE *template_ptr;
   AU_FETCHMODE mode;
@@ -771,6 +771,12 @@ make_template (MOP object, MOP classobj)
        */
       mode = AU_FETCH_UPDATE;
       auth = AU_ALTER;
+    }
+
+  if (is_read_only)
+    {
+      mode = AU_FETCH_READ;
+      auth = AU_SELECT;
     }
 
   if (au_fetch_class (classobj, &class_, mode, auth))
@@ -1403,7 +1409,7 @@ memory_error:
  */
 
 OBJ_TEMPLATE *
-obt_def_object (MOP class_mop)
+obt_def_object (MOP class_mop, bool is_read_only)
 {
   OBJ_TEMPLATE *template_ptr = NULL;
   int is_class = locator_is_class (class_mop, DB_FETCH_CLREAD_INSTWRITE);
@@ -1418,7 +1424,7 @@ obt_def_object (MOP class_mop)
     }
   else
     {
-      template_ptr = make_template (NULL, class_mop);
+      template_ptr = make_template (NULL, class_mop, is_read_only);
     }
 
   return template_ptr;
@@ -1449,7 +1455,7 @@ obt_edit_object (MOP object)
        * create a class object template, these are only allowed to
        * update class attributes
        */
-      template_ptr = make_template (object, object);
+      template_ptr = make_template (object, object, false);
     }
   else if (!object->is_temp)
     {
@@ -1463,7 +1469,7 @@ obt_edit_object (MOP object)
       class_ = sm_get_class (object);
       if (class_ != NULL)
 	{
-	  template_ptr = make_template (object, class_);
+	  template_ptr = make_template (object, class_, false);
 	}
     }
 

@@ -5192,7 +5192,35 @@ mr_data_readmem_object (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 static int
 mr_index_writeval_object (OR_BUF * buf, DB_VALUE * value)
 {
-  return mr_index_writeval_oid (buf, value);
+  OID *oidp = NULL;
+  DB_OBJECT *obj = NULL;
+  int rc = NO_ERROR;
+
+  assert (DB_VALUE_TYPE (value) == DB_TYPE_OBJECT || DB_VALUE_TYPE (value) == DB_TYPE_OID);
+
+  if (DB_VALUE_TYPE (value) == DB_TYPE_OBJECT)
+    {
+#if !defined (SERVER_MODE)
+      obj = db_get_object (value);
+      oidp = WS_OID (obj);
+#endif
+    }
+  else
+    {
+      oidp = db_get_oid (value);
+    }
+
+  rc = or_put_data (buf, (char *) (&oidp->pageid), tp_Integer.disksize);
+  if (rc == NO_ERROR)
+    {
+      rc = or_put_data (buf, (char *) (&oidp->slotid), tp_Short.disksize);
+    }
+  if (rc == NO_ERROR)
+    {
+      rc = or_put_data (buf, (char *) (&oidp->volid), tp_Short.disksize);
+    }
+
+  return rc;
 }
 
 static int
@@ -6639,7 +6667,7 @@ mr_index_writeval_oid (OR_BUF * buf, DB_VALUE * value)
   OID *oidp = NULL;
   int rc = NO_ERROR;
 
-  assert (DB_VALUE_TYPE (value) == DB_TYPE_OID || DB_VALUE_TYPE (value) == DB_TYPE_OBJECT);
+  assert (DB_VALUE_TYPE (value) == DB_TYPE_OID);
 
   oidp = db_get_oid (value);
 

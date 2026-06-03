@@ -166,6 +166,7 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #define COLUMN_CONSTRAINT_SHARED_DEFAULT_AI	(0x70)
 #define COLUMN_CONSTRAINT_COMMENT       (0x80)
 #define COLUMN_CONSTRAINT_ON_UPDATE     (0x100)
+#define COLUMN_CONSTRAINT_INVISIBLE	(0x200)
 
 #define STACK_SIZE	128
 
@@ -582,6 +583,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <boolean> opt_invisible
 %type <number> opt_paren_plus
 %type <number> opt_with_fullscan
+%type <number> opt_with_n_buckets
 %type <number> online_parallel
 %type <number> comp_op
 %type <number> opt_of_all_some_any
@@ -662,9 +664,11 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> rename_class_list
 %type <node> rename_class_pair
 %type <node> drop_stmt
+%type <node> drop_histogram_stmt
 %type <node> opt_index_column_name_list
 %type <node> index_column_name_list
 %type <node> update_statistics_stmt
+%type <node> update_histogram_stmt
 %type <node> only_class_name_list
 %type <node> opt_level_spec
 %type <node> char_string_literal_list
@@ -890,6 +894,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> constant_set
 %type <node> file_path_name
 %type <node> identifier_list
+%type <node> opt_with_column_list
 %type <node> opt_bracketed_identifier_list
 %type <node> index_column_identifier_list
 %type <node> identifier_without_dot
@@ -956,6 +961,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> on_duplicate_key_update
 %type <node> opt_attr_ordering_info
 %type <node> show_stmt
+%type <node> show_histogram_stmt
 %type <node> session_variable;
 %type <node> session_variable_assignment_list
 %type <node> session_variable_assignment
@@ -1127,6 +1133,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token BOOLEAN_
 %token BOTH_
 %token BREADTH
+%token BUCKETS
 %token BY
 %token CALL
 %token CASCADE
@@ -1233,6 +1240,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token GRANT
 %token GROUP_
 %token HAVING
+%token HISTOGRAM
 %token HOUR_
 %token HOUR_MILLISECOND
 %token HOUR_SECOND
@@ -1914,6 +1922,12 @@ stmt_
 	| rename_stmt
 		{ $$ = $1; }
 	| update_statistics_stmt
+		{ $$ = $1; }
+	| update_histogram_stmt
+		{ $$ = $1; }
+        | show_histogram_stmt
+                { $$ = $1; }
+	| drop_histogram_stmt
 		{ $$ = $1; }
 	| drop_stmt
 		{ $$ = $1; }
@@ -4681,6 +4695,14 @@ index_column_name_list
 		}}
 	;
 
+opt_with_column_list
+        : /* empty */
+        {{ $$ = NULL; }}
+
+        | ON_ identifier_list
+        {{ $$ = $2; }}
+        ;
+
 update_statistics_stmt
 	: UPDATE STATISTICS ON_ only_class_name_list opt_with_fullscan
 		{{
@@ -4720,6 +4742,66 @@ update_statistics_stmt
 		}}
 	;
 
+show_histogram_stmt
+        : SHOW HISTOGRAM only_class_name opt_with_column_list
+                {{
+                        PT_NODE *uhs = parser_new_node (this_parser, PT_SHOW_HISTOGRAM);
+                        PT_NODE *target_t = parser_new_node (this_parser, PT_SPEC);
+
+                        if (uhs && target_t)
+                        {
+                            target_t->info.spec.entity_name = $3;
+                            PARSER_SAVE_ERR_CONTEXT (target_t, @3.buffer_pos)
+                            target_t->info.spec.meta_class = PT_CLASS;
+                            uhs->info.histogram.target_table_spec = target_t;
+                            uhs->info.histogram.target_columns = $4;
+                        }
+
+                        $$ = uhs;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                }}
+        ;
+
+update_histogram_stmt
+        : ANALYZE TABLE only_class_name UPDATE HISTOGRAM opt_with_column_list opt_with_n_buckets opt_with_fullscan
+                {{
+                        PT_NODE *uhs = parser_new_node (this_parser, PT_UPDATE_HISTOGRAM);
+                        PT_NODE *target_t = parser_new_node (this_parser, PT_SPEC);
+                        if (uhs && target_t)
+                        {
+                            target_t->info.spec.entity_name = $3;
+                            PARSER_SAVE_ERR_CONTEXT (target_t, @3.buffer_pos)
+                            target_t->info.spec.meta_class = PT_CLASS;
+                            uhs->info.histogram.target_table_spec = target_t;
+
+                            uhs->info.histogram.target_columns = $6;
+                            uhs->info.histogram.bucket_count = $7;
+                            uhs->info.histogram.with_fullscan = $8;             
+                        }
+
+                        $$ = uhs;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                }}
+        ;
+
+drop_histogram_stmt
+        : ANALYZE TABLE only_class_name DROP HISTOGRAM opt_with_column_list
+                {{
+                        PT_NODE *dhs = parser_new_node (this_parser, PT_DROP_HISTOGRAM);
+                        PT_NODE *target_t = parser_new_node (this_parser, PT_SPEC);
+                        if (dhs && target_t)
+                        {
+                            target_t->info.spec.entity_name = $3;
+                            PARSER_SAVE_ERR_CONTEXT (target_t, @3.buffer_pos)
+                            target_t->info.spec.meta_class = PT_CLASS;
+                            dhs->info.histogram.target_table_spec = target_t;
+                            dhs->info.histogram.target_columns = $6;
+                        }
+                        $$ = dhs;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                }}
+        ;
+
 only_class_name_list
 	: only_class_name_list ',' only_class_name
 		{{
@@ -4738,6 +4820,10 @@ opt_invisible
 		{{
  			$$ = false;
 		}}
+	| VISIBLE
+		{{
+			$$ = false;
+		}}
 	| INVISIBLE
 		{{
 			$$ = true;
@@ -4753,6 +4839,18 @@ opt_with_fullscan
         | WITH FULLSCAN
                 {{
                         $$ = 1;
+                }}
+        ;
+
+
+opt_with_n_buckets
+        : /* empty */
+                {{
+                        $$ = 0;
+                }}
+        | WITH unsigned_integer BUCKETS
+                {{
+                        $$ = $2->info.value.data_value.i;
                 }}
         ;
 
@@ -9889,13 +9987,29 @@ attr_def_one
 	  opt_attr_ordering_info
 		{{
 			PT_NODE *node = parser_get_attr_def_one ();
-			if (node != NULL && node->info.attr_def.attr_type != PT_SHARED)
-			  {
-			    node->info.attr_def.attr_type = parser_attr_type;
-			  }
 			if (node != NULL)
 			  {
+			    if (node->info.attr_def.attr_type != PT_SHARED)
+			      {
+			        node->info.attr_def.attr_type = parser_attr_type;
+			      }
 			    node->info.attr_def.ordering_info = $5;
+			    unsigned int mask = $4;
+			    if ((mask & COLUMN_CONSTRAINT_INVISIBLE))
+			      {
+			        if ((node->info.attr_def.attr_type == PT_SHARED
+				    || node->info.attr_def.attr_type == PT_META_ATTR))
+			          {
+			            PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			              MSGCAT_SEMANTIC_CLASS_ATT_OR_SHARED_CANT_SET_VISIBILITY,
+				      node->info.attr_def.attr_name->info.name.original);
+				    node->info.attr_def.attr_invisible = PT_ATTR_INVISIBLE_UNSET;
+			          }
+			      }
+			    else
+			      {
+			        node->info.attr_def.attr_invisible = PT_ATTR_INVISIBLE_UNSET;
+			      }
 			  }
 
 			$$ = node;
@@ -10028,6 +10142,10 @@ column_constraint_and_comment_def
 	| column_on_update_def
 		{{
 			$$ = COLUMN_CONSTRAINT_ON_UPDATE;
+		}}
+	| column_invisible_def
+		{{
+			$$ = COLUMN_CONSTRAINT_INVISIBLE;
 		}}
 	;
 
@@ -10471,6 +10589,19 @@ column_default_constraint_def
 
 			attr_node = parser_get_attr_def_one ();
 			attr_node->info.attr_def.data_default = node;
+		}}
+	;
+
+column_invisible_def
+	: VISIBLE
+		{{
+			PT_NODE* attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.attr_invisible = PT_ATTR_VISIBLE;
+		}}
+	| INVISIBLE
+		{{
+			PT_NODE* attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.attr_invisible = PT_ATTR_INVISIBLE;
 		}}
 	;
 
@@ -23541,6 +23672,7 @@ parser_remove_dummy_select (PT_NODE ** ent_inout)
               		    new_ent->info.spec.range_var = NULL;
               		    }
 
+                      new_ent->info.spec.flag = (PT_SPEC_FLAG) (new_ent->info.spec.flag | PT_SPEC_FLAG_DUMMY_REMOVED);
             	      new_ent->info.spec.range_var = ent->info.spec.range_var;
             	      ent->info.spec.range_var = NULL;
 
@@ -23867,7 +23999,7 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_PUSH_PRED", PT_HINT_NO_PUSH_PRED),
   INIT_PT_HINT("NO_MERGE", PT_HINT_NO_MERGE),
   INIT_PT_HINT("NO_SUBQUERY_CACHE", PT_HINT_NO_SUBQUERY_CACHE),
-  INIT_PT_HINT("NO_PARALLEL_HEAP_SCAN", PT_HINT_NO_PARALLEL_HEAP_SCAN),
+  INIT_PT_HINT("NO_PARALLEL_SCAN", PT_HINT_NO_PARALLEL_SCAN),
   INIT_PT_HINT("NO_PARALLEL_SUBQUERY", PT_HINT_NO_PARALLEL_SUBQUERY),
   INIT_PT_HINT("NO_PARALLEL_HASH_JOIN", PT_HINT_NO_PARALLEL_HASH_JOIN),
   INIT_PT_HINT("PARALLEL", PT_HINT_PARALLEL),
@@ -24029,6 +24161,11 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_CRC32:
     case PT_SCHEMA_DEF:
     case PT_DISK_SIZE:
+    case PT_ESTIMATED_TABLE_ROWS:
+    case PT_ESTIMATED_AVG_ROW_LENGTH:
+    case PT_ESTIMATED_DATA_LENGTH:
+    case PT_ESTIMATED_DATA_FREE:
+    case PT_COLLECTION_TO_STRING:
       {
 	PT_NODE *expr;
 	if (c != 1)
