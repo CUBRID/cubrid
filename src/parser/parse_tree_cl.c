@@ -19586,8 +19586,15 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
       else
 	{
 	  /* For Query-cache:
-	   * Separate comments have been added 
+	   * Separate comments have been added
 	   * for cases where there is no change in the query but information on the server has changed. */
+	}
+    }
+  else
+    {
+      if (!pt->url || !pt->user || !pt->pwd)
+	{
+	  print_detail = false;
 	}
     }
 
