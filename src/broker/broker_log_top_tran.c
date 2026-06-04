@@ -69,6 +69,7 @@ log_top_tran (int argc, char *argv[], int arg_start)
   char prev_prefix[256] = "";
   char curr_prefix[256] = "";
   char org_cwd[PATH_MAX];
+  bool is_found_files = false;
 
   if (getcwd (org_cwd, sizeof (org_cwd)) == NULL)
     {
@@ -89,11 +90,12 @@ log_top_tran (int argc, char *argv[], int arg_start)
 
       struct stat st;
 #if defined(WINDOWS)
-      if (stat (filename, &st) != 0 || (st.st_mode & S_IFMT) != S_IFREG)
+      if (stat (filename, &st) == 0 && (st.st_mode & _S_IFMT) == _S_IFDIR)
 #else
-      if (stat (filename, &st) != 0 || !S_ISREG (st.st_mode))
+      if (stat (filename, &st) == 0 && S_ISDIR (st.st_mode))
 #endif
 	{
+	  /* skip if filename is directory */
 	  continue;
 	}
 
@@ -130,6 +132,7 @@ log_top_tran (int argc, char *argv[], int arg_start)
       else
 	{
 	  fprintf (stdout, "%s\n", get_basename (filename));
+	  is_found_files = true;
 	}
 
       if (get_file_offset (filename, &start_offset, &end_offset) < 0)
@@ -161,8 +164,16 @@ log_top_tran (int argc, char *argv[], int arg_start)
     }
   else
     {
-      fprintf (stdout, "Report files created: ./log_top.t\n");
-      print_result ();
+      if (is_found_files)
+	{
+	  fprintf (stdout, "Report files created: ./log_top.t\n");
+	  print_result ();
+	}
+    }
+
+  if (!is_found_files)
+    {
+      fprintf (stdout, "Result generation skipped: no analyzed files found.\n");
     }
 
   info_arr_size = 0;

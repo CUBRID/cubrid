@@ -382,6 +382,7 @@ log_top_query (int argc, char *argv[], int arg_start)
   char prev_prefix[256] = "";
   char curr_prefix[256] = "";
   char org_cwd[PATH_MAX];
+  bool is_found_files = false;
 #ifdef MT_MODE
   T_THREAD thrid;
   int j;
@@ -423,11 +424,12 @@ log_top_query (int argc, char *argv[], int arg_start)
 
       struct stat st;
 #if defined(WINDOWS)
-      if (stat (filename, &st) != 0 || (st.st_mode & S_IFMT) != S_IFREG)
+      if (stat (filename, &st) == 0 && (st.st_mode & _S_IFMT) == _S_IFDIR)
 #else
-      if (stat (filename, &st) != 0 || !S_ISREG (st.st_mode))
+      if (stat (filename, &st) == 0 && S_ISDIR (st.st_mode))
 #endif
 	{
+	  /* skip if filename is directory */
 	  continue;
 	}
 
@@ -468,6 +470,7 @@ log_top_query (int argc, char *argv[], int arg_start)
       else
 	{
 	  fprintf (stdout, "%s\n", get_basename (filename));
+	  is_found_files = true;
 	}
 
       if (get_file_offset (filename, &start_offset, &end_offset) < 0)
@@ -517,7 +520,7 @@ log_top_query (int argc, char *argv[], int arg_start)
 
   if (output_mode == OUTPUT_SPLIT)
     {
-      if (strlen (prev_prefix) > 0)
+      if (strlen (prev_prefix) > 0 && is_found_files)
 	{
 	  if (make_change_split_brokerdir (splitdir, prev_prefix) < 0)
 	    {
@@ -532,9 +535,17 @@ log_top_query (int argc, char *argv[], int arg_start)
     }
   else
     {
-      fprintf (stdout, "Report files created: ./log_top.{q,res}\n");
-      query_info_print ();
-      query_info_clear_array ();
+      if (is_found_files)
+	{
+	  fprintf (stdout, "Report files created: ./log_top.{q,res}\n");
+	  query_info_print ();
+	  query_info_clear_array ();
+	}
+    }
+
+  if (!is_found_files)
+    {
+      fprintf (stdout, "Result generation skipped: no analyzed files found.\n");
     }
 
   return 0;
