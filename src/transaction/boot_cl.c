@@ -92,6 +92,7 @@
 #include "sp_catalog.hpp"
 
 #include "authenticate_context.hpp"
+#include "schema_information_schema.hpp"
 
 #include <signal.h>
 
@@ -242,7 +243,10 @@ install_system_metadata (void)
       return error;
     }
 
-  return NO_ERROR;
+  info_schema_init ();
+  error = info_schema_install ();
+
+  return error;
 }
 
 
@@ -2061,7 +2065,7 @@ boot_build_catalog_classes (const char *dbname)
 	}
       if (error_code == NO_ERROR)
 	{
-	  /* add method to db_authorization */
+	  /* add method to _db_authorization */
 	  au_add_method_check_authorization ();
 
 	  /* mark catalog class/view as a system class */
@@ -2125,6 +2129,7 @@ boot_destroy_catalog_classes (void)
     CT_PARTITION_NAME,
     CT_STORED_PROC_NAME,
     CT_STORED_PROC_ARGS_NAME,
+    CT_HISTOGRAM_NAME,
     CTV_CLASS_NAME,
     CTV_SUPER_CLASS_NAME,
     CTV_VCLASS_NAME,
@@ -2146,6 +2151,10 @@ boot_destroy_catalog_classes (void)
     CTV_SERVER_NAME,
     CT_SYNONYM_NAME,
     CTV_SYNONYM_NAME,
+    CTV_HISTOGRAM_NAME,
+    CTV_USER_NAME,
+    CTV_AUTHORIZATION_NAME,
+    CT_GLOBAL_TRAN_NAME,
     NULL
   };
 
@@ -2162,8 +2171,8 @@ boot_destroy_catalog_classes (void)
 
   AU_DISABLE (save);
 
-  /* drop method of db_authorization */
-  error_code = db_drop_class_method (locator_find_class ("db_authorization"), "check_authorization");
+  /* drop method of _db_authorization */
+  error_code = db_drop_class_method (locator_find_class (CT_AUTHORIZATION_NAME), "check_authorization");
   /* error checking */
   if (error_code != NO_ERROR)
     {
@@ -2445,5 +2454,6 @@ boot_client_find_and_cache_class_oids (void)
       return ER_FAILED;
     }
   oid_set_cached_class_oid (OID_CACHE_HA_APPLY_INFO_CLASS_ID, &class_mop->oid_info.oid);
+
   return NO_ERROR;
 }
