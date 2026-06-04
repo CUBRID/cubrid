@@ -319,10 +319,15 @@ cgw_execute (SQLHDBC hdbc, T_SRV_HANDLE * srv_handle, SQLLEN * row_count)
   return NO_ERROR;
 
 ODBC_ERROR:
-  if (srv_handle != NULL && srv_handle->cgw_hstmt)
+  if (srv_handle != NULL)
     {
-      SQLFreeHandle (SQL_HANDLE_STMT, srv_handle->cgw_hstmt);
-      srv_handle->cgw_hstmt = NULL;
+      if (srv_handle->cgw_hstmt != NULL)
+	{
+	  SQLFreeHandle (SQL_HANDLE_STMT, srv_handle->cgw_hstmt);
+	  srv_handle->cgw_hstmt = NULL;
+	}
+      srv_handle->is_prepared = false;
+      srv_handle->is_cursor_open = false;
     }
 
   return ER_FAILED;
