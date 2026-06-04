@@ -8162,6 +8162,12 @@ qo_generate_transitive_join_terms (QO_ENV * env)
       return;
     }
 
+  /* root_arr/segs_arr are used only by qo_collect_transitive_join_specs() and are no longer
+   * needed below.  Free them before the qo_add_term() loop so that a longjmp from qo_abort()
+   * inside qo_add_term() cannot bypass their cleanup. */
+  free_and_init (root_arr);
+  free_and_init (segs_arr);
+
   parser = QO_ENV_PARSER (env);
 
   for (i = 0; i < specs_count; i++)
@@ -8205,8 +8211,6 @@ qo_generate_transitive_join_terms (QO_ENV * env)
       QO_TERM_SET_FLAG (term, QO_TERM_COPY_PT_EXPR);
     }
 
-  free_and_init (root_arr);
-  free_and_init (segs_arr);
   free_and_init (specs);
 }
 
