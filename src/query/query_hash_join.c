@@ -3904,6 +3904,56 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
 	  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_QUALIFIED_KEY);
 
+	  /* A real match exists; this drives null-padding regardless of probe_pred. */
+	  any_record_added = true;
+
+	  if (context->probe_pred != NULL)
+	    {
+	      DB_LOGICAL ev_res = V_UNKNOWN;
+
+	      HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
+	      do
+		{
+		  error =
+		    fetch_val_list (thread_p, probe->regu_list_pred, context->val_descr, NULL, NULL,
+				    probe->tuple_record.tpl, PEEK);
+		  if (error != NO_ERROR)
+		    {
+		      break;	/* error_exit */
+		    }
+
+		  error =
+		    fetch_val_list (thread_p, build->regu_list_pred, context->val_descr, NULL, NULL,
+				    build->tuple_record.tpl, PEEK);
+		  if (error != NO_ERROR)
+		    {
+		      break;	/* error_exit */
+		    }
+
+		  ev_res = eval_pred (thread_p, context->probe_pred, context->val_descr, NULL);
+		  if (ev_res == V_ERROR)
+		    {
+		      error = ER_FAILED;
+		      break;	/* error_exit */
+		    }
+		}
+	      while (false);
+	      HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
+
+	      if (error != NO_ERROR)
+		{
+		  break;	/* error_exit */
+		}
+
+	      /* matched but residual-filtered: do not write (still counted as a match above) */
+	      if (ev_res != V_TRUE)
+		{
+		  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_NOT_QUALIFIED_KEY);
+		  assert (need_skip_next == false);
+		  continue;
+		}
+	    }			/* if (context->probe_pred != NULL) */
+
 	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 	  error =
 	    hjoin_merge_tuple_to_list_id (thread_p, list_id, &outer->tuple_record, &inner->tuple_record,
@@ -3914,8 +3964,6 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    {
 	      break;		/* error_exit */
 	    }
-
-	  any_record_added = true;
 	}
       while (true);
 
@@ -3926,17 +3974,66 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
       if (!any_record_added)
 	{
+	  bool fill_qualified = true;
+
 	  HJOIN_PRINT_TUPLE (probe->list_id, probe->tuple_record.tpl, HASHJOIN_PRINT_FILL_EMPTY_KEY);
 
-	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
-	  error =
-	    hjoin_merge_tuple_to_list_id (thread_p, list_id, outer->fill_record, inner->fill_record,
-					  manager->merge_info, &overflow_record);
-	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
-
-	  if (error != NO_ERROR)
+	  if (context->probe_pred != NULL)
 	    {
-	      break;		/* error_exit */
+	      DB_LOGICAL ev_res = V_UNKNOWN;
+
+	      HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
+	      do
+		{
+		  REGU_VARIABLE_LIST regup;
+
+		  /* Outer (probe) columns come from the probe tuple. */
+		  error =
+		    fetch_val_list (thread_p, probe->regu_list_pred, context->val_descr, NULL, NULL,
+				    probe->tuple_record.tpl, PEEK);
+		  if (error != NO_ERROR)
+		    {
+		      break;	/* error_exit */
+		    }
+
+		  /* Inner (build) side is null-padded: its fetch values are NULL, mirroring the V_UNBOUND columns a
+		   * merged tuple would carry (see qdata_set_value_list_to_null). build->fill_record is NULL here, so
+		   * the build values cannot be fetched from a tuple. */
+		  for (regup = build->regu_list_pred; regup != NULL; regup = regup->next)
+		    {
+		      pr_clear_value (regup->value.vfetch_to);
+		    }
+
+		  ev_res = eval_pred (thread_p, context->probe_pred, context->val_descr, NULL);
+		  if (ev_res == V_ERROR)
+		    {
+		      error = ER_FAILED;
+		      break;	/* error_exit */
+		    }
+		}
+	      while (false);
+	      HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
+
+	      if (error != NO_ERROR)
+		{
+		  break;	/* error_exit */
+		}
+
+	      fill_qualified = (ev_res == V_TRUE);
+	    }
+
+	  if (fill_qualified)
+	    {
+	      HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
+	      error =
+		hjoin_merge_tuple_to_list_id (thread_p, list_id, outer->fill_record, inner->fill_record,
+					      manager->merge_info, &overflow_record);
+	      HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
+
+	      if (error != NO_ERROR)
+		{
+		  break;	/* error_exit */
+		}
 	    }
 	}			/* if (!any_record_added) */
     }				/* while (qfile_scan_list_next (probe_scan_id)) */
