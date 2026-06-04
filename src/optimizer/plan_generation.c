@@ -47,7 +47,9 @@ static XASL_NODE *make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE *
 				       BITSET * rght_exprs, PT_NODE * rght_elist);
 static XASL_NODE *make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl,
 				      PROJECTION_INFO * projection_info, BITSET * probe_terms);
+static bool qo_hashjoin_probe_term_eligible (QO_ENV * env, QO_PLAN * plan, BITSET * join_nodes, int t);
 static void qo_collect_hashjoin_probe_terms (QO_ENV * env, QO_PLAN * plan, BITSET * result);
+static void qo_collect_hashjoin_probe_after_terms (QO_ENV * env, QO_PLAN * plan, BITSET * result);
 static XASL_NODE *make_fetch_proc (QO_ENV * env, QO_PLAN * plan);
 static XASL_NODE *make_buildlist_proc (QO_ENV * env, PT_NODE * namelist);
 
@@ -547,6 +549,64 @@ exit_on_error:
 }
 
 /*
+ * qo_hashjoin_probe_term_eligible() -
+ *   return: true if the term can be pushed into the probe loop, false otherwise.
+ *   env(in): Optimization environment.
+ *   plan(in): Hash-join execution plan.
+ *   join_nodes(in): Bitset of the two join inputs' nodes.
+ *   t(in): Term index to test.
+ *
+ * Note: Shared eligibility test for both the INNER (sarged_terms) and the OUTER
+ *	 (after_join_terms) probe-term collectors.  A term is eligible only if it
+ *	 references exactly the two join inputs, carries no correlated subquery,
+ *	 is not output-position dependent (inst_num()/rownum), is not already
+ *	 realized as a hash key / join edge, and references only PT_NAME segments
+ *	 (so its operands can be fetched through regu_list_pred at probe time).
+ */
+static bool
+qo_hashjoin_probe_term_eligible (QO_ENV * env, QO_PLAN * plan, BITSET * join_nodes, int t)
+{
+  QO_TERM *term = QO_ENV_TERM (env, t);
+  BITSET_ITERATOR seg_iter;
+  int s;
+
+  if (QO_TERM_CLASS (term) == QO_TC_TOTALLY_AFTER_JOIN)
+    {
+      /* inst_num()/rownum: output-position dependent, must stay above the join. */
+      return false;
+    }
+  if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
+    {
+      /* correlated subquery: evaluated through dptr in the row context. */
+      return false;
+    }
+  if (!bitset_subset (join_nodes, &(QO_TERM_NODES (term))))
+    {
+      /* term references something other than these two inputs. */
+      return false;
+    }
+  if (BITSET_MEMBER (plan->plan_un.join.join_terms, t) || BITSET_MEMBER (plan->plan_un.join.hash_terms, t))
+    {
+      /* already realized as a hash key / join edge. */
+      return false;
+    }
+
+  /* Skip terms with non-name operands; their values cannot be fetched
+   * through regu_list_pred at probe time. They remain in the parent if_pred. */
+  for (s = bitset_iterate (&(QO_TERM_SEGS (term)), &seg_iter); s != -1; s = bitset_next_member (&seg_iter))
+    {
+      PT_NODE *seg_node = QO_SEG_PT_NODE (QO_ENV_SEG (env, s));
+
+      if (seg_node == NULL || seg_node->node_type != PT_NAME)
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
  * qo_collect_hashjoin_probe_terms() -
  *   return: None.
  *   env(in): Optimization environment.
@@ -580,7 +640,9 @@ qo_collect_hashjoin_probe_terms (QO_ENV * env, QO_PLAN * plan, BITSET * result)
 
   /* Task 6 targets INNER hash joins only.  For outer joins the inter-table ON
    * condition lives in during_join_terms / after_join_terms, not sarged_terms,
-   * so this pass naturally leaves them untouched; guard explicitly anyway. */
+   * so this pass naturally leaves them untouched; guard explicitly anyway.
+   * Outer-join two-input WHERE residuals are handled by
+   * qo_collect_hashjoin_probe_after_terms(). */
   if (IS_OUTER_JOIN_TYPE (plan->plan_un.join.join_type))
     {
       return;
@@ -592,54 +654,73 @@ qo_collect_hashjoin_probe_terms (QO_ENV * env, QO_PLAN * plan, BITSET * result)
 
   for (t = bitset_iterate (&(plan->sarged_terms), &iter); t != -1; t = bitset_next_member (&iter))
     {
-      QO_TERM *term = QO_ENV_TERM (env, t);
-
-      if (QO_TERM_CLASS (term) == QO_TC_TOTALLY_AFTER_JOIN)
+      if (qo_hashjoin_probe_term_eligible (env, plan, &join_nodes, t))
 	{
-	  /* inst_num()/rownum: output-position dependent, must stay above the join. */
-	  continue;
+	  bitset_add (result, t);
 	}
-      if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
+    }
+
+  bitset_delset (&join_nodes);
+}
+
+/*
+ * qo_collect_hashjoin_probe_after_terms() -
+ *   return: None.
+ *   env(in): Optimization environment.
+ *   plan(in): Hash-join execution plan (LEFT/RIGHT OUTER join only).
+ *   result(out): Bitset that receives the two-input after-join WHERE residuals
+ *		  that can be pushed into the probe loop.
+ *
+ * Note: For LEFT/RIGHT OUTER hash joins, the two-input WHERE conditions live in
+ *	 plan->plan_un.join.after_join_terms (e.g. "t1 LEFT JOIN t2 ON t1.a=t2.b
+ *	 WHERE t2.d > 20" -> the "t2.d > 20" term).  These are evaluated AFTER
+ *	 null-padding by the parent buildlist's after_join_pred during the second
+ *	 scan.  The outer hash-join probe applies proc->probe_pred to the final
+ *	 (matched or null-padded) tuple with the same semantics, so the eligible
+ *	 ones can be evaluated inside the probe loop instead.
+ *
+ *	 ON-clause conditions (during_join_terms) drive matching / null-padding
+ *	 and are intentionally NOT touched here.
+ *
+ *	 FULL OUTER (JOIN_OUTER) is excluded: the serial outer probe never reaches
+ *	 FULL OUTER, so its after-join terms are left where they are.
+ *
+ *	 This routine only collects; pruning of after_join_terms and of the local
+ *	 predicate set copy feeding the parent after_join_pred is performed by the
+ *	 caller, avoiding double evaluation.
+ */
+static void
+qo_collect_hashjoin_probe_after_terms (QO_ENV * env, QO_PLAN * plan, BITSET * result)
+{
+  BITSET_ITERATOR iter;
+  int t;
+  BITSET join_nodes;
+  JOIN_TYPE join_type;
+
+  assert (env != NULL);
+  assert (plan != NULL);
+  assert (plan->plan_type == QO_PLANTYPE_JOIN);
+  assert (plan->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN);
+  assert (result != NULL);
+
+  /* Only LEFT / RIGHT OUTER.  Be conservative and leave FULL OUTER (JOIN_OUTER)
+   * terms where they are. */
+  join_type = plan->plan_un.join.join_type;
+  if (join_type != JOIN_LEFT && join_type != JOIN_RIGHT)
+    {
+      return;
+    }
+
+  bitset_init (&join_nodes, env);
+  bitset_union (&join_nodes, &(plan->plan_un.join.outer->info->nodes));
+  bitset_union (&join_nodes, &(plan->plan_un.join.inner->info->nodes));
+
+  for (t = bitset_iterate (&(plan->plan_un.join.after_join_terms), &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      if (qo_hashjoin_probe_term_eligible (env, plan, &join_nodes, t))
 	{
-	  /* correlated subquery: evaluated through dptr in the row context. */
-	  continue;
+	  bitset_add (result, t);
 	}
-      if (!bitset_subset (&join_nodes, &(QO_TERM_NODES (term))))
-	{
-	  /* term references something other than these two inputs. */
-	  continue;
-	}
-      if (BITSET_MEMBER (plan->plan_un.join.join_terms, t) || BITSET_MEMBER (plan->plan_un.join.hash_terms, t))
-	{
-	  /* already realized as a hash key / join edge. */
-	  continue;
-	}
-
-      /* Skip terms with non-name operands; their values cannot be fetched
-       * through regu_list_pred at probe time. They remain in the parent if_pred. */
-      {
-	BITSET_ITERATOR seg_iter;
-	int s;
-	bool has_non_name_seg = false;
-
-	for (s = bitset_iterate (&(QO_TERM_SEGS (term)), &seg_iter); s != -1; s = bitset_next_member (&seg_iter))
-	  {
-	    PT_NODE *seg_node = QO_SEG_PT_NODE (QO_ENV_SEG (env, s));
-
-	    if (seg_node == NULL || seg_node->node_type != PT_NAME)
-	      {
-		has_non_name_seg = true;
-		break;
-	      }
-	  }
-
-	if (has_non_name_seg)
-	  {
-	    continue;
-	  }
-      }
-
-      bitset_add (result, t);
     }
 
   bitset_delset (&join_nodes);
@@ -2736,6 +2817,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   XASL_NODE *outer_xasl = NULL, *inner_xasl = NULL;
 
   BITSET probe_terms;
+  BITSET after_probe_terms;
 
   int parallelism;
 
@@ -2763,6 +2845,21 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
     {
       bitset_difference (&(plan->sarged_terms), &probe_terms);
       bitset_difference (pred_set, &probe_terms);
+    }
+
+  /* For LEFT/RIGHT OUTER hash joins, the two-input WHERE residuals live in after_join_terms and are
+   * applied AFTER null-padding by the parent buildlist's after_join_pred.  The outer probe applies
+   * probe_pred to the final (matched or null-padded) tuple with the same semantics, so push the
+   * eligible ones into the probe loop.  Prune them from plan->plan_un.join.after_join_terms and from
+   * the local pred_set copy (which already unions after_join_terms in gen_outer) that feeds the
+   * parent after_join_pred, so each is evaluated in exactly one place (the probe). */
+  bitset_init (&after_probe_terms, env);
+  qo_collect_hashjoin_probe_after_terms (env, plan, &after_probe_terms);
+  if (!bitset_is_empty (&after_probe_terms))
+    {
+      bitset_difference (&(plan->plan_un.join.after_join_terms), &after_probe_terms);
+      bitset_difference (pred_set, &after_probe_terms);
+      bitset_union (&probe_terms, &after_probe_terms);
     }
 
   switch (plan->parallel_opt_use)
@@ -2858,6 +2955,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
 
 cleanup:
   bitset_delset (&probe_terms);
+  bitset_delset (&after_probe_terms);
   qo_clear_projection_info (env, &projection_info);
 
   return xasl;
