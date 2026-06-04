@@ -126,12 +126,16 @@ dblink_2pc_end_tran (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool 
   int i;
   DBLINK_CONN_INFO *dblink = (DBLINK_CONN_INFO *) block_particps_ids;
 
-  /* Send the decision to each participant through a fresh gateway connection.
-   * Failure is non-fatal: the _db_global_tran catalog already holds the decision state
-   * and the 2PC daemon will retry any participant that could not be reached. */
+  /* Retry each participant until it acknowledges the decision.  This loop must
+   * not return until every participant is done: in SA_MODE there is no 2PC
+   * daemon and no _db_global_tran startup scan, so a silent failure here would
+   * leave a participant permanently stuck in the prepared state. */
   for (i = 0; i < num_particps; i++)
     {
-      (void) dblink_2pc_send_decision_one_participant (gtrid, &dblink[i], is_commit);
+      while (dblink_2pc_send_decision_one_participant (gtrid, &dblink[i], is_commit) != NO_ERROR)
+	{
+	  thread_sleep (1000);	/* wait 1 second before retrying */
+	}
     }
 
   qmgr_dblink_clear_conn_entry (thread_p);
