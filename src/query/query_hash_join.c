@@ -3539,6 +3539,53 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
 	  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_QUALIFIED_KEY);
 
+	  if (context->probe_pred != NULL)
+	    {
+	      DB_LOGICAL ev_res = V_UNKNOWN;
+
+	      HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
+	      do
+		{
+		  error =
+		    fetch_val_list (thread_p, probe->regu_list_pred, context->val_descr, NULL, NULL,
+				    probe->tuple_record.tpl, PEEK);
+		  if (error != NO_ERROR)
+		    {
+		      break;	/* error_exit */
+		    }
+
+		  error =
+		    fetch_val_list (thread_p, build->regu_list_pred, context->val_descr, NULL, NULL,
+				    build->tuple_record.tpl, PEEK);
+		  if (error != NO_ERROR)
+		    {
+		      break;	/* error_exit */
+		    }
+
+		  ev_res = eval_pred (thread_p, context->probe_pred, context->val_descr, NULL);
+		  if (ev_res == V_ERROR)
+		    {
+		      error = ER_FAILED;
+		      break;	/* error_exit */
+		    }
+		}
+	      while (false);
+	      HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
+
+	      if (error != NO_ERROR)
+		{
+		  break;	/* error_exit */
+		}
+
+	      /* Residual condition not satisfied: skip this matched pair. */
+	      if (ev_res != V_TRUE)
+		{
+		  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_NOT_QUALIFIED_KEY);
+		  assert (need_skip_next == false);
+		  continue;
+		}
+	    }			/* if (context->probe_pred != NULL) */
+
 	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 	  error =
 	    hjoin_merge_tuple_to_list_id (thread_p, list_id, &outer->tuple_record, &inner->tuple_record,
