@@ -615,6 +615,30 @@ qo_collect_hashjoin_probe_terms (QO_ENV * env, QO_PLAN * plan, BITSET * result)
 	  continue;
 	}
 
+      /* Skip terms with non-name operands; their values cannot be fetched
+       * through regu_list_pred at probe time. They remain in the parent if_pred. */
+      {
+	BITSET_ITERATOR seg_iter;
+	int s;
+	bool has_non_name_seg = false;
+
+	for (s = bitset_iterate (&(QO_TERM_SEGS (term)), &seg_iter); s != -1; s = bitset_next_member (&seg_iter))
+	  {
+	    PT_NODE *seg_node = QO_SEG_PT_NODE (QO_ENV_SEG (env, s));
+
+	    if (seg_node == NULL || seg_node->node_type != PT_NAME)
+	      {
+		has_non_name_seg = true;
+		break;
+	      }
+	  }
+
+	if (has_non_name_seg)
+	  {
+	    continue;
+	  }
+      }
+
       bitset_add (result, t);
     }
 
