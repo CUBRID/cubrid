@@ -1093,12 +1093,14 @@ spacedb (UTIL_FUNCTION_ARG * arg)
     {
       FILE *infp = NULL;
       char input_table[SM_MAX_IDENTIFIER_LENGTH];
+      char lower_input_table[INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER * SM_MAX_IDENTIFIER_LENGTH + 1];
       int capacity = 16;	/* initial capacity, doubled on overflow */
 
       infp = fopen (table_array_file, "r");
       if (infp == NULL)
 	{
 	  perror (table_array_file);
+	  db_shutdown ();
 	  goto error_exit;
 	}
 
@@ -1107,6 +1109,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 	{
 	  fclose (infp);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) capacity * sizeof (char *));
+	  db_shutdown ();
 	  goto error_exit;
 	}
 
@@ -1129,16 +1132,19 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 		  fclose (infp);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			  (size_t) capacity * sizeof (char *));
+		  db_shutdown ();
 		  goto error_exit;
 		}
 	      table_array = new_table_array;
 	    }
 
-	  table_array[table_array_length] = strdup (input_table);
+	  intl_identifier_lower (input_table, lower_input_table);
+	  table_array[table_array_length] = strdup (lower_input_table);
 	  if (table_array[table_array_length] == NULL)
 	    {
 	      fclose (infp);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (input_table) + 1);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (lower_input_table) + 1);
+	      db_shutdown ();
 	      goto error_exit;
 	    }
 
