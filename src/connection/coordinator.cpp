@@ -948,6 +948,17 @@ namespace cubconn::connection
     std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
     connection::worker::message request;
     std::size_t worker;
+    context *ctx;
+
+    ctx = m_parent->claim_context ();
+    if (!ctx)
+      {
+	/* failed to allocate the resources */
+	css_free_conn (item.conn);
+
+	/* just ignore */
+	return true;
+      }
 
     std::tie (worker, std::ignore) = statistics_find_score_extremes ();
 
@@ -960,7 +971,7 @@ namespace cubconn::connection
     m_statistics[worker].m_client_num++;
 
     request.type = connection::worker::message_type::NEW_CLIENT;
-    request.ctx = m_parent->claim_context ();
+    request.ctx = ctx;
     request.ctx->m_worker = worker;
     request.ctx->m_id = id++;
     request.conn = item.conn;
