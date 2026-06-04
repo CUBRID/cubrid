@@ -731,6 +731,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   manager->key_cnt = merge_info->ls_column_cnt;
 
   manager->during_join_pred = xasl->during_join_pred;
+  manager->probe_pred = proc->probe_pred;
   manager->num_parallel_threads = xasl->parallelism;
 
   manager->query_id = query_id;
@@ -766,6 +767,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   assert (context->probe == NULL);
 
   context->during_join_pred = manager->during_join_pred;
+  context->probe_pred = manager->probe_pred;
   context->val_descr = manager->val_descr;
 
   assert (context->status == HASHJOIN_STATUS_NONE);
@@ -1427,6 +1429,7 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
       assert (current_context->probe == NULL);
 
       current_context->during_join_pred = single_context->during_join_pred;
+      current_context->probe_pred = single_context->probe_pred;
       current_context->val_descr = single_context->val_descr;
     }
 
