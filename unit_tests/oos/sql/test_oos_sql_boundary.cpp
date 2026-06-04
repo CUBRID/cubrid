@@ -296,6 +296,57 @@ TEST_F (OosSqlBoundary, InsertSelect)
   db_commit_transaction ();
 }
 
+// TC-13: mid-size variable columns participate in OOS demotion
+//
+// A variable column is OOS-eligible when its value is larger than the OOS stub
+// (OR_OOS_INLINE_SIZE = 16 B) it would be replaced with. This record is built
+// only from ~500 B columns: each is larger than the 16 B stub (so eligible) yet
+// smaller than the legacy 512 B floor (so previously ineligible). The record as a
+// whole exceeds the DB_PAGESIZE/4 trigger, so the largest columns are demoted to
+// OOS one by one. This guards round-trip correctness of that newly activated path.
+//
+// NOTE: SQL cannot observe *which* columns went to OOS, so this asserts that every
+// column reads back at full length without error, not placement. A placement-asserting
+// test would need a low-level harness.
+TEST_F (OosSqlBoundary, MidSizeColumnsEligibleForOos)
+{
+  int rc;
+
+  rc = exec_sql ("CREATE TABLE t_oos_bnd ("
+		 "  id INT PRIMARY KEY,"
+		 "  c1 BIT VARYING, c2 BIT VARYING, c3 BIT VARYING, c4 BIT VARYING, c5 BIT VARYING,"
+		 "  c6 BIT VARYING, c7 BIT VARYING, c8 BIT VARYING, c9 BIT VARYING, c10 BIT VARYING"
+		 ")");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  // 10 columns x 500 B = ~5000 B payload > DB_PAGESIZE/4 (4096 at a 16 KB page).
+  // Each column: 500 B > OR_OOS_INLINE_SIZE (16) but < legacy 512 B floor.
+  rc = exec_sql ("INSERT INTO t_oos_bnd VALUES (1, "
+		 "REPEAT(X'AA', 500), REPEAT(X'BB', 500), REPEAT(X'CC', 500), REPEAT(X'DD', 500), REPEAT(X'EE', 500), "
+		 "REPEAT(X'11', 500), REPEAT(X'22', 500), REPEAT(X'33', 500), REPEAT(X'44', 500), REPEAT(X'55', 500))");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  int count = 0;
+  rc = fetch_single_int ("SELECT COUNT(*) FROM t_oos_bnd", &count);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (count, 1);
+
+  // first, middle and last columns all round-trip at full length through the demotion
+  // path (covers both the demoted-to-OOS and the still-inline columns of the record)
+  int len = 0;
+  rc = fetch_single_int ("SELECT LENGTH(c1) FROM t_oos_bnd WHERE id = 1", &len);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (len, 1000);
+  rc = fetch_single_int ("SELECT LENGTH(c5) FROM t_oos_bnd WHERE id = 1", &len);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (len, 1000);
+  rc = fetch_single_int ("SELECT LENGTH(c10) FROM t_oos_bnd WHERE id = 1", &len);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (len, 1000);
+}
+
 int
 main (int argc, char **argv)
 {

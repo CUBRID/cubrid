@@ -12185,7 +12185,7 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 
   /* TODO: change the statistics */
   /* push the largest variable column to OOS one by one until the heap record
-   * fits within DB_PAGESIZE/4 (PG TOAST style), instead of pushing every column > 512B */
+   * fits within DB_PAGESIZE/4 (PG TOAST style), instead of pushing every eligible column */
   if (header_size + payload_size + mvcc_extra > DB_PAGESIZE / 4)
     {
       // *INDENT-OFF*
@@ -12194,8 +12194,9 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 
       for (i = 0; i < attr_info->num_values; i++)
 	{
-	  /* only variable column above 512B is OOS-eligible */
-	  if (!attr_info->values[i].last_attrepr->is_fixed && column_size[i] > 512 /* 512 B */ )
+	  /* a variable column is OOS-eligible only if externalizing it shrinks the inline record:
+	   * its value must be larger than the OOS stub (OID + length) it is replaced with */
+	  if (!attr_info->values[i].last_attrepr->is_fixed && column_size[i] > OR_OOS_INLINE_SIZE)
 	    {
 	      oos_candidates.emplace_back (column_size[i], i);
 	    }
