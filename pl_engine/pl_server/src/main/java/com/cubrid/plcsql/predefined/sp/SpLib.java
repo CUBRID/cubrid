@@ -34,6 +34,7 @@ import com.cubrid.jsp.Server;
 import com.cubrid.jsp.SysParam;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.value.DateTimeParser;
+import com.cubrid.jsp.value.NumericValue;
 import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
 import com.cubrid.plcsql.compiler.CoercionScheme;
 import com.cubrid.plcsql.compiler.annotation.Operator;
@@ -206,8 +207,23 @@ public class SpLib {
         }
 
         // ParseTreeConverter.visitNumeric_type() guarantees the following assertions
-        assert prec >= 1 && prec <= 38;
-        assert scale >= 0 && scale <= prec;
+        assert prec >= NumericValue.DB_MIN_NUMERIC_PRECISION
+                && prec <= NumericValue.DB_MAX_NUMERIC_PRECISION;
+        assert scale >= NumericValue.DB_MIN_NUMERIC_SCALE
+                && scale <= NumericValue.DB_MAX_NUMERIC_SCALE;
+
+        // Float numeric (prec == DB_DEFAULT_NUMERIC_PRECISION): preserve the value's
+        // natural scale and only normalize into the float numeric range.
+        // User-declared fixed numeric is limited to prec 1~38, so prec == 40 here is
+        // exclusively the compiler-default float numeric marker.
+        if (prec == NumericValue.DB_DEFAULT_NUMERIC_PRECISION) {
+            BigDecimal adjusted = NumericValue.adjustPrecisionScale(val);
+            if (adjusted == null) {
+                throw new VALUE_ERROR(
+                        "numeric value does not fit in the target type's precision and scale");
+            }
+            return adjusted;
+        }
 
         if (val.scale() != scale) {
             val = val.setScale(scale, RoundingMode.HALF_UP);
@@ -1042,7 +1058,10 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(BigDecimal l, BigDecimal r) {
-        return commonOpEq(l, r);
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.compareTo(r) == 0;
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -1165,7 +1184,12 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNullSafeEq(BigDecimal l, BigDecimal r) {
-        return commonOpNullSafeEq(l, r);
+        if (l == null) {
+            return (r == null);
+        } else if (r == null) {
+            return false;
+        }
+        return l.compareTo(r) == 0;
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -1290,7 +1314,10 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNeq(BigDecimal l, BigDecimal r) {
-        return commonOpNeq(l, r);
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.compareTo(r) != 0;
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -2069,7 +2096,21 @@ public class SpLib {
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opIn(BigDecimal o, BigDecimal... arr) {
         assert arr != null;
-        return commonOpIn(o, (Object[]) arr);
+
+        if (o == null) {
+            return null;
+        }
+        boolean nullFound = false;
+        for (BigDecimal p : arr) {
+            if (p == null) {
+                nullFound = true;
+            } else {
+                if (o.compareTo(p) == 0) {
+                    return true;
+                }
+            }
+        }
+        return nullFound ? null : false;
     }
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
@@ -2225,14 +2266,16 @@ public class SpLib {
         int p2 = r.precision();
         int s2 = r.scale();
 
-        int maxPrecision = p1 + p2 + 1;
+        int precision = p1 + p2;
         int scale = s1 + s2;
 
         BigDecimal ret =
-                l.multiply(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
+                l.multiply(r, new MathContext(precision, RoundingMode.HALF_UP))
                         .setScale(scale, RoundingMode.HALF_UP);
-        if (ret.precision() > 38) {
-            throw new VALUE_ERROR("the operation results in a precision higher than 38");
+
+        ret = NumericValue.adjustPrecisionScale(ret);
+        if (ret == null) {
+            throw new VALUE_ERROR("data overflow in multiplication of NUMERIC values");
         }
 
         return ret;
@@ -2337,23 +2380,33 @@ public class SpLib {
             throw new ZERO_DIVIDE();
         }
 
-        int p1 = l.precision();
-        int s1 = l.scale();
-        int p2 = r.precision();
-        int s2 = r.scale();
-
-        int scale;
-        if (Context.getSystemParameterBool(SysParam.COMPAT_NUMERIC_DIVISION_SCALE)) {
-            scale = Math.max(s1, s2);
-        } else {
-            scale = Math.max(9, Math.max(s1, s2));
-        }
-        int maxPrecision = (p1 - s1) + s2 + scale;
-
         BigDecimal ret =
-                l.divide(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
-                        .setScale(scale, RoundingMode.HALF_UP);
-        if (ret.precision() > 38) {
+                l.divide(
+                        r,
+                        new MathContext(
+                                NumericValue.DB_MAX_NUMERIC_PRECISION, RoundingMode.HALF_UP));
+
+        if (!Context.getSystemParameterBool(SysParam.ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+            int ret_precision = ret.precision();
+            int ret_scale = ret.scale();
+
+            if (ret_precision < NumericValue.DB_MAX_NUMERIC_PRECISION) {
+                /* adjust division result to match server behavior: fill trailing zeros to reach max_precision (40)
+                 * case1) 10 (2,0) / 1.00000.. (40,39) = prec 1, scale -1 -> prec 40, scale 38
+                 * case2) 0.000..001 (1,50) / 1 (1,0) = prec 1, scale 50 -> prec 40, scale 89
+                 */
+                int extra_digits = NumericValue.DB_MAX_NUMERIC_PRECISION - ret_precision;
+                int tmp_scale = ret_scale + extra_digits;
+                tmp_scale = Math.min(tmp_scale, NumericValue.DB_MAX_NUMERIC_SCALE);
+
+                if (tmp_scale >= ret_scale) {
+                    ret = ret.setScale(tmp_scale, RoundingMode.HALF_UP);
+                }
+            }
+        }
+
+        ret = NumericValue.adjustPrecisionScale(ret);
+        if (ret == null) {
             throw new VALUE_ERROR("data overflow in division of NUMERIC values");
         }
 
@@ -2576,14 +2629,16 @@ public class SpLib {
         int p2 = r.precision();
         int s2 = r.scale();
 
-        int maxPrecision = Math.max(p1 - s1, p2 - s2) + Math.max(s1, s2) + 1;
+        int precision = Math.max(p1 - s1, p2 - s2) + Math.max(s1, s2);
         int scale = Math.max(s1, s2);
 
         BigDecimal ret =
-                l.add(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
+                l.add(r, new MathContext(precision, RoundingMode.HALF_UP))
                         .setScale(scale, RoundingMode.HALF_UP);
-        if (ret.precision() > 38) {
-            throw new VALUE_ERROR("the operation results in a precision higher than 38");
+
+        ret = NumericValue.adjustPrecisionScale(ret);
+        if (ret == null) {
+            throw new VALUE_ERROR("data overflow in addition of NUMERIC values");
         }
 
         return ret;
@@ -2773,17 +2828,16 @@ public class SpLib {
         int p2 = r.precision();
         int s2 = r.scale();
 
-        int maxPrecision =
-                Math.max(p1 - s1, p2 - s2)
-                        + Math.max(s1, s2)
-                        + 1; // +1: consider subtracting a minus value
+        int precision = Math.max(p1 - s1, p2 - s2) + Math.max(s1, s2);
         int scale = Math.max(s1, s2);
 
         BigDecimal ret =
-                l.subtract(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
+                l.subtract(r, new MathContext(precision, RoundingMode.HALF_UP))
                         .setScale(scale, RoundingMode.HALF_UP);
-        if (ret.precision() > 38) {
-            throw new VALUE_ERROR("the operation results in a precision higher than 38");
+
+        ret = NumericValue.adjustPrecisionScale(ret);
+        if (ret == null) {
+            throw new VALUE_ERROR("data overflow in subtraction of NUMERIC values");
         }
 
         return ret;
@@ -3432,7 +3486,7 @@ public class SpLib {
         if (Context.getSystemParameterBool(SysParam.ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
             return detachTrailingZeros(e.toPlainString());
         } else {
-            return e.toString();
+            return e.toPlainString();
         }
     }
 
@@ -4526,7 +4580,8 @@ public class SpLib {
     private static BigDecimal strToBigDecimal(String s) {
         try {
             BigDecimal ret = new BigDecimal(s);
-            if (ret.precision() > 38) {
+            ret = NumericValue.adjustPrecisionScale(ret);
+            if (ret == null) {
                 throw new VALUE_ERROR("data overflow when converted to NUMERIC: '" + s + "'");
             }
             return ret;

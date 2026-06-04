@@ -63,6 +63,7 @@ extern "C"
 #define SQLX_CMD_REGISTER_DATABASE   CUBRID_STMT_REGISTER_DATABASE
 #define SQLX_CMD_CREATE_CLASS   CUBRID_STMT_CREATE_CLASS
 #define SQLX_CMD_CREATE_INDEX   CUBRID_STMT_CREATE_INDEX
+#define SQLX_CMD_DROP_HISTOGRAM   CUBRID_STMT_DROP_HISTOGRAM
 #define SQLX_CMD_CREATE_TRIGGER   CUBRID_STMT_CREATE_TRIGGER
 #define SQLX_CMD_CREATE_SERIAL   CUBRID_STMT_CREATE_SERIAL
 #define SQLX_CMD_DROP_DATABASE   CUBRID_STMT_DROP_DATABASE
@@ -373,6 +374,7 @@ extern "C"
   extern int db_attribute_is_primary_key (DB_ATTRIBUTE * attribute);
   extern int db_attribute_is_foreign_key (DB_ATTRIBUTE * attribute);
   extern int db_attribute_is_auto_increment (DB_ATTRIBUTE * attribute);
+  extern int db_attribute_is_invisible_column (DB_ATTRIBUTE * attribute);
   extern int db_attribute_is_reverse_unique (DB_ATTRIBUTE * attribute);
   extern int db_attribute_is_non_null (DB_ATTRIBUTE * attribute);
   extern int db_attribute_is_indexed (DB_ATTRIBUTE * attribute);

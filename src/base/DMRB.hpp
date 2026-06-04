@@ -93,6 +93,8 @@ namespace cubbase
       DMRB (DMRB &&other) = delete;
       DMRB &operator= (DMRB &&other) = delete;
 
+      bool prepare ();
+
       std::size_t capacity () const noexcept;
       std::size_t available () const noexcept;
       std::size_t readable () const noexcept;
@@ -123,61 +125,12 @@ namespace cubbase
 
   template <bool T>
   DMRB<T>::DMRB (std::size_t capacity) :
+    m_base (nullptr),
+    m_fd (-1),
     m_size (capacity),
     m_mask (capacity - 1)
   {
-    std::string name;
-    long page;
-
     assert (capacity > 0);
-
-    page = sysconf (_SC_PAGESIZE);
-    if (m_size % page != 0)
-      {
-	assert_release (false);
-      }
-
-    /* make virtual descriptor */
-    name = generate_unique_name ();
-    m_fd = ::shm_open (name.c_str (), O_RDWR | O_CREAT | O_EXCL, 0600);
-    if (m_fd < 0)
-      {
-	_er_log_debug (ARG_FILE_LINE, "shm_open failed: %s.\n", strerror (errno));
-	assert_release (false);
-      }
-    if (::shm_unlink (name.c_str ()) < 0)
-      {
-	_er_log_debug (ARG_FILE_LINE, "shm_unlink failed: %s.\n", strerror (errno));
-	assert_release (false);
-      }
-    if (::ftruncate (m_fd, m_size))
-      {
-	_er_log_debug (ARG_FILE_LINE, "ftruncate failed: %s.\n", strerror (errno));
-	assert_release (false);
-      }
-
-    /* reserve address space */
-    /* TODO: change this to NUMA or MUST make first touch on epoll group core */
-    m_base = ::mmap (nullptr, m_size * 2, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (m_base == MAP_FAILED)
-      {
-	_er_log_debug (ARG_FILE_LINE, "mmap failed: %s.\n", strerror (errno));
-	assert_release (false);
-      }
-    /* map virtual address to physical memory */
-    if (::mmap (m_base, m_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, m_fd, 0) == MAP_FAILED ||
-	::mmap (static_cast<char *> (m_base) + m_size, m_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, m_fd,
-		0) == MAP_FAILED)
-      {
-	_er_log_debug (ARG_FILE_LINE, "mmap failed: %s.\n", strerror (errno));
-	assert_release (false);
-      }
-
-    if (::madvise (m_base, m_size * 2, MADV_DONTFORK) < 0)
-      {
-	_er_log_debug (ARG_FILE_LINE, "madvise failed: %s.\n", strerror (errno));
-	assert_release (false);
-      }
   }
 
   template <bool T>
@@ -200,6 +153,68 @@ namespace cubbase
       {
 	::close (m_fd);
       }
+  }
+
+  template <bool T>
+  bool DMRB<T>::prepare ()
+  {
+    std::string name;
+    long page;
+
+    assert (m_fd < 0 && m_base == nullptr);
+    assert (m_size != 0 && m_mask != 0);
+
+    page = sysconf (_SC_PAGESIZE);
+    if (m_size % page != 0)
+      {
+	return false;
+      }
+
+    /* make virtual descriptor */
+    name = generate_unique_name ();
+    m_fd = ::shm_open (name.c_str (), O_RDWR | O_CREAT | O_EXCL, 0600);
+    if (m_fd < 0)
+      {
+	_er_log_debug (ARG_FILE_LINE, "shm_open failed: %s.\n", strerror (errno));
+	return false;
+      }
+    if (::shm_unlink (name.c_str ()) < 0)
+      {
+	_er_log_debug (ARG_FILE_LINE, "shm_unlink failed: %s.\n", strerror (errno));
+	return false;
+      }
+    if (::ftruncate (m_fd, m_size))
+      {
+	_er_log_debug (ARG_FILE_LINE, "ftruncate failed: %s.\n", strerror (errno));
+	return false;
+      }
+
+    /* reserve address space */
+    /* TODO: change this to NUMA or MUST make first touch on epoll group core */
+    m_base = ::mmap (nullptr, m_size * 2, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (m_base == MAP_FAILED)
+      {
+	_er_log_debug (ARG_FILE_LINE, "mmap failed: %s.\n", strerror (errno));
+
+	m_base = nullptr;
+	return false;
+      }
+    /* map virtual address to physical memory */
+    if (::mmap (m_base, m_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, m_fd, 0) == MAP_FAILED ||
+	::mmap (static_cast<char *> (m_base) + m_size, m_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, m_fd,
+		0) == MAP_FAILED)
+      {
+	_er_log_debug (ARG_FILE_LINE, "mmap failed: %s.\n", strerror (errno));
+	return false;
+      }
+
+    if (::madvise (m_base, m_size * 2, MADV_DONTFORK) < 0)
+      {
+	_er_log_debug (ARG_FILE_LINE, "madvise failed: %s.\n", strerror (errno));
+	return false;
+      }
+
+    return true;
   }
 
   template <bool T>

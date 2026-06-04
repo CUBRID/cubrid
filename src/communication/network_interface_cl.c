@@ -82,6 +82,8 @@
 #include "utility.h"
 #include "sp_constants.hpp"
 #include "locator_cl.h"
+#include "execute_schema.h"
+#include "authenticate.h"
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
@@ -5905,6 +5907,51 @@ stats_update_all_statistics (int with_fullscan)
 
   return error;
 }
+
+int
+update_histogram_for_all_classes (void)
+{
+  int error = NO_ERROR;
+  MOP class_mop = NULL;
+  LIST_MOPS *lmops = NULL;
+  PT_HISTOGRAM_INFO histogram_info;
+  DB_OBJECT *obj;
+  int save;
+  AU_DISABLE (save);
+
+  lmops = locator_get_all_class_mops (DB_FETCH_READ, is_top_level_class);
+  if (lmops == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  for (int i = 0; i < lmops->num; i++)
+    {
+      class_mop = lmops->mops[i];
+
+      obj = db_find_class (sm_get_ch_name (class_mop));
+      if (obj == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  AU_ENABLE (save);
+	  return er_errid ();
+	}
+
+      histogram_info.target_columns = NULL;
+      histogram_info.bucket_count = -1;
+      histogram_info.with_fullscan = false;
+      error = update_or_drop_histogram_helper (NULL, obj, &histogram_info, DO_HISTOGRAM_CREATE);
+      if (!(error == NO_ERROR || error == ER_OBJ_INVALID_ARGUMENTS))
+	{
+	  AU_ENABLE (save);
+	  return error;
+	}
+    }
+  AU_ENABLE (save);
+
+  return error;
+}
+
 
 /*
  * btree_add_index () -

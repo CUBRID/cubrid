@@ -24,6 +24,7 @@
 #ifndef _AUTHENTICATE_CONTEXT_HPP_
 #define _AUTHENTICATE_CONTEXT_HPP_
 
+#include <array>
 #include <stack>
 
 #include "porting.h"
@@ -57,7 +58,7 @@ class EXPORT_IMPORT authenticate_context
     MOP root_class;     /* db_root */
 
 
-    MOP authorization_class;     /* db_authorization */
+    MOP authorization_class;     /* _db_authorization */
 
 
     MOP user_class;     /* db_user */
@@ -109,6 +110,14 @@ class EXPORT_IMPORT authenticate_context
     */
     MOP public_user;
     MOP dba_user;
+
+    /*
+     * Au_information_schema_user
+     *
+     * This is the system user that owns all INFORMATION_SCHEMA views.
+     * This user cannot login and has read access to all system classes.
+     */
+    MOP information_schema_user;
 
     /*
     * Au_user
@@ -173,6 +182,7 @@ class EXPORT_IMPORT authenticate_context
     // checks
     int check_user (void);
     bool has_user_name (void);
+    bool is_system_user (MOP user);
 
     // execution rights
     int push_user (MOP user);
@@ -192,9 +202,17 @@ class EXPORT_IMPORT authenticate_context
 
     void reset (void);
 
-    int set_system_user (void);
+    int create_public_user (MOP root_cls);
+    int create_information_schema_user (MOP root_cls, MOP user_cls, MOP auth_cls);
+
+    int set_system_users_as_created (void);
     int disable_login (MOP user);
     int is_loginable_user (MOP user);
+
+    auto get_system_users (void) const
+    {
+      return std::array { dba_user, public_user, information_schema_user };
+    }
 };
 
 #endif // _AUTHENTICATE_CONTEXT_HPP_

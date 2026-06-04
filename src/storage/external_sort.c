@@ -58,7 +58,7 @@
 #include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
 #include "px_sort.h"
 #include "btree_load.h"
-#include "px_ftab_set.hpp"
+#include "ftab_set.hpp"
 
 #include <functional>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -5247,7 +5247,6 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
     }
   else if (sort_param->px_type == SORT_INDEX_LEAF)
     {
-      using ftab_set = parallel_query::ftab_set;
       SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg, *px_sort_args_p;
       std::vector < ftab_set > ftab_sets (parallel_num);
       ftab_set temp;

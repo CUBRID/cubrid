@@ -32,6 +32,7 @@
 package com.cubrid.jsp.data;
 
 import com.cubrid.jsp.protocol.PackableObject;
+import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
@@ -61,6 +62,7 @@ public class CompileResponse implements PackableObject {
     // only for sp
     public String createStmt = null;
     public String javaSignature = null;
+    public int sqlDataAccess = ServerConstants.SP_SQL_TYPE_UNKNOWN;
 
     public CompileResponse(int errCode, int line, int column, String msg) {
 
@@ -121,6 +123,7 @@ public class CompileResponse implements PackableObject {
             String stmt,
             String className,
             String javaSignature,
+            int sqlDataAccess,
             Set<Dependency> dependencies) {
 
         this.errCode = 0;
@@ -129,6 +132,7 @@ public class CompileResponse implements PackableObject {
         this.createStmt = stmt;
         this.className = className;
         this.javaSignature = javaSignature;
+        this.sqlDataAccess = sqlDataAccess;
         this.dependencies = dependencies;
     }
 
@@ -166,6 +170,7 @@ public class CompileResponse implements PackableObject {
                     packer.packCString(compiledCode);
                     packer.packString(createStmt);
                     packer.packString(javaSignature);
+                    packer.packInt(sqlDataAccess);
 
                     if (dependencies != null && dependencies.size() > 0) {
                         packer.packInt(dependencies.size());

@@ -66,6 +66,7 @@ static OID oid_Authorization_class = { 0, 0, 0 };
 static OID oid_DB_root_class = { 0, 0, 0 };
 static OID oid_DBServer_class = { 0, 0, 0 };
 static OID oid_Synonym_class = { 0, 0, 0 };
+static OID oid_Histogram_class = { 0, 0, 0 };
 static OID oid_Package_class = { 0, 0, 0 };
 static OID oid_Package_code_class = { 0, 0, 0 };
 static OID oid_Package_var_class = { 0, 0, 0 };
@@ -87,6 +88,7 @@ OID *oid_Serial_class_oid = &oid_Serial_class;
 OID *oid_Partition_class_oid = &oid_Partition_class;
 OID *oid_User_class_oid = &oid_User_class;
 OID *oid_Sp_code_class_oid = &oid_Stored_proc_code_class;
+OID *oid_histogram_class_oid = &oid_Histogram_class;
 
 const OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
   {&oid_Root_class, NULL},	/* Root class is not identifiable by a name */
@@ -117,6 +119,7 @@ const OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
   {&oid_DBServer_class, CT_SERVER_NAME},
   {&oid_Synonym_class, CT_SYNONYM_NAME},
   {&oid_Stored_proc_code_class, CT_STORED_PROC_CODE_NAME},
+  {&oid_Histogram_class, CT_HISTOGRAM_NAME},
   {&oid_Package_class, CT_PACKAGE_NAME},
   {&oid_Package_code_class, CT_PACKAGE_CODE_NAME},
   {&oid_Package_var_class, CT_PACKAGE_VAR_NAME},

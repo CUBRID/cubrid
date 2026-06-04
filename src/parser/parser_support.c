@@ -1528,6 +1528,8 @@ pt_is_ddl_statement (const PT_NODE * node)
 	case PT_CREATE_SYNONYM:
 	case PT_DROP_SYNONYM:
 	case PT_RENAME_SYNONYM:
+	case PT_UPDATE_HISTOGRAM:
+	case PT_DROP_HISTOGRAM:
 	  return true;
 	default:
 	  break;
@@ -7539,7 +7541,7 @@ pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser)
  *				 groups to which a DB user belongs to.
  *
  *    SELECT SUM(SET{t.g.name})
- *    FROM db_user U, TABLE(groups) AS t(g)
+ *    FROM _db_user U, TABLE(groups) AS t(g)
  *    WHERE U.name=<user_name>
  *
  *
@@ -7590,8 +7592,8 @@ pt_make_query_user_groups (PARSER_CONTEXT * parser, const char *user_name)
   query->info.query.q.select.list = parser_append_node (sel_item, query->info.query.q.select.list);
 
   /* FROM : */
-  /* db_user U */
-  from_item = pt_add_table_name_to_from_list (parser, query, "db_user", "U", DB_AUTH_SELECT);
+  /* _db_user U */
+  from_item = pt_add_table_name_to_from_list (parser, query, CT_USER_NAME, "U", DB_AUTH_SELECT);
 
 
   {
@@ -7738,7 +7740,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                                         "SUM (SET {[t].[g].[name]}) "
                                 "FROM "
                                         /* AU_USER_CLASS_NAME */
-                                        "[db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+                                        "[_db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
                                 "WHERE "
                                         "[u].[name] = '%1$s'"
                                 ") "
@@ -7765,7 +7767,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                                         "SUM (SET {[t].[g].[name]}) "
                                 "FROM "
                                         /* AU_USER_CLASS_NAME */
-                                        "[db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+                                        "[_db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
                                 "WHERE "
                                         "[u].[name] = '%1$s'"
                                 ") "

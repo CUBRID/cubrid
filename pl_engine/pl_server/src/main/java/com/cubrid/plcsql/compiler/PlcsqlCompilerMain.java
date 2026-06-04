@@ -272,6 +272,7 @@ public class PlcsqlCompilerMain {
                         sqlTemplate[0] + String.format(" '%s';", javaSig),
                         unit.getClassName(),
                         javaSig,
+                        converter.dataAccessLevel,
                         typeChecker.dependencies);
         return info;
     }

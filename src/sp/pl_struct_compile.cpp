@@ -158,7 +158,7 @@ namespace cubpl
 	  {
 	  case PLCSQL_COMPILE_TYPE_SP:
 	  {
-	    deserializator.unpack_all (translated_code, class_name, compiled_code, create_stmt, java_signature);
+	    deserializator.unpack_all (translated_code, class_name, compiled_code, create_stmt, java_signature, sql_data_access);
 
 	    int dependencies_size = 0;
 	    deserializator.unpack_int (dependencies_size);
@@ -298,6 +298,7 @@ namespace cubpl
   {
     serializator.pack_int (idx);
     serializator.pack_int (sql_type);
+    serializator.pack_int (has_table_access);
     serializator.pack_string (rewritten_query);
 
     if (sql_type >= 0)
@@ -333,6 +334,7 @@ namespace cubpl
   {
     size_t size = serializator.get_packed_int_size (start_offset); // idx
     size += serializator.get_packed_int_size (size); // sql_type
+    size += serializator.get_packed_int_size (size); // has_table_access
     size += serializator.get_packed_string_size (rewritten_query, size); // rewritten_query
 
     if (sql_type >= 0)
@@ -380,56 +382,7 @@ namespace cubpl
   void
   sql_semantics::unpack (cubpacking::unpacker &deserializator)
   {
-    deserializator.unpack_int (idx);
-    deserializator.unpack_int (sql_type);
-
-    if (sql_type >= 0)
-      {
-	int column_size = 0;
-	deserializator.unpack_int (column_size);
-
-	if (column_size > 0)
-	  {
-	    columns.resize (column_size);
-	    for (int i = 0; i < (int) column_size; i++)
-	      {
-		columns[i].unpack (deserializator);
-	      }
-	  }
-
-	int hv_size = 0;
-	deserializator.unpack_int (hv_size);
-
-	if (hv_size > 0)
-	  {
-	    hvs.resize (hv_size);
-	    for (int i = 0; i < (int) hv_size; i++)
-	      {
-		hvs[i].unpack (deserializator);
-	      }
-	  }
-
-	std::string s;
-	int into_vars_size = 0;
-	deserializator.unpack_int (into_vars_size);
-	for (int i = 0; i < into_vars_size; i++)
-	  {
-	    deserializator.unpack_string (s);
-	    into_vars.push_back (s);
-	  }
-
-	int dependencies_size = 0;
-	deserializator.unpack_int (dependencies_size);
-
-	if (dependencies_size > 0)
-	  {
-	    dependencies.resize (dependencies_size);
-	    for (int i = 0; i < (int) dependencies_size; i++)
-	      {
-		dependencies[i].unpack (deserializator);
-	      }
-	  }
-      }
+    assert (false);     // unreachable
   }
 
 //////////////////////////////////////////////////////////////////////////

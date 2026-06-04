@@ -941,10 +941,6 @@ qmgr_initialize (THREAD_ENTRY * thread_p)
 
   qfile_initialize ();
 
-#if defined (SERVER_MODE)
-  numeric_init_power_value_string ();
-#endif
-
   srand48 ((long) time (NULL));
 
 #if !defined(SERVER_MODE)
@@ -3898,7 +3894,10 @@ qmgr_dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url, char *use
 	  && !strcmp (dblink->conn_info.password, password))
 	{
 	  /* 2pc participant is set only if DML query */
-	  dblink->is_2pc_participant = set_participant;
+	  if (set_participant)
+	    {
+	      dblink->is_2pc_participant = set_participant;
+	    }
 	  conn_handle = dblink->conn_info.conn_handle;
 	  break;
 	}

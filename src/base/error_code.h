@@ -1756,17 +1756,23 @@
 #define ER_AU_LOGIN_DISABLED                        -1369
 
 #define ER_AUTO_INCREMENT_SINGLE_COL_ONLY           -1370
-#define ER_PKG_ALREADY_EXIST                        -1371
-#define ER_PKG_BODY_ALREADY_EXIST                   -1372
-#define ER_PKG_NOT_EXIST                            -1373
-#define ER_PKG_BODY_NOT_EXIST                       -1374
-#define ER_PKG_COMPILE_ERROR                        -1375
-#define ER_PKG_DDL_NOT_ALLOWED_PRIVILEGES           -1376
-#define ER_PKG_DROP_NOT_ALLOWED_SYSTEM_GENERATED    -1377
-#define ER_PKG_PROC_UNIQ_NAME_TOO_LONG              -1378
-#define ER_PKG_DUPLICATE_NAME                       -1379
+#define ER_SM_ATT_AT_LEAST_ONE_VISIBLE              -1371
 
-#define ER_LAST_ERROR                               -1380
+#define ER_METHOD_CALLBACK                          -1372
+
+#define ER_INVALID_SCALE                            -1373
+
+#define ER_PKG_ALREADY_EXIST                        -1374
+#define ER_PKG_BODY_ALREADY_EXIST                   -1375
+#define ER_PKG_NOT_EXIST                            -1376
+#define ER_PKG_BODY_NOT_EXIST                       -1377
+#define ER_PKG_COMPILE_ERROR                        -1378
+#define ER_PKG_DDL_NOT_ALLOWED_PRIVILEGES           -1379
+#define ER_PKG_DROP_NOT_ALLOWED_SYSTEM_GENERATED    -1380
+#define ER_PKG_PROC_UNIQ_NAME_TOO_LONG              -1381
+#define ER_PKG_DUPLICATE_NAME                       -1382
+
+#define ER_LAST_ERROR                               -1383
 
 
 /*
