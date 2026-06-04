@@ -1218,8 +1218,8 @@ typedef struct _ha_config
 #define SPACE_SUMMARIZE_L                       "summarize"
 #define SPACE_PURPOSE_S                         'p'
 #define SPACE_PURPOSE_L                         "purpose"
-#define SPACE_TABLE_NAME_S                      'n'
-#define SPACE_TABLE_NAME_L                      "table-name"
+#define SPACE_CLASS_NAME_S                      'n'
+#define SPACE_CLASS_NAME_L                      "class-name"
 #define SPACE_INPUT_FILE_S                      'i'
 #define SPACE_INPUT_FILE_L                      "input-file"
 

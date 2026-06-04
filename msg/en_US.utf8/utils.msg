@@ -772,11 +772,11 @@ valid options:\n\
                                set the display unit (page, mega, giga, tera, human readable); default: H\n\
   -s, --summarize              display only a summary for each volume purpose\n\
   -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n\
-  -n, --table-name=NAME        display per-table space usage;\n\
+  -n, --class-name=NAME        display per-class space usage;\n\
                                NAME formats:\n\
-                                 <table>     a specific table\n\
-                                 *           all user tables\n\
-                                 prefix*     tables matching the prefix\n
+                                 <class>     a specific class\n\
+                                 *           all user classes\n\
+                                 prefix*     classes matching the prefix\n
 61 View classes are not applicable to spacedb.\n
 62 WARNING: class "%1$s" is being modified, skipped.\n
 

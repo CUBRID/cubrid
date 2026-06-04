@@ -85,7 +85,6 @@ typedef INT16 PGLENGTH;		/* Page length */
 
 typedef PAGEID FILEID;		/* File identifier */
 typedef INT32 LOLENGTH;		/* Length for a large object */
-typedef PAGEID FNPAGES;		/* Number of file pages */
 
 /* BOTH IO_PAGESIZE AND DB_PAGESIZE MUST BE MULTIPLE OF sizeof(int) */
 

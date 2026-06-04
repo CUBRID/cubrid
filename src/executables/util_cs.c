@@ -984,7 +984,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   size_unit = utility_get_option_string_value (arg_map, SPACE_SIZE_UNIT_S, 0);
   summarize = utility_get_option_bool_value (arg_map, SPACE_SUMMARIZE_S);
   purpose = utility_get_option_bool_value (arg_map, SPACE_PURPOSE_S);
-  table_name = utility_get_option_string_value (arg_map, SPACE_TABLE_NAME_S, 0);
+  table_name = utility_get_option_string_value (arg_map, SPACE_CLASS_NAME_S, 0);
   if (table_name != NULL && strlen (table_name) >= SM_MAX_IDENTIFIER_LENGTH)
     {
       PRINT_AND_LOG_ERR_MSG ("The table name is too long. "
@@ -993,17 +993,15 @@ spacedb (UTIL_FUNCTION_ARG * arg)
     }
 #if !defined (NDEBUG)
   table_array_file = utility_get_option_string_value (arg_map, SPACE_INPUT_FILE_S, 0);
-#endif /* !NDEBUG */
 
-  size_unit_type = SPACEDB_SIZE_UNIT_HUMAN_READABLE;
-
-#if !defined (NDEBUG)
   if (table_name && table_array_file)
     {
       fprintf (stderr, "The -n and -i options cannot be used together.\n");
       goto error_exit;
     }
 #endif /* !NDEBUG */
+
+  size_unit_type = SPACEDB_SIZE_UNIT_HUMAN_READABLE;
 
   if (size_unit != NULL)
     {
@@ -1157,7 +1155,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 
   spacedb_error =
     netcl_spacedb (all, volsp, filesp, &table_sizes, &actual_table_count, table_array, table_array_length);
-  if (spacedb_error != NO_ERROR && actual_table_count == 0)
+  if (spacedb_error != NO_ERROR)
     {
       ASSERT_ERROR ();
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (ER_WARNING_SEVERITY));
@@ -1355,14 +1353,6 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 		   SPACEDB_TO_SIZE_ARG (2, total_alloc_npage), total_used_pct_str);
 	  fprintf (outfp, "\n");
 	}
-    }
-
-  if (spacedb_error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (ER_WARNING_SEVERITY));
-      db_shutdown ();
-      goto error_exit;
     }
 
   db_shutdown ();
