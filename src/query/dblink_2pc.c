@@ -126,16 +126,26 @@ dblink_2pc_end_tran (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool 
   int i;
   DBLINK_CONN_INFO *dblink = (DBLINK_CONN_INFO *) block_particps_ids;
 
-  /* Retry each participant until it acknowledges the decision.  This loop must
-   * not return until every participant is done: in SA_MODE there is no 2PC
-   * daemon and no _db_global_tran startup scan, so a silent failure here would
-   * leave a participant permanently stuck in the prepared state. */
   for (i = 0; i < num_particps; i++)
     {
+#if defined(SERVER_MODE)
+      /* SERVER_MODE: dblink_2pc_daemon_init() runs before log_recovery() and
+       * dblink_2pc_daemon_recovery_with_thread() scans _db_global_tran right after
+       * log_2pc_recovery() completes, so any participant that fails here will be
+       * picked up and retried by the daemon.  Blocking the recovery thread on a
+       * single gateway failure is not acceptable. */
+      (void) dblink_2pc_send_decision_one_participant (gtrid, &dblink[i], is_commit);
+#else
+      /* SA_MODE: no daemon, and dblink_2pc_daemon_recovery_with_thread() is
+       * SERVER_MODE-only, so there is no automatic retry after this call.
+       * TODO: add an SA_MODE _db_global_tran scan in log_recovery() (mirroring
+       * dblink_2pc_daemon_recovery_with_thread) so this path can also be
+       * fire-and-forget instead of blocking indefinitely on a downed participant. */
       while (dblink_2pc_send_decision_one_participant (gtrid, &dblink[i], is_commit) != NO_ERROR)
 	{
 	  thread_sleep (1000);	/* wait 1 second before retrying */
 	}
+#endif
     }
 
   qmgr_dblink_clear_conn_entry (thread_p);
