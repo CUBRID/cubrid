@@ -156,7 +156,6 @@ struct qo_transitive_join_spec
 {
   QO_SEGMENT *head_seg;
   QO_SEGMENT *tail_seg;
-  int eqclass_root;
 };
 
 double QO_INFINITY = 0.0;
@@ -8401,7 +8400,6 @@ qo_collect_transitive_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
 
 	      (*specs_p)[*count_p].head_seg = head_seg;
 	      (*specs_p)[*count_p].tail_seg = tail_seg;
-	      (*specs_p)[*count_p].eqclass_root = i;
 	      (*count_p)++;
 	    }
 	}
