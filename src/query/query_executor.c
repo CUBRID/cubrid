@@ -606,7 +606,7 @@ static int qexec_prepare_table_sampling (THREAD_ENTRY * thread_p, ACCESS_SPEC_TY
 
 static int qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				     bool * empty_result);
-static XASL_NODE *qexec_determine_fixed_scan_xasl (XASL_NODE * xasl);
+static void qexec_setup_fixed_scan (XASL_NODE * xasl, bool force_select_lock);
 static int qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					     UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info);
 static DEL_LOBFILE_INFO *qexec_create_delete_lobfile_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
@@ -14473,6 +14473,7 @@ exit_on_error:
   goto exit;
 }
 
+
 /*
  * qexec_init_instnum_val () -
  *   return: NO_ERROR, or ER_code
@@ -14491,12 +14492,9 @@ exit_on_error:
 static int
 qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
 {
-  TP_DOMAIN *domainp = tp_domain_resolve_default (DB_TYPE_BIGINT);
-  DB_TYPE orig_type;
   REGU_VARIABLE *key_limit_l;
-  DB_VALUE *dbvalp;
+  DB_VALUE dbval;
   int error = NO_ERROR;
-  TP_DOMAIN_STATUS dom_status;
 
   assert (xasl && xasl->instnum_val);
   db_make_bigint (xasl->instnum_val, 0);
@@ -14512,36 +14510,19 @@ qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * 
       && xasl->spec_list->indexptr->key_info.key_limit_l)
     {
       key_limit_l = xasl->spec_list->indexptr->key_info.key_limit_l;
-      if (fetch_peek_dbval (thread_p, key_limit_l, &xasl_state->vd, NULL, NULL, NULL, &dbvalp) != NO_ERROR)
+
+      error = fetch_and_coerce_key_limit_lower (thread_p, key_limit_l, &xasl_state->vd, &dbval);
+      if (error != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
 
-      orig_type = DB_VALUE_DOMAIN_TYPE (dbvalp);
-      if (orig_type != DB_TYPE_BIGINT)
-	{
-	  dom_status = tp_value_coerce (dbvalp, dbvalp, domainp);
-	  if (dom_status != DOMAIN_COMPATIBLE)
-	    {
-	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbvalp, domainp);
-	      assert_release (error != NO_ERROR);
-
-	      goto exit_on_error;
-	    }
-
-	  if (DB_VALUE_DOMAIN_TYPE (dbvalp) != DB_TYPE_BIGINT)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-	      goto exit_on_error;
-	    }
-	}
-
-      if (pr_clone_value (dbvalp, xasl->instnum_val) != NO_ERROR)
+      if (pr_clone_value (&dbval, xasl->instnum_val) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
 
-      if (xasl->save_instnum_val && pr_clone_value (dbvalp, xasl->save_instnum_val) != NO_ERROR)
+      if (xasl->save_instnum_val && pr_clone_value (&dbval, xasl->save_instnum_val) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -15316,75 +15297,99 @@ qexec_execute_dblink_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STAT
 }
 
 /*
- * qexec_determine_fixed_scan_xasl () - Determine which XASL node is eligible for fixed heap scan.
- *   return: the innermost TARGET_CLASS XASL node that should use fixed scan, or NULL if fixed scan is not allowed.
- *   xasl(in): top-level XASL node
+ * qexec_setup_fixed_scan () - Decide and apply fixed heap scan flags for every access spec in the pipeline.
+ *   xasl(in/out): top-level XASL node; specp->fixed_scan is written on every spec reachable via scan_ptr,
+ *                 spec_list and merge_spec.
+ *   force_select_lock(in): true if the top-level select forces instance locking (e.g. selupd reevaluation)
  *
  * Fixed scan keeps the last fetched heap page latched between rows (PEEK mode), avoiding repeated fix/unfix overhead.
- * It is disabled when: composite locking is required, any index scan is present, a correlated subquery exists,
- * a HAVING subquery exists, an uncorrelated subquery linked to a regu variable exists, or the XASL_NO_FIXED_SCAN
- * flag was set at compile time.
+ * Two independent paths can enable it for a spec:
+ *   - It is the innermost TARGET_CLASS in the pipeline (the natural fixed_scan_xasl). Disabled globally when
+ *     composite locking is required, any index scan is present, a correlated subquery exists, a HAVING subquery
+ *     exists, an uncorrelated subquery linked to a regu variable exists, or the XASL_NO_FIXED_SCAN flag was set
+ *     at compile time.
+ *   - The spec carries ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN (e.g. PT_HINT_NLJ_KEEP_HEAP_PAGE_PINNED or the
+ *     enable_heap_fixed_scan default). Honored only when no per-row locking happens anywhere in the pipeline
+ *     and there is no composite locking — otherwise an inner scan suspending on a row lock while an outer scan
+ *     keeps a page latched would violate lock_suspend ()'s no-perm-latch invariant (CBRD-26840). The natural
+ *     fixed_scan_xasl stays safe under locking because it releases its own page during the lock retry.
  */
-static XASL_NODE *
-qexec_determine_fixed_scan_xasl (XASL_NODE * xasl)
+static void
+qexec_setup_fixed_scan (XASL_NODE * xasl, bool force_select_lock)
 {
   XASL_NODE *xptr;
+  ACCESS_SPEC_TYPE *spec_ptr[2];
   ACCESS_SPEC_TYPE *specp;
   XASL_NODE *fixed_scan_xasl = NULL;
   bool has_index_scan = false;
+  bool scan_needs_obj_lock = force_select_lock;
+  bool composite_lock = COMPOSITE_LOCK (xasl->scan_op_type);
+  bool force_fixed_scan_allowed;
+  int spec_level;
 
-  if (COMPOSITE_LOCK (xasl->scan_op_type))
-    {
-      return NULL;
-    }
-
+  /* First pass: walk pipeline to find the innermost fixed-scan candidate, detect any per-row locks, and detect
+   * any index scan. Do not early-break on has_index_scan — a FOR_UPDATE spec may still appear deeper. */
   for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
     {
-      for (specp = xptr->spec_list; specp; specp = specp->next)
+      spec_ptr[0] = xptr->spec_list;
+      spec_ptr[1] = xptr->merge_spec;
+      for (spec_level = 0; spec_level < 2; ++spec_level)
 	{
-	  if (specp->type == TARGET_CLASS)
+	  for (specp = spec_ptr[spec_level]; specp; specp = specp->next)
 	    {
-	      fixed_scan_xasl = xptr;
-	      if (IS_ANY_INDEX_ACCESS (specp->access))
+	      if (ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_FOR_UPDATE))
 		{
-		  has_index_scan = true;
-		  break;
+		  scan_needs_obj_lock = true;
+		}
+	      if (specp->type == TARGET_CLASS && !has_index_scan)
+		{
+		  fixed_scan_xasl = xptr;
+		  if (IS_ANY_INDEX_ACCESS (specp->access))
+		    {
+		      has_index_scan = true;
+		    }
 		}
 	    }
 	}
-      if (has_index_scan)
+    }
+
+  /* Disqualify the natural fixed_scan_xasl if any global condition forbids fixed scan. */
+  if (composite_lock || has_index_scan || XASL_IS_FLAGED (xasl, XASL_NO_FIXED_SCAN) || xasl->dptr_list != NULL)
+    {
+      fixed_scan_xasl = NULL;
+    }
+  else if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.eptr_list != NULL)
+    {
+      fixed_scan_xasl = NULL;
+    }
+  else
+    {
+      for (xptr = xasl->aptr_list; xptr != NULL; xptr = xptr->next)
 	{
-	  break;
-	}
-      specp = xptr->merge_spec;
-      if (specp && specp->type == TARGET_CLASS)
-	{
-	  fixed_scan_xasl = xptr;
-	  if (IS_ANY_INDEX_ACCESS (specp->access))
+	  if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
 	    {
-	      has_index_scan = true;
+	      fixed_scan_xasl = NULL;
 	      break;
 	    }
 	}
     }
 
-  if (has_index_scan || XASL_IS_FLAGED (xasl, XASL_NO_FIXED_SCAN) || xasl->dptr_list != NULL)
+  force_fixed_scan_allowed = !composite_lock && !scan_needs_obj_lock;
+
+  /* Second pass: apply the decision to every spec. */
+  for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
     {
-      return NULL;
-    }
-  if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.eptr_list != NULL)
-    {
-      return NULL;
-    }
-  for (xptr = xasl->aptr_list; xptr != NULL; xptr = xptr->next)
-    {
-      if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
+      spec_ptr[0] = xptr->spec_list;
+      spec_ptr[1] = xptr->merge_spec;
+      for (spec_level = 0; spec_level < 2; ++spec_level)
 	{
-	  return NULL;
+	  for (specp = spec_ptr[spec_level]; specp; specp = specp->next)
+	    {
+	      specp->fixed_scan = (xptr == fixed_scan_xasl)
+		|| (force_fixed_scan_allowed && ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN));
+	    }
 	}
     }
-
-  return fixed_scan_xasl;
 }
 
 /*
@@ -15410,7 +15415,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   int multi_upddel = false;
   QFILE_LIST_MERGE_INFO *merge_infop;
   XASL_NODE *outer_xasl = NULL, *inner_xasl = NULL;
-  XASL_NODE *fixed_scan_xasl = NULL;
   bool iscan_oid_order, force_select_lock = false;
   int old_wait_msecs, wait_msecs;
   int error;
@@ -15930,7 +15934,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
       /* iterative processing is done only for XASL blocks that has access specification list blocks. */
       if (xasl->spec_list)
 	{
-	  fixed_scan_xasl = qexec_determine_fixed_scan_xasl (xasl);
+	  qexec_setup_fixed_scan (xasl, force_select_lock);
 
 	  /* open all the scans that are involved within the query, for SCAN blocks */
 	  for (xptr = xasl, level = 0; xptr; xptr = xptr->scan_ptr, level++)
@@ -15942,10 +15946,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		{
 		  for (specp = spec_ptr[spec_level]; specp; specp = specp->next)
 		    {
-		      specp->fixed_scan = (xptr == fixed_scan_xasl)
-			|| (ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN)
-			    && !COMPOSITE_LOCK (xasl->scan_op_type));
-
 		      /* set if the scan will be done in a grouped manner */
 		      if ((level == 0 && xptr->scan_ptr == NULL) && (QPROC_MAX_GROUPED_SCAN_CNT > 0))
 			{
@@ -17051,10 +17051,59 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   if (xasl->spec_list->type == TARGET_LIST && xasl->spec_list->s.list_node.list_regu_list_probe)
     {
       regu_list = xasl->spec_list->s.list_node.list_regu_list_probe;
+      REGU_VARIABLE_LIST probe_regu = regu_list;	/* Save first probe item before loop */
+
       while (regu_list)
 	{
 	  qexec_replace_prior_regu_vars (thread_p, &regu_list->value, xasl);
 	  regu_list = regu_list->next;
+	}
+
+      /* Adjust probe domain precision/scale from rest_regu_list for hash list scan */
+      if (probe_regu && xasl->spec_list->s.list_node.list_regu_list_rest)
+	{
+	  REGU_VARIABLE_LIST rest_regu_numeric = NULL;
+
+	  /* Find first numeric item in rest_regu_list with fixed precision */
+	  for (REGU_VARIABLE_LIST rest_iter = xasl->spec_list->s.list_node.list_regu_list_rest;
+	       rest_iter != NULL; rest_iter = rest_iter->next)
+	    {
+	      if (TP_DOMAIN_TYPE (rest_iter->value.domain) == DB_TYPE_NUMERIC &&
+		  rest_iter->value.domain->precision != DB_DEFAULT_NUMERIC_PRECISION)
+		{
+		  rest_regu_numeric = rest_iter;
+		  break;
+		}
+	    }
+
+	  /* Adjust first numeric probe item if found */
+	  if (rest_regu_numeric)
+	    {
+	      DB_TYPE vtype1 = REGU_VARIABLE_GET_TYPE (&probe_regu->value);
+
+	      if (vtype1 == DB_TYPE_NUMERIC &&
+		  probe_regu->value.domain && probe_regu->value.domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+		{
+		  /* in START WITH ... CONNECT BY, join and expression evaluation may widen
+		   * probe_regu_list domain to float numeric.
+		   *
+		   * since tp_value_coerce() always casts values to the probe domain,
+		   * the cast behavior depends on probe_regu_list->value.domain (vtype1's domain).
+		   * when the probe domain is float numeric, integer values are not scaled,
+		   * which can produce different hash keys from fixed numeric columns.
+		   *
+		   * to avoid this mismatch, restore precision/scale from rest_regu_list
+		   * when it represents a fixed numeric domain.
+		   */
+		  TP_DOMAIN *new_domain = tp_domain_copy (probe_regu->value.domain, false);
+		  if (new_domain != NULL)
+		    {
+		      new_domain->precision = rest_regu_numeric->value.domain->precision;
+		      new_domain->scale = rest_regu_numeric->value.domain->scale;
+		      probe_regu->value.domain = new_domain;
+		    }
+		}
+	    }
 	}
     }
 
@@ -20615,17 +20664,11 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	    case PT_SUM:
 	      if (TP_IS_NUMERIC_TYPE (DB_VALUE_TYPE (dbval)))
 		{
-		  if (TP_DOMAIN_TYPE (agg_p->domain) == DB_TYPE_NUMERIC)
+		  if (TP_DOMAIN_TYPE (agg_p->domain) == DB_TYPE_NUMERIC || DB_VALUE_TYPE (dbval) == DB_TYPE_NUMERIC)
 		    {
 		      agg_p->accumulator_domain.value_dom =
-			tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_MAX_NUMERIC_PRECISION, agg_p->domain->scale, NULL,
-					   0);
-		    }
-		  else if (DB_VALUE_TYPE (dbval) == DB_TYPE_NUMERIC)
-		    {
-		      agg_p->accumulator_domain.value_dom =
-			tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_MAX_NUMERIC_PRECISION, DB_VALUE_SCALE (dbval),
-					   NULL, 0);
+			tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_DEFAULT_NUMERIC_PRECISION,
+					   DB_DEFAULT_NUMERIC_SCALE, NULL, 0);
 		    }
 		  else if (DB_VALUE_TYPE (dbval) == DB_TYPE_FLOAT)
 		    {
@@ -24897,6 +24940,14 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       DB_VALUE comma, bracket1, bracket2;
       DB_DATA_STATUS data_stat;
 
+      /* if numeric with default precision (float numeric), return "numeric" only */
+      if (id == DB_TYPE_NUMERIC && precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  db_make_string (result, name);
+	  return NO_ERROR;
+	}
+
+      /* otherwise, format as "name(precision, scale)" */
       db_make_int (&db_int_precision, precision);
       db_make_null (&db_str_precision);
       if (tp_value_cast (&db_int_precision, &db_str_precision, &tp_String_domain, false) != DOMAIN_COMPATIBLE)
