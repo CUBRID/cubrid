@@ -3269,6 +3269,21 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
     }
   assert (node_p->merge_info.single_fetch == QPROC_NO_SINGLE_INNER);	/* Unused */
 
+  /* probe_pred */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      node_p->probe_pred = NULL;
+    }
+  else
+    {
+      node_p->probe_pred = stx_restore_pred_expr (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (node_p->probe_pred == NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
+
   /* domain_info */
   domain_cnt = node_p->merge_info.ls_column_cnt;
   if (domain_cnt == 0)
