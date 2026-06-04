@@ -434,12 +434,20 @@ namespace cubhnsw
     context.m_level--;
 
     top.sort_ascending();
-    top.shrink (k);
-    result.results.assign (top.data(), top.data() + top.size());
-    for (std::size_t i = 0; i < top.size (); ++i)
+    result.results.reserve (k);
+    result.oids.reserve (k);
+    for (std::size_t i = 0; i < top.size () && result.results.size () < k; ++i)
       {
-	pinned_t node_blk = m_storage->get_node_by_slot_id (context, result.results[i].slot, lock_mode::shared);
-	result.oids.push_back (node_type (node_blk->data).get_key());
+	candidate_t candidate = top.data ()[i];
+	pinned_t node_blk = m_storage->get_node_by_slot_id (context, candidate.slot, lock_mode::shared);
+	node_type node = node_type (node_blk->data);
+	if (node.is_tombstoned ())
+	  {
+	    continue;
+	  }
+
+	result.results.push_back (candidate);
+	result.oids.push_back (node.get_key ());
       }
 
     context.collect_perf_stats();

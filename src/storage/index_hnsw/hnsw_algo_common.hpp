@@ -100,6 +100,9 @@ namespace cubhnsw
   // encoded slot (uint64_t). Avoids a composite key struct/hash on the hot path.
   using neighbors_cache_t = std::array<neighbors_cache_per_level_t, MAX_LEVELS>;
 
+  using node_slots_cache_t =
+	  ankerl::unordered_dense::map<uint64_t, std::vector<slot_id_t>>;
+
   using candidates_view_t = std::vector<candidate_t>;
 
   using candidates_allocator_t = std::allocator<candidate_t>;

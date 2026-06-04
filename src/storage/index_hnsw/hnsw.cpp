@@ -59,6 +59,7 @@ static int hnsw_init_header (THREAD_ENTRY *thread_p, VFID *vfid, PAGE_PTR page_p
 static int hnsw_pack_header (RECDES *rec, HNSW_HEADER *hnsw_header);
 static HNSW_HEADER *hnsw_get_header (THREAD_ENTRY *thread_p, PAGE_PTR page_ptr);
 static int hnsw_print_index_info (BTID *btid, HNSW_HEADER *hnsw_header);
+static int hnsw_get_index (THREAD_ENTRY *thread_p, BTID *btid, hnsw_index *&index);
 
 // =====================================================================
 // hnsw_index_manager declaration
@@ -448,14 +449,10 @@ hnsw_pack_insert_data (char *buffer, int buffer_size, const BTID *btid, const OI
   return total_size;
 }
 
-int
-hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, int n_vectors)
+static int
+hnsw_get_index (THREAD_ENTRY *thread_p, BTID *btid, hnsw_index *&index)
 {
-  assert (oid);
-  assert (vector);
-  assert (n_vectors > 0);
-
-  if (!btid)
+  if (btid == NULL)
     {
       assert (false);
       return ER_FAILED;
@@ -467,15 +464,32 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
       return ER_FAILED;
     }
 
-  auto *index = index_manager->get_index (btid);
+  index = index_manager->get_index (btid);
   if (index == nullptr)
     {
-      if (index_manager->load_index (thread_p, btid, index) != NO_ERROR)
+      int error = index_manager->load_index (thread_p, btid, index);
+      if (error != NO_ERROR || index == nullptr)
 	{
-	  // failed to load index
 	  assert (false);
-	  return ER_FAILED;
+	  return error == NO_ERROR ? ER_FAILED : error;
 	}
+    }
+
+  return NO_ERROR;
+}
+
+int
+hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, int n_vectors)
+{
+  assert (oid);
+  assert (vector);
+  assert (n_vectors > 0);
+
+  hnsw_index *index = NULL;
+  int error = hnsw_get_index (thread_p, btid, index);
+  if (error != NO_ERROR)
+    {
+      return error;
     }
 
   if (index->prepare_to_add (thread_p, n_vectors, oid, vector) != NO_ERROR)
@@ -505,6 +519,37 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
     }
 
   return index->add (thread_p, n_vectors, oid, vector);
+}
+
+int
+hnsw_delete_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid)
+{
+  assert (oid);
+
+  hnsw_index *index = NULL;
+  int error = hnsw_get_index (thread_p, btid, index);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return index->remove (thread_p, oid);
+}
+
+int
+hnsw_update_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector)
+{
+  assert (oid);
+  assert (vector);
+
+  hnsw_index *index = NULL;
+  int error = hnsw_get_index (thread_p, btid, index);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return index->update (thread_p, oid, vector);
 }
 
 /*
@@ -610,21 +655,11 @@ hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, 
       distances[i] = 0.0f;
     }
 
-  if (index_manager == nullptr)
+  hnsw_index *index = NULL;
+  int error = hnsw_get_index (thread_p, btid, index);
+  if (error != NO_ERROR)
     {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  hnsw_index *index = index_manager->get_index (btid);
-  if (index == nullptr)
-    {
-      if (index_manager->load_index (thread_p, btid, index) != NO_ERROR)
-	{
-	  // failed to load index
-	  assert (false);
-	  return ER_FAILED;
-	}
+      return error;
     }
 
   const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);

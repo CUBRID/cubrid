@@ -46,6 +46,8 @@ extern int xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n
 			     HFID *hfids, const hnsw_build_params &params);
 
 extern int hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, int n_vectors);
+extern int hnsw_delete_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid);
+extern int hnsw_update_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector);
 extern int hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, int k, OID *rec_oids,
 				float *distances);
 

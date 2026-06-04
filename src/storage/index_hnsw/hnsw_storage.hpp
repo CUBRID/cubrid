@@ -244,6 +244,9 @@ namespace cubhnsw
 				    const lock_mode &mode);
       const float *get_vector_by_slot_id (algo_context_t &context, const slot_id_t &slot_id,
 					  const lock_mode &mode);
+      const std::vector<slot_id_t> *get_node_slots_cached_ids (algo_context_t &context, const key_id_t &key);
+      void remove_node_slot_cached_id (const key_id_t &key, const slot_id_t &slot_id);
+      int rebuild_node_slots_cache (cubthread::entry *thread_p);
 
       // neighbors cache helpers (single-thread, in-memory)
       const std::vector<slot_id_t> *get_neighbors_cached_ids (
@@ -302,6 +305,8 @@ namespace cubhnsw
       PAGE_PTR alloc_new_block (cubthread::entry *thread_p, block_group_id_t &vfid, block_id_t &vpid);
 
       static int initialize_new_block (cubthread::entry *thread_p, PAGE_PTR page, void *args);
+      void set_node_slot_cached_id (const key_id_t &key, const slot_id_t &slot_id);
+      int rebuild_node_slots_cache_page (cubthread::entry *thread_p, PAGE_PTR page);
 
       hnsw_build_params m_build_params;
       index_id_t m_giid; // general index identifier
@@ -317,5 +322,9 @@ namespace cubhnsw
 
       /* TODO: This is not thread-safe. Currently, we are assuming single-threaded access, but we need to make it thread-safe. */
       neighbors_cache_t m_neighbors_cache;    // per-level: encoded slot -> neighbors
+
+      /* heap OID -> live HNSW node slots. Tombstone state belongs to node slots, not to heap OIDs. */
+      node_slots_cache_t m_node_slots_cache;
+      bool m_node_slots_cache_is_complete = false;
   };
 }

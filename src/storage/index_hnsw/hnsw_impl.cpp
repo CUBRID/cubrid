@@ -521,6 +521,13 @@ hnsw_impl::init_for_load (cubthread::entry *thread_p)
   pgbuf_unfix_and_init (thread_p, page_ptr);
 
   m_algo->set_storage (m_storage.get ());
+  if (!m_storage->is_empty ())
+    {
+      if (m_storage->rebuild_node_slots_cache (thread_p) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
   init_worker_pool ();
   return NO_ERROR;
 }
@@ -807,13 +814,61 @@ hnsw_impl::search (cubthread::entry *thread_p, const float *query, const int k, 
 int
 hnsw_impl::remove (cubthread::entry *thread_p, const OID *oid)
 {
-  return ER_FAILED;
+  assert (oid != nullptr);
+
+  cubhnsw::algo_context_t context;
+  context.m_thread_p = thread_p;
+
+  const std::vector<cubhnsw::slot_id_t> *cached_slots = m_storage->get_node_slots_cached_ids (context, *oid);
+  if (cached_slots == nullptr)
+    {
+      return NO_ERROR;
+    }
+
+  std::vector<cubhnsw::slot_id_t> node_slots = *cached_slots;
+  for (const cubhnsw::slot_id_t &node_slot : node_slots)
+    {
+      cubhnsw::pinned_t node_blk = m_storage->get_node_by_slot_id (context, node_slot, cubhnsw::lock_mode::exclusive);
+      if (!node_blk || node_blk->data == nullptr)
+	{
+	  return ER_FAILED;
+	}
+
+      cubhnsw::node_t node { reinterpret_cast<cubhnsw::byte_t *> (node_blk->data) };
+      OID node_key = node.get_key ();
+      if (!OID_EQ (&node_key, oid))
+	{
+	  assert (false);
+	  return ER_FAILED;
+	}
+
+      if (node.is_tombstoned ())
+	{
+	  m_storage->remove_node_slot_cached_id (*oid, node_slot);
+	  continue;
+	}
+
+      node.set_tombstoned (true);
+      node_blk.reset ();
+      m_storage->remove_node_slot_cached_id (*oid, node_slot);
+    }
+
+  return NO_ERROR;
 }
 
 int
 hnsw_impl::update (cubthread::entry *thread_p, const OID *oid, const float *vector)
 {
-  return ER_FAILED;
+  assert (oid != nullptr);
+  assert (vector != nullptr);
+
+  int error = remove (thread_p, oid);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return add (thread_p, 1, oid, vector);
 }
 
 int
