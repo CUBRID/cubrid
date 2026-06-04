@@ -123,53 +123,18 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
 void
 dblink_2pc_end_tran (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool is_commit, void *block_particps_ids)
 {
-  int i, err, conn_handle;
-  XID xid;
-  T_CCI_ERROR err_buf;
-  DBLINK_CONN_INFO *dblink;
-  char type;			/* for COMMIT or ABORT */
+  int i;
+  DBLINK_CONN_INFO *dblink = (DBLINK_CONN_INFO *) block_particps_ids;
 
-  xid.formatID = MAJOR_VERSION * 100 + MINOR_VERSION;
-  xid.gtrid_length = sizeof (int);
-  xid.bqual_length = sizeof (int);
-
-  if (is_commit)
-    {
-      type = CCI_TRAN_COMMIT;
-    }
-  else
-    {
-      type = CCI_TRAN_ROLLBACK;
-    }
-
-  dblink = (DBLINK_CONN_INFO *) block_particps_ids;
+  /* Send the decision to each participant through a fresh gateway connection.
+   * Failure is non-fatal: the _db_global_tran catalog already holds the decision state
+   * and the 2PC daemon will retry any participant that could not be reached. */
   for (i = 0; i < num_particps; i++)
     {
-      conn_handle = dblink[i].conn_handle;
-      memcpy (xid.data, &gtrid, xid.gtrid_length);
-      memcpy (xid.data + xid.gtrid_length, &(dblink[i].conn_handle), xid.bqual_length);
-
-      do
-	{
-	  err = cci_xa_end_tran (conn_handle, &xid, type, &err_buf);
-	  if (err != NO_ERROR)
-	    {
-	      do
-		{
-		  /* TODO: remove the sleep and sending decision repeatedly */
-		  thread_sleep (1000);	/* wait 1 second for retry */
-		  conn_handle =
-		    cci_connect_with_url_ex (dblink[i].conn_url, dblink[i].user_name, dblink[i].password, &err_buf);
-		}
-	      while (conn_handle < 0);
-	    }
-	}
-      while (err != NO_ERROR);
+      (void) dblink_2pc_send_decision_one_participant (gtrid, &dblink[i], is_commit);
     }
 
   qmgr_dblink_clear_conn_entry (thread_p);
-
-  return;
 }
 
 void
