@@ -987,6 +987,9 @@ enum pt_node_type
   PT_REVOKE = CUBRID_STMT_REVOKE,
   PT_UPDATE_STATS = CUBRID_STMT_UPDATE_STATS,
   PT_GET_STATS = CUBRID_STMT_GET_STATS,
+  PT_UPDATE_HISTOGRAM = CUBRID_STMT_UPDATE_HISTOGRAM,
+  PT_SHOW_HISTOGRAM = CUBRID_STMT_SHOW_HISTOGRAM,
+  PT_DROP_HISTOGRAM = CUBRID_STMT_DROP_HISTOGRAM,
   PT_INSERT = CUBRID_STMT_INSERT,
   PT_SELECT = CUBRID_STMT_SELECT,
   PT_UPDATE = CUBRID_STMT_UPDATE,
@@ -1235,7 +1238,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_LEADING			(1ULL << 37)	/* force specific table to join left-to-right */
 #define  PT_HINT_NO_SUBQUERY_CACHE		(1ULL << 38)	/* don't use the subquery result cache */
 #define  PT_HINT_NO_USE_HASH			(1ULL << 39)	/* disable hash-join */
-#define  PT_HINT_NO_PARALLEL_HEAP_SCAN		(1ULL << 40)	/* disable parallel heap scan */
+#define  PT_HINT_NO_PARALLEL_SCAN		(1ULL << 40)	/* disable parallel scan */
 #define  PT_HINT_PARALLEL			(1ULL << 41)	/* parallel query execution threads */
 #define  PT_HINT_INLINE_CTE			(1ULL << 42)	/* inline CTE */
 #define  PT_HINT_MATERIALIZE_CTE		(1ULL << 43)	/* materialize CTE */
@@ -1582,7 +1585,7 @@ typedef enum
   PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE = 0x1000,	/* the spec was checked and does not have any uniques */
   PT_SPEC_FLAG_SAMPLING_SCAN = 0x2000,	/* spec for sampling scan */
   PT_SPEC_FLAG_REFERENCED_AT_ODKU = 0x4000,	/* spec for odku assignment */
-  PT_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN = 0x8000,	/* spec for not for parallel heap scan */
+  PT_SPEC_FLAG_NO_PARALLEL_SCAN = 0x8000,	/* spec for not for parallel scan */
   PT_SPEC_FLAG_PARALLEL_THREAD = 0x10000,	/* spec for setted number of parallel query execution threads */
   PT_SPEC_FLAG_DUMMY_REMOVED = 0x20000	/* this spec was originally a subquery but was resolved to a table during dummy SELECT removal; invisible columns should be excluded from this spec */
 } PT_SPEC_FLAG;
@@ -1625,6 +1628,7 @@ typedef struct pt_auth_cmd_info PT_AUTH_CMD_INFO;
 typedef struct pt_commit_work_info PT_COMMIT_WORK_INFO;
 typedef struct pt_create_entity_info PT_CREATE_ENTITY_INFO;
 typedef struct pt_index_info PT_INDEX_INFO;
+typedef struct pt_histogram_info PT_HISTOGRAM_INFO;
 typedef struct pt_create_user_info PT_CREATE_USER_INFO;
 typedef struct pt_create_trigger_info PT_CREATE_TRIGGER_INFO;
 typedef struct pt_cte_info PT_CTE_INFO;
@@ -1990,6 +1994,15 @@ struct pt_create_entity_info
   PT_CREATE_SELECT_ACTION create_select_action;	/* nothing | REPLACE | IGNORE for CREATE SELECT */
   unsigned or_replace:1;	/* OR REPLACE clause for create view */
   unsigned if_not_exists:1;	/* IF NOT EXISTS clause for create table | class */
+};
+
+/* ANALYZE UPDATE/DROP HISTOGRAM INFO */
+struct pt_histogram_info
+{
+  PT_NODE *target_table_spec;	/* PT_SPEC */
+  PT_NODE *target_columns;	/* PT_COLUMN_LIST (PT_NAME) */
+  int bucket_count;		/* bucket count */
+  int with_fullscan;		/* with fullscan */
 };
 
 /* CREATE/DROP INDEX INFO */
@@ -2678,6 +2691,8 @@ struct pt_name_info
   int coll_modifier;		/* collation modifier = collation + 1 */
   PT_RESERVED_NAME_ID reserved_id;	/* used to identify reserved name */
   size_t json_table_column_index;	/* will be used only for json_table to gather attributes in the correct order */
+  DB_VALUE *histogram;		/* histogram value */
+  double null_frequency;	/* null frequency value */
 };
 
 /*
@@ -3580,6 +3595,7 @@ union pt_statement_info
   PT_TUPLE_VALUE_INFO tuple_value;
   PT_UPDATE_INFO update;
   PT_UPDATE_STATS_INFO update_stats;
+  PT_HISTOGRAM_INFO histogram;
 #if defined (ENABLE_UNUSED_FUNCTION)
   PT_USE_INFO use;
 #endif

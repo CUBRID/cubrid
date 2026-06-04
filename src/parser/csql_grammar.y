@@ -583,6 +583,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <boolean> opt_invisible
 %type <number> opt_paren_plus
 %type <number> opt_with_fullscan
+%type <number> opt_with_n_buckets
 %type <number> online_parallel
 %type <number> comp_op
 %type <number> opt_of_all_some_any
@@ -663,9 +664,11 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> rename_class_list
 %type <node> rename_class_pair
 %type <node> drop_stmt
+%type <node> drop_histogram_stmt
 %type <node> opt_index_column_name_list
 %type <node> index_column_name_list
 %type <node> update_statistics_stmt
+%type <node> update_histogram_stmt
 %type <node> only_class_name_list
 %type <node> opt_level_spec
 %type <node> char_string_literal_list
@@ -703,6 +706,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> normal_or_class_attr_list_with_commas
 %type <node> normal_or_class_attr
 %type <node> normal_column_or_class_attribute
+%type <node> numeric_scale_integer
 %type <node> query_number_list
 %type <node> insert_or_replace_stmt
 %type <node> insert_set_stmt
@@ -891,6 +895,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> constant_set
 %type <node> file_path_name
 %type <node> identifier_list
+%type <node> opt_with_column_list
 %type <node> opt_bracketed_identifier_list
 %type <node> index_column_identifier_list
 %type <node> identifier_without_dot
@@ -957,6 +962,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> on_duplicate_key_update
 %type <node> opt_attr_ordering_info
 %type <node> show_stmt
+%type <node> show_histogram_stmt
 %type <node> session_variable;
 %type <node> session_variable_assignment_list
 %type <node> session_variable_assignment
@@ -1128,6 +1134,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token BOOLEAN_
 %token BOTH_
 %token BREADTH
+%token BUCKETS
 %token BY
 %token CALL
 %token CASCADE
@@ -1234,6 +1241,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token GRANT
 %token GROUP_
 %token HAVING
+%token HISTOGRAM
 %token HOUR_
 %token HOUR_MILLISECOND
 %token HOUR_SECOND
@@ -1915,6 +1923,12 @@ stmt_
 	| rename_stmt
 		{ $$ = $1; }
 	| update_statistics_stmt
+		{ $$ = $1; }
+	| update_histogram_stmt
+		{ $$ = $1; }
+        | show_histogram_stmt
+                { $$ = $1; }
+	| drop_histogram_stmt
 		{ $$ = $1; }
 	| drop_stmt
 		{ $$ = $1; }
@@ -4682,6 +4696,14 @@ index_column_name_list
 		}}
 	;
 
+opt_with_column_list
+        : /* empty */
+        {{ $$ = NULL; }}
+
+        | ON_ identifier_list
+        {{ $$ = $2; }}
+        ;
+
 update_statistics_stmt
 	: UPDATE STATISTICS ON_ only_class_name_list opt_with_fullscan
 		{{
@@ -4721,6 +4743,66 @@ update_statistics_stmt
 		}}
 	;
 
+show_histogram_stmt
+        : SHOW HISTOGRAM only_class_name opt_with_column_list
+                {{
+                        PT_NODE *uhs = parser_new_node (this_parser, PT_SHOW_HISTOGRAM);
+                        PT_NODE *target_t = parser_new_node (this_parser, PT_SPEC);
+
+                        if (uhs && target_t)
+                        {
+                            target_t->info.spec.entity_name = $3;
+                            PARSER_SAVE_ERR_CONTEXT (target_t, @3.buffer_pos)
+                            target_t->info.spec.meta_class = PT_CLASS;
+                            uhs->info.histogram.target_table_spec = target_t;
+                            uhs->info.histogram.target_columns = $4;
+                        }
+
+                        $$ = uhs;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                }}
+        ;
+
+update_histogram_stmt
+        : ANALYZE TABLE only_class_name UPDATE HISTOGRAM opt_with_column_list opt_with_n_buckets opt_with_fullscan
+                {{
+                        PT_NODE *uhs = parser_new_node (this_parser, PT_UPDATE_HISTOGRAM);
+                        PT_NODE *target_t = parser_new_node (this_parser, PT_SPEC);
+                        if (uhs && target_t)
+                        {
+                            target_t->info.spec.entity_name = $3;
+                            PARSER_SAVE_ERR_CONTEXT (target_t, @3.buffer_pos)
+                            target_t->info.spec.meta_class = PT_CLASS;
+                            uhs->info.histogram.target_table_spec = target_t;
+
+                            uhs->info.histogram.target_columns = $6;
+                            uhs->info.histogram.bucket_count = $7;
+                            uhs->info.histogram.with_fullscan = $8;             
+                        }
+
+                        $$ = uhs;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                }}
+        ;
+
+drop_histogram_stmt
+        : ANALYZE TABLE only_class_name DROP HISTOGRAM opt_with_column_list
+                {{
+                        PT_NODE *dhs = parser_new_node (this_parser, PT_DROP_HISTOGRAM);
+                        PT_NODE *target_t = parser_new_node (this_parser, PT_SPEC);
+                        if (dhs && target_t)
+                        {
+                            target_t->info.spec.entity_name = $3;
+                            PARSER_SAVE_ERR_CONTEXT (target_t, @3.buffer_pos)
+                            target_t->info.spec.meta_class = PT_CLASS;
+                            dhs->info.histogram.target_table_spec = target_t;
+                            dhs->info.histogram.target_columns = $6;
+                        }
+                        $$ = dhs;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                }}
+        ;
+
 only_class_name_list
 	: only_class_name_list ',' only_class_name
 		{{
@@ -4758,6 +4840,18 @@ opt_with_fullscan
         | WITH FULLSCAN
                 {{
                         $$ = 1;
+                }}
+        ;
+
+
+opt_with_n_buckets
+        : /* empty */
+                {{
+                        $$ = 0;
+                }}
+        | WITH unsigned_integer BUCKETS
+                {{
+                        $$ = $2->info.value.data_value.i;
                 }}
         ;
 
@@ -19276,39 +19370,37 @@ primitive_type
 			if (dt)
 			  {
 			    dt->type_enum = typ;
-			    dt->info.data_type.precision = prec ? prec->info.value.data_value.i : 15;
+			    dt->info.data_type.precision = prec ? prec->info.value.data_value.i : DB_DEFAULT_NUMERIC_PRECISION;
 			    dt->info.data_type.dec_precision =
-			      scale ? scale->info.value.data_value.i : 0;
+			      scale ? scale->info.value.data_value.i : DB_DEFAULT_NUMERIC_SCALE;
 
                             if (is_in_sp_func_type && prec)
                             {                                
                                 PT_ERRORm (this_parser, dt, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_NO_PRECISION_IN_SP_FUNCTION);
-                            }
+                              }
                             else
-                            {
-                                if (scale && prec)
-                                {
-                                    if (scale->info.value.data_value.i > prec->info.value.data_value.i)
-                                      {
-                                        PT_ERRORmf2 (this_parser, dt,
-                                                MSGCAT_SET_PARSER_SEMANTIC,
-                                                MSGCAT_SEMANTIC_INV_PREC_SCALE,
-                                                prec->info.value.data_value.i,
-                                                scale->info.value.data_value.i);
-                                      }
-                                    }
+                              {
                                 if (prec)
-                                {
-                                    if (prec->info.value.data_value.i > DB_MAX_NUMERIC_PRECISION)
+                                  {
+                                    if (prec->info.value.data_value.i > DB_MAX_FIXED_NUMERIC_PRECISION)
                                       {
                                         PT_ERRORmf2 (this_parser, dt,
                                                 MSGCAT_SET_PARSER_SEMANTIC,
                                                 MSGCAT_SEMANTIC_PREC_TOO_BIG,
                                                 prec->info.value.data_value.i,
-                                                DB_MAX_NUMERIC_PRECISION);
+                                                DB_MAX_FIXED_NUMERIC_PRECISION);
                                       }
-                                }
-                            }
+                                  }
+				if (scale)
+                                  {
+                                    if (scale->info.value.data_value.i > DB_MAX_FIXED_NUMERIC_SCALE || scale->info.value.data_value.i < DB_MIN_FIXED_NUMERIC_SCALE)
+                                      {
+                                        PT_ERRORm (this_parser, dt,
+                                                MSGCAT_SET_PARSER_SEMANTIC,
+                                                MSGCAT_SEMANTIC_SCALE_OUT_OF_RANGE);
+                                      }
+                                  }
+                              }
 			  }
 
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
@@ -19332,7 +19424,7 @@ primitive_type
                           }
                         else if (prec &&
 			    prec->info.value.data_value.i >= 8 &&
-			    prec->info.value.data_value.i <= DB_MAX_NUMERIC_PRECISION)
+			    prec->info.value.data_value.i <= DB_MAX_FIXED_NUMERIC_PRECISION)
 			  {
 			    typ = PT_TYPE_DOUBLE;
 			  }
@@ -19349,13 +19441,13 @@ primitive_type
 				dt->info.data_type.dec_precision = 0;
 
 				if (prec)
-				  if (prec->info.value.data_value.i > DB_MAX_NUMERIC_PRECISION)
+				  if (prec->info.value.data_value.i > DB_MAX_FIXED_NUMERIC_PRECISION)
 				    {
 				      PT_ERRORmf2 (this_parser, dt,
 						   MSGCAT_SET_PARSER_SEMANTIC,
 						   MSGCAT_SEMANTIC_PREC_TOO_BIG,
 						   prec->info.value.data_value.i,
-						   DB_MAX_NUMERIC_PRECISION);
+						   DB_MAX_FIXED_NUMERIC_PRECISION);
 				    }
 			      }
 
@@ -19539,7 +19631,7 @@ opt_prec_2
 			SET_CONTAINER_2 (ctn, $2, NULL);
 			$$ = ctn;
 		}}
-	| '(' unsigned_integer ',' unsigned_integer ')'
+	| '(' unsigned_integer ',' numeric_scale_integer ')'
 		{{
 			container_2 ctn;
 			SET_CONTAINER_2 (ctn, $2, $4);
@@ -20908,6 +21000,41 @@ unsigned_integer
 						       strlen (val->info.
 							       value.text));
 				  }
+			      }
+			  }
+
+			$$ = val;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	;
+
+numeric_scale_integer
+	: unsigned_integer
+		{{
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		}}
+	| '-' unsigned_integer
+		{{
+		        PT_NODE *val = $2;
+			if (val)
+			  {
+			    if (val->type_enum == PT_TYPE_INTEGER)
+			      {
+			        val->info.value.data_value.i = -(val->info.value.data_value.i);
+			      }
+
+			    if (val->type_enum == PT_TYPE_BIGINT)
+			      {
+			        val->info.value.data_value.bigint = -(val->info.value.data_value.bigint);
+			      }
+
+			    if (val->type_enum == PT_TYPE_NUMERIC)
+			      {
+			        val->info.value.text = pt_append_string (this_parser, (char *) "-", val->info.value.text);
+			        val->info.value.data_value.str =
+				      pt_append_bytes (this_parser, NULL, val->info.value.text, strlen (val->info.value.text));
 			      }
 			  }
 
@@ -23758,7 +23885,7 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_PUSH_PRED", PT_HINT_NO_PUSH_PRED),
   INIT_PT_HINT("NO_MERGE", PT_HINT_NO_MERGE),
   INIT_PT_HINT("NO_SUBQUERY_CACHE", PT_HINT_NO_SUBQUERY_CACHE),
-  INIT_PT_HINT("NO_PARALLEL_HEAP_SCAN", PT_HINT_NO_PARALLEL_HEAP_SCAN),
+  INIT_PT_HINT("NO_PARALLEL_SCAN", PT_HINT_NO_PARALLEL_SCAN),
   INIT_PT_HINT("NO_PARALLEL_SUBQUERY", PT_HINT_NO_PARALLEL_SUBQUERY),
   INIT_PT_HINT("NO_PARALLEL_HASH_JOIN", PT_HINT_NO_PARALLEL_HASH_JOIN),
   INIT_PT_HINT("PARALLEL", PT_HINT_PARALLEL),

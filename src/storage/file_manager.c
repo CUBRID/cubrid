@@ -6866,6 +6866,8 @@ file_get_num_total_user_pages (THREAD_ENTRY * thread_p, OID * cls_oid, int *tota
   CLS_INFO *cls_info_p = NULL;
   int error = NO_ERROR;
 
+  *total_pages = 0;
+
   if (partition_get_partition_oids (thread_p, cls_oid, &partitions, &count) != NO_ERROR)
     {
       error = ER_FAILED;
@@ -6915,7 +6917,7 @@ end:
     }
   catalog_free_class_info_and_init (cls_info_p);
 
-  return NO_ERROR;
+  return error;
 }
 
 /*
