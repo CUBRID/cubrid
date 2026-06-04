@@ -148,7 +148,11 @@ log_top_tran (int argc, char *argv[], int arg_start)
 	}
     }
 
-  if (output_mode == OUTPUT_SPLIT)
+  if (!is_found_files)
+    {
+      fprintf (stdout, "Result generation skipped: no analyzed files found.\n");
+    }
+  else if (output_mode == OUTPUT_SPLIT)
     {
       if (strlen (prev_prefix) > 0)
 	{
@@ -164,17 +168,10 @@ log_top_tran (int argc, char *argv[], int arg_start)
     }
   else
     {
-      if (is_found_files)
-	{
-	  fprintf (stdout, "Report files created: ./log_top.t\n");
-	  print_result ();
-	}
+      fprintf (stdout, "Report files created: ./log_top.t\n");
+      print_result ();
     }
 
-  if (!is_found_files)
-    {
-      fprintf (stdout, "Result generation skipped: no analyzed files found.\n");
-    }
 
   info_arr_size = 0;
 

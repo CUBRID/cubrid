@@ -518,9 +518,13 @@ log_top_query (int argc, char *argv[], int arg_start)
 	}
     }
 
-  if (output_mode == OUTPUT_SPLIT)
+  if (!is_found_files)
     {
-      if (strlen (prev_prefix) > 0 && is_found_files)
+      fprintf (stdout, "Result generation skipped: no analyzed files found.\n");
+    }
+  else if (output_mode == OUTPUT_SPLIT)
+    {
+      if (strlen (prev_prefix) > 0)
 	{
 	  if (make_change_split_brokerdir (splitdir, prev_prefix) < 0)
 	    {
@@ -535,17 +539,9 @@ log_top_query (int argc, char *argv[], int arg_start)
     }
   else
     {
-      if (is_found_files)
-	{
-	  fprintf (stdout, "Report files created: ./log_top.{q,res}\n");
-	  query_info_print ();
-	  query_info_clear_array ();
-	}
-    }
-
-  if (!is_found_files)
-    {
-      fprintf (stdout, "Result generation skipped: no analyzed files found.\n");
+      fprintf (stdout, "Report files created: ./log_top.{q,res}\n");
+      query_info_print ();
+      query_info_clear_array ();
     }
 
   return 0;
@@ -1493,13 +1489,12 @@ compare_by_brokername (const void *a, const void *b)
   return strcmp (prefix_a, prefix_b);
 }
 
-#define MAX_LOG_FILES 20000
-
 static int
 collect_log_files_from_conf (char ***out_argv)
 {
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   int num_broker, master_shm_id;
+  int max_log_files = 0;
   int total_captured = 0;
 
   if (broker_config_read (NULL, br_info, &num_broker, &master_shm_id, NULL, 0, NULL, NULL, NULL, NULL) < 0)
@@ -1507,17 +1502,23 @@ collect_log_files_from_conf (char ***out_argv)
       return -1;
     }
 
-  char **allocated_files = (char **) malloc (sizeof (char *) * MAX_LOG_FILES);
+  for (int i = 0; i < num_broker; i++)
+    {
+      max_log_files += br_info[i].appl_server_max_num;
+    }
+  max_log_files = (max_log_files * 2) * 2;
+
+  char **allocated_files = (char **) malloc (sizeof (char *) * max_log_files);
   if (allocated_files == NULL)
     {
       return -1;
     }
-  memset (allocated_files, 0, sizeof (char *) * MAX_LOG_FILES);
+  memset (allocated_files, 0, sizeof (char *) * max_log_files);
 
   int s1_len = strlen (SUFFIX_SQL_LOG);
   int s2_len = strlen (SUFFIX_SQL_LOG_BAK);
 
-  for (int i = 0; i < num_broker && total_captured < MAX_LOG_FILES; i++)
+  for (int i = 0; i < num_broker && total_captured < max_log_files; i++)
     {
       char strict_prefix[256];
 
@@ -1544,9 +1545,9 @@ collect_log_files_from_conf (char ***out_argv)
 	      continue;
 	    }
 
-	  if (total_captured >= MAX_LOG_FILES)
+	  if (total_captured >= max_log_files)
 	    {
-	      fprintf (stderr, "Log file collection has stopped : exceeded %d\n", MAX_LOG_FILES);
+	      fprintf (stderr, "Log file collection has stopped : exceeded %d\n", max_log_files);
 	      break;
 	    }
 
