@@ -993,6 +993,12 @@ namespace parallel_heap_scan
 	  {
 	    db_make_bigint (orig_agg_p->accumulator.value, (INT64) orig_agg_p->accumulator.curr_cnt);
 	  }
+	else if (orig_agg_p->function == PT_CUME_DIST || orig_agg_p->function == PT_PERCENT_RANK)
+	  {
+	    /* CUME_DIST / PERCENT_RANK: the final ratio is computed by
+	     * qdata_finalize_aggregate_list from the merged nlargers / curr_cnt counters.
+	     * accumulator.value holds no result yet, so do not re-home it here. */
+	  }
 	else
 	  {
 	    DB_VALUE tmp;
@@ -1099,6 +1105,16 @@ namespace parallel_heap_scan
 		return;
 	      }
 	  }
+	else if (agg_node->function == PT_CUME_DIST || agg_node->function == PT_PERCENT_RANK)
+	  {
+	    /* CUME_DIST / PERCENT_RANK: partial counters merged by sum. No list_id.
+	     * qdata_calculate_aggregate_cume_dist_percent_rank() asserts list_len==0 &&
+	     * const_array==NULL on the first row (curr_cnt==0), so reset dist_percent here. */
+	    agg_node->accumulator.curr_cnt = 0;
+	    agg_node->info.dist_percent.nlargers = 0;
+	    agg_node->info.dist_percent.list_len = 0;
+	    agg_node->info.dist_percent.const_array = NULL;
+	  }
 	else
 	  {
 	    /* Non-DISTINCT: init curr_cnt for all types.
@@ -1127,6 +1143,22 @@ namespace parallel_heap_scan
 	if (agg_node->function == PT_COUNT_STAR)
 	  {
 	    acc->curr_cnt++;
+	    continue;
+	  }
+
+	if (agg_node->function == PT_CUME_DIST || agg_node->function == PT_PERCENT_RANK)
+	  {
+	    /* CUME_DIST / PERCENT_RANK use a REGU_VAR_LIST operand (sort fields + hypothetical
+	     * const values), not a single operand[0]. Reuse the serial per-row routine, which
+	     * splits the const list on the first row and increments info.dist_percent.nlargers
+	     * and accumulator.curr_cnt. These counters are summed across workers in
+	     * write_finalize; qdata_finalize_aggregate_list computes the final ratio. */
+	    if (qdata_calculate_aggregate_cume_dist_percent_rank (thread_p, agg_node, tl_vd) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this ();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		return false;
+	      }
 	    continue;
 	  }
 
@@ -1577,6 +1609,12 @@ namespace parallel_heap_scan
 		      qfile_close_list (thread_p, cur_agg_p->list_id);
 		      qfile_destroy_list (thread_p, cur_agg_p->list_id);
 		    }
+		  if ((cur_agg_p->function == PT_CUME_DIST || cur_agg_p->function == PT_PERCENT_RANK)
+		      && cur_agg_p->info.dist_percent.const_array != NULL)
+		    {
+		      db_private_free_and_init (thread_p, cur_agg_p->info.dist_percent.const_array);
+		      cur_agg_p->info.dist_percent.list_len = 0;
+		    }
 		  if (cur_agg_p->accumulator.value != NULL)
 		    {
 		      pr_clear_value (cur_agg_p->accumulator.value);
@@ -1766,6 +1804,20 @@ namespace parallel_heap_scan
 	    {
 	      orig_agg_p->accumulator.curr_cnt += cur_agg_p->accumulator.curr_cnt;
 	      cur_agg_p->accumulator.curr_cnt = 0;
+	    }
+	  else if (orig_agg_p->function == PT_CUME_DIST || orig_agg_p->function == PT_PERCENT_RANK)
+	    {
+	      /* CUME_DIST / PERCENT_RANK: sum the partial counters; qdata_finalize_aggregate_list
+	       * computes the final ratio from the merged nlargers / curr_cnt on the main agg. */
+	      orig_agg_p->info.dist_percent.nlargers += cur_agg_p->info.dist_percent.nlargers;
+	      orig_agg_p->accumulator.curr_cnt += cur_agg_p->accumulator.curr_cnt;
+	      /* free the worker clone's const_array (the serial path frees it in finalize, which
+	       * does not run on the clone here). */
+	      if (cur_agg_p->info.dist_percent.const_array != NULL)
+		{
+		  db_private_free_and_init (thread_p, cur_agg_p->info.dist_percent.const_array);
+		  cur_agg_p->info.dist_percent.list_len = 0;
+		}
 	    }
 	  else
 	    {

@@ -165,6 +165,9 @@ int qdata_group_concat_value (cubthread::entry *thread_p,
 			      cubxasl::aggregate_list_node *agg_p,
 			      db_value *dbvalue);
 int qdata_update_agg_interpolation_func_value_and_domain (cubxasl::aggregate_list_node *agg_p,
-							   db_value *val);
+    db_value *val);
+int qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p,
+    cubxasl::aggregate_list_node *agg_p,
+    struct val_descr *val_desc_p);
 
 #endif // _QUERY_AGGREGATE_HPP_

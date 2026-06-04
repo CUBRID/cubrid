@@ -59,7 +59,7 @@ static int qdata_aggregate_multiple_values_to_accumulator (cubthread::entry *thr
     std::vector<DB_VALUE> &db_values);
 static int qdata_process_distinct_or_sort (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
     QUERY_ID query_id);
-static int qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p,
+int qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p,
     cubxasl::aggregate_list_node *agg_p,
     VAL_DESCR *val_desc_p);
 int qdata_update_agg_interpolation_func_value_and_domain (cubxasl::aggregate_list_node *agg_p, DB_VALUE *val);
@@ -1816,7 +1816,7 @@ exit:
  *   val_desc_p(in):
  *
  */
-static int
+int
 qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
     VAL_DESCR *val_desc_p)
 {

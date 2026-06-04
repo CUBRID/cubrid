@@ -84,6 +84,8 @@ namespace parallel_heap_scan
       case PT_MEDIAN:
       case PT_PERCENTILE_CONT:
       case PT_PERCENTILE_DISC:
+      case PT_CUME_DIST:
+      case PT_PERCENT_RANK:
 	return true;
       default:
 	return false;
