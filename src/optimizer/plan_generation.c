@@ -5906,6 +5906,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET
   QO_TERM *term;
   BITSET plan_segs_set, during_segs_set, temp_segs_set;
   BITSET probe_segs_set;
+  BITSET outer_pred_segs_set, inner_pred_segs_set;
   BITSET_ITERATOR term_iter, during_iter;
   int term_index, during_index;
 
@@ -5928,6 +5929,8 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET
   bitset_init (&during_segs_set, env);
   bitset_init (&temp_segs_set, env);
   bitset_init (&probe_segs_set, env);
+  bitset_init (&outer_pred_segs_set, env);
+  bitset_init (&inner_pred_segs_set, env);
 
   outer_plan = plan->plan_un.join.outer;
   inner_plan = plan->plan_un.join.inner;
@@ -6042,9 +6045,10 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET
 	   during_index = bitset_next_member (&during_iter))
 	{
 	  pred_node = QO_SEG_PT_NODE (QO_ENV_SEG (env, during_index));
-	  if (pred_node->node_type == PT_NAME)
+	  if (pred_node->node_type == PT_NAME && !BITSET_MEMBER (outer_pred_segs_set, during_index))
 	    {
 	      outer_info->pred_list = parser_append_node (pt_point (parser, pred_node), outer_info->pred_list);
+	      bitset_add (&outer_pred_segs_set, during_index);
 	    }
 	}
 
@@ -6055,9 +6059,10 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET
 	   during_index = bitset_next_member (&during_iter))
 	{
 	  pred_node = QO_SEG_PT_NODE (QO_ENV_SEG (env, during_index));
-	  if (pred_node->node_type == PT_NAME)
+	  if (pred_node->node_type == PT_NAME && !BITSET_MEMBER (inner_pred_segs_set, during_index))
 	    {
 	      inner_info->pred_list = parser_append_node (pt_point (parser, pred_node), inner_info->pred_list);
+	      bitset_add (&inner_pred_segs_set, during_index);
 	    }
 	}
     }
@@ -6085,9 +6090,10 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET
 	   during_index = bitset_next_member (&during_iter))
 	{
 	  pred_node = QO_SEG_PT_NODE (QO_ENV_SEG (env, during_index));
-	  if (pred_node->node_type == PT_NAME)
+	  if (pred_node->node_type == PT_NAME && !BITSET_MEMBER (outer_pred_segs_set, during_index))
 	    {
 	      outer_info->pred_list = parser_append_node (pt_point (parser, pred_node), outer_info->pred_list);
+	      bitset_add (&outer_pred_segs_set, during_index);
 	    }
 	}
 
@@ -6099,9 +6105,10 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET
 	   during_index = bitset_next_member (&during_iter))
 	{
 	  pred_node = QO_SEG_PT_NODE (QO_ENV_SEG (env, during_index));
-	  if (pred_node->node_type == PT_NAME)
+	  if (pred_node->node_type == PT_NAME && !BITSET_MEMBER (inner_pred_segs_set, during_index))
 	    {
 	      inner_info->pred_list = parser_append_node (pt_point (parser, pred_node), inner_info->pred_list);
+	      bitset_add (&inner_pred_segs_set, during_index);
 	    }
 	}
     }
@@ -6195,6 +6202,8 @@ cleanup:
   bitset_delset (&during_segs_set);
   bitset_delset (&temp_segs_set);
   bitset_delset (&probe_segs_set);
+  bitset_delset (&outer_pred_segs_set);
+  bitset_delset (&inner_pred_segs_set);
 
   return error;
 
