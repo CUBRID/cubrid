@@ -522,12 +522,59 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
 
   while ((scan_code = qfile_scan_list_next (thread_p, &probe->list_scan_id, &probe->tuple_record, PEEK)) == S_SUCCESS)
     {
-      error =
-	hjoin_merge_tuple_to_list_id (thread_p, list_id, outer->fill_record, inner->fill_record, manager->merge_info,
-				      &overflow_record);
-      if (error != NO_ERROR)
+      bool fill_qualified = true;
+
+      if (context->probe_pred != NULL)
 	{
-	  break;
+	  DB_LOGICAL ev_res = V_UNKNOWN;
+
+	  do
+	    {
+	      REGU_VARIABLE_LIST regup;
+
+	      /* Outer (probe) columns come from the probe tuple. */
+	      error =
+		fetch_val_list (thread_p, probe->regu_list_pred, context->val_descr, NULL, NULL,
+				probe->tuple_record.tpl, PEEK);
+	      if (error != NO_ERROR)
+		{
+		  break;	/* error_exit */
+		}
+
+	      /* Inner (build) side is null-padded: its fetch values are NULL, mirroring the V_UNBOUND columns a
+	       * merged tuple would carry (see qdata_set_value_list_to_null). build->fill_record is NULL here, so
+	       * the build values cannot be fetched from a tuple. */
+	      for (regup = build->regu_list_pred; regup != NULL; regup = regup->next)
+		{
+		  pr_clear_value (regup->value.vfetch_to);
+		}
+
+	      ev_res = eval_pred (thread_p, context->probe_pred, context->val_descr, NULL);
+	      if (ev_res == V_ERROR)
+		{
+		  error = ER_FAILED;
+		  break;	/* error_exit */
+		}
+	    }
+	  while (false);
+
+	  if (error != NO_ERROR)
+	    {
+	      break;		/* error_exit */
+	    }
+
+	  fill_qualified = (ev_res == V_TRUE);
+	}
+
+      if (fill_qualified)
+	{
+	  error =
+	    hjoin_merge_tuple_to_list_id (thread_p, list_id, outer->fill_record, inner->fill_record,
+					  manager->merge_info, &overflow_record);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
 	}
     }
 
