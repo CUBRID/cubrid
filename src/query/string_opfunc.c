@@ -200,6 +200,7 @@ static bool is_char_string (const DB_VALUE * s);
 static bool is_integer (const DB_VALUE * i);
 static bool is_number (const DB_VALUE * n);
 static int qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size);
+static void qstr_retype_char_to_varchar (DB_VALUE * result, int precision, int size, int codeset, int collation);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type, const unsigned char *s2,
 			int s2_length, int s2_precision, DB_TYPE s2_type, INTL_CODESET codeset, int *result_length,
@@ -2093,6 +2094,35 @@ db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE 
 }
 
 /*
+ * qstr_retype_char_to_varchar () - Retype a CHAR value to VARCHAR in place.
+ *   Preserve the compressed image (compressed_size > 0) across the rebuild,
+ *   since db_make_varchar() resets the compression fields.
+ */
+static void
+qstr_retype_char_to_varchar (DB_VALUE * result, int precision, int size, int codeset, int collation)
+{
+  if (result->data.ch.medium.compressed_size > 0)
+    {
+      char *saved_compressed_buf = result->data.ch.medium.compressed_buf;
+      int saved_compressed_size = result->data.ch.medium.compressed_size;
+      int saved_length = result->data.ch.medium.length;
+
+      qstr_make_typed_string (DB_TYPE_VARCHAR, result, precision, db_get_string (result), size, codeset, collation);
+
+      result->data.ch.medium.compressed_buf = saved_compressed_buf;
+      result->data.ch.medium.compressed_size = saved_compressed_size;
+      result->data.ch.info.compressed_need_clear = 1;
+      result->data.ch.medium.length = saved_length;
+    }
+  else
+    {
+      qstr_make_typed_string (DB_TYPE_VARCHAR, result, precision, db_get_string (result), size, codeset, collation);
+    }
+
+  result->need_clear = true;
+}
+
+/*
  * db_string_substring_index - returns the substring from a string before
  *			       count occurences of delimeter
  *
@@ -2348,11 +2378,9 @@ db_string_substring_index (DB_VALUE * src_string, DB_VALUE * delim_string, const
 	  error_status = pr_clone_value ((DB_VALUE *) src_string, result);
 	  if (src_type == DB_TYPE_CHAR)
 	    {
-	      /* convert CHARACTER(N) to CHARACTER VARYING(N) */
-	      qstr_make_typed_string (DB_TYPE_VARCHAR, result,
-				      DB_VALUE_PRECISION (result), db_get_string (result), db_get_string_size (result),
-				      src_cs, src_coll);
-	      result->need_clear = true;
+	      /* convert CHARACTER(N) to CHARACTER VARYING(N), keeping any compressed image */
+	      qstr_retype_char_to_varchar (result, DB_VALUE_PRECISION (result), db_get_string_size (result), src_cs,
+					   src_coll);
 	    }
 
 	  if (error_status < 0)
@@ -3010,9 +3038,8 @@ db_string_insert_substring (DB_VALUE * src_string, const DB_VALUE * position, co
   /* force type to variable string */
   if (src_type == DB_TYPE_CHAR)
     {
-      /* convert CHARACTER(N) to CHARACTER VARYING(N) */
-      qstr_make_typed_string (DB_TYPE_VARCHAR, result,
-			      TP_FLOATING_PRECISION_VALUE, db_get_string (result), result_size, src_cs, src_coll);
+      /* convert CHARACTER(N) to CHARACTER VARYING(N), keeping any compressed image */
+      qstr_retype_char_to_varchar (result, TP_FLOATING_PRECISION_VALUE, result_size, src_cs, src_coll);
     }
   else if (src_type == DB_TYPE_BIT)
     {
@@ -5275,10 +5302,9 @@ exit_copy:
     DB_TYPE src_type = DB_VALUE_DOMAIN_TYPE (src);
     if (src_type == DB_TYPE_CHAR)
       {
-	/* convert CHARACTER(N) to CHARACTER VARYING(N) */
-	qstr_make_typed_string (DB_TYPE_VARCHAR, result,
-				DB_VALUE_PRECISION (result), db_get_string (result), db_get_string_size (result),
-				db_get_string_codeset (src), db_get_string_collation (src));
+	/* convert CHARACTER(N) to CHARACTER VARYING(N), keeping any compressed image */
+	qstr_retype_char_to_varchar (result, DB_VALUE_PRECISION (result), db_get_string_size (result),
+				     db_get_string_codeset (src), db_get_string_collation (src));
       }
     result->need_clear = true;
   }
