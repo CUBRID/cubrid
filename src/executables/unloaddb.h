@@ -58,32 +58,36 @@ extern int get_requested_classes (const char *input_filename, DB_OBJECT * class_
 #define PRINT_IDENTIFIER_WITH_QUOTE(s) "\"", (s), "\""
 #define PRINT_FUNCTION_INDEX_NAME(s) "\"", (s), "\""
 
-#define PRINT_OWNER_NAME(owner, print, output_owner, output_len) \
-do \
-  { \
-  size_t total_len = strlen (owner) + 4; \
-  assert (strlen ((owner)) < STATIC_CAST (int, output_len)); \
-  if (print) \
-      snprintf (output_owner, total_len, "%s%s%s%s", PRINT_IDENTIFIER (owner), "."); \
-  else \
-    strcpy(output_owner, ""); \
-  } \
-while (0)
+#define PRINT_OWNER_NAME(owner, print, output_owner, output_len)  do {                \
+  assert (((int) strlen (owner) + 4) < STATIC_CAST (int, output_len));                \
+  if (print)                                                                          \
+      snprintf (output_owner, output_len, "%s%s%s%s", PRINT_IDENTIFIER (owner), "."); \
+  else                                                                                \
+      strcpy (output_owner, "");                                                      \
+} while (0)
 
 /* 
  * name is user_specified_name.
  * owner_name must be a char array of size DB_MAX_IDENTIFIER_LENGTH to copy user_specified_name.
  * class_name refers to class_name after dot(.).
  */
-#define SPLIT_USER_SPECIFIED_NAME(name, owner_name, class_name) \
-	do \
-	  { \
-	    assert (strlen ((name)) < STATIC_CAST (int, sizeof ((owner_name)))); \
-	    strcpy ((owner_name), (name)); \
-	    (class_name) = strchr ((owner_name), '.'); \
-	    *(class_name)++ = '\0'; \
-	  } \
-	while (0)
+#define SPLIT_USER_SPECIFIED_NAME(name, owner_name, class_name) do {        \
+  const char *p = strchr (name, '.');                                       \
+  if (p)                                                                    \
+  {                                                                         \
+    assert ((int) (p - name) < STATIC_CAST (int, sizeof (owner_name)));     \
+    assert ((int) strlen (p + 1) < STATIC_CAST (int, sizeof (class_name))); \
+    memcpy (owner_name, name, p - name);                                    \
+    owner_name[p - name] = '\0';                                            \
+    strcpy (class_name, p + 1);                                             \
+  }                                                                         \
+  else                                                                      \
+  {                                                                         \
+    assert (false);                                                         \
+    owner_name[0] = '\0';                                                   \
+    strcpy (class_name, name);                                              \
+  }                                                                         \
+} while (0)
 
 extern int extract_classes_to_file (extract_context & ctxt);
 extern int extract_triggers (extract_context & ctxt, print_output & output_ctx);

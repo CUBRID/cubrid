@@ -17,21 +17,16 @@
  */
 
 /*
- * px_heap_scan_slot_iterator.cpp
+ * px_scan_slot_iterator.cpp
  */
 
-#include "px_heap_scan_slot_iterator.hpp"
+#include "px_scan_slot_iterator.hpp"
 #include "fetch.h"
-
-#if !defined(NDEBUG)
-#include <sys/syscall.h>
-#include "error_manager.h"
-#endif
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
   slot_iterator::slot_iterator()
     : m_is_peeking (false),
@@ -69,7 +64,6 @@ namespace parallel_heap_scan
     };
     m_cur_oid.pageid = NULL_PAGEID;
     m_class_oid = hsidp->cls_oid;
-    m_next_oid.pageid = NULL_PAGEID;
     m_is_peeking = (scan_id->fixed != 0);
     m_rest_regu_list = hsidp->rest_regu_list;
     m_val_list = scan_id->val_list;
@@ -102,30 +96,30 @@ namespace parallel_heap_scan
     OID retry_oid;
     SCAN_CODE slot_code;
     DB_LOGICAL ev_res;
-    bool is_peeking =  m_is_peeking;
+    bool is_peeking = m_is_peeking;
 
-    while (1)
+    while (true)
       {
-	COPY_OID (&retry_oid, & m_cur_oid);
+	COPY_OID (&retry_oid, &m_cur_oid);
 restart_scan_oid:
 	m_recdes = RECDES_INITIALIZER;
-	slot_code = heap_next_1page (thread_p, & m_hfid, & m_vpid, & m_class_oid,
-				     & m_cur_oid, & m_recdes,
-				     m_scan_cache,  m_is_peeking);
+	slot_code = heap_next_1page (thread_p, &m_hfid, &m_vpid, &m_class_oid,
+				     &m_cur_oid, &m_recdes,
+				     m_scan_cache, m_is_peeking);
 	if (slot_code != S_SUCCESS)
 	  {
 	    return slot_code == S_END ? S_END : S_ERROR;
 	  }
-	if ( m_scan_cache->page_watcher.pgptr != NULL)
+	if (m_scan_cache->page_watcher.pgptr != NULL)
 	  {
-	    LSA_COPY (& m_ref_lsa, pgbuf_get_lsa ( m_scan_cache->page_watcher.pgptr));
+	    LSA_COPY (&m_ref_lsa, pgbuf_get_lsa (m_scan_cache->page_watcher.pgptr));
 	  }
 	if (m_on_trace)
 	  {
 	    m_scan_stats->read_rows++;
 	  }
-	ev_res = eval_data_filter (thread_p, & m_cur_oid, & m_recdes,  m_scan_cache,
-				   & m_data_filter);
+	ev_res = eval_data_filter (thread_p, &m_cur_oid, &m_recdes, m_scan_cache,
+				   &m_data_filter);
 	if (m_on_trace)
 	  {
 	    m_scan_stats->qualified_rows++;
@@ -134,45 +128,44 @@ restart_scan_oid:
 	  {
 	    return S_ERROR;
 	  }
-	if (is_peeking == PEEK &&  m_scan_cache->page_watcher.pgptr != NULL
-	    && PGBUF_IS_PAGE_CHANGED ( m_scan_cache->page_watcher.pgptr, & m_ref_lsa))
+	if (is_peeking == PEEK && m_scan_cache->page_watcher.pgptr != NULL
+	    && PGBUF_IS_PAGE_CHANGED (m_scan_cache->page_watcher.pgptr, &m_ref_lsa))
 	  {
 	    is_peeking = COPY;
-	    COPY_OID (& m_cur_oid, &retry_oid);
+	    COPY_OID (&m_cur_oid, &retry_oid);
 	    goto restart_scan_oid;
 	  }
 	if (ev_res != V_TRUE)
 	  {
 	    continue;
 	  }
-	if ( m_rest_regu_list)
+	if (m_rest_regu_list)
 	  {
-	    heap_attrinfo_read_dbvalues (thread_p, & m_cur_oid, & m_recdes,  m_rest_attr_cache);
-	    if (is_peeking == PEEK &&  m_scan_cache->page_watcher.pgptr != NULL
-		&& PGBUF_IS_PAGE_CHANGED ( m_scan_cache->page_watcher.pgptr, & m_ref_lsa))
+	    heap_attrinfo_read_dbvalues (thread_p, &m_cur_oid, &m_recdes, m_rest_attr_cache);
+	    if (is_peeking == PEEK && m_scan_cache->page_watcher.pgptr != NULL
+		&& PGBUF_IS_PAGE_CHANGED (m_scan_cache->page_watcher.pgptr, &m_ref_lsa))
 	      {
 		is_peeking = COPY;
-		COPY_OID (& m_cur_oid, &retry_oid);
+		COPY_OID (&m_cur_oid, &retry_oid);
 		goto restart_scan_oid;
 	      }
-	    if ( m_val_list)
+	    if (m_val_list)
 	      {
-		if (fetch_val_list (thread_p,  m_rest_regu_list,  m_vd, & m_class_oid, & m_cur_oid,
+		if (fetch_val_list (thread_p, m_rest_regu_list, m_vd, &m_class_oid, &m_cur_oid,
 				    NULL, PEEK) != NO_ERROR)
 		  {
 		    return S_ERROR;
 		  }
-		if (is_peeking != 0 &&  m_scan_cache->page_watcher.pgptr != NULL
-		    && PGBUF_IS_PAGE_CHANGED ( m_scan_cache->page_watcher.pgptr, & m_ref_lsa))
+		if (is_peeking != 0 && m_scan_cache->page_watcher.pgptr != NULL
+		    && PGBUF_IS_PAGE_CHANGED (m_scan_cache->page_watcher.pgptr, &m_ref_lsa))
 		  {
 		    is_peeking = COPY;
-		    COPY_OID (& m_cur_oid, &retry_oid);
+		    COPY_OID (&m_cur_oid, &retry_oid);
 		    goto restart_scan_oid;
 		  }
 	      }
 	  }
 	return S_SUCCESS;
       }
-    return S_ERROR;
   }
 }

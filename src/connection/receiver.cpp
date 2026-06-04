@@ -56,8 +56,6 @@ namespace cubconn
     m_stats (stats),
     m_buf (capacity)
   {
-    m_result.reserve (8);
-    this->reset ();
   }
 
   receiver::receiver () :
@@ -74,6 +72,18 @@ namespace cubconn
 	assert (false);
       }
 #endif
+  }
+
+  bool receiver::prepare ()
+  {
+    if (!m_buf.prepare ())
+      {
+	return false;
+      }
+
+    m_result.reserve (8);
+    this->reset ();
+    return true;
   }
 
   void receiver::reset ()

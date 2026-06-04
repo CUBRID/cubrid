@@ -46,4 +46,9 @@ extern void fetch_init_val_list (regu_variable_list_node * regu_list);
 
 extern void fetch_force_not_const_recursive (regu_variable_node & reguvar);
 
+extern DB_VALUE *fetch_peek_leftmost_numeric_regu (THREAD_ENTRY * thread_p, regu_variable_node * regu_var,
+						   val_descr * vd);
+extern int fetch_and_coerce_key_limit_lower (THREAD_ENTRY * thread_p, regu_variable_node * key_limit_l, val_descr * vd,
+					     DB_VALUE * out_val);
+
 #endif /* _FETCH_H_ */

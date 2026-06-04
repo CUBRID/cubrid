@@ -1052,13 +1052,21 @@ hjoin_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
 	    }
 	  else if (common_type == DB_TYPE_NUMERIC)
 	    {
-	      common_scale = MAX (outer_scale, inner_scale);
+	      if (outer_precision == DB_DEFAULT_NUMERIC_PRECISION || inner_precision == DB_DEFAULT_NUMERIC_PRECISION)
+		{
+		  common_precision = DB_DEFAULT_NUMERIC_PRECISION;
+		  common_scale = DB_DEFAULT_NUMERIC_SCALE;
+		}
+	      else
+		{
+		  common_scale = MAX (outer_scale, inner_scale);
 
-	      outer_integral = outer_precision - outer_scale;
-	      inner_integral = inner_precision - inner_scale;
+		  outer_integral = outer_precision - outer_scale;
+		  inner_integral = inner_precision - inner_scale;
 
-	      common_precision = MAX (outer_integral, inner_integral) + common_scale;
-	      common_precision = MIN (common_precision, DB_MAX_NUMERIC_PRECISION);
+		  common_precision = MAX (outer_integral, inner_integral) + common_scale;
+		  common_precision = MIN (common_precision, DB_MAX_FIXED_NUMERIC_PRECISION);
+		}
 	    }
 	  else
 	    {
@@ -2913,6 +2921,21 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
 	      if (error != NO_ERROR)
 		{
 		  goto error_exit;
+		}
+
+	      if (coerce_domains[key_index]->type->id == DB_TYPE_NUMERIC
+		  && pre_coerce_value.domain.general_info.type == DB_TYPE_NUMERIC
+		  && coerce_domains[key_index]->precision == DB_DEFAULT_NUMERIC_PRECISION
+		  && pre_coerce_value.domain.numeric_info.precision != DB_DEFAULT_NUMERIC_PRECISION
+		  && pre_coerce_value.domain.numeric_info.scale < 0)
+		{
+		  /* 
+		   * for float numeric and fixed numeric, this is used to recalculate the fixed
+		   * numeric's precision later, as it must be known accurately during normalization.
+		   * 
+		   * note: A value in numeric(38,0) column does not guarantee precision 38.
+		   */
+		  pre_coerce_value.domain.numeric_info.precision = DB_HJOIN_NUMERIC_PRECISION_DEFERRED;
 		}
 
 	      domain_status = tp_value_coerce (&pre_coerce_value, key->values[key_index], coerce_domains[key_index]);
