@@ -49,7 +49,7 @@ static XASL_NODE *make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * 
 				      PROJECTION_INFO * projection_info, BITSET * probe_terms);
 static bool qo_hashjoin_probe_term_eligible (QO_ENV * env, QO_PLAN * plan, BITSET * join_nodes, int t);
 static void qo_collect_hashjoin_probe_terms (QO_ENV * env, QO_PLAN * plan, BITSET * result);
-static void qo_collect_hashjoin_probe_after_terms (QO_ENV * env, QO_PLAN * plan, BITSET * result);
+static void qo_collect_hashjoin_after_join_probe_terms (QO_ENV * env, QO_PLAN * plan, BITSET * result);
 static XASL_NODE *make_fetch_proc (QO_ENV * env, QO_PLAN * plan);
 static XASL_NODE *make_buildlist_proc (QO_ENV * env, PT_NODE * namelist);
 
@@ -560,8 +560,11 @@ exit_on_error:
  *	 (after_join_terms) probe-term collectors.  A term is eligible only if it
  *	 references exactly the two join inputs, carries no correlated subquery,
  *	 is not output-position dependent (inst_num()/rownum), is not already
- *	 realized as a hash key / join edge, and references only PT_NAME segments
- *	 (so its operands can be fetched through regu_list_pred at probe time).
+ *	 realized as a hash key / join edge, and all of its SEGMENTS are plain
+ *	 columns (PT_NAME).  Only a term that carries a non-PT_NAME segment is
+ *	 excluded; expressions BUILT OVER plain-column segments (e.g.
+ *	 "t1.c between t2.d - 10 and t2.d + 10", "upper (t1.s) = t2.s2") are
+ *	 fetchable through regu_list_pred at probe time and ARE pushed.
  */
 static bool
 qo_hashjoin_probe_term_eligible (QO_ENV * env, QO_PLAN * plan, BITSET * join_nodes, int t)
@@ -591,8 +594,13 @@ qo_hashjoin_probe_term_eligible (QO_ENV * env, QO_PLAN * plan, BITSET * join_nod
       return false;
     }
 
-  /* Skip terms with non-name operands; their values cannot be fetched
-   * through regu_list_pred at probe time. They remain in the parent if_pred. */
+  /* Exclude a term only if one of its SEGMENTS is not a plain column (PT_NAME):
+   * such a segment cannot be fetched through regu_list_pred at probe time, so the
+   * whole term stays in the parent if_pred.  Note this rejects on the SEGMENT, not
+   * on the term's operand expression: a term whose operands are expressions over
+   * plain-column segments (e.g. "t1.c between t2.d - 10 and t2.d + 10",
+   * "upper (t1.s) = t2.s2") has only PT_NAME segments and is therefore pushed and
+   * evaluated correctly inside the probe loop. */
   for (s = bitset_iterate (&(QO_TERM_SEGS (term)), &seg_iter); s != -1; s = bitset_next_member (&seg_iter))
     {
       PT_NODE *seg_node = QO_SEG_PT_NODE (QO_ENV_SEG (env, s));
@@ -642,7 +650,7 @@ qo_collect_hashjoin_probe_terms (QO_ENV * env, QO_PLAN * plan, BITSET * result)
    * condition lives in during_join_terms / after_join_terms, not sarged_terms,
    * so this pass naturally leaves them untouched; guard explicitly anyway.
    * Outer-join two-input WHERE residuals are handled by
-   * qo_collect_hashjoin_probe_after_terms(). */
+   * qo_collect_hashjoin_after_join_probe_terms(). */
   if (IS_OUTER_JOIN_TYPE (plan->plan_un.join.join_type))
     {
       return;
@@ -664,7 +672,7 @@ qo_collect_hashjoin_probe_terms (QO_ENV * env, QO_PLAN * plan, BITSET * result)
 }
 
 /*
- * qo_collect_hashjoin_probe_after_terms() -
+ * qo_collect_hashjoin_after_join_probe_terms() -
  *   return: None.
  *   env(in): Optimization environment.
  *   plan(in): Hash-join execution plan (LEFT/RIGHT OUTER join only).
@@ -690,7 +698,7 @@ qo_collect_hashjoin_probe_terms (QO_ENV * env, QO_PLAN * plan, BITSET * result)
  *	 caller, avoiding double evaluation.
  */
 static void
-qo_collect_hashjoin_probe_after_terms (QO_ENV * env, QO_PLAN * plan, BITSET * result)
+qo_collect_hashjoin_after_join_probe_terms (QO_ENV * env, QO_PLAN * plan, BITSET * result)
 {
   BITSET_ITERATOR iter;
   int t;
@@ -2817,7 +2825,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   XASL_NODE *outer_xasl = NULL, *inner_xasl = NULL;
 
   BITSET probe_terms;
-  BITSET after_probe_terms;
+  BITSET probe_after_join_terms;
 
   int parallelism;
 
@@ -2853,14 +2861,20 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
    * eligible ones into the probe loop.  Prune them from plan->plan_un.join.after_join_terms and from
    * the local pred_set copy (which already unions after_join_terms in gen_outer) that feeds the
    * parent after_join_pred, so each is evaluated in exactly one place (the probe). */
-  bitset_init (&after_probe_terms, env);
-  qo_collect_hashjoin_probe_after_terms (env, plan, &after_probe_terms);
-  if (!bitset_is_empty (&after_probe_terms))
+  bitset_init (&probe_after_join_terms, env);
+  qo_collect_hashjoin_after_join_probe_terms (env, plan, &probe_after_join_terms);
+  if (!bitset_is_empty (&probe_after_join_terms))
     {
-      bitset_difference (&(plan->plan_un.join.after_join_terms), &after_probe_terms);
-      bitset_difference (pred_set, &after_probe_terms);
-      bitset_union (&probe_terms, &after_probe_terms);
+      bitset_difference (&(plan->plan_un.join.after_join_terms), &probe_after_join_terms);
+      bitset_difference (pred_set, &probe_after_join_terms);
+      bitset_union (&probe_terms, &probe_after_join_terms);
     }
+
+  /* Record the pushed terms on the plan so the plan dump / trace can show where the residual predicate is
+   * evaluated.  We have just removed these terms from sarged_terms / after_join_terms; qo_plan_dump runs
+   * AFTER this xasl-gen step (pt_to_buildlist_proc -> qo_to_xasl -> gen_hashjoin), so without this record
+   * the pushed predicate would be invisible in every plan/trace section. */
+  bitset_assign (&(plan->plan_un.join.probe_terms), &probe_terms);
 
   switch (plan->parallel_opt_use)
     {
@@ -2955,7 +2969,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
 
 cleanup:
   bitset_delset (&probe_terms);
-  bitset_delset (&after_probe_terms);
+  bitset_delset (&probe_after_join_terms);
   qo_clear_projection_info (env, &projection_info);
 
   return xasl;
