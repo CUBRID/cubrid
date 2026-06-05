@@ -553,6 +553,11 @@ cgw_cleanup_col_bindings (T_SRV_HANDLE * srv_handle)
       return;
     }
 
+  if (srv_handle->cgw_hstmt != NULL)
+    {
+      (void) SQLFreeStmt ((SQLHSTMT) srv_handle->cgw_hstmt, SQL_UNBIND);
+    }
+
   col_binding = (T_COL_BINDER *) srv_handle->cgw_col_binding;
   col_binding_buff = (T_COL_BINDER *) srv_handle->cgw_col_binding_buff;
 
@@ -694,8 +699,6 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	    {
 	      fetch_end_flag = 1;
 
-	      cgw_cleanup_col_bindings (srv_handle);
-
 	      err_code = cgw_cursor_close (srv_handle);
 	      if (err_code < 0)
 		{
@@ -703,6 +706,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 		  goto fetch_error;
 		}
 
+	      cgw_cleanup_col_bindings (srv_handle);
 
 	      if (check_auto_commit_after_getting_result (srv_handle) == true)
 		{
@@ -746,14 +750,14 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	{
 	  fetch_end_flag = 1;
 
-	  cgw_cleanup_col_bindings (srv_handle);
-
 	  err_code = cgw_cursor_close (srv_handle);
 	  if (err_code < 0)
 	    {
 	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
 	      goto fetch_error;
 	    }
+
+	  cgw_cleanup_col_bindings (srv_handle);
 
 	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
@@ -785,6 +789,11 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
   return 0;
 
 fetch_error:
+  if (srv_handle->is_cursor_open)
+    {
+      (void) cgw_cursor_close (srv_handle);
+    }
+
   cgw_cleanup_col_bindings (srv_handle);
 
   return err_code;
@@ -901,13 +910,23 @@ ux_cgw_cursor_close (T_SRV_HANDLE * srv_handle)
       return;
     }
 
-  cgw_cleanup_col_bindings (srv_handle);
   cgw_cursor_close (srv_handle);
+  cgw_cleanup_col_bindings (srv_handle);
 }
 
 void
 ux_cgw_free_stmt (T_SRV_HANDLE * srv_handle)
 {
+  if (srv_handle == NULL)
+    {
+      return;
+    }
+
+  if (srv_handle->is_cursor_open)
+    {
+      (void) cgw_cursor_close (srv_handle);
+    }
+
   cgw_cleanup_col_bindings (srv_handle);
   cgw_free_stmt (srv_handle);
 }
