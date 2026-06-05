@@ -12239,6 +12239,22 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 			  if (subq != NULL && !pt_has_error (parser))
 			    {
 			      node->info.insert.value_clauses->info.node_list.list = subq;
+
+			      /* The remote path also skips the INSERT-level attribute/value count check, so an
+			       * explicit column list whose size differs from the SELECT projection would reach
+			       * XASL generation and abort there. Validate it here with the same semantic error a
+			       * local INSERT uses. */
+			      if (node->info.insert.attr_list != NULL)
+				{
+				  int ac = pt_length_of_list (node->info.insert.attr_list);
+				  int cc =
+				    pt_length_of_select_list (pt_get_select_list (parser, subq), EXCLUDE_HIDDEN_COLUMNS);
+				  if (ac != cc)
+				    {
+				      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+						   MSGCAT_SEMANTIC_ATT_CNT_COL_CNT_NE, ac, cc);
+				    }
+				}
 			    }
 			}
 		    }
