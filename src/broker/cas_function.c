@@ -998,6 +998,9 @@ fn_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "fetch srv_h_id %d cursor_pos %d fetch_count %d",
 		 srv_h_id, cursor_pos, fetch_count);
 
+  /* record-before-fetch: a large fetch can block, so put the request on disk first */
+  cas_log_flush_if_needed ();
+
   ux_fetch (srv_handle, cursor_pos, fetch_count, fetch_flag, result_set_index, net_buf, req_info);
 
   return FN_KEEP_CONN;
