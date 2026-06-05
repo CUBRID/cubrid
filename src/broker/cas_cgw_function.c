@@ -85,6 +85,9 @@ fn_cgw_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_R
 
   cas_log_write (0, false, "end_tran %s", get_tran_type_str (tran_type));
 
+  /* record-before-commit: flush the end_tran line before the commit, which can hang */
+  cas_log_flush_if_needed ();
+
   gettimeofday (&end_tran_begin, NULL);
 
   err_code = ux_cgw_end_tran ((char) tran_type, false, false);
@@ -660,6 +663,9 @@ fn_cgw_get_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "fetch srv_h_id %d cursor_pos %d fetch_count %d",
 		 srv_h_id, cursor_pos, fetch_count);
 
+  /* record-before-fetch: a large fetch can block, so put the request on disk first */
+  cas_log_flush_if_needed ();
+
   ux_cgw_fetch (srv_handle, cursor_pos, fetch_count, fetch_flag, result_set_index, net_buf, req_info);
 
   return FN_KEEP_CONN;
@@ -792,6 +798,9 @@ fn_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "fetch srv_h_id %d cursor_pos %d fetch_count %d",
 		 srv_h_id, cursor_pos, fetch_count);
+
+  /* record-before-fetch: a large fetch can block, so put the request on disk first */
+  cas_log_flush_if_needed ();
 
   ux_cgw_fetch (srv_handle, cursor_pos, fetch_count, fetch_flag, result_set_index, net_buf, req_info);
 
