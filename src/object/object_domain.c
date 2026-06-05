@@ -277,6 +277,12 @@ TP_DOMAIN tp_Elo_domain = { NULL, NULL, &tp_Elo, DOMAIN_INIT };	/* todo: remove 
 TP_DOMAIN tp_Bfile_domain = { NULL, NULL, &tp_Bfile, DOMAIN_INIT };
 TP_DOMAIN tp_Cfile_domain = { NULL, NULL, &tp_Cfile, DOMAIN_INIT };
 
+/* BLOB / CLOB are inline storage capped at DB_MAX_LOB_PRECISION (1 GiB).
+ * codeset / collation slots stay 0 — mirrors BFILE / CFILE (no user-facing
+ * codeset or collation); server uses LANG_SYS_CODESET (createdb codeset)
+ * for any byte→char view at runtime. */
+TP_DOMAIN tp_Blob_domain = { NULL, NULL, &tp_Blob, DOMAIN_INIT4 (DB_MAX_LOB_PRECISION, 0) };
+TP_DOMAIN tp_Clob_domain = { NULL, NULL, &tp_Clob, DOMAIN_INIT4 (DB_MAX_LOB_PRECISION, 0) };
 
 TP_DOMAIN tp_Time_domain = { NULL, NULL, &tp_Time, DOMAIN_INIT4 (DB_TIME_PRECISION, 0) };
 TP_DOMAIN tp_Utime_domain = { NULL, NULL, &tp_Utime, DOMAIN_INIT4 (DB_TIMESTAMP_PRECISION, 0) };
@@ -721,6 +727,8 @@ tp_apply_sys_charset (void)
     }
 
   /* update string domains with current codeset */
+  /* tp_Clob_domain / tp_Blob_domain carry no codeset/collation slot — mirrors BFILE/CFILE.
+   * Server uses LANG_SYS_CODESET (createdb codeset) for byte->char views at runtime. */
   tp_String_domain.codeset = LANG_SYS_CODESET;
   tp_String_domain.collation_id = LANG_SYS_COLLATION;
   tp_Char_domain.codeset = LANG_SYS_CODESET;
@@ -2953,7 +2961,7 @@ tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id, unsigned ch
 	  /* we MUST perform exact matches here */
 	  if (dom->precision == precision && dom->is_desc == is_desc)
 	    {
-	      if (type == DB_TYPE_VARBIT)
+	      if (type == DB_TYPE_VARBIT || type == DB_TYPE_BLOB || type == DB_TYPE_CLOB)
 		{
 		  break;	/* found */
 		}
@@ -3640,6 +3648,8 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 
 	case DB_TYPE_BLOB:
 	case DB_TYPE_CLOB:
+	  /* BLOB / CLOB carry no codeset/collation slot — mirrors BFILE/CFILE.
+	   * Server uses LANG_SYS_CODESET (createdb codeset) for byte->char views. */
 	  if (dbuf == NULL)
 	    {
 	      domain = tp_domain_new (value_type);
@@ -3654,7 +3664,10 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	      tp_domain_init (domain, value_type);
 	    }
 	  domain->precision = db_value_precision (val);
+	  if (domain->precision == 0 || domain->precision == TP_FLOATING_PRECISION_VALUE
+	      || domain->precision > DB_MAX_LOB_PRECISION)
 	    {
+	      domain->precision = DB_MAX_LOB_PRECISION;
 	    }
 
 	  if (dbuf == NULL)

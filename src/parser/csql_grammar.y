@@ -19511,6 +19511,9 @@ primitive_type
 		}}
 	| BLOB_ opt_internal_external
 		{{
+			/* BLOB: inline storage capped at DB_MAX_LOB_PRECISION (1 GiB).
+			 * codeset / collation slots are not used — mirrors BFILE/CFILE.
+			 * Server uses LANG_SYS_CODESET (createdb codeset) at runtime. */
 			container_2 ctn;
 			PT_NODE *dt = parser_new_node (this_parser, PT_DATA_TYPE);
 			if (dt)
@@ -19523,6 +19526,9 @@ primitive_type
 		}}
 	| CLOB_ opt_internal_external
 		{{
+			/* CLOB: inline storage capped at DB_MAX_LOB_PRECISION (1 GiB).
+			 * codeset / collation slots are not used — mirrors BFILE/CFILE.
+			 * Server uses LANG_SYS_CODESET (createdb codeset) at runtime. */
 			container_2 ctn;
 			PT_NODE *dt = parser_new_node (this_parser, PT_DATA_TYPE);
 			if (dt)
@@ -22774,7 +22780,9 @@ dblink_column_definition
                         node->data_type = dt = CONTAINER_AT_1 ($2);
                         node->info.attr_def.attr_name = $1;
 
-                        if (typ == PT_TYPE_BLOB || typ == PT_TYPE_CLOB || typ == PT_TYPE_OBJECT || typ == PT_TYPE_ENUMERATION)
+                        if (typ == PT_TYPE_BFILE || typ == PT_TYPE_CFILE
+                            || typ == PT_TYPE_BLOB || typ == PT_TYPE_CLOB
+                            || typ == PT_TYPE_OBJECT || typ == PT_TYPE_ENUMERATION)
                           {
                                 PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 					     MSGCAT_SEMANTIC_DBLINK_NOT_SUPPORTED_TYPE, pt_show_type_enum (typ));

@@ -5212,6 +5212,8 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
 
     case PT_TYPE_BFILE:
     case PT_TYPE_CFILE:
+    case PT_TYPE_BLOB:
+    case PT_TYPE_CLOB:
     case PT_TYPE_OBJECT:
     case PT_TYPE_ENUMERATION:
     case PT_TYPE_SET:

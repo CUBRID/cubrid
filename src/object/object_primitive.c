@@ -15710,6 +15710,7 @@ mr_data_lengthmem_blob (void *memptr, TP_DOMAIN * domain, int disk)
   len = 0;
   if (!disk)
     {
+      len = tp_Blob.size;
     }
   else if (memptr != NULL)
     {
